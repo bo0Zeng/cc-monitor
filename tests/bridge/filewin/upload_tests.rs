@@ -132,7 +132,7 @@ async fn clicking_upload_then_ok_runs_the_drop_path_over_the_channel() {
     };
     // ① 第一帧：工具栏上那颗「上传」画出来了。
     let first = painted(&mut w, Vec::new());
-    let at = rects_of(&first, UPLOAD_LABEL);
+    let at = rects_of(&first, UPLOAD_LABEL.as_str());
     assert_eq!(at.len(), 1, "工具栏上「上传」不是恰好一颗：{at:?}");
     // ② 点它 ⇒ 那一问开了。
     let _ = painted(

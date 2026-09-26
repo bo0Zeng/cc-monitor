@@ -257,21 +257,13 @@ fn a_key_never_prints_its_value() {
     assert!(!shown.contains(TEST_KEY));
 }
 
-/// ⑦ 钥匙文件的相对路径两半同一个串：后端 [`KEY_FILE_REL`]（中转读 / 铸）↔ monitor
-/// `payload.rs::RELAY_KEY_FILE_REL`（渲染器拼 `$(cat "$HOME/…")`）。两边漂了**不会报错**：
-/// shell 读一个不在的文件 ⇒ 空段 ⇒ 每一发 403，与「钥匙不对」同形。现抠 monitor 那一行的字面量（异源：源码文本 vs 本 crate 常量）。
+/// ⑦ 〔US1 · 4D〕钥匙文件的相对路径与钥匙形状**只住共享 crate**（`relay_route_core::KEY_FILE_REL` · `key_shape_ok`）：
+/// 本模块那两个名字是它的别名（先前两半各写一份字面量、本条现抠 monitor `payload.rs` 那一行对拍 —— 那条跨半边边随之出列；
+/// 「两半零字面量」由 monitor 侧 `payload_tests::us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar` 两棵树一起扫）。
+/// 这里钉本模块铸的长度与共享 crate 认的形状对得上（异源：铸法是 `KEY_BYTES` 算出来的，形状闸是 crate 里写死的 64）。
 #[test]
-fn the_key_file_is_the_same_path_on_both_halves() {
-    const PAYLOAD: &str = include_str!("../../../src/bridge/src/backend/control/payload.rs");
-    const ANCHOR: &str = "pub const RELAY_KEY_FILE_REL: &str = \"";
-    let hits: Vec<&str> = PAYLOAD
-        .match_indices(ANCHOR)
-        .map(|(i, _)| &PAYLOAD[i..])
-        .collect();
-    assert_eq!(hits.len(), 1, "monitor 那一行锚点应恰好一处");
-    let lit = hits[0][ANCHOR.len()..]
-        .split('"')
-        .next()
-        .expect("字面量收尾的引号");
-    assert_eq!(lit, KEY_FILE_REL, "两半的钥匙文件路径漂开了");
+fn the_key_file_and_the_key_shape_come_from_the_shared_crate() {
+    assert_eq!(KEY_FILE_REL, relay_route_core::KEY_FILE_REL);
+    assert_eq!(2 * KEY_BYTES, 64, "铸的长度与共享 crate 的形状闸不一致");
+    assert!(key_shape_ok(TEST_KEY), "夹具钥匙过不了共享的形状闸");
 }

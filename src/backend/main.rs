@@ -101,7 +101,8 @@ async fn main() {
 
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
+        // 〔NT2 · S1〕仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。
+        .with_writer(stderr_log::stderr_writer)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
@@ -176,6 +177,14 @@ async fn main() {
     // --resolve/一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
     tracing::info!("agent_home = {}", agent_home.display());
+
+    // 〔NT2 · S1〕**脱离常驻那条载体的 stderr 落盘**（`设计/15 §4.7 S1`）：宿主交了路径才接（monitor 只在起脱离那条时交）。
+    //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在选载体之前：接上之后这一行起的
+    //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
+    tracing::info!(
+        "{}",
+        stderr_log::install_from_env(&|k| std::env::var(k).ok()).said()
+    );
 
     // 〔RL1 · V107〕**中转 ＋ 上游选择住本机常驻后端这个进程**：宿主交了端口才开
     //   （monitor 起本机后端时交；远端经 SSH exec 起的流模式没人交 ⇒ 不开，远端中转另有住处）。

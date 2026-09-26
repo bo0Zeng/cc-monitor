@@ -38,6 +38,7 @@
 //! - 〔W5-FILES〕**目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
 //!   「复制为」那个框仍只改名字、仍单选（`设计/60 §6.3`：它要一个名字），名字里不许带 `/`。
 
+use crate::copy_table::copy_text;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -46,7 +47,8 @@ use super::source::Row;
 
 /// 行上那颗按钮的字面。**唯一住址** —— 判据按同一个常量去找它画出来的那几个字，
 /// 不在判据里手抄第二份（抄一份就会漂）。
-pub const COPY_LABEL: &str = "复制";
+pub static COPY_LABEL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinCopy.label.copy", &[]));
 
 /// 这一行能不能复制。**唯一住址** —— 列表画不画那颗按钮（[`super::rows`]）
 /// 与状态机接不接那一跳（[`super::shell::FileWindow::begin_copy`]），问的都是这一个函数。
@@ -238,9 +240,12 @@ where
         .map(|j| j.name.as_str())
         .collect();
     if !dirs.is_empty() {
-        return CopyOutcome::Refused(format!(
-            "另一栏已经有同名的：{} —— 目录不覆盖、不合并，这一摞一件都没做",
-            dirs.join("、")
+        return CopyOutcome::Refused(copy_text(
+            "rsFilewinCopy.batch.dirClash",
+            &[(
+                "names",
+                &dirs.join(&copy_text("rsFilewinCopy.batch.listSep", &[])),
+            )],
         ));
     }
     let overwrite = !clash.is_empty() && confirm(clash.clone()).await;
@@ -279,34 +284,52 @@ pub struct Notice {
 pub fn outcome_notice(o: &CopyOutcome) -> Notice {
     match o {
         CopyOutcome::Skipped => Notice {
-            text: "上一趟：没覆盖，一个字节都没动".to_string(),
+            text: copy_text("rsFilewinCopy.outcome.skipped", &[]),
             loud: false,
         },
         CopyOutcome::Failed(e) => Notice {
-            text: format!("复制失败：{e}"),
+            text: copy_text("rsFilewinCopy.outcome.failed", &[("e", &e.to_string())]),
             loud: true,
         },
         CopyOutcome::Done { bytes, asked: _ } => Notice {
-            text: format!("复制完成：{bytes} 字节，在那台机器上复制的，没经过你这台机器"),
+            text: copy_text(
+                "rsFilewinCopy.outcome.done",
+                &[("bytes", &bytes.to_string())],
+            ),
             loud: false,
         },
         CopyOutcome::Refused(why) => Notice {
-            text: format!("复制没做：{why}"),
+            text: copy_text("rsFilewinCopy.outcome.refused", &[("why", why)]),
             loud: true,
         },
         CopyOutcome::Batch(r) => {
             let (files, dirs, bytes) = r.done.iter().fold((0, 0, 0), |(f, d, b), c| {
                 (f + c.files, d + c.dirs, b + c.bytes)
             });
-            let mut text = format!(
-                "复制完成 {} 项（{files} 个文件 · {dirs} 个目录 · {bytes} 字节），在那台机器上复制的，没经过你这台机器",
-                r.done.len()
+            let mut text = copy_text(
+                "rsFilewinCopy.outcome.batchDone",
+                &[
+                    ("n", &r.done.len().to_string()),
+                    ("files", &files.to_string()),
+                    ("dirs", &dirs.to_string()),
+                    ("bytes", &bytes.to_string()),
+                ],
             );
             if !r.skipped.is_empty() {
-                text.push_str(&format!("；没覆盖、跳过了：{}", r.skipped.join("、")));
+                text.push_str(&copy_text(
+                    "rsFilewinCopy.outcome.batchSkipped",
+                    &[(
+                        "names",
+                        &r.skipped
+                            .join(&copy_text("rsFilewinCopy.batch.listSep", &[])),
+                    )],
+                ));
             }
             for (name, why) in &r.failed {
-                text.push_str(&format!("；{name} 复制失败：{why}"));
+                text.push_str(&copy_text(
+                    "rsFilewinCopy.outcome.batchFailed",
+                    &[("name", name), ("why", why)],
+                ));
             }
             Notice {
                 text,
@@ -357,9 +380,9 @@ pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600)
 pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
     let root = super::source::parent_dir(&job.from);
     if super::source::parent_dir(&job.to) != root {
-        return Err(format!(
-            "复制只在同一个目录里做：{} 与 {} 不在同一个目录",
-            job.from, job.to
+        return Err(copy_text(
+            "rsFilewinCopy.args.notSameDir",
+            &[("from", &job.from.to_string()), ("to", &job.to.to_string())],
         ));
     }
     let mut v = serde_json::json!({
@@ -386,12 +409,12 @@ pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied,
     let bytes = d
         .get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| format!("`{CMD_COPY}` 的应答里没有 `bytes`，和约定的不一样"))?;
+        .ok_or_else(|| copy_text("rsFilewinCopy.remote.noBytes", &[]))?;
     let count = |k: &str, old: u64| -> Result<u64, String> {
         match d.get(k).and_then(serde_json::Value::as_u64) {
             Some(n) => Ok(n),
             None if !job.is_dir => Ok(old),
-            None => Err(format!("`{CMD_COPY}` 的应答里没有 `{k}`，和约定的不一样")),
+            None => Err(copy_text("rsFilewinCopy.remote.noCount", &[("field", k)])),
         }
     };
     Ok(Copied {
@@ -419,7 +442,7 @@ pub async fn copy_remote(
     let d = super::source::ask(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
     d.get("bytes")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| format!("`{CMD_COPY}` 的应答里没有 `bytes`，和约定的不一样"))
+        .ok_or_else(|| copy_text("rsFilewinCopy.remote.noBytes", &[]))
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -583,21 +606,30 @@ impl CopyBoard {
             let mut answer: Option<bool> = None;
             egui::Modal::new(egui::Id::new("filewin-copy-overwrite")).show(ui.ctx(), |ui| {
                 if let [job] = asking.as_slice() {
-                    ui.heading(format!("远端已经有 {} 了，要覆盖吗？", job.name));
+                    ui.heading(copy_text(
+                        "rsFilewinCopy.ui.askOverwrite",
+                        &[("name", &job.name.to_string())],
+                    ));
                 } else {
-                    ui.heading(format!(
-                        "远端已经有这 {} 个同名文件了，要覆盖吗？",
-                        asking.len()
+                    ui.heading(copy_text(
+                        "rsFilewinCopy.ui.askOverwriteMany",
+                        &[("n", &asking.len().to_string())],
                     ));
                 }
                 for job in &asking {
                     ui.label(format!("{} → {}", job.from, job.to));
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("覆盖").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinCopy.ui.overwrite", &[]))
+                        .clicked()
+                    {
                         answer = Some(true);
                     }
-                    if ui.button("别覆盖").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinCopy.ui.keep", &[]))
+                        .clicked()
+                    {
                         answer = Some(false);
                     }
                 });
@@ -609,7 +641,10 @@ impl CopyBoard {
         if let Some(name) = &running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!("正在那台机器上复制 {name} …"));
+                ui.label(copy_text(
+                    "rsFilewinCopy.ui.copying",
+                    &[("name", &name.to_string())],
+                ));
             });
         }
         if let Some(o) = &last {

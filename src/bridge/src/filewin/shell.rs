@@ -105,6 +105,7 @@
 //! - `设计/60 §5.4d`（拖入多文件先一次问完再并行）**第二刀做了**，
 //!   住 [`super::transfer::run_drop`]；三段的顺序就是那个函数的结构，判据钉的是顺序与并行度。
 
+use crate::copy_table::copy_text;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -207,7 +208,8 @@ pub fn local_home() -> String {
 }
 
 /// 没连上通道时，每一件要问后端的事说的那一句（`D11`：不退回 SFTP、不静默）。
-pub const NO_LINE: &str = "这个窗口没连上后端，请重开窗口";
+pub static NO_LINE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinShell.noLine.message", &[]));
 
 /// 「在此打开终端」要在那台远端上跑的那一串。
 ///
@@ -498,7 +500,8 @@ pub struct MenuAt {
 }
 
 /// 〔FW2〕菜单上一项都没有时摆的那一句（有损名那一档：什么都做不了，但要说出来）。
-pub const MENU_EMPTY: &str = "对选中的这几项没有能做的事";
+pub static MENU_EMPTY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsFilewinShell.menuEmpty.message", &[]));
 
 impl FileWindow {
     pub fn new(source: Source, cwd: String, rt: Option<tokio::runtime::Handle>) -> Self {
@@ -588,7 +591,7 @@ impl FileWindow {
             Some(h) => {
                 // 🔴〔F2〕有运行时但没连上通道 ⇒ 出声（`D11`：不退回 SFTP）。
                 let Some(line) = self.line.clone() else {
-                    store_if_current(&l, mine, Err(NO_LINE.into()));
+                    store_if_current(&l, mine, Err(NO_LINE.to_string()));
                     return;
                 };
                 let source = self.source.clone();
@@ -611,7 +614,7 @@ impl FileWindow {
                 store_if_current(
                     &l,
                     mine,
-                    Err("远端目录要一个 tokio 运行时，这个窗口没拿到".into()),
+                    Err(copy_text("rsFilewinShell.reload.noRuntime", &[]).into()),
                 );
             }
         }
@@ -700,7 +703,8 @@ impl FileWindow {
     /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
-            *self.term_notice.lock().unwrap() = Some("终端开不了，请重开这个窗口".into());
+            *self.term_notice.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.terminal.noRuntime", &[]).into());
             return false;
         };
         let origin = self.source.origin();
@@ -713,7 +717,10 @@ impl FileWindow {
             //   不是一场要被 ↗ 找回来的会话，没有令牌可铸。
             let said = match crate::launch::launch_remote_terminal(origin.0, cmd, None).await {
                 Ok(()) => None,
-                Err(why) => Some(format!("终端没打开：{why}")),
+                Err(why) => Some(copy_text(
+                    "rsFilewinShell.terminal.failed",
+                    &[("why", &why.to_string())],
+                )),
             };
             *slot.lock().unwrap() = said;
             if let Some(c) = ctx {
@@ -791,8 +798,9 @@ impl FileWindow {
             None => {
                 // 找不到就把高亮也撤掉 —— 留着等于在屏幕上标一个不存在的东西。
                 self.reveal = None;
-                Some(Err(format!(
-                    "这个目录里没有 {want} —— 它可能刚被删掉或改了名"
+                Some(Err(copy_text(
+                    "rsFilewinShell.reveal.gone",
+                    &[("want", &want.to_string())],
                 )))
             }
         }
@@ -824,11 +832,12 @@ impl FileWindow {
             return false;
         }
         let Some(h) = self.rt.clone() else {
-            self.search.say("搜索要一个 tokio 运行时，这个窗口没拿到");
+            self.search
+                .say(&copy_text("rsFilewinShell.search.noRuntime", &[]));
             return false;
         };
         let Some(line) = self.line.clone() else {
-            self.search.say(NO_LINE);
+            self.search.say(NO_LINE.as_str());
             return false;
         };
         let mine = self.search.start();
@@ -882,11 +891,11 @@ impl FileWindow {
         }
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("上传要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.upload.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -968,8 +977,10 @@ impl FileWindow {
         }
         let items = self.pending_for(&dropped);
         if items.is_empty() {
-            *self.listing.error.lock().unwrap() =
-                Some(format!("拖进来的 {} 个东西一个都认不出名字", dropped.len()));
+            *self.listing.error.lock().unwrap() = Some(copy_text(
+                "rsFilewinShell.drop.noNames",
+                &[("n", &(dropped.len()).to_string())],
+            ));
             return;
         }
         self.start_drop(items, Some(ctx.clone()));
@@ -1063,9 +1074,9 @@ impl FileWindow {
             return false;
         };
         let Some(job) = p.to_job() else {
-            *self.listing.error.lock().unwrap() = Some(format!(
-                "「{}」不是一个能用的新名字 —— 只能在同一个目录里改名，不许为空、不许带 `/`、不许和原名相同",
-                p.new_name
+            *self.listing.error.lock().unwrap() = Some(copy_text(
+                "rsFilewinShell.copy.badName",
+                &[("name", &p.new_name.to_string())],
             ));
             return false;
         };
@@ -1084,11 +1095,11 @@ impl FileWindow {
     pub fn start_copy(&mut self, job: CopyJob, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.copy.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1130,11 +1141,11 @@ impl FileWindow {
     pub fn start_copy_batch(&mut self, jobs: Vec<CopyJob>, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("复制要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.copy.noRuntime", &[]));
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1192,14 +1203,20 @@ impl FileWindow {
         };
         let (mut go, mut cancel) = (false, false);
         egui::Modal::new(egui::Id::new("filewin-copy-as")).show(ui.ctx(), |ui| {
-            ui.heading(format!("复制 {} 为：", p.src_name));
+            ui.heading(copy_text(
+                "rsFilewinShell.copyUi.heading",
+                &[("name", &p.src_name.to_string())],
+            ));
             ui.text_edit_singleline(&mut p.new_name);
-            ui.label("⚠ 只在同一个目录里改名 —— 名字里不许带 `/`。");
+            ui.label(&copy_text("rsFilewinShell.copyUi.sameDirOnly", &[]));
             ui.horizontal(|ui| {
-                if ui.button(super::copy::COPY_LABEL).clicked() {
+                if ui.button(super::copy::COPY_LABEL.as_str()).clicked() {
                     go = true;
                 }
-                if ui.button("取消").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinShell.copyUi.cancel", &[]))
+                    .clicked()
+                {
                     cancel = true;
                 }
             });
@@ -1350,11 +1367,11 @@ impl FileWindow {
         }
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("这几件写操作要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.writes.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1492,12 +1509,12 @@ impl FileWindow {
     pub fn start_pull(&mut self, src_path: &str, dest: &str, ctx: Option<egui::Context>) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("往外拖要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
             return false;
         };
         // 〔F7c〕下载经通道开单、订阅进度 —— 要那条线 ＋ 那台机器的地址。
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1577,16 +1594,19 @@ impl FileWindow {
         };
         // 🔴 本地预判 —— 出声，不灰置。
         if let Some(why) = super::editor::why_not_editable(&row) {
-            *self.listing.error.lock().unwrap() = Some(format!("{} 改不了：{why}", row.name));
+            *self.listing.error.lock().unwrap() = Some(copy_text(
+                "rsFilewinShell.edit.refused",
+                &[("name", &row.name.to_string()), ("why", &why.to_string())],
+            ));
             return false;
         }
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("读远端文本要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.edit.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1630,7 +1650,10 @@ impl FileWindow {
                 *self.listing.error.lock().unwrap() = Some(super::editor::not_text_notice(&path));
             }
             Arrived::Failed { path, why } => {
-                *self.listing.error.lock().unwrap() = Some(format!("{path} 读不出来：{why}"));
+                *self.listing.error.lock().unwrap() = Some(copy_text(
+                    "rsFilewinShell.edit.readFailed",
+                    &[("path", &path.to_string()), ("why", &why.to_string())],
+                ));
             }
         }
         true
@@ -1643,20 +1666,26 @@ impl FileWindow {
         };
         // 🔴 敲超上限 ⇒ 屏幕上先说，不发那趟注定被池子拒的往返。
         if p.over_cap() {
-            *self.listing.error.lock().unwrap() = Some(format!(
-                "改完之后有 {} 字节，超过 {} 的上限 —— 存不回去（超限**拒编而非截断**）",
-                p.text.len(),
-                super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64)
+            *self.listing.error.lock().unwrap() = Some(copy_text(
+                "rsFilewinShell.edit.tooBig",
+                &[
+                    ("n", &(p.text.len()).to_string()),
+                    (
+                        "limit",
+                        &(super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64))
+                            .to_string(),
+                    ),
+                ],
             ));
             return false;
         }
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
-                Some("存远端文本要一个 tokio 运行时，这个窗口没拿到".into());
+                Some(copy_text("rsFilewinShell.save.noRuntime", &[]).into());
             return false;
         };
         let Some(line) = self.line.clone() else {
-            *self.listing.error.lock().unwrap() = Some(NO_LINE.into());
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
             return false;
         };
         let origin = self.source.origin();
@@ -1765,13 +1794,19 @@ impl FileWindow {
         if let Some(p) = self.edits.opening() {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!("正在读 {p}…"));
+                ui.label(copy_text(
+                    "rsFilewinShell.editor.reading",
+                    &[("path", &p.to_string())],
+                ));
             });
         }
         if let Some(p) = self.edits.saving() {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!("正在存 {p}…"));
+                ui.label(copy_text(
+                    "rsFilewinShell.editor.saving",
+                    &[("path", &p.to_string())],
+                ));
             });
         }
         let Some(pane) = self.editing.clone() else {
@@ -1782,16 +1817,25 @@ impl FileWindow {
         if self.asking_discard {
             let (mut discard, mut keep) = (false, false);
             egui::Modal::new(egui::Id::new("filewin-edit-discard")).show(ui.ctx(), |ui| {
-                ui.heading(format!("{} 改了还没存", pane.name));
+                ui.heading(copy_text(
+                    "rsFilewinShell.editor.unsaved",
+                    &[("name", &pane.name.to_string())],
+                ));
                 ui.colored_label(
                     egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
-                    "关掉就丢掉你敲的那些东西了 —— 远端那份还是旧的。",
+                    &copy_text("rsFilewinShell.editor.unsavedWarn", &[]),
                 );
                 ui.horizontal(|ui| {
-                    if ui.button("丢掉，关").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinShell.editor.discard", &[]))
+                        .clicked()
+                    {
                         discard = true;
                     }
-                    if ui.button("先别关").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinShell.editor.keep", &[]))
+                        .clicked()
+                    {
                         keep = true;
                     }
                 });
@@ -1815,26 +1859,47 @@ impl FileWindow {
             if pane.over_cap() {
                 ui.colored_label(
                     egui::Color32::RED,
-                    format!(
-                        "已经超过 {} 的上限 {} 字节 —— 存不回去",
-                        super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64),
-                        -pane.headroom()
+                    copy_text(
+                        "rsFilewinShell.editor.overLimit",
+                        &[
+                            (
+                                "limit",
+                                &(super::rows::human_size(super::editor::MAX_EDIT_BYTES as u64))
+                                    .to_string(),
+                            ),
+                            ("n", &(-pane.headroom()).to_string()),
+                        ],
                     ),
                 );
             }
             if let Some(r) = pane.last_save.clone() {
                 match r {
-                    Ok(()) => ui.colored_label(egui::Color32::from_rgb(0x3C, 0xB3, 0x71), "已存"),
+                    Ok(()) => ui.colored_label(
+                        egui::Color32::from_rgb(0x3C, 0xB3, 0x71),
+                        &copy_text("rsFilewinShell.editor.saved", &[]),
+                    ),
                     // 原话原样画出去（围栏那句 / 连接失败那句 …）。
-                    Err(why) => ui.colored_label(egui::Color32::RED, format!("存不回去：{why}")),
+                    Err(why) => ui.colored_label(
+                        egui::Color32::RED,
+                        copy_text(
+                            "rsFilewinShell.editor.saveFailed",
+                            &[("why", &why.to_string())],
+                        ),
+                    ),
                 };
             }
             super::bigfile::show(ui, self.editing.as_mut());
             ui.horizontal(|ui| {
-                if ui.button("保存").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinShell.editor.save", &[]))
+                    .clicked()
+                {
                     save = true;
                 }
-                if ui.button("关闭").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinShell.editor.close", &[]))
+                    .clicked()
+                {
                     close = true;
                 }
             });
@@ -1858,10 +1923,13 @@ impl FileWindow {
             let (got, total) = self.pull.seen();
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!(
-                    "正在拖出 {name}：{} / {}",
-                    super::rows::human_size(got),
-                    super::rows::human_size(total)
+                ui.label(copy_text(
+                    "rsFilewinShell.pull.progress",
+                    &[
+                        ("name", &name.to_string()),
+                        ("got", &(super::rows::human_size(got)).to_string()),
+                        ("total", &(super::rows::human_size(total)).to_string()),
+                    ],
                 ));
             });
         }
@@ -1871,13 +1939,23 @@ impl FileWindow {
             match o {
                 Outcome::Done { dest, bytes } => ui.colored_label(
                     egui::Color32::from_rgb(0x3C, 0xB3, 0x71),
-                    format!("已存到 {dest}（{}）", super::rows::human_size(bytes)),
+                    copy_text(
+                        "rsFilewinShell.pull.done",
+                        &[
+                            ("dest", &dest.to_string()),
+                            ("size", &(super::rows::human_size(bytes)).to_string()),
+                        ],
+                    ),
                 ),
                 // 🔴 原话原样画出去（围栏那句、连接失败那句 …）——
                 //    改写它就等于让用户看不到下层到底说了什么。
-                Outcome::Failed { dest, why } => {
-                    ui.colored_label(egui::Color32::RED, format!("拖到 {dest} 没成：{why}"))
-                }
+                Outcome::Failed { dest, why } => ui.colored_label(
+                    egui::Color32::RED,
+                    copy_text(
+                        "rsFilewinShell.pull.failed",
+                        &[("dest", &dest.to_string()), ("why", &why.to_string())],
+                    ),
+                ),
             };
         }
         // ── 那两问 ──
@@ -1887,35 +1965,50 @@ impl FileWindow {
         let (mut go, mut cancel) = (false, false);
         egui::Modal::new(egui::Id::new("filewin-pull-prompt")).show(ui.ctx(), |ui| match ask {
             Ask::Dest { .. } => {
-                ui.heading(format!("把「{}」存到哪儿？", ask.src_name()));
+                ui.heading(copy_text(
+                    "rsFilewinShell.pull.askWhere",
+                    &[("name", &(ask.src_name()).to_string())],
+                ));
                 let Some(text) = self.pull_dest_mut() else {
                     return;
                 };
                 ui.text_edit_singleline(text);
-                ui.label("⚠ 以 `/` 结尾 = 当成目录，原名接上去。");
+                ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
                 ui.horizontal(|ui| {
-                    if ui.button("确定").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinShell.pull.ok", &[]))
+                        .clicked()
+                    {
                         go = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinShell.pull.cancel", &[]))
+                        .clicked()
+                    {
                         cancel = true;
                     }
                 });
             }
             Ask::Overwrite { ref dest, .. } => {
-                ui.heading("那儿已经有东西了");
+                ui.heading(&copy_text("rsFilewinShell.pull.exists", &[]));
                 ui.label(format!("{dest}"));
                 // 🔴 说清代价：`download_inner` 是 `.part` → `rename` 上位，
                 //    原处那个文件没有备份、盖了就回不来。
                 ui.colored_label(
                     egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
-                    "盖掉它就没有备份了，不可撤销。",
+                    &copy_text("rsFilewinShell.pull.overwriteWarn", &[]),
                 );
                 ui.horizontal(|ui| {
-                    if ui.button("盖掉").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinShell.pull.overwrite", &[]))
+                        .clicked()
+                    {
                         go = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if ui
+                        .button(&copy_text("rsFilewinShell.pull.cancel", &[]))
+                        .clicked()
+                    {
                         cancel = true;
                     }
                 });
@@ -1953,17 +2046,23 @@ impl FileWindow {
                     ui.label(r.line.as_str());
                 }
                 Some(None) => {
-                    ui.label("正在读现在的权限…");
+                    ui.label(copy_text("rsFilewinShell.mode.reading", &[]));
                 }
                 None => {}
             }
             ui.text_edit_singleline(&mut p.text);
-            ui.label("⚠ 只在这一个目录里 —— 不许带 `/`。");
+            ui.label(&copy_text("rsFilewinShell.write.sameDirOnly", &[]));
             ui.horizontal(|ui| {
-                if ui.button("确定").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinShell.write.ok", &[]))
+                    .clicked()
+                {
                     go = true;
                 }
-                if ui.button("取消").clicked() {
+                if ui
+                    .button(&copy_text("rsFilewinShell.write.cancel", &[]))
+                    .clicked()
+                {
                     cancel = true;
                 }
             });
@@ -2029,26 +2128,41 @@ impl FileWindow {
     /// ⚠ 「新建空文件」那一趟不在里面（它借写操作的结果板、却不经 [`Self::start_writes`]，一趟不到一秒）。
     pub fn busy_reason(&self) -> Option<String> {
         if self.editing.is_some() {
-            return Some("有一份文本开着".into());
+            return Some(copy_text("rsFilewinShell.busy.editorOpen", &[]).into());
         }
         if self.modal_up() {
-            return Some("有一问还没答".into());
+            return Some(copy_text("rsFilewinShell.busy.pendingAsk", &[]).into());
         }
         if let Some(p) = self.edits.opening().or_else(|| self.edits.saving()) {
-            return Some(format!("正在读写 {p}"));
+            return Some(copy_text(
+                "rsFilewinShell.busy.io",
+                &[("path", &p.to_string())],
+            ));
         }
         if let Some(n) = self.copy_board.running() {
-            return Some(format!("正在复制 {n}"));
+            return Some(copy_text(
+                "rsFilewinShell.busy.copying",
+                &[("n", &n.to_string())],
+            ));
         }
         if let Some(n) = self.pull.in_flight() {
-            return Some(format!("正在下载 {n}"));
+            return Some(copy_text(
+                "rsFilewinShell.busy.downloading",
+                &[("n", &n.to_string())],
+            ));
         }
         let up = self.board.cancels().in_flight_names();
         if !up.is_empty() {
-            return Some(format!("正在上传 {}", up.join("、")));
+            return Some(copy_text(
+                "rsFilewinShell.busy.uploading",
+                &[(
+                    "names",
+                    &(up.join(&copy_text("rsFilewinShell.busy.listSep", &[]))).to_string(),
+                )],
+            ));
         }
         if self.writes_started > self.write_board.rounds() {
-            return Some("有写操作还没回话".into());
+            return Some(copy_text("rsFilewinShell.busy.writes", &[]).into());
         }
         None
     }
@@ -2148,7 +2262,10 @@ impl FileWindow {
                         true
                     }
                     None => {
-                        self.key_notice = Some(format!("没有以「{prefix}」开头的项"));
+                        self.key_notice = Some(copy_text(
+                            "rsFilewinShell.intent.noPrefix",
+                            &[("prefix", &prefix.to_string())],
+                        ));
                         false
                     }
                 }
@@ -2322,7 +2439,7 @@ impl FileWindow {
         .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
         .show(|ui| {
             if m.actions.is_empty() {
-                ui.label(MENU_EMPTY);
+                ui.label(MENU_EMPTY.as_str());
             }
             for a in &m.actions {
                 if ui.button(a.label(m.n)).clicked() {
@@ -2386,35 +2503,47 @@ impl FileWindow {
         let mut pick: Option<SortBy> = None;
         let mut term = false;
         ui.horizontal(|ui| {
-            if ui.button("⬆ 上一级").clicked() {
+            if ui
+                .button(&copy_text("rsFilewinShell.frame.up", &[]))
+                .clicked()
+            {
                 self.navigate_up();
             }
-            if ui.button("刷新").clicked() {
+            if ui
+                .button(&copy_text("rsFilewinShell.frame.refresh", &[]))
+                .clicked()
+            {
                 self.reload();
             }
             // 🔴〔第五刀〕「新建目录」—— 它是四条写操作里**唯一**不针对某一行的那条
             //    （另外三条在行上），所以它的落点是工具栏。
-            if ui.button(MKDIR_LABEL).clicked() {
+            if ui.button(MKDIR_LABEL.as_str()).clicked() {
                 mkdir = true;
             }
             // 〔F7b〕「新建空文件」—— 同样不针对某一行，所以同样在工具栏（逻辑住 `create.rs`）。
-            if ui.button(super::create::NEW_FILE_LABEL).clicked() {
+            if ui.button(super::create::NEW_FILE_LABEL.as_str()).clicked() {
                 new_file = true;
             }
             // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
-            if ui.button(super::upload::UPLOAD_LABEL).clicked() {
+            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
                 self.upload.open();
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
             //    它在 POSIX 上恒定「失败」，而那是既定设计（逐条住 `open_terminal_here`）。
-            if ui.button("在此打开终端").clicked() {
+            if ui
+                .button(&copy_text("rsFilewinShell.frame.terminal", &[]))
+                .clicked()
+            {
                 term = true;
             }
             // 🔴〔补齐五项〕**排序那个下拉** —— 旧面板表头上那个 `<select>` 的对应物。
             //    ⚠ 人群走 `SortBy::ALL`，**不在这儿另写一份名单**：写第二份的症状是
             //      「加了一档但下拉里没有」，而那是编译器看不见的。
             egui::ComboBox::from_id_salt("filewin-sort")
-                .selected_text(format!("排序：{}", self.sort_by.label()))
+                .selected_text(copy_text(
+                    "rsFilewinShell.frame.sort",
+                    &[("by", &self.sort_by.label())],
+                ))
                 .show_ui(ui, |ui| {
                     for by in SortBy::ALL {
                         // ⚠ 不直接 `&mut self.sort_by`：换档要**连手上这一摞一起重排**
@@ -2429,13 +2558,16 @@ impl FileWindow {
                 });
             if self.listing.is_loading() {
                 ui.spinner();
-                ui.label("正在列…");
+                ui.label(&copy_text("rsFilewinShell.frame.listing", &[]));
             }
             // 〔FW2〕选中了不止一项 ⇒ 说一声几项（一项时那块选中色自己就说清了）。
             //   ⚠ 摆在工具栏上而不是另起一行：另起一行会在选中第二项的那一下把整张列表往下推。
             let n = self.selection.len();
             if n > 1 {
-                ui.label(format!("已选 {n} 项"));
+                ui.label(copy_text(
+                    "rsFilewinShell.frame.selected",
+                    &[("n", &n.to_string())],
+                ));
             }
         });
         // 🔴〔补齐五项〕**面包屑** —— 从 `/a/b/c/d` 回 `/a` 只要一下，不用点四次「上一级」。
@@ -2500,9 +2632,9 @@ impl FileWindow {
         if self.listing.truncated.load(Ordering::SeqCst) {
             ui.colored_label(
                 egui::Color32::from_rgb(0xFF, 0xA5, 0x00),
-                format!(
-                    "这个目录条目太多，只拿到了前 {} 条 —— 没看见的文件不代表它不在",
-                    super::source::LS_LIMIT
+                copy_text(
+                    "rsFilewinShell.frame.truncated",
+                    &[("n", &(super::source::LS_LIMIT).to_string())],
                 ),
             );
         }
@@ -2612,21 +2744,24 @@ impl FileWindow {
         let mut fire = false;
         let mut rebuild = false;
         ui.horizontal(|ui| {
-            ui.label("搜索");
+            ui.label(&copy_text("rsFilewinShell.search.label", &[]));
             let r = ui.add(
                 egui::TextEdit::singleline(&mut self.query)
                     .desired_width(220.0)
-                    .hint_text("文件名里的一段"),
+                    .hint_text(&copy_text("rsFilewinShell.search.hint", &[])),
             );
             if r.changed() {
                 fire = true;
             }
-            if ui.button("重建索引").clicked() {
+            if ui
+                .button(&copy_text("rsFilewinShell.search.rebuild", &[]))
+                .clicked()
+            {
                 rebuild = true;
             }
             if self.search.is_running() {
                 ui.spinner();
-                ui.label("正在搜…");
+                ui.label(&copy_text("rsFilewinShell.search.running", &[]));
             }
         });
         self.search.ui(ui);
@@ -2734,7 +2869,10 @@ pub fn open_detached_seeded(
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
-        let title = format!("cc-monitor 文件 — {}", source.label());
+        let title = copy_text(
+            "rsFilewinShell.window.title",
+            &[("source", &(source.label()).to_string())],
+        );
         let opts = eframe::NativeOptions {
             event_loop_builder: Some(Box::new(any_thread_hook)),
             ..Default::default()
@@ -2761,7 +2899,7 @@ pub fn open_detached_seeded(
                 Ok(Box::new(super::workspace::Workspace::new(w)) as Box<dyn eframe::App>)
             }),
         )
-        .map_err(|e| format!("开窗失败: {e}"))
+        .map_err(|e| copy_text("rsFilewinShell.window.openFailed", &[("e", &e.to_string())]))
     })
 }
 

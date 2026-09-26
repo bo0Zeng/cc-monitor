@@ -28,7 +28,7 @@ src/
 │   ├── signal.rs     send_sigusr1（U3 从 tmux_hook 下沉；身份校验刻意留在调用方——那是域判断）
 │   └── pidwatch.rs   pidfd_open + watch_pid_until_exit（零轮询，阻塞在无超时 poll(2)）
 ├── observe/      ★ 读，不改变世界
-│   ├── watcher.rs · history_query · search_query · usage_query · accounts_query
+│   ├── watcher.rs · history_query · search_query · accounts_query（〔AR1〕原先列着的 usage_query 随用量聚合轴删了，`设计/50`）
 │   ├── turn_detect · codex          两个纯解析核
 │   └── fs.rs        mtime_ms（U3 从 common/ 搬回——两个调用点同属 observe，「≥2 层」不成立）
 ├── control/      ★ 会改变世界，或产出「怎么改变世界」的计划

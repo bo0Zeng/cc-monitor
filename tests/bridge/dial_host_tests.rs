@@ -288,3 +288,200 @@ async fn loopback_roundtrip_through_the_resident_backend() {
     let _ = child.wait();
     println!("SR1A-LOOPBACK-MONITOR ok");
 }
+
+// ═══ 〔NT2 · A4〕一次性那一趟的总时限 ═══════════════════════════════════════════════════════════
+//
+// 守的要求（住址，纪律 19）：`设计/15 §3.2` 第 4 条红线（逐字）「**必须先给无期限路径装期限，再复用**，次序不能换 ——
+// 不复用时一条卡住只坏它自己那条连接；复用后它占掉共享连接一个槽永不释放，局部卡死升级成全局卡死」·
+// `设计/05 §3.3.2`（逐字）「🔴 **一次调用一个绝对时刻**，不是每跳一个 `Duration`」。
+// 设计与现打：`调研/第四波记录/NT2.md §0.1 · §1`。
+
+/// A1 ★ 期限真生效：一条永不回字节的链路，到点读报 `TimedOut`；到点之前写进来的字节照常交出、到点之前读还在等（正控）；
+/// 摘掉期限的那条过点仍在等（另一向）。异源：一对内存管子当链路 —— 不经开链路那套逻辑，量的是生产那一层 `Bounded` 本体。
+/// （真时钟：bridge 的 tokio 没开 `test-util`，不为一条判据动依赖表；期限取 1 s，判的是先后，不是毫秒。）
+#[tokio::test]
+async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let total = std::time::Duration::from_secs(1);
+    let until = tokio::time::Instant::now() + total;
+
+    // ① 到点之前写进来的那几个字节照常读到（正控：期限层不是「什么都读不到」）。
+    let (mut far, near) = tokio::io::duplex(64);
+    let mut s = Bounded::new(near, Some((until, total)));
+    far.write_all(b"ok").await.unwrap();
+    let mut two = [0u8; 2];
+    s.read_exact(&mut two).await.unwrap();
+    assert_eq!(
+        &two, b"ok",
+        "到点之前的字节没交出来 —— 期限层把正常的读也挡了"
+    );
+
+    // ② 对面再不说话：刚开始读时还在等（没提前报）⇒ 到点 ⇒ 报 `TimedOut`。
+    let mut buf = [0u8; 8];
+    {
+        let read = s.read(&mut buf);
+        tokio::pin!(read);
+        assert!(
+            futures::poll!(read.as_mut()).is_pending(),
+            "还没到点就报了 —— 期限提前生效"
+        );
+        let e = tokio::time::timeout(std::time::Duration::from_secs(30), read)
+            .await
+            .expect("过了总时限 29 秒读还在等 —— 期限没生效，这一格会永远占着")
+            .expect_err("对面一个字节都没写，读却成功了");
+        assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
+    }
+    // 写也一样被挡（调用方还往链路里写 ⇒ 当场报错、丢链路）。
+    let w = s.write_all(b"x").await.expect_err("过点之后写还成功");
+    assert_eq!(w.kind(), std::io::ErrorKind::TimedOut);
+    drop(far);
+
+    // ③ 另一向：不设期限（长活那三形）⇒ 过了两倍的时间仍在等。
+    let (_far2, near2) = tokio::io::duplex(64);
+    let mut long = Bounded::new(near2, None);
+    assert!(
+        tokio::time::timeout(total * 2, long.read(&mut buf))
+            .await
+            .is_err(),
+        "没设期限的那一条也被掐了（或者读到了东西）—— 长连接流 / 端口转发会被误杀"
+    );
+}
+
+/// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
+const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
+    (
+        "ssh_source.rs",
+        "connect_and_exec",
+        1,
+        "后端长连接流是订阅：`05 §3.3.2`「`Budget` 只盖建流；流建起来之后没有总期限」；死链靠 keepalive ＋ EOF",
+    ),
+    (
+        "dial_host.rs",
+        "forward",
+        1,
+        "端口转发：用户开着就一直在，关了（丢 `ForwardLink`）就收",
+    ),
+    (
+        "dial_host.rs",
+        "open",
+        1,
+        "`RemoteFs::open`（部署文件面）：一次部署问好几次，每一问自带期限（`FILES_ASK_DEADLINE` / `FILES_PUT_DEADLINE`）",
+    ),
+];
+
+/// 一份生产段里 `.lives_long` / `::lives_long` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。
+/// 注释先经共用原语剥掉（`guard_core::strip_comment_lines`），这里不另写一份剥法。
+fn lives_long_sites(file: &str, prod: &str) -> Vec<(String, String)> {
+    let code = guard_core::strip_comment_lines(prod);
+    let mut out = Vec::new();
+    let mut current_fn = String::new();
+    for line in code.lines() {
+        let t = line.trim_start();
+        if let Some((head, rest)) = t.split_once("fn ") {
+            if head
+                .split_whitespace()
+                .all(|w| matches!(w, "pub" | "pub(crate)" | "async" | "const" | "unsafe"))
+            {
+                current_fn = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+            }
+        }
+        if t.contains("fn lives_long(") {
+            continue;
+        }
+        for _ in 0..(t.matches(".lives_long").count() + t.matches("::lives_long").count()) {
+            out.push((file.to_string(), current_fn.clone()));
+        }
+    }
+    out
+}
+
+/// A2 ★ **只有那三形摘掉总时限**（两向，按所在函数与处数）。多一处 = 又有一条一次性的路没有总时限；
+/// 少一处 = 长连接流 / 端口转发 / 部署会在 120 s 被掐断。正控：合成语料里多种一处必被认出、且认对所在函数。
+#[test]
+fn only_the_three_long_lived_links_drop_the_deadline() {
+    let root = crate::guard_support::crate_src_root();
+    let mut got: Vec<(String, String)> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, file_text) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        got.extend(lives_long_sites(
+            &rel,
+            &guard_core::production_code(&file_text),
+        ));
+    }
+    assert!(
+        scanned > 100,
+        "只扫到 {scanned} 份 monitor 源码 —— 遍历坏了"
+    );
+    let mut want: Vec<(String, String)> = LIVES_LONG
+        .iter()
+        .flat_map(|(f, func, n, why)| {
+            assert!(
+                why.chars().count() >= 20,
+                "`{f}::{func}` 没写清为什么不要总时限"
+            );
+            std::iter::repeat_n((f.to_string(), func.to_string()), *n)
+        })
+        .collect();
+    got.sort();
+    want.sort();
+    assert_eq!(
+        got, want,
+        "摘掉一次性总时限（`lives_long`）的地方与登记的那三形对不上。\n\
+         多出来的 ⇒ 那条路没有总时限了（`15 §3.2` 第 4 条红线）；该长活就进 `LIVES_LONG` 并写理由。"
+    );
+    // 正控：识别器认得出、认得对所在函数。
+    let synthetic =
+        "pub(crate) async fn probe_x() {\n    let s = open_it().await?.lives_long();\n}\n";
+    assert_eq!(
+        lives_long_sites("x.rs", synthetic),
+        vec![("x.rs".to_string(), "probe_x".to_string())],
+        "识别器瞎了 —— 上面那条相等不可信"
+    );
+}
+
+/// A3 接线（文本 —— 如实登记：按行为量要真后端 ＋ 真 sshd，那一格在读数脚本里）：
+/// `open` 里起算期限恰好一处、交给链路的恰好是它；`DialStream` 读的那一层就是 `Bounded`。
+/// 绕过形态：另造一条不经 `open` 的 `DialStream` —— 构造点只许一处（`DialStream {` 恰好一处且在 `open` 里）。
+#[test]
+fn every_link_is_born_with_the_one_shot_deadline() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/dial_host.rs"));
+    let count = |n: &str| prod.matches(n).count();
+    assert_eq!(
+        count("tokio::time::Instant::now() + ONE_SHOT_DEADLINE"),
+        1,
+        "起算总时限的地方不是恰好一处"
+    );
+    assert_eq!(
+        count("Bounded::new(link, Some((due, ONE_SHOT_DEADLINE)))"),
+        1,
+        "链路不是带着那个期限出生的"
+    );
+    assert_eq!(
+        count("r: BufReader<Bounded<LinkStream>>,"),
+        1,
+        "`DialStream` 读的那一层不是 `Bounded` 了"
+    );
+    let at = guard_core::find_pinned(&prod, "\nasync fn open(")
+        .unwrap_or_else(|e| panic!("`open` 不是恰好一处：{e}"));
+    let (open_fn, _) = prod[at..]
+        .split_once("\n}\n")
+        .expect("切不出 `open` 的函数体");
+    assert!(
+        open_fn.contains("ONE_SHOT_DEADLINE") && open_fn.contains("DialStream { r }"),
+        "`open` 里没有起算期限、或 `DialStream` 不在这里造"
+    );
+    assert_eq!(
+        count("DialStream { r"),
+        1,
+        "`DialStream` 的构造应当恰好一处（`open` 里那一次）—— 多一处 = 一条不经 `open`、不带期限的链路"
+    );
+}

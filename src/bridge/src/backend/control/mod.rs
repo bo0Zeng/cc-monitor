@@ -11,14 +11,10 @@
 //! ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。** 这不是权宜之计，
 //! 也不是「将来还要搬去后端」—— 是它本来的归属地（P4a 摸底把这条理由换硬了）。
 
-pub mod backend_kill;
-pub mod backend_launch;
+// 〔C4e · 第四波 4C〕这里原来还有四份：`backend_kill` / `backend_launch` / `backend_send_keys`（杀会话 · 就地 resume ·
+//   送键三个发送端）与 `command_args`（它们共用的参数构造器）。四条 Tauri 命令迁到界面（`src/tmux-control.ts`
+//   经通道直接说后端的 `kill` / `launch` / `capture-pane`）之后，它们没了生产调用方，整份删了。
 pub mod backend_route;
-pub mod backend_send_keys;
-// 🔴 〔`设计/05 §8.1` 步 3.5，2026-09-21〕从 `inbound_client.rs`（传输面）**剥出来**的
-//    业务契约：一条命令的 `args` 长什么样。为什么它不能留在传输面 ——
-//    理由写在它自己的头注里（`C1` 在那一份上咬到的 `sid` / `agent` 两处全在它身上）。
-pub mod command_args;
 // 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的三份 —— 它们干的全是控制面的活：
 //    `backend_control`（每台机一个开关的命令层）· `cc_bus`（起 / 杀 / 发）·
 //    `inbound_client`（流通道的 wire 客户端）。
@@ -48,8 +44,8 @@ pub mod tmux;
 //    当年逐字登记着它：「backend 流通道的 wire 客户端 …… **它不在 backend/ 下是历史位置，
 //    不是它不属于这一半**」。⇒ 这一拍把那句话落成事实，那张表随之整张删掉（它空了）。
 //    住 `control/` 而不是 `backend/` 根下：`every_file_under_backend_lives_on_a_capability_line`
-//    逐字「根下只允许 mod.rs」，而它的三个消费者（`backend_kill` / `backend_launch` /
-//    `backend_send_keys`）全在这条能力线上。
+//    逐字「根下只允许 mod.rs」，而它当年的三个消费者（杀会话 · 就地 resume · 送键的发送端，〔C4e〕已迁到界面）
+//    全在这条能力线上；今天用它的是 `frame_query` / `cc_bus` / `backend_control` 与通道宿主。
 pub mod inbound_client;
 // 〔C1 · 09-24〕只读查询走已有长连接的发送端（history-* / accounts-* 八条帧命令）。
 pub(crate) mod frame_query;
@@ -68,3 +64,12 @@ mod launch_payload_parity;
 // `设计/90 §4 E`：外层 tmux 那三格的跨语言逐字节对拍（内层那半是上面 `launch_payload_parity`）。
 #[cfg(test)]
 mod launch_tmux_outer_parity;
+// 〔C4e · 第四波 4C〕「创建路径不许铸出主路杀不掉的名字」与它的发现口径（`creation_detect`）原本挂在杀会话的发送端
+//   `backend_kill.rs` 下面；发送端随杀会话迁到界面删了，**判据不跟着走** —— 它守的是「谁在建 tmux 会话 ↔ 后端 kill 的
+//   形状门」，与 monitor 里有没有发送端无关。⇒ 文件原地不动，改挂在这一层（测试段）。
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/backend/control/backend_kill_creation_detect.rs"]
+pub(crate) mod creation_detect;
+#[cfg(test)]
+#[path = "../../../../../tests/bridge/backend/control/backend_kill_tests.rs"]
+mod kill_name_tests;

@@ -54,6 +54,7 @@ import {
   type BackendHealth,
   type ExitPolicyState,
 } from "../backend-policy";
+import { copyText } from "../copy-table";
 
 /** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的两格。 */
 interface ExitAnswer {
@@ -80,8 +81,9 @@ function readExitAnswer(raw: unknown): ExitAnswer | null {
 const EXIT_POLICY_BUDGET_MS = 10_000;
 
 /** 那台后端比「退出行为」搬过去还老（不认这两条命令）时的那句话。 */
-const EXIT_POLICY_OLD_BACKEND =
-  "那台机器的后端还不认「退出行为」这一问 —— 重装那台机器的后端就有了";
+// 〔CP2b〕做成函数、用到时才取文（模块顶层不留取文口调用 —— 顶层调用会让 Rollup 把设置面板挪进主窗共享 chunk）。
+const EXIT_POLICY_OLD_BACKEND = (): string =>
+  copyText("backend.exitPolicy.oldBackend");
 
 /**
  * 〔C4c · 第四波 4B〕问那台机器（本机也一样）「退出行为」那个值：后端 `exit-policy-read`，经通道。
@@ -93,7 +95,7 @@ async function askExitPolicy(origin: Origin): Promise<unknown> {
     const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
     return readJson(await chan.call(origin, "exit-policy-read", body, budget));
   } catch (e) {
-    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND));
+    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND()));
   }
 }
 
@@ -104,7 +106,7 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<unknown> {
     const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
     return readJson(await chan.call(origin, "exit-policy-set", body, budget));
   } catch (e) {
-    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND));
+    throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND()));
   }
 }
 
@@ -143,17 +145,19 @@ function readHealth(raw: unknown): BackendHealth | null {
  * 🔴 第二刀 步 6（`设计/70 §2.3`）：一台机那一行的**四栏**。栏名只在这里写一次，
  * 表头与每一格的 `data-col` 都从这张表来。
  */
-export const BACKEND_COLUMNS = [
-  ["state", "状态"],
-  ["ops", "操作"],
-  ["exit", "退出行为"],
-  ["health", "健康"],
-] as const;
-export type BackendColumn = (typeof BACKEND_COLUMNS)[number][0];
+// 〔CP2b〕做成函数、用到时才取文（顶层不留取文口调用）。
+export const BACKEND_COLUMNS = () =>
+  [
+    ["state", copyText("backend.column.status")],
+    ["ops", copyText("backend.column.actions")],
+    ["exit", copyText("backend.column.exit")],
+    ["health", copyText("backend.column.health")],
+  ] as const;
+export type BackendColumn = ReturnType<typeof BACKEND_COLUMNS>[number][0];
 
 /** 〔步 14〕列表里有、后端清单里没有的那一台 —— 「未登记」那一格的 ⓘ。 */
-export const BACKEND_UNREGISTERED_WHY =
-  "monitor 这次启动时没有为这台机器登记后端：远端模式没开，或者这台是启动之后才加的。重启 monitor 之后才能在这里起停。";
+export const BACKEND_UNREGISTERED_WHY = (): string =>
+  copyText("backend.unregistered.why");
 
 /** 一台机在这一区里的身份。`origin` 是唯一键，`title` 只给人看。 */
 interface Machine {
@@ -185,7 +189,7 @@ export class BackendSection {
     if (!opts.headless) {
       const h = document.createElement("h3");
       // 〔ST2〕原来是「backend 开关」—— `backend` 是术语表禁词（对外叫「后端」，`terms.json`）。
-      h.textContent = "后端";
+      h.textContent = copyText("backend.ctor.title");
       this.element.appendChild(h);
     }
     if (!this.hosted) {
@@ -196,7 +200,7 @@ export class BackendSection {
       //   由 `describeExitBehavior` 从唯一的那个家取。
       //   ⚠ 原来这里那句「它仍会在 monitor 退出后很快自行退出」是**实测结论**，
       //   而 K-P1 之后它只对**没脱离**的那一支成立 —— 留在这里就成了一句半假的全称。
-      hint.textContent = "每台机各一行。「退出行为」那一格写着 monitor 退出时这台机会怎样。";
+      hint.textContent = copyText("backend.ctor.intro");
       this.element.appendChild(hint);
       // 🔴 第二刀 步 6（`设计/70 §2.3`）：**表格式四栏** —— 状态 / 操作 / 退出行为 / 健康。
       //   原来是一行跑句（「本机未连上 [起][停] ☐ monitor 退出时结束它」），控件嵌在散文里。
@@ -244,9 +248,9 @@ export class BackendSection {
     if (!cells) return;
     const state = cells.querySelector<HTMLElement>(".backend-row-state");
     if (state) {
-      state.textContent = "未登记";
+      state.textContent = copyText("backend.paintUnregistered.unregistered");
       state.dataset.on = "unregistered";
-      state.after(makeInfoIcon(BACKEND_UNREGISTERED_WHY));
+      state.after(makeInfoIcon(BACKEND_UNREGISTERED_WHY()));
     }
     for (const col of ["ops", "exit", "health"] as const) {
       cells.querySelector<HTMLElement>(`[data-col="${col}"]`)?.replaceChildren();
@@ -302,11 +306,11 @@ export class BackendSection {
       const origins = await commands.backend_machines();
       return origins.map((origin) => ({
         origin,
-        title: origin === LOCAL_ORIGIN ? "本机" : origin,
+        title: origin === LOCAL_ORIGIN ? copyText("backend.machine.local") : origin,
       }));
     } catch (e) {
       console.warn(`[P2s] 问后端要机器清单失败，只显示本机：${String(e)}`);
-      return [{ origin: LOCAL_ORIGIN, title: "本机" }];
+      return [{ origin: LOCAL_ORIGIN, title: copyText("backend.machine.local") }];
     }
   }
 
@@ -315,7 +319,7 @@ export class BackendSection {
     const head = document.createElement("div");
     head.className = "settings-hint";
     head.dataset.backendColumns = "head";
-    for (const [col, title] of BACKEND_COLUMNS) {
+    for (const [col, title] of BACKEND_COLUMNS()) {
       const cell = document.createElement("span");
       cell.dataset.col = col;
       cell.textContent = title;
@@ -361,16 +365,16 @@ export class BackendSection {
     const stateCol = col("state");
     const state = document.createElement("span");
     state.className = "backend-row-state";
-    state.textContent = "查询中…";
+    state.textContent = copyText("backend.buildCells.querying");
     stateCol.appendChild(state);
 
     const ops = col("ops");
     const start = document.createElement("button");
-    start.textContent = "起";
+    start.textContent = copyText("backend.buildCells.start");
     start.onclick = () => void this.act(origin, "start");
     ops.appendChild(start);
     const stop = document.createElement("button");
-    stop.textContent = "停";
+    stop.textContent = copyText("backend.buildCells.stop");
     stop.onclick = () => void this.act(origin, "stop");
     ops.appendChild(stop);
 
@@ -384,7 +388,7 @@ export class BackendSection {
     box.disabled = true;
     box.onchange = () => void this.toggleKill(origin, box);
     label.appendChild(box);
-    label.appendChild(document.createTextNode("monitor 退出时结束它"));
+    label.appendChild(document.createTextNode(copyText("backend.buildCells.exitKills")));
     exitCol.appendChild(label);
     // ★★ `K-P1 KPY4`：**这台机退出时到底会发生什么**，按状态分档如实说。
     // 文案本体不在本文件（见头注）；这里只放它的位置。
@@ -468,7 +472,7 @@ export class BackendSection {
     const more = document.createElement("details");
     more.dataset.healthExtra = "detail";
     const sum = document.createElement("summary");
-    sum.textContent = "详情";
+    sum.textContent = copyText("backend.health.detail");
     const body = document.createElement("div");
     body.className = "settings-hint";
     body.textContent = detail;
@@ -503,7 +507,7 @@ export class BackendSection {
           : await commands.backend_stop({ origin });
       console.info(`[P2s] ${origin} ${what}: ${msg}`);
     } catch (e) {
-      showActionFailureToast(what === "start" ? "起后端失败" : "停后端失败", String(e));
+      showActionFailureToast(what === "start" ? copyText("backend.start.failed") : copyText("backend.stop.failed"), String(e));
     }
     await this.settleStatus(origin, what === "start");
     for (const b of btns) b.disabled = false;
@@ -522,14 +526,14 @@ export class BackendSection {
     try {
       // 〔B2〕交后端写（那个值住那台机器上），**画的是它写完读回来的那一份**。
       const back = readExitAnswer(await putExitPolicy(origin, want));
-      if (back === null) throw new Error("后端写完回来的那一份形状不对 —— 两端契约对不上");
+      if (back === null) throw new Error(copyText("backend.policy.badShape"));
       // 勾变了 ⇒ 那句「退出时会发生什么」也变了。**同一拍重画**，
       // 否则屏上那句话描述的是上一次的状态（与 A4 那条「画的是操作前的快照」同族）。
       void this.paintStatus(origin);
     } catch (e) {
       // 存不下就**把勾回退**——否则屏上写着 A 而实际是 B，比报错更坏。
       box.checked = !want;
-      showActionFailureToast("保存后端策略失败", e instanceof Error ? e.message : String(e));
+      showActionFailureToast(copyText("backend.policy.saveFailed"), e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -543,7 +547,7 @@ export class BackendSection {
       const st = await commands.backend_status({ origin });
       const on = st.channel === true;
       const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
-      state.textContent = on ? `已连上${pid}` : "未连上";
+      state.textContent = on ? copyText("backend.status.connected", { pid }) : copyText("backend.status.notConnected");
       state.dataset.on = String(on);
       // 〔B2〕那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
@@ -560,7 +564,7 @@ export class BackendSection {
       this.paintHealth(origin, st.health);
       return on;
     } catch (e) {
-      state.textContent = "状态查不到";
+      state.textContent = copyText("backend.status.unknown");
       console.warn(`[P2s] ${origin} 状态查询失败：${String(e)}`);
       return null;
     }

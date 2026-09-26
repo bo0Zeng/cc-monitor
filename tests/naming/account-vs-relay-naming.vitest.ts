@@ -112,7 +112,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_AGENT_UPSTREAM_CLAUDE_CODE",
     freshRe: ident("CCM_AGENT_UPSTREAM_CLAUDE_CODE"),
     kind: "环境变量",
-    why: "上游选择每 agent 默认上游表（`accounts::upstream::AGENT_UPSTREAMS`）里 claude-code 那一行的旋钮；中转没有默认上游",
+    why: "每 agent 默认上游（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）里 claude-code 那一格的旋钮；中转没有默认上游",
     state: "done",
   },
   // ── 命令面（前端 ↔ monitor；不上后端的线）─────────────────────────────────────

@@ -28,6 +28,7 @@
 import { tmuxNameSegment } from "./shell-quote";
 // F13：撞名避让只有一个家（`mintTmuxName`）—— 别在这里重写。
 import { mintTmuxName } from "./remote-launch";
+import { copyText } from "./copy-table";
 
 /** 某个维度的取值：知道（带来源）或不知道（带原因）。 */
 export type Slot<T> =
@@ -58,34 +59,33 @@ export interface ForkLaunchInput {
 }
 
 const EXITED_WHY =
-  "源会话已退出：账号只记在 pidfile 里（进程一退就没了），" +
-  "会话文件本身与它所在路径都不带账号信息";
+  copyText("forkLaunch.exited.account");
 
 /** 逐维度推断。**纯函数**，不碰 IO。 */
 export function inferForkLaunch(input: ForkLaunchInput): ForkLaunchFacts {
   const cwd: Slot<string> =
     input.sourceCwd && input.sourceCwd.trim()
-      ? { kind: "known", value: input.sourceCwd, from: "会话记录里的 cwd" }
-      : { kind: "unknown", why: "源会话记录里没有 cwd" };
+      ? { kind: "known", value: input.sourceCwd, from: copyText("forkLaunch.from.record") }
+      : { kind: "unknown", why: copyText("forkLaunch.inferForkLaunch.noCwd") };
 
   // ★ 账号：活着才可能知道。**已退出一律 unknown，不看 liveConfigDir 传了什么**
   //   —— 调用方可能顺手把「当前账号」塞进来，这里必须挡住。
   const account: Slot<string | null> = !input.sourceIsLive
     ? { kind: "unknown", why: EXITED_WHY }
     : input.liveConfigDir === undefined
-      ? { kind: "unknown", why: "源会话活着，但没查到它属于哪个账号" }
+      ? { kind: "unknown", why: copyText("forkLaunch.inferForkLaunch.liveNoAccount") }
       : {
           kind: "known",
           value: input.liveConfigDir,
-          from: "源会话进程的 pidfile",
+          from: copyText("forkLaunch.from.process"),
         };
 
   const tmux: Slot<boolean> = !input.sourceIsLive
-    ? { kind: "unknown", why: "源会话已退出：它当初在不在 tmux 里无从查起" }
+    ? { kind: "unknown", why: copyText("forkLaunch.exited.tmux") }
     : {
         kind: "known",
         value: Boolean(input.liveTmuxName && input.liveTmuxName.trim()),
-        from: "tmux 会话清单",
+        from: copyText("forkLaunch.from.tmuxList"),
       };
 
   return { cwd, account, tmux };
@@ -99,11 +99,11 @@ export function slotsNeedingInput(f: ForkLaunchFacts): Array<keyof ForkLaunchFac
 
 /** 给人读的一句话，说清这一格为什么要问。 */
 export function describeSlot(k: keyof ForkLaunchFacts, f: ForkLaunchFacts): string {
-  const label = { account: "账号", tmux: "是否在 tmux 里跑", cwd: "工作目录" }[k];
+  const label = { account: copyText("forkLaunch.slot.account"), tmux: copyText("forkLaunch.slot.tmux"), cwd: copyText("forkLaunch.slot.cwd") }[k];
   const s = f[k];
   return s.kind === "known"
-    ? `${label}：跟原会话一致（据${s.from}）`
-    : `${label}：需要你选一次 —— ${s.why}`;
+    ? copyText("forkLaunch.slot.same", { label, from: s.from })
+    : copyText("forkLaunch.slot.ask", { label, why: s.why });
 }
 
 /**

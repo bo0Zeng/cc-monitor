@@ -405,7 +405,7 @@ fn an_impossible_new_name_keeps_the_box_up_and_says_why() {
     assert!(!w.confirm_copy(None), "没有运行时却说起得来");
     let e = w.listing.error.lock().unwrap().clone().unwrap();
     assert!(
-        e.contains("运行时"),
+        e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「名字」这一维"
     );
     // 取消把框收掉。
@@ -1166,7 +1166,7 @@ fn a_delete_click_goes_straight_to_the_batch_and_says_so_when_it_cannot_run() {
         .unwrap()
         .clone()
         .expect("一次删除被吞了，屏幕上一句话都没有");
-    assert!(e.contains("运行时"), "报的不是「没有运行时」：{e}");
+    assert!(e.contains("启动不了"), "报的不是「没有运行时」：{e}");
 }
 
 /// 有损名 · 越界下标 —— **两档都不接**（第二道闸，防「按钮没了、调用还在」）。
@@ -1206,7 +1206,7 @@ fn an_impossible_input_keeps_the_write_box_up_and_says_why() {
     assert!(!w.confirm_write(None), "没有运行时却说起得来");
     let e = w.listing.error.lock().unwrap().clone().unwrap();
     assert!(
-        e.contains("运行时"),
+        e.contains("启动不了"),
         "合法名字被当成不合法挡了：{e} —— 那上面那几条买的就不是「输入」这一维"
     );
     w.cancel_write();
@@ -1386,12 +1386,13 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DELETE_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
-        "这一帧上没有那颗「{DELETE_LABEL}」—— 行上那三颗写按钮没画出来，\
-         或者 `frame_body` 走的是命中那一支"
+        "这一帧上没有那颗「{}」—— 行上那三颗写按钮没画出来，\
+         或者 `frame_body` 走的是命中那一支",
+        DELETE_LABEL.as_str()
     );
     let pos = buttons[0].center();
 
@@ -1515,13 +1516,14 @@ async fn a_real_click_on_download_opens_the_destination_question() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
         "这一帧上没有那颗「{DOWNLOAD_LABEL}」（实得 {} 处）—— \
          行上那颗按钮没画出来，或者 `frame_body` 走的是命中那一支",
-        buttons.len()
+        buttons.len(),
+        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
     );
     let pos = buttons[0].center();
 
@@ -1675,10 +1677,11 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
         "这一帧连那两行都没画出来 —— 本条此刻是空真的"
     );
     assert_eq!(
-        crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL).len(),
+        crate::filewin::copy::testing::rects_of(&painted, DOWNLOAD_LABEL.as_str()).len(),
         0,
         "目录 / 有损名那两行上画出了「{DOWNLOAD_LABEL}」—— 那是一颗死按钮：\
-         点它 `begin_pull` 会再判一次然后什么都不做，屏幕上「点了没反应」"
+         点它 `begin_pull` 会再判一次然后什么都不做，屏幕上「点了没反应」",
+        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
     );
 
     // 🔴 阴性对照：**能拉的那一行上它必须画出来** ——
@@ -1705,9 +1708,10 @@ async fn no_download_button_is_painted_on_rows_that_cannot_be_pulled() {
         |ui| w2.frame_body(ui),
     );
     assert_eq!(
-        crate::filewin::copy::testing::rects_of(&p2, DOWNLOAD_LABEL).len(),
+        crate::filewin::copy::testing::rects_of(&p2, DOWNLOAD_LABEL.as_str()).len(),
         1,
-        "能拉的那一行上没画「{DOWNLOAD_LABEL}」"
+        "能拉的那一行上没画「{DOWNLOAD_LABEL}」",
+        DOWNLOAD_LABEL = DOWNLOAD_LABEL.as_str()
     );
 }
 
@@ -1759,12 +1763,13 @@ async fn a_real_click_on_edit_fires_the_read() {
         Vec::new(),
         |ui| w.frame_body(ui),
     );
-    let buttons = crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL);
+    let buttons = crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL.as_str());
     assert_eq!(
         buttons.len(),
         1,
         "这一帧上没有那颗「{EDIT_LABEL}」（实得 {} 处）",
-        buttons.len()
+        buttons.len(),
+        EDIT_LABEL = EDIT_LABEL.as_str()
     );
     let pos = buttons[0].center();
     let _ = crate::filewin::copy::testing::painted_text(
@@ -1804,7 +1809,8 @@ async fn a_real_click_on_edit_fires_the_read() {
     }
     assert!(
         w.edits.opens() > 0 || w.edits.opening().is_some(),
-        "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了"
+        "真点了「{EDIT_LABEL}」，那趟读一次都没发出去 —— 胶水那一跳断了",
+        EDIT_LABEL = EDIT_LABEL.as_str()
     );
     // 〔F7a〕等它到货，然后编辑面真的立起来，内容就是后端那一趟交回来的。
     for _ in 0..400 {
@@ -1866,9 +1872,10 @@ async fn an_oversized_row_never_asks_the_remote_and_still_says_why() {
         "这一帧连那一行都没画 —— 本条此刻是空真的"
     );
     assert_eq!(
-        crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL).len(),
+        crate::filewin::copy::testing::rects_of(&painted, EDIT_LABEL.as_str()).len(),
         0,
-        "超上限那一行上画出了「{EDIT_LABEL}」—— 那是一颗死按钮"
+        "超上限那一行上画出了「{EDIT_LABEL}」—— 那是一颗死按钮",
+        EDIT_LABEL = EDIT_LABEL.as_str()
     );
 
     // 而**直接调那条路**（多选长出来那天会走到）也要：不发往返 ＋ 出声。

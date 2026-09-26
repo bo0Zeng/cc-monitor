@@ -255,7 +255,7 @@ fn the_outcome_and_the_running_line_really_get_painted_and_no_cancel_button_is()
         running.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
     assert!(
-        !painted_contains(&running, super::super::transfer::CANCEL_LABEL),
+        !painted_contains(&running, super::super::transfer::CANCEL_LABEL.as_str()),
         "画了取消那颗按钮 —— 后端那一趟取消不掉，那是一颗按了没用的按钮"
     );
     board.finish(CopyOutcome::Done {
@@ -680,7 +680,7 @@ async fn a_failure_in_a_batch_is_named_and_does_not_stop_the_rest() {
     assert!(n.loud, "有失败却不是警告档");
     assert!(
         n.text
-            .contains("复制完成 2 项（4 个文件 · 2 个目录 · 20 字节）")
+            .contains("复制完成：2 项，4 个文件、2 个目录、20 字节")
             && n.text.contains("a 复制失败：后端原话"),
         "{}",
         n.text

@@ -59,9 +59,11 @@ async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot
     // 🔴〔F7a · 第三波 09-24〕**「真的去问了」这一件又断得住了**：问的是后端，
     //    判据进程里没有那台机器的控制通道 ⇒ 那一跳就地失败，而失败那句话带着**命令名**
     //    （`source::said` 逐字「`files-home` 没走通…」）⇒ 是哪一跳失败的，文本分得开了。
+    // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再带内部命令名（`files-home`）⇒ 改认「没走通」那一族：
+    //   它只在真发出去问了、那一跳失败时才说；本地就拒（路径是空的）说的是别的话。
     assert!(
-        e.contains(crate::filewin::source::CMD_HOME),
-        "空路径的报错里没有 `files-home` —— 那就不是在问 home（原文：{e}）"
+        e.contains("没走通"),
+        "空路径的报错不是「问了、那一跳没走通」—— 那就不是在问 home（原文：{e}）"
     );
     assert_eq!(
         crate::filewin::shell::open_requested(),

@@ -274,13 +274,14 @@ fn only_the_copyable_rows_get_a_copy_button_painted() {
     let want = rows.iter().filter(|r| is_copyable(r)).count();
     // 〔W5-FILES〕目录能复制了（`设计/60 §6.2`）⇒ 2 → 3（目录那一行多一颗）。
     assert_eq!(want, 3, "语料自己变了：能复制的行数应当是 3");
-    let got = rects_of(&painted, COPY_LABEL);
+    let got = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(
         got.len(),
         want,
         "画出来 {} 颗「{COPY_LABEL}」，而 `is_copyable` 说有 {want} 行能复制 —— \
          目录或有损名那两档上长出了一颗不该有的按钮（或者能复制的那几行少了一颗）",
-        got.len()
+        got.len(),
+        COPY_LABEL = COPY_LABEL.as_str()
     );
     // 反空真：它们在三行不同的位置上（不是同一颗被数了几遍）。
     assert!(got[0].center().y < got[1].center().y);
@@ -303,7 +304,7 @@ fn clicking_the_copy_button_comes_back_as_that_rows_index() {
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());
     let (_, painted) = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.1, Vec::new());
 
-    let buttons = rects_of(&painted, COPY_LABEL);
+    let buttons = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(buttons.len(), 3, "没找到那三颗按钮，下面按坐标点没意义");
 
     // 第三颗 = 第 2 行（`two.bin`；第 0 行是目录、第 1 行是 `one.bin` —— 〔W5-FILES〕目录那一行也有一颗了）。
@@ -322,7 +323,8 @@ fn clicking_the_copy_button_comes_back_as_that_rows_index() {
         Some(2),
         "点在第 2 行那颗「{COPY_LABEL}」上，`copy_clicked` 却是 {:?} —— \
          `None` 多半是整行那块命中矩形把按钮盖住了（它是后登记的，平手时它赢）",
-        hit.copy_clicked
+        hit.copy_clicked,
+        COPY_LABEL = COPY_LABEL.as_str()
     );
     // 点按钮**不许**同时被读成「双击进目录」。
     assert_eq!(hit.clicked, None, "点一颗按钮竟然还顺手进了目录");
@@ -541,7 +543,7 @@ fn xvfb_worker_real_pointer_events_on_a_row() {
     let _ = render_headless_with_events_and_text(&ctx, &rows, screen, 0.0, Vec::new());
     let (probe_tally, painted) =
         render_headless_with_events_and_text(&ctx, &rows, screen, 0.1, Vec::new());
-    let buttons = rects_of(&painted, COPY_LABEL);
+    let buttons = rects_of(&painted, COPY_LABEL.as_str());
     let names = rects_of(&painted, &rows[REAL_EVENT_ROW_FOR_DOUBLE_CLICK].name);
     xvfb::emit("b.buttons_found", buttons.len());
     xvfb::emit("b.names_found", names.len());
@@ -827,7 +829,8 @@ fn a_real_pointer_click_on_the_copy_button_comes_back_as_that_row() {
         "真鼠标点在第 {REAL_EVENT_ROW_FOR_COPY} 行那颗「{COPY_LABEL}」上，\
          认出来的却是 {:?} —— `none` 多半是整行那块命中矩形把按钮盖住了\
          （它是后登记的，平手时它赢）",
-        run.reading("b.copy_row")
+        run.reading("b.copy_row"),
+        COPY_LABEL = COPY_LABEL.as_str()
     );
     assert_eq!(
         run.reading("b.copy_clicks"),
@@ -1021,7 +1024,11 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
 
     let want = rows.iter().filter(|r| is_writable(r)).count();
     assert_eq!(want, 3, "语料自己变了：能写的行数应当是 3（目录也能写）");
-    for label in [RENAME_LABEL, DELETE_LABEL, CHMOD_LABEL] {
+    for label in [
+        RENAME_LABEL.as_str(),
+        DELETE_LABEL.as_str(),
+        CHMOD_LABEL.as_str(),
+    ] {
         let got = rects_of(&painted, label);
         assert_eq!(
             got.len(),
@@ -1036,12 +1043,14 @@ fn only_the_writable_rows_get_the_three_write_buttons_painted() {
     }
     // 〔W5-FILES〕目录那一行：三颗写按钮**有**，「复制」**也有**了（后端 `recursive: true`，`设计/60 §6.2`）。
     //   在这份语料上两个判准重合（有损名那一行没带字节，两边都不给）；分得开的那一格住 `writeops_tests`（带字节的有损名能写、不能复制）。
-    let copies = rects_of(&painted, COPY_LABEL);
+    let copies = rects_of(&painted, COPY_LABEL.as_str());
     assert_eq!(copies.len(), 3, "能复制的行数应当是 3");
-    let renames = rects_of(&painted, RENAME_LABEL);
+    let renames = rects_of(&painted, RENAME_LABEL.as_str());
     assert!(
         (renames[0].center().y - copies[0].center().y).abs() < 1.0,
-        "第 0 行（目录）上「{RENAME_LABEL}」与「{COPY_LABEL}」不在同一行 —— 目录那一行少了一颗"
+        "第 0 行（目录）上「{}」与「{}」不在同一行 —— 目录那一行少了一颗",
+        RENAME_LABEL.as_str(),
+        COPY_LABEL.as_str()
     );
 }
 
@@ -1071,11 +1080,11 @@ fn clicking_each_write_button_comes_back_as_that_rows_index() {
     for (row_index, button_slot) in [(0usize, 0usize), (2usize, 2usize)] {
         for (label, pick) in [
             (
-                RENAME_LABEL,
+                RENAME_LABEL.as_str(),
                 (|t: &RenderTally| t.rename_clicked) as fn(&RenderTally) -> Option<usize>,
             ),
-            (DELETE_LABEL, |t: &RenderTally| t.delete_clicked),
-            (CHMOD_LABEL, |t: &RenderTally| t.chmod_clicked),
+            (DELETE_LABEL.as_str(), |t: &RenderTally| t.delete_clicked),
+            (CHMOD_LABEL.as_str(), |t: &RenderTally| t.chmod_clicked),
         ] {
             let ctx = egui::Context::default();
             let _ = render_headless_with_events_and_text(&ctx, &rows, screen(), 0.0, Vec::new());

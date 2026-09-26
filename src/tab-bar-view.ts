@@ -9,11 +9,7 @@
  * 字段与方法逐字从 `tabs.ts` 搬来（`refreshTabBar` 的主体成了 `refresh`，拖拽守卫留在 `TabManager` 那一层；
  * `scheduleTabBarRefresh` 成了 `scheduleRefresh`），唯一的改写：按钮上那几处转交换成 `this.host.…`。
  */
-import {
-  sessionBadge,
-  shouldShowAccountBadge,
-  detectAccountMismatch,
-} from "./accounts";
+import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { accountAvatarEl } from "./account-color";
 import {
   collectionOf,
@@ -28,6 +24,7 @@ import { hasTerminal, isLive, isResumeOnly, stateView } from "./tab-session-stat
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
+import { copyText } from "./copy-table";
 
 /** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
 export interface TabButtonRefs {
@@ -80,16 +77,8 @@ export interface TabBarViewHost {
 export class TabBarView {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   readonly tabButtons = new Map<string, TabButtonRefs>();
-  /**
-   * P7a-1（#61）：**归档区**。`#61` 正文自陈「状态机已经有了，缺的是那个「口」」——
-   * 那个口就在 [`refreshTabBar`]，它是全仓**唯一**把 tab 按钮塞进 `barEl` 的地方。
-   *
-   * 三个元素由本类自己建（不改构造签名：那有两个生产调用点 + 一批夹具），
-   * 挂在 `barEl` 之后，作为它的兄弟。
-   */
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private readonly groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
-  /** P7a-1：归档区 UI 建一次。默认折叠（缺省 `"1"`，与 agents/tasks 面板同形态）。 */
   // 🔴 〔步 17·A · 2026-09-19〕**`ensureArchiveUi()` 整个删掉。**
   //
   // `设计/30 §A` 抬头逐字「**已定**：删归档抽屉 · 固定灰 tab」，三条独立理由：
@@ -318,15 +307,15 @@ export class TabBarView {
       name.className = "tab-group-name";
       name.addEventListener("click", () => {
         const cur = this.prefs.collections.find((x) => x.id === col.id);
-        const next = window.prompt("集合名:", cur?.name ?? "");
+        const next = window.prompt(copyText("tabBarView.group.namePrompt"), cur?.name ?? "");
         if (next === null) return;
         void this.prefs.commitCollections(renameCollection(this.prefs.collections, col.id, next));
       });
       const del = document.createElement("button");
       del.type = "button";
       del.className = "tab-group-del";
-      del.textContent = "×";
-      del.title = "解散这个集合（只去掉分组，会话一个都不会关）";
+      del.textContent = copyText("tabBarView.group.dissolve");
+      del.title = copyText("tabBarView.group.dissolveHint");
       del.addEventListener("click", () => {
         void this.prefs.commitCollections(deleteCollection(this.prefs.collections, col.id));
       });
@@ -401,7 +390,7 @@ export class TabBarView {
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
     refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost }));
-    refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
+    refs.acctBadge.title = mismatch ? copyText("tabBarView.badge.mismatch", { tooltip: b.tooltip, current: String(current) }) : b.tooltip;
     refs.acctBadge.style.display = "";
   }
 
@@ -434,30 +423,30 @@ export class TabBarView {
     // 可见性交给 class」的形状（见 `.tab .tab-badge` 那条注释）。
     const pinBadge = document.createElement("span");
     pinBadge.className = "tab-pin";
-    pinBadge.textContent = "📌";
-    pinBadge.title = "已固定：关掉 app 再打开它还在";
+    pinBadge.textContent = copyText("tabBarView.tab.pinIcon");
+    pinBadge.title = copyText("tabBarView.tab.pinHint");
     root.appendChild(pinBadge);
 
     // 📂 打开工作目录（cwd）—— 系统默认文件管理器
     const cwdBtn = document.createElement("span");
     cwdBtn.className = "tab-cwd";
-    cwdBtn.textContent = "📂";
-    cwdBtn.title = "打开工作目录 (E)";
+    cwdBtn.textContent = copyText("tabBarView.tab.cwdIcon");
+    cwdBtn.title = copyText("tabBarView.tab.cwdHint");
     root.appendChild(cwdBtn);
 
     // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）。〔第二波 T4 · LF1〕非 Windows 不渲（`terminal-front.ts`）。
     if (terminalFrontAvailable()) {
       const focusBtn = document.createElement("span");
       focusBtn.className = "tab-focus";
-      focusBtn.textContent = "↗";
-      focusBtn.title = "调出对应终端 (`)";
+      focusBtn.textContent = copyText("tabBarView.tab.terminalIcon");
+      focusBtn.title = copyText("tabBarView.tab.terminalHint");
       root.appendChild(focusBtn);
     }
 
     const closeBtn = document.createElement("span");
     closeBtn.className = "tab-close";
-    closeBtn.textContent = "×";
-    closeBtn.title = "关闭 Tab";
+    closeBtn.textContent = copyText("tabBarView.tab.closeIcon");
+    closeBtn.title = copyText("tabBarView.tab.closeHint");
     root.appendChild(closeBtn);
 
     return { root, label, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
@@ -481,8 +470,6 @@ export class TabBarView {
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
     const remote = isRemoteOrigin(tab.origin);
-    // Batch7-F24：bg 任务 tab——缩进 + ⌞ 前缀由 CSS 承担
-    const bg = tab.kind !== null && tab.kind !== "interactive";
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
     // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
     // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
@@ -497,11 +484,11 @@ export class TabBarView {
     // 「等待操作」只对活着的会话说：可重连的会话 claude 已经没了，留着的活动信号是陈旧的
     // （改两轴之前灯被 CSS 盖住了，tooltip 却还挂着这一句）。
     if (isLive(tab.state) && actStatus === "waiting" && tab.activity?.waitingFor) {
-      titleParts.push(`等待操作：${tab.activity.waitingFor}`);
+      titleParts.push(copyText("tabBarView.tab.waiting", { waitingFor: tab.activity.waitingFor }));
     }
     // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
     if (tab.forkedFromSessionId) {
-      titleParts.push(`↳ 从 ${tab.forkedFromSessionId.slice(0, 8)} fork 而来`);
+      titleParts.push(copyText("tabBarView.tab.forkedFrom", { id: tab.forkedFromSessionId.slice(0, 8) }));
     }
     const title = titleParts.join("\n");
     const unread = tab.unread > 0 && !active;
@@ -514,7 +501,6 @@ export class TabBarView {
       pinned,
       hasCwd,
       remote,
-      bg,
       lightClass === "act-idle",
       lightClass === "act-waiting",
       reconnectable,
@@ -530,7 +516,6 @@ export class TabBarView {
       refs.root.classList.toggle("pinned", pinned);
       refs.root.classList.toggle("has-cwd", hasCwd);
       refs.root.classList.toggle("remote", remote);
-      refs.root.classList.toggle("tab-bg", bg);
       refs.root.classList.toggle("act-idle", lightClass === "act-idle");
       refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
       refs.root.classList.toggle("reconnectable", reconnectable);

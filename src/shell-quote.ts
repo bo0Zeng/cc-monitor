@@ -10,6 +10,7 @@
  * ——`remote-launch.test.ts` 等既有 import 面零改动。
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
+import { copyText } from "./copy-table";
 
 /** POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。 */
 export function posixQuote(s: string): string {
@@ -84,7 +85,7 @@ export const UNSET_CONFIG_DIR_PREFIX = "unset CLAUDE_CONFIG_DIR; ";
 export function buildEnvPrefix(configDir?: string): string {
   if (!configDir) return "";
   if (!isValidConfigDir(configDir)) {
-    throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝拼入命令）: ${JSON.stringify(configDir)}`);
+    throw new Error(copyText("shellQuote.bad.configDir", { value: JSON.stringify(configDir) }));
   }
   return `export CLAUDE_CONFIG_DIR=${posixQuote(configDir)}; `;
 }

@@ -12,7 +12,8 @@
 //!
 //! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
 //! （`src/bridge/src/backend/control/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
-//! 「等 monitor 侧接上去」，**没有被结掉**。
+//! 「等 monitor 侧接上去」，**没有被结掉**。〔`K-R112` 接上了；〔C4e · 第四波 4C〕再往前一步：
+//! 界面经通道直接说本条原语（`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节，本机与远端同一条路。〕
 //!
 //! # 🔴 只出原语，不出轮询（`KR86D3`）
 //!
@@ -263,7 +264,14 @@ pub(crate) fn capture_for_inbound(
 ) -> Result<serde_json::Value, (String, String)> {
     let name = super::kill::parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
     let screen = capture(&name).map_err(|(c, m)| (c.to_string(), m))?;
-    Ok(serde_json::json!({ "name": name, "screen": screen }))
+    Ok(reply(&name, &screen))
+}
+
+/// 〔C4e · 第四波 4C〕帧面成品 `{name, screen}` 的构造器 —— 从 [`capture_for_inbound`] 里原样抽出来（逻辑不动），
+/// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
+/// 界面（`src/tmux-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
+pub(crate) fn reply(name: &str, screen: &str) -> serde_json::Value {
+    serde_json::json!({ "name": name, "screen": screen })
 }
 
 /// 一次性 CLI 入口：`--capture-pane <会话名>`。
