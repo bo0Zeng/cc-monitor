@@ -64,10 +64,8 @@ import {
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
 
-// U8c-2a：`buildUsageProbePayload` **已退役** —— 用量探针的载荷改由 Rust 内核
-// `backend::control::payload::usage_probe_payload` 编译（账本 S28 的第 ② 份产出点就此消失）。
-// 那条「两态、绝不裸载荷、空串是坏数据」的 fail-closed 纪律原样搬了过去并有测试；
-// 前端只报 `configDir`（`null` = 账号 0）。
+// U8c-2a：`buildUsageProbePayload` **已退役** —— 用量探针的载荷当时改由 Rust 内核编译（账本 S28 的第 ② 份产出点就此消失）。
+// 〔AR1〕后来整条探针轴随 `设计/50` 删了：Rust 那一份载荷编译今天也不存在。
 
 /**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。
@@ -185,7 +183,7 @@ export function mintTmuxName(base: string, existing: ReadonlySet<string>): strin
  *
  * @param cwd  这条会话的工作目录；空 / 派生不出东西 ⇒ 回落 `session-cc`（同 `deriveTmuxName`）。
  * @param existing 当前已占用的 tmux 会话名集合。**「不知道」的时候别调本函数** ——
- *                 传空集 = 「一个都没占」，那是 issue #76 的形状（见 `ipc/local-tmux-name.ts`）。
+ *                 传空集 = 「一个都没占」，那是 issue #76 的形状（见 `tmux-name-mint.ts`：列不出 ⇒ 不铸名）。
  */
 export function mintSessionTmuxName(cwd: string, existing: ReadonlySet<string>): string {
   return mintTmuxName(deriveTmuxName(cwd), existing);

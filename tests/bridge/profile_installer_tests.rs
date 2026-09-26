@@ -42,7 +42,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
             "围栏放行了 {bad:?} —— 那三条命令会往它写/重写/探测存在性"
         );
         assert!(
-            r.unwrap_err().starts_with("refuse profile path"),
+            r.unwrap_err().starts_with("拒绝写这个配置文件"),
             "拒绝理由要能一眼看出是围栏拒的（调用方与用户都要读它）"
         );
     }
@@ -915,14 +915,15 @@ fn the_hint_names_every_line_and_the_product_deletes_nothing() {
             "提示里那一行的原文被改写了 —— 用户要照着它去自己文件里认行"
         );
     }
-    // 「会赢过我们那一块」这一格现算自 `src/shared/ccm-aliases.sh`，不是抄的名单。
+    // 「会盖过 cc-monitor 那一段」这一格现算自 `src/shared/ccm-aliases.sh`，不是抄的名单。
+    // 〔CP2b〕原措辞「会赢过我们那一块」照 CP1 台账改（去「我们」、去 declare -f 的实现说法）。
     let builtin = crate::profile_installer::builtin_alias_names();
     assert!(
         !builtin.is_empty(),
         "自带别名名单是空的 —— 下面那一格会变成空真"
     );
     assert!(
-        hint.contains("会赢过我们那一块"),
+        hint.contains("会盖过"),
         "夹具里有 `cc()` / `cct()` 两条与自带块同名，提示必须说清「不删就不生效」"
     );
     // 措辞：**不许**是「请删除」。产品指名，不替人做决定。

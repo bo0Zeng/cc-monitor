@@ -216,7 +216,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("launch.render-attach", (NA, "—", "渲染一条命令串")),
     ("launch.render-cli", (NA, "—", "渲染一条命令串")),
     ("launch.render-payload", (NA, "—", "渲染一份载荷")),
-    ("launch.send-into", (NA, "—", "往已有会话里送一段")),
+    # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
+    # （`src/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
+    # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     ("mcp.list-project-dirs", (NA, "—", "列项目目录 —— 读")),
     ("mcp.read", (NA, "—", "读 MCP 配置")),
@@ -225,7 +227,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     ("port-forward", (NA, "—", "端口转发")),
-    ("apikey.routing", (NA, "—", "问这几个本机账号在 apikey 表里有没有行（＋本机中转在不在跑）")),
+    # 〔墓碑 · 第四波 4D US1〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
+    #   （`src/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("search.history", (NA, "—", "搜索")),
     ("search.index", (NA, "—", "搜索索引（app 自己的索引，不落用户环境）")),
     ("session.activity", (NA, "—", "会话")),

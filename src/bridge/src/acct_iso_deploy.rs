@@ -8,6 +8,7 @@
 //! [`crate::sftp::deploy_decision`] 的 skip-if-current 语义。**只读铁律豁免**：这是用户显式触发的
 //! 一键安装（同后端部署），且落点被 [`is_safe_remote_acct_iso_dir`] 守卫限制。
 
+use crate::copy_table::copy_text;
 use crate::dial_host::RemoteFs;
 use crate::sftp::{deploy_decision, put_marker, read_marker, upload_verified, DeployAction};
 use crate::ssh_source::{connect_and_exec_cmd, RemoteConfig};
@@ -65,12 +66,15 @@ async fn exec_collect(cfg: &RemoteConfig, cmd: &str) -> Result<String, String> {
         reader
             .read_to_end(&mut out)
             .await
-            .map_err(|e| format!("读远端输出失败: {e}"))?;
+            .map_err(|e| copy_text("rsAcctIsoDeploy.exec.readFailed", &[("e", &e.to_string())]))?;
         Ok::<String, String>(String::from_utf8_lossy(&out).into_owned())
     };
     match tokio::time::timeout(EXEC_TIMEOUT, fut).await {
         Ok(r) => r,
-        Err(_) => Err(format!("远端命令超时（>{}s）", EXEC_TIMEOUT.as_secs())),
+        Err(_) => Err(copy_text(
+            "rsAcctIsoDeploy.exec.timeout",
+            &[("secs", &(EXEC_TIMEOUT.as_secs()).to_string())],
+        )),
     }
 }
 
@@ -141,14 +145,17 @@ pub(crate) fn validate_shellinit_output(out: String) -> Result<String, String> {
         return Ok(out);
     }
     Err(if state == FenceState::Truncated {
-        format!(
-            "远端产出的 rc 片段**不完整**（有 {SHELLINIT_FENCE_BEGIN:?} 但没有 \
-{SHELLINIT_FENCE_END:?}）——输出可能被截断了。**别贴**，半截片段会让登录 shell 报错。请重试。"
+        copy_text(
+            "rsAcctIsoDeploy.shellinit.truncated",
+            &[
+                ("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN)),
+                ("end", &format!("{:?}", SHELLINIT_FENCE_END)),
+            ],
         )
     } else {
-        format!(
-            "远端没能产出 rc 片段（输出里没有 {SHELLINIT_FENCE_BEGIN:?}）。\
-常见原因：cc-acct-iso 未安装（先在「维护」里部署）、或该远端还没跑过 `cc-acct-iso init`。"
+        copy_text(
+            "rsAcctIsoDeploy.shellinit.missing",
+            &[("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN))],
         )
     })
 }
@@ -188,16 +195,15 @@ pub(crate) const SHELLINIT_FENCE_END: &str = "# ===== END cc-acct-iso =====";
 pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Result<String, String> {
     let dest = dest_dir.trim().trim_end_matches('/').to_string();
     if dest.is_empty() {
-        return Err(
-            "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-acct-iso）".into(),
-        );
+        return Err(copy_text("rsAcctIsoDeploy.deploy.noDest", &[]).into());
     }
     if dest.contains('~') {
-        return Err("部署目录含 ~（SFTP 不展开 ~），请改用绝对路径".into());
+        return Err(copy_text("rsAcctIsoDeploy.deploy.tilde", &[]).into());
     }
     if !is_safe_remote_acct_iso_dir(&dest) {
-        return Err(format!(
-            "部署目录不安全（须绝对、无 ..、非根、且含 cc-acct-iso 或 .cc-monitor）：{dest}"
+        return Err(copy_text(
+            "rsAcctIsoDeploy.deploy.unsafe",
+            &[("dest", &dest.to_string())],
         ));
     }
 
@@ -210,9 +216,12 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
 
     match deploy_decision(remote_id.as_deref(), vendor_id()) {
-        DeployAction::Skip => Ok(format!(
-            "远端已是最新 cc-acct-iso（{}）：{dest}，无需重装。",
-            vendor_id()
+        DeployAction::Skip => Ok(copy_text(
+            "rsAcctIsoDeploy.deploy.upToDate",
+            &[
+                ("version", &(vendor_id()).to_string()),
+                ("dest", &dest.to_string()),
+            ],
         )),
         DeployAction::Deploy(reason) => {
             // 建目录树：<dest>/scripts/test、<dest>/examples。
@@ -268,9 +277,12 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
                     cfg.origin_label(),
                     install_out.trim()
                 );
-                return Err(format!(
-                    "脚本已上传到 {dest}，但 install（建软链）未成功完成——未标记为已装，可重试。远端输出：\n{}",
-                    install_out.trim()
+                return Err(copy_text(
+                    "rsAcctIsoDeploy.deploy.installFailed",
+                    &[
+                        ("dest", &dest.to_string()),
+                        ("output", &(install_out.trim()).to_string()),
+                    ],
                 ));
             }
 
@@ -286,9 +298,9 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
             .await
             .unwrap_or_default();
             let path_hint = if visible.trim() == "OK" {
-                "已软链到 ~/.local/bin，命令可用。"
+                &copy_text("rsAcctIsoDeploy.deploy.linked", &[])
             } else {
-                "已软链到 ~/.local/bin，但它可能不在你终端的 PATH——在终端里 `export PATH=\"$HOME/.local/bin:$PATH\"`。"
+                &copy_text("rsAcctIsoDeploy.deploy.linkedNotOnPath", &[])
             };
 
             tracing::info!(
@@ -296,9 +308,14 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
                 cfg.origin_label(),
                 vendor_id()
             );
-            Ok(format!(
-                "已部署 cc-acct-iso（{}）到 {dest}（{reason}）。{path_hint}",
-                vendor_id()
+            Ok(copy_text(
+                "rsAcctIsoDeploy.deploy.done",
+                &[
+                    ("version", &(vendor_id()).to_string()),
+                    ("dest", &dest.to_string()),
+                    ("reason", &reason.to_string()),
+                    ("pathHint", &path_hint.to_string()),
+                ],
             ))
         }
     }

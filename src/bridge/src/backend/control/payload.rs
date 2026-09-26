@@ -61,6 +61,7 @@ pub(crate) fn refuse(msg: impl std::fmt::Display) -> String {
     format!("{REFUSE_TAG} {msg}")
 }
 
+use crate::copy_table::copy_text;
 use std::fmt::Write as _;
 
 /// 两种 shell 共用的元字符黑名单。
@@ -130,11 +131,12 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
-                return Err(refuse("具名账号的 configDir 是空的（账号 0 请用 base）"));
+                return Err(refuse(&copy_text("rsPayload.configDir.emptyNamed", &[])));
             }
             if !config_dir_command_safe(d) {
-                return Err(refuse(format!(
-                    "拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {d:?}"
+                return Err(refuse(copy_text(
+                    "rsPayload.configDir.bad",
+                    &[("value", &format!("{:?}", d))],
                 )));
             }
             Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
@@ -272,11 +274,12 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             EnvOp::ExportConfigDir { value } => {
                 // ★ 与 `config_dir_prefix_posix` 同一道闸 —— 两个入口不许安全姿态相反。
                 if value.is_empty() {
-                    return Err(refuse("configDir 是空串（账号 0 请用 UnsetConfigDir）"));
+                    return Err(refuse(&copy_text("rsPayload.configDir.emptyString", &[])));
                 }
                 if !config_dir_command_safe(value) {
-                    return Err(refuse(format!(
-                        "拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {value:?}"
+                    return Err(refuse(copy_text(
+                        "rsPayload.configDir.bad",
+                        &[("value", &format!("{:?}", value))],
                     )));
                 }
                 let _ = write!(
@@ -297,8 +300,9 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 //   前者把一次铸币 bug 变成「↗ 不明原因失效」，后者把一个未校验的串
                 //   送进远端 shell。理由见 `EnvOp::ExportRbindToken` 的文档注释。
                 if !rbind_token_shape_ok(value) {
-                    return Err(refuse(format!(
-                        "拒绝拼入命令：CCM_RBIND_TOKEN 形状不对 {value:?}（要 32 个小写十六进制字符）"
+                    return Err(refuse(copy_text(
+                        "rsPayload.rbindToken.bad",
+                        &[("value", &format!("{:?}", value))],
                     )));
                 }
                 let _ = write!(
@@ -309,8 +313,9 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             }
             EnvOp::ExportRelayBaseUrl { value } => {
                 if !relay_base_url_shape_ok(value) {
-                    return Err(refuse(format!(
-                        "拒绝拼入命令：中转地址形状不对 {value:?}（要 `http://127.0.0.1:<端口>/s|t/<三段>`）"
+                    return Err(refuse(copy_text(
+                        "rsPayload.relayUrl.bad",
+                        &[("value", &format!("{:?}", value))],
                     )));
                 }
                 out.push_str(&relay_env_prefix_posix(value));
@@ -318,7 +323,7 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             EnvOp::UnsetConfigDir => out.push_str(UNSET_CONFIG_DIR_PREFIX),
             EnvOp::UnsetNestedEnv { keys } => {
                 if keys.is_empty() {
-                    return Err(refuse("嵌套 env 键表是空的 ⇒ 会渲染出裸 `unset ; `"));
+                    return Err(refuse(&copy_text("rsPayload.nestedEnv.empty", &[])));
                 }
                 let _ = write!(out, "unset {}; ", keys.join(" "));
             }
@@ -378,11 +383,9 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
 pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     for a in spec.args {
         if !arg_is_join_safe(a) {
-            return Err(refuse(format!(
-                "拒绝拼入命令：参数 {a:?} 不在放行集里 —— 载荷是 `join(\" \")` 拼的，\
-                 空白会让它裂成多个参数、shell 元字符会另起一条命令。\n\
-                 放行集是 `[A-Za-z0-9] + -_.:/=,@+`；**非 ASCII 也一律拒**（已知过严，\
-                 且与 `config_dir_command_safe` 放行中文不对称，见 `arg_is_join_safe` 头注）"
+            return Err(refuse(copy_text(
+                "rsPayload.arg.notSafe",
+                &[("arg", &format!("{:?}", a))],
             )));
         }
     }
@@ -407,17 +410,19 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
         .chars()
         .find(|c| matches!(c, ';' | '|' | '&' | '$' | '`' | '<' | '>' | '\n' | '\r'))
     {
-        return Err(refuse(format!(
-            "拒绝拼入命令：launcher {:?} 含注入字符 {c:?} —— 载荷会被键进会话执行，\n\
-             一个 `;` 或 `|` 就能另起一条命令。合法形态是命令名或路径（可带空格分段）。",
-            spec.launcher
+        return Err(refuse(copy_text(
+            "rsPayload.launcher.injection",
+            &[
+                ("launcher", &format!("{:?}", spec.launcher)),
+                ("c", &format!("{:?}", c)),
+            ],
         )));
     }
     let mut argv = vec![spec.launcher];
     argv.extend_from_slice(spec.args);
     let inner = argv.join(" ");
     let cd = match spec.cwd {
-        Some("") => return Err(refuse("cwd 是空串 —— 空值 ≠ 未设；不加 cd 请用 None")),
+        Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
         Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
         None => String::new(),
     };
@@ -510,7 +515,7 @@ impl<'a> TmuxTarget<'a> {
     fn check(&self) -> Result<(), String> {
         let v = self.value();
         if v.is_empty() {
-            return Err(refuse("tmux 会话名是空串 —— 空值 ≠ 未设"));
+            return Err(refuse(&copy_text("rsPayload.tmuxName.empty", &[])));
         }
         match self {
             // 裸拼进命令 ⇒ 白名单必须是 tmux 名字那一族，一个字符都不许多。
@@ -519,9 +524,9 @@ impl<'a> TmuxTarget<'a> {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
                 {
-                    return Err(refuse(format!(
-                        "tmux 会话名 {v:?} 声明成 Raw（裸拼）却不在 `[A-Za-z0-9_-]` 里 ——\n\
-                         要么它该声明成 Quoted，要么上游铸名口漏了一道。"
+                    return Err(refuse(copy_text(
+                        "rsPayload.tmuxName.rawBad",
+                        &[("name", &format!("{:?}", v))],
                     )));
                 }
                 Ok(())
@@ -533,8 +538,9 @@ impl<'a> TmuxTarget<'a> {
                     .chars()
                     .find(|c| c.is_control() || acct_core::is_deceptive_char(*c))
                 {
-                    return Err(refuse(format!(
-                        "tmux 会话名 {v:?} 含控制符或视觉欺骗字符 {c:?} —— 拒绝拼进命令。"
+                    return Err(refuse(copy_text(
+                        "rsPayload.tmuxName.control",
+                        &[("name", &format!("{:?}", v)), ("c", &format!("{:?}", c))],
                     )));
                 }
                 Ok(())
@@ -598,14 +604,10 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             //   ⇒ 一次 fail-closed 当场变 fail-open）。本件第一次跑就撞上了它。
             let p = match payload {
                 Some(p) => p,
-                None => {
-                    return Err(refuse(
-                        "create 那一格没带载荷 —— 会渲染出一条只建空会话再接进去的命令",
-                    ))
-                }
+                None => return Err(refuse(&copy_text("rsPayload.outer.createNoPayload", &[]))),
             };
             let cflag = match cwd {
-                Some("") => return Err(refuse("cwd 是空串 —— 空值 ≠ 未设；不带 -c 请用 None")),
+                Some("") => return Err(refuse(&copy_text("rsPayload.cwd.empty", &[]))),
                 Some(c) => format!(" -c {}", shell_quote_core::posix_quote(c)),
                 None => String::new(),
             };
@@ -617,8 +619,9 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
                 None => (String::new(), String::new()),
                 Some(s) => {
                     if !ccm_sid_safe(s) {
-                        return Err(refuse(format!(
-                            "@ccm_sid {s:?} 不在 `[A-Za-z0-9_-]` 里 —— 它是裸拼进命令的。"
+                        return Err(refuse(copy_text(
+                            "rsPayload.sessionMark.bad",
+                            &[("value", &format!("{:?}", s))],
                         )));
                     }
                     (
@@ -650,7 +653,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
             target.check()?;
             let p = match payload {
                 Some(p) => p,
-                None => return Err(refuse("send-into 那一格没带载荷 —— 那会把用户接进空 shell")),
+                None => return Err(refuse(&copy_text("rsPayload.outer.sendIntoNoPayload", &[]))),
             };
             let t = target.exact();
             Ok(format!(
@@ -663,10 +666,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
         TmuxOuter::Attach { target } => {
             target.check()?;
             if payload.is_some() {
-                return Err(refuse(
-                    "attach 那一格带了载荷 —— 它只把终端接进一个已经在跑的会话，\
-                     一个 agent 进程都不出生。带载荷说明调用方把格搞错了。",
-                ));
+                return Err(refuse(&copy_text("rsPayload.outer.attachWithPayload", &[])));
             }
             Ok(format!("tmux attach -t {}", target.exact()))
         }
@@ -674,7 +674,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// `K-H2b`：**接上注入点** —— 起会话那一刻把 `ANTHROPIC_BASE_URL` 指向本机中转
+// `K-H2b`：**接上注入点** —— 起会话那一刻把 `ANTHROPIC_BASE_URL` 指向那台机器的中转（渲染那一半）
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // # 这一段为什么在这里
@@ -683,211 +683,52 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 // 的属性**（`K20`：判据/说法按形状认，不按主题名）。本模块正是那一层在 Rust 侧的家
 // —— `config_dir_prefix_posix` 与 `render_env_ops` 都住这儿。
 //
-// # ⚠ 三条**没买到**的，先写在最前面，别读成买到了（铁律 14）
+// # 〔US1 · 第四波 4D〕「注入什么」那一半**搬走了**，这里只剩「怎么渲」
 //
-// 1. **claude 拿到这个变量之后到底怎么走，本仓零证据、本轮也没量**
-//    （红线 `C7`：绝不起真 claude）。订阅号的 OAuth 刷新会不会仍打官方域名 ·
-//    只设 base URL 不设 token 会不会拒启 · `/v1/messages` 之外还打哪些路径 ——
-//    **一律 `判不了`**。本段买到的是「渲染器 → env → 中转 → 上游」这一截，
-//    **买不到**「claude 会照它走」那一截。
-// 2. **Windows 那一侧只到「编得过」**（`relay_env_prefix_ps` 一行运行时行为都没量过），
-//    原样延续 `K-H2` 的登记。
-// 3. **远端那一半不做**（`K-H2b` `§0e` 裁四）：把 key 送到远端那台机器的路
-//    （`parity_ledger.rs` 的 `creds.apikey`）今天**没有主人**。
-//    回环地址是**自指**的 ⇒ 同一个字面串写进哪台机器就指哪台，
-//    但「那台机器上有没有那份凭据」是另一件事，本件明写 `判不了`。
+// 先前这一段还住着 `设计/20 §3.2` 那张决策表（`relay_endpoint_for` / `apikey_endpoint_for` / `RelayAsk`〔散文墓碑〕）、
+// 凭据文件那一家（`APIKEY_TABLE_AGENT`〔散文墓碑〕）、登记了默认上游的 agent（`AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕）、
+// 路由语法（两个前缀 · 段闸 · 拼串 · 两份跨半边样例）—— 每一样都是后端那一份的第二份（B-decouple §2.1 必须拆 1）。
+// 今天：决策表住后端上游选择 `accounts/upstream/endpoint.rs`（帧命令 `launch-endpoint` 出成品，起会话那一侧只转交、执行：
+// `history::relay_endpoint_on`）；端口 · 钥匙路径 · 路由语法住共享 crate `relay_route_core`（`设计/20 §5` 目标），两侧 `use` 同一份。
+// 渲染 shell 串属于开终端那一侧（`20 §3.3`），留在这里。
+//
+// # ⚠ 两条**没买到**的（铁律 14）
+//
+// 1. **claude 拿到这个变量之后到底怎么走，本仓零证据**（红线 `C7`：绝不起真 claude）。
+// 2. **Windows 那一侧只到「编得过」**（`relay_env_prefix_ps` 一行运行时行为都没量过）。
 
-/// 路由键的固定首段。**`route.rs::parse` 用 `strip_prefix("/s/")` 认它。**
-pub const RELAY_ROUTE_PREFIX: &str = "/s/";
+/// 本机中转的端口。**值只住共享 crate**（`relay_route_core::PORT`）：起本机后端时以 `CCM_RELAY_PORT`
+/// 交给它（`local_backend_host::relay_host_envs`），远端 `relay-status` / `relay-ensure` 的 `port` 入参也是它；
+/// 后端 `src/backend/relay/server.rs::DEFAULT_PORT` 是同一个 const。〔US1〕先前两处各写一个 8788、零对拍。
+pub const RELAY_PORT: u16 = relay_route_core::PORT;
 
-/// 直通模式的路由键首段〔`设计/20 §2` 两个前缀 · `§3.2` 表里无行那一格〕。
+/// 〔RL1〕载荷里那条中转地址（`EnvOp::ExportRelayBaseUrl`）的 fail-closed 校验：必须是构造口产得出的形状
+/// （`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好三段、每段过闸）。
+/// 〔US1〕构造口搬去后端上游选择之后，这个「逆」与构造口同住共享 crate（`relay_route_core::base_url_shape_ok`），本侧不另写一份。
+pub use relay_route_core::base_url_shape_ok as relay_base_url_shape_ok;
+
+/// `<key>` 段（第 3 段，流标签）与起会话身份 token 的**唯一铸造口**〔`KH2B6`〕。
 ///
-/// `/s/` 是「代入」（非它不可，表里没这一行就 404）；`/t/` 是「直通」（有它更好：中转**永不**
-/// 代入 auth，下游那份鉴权头逐字节原样上去，只为让这条会话的流量过中转、拿到 SSE）。
-/// ⚠ 与后端 `route.rs::PREFIXES` 那张表是同一件事的两处写法 —— 由后端那条
-/// `the_passthrough_sample_the_monitor_side_builds_parses_as_passthrough` 现抠
-/// [`RELAY_PASSTHROUGH_SAMPLE`] 去 `parse` 对拍。
-pub const RELAY_PASSTHROUGH_PREFIX: &str = "/t/";
-
-/// 路由键走哪个前缀。**只有 [`relay_route_path_in`] 一处把它翻成字面量。**
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RouteMode {
-    /// `/s/`：代入 —— apikey 表里有这一行（上游选择的事，见 [`apikey_endpoint_for`]）。
-    Substitute,
-    /// `/t/`：直通 —— 表里没这一行，只为过中转拿 SSE（见 [`relay_endpoint_for`]）。
-    Passthrough,
-}
-
-impl RouteMode {
-    fn prefix(self) -> &'static str {
-        match self {
-            RouteMode::Substitute => RELAY_ROUTE_PREFIX,
-            RouteMode::Passthrough => RELAY_PASSTHROUGH_PREFIX,
-        }
-    }
-}
-
-/// 本机中转的端口。**monitor 这一侧是权威** —— 起本机后端时以 `CCM_RELAY_PORT`
-/// 显式交给它（`local_backend_host::relay_host_envs`；〔RL1 · V107〕中转住本机常驻后端进程里），注入侧用同一个常量拼 URL。
-///
-/// ⚠ 它与 `src/backend/relay/server.rs::DEFAULT_PORT` 是**同一个数字的两处写法**，
-/// 而两处**今天不由任何东西对拍**。之所以不疼：起本机后端那条路**显式传** `CCM_RELAY_PORT`
-/// ⇒ 后端里的中转 bind 的是这里这个值（进程内那一形**没有缺省值**），backend 那个默认值只属于独立 `--relay`
-/// （远端 `relay-ensure` 起它时同样显式传这里这个值）。
-/// **端口通告面本件不做**（`§0e` 裁五，跟进件 `己1-f26`）——
-/// ⇒ 口被别的东西占着这一形今天是：本机后端里的中转绑不上、**出声、后端照常**（`relay::listen::host`），不静默。
-pub const RELAY_PORT: u16 = 8788;
-
-/// 一段路由键里允许的字符 —— **与 `src/backend/relay/route.rs::segment_is_safe`
-/// 是同一条规则**（白名单，不是黑名单；`.` 与 `/` 都不在里面 ⇒ `..` 构造不出来）。
-///
-/// # ⚠ 它是**第二份实现**，这件事必须说清楚，不许读成「共用了一份」
-///
-/// 两侧分家的原因是结构性的：`src/backend` 依赖 `src/bridge/crates/*`（单向），
-/// 反向依赖不存在 ⇒ 除非把这条规则搬进一个**共享 crate**，否则 monitor 够不着后端那份。
-/// 本件的写区里**没有任何共享 crate** ⇒ 本轮只能各写一份，并**用判据把它们焊住**：
-///
-/// - monitor 侧：`the_relay_route_sample_is_what_the_builder_really_produces`
-///   钉住 [`RELAY_ROUTE_SAMPLE`] 逐字节等于 [`relay_route_path`] 的产物；
-/// - backend 侧：`route.rs` 的 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect`
-///   `include_str!` **本文件**、把那一行样例抠出来喂给真 `parse`，断言四段各落各位。
-///
-/// ⇒ 买到的是「**两侧对同一条样例的判断一致**」，**不是**「两条谓词逐字符等价」。
-/// 差的那一格叫「量过没有」：我没有、也做不出「对所有输入两侧同答」的判据（那要跨 crate 调用）。
-pub fn relay_segment_is_safe(seg: &str) -> bool {
-    !seg.is_empty()
-        && seg.len() <= 128
-        && seg
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
-
-/// 路由键 `/s/<agent>/<account>/<key>` 的**唯一构造口**（monitor 生产段）〔`KH2B4`〕。
-///
-/// # 为什么「只许有一个」是承重的（`LEDGER.md#KL7` 第 1 条）
-///
-/// 老三段键 `/s/<agent>/<key>/<真路径>` **不会被解析器拒掉** —— 它被重读成
-/// `account=<key>` 的另一条四段路由，三段都过白名单、**解析成功**。
-/// 挡住它的**不是**解析器，是「表里查不到」⇒ **404**，而那在另一个文件里。
-/// ⇒ 注入侧拼错一段的症状是「**一个查不出来的 404**」，不是「拼错了」。
-/// 两处各拼一遍，就会各自答错同一个问题。
-///
-/// **fail-closed**：任一段过不了白名单就 `Err`，绝不拼一条「看起来对」的 URL 出去。
-#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
-pub fn relay_route_path(agent: &str, account: &str, key: &str) -> Result<String, String> {
-    relay_route_path_in(RouteMode::Substitute, agent, account, key)
-}
-
-/// 同上，前缀由 `mode` 定。**两个前缀共用这一处拼串**（`KL7` 第 1 条：只许有一个构造口）。
-pub fn relay_route_path_in(
-    mode: RouteMode,
-    agent: &str,
-    account: &str,
-    key: &str,
-) -> Result<String, String> {
-    for (what, seg) in [("agent", agent), ("account", account), ("key", key)] {
-        if !relay_segment_is_safe(seg) {
-            return Err(refuse(format!(
-                "拒绝拼中转路由键：{what} 段 {seg:?} 不是合法路由段\
-                 （只许字母数字与 `-` `_`，1..=128 字节）。\n\
-                 ⚠ 拼错一段的症状是中转回一个**查不出来的 404**，不是「拼错了」——\
-                 所以这里宁可当场拒。"
-            )));
-        }
-    }
-    Ok(format!("{}{agent}/{account}/{key}", mode.prefix()))
-}
-
-/// 注入给 agent 进程的 base URL。**恒回环**（`§0e` 裁四：回环是自指的，
-/// 同一个字面串写进哪台机器就指哪台 ⇒ 「选机器」这件事已经由「这条命令在哪台机器上跑」做完了）。
-#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
-pub fn relay_base_url(port: u16, agent: &str, account: &str, key: &str) -> Result<String, String> {
-    relay_base_url_in(RouteMode::Substitute, port, agent, account, key)
-}
-
-/// 同上，前缀由 `mode` 定。
-pub fn relay_base_url_in(
-    mode: RouteMode,
-    port: u16,
-    agent: &str,
-    account: &str,
-    key: &str,
-) -> Result<String, String> {
-    Ok(format!(
-        "http://127.0.0.1:{port}{}",
-        relay_route_path_in(mode, agent, account, key)?
-    ))
-}
-
-/// 〔RL1〕[`relay_base_url_in`] 那一形的**校验口**：`http://127.0.0.1:<1–65535>` ＋ `/s/` 或 `/t/` ＋ 恰好三段、
-/// 每段过 [`relay_segment_is_safe`]。别的一律不收（`localhost` · `https` · 带查询串 · 尾斜杠 · 少段多段）。
-///
-/// ⚠ 它是构造口的**逆**，不是第二份构造规则：判据拿构造口的产物喂它（必须全收），再喂一排坏形（必须全拒）。
-pub fn relay_base_url_shape_ok(url: &str) -> bool {
-    let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
-        return false;
-    };
-    let Some((port, path)) = rest.split_once('/') else {
-        return false;
-    };
-    let port_ok = !port.is_empty()
-        && port.bytes().all(|b| b.is_ascii_digit())
-        && port.parse::<u16>().is_ok_and(|p| p != 0);
-    let Some(segs) = path
-        .strip_prefix(RELAY_ROUTE_PREFIX.trim_start_matches('/'))
-        .or_else(|| path.strip_prefix(RELAY_PASSTHROUGH_PREFIX.trim_start_matches('/')))
-    else {
-        return false;
-    };
-    let parts: Vec<&str> = segs.split('/').collect();
-    port_ok && parts.len() == 3 && parts.iter().all(|p| relay_segment_is_safe(p))
-}
-
-/// 跨半边对拍用的那一行样例。**backend 侧的判据 `include_str!` 本文件、拿它去 `parse`。**
-///
-/// ⚠ 它不是文档，是**夹具**：`the_relay_route_sample_is_what_the_builder_really_produces`
-/// 钉住它逐字节等于 [`relay_route_path`] 的产物 ⇒ 谁改了构造口而没改它，monitor 这侧当场红；
-/// 谁改了它而后端那侧解析不出预期的段，backend 那侧当场红。
-#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
-pub const RELAY_ROUTE_SAMPLE: &str = "/s/claude-code/acct-a/k-0123456789abcdef";
-
-/// 直通那一形的跨半边样例（同 [`RELAY_ROUTE_SAMPLE`]：它是**夹具**，不是文档）。
-#[cfg(test)] // 〔第二波合并〕R2 之后生产走 `*_in` 那一版，这一口只剩判据与跨半边对拍在用
-pub const RELAY_PASSTHROUGH_SAMPLE: &str = "/t/claude-code/acct-a/k-0123456789abcdef";
-
-/// `<key>` 段的**唯一铸造口**〔`KH2B6`〕。
-///
-/// # 规则（写下来的那一条，别两边各造一个）
-///
-/// | 这一格 | `<key>` 填什么 |
+/// | 这一格 | 填什么 |
 /// |---|---|
-/// | resume 一条已有会话 | **那条会话的 sid**（现成的，天然是 UUID 形态 ⇒ 过得了白名单） |
+/// | resume 一条已有会话 | **那条会话的 sid**（天然是 UUID 形态 ⇒ 过得了段闸） |
 /// | 新开一个会话 | **一个启动时生成的 nonce** —— 不等 claude 产 sid |
 ///
-/// # ⚠ 它欠的账，写在这里（`§0e` 裁二逐字采纳）
-///
-/// nonce 与 claude 事后产生的 sid **没有对应关系**。谁将来想按 sid 去 join tee 那条流，
-/// 会发现对不上。**今天不是缺陷、是债** —— 理由是现打的两个读数：
-/// 表的键是 **(agent, 账号)** 两段（`accounts::table::RoutingTable::lookup`，条 49），`<key>` 段不在键里；
-/// `route.key` 的生产段**只喂 tee**（`relay/server.rs` 的 `tee.open` / `tee.event` 两处）
-/// ⇒ 这一段**不参与选上游、不参与选凭据**，而 tee 今天**零消费者**。
-///
-/// ★ 为什么不像 tmux 基名那样「不许在 Rust 里补默认」（`己1-f4` / `F13` 那个坑）：
-/// 那条坑的要害是**撞名避让住在别处**（`mintTmuxName` 是唯一铸造口，补一个默认名会绕开避让）。
-/// 这一段**没有任何避让语义** —— 它对路由完全惰性，两个会话拿到同一个值也只是 tee 标签重复。
-/// ⇒ 不同形，不是第四次。
+/// ⚠ 它欠的账（`§0e` 裁二逐字采纳）：nonce 与 claude 事后产生的 sid **没有对应关系**；
+/// 这一段**不参与选上游、不参与选凭据**（上游选择的键是前两段），只喂 tee。今天不是缺陷、是债。
+/// 〔US1〕起会话那一侧把它作为 `launch-endpoint` 的 `key` 交给那台后端（后端再过一次段闸，不另铸）。
 fn mint_route_key() -> String {
-    // UUID v4 的连字符形态逐字过得了 `relay_segment_is_safe`（`[0-9a-f-]`，36 字节）。
+    // UUID v4 的连字符形态逐字过得了段闸（`[0-9a-f-]`，36 字节）。
     uuid::Uuid::new_v4().to_string()
 }
 
-/// 见 [`mint_route_key`]。**这是 `<key>` 段唯一的取值口** —— resume 用 sid，新开用 nonce。
+/// 见 [`mint_route_key`]。**这是 `<key>` 段与身份 token 唯一的取值口** —— resume 用 sid，新开用 nonce。
 ///
-/// sid 过不了白名单时**也回落到 nonce**（而不是 `Err`）：这一段对路由惰性，
-/// 为它把一次起会话整个拒掉不划算；代价是 tee 上那一行标的不是 sid，**而那正是上面登记的那笔债**。
+/// sid 过不了段闸（`relay_route_core::segment_is_safe`，与中转切键同一份）时**也回落到 nonce**（而不是 `Err`）：
+/// 这一段对路由惰性，为它把一次起会话整个拒掉不划算。
 pub fn route_key_for_session(sid: Option<&str>) -> String {
     match sid {
-        Some(s) if relay_segment_is_safe(s) => s.to_string(),
+        Some(s) if relay_route_core::segment_is_safe(s) => s.to_string(),
         _ => mint_route_key(),
     }
 }
@@ -896,12 +737,8 @@ pub fn route_key_for_session(sid: Option<&str>) -> String {
 /// `export ANTHROPIC_BASE_URL=` 的地方〔`KH2B4`，由
 /// `only_one_place_in_this_file_exports_the_relay_base_url` 数着〕。
 ///
-/// ⚠ **那条判据的人群只有本文件**（它 `include_str!("payload.rs")`）——
-/// 别把它读成「全仓唯一一处」。全仓那一格是**一天的读数**，不是一条会自我维持的断言（`K20`）：
-/// 08-28 现打，分母 = 703 个跟踪文件，量法 `git ls-files -z | xargs -0 grep`，
-/// 产出形状 `export ANTHROPIC_BASE_URL=` 的**生产行恰好 1** —— 就是下面这一行；
-/// 其余命中全是判据字面量 / 测试期望 / 散文（非空对照：同一把尺子量
-/// `ANTHROPIC_BASE_URL` 命中 **6** 个文件）。
+/// ⚠ **那条判据的人群只有本文件**（它 `include_str!("payload.rs")`）—— 别把它读成「全仓唯一一处」。
+/// 〔US1〕后端 `control/ccm/plan.rs::base_url_word` 是另一处（`ccm` 把继承来的地址转进新 pane），同形、各自一个 crate。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
     // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
@@ -920,17 +757,16 @@ pub fn relay_env_prefix_posix(base_url: &str) -> String {
 ///
 /// 注入的 URL 今天**不是**直接进 agent 的 env：它渲染成 shell 文本，经 `tmux send-keys` 的 **argv** 打进 pane 的交互 shell
 /// （[`render_tmux_outer`]），会进 shell 历史、界面的终端回滚；远端那一形还绕 webview 一圈（`relay_endpoint_for_launch`）。
-/// 钥匙字面拼进去，就会出现在同机别的用户 `ps` 看得见的 argv 里。⇒ URL 本身**不带钥匙**（构造口、形状闸、TS 那一圈一字不改），
+/// 钥匙字面拼进去，就会出现在同机别的用户 `ps` 看得见的 argv 里。⇒ URL 本身**不带钥匙**，
 /// 渲染器把钥匙段写成 `$(cat "$HOME/<本常量>")`，在**那台机器的 pane shell 里**展开 ——
 /// 钥匙只从 `0600` 文件进 agent 进程自己的 env。`$HOME` 在哪台上展开就读哪台的钥匙（与「回环地址是自指的」同一个道理）。
 ///
-/// ⚠ **跨半边字面量**：后端那一份是 `src/backend/relay/door.rs::KEY_FILE_REL`，
-/// 由后端 `door_tests::the_key_file_is_the_same_path_on_both_halves` 现抠**本行**对拍。
-pub const RELAY_KEY_FILE_REL: &str = ".cc-monitor/relay-key";
+/// 〔US1〕值只住共享 crate（`relay_route_core::KEY_FILE_REL`），后端 `door.rs::KEY_FILE_REL` 是同一个 const。
+pub const RELAY_KEY_FILE_REL: &str = relay_route_core::KEY_FILE_REL;
 
 /// 中转 URL 拆成「`http://主机:口/`」与「`/s/…` 那一截」两半，钥匙段插在中间。
-/// 拆不开（不是 [`relay_base_url_in`] 的产物形状）⇒ 整条当前半、后半空 —— 渲染出来的请求会被中转以 403 拒（出声），
-/// **不会**退回直连。调用方今天都先过了形状闸（[`relay_base_url_shape_ok`] · 构造口），这一支走不到。
+/// 拆不开（不是构造口的产物形状）⇒ 整条当前半、后半空 —— 渲染出来的请求会被中转以 403 拒（出声），
+/// **不会**退回直连。调用方今天都先过了形状闸（[`relay_base_url_shape_ok`]），这一支走不到。
 fn relay_url_halves(base_url: &str) -> (&str, &str) {
     let Some(rest) = base_url.strip_prefix("http://") else {
         return (base_url, "");
@@ -960,183 +796,6 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
     format!(
         "$env:ANTHROPIC_BASE_URL='{origin}' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '{RELAY_KEY_FILE_REL}')).Trim() + '{path}'; "
     )
-}
-
-/// apikey 凭据文件里那些行**属于哪一家 agent**〔条 49〕。
-///
-/// # 为什么要有这个值
-///
-/// 后端那张表的键今天是 **agent ＋ 账号**（`src/backend/accounts/table.rs`），不是账号：
-/// claude-code 的 3 号账号与 codex 的 3 号账号是两行。而凭据文件的格式（`creds-core`）
-/// **今天没有 agent 这一维** —— 它是界面上给 claude-code 的账号配第三方 key 时写出来的，
-/// 每一行都是这一家的。⇒ 本文件判「这个号在不在表里」时，**agent 也得对得上**，
-/// 否则别家拿同一个账号 id 起会话会被注入一条后端必回 404 的路由（或更早那一版：错发到 Anthropic）。
-///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是 `accounts::upstream::CREDENTIALS_FILE_AGENT`，
-/// 由后端那条 `the_credentials_file_agent_is_the_same_on_both_halves` 现抠**本行的字面量**对拍；
-/// 本侧再由 `payload_tests` 钉它等于 claude-code 那个适配器的 `id()`（两侧异源）。
-pub const APIKEY_TABLE_AGENT: &str = "claude-code";
-
-/// 「这次拉起要不要**改写 apikey 端点**」的**唯一判断口**〔`§0e` 裁一：**只接 api-key 号**〕。
-///
-/// ⚠ 〔`设计/90 §1.2` · `设计/20 §6` 命名推论〕它问的是**上游选择**的事（这个号有没有第三方 key、
-/// 要不要把端点改写掉），**不是**「要不要走中转」—— 改写恰好经由本机中转落地，但「过不过中转」
-/// 是中转的事，将来对每一条会话都成立（`设计/20 §3.2` 表里无行那一格的 `/t/`）。
-/// 本函数先前的名字（旧名见 `设计/90 §1.2` 那张对照表的左列）与这一行头注都用中转的名字说上游选择的事，两处都改了。
-///
-/// # 判据是「表里有没有这一行」，不是「这个号看起来是不是 api-key 号」
-///
-/// 上游选择的 apikey 表按 (agent, 账号 id) 索引，**没有那一行就是 404**（`KL7` 第 2 条：查不到 ⇒ 404 且
-/// 一个字节不发上游、不许回落）。⇒ 把一个表里没有的号指向中转 = 亲手把一个能用的号弄坏。
-/// 而**行是用户配第三方 key 时才会有的** ⇒ 「表里有行」与「这是个 api-key 号」在生产上同延，
-/// 但前者是**可判定的**、后者要靠 manifest 里那个自述字段。
-///
-/// ⚠ **空账号那一行是显式的 keyless 透传**（`KL7` 第 3 条），它**也**算「有行」——
-/// 那是用户显式写下的一条路，不是「查不到时的默认」。
-///
-/// ⇒ **没配第三方 key 的号一个字节都不受影响**：`accounts` 里没有它 ⇒ 本函数回 `None`
-/// ⇒ 前缀逐字节与本件之前相同（`KH2B5` 的对照就打这一格）。
-///
-/// 🔴 〔条 49〕「表里有这一行」说的是 **(agent, 账号) 这一对**，不是账号：
-/// `agent` 不是 [`APIKEY_TABLE_AGENT`] ⇒ 那一家在表里**一行都没有** ⇒ `None`（照旧直连，不注入）。
-/// ⚠ 为什么是「不注入」而不是「拒绝起会话」：表里无行的那一格今天的正确行为就是「照旧走」
-/// （`设计/20 §3.2` 第 4 行），与账号 id 查不到同一处置；拒绝只给「有行、中转却没在跑」那一格。
-/// ⚠ **第三个入参刻意不叫 `relay_running`**〔`D6 阻-4`，08-29〕：
-/// `history.rs` 那道人群闸数的是**标识符 `relay_running` 在生产段里出现几次**
-/// （定义 1 + 缝里那一处 1 = 2），一个同名的形参会让那个数恒多两处、闸就只能靠一个
-/// 「今天数出来的 N」活着。⇒ 形参改名，闸的分母回到「这个函数被谁提到」本身。
-pub fn apikey_endpoint_for(
-    account_id: Option<&str>,
-    rows: &[String],
-    running: bool,
-    sid: Option<&str>,
-    agent: &str,
-) -> Result<Option<String>, String> {
-    let Some(id) = account_id else {
-        return Ok(None);
-    };
-    if agent != APIKEY_TABLE_AGENT || !rows.iter().any(|r| r == id) {
-        return Ok(None);
-    }
-    if !running {
-        // ★ `KH2B2`②：**「中转没起来」不许是静默的**。
-        //   把它渲染成一条指向没人听的口的 URL，症状会长成「claude 连不上 API」——
-        //   与网络故障同形，而这一条是我们自己的责任。⇒ 在**起会话那一侧**当场说出来。
-        return Err(refuse(format!(
-            "apikey 端点改写不可用：账号 {id:?} 配了第三方端点（apikey 表里有它这一行），\
-             但改写要经过的**本机中转没在跑** ——\n\
-             这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败，\
-             而真正的原因在我们这一侧。\n\
-             ⇒ 先起本机后端（设置 → 本机后端），或把该账号那一行从凭据文件里去掉。"
-        )));
-    }
-    endpoint_in(RouteMode::Substitute, agent, id, sid).map(Some)
-}
-
-/// 两个判断口（[`apikey_endpoint_for`] · [`relay_endpoint_for`]）拼注入地址的**同一处**：
-/// 回环 ＋ 端口 ＋ 前缀 ＋ 三段，`<key>` 段只在这里铸（`launcher_identity_registry` 数着铸法的调用点）。
-fn endpoint_in(
-    mode: RouteMode,
-    agent: &str,
-    account: &str,
-    sid: Option<&str>,
-) -> Result<String, String> {
-    relay_base_url_in(
-        mode,
-        RELAY_PORT,
-        agent,
-        account,
-        &route_key_for_session(sid),
-    )
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// `设计/20 §7` 步 4 · `01 §2.5` 入口纪律：**全量注入**（带开关，默认关）
-// ═════════════════════════════════════════════════════════════════════════════
-
-/// 登记了**默认上游**的 agent —— 只有它们的会话可以走 `/t/`〔条 49 / 条 59〕。
-///
-/// # 🔴 这张表为什么是注入闸的一半（codex 那一刀）
-///
-/// `/t/` 表里无行时，后端按路由键第 1 段取**那一家自己的**默认上游；没登记 ⇒ 502
-/// （`accounts::upstream::decide`）。而 `01 §2.5` 那条同拍前置逐字是「否则非 Anthropic 的 agent 带着中转地址
-/// 起来、表里又没有它 ⇒ **每一发都错发到 Anthropic**」。后端那一侧今天已经 fail-closed（502），
-/// 但「注入之后每一发都 502」对用户而言与「会话起不来」同形 ⇒ **注入闸在这一侧就不注**：
-/// 不在这张表里的 agent 一个字节都不注入，照旧直连。
-///
-/// ⚠ 它是一个事实的两处写法之一：后端那一份是适配层注册表里填了默认上游那一格（`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层）的各家路由名，
-/// 由后端那条 `the_agents_with_a_default_upstream_are_the_same_on_both_halves` 现抠**本行的字面量**
-/// 做两向集合相等（异源：一侧是后端运行期的表，一侧是本文件的源码文本）。
-/// ⚠ codex **刻意不在这里**：它的默认上游本仓零证据（后端那张表头注逐字）。
-pub const AGENTS_WITH_DEFAULT_UPSTREAM: &[&str] = &["claude-code"];
-
-/// 账号 0（`LaunchAccount::Base`，不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。
-///
-/// ⚠ 它只是一个**标签**（`/t/` 从不查它的 key）。唯一的风险是它与 apikey 表里某一行**同名** ——
-/// 那时后端会把这条会话自己的鉴权头原样送到**那一行的第三方上游**（`§3.1` 第 3 行）。
-/// ⇒ [`relay_endpoint_for`] 撞名就不注入（见那里第 ⑥ 步）。
-pub const BASE_ACCOUNT_SEGMENT: &str = "0";
-
-/// 这次拉起的中转问句（[`relay_endpoint_for`] 的入参）。
-#[derive(Debug, Clone, Copy)]
-pub struct RelayAsk<'a> {
-    /// apikey 表里的账号 id（`LaunchAccount::Named` 的目录名；账号 0 与没表态都是 `None`）。
-    pub account_id: Option<&'a str>,
-    /// `/t/` 那一格用的账号标签：`Named` ⇒ 同 `account_id`；账号 0 ⇒ [`BASE_ACCOUNT_SEGMENT`]；
-    /// 调用方没表态 ⇒ `None`（说不出是哪个号就不走 `/t/`）。
-    pub passthrough_label: Option<&'a str>,
-    /// apikey 表里有哪几行（凭据文件那一家的）。
-    pub rows: &'a [String],
-    /// 本机中转在不在跑。
-    pub running: bool,
-    /// resume 时那条会话的 sid（`<key>` 段）。
-    pub sid: Option<&'a str>,
-    /// 这次起的是哪一家 agent（适配器的 `id()`）。
-    pub agent: &'a str,
-    /// 🔴 **全量注入的开关**（`设计/20 §7` 步 4：「必须带开关，默认关；真机验过再默认开」）。
-    pub all_sessions: bool,
-}
-
-/// 「这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址」的**唯一判断口**（`设计/20 §3.2` 那张表的 monitor 半）。
-///
-/// | 情况 | 答 |
-/// |---|---|
-/// | ① apikey 表里有 (agent, 账号) 这一行 | 交给 [`apikey_endpoint_for`]：中转在跑 ⇒ `/s/`；没跑 ⇒ **拒绝起会话**（今天的行为，一字不改）|
-/// | ② 开关关着（**默认**） | `None` —— 逐字节与本件之前相同 |
-/// | ③ 中转没在跑 | `None` —— `/t/` 是「有它更好」，降级是照旧直连，**不是**拒绝（`§3.2` 第 4 行 ⚠）|
-/// | ④ 🔴 agent 没登记默认上游（codex） | `None` —— 见 [`AGENTS_WITH_DEFAULT_UPSTREAM`] |
-/// | ⑤ 说不出是哪个号 | `None` |
-/// | ⑥ 账号标签与 apikey 表里某一行同名 | `None`（见 [`BASE_ACCOUNT_SEGMENT`]）|
-/// | ⑦ 账号标签当不了路由段 | `None` —— 同 ③：为了「有它更好」不拒绝起会话 |
-/// | 其余 | `/t/<agent>/<账号>/<sid 或 nonce>` |
-///
-/// ⚠ **没做的那两行**（`§3.2` 第 5/6 行：用户自己设了 `ANTHROPIC_BASE_URL`）：本函数**不知道**
-/// 用户在 shell 或 `settings.json` 里有没有设它 —— 开关打开时，那种号的端点会被本注入盖掉（或盖不掉，
-/// 取决于 claude 自己的优先级，本仓零证据、`C7` 不许起真 claude 去量）。这是开关默认关的理由之一。
-pub fn relay_endpoint_for(ask: &RelayAsk<'_>) -> Result<Option<String>, String> {
-    // ① 上游选择先答。它答 `Some` 或 `Err` 就是终局 —— 「非它不可」那一格不许被下面的「有它更好」盖掉。
-    if let Some(u) = apikey_endpoint_for(ask.account_id, ask.rows, ask.running, ask.sid, ask.agent)?
-    {
-        return Ok(Some(u));
-    }
-    // ② ③
-    if !ask.all_sessions || !ask.running {
-        return Ok(None);
-    }
-    // ④ 🔴 codex 那一刀：没登记默认上游的 agent 一个字节都不注入。
-    if !AGENTS_WITH_DEFAULT_UPSTREAM.contains(&ask.agent) {
-        return Ok(None);
-    }
-    // ⑤
-    let Some(label) = ask.passthrough_label else {
-        return Ok(None);
-    };
-    // ⑥ 与 apikey 表撞名 ⇒ 后端 `/t/` 有行那一格会把这条会话自己的鉴权头送去那一行的上游。
-    if ask.agent == APIKEY_TABLE_AGENT && ask.rows.iter().any(|r| r == label) {
-        return Ok(None);
-    }
-    // ⑦
-    Ok(endpoint_in(RouteMode::Passthrough, ask.agent, label, ask.sid).ok())
 }
 
 #[cfg(test)]

@@ -25,6 +25,7 @@
 //! ack 之前零到多行 `{"stage":{…}}` → 恰好一行 ack → 之后按用法（〔SR1b〕`files` 是一问一答，读应答那一行用 [`reply_line`]）。
 //! 🔴 **老代理出声**：ack 的 `uses` 不含所请求的用法 ⇒ [`LinkError::TooOld`]，不去解后面那些字节。
 
+use crate::copy_table::copy_text;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 
@@ -106,19 +107,24 @@ pub enum LinkError {
 impl std::fmt::Display for LinkError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LinkError::Silent => {
-                f.write_str("拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）")
-            }
-            LinkError::Refused { why, .. } => write!(f, "拨号代理拨不通: {why}"),
-            LinkError::TooOld { wanted, v } => write!(
+            LinkError::Silent => f.write_str(&copy_text("rsSshLink.dial.silent", &[])),
+            LinkError::Refused { why, .. } => write!(
                 f,
-                "本机后端太旧（拨号应答 v{v}，不认 `{wanted}`）—— 重装本机后端后再试"
+                "{}",
+                copy_text("rsSshLink.dial.failed", &[("why", &why.to_string())])
             ),
-            LinkError::Garbled(s) => write!(f, "拨号代理回的不是约定的形状: {s}"),
-            LinkError::LineTooLong(n) => {
-                write!(f, "拨号代理回了一行 {n} 字节，超过上限 —— 拒收")
+            LinkError::TooOld { .. } => {
+                write!(f, "{}", copy_text("rsSshLink.dial.tooOld", &[]))
             }
-            LinkError::Io(e) => write!(f, "读拨号代理失败: {e}"),
+            LinkError::Garbled(_) => write!(f, "{}", copy_text("rsSshLink.dial.badShape", &[])),
+            LinkError::LineTooLong(_) => {
+                write!(f, "{}", copy_text("rsSshLink.dial.tooLong", &[]))
+            }
+            LinkError::Io(e) => write!(
+                f,
+                "{}",
+                copy_text("rsSshLink.dial.readFailed", &[("e", &e.to_string())])
+            ),
         }
     }
 }
@@ -159,19 +165,33 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
         let Some(line) = read_line_capped(r, cap).await? else {
             return Err(LinkError::Silent);
         };
-        let v: serde_json::Value = serde_json::from_str(&line)
-            .map_err(|e| LinkError::Garbled(format!("{e}（原文 {line:?}）")))?;
+        let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
+            LinkError::Garbled(copy_text(
+                "rsSshLink.parse.withLine",
+                &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
+            ))
+        })?;
         if let Some(stage) = v.get("stage") {
-            let stage: ConnectStage = serde_json::from_value(stage.clone())
-                .map_err(|e| LinkError::Garbled(format!("阶段行 {e}（原文 {line:?}）")))?;
+            let stage: ConnectStage = serde_json::from_value(stage.clone()).map_err(|e| {
+                LinkError::Garbled(copy_text(
+                    "rsSshLink.parse.stageLine",
+                    &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
+                ))
+            })?;
             on_stage(stage);
             continue;
         }
-        let ack: Ack = serde_json::from_value(v)
-            .map_err(|e| LinkError::Garbled(format!("ack {e}（原文 {line:?}）")))?;
+        let ack: Ack = serde_json::from_value(v).map_err(|e| {
+            LinkError::Garbled(copy_text(
+                "rsSshLink.parse.ackLine",
+                &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
+            ))
+        })?;
         if !ack.ok {
             return Err(LinkError::Refused {
-                why: ack.error.unwrap_or_else(|| "(代理没说原因)".to_string()),
+                why: ack
+                    .error
+                    .unwrap_or_else(|| copy_text("rsSshLink.dial.noReason", &[])),
                 fingerprint: ack.fingerprint,
             });
         }
@@ -190,7 +210,12 @@ pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Ca
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };
-    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}（原文 {line:?}）")))
+    serde_json::from_str(&line).map_err(|e| {
+        LinkError::Garbled(copy_text(
+            "rsSshLink.parse.withLine",
+            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
+        ))
+    })
 }
 
 /// `forward` 用法：下一条「接进了第 n 条连接」。管子关了 ⇒ `None`（转发收工了）。
@@ -201,12 +226,21 @@ pub async fn accepted<R: AsyncBufRead + Unpin>(
     let Some(line) = read_line_capped(r, cap).await? else {
         return Ok(None);
     };
-    let v: serde_json::Value = serde_json::from_str(&line)
-        .map_err(|e| LinkError::Garbled(format!("{e}（原文 {line:?}）")))?;
+    let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
+        LinkError::Garbled(copy_text(
+            "rsSshLink.parse.withLine",
+            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
+        ))
+    })?;
     v.get("accepted")
         .and_then(serde_json::Value::as_u64)
         .map(Some)
-        .ok_or_else(|| LinkError::Garbled(format!("转发计数行没有 accepted（原文 {line:?}）")))
+        .ok_or_else(|| {
+            LinkError::Garbled(copy_text(
+                "rsSshLink.parse.noAccepted",
+                &[("line", &format!("{:?}", line))],
+            ))
+        })
 }
 
 /// 〔SR1b〕`files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
@@ -217,7 +251,12 @@ pub async fn reply_line<R: AsyncBufRead + Unpin>(
     let Some(line) = read_line_capped(r, cap).await? else {
         return Err(LinkError::Silent);
     };
-    serde_json::from_str(&line).map_err(|e| LinkError::Garbled(format!("{e}（原文 {line:?}）")))
+    serde_json::from_str(&line).map_err(|e| {
+        LinkError::Garbled(copy_text(
+            "rsSshLink.parse.withLine",
+            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
+        ))
+    })
 }
 
 #[cfg(test)]

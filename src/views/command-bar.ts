@@ -24,6 +24,7 @@
  * 而 `P6d` 的件文件当时**根本不存在**，那句指令在账本里悬了一天没人执行。
  */
 import { dispatcher } from "../keybindings/registry";
+import { copyText } from "../copy-table";
 
 export interface Command {
   id: string;
@@ -88,8 +89,8 @@ export class CommandBarView {
     this.input = document.createElement("input");
     this.input.className = "command-bar-input";
     this.input.type = "text";
-    this.input.placeholder = "输入命令 / 会话名…（↑↓ 选择，回车执行，Esc 关闭）";
-    this.input.setAttribute("aria-label", "命令栏");
+    this.input.placeholder = copyText("commandBar.build.placeholder");
+    this.input.setAttribute("aria-label", copyText("commandBar.build.ariaLabel"));
     this.input.addEventListener("input", () => this.applyFilter());
     this.input.addEventListener("keydown", (e) => this.onInputKeydown(e));
     box.appendChild(this.input);
@@ -144,7 +145,7 @@ export class CommandBarView {
     if (this.filtered.length === 0) {
       const empty = document.createElement("div");
       empty.className = "command-bar-empty";
-      empty.textContent = "无匹配命令";
+      empty.textContent = copyText("commandBar.renderList.none");
       this.listEl.appendChild(empty);
       return;
     }

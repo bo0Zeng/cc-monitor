@@ -38,6 +38,7 @@ pub(crate) mod argv;
 pub(crate) mod plan;
 
 use argv::{Die, Early, Parsed};
+use copy_core::copy_text;
 use plan::{AccountTable, Env, Plan};
 
 /// 这套 CLI 的版本号。**行为变了就要动它** —— 消费者（`ccm_probe.rs`）靠
@@ -136,16 +137,17 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
 /// 要被原样拼进 `--print` 吐的那条 shell 里（`printf '<本串>' '<名字>'`），
 /// 由**那个 shell 里的 printf** 去解释它。写成真换行的话，`--print` 吐出来的命令会断成两行。
 /// 自己要打这句话时（`execute` 的撞名出口）记得把它译回真换行。
-pub(crate) const NAME_TAKEN_FMT: &str =
-    "ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n";
+/// 〔CP2c〕句子住文案表（`beCcm.nameTaken.say`，占位符 `{name}` 在这里填成 printf 的 `%s`）。
+pub(crate) static NAME_TAKEN_FMT: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.nameTaken.say", &[("name", "%s")]) + "\\n");
 
 /// 〔CC1〕容器里那条内层命令**自检没过**时的那句话。形状与理由同 [`NAME_TAKEN_FMT`]
 /// （`printf` 格式串，结尾是反斜杠 + n）。退出码 `4`（起不来）；它前面一行是自检那一趟**自己的原话**。
 ///
 /// 会话**留着不收**：pane 里有同一句原话，是用户看得见的唯一现场；收会话是破坏性动作，
 /// 有它自己的三道门（`§34`），不在这条路上顺手做。
-pub(crate) const SELF_CHECK_FAILED_FMT: &str =
-    "ccm: 会话 %s 里的命令起不来，原因见上一行。没有接进去，也没有登记；会话还在，可以进去看。\\n";
+pub(crate) static SELF_CHECK_FAILED_FMT: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.selfCheckFailed.say", &[("name", "%s")]) + "\\n");
 
 /// 窗口标题的合成式 —— **让 tmux 自己从 `@ccm_sid` 合成**，与 pane 标题彻底分开。
 ///
@@ -169,36 +171,9 @@ pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\
 
 /// `--help` 的正文。**每个认得的旗标都要在这里有一行** ——
 /// 由 `protocol_doc_guard` 那条受管例外的配套判据机检。
-pub(crate) const USAGE: &str = "\
-用法：ccm [new|resume <sid>|attach <会话名>] [选项…] [-- 透传给 agent 的参数…]
-
-  它就是后端本身的一次性模式：认 argv、做完就走。常驻模式是同一个二进制接流。
-
-动作（位置参数，必须在最前；不给就是 new）
-  new                起一个新会话
-  resume <sid>       接着某个会话往下跑
-  attach <会话名>    不起 agent，直接接回一个 tmux 会话
-
-选项
-  --resume <sid>     与位置形 `resume <sid>` 等价
-  --tmux[=<名>]      把这条命令送进一个 tmux 容器里跑；给名就用那个名
-  --tmux-base <基名> 以这个为底取名，撞了就退让（与 --tmux=<名> 互斥）
-  --tmux-size <W>xH  新建会话的宽高（只在容器路有意义）
-  --detach           建完就返回，不接进去（只在容器路有意义）
-  --bus-register     把新会话登记上 cc-bus（需要 --detach）
-  --bus-note <备注>  给上面那条登记带一行备注
-  --account <名>     用这个账号的 configDir（与 --base 互斥）
-  --base             显式不注入账号（issue #75 的逃生口）
-  --cwd <目录>       工作目录；不给就是**当前目录**（ccm 不替你挑，想跳自己写这个参数或自己写别名）
-  --agent <名>       claude | codex
-  --model <名>       export ANTHROPIC_MODEL
-  --launcher <命令>  覆盖默认启动器
-  --ccm-sid <sid>    带 --tmux：给会话打意图标 @ccm_sid_expect；不带：会话靠 CCM_RBIND_TOKEN 认
-  --print            不跑，吐出等价的一行 shell（平价预言机）
-  --ccm-probe        吐出 name= / version= / self= / capabilities= / agents= / build= 六行
-  --version          印版本号
-  --help, -h         这一段
-";
+/// 〔CP2c〕正文住文案表（`beCcm.usage.body`）。
+pub(crate) static USAGE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.usage.body", &[]));
 
 /// 这个 agent 的默认启动器。
 pub(crate) fn default_launcher(agent: &str) -> &'static str {
@@ -331,7 +306,7 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Parsed::Early(Early::Help) => {
-            print!("{USAGE}");
+            print!("{}", *USAGE);
             0
         }
         Parsed::Early(Early::Probe) => {
@@ -505,7 +480,7 @@ fn execute(plan: Plan) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
-        Plan::Attach { .. } => exec_shell(&plan::render(&plan, None), WHY_SHELL_ATTACH),
+        Plan::Attach { .. } => exec_shell(&plan::render(&plan, None), &WHY_SHELL_ATTACH),
         Plan::Container(c) => {
             // 🔴 〔`K-R96` 09-12〕**这里从前有一段退让** —— 它只发生在真跑这条路上，
             //    于是 `--print` 吐的名字与真跑起出来的名字**可以不一样**。
@@ -536,7 +511,13 @@ fn execute(plan: Plan) -> i32 {
                     return 3;
                 }
                 Err((code, msg)) => {
-                    eprintln!("ccm: 起不来 —— {code}: {msg}");
+                    eprintln!(
+                        "{}",
+                        copy_text(
+                            "beCcm.execute.launchFailed",
+                            &[("kind", &code), ("message", &msg)]
+                        )
+                    );
                     return 4;
                 }
             }
@@ -550,7 +531,7 @@ fn execute(plan: Plan) -> i32 {
             } else {
                 // 收尾片段以 ` && ` / `; ` 开头（它在 `--print` 里是接在建会话那段后面的）
                 // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
-                exec_shell(&format!(":{tail}"), WHY_SHELL_CONTAINER_TAIL)
+                exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL)
             }
         }
         Plan::Direct(d) => exec_direct(d, resolved(&plan).as_deref()),
@@ -589,19 +570,20 @@ fn launch_args(c: &plan::Container) -> serde_json::Value {
 ///（`D7`：失败要显式、归因要准确）。从前那条路只吐 `ccm: 起不来 —— program not found`，
 /// 于是真机读数（`真相源/106 §3.3`）**只能靠对比 `claude` 那趟 `EXIT=0` 反推**
 /// 「找不到的不是 `hostname`，是 `sh`」—— 错的归因比失败本身更贵。
-pub(crate) const WHY_SHELL_CCM_ENV: &str =
-    "CCM_ENV 非空，而它是一段任意 shell，只有 shell 解释得了";
+pub(crate) static WHY_SHELL_CCM_ENV: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.ccmEnv", &[]));
 /// 同上：后端答出了 `resume` 那一问。
-pub(crate) const WHY_SHELL_RESOLVED: &str =
-    "后端答出的是一整条命令串，要靠 shell 拆成词才跑得了（`set -f; exec $cmd`）";
+pub(crate) static WHY_SHELL_RESOLVED: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.resolved", &[]));
 /// 同上：codex 的 cc-bus 身份配方，**而且这一趟真在 tmux 里**。
-pub(crate) const WHY_SHELL_BUS_ID: &str =
-    "codex 的 cc-bus 身份配方要现问一次 tmux（`display-message -p '#S'`），而这一趟真在 tmux 里";
+pub(crate) static WHY_SHELL_BUS_ID: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.busId", &[]));
 /// 同上：`attach`。
-pub(crate) const WHY_SHELL_ATTACH: &str = "attach 的实现就是一条渲好的 `tmux attach` 命令串";
+pub(crate) static WHY_SHELL_ATTACH: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.attach", &[]));
 /// 同上：容器路的收尾片段。
-pub(crate) const WHY_SHELL_CONTAINER_TAIL: &str =
-    "容器路的收尾是一段自带节拍的 shell 串（兜底轮询 / attach / cc-bus 登记）";
+pub(crate) static WHY_SHELL_CONTAINER_TAIL: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.containerTail", &[]));
 
 /// 🔴 **`P19`：直路这一趟非得经 `sh -c` 吗** —— 这个判定**只有这一处住址**。
 ///
@@ -629,13 +611,13 @@ pub(crate) const WHY_SHELL_CONTAINER_TAIL: &str =
 /// ⇒ 在没有 `sh` 的机器上它们照旧做不到，只是从今天起**说得出口**（`no_shell:`）。
 fn needs_shell(d: &plan::Direct, resolved: Option<&str>) -> Option<&'static str> {
     if !d.ccm_env.is_empty() {
-        return Some(WHY_SHELL_CCM_ENV);
+        return Some(WHY_SHELL_CCM_ENV.as_str());
     }
     if resolved.is_some() {
-        return Some(WHY_SHELL_RESOLVED);
+        return Some(WHY_SHELL_RESOLVED.as_str());
     }
     if d.bus_id_recipe && d.inside_tmux {
-        return Some(WHY_SHELL_BUS_ID);
+        return Some(WHY_SHELL_BUS_ID.as_str());
     }
     None
 }
@@ -648,7 +630,10 @@ fn exec_shell(line: &str, why: &str) -> i32 {
     cmd.arg("-c").arg(line);
     exec_or_spawn(
         cmd,
-        &format!("{NO_SHELL}: 这一趟非得经 POSIX shell（sh -c）—— {why}"),
+        &format!(
+            "{NO_SHELL}: {}",
+            copy_text("beCcm.execShell.needsSh", &[("why", why)])
+        ),
     )
 }
 
@@ -664,11 +649,12 @@ pub(crate) const NO_SHELL: &str = "no_shell";
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
 /// 〔S5〕直路上给了 `--ccm-sid` 却没有令牌时那一句（stderr，**不报错、照常起**）。
-pub(crate) const DIRECT_SID_NO_CARRIER: &str = "ccm: 没带 --tmux 时 --ccm-sid 不打标；这个会话要靠环境变量 CCM_RBIND_TOKEN 认，而现在没有它 —— 会话照常起，但 monitor 切不到它的终端窗口";
+pub(crate) static DIRECT_SID_NO_CARRIER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcm.directSidNoCarrier.say", &[]));
 
 /// 直路上 `--ccm-sid` 那一格要不要出声（[`plan::DirectIdentity`]）。只有「无载体」出声。
 pub(crate) fn direct_identity_note(d: &plan::Direct) -> Option<&'static str> {
-    (d.identity == plan::DirectIdentity::NoCarrier).then_some(DIRECT_SID_NO_CARRIER)
+    (d.identity == plan::DirectIdentity::NoCarrier).then_some(DIRECT_SID_NO_CARRIER.as_str())
 }
 
 fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
@@ -693,14 +679,17 @@ fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
         std::env::set_var("ANTHROPIC_MODEL", &d.model);
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
-        return die(&format!("无法进入目录: {}", d.cwd));
+        return die(&copy_text(
+            "beCcm.execDirect.noCwd",
+            &[("cwd", &d.cwd.to_string())],
+        ));
     }
     let Some((prog, rest)) = d.argv.split_first() else {
-        return die("没有可执行的启动器");
+        return die(&copy_text("beCcm.execDirect.noLauncher", &[]));
     };
     let mut cmd = std::process::Command::new(prog);
     cmd.args(rest);
-    exec_or_spawn(cmd, &format!("起 '{prog}'"))
+    exec_or_spawn(cmd, &format!("'{prog}'"))
 }
 
 /// POSIX 上就地 `exec`（不多一层进程）；其余平台退成「起它 + 等它 + 透传退出码」。
@@ -718,7 +707,13 @@ fn exec_or_spawn(mut cmd: std::process::Command, subject: &str) -> i32 {
     {
         use std::os::unix::process::CommandExt;
         let e = cmd.exec();
-        eprintln!("ccm: 起不来 —— {subject}：{e}");
+        eprintln!(
+            "{}",
+            copy_text(
+                "beCcm.execOrSpawn.failed",
+                &[("subject", subject), ("e", &e.to_string())]
+            )
+        );
         return 4;
     }
     #[cfg(not(unix))]
@@ -726,7 +721,13 @@ fn exec_or_spawn(mut cmd: std::process::Command, subject: &str) -> i32 {
         match cmd.status() {
             Ok(s) => s.code().unwrap_or(1),
             Err(e) => {
-                eprintln!("ccm: 起不来 —— {subject}：{e}");
+                eprintln!(
+                    "{}",
+                    copy_text(
+                        "beCcm.execOrSpawn.failed",
+                        &[("subject", subject), ("e", &e.to_string())]
+                    )
+                );
                 4
             }
         }

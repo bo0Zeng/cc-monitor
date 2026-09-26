@@ -4152,6 +4152,13 @@ mod g6_dependency_signoff {
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
         ),
         (
+            "copy-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "〔CP2c〕对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
+             与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
             "gate-core",
             DEPS,
             MEASURED_CLEAN,
@@ -4250,6 +4257,12 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "relay-route-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "〔US1〕中转门牌：端口 · 钥匙文件相对路径两个 const ＋ 路由语法（拼 / 拆 / 段闸，纯字符串）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
         (
             "tokio",

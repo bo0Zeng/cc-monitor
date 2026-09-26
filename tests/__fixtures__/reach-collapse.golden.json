@@ -1,0 +1,132 @@
+{
+  "说明": [
+    "〔C4e · 第四波 4C〕F14 那条安全判定（「能证明一个字节都没到对端」才许换一条路重做）的两份实现对拍：",
+    "Rust 侧 tests/bridge/chan/webview_tests.rs 把 inbound 的每一种失败经 backend_route::layer_call_error 分层、按 webview 那一跳的线上形状序列化，连同 backend_route::route_call_error 判出的「可回落」（NoChannel）产出本表 == 本文件；",
+    "TS 侧 tests/tmux-control.vitest.ts 用 ipc/chan.ts::decodeFail 解每一行、ipc/chan-caller.ts::provablyNotSent 判 == 本表。"
+  ],
+  "rows": [
+    {
+      "case": "no_channel",
+      "fail": {
+        "err": {
+          "Hop": {
+            "idx": 1,
+            "tag": "open",
+            "reach": "NotSent",
+            "why": "Unreachable"
+          }
+        },
+        "body": []
+      },
+      "provablyNotSent": true
+    },
+    {
+      "case": "unsupported",
+      "fail": {
+        "err": "Unsupported",
+        "body": []
+      },
+      "provablyNotSent": true
+    },
+    {
+      "case": "too_many_pending",
+      "fail": {
+        "err": {
+          "Hop": {
+            "idx": 1,
+            "tag": "write",
+            "reach": "NotSent",
+            "why": "Overrun"
+          }
+        },
+        "body": []
+      },
+      "provablyNotSent": true
+    },
+    {
+      "case": "disconnected",
+      "fail": {
+        "err": {
+          "Hop": {
+            "idx": 1,
+            "tag": "read",
+            "reach": "Unknown",
+            "why": "Dropped"
+          }
+        },
+        "body": []
+      },
+      "provablyNotSent": false
+    },
+    {
+      "case": "timeout",
+      "fail": {
+        "err": {
+          "Hop": {
+            "idx": 1,
+            "tag": "wait",
+            "reach": "Unknown",
+            "why": "Overrun"
+          }
+        },
+        "body": []
+      },
+      "provablyNotSent": false
+    },
+    {
+      "case": "cancelled",
+      "fail": {
+        "err": {
+          "Ours": "Cancelled"
+        },
+        "body": []
+      },
+      "provablyNotSent": false
+    },
+    {
+      "case": "remote_refused",
+      "fail": {
+        "err": "Refused",
+        "body": [
+          123,
+          34,
+          99,
+          111,
+          100,
+          101,
+          34,
+          58,
+          34,
+          119,
+          114,
+          111,
+          110,
+          103,
+          95,
+          111,
+          119,
+          110,
+          101,
+          114,
+          34,
+          44,
+          34,
+          109,
+          101,
+          115,
+          115,
+          97,
+          103,
+          101,
+          34,
+          58,
+          34,
+          109,
+          34,
+          125
+        ]
+      },
+      "provablyNotSent": false
+    }
+  ]
+}

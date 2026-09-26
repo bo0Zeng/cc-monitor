@@ -593,9 +593,9 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
     //   `the_ts_fallback_renderer_now_stands_on_its_own_consumers`（消费者逐处见
     //   `TS_FALLBACK_KEEPERS`；**处数与「站不站在生产路上」都从源码派生，这里不写死**
     //   —— `K-R105` 09-13 把那两个字面量从全部散文副本里撤了，理由见那张表的头注）。
-    // ⚠ 而 **Rust 那棵树仍然必须是零** —— monitor 侧那条 `.call("launch")` 至今只发
-    //   `send-into` / `send-keys-raw`（`backend_launch::the_only_mode_this_channel_can_speak_is_send_into`
-    //   钉着它）。**两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
+    // ⚠ 而 **Rust 那棵树仍然必须是零** —— 〔C4e〕monitor 侧那条 `.call("launch")` 连同它的发送端迁到界面删了
+    //   （界面经 `src/tmux-control.ts` 只发 `send-into` / `send-keys-raw`，`tmux_backend_gate_guard` 那条「只经一处」钉着）。
+    //   **两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
     assert!(
         hits.is_empty(),
         "**Rust 生产段**开始发 `create-or-attach` 了（{hits:?}）—— **这多半是好事**：\n\
@@ -1011,9 +1011,13 @@ fn the_retired_premise_left_a_tombstone_that_is_still_on_the_board() {
 ///
 /// 上面那条不再数 `.call("launch")` 的处数了，于是「谁在发 launch」这件事少了一道账。
 /// 本条把它补回来，但量的是**对的东西**：走后端的 `send-keys` 语义
-/// （`send-into` / `send-keys-raw`）在生产段只许有**一个**产出点
-/// （`backend_send_keys::mode_for`）—— 多一处就是「同一个决策两份实现」的起点，
+/// （`send-into` / `send-keys-raw`）在生产段只许有**一个**产出点 —— 多一处就是「同一个决策两份实现」的起点，
 /// 而这个决策错了的后果是**把「打断当前回合」变成「提交用户排队的文本」**。
+///
+/// 〔C4e · 第四波 4C〕那个产出点从 monitor 的 `mode_for`（`backend_send_keys.rs`〔散文墓碑〕）搬到了界面
+/// `src/tmux-control.ts::sendKeys`（送键迁到界面，经通道直接说后端的 `launch`）⇒ 本条的 Rust 那一半翻成
+/// **零命中**（monitor 生产段一处都不许再有），「恰好一个家」那一半由
+/// `tmux_backend_gate_guard::tests::the_front_end_speaks_the_tmux_control_ops_only_through_one_module` 在 TS 那棵树上钉。
 #[test]
 fn the_send_keys_mode_names_have_exactly_one_production_home() {
     let raw = format!("\"send-keys-{}\"", "raw");
@@ -1041,11 +1045,10 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
             }
         }
     }
-    assert_eq!(
-        homes,
-        vec!["backend_send_keys.rs".to_string()],
-        "`send-keys-raw` 这个 mode 名的生产段落点不止一个（或搬走了）：{homes:?}\n\
-             它必须只有一个家（`backend_send_keys::mode_for`）—— 两处就会漂，\n\
+    assert!(
+        homes.is_empty(),
+        "`send-keys-raw` 这个 mode 名又出现在 monitor 生产段里了：{homes:?}\n\
+             〔C4e〕它今天只有一个家（界面 `src/tmux-control.ts::sendKeys`）—— monitor 里再长一处就是两份，\n\
              而这个决策漂了的后果是把 `Escape`（打断当前回合）当成「键入并提交」。"
     );
 }

@@ -51,6 +51,7 @@
 //!   在今天 256 KiB 的读上限下是几十微秒（`设计/60 §9 §四.3b` 那张表）。
 //!   而中间插一个字的 `String::replace_range` 是 O(全文) 的搬移（16 MiB 3.4 ms）。
 
+use crate::copy_table::copy_text;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
@@ -827,16 +828,20 @@ impl Doc {
         let w = self.why;
         let size = super::rows::human_size(w.total as u64);
         match (w.total_over(), w.line_over()) {
-            (true, true) => format!(
-                "大文件模式：全文 {size}，最长一行 {} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
-                w.longest_line
+            (true, true) => copy_text(
+                "rsFilewinBigfile.notice.both",
+                &[
+                    ("size", &size.to_string()),
+                    ("longestLine", &w.longest_line.to_string()),
+                ],
             ),
-            (true, false) => {
-                format!("大文件模式：全文 {size}。只排屏幕上的几行，长行不换行，可横向滚动。")
-            }
-            _ => format!(
-                "大文件模式：最长一行 {} 字节。只排屏幕上的几行，长行不换行，可横向滚动。",
-                w.longest_line
+            (true, false) => copy_text(
+                "rsFilewinBigfile.notice.size",
+                &[("size", &size.to_string())],
+            ),
+            _ => copy_text(
+                "rsFilewinBigfile.notice.longest",
+                &[("longestLine", &w.longest_line.to_string())],
             ),
         }
     }
@@ -1019,7 +1024,7 @@ impl Doc {
             //    标了也画在视口外，白排一次。
             if l.s0 < l.n && (l.s0 > 0 || l.s1 < l.n) {
                 let g = painter.layout_no_wrap(
-                    format!("这一行共 {} 字", l.n),
+                    copy_text("rsFilewinBigfile.paint.lineLen", &[("n", &l.n.to_string())]),
                     tag_font.clone(),
                     vis.weak_text_color(),
                 );
