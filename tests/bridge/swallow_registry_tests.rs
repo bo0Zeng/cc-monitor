@@ -194,6 +194,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/src/utils.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(stderr.as_bytes());", 1, Why::Diag, ""),
     ("src/panorama-engine/main.rs", "let _ = std::io::stdout().write_all(stdout.as_bytes());", 1, Why::Diag, ""),
+    // 〔VIS2 · 09-26〕`agent_home` 的可重入挂法（`rewatch_agent_home`，`设计/15 §4.7 S3`）：同上面三个目录那一族。
+    ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。
