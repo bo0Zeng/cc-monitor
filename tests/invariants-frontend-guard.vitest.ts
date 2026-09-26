@@ -232,7 +232,8 @@ describe("P21 ② 条 13：CSS portal 元素必须真挂 body", () => {
  * 那个审视动作**只发生在接入层的 `LS_KEYS` 旁边**。绕过去的 key 没人会想起来审。
  * ⇒ 这一格只许降。
  */
-const OFF_LEDGER_KEYS: readonly string[] = ["cc-monitor.boot-id", "cc-monitor.tab-bar-w"];
+// 〔CFG1 · 4D〕2 → 1：`cc-monitor.tab-bar-w` 进了 `LS_KEYS.tabBarWidth`（从 `main.ts` 直写收进 `tab-bar-width.ts`）。
+const OFF_LEDGER_KEYS: readonly string[] = ["cc-monitor.boot-id"];
 
 describe("P21 ③ 条 14：localStorage / IndexedDB key 必须前缀 `cc-monitor.`", () => {
   const KEYS = storageKeys(SOURCES);

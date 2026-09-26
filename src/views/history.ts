@@ -102,6 +102,7 @@ import {
 import type { Hit as SearchHit } from "../generated/Hit";
 import type { SearchResponse } from "../generated/SearchResponse";
 import type { SessionHits as SearchSessionHits } from "../generated/SessionHits";
+import { askConfirm, askText } from "../ask-dialog";
 
 interface SessionTreeNode {
   entry: HistorySessionEntry;
@@ -1587,6 +1588,8 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("star update failed:", err);
+      // 〔CFG1 · 4D〕从前只记日志：点了星标、什么都没变、也不说（E §3.3）。改名 / 隐藏同。
+      showActionFailureToast(copyText("history.star.failed"), String(err));
     }
   }
 
@@ -1594,7 +1597,7 @@ export class HistoryView {
     const e = ctx.entry;
     if (!e) return;
     const cur = e.customTitle ?? e.aiTitle ?? "";
-    const next = window.prompt(copyText("history.rename.prompt"), cur);
+    const next = await askText(copyText("history.rename.prompt"), { initial: cur });
     if (next === null) return;
     try {
       // 〔C4d〕清空传**空串**（缺格 / `null` = 不改 —— 从前这里传 `null`，而 monitor 那份 patch 同样把 `null` 读成「不改」，
@@ -1604,6 +1607,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("rename failed:", err);
+      showActionFailureToast(copyText("history.rename.failed"), String(err));
     }
   }
 
@@ -1622,6 +1626,7 @@ export class HistoryView {
       this.renderList();
     } catch (err) {
       console.warn("hide toggle failed:", err);
+      showActionFailureToast(copyText("history.hide.failed"), String(err));
     }
   }
 
@@ -1738,15 +1743,16 @@ export class HistoryView {
     // 〔FW1 · 第四波 4D · 主会话裁 D-e〕删之前看活不活：活着 ⇒ 多问一句（Claude 还往旧文件里写，之后 resume 不到）；
     //   说不清（这条路答不出，`isLive === null`）⇒ 也多问一句（09-25 裁）。确定不活 ⇒ 照原来那一问 / 两问。
     const liveness = deleteLiveness(e.isLive, this.liveInTabs(e.sessionId));
-    if (liveness === "live" && !window.confirm(copyText("sessionState.deleteLive.confirm", { label }))) return;
-    if (liveness === "unknown" && !window.confirm(copyText("sessionState.deleteUnknown.confirm", { label }))) return;
+    //   〔W5-UI 之后〕问一律走应用内对话框（`askConfirm`；原生 `confirm` 在真 app 里恒真、从来不拦）。
+    if (liveness === "live" && !(await askConfirm(copyText("sessionState.deleteLive.confirm", { label })))) return;
+    if (liveness === "unknown" && !(await askConfirm(copyText("sessionState.deleteUnknown.confirm", { label })))) return;
     if (e.origin) {
       // 远端删除更危险（删的是别人机器上的文件）→ 二次确认。〔RW1〕删那一下由那台机器的后端做。
-      const ok1 = window.confirm(
+      const ok1 = await askConfirm(
         copyText("history.delete.confirmRemote", { label, origin: e.origin }),
       );
       if (!ok1) return;
-      const ok2 = window.confirm(
+      const ok2 = await askConfirm(
         copyText("history.delete.confirmRemoteAgain", { origin: e.origin, label }),
       );
       if (!ok2) return;
@@ -1762,7 +1768,7 @@ export class HistoryView {
         return;
       }
     } else {
-      const ok = window.confirm(
+      const ok = await askConfirm(
         copyText("history.delete.confirmLocal", { label }),
       );
       if (!ok) return;
