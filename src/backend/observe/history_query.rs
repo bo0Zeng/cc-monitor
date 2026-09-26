@@ -21,6 +21,7 @@
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
+use crate::observe::fence::fence_under_projects;
 use crate::observe::fs::mtime_ms;
 use copy_core::copy_text;
 use std::io::Write;
@@ -221,40 +222,10 @@ pub(crate) fn list_sessions_into(
     Ok(())
 }
 
-/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容。
-/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
-/// **围栏：全文件唯一的一处 `canonicalize` + 前缀校验**〔audit-0805 08-06，定框 E3〕。
-///
-/// # 为什么抽出来
-///
-/// 此前这套「canonicalize root → canonicalize 目标 → `starts_with(root)`」有**两份**：
-/// [`validate_session_path`]（三条 read 路共用）与 `list_sessions` 里的**内联副本**，
-/// 而那份副本的注释逐字写着「与 `read_session` 对齐」—— **靠手工对齐的两份**。
-/// 谁强化了一边（比如将来要挡一种新的逃逸形态），另一边不会跟。
-/// ⇒ E3：定唯一权威源，其余派生。两边各自的附加检查留在各自那里
-///（`.jsonl` 后缀属文件路；`/` `\` `..` 预检属目录名）。
-///
-/// `candidate` 相对路径按 root 拼；绝对路径直接用。
-fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
-    let root = projects_root(agent_home)
-        .canonicalize()
-        .map_err(|e| format!("projects root unavailable: {e}"))?;
-    let joined = if candidate.is_absolute() {
-        candidate.to_path_buf()
-    } else {
-        root.join(candidate)
-    };
-    let target = joined
-        .canonicalize()
-        .map_err(|e| format!("path unavailable: {e}"))?;
-    if !target.starts_with(&root) {
-        return Err(format!(
-            "refusing to access outside projects dir: {}",
-            target.display()
-        ));
-    }
-    Ok(target)
-}
+// **围栏住 `observe/fence.rs`**〔TL3 · 审计 F 🔴-6 · `设计/15 §4.2` / `§5.3 C5`〕：这里原来是具名围栏
+// `fence_under_projects` 的本体（「全文件唯一的一处 `canonicalize` + 前缀校验」，audit-0805 08-06 定框 E3 从
+// `list_sessions` 的内联副本收成一份）。E3 只收到了**本文件**，`search_query` 里还有一份内联的（头注逐字「复刻 history_query」）
+// ⇒ 那道围栏连名字搬去 observe 内部唯一的家，本文件三条按路径读的路照旧调它（`use` 在文件头），报错原话逐字不变。
 
 /// P7c-1：列一个父会话的 **subagent 候选**。
 ///
@@ -369,6 +340,8 @@ fn validate_session_path(
     Ok(target)
 }
 
+/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容（〔TL3〕这两行原先挂在围栏头上，随围栏搬家挪回它说的那个函数）。
+/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
 fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;

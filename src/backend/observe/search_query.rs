@@ -16,13 +16,15 @@
 //! backend 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
 //! 不是**口径**的差别。
 //!
-//! 安全：路径严格限 `<claude_dir>/projects/`（canonicalize 前缀校验，复刻 history_query）；
+//! 安全：路径严格限 `<claude_dir>/projects/`（〔TL3 · 审计 F 🔴-6〕经 observe 唯一那道围栏 `observe/fence.rs::Fence`；
+//! 先前这里内联复刻了一份 history_query 的，`设计/15 §4.2` 点名的第二个家）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 // U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::agents::claudecode::paths::projects_root;
+use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use search_core::{SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use serde_json::Value;
@@ -136,12 +138,10 @@ fn search(
     if q.is_empty() || !root.is_dir() {
         return Ok(()); // 空查询 / 无 projects → 无输出（exit 0）
     }
-    // 路径白名单根（canonicalize；read 的文件必须在其下，挡 symlink 逃逸）。
-    let canon_root = root
-        .canonicalize()
-        .map_err(|e| format!("projects root unavailable: {e}"))?;
+    // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`observe/fence.rs`）。
+    let fence = Fence::projects(agent_home)?;
 
-    let files: Vec<PathBuf> = WalkDir::new(&canon_root)
+    let files: Vec<PathBuf> = WalkDir::new(fence.root())
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
@@ -168,11 +168,8 @@ fn search(
 
     let mut budget = SnippetBudget::new(opts.limit);
     for (path, updated_at) in files {
-        // 防 symlink 逃逸：canonicalize 后仍须在 projects/ 下。
-        let Ok(canon) = path.canonicalize() else {
-            continue;
-        };
-        if !canon.starts_with(&canon_root) {
+        // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
+        if fence.admit(&path).is_err() {
             continue;
         }
         if let Some(session) = build_session_hits(&path, &q, opts, &mut budget, updated_at) {
