@@ -3562,11 +3562,6 @@
       "zh": "后端生成不了启动命令：{e}",
       "args": ["e"]
     },
-    "remoteLaunchRun.token.badShape": {
-      "kind": "error",
-      "zh": "生成的启动令牌格式不对：{token}",
-      "args": ["token"]
-    },
     "remoteLaunchRun.token.noRandom": {
       "kind": "error",
       "zh": "生成不了启动令牌：这个环境没有安全随机数。",
@@ -4601,11 +4596,6 @@
       "kind": "body",
       "zh": "—",
       "args": []
-    },
-    "launchDimensions.bad.rbindToken": {
-      "kind": "error",
-      "zh": "非法 CCM_RBIND_TOKEN（要 32 位十六进制），不能拼进命令：{value}",
-      "args": ["value"]
     },
     "launchMenu.account.base": {
       "kind": "action",
