@@ -134,6 +134,7 @@ const UNIT: &[&str] = &[
     "tests/cards/diff.test.ts",
     "tests/cards/file-input.vitest.ts",
     "tests/cards/interactive.vitest.ts",
+    "tests/cards/json-prefix.vitest.ts", // 〔W5-RENDER R2〕firstLineOf / jsonPrefix 与原式对拍（纯函数）
     "tests/ccm-probe.vitest.ts",
     "tests/config-fields.vitest.ts",
     "tests/e2e-probe.vitest.ts",

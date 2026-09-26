@@ -33,7 +33,7 @@ import {
 } from "./interactive";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
-import { formatTimestampShort } from "../format";
+import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
 import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
@@ -1052,12 +1052,11 @@ function renderResultContent(content: unknown): string {
   return prettyJson(content);
 }
 
-/** 第一行非空预览，截到 max 字符 */
+/** 第一行非空预览，截到 max 字符（〔W5-RENDER R2 · `设计/17 §2.5`〕不再整条 `split`，见 `format.ts::firstLineOf`） */
 function firstLinePreview(text: string, max: number): string {
-  const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
-  const trimmed = firstLine.trim();
-  if (trimmed.length <= max) return trimmed;
-  return copyText("cards.truncate.ellipsis", { text: trimmed.slice(0, max - 1) });
+  const { line, more } = firstLineOf(text, max);
+  if (!more) return line;
+  return copyText("cards.truncate.ellipsis", { text: line.slice(0, max - 1) });
 }
 
 /** 从 Bash 失败 tool_result 文本里抠 exit code（Claude Code 会把它写成 "Exit code N" 一行） */
@@ -1181,7 +1180,9 @@ function summarizeInput(input: unknown): string {
   if (input === null || input === undefined) return "";
   if (typeof input === "string") return truncate(input, 60);
   try {
-    return truncate(JSON.stringify(input), 60);
+    // 〔W5-RENDER R2 · `设计/17 §2.5`〕只序列化到够 61 个字为止（`format.ts::jsonPrefix`），
+    // 结果逐字等于原来的 `truncate(JSON.stringify(input), 60)`；Write 一类 617 KB 的输入不再整份序列化。
+    return truncate(jsonPrefix(input, 60) as string, 60);
   } catch {
     return "";
   }
