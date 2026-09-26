@@ -451,6 +451,8 @@ const SCAN: &[&str] = &[
     "tests/launch-tmux-outer-golden.vitest.ts",
     "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
     "tests/liveness-process-names-parity.vitest.ts",
+    // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/tabs.ts` 与 `src/**/*.ts` 的 AST）。
+    "tests/online-bypass-ledger.vitest.ts",
     // 〔TL3〕「是不是本机」只在 `src/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
     "tests/origin-single-home.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
