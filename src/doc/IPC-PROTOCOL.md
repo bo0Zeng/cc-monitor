@@ -635,52 +635,41 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 
 错误码（整条失败，一条都还没发）：`invalid_args`（`text` 缺 / 空）· `not_installed` · `timed_out` · `failed`（列名单那一步）。
 
-#### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13）
+#### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13；〔SH1 · V136〕09-26 改读 cc-bus 的机器可读形）
 
 ```text
 → {"id":"B4","cmd":"bus-state","args":{}}
 ← {"kind":"reply","id":"B4","ok":true,"data":{
-     "agents":[{"id":"proj_cc","target":"proj_cc:0.0","unread":2,"live":true,"ccm_sid":"1a2b3c4d"}],
-     "spawned":[{"id":"proj_cc","live":true,"dir":"/home/user/proj","task":"跑门禁"}]}}
+     "agents":[{"id":"proj_cc","target":"proj_cc:0.0","registered_at":"2026-09-26T10:00:00+08:00","unread":2,"live":true,"ccm_sid":"1a2b3c4d"}],
+     "spawned":[{"id":"proj_cc","dir":"/home/user/proj","spawned_at":"2026-09-26T09:59:58+08:00","task":"跑门禁","live":true}],
+     "skipped":1}}
 ```
 
-**入参：无**（不读 stdin —— 与 `bus-list` 同一条纪律：声明无输入的命令必须秒回）。
+**入参：无**（不读 stdin —— 与 `bus-list` 同一条纪律：声明无输入的命令必须秒回）。转调 `cc-list --tsv` ＋ `cc-agents --tsv`
+（cc-bus 的机器可读形：首行形状标记、末行坏行数；**后端仍不读 cc-bus 的任何文件**）。
 
-回值两半：
+- `agents` —— 名册：`id` · `target`（登记的 pane 地址）· `registered_at`（登记时间，cc-bus 原样）· `unread` · `live` · `ccm_sid`（后两格与 `bus-list` 同一套：对身份空间对账，「登记 ≠ 在线」）。
+- `spawned` —— `cc-spawn` 派生过的会话：`id` · `dir` · `spawned_at` · `task`（余下全部，含 TAB）· `live`（三态：`true` / `false` / `null` = 核不了，**不是**「不在」）。
+- `skipped` —— 两张表里读不懂的行数（cc-bus 数的 ＋ 本侧 id 形状判定拒掉的，`INVARIANTS §47`）。真空行不算。
 
-- `agents` —— **与 `bus-list` 逐字同一份**（同一个实现，不是长得像）：
-  `id` · `target` · `unread` · `live` · `ccm_sid`，语义见上面 `bus-list` 那一小节。
-- `spawned` —— `cc-spawn` **派生**过的会话（区别于手工起的）：
-  `id`（总线身份）· `live`（三态，见下）· `dir`（那个 agent 的工作目录）·
-  `task`（spawn 时给的初始任务，自由文本）。
+★ 两半在**同一条命令**里回：两份名单互相引用（判派生会话活不活要回名册借 pane pid），分两次取是两个时刻。
+**要么两半都答，要么明说失败**，不回看上去完整的半份。老 cc-bus（不认 `--tsv`，没有首行标记）⇒ `failed`，话里说「先重新部署 cc-bus」，**不猜着按人读表解**；末行缺 ⇒ `failed`（半份）。
 
-★ **为什么是一条命令而不是两条**：这两份名单**互相引用** —— 判一个 spawn 记录还活不活着，
-要回总线名册借「登记时记下的 pane 根进程 pid」去核身份。分两条命令取回来的是**两个时刻**的两份，
-在调用方拼起来会拼出一份**盘上从没存在过**的状态。
+错误码：`not_installed`（找不到 `cc-list` / `cc-agents`，消息里带查过哪些位置）· `timed_out` · `failed`。**只读**：两条被调命令都不写任何文件。
 
-⚠ **`spawned` 的 `live` 与 `bus-list` 的 `live` 是同一套三态**：`true` / `false` / `null`。
-`null` = **核不了**（那份 spawn 台账没有身份列，借不到 pid），**不是**「不在」。
-把「核不了」并进「活着」是这一族全部事故的共同起点（会话名被重用是常态，
-实测后果是敲门文字打进**陌生占用者**的屏幕）。
+#### `bus-inbox`：只读看一个 agent 收件箱的尾巴（SH1 · V136，09-26）
 
-⚠ **一次回全的另一半含义：要么两半都答，要么明说失败。** 任何一半取不到都回错误，
-**不回一份看上去完整的半份** —— `spawned` 是空数组还是「问不到」，在调用方那儿长得一模一样。
+```text
+→ {"id":"B6","cmd":"bus-inbox","args":{"id":"proj_cc","lines":200}}
+← {"kind":"reply","id":"B6","ok":true,"data":{"messages":[{"from":"peer_cc","ts":"2026-09-26T10:01:00+08:00","text":"……","class":""}],"skipped":0,"truncated":false}}
+```
 
-🔴 **它今天答不出的三样，如实登记**（下游要用就得先给 cc-bus 加一条机器可读的输出，
-**不是**绕到它背后去读那两份 `.tsv`）：
+入参：`id`（必给；交给 `cc-log` 之前先过 `bus_id_ok`，不过 ⇒ `bad_id`、一个进程都不起）· `lines`（可缺席，1..=2000，缺省 200）。
+转调 `cc-log <id> -n <lines>`：**不推已读位置、不写任何状态**（与 `cc-peek` 同一条零写面；消费性读只走 `cc-peek` / `cc-commit`，`设计/95 §3.3`）。
+回值：`messages`（逐行解析，只取 `from` · `ts` · `text` · `class`；`from` 与 `text` 都空的行不算消息）· `skipped`（读不懂的行数）·
+`truncated`（回显超过 4 MiB ⇒ 保尾，`true`）。老 cc-bus（没有 `cc-log` 或没有首行标记）⇒ `not_installed` / `failed`，话里说「先重新部署 cc-bus」。
 
-| 拿不到的 | 为什么 |
-|---|---|
-| 登记时间（`agents` 那半） | `cc-list` 不打印它 |
-| spawn 时间（`spawned` 那半） | `cc-agents` 读了台账第 3 列却不打印它 |
-| 坏行计数 | 两条命令都**静默跳过**读不懂的行，数不出来 |
-
-⚠ 还有一处**认不准**：`cc-agents` 的输出是定宽 `printf` 的表，列间没有唯一分隔符 ⇒
-**目录名里含空格时**，`dir` 只取到第一段、余下的并进 `task`。`id` 与 `live` 两列不受影响
-（前者过 `[A-Za-z0-9_-]` 白名单、后者是三个固定字面量之一）。
-
-错误码：`not_installed`（找不到 `cc-list` / `cc-agents`，消息里带查过哪些位置）·
-`timed_out` · `failed`。**只读**：两条被调命令都不写任何文件。
+错误码：`invalid_args`（缺 `id` / `lines` 越界 / `cc-log` 拒了参数）· `bad_id` · `not_installed` · `timed_out` · `failed`。
 
 #### `bus-spawn`：派生一个协作 agent（BS1b，09-24）
 
@@ -2759,6 +2748,8 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 **LOC1a 追加三条（09-25）**：`--acct-iso-status` · `--acct-iso-shellinit`（不读 stdin；名字与退役的 argv 形同名，形状换成信封）·
 `--session-fork`（读 stdin）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
+
+**SH1 追加一条（09-26）**：`--bus-inbox` —— 只读看一个 agent 收件箱的尾巴（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{id, lines?}`）。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。

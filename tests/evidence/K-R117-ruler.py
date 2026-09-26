@@ -194,7 +194,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   **不往任何机器装东西**（「装到这台」要用户点，走 ③ 那几条的路）⇒ 不是装口。
     ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
-    ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
+    # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
+    #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
     # 〔墓碑 · 第四波 4D HX2〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),

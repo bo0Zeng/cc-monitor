@@ -370,6 +370,18 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
          ⚠ monitor 自己**另有**一处问它（本机任务 watcher，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那是推送，不是替界面转",
     ),
+    // 〔SH1 · V136〕驾驶舱读面两条：后端转调 cc-bus 新加的机器可读读命令、出成品，界面 `cc-bus-control.ts` 按形状收；
+    //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。
+    (
+        "bus-state",
+        "后端出成品 `{agents, spawned, skipped}`（`cc-list --tsv` ＋ `cc-agents --tsv`：登记时间 · 派生时间 · 坏行数），\
+         界面 `cc-bus-control.ts::decodeState` 按形状收（金样 `cc-bus-read.golden.json`）",
+    ),
+    (
+        "bus-inbox",
+        "新帧命令：后端转调只读的 `cc-log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
+         界面 `cc-bus-control.ts::decodeInbox` 按形状收",
+    ),
 ];
 
 /// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。

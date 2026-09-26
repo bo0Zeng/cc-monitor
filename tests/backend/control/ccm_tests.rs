@@ -904,17 +904,24 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
         .output()
         .expect("sh 不可执行");
     let real = String::from_utf8_lossy(&real.stdout).trim().to_string();
-    assert!(!real.is_empty(), "找不到 tmux —— 本测试要求环境有 tmux（刻意不静默跳过）");
+    assert!(
+        !real.is_empty(),
+        "找不到 tmux —— 本测试要求环境有 tmux（刻意不静默跳过）"
+    );
     let shim = dir.join("shim").join("tmux");
     std::fs::write(
         &shim,
-        format!("#!/bin/sh\nunset TMUX\nexec '{real}' -S '{}' \"$@\"\n", sock.display()),
+        format!(
+            "#!/bin/sh\nunset TMUX\nexec '{real}' -S '{}' \"$@\"\n",
+            sock.display()
+        ),
     )
     .expect("写 shim");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).expect("chmod shim");
+        std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod shim");
     }
     let name = "u8甲乙";
     let script = format!(
@@ -937,8 +944,20 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
     };
     let path_kv = format!("PATH={path}");
     let out = tmux(&[
-        "-f", "/dev/null", "new-session", "-d", "-s", name, "env", "LC_ALL=C", "LANG=C",
-        "LC_CTYPE=C", &path_kv, "sh", "-c", &script,
+        "-f",
+        "/dev/null",
+        "new-session",
+        "-d",
+        "-s",
+        name,
+        "env",
+        "LC_ALL=C",
+        "LANG=C",
+        "LC_CTYPE=C",
+        &path_kv,
+        "sh",
+        "-c",
+        &script,
     ]);
     assert!(
         out.status.success(),

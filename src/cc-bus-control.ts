@@ -348,3 +348,118 @@ export async function broadcast(origin: Origin, text: string): Promise<string> {
   const v = await settle(origin, "bus-broadcast", chan.call(origin, "bus-broadcast", payload, budget), broadcastRefusals());
   return saidOfBroadcast(origin, v);
 }
+
+// ─── 驾驶舱读面（`bus-state` · `bus-inbox`）〔SH1 · V136〕───
+// 后端转调 cc-bus 新加的机器可读读命令（`cc-list --tsv` · `cc-agents --tsv` · `cc-log`），出成品；这里按形状严格收
+// （金样 `tests/__fixtures__/cc-bus-read.golden.json`），monitor 那一整套 shell 读删了。
+
+const READ_BUDGET_MS = 30_000;
+
+/** 名册一行：`live` / `ccm_sid` 与 `bus-list` 同一套（对身份空间对账，「登记 ≠ 在线」）。 */
+export interface BusRosterRow {
+  id: string;
+  target: string;
+  registered_at: string;
+  unread: number;
+  live: boolean | null;
+  ccm_sid: string | null;
+}
+
+/** 派生台账一行：`live` 三态，`null` = 核不了（不是不在）。 */
+export interface BusSpawnedRow {
+  id: string;
+  dir: string;
+  spawned_at: string;
+  task: string;
+  live: boolean | null;
+}
+
+export interface BusState {
+  agents: BusRosterRow[];
+  spawned: BusSpawnedRow[];
+  skipped: number;
+}
+
+export interface BusMessage {
+  from: string;
+  ts: string;
+  text: string;
+  class: string;
+}
+
+export interface BusInbox {
+  messages: BusMessage[];
+  skipped: number;
+  truncated: boolean;
+}
+
+const str = (x: unknown): x is string => typeof x === "string";
+const tri = (x: unknown): x is boolean | null => x === null || typeof x === "boolean";
+
+/** `bus-state` 的成品 ⇒ 名册 ＋ 台账 ＋ 坏行数。形状不对 ⇒ 抛（「两端契约对不上」，不猜）。 */
+export function decodeState(origin: Origin, v: unknown): BusState {
+  if (!isObj(v) || !exactKeys(v, ["agents", "spawned", "skipped"]) || !Array.isArray(v.agents) || !Array.isArray(v.spawned) || typeof v.skipped !== "number") {
+    throw unreadable(origin, "bus-state", "is not exactly {agents, spawned, skipped}");
+  }
+  const agents = v.agents.map((a): BusRosterRow => {
+    if (!isObj(a) || !exactKeys(a, ["id", "target", "registered_at", "unread", "live", "ccm_sid"]) || !str(a.id) || !str(a.target) || !str(a.registered_at) || typeof a.unread !== "number" || !tri(a.live) || !(a.ccm_sid === null || str(a.ccm_sid))) {
+      throw unreadable(origin, "bus-state", "has a roster row that is not the six fields");
+    }
+    return { id: a.id, target: a.target, registered_at: a.registered_at, unread: a.unread, live: a.live, ccm_sid: a.ccm_sid };
+  });
+  const spawned = v.spawned.map((s): BusSpawnedRow => {
+    if (!isObj(s) || !exactKeys(s, ["id", "dir", "spawned_at", "task", "live"]) || !str(s.id) || !str(s.dir) || !str(s.spawned_at) || !str(s.task) || !tri(s.live)) {
+      throw unreadable(origin, "bus-state", "has a spawned row that is not the five fields");
+    }
+    return { id: s.id, dir: s.dir, spawned_at: s.spawned_at, task: s.task, live: s.live };
+  });
+  return { agents, spawned, skipped: v.skipped };
+}
+
+/** `bus-inbox` 的成品 ⇒ 消息 ＋ 坏行数 ＋ 截没截。形状不对 ⇒ 抛。 */
+export function decodeInbox(origin: Origin, v: unknown): BusInbox {
+  if (!isObj(v) || !exactKeys(v, ["messages", "skipped", "truncated"]) || !Array.isArray(v.messages) || typeof v.skipped !== "number" || typeof v.truncated !== "boolean") {
+    throw unreadable(origin, "bus-inbox", "is not exactly {messages, skipped, truncated}");
+  }
+  const messages = v.messages.map((m): BusMessage => {
+    if (!isObj(m) || !exactKeys(m, ["from", "ts", "text", "class"]) || !str(m.from) || !str(m.ts) || !str(m.text) || !str(m.class)) {
+      throw unreadable(origin, "bus-inbox", "has a message that is not the four fields");
+    }
+    return { from: m.from, ts: m.ts, text: m.text, class: m.class };
+  });
+  return { messages, skipped: v.skipped, truncated: v.truncated };
+}
+
+function readRefusals(): Refusals {
+  return {
+    byCode(code, detail) {
+      switch (code) {
+        case "not_installed":
+          return copyText("ccBus.read.notInstalled", { detail });
+        case "timed_out":
+          return copyText("ccBus.read.timedOut", { detail });
+        case "bad_id":
+          return copyText("ccBus.read.badId", { detail });
+        default:
+          return copyText("ccBus.read.otherCode", { code, detail });
+      }
+    },
+    noReason: () => copyText("ccBus.read.noReason"),
+  };
+}
+
+/** 读 `origin` 那台的名册 ＋ 派生台账（登记时间 · 派生时间 · 坏行数）。失败 ⇒ 抛 [`ControlError`]（读不到 ≠ 一个都没有）。 */
+export async function readState(origin: Origin): Promise<BusState> {
+  const payload = jsonBody({});
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const v = await settle(origin, "bus-state", chan.call(origin, "bus-state", payload, budget), readRefusals());
+  return decodeState(origin, v);
+}
+
+/** 只读看 `origin` 上 agent `id` 收件箱的尾巴（不推已读位置）。失败 ⇒ 抛 [`ControlError`]。 */
+export async function readInbox(origin: Origin, id: string): Promise<BusInbox> {
+  const payload = jsonBody({ id });
+  const budget = budgetWithin(READ_BUDGET_MS);
+  const v = await settle(origin, "bus-inbox", chan.call(origin, "bus-inbox", payload, budget), readRefusals());
+  return decodeInbox(origin, v);
+}

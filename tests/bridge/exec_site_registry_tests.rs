@@ -34,7 +34,7 @@ enum Origin {
 /// `(文件, 函数, 来历, 说法)`。**默认拒绝**：人群从源码派生，没登记的当场红。
 const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // ── 整条命令是常量/无插值字面量
-    ("cc_bus.rs", "fetch_remote_cc_bus", Origin::Const, "`CC_BUS_CAT_CMD`：读两张 tsv，零插值"),
+    // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
     ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", Origin::Const, "`REMOTE_HOOKS_CMD`：只读探测"),
     ("mcp.rs", "fetch_remote_claude_json", Origin::Const, "`CMD`：读远端 ~/.claude.json"),
     ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
@@ -74,7 +74,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
           本函数不吃自由文本 —— 归 Quoted 是因为它在函数里拼，机检只要求「拼的地方要么有引用、要么插的是常量」"),
     // ── 只转发，不构造（命令来自调用方）
     ("ssh_source.rs", "connect_and_exec_cmd", Origin::PassThrough, "★ 这是原语**自己的定义**，不是调用点"),
-    ("cc_bus.rs", "exec_read", Origin::PassThrough, "`cmd: &str` 入参；真来历在三个调用方（inbox/send/spawn，各走 build_*_cmd）"),
+    // 〔SH1 · V136〕`cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
     ("acct_iso_deploy.rs", "exec_collect", Origin::PassThrough, "`cmd: &str` 入参；来历在调用方"),
 ];
 
@@ -187,7 +187,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
-        found.len() >= 10,
+        // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8。
+        found.len() >= 8,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
@@ -340,10 +341,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "探那台交互 shell 的 PATH 上的 `ccm`：后端进程答不了交互 shell 的 PATH；件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己（hello）"),
     ("tmux.rs", "list_remote_tmux", StillShell::Pending("后端新帧命令 `tmux-list`（本路未加：后端今天只推原始 `tmux ls` 行做对账）"),
      "列那台 tmux 会话（attach 项 · 铸名避让）：换要后端长一条具名读命令，与 FE1 的铸名收口同一个消费者，列给主会话排"),
-    ("cc_bus.rs", "fetch_remote_cc_bus", StillShell::Pending("cc-bus 读面（件 E：要主会话拍——给 cc-bus 加机器可读的读命令，写区外）"),
-     "读那台 `agents.tsv` / `spawned.tsv`：`bus-state` 答不出登记时间 / spawn 时间 / 坏行数，`95 §3.3` 不许后端读 cc-bus 的文件"),
-    ("cc_bus.rs", "exec_read", StillShell::Pending("cc-bus 读面（件 E，同上）"),
-     "`tail` 那台收件箱：cc-bus 没有「只读看尾巴」的命令（`cc-peek` 只看未读、带令牌语义）"),
+    // 〔SH1 · V136〕`cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。
 ];
 
 fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {

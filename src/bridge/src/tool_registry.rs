@@ -72,7 +72,7 @@
 //! 与既有的 `ccm_probe::CcmProbeResult` **同形**、零适配、零生产消费者，
 //! 而且 `version: String` 比对方的 `Option<String>` 还丢了「取不到」这一档。
 //! 我原先把它当作「机制留各家、结果统一」的落点——**发明第二个同形结构不是统一，
-//! 是重复**。按我自己这一轮的尺子（`build_online_cmd` 零调用点被我判为**阻塞**、
+//! 是重复**。按我自己这一轮的尺子（`build_online_cmd`〔散文墓碑〕零调用点被我判为**阻塞**、
 //! `WriteVerdict::is_ok` 只有测试在用就删掉），它该删。统一的结果类型**已经存在**，
 //! 就是 `CcmProbeResult`；T02 真要消费探测结果时直接用它（不够就给它加字段），
 //! 而不是在注册表里再造一个。
@@ -1395,16 +1395,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
         site: "launch.rs::ssh_client_available",
     },
-    UnmanagedEnv {
-        id: "pgrep",
-        display_name: Text(|| "pgrep".to_string()),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "pgrep",
-        host: HostScope::Either,
-        why: Text(|| copy_text("rsToolRegistry.env.pgrepWhy", &[])),
-        site: "cc_bus_tests.rs::count_now",
-    },
+    // 〔SH1 · V136〕`pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
     UnmanagedEnv {
         id: "xdg-open",
         display_name: Text(|| "xdg-open".to_string()),

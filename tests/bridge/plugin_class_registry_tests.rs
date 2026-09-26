@@ -341,10 +341,11 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     //    ⚠ 按本条自己的要求登记:这一笔**不是「改数字了事」** —— 命令面确实变了。
     //    而 `EU3`(插件的粒度是命令还是包)**仍未决**:本轮没有替它做决定,只把「命令面变了」这件事
     //    如实记在这里,交回 PM 裁。
+    // 〔SH1 · V136〕20 → 21：加了 `cc-log`（只读看收件箱尾巴，后端 `bus-inbox` 转调）—— 命令面确实变了（多一个只读动词）；`EU3` 照旧未决。
     assert_eq!(
         scripts.len(),
-        20,
-        "cc-bus 脚本族从 20 个变成 {} 个：{scripts:?}\n\
+        21,
+        "cc-bus 脚本族从 21 个变成 {} 个：{scripts:?}\n\
              ⇒ 这不是要你改数字了事：加/删一条脚本 = 这个「插件包」的**命令面**变了，\
              而 `EU3` 正卡在「插件的粒度是命令还是包」上 —— 变了就该回去看那条待决。",
         scripts.len()
@@ -364,10 +365,12 @@ fn cc_bus_is_reached_only_through_its_command_surface_today() {
     // 〔C4e · 第四波 4C〕5 → 6：多了 `bus-broadcast`（广播：原是 monitor 里的组合 —— 列名单 ＋ 逐个 `bus-send` ——
     //   界面改经通道直接说后端之后收进后端）。按本条的要求回本表 `cc-bus` 那一行看了：「今天什么样 / 差在哪」仍成立
     //   （仍只经命令面够到：广播复用 `cc-list` / `cc-send` 那两处转调，没有新的起进程口），所以只改数，不改那一行。
+    // 〔SH1 · V136〕6 → 7：多了 `bus-inbox`（驾驶舱读收件箱尾巴，转调新加的只读 `cc-log`）。回本表 `cc-bus` 那一行看了：
+    //   仍只经命令面够到（转调，不读文件），所以只改数。
     assert_eq!(
         bus.len(),
-        6,
-        "backend 转调 cc-bus 的命令从 6 条变成 {} 条：{bus:?}\n\
+        7,
+        "backend 转调 cc-bus 的命令从 7 条变成 {} 条：{bus:?}\n\
              今天这六条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state` / `bus-spawn` / `bus-broadcast`\
              （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全；\
              `bus-spawn` 是 BS1b 09-24 补的派生原语）。\n\

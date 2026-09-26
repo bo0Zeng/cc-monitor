@@ -465,6 +465,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-kill",
         "bus-spawn",
         "bus-state",
+        "bus-inbox",
         "capture-pane",
         // 〔LOC1a · 第四波 4D〕起插件进程 / 读写整份 jsonl。
         "acct-iso-status",
@@ -599,6 +600,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "bus-kill",
         "bus-spawn",
         "bus-state",
+        "bus-inbox",
         "capture-pane",
         "acct-iso-status",
         "acct-iso-shellinit",

@@ -654,6 +654,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
     //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--bus-broadcast",
+    // 〔SH1 · V136〕帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump，本路不 bump。
+    "--bus-inbox",
     "--bus-kill",
     "--bus-list",
     "--bus-send",

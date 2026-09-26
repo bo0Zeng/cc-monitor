@@ -57,6 +57,11 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "INBOX_LINES_MAX",
+        "〔SH1 · V136〕**行数**不是体量：后端 `bus-inbox` 的 `lines` 入参上界（看收件箱尾巴最多几行，越界 ⇒ `invalid_args`）；\
+             限字节总量的是同文件的 `INBOX_CAP`。",
+    ),
+    (
         "READ_FLOOR_BPS",
         "〔DL1 · 第五波〕**速率**（字节 / 秒）不是体量：`frame_query·rs::read_budget` 拿它把「要读多少字节」折成分页读那一件的\
              总时限（`设计/05 §3.3.2` 一件事一个绝对时刻）。它不限任何字节总量、不截任何东西 —— 限总量的是各自的字节上限\
@@ -445,27 +450,20 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 读满就停、缓冲区里是半份数据，而调用方拿它当完整的用。那正是本表这个封闭集合
     // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
     // （形态照抄 `src/backend/common/fs.rs` 那条既有注释）。
-    (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "CC_BUS_TSV_CAP",
-        32 * 1024 * 1024,
-        "读远端 cc-bus 的两份登记表（`agents.tsv` + `spawned.tsv`）",
-        "拒收+回错",
-    ),
+    // 〔SH1 · V136〕这里原先登记着 `cc_bus.rs` 读两份登记表的 `CC_BUS_TSV_CAP`〔散文墓碑〕（32 MiB，拒收+回错）：
+    //   驾驶舱读名册改由界面经通道问后端 `bus-state`（转调 `cc-list --tsv`），monitor 这边不再读流 ⇒ 常量随那条读删了。
     // 🔴 `K-R112`（09-13）：**cc-bus 查在线那条读上限删了，不是「忘了」。**
     //    它是老那条按名字探在线的 shell 串（`tmux has-session`）的读上限，
     //    而查在线整条改走后端的 `bus-list` 帧之后**没有一条流要读** ——
     //    帧应答是结构化的，上限由入方向通道自己那一层管。
     //    ⇒ 常量不存在了，留着这一行就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
+    // 〔SH1 · V136〕monitor 读收件箱那条 `INBOX_READ_CAP`〔散文墓碑〕（4 MiB，截断+说清）搬进后端 `bus-inbox`（下一行）。
     (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "INBOX_READ_CAP",
+        "src/backend/control/cc_bus.rs",
+        "INBOX_CAP",
         4 * 1024 * 1024,
-        "读某个 agent 的 inbox",
-        // ★〔G 审计改档〕原登记「拒收+回错」，那是**行为回归**：命令是 `tail -n 200`，
-        // 而 `parse_inbox_jsonl` 的契约逐字是「坏行跳过并计数，不因坏行丢好行」——
-        // 旧的截断行为下末行被跳过、前 199 条照常显示；改成回错之后**一条都不显示**。
-        // 这是唯一一处调用方**明确**依赖宽容降级的地方。
+        "`bus-inbox` 交回的收件箱尾巴（`cc-log` 的回显）",
+        // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
     ),
     // 〔BS1b 09-24〕这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
@@ -1406,12 +1404,6 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
         "page as u64",
         "`read_page` 的一页上限是入参，调用方给 `read_face::READ_PAGE_BYTES`（已在 `CAPS` 里）；\
              读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
-    ),
-    (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "cap + 1",
-        "`exec_read` 是远端读的助手，上限是入参。〔BS1b 09-24〕今天只剩一个调用点（读 inbox），\
-             给的是具名常量 `INBOX_READ_CAP`，已在 `CAPS` 里。",
     ),
     (
         "src/backend/common/fs.rs",

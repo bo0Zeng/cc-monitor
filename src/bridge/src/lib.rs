@@ -1377,9 +1377,7 @@ pub fn run() {
             aliases_block_install,
             aliases_block_remove,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
-            // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
-            backend::control::cc_bus::read_cc_bus_state,
-            backend::control::cc_bus::read_cc_bus_inbox,
+            // B03 批一：cc-bus 驾驶舱的两条读命令〔SH1 · V136〕退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,

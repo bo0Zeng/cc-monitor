@@ -2566,6 +2566,9 @@ mod spawn_registry {
              （tmux ＋ claude/codex 进程，烧额度）· 登记进名册与 spawn 台账 · 预信任那个目录。\
              仍是**被起的那个进程**在写（它内部再经 `ccm`），与用户在终端里敲 `cc-spawn` 没有区别；\
              加它的那一刀同样被下面那条相等断言当场红、被逼回来读这一段之后才写下。\
+             ★★ **SH1 09-26：第六条到了** —— `cc-log`（`bus-inbox` 读收件箱的尾巴）。写面：**只读**\
+             （共享锁，锁文件仍是 `<inbox>.lock`，收件箱初次被看时它会建出那个空锁文件 —— 与 `cc-peek` 同一格）；\
+             另外 `cc-list` / `cc-agents` 多了 `--tsv` 这一印法（仍只读）。同样被下面那条相等断言红出来之后写下。\
              ⚠ 这一处口从此是**通用**的：将来经它起的每一个插件，写面都落在这一条理由底下，\
              而这条键**分不出**是哪个插件 —— 加一种新的被调命令时必须回来重读这一段，\
              没有任何机检会替你想起（`K6b` 那一族，本条就是它的活体标本）。\
@@ -3427,7 +3430,8 @@ mod g6_reach {
     fn the_non_literal_spawn_key_still_covers_exactly_three_commands() {
         let prod = crate::guard_support::production_source(source_of("control/cc_bus.rs"));
         let mut cmds: Vec<&str> = Vec::new();
-        for opener in ["run(\"", "run_as(\""] {
+        // 〔SH1〕只读三条经 `read_via("…"` 转调（同一个起进程口）。
+        for opener in ["run(\"", "run_as(\"", "read_via(\""] {
             let mut from = 0usize;
             while let Some(k) = prod[from..].find(opener) {
                 let at = from + k + opener.len();
@@ -3442,7 +3446,14 @@ mod g6_reach {
         cmds.dedup();
         assert_eq!(
             cmds,
-            vec!["cc-agents", "cc-kill", "cc-list", "cc-send", "cc-spawn"],
+            vec![
+                "cc-agents",
+                "cc-kill",
+                "cc-list",
+                "cc-log",
+                "cc-send",
+                "cc-spawn"
+            ],
             "经 `plugin/invoke.rs` 那个 `<非字面量>` 键转调的命令变了：{cmds:?}\n\
              ⇒ 回 `ALLOWED` 里 `plugin/invoke.rs` 那条**重读它的豁免理由**，\n\
              把新命令的写面写进去。**不许只改这个断言。**\n\
