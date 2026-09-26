@@ -218,3 +218,65 @@ fn the_active_list_is_only_handed_out_once_it_is_complete() {
     t.step(Lifecycle::StreamEnded { idle: vec![] });
     assert_eq!(t.listed_active(), None, "流断之后还在交旧清单");
 }
+
+/// `feed` 这一跳（进程级那张表 ＋ 出口 ＋ 「报完了清单」那本账）：报完 ⇒ 账上有 `<local>`、出口收到 `Listed`；
+/// 流断 ⇒ 账上摘掉、出口收到那一摞 `Unseen`。F5 对账按这本账分「已结束 / 说不清」（与远端同一本）。
+/// ⚠ 用的是进程级的那一张与那一个出口：本条是全测试进程里唯一装出口、唯一喂 `<local>` 的地方。
+#[test]
+fn feeding_keeps_the_listed_book_and_the_emitter_in_step() {
+    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
+    let (tx, rx) = std::sync::mpsc::channel();
+    install_sink(tx);
+    feed(Lifecycle::Added {
+        sid: "feed-a".into(),
+        entry: entry("/p", None, None, None),
+    });
+    feed(Lifecycle::Listed);
+    assert!(
+        crate::ssh_source::listed_origins().contains(local),
+        "报完了，账上却没有本机"
+    );
+    assert!(local_table_has("feed-a"));
+    feed(Lifecycle::StreamEnded { idle: vec![] });
+    assert!(
+        !crate::ssh_source::listed_origins().contains(local),
+        "流断了，账上还记着本机报完了"
+    );
+    let got: Vec<Out> = rx.try_iter().collect();
+    assert!(
+        matches!(got.as_slice(), [Out::Change(_), Out::Listed, Out::Change(c)]
+        if c.removed.len() == 1 && c.removed[0].cause == RemovalCause::Unseen),
+        "{got:?}"
+    );
+}
+
+fn local_table_has(sid: &str) -> bool {
+    local().read().is_active(sid)
+}
+
+/// 接线：本机那条流的消费者真的把每件东西先交本机起停核、再喂表（各恰好一处）。
+/// 本机起停核与表都是纯的、各有真值表 —— 这一跳要是断了，两边照绿、本机 tab 永远不结束（本仓「判据不在执行链上」）。
+#[test]
+fn the_local_consumer_feeds_the_table_exactly_once() {
+    let ss = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    let at = ss
+        .find("pub(crate) async fn consume_local(")
+        .expect("找不到本机消费者");
+    let body = &ss[at..at + ss[at..].find("\n}\n").expect("函数尾")];
+    assert_eq!(
+        body.matches("local_lifecycle(").count(),
+        1,
+        "本机消费者没（或不止一处）交本机起停核"
+    );
+    assert_eq!(
+        body.matches("crate::session_map::feed(").count(),
+        1,
+        "本机消费者没（或不止一处）喂表"
+    );
+    let core = body.find("local_lifecycle(").unwrap();
+    let step = body.find("local_step(").expect("本机消费者里没有内容分派");
+    assert!(
+        core < step,
+        "起停核排在内容分派之后 ⇒ 它读到的 `hidden` 已被这一件改过"
+    );
+}
