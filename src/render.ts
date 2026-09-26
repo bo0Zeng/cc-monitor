@@ -1,6 +1,7 @@
 import { Marked, type MarkedExtension } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
+import katex from "katex";
 import markedKatex from "marked-katex-extension";
 import "highlight.js/styles/github-dark-dimmed.css";
 import "katex/dist/katex.min.css";
@@ -13,10 +14,12 @@ import { copyText } from "./copy-table";
  *   hljs **不跑**——留 `<div class="code-block code-pending">` 占位。IntersectionObserver
  *   在卡片进可视区时调 enhanceCard 跑 hljs。
  *
- * 为什么单独 lazy hljs 而不 lazy KaTeX：
- * - 实测 hljs 是主要耗时（每代码块 0.5-5ms，含代码块的消息占 ~25%）
- * - KaTeX 触发条件严（只有 `$..$` 才会进 markedKatex），多数消息不含 LaTeX 跳过快
- * - markedKatex 是 marked 扩展深度集成的，拆 lazy 复杂度高，收益小
+ * 〔W5-RENDER R4 · `设计/10 §3.5` D1〕**数学也 lazy 了**。原来这里写着「为什么单独 lazy hljs 而不 lazy KaTeX」
+ * 三条理由（hljs 是大头 · KaTeX 触发条件严 · 拆 lazy 复杂度高收益小）；D1 逐字「KaTeX 从不 lazy —— 含 `$$` 的
+ * 长公式在重放期同步阻塞主线程」。现打：40 个块公式 ＋ 40 个行内公式的一条 7 KB 消息，惰路 `renderMarkdown`
+ * 518 ms（jsdom，每个公式 ~6.5 ms），期间 `katex.renderToString` 80 次。拆 lazy 并不复杂：惰实例对
+ * `inlineKatex` / `blockKatex` 两个 token 另挂一个同名渲染器（marked 的同名扩展后注册者先试），
+ * 只出一个带 TeX 原文的占位，`enhanceCard` 进视口时再算。
  *
  * 〔W5-RENDER R3 · `设计/10 §3.5` D3〕急 / 惰是**两个 `Marked` 实例**，各带各的代码块渲染器；
  * 本模块里零可变状态。原来是一个全局 `marked` ＋ 一个模块级 `currentLazy` 标志、靠
@@ -35,6 +38,38 @@ const KATEX_OPTIONS = {
   throwOnError: false,
   nonStandard: true,
 } as const;
+
+/** 急路与 `enhanceCard` 补算共用的同一套清洗配置（补算出来的 KaTeX 片段必须过同一道）。 */
+const SANITIZE_OPTIONS = {
+  USE_PROFILES: { html: true, svg: true, mathMl: true },
+  ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
+};
+
+/**
+ * 〔W5-RENDER R4〕惰实例的数学：不算，出占位 `<span data-math-pending="display|inline">转义后的 TeX</span>`
+ * （块级末尾照原渲染器补 `\n`）。用 data 属性、不用类名：`tests/css-ledger.vitest.ts` 的悬空类棘轮只许降。
+ * `enhanceCard` 读 `textContent`（转义往返无损）与 `data-math-pending` 补算，补算后的 DOM 与急路逐字相同
+ * （`tests/render.vitest.ts`「D1」）。
+ */
+function mathPlaceholder(tex: string, displayMode: boolean, newlineAfter: boolean): string {
+  return (
+    `<span data-math-pending="${displayMode ? "display" : "inline"}">${escapeHtml(tex)}</span>` +
+    (newlineAfter ? "\n" : "")
+  );
+}
+
+const LAZY_MATH: MarkedExtension = {
+  extensions: [
+    {
+      name: "inlineKatex",
+      renderer: (token) => mathPlaceholder(String(token.text ?? ""), token.displayMode === true, false),
+    },
+    {
+      name: "blockKatex",
+      renderer: (token) => mathPlaceholder(String(token.text ?? ""), token.displayMode === true, true),
+    },
+  ],
+};
 
 /**
  * 代码块渲染：
@@ -154,12 +189,13 @@ const DEL_TOKENIZER: MarkedExtension = {
 
 /**
  * 建一个实例：两个实例的扩展与顺序**逐项相同**（KaTeX → 代码块 → 外链 → `del`，与原来全局 `marked.use` 的顺序一致），
- * 只有代码块渲染器按 `lazy` 分叉。
+ * 只有代码块渲染器按 `lazy` 分叉；惰实例在 KaTeX 之后多挂一层同名数学渲染器（`LAZY_MATH`，出占位）。
  */
 function makeMarked(lazy: boolean): Marked {
   return new Marked(
     { gfm: true, breaks: false },
     markedKatex(KATEX_OPTIONS),
+    ...(lazy ? [LAZY_MATH] : []),
     codeRenderer(lazy),
     LINK_RENDERER,
     DEL_TOKENIZER,
@@ -272,10 +308,7 @@ export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): st
   const m = opts.lazy ? LAZY : EAGER;
   // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
   const raw = m.parse(preprocessMath(md), { async: false }) as string;
-  return DOMPurify.sanitize(raw, {
-    USE_PROFILES: { html: true, svg: true, mathMl: true },
-    ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
-  });
+  return DOMPurify.sanitize(raw, SANITIZE_OPTIONS);
 }
 
 /** 纯文本（用户消息保守模式）：转义 + 保留换行 */
@@ -297,16 +330,21 @@ function escapeHtml(s: string): string {
  *
  * 没 pending 时是 fast path：单次 querySelector 找不到东西后立即标记返回。
  *
- * **不处理 LaTeX**：KaTeX 在 markedKatex 扩展里同步处理过了，已经是最终 DOM。
+ * 〔W5-RENDER R4〕**也补数学**：惰路留下的 `[data-math-pending]` 占位在这里算 KaTeX、过同一道清洗、原位替换
+ * （原来这里写「不处理 LaTeX：KaTeX 在 markedKatex 扩展里同步处理过了」—— D1 之后不再成立）。
  */
 export function enhanceCard(el: HTMLElement): void {
   if (el.dataset.enhanced === "1") return;
   el.dataset.enhanced = "1";
 
-  const pendings = el.querySelectorAll<HTMLElement>(".code-block.code-pending");
-  if (pendings.length === 0) return; // fast path: 该卡片没代码块
+  const pendings = el.querySelectorAll<HTMLElement>(".code-block.code-pending, [data-math-pending]");
+  if (pendings.length === 0) return; // fast path: 该卡片没代码块、没公式
 
   for (const block of pendings) {
+    if (block.hasAttribute("data-math-pending")) {
+      enhanceMath(block);
+      continue;
+    }
     const lang = block.dataset.lang ?? "";
     const codeEl = block.querySelector("code");
     if (!codeEl) {
@@ -330,6 +368,24 @@ export function enhanceCard(el: HTMLElement): void {
     }
     block.classList.remove("code-pending");
   }
+}
+
+/** 〔W5-RENDER R4〕一个数学占位 → KaTeX（与急路同一组选项、同一道清洗），原位替换。 */
+function enhanceMath(ph: HTMLElement): void {
+  const displayMode = ph.getAttribute("data-math-pending") === "display";
+  const tex = ph.textContent ?? "";
+  let html: string;
+  try {
+    html = katex.renderToString(tex, { ...KATEX_OPTIONS, displayMode });
+  } catch (e) {
+    // throwOnError:false 下不该走到这里；真走到就留着原文、去掉标记（不反复重试）
+    console.warn("[enhance] katex failed:", e);
+    ph.removeAttribute("data-math-pending");
+    return;
+  }
+  const tpl = document.createElement("template");
+  tpl.innerHTML = DOMPurify.sanitize(html, SANITIZE_OPTIONS);
+  ph.replaceWith(...Array.from(tpl.content.childNodes));
 }
 
 /**

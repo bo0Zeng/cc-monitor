@@ -1,9 +1,12 @@
 // F73（issue #42）：多行块级 LaTeX 公式渲染。preprocessMath 纯函数（规整 + \[..\]/\(..\) 翻译 +
 // 代码保护）+ renderMarkdown 端到端（真 marked+katex，jsdom）。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import katex from "katex";
+import { renderMessage } from "../src/cards";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  enhanceCard,
   needsMathPreprocess,
   preprocessMath,
   preprocessMathUnguarded,
@@ -326,5 +329,77 @@ describe("D3 · 急 / 惰两个实例、模块零可变状态（`设计/10 §3.5
       expect(eager).toContain("hljs");
       expect(eager).not.toContain("code-pending");
     }
+  });
+});
+
+/**
+ * 〔W5-RENDER R4〕`设计/10 §3.5` D1 逐字：「KaTeX 从不 lazy —— 含 `$$` 的长公式在重放期同步阻塞主线程
+ * （代码高亮有 lazy，数学没有）」。修法：惰路只出占位，`enhanceCard` 进视口时补算。
+ * 三格：① 惰路 ＋ 补算之后的 DOM 与急路逐字相同（异源：急路是 marked-katex-extension 自己的渲染器，
+ * 补算是 `render.ts::enhanceMath`）；② 惰路期间 `katex.renderToString` 零次、补算次数 == 急路次数；
+ * ③ 展开时才建的 thinking body 一律急路（不再留一块永远没人补的占位）。
+ */
+describe("D1 · 数学也 lazy（`设计/10 §3.5`）", () => {
+  const MATH = [
+    "行内 $x_i^2$ 与 $$y=\\sqrt{2}$$ 同行",
+    "\\(a+b\\) 与 \\[c=d\\]",
+    "结果是：\n$$\n\\begin{aligned}a&=b\\\\c&=d\\end{aligned}\n$$\n后文",
+    "$$\nE=mc^2\n$$",
+    "坏的 $\\frac{1}{$ 与 $$\\undefinedcmd$$",
+    "costs $5 and $10 total",
+    "- 列表里 $\\alpha$\n- 第二项 $$\\beta$$",
+    "| a | $b$ |\n|---|---|\n| $1$ | 2 |",
+  ];
+
+  it("惰路 ＋ enhanceCard == 急路（逐字）", () => {
+    let withPending = 0;
+    for (const md of MATH) {
+      const eager = document.createElement("div");
+      eager.innerHTML = renderMarkdown(md);
+      const lazy = document.createElement("div");
+      lazy.innerHTML = renderMarkdown(md, { lazy: true });
+      if (lazy.querySelector("[data-math-pending]")) withPending++;
+      enhanceCard(lazy);
+      expect(lazy.querySelector("[data-math-pending]"), md).toBeNull();
+      expect(lazy.innerHTML, md).toBe(eager.innerHTML);
+    }
+    // 反空真：语料里真有惰路留了占位的（「$5 and $10」那条按 nonStandard 也会被认成公式）
+    expect(withPending).toBeGreaterThanOrEqual(7);
+  });
+
+  it("惰路期间零次 renderToString；补算次数 == 急路次数", () => {
+    const md = MATH.join("\n\n");
+    const spy = vi.spyOn(katex, "renderToString");
+    try {
+      renderMarkdown(md);
+      const eagerCalls = spy.mock.calls.length;
+      spy.mockClear();
+      const lazy = document.createElement("div");
+      lazy.innerHTML = renderMarkdown(md, { lazy: true });
+      expect(spy.mock.calls.length).toBe(0);
+      enhanceCard(lazy);
+      expect(eagerCalls).toBeGreaterThan(5);
+      expect(spy.mock.calls.length).toBe(eagerCalls);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("展开时才建的 thinking body 走急路：零占位", () => {
+    const res = renderMessage(
+      {
+        type: "assistant",
+        uuid: "u1",
+        timestamp: "2026-01-01T00:00:00Z",
+        message: { role: "assistant", content: [{ type: "thinking", thinking: "想想 $x^2$\n\n```ts\nconst a = 1;\n```" }] },
+      } as never,
+      { parentPath: "/p/s.jsonl", origin: "<local>", toolUseNames: new Map(), toolUseElements: new Map(), pendingToolResults: new Map(), lazy: true } as never,
+    );
+    expect(res.kind).toBe("tool-group");
+    const d = (res as { units: HTMLElement[] }).units[0] as HTMLDetailsElement;
+    d.open = true;
+    d.dispatchEvent(new Event("toggle"));
+    expect(d.querySelector(".katex")).not.toBeNull();
+    expect(d.querySelector("[data-math-pending], .code-pending")).toBeNull();
   });
 });

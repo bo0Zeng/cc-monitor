@@ -413,7 +413,9 @@ function renderBlock(
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
-          body.innerHTML = renderMarkdown(block.thinking, { lazy: ctx.lazy });
+          // 〔W5-RENDER R4〕展开那一刻才建（用户点开 = 它就在眼前）⇒ 一律急路。原来沿用建卡时的 `ctx.lazy`：
+          // 批期建的卡早被 `enhanceCard` 标过 `enhanced`，之后才长出来的这块 body 里的占位（代码块 / 公式）永远没人补。
+          body.innerHTML = renderMarkdown(block.thinking);
           return body;
         },
       );
