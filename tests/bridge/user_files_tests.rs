@@ -432,3 +432,43 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         "门经后端写面发的命令变了"
     );
 }
+
+/// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕门发的「只删空目录」那一形的键 == 后端认的那一个（两侧源码现抠，异源）。
+/// 替身门（`DiskDoor`）不走线上，这一格只有源码对拍看得见：键拼错 ⇒ 后端按逐字节形取、取不出 ⇒ `bad_args`，卸 skill 收空目录那一步整个失效。
+#[test]
+fn the_door_s_empty_dir_expect_key_is_the_one_the_backend_recognizes() {
+    let root = crate::guard_support::repo_src_root();
+    let door = guard_core::production_code(
+        &std::fs::read_to_string(root.join("bridge/src/user_files.rs")).expect("读门"),
+    );
+    let back = guard_core::production_code(
+        &std::fs::read_to_string(root.join("backend/control/files_write.rs")).expect("读后端写面"),
+    );
+    let between = |src: &str, pre: &str, post: &str| -> Vec<String> {
+        src.match_indices(pre)
+            .filter_map(|(i, _)| {
+                let rest = &src[i + pre.len()..];
+                rest.find(post).map(|j| rest[..j].to_string())
+            })
+            // 键只可能是一个标识符形的词；跨到别处的长片段（`pre` 撞上别的 `json!` 起头）不算。
+            .filter(|k| !k.is_empty() && k.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
+            .collect()
+    };
+    let ours = between(&door, "serde_json::json!({ \"", "\": true })");
+    let theirs = between(
+        &back,
+        "o.get(\"",
+        "\") == Some(&serde_json::Value::Bool(true))",
+    );
+    assert_eq!(
+        ours.len(),
+        1,
+        "门上「只删空目录」那一形不是恰好一处：{ours:?}"
+    );
+    assert_eq!(
+        theirs.len(),
+        1,
+        "后端认「只删空目录」那一形不是恰好一处：{theirs:?}"
+    );
+    assert_eq!(ours, theirs, "门发的键与后端认的键对不上");
+}
