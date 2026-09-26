@@ -1,4 +1,4 @@
-//! **POSIX 单引号 quote** —— Rust 侧唯一的一份实现。本 crate 只剩这一件事。
+//! **POSIX 单引号 quote** —— Rust 侧唯一的一份实现；〔TL3〕外加它的伴生件：自由文本值在 quote 之前的拒绝集。
 //!
 //! # 它为什么只剩一件事（P4b，§1.4b）
 //!
@@ -31,6 +31,29 @@
 //! 那个名字就成了说谎，P4c 改成 `shell-quote-core`：与 TS `src/shell-quote.ts`、
 //! `shared/ccm::sq` 同族，**一眼看出这三份是同一件事**（跨语言那两份由黄金串夹具对拍）。
 //! ⚠ 计划文档（`.claude/planned-build/`）里的 `launch-core` 是当时的实况，刻意没改。
+
+/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**值（cwd · 目录 · 远端子命令的 argv · 别名词 …）
+/// 在唯一的 quote 之前的**拒绝集**：只收 NUL / CR / LF。
+///
+/// 为什么只收这三个、**不拒 shell 元字符**：`Bob's notes` · `照片 (2019)` 这类真实名字里 `'` `(` `)` `&` 都合法，
+/// 元字符交给 [`posix_quote`]（单引号里没有一个会被解释）；拒它们就是 §47 自己写的「拒过头也算违反」。
+/// 而这三个字符 quote 挡不住它们的后果：NUL 截断参数、CR / LF 在交互 shell 里（`tmux send-keys` 那一跳）等于按了回车。
+/// 形式判定（绝对路径 · 无 `..` 段 …）**按各自语境**写在调用处（本机 / 远端、POSIX / Windows 的「绝对」不是同一件事）。
+/// 本仓自管的值（配置目录 · 后端落点）不走这一条，走全表（`payload.rs::config_dir_command_safe` 那一族）。
+pub const FREE_TEXT_REFUSED: [char; 3] = ['\0', '\r', '\n'];
+
+/// 见 [`FREE_TEXT_REFUSED`]：这个自由文本值能不能交给唯一的 quote 拼进 shell。
+pub fn free_text_ok(s: &str) -> bool {
+    !s.contains(FREE_TEXT_REFUSED)
+}
+
+/// **POSIX 语境下的自由文本路径**（远端 / 本机 POSIX 的工作目录 · 文件窗口的当前目录）能不能交给 [`posix_quote`]：
+/// 形式 = 绝对（`/` 开头）· 没有 `..` 段；拒绝集 = [`free_text_ok`]。**不拒 shell 元字符**。
+/// 空串不在这里判：各调用处对「空」各有自己的话（载荷「空值不等于没设」· 文件窗口「不带 cd」）。
+/// 住这里而不住 monitor 的载荷模块：文件窗口进程也要它，而那个进程够到 app 侧只许走通道（`filewin/boundary_tests.rs`）。
+pub fn posix_free_path_ok(p: &str) -> bool {
+    p.starts_with('/') && !p.split('/').any(|seg| seg == "..") && free_text_ok(p)
+}
 
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。
 ///

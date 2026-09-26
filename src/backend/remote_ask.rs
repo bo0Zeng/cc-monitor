@@ -185,6 +185,18 @@ pub async fn ask_with(
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<String, String> {
+    // 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
+    //   拼进远端命令之前先过拒绝集（只收 NUL / CR / LF，**不拒 shell 元字符** —— 交给 `command_line` 里那一处 quote）。
+    //   判不过 ⇒ 一次都不拨。那台后端的路径在可达表唯一的写口（[`register`]）进门时已经判过。
+    if let Some(a) = argv.iter().find(|a| !shell_quote_core::free_text_ok(a)) {
+        return Err(copy_text(
+            "beRemoteAsk.argv.refused",
+            &[
+                ("machine", &machine.to_string()),
+                ("value", &format!("{a:?}")),
+            ],
+        ));
+    }
     let r = lock(table)
         .get(machine)
         .cloned()

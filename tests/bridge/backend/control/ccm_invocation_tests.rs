@@ -227,6 +227,11 @@ fn sample_reason(variant: &str) -> String {
         "NotSsh" => Refusal::NotSsh.reason(),
         "SendIntoHasNoCliForm" => Refusal::SendIntoHasNoCliForm.reason(),
         "AttachNeedsTmux" => Refusal::AttachNeedsTmux.reason(),
+        "FreeTextRefused" => Refusal::FreeTextRefused {
+            slot: FreeTextSlot::Cwd,
+            value: format!("{:?}", "rel/dir"),
+        }
+        .reason(),
         other => panic!(
             "变体 `{other}` 没有代表样本 —— 新变体要在这里给一个，\
                  否则夹具对拍认不出它（这一步刻意不自动化：带占位的理由要人来选值）"
@@ -288,6 +293,13 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
             },
             "远端的后端太旧，不认 model 这一项设置（缺 model）",
         ),
+        (
+            Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value: format!("{:?}", "rel/dir"),
+            },
+            "工作目录 \"rel/dir\" 用不了。要绝对路径，不含 .. 段、换行或 NUL",
+        ),
     ];
     // ★ 人群**从枚举派生**，不再手写「七个」这个数。
     let variants = refusal_variants();
@@ -339,11 +351,18 @@ fn the_reasons_the_fixture_covers_really_come_from_the_typescript_side() {
     assert!(fx.len() > 1000, "夹具只有 {} 字节，像是坏了", fx.len());
     // ★ 人群**从枚举派生**：每个变体的降级理由都要在夹具里出现，
     //   除非它登记在下面这张豁免表里并写明「谁顶了它」。**默认拒绝。**
-    const NO_FIXTURE_CASE: &[(&str, &str)] = &[(
-        "AttachNeedsTmux",
-        "夹具没有这条用例（模块头注逐字记着它是唯一一条）—— \
+    const NO_FIXTURE_CASE: &[(&str, &str)] = &[
+        (
+            "AttachNeedsTmux",
+            "夹具没有这条用例（模块头注逐字记着它是唯一一条）—— \
              由行为判据 `attaching_into_a_non_tmux_container_is_refused` 顶着",
-    )];
+        ),
+        (
+            "FreeTextRefused",
+            "〔TL3 · §47〕夹具（`cli-golden.json`）里的请求都是好值 —— \
+             由行为判据 `a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument` 顶着（正反各一格）",
+        ),
+    ];
     let variants = refusal_variants();
     assert!(
         variants.len() >= 7,
@@ -747,5 +766,41 @@ fn not_knowing_is_never_said_as_not_installed() {
     assert!(
         unknown.contains("ssh: connection timed out"),
         "探测那一跳的原话没带上：{unknown}"
+    );
+}
+
+/// 〔TL3 · `INVARIANTS §47` ②〕ccm 那条路：工作目录与透传给 agent 的参数是自由文本 ⇒ 写成 ccm 参数之前先过放行判定
+/// （工作目录：`shell_quote_core::posix_free_path_ok`；透传参数：`shell_quote_core::free_text_ok`）—— **不拒 shell 元字符**，**正反各一格**。
+/// 要求住址：`INVARIANTS §47` ②；主会话 09-26 按 V131 裁「自由文本……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符」。
+#[test]
+fn a_free_text_cwd_or_agent_arg_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |cwd: Option<&'static str>, args: &'static [&'static str]| {
+        let mut s = base_spec();
+        s.cwd = cwd;
+        s.args = args;
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for (cwd, args) in [
+        (Some("/home/u/Bob's notes (2019)"), &["a;b", "c&d"][..]),
+        (Some("/data/照片"), &[][..]),
+    ] {
+        with(cwd, args).unwrap_or_else(|e| panic!("真实好值被拒了：{cwd:?} {args:?} ⇒ {e:?}"));
+    }
+    for bad in ["rel/dir", "/home/u/../etc", "/home/u/x\ny", "/home/u/x\0"] {
+        let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());
+        assert_eq!(
+            with(Some(bad), &[]),
+            Err(Refusal::FreeTextRefused {
+                slot: FreeTextSlot::Cwd,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+    assert_eq!(
+        with(Some("/w"), &["ok", "bad\rx"]),
+        Err(Refusal::FreeTextRefused {
+            slot: FreeTextSlot::AgentArg,
+            value: format!("{:?}", "bad\rx"),
+        })
     );
 }
