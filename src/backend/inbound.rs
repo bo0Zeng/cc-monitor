@@ -1693,7 +1693,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["jsonlPath", "sessionId", "sid", "uuid"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::fork_write::answer_wire(&r.args)
+            crate::fork_face::answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

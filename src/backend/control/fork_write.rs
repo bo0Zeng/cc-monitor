@@ -58,7 +58,7 @@ struct ForkResult {
 /// backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
 ///
 /// 次生危害更隐蔽：进程被 OOM-killer 杀掉时 sshd 送的是 `exit-signal` 而不是 `exit-status`，
-/// monitor 侧 `interpret_fork_exec` 会看到 `exit_status: None` ⇒ 报「没收到退出码，连接可能中断」
+/// monitor 侧 `interpret_fork_exec`〔散文墓碑〕（〔LOC1a〕已随 exec 那条路删，今天走帧命令）会看到 `exit_status: None` ⇒ 报「没收到退出码，连接可能中断」
 /// ⇒ 把排查方向带到网络上去。
 ///
 /// 256MB：与 monitor 侧 `remote_history::MAX_SESSION_BYTES` 同一量级，正常会话远够不到。
@@ -131,11 +131,8 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 /// exec 一个本机后端进程跑 `--fork-session`、远端经拨号链路 exec 同一条；两条路现在都经那台机器常驻后端的长连接说这一条。
 /// ⚠ 帧命令**不叫** `fork-session`：`cli_control` 从帧面自动派生的 CLI 面会是 `--fork-session`，
 /// 与对 aterm 冻结的那一条（argv 两个位置参数）撞名。
-pub(crate) fn answer_wire(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
-    answer_wire_at(&crate::observe::history_query::agent_home(), args)
-}
-
-/// [`answer_wire`] 的可注入家目录形（判据用）。
+/// ⚠ 入口住顶层壳 `fork_face.rs`（它找家目录）：本层自己找就得问 `observe::`（反向边）或多问一次适配层。
+/// 帧面 `session-fork` 的本体（家目录由顶层壳 `fork_face` 交进来；判据直接喂夹具家目录）。
 pub(crate) fn answer_wire_at(
     agent_home: &Path,
     args: &serde_json::Value,
@@ -148,7 +145,8 @@ pub(crate) fn answer_wire_at(
             .ok_or(("bad_args", format!("`{k}` 缺或不是非空字符串")))
     };
     let (sid, uuid) = (field("sid")?, field("uuid")?);
-    let argv = ["--session-fork".to_string(), sid, uuid];
+    // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。
+    let argv = [String::new(), sid, uuid];
     let res = run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))?;
     serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))
 }

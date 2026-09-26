@@ -123,7 +123,9 @@ fn the_local_path_asks_the_resident_backend_over_the_long_connection() {
         vec![
             (
                 "history-subagents",
-                Ok(serde_json::json!({"lines": [listed(picked, "找它", Some("2026-09-12T10:29:00.000Z"))]})),
+                Ok(
+                    serde_json::json!({"lines": [listed(picked, "找它", Some("2026-09-12T10:29:00.000Z"))]}),
+                ),
             ),
             (
                 "history-read",
@@ -472,7 +474,11 @@ fn a_local_backend_that_does_not_know_the_command_is_old_not_broken() {
         .expect_err("不认");
     assert_eq!(e.kind, QueryFailure::OldBackend, "{e}");
     assert!(e.message.starts_with("本机"), "本机那条不许说成远端：{e}");
-    assert!(rig.cmds().is_empty(), "不认的命令照样发出去了：{:?}", rig.cmds());
+    assert!(
+        rig.cmds().is_empty(),
+        "不认的命令照样发出去了：{:?}",
+        rig.cmds()
+    );
     // 认不出帧命令的 argv ⇒ 传输（本程序的 bug），同样不发
     let e = rt
         .block_on(backend.query(&["--no-such-thing"]))

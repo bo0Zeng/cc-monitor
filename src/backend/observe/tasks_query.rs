@@ -132,7 +132,7 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
 /// 〔LOC1a · 第四波 4D · C4e 批 4〕一个任务对象 → **成品**（`tasks-list` 的 `data.tasks` 里的一格）。**纯函数**。
 ///
 /// 字段语义**只住这里**（`设计/05 §14.3`「业务解释只有一个家」）：此前后端只保证「每行是一个对象」、
-/// 字段由 monitor `tasks.rs::parse_task_lines`〔散文墓碑〕解（serde `TaskEntry`）；搬过来之后口径逐字照那一份：
+/// 字段由 monitor 那边的 `parse_task_lines`〔散文墓碑〕解（serde `TaskEntry`）；搬过来之后口径逐字照那一份：
 /// - `id` / `subject` / `status` **必填、是串**（缺 / 不是串 ⇒ 这一条不算任务，`None`）；
 /// - `description` / `activeForm` 可缺、可为 `null`（⇒ 成品里**不出现**这一格），出现就必须是串；
 /// - `blocks` / `blockedBy` 缺 ⇒ 空表；出现就必须是**串的数组**（`null` / 别的 ⇒ 这一条不算，同 serde `Vec<String>`）；

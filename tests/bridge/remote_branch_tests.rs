@@ -31,7 +31,10 @@ fn the_fork_product_is_read_strictly() {
         serde_json::json!({"sessionId": "new", "jsonlPath": "/p/new.jsonl"}),
     )
     .expect("成功那一形");
-    assert_eq!((r.session_id.as_str(), r.jsonl_path.as_str()), ("new", "/p/new.jsonl"));
+    assert_eq!(
+        (r.session_id.as_str(), r.jsonl_path.as_str()),
+        ("new", "/p/new.jsonl")
+    );
     for bad in [
         serde_json::json!({"sessionId": "new"}),
         serde_json::json!({"jsonlPath": "/p"}),
@@ -92,7 +95,10 @@ fn the_local_fork_goes_over_the_long_connection() {
     let seen = rig.seen.lock().expect("lock").clone();
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].0, "session-fork");
-    assert_eq!(seen[0].1, serde_json::json!({"sid": "src-sid", "uuid": "msg-uuid"}));
+    assert_eq!(
+        seen[0].1,
+        serde_json::json!({"sid": "src-sid", "uuid": "msg-uuid"})
+    );
 }
 
 /// 长连接在、却不认 `session-fork`（老后端）⇒ 当场说、不发；对端说不行 ⇒ 把那句原因带出来。
