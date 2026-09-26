@@ -325,6 +325,7 @@ fn hx2_the_slot_plan_matches_the_hand_written_cases() {
 /// 🔴 H3：真装一趟（内存 tmux × **真 `/proc` 身份**）：预置一个死槽（本进程 pid ＋ 错的 starttime）、一个活的别人
 /// （本进程 pid ＋ 真 starttime）、一条用户 hook、一条段外的 ccm 死条目 ⇒ 死槽没了、活的别人 / 用户 hook / 段外那条逐字不动、
 /// 自己三条在同一格。
+#[cfg(target_os = "linux")] // 〔HX2〕读真 `/proc` 的 starttime（非 Linux 上 `proc_starttime` 恒 `None`）
 #[test]
 fn hx2_install_clears_dead_slots_and_takes_one_slot_without_touching_the_living() {
     let pid = std::process::id();
@@ -423,6 +424,7 @@ fn hx2_a_slot_lost_to_a_concurrent_backend_is_retried_in_the_next_one() {
 /// 读数（`#[ignore]`，手动跑）：**真 tmux**、私有 socket（`-L`，不碰用户那台 server，`C7i`）上走一趟：
 /// 预置一个死槽（本进程 pid ＋ 错的 starttime，放在首选格）与一条用户 hook ⇒ 装完死槽换成自己、用户 hook 原样、
 /// `show-hooks` 回话里自己恰好三条同一格。跑法：`cargo test --lib hx2_real_tmux -- --ignored`。
+#[cfg(target_os = "linux")] // 〔HX2〕读真 `/proc` 的 starttime（非 Linux 上 `proc_starttime` 恒 `None`）
 #[test]
 #[ignore]
 fn hx2_real_tmux_reading_on_a_private_socket() {

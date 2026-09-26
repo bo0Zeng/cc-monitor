@@ -254,3 +254,104 @@ fn the_golden_cases_hold() {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+// ═══ 〔HX2 · 第四波 4D〕两个 monitor 进程同写：跨进程锁 ═══════════════════════════════════════
+//
+// 要求住址：主会话 4D 追加逐字「CFG1 把 config.json 收成单一写口 `config.rs::patch_config_at`（进程内锁、锁内现读、按路径补丁），
+// 但**两个 monitor 进程同写**没有跨进程锁 —— 用你那一族同一套 `flock`（Windows 对应）把它也包上」；`设计/30 §4`「各自只写自己那个键」。
+// ⚠ 用两个线程各开一次描述量（`flock` 锁在打开文件描述上，与两个进程同一种互斥）；限期只在判据里。
+
+/// 🔴 C-L1：别人（另一个进程的样子：本线程直接拿目录锁）拿着锁时，`patch_config_at` 限期内不落盘；
+/// 那人在锁里写下自己的键再放锁 ⇒ 这一趟现读到它、两键都在（刀：`patch_config_at` 不拿跨进程锁 ⇒ 先写完，随后被那人整份盖掉）。
+#[test]
+fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
+    let dir = tmpdir("hx2-xproc");
+    let file = dir.join("config.json");
+    std::fs::write(&file, r#"{"userWrote":"手写的那一格"}"#).unwrap();
+    let held = crate::platform_fs::hold_dir_lock(&dir).expect("拿不到锁");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let f2 = file.clone();
+    let racer = std::thread::spawn(move || {
+        let r = patch_config_at(&f2, &[set(&["mine"], json!(1))]);
+        tx.send(r.is_ok()).unwrap();
+    });
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(400))
+            .is_err(),
+        "另一个进程还拿着目录锁，这一趟就写完了"
+    );
+    std::fs::write(&file, r#"{"userWrote":"手写的那一格","other":2}"#).unwrap();
+    drop(held);
+    assert!(rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("放了锁还没写完"));
+    racer.join().unwrap();
+    assert_eq!(
+        read(&file),
+        json!({"userWrote": "手写的那一格", "other": 2, "mine": 1}),
+        "有一方的键丢了"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 🔴 C-L2：生产段 `patch_config_at` 拿跨进程锁**恰好一处**，且排在现读之前（锁住之后才读，才叫读—改—写串行）。
+#[test]
+fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/config.rs"));
+    let at = guard_core::find_pinned(&prod, "pub(crate) fn patch_config_at(").expect("写口不在了");
+    let body = &prod[at..];
+    let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
+    let lock = guard_core::find_pinned(body, "crate::platform_fs::hold_dir_lock(dir)")
+        .expect("写口里拿跨进程锁不是恰好一处");
+    let read_at = guard_core::find_pinned(body, "std::fs::read_to_string(path)")
+        .expect("写口里现读不是恰好一处");
+    assert!(
+        lock < read_at,
+        "跨进程锁排在现读之后 —— 读到的可能是别人写到一半之前的那一份"
+    );
+}
+
+/// 🔴 C-L3：monitor 那一份锁与后端第四层那一份是**同一种锁**（两份各一，读后端源码对拍，异源）：
+/// unix 都锁**目录**（monitor：std `File::lock`；后端：`libc::flock(LOCK_EX)`）；Windows 互斥量名字的格式串与 FNV 两个常数逐字相等。
+#[test]
+fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
+    let mine = guard_core::production_code(include_str!("../../src/bridge/src/platform_fs.rs"));
+    let theirs = guard_core::production_code(include_str!("../../src/backend/platform/lock.rs"));
+    for needle in [
+        "format!(\"{namespace}\\\\ccm-own-state-{h:016x}\")",
+        "let mut h: u64 = 0xcbf2_9ce4_8422_2325;",
+        "h = h.wrapping_mul(0x1000_0000_01b3);",
+        "for ns in [\"Global\", \"Local\"] {",
+    ] {
+        assert_eq!(
+            mine.matches(needle).count(),
+            1,
+            "monitor 那一份没有恰好一处 `{needle}`"
+        );
+        assert_eq!(
+            theirs.matches(needle).count(),
+            1,
+            "后端那一份没有恰好一处 `{needle}`"
+        );
+    }
+    assert_eq!(
+        mine.matches("std::fs::File::open(dir)").count(),
+        1,
+        "monitor 那一份不是锁目录"
+    );
+    assert_eq!(
+        mine.matches("f.lock()").count(),
+        1,
+        "monitor 那一份不是排他锁"
+    );
+    assert_eq!(
+        theirs.matches("std::fs::File::open(dir)").count(),
+        1,
+        "后端那一份不是锁目录"
+    );
+    assert_eq!(
+        theirs.matches("libc::LOCK_EX").count(),
+        1,
+        "后端那一份不是排他锁"
+    );
+}

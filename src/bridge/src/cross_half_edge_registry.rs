@@ -111,6 +111,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
+        "tests/bridge/config_tests.rs",
+        "src/backend/platform/lock.rs",
+        "〔HX2 · 第四波 4D〕`config.json` 的跨进程锁（monitor `platform_fs::hold_dir_lock`）与后端第四层那把（`platform/lock.rs::hold`）\
+         是两个 crate 各一份的**同一种锁**（两个 crate 没有能放平台原语的共享落点）——「同一种」只能同时读两份源码对拍：\
+         unix 都锁目录、Windows 互斥量名字的拼法逐字相同；只读一侧就成了自己跟自己比",
+    ),
+    (
+        "monitor→backend",
         "tests/bridge/creds_store_tests.rs",
         "src/backend/inbound.rs",
         "〔HX2 · 第四波 4D〕写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令表上 —— \
