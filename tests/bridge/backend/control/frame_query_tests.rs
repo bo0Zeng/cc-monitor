@@ -418,9 +418,11 @@ const HELD_BACK: &[(&str, &str)] = &[
     //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
     (
         "history-read",
-        "**等后端二次拆包**（主会话裁，4B 第六批）：应答要过记录解析（`parse_line`，ts-rs 类型的来源）与可计行号\
-         （`LineNumberer`），两样住 monitor crate；出成品要先把 `messages.rs` / `parser.rs` 搬进两边共用的 crate\
-         （`00 §1.5.4` 的 `backend-core`）—— 那一拆之前不迁，不在 TS 再写一份记录解析",
+        "**等后端二次拆包**（主会话裁，4B 第六批；〔LOC1b · 4D〕现打重核、主会话认可）：本机远端今天都由 monitor 经那台后端\
+         的 `history-read` 取原文页、自己解析（`history·rs::stream_read_session_jsonl`，本机远端同一条路）；前端直接拿成品不行 ——\
+         后端**没有任何** `JsonlRecord` 解析（`agents/claudecode/records.rs` 只装文件名形态，`agents/codex/parse.rs` 只镜像\
+         turn-end / usage），出成品就得把 `messages.rs` / `parser.rs` / `codex_record.rs`（ts-rs 类型的来源）搬进两边共用的 crate\
+         —— 那就是二次拆包，而且要挪文件（V123：目录重排排在最后单独做）。那一拆之前不迁，不在 TS 再写一份记录解析",
     ),
     (
         "history-subagents",

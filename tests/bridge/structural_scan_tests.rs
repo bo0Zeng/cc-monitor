@@ -2679,6 +2679,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔LOC1b〕monitor `search.rs` 删了 ⇒ 它体里还提着的旧名 `search_remote_all` 全仓只剩散文（remote_history.rs 那块 C4a 墓碑）。
         ("src/bridge/src/remote_history.rs", "search_remote_all", 1),
+        ("src/doc/INVARIANTS.md", "is_session_active", 1), // 〔LOC1b〕§6 那一格搬去后端
         // 〔LOC1b〕只为本机读盘服务的适配器门面删了；按本机根前缀判种类的那一个只剩散文（换成按文件名形态判）。
         ("src/bridge/src/adapter.rs", "kind_of_path", 2),
         ("tests/bridge/adapter_tests.rs", "kind_of_path", 1),
@@ -4439,7 +4440,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/spawn_managed.rs", 4), // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 2), // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
-        ("src/doc/INVARIANTS.md", 6), // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
+        ("src/doc/INVARIANTS.md", 7), // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
         ("src/doc/IPC-PROTOCOL.md", 5), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
         ("src/settings/accounts-section.ts", 2),
