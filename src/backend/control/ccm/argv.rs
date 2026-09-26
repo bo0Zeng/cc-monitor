@@ -369,6 +369,12 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("sid", &format!("{:?}", o.ccm_sid))],
         ));
     }
+    if !o.account.is_empty() && !shell_quote_core::account_name_ok(&o.account) {
+        return die(copy_text(
+            "beArgv.validate.badAccount",
+            &[("account", &format!("{:?}", o.account))],
+        ));
+    }
     if !o.model.is_empty() && !shell_quote_core::model_name_ok(&o.model) {
         return die(copy_text(
             "beArgv.validate.badModel",

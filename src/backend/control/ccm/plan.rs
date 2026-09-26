@@ -807,9 +807,10 @@ pub(crate) fn build(
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
-    // 〔TL3 · §47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表（`accounts_query::is_safe_config_dir`）——
-    //   但那一份住 `observe/`，`control → observe` 是禁止的方向（`observe/mod.rs` 头注）。挪家归 DUP1（J2）；今天先过自由文本那一层。
-    if !shell_quote_core::free_text_ok(&config_dir) {
+    // 〔TL3 · §47〕账号配置目录（manifest 里来的）是本仓自管的路径，该走全表。
+    // 〔DUP1〕全表原先住 `observe/accounts_query.rs`（`control → observe` 是禁止方向，TL3 在这里先只过了自由文本那一层）；
+    //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
+    if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
         return Err(refuse(&env.account_env, &config_dir));
     }
     let launcher = if o.launcher.is_empty() {

@@ -331,6 +331,57 @@ pub fn is_deceptive_char(c: char) -> bool {
     )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1 · `INVARIANTS §47` ②〕**账号配置目录的全表** —— 全仓唯一一份。
+//
+// 配置目录是本仓自管的路径（manifest 里来的），拼进命令之前走**全表**：形式（绝对 · 无 `..` 段）＋ 拒绝集
+// （控制符 · 元字符 · 视觉欺骗字符），不是自由文本那一层的「只拒 NUL / CR / LF」。
+// 它原来住两处、各一份：monitor `payload.rs::config_dir_command_safe`（POSIX 形 ＋ 拒 `\`）与后端
+// `observe/accounts_query.rs::is_safe_config_dir`（任一平台形）；而后端 ccm 起会话那一侧（`control/`）要全表却够不着
+// （`control → observe` 是禁止方向，TL3 交接的那一格）。⇒ 两份与它们共用的元字符表都搬到这里，
+// 两个旧名字各留一个转手的薄壳（调用方与既有判据一个不动），`control` 直接用这里。
+// 拆法照 `N-F1c`：「平台无关的安全性质（拒绝集）＋ 平台相关的形式」。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 两种 shell 共用的元字符黑名单（POSIX `'…'` 与 PowerShell `'…'` 里能提前闭合引号或另起命令的那几个）。
+///
+/// **`\` 不在里面**：Windows 的账号目录长成 `C:\Users\z\.claude-alt\z`，把 `\` 一律禁掉等于禁掉整个平台；
+/// POSIX 形那一条（[`config_dir_posix_ok`]）自己额外拒它。
+pub const CONFIG_DIR_SHELL_META: &str = "'\"`$;|&<>*?()!";
+
+/// 一个字符能不能出现在**要拼进命令**的配置目录里（平台无关的那一半）：控制符（含 C1）· [`CONFIG_DIR_SHELL_META`] · [`is_deceptive_char`]。
+pub fn config_dir_char_unsafe(c: char) -> bool {
+    c.is_control() || CONFIG_DIR_SHELL_META.contains(c) || is_deceptive_char(c)
+}
+
+/// **POSIX 命令面**的配置目录：`/` 开头 · 不是 `/` 本身 · 无 `..` 段 · 无 `\` · 无 [`config_dir_char_unsafe`] 的字符。
+/// fail-closed：稍有可疑即判非法，**绝不拼进命令**。（原 monitor `payload.rs::config_dir_command_safe`。）
+pub fn config_dir_posix_ok(dir: &str) -> bool {
+    if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
+        return false;
+    }
+    !dir.chars().any(|c| c == '\\' || config_dir_char_unsafe(c))
+}
+
+/// **任一平台**的配置目录：POSIX 绝对（`/…`）或 Windows 绝对（盘符 `C:\` / `C:/` · UNC `\\server\share`）·
+/// 两种分隔符下都无 `..` 段 · 无 [`config_dir_char_unsafe`] 的字符（`\` 在这里是合法分隔符）。
+/// （原后端 `observe/accounts_query.rs::is_safe_config_dir`；monitor 的本机账号清单也问那台后端，所以要认 Windows 形。）
+pub fn config_dir_ok(p: &str) -> bool {
+    let b = p.as_bytes();
+    let drive = b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/');
+    let absolute = p.starts_with('/') || drive || p.starts_with("\\\\");
+    if !absolute || p == "/" || p.contains("/../") || p.ends_with("/..") {
+        return false;
+    }
+    if p.contains("\\..\\") || p.ends_with("\\..") {
+        return false;
+    }
+    !p.chars().any(config_dir_char_unsafe)
+}
+
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/crates/acct-core/lib_tests.rs"]
 mod tests;

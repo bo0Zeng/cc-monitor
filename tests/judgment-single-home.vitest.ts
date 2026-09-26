@@ -99,7 +99,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J2: {
     what: "configDir 能不能拼进命令",
-    homes: [`${PAYLOAD_RS}::config_dir_command_safe`, "acct-core::is_deceptive_char"],
+    // 〔DUP1 子步 8〕规则整份（POSIX 形 ＋ 任一平台形 ＋ 拒绝集）搬进 `acct-core`：`payload.rs::config_dir_command_safe`
+    //   与后端 `accounts_query.rs::is_safe_config_dir` 成转手的薄壳，后端 `control/ccm` 直接用 `config_dir_ok`。
+    homes: [
+      "acct-core::config_dir_posix_ok",
+      "acct-core::config_dir_ok",
+      "acct-core::config_dir_char_unsafe",
+      "acct-core::is_deceptive_char",
+    ],
     // 〔DUP1 子步 4〕删 `shell-quote.ts::isValidConfigDir`（Rust 拒绝集的逐项手抄）；账号维度原样推，渲染侧判。
     status: "zero",
     defs: ["isValidConfigDir"],
@@ -243,11 +250,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J18: {
     what: "账号名（`--account <名>`）",
+    // 〔DUP1 子步 8〕Rust 侧接上：`ccm …` 的 `--account` · 后端 ccm argv（此前只靠 quote ＋ 名单成员检查）。
     homes: ["shell-quote-core::account_name_ok"],
     status: "open",
     defs: ["validateAcctName"],
     needles: [],
-    owner: "主会话拍（DUP1.md §4 ①：新建账号表单逐字反馈）",
+    owner: "主会话拍（DUP1.md §4 ①：新建账号表单逐字反馈 —— 生成物 / 镜像 ＋ 对拍二选一）",
     why: "TS 那份比建账号的工具宽（放行 `.` 与 33–64 位，建时由那个工具在终端里拒）；Rust 那份与工具逐字同",
   },
   J16: {
@@ -272,6 +280,11 @@ type Entry = JudgmentId | typeof NONE;
 const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "acct-core": {
     ACCTS_DIR_NAME: NONE,
+    // 〔DUP1 子步 8〕账号配置目录的全表（从 monitor `payload.rs` 与后端 `accounts_query.rs` 收进来）。
+    CONFIG_DIR_SHELL_META: NONE,
+    config_dir_char_unsafe: "J2",
+    config_dir_ok: "J2",
+    config_dir_posix_ok: "J2",
     apikey_account_id_of_dir: NONE,
     apikey_routed_subset: NONE,
     AUTH_KINDS: "J16",

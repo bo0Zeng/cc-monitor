@@ -14127,6 +14127,11 @@
       "zh": "模型名 {value} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
       "args": ["value"]
     },
+    "rsCcmInvocation.refusal.idAccount": {
+      "kind": "error",
+      "zh": "账号名 {value} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
+      "args": ["value"]
+    },
     "rsCcmInvocation.refusal.freeTextCwd": {
       "kind": "error",
       "zh": "工作目录 {value} 用不了。要绝对路径，不含 .. 段、换行或 NUL",
@@ -16024,6 +16029,11 @@
       "kind": "error",
       "zh": "模型名 {model} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
       "args": ["model"]
+    },
+    "beArgv.validate.badAccount": {
+      "kind": "error",
+      "zh": "账号名 {account} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
+      "args": ["account"]
     },
     "beArgv.validate.noResume": {
       "kind": "error",

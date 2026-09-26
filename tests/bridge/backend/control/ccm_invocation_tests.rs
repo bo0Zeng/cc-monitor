@@ -884,3 +884,27 @@ fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
         );
     }
 }
+
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--account <名>`：与建账号的那个工具（`cc-acct-iso` 的 `name_check`）逐字同的那一份判
+/// （`shell_quote_core::account_name_ok`），**正反各一格**。
+#[test]
+fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
+    let with = |n: &'static str| {
+        let mut s = base_spec();
+        s.account = CliAccount::Named { name: Some(n) };
+        render_ccm_invocation(&s, &caps_all(), true)
+    };
+    for good in ["work", "acct-a", "a_b"] {
+        let cmd = with(good).unwrap_or_else(|e| panic!("真实账号名被拒了：{good:?} ⇒ {e:?}"));
+        assert!(cmd.contains("--account"), "{cmd}");
+    }
+    for bad in ["-x", "a.b", "a b", "_a"] {
+        assert_eq!(
+            with(bad),
+            Err(Refusal::IdentifierRefused {
+                slot: IdentifierSlot::Account,
+                value: format!("{bad:?}"),
+            })
+        );
+    }
+}

@@ -66,8 +66,8 @@
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
 use acct_core::{
-    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, is_deceptive_char,
-    ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+    auth_kind_from_manifest, auth_kind_with_apikey_table, auth_ready, ACCTS_DIR_NAME,
+    CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
 };
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -120,54 +120,11 @@ struct Manifest {
 /// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
 pub(crate) fn is_safe_config_dir(p: &str) -> bool {
-    // 🔴 `N-F1c`：这个判据被**拆成两半**了。拆法逐字照 monitor 那份同名实现的模块头注
-    // （`src/bridge/src/local_accounts.rs` 顶部那一节，逐字：「判据落在性质上，不落在表面
-    // 特征上 —— 照抄 `starts_with('/')` 是抄了形式、丢了性质」）：
-    //   ① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，两侧逐字同一套；
-    //   ② 「是绝对路径」= **平台相关的形式**，各写各的。
-    //
-    // 为什么现在才拆：本函数此前只服务远端（backend 只跑在 Linux 上），而
-    // `N-F1c` 起 **monitor 的本机账号清单也来问这个二进制**（`--list-accounts`），
-    // 而那份 monitor 要在 Windows 上跑 —— Windows 的账号目录是 `C:\Users\…`，
-    // 旧的第一条会把每一个 Windows 账号判成不安全 ⇒ **清单恒空**。
-    // ⚠ 障碍是这条检查，**不是**「backend 不能在 Windows 上跑」：发版流水线的
-    //   `build-windows` 里有原生本机后端构建，产物装进 `externalBin`。
-    fn looks_absolute(p: &str) -> bool {
-        if p.starts_with('/') {
-            return true; // POSIX
-        }
-        // Windows：盘符（`C:\` / `C:/`）或 UNC（`\\server\share`）。
-        let b = p.as_bytes();
-        let drive = b.len() >= 3
-            && b[0].is_ascii_alphabetic()
-            && b[1] == b':'
-            && (b[2] == b'\\' || b[2] == b'/');
-        drive || p.starts_with("\\\\")
-    }
-    if !looks_absolute(p) {
-        return false;
-    }
-    if p == "/" || p.contains("/../") || p.ends_with("/..") {
-        return false;
-    }
-    // 反斜杠成了合法分隔符 ⇒ **上跳那一手也要按反斜杠再拒一次**，否则放宽绝对路径的同时
-    // 就把 `C:\Users\..\..\x` 一起放进来了（monitor 那份加这一条正是为此）。
-    if p.contains("\\..\\") || p.ends_with("\\..") {
-        return false;
-    }
-    // 平台无关的那一半：shell 元字符 + 视觉欺骗字符，**与 monitor 那份逐字同一套**。
-    // **反斜杠不在此列** —— Windows 的路径分隔符就是它。放行它在这里是安全的，
-    // 因为**下游那一层自己会拒**：monitor 把 configDir 拼进 POSIX 命令之前要过
-    // `config_dir_command_safe`，那个函数明确把 `\` 列进拒绝集。
-    // ⇒ 这是**分层校验**，不是「反正没人拿它拼命令」。
-    !p.chars().any(|c| {
-        c.is_control()
-            || is_deceptive_char(c)
-            || matches!(
-                c,
-                '\'' | '"' | '`' | '$' | ';' | '|' | '&' | '<' | '>' | '*' | '?' | '(' | ')' | '!'
-            )
-    })
+    // 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1〕规则整份搬进 `acct_core::config_dir_ok`（全仓唯一一份）：
+    // 后端 `control/ccm` 起会话也要这张全表，而 `control → observe` 是禁止方向 —— 住共享 crate 两边都够得着。
+    // 原先这里的拆法（`N-F1c`：「平台无关的安全性质（拒绝集）＋ 平台相关的形式」，以及为什么要认 Windows 形 ——
+    // monitor 的本机账号清单也来问这个二进制，Windows 的账号目录是 `C:\Users\…`）随规则一起搬过去了，理由原样写在那边。
+    acct_core::config_dir_ok(p)
 }
 
 /// 去掉尾部 `/`，让 manifest 里的路径与 `/proc` 环境变量里的写法能对上。

@@ -73,7 +73,9 @@ use std::fmt::Write as _;
 /// （POSIX `'…'` 无转义；PowerShell `'…'` 无插值），真正要挡的是能提前闭合引号或另起命令的那几个。
 /// 〔audit-0805 08-06〕提为 `pub(crate)`：它是**权威源**，
 /// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
-pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
+/// 〔DUP1〕字面量本身搬进 `acct_core::CONFIG_DIR_SHELL_META`（后端那份全表 `is_safe_config_dir` 原来也各抄一遍，
+/// 两份收成那一份）；这里留的是 monitor 这一侧唯一的那个名字，值取自它 —— 定义处仍恰好一处（`the_shell_metachar_blacklist_has_exactly_one_home`）。
+pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 
 /// 一个字符能不能出现在**要拼进命令**的 config dir 里。
 ///
@@ -88,22 +90,21 @@ pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 /// ⚠ **诚实定级**：那是**纵深防御**的缺口，不是当时可利用的洞 —— configDir 的上游
 /// （本机 / 远端 manifest）都已经用并集把过一道。但「权威也保留本地校验」是这个仓自己
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
+///
+/// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手。
 pub fn is_command_unsafe_char(c: char) -> bool {
-    c.is_control()
-        || ('\u{0080}'..='\u{009f}').contains(&c)
-        || SHELL_META_COMMON.contains(c)
-        || acct_core::is_deceptive_char(c)
+    acct_core::config_dir_char_unsafe(c)
 }
 
 /// **POSIX 命令面**的 config dir 校验：绝对 POSIX 路径、无 `..` 段、无反斜杠、
 /// 无元字符/控制符/视觉欺骗字符。
 ///
 /// fail-closed：稍有可疑即判非法，**绝不拼进命令**。
+///
+/// 〔DUP1 · `设计/90 §3` 判据 2〕规则住 `acct_core::config_dir_posix_ok`（全仓唯一一份，后端 ccm 那一侧也用得着），
+/// 名字留在这里给既有调用方（本机拉起 · 后端落点 · 两条渲染路）转手。
 pub fn config_dir_command_safe(dir: &str) -> bool {
-    if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
-        return false;
-    }
-    !dir.chars().any(|c| c == '\\' || is_command_unsafe_char(c))
+    acct_core::config_dir_posix_ok(dir)
 }
 
 /// 「这次拉起用哪个账号」—— **三态，不是两态**。
