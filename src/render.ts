@@ -389,34 +389,50 @@ function enhanceMath(ph: HTMLElement): void {
 }
 
 /**
- * 全局 IntersectionObserver：观察 stream 内的卡片，进可视区调 enhanceCard，
- * 然后 unobserve（一次性，不来回触发）。
+ * 〔W5-RENDER R5 · `设计/10 §3.5` D2〕**每个滚动容器一个** IntersectionObserver（root = 那个容器）：
+ * 观察容器内的卡片，进可视区（± 300px）调 enhanceCard，然后 unobserve（一次性，不来回触发）。
  *
+ * 原来是**一个**模块级 IO、没有 root ⇒ 量的是浏览器视口，而真正的滚动容器是 `.stream` —— D2 逐字
+ * 「查看器里几何不同 ⇒ lazy 高亮触发时机不可靠」；主窗里各 tab 的 `.stream` 叠在同一块区域（后台 tab 是
+ * `visibility:hidden`，仍有几何），视口 root 分不清卡属于哪一条流。
+ *
+ * - root 必填（类型上就交不出「没有 root」）；同一个 root 复用一个 IO（`WeakMap`，root 被摘掉即可回收）。
+ * - 容器销毁时调 {@link releaseEnhanceRoot} 断开它的 IO（`TabStreamView.disposeTab` · `SessionViewer`）。
+ * - 没有 IO 的环境（jsdom / 极老浏览器）⇒ 退化到立即 enhance。
  * rootMargin: 300px 让卡片在快滚到时就预先 enhance，避免视觉看到 hljs "弹"出来。
  */
-const enhanceObserver =
-  typeof IntersectionObserver !== "undefined"
-    ? new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) {
-            if (e.isIntersecting && e.target instanceof HTMLElement) {
-              enhanceCard(e.target);
-              enhanceObserver?.unobserve(e.target);
-            }
-          }
-        },
-        { rootMargin: "300px" },
-      )
-    : null;
+const enhanceObservers = new WeakMap<HTMLElement, IntersectionObserver>();
 
 /**
- * 让一个卡片接受 lazy enhance 调度。TabManager 在 lazy 渲染期间挂卡片时调。
- * `enhanceObserver` 可能为 null（极老浏览器）→ 退化到立即 enhance。
+ * 让一个卡片接受 lazy enhance 调度（`root` = 它所在的滚动容器）。实时 tab 与查看器在 lazy 渲染期间挂卡片时调。
  */
-export function observeForEnhance(el: HTMLElement): void {
-  if (enhanceObserver) {
-    enhanceObserver.observe(el);
-  } else {
+export function observeForEnhance(el: HTMLElement, root: HTMLElement): void {
+  if (typeof IntersectionObserver === "undefined") {
     enhanceCard(el);
+    return;
   }
+  let io = enhanceObservers.get(root);
+  if (!io) {
+    io = new IntersectionObserver(
+      (entries, obs) => {
+        for (const e of entries) {
+          if (e.isIntersecting && e.target instanceof HTMLElement) {
+            enhanceCard(e.target);
+            obs.unobserve(e.target);
+          }
+        }
+      },
+      { root, rootMargin: "300px" },
+    );
+    enhanceObservers.set(root, io);
+  }
+  io.observe(el);
+}
+
+/** 滚动容器销毁：断开它那一个 IO（还没进过视口的卡不再补，容器都没了）。 */
+export function releaseEnhanceRoot(root: HTMLElement): void {
+  const io = enhanceObservers.get(root);
+  if (!io) return;
+  io.disconnect();
+  enhanceObservers.delete(root);
 }

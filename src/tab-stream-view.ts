@@ -41,6 +41,7 @@ import {
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { commands } from "./ipc/commands";
+import { releaseEnhanceRoot } from "./render";
 import { findInSession, readSessionIndex } from "./session-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
@@ -217,6 +218,7 @@ export class TabStreamView {
 
   /** 关 tab 时拆它的流 DOM、断大对象引用、摘监听（原是 `closeTab` 里的一段，逐字）。 */
   disposeTab(tab: Tab): void {
+    releaseEnhanceRoot(tab.streamEl); // 〔W5-RENDER R5〕本 tab 那一个 IO 断开
     tab.stream.dispose();
     tab.streamEl.remove();
     // K-R45 乙：大纲跟着走（〔SE1〕`reset` 也让在途那趟回来后不许回写）。
@@ -377,7 +379,7 @@ export class TabStreamView {
         this.host.userActive(sid);
         this.refreshOutline(tab); // 〔SE1〕真用户输入上屏 ⇒ 大纲要新的一截
       },
-      observeForLazyEnhance: this.store.inBatch,
+      enhanceRoot: this.store.inBatch ? tab.streamEl : null, // 〔W5-RENDER R5〕批期 lazy ⇒ 交本 tab 的滚动容器
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
@@ -569,7 +571,7 @@ export class TabStreamView {
       timeline: tab.timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
-      observeForLazyEnhance: true,
+      enhanceRoot: tab.streamEl, // 〔W5-RENDER R5〕IO 的 root = 本 tab 的滚动容器
       // G6：**远端也挂**。〔`K-R88` 09-13〕本机那条命令也收 sid 了 ⇒
       // **两条路都只要 sid**，「本机拿不到 jsonl 路径就不能分叉」这道门跟着没了
       // （原先那个随迭代更新的路径游标也一并去掉：没人再要那个值）。

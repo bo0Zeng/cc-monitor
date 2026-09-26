@@ -164,3 +164,50 @@ describe("KR45D0 SessionViewer.scrollToMessage —— 今天零判据的那个�
     expect(rig.scrollIntoView.mock.instances[0]).toBe(target);
   });
 });
+
+/**
+ * 〔W5-RENDER R5〕`设计/10 §3.5` D2 逐字：「`render.ts` 的 IntersectionObserver 没有 root —— 用浏览器视口而真实滚动容器是
+ * `.stream`，查看器里几何不同 ⇒ lazy 高亮触发时机不可靠」。修法：每个滚动容器一个 IO，root = 那个容器。
+ * 本组在真渲染管线（本文件的台子）上钉：查看器 lazy 渲染出来的每张卡，都交给了 root === 它自己滚动容器的那一个 IO；
+ * 换会话 / 关掉时那个 IO 被断开。
+ */
+describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root（`设计/10 §3.5`）", () => {
+  class FakeIO {
+    static all: FakeIO[] = [];
+    readonly observed = new Set<Element>();
+    disconnected = false;
+    constructor(
+      readonly cb: IntersectionObserverCallback,
+      readonly opts: IntersectionObserverInit = {},
+    ) {
+      FakeIO.all.push(this);
+    }
+    observe(el: Element): void {
+      this.observed.add(el);
+    }
+    unobserve(el: Element): void {
+      this.observed.delete(el);
+    }
+    disconnect(): void {
+      this.disconnected = true;
+      this.observed.clear();
+    }
+  }
+
+  it("一个 IO、root 是 `.session-viewer-stream`、两张卡都交给了它；换会话时断开", async () => {
+    FakeIO.all = [];
+    vi.stubGlobal("IntersectionObserver", FakeIO);
+    const v = await mount([chained(1, "u1", "第一句"), chained(2, "u2", "第二句")]);
+    const root = v.element.querySelector<HTMLElement>(".session-viewer-stream");
+    expect(root, "台子里找不到查看器的滚动容器 —— 本条会零命中地绿").not.toBeNull();
+    expect(FakeIO.all.length).toBe(1);
+    const io = FakeIO.all[0];
+    expect(io.opts.root).toBe(root);
+    expect(io.opts.rootMargin).toBe("300px");
+    const cards = [...v.element.querySelectorAll("[data-uuid]")];
+    expect(cards.length).toBe(2);
+    expect(new Set(io.observed)).toEqual(new Set(cards));
+    v.dispose();
+    expect(io.disconnected).toBe(true);
+  });
+});

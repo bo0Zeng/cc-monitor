@@ -65,11 +65,12 @@ export interface StreamSink {
    */
   onRealUserInput?: (sessionId: string) => void;
   /**
-   * batch 模式时给 element 注册 IntersectionObserver lazy enhance hljs。
-   * 仅 TabManager 在 batch 期间用；SessionViewer/Subagent 不需要（默认 eager 渲染）。
-   * 默认 = 不调用（lazy 也不需要 observe，反正不是 batch）。
+   * lazy 渲染出来的卡交给哪个滚动容器的 IntersectionObserver 补高亮 / 公式（`render.ts::observeForEnhance`）。
+   * 〔W5-RENDER R5 · `设计/10 §3.5` D2〕原来是布尔 `observeForLazyEnhance` ＋ 一个没有 root 的全局 IO；
+   * 现在交的是 root 本身（实时 tab = 它的 `.stream`，查看器 = 它自己的滚动容器）。
+   * `null` / 缺省 = 不 observe（急路渲染的卡没有占位要补）。
    */
-  observeForLazyEnhance?: boolean;
+  enhanceRoot?: HTMLElement | null;
   /**
    * F62：一张普通卡（user/assistant/system）建好并 markCardUuid 之后调，传入卡 root
    * 与其 message。仅 SessionViewer（本地历史查看器）实现——给卡挂「从这一轮建分支」按钮。
@@ -398,7 +399,7 @@ export function renderContentRecord(
         kind: "card",
         toolGroup: null,
       });
-      if (sink.observeForLazyEnhance) observeForEnhance(result.element);
+      if (sink.enhanceRoot) observeForEnhance(result.element, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
 
       // 真用户输入触发回调（让 TabManager 自动切 Tab）。
@@ -436,8 +437,8 @@ export function renderContentRecord(
         const tMerge = probe ? performance.now() : 0;
         // units 已挂进 prev.toolGroup.body（DOM 内嵌），不入 timeline 新 entry。
         // 若 batch 模式新 units 要 observe lazy hljs：units 是新插入的 DOM
-        if (sink.observeForLazyEnhance) {
-          for (const u of result.units) observeForEnhance(u);
+        if (sink.enhanceRoot) {
+          for (const u of result.units) observeForEnhance(u, sink.enhanceRoot);
         }
         const tMount = probe ? performance.now() : 0;
         if (probe) {
@@ -471,7 +472,7 @@ export function renderContentRecord(
         kind: "tool-group",
         toolGroup: group,
       });
-      if (sink.observeForLazyEnhance) observeForEnhance(group.root);
+      if (sink.enhanceRoot) observeForEnhance(group.root, sink.enhanceRoot);
       const tMount = probe ? performance.now() : 0;
       if (probe) {
         const total = performance.now() - t0;
