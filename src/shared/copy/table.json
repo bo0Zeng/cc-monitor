@@ -15440,6 +15440,16 @@
       "zh": "本机后端已停（常驻，pid={pid}）",
       "args": ["pid"]
     },
+    "rsLocalBackendHost.stop.forced": {
+      "kind": "error",
+      "zh": "本机后端 10 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
+      "args": ["pid"]
+    },
+    "rsLocalBackendHost.stop.stillThere": {
+      "kind": "error",
+      "zh": "强制结束之后它还在",
+      "args": []
+    },
     "rsLocalBackendHost.adopt.waited": {
       "kind": "error",
       "zh": "{last}（等了 {tries}×{interval}ms 还是这样）",
@@ -15469,6 +15479,16 @@
       "kind": "error",
       "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
       "args": ["port", "why"]
+    },
+    "rsLocalBackendHost.start.busy": {
+      "kind": "error",
+      "zh": "端口 {port} 上的本机后端正被另一个 cc-monitor 连着，这一个接不上",
+      "args": ["port"]
+    },
+    "rsLocalBackendHost.start.busyNotice": {
+      "kind": "error",
+      "zh": "本机后端正被另一个 cc-monitor 连着，这一个没有接上。关掉另一个 cc-monitor 再打开这一个。",
+      "args": []
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
@@ -15594,6 +15614,11 @@
       "kind": "error",
       "zh": "建目录 {dir} 失败：{e}",
       "args": ["dir", "e"]
+    },
+    "rsLocalBackendHost.token.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数（{e}），生成不了本机后端的连接钥匙",
+      "args": ["e"]
     },
     "rsLocalBackendHost.fs.createFailed": {
       "kind": "error",
@@ -16392,6 +16417,11 @@
       "kind": "error",
       "zh": "后端内部出错，这条命令没做完：{e}",
       "args": ["e"]
+    },
+    "beInbound.drain.shuttingDown": {
+      "kind": "error",
+      "zh": "后端正在退出，这条命令没有执行；重新连上之后再试",
+      "args": []
     },
     "beAccountsQuery.trustProductAt.unparsable": {
       "kind": "error",

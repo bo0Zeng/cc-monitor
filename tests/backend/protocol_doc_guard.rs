@@ -1278,6 +1278,8 @@ mod tests {
             "duplicate_id",
             "handler_panicked",
             "not_cancellable",
+            // 〔HX1 · 4D〕后端在收场（排空停不下来的那一档）时新来的阻塞命令：与命令无关、只有 `inbound.rs` 判得了。
+            "shutting_down",
         ];
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
         let files: &[(&str, &str)] = &[
