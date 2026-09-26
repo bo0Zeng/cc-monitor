@@ -227,12 +227,14 @@ fn probe_spawned(
     // ⚠ 读线程必须在**等之前**起：管道缓冲写满时子进程会阻塞在 write 上，
     // 那时再怎么等都等不到它退出 —— 「等它退出再读」是个会自锁的顺序。
     let stdout = child.stdout.take();
+    // 〔W5-VIS · E 吞错普查点名〕读错**带回来**：原先 `let _ =` 吞掉，读坏了与「没输出」长得一样（都判成没装）。
     let reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
-        if let Some(mut s) = stdout {
-            let _ = s.read_to_end(&mut buf);
-        }
-        buf
+        let read = match stdout {
+            Some(mut s) => s.read_to_end(&mut buf).err().map(|e| e.to_string()),
+            None => None,
+        };
+        (buf, read)
     });
     let deadline = std::time::Instant::now() + timeout;
     let timed_out = loop {
@@ -252,7 +254,14 @@ fn probe_spawned(
         let _ = child.wait();
         tracing::debug!("ccm 本机探测超时（{timeout:?}）—— 当作未装，降级回旧路");
     }
-    let buf = reader.join().unwrap_or_default();
+    let (buf, read_err) = reader.join().unwrap_or_default();
+    if let Some(e) = &read_err {
+        tracing::warn!(
+            "本机 ccm 探测：读它的输出出错（{e}）—— 这一次按没装处理，但那不是「确认没装」"
+        );
+        // 读坏了的那一截同超时那一形：**不采信半截输出**（理由见下面超时那一支）。
+        return parse_probe_output("");
+    }
     if timed_out {
         // 超时那次**不采信半截输出**：`parse_probe_output` 只看首行，
         // 半截的首行恰好可能是 `name=ccm` 而 `capabilities=` 还没来 ⇒ 会被读成「装了但没能力」，

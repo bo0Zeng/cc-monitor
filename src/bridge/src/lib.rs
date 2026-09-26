@@ -203,6 +203,9 @@ mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shel
 #[cfg(test)]
 mod structural_scan;
 mod subagent;
+// 〔W5-VIS〕业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
+#[cfg(test)]
+mod swallow_registry;
 // 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
 mod session_skeleton;
 // 〔C4b · 第四波 4B〕大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
