@@ -258,6 +258,8 @@ pub mod find;
 pub mod fonts;
 // 〔FW34 · 第四波 2026-09-24〕**预览**：右侧一块只读面板（已有的 `files-read-text`，自己的上限，最多一趟在飞）。
 pub mod preview;
+// 〔W5-FILES · 第五波〕**原生选文件框**（`设计/60 §6.2`）：上传 / 存到哪儿那两问的「浏览…」。
+pub mod picker;
 pub mod rows;
 pub mod scale;
 // 🔴〔FW1+FW2 2026-09-24〕**选中态 · 键位 · 右键菜单那张表**（`设计/99 §4.21.1`）。

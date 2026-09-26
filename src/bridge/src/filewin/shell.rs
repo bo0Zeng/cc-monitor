@@ -386,6 +386,10 @@ pub struct FileWindow {
     pub copy_board: CopyBoard,
     /// 〔W5-FILES · `设计/60 §6.2`〕算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
     pub size_board: super::size::SizeBoard,
+    /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
+    pub picker: std::sync::Arc<dyn super::picker::Picker>,
+    pick_board: super::picker::PickBoard,
+    pick_notice: Option<String>,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
@@ -547,6 +551,9 @@ impl FileWindow {
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
             size_board: super::size::SizeBoard::default(),
+            picker: super::picker::native(),
+            pick_board: super::picker::PickBoard::default(),
+            pick_notice: None,
             copy_prompt: None,
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
@@ -1438,6 +1445,59 @@ impl FileWindow {
         }
     }
 
+    /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕起一趟原生选择框（在 tokio 那条线程上，不堵 UI 线程）。
+    /// 上传 ⇒ 选一个或几个文件；下载 ⇒ 选保存位置（建议名 ＝ 那一问里现在的名字）。接不上（没运行时）⇒ 说一句。回值 ＝ 真的起了。
+    pub fn start_pick(
+        &mut self,
+        purpose: super::picker::Purpose,
+        ctx: Option<egui::Context>,
+    ) -> bool {
+        use super::picker::{PickKind, Purpose};
+        let kind = match purpose {
+            Purpose::Upload => PickKind::OpenFiles,
+            Purpose::Download => PickKind::SaveFile {
+                suggested_name: self
+                    .pull_ask
+                    .as_ref()
+                    .map(|a| a.src_name().to_string())
+                    .unwrap_or_default(),
+            },
+        };
+        let Some(h) = self.rt.clone() else {
+            self.pick_notice = Some(copy_text("rsFilewinPicker.pick.noRuntime", &[]));
+            return false;
+        };
+        let board = self.pick_board.clone();
+        board.attach(ctx);
+        let picker = self.picker.clone();
+        h.spawn(async move {
+            let got = picker.pick(kind).await;
+            board.deliver(purpose, got);
+        });
+        true
+    }
+
+    /// 〔W5-FILES〕选择框的结局落回那一问：上传 ⇒ 路径接进框里；下载 ⇒ 保存位置填进「存到哪儿」。没选到 ⇒ 那一问上说一句、框不动。
+    pub fn settle_pick(&mut self) -> bool {
+        use super::picker::Purpose;
+        let Some((purpose, picked)) = self.pick_board.take() else {
+            return false;
+        };
+        match purpose {
+            Purpose::Upload => self.upload.take_picked(picked),
+            Purpose::Download => match picked.and_then(|v| v.into_iter().next()) {
+                Some(p) => {
+                    if let Some(text) = self.pull_dest_mut() {
+                        *text = p.to_string_lossy().to_string();
+                    }
+                    self.pick_notice = None;
+                }
+                None => self.pick_notice = Some(copy_text("rsFilewinPicker.pick.none", &[])),
+            },
+        }
+        true
+    }
+
     /// 摆出第一问（「存到哪儿」，缺省填 `<本机 home>/<原名>`）。回值 = 真的摆出来了。
     ///
     /// ⚠ **缺省值里那个「本机 home」不是本机文件管理器**（[`local_home`] 头注那条）：
@@ -2161,7 +2221,8 @@ impl FileWindow {
         let Some(ask) = self.pull_ask.clone() else {
             return;
         };
-        let (mut go, mut cancel) = (false, false);
+        let (mut go, mut cancel, mut browse) = (false, false, false);
+        let pick_notice = self.pick_notice.clone();
         egui::Modal::new(egui::Id::new("filewin-pull-prompt")).show(ui.ctx(), |ui| match ask {
             Ask::Dest { .. } => {
                 ui.heading(copy_text(
@@ -2173,6 +2234,16 @@ impl FileWindow {
                 };
                 ui.text_edit_singleline(text);
                 ui.label(&copy_text("rsFilewinShell.pull.dirHint", &[]));
+                // 〔W5-FILES · `设计/60 §6.2`〕原生选择框：选到的保存位置填进上面那个框，确定照旧走这一问的判定。
+                if ui
+                    .button(&copy_text("rsFilewinPicker.ui.browse", &[]))
+                    .clicked()
+                {
+                    browse = true;
+                }
+                if let Some(n) = &pick_notice {
+                    ui.colored_label(egui::Color32::from_rgb(0xFF, 0xA5, 0x00), n);
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .button(&copy_text("rsFilewinShell.pull.ok", &[]))
@@ -2214,10 +2285,15 @@ impl FileWindow {
             }
         });
         if cancel {
+            self.pick_notice = None;
             self.cancel_pull();
         } else if go {
+            self.pick_notice = None;
             let ctx = ui.ctx().clone();
             self.confirm_pull(Some(ctx));
+        } else if browse {
+            let ctx = ui.ctx().clone();
+            self.start_pick(super::picker::Purpose::Download, Some(ctx));
         }
     }
 
@@ -2916,6 +2992,12 @@ impl FileWindow {
             let ctx = ui.ctx().clone();
             self.start_drop(items, Some(ctx));
         }
+        // 〔W5-FILES〕上传那一问上点了「选择…」⇒ 起原生选择框；选完的结局下一帧由 `settle_pick` 填回去。
+        if self.upload.take_browse() {
+            let ctx = ui.ctx().clone();
+            self.start_pick(super::picker::Purpose::Upload, Some(ctx));
+        }
+        self.settle_pick();
         // 🔴〔第九刀〕编辑那一摞：**先消化到货，再画** ——
         //    反了的话这一帧画的是上一帧的状态（读完了却还显示「正在读」）。
         self.settle_opened_edits();

@@ -10789,6 +10789,21 @@
       "zh": "大文件模式没有查找替换",
       "args": []
     },
+    "rsFilewinPicker.ui.browse": {
+      "kind": "action",
+      "zh": "选择…",
+      "args": []
+    },
+    "rsFilewinPicker.pick.none": {
+      "kind": "body",
+      "zh": "没有选到文件，框里的字没动",
+      "args": []
+    },
+    "rsFilewinPicker.pick.noRuntime": {
+      "kind": "error",
+      "zh": "选择框启动不了，请重开这个窗口",
+      "args": []
+    },
     "rsFilewinCopy.ui.askOverwriteMany": {
       "kind": "body",
       "zh": "远端已经有这 {n} 个同名文件了，要覆盖吗？",

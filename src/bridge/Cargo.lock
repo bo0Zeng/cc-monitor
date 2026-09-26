@@ -3152,6 +3152,7 @@ dependencies = [
  "notify-debouncer-mini",
  "parking_lot",
  "relay-route-core",
+ "rfd",
  "serde",
  "serde_json",
  "shell-quote-core",
