@@ -562,7 +562,7 @@ export class RemoteSection {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className =
-      "settings-btn settings-btn-secondary remote-machine-remove";
+      "settings-btn remote-machine-remove";
     removeBtn.textContent = copyText("remote.row.delete");
     removeBtn.title = copyText("remote.row.deleteHint");
     removeBtn.addEventListener("click", (ev) => {
@@ -744,7 +744,7 @@ export class RemoteSection {
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
-    addBtn.className = "settings-btn settings-btn-secondary";
+    addBtn.className = "settings-btn";
     addBtn.textContent = copyText("remote.build.addMachine");
     addBtn.addEventListener("click", () => {
       this.appendCard({ ...HOST_DEFAULTS });
@@ -758,7 +758,7 @@ export class RemoteSection {
     // F58：端口转发管理台入口。**跨机器**的隧道台，属于列表级而非某台机器。
     const pfBtn = document.createElement("button");
     pfBtn.type = "button";
-    pfBtn.className = "settings-btn settings-btn-secondary";
+    pfBtn.className = "settings-btn";
     pfBtn.textContent = copyText("remote.build.portForward");
     pfBtn.title =
       copyText("remote.build.portForwardHint");
@@ -842,7 +842,7 @@ export class RemoteSection {
     // F57：批量导入——一次导入全部主机,智能聚合同机多地址,预览可拆分。
     const batchBtn = document.createElement("button");
     batchBtn.type = "button";
-    batchBtn.className = "settings-btn settings-btn-secondary";
+    batchBtn.className = "settings-btn";
     batchBtn.textContent = copyText("remote.import.batch");
     batchBtn.title =
       copyText("remote.import.batchHint");

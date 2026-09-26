@@ -455,7 +455,7 @@ const PREFIX_COVERAGE_CEILING = 35;
  * **只许降。** 这 163 个是**混合人群**，如实说清楚，别当成 163 个缺陷：
  * - 大部分是**纯 JS 钩子** —— 挂上去只为 `querySelector` / 事件代理找得到它
  *   （`.sftp-close` · `.pf-start` · `.panorama-back` 这一族），本来就不需要样式；
- * - 一部分是**真悬空** —— 比如 `.settings-btn-secondary`（`src/settings/**` 53 处在挂它），
+ * - 一部分是**真悬空** —— 比如当年的 `.settings-btn-secondary`（`src/settings/**` 53 处在挂它〔W5-AUX 已摘，见下〕），
  *   CSS 里一条规则都没有。〔AR1 现打订正〕上一版说「同族的 `.settings-btn` / `.cc-bus-online` 都 styled ⇒
  *   多半是改名只改了一边」：`git log -S` 两个名字在 CSS 里**从来没有过规则**，`.cc-bus-online` 也没有 ——
  *   不是改名漏了一边，是一开始就只当标记挂。`cc-bus-online-*` 那几个状态类〔AR1〕已改成 `data-state`。
@@ -470,7 +470,10 @@ const PREFIX_COVERAGE_CEILING = 35;
 //   从没有过规则的类名（`cc-bus-online-unknown` / `-checking` / `-error`）按 `设计/41 §7` 约定 3 改成 `data-state`
 //   ⇒ 现打 147（少的就是这三个；`-yes` / `-no` 由模板拼、本来就不进这一数）。
 //   `.settings-btn-secondary`（53 处挂、git 史里从没有过规则、外观即 `.settings-btn` 默认）仍在这 147 里，理由见 `AR1.md §2`。
-const DANGLING_CEILING = 147;
+// 〔W5-AUX · AR1 拍板 3 · 09-25 棘 147 → 146〕主会话裁「删类名」：`.settings-btn-secondary` 从 `src/` 12 份文件里摘掉
+//   （现打 55 处字面量 ＋ `panel.ts::makeBtn` 那一处模板拼接；三个按钮助手的 `variant` 空串 = 默认那一种）⇒ 少的就是它这一个。
+//   外观不变：它从来没有规则，挂与不挂算出来的样式一样。
+const DANGLING_CEILING = 146;
 
 /** 本文件只在这儿读一次盘，后面各格共用。 */
 let cached: Ledger | null = null;
