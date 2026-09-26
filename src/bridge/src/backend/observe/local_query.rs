@@ -84,13 +84,15 @@ pub(crate) fn run_query(
     //  monitor 侧的对应物**不存在**。如实记，不假装钉住了。」〕
     // ⚠ 加一处新的 `control::` 引用**会红** —— 那不是坏了，是要你先回答
     // 「为什么这件事非得由读面发起」，再把它写进那张表。
-    let bin: PathBuf =
-        match crate::backend::control::local_backend::resolve_beside_this_exe(target_triple) {
-            crate::backend::control::local_backend::Resolved::Found(p) => p,
-            crate::backend::control::local_backend::Resolved::Missing { reason, looked_at } => {
-                return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
-            }
-        };
+    // 〔WIN1 · RT1 F2〕问「这个进程正在用的那份」（自释放的那份也算），不在才找 exe 旁边 ——
+    //   从前只问旁边，裸 exe 的 Windows 上后端明明在跑，这里却回「本机后端不在」（`设计/01 §5 D11` 的反面）。
+    //   `K-R73` 那张表同拍换了这一格的符号（条数不变）。
+    let bin: PathBuf = match crate::backend::control::local_backend::resolve_in_use(target_triple) {
+        crate::backend::control::local_backend::Resolved::Found(p) => p,
+        crate::backend::control::local_backend::Resolved::Missing { reason, looked_at } => {
+            return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
+        }
+    };
     let mut cmd = std::process::Command::new(&bin);
     cmd.args(args).stdout(std::process::Stdio::piped());
     match spawn(&mut cmd).and_then(|c| c.wait_with_output()) {

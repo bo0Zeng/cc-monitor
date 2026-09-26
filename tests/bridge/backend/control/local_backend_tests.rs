@@ -3453,3 +3453,107 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     std::fs::remove_dir(&base)
         .unwrap_or_else(|e| panic!("拒绝了却往盘上写了东西（目录删不掉：{e}）"));
 }
+
+// ── 〔WIN1 · 第四波 4D · RT1 F2〕读面认「这个进程正在用的那份」本机后端 ─────────────────────────
+//
+// 要求住址：`设计/01 §5 D11` 逐字「🔴 **后端是给定的，不许为「它可能没起来」留退路** 〔用户 2026-09-22 逐字：
+// 「**不要退路** / **所有东西都不要假设后端没起来**」〕」；读数出处 `第四波记录/RT1.md §8` F2 逐字「账号页
+// 「查不出这台机器装没装 cc-acct-iso：**本机后端不在**…」—— 同一屏上方写着「已连上（pid 3256）」。本机一次性查询
+// （`run_query`）只找 **exe 旁边**那份后端，不认自释放到 `~\.cc-monitor\bin\` 那份正在跑的」。
+// 异源：判定表的期望是手写的；接线那一半按源码形状钉（真 Windows 上账号页那一句的读数待虚拟机）。
+// ⚠ 买不到：`IN_USE` 是进程内全局一份，并行跑的别的判据也会调 `resolve_or_extract` 改它 ⇒ 这里**不**拿真全局做
+//    「记下 → 读回」的行为测（会抖）；行为那一半由纯内核 `in_use_or` 的判定表 ＋ 三处接线的源码形状合起来钉。
+
+#[test]
+fn the_backend_in_use_wins_over_the_one_beside_the_exe_and_a_vanished_one_does_not() {
+    use std::cell::Cell;
+    let asked_beside = Cell::new(0);
+    let beside = || {
+        asked_beside.set(asked_beside.get() + 1);
+        Resolved::Missing {
+            reason: "旁边没有".into(),
+            looked_at: vec![],
+        }
+    };
+    let live = PathBuf::from("/home/u/.cc-monitor/bin/cc-monitor-backend-x.exe");
+    let on_disk = |p: &Path| p == Path::new("/home/u/.cc-monitor/bin/cc-monitor-backend-x.exe");
+
+    // ① 记下了、还在盘上 ⇒ 就是它，而且**不再去问旁边**。
+    assert_eq!(
+        in_use_or(Some(live.clone()), beside, &on_disk),
+        Resolved::Found(live.clone())
+    );
+    assert_eq!(asked_beside.get(), 0, "记下的那份还在，却又去问了 exe 旁边");
+    // ② 记下了、但盘上已经没有了 ⇒ 不许把一个不存在的路径交出去，退回旁边那一问。
+    let gone = PathBuf::from("/home/u/.cc-monitor/bin/old.exe");
+    assert!(matches!(
+        in_use_or(Some(gone), beside, &on_disk),
+        Resolved::Missing { .. }
+    ));
+    assert_eq!(asked_beside.get(), 1);
+    // ③ 还没记（这一趟还没起过后端）⇒ 照旧问旁边。
+    assert!(matches!(
+        in_use_or(None, beside, &on_disk),
+        Resolved::Missing { .. }
+    ));
+    assert_eq!(asked_beside.get(), 2);
+}
+
+/// 从 `head` 那一处（恰好一处）起，切出它后面第一对 `{ … }` 的内容（按括号配对，不按文本找结尾）。
+/// ⚠ 刻意不用 `.split("…")` / `.find("…")`：`needle_anchor_registry` 那条递减棘轮数的正是语料上的这两种裸匹配。
+fn braced_after(corpus: &str, head: &str) -> String {
+    let at = guard_core::find_pinned(corpus, head)
+        .unwrap_or_else(|e| panic!("`{head}` 不是恰好一处（{e}）—— 抽取器指不明"));
+    let mut depth = 0usize;
+    let mut open = None;
+    for (i, c) in corpus[at..].char_indices() {
+        match c {
+            '{' => {
+                if depth == 0 {
+                    open = Some(at + i + 1);
+                }
+                depth += 1;
+            }
+            '}' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    return corpus[open.expect("先见到了开括号")..at + i].to_string();
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("`{head}` 后面的括号没配平 —— 抽取器坏了")
+}
+
+/// 三处接线：共用解析口在 `Found` 那一刻记下 · 读面与给窗口的环境都改问 `resolve_in_use`（不再只问旁边）。
+#[test]
+fn the_in_use_backend_is_noted_by_the_shared_resolver_and_read_by_both_readers() {
+    let shared = shared_resolution_body();
+    let found_block = braced_after(&shared, "if let Resolved::Found(bin) = &resolved {");
+    guard_core::find_pinned(&found_block, "note_in_use(bin);").unwrap_or_else(|e| {
+        panic!("`Found` 那一块里记下正在用的那份不是恰好一处（{e}）：\n{found_block}")
+    });
+    guard_core::find_pinned(&shared, "note_in_use(")
+        .unwrap_or_else(|e| panic!("共用解析口里 `note_in_use(` 不是恰好一处（{e}）"));
+
+    let lb = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
+    let lq = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/observe/local_query.rs"
+    ));
+    let window = braced_after(&lb, "pub(crate) fn backend_bin_env_for_window(");
+    let query = braced_after(&lq, "pub(crate) fn run_query(");
+    for (who, body) in [
+        ("backend_bin_env_for_window", &window),
+        ("run_query", &query),
+    ] {
+        guard_core::find_pinned(body, "resolve_in_use(")
+            .unwrap_or_else(|e| panic!("`{who}` 里 `resolve_in_use(` 不是恰好一处（{e}）"));
+        assert!(
+            !guard_core::contains_word(body, "resolve_beside_this_exe"),
+            "`{who}` 又只问 exe 旁边了 —— 裸 exe 的机器上后端明明在跑，它会说「本机后端不在」（RT1 F2）"
+        );
+    }
+}
