@@ -4153,12 +4153,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
             "build_rolling_appender",
             "monitor 数据目录下的 logs（滚动日志）",
         ),
-        (
-            "logging.rs",
-            "write_diagnostics_to_config",
-            "monitor 数据目录（诊断写进 config）",
-        ),
-        (
+                (
             "lib.rs",
             "open_log_dir",
             "monitor 数据目录下的 logs（「打开日志目录」）",
@@ -4169,11 +4164,7 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
             "atomic_write_json",
             "调用方给的 JSON 文件的父目录（monitor 数据目录一族）",
         ),
-        (
-            "config.rs",
-            "save_config",
-            "monitor 数据目录（config.json）",
-        ),
+        ("config.rs", "patch_config_at", "monitor 数据目录（config.json，〔CFG1〕加锁读改写那一处）"),
         ("session_map.rs", "run_watcher", "被看的那个 sessions 目录"),
         (
             "filewin/bookmarks.rs",
