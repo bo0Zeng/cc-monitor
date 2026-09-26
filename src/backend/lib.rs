@@ -1593,6 +1593,18 @@ pub const EMITS: &[&str] = &[
 /// 「令牌是敏感数据」（`§8.6 ③`），整段论证住 [`CAPABILITIES`] 的头注。
 pub const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only", "--with-rbind-token"];
 
+/// 〔W5-AUX · `设计/96 §3.6`〕**「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
+///
+/// 为什么要它：远端那一跳（`remote_ask::DialRemote`，capture）**不关远端的 stdin** ⇒ 默认那种「读到 EOF」会一直等；
+/// 此前的出路是把载荷拼进命令行 `printf '%s\n' '<json>' | …`，那要求远端登录 shell 认 POSIX 单引号与管道 ——
+/// fish 一类不认（`'…\\…'` 在 fish 的单引号里会被当转义吃掉一个反斜杠，JSON 就坏了），而且一趟受 `sh -c` 那一个参数的上限。
+/// 有了它，命令行里只剩后端路径与两个旗标（不含载荷），载荷经 capture 写进远端进程的 stdin，本入口读到换行就动手。
+/// 上限同默认那一形（`control/cli_control.rs::MAX_CLI_STDIN`，超了拒、不截断）。
+///
+/// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
+/// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
+pub const STDIN_LINE_FLAG: &str = "--stdin-line";
+
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--accts-dir",
@@ -1608,6 +1620,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
     "--query",
     "--scope",
+    // 〔W5-AUX · `设计/96 §3.6`〕CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
+    STDIN_LINE_FLAG,
     "--until",
 ];
 

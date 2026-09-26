@@ -36,6 +36,8 @@
 //! # 信封（与 `--resolve` 逐条同形，不新发明）
 //!
 //! · **入**：stdin 一段 JSON = 那条命令的 `args`（空 stdin = `{}`，`ping` 那类无载荷的用得上）。
+//!   默认读到 EOF；子命令后面跟 [`STDIN_LINE_FLAG`] ⇒ **只读一行**（读到第一个换行就停，不等 EOF）——
+//!   给「stdin 关不掉」的调用方用（`设计/96 §3.6`：远端命令经 capture 那一跳交载荷，capture 不关远端 stdin）。
 //! · **出**：stdout 一行紧凑 JSON（命令没有返回值时是 `{}`），exit 0。
 //! · **错**：exit 2 + stderr 一行 `{"code","message"}`。
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
@@ -52,7 +54,7 @@ use std::io::Read;
 /// 而真实原因是「太大了」。`byte_cap_registry` 当场逮住这一处（本轮第十七次），
 /// 它的 `ALLOWED_SEMANTICS` 里逐字**没有「静默截断」这一项**。
 /// ⇒ 多读一个字节，超了就说超了。
-const MAX_CLI_STDIN: u64 = 1024 * 1024;
+pub(crate) const MAX_CLI_STDIN: u64 = 1024 * 1024;
 
 /// 能力探测口〔P4d-Y2〕。
 ///
@@ -71,6 +73,38 @@ const MAX_CLI_STDIN: u64 = 1024 * 1024;
 ///
 /// ⇒ 真正抄过来的是那条**理念**：集成方按**能力**兼容，不按版本号。
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
+
+/// 〔W5-AUX〕「只读一行 stdin」那个修饰词住 [`crate::STDIN_LINE_FLAG`]（argv 三分表那一家；理由见那里的头注）。
+pub(crate) use crate::STDIN_LINE_FLAG;
+
+/// 读入参那一段（可喂任意读端 —— 生产交进程的 stdin）。`one_line` ⇒ 读到第一个换行就停，**不再多要一个字节**
+/// （调用方的 stdin 可能永远不关）；否则读到 EOF。两形同一个上限、同一种拒法。
+pub(crate) fn read_input<R: std::io::BufRead>(
+    r: R,
+    one_line: bool,
+) -> Result<String, (&'static str, String)> {
+    let mut buf: Vec<u8> = Vec::new();
+    // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
+    let mut capped = r.take(MAX_CLI_STDIN + 1);
+    let got = if one_line {
+        std::io::BufRead::read_until(&mut capped, b'\n', &mut buf)
+    } else {
+        capped.read_to_end(&mut buf)
+    };
+    if let Err(e) = got {
+        return Err(("stdin_read_failed", format!("read stdin failed: {e}")));
+    }
+    if buf.len() as u64 > MAX_CLI_STDIN {
+        return Err((
+            "args_too_large",
+            // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
+            contract::malformed(&format!(
+                "args JSON over the {MAX_CLI_STDIN}-byte cap, refused (not truncated)"
+            )),
+        ));
+    }
+    String::from_utf8(buf).map_err(|e| ("stdin_read_failed", format!("read stdin failed: {e}")))
+}
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
 /// 天然 1:1、没有并发的第二条请求可混淆 ⇒ 这里给一个固定值，不假装有号段。
@@ -159,21 +193,10 @@ pub async fn run(args: &[String]) -> i32 {
     };
     let mut input = String::new();
     if reads_stdin(spec) {
-        // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
-        if let Err(e) = std::io::stdin()
-            .take(MAX_CLI_STDIN + 1)
-            .read_to_string(&mut input)
-        {
-            return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
-        }
-        if input.len() as u64 > MAX_CLI_STDIN {
-            return emit_err(
-                "args_too_large",
-                // 不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关。
-                contract::malformed(&format!(
-                    "args JSON over the {MAX_CLI_STDIN}-byte cap, refused (not truncated)"
-                )),
-            );
+        let one_line = args.get(1).map(String::as_str) == Some(STDIN_LINE_FLAG);
+        match read_input(std::io::stdin().lock(), one_line) {
+            Ok(s) => input = s,
+            Err((code, message)) => return emit_err(code, message),
         }
     }
     let trimmed = input.trim();
