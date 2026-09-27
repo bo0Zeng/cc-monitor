@@ -262,3 +262,39 @@ fn empty_output_not_installed() {
     let r = parse_probe_output("");
     assert!(!r.installed);
 }
+
+/// 〔E2〕要求住址：`设计/96 §7.2.2`「顺序定死：先读字节定身份，再决定要不要跑它」（本机 `ccm` 那一跳点名未收）。
+/// 行为：落点上那份字节自报身份戳恰一个才算「我们的」；一个会自称 `name=ccm` 的脚本**不跑就不认**。
+/// 接线：`local_ccm_entry_status` 里起进程那一臂恰一处、挂在字节认身份的守卫后面。
+#[test]
+fn our_own_ccm_is_identified_by_its_bytes_before_it_is_run() {
+    let d = std::env::temp_dir().join(format!("ccm-e2-probe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let ours = d.join("ours");
+    let mut b = b"\x7fELF....".to_vec();
+    b.extend_from_slice(env!("BACKEND_STAMP_OPEN").as_bytes());
+    b.extend_from_slice(b"p5a-e2");
+    b.extend_from_slice(env!("BACKEND_STAMP_CLOSE").as_bytes());
+    std::fs::write(&ours, &b).unwrap();
+    let liar = d.join("liar");
+    std::fs::write(&liar, "#!/bin/sh\nprintf 'name=ccm\\nversion=6\\n'\n").unwrap();
+    assert!(ours_by_bytes(&ours), "带戳的后端字节没认出来");
+    assert!(
+        !ours_by_bytes(&liar),
+        "一个只会自称 name=ccm 的脚本被当成了我们的"
+    );
+    assert!(
+        !ours_by_bytes(&d.join("absent")),
+        "不在的文件被当成了我们的"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ccm_probe.rs"));
+    let at = guard_core::find_pinned(&prod, "pub fn local_ccm_entry_status(").expect("入口不在了");
+    let body = &prod[at..];
+    guard_core::find_pinned(
+        body,
+        "Some(p) if ours_by_bytes(p) => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),",
+    )
+    .expect("起 `--ccm-probe` 那一臂不在「先认字节」的守卫后面");
+}

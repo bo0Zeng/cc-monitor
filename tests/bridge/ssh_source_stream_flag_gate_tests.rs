@@ -63,10 +63,16 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
         backend_lib.contains("pub const STREAM_FLAGS: &[&str]"),
         "后端侧 STREAM_FLAGS 不在预期文件里，双写点锚点已失效"
     );
-    let line = backend_lib
+    // 〔E2〕那张表 fmt 之后折成多行、第一项是引用 `STREAM_FLAG_EXPLICIT` ⇒ 取到 `];` 为止，再把那个常量的字面量补进来。
+    let at = backend_lib
+        .find("pub const STREAM_FLAGS: &[&str]")
+        .expect("抠不到 STREAM_FLAGS");
+    let table = &backend_lib[at..at + backend_lib[at..].find("];").expect("STREAM_FLAGS 没收尾")];
+    let explicit = backend_lib
         .lines()
-        .find(|l| l.contains("pub const STREAM_FLAGS: &[&str]"))
-        .expect("抠不到 STREAM_FLAGS 那一行");
+        .find(|l| l.contains("pub const STREAM_FLAG_EXPLICIT: &str"))
+        .expect("抠不到 STREAM_FLAG_EXPLICIT");
+    let line = format!("{table} {explicit}");
 
     // monitor 侧：从**生产函数体**里抠它真的 `push_str` 了哪几个串，
     // 不手抄一份清单 —— 手抄的那种漏一条不会红。
@@ -94,6 +100,23 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
              后端那一行现打：{line}"
         );
     }
+    // 〔E2 · V28〕流模式显式词：后端表里有它，远端流 ＋ 测试连接探针两发都带它（名字是 `ccm` 时零参数是起会话）。
+    let word = crate::backend::control::local_backend::STREAM_WORD;
+    assert!(
+        line.contains(&format!("\"{word}\"")),
+        "后端 STREAM_FLAGS 不认 `{word}`：{line}"
+    );
+    assert!(
+        body.contains("STREAM_WORD"),
+        "`connect_and_exec` 不带流模式显式词"
+    );
+    let probe_at = prod
+        .find("pub async fn test_remote_connection(")
+        .expect("找不到测试连接那一发");
+    assert!(
+        prod[probe_at..probe_at + 4000].contains("STREAM_WORD"),
+        "测试连接探针不带流模式显式词"
+    );
     // 反向自检：那条清单里真的有我们这一刀加的那个（防「抠出来是空的也全绿」）。
     assert!(
         sent.contains(&"--with-rbind-token"),
@@ -335,11 +358,26 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
         .expect("后端 lib.rs 里找不到 `STREAM_FLAGS` 的定义");
     let rest = &src[at..];
     let body = &rest[..rest.find("];").expect("STREAM_FLAGS 没有收尾")];
-    body.split('"')
+    let mut out: std::collections::BTreeSet<String> = body
+        .split('"')
         .skip(1)
         .step_by(2)
         .map(str::to_string)
-        .collect()
+        .collect();
+    // 〔E2〕表里第一项引用 `STREAM_FLAG_EXPLICIT` ⇒ 从后端源码补它的字面量。
+    if body.contains("STREAM_FLAG_EXPLICIT") {
+        let l = src
+            .lines()
+            .find(|l| l.contains("pub const STREAM_FLAG_EXPLICIT: &str"))
+            .expect("抠不到 STREAM_FLAG_EXPLICIT");
+        out.insert(
+            l.split('"')
+                .nth(1)
+                .expect("STREAM_FLAG_EXPLICIT 没有字面量")
+                .to_string(),
+        );
+    }
+    out.into_iter().collect()
 }
 
 #[test]
@@ -350,7 +388,13 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
         backend.len() >= 2,
         "后端 STREAM_FLAGS 只摘到 {backend:?} —— 抽取坏了"
     );
-    for a in LOCAL_STREAM_ARGS {
+    // 〔V151〕打头的 `--` 是分隔（让 `ccm` 当后端用），不是流模式旗标。
+    assert_eq!(
+        LOCAL_STREAM_ARGS.first(),
+        Some(&"--"),
+        "本机后端起参没以 `--` 打头"
+    );
+    for a in &LOCAL_STREAM_ARGS[1..] {
         assert!(
             backend.contains(*a),
             "本机后端起参 `{a}` 不在后端 `STREAM_FLAGS`（{backend:?}）里 —— 后端不剥它 ⇒ 当成一次性查询跑完就退（§26）"

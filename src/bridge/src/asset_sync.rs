@@ -135,13 +135,12 @@ pub(crate) fn parse_reply(v: &Value) -> Result<AssetsSynced, String> {
     })
 }
 
-/// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）＋ 那台后端的路径。
+/// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）。〔E2〕那台后端的路径不交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`。
 pub(crate) fn args_for(cfg: &crate::ssh_source::RemoteConfig) -> Result<Value, String> {
     let dial = crate::dial_host::request(cfg, "capture", json!({}))?;
     Ok(json!({
         "origin": cfg.origin_label(),
         "dial": dial,
-        "backend": cfg.backend_path,
     }))
 }
 

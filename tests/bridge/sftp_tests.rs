@@ -1,3 +1,5 @@
+use super::*;
+
 fn probe_cfg() -> crate::ssh_source::RemoteConfig {
     crate::ssh_source::RemoteConfig {
         host: "这个主机一定不存在-audit0805".into(),
@@ -5,7 +7,6 @@ fn probe_cfg() -> crate::ssh_source::RemoteConfig {
         port: 1,
         user: "nobody".into(),
         key_path: None,
-        backend_path: "/tmp/nope".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,
@@ -16,58 +17,8 @@ fn probe_cfg() -> crate::ssh_source::RemoteConfig {
 //   要求零网络就被结构守卫拒）。F11 改经远端后端删（`files-delete-session`，只收 sid）之后，
 //   那条 SFTP 直删与它的守卫一起走了；「只收 sid · 落点由后端按 sid 找」的判据住后端。
 
-/// ★ 第二道围栏（canonicalize 之后）与卸载路的围栏：**源码层**判据。
-///
-/// ⚠ 跑不了真路（要先连上远端 / 红线不许起真连接）⇒ 只判「那行还在」。
-/// **判源码是代理不是标的**（F41 记过）：挡得住「短路 / 删掉」，
-/// 挡不住「围栏还在但被喂了洗过的路径」。后者进 `ROADMAP §5`。
-#[test]
-fn both_remote_path_sinks_still_ask_their_fence() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
-    for (f, fence) in [
-        ("uninstall_remote_backend", "is_safe_remote_backend_path"),
-        // 〔RW1 · 第四波 09-24〕`remove_remote_file` 那一行随 F11 改经后端删走了。
-    ] {
-        let at = prod
-            .find(&format!("fn {f}"))
-            .unwrap_or_else(|| panic!("生产段里没有 `{f}` —— 抽取器坏了，本条此刻无效"));
-        let mut body = Vec::new();
-        for (i, line) in prod[at..].lines().enumerate() {
-            let cont = line.starts_with("where") || line.starts_with(')') || line.trim() == "{";
-            if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) && !cont {
-                break;
-            }
-            body.push(line);
-        }
-        let body = body.join("\n");
-        // ⚠ **整行形状**，不是「提到过」。第一版写 `contains("!{fence}(")`，
-        //   于是 `if false && !is_safe_…(…)` 这种短路**照样绿** —— 变异当场证伪。
-        //   F24 那一族：我要的事实是「围栏在做判定」，而我匹配了「围栏出现过」。
-        // ⚠ **每一处调用都必须是判定行**，不是「有一处就行」。
-        //   `remove_remote_file` 是**双重守卫**（canonicalize 前后各一道）；
-        //   第一版写 `.any(...)`，于是短路其中一道、另一道还在 ⇒ 照样绿。
-        //   **同一条判据在同一轮里被变异证伪两次**（先是「提到过 vs 在判定」，
-        //   再是「有一处 vs 每一处」）—— 记在这里，因为两次都是我先写完才发现的。
-        let calls = body
-            .lines()
-            .filter(|l| l.contains(&format!("{fence}(")))
-            .count();
-        let gates = body
-            .lines()
-            .filter(|l| l.trim().starts_with(&format!("if !{fence}(")))
-            .count();
-        assert!(
-            calls >= 1 && gates == calls,
-            "`{f}` 里 `{fence}` 被调 {calls} 次，其中只有 {gates} 次是判定行。\n\
-                 围栏要么被删了，要么被短路了\n\
-                 （`if false && !…` 这种改法留着调用、却不再判定）。\n\
-                 它下一步会去删用户远端机器上的文件。\n\
-                 ⚠ 本条只看「那一行的形状」（源码层，理由见头注）：\n\
-                 挡得住删除与短路，**挡不住**「围栏还在但被喂了洗过的路径」。"
-        );
-    }
-}
-use super::*;
+// 〔E2 · V28〕卸载路那道围栏 `is_safe_remote_backend_path`〔散文墓碑〕删了：卸的是固定落点 `~/.cc-monitor/bin/ccm`（常量），
+//   没有外来路径要守；本条（`both_remote_path_sinks_still_ask_their_fence`〔散文墓碑〕）随之删。
 
 /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
 ///
@@ -125,71 +76,8 @@ fn ccm_cli_has_required_elements() {
     //      仍**只**住 e2e（`ccm-cli.test.sh` 5 条 · `ccm-contract-parity.sh` 5 条），别当 Rust 判据能顶。
 }
 
-/// `K-R48` 第二拍：远端 `~/.local/bin/ccm` 今天是**入口**，不是实现。
-///
-/// 🔴 **这一条的岗位是「别让它长回去」**：`K33` 逐字「所有命令只许有一处，其他都是
-/// 根据传参来调用」。一个 shim 里只要出现第二个分支，那句话就又破了 ——
-/// 而破的时候没有任何别的判据会出声（它不进任何 e2e，没有一台真远端可跑）。
-#[test]
-fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
-    let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-backend");
-    // ① 真的把 argv 转给后端，且走的是 `intercept` 的第二条入口（子命令形）。
-    assert!(
-        shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"")
-            || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-backend ccm \"$@\""),
-        "shim 没把 argv 原样转给后端的 `ccm` 子命令：\n{shim}"
-    );
-    // ② **零实现**：除了 shebang、一行注释、一行 exec，不许有别的可执行行。
-    let code: Vec<&str> = shim
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .collect();
-    assert_eq!(
-        code.len(),
-        1,
-        "远端 ccm 入口里出现了第二条可执行语句 —— 那就是第二处实现了（K33）。\n\
-             它只许有一行 `exec <后端> ccm \"$@\"`。现打：{code:?}"
-    );
-    // 唯一那一行必须**就是一次 exec**（不许起子进程再包一层：那会吃掉退出码与信号）。
-    //
-    // 🔴 09-15 放宽过这一条的**形状**（允许 `exec` 前挂「一次性环境变量赋值」前缀），
-    // 为的是那一行 `CCM_SELF=…`。〔MC1 · 2026-09-24〕那个变量删了、shim 回到一行裸 `exec`；
-    // 放宽的那一格留着不收（它挡的「吃掉退出码 / 第二处实现」下面三条照挡），
-    // 「一个环境变量都不许设」由 `local_backend_tests.rs::remote_shim_sets_no_environment_of_its_own` 钉。
-    let head = code[0];
-    let after_assigns = head
-        .split_whitespace()
-        .skip_while(|w| {
-            w.split_once('=').is_some_and(|(n, _)| {
-                !n.is_empty() && n.chars().all(|c| c.is_ascii_uppercase() || c == '_')
-            })
-        })
-        .next()
-        .unwrap_or("");
-    assert_eq!(
-        after_assigns, "exec",
-        "唯一那一行不是「（可选的大写环境变量赋值）+ `exec`」——\
-             起子进程再包一层会吃掉退出码与信号。现打：{head}"
-    );
-    assert_eq!(
-        head.matches("exec ").count(),
-        1,
-        "出现了不止一次 `exec` —— 那不再是「转交」而是逻辑。现打：{head}"
-    );
-    for forbidden in ["$(", "`", ";", "&&", "||", "|", "if ", "case "] {
-        assert!(
-            !head.contains(forbidden),
-            "唯一那一行里出现了 `{forbidden}` —— shim 长出了第二处实现（K33）。现打：{head}"
-        );
-    }
-    // ③ 路径必须经 POSIX quote（backend_path 是用户填的，可能带空格 / 引号）。
-    let tricky = ccm_entry_shim("/home/用户/带 空格/it's");
-    assert!(
-        tricky.contains(&shell_quote_core::posix_quote("/home/用户/带 空格/it's")),
-        "backend_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
-    );
-}
+// 〔E2 · V28〕`the_remote_ccm_entry_is_an_entry_not_an_implementation`〔散文墓碑〕 删了：远端 `ccm` 不再是三行入口，就是后端本身
+//   （`K33`「所有命令只许有一处」从此由「那个文件就是后端」结构上成立）。已部署的旧入口怎么认住 `ccm_legacy_tests.rs`。
 
 /// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
 /// 才编译/运行——证实内嵌真生效：Linux 两格取到 ELF 二进制 + build_id 非空。CI 无二进制时
@@ -635,11 +523,12 @@ fn the_stamp_scan_answer_maps_to_exactly_one_identity_state() {
 /// I2b：那条命令只读、界标不写字面量、路径过引号、身份至少一个字符（与 `build.rs::bytes_build_id` 同一条纪律）。
 #[test]
 fn the_stamp_scan_command_is_read_only_and_quoted() {
-    let cmd = stamp_scan_cmd("/h/a b/.cc-monitor/bin/ccm");
+    // 〔E2〕落点是固定常量、以 shell 写法交进来（`"$HOME"` 在那台上展开），不再是要 quote 的外来路径。
+    let cmd = stamp_scan_cmd(crate::ssh_source::BACKEND_CMD);
     assert!(cmd.starts_with("LC_ALL=C grep -aoE "), "{cmd}");
     assert!(
-        cmd.ends_with("-- '/h/a b/.cc-monitor/bin/ccm'"),
-        "路径没过引号：{cmd}"
+        cmd.ends_with("-- \"$HOME\"/.cc-monitor/bin/ccm"),
+        "落点那一格不对：{cmd}"
     );
     assert!(
         cmd.contains("[[:alnum:]_.-]+"),
@@ -683,12 +572,18 @@ fn both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker(
             "{sig} 又碰起了旁挂标记：\n{code}"
         );
         if !sig.contains("uninstall") {
-            guard_core::find_pinned(&code, "remote_identity(")
-                .unwrap_or_else(|e| panic!("{sig}：不是恰好一处问那台上那份是谁（{e}）"));
-            guard_core::find_pinned(&code, "identity_decision(")
-                .unwrap_or_else(|e| panic!("{sig}：不是恰好一处按身份判（{e}）"));
+            // 〔E2〕两条路都经 `landing_decision`（它里面问身份、按身份判；读落点字节只为认旧入口，不是旁挂标记）。
+            guard_core::find_pinned(&code, "landing_decision(")
+                .unwrap_or_else(|e| panic!("{sig}：不是恰好一处问落点那份是谁（{e}）"));
         }
     }
+    let landing = dp1_body(&prod, "async fn landing_decision(");
+    guard_core::find_pinned(&landing, "remote_identity(")
+        .unwrap_or_else(|e| panic!("落点判定：不是恰好一处问那台上那份是谁（{e}）"));
+    guard_core::find_pinned(&landing, "identity_decision(")
+        .unwrap_or_else(|e| panic!("落点判定：不是恰好一处按身份判（{e}）"));
+    guard_core::find_pinned(&landing, "read_marker(fs, LANDING_REL)")
+        .unwrap_or_else(|e| panic!("落点判定读的不是落点那份字节（{e}）"));
     // 正控：四种标记写法都认得出来。
     assert_eq!(
         marker_forms("read_marker(x) put_marker(y) deploy_decision(z) \"{dir}/.build_id\""),
@@ -1039,60 +934,52 @@ fn deploy_paths_use_verified_upload_for_content() {
     );
 }
 
-#[test]
-fn safe_backend_path_accepts_convention_rejects_suspicious() {
-    assert!(is_safe_remote_backend_path(
-        "/home/pi/.cc-monitor/bin/cc-monitor-backend"
-    ));
-    assert!(!is_safe_remote_backend_path("")); // 空
-    assert!(!is_safe_remote_backend_path("relative/cc-monitor")); // 非绝对
-    assert!(!is_safe_remote_backend_path("/")); // 根
-    assert!(!is_safe_remote_backend_path("/etc/passwd")); // 不含 cc-monitor
-    assert!(!is_safe_remote_backend_path(
-        "/home/pi/.cc-monitor/../../../etc/x"
-    )); // 含 ..
-}
-
 // 〔SR1b · 2026-09-24〕`the_sftp_dependency_is_really_on_russh_sftp_three` 搬去了后端（`tests/backend/dial_sftp_tests.rs`）：
 //   `russh-sftp` 出了界面清单（界面进程零 SFTP），今天只在 `src/backend/Cargo.toml` 里 —— 判据跟着依赖走，读后端那份清单与 lock。
 
-/// 🔴 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**「部署后端」只有一个动作** —— 后端本体 ＋ `ccm` 入口。
+/// 〔E2 · V28〕要求住址：`设计/01 §6.7b`「PATH 上放什么：后端二进制本身，名字叫 `ccm`；落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个；
+/// 不要的三样：① 转发 shim · ② 软链 · ③ 与后端重复的第二份字节」· `71 §5`「一个二进制，落 ~/.cc-monitor/bin/ccm（它自己就是 ccm，没有 shim）」。
 ///
-/// 两向：`deploy_remote_backend` 的函数体里**恰好一处** `put_ccm_entry(` 调用；
-/// 全文件生产段里推入口的原语（`ccm_entry_shim(`）**恰好一处**、就住 `put_ccm_entry` 里 ——
-/// 装别名块那条（`install_remote_alias_block`，〔W5-ALIAS〕今天住 `profile_installer.rs`）所在的文件**零命中**（从前它一次做两件事，`71 §13.1` 那个 ① ②）。
-///
-/// 死值验：把 `deploy_remote_backend` 里那一句 `put_ccm_entry(&fs, &path)` 摘掉 ⇒ 第一条红。
+/// 两向：部署两条路（自动 · 按钮）往落点写的恰是后端字节（`upload_verified(&fs, LANDING_REL, bin.bytes` 各恰一处），
+/// 生产段里**零处**再造入口（shim 的记号只许作为「认旧的」出现在 `ccm_legacy.rs`）；落点常量与后端那一侧同源（`relay_route_core`）。
 #[test]
-fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
+fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
-    let body_of = |sig: &str| -> String {
-        let i = prod
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = prod[i..].find("\n}\n").map(|k| i + k).unwrap_or(prod.len());
-        prod[i..j].to_string()
-    };
-    let deploy = body_of("pub async fn deploy_remote_backend(");
-    guard_core::find_pinned(&deploy, "put_ccm_entry(&fs, &path)")
-        .unwrap_or_else(|e| panic!("部署后端没有连同 ccm 入口一起放（{e}）"));
-    // 〔W5-ALIAS〕装别名块那条搬进了 `profile_installer.rs`：那份文件的生产段里推入口的原语**零命中**。
-    let alias_home =
-        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
-    // 〔AL2 · 第四波 4D〕远端那条并进 `aliases_block_install`；别名块的装口今天是 `install_to_profile`（本机远端同一处）。
-    guard_core::find_pinned(&alias_home, "pub async fn install_to_profile(")
-        .unwrap_or_else(|e| panic!("装别名块那条不在别名域了 —— 判据够不着被测对象（{e}）"));
-    for prim in ["ccm_entry_shim", "put_ccm_entry", "CCM_CLI_REMOTE_PATH"] {
-        assert!(
-            !guard_core::contains_word(&alias_home, prim),
-            "别名域又在推入口了（{prim}）—— 那是「部署后端」的事"
-        );
+    for sig in [
+        "pub async fn ensure_backend_deployed(",
+        "pub async fn deploy_remote_backend(",
+    ] {
+        let code = dp1_body(&prod, sig);
+        guard_core::find_pinned(&code, "upload_verified(&fs, LANDING_REL, bin.bytes, 0o700)")
+            .unwrap_or_else(|e| panic!("{sig}：落点上放的不是后端字节（{e}）"));
     }
-    let helper = body_of("async fn put_ccm_entry(");
-    guard_core::find_pinned(&helper, "ccm_entry_shim(backend_path)")
-        .unwrap_or_else(|e| panic!("put_ccm_entry 里推的不是那三行入口（{e}）"));
-    guard_core::find_pinned(&prod, "ccm_entry_shim(")
-        .unwrap_or_else(|e| panic!("推入口的原语不是恰好一处（{e}）"));
+    for gone in [
+        "ccm_entry_shim",
+        "put_ccm_entry",
+        "CCM_CLI_REMOTE_PATH",
+        "exec {} ccm",
+    ] {
+        assert!(!prod.contains(gone), "sftp.rs 又在造 ccm 入口了：{gone}");
+    }
+    assert_eq!(LANDING_REL, relay_route_core::BACKEND_LANDING_REL);
+    assert_eq!(LANDING_REL, ".cc-monitor/bin/ccm");
+}
+
+/// 〔E2〕已部署的机器上落点是旧的三行入口（无身份戳）：认得出 ⇒ 换成后端本体；认不出的无戳文件照旧显式失败（纯判定那一半）。
+#[test]
+fn an_old_three_line_entry_at_the_landing_is_recognised_as_ours() {
+    let old = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
+    assert!(crate::ccm_legacy::is_ours(old), "旧入口没认出来");
+    assert!(
+        !crate::ccm_legacy::is_ours("#!/bin/sh\necho mine\n"),
+        "用户自己的脚本被当成了我们的"
+    );
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body = dp1_body(&prod, "async fn landing_decision(");
+    guard_core::find_pinned(&body, "crate::ccm_legacy::is_ours(")
+        .unwrap_or_else(|e| panic!("落点判定不认旧入口（{e}）"));
+    guard_core::find_pinned(&body, "matches!(id, RemoteIdentity::NoStamp)")
+        .unwrap_or_else(|e| panic!("认旧入口不是只在「无戳」那一格（{e}）"));
 }
 
 /// 〔SR1b · 2026-09-24〕**界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
@@ -1101,7 +988,7 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
 /// 只由 `tests/evidence/SR1b-sftp-loopback.py --monitor` 带 `SR1B_LOOPBACK`
 /// （`{host,port,user,key_path,backend,home,rhome,up,dl_remote,dl_local}`）来跑；那台 sshd 的 sftp 起始目录是临时的 `rhome`，
 /// 写不到真 home。买到：部署判定四形（缺 ⇒ 部署 · 装完 ⇒ 那台 sshd 上真扫出戳、跳过 · 截成 0 字节 ⇒ 重部署 ·
-/// 〔DP1〕无戳的文件 ⇒ 显式失败不覆盖）· 入口一次写 / 一次不动 ·
+/// 〔DP1〕无戳的文件 ⇒ 显式失败不覆盖）·〔E2〕旧三行入口 ⇒ 认出来、换成后端本体 ·
 /// 卸载按钮删后端那一份 · 两个写根之外 ⇒ 后端围栏拒、原话带回 · 上传 / 下载经中继走完、帧翻成 `Snap` 终局。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
@@ -1127,14 +1014,15 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     std::thread::spawn(move || {
         crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
     });
-    let backend_path = format!("{rhome}/.cc-monitor/bin/cc-monitor-backend");
+    // 〔E2〕落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
+    //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
+    let backend_path = format!("{rhome}/{LANDING_REL}");
     let cfg = crate::ssh_source::RemoteConfig {
         host: s("host"),
         label: "sr1b-loopback".into(),
         port: v["port"].as_u64().unwrap() as u16,
         user: s("user"),
         key_path: Some(s("key_path")),
-        backend_path: backend_path.clone(),
         host_key_fingerprint: None,
         addresses: vec![],
         jump: None,
@@ -1156,7 +1044,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     // 〔DP1〕读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
     //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
     let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
-    let d_pre = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    let d_pre = landing_decision(&cfg, &fs, "sr1b-id").await;
     assert!(
         matches!(&d_pre, Err(e) if e.contains("不说自己是哪一版")),
         "无戳的旧文件 ⇒ 该显式失败：{d_pre:?}"
@@ -1169,17 +1057,23 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     let msg = uninstall_remote_backend(cfg.clone())
         .await
         .expect("卸载（出路）");
-    assert!(msg.starts_with(&format!("已删除 {backend_path}")), "{msg}");
-    let d0 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
+    let d0 = decide(
+        remote_identity(&cfg, &fs, LANDING_REL, crate::ssh_source::BACKEND_CMD)
+            .await
+            .unwrap(),
+    );
     assert!(
         matches!(d0, Ok(DeployAction::Deploy(_))),
         "落点缺 ⇒ 该部署：{d0:?}"
     );
-    fs.mkdirs(remote_parent(&backend_path)).await.unwrap();
-    upload_verified(&fs, &backend_path, &bytes, 0o700)
+    fs.mkdirs(remote_parent(LANDING_REL)).await.unwrap();
+    upload_verified(&fs, LANDING_REL, &bytes, 0o700)
         .await
         .expect("上传 ＋ 读回");
-    let id1 = remote_identity(&cfg, &fs, &backend_path).await.unwrap();
+    let id1 = remote_identity(&cfg, &fs, LANDING_REL, crate::ssh_source::BACKEND_CMD)
+        .await
+        .unwrap();
     assert_eq!(
         id1,
         RemoteIdentity::Stamp("sr1b-id".into()),
@@ -1192,28 +1086,36 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         "盘上那份不是送去的字节"
     );
     std::fs::write(&backend_path, b"").unwrap();
-    let d2 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    let d2 = decide(
+        remote_identity(&cfg, &fs, LANDING_REL, crate::ssh_source::BACKEND_CMD)
+            .await
+            .unwrap(),
+    );
     assert!(
         matches!(d2, Ok(DeployAction::Deploy(_))),
         "截成 0 字节 ⇒ 该重部署：{d2:?}"
     );
     // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（判定层不写；盘上那份原样）。
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
-    let d3 = decide(remote_identity(&cfg, &fs, &backend_path).await.unwrap());
+    let d3 = landing_decision(&cfg, &fs, "sr1b-id").await;
     assert!(
         matches!(&d3, Err(e) if e.contains("不说自己是哪一版")),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
     );
-    upload_verified(&fs, &backend_path, &bytes, 0o700)
+    // ② 〔E2〕落点上是旧版放的三行入口 ⇒ 认得出、判「换成后端本体」。
+    std::fs::write(
+        &backend_path,
+        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/x/cc-monitor-backend' ccm \"$@\"\n",
+    )
+    .unwrap();
+    let d4 = landing_decision(&cfg, &fs, "sr1b-id").await;
+    assert!(
+        matches!(d4, Ok(DeployAction::Deploy(_))),
+        "旧入口 ⇒ 该换成后端本体：{d4:?}"
+    );
+    upload_verified(&fs, LANDING_REL, &bytes, 0o700)
         .await
         .unwrap();
-    // ② 入口：第一次写、第二次不动
-    let e1 = put_ccm_entry(&fs, &backend_path).await.unwrap();
-    let e2 = put_ccm_entry(&fs, &backend_path).await.unwrap();
-    // 〔W5-ALIAS〕回报从 `fenced_block::Applied`〔散文墓碑〕换成「写没写」。
-    assert!(e1, "第一次该放入口");
-    assert!(!e2, "第二次该一个字节都不动");
-    assert!(std::path::Path::new(&format!("{rhome}/.cc-monitor/bin/ccm")).is_file());
     // ③ 两个写根之外 ⇒ 后端围栏拒、原话带回、盘上零改动
     let outside = format!("{rhome}/.cc-monitor/elsewhere/cc-monitor-backend");
     let e = upload_verified(&fs, &outside, b"x", 0o700)
@@ -1227,7 +1129,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     drop(fs);
     // ④ 卸载按钮（真命令）：〔DP1〕只删后端那一份（旁挂标记退役）
     let msg = uninstall_remote_backend(cfg.clone()).await.expect("卸载");
-    assert!(msg.starts_with(&format!("已删除 {backend_path}")), "{msg}");
+    assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
     assert!(!std::path::Path::new(&backend_path).exists());
     // ⑤ 上传经中继：开单 → 订阅即起跑 → 终局 Done，暂存件逐字节等于本机那份
     let origin = crate::origin::Origin(cfg.origin_label());
@@ -1517,7 +1419,7 @@ fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
     }
 }
 
-/// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂里 `return Ok(theirs)`，不落到回这一版 id 的那一行）。
+/// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
 #[test]
 fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
@@ -1528,10 +1430,16 @@ fn hx2_keeping_a_newer_backend_reports_its_identity_not_ours() {
         .expect("自动部署那条路没有 Keep 臂");
     let arm_end = arm + body[arm..].find("\n        }").expect("Keep 臂没收尾");
     let arm_body = &body[arm..arm_end];
+    // 〔E2〕Keep 臂之后还要扫一次旧落点 ⇒ 臂里交出那台上的身份、函数末尾回它（不再在臂里直接 return）。
     assert_eq!(
-        arm_body.matches("return Ok(theirs);").count(),
+        arm_body.matches("Some(theirs)").count(),
         1,
         "Keep 臂没回那台上的身份：{arm_body}"
     );
+    guard_core::find_pinned(
+        body,
+        "Ok(theirs.unwrap_or_else(|| bin.build_id.to_string()))",
+    )
+    .expect("自动部署末尾回的不是「那台上的身份，没有才是这一版」");
     assert!(!arm_body.contains("upload_verified"), "Keep 臂里写了字节");
 }

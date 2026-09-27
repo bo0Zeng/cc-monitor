@@ -646,7 +646,12 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
         );
     }
     let run = body_of("fn run_resident_stop(");
-    guard_core::find_pinned(&run, ".arg(\"--resident-stop\")").unwrap_or_else(|e| panic!("{e}"));
+    // 〔V151〕本机落点就是 `ccm` ⇒ `ccm -- --resident-stop`（打头的 `--` 让它当后端用）。
+    guard_core::find_pinned(
+        &run,
+        "let words = [local_backend::BACKEND_SEP, \"--resident-stop\"];",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     guard_core::find_pinned(&run, "crate::remote_resident::read_stop(")
         .unwrap_or_else(|e| panic!("{e}"));
 }

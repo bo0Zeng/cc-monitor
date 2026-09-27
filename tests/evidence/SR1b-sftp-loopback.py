@@ -257,7 +257,7 @@ def main():
 
         print("② 部署那几问")
         blob = os.urandom(3 * 1024 * 1024 + 17)
-        bp = f"{rhome}/.cc-monitor/bin/cc-monitor-backend"
+        bp = f"{rhome}/.cc-monitor/bin/ccm"
         st0 = fs.ask({"op": "stat", "path": bp})
         check("没装时 stat：meta=null、exists=false", st0 == {"meta": None, "exists": False}, st0)
         r = fs.ask({"op": "mkdirs", "path": f"{rhome}/.cc-monitor/bin"})
@@ -268,7 +268,7 @@ def main():
             on_disk = fh.read()
         check("sshd 那侧盘上逐字节等于送去的（异源）", on_disk == blob, len(on_disk))
         check("权限 0700", (os.stat(bp).st_mode & 0o777) == 0o700, oct(os.stat(bp).st_mode))
-        check("没留临时件 / .bak", sorted(os.listdir(f"{rhome}/.cc-monitor/bin")) == ["cc-monitor-backend"], os.listdir(f"{rhome}/.cc-monitor/bin"))
+        check("没留临时件 / .bak", sorted(os.listdir(f"{rhome}/.cc-monitor/bin")) == ["ccm"], os.listdir(f"{rhome}/.cc-monitor/bin"))
         st1 = fs.ask({"op": "stat", "path": bp})
         check("装后 stat：size 相等", st1.get("meta") == {"size": len(blob)}, st1)
         fs.ask({"op": "put", "path": f"{rhome}/.cc-monitor/bin/.build_id", "size": 6, "mode": 0o600, "verify": False}, b"sr1b-x")

@@ -258,8 +258,8 @@ CMD_OVERRIDE = {
 # `build.rs::embed_daemons`（它的 tool id 是 `None`，见 §S5 那段读数）。
 # key = "文件::函数"。两向对拍：人群从 `WRITE_SITES` 现打，这张表少一行 / 多一行都红。
 SITE_ARCHIVE = {
-    "local_backend.rs::install_local_ccm_entry": (
-        B1, "R64+K26", "放的就是「后端二进制自己的改名副本」"),
+    # 〔墓碑 · 第四波 E2〕`local_backend.rs::install_local_ccm_entry` 走了：本机 `ccm` 就是后端本身（V28「不要第二份拷贝」），
+    #   放它的是 `extract_embedded_to`（`WRITE_SITES` 里 tool id 是 `None`：monitor 自己目录里的部署物）⇒ 不在「带 id」人群里。
     "build.rs::embed_daemons": (
         B1, "K33", "把内嵌后端复制进 `OUT_DIR` —— 装后端那条链的构建期一环"),
     # 〔墓碑 · 第四波 RW1〕`fenced_block.rs::put_atomic` · `profile_installer.rs::atomic_write_string` /
