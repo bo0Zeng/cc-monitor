@@ -530,3 +530,89 @@ export function eagerBodyChars(message: JsonlRecord): number {
       return 0;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔RENDER2 · `设计/10 §2.5b` · `§6` 步 9〕**第二级估高**：同一套外框常数，正文那一段换成 pretext 精算（在 Worker 里跑）。
+// ═══════════════════════════════════════════════════════════════════════
+
+/** 交 Worker 精算的一件：`text` 按 `font` / `widthPx` / `lineHeightPx`（pre-wrap）排出来的高，加上 `fixed` 就是这一行的高。 */
+export interface RefineItem {
+  text: string;
+  font: string;
+  lineHeightPx: number;
+  widthPx: number;
+  /** 正文以外那几段（外框 · 头 · 代码 · 折叠单元 · 段距），与第一级 `estimateFromFacts` 同一套常数。 */
+  fixed: number;
+  /** 超长正文只交前缀（`MEASURE_PREFIX_CHARS`，同 `textHeight`）：排出来的高 × `scale` 外推回全长（不超长 ⇒ 1）。 */
+  scale: number;
+}
+
+/** 一段 markdown：围栏代码块外的正文 ＋ 代码行数 ＋ 代码块数 ＋ 非空硬行数（口径同后端索引的 `ch` / `cl` / `cb` / `pl`）。 */
+function splitFences(md: string): { prose: string; codeLines: number; codeBlocks: number; paras: number } {
+  const prose: string[] = [];
+  let codeLines = 0;
+  let codeBlocks = 0;
+  let inCode = false;
+  for (const line of md.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      if (!inCode) codeBlocks++;
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) codeLines++;
+    else prose.push(line);
+  }
+  const text = prose.join("\n");
+  const paras = prose.filter((l) => l.trim().length > 0).length;
+  return { prose: text, codeLines, codeBlocks, paras };
+}
+
+/**
+ * 一条记录 ⇒ 第二级那一件；不值得精算的（不建卡 · 工具组 · 细条卡 · 没有正文）⇒ `null`（第一级就是它的高）。
+ * 与 `estimateFromFacts` 逐项同形：只把 `factLines(…) × 行高` 换成 pretext 排出来的高。`colW` 同第一级。
+ */
+export function refineItemOf(rec: JsonlRecord, colW: number = COL_W): RefineItem | null {
+  if (rec.type !== "user" && rec.type !== "assistant") return null;
+  if (rec.type === "user" && rec.isMeta) return null;
+  const c: unknown = (rec.message as { content?: unknown } | undefined)?.content;
+  let md = "";
+  let folded = 0;
+  if (typeof c === "string") md = c;
+  else if (Array.isArray(c)) {
+    const texts: string[] = [];
+    for (const b of c as Array<{ type?: unknown; text?: unknown }>) {
+      if (b?.type === "text" && typeof b.text === "string") texts.push(b.text);
+      else if (b?.type === "tool_use" || b?.type === "tool_result" || b?.type === "thinking" || b?.type === "image") folded++;
+    }
+    md = texts.join("\n");
+  }
+  const { prose, codeLines, codeBlocks, paras } = splitFences(md);
+  if (!prose.trim()) return null; // 纯工具 / 纯代码：第一级那份算术已经是它
+  const code = codeLines * LH_MONO + codeBlocks * (CODE_BAR_H + CODE_PAD_V + CODE_MARGIN);
+  const over = prose.length > MEASURE_PREFIX_CHARS;
+  const text = over ? prose.slice(0, MEASURE_PREFIX_CHARS) : prose;
+  const scale = over ? prose.length / MEASURE_PREFIX_CHARS : 1;
+  if (rec.type === "user") {
+    return {
+      text,
+      scale,
+      font: `14px ${FONT_BASE}`,
+      lineHeightPx: LH_BASE,
+      widthPx: colW * 0.8 - 34,
+      fixed: code + folded * SUMMARY_H + SKEL_USER_CHROME,
+    };
+  }
+  return {
+    text,
+    scale,
+    font: FONT_PROSE,
+    lineHeightPx: LH_PROSE,
+    widthPx: colW,
+    fixed: CARD_HEADER_H + Math.max(0, paras - 1) * P_GAP + code + folded * SUMMARY_H + BLOCK_GAP + SKEL_CARD_CHROME,
+  };
+}
+
+/** 一件的高（给定「这段正文排出来多高」的量法）。Worker 与判据共用这一份组合式。 */
+export function refinedHeight(it: RefineItem, measure: (it: RefineItem) => number): number {
+  return it.fixed + measure(it) * it.scale;
+}

@@ -300,6 +300,11 @@ export class TailWindow {
     return this.pending.length;
   }
 
+  /** 〔RENDER2〕账本里这几个 seq 的 payload（不出账；没有的跳过）。第二级估高借正文用，看完就丢。 */
+  peekSeqs(seqs: ReadonlySet<number>): JsonlLinePayload[] {
+    return this.pending.filter((p) => seqs.has(p.seq));
+  }
+
   /**
    * 〔U3b · `设计/10` 步 8〕只留 seq 最高的 `keep` 条，其余**出账丢弃**；返回丢掉的条数。
    *
@@ -395,6 +400,10 @@ export class SkeletonLedger {
   /** prefix[i] = seq [base, base+i) 的估高之和；长度 = 行数 + 1 */
   private prefix: number[] = [0];
   private kinds: SkeletonKind[] = [];
+  /** 每行第一级粗估（`prefix` 由它与 `refined` 合出来）。 */
+  private est: number[] = [];
+  /** 〔RENDER2 · `设计/10 §2.5b` 第二级〕Worker 精算回来的高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
+  private refined = new Map<number, number>();
   private colW: number | undefined;
   /** uuid → seq（无 uuid 的行不占） */
   readonly uuidToSeq = new Map<string, number>();
@@ -414,20 +423,58 @@ export class SkeletonLedger {
       const h = estimateFromFacts(r, prev, this.colW);
       this.rows.push(r);
       this.kinds.push(kind);
-      this.prefix.push(this.prefix[this.prefix.length - 1] + h);
+      this.est.push(h);
+      this.prefix.push(this.prefix[this.prefix.length - 1] + (this.refined.get(seq) ?? h));
       if (r.u) this.uuidToSeq.set(r.u, seq);
     }
   }
 
-  /** 列宽变了：整份重估（O(n)，纯算术）。 */
-  relayout(colW: number | undefined): void {
+  /**
+   * 列宽变了：整份重估（O(n)，纯算术）。精算过的那几行在新列宽下作废 —— 返回它们（`设计/10 §2.5b`「列宽变化只重算已精算过的」，
+   * 调用方把它们重交 Worker）。⚠ 今天没有调用方：列宽只在模块求值时量一次（`height-estimate.ts::COL_W` 头注）。
+   */
+  relayout(colW: number | undefined): number[] {
     const rows = this.rows;
+    const redo = [...this.refined.keys()];
     this.colW = colW;
     this.rows = [];
     this.kinds = [];
+    this.est = [];
+    this.refined.clear();
     this.prefix = [0];
     this.uuidToSeq.clear();
     this.append(rows);
+    return redo;
+  }
+
+  /** 当前列宽（`undefined` = 模块量出来的那个）。 */
+  get columnWidth(): number | undefined {
+    return this.colW;
+  }
+
+  /** 〔RENDER2〕这一行精算过没有。 */
+  isRefined(seq: number): boolean {
+    return this.refined.has(seq);
+  }
+
+  /**
+   * 〔RENDER2 · 第二级〕Worker 精算回来的高换进账本（越界 / 不建卡的行不收）；从改动的最低那一行起重合一次前缀和。
+   * 返回有没有哪一行真的变了。
+   */
+  refine(entries: Iterable<readonly [number, number]>): boolean {
+    let lowest = Infinity;
+    for (const [seq, h] of entries) {
+      const i = seq - this.base;
+      if (i < 0 || i >= this.rows.length || this.kinds[i] === "none" || !(h >= 0)) continue;
+      if (this.refined.get(seq) === h) continue;
+      this.refined.set(seq, h);
+      lowest = Math.min(lowest, i);
+    }
+    if (lowest === Infinity) return false;
+    for (let i = lowest; i < this.rows.length; i++) {
+      this.prefix[i + 1] = this.prefix[i] + (this.refined.get(this.base + i) ?? this.est[i]);
+    }
+    return true;
   }
 
   private lastCardKind(): SkeletonKind {
