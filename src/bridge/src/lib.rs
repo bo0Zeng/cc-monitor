@@ -1457,10 +1457,7 @@ pub fn run() {
             session_skeleton::read_session_range,
             session_skeleton::read_session_lines,
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
-            // F10：装 / 卸远端 rc 里的别名块（SFTP 写 profile，SS-H）。〔MC1〕从前叫「装/卸 ccm 助手」，
-            // 推 `ccm` 入口那一半并进了下面的 `deploy_remote_backend`（`设计/71 §13.3`）。
-            profile_installer::install_remote_alias_block,
-            profile_installer::uninstall_remote_alias_block,
+            // 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条命令并进上面 `aliases_block_install` / `_remove`（带 `origin`），删。
             // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
             // 〔MC1〕部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
             sftp::deploy_remote_backend,
@@ -1834,81 +1831,101 @@ async fn relay_endpoint_for_launch(
 //   账号 id 由后端推（`acct_core::apikey_account_id_of_dir`）。monitor 里从此没有明文 key 的具名绑定。
 //   `KH2C1` 前端那一侧的机检（它的旧名 `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕）照旧在 `accounts-section.vitest.ts`。
 
-/// 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码。一个字节都不写。
-/// 预览与「复制去手贴」都只调这一条；`dry_run` 那个布尔从此不需要了（「只生成不写」就是只调这一跳）。
-/// 〔AL1c · 第四波 4B〕多一个 `shell`（`posix` / `powershell`）：同一份清单渲染成哪种 shell 的方言（`71 §4.4`）。
-/// 必给，不留缺省 —— 缺了就是「替人猜一种 shell」。
+// 〔AL2 · 第四波 4D〕别名一族六条都收 `origin`（`设计/71 §6` 那张图逐字 `call(origin, …)` · `01 §6.8`）：本机远端同一条命令，
+//   事实经那台后端（`user_files::BackendDoor{origin}`），规则与方言在 monitor 只一份；`dialect_promised` 挡表 B 没承诺的方言。
+
+/// 〔AL1〕第①跳：**纯** —— 清单 → 代码，一个字节都不写（`71 §6`）；`shell` 必给，不替人猜。
+/// 〔AL2〕`origin` 只决定撞名那一格查不查 `PATH`（远端不查）。
 #[tauri::command]
 fn aliases_render(
+    origin: crate::origin::Origin,
     aliases: Vec<account_aliases::Alias>,
     shell: shell_dialect::Shell,
-) -> account_aliases::AliasRender {
-    account_aliases::render(&aliases, shell)
+) -> Result<account_aliases::AliasRender, String> {
+    origin.route("aliases_render")?;
+    account_aliases::dialect_promised(&origin, shell)?;
+    Ok(account_aliases::render(&aliases, shell, &origin))
 }
 
-/// 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（`设计/70 §3.1` 「列出现在有哪些命令」）。
-/// 〔AL1c〕按 `shell` 读那一种的文件（`aliases.sh` / `aliases.ps1`）与那一种的启动文件候选。
-/// 〔AL1d · 第四波 4B〕启动文件候选各带**别名块**的现状（从前要另问终端集成那两条：列 `$PROFILE` · 扫一份），
-/// 外加这台机器上完成了拉前握手的终端数（`BindRegistry`）。`rc_path` = 人另指的一份（过围栏后并进候选）。
-/// 读若干份文件 ⇒ `spawn_blocking`（同步命令会占住主线程）。
+/// 〔AL1〕读回口：那台机器上那份别名文件 ＋ 启动文件候选（各带别名块的现状）＋ 握手终端数（`BindRegistry`，只本机有，远端恒 0）。
+/// 〔AL2〕事实全问那台后端（`files-home` / `files-peek` / `files-stat`）；`rc_path` = 人另指的一份（过围栏后并进候选）。
 #[tauri::command]
 async fn aliases_read(
+    origin: crate::origin::Origin,
     shell: shell_dialect::Shell,
     rc_path: Option<String>,
     bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
 ) -> Result<account_aliases::AliasListing, String> {
-    let bound = u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX);
-    tokio::task::spawn_blocking(move || {
-        let home = dirs::home_dir().ok_or_else(|| copy_text("rsLib.aliases.noHome", &[]))?;
-        account_aliases::read_in(&home, shell, rc_path.as_deref(), bound)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    origin.route("aliases_read")?;
+    account_aliases::dialect_promised(&origin, shell)?;
+    let bound = if origin.is_local() {
+        u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX)
+    } else {
+        0
+    };
+    let door = user_files::BackendDoor::new(origin.clone());
+    account_aliases::read_via(&door, &origin, shell, rc_path.as_deref(), bound).await
 }
 
-/// 〔AL1〕第②跳：**唯一的副作用**。收的是清单不是代码 —— 写进 shell 的文本只由后端渲染
-/// （审计 S-1），而「写的就是预览的那一份」由两跳调同一个 `account_aliases::render` 保证。
-/// 〔RW1 · 第四波 09-24〕落盘经**本机后端**的文件管理那一面（`user_files::BackendDoor`），
-/// home 也问它 ⇒ 那边的测试拿替身门当后端，结构上碰不到真实家目录。
-/// 〔AL1c〕`shell` 定写哪一种（别名文件 ＋ 它的写法）；`rc_path` 那份文件的方言由它自己的扩展名定。
-/// 〔TL1 · 4C〕`rc_path` 今天**只查**（接没接上），不往里写（`设计/71 §6.1`：source 那一行只住别名块里）。
+/// 〔AL1〕第②跳：**唯一的副作用**，收清单不收代码（写的就是第①跳预览的那一份）；落盘经那台后端 `files-put`。
+/// 〔TL1〕`rc_path` 只查接没接上，不往里写（`71 §6.1`）。
 #[tauri::command]
 async fn aliases_install(
+    origin: crate::origin::Origin,
     aliases: Vec<account_aliases::Alias>,
     rc_path: Option<String>,
     shell: shell_dialect::Shell,
 ) -> Result<account_aliases::AliasInstallReport, String> {
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    account_aliases::install_in(&door, &aliases, rc_path.as_deref(), shell).await
+    origin.route("aliases_install")?;
+    account_aliases::dialect_promised(&origin, shell)?;
+    let door = user_files::BackendDoor::new(origin.clone());
+    account_aliases::install_in(&door, &origin, &aliases, rc_path.as_deref(), shell).await
 }
 
-/// 〔AL1d · 第四波 4B〕**别名块**的第①跳：纯 —— 块 → 代码（「装进一份空文件会写成什么」，BOM 除外）。
-/// 两种方言都答（从前的预览只会 PowerShell 那一块）；与装那一跳调同一个 `profile_installer::plan_install`。
-/// 收的是**目标文件**而不是 `shell`：方言由那份文件的扩展名定（与装那一跳同一个判法 `Shell::of_target`），
-/// 前端不替后端判方言。只看扩展名、一个字节都不读 ⇒ 不过围栏。
-/// `with_cc` 只对 PowerShell 有意义：要不要连 `function cc` 一起（不勾 = 只装 `__ccm_bind`，不抢用户自己的 `cc`）。
+/// 〔AL1d〕**别名块**第①跳：纯（「装进一份空文件会写成什么」），与装那一跳同一个 `plan_install`；方言由目标文件扩展名定。
+/// 〔AL2〕`origin` 只用来过 `dialect_promised`（远端 `.ps1` ⇒ 拒）。
 #[tauri::command]
-fn aliases_block_render(rc_path: String, with_cc: bool) -> Result<String, String> {
+fn aliases_block_render(
+    origin: crate::origin::Origin,
+    rc_path: String,
+    with_cc: bool,
+) -> Result<String, String> {
+    origin.route("aliases_block_render")?;
     let shell = shell_dialect::Shell::of_target(std::path::Path::new(&rc_path));
+    account_aliases::dialect_promised(&origin, shell)?;
     profile_installer::render_block(shell, with_cc)
 }
 
-/// 〔AL1d〕**别名块**的第②跳：装进人选的那份启动文件（方言按那份文件的扩展名定，`71 §4.4` 末段）。
-/// 幂等：已有块就整块替换。落盘经本机后端的文件管理那一面（`user_files::BackendDoor`），本进程不写。
+/// 〔AL1d〕**别名块**第②跳：装进人选的那份启动文件（幂等，整块替换）；home 问那台后端、围栏按 `origin` 分两层。
 #[tauri::command]
-async fn aliases_block_install(rc_path: String, with_cc: bool) -> Result<(), String> {
-    let p = profile_installer::fence_profile_path(&rc_path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::install_to_profile(&door, &p, profile_installer::CC_FUNCTION_NAME, with_cc)
+async fn aliases_block_install(
+    origin: crate::origin::Origin,
+    rc_path: String,
+    with_cc: bool,
+) -> Result<(), String> {
+    origin.route("aliases_block_install")?;
+    let door = user_files::BackendDoor::new(origin.clone());
+    let home = user_files::Door::home(&door).await?;
+    let p = profile_installer::fence_on(&origin, &home, &rc_path)?;
+    let at = std::path::Path::new(&p);
+    account_aliases::dialect_promised(&origin, shell_dialect::Shell::of_target(at))?;
+    profile_installer::install_to_profile(&door, at, profile_installer::CC_FUNCTION_NAME, with_cc)
         .await
 }
 
-/// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经本机后端写。
+/// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经那台后端写。
 #[tauri::command]
-async fn aliases_block_remove(rc_path: String) -> Result<(), String> {
-    let p = profile_installer::fence_profile_path(&rc_path)?;
-    let door = user_files::BackendDoor::new(origin::Origin::local());
-    profile_installer::uninstall_from_profile(&door, &p).await
+async fn aliases_block_remove(
+    origin: crate::origin::Origin,
+    rc_path: String,
+) -> Result<(), String> {
+    origin.route("aliases_block_remove")?;
+    let door = user_files::BackendDoor::new(origin.clone());
+    let home = user_files::Door::home(&door).await?;
+    let p = profile_installer::fence_on(&origin, &home, &rc_path)?;
+    let at = std::path::Path::new(&p);
+    account_aliases::dialect_promised(&origin, shell_dialect::Shell::of_target(at))?;
+    profile_installer::uninstall_from_profile(&door, at).await
 }
 
 #[tauri::command]
