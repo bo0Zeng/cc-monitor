@@ -9,6 +9,66 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beStderrFd.point.dupFailed": {
+      "kind": "error",
+      "zh": "错误输出改不到日志文件：{e}",
+      "args": ["e"]
+    },
+    "beStderrFd.point.notUnix": {
+      "kind": "error",
+      "zh": "这台机器上错误输出写不进日志文件。",
+      "args": []
+    },
+    "beDoor.fs.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beDoor.fs.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beDoor.key.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数，生成不了中转钥匙。",
+      "args": []
+    },
+    "beDoor.fs.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beDoor.fs.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beDoor.fs.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beStderrLog.roll.moveFailed": {
+      "kind": "error",
+      "zh": "上一份日志挪不走（{path}）：{e}",
+      "args": ["path", "e"]
+    },
+    "beStderrLog.roll.createFailed": {
+      "kind": "error",
+      "zh": "建不了日志文件 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "credsStore.error.notJson": {
+      "kind": "error",
+      "zh": "凭据文件不是合法的 JSON，没有改动它：{e}。多半是少了逗号或引号，改好再试。",
+      "args": ["e"]
+    },
+    "credsStore.error.notObject": {
+      "kind": "error",
+      "zh": "凭据文件的最外层不是一个 JSON 对象。正确的样子见模板：{template}",
+      "args": ["template"]
+    },
     "beResident.fs.noParent": {
       "kind": "error",
       "zh": "{path} 没有上一级目录。",

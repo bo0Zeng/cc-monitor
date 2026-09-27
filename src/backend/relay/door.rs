@@ -37,6 +37,7 @@
 //! - 文件在中转跑着的时候被人删掉 / 改掉 ⇒ 中转手里那一把与盘上对不上，新会话每一发 403（出声，不静默）；重起中转就好。
 
 use super::http1::RequestHead;
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 钥匙文件相对家目录的路径。〔US1 · 4D〕值只住共享 crate `relay_route_core::KEY_FILE_REL`：
@@ -102,12 +103,19 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
     }
     // 〔HX2〕读 → 铸 → 写整段在那个目录的跨进程锁里（`platform/lock.rs`），锁里再读一次：
     //   两个中转（本机常驻那一个 ＋ 一个 `--relay`）同时发现没钥匙，只有先拿到锁的那一个铸，后一个读回它那一把。
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
+    let dir = path.parent().ok_or_else(|| {
+        copy_text(
+            "beDoor.fs.noParent",
+            &[("path", &path.display().to_string())],
+        )
+    })?;
     // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
-    crate::own_dir::ensure_private_dir(dir)
-        .map_err(|e| format!("建 {} 失败：{e}", dir.display()))?;
+    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+        copy_text(
+            "beDoor.fs.mkdirFailed",
+            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let _lock = crate::platform::lock::hold(dir)?;
     if let Some(k) = read_key(path) {
         return Ok(k);
@@ -123,7 +131,7 @@ fn mint() -> Result<Key, String> {
     rustls::crypto::ring::default_provider()
         .secure_random
         .fill(&mut buf)
-        .map_err(|_| "取不到系统随机数 —— 铸不出中转钥匙".to_string())?;
+        .map_err(|_| copy_text("beDoor.key.noRandom", &[]))?;
     let mut s = String::with_capacity(2 * KEY_BYTES);
     for b in buf {
         s.push_str(&format!("{b:02x}"));
@@ -135,19 +143,39 @@ fn mint() -> Result<Key, String> {
 /// 报错里只有路径，**永远没有钥匙本身**。
 fn write_key(path: &Path, k: &Key) -> Result<(), String> {
     use std::io::Write as _;
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
+    let dir = path.parent().ok_or_else(|| {
+        copy_text(
+            "beDoor.fs.noParent",
+            &[("path", &path.display().to_string())],
+        )
+    })?;
     let tmp = dir.join(format!("relay-key.{}.tmp", std::process::id()));
     let result = (|| {
-        let mut f = creds_core::perm::create_private(&tmp)
-            .map_err(|e| format!("建临时文件 {} 失败：{e}", tmp.display()))?;
+        let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
+            copy_text(
+                "beDoor.fs.tmpCreateFailed",
+                &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
+            )
+        })?;
         f.write_all(k.expose().as_bytes())
             .and_then(|()| f.sync_all())
-            .map_err(|e| format!("写临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beDoor.fs.tmpWriteFailed",
+                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
+                )
+            })?;
         drop(f);
-        std::fs::rename(&tmp, path)
-            .map_err(|e| format!("把 {} 挪到 {} 失败：{e}", tmp.display(), path.display()))
+        std::fs::rename(&tmp, path).map_err(|e| {
+            copy_text(
+                "beDoor.fs.renameFailed",
+                &[
+                    ("tmp", &tmp.display().to_string()),
+                    ("path", &path.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        })
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
