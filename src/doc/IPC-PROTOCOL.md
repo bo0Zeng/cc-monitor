@@ -1787,6 +1787,22 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 **错误码**：`bad_args`（缺 `args` / 不是一组字符串 / 超上界）· `refused`（ccm 自己拒了这组参数，原话带回；或给的是 `--help` 这类不起会话的那一形）。
 ⚠ **没有 CLI 面**〔E2〕：`--ccm-print` 这个词归 ccm 的诊断口（V138），二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，不许占 ccm 的词。
 
+#### `ccm-probe`：这台的 `ccm` 会哪些（E2 · 第四波，2026-09-27，**只读**）
+
+`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`，V28）⇒「这台 `ccm` 会哪些」问它自己，不再进交互 shell 查 `PATH`（`设计/96 §7.2.2`）。
+回的就是 `ccm --ccm-probe` 那几行原文（同一个函数），monitor 用解析那几行的同一个函数读。纯函数：不起进程、不碰盘。
+
+```text
+→ {"id":"q1","cmd":"ccm-probe","args":{}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"probe":"name=ccm\nversion=6\nself=…\ncapabilities=…\nagents=claude,codex\nbuild=…\n"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `probe` | ← | `ccm --ccm-probe` 那几行（首行逐字 `name=ccm`；`self=` 是这个进程的真身） |
+
+**错误码**：无。⚠ **没有 CLI 面**：`--ccm-probe` 这个词归 ccm 的诊断口（V138），同 `ccm-print`。
+
 #### `mcp-sync-plan`：MCP 资产同步的判定（AS1 · 第四波 4B，2026-09-24，**只读**）
 
 用户裁（`设计/96` 的 B）：「各管各的，只有显式推 / 拉」· 推 / 拉之前先给看差异，对面有不同就问盖不盖 ·

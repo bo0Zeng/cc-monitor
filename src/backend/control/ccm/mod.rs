@@ -378,6 +378,18 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, 
 const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: usize = 4096;
 
+/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕帧命令 `ccm-probe`：**这台的 `ccm` 会哪些** —— 与 `ccm --ccm-probe` 同一份（[`probe_output`]），
+/// 原文整段交回（`{ "probe": "<那几行>" }`），monitor 用解析 `--ccm-probe` 的同一个函数读它。
+/// 为什么问后端而不是进交互 shell 查 `PATH`：`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`），
+/// 「它会哪些」这一问退化成问它自己。`self=` 那一行报的是这个进程的真身（常驻后端没有「怎么被敲出来的」那一段）。
+/// 纯函数：不起进程、不碰盘。
+pub(crate) fn answer_probe() -> serde_json::Value {
+    let me = std::env::current_exe()
+        .map(|p| plan::qarg(&p.display().to_string()))
+        .unwrap_or_default();
+    serde_json::json!({ "probe": probe_output(&me) })
+}
+
 /// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：**一条别名实际会执行什么**（`设计/71 §2.3`：
 /// 「`ccm --ccm-print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
 ///

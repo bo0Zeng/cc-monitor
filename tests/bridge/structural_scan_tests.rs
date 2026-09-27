@@ -2463,11 +2463,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
-        (
-            "src/bridge/src/ccm_probe.rs",
-            "the_local_and_remote_probe_ask_the_same_question",
-            1,
-        ),
+        // 〔E2〕`ccm_probe.rs` 那一行出列：探针头注里「本机远端同一条」那段改写了（远端改问那台后端 `ccm-probe`），不再点那条旧判据名。
         // 🔴 〔`设计/50` 09-18〕这两个是 **Codex 自己的 wire 字段名**（仓外：它的
         //    `token_count` 事件里那个 token 用量子对象的键），本仓一处声明都没有 ——
         //    散文里点它们是为了说清「入参长什么样 / 哪些字段刻意不单列」。
