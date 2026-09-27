@@ -91,6 +91,7 @@ const DEPS: Record<string, readonly string[]> = {
   // 组装根：把下面每一份接起来 ＋ 原样 re-export 旧的 import 面（tab-drop / tab-model / tmux-sessions）。
   "src/tabs.ts": [
     "src/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
+    "src/app-store.ts", // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
     "src/cards/index.ts", // onLine：这一行是不是 compact 摘要（换号重启的等待者）
     "src/error-toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/fork-flow.ts", // startForkedSession（E78：fork-flow.vitest 钉「tabs.ts 调 runForkFlow」）
@@ -123,7 +124,8 @@ const DEPS: Record<string, readonly string[]> = {
   //   〔GRP1〕组员是 `Tab.group` ⇒ 不再改组表，只回「怎么动」。
   "src/tab-drop.ts": ["src/copy-table.ts"],
   // ① store：只存东西、只做顺序运算、只有一份订阅。〔U4〕摘要按活性分 ⇒ 要 `isLive` 那一个谓词。
-  "src/tab-store.ts": ["src/tab-session-state.ts"],
+  //   〔GAP1〕「只有一份订阅」建在唯一的 pub-sub 原语上（`app-store.ts::Slice`）。
+  "src/tab-store.ts": ["src/app-store.ts", "src/tab-session-state.ts"],
   // ① 〔U4〕会话状态的两个轴：形状 ＋ 转移 ＋ 谓词 ＋ 呈现。呈现的字只经文案表取（`sessionState.*`）。
   "src/tab-session-state.ts": ["src/copy-table.ts"],
   // ② 路由：只写「上次的 tab」那一格 localStorage。〔U4〕已结束的不自动跟随 ⇒ `isResumeOnly`。

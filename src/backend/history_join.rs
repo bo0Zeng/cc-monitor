@@ -12,7 +12,8 @@
 //! ```text
 //! history-projects {origin?}            origin 缺席 = 这台（本机常驻后端自己）；给了 = 可达表里的那一台
 //!   这台：记录树（`--list-projects` 那一行）＋ 合成历史（注册表 `Adapter.history`：Codex）＋ 自己判活（pidfile）
-//!   远端：remote_ask(origin, ["--list-projects"])（远端 CLI 老子命令，stdout 一个字节不变 ⇒ 远端不必升级）；判活「不知道」
+//!   远端：remote_ask(origin, ["--list-projects"])（远端 CLI 老子命令，stdout 一个字节不变 ⇒ 远端不必升级）；
+//!         〔GAP1〕判活再问那台一条 `--session-accounts`（那台后端答）；问不到 ⇒「不知道」
 //!   ⇒ 并上这台的注解（`history_annotations`）⇒ {rows:[HistoryProject…], notice}
 //! history-sessions {project_dir, origin?}  同上两支（`--list-sessions <dir>`；`<kind>:<cwd>` 那一形 = 合成历史）
 //!   ⇒ {rows:[HistorySessionEntry…], notice}
@@ -25,13 +26,13 @@
 //!
 //! - 项目那三个数（星标数 · 隐藏数 · 有没有活会话）是 [`Counted`]：算得出 = `Known`（含真的是 0），算不出 = `Unknown(为什么)`，
 //!   过线时 `Unknown` ⇒ `null`。远端那一行不带 sid 清单（老后端）/ 清单与条数对不上（行坏了）⇒ 三个数都「不知道」；
-//! - 判活由 [`Liveness`] 答：这台 = pidfile 真相源（`observe::accounts_query::live_session_ids`）；远端 / 合成历史 = 「不知道」；
+//! - 判活由 [`Liveness`] 答：这台 = pidfile 真相源（`observe::accounts_query::live_session_ids`）；远端 = 那台 `--session-accounts`
+//!   的 `alive`（问不到 ⇒「不知道」）；合成历史 = 「不知道」；
 //! - 〔C4d 新〕注解读不懂 / 没交路径 ⇒ 星标数 · 隐藏数「不知道」，`notice` 说一句为什么（从前 monitor 那份是当空、说成 0）。
 //!
 //! # 买不到
 //!
 //! - 🔴 真远端：`remote_ask` 那一跳（capture）没对真 sshd 跑过；远端这一支在判据里是替身对面。
-//! - 远端判活仍是「不知道」（要多问那台一条 `--session-accounts`，留口没做）。
 
 use copy_core::copy_text;
 use std::collections::{BTreeMap, BTreeSet};
@@ -454,16 +455,44 @@ pub(crate) fn local_projects_with(
     capped(json!({ "rows": projects, "notice": ann.err() }))
 }
 
+/// 〔GAP1 · `设计/05 §14.5`〕那台 `--session-accounts` 的 stdout ⇒ 此刻活着的 sid（`alive:true` 且有 `sessionId` 的那几行）。
+pub(crate) fn live_from_session_accounts(stdout: &str) -> LiveSet {
+    LiveSet(
+        nonempty_lines(stdout)
+            .filter(|v| v.get("alive") == Some(&Value::Bool(true)))
+            .filter_map(|v| {
+                v.get("sessionId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .filter(|s| !s.is_empty())
+            .collect(),
+    )
+}
+
+/// 那台的判活：问 `--session-accounts`；问不到 ⇒ `None`（调用方用 [`NoLiveness`]，不当成「全死」）。
+async fn remote_liveness(
+    machine: &str,
+    table: &crate::remote_ask::Table,
+    remote: &dyn crate::remote_ask::Remote,
+) -> Option<LiveSet> {
+    crate::remote_ask::ask_with(machine, &["--session-accounts"], table, remote)
+        .await
+        .ok()
+        .map(|out| live_from_session_accounts(&out))
+}
+
 /// 远端那一台的 `--list-projects` stdout ＋ 注解 ⇒ 项目成品。
 pub(crate) fn remote_projects_from(
     machine: &str,
     stdout: &str,
     loaded: &Loaded,
+    live: &dyn Liveness,
 ) -> Result<Value, (&'static str, String)> {
     let ann = annotations(loaded);
     let t = ann.as_ref().ok().copied();
     let rows: Vec<(Value, ProjectCounts)> = nonempty_lines(stdout)
-        .filter_map(|v| project_from_row(&v, t, Some(machine), &NoLiveness))
+        .filter_map(|v| project_from_row(&v, t, Some(machine), live))
         .collect();
     log_unknowns("远端项目清单", &rows);
     let mut projects: Vec<Value> = rows.into_iter().map(|(p, _)| p).collect();
@@ -532,11 +561,12 @@ pub(crate) fn remote_sessions_from(
     project_dir: &str,
     stdout: &str,
     loaded: &Loaded,
+    live: &dyn Liveness,
 ) -> Result<Value, (&'static str, String)> {
     let ann = annotations(loaded);
     let t = ann.as_ref().ok().copied();
     let sessions: Vec<Value> = nonempty_lines(stdout)
-        .filter_map(|v| session_from_row(&v, project_dir, t, Some(machine), &NoLiveness))
+        .filter_map(|v| session_from_row(&v, project_dir, t, Some(machine), live))
         .collect();
     capped(json!({ "rows": sessions, "notice": ann.err() }))
 }
@@ -609,8 +639,15 @@ pub async fn answer_projects_with(
             let o = o.to_string();
             let out =
                 asked(crate::remote_ask::ask_with(&o, &["--list-projects"], table, remote).await)?;
-            blocking(move || remote_projects_from(&o, &out, &crate::history_annotations::load()))
-                .await
+            let live = remote_liveness(&o, table, remote).await;
+            blocking(move || {
+                let ann = crate::history_annotations::load();
+                match &live {
+                    Some(l) => remote_projects_from(&o, &out, &ann, l),
+                    None => remote_projects_from(&o, &out, &ann, &NoLiveness),
+                }
+            })
+            .await
         }
     }
 }
@@ -668,8 +705,13 @@ pub async fn answer_sessions_with(
             let out = asked(
                 crate::remote_ask::ask_with(&o, &["--list-sessions", &dir], table, remote).await,
             )?;
+            let live = remote_liveness(&o, table, remote).await;
             blocking(move || {
-                remote_sessions_from(&o, &dir, &out, &crate::history_annotations::load())
+                let ann = crate::history_annotations::load();
+                match &live {
+                    Some(l) => remote_sessions_from(&o, &dir, &out, &ann, l),
+                    None => remote_sessions_from(&o, &dir, &out, &ann, &NoLiveness),
+                }
             })
             .await
         }

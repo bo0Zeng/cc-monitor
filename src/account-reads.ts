@@ -7,6 +7,7 @@
  * 从 `accounts.ts` 拆出来（审计 B §6 必须拆 4；守的要求 `设计/01 §5` D1「一个判定只有一个家」）：
  * 形状与规则留在 `accounts.ts`（纯），这里只管「去问、收、缓存」。
  */
+import { putAccounts } from "./app-store";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
@@ -73,6 +74,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
     };
   }
   accountsCache.set(origin, { at: now, value: state });
+  putAccounts(origin, state); // 〔GAP1 · `设计/01 §1.5`〕每台的账号快照只住 store 一处，读者订阅它
   return state;
 }
 

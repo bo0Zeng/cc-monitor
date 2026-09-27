@@ -50,6 +50,7 @@ import {
   type ExitPolicyState,
 } from "../backend-policy";
 import { copyText } from "../copy-table";
+import { formatBytes } from "../format";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
 import { fetchSessionAccountsOrNull } from "../account-reads";
 import type { SessionAccount } from "../accounts";
@@ -122,6 +123,48 @@ async function putExitPolicy(origin: Origin, kill: boolean): Promise<unknown> {
   } catch (e) {
     throw new Error(saidOf(e, EXIT_POLICY_OLD_BACKEND()));
   }
+}
+
+/** 〔GAP1 · `设计/15 §4.7 S1`〕那台后端的 stderr 诊断文件尾部（后端 `backend-log` 的应答）。 */
+export interface BackendLog {
+  path: string | null;
+  size: number;
+  text: string;
+  truncated: boolean;
+}
+
+/** `backend-log` 那一份 ⇒ [`BackendLog`]；缺格 / 形状不对 ⇒ `null`。 */
+export function readBackendLog(v: unknown): BackendLog | null {
+  const o = v as Partial<BackendLog> | null;
+  if (!o || typeof o !== "object") return null;
+  if (!(o.path === null || typeof o.path === "string")) return null;
+  if (typeof o.size !== "number" || typeof o.text !== "string" || typeof o.truncated !== "boolean") return null;
+  return { path: o.path, size: o.size, text: o.text, truncated: o.truncated };
+}
+
+/** 问那台机器的后端要它的诊断文件尾部（经通道、只读面）。失败 / 形状不对就抛（一句人话）。 */
+async function askBackendLog(origin: Origin): Promise<BackendLog> {
+  let raw: unknown;
+  try {
+    const body = jsonBody({});
+    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
+    raw = readJson(await chan.call(origin, "backend-log", body, budget));
+  } catch (e) {
+    throw new Error(saidOf(e, copyText("backend.log.oldBackend")));
+  }
+  const log = readBackendLog(raw);
+  if (!log) throw new Error(copyText("backend.log.badShape"));
+  return log;
+}
+
+/** 那一份怎么摆：头一行（路径 · 大小 · 截没截）＋ 正文；没落文件 ⇒ 只一行说清。 */
+export function backendLogLines(log: BackendLog): { head: string; body: string } {
+  if (log.path === null) return { head: copyText("backend.log.none"), body: "" };
+  const head = copyText("backend.log.head", { path: log.path, size: formatBytes(log.size) });
+  return {
+    head: log.truncated ? `${head} ${copyText("backend.log.truncated")}` : head,
+    body: log.text === "" ? copyText("backend.log.empty") : log.text,
+  };
 }
 
 /**
@@ -407,6 +450,11 @@ export class BackendSection {
     stop.textContent = copyText("backend.buildCells.stop");
     stop.onclick = () => void this.act(origin, "stop");
     ops.appendChild(stop);
+    // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端的诊断文件（本机远端同一问，经那台后端的只读面）。
+    const log = document.createElement("button");
+    log.textContent = copyText("backend.buildCells.log");
+    log.onclick = () => void this.toggleLog(origin, cells, log);
+    ops.appendChild(log);
 
     const exitCol = col("exit");
     const label = document.createElement("label");
@@ -533,6 +581,32 @@ export class BackendSection {
    * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史：本机那一支今天先 SIGTERM、等它自己收尾（≤ 约 35 秒；后端自己 30 秒到期会先说清哪几条没做完再退）、
    * 还在才强杀，**等完才返回**（`stop_grace.rs`）⇒ 按钮会禁用那么久；强杀了 / 没停掉 ⇒ 命令回 `Err`，走下面那条失败提示。
    */
+  /** 〔GAP1〕点「日志」：没开 ⇒ 取回来摆在四格后面（不进四格本身，栏数不变）；开着 ⇒ 收起。 */
+  private async toggleLog(origin: string, cells: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const open = cells.nextElementSibling as HTMLElement | null;
+    if (open?.dataset.backendLog !== undefined) {
+      open.remove();
+      return;
+    }
+    const box = document.createElement("div");
+    box.dataset.backendLog = origin;
+    const head = document.createElement("div");
+    head.className = "settings-hint";
+    const pre = document.createElement("pre");
+    box.append(head, pre);
+    btn.disabled = true;
+    try {
+      const { head: h, body } = backendLogLines(await askBackendLog(origin));
+      head.textContent = h;
+      pre.textContent = body;
+    } catch (e) {
+      head.textContent = copyText("backend.log.failed", { e: e instanceof Error ? e.message : String(e) });
+    } finally {
+      btn.disabled = false;
+    }
+    cells.after(box);
+  }
+
   private async act(origin: string, what: "start" | "stop"): Promise<void> {
     const cells = this.cellHosts.get(origin);
     const btns = cells ? [...cells.querySelectorAll("button")] : [];

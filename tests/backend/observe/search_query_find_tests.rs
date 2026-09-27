@@ -198,3 +198,70 @@ fn find_and_global_search_agree_on_the_same_file() {
     }
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// ★ 〔GAP1 · `设计/10 §7` 第 10 条〕「会话内查找每次从头扫一遍文件」⇒ `history-find` 走 SX1 常驻索引：
+/// 应答 == 现扫（`scan_session_find`，两态 `include_tools`；torn 残尾与没 uuid 的行照样不列），追加之后那一问只读尾巴。
+#[test]
+fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
+    let home = std::env::temp_dir().join(format!("gap1-find-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s.jsonl");
+    let rec = |uuid: &str, text: &str| {
+        serde_json::json!({"type":"user","uuid":uuid,"message":{"content":[{"type":"text","text":text},
+            {"type":"tool_result","tool_use_id":"t","content":format!("tool {text}")}]}})
+        .to_string()
+    };
+    let mut body = [
+        rec("a", "zqx one"),
+        rec("", "zqx no uuid"),
+        rec("b", "plain"),
+    ]
+    .join("\n");
+    body.push('\n');
+    body.push_str(&rec("torn", "zqx torn")); // 没换行 ⇒ 不列
+    std::fs::write(&path, &body).unwrap();
+    let p = path.display().to_string();
+    let scan = |tools: bool| {
+        let r = crate::observe::history_query::open_session_at(&home, &p, 0).unwrap();
+        let mut hits = Vec::new();
+        let (_, total) =
+            crate::observe::search_query::scan_session_find(r, "zqx", tools, 500, |h| {
+                hits.push(h.clone());
+                Ok(())
+            })
+            .unwrap();
+        serde_json::json!({ "total": total, "hits": hits })
+    };
+    let ask = |tools: bool| {
+        crate::read_face::answer_at(
+            &home,
+            "history-find",
+            &serde_json::json!({"path": p, "query": "zqx", "include_tools": tools, "limit": 500}),
+        )
+        .unwrap()
+    };
+    assert_eq!(ask(false), scan(false));
+    assert_eq!(ask(true), scan(true));
+    // 残尾补完 ＋ 再追加一行 ⇒ 这一问只追加读（不整份重读），应答仍 == 现扫。
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
+    use std::io::Write as _;
+    writeln!(f, "\n{}", rec("c", "zqx later")).unwrap();
+    drop(f);
+    assert_eq!(ask(true), scan(true));
+    let root = Fence::at(&projects_root(&home))
+        .unwrap()
+        .root()
+        .to_path_buf();
+    let last = RESIDENT.lock().unwrap().get(&root).map(|i| i.last);
+    assert_eq!(
+        last.map(|r| (r.full, r.appended, r.reused)),
+        Some((0, 1, 0)),
+        "(整份, 追加, 没读)：该只追加读这一份"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

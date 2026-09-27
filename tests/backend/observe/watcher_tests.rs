@@ -1735,19 +1735,19 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// 那一路的事件**永远不来，且没有任何错误**。三次的表现分别是「永不宣告会话」
 ///「看不见新 tmux server」「会话还在但内容不动了」——**每一个都不报错**。
 ///
-/// # 今天的 9 处（〔SR1a · 09-24〕7 → 8：账号 manifest 所在目录；〔VIS2 · 09-26〕8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层）
+/// # 今天的 8 处（〔SR1a · 09-24〕7 → 8：账号 manifest 所在目录；〔VIS2 · 09-26〕8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层；
+/// 〔GAP1 · 09-26〕9 → 8：账号目录那一处删了，改走 `rewatch_agent_home`（`AccountsEar`，`设计/05 §13.6` 第 3 条）—— 少的就是它）
 ///
 /// | 处 | 归属 | 换 inode 怎么办 |
 /// |---|---|---|
 /// | `rewatch_dir` | **可重入挂法本体** | 就是它负责 |
 /// | `watch_sock_dir_if_present` | socket 目录专用（多一条「目录没了翻记账」） | 同上 |
 /// | `rewatch_sessions` | `sessions/` 专用（多一件事：挂上顺带重扫 pidfile） | 同上 |
-/// | `rewatch_agent_home` 挂它本身那一道 | **父目录的耳朵**（`sessions/` · `projects/` 出现/消失的唯一信号源）；可重入 | 就是它负责（〔VIS2〕它自己后建 / 被换 ⇒ 由下一行那道上一层耳朵送事件来） |
+/// | `rewatch_agent_home` 挂它本身那一道 | **父目录的耳朵**（`sessions/` · `projects/` 出现/消失的唯一信号源）；〔GAP1〕账号目录也走它；可重入 | 就是它负责（〔VIS2〕它自己后建 / 被换 ⇒ 由下一行那道上一层耳朵送事件来） |
 /// | `rewatch_agent_home` 挂它上一层那一道 | 〔VIS2〕`agent_home` 起来时不在 ⇒ 等它出现（与 socket 目录的父同形；挂上不摘） | 上一层被换掉 = 家目录那一级没了，**不在这一族** |
 /// | `watch_loop` 里 socket 目录的**父** | 等 socket 目录出现 | 同上 |
 /// | `HomeEars::arm` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
 /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
-/// | `watch_loop` 里账号 manifest **所在目录**（〔SR1a〕`accounts_changed`） | 起步挂一次（目录不在就不挂） | **不重挂，如实认下**：目录被删掉重建之后这一路失聪、直到后端重启 —— 代价只是「账号清单变了不推帧」，客户端退回既有的刷新时机（连上 / 会话起停）；不许为它去盯整个 `$HOME`（那是噪声最大的目录） |
 #[test]
 fn every_watch_site_answers_the_inode_swap_question() {
     let src = include_str!("../../../src/backend/observe/watcher.rs");
@@ -1761,8 +1761,8 @@ fn every_watch_site_answers_the_inode_swap_question() {
     };
     let sites = prod.matches(".watch(").count();
     assert_eq!(
-        sites, 9,
-        "生产段 `.watch(` 有 {sites} 处（登记表记着 9 处）。\n             \
+        sites, 8,
+        "生产段 `.watch(` 有 {sites} 处（登记表记着 8 处）。\n             \
              ⇒ **加了一处就来回答这个问题**：那个目录被删掉重建（换 inode）之后，\n             \
              它还收得到事件吗？收不到就走 `rewatch_dir`；确实不需要就把理由写进本条头注的表里。\n             \
              ⚠ 08-13 同一个形状踩了三次，三次的症状都是**不报任何错**：\n             \
@@ -3759,5 +3759,62 @@ fn the_tmux_list_query_keeps_not_installed_empty_and_unobservable_apart() {
     assert!(
         query_reply(TmuxObservation::Unobservable).is_err(),
         "看不清绝不当成零会话"
+    );
+}
+
+/// ★★ 〔GAP1 · `设计/05 §13.6` 第 3 条「账号目录起步不在或被删掉重建 ⇒ 这一路失聪」〕真 debouncer ＋ `AccountsEar`：
+/// 起步不在 ⇒ 挂上一层；建出来 ⇒ 它自己那一格事件（`on_path` 回 true）且之后写 manifest 听得见；删掉重建 ⇒ 仍听得见。
+#[cfg(target_os = "linux")]
+#[test]
+fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
+    let root = std::env::temp_dir().join(format!("ccm-gap1-accts-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let dir = root.join("accts");
+    let manifest = dir.join("accounts.json");
+    let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
+        .expect("debouncer 起不来");
+    let mut ear = AccountsEar::new(&dir);
+    ear.arm(&mut debouncer);
+    let armed = (ear.watched, ear.parent_watched);
+    // 建目录 ⇒ 等到它自己那一格事件；再写 manifest ⇒ 等到 manifest 那一格。回 (目录事件到没到, manifest 事件到没到)。
+    let mut round = |ear: &mut AccountsEar, debouncer: &mut _| {
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut dir_seen, mut manifest_seen) = (false, false);
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while !manifest_seen && std::time::Instant::now() < deadline {
+            if dir_seen {
+                std::fs::write(&manifest, b"{}").unwrap();
+            }
+            if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+                for ev in &evs {
+                    dir_seen |= ear.on_path(debouncer, &ev.path);
+                }
+                manifest_seen |=
+                    dir_seen && manifest_touched(evs.iter().map(|e| e.path.as_path()), &manifest);
+            }
+        }
+        (dir_seen, manifest_seen)
+    };
+    let first = round(&mut ear, &mut debouncer);
+    std::fs::remove_dir_all(&dir).unwrap();
+    let second = round(&mut ear, &mut debouncer);
+    drop(debouncer);
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        armed,
+        (false, true),
+        "账号目录不在时挂的应当是它的上一层（且不是它本身）"
+    );
+    assert_eq!(
+        first,
+        (true, true),
+        "账号目录后建出来之后听不见（目录那一格 / manifest 那一格）"
+    );
+    assert_eq!(
+        second,
+        (true, true),
+        "账号目录删掉重建之后失聪（目录那一格 / manifest 那一格）"
     );
 }

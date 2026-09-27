@@ -2484,11 +2484,12 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔DUP2 · J4〕36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
     //    新建表单预览 · 启用向导预览 · 弹终端三个用处都经这一处）；显式给期限（`CMD_BUDGET_MS`）。
     // 〔SH1 · 4D〕37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
+    // 〔GAP1 · `设计/15 §4.7 S1`〕39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 39usize),
+            ("chan.call", 40usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

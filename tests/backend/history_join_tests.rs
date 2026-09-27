@@ -75,7 +75,7 @@ fn synth_fixture() -> crate::agents::SynthSession {
 /// ★ 判据 1 ＋ 2：远端项目成品 —— 注解逐 sid 数、三种「不知道」、没有 `dirName` 的跳过、排序。
 #[test]
 fn remote_projects_carry_the_annotation_counts_and_say_unknown_honestly() {
-    let v = remote_projects_from("dev", &projects_stdout(), &ann()).unwrap();
+    let v = remote_projects_from("dev", &projects_stdout(), &ann(), &NoLiveness).unwrap();
     let rows = v["rows"].as_array().unwrap();
     let dirs: Vec<&str> = rows
         .iter()
@@ -126,7 +126,7 @@ fn remote_projects_carry_the_annotation_counts_and_say_unknown_honestly() {
 #[test]
 fn unreadable_annotations_are_unknown_not_zero() {
     for loaded in [Loaded::NoPath, Loaded::Unreadable("坏了".into())] {
-        let v = remote_projects_from("dev", &projects_stdout(), &loaded).unwrap();
+        let v = remote_projects_from("dev", &projects_stdout(), &loaded, &NoLiveness).unwrap();
         let alpha = v["rows"]
             .as_array()
             .unwrap()
@@ -188,6 +188,8 @@ fn local_liveness_answers_true_and_false_and_unknown_is_its_own_bucket() {
 #[derive(Default)]
 struct Far {
     seen: Mutex<Vec<String>>,
+    /// 〔GAP1〕`--session-accounts` 答什么；`None` ⇒ 那一问失败。
+    live: Option<String>,
 }
 
 impl Remote for Far {
@@ -201,6 +203,11 @@ impl Remote for Far {
         self.seen.lock().unwrap().push(command.clone());
         let out = if command.contains("--list-projects") {
             projects_stdout()
+        } else if command.contains("--session-accounts") {
+            match &self.live {
+                Some(o) => o.clone(),
+                None => return Box::pin(async { Err("那台问不到".to_string()) }),
+            }
         } else {
             sessions_stdout()
         };
@@ -228,11 +235,11 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     assert_eq!(v["rows"].as_array().unwrap().len(), 3);
     assert_eq!(
         *far.seen.lock().unwrap(),
-        vec![crate::remote_ask::command_line(
-            "/opt/ccm",
-            &["--list-projects"]
-        )],
-        "N 个项目 ⇒ 对面恰被问一次（为了拿星标补问 --list-sessions 就会在这里红）"
+        vec![
+            crate::remote_ask::command_line("/opt/ccm", &["--list-projects"]),
+            crate::remote_ask::command_line("/opt/ccm", &["--session-accounts"]),
+        ],
+        "N 个项目 ⇒ 对面恰被问一次清单 ＋ 一次判活（为了拿星标补问 --list-sessions 就会在这里红）"
     );
     far.seen.lock().unwrap().clear();
     let v = answer_sessions_with(
@@ -245,10 +252,10 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     assert_eq!(v["rows"].as_array().unwrap().len(), 2);
     assert_eq!(
         *far.seen.lock().unwrap(),
-        vec![crate::remote_ask::command_line(
-            "/opt/ccm",
-            &["--list-sessions", "-w-alpha"]
-        )]
+        vec![
+            crate::remote_ask::command_line("/opt/ccm", &["--list-sessions", "-w-alpha"]),
+            crate::remote_ask::command_line("/opt/ccm", &["--session-accounts"]),
+        ]
     );
 }
 
@@ -372,8 +379,8 @@ fn a_local_listing_joins_the_record_tree_and_the_synthesized_history() {
 #[test]
 fn the_products_match_the_cross_language_golden() {
     let got = json!({
-        "remoteProjects": remote_projects_from("dev", &projects_stdout(), &ann()).unwrap(),
-        "remoteSessions": remote_sessions_from("dev", "-w-alpha", &sessions_stdout(), &ann()).unwrap(),
+        "remoteProjects": remote_projects_from("dev", &projects_stdout(), &ann(), &NoLiveness).unwrap(),
+        "remoteSessions": remote_sessions_from("dev", "-w-alpha", &sessions_stdout(), &ann(), &NoLiveness).unwrap(),
         "synthSessions": {
             "rows": [synth_session("kindx", &synth_fixture(), "占位摘录".into(), match &ann() {
                 Loaded::Read(t) => Some(t),
@@ -395,7 +402,8 @@ fn the_products_match_the_cross_language_golden() {
 /// 会话行逐格：fork 关系有才带、注解并上、远端判活 null、cwd 缺 ⇒ 名字退回项目目录名。
 #[test]
 fn a_session_row_carries_fork_and_annotations() {
-    let v = remote_sessions_from("dev", "-w-alpha", &sessions_stdout(), &ann()).unwrap();
+    let v =
+        remote_sessions_from("dev", "-w-alpha", &sessions_stdout(), &ann(), &NoLiveness).unwrap();
     let rows = v["rows"].as_array().unwrap();
     assert_eq!(rows[0]["forkedFromSessionId"], S3);
     assert_eq!(rows[0]["forkedFromMessageUuid"], "m-1");
@@ -445,5 +453,74 @@ fn projects_sort_unknown_between_known_true_and_known_false() {
         order,
         vec!["starred", "unknown", "zero"],
         "有星标 > 不知道 > 查过了一个都没有"
+    );
+}
+
+/// ★ 〔GAP1 · `设计/05 §14.5`「远端判活『不知道』（留口）」〕远端判活由那台后端答（`--session-accounts` 的 `alive`）：
+/// 期望手写 —— S1 活、S4 死（`alive:false`）、别的 sid 不在 ⇒ 死；那一问失败 ⇒ 仍 `null`（不当成全死）。
+#[tokio::test]
+async fn remote_liveness_comes_from_that_machines_session_accounts() {
+    let table = ReachTable::default();
+    reach(&table);
+    let live = [
+        format!(r#"{{"pid":1,"sessionId":"{S1}","alive":true}}"#),
+        format!(r#"{{"pid":2,"sessionId":"{S4}","alive":false}}"#),
+        r#"{"pid":3,"sessionId":null,"alive":true}"#.to_string(),
+    ]
+    .join("\n");
+    let far = Far {
+        live: Some(live),
+        ..Far::default()
+    };
+    let v = answer_projects_with(json!({"origin": "dev"}), &table, &far)
+        .await
+        .unwrap();
+    let by_dir = |v: &Value, d: &str| {
+        v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["projectDir"] == d)
+            .unwrap()["hasLive"]
+            .clone()
+    };
+    assert_eq!(by_dir(&v, "-w-alpha"), json!(true));
+    assert_eq!(
+        by_dir(&v, "-w-gamma"),
+        Value::Null,
+        "清单与条数对不上照旧「不知道」"
+    );
+    let s = answer_sessions_with(
+        json!({"origin": "dev", "project_dir": "-w-alpha"}),
+        &table,
+        &far,
+    )
+    .await
+    .unwrap();
+    let live_of: Vec<Value> = s["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["isLive"].clone())
+        .collect();
+    assert_eq!(live_of, vec![json!(true), json!(false)], "S1 活 · S4 死");
+    let dead = Far::default();
+    let s = answer_sessions_with(
+        json!({"origin": "dev", "project_dir": "-w-alpha"}),
+        &table,
+        &dead,
+    )
+    .await
+    .unwrap();
+    let live_of: Vec<Value> = s["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["isLive"].clone())
+        .collect();
+    assert_eq!(
+        live_of,
+        vec![Value::Null, Value::Null],
+        "判活那一问失败 ⇒「不知道」，不是死"
     );
 }

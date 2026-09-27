@@ -31,45 +31,30 @@
  */
 
 import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
+// 〔GAP1 · `设计/01 §1.5`〕值与订阅住 `app-store.ts` 那一格（唯一的 pub-sub）；本文件只剩「空白名不是任何一台」这道门。
+import { appStore } from "../app-store";
 
 type Listener = (origin: Origin) => void;
 
-let current: Origin = LOCAL_ORIGIN;
-const listeners = new Set<Listener>();
-
 /** 当前机器（本机 = `LOCAL_ORIGIN`）。 */
 export function getCurrentMachine(): Origin {
-  return current;
+  return appStore.machine.get();
 }
 
 /**
- * 切到某台机器。**值没变就什么都不做**（见文件头注：同值广播 = 变相轮询）。
+ * 切到某台机器。**值没变就什么都不做**（见文件头注：同值广播 = 变相轮询；`Slice.set` 自己挡）。
  */
 export function setCurrentMachine(origin: Origin): void {
   if (origin.trim() === "") return; // 空白名不是任何一台机器（见头注）
-  const next = origin;
-  if (next === current) return;
-  current = next;
-  for (const fn of [...listeners]) {
-    try {
-      fn(next);
-    } catch (e) {
-      // 一个订阅者抛异常不能让其余的收不到通知 —— 同 `panel.ts::safeBlock` 的隔离思路。
-      // 这里的后果比一块白屏更隐蔽：其余三块会**停在上一台机器**上，界面看不出异常，
-      // 用户以为自己在看 aya，其实在看 nano。
-      console.warn("[machine-context] 订阅者抛异常：", e);
-    }
-  }
+  appStore.machine.set(origin);
 }
 
-/** 订阅切换。返回退订函数。 */
+/** 订阅切换。返回退订函数。一个订阅者抛异常不挡其余的（`Slice` 里隔离）。 */
 export function subscribeMachine(fn: Listener): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+  return appStore.machine.subscribe(fn);
 }
 
 /** 仅供测试：把 store 还原成初始状态（本机 + 无订阅者）。 */
 export function __resetMachineContextForTests(): void {
-  current = LOCAL_ORIGIN;
-  listeners.clear();
+  appStore.machine.__resetForTests(LOCAL_ORIGIN);
 }

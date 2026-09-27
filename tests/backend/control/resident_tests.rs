@@ -152,3 +152,29 @@ fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
     )
     .is_empty());
 }
+
+/// ★ 〔GAP1 · `设计/15 §4.7 S1`〕远端常驻后端的诊断文件落 `~/.cc-monitor/logs/backend/stderr.log`（与本机同一层级），
+/// 那几层目录由起它的那一步逐层建好（`stderr_log` 只建文件不建目录），每层只给本人。
+#[test]
+fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
+    assert_eq!(STDERR_LOG_REL, ".cc-monitor/logs/backend/stderr.log");
+    let home = std::env::temp_dir().join(format!("ccm-gap1-logdir-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(&home).unwrap();
+    log_dir_chain(&home).expect("逐层建");
+    for rel in [
+        ".cc-monitor",
+        ".cc-monitor/logs",
+        ".cc-monitor/logs/backend",
+    ] {
+        let d = home.join(rel);
+        assert!(d.is_dir(), "{rel} 没建出来");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = std::fs::metadata(&d).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o700, "{rel} 不是只给本人");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}

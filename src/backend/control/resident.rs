@@ -22,7 +22,8 @@ pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg", "-
 const TOKEN_BYTES: usize = 16;
 
 /// 远端常驻后端自己的 stderr 诊断文件（本机那一份由宿主交数据目录下的路径）；env 名由 `main.rs` 交（诊断文件的门在那里）。
-pub const STDERR_LOG_REL: &str = ".cc-monitor/resident-stderr.log";
+/// 〔GAP1 · `设计/15 §4.7 S1`〕与本机同一层级 `logs/backend/stderr.log`（滚出来的旧那份在同目录 `stderr.old.log`）。
+pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
 
 fn home() -> Option<PathBuf> {
     std::env::var_os("HOME")
@@ -94,6 +95,8 @@ pub fn ensure(agent_home: &Path, args: &[String]) -> i32 {
     ];
     let [_, creds_env, meta_env] = crate::wire::HOST_ECHO_ENVS;
     if let Some(h) = home() {
+        // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
+        let _ = log_dir_chain(&h);
         hosted.extend(data_dir_envs(
             &|k| std::env::var(k).ok(),
             &h,
@@ -116,6 +119,16 @@ pub fn run_stop(agent_home: &Path, _args: &[String]) -> i32 {
         }
         Err(e) => fail("stop_failed", e),
     }
+}
+
+/// `~/.cc-monitor` → `logs` → `backend` 逐层建（每层 0700，已在的不动）。
+fn log_dir_chain(home: &Path) -> Result<(), String> {
+    let Some(dir) = home.join(STDERR_LOG_REL).parent().map(Path::to_path_buf) else {
+        return Ok(());
+    };
+    let mut chain: Vec<&Path> = dir.ancestors().take_while(|a| *a != home).collect();
+    chain.reverse();
+    chain.into_iter().try_for_each(ensure_dir)
 }
 
 /// 读回钥匙；没有 / 空 ⇒ 在目录锁里再读一次，仍没有才铸（与中转钥匙同形：`relay/door.rs::ensure_key`）。

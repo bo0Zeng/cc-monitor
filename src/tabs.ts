@@ -50,7 +50,8 @@ export {
 } from "./tab-drop";
 export type { DropTarget, GroupMove, TabRect } from "./tab-drop";
 import { TabMenu } from "./tab-menu";
-import { TabStore } from "./tab-store";
+import { TabStore, type ActiveView } from "./tab-store";
+import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
 import { LiveCards, type LivePainter, type TapPayload } from "./live-card";
 import { TabBarPrefs } from "./tab-bar-prefs";
@@ -120,6 +121,10 @@ export class TabManager {
     private agentsPanel?: AgentsPanel,
   ) {
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
+    // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store：宿主整份换快照，这里同一拍应用（原先宿主直调 `setSessionAccounts`）。
+    appStore.sessionAccounts.subscribe((snap) => {
+      if (snap) this.setSessionAccounts(snap.rows, snap.emailByName, snap.lastByS, snap.readyOrigins, snap.currentByOrigin);
+    });
     this.bar = new TabBarView(this.store, this.prefs, barEl, {
       refreshTabBar: () => this.refreshTabBar(),
       openTabCwd: (sid) => this.openTabCwd(sid),
@@ -436,8 +441,8 @@ export class TabManager {
    * context% 复用 pricing.ts `contextPercent`（上限未知 / 无 usage → null）。
    */
   /**
-   * A3：喂入远端 live 探测的会话账号归属（来自 backend `--session-accounts`）+ 账号邮箱表。
-   * main.ts 定期聚合各远端调用。喂完刷新所有 tab 的账号徽章。
+   * A3：喂入远端 live 探测的会话账号归属（来自 backend `--session-accounts`）+ 账号邮箱表。喂完刷新所有 tab 的账号徽章。
+   * 〔GAP1〕生产上只由 `appStore.sessionAccounts` 的订阅调（构造体里那一行）；判据可直接喂。
    */
   setSessionAccounts(
     rows: SessionAccount[],
@@ -546,15 +551,25 @@ export class TabManager {
    *  PanoramaView，走注入回调，同 onManualSwitch 范式）。仅本地会话菜单出现该项。 */
   requestPanoramaHighlight: ((sid: string) => void) | null = null;
 
-  /** F88b：活跃会话最新 usage 变化回调——main.ts 注入喂 UsageHud（context% chip）。
-   *  两处触发：〔STC〕活跃会话的会话事实到了、usage 变了（`onSessionFacts`）；switchTo 切到别的会话。
-   *  (model=null 或 promptTokens=null → chip 显 `?` 或隐藏)。同 requestPanoramaHighlight 注入范式。 */
-  onActiveUsageChanged: ((model: string | null, promptTokens: number | null) => void) | null =
-    null;
+  /**
+   * 〔GAP1 · `设计/01 §1.5`〕「当前 tab 变了」改订阅 store（原先是 `onActiveUsageChanged` / `onActiveFactsAvailability`
+   * 两个点对点回调）。写它的三处：切 tab（`switchTo`）· 当前 tab 的 usage / 事实可用性变了 · 关掉最后一个 tab。同值不通知。
+   */
+  get active(): Slice<ActiveView> {
+    return this.store.active;
+  }
 
-  /** 〔STC〕活跃会话的会话事实**要不到**的原因（`null` = 可用）—— main.ts 注入喂 UsageHud（chip 显示 `ctx —` ＋ 原因）。
-   *  两处触发：活跃会话的可用性变了（`onFactsAvailability`）；switchTo 切到别的会话。 */
-  onActiveFactsAvailability: ((reason: string | null) => void) | null = null;
+  /** 当前 tab 那一格按此刻的 tab 重写一遍（没有当前 tab ⇒ 全空）。 */
+  private publishActive(): void {
+    const sid = this.store.activeId;
+    const t = sid === null ? undefined : this.store.tabs.get(sid);
+    this.store.active.set({
+      sid: t ? sid : null,
+      model: t?.latestModel ?? null,
+      promptTokens: t?.latestPromptTokens ?? null,
+      unavailable: t?.facts.unavailableReason ?? null,
+    });
+  }
 
   ensureTab(
     sessionId: string,
@@ -690,7 +705,7 @@ export class TabManager {
         },
         {
           facts: (f, first) => this.onSessionFacts(sessionId, f, first),
-          availability: (reason) => this.onFactsAvailability(sessionId, reason),
+          availability: () => this.onFactsAvailability(sessionId),
         },
       ),
     };
@@ -1009,14 +1024,12 @@ export class TabManager {
       this.refreshTabBar();
     }
     if (ch.agents || aborted) this.agentsChanged(tab);
-    if (ch.usage && sid === this.store.activeId) {
-      this.onActiveUsageChanged?.(tab.latestModel, tab.latestPromptTokens);
-    }
+    if (ch.usage && sid === this.store.activeId) this.publishActive();
   }
 
   /** 〔STC〕这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，`设计/05 §14.3`「不可用，不是空表」）。 */
-  private onFactsAvailability(sid: string, reason: string | null): void {
-    if (sid === this.store.activeId) this.onActiveFactsAvailability?.(reason);
+  private onFactsAvailability(sid: string): void {
+    if (sid === this.store.activeId) this.publishActive(); // 原因已落在 tab.facts 上
   }
 
   /** issue #23：会话不再 busy ⇒ 仍 running 的 agent 标 aborted（`tab-session-facts.ts::abortRunningAgents`）。 */
@@ -1096,8 +1109,8 @@ export class TabManager {
         // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
         this.tasksPanel?.setSession(null, []);
         this.agentsPanel?.setSession(null, []);
-        // F88b（审计）：无 fallback 时 switchTo 不会跑 → 手动隐藏 HUD chip，否则残留死会话的 ctx%
-        this.onActiveUsageChanged?.(null, null);
+        // F88b（审计）：无 fallback 时 switchTo 不会跑 → 当前 tab 那一格清空（HUD 隐藏，不残留死会话的 ctx% / 原因）
+        this.publishActive();
         this.refreshTabBar();
       }
     } else {
@@ -1280,9 +1293,7 @@ export class TabManager {
         [...(this.store.tabs.get(sessionId)?.agents.values() ?? [])],
       );
       // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
-      const nt = this.store.tabs.get(sessionId);
-      this.onActiveUsageChanged?.(nt?.latestModel ?? null, nt?.latestPromptTokens ?? null);
-      this.onActiveFactsAvailability?.(nt?.facts.unavailableReason ?? null); // 〔STC〕要不到 ⇒ chip 说原因
+      this.publishActive(); // 〔GAP1〕当前 tab 那一格（usage · 〔STC〕要不到的原因）
     });
   }
 

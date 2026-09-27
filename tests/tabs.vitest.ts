@@ -253,6 +253,7 @@ import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { TabStreamView } from "../src/tab-stream-view";
 import type { TabSessionActions } from "../src/tab-session-actions";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { appStore } from "../src/app-store";
 import { copyText } from "../src/copy-table";
 import { recordFileWiring } from "../src/record-file-notice";
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
@@ -2930,6 +2931,21 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     tm.setSessionAccounts(rows, new Map(), last, new Set(["aya"]), current);
   }
 
+  // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store：宿主整份换进来，徽章**同一拍**就换（与原先宿主直调 `setSessionAccounts` 同时机）。
+  it("★ 〔GAP1〕账号快照经 store 换进来 ⇒ 同一拍徽章就挂上（不等任何一拍）", () => {
+    appStore.sessionAccounts.__resetForTests(null); // 别的判据留下的 TabManager 不再订阅
+    tm = makeTM();
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
+    expect(badge()?.querySelector(".acct-avatar") ?? null).toBeNull();
+    appStore.sessionAccounts.set({
+      rows: [liveRow("r1", "b")],
+      emailByName: new Map(),
+      lastByS: new Map(),
+      readyOrigins: new Set(["aya"]),
+      currentByOrigin: new Map([["aya", "z"]]),
+    });
+    expect(badge()?.querySelector(".acct-avatar"), "store 换了快照，徽章没跟上").not.toBeNull();
+  });
   it("会话账号 != 当前账号(live) → 挂实心头像", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "b")], new Map(), new Map([["aya", "z"]]));
@@ -4684,11 +4700,11 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(indexCalls().length).toBe(1);
   });
 
-  it("老后端 / 本机后端不在（available:false）⇒ 不接，尾部窗口照旧（账本还在、哨兵还在）", async () => {
+  it("老后端（available:false · oldBackend）⇒ 不接、不再问，尾部窗口照旧（账本还在、哨兵还在）", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(
         cmd === "read_session_index"
-          ? { available: false, reason: "老后端", from: 0, end: 0, rows: [] }
+          ? { available: false, reason: "老后端", failure: "oldBackend", from: 0, end: 0, rows: [] }
           : undefined,
       ),
     ) as never));
@@ -4698,6 +4714,32 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(t.skeletonFetch).toBe("done");
     expect(t.window.pendingCount).toBe(200);
     expect(t.stream.contentElement.querySelector(".stream-more-above")).not.toBeNull();
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    expect(indexCalls().length, "结构性失败不该再问").toBe(1);
+  });
+
+  // 〔GAP1 · `设计/10 §7` 第 5 条〕「索引或清单一次瞬时失败（ssh 抖一下）⇒ 这个 tab 灰到关掉重开」⇒ 下一次触发点再问一次。
+  it("★ 〔GAP1〕瞬时失败 ⇒ 下一次触发点（批结束）再问**一次**；再失败 ⇒ 定死不再问", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+      Promise.resolve(
+        cmd === "read_session_index"
+          ? { available: false, reason: "抖了一下", failure: "transport", from: 0, end: 0, rows: [] }
+          : undefined,
+      ),
+    ) as never));
+    const t = replay("flap");
+    await settle();
+    expect(t.skeletonFetch).toBe("again");
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    await settle();
+    expect(indexCalls().length, "瞬时失败之后的下一次触发点该再问一次").toBe(2);
+    expect(t.skeletonFetch).toBe("done");
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    await settle();
+    expect(indexCalls().length, "重问过一次还失败 ⇒ 不再问（有界）").toBe(2);
   });
 
   it("🔴 seq 空间对不上（uuid 在索引里落在别的 seq）⇒ 不接 —— 不许硬对", async () => {
@@ -5328,7 +5370,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(asks().length, "到顶了还在问").toBe(3);
   });
 
-  it("★ L3：问不动（老后端 / 断了）⇒ 哨兵说原因、不自动重问；切走再切回来才再问一次", async () => {
+  it("★ L3：问不动（老后端 / 断了）⇒ 〔GAP1〕下一次上翻再问一次；连续第二次才哨兵说原因、不再自动重问；切走再切回来才再问一次", async () => {
     vi.mocked(invoke).mockImplementation(((cmd: string) =>
       cmd === "read_session_lines"
         ? Promise.reject(new Error("那台后端还不认这条查询"))
@@ -5339,17 +5381,22 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     tm.switchTo("fb");
     await settle();
     expect(asks().length).toBe(1);
+    // 〔GAP1 · `设计/10 §7` 第 5 条〕第一次失败：不定死，下一次触发点（上翻）再问同一段 —— 恰好一次。
+    expect(t.window.belowState).toEqual({ kind: "maybe" });
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    await settle();
+    expect(asks().length, "第一次失败之后的下一次上翻该再问一次").toBe(2);
+    expect(asks()[1]).toEqual(asks()[0]);
     expect(t.window.belowState).toEqual({ kind: "failed", reason: "那台后端还不认这条查询" });
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain(
       "那台后端还不认这条查询",
     );
-    // 上翻（fillAbove 的每一个入口）不自动重问
+    // 连续第二次失败之后：上翻（fillAbove 的每一个入口）不自动重问
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    expect(asks().length, "连续两次失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
     home(tm).view.activate(t);
-    expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(2);
-    await settle();
-    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
-    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
-    expect(asks().length, "失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
+    expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(3);
   });
 
   it("★ L3：回来的行里**见过**的（被修剪出账本的）直接放回账本、不再过 onLine；没见过的走 onLine", async () => {
@@ -5741,7 +5788,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
     const seen: [string | null, number | null][] = [];
-    tm.onActiveUsageChanged = (m, t) => seen.push([m, t]);
+    tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 〔GAP1〕订阅 store（原先是回调）
     answerFacts((path) =>
       facts({ usage: path.includes("u1") ? { promptTokens: 42, model: "m-a" } : { promptTokens: 7, model: null } }),
     );
@@ -5755,6 +5802,22 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
     expect(home(tm).store.tabs.get("u2")!.latestPromptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
+  });
+
+  // 〔GAP1 · `设计/01 §1.5`〕「当前 tab 变了」改订阅 store 之后的时机差：同值不通知（原先两个回调同值也照调）。
+  it("★ 〔GAP1〕当前 tab 那一格同值不通知：可用性重报一次同样的值 ⇒ 零通知；切到别的 tab ⇒ 恰一次", async () => {
+    answerFacts((path) => facts({ usage: path.includes("v1") ? { promptTokens: 5, model: "m" } : null }));
+    tm.onLine(line("v1", 0));
+    tm.onLine(line("v2", 0));
+    await settle();
+    await vi.waitFor(() => expect(tm.active.get().promptTokens).toBe(5));
+    const seen: unknown[] = [];
+    tm.active.subscribe((a) => seen.push(a));
+    (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
+    expect(seen, "值没变却通知了").toEqual([]);
+    tm.switchTo("v2");
+    await vi.waitFor(() => expect(seen.length).toBe(1));
+    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, unavailable: null }]);
   });
 
   it("#23 agent：成品 ⇒ 面板；会话落到 idle ⇒ running 标中止，之后的成品里仍是 running 也照样中止", async () => {
@@ -5789,7 +5852,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {
     const said: (string | null)[] = [];
-    tm.onActiveFactsAvailability = (r) => said.push(r);
+    tm.active.subscribe((a) => said.push(a.unavailable)); // 〔GAP1〕订阅 store（原先是回调）
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (isChanCall(cmd, args, "history-facts")) throw UNSUPPORTED;
       return undefined;

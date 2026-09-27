@@ -586,7 +586,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4m-tail**（2026-09-26，TAIL 合并那一拍）：`build_id_guard` 指纹补数 `SUBCOMMAND_OPTIONS`（`#options` 段，W5-AUX `--stdin-line` 那次没红的漏洞）⇒ 追加历史行。
 /// ＋ 行为：常驻后端按 `creds_core::store::monitor_data_dir` 自推数据目录两格（谁起都一样，那台自己的 monitor 可收养）· 多客户后 `Adopt::Busy` 删 ·
 /// 后端 Gate 1 并进 gate-core、不再拒 `=` · `http://[::1]` 不带端口按默认口读 · CP2c 续抽空 14 份后端文案。
-pub const BUILD_ID: &str = "p4m-tail";
+///
+/// ★★★ **p4n-backend-log**（2026-09-26，GAP1 合并那一拍）：子命令 ＋1 `--backend-log`、帧命令 ＋1 `backend-log`（远端常驻后端的 stderr 落
+/// `~/.cc-monitor/logs/backend/stderr.log`，机器页「日志」经它读尾巴，`15 §4.7 S1`）。＋ 行为：`history-find` 走 SX1 常驻索引 · 账号目录不在 / 重建不再失聪 ·
+/// 远端历史判活由那台后端 `--session-accounts` 答。
+pub const BUILD_ID: &str = "p4n-backend-log";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -670,6 +674,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔C4c · 第四波 4B〕帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
     //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
     "--accounts-trust",
+    // 〔GAP1 · `设计/15 §4.7 S1`〕帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
+    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--backend-log",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
     // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
