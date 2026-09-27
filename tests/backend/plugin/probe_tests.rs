@@ -107,7 +107,7 @@ fn a_complete_answer_passes_negotiation() {
     let text = live_probe_text(&caps);
     let owned = required_today();
     let required: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-    let answer = negotiate(&text, &plugin_name(), &required)
+    let answer = negotiate(&text, &plugin_name(), &required, None)
         .unwrap_or_else(|e| panic!("齐全的探测输出被拒了：{}", e.message()));
     assert_eq!(answer.name, plugin_name());
     assert_eq!(answer.version.as_deref(), Some("3"));
@@ -137,7 +137,7 @@ fn a_missing_capability_is_named_and_only_it_is_named() {
             "夹具没造对：`{drop_me}` 本来就不在那串里"
         );
         let text = live_probe_text(&thinned);
-        let err = negotiate(&text, &plugin_name(), &refs)
+        let err = negotiate(&text, &plugin_name(), &refs, None)
             .err()
             .unwrap_or_else(|| panic!("少了 `{drop_me}` 却放行了"));
         let msg = err.message();
@@ -167,7 +167,7 @@ fn the_message_does_not_blame_the_call() {
     let required = required_today();
     let refs: Vec<&str> = required.iter().map(|s| s.as_str()).collect();
     let thinned: Vec<String> = all.iter().filter(|c| **c != required[0]).cloned().collect();
-    let err = negotiate(&live_probe_text(&thinned), &plugin_name(), &refs)
+    let err = negotiate(&live_probe_text(&thinned), &plugin_name(), &refs, None)
         .err()
         .expect("该拒的没拒");
     let msg = err.message();
@@ -223,7 +223,7 @@ fn the_version_number_never_decides_anything() {
     );
     let owned = required_today();
     let refs: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-    let answer = negotiate(&ancient, &plugin_name(), &refs)
+    let answer = negotiate(&ancient, &plugin_name(), &refs, None)
         .unwrap_or_else(|e| panic!("按版本号把人拒了：{}", e.message()));
     assert_eq!(answer.version.as_deref(), Some("0.0.1-ancient"));
 }
@@ -233,8 +233,8 @@ fn the_version_number_never_decides_anything() {
 #[test]
 fn an_empty_requirement_list_still_checks_the_identity() {
     let text = live_probe_text(&declared_capabilities());
-    assert!(negotiate(&text, &plugin_name(), &[]).is_ok());
-    assert!(negotiate(&text, "not-that-plugin", &[]).is_err());
+    assert!(negotiate(&text, &plugin_name(), &[], None).is_ok());
+    assert!(negotiate(&text, "not-that-plugin", &[], None).is_err());
 }
 
 /// 逗号列表的边角：多余空白、末尾逗号不许变出空 token。
@@ -245,4 +245,22 @@ fn whitespace_and_trailing_commas_do_not_become_tokens() {
     assert_eq!(a.capabilities, vec!["a", "b", "c"]);
     assert!(a.can("b"));
     assert!(!a.can(""));
+}
+
+/// 设计/97 §8 · 99 §2.1 ㉝①：给了期望的形状代号才判代；对不上 / 缺这一行 ⇒ `StaleShape`（点名是哪个插件），对上 ⇒ 照常查能力。
+#[test]
+fn a_wanted_shape_is_compared_verbatim_and_its_absence_means_old() {
+    let base = format!("name={}\nversion=9\ncapabilities=a\n", plugin_name());
+    let with = |shape: &str| format!("{base}shape={shape}\n");
+    assert!(negotiate(&with("s1"), &plugin_name(), &["a"], Some("s1")).is_ok());
+    for (text, why) in [(with("s0"), "对不上"), (base.clone(), "缺这一行")] {
+        match negotiate(&text, &plugin_name(), &["a"], Some("s1")) {
+            Err(e @ Rejected::StaleShape { .. }) => {
+                assert!(e.message().contains(&plugin_name()), "{why}：没点名插件：{}", e.message())
+            }
+            _ => panic!("{why}：没判旧"),
+        }
+    }
+    // 不给期望 ⇒ 不判代（其它插件照旧只按能力）。
+    assert!(negotiate(&base, &plugin_name(), &["a"], None).is_ok());
 }

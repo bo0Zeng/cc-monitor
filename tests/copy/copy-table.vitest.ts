@@ -11,7 +11,7 @@
  *    属性名集合与表里 `args` 相等。
  * 3. **绕不过去**：key 不是字面量、参数对象里有展开、把 `copyText` 改名导入或当值传走 ⇒ 红
  *    —— 否则那一处引用本判据看不见，两向相等就是在一个缺角的集合上成立的。
- * 4. **表的形状**：key 三段式 · kind 五档 · 占位符只许具名 · `args` 与 `zh` 里的占位符两向相等。
+ * 4. **表的形状**：key 三段式 · kind 六档 · 占位符只许具名 · `args` 与 `zh` 里的占位符两向相等。
  * 5. **`kind == "title"` 的条数不为 0**（`91 §5.1.1` 决定 4 的反空真：全填成 body 会让 R5 静默空转）。
  *
  * 标题以 `[C-xx]` 开头的两条是 `src/shared/copy/rules.json` 里那两条「机检」规矩的实现
@@ -38,7 +38,8 @@ import { productionRsFiles, productionTsFiles } from "../test-support/production
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
 
-const KINDS = new Set(["title", "control", "action", "body", "error"]);
+// 〔FIX2 · 99 §2.1 ㉛①〕第六档 aria：只进 aria-label 的无障碍名。
+const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
 const KEY_RE = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/;
 /** 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
 const HOME = "src/copy-table.ts";
@@ -49,7 +50,7 @@ export function tableProblems(table: Table): string[] {
   const p: string[] = [];
   for (const [key, e] of Object.entries(table)) {
     if (!KEY_RE.test(key)) p.push(`${key}：key 不是 <面>.<场景>.<变体> 三段式`);
-    if (!KINDS.has(e.kind)) p.push(`${key}：kind「${e.kind}」不在五档里`);
+    if (!KINDS.has(e.kind)) p.push(`${key}：kind「${e.kind}」不在六档里`);
     if (typeof e.zh !== "string" || e.zh.trim() === "") p.push(`${key}：zh 是空的`);
     if (!Array.isArray(e.args)) {
       p.push(`${key}：没写 args（没有参数也要写 []）`);
@@ -251,7 +252,7 @@ describe("CP2a · 文案表：形状", () => {
     expect(Object.keys(table).length).toBeGreaterThan(0);
   });
 
-  it("[C-K1] key 三段式 · kind 五档 · 占位符只许具名 · args 与占位符两向相等", () => {
+  it("[C-K1] key 三段式 · kind 六档 · 占位符只许具名 · args 与占位符两向相等", () => {
     expect(tableProblems(table)).toEqual([]);
   });
 
@@ -323,7 +324,7 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
 
   it("形状：两段 key / 未知 kind / 位置式占位符 / args 与占位符不相等 —— 各红一次", () => {
     expect(tableProblems({ "a.b": t["a.b.c"] }).join()).toMatch(/三段式/);
-    expect(tableProblems({ "a.b.c": { ...t["a.b.c"], kind: "label" } }).join()).toMatch(/五档/);
+    expect(tableProblems({ "a.b.c": { ...t["a.b.c"], kind: "label" } }).join()).toMatch(/六档/);
     expect(tableProblems({ "a.b.c": { kind: "body", zh: "第 {} 条", args: [] } }).join()).toMatch(/不具名/);
     expect(tableProblems({ "a.b.c": { kind: "body", zh: "你好 {name}", args: [] } }).join()).toMatch(/没登记/);
     expect(tableProblems({ "a.b.c": { kind: "body", zh: "你好", args: ["name"] } }).join()).toMatch(/没有这个占位符/);

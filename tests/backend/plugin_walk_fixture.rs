@@ -551,7 +551,7 @@ mod tests {
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         // ★ `why` 原样带上通用口那句话：它会**点名缺的那一个 token**，
         //   而不是「缺能力」四个字，也不是「调用失败」（`probe` 那 8 条判据守的就是这个）。
-        let answer = crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| {
+        let answer = crate::plugin::probe::negotiate(&text, &name, required, None).map_err(|e| {
             Stop::Rejected {
                 hop: HOPS[3],
                 why: e.message(),
@@ -1537,7 +1537,7 @@ mod tests {
         let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
+        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS, None)
             .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
         let parent = answer
             .extras
@@ -1674,7 +1674,7 @@ mod tests {
         let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
             .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
+        let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS, None)
             .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
         let child_path = answer
             .extras

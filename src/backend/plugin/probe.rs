@@ -15,6 +15,7 @@
 //! | `name` | ★ **身份行，必须是第一行、必须逐字对上** | 防 `PATH` 上同名的无关程序被当成插件 |
 //! | `version` | **只进诊断文案**，不参与「能不能用」的判断 | `E7` 逐字排除了比版本号大小 |
 //! | `capabilities` | 逗号列表，**集合语义**，做**子集检查** | 加 token 安全，删/改名才危险 |
+//! | `shape` | 〔FIX2〕形状代号：调用方给了期望就**逐字比**，对不上（含缺这一行）= 旧一代 | 能力表相同、应答形状变了那一形（`设计/97 §8`） |
 //! | 其余 | 该插件自己的域枚举（它支持哪些东西） | 插件自己定，本层原样带回 |
 //!
 //! # ★★ 为什么不比版本号
@@ -46,6 +47,8 @@ pub(crate) struct Answer {
     pub(crate) version: Option<String>,
     /// 能力 token 集合。
     pub(crate) capabilities: Vec<String>,
+    /// 〔FIX2〕形状代号（`shape=` 那一行；老一代没有这一行）。
+    pub(crate) shape: Option<String>,
     /// 该插件自己的其它键（域枚举之类），原样带回，本层不解释。
     ///
     /// 〔RM1c〕模块级的死代码 `allow` 摘掉之后，只剩这一格今天没有生产读者：
@@ -69,6 +72,11 @@ pub(crate) enum Rejected {
     MissingCapability {
         plugin: String,
         token: String,
+        version: Option<String>,
+    },
+    /// 〔FIX2 · `设计/97 §8`〕能力都在，但形状代号与调用方要的那一代对不上（或压根没报）。
+    StaleShape {
+        plugin: String,
         version: Option<String>,
     },
 }
@@ -102,6 +110,19 @@ impl Rejected {
                     ),
                 ],
             ),
+            Rejected::StaleShape { plugin, version } => copy_text(
+                "beProbe.message.staleShape",
+                &[
+                    ("plugin", &plugin.to_string()),
+                    (
+                        "version",
+                        &(version
+                            .as_deref()
+                            .unwrap_or(&copy_text("beProbe.message.versionUnknown", &[])))
+                        .to_string(),
+                    ),
+                ],
+            ),
         }
     }
 }
@@ -113,6 +134,7 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
     let mut name: Option<String> = None;
     let mut version: Option<String> = None;
     let mut capabilities: Vec<String> = Vec::new();
+    let mut shape: Option<String> = None;
     let mut extras: Vec<(String, String)> = Vec::new();
     for line in text.lines() {
         let line = line.trim();
@@ -148,6 +170,7 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
                     .filter(|t| !t.is_empty())
                     .collect()
             }
+            "shape" => shape = Some(v.to_string()),
             _ => extras.push((k.to_string(), v.to_string())),
         }
     }
@@ -156,6 +179,7 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
             name,
             version,
             capabilities,
+            shape,
             extras,
         }),
         None => Err(Rejected::NotThePlugin {
@@ -182,13 +206,24 @@ pub(crate) fn require(answer: &Answer, required: &[&str]) -> Result<(), Rejected
     Ok(())
 }
 
-/// 一步走完：认身份 → 读能力 → 逐个查必需清单。
+/// 一步走完：认身份 → 判代（给了 `want_shape` 才判）→ 逐个查必需清单。
+///
+/// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕判代在查能力之前：旧一代的能力表可能恰好够，而形状已经不对。
 pub(crate) fn negotiate(
     text: &str,
     want_name: &str,
     required: &[&str],
+    want_shape: Option<&str>,
 ) -> Result<Answer, Rejected> {
     let answer = parse(text, want_name)?;
+    if let Some(want) = want_shape {
+        if answer.shape.as_deref() != Some(want) {
+            return Err(Rejected::StaleShape {
+                plugin: answer.name.clone(),
+                version: answer.version.clone(),
+            });
+        }
+    }
     require(&answer, required)?;
     Ok(answer)
 }

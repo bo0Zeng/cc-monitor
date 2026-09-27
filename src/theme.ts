@@ -78,11 +78,15 @@ export function applyThemeToken(
   root.style.setProperty(token.cssVar, str);
 }
 
+/** 从一份已读回的配置里取外观那一格（设置窗「读一次配置派生三格」共用这一处，`70 §10` #5）。 */
+export function themeIn(cfg: Record<string, unknown>): ThemeConfig {
+  return (cfg.theme as ThemeConfig | undefined) ?? {};
+}
+
 /** 启动时调用：从配置文件读取并应用 */
 export async function loadTheme(): Promise<ThemeConfig> {
   try {
-    const cfg = await loadConfig();
-    const theme = (cfg.theme as ThemeConfig | undefined) ?? {};
+    const theme = themeIn(await loadConfig());
     applyTheme(theme);
     return theme;
   } catch (e) {

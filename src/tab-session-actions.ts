@@ -36,7 +36,7 @@ import {
 // 「是不是本机」只经 `ipc/origin.ts` 判。`accounts.ts` 那个同名的 `"__local__"` 已退役 —— 全仓只剩一个本机表示。
 import { isLocalOrigin, isRemoteOrigin } from "./ipc/origin";
 import { commands } from "./ipc/commands";
-import { probeSessionRecord, type RecordProbe } from "./session-reads";
+import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
 import { listingFromFetch, mintFromListing, refuseUnmintable } from "./tmux-name-mint";
 import { getBehavior } from "./behavior";
@@ -173,6 +173,8 @@ export class TabSessionActions {
    * - 在 ⇒ 「记录已不在」翻回已结束（记录回来了），返回 `true`；
    * - 问不到（通道没起 / 后端太旧不认 `history-record` / 超时）⇒ 当「不知道」、返回 `true`：照今天的路走，
    *   **不许把「问不到」当成「不在」**（那会把一条其实接得上的 resume 拦掉）。
+   *   〔FIX2 · `99 §2.1 ㉟②`〕照起，但说一句「查不到记录还在不在」；形状不对按 `05 §14.3` 说「两端契约对不上」
+   *   （`session-reads.ts::reasonOf` 那一份，不另写）—— 出声不静默。
    *
    * 判定住那台的后端（只收 sid），这里只读答案 —— 前端不做文件存在性探测（`30 §B.6`）。
    *
@@ -185,8 +187,12 @@ export class TabSessionActions {
     try {
       // 〔C4c · 第四波 4B〕经通道直接问那台后端的 `history-record`（`session-reads.ts::probeSessionRecord`）。
       probe = await probeSessionRecord(tab.origin, tab.sessionId, configDir);
-    } catch {
-      // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦。
+    } catch (e) {
+      // 问不到 / 形状不对（旧后端）同「不知道」：只有一个明明白白的 `present: false` 才拦 —— 但说出来。
+      showActionFailureToast(
+        copyText("tabSessionActions.recordUnknown.title"),
+        reasonOf(e, copyText("tabSessionActions.recordUnknown.oldBackend")),
+      );
       return true;
     }
     this.host.markRecord(tab.sessionId, probe.present);

@@ -20,6 +20,7 @@ import { sidOfLaunch, rememberLocalLaunch, resolvePendingLocalLaunches, __resetP
 import { restartLocateFailureMessage } from "../src/account-restart";
 import { enumerateAccountModifiers } from "../src/launch-menu";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { copyText } from "../src/copy-table";
 import {
   accountReadCalls,
   chanArgsJson,
@@ -1115,8 +1116,8 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     expect(b.text).toBe("API key（经本机中转）");
     expect(b.warn).toBe(false);
     // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
-    expect(b.title).toContain("ANTHROPIC_BASE_URL");
-    expect(b.title).toContain("到 claude 那边才知道");
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文：原先钉着「ANTHROPIC_BASE_URL」，那是配置键名直出（R1），与 CP1 裁词相冲。
+    expect(b.title).toBe(copyText("accounts.badge.apikeyRelayedHint"));
   });
 
   it("★ 本机 · 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
@@ -1124,7 +1125,8 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     expect(b.text).toBe("API key（中转未运行）");
     expect(b.warn).toBe(true);
     // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
-    expect(b.title).toContain("当场拒");
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文（原先钉着「当场拒」三个字，改说法就红）。
+    expect(b.title).toBe(copyText("accounts.badge.apikeyRelayDownHint"));
   });
 
   it("★ 本机 · 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {

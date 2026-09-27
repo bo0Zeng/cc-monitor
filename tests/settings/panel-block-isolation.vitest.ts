@@ -101,18 +101,18 @@ vi.mock("../../src/keybindings/registry", () => ({
 vi.mock("../../src/theme", () => ({
   applyTheme: vi.fn(),
   applyThemeToken: vi.fn(),
-  loadTheme: vi.fn().mockResolvedValue({}),
+  themeIn: () => ({}),
   saveTheme: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../src/paths", () => ({
-  getClaudeDirOverride: vi.fn().mockResolvedValue(""),
+  claudeDirIn: () => null,
   setClaudeDirOverride: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../src/behavior", () => ({
   // ⚠ **必须是 `mockImplementation` 不是 `mockResolvedValue`**：后者的对象字面量
   // 只在建 mock 时求值**一次** ⇒ 单条测试后来改 `behaviorStub` 它看不见（实测栽过一次，
   // chips 恒为空）。现取才让「每条测试自带一份预设」这件事成立。
-  getBehavior: vi.fn(async () => ({
+  behaviorIn: vi.fn(() => ({
     autoFollowUserActive: false,
     bringMonitorToFrontOnUserActive: false,
     showBgSessions: false,
