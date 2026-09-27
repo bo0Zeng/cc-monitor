@@ -393,12 +393,11 @@ export const commands = {
    * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
    * 远端那台**用到才起**它的中转；apikey 号的中转起不来 ⇒ reject（拒绝起会话，说得出是哪台）。
    * 〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品），monitor 只转交、照成品执行；前端拿到地址原样放进载荷（`export-relay-base-url`）。
-   * 它接替了 RM1a 那条零调用方的 `relay_ensure`。
+   * 它接替了 RM1a 那条零调用方的 `relay_ensure`。〔V141〕不带会话身份：地址不随会话变，中转从 claude 的请求头认会话。
    */
   relay_endpoint_for_launch: (args: {
     origin: Origin;
     account: { kind: "base" } | { kind: "named"; configDir: string; name?: string } | null;
-    sid: string | null;
   }) => invoke<string | null>("relay_endpoint_for_launch", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>

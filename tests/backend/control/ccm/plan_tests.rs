@@ -1283,7 +1283,7 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
     let key_file = std::path::Path::new(&home).join(relay_route_core::KEY_FILE_REL);
     std::fs::create_dir_all(key_file.parent().unwrap()).unwrap();
     std::fs::write(&key_file, &key).unwrap();
-    let keyed = format!("http://127.0.0.1:8788/{key}/t/claude-code/_/k-1");
+    let keyed = format!("http://127.0.0.1:8788/{key}/t/claude-code/_");
     let payload_of = |v: &str| -> String {
         let mut e = env();
         e.anthropic_base_url = Some(v.to_string());
@@ -1319,12 +1319,12 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
     // 认不出 ⇒ 原样（期望 == 输入经 sq 的那一形）。
     for v in [
         "https://relay.example/v1".to_string(),
-        format!("http://127.0.0.1:8788/{}/t/claude-code/_/k-1", &key[..63]),
+        format!("http://127.0.0.1:8788/{}/t/claude-code/_", &key[..63]),
         format!(
-            "http://127.0.0.1:8788/{}/t/claude-code/_/k-1",
+            "http://127.0.0.1:8788/{}/t/claude-code/_",
             key.to_uppercase()
         ),
-        format!("http://10.0.0.1:8788/{key}/t/claude-code/_/k-1"),
+        format!("http://10.0.0.1:8788/{key}/t/claude-code/_"),
     ] {
         assert!(
             payload_of(&v).starts_with(&format!("export ANTHROPIC_BASE_URL={}; ", sq(&v))),

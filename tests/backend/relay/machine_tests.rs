@@ -210,6 +210,9 @@ impl super::super::Destinations for NoRows {
             why: "夹具：一行都没有",
         });
     }
+    fn stream_label_headers(&self) -> Vec<&'static str> {
+        Vec::new()
+    }
 }
 
 #[test]

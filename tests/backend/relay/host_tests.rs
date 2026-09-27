@@ -93,15 +93,20 @@ fn env_of(
     }
 }
 
-/// 经中转发一条请求，读完整个应答（带读期限）。
+/// 经中转发一条请求，读完整个应答（带读期限）。〔V141〕带 claude 那个会话标识头（值 `k-rl1`）。
 fn through(addr: SocketAddr) -> String {
+    through_with(addr, "x-claude-code-session-id: k-rl1\r\n")
+}
+
+/// 同上，多出来的请求头由调用方给（整行、带 `\r\n`）。
+fn through_with(addr: SocketAddr, extra: &str) -> String {
     let mut c = TcpStream::connect(addr).expect("connect 中转");
     c.set_read_timeout(Some(Duration::from_secs(10)))
         .expect("读期限（风险 5x）");
     let body = "{}";
     let req = format!(
         // 〔RK1〕过门：钥匙段挂在最前、`Host` 用回环字面量。
-        "POST /{}/s/claude-code/acctA/k-rl1/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        "POST /{}/s/claude-code/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n{extra}Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
         door::door_tests::TEST_KEY,
         body.len()
     );
@@ -458,7 +463,7 @@ fn drain(
 }
 
 /// T1：真中转 ＋ 假上游 ⇒ tap 口收到的事件 **==** 上游那一串 `data:`（逐字节、同序；`[DONE]` 与空行不算事件），
-/// 位置号 `n` == 0..k 连续，最后一件是 `End{broken:false}` 且 `n == k`；`stream` == 路由第三段；
+/// 位置号 `n` == 0..k 连续，最后一件是 `End{broken:false}` 且 `n == k`；`stream` == 请求自带的会话标识头（〔V141〕）；
 /// 下游收到的字节照旧 == 上游发的（抄一份不动主路）。
 #[test]
 fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clean_end() {
@@ -491,6 +496,42 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
         body: super::super::TapBody::End { broken: false },
     });
     assert_eq!(got, want, "tap 收到的事件序列与上游发的不等");
+}
+
+/// 〔V141 · R1〕**流标签 == claude 请求头里自带的会话标识**，与路径无关（路径里没有会话段）。
+/// 守的要求：用户裁决 V141「中转从 claude 自己发的请求里认出这是哪个会话 …… 启动器不往中转地址里塞任何会话身份」。
+/// 名单走生产接线（`host` → 上游选择 → 适配层 `session_header`）；缺头 / 值过不了段闸 ⇒ 空标签（前端当匿名流）。
+#[test]
+fn the_stream_label_is_the_session_id_the_agent_sends_in_its_own_request_header() {
+    let body = tap_body();
+    let up = fake_upstream_with(body);
+    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let mut rx = hub.attach();
+    let addr = hosted_with_tap("tapv141", up, hub.clone());
+    let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
+    let label_of = |extra: &str, rx: &mut tokio::sync::mpsc::Receiver<super::super::TapEvent>| {
+        through_with(addr, extra);
+        let got = drain(rx);
+        assert!(!got.is_empty(), "正控：这一发该有 tap 件");
+        let labels: std::collections::BTreeSet<String> =
+            got.into_iter().map(|e| e.stream).collect();
+        labels.into_iter().collect::<Vec<_>>()
+    };
+    assert_eq!(
+        label_of(&format!("X-Claude-Code-Session-Id: {sid}\r\n"), &mut rx),
+        vec![sid.to_string()],
+        "流标签不是请求头里那个会话标识"
+    );
+    assert_eq!(
+        label_of("", &mut rx),
+        vec![String::new()],
+        "没带头 ⇒ 空标签"
+    );
+    assert_eq!(
+        label_of("x-claude-code-session-id: a/b\r\n", &mut rx),
+        vec![String::new()],
+        "过不了段闸的值不许进 tap"
+    );
 }
 
 /// T2：tap 那一侧跟不上（通道只容 1 件、接收端不读）⇒ **下游字节一个不少**；收到的那几件的位置号

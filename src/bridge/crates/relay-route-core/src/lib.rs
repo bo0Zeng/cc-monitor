@@ -15,7 +15,7 @@
 //!
 //! # 它**不是**业务 crate
 //!
-//! 这里一个账号 / 凭据 / 上游的名字都没有：三个段是**位置**（第 1/2/3 段），谁是 agent、谁是账号只在后端上游选择那一层
+//! 这里一个账号 / 凭据 / 上游的名字都没有：两个段是**位置**（第 1/2 段），谁是 agent、谁是账号只在后端上游选择那一层
 //! 才有名字（`设计/20 §0` 条 48）。⇒ 通信层成员 `relay/route.rs` 可以 `use` 它（`设计/05 §2` `C2` 禁的是业务 crate）。
 //!
 //! # 谁用哪几样
@@ -40,7 +40,7 @@ pub fn key_shape_ok(s: &str) -> bool {
 
 /// 一条**已经把钥匙段展开进去**的中转地址（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，pane shell 展开
 /// `$(cat "$HOME/<KEY_FILE_REL>")` 之后 agent 进程环境里的那一形）切成「钥匙之前」「钥匙之后」两半：
-/// `("http://127.0.0.1:<口>/", "/<前缀>/<seg1>/<seg2>/<seg3>")`。
+/// `("http://127.0.0.1:<口>/", "/<前缀>/<seg1>/<seg2>")`。
 ///
 /// 认的条件全在这里一处：钥匙段过 [`key_shape_ok`] · 两半拼回去（去掉钥匙段）过 [`base_url_shape_ok`]。
 /// 认不出 ⇒ `None`（那就不是我们注入的地址，原样对待）。读者：`ccm` 把继承来的地址转进新 pane 时
@@ -82,7 +82,7 @@ impl RouteMode {
 /// 一段路由里允许的字符 —— 白名单：ASCII 字母数字与 `-` `_`，1..=128 字节。
 ///
 /// `.` 与 `/` 不在里面 ⇒ `..` 构造不出来；路由段要进 tee 行与日志，放开任意字节等于给换行 / 控制字符开一条路。
-/// ⚠ 起会话身份 token（`CCM_LAUNCH_ID`）也用这一条：那个 token 同时是流标签（第 3 段），两件事一个字符集。
+/// ⚠ 起会话身份 token（`CCM_LAUNCH_ID`）也用这一条字符集；中转给流打标签的请求头值也过它（〔V141〕流标签不再是路由段）。
 pub fn segment_is_safe(seg: &str) -> bool {
     !seg.is_empty()
         && seg.len() <= 128
@@ -91,25 +91,26 @@ pub fn segment_is_safe(seg: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// 拼 `/<前缀>/<seg1>/<seg2>/<seg3>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：
+/// 拼 `/<前缀>/<seg1>/<seg2>`。**任一段过不了 [`segment_is_safe`] ⇒ `None`**（fail-closed：
 /// 拼错一段的症状是中转回一个查不出来的 404，所以宁可当场拒）。
-pub fn route_path(mode: RouteMode, seg1: &str, seg2: &str, seg3: &str) -> Option<String> {
-    [seg1, seg2, seg3]
-        .iter()
-        .all(|s| segment_is_safe(s))
-        .then(|| format!("{}{seg1}/{seg2}/{seg3}", mode.prefix()))
+///
+/// 〔V141〕没有第 3 段：会话 id 归 agent 自己，启动器不往地址里塞会话身份 ⇒ 这条地址**不随会话变**，
+/// 中转从 agent 请求里自带的头认会话。
+pub fn route_path(mode: RouteMode, seg1: &str, seg2: &str) -> Option<String> {
+    (segment_is_safe(seg1) && segment_is_safe(seg2))
+        .then(|| format!("{}{seg1}/{seg2}", mode.prefix()))
 }
 
 /// 注入给 agent 的 base URL：`http://127.0.0.1:<port>` ＋ [`route_path`]。**恒回环**（回环是自指的：
 /// 同一个字面串写进哪台机器就指哪台）。
-pub fn base_url(port: u16, mode: RouteMode, seg1: &str, seg2: &str, seg3: &str) -> Option<String> {
+pub fn base_url(port: u16, mode: RouteMode, seg1: &str, seg2: &str) -> Option<String> {
     if port == 0 {
         return None;
     }
-    route_path(mode, seg1, seg2, seg3).map(|p| format!("http://127.0.0.1:{port}{p}"))
+    route_path(mode, seg1, seg2).map(|p| format!("http://127.0.0.1:{port}{p}"))
 }
 
-/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好三段、每段过闸。别的一律 `false`
+/// [`base_url`] 的**逆**：`http://127.0.0.1:<1–65535>` ＋ 一个前缀 ＋ 恰好两段、每段过闸。别的一律 `false`
 /// （`localhost` · `https` · 查询串 · 尾斜杠 · 少段多段 · 端口前导空）。
 pub fn base_url_shape_ok(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("http://127.0.0.1:") else {
@@ -129,17 +130,16 @@ pub fn base_url_shape_ok(url: &str) -> bool {
         return false;
     };
     let parts: Vec<&str> = segs.split('/').collect();
-    port_ok && parts.len() == 3 && parts.iter().all(|p| segment_is_safe(p))
+    port_ok && parts.len() == 2 && parts.iter().all(|p| segment_is_safe(p))
 }
 
-/// 请求目标 `/<前缀>/<seg1>/<seg2>/<seg3>/<rest>` 切出来的样子（中转那一侧用）。
+/// 请求目标 `/<前缀>/<seg1>/<seg2>/<rest>` 切出来的样子（中转那一侧用）。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parsed<'a> {
     pub mode: RouteMode,
     pub seg1: &'a str,
     pub seg2: &'a str,
-    pub seg3: &'a str,
-    /// 第 3 段之后的全部（**不带**开头那个 `/`），原样交上游。
+    /// 第 2 段之后的全部（**不带**开头那个 `/`），原样交上游。
     pub rest: &'a str,
 }
 
@@ -149,18 +149,13 @@ pub fn parse_target(target: &str) -> Option<Parsed<'_>> {
         .iter()
         .find_map(|m| target.strip_prefix(m.prefix()).map(|r| (*m, r)))?;
     let (seg1, after) = after.split_once('/')?;
-    let (seg2, after) = after.split_once('/')?;
-    let (seg3, rest) = after.split_once('/')?;
-    [seg1, seg2, seg3]
-        .iter()
-        .all(|s| segment_is_safe(s))
-        .then_some(Parsed {
-            mode,
-            seg1,
-            seg2,
-            seg3,
-            rest,
-        })
+    let (seg2, rest) = after.split_once('/')?;
+    (segment_is_safe(seg1) && segment_is_safe(seg2)).then_some(Parsed {
+        mode,
+        seg1,
+        seg2,
+        rest,
+    })
 }
 
 #[cfg(test)]

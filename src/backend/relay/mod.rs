@@ -76,8 +76,8 @@
 //!
 //! 1. **一个进程** —— 一个监听面服务 N 个会话，不是每会话一个。
 //! 2. **按路径前缀分流** —— 路由键塞在 base URL 的路径里
-//!    （`/s/<agent>/<account>/<key>/<真路径>`；`<account>` 那一段是 `K-H2` 加的，
-//!    理由与代价逐条住 `route.rs` 头注）。
+//!    （`/s/<agent>/<account>/<真路径>`；`<account>` 那一段是 `K-H2` 加的，
+//!    理由与代价逐条住 `route.rs` 头注；〔V141〕先前的 `<key>` 段退役，流标签取自请求头）。
 //! 3. **逐块透传绝不缓冲** —— 上游每给一块就立刻写下游并 flush，从不攒整个响应体。
 //!    这是本方案**唯一真正的技术点**：缓冲了 TUI 会卡住不出字。
 //! 4. **一边流回 CLI 一边 tee** —— 同一批字节既原样写回下游，又抄一份进 tee 流。
@@ -340,11 +340,10 @@ pub(crate) struct RouteKey {
 }
 
 /// tee 那条流的身份：**路由键 ＋ 一个流标签**（`20 §4`：`open`/`event` 原先那三个
-/// 标签收成这一个）。同样**不用业务名** —— `stream` 就是路径第 3 段，
-/// 它是 sid，但中转不需要知道。
+/// 标签收成这一个）。同样**不用业务名** —— 〔V141〕`stream` 取自请求自己带的那个头
+/// （[`Destinations::stream_label_headers`]），不是路径段；没有 ⇒ 空串。
 ///
-/// 借用形（不是 `String`）：它是从 [`route::Route`] 上现取的一个视图，
-/// 每条请求两次调用都不该为此多分配一次。
+/// 借用形（不是 `String`）：每条请求两次调用都不该为此多分配一次。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StreamId<'a> {
     pub(crate) key: &'a RouteKey,
@@ -446,6 +445,10 @@ pub(crate) trait Destinations: Send + Sync {
     ///    把 `pump` 搬进来 = 「配一次 key」会被堵在最长那条在飞流后面（`D2 阻-4`）。
     ///    钉这一条的判据：`table_guard::the_upstream_selection_lock_does_not_outlive_the_streaming_pump`。
     fn resolve(&self, mode: Mode, key: &RouteKey, act: &mut dyn FnMut(Destination<'_>));
+
+    /// 〔V141〕哪几个请求头给流打标签（第一个在请求里、值过段闸的那个）。中转不知道它们是谁的什么头，
+    /// 只照这份名单取 —— 会话 id 归 agent 自己，启动器不往地址里塞（路由第 3 段随之退役）。
+    fn stream_label_headers(&self) -> Vec<&'static str>;
 }
 
 /// 进程起来那一刻，上游选择交给中转的**另一只手**（`--relay` 的启动路径）。
