@@ -618,6 +618,20 @@ cell(
     },
 )
 
+# ── 〔TAIL 09-26〕第 32 格 `panorama-engine`：全景小程序是独立 crate（自己一份 lock），别的格编不到它 ──
+cell(
+    "panorama-engine",
+    anchor="run_gate panorama-engine '单包 src/panorama-engine",
+    cwd="src/panorama-engine/",
+    cmd="cargo test",
+    **{
+        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/panorama/types.ts` 一处"),
+        "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
+        VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `ci.yml` 的 `-p code-picture-core`）"),
+        "src/bridge/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
+    },
+)
+
 # ── `K-R118`（09-14）：第 16 格 `tsc` ─────────────────────────────────────────
 # `KR118D1` ②：**「这棵树编不编得出发版产物」这一维此前门禁一格都没有**。
 # `npm` 那一格跑的是 `npm test`（`tsx` / `vitest` 都是转译执行，`esbuild` 只剥类型），
@@ -1356,6 +1370,9 @@ invoke("test-tiers", ELSEWHERE,
 invoke("backend", ELSEWHERE,
        "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
        anchor="name: Remote backend (Linux) lint + test")
+invoke("panorama-engine", NOWHERE,
+       "`ci.yml` 在这棵树里只跑 `cargo test -p code-picture-core`（vendor 自己的测试），"
+       "不跑本程序的 `cli_tests` ⇒ 这一维云端零覆盖，只有本机这一格")
 invoke("tsc", ELSEWHERE,
        "`frontend` 那个 job 跑 `npm run build`，而 `tsc --noEmit` 是它的第一步。"
        "⚠ 云端买的是「build 过得去」，**没有**本格那条「真读进 tsc 的份数 == 盘上现打份数」的恒等对账"
@@ -1875,7 +1892,8 @@ def main():
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend", "winlink",
-                         "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend",
+                         "panorama-engine", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
