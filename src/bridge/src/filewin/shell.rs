@@ -118,6 +118,9 @@ use super::source::{breadcrumbs, Line, Listed, SortBy, Source};
 use super::transfer::{DropBoard, Pending};
 use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL};
 
+/// 〔NET2〕接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
+const OFFER_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
 ///
 /// ⚠ 它在**次线程里**加，所以从调用方看它是**异步**的：
@@ -389,6 +392,8 @@ pub struct FileWindow {
     /// 是 `Option` 的理由与 [`Self::rt`] 同：判据里大量窗口不连后端（只画行、只点按钮）。
     /// 没有它的时候，每一件要问后端的事都**出声**（[`NO_LINE`]），不静默、不退回 SFTP（`D11`）。
     pub line: Option<Line>,
+    /// 〔NET2〕这台机器的能力事实（接上通道时问一次，`chan::wire::Offer`）：做不到的那几件在菜单上置灰并说为什么。
+    pub offer: std::sync::Arc<std::sync::Mutex<Option<crate::chan::wire::Offer>>>,
     /// `设计/60 §5.4d`：拖入那一摞的状态机（**先一次问完，再并行传**）。
     pub board: DropBoard,
     /// 已经消化过几趟拖入。`board.rounds()` 走在它前面 ⇒ 该重列一次目录了。
@@ -531,7 +536,34 @@ impl FileWindow {
 
     /// 接上通道（`proc::child_main` 拨通之后调；判据里接一台合成后端）。
     pub fn attach_line(&mut self, line: Line) {
+        // 〔NET2〕接上就问一次那台的能力事实（不等它：没回来之前菜单照常，点了由那台的回话兜）。
+        if let Some(h) = &self.rt {
+            let (l, origin, slot) = (line.clone(), self.source.origin(), self.offer.clone());
+            h.spawn(async move {
+                let budget = crate::chan::wire::Budget {
+                    until: std::time::Instant::now() + OFFER_WITHIN,
+                    cancel: Default::default(),
+                };
+                if let Ok(o) = l.offer(&origin, budget).await {
+                    *slot.lock().unwrap() = o;
+                }
+            });
+        }
         self.line = Some(line);
+    }
+
+    /// 〔NET2〕这件事在这台机器上做不到 ⇒ 那句为什么（菜单置灰的 hover · 键盘按了的回话）；做得到 / 没把握 ⇒ `None`。
+    pub fn unavailable_here(&self, a: Action) -> Option<String> {
+        let op = match a {
+            Action::Chmod => "files-chmod",
+            _ => return None,
+        };
+        let offer = self.offer.lock().unwrap();
+        let code = offer.as_ref()?.unavailable(op)?;
+        Some(copy_text(
+            "rsFilewinShell.menu.unavailableHere",
+            &[("code", code)],
+        ))
     }
 
     /// 带着**已经列好的那一屏**建窗 —— [`super::entry::open_file_window`] 走这条。
@@ -565,6 +597,7 @@ impl FileWindow {
             hits_tally: HitTally::default(),
             rt,
             line: None,
+            offer: Default::default(),
             board: DropBoard::default(),
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
@@ -2716,6 +2749,10 @@ impl FileWindow {
             self.key_notice = Some(select::refusal(a, idx.len()));
             return false;
         }
+        if let Some(why) = self.unavailable_here(a) {
+            self.key_notice = Some(why);
+            return false;
+        }
         match (a, idx.as_slice()) {
             (Action::Delete, _) => self.delete_picked(&idx, ctx),
             (Action::Open, [i]) => self.activate(*i),
@@ -2880,7 +2917,14 @@ impl FileWindow {
                 ui.label(MENU_EMPTY.as_str());
             }
             for a in &m.actions {
-                if ui.button(a.label(m.n)).clicked() {
+                // 〔NET2〕这台做不到的那一件置灰，hover 说为什么。
+                let blocked = self.unavailable_here(*a);
+                let b = ui.add_enabled(blocked.is_none(), egui::Button::new(a.label(m.n)));
+                let b = match &blocked {
+                    Some(why) => b.on_disabled_hover_text(why),
+                    None => b,
+                };
+                if b.clicked() {
                     chosen = Some(*a);
                 }
             }

@@ -1692,6 +1692,26 @@
       "zh": "这次操作已撤回；那台机器停不了它，它可能还在跑。",
       "args": []
     },
+    "control.unavailable.noTmux": {
+      "kind": "body",
+      "zh": "{machine}上没有 tmux",
+      "args": ["machine"]
+    },
+    "control.unavailable.noUnixMode": {
+      "kind": "body",
+      "zh": "{machine}的文件没有 unix 权限位",
+      "args": ["machine"]
+    },
+    "control.unavailable.other": {
+      "kind": "body",
+      "zh": "{machine}做不到这件事（{code}）",
+      "args": ["machine", "code"]
+    },
+    "tabMenu.item.greyed": {
+      "kind": "control",
+      "zh": "{label}（{why}）",
+      "args": ["label", "why"]
+    },
     "control.channel.broken": {
       "kind": "error",
       "zh": "这次操作没有完成，cc-monitor 内部出错了。",
@@ -10398,6 +10418,11 @@
       "kind": "error",
       "zh": "文件窗口打开失败：{e}",
       "args": ["e"]
+    },
+    "rsFilewinShell.menu.unavailableHere": {
+      "kind": "error",
+      "zh": "这台机器上改不了权限（{code}）",
+      "args": ["code"]
     },
     "rsFilewinShell.window.title": {
       "kind": "title",

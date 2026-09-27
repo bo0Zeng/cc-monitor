@@ -346,8 +346,9 @@ export const chan = {
           throw new ChanError(e);
         },
       );
-    if (!offers.has(origin)) void askOffer(origin);
     if (!budget.cancel) return sent;
+    // 撤得掉的那一问才要那台的 Offer（撤了之后说「可能还在跑」）：没问过就去问（不等它）。
+    if (!offers.has(origin)) void askOffer(origin);
     // 撤了之后 monitor 那一侧照跑完（不买对端撤活）；它那时的结局没人收了 —— 别让它变成一次未处理的拒绝。
     sent.catch(() => {});
     const offer = (): Offer | null | undefined => offers.get(origin);
