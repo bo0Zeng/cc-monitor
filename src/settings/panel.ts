@@ -2,8 +2,9 @@
  * 设置面板：外观（主题 / 字体）+ 数据目录（Claude 数据位置）+ 行为 / 快捷键 / 远端 / 集成 / 诊断。
  *
  * 解耦：
- *  - 外观：只调 theme.ts 的 applyTheme / loadTheme / saveTheme
- *  - 数据目录：只调 paths.ts 的 getClaudeDirOverride / setClaudeDirOverride
+ *  - 外观：只调 theme.ts 的 applyTheme / themeIn / saveTheme
+ *  - 数据目录：只调 paths.ts 的 claudeDirIn / setClaudeDirOverride
+ *  - 打开时只 `loadConfig()` 一次，三格各经自己那一家的 `*In(cfg)` 派生（`70 §10` #5）
  *
  * F82a（#56+#47）两种承载模式（`windowMode`）：
  *  - **主窗口浮层**（`windowMode:false`，F82a 后当前无调用方，保留供回退 / 未来复用）：抽屉式，
@@ -17,11 +18,12 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   applyTheme,
   applyThemeToken,
-  loadTheme,
   saveTheme,
+  themeIn,
   type ThemeConfig,
 } from "../theme";
-import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
+import { claudeDirIn, setClaudeDirOverride } from "../paths";
+import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
 import { McpSection, assetInstallApi } from "./mcp-section"; // F87：MCP 管理（集成组）· 〔AS2〕「装」那几条从它递给资产目录
 import { AssetsSection } from "./assets-section"; // 〔AS2 · 第四波 4B · V113〕资产目录（别的机器有、这台没有的 skill / MCP，装要你点）
@@ -47,7 +49,7 @@ import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
 import {
-  getBehavior,
+  behaviorIn,
   setBehavior,
   withResumePreset,
   type BehaviorConfig,
@@ -361,31 +363,10 @@ export class SettingsPanel {
   }
 
   private async openInner(): Promise<void> {
-    this.original = await loadTheme();
-    this.current = { ...this.original };
-    this.claudeDirOriginal = (await getClaudeDirOverride()) ?? "";
-    this.claudeDirInput.value = this.claudeDirOriginal;
-    // v2.4 issue #2: 每次打开拉最新 behavior，避免跟外部其他改动脱节
-    const behavior = await getBehavior();
-    this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
-    this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
-    this.showBgCheckbox.checked = behavior.showBgSessions;
-    // E62：记下打开设置时的值，只有**真的改了**才供货（每次 toggle 都标会把噪音变回来）。
-    this.showBgOriginal = behavior.showBgSessions;
-    this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
-    this.resumeLocalInput.value = behavior.resumeCommandLocal;
-    this.resumeRemoteInput.value = behavior.resumeCommandRemote;
-    // ⚠ `?? []` 不是防 `getBehavior`（它总会填缺省），是防**这一排 chip 掀翻整个面板**：
-    // 实测缺字段时 `renderResumePresets` 抛错 ⇒ `open()` 整个中断 ⇒ 面板停在错误的页。
-    // 一个装饰性的候选条不该有那种权力。
-    this.resumeLocalPresets = behavior.resumeCommandLocalPresets ?? [];
-    this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
-    this.renderResumePresets();
-    this.updateRemoteLauncherWarning();
-    this.updateBringFrontEnabled();
+    // 〔FIX2 · `70 §10` #5 · `01 §1.4` 骨架优先〕先开窗，再读**一次**配置派生外观 · 数据目录 · 行为三格。
+    //   原来是三次串行 `await loadConfig()` 挡在 `open` 之前（`70 §1.1` 成因 ③）。
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
-    this.syncInputs();
     // 🔴 步 2：**重开设置 = 每一页的「首次可见」重新算一遍**，但仍然只拉
     // **用户真看得见的那一页**。原来这里是无条件 `this.dataSection?.refresh()`
     // 与「日志」那两发 —— 那三发在落地页是「机器」的情况下**每次打开都是白发的**，
@@ -409,12 +390,66 @@ export class SettingsPanel {
     //   那条是对的：订阅者会做搬 DOM 这类有代价的事）。⇒ 第二次打开时落地页的 flush
     //   必须在这里补一刀，否则它只在**第一次**打开时发生过。
     this.flushPage(this.router.activeId);
+    // 读回之前三格的控件是 pending（禁用）：勾选框此刻显示的是上一次的值，点上去就点在旧值上。
+    this.setConfigCellsPending(true);
     this.el.classList.add("open");
     this.isOpen = true;
     // 面板始终作为 overlay 栈**底**（窗口模式也是）：这样设置窗内的快捷键编辑器 / SFTP 面板
     // 压栈其上时 Esc 走 dispatcher 的 LIFO 逐层关（先关它们、再 Esc 关面板→关窗），
     // 与主窗口抽屉行为一致。窗口模式下面板 handleEsc→cancel→close()→关窗（见 close()）。
     dispatcher.pushOverlay(this);
+    try {
+      this.fillConfigCells(await loadConfig());
+    } catch (e) {
+      // 读不回来 ⇒ 三格照旧各回落到缺省（与原来三个读者各自的降级同形），外观不重刷。
+      console.warn("设置窗读配置失败，外观 / 数据目录 / 行为按缺省显示：", e);
+      this.fillConfigCells({}, false);
+    } finally {
+      this.setConfigCellsPending(false);
+    }
+  }
+
+  /** 外观 · 数据目录 · 行为三格读回之前的 pending 态：这几格的控件一律禁用。 */
+  private setConfigCellsPending(pending: boolean): void {
+    const controls: HTMLInputElement[] = [
+      ...[...this.inputs.values()].filter((c): c is HTMLInputElement => c instanceof HTMLInputElement),
+      this.claudeDirInput,
+      this.autoFollowCheckbox,
+      this.bringFrontCheckbox,
+      this.showBgCheckbox,
+      this.notifyTurnEndCheckbox,
+      this.resumeLocalInput,
+      this.resumeRemoteInput,
+    ];
+    for (const c of controls) c.disabled = pending;
+    if (!pending) this.updateBringFrontEnabled();
+  }
+
+  /** 从**一份**配置派生三格（派生规则各住 `theme.ts` / `paths.ts` / `behavior.ts`，这里不另写）。 */
+  private fillConfigCells(cfg: Record<string, unknown>, applyLoadedTheme = true): void {
+    this.original = themeIn(cfg);
+    if (applyLoadedTheme) applyTheme(this.original);
+    this.current = { ...this.original };
+    this.claudeDirOriginal = claudeDirIn(cfg) ?? "";
+    this.claudeDirInput.value = this.claudeDirOriginal;
+    // v2.4 issue #2: 每次打开拉最新 behavior，避免跟外部其他改动脱节
+    const behavior = behaviorIn(cfg);
+    this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
+    this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
+    this.showBgCheckbox.checked = behavior.showBgSessions;
+    // E62：记下打开设置时的值，只有**真的改了**才供货（每次 toggle 都标会把噪音变回来）。
+    this.showBgOriginal = behavior.showBgSessions;
+    this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
+    this.resumeLocalInput.value = behavior.resumeCommandLocal;
+    this.resumeRemoteInput.value = behavior.resumeCommandRemote;
+    // ⚠ `?? []` 不是防 `behaviorIn`（它总会填缺省），是防**这一排 chip 掀翻整个面板**：
+    // 实测缺字段时 `renderResumePresets` 抛错 ⇒ `open()` 整个中断 ⇒ 面板停在错误的页。
+    // 一个装饰性的候选条不该有那种权力。
+    this.resumeLocalPresets = behavior.resumeCommandLocalPresets ?? [];
+    this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
+    this.renderResumePresets();
+    this.updateRemoteLauncherWarning();
+    this.syncInputs();
   }
 
   /** v2.4 issue #2: autoFollow 关 → bringFront 灰显（依赖前者，无意义） */

@@ -2929,13 +2929,15 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
         "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
              写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
     );
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文：原先钉着「下一步」三个字（CP1 裁「改·§2.3」处方形），
+    //   现在认那一臂取的是拒绝那一条、并把 pid 文件交给它当 `pidPath`。
     for (needle, why) in [
         (
-            "下一步",
-            "只报「起不来」是没用的：用户要的是**现在该干什么**",
+            "\"rsLocalBackendHost.start.refusedNotice\"",
+            "只报「起不来」是没用的：用户要的是**现在该干什么** —— 那一句住这条文案",
         ),
         (
-            "pid_path(&dir, port)",
+            "(\"pidPath\", &(pid_path(&dir, port)",
             "「把那个进程停掉」要说得出它是哪个进程 —— pid 记在那个文件里",
         ),
     ] {
@@ -3046,12 +3048,13 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
         token_lane.contains("looked_at: vec![token_path(&dir)]"),
         "拿 token 失败那一格不再把 token 文件放进 `looked_at`"
     );
-    let ensure = with_copy(body_of(&prod, "fn ensure_listen_token("));
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文（原先钉着「下一步：删掉这个文件再起一次」）。
+    let ensure = body_of(&prod, "fn ensure_listen_token(");
     assert!(
-        ensure.contains("下一步：删掉这个文件再起一次"),
-        "`ensure_listen_token` 空文件支那句话不再说「下一步」——\n\
+        ensure.contains("\"rsLocalBackendHost.token.empty\""),
+        "`ensure_listen_token` 空文件支不再取那句说得出删哪个文件的话 ——\n\
              ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
-             它少了「下一步」这三个字，用户拿到的就只是一句「它坏了」。"
+             少了它，用户拿到的就只是一句「它坏了」。"
     );
     // ④ 写记录只有一个入口，今天恰好两条路在用它（〔HX1〕+1 另一个 monitor 那一臂 ·〔TAIL〕−1 那一臂删了）。
     assert_eq!(

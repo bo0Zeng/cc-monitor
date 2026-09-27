@@ -119,15 +119,15 @@ vi.mock("../../src/keybindings/registry", () => ({
 vi.mock("../../src/theme", () => ({
   applyTheme: vi.fn(),
   applyThemeToken: vi.fn(),
-  loadTheme: vi.fn().mockResolvedValue({}),
+  themeIn: () => ({}),
   saveTheme: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../src/paths", () => ({
-  getClaudeDirOverride: vi.fn().mockResolvedValue(""),
+  claudeDirIn: () => null,
   setClaudeDirOverride: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../src/behavior", () => ({
-  getBehavior: vi.fn().mockResolvedValue({
+  behaviorIn: vi.fn().mockReturnValue({
     autoFollowUserActive: false,
     bringMonitorToFrontOnUserActive: false,
     showBgSessions: false,

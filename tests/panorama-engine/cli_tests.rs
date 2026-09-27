@@ -585,6 +585,30 @@ fn the_probe_speaks_the_plugin_dialect() {
     let mut table: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
     table.sort();
     assert_eq!(caps, table);
+    let shape = lines.iter().find_map(|l| l.strip_prefix("shape=")).expect("没有形状行");
+    assert_eq!(shape, shape_code());
+}
+
+/// 设计/97 §8 · §6.5 · 99 §2.1 ㉝①：「`--probe` 加形状代号（op 表 ＋ vendor pin 摘要），后端判旧回 `unsupported`」。
+///
+/// 本程序真算出来的代号 == 后端适配层要的那一代（运行时读 `src/backend/control/panorama.rs::SHAPE`，异源）。
+/// op 表或 vendored pin 一动 ⇒ 代号变 ⇒ 本条红，逼着后端那一格同拍换（换了就会重放字节）。
+#[test]
+fn the_shape_code_is_what_the_backend_wants() {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/control/panorama.rs");
+    let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
+    let prod = guard_core::production_code(&src);
+    let at = guard_core::find_pinned(&prod, "pub(crate) const SHAPE: &str = \"")
+        .unwrap_or_else(|e| panic!("后端的 SHAPE 改了写法：{e}"));
+    let rest = &prod[at + "pub(crate) const SHAPE: &str = \"".len()..];
+    let theirs = &rest[..rest.find('"').expect("SHAPE 没收尾")];
+    assert_eq!(
+        shape_code(),
+        theirs,
+        "小程序这一代的形状代号与后端要的对不上 —— op 表或 vendored pin 变了，把后端 SHAPE 换成新值"
+    );
+    assert_eq!(shape_code().len(), 16);
+    assert!(vendor_pin().len() >= 7, "pin 没读到：{:?}", vendor_pin());
 }
 
 /// 索引根的锁：建索引独占、读共享（两个进程并发时进程内的锁管不到，只能靠它）。

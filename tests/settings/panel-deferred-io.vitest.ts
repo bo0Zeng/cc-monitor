@@ -30,7 +30,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { ipc } = vi.hoisted(() => ({ ipc: { calls: [] as string[] } }));
+const { ipc } = vi.hoisted(() => ({
+  ipc: { calls: [] as string[], hold: {} as Record<string, Promise<unknown>> },
+}));
 
 // 把**唯一的 IPC 包装层**换成录音机。每一条命令名原样记下来，一律 reject ——
 // 各块内部都有自己的 catch（真实失败路径），这样还能顺带证明「一块读不到不拖垮别人」。
@@ -40,6 +42,8 @@ vi.mock("../../src/ipc/commands", () => ({
     {
       get: (_t, name: string) => () => {
         ipc.calls.push(name);
+        // 〔FIX2〕登记在 `hold` 里的命令挂住不回，量「先开窗、后读配置」的先后。
+        if (name in ipc.hold) return ipc.hold[name];
         return Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },
@@ -274,5 +278,35 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
     // 重开之后再点进「应用」要拿到**新读数** —— 否则用户改了外部状态、重开设置
     // 看到的还是上一次那份，而界面上看不出来。
     expect(since(mark)).toEqual(uniq([...APP_PAGE_IPC_ON_REOPEN]));
+  });
+});
+
+// 设计/70 §10 第 5 条 · 设计/01 §1.4「先画框架，再并行取值填进去」· 设计/99 §2.1 ㉛④：设置窗先开窗，再读一次配置派生三格。
+describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数据目录 · 行为三格", () => {
+  beforeEach(() => {
+    ipc.calls = [];
+    ipc.hold = {};
+    document.body.replaceChildren();
+    __resetMachineContextForTests();
+    __setHostOsForTests("windows");
+  });
+
+  it("★ 配置没读回之前窗已开、三格控件 pending；读回之后恰好一发 load_config 填三格", async () => {
+    const p = new SettingsPanel({ windowMode: true });
+    await tick();
+    let release!: (v: unknown) => void;
+    ipc.hold.load_config = new Promise((r) => (release = r));
+    ipc.calls = [];
+    const opening = p.open();
+    await tick();
+    const el = document.querySelector(".settings-panel")!;
+    const claudeDir = (p as unknown as { claudeDirInput: HTMLInputElement }).claudeDirInput;
+    expect(el.classList.contains("open"), "配置还没回来，窗却没开").toBe(true);
+    expect(claudeDir.disabled, "配置还没回来，那一格却能点").toBe(true);
+    release({ claudeDir: "/fix2/probe" });
+    await opening;
+    expect(ipc.calls.filter((c) => c === "load_config")).toEqual(["load_config"]);
+    expect(claudeDir.value).toBe("/fix2/probe");
+    expect(claudeDir.disabled).toBe(false);
   });
 });
