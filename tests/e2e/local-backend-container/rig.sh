@@ -287,22 +287,22 @@ fi
 line
 
 # ══════════════════════════════════════════════════════════════════
-echo "== P9 --ccm-probe 那六行"
+echo "== P9 -- --ccm-probe 那六行"
 # 两条路分开问（`ccm_probe.rs` 头注逐字：这两条问的不是同一件事）：
 #   ① 直接问**我们放下去的那一份**（路径我们自己知道，不经 shell）
 #   ② 问**用户 PATH 上那个**（非走登录 shell 不可）
-P_DIRECT="$(tsh "\$HOME/$DIR_REAL/ccm --ccm-probe 2>/dev/null")"
+P_DIRECT="$(tsh "\$HOME/$DIR_REAL/ccm -- --ccm-probe 2>/dev/null")"
 note "① 直接问 \$HOME/$DIR_REAL/ccm：行数 = $(printf '%s' "$P_DIRECT" | grep -c . )"
 printf '%s\n' "$P_DIRECT" | sed 's/^/    | /'
-P_PATH="$(tsh 'command -v ccm >/dev/null 2>&1 && ccm --ccm-probe 2>/dev/null || printf NO_CCM\\n')"
+P_PATH="$(tsh 'command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe 2>/dev/null || printf NO_CCM\\n')"
 note "② 问 PATH 上那个（产品探针 CCM_PROBE_CMD 的口径）：行数 = $(printf '%s' "$P_PATH" | grep -c . )"
 printf '%s\n' "$P_PATH" | sed 's/^/    | /'
 # ③ 包里那个 /usr/bin/cc-monitor-backend 自己答不答（argv[0] 不叫 ccm）
-# 🔴 **必须带 timeout** —— 09-15 头一趟就是在这里挂住的：`argv[0]` 不叫 `ccm` 时它**不走 ccm 那一支**
-#    （`control/ccm/mod.rs:16` 逐字：basename 是 `ccm` 才进），`--ccm-probe` 既不被认、也不让它退，
-#    进程就那么停着（实测 12 分半没退，最后手工 `kill -9` 才放行）。
+#    〔主会话 09-27 裁〕分流只看 argv、不看 argv[0] ⇒ 它与 ① ② 走同一条规则，照样该答六行。
+# 🔴 **仍带 timeout** —— 09-15 头一趟就是在这里挂住的（那时按 basename 分流，它没走 ccm 那一支，
+#    进程就那么停着，实测 12 分半没退）。
 #    ⚠ 不带 timeout 的话，「它不答」这一格会表现成**整个台架挂死**，而挂死读不出是哪一格坏了。
-P_SIDE="$(timeout 10 docker exec "$CT" /usr/bin/cc-monitor-backend --ccm-probe 2>&1 | head -8)"
+P_SIDE="$(timeout 10 docker exec "$CT" /usr/bin/cc-monitor-backend -- --ccm-probe 2>&1 | head -8)"
 SIDE_RC=$?
 note "③ 问 /usr/bin/cc-monitor-backend（argv[0] 不叫 ccm）：行数 = $(printf '%s' "$P_SIDE" | grep -c . ) · timeout 退出码 = $SIDE_RC（124 = 10 秒内没退）"
 printf '%s\n' "$P_SIDE" | sed 's/^/    | /'

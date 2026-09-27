@@ -106,7 +106,7 @@ if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
     #   —— 两个诊断天差地别，而我第一版就在这上面读岔了一次。
     echo "=== wrapper 起 backend: $CCM_E2E_BACKEND  argv=[$*]"
     echo "    claude_dir=$CCM_E2E_CLAUDE_DIR  pid=$$  $(date -Iseconds)"
-    "$CCM_E2E_BACKEND" --backend-probe 2>/dev/null | head -1
+    "$CCM_E2E_BACKEND" -- --backend-probe 2>/dev/null | head -1
   } >> "${CCM_E2E_FRAME_TAP}.err" 2>&1
   # ⚠⚠ **stderr 也要抄**〔第八拍 08-13〕：backend 的 `tracing` 日志走 stderr，
   #   而它正是唯一会说出「watch failed / sessions dir does not exist / 我在盯哪」的地方。

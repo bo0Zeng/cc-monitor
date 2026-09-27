@@ -113,7 +113,7 @@ CCM_E2E_FAKE_CLAUDE="$E2E_DIR/fake-claude" CLAUDE_CONFIG_DIR="$CLAUDE_DIR" \
   bash "$E2E_DIR/gen-idle-tmux.sh" "$SID" >/dev/null
 
 # 启动 backend(隔离 CLAUDE_CONFIG_DIR),stdout=帧,stderr 分离
-CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" >"$FRAMES" 2>"$BACKEND_ERR" &
+CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --stream >"$FRAMES" 2>"$BACKEND_ERR" &
 BACKEND_PID=$!
 
 # 轮询帧日志直到出现 pattern(在给定起始行之后),或超时。回显命中行。
