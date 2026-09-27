@@ -596,6 +596,15 @@ mod tests {
         let mut out = subs.join("\n");
         out.push_str("\n#channel\n");
         out.push_str(&chans.join("\n"));
+        // 〔TAIL · 09-26〕第三段：子命令的选项（`SUBCOMMAND_OPTIONS`）。W5-AUX 加 `--stdin-line` 时本条没红、
+        //   p4f 靠人记得手动 bump —— 旧后端不认新选项同样会卡住调用方，所以它也算命令面。
+        let mut opts: Vec<String> = crate::SUBCOMMAND_OPTIONS
+            .iter()
+            .map(|o| format!("opt:{o}"))
+            .collect();
+        opts.sort_unstable();
+        out.push_str("\n#options\n");
+        out.push_str(&opts.join("\n"));
         out
     }
 
@@ -901,6 +910,13 @@ mod tests {
         // 也确认它认得出「少了一个」
         let shortened = now.split('\n').skip(1).collect::<Vec<_>>().join("\n");
         assert_ne!(now, shortened);
+        // 〔TAIL〕选项那一段真在指纹里：每一个 `SUBCOMMAND_OPTIONS` 都得有自己的一行。
+        for o in crate::SUBCOMMAND_OPTIONS {
+            assert!(
+                now.lines().any(|l| l == format!("opt:{o}")),
+                "指纹里没有选项 `{o}` —— 加选项又会不逼 bump"
+            );
+        }
         // 以及：注释里的字面量不该被算进去（剥注释这一步是有效的）
         assert!(
             !now.contains("--account-trust-zero\n--account-trust-zero"),
