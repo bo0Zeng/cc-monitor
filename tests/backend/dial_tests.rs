@@ -487,16 +487,22 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     assert_eq!(String::from_utf8(quiet).unwrap().lines().count(), 1);
 }
 
-/// 〔C2〕错误串粗分成阶段标签（搬自界面侧，那一份删了 —— 只此一份）。
+/// 〔C2 → COPY〕拨号失败按错误**类型**分阶段标签（不看错误串：串改一个字不该改分类）。
 #[test]
 fn a_dial_error_is_bucketed_into_a_stage_label() {
-    use super::connect::classify_stage;
-    assert_eq!(classify_stage("Connection refused (os error 111)"), "tcp");
-    assert_eq!(classify_stage("No route to host"), "tcp");
-    assert_eq!(classify_stage("所有地址握手超时（a:1）"), "timeout");
-    assert_eq!(classify_stage("operation timed out"), "timeout");
-    assert_eq!(classify_stage("Unknown server key"), "hostkey");
-    assert_eq!(classify_stage("something else"), "other");
+    use super::connect::{stage_of_io, stage_of_russh};
+    use std::io::{Error, ErrorKind as K};
+    assert_eq!(stage_of_io(&Error::from(K::ConnectionRefused)), "tcp");
+    assert_eq!(stage_of_io(&Error::from(K::HostUnreachable)), "tcp");
+    assert_eq!(stage_of_io(&Error::from(K::TimedOut)), "timeout");
+    assert_eq!(stage_of_io(&Error::other("超时 指纹 key timeout")), "other");
+    assert_eq!(
+        stage_of_russh(&russh::Error::IO(Error::from(K::NetworkUnreachable))),
+        "tcp"
+    );
+    assert_eq!(stage_of_russh(&russh::Error::InactivityTimeout), "timeout");
+    assert_eq!(stage_of_russh(&russh::Error::UnknownKey), "hostkey");
+    assert_eq!(stage_of_russh(&russh::Error::Kex), "other");
 }
 
 /// ★ 〔NT1〕多开的判准只住一处（`dial/pool.rs`；要求住址 V23，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），

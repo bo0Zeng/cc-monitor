@@ -17923,6 +17923,941 @@
       "kind": "body",
       "zh": "；",
       "args": []
+    },
+    "beFilesWrite.deleteTree.stopped": {
+      "kind": "error",
+      "zh": "{why}。删除停在这一条，已删 {n} 条，共 {total} 条",
+      "args": ["why", "n", "total"]
+    },
+    "beFilesWrite.path.empty": {
+      "kind": "error",
+      "zh": "路径是空的",
+      "args": []
+    },
+    "beFilesWrite.path.parentStep": {
+      "kind": "error",
+      "zh": "路径里不能有 ..：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.dotStep": {
+      "kind": "error",
+      "zh": "路径里不能有 .：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.absolute": {
+      "kind": "error",
+      "zh": "这里只收相对路径，给的是绝对路径：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.outsideRoot": {
+      "kind": "error",
+      "zh": "{path} 不在 {root} 底下，不动它",
+      "args": ["path", "root"]
+    },
+    "beFilesWrite.path.unresolved": {
+      "kind": "error",
+      "zh": "{path} 解析不了：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.path.noParent": {
+      "kind": "error",
+      "zh": "目标没有上一级目录：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.noName": {
+      "kind": "error",
+      "zh": "目标没有文件名：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.escaped": {
+      "kind": "error",
+      "zh": "{path} 解开链接后落到了 {root} 外面，不动它",
+      "args": ["path", "root"]
+    },
+    "beFilesWrite.create.failed": {
+      "kind": "error",
+      "zh": "新建 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.write.failed": {
+      "kind": "error",
+      "zh": "写 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.rename.exists": {
+      "kind": "error",
+      "zh": "{path} 已经存在。改名不覆盖，先删掉它或换个名字",
+      "args": ["path"]
+    },
+    "beFilesWrite.rename.failed": {
+      "kind": "error",
+      "zh": "把 {src} 改名成 {dst} 失败：{e}",
+      "args": ["src", "dst", "e"]
+    },
+    "beFilesWrite.delete.failed": {
+      "kind": "error",
+      "zh": "删 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.delete.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没删。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.delete.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件。这种删除只收普通文件，不收目录和链接",
+      "args": ["path"]
+    },
+    "beFilesWrite.read.failed": {
+      "kind": "error",
+      "zh": "读不出 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.delete.changed": {
+      "kind": "error",
+      "zh": "{path} 在你读过之后被改过了，什么都没删。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没删",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.notDir": {
+      "kind": "error",
+      "zh": "{path} 不是目录，这里只删空目录",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.notEmpty": {
+      "kind": "error",
+      "zh": "{path} 里面还有东西，这里只删空目录，什么都没动",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.failed": {
+      "kind": "error",
+      "zh": "删目录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.chmod.badMode": {
+      "kind": "error",
+      "zh": "权限位只收低 12 位，给的是 {mode}",
+      "args": ["mode"]
+    },
+    "beFilesWrite.chmod.failed": {
+      "kind": "error",
+      "zh": "改 {path} 的权限失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.chmod.unsupported": {
+      "kind": "error",
+      "zh": "这个系统没有 unix 权限位，{path} 没动",
+      "args": ["path"]
+    },
+    "beFilesWrite.overwrite.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件，只能覆盖普通文件",
+      "args": ["path"]
+    },
+    "beFilesWrite.overwrite.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没写",
+      "args": ["path"]
+    },
+    "beFilesWrite.overwrite.changed": {
+      "kind": "error",
+      "zh": "{path} 在你打开之后被改过了，什么都没写",
+      "args": ["path"]
+    },
+    "beFilesWrite.deleteTree.entryRefused": {
+      "kind": "error",
+      "zh": "{why}。删除整趟没做：这棵树里有一条路径解析不过，什么都没动",
+      "args": ["why"]
+    },
+    "beFilesWrite.deleteTree.crossMount": {
+      "kind": "error",
+      "zh": "{path} 在另一个文件系统上（挂载点）。删除不走进去，整趟没做，什么都没动",
+      "args": ["path"]
+    },
+    "beFilesWrite.deleteTree.overCap": {
+      "kind": "error",
+      "zh": "{path} 底下超过 {cap} 条。一次不删这么多，整趟没做，什么都没动",
+      "args": ["path", "cap"]
+    },
+    "beFilesWrite.deleteTree.kindChanged": {
+      "kind": "error",
+      "zh": "{path} 在计划与动手之间换了种类，不删",
+      "args": ["path"]
+    },
+    "beFilesWrite.copy.same": {
+      "kind": "error",
+      "zh": "复制的源和目标是同一个：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.swap.failed": {
+      "kind": "error",
+      "zh": "把新内容换到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copy.openSrcFailed": {
+      "kind": "error",
+      "zh": "打不开 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copy.broke": {
+      "kind": "error",
+      "zh": "复制到一半断了（{path}）：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.peek.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件，改不了",
+      "args": ["path"]
+    },
+    "beFilesWrite.peek.tooBig": {
+      "kind": "error",
+      "zh": "{path} 有 {size} 字节，超过上限 {max}，改不了",
+      "args": ["path", "size", "max"]
+    },
+    "beFilesWrite.peek.notUtf8": {
+      "kind": "error",
+      "zh": "{path} 不是 UTF-8 文本，改不了",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.hollow": {
+      "kind": "error",
+      "zh": "{path} 在盘上有 {size} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
+      "args": ["path", "size"]
+    },
+    "beFilesWrite.put.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没写。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.appeared": {
+      "kind": "error",
+      "zh": "{path} 现在已经存在了，读的时候还不在。什么都没写，重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.changed": {
+      "kind": "error",
+      "zh": "{path} 在你读过之后被改过了，什么都没写。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.verifyMismatch": {
+      "kind": "body",
+      "zh": "回读 {got} 字节，与写进去的 {want} 字节不一致",
+      "args": ["got", "want"]
+    },
+    "beFilesWrite.put.verifyUnreadable": {
+      "kind": "body",
+      "zh": "写完读不回来：{e}",
+      "args": ["e"]
+    },
+    "beFilesWrite.put.restored": {
+      "kind": "body",
+      "zh": "原文件已恢复。",
+      "args": []
+    },
+    "beFilesWrite.put.createdRemoved": {
+      "kind": "body",
+      "zh": "刚建出来的那份已删掉。",
+      "args": []
+    },
+    "beFilesWrite.put.restoreFailedBackup": {
+      "kind": "body",
+      "zh": "恢复原文件也失败了，原文备份在 {path}。",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.restoreFailed": {
+      "kind": "body",
+      "zh": "恢复原文件也失败了，请打开它看一眼。",
+      "args": []
+    },
+    "beFilesWrite.put.createdKept": {
+      "kind": "body",
+      "zh": "刚建出来的那份没删掉，请手动删掉它。",
+      "args": []
+    },
+    "beFilesWrite.put.verifyFailed": {
+      "kind": "error",
+      "zh": "写完核对不上（{path}）：{why}。{note}",
+      "args": ["path", "why", "note"]
+    },
+    "beFilesWrite.mkdirs.notDir": {
+      "kind": "error",
+      "zh": "{path} 已经存在，但不是目录",
+      "args": ["path"]
+    },
+    "beFilesWrite.swap.sideCreateFailed": {
+      "kind": "error",
+      "zh": "新建临时文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.swap.sideWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.swap.sideModeFailed": {
+      "kind": "error",
+      "zh": "给临时文件 {path} 沿用原权限位失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.backup.createFailed": {
+      "kind": "error",
+      "zh": "备份 {path} 没建成，原文件没动：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.backup.writeFailed": {
+      "kind": "error",
+      "zh": "写备份 {path} 失败，原文件没动：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.backup.removed": {
+      "kind": "body",
+      "zh": "这份备份已删掉",
+      "args": []
+    },
+    "beFilesWrite.backup.notRemoved": {
+      "kind": "body",
+      "zh": "这份备份也没删掉（{e}）。它可能比原文件更容易被别人读到，请手动删掉",
+      "args": ["e"]
+    },
+    "beFilesWrite.backup.modeFailed": {
+      "kind": "error",
+      "zh": "备份 {path} 没能沿用原文件的权限位（{e}）；{gone}；原文件没动",
+      "args": ["path", "e", "gone"]
+    },
+    "beFilesWrite.session.deleteFailed": {
+      "kind": "error",
+      "zh": "删会话记录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.session.nameMismatch": {
+      "kind": "error",
+      "zh": "找到的那一份（{path}）名字不是 {want}，没删",
+      "args": ["path", "want"]
+    },
+    "beFilesWrite.session.notRecord": {
+      "kind": "error",
+      "zh": "{path} 不是会话记录，没删",
+      "args": ["path"]
+    },
+    "beTransfer.land.notAbsolute": {
+      "kind": "error",
+      "zh": "本机目标路径必须是绝对路径：{path}",
+      "args": ["path"]
+    },
+    "beTransfer.land.noName": {
+      "kind": "error",
+      "zh": "本机目标路径没有文件名：{path}",
+      "args": ["path"]
+    },
+    "beTransfer.land.noParent": {
+      "kind": "error",
+      "zh": "本机目标路径没有上一级目录：{path}",
+      "args": ["path"]
+    },
+    "beTransfer.land.dropPartFailed": {
+      "kind": "error",
+      "zh": "删掉没下载完的旧文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.createFailed": {
+      "kind": "error",
+      "zh": "创建本地 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.dropLeftoverFailed": {
+      "kind": "error",
+      "zh": "删掉上次留下的 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.moveAsideFailed": {
+      "kind": "error",
+      "zh": "挪开没下载完的旧文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.readPartFailed": {
+      "kind": "error",
+      "zh": "读没下载完的旧文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.copyPrefixFailed": {
+      "kind": "error",
+      "zh": "接着下载时抄回前 {n} 字节失败：{e}",
+      "args": ["n", "e"]
+    },
+    "beTransfer.land.copyPrefixShort": {
+      "kind": "error",
+      "zh": "接着下载时只抄回 {got} 字节，应有 {n} 字节",
+      "args": ["got", "n"]
+    },
+    "beTransfer.land.commitFailed": {
+      "kind": "error",
+      "zh": "把下载好的文件放到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.readFailed": {
+      "kind": "error",
+      "zh": "读本地 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.openFailed": {
+      "kind": "error",
+      "zh": "打开本地 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.upload.notDeployed": {
+      "kind": "error",
+      "zh": "那台机器上还没部署后端，传不了文件",
+      "args": []
+    },
+    "beTransfer.upload.seekStagedFailed": {
+      "kind": "error",
+      "zh": "接着上传时定位到第 {n} 字节失败：{e}",
+      "args": ["n", "e"]
+    },
+    "beTransfer.local.rewindFailed": {
+      "kind": "error",
+      "zh": "回到本地 {path} 开头失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.prefixFailed": {
+      "kind": "error",
+      "zh": "读本地 {path} 已传过的那一段失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.seekFailed": {
+      "kind": "error",
+      "zh": "本地 {path} 定位到第 {n} 字节失败：{e}",
+      "args": ["path", "n", "e"]
+    },
+    "beTransfer.run.cancelled": {
+      "kind": "error",
+      "zh": "已取消",
+      "args": []
+    },
+    "beTransfer.upload.readLocalFailed": {
+      "kind": "error",
+      "zh": "读本地文件失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.upload.writeRemoteFailed": {
+      "kind": "error",
+      "zh": "写到那台机器上失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.upload.flushFailed": {
+      "kind": "error",
+      "zh": "写到那台机器上的内容没有得到确认：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.download.seekFailed": {
+      "kind": "error",
+      "zh": "远端 {path} 定位到第 {n} 字节失败：{e}",
+      "args": ["path", "n", "e"]
+    },
+    "beTransfer.download.readRemoteFailed": {
+      "kind": "error",
+      "zh": "读远端文件失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.download.writeLocalFailed": {
+      "kind": "error",
+      "zh": "写本地文件失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.download.flushFailed": {
+      "kind": "error",
+      "zh": "写本地文件没有写完：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.register.tooMany": {
+      "kind": "error",
+      "zh": "同时进行的传输太多了，上限 {max} 趟",
+      "args": ["max"]
+    },
+    "beTransfer.register.sameFile": {
+      "kind": "error",
+      "zh": "同一份文件正在往那台机器上传，等它传完再来",
+      "args": []
+    },
+    "beTransfer.local.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件",
+      "args": ["path"]
+    },
+    "beTransfer.start.unknown": {
+      "kind": "error",
+      "zh": "没有这一趟传输（{tid}）",
+      "args": ["tid"]
+    },
+    "beTransfer.start.already": {
+      "kind": "error",
+      "zh": "这一趟传输已经开始了（{tid}）",
+      "args": ["tid"]
+    },
+    "beFilesCommit.upload.corruptRemoved": {
+      "kind": "body",
+      "zh": "坏的临时文件已删掉",
+      "args": []
+    },
+    "beFilesCommit.upload.corruptKept": {
+      "kind": "body",
+      "zh": "坏的临时文件没删掉，下次上传会先核对，对不上就从头来",
+      "args": []
+    },
+    "beFilesCommit.upload.stagedMissing": {
+      "kind": "error",
+      "zh": "找不到上传的临时文件 {path}：{e}。可能是传输没跑完",
+      "args": ["path", "e"]
+    },
+    "beFilesCommit.upload.stagedNotRegular": {
+      "kind": "error",
+      "zh": "上传的临时文件 {path} 不是普通文件",
+      "args": ["path"]
+    },
+    "beFilesCommit.upload.stagedUnreadable": {
+      "kind": "error",
+      "zh": "上传的临时文件 {path} 读不出来：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesCommit.upload.corrupt": {
+      "kind": "error",
+      "zh": "传上来的内容和本机那份对不上，目标没动，要从头重传。{tail}",
+      "args": ["tail"]
+    },
+    "beFilesCommit.upload.moveFailed": {
+      "kind": "error",
+      "zh": "把上传的文件放到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesCommit.upload.exists": {
+      "kind": "error",
+      "zh": "{path} 已经存在或占不了位：{e}。不覆盖，先删掉它或换个名字",
+      "args": ["path", "e"]
+    },
+    "beFilesCommit.upload.moveFailedNote": {
+      "kind": "error",
+      "zh": "把上传的文件放到 {path} 失败：{e}{note}",
+      "args": ["path", "e", "note"]
+    },
+    "beFilesCommit.upload.placeholderLeft": {
+      "kind": "body",
+      "zh": "；目标位置留下了一个 0 字节的空文件 {path}，没能删掉：{e}。它不是你的数据，删掉后再试",
+      "args": ["path", "e"]
+    },
+    "beFilesCommit.staging.mkdirFailed": {
+      "kind": "error",
+      "zh": "建上传用的临时目录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesCommit.staging.notDir": {
+      "kind": "error",
+      "zh": "{path} 已经存在，但不是目录，放不了上传的临时文件",
+      "args": ["path"]
+    },
+    "beFilesCommit.chunk.createFailed": {
+      "kind": "error",
+      "zh": "保存第 {seq} 块失败（{path}）：{e}",
+      "args": ["seq", "path", "e"]
+    },
+    "beFilesCommit.chunk.writeBroke": {
+      "kind": "error",
+      "zh": "第 {seq} 块写到一半断了（{path}）：{e}",
+      "args": ["seq", "path", "e"]
+    },
+    "beFilesCommit.chunk.missing": {
+      "kind": "error",
+      "zh": "缺第 {seq} 块（共 {chunks} 块，{path}）：{e}。没有保存",
+      "args": ["seq", "chunks", "path", "e"]
+    },
+    "beFilesCommit.chunk.notRegular": {
+      "kind": "error",
+      "zh": "第 {seq} 块不是普通文件（{path}），没有保存",
+      "args": ["seq", "path"]
+    },
+    "beFilesCommit.chunk.overflow": {
+      "kind": "error",
+      "zh": "读到第 {seq} 块就超过了应有的 {bytes} 字节，没有保存",
+      "args": ["seq", "bytes"]
+    },
+    "beFilesCommit.chunk.unreadable": {
+      "kind": "error",
+      "zh": "第 {seq} 块读不出来（{path}）：{e}",
+      "args": ["seq", "path", "e"]
+    },
+    "beFilesCommit.chunk.lengthMismatch": {
+      "kind": "error",
+      "zh": "{chunks} 块拼起来是 {got} 字节，应有 {bytes} 字节，没有保存",
+      "args": ["chunks", "got", "bytes"]
+    },
+    "beFilesCommit.chunk.extra": {
+      "kind": "error",
+      "zh": "应有 {chunks} 块，却多出了一块，没有保存",
+      "args": ["chunks"]
+    },
+    "beFilesCommit.staging.noHome": {
+      "kind": "error",
+      "zh": "找不到后端的家目录，放不了上传的临时文件",
+      "args": []
+    },
+    "beFilesCommit.text.tooLarge": {
+      "kind": "error",
+      "zh": "这份内容有 {bytes} 字节，超过能保存的上限 {cap}，没有保存",
+      "args": ["bytes", "cap"]
+    },
+    "beFilesRead.ls.unreadable": {
+      "kind": "error",
+      "zh": "这个目录打不开：{kind}",
+      "args": ["kind"]
+    },
+    "beFilesRead.rebuild.rootUnreadable": {
+      "kind": "error",
+      "zh": "这个目录打不开：{kind}",
+      "args": ["kind"]
+    },
+    "beFilesRead.rebuild.busy": {
+      "kind": "error",
+      "zh": "上一次重新扫描还没完，这次没扫（已跳过 {n} 次）",
+      "args": ["n"]
+    },
+    "beFilesRead.text.notRegular": {
+      "kind": "error",
+      "zh": "这不是普通文件，没有文本可读",
+      "args": []
+    },
+    "beFilesRead.text.tooLarge": {
+      "kind": "error",
+      "zh": "文件有 {size} 字节，超过上限 {max}，多了 {over} 字节，没有打开",
+      "args": ["size", "max", "over"]
+    },
+    "beFilesRead.text.openFailed": {
+      "kind": "error",
+      "zh": "这个文件打不开：{kind}",
+      "args": ["kind"]
+    },
+    "beFilesRead.text.readBroke": {
+      "kind": "error",
+      "zh": "读到一半断了：{kind}",
+      "args": ["kind"]
+    },
+    "beFilesRead.text.grew": {
+      "kind": "error",
+      "zh": "文件正在变大，已经超过上限 {max}，没有打开",
+      "args": ["max"]
+    },
+    "beFilesRead.text.hasNul": {
+      "kind": "error",
+      "zh": "里面有 NUL 字节，多半是二进制文件，不当文本打开",
+      "args": []
+    },
+    "beFilesRead.text.notUtf8": {
+      "kind": "error",
+      "zh": "不是 UTF-8 文本（第 {at} 字节起解不开），没有打开",
+      "args": ["at"]
+    },
+    "beFilesRead.home.missing": {
+      "kind": "error",
+      "zh": "找不到后端的家目录，不知道从哪里打开",
+      "args": []
+    },
+    "beFilesRead.home.relative": {
+      "kind": "error",
+      "zh": "后端的家目录不是绝对路径，不知道从哪里打开",
+      "args": []
+    },
+    "beSftp.open.subsystem": {
+      "kind": "error",
+      "zh": "开不了远端的 SFTP：{e}。可能是远端 sshd 没开 SFTP",
+      "args": ["e"]
+    },
+    "beSftp.open.initFailed": {
+      "kind": "error",
+      "zh": "SFTP 连接没建起来：{e}",
+      "args": ["e"]
+    },
+    "beSftp.open.noHome": {
+      "kind": "error",
+      "zh": "问不出远端的家目录：{e}",
+      "args": ["e"]
+    },
+    "beSftp.fence.empty": {
+      "kind": "error",
+      "zh": "远端路径是空的",
+      "args": []
+    },
+    "beSftp.fence.homeNotAbsolute": {
+      "kind": "error",
+      "zh": "远端家目录不是绝对路径（{home}），不往里写",
+      "args": ["home"]
+    },
+    "beSftp.fence.outsideHome": {
+      "kind": "error",
+      "zh": "{path} 不在远端家目录（{home}）底下，不写",
+      "args": ["path", "home"]
+    },
+    "beSftp.fence.irregular": {
+      "kind": "error",
+      "zh": "{path} 里有空段、. 或 ..，只收规整的路径",
+      "args": ["path"]
+    },
+    "beSftp.fence.outsideRoots": {
+      "kind": "error",
+      "zh": "远端只许写 ~/{a} 和 ~/{b} 底下，{path} 不在其中",
+      "args": ["a", "b", "path"]
+    },
+    "beSftp.fence.rootUnresolved": {
+      "kind": "error",
+      "zh": "~/{root} 解析不了，可能还不存在：{e}",
+      "args": ["root", "e"]
+    },
+    "beSftp.fence.parentUnresolved": {
+      "kind": "error",
+      "zh": "~/{parent} 解析不了，可能父目录不存在：{e}",
+      "args": ["parent", "e"]
+    },
+    "beSftp.fence.escaped": {
+      "kind": "error",
+      "zh": "~/{parent} 解开链接后落到了可写目录外面（{real} 不在 {root} 里），不写",
+      "args": ["parent", "real", "root"]
+    },
+    "beSftp.put.createFailed": {
+      "kind": "error",
+      "zh": "创建 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.writeFailed": {
+      "kind": "error",
+      "zh": "写 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.flushFailed": {
+      "kind": "error",
+      "zh": "写 ~/{path} 没有得到远端确认：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.closeFailed": {
+      "kind": "error",
+      "zh": "关闭 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.backupFailed": {
+      "kind": "error",
+      "zh": "备份旧文件 ~/{path} 到 ~/{backup} 失败：{e}",
+      "args": ["path", "backup", "e"]
+    },
+    "beSftp.put.renameFailed": {
+      "kind": "error",
+      "zh": "把 ~/{tmp} 换成 ~/{path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beSftp.remove.failed": {
+      "kind": "error",
+      "zh": "删除 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.mkdir.failed": {
+      "kind": "error",
+      "zh": "建目录 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.open.isLink": {
+      "kind": "error",
+      "zh": "~/{path} 是一条链接，写进去会写到别处，不写",
+      "args": ["path"]
+    },
+    "beSftp.open.writeFailed": {
+      "kind": "error",
+      "zh": "打开 ~/{path} 写入失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.open.readFailed": {
+      "kind": "error",
+      "zh": "打开远端 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.request.readFailed": {
+      "kind": "error",
+      "zh": "和本机之间的连接读不动：{e}",
+      "args": ["e"]
+    },
+    "beSftp.read.tooBig": {
+      "kind": "error",
+      "zh": "{path} 有 {size} 字节，超过上限 {max}",
+      "args": ["path", "size", "max"]
+    },
+    "beSftp.put.receiveFailed": {
+      "kind": "error",
+      "zh": "接收上传的内容失败：{e}",
+      "args": ["e"]
+    },
+    "beSftp.put.short": {
+      "kind": "error",
+      "zh": "上传的内容不完整：应有 {size} 字节，只收到 {got}",
+      "args": ["size", "got"]
+    },
+    "beConnect.race.taskFailed": {
+      "kind": "error",
+      "zh": "连接中断：{e}",
+      "args": ["e"]
+    },
+    "beConnect.race.noAddress": {
+      "kind": "error",
+      "zh": "没有可连的地址",
+      "args": []
+    },
+    "beConnect.race.allFailed": {
+      "kind": "error",
+      "zh": "所有地址都连不上：{errors}",
+      "args": ["errors"]
+    },
+    "beConnect.race.tried": {
+      "kind": "error",
+      "zh": "{e}（试过的地址：{addrs}）",
+      "args": ["e", "addrs"]
+    },
+    "beConnect.auth.rsaHash": {
+      "kind": "error",
+      "zh": "和远端商定 RSA 签名算法失败：{e}",
+      "args": ["e"]
+    },
+    "beConnect.auth.keyLoad": {
+      "kind": "error",
+      "zh": "读不了私钥 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beConnect.auth.keyFailed": {
+      "kind": "error",
+      "zh": "用私钥登录失败：{e}",
+      "args": ["e"]
+    },
+    "beConnect.auth.keyRejected": {
+      "kind": "error",
+      "zh": "远端不接受这把私钥（用户 {user}）",
+      "args": ["user"]
+    },
+    "beConnect.agent.unreachable": {
+      "kind": "error",
+      "zh": "没配密钥文件，改用 ssh-agent 也失败了：{e}",
+      "args": ["e"]
+    },
+    "beConnect.agent.listFailed": {
+      "kind": "error",
+      "zh": "读不出 ssh-agent 里的密钥：{e}",
+      "args": ["e"]
+    },
+    "beConnect.agent.empty": {
+      "kind": "error",
+      "zh": "ssh-agent 里一把密钥都没有，也没配密钥文件。可以先用 ssh-add 加一把",
+      "args": []
+    },
+    "beConnect.agent.rejected": {
+      "kind": "error",
+      "zh": "ssh-agent 里的密钥被拒（用户 {user}）",
+      "args": ["user"]
+    },
+    "beConnect.agent.signFailed": {
+      "kind": "error",
+      "zh": "ssh-agent 签名登录出错：{e}",
+      "args": ["e"]
+    },
+    "beConnect.agent.allFailed": {
+      "kind": "error",
+      "zh": "ssh-agent 里的密钥都登录不上",
+      "args": []
+    },
+    "beConnect.jump.label": {
+      "kind": "body",
+      "zh": "跳板 {hop}",
+      "args": ["hop"]
+    },
+    "beConnect.jump.dialFailed": {
+      "kind": "error",
+      "zh": "跳板 {hop} 连不上：{e}",
+      "args": ["hop", "e"]
+    },
+    "beConnect.jump.authFailed": {
+      "kind": "error",
+      "zh": "跳板 {hop} 登录失败：{e}",
+      "args": ["hop", "e"]
+    },
+    "beConnect.jump.tunnelFailed": {
+      "kind": "error",
+      "zh": "经跳板连 {host}:{port} 失败：{e}",
+      "args": ["host", "port", "e"]
+    },
+    "beConnect.jump.target": {
+      "kind": "body",
+      "zh": "{host}:{port}（经跳板）",
+      "args": ["host", "port"]
+    },
+    "beConnect.jump.targetFailed": {
+      "kind": "error",
+      "zh": "经跳板连上目标后，SSH 连接没建起来：{e}",
+      "args": ["e"]
+    },
+    "beUses.session.noSlot": {
+      "kind": "error",
+      "zh": "开不了新的 SSH 会话：这条连接的名额用完了",
+      "args": []
+    },
+    "beUses.session.openFailed": {
+      "kind": "error",
+      "zh": "开不了新的 SSH 会话：{e}",
+      "args": ["e"]
+    },
+    "beUses.session.refusedAll": {
+      "kind": "error",
+      "zh": "远端不让开新的 SSH 会话：{e}。可能是远端 sshd 的 MaxSessions 设成了 0",
+      "args": ["e"]
+    },
+    "beUses.session.exhausted": {
+      "kind": "error",
+      "zh": "换了几条连接都开不了新的 SSH 会话",
+      "args": []
+    },
+    "beUses.exec.failed": {
+      "kind": "error",
+      "zh": "远端命令没能启动：{e}",
+      "args": ["e"]
+    },
+    "beUses.exec.stdinLost": {
+      "kind": "error",
+      "zh": "远端命令起来了，但交给它的那一行没送过去：{e}",
+      "args": ["e"]
+    },
+    "beUses.forward.bindFailed": {
+      "kind": "error",
+      "zh": "绑定本地端口 127.0.0.1:{port} 失败：{e}",
+      "args": ["port", "e"]
+    },
+    "beUses.tunnel.unreachable": {
+      "kind": "error",
+      "zh": "远端 127.0.0.1:{port} 连不上：{e}",
+      "args": ["port", "e"]
+    },
+    "beLink.install.tooMany": {
+      "kind": "error",
+      "zh": "同时开着的远端连接太多了，上限 {max} 条",
+      "args": ["max"]
+    },
+    "beLink.gone.say": {
+      "kind": "error",
+      "zh": "和远端的连接已经断了",
+      "args": []
+    },
+    "beLink.gone.withError": {
+      "kind": "error",
+      "zh": "和远端的连接断了：{e}",
+      "args": ["e"]
+    },
+    "beLink.gone.bug": {
+      "kind": "error",
+      "zh": "和远端的连接断了（内部计数出错）",
+      "args": []
     }
   }
 }
