@@ -129,12 +129,12 @@ pub struct Extracted {
 
 type Fail = (&'static str, String);
 
-fn refused(key: &str, args: &[(&str, &str)]) -> Fail {
-    ("refused", copy_text(key, args))
+fn refused(said: String) -> Fail {
+    ("refused", said)
 }
 
-fn io_failed(key: &str, args: &[(&str, &str)]) -> Fail {
-    ("io_failed", copy_text(key, args))
+fn io_failed(said: String) -> Fail {
+    ("io_failed", said)
 }
 
 fn shown(b: &[u8]) -> String {
@@ -207,8 +207,8 @@ enum Raw {
     Link(Vec<u8>),
     Hard(Vec<u8>),
     Skip,
-    /// 设备 / 管道之类：带着「它是什么」那几个字的文案键。
-    Other(&'static str),
+    /// 设备 / 管道之类：带着「它是什么」那几个字（已经从文案表取好）。
+    Other(String),
 }
 
 /// 把一条条目并进计划。
@@ -227,16 +227,16 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
         },
         Raw::Link(to) => {
             if !LINKS_SUPPORTED {
-                return Err(refused(
+                return Err(refused(copy_text(
                     "beFilesExtract.entry.linkUnsupported",
                     &[("name", &shown(name))],
-                ));
+                )));
             }
             if !link_stays_inside(&rel, &to) {
-                return Err(refused(
+                return Err(refused(copy_text(
                     "beFilesExtract.entry.linkEscapes",
                     &[("name", &shown(name)), ("to", &shown(&to))],
-                ));
+                )));
             }
             What::Link(crate::files::raw::to_path_buf(&to))
         }
@@ -244,25 +244,25 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
             let target = match entry_rel(&to, zip) {
                 Ok(Some(t)) => t,
                 _ => {
-                    return Err(refused(
+                    return Err(refused(copy_text(
                         "beFilesExtract.entry.hardEscapes",
                         &[("name", &shown(name)), ("to", &shown(&to))],
-                    ))
+                    )))
                 }
             };
             if !matches!(plan.entries.get(&target), Some(What::File { .. })) {
-                return Err(refused(
+                return Err(refused(copy_text(
                     "beFilesExtract.entry.hardEscapes",
                     &[("name", &shown(name)), ("to", &shown(&to))],
-                ));
+                )));
             }
             What::Copy(target)
         }
-        Raw::Other(key) => {
-            return Err(refused(
+        Raw::Other(what) => {
+            return Err(refused(copy_text(
                 "beFilesExtract.entry.special",
-                &[("name", &shown(name)), ("what", &copy_text(key, &[]))],
-            ))
+                &[("name", &shown(name)), ("what", &what)],
+            )))
         }
     };
     match (plan.entries.get(&rel), &what) {
@@ -271,10 +271,10 @@ fn admit(plan: &mut Plan, index: usize, name: &[u8], raw: Raw, zip: bool) -> Res
         }
         (Some(What::Dir), What::Dir) => {}
         (Some(_), _) => {
-            return Err(refused(
+            return Err(refused(copy_text(
                 "beFilesExtract.entry.twice",
                 &[("name", &shown(name))],
-            ));
+            )));
         }
     }
     Ok(())
@@ -297,36 +297,36 @@ fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
             }
             Some(What::Dir) => {}
             Some(_) => {
-                return Err(refused(
+                return Err(refused(copy_text(
                     "beFilesExtract.entry.underNonDir",
                     &[("name", &p.display().to_string())],
-                ))
+                )))
             }
         }
     }
     if plan.entries.len() > cap {
-        return Err(refused(
+        return Err(refused(copy_text(
             "beFilesExtract.plan.overCap",
             &[("cap", &cap.to_string())],
-        ));
+        )));
     }
     Ok(())
 }
 
 fn open_archive(path: &Path) -> Result<std::fs::File, Fail> {
     std::fs::File::open(path).map_err(|e| {
-        io_failed(
+        io_failed(copy_text(
             "beFilesExtract.archive.unreadable",
             &[("path", &path.display().to_string()), ("e", &e.to_string())],
-        )
+        ))
     })
 }
 
 fn broken(path: &Path, e: impl std::fmt::Display) -> Fail {
-    io_failed(
+    io_failed(copy_text(
         "beFilesExtract.archive.broken",
         &[("path", &path.display().to_string()), ("e", &e.to_string())],
-    )
+    ))
 }
 
 fn tar_raw<R: Read>(e: &tar::Entry<'_, R>) -> Raw {
@@ -346,9 +346,9 @@ fn tar_raw<R: Read>(e: &tar::Entry<'_, R>) -> Raw {
                 .unwrap_or_default(),
         ),
         T::XGlobalHeader | T::XHeader | T::GNULongName | T::GNULongLink => Raw::Skip,
-        T::Char | T::Block => Raw::Other("beFilesExtract.kind.device"),
-        T::Fifo => Raw::Other("beFilesExtract.kind.fifo"),
-        _ => Raw::Other("beFilesExtract.kind.other"),
+        T::Char | T::Block => Raw::Other(copy_text("beFilesExtract.kind.device", &[])),
+        T::Fifo => Raw::Other(copy_text("beFilesExtract.kind.fifo", &[])),
+        _ => Raw::Other(copy_text("beFilesExtract.kind.other", &[])),
     }
 }
 
@@ -371,10 +371,10 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
             for i in 0..z.len() {
                 count += 1;
                 if count > cap {
-                    return Err(refused(
+                    return Err(refused(copy_text(
                         "beFilesExtract.plan.overCap",
                         &[("cap", &cap.to_string())],
-                    ));
+                    )));
                 }
                 let mut f = z.by_index(i).map_err(|e| broken(archive, e))?;
                 let name = f.name().as_bytes().to_vec();
@@ -398,10 +398,10 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
             for (i, e) in a.entries().map_err(|e| broken(archive, e))?.enumerate() {
                 count += 1;
                 if count > cap {
-                    return Err(refused(
+                    return Err(refused(copy_text(
                         "beFilesExtract.plan.overCap",
                         &[("cap", &cap.to_string())],
-                    ));
+                    )));
                 }
                 let e = e.map_err(|e| broken(archive, e))?;
                 let name = e.path_bytes().into_owned();
@@ -418,10 +418,10 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
 fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) -> Result<u64, Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
-        io_failed(
+        io_failed(copy_text(
             "beFilesExtract.land.failed",
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        )
+        ))
     };
     let mut out = std::fs::OpenOptions::new()
         .write(true)
@@ -451,10 +451,10 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
 fn land_dir(root: &Path, rel: &Path) -> Result<(), Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     std::fs::create_dir(&at).map_err(|e| {
-        io_failed(
+        io_failed(copy_text(
             "beFilesExtract.land.failed",
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
-        )
+        ))
     })
 }
 
@@ -471,7 +471,10 @@ fn undo(root: &Path, made: &[(PathBuf, bool)]) -> Option<String> {
             std::fs::remove_file(&at)
         };
         if let Err(e) = done {
-            return Some(format!("{}：{e}", at.display()));
+            return Some(copy_text(
+                "beFilesExtract.undo.at",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            ));
         }
     }
     None
@@ -587,10 +590,10 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
                 ),
             )
         } else {
-            io_failed(
+            io_failed(copy_text(
                 "beFilesExtract.land.failed",
                 &[("path", &dest.display().to_string()), ("e", &e.to_string())],
-            )
+            ))
         });
     }
     let mut made: Vec<(PathBuf, bool)> = vec![(into.to_path_buf(), true)];
@@ -612,7 +615,7 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
             };
             Err((
                 code,
-                copy_text("beFilesExtract.stopped", &[("why", &why), ("tail", &tail)]),
+                copy_text("beFilesExtract.stopped.say", &[("why", &why), ("tail", &tail)]),
             ))
         }
     }
@@ -625,9 +628,8 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
 /// 本模块的线上命令（与 `inbound::REGISTRY`、`IPC-PROTOCOL.md §10` 三处对拍，同 `files_write::MANAGE_COMMANDS`）。
 pub const EXTRACT_COMMANDS: &[ManageCommand] = &[ManageCommand {
     name: "files-extract",
-    what: "〔FILES2〕把 `root ＋ rel` 那个包（zip · tar · tar.gz · tgz）解到同目录下以包名（去后缀）命名的**新**目录：逐条目过路径解析 \
-           （`..` / 绝对路径 / 链接出落点 ⇒ 整趟拒）；那个目录已在 ⇒ `exists`（一个字节不动，窗口据此问人），问过之后带 `fresh: true` \
-           ⇒ 取第一个不在的 `名 (2)` `名 (3)` …；认不得的包 ⇒ `unsupported`；中途失败撤掉自己建的",
+    what: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
+           every entry is path-checked first; see IPC-PROTOCOL `files-extract`",
     args: &["fresh", "rel", "root"],
     fields: &["bytes", "dirs", "files", "links", "path"],
     codes: &["bad_args", "bad_path", "exists", "io_failed", "refused", "unsupported"],
@@ -724,7 +726,10 @@ fn answer_extract(args: &serde_json::Value) -> Answer {
 pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
         "files-extract" => answer_extract(args),
-        other => Err(("bad_args", format!("`{other}` 不是解压面的命令"))),
+        other => Err((
+            "bad_args",
+            copy_text("beFilesExtract.args.unknownCmd", &[("cmd", other)]),
+        )),
     }
 }
 

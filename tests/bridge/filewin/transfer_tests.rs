@@ -8,6 +8,7 @@ fn p(name: &str) -> Pending {
         remote_path: format!("/srv/{name}"),
         name: name.to_string(),
         overwrite: false,
+        remote_dir_raw: None,
     }
 }
 

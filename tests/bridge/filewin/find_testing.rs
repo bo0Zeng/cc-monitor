@@ -524,6 +524,37 @@ impl FakeBackend {
                     ),
                 )
             }
+            // 〔FILES2〕解压：只记下来、不落盘；`rel` 里带 `taken` 且没带 `fresh` ⇒ 按「落点已在」答 `exists`；
+            //   带 `bad` ⇒ 按「不认这种包」拒；否则回一组定值（落点带不带 ` (2)` 看 `fresh`）。
+            "files-extract" => {
+                let rel = args.get("rel").and_then(|v| v.as_str()).unwrap_or("");
+                let fresh = args.get("fresh").and_then(|v| v.as_bool()).unwrap_or(false);
+                if rel.contains("bad") {
+                    return (
+                        false,
+                        Some("unsupported".into()),
+                        Some("不认这种包".into()),
+                        None,
+                    );
+                }
+                if rel.contains("taken") && !fresh {
+                    return (
+                        false,
+                        Some("exists".into()),
+                        Some("/srv/taken 已经在了".into()),
+                        None,
+                    );
+                }
+                let path = if fresh { "/srv/taken (2)" } else { "/srv/pkg" };
+                (
+                    true,
+                    None,
+                    None,
+                    Some(serde_json::json!({
+                        "path": path, "files": 4, "dirs": 2, "links": 1, "bytes": 3072,
+                    })),
+                )
+            }
             // 〔W5-FILES〕算大小：只记下来、回一组定值；`path` 里带 `refuse` ⇒ 按「读不到」拒。
             "files-size" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");

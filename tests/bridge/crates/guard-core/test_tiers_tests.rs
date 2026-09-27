@@ -102,7 +102,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/crates/gate-core/lib_tests.rs",
     "tests/bridge/crates/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     "tests/bridge/crates/search-core/lib_tests.rs",
-    "tests/bridge/crates/shell-quote-core/lib_tests.rs",
     "tests/bridge/filewin/corpus_tests.rs",
     "tests/bridge/filewin/create_tests.rs",
     "tests/bridge/filewin/editor_tests.rs",
@@ -112,6 +111,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/filewin/scale_tests.rs",
     "tests/bridge/filewin/shell_keys_tests.rs",
     "tests/bridge/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
+    "tests/bridge/filewin/extract_tests.rs", // 〔FILES2〕解压到这里（窗口那一侧，合成后端）
     "tests/bridge/filewin/workspace_tests.rs",
     "tests/bridge/filewin/writeops_tests.rs",
     "tests/bridge/lib_batch_tests.rs",
@@ -525,6 +525,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
     "tests/backend/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
     "tests/bridge/stop_grace_tests.rs", // 〔HX1〕S1 真 sh 两形：trap exit ⇒ Stopped · trap '' ⇒ Forced
+    "tests/bridge/crates/shell-quote-core/lib_tests.rs", // 〔FILES2〕单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
     "tests/backend/accounts/upstream/creds_tests.rs",
     "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",

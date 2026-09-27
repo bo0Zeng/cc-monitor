@@ -2667,7 +2667,7 @@ fn last_args(wired: &crate::filewin::find::testing::Wired, cmd: &str) -> serde_j
 }
 
 /// 进一个有损名目录（按字节）⇒ 列目录发 `{"b16": …}`；里面一个有损名文件：算大小 / 读文本 / 复制为 / 删除，
-/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；有损目录里上传 / 搜索 / 开终端出声、不上线。
+/// 线上的路径（或根 ＋ 尾段）逐格等于手算的字节；上一级按字节回到 `/srv`；〔FILES2〕有损目录里上传（探目标）/ 搜索 / 开终端也按字节。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_bytes() {
     use crate::filewin::find::testing::{window_on, wire_up, Declared, FakeBackend};
@@ -2682,6 +2682,9 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
                 "files-copy",
                 "files-stat",
                 "files-delete",
+                "files-index-status",
+                "files-browse",
+                "files-index-rebuild",
             ],
             Declared::default(),
         ),
@@ -2764,27 +2767,34 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
         last_args(&wired, "files-delete"),
         serde_json::json!({ "root": b16(b"/srv/d\xff"), "rel": b16(b"f\xfe") })
     );
-    // 有损目录里做不了的三件：出声、一条都不上线。
-    let sent = wired.cmds().len();
-    assert!(!w.fire_search(None, true));
-    assert!(!w.open_terminal_here(None));
-    assert!(!w.start_drop(
-        vec![crate::filewin::transfer::Pending::into_remote_dir("/tmp/x", "/srv").unwrap()],
+    // 〔FILES2〕有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。
+    // 搜索：浏览名单与重走的根按字节上线。
+    assert!(w.fire_search(None, true), "有损目录里搜索没起来");
+    wait_for(&wired, "files-index-rebuild", 1).await;
+    assert_eq!(
+        last_args(&wired, "files-browse")["dirs"],
+        serde_json::json!([b16(b"/srv/d\xff")])
+    );
+    assert_eq!(
+        last_args(&wired, "files-index-rebuild")["path"],
+        b16(b"/srv/d\xff")
+    );
+    // 上传：探目标在不在按字节（整条路径 ＝ 目录字节 ＋ `/` ＋ 名字）。
+    let stats = wired.count("files-stat");
+    assert!(w.start_drop(
+        vec![crate::filewin::transfer::Pending::into_remote_dir("/tmp/up.txt", &w.cwd).unwrap()],
         None
     ));
-    assert!(w
-        .listing
-        .error
-        .lock()
-        .unwrap()
-        .as_deref()
-        .unwrap_or("")
-        .contains("不是合法 UTF-8"));
+    wait_for(&wired, "files-stat", stats + 1).await;
     assert_eq!(
-        wired.cmds().len(),
-        sent,
-        "做不了的那几件上了线：{:?}",
-        wired.cmds()
+        last_args(&wired, "files-stat")["path"],
+        b16(b"/srv/d\xff/up.txt")
+    );
+    // 开终端：`cd` 走唯一的 quote 的字节形。
+    assert_eq!(
+        crate::filewin::shell::build_open_terminal_cmd_at(&w.cwd_path())
+            .expect("有损目录的 cd 被拒了"),
+        "cd $'/srv/d\\xff' && exec ${SHELL:-bash} -l"
     );
     // 上一级：按字节回到 `/srv`（它是合法 UTF-8 ⇒ 字节那一格清掉）。
     w.navigate_up();

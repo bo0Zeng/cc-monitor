@@ -211,3 +211,51 @@ fn a_launcher_is_a_command_fragment_from_one_whitelist() {
         assert_eq!(launcher_refused_char(bad), Some(c), "{bad:?}");
     }
 }
+
+/// 〔FILES2 · `INVARIANTS §47` ②〕唯一的 quote 的**字节形**（要求住址：`_施工/4d-lanes.md` `### FILES2`
+/// 「开终端的 `cd` 用 POSIX `$'\xNN'` 转义（唯一 quote 那一处加这一形）」）。
+/// 异源：期望是**真 bash** 把那一串解回来的字节（`printf %s` 原样吐），不是本函数自己的逆运算；1..=255 每个字节各一格。
+#[test]
+#[cfg(unix)]
+fn the_byte_quote_is_read_back_by_a_real_bash_byte_for_byte() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let mut samples: Vec<Vec<u8>> = (1u8..=255).map(|b| vec![b'/', b'a', b, b'z']).collect();
+    samples.push(b"/srv/d\xff/\xe4\xbd\xa0 it's \\ $x `y`".to_vec());
+    samples.push(b"/p/\xffa\xfe0".to_vec());
+    for s in &samples {
+        let q = posix_quote_bytes(s);
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(std::ffi::OsStr::from_bytes(
+                format!("printf %s {q}").as_bytes(),
+            ))
+            .output()
+            .expect("起 bash");
+        assert_eq!(&out.stdout, s, "bash 解回来的字节不对：{q}");
+    }
+}
+
+/// 字节形的判定与字符串形逐条同规则：正（真实的乱码目录名）放、反（相对 · `..` 段 · NUL / CR / LF）拒；合法 UTF-8 两形答得一样。
+#[test]
+fn the_byte_path_rule_agrees_with_the_string_rule() {
+    for ok in [&b"/srv/d\xff"[..], b"/a b/(1)/it's", b"/"] {
+        assert!(posix_free_path_bytes_ok(ok), "{ok:?}");
+    }
+    for bad in [
+        &b"srv/d\xff"[..],
+        b"/a/../b",
+        b"/a\x00",
+        b"/a\nb",
+        b"/a\rb",
+        b"",
+    ] {
+        assert!(!posix_free_path_bytes_ok(bad), "{bad:?}");
+    }
+    for s in ["/srv/x", "rel", "/a/../b", "/a\nb", "/中文 (2)"] {
+        assert_eq!(
+            posix_free_path_bytes_ok(s.as_bytes()),
+            posix_free_path_ok(s),
+            "{s:?}"
+        );
+    }
+}

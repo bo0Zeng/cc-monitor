@@ -238,3 +238,4 @@ src/bridge/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不�
 src/bridge/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/bridge/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/bridge/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/bridge/src/filewin/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FILES2〕解压到这里那几句的字）

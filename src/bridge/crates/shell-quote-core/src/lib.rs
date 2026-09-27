@@ -203,6 +203,32 @@ pub fn posix_quote(s: &str) -> String {
     out
 }
 
+/// 〔FILES2 · `INVARIANTS §47` ②〕[`posix_free_path_ok`] 的**字节形**：路径不是合法 UTF-8（远端的乱码目录名）时用它判，
+/// 规则逐条相同（绝对 · 没有 `..` 段 · 不含 NUL / CR / LF）。合法 UTF-8 的字节与字符串形答得一样。
+pub fn posix_free_path_bytes_ok(p: &[u8]) -> bool {
+    p.first() == Some(&b'/')
+        && !p.split(|b| *b == b'/').any(|seg| seg == b"..")
+        && !p.iter().any(|b| matches!(b, b'\0' | b'\r' | b'\n'))
+}
+
+/// 〔FILES2 · 唯一的 quote 的字节形〕POSIX 的 ANSI-C 引号 `$'…'`：可打印 ASCII 原样（`\` 与 `'` 前面加 `\`），
+/// 其余每个字节写 `\xNN` —— 名字不是合法 UTF-8 时单引号那一形写不出来（Rust 的串装不下那几个字节）。
+/// ⚠ `$'…'` 是 bash / zsh / ksh 的形，POSIX 2024 才收进标准；老 dash 不认（`cd` 失败、出声，不猜）。
+pub fn posix_quote_bytes(b: &[u8]) -> String {
+    let mut out = String::with_capacity(b.len() + 3);
+    out.push_str("$'");
+    for &c in b {
+        match c {
+            b'\\' => out.push_str("\\\\"),
+            b'\'' => out.push_str("\\'"),
+            0x20..=0x7e => out.push(c as char),
+            _ => out.push_str(&format!("\\x{c:02x}")),
+        }
+    }
+    out.push('\'');
+    out
+}
+
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/crates/shell-quote-core/lib_tests.rs"]
 mod tests;
