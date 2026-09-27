@@ -230,6 +230,12 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔GAP1 · `设计/15 §4.7 S1`〕生在帧面上、界面直接问的那一条。
+    (
+        "backend-log",
+        "`BORN_ON_FRAME` 那一条：后端出成品 `{path, size, text, truncated}`（`read_face.rs::log_tail`，读本进程被交的那份诊断文件）；\
+         前端 `src/settings/backend-section.ts::readBackendLog` 按形状收，monitor 这一侧零发送点",
+    ),
     (
         "plugins-marketplaces",
         "`feature_face`（RM1b）那一族：后端应答就是整份 survey（成品），monitor 那条命令（`list_plugin_marketplaces`）\

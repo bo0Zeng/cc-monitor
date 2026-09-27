@@ -146,7 +146,9 @@ export function readBackendLog(v: unknown): BackendLog | null {
 async function askBackendLog(origin: Origin): Promise<BackendLog> {
   let raw: unknown;
   try {
-    raw = readJson(await chan.call(origin, "backend-log", jsonBody({}), budgetWithin(EXIT_POLICY_BUDGET_MS)));
+    const body = jsonBody({});
+    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
+    raw = readJson(await chan.call(origin, "backend-log", body, budget));
   } catch (e) {
     throw new Error(saidOf(e, copyText("backend.log.oldBackend")));
   }
