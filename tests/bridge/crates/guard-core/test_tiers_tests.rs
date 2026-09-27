@@ -366,6 +366,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/filewin/entry_tests.rs", // 〔TAIL〕INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
     "tests/bridge/filewin/find_tests.rs",
     "tests/bridge/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
+    "tests/bridge/filewin/cross_copy_tests.rs", // 〔FILES2〕复制到另一台：合成对端（按 origin 记）＋ 读 app 源码钉 <local> 相等
     "tests/bridge/filewin/fonts_tests.rs",
     "tests/bridge/filewin/select_tests.rs",
     "tests/bridge/filewin/transfer_tests.rs",

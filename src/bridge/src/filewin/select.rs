@@ -462,6 +462,8 @@ pub enum Action {
     Size,
     /// 〔FILES2 · `设计/60 §6.2` Q3〕解压到这里（后端 `files-extract`）—— 恰好一份文件。
     Extract,
+    /// 〔FILES2 · `设计/60 §6.2` Q2〕复制到另一台机器（A 下到本机暂存 → 传到 B → B 提交）—— 恰好一份文件。
+    CrossCopy,
     Rename,
     /// 改权限 —— 〔FW5〕对一项或多项（头注 §三）。
     Chmod,
@@ -484,6 +486,7 @@ impl Action {
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Size => super::size::SIZE_LABEL.to_string(),
             Action::Extract => super::extract::EXTRACT_LABEL.to_string(),
+            Action::CrossCopy => super::cross_copy::CROSS_LABEL.to_string(),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
@@ -527,6 +530,8 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
                 // 〔FILES2〕解压：一份文件就给（认不认这种包由后端判，窗口不写第二份后缀表）。
                 if !r.is_dir {
                     out.push(Action::Extract);
+                    // 〔FILES2 · Q2〕复制到另一台：一份文件（名字寻址得到就给；不是 UTF-8 的走按字节下那一条）。
+                    out.push(Action::CrossCopy);
                 }
             }
             if is_writable(r) {
