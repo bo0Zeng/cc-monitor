@@ -564,7 +564,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4g-single-home-3**（2026-09-26，第四波 4D DUP3 合并那一拍）：行为 —— `bus-broadcast` / `bus-send` 的 from 与收件人过 `bus_id_ok`（拒码 `bad_id`）·
 /// 启动器一张白名单 `launcher_refused_char`（本机 / 远端载荷 / ccm 同一条）· base URL 写口与装表同一个谓词（新 crate `upstream-url-core`）· tmux Gate 1 并进 gate-core。
 /// 子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4g-single-home-3";
+///
+/// ★★★ **p4h-search-index-hostkey**（2026-09-26，SX1 ＋ VIS2 合并那一拍）：行为 —— `history-search` 背后常驻内存增量索引（应答逐字节不变）·
+/// watcher `agent_home` 不在先挂父目录、出现后挂它本身（`rewatch_agent_home`）· `DialAck` 多一格 `fingerprints`（additive，`ACK_V` 不动）。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4h-search-index-hostkey";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

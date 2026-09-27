@@ -350,6 +350,24 @@ export class AccountsSection {
     recordFacet(isLocalOrigin(this.origin) ? LOCAL_MACHINE_KEY : this.origin, facet, state);
   }
 
+  /** 〔VIS2 · `设计/15 §4.5` 缺口二〕空态里 `accounts` 那一格：没启用 ⇒ 缺；启用着（零个号）⇒ 读到了。 */
+  private enabledFacet(enabled: boolean): { kind: "ok" | "fail"; detail: string } {
+    return enabled
+      ? { kind: "ok", detail: copyText("accounts.status.read") }
+      : { kind: "fail", detail: copyText("accounts.status.multiOff") };
+  }
+
+  /** 〔VIS2 · `设计/15 §4.5` 缺口二〕`acctIso` 那一格 = cc-acct-iso 装没装（`null` = 问不出来）。 */
+  private noteInstalled(installed: boolean | null): void {
+    const detail =
+      installed === true
+        ? copyText("accounts.status.isoInstalled")
+        : installed === false
+          ? copyText("accounts.status.isoMissing")
+          : copyText("accounts.status.isoUnknown");
+    this.note("acctIso", { kind: installed === true ? "ok" : "fail", detail });
+  }
+
   private async reload(force: boolean): Promise<void> {
     this.body.innerHTML = "";
     // 🔴 ST1「切机器 pending」（`设计/70 §6` #5）：一次切机器 = 这一块重读一趟（远端是一次 SSH 往返）。
@@ -395,14 +413,14 @@ export class AccountsSection {
         this.info(copyText("accounts.status.backendOldBody", { reason: ui.reason }));
         return;
       case "not-enabled":
-        // 读得到、但多账号管线没启用 ⇒ accounts 这一格算读到了，acctIso 那格是真的缺。
-        this.note("accounts", { kind: "ok", detail: copyText("accounts.status.read") });
-        this.note("acctIso", { kind: "fail", detail: copyText("accounts.status.disabled") });
+        // 〔VIS2 · `设计/15 §4.5` 缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）；acctIso 只记装没装（`renderNotEnabledFlow` 里问）。
+        this.note("accounts", this.enabledFacet(state.meta?.enabled === true));
         void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
         return;
       case "ready":
         this.note("accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: ui.accounts.length }) });
-        this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.enabled") });
+        // 启用着 ⇒ 工具在（多账号只由它建）；不为这一格多开一趟 SSH。
+        this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.isoInstalled") });
         await this.renderTable(state, ui.accounts, ui.notice);
         return;
     }
@@ -478,11 +496,9 @@ export class AccountsSection {
       return;
     }
     if (!state.meta?.enabled || state.accounts.length === 0) {
-      // 档一的空态：清单**读到了**（零个也是一个答案）⇒ `accounts` 是 `ok`；
-      // 而多账号隔离在这台机上确实还没启用 ⇒ `acctIso` 是真的缺。
-      // 两格分开说，与远端那条路的 `not-enabled` 一支逐字同形。
-      this.note("accounts", { kind: "ok", detail: copyText("accounts.status.read") });
-      this.note("acctIso", { kind: "fail", detail: copyText("accounts.status.disabled") });
+      // 档一的空态：没启用 ⇒ accounts 缺（〔VIS2〕启用没启用住这一格）；启用着只是零个号 ⇒ 读到了。
+      // acctIso 记装没装，由下面那一问写（与远端 `not-enabled` 一支同形）。
+      this.note("accounts", this.enabledFacet(state.meta?.enabled === true));
       AccountsSection.line(
         box,
         "accounts-info accounts-local-empty-title",
@@ -495,7 +511,7 @@ export class AccountsSection {
     // 档一：**读出来了**，而且这台机真的启用着隔离账号 ⇒ 两格都绿。
     // 这是本机那两格唯一能变绿的一档 —— `NF2D3` 那条判据买的就是它。
     this.note("accounts", { kind: "ok", detail: copyText("accounts.status.count", { n: state.accounts.length }) });
-    this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.enabled") });
+    this.note("acctIso", { kind: "ok", detail: copyText("accounts.status.isoInstalled") });
     AccountsSection.line(
       box,
       "accounts-meta accounts-local-count",
@@ -547,8 +563,7 @@ export class AccountsSection {
    * | 没装 | 还没装 | 原样用 `LOCAL_ACCOUNTS_COPY.emptyNext`（装 + 初始化，本机没有安装口） |
    * | 问不出来 | 查不出来 ＋ 原因 | 同上 —— 问不出来**不许**当成「装了」，也不许当成「没装」 |
    *
-   * ⚠ 账本（`note`）**不跟着改**：`acctIso` 那一格在空态里照旧记「未启用」。装没装是它下面一层的
-   * 原因，要进账本得先在 `FACET_MEANING` 里给它一个词 —— 那是账本那一侧的事，这一拍不动。
+   * 〔VIS2 · `设计/15 §4.5` 缺口二〕问到的就是 `acctIso` 那一格（装没装）：装了 ok · 没装 fail · 问不出来 fail「查不出来」。
    */
   private async renderLocalAcctIsoProbe(box: HTMLElement): Promise<void> {
     const iso = AccountsSection.line(box, "accounts-hint accounts-local-iso", "");
@@ -557,10 +572,12 @@ export class AccountsSection {
       const st = await commands.check_local_acct_iso();
       if (typeof st?.installed !== "boolean") throw new Error(String(st));
       installed = st.installed;
+      this.noteInstalled(st.installed);
       iso.textContent = st.installed
         ? copyText("accountsLocal.acctIso.installed", { path: st.path ?? "cc-acct-iso" })
         : copyText("accountsLocal.acctIso.missing");
     } catch (e) {
+      this.noteInstalled(null);
       iso.textContent = copyText("accountsLocal.acctIso.probeFailed", { reason: String(e) });
     }
     AccountsSection.line(
@@ -807,12 +824,14 @@ export class AccountsSection {
       try {
         // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
         const status = await commands.check_remote_acct_iso({ cfg: host });
+        this.noteInstalled(status.installed);
         if (!status.installed) {
           const dest = deriveAcctIsoDir(host.backendPath, host.user);
           this.renderNeedsDeploy(host, dest);
           return;
         }
       } catch (e) {
+        this.noteInstalled(null);
         console.warn("check_remote_acct_iso failed, fall through to wizard:", e);
       }
     }
