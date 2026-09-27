@@ -39,6 +39,13 @@ pub fn listen_port_for(home: &str) -> u16 {
     PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
 }
 
+/// 〔E2 · V28 · `设计/01 §6.7b`〕**后端的落点**（相对家目录）：那个文件就是后端二进制本身，名字叫 `ccm`；本机与远端同一个。
+/// 远端的 `backendPath`（可填的格）删了，monitor 与后端往那台拼命令、推字节都只认这一处。
+pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";
+
+/// 同一个落点在远端 POSIX shell 里的写法（远端今天只承诺 POSIX，`01 §6.7b` 表 B）：`$HOME` 在那台上展开，其余字节都是安全字符。
+pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
+
 /// 〔HOST〕常驻监听口的钥匙文件（相对家目录；0600，本机宿主与远端 `--resident-ensure` 同一份）。
 pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
 

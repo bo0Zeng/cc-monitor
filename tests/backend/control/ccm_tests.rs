@@ -70,6 +70,8 @@ fn there_are_exactly_two_ways_in() {
     assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");
 }
 
+// 〔V151〕`under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
+
 /// 〔CC1〕「怎么叫我」＝ 进程 argv 里 `intercept` **吃掉的那一段**；两个入口各一格，再加回环。
 ///
 /// 回环是这条的正题：把 `self_invocation` 交出来的那一段 ＋ 任意一串 ccm 参数**再喂给 `intercept`**，
@@ -248,7 +250,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) = argv::parse(&args).expect("该解析得动") else {
+        let Parsed::Opts(o) = argv::parse(&argv::tests::v138_to_v151(&args)).expect("该解析得动")
+        else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
         match plan::build(&o, env, &AccountTable::default(), None).expect("该算得出计划") {
@@ -434,7 +437,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         ..Default::default()
     };
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let o = match argv::parse(&a).expect("该解析得动") {
+    let o = match argv::parse(&argv::tests::v138_to_v151(&a)).expect("该解析得动") {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
@@ -663,9 +666,10 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     }
     let home = std::env::var("HOME").unwrap_or_default();
     for args in [
-        vec!["--cwd", "/p", "--ccm-agent", "claude"],
-        vec!["--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
-        vec!["--base", "--model", "m", "--cwd", "/q"],
+        // 〔V151〕别名的预置参数就是一条 V151 argv（`<交给 claude 的…> -- <ccm 的…>`）。
+        vec!["--", "--cwd", "/p", "--ccm-agent", "claude"],
+        vec!["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
+        vec!["--model", "m", "--", "--base", "--cwd", "/q"],
     ] {
         let got = answer_print(&serde_json::json!({ "args": args }))
             .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
@@ -733,12 +737,12 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     };
     let home = std::env::var("HOME").unwrap_or_default();
     assert!(
-        line(&["--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
+        line(&["--", "--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
         "不给 --cwd 却没落在家目录"
     );
-    let boxed = line(&["--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
+    let boxed = line(&["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
     assert!(
-        boxed.contains("'ccm' '--cwd'"),
+        boxed.contains("'ccm' '--' '--cwd'"),
         "容器路内层没有叫回 `ccm`：{boxed}"
     );
 }
@@ -754,19 +758,27 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         "bad_args"
     );
     assert_eq!(
-        code(serde_json::json!({ "args": ["--ccm-help"] })),
+        code(serde_json::json!({ "args": ["--", "--ccm-help"] })),
         "refused"
     );
     // V138：未知旗标交给 claude、不再拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
-    let (c, said) = answer_print(&serde_json::json!({ "args": ["--detach"] }))
+    let (c, said) = answer_print(&serde_json::json!({ "args": ["--", "--detach"] }))
         .expect_err("--detach 不带 --tmux 该被拒");
     assert_eq!(c, "refused");
-    let want = match argv::parse(&["--detach".to_string()]) {
+    let want = match argv::parse(&["--".to_string(), "--detach".to_string()]) {
         Err(argv::Die(m)) => m,
         other => panic!("{other:?}"),
     };
     assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
-    assert_eq!(code(serde_json::json!({ "args": ["--cwd", "/p"] })), "ok");
+    assert_eq!(
+        code(serde_json::json!({ "args": ["--", "--cwd", "/p"] })),
+        "ok"
+    );
+    // 〔V151〕右边认不得 ⇒ ccm 的原话拒（不猜）。
+    assert_eq!(
+        code(serde_json::json!({ "args": ["--", "--model", "m"] })),
+        "refused"
+    );
 }
 
 // ── 〔WIN1 · 第四波 4D · RT1 F7〕`--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
@@ -973,5 +985,29 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
         String::from_utf8_lossy(&id),
         name,
         "配方在非 UTF-8 客户端下读出的会话名被改写了 —— `BUS_ID_RECIPE` 的 `display-message` 没带 UTF-8 旗（`INVARIANTS §49`）"
+    );
+}
+
+/// 〔E2〕要求住址：`设计/96 §7.2.2` · W5-ALIAS §3.6「件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己」。
+/// 帧 `ccm-probe` 回的就是 `--ccm-probe` 那几行：首行逐字 `name=ccm`、`build=` 是这一份的 `BUILD_ID`、能力行与 CLI 那一口同一个函数。
+#[test]
+fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
+    let v = answer_probe();
+    let text = v["probe"].as_str().expect("probe 那一格不是字符串");
+    assert_eq!(text.lines().next(), Some("name=ccm"));
+    assert!(
+        text.lines()
+            .any(|l| l == format!("build={}", crate::BUILD_ID)),
+        "{text}"
+    );
+    let caps = |t: &str| {
+        t.lines()
+            .find(|l| l.starts_with("capabilities="))
+            .map(str::to_string)
+    };
+    assert_eq!(
+        caps(text),
+        caps(&probe_output("x")),
+        "帧面与 CLI 那一口的能力行不是同一份"
     );
 }

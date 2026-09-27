@@ -277,7 +277,8 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
         Some("ccm"),
         "attach 那一句不是在调后端的命令行入口（`K26`：`ccm` 就是它）：{attach}"
     );
-    // V138：接回从位置动作 `attach <名>` 改成壳层选项 `--attach <名>`。
+    // V138：接回从位置动作 `attach <名>` 改成壳层选项 `--attach <名>`；〔V151〕它是 ccm 的，写在 `--` 右边。
+    assert_eq!(toks.next(), Some("--"), "attach 那一句没有 `--`：{attach}");
     assert_eq!(
         toks.next(),
         Some("--attach"),
@@ -2453,11 +2454,12 @@ fn the_relay_prefix_is_rendered_from_the_answer_by_platform() {
     assert_eq!(relay_prefix_for(None, true), "");
     assert_eq!(
         relay_prefix_for(Some(url), false),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a'; ",
+        // 〔E2 · V146〕pane 里先看用户自己设没设 `ANTHROPIC_BASE_URL`：设了 ⇒ 说一行、不注入；没设 ⇒ 注入。
+        "[ -n \"${ANTHROPIC_BASE_URL:-}\" ] && printf '%s\\n' 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' || export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/claude-code/acct-a'; ",
     );
     assert_eq!(
         relay_prefix_for(Some(url), true),
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a'; "
+        "if ($env:ANTHROPIC_BASE_URL) { Write-Host 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' } else { $env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/claude-code/acct-a' }; "
     );
 }
 
@@ -3510,8 +3512,9 @@ fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
     } else {
         "export ANTHROPIC_BASE_URL="
     };
+    // 〔E2 · V146〕第一段先判用户自己设没设端点，注入在它的「没设」那一臂里 ⇒ 认「含」不认「打头」。
     assert!(
-        head.starts_with(want_head),
+        head.contains(want_head),
         "第一段不是中转注入（这台机器该渲成 {want_head:?}）：{head:?}"
     );
     assert_eq!(
@@ -3831,7 +3834,7 @@ fn the_launch_side_asks_the_all_sessions_switch_and_uses_its_answer() {
     });
     assert_eq!(
         prefix_now(&action, Some(&named)).unwrap(),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub'; ",
+        "[ -n \"${ANTHROPIC_BASE_URL:-}\" ] && printf '%s\\n' 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' || export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/t/claude-code/acct-sub'; ",
         "开关开着，订阅号该走 `/t/`"
     );
     assert_eq!(fake_asks()[0].1["allSessions"], serde_json::json!(true));

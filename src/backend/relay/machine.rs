@@ -98,7 +98,8 @@ pub(crate) fn answer_ensure_with(
             copy_text("beMachine.answerEnsure.noSelf", &[("e", &e.to_string())]),
         )
     })?;
-    let pid = start(&exe, &["--relay"], port)?;
+    // 〔V151〕叫自己的后端子命令带打头的 `--`（本二进制就叫 `ccm`）。
+    let pid = start(&exe, &["--", "--relay"], port)?;
     Ok(json!({ "port": port, "listening": false, "started": true, "pid": pid }))
 }
 

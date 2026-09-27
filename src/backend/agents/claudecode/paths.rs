@@ -16,13 +16,43 @@ pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 pub(crate) struct SessionEnvKeys {
     pub(crate) config_dir: &'static str,
     pub(crate) base_url: &'static str,
+    /// 〔E2 · V146〕这条会话自己的设置文件会不会压过进程环境里的上游地址（见 [`settings_may_set_base_url`]）。
+    pub(crate) settings_may_set_base_url: fn(Option<&Path>, &Path, Option<&Path>) -> bool,
 }
 
 /// 见 [`SessionEnvKeys`]。
 pub(crate) const SESSION_ENV_KEYS: SessionEnvKeys = SessionEnvKeys {
     config_dir: CONFIG_DIR_ENV,
     base_url: BASE_URL_ENV,
+    settings_may_set_base_url,
 };
+
+/// 〔E2 · V146〕claude 的设置文件里 `env.ANTHROPIC_BASE_URL` **压过**进程环境（GAP1 件 3 取证：真跑一次，settings 那个口收到请求、
+/// 进程环境那个口零次）⇒ 进程环境里是我们的中转地址，不等于它真走中转。这里答「可能被压过」：
+/// 配置根（`config_dir`，缺席 = 默认根）下的 `settings.json` · 会话 cwd 下 `.claude/settings.json` / `settings.local.json`
+/// 任一份设了非空的 `env.ANTHROPIC_BASE_URL`，或在却读不了 / 解析不了 ⇒ `true`（说不清）。
+/// 买不到：系统级 managed settings 与 `--settings` 命令行那一形不看（那两形今天没人用；看到了也只会更「说不清」）。
+pub(crate) fn settings_may_set_base_url(
+    config_dir: Option<&Path>,
+    default_root: &Path,
+    cwd: Option<&Path>,
+) -> bool {
+    let root = config_dir.unwrap_or(default_root);
+    let mut files = vec![root.join("settings.json")];
+    if let Some(c) = cwd {
+        files.push(c.join(HOME_DIR_NAME).join("settings.json"));
+        files.push(c.join(HOME_DIR_NAME).join("settings.local.json"));
+    }
+    files.iter().any(|f| match std::fs::read_to_string(f) {
+        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+        Ok(t) => match serde_json::from_str::<serde_json::Value>(&t) {
+            Err(_) => true,
+            Ok(v) => v["env"][BASE_URL_ENV]
+                .as_str()
+                .is_some_and(|u| !u.is_empty()),
+        },
+    })
+}
 
 /// 默认配置根在 `$HOME` 下的名字。
 const HOME_DIR_NAME: &str = ".claude";
@@ -267,3 +297,7 @@ pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, Str
 pub fn session_file_for_delete(sid: &str) -> Result<PathBuf, String> {
     session_file_for_delete_in(&resolve_home(), sid)
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/agents/claudecode/paths_tests.rs"]
+mod tests;

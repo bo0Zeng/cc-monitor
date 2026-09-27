@@ -545,12 +545,15 @@ fn remote_host_never_resolves_to_a_local_path() {
     // **等号而不是 `>=`**（T04 审计重要 5）：真实是 5 条，写 `>= 4` 恰好容忍一次
     // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
     // 〔TL1 · 4C〕4 → 5：`panorama` 推给远端那台的那一份（`~/.cc-monitor/bin/cc-monitor-panorama`，`Remote`）。
+    // 〔E2 · V28〕6 → 7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`（旧默认 `backendPath`，认出是我们编的就删，`RetiredLegacy`）；
+    //   `backend` 推给远端那一格从 `$BACKEND_PATH` 换成固定落点 `~/.cc-monitor/bin/ccm`（条数不变）。
     assert_eq!(
-        checked, 6,
-        "Remote 条目数变了（真实应为 6）——改 TOOLS 就要来确认这个数。\
+        checked, 7,
+        "Remote 条目数变了（真实应为 7）——改 TOOLS 就要来确认这个数。\
              ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）；\
              〔TL1〕4→5：代码全景组件推给远端那一份；\
-             〔GP1 · 第四波〕5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）"
+             〔GP1 · 第四波〕5→6：`ccm` 多一行旧版入口 `~/.local/bin/ccm`（认出是我们放的就删；合并时按两边增量相加）；\
+             〔E2〕6→7：`ccm` 多一行旧落点 `~/.cc-monitor/bin/cc-monitor-backend`"
     );
 }
 
@@ -580,6 +583,9 @@ fn every_host_declaration_is_pinned() {
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
         //    放下去的（`local_backend::install_local_ccm_entry`），远端那台上没有它。
         ("ccm", "~/.cc-monitor/bin/ccm*", Client),
+        ("ccm", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
+        // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`RetiredLegacy`，认出是我们编的就删）。
+        ("ccm", "~/.cc-monitor/bin/cc-monitor-backend", Remote),
         ("ccm", "~/.bashrc", Remote),
         // 〔`K-R60` 09-11〕cc-bus 的 `installable` 翻成 true 之后，
         // 「装得了就必须申报装到哪」当场要它 —— 部署真正写的就是这个目录。
@@ -603,8 +609,9 @@ fn every_host_declaration_is_pinned() {
         //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
         //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
         ("backend", "$APP_DIR", Client),
-        ("backend", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
-        ("backend", "$BACKEND_PATH", Remote),
+        // 〔E2 · V28〕自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
+        // 〔E2 · V28〕`$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
+        ("backend", "~/.cc-monitor/bin/ccm", Remote),
         // 〔TL1 · 4C〕代码全景小程序（RM1f 起有落点的部署物）：两个载体、同一个相对落点、两台机器 ——
         //    本机那份是 monitor 跑着的这台放的（`place_local`，`Client`）；远端那份推给那台（`push_to`，`Remote`）。
         //    ⚠ 标 `Either` 会说假话：两份的来源与放法不同（本机原生 / 远端 musl），一台上有不等于另一台上有。
@@ -772,13 +779,12 @@ fn all_host_scopes_are_really_used() {
 /// （它告诉用户去哪儿看那个值），覆盖掉是降级。
 #[test]
 fn host_projection_preserves_the_richer_resolution() {
-    // 🔴 〔`K-R81` 09-12〕`remote-daemon` 改名成 `backend`；而它今天有**三个载体**
-    //    ⇒ 这里不许再拿 `touches[0]` 碰运气，要**点名那一份**（推给远端的那份）。
-    let backend = TOOLS.iter().find(|t| t.id == "backend").unwrap();
-    let (c, f) = backend
+    // 〔E2 · V28〕后端推给远端那一格不再是配置项（`$BACKEND_PATH` 删了，落点固定）⇒ 远端还剩的配置项落点是 `cc-acct-iso` 那一格。
+    let acct = TOOLS.iter().find(|t| t.id == "cc-acct-iso").unwrap();
+    let (c, f) = acct
         .carrier_touches()
         .find(|(_, f)| f.host == HostScope::Remote)
-        .expect("后端必须有一份是推给远端那台机器的");
+        .expect("cc-acct-iso 必须有一份是推给远端那台机器的");
     let r = resolve_touched_path(
         Vantage::Monitor,
         f.path,
@@ -791,8 +797,12 @@ fn host_projection_preserves_the_richer_resolution() {
     .unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
-            // 〔CP2b〕界面上那一格的名字是「后端路径」（话进了文案表，按界面上的叫法认）。
-            assert!(what.contains("后端路径"), "实得 {what}");
+            // 〔CP2b〕话进了文案表：投影交出的就是那一格的原话。
+            assert_eq!(
+                what,
+                crate::copy_table::copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[]),
+                "实得 {what}"
+            );
         }
         other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
     }
@@ -862,11 +872,19 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
 
     // ① ccm：`sftp.rs` 里那个常量就是真落点
     let sftp = include_str!("../../src/bridge/src/sftp.rs");
+    // 〔E2 · V28〕落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         sftp,
-        r#"const CCM_CLI_REMOTE_PATH: &str = ".cc-monitor/bin/ccm";"#,
-        "const CCM_CLI_REMOTE_PATH",
+        "pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;",
+        "pub(crate) const LANDING_REL",
         "ccm 远端落点",
+    )
+    .unwrap();
+    pin_definition(
+        include_str!("../../src/bridge/crates/relay-route-core/src/lib.rs"),
+        r#"pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";"#,
+        "pub const BACKEND_LANDING_REL",
+        "后端落点",
     )
     .unwrap();
     let ccm = TOOLS.iter().find(|t| t.id == "ccm").unwrap();
@@ -890,7 +908,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     assert_eq!(
         remote_dests,
         vec![&ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm")],
-        "注册表声明的 ccm 远端落点与 sftp.rs 的 CCM_CLI_REMOTE_PATH 不一致"
+        "注册表声明的 ccm 远端落点与 sftp.rs 的 LANDING_REL 不一致"
     );
 
     // ② 项目 MCP：`mcp.rs` 真正 join 的就是这个文件名
