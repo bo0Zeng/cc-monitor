@@ -69,6 +69,9 @@ pub struct JsonlLine {
     pub path: std::path::PathBuf,
     pub seq: u64,
     pub raw: String,
+    /// 〔RENDER2 · `99 §2.1` ㊱②〕这一行之后（含它的 `\n`）那一个字节的偏移 = 下一行的起点（后端 `line.byte_offset` ·
+    /// 快照的行区间末端）；说不准 ⇒ `None`。续点据它记「从哪个字节接着读」。
+    pub end: Option<u64>,
 }
 
 /// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
@@ -1500,6 +1503,7 @@ async fn fetch_snapshot(
                     path: std::path::PathBuf::from(path),
                     seq,
                     raw: line.to_string(),
+                    end: span.map(|(_, e)| e),
                 });
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                     if q.is_cancelled(sid) {
@@ -1833,6 +1837,8 @@ pub enum InboundFrame {
         path: String,
         seq: u64,
         raw: String,
+        /// 〔RENDER2 · ㊱②〕后端的 `byte_offset`（这一行末尾含 `\n` 的累计字节）；老后端不带 ⇒ `None`。
+        end: Option<u64>,
     },
     /// 远端新出现一个 session 文件。Batch7-F24：p1e backend 附带 pidfile 元信息
     /// （additive）；旧后端缺字段 → None（保守视为交互）。
@@ -2086,11 +2092,13 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             let path = obj.get("path")?.as_str()?.to_string();
             let seq = obj.get("seq")?.as_u64()?;
             let raw = obj.get("raw")?.as_str()?.to_string();
+            let end = obj.get("byte_offset").and_then(serde_json::Value::as_u64);
             Some(InboundFrame::Line {
                 session_id,
                 path,
                 seq,
                 raw,
+                end,
             })
         }
         "session_added" => {
@@ -2752,9 +2760,9 @@ async fn flush_lines(
     lines: Vec<JsonlLine>,
     runs: &mut crate::SkipRuns,
 ) {
-    let flushed: Vec<(String, u64)> = lines
+    let flushed: Vec<(String, u64, Option<u64>)> = lines
         .iter()
-        .map(|l| (l.session_id.clone(), l.seq))
+        .map(|l| (l.session_id.clone(), l.seq, l.end))
         .collect();
     // 〔ST3〕同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
     let origin = crate::origin::Origin(host_label.to_string());
@@ -2762,7 +2770,10 @@ async fn flush_lines(
     // 〔CF2〕交给订了它的那些会话流（`event_replay` 头注「订阅」）；出口在它手里，不再经 `app` 广播。
     replay.on_line_batch_awaited(payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
-    crate::snapshot_resume::note_flushed(&origin, flushed.iter().map(|(s, q)| (s.as_str(), *q)));
+    crate::snapshot_resume::note_flushed(
+        &origin,
+        flushed.iter().map(|(s, q, e)| (s.as_str(), *q, *e)),
+    );
 }
 
 /// 〔CF1 · 2026-09-24〕**内容那一半的唯一收口** —— 远端每条连接一个、本机每条流一个。
@@ -2949,6 +2960,7 @@ pub(crate) enum LocalStep {
         path: String,
         seq: u64,
         raw: String,
+        end: Option<u64>,
     },
     /// 进 [`LineIntake::announced`]。
     Announce {
@@ -3076,6 +3088,7 @@ pub(crate) fn local_step(
             path,
             seq,
             raw,
+            end,
         }) => {
             if hidden.contains(&session_id) {
                 LocalStep::Skip
@@ -3085,6 +3098,7 @@ pub(crate) fn local_step(
                     path,
                     seq,
                     raw,
+                    end,
                 }
             }
         }
@@ -3182,6 +3196,7 @@ pub(crate) async fn consume_local(
                     path,
                     seq,
                     raw,
+                    end,
                 } => {
                     intake
                         .line(JsonlLine {
@@ -3189,6 +3204,7 @@ pub(crate) async fn consume_local(
                             path: std::path::PathBuf::from(path),
                             seq,
                             raw,
+                            end,
                         })
                         .await
                 }
@@ -3602,6 +3618,7 @@ async fn stream_loop(
                 path,
                 seq,
                 raw,
+                end,
             }) => {
                 // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
                 // SessionRemoved 边界触发的 flush 在循环头。
@@ -3611,6 +3628,7 @@ async fn stream_loop(
                         path: std::path::PathBuf::from(path),
                         seq,
                         raw,
+                        end,
                     })
                     .await;
             }
