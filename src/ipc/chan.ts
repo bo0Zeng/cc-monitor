@@ -167,7 +167,8 @@ function whenAborted(signal: AbortSignal): { promise: Promise<never>; dispose: (
 /** `§3.3.4` 流里的一格（webview 这一跳的样子：体是文本，见头注）。 */
 export type Item =
   | { t: "frame"; seq: number; body: string }
-  | { t: "gap"; fromSeq: number; toSeq: number }
+  /** 〔RENDER2 · `99 §2.1` ㉓①〕`toSeq === null`：知道这里丢了、不知道丢到哪（超长整行没读进来）；补法与有界那一形相同。 */
+  | { t: "gap"; fromSeq: number; toSeq: number | null }
   | { t: "unseen"; at: { idx: number; tag: HopTag }; why: HopFault }
   | { t: "seen"; from: Uint8Array | null }
   | { t: "closed"; by: { peer: string } | { ours: OursFault } };
@@ -195,6 +196,7 @@ export function decodeItem(raw: unknown): Item | null {
     case "frame":
       return isNat(o.seq) && typeof o.body === "string" ? { t: "frame", seq: o.seq, body: o.body } : null;
     case "gap":
+      if (isNat(o.from_seq) && o.to_seq === undefined) return { t: "gap", fromSeq: o.from_seq, toSeq: null };
       return isNat(o.from_seq) && isNat(o.to_seq) && o.from_seq <= o.to_seq
         ? { t: "gap", fromSeq: o.from_seq, toSeq: o.to_seq }
         : null;
