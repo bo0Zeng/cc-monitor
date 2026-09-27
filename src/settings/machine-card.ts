@@ -158,21 +158,8 @@ export interface MachineCardHooks {
   /** S4b：这张卡的状态/名字变了，宿主该刷新列表那一行。 */
   onStatusChanged?: (card: MachineCard) => void;
 }
-/**
- * backendPath placeholder：必须是**绝对路径**。SSH exec 不经 shell，`~` 不会被展开，
- * 故用 `/home/<user>/...` 形式而非 `~/...`（避免误导用户以为 `~` 可用）。
- */
-const BACKEND_PATH_PLACEHOLDER =
-  "/home/<user>/.cc-monitor/bin/cc-monitor-backend";
-/**
- * 按远端用户名生成 backendPath 默认值（与自动部署的约定路径一致，
- * 见 src/doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
- * 只是预填——远端 home 不标准（如 macOS /Users）时用户可改，「测试连接」会暴露问题。
- */
-export function defaultBackendPathFor(user: string): string {
-  const home = user === "root" ? "/root" : `/home/${user}`;
-  return `${home}/.cc-monitor/bin/cc-monitor-backend`;
-}
+// 〔E2 · V28 · `设计/01 §6.7b`〕「后端路径」那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是后端本身），
+//   从前按用户名预填的 `defaultBackendPathFor`〔散文墓碑〕随之删。
 /**
  * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
  * 抽成纯函数便于单测（trim 后非空 = 已固化严格校验）。
@@ -217,7 +204,6 @@ export class MachineCard {
   private portInput!: HTMLInputElement;
   private userInput!: HTMLInputElement;
   private keyPathInput!: HTMLInputElement;
-  private backendPathInput!: HTMLInputElement;
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
@@ -301,7 +287,6 @@ export class MachineCard {
       port: parsePort(this.portInput.value),
       user: this.userInput.value.trim(),
       keyPath: this.keyPathInput.value.trim(),
-      backendPath: this.backendPathInput.value.trim(),
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
@@ -309,7 +294,7 @@ export class MachineCard {
     };
   }
 
-  /** 导入别名时填充连接参数（host/port/user/keyPath + backend 兜底 + label=别名）。 */
+  /** 导入别名时填充连接参数（host/port/user/keyPath + label=别名）。 */
   applyResolved(resolved: ResolvedHost, alias: string): void {
     if (!this.labelInput.value.trim()) this.labelInput.value = alias;
     this.hostInput.value = resolved.host;
@@ -317,9 +302,6 @@ export class MachineCard {
     this.userInput.value = resolved.user;
     this.keyPathInput.value = resolved.keyPath ?? "";
     if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // F57 S-2:单别名也填跳板
-    if (!this.backendPathInput.value.trim() && resolved.user) {
-      this.backendPathInput.value = defaultBackendPathFor(resolved.user);
-    }
     this.updateLegend();
   }
 
@@ -413,26 +395,6 @@ export class MachineCard {
       copyText("machineCard.field.userHint"),
       onChange,
     );
-    this.backendPathInput = buildTextRow(
-      body,
-      copyText("machineCard.field.backendPath"),
-      BACKEND_PATH_PLACEHOLDER,
-      onChange,
-    );
-    const backendHint = document.createElement("div");
-    backendHint.className = "settings-hint";
-    backendHint.textContent =
-      copyText("machineCard.field.backendPathHint");
-    body.appendChild(backendHint);
-    // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，backendPath
-    // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
-    this.userInput.addEventListener("change", () => {
-      const user = this.userInput.value.trim();
-      if (user && !this.backendPathInput.value.trim()) {
-        this.backendPathInput.value = defaultBackendPathFor(user);
-        onChange();
-      }
-    });
     this.keyPathInput = buildTextRow(
       body,
       copyText("machineCard.field.keyPath"),
@@ -671,7 +633,6 @@ export class MachineCard {
     this.portInput.value = cfg.port ? String(cfg.port) : "";
     this.userInput.value = cfg.user;
     this.keyPathInput.value = cfg.keyPath;
-    this.backendPathInput.value = cfg.backendPath;
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
@@ -760,7 +721,7 @@ export class MachineCard {
   /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user || !cfg.backendPath) {
+    if (!cfg.host || !cfg.user) {
       this.renderTestResult(null, copyText("machineCard.test.needFields"));
       return;
     }
@@ -1065,7 +1026,7 @@ export class MachineCard {
   /** ①「部署后端」—— 后端本体 ＋ `ccm` 入口，一颗按钮、一次调用（〔MC1〕从前是两颗）。 */
   private async onDeployBackend(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user || !cfg.backendPath) {
+    if (!cfg.host || !cfg.user) {
       this.showResultText(copyText("machineCard.deploy.needFields"), "comp");
       return;
     }
@@ -1083,13 +1044,13 @@ export class MachineCard {
   /** F08c：点「卸载后端」——删远端后端二进制（二次确认；〔DP1〕旁挂的版本标记退役了，不再删它）。 */
   private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
-    if (!cfg.host || !cfg.user || !cfg.backendPath) {
+    if (!cfg.host || !cfg.user) {
       this.showResultText(copyText("machineCard.uninstall.needFields"), "comp");
       return;
     }
     if (
       !(await askConfirm(
-        copyText("machineCard.uninstall.confirm", { host: cfg.host, path: cfg.backendPath }),
+        copyText("machineCard.uninstall.confirm", { host: cfg.host }),
       ))
     ) {
       return;

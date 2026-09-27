@@ -148,8 +148,10 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/src/backend/control/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),
-    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 3, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 1, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）；删不掉下次再清"),
+    // 〔E2〕3 → 2：逐字节副本那一处删了。
+    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 2, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    // 〔E2〕1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
+    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
     ("src/bridge/src/backend/control/payload.rs", "let _ = write!(out, \"export ANTHROPIC_MODEL={}; \", shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
     ("src/bridge/src/backend/control/payload.rs", "let _ = write!(out, \"export CCM_RBIND_TOKEN={}; \", shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),

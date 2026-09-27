@@ -35,7 +35,6 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
     port: 22,
     user: "pi",
     keyPath: "",
-    backendPath: "/usr/local/bin/ccmd",
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",

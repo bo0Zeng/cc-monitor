@@ -135,7 +135,6 @@ const host = (p: Record<string, unknown> = {}) => ({
   port: 22,
   user: "u",
   keyPath: "",
-  backendPath: "",
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",

@@ -335,7 +335,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/byte_cap_registry_tests.rs",
     "tests/bridge/byte_table_tests.rs",
     "tests/bridge/ccm_cli_contract_tests.rs",
-    "tests/bridge/ccm_probe_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
     "tests/bridge/claude_data_fence_tests.rs",
     "tests/bridge/config_surface_tests.rs",
@@ -529,6 +528,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
+    "tests/backend/agents/claudecode/paths_tests.rs", // 〔E2 · V146〕设置文件压不压过进程环境里的上游地址（临时目录夹具）
+    "tests/bridge/ccm_probe_tests.rs", // 〔E2〕SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
     "tests/backend/asset_catalog_tests.rs",        // 〔AS2〕

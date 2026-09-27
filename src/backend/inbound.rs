@@ -113,6 +113,8 @@ pub const COMMANDS: &[&str] = &[
     "capture-pane",
     // 〔W5-ALIAS · 第五波先行〕别名预览：一条别名的预置参数 → `ccm --print` 那一行（`设计/71 §2.3`）。
     "ccm-print",
+    // 〔E2 · `96 §7.2.2`〕这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
+    "ccm-probe",
     "exit-policy-read",
     "exit-policy-set",
     "files-browse",
@@ -1143,6 +1145,18 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔E2 · `96 §7.2.2`〕**这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身（V28），「PATH 上那个是谁」退化成问它自己。
+    //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` / `acct-iso-cmd` 那一形）。
+    CommandSpec {
+        name: "ccm-probe",
+        doc_anchor: Some("#### `ccm-probe`"),
+        codes: &[],
+        fields: &["probe"],
+        takes_input: false,
+        run: Run::Async(|_r| {
+            Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
+        }),
+    },
     CommandSpec {
         name: "exit-policy-read",
         doc_anchor: Some("#### `exit-policy-read`"),
@@ -1315,7 +1329,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "assets-sync",
         doc_anchor: Some("#### `assets-sync`"),
         codes: &["bad_args", "io_failed"],
-        fields: &["backend", "dial", "origin", "reach", "self", "synced"],
+        fields: &["dial", "origin", "reach", "self", "synced"],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -1335,7 +1349,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "remote-reach",
         doc_anchor: Some("#### `remote-reach`"),
         codes: &["bad_args"],
-        fields: &["backend", "dial", "origin", "reach"],
+        fields: &["dial", "origin", "reach"],
         takes_input: true,
         // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
         run: Run::Async(|r| {

@@ -391,6 +391,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | flag | 起 | 语义 |
 |---|---|---|
 | （无参数） | Phase 0 | 全量重放所有活跃会话历史 + 尾随（旧 monitor / 未确认后端的兼容路径） |
+| `--stream` | 〔E2 · V28〕 | **「我是流模式后端」的显式词**，不对应能力、不改行为。后端二进制就叫 `ccm`（`~/.cc-monitor/bin/ccm`）时零参数是「起会话」⇒ 起流一律写成 `ccm -- --stream …`（〔V151〕打头的 `--` 紧跟查询子命令 / 流模式 flag 才进后端，其余进 ccm：`<交给 claude 的…> -- <ccm 自己的…>`） |
 | `--with-bg` | p1e (F24) | 放行 kind:"bg" 后台任务会话（宣告+流行，帧带元信息） |
 | `--tail-only` | p1f (F25) | 不重放历史：连接时各文件 seq 计数器初始化为当前完整行数（seq=行号），只尾随新行；历史由 monitor 旁路 `--read-session` 快照拉取 |
 | `--with-rbind-token` | 〔`设计/80 §8.7` 步 2〕 | **索要启动期令牌**：`session_added` 帧附 `rbind_token`（见下面帧表那一格）；〔LOC1b · 4D〕同一道闸也带 `pid`（给 ↗ 绑窗口的另一半材料）。**默认关**，因为令牌是敏感数据（`设计/80 §8.6 ③`）——没发这条 flag 的客户端收到的 `session_added` 字节与本字段加进来之前**一字不差**。能力 token 是 `rbind-token`；老后端不声明它 ⇒ monitor **不发**这条 flag、**诚实降级**回今天的 `@ccm_sid` 标题路，不许假装有 |
@@ -1774,17 +1775,33 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 与终端里 `ccm --print …` 走**同一个**计划函数（`control/ccm/mod.rs::plan_of` ＋ `plan::render`），不是前端拼串。
 
 ```text
-→ {"id":"p1","cmd":"ccm-print","args":{"args":["--tmux","--account","z","--cwd","/home/u/w"]}}
+→ {"id":"p1","cmd":"ccm-print","args":{"args":["--","--ccm-tmux","--account","z","--cwd","/home/u/w"]}}
 ← {"kind":"reply","id":"p1","ok":true,"data":{"line":"… tmux new-session … "}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `args` | → | 一条别名的预置参数（原样 ccm argv，最多 64 个、每个最长 4096 字节） |
+| `args` | → | 一条别名的预置参数（原样 ccm argv，〔V151〕`<交给 claude 的…> -- <ccm 的…>` 那一形；最多 64 个、每个最长 4096 字节） |
 | `line` | ← | `ccm --print` 那一行。语境写死：**这台机器家目录里的一个新终端** —— 叫的是 `ccm`、cwd = home、不在 tmux 里、不继承账号目录变量；账号表与会话快照照这台机器的真值（撞名退让与真跑同一个名字） |
 
 **错误码**：`bad_args`（缺 `args` / 不是一组字符串 / 超上界）· `refused`（ccm 自己拒了这组参数，原话带回；或给的是 `--help` 这类不起会话的那一形）。
-⚠ **CLI 面也有它**（`--ccm-print`），入参从 stdin 读。
+⚠ **没有 CLI 面**〔E2〕：`--ccm-print` 这个词归 ccm 的诊断口（V138）；`ccm -- --ccm-print` 在 `--` 右边，后端词与 ccm 的词不许重名。
+
+#### `ccm-probe`：这台的 `ccm` 会哪些（E2 · 第四波，2026-09-27，**只读**）
+
+`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`，V28）⇒「这台 `ccm` 会哪些」问它自己，不再进交互 shell 查 `PATH`（`设计/96 §7.2.2`）。
+回的就是 `ccm --ccm-probe` 那几行原文（同一个函数），monitor 用解析那几行的同一个函数读。纯函数：不起进程、不碰盘。
+
+```text
+→ {"id":"q1","cmd":"ccm-probe","args":{}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"probe":"name=ccm\nversion=6\nself=…\ncapabilities=…\nagents=claude,codex\nbuild=…\n"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `probe` | ← | `ccm --ccm-probe` 那几行（首行逐字 `name=ccm`；`self=` 是这个进程的真身） |
+
+**错误码**：无。⚠ **没有 CLI 面**：`--ccm-probe` 这个词归 ccm 的诊断口（V138，写成 `ccm -- --ccm-probe`），同 `ccm-print`。
 
 #### `mcp-sync-plan`：MCP 资产同步的判定（AS1 · 第四波 4B，2026-09-24，**只读**）
 
@@ -1863,13 +1880,13 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 #### `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录（AS2 · 第四波 4B，2026-09-25）
 
 「目录自动同步」那一半（V113）：`设计/01 §3.5`「观测方沿它本来就拥有的那条连接去拉被观测方」。只有**本机常驻后端**有意义（SSH 连接与可达表都住在它的进程里）。
-一趟对一台远端：① 在池里那条连接上多开一个 exec 通道，capture `<远端后端> --assets-catalog`（远端现扫、记下、回它的整份）；
+一趟对一台远端：① 在池里那条连接上多开一个 exec 通道，capture `"$HOME"/.cc-monitor/bin/ccm --assets-catalog`（远端现扫、记下、回它的整份）；
 ② 并进本机目录（同 `assets-catalog-merge`）；③ 远端缺的 / 比远端新的那几台快照（不含远端自己那格）经 `printf '%s\n' '<json>' | <远端后端> --assets-catalog-merge` 推过去（一块 ≤ 96 KiB，单台超了那一台不推、说出来）；
 ④ 本机目录因这一趟变了（或开头那一次现扫发现本机自己那份变了）⇒ 对可达表里其余每台各做一趟（只一层）。**不往任何机器装东西**（装要用户点）。
 不起远端的流模式（流模式会往 tmux 装指向自己 pid 的全局 hook，一个用完就退的流会把真流的 hook 盖掉）；老远端不认子命令会进流模式 —— capture 见到 hello 就收工、报「太旧」。
 
 ```text
-→ {"id":"s1","cmd":"assets-sync","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+→ {"id":"s1","cmd":"assets-sync","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"}}}
 ← {"kind":"reply","id":"s1","ok":true,"data":{"self":"9f…","synced":[{"origin":"dev","peer":"4c…","changed":true,"pushed":1,"error":null}],"reach":[{"origin":"dev","machine":"4c…"}]}}
 ```
 
@@ -1877,12 +1894,11 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 |---|---|---|
 | `origin` | → | 可缺席。给了 ⇒ 记进可达表（内存，后端重启就空）并先对它做一趟；缺席 ⇒ 对可达表里每一台各做一趟 |
 | `dial` | → | 给了 `origin` 就必给：那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。本条会把 `use` 改成 `capture` |
-| `backend` | → | 给了 `origin` 就必给：那台上后端的路径 |
 | `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`；`changed` 本机目录因这一趟变了没有；`pushed` 推过去几台快照；`error` 那一趟哪里没办成（`null` = 全办成了） |
 | `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
 | `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
 
-**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` / `backend` · 给了 `dial` / `backend` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
+**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` · 给了 `dial` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
@@ -1942,12 +1958,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 #### `remote-reach`：本机后端的可达表登记（C4d · 第四波 4B，2026-09-25）
 
 「本机后端问远端后端」那一跳（`设计/01 §3.5`；实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。
-monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次：拨号请求 ＋ 那台后端的路径。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
+monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次拨号请求（〔E2〕那台后端恒在固定落点 `"$HOME"/.cc-monitor/bin/ccm`，不再交路径）。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
 之后的两路都查这张表：资产目录同步（`assets-sync`）· 历史跨机 join（`history-projects` / `history-sessions` 带 `origin`）。
 老远端也登记：历史那一路问它的是 `--list-projects` / `--list-sessions` 这种老子命令。
 
 ```text
-→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"}}}
 ← {"kind":"reply","id":"r1","ok":true,"data":{"origin":"dev","reach":[{"origin":"dev","machine":null}]}}
 ```
 
@@ -1955,10 +1971,9 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 |---|---|---|
 | `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
 | `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。用时会把 `use` 改成 `capture` |
-| `backend` | → | 那台上后端的路径。〔TL3 · `INVARIANTS §47` ②〕这个值随后被拼进远端命令 ⇒ 登记之前先过放行判定（`accounts_query::is_safe_config_dir`：绝对路径 · 无 `..` 段 · 无 shell 元字符 / 控制字符 / 视觉欺骗字符），判不过 ⇒ `bad_args`、一条都不登记 |
 | `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
 
-**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · `backend` 过不了放行判定 · 可达表满）。
+**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` · 可达表满）。
 ⚠ **CLI 面也有它**（`--remote-reach`，入参从 stdin 读），但一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。
 
 #### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）
@@ -2553,6 +2568,8 @@ CLI 面随之自动多一条 `--history-find`。
 用户裁**留**：它是**给仓外 aterm 的承诺**，契约冻结在 **2026-07-18**（与上面那段说的是同一份），**随时可能开始被消费**。
 ⇒ 下面四行列表是那份承诺的全部线上形状，**改任何一格 = 一次跨仓契约变更**，要同轮做三件事：① 改代码；② 改本节与冻结金样 `tests/__fixtures__/resolve-contract.golden.json`；③ **bump `BUILD_ID`**（已部署的后端得被判 stale 重装）—— 并且先问 aterm 那边。
 两条入口**都算承诺的一部分**：流命令 `resolve`（`inbound::REGISTRY`）与一次性 `--resolve`（`main.rs` 分派 ＋ `SUBCOMMANDS`），同一个纯函数、差别只在信封（上表）。
+〔V151 · 用户 09-27〕**命令行形状变了**：后端二进制就是 `ccm`（`~/.cc-monitor/bin/ccm`），叫它的一次性子命令写成 `ccm -- --resolve`（`ccm -- --fork-session <sid> <uuid>` 同理）—— 没有打头的 `--` 整行原样交给 claude。
+名字不是 `ccm` 的开发树二进制 `-- --resolve` 与裸 `--resolve` 都认。**aterm 仓要跟着改成 `ccm -- …` 形**（本仓不碰那个仓）；stdin / stdout 的线上形状一格没变。
 钉它的判据：`resolve_query_tests.rs` 里带 `〔V126〕` 的那一族（样例逐字节 · 入参字段 · 错误码全集 · 两条入口 · 本节四行列表与金样两向相等）。
 
 - **入参**（stdin / `args`，camelCase）：`sessionId` · `launchCandidates` · `claudeDir` · `fallbackCwd` · `alreadyInTmux` · `agentKind`
@@ -2692,11 +2709,13 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 
 ### argv 三分（U6b-2）
 
+〔V151〕二进制叫 `ccm` 时，下面这张表只在打头的 `--` 之后生效（`ccm -- <后端的词…>`；`control/ccm/mod.rs::route`）。
+
 后端认识的每个 `--token` 恰好属于三类之一：
 
 | 类 | 成员 | 语义 |
 |---|---|---|
-| **流模式 flag** | `--with-bg` · `--tail-only` · `--with-rbind-token` | 出现即剥离并置位，**不影响模式判定** |
+| **流模式 flag** | `--stream` · `--with-bg` · `--tail-only` · `--with-rbind-token` | 出现即剥离并置位，**不影响模式判定** |
 | **一次性查询子命令** | 上面那张查询表的全部 | **只有 `args[0]` 是其中之一才进查询模式** |
 | **子命令选项** | `--accts-dir` · `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，后端顶层不解释 |
 

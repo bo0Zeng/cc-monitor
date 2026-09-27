@@ -217,7 +217,7 @@ impl Remote for Far {
 
 fn reach(table: &ReachTable) {
     crate::remote_ask::answer_reach_with(
-        &json!({"origin": "dev", "dial": {"host": "h", "port": 22, "user": "u", "key_path": "/k"}, "backend": "/opt/ccm"}),
+        &json!({"origin": "dev", "dial": {"host": "h", "port": 22, "user": "u", "key_path": "/k"}}),
         table,
     )
     .unwrap();
@@ -236,8 +236,8 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     assert_eq!(
         *far.seen.lock().unwrap(),
         vec![
-            crate::remote_ask::command_line("/opt/ccm", &["--list-projects"]),
-            crate::remote_ask::command_line("/opt/ccm", &["--session-accounts"]),
+            crate::remote_ask::command_line(&["--list-projects"]),
+            crate::remote_ask::command_line(&["--session-accounts"]),
         ],
         "N 个项目 ⇒ 对面恰被问一次清单 ＋ 一次判活（为了拿星标补问 --list-sessions 就会在这里红）"
     );
@@ -253,8 +253,8 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     assert_eq!(
         *far.seen.lock().unwrap(),
         vec![
-            crate::remote_ask::command_line("/opt/ccm", &["--list-sessions", "-w-alpha"]),
-            crate::remote_ask::command_line("/opt/ccm", &["--session-accounts"]),
+            crate::remote_ask::command_line(&["--list-sessions", "-w-alpha"]),
+            crate::remote_ask::command_line(&["--session-accounts"]),
         ]
     );
 }
