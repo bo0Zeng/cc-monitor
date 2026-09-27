@@ -135,7 +135,7 @@ describe("〔ST2 · 步 14〕DAEMON 开关并进机器列表行", () => {
     const { sec } = await mount([mkH("甲机", "1.1.1.1")]);
     for (const cells of sec.element.querySelectorAll<HTMLElement>(".remote-machine-row [data-backend-cells]")) {
       expect(cells.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 7）");
-      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["起", "停"]);
+      expect([...cells.querySelectorAll('[data-col="ops"] button')].map((b) => b.textContent)).toEqual(["起", "停", "日志"]); // 〔GAP1〕
       expect(cells.querySelector<HTMLInputElement>(".backend-row-kill input")!.disabled).toBe(false);
     }
     const asked = ipc.calls

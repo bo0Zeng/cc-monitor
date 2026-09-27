@@ -38,6 +38,8 @@ let statusQueue: Record<string, unknown>[] = [];
 let exitAnswer: Record<string, unknown> | null = null;
 /** 〔C4c〕下一次「交后端写」要回的失败（`null` = 照常写）。原先用 `spyOn(commands.set_backend_exit_policy)`，那条命令退役了。 */
 let failNextSet: Error | null = null;
+/** 〔GAP1〕`backend-log` 那一问各台答什么（按 origin；缺 ⇒ 通道失败）。 */
+let logAnswers: Record<string, unknown> = {};
 
 vi.mock("../../src/ipc/commands", () => ({
   commands: {
@@ -70,6 +72,10 @@ vi.mock("../../src/ipc/commands", () => ({
         return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
       };
       const noChannel = { err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+      if (a.op === "backend-log") {
+        calls.push({ name: "backend_log", args: { origin: a.origin } });
+        return a.origin in logAnswers ? bytes(logAnswers[a.origin]) : Promise.reject(noChannel);
+      }
       if (a.op === "exit-policy-read") {
         calls.push({ name: "backend_exit_policy", args: { origin: a.origin } });
         return exitAnswer === null ? Promise.reject(noChannel) : bytes(exitAnswer);
@@ -99,7 +105,7 @@ vi.mock("../../src/remote-config", () => ({
 
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
 
-import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, stopWarning } from "../../src/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopWarning } from "../../src/settings/backend-section";
 import type { SessionAccount } from "../../src/accounts";
 import { srcDirOf } from "../test-support/repo-root";
 import COPY_TABLE from "../../src/shared/copy/table.json";
@@ -530,12 +536,12 @@ describe("P2s backend 开关区", () => {
     ).toBe(EXIT_KILLS);
     expect(box.checked).toBe(true);
   });
-  it("★ 〔ST2〕那一行有 [起][停]、状态照实说「已连上」", async () => {
+  it("★ 〔ST2〕那一行有 [起][停]〔GAP1〕[日志]、状态照实说「已连上」", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停"]);
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停", "日志"]);
     expect(row.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 42）");
   });
 });
@@ -557,7 +563,7 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
       expect(cells.dataset.backendCells).toBe(r.dataset.origin);
       expect([...cells.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
       // 控件各归各格：按钮在「操作」、勾在「退出行为」、读数在「健康」。
-      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(2);
+      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(3); // 起 · 停 ·〔GAP1〕日志
       expect(cells.querySelector('[data-col="exit"] .backend-row-kill')).not.toBeNull();
       expect(cells.querySelector('[data-col="health"] .backend-row-health')).not.toBeNull();
     }
@@ -736,5 +742,46 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     expect(sessionsAsked, "远端的「停」数的不是那台").toEqual(["甲机"]);
     expect(asked).toEqual([zh("backend.stop.relayConfirm", { n: 1 })]);
     expect(stops(), "远端答了否还是停了").toBe(before);
+  });
+});
+
+// 〔GAP1 · `设计/15 §4.7 S1`〕「远端后端的诊断要有读者」：机器页那一行点「日志」⇒ 经那台后端的只读面（`backend-log`）取回来摆出来。
+describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是它回的那份", () => {
+  it("★ 点远端那一行的「日志」⇒ 问那一台的 backend-log，头一行是路径与大小，正文原样；再点收起", async () => {
+    logAnswers = {
+      甲机: { path: "/h/.cc-monitor/logs/backend/stderr.log", size: 2048, text: "WARN 打标失败\n", truncated: true },
+    };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const row = [...s.element.querySelectorAll<HTMLElement>(".backend-row")].find((r) => r.dataset.origin === "甲机")!;
+    const btn = [...row.querySelectorAll("button")].find((b) => b.textContent === "日志")!;
+    btn.click();
+    await flush();
+    await flush();
+    expect(calls.filter((c) => c.name === "backend_log").map((c) => c.args)).toEqual([{ origin: "甲机" }]);
+    const box = row.querySelector<HTMLElement>("[data-backend-log]")!;
+    expect(box.dataset.backendLog).toBe("甲机");
+    expect(box.querySelector(".settings-hint")?.textContent).toBe(
+      "/h/.cc-monitor/logs/backend/stderr.log（2.0 KB） 只显示了最后一段",
+    );
+    expect(box.querySelector("pre")?.textContent).toBe("WARN 打标失败\n");
+    btn.click();
+    await flush();
+    expect(row.querySelector("[data-backend-log]"), "再点一下该收起").toBeNull();
+  });
+
+  it("没落文件（path: null）⇒ 只一句说清；问不到 ⇒ 说取不回、带原因", async () => {
+    logAnswers = { "<local>": { path: null, size: 0, text: "", truncated: false } };
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const [local, remote] = [...s.element.querySelectorAll<HTMLElement>(".backend-row")];
+    for (const r of [local, remote]) [...r.querySelectorAll("button")].find((b) => b.textContent === "日志")!.click();
+    await flush();
+    await flush();
+    expect(local.querySelector("[data-backend-log] .settings-hint")?.textContent).toBe("这台的后端没有把输出写进文件");
+    expect(remote.querySelector("[data-backend-log] .settings-hint")?.textContent).toMatch(/^取不回这台后端的日志：/);
+    expect(readBackendLog({ path: "/p", size: 1, text: "x" }), "缺 truncated ⇒ 形状不对").toBeNull();
   });
 });

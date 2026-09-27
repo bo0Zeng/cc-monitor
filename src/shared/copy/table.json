@@ -9971,6 +9971,46 @@
       "zh": "停",
       "args": []
     },
+    "backend.buildCells.log": {
+      "kind": "action",
+      "zh": "日志",
+      "args": []
+    },
+    "backend.log.none": {
+      "kind": "body",
+      "zh": "这台的后端没有把输出写进文件",
+      "args": []
+    },
+    "backend.log.head": {
+      "kind": "body",
+      "zh": "{path}（{size}）",
+      "args": ["path", "size"]
+    },
+    "backend.log.truncated": {
+      "kind": "body",
+      "zh": "只显示了最后一段",
+      "args": []
+    },
+    "backend.log.empty": {
+      "kind": "body",
+      "zh": "文件是空的",
+      "args": []
+    },
+    "backend.log.failed": {
+      "kind": "error",
+      "zh": "取不回这台后端的日志：{e}",
+      "args": ["e"]
+    },
+    "backend.log.oldBackend": {
+      "kind": "error",
+      "zh": "这台的后端版本旧，还不给看日志（重装后端之后就有）",
+      "args": []
+    },
+    "backend.log.badShape": {
+      "kind": "error",
+      "zh": "后端回的日志格式不对",
+      "args": []
+    },
     "backend.buildCells.start": {
       "kind": "action",
       "zh": "起",

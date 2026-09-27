@@ -718,7 +718,7 @@ impl AccountsEar {
         rewatch_agent_home(
             debouncer,
             &self.dir,
-            "账号目录",
+            "accounts dir",
             &mut self.watched,
             &mut self.parent_watched,
         );
@@ -736,7 +736,7 @@ impl AccountsEar {
         rewatch_agent_home(
             debouncer,
             &self.dir,
-            "账号目录",
+            "accounts dir",
             &mut self.watched,
             &mut self.parent_watched,
         );

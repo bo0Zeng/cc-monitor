@@ -178,6 +178,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-index"
                 | "history-user-inputs"
                 | "history-find"
+                | "backend-log" // 〔GAP1〕读一份诊断文件的尾部（同步文件 I/O），同档
                 | "history-facts" // 〔STC〕会话事实：扫一份会话（首次整份，续传只读新写的一截），同档
                 | "history-read"
                 | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
@@ -312,6 +313,7 @@ fn every_registered_command_declares_its_run_kind() {
         "history-index",
         "history-user-inputs",
         "history-find",
+        "backend-log",   // 〔GAP1〕
         "history-facts", // 〔STC〕
         "history-read",
         "history-lines",  // 〔CF2〕
