@@ -1014,3 +1014,27 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
         "配方在非 UTF-8 客户端下读出的会话名被改写了 —— `BUS_ID_RECIPE` 的 `display-message` 没带 UTF-8 旗（`INVARIANTS §49`）"
     );
 }
+
+/// 〔E2〕要求住址：`设计/96 §7.2.2` · W5-ALIAS §3.6「件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己」。
+/// 帧 `ccm-probe` 回的就是 `--ccm-probe` 那几行：首行逐字 `name=ccm`、`build=` 是这一份的 `BUILD_ID`、能力行与 CLI 那一口同一个函数。
+#[test]
+fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
+    let v = answer_probe();
+    let text = v["probe"].as_str().expect("probe 那一格不是字符串");
+    assert_eq!(text.lines().next(), Some("name=ccm"));
+    assert!(
+        text.lines()
+            .any(|l| l == format!("build={}", crate::BUILD_ID)),
+        "{text}"
+    );
+    let caps = |t: &str| {
+        t.lines()
+            .find(|l| l.starts_with("capabilities="))
+            .map(str::to_string)
+    };
+    assert_eq!(
+        caps(text),
+        caps(&probe_output("x")),
+        "帧面与 CLI 那一口的能力行不是同一份"
+    );
+}

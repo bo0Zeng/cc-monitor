@@ -14190,11 +14190,7 @@
       "zh": "探测 ccm 失败：{e}",
       "args": ["e"]
     },
-    "rsCcmProbe.probe.noConfig": {
-      "kind": "error",
-      "zh": "未找到远端配置：{machine}",
-      "args": ["machine"]
-    },
+
     "rsLib.activeSessions.notListed": {
       "kind": "error",
       "zh": "本机后端还没报完活会话清单",

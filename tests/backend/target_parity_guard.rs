@@ -817,6 +817,11 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("bus-spawn", "同 `bus-list`（转调 `cc-spawn`；那个子进程自己起 tmux，本进程只经 gate 挂 `live`）"),
     ("bus-state", "同 `bus-list`（`agents` 那一半就是 `bus-list` 那一个函数）"),
     (
+        "ccm-probe",
+        "〔E2〕同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
+         不问 tmux server；命令本身恒答",
+    ),
+    (
         "ccm-print",
         "〔合并主线时本条当场点出〕W5-ALIAS 的别名预览：`control/ccm/mod.rs::plan_of` 经 \
          `session_snapshot::global().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
