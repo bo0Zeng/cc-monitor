@@ -900,11 +900,13 @@ describe("TabManager 生命周期", () => {
 
   it("F40b 哨兵：账本非空显示剩余条数,补尽之后〔CF2〕按行号问一次更早的、问到顶才消失", async () => {
     await spyRender();
-    // 〔CF2〕按行号取回：答「那一段一条可显示的都没有」（from 原样、next = until）
+    // 〔CF2〕按行号取回：答一个空页（from 原样、next = from）。
+    // 〔RENDER2〕原先答的是「[from, until) 一条可显示的都没有」—— 答了之后那一段整段记成见过（`seenSeqs.addRange`），
+    //   下面「再造残账」那几条 seq 10–14 就成了自相矛盾的夹具（同一段号既说没有、又来了可显示的行）⇒ 改成空页。
     vi.mocked(invoke).mockImplementation(((cmd: string, args?: { from: number; until: number }) =>
       Promise.resolve(
         cmd === "read_session_lines"
-          ? { from: args!.from, next: args!.until, eof: false, payloads: [] }
+          ? { from: args!.from, next: args!.from, eof: false, payloads: [] }
           : undefined,
       )) as never);
     tm.onLine(mkContent("sentA", 1, "sa-1")); // active
@@ -6105,6 +6107,60 @@ describe("〔RENDER2〕从头重读 ⇒ tab 整份重来", () => {
       const again = change !== "gone";
       expect(await rendered(), change).toEqual(again ? ["a", "b", "z"] : ["a", "b"]);
       expect(home(tm).store.tabs.get("rr-sid") !== old, `${change}：在途那几趟认的是「表里还是不是它」`).toBe(again);
+    }
+  });
+});
+
+// ===== 〔RENDER2 · `设计/10 §3.2` · `§7` 第 12 条〕每个 tab 的去重集有上界 =====
+// 要求住址：`设计/10 §3.2` 逐字「`seenSeqs` 换成区间集，上界就变成『段数』…… 不可显示的行照占 seq 却不发 payload，
+// 每一处都留一个洞」⇒ monitor 在 payload 上说出前面那一段（`skipped_from`），前端记成区间。
+describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () => {
+  it("SeqSet 与朴素 Set 逐号相等（随机加点 / 加段）", async () => {
+    const { SeqSet } = await import("../src/live-window");
+    let x = 12345;
+    const rnd = (n: number): number => ((x = (x * 1103515245 + 12345) % 2147483648) % n);
+    for (let round = 0; round < 50; round++) {
+      const set = new SeqSet();
+      const naive = new Set<number>();
+      for (let k = 0; k < 40; k++) {
+        const lo = rnd(200);
+        const hi = rnd(3) === 0 ? lo + 1 + rnd(20) : lo + 1;
+        if (hi === lo + 1) set.add(lo);
+        else set.addRange(lo, hi);
+        for (let s = lo; s < hi; s++) naive.add(s);
+      }
+      for (let s = -2; s < 230; s++) expect(set.has(s), `round ${round} seq ${s}`).toBe(naive.has(s));
+      expect(set.max).toBe(Math.max(-1, ...naive));
+    }
+  });
+
+  it("按启动重放的到达序（末块先发、块内升序）喂一份每 7 行一条不可显示的会话 ⇒ 1 段；不带 skipped_from ⇒ 段数 == 洞数 + 1", () => {
+    const N = 700;
+    const hidden = (s: number): boolean => s % 7 === 3;
+    const blocks = [[600, 700], [300, 600], [0, 300]];
+    for (const say of [true, false]) {
+      const tm = makeTM();
+      for (const [lo, hi] of blocks) {
+        let run: number | undefined; // 块内连着的不可显示那一段（monitor `SkipRuns` 同形；块首不认）
+        for (let s = lo; s < hi; s++) {
+          if (hidden(s)) {
+            run ??= s;
+            continue;
+          }
+          tm.onLine({
+            session_id: "sq",
+            cwd: "/p",
+            path: "/p/sq.jsonl",
+            seq: s,
+            message: { type: "assistant", uuid: `sq-${s}` },
+            ...(say && run !== undefined ? { skipped_from: run } : {}),
+          } as never);
+          run = undefined;
+        }
+      }
+      const seen = home(tm).store.tabs.get("sq")!.seenSeqs;
+      const holes = [...Array(N).keys()].filter(hidden).length;
+      expect(seen.segments, say ? "说了" : "没说").toBe(say ? 1 : holes + 1);
     }
   });
 });

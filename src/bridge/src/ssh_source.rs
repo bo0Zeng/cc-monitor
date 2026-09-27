@@ -1466,6 +1466,7 @@ async fn fetch_snapshot(
     let mut pick = crate::snapshot_resume::WitnessPick::default();
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
+    let mut runs = crate::SkipRuns::default(); // 〔RENDER2〕这一次快照自己一份（与实时那一路不交错）
     let mut cancelled = false;
     let segments = walk.segments().to_vec();
     let body_bytes: u64 = segments
@@ -1505,7 +1506,7 @@ async fn fetch_snapshot(
                         cancelled = true;
                         break 'read;
                     }
-                    flush_lines(replay, host_label, std::mem::take(&mut chunk)).await;
+                    flush_lines(replay, host_label, std::mem::take(&mut chunk), &mut runs).await;
                 }
             }
             offset = page.next;
@@ -1527,7 +1528,7 @@ async fn fetch_snapshot(
         return Ok(FetchOutcome::Cancelled);
     }
     if !chunk.is_empty() {
-        flush_lines(replay, host_label, chunk).await;
+        flush_lines(replay, host_label, chunk, &mut runs).await;
     }
     // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
     let (arrived, want) = (walk.arrived(), walk.want());
@@ -2757,14 +2758,19 @@ const BATCH_MAX_AGE_MS: u64 = 200;
 /// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
 /// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
 /// backend 帧流形成天然背压。
-async fn flush_lines(replay: &Arc<EventReplay>, host_label: &str, lines: Vec<JsonlLine>) {
+async fn flush_lines(
+    replay: &Arc<EventReplay>,
+    host_label: &str,
+    lines: Vec<JsonlLine>,
+    runs: &mut crate::SkipRuns,
+) {
     let flushed: Vec<(String, u64)> = lines
         .iter()
         .map(|l| (l.session_id.clone(), l.seq))
         .collect();
     // 〔ST3〕同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
     let origin = crate::origin::Origin(host_label.to_string());
-    let payloads = crate::batch_to_payloads(lines, &origin);
+    let payloads = crate::batch_to_payloads(lines, &origin, runs);
     // 〔CF2〕交给订了它的那些会话流（`event_replay` 头注「订阅」）；出口在它手里，不再经 `app` 广播。
     replay.on_line_batch_awaited(payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
@@ -2793,6 +2799,8 @@ pub(crate) struct LineIntake {
     batcher: Batcher,
     snapshots: std::sync::Arc<SnapshotQueue>,
     tail_only: bool,
+    /// 〔RENDER2〕实时那一路的「连着的不可显示那一段」（`SkipRuns`）。
+    runs: crate::SkipRuns,
     _closer: SnapshotQueueCloser,
 }
 
@@ -2820,6 +2828,7 @@ impl LineIntake {
             _closer: SnapshotQueueCloser(snapshots.clone()),
             snapshots,
             tail_only,
+            runs: crate::SkipRuns::default(),
         }
     }
 
@@ -2841,14 +2850,14 @@ impl LineIntake {
     /// 收一行（达容量 / 批龄就整批冲出去）。
     async fn line(&mut self, line: JsonlLine) {
         if let Some(full) = self.batcher.push(line) {
-            flush_lines(&self.replay, &self.origin_label, full).await;
+            flush_lines(&self.replay, &self.origin_label, full, &mut self.runs).await;
         }
     }
 
     /// 把攒着的行冲出去（攒批边界：会话走了 / 流断了 / 静默窗到了）。
     async fn flush(&mut self) {
         if let Some(lines) = self.batcher.take() {
-            flush_lines(&self.replay, &self.origin_label, lines).await;
+            flush_lines(&self.replay, &self.origin_label, lines, &mut self.runs).await;
         }
     }
 
@@ -2886,7 +2895,8 @@ impl LineIntake {
     }
 
     /// 一个会话走了：撤它的快照（排队的摘掉、在飞的打取消标记）、续点作废（再宣告时整份拉）。
-    fn removed(&self, sid: &str) {
+    fn removed(&mut self, sid: &str) {
+        self.runs.forget(sid);
         self.snapshots.cancel(sid);
         crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
     }

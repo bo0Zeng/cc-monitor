@@ -9,7 +9,7 @@ import type { MessageStream } from "./stream";
 import type { BranchFolder } from "./branch-fold";
 import type { JsonlLinePayload } from "./events";
 import type { RecordTimeline } from "./record-timeline";
-import type { TailWindow } from "./live-window";
+import type { SeqSet, TailWindow } from "./live-window";
 import type { SkeletonView } from "./skeleton-view";
 import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
@@ -163,7 +163,7 @@ export interface Tab {
    * 「换新 seq 重投同一条记录」（INVARIANTS § 25）。拓扑那一层的 uuid 幂等（computeMainBranch 入口去重 ＋
    * BranchFolder.seenUuids，#25）照留。closeTab 时 clear。
    */
-  seenSeqs: Set<number>;
+  seenSeqs: SeqSet;
   /**
    * Batch13-F40a:尾部优先窗口账本(单洞后缀不变量,详 live-window.ts)。
    * 启动重放的旧记录不建卡、收纳于此(meta/branch 数据已喂);floor=null(virgin)

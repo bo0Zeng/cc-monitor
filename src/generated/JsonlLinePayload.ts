@@ -19,4 +19,9 @@ export type JsonlLinePayload = { session_id: string, cwd: string | null, path: s
  * issue #15：数据来源标签。`None` = 本地（不序列化，前端视为本地，Tab 标题无前缀）；
  * `Some(host)` = 远端 SSH 数据源的主机名，前端据此给 Tab 标题加 `[host]` 前缀。
  */
-origin?: string, message: JsonlRecord, };
+origin?: string, message: JsonlRecord, 
+/**
+ * 〔RENDER2 · `设计/10 §3.2`〕`[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
+ * 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨（`真相源/130 §3`）。缺 = 没有这一段或不确知（不猜）。
+ */
+skipped_from?: number, };
