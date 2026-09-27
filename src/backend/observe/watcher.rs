@@ -1638,9 +1638,9 @@ pub struct ReadCursor {
 ///   so the next event re-reads it once completed (Batch4-F14; the old
 ///   behaviour emitted the half line — the record was then lost for good after
 ///   the JSON parse failure — and a torn multibyte tail decayed into U+FFFD).
-///   Accepted trade-off: a final line that is complete JSON but never gets its
-///   `\n` (writer killed between the two writes) is never emitted if the file
-///   never grows again — real jsonl ends with `\n` (8/8 sampled);
+///   A final line that is complete JSON but never gets its `\n` (writer killed
+///   between the two writes) is handed out once the session retires
+///   (〔RENDER2 · A6〕[`catch_up_session`]), never while the writer is alive;
 /// - **truncation**: judged against the high-water mark
 ///   (`len < cursor.seen_len`), so a rewrite landing inside a pending torn-tail
 ///   window `[consumed, seen_len)` is still caught → start over from byte 0;
@@ -1994,28 +1994,86 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
         });
     }
     for line in lines {
-        // backend-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
-        // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
-        let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
-            .ok()
-            .and_then(|v| crate::observe::turn_detect::turn_end_uuid(&v).map(str::to_string));
-        sink.send(Frame::Line {
-            session_id: session_id.clone(),
-            path: path_str.clone(),
-            seq: line.seq,
-            raw: line.raw,
-            byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+        send_line(&session_id, &path_str, line, sink);
+    }
+}
+
+/// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
+fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameSink) {
+    // backend-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
+    // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
+    let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
+        .ok()
+        .and_then(|v| crate::observe::turn_detect::turn_end_uuid(&v).map(str::to_string));
+    sink.send(Frame::Line {
+        session_id: session_id.to_string(),
+        path: path_str.to_string(),
+        seq: line.seq,
+        raw: line.raw,
+        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+    });
+    // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
+    // 方案 C raw-per-record、backend 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
+    // #backend 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
+    if let Some(uuid) = turn_uuid {
+        sink.send(Frame::TurnEnd {
+            session_id: session_id.to_string(),
+            uuid,
         });
-        // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
-        // 方案 C raw-per-record、backend 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
-        // #backend 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
-        if let Some(uuid) = turn_uuid {
-            sink.send(Frame::TurnEnd {
-                session_id: session_id.clone(),
-                uuid,
-            });
+    }
+}
+
+/// 〔RENDER2 · `设计/10 §3.1` A6〕**从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
+///
+/// `writer_dead`（只由会话退休那一刻传真）⇒ 补读完之后，游标之后那截没 `\n` 收尾、但本身是**一整个 JSON 对象**的残行
+/// 当一行交出去：写端写完 JSON、没来得及写 `\n` 就被杀，这一行从此不会再有文件事件。活着的写端照旧等 `\n`。
+/// 这一行**不推进游标、不占计数器**：同一文件日后被续写时，残行与新字节拼成的那一行仍是这个号（冷读的行号空间里它也是
+/// 这个号），前端按 seq 去重吸收；冷读（`history_query::line_counts` 口径）不数这截残行 —— 会话已死、没人再写，差的只是它自己。
+/// 退休之前先补读还有一层用处：pidfd 比 debounce 快，死前最后几行的文件事件可能在退休之后才到、被判活过滤挡掉。
+fn catch_up_session(sid: &str, writer_dead: bool, state: &mut ReaderState, sink: &mut FrameSink) {
+    let mine: Vec<PathBuf> = state
+        .offsets
+        .keys()
+        .filter(|k| file_stem_str(k).as_deref() == Some(sid) && !is_subagent_path(k))
+        .cloned()
+        .collect();
+    for path in mine {
+        process_jsonl(&path, state, sink);
+        if writer_dead {
+            flush_final_line(&path, sid, state, sink);
         }
     }
+}
+
+/// [`catch_up_session`] 的收尾那一半：`[consumed, EOF)` 是一整个 JSON 对象 ⇒ 交出去（号 = 计数器现值，不推进）。
+fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+    use std::io::{Read, Seek, SeekFrom};
+    let key = path_key(path);
+    let Some(cursor) = state.offsets.get(&key).copied() else {
+        return;
+    };
+    let mut rest = Vec::new();
+    let read = std::fs::File::open(path).and_then(|mut f| {
+        f.seek(SeekFrom::Start(cursor.consumed))?;
+        f.read_to_end(&mut rest)
+    });
+    if read.is_err() || rest.contains(&b'\n') {
+        return; // 读不动 / 还有完整行没消费（补读那一步没读动）⇒ 不猜
+    }
+    let text = String::from_utf8_lossy(&rest);
+    let raw = text.trim_start_matches('\u{feff}').trim_end_matches('\r');
+    if !raw.trim_start().starts_with('{')
+        || serde_json::from_str::<serde::de::IgnoredAny>(raw).is_err()
+    {
+        return; // 半行 / 空白 / 不是对象 ⇒ 永不误发
+    }
+    let key_str = key.to_string_lossy().into_owned();
+    let line = ReadLine {
+        seq: state.seqs.peek(&key_str),
+        raw: raw.to_string(),
+        byte_offset: cursor.consumed + rest.len() as u64,
+    };
+    send_line(sid, &path.to_string_lossy(), line, sink);
 }
 
 /// ★★ `P0b-Y2`〔08-13〕：`<claude_dir>/sessions/` **换了 inode 或刚出现**，重新挂上并重扫。
@@ -2357,6 +2415,7 @@ fn retire_sid_if_unreferenced(
         tracing::debug!("sid {sid} still referenced by another pidfile; not retiring");
         return;
     }
+    catch_up_session(sid, true, state, sink); // 〔RENDER2 · A6〕写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
@@ -2682,3 +2741,7 @@ fn file_stem_str(p: &Path) -> Option<String> {
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/watcher_lines_tests.rs"]
+mod lines_tests;
