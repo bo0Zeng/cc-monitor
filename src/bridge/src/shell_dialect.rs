@@ -164,6 +164,78 @@ pub fn strip_bom(s: &str) -> &str {
 /// `PATH` 上有没有一个叫这个名字的程序（带上这些扩展名之一；空串 = 不带扩展名）。
 ///
 /// ⚠ **诚实边界**：查的是 monitor 这个进程的 `PATH`，不是用户登录 shell 的 `PATH` ⇒ 会漏报，不会误报成「有」。
+/// PowerShell 内建别名：小写名字 → 它指向的命令。问不到 ⇒ `Err(原因)`。
+pub(crate) type PsAliases = Result<std::collections::BTreeMap<String, String>, String>;
+
+/// 本机那一份（起一次、进程内缓存；非 Windows 上没有 PowerShell 要问 ⇒ 空表）。
+fn ps_builtin_aliases() -> &'static PsAliases {
+    static ONE: std::sync::OnceLock<PsAliases> = std::sync::OnceLock::new();
+    ONE.get_or_init(ask_get_alias)
+}
+
+/// `Get-Alias` 那一段的输出（每行 `名字<TAB>指向`）→ 表。名字按 PowerShell 的口径不分大小写（存小写）。
+pub(crate) fn parse_alias_listing(text: &str) -> std::collections::BTreeMap<String, String> {
+    text.lines()
+        .filter_map(|l| l.trim_end().split_once('\t'))
+        .filter(|(n, _)| !n.trim().is_empty())
+        .map(|(n, d)| (n.trim().to_ascii_lowercase(), d.trim().to_string()))
+        .collect()
+}
+
+/// 这个名字撞没撞内建别名（撞了 ⇒ 那句话；问不到 ⇒ 说问不到，不当成「没撞」）。
+pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<String> {
+    match aliases {
+        Ok(m) => m.get(&name.to_ascii_lowercase()).map(|target| {
+            copy_text(
+                "rsShellDialect.ps.nameTakenBuiltinAlias",
+                &[("name", &name.to_string()), ("target", target)],
+            )
+        }),
+        Err(e) => Some(copy_text(
+            "rsShellDialect.ps.builtinAliasUnknown",
+            &[("name", &name.to_string()), ("e", e)],
+        )),
+    }
+}
+
+/// 起一次 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`：只读、不吃任何用户输入。
+/// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。
+#[cfg(windows)]
+fn ask_get_alias() -> PsAliases {
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    let mut cmd = std::process::Command::new("powershell.exe");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-Alias | ForEach-Object { $_.Name + [char]9 + $_.Definition }",
+    ])
+    .stdout(std::process::Stdio::piped());
+    let out = spawn_managed_cmd(
+        &mut cmd,
+        ConsolePolicy::Hidden,
+        Lifetime::JobKillOnClose,
+        StderrSink::Captured,
+    )
+    .and_then(|c| c.wait_with_output())
+    .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let why = format!(
+            "exit {:?}: {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+        tracing::warn!("问 PowerShell 内建别名没问成：{why}");
+        return Err(why);
+    }
+    Ok(parse_alias_listing(&String::from_utf8_lossy(&out.stdout)))
+}
+
+#[cfg(not(windows))]
+fn ask_get_alias() -> PsAliases {
+    Ok(std::collections::BTreeMap::new())
+}
+
 fn on_path(name: &str, exts: &[&str]) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
@@ -663,9 +735,9 @@ impl ShellDialect for PowerShell {
     ///    问的是那份模板本身（`profile_installer::render_cc_code` 渲染出来的那一份），不抄名单；
     /// ② `PATH` 上的同名程序（按 PowerShell 认的那几种扩展名）。函数的优先级高于外部程序 ⇒ 你这条会赢。
     ///
-    /// ⚠ **够不着的一格**：PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
-    /// 撞上它们的别名定义了也敲不到。要问得真准得起一个 PowerShell 跑 `Get-Command`，本机没有（W1 那一族）⇒
-    /// 如实不查，不编一份内建别名清单出来。
+    /// ③ 〔FIX · `设计/71 §8` 第 8 条 · WIN2 #4 读数〕PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
+    /// 撞上它们的别名定义了也敲不到。只在本机（`look_on_path`）问：起一次 PowerShell 跑 `Get-Alias`、进程内缓存
+    /// （[`ps_builtin_aliases`]），不编一份清单；问不到就说问不到。
     fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String> {
         // 只问模板里定义了哪几个函数 —— 与数据目录无关，喂一个占位目录。
         let block =
@@ -684,6 +756,9 @@ impl ShellDialect for PowerShell {
         }
         if !look_on_path {
             return None;
+        }
+        if let Some(note) = builtin_alias_note(name, ps_builtin_aliases()) {
+            return Some(note);
         }
         on_path(name, &["exe", "cmd", "bat", "ps1", "com"]).map(|cand| {
             copy_text(
