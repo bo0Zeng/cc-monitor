@@ -413,6 +413,12 @@ pub(crate) enum Plan {
     Container(Container),
     /// 在**本进程**里设好环境、`cd`、然后 `exec`。
     Direct(Direct),
+    /// 〔FIX · V138〕resume 的那条会话已经在 tmux 会话 `name` 里跑 ⇒ 接上它，不另起一份（`--detach` ⇒ 只报名字）。
+    Rejoin {
+        name: String,
+        sid: String,
+        detach: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -861,6 +867,20 @@ pub(crate) fn build(
         });
     }
 
+    // ── resume 先查是否已在跑（V138「只看不吃 `--resume` 以复用 tmux 名」· `设计/71 §8` 第 12 条）──
+    //    在跑 ⇒ 接上它，不另起第二份（两份 claude 同写一份记录）。判「在跑」只问避让那同一份快照。
+    if let Some((sid, name)) = o
+        .resumes
+        .as_deref()
+        .and_then(|sid| taken.and_then(|t| t.running(sid)).map(|n| (sid, n)))
+    {
+        return Ok(Plan::Rejoin {
+            name: name.to_string(),
+            sid: sid.to_string(),
+            detach: o.detach,
+        });
+    }
+
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
@@ -1047,6 +1067,14 @@ pub(crate) fn build(
 pub(crate) fn render(plan: &Plan) -> String {
     match plan {
         Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:"))),
+        // 在不在 tmux 里不进 `--ccm-print`（`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
+        Plan::Rejoin {
+            name, detach: true, ..
+        } => format!("echo {}", sq(&format!("ccm-session={name}"))),
+        Plan::Rejoin { name, .. } => {
+            let t = sq(&format!("={name}:"));
+            format!("if [ -n \"${{TMUX:-}}\" ]; then tmux switch-client -t {t}; else tmux attach -t {t}; fi")
+        }
         Plan::Container(c) => render_container(c),
         Plan::Direct(d) => render_direct(d),
     }

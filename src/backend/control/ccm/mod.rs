@@ -491,7 +491,15 @@ fn execute(plan: Plan) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--ccm-print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
-        Plan::Attach { .. } => exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH),
+        Plan::Attach { .. } | Plan::Rejoin { .. } => {
+            if let Plan::Rejoin { name, sid, .. } = &plan {
+                eprintln!(
+                    "{}",
+                    copy_text("beCcm.execute.rejoin", &[("sid", sid), ("name", name)])
+                );
+            }
+            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH)
+        }
         Plan::Container(c) => {
             // 🔴 〔`K-R96` 09-12〕**这里从前有一段退让** —— 它只发生在真跑这条路上，
             //    于是 `--ccm-print` 吐的名字与真跑起出来的名字**可以不一样**。

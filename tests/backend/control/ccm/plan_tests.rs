@@ -1485,3 +1485,68 @@ fn a_launcher_is_one_command_fragment_from_the_shared_whitelist() {
         );
     }
 }
+
+// ───────── 〔FIX · V138「ccm 只看不吃 `--resume` 以复用 tmux 名」· `设计/71 §8` 第 12 条〕resume 先查是否已在跑 ─────────
+// 守的要求（V138 逐字）：「ccm 只「看」不「吃」`--resume` / `--continue` 以复用 tmux 名」；主会话裁：在跑 ⇒ 接上它，不另起。
+
+fn snapshot_rows(rows: &[(&str, &str)]) -> TakenNames {
+    let rows: Vec<crate::common::session_snapshot::SessionRow> = rows
+        .iter()
+        .map(|(n, s)| crate::common::session_snapshot::SessionRow {
+            name: (*n).to_string(),
+            ccm_sid: (*s).to_string(),
+        })
+        .collect();
+    crate::common::session_snapshot::SessionSnapshot::with_prober(move || Ok(rows.clone()))
+        .taken_names()
+        .expect("固定夹具问得到")
+}
+
+/// ★ 快照里有 `@ccm_sid` 对上的 tmux 会话 ⇒ 三种写法的 resume（直路 / 容器路 / `--detach`）都接上它；对不上 / 没给值 ⇒ 照旧起。
+#[test]
+fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
+    let snap = snapshot_rows(&[("other", ""), ("work", "sid-1"), ("third", "sid-9")]);
+    let t = AccountTable::default();
+    let rejoin = |detach| Plan::Rejoin {
+        name: "work".into(),
+        sid: "sid-1".into(),
+        detach,
+    };
+    for (args, want) in [
+        (&["--resume", "sid-1"][..], Some(rejoin(false))),
+        (&["-r", "sid-1", "--model", "x"][..], Some(rejoin(false))),
+        (&["--resume=sid-1"][..], Some(rejoin(false))),
+        (
+            &["--ccm-tmux", "--resume", "sid-1"][..],
+            Some(rejoin(false)),
+        ),
+        (
+            &["--ccm-tmux", "--detach", "--resume", "sid-1"][..],
+            Some(rejoin(true)),
+        ),
+        (&["--resume", "sid-2"][..], None),
+        (&["--resume"][..], None),
+        (&["--continue"][..], None),
+        (&["-p", "sid-1"][..], None),
+    ] {
+        let got = plan_of_with(args, &env(), &t, Some(&snap));
+        match want {
+            Some(w) => assert_eq!(got, w, "{args:?}"),
+            None => assert!(
+                !matches!(got, Plan::Rejoin { .. }),
+                "{args:?} 不该接：{got:?}"
+            ),
+        }
+    }
+    // 问不到快照 ⇒ 判不了「在跑」⇒ 照旧起（与避让同一个诚实降级）。
+    assert!(!matches!(
+        plan_of_with(&["--resume", "sid-1"], &env(), &t, None),
+        Plan::Rejoin { .. }
+    ));
+    // `--ccm-print` 吐的就是真跑那一行：在不在 tmux 里是配方，不是宿主状态。
+    assert_eq!(
+        render(&rejoin(false)),
+        "if [ -n \"${TMUX:-}\" ]; then tmux switch-client -t '=work:'; else tmux attach -t '=work:'; fi"
+    );
+    assert_eq!(render(&rejoin(true)), "echo 'ccm-session=work'");
+}
