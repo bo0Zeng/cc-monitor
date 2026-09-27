@@ -750,6 +750,7 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
 }
 
 /// 〔VIS2〕接线：目标那一趟的竞速与经跳板那一次握手都记进同一格、那一格进 `Linked`；跳板自己那一趟另开一格。带正控。
+/// 〔FIX · `设计/99 §2 ㊶` 第二问「只当跳板用的机器一直 TOFU（设计没写）」〕跳板那一格也进 `Linked`（`jump_fingerprints`），界面按那一台自己固化。
 #[test]
 fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
     let prod =
@@ -764,7 +765,21 @@ fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
         1,
         "目标那一趟的竞速没拿到那一格"
     );
-    assert_eq!(n(body, "&Arc::default(),"), 1, "跳板那一趟该另开一格");
+    assert_eq!(
+        n(body, "                &jump_reported,\n"),
+        1,
+        "跳板那一趟该另开一格"
+    );
+    assert_eq!(
+        n(body, "&Arc::default(),"),
+        0,
+        "跳板那一趟的指纹又被丢进一格没人读的临时格"
+    );
+    assert_eq!(
+        n(body, "let jump_fingerprints = jump_reported.lock()"),
+        1,
+        "跳板那一格没交进 `Linked`"
+    );
     assert_eq!(
         n(body, "reported: Arc::clone(&reported),"),
         1,
@@ -783,7 +798,7 @@ fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
     );
     assert_eq!(
         n(&format!("{body}\n&Arc::default(),"), "&Arc::default(),"),
-        2,
+        1,
         "量具正控"
     );
 }

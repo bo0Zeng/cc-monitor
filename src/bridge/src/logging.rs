@@ -501,17 +501,19 @@ fn write_diagnostics_to_config(
         path: vec!["diagnostics".to_string()],
         value,
     };
-    crate::config::patch_config_at(&monitor_data_dir.join("config.json"), &[edit]).map_err(|e| {
-        match e {
-            // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
-            //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
-            crate::config::ConfigWriteError::Unreadable { path, detail } => copy_text(
-                "rsLogging.diagnostics.badConfig",
-                &[("path", &path.display().to_string()), ("e", &detail)],
-            ),
-            other => other.to_string(),
-        }
-    })
+    crate::config::patch_config_at(&monitor_data_dir.join("config.json"), &[edit])
+        .map(|_| ())
+        .map_err(|e| {
+            match e {
+                // 〔S5 · 第四波 · D4 / D7〕读不懂 ⇒ **不写**，说清为什么。从前这里退成 `{}` 再整份写回 ——
+                //   用户手填的那份（哪怕只是少了一个逗号）连同里面别的设置被静默盖成只剩 `diagnostics` 一格。
+                crate::config::ConfigWriteError::Unreadable { path, detail } => copy_text(
+                    "rsLogging.diagnostics.badConfig",
+                    &[("path", &path.display().to_string()), ("e", &detail)],
+                ),
+                other => other.to_string(),
+            }
+        })
 }
 
 // ===== 文件信息（IPC get_log_file_info 用） =====

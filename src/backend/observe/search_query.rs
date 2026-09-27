@@ -207,7 +207,7 @@ static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
 /// 〔FIX · `99 §2 ㊵` 第二问〕常驻索引最多留这么多字节的可搜文本（[`FileEntry::weight`] 的和）。按最近优先留；
 /// 留不下的那几份照样读、照样搜，只是不留（下一问再读）⇒ 答案与不设上界逐字相等，变的只是那几份的读盘。
 /// 本机正文约 11 MB、勾过「含工具」约 40 MB（`SX1.md §4`）⇒ 本机整份都留得下；历史大一个数量级的远端封在这里。
-pub(crate) const RESIDENT_BUDGET: usize = 64 << 20;
+pub(crate) const RESIDENT_MAX_BYTES: usize = 64 << 20;
 
 /// 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
 fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> {
@@ -227,7 +227,7 @@ pub fn warm_in_background(agent_home: PathBuf) {
         .spawn(move || {
             let (files, kept) = warm(&agent_home);
             tracing::info!(
-                "全文搜索索引：后台建好 {files} 份，常驻 {kept} 字节（上界 {RESIDENT_BUDGET}）"
+                "全文搜索索引：后台建好 {files} 份，常驻 {kept} 字节（上界 {RESIDENT_MAX_BYTES}）"
             );
         });
     if let Err(e) = spawned {
@@ -293,13 +293,13 @@ pub(crate) struct SearchIndex {
     files: BTreeMap<PathBuf, FileEntry>,
     /// 上一问读盘的账（判据 J3 看它）。
     last: Refresh,
-    /// 常驻上界（生产恒为 [`RESIDENT_BUDGET`]；判据用小的量「留不下」那一格）。
+    /// 常驻上界（生产恒为 [`RESIDENT_MAX_BYTES`]；判据用小的量「留不下」那一格）。
     budget: usize,
 }
 
 impl Default for SearchIndex {
     fn default() -> Self {
-        Self::with_budget(RESIDENT_BUDGET)
+        Self::with_budget(RESIDENT_MAX_BYTES)
     }
 }
 
