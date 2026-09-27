@@ -286,3 +286,92 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
     assert_eq!(last(), grew, "追加 n 字节 ⇒ 只读见证 ＋ n");
     std::fs::remove_dir_all(&home).ok();
 }
+
+// ───────────────────────── 〔FIX · `设计/99 §2 ㊵`〕 ─────────────────────────
+// 守的要求（`99 §2 ㊵` 逐字）：「冷首趟仍全读（起来就后台建，还是落盘）· 常驻内存无上界（本机约 11 MB，大历史的远端可能几百 MB）」。
+// 主会话裁：起来就后台建（只在内存）＋ 有界（按最近优先留到上界，留不下的照搜不留）。
+
+/// ★ 预热之后的第一问一个字节都不读（冷首趟挪进了后台），且答案与新建索引逐字节相等。
+#[test]
+fn fix_after_the_warm_up_the_first_question_reads_nothing() {
+    let home = build_corpus("warm");
+    let key = projects_root(&home).canonicalize().expect("规范化");
+    let (read, kept) = warm(&home);
+    let n = 9; // 与 J3 同一份人群（build_corpus 的会话文件数）
+    assert_eq!((read, kept > 0), (n, true), "预热没把整棵读进来");
+    let mut got = Vec::new();
+    search_into(&home, "docker", &[], &mut got).expect("search ok");
+    let last = RESIDENT.lock().expect("锁").get(&key).map(|i| i.last);
+    assert_eq!(
+        last,
+        Some(Refresh {
+            full: 0,
+            appended: 0,
+            reused: n,
+            bytes: 0
+        }),
+        "预热过的第一问还在读盘"
+    );
+    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let mut want = Vec::new();
+    SearchIndex::default()
+        .search(&fence, "docker", &parse_opts(&[]), &mut want)
+        .expect("search ok");
+    assert_eq!(
+        String::from_utf8_lossy(&got),
+        String::from_utf8_lossy(&want)
+    );
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// ★ 有界：上界只够留几份时，每一问的答案与不设上界逐问逐行相等；常驻的字节不超上界、留下的恰是按最近优先装得下的那几份。
+#[test]
+fn fix_a_bounded_index_answers_like_an_unbounded_one_and_keeps_the_most_recent() {
+    let home = build_corpus("bound");
+    let fence = Fence::at(&projects_root(&home)).expect("围栏");
+    let mut free = SearchIndex::with_budget(usize::MAX);
+    let (want, _) = ask_all(&mut free, &home);
+    let order: Vec<(PathBuf, usize)> = session_files(&fence)
+        .into_iter()
+        .filter_map(|(p, _)| free.files.get(&p).map(|e| (p, e.weight)))
+        .collect();
+    // 上界 = 最近两份之和 ⇒ 至少丢一份（反空真），最近那份一定留。
+    let budget = order[0].1 + order[1].1;
+    let mut expect_kept = BTreeMap::new();
+    let mut sum = 0usize;
+    for (p, w) in &order {
+        if sum + w <= budget {
+            sum += w;
+            expect_kept.insert(p.clone(), ());
+        }
+    }
+    assert!(expect_kept.len() < order.len(), "上界没丢掉任何一份");
+    let mut bounded = SearchIndex::with_budget(budget);
+    for round in 0..2 {
+        let (got, _) = ask_all(&mut bounded, &home);
+        assert_eq!(got, want, "第 {round} 趟：有界索引的答案 ≠ 不设上界");
+        assert!(
+            bounded.kept() <= budget,
+            "常驻 {} 超了上界 {budget}",
+            bounded.kept()
+        );
+        let kept: Vec<&PathBuf> = bounded.files.keys().collect();
+        assert_eq!(
+            kept,
+            expect_kept.keys().collect::<Vec<_>>(),
+            "留下的不是按最近优先装得下的那几份"
+        );
+    }
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// 接线（文本，如实登记：按行为量要起真二进制再从外面看索引）：`main.rs` 起来就调预热，恰好一处。
+#[test]
+fn fix_main_warms_the_search_index_once() {
+    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    guard_core::find_pinned(
+        &main,
+        "observe::search_query::warm_in_background(agent_home.clone());",
+    )
+    .unwrap_or_else(|e| panic!("`main.rs` 里预热不是恰好一处：{e}"));
+}
