@@ -1850,7 +1850,7 @@ run_e2e ccm-rbind-title  8
 # ⚠ **新增判据落在别处，不在这四格里**：backend 那格 676 → 677（容器路三条转发那条）。
 # 〔2026-09-24 第二波 MC1〕46 → 48：新增两格「设了 CCM_SELF 也不被读」＋ 正控（后端只认 self_invocation）。
 # 〔09-26 AL3 · V138 / V142–V145〕48 → 53：`--cwd ../x` 补绝对 · `new` 保留 · 位置词 `attach` 交 claude · `--ccm-tmux` / `--ccm-agent` 让名 · 启动器拆词各一格（现打 53）。
-run_e2e ccm-cli               56
+run_e2e ccm-cli               58
 # 🔴 〔`K-R61` 09-11〕39 → **42**：C 组加了三格（`capabilities=` 声明
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
