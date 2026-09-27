@@ -12045,6 +12045,11 @@
       "zh": "嵌套环境变量的键表是空的，会渲染出一句空的 unset",
       "args": []
     },
+    "rsPayload.relay.userBaseUrl": {
+      "kind": "body",
+      "zh": "cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式",
+      "args": []
+    },
     "rsPayload.relayUrl.bad": {
       "kind": "error",
       "zh": "中转地址格式不对，不能拼进命令：{value}（要 http://127.0.0.1:<端口>/s|t/<两段>）",
