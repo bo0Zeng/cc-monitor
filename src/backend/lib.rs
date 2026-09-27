@@ -604,7 +604,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4r-ccm-is-backend**（2026-09-27，E2 合并那一拍）：`ccm` 就是后端本体（本机远端各一个文件 `~/.cc-monitor/bin/ccm`，shim / 副本 / `backendPath` 删）·
 /// V151 `ccm [交给 claude 的…] -- [ccm 自己的…]`（按最后一个 `--` 切，后端词只紧跟打头的 `--`；后端调自己一律带 `--`）· `--ccm-print` 归 ccm、帧命令 ＋1 `ccm-probe` ·
 /// V146 载荷先看用户自设的 `ANTHROPIC_BASE_URL`。
-pub const BUILD_ID: &str = "p4r-ccm-is-backend";
+///
+/// ★★★ **p4s-wave-b-train**（2026-09-27，B 段合并列车）：子命令 ＋3 `--files-extract`（解压，挡 zip-slip）· `--files-read-chunk`（按字节寻址分块读）·
+/// `--resync`（V149 对齐：与起步初扫同一个 `reconcile_sessions`）。＋ 行为 / 协议：hello additive `uncancellable` · 身份标签在 pidfile 重写与 tmux 探测到达时对账 ·
+/// seq 跨截断换代（`session_file_reread` ＋ `SeqCounter::restart`）· `Gap.to_seq` 可缺 · A6 退休前补读 · 注入噪声规则一份（`search-core::user_text`）·
+/// 搜索索引起来就后台建、常驻 64 MiB 上界 · `--stdin-line` 扩到 argv 一族 · ack 带 `jump_fingerprints` · ccm resume 在跑就接上 · 全景 `--probe` 形状代号 · 凭据模板说明进文案表。
+pub const BUILD_ID: &str = "p4s-wave-b-train";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
