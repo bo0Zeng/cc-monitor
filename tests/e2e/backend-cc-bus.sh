@@ -159,8 +159,8 @@ _el=$(( $(date +%s) - _t0 ))
 chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外面掐）" \
   "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
 chk "  码是 timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err8.txt" 2>/dev/null)" "timed_out"
-chk "  消息说得出去哪儿看（flock / *.lock）" \
-  "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c 'flock')" "1"
+chk "  消息说得出多半卡在哪（cc-bus 的锁；〔TAIL〕flock 是禁档词，句子改说「锁」）" \
+  "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c '锁')" "1"
 
 echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
 # ★ 真事故：CLI 入口原来从 `fields` **派生**「要不要读 stdin」，而 `fields` 是

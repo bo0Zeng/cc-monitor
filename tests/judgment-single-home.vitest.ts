@@ -537,6 +537,10 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     TABLE_JSON: NONE,
   },
   "creds-core": {
+    // 〔TAIL〕monitor 数据目录的规则搬进这里（远端常驻后端按同一份推默认路径）；TS 侧没有孪生。
+    DATA_DIR_ENV: NONE,
+    HISTORY_METADATA_FILE: NONE,
+    monitor_data_dir: NONE,
     ACCOUNTS_FIELD: NONE,
     ALL: NONE,
     AUTH_STYLE_FIELD: NONE,
