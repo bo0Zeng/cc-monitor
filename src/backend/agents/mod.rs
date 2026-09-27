@@ -123,6 +123,44 @@ pub(crate) struct Adapter {
     /// （`accounts::upstream` 的每 agent 一行表），与「跟着适配层」不是同一格（`设计/20 §3.1` 自陈待对齐）。
     /// 今天上游选择**只从这里读**（`default_upstreams`）—— 加一家的默认上游，改的就是注册表里那一行。
     pub(crate) upstream: Option<DefaultUpstream>,
+    /// 〔SH1 · V137〕这一家的 **MCP 读**（server 表住哪几层、项目表住哪 —— 那一家的格式知识）。`None` = 这一家今天没有。
+    /// 收进注册表而不是让帧面宿主直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
+    pub(crate) mcp: Option<McpFace>,
+}
+
+/// 〔SH1 · V137〕一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
+#[derive(Clone, Copy)]
+pub(crate) struct McpFace {
+    pub(crate) read: fn(Option<&Path>) -> McpRead,
+}
+
+/// 〔SH1 · V137〕一家读出来的 MCP 事实：条目（user / local / project）· 用过的项目目录（`dirs`）· 读不出来的那几份（说出来，不当成空）。
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct McpRead {
+    pub entries: Vec<McpEntry>,
+    pub dirs: Vec<String>,
+    pub problems: Vec<String>,
+}
+
+/// 一条 MCP server：`server` 原样（宽容，未知字段不丢）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct McpEntry {
+    pub scope: &'static str,
+    pub name: String,
+    pub server: serde_json::Value,
+    pub source: String,
+}
+
+/// 〔SH1 · V137〕注册表里第一家有 MCP 读面的，读一遍（今天只有 Claude 一家）。`None` = 没有哪一家认得 MCP。
+pub(crate) fn mcp_read_among(registry: &[Adapter], project_dir: Option<&Path>) -> Option<McpRead> {
+    registry
+        .iter()
+        .find_map(|a| a.mcp.map(|f| (f.read)(project_dir)))
+}
+
+/// [`mcp_read_among`] 对本机注册表 —— 帧命令 `mcp-read` 的读法入口。
+pub(crate) fn mcp_read(project_dir: Option<&Path>) -> Option<McpRead> {
+    mcp_read_among(REGISTRY, project_dir)
 }
 
 /// 〔NT2 · V25〕一家的默认上游：路由里叫它什么 · 盖掉内置默认的那个旋钮 · 内置默认。三格焊在一起
@@ -227,13 +265,13 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

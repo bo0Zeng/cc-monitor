@@ -37,7 +37,7 @@
 import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
-import { LOCAL_ORIGIN } from "../ipc/origin";
+import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
@@ -45,6 +45,7 @@ import type { Alias } from "../generated/Alias";
 import type { AliasRender } from "../generated/AliasRender";
 import type { StartupFile } from "../generated/StartupFile";
 import type { Shell } from "../generated/Shell";
+import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { makeInfoIcon } from "./info-icon";
 import { hostOs } from "./host-os";
@@ -122,11 +123,12 @@ const PREVIEW_BUDGET_MS = 10_000;
  * 语境是「家目录里的一个新终端」（后端那一侧写死，`control/ccm/plan.rs::Env::for_preview`）。
  * 本文件一个字节的 shell 都不拼：`line` 原样上屏。点了才问（不在首开的那几发里）。
  */
-export async function previewAlias(a: Alias): Promise<string> {
+// 〔AL2〕问的是**那台**机器的后端（`origin`）：本机远端同一条帧命令。
+export async function previewAlias(origin: Origin, a: Alias): Promise<string> {
   try {
     const budget = budgetWithin(PREVIEW_BUDGET_MS);
     const body = jsonBody({ args: a.args });
-    const reply = await chan.call(LOCAL_ORIGIN, "ccm-print", body, budget);
+    const reply = await chan.call(origin, "ccm-print", body, budget);
     const got = readJson(reply) as { line?: unknown };
     return copyText("machineAliases.aliasPreview.line", {
       name: a.name,
@@ -300,19 +302,26 @@ function button(label: string, variant: string, onClick: () => void): HTMLButton
 }
 
 /**
- * 本机那张卡上的 ②。〔AL1c〕两个平台同一份，`platform` 是入参（见文件头注）。
+ * 机器卡上的 ②。〔AL1c〕两个平台同一份，`platform` 是入参；〔AL2〕本机远端同一份，`origin` 是入参（`设计/71 §5` · `§6`）。
  *
- * @param platform 这台机器用哪种 shell 的方言（本机 = [`localShell`]）。
- * @param loadAccounts 「为每个账号加一条」要的账号名。由调用方给（本机那条读口）。
+ * @param platform 这台机器用哪种 shell 的方言（本机 = [`localShell`]；远端恒 `posix`，`01 §6.7b` 表 B）。
+ * @param origin 那台机器（取值函数：远端卡改名后跟着它走）。六条 `aliases_*` 都带它。
+ * @param loadAccounts 「为每个账号加一条」要的账号名（那台机器的账号）。
+ * @param onBlockDone 装 / 卸别名块之后（远端卡拿它记机器列表那一格；`error` 为空 = 成了）。
  */
 export function buildAliasManager(opts: {
   platform: Shell;
+  origin: () => Origin;
   loadAccounts: () => Promise<string[]>;
+  onBlockDone?: (verb: "install" | "remove", error: string | null) => void;
 }): HTMLElement {
   const shell = opts.platform;
   const copy = platformCopy()[shell];
+  // 〔AL2〕只本机挂的几格（平台格 · 本机 ccm 入口 · 用系统编辑器打开）问的是 monitor 这台，远端不挂。
+  const local = isLocalOrigin(opts.origin());
   const wrap = el("details", "ccm-alias-gen machine-aliases");
   wrap.dataset.shell = shell;
+  wrap.dataset.origin = opts.origin();
   wrap.appendChild(el("summary", "", copyText("machineAliases.manager.title")));
   wrap.appendChild(
     el(
@@ -404,6 +413,8 @@ export function buildAliasManager(opts: {
   // ── 渲染结果（第①跳）────────────────────────────────────────────────────
   const problemsBox = el("div", "settings-hint machine-aliases-problems");
   wrap.appendChild(problemsBox);
+  // 〔AL2〕远端撞名只核自带别名块（monitor 的 PATH 不是那台的 PATH，`W5-ALIAS.md §2.2`）—— 说一句，不为它加帧命令。
+  if (!local) wrap.appendChild(el("div", "settings-hint", copyText("machineAliases.remote.pathUnchecked")));
   let rendered: AliasRender | null = null;
   const paste = buildPasteBlock({
     text: () => rendered?.code ?? "",
@@ -472,15 +483,18 @@ export function buildAliasManager(opts: {
   const rcWarn = el("div", "");
   const rcButtons = el("div", "settings-cc-profile-buttons");
   const installBtn = button(copyText("machineAliases.rc.install"), "", () =>
-    void runRc("install", (path) => commands.aliases_block_install({ rcPath: path, withCc: withCc.checked })),
+    void runRc("install", (path) =>
+      commands.aliases_block_install({ origin: opts.origin(), rcPath: path, withCc: withCc.checked }),
+    ),
   );
   installBtn.title = copy.blockInstallTitle;
   const uninstallBtn = document.createElement("button");
   uninstallBtn.type = "button";
   uninstallBtn.className = "settings-btn";
-  uninstallBtn.textContent = copyText("machineAliases.rc.uninstall");
+  // 〔AL2〕远端卡那一颗按 V134 叫「卸载 ccm」；本机那颗要不要随之改名还待用户（主会话现场），不在这里裁。
+  uninstallBtn.textContent = local ? copyText("machineAliases.rc.uninstall") : copyText("machineCard.aliases.uninstall");
   uninstallBtn.addEventListener("click", () =>
-    void runRc("remove", (path) => commands.aliases_block_remove({ rcPath: path })),
+    void runRc("remove", (path) => commands.aliases_block_remove({ origin: opts.origin(), rcPath: path })),
   );
   uninstallBtn.title = copyText("machineAliases.rc.uninstallHint");
   const previewBtn = button(copyText("machineAliases.rc.preview"), "", () => void onPreview());
@@ -489,7 +503,7 @@ export function buildAliasManager(opts: {
   openBtn.title = copyText("machineAliases.rc.openHint");
   const rescanBtn = button(copyText("machineAliases.rc.rescan"), "", () => void readBack(true));
   rescanBtn.title = copyText("machineAliases.rc.rescanHint");
-  rcButtons.append(installBtn, uninstallBtn, previewBtn, openBtn, rescanBtn);
+  rcButtons.append(installBtn, uninstallBtn, previewBtn, ...(local ? [openBtn] : []), rescanBtn);
   const rcLegacy = document.createElement("pre");
   rcLegacy.className = "ccm-rc-block-legacy";
   rcLegacy.hidden = true;
@@ -591,7 +605,7 @@ export function buildAliasManager(opts: {
         button(copyText("machineAliases.aliasPreview.button"), "", () => {
           if (!previewOut.isConnected) row.after(previewOut);
           previewOut.textContent = copyText("machineAliases.aliasPreview.asking");
-          void previewAlias(a).then((t) => {
+          void previewAlias(opts.origin(), a).then((t) => {
             previewOut.textContent = t;
           });
         }),
@@ -610,7 +624,7 @@ export function buildAliasManager(opts: {
   const changed = async (): Promise<void> => {
     renderList();
     try {
-      rendered = await commands.aliases_render({ aliases: list, shell });
+      rendered = await commands.aliases_render({ origin: opts.origin(), aliases: list, shell });
     } catch (e) {
       rendered = null;
       problemsBox.textContent = copyText("machineAliases.changed.failed", { e: String(e) });
@@ -682,7 +696,7 @@ export function buildAliasManager(opts: {
    */
   const readBack = async (keepList: boolean): Promise<void> => {
     try {
-      const got = await commands.aliases_read({ shell, rcPath: otherRc });
+      const got = await commands.aliases_read({ origin: opts.origin(), shell, rcPath: otherRc });
       if (!keepList) list = got.aliases;
       const head = got.exists
         ? copyText("machineAliases.readBack.count", { path: got.aliasPath, n: got.aliases.length })
@@ -701,7 +715,8 @@ export function buildAliasManager(opts: {
   const load = async (): Promise<void> => {
     // 本机 ccm 那一格是 POSIX 的读法（`$HOME/.cc-monitor/bin/ccm` 与 PATH 上那一份）；
     // Windows 上「终端找不找得到 ccm」由用户级 PATH 那一格答。
-    if (shell === "posix") {
+    wrap.dataset.origin = opts.origin();
+    if (shell === "posix" && local) {
       try {
         const st = await commands.local_ccm_entry_status();
         pathCcm.hidden = !st.message;
@@ -719,6 +734,7 @@ export function buildAliasManager(opts: {
     writeBtn.disabled = true;
     try {
       const r = await commands.aliases_install({
+        origin: opts.origin(),
         aliases: list,
         rcPath: rcSel.value || null,
         shell,
@@ -739,7 +755,7 @@ export function buildAliasManager(opts: {
     if (!raw) return;
     otherErr.textContent = "";
     try {
-      const got = await commands.aliases_read({ shell, rcPath: raw });
+      const got = await commands.aliases_read({ origin: opts.origin(), shell, rcPath: raw });
       otherRc = raw;
       cands = got.rcCandidates;
       fillRcOptions(cands);
@@ -759,7 +775,11 @@ export function buildAliasManager(opts: {
     rcBlock.hidden = !c;
     if (!c) return;
     const b = c.block;
-    if (b.present) {
+    if (c.unreadable) {
+      // 〔AL2〕在盘上、那台后端却读不了 ⇒ 照实说（别把「读不了」说成「没有别名块」）。
+      rcStatus.textContent = copyText("machineAliases.rcStatus.unreadable", { path: c.path, why: c.unreadable });
+      rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn";
+    } else if (b.present) {
       const version = b.version ? `（${b.version}）` : "";
       // 〔TL1 · 4C〕旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上（`71 §6.1`）。
       rcStatus.textContent = b.outdated
@@ -811,6 +831,7 @@ export function buildAliasManager(opts: {
     }
     installBtn.disabled = false;
     uninstallBtn.disabled = false;
+    opts.onBlockDone?.(verb, failed);
     // 成功失败都重读：盘上现在是什么样，就显示什么样（清单那一格不动 —— 人可能还没写入）。
     await readBack(true);
     if (failed) rcStatus.textContent = failed;
@@ -822,7 +843,7 @@ export function buildAliasManager(opts: {
     const path = rcSel.value;
     if (!path) return;
     try {
-      const code = await commands.aliases_block_render({ rcPath: path, withCc: withCc.checked });
+      const code = await commands.aliases_block_render({ origin: opts.origin(), rcPath: path, withCc: withCc.checked });
       showPreviewModal(copyText("machineAliases.preview.title", { path }), code);
     } catch (e) {
       showActionFailureToast(copyText("machineAliases.preview.failed"), String(e));
@@ -848,7 +869,7 @@ export function buildAliasManager(opts: {
   wrap.addEventListener("toggle", () => {
     if (!wrap.open || loaded) return;
     loaded = true;
-    if (shell === "powershell") {
+    if (shell === "powershell" && local) {
       psExtras = buildPsExtras();
       psSlot.append(psExtras.element, buildUserPathBlock());
       psExtras.loadNow();
@@ -858,54 +879,8 @@ export function buildAliasManager(opts: {
   return wrap;
 }
 
-/**
- * 〔MC1 · 2026-09-24〕远端机器卡上 ②「别名」的那一半：**把本机那份清单生成出来，复制去那台机器贴**。
- *
- * 为什么只给「手贴」：`71 §12.6` 的②有两种模式 ——「app 代写」与「用户手贴」。远端的 app 代写
- * 要**叫那台机器的后端自己写**（`71 §12.6.3`），那是把写挪进后端，本路停下报备没做；
- * 也**不走** monitor 这一侧的 SFTP 再长一条写路（那正是 `71 §12.5` 要收掉的第三份）。
- * 渲染这一跳是纯的，本机算出来的 POSIX 文本拿去远端一样能用。
- *
- * 构造零 I/O：第一次展开才读本机清单、问一次渲染。
- */
-export function buildRemoteAliasPaste(): HTMLElement {
-  const wrap = el("details", "ccm-alias-gen");
-  wrap.appendChild(el("summary", "", copyText("machineAliases.remote.copyTitle")));
-  const status = el("div", "settings-hint");
-  wrap.appendChild(status);
-  let code = "";
-  let bad = "";
-  const paste = buildPasteBlock({
-    text: () => code,
-    target: copyText("machineAliases.remote.pasteTarget"),
-    mergeNote: copyText("machineAliases.remote.mergeNote"),
-    activation: copyText("machineAliases.remote.activation"),
-    invalidReason: () => bad || (code ? null : copyText("machineAliases.invalid.notYet")),
-    multiline: true,
-    rows: 6,
-    className: "ccm-alias-gen-out",
-  });
-  wrap.appendChild(paste.element);
-  let loaded = false;
-  wrap.addEventListener("toggle", () => {
-    if (!wrap.open || loaded) return;
-    loaded = true;
-    void (async () => {
-      try {
-        // 读的是**本机**那份清单（本机是哪种方言就读哪一份）；远端是 POSIX（后端只发 Linux 的产物）⇒ 按 POSIX 渲染。
-        const got = await commands.aliases_read({ shell: localShell() });
-        const r = await commands.aliases_render({ aliases: got.aliases, shell: "posix" });
-        code = r.code;
-        bad = r.problems.length ? copyText("machineAliases.remote.fixFirst") : "";
-        status.textContent = copyText("machineAliases.remote.count", { n: got.aliases.length });
-      } catch (e) {
-        status.textContent = copyText("machineAliases.remote.readFailed", { e: String(e) });
-      }
-      paste.refresh();
-    })();
-  });
-  return wrap;
-}
+// 〔AL2 · 第四波 4D〕这里原来是远端卡那一半「把本机的别名清单复制过去贴」（读本机清单、按 POSIX 渲染给人手贴）。
+//   远端卡换成上面同一个 `buildAliasManager`（`origin` = 那台），清单在那台读、在那台写 ⇒ 删。
 
 /**
  * 🔴 `K-R135`（`R85`）：**用户级 PATH 那一格** —— 现在状态 · 一个按钮加 · 一个按钮撤。

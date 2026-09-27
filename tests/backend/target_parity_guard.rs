@@ -822,6 +822,12 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
          `session_snapshot::global().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
          （`plan::build` 头注的诚实降级），预览照出；它的能力是渲计划，不是 tmux",
     ),
+    // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
+    ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
+    ("tmux-list", "〔SH1〕`watcher::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
+    ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
+    ("plugins-marketplaces", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
+    ("tasks-list", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
 ];
 
 /// `run:` 里没有 `crate::…` 路径的命令（`Run::Builtin` 与就地应答）—— 不在射程，逐条登记。

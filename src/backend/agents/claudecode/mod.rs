@@ -32,6 +32,7 @@
 pub(crate) mod accounts;
 pub(crate) mod assets;
 pub(crate) mod liveness;
+pub(crate) mod mcp;
 pub mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
@@ -69,6 +70,9 @@ pub(crate) fn home() -> Option<std::path::PathBuf> {
 }
 
 /// 〔AS2 · 第四波 4B〕本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
+/// 〔SH1 · V137〕注册表 `mcp` 那一格。
+pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
+
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     scan: assets::scan,
     skills_root: assets::skills_root,

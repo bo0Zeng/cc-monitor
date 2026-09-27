@@ -161,14 +161,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          整跳还得包在 `spawn_blocking` 里（同步阻塞调用不许卡 tokio 线程）——\
          这几样都在出口的射程之外。",
     ),
-    (
-        "backend/control/cc_bus.rs",
-        "local_shell_read",
-        "spawn_managed_tokio",
-        "tokio 那一侧。argv 是 `bash -lc <cc-bus 的读串>`，而 `<读串>` 逐字知道\
-         `~/.cc-bus/agents.tsv` 长什么样 —— 那份文件布局知识只许有一份，\
-         所以它必须以 argv 的形式从这里进去。用 `-lc` 而不是 `-lic`：需求与探针不同。",
-    ),
+    // 〔SH1 · V136〕monitor 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕出表：驾驶舱读面改走后端，monitor 不再起 `bash`。
     (
         "backend/control/local_backend.rs",
         "supervise_with_stdio",

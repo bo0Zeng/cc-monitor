@@ -1665,16 +1665,7 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     /// **默认拒绝**：人群从源码派生，没登记的住址当场红。
     const PLATFORM_TAKE_SITES: &[(&str, usize, &str)] = &[
         ("history.rs", 1, "取值口**自己的定义行** —— 它不是调用点"),
-        (
-            "cc_bus.rs",
-            1,
-            "`resolve_bash` 的平台那一格〔ccbus-win 09-10〕。它不走缝的理由是\
-                 **缝答的不是它要问的东西**：`InjectFactSources` 是「起会话注入」那几件事的取值口，\
-                 而这里只要「是不是 Windows」。\
-                 ⚠ 它**没有**因此自己写 `cfg!(windows)` —— 那句话仍然只有一个家，\
-                 由 `cc_bus::tests::the_bash_cc_bus_runs_is_resolved_in_exactly_one_place` \
-                 从另一头钉住（那条判据要求本文件里 `cfg!(windows)` 恰好 0 处）。",
-        ),
+        // 〔SH1 · V136〕`cc_bus.rs` 那一行（`resolve_bash`〔散文墓碑〕的平台那一格）随驾驶舱 shell 读一起删了。
     ];
     // 抽取器自检：登记 0 处等于给自己开后门（那一行永远命中不了、也永远不会红）。
     for (site, want, _) in PLATFORM_TAKE_SITES {

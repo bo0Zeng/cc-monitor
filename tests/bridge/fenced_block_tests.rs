@@ -168,9 +168,10 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
     installs.sort_unstable();
     installs.dedup();
     // 〔TL1 · 4C〕3 → 2：「本机 POSIX 那一行 source」那一套退役（`71 §6.1`：接上别名文件的那一行只住别名块里）。
+    // 〔AL2 · 第四波 4D〕2 → 1：远端那一套并进同一个装口（`install_to_profile`，门按 `origin` 取）—— 收敛了。
     assert_eq!(
         installs.len(),
-        2,
+        1,
         "「装」那一半今天有 {} 处独立实现（远端 SFTP · 本机 PowerShell；`K-R62` 新加的那条路**借的是本机 \
              PowerShell 那一台安装器**，所以不是另一处；原先的第三处「本机 POSIX 那一行 source」〔TL1〕退役了）。\
              这个数变了就来改它 —— 变小 = 有人收敛了（好事，顺手降账）；变大 = 又长出一套（`KR62D1` 的失效方向）。实得：{installs:?}",
@@ -255,7 +256,7 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
             file_of("profile_installer.rs"),
             &["uninstall"]
         )
-        .contains(&"uninstall_remote_alias_block".to_string()),
+        .contains(&"uninstall_from_profile".to_string()),
         "扫描器在真树上零命中 —— 本条此刻无效，先查剥法别改断言"
     );
 

@@ -44,7 +44,7 @@
 //! 配置面申报」，并要求「每一项都必须能被现有五套工具中的**至少两套**实例化」。
 //!
 //! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说 `cc-acct-iso` 的探测是
-//! 「比对内容指纹」——不对。`acct_iso_deploy.rs::check_remote_acct_iso` 实际跑的是远端
+//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔SH1〕今天 `acct_iso_deploy.rs::acct_iso_status`，问那台后端）实际跑的是远端
 //! `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 再解析 stdout，
 //! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。`.vendor_id` 指纹比对
 //! 发生在**部署决策**那一步（`deploy_decision` 读远端 marker 文件），不是探测。
@@ -72,7 +72,7 @@
 //! 与既有的 `ccm_probe::CcmProbeResult` **同形**、零适配、零生产消费者，
 //! 而且 `version: String` 比对方的 `Option<String>` 还丢了「取不到」这一档。
 //! 我原先把它当作「机制留各家、结果统一」的落点——**发明第二个同形结构不是统一，
-//! 是重复**。按我自己这一轮的尺子（`build_online_cmd` 零调用点被我判为**阻塞**、
+//! 是重复**。按我自己这一轮的尺子（`build_online_cmd`〔散文墓碑〕零调用点被我判为**阻塞**、
 //! `WriteVerdict::is_ok` 只有测试在用就删掉），它该删。统一的结果类型**已经存在**，
 //! 就是 `CcmProbeResult`；T02 真要消费探测结果时直接用它（不够就给它加字段），
 //! 而不是在注册表里再造一个。
@@ -1395,16 +1395,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.sshWhy", &[])),
         site: "launch.rs::ssh_client_available",
     },
-    UnmanagedEnv {
-        id: "pgrep",
-        display_name: Text(|| "pgrep".to_string()),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "pgrep",
-        host: HostScope::Either,
-        why: Text(|| copy_text("rsToolRegistry.env.pgrepWhy", &[])),
-        site: "cc_bus_tests.rs::count_now",
-    },
+    // 〔SH1 · V136〕`pgrep` 那一行摘了：它唯一的 Rust 住址是驾驶舱 shell 读那条「超时不留孤儿」判据的数进程助手，随那条读一起退役。
     UnmanagedEnv {
         id: "xdg-open",
         display_name: Text(|| "xdg-open".to_string()),
@@ -1459,7 +1450,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "~/.local/bin/cc-acct-iso",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalWhy", &[])),
-        site: "acct_iso_deploy.rs::check_remote_acct_iso",
+        site: "acct_iso_deploy.rs::acct_iso_status",
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //

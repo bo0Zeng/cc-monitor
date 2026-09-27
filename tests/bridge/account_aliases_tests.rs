@@ -1,7 +1,42 @@
 use super::*;
 use crate::shell_dialect::Shell;
+use std::path::PathBuf;
 
 const P: Shell = Shell::Posix;
+
+/// 〔AL2 · 第四波 4D〕本机那台（`origin` 只进撞名的 `PATH` 那一格与符号链接围栏）。
+fn local() -> Origin {
+    Origin::local()
+}
+
+/// 〔AL2〕读回口改走门之后的薄包装：落在临时 home 上的替身门当本机后端（写的规则不在这里判，同 `door`）。
+fn read_in(
+    home: &Path,
+    shell: Shell,
+    extra: Option<&str>,
+    bound: u32,
+) -> Result<AliasListing, String> {
+    let door = crate::user_files::tests::DiskDoor::new(home);
+    run(read_via(&door, &local(), shell, extra, bound))
+}
+
+/// 〔AL2〕候选表那一跳同一个替身门。
+fn rc_candidates_in(home: &Path, shell: Shell, extra: Option<&Path>) -> Vec<StartupFile> {
+    let door = crate::user_files::tests::DiskDoor::new(home);
+    let extra = extra.map(|p| p.display().to_string());
+    run(rc_candidates_via(
+        &door,
+        &home.display().to_string(),
+        shell,
+        extra.as_deref(),
+    ))
+    .expect("替身门读候选")
+}
+
+/// 〔AL2〕别名文件在临时 home 下的路径（`alias_file_in` 今天收 / 回字符串：那台机器的写法）。
+fn alias_path(home: &Path, shell: Shell) -> PathBuf {
+    PathBuf::from(alias_file_in(&home.display().to_string(), shell))
+}
 
 /// POSIX 那一行 source（方言那一份的薄包装，判据里用得多）。
 fn source_line(p: &Path) -> String {
@@ -107,17 +142,17 @@ fn rewriting_drops_the_alias_you_deleted() {
         al("bcc", &["--account", "b"]),
     ];
     assert!(
-        run(install_in(&door(&h), &two, None, P))
+        run(install_in(&door(&h), &local(), &two, None, P))
             .unwrap()
             .wrote_alias_file
     );
-    let p = alias_file_in(&h.0, P);
+    let p = alias_path(&h.0, P);
     let after = std::fs::read_to_string(&p).unwrap();
     for a in &two {
         assert!(pinned(&after, &render_line(a, P)), "{after}");
     }
     let one = vec![al("zcc", &["--account", "z"])];
-    run(install_in(&door(&h), &one, None, P)).unwrap();
+    run(install_in(&door(&h), &local(), &one, None, P)).unwrap();
     let after = std::fs::read_to_string(&p).unwrap();
     assert!(
         pinned(&after, &render_line(&one[0], P)),
@@ -137,8 +172,8 @@ fn duplicate_names_are_refused() {
         al("zcc", &["--account", "z"]),
         al("zcc", &["--account", "b"]),
     ];
-    assert!(run(install_in(&door(&h), &two, None, P)).is_err());
-    assert!(!alias_file_in(&h.0, P).exists());
+    assert!(run(install_in(&door(&h), &local(), &two, None, P)).is_err());
+    assert!(!alias_path(&h.0, P).exists());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -157,6 +192,7 @@ fn a_chosen_rc_is_only_checked_never_written() {
     let list = vec![al("zcc", &["--account", "z"])];
     let rep = run(install_in(
         &door(&h),
+        &local(),
         &list,
         Some(&rc.display().to_string()),
         P,
@@ -168,7 +204,7 @@ fn a_chosen_rc_is_only_checked_never_written() {
         before,
         "★ rc 被写了 —— 那一行只许住别名块里"
     );
-    let line = source_line(&alias_file_in(&h.0, P));
+    let line = source_line(&alias_path(&h.0, P));
     let said = rep.notes.join("\n");
     assert!(
         said.contains("还没接上") && said.contains(&line) && said.contains("别名块"),
@@ -197,6 +233,7 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     let before = std::fs::read(&rc).expect("读原文");
     let rep = run(install_in(
         &door(&h),
+        &local(),
         &[al("zcc", &[])],
         Some(&rc.display().to_string()),
         P,
@@ -227,6 +264,7 @@ fn an_rc_with_the_old_file_name_is_not_taken_as_sourced_and_not_rewritten() {
     let before = std::fs::read(&rc).expect("读原文");
     let rep = run(install_in(
         &door(&h),
+        &local(),
         &[al("zcc", &[])],
         Some(&rc.display().to_string()),
         P,
@@ -244,7 +282,7 @@ fn an_rc_with_the_old_file_name_is_not_taken_as_sourced_and_not_rewritten() {
         "zcc() { ccm --account z \"$@\"; }\n",
     )
     .expect("铺旧文件");
-    std::fs::remove_file(alias_file_in(&h.0, P)).expect("摘掉新名那份");
+    std::fs::remove_file(alias_path(&h.0, P)).expect("摘掉新名那份");
     let listing = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         !listing.exists && listing.aliases.is_empty(),
@@ -275,17 +313,24 @@ fn the_source_line_is_a_no_op_when_the_file_is_absent() {
 fn the_rc_path_cannot_escape_home() {
     let h = tmp_home("fence");
     for bad in ["/etc/profile", "/tmp/x.rc", ".bashrc"] {
-        let e =
-            run(install_in(&door(&h), &[al("zcc", &[])], Some(bad), P)).expect_err("该被围栏拒");
+        let e = run(install_in(
+            &door(&h),
+            &local(),
+            &[al("zcc", &[])],
+            Some(bad),
+            P,
+        ))
+        .expect_err("该被围栏拒");
         assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
         assert!(
-            !alias_file_in(&h.0, P).exists(),
+            !alias_path(&h.0, P).exists(),
             "围栏拒了还写了别名文件：{bad}"
         );
     }
     // 正例：home 之内那一份过得去（文件还不在 ⇒ 没接上，照说；别名文件照写）。
     let rep = run(install_in(
         &door(&h),
+        &local(),
         &[al("zcc", &[])],
         Some(&h.0.join(".zshrc").display().to_string()),
         P,
@@ -350,12 +395,12 @@ fn a_name_that_is_already_taken_gets_a_note() {
         "自带别名块里一个函数都没解析出来 —— 这一条会变成空真，先修人群"
     );
     for t in &taken {
-        let note =
-            collision_note(t, P).unwrap_or_else(|| panic!("`{t}` 在自带别名块里就有，却一声不吭"));
+        let note = collision_note(t, P, &local())
+            .unwrap_or_else(|| panic!("`{t}` 在自带别名块里就有，却一声不吭"));
         assert!(note.contains(t), "{note}");
     }
     assert!(
-        collision_note("zzz_no_such_command_anywhere", P).is_none(),
+        collision_note("zzz_no_such_command_anywhere", P, &local()).is_none(),
         "没撞的名字不该报警 —— 一句假警报会让人把所有警报都当噪音"
     );
 }
@@ -377,7 +422,7 @@ fn cch_is_gone_and_the_name_is_free_for_the_user() {
         !crate::profile_installer::builtin_alias_names().contains(&"cch"),
         "`cch` 还定义在 src/shared/ccm-aliases.sh 里 —— 用户逐字说的是「这个不要。删掉。」"
     );
-    if let Some(note) = collision_note("cch", P) {
+    if let Some(note) = collision_note("cch", P, &local()) {
         assert!(
             !note.contains("ccm-aliases.sh"),
             "`cch` 已经不在自带别名块里了，却仍被报成「自带块占了」：{note}"
@@ -417,6 +462,7 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
             al("mo", &["--model", "it's", "--", "--verbose"]),
         ],
         P,
+        &local(),
     );
     assert!(r.problems.is_empty(), "{:?}", r.problems);
     assert_eq!(
@@ -431,8 +477,8 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
         assert!(pinned(&r.code, l), "整份代码里缺这一行：{l}");
     }
     assert_eq!(
-        render(&[al("zcc", &["--account", "z"])], P).code,
-        render(&[al("zcc", &["--account", "z"])], P).code
+        render(&[al("zcc", &["--account", "z"])], P, &local()).code,
+        render(&[al("zcc", &["--account", "z"])], P, &local()).code
     );
 }
 
@@ -477,10 +523,14 @@ fn what_is_installed_reads_back_as_the_same_list() {
             &["--cwd", "/x y", "--agent", "codex", "--", "--foo"],
         ),
     ];
-    let rep = run(install_in(&door(&h), &list, None, P)).expect("写");
+    let rep = run(install_in(&door(&h), &local(), &list, None, P)).expect("写");
     assert!(rep.wrote_alias_file);
-    let on_disk = std::fs::read_to_string(alias_file_in(&h.0, P)).unwrap();
-    assert_eq!(on_disk, render(&list, P).code, "落盘的不是预览的那一份");
+    let on_disk = std::fs::read_to_string(alias_path(&h.0, P)).unwrap();
+    assert_eq!(
+        on_disk,
+        render(&list, P, &local()).code,
+        "落盘的不是预览的那一份"
+    );
     let back = read_in(&h.0, P, None, 0).expect("读回");
     assert!(
         back.exists && back.unparsed.is_empty(),
@@ -490,7 +540,7 @@ fn what_is_installed_reads_back_as_the_same_list() {
     assert_eq!(back.aliases, list);
     // 再写一次同一份 ⇒ 一个字节都不写。
     assert!(
-        !run(install_in(&door(&h), &list, None, P))
+        !run(install_in(&door(&h), &local(), &list, None, P))
             .unwrap()
             .wrote_alias_file
     );
@@ -501,7 +551,7 @@ fn what_is_installed_reads_back_as_the_same_list() {
 #[test]
 fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
     let h = tmp_home("old");
-    let p = alias_file_in(&h.0, P);
+    let p = alias_path(&h.0, P);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(
         &p,
@@ -578,11 +628,11 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     let h = tmp_home("bad");
     let mut list = good.to_vec();
     list.push(bad[1].clone());
-    let e = run(install_in(&door(&h), &list, None, P)).unwrap_err();
+    let e = run(install_in(&door(&h), &local(), &list, None, P)).unwrap_err();
     assert!(e.contains("一条都没写"), "{e}");
-    assert!(!alias_file_in(&h.0, P).exists(), "有一条不合格却写了");
+    assert!(!alias_path(&h.0, P).exists(), "有一条不合格却写了");
     // 重名也是一条问题。
-    let r = render(&[al("z", &[]), al("z", &["--tmux"])], P);
+    let r = render(&[al("z", &[]), al("z", &["--tmux"])], P, &local());
     assert_eq!(r.problems.len(), 1);
 }
 
@@ -780,8 +830,8 @@ fn a_bus_note_without_a_registration_is_refused_like_the_backend_does() {
 #[test]
 fn powershell_duplicates_fold_case() {
     let two = [al("zcc", &[]), al("Zcc", &["--base"])];
-    assert_eq!(render(&two, PS).problems.len(), 1);
-    assert!(render(&two, P).problems.is_empty());
+    assert_eq!(render(&two, PS, &local()).problems.len(), 1);
+    assert!(render(&two, P, &local()).problems.is_empty());
 }
 
 /// PowerShell 传不过去的值在渲染前就拦住（方言答「传不传得过去」，通用层判「那就不合格」）。
@@ -810,13 +860,14 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         h.0.join("Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1");
     let rep = run(install_in(
         &door(&h),
+        &local(),
         &list,
         Some(&profile.display().to_string()),
         PS,
     ))
     .expect("写");
     assert!(rep.wrote_alias_file, "{rep:?}");
-    let ours = alias_file_in(&h.0, PS);
+    let ours = alias_path(&h.0, PS);
     assert!(ours.ends_with(".cc-monitor/aliases.ps1"), "{ours:?}");
     let bytes = std::fs::read(&ours).unwrap();
     assert_eq!(
@@ -827,7 +878,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     let text = String::from_utf8(bytes).unwrap();
     assert_eq!(
         text,
-        format!("\u{feff}{}", render(&list, PS).code),
+        format!("\u{feff}{}", render(&list, PS, &local()).code),
         "落盘的不是预览的那一份"
     );
     assert!(!profile.exists(), "★ 只查不写：$PROFILE 被建出来了");
@@ -863,6 +914,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
     // 再写一次同一份 ⇒ 别名文件与 `$PROFILE` 都一个字节不动，并说已经接上。
     let again = run(install_in(
         &door(&h),
+        &local(),
         &list,
         Some(&profile.display().to_string()),
         PS,
@@ -962,31 +1014,214 @@ fn another_startup_file_goes_through_the_fence_before_it_is_read() {
 /// 〔WIN1 · 第四波 4D · RT1 F8〕别名文件那条**给人看、也写进启动文件那一行**的绝对路径逐段拼。
 ///
 /// 要求住址：`设计/01 §3.1` 逐字「「怎么读到这个事实」   → platform      （各平台读法不同）」——
-/// `our_alias_file_rel` 是 `/` 分隔的**通用层结构**（交给后端的 `rel`），翻成本机路径是平台那一步；
+/// `our_alias_file_rel` 是 `/` 分隔的**通用层结构**（交给后端的 `rel`），翻成那台机器上的路径是平台那一步；
 /// 读数出处 `第四波记录/RT1.md §8` F8 逐字「`aliases_read` 回的路径分隔符混用：`C:\Users\zbl\.cc-monitor/aliases.ps1`」。
-/// ⚠ 本机（Linux）上整串 `join` 与逐段 `join` 的结果逐字相同 ⇒ 行为这一半只能在真 Windows 上看
-///   （`第四波记录/WIN1.md` 虚拟机读数）；这里钉 ① Linux 上结果不变（两种 shell 各一格）② 生产那一口逐段拼的形状。
+/// 〔AL2 · 第四波 4D〕拼法从 `Path::join`（monitor 这台的分隔符）换成 `user_files::join_under`（**那台 home 自己的分隔符**）：
+/// 从前「行为这一半只能在真 Windows 上看」，今天是纯字符串 ⇒ 在这台 Linux 上就能把 Windows 那一形判完 ——
+/// ① Windows 的 home 全用 `\`（F8 不回来）② 远端 POSIX 的 home 全用 `/`（Windows 上的 monitor 拼远端不再混出 `\`）
+/// ③ 生产那一口就是交给 `join_under`（不在这里另拼一份）。
 #[test]
 fn the_alias_file_path_is_joined_segment_by_segment() {
-    let home = Path::new("/home/pi");
-    for sh in [Shell::Posix, Shell::PowerShell] {
-        assert_eq!(
-            alias_file_in(home, sh),
-            home.join(sh.dialect().our_alias_file_rel()),
-            "{sh:?}：本机上逐段拼与整串拼应当逐字相同"
-        );
-    }
+    assert_eq!(
+        alias_file_in(r"C:\Users\zbl", Shell::PowerShell),
+        r"C:\Users\zbl\.cc-monitor\aliases.ps1",
+        "Windows 的 home：两种分隔符混着就是 F8 那一形"
+    );
+    assert_eq!(
+        alias_file_in("/home/pi", Shell::Posix),
+        "/home/pi/.cc-monitor/aliases.sh"
+    );
+    assert_eq!(
+        alias_file_in("/home/pi/", Shell::PowerShell),
+        "/home/pi/.cc-monitor/aliases.ps1",
+        "home 末尾的分隔符不许拼出双斜杠"
+    );
     let body = guard_core::production_code(include_str!("../../src/bridge/src/account_aliases.rs"));
     let f = body
-        .split("pub fn alias_file_in(home: &Path, shell: Shell) -> PathBuf {")
+        .split("pub fn alias_file_in(home: &str, shell: Shell) -> String {")
         .nth(1)
         .and_then(|b| b.split("\n}\n").next())
         .expect("找不到 `alias_file_in` 的函数体 —— 抽取器坏了");
-    guard_core::pin_line(f, ".split('/')").expect("逐段拼那一步（按 `/` 切开 `rel`）不在了");
-    guard_core::pin_line(f, ".fold(home.to_path_buf(), |p, seg| p.join(seg))")
-        .expect("逐段 `join` 那一步不在了");
+    guard_core::pin_line(
+        f,
+        "crate::user_files::join_under(home, shell.dialect().our_alias_file_rel())",
+    )
+    .expect("拼法不再交给 `join_under` 了 —— 又自己拼一份？");
     assert!(
-        !guard_core::contains_word(f, "home.join(shell.dialect().our_alias_file_rel())"),
-        "又整串 `join` 了 —— Windows 上就是 `C:\\…\\.cc-monitor/aliases.ps1`"
+        !guard_core::contains_word(f, ".join("),
+        "又用 `Path::join` 了 —— 那是 monitor 这台的分隔符"
     );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 〔AL2 · 第四波 4D〕远端别名清单（W5-ALIAS 件 B，主会话裁 ②）：事实全问那台后端，规则与方言在 monitor 只一份
+// 住址：`设计/71 §6` 逐字「`origin` 是本机还是远端，对这些命令没有区别（`INVARIANTS §40`「一条路径，`transport` 是它唯一的差异」）」
+//       · `71 §4.1`「「怎么读到这个事实」 → 下沉」· `第四波记录/W5-ALIAS.md §2.2` · `第四波记录/AL2.md §2–§3`。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 一台远端（机器名只是个标签：替身门不拨号）。
+fn remote() -> Origin {
+    Origin("aya".to_string())
+}
+
+/// 🔴 **B2**：本机与远端**同一个函数**，只差 `origin` —— 替身门（临时 home）先当远端、再当本机，
+/// 写进去（`install_in`）→ 读回来（`read_via`）两趟的产物逐字相等；读回的清单 == 写进去的清单（两种方言）。
+/// 异源：写那一跳落盘的字节由 `render` 出，读回那一跳由方言的 `parse_file` 认 —— 两个函数各走一遍。
+#[test]
+fn local_and_remote_are_the_same_function_with_a_different_origin() {
+    // 〔AL3 · 71 §8 #11〕`--cwd` 要是那种 shell 的绝对路径 ⇒ PowerShell 那一轮换成 Windows 形。
+    for (sh, cwd) in [(P, "/home/u/文档/c c"), (Shell::PowerShell, "C:\\Users\\u\\文档\\c c")] {
+        let list = vec![
+            al("zcc", &["--account", "z"]),
+            al("wcc", &["--cwd", cwd, "--agent", "codex"]),
+        ];
+        let mut seen: Vec<(String, String)> = Vec::new();
+        for at in [remote(), local()] {
+            let h = tmp_home(&format!("b2-{}", at.as_wire_str().len()));
+            let d = door(&h);
+            let rep = run(install_in(&d, &at, &list, None, sh)).expect("写");
+            assert!(rep.wrote_alias_file, "{sh:?} {at:?}：{rep:?}");
+            let back = run(read_via(&d, &at, sh, None, 0)).expect("读回");
+            assert_eq!(
+                back.aliases, list,
+                "{sh:?} {at:?}：读回的不是写进去的那一份"
+            );
+            assert!(back.exists && back.unparsed.is_empty(), "{back:?}");
+            // 临时 home 两趟不同名 ⇒ 路径那几格按 home 换掉再比（比的是「同一个函数」，不是「同一个目录」）。
+            let norm = |t: String| t.replace(&hs(&h), "<home>");
+            seen.push((norm(format!("{rep:?}")), norm(format!("{back:?}"))));
+        }
+        assert_eq!(
+            seen[0], seen[1],
+            "{sh:?}：远端那一趟与本机那一趟的产物不一样 —— 两份实现？"
+        );
+    }
+}
+
+/// 🔴 **B3**：远端撞名不拿 monitor 这台的 `PATH` 说事（`71 §2.2` V5；`第四波记录/W5-ALIAS.md §2.2`）。
+/// 两向：`sh` 在这台的 `PATH` 上（正控：本机那一趟**报**它）· 远端那一趟**不报**；自带别名块的名字两侧都报（那一格不是本机才答得了的事实）。
+#[test]
+fn a_remote_render_does_not_blame_the_monitors_path() {
+    let here = render(&[al("sh", &[])], P, &local()).collisions;
+    assert!(
+        here.iter().any(|c| c.contains("sh")),
+        "正控失效：这台的 PATH 上找不到 `sh`？本机那一趟该报 —— {here:?}"
+    );
+    let there = render(&[al("sh", &[])], P, &remote()).collisions;
+    assert!(
+        there.is_empty(),
+        "★ 远端那一趟拿 monitor 的 PATH 报了撞名：{there:?}"
+    );
+    for t in crate::profile_installer::builtin_alias_names() {
+        assert!(
+            collision_note(t, P, &remote()).is_some(),
+            "自带别名块的 `{t}` 远端那一侧也该报"
+        );
+    }
+}
+
+/// 🔴 **B4**：远端围栏不量 monitor 这台的盘（`71 §3`「写入 … 带围栏」；`W5-ALIAS.md §2.2`「拆成两层」）。
+/// ① 一个盘上**不存在**的 home 字符串：远端那一侧词法四条各判得完（正一 · 反三）—— 读了盘就判不了；
+/// ② 替身 home 下一条跑出 home 的符号链接：本机那一侧拒（符号链接那一步）、远端那一侧只过词法（放行，交那台后端管）；
+/// ③ Windows 写法的 home 也按字符串判（`Path::is_absolute` 在 Windows 上把 `/home/…` 判成相对 —— 不问它）。
+#[test]
+fn the_remote_fence_does_not_measure_this_machines_disk() {
+    use crate::profile_installer::{fence_lexical, fence_on};
+    let ghost = "/nonexistent-ccm-al2-home";
+    assert!(!Path::new(ghost).exists(), "夹具前提：这个 home 不在盘上");
+    assert_eq!(
+        fence_on(&remote(), ghost, "~/.zshrc").as_deref(),
+        Ok("/nonexistent-ccm-al2-home/.zshrc")
+    );
+    for bad in [
+        "/etc/profile",
+        "relative.rc",
+        "~/../x.rc",
+        "/nonexistent-ccm-al2-homeX/.rc",
+    ] {
+        let e = fence_on(&remote(), ghost, bad).expect_err(bad);
+        assert!(e.starts_with("拒绝写这个配置文件"), "{bad}：{e}");
+    }
+    assert_eq!(
+        fence_lexical(r"C:\Users\zbl", r"~\Documents\x.ps1").as_deref(),
+        Ok(r"C:\Users\zbl\Documents\x.ps1")
+    );
+    assert!(fence_lexical(r"C:\Users\zbl", r"D:\x.ps1").is_err());
+    #[cfg(unix)]
+    {
+        let h = tmp_home("b4-link");
+        let outside = tmp_home("b4-outside");
+        std::os::unix::fs::symlink(&outside.0, h.0.join("link")).expect("造一条跑出 home 的链接");
+        let raw = format!("{}/link/.bashrc", hs(&h));
+        let e = fence_on(&local(), &hs(&h), &raw).expect_err("本机那一侧该被符号链接那一步拒");
+        assert!(e.contains("符号链接"), "{e}");
+        assert_eq!(
+            fence_on(&remote(), &hs(&h), &raw).as_deref(),
+            Ok(raw.as_str()),
+            "远端那一侧量了 monitor 这台的盘（符号链接那一步只对本机）"
+        );
+    }
+}
+
+/// 🔴 候选**经门**、按各自方言的列法列（`71 §4.4` 表第一行；`AL2.md §2.4`）：
+/// POSIX 只列在的（盘上只放 `.zshrc` ⇒ 候选恰好这一份）；PowerShell 5.1 两份恒列、7 的两份目录在才列 ——
+/// 「目录在不在」问的是门（`stat_kind`），不是 monitor 这台的盘（替身门恰好落在同一块盘上，所以另数一遍门被问了什么）。
+#[test]
+fn the_candidates_are_listed_by_each_dialects_rule_through_the_door() {
+    let h = tmp_home("cands-door");
+    std::fs::write(h.0.join(".zshrc"), "# mine\n").unwrap();
+    let got: Vec<String> = rc_candidates_in(&h.0, P, None)
+        .into_iter()
+        .map(|c| c.path)
+        .collect();
+    assert_eq!(got, vec![format!("{}/.zshrc", hs(&h))]);
+    let ps: Vec<(String, bool)> = rc_candidates_in(&h.0, Shell::PowerShell, None)
+        .into_iter()
+        .map(|c| (c.path, c.exists))
+        .collect();
+    assert_eq!(ps.len(), 2, "PS 7 目录不在时只列 5.1 那两份：{ps:?}");
+    assert!(
+        ps.iter().all(|(_, e)| !e),
+        "5.1 那两份不在也列、标「不在」：{ps:?}"
+    );
+    std::fs::create_dir_all(h.0.join("Documents/PowerShell")).unwrap();
+    assert_eq!(rc_candidates_in(&h.0, Shell::PowerShell, None).len(), 4);
+}
+
+/// 🔴 **U1**：在盘上、可那台后端读不了的候选 **照列、带原话**，不吞成「没有别名块」（`AL2.md §2.6`；「出声不静默」）。
+/// 反向：读得了的那一份 `unreadable` 为空；整趟读回口不因一份读不了的 rc 失败。
+#[test]
+fn an_unreadable_candidate_is_listed_with_the_backends_words() {
+    let h = tmp_home("unreadable");
+    std::fs::write(h.0.join(".bashrc"), [0xff_u8, 0xfe, 0x00, 0x80]).unwrap();
+    std::fs::write(h.0.join(".zshrc"), "# mine\n").unwrap();
+    let got = read_in(&h.0, P, None, 0).expect("一份读不了的 rc 不该让整趟失败");
+    let bash = got
+        .rc_candidates
+        .iter()
+        .find(|c| c.path.ends_with("/.bashrc"))
+        .expect("读不了的那一份也要列");
+    assert!(bash.exists, "{bash:?}");
+    assert!(
+        bash.unreadable.as_deref().is_some_and(|w| !w.is_empty()),
+        "★ 读不了被吞成了「没有别名块」：{bash:?}"
+    );
+    let zsh = got
+        .rc_candidates
+        .iter()
+        .find(|c| c.path.ends_with("/.zshrc"))
+        .expect("正控：读得了的那一份");
+    assert_eq!(zsh.unreadable, None, "{zsh:?}");
+}
+
+/// 🔴 **P1**：这台机器承诺说哪种方言只问表 B（`设计/01 §6.7b` · D7「显式拒绝」）：远端 × PowerShell 拒、话里点名那台与方言；
+/// 本机两种都放行、远端 POSIX 放行（正控）。承诺面的唯一住址是 `byte_table::promised`，这里不抄一份 ——
+/// 死值验把 `promised` 远端那一格翻成承诺 Windows，本条当场红（`AL2.md` 死值验表）。
+#[test]
+fn a_dialect_the_machine_is_not_promised_to_speak_is_refused_out_loud() {
+    assert_eq!(dialect_promised(&local(), P), Ok(()));
+    assert_eq!(dialect_promised(&local(), Shell::PowerShell), Ok(()));
+    assert_eq!(dialect_promised(&remote(), P), Ok(()));
+    let e = dialect_promised(&remote(), Shell::PowerShell).expect_err("远端 × PowerShell 该拒");
+    assert!(e.contains("aya") && e.contains("PowerShell"), "{e}");
 }

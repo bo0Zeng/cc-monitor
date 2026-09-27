@@ -1713,8 +1713,9 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
         "重挂之后没有重扫 —— 「重建 → 挂上」之间那段窗口期里写进去的 pidfile 会永远丢。"
     );
     // 父目录的耳朵在（听不见子目录出现/消失，重挂就永远不会被触发）。
+    // 〔VIS2 · S3〕挂法从 `watch_loop` 里的一行搬进可重入的 `rewatch_agent_home`（针随之换）。
     assert!(
-        prod.contains("watch(&agent_home, RecursiveMode::NonRecursive)"),
+        prod.contains("watch(agent_home, RecursiveMode::NonRecursive)"),
         "没有监视 `agent_home` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
     );
 }
@@ -1734,16 +1735,17 @@ fn the_rewatch_path_still_exists_with_its_rescan() {
 /// 那一路的事件**永远不来，且没有任何错误**。三次的表现分别是「永不宣告会话」
 ///「看不见新 tmux server」「会话还在但内容不动了」——**每一个都不报错**。
 ///
-/// # 今天的 8 处（〔SR1a · 09-24〕7 → 8：账号 manifest 所在目录）
+/// # 今天的 9 处（〔SR1a · 09-24〕7 → 8：账号 manifest 所在目录；〔VIS2 · 09-26〕8 → 9：`agent_home` 那一处挪进可重入挂法、多一道它的上一层）
 ///
 /// | 处 | 归属 | 换 inode 怎么办 |
 /// |---|---|---|
 /// | `rewatch_dir` | **可重入挂法本体** | 就是它负责 |
 /// | `watch_sock_dir_if_present` | socket 目录专用（多一条「目录没了翻记账」） | 同上 |
 /// | `rewatch_sessions` | `sessions/` 专用（多一件事：挂上顺带重扫 pidfile） | 同上 |
-/// | `watch_loop` 里 `agent_home` | **父目录的耳朵**（子目录出现/消失的唯一信号源） | 父目录被换掉 = 整个 agent_home 没了，那时没有任何路可走，**不在这一族** |
-/// | `watch_loop` 里 socket 目录的**父** | 同上（等 socket 目录出现） | 同上 |
-/// | `watch_loop` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
+/// | `rewatch_agent_home` 挂它本身那一道 | **父目录的耳朵**（`sessions/` · `projects/` 出现/消失的唯一信号源）；可重入 | 就是它负责（〔VIS2〕它自己后建 / 被换 ⇒ 由下一行那道上一层耳朵送事件来） |
+/// | `rewatch_agent_home` 挂它上一层那一道 | 〔VIS2〕`agent_home` 起来时不在 ⇒ 等它出现（与 socket 目录的父同形；挂上不摘） | 上一层被换掉 = 家目录那一级没了，**不在这一族** |
+/// | `watch_loop` 里 socket 目录的**父** | 等 socket 目录出现 | 同上 |
+/// | `HomeEars::arm` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
 /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
 /// | `watch_loop` 里账号 manifest **所在目录**（〔SR1a〕`accounts_changed`） | 起步挂一次（目录不在就不挂） | **不重挂，如实认下**：目录被删掉重建之后这一路失聪、直到后端重启 —— 代价只是「账号清单变了不推帧」，客户端退回既有的刷新时机（连上 / 会话起停）；不许为它去盯整个 `$HOME`（那是噪声最大的目录） |
 #[test]
@@ -1759,8 +1761,8 @@ fn every_watch_site_answers_the_inode_swap_question() {
     };
     let sites = prod.matches(".watch(").count();
     assert_eq!(
-        sites, 8,
-        "生产段 `.watch(` 有 {sites} 处（登记表记着 8 处）。\n             \
+        sites, 9,
+        "生产段 `.watch(` 有 {sites} 处（登记表记着 9 处）。\n             \
              ⇒ **加了一处就来回答这个问题**：那个目录被删掉重建（换 inode）之后，\n             \
              它还收得到事件吗？收不到就走 `rewatch_dir`；确实不需要就把理由写进本条头注的表里。\n             \
              ⚠ 08-13 同一个形状踩了三次，三次的症状都是**不报任何错**：\n             \
@@ -1771,6 +1773,7 @@ fn every_watch_site_answers_the_inode_swap_question() {
         "fn rewatch_dir(",
         "fn rewatch_sessions(",
         "fn watch_sock_dir_if_present(",
+        "fn rewatch_agent_home(",
     ] {
         assert!(
             prod.contains(f),
@@ -3103,29 +3106,155 @@ fn session_alive_decision_table_linux() {
     );
 }
 
-/// `P0b`：**「目录不存在就永远不重试」这条缺陷的登记**〔08-13 实测复现〕。
-///
-/// 本条**不是**在断言那是对的 —— 它钉的是**那条已知缺陷的说明还在**，
-/// 因为下一个读到那两个 `else` 分支的人，第一反应会是「打个 warn 挺合理」。
-/// 而实测告诉我们：`<claude_dir>/sessions/` 是**用户第一次跑 claude 时才建的**，
-/// backend 起得早一步，就**永远不宣告会话**。
-///
-/// 复现（帧的 `kind` 直方图，其余条件一模一样）：
-/// · 有 `sessions/` ⇒ `hello · line · session_added · tmux_sessions`
-/// · 无 `sessions/` ⇒ **只有** `hello · tmux_sessions`
-///
-/// ⚠ 修掉它之后**请连同这条判据一起改** —— 它守的是「缺陷说明在」，
-/// 缺陷没了这条就该换成守新行为的那一条。
-#[test]
-fn the_missing_dir_branch_still_says_it_never_retries() {
-    let src = include_str!("../../../src/backend/observe/watcher.rs");
-    for needle in ["本进程不会再重试挂它", "永远不宣告会话"] {
-        assert!(
-            src.contains(needle),
-            "那条缺陷说明被删了（少了「{needle}」）—— 删它之前请先修掉缺陷本身，\
-                 否则下一个人会以为「打个 warn 就够了」"
-        );
+/// 〔VIS2〕真 inotify 那两条的夹具：起一个摘掉 tmux 环境的 `sleep`，等它的环境读得到（打标那一步要读）。
+#[cfg(target_os = "linux")]
+fn vis2_sleeper() -> std::process::Child {
+    let kid = std::process::Command::new("sleep")
+        .arg("60")
+        .env_remove("TMUX_PANE")
+        .env_remove("TMUX")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("起不来 `sleep` —— 夹具坏了");
+    for _ in 0..500 {
+        match std::fs::read(format!("/proc/{}/environ", kid.id())) {
+            Ok(b) if !b.is_empty() => break,
+            _ => std::thread::yield_now(),
+        }
     }
+    kid
+}
+
+/// 〔VIS2〕写一份活进程的 pidfile（形状同上面令牌那条的夹具：真 pid ＋ 真 procStart）。
+#[cfg(target_os = "linux")]
+fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
+    let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到 —— 夹具坏了");
+    let at = sessions.join(format!("{pid}.json"));
+    std::fs::write(
+        &at,
+        format!(
+            r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
+        ),
+    )
+    .unwrap();
+    at
+}
+
+/// ★★ 〔VIS2 · `设计/15 §4.7 S3`「判据换成真 inotify 行为（先无后建 ⇒ 补发 `session_added`）」〕真 debouncer ＋ `HomeEars`：
+/// `agent_home` 不在 ⇒ 挂上一层；一口气建出来并立刻写 pidfile ⇒ 恰好一帧 `session_added`（sid 手写）；再写一份 ⇒ 事件来得了。
+#[cfg(target_os = "linux")]
+#[test]
+fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
+    let root = std::env::temp_dir().join(format!("ccm-vis2-s3-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let home = root.join("claude-home");
+    let projects = crate::agents::claudecode::paths::projects_root(&home);
+    let sessions = crate::agents::claudecode::paths::sessions_root(&home);
+    assert!(!home.exists(), "夹具坏了：agent_home 一开始就在");
+
+    let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
+        .expect("debouncer 起不来");
+    let mut ears = HomeEars::new(&home, &projects, &sessions);
+    ears.arm(&mut debouncer);
+    // ①
+    assert_eq!(
+        (ears.home_watched, ears.parent_watched),
+        (false, true),
+        "`agent_home` 不在时挂的应当是它的上一层（且不是它本身）"
+    );
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(projects.clone(), false, false);
+
+    // ② 先无后建，建完立刻写 pidfile。
+    let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
+    std::fs::create_dir_all(&sessions).unwrap();
+    vis2_pidfile(&sessions, kids[0].id(), "vis2-s3-first");
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let mut added: Vec<String> = Vec::new();
+    while added.is_empty() && std::time::Instant::now() < deadline {
+        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+            for ev in evs {
+                ears.on_path(&mut debouncer, &ev.path, &mut state, &mut sink);
+            }
+        }
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionAdded { sid, .. } = f {
+                added.push(sid);
+            }
+        }
+    }
+    let upgraded = (ears.home_watched, ears.sessions_watched);
+
+    // ③ 第二份 pidfile 的事件真的来（`sessions/` 那道 watch 挂在新目录上）。
+    let second = vis2_pidfile(&sessions, kids[1].id(), "vis2-s3-second");
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let mut heard_second = false;
+    while !heard_second && std::time::Instant::now() < deadline {
+        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+            heard_second = evs.iter().any(|ev| ev.path == second);
+        }
+    }
+
+    for k in kids.iter_mut() {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    drop(debouncer);
+    std::fs::remove_dir_all(&root).ok();
+
+    assert_eq!(
+        added,
+        vec!["vis2-s3-first".to_string()],
+        "`agent_home` 后建出来之后没有（恰好一次）宣告写在里面的会话 —— 上一层那道耳朵或「刚出现就挂下面两个 ＋ 重扫」断了"
+    );
+    assert_eq!(
+        upgraded,
+        (true, true),
+        "`agent_home` 出现之后应当已挂上它本身与 `sessions/`"
+    );
+    assert!(
+        heard_second,
+        "挂上之后再写的 pidfile 没有事件 —— `sessions/` 那道 watch 不在新目录上"
+    );
+}
+
+/// 〔VIS2 · `设计/15 §4.7 S3`〕接线：`watch_loop` 经 `HomeEars` 恰好 `arm` 一处、`on_path` 一处（上一条才在执行链上）；旧那句话零命中。带正控。
+#[test]
+fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/watcher.rs"
+    ));
+    let at = prod.find("fn watch_loop(").expect("`watch_loop` 不在了");
+    let end = prod[at..]
+        .find("\nstruct ReaderState")
+        .map(|i| at + i)
+        .expect("`watch_loop` 之后的 `ReaderState` 不在了 —— 切函数体的锚断了");
+    let body = &prod[at..end];
+    let count = |text: &str, needle: &str| text.matches(needle).count();
+    assert_eq!(
+        count(body, "ears.arm(&mut debouncer)"),
+        1,
+        "起步那次挂法不是恰好一处"
+    );
+    assert_eq!(
+        count(body, "ears.on_path("),
+        1,
+        "事件路径不是恰好一处交给 `HomeEars`"
+    );
+    let old = "本进程不会再重试挂它";
+    assert_eq!(count(&prod, old), 0, "那句旧话又回到生产段了");
+    // 正控：量具认得出。
+    assert_eq!(
+        count(&format!("{body}\nears.on_path(x)"), "ears.on_path("),
+        2
+    );
+    assert_eq!(count(&format!("{prod}\n\"{old}\""), old), 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3611,4 +3740,24 @@ fn the_two_session_file_frames_have_exactly_these_bytes() {
         assert!(!f.loss_is_recoverable());
     }
     assert!(!gone.loss_is_recoverable());
+}
+
+/// 〔SH1〕`tmux-list` 的四态折叠：没装 ≠ 零会话 ≠ 看不清（`list_remote_tmux` 头注那三档，搬到这一侧）。
+/// 要求住址：`INVARIANTS §49`「下溢必须出声 ＋ 这一行不许当好数据」· 题面「`list_remote_tmux` 改后端新帧命令 `tmux-list`」。
+#[test]
+fn the_tmux_list_query_keeps_not_installed_empty_and_unobservable_apart() {
+    assert_eq!(query_reply(TmuxObservation::NoTmux), Ok((false, vec![])));
+    assert_eq!(query_reply(TmuxObservation::NoServer), Ok((true, vec![])));
+    assert_eq!(
+        query_reply(TmuxObservation::ServerEmpty),
+        Ok((true, vec![]))
+    );
+    assert_eq!(
+        query_reply(TmuxObservation::Sessions("a\tb\n".to_string() + "c\td")),
+        Ok((true, vec!["a\tb".to_string(), "c\td".to_string()]))
+    );
+    assert!(
+        query_reply(TmuxObservation::Unobservable).is_err(),
+        "看不清绝不当成零会话"
+    );
 }

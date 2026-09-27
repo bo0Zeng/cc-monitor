@@ -28,6 +28,7 @@ use crate::observe::fence::Fence;
 use crate::observe::fs::mtime_ms;
 use search_core::{SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -149,6 +150,7 @@ pub(crate) fn unreadable_note(n: usize) -> Option<String> {
 }
 
 /// [`search`] 的本体：回「读不动、没搜到」的会话数（判据直接看这个数，不看日志）。
+/// 〔SX1〕走进程级常驻索引（本机常驻后端 / 远端流后端同一条路）；只在内存、随进程死 —— 理由住 `调研/第四波记录/SX1.md §2.1`。
 pub(crate) fn search_counting(
     agent_home: &Path,
     query: &str,
@@ -162,66 +164,327 @@ pub(crate) fn search_counting(
     }
     // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`observe/fence.rs`）。
     let fence = Fence::at(&root)?;
+    // 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
+    let mut resident = RESIDENT.lock().unwrap_or_else(|p| {
+        let mut g = p.into_inner();
+        g.clear();
+        RESIDENT.clear_poison();
+        g
+    });
+    let index = resident.entry(fence.root().to_path_buf()).or_default();
+    let unreadable = index.search(&fence, &q, opts, out)?;
+    let r = index.last;
+    tracing::debug!(
+        "history-search index: full={} appended={} reused={} bytes={}",
+        r.full,
+        r.appended,
+        r.reused,
+        r.bytes
+    );
+    Ok(unreadable)
+}
 
-    let files: Vec<PathBuf> = WalkDir::new(fence.root())
-        .max_depth(2)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|e| {
-            e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path())
-        })
-        .map(|e| e.into_path())
-        .collect();
+/// 〔SX1〕进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问时懒建，不预热。
+static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
+    std::sync::Mutex::new(BTreeMap::new());
 
-    // 🔴 `K-R100`：**snippet 预算按最近优先花**，与 monitor 同一份排序
-    // （`search_core::sort_by_recency`）。收口前这里没有任何排序、按 `WalkDir`
-    // （= `readdir`）先走到的顺序花 ⇒ 与 monitor 的 `updated_at desc` 几乎正交
-    // （实测走序前 3 与最近序前 3 **重合 0/3**），而**展示顺序两边都是最近优先**
-    // ⇒ 缺 snippet 的正好是列表最上面那几张卡。理由与读数逐条在
-    // `search_core::sort_by_recency` 的文档注释里。
-    let mut files: Vec<(PathBuf, i64)> = files
-        .into_iter()
-        .map(|p| {
-            let m = mtime_ms(&p);
-            (p, m)
-        })
-        .collect();
-    search_core::sort_by_recency(&mut files, |(_, m)| *m);
+/// 〔SX1〕追加读之前核的那一段：`consumed` 之前最多这么多字节；对不上 ⇒ 被改写过、整份重读。
+const WITNESS_BYTES: usize = 256;
 
-    let mut budget = SnippetBudget::new(opts.limit);
-    let mut unreadable = 0usize;
-    for (path, updated_at) in files {
-        // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
-        if fence.admit(&path).is_err() {
-            continue;
+/// 〔SX1〕一棵 projects 的索引：每份会话文件一格，按 (mtime, 长度) 增量读。
+#[derive(Default)]
+pub(crate) struct SearchIndex {
+    files: BTreeMap<PathBuf, FileEntry>,
+    /// 上一问读盘的账（判据 J3 看它）。
+    last: Refresh,
+}
+
+/// 一问里读盘的账：整份读几份 · 追加读几份 · 没读几份 · 一共读了多少字节。
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Refresh {
+    pub(crate) full: usize,
+    pub(crate) appended: usize,
+    pub(crate) reused: usize,
+    pub(crate) bytes: u64,
+}
+
+/// 一份会话文件在索引里的样子。`[0, consumed)` 是已读进 `done` 的完整行；其后没写完的那截在 `tail`（旧现扫也把它当一行看）。
+struct FileEntry {
+    /// 上一次读完时的 (读之前 stat 的 mtime, 真读到的长度)。
+    seen: (Option<std::time::SystemTime>, u64),
+    consumed: u64,
+    witness: Vec<u8>,
+    done: Facts,
+    tail: Facts,
+    /// 读不动（不是合法 UTF-8）：坏在完整行里 ⇒ 下次变了就整份重读；坏在残尾里 ⇒ 追加读会重看它。
+    bad: Option<(BadAt, String)>,
+    /// 记录里抽没抽工具文本。
+    tools: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BadAt {
+    Done,
+    Tail,
+}
+
+/// 一段完整行 / 残尾里抽出的会话事实：会话级三格（cwd 取第一个非空 · 标题取最后一个 · 首条 user 摘要取第一个）＋ 可搜的记录。
+#[derive(Default)]
+struct Facts {
+    cwd: Option<String>,
+    title: Option<String>,
+    excerpt: String,
+    records: Vec<Rec>,
+}
+
+/// 一条 user / assistant 记录。工具文本**按需**抽：第一次有 `include_tools` 的那一问才整份重读补上（它要把整块工具输入 / 输出串起来，贵）。
+struct Rec {
+    rt: RecordText,
+    ts_ms: i64,
+    uuid: String,
+}
+
+impl Facts {
+    /// 逐行吸收一段文本（与旧现扫逐行那段同一套分支，只是不看查询）。
+    fn absorb(&mut self, text: &str, tools: bool) {
+        for line in text.lines() {
+            let trimmed = line.trim_start_matches('\u{feff}').trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let v: Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            if self.cwd.is_none() {
+                if let Some(c) = v.get("cwd").and_then(Value::as_str) {
+                    if !c.is_empty() {
+                        self.cwd = Some(c.to_string());
+                    }
+                }
+            }
+            match v.get("type").and_then(Value::as_str).unwrap_or("") {
+                "ai-title" => {
+                    if let Some(t) = v.get("aiTitle").and_then(Value::as_str) {
+                        self.title = Some(t.to_string());
+                    }
+                }
+                "custom-title" => {
+                    if let Some(t) = v.get("customTitle").and_then(Value::as_str) {
+                        self.title = Some(t.to_string());
+                    }
+                }
+                "user" | "assistant" => {
+                    let Some(rt) = record_text(&v, tools) else {
+                        continue;
+                    };
+                    if !rt.is_assistant && self.excerpt.is_empty() && !rt.main.is_empty() {
+                        self.excerpt = search_core::truncate_excerpt(&rt.main, 120);
+                    }
+                    let ts_ms = v
+                        .get("timestamp")
+                        .and_then(Value::as_str)
+                        .and_then(parse_iso8601_ms)
+                        .unwrap_or(0);
+                    let uuid = v
+                        .get("uuid")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    self.records.push(Rec { rt, ts_ms, uuid });
+                }
+                _ => {}
+            }
         }
-        // 〔W5-VIS〕读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(e) => {
+    }
+
+    /// 把**后面**那一段并进来：按段序合并与整份顺扫相等。
+    fn extend(&mut self, later: Facts) {
+        if self.cwd.is_none() {
+            self.cwd = later.cwd;
+        }
+        if later.title.is_some() {
+            self.title = later.title;
+        }
+        if self.excerpt.is_empty() {
+            self.excerpt = later.excerpt;
+        }
+        self.records.extend(later.records);
+    }
+}
+
+impl FileEntry {
+    fn empty(mtime: Option<std::time::SystemTime>, tools: bool) -> Self {
+        Self {
+            seen: (mtime, 0),
+            consumed: 0,
+            witness: Vec::new(),
+            done: Facts::default(),
+            tail: Facts::default(),
+            bad: None,
+            tools,
+        }
+    }
+
+    /// 从 `consumed` 起新读到的字节并进来：最后一个 `\n` 之前的完整行进 `done`，之后的残尾整个换掉 `tail`。
+    /// 切点紧跟 `\n`（ASCII）⇒ 每段是不是合法 UTF-8 与整份是不是同一个答案。
+    fn take(&mut self, mtime: Option<std::time::SystemTime>, new: &[u8]) {
+        let end = self.consumed + new.len() as u64;
+        let cut = new.iter().rposition(|&b| b == b'\n').map_or(0, |k| k + 1);
+        let (whole, rest) = new.split_at(cut);
+        self.bad = None;
+        self.tail = Facts::default();
+        if !whole.is_empty() {
+            match std::str::from_utf8(whole) {
+                Ok(s) => {
+                    let mut seg = Facts::default();
+                    seg.absorb(s, self.tools);
+                    self.done.extend(seg);
+                }
+                Err(e) => {
+                    *self = Self::empty(mtime, self.tools);
+                    self.bad = Some((BadAt::Done, e.to_string()));
+                }
+            }
+            if self.bad.is_none() {
+                self.consumed += cut as u64;
+                let mut w = std::mem::take(&mut self.witness);
+                w.extend_from_slice(whole);
+                self.witness = w.split_off(w.len() - w.len().min(WITNESS_BYTES));
+            }
+        }
+        if self.bad.is_none() {
+            match std::str::from_utf8(rest) {
+                Ok(s) => self.tail.absorb(s, self.tools),
+                Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
+            }
+        }
+        self.seen = (mtime, end);
+    }
+}
+
+impl SearchIndex {
+    /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读。打不开 / 读不了 ⇒ `Err(原因)`。
+    fn bring_up(
+        &mut self,
+        path: &Path,
+        prev: Option<FileEntry>,
+        tools: bool,
+    ) -> Result<FileEntry, String> {
+        use std::io::{Read, Seek, SeekFrom};
+        let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+        let seen = (meta.modified().ok(), meta.len());
+        // 这一问要工具文本而这一格没抽过 ⇒ 整份重读。
+        if let Some(mut e) = prev.filter(|e| e.tools || !tools) {
+            if e.seen == seen {
+                self.last.reused += 1;
+                return Ok(e);
+            }
+            let grew =
+                seen.1 > e.seen.1 && e.bad.as_ref().map_or(true, |(at, _)| *at == BadAt::Tail);
+            if grew {
+                let w = e.witness.len() as u64;
+                let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+                let mut buf = Vec::new();
+                f.seek(SeekFrom::Start(e.consumed - w))
+                    .and_then(|_| f.read_to_end(&mut buf))
+                    .map_err(|e| e.to_string())?;
+                self.last.bytes += buf.len() as u64;
+                if buf.len() as u64 >= w && buf[..w as usize] == e.witness[..] {
+                    self.last.appended += 1;
+                    e.take(seen.0, &buf[w as usize..]);
+                    return Ok(e);
+                }
+            }
+        }
+        let mut buf = Vec::new();
+        std::fs::File::open(path)
+            .and_then(|mut f| f.read_to_end(&mut buf))
+            .map_err(|e| e.to_string())?;
+        self.last.full += 1;
+        self.last.bytes += buf.len() as u64;
+        let mut e = FileEntry::empty(seen.0, tools);
+        e.take(seen.0, &buf);
+        Ok(e)
+    }
+
+    /// 扫 projects/**/*.jsonl（与旧现扫同一个 walk、同一个排序、同一道围栏），每命中会话输出一行 JSON。`q` 已小写、已 trim。
+    fn search(
+        &mut self,
+        fence: &Fence,
+        q: &str,
+        opts: &SearchOpts,
+        out: &mut impl Write,
+    ) -> Result<usize, String> {
+        let files: Vec<PathBuf> = WalkDir::new(fence.root())
+            .max_depth(2)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|e| {
+                e.file_type().is_file()
+                    && crate::agents::claudecode::records::is_session_file(e.path())
+            })
+            .map(|e| e.into_path())
+            .collect();
+
+        // 🔴 `K-R100`：**snippet 预算按最近优先花**（`search_core::sort_by_recency`，理由在它的文档注释里）。
+        let mut files: Vec<(PathBuf, i64)> = files
+            .into_iter()
+            .map(|p| {
+                let m = mtime_ms(&p);
+                (p, m)
+            })
+            .collect();
+        search_core::sort_by_recency(&mut files, |(_, m)| *m);
+
+        // 这一趟 walk 没走到的（删了 / 改名）随旧表一起丢掉。
+        let mut prev = std::mem::take(&mut self.files);
+        self.last = Refresh::default();
+        let mut budget = SnippetBudget::new(opts.limit);
+        let mut unreadable = 0usize;
+        for (path, updated_at) in files {
+            // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
+            if fence.admit(&path).is_err() {
+                continue;
+            }
+            // 〔W5-VIS〕读不动 ⇒ 说出来、记一笔（原先 `.ok()?` 折成「无命中」静默消失）。
+            // 打不开 / 读不了 ⇒ 这一格丢掉；不是合法 UTF-8 ⇒ 这一格留着（没变就不再读），照样说、照样数。
+            let (entry, bad) = match self.bring_up(&path, prev.remove(&path), opts.include_tools) {
+                Ok(e) => {
+                    let bad = e.bad.as_ref().map(|(_, why)| why.clone());
+                    (Some(e), bad)
+                }
+                Err(why) => (None, Some(why)),
+            };
+            let session = match (&entry, &bad) {
+                (Some(e), None) => session_hits_in(&path, e, q, opts, &mut budget, updated_at),
+                _ => None,
+            };
+            if let Some(e) = entry {
+                self.files.insert(path.clone(), e);
+            }
+            if let Some(e) = bad {
                 unreadable += 1;
                 tracing::warn!("全文搜索：读不动 {}（{e}），这一份没搜", path.display());
                 continue;
             }
-        };
-        if let Some(session) = session_hits_in(&path, &content, &q, opts, &mut budget, updated_at) {
-            writeln!(out, "{session}").map_err(|e| format!("stdout write failed: {e}"))?;
+            if let Some(session) = session {
+                writeln!(out, "{session}").map_err(|e| format!("stdout write failed: {e}"))?;
+            }
         }
+        Ok(unreadable)
     }
-    Ok(unreadable)
 }
 
-/// 扫一个 jsonl，返回该会话的命中 JSON（无命中 → None）。`budget` 跨会话累计已构造
+/// 一个会话（索引里那一格）的命中 JSON（无命中 → None）。`budget` 跨会话累计已构造
 /// snippet 数，达到 `opts.limit` 后只计数不再构造 snippet（贵活封顶）——
 /// 🔴 判定在 `search_core::SnippetBudget`，与 monitor 同一份，且它**分得清**
 /// 「全局预算用完」与「单会话满 `PER_SESSION_CAP` 条」（收口前这两件事挤在一个
 /// `if` 里，下游只看得到 `hitCount > hits.len()` 这一个信号）。
 /// `updated_at` 由调用方传入（排序时已 stat 过一次，别再 stat 第二次）。
-/// 一个会话文件的命中（文件已经读出来了 —— 读不动那一形由 [`search_counting`] 自己说、自己数）。
-/// 〔W5-VIS〕从前它自己读文件，读不动那一份 `.ok()?` 折成「无命中」静默消失；读挪到了调用方。
 fn session_hits_in(
     path: &Path,
-    content: &str,
+    entry: &FileEntry,
     q_lc: &str,
     opts: &SearchOpts,
     budget: &mut SnippetBudget,
@@ -233,102 +496,64 @@ fn session_hits_in(
     let mut hit_count: u32 = 0;
     // 本会话有命中因**全局预算用完**而拿不到 snippet（≠ 单会话超 PER_SESSION_CAP）。
     let mut session_starved = false;
-    let mut cwd: Option<String> = None;
-    let mut ai_title: Option<String> = None;
-    let mut first_user_excerpt = String::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim_start_matches('\u{feff}').trim();
-        if trimmed.is_empty() {
+    for rec in entry.done.records.iter().chain(entry.tail.records.iter()) {
+        // scope 过滤：想要 user 却是 assistant（或反之）→ 跳过。
+        if let Some(s) = opts.scope.as_deref() {
+            let want_user = s == "user";
+            if want_user == rec.rt.is_assistant {
+                continue;
+            }
+        }
+        // 时间过滤。
+        if opts.after_ms > 0 && rec.ts_ms < opts.after_ms {
             continue;
         }
-        let v: Value = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
-            Err(_) => continue,
+        let Some((hkind, text)) = record_hit(&rec.rt, q_lc, opts.include_tools) else {
+            continue;
         };
-        if cwd.is_none() {
-            if let Some(c) = v.get("cwd").and_then(Value::as_str) {
-                if !c.is_empty() {
-                    cwd = Some(c.to_string());
-                }
+        hit_count += 1;
+        match budget.take(hits.len()) {
+            SnippetVerdict::Give => {
+                let (before, matched, after) = search_core::make_snippet(text, q_lc);
+                hits.push(serde_json::json!({
+                    "uuid": rec.uuid,
+                    "tsMs": rec.ts_ms,
+                    "kind": hkind,
+                    "before": before,
+                    "matched": matched,
+                    "after": after,
+                }));
             }
-        }
-        let kind = v.get("type").and_then(Value::as_str).unwrap_or("");
-        match kind {
-            "ai-title" => {
-                if let Some(t) = v.get("aiTitle").and_then(Value::as_str) {
-                    ai_title = Some(t.to_string());
-                }
-            }
-            "custom-title" => {
-                if let Some(t) = v.get("customTitle").and_then(Value::as_str) {
-                    ai_title = Some(t.to_string());
-                }
-            }
-            "user" | "assistant" => {
-                // 〔SE2〕「这条记录拿哪两段文本去搜、命中算哪一种」只住 [`record_text`] / [`record_hit`]：
-                // 会话内查找（`--find-in-session`）调的是同一对函数。
-                let Some(rt) = record_text(&v, opts.include_tools) else {
-                    continue;
-                };
-                if !rt.is_assistant && first_user_excerpt.is_empty() && !rt.main.is_empty() {
-                    first_user_excerpt = search_core::truncate_excerpt(&rt.main, 120);
-                }
-                // scope 过滤：想要 user 却是 assistant（或反之）→ 跳过。
-                if let Some(s) = opts.scope.as_deref() {
-                    let want_user = s == "user";
-                    if want_user == rt.is_assistant {
-                        continue;
-                    }
-                }
-                // 时间过滤。
-                let ts_ms = v
-                    .get("timestamp")
-                    .and_then(Value::as_str)
-                    .and_then(parse_iso8601_ms)
-                    .unwrap_or(0);
-                if opts.after_ms > 0 && ts_ms < opts.after_ms {
-                    continue;
-                }
-                let Some((hkind, text)) = record_hit(&rt, q_lc) else {
-                    continue;
-                };
-                hit_count += 1;
-                match budget.take(hits.len()) {
-                    SnippetVerdict::Give => {
-                        let (before, matched, after) = search_core::make_snippet(text, q_lc);
-                        let uuid = v
-                            .get("uuid")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string();
-                        hits.push(serde_json::json!({
-                            "uuid": uuid,
-                            "tsMs": ts_ms,
-                            "kind": hkind,
-                            "before": before,
-                            "matched": matched,
-                            "after": after,
-                        }));
-                    }
-                    SnippetVerdict::BudgetExhausted => session_starved = true,
-                    SnippetVerdict::SessionCapped => {}
-                }
-            }
-            _ => {}
+            SnippetVerdict::BudgetExhausted => session_starved = true,
+            SnippetVerdict::SessionCapped => {}
         }
     }
 
     if hit_count == 0 {
         return None;
     }
-    let project_path = cwd.unwrap_or_default();
+    let project_path = entry
+        .done
+        .cwd
+        .clone()
+        .or_else(|| entry.tail.cwd.clone())
+        .unwrap_or_default();
     let project_name = Path::new(&project_path)
         .file_name()
         .and_then(|s| s.to_str())
         .map(str::to_string)
         .unwrap_or_else(|| project_path.clone());
-    let title = search_core::session_title(ai_title.as_deref(), &first_user_excerpt, &session_id);
+    let ai_title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
+    let first_user_excerpt = if entry.done.excerpt.is_empty() {
+        &entry.tail.excerpt
+    } else {
+        &entry.done.excerpt
+    };
+    let title = search_core::session_title(
+        ai_title.map(String::as_str),
+        first_user_excerpt,
+        &session_id,
+    );
     Some(serde_json::json!({
         "sessionId": session_id,
         "projectPath": project_path,
@@ -394,11 +619,16 @@ pub(crate) fn record_text(v: &Value, include_tools: bool) -> Option<RecordText> 
 
 /// 命中判定：先看正文、再看工具内容（大小写不敏感子串）。命中 ⇒ `(种类, 命中的那段文本)`，
 /// 种类是 `"user"` / `"assistant"` / `"tool"`（与 `Hit.kind` 同一套词）。`q_lc` 已小写、已 trim。
-pub(crate) fn record_hit<'a>(rt: &'a RecordText, q_lc: &str) -> Option<(&'static str, &'a str)> {
+/// 〔SX1〕工具内容只在 `include_tools` 时看（索引里的那一格可能抽过工具文本，不看时当它是空串）。
+pub(crate) fn record_hit<'a>(
+    rt: &'a RecordText,
+    q_lc: &str,
+    include_tools: bool,
+) -> Option<(&'static str, &'a str)> {
     if rt.main.to_lowercase().contains(q_lc) {
         return Some((if rt.is_assistant { "assistant" } else { "user" }, &rt.main));
     }
-    if !rt.tool.is_empty() && rt.tool.to_lowercase().contains(q_lc) {
+    if include_tools && !rt.tool.is_empty() && rt.tool.to_lowercase().contains(q_lc) {
         return Some(("tool", &rt.tool));
     }
     None
@@ -473,7 +703,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         let Some(rt) = record_text(&v, include_tools) else {
             continue;
         };
-        let Some((kind, hit)) = record_hit(&rt, &q) else {
+        let Some((kind, hit)) = record_hit(&rt, &q, include_tools) else {
             continue;
         };
         total += 1;
@@ -549,3 +779,18 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_find_tests.rs"]
 mod find_tests;
+
+// 〔SX1〕J1：应答 == 起步树现扫实现冻结下来的金样（逐问逐行逐字节）。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_golden_tests.rs"]
+mod golden_tests;
+
+// 〔SX1〕J2 增量 == 整份重读 · J3 帧面那一臂只读变了的字节。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_index_tests.rs"]
+mod index_tests;
+
+// 〔SX1〕秤：真规模本机历史上的冷首趟 / 热态（`#[ignore]` 读数，不是判据）。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_reading.rs"]
+mod reading;

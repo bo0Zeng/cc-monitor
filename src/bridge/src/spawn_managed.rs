@@ -462,6 +462,9 @@ impl std::ops::DerefMut for ManagedTokioChild {
 /// 那是 tokio 的 `Child` 才有的东西（它默认**不**因句柄被 drop 而杀子进程），
 /// 而 `cc_bus` / `ssh_source` 今天就靠它 —— 三条（Job · `kill_on_drop` · 显式 kill）
 /// 都留着：Job 没建成时另外两条至少还在。
+// 〔SH1〕今天零生产调用方（唯一那一处 —— cc-bus 驾驶舱的本机 shell 读 —— 随读面改问后端删了）；
+//   它是 `设计/00 §1.5.2` 唯一出口的 async 那一格（`spawn_managed_exit_sites` 钉着三个出口都在），下一处 tokio 起进程要走它。
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn spawn_managed_tokio(
     cmd: &mut tokio::process::Command,
     console: ConsolePolicy,
@@ -513,6 +516,7 @@ pub fn spawn_managed_tokio(
 }
 
 #[cfg(windows)]
+#[cfg_attr(not(test), allow(dead_code))]
 fn attach_lifetime_tokio(
     child: &tokio::process::Child,
     lifetime: Lifetime,
@@ -531,6 +535,7 @@ fn attach_lifetime_tokio(
 }
 
 #[cfg(not(windows))]
+#[cfg_attr(not(test), allow(dead_code))]
 fn attach_lifetime_tokio(
     _child: &tokio::process::Child,
     _lifetime: Lifetime,

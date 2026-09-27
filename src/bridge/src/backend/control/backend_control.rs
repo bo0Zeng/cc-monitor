@@ -129,7 +129,7 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
     // ⚠ 它**不走 `is_local` 分派**，理由是硬的：那张账是按 origin 存的
     // （`backend_policy::health(origin)`），远端那一格今天恒是「四个 0」——
     // 而那对远端是**真话**：本件不接远端（退出状态在别人机器上拿不到），
-    // 所以「没人在记」正是那台机的实情，TS 那侧会照 `seen == 0` 说「答不出来」。
+    // 所以「没人在记」正是那台机的实情，那一格说「答不出来」（〔PB1〕判定在 `backend_policy::health_face`）。
     // ⇒ 这里**不能**填 `null` 装作不对称：`pid`/`attempts` 是「那个进程在别人机器上」，
     // 而这一格是「我们这边一条都没记过」，两件事。
     //
@@ -143,17 +143,10 @@ pub fn backend_status(origin: String) -> Result<serde_json::Value, String> {
         "attempts": attempts,
         "detached": detached,
         // 〔B2 · 条 66〕原来这里还有一格 `killOnExit`（读 monitor 进程内那张表）。值搬到后端那台机器上之后
-        //   这里没有它了 —— 要它问那台机器（`backend_policy::backend_exit_policy`），不许在这儿留一份副本。
-        // 键名与 TS 的 `BackendHealth` 接口逐格对齐（`src/backend-policy.ts`）。
-        "health": serde_json::json!({
-            "crashed": h.crashed,
-            "refused": h.refused,
-            "neverStarted": h.never_started,
-            "misread": h.misread,
-            // 〔第四波 ST2 · `设计/70` 步 7〕进界面的是**短摘要**（判定 ＋ 退出状态），
-            //   不再是整条账行 —— 那是日志行格式，只落日志（`backend_policy::ledger_line`）。
-            "last": h.last_brief,
-        }),
+        //   这里没有它了 —— 要它问那台机器（后端 `exit-policy-read`），不许在这儿留一份副本。
+        // 〔PB1 · `设计/90 §4` 阶段 B〕「健康」那一格是**成品**（状态 ＋ 一句 ＋ ⓘ ＋ `[详情]`），判定只在 `health_face`；
+        //   原来这里交出去的四个计数与短摘要是原料，界面拿它再判一遍三档 —— 那一份判定随原料一起不上线了。
+        "health": crate::backend_policy::health_face(&h),
     }))
 }
 

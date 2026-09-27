@@ -303,6 +303,9 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             ok: true,
             error: None,
             fingerprint: Some("SHA256:x".into()),
+            fingerprints: [("a:22", "SHA256:x"), ("b:22", "SHA256:y")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .into(),
             endpoint: Some("h:22".into()),
             v: ACK_V,
             uses: USES,
@@ -315,6 +318,11 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert!(s.ends_with('\n'), "ack 没有以换行收尾：{s:?}");
     let v: serde_json::Value = serde_json::from_str(s.trim()).expect("ack 不是合法 JSON");
     assert_eq!(v["ok"], serde_json::Value::Bool(true));
+    // 〔VIS2 · `设计/15 §3.4 ①`〕逐地址指纹那一格（additive）。
+    assert_eq!(
+        v["fingerprints"],
+        serde_json::json!({"a:22": "SHA256:x", "b:22": "SHA256:y"})
+    );
 }
 
 /// 〔C2〕v2 的字段全是可选的：老界面（v1 六个字段）发来的请求照样读得动，而且用法缺省是长流。
@@ -453,6 +461,11 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
     assert_eq!(
         ack["fingerprint"], "SHA256:x",
         "失败的 ack 也带上看到过的指纹（TOFU 展示要它）"
+    );
+    assert_eq!(
+        ack["fingerprints"],
+        serde_json::json!({}),
+        "〔VIS2〕失败的 ack 逐地址那一格恒空"
     );
     // 不要阶段 ⇒ 一个字节的阶段都不出
     let mut quiet: Vec<u8> = Vec::new();

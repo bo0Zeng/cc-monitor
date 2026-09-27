@@ -290,10 +290,13 @@ fn candidate_profile_dirs() -> Vec<PathBuf> {
         return Vec::new();
     };
     let mut out: Vec<PathBuf> = Vec::new();
-    for f in crate::shell_dialect::Shell::PowerShell
+    // 〔AL2 · 第四波 4D〕方言那一口改名 `startup_candidates`、只给路径与列法（不读盘）：PS 7 那两份的目录不在时也给 ——
+    //   下面 `has_backup_in_dir` 读不了一个不在的目录 ⇒ 探不到备份 ⇒ 这一页上一样不出现（行为不变）。
+    for c in crate::shell_dialect::Shell::PowerShell
         .dialect()
-        .startup_files(&home)
+        .startup_candidates(&home.display().to_string())
     {
+        let f = Path::new(&c.path);
         if let Some(d) = f.parent() {
             if !out.iter().any(|x| x == d) {
                 out.push(d.to_path_buf());

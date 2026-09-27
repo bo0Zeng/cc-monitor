@@ -1079,7 +1079,8 @@ fn deploying_the_backend_also_puts_the_ccm_entry_and_nothing_else_does() {
     // 〔W5-ALIAS〕装别名块那条搬进了 `profile_installer.rs`：那份文件的生产段里推入口的原语**零命中**。
     let alias_home =
         guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
-    guard_core::find_pinned(&alias_home, "pub async fn install_remote_alias_block(")
+    // 〔AL2 · 第四波 4D〕远端那条并进 `aliases_block_install`；别名块的装口今天是 `install_to_profile`（本机远端同一处）。
+    guard_core::find_pinned(&alias_home, "pub async fn install_to_profile(")
         .unwrap_or_else(|e| panic!("装别名块那条不在别名域了 —— 判据够不着被测对象（{e}）"));
     for prim in ["ccm_entry_shim", "put_ccm_entry", "CCM_CLI_REMOTE_PATH"] {
         assert!(
@@ -1397,8 +1398,7 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
         "pub(crate) fn builtin_alias_names(",
         "pub fn merge_profile_block(",
         "pub fn strip_profile_block(",
-        "pub async fn install_remote_alias_block(",
-        "pub async fn uninstall_remote_alias_block(",
+        // 〔AL2 · 第四波 4D〕远端装 / 卸那两条命令删了（并进 `aliases_block_*`），名单 8 → 6。
     ];
     let stayed: Vec<&str> = defs.iter().copied().filter(|d| sftp.contains(d)).collect();
     assert!(

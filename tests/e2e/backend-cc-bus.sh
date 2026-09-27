@@ -487,6 +487,82 @@ chk "★ 空正文 ⇒ invalid_args（空广播不是缺省）" "$(jq -r .code <
 tmux kill-session -t '=bcast_cc' 2>/dev/null || true
 tmux kill-session -t '=bcme_cc' 2>/dev/null || true
 
+echo "[SH1-a] ★ INVARIANTS §49：读会话名 / 地址的 tmux 客户端是 UTF-8 客户端（非 UTF-8 locale ＋ 中文会话名）"
+# 〔SH1 · V121〕`cc-register` 记登记地址 · `cc-whoami` 三条认身份的路，读的都是**会话名**（可以是中文）。
+# 台架：pane 里整条命令跑在 `LC_ALL=C` 下 —— tmux 只看 `LC_ALL`→`LC_CTYPE`→`LANG` 第一个非空值有没有 `UTF-8`，
+# 这一形就是「非 UTF-8 客户端」。不带旗的话，中文被改写成 `_`、退出码仍是 0。
+# 期望值由**同一个 locale 下的同一条消毒**现算（`cc-whoami::resolve` 的那条 sed），不写死。
+# ⚠ 〔SH1 09-26 现打，tmux 3.6〕`TMUX` 已设的客户端 tmux **一律按 UTF-8 打**、不看 locale —— 这五处在生产上都跑在
+#   tmux 里（`TMUX` 恒设），所以 3.6 上它们今天其实没被改写（潜伏的违反，靠的是一条手册里没写的启发式）。
+#   旗保证的是不靠它 ⇒ 台架给 pane 里的 `tmux` 另挂一层 shim：摘掉客户端那一侧的 `TMUX` 再转给隔离 socket，
+#   才造得出真正的非 UTF-8 客户端（反向正控就是验这一格）。脚本自己读到的 `$TMUX` 不动（`cc-whoami` 兜底 1 要它）。
+_u8d="$SANDBOX/u8"; _u8bus="$SANDBOX/u8bus"; _u8shim="$SANDBOX/u8shim"; mkdir -p "$_u8d" "$_u8bus" "$_u8shim"
+printf '#!/bin/bash\nunset TMUX\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_u8shim/tmux"
+chmod +x "$_u8shim/tmux"
+_u8name="u8甲乙"
+tmux new-session -d -s "$_u8name" -c /tmp \
+  env LC_ALL=C LANG=C LC_CTYPE=C PATH="$_u8shim:$PATH" CC_BUS_HOME="$_u8bus" SCRIPTS="$SCRIPTS" OUT="$_u8d" sh -c '
+    "$SCRIPTS/cc-register" > "$OUT/reg" 2>&1
+    "$SCRIPTS/cc-whoami" > "$OUT/who1" 2>&1
+    env -u TMUX_PANE "$SCRIPTS/cc-whoami" > "$OUT/who2" 2>&1
+    env -u TMUX_PANE TMUX="${TMUX%,*}," "$SCRIPTS/cc-whoami" > "$OUT/who3" 2>&1
+    tmux display-message -p "#S" > "$OUT/raw" 2>&1
+    touch "$OUT/done"; exec sleep 30' 2>/dev/null
+for _i in $(seq 1 100); do [ -f "$_u8d/done" ] && break; sleep 0.1; done
+_u8want="$(printf '%s' "$_u8name" | LC_ALL=C sed 's/[^A-Za-z0-9_-]/-/g; s/^-*//; s/-*$//')"
+chk "  反向正控：同台架上不带旗的 display-message 确实被改写（台架真是非 UTF-8 客户端）" \
+  "$([ "$(cat "$_u8d/raw" 2>/dev/null)" != "$_u8name" ] && [ -f "$_u8d/done" ] && echo yes || echo no)" "yes"
+chk "★ cc-register 记下的登记地址是那个中文会话名（不是 _ 改写过的）" \
+  "$(awk -F'\t' -v id="$_u8want" '$1==id{print $2}' "$_u8bus/agents.tsv" 2>/dev/null)" "$_u8name:0.0"
+chk "★ cc-whoami（TMUX_PANE 那一条）认出的身份" "$(cat "$_u8d/who1" 2>/dev/null)" "$_u8want"
+chk "★ cc-whoami（按 \$TMUX 反查会话 id 那一条）认出的身份" "$(cat "$_u8d/who2" 2>/dev/null)" "$_u8want"
+chk "★ cc-whoami（沿进程树找 pane 那一条）认出的身份" "$(cat "$_u8d/who3" 2>/dev/null)" "$_u8want"
+tmux kill-session -t "=$_u8name" 2>/dev/null || true
+
+echo "[SH1-b] ★ V136：驾驶舱读面 —— 后端转调 cc-bus 的机器可读读命令（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）"
+# 台架写一份**脏**的名册与台账（只采结构：`--help` 行 · 缺字段行 · 真空行 · 只有 TAB 的行 · 任务里带 TAB），
+# 坏行数期望由这份夹具手算，不从被测输出里取。
+printf 'alpha_cc\talpha_cc:0.0\t2026-01-01T00:00:00+00:00\t111\n--help\tx:0.0\tts\t1\nshort\tonly\n\n\t\t\t\nbeta_cc\tbeta_cc:0.0\tts2\t\n' > "$BUS/agents.tsv"
+printf 'gamma_cc\t/d\tts3\ttask\twith tab\nbroken\n' > "$BUS/spawned.tsv"
+printf '{"from":"peer_cc","ts":"t1","text":"占位一"}\nnot json\n{"from":"peer_cc","ts":"t2","text":"占位二"}\n' > "$BUS/inbox/alpha_cc.jsonl"
+echo 1 > "$BUS/state/alpha_cc.pos"
+out="$(d --bus-state </dev/null)"
+chk "名册两条好行（--help 被本侧 id 判定拒掉、计进坏行）" "$(printf '%s' "$out" | jq -c '[.agents[].id]')" '["alpha_cc","beta_cc"]'
+chk "★ 登记时间回来了" "$(printf '%s' "$out" | jq -r '.agents[0].registered_at')" "2026-01-01T00:00:00+00:00"
+chk "  待读数照旧（3 行 − 已读 1）" "$(printf '%s' "$out" | jq -r '.agents[0].unread')" "2"
+chk "★ 派生时间回来了、任务里的 TAB 没被截" "$(printf '%s' "$out" | jq -c '.spawned[0] | [.spawned_at, .task]')" '["ts3","task\twith tab"]'
+chk "★ 坏行数：名册 short · 只有 TAB · --help 三行 ＋ 台账 broken 一行 = 4（真空行不算）" "$(printf '%s' "$out" | jq -r '.skipped')" "4"
+_pos_before="$(cat "$BUS/state/alpha_cc.pos")"; _state_before="$(ls "$BUS/state" | tr '\n' ' ')"
+out="$(printf '{"id":"alpha_cc","lines":2}' | d --bus-inbox)"
+chk "★ 收件箱只看尾巴（末 2 行：一条坏、一条好）" "$(printf '%s' "$out" | jq -c '[.messages[].text, .skipped]')" '["占位二",1]'
+chk "★ 读收件箱不推已读位置" "$(cat "$BUS/state/alpha_cc.pos")" "$_pos_before"
+chk "  也不在 state/ 里写任何东西" "$(ls "$BUS/state" | tr '\n' ' ')" "$_state_before"
+printf '{"id":"--help"}' | d --bus-inbox >/dev/null
+chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
+# 老 cc-bus：`cc-list` / `cc-agents` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
+_old="$SANDBOX/oldbus"; mkdir -p "$_old"
+printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; cp "$_old/cc-list" "$_old/cc-agents"; chmod +x "$_old/cc-list" "$_old/cc-agents"
+env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" 20 "$D" --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
+chk "★ 老 cc-bus ⇒ failed 且说「重新部署」" "$(jq -r '.code + " " + (.message | contains("重新部署") | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
+rm -f "$BUS/agents.tsv" "$BUS/spawned.tsv"
+
+echo "[SH1-c] ★ D-g：monitor 杀会话成功 ⇒ 对登记在那个会话 pane 上的 id 调 cc-kill（认 pane pid，不按会话名猜）"
+: > "$BUS/agents.tsv"
+_dg="$SANDBOX/dg"; mkdir -p "$_dg"
+tmux new-session -d -s dg-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
+  "$SCRIPTS/cc-register" dg_cc >/dev/null 2>&1; touch "$OUT/a"; exec sleep 60' 2>/dev/null
+tmux new-session -d -s dgother-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
+  "$SCRIPTS/cc-register" dgother_cc >/dev/null 2>&1; touch "$OUT/b"; exec sleep 60' 2>/dev/null
+for _i in $(seq 1 100); do [ -f "$_dg/a" ] && [ -f "$_dg/b" ] && break; sleep 0.1; done
+printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
+chk "  台架：两个会话都登记上了（带 pane pid）" "$(awk -F'\t' '$4!=""{n++} END{print n+0}' "$BUS/agents.tsv")" "2"
+out="$(printf '{"name":"dg-cc"}' | d --kill)"
+chk "杀会话本身照旧成功、应答形状不变" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
+chk "★ 登记在被杀会话上的 dg_cc 从名册里没了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "0"
+chk "★ 它的收件箱也清了（cc-bus「收掉成员」的全套）" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "没了"
+chk "★ 别的会话上登记的 dgother_cc 原样在" "$(awk -F'\t' '$1=="dgother_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"
+tmux kill-session -t '=dgother-cc' 2>/dev/null || true
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

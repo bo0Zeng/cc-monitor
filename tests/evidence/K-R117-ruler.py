@@ -151,8 +151,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔DP1 · 第四波〕别名块那三格（从 ① 挪来，旧名 `ccm.install` / `ccm.uninstall` / `ccm.install-ui`）：
     #   `设计/71 §5`「② 别名：清单编辑 → 预览（纯）→ 写入 / 复制待贴」—— 别名块就是写入那一跳的一种落法，不是装后端。
     ("alias.block-install", (B2, "K33+K34+设计/71 §5",
-                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（本机 `aliases_block_install` · 远端 "
-                             "`install_remote_alias_block`）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
+                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（`aliases_block_install`，带 origin，"
+                             "本机远端同一条）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
     ("alias.block-remove", (B2, "K33+K34+设计/71 §5", "同上，卸那一侧")),
     ("alias.block-preview", (B2, "K33+K34+设计/71 §5", "装别名块之前的预览（纯渲染，不写盘）")),
     ("acct-iso.shellinit", (B2, "K33",
@@ -194,7 +194,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   **不往任何机器装东西**（「装到这台」要用户点，走 ③ 那几条的路）⇒ 不是装口。
     ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
-    ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
+    # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
+    #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
     # 〔墓碑 · 第四波 4D HX2〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
@@ -311,13 +312,12 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
         # 〔MC1 · 2026-09-24〕`install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改名成
-        #   `…_remote_alias_block`（「ccm 助手」这个词删掉，`设计/71 §13`）。本条红的时候逐字
-        #   「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
-        "install_remote_alias_block",
-        "uninstall_remote_alias_block",
+        #   `…_remote_alias_block`（「ccm 助手」这个词删掉，`设计/71 §13`）。
+        # 〔AL2 · 第四波 4D〕那两条**不存在了**（并进 `aliases_block_install` / `_remove`，带 `origin`）：
+        #   `R8a` 红时核过，是「命令没了」那一种（同 S5 步 12·C 收尾那一形），人群跟着现实走、摘两行。
         "uninstall_remote_backend",
     ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
-       "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
+       "`ccm.install`/`ccm.uninstall` 的远端半」。〔AL2〕远端半那两条并进了 `aliases_block_*`（带 origin），今天剩 2 条")),
     ("S2", ("①-本机半", (
         # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
         #   〔DP1〕能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
@@ -344,13 +344,14 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
-        "check_remote_acct_iso",
+        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条「装没装」合成一条带 origin 的 `acct_iso_status`（同一件，改名不改归属）。
+        "acct_iso_status",
         "deploy_remote_acct_iso",
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
         # 那一份本来就在 `FRONTEND_PIN['S3']` 里 ⇒ 名单按实数现打**不变**（1 → 1，没有换份）。
-        "check_local_acct_iso",
+        # 〔SH1〕它与远端那条今天是同一条 `acct_iso_status`（上面那行）。
     ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
        "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
        "那「1 条欠口」今天盘上还不存在 ⇒ 不进闭集")),
@@ -360,12 +361,13 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_install",
         "aliases_read",
         "aliases_render",
-        "remote_acct_iso_shellinit",
+        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条 shellinit 合成一条带 origin 的 `acct_iso_shellinit`（改名不改归属）。
+        "acct_iso_shellinit",
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
         # 「生成 rc 片段」），那一份本来就在 `FRONTEND_PIN['S4']` 里 ⇒ 名单按实数现打**不变**（2 → 2）。
-        "local_acct_iso_shellinit",
+        # 〔SH1〕它与远端那条今天是同一条 `acct_iso_shellinit`（上面那行）。
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
        "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条、〔A3〕加了本机那条 shellinit 之后是 5 条。"
        "写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),

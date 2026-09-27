@@ -24,7 +24,7 @@ pub(crate) const PROJECT_MCP_FILE: &str = ".mcp.json";
 /// `.mcp.json` / `.claude.json` 里装 server 表的键。
 const SERVERS_KEY: &str = "mcpServers";
 /// 一份项目 `.mcp.json` 的读取上限（手写的配置，远不到这个量级；超了说出来，不截断）。
-const MAX_PROJECT_MCP_BYTES: u64 = 4 * 1024 * 1024;
+pub(crate) const MAX_PROJECT_MCP_BYTES: u64 = 4 * 1024 * 1024;
 /// `SKILL.md` 的读取上限（找头部 `description:` 用；手写的说明远不到这个量级）。超了 ⇒ 不取说明、说出来。
 const SKILL_DOC_MAX_BYTES: u64 = 1024 * 1024;
 
@@ -34,8 +34,8 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
 }
 
 /// 列项目的那份 `.claude.json`：设了 `CLAUDE_CONFIG_DIR` ⇒ 它下面那一份；否则 `$HOME/.claude.json`
-/// （与 monitor `mcp.rs::claude_json_candidates` 的两个主候选同序）。家目录都没有 ⇒ `None`。
-fn claude_json() -> Option<PathBuf> {
+/// （〔SH1 · V137〕MCP 列表读法 `claudecode/mcp.rs` 也用这一份 —— monitor 那份三候选删了）。家目录都没有 ⇒ `None`。
+pub(crate) fn claude_json() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|d| !d.is_empty()) {
         return Some(config_path_in(Path::new(&dir)));
     }

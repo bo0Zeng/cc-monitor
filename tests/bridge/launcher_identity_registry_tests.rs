@@ -189,8 +189,9 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔HX2 · 第四波 4D〕地板 93 → 92：`write_apikey_credentials_key` 退役（单行三元组人群真少了 1 行；现打 92）。
     // 〔LOC1a · 第四波 4D〕地板 93 → 92：`get_session_tasks` 退役（单行三元组人群真少了 1 行；现打 92）。
     // 〔合并 LOC1b × 主线 290d8c33〕主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
+    // 〔SH1 · 4D〕地板 88 → 86：驾驶舱读面两条命令退役（单行三元组人群真少了 2 行）。
     assert!(
-        rows.len() >= 88, // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。
+        rows.len() >= 86, // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );
