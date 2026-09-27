@@ -153,7 +153,7 @@
 //! **那句话今天是假的，已收口**。经过：`阻-3(D3)` 的后半段（期限）在回修轮之五因为
 //! `no_timer_guard.rs` 不在写区而交回 PM（§8.20.4），PM 收 R5 时**扩了写区一格**并派了 R6（§8.21.3）。
 //! 今天的形状是**顶不满 + 拒绝有声 + 顶住的会自己散**，三样齐了：
-//! - 上界与出声：`server.rs::INFLIGHT_CONNECTIONS`（超了回 503）；
+//! - 上界与出声：`listen.rs::INFLIGHT_CONNECTIONS`（超了回 503；〔NET2〕从 `server.rs` 挪来）；
 //! - 会自己散：`listen.rs::DOWNSTREAM_DEADLINE`（本机对端，**30 秒**）与
 //!   `listen.rs::UPSTREAM_DEADLINE`（模型在想是正常的，**600 秒**，就是这里记的那个参考数），
 //!   两条 socket 的**读写两个方向**都装。
