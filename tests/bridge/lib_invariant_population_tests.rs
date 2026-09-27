@@ -455,7 +455,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 〔E2 · V28〕local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
     (
         "src/bridge/src/backend/control/payload.rs",
-        11,
+        // 〔E2 · V146〕11 → 12：中转前缀里「用户自己设了端点」那一句话（文案表里的常量句）也过唯一的 quote。
+        12,
         &[
             (
                 "src/bridge/src/backend/control/payload.rs",
