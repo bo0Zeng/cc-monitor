@@ -137,12 +137,11 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "local_backend_host.rs",
-        "send_signal",
+        "run_resident_stop",
         "spawn_managed_cmd",
-        "〔HX1〕原名 `signal_term`；「停」要能升级到强杀 ⇒ 收一个信号参数（`-TERM` / `-KILL`，两个薄壳里的字面量）。\
-         argv 是 `kill -TERM|-KILL <pid>`，那个 pid 是我们自己算出来的、不吃用户输入 ——\
-         它只有这里知道。⚠ 这一处**已登记**在 `SPAWNS`（那张表默认拒绝），\
-         本条与它不同源、不同粒度，两条都要。",
+        "〔STOP〕机器页「停」本机后端：起一次 `<后端> --resident-stop`（不经 shell），等与强杀由那个一次性子命令做（同机监督者）。\
+         argv 是那个二进制与一个常量 flag，环境只多一格 `CLAUDE_CONFIG_DIR`（本 monitor 认的 Claude 家目录，让它算出同一个口）。\
+         stdout 要 piped（结局那一行是返回值）、stderr 要 captured（失败那句 `{code,message}`）。⚠ 已登记在 `SPAWNS`。",
     ),
     (
         "profile_installer.rs",

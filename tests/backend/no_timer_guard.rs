@@ -734,6 +734,62 @@ mod tests {
         }
     }
 
+    /// 〔STOP · 主会话裁「等待住一次性 CLI」〕**一次性 CLI 例外表**：带期限的内核等待（`poll(pidfd, ms)` · `WaitForSingleObject(h, ms)`）
+    /// 只许出现在这里登记的地方，且只许由一次性子命令 `--resident-stop` / `--resident-ensure --replace` 走到（`control/resident.rs`）。
+    ///
+    /// `(文件, 生产段里的片段——恰好一处, why)`。理由：停一个进程要「宽限期内等它退、到点强杀」（k8s / systemd / Docker 同形），
+    /// 那个等只能由与它同机的一方做；做它的是**一次性进程**（干完即退），常驻后端的事件循环里一个定时器都没加 ——
+    /// 本护栏守的「常驻后端不自己醒来」不受影响。它是一次性的期限，不是节拍器：等到内核通知（进程退了）立刻返回。
+    pub(super) const REGISTERED_ONE_SHOT_CLI_WAITS: &[(&str, &str, &str)] = &[
+        (
+            "platform/signal.rs",
+            "libc::poll(&mut pfd, 1, ms)",
+            "Linux 臂：在 pidfd 上至多等宽限期（`Stoppable::exited_within`），进程一退内核就叫醒；只在一次性子命令 `--resident-stop` 里跑。",
+        ),
+        (
+            "platform/win_proc.rs",
+            "WaitForSingleObject(h.as_raw_handle(), ms)",
+            "Windows 臂：在进程句柄上至多等宽限期（`win_proc::wait_within`），同上一行，只由 `Stoppable::exited_within` 调。",
+        ),
+    ];
+
+    /// 生产段里**全部带期限**的内核等待：`libc::poll(` 与 `WaitForSingleObject(` 的调用，最后一个实参不是「一直等」（`-1` / `WAIT_FOREVER`）。
+    /// 回 `(文件, 调用原文)`。纯文本；括号配平取整个调用。
+    pub(super) fn bounded_kernel_waits(files: &[(String, String)]) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for (name, code) in files {
+            for head in ["libc::poll(", "WaitForSingleObject("] {
+                for (at, _) in code.match_indices(head) {
+                    // 外部声明（`fn WaitForSingleObject(`）不是调用。
+                    if code[..at].ends_with("fn ") {
+                        continue;
+                    }
+                    let open = at + head.len();
+                    let mut depth = 1usize;
+                    let mut end = open;
+                    for (i, ch) in code[open..].char_indices() {
+                        match ch {
+                            '(' => depth += 1,
+                            ')' => depth -= 1,
+                            _ => {}
+                        }
+                        if depth == 0 {
+                            end = open + i;
+                            break;
+                        }
+                    }
+                    let call = &code[at..=end];
+                    let last = code[open..end].rsplit(',').next().unwrap_or("").trim();
+                    if last != "-1" && last != "WAIT_FOREVER" {
+                        out.push((name.clone(), call.to_string()));
+                    }
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
     /// 遍历 `src/` 下**全部**（含子目录）`.rs`，返回 `(相对路径, 生产段)`。
     ///
     /// # 为什么必须递归（2026-08-01，U-1）
@@ -1084,6 +1140,81 @@ mod tests {
         for pat in periodic_wake_patterns() {
             assert!(!rest.contains(&pat), "{file} 剥掉退出期限之后仍有 `{pat}`");
         }
+    }
+
+    /// 〔STOP〕**带期限的内核等待 == 一次性 CLI 例外表**（两向相等），且走得到它们的只有一次性子命令那一份文件。
+    /// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「等待住一次性 CLI（不是常驻后端的事件循环）⇒ 不碰『常驻后端零定时器』；
+    /// 登记进 `no_timer_guard` 的一次性 CLI 例外表并写理由」· `INVARIANTS §41`（后端零定时器）。
+    #[test]
+    fn bounded_kernel_waits_are_exactly_the_one_shot_cli_exceptions() {
+        let files = backend_sources();
+        let found: Vec<(String, String)> = bounded_kernel_waits(&files);
+        let mut want: Vec<(String, String)> = REGISTERED_ONE_SHOT_CLI_WAITS
+            .iter()
+            .map(|(f, snip, why)| {
+                assert!(why.chars().count() >= 30, "{f} 的登记没写清理由");
+                (f.to_string(), snip.to_string())
+            })
+            .collect();
+        want.sort();
+        let got: Vec<(String, String)> = found
+            .iter()
+            .map(|(n, call)| {
+                let file = REGISTERED_ONE_SHOT_CLI_WAITS
+                    .iter()
+                    .find(|(f, ..)| matches_registered(n, f))
+                    .map_or(n.as_str(), |(f, ..)| f);
+                (file.to_string(), call.clone())
+            })
+            .collect();
+        assert_eq!(
+            got, want,
+            "带期限的内核等待与一次性 CLI 例外表对不上 —— 新的那处若也是一次性子命令里的，登记它并写理由；否则它就是常驻后端里的定时器"
+        );
+        // 走得到它们的：`exited_within(` 的调用方只有 `control/resident.rs`；`wait_within(` 的调用方只有 `platform/signal.rs`。
+        let callers = |needle: &str, def: &str| -> Vec<String> {
+            let mut v: Vec<String> = files
+                .iter()
+                .filter(|(_, c)| c.matches(needle).count() > c.matches(def).count())
+                .map(|(n, _)| n.clone())
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(
+            callers(".exited_within(", "fn exited_within("),
+            vec!["control/resident.rs".to_string()]
+        );
+        assert_eq!(
+            callers("wait_within(", "fn wait_within("),
+            vec!["platform/signal.rs".to_string()]
+        );
+        // 而 `control/resident.rs` 只由 `main.rs` 的一次性子命令臂进（`Some("--resident-…") =>`）。
+        let main = files
+            .iter()
+            .find(|(n, _)| n == "main.rs")
+            .map(|(_, c)| c.clone())
+            .expect("main.rs");
+        let entries: Vec<&str> = main
+            .lines()
+            .filter(|l| l.contains("control::resident::") && !l.contains("record_owner"))
+            .collect();
+        assert!(
+            !entries.is_empty()
+                && entries
+                    .iter()
+                    .all(|l| l.trim_start().starts_with("Some(\"--resident-")),
+            "control::resident 的入口不全是一次性子命令臂：{entries:?}"
+        );
+        // 正控：合成语料里一处带期限的 poll 与一处「一直等」的，只认前者。
+        let synth = vec![(
+            "x.rs".to_string(),
+            "let a = unsafe { libc::poll(&mut p, 1, 500) }; let b = unsafe { libc::poll(&mut p, 1, -1) };".to_string(),
+        )];
+        assert_eq!(
+            bounded_kernel_waits(&synth),
+            vec![("x.rs".to_string(), "libc::poll(&mut p, 1, 500)".to_string())]
+        );
     }
 
     /// `matches_registered` 的真值表 —— 尤其是**今天还没被真跑过**的 `ends_with` 那一侧。

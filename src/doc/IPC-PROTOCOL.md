@@ -3117,8 +3117,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - `--resident-ensure`（可带 `--replace`）：读回或铸 `~/.cc-monitor/listen-token`（0600，与本机宿主同一份）→ 起一个脱离的自己（常驻载体：
   `CCM_LISTEN_PORT` = `relay_route_core::listen_port_for(agent 家目录)` · `CCM_LISTEN_TOKEN_FILE` = 钥匙文件**路径** · `CCM_RELAY_PORT`（远端中转进程内起）·
   `CCM_BACKEND_STDERR_LOG`）→ stdout 一行 `{"port","token","pid"}`、退出 0。口上已有常驻后端 ⇒ 子进程「绑不上就退 3」，找与起是同一步。
-  `--replace`：先按口上那一位自己记的 `~/.cc-monitor/listen-<口>.pid`（核 `/proc/<pid>/exe`）发 SIGTERM 再起。
-- `--resident-stop`：同一枪，不起；stdout `{"stopped":<pid>|null}`。失败：stderr `{code,message}`、退出 2（`code` ∈ `no_home` · `no_token` · `replace_failed` · `stop_failed` · `spawn_failed` · `unsupported`）。
+  `--replace`：先按口上那一位自己记的 `~/.cc-monitor/listen-<口>.pid`（核 `/proc/<pid>/exe`）用下面同一个停法停掉它，再起。
+- `--resident-stop`（可带 `--grace` `<秒>`）：〔STOP · 2026-09-27〕同机监督者 —— 拿进程把手（Linux pidfd）→ 核身份 → SIGTERM →
+  宽限期内等它退（默认 35 秒；`--grace` 必须大于后端退出排空上限 30 秒）→ 到点 SIGKILL → 再等至多 5 秒；
+  stdout `{"stopped":"graceful"|"killed"|"not_running","pid":<pid>|null}`；强杀之后仍在 ⇒ `stop_failed`；`--grace` 不对 ⇒ `bad_args`。失败：stderr `{code,message}`、退出 2（`code` ∈ `no_home` · `no_token` · `replace_failed` · `stop_failed` · `spawn_failed` · `unsupported` · `bad_args`）。
 - 常驻监听口的握手多一格：attach 行可带 `"flags":[…]`（`STREAM_FLAGS` 的子集，这条连接的流模式旗标；缺 = 进程起参那一份；表外的 ⇒ `malformed-attach`）。
   **多客户**（`设计/01 §3.3b ⑥`）：钥匙对上就交流，每条连接各一份 watcher / inbound / writer；连接计数归零才按「退出行为」办；`stream-busy` 不再发。
 - 链路多一种用法 `tunnel`（`tunnel_port`）：本机常驻后端开 direct-tcpip 到远端 `127.0.0.1:<口>`，monitor 经它讲上面这条监听协议（不另开公网口）。

@@ -248,7 +248,11 @@ async fn without_the_backend_home_nothing_is_written_and_it_says_so() {
     let e = upload_to_staging(&s, &local, KEY, &Cancel::default(), &no_progress)
         .await
         .expect_err("后端的家不在，不该写");
-    assert!(e.contains("后端还没部署"), "没说清为什么：{e}");
+    assert_eq!(
+        e,
+        copy_core::copy_text("beTransfer.upload.notDeployed", &[]),
+        "没说清为什么"
+    );
     assert!(fs.lock().unwrap().mutated.is_empty());
 }
 

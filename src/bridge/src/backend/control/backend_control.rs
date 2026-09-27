@@ -208,13 +208,12 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
 
 /// P2s（`C8`②）：**停这台机的 backend**。
 ///
-/// 〔HOST · V139〕远端这一侧：先 `abort()` 那条流，再经链路在那台跑 `--resident-stop`（SIGTERM 那台的常驻后端，它排空后退）。
-/// 那台起不了常驻、走的是流模式回落时，远端后端随管道破裂退出 —— 两种结局文案分开说（P2s-Y5）。
-///
-/// 〔HX1 · 4D〕本机那一支今天会**等**（SIGTERM → 最多约 35 秒 → 还在才强杀，`stop_grace`）⇒ 不能再是同步命令
-/// （同步命令跑在主线程上，等的那几秒整个界面卡住）：改成 `async`，等的那一段进阻塞线程池。
+/// 〔STOP · 主会话裁〕本机远端同一条：在**那台机器上**跑一次 `--resident-stop`（同机监督者：请它收尾 → 宽限期内等 → 到点强杀），
+/// 这里只发一次、拿回结局 `{stopped: graceful | killed | not_running, pid}`，机器页按它说一句。
+/// 远端先 `abort()` 那条流再发（流随被停的那一位断，不能请它自己经那条流停自己）。本机那一支会等到结局（≤ 宽限期 ＋ 强杀后那一小段），
+/// 同步命令跑在主线程上 ⇒ 等的那一段进阻塞线程池。
 #[tauri::command]
-pub async fn backend_stop(origin: String) -> Result<String, String> {
+pub async fn backend_stop(origin: String) -> Result<crate::remote_resident::StopAnswer, String> {
     check_origin(&origin)?;
     if is_local(&origin) {
         return tauri::async_runtime::spawn_blocking(crate::local_backend_host::stop_local_backend)
@@ -239,28 +238,19 @@ pub async fn backend_stop(origin: String) -> Result<String, String> {
 }
 
 /// 〔HOST〕停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
-async fn stop_remote_resident(origin: &str) -> Result<String, String> {
+async fn stop_remote_resident(origin: &str) -> Result<crate::remote_resident::StopAnswer, String> {
     let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
         copy_text(
             "rsBackendControl.handle.missing",
             &[("origin", &origin.to_string())],
         )
     })?;
-    let o = origin.to_string();
-    match crate::remote_resident::stop(&cfg).await {
-        Ok(Some(pid)) => Ok(copy_text(
-            "rsBackendControl.remote.stopped",
-            &[("origin", &o), ("pid", &pid.to_string())],
-        )),
-        Ok(None) => Ok(copy_text(
-            "rsBackendControl.remote.notRunning",
-            &[("origin", &o)],
-        )),
-        Err(e) => Err(copy_text(
+    crate::remote_resident::stop(&cfg).await.map_err(|e| {
+        copy_text(
             "rsBackendControl.remote.stopFailed",
-            &[("origin", &o), ("e", &e)],
-        )),
-    }
+            &[("origin", &origin.to_string()), ("e", &e)],
+        )
+    })
 }
 
 #[cfg(test)]

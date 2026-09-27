@@ -150,6 +150,12 @@ import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
  * `K-R135`：用户级 PATH 那一格的现状。**手写**（理由见 `ccm_user_path_status` 那一条），
  * 字段名与 Rust 侧 `profile_installer::UserPathStatus` 的**线上名**由判据对拍。
  */
+/** 〔STOP〕「停」的结局：三个词 ＋ 被停的 pid（没在跑 ⇒ `null`）。与 Rust `remote_resident::StopAnswer` 同形。 */
+export interface StopAnswer {
+  stopped: "graceful" | "killed" | "not_running";
+  pid: number | null;
+}
+
 export interface UserPathStatus {
   /** 这台机器有没有「用户级 PATH」这一档 —— 它是 Windows 独有的。 */
   supported: boolean;
@@ -711,8 +717,11 @@ export const commands = {
   /** P2s（C8）：起这台机的后端。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
   backend_start: (args: { origin: string }) => invoke<string>("backend_start", args),
 
-  /** P2s（C8）：停这台机的后端。⚠ 远端返回的是「已断流」不是「已停进程」⇒ **桶②**。 */
-  backend_stop: (args: { origin: string }) => invoke<string>("backend_stop", args),
+  /**
+   * P2s（C8）：停这台机的后端 ⇒ **桶②**。〔STOP〕本机远端同形：那台机器上的一次性 `--resident-stop` 做「请它收尾 → 宽限期内等 → 到点强杀」，
+   * 这里拿回结局（`remote_resident.rs::StopAnswer`）。
+   */
+  backend_stop: (args: { origin: string }) => invoke<StopAnswer>("backend_stop", args),
 
   /**
    * 在某目录起一个**全新**本机会话。

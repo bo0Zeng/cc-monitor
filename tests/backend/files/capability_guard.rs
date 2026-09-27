@@ -420,8 +420,8 @@ fn every_declared_capability_is_reachable_through_the_single_entry_point() {
 fn every_capability_states_its_contract_surface() {
     for cap in CAPABILITIES {
         assert!(
-            cap.what.chars().count() >= 8,
-            "能力 `{}` 的 `what` 太短 —— 写得出来才登记",
+            cap.purpose.chars().count() >= 8,
+            "能力 `{}` 的 `purpose` 太短 —— 写得出来才登记",
             cap.name
         );
         assert!(
