@@ -306,6 +306,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("chan::wire::Item", Kind::Wire),
     ("chan::wire::Kind", Kind::Wire),
     ("chan::wire::Sub", Kind::Wire),
+    // 〔NET2〕那台的能力事实（接上通道时问一次，做不到的那一件置灰）。
+    ("chan::wire::Offer", Kind::Wire),
     // ── 跨机传输 ──
     // 〔F7c · 第三波 09-24〕`§8.4` 拍了（「保留SFTP. 思考怎么干净」）：上传 / 下载经通道开单、订阅进度
     //   （`设计/60 §13`）⇒ `sftp_upload` · `sftp_download` · `TRANSFER_LANE_CAP` 三行走掉；

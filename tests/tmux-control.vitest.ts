@@ -337,3 +337,28 @@ describe("〔C4e〕就地 resume（F14：只有能证明没发出去才许回落
   });
 });
 
+
+describe("〔NET2 · 主会话 09-27 裁 A〕那台握手时说过做不到的，菜单置灰并说为什么", () => {
+  it("kill 在「没有 tmux」的那台上不可点、字后面带原因；那台没说的项与没问过的机器照常", async () => {
+    const { gateByOffer } = await import("../src/tab-menu");
+    const { chan } = await import("../src/ipc/chan");
+    invokeMock.mockImplementation((cmd: string, args: { origin?: string }) =>
+      Promise.resolve(
+        cmd === "chan_offer" && args.origin === "net2-box"
+          ? { ops: ["kill", "capture-pane"], unavailable: [["kill", "no_tmux"]], stoppable: [] }
+          : null,
+      ),
+    );
+    await chan.offer("net2-box");
+    const click = vi.fn();
+    const kill = gateByOffer("net2-box", { id: "kill", label: "结束会话", onClick: click });
+    expect(kill.enabled).toBe(false);
+    expect(kill.label).toContain("没有 tmux");
+    kill.onClick?.();
+    expect(click).not.toHaveBeenCalled();
+    const preview = { id: "preview", label: "预览", onClick: click };
+    expect(gateByOffer("net2-box", preview)).toBe(preview);
+    const elsewhere = { id: "kill", label: "结束会话", onClick: click };
+    expect(gateByOffer("net2-other", elsewhere)).toBe(elsewhere);
+  });
+});
