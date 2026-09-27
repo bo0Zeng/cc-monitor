@@ -293,6 +293,11 @@ mod tests {
              本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘**",
         ),
         ("relay", "HTTP 中转搬字节那半"),
+        (
+            "resync_face",
+            "〔RESYNC · V149〕帧面 `resync`（手动对齐）的宿主壳：解 `args`、交 `observe/watcher.rs::resync`、装应答。**零写盘**\
+             （打标改的是 tmux server 的运行期状态，住 `control/identity_tag.rs`）",
+        ),
         ("wire", "线上协议的帧定义与编解码"),
         // ── 下面这些整体是 `cfg(test)` 的守卫，生产构建为空 ──────────────────
         // 🔴 **它们也在人群里，这是刻意的**：护栏扫的是「源码里有没有写盘的形状」，

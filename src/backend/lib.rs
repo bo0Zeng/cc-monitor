@@ -75,6 +75,7 @@ pub mod read_face; // 〔C1 · 09-24〕只读查询的帧面宿主（8 条：his
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`
+pub mod resync_face; // 〔RESYNC · V149〕手动对齐 `resync` 的帧面宿主 —— 薄壳，本体在 observe/watcher.rs（住顶层的理由同 read_face）
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
@@ -871,6 +872,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
+    // 〔RESYNC · V149〕帧面 `resync` 自动派生的 CLI 面（一次性进程里没有 watcher ⇒ `watchers: 0`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--resync",
     "--search",
     "--session-accounts",
     // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），

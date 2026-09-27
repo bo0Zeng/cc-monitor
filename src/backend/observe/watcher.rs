@@ -128,6 +128,12 @@ enum WatchEvent {
     /// 发它。没有它的话，删掉 ticker 之后 reader 线程会一直阻塞在 `recv()`
     ///（进程退出时才随之消亡——不是泄漏，但「没人听就停读」这条性质会丢）。
     Shutdown,
+    /// 〔RESYNC · `设计/15 §4.1b`〕用户按了「重新对齐」：与起步同一套（耳朵重挂 · pidfile 对表 · 重探 tmux · 账号清单），
+    /// 做完把差异回给 `done`。`only` = 只对这一个 sid（关卡 2「对齐后重试」：重验 ＋ 重打）。
+    Resync {
+        only: Option<String>,
+        done: std::sync::mpsc::Sender<Reconciled>,
+    },
 }
 
 /// P3：主循环对 tmux server 的认知。**三值**——`Unknown` 与 `Gone` 必须分开：
@@ -1149,6 +1155,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
+            let me = live_enter(events_tx.clone());
             watch_loop(
                 agent_home,
                 tx,
@@ -1157,10 +1164,92 @@ pub fn spawn(
                 with_rbind_token,
                 events_tx,
                 events_rx,
-            )
+            );
+            live_leave(me);
         })
         .expect("spawn jsonl-watcher thread");
     (rx, poke)
+}
+
+/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份）。`resync` 是整机的：每一份都对齐。
+static LIVE: std::sync::Mutex<Vec<(u64, std::sync::mpsc::Sender<WatchEvent>)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn live_enter(tx: std::sync::mpsc::Sender<WatchEvent>) -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    LIVE.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push((id, tx));
+    id
+}
+
+fn live_leave(id: u64) {
+    LIVE.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|(k, _)| *k != id);
+}
+
+/// 〔RESYNC · `设计/15 §4.1b`〕**手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
+/// 回（差异，几份 watcher 答了）。增删取各份最大（每份看的是同一台机器），标签写入相加（只有第一份真写）。
+/// 中途退掉的那份丢了 `done` ⇒ 这里不会挂住。
+pub(crate) fn resync(only: Option<&str>) -> (Reconciled, usize) {
+    let (tx, rx) = std::sync::mpsc::channel::<Reconciled>();
+    let live: Vec<_> = LIVE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .map(|(_, w)| w.clone())
+        .collect();
+    for w in &live {
+        let _ = w.send(WatchEvent::Resync {
+            only: only.map(str::to_string),
+            done: tx.clone(),
+        });
+    }
+    drop(tx);
+    let mut n = 0;
+    let sum = rx.iter().fold(Reconciled::default(), |acc, r| {
+        n += 1;
+        Reconciled {
+            added: acc.added.max(r.added),
+            removed: acc.removed.max(r.removed),
+            retagged: acc.retagged + r.retagged,
+        }
+    });
+    (sum, n)
+}
+
+/// 挂全部耳朵：`agent_home` / `projects/` / `sessions/`（[`HomeEars::arm`]）· tmux socket 目录 · 账号目录。
+/// 起步一次；〔RESYNC · `设计/15 §4.1b`〕「重新对齐」再调同一个（各挂法都先摘再挂，重挂无害、漏挂新 inode 致命）。
+fn arm_ears(
+    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    ears: &mut HomeEars,
+    sock_dir: &Path,
+    sock_dir_watched: &mut bool,
+    accounts_ear: Option<&mut AccountsEar>,
+) {
+    ears.arm(debouncer);
+    // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
+    // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
+    // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
+    if let Some(parent) = sock_dir.parent() {
+        if parent.is_dir() {
+            if let Err(e) = debouncer
+                .watcher()
+                .watch(parent, RecursiveMode::NonRecursive)
+            {
+                tracing::warn!("监视 {} 失败: {e}", parent.display());
+            }
+        }
+    }
+    watch_sock_dir_if_present(debouncer, sock_dir, sock_dir_watched);
+    // 〔SR1a · `设计/05 §13.6 ③`〕**账号清单变了 ⇒ 一帧 `accounts_changed`**。监视 manifest 所在目录
+    // （NonRecursive；写 manifest 常是「写临时文件再 rename」，盯文件本身会在 rename 之后失聪）。
+    // 〔GAP1〕目录起步不在 / 被删重建 ⇒ 由 `AccountsEar` 挂上一层等它、出现时重挂（原先这里失聪）。
+    if let Some(ear) = accounts_ear {
+        ear.arm(debouncer);
+    }
 }
 
 /// The reader half: initial walkdir scan, then the live debouncer loop.
@@ -1227,35 +1316,19 @@ fn watch_loop(
             return;
         }
     };
-    // 〔VIS2 · S3〕三道耳朵（`agent_home` 不在 ⇒ 先挂它的上一层），这里与事件循环里各只调一次。
+    // 〔VIS2 · S3〕三道耳朵（`agent_home` 不在 ⇒ 先挂它的上一层）＋ tmux socket 目录 ＋ 账号目录：起步与 `resync` 都经 [`arm_ears`]。
     let mut ears = HomeEars::new(&agent_home, &projects, &sessions);
-    ears.arm(&mut debouncer);
-    // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
-    // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
-    // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
     let sock_dir = tmux_socket_dir();
-    // `sock_dir_watched` = 目录**本身**挂上了没有。没挂上时退一层监视它的父
-    // （目录还不存在 —— 本机从没起过 tmux 就是这样），等它被创建出来再升级。
+    // `sock_dir_watched` = 目录**本身**挂上了没有（没挂上时 `arm_ears` 退一层监视它的父）。
     let mut sock_dir_watched = false;
-    if let Some(parent) = sock_dir.parent() {
-        if parent.is_dir() {
-            if let Err(e) = debouncer
-                .watcher()
-                .watch(parent, RecursiveMode::NonRecursive)
-            {
-                tracing::warn!("监视 {} 失败: {e}", parent.display());
-            }
-        }
-    }
-    watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
-    // 〔SR1a · `设计/05 §13.6 ③`〕**账号清单变了 ⇒ 一帧 `accounts_changed`**。监视 manifest 所在目录
-    // （NonRecursive；写 manifest 常是「写临时文件再 rename」，盯文件本身会在 rename 之后失聪）。
-    // 〔GAP1〕目录起步不在 / 被删重建 ⇒ 由 `AccountsEar` 挂上一层等它、出现时重挂（原先这里失聪）。
     let mut accounts_ear = accounts_manifest.parent().map(AccountsEar::new);
-    if let Some(ear) = accounts_ear.as_mut() {
-        ear.arm(&mut debouncer);
-    }
-
+    arm_ears(
+        &mut debouncer,
+        &mut ears,
+        &sock_dir,
+        &mut sock_dir_watched,
+        accounts_ear.as_mut(),
+    );
     // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
     // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
@@ -1470,6 +1543,22 @@ fn watch_loop(
                     }
                     sink.send(observation_to_frame(TmuxObservation::NoServer));
                 }
+            }
+            // 〔RESYNC · `设计/15 §4.1b`〕与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
+            WatchEvent::Resync { only, done } => {
+                if only.is_none() {
+                    arm_ears(
+                        &mut debouncer,
+                        &mut ears,
+                        &sock_dir,
+                        &mut sock_dir_watched,
+                        accounts_ear.as_mut(),
+                    );
+                    sink.send(Frame::AccountsChanged);
+                }
+                let got = reconcile_sessions(&sessions, &mut state, &mut sink, only.as_deref());
+                start_tmux_probe(&mut tmux_inflight, &events_tx);
+                let _ = done.send(got);
             }
             WatchEvent::Shutdown => break,
         }
@@ -2102,22 +2191,23 @@ fn rewatch_sessions(
 ///
 /// Idempotent: if we already cached the same sid for this path, skip the emit
 /// so a debounced modify event does not re-announce an existing session.
-fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+/// 〔RESYNC〕回真 = 这一次真往 tmux 里写了身份标签（首次宣告或对账纠正）。
+fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> bool {
     let key = path_key(path);
     // PID is the sessions/<PID>.json filename stem.
     let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
-        return;
+        return false;
     };
     let Some(bytes) = std::fs::read(path).ok() else {
-        return;
+        return false;
     };
     let Some(sid) = parse_session_id(&bytes) else {
-        return;
+        return false;
     };
     // Only ACTIVE if the process is actually alive (mirrors local STILL_ACTIVE).
     // A stale pidfile for a dead process is NOT an active session.
     if !pid_alive(pid) {
-        return;
+        return false;
     }
     // Batch6-F21: interactivity gate. CC 2.1.x 的后端后台任务
     // (--fork-session --resume) **会**写 sessions/<PID>.json（kind:"bg" +
@@ -2138,7 +2228,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 "sessions json skipped (kind={kind}): {} pid {pid} is a non-interactive claude (bg task)",
                 path.display()
             );
-            return;
+            return false;
         }
     }
     // Batch9-F27：帧元信息一次解析（status diff 与后面的宣告帧共用）
@@ -2169,8 +2259,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             });
         }
         // 〔RESYNC · `设计/15 §4.1b`〕pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
-        let _ = tag_identity(pid, &sid);
-        return;
+        return tag_identity(pid, &sid).1;
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
     // 必须走 removed 路径：旧实现 insert 直接覆盖 entry，旧 sid 既不清
@@ -2211,7 +2300,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 "stale sessions json ignored ({reason}): {} pid {pid} is not the claude that wrote it",
                 path.display()
             );
-            return;
+            return false;
         }
         AddTimeVerdict::Alive => {}
     }
@@ -2237,7 +2326,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // （`identity_tag::Outcome::container`，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
     // 〔W5-VIS · `设计/15 §4.7 S2`〕打不上的那两形（tmux 报错 / sid 形状不对）**说出来** —— 标没写上的会话
     // 之后过不了身份门，而「为什么」原先整条链零线索。
-    let (container, _) = tag_identity(pid, &sid);
+    let (container, wrote) = tag_identity(pid, &sid);
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
@@ -2308,6 +2397,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             process_jsonl(p, state, sink);
         }
     }
+    wrote
 }
 
 /// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，
@@ -2342,15 +2432,61 @@ fn retag_tracked(state: &ReaderState, only: Option<&str>) -> usize {
 /// ⇒ 客户端收到它时，这台机器此刻全部的活会话都已经报过了 —— 靠它把「固定、却没被报过」的会话
 /// 从「说不清」落到「已结束」（`设计/30 §3.5.7a`）。
 fn initial_session_scan(sessions: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+    let _ = reconcile_sessions(sessions, state, sink, None);
+    sink.send(Frame::SessionsReplayed);
+}
+
+/// 〔RESYNC · `设计/15 §4.1b`〕一次对齐的差异（`resync` 的应答）。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Reconciled {
+    pub(crate) added: usize,
+    pub(crate) removed: usize,
+    pub(crate) retagged: usize,
+}
+
+/// **pidfile 目录对后端的表**：起步初扫与 `resync` 是这同一个函数（`设计/15 §4.1b`「与初探同一个函数」）。
+/// 表里有、盘上没了或进程没了 ⇒ 补移除；盘上有 ⇒ `process_session_added`（没跟的补宣告，在跟的走 sid 没变那一支 ⇒ 顺手对账标签）。
+/// 只对差异发帧。`only` = 只对这一个 sid（关卡 2「对齐后重试」）。
+fn reconcile_sessions(
+    sessions: &Path,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    only: Option<&str>,
+) -> Reconciled {
+    let before = state.active_sids.clone();
+    let stale: Vec<PathBuf> = state
+        .sessions
+        .iter()
+        .filter(|(k, e)| only.is_none_or(|s| s == e.sid) && (!k.exists() || !pid_alive(e.pid)))
+        .map(|(k, _)| k.clone())
+        .collect();
+    for k in &stale {
+        process_session_removed(k, state, sink);
+    }
+    let mut retagged = 0;
     if sessions.is_dir() {
         for entry in WalkDir::new(sessions).into_iter().filter_map(Result::ok) {
             let p = entry.path();
-            if is_session_json(p) {
-                process_session_added(p, state, sink);
+            if !is_session_json(p) {
+                continue;
+            }
+            if let Some(want) = only {
+                let sid = std::fs::read(p).ok().and_then(|b| parse_session_id(&b));
+                if sid.as_deref() != Some(want) {
+                    continue;
+                }
+            }
+            if process_session_added(p, state, sink) {
+                retagged += 1;
             }
         }
     }
-    sink.send(Frame::SessionsReplayed);
+    let after = &state.active_sids;
+    Reconciled {
+        added: after.difference(&before).count(),
+        removed: before.difference(after).count(),
+        retagged,
+    }
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
