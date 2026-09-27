@@ -34,7 +34,7 @@
  * 「单独存在时是安慰剂」同族）。
  */
 
-import { commands } from "../ipc/commands";
+import { commands, type StopAnswer } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
@@ -61,6 +61,21 @@ import type { SessionAccount } from "../accounts";
  * - 问不到（`rows === null`）⇒ 照样问，说「不知道有几条」（出声，不把「问不到」当成「没有」）；
  * - 活着但说不清走不走中转的（`viaRelay` 缺 / `null`）⇒ 连同确定的几条一起说出来。
  */
+/**
+ * 〔STOP〕「停」的结局说一句（三个词各一句，穷举 —— 多一个词 tsc 就红）。机器页那一行照它说，不只进 console。
+ */
+export function stopSaid(a: StopAnswer): string {
+  const pid = a.pid === null ? "" : String(a.pid);
+  switch (a.stopped) {
+    case "graceful":
+      return copyText("backend.stop.said.graceful", { pid });
+    case "killed":
+      return copyText("backend.stop.said.killed", { pid });
+    case "not_running":
+      return copyText("backend.stop.said.notRunning");
+  }
+}
+
 export function stopWarning(rows: SessionAccount[] | null): string | null {
   if (rows === null) return copyText("backend.stop.relayUnknown");
   const live = rows.filter((r) => r.alive);
@@ -455,6 +470,10 @@ export class BackendSection {
     log.textContent = copyText("backend.buildCells.log");
     log.onclick = () => void this.toggleLog(origin, cells, log);
     ops.appendChild(log);
+    // 〔STOP〕上一次「停」的结局（`stopSaid`）；没停过就空着。
+    const said = document.createElement("span");
+    said.className = "backend-row-said";
+    ops.appendChild(said);
 
     const exitCol = col("exit");
     const label = document.createElement("label");
@@ -578,8 +597,9 @@ export class BackendSection {
    * ⇒ 现在：操作期间**禁用本行按钮**，然后**轮询到状态落定**（或超时）再放开。
    * ⚠ 超时不是失败：远端断流后对面进程什么时候退，我们在本机看不见（诚实边界 11c）。
    *
-   * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史：本机那一支今天先 SIGTERM、等它自己收尾（≤ 约 35 秒；后端自己 30 秒到期会先说清哪几条没做完再退）、
-   * 还在才强杀，**等完才返回**（`stop_grace.rs`）⇒ 按钮会禁用那么久；强杀了 / 没停掉 ⇒ 命令回 `Err`，走下面那条失败提示。
+   * 〔HX1 · 4D · D-a〕上面「只发 SIGKILL 就返回」是历史。〔STOP〕今天本机远端同一条：那台机器上的一次性 `--resident-stop`
+   * 先 SIGTERM、在宽限期（35 秒，比后端自己 30 秒的排空上限长）内等它自己收尾、还在才强杀，**等完才返回** ⇒ 按钮会禁用那么久；
+   * 结局（`graceful` / `killed` / `not_running`）在这一行说一句（`stopSaid`）；没停掉 ⇒ 命令回 `Err`，走下面那条失败提示。
    */
   /** 〔GAP1〕点「日志」：没开 ⇒ 取回来摆在四格后面（不进四格本身，栏数不变）；开着 ⇒ 收起。 */
   private async toggleLog(origin: string, cells: HTMLElement, btn: HTMLButtonElement): Promise<void> {
@@ -620,12 +640,16 @@ export class BackendSection {
         return;
       }
     }
+    const said = cells?.querySelector<HTMLElement>(".backend-row-said") ?? null;
+    if (said) said.textContent = "";
     try {
-      const msg =
-        what === "start"
-          ? await commands.backend_start({ origin })
-          : await commands.backend_stop({ origin });
-      console.info(`[P2s] ${origin} ${what}: ${msg}`);
+      if (what === "start") {
+        console.info(`[P2s] ${origin} start: ${await commands.backend_start({ origin })}`);
+      } else {
+        const end = await commands.backend_stop({ origin });
+        if (said) said.textContent = stopSaid(end);
+        console.info(`[P2s] ${origin} stop: ${end.stopped} ${end.pid ?? ""}`);
+      }
     } catch (e) {
       showActionFailureToast(what === "start" ? copyText("backend.start.failed") : copyText("backend.stop.failed"), String(e));
     }
