@@ -453,19 +453,25 @@ describe("秤 4 每帧账本", () => {
       const led = ledger();
 
       const expFrames = Math.ceil(n / k);
+      const unskippable = unskippableFrames(n, k, forks);
       expect(led.frames, `k=${k}：帧数`).toBe(expFrames);
-      expect(led.computes, `k=${k}：F15 合批 —— 一帧只算一次`).toBe(expFrames);
-      expect(led.computeSamples.length).toBe(expFrames);
-      expect(new Set(led.computeSamples.map((s) => s.frame)).size).toBe(expFrames);
+      // 〔RENDER2 · `设计/17 §2.7` 档 1 落地〕全命中的帧不再真算（`computesSkipped`）⇒ 真算的只剩跳不掉的那些帧，一帧至多一次。
+      expect(led.computes, `k=${k}：只有跳不掉的帧真算`).toBe(unskippable);
+      expect(led.computesSkipped, `k=${k}：全命中的帧由档 1 跳掉`).toBe(expFrames - unskippable);
+      expect(led.computeSamples.length).toBe(unskippable);
+      expect(new Set(led.computeSamples.map((s) => s.frame)).size).toBe(unskippable);
 
       // 未命中数**由语料参数算**（见 missesUnderFrameBatching 头注），不是重跑谓词
       expect(led.fastPathHit + led.fastPathMiss).toBe(n);
       expect(led.fastPathMiss, `k=${k}：合批下的未命中数与模型不符`).toBe(
         missesUnderFrameBatching(n, k, forks),
       );
-      expect(led.computesUnskippable, `k=${k}`).toBe(unskippableFrames(n, k, forks));
-      expect(led.computesSkippable, `k=${k}`).toBe(expFrames - unskippableFrames(n, k, forks));
+      expect(led.computesUnskippable, `k=${k}`).toBe(unskippable);
+      expect(led.computesSkippable, `k=${k}：非 verify 档下全命中的帧根本不真算`).toBe(0);
       expect(led.computesNoArrivals).toBe(0);
+      // 〔RENDER2〕档 1 走过的帧，最后的主线与整份重算逐元素相等（异源：另一条路从零算）。
+      const got = (folder as unknown as { lastMainBranch: Set<string> }).lastMainBranch;
+      expect([...got].sort(), `k=${k}：快路攒出来的主线与整份重算不等`).toEqual([...computeMainBranch(recs)].sort());
       // 反空真：每一档都必须两条路都有
       expect([led.fastPathHit > 0, led.fastPathMiss > 0], `k=${k}`).toEqual([true, true]);
       checked++;
@@ -477,7 +483,7 @@ describe("秤 4 每帧账本", () => {
           pct(led.fastPathHit, n).padStart(9),
           String(led.fastPathMissBy.parentHasChild).padStart(7),
           String(led.fastPathMissBy.parentOffMain).padStart(9),
-          pct(led.computesSkippable, led.computes).padStart(10),
+          pct(led.computesSkipped, led.frames).padStart(10),
         ].join(" | "),
       );
     }

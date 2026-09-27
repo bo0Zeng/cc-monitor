@@ -91,6 +91,8 @@ export class BranchFolder {
   private ledgerShadowAdd = new Set<string>();
   private ledgerSinceCompute = 0;
   private ledgerMissSinceCompute = 0;
+  /** 〔RENDER2〕上次真算之后队列豁免集合变过（档 1 快路不认这种帧）。 */
+  private queuedDirty = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -116,9 +118,8 @@ export class BranchFolder {
   }
 
   /**
-   * 秤 4 仪表：§2.7 档 1「脏标记快路」的**影子判定**——只算「如果装了快路，这条
-   * 记录会不会走 O(1)」，然后把结果写账本。**不改任何折叠行为**：下面这段跑完之后
-   * `recordAdded` 照旧 push + 排程，`computeMain()` 照旧全量重算。
+   * §2.7 档 1「脏标记快路」的**判定**（〔RENDER2〕已不只是影子：帧末那一次全命中 ⇒ `fastMain` 跳掉全量重算）。
+   * 这里只记「这条走不走得了 O(1)」与账本；折叠结果由帧末那一次定。
    *
    * 档 1 的谓词逐字是「新记录的 parent 是当前主线叶子且原本无 child ⇒ 只 `add(uuid)`」，
    * 拆成四问，**顺序即优先级**（一条记录只记一个未命中原因，记最先踩到的那个）：
@@ -187,7 +188,7 @@ export class BranchFolder {
         this.liveScheduled = false;
         if (this.disposed || this.batchMode || !this.pendingLive) return;
         this.pendingLive = false;
-        const next = this.computeMain("live-frame");
+        const next = this.fastMain() ?? this.computeMain("live-frame");
         if (setsEqual(next, this.lastMainBranch)) return;
         this.lastMainBranch = next;
         this.rebuild();
@@ -200,6 +201,24 @@ export class BranchFolder {
     } else {
       setTimeout(run, 0);
     }
+  }
+
+  /**
+   * 〔RENDER2 · `设计/17 §2.7` 档 1〕**脏标记快路**：上次真算之后来的记录**全都**接在主线叶子上、父亲原本无 child
+   * （影子判定全命中，`noteFastPathShadow`），队列豁免也没变 ⇒ 主线 = 上次 ∪ 它们，不重扫 `computeMainBranch`。
+   * 有一条没命中（分叉 / 链断 / 接在旧分支上）或豁免变了 ⇒ `null`，照旧全量算。
+   * verify 档（判据专用）照旧全量算并逐元素比影子结果（`computeMain`），不走这里。
+   */
+  private fastMain(): Set<string> | null {
+    if (this.ledgerSinceCompute === 0 || this.ledgerMissSinceCompute > 0 || this.queuedDirty) return null;
+    const led = branchLedger();
+    if (led?.verify) return null;
+    const next = new Set(this.lastMainBranch);
+    for (const u of this.ledgerShadowAdd) next.add(u);
+    this.ledgerSinceCompute = 0;
+    this.ledgerShadowAdd.clear();
+    if (led) led.computesSkipped++;
+    return next;
   }
 
   /**
@@ -239,6 +258,7 @@ export class BranchFolder {
     const t = content.trim();
     if (!t || this.queuedContents.has(t)) return;
     this.queuedContents.add(t);
+    this.queuedDirty = true; // 〔RENDER2〕豁免变了 ⇒ 下一次不走档 1 快路
     // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）
     //
     // `设计/17 §2.7` 档 3「`addQueuedContent` 接上合批」：这里原先**同步**跑一次
@@ -303,6 +323,7 @@ export class BranchFolder {
     this.ledgerSinceCompute = 0;
     this.ledgerMissSinceCompute = 0;
     this.ledgerShadowAdd.clear();
+    this.queuedDirty = false;
     return next;
   }
 
@@ -593,8 +614,7 @@ export class BranchFolder {
 //  2. **ms 是 node/jsdom 的读数还是 WebView2 的，账本自己不知道。** §2.7 的
 //     3.45 ms 是 node 上打的；这套仪表在生产代码里，真机跑一次就能拿到 WebView2 的
 //     同一列数，但**本轮没有真机读数**。
-//  3. **命中率是「如果装了档 1 会怎样」的影子判定，不是真跑了快路。** 快路没装 ——
-//     每次仍然全量 `computeMainBranch`。影子判定只读态、只写账本。
+//  3. 〔RENDER2〕档 1 已装：影子判定全命中的那一帧由 `fastMain` 真跳掉（`computesSkipped`），verify 档照旧全量算来比对。
 //  4. **`verify` 档只在「整段全命中」那些次上比对。** 有未命中的那些次，档 1 本来
 //     就要落回全量算，正确性不由快路负责，所以不比。
 //  5. **搬动节点数只数 move 的次数，不数浏览器为此付的布局/重绘代价。**
@@ -684,8 +704,10 @@ export interface BranchFrameLedger {
   fastPathSamples: BranchFastPathSample[];
   fastPathSamplesDropped: number;
 
-  /** 这次真算之前那一段记录**全部命中** ⇒ 档 1 能整个跳掉这次 O(N) */
+  /** 这次真算之前那一段记录**全部命中** ⇒ 档 1 能整个跳掉这次 O(N)（〔RENDER2〕档 1 落地后只在 verify 档下还会真算到这一格） */
   computesSkippable: number;
+  /** 〔RENDER2〕档 1 快路**真跳掉**的次数（不在 `computes` 里） */
+  computesSkipped: number;
   /** 那一段里至少一条没命中 ⇒ 这次 O(N) 跑不掉 */
   computesUnskippable: number;
   /** 那一段一条新记录都没来（含 `setRecordsAndRebuild` 那一支） */
@@ -726,6 +748,7 @@ function makeBranchLedger(verify: boolean): BranchFrameLedger {
     fastPathSamples: [],
     fastPathSamplesDropped: 0,
     computesSkippable: 0,
+    computesSkipped: 0,
     computesUnskippable: 0,
     computesNoArrivals: 0,
     verify,
