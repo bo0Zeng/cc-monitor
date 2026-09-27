@@ -291,6 +291,9 @@ const OUTWARD: &[(&str, Kind)] = &[
     // ── 平台 ────────────────────────────────────────────────────────
     // 〔HX1 · 主会话裁拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid。
     ("platform::paths::current_uid", Kind::Platform),
+    // ── common ────────────────────────────────────────────────────────
+    // 〔COPY · 09-27〕契约错只进表一句（`设计/91 §5.5`「请求格式不对：{detail}」），住 `common::contract`。
+    ("common::contract::malformed", Kind::Common),
     // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
     ("TARGETS", Kind::LedgerAxis),
     ("Target", Kind::LedgerAxis),

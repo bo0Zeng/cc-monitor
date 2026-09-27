@@ -121,7 +121,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
-    "tests/bridge/remote_resident_tests.rs", // 〔HOST〕远端常驻后端的判定（纯函数）
     "tests/bridge/session_facts_tests.rs",
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
@@ -252,6 +251,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/bridge/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
     "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
     "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
     "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
@@ -335,7 +335,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/byte_cap_registry_tests.rs",
     "tests/bridge/byte_table_tests.rs",
     "tests/bridge/ccm_cli_contract_tests.rs",
-    "tests/bridge/ccm_probe_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
     "tests/bridge/claude_data_fence_tests.rs",
     "tests/bridge/config_surface_tests.rs",
@@ -526,13 +525,14 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/config_tests.rs",   // 〔CFG1〕J2/J3 12 线程 × 20 轮并发补丁写 · 补丁语义
     "tests/backend/control/overwrite_atomic_tests.rs", // 〔HX1〕W1 ulimit -f 下子进程写到一半被 SIGXFSZ 杀，目标仍是旧整份
     "tests/backend/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
-    "tests/bridge/stop_grace_tests.rs", // 〔HX1〕S1 真 sh 两形：trap exit ⇒ Stopped · trap '' ⇒ Forced
     "tests/bridge/crates/shell-quote-core/lib_tests.rs", // 〔FILES2〕单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
     "tests/bridge/filewin/chunk_upload_tests.rs", // 〔FILES2〕上传块形：临时目录里一份本机文件 ＋ 合成对端
     "tests/backend/accounts/upstream/creds_tests.rs",
     "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
+    "tests/backend/agents/claudecode/paths_tests.rs", // 〔E2 · V146〕设置文件压不压过进程环境里的上游地址（临时目录夹具）
+    "tests/bridge/ccm_probe_tests.rs", // 〔E2〕SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
     "tests/backend/agents/fake_tests.rs",
     "tests/backend/agents_tests.rs",
     "tests/backend/asset_catalog_tests.rs",        // 〔AS2〕
@@ -555,7 +555,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/panorama_tests.rs",
-    "tests/backend/control/resident_tests.rs", // 〔HOST〕临时目录上真铸钥匙、读钥匙文件
+    "tests/backend/control/resident_tests.rs", // 〔HOST〕临时目录上真铸钥匙、读钥匙文件 ·〔STOP〕真 sh 子进程 ＋ 真信号：graceful / killed / not_running
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",
     "tests/backend/dial_link_tests.rs",

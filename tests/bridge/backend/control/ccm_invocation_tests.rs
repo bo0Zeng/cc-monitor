@@ -438,7 +438,7 @@ fn attach_reads_the_container_name_and_no_modifiers_at_all() {
     s.launcher = "claude-dev";
     s.account = CliAccount::Named { name: Some("z") };
     // V138：位置动作取消 ⇒ `ccm attach <名>` 改成 `ccm --attach <名>`，起新会话不再写 `new`。
-    assert_eq!(render(&s).as_deref(), Ok("ccm --attach cc-x"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm -- --attach cc-x"));
     // 连账号/模型维度的能力都不要 —— 全都缺也照样渲染得出来。
     let only_static: BTreeSet<String> = STATIC_CAPS_EXPECTED
         .iter()
@@ -446,7 +446,7 @@ fn attach_reads_the_container_name_and_no_modifiers_at_all() {
         .collect();
     assert_eq!(
         render_ccm_invocation(&s, &only_static, true).as_deref(),
-        Ok("ccm --attach cc-x")
+        Ok("ccm -- --attach cc-x")
     );
 }
 
@@ -691,9 +691,10 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     s.args = &["-p"];
     assert_eq!(
         render(&s).as_deref(),
+        // 〔V151〕`ccm <交给 claude 的…> -- <ccm 自己的…>`：各半边里维度的先后照旧。
         Ok(concat!(
-            "ccm --resume s1 --ccm-tmux=cc-x --ccm-sid=sid-1 ",
-            "--account z --model opus --cwd /w --launcher claude-dev -- -p"
+            "ccm --resume s1 --model opus -p -- --ccm-tmux=cc-x --ccm-sid=sid-1 ",
+            "--account z --cwd /w --launcher claude-dev"
         ))
     );
 }
@@ -704,13 +705,20 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
 fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
     let mut s = base_spec();
     s.args = &["-p", "两个 词"];
-    assert_eq!(render(&s).as_deref(), Ok("ccm --base -- -p '两个 词'"));
+    // 〔V151〕交给 claude 的在 `--` 左边、ccm 的在右边。
+    assert_eq!(render(&s).as_deref(), Ok("ccm -p '两个 词' -- --base"));
     let mut s = base_spec();
     s.args = &[];
+    assert_eq!(render(&s).as_deref(), Ok("ccm -- --base"));
+    // claude 自己的 `--` ＋ 没有 ccm 部分 ⇒ 末尾补一个空的 `--`（按最后一个 `--` 切）。
+    s.account = CliAccount::Inherit;
+    s.args = &["-p", "--", "-x"];
+    assert_eq!(render(&s).as_deref(), Ok("ccm -p -- -x --"));
+    s.args = &["-p"];
     assert_eq!(
         render(&s).as_deref(),
-        Ok("ccm --base"),
-        "空 args 不该吐出一个孤零零的 --"
+        Ok("ccm -p"),
+        "没有 ccm 部分、也没有 claude 自己的 `--` ⇒ 一个 `--` 都不吐"
     );
 }
 
@@ -718,11 +726,11 @@ fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
 fn launcher_is_only_named_when_it_differs_from_the_default() {
     let mut s = base_spec();
     s.launcher = "claude";
-    assert_eq!(render(&s).as_deref(), Ok("ccm --base"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm -- --base"));
     s.launcher = "claude-dev";
     assert_eq!(
         render(&s).as_deref(),
-        Ok("ccm --base --launcher claude-dev")
+        Ok("ccm -- --base --launcher claude-dev")
     );
 }
 

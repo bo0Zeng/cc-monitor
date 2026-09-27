@@ -77,13 +77,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/local_backend_host.rs",
         "non-read",
-        4,
+        6,
         "〔`K-P1` 08-26〕**一个字节的用户数据都没读。**四个命中全是「拿这条路径当身份比」：\
              3 处在 `hello_verdict`（解 hello 帧的**冻结 wire 字段** `claude_dir` + 比 + 那句诊断），\
              1 处是 `start_detached` 里问一次 `paths::resolve_claude_dir()` —— \
              它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的后端看的是不是同一个目录」。\
              ⚠ 这一格恰恰是**反过来**的：它存在的理由是**不许静默复用**别人的后端。\
-             ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。",
+             ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。\
+             〔STOP 09-27：4 → 6〕多的两处在 `run_resident_stop`：问一次 `resolve_claude_dir()` 并把它交给一次性 `--resident-stop` 的\
+             `CLAUDE_CONFIG_DIR` —— 同一个用途（让它算出同一个口、找到同一份 pid 记录），同样不读内容。",
     ),
     (
         "src/backend/control/payload.rs",
@@ -330,7 +332,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "local_ccm_entry_status",
         "`~/.cc-monitor/bin/<本机 ccm 入口名>`（`K-R69`：在不在 + 它自报的身份）",
         "**不是伸手拿用户的东西**：这是 monitor 自己的目录，那一份也是我们自己放下去的\
-             （写侧登记在 `write_site_registry` 的 `local_backend.rs::install_local_ccm_entry`）。\
+             （写侧登记在 `write_site_registry` 的 `local_backend.rs::extract_embedded_to`；〔E2〕它就是后端本身）。\
              `home_dir()` 只为「每个用户各一份」。\
              🔴 **它刻意够不到 `~/.local/bin/ccm`** —— 用户那份旧的由产品**一个字节都不碰**\
              （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\

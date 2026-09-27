@@ -826,7 +826,7 @@ export class AccountsSection {
         const status = await commands.acct_iso_status({ origin: this.origin });
         this.noteInstalled(status.installed);
         if (!status.installed) {
-          const dest = deriveAcctIsoDir(host.backendPath, host.user);
+          const dest = deriveAcctIsoDir(host.user);
           this.renderNeedsDeploy(host, dest);
           return;
         }
@@ -848,7 +848,7 @@ export class AccountsSection {
     h.textContent = copyText("accounts.needsDeploy.title");
     box.appendChild(h);
 
-    // dest 推不出（缺 backendPath 且 user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
+    // dest 推不出（user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
     if (!dest) {
       const p = document.createElement("div");
       p.className = "accounts-ne-desc";

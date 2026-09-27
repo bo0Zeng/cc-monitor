@@ -113,6 +113,8 @@ pub const COMMANDS: &[&str] = &[
     "capture-pane",
     // 〔W5-ALIAS · 第五波先行〕别名预览：一条别名的预置参数 → `ccm --print` 那一行（`设计/71 §2.3`）。
     "ccm-print",
+    // 〔E2 · `96 §7.2.2`〕这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
+    "ccm-probe",
     "exit-policy-read",
     "exit-policy-set",
     "files-browse",
@@ -233,7 +235,7 @@ struct InFlight {
 //   这是后端零定时器（`no_timer_guard`）**唯一**让位的地方，登记在那张表的 `REGISTERED_EXIT_DEADLINE`（恰好一行）。
 //   为什么非它不可：远端后端在 SSH 断开那一刻没人叫它退、也没人给上限 —— 阻塞在一个挂死的文件系统上的那一条
 //   会把进程无限期留下（一个没有宿主的后端进程）。叫它退的一方仍可以更早：**第二次停机信号 = 立刻退**；
-//   机器页「停」等得比它久一点（`stop_grace.rs`，35 秒），好让后端先把「哪几条没做完」说出来再退。
+//   机器页「停」等得比它久一点（〔STOP〕一次性子命令 `--resident-stop` 的宽限期 `control/resident.rs::STOP_GRACE_MS`，35 秒），好让后端先把「哪几条没做完」说出来再退。
 
 /// 退出排空期限（**唯一**一个会让后端自己醒来的构件，只在收场时装一次）。
 ///
@@ -1145,6 +1147,18 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔E2 · `96 §7.2.2`〕**这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身（V28），「PATH 上那个是谁」退化成问它自己。
+    //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` / `acct-iso-cmd` 那一形）。
+    CommandSpec {
+        name: "ccm-probe",
+        doc_anchor: Some("#### `ccm-probe`"),
+        codes: &[],
+        fields: &["probe"],
+        takes_input: false,
+        run: Run::Async(|_r| {
+            Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
+        }),
+    },
     CommandSpec {
         name: "exit-policy-read",
         doc_anchor: Some("#### `exit-policy-read`"),
@@ -1317,7 +1331,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "assets-sync",
         doc_anchor: Some("#### `assets-sync`"),
         codes: &["bad_args", "io_failed"],
-        fields: &["backend", "dial", "origin", "reach", "self", "synced"],
+        fields: &["dial", "origin", "reach", "self", "synced"],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
@@ -1337,7 +1351,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "remote-reach",
         doc_anchor: Some("#### `remote-reach`"),
         codes: &["bad_args"],
-        fields: &["backend", "dial", "origin", "reach"],
+        fields: &["dial", "origin", "reach"],
         takes_input: true,
         // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
         run: Run::Async(|r| {

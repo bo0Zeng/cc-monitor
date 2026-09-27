@@ -430,6 +430,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "acct-iso-cmd",
+        "ccm-probe", // 〔E2〕纯函数，普通 spawn
         "assets-sync",
         "panorama",
         "remote-reach",
@@ -593,6 +594,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "resolve",
         // 〔DUP2 · J4〕纯函数，普通 spawn。
         "acct-iso-cmd",
+        // 〔E2〕`ccm-probe`：纯函数，普通 spawn。
+        "ccm-probe",
         "assets-sync",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",

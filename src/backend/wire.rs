@@ -248,16 +248,13 @@ pub enum Frame {
         ///    `observe/watcher.rs` 的 `OBS_NO_TMUX` 是一份运行期读数（watch loop 周期跑
         ///    本地 `tmux ls`），它不是做不到，是**来得比握手晚**。
         ///
-        /// # ★ 今天恒空 —— 是排期，不是做不到（同 `homes` 的 `S5` 口径：**能填不真填**）
+        /// # 〔NET2〕已真填
         ///
-        /// `main.rs` 硬写 `Vec::new()`（`production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
-        /// 钉住）⇒ **hello 帧的线上字节逐字节不变**。而「不是没能力」由
-        /// `main_fourth_face_tests.rs::the_answer_is_a_function_of_the_machine_not_of_the_build` 钉另一半。
-        /// 真填 = 一次**跨仓契约变更**（仓外 aterm 按精确字节读这一帧，契约冻结 2026-07-18），
-        /// 而本机没有 aterm 仓、验不了它的运行时 ⇒ 留成一次**纯发布决策**。
-        /// 真填那天要**同轮**做三件事：① 换 `main.rs` 那一行（`Vec::new()` → `unavailable_here()`）；
-        /// ② 更新 `hello_unavailable_is_additive_present_and_absent` 的期望串；
-        /// ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。
+        /// `main.rs::build_hello` 填 `unavailable_here()`（tmux · unix 权限位两维）。仓外 aterm 不读这个字段
+        /// （只读核过它的 `parseHello`：通用 map、未知字段忽略）；有 tmux 的 unix 机器上表为空 ⇒ 字节不变，
+        /// 没 tmux / Windows 上字节变了 ⇒ 要 bump `BUILD_ID`（主会话合并那一拍）。
+        /// 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` ·
+        /// `hello_unavailable_is_additive_present_and_absent`（两形字节）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         unavailable: Vec<Unavailable>,
         /// 〔HX2 · 第四波 4D，additive〕**起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 [`HOST_ECHO_ENVS`]）。

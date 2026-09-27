@@ -61,6 +61,7 @@ extern "system" {
         user: *mut FileTime,
     ) -> i32;
     fn WaitForSingleObject(handle: RawHandle, milliseconds: u32) -> u32;
+    fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
 }
 
 /// 只读查询（退出码 · 时间）。跨完整性级别也开得出来 —— monitor 侧用的正是这一个。
@@ -75,6 +76,10 @@ const ERROR_ACCESS_DENIED: i32 = 5;
 const WAIT_FOREVER: u32 = 0xFFFF_FFFF;
 /// `WaitForSingleObject` 的「那个对象被触发了」（进程句柄 = 进程已退出）。
 const WAIT_OBJECT_0: u32 = 0;
+/// `WaitForSingleObject` 的「期限到了，对象没被触发」。
+const WAIT_TIMEOUT: u32 = 0x0000_0102;
+/// 〔STOP〕允许 `TerminateProcess`。
+const PROCESS_TERMINATE: u32 = 0x0000_0001;
 
 /// 开一个进程句柄的三种结局 —— **三种，不压成 `Option`**：
 /// 「没权限」与「不在了」在判活里方向相反（前者是存在，后者是死），压成一个 `None` 就是
@@ -160,6 +165,36 @@ pub(crate) fn wait_for_exit(h: &OwnedHandle) -> Result<(), std::io::Error> {
     // SAFETY：句柄有效（同上），且带 `SYNCHRONIZE`（由 `open_for_wait` 开出来的）。
     let r = unsafe { WaitForSingleObject(h.as_raw_handle(), WAIT_FOREVER) };
     if r == WAIT_OBJECT_0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+/// 〔STOP〕开一个「停得了」的句柄：查询 ＋ 等 ＋ 强杀（`platform/signal.rs::stoppable` 的 Windows 臂）。
+pub(crate) fn open_for_stop(pid: u32) -> Opened {
+    open(
+        pid,
+        PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE | PROCESS_TERMINATE,
+    )
+}
+
+/// 〔STOP〕**至多等 `ms` 毫秒**看它退没退（内核事件，不轮询）。只给一次性子命令 `--resident-stop` 用 ——
+/// 登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`。`Ok(true)` = 退了；`Ok(false)` = 期限到了还在。
+pub(crate) fn wait_within(h: &OwnedHandle, ms: u32) -> Result<bool, std::io::Error> {
+    // SAFETY：句柄有效，且带 `SYNCHRONIZE`（由 `open_for_stop` 开出来的）。
+    let r = unsafe { WaitForSingleObject(h.as_raw_handle(), ms) };
+    match r {
+        WAIT_OBJECT_0 => Ok(true),
+        WAIT_TIMEOUT => Ok(false),
+        _ => Err(std::io::Error::last_os_error()),
+    }
+}
+
+/// 〔STOP〕强杀（`TerminateProcess`，退出码 1）。
+pub(crate) fn terminate(h: &OwnedHandle) -> Result<(), std::io::Error> {
+    // SAFETY：句柄有效，且带 `PROCESS_TERMINATE`（由 `open_for_stop` 开出来的）。
+    if unsafe { TerminateProcess(h.as_raw_handle(), 1) } != 0 {
         Ok(())
     } else {
         Err(std::io::Error::last_os_error())

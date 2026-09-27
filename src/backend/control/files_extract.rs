@@ -644,7 +644,7 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
 /// 本模块的线上命令（与 `inbound::REGISTRY`、`IPC-PROTOCOL.md §10` 三处对拍，同 `files_write::MANAGE_COMMANDS`）。
 pub const EXTRACT_COMMANDS: &[ManageCommand] = &[ManageCommand {
     name: "files-extract",
-    what: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
+    purpose: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
            every entry is path-checked first; see IPC-PROTOCOL `files-extract`",
     args: &["fresh", "rel", "root"],
     fields: &["bytes", "dirs", "files", "links", "path"],

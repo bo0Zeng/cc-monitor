@@ -14,7 +14,7 @@ fn main() {
 
 /// backend 源码里**装身份与声明的那一份**的住址 —— 本文件里五处要它
 /// （build_id · 身份戳界标 · capabilities · mtime · 内嵌校验）。
-/// 抽出来的理由与 `local_extract_name` 同族：五份手抄的路径迟早有一份被漏改。
+/// 抽出来的理由与 `local_ccm_entry_name` 同族：五份手抄的路径迟早有一份被漏改。
 ///
 /// 🔴 〔步 9 · 09-19〕**从 `main.rs` 改成 `lib.rs`。** `BUILD_ID` / `BUILD_STAMP_*` /
 /// `CAPABILITIES` 这一族已按 `设计/00 §1.5.4` 前置 2 搬进后端的库面 —— 理由是
@@ -726,7 +726,7 @@ const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 /// # 为什么这里 panic 而不是 warning（与 `embed_backends` 同一条理由，射程不同）
 ///
 /// 远端那条怕的是「装上去永远判 stale ⇒ 无限重装」。本机这条**不会**无限重装
-/// （文件名带 build_id，见 `local_backend::local_extract_name`），但它会
+/// （〔E2〕换版照 HX2 D-b「盘上的比我旧才换」，见 `local_backend::extract_embedded_to`），但它会
 /// **把一份贴错标签的二进制留在用户机器上**：清单说它是 X，字节其实是 Y ⇒
 /// `BACKEND_CAPABILITIES` 那套乐观路径按 X 谈能力、跑起来的是 Y。
 /// ⇒ 半 bump 一样比不 bump 更糟，一样当场拦下。
@@ -739,7 +739,7 @@ fn embed_native_backend() {
     // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
     println!("cargo:rustc-check-cfg=cfg(embedded_native_backend)");
     let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into());
-    // ⚠ **无条件 emit**：`local_backend::local_extract_name` 是**无条件**的生产代码，
+    // ⚠ **无条件 emit**：`local_backend::local_ccm_entry_name` 是**无条件**的生产代码，
     // 它 `env!` 这个名字 —— 只在某些分支 emit 会让别的分支编不过。
     println!(
         "cargo:rustc-env=CCM_TARGET_EXE_SUFFIX={}",
