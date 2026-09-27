@@ -281,6 +281,20 @@ fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
     let _ = tx.send(WatchEvent::TmuxProbeDue);
 }
 
+/// 起一次 tmux 探测（一次性后台线程，结果回 `TmuxObserved`）。已有在途的就不起 —— `inflight` 只在这里置位、
+/// 只在收到 `TmuxObserved` 时清。回真 = 这次真起了。
+fn start_tmux_probe(inflight: &mut bool, tx: &std::sync::mpsc::Sender<WatchEvent>) -> bool {
+    if *inflight {
+        return false;
+    }
+    *inflight = true;
+    let tx = tx.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
+    });
+    true
+}
+
 /// Bounded channel capacity between the reader and the stdout writer.
 ///
 /// Large enough to absorb a `/resume` history burst without dropping, small
@@ -384,7 +398,7 @@ enum TmuxObservation {
 ///
 /// [`run_tmux_ls`] 的 `output()` 是**无超时**阻塞调用（它自己的头注就这么写着：
 /// 远端 tmux 卡死时「会永不返回」）。它跑在一次性后台线程里，所以不会冻住 reader ——
-/// **但 `watch_loop` 的 `tmux_inflight` 去重标志置位三处、只在收到 `TmuxObserved` 时清一处**。
+/// **但 `watch_loop` 的 `tmux_inflight` 去重标志只在 [`start_tmux_probe`] 置位、只在收到 `TmuxObserved` 时清一处**。
 /// 线程永不返回 ⇒ 那一帧永不到达 ⇒ 标志**永远为真** ⇒ **此后一次 tmux 探测都不会再发起**，
 /// 而且**不发任何理由帧**（撞定框 **E4**：静默失败一律给身份）。
 ///
@@ -1306,13 +1320,7 @@ fn watch_loop(
                         watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
                     }
                     if watched_socket.as_deref() == Some(p) || in_sock_dir {
-                        if !tmux_inflight {
-                            tmux_inflight = true;
-                            let tx = events_tx.clone();
-                            std::thread::spawn(move || {
-                                let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
-                            });
-                        }
+                        start_tmux_probe(&mut tmux_inflight, &events_tx);
                         continue;
                     }
                     if is_jsonl(p) && !is_subagent_path(p) {
@@ -1356,13 +1364,8 @@ fn watch_loop(
                     // 只在**真的起了**探测时才清标志。在途时清掉会丢信号——那次在途的探测是
                     // 在漂移**之前**发起的，它带回来的快照照样是旧的。留着标志，下一个事件
                     // 会补上一次（代价只是晚一拍；这本来就只是"更新鲜"，不是本 bug 的修复）。
-                    if !tmux_inflight {
+                    if start_tmux_probe(&mut tmux_inflight, &events_tx) {
                         sid_drifted = false;
-                        tmux_inflight = true;
-                        let tx = events_tx.clone();
-                        std::thread::spawn(move || {
-                            let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
-                        });
                     }
                 }
             }
@@ -1395,13 +1398,7 @@ fn watch_loop(
             // P4：`Poke` 与 `TmuxProbeDue` 走**同一段**——`tmux_inflight` 那道去重顺带
             // 免疫了「信号合并 / 一串 hook 同时打进来」：多次戳只会落一次探测。
             WatchEvent::TmuxProbeDue | WatchEvent::Poke => {
-                if !tmux_inflight {
-                    tmux_inflight = true;
-                    let tx = events_tx.clone();
-                    std::thread::spawn(move || {
-                        let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
-                    });
-                }
+                start_tmux_probe(&mut tmux_inflight, &events_tx);
             }
             WatchEvent::TmuxObserved(probe) => {
                 tmux_inflight = false;
@@ -1454,6 +1451,11 @@ fn watch_loop(
                 }
                 // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
                 sink.send(observation_to_frame(obs));
+                // 〔RESYNC · `设计/15 §4.1b`〕探测结果到达 ⇒ 顺手对账身份标签（hook 不报选项变化）。
+                // 真改了 ⇒ 刚发的那份快照里的 `@ccm_sid` 已过期 ⇒ 再探一次（下一次全是 AlreadyCurrent，不会连环）。
+                if retag_tracked(&state, None) > 0 {
+                    start_tmux_probe(&mut tmux_inflight, &events_tx);
+                }
             }
             // P3：tmux server 的 pidfd 醒了 ⇒ 立刻等价于零会话，**不等下一个 8s 节拍**。
             // pid 比对挡陈旧唤醒（复活后是新 pid，旧看守迟到的事件要忽略）。
@@ -2166,6 +2168,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 liveness_confidence: None,
             });
         }
+        // 〔RESYNC · `设计/15 §4.1b`〕pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
+        let _ = tag_identity(pid, &sid);
         return;
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
@@ -2233,11 +2237,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // （`identity_tag::Outcome::container`，随下面的 `session_added` 报出去）—— 零新进程、零新节拍。
     // 〔W5-VIS · `设计/15 §4.7 S2`〕打不上的那两形（tmux 报错 / sid 形状不对）**说出来** —— 标没写上的会话
     // 之后过不了身份门，而「为什么」原先整条链零线索。
-    let outcome = crate::control::identity_tag::tag(pid, &sid);
-    if let Some(note) = outcome.failure_note(pid, &sid) {
-        tracing::warn!("{note}");
-    }
-    let container = outcome.container();
+    let (container, _) = tag_identity(pid, &sid);
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
@@ -2308,6 +2308,27 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             process_jsonl(p, state, sink);
         }
     }
+}
+
+/// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，
+/// 回（容器，这次真写了没有）。`tag()` 自带「值一样就不动」⇒ 对账不多写一次。
+fn tag_identity(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+    let outcome = crate::control::identity_tag::tag(pid, sid);
+    if let Some(note) = outcome.failure_note(pid, sid) {
+        tracing::warn!("{note}");
+    }
+    let wrote = outcome.wrote();
+    (outcome.container(), wrote)
+}
+
+/// 〔RESYNC · `设计/15 §4.1b`〕对在跟的每个会话（`only` 给了就只对那个 sid）重比一次标签；回真写了几个。
+fn retag_tracked(state: &ReaderState, only: Option<&str>) -> usize {
+    state
+        .sessions
+        .values()
+        .filter(|e| only.is_none_or(|s| s == e.sid))
+        .filter(|e| tag_identity(e.pid, &e.sid).1)
+        .count()
 }
 
 /// Phase 1 的本体：逐个活 pidfile 发 `session_added`，**然后**发一帧 `sessions_replayed`。
