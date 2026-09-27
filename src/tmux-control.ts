@@ -237,11 +237,8 @@ export type SendIntoOutcome =
  * 会话名或载荷为空 ⇒ `refused`（坏数据不是缺省，也不许拿去渲染整串）。
  */
 export async function sendInto(origin: Origin, name: string, payload: string): Promise<SendIntoOutcome> {
-  // 〔DUP3〕这一格**不是** Gate 1 的孪生（Gate 1 在界面那一份删了，见头注第 1 条）：它守的是「能不能回落到那条整串」——
-  //   通道不在（`hop · NotSent`）⇒ `fallback` ⇒ 调用方拿这个名字 / 载荷去渲整串；坏数据不许拿去渲染整串（`DUP3.md §5 ⑥` 列给主会话）。
-  if (name.trim() === "" || payload === "") {
-    return { verdict: "refused", reason: copyText("tmuxControl.resume.emptyInput") };
-  }
+  // 〔FIX · `设计/99 §2 ㊹`〕空名 / 空载荷不在这里判：交给那台后端（`launch` 进门拒 ⇒ refused，带它的原话）；
+  //   回落那一跳渲整串的是 Rust 渲染器（`payload.rs::render_tmux_outer`，目标过 `gate-core` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
   try {
     const body = jsonBody({ mode: "send-into", name, payload });
     const budget = budgetWithin(CONTROL_BUDGET_MS);
