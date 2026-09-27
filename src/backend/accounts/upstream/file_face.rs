@@ -240,7 +240,7 @@ fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, St
     };
     store::parse(&raw)
         .map(Some)
-        .map_err(|e| ("bad_file", e.to_string()))
+        .map_err(|e| ("bad_file", e.said(path)))
 }
 
 /// 把权限判断变成一句给人看的话（与 monitor 那一侧 `creds_store::notice_of` 同一个口径）。
