@@ -9,6 +9,326 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beFilesWrite.deleteTree.stopped": {
+      "kind": "error",
+      "zh": "{why}。删除停在这一条，已删 {n} 条，共 {total} 条",
+      "args": ["why", "n", "total"]
+    },
+    "beFilesWrite.path.empty": {
+      "kind": "error",
+      "zh": "路径是空的",
+      "args": []
+    },
+    "beFilesWrite.path.parentStep": {
+      "kind": "error",
+      "zh": "路径里不能有 ..：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.dotStep": {
+      "kind": "error",
+      "zh": "路径里不能有 .：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.absolute": {
+      "kind": "error",
+      "zh": "这里只收相对路径，给的是绝对路径：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.outsideRoot": {
+      "kind": "error",
+      "zh": "{path} 不在 {root} 底下，不动它",
+      "args": ["path", "root"]
+    },
+    "beFilesWrite.path.unresolved": {
+      "kind": "error",
+      "zh": "{path} 解析不了：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.path.noParent": {
+      "kind": "error",
+      "zh": "目标没有上一级目录：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.noName": {
+      "kind": "error",
+      "zh": "目标没有文件名：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.path.escaped": {
+      "kind": "error",
+      "zh": "{path} 解开链接后落到了 {root} 外面，不动它",
+      "args": ["path", "root"]
+    },
+    "beFilesWrite.create.failed": {
+      "kind": "error",
+      "zh": "新建 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.write.failed": {
+      "kind": "error",
+      "zh": "写 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.rename.exists": {
+      "kind": "error",
+      "zh": "{path} 已经存在。改名不覆盖，先删掉它或换个名字",
+      "args": ["path"]
+    },
+    "beFilesWrite.rename.failed": {
+      "kind": "error",
+      "zh": "把 {src} 改名成 {dst} 失败：{e}",
+      "args": ["src", "dst", "e"]
+    },
+    "beFilesWrite.delete.failed": {
+      "kind": "error",
+      "zh": "删 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.delete.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没删。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.delete.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件。这种删除只收普通文件，不收目录和链接",
+      "args": ["path"]
+    },
+    "beFilesWrite.read.failed": {
+      "kind": "error",
+      "zh": "读不出 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.delete.changed": {
+      "kind": "error",
+      "zh": "{path} 在你读过之后被改过了，什么都没删。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没删",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.notDir": {
+      "kind": "error",
+      "zh": "{path} 不是目录，这里只删空目录",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.notEmpty": {
+      "kind": "error",
+      "zh": "{path} 里面还有东西，这里只删空目录，什么都没动",
+      "args": ["path"]
+    },
+    "beFilesWrite.rmdir.failed": {
+      "kind": "error",
+      "zh": "删目录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.chmod.badMode": {
+      "kind": "error",
+      "zh": "权限位只收低 12 位，给的是 {mode}",
+      "args": ["mode"]
+    },
+    "beFilesWrite.chmod.failed": {
+      "kind": "error",
+      "zh": "改 {path} 的权限失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.chmod.unsupported": {
+      "kind": "error",
+      "zh": "这个系统没有 unix 权限位，{path} 没动",
+      "args": ["path"]
+    },
+    "beFilesWrite.overwrite.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件，只能覆盖普通文件",
+      "args": ["path"]
+    },
+    "beFilesWrite.overwrite.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没写",
+      "args": ["path"]
+    },
+    "beFilesWrite.overwrite.changed": {
+      "kind": "error",
+      "zh": "{path} 在你打开之后被改过了，什么都没写",
+      "args": ["path"]
+    },
+    "beFilesWrite.deleteTree.entryRefused": {
+      "kind": "error",
+      "zh": "{why}。删除整趟没做：这棵树里有一条路径解析不过，什么都没动",
+      "args": ["why"]
+    },
+    "beFilesWrite.deleteTree.crossMount": {
+      "kind": "error",
+      "zh": "{path} 在另一个文件系统上（挂载点）。删除不走进去，整趟没做，什么都没动",
+      "args": ["path"]
+    },
+    "beFilesWrite.deleteTree.overCap": {
+      "kind": "error",
+      "zh": "{path} 底下超过 {cap} 条。一次不删这么多，整趟没做，什么都没动",
+      "args": ["path", "cap"]
+    },
+    "beFilesWrite.deleteTree.kindChanged": {
+      "kind": "error",
+      "zh": "{path} 在计划与动手之间换了种类，不删",
+      "args": ["path"]
+    },
+    "beFilesWrite.copy.same": {
+      "kind": "error",
+      "zh": "复制的源和目标是同一个：{path}",
+      "args": ["path"]
+    },
+    "beFilesWrite.swap.failed": {
+      "kind": "error",
+      "zh": "把新内容换到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copy.openSrcFailed": {
+      "kind": "error",
+      "zh": "打不开 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.copy.broke": {
+      "kind": "error",
+      "zh": "复制到一半断了（{path}）：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.peek.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件，改不了",
+      "args": ["path"]
+    },
+    "beFilesWrite.peek.tooBig": {
+      "kind": "error",
+      "zh": "{path} 有 {size} 字节，超过上限 {max}，改不了",
+      "args": ["path", "size", "max"]
+    },
+    "beFilesWrite.peek.notUtf8": {
+      "kind": "error",
+      "zh": "{path} 不是 UTF-8 文本，改不了",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.hollow": {
+      "kind": "error",
+      "zh": "{path} 在盘上有 {size} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
+      "args": ["path", "size"]
+    },
+    "beFilesWrite.put.gone": {
+      "kind": "error",
+      "zh": "{path} 已经不在了，什么都没写。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.appeared": {
+      "kind": "error",
+      "zh": "{path} 现在已经存在了，读的时候还不在。什么都没写，重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.changed": {
+      "kind": "error",
+      "zh": "{path} 在你读过之后被改过了，什么都没写。重新读一下再试",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.verifyMismatch": {
+      "kind": "body",
+      "zh": "回读 {got} 字节，与写进去的 {want} 字节不一致",
+      "args": ["got", "want"]
+    },
+    "beFilesWrite.put.verifyUnreadable": {
+      "kind": "body",
+      "zh": "写完读不回来：{e}",
+      "args": ["e"]
+    },
+    "beFilesWrite.put.restored": {
+      "kind": "body",
+      "zh": "原文件已恢复。",
+      "args": []
+    },
+    "beFilesWrite.put.createdRemoved": {
+      "kind": "body",
+      "zh": "刚建出来的那份已删掉。",
+      "args": []
+    },
+    "beFilesWrite.put.restoreFailedBackup": {
+      "kind": "body",
+      "zh": "恢复原文件也失败了，原文备份在 {path}。",
+      "args": ["path"]
+    },
+    "beFilesWrite.put.restoreFailed": {
+      "kind": "body",
+      "zh": "恢复原文件也失败了，请打开它看一眼。",
+      "args": []
+    },
+    "beFilesWrite.put.createdKept": {
+      "kind": "body",
+      "zh": "刚建出来的那份没删掉，请手动删掉它。",
+      "args": []
+    },
+    "beFilesWrite.put.verifyFailed": {
+      "kind": "error",
+      "zh": "写完核对不上（{path}）：{why}。{note}",
+      "args": ["path", "why", "note"]
+    },
+    "beFilesWrite.mkdirs.notDir": {
+      "kind": "error",
+      "zh": "{path} 已经存在，但不是目录",
+      "args": ["path"]
+    },
+    "beFilesWrite.swap.sideCreateFailed": {
+      "kind": "error",
+      "zh": "新建临时文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.swap.sideWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.swap.sideModeFailed": {
+      "kind": "error",
+      "zh": "给临时文件 {path} 沿用原权限位失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.backup.createFailed": {
+      "kind": "error",
+      "zh": "备份 {path} 没建成，原文件没动：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.backup.writeFailed": {
+      "kind": "error",
+      "zh": "写备份 {path} 失败，原文件没动：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.backup.removed": {
+      "kind": "body",
+      "zh": "这份备份已删掉",
+      "args": []
+    },
+    "beFilesWrite.backup.notRemoved": {
+      "kind": "body",
+      "zh": "这份备份也没删掉（{e}）。它可能比原文件更容易被别人读到，请手动删掉",
+      "args": ["e"]
+    },
+    "beFilesWrite.backup.modeFailed": {
+      "kind": "error",
+      "zh": "备份 {path} 没能沿用原文件的权限位（{e}）；{gone}；原文件没动",
+      "args": ["path", "e", "gone"]
+    },
+    "beFilesWrite.session.deleteFailed": {
+      "kind": "error",
+      "zh": "删会话记录 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesWrite.session.nameMismatch": {
+      "kind": "error",
+      "zh": "找到的那一份（{path}）名字不是 {want}，没删",
+      "args": ["path", "want"]
+    },
+    "beFilesWrite.session.notRecord": {
+      "kind": "error",
+      "zh": "{path} 不是会话记录，没删",
+      "args": ["path"]
+    },
     "beTransfer.land.notAbsolute": {
       "kind": "error",
       "zh": "本机目标路径必须是绝对路径：{path}",
