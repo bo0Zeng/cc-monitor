@@ -55,14 +55,15 @@ LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 #    `CCM_BIN` 可显式覆盖(测试钩子),语义一个字没变。
 CCM_BIN="${CCM_BIN:-}"
 if [ -z "$CCM_BIN" ]; then
-  for _x in "$HOME/.cc-monitor/bin/cc-monitor-backend" \
+  # 〔E2 · V28〕后端本身就是 `~/.cc-monitor/bin/ccm`（旧的 `cc-monitor-backend` 落点退役了）。
+  for _x in "$HOME/.cc-monitor/bin/ccm" \
             "$(command -v cc-monitor-backend 2>/dev/null)" \
             "$(command -v ccm 2>/dev/null)"; do
     if [ -n "$_x" ] && [ -f "$_x" ] && [ -x "$_x" ]; then CCM_BIN="$_x"; break; fi
   done
   unset _x
   [ -n "$CCM_BIN" ] || {
-    echo "cc-spawn: 找不到后端(~/.cc-monitor/bin/cc-monitor-backend / PATH 上的 cc-monitor-backend 或 ccm 都没有)" >&2
+    echo "cc-spawn: 找不到后端(~/.cc-monitor/bin/ccm / PATH 上的 cc-monitor-backend 或 ccm 都没有)" >&2
     echo "  后端由 cc-monitor 客户端自己释放到 ~/.cc-monitor/bin/;或用 CCM_BIN=<路径> 显式指定。" >&2
     exit 2; }
 fi
@@ -88,7 +89,8 @@ esac
 #   总是 rc=0(它认得 `--ccm-probe`);今天走②那条入口时,一份不认 `ccm` 子命令的旧副本
 #   会 rc≠0 ⇒ `pipefail` 把整条赋值判成失败 ⇒ `set -e` **当场静默退出**,
 #   下面那句「版本太旧」一个字都印不出来。**把诊断掐死在诊断之前**,正是本闸要治的病本身。
-_caps=$("${ccm_prefix[@]}" --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p') || true
+# 〔V151〕`ccm [交给 claude 的…] -- [ccm 自己的…]`：ccm 的诊断口写在 `--` 右边。
+_caps=$("${ccm_prefix[@]}" -- --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p') || true
 for _c in detach tmux-size tmux-base bus-register; do
   case ",$_caps," in
     *",$_c,"*) ;;
@@ -175,7 +177,7 @@ ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "
 # 初始任务作为**位置参数**传给启动器(`exec <launcher> [启动器余下的词] '<任务>'`)。
 passthru=("${launch_argv[@]:1}")
 [ -n "$task" ] && passthru+=("$task")
-[ ${#passthru[@]} -gt 0 ] && ccm_args+=(-- "${passthru[@]}")
+# 〔V151〕交给启动器的词在 `--` 左边、ccm 自己的选项在右边（调用那一行按这个顺序拼）。
 # **名字由建它的人报**:ccm 在 `--detach` 时打一行 `ccm-session=<名>`(P4b①)。
 # stdout 捕下来只为摘那一行,**其余原样转发**(不吞 ccm 将来可能打的任何东西)。
 # ★★ 撞名要**重试**〔08-13 实测事故〕：4 个 cc-spawn 同时打进同一目录 ⇒ **只成 1 个**，
@@ -202,7 +204,7 @@ _rc=0
 #   并发实测:原本 3 个**响亮失败**变成 3 个**假成功**(都报同一个名字,而会话只有 1 个)。
 #   **比修之前更坏** ⇒ 用 `cmd && rc=0 || rc=$?` 这种直接取法。
 for _try in 1 2 3 4 5; do
-  _out=$("${ccm_prefix[@]}" "${ccm_args[@]}") && _rc=0 || _rc=$?
+  _out=$("${ccm_prefix[@]}" ${passthru[@]+"${passthru[@]}"} -- "${ccm_args[@]}") && _rc=0 || _rc=$?
   [ "$_rc" = 0 ] && break
   [ "$_rc" = 3 ] || break               # 不是撞名 ⇒ 立刻停,别掩盖真错误
   [ "$_try" = 5 ] || sleep 0.2

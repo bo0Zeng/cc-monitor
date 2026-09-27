@@ -37,9 +37,8 @@ const WRITE_CALLS: &[&str] = &[
 pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── P2z：单 exe 自释放内嵌后端。**不是安装动作** —— 它写的是 monitor 自己的缓存。
     ("local_backend.rs", "extract_embedded_to", None,
-     "把内嵌的后端二进制释放到 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>`，\
-          供 exe 旁没有本机后端时起进程。写的是 monitor 自己的目录，\
-          不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本。\
+     "〔E2〕把后端字节放到 `~/.cc-monitor/bin/ccm`（它就是后端本身，本机常驻后端跑的与终端里敲的是同一个文件）。\
+          写的是 monitor 自己的目录，不碰用户既有环境、不注册到任何用户配置里；换版照 HX2 D-b「盘上的比我旧才换」。\
           ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
           「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\
           `local_backend_host::resolve_backend_bin` **都经那一份共用的解析**走到这里 ⇒ 写盘这一跳\
@@ -54,18 +53,13 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
           ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
           崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
-    // ── 🔴 `K-R69`：**本机那条 `ccm` 入口**。这是安装动作（`ccm` 这个工具的本机那一半）。
-    ("local_backend.rs", "install_local_ccm_entry", Some("ccm"),
-     "把**后端二进制自己的改名副本**放到 `~/.cc-monitor/bin/ccm`（Windows 上带 `.exe`，\
-          名字的唯一真相源是 `local_backend::local_ccm_entry_name`）。\
-          ⚠ **不是第二份实现**：`control::ccm::intercept` 认 `argv[0]` 的 basename ⇒ \
-          改个名字就是那条入口，零新增 argv 解析（`K33`：所有命令只许有一处）。\
-          🔴 **落点刻意不是 `~/.local/bin/ccm`** —— 那是用户那份旧 `ccm` 住的地方，\
-          `K34` 逐字「原本的配置**要手动删除**」、`K31`「不许动用户机器」\
-          ⇒ 产品一个字节都不动它，只在自己的目录里放一份，并**说得出**\
-          「你 PATH 上那个不是我们装的这一份」（`ccm_probe::classify_path_ccm`）。\
-          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`），\
-          唯一调用点是 `local_backend::resolve_or_extract` ⇒ 两条生产路共用这一处。"),
+    // ── 〔E2 · V28〕本机那条 `ccm` 入口（逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）删了：落点就是后端本身（`extract_embedded_to`）。
+    ("local_backend.rs", "sweep_moved_aside", None,
+     "〔E2 · E-b〕删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
+          只认自己那套命名，删不掉就下次再说。"),
+    ("local_backend.rs", "sweep_legacy_extracts", None,
+     "〔E2 · E-c〕删旧版本机释放的 `~/.cc-monitor/bin/cc-monitor-backend-<build_id>` —— 身份戳恰一个（是我们编的）才删，\
+          认不出的不动、删不掉（正在跑）不管。"),
     // ── 〔RM1f〕**本机那一份代码全景小程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
     ("local_backend.rs", "place_local_panorama", None,
      "把这一份产物带着的代码全景小程序放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（本机后端找它的第二个候选）。\
@@ -374,9 +368,11 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
     // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
     //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`cc_bus_deploy.rs::deploy_into`）
-    //   随「用户文件改经后端写」走了，剩 `local_backend.rs::install_local_ccm_entry`（`ccm`，写的是我们自己的目录）。
+    //   随「用户文件改经后端写」走了，剩本机那条 `ccm` 入口（写的是我们自己的目录）。
+    // 〔E2 · V28〕1 → 0：本机 `ccm` 不再是「装的一份副本」，就是后端本身（`extract_embedded_to`，`None` 那一档：monitor 自己的部署物）。
+    //   ⇒ 这张表今天没有安装动作；循环空转由上面「每条都在 `SITE_CLASS` 里」那两向相等兜着。
     assert_eq!(
-        checked, 1,
+        checked, 0,
         "申报表里的「安装动作」条数变了（实得 {checked}）—— \
              要么真收口了（那很好，把这个数调下来），要么有人把它们改成了 `None` 绕过对拍。"
     );
@@ -428,7 +424,12 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ),
     (
         "local_backend.rs",
-        "install_local_ccm_entry",
+        "sweep_moved_aside",
+        Lands::OwnDeployment,
+    ),
+    (
+        "local_backend.rs",
+        "sweep_legacy_extracts",
         Lands::OwnDeployment,
     ),
     // 〔RM1f〕本机那一份代码全景小程序：同上，我们自己目录里的部署物。
