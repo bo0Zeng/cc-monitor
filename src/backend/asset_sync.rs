@@ -30,7 +30,7 @@
 //!
 //! # 事件，不是定时（`no_timer_guard`）
 //!
-//! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial, backend}`（连上）；
+//! 触发只有两种：monitor 在远端那条流握手成功那一刻交一次 `assets-sync {origin, dial}`（连上）；
 //! 界面看机器页前交一次 `assets-sync {}`（对可达表里每一台各一趟）。本模块一个会自己醒的构件都没有；
 //! 一趟的期限归调用方（monitor 那一侧的调用预算），同本后端其余异步命令。
 //!
@@ -62,13 +62,13 @@ pub type Fold =
     std::sync::Arc<dyn Fn(&Value) -> Result<Value, (&'static str, String)> + Send + Sync>;
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
-pub fn pull_command(backend: &str) -> String {
-    format!("{} {PULL_FLAG}", shell_quote_core::posix_quote(backend))
+pub fn pull_command() -> String {
+    crate::remote_ask::command_line(&[PULL_FLAG])
 }
 
 /// 〔W5-AUX · `设计/96 §3.6`〕推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
-pub fn push_command(backend: &str) -> String {
-    crate::remote_ask::command_line(backend, &[PUSH_FLAG, crate::STDIN_LINE_FLAG])
+pub fn push_command() -> String {
+    crate::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
 }
 
 /// 推那一趟写进远端 stdin 的那一行（载荷本身是紧凑 JSON、没有换行 ⇒ 恰好一行）。
@@ -183,7 +183,7 @@ async fn sync_one(
 ) -> (bool, Value) {
     let mut errors = Vec::new();
     // ① 拉
-    let theirs: Value = match remote.run(&r.dial, pull_command(&r.backend), None).await {
+    let theirs: Value = match remote.run(&r.dial, pull_command(), None).await {
         Ok(out) => match serde_json::from_str(out.trim()) {
             Ok(v) => v,
             Err(e) => {
@@ -228,11 +228,7 @@ async fn sync_one(
         let n = chunk.len();
         let payload = json!({ "catalog": { "machines": chunk } }).to_string();
         match remote
-            .run(
-                &r.dial,
-                push_command(&r.backend),
-                Some(push_stdin(&payload)),
-            )
+            .run(&r.dial, push_command(), Some(push_stdin(&payload)))
             .await
         {
             Ok(_) => pushed += n,
@@ -245,7 +241,7 @@ async fn sync_one(
     )
 }
 
-/// `assets-sync`：给了 `origin`（＋ `dial` ＋ `backend`）⇒ 记进可达表、对它做一趟，本机因此变了再对其余各台各一趟；
+/// `assets-sync`：给了 `origin`（＋ `dial`）⇒ 记进可达表、对它做一趟，本机因此变了再对其余各台各一趟；
 /// 什么都没给 ⇒ 对可达表里每一台各一趟。开头先让本机现扫一次：本机自己那份变了也算「目录变了」（扇出到每一台）。
 /// 回 `{self, synced, reach}`（`self` = 本机目录的 id，界面据它把目录里本机那一格对回 `<local>`）。
 pub async fn answer(
@@ -268,10 +264,10 @@ pub async fn answer_with(
     if origin.is_some() {
         // 〔C4d〕登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
         first = Some(crate::remote_ask::register(table, args)?);
-    } else if args.get("dial").is_some() || args.get("backend").is_some() {
+    } else if args.get("dial").is_some() {
         return Err((
             "bad_args",
-            crate::common::contract::malformed("`dial` / `backend` given without `origin`").into(),
+            crate::common::contract::malformed("`dial` given without `origin`").into(),
         ));
     }
     let rows: Vec<(String, Reach)> = lock(table)

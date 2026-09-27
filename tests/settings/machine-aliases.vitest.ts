@@ -47,18 +47,20 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
     const a = m.formToAlias(f);
     expect(a).toEqual({
       name: "convz",
+      // 〔V151〕`<交给 claude 的…> -- <ccm 自己的…>`
       args: [
+        "--model", "opus",
+        "--verbose", "--x",
+        "--",
         "--cwd", "/home/u/文档/c c",
         "--account", "z",
         "--ccm-tmux=w",
         "--ccm-agent", "codex",
-        "--model", "opus",
         "--launcher", "/usr/bin/claude",
         "--tmux-size", "200x50",
         "--detach",
         "--bus-register",
         "--bus-note", "备注",
-        "--", "--verbose", "--x",
       ],
     });
     expect(m.aliasToForm(a)).toEqual(f);
@@ -81,15 +83,21 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
       busRegister: true,
       busNote: "x",
     });
-    expect(noDetach.args).toEqual(["--ccm-tmux"]);
+    expect(noDetach.args).toEqual(["--", "--ccm-tmux"]);
     expect(m.formToAlias({ ...m.emptyForm(), name: "c", account: m.BASE_CHOICE }).args).toEqual([
+      "--",
       "--base",
+    ]);
+    // 〔V151〕只有交给 claude 的、里面又带它自己的 `--` ⇒ 末尾补一个空的 `--`。
+    expect(m.formToAlias({ ...m.emptyForm(), name: "d", passthru: "-p -- -x" }).args).toEqual([
+      "-p", "--", "-x", "--",
     ]);
   });
 
   it("认不出的参数不静默丢：原样进透传栏", async () => {
     const m = await import("../../src/settings/machine-aliases");
-    expect(m.aliasToForm({ name: "x", args: ["--weird", "--ccm-tmux"] }).passthru).toBe("--weird");
+    expect(m.aliasToForm({ name: "x", args: ["--weird", "--", "--ccm-tmux"] }).passthru).toBe("--weird");
+    expect(m.aliasToForm({ name: "x", args: ["--", "--ccm-tmux", "--odd"] }).passthru).toBe("--odd");
   });
 });
 

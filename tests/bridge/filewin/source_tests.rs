@@ -522,7 +522,6 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         port: 22,
         user: "nobody".into(),
         key_path: None,
-        backend_path: "/nonexistent".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

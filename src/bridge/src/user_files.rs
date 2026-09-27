@@ -209,7 +209,12 @@ impl BackendDoor {
     }
 
     /// 发一条写面命令，拿它的 `data`。失败翻成人话；**对端回 `stale` 单列**。
-    async fn ask(&self, cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, Refused> {
+    /// 〔E2〕`pub(crate)`：`ccm_probe::probe_ccm_cli` 经同一扇门问那台后端 `ccm-probe`（不另开一条通道）。
+    pub(crate) async fn ask(
+        &self,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, Refused> {
         let wire = self.origin.as_wire_str();
         let who = crate::backend::control::cc_bus::machine_label(wire);
         let Some(client) = client_for(wire) else {
