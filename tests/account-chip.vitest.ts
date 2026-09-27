@@ -27,6 +27,7 @@ import * as prefsMod from "../src/account-prefs";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../src/account-commands";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { putAccounts } from "../src/app-store";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -190,6 +191,16 @@ describe("account-ux U8 chip 头像休眠", () => {
       state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
     );
     expect(icon(chip).querySelector(".acct-avatar")).not.toBeNull();
+  });
+
+  // 〔GAP1 · `设计/01 §1.5`〕chip 不再自存一份账号清单：store 里它那台换了一份（本窗口任何一次取回），它同一拍重画，不等自己 refresh。
+  it("★ 〔GAP1〕store 里 chip 那台的账号清单换了 ⇒ 同一拍重画（不调 refresh、不再取）", async () => {
+    const chip = await mountWith(state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }));
+    expect(chip.element.textContent).toContain("wei");
+    const fetches = fetchAccountsMock.mock.calls.length;
+    putAccounts("devbox", state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "amy" }));
+    expect(chip.element.textContent).toContain("amy");
+    expect(fetchAccountsMock.mock.calls.length, "重画不该再取一次").toBe(fetches);
   });
 
   it("只有 1 个可选账号 → 退回 👤（颜色此时区分不了任何东西）", async () => {

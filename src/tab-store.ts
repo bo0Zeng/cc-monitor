@@ -13,6 +13,22 @@ import type { SessionAccount } from "./accounts";
 import type { TaskEntry } from "./tasks-panel";
 import type { Tab, TabsSummary } from "./tab-model";
 import { isLive } from "./tab-session-state";
+import { Slice } from "./app-store";
+
+/** 〔GAP1 · `设计/01 §1.5`〕当前 tab 那一格对外的样子：HUD 要的 usage 与「会话事实要不到」的原因。 */
+export interface ActiveView {
+  sid: string | null;
+  model: string | null;
+  promptTokens: number | null;
+  /** 会话事实要不到的原因（`null` = 可用）。 */
+  unavailable: string | null;
+}
+
+const NO_ACTIVE: ActiveView = { sid: null, model: null, promptTokens: null, unavailable: null };
+const sameActive = (a: ActiveView, b: ActiveView): boolean =>
+  a.sid === b.sid && a.model === b.model && a.promptTokens === b.promptTokens && a.unavailable === b.unavailable;
+const sameSummary = (a: TabsSummary, b: TabsSummary): boolean =>
+  a.total === b.total && a.live === b.live && a.dead === b.dead;
 
 export class TabStore {
   readonly tabs = new Map<string, Tab>();
@@ -110,15 +126,15 @@ export class TabStore {
     { status: string; waitingFor: string | null }
   >();
 
-  /** 「tab 集合变了」的订阅者。**全前端这一件事只有这一份**（原先是 `TabManager` 构造参数里的一个回调）。 */
-  private readonly listeners = new Set<(summary: TabsSummary) => void>();
+  /** 「tab 集合变了」那一格。〔GAP1〕建在唯一的 pub-sub 原语上（`app-store.ts::Slice`），同值不通知。 */
+  private readonly tabsSlice = new Slice<TabsSummary>({ total: 0, live: 0, dead: 0 }, sameSummary);
+
+  /** 〔GAP1〕「当前 tab 变了」那一格（切 tab · 当前 tab 的 usage / 事实可用性变了都写这里；HUD 订阅它）。 */
+  readonly active = new Slice<ActiveView>(NO_ACTIVE, sameActive);
 
   /** 订阅「tab 增 / 减 / 状态变」。返回退订函数。 */
   subscribe(listener: (summary: TabsSummary) => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return this.tabsSlice.subscribe(listener);
   }
 
   /**
@@ -133,11 +149,9 @@ export class TabStore {
     return { total: this.tabs.size, live, dead: this.tabs.size - live };
   }
 
-  /** 通知全部订阅者。没人订阅就连摘要都不算（原先 `notifyChanged` 的早退，照旧）。 */
+  /** 通知订阅者（摘要没变 ⇒ 不通知）。 */
   notify(): void {
-    if (this.listeners.size === 0) return;
-    const s = this.summary();
-    for (const l of this.listeners) l(s);
+    this.tabsSlice.set(this.summary());
   }
 
   /**

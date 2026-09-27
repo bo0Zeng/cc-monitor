@@ -24,6 +24,7 @@ import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
+import { appStore, putAccounts } from "./app-store";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
@@ -73,7 +74,18 @@ export class AccountChip {
   private local = false;
   /** `D1 阻-5`：本机那几个 configDir 走不走 apikey 端点改写。`null` = 没问到（远端那半恒 `null`）。 */
   private apikeyRouting: ApikeyRoutingView | null = null;
-  private state: AccountsState | null = null;
+  /** 〔GAP1 · `设计/01 §1.5`〕`refresh` 跑过一次没有（在那之前 chip 不绑任何一台，`state` 恒 `null`）。 */
+  private bound = false;
+  /**
+   * 〔GAP1 · `设计/01 §1.5`〕chip 不再自己存一份账号清单：读 store 里它绑的那一台（`account-reads.ts` 每取回一次写进去）。
+   * 本机那一档 not-ready ⇒ `null`（整个隐藏，`D2 阻-7`）。
+   */
+  private get state(): AccountsState | null {
+    if (!this.bound) return null;
+    const st = appStore.accounts.get().get(this.origin) ?? null;
+    if (this.local && (!st || deriveUi(st).kind !== "ready")) return null;
+    return st;
+  }
   private menu: HTMLElement | null = null;
   private menuClose: ((e: Event) => void) | null = null;
 
@@ -94,6 +106,10 @@ export class AccountChip {
     btn.addEventListener("click", () => void this.toggleMenu());
     this.element = btn;
     this.element.style.display = "none"; // 拿到数据前先藏
+    // 〔GAP1〕本窗口里任何一次取回（含会话账号刷新器的强制刷新）都经 store 订阅重画，不再只在自己 `refresh` 时画。
+    appStore.accounts.subscribe(() => {
+      if (this.bound) this.paint();
+    });
   }
 
   /** 拉数据刷新 chip（初始 / 设置变更 / 手动）。force 透传给缓存。 */
@@ -109,21 +125,15 @@ export class AccountChip {
     //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走 apikey 端点改写」一起问出来。
     this.local = isLocalOrigin(this.origin);
     this.apikeyRouting = null;
-    this.state = this.local
-      ? await fetchLocalAccounts(force)
-      : await fetchAccounts(this.origin, force);
-    // ★★ `D2 阻-7`：**本机那一档 not-ready 就整个隐藏** —— 与本件之前**逐字节相同**。
+    // 〔GAP1〕取回来的那一份进 store（`account-reads.ts` 取回时已写；同一份再写是空操作），`state` 读 store。
+    putAccounts(this.origin, this.local ? await fetchLocalAccounts(force) : await fetchAccounts(this.origin, force));
+    this.bound = true;
+    // ★★ `D2 阻-7`：**本机那一档 not-ready 就整个隐藏** —— 与本件之前**逐字节相同**（`state` getter 回 `null`，`paint` 藏）。
     //
     // 不加这一格的话，「没有远端 + 本机也没有 accounts.json」会从「整个隐藏」变成
     // chip 显出来、菜单里写一句**远端口吻的假话**「该远端尚未启用多账号」——
     // 而那台「远端」根本不存在。⇒ 本件只该**加**「本机有账号时能看见」，
     // 不该**改**「什么都没有时看不见」。
-    if (this.local && (!this.state || deriveUi(this.state).kind !== "ready")) {
-      this.state = null;
-      this.apikeyRouting = null;
-      this.element.style.display = "none";
-      return;
-    }
     if (this.local && this.state) {
       // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出apikey 表里的 id）。
       const dirs = this.state.accounts
@@ -136,7 +146,17 @@ export class AccountChip {
         this.apikeyRouting = null;
       }
     }
-    const text = chipLabel(this.state);
+    this.paint();
+  }
+
+  /** 按此刻 store 里那一台画 chip（`refresh` 末尾 ＋ store 订阅）。 */
+  private paint(): void {
+    const st = this.state;
+    if (!st) {
+      this.element.style.display = "none"; // 本机 not-ready（`D2 阻-7`）/ store 里还没有那一台
+      return;
+    }
+    const text = chipLabel(st);
     if (!text) {
       this.element.style.display = "none"; // 文本为空 → 完全不显示
       return;
@@ -144,9 +164,9 @@ export class AccountChip {
     this.labelSpan.textContent = text;
     // account-ux U4：ready 时把 👤 换成当前账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
     // U8 休眠：只有 1 个可选账号时颜色区分不了任何东西 → 退回 👤，等加了第二个号再点亮。
-    const cur = currentWorkingAccount(this.state);
+    const cur = currentWorkingAccount(st);
     this.iconEl.textContent = "";
-    if (cur && accountColorsActive(this.state)) {
+    if (cur && accountColorsActive(st)) {
       this.iconEl.appendChild(accountAvatarEl(cur.name));
     } else {
       this.iconEl.textContent = copyText("accountChip.refresh.icon");

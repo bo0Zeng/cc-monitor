@@ -253,6 +253,7 @@ import type { TabBarPrefs } from "../src/tab-bar-prefs";
 import type { TabStreamView } from "../src/tab-stream-view";
 import type { TabSessionActions } from "../src/tab-session-actions";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
+import { appStore } from "../src/app-store";
 import { copyText } from "../src/copy-table";
 import { recordFileWiring } from "../src/record-file-notice";
 import { applyConfigEdits, type Edit } from "./config-patch-fake";
@@ -2930,6 +2931,21 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     tm.setSessionAccounts(rows, new Map(), last, new Set(["devbox"]), current);
   }
 
+  // 〔GAP1 · `设计/01 §1.5`〕「账号快照变了」改订阅 store：宿主整份换进来，徽章**同一拍**就换（与原先宿主直调 `setSessionAccounts` 同时机）。
+  it("★ 〔GAP1〕账号快照经 store 换进来 ⇒ 同一拍徽章就挂上（不等任何一拍）", () => {
+    appStore.sessionAccounts.__resetForTests(null); // 别的判据留下的 TabManager 不再订阅
+    tm = makeTM();
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "devbox");
+    expect(badge()?.querySelector(".acct-avatar") ?? null).toBeNull();
+    appStore.sessionAccounts.set({
+      rows: [liveRow("r1", "b")],
+      emailByName: new Map(),
+      lastByS: new Map(),
+      readyOrigins: new Set(["devbox"]),
+      currentByOrigin: new Map([["devbox", "z"]]),
+    });
+    expect(badge()?.querySelector(".acct-avatar"), "store 换了快照，徽章没跟上").not.toBeNull();
+  });
   it("会话账号 != 当前账号(live) → 挂实心头像", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "devbox");
     feed([liveRow("r1", "b")], new Map(), new Map([["devbox", "z"]]));
@@ -5772,7 +5788,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("F88b usage：active 的成品一到就推给 HUD；后台 tab 不推；切过去时推那一格", async () => {
     const seen: [string | null, number | null][] = [];
-    tm.onActiveUsageChanged = (m, t) => seen.push([m, t]);
+    tm.active.subscribe((a) => seen.push([a.model, a.promptTokens])); // 〔GAP1〕订阅 store（原先是回调）
     answerFacts((path) =>
       facts({ usage: path.includes("u1") ? { promptTokens: 42, model: "m-a" } : { promptTokens: 7, model: null } }),
     );
@@ -5786,6 +5802,22 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
     expect(home(tm).store.tabs.get("u2")!.latestPromptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
+  });
+
+  // 〔GAP1 · `设计/01 §1.5`〕「当前 tab 变了」改订阅 store 之后的时机差：同值不通知（原先两个回调同值也照调）。
+  it("★ 〔GAP1〕当前 tab 那一格同值不通知：可用性重报一次同样的值 ⇒ 零通知；切到别的 tab ⇒ 恰一次", async () => {
+    answerFacts((path) => facts({ usage: path.includes("v1") ? { promptTokens: 5, model: "m" } : null }));
+    tm.onLine(line("v1", 0));
+    tm.onLine(line("v2", 0));
+    await settle();
+    await vi.waitFor(() => expect(tm.active.get().promptTokens).toBe(5));
+    const seen: unknown[] = [];
+    tm.active.subscribe((a) => seen.push(a));
+    (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
+    expect(seen, "值没变却通知了").toEqual([]);
+    tm.switchTo("v2");
+    await vi.waitFor(() => expect(seen.length).toBe(1));
+    expect(seen).toEqual([{ sid: "v2", model: null, promptTokens: null, unavailable: null }]);
   });
 
   it("#23 agent：成品 ⇒ 面板；会话落到 idle ⇒ running 标中止，之后的成品里仍是 running 也照样中止", async () => {
@@ -5820,7 +5852,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
 
   it("要不到（老后端不认这条命令）⇒ active 的 HUD 出声（原因非空）、此后不再问；可用 ⇒ 说 null", async () => {
     const said: (string | null)[] = [];
-    tm.onActiveFactsAvailability = (r) => said.push(r);
+    tm.active.subscribe((a) => said.push(a.unavailable)); // 〔GAP1〕订阅 store（原先是回调）
     vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
       if (isChanCall(cmd, args, "history-facts")) throw UNSUPPORTED;
       return undefined;
