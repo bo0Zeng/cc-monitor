@@ -300,7 +300,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J10: {
     what: "用户消息里的 CLI 注入噪声",
-    homes: ["search-core::clean_user_text"],
+    // 〔RENDER2〕规则合成一份住 `user_text`（`clean_user_text` 取它的 `clean`）；后端读者（搜索 · 历史摘要 · 大纲）都走它。
+    //   前端渲染那一份（`stripInternalNoise` · `branching.ts` 的前缀判断）要等「成品怎么到前端」主会话拍（RENDER2.md 报备）。
+    homes: ["search-core::user_text", "search-core::clean_user_text"],
     status: "open",
     defs: ["stripInternalNoise"],
     needles: [{ text: 'startsWith("[Request interrupted by user")', count: 1, file: "src/branching.ts" }],
@@ -610,6 +612,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   "search-core": {
     clamp_limit: NONE,
     clean_user_text: "J10",
+    user_text: "J10", // 〔RENDER2〕合并口径的本体（`clean_user_text` 取它的 `clean`）
     collapse_ws: NONE,
     collapse_ws_keep_ellipsis: NONE,
     DEFAULT_LIMIT: "J15",
