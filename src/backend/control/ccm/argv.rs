@@ -53,69 +53,11 @@ pub(crate) mod flag {
 /// 后端 CLI 面不许派生出这样的名字（`cli_control::cli_exposed`）。
 pub(crate) fn is_ccm_word(word: &str) -> bool {
     // 〔V151〕放在 `--` 右边问：只要不是「认不得这个词」那两句，就是 ccm 的词（缺值 / 组合不对也算认得）。
-    let w = [("w", word)];
     let unknown = [
-        copy_text("beArgv.parse.unknownRight", &w),
-        copy_text("beArgv.parse.backendWordAfterClaudeArgs", &w),
+        copy_text("beArgv.parse.unknownRight", &[("w", word)]),
+        copy_text("beArgv.parse.backendWordAfterClaudeArgs", &[("w", word)]),
     ];
     !matches!(parse(&[flag::END.to_string(), word.to_string()]), Err(Die(m)) if unknown.contains(&m))
-}
-
-/// 〔V151 · 只给测试〕把 V138 那一形（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成 V151 那一形
-/// （`<交给 agent 的…> -- <ccm 的…>`）。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
-#[cfg(test)]
-pub(crate) fn v138_to_v151(old: &[String]) -> Vec<String> {
-    const WITH_VALUE: [&str; 10] = [
-        flag::TMUX_BASE,
-        flag::TMUX_SIZE,
-        flag::ACCOUNT,
-        flag::CWD,
-        flag::AGENT,
-        flag::LAUNCHER,
-        flag::BUS_NOTE,
-        flag::ATTACH,
-        flag::CCM_SID,
-        flag::END,
-    ];
-    const BARE: [&str; 9] = [
-        flag::TMUX,
-        flag::DETACH,
-        flag::BASE,
-        flag::BUS_REGISTER,
-        flag::CCM_PRINT,
-        flag::CCM_HELP,
-        flag::CCM_VERSION,
-        flag::CCM_PROBE,
-        flag::END,
-    ];
-    let (mut left, mut right) = (Vec::new(), Vec::new());
-    let mut i = 0;
-    while i < old.len() {
-        let a = &old[i];
-        if a == flag::END {
-            left.extend_from_slice(&old[i + 1..]);
-            break;
-        }
-        let key = a.split_once('=').map_or(a.as_str(), |(k, _)| k);
-        if BARE.contains(&key) || (WITH_VALUE.contains(&key) && a.contains('=')) {
-            right.push(a.clone());
-        } else if WITH_VALUE.contains(&key) {
-            right.push(a.clone());
-            if let Some(v) = old.get(i + 1) {
-                right.push(v.clone());
-                i += 1;
-            }
-        } else {
-            left.push(a.clone());
-        }
-        i += 1;
-    }
-    if right.is_empty() && !left.iter().any(|a| a == flag::END) {
-        return left;
-    }
-    left.push(flag::END.to_string());
-    left.extend(right);
-    left
 }
 
 /// `--cwd` 的取值：`auto`（默认）或一个显式目录。
@@ -408,7 +350,7 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/argv_tests.rs"]
-mod tests;
+pub(crate) mod tests; // 〔V151〕`pub(crate)`：旧写法夹具的换排列 `tests::v138_to_v151` 给同族几份单测共用
 
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/claude_flags_tests.rs"]

@@ -4097,6 +4097,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_resolution_path_really_puts_the_local_ccm_entry_down",
             1,
         ),
+        // 〔V151〕分流收成 `route`：抢词表与它的判据退役。
+        ("src/backend/control/ccm/mod.rs", "routes_to_backend", 1),
+        (
+            "tests/backend/control/ccm_tests.rs",
+            "under_the_name_ccm_only_backend_first_words_reach_the_backend",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -4681,6 +4688,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/lib_invariant_population_tests.rs", 2),
         ("tests/bridge/ssh_source_tier1_tests.rs", 1),
         ("src/settings/machine-card.ts", 1), // 〔E2〕「后端路径」那一格删了，按用户名预填它的函数原地留一块
+        ("src/backend/control/ccm/mod.rs", 1), // 〔V151〕抢词表 `routes_to_backend` 删了，原地一块
+        ("tests/backend/control/ccm_tests.rs", 1), // 〔V151〕那条路由判据并进 claude_flags_tests，原地一块
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

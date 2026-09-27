@@ -504,9 +504,11 @@ pub async fn connect_and_exec(
     // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
     // （历史由本侧旁路快照拉取），实时通道流量趋零。
     // 〔E2 · V28〕流模式显式词打头：落点那个文件就叫 `ccm`，零参数是「起会话」。
+    // 〔V151〕`ccm -- --stream …`：打头的 `--` 让那台的 `ccm` 当后端用。
     let mut cmd = format!(
-        "{} {}",
+        "{} {} {}",
         BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP,
         crate::backend::control::local_backend::STREAM_WORD
     );
     if with_bg {
@@ -4403,8 +4405,9 @@ pub async fn test_remote_connection(
     };
     // 〔E2〕落点是固定常量（`backendPath` 那一格删了，没有外来值要过放行判定）；探的是流模式的 hello ⇒ 同样带流模式显式词。
     let probe_cmd = format!(
-        "{} {}",
+        "{} {} {}",
         BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP,
         crate::backend::control::local_backend::STREAM_WORD
     );
     let (link, ack) = match crate::dial_host::probe(&cfg, &probe_cmd, &mut to_ui).await {

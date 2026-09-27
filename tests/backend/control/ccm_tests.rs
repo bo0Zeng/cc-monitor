@@ -250,7 +250,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) = argv::parse(&argv::v138_to_v151(&args)).expect("该解析得动")
+        let Parsed::Opts(o) = argv::parse(&argv::tests::v138_to_v151(&args)).expect("该解析得动")
         else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
@@ -437,7 +437,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         ..Default::default()
     };
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let o = match argv::parse(&argv::v138_to_v151(&a)).expect("该解析得动") {
+    let o = match argv::parse(&argv::tests::v138_to_v151(&a)).expect("该解析得动") {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };

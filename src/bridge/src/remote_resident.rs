@@ -103,7 +103,12 @@ fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, AttachErr> {
 }
 
 async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr> {
-    let mut cmd = format!("{} --resident-ensure", crate::ssh_source::BACKEND_CMD);
+    // 〔V151〕`ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
+    let mut cmd = format!(
+        "{} {} --resident-ensure",
+        crate::ssh_source::BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP
+    );
     if replace {
         cmd.push_str(" --replace");
     }
@@ -329,7 +334,11 @@ pub(crate) async fn attach(
 
 /// **停那台的常驻后端**（机器页「停」）。回被停的 pid（本来就没在跑 ⇒ `None`）。
 pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<Option<u32>, String> {
-    let cmd = format!("{} --resident-stop", crate::ssh_source::BACKEND_CMD);
+    let cmd = format!(
+        "{} {} --resident-stop",
+        crate::ssh_source::BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP
+    );
     let exec =
         crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
     let v = parse_answer(&exec).map_err(|e| match e {

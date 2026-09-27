@@ -277,7 +277,8 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
         Some("ccm"),
         "attach 那一句不是在调后端的命令行入口（`K26`：`ccm` 就是它）：{attach}"
     );
-    // V138：接回从位置动作 `attach <名>` 改成壳层选项 `--attach <名>`。
+    // V138：接回从位置动作 `attach <名>` 改成壳层选项 `--attach <名>`；〔V151〕它是 ccm 的，写在 `--` 右边。
+    assert_eq!(toks.next(), Some("--"), "attach 那一句没有 `--`：{attach}");
     assert_eq!(
         toks.next(),
         Some("--attach"),

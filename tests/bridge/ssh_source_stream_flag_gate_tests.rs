@@ -388,7 +388,13 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
         backend.len() >= 2,
         "后端 STREAM_FLAGS 只摘到 {backend:?} —— 抽取坏了"
     );
-    for a in LOCAL_STREAM_ARGS {
+    // 〔V151〕打头的 `--` 是分隔（让 `ccm` 当后端用），不是流模式旗标。
+    assert_eq!(
+        LOCAL_STREAM_ARGS.first(),
+        Some(&"--"),
+        "本机后端起参没以 `--` 打头"
+    );
+    for a in &LOCAL_STREAM_ARGS[1..] {
         assert!(
             backend.contains(*a),
             "本机后端起参 `{a}` 不在后端 `STREAM_FLAGS`（{backend:?}）里 —— 后端不剥它 ⇒ 当成一次性查询跑完就退（§26）"
