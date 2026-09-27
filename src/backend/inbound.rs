@@ -123,6 +123,8 @@ pub const COMMANDS: &[&str] = &[
     "files-create",
     "files-delete",
     "files-delete-session",
+    // 〔FILES2 · 第四波〕解压（`设计/60 §6.2` · §7 第 9 条 Q3）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "files-extract",
     "files-find",
     "files-home",
     "files-index-rebuild",
@@ -1601,6 +1603,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "dirs",
             "files",
             "from",
+            "links",
             "overwrite",
             "path",
             "recursive",
@@ -1610,6 +1613,29 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FILES2 · 第四波 09-27〕解压（`设计/60 §6.2` · `§7` 第 9 条 Q3，主会话按通行做法裁）：处理器住
+    //   `control/files_extract.rs`（第三层第四个登记的模块），本文件照旧是那一层唯一的门。阻塞档（同步读包 ＋ 落盘）。
+    CommandSpec {
+        name: "files-extract",
+        doc_anchor: Some("#### `files-extract`"),
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "exists",
+            "io_failed",
+            "refused",
+            "unsupported",
+        ],
+        fields: &[
+            "bytes", "dirs", "files", "fresh", "links", "path", "rel", "root",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_extract::answer_wire(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

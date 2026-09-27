@@ -69,6 +69,8 @@ pub mod ccm;
 pub mod cli_control;
 pub mod exit_policy;
 pub mod files_commit;
+// 〔FILES2〕解压（`files-extract`）＋ 第三层「建链接」那一个动词的住址（复制链接本身 · 解压包里的链接）。
+pub mod files_extract;
 pub mod files_write;
 pub mod fork_write;
 pub(crate) mod gate;

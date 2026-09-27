@@ -156,6 +156,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-rename"
                 | "files-write-text"
                 | "files-copy"
+                // 〔FILES2〕解压：同步读包 ＋ 落盘，同写面一档。
+                | "files-extract"
                 // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏的 `canonicalize`
                 // ＋ 读 / 暂存旁名写满 ＋ 换名 / 删），同写面其余几条一档。
                 | "files-peek"
@@ -301,6 +303,7 @@ fn every_registered_command_declares_its_run_kind() {
         "files-rename",
         "files-write-text",
         "files-copy",
+        "files-extract",
         "files-ls",
         "files-stat",
         "files-find",
@@ -556,6 +559,8 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         crate::control::files_write::manage_command_names()
             .into_iter()
             .chain(crate::control::files_commit::commit_command_names())
+            // 〔FILES2 · 第四波〕解压（`control/files_extract.rs`，第三层第四个模块）。
+            .chain(crate::control::files_extract::extract_command_names())
             .map(str::to_string)
             .collect();
     assert!(

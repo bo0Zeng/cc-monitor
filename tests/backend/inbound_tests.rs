@@ -503,6 +503,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-rename",
         "files-write-text",
         "files-copy",
+        // 〔FILES2〕解压：同步读包 ＋ 落盘。
+        "files-extract",
         "files-ls",
         "files-stat",
         "files-find",
@@ -618,6 +620,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-rename",
         "files-write-text",
         "files-copy",
+        // 〔FILES2〕解压：同步读包 ＋ 落盘。
+        "files-extract",
         "files-ls",
         "files-stat",
         "files-find",
