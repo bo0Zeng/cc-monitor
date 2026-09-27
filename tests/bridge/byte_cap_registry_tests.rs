@@ -73,6 +73,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              `MAX_LINE_BYTES`）。它不限任何字节总量（整份文件多大都一块一块送完）、不截任何东西。",
     ),
     (
+        "PULL_CHUNK",
+        "〔FILES2 · V152〕**步长**不是上限：非 UTF-8 名的下载每一块向那台后端要多少原始字节（`filewin/lossy_pull.rs`，== 后端 \
+             `READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。它不限整份多大（一块一块读到 `eof`）、不截任何东西。",
+    ),
+    (
         "STAGING_MODE",
         "〔FILES2〕**权限位**不是体量：文件窗口经那台后端自建暂存区时收成的 unix 权限（0o700，与后端 `PRIVATE_DIR_MODE` 同值），\
              不限任何字节总量、不截任何东西。",
@@ -587,6 +592,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔RW1 · 第四波 09-24〕用户文件读改写的**读那一半**一趟肯交多少。写那一半要把新内容与
     //   读到的那一份装进同一行请求（后端一行 `MAX_LINE_BYTES` = 1 MiB）⇒ 两份各 256 KiB、给转义留余量。
+    // 〔FILES2 · V152〕非 UTF-8 名的下载逐块读回：一块多少原始字节（调用方的 `len` 越界 ⇒ `bad_args`、不夹小）。
+    (
+        "src/backend/files/mod.rs",
+        "READ_CHUNK_MAX_BYTES",
+        256 * 1024,
+        "`files-read-chunk` 一块读回的原始字节（b16 翻倍后一帧应答）",
+        "拒收+回错",
+    ),
     // 〔FILES2 · 第四波〕解压：zip 里一条链接的目标文本（那一条的正文）最多读多少；超了整趟拒、不截一半当目标。
     (
         "src/backend/control/files_extract.rs",
@@ -1401,6 +1414,14 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 ///
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
+    // 〔FILES2 · V152〕`files-read-chunk` 一块读多少是入参 `len`，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）、越界 `bad_args`。
+    // ⚠ 不是静默截断：回 `offset` / `size` / `eof`，调用方循环读到 `eof` —— 一个字节都不丢。
+    (
+        "src/backend/files/mod.rs",
+        "len",
+        "`files-read-chunk` 的 `len` 是入参，入口先判 `1..=READ_CHUNK_MAX_BYTES`（已在 `CAPS` 里）；回 `eof` / `size`，\
+             调用方读到 `eof` 为止 —— 不是截断后当完整的用。",
+    ),
     // 〔RM1f〕插件口可打断那一形（`run_abortable`）每条子进程流留 `keep ＋ 1` 字节，`keep` 是入参；
     // 唯一调用方 `control/panorama.rs` 给的是具名常量 `read_face::LINES_CAP_BYTES`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：多出来的照读照丢（子进程不被管道卡住），调用方见 `len() > keep` 回 `too_large` 明拒。

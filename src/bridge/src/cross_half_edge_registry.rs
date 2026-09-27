@@ -274,11 +274,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/bridge/filewin/lossy_pull_tests.rs",
+        "tests/bridge/filewin/cross_copy_tests.rs",
         "src/backend/control/files_commit.rs",
-        "★〔FILES2 · 第四波新增〕**窗口拷进去再下的那个暂存区 == 后端的暂存区** —— \
-         `lossy_pull_tests.rs::the_staging_dir_is_the_backend_one`。两个 crate 互相引不到，两侧各写一份 \
-         `.cc-monitor/staging`；失效方向：两份漂开 ⇒ 有损名下载拷进一个后端孤儿扫看不见、也不收的地方（或那一层根本不在）。",
+        "★〔FILES2 · 第四波新增〕**窗口清 B 那头暂存件用的暂存区 == 后端的暂存区** —— \
+         `cross_copy_tests.rs::the_staging_dir_is_the_backend_one`。两个 crate 互相引不到，两侧各写一份 \
+         `.cc-monitor/staging`；失效方向：两份漂开 ⇒ 跨机复制半路失败时删错地方，B 那头的暂存件只能等孤儿扫。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/filewin/lossy_pull_tests.rs",
+        "src/backend/files/mod.rs",
+        "★〔FILES2 · V152 新增〕**窗口一块读多少 == 后端 `files-read-chunk` 的上限** —— \
+         `lossy_pull_tests.rs::the_chunk_is_the_backend_cap`。两侧各写一个数；失效方向：窗口的块比后端的上限大 ⇒ \
+         每一块都被 `bad_args` 拒，非 UTF-8 名永远下不下来。",
     ),
     (
         "monitor→backend",
