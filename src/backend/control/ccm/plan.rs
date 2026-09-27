@@ -612,26 +612,11 @@ fn next_free_name(base: &str, taken: &[String]) -> String {
 /// 这里原来自己写了一份（自称「唯一一份」，而 monitor 与界面各还有一份、规则各不相同）；比那一份多出来的两格
 /// （欺骗字符 · 超长）是三份取交集时从 monitor 载荷那一份与界面那一份带进来的。
 pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
-    use gate_core::TmuxNameIssue as I;
-    let said = match gate_core::new_tmux_name_issue(n) {
-        None => return Ok(()),
-        Some(I::Empty | I::LeadingDash) => {
-            copy_text("bePlan.validateTmuxName.emptyOrDash", &[("name", n)])
-        }
-        Some(I::TargetSyntax(_)) => {
-            copy_text("bePlan.validateTmuxName.targetSyntax", &[("name", n)])
-        }
-        Some(I::Control(_)) => copy_text("bePlan.validateTmuxName.control", &[("name", n)]),
-        Some(I::Deceptive(_)) => copy_text("bePlan.validateTmuxName.deceptive", &[("name", n)]),
-        Some(I::TooLong) => copy_text(
-            "bePlan.validateTmuxName.tooLong",
-            &[
-                ("name", n),
-                ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
-            ],
-        ),
-    };
-    Err(Die(said))
+    // 〔FIX · `99 §2 ㊹`〕说哪一句住 `launch::new_tmux_name_said`（后端 `launch` 新建那一支也用它）。
+    match crate::control::launch::new_tmux_name_said(n) {
+        None => Ok(()),
+        Some(said) => Err(Die(said)),
+    }
 }
 
 /// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。

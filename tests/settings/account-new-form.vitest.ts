@@ -144,10 +144,10 @@ describe("A2 新建账号表单", () => {
     expect(pre()).toBe(NEW_ACCOUNT_COPY.previewEmpty);
   });
 
-  it("〔DUP2 · J4〕后端拒了（快照路径以 - 开头）⇒ 那一句上屏、「创建」灰、绕过也不交", async () => {
+  it("〔DUP2 · J4〕后端拒了（快照路径带双引号；〔FIX · `99 §2 ㊹`〕`-` 开头那一格已放行）⇒ 那一句上屏、「创建」灰、绕过也不交", async () => {
     const f = form();
     await f.type(f.name, "b");
-    await f.type(f.cred, "--apply");
+    await f.type(f.cred, 'a"b');
     const create = f.btn(NEW_ACCOUNT_COPY.create) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
     expect(f.el.querySelector(".accounts-maint-err")!.textContent).toContain("命令拼不出来");

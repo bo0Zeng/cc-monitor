@@ -1291,6 +1291,20 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
     });
   });
 
+  it("★ 〔FIX · `设计/99 §2 ㊸` · `01 §1.5`「账号快照……收进一处，订阅制。只有一份 pub-sub」〕起会话选号读的就是 `appStore.accounts` 本机那一格", async () => {
+    const { appStore, putAccounts } = await import("../src/app-store");
+    __setLocalLaunchSnapshotForTests(st([A, B], "acct-a"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-a");
+    // 别处（chip 刷新 / 设置页取回）把本机清单换一份进 store ⇒ 这里当场跟着变，不必再 prime。
+    putAccounts(LOCAL_ORIGIN, st([A, B], "acct-b"));
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    expect(appStore.accounts.get().get(LOCAL_ORIGIN)?.defaultName).toBe("acct-b");
+    // 有清单、没 pin（还没 prime）⇒ 仍不表态（resume 不许落到当前号上）。
+    __resetLocalLaunchSnapshotForTests();
+    putAccounts(LOCAL_ORIGIN, st([A, B], "acct-b"));
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+  });
+
   it("★★ 「当前账号」读的是 config.json 的 `defaultName`，不是 manifest 的 `isDefault`", () => {
     // 🔴 上一拍这里读的是 `a.isDefault` ⇒ **用户切过号之后新会话静默串号**，
     //    而且上游选择会按错的 id 换上别人那一行的 key。这一条就是那个形状的反面：

@@ -304,44 +304,6 @@ fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
     );
 }
 
-#[test]
-fn parse_list_reads_the_table_and_skips_everything_else() {
-    let text = "ID           TMUX               待读\n\
-                    agent-communication_cc agent-communication_cc:0.0 0\n\
-                    x_cc         x_cc:0.0           2\n";
-    let got = parse_list(text);
-    assert_eq!(got.len(), 2, "表头没被跳过或数据行丢了：{got:?}");
-    assert_eq!(got[0]["id"], "agent-communication_cc");
-    assert_eq!(got[0]["unread"], 0);
-    assert_eq!(got[1]["target"], "x_cc:0.0");
-    assert_eq!(got[1]["unread"], 2);
-}
-
-/// ★ 超长 id 会把固定宽度的列**挤在一起** —— 实测那时列间仍有一个空格，
-/// 所以按空白分列仍然对。这一格钉的就是「挤了也还认得出来」。
-#[test]
-fn a_long_id_that_overflows_the_column_is_still_parsed() {
-    let one = parse_list("verylongagentname_that_overflows verylongagentname:0.0 7\n");
-    assert_eq!(one.len(), 1);
-    assert_eq!(one[0]["unread"], 7);
-}
-
-#[test]
-fn non_data_lines_never_become_agents() {
-    for line in [
-        "(还没有登记的 agent)",
-        "ID TMUX 待读",
-        "",
-        "只有两列 x",
-        "id target 不是数字",
-    ] {
-        assert!(
-            parse_list(line).is_empty(),
-            "这行不该被当成 agent：{line:?}"
-        );
-    }
-}
-
 /// `P4f-Y4`：找不到时要说**查过哪儿**。
 ///
 /// ⚠ 拼那句话的活搬去通用口了，**这一格没跟着搬**：它核的是 cc-bus 自己那三样
@@ -620,7 +582,7 @@ fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
 /// （`src/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
 /// 各格异源：请求样例过**生产**解析器（`parse_send` / `parse_kill` / `parse_spawn` / `parse_broadcast`）·
-/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list` 输出样例经生产的 `parse_list` ＋ `join_identity` 现算；
+/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `join_identity` 现算 —— 〔FIX · ㊷〕与 `bus-state` 同一个解析器；
 /// 广播由同一份名单经生产的 `pick_broadcast_targets` 挑人再经 `broadcast_reply` 装）· 码集合 == `inbound::REGISTRY` 那一块。
 #[test]
 fn the_bus_products_match_the_cross_language_golden() {
@@ -677,7 +639,15 @@ fn the_bus_products_match_the_cross_language_golden() {
         })
         .collect();
     let agents = join_identity(
-        parse_list(g["input"]["ccList"].as_str().expect("输入样例缺 `ccList`")),
+        roster_agents(
+            &parse_roster_tsv(
+                g["input"]["ccListTsv"]
+                    .as_str()
+                    .expect("输入样例缺 `ccListTsv`"),
+            )
+            .expect("名册样例读得动")
+            .0,
+        ),
         Some(&sessions),
     );
     assert_eq!(

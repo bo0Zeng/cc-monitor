@@ -4690,6 +4690,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/settings/machine-card.ts", 1), // 〔E2〕「后端路径」那一格删了，按用户名预填它的函数原地留一块
         ("src/backend/control/ccm/mod.rs", 1), // 〔V151〕抢词表 `routes_to_backend` 删了，原地一块
         ("tests/backend/control/ccm_tests.rs", 1), // 〔V151〕那条路由判据并进 claude_flags_tests，原地一块
+        // 〔FIX · `99 §2 ㊷`〕人读表解析器删了，一处点它旧名的散文挂墓碑。
+        ("tests/backend/plugin_walk_fixture.rs", 1),
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

@@ -414,11 +414,6 @@
       "zh": "发送被打断了：{detail}",
       "args": ["detail"]
     },
-    "beCcBus.list.failed": {
-      "kind": "error",
-      "zh": "读 cc-bus 名单失败，退出码 {status}：{detail}",
-      "args": ["status", "detail"]
-    },
     "beCcBus.run.refused": {
       "kind": "error",
       "zh": "{name} 拒绝了这组参数：{detail}",
@@ -1821,11 +1816,6 @@
       "kind": "error",
       "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，不会换一条路重发。",
       "args": ["machine", "target"]
-    },
-    "tmuxControl.resume.emptyInput": {
-      "kind": "error",
-      "zh": "会话名或要键入的内容是空的，这次没有发出去。",
-      "args": []
     },
     "ccBus.online.notInstalled": {
       "kind": "error",
@@ -6518,11 +6508,6 @@
     "beIso.cmd.snapshotControl": {
       "kind": "error",
       "zh": "凭据快照路径不能含控制字符：{path}",
-      "args": ["path"]
-    },
-    "beIso.cmd.snapshotDash": {
-      "kind": "error",
-      "zh": "凭据快照路径不能以「-」开头：{path}",
       "args": ["path"]
     },
     "acctDeploy.name.shape": {
