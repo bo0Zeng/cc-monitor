@@ -624,9 +624,11 @@ fn rewatch_dir(
 
 /// 〔VIS2 · `设计/15 §4.7 S3`〕可重入地挂 `agent_home` 本身；不在 ⇒ 退一层挂它的上一层（同 tmux socket 目录）。回 `true` = 这次刚挂上它本身。
 /// 上一层挂上不摘：它可能与别的挂点同一目录（`unwatch` 会连带摘掉），留着也听得见 `agent_home` 被删后重建。
+/// 〔GAP1〕`what` = 日志里怎么称呼它（账号目录也走这一个函数，`设计/05 §13.6` 第 3 条）。
 fn rewatch_agent_home(
     debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
     agent_home: &Path,
+    what: &str,
     home_watched: &mut bool,
     parent_watched: &mut bool,
 ) -> bool {
@@ -641,7 +643,7 @@ fn rewatch_agent_home(
             Ok(()) => {
                 *home_watched = true;
                 if !was {
-                    tracing::info!("已挂上 agent home: {}", agent_home.display());
+                    tracing::info!("已挂上 {what}: {}", agent_home.display());
                 }
                 !was
             }
@@ -658,7 +660,7 @@ fn rewatch_agent_home(
     }
     if *home_watched {
         tracing::info!(
-            "agent home 消失了 {} —— 解除记账，等它回来再挂",
+            "{what} 消失了 {} —— 解除记账，等它回来再挂",
             agent_home.display()
         );
         let _ = debouncer.watcher().unwatch(agent_home);
@@ -675,24 +677,71 @@ fn rewatch_agent_home(
             Ok(()) => {
                 *parent_watched = true;
                 tracing::warn!(
-                    "agent home 还没有：{} —— 先盯着它的上一层 {}，出现时自动挂上",
+                    "{what} 还没有：{} —— 先盯着它的上一层 {}，出现时自动挂上",
                     agent_home.display(),
                     parent.display()
                 );
             }
             Err(e) => tracing::warn!(
-                "agent home 还没有：{}，它的上一层 {} 挂不上 watch（{e}）—— 它之后被建出来，本后端看不见，要重启后端",
+                "{what} 还没有：{}，它的上一层 {} 挂不上 watch（{e}）—— 它之后被建出来，本后端看不见，要重启后端",
                 agent_home.display(),
                 parent.display()
             ),
         },
         // 设计只退一层（与 tmux socket 目录那条同形）；上一层也不在 ⇒ 说真话，不再往上爬。
         None => tracing::warn!(
-            "agent home 还没有：{}，它的上一层也不在 —— 本后端不会看见它，建出来之后要重启后端",
+            "{what} 还没有：{}，它的上一层也不在 —— 本后端不会看见它，建出来之后要重启后端",
             agent_home.display()
         ),
     }
     false
+}
+
+/// 〔GAP1 · `设计/05 §13.6` 第 3 条〕账号 manifest 所在目录那道耳朵：起步不在 ⇒ 挂它的上一层；
+/// 它出现 / 被删重建（它自己路径上的事件）⇒ 按盘上此刻重挂（与 `agent_home` 同一个函数，VIS2 S3 同法）。
+struct AccountsEar {
+    dir: PathBuf,
+    watched: bool,
+    parent_watched: bool,
+}
+
+impl AccountsEar {
+    fn new(dir: &Path) -> Self {
+        AccountsEar {
+            dir: dir.to_path_buf(),
+            watched: false,
+            parent_watched: false,
+        }
+    }
+
+    fn arm(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+        rewatch_agent_home(
+            debouncer,
+            &self.dir,
+            "账号目录",
+            &mut self.watched,
+            &mut self.parent_watched,
+        );
+    }
+
+    /// 事件落在账号目录自己身上（出现 / 消失）⇒ 重挂，回 `true`（清单可能跟着变了 ⇒ 调用方发一帧）。
+    fn on_path(
+        &mut self,
+        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        p: &Path,
+    ) -> bool {
+        if p != self.dir.as_path() {
+            return false;
+        }
+        rewatch_agent_home(
+            debouncer,
+            &self.dir,
+            "账号目录",
+            &mut self.watched,
+            &mut self.parent_watched,
+        );
+        true
+    }
 }
 
 /// 〔VIS2 · S3〕`agent_home` · `projects/` · `sessions/` 三道耳朵：起步 [`Self::arm`]，之后每个事件路径交 [`Self::on_path`]。
@@ -734,6 +783,7 @@ impl HomeEars {
         rewatch_agent_home(
             debouncer,
             &self.agent_home,
+            "agent home",
             &mut self.home_watched,
             &mut self.parent_watched,
         );
@@ -779,6 +829,7 @@ impl HomeEars {
             && rewatch_agent_home(
                 debouncer,
                 &self.agent_home,
+                "agent home",
                 &mut self.home_watched,
                 &mut self.parent_watched,
             )
@@ -1185,14 +1236,10 @@ fn watch_loop(
     watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
     // 〔SR1a · `设计/05 §13.6 ③`〕**账号清单变了 ⇒ 一帧 `accounts_changed`**。监视 manifest 所在目录
     // （NonRecursive；写 manifest 常是「写临时文件再 rename」，盯文件本身会在 rename 之后失聪）。
-    // 目录不在（这台机没启用多账号）⇒ 不挂；它后来才被建出来这一格**听不见**（与 `sessions/` 那条同形的已知边界）。
-    if let Some(dir) = accounts_manifest.parent().filter(|d| d.is_dir()) {
-        if let Err(e) = debouncer.watcher().watch(dir, RecursiveMode::NonRecursive) {
-            tracing::warn!(
-                "监视账号目录 {} 失败: {e} —— 账号清单变了也不会有 accounts_changed",
-                dir.display()
-            );
-        }
+    // 〔GAP1〕目录起步不在 / 被删重建 ⇒ 由 `AccountsEar` 挂上一层等它、出现时重挂（原先这里失聪）。
+    let mut accounts_ear = accounts_manifest.parent().map(AccountsEar::new);
+    if let Some(ear) = accounts_ear.as_mut() {
+        ear.arm(&mut debouncer);
     }
 
     // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
@@ -1218,11 +1265,19 @@ fn watch_loop(
     while let Ok(event) = events_rx.recv() {
         match event {
             WatchEvent::Notify(Ok(events)) => {
+                // 〔GAP1〕账号目录自己出现 / 消失 ⇒ 先重挂；它也算「清单可能变了」。
+                let mut dir_moved = false;
+                if let Some(ear) = accounts_ear.as_mut() {
+                    for ev in &events {
+                        dir_moved |= ear.on_path(&mut debouncer, &ev.path);
+                    }
+                }
                 // 〔SR1a〕一批里 manifest 动了几次都只报一帧（批内合并；下一批再动再报）。
                 if manifest_touched(
                     events.iter().map(|ev| ev.path.as_path()),
                     &accounts_manifest,
-                ) {
+                ) || dir_moved
+                {
                     sink.send(Frame::AccountsChanged);
                 }
                 for ev in events {
