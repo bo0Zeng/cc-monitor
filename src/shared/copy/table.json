@@ -784,10 +784,40 @@
       "zh": "进程 {pid} 不是记下的那个后端，没有停它。它跑的是 {exe}，进程号可能被别的程序用了。",
       "args": ["pid", "exe"]
     },
-    "beResident.stop.signalFailed": {
+    "beResident.stop.badGrace": {
       "kind": "error",
-      "zh": "给常驻后端（进程 {pid}）发停止信号没发出去。",
+      "zh": "--grace 只收 {min} 到 {max} 秒。再短的话，后端还没收尾就会被强杀。",
+      "args": ["min", "max"]
+    },
+    "beResident.stop.stuck": {
+      "kind": "error",
+      "zh": "常驻后端（进程 {pid}）强杀之后还在，没有停掉。",
       "args": ["pid"]
+    },
+    "beStop.handle.failed": {
+      "kind": "error",
+      "zh": "拿不到进程 {pid} 的句柄，没有停它：{e}",
+      "args": ["pid", "e"]
+    },
+    "beStop.signal.failed": {
+      "kind": "error",
+      "zh": "信号 {sig} 没发出去：{e}",
+      "args": ["sig", "e"]
+    },
+    "beStop.wait.failed": {
+      "kind": "error",
+      "zh": "等进程退出时出错：{e}",
+      "args": ["e"]
+    },
+    "beStop.term.none": {
+      "kind": "body",
+      "zh": "这个平台没法请进程自己收尾，直接强杀。",
+      "args": []
+    },
+    "beStop.platform.unsupported": {
+      "kind": "error",
+      "zh": "这个平台上停不了常驻后端。",
+      "args": []
     },
     "panePreview.head.title": {
       "kind": "title",
