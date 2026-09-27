@@ -278,7 +278,10 @@ type Flags = Option<Vec<String>>;
 ///
 /// ⚠ 这里只实现 `cliFlags` 那一半 —— `apply`（产 `EnvOp`）那一半 U8c-1 已经在
 /// [`crate::render_payload`] 里了。
-fn dimension_flags(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String>, Refusal> {
+fn dimension_flags(
+    spec: &CliSpec,
+    caps: &BTreeSet<String>,
+) -> Result<Vec<(&'static str, Vec<String>)>, Refusal> {
     let mut out = Vec::new();
     // ⚠ **能力检查与 flags 是逐维度交错的**（与已删的 TS 渲染器那个维度循环同构）——
     // 初版我把能力检查整体提到循环外，那会在「缺能力」与「说不出」同时成立时给出**另一个**
@@ -295,7 +298,9 @@ fn dimension_flags(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Vec<String
                 });
             }
         }
-        push(&mut out, dim.id, (dim.cli_flags)(spec))?;
+        let mut flags = Vec::new();
+        push(&mut flags, dim.id, (dim.cli_flags)(spec))?;
+        out.push((dim.id, flags));
     }
     Ok(out)
 }
@@ -451,7 +456,9 @@ pub fn render_ccm_invocation(
         return Err(Refusal::SendIntoHasNoCliForm);
     }
 
+    // 〔V151 · 用户 09-27〕`ccm [交给 claude 的…] -- [ccm 自己的…]`：两半分开收，最后按 [`join_v151`] 拼。
     let mut tokens: Vec<String> = vec![spec.ccm_path.to_string()];
+    let mut ours: Vec<String> = Vec::new();
 
     // attach 分支**在维度循环之前 return** —— `ccm --attach <名>` 不接受任何修饰 flag，
     // 所以它也不收集维度的 requiredCaps（§33 里登记在案的刻意豁免，不是回退）。
@@ -469,9 +476,9 @@ pub fn render_ccm_invocation(
             });
         }
         // V138：位置动作取消，接回用 ccm 的壳层选项 `--attach`。
-        tokens.push("--attach".into());
-        tokens.push(cname.to_string());
-        return Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" "));
+        ours.push("--attach".into());
+        ours.push(cname.to_string());
+        return Ok(join_v151(tokens, ours));
     }
 
     match spec.action {
@@ -521,10 +528,17 @@ pub fn render_ccm_invocation(
                 value: format!("{name:?}"),
             });
         }
-        tokens.push(format!("--ccm-tmux={name}")); // 用户 09-26：ccm 的 tmux 旗标改名（claude 自己有 `--tmux`）
+        ours.push(format!("--ccm-tmux={name}")); // 用户 09-26：ccm 的 tmux 旗标改名（claude 自己有 `--tmux`）
     }
 
-    tokens.extend(dimension_flags(spec, caps)?);
+    // 〔V151〕维度吐的旗标分两半：`--model` 是 claude 的（V138），其余（身份 · 账号）是 ccm 的。
+    for (dim, flags) in dimension_flags(spec, caps)? {
+        if dim == "model" {
+            tokens.extend(flags);
+        } else {
+            ours.extend(flags);
+        }
+    }
 
     if let Some(cwd) = spec.cwd {
         // 〔TL3 · §47 ②〕工作目录是自由文本路径：形式 ＋ 拒绝集（与载荷那条路同一个判定 `shell_quote_core::posix_free_path_ok`）。
@@ -534,12 +548,12 @@ pub fn render_ccm_invocation(
                 value: format!("{cwd:?}"),
             });
         }
-        tokens.push("--cwd".into());
-        tokens.push(cwd.to_string());
+        ours.push("--cwd".into());
+        ours.push(cwd.to_string());
     }
     if spec.launcher != spec.default_launcher {
-        tokens.push("--launcher".into());
-        tokens.push(spec.launcher.to_string());
+        ours.push("--launcher".into());
+        ours.push(spec.launcher.to_string());
     }
     // 〔TL3 · §47 ②〕透传给 agent 的参数是自由文本：拒绝集只收 NUL / CR / LF（元字符交给 `argv` 里那一处 quote）。
     if let Some(a) = spec
@@ -552,11 +566,18 @@ pub fn render_ccm_invocation(
             value: format!("{a:?}"),
         });
     }
-    if !spec.args.is_empty() {
-        tokens.push("--".into());
-        tokens.extend(spec.args.iter().map(|a| (*a).to_string()));
+    tokens.extend(spec.args.iter().map(|a| (*a).to_string()));
+    Ok(join_v151(tokens, ours))
+}
+
+/// 〔V151〕`<ccm> <交给 claude 的…> -- <ccm 自己的…>`：ccm 那一半空、而 claude 那一半里没有 `--` ⇒ 不写 `--`；
+/// claude 那一半里有它自己的 `--` ⇒ 末尾照样补一个（按最后一个 `--` 切，空的 ccm 部分也得标出来）。
+fn join_v151(mut claude: Vec<String>, ours: Vec<String>) -> String {
+    if !ours.is_empty() || claude.iter().skip(1).any(|a| a == "--") {
+        claude.push("--".into());
+        claude.extend(ours);
     }
-    Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" "))
+    claude.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" ")
 }
 
 // ────────────────────────────────────────────────────────────────────────────

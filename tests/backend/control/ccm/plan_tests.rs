@@ -11,7 +11,7 @@ use crate::control::ccm::argv::Parsed;
 
 /// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）。
 fn parse(a: &[String]) -> Result<Parsed, crate::control::ccm::argv::Die> {
-    crate::control::ccm::argv::parse(&crate::control::ccm::argv::v138_to_v151(a))
+    crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::v138_to_v151(a))
 }
 
 fn env() -> Env {

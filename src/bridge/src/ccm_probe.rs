@@ -73,7 +73,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
 /// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（[`probe_ccm_cli`]）。
 /// 本机仍问它：`KR69D2`「你 PATH 上那个是不是我们这一份」答的正是交互 shell 的 `PATH`。
 const CCM_PROBE_CMD: &str =
-    "command -v ccm >/dev/null 2>&1 && ccm --ccm-probe || printf 'NO_CCM\\n'";
+    "command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe || printf 'NO_CCM\\n'";
 
 /// 本机探测结果的缓存。TTL 与前端 `ccm-probe.ts::CCM_PROBE_TTL_MS` 同为 5 分钟 ——
 /// 用户装完 ccm 不必重启 app，但也不必每次拉起都付一次 `bash -lic` 的钱。
@@ -192,7 +192,8 @@ pub(crate) fn probe_binary_uncached(
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     probe_spawned(timeout, &|| {
         let mut c = std::process::Command::new(bin);
-        c.arg("--ccm-probe")
+        // 〔V151〕`ccm -- --ccm-probe`：ccm 自己的诊断口写在 `--` 右边。
+        c.args(["--", "--ccm-probe"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped());
         // 三条策略与上一条逐字相同，理由只有 `Hidden` 那格更重：这一跳在 Windows 上

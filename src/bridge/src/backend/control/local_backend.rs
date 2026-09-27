@@ -1402,6 +1402,7 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 ///
 /// - 〔E2 · V28〕[`STREAM_WORD`] 打头：后端就叫 `ccm` 之后零参数是「起会话」，流模式靠这个显式词。
 pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
+    BACKEND_SEP,
     STREAM_WORD,
     "--tail-only",
     "--with-bg",
@@ -1411,6 +1412,10 @@ pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
 /// 〔E2 · V28〕「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
 /// monitor 起流的每一发（本机两条载体 · 远端流 · 测试连接探针）都以它打头。
 pub(crate) const STREAM_WORD: &str = "--stream";
+
+/// 〔V151 · 用户 09-27〕叫后端时打头的那个 `--`：后端二进制就是 `ccm`，`ccm [交给 claude 的…] -- [ccm 自己的…]` ——
+/// 打头的 `--` 紧跟后端的词（子命令 / 流模式旗标）才当后端用，没有它整行交给 claude。monitor 叫后端的每一发都带它。
+pub(crate) const BACKEND_SEP: &str = "--";
 
 /// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///
