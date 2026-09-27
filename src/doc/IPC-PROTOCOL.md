@@ -2759,7 +2759,9 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒法同默认那一形：1 MiB，`args_too_large`，不截断）。
 给「stdin 关不掉」的调用方：本机常驻后端经 SSH capture 问远端后端时，capture 不关远端 stdin，载荷由它写进去一行
 （`capture.stdin`，见链路那一节的 `dial` 字段）。这样载荷不必拼进远端命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道，fish 一类不认。
-今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
+〔FIX〕**argv 一族**（`--list-sessions` 这类老子命令）同一个修饰词：恰好 `--<子命令> --stdin-line` 两个词 ⇒ stdin 那一行是**其余 argv 的 JSON 字符串数组**
+（`control/cli_control.rs::expand_stdin_argv`），拼回去照常分派；读不动 / 不是字符串数组 ⇒ exit 2 ＋ `{code:"bad_request"}`。
+今天的发送方：资产目录推那一趟（`'<远端后端>' --assets-catalog-merge --stdin-line`）· 历史跨机那一问（`'<远端后端>' --list-sessions --stdin-line`，项目目录名走那一行；`remote_ask::ask_with`）。旧后端不认这个修饰词（它会照旧读到 EOF、一直等）⇒
 随 `BUILD_ID` 换代，远端按身份重部署之后才发。
 
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。

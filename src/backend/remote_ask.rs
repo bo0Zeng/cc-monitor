@@ -203,9 +203,16 @@ pub async fn ask_with(
         .get(machine)
         .cloned()
         .ok_or_else(|| unreachable_message(machine))?;
-    remote
-        .run(&r.dial, command_line(&r.backend, argv), None)
-        .await
+    // 〔FIX · `设计/96 §3.6`〕子命令之后的自由文本走 stdin 一行（JSON 数组，收的一侧 `cli_control::expand_stdin_argv`）：
+    //   命令行里只剩后端路径（进门时已过形式判定）与两个旗标 ⇒ 远端登录 shell 是 fish 之类也同读。
+    let (line, stdin) = match argv.split_first() {
+        Some((sub, rest)) if !rest.is_empty() => (
+            command_line(&r.backend, &[sub, crate::STDIN_LINE_FLAG]),
+            Some(format!("{}\n", json!(rest))),
+        ),
+        _ => (command_line(&r.backend, argv), None),
+    };
+    remote.run(&r.dial, line, stdin).await
 }
 
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────

@@ -364,3 +364,33 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
         shell_quote_core::posix_quote(STDIN_LINE_FLAG)
     )));
 }
+
+/// 〔FIX · `设计/96 §3.6`〕argv 一族的一行形：恰好 `--<老子命令> --stdin-line` 才读，读到换行就停；
+/// 别的形状（没有修饰词 · 多一个词 · 帧命令自己的 `--stdin-line`）原样返回、一个字节不读。
+#[test]
+fn the_argv_family_reads_its_tail_from_one_stdin_line_and_only_in_that_shape() {
+    let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let never = || std::io::BufReader::new(ThenPanic(None));
+    let got = expand_stdin_argv(
+        v(&["--list-sessions", STDIN_LINE_FLAG]),
+        std::io::BufReader::new(ThenPanic(Some(b"[\"-home-u-it's\"]\n".to_vec()))),
+    )
+    .expect("一行读得动");
+    assert_eq!(got, v(&["--list-sessions", "-home-u-it's"]));
+    for untouched in [
+        v(&["--list-projects"]),
+        v(&["--list-sessions", "-w-alpha"]),
+        v(&["--list-sessions", STDIN_LINE_FLAG, "x"]),
+        v(&["--assets-catalog-merge", STDIN_LINE_FLAG]),
+    ] {
+        assert_eq!(
+            expand_stdin_argv(untouched.clone(), never()).expect("原样"),
+            untouched
+        );
+    }
+    let bad = expand_stdin_argv(
+        v(&["--list-sessions", STDIN_LINE_FLAG]),
+        std::io::BufReader::new(ThenPanic(Some(b"{\"not\":\"an array\"}\n".to_vec()))),
+    );
+    assert_eq!(bad.map_err(|e| e.0), Err("bad_request"));
+}
