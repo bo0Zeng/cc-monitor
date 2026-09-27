@@ -111,6 +111,9 @@ serde_json = "1"
 # F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
 uuid = { version = "1", features = ["v4"] }
+# 〔FILES2 · Q5〕上传块形（SFTP 起始目录不是后端 home 时窗口经后端链路分块写）要窗口自己算整份摘要交给提交当 `expect`。
+# 已在 lockfile（`0.10.9`，别的依赖带进来的），此处提升为直接依赖、零新包。
+sha2 = "0.10"
 
 # 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
 # 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。

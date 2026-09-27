@@ -137,9 +137,32 @@ pub struct Pending {
     /// 〔F7c〕提交时交给后端的覆盖策略。**只有人在那一问里点了「覆盖」的那几件是 `true`**
     /// （由 [`run_drop`] 在「一次问完」之后标上）；造出来时一律 `false`。
     pub overwrite: bool,
+    /// 〔FILES2 · 非 UTF-8 目录〕目标目录的原始字节（目录名不是合法 UTF-8 时才有）：探在不在与提交都按字节寻址。
+    pub remote_dir_raw: Option<Vec<u8>>,
 }
 
 impl Pending {
+    /// 〔FILES2〕提交的 `root`：目标目录有字节 ⇒ 按字节发；否则照旧切字符串路径。
+    pub fn root_wire(&self) -> serde_json::Value {
+        match &self.remote_dir_raw {
+            Some(b) => super::source::wire_bytes(b),
+            None => serde_json::Value::String(super::source::parent_dir(&self.remote_path)),
+        }
+    }
+
+    /// 〔FILES2〕探「在不在」的那条整路径（线上那一形）。
+    pub fn path_wire(&self) -> serde_json::Value {
+        match &self.remote_dir_raw {
+            Some(b) => {
+                let mut v = b.clone();
+                v.push(b'/');
+                v.extend_from_slice(self.name.as_bytes());
+                super::source::wire_bytes(&v)
+            }
+            None => serde_json::Value::String(self.remote_path.clone()),
+        }
+    }
+
     /// 「把本机这个文件放到远端这个目录里」。
     ///
     /// ⚠ 远端路径**恒用 `/`** 拼（同 [`super::source::parent_dir`] 那条理由）。
@@ -155,6 +178,7 @@ impl Pending {
             remote_path: format!("{base}/{name}"),
             name,
             overwrite: false,
+            remote_dir_raw: None,
         })
     }
 }
@@ -496,14 +520,26 @@ pub async fn upload_remote(
     p: &Pending,
     board: &DropBoard,
 ) -> Result<(), String> {
-    match upload_once(line, origin, p, board).await {
+    // 〔FILES2 · Q5〕这一窗已经改走后端链路 ⇒ 不再问 SFTP。
+    if board.via_backend().is_some() {
+        return super::chunk_upload::upload_by_chunks(line, origin, p, board).await;
+    }
+    let home = board.backend_home(line, origin).await;
+    let home = home.as_deref();
+    let first = match upload_once(line, origin, p, board, home).await {
         // 〔FW1 · 第四波 4D · 主会话裁 09-25〕提交时对不上整份摘要 ⇒ 远端已经删掉那份坏暂存件 ⇒ **从头重传一次**并出声。
         //   只重一次：第二次还对不上，多半不是一次偶发的洞（盘 / 网络在持续出错），照原话报失败，不原地打转。
         Err(Once::Stale(_)) => {
             board.note_redone(&p.name);
-            upload_once(line, origin, p, board)
-                .await
-                .map_err(Once::said)
+            upload_once(line, origin, p, board, home).await
+        }
+        other => other,
+    };
+    match first {
+        // 〔FILES2 · Q5〕连上时比出来 SFTP 起始目录不是后端的 home ⇒ 一个字节没传；这一件起改走后端链路分块写（出声一次）。
+        Err(Once::Mismatch(why)) => {
+            board.switch_to_backend(why);
+            super::chunk_upload::upload_by_chunks(line, origin, p, board).await
         }
         other => other.map_err(Once::said),
     }
@@ -513,15 +549,20 @@ pub async fn upload_remote(
 enum Once {
     Stale(String),
     Failed(String),
+    /// 〔FILES2 · Q5〕传输台连上之后比出来 SFTP 起始目录不是后端的 home（`sftp_home_mismatch`），一个字节没传。
+    Mismatch(String),
 }
 
 impl Once {
     fn said(self) -> String {
         match self {
-            Once::Stale(s) | Once::Failed(s) => s,
+            Once::Stale(s) | Once::Failed(s) | Once::Mismatch(s) => s,
         }
     }
 }
+
+/// 〔FILES2 · Q5〕传输台收场码：SFTP 起始目录不是那台后端的 home（后端 `control/transfer.rs::SFTP_HOME_MISMATCH`，判据钉两份相等）。
+pub const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
 
 /// 开单 → 起跑并看 → 提交，一趟。提交带传输台交的整份摘要（`expect`），远端后端改名上位之前核它。
 async fn upload_once(
@@ -529,22 +570,24 @@ async fn upload_once(
     origin: &super::source::Origin,
     p: &Pending,
     board: &DropBoard,
+    home: Option<&str>,
 ) -> Result<(), Once> {
     let stop = board.cancels().stop_token();
-    let opened = super::source::ask(
-        line,
-        origin,
-        OP_UPLOAD,
-        &serde_json::json!({ "local_path": p.local_path }),
-        OPEN_BUDGET,
-    )
-    .await
-    .map_err(Once::Failed)?;
+    // 〔FILES2 · Q5〕问得到后端的 `$HOME` 就带上：传输台连上之后与 SFTP 起始目录比（不一致 ⇒ 一个字节不写）。
+    let mut args = serde_json::json!({ "local_path": p.local_path });
+    if let Some(h) = home {
+        args["home"] = serde_json::Value::String(h.to_string());
+    }
+    let opened = super::source::ask(line, origin, OP_UPLOAD, &args, OPEN_BUDGET)
+        .await
+        .map_err(Once::Failed)?;
     let id = field(&opened, OP_UPLOAD, "id").map_err(Once::Failed)?;
     let key = field(&opened, OP_UPLOAD, "key").map_err(Once::Failed)?;
+    // 〔FILES2 · Q2〕记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
+    board.note_staged(&key);
     let name = p.name.clone();
     let sink = board.clone();
-    let watched = super::source::watch(
+    let watched = super::source::watch_coded(
         line,
         origin,
         &format!("{KIND_PREFIX}{id}"),
@@ -552,7 +595,10 @@ async fn upload_once(
         |got, total| sink.progress(&name, got, total),
     )
     .await
-    .map_err(Once::Failed)?;
+    .map_err(|(code, said)| match code.as_deref() {
+        Some(SFTP_HOME_MISMATCH) => Once::Mismatch(said),
+        _ => Once::Failed(said),
+    })?;
     let sha256 = watched
         .sha256
         .ok_or_else(|| Once::Failed(copy_text("rsFilewinTransfer.upload.noDigest", &[])))?;
@@ -562,7 +608,7 @@ async fn upload_once(
         CMD_COMMIT,
         &serde_json::json!({
             "key": key,
-            "root": super::source::parent_dir(&p.remote_path),
+            "root": p.root_wire(),
             "rel": super::source::remote_basename(&p.remote_path),
             "overwrite": p.overwrite,
             "expect": { "sha256": sha256 },
@@ -611,6 +657,12 @@ struct Board {
     last: Option<DropOutcome>,
     /// 〔FW1〕这一趟里从头重传过的那几件（[`DropBoard::note_redone`] 记、[`DropBoard::finish`] 并进结局）。
     redone: Vec<String>,
+    /// 〔FILES2 · Q5〕那台后端的 `$HOME`（问过一次就记着；开单时交给传输台比 SFTP 起始目录）。
+    backend_home: Option<String>,
+    /// 〔FILES2 · Q5〕这一窗的上传改走后端链路分块写了 ⇒ 为什么（传输台原话；出声一次，之后不再问 SFTP）。
+    via_backend: Option<String>,
+    /// 〔FILES2 · Q2〕开过单的暂存件键（[`DropBoard::note_staged`]）。
+    staged: Vec<String>,
 }
 
 impl DropBoard {
@@ -678,6 +730,70 @@ impl DropBoard {
         self.rounds.load(Ordering::SeqCst)
     }
 
+    /// 〔FILES2 · Q5〕这一窗的上传是不是已经改走后端链路（`Some(为什么)`）。
+    pub fn via_backend(&self) -> Option<String> {
+        self.inner.lock().unwrap().via_backend.clone()
+    }
+
+    /// 〔FILES2 · Q5〕改走后端链路（记下原因，界面上画一行；只记第一次的原因）。
+    pub fn switch_to_backend(&self, why: String) {
+        self.inner.lock().unwrap().via_backend.get_or_insert(why);
+        self.poke();
+    }
+
+    /// 〔FILES2 · Q2〕这一件在传的进度（`(已传, 总共)`；不在传 ⇒ `None`）。
+    pub fn seen(&self, name: &str) -> Option<(u64, u64)> {
+        self.inner
+            .lock()
+            .unwrap()
+            .progress
+            .iter()
+            .find(|(n, ..)| n == name)
+            .map(|(_, g, t)| (*g, *t))
+    }
+
+    /// 〔FILES2 · Q2〕记一份开过单的暂存件键（SFTP 那条路）。
+    pub fn note_staged(&self, key: &str) {
+        self.inner.lock().unwrap().staged.push(key.to_string());
+    }
+
+    /// 〔FILES2 · Q2〕开过单的暂存件键（跨机复制半路失败时逐个删掉）；取走即清。
+    pub fn take_staged(&self) -> Vec<String> {
+        std::mem::take(&mut self.inner.lock().unwrap().staged)
+    }
+
+    /// 〔FILES2 · Q2〕换一台目标机器之前：记着的 home / 改走后端链路那一句 / 暂存件键 / 进度都清掉（它们说的是上一台）。
+    pub fn reset_target(&self) {
+        let mut b = self.inner.lock().unwrap();
+        b.backend_home = None;
+        b.via_backend = None;
+        b.staged.clear();
+        b.progress.clear();
+    }
+
+    /// 〔FILES2 · Q5〕那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比，照旧走 SFTP）。
+    pub async fn backend_home(
+        &self,
+        line: &super::source::Line,
+        origin: &super::source::Origin,
+    ) -> Option<String> {
+        if let Some(h) = self.inner.lock().unwrap().backend_home.clone() {
+            return Some(h);
+        }
+        let d = super::source::ask(
+            line,
+            origin,
+            "files-home",
+            &serde_json::json!({}),
+            PROBE_BUDGET,
+        )
+        .await
+        .ok()?;
+        let h = super::source::home_from_reply(&d).ok()?;
+        self.inner.lock().unwrap().backend_home = Some(h.clone());
+        Some(h)
+    }
+
     /// 〔FW1〕记一件「提交时对不上整份摘要、已从头重传」（这一趟收场时并进结局，画出来）。
     pub fn note_redone(&self, name: &str) {
         self.inner.lock().unwrap().redone.push(name.to_string());
@@ -713,15 +829,23 @@ impl DropBoard {
 
     /// 画确认框与进度。**模态** —— 有问题在等的时候，列表那边不接受点击。
     pub fn ui(&self, ui: &mut egui::Ui) {
-        let (asking, mut ticks, progress, last) = {
+        let (asking, mut ticks, progress, last, via) = {
             let b = self.inner.lock().unwrap();
             (
                 b.asking.clone(),
                 b.ticks.clone(),
                 b.progress.clone(),
                 b.last.clone(),
+                b.via_backend.clone(),
             )
         };
+        // 〔FILES2 · Q5〕改走后端链路那一句（一窗一次；之后的上传都走那条，不再逐件说）。
+        if let Some(why) = via {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xE0, 0x9A, 0x20),
+                copy_text("rsFilewinChunkUpload.route.switched", &[("why", &why)]),
+            );
+        }
         if !asking.is_empty() {
             let mut answer: Option<bool> = None;
             let mut changed = false;

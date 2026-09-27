@@ -982,8 +982,22 @@ pub async fn watch(
     origin: &Origin,
     kind: &str,
     stop: &crate::chan::wire::CancelToken,
-    mut on: impl FnMut(u64, u64),
+    on: impl FnMut(u64, u64),
 ) -> Result<Watched, String> {
+    watch_coded(line, origin, kind, stop, on)
+        .await
+        .map_err(|(_, said)| said)
+}
+
+/// 〔FILES2 · Q5〕同 [`watch`]，失败时把传输台说的码一起交回（`(码, 原话)`；没码 ⇒ `None`）—— 上传据 `sftp_home_mismatch` 换路。
+pub async fn watch_coded(
+    line: &Line,
+    origin: &Origin,
+    kind: &str,
+    stop: &crate::chan::wire::CancelToken,
+    mut on: impl FnMut(u64, u64),
+) -> Result<Watched, (Option<String>, String)> {
+    let plain = |s: String| (None, s);
     use crate::chan::wire::{By, Comms, Item, Kind, Sub};
     use futures::StreamExt as _;
     let mut sub = line.subscribe(origin, &Kind(kind.to_string()), None, WATCH_CREDIT);
@@ -993,11 +1007,11 @@ pub async fn watch(
             i = sub.next() => i,
             () = stop.cancelled() => {
                 sub.stop();
-                return Err(super::transfer::CANCELLED.to_string());
+                return Err(plain(super::transfer::CANCELLED.to_string()));
             }
         };
         let Some(item) = next else {
-            return Err(copy_text("rsFilewinSource.watch.cutShort", &[]));
+            return Err(plain(copy_text("rsFilewinSource.watch.cutShort", &[])));
         };
         match item {
             Item::Frame { body, .. } => {
@@ -1013,12 +1027,14 @@ pub async fn watch(
                 sub.want(1);
             }
             Item::Gap { .. } | Item::Seen { .. } => sub.want(1),
-            Item::Unseen { .. } => return Err(copy_text("rsFilewinSource.watch.hostGone", &[])),
+            Item::Unseen { .. } => {
+                return Err(plain(copy_text("rsFilewinSource.watch.hostGone", &[])))
+            }
             Item::Closed { by: By::Ours(why) } => {
-                return Err(copy_text(
+                return Err(plain(copy_text(
                     "rsFilewinSource.watch.localBreak",
                     &[("why", &format!("{:?}", why))],
-                ))
+                )))
             }
             Item::Closed { by: By::Peer(body) } => {
                 let v = json(&body.0);
@@ -1031,9 +1047,16 @@ pub async fn watch(
                             .unwrap_or(0),
                         sha256: v.get("sha256").and_then(|s| s.as_str()).map(str::to_string),
                     }),
-                    "failed" => Err(text("why").to_string()),
-                    "cancelled" => Err(super::transfer::CANCELLED.to_string()),
-                    _ => Err(super::find::refusal(kind, text("code"), text("message"))),
+                    "failed" => Err((
+                        v.get("code").and_then(|c| c.as_str()).map(str::to_string),
+                        text("why").to_string(),
+                    )),
+                    "cancelled" => Err(plain(super::transfer::CANCELLED.to_string())),
+                    _ => Err(plain(super::find::refusal(
+                        kind,
+                        text("code"),
+                        text("message"),
+                    ))),
                 };
             }
         }

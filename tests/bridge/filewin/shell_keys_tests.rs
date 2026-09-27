@@ -679,7 +679,18 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("f.txt")],
             vec![],
             "f.txt",
-            vec!["编辑", "复制", "下载", "算大小", "改名", "权限", "删除"],
+            // 〔FILES2〕+「解压到这里」（`设计/60 §6.2` Q3）。
+            vec![
+                "编辑",
+                "复制",
+                "下载",
+                "算大小",
+                "解压到这里",
+                "复制到另一台…",
+                "改名",
+                "权限",
+                "删除",
+            ],
         ),
         (
             "一个目录",
@@ -694,7 +705,16 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), row("h.bin", false, big, false)],
             vec![],
             "h.bin",
-            vec!["复制", "下载", "算大小", "改名", "权限", "删除"],
+            vec![
+                "复制",
+                "下载",
+                "算大小",
+                "解压到这里",
+                "复制到另一台…",
+                "改名",
+                "权限",
+                "删除",
+            ],
         ),
         (
             "一个有损名文件",

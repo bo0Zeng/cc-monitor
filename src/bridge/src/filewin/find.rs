@@ -414,12 +414,27 @@ pub fn find_args(needle: &str) -> Value {
 
 /// `files-index-rebuild` 的 `args`。
 pub fn rebuild_args(root: &str) -> Value {
-    serde_json::json!({ "path": root })
+    rebuild_args_at(&super::source::RemotePath::plain(root))
+}
+
+/// 〔FILES2 · 非 UTF-8 目录〕同 [`rebuild_args`]，根按字节发（合法 UTF-8 时与字符串形逐字相同）。
+pub fn rebuild_args_at(root: &super::source::RemotePath) -> Value {
+    serde_json::json!({ "path": root.wire() })
 }
 
 /// `files-browse` 的 `args` —— **此刻的整份名单**（后端自己算差分）。
 pub fn browse_args(dirs: &[String]) -> Value {
-    serde_json::json!({ "dirs": dirs })
+    let at: Vec<super::source::RemotePath> = dirs
+        .iter()
+        .map(|d| super::source::RemotePath::plain(d))
+        .collect();
+    browse_args_at(&at)
+}
+
+/// 〔FILES2 · 非 UTF-8 目录〕同 [`browse_args`]，每一项按字节发。
+pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> Value {
+    let v: Vec<Value> = dirs.iter().map(super::source::RemotePath::wire).collect();
+    serde_json::json!({ "dirs": v })
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -752,7 +767,7 @@ async fn one_round(
     board: &SearchBoard,
     line: &Line,
     origin: &Origin,
-    root: &str,
+    root: &super::source::RemotePath,
     needle: &str,
     force_rebuild: bool,
 ) -> Round {
@@ -793,8 +808,16 @@ async fn one_round(
     // ⚠ 它失败**不致命** —— 少的是「这个目录此刻新不新」，不是整趟搜索
     //   ⇒ 只记一句话，继续往下走。
     // ⚠ 代价如实记：每一趟查询多一次往返 ＋ 后端那侧多 `read_dir` 一个目录。
-    let dirs = vec![root.to_string()];
-    if let Err(r) = call_one(line, origin, CMD_BROWSE, browse_args(&dirs), call_timeout()).await {
+    let dirs = vec![root.clone()];
+    if let Err(r) = call_one(
+        line,
+        origin,
+        CMD_BROWSE,
+        browse_args_at(&dirs),
+        call_timeout(),
+    )
+    .await
+    {
         // 〔CP2b · CP1 裁「改·§2.1」〕「浏览名单」是内部机制名，裁词「这条对用户可不报」⇒ 不上界面，只进日志。
         tracing::warn!("filewin: browse list not delivered: {r}");
     }
@@ -822,7 +845,7 @@ async fn one_round(
             line,
             origin,
             CMD_INDEX_REBUILD,
-            rebuild_args(root),
+            rebuild_args_at(root),
             rebuild_timeout(),
         )
         .await
@@ -885,6 +908,20 @@ pub async fn run_search(
     line: Line,
     origin: Origin,
     root: String,
+    needle: String,
+    mine: u64,
+    force_rebuild: bool,
+) {
+    let at = super::source::RemotePath::plain(&root);
+    run_search_at(board, line, origin, at, needle, mine, force_rebuild).await;
+}
+
+/// 〔FILES2 · 非 UTF-8 目录〕同 [`run_search`]，索引的根按字节（有损目录里也搜得了）。
+pub async fn run_search_at(
+    board: SearchBoard,
+    line: Line,
+    origin: Origin,
+    root: super::source::RemotePath,
     needle: String,
     mine: u64,
     force_rebuild: bool,

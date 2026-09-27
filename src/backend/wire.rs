@@ -654,7 +654,12 @@ pub enum TransferEnd {
         sha256: Option<String>,
     },
     /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传；下载那一路的 `.part` 删了。
-    Failed { why: String },
+    /// 〔FILES2 · Q5〕`code`：调用方要按它换路的那几形（今天只有 `sftp_home_mismatch`）；缺席 ＝ 一般的失败。
+    Failed {
+        why: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+    },
     /// 撤了（`transfer-stop` / 本机流断了）。上传那一路的暂存件已删；下载那一路的 `.part` 留着。
     Cancelled,
 }

@@ -156,6 +156,9 @@ pub struct OpenRequest {
     /// 〔FW34〕书签文件的全路径（monitor 算好：它住 monitor 的数据目录）。
     /// `None` ＝ 数据目录解不出来 ⇒ 窗口的书签栏上出声，不静默不画。
     pub bookmarks: Option<std::path::PathBuf>,
+    /// 〔FILES2 · V152〕「复制到另一台」那一问的下拉：本机 ＋ 已配的远端（monitor 从已有的配置读口算好；名字与 `origin` 同一个口径）。
+    #[serde(default)]
+    pub machines: Vec<String>,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。
@@ -463,6 +466,7 @@ pub fn child_main() -> i32 {
         req.rows,
         req.reveal,
         req.bookmarks,
+        req.machines,
     );
     match h.join() {
         Ok(Ok(())) => 0,

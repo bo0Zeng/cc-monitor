@@ -156,6 +156,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-rename"
                 | "files-write-text"
                 | "files-copy"
+                // 〔FILES2〕解压：同步读包 ＋ 落盘，同写面一档。
+                | "files-extract"
                 // 〔RW1 · 第四波 09-24〕读改写两条 ＋ 删历史会话：同步文件 I/O（围栏的 `canonicalize`
                 // ＋ 读 / 暂存旁名写满 ＋ 换名 / 删），同写面其余几条一档。
                 | "files-peek"
@@ -171,6 +173,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "files-home"
                 // 〔W5-FILES〕读族第九条（算目录大小）同档：走一整棵树的同步 I/O。
                 | "files-size"
+                // 〔FILES2〕读族第十条（分块读回）同档：同步文件 I/O。
+                | "files-read-chunk"
                 // 〔`C1` · 09-24〕只读查询面八条同为阻塞档：全做文件 I/O，
                 // `history-search` 扫全库、`history-tail` 扫整份会话 —— 不许占 tokio worker。
                 // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 出列：出成品、远端那一支要等 ⇒ 真异步
@@ -303,6 +307,7 @@ fn every_registered_command_declares_its_run_kind() {
         "files-rename",
         "files-write-text",
         "files-copy",
+        "files-extract",
         "files-ls",
         "files-stat",
         "files-find",
@@ -311,6 +316,7 @@ fn every_registered_command_declares_its_run_kind() {
         "files-read-text",
         "files-home",
         "files-size",
+        "files-read-chunk",
         "history-projects",
         "history-index",
         "history-user-inputs",
@@ -558,6 +564,8 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         crate::control::files_write::manage_command_names()
             .into_iter()
             .chain(crate::control::files_commit::commit_command_names())
+            // 〔FILES2 · 第四波〕解压（`control/files_extract.rs`，第三层第四个模块）。
+            .chain(crate::control::files_extract::extract_command_names())
             .map(str::to_string)
             .collect();
     assert!(

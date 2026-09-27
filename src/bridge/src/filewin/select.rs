@@ -54,7 +54,6 @@ use crate::copy_table::copy_text;
 use std::collections::BTreeSet;
 
 use super::copy::copyable;
-use super::download::is_downloadable;
 use super::editor::editable;
 use super::source::Listed;
 use super::writeops::is_writable;
@@ -461,6 +460,10 @@ pub enum Action {
     Download,
     /// 〔W5-FILES · `设计/60 §6.2`〕算大小（后端 `files-size`）—— 一项或多项。
     Size,
+    /// 〔FILES2 · `设计/60 §6.2` Q3〕解压到这里（后端 `files-extract`）—— 恰好一份文件。
+    Extract,
+    /// 〔FILES2 · `设计/60 §6.2` Q2〕复制到另一台机器（A 下到本机暂存 → 传到 B → B 提交）—— 恰好一份文件。
+    CrossCopy,
     Rename,
     /// 改权限 —— 〔FW5〕对一项或多项（头注 §三）。
     Chmod,
@@ -482,6 +485,8 @@ impl Action {
             Action::Copy => super::copy::COPY_LABEL.to_string(),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Size => super::size::SIZE_LABEL.to_string(),
+            Action::Extract => super::extract::EXTRACT_LABEL.to_string(),
+            Action::CrossCopy => super::cross_copy::CROSS_LABEL.to_string(),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
@@ -515,12 +520,19 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             if copyable(r) {
                 out.push(Action::Copy);
             }
-            if is_downloadable(r) {
+            // 〔FILES2 · Q4〕有损名带着字节也拉得下来（远端按字节就地拷进暂存区再下）。
+            if super::download::is_downloadable_listed(r) {
                 out.push(Action::Download);
             }
             // 〔W5-FILES〕算大小：名字寻址得到就给（文件也收，后端回它自己）。
             if !r.lossy_name || r.raw_name.is_some() {
                 out.push(Action::Size);
+                // 〔FILES2〕解压：一份文件就给（认不认这种包由后端判，窗口不写第二份后缀表）。
+                if !r.is_dir {
+                    out.push(Action::Extract);
+                    // 〔FILES2 · Q2〕复制到另一台：一份文件（名字寻址得到就给；不是 UTF-8 的走按字节下那一条）。
+                    out.push(Action::CrossCopy);
+                }
             }
             if is_writable(r) {
                 out.push(Action::Rename);

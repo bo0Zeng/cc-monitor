@@ -62,6 +62,8 @@ const REGISTERED: &[&str] = &[
     "files.index.rebuild",
     "files.index.status",
     "files.ls",
+    // 〔FILES2 · V152〕出处用户 09-27 V152「经那台后端链路按字节寻址分块读回」（`设计/60 §7` 第 9 条 Q4）。
+    "files.read.chunk",
     "files.read.text",
     // 〔W5-FILES · 第五波〕出处 `设计/60 §6.2`「算目录大小」；`设计/96 §2.9` 那张表同样还没跟上（本路不写设计篇，报备主会话补一行）。
     "files.size",
@@ -837,6 +839,25 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&text_a), "max_bytes": 1000 }),
             serde_json::json!({ "path": p(&text_a), "max_bytes": 1 }),
         ),
+        // 〔FILES2 · V152〕`files.read.chunk` 的三个参数：各差一个键，读回的字节必然不同。
+        (
+            "files.read.chunk",
+            "path",
+            serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 4 }),
+            serde_json::json!({ "path": p(&text_b), "offset": 0, "len": 4 }),
+        ),
+        (
+            "files.read.chunk",
+            "offset",
+            serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 4 }),
+            serde_json::json!({ "path": p(&text_a), "offset": 1, "len": 4 }),
+        ),
+        (
+            "files.read.chunk",
+            "len",
+            serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 4 }),
+            serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 2 }),
+        ),
     ];
 
     // ── ① 分区恒等：探针表 ↔ `args` 声明，逐条能力**两向相等** ─────────────
@@ -888,8 +909,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     }
     // 〔F7a〕探针对数恒等：8 → 10（`files.read.text` 的 `path` · `max_bytes` 两对）。
     // 〔W5-FILES〕10 → 11（`files.size` 的 `path` 一对）。
+    // 〔FILES2〕11 → 14（`files.read.chunk` 的 `path` · `offset` · `len` 三对）。
     assert_eq!(
-        checked, 11,
+        checked, 14,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -1763,4 +1785,60 @@ fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
         );
     }
     std::fs::remove_dir_all(&d).ok();
+}
+
+/// 〔FILES2 · V152〕`files.read.chunk`：非 UTF-8 名按字节寻址、逐块读回拼起来 == 盘上那份；越过末尾 ⇒ 空块 `eof`；`len` 越界 ⇒ `bad_args`；目录 ⇒ `not_text`。
+/// 要求住址：用户 09-27 V152「经那台后端链路按字节寻址（b16 路径）分块读回」· `设计/60 §4.4` 下载对远端只读（这一条纯读）。
+#[test]
+#[cfg(unix)]
+fn a_non_utf8_file_is_read_back_chunk_by_chunk_byte_for_byte() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let dir = std::env::temp_dir().join(format!("ccm-rc-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("夹具目录");
+    let f = dir.join(std::ffi::OsStr::from_bytes(b"f\xfe.bin"));
+    let body: Vec<u8> = (0..10_000u32).map(|i| (i % 253) as u8).collect();
+    std::fs::write(&f, &body).expect("铺");
+    let at = raw::to_json(raw::path_bytes(&f));
+    let (mut got, mut off) = (Vec::new(), 0u64);
+    // 有界：10 000 字节 / 4096 一块 ⇒ 三块读完；多转一圈就是 `eof` 没说实话。
+    for round in 0.. {
+        assert!(round < 4, "读了 {round} 块还没说 eof —— eof 不实");
+        let v = answer_wire(
+            "files-read-chunk",
+            &serde_json::json!({ "path": at, "offset": off, "len": 4096 }),
+        )
+        .expect("读一块被拒");
+        assert_eq!(v["size"], body.len());
+        let hexed = v["content"]["b16"].as_str().expect("b16");
+        got.extend(
+            (0..hexed.len() / 2).map(|k| u8::from_str_radix(&hexed[2 * k..2 * k + 2], 16).unwrap()),
+        );
+        off = got.len() as u64;
+        if v["eof"] == true {
+            break;
+        }
+    }
+    assert_eq!(got, body, "逐块拼回来不是盘上那份");
+    let past = answer_wire(
+        "files-read-chunk",
+        &serde_json::json!({ "path": at, "offset": 99_999, "len": 10 }),
+    )
+    .unwrap();
+    assert_eq!(
+        (past["content"]["b16"].as_str(), past["eof"].as_bool()),
+        (Some(""), Some(true))
+    );
+    let e = answer_wire(
+        "files-read-chunk",
+        &serde_json::json!({ "path": at, "offset": 0, "len": READ_CHUNK_MAX_BYTES + 1 }),
+    )
+    .unwrap_err();
+    assert_eq!(e.0, "bad_args");
+    let e = answer_wire(
+        "files-read-chunk",
+        &serde_json::json!({ "path": raw::to_json(raw::path_bytes(&dir)), "offset": 0, "len": 1 }),
+    )
+    .unwrap_err();
+    assert_eq!(e.0, "not_text");
+    std::fs::remove_dir_all(&dir).ok();
 }
