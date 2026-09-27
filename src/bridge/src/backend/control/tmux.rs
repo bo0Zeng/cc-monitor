@@ -398,7 +398,7 @@ pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) ->
 /// ⚠ `K-R72`（09-12）把这一问从 [`exact_target`] 里**分出来（不是复制一份）**：`exact_target` 产的是**给 shell 用的**
 /// 精确串 `'=<名>:'`，让别的入口为一次校验去要一个用不上的串就是「一个值装了两件事」。今天它只剩 [`exact_target`]
 /// 这个跨轨对拍锚点在用（下面那段写着为什么锚点还得留着）；抓屏 · 送键 · 杀会话三条的目标名由后端入口判
-/// （界面那一份 TS 零，`DUP3.md §5 ⑦` 记着后端那两份还不是 `gate-core` 这一条）。
+/// （界面那一份 TS 零；〔TAIL〕后端那两份也并成 `kill.rs::admit_existing_name` → 同一条 `gate-core`）。
 /// 判据 `tests::gate1_admits_an_existing_target_by_the_one_gate_core_rule`（正反各一格）。
 fn gate1_admit_target(target: &str) -> Result<(), String> {
     match gate_core::existing_tmux_name_issue(target) {

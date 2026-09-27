@@ -38,26 +38,35 @@ type CmdErr = (&'static str, String);
 ///
 /// 与 `launch::parse_request` 同一条纪律：这**不是安全边界**（对端本来就能在这台机上跑任意命令），
 /// 而是「这组参数能不能构成一次有意义的 tmux 调用」。
-/// `:` / `=` 是 tmux 目标语法的一部分，名字里带它们会让 `=name:` 变成别的意思。
 pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
     let name = args
         .as_object()
         .and_then(|o| o.get("name"))
         .and_then(|v| v.as_str())
         .ok_or(("invalid_args", "缺 `name`".to_string()))?;
-    if name.trim().is_empty() {
-        return Err(("invalid_args", "`name` 为空".to_string()));
-    }
-    if name.chars().any(char::is_control) {
-        return Err(("invalid_args", "`name` 含控制字符".to_string()));
-    }
-    if name.contains(':') || name.contains('=') {
-        return Err((
-            "invalid_args",
-            format!("`name` 不许含 `:` 或 `=`（它们是 tmux 目标语法）：{name:?}"),
-        ));
-    }
+    admit_existing_name(name)?;
     Ok(name.to_string())
+}
+
+/// 〔TAIL · DUP3 §5 ③ ⑦〕**已有会话名**的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份
+/// `gate_core::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
+/// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话，attach 那一条早就放行它。
+pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
+    use gate_core::TmuxNameIssue as I;
+    match gate_core::existing_tmux_name_issue(name) {
+        None if name.contains(':') => Err((
+            "invalid_args",
+            format!("`name` 不许含 `:`（它是 tmux 目标语法）：{name:?}"),
+        )),
+        None => Ok(()),
+        Some(I::Empty) => Err(("invalid_args", "`name` 为空".to_string())),
+        Some(I::Control(_)) => Err(("invalid_args", "`name` 含控制字符".to_string())),
+        Some(I::Deceptive(c)) => Err((
+            "invalid_args",
+            format!("`name` 含视觉欺骗字符 U+{:04X}", c as u32),
+        )),
+        Some(other) => Err(("invalid_args", format!("`name` 不合规：{other:?}"))),
+    }
 }
 
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。

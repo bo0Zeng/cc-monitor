@@ -201,7 +201,8 @@ fn every_registered_needle_lands_in_its_own_bucket() {
 /// 而不是被拼进 `=name:` 送给 tmux。
 #[test]
 fn a_name_that_would_break_the_target_never_reaches_tmux() {
-    for bad in ["", "  ", "a:b", "=a", "a\nb"] {
+    // 〔TAIL · DUP3 §5 ③ ⑦〕规则换成 `gate-core` 那一份：`"  "` 与 `=a` 是合法的已有会话名（attach 同样放行），不在这里。
+    for bad in ["", "a:b", "a\nb", "a\u{202e}b"] {
         let e = capture(bad).expect_err("坏形状的名字不许放行");
         assert_eq!(
             e.0, "invalid_args",
