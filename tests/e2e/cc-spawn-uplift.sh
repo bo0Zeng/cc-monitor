@@ -375,13 +375,14 @@ echo "[18] 【08-13】边界：cc-bus 脚本**不可执行** · 初始任务**�
 TB="$(mktemp -d)"
 cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"
+# 〔AL3 · V138〕位置动作 `new` 取消、预览改 `--ccm-print`（`new` 留着会被当成交给 claude 的位置参数）。
 chk "台账脚本不可执行 ⇒ 明说「不进 spawn 台账」" \
-  "$(CC_BUS_SCRIPTS="$TB" "$CCM" new --tmux-base=q --detach --bus-register \
-      --print --cwd /tmp 2>&1 >/dev/null | grep -c '不进 spawn 台账')" "1"
+  "$(CC_BUS_SCRIPTS="$TB" "$CCM" --tmux-base=q --detach --bus-register \
+      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '不进 spawn 台账')" "1"
 chmod -x "$TB/cc-register"
 chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
-  "$(CC_BUS_SCRIPTS="$TB" "$CCM" new --tmux-base=q --detach --bus-register \
-      --print --cwd /tmp 2>&1 >/dev/null | grep -c '没有登记')" "1"
+  "$(CC_BUS_SCRIPTS="$TB" "$CCM" --tmux-base=q --detach --bus-register \
+      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '没有登记')" "1"
 rm -rf "$TB"
 # 超长任务：**干净失败**（rc≠0、零会话、零台账），不是假成功。
 # ⚠ 上界是内核的 `MAX_ARG_STRLEN` = 128 KiB（131072）——实测 131000 仍 OK、131072 报 E2BIG。

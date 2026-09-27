@@ -617,10 +617,11 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     //   那条「codex 与 claude 到底哪几项不同」今天由后端侧
     //   `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 逐项钉。
     let fns = ccm_per_agent_fns();
+    // 〔AL3 · V138〕5 → 4：`resume_flag` 删了（ccm 只看不吃 `--resume`，不再替 agent 拼 resume）。
     assert_eq!(
         fns.len(),
-        5,
-        "per-agent 适配函数从 5 个变成 {} 个：{fns:?}\n\
+        4,
+        "per-agent 适配函数从 4 个变成 {} 个：{fns:?}\n\
              ⇒ `E4b` 裁的是「通用骨架不动，加一张表的一行」。多一个函数 = 分叉面变大，\
              那正是该有人过一眼的时刻；少一个 = 要么收敛了（好事，改这个数），\
              要么抽取器坏了（`pub(crate) fn <名>(agent: &str)`，只扫 `control/ccm/mod.rs`）。",

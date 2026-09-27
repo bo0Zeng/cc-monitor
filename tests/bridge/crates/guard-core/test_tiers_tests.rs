@@ -537,6 +537,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/skill_install_tests.rs", // 〔AS2〕
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
+    "tests/backend/control/ccm/claude_flags_tests.rs", // 〔AL3 · V138〕读 claude --help 快照 ＋ PATH 上有就跑真 `claude --help`
     "tests/backend/control/ccm/plan_tests.rs",
     "tests/backend/control/exit_policy_tests.rs",
     "tests/backend/control/files_commit_tests.rs",

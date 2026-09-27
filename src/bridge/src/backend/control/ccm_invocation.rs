@@ -453,7 +453,7 @@ pub fn render_ccm_invocation(
 
     let mut tokens: Vec<String> = vec![spec.ccm_path.to_string()];
 
-    // attach 分支**在维度循环之前 return** —— `ccm attach <名>` 不接受任何修饰 flag，
+    // attach 分支**在维度循环之前 return** —— `ccm --attach <名>` 不接受任何修饰 flag，
     // 所以它也不收集维度的 requiredCaps（§33 里登记在案的刻意豁免，不是回退）。
     if let Action::Attach { name } = spec.action {
         let Container::Tmux { name: cname, .. } = spec.container else {
@@ -468,7 +468,8 @@ pub fn render_ccm_invocation(
                 value: format!("{cname:?}"),
             });
         }
-        tokens.push("attach".into());
+        // V138：位置动作取消，接回用 ccm 的壳层选项 `--attach`。
+        tokens.push("--attach".into());
         tokens.push(cname.to_string());
         return Ok(tokens.iter().map(|t| argv(t)).collect::<Vec<_>>().join(" "));
     }
@@ -482,10 +483,11 @@ pub fn render_ccm_invocation(
                     value: format!("{sid:?}"),
                 });
             }
-            tokens.push("resume".into());
+            // V138：`--resume <sid>` 是 claude 的旗标，ccm 原样交过去；起新会话不再写 `new`。
+            tokens.push("--resume".into());
             tokens.push(sid.to_string());
         }
-        _ => tokens.push("new".into()),
+        _ => {}
     }
     // 〔DUP1 · §47 ①〕身份标记同一条 sid 规则（`--ccm-sid=` 由下面的 identity 维度吐）。
     if let Some(s) = spec.ccm_sid.filter(|s| !shell_quote_core::session_id_ok(s)) {
@@ -519,7 +521,7 @@ pub fn render_ccm_invocation(
                 value: format!("{name:?}"),
             });
         }
-        tokens.push(format!("--tmux={name}"));
+        tokens.push(format!("--ccm-tmux={name}")); // 用户 09-26：ccm 的 tmux 旗标改名（claude 自己有 `--tmux`）
     }
 
     tokens.extend(dimension_flags(spec, caps)?);

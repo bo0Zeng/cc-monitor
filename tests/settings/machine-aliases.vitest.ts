@@ -50,8 +50,8 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
       args: [
         "--cwd", "/home/u/文档/c c",
         "--account", "z",
-        "--tmux=w",
-        "--agent", "codex",
+        "--ccm-tmux=w",
+        "--ccm-agent", "codex",
         "--model", "opus",
         "--launcher", "/usr/bin/claude",
         "--tmux-size", "200x50",
@@ -81,7 +81,7 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
       busRegister: true,
       busNote: "x",
     });
-    expect(noDetach.args).toEqual(["--tmux"]);
+    expect(noDetach.args).toEqual(["--ccm-tmux"]);
     expect(m.formToAlias({ ...m.emptyForm(), name: "c", account: m.BASE_CHOICE }).args).toEqual([
       "--base",
     ]);
@@ -89,7 +89,7 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
 
   it("认不出的参数不静默丢：原样进透传栏", async () => {
     const m = await import("../../src/settings/machine-aliases");
-    expect(m.aliasToForm({ name: "x", args: ["--weird", "--tmux"] }).passthru).toBe("--weird");
+    expect(m.aliasToForm({ name: "x", args: ["--weird", "--ccm-tmux"] }).passthru).toBe("--weird");
   });
 });
 
@@ -467,7 +467,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
       "betacc",
       "mine",
     ]);
-    clickText(el, "卸载别名块");
+    clickText(el, "卸载 ccm"); // 用户 09-26：本机那颗与远端同叫「卸载 ccm」（V134）
     await flush();
     expect(seen.find((c) => c.cmd === "aliases_block_remove")!.args).toEqual({
       origin: "<local>",

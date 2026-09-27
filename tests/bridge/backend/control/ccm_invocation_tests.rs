@@ -420,7 +420,7 @@ fn attaching_into_a_non_tmux_container_is_refused() {
     assert_eq!(render(&s), Err(Refusal::AttachNeedsTmux));
 }
 
-/// `ccm attach <名>` 不接受任何修饰 —— 所以它在维度循环**之前**返回，
+/// `ccm --attach <名>` 不接受任何修饰 —— 所以它在维度循环**之前**返回，
 /// 连维度要的能力都不收（§33 登记在案的刻意豁免）。
 #[test]
 fn attach_reads_the_container_name_and_no_modifiers_at_all() {
@@ -437,7 +437,8 @@ fn attach_reads_the_container_name_and_no_modifiers_at_all() {
     s.cwd = Some("/w");
     s.launcher = "claude-dev";
     s.account = CliAccount::Named { name: Some("z") };
-    assert_eq!(render(&s).as_deref(), Ok("ccm attach cc-x"));
+    // V138：位置动作取消 ⇒ `ccm attach <名>` 改成 `ccm --attach <名>`，起新会话不再写 `new`。
+    assert_eq!(render(&s).as_deref(), Ok("ccm --attach cc-x"));
     // 连账号/模型维度的能力都不要 —— 全都缺也照样渲染得出来。
     let only_static: BTreeSet<String> = STATIC_CAPS_EXPECTED
         .iter()
@@ -445,7 +446,7 @@ fn attach_reads_the_container_name_and_no_modifiers_at_all() {
         .collect();
     assert_eq!(
         render_ccm_invocation(&s, &only_static, true).as_deref(),
-        Ok("ccm attach cc-x")
+        Ok("ccm --attach cc-x")
     );
 }
 
@@ -673,7 +674,7 @@ fn the_capability_gate_is_interleaved_per_dimension_not_hoisted() {
 // ── 整条命令的形状 ──────────────────────────────────────────────────────
 
 /// 一条把五个维度里会吐 flag 的三个**同时**触发的命令 —— 顺序即契约，
-/// 而且它同时钉住 `--tmux=`/`--cwd`/`--launcher`/`--` 各自的位置。
+/// 而且它同时钉住 `--ccm-tmux=`/`--cwd`/`--launcher`/`--` 各自的位置。
 #[test]
 fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     let mut s = base_spec();
@@ -691,7 +692,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     assert_eq!(
         render(&s).as_deref(),
         Ok(concat!(
-            "ccm resume s1 --tmux=cc-x --ccm-sid=sid-1 ",
+            "ccm --resume s1 --ccm-tmux=cc-x --ccm-sid=sid-1 ",
             "--account z --model opus --cwd /w --launcher claude-dev -- -p"
         ))
     );
@@ -703,12 +704,12 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
 fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
     let mut s = base_spec();
     s.args = &["-p", "两个 词"];
-    assert_eq!(render(&s).as_deref(), Ok("ccm new --base -- -p '两个 词'"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm --base -- -p '两个 词'"));
     let mut s = base_spec();
     s.args = &[];
     assert_eq!(
         render(&s).as_deref(),
-        Ok("ccm new --base"),
+        Ok("ccm --base"),
         "空 args 不该吐出一个孤零零的 --"
     );
 }
@@ -717,11 +718,11 @@ fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
 fn launcher_is_only_named_when_it_differs_from_the_default() {
     let mut s = base_spec();
     s.launcher = "claude";
-    assert_eq!(render(&s).as_deref(), Ok("ccm new --base"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm --base"));
     s.launcher = "claude-dev";
     assert_eq!(
         render(&s).as_deref(),
-        Ok("ccm new --base --launcher claude-dev")
+        Ok("ccm --base --launcher claude-dev")
     );
 }
 
@@ -909,7 +910,7 @@ fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
     }
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J6〕`--tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
+/// 〔DUP2 · 主会话 09-26 裁 J6〕`--ccm-tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
 /// 写成 ccm 参数之前先过 gate-core 那两条（全仓唯一一份；界面那两个谓词按 `设计/90 §3` 判据 2 删了 —— 这条路此前零判定、
 /// 只靠界面那一道），**正反各一格**。
 #[test]
@@ -924,7 +925,7 @@ fn a_tmux_name_is_judged_before_it_becomes_a_ccm_argument() {
     };
     for good in ["proj-cc", "my session", "项目"] {
         let cmd = create(good).unwrap_or_else(|e| panic!("真实会话名被拒了：{good:?} ⇒ {e:?}"));
-        assert!(cmd.contains("--tmux="), "{cmd}");
+        assert!(cmd.contains("--ccm-tmux="), "{cmd}");
     }
     for bad in [
         "-x",
@@ -957,7 +958,7 @@ fn a_tmux_name_is_judged_before_it_becomes_a_ccm_argument() {
     // 已有会话里真有 glob / `=` / 前导 `-` 的名字：照接（ccm 那头按 `=<名>:` 精确寻址）。
     for good in ["st*ar", "a=b", "-x"] {
         let cmd = attach(good).unwrap_or_else(|e| panic!("已有会话名被拒了：{good:?} ⇒ {e:?}"));
-        assert!(cmd.contains(" attach "), "{cmd}");
+        assert!(cmd.contains(" --attach "), "{cmd}"); // V138：`attach` → `--attach`
     }
     for bad in ["a\nb", "a\u{200b}b"] {
         let bad: &'static str = Box::leak(bad.to_string().into_boxed_str());

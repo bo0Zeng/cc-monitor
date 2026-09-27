@@ -959,7 +959,7 @@ pub fn user_path_remove() -> Result<(), String> {
 /// 只有「**它生成的文本指向 `ccm`**」，证不了「敲下去真起得来」。
 ///
 /// 🔴 〔`KR132D3` 另一半，本轮**复打后维持**〕**`cct` 这一臂刻意不生成。**
-/// POSIX 那边 `cct() { ccm --tmux "$@"; }`，而 **Windows 上没有 tmux** ⇒ 给它一个
+/// POSIX 那边 `cct() { ccm --ccm-tmux "$@"; }`，而 **Windows 上没有 tmux** ⇒ 给它一个
 /// 「名字在、行为不在」的壳比没有更坏（`K-R129` 那位用户正是照文案敲了 `cct`）。
 ///
 /// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/launcher-diagnostics.ts`

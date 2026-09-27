@@ -625,8 +625,8 @@ export EDITOR=vim
 
 # ccm 启动器
 cc()   { ccm \"$@\"; }
-cct()  { ccm --tmux \"$@\"; }
-oo()   { ccm --agent codex \"$@\"; }
+cct()  { ccm --ccm-tmux \"$@\"; }
+oo()   { ccm --ccm-agent codex \"$@\"; }
 alphacc()  { ccm --account z \"$@\"; }
 alias  ccx='ccm --base'
 
@@ -837,8 +837,8 @@ fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
         vec![
             (4, "# ccm 启动器"),
             (5, "cc()   { ccm \"$@\"; }"),
-            (6, "cct()  { ccm --tmux \"$@\"; }"),
-            (7, "oo()   { ccm --agent codex \"$@\"; }"),
+            (6, "cct()  { ccm --ccm-tmux \"$@\"; }"),
+            (7, "oo()   { ccm --ccm-agent codex \"$@\"; }"),
             (8, "alphacc()  { ccm --account z \"$@\"; }"),
             (9, "alias  ccx='ccm --base'"),
             (11, "# 与 ccm 无关的一行"),
@@ -1565,7 +1565,7 @@ fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
 ///
 /// # `cct` 那一半（维持上一轮的棘轮）
 ///
-/// POSIX 那一臂里 `cct() { ccm --tmux "$@"; }`，而 **Windows 上没有 tmux**
+/// POSIX 那一臂里 `cct() { ccm --ccm-tmux "$@"; }`，而 **Windows 上没有 tmux**
 /// ⇒ 这一臂**刻意不生成 `cct`**：给它一个「名字在、行为不在」的壳比没有更坏
 /// （`K-R129` 那位用户正是照文案敲了 `cct`）。**这半条是棘轮，不是发现。**
 ///
@@ -1758,11 +1758,11 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
 #[test]
 fn ccm_aliases_snippet_has_required_elements() {
     for needle in [
-        ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
-        "cc()",       // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
-        "cct()",      // tmux 版
-        "ccm --tmux", // 别名只做组合，不自己建容器
-        "declare -f", // 防覆盖用户已有同名函数
+        ".local/bin",     // CLI 落点必须进 PATH，否则别名全指向不存在的命令
+        "cc()",           // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
+        "cct()",          // tmux 版
+        "ccm --ccm-tmux", // 别名只做组合，不自己建容器
+        "declare -f",     // 防覆盖用户已有同名函数
     ] {
         assert!(
             CCM_WRAPPER_SNIPPET.contains(needle),

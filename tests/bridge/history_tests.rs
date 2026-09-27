@@ -103,7 +103,7 @@ fn the_config_dir_validator_rejects_every_injection_shape() {
 /// # 此前那条判据在替代码说好话
 ///
 /// `launch_tests.rs::local_and_remote_share_the_same_payload` 用的是**手写夹具**
-/// `"… && ccm --tmux claude --resume s1"`，而它**从不调用**真正的 payload 构造器。
+/// `"… && ccm --ccm-tmux claude --resume s1"`，而它**从不调用**真正的 payload 构造器。
 /// 那个夹具里有 `--tmux`，生产里没有 —— **判据恰好体现了生产违反的那个假设**。
 ///
 /// # 本条钉的是**现状**，不是理想
@@ -131,7 +131,7 @@ fn the_local_resume_payload_has_no_session_container_today() {
         "抽取器自检：构造出来的串里连 `--resume s1` 都没有 —— 切错东西了：{rendered}"
     );
     assert!(
-        !rendered.contains("--tmux") && !rendered.split_whitespace().any(|w| w == "cct"),
+        !rendered.contains("--ccm-tmux") && !rendered.split_whitespace().any(|w| w == "cct"),
         "★★ **回落那条路**产出了会话容器（`--tmux` / `cct`）—— 本条不该再绿。\n\
              \n\
              ⚠ **P3t-Y3 翻面**：本条**测什么没变，自陈换了**。它量的从来只是\n\
@@ -267,9 +267,9 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
     // ② 会话名从**那两串话本身**里读回来，不是拿常量对常量。
     let created_target = created
         .split_whitespace()
-        .find_map(|t| t.strip_prefix("--tmux="))
+        .find_map(|t| t.strip_prefix("--ccm-tmux="))
         .unwrap_or_else(|| {
-            panic!("建那一句里没有 `--tmux=<名>`，它根本没建容器 —— 下面两条会空转：{created}")
+            panic!("建那一句里没有 `--ccm-tmux=<名>`，它根本没建容器 —— 下面两条会空转：{created}")
         });
     let mut toks = attach.split_whitespace();
     assert_eq!(
@@ -277,9 +277,10 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
         Some("ccm"),
         "attach 那一句不是在调后端的命令行入口（`K26`：`ccm` 就是它）：{attach}"
     );
+    // V138：接回从位置动作 `attach <名>` 改成壳层选项 `--attach <名>`。
     assert_eq!(
         toks.next(),
-        Some("attach"),
+        Some("--attach"),
         "\n★ 本机后端渲出来的**动作不是 attach**（实得整串：{attach}）。\n\
              最可能的形状：`Attach` 那一臂掉进了 `render_ccm_invocation` 的 `_ => new` 兜底 ——\n\
              那一刀的后果不是「没接上」，是**另起一条 claude**，而用户以为回到了原会话。"
@@ -290,7 +291,7 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
     assert_eq!(
         toks.next(),
         None,
-        "`ccm attach <名>` 不收任何修饰 flag（`ccm_invocation` 那一支早于维度循环 return），\
+        "`ccm --attach <名>` 不收任何修饰 flag（`ccm_invocation` 那一支早于维度循环 return），\
              多出来的东西说明它走了别的分支：{attach}"
     );
     assert_eq!(
@@ -314,15 +315,13 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
         argv_prod.len(),
         plan_prod.len()
     );
-    let attach_verb = format!("\"{}\" => {{", "attach");
     assert!(
-        argv_prod.contains(attach_verb.as_str()),
-        "后端那份 `ccm` 的 argv 解析里，位置动作 `{attach_verb}` 那一支不见了 —— \
-             我们产的这一句它读不成 attach"
+        argv_prod.contains("pub(crate) const ATTACH: &str = \"--attach\";"),
+        "后端那份 `ccm` 的旗标表里 `--attach` 不见了 —— 我们产的这一句它读不成 attach"
     );
     assert!(
-        argv_prod.contains("o.attach_name = v.clone()"),
-        "`ccm attach <名>` 后面那个位置参数不再落进 `attach_name` —— \
+        argv_prod.contains("flag::ATTACH => o.attach_name = val!(),"),
+        "`ccm --attach <名>` 的值不再落进 `attach_name` —— \
              那么「接哪一个」这条信息在后端那半就断了"
     );
     assert!(
@@ -382,7 +381,7 @@ fn the_rendered_local_command_really_carries_the_container() {
     )
     .expect("账号 0 + 有名字 + 能力齐 ⇒ 必须渲染得出来");
     assert!(
-        cmd.contains("--tmux"),
+        cmd.contains("--ccm-tmux"),
         "渲出来的本机命令里没有 `--tmux` —— 那就还是**无 tty、无 tmux** 的老样子，\n\
              用户敲进去的字会被脚本吃掉。实得：{cmd}"
     );
@@ -779,7 +778,7 @@ pub(crate) const THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS: &[(&str, CellToday, &str,
 ///
 /// 「走中转」那一格两处都会驱动一次 `launch_local`，而**它们量的不是两把尺子**：
 /// 同一个观测口（[`LaunchSink`] 那条缝上真正交出去的那一串）、同一个判定
-/// （串里有没有 `--tmux=`）。差别在**结论**：邻居主张的是「两个集合不相交」（互斥），
+/// （串里有没有 `--ccm-tmux=`）。差别在**结论**：邻居主张的是「两个集合不相交」（互斥），
 /// 本条只记「这一格今天关没关」。⇒ 谁哪天把中转那一行翻掉，**两条一起红**，
 /// 而它们要求的后续动作不同（邻居要重裁互斥，本条要改表）。
 #[test]
@@ -910,7 +909,7 @@ fn observe_one_cell(name: &str) -> CellToday {
                 sent.contains("ANTHROPIC_BASE_URL"),
                 "这一趟没拿到中转前缀 —— 替身没生效，本格此刻在量别的东西。实得：{sent}"
             );
-            if sent.contains("--tmux=") {
+            if sent.contains("--ccm-tmux=") {
                 CellToday::Closed
             } else {
                 CellToday::StillFallsBack
@@ -994,7 +993,7 @@ fn observe_one_cell(name: &str) -> CellToday {
 /// ⇒ 本条现在**真的驱动 [`launch_local`]**，两个集合都从
 /// **[`LaunchSink`] 那条缝上收到的那个字符串**里读出来，一个字节的判断逻辑都不自带：
 /// - 「走中转」= 那一串里有 `ANTHROPIC_BASE_URL`（中转前缀唯一的形状）；
-/// - 「有容器」= 那一串里有 `--tmux=`（`render_ccm_invocation` 唯一产出它的地方；
+/// - 「有容器」= 那一串里有 `--ccm-tmux=`（`render_ccm_invocation` 唯一产出它的地方；
 ///   回落路 `build_local_posix_command` 从不说 tmux）。
 ///
 /// 「装没装 ccm」由 [`CcmProbeSource`] 那条缝喂进来（**不问跑判据的这台机器** ——
@@ -1006,7 +1005,7 @@ fn observe_one_cell(name: &str) -> CellToday {
 /// （一个在apikey 表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
 /// 那正是 `D6 阻-2` 逮到过的形状）：
 ///
-/// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--tmux=`（= [`launch_local`] 的判据） |
+/// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--ccm-tmux=`（= [`launch_local`] 的判据） |
 /// |---|---|---|
 /// | 缺席（`None`） | 不带（不走中转） | **是**〔🔴 `K-R89` 09-13 翻的：`R28` 之后省略有确定语义，渲染器说得出「继承」了〕 |
 /// | `Base`（账号 0） | 不带（不走中转） | **是** |
@@ -1122,11 +1121,11 @@ fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
                 .unwrap_or_else(|| panic!("形状 {label} 这一趟什么都没送出去"))
         });
         // 两个判定都只看**那一串**：`ANTHROPIC_BASE_URL` 只可能来自中转前缀，
-        // `--tmux=` 只可能来自 `render_ccm_invocation`（回落路从不说 tmux）。
+        // `--ccm-tmux=` 只可能来自 `render_ccm_invocation`（回落路从不说 tmux）。
         if sent.contains("ANTHROPIC_BASE_URL") {
             relayed.push(label);
         }
-        if sent.contains("--tmux=") {
+        if sent.contains("--ccm-tmux=") {
             containered.push(label);
         }
     }
@@ -2307,7 +2306,7 @@ fn the_windows_local_path_never_grows_a_session_container() {
                 build_local_ps_command(&action, None, acct).expect("这几组形状都该渲染得出来");
             checked += 1;
             assert!(
-                !cmd.contains("--tmux"),
+                !cmd.contains("--ccm-tmux"),
                 "Windows 渲染器吐了 `--tmux` —— `C12` 逐字「windows不要tmux」。实得：{cmd}"
             );
             assert!(

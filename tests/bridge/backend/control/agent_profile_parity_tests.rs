@@ -170,39 +170,17 @@ fn the_resume_kind_column_matches_reality() {
     }
 }
 
-/// ★ **F06 摸底顺出的真缺口**：`shared/ccm` **不支持 codex 的 subcommand 形 resume**。
+/// ★ **F06 那个缺口的前提**：从前 ccm 拒 codex resume（`resume_flag` 对 codex 回 `None` ⇒ `noResume`）。
 ///
-/// 实测：`agent_resume_flag` 对 codex 返回**空**，而 `ccm:250` 拿空值当
-/// 「不支持 resume」的哨兵直接 `die "agent=$agent 不支持 resume"`；
-/// argv 构建也只会 `argv+=("$rf" "$sid")`（flag 形），**没有子命令形那一支**。
-///
-/// 而 Rust 那边的注释逐字写着「**F6 让命令构建支持 subcommand 形**」——
-/// 那个 F6 就是本件。但**本件刻意不做那个功能改动**：
-/// 「让 ccm 支持 codex resume」属 codex 支持那一族（`codex-phase2` / `backend-codex` 工作区），
-/// **不是 C4「ccm 变零决策」**。⇒ 按三档走「绕」：如实登记，不削判据、不顺手改。
-///
-/// 本条钉住那个**前提**：ccm 今天仍然拒绝 codex resume。
-/// 它一旦支持了 ⇒ **主动红**，回来把夹具的 ccm 那一轨补上真对拍。
+/// 〔V138〕ccm 成了 claude 的壳：它不再有 resume 这个决定，`--resume` / `resume <sid>` 原样交给 agent
+/// （codex 用户敲 `ccm --agent codex resume <sid>` 就是 `codex resume <sid>`）⇒ 那个缺口按「不需要 ccm 管」结案。
+/// 本条钉新前提：ccm 里没有 resume 旗标表、也没有「不支持 resume」那句拒。它一旦长回来 ⇒ 红，回 F06 重裁。
 #[test]
-fn ccm_still_refuses_codex_resume_so_the_gap_is_still_real() {
+fn ccm_makes_no_resume_decision_since_it_became_a_shell() {
     let ccm = read_ccm();
-    // ccm 用「空 resume flag」当不支持的哨兵 —— 两处都要在，缺一处这个前提就变了。
-    // 🔴 〔`K-R48` 第二拍〕哨兵的**字面**跟着实现换了一次（bash 的 `codex) printf '' ;;`
-    //    → Rust 的 `resume_flag` 对非 claude 回 `None`），**语义一个字没变**：
-    //    「没有 resume flag」= 这个 agent 不支持 resume。
     assert!(
-        ccm.contains("pub(crate) fn resume_flag(") && ccm.contains("_ => None,"),
-        "`resume_flag` 对 codex 不再返回空 —— **这多半是好事**：\n\
-             ccm 可能支持了 codex 的 subcommand 形 resume ⇒ 回 F06 把夹具的 ccm 那一轨补上真对拍。"
-    );
-    // 〔CP2c〕那句话进了文案表（`beArgv.validate.noResume`）⇒ 判「源码在那一格取这句」＋「这句说的是不支持 resume」。
-    // ⚠ 不能再判 `ccm.contains("不支持 resume")`：句子搬走之后它只剩 `resume_flag` 的文档注释里那半句，
-    //   判据会靠一行注释恒绿（抽表那一拍现打撞见的）。
-    assert!(
-        ccm.contains("\"beArgv.validate.noResume\"")
-            && crate::copy_table::copy_text("beArgv.validate.noResume", &[("agent", "codex")])
-                .contains("不支持 resume"),
-        "`control/ccm/` 里那句「不支持 resume」的 die 不见了 —— 同上，前提变了，回 F06 重裁。"
+        !ccm.contains("fn resume_flag(") && !ccm.contains("beArgv.validate.noResume"),
+        "`control/ccm/` 又长出了 resume 的决定 —— V138 之后 ccm 只看不吃 `--resume`，回 F06 重裁。"
     );
 }
 

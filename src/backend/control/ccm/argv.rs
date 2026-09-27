@@ -24,36 +24,29 @@
 use copy_core::copy_text;
 
 /// 每个 `--flag` 的字面量，**唯一住址**。
+///
+/// 〔V138〕ccm 是 claude 的壳：它只认下面这些（壳层选项 ＋ `--ccm-*` 诊断口 ＋ `--`），其余每个词原样交给 agent。
+/// 用户 09-26：与 claude 同名的两个改名 `--ccm-tmux` / `--ccm-agent`（claude 2.1.283 自己有 `--tmux` / `--agent`）。
 pub(crate) mod flag {
-    pub(crate) const RESUME: &str = "--resume";
-    pub(crate) const TMUX: &str = "--tmux";
+    pub(crate) const TMUX: &str = "--ccm-tmux";
     pub(crate) const TMUX_BASE: &str = "--tmux-base";
-    pub(crate) const BUS_REGISTER: &str = "--bus-register";
-    pub(crate) const BUS_NOTE: &str = "--bus-note";
+    pub(crate) const TMUX_SIZE: &str = "--tmux-size";
+    pub(crate) const DETACH: &str = "--detach";
     pub(crate) const ACCOUNT: &str = "--account";
     pub(crate) const BASE: &str = "--base";
     pub(crate) const CWD: &str = "--cwd";
-    pub(crate) const AGENT: &str = "--agent";
-    pub(crate) const MODEL: &str = "--model";
+    pub(crate) const AGENT: &str = "--ccm-agent";
     pub(crate) const LAUNCHER: &str = "--launcher";
-    pub(crate) const CCM_SID: &str = "--ccm-sid";
-    pub(crate) const DETACH: &str = "--detach";
-    pub(crate) const TMUX_SIZE: &str = "--tmux-size";
-    pub(crate) const PRINT: &str = "--print";
+    pub(crate) const BUS_REGISTER: &str = "--bus-register";
+    pub(crate) const BUS_NOTE: &str = "--bus-note";
+    pub(crate) const ATTACH: &str = "--attach";
+    pub(crate) const CCM_PRINT: &str = "--ccm-print";
+    pub(crate) const CCM_HELP: &str = "--ccm-help";
+    pub(crate) const CCM_VERSION: &str = "--ccm-version";
     pub(crate) const CCM_PROBE: &str = "--ccm-probe";
-    pub(crate) const VERSION: &str = "--version";
-    pub(crate) const HELP_LONG: &str = "--help";
-    pub(crate) const HELP_SHORT: &str = "-h";
-    /// argv 终止符：其后全部透传给 agent。
+    pub(crate) const CCM_SID: &str = "--ccm-sid";
+    /// argv 终止符：其后全部透传给 agent（要把 claude 自己同名的旗标交过去时用）。
     pub(crate) const END: &str = "--";
-}
-
-/// 位置动作。`new` / `resume <sid>` / `attach <名字>`，且**必须在最前**。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Action {
-    New,
-    Resume,
-    Attach,
 }
 
 /// `--cwd` 的取值：`auto`（默认）或一个显式目录。
@@ -76,8 +69,6 @@ pub(crate) enum CwdSpec {
 pub(crate) struct Defaults;
 
 impl Defaults {
-    /// 不给位置动作 ⇒ `new`。
-    pub(crate) const ACTION: Action = Action::New;
     /// 不给 `--agent` ⇒ `claude`。
     pub(crate) const AGENT: &'static str = "claude";
     /// 不给 `--cwd` ⇒ `auto`，而 `K-R58` 起 **`auto` 就是恒等**：调用方自己的 cwd。
@@ -89,7 +80,7 @@ impl Defaults {
     pub(crate) const USE_BASE: bool = false;
     /// 不给 `--detach` ⇒ 建完接进去。
     pub(crate) const DETACH: bool = false;
-    /// 不给 `--print` ⇒ 真跑。
+    /// 不给 `--ccm-print` ⇒ 真跑。
     pub(crate) const PRINT: bool = false;
     /// 不给 `--bus-register` ⇒ 不登记 cc-bus。
     pub(crate) const BUS_REGISTER: bool = false;
@@ -111,8 +102,7 @@ impl Defaults {
 /// 解析出来的一整套意图。**下游只许读这个结构，不许再看一眼 `args`。**
 #[derive(Debug, Clone)]
 pub(crate) struct Opts {
-    pub(crate) action: Action,
-    pub(crate) sid: String,
+    /// `--attach <名>`；空 = 没给（起会话）。
     pub(crate) attach_name: String,
     pub(crate) use_tmux: bool,
     pub(crate) tmux_name: String,
@@ -124,15 +114,12 @@ pub(crate) struct Opts {
     pub(crate) use_base: bool,
     pub(crate) cwd_spec: CwdSpec,
     pub(crate) agent: String,
-    pub(crate) model: String,
     pub(crate) launcher: String,
-    /// 用户**显式**给了 `--launcher` 吗。必须在填默认值之前记下来 ——
-    /// 填完就分不清「用户写的」与「默认的」了，而 `resume` 那条路要靠它决定问不问后端。
-    pub(crate) launcher_explicit: bool,
     pub(crate) ccm_sid: String,
     pub(crate) print: bool,
     pub(crate) detach: bool,
     pub(crate) tmux_size: String,
+    /// 交给 agent 的那一串，按用户写的顺序（V138：ccm 不认的词全在这里，含 `--resume` / `--model`）。
     pub(crate) passthru: Vec<String>,
 }
 
@@ -180,12 +167,11 @@ pub(crate) enum Parsed {
 
 /// 🔴 **这套 argv 的唯一解析口。**
 ///
-/// 形状逐条承接 `K26`〔用@08-28〕：位置动作 `new` / `resume <sid>` / `attach <名字>`
-/// 在最前，其余一律 flag，`--` 之后全部透传给 agent。
+/// 〔V138〕首词 `new` 是 ccm 的位置动作（可省）；壳层选项与 `--ccm-*` 诊断口在哪个位置都认；其余每个词（旗标 · 值 · 位置参数）按原顺序进
+/// [`Opts::passthru`] 交给 agent，不报错、不翻译；`--` 之后一律透传。ccm 不知道 claude 的旗标带不带值 ——
+/// 值恰好与壳层选项同名时写在 `--` 后面。
 pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
     let mut o = Opts {
-        action: Defaults::ACTION,
-        sid: String::new(),
         attach_name: String::new(),
         use_tmux: Defaults::USE_TMUX,
         tmux_name: String::new(),
@@ -196,9 +182,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         use_base: Defaults::USE_BASE,
         cwd_spec: Defaults::CWD,
         agent: Defaults::AGENT.to_string(),
-        model: String::new(),
         launcher: String::new(),
-        launcher_explicit: false,
         ccm_sid: String::new(),
         print: Defaults::PRINT,
         detach: Defaults::DETACH,
@@ -206,37 +190,9 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         passthru: Vec::new(),
     };
 
-    let mut i = 0usize;
-    // ── 位置动作：只认第一个 token，且只认这三个 ──────────────────────────
-    if let Some(first) = args.first() {
-        match first.as_str() {
-            "new" => {
-                o.action = Action::New;
-                i = 1;
-            }
-            "resume" => {
-                o.action = Action::Resume;
-                // 下一个 token 以 `-` 开头 ⇒ 用户漏了参数
-                //（`ccm resume --tmux` 会静默把 `--tmux` 当 sid）。
-                match args.get(1) {
-                    Some(v) if !v.starts_with('-') => o.sid = v.clone(),
-                    _ => return die(&copy_text("beArgv.parse.resumeNeedsId", &[])),
-                }
-                i = 2;
-            }
-            "attach" => {
-                o.action = Action::Attach;
-                match args.get(1) {
-                    Some(v) if !v.starts_with('-') => o.attach_name = v.clone(),
-                    _ => return die(&copy_text("beArgv.parse.attachNeedsName", &[])),
-                }
-                i = 2;
-            }
-            _ => {}
-        }
-    }
-
-    // ── 其余一律 flag ────────────────────────────────────────────────────
+    // 位置动作 `new` 只认第一个词（用户 09-26「new不要删掉」—— claude 没有 `new` 子命令）；
+    // 位置词 `attach` 不是 ccm 的：claude 有自己的 `attach <id>`，接回 tmux 会话用 `--attach <名>`。
+    let mut i = usize::from(args.first().map(String::as_str) == Some("new"));
     while i < args.len() {
         let a = args[i].as_str();
         // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。
@@ -262,11 +218,6 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
                 o.passthru.extend_from_slice(&args[i + 1..]);
                 break;
             }
-            // `--resume <sid>` 与 `resume <sid>` **等价** —— cc-monitor 今天就是这么拼的。
-            flag::RESUME => {
-                o.action = Action::Resume;
-                o.sid = val!();
-            }
             flag::TMUX => {
                 o.use_tmux = true;
                 if let Some(v) = inline {
@@ -283,30 +234,17 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::BASE => o.use_base = true,
             flag::CWD => o.cwd_spec = CwdSpec::Explicit(val!()),
             flag::AGENT => o.agent = val!(),
-            flag::MODEL => o.model = val!(),
-            flag::LAUNCHER => {
-                o.launcher = val!();
-                o.launcher_explicit = true;
-            }
+            flag::LAUNCHER => o.launcher = val!(),
+            flag::ATTACH => o.attach_name = val!(),
             flag::CCM_SID => o.ccm_sid = val!(),
             flag::DETACH => o.detach = true,
             flag::TMUX_SIZE => o.tmux_size = val!(),
-            flag::PRINT => o.print = true,
+            flag::CCM_PRINT => o.print = true,
             flag::CCM_PROBE => return Ok(Parsed::Early(Early::Probe)),
-            flag::VERSION => return Ok(Parsed::Early(Early::Version)),
-            flag::HELP_LONG | flag::HELP_SHORT => return Ok(Parsed::Early(Early::Help)),
-            other if other.starts_with('-') => {
-                return die(copy_text(
-                    "beArgv.parse.unknownOption",
-                    &[("other", &other.to_string())],
-                ))
-            }
-            other => {
-                return die(copy_text(
-                    "beArgv.parse.extraPositional",
-                    &[("other", &other.to_string())],
-                ))
-            }
+            flag::CCM_VERSION => return Ok(Parsed::Early(Early::Version)),
+            flag::CCM_HELP => return Ok(Parsed::Early(Early::Help)),
+            // V138：不是 ccm 的词 ⇒ 原样交给 agent（含 `--resume` / `-p` / `--help` / 位置参数）。
+            _ => o.passthru.push(a.to_string()),
         }
         i += 1;
     }
@@ -355,14 +293,8 @@ fn validate(o: &Opts) -> Result<(), Die> {
             &[("size", &o.tmux_size.to_string())],
         ));
     }
-    // 〔DUP1 · `INVARIANTS §47` ①〕标识符在拼进容器路那条 shell 串 / 交给 agent 之前先过放行判定
+    // 〔DUP1 · `INVARIANTS §47` ①〕标识符在拼进容器路那条 shell 串之前先过放行判定
     // （判定住 `shell-quote-core`，全仓唯一一份；quote 只管元字符，管不了 `-` 开头的选项注入）。
-    if o.action == Action::Resume && !shell_quote_core::session_id_ok(&o.sid) {
-        return die(copy_text(
-            "beArgv.validate.badSid",
-            &[("sid", &format!("{:?}", o.sid))],
-        ));
-    }
     if !o.ccm_sid.is_empty() && !shell_quote_core::session_id_ok(&o.ccm_sid) {
         return die(copy_text(
             "beArgv.validate.badCcmSid",
@@ -373,18 +305,6 @@ fn validate(o: &Opts) -> Result<(), Die> {
         return die(copy_text(
             "beArgv.validate.badAccount",
             &[("account", &format!("{:?}", o.account))],
-        ));
-    }
-    if !o.model.is_empty() && !shell_quote_core::model_name_ok(&o.model) {
-        return die(copy_text(
-            "beArgv.validate.badModel",
-            &[("model", &format!("{:?}", o.model))],
-        ));
-    }
-    if o.action == Action::Resume && crate::control::ccm::resume_flag(&o.agent).is_none() {
-        return die(copy_text(
-            "beArgv.validate.noResume",
-            &[("agent", &o.agent.to_string())],
         ));
     }
     Ok(())
@@ -405,3 +325,7 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/argv_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/control/ccm/claude_flags_tests.rs"]
+mod claude_flags_tests;
