@@ -13,6 +13,7 @@ fn jline(session_id: &str, seq: u64, raw: &str) -> ssh_source::JsonlLine {
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,
         raw: raw.to_string(),
+        end: None,
     }
 }
 
