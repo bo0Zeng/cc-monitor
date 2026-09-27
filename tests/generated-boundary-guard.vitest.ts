@@ -172,6 +172,7 @@ describe("C01 边界生成物", () => {
       "DriftFace.ts", //              U-CC1
       "DriftFaceReport.ts", //        U-CC1
       "DriftLedgerReport.ts", //      〔ST3〕读口回包：按机器分，带回答的是哪台
+      "ElemKey.ts", //                〔FIX · 99 §2 ㊶〕按键认数组元素（`ConfigEdit` 的 `setin`）
       // K-R65：环境清单那四档（app 装的 / 该自带而没装口 / 你自己装我提示 / 只查）。
       "EnvTier.ts",
       "ForkedFrom.ts", //             C04c

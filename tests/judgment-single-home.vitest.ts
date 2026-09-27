@@ -576,7 +576,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     read_accounts: NONE,
     read_auth_style: NONE,
     read_key: NONE,
-    TEMPLATE: NONE,
+    // 〔FIX · COPY ④〕常量 `TEMPLATE` → 运行期拼的 `template()`（三句说明住文案表）；报错的话 `StoreError::said`（带路径）。
+    said: NONE,
+    template: NONE,
     to_pretty_json: NONE,
     WIDE_PRINCIPALS: NONE,
     wide_principals_in_sddl: NONE,
