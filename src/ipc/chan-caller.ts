@@ -83,7 +83,9 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
         ? copyText("chanCaller.said.timeout")
         : copyText("chanCaller.said.unreachable");
     case "ours":
-      return err.why === "Cancelled" ? copyText("chanCaller.said.withdrawn") : copyText("chanCaller.said.internal");
+      if (err.why !== "Cancelled") return copyText("chanCaller.said.internal");
+      // 〔NET2 · `05 §3.3.3`〕那台对这一条不认撤 ⇒ 说它可能还在跑。
+      return err.runsOn === true ? copyText("chanCaller.said.withdrawnRunsOn") : copyText("chanCaller.said.withdrawn");
   }
 }
 

@@ -11,7 +11,7 @@
  * 这里的 [`settle`] 只接一个已经发出去的 `Promise`。
  */
 import { copyText } from "./copy-table";
-import { ChanError, type CallError } from "./ipc/chan";
+import { chan, ChanError, unavailableCode, type CallError } from "./ipc/chan";
 import { readJson, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
@@ -73,7 +73,9 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
       // `unsupported`：那台后端事前就说不认这条命令（比这条动作老）。`refused` 由调用方先接走，走不到这里。
       return copyText("control.channel.oldBackend", { machine: machineName(origin) });
     case "ours":
-      return err.why === "Cancelled" ? copyText("control.channel.cancelled") : copyText("control.channel.broken");
+      if (err.why !== "Cancelled") return copyText("control.channel.broken");
+      // 〔NET2 · `05 §3.3.3`〕那台对这一条不认撤 ⇒ 说它可能还在跑。
+      return err.runsOn === true ? copyText("control.channel.cancelledRunsOn") : copyText("control.channel.cancelled");
   }
 }
 
@@ -104,5 +106,25 @@ export async function settle(origin: Origin, op: string, sent: Promise<Uint8Arra
     return readJson(body);
   } catch {
     throw unreadable(origin, op, "is not JSON");
+  }
+}
+
+/**
+ * 〔NET2 · 主会话 09-27 裁 A〕`origin` 那台握手时说过做不到 `op` ⇒ 界面置灰时说的那一句；做得到 / 没把握 ⇒ `null`。
+ * 事实只住 monitor 那份 `Offer`（本侧拿的是拷贝，`chan.cachedOffer`）；还没问过那台 ⇒ 去问（不等），这一回照常画。
+ */
+export function unavailableSaid(origin: Origin, op: string): string | null {
+  const offer = chan.cachedOffer(origin);
+  if (offer === undefined) void chan.offer(origin);
+  const code = unavailableCode(offer, op);
+  if (code === null) return null;
+  const machine = machineName(origin);
+  switch (code) {
+    case "no_tmux":
+      return copyText("control.unavailable.noTmux", { machine });
+    case "no_unix_mode":
+      return copyText("control.unavailable.noUnixMode", { machine });
+    default:
+      return copyText("control.unavailable.other", { machine, code });
   }
 }

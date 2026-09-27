@@ -23,8 +23,8 @@ use super::host::{self, start_with, Handoff, InboundBackends};
 use super::router::{self, Backends, Terms};
 use super::wire::{
     err_from_wire, err_to_wire, item_from_wire, item_to_wire, read_frame, write_frame, Body,
-    Budget, By, CallError, CancelToken, Comms, Cursor, Head, HopFault, HopId, Item, Key, Kind, Op,
-    Origin, OursFault, PeerFault, Reach, Sub, HOP_TAGS,
+    Budget, By, CallError, CancelToken, Comms, Cursor, Head, HopFault, HopId, Item, Key, Kind,
+    Offer, Op, Origin, OursFault, PeerFault, Reach, Sub, HOP_TAGS,
 };
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
@@ -129,6 +129,15 @@ impl Backends for Fake {
                 }))
             }
         }
+    }
+
+    /// 〔NET2〕合成那台的能力事实：`hang` 撤不动，`stall` 撤得动。
+    fn offer(&self, _origin: &Origin) -> Option<Offer> {
+        Some(Offer::new(
+            vec!["cancel".into(), "hang".into(), "stall".into()],
+            vec![],
+            vec!["hang".into()],
+        ))
     }
 }
 
@@ -472,12 +481,7 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
     let t0 = Instant::now();
     cancel.cancel();
     let r = task.await.expect("任务没炸");
-    assert_eq!(
-        r,
-        Err(CallError::Ours {
-            why: OursFault::Cancelled
-        })
-    );
+    assert_eq!(r, Err(OursFault::Cancelled.into()));
     assert!(t0.elapsed() < Duration::from_secs(1), "本地撤单不是立即的");
 }
 
@@ -695,8 +699,13 @@ fn every_error_and_item_shape_round_trips() {
         },
     });
     for why in [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken] {
-        errs.push(CallError::Ours { why });
+        errs.push(why.into());
     }
+    // 〔NET2 · additive〕撤了、那台可能还在跑。
+    errs.push(CallError::Ours {
+        why: OursFault::Cancelled,
+        runs_on: true,
+    });
     for e in errs {
         let (w, body) = err_to_wire(e.clone());
         let json = serde_json::to_string(&w).unwrap();
@@ -752,9 +761,7 @@ fn every_error_and_item_shape_round_trips() {
         .replace("\"wait\"", "\"nap\"");
     assert_eq!(
         err_from_wire(serde_json::from_str(&forged).unwrap(), body),
-        CallError::Ours {
-            why: OursFault::Broken
-        }
+        OursFault::Broken.into()
     );
 }
 
@@ -765,4 +772,41 @@ fn the_client_implements_the_05_signature() {
     fn is_sub<S: Sub>() {}
     is_comms::<Client>();
     is_sub::<super::client::Subscription>();
+}
+
+/// 〔NET2 · 主会话 09-27 裁 C · `设计/05 §3.3.3`〕回环客户端拿到那台的 `Offer`（经真路由器）之后，本地撤单的结果说清
+/// 「那台可能还在跑」：撤不动的 `hang` ⇒ `runs_on: true`；撤得动的 `stall` ⇒ `false`。两侧异源：左边是真撤一次的结果，
+/// 右边是合成句柄交出的那份 `Offer` 里的名单。
+#[tokio::test]
+async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
+    let (fake, h) = rig(Duration::from_secs(5)).await;
+    let c = dial(&h, budget(5_000)).await.expect("连得上");
+    let origin = Origin("<local>".into());
+    let got = c.offer(&origin, budget(5_000)).await.expect("问得到");
+    assert_eq!(got, fake.offer(&origin));
+    for (op, runs_on) in [("hang", true), ("stall", false)] {
+        let before = fake.calls.lock().unwrap().len();
+        let b = budget(10_000);
+        let cancel = b.cancel.clone();
+        let task = tokio::spawn({
+            let (c, o) = (c.clone(), origin.clone());
+            async move { c.call(&o, &Op(op.into()), Body::default(), b).await }
+        });
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while fake.calls.lock().unwrap().len() == before {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("调用应当到达句柄");
+        cancel.cancel();
+        assert_eq!(
+            task.await.expect("任务没炸"),
+            Err(CallError::Ours {
+                why: OursFault::Cancelled,
+                runs_on
+            }),
+            "{op}"
+        );
+    }
 }

@@ -1687,6 +1687,31 @@
       "zh": "这次操作已撤回。",
       "args": []
     },
+    "control.channel.cancelledRunsOn": {
+      "kind": "error",
+      "zh": "这次操作已撤回；那台机器停不了它，它可能还在跑。",
+      "args": []
+    },
+    "control.unavailable.noTmux": {
+      "kind": "body",
+      "zh": "{machine}上没有 tmux",
+      "args": ["machine"]
+    },
+    "control.unavailable.noUnixMode": {
+      "kind": "body",
+      "zh": "{machine}的文件没有 unix 权限位",
+      "args": ["machine"]
+    },
+    "control.unavailable.other": {
+      "kind": "body",
+      "zh": "{machine}做不到这件事（{code}）",
+      "args": ["machine", "code"]
+    },
+    "tabMenu.item.greyed": {
+      "kind": "control",
+      "zh": "{label}（{why}）",
+      "args": ["label", "why"]
+    },
     "control.channel.broken": {
       "kind": "error",
       "zh": "这次操作没有完成，cc-monitor 内部出错了。",
@@ -3940,6 +3965,11 @@
     "chanCaller.said.withdrawn": {
       "kind": "body",
       "zh": "这次查询已撤回",
+      "args": []
+    },
+    "chanCaller.said.withdrawnRunsOn": {
+      "kind": "body",
+      "zh": "这次查询已撤回；那台机器停不了它，它可能还在跑",
       "args": []
     },
     "chanCaller.said.unreachable": {
@@ -10360,6 +10390,11 @@
       "zh": "文件窗口打开失败：{e}",
       "args": ["e"]
     },
+    "rsFilewinShell.menu.unavailableHere": {
+      "kind": "error",
+      "zh": "这台机器上改不了权限（{code}）",
+      "args": ["code"]
+    },
     "rsFilewinShell.window.title": {
       "kind": "title",
       "zh": "cc-monitor 文件 · {source}",
@@ -12222,6 +12257,11 @@
       "zh": "同时在等的命令已达上限 {max}，远端可能没在回应",
       "args": ["max"]
     },
+    "rsInboundClient.error.unavailable": {
+      "kind": "error",
+      "zh": "这台机器做不到这件事（{code}），没有发出去",
+      "args": ["code"]
+    },
     "rsInboundClient.error.unsupported": {
       "kind": "error",
       "zh": "远端后端版本旧，不支持这个操作",
@@ -13450,6 +13490,11 @@
     "rsChanWire.ours.cancelled": {
       "kind": "error",
       "zh": "已取消",
+      "args": []
+    },
+    "rsChanWire.ours.cancelledRunsOn": {
+      "kind": "error",
+      "zh": "已撤回；那台机器撤不了这一件，它可能还在做",
       "args": []
     },
     "rsChanWire.ours.misuse": {

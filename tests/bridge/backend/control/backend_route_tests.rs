@@ -480,6 +480,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
     fn witness(e: &CallError) {
         match e {
             CallError::Unsupported { .. }
+            | CallError::Unavailable { .. }
             | CallError::TooManyPending
             | CallError::Disconnected
             | CallError::Cancelled
@@ -523,8 +524,15 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
             },
             Routed::Refused("wrong_owner/sid=x".into()),
         ),
+        (
+            CallError::Unavailable {
+                cmd: "kill".into(),
+                code: "no_tmux".into(),
+            },
+            Routed::Refused("no_tmux/这台机器做不到这件事（no_tmux），没有发出去".into()),
+        ),
     ];
-    assert_eq!(table.len(), 6, "收拢表的行数与穷尽见证的变体数对不上");
+    assert_eq!(table.len(), 7, "收拢表的行数与穷尽见证的变体数对不上");
     for (e, want) in table {
         witness(&e);
         assert_eq!(
@@ -559,6 +567,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
     fn witness(e: &CallError) {
         match e {
             CallError::Unsupported { .. }
+            | CallError::Unavailable { .. }
             | CallError::TooManyPending
             | CallError::Disconnected
             | CallError::Cancelled
@@ -598,9 +607,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         ),
         (
             CallError::Cancelled,
-            w::CallError::Ours {
-                why: w::OursFault::Cancelled,
-            },
+            w::OursFault::Cancelled.into(),
         ),
         (
             CallError::Remote {
@@ -613,8 +620,23 @@ fn the_layering_table_is_pinned_cell_by_cell() {
                 },
             },
         ),
+        (
+            CallError::Unavailable {
+                cmd: "kill".into(),
+                code: "no_tmux".into(),
+            },
+            w::CallError::Peer {
+                why: w::PeerFault::Refused {
+                    body: w::Body(
+                        r#"{"code":"no_tmux","message":"这台机器做不到这件事（no_tmux），没有发出去"}"#
+                            .as_bytes()
+                            .to_vec(),
+                    ),
+                },
+            },
+        ),
     ];
-    assert_eq!(table.len(), 6, "分层表的行数与穷尽见证的变体数对不上");
+    assert_eq!(table.len(), 7, "分层表的行数与穷尽见证的变体数对不上");
     for (e, want) in table {
         witness(&e);
         assert_eq!(

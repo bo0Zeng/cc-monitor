@@ -76,6 +76,9 @@ pub enum CallError {
     Disconnected,
     /// backend 回了 `{"kind":"cancelled"}`。
     Cancelled,
+    /// 〔NET2〕握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
+    /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写。**别重试**（换台机器或装上再连）。
+    Unavailable { cmd: String, code: String },
     /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（〔NET2〕要说出来）。
     Timeout { after: Duration, withdraw: Withdraw },
     /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
@@ -88,6 +91,11 @@ impl std::fmt::Display for CallError {
             CallError::Unsupported { .. } => {
                 write!(f, "{}", copy_text("rsInboundClient.error.unsupported", &[]))
             }
+            CallError::Unavailable { code, .. } => write!(
+                f,
+                "{}",
+                copy_text("rsInboundClient.error.unavailable", &[("code", code)])
+            ),
             CallError::TooManyPending => write!(
                 f,
                 "{}",
@@ -172,11 +180,24 @@ impl BackendHello {
     /// 从一个真的 Hello 帧换见证。非 Hello 帧 → `None`。
     pub fn from_hello_frame(frame: &InboundFrame) -> Option<Self> {
         match frame {
-            InboundFrame::Hello { commands, .. } => Some(Self {
-                offer: Offer::new(commands.clone()),
+            InboundFrame::Hello { .. } => Some(Self {
+                offer: offer_of(frame),
             }),
             _ => None,
         }
+    }
+}
+
+/// 〔NET2〕hello 帧 ⇒ 那台机器的能力事实（`chan::wire::Offer`，一个家）。非 hello ⇒ 空。
+fn offer_of(frame: &InboundFrame) -> Offer {
+    match frame {
+        InboundFrame::Hello {
+            commands,
+            unavailable,
+            uncancellable,
+            ..
+        } => Offer::new(commands.clone(), unavailable.clone(), uncancellable.clone()),
+        _ => Offer::default(),
     }
 }
 
@@ -330,6 +351,11 @@ impl InboundClient {
         self.offer.admits(cmd)
     }
 
+    /// 〔NET2〕那台机器的能力事实（拷贝一份给 webview / 外部前端）。
+    pub fn offer(&self) -> &Offer {
+        &self.offer
+    }
+
     /// 本连接内唯一的请求 `id`。
     ///
     /// 形状 `<连接 nonce>-<单调序号>`：nonce 让重连后的号段不撞，序号在连接内唯一
@@ -406,6 +432,13 @@ impl InboundClient {
                 offered: self.offer.ops().to_vec(),
             });
         }
+        // 〔NET2 · 主会话 09-27 裁〕那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
+        if let Some(code) = self.offer.unavailable(cmd) {
+            return Err(CallError::Unavailable {
+                cmd: cmd.to_string(),
+                code: code.to_string(),
+            });
+        }
         let id = self.next_id();
         let rx = self.register(&id, None).ok_or(CallError::TooManyPending)?;
         let line = WriteJob::Line(encode_request(&id, cmd, &args));
@@ -450,7 +483,7 @@ impl InboundClient {
             // 超时：`abandon` 还拿着 id ⇒ 它在本函数返回时补发那条 `cancel`（与「被丢」同一处，不发两次）。
             Err(_elapsed) => Err(CallError::Timeout {
                 after: timeout,
-                withdraw: self.offer.withdraw(),
+                withdraw: self.offer.withdraw(cmd),
             }),
         }
     }
@@ -611,7 +644,7 @@ impl InboundClient {
     /// **登记不上就不发**：登记表满时硬发出去，那条应答回来一定落进 unknown-id 的 warn，
     /// 而那正是登记它想避免的噪声 —— 在表已经满、日志最该干净的时候刷。
     fn fire_and_forget_cancel(&self, target: &str, cmd: &str) {
-        match self.offer.withdraw() {
+        match self.offer.withdraw(cmd) {
             Withdraw::Asked => {}
             // 〔NET2 · `05 §3.3.3`〕对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
             Withdraw::NotOffered => {

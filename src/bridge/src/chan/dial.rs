@@ -33,7 +33,7 @@ pub async fn dial(h: &Handoff, budget: Budget) -> Result<Client, CallError> {
     };
     let connected = tokio::select! {
         r = tokio::time::timeout_at(budget.deadline(), tokio::net::TcpStream::connect(h.addr)) => r,
-        () = budget.cancel.cancelled() => return Err(CallError::Ours { why: OursFault::Cancelled }),
+        () = budget.cancel.cancelled() => return Err(OursFault::Cancelled.into()),
     };
     let stream = match connected {
         Ok(Ok(s)) => s,

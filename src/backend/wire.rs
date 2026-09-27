@@ -270,6 +270,12 @@ pub enum Frame {
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,
+        /// 〔NET2 · additive〕`commands` 里**撤不动**的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`）。
+        /// 从 `inbound::REGISTRY` 的 `Run::Blocking` 派生（`inbound::uncancellable`，一个家）。客户端据此在本地撤单时
+        /// 说「那台停不了它、可能还在跑」，也不再为它补发一条注定被拒的撤单（`设计/05 §3.3.3`）。
+        /// 空/缺 = 没有把握（旧后端）⇒ 客户端照旧补发、看回话。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        uncancellable: Vec<String>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {
