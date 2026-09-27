@@ -102,7 +102,7 @@ src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 
 src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
 src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
-src/bridge/src/filewin/fonts.rs:288	处搬板留老	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字）
+src/bridge/src/filewin/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字；〔TAIL〕那两句随书签旧键退役删了，只剩别处还用的 `处`）
 src/bridge/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
 src/bridge/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
 src/bridge/src/history.rs:1809	这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\n     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\n     差的只是这一行；`K-R61` 只重裁理由，不动行为	保留	[不对外] 〔CP2b 复核〕RELAY_KEEPS_THE_OLD_PATH 只走 history.rs::launch_local 里 `Err(why) ⇒ tracing::debug!` 那一支（随即走旧路），不回界面；原裁「改·§2.1 [可达存疑]」按可达性复核改记。K-R61 那组对拍（history_tests::r61_sites ①）逐字钉着这句的前提 / 住址 / token

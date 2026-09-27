@@ -11199,16 +11199,6 @@
       "zh": "请求的参数拼不出来：{e}",
       "args": ["e"]
     },
-    "rsFilewinEntry.legacy.failed": {
-      "kind": "error",
-      "zh": "老面板的书签搬不过来（旧书签还留在原处）：{e}",
-      "args": ["e"]
-    },
-    "rsFilewinEntry.legacy.noDataDir": {
-      "kind": "error",
-      "zh": "老面板的书签搬不过来：找不到本程序的数据目录。旧书签还留在原处。",
-      "args": []
-    },
     "rsFilewinEntry.open.failed": {
       "kind": "error",
       "zh": "文件窗口没起来：{why}",
