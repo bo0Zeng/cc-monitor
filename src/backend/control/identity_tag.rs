@@ -195,6 +195,11 @@ impl Outcome {
         ))
     }
 
+    /// 〔RESYNC〕这一次真往 tmux 里写了（对账据此决定要不要再探一次快照）。
+    pub(crate) fn wrote(&self) -> bool {
+        matches!(self, Outcome::Tagged(_))
+    }
+
     /// 〔U4b · 第四波〕**打标那一次探测的结局 → 这条会话的容器**（`session_added.container`）。
     ///
     /// | 结局 | 容器 | 为什么 |

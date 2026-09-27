@@ -3831,3 +3831,97 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
         "账号目录删掉重建之后失聪（目录那一格 / manifest 那一格）"
     );
 }
+
+// ═══ 〔RESYNC · `设计/15 §4.1b` · V149〕身份标签对账 ═══════════════════════════════════════════════
+//
+// 夹具：一个有状态的假 tmux（一个会话 `$7`，`@ccm_sid` 存在一份文件里；`display-message` 读它、`set-option` 写它）＋
+// 一个带 `TMUX_PANE` 的 `sleep` 当 claude（pidfile 带它的真 procStart）。真 tmux 一次都不碰（§48.3）。
+
+/// 回（假 tmux 脚本，标签文件）。
+fn fake_tmux_world(dir: &Path) -> (PathBuf, PathBuf) {
+    std::fs::create_dir_all(dir).unwrap();
+    let label = dir.join("label");
+    let script = dir.join("tmux");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nst='{}'\ncase \"$*\" in\n  *display-message*) printf '$7\\t%s\\t1\\n' \"$(cat \"$st\" 2>/dev/null)\";;\n  *set-option*) eval \"v=\\${{$#}}\"; printf '%s' \"$v\" > \"$st\";;\nesac\n",
+            label.display()
+        ),
+    )
+    .unwrap();
+    (script, label)
+}
+
+/// 起一个住在 `pane` 里的「claude」，并在 `sessions` 下写它的 pidfile（`sid` · `status`）。
+fn claude_in_pane(sessions: &Path, pane: &str, sid: &str, status: &str) -> std::process::Child {
+    let kid = std::process::Command::new("sleep")
+        .arg("60")
+        .env("TMUX_PANE", pane)
+        .spawn()
+        .expect("起不来 `sleep`");
+    for _ in 0..500 {
+        match std::fs::read(format!("/proc/{}/environ", kid.id())) {
+            Ok(b) if !b.is_empty() => break,
+            _ => std::thread::yield_now(),
+        }
+    }
+    write_pidfile(sessions, kid.id(), sid, status);
+    kid
+}
+
+fn write_pidfile(sessions: &Path, pid: u32, sid: &str, status: &str) -> PathBuf {
+    std::fs::create_dir_all(sessions).unwrap();
+    let ticks = proc_starttime(pid).expect("子进程的 starttime 读不到");
+    let p = sessions.join(format!("{pid}.json"));
+    std::fs::write(
+        &p,
+        format!(
+            r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/x","kind":"interactive","procStart":"{ticks}","status":"{status}"}}"#
+        ),
+    )
+    .unwrap();
+    p
+}
+
+/// 〔RESYNC〕**标签被外部改掉之后会被纠正**：pidfile 重写（sid 没变）那一支 ＋ 对在跟会话的整批对账（tmux 探测到达时调的那一个）。
+/// 住址 `设计/15 §4.1b` 原文：「tmux 探测结果到达、pidfile 重写（sid 没变那一支）时顺手比一次标签」。
+#[test]
+fn an_externally_changed_identity_tag_is_put_back() {
+    let dir = std::env::temp_dir().join(format!("ccm-resync-retag-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (script, label) = fake_tmux_world(&dir.join("tmux"));
+    let _iso = crate::control::identity_tag::tests::isolate_with(&script);
+    let sessions = dir.join("sessions");
+    let mut kid = claude_in_pane(&sessions, "%5", "resync-a", "busy");
+    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    let pidfile = sessions.join(format!("{}.json", kid.id()));
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let read = || std::fs::read_to_string(&label).unwrap_or_default();
+    assert_eq!(read(), "resync-a", "首次宣告就该打上");
+
+    // ① 外部改掉 ⇒ pidfile 重写（sid 没变，只换了状态）⇒ 纠正。
+    std::fs::write(&label, "bg-sid").unwrap();
+    write_pidfile(&sessions, kid.id(), "resync-a", "idle");
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let after_rewrite = read();
+
+    // ② 再改掉 ⇒ 整批对账纠正、回写了 1 个；再对一次 ⇒ 0 个（值一样不动）。
+    std::fs::write(&label, "bg-sid").unwrap();
+    let wrote = retag_tracked(&state, None);
+    let after_batch = read();
+    let wrote_again = retag_tracked(&state, None);
+    let _ = kid.kill();
+    let _ = kid.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        after_rewrite, "resync-a",
+        "pidfile 重写没有纠正被改掉的标签"
+    );
+    assert_eq!(
+        (after_batch.as_str(), wrote, wrote_again),
+        ("resync-a", 1, 0)
+    );
+}
