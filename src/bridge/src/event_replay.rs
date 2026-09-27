@@ -432,7 +432,7 @@ impl EventReplay {
     /// 订了这台 `session-lines` 的每条实时订阅原位收一格 `Gap { to_seq: None }`（不占位置、不占 credit）。
     pub fn on_lost_somewhere(&self, origin: &str) {
         let (sink, plans) = {
-            let mut inner = self.inner.lock();
+            let inner = self.inner.lock();
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
