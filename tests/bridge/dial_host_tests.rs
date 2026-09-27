@@ -362,6 +362,12 @@ const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
         "端口转发：用户开着就一直在，关了（丢 `ForwardLink`）就收",
     ),
     (
+        "remote_resident.rs",
+        "attach",
+        1,
+        "〔HOST〕接上远端常驻后端之后那条流是订阅（同 `connect_and_exec`）；握手那几行仍在一次性总时限里",
+    ),
+    (
         "dial_host.rs",
         "open",
         1,

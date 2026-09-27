@@ -95,11 +95,21 @@ fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     let f = dir.join("listen-token");
     std::fs::write(&f, "abc123\n").unwrap();
     let path = f.to_string_lossy().into_owned();
-    let m = crate::listen::mode_from(&env_of(&[(crate::listen::ENV_PORT, "51000"), (crate::listen::ENV_TOKEN_FILE, &path)])).unwrap();
-    assert_eq!(crate::listen::resolve(m).unwrap(), Some((51000, "abc123".to_string())));
+    let m = crate::listen::mode_from(&env_of(&[
+        (crate::listen::ENV_PORT, "51000"),
+        (crate::listen::ENV_TOKEN_FILE, &path),
+    ]))
+    .unwrap();
+    assert_eq!(
+        crate::listen::resolve(m).unwrap(),
+        Some((51000, "abc123".to_string()))
+    );
     std::fs::write(&f, " \n").unwrap();
-    let m = crate::listen::mode_from(&env_of(&[(crate::listen::ENV_PORT, "51000"), (crate::listen::ENV_TOKEN_FILE, &path)])).unwrap();
+    let m = crate::listen::mode_from(&env_of(&[
+        (crate::listen::ENV_PORT, "51000"),
+        (crate::listen::ENV_TOKEN_FILE, &path),
+    ]))
+    .unwrap();
     assert!(crate::listen::resolve(m).is_err(), "空钥匙文件也起了一个口");
     let _ = std::fs::remove_dir_all(&dir);
 }
-

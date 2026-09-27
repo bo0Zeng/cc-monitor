@@ -90,6 +90,7 @@ mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
 mod remote_relay; // 〔RM1a〕中转按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
+mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
                            // 〔LOC1b · 第四波 4D〕`mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
 mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
