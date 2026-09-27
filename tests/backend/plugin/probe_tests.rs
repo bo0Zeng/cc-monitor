@@ -256,7 +256,11 @@ fn a_wanted_shape_is_compared_verbatim_and_its_absence_means_old() {
     for (text, why) in [(with("s0"), "对不上"), (base.clone(), "缺这一行")] {
         match negotiate(&text, &plugin_name(), &["a"], Some("s1")) {
             Err(e @ Rejected::StaleShape { .. }) => {
-                assert!(e.message().contains(&plugin_name()), "{why}：没点名插件：{}", e.message())
+                assert!(
+                    e.message().contains(&plugin_name()),
+                    "{why}：没点名插件：{}",
+                    e.message()
+                )
             }
             _ => panic!("{why}：没判旧"),
         }
