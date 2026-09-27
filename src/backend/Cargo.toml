@@ -279,6 +279,14 @@ russh-sftp = "3"
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 walkdir = "2.5"
+# ── 〔FILES2 · 第四波 · 2026-09-27〕解压（`control/files_extract.rs`，`设计/60 §6.2` · `§7` 第 9 条 Q3）──
+# 主会话按通行做法裁：「由那台后端用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解」。三条都纯 Rust、MIT / Apache-2.0：
+# `flate2` 锁里早就有（russh 那棵，`miniz_oxide` 后端）⇒ 这里只把它从间接变直接；`tar` 关掉缺省的 `xattr`（不还原扩展属性）；
+# `zip` 关掉全部缺省（aes / bzip2 / lzma / xz / zstd / zopfli 那几支会拖 C 或大依赖），只开读 deflate 那一支（`deflate-flate2` ＋ 它要的 `flate2`）。
+# 签字行住 `readonly_guard::g6_dependency_signoff`。只读包、写盘一个字节都不经它们（逐条目自己过路径解析再落）。
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = { version = "0.4", default-features = false }
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

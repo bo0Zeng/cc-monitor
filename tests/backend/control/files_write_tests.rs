@@ -2296,27 +2296,26 @@ fn a_recursive_copy_lands_the_whole_tree_with_bytes_and_modes() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-/// 整趟拒的几形：树里一条链接 · 目标已在 · 目标在源里面 · 超上限 —— 每一形**一个字节都没建**、已在的一个字节没动。
+/// 整趟拒的几形：树里一个管道（设备 / 套接字同档）· 目标已在 · 目标在源里面 · 超上限 —— 每一形**一个字节都没建**、已在的一个字节没动。
+/// 〔FILES2 · Q1〕第 ① 形原来是「树里一条链接」—— 主会话 09-27 裁「复制链接本身」之后链接照原样复制
+/// （判据挪到 `a_recursive_copy_copies_each_link_itself_with_its_target_text_verbatim`），这里换成仍整趟拒的管道。
 #[test]
 #[cfg(unix)]
 fn a_recursive_copy_refuses_whole_and_builds_nothing() {
     let base = temp_root("cptr");
     let root = base.join("cfg");
     plant_tree(&root);
-    // ① 链接（指向树里的一份普通文件 —— 不是逃逸，只是「写面没有建链接的动词」）。
-    std::os::unix::fs::symlink(root.join("t/one.md"), root.join("t/a/ln")).expect("铺链接");
-    let e = copy_tree(&root, "t", "u").expect_err("树里有链接却复制成了");
+    // ① 管道（不是目录 / 普通文件 / 链接 ⇒ 复制目录不建它）。
+    let fifo = std::ffi::CString::new(root.join("t/a/pipe").to_string_lossy().as_bytes().to_vec())
+        .expect("路径");
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0, "铺管道");
+    let e = copy_tree(&root, "t", "u").expect_err("树里有管道却复制成了");
     assert_eq!(e.code(), "refused", "{e:?}");
-    assert!(
-        e.message().contains("符号链接"),
-        "没点名是链接：{}",
-        e.message()
-    );
     assert!(
         std::fs::symlink_metadata(root.join("u")).is_err(),
         "被拒的那一趟建了东西"
     );
-    std::fs::remove_file(root.join("t/a/ln")).expect("撤链接");
+    std::fs::remove_file(root.join("t/a/pipe")).expect("撤管道");
     // ② 目标已在：建目录那一步就失败，已在那一份一个字节不动。
     std::fs::create_dir(root.join("u")).expect("铺已在的目标");
     std::fs::write(root.join("u/keep"), b"K").expect("铺");
@@ -2340,6 +2339,48 @@ fn a_recursive_copy_refuses_whole_and_builds_nothing() {
     );
     // 正控：同一棵、上限够 ⇒ 成。
     copy_tree_with(&root, Path::new("t"), Path::new("v"), 7).expect("上限恰好够却被拒了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// ★〔FILES2 · Q1〕要求住址：`设计/60 §6.2`「目录复制遇符号链接」· `§7` 第 9 条 Q1；主会话 09-27 裁
+/// 「复制**链接本身**（不跟进去，目标文本原样；= GNU `cp -R` 缺省的 `-P`）」。
+/// 三种链接（指向树里 · 指向根外的绝对路径 · 悬空）各复制成**一条链接**、目标文本逐字节相等；根外那一份一个字节没被碰；
+/// 应答的 `links` == 3、`files` 不含链接。
+#[test]
+#[cfg(unix)]
+fn a_recursive_copy_copies_each_link_itself_with_its_target_text_verbatim() {
+    let base = temp_root("cptl");
+    let root = base.join("cfg");
+    plant_tree(&root);
+    std::fs::write(base.join("outside.md"), b"O").expect("铺根外");
+    let links = [
+        ("t/a/in", std::path::PathBuf::from("../one.md")),
+        ("t/out", base.join("outside.md")),
+        ("t/a/b/dangling", std::path::PathBuf::from("no/such/thing")),
+    ];
+    for (at, to) in &links {
+        std::os::unix::fs::symlink(to, root.join(at)).expect("铺链接");
+    }
+    let got = copy_tree(&root, "t", "u").expect("树里有链接的复制目录被拒了");
+    assert_eq!(
+        (got.files, got.dirs, got.links),
+        (3, 4, 3),
+        "条数与手算不等（链接不许算进 files）"
+    );
+    for (at, to) in &links {
+        let dst = root.join(at.replacen("t/", "u/", 1));
+        let md = std::fs::symlink_metadata(&dst).expect("复制出来的链接不在");
+        assert!(
+            md.file_type().is_symlink(),
+            "{at} 没复制成链接（跟进去了？）"
+        );
+        assert_eq!(
+            &std::fs::read_link(&dst).expect("读链接"),
+            to,
+            "{at} 的目标文本变了"
+        );
+    }
+    assert_eq!(std::fs::read(base.join("outside.md")).expect("根外"), b"O");
     std::fs::remove_dir_all(&base).ok();
 }
 

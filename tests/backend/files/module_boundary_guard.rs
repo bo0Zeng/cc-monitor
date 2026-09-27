@@ -144,8 +144,10 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 /// 〔F7c · 第三波 09-24〕`control/files_commit.rs`（上传的提交）同一条理由住 `control/`：
 /// 它会改变世界；而 `files/` 那一族的头注逐字「整族纯读」，放进去那句话就当场变假。
 /// 〔SR1b · 第四波 09-24〕`control/transfer.rs`（传输台住本机后端：下载的本机落点在这里写）同一条理由住 `control/`。
+/// 〔FILES2 · 第四波 09-27〕`control/files_extract.rs`（解压 ＋ 建链接）同一条理由住 `control/`。
 const MEMBERS_ELSEWHERE: &[&str] = &[
     "control/files_commit.rs",
+    "control/files_extract.rs",
     "control/files_write.rs",
     "control/transfer.rs",
 ];
@@ -154,6 +156,7 @@ const MEMBERS_ELSEWHERE: &[&str] = &[
 const MODULE_PATHS: &[&str] = &[
     "files::",
     "control::files_commit::",
+    "control::files_extract::",
     "control::files_write::",
     "control::transfer::",
 ];
@@ -210,6 +213,9 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
     }
     for p in paths_from(prod, "files_commit") {
         out.insert(format!("control::files_commit::{p}"));
+    }
+    for p in paths_from(prod, "files_extract") {
+        out.insert(format!("control::files_extract::{p}"));
     }
     out
 }
@@ -370,6 +376,12 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_commit::answer_wire",
         Door::Command,
     ),
+    // 〔FILES2 · 第四波 09-27〕解压（`files-extract`）：同一扇门里的又一个入口函数。
+    (
+        "inbound.rs",
+        "control::files_extract::answer_wire",
+        Door::Command,
+    ),
     // 〔SR1b · 第四波 09-24〕传输台（`control/transfer.rs`）：**每条流连接一张票表**（同 `dial::link::Table`）
     //   ⇒ 这一面的入口是「造表 ＋ 答口」两个函数，外加读循环 / 分派签名里点名的那个表类型。
     //   四条 `transfer-*` 硬臂**全**经 `answer_wire` 进来（它们是 `Run::Builtin`，要碰本连接的票表与应答通道）。
@@ -482,10 +494,11 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     );
     let command = DOORS.iter().filter(|(_, _, d)| *d == Door::Command).count();
     assert_eq!(
-        command, 6,
-        "命令注册那一处够到的入口从 6 个变成了 {command} 个 —— \
-         三面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
-         上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕）各一个入口，\
+        // 〔FILES2 · 第四波 09-27〕6 → 7：多了解压面 `control::files_extract::answer_wire`（`设计/60 §6.2` Q3）。
+        command, 7,
+        "命令注册那一处够到的入口从 7 个变成了 {command} 个 —— \
+         四面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
+         上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕／ 解压 `control::files_extract::answer_wire`〔FILES2 +1〕）各一个入口，\
          〔SR1b 09-24 +3〕传输台每连接一张表：表类型 ＋ 造表 `Desk::new` ＋ 答口 `Desk::answer_wire`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
@@ -502,6 +515,8 @@ fn the_file_backend_is_mounted_from_exactly_its_three_declarations() {
         ("control/mod.rs", "pub mod files_commit;"),
         // 〔SR1b · 第四波 09-24〕传输台那一份。
         ("control/mod.rs", "pub mod transfer;"),
+        // 〔FILES2 · 第四波 09-27〕解压 ＋ 建链接那一份。
+        ("control/mod.rs", "pub mod files_extract;"),
     ] {
         let src = std::fs::read_to_string(root.join(file))
             .unwrap_or_else(|e| panic!("读不到 `{file}`：{e}"));

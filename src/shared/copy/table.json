@@ -17938,6 +17938,131 @@
       "kind": "body",
       "zh": "；",
       "args": []
+    },
+    "beFilesLink.land.failed": {
+      "kind": "error",
+      "zh": "在 {path} 建符号链接失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesLink.land.unsupported": {
+      "kind": "error",
+      "zh": "这台机器上建不了符号链接（{path}），没建",
+      "args": ["path"]
+    },
+    "beFilesExtract.path.absolute": {
+      "kind": "error",
+      "zh": "包里的「{name}」是绝对路径，整个包没解，一个字节都没建",
+      "args": ["name"]
+    },
+    "beFilesExtract.path.upward": {
+      "kind": "error",
+      "zh": "包里的「{name}」带上跳段（..），会落到解压目录外面，整个包没解，一个字节都没建",
+      "args": ["name"]
+    },
+    "beFilesExtract.entry.linkUnsupported": {
+      "kind": "error",
+      "zh": "包里的「{name}」是符号链接，这台机器上建不了，整个包没解",
+      "args": ["name"]
+    },
+    "beFilesExtract.entry.linkEscapes": {
+      "kind": "error",
+      "zh": "包里的链接「{name}」指向「{to}」，出了解压目录，整个包没解，一个字节都没建",
+      "args": ["name", "to"]
+    },
+    "beFilesExtract.entry.hardEscapes": {
+      "kind": "error",
+      "zh": "包里的硬链接「{name}」指向「{to}」，那不是包里前面的一份文件，整个包没解",
+      "args": ["name", "to"]
+    },
+    "beFilesExtract.entry.special": {
+      "kind": "error",
+      "zh": "包里的「{name}」是{what}，解压只建目录、文件与链接，整个包没解",
+      "args": ["name", "what"]
+    },
+    "beFilesExtract.kind.device": {
+      "kind": "body",
+      "zh": "一个设备文件",
+      "args": []
+    },
+    "beFilesExtract.kind.fifo": {
+      "kind": "body",
+      "zh": "一个命名管道",
+      "args": []
+    },
+    "beFilesExtract.kind.other": {
+      "kind": "body",
+      "zh": "一种认不得的条目",
+      "args": []
+    },
+    "beFilesExtract.entry.twice": {
+      "kind": "error",
+      "zh": "包里「{name}」出现了两次，整个包没解",
+      "args": ["name"]
+    },
+    "beFilesExtract.entry.underNonDir": {
+      "kind": "error",
+      "zh": "包里有条目挂在「{name}」底下，而它不是目录（是文件或链接），整个包没解",
+      "args": ["name"]
+    },
+    "beFilesExtract.plan.overCap": {
+      "kind": "error",
+      "zh": "包里的条目超过 {cap} 条，整个包没解",
+      "args": ["cap"]
+    },
+    "beFilesExtract.archive.unreadable": {
+      "kind": "error",
+      "zh": "打不开包 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesExtract.archive.broken": {
+      "kind": "error",
+      "zh": "读包 {path} 出错（包坏了，或用了不认的压缩 / 加密方式）：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesExtract.archive.unknownKind": {
+      "kind": "error",
+      "zh": "不认这种包：「{name}」。认得的是 zip、tar、tar.gz、tgz",
+      "args": ["name"]
+    },
+    "beFilesExtract.into.exists": {
+      "kind": "error",
+      "zh": "{path} 已经在了，没解（不往已有的目录里合并）",
+      "args": ["path"]
+    },
+    "beFilesExtract.land.failed": {
+      "kind": "error",
+      "zh": "在 {path} 落盘失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesExtract.undo.all": {
+      "kind": "body",
+      "zh": "这一趟建的都撤掉了",
+      "args": []
+    },
+    "beFilesExtract.undo.stuck": {
+      "kind": "body",
+      "zh": "没撤干净，停在 {what}",
+      "args": ["what"]
+    },
+    "beFilesExtract.stopped": {
+      "kind": "error",
+      "zh": "解压停在半路：{why}。{tail}",
+      "args": ["why", "tail"]
+    },
+    "beFilesExtract.args.path": {
+      "kind": "error",
+      "zh": "少了「{key}」，或它的形状不对（只认字符串或 b16 字节形）",
+      "args": ["key"]
+    },
+    "beFilesExtract.into.noFresh": {
+      "kind": "error",
+      "zh": "从「(2)」试到「({n})」都已经在了，没解",
+      "args": ["n"]
+    },
+    "beFilesExtract.args.fresh": {
+      "kind": "error",
+      "zh": "「fresh」只收布尔",
+      "args": []
     }
   }
 }

@@ -544,6 +544,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/ccm/plan_tests.rs",
     "tests/backend/control/exit_policy_tests.rs",
     "tests/backend/control/files_commit_tests.rs",
+    "tests/backend/control/files_extract_tests.rs",
     "tests/backend/control/files_write_tests.rs",
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",

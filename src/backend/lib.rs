@@ -790,6 +790,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-write-text",
     // 〔F7a · 第三波 09-24〕同一面第七条（同根内复制）。登记理由与上面逐字相同。
     "--files-copy",
+    // 〔FILES2 · 第四波〕解压（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
+    "--files-extract",
     // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）。登记理由同上面写面那几条（CLI 面从 `REGISTRY` 派生）。
     "--files-commit-upload",
     // 〔F9c · 第四波〕存盘装不进一行时的两步（逐块进暂存区 ＋ 读回拼起来原地覆盖）。登记理由同上。
