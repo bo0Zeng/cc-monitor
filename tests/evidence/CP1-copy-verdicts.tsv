@@ -179,17 +179,6 @@ src/panorama/api.ts:42	代码全景：这一问已取消	保留	[不对外] 〔R
 src/bridge/src/profile_installer.rs:107	预览	保留	[不对外] 〔AL1d〕`render_block` 交给 `plan_install` 的 `what`（只进围栏损坏那一句报错，而对空文件渲染不会有围栏 ⇒ 到不了用户）
 src/bridge/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
 src/bridge/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
-src/backend/asset_catalog.rs:214	走目录时有一处读不出来：{e}	保留	[可达存疑] 〔AS2〕算一个 skill 的摘要时走目录遇到读不出来的一处；进这个条目 summary.notice（机器页展开时列）
-src/backend/asset_catalog.rs:222	文件超过 {SKILL_MAX_FILES} 个，后面的没进摘要	保留	[可达存疑] 〔AS2〕skill 文件太多 ⇒ 摘要只按前面那些算；进 summary.notice
-src/backend/asset_catalog.rs:238	{rel} 不是普通文件（指向目录的链接 / 特殊文件），没进摘要	保留	[可达存疑] 〔AS2〕skill 里有一处不是普通文件 ⇒ 没进摘要，说是哪一个；进 summary.notice
-src/backend/asset_catalog.rs:253	{rel} 只按长度算进摘要：{error}	保留	[可达存疑] 〔AS2〕skill 里一个文件超上限 / 读不出来 ⇒ 摘要只按长度算（降级），说是哪一个；进 summary.notice
-src/backend/asset_catalog.rs:527	读 {} 失败：{e}	保留	[可达存疑] 〔AS2〕读一份项目 .mcp.json / 目录文件失败；{} 是那份文件、{e} 是原话。项目那一处进 problems，目录文件那一处回 catalog_unreadable
-src/backend/asset_catalog.rs:532	{} 是更新版本的后端写的（格式 {}，这个后端只认 {FORMAT_V}），没有覆盖它	保留	[可达存疑] 〔AS2〕目录文件是更新的后端写的 ⇒ catalog_unreadable、不覆盖
-src/backend/asset_catalog.rs:536	{} 不是这个后端认得的目录：{e}	保留	[可达存疑] 〔AS2〕目录文件读得出但认不得 ⇒ catalog_unreadable、不覆盖
-src/backend/skill_install.rs:88	不是文本文件	保留	[可达存疑] 〔AS2〕skill 里某个文件为什么读不出原文（含 NUL 字节）⇒ skill-read 的 files[].why / 这台那一份的 blocked，机器页「资产」那一块照原话列：这一个装不过去
-src/backend/skill_install.rs:91	不是 UTF-8 文本	保留	[可达存疑] 〔AS2〕同上一行：不是 UTF-8 ⇒ 装不过去（写口只收文本）
-src/backend/skill_install.rs:355	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked
-src/backend/skill_install.rs:356	不是普通文件	保留	[可达存疑] 〔AS2〕这台 skill 目录里那一处是指向目录的链接 / 特殊文件 ⇒ 盖不了，进那一行的 blocked
 src/backend/skill_install.rs:363	来源那台读不出原文	保留	[不对外] 〔AS2〕skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
 src/settings/assets-section.ts:89	不是对象	保留	[不对外] 〔AS2〕assets-section 解码失败时进 console.warn 的诊断（界面上只说 assets.load.shape 那一句）
 src/settings/assets-section.ts:92	顶层缺格	保留	[不对外] 〔AS2〕同上一行
@@ -202,9 +191,6 @@ src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：接不上的原因
-src/backend/skill_ledger.rs:121	读 {} 失败：{e}	保留	[可达存疑] 〔SU1〕skill 装记录那份文件读不出来（权限 / 超上限）⇒ ledger_unreadable 的 message，机器页「从别的机器装来的 skill」那一小节照原话列；不覆盖那份文件
-src/backend/skill_ledger.rs:129	{} 是另一个版本的后端写的（格式 {v}，这个后端只认 {FORMAT_V}），没有动它	保留	[可达存疑] 〔SU1〕装记录是更新 / 更旧版本的后端写的 ⇒ 不认、不覆盖；同资产目录那一句的形
-src/backend/skill_ledger.rs:136	{} 不是这个后端认得的 skill 装记录：{e}	保留	[可达存疑] 〔SU1〕装记录写坏了 ⇒ 不猜成「什么都没装过」、不覆盖；原话回机器页
 src/settings/assets-section.ts:217	installs 那一格	保留	[不对外] 〔SU1〕console.warn 里标应答哪一格形状不对（给开发者看），用户看到的是 assets.load.shape
 src/settings/assets-section.ts:226	顶层缺格	保留	[不对外] 〔SU1〕同上一行
 src/settings/assets-section.ts:237	rows 那一格	保留	[不对外] 〔SU1〕同上一行

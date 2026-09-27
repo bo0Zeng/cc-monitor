@@ -1,5 +1,4 @@
 文件	理由
-src/backend/asset_catalog.rs	SU1 在改（skill 卸载），留最后一批
 src/backend/control/files_commit.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/control/files_write.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/control/transfer.rs	FN1 在改（它的分支已动这份），留最后一批
@@ -8,6 +7,4 @@ src/backend/dial/link.rs	NT2 在改（期限；uses.rs 它的分支已动），�
 src/backend/dial/sftp.rs	GP1（部署时清旧垫片）/ NT2（期限）在改，留最后一批
 src/backend/dial/uses.rs	NT2 在改（期限；uses.rs 它的分支已动），留最后一批
 src/backend/files/mod.rs	FN1 在改（去数据围栏），留最后一批
-src/backend/skill_install.rs	SU1 在改（skill 卸载），留最后一批
-src/backend/skill_ledger.rs	在飞路写区（SU1 skill 装记录，合并列车 MG1 09-25 进主线时新长的文件）：25 条（多为 bad_args 契约错，抽时照 §3 契约错改英文），等下一棒按同一套抽
 src/bridge/crates/creds-core/src/store.rs	GP1 在改（它的分支已动这份），留最后一批
