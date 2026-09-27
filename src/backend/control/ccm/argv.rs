@@ -322,3 +322,7 @@ pub(crate) fn parse_size(s: &str) -> Option<(String, String)> {
 #[cfg(test)]
 #[path = "../../../../tests/backend/control/ccm/argv_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/control/ccm/claude_flags_tests.rs"]
+mod claude_flags_tests;
