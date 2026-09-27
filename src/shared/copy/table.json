@@ -9288,17 +9288,17 @@
     },
     "backend.stop.relayConfirm": {
       "kind": "body",
-      "zh": "有 {n} 条会话在走本机中转。停了本机后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
+      "zh": "有 {n} 条会话在走这台机器的中转。停了这台的后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
       "args": ["n"]
     },
     "backend.stop.relayMaybe": {
       "kind": "body",
-      "zh": "有 {n} 条会话在走本机中转，另有 {k} 条说不清走不走。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "zh": "有 {n} 条会话在走这台机器的中转，另有 {k} 条说不清走不走。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
       "args": ["k", "n"]
     },
     "backend.stop.relayUnknown": {
       "kind": "body",
-      "zh": "问不到现在有几条会话在走本机中转。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "zh": "问不到现在有几条会话在走这台机器的中转。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
       "args": []
     },
     "backend.start.failed": {
@@ -15639,16 +15639,6 @@
       "kind": "error",
       "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
       "args": ["port", "why"]
-    },
-    "rsLocalBackendHost.start.busy": {
-      "kind": "error",
-      "zh": "端口 {port} 上的本机后端正被另一个 cc-monitor 连着，这一个接不上",
-      "args": ["port"]
-    },
-    "rsLocalBackendHost.start.busyNotice": {
-      "kind": "error",
-      "zh": "本机后端正被另一个 cc-monitor 连着，这一个没有接上。关掉另一个 cc-monitor 再打开这一个。",
-      "args": []
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",

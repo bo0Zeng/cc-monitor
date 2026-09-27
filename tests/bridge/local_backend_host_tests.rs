@@ -2978,12 +2978,13 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     //  ⇒ 人群从「所有人」缩成这三批，**性质没变**，所以这条不换靶。
     //  与 `local_backend.rs` 那条「换靶」不同形：那条的**目的**随 F05b 过期，必须换；
     //  本条改的只是红了之后说给人听的那句话。〕
-    // 〔HX1 · E §E4〕6 → 7：另一个 monitor 正连着那一臂（`Adopt::Busy`）—— 分在「用户动得了手」那一档（关掉另一个 monitor），
+    // 〔HX1 · E §E4〕6 → 7：另一个 monitor 正连着那一臂 —— 分在「用户动得了手」那一档（关掉另一个 monitor），
     //   同拍调了 `note_start_refusal`（下面 ④ 那个数 3 → 4）。
+    // 〔TAIL · HOST 余项〕7 → 6：常驻后端多客户之后那一臂成死路、删了（④ 那个数 4 → 3）。
     assert_eq!(
         prod.matches("StartOutcome::Failed {").count(),
-        7,
-        "`StartOutcome::Failed` 的构造点不是 7 处了 —— \n\
+        6,
+        "`StartOutcome::Failed` 的构造点不是 6 处了 —— \n\
              ★ **新增一处失败就要给它分档**：用户动得了手（删文件 / 停进程 / 改权限位）\n\
              ⇒ 调 `note_start_refusal` 把话说到眼前；\n\
              诚实降级（**这一份产物里没带 local_backend** 那种 —— 裸 exe / 开发树 / 释放内嵌也失败）\n\
@@ -3008,11 +3009,11 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
              ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
              它少了「下一步」这三个字，用户拿到的就只是一句「它坏了」。"
     );
-    // ④ 写记录只有一个入口，今天恰好三条路在用它（〔HX1 · E §E4〕+1：另一个 monitor 正连着那一臂 `Adopt::Busy`）。
+    // ④ 写记录只有一个入口，今天恰好两条路在用它（〔HX1〕+1 另一个 monitor 那一臂 ·〔TAIL〕−1 那一臂删了）。
     assert_eq!(
         prod.matches("note_start_refusal(").count(),
-        4,
-        "`note_start_refusal` 在生产段里不是 4 处（1 个定义 + 3 个调用点）——\n\
+        3,
+        "`note_start_refusal` 在生产段里不是 3 处（1 个定义 + 2 个调用点）——\n\
              少了 = 某一条「用户动得了手」的路退回了只写日志；\n\
              多了 = 又有一条路被分进这一档，回来把本条与那段分档说明一起改。"
     );
@@ -4221,62 +4222,6 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     crate::platform_fs::ensure_private_dir(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     std::fs::remove_dir_all(&base).ok();
-}
-
-/// 〔HX1 · E §E4〕第二个 monitor 撞上 `stream-busy`（另一个 monitor 正连着本机后端）⇒ 话说**真原因**：
-/// 点名「另一个 cc-monitor」、不说版本、不叫人结束那个后端进程（那里面住着另一个 monitor 的中转与全部 SSH）；
-/// 「口上是别人 / 版本对不上」那一臂的话**不动**（它的下一步就是结束那个进程）。
-/// 守的要求：审计 E §E4（「报错把原因说成了『升级后版本对不上』，这是归因错」）· `4d-lanes.md` HX1 出处「改说真原因」。
-/// 形状：两臂的话按表逐字取、两向（Busy 那句含「另一个 cc-monitor」且零命中「版本 / 结束那个进程 / 停掉」；Refused 那句仍含「结束那个进程」）；
-/// 接线：`adopt_with` 等满了、最后一次是 `stream-busy` ⇒ 回 `Adopt::Busy`（恰好一处），`start_detached` 那一臂取的是 busy 那两条表项。
-#[test]
-fn hx1_a_busy_stream_is_told_as_another_monitor_not_as_a_version_mismatch() {
-    let table: serde_json::Value =
-        serde_json::from_str(include_str!("../../src/shared/copy/table.json")).expect("表");
-    let zh = |k: &str| {
-        table["entries"][k]["zh"]
-            .as_str()
-            .unwrap_or_else(|| panic!("表里没有 {k}"))
-            .to_string()
-    };
-    for k in [
-        "rsLocalBackendHost.start.busyNotice",
-        "rsLocalBackendHost.start.busy",
-    ] {
-        let t = zh(k);
-        assert!(t.contains("另一个 cc-monitor"), "{k}：{t}");
-        for bad in ["版本", "结束那个进程", "停掉", "下一步"] {
-            assert!(!t.contains(bad), "{k} 里又出现了「{bad}」：{t}");
-        }
-    }
-    assert!(
-        zh("rsLocalBackendHost.start.refusedNotice").contains("结束那个进程"),
-        "口上是别人那一臂的话变了（它的下一步就是结束那个进程）"
-    );
-    let me =
-        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
-    guard_core::find_pinned(&me, "if last_busy {\n        return Adopt::Busy;")
-        .expect("等满之后按最后一次是否 busy 分臂");
-    let busy_arm = braced_block(&me, "Err(AttachErr::Busy(m)) => {", 20, 400);
-    assert!(
-        busy_arm.contains("last_busy = true;"),
-        "stream-busy 那一臂不再记「最后一次是 busy」：{busy_arm}"
-    );
-    assert_eq!(
-        me.matches("last_busy = true;").count(),
-        1,
-        "只有 stream-busy 那一臂能把它置真"
-    );
-    let arm = braced_block(&me, "Adopt::Busy => {", 300, 3000);
-    assert!(
-        arm.contains("\"rsLocalBackendHost.start.busyNotice\"")
-            && arm.contains("\"rsLocalBackendHost.start.busy\""),
-        "Busy 那一臂取的不是 busy 那两条：{arm}"
-    );
-    assert!(
-        !arm.contains("start.refused"),
-        "Busy 那一臂又取了 refused 的话"
-    );
 }
 
 /// 〔HX1 · 主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有

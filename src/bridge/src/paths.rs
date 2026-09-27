@@ -60,7 +60,7 @@ pub fn resolve_claude_dir() -> Option<PathBuf> {
 /// 🔴 它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），
 /// **不是**给用户搬家用的设置面。用户那一侧的「数据位置」是只读展示
 /// （`data_paths.rs` → 设置面板那一块）。
-pub const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
+pub const DATA_DIR_ENV: &str = creds_core::store::DATA_DIR_ENV;
 
 /// Monitor 自己的 user-data 目录。
 ///
@@ -106,25 +106,23 @@ pub fn resolve_monitor_data_dir() -> Option<PathBuf> {
 /// ⇒ 判据**不许**去动那个 env；它把值当参数喂进来。
 /// （同族先例：`filewin::download::judge_dest` 把「那儿有没有东西」注进来。）
 pub fn monitor_data_dir_from(env_val: Option<&str>, home: Option<PathBuf>) -> Option<PathBuf> {
-    if let Some(raw) = env_val {
-        let t = raw.trim();
-        // 设成空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
-        if !t.is_empty() {
-            let p = PathBuf::from(t);
-            if p.is_absolute() {
-                tracing::info!("monitor_data_dir from {}: {}", DATA_DIR_ENV, p.display());
-                return Some(p);
-            }
-            // 🔴 **不退回真 profile** —— 逐条理由住上面那一节。
-            tracing::warn!(
-                "{} 不是绝对路径（{}）—— 拒绝使用，也**不**退回 ~/.claude/claudecode-frontend：                 那会让一趟以为自己被隔离了的自动化去写用户的东西",
-                DATA_DIR_ENV,
-                t
-            );
-            return None;
+    // 〔TAIL〕规则本身住 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认路径）；这里只留两句日志。
+    // 设成空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
+    let set = env_val.map(str::trim).filter(|t| !t.is_empty());
+    let r = creds_core::store::monitor_data_dir(env_val, home);
+    match (set, &r) {
+        (Some(_), Some(p)) => {
+            tracing::info!("monitor_data_dir from {}: {}", DATA_DIR_ENV, p.display())
         }
+        // 🔴 **不退回真 profile** —— 逐条理由住上面那一节。
+        (Some(t), None) => tracing::warn!(
+            "{} 不是绝对路径（{}）—— 拒绝使用，也**不**退回 ~/.claude/claudecode-frontend：                 那会让一趟以为自己被隔离了的自动化去写用户的东西",
+            DATA_DIR_ENV,
+            t
+        ),
+        _ => {}
     }
-    Some(home?.join(".claude").join("claudecode-frontend"))
+    r
 }
 
 /// Monitor 配置文件：`<monitor_data_dir>/config.json`

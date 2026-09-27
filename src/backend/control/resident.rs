@@ -179,6 +179,26 @@ fn write_private(path: &Path, body: &str) -> Result<(), String> {
     result
 }
 
+/// 〔TAIL · HOST 余项〕数据目录那两格（凭据文件 · 历史注解）的默认值 —— 与那台 monitor 自己算的是同一条规矩
+/// （`creds_core::store::monitor_data_dir`）⇒ 谁起的常驻后端，hello 回显的都是同一对值，那台自己的 monitor 能收养（HX2 不拒）。
+/// 本进程环境里已有的那一格不覆盖；推不出来（`CCM_DATA_DIR` 不是绝对路径）⇒ 两格都缺席。纯函数。
+pub fn data_dir_envs(
+    get: &dyn Fn(&str) -> Option<String>,
+    home: &Path,
+    creds_env: &'static str,
+    meta_env: &'static str,
+) -> Vec<(&'static str, String)> {
+    use creds_core::store::{monitor_data_dir, DATA_DIR_ENV, FILE_NAME, HISTORY_METADATA_FILE};
+    let Some(dir) = monitor_data_dir(get(DATA_DIR_ENV).as_deref(), Some(home.to_path_buf())) else {
+        return Vec::new();
+    };
+    [(creds_env, FILE_NAME), (meta_env, HISTORY_METADATA_FILE)]
+        .into_iter()
+        .filter(|(k, _)| get(k).filter(|v| !v.is_empty()).is_none())
+        .map(|(k, f)| (k, dir.join(f).display().to_string()))
+        .collect()
+}
+
 /// 子进程的环境：口 · 钥匙文件路径（不是钥匙）· 宿主层交的那几格（V139 中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。
 /// 纯函数，判据钉它。
 pub(crate) fn child_env(

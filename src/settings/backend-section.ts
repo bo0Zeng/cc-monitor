@@ -55,7 +55,7 @@ import { fetchSessionAccountsOrNull } from "../account-reads";
 import type { SessionAccount } from "../accounts";
 
 /**
- * 〔HX1 · 主会话 D-f〕停本机后端之前**要不要先问一句**：走本机中转的活会话在后端停了之后每一次请求都会失败（中转住在后端进程里）。
+ * 〔HX1 · 主会话 D-f〕停后端之前**要不要先问一句**：走那台中转的活会话在后端停了之后每一次请求都会失败（中转住在后端进程里；〔TAIL〕远端同形）。
  * 回要问的那句话；`null` = 不用问（问到了、而且一条走中转的活会话都没有）。
  * - 问不到（`rows === null`）⇒ 照样问，说「不知道有几条」（出声，不把「问不到」当成「没有」）；
  * - 活着但说不清走不走中转的（`viaRelay` 缺 / `null`）⇒ 连同确定的几条一起说出来。
@@ -537,8 +537,9 @@ export class BackendSection {
     const cells = this.cellHosts.get(origin);
     const btns = cells ? [...cells.querySelectorAll("button")] : [];
     for (const b of btns) b.disabled = true;
-    // 〔HX1 · D-f〕停**本机**后端之前：有走本机中转的活会话 ⇒ 先问一句、说几条会断（远端的中转是那台上另一个进程，停那条流不碰它）。
-    if (what === "stop" && isLocalOrigin(origin)) {
+    // 〔HX1 · D-f〕停后端之前：有走那台中转的活会话 ⇒ 先问一句、说几条会断。
+    // 〔TAIL · HOST 余项〕远端也问：V139 之后远端中转住在那台的常驻后端里，停它就停了中转。
+    if (what === "stop") {
       const warn = stopWarning(await this.sessions(origin));
       if (warn !== null && !(await this.confirm(warn))) {
         for (const b of btns) b.disabled = false;
