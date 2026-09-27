@@ -70,6 +70,45 @@ fn there_are_exactly_two_ways_in() {
     assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");
 }
 
+/// 〔E2〕要求住址：V28「`ccm` ＝ 后端二进制本身」· `设计/01 §6.7b` · 主会话裁 E2「由后端的 argv 表决定路由、流模式多一个显式词」。
+///
+/// 名字是 `ccm` 时：后端认得的第一个词（`SUBCOMMANDS ∪ STREAM_FLAGS`）⇒ 后端，其余 ⇒ ccm。两向都要成立：
+/// ① 每个后端第一个词都进后端，而且**不是** ccm 自己认的词（问真解析器 `argv::parse`，异源于那两张表）—— 撞了就是 ccm 的旗标被后端抢走；
+/// ② 空 argv 与交给 claude 的词进 ccm。正控：解析器确实认得 `--ccm-print` / `--account`（抽取没空转）。
+#[test]
+fn under_the_name_ccm_only_backend_first_words_reach_the_backend() {
+    let eaten = |w: &str| !matches!(argv::parse(&[w.to_string()]), Ok(argv::Parsed::Opts(o)) if o.passthru == [w.to_string()]);
+    assert!(
+        eaten("--ccm-print") && eaten("--account"),
+        "解析器认不出 ccm 自己的词 —— 本条在空转"
+    );
+    let backend_words: Vec<&str> = crate::SUBCOMMANDS
+        .iter()
+        .chain(crate::STREAM_FLAGS.iter())
+        .copied()
+        .collect();
+    let stolen: Vec<&str> = backend_words.iter().copied().filter(|w| eaten(w)).collect();
+    assert_eq!(
+        stolen,
+        Vec::<&str>::new(),
+        "这些后端第一个词也是 ccm 自己的词："
+    );
+    for w in &backend_words {
+        assert_eq!(
+            intercept("/h/.cc-monitor/bin/ccm", &[w.to_string()]),
+            None,
+            "`ccm {w}` 没进后端"
+        );
+    }
+    assert_eq!(intercept("/h/.cc-monitor/bin/ccm", &[]), Some(vec![]));
+    let claude = vec!["--resume".to_string(), "abc".to_string()];
+    assert_eq!(intercept("ccm", &claude), Some(claude.clone()));
+    assert!(
+        crate::STREAM_FLAGS.contains(&crate::STREAM_FLAG_EXPLICIT),
+        "流模式显式词不在剥离表里"
+    );
+}
+
 /// 〔CC1〕「怎么叫我」＝ 进程 argv 里 `intercept` **吃掉的那一段**；两个入口各一格，再加回环。
 ///
 /// 回环是这条的正题：把 `self_invocation` 交出来的那一段 ＋ 任意一串 ccm 参数**再喂给 `intercept`**，

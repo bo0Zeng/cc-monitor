@@ -88,6 +88,10 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
          进度没人收、终局也没人收（而且它手里压根没有那张票 —— 见 `transfer-upload`）。",
     ),
     (
+        "ccm-print",
+        "〔E2 · V138〕派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
+    ),
+    (
         "transfer-stop",
         "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
     ),

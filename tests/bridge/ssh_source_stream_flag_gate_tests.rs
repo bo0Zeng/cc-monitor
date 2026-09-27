@@ -63,10 +63,16 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
         backend_lib.contains("pub const STREAM_FLAGS: &[&str]"),
         "后端侧 STREAM_FLAGS 不在预期文件里，双写点锚点已失效"
     );
-    let line = backend_lib
+    // 〔E2〕那张表 fmt 之后折成多行、第一项是引用 `STREAM_FLAG_EXPLICIT` ⇒ 取到 `];` 为止，再把那个常量的字面量补进来。
+    let at = backend_lib
+        .find("pub const STREAM_FLAGS: &[&str]")
+        .expect("抠不到 STREAM_FLAGS");
+    let table = &backend_lib[at..at + backend_lib[at..].find("];").expect("STREAM_FLAGS 没收尾")];
+    let explicit = backend_lib
         .lines()
-        .find(|l| l.contains("pub const STREAM_FLAGS: &[&str]"))
-        .expect("抠不到 STREAM_FLAGS 那一行");
+        .find(|l| l.contains("pub const STREAM_FLAG_EXPLICIT: &str"))
+        .expect("抠不到 STREAM_FLAG_EXPLICIT");
+    let line = format!("{table} {explicit}");
 
     // monitor 侧：从**生产函数体**里抠它真的 `push_str` 了哪几个串，
     // 不手抄一份清单 —— 手抄的那种漏一条不会红。

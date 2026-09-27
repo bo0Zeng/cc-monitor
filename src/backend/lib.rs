@@ -724,9 +724,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--relay-status",
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
-    // 〔W5-ALIAS · 第五波先行〕别名预览（`inbound::REGISTRY` 的 `ccm-print`）派生的 CLI 面。只读，入参从 stdin 读。
-    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
-    "--ccm-print",
+    // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
+    //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
     // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`inbound::REGISTRY` 的 `acct-iso-cmd`）派生的 CLI 面。纯函数，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，停在那条红上报备。
     "--acct-iso-cmd",
@@ -1740,12 +1739,22 @@ pub const EMITS: &[&str] = &[
     "tap",
 ];
 
+/// 〔E2 · V28 · `设计/01 §6.7b`〕`--stream`：「我是流模式后端」的**显式词**。二进制叫 `ccm` 时零参数是「起会话」，
+/// 起流那几发（monitor 远端流 / 测试连接探针 / 本机宿主 / 远端常驻子进程）一律带它打头，由 `control::ccm::intercept` 按本表分流。
+/// 它不对应任何能力（老后端不认 ⇒ 按未知旗标照常进流模式，同 U6b-2 的降级）。
+pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
+
 /// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
 ///
 /// 〔`设计/80 §8.7` 步 2，09-22〕`--with-rbind-token`：客户端**显式索要**
 /// `session_added` 上的 `rbind_token`（`CCM_RBIND_TOKEN`）。默认关的理由是
 /// 「令牌是敏感数据」（`§8.6 ③`），整段论证住 [`CAPABILITIES`] 的头注。
-pub const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only", "--with-rbind-token"];
+pub const STREAM_FLAGS: &[&str] = &[
+    STREAM_FLAG_EXPLICIT,
+    "--with-bg",
+    "--tail-only",
+    "--with-rbind-token",
+];
 
 /// 〔W5-AUX · `设计/96 §3.6`〕**「只读一行 stdin」的入口**：跟在子命令后面（`--assets-catalog-merge --stdin-line`）。
 ///

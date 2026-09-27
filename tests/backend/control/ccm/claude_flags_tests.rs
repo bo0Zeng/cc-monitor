@@ -70,3 +70,26 @@ fn no_claude_flag_is_eaten_by_the_shell() {
         );
     }
 }
+
+/// 〔E2〕要求住址：主会话裁 E2（W5-ALIAS §2.5.1「要一条判据钉『ccm 的旗标 ∩ 后端第一个词 == ∅』」）。
+/// 二进制叫 `ccm` 时后端按 `SUBCOMMANDS ∪ STREAM_FLAGS` 分流 ⇒ claude 自己的旗标一个都不许在那两张表里，
+/// 否则 `ccm <那个旗标>` 被抢进后端、到不了 claude。异源：claude `--help` 快照 vs 后端的两张表。
+#[test]
+fn no_claude_flag_is_a_backend_first_word() {
+    let flags = flags_of(SNAPSHOT);
+    assert!(flags.contains("--resume"), "快照里抽不出旗标 —— 本条在空转");
+    let backend: BTreeSet<String> = crate::SUBCOMMANDS
+        .iter()
+        .chain(crate::STREAM_FLAGS.iter())
+        .map(|s| s.to_string())
+        .collect();
+    let clash: BTreeSet<&str> = flags.intersection(&backend).map(String::as_str).collect();
+    // ⚠ 待主会话拍（E2 报备）：claude 2.1.283 自己有 `--fork-session`（配 `--resume` / `--continue` 用），与后端对 aterm 冻结的
+    //   argv 形子命令 `--fork-session <sid> <uuid>` 同名 ⇒ `ccm --fork-session --resume X` 会被抢进后端。改名破冻结、例外表是新规则，本路不自定。
+    //   这一格只许等于下面这一个（再多一个就红）；拍了之后删这一格、按裁决改。
+    assert_eq!(
+        clash,
+        BTreeSet::from(["--fork-session"]),
+        "claude 旗标撞上后端第一个词"
+    );
+}
