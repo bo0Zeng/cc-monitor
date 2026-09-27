@@ -694,6 +694,11 @@ for suite, anchor in [
     ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend   9"),
     # 〔TAIL 09-26〕后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        96"),
+    # 〔E2 尾 09-27〕同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
+    ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         35"),
+    ("ccm tests/e2e/local-backend", "run_e2e local-backend         15"),
+    ("ccm tests/e2e/restart-frames", "run_e2e restart-frames         5"),
+    ("ccm tests/e2e/restart", "run_e2e restart               24"),
 ]:
     cell(
         suite,
@@ -1399,7 +1404,8 @@ for _s in ("backend-rbind-token", "rbind-token-endtoend"):
            "〔第二波 T4 09-24〕`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
            "`ci.yml` 步 2 / 步 3 那两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」。"
            "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
-for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus"):
+for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus",
+           "backend-gate2", "local-backend", "restart-frames", "restart"):
     invoke("ccm tests/e2e/" + _s, ELSEWHERE,
            "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
            "⚠ 那几条调用行**在 GitHub runner 上一趟都没跑过**（本仓不推送）—— "
