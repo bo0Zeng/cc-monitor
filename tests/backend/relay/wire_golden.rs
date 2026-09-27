@@ -377,7 +377,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("中转地址");
-    std::thread::spawn(move || serve(listener, relay));
+    std::thread::spawn(move || serve(listener, relay, Default::default()));
     (addr, TeeTap { buf, rx })
 }
 
