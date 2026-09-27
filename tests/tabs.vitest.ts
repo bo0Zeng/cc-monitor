@@ -5045,6 +5045,22 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     expect(tabOf("g2").state, "问不到不改状态").toEqual(GONE);
   });
 
+  // 设计/99 §2.1 ㉟② · 设计/05 §14.3：「照起但说一句『查不到记录还在不在』；形状不对报两端契约对不上（出声不静默）」。
+  it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到；形状不对 ⇒ 那一句说两端版本对不上", async () => {
+    tm.ensureTab("g4", "/home/pi/proj", "/p/g4.jsonl", 0, "aya");
+    tm.archiveTab("g4");
+    const title = copyText("tabSessionActions.recordUnknown.title");
+    probe = undefined; // 问不到
+    await home(tm).actions.resumeTab("g4");
+    expect(runRemoteResume).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toEqual([title]);
+    vi.mocked(showActionFailureToast).mockClear();
+    probe = { present: true } as unknown as { present: boolean; root: string }; // 少一格 ⇒ 形状不对
+    await home(tm).actions.resumeTab("g4");
+    expect(runRemoteResume).toHaveBeenCalledTimes(2);
+    expect(showActionFailureToast).toHaveBeenCalledWith(title, copyText("sessionReads.ctor.unreadable"));
+  });
+
   it("★ G1：可重连的会话记录没了也不落「记录已不在」（终端还在，接得回去）", () => {
     tm.ensureTab("g3", "/x", "p", 0, "pi");
     tm.markTmuxIdle("g3");
