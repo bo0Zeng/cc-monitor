@@ -373,8 +373,8 @@ pub enum TouchEffect {
 /// # 它同时治掉 `ToolSource` 那一半（`R26` 裁定二：两者是同一个形状问题的两半）
 ///
 /// `ccm` 那一行的 `source` 先前**自己的注释逐字承认是假的**：远端那一份的来源是
-/// `local_backend::ccm_entry_shim` 现造的 shim，而**本机那一份的来源是后端二进制
-/// 自己的改名副本**（`local_backend::install_local_ccm_entry`）——
+/// `local_backend::ccm_entry_shim`〔散文墓碑〕现造的 shim，而**本机那一份的来源是后端二进制
+/// 自己的改名副本**（`local_backend::install_local_ccm_entry`〔散文墓碑〕）——
 /// 一个 `source` 字段装不下两个来源，于是那条注释只能写「不为它再开一个变体，
 /// 在这里如实写清」。载体这一维立起来之后，两个来源各归各的载体，**注释里那句
 /// 「这一格是假的」不再需要**。
@@ -474,7 +474,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
         // 🔴 〔`K-R81` 09-12〕**上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
         //    `K-R69` 当时逐字写的是：「本机那一半的来源不是这个 shim —— 是后端二进制自己的
-        //    改名副本（`local_backend::install_local_ccm_entry`）。`ToolSource` 一个字段
+        //    改名副本（`local_backend::install_local_ccm_entry`〔散文墓碑〕）。`ToolSource` 一个字段
         //    同样装不下两个来源……**不为它再开一个变体**，在这里如实写清」。
         //    ⇒ 那句「在注释里如实写清」是**用散文顶替一个字段**。载体这一维立起来之后，
         //    两个来源各归各的载体，注释不再承重（`R26` 裁定二：`ToolSource` 与
@@ -537,23 +537,35 @@ pub const TOOLS: &[ToolSpec] = &[
             //    `K34` 逐字「原本的配置**要手动删除**」。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
+                // 〔E2 · V28〕本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
                 source: ToolSource::EmbeddedBinary {
                     repo_path:
-                        "src/bridge/src/backend/control/local_backend.rs::install_local_ccm_entry",
+                        "src/bridge/src/backend/control/local_backend.rs::extract_embedded_to",
                 },
                 destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
-                touches: &[TouchedFile {
-                    // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
-                    // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
-                    // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
-                    // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
-                    // 头注禁的「对能用的安装报假警报」。两边由
-                    // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
-                    path: "~/.cc-monitor/bin/ccm*",
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
-                    host: HostScope::Client,
-                    effect: TouchEffect::OwnedFile,
-                }],
+                touches: &[
+                    TouchedFile {
+                        // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
+                        // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
+                        // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
+                        // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
+                        // 头注禁的「对能用的安装报假警报」。两边由
+                        // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
+                        path: "~/.cc-monitor/bin/ccm*",
+                        note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
+                        host: HostScope::Client,
+                        effect: TouchEffect::OwnedFile,
+                    },
+                    // 〔E2 · E-c〕旧版释放的 `cc-monitor-backend-<build_id>` 们：放好 `ccm` 之后扫一次，身份戳认得出才删。
+                    TouchedFile {
+                        path: "~/.cc-monitor/bin/cc-monitor-backend-*",
+                        host: HostScope::Client,
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.backendLegacyExtractNote", &[])
+                        })),
+                        effect: TouchEffect::RetiredLegacy,
+                    },
+                ],
             },
         ],
     },
@@ -752,26 +764,8 @@ pub const TOOLS: &[ToolSpec] = &[
                     effect: TouchEffect::OwnedFile,
                 }],
             },
-            Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.backendEmbeddedWhat", &[])),
-                source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/native-backend/cc-monitor-native",
-                },
-                // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
-                // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
-                // 无限重装。glob 只在末段、只有一个 `*`（`resolve_local_home` 的两条校验）。
-                destination: ToolDestination::LocalHomeRelative(
-                    ".cc-monitor/bin/cc-monitor-backend-*",
-                ),
-                touches: &[TouchedFile {
-                    path: "~/.cc-monitor/bin/cc-monitor-backend-*",
-                    host: HostScope::Client,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.backendEmbeddedNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                }],
-            },
+            // 〔E2 · V28〕内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
+            //   同一个文件不在两个工具底下各记一遍（那张「本机 `ccm` 落点恰一条」的对拍要这一格）。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
@@ -1041,7 +1035,7 @@ pub const TOOLS: &[ToolSpec] = &[
 /// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
 /// 不是「盘上那份**真的**在哪」。两者对不对得上由
 /// `profile_installer` 那条跨文件判据钉住（它去读真正调
-/// `install_local_ccm_entry` 的那一行源码）。
+/// `extract_embedded_to` 的那一行源码；〔E2〕从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
 pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS {
