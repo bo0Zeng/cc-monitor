@@ -457,7 +457,7 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
             al("zcc", &["--account", "z"]),
             al(
                 "convz",
-                &["--tmux", "--account", "z", "--cwd", "/home/u/文档/c c"],
+                &["--ccm-tmux", "--account", "z", "--cwd", "/home/u/文档/c c"],
             ),
             al("mo", &["--model", "it's", "--", "--verbose"]),
         ],
@@ -469,7 +469,7 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
         r.lines,
         vec![
             r#"zcc() { ccm --account z "$@"; }"#.to_string(),
-            r#"convz() { ccm --tmux --account z --cwd '/home/u/文档/c c' "$@"; }"#.to_string(),
+            r#"convz() { ccm --ccm-tmux --account z --cwd '/home/u/文档/c c' "$@"; }"#.to_string(),
             r#"mo() { ccm --model 'it'\''s' -- --verbose "$@"; }"#.to_string(),
         ]
     );
@@ -488,7 +488,7 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
 fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
     let a = al(
         "convz",
-        &["--tmux", "--cwd", "/tmp/a b/文档", "--model", "it's"],
+        &["--ccm-tmux", "--cwd", "/tmp/a b/文档", "--model", "it's"],
     );
     let line = render_line(&a, P);
     let script = format!("ccm() {{ printf '%s\\n' \"$@\"; }}\n{line}\nconvz --cwd /elsewhere\n");
@@ -517,10 +517,10 @@ fn what_is_installed_reads_back_as_the_same_list() {
     let h = tmp_home("roundtrip");
     let list = vec![
         al("zcc", &["--account", "z"]),
-        al("zcct", &["--tmux", "--account", "z"]),
+        al("zcct", &["--ccm-tmux", "--account", "z"]),
         al(
             "mine",
-            &["--cwd", "/x y", "--agent", "codex", "--", "--foo"],
+            &["--cwd", "/x y", "--ccm-agent", "codex", "--", "--foo"],
         ),
     ];
     let rep = run(install_in(&door(&h), &local(), &list, None, P)).expect("写");
@@ -558,9 +558,9 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         "# === cc-monitor account aliases BEGIN v1 ===\n\
          # 注释\n\
          zcc() { ccm --account 'z' \"$@\"; }\n\
-         bcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" --tmux --account 'b' \"$@\"; }\n\
+         bcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" --ccm-tmux --account 'b' \"$@\"; }\n\
          alias x=ls\n\
-         bad() { ccm --print \"$@\"; }\n\
+         bad() { ccm --ccm-print \"$@\"; }\n\
          # === cc-monitor account aliases END ===\n",
     )
     .unwrap();
@@ -569,7 +569,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         back.aliases,
         vec![
             al("zcc", &["--account", "z"]),
-            al("bcct", &["--tmux", "--account", "b"])
+            al("bcct", &["--ccm-tmux", "--account", "b"])
         ]
     );
     assert_eq!(back.unparsed.len(), 2, "{:?}", back.unparsed);
@@ -578,7 +578,12 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         "{:?}",
         back.unparsed
     );
-    assert!(back.unparsed[1].contains("--print"), "{:?}", back.unparsed);
+    // V138：`--print` 是 claude 的了，拿 ccm 的诊断口 `--ccm-print` 当认不出的那一行。
+    assert!(
+        back.unparsed[1].contains("--ccm-print"),
+        "{:?}",
+        back.unparsed
+    );
     // 文件不在 ≠ 读失败。
     let empty = tmp_home("none");
     let l = read_in(&empty.0, P, None, 0).unwrap();
@@ -591,12 +596,15 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     let bad = [
         al("1x", &[]),
         al("a", &["--account", "z", "--base"]),
-        al("b", &["--tmux=w", "--tmux-base", "w"]),
-        al("c", &["--tmux", "--bus-register"]),
+        al("b", &["--ccm-tmux=w", "--tmux-base", "w"]),
+        al("c", &["--ccm-tmux", "--bus-register"]),
         al("d", &["--detach"]),
         al("e", &["--tmux-size", "80x24"]),
-        al("f", &["--print"]),
-        al("g", &["resume", "abc"]),
+        // V138：第三档改名后的样子（诊断口 · `--attach`）；`71 §8 #11` 相对 / 带 `..` 的 `--cwd`。
+        al("f", &["--ccm-print"]),
+        al("g", &["--attach", "abc"]),
+        al("j", &["--cwd", "rel/dir"]),
+        al("k", &["--cwd", "/a/../b"]),
         al("h", &["--account"]),
         al("i", &["--cwd", "a\nb"]),
     ];
@@ -606,13 +614,36 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     let good = [
         al(
             "ok1",
-            &["--tmux", "--detach", "--bus-register", "--bus-note", "x"],
+            &[
+                "--ccm-tmux",
+                "--detach",
+                "--bus-register",
+                "--bus-note",
+                "x",
+            ],
         ),
-        al("ok2", &["--tmux=w", "--tmux-size", "80x24"]),
-        al("ok3", &["--base", "--agent", "codex"]),
+        al("ok2", &["--ccm-tmux=w", "--tmux-size", "80x24"]),
+        al("ok3", &["--base", "--ccm-agent", "codex"]),
+        // V138：交给 claude 的词原样放行；绝对 `--cwd` 放行（正控）。
+        al("ok4", &["--model", "opus", "--continue"]),
+        al("ok5", &["--cwd", "/srv/my proj"]),
     ];
     for a in &good {
         assert_eq!(check_alias(a, P), Ok(()), "{a:?}");
+    }
+    // PowerShell 目标：盘符根 / UNC 放行，相对与 POSIX 形拒。
+    for (cwd, want_ok) in [
+        ("C:\\work", true),
+        ("\\\\srv\\share", true),
+        ("work", false),
+        ("/srv", false),
+        ("C:\\a\\..\\b", false),
+    ] {
+        assert_eq!(
+            check_alias(&al("w", &["--cwd", cwd]), PS).is_ok(),
+            want_ok,
+            "{cwd:?}"
+        );
     }
     let h = tmp_home("bad");
     let mut list = good.to_vec();
@@ -621,7 +652,7 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
     assert!(e.contains("一条都没写"), "{e}");
     assert!(!alias_path(&h.0, P).exists(), "有一条不合格却写了");
     // 重名也是一条问题。
-    let r = render(&[al("z", &[]), al("z", &["--tmux"])], P, &local());
+    let r = render(&[al("z", &[]), al("z", &["--ccm-tmux"])], P, &local());
     assert_eq!(r.problems.len(), 1);
 }
 
@@ -754,7 +785,14 @@ fn the_tmux_gate_is_exactly_the_backends_tmux_carried_flags() {
     );
     let want: std::collections::BTreeSet<String> = carried
         .iter()
-        .map(|c| format!("--{c}"))
+        // 用户 09-26：能力 `tmux` 的旗标改名成 `--ccm-tmux`（claude 自己有 `--tmux`），其余能力名即旗标名。
+        .map(|c| {
+            if c == "tmux" {
+                "--ccm-tmux".to_string()
+            } else {
+                format!("--{c}")
+            }
+        })
         .filter(|f| ALIAS_FLAGS.iter().any(|(a, _)| a == f))
         .collect();
     let got: std::collections::BTreeSet<String> =
@@ -776,12 +814,12 @@ fn the_tmux_gate_is_exactly_the_backends_tmux_carried_flags() {
             "`{flag}` 在 PowerShell 目标下：{e:?}"
         );
     }
-    assert!(check_alias(&al("x", &["--tmux=w"]), PS).is_err_and(|m| m.contains("没有 tmux")));
+    assert!(check_alias(&al("x", &["--ccm-tmux=w"]), PS).is_err_and(|m| m.contains("没有 tmux")));
     // 同一条别名在 POSIX 目标下是合格的（闸只在没有 tmux 的地方关）。
     let full = al(
         "x",
         &[
-            "--tmux",
+            "--ccm-tmux",
             "--detach",
             "--bus-register",
             "--tmux-size",
@@ -801,13 +839,19 @@ fn a_bus_note_without_a_registration_is_refused_like_the_backend_does() {
     .expect("读后端 argv.rs");
     guard_core::find_pinned(&argv, "if !o.bus_note.is_empty() && !o.bus_register {")
         .expect("后端那道「备注要有登记」的闸不在了 —— 本侧这条规则要跟着重看");
-    let e = check_alias(&al("x", &["--tmux", "--detach", "--bus-note", "n"]), P).unwrap_err();
+    let e = check_alias(&al("x", &["--ccm-tmux", "--detach", "--bus-note", "n"]), P).unwrap_err();
     assert!(e.contains("--bus-register"), "{e}");
     assert_eq!(
         check_alias(
             &al(
                 "x",
-                &["--tmux", "--detach", "--bus-register", "--bus-note", "n"]
+                &[
+                    "--ccm-tmux",
+                    "--detach",
+                    "--bus-register",
+                    "--bus-note",
+                    "n"
+                ]
             ),
             P
         ),
@@ -826,7 +870,8 @@ fn powershell_duplicates_fold_case() {
 /// PowerShell 传不过去的值在渲染前就拦住（方言答「传不传得过去」，通用层判「那就不合格」）。
 #[test]
 fn a_value_powershell_would_mangle_is_a_problem_there_only() {
-    let a = al("x", &["--cwd", "C:\\a \"b\""]);
+    // `71 §8 #11` 之后 `--cwd` 要是这种 shell 的绝对路径 ⇒ 把那个值换到交给 claude 的位置上测。
+    let a = al("x", &["--", "C:\\a \"b\""]);
     assert!(check_alias(&a, PS).is_err());
     assert_eq!(check_alias(&a, P), Ok(()));
 }
@@ -841,7 +886,7 @@ fn the_powershell_arm_writes_and_reads_back_the_same_list() {
         al("zcc", &["--account", "z"]),
         al(
             "mine",
-            &["--cwd", "C:\\x y", "--agent", "codex", "--", "--foo"],
+            &["--cwd", "C:\\x y", "--ccm-agent", "codex", "--", "--foo"],
         ),
     ];
     let profile =
@@ -1057,10 +1102,14 @@ fn remote() -> Origin {
 /// 异源：写那一跳落盘的字节由 `render` 出，读回那一跳由方言的 `parse_file` 认 —— 两个函数各走一遍。
 #[test]
 fn local_and_remote_are_the_same_function_with_a_different_origin() {
-    for sh in [P, Shell::PowerShell] {
+    // 〔AL3 · 71 §8 #11〕`--cwd` 要是那种 shell 的绝对路径 ⇒ PowerShell 那一轮换成 Windows 形。
+    for (sh, cwd) in [
+        (P, "/home/u/文档/c c"),
+        (Shell::PowerShell, "C:\\Users\\u\\文档\\c c"),
+    ] {
         let list = vec![
             al("zcc", &["--account", "z"]),
-            al("wcc", &["--cwd", "/home/u/文档/c c", "--agent", "codex"]),
+            al("wcc", &["--cwd", cwd, "--ccm-agent", "codex"]),
         ];
         let mut seen: Vec<(String, String)> = Vec::new();
         for at in [remote(), local()] {

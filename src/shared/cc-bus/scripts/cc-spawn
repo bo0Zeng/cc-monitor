@@ -163,7 +163,7 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 # shellcheck disable=SC2206  # 这里的分词是**有意的**,正是要复刻旧 shell 的行为
 launch_argv=($LAUNCH)
 [ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
-ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
+ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "$absdir" --ccm-agent "$tool" --launcher "${launch_argv[0]}")
 # ⚠ `--bus-note` **只在任务非空时给**:`need_val` 拒收空串(所有带值旗标同一条纪律),
 #   `--bus-note ""` 会当场 die「--bus-note 需要一个值」。
 #   ★ 首版就是无条件给的 —— **单测全绿、e2e 当场红四条**(1-5 号用例都带任务,

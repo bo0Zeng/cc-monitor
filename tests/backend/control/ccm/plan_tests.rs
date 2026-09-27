@@ -51,14 +51,15 @@ fn plan_of_with(args: &[&str], env: &Env, t: &AccountTable, taken: Option<&Taken
 }
 
 fn printed(args: &[&str]) -> String {
-    render(&plan_of(args, &env(), &AccountTable::default()), None)
+    render(&plan_of(args, &env(), &AccountTable::default()))
 }
 
 /// 〔搬自 `ccm-cli`「零修饰」「resume <sid>」「--launcher 覆盖」「--base」「--model」
 /// 「--agent codex」「-- 透传」与 `ccm-contract-parity` B 组的顺序那几条〕
 ///
 /// 这一条钉的是**一条起会话命令长什么样**：段的顺序就是契约
-/// （CCM_ENV → CC_BUS_ID → 账号目录 → 模型 → 清嵌套 → cd → exec）。
+/// （CCM_ENV → CC_BUS_ID → 账号目录 → 清嵌套 → cd → exec）。
+/// 〔V138〕`--resume` / `--model` 不再是 ccm 的：原样接在启动器后面（从前 resume 由 ccm 拼、`--model` 变成 export `ANTHROPIC_MODEL`）。
 #[test]
 fn the_shape_of_one_launch_command_line() {
     let nested =
@@ -68,7 +69,7 @@ fn the_shape_of_one_launch_command_line() {
         format!("{nested}; cd '/p' && exec claude")
     );
     assert_eq!(
-        printed(&["resume", "abc-123", "--cwd", "/p", "--launcher", "claude"]),
+        printed(&["--resume", "abc-123", "--cwd", "/p", "--launcher", "claude"]),
         format!("{nested}; cd '/p' && exec claude --resume abc-123")
     );
     assert_eq!(
@@ -77,16 +78,21 @@ fn the_shape_of_one_launch_command_line() {
     );
     assert_eq!(
         printed(&["--cwd", "/p", "--model", "opus"]),
-        format!("export ANTHROPIC_MODEL='opus'; {nested}; cd '/p' && exec claude")
+        format!("{nested}; cd '/p' && exec claude --model opus")
     );
     // codex：换启动器 + **不清** claude 的嵌套标记 + cc-bus 身份配方
     assert_eq!(
-        printed(&["--cwd", "/p", "--agent", "codex"]),
+        printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
         format!("{} cd '/p' && exec codex", super::super::BUS_ID_RECIPE)
     );
     // 透传参数含特殊字符 ⇒ 正确 quote
     assert_eq!(
         printed(&["--cwd", "/p", "--", "-p", "hi there"]),
+        format!("{nested}; cd '/p' && exec claude -p 'hi there'")
+    );
+    // V138：不写 `--` 也一样交出去。
+    assert_eq!(
+        printed(&["-p", "hi there", "--cwd", "/p"]),
         format!("{nested}; cd '/p' && exec claude -p 'hi there'")
     );
 }
@@ -95,25 +101,7 @@ fn the_shape_of_one_launch_command_line() {
 #[test]
 fn only_codex_gets_the_bus_id_recipe() {
     assert!(!printed(&["--cwd", "/p"]).contains("CC_BUS_ID"));
-    assert!(printed(&["--cwd", "/p", "--agent", "codex"]).contains("CC_BUS_ID"));
-}
-
-/// 〔搬自 `ccm-cli`「--account 与 --model 组合：账号目录先、模型偏好次」〕
-///
-/// **顺序即契约**（见 `launch-dimensions.ts` 的 order）。
-#[test]
-fn the_account_dir_comes_before_the_model() {
-    let d = tempdir();
-    let t = table(&[("z", Some(d.as_str()), true)]);
-    let p = plan_of(
-        &["--cwd", "/p", "--account", "z", "--model", "opus"],
-        &env(),
-        &t,
-    );
-    let line = render(&p, None);
-    let i_acct = line.find("CLAUDE_CONFIG_DIR").expect("该有账号目录");
-    let i_model = line.find("ANTHROPIC_MODEL").expect("该有模型");
-    assert!(i_acct < i_model, "账号目录必须排在模型之前：{line}");
+    assert!(printed(&["--cwd", "/p", "--ccm-agent", "codex"]).contains("CC_BUS_ID"));
 }
 
 /// 〔搬自 `ccm-cli` 账号那一族：显式 / 继承 / 默认号 / --base 四条路〕
@@ -130,28 +118,25 @@ fn the_four_ways_an_account_gets_picked() {
     ]);
     let mut e = env();
     // ① 显式 --account 赢
-    assert!(
-        render(&plan_of(&["--cwd", "/p", "--account", "b"], &e, &t), None)
-            .contains(&format!("export CLAUDE_CONFIG_DIR='{db}'"))
-    );
+    assert!(render(&plan_of(&["--cwd", "/p", "--account", "b"], &e, &t))
+        .contains(&format!("export CLAUDE_CONFIG_DIR='{db}'")));
     // ② 裸终端（无继承）⇒ 落 manifest 默认号 z
-    assert!(render(&plan_of(&["--cwd", "/p"], &e, &t), None)
+    assert!(render(&plan_of(&["--cwd", "/p"], &e, &t))
         .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'")));
     // ③ 外层已继承 ⇒ **保留继承的**，不被默认号静默覆盖（`R08` 的原病）
     e.inherited_config_dir = Some(db.clone());
-    let line = render(&plan_of(&["--cwd", "/p"], &e, &t), None);
+    let line = render(&plan_of(&["--cwd", "/p"], &e, &t));
     assert!(
         !line.contains("export CLAUDE_CONFIG_DIR"),
         "不许覆盖继承：{line}"
     );
     // ④ --base 显式清空，不受继承影响
-    assert!(render(&plan_of(&["--cwd", "/p", "--base"], &e, &t), None)
-        .contains("unset CLAUDE_CONFIG_DIR"));
-    // ⑤ 显式 --account 压过继承
     assert!(
-        render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t), None)
-            .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'"))
+        render(&plan_of(&["--cwd", "/p", "--base"], &e, &t)).contains("unset CLAUDE_CONFIG_DIR")
     );
+    // ⑤ 显式 --account 压过继承
+    assert!(render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t))
+        .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'")));
 }
 
 /// 〔搬自 `ccm-cli`「账号不存在 → 中止」「可用列表」「无账号库 → 退化为基座」〕
@@ -175,9 +160,7 @@ fn picking_an_account_never_falls_back_to_a_different_one() {
     );
     // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
     let empty = AccountTable::default();
-    assert!(
-        !render(&plan_of(&["--cwd", "/p"], &env(), &empty), None).contains("CLAUDE_CONFIG_DIR=")
-    );
+    assert!(!render(&plan_of(&["--cwd", "/p"], &env(), &empty)).contains("CLAUDE_CONFIG_DIR="));
 }
 
 /// 〔搬自 `ccm-cli`「deriveTmuxName 对拍」那 5 条（跨语言双写点的**本侧**）〕
@@ -216,14 +199,14 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
         other => panic!("该是容器路：{other:?}"),
     };
     // 显式名：**不退让** —— 调用方说的就是要这个名，撞了走 C14 响亮失败
-    assert_eq!(path(&["--tmux=n1", "--cwd", "/p"]), "n1");
+    assert_eq!(path(&["--ccm-tmux=n1", "--cwd", "/p"]), "n1");
     // 基名：退让（cc-spawn 随后要读回真名字）
     assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), "n1-2");
     // 不给名、从 cwd 派生：退让
-    assert_eq!(path(&["--tmux", "--cwd", "/x/proj"]), "proj-cc-2");
+    assert_eq!(path(&["--ccm-tmux", "--cwd", "/x/proj"]), "proj-cc-2");
     // 问不到快照（`None`）⇒ 诚实降级成「不退让」，不是「假装没占」之外的第三种行为
     assert_eq!(
-        match plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, None) {
+        match plan_of_with(&["--ccm-tmux", "--cwd", "/x/proj"], &e, &t, None) {
             Plan::Container(c) => c.name,
             other => panic!("该是容器路：{other:?}"),
         },
@@ -247,14 +230,18 @@ fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
     let e = env();
     let t = AccountTable::default();
     let taken = snapshot_of(&["proj-cc", "proj-cc-2"]);
-    let once = render(
-        &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken)),
-        None,
-    );
-    let twice = render(
-        &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken)),
-        None,
-    );
+    let once = render(&plan_of_with(
+        &["--ccm-tmux", "--cwd", "/x/proj"],
+        &e,
+        &t,
+        Some(&taken),
+    ));
+    let twice = render(&plan_of_with(
+        &["--ccm-tmux", "--cwd", "/x/proj"],
+        &e,
+        &t,
+        Some(&taken),
+    ));
     assert_eq!(once, twice, "同一份快照喂两次，`--print` 吐了两样东西");
     assert!(
         once.contains("proj-cc-3"),
@@ -271,7 +258,7 @@ fn a_different_snapshot_moves_the_name() {
     let e = env();
     let t = AccountTable::default();
     let name = |taken: &TakenNames| match plan_of_with(
-        &["--tmux", "--cwd", "/x/proj"],
+        &["--ccm-tmux", "--cwd", "/x/proj"],
         &e,
         &t,
         Some(taken),
@@ -295,11 +282,11 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
     const SID: &str = "cb3230f3-dead-beef-0000-111122223333";
     let plan = plan_of_with(
         &[
-            "resume",
+            "--resume",
             SID,
             "--ccm-sid",
             SID,
-            "--tmux",
+            "--ccm-tmux",
             "--cwd",
             "/home/pi/my-proj",
         ],
@@ -368,9 +355,9 @@ fn the_container_path_carries_every_intent_inward() {
     e.inherited_config_dir = Some(db.clone());
     let p = plan_of(
         &[
-            "resume",
+            "--resume",
             "p1",
-            "--tmux=cc-p1",
+            "--ccm-tmux=cc-p1",
             "--cwd",
             "/tmp",
             "--ccm-sid",
@@ -380,7 +367,7 @@ fn the_container_path_carries_every_intent_inward() {
         &e,
         &t,
     );
-    let out = render(&p, None);
+    let out = render(&p);
     let Plan::Container(c) = &p else {
         panic!("该是容器路：{p:?}")
     };
@@ -392,8 +379,9 @@ fn the_container_path_carries_every_intent_inward() {
         "不许写**事实**标记 @ccm_sid（那是通道 B 的，破坏性动作只认它）：{out}"
     );
     // 内层载荷：按 argv 元素逐个 quote 过一层，所以判的是 payload 本身
+    // V138：`--resume` 是透传，内层放在 `--` 后面原样交出去。
     assert!(
-        c.payload.contains("'resume' 'p1'"),
+        c.payload.ends_with("'--' '--resume' 'p1'"),
         "resume 没进内层：{}",
         c.payload
     );
@@ -406,7 +394,7 @@ fn the_container_path_carries_every_intent_inward() {
     // 〔搬自 `ccm-print-parity` 场景 newTmuxCustomLauncher / resumeTmuxWithModel〕
     let p4 = plan_of(
         &[
-            "--tmux=n4",
+            "--ccm-tmux=n4",
             "--cwd",
             "/p",
             "--launcher",
@@ -425,9 +413,13 @@ fn the_container_path_carries_every_intent_inward() {
         "{}",
         c4.payload
     );
-    assert!(c4.payload.contains("'--model' 'opus'"), "{}", c4.payload);
+    assert!(
+        c4.payload.ends_with("'--' '--model' 'opus'"),
+        "{}",
+        c4.payload
+    );
     // 继承账号那条路：内层必须显式 export 继承来的那个目录
-    let p2 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &t);
+    let p2 = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], &e, &t);
     let Plan::Container(c2) = &p2 else {
         panic!("该是容器路")
     };
@@ -446,7 +438,7 @@ fn the_container_path_carries_every_intent_inward() {
     // 裸终端（无继承）⇒ 内层仍落默认号 z（粘滞体验）
     let mut e2 = env();
     e2.inherited_config_dir = None;
-    let p3 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e2, &t);
+    let p3 = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], &e2, &t);
     let Plan::Container(c3) = &p3 else {
         panic!("该是容器路")
     };
@@ -479,7 +471,11 @@ fn the_container_path_carries_every_intent_inward() {
 fn the_container_path_forwards_every_inherited_variable_inward() {
     let db = tempdir();
     let base = |e: &Env| -> String {
-        let p = plan_of(&["--tmux=n1", "--cwd", "/p"], e, &AccountTable::default());
+        let p = plan_of(
+            &["--ccm-tmux=n1", "--cwd", "/p"],
+            e,
+            &AccountTable::default(),
+        );
         let Plan::Container(c) = p else {
             panic!("该是容器路")
         };
@@ -615,14 +611,11 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
 /// 〔搬自 `ccm-print-parity`「含空格 cwd 正确带引号」与 `ccm-cli` 的 quote 那族〕
 #[test]
 fn every_value_that_reaches_a_shell_is_quoted() {
-    let out = render(
-        &plan_of(
-            &["--tmux", "--cwd", "/home/pi/my proj"],
-            &env(),
-            &AccountTable::default(),
-        ),
-        None,
-    );
+    let out = render(&plan_of(
+        &["--ccm-tmux", "--cwd", "/home/pi/my proj"],
+        &env(),
+        &AccountTable::default(),
+    ));
     assert!(out.contains("-c '/home/pi/my proj'"), "{out}");
     assert!(out.contains("-s 'my-proj-cc'"), "{out}");
     assert_eq!(qarg("a b"), "'a b'");
@@ -634,7 +627,7 @@ fn every_value_that_reaches_a_shell_is_quoted() {
 /// 〔搬自 `ccm-print-parity`「attach 到 cc-p1」〕—— `=名:` 是 tmux 的**精确匹配**形。
 #[test]
 fn attach_uses_the_exact_match_target() {
-    assert_eq!(printed(&["attach", "cc-p1"]), "tmux attach -t '=cc-p1:'");
+    assert_eq!(printed(&["--attach", "cc-p1"]), "tmux attach -t '=cc-p1:'"); // V138：`attach <名>` → `--attach <名>`
 }
 
 /// 🔴 `KR58D3` —— 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。
@@ -652,22 +645,22 @@ fn the_default_cwd_is_the_identity_in_every_layout() {
     let d = tempdir();
     // 布局1：站在 $HOME —— 从前跳 `$CCM_WORKSPACE`，今天就是 $HOME。
     e.pwd = e.home.clone();
-    assert_eq!(cwd_of(&["new"], &e), e.home, "在 $HOME 裸敲不许再跳工作区");
+    assert_eq!(cwd_of(&[], &e), e.home, "在 $HOME 裸敲不许再跳工作区");
     // 布局2/3：git 仓根 / 仓的子目录 —— 从前跳**仓的父目录**，今天就是站着的那个目录。
     std::fs::create_dir_all(format!("{d}/repo/sub")).expect("造夹具");
     std::fs::write(format!("{d}/repo/.git"), "gitdir: /elsewhere").expect("造夹具");
     for p in [format!("{d}/repo"), format!("{d}/repo/sub")] {
         e.pwd = p.clone();
-        assert_eq!(cwd_of(&["new"], &e), p, "在 git 仓里敲不许再跳到仓外");
+        assert_eq!(cwd_of(&[], &e), p, "在 git 仓里敲不许再跳到仓外");
     }
     // 布局4：非 git 目录 —— 一直是它自己（这一档本来就诚实，留着当对照）。
     e.pwd = d.clone();
-    assert_eq!(cwd_of(&["new"], &e), d);
-    // `resume`/`attach` 那一支**一个字都没动**：它本来就不走 auto，
+    assert_eq!(cwd_of(&[], &e), d);
+    // resume / attach 那一支**一个字都没动**：它本来就不走 auto，
     // 再解析一次会让 claude 按 `projects/<enc(cwd)>/<sid>.jsonl` 找不到会话（实测踩过）。
     e.pwd = format!("{d}/repo");
-    assert_eq!(cwd_of(&["resume", "s"], &e), format!("{d}/repo"));
-    assert_eq!(cwd_of(&["attach", "n"], &e), format!("{d}/repo"));
+    assert_eq!(cwd_of(&["--resume", "s"], &e), format!("{d}/repo"));
+    assert_eq!(cwd_of(&["--attach", "n"], &e), format!("{d}/repo"));
     // 显式 `--cwd` 仍然赢 —— 拿掉的是「替用户挑」，不是「用户自己挑」。
     assert_eq!(cwd_of(&["--cwd", "/x/y"], &e), "/x/y");
 }
@@ -690,7 +683,7 @@ fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
     let t = table(&[("z", Some(dz.as_str()), true)]);
     let mut e = env();
     e.ccm_env = "export CCM_ENV_PROBE=from-ccm-env".into();
-    let line = render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t), None);
+    let line = render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t));
     assert!(
         line.starts_with("export CCM_ENV_PROBE=from-ccm-env; "),
         "{line}"
@@ -700,33 +693,11 @@ fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
     assert!(i_env < i_acct, "机器级 env 必须排在会话级之前：{line}");
 }
 
-/// 🔴 〔搬自 `ccm-contract-parity` A′g 那两条〕**后端回的那条命令串不许被 shell 改写。**
-///
-/// 它要被拆成词才跑得了（`exec $cmd`），而拆词那一步会做路径展开 ——
-/// 命令里一个 `*` 会被当前目录的文件名顶掉。`set -f` 关掉的正是这一步。
-#[test]
-fn a_command_from_the_backend_is_never_rewritten_by_the_shell() {
-    let p = plan_of(
-        &["resume", "abc-123", "--cwd", "/p"],
-        &env(),
-        &AccountTable::default(),
-    );
-    let line = render(&p, Some("claude --resume abc-123 --glob *"));
-    assert!(
-        line.contains("set -f; exec claude --resume abc-123 --glob *"),
-        "少了 `set -f` ⇒ 那个 `*` 会被 cwd 的文件名改写：{line}"
-    );
-    // 反向：没有后端答案时走本地那条，argv 逐个 quote，本来就不经拆词
-    let local = render(&p, None);
-    assert!(!local.contains("set -f"), "本地那条不需要 set -f：{local}");
-    assert!(local.ends_with("exec claude --resume abc-123"), "{local}");
-}
-
 /// 〔搬自 `ccm-contract-parity` A / A′ 两组「print↔exec 一致」〕
 ///
 /// 从前那两组要**真跑一趟**再与 `--print` 差分，因为两条路是两份代码。
 /// 今天它们读的是**同一个 [`Plan`]** ⇒ 这条判据钉的是那个结构事实：
-/// 渲染函数的全部输入只有 `Plan` 与 `resolved`，没有第二个来源。
+/// 渲染函数的全部输入只有 `Plan`，没有第二个来源（V138 删了进程内 `resolve` 那一问）。
 #[test]
 fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
     let p = plan_of(
@@ -734,14 +705,13 @@ fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
         &env(),
         &AccountTable::default(),
     );
-    assert_eq!(render(&p, None), render(&p, None), "渲染必须是纯函数");
+    assert_eq!(render(&p), render(&p), "渲染必须是纯函数");
     let Plan::Direct(d) = &p else {
         panic!("该是 Direct")
     };
     // 真跑那一侧读的就是这几个字段（`run::exec_direct`），逐个在这里点名。
-    assert_eq!(d.model, "opus");
     assert_eq!(d.cwd, "/p");
-    assert_eq!(d.argv, vec!["claude".to_string()]);
+    assert_eq!(d.argv, vec!["claude", "--model", "opus"]);
 }
 
 /// ★★ 〔`P19` 09-22〕**`inside_tmux` 是真跑那一侧独用的一格，[`render`] 一个字不看。**
@@ -763,7 +733,7 @@ fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
         tmux: Some("/faux/socket,1,0".into()),
         ..env()
     };
-    let args = &["--agent", "codex", "--cwd", "/p"];
+    let args = &["--ccm-agent", "codex", "--cwd", "/p"];
     let po = plan_of(args, &outside, &AccountTable::default());
     let pi = plan_of(args, &inside, &AccountTable::default());
 
@@ -784,13 +754,13 @@ fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
 
     // 正题：渲染**逐字节相等**。
     assert_eq!(
-        render(&po, None),
-        render(&pi, None),
+        render(&po),
+        render(&pi),
         "`--print` 随 `$TMUX` 变了 —— 平价预言机不再是纯的（`§33a` 铁律 2）"
     );
     // 而且两边都**说出了**那段配方（`§33a` 铁律 1：exec 路会设的 env，print 必须说）。
     assert!(
-        render(&po, None).contains(super::super::BUS_ID_RECIPE),
+        render(&po).contains(super::super::BUS_ID_RECIPE),
         "`--print` 没说出 cc-bus 那段配方 —— 那正是 `§33a` 开张时抓到的第一例"
     );
 }
@@ -979,8 +949,11 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
     e.anthropic_base_url = Some("https://relay.example/v1".into());
     e.bus_scripts = Some("/opt/bus".into());
     for (args, has_passthru) in [
-        (&["--tmux=n1", "--cwd", "/p", "--", "task", "--x"][..], true),
-        (&["--tmux=n1", "--cwd", "/p"][..], false),
+        (
+            &["--ccm-tmux=n1", "--cwd", "/p", "--", "task", "--x"][..],
+            true,
+        ),
+        (&["--ccm-tmux=n1", "--cwd", "/p"][..], false),
     ] {
         // 旗标排在最前（排到 `--` 后面就成了透传参数）。
         let mut a = vec!["--bus-register", "--detach"];
@@ -990,9 +963,9 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
             panic!("该是容器路：{p:?}")
         };
         let want = if has_passthru {
-            c.payload.replacen(" '--' ", " '--print' '--' ", 1)
+            c.payload.replacen(" '--' ", " '--ccm-print' '--' ", 1)
         } else {
-            format!("{} '--print'", c.payload)
+            format!("{} '--ccm-print'", c.payload)
         };
         assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
         assert!(
@@ -1071,14 +1044,14 @@ fn on_the_direct_path_ccm_sid_is_carried_by_the_launch_token() {
 /// 直路吐的那一行**逐字节相等** —— 令牌是继承的环境，不是命令文本。
 #[test]
 fn the_direct_print_does_not_change_with_ccm_sid_or_the_token() {
-    let bare = render(&Plan::Direct(direct_with(&[], None)), None);
+    let bare = render(&Plan::Direct(direct_with(&[], None)));
     for (args, tok) in [
         (&["--ccm-sid", "s-1"][..], None),
         (&["--ccm-sid", "s-1"][..], Some(GOOD_LAUNCH_TOKEN)),
         (&[][..], Some(GOOD_LAUNCH_TOKEN)),
     ] {
         assert_eq!(
-            render(&Plan::Direct(direct_with(args, tok)), None),
+            render(&Plan::Direct(direct_with(args, tok))),
             bare,
             "直路 `--print` 随 {args:?} / 令牌 {tok:?} 变了"
         );
@@ -1287,9 +1260,11 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
     let payload_of = |v: &str| -> String {
         let mut e = env();
         e.anthropic_base_url = Some(v.to_string());
-        let Plan::Container(c) =
-            plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &AccountTable::default())
-        else {
+        let Plan::Container(c) = plan_of(
+            &["--ccm-tmux=n1", "--cwd", "/p"],
+            &e,
+            &AccountTable::default(),
+        ) else {
             panic!("该是容器路")
         };
         c.payload
@@ -1352,7 +1327,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         vec!["--cwd", "/home/u/Bob's notes (2019)"],
         vec!["--cwd", "/srv/a&b", "--", "--print", "a;b|c"],
         vec![
-            "--tmux=n",
+            "--ccm-tmux=n",
             "--detach",
             "--bus-register",
             "--bus-note",
@@ -1361,16 +1336,40 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     ] {
         build_of(&args, &env()).unwrap_or_else(|e| panic!("真实好值被拒了：{args:?} ⇒ {}", e.0));
     }
-    // 反：相对 · `..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注。
+    // 用户 09-26：相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
+    let e0 = env();
+    for (rel, want) in [
+        ("rel/dir", format!("{}/rel/dir", e0.pwd)),
+        (".", e0.pwd.clone()),
+        ("../x/./y", "/x/y".to_string()),
+    ] {
+        let a: Vec<String> = ["--cwd", rel].iter().map(|s| s.to_string()).collect();
+        let Parsed::Opts(o) = parse(&a).expect("解析得动") else {
+            panic!()
+        };
+        assert_eq!(resolve_cwd(&o, &e0), want, "{rel:?}");
+        build_of(&["--cwd", rel], &e0)
+            .unwrap_or_else(|e| panic!("相对 {rel:?} 补全后被拒：{}", e.0));
+    }
+    // 用户 09-26：启动器按空格拆词、打头 `~/` 是家目录（与载荷那条路交给 shell 拆词同一个结果）。
+    for (l, want) in [
+        ("ccr code", vec!["ccr", "code", "-p"]),
+        ("~/bin/claude --x", vec!["/home/pi/bin/claude", "--x", "-p"]),
+    ] {
+        let Plan::Direct(d) = build_of(&["--launcher", l, "-p"], &e0).expect("该起得来") else {
+            panic!("该是直路")
+        };
+        assert_eq!(d.argv, want, "{l:?}");
+    }
+    // 反：`..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注。
     for (args, what) in [
-        (vec!["--cwd", "rel/dir"], "--cwd"),
         (vec!["--cwd", "/home/u/../etc"], "--cwd"),
         (vec!["--cwd", "/home/u/x\ny"], "--cwd"),
         (vec!["--launcher", "claude\rrm"], "--launcher"),
         (vec!["--", "ok", "bad\0"], "--"),
         (
             vec![
-                "--tmux=n",
+                "--ccm-tmux=n",
                 "--detach",
                 "--bus-register",
                 "--bus-note",
@@ -1392,7 +1391,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     let mut dirty = env();
     dirty.anthropic_base_url = Some("http://x\nevil".into());
     build_of(&[], &dirty).unwrap_or_else(|e| panic!("直路上用不上的继承值挡住了起会话：{}", e.0));
-    let e = build_of(&["--tmux=n"], &dirty)
+    let e = build_of(&["--ccm-tmux=n"], &dirty)
         .err()
         .expect("容器路把带换行的继承值拼进载荷了");
     assert!(e.0.contains("ANTHROPIC_BASE_URL"), "{}", e.0);
@@ -1423,7 +1422,7 @@ fn a_config_dir_from_the_manifest_goes_through_the_full_table() {
     };
     let ok = build_of(&["--cwd", "/p", "--account", "z"])
         .unwrap_or_else(|e| panic!("好目录被拒了：{}", e.0));
-    assert!(render(&ok, None).contains("CLAUDE_CONFIG_DIR"));
+    assert!(render(&ok).contains("CLAUDE_CONFIG_DIR"));
     let e = build_of(&["--cwd", "/p", "--account", "x"])
         .err()
         .expect("带 `$` 的配置目录拼进去了（自由文本那一层不拒元字符，全表拒）");

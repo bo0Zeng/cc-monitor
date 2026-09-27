@@ -70,7 +70,7 @@ FAKE_BACKEND="$REPO/tests/e2e/fake-backend.sh"
 run_print() {
   env -u TMUX -u CLAUDE_CONFIG_DIR CCM_CONFIG=/nonexistent \
     CCM_BACKEND_BIN="$FAKE_BACKEND" \
-    CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash -c "$1 --print"
+    CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash -c "$1 --ccm-print"
 }
 
 echo
@@ -81,7 +81,8 @@ NEEDLE_TMUX_NAME="-s 'cc-p1'"
 NEEDLE_CWD="-c '/tmp'"
 NEEDLE_SID_TAG="@ccm_sid_expect 'p1'"
 NEEDLE_BASE="'--base'"
-ck "resume 动作被内层 ccm 收到（positional，非 flag——ccm 的内部约定）" yes "$(contains "resume" "$OUT")"
+# 〔AL3 · V138〕`--resume` 是交给 claude 的词，内层放在 `--` 后面原样带进去。
+ck "--resume 被内层 ccm 原样带进去（V138：交给 claude 的词）" yes "$(contains "--resume" "$OUT")"
 ck "sid p1 出现在内层调用里" yes "$(contains "p1" "$OUT")"
 ck "tmux 名 cc-p1 出现在 new-session" yes "$(contains "$NEEDLE_TMUX_NAME" "$OUT")"
 ck "cwd /tmp 出现在 -c" yes "$(contains "$NEEDLE_CWD" "$OUT")"
