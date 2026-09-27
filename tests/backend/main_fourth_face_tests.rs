@@ -2,14 +2,12 @@ use super::{
     tmux_exe_in, tmux_in, tmux_present, unavailable_from, unavailable_here, TmuxPlatform, NO_TMUX,
 };
 
-/// ★ `K-P4` 红线之一：**生产路径今天恒空** ⇒ hello 帧的线上字节逐字节不变。
+/// ★ `K-P4` 红线之一〔NET2 真填〕：**生产 hello 填的就是这台机器的答案**（`设计/96 §2.2`「`hello.unavailable` 真填」）。
 ///
-/// 它与 `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 是**两半**：
-/// 那条证「给空表就得到旧字节」，本条证「**生产确实给的是空表**」。
-/// 缺任一条，「今天线上字节没变」这句话都不成立 —— 与 `homes` 那两条同一个分工。
-/// ⚠ 真填那天本条会**故意变红**：那是提醒（去 bump `BUILD_ID`、去更新 fixture），不是障碍。
+/// 与 `wire_tests.rs::hello_unavailable_is_additive_present_and_absent` 是两半：那条钉两形的字节，
+/// 本条钉「生产那一格恰好一处、给的是 `unavailable_here()`」—— 换回 `Vec::new()` 就红。
 #[test]
-fn production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen() {
+fn production_hello_fills_unavailable_from_this_machine() {
     let prod = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
     let sites: Vec<&str> = prod
         .lines()
@@ -17,19 +15,32 @@ fn production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen() {
         .filter(|l| l.starts_with("unavailable:"))
         .collect();
     assert_eq!(
-        sites.len(),
-        1,
-        "`main.rs` 生产段里给 `unavailable` 赋值的地方有 {} 处（应当恰好 1 处）——\n\
-             0 处 ⇒ 抽取坏了（本断言此刻在空转）；≥2 处 ⇒ 有第二条路，红线只守住一条。\n\
-             实得：{sites:?}",
-        sites.len()
+        sites,
+        ["unavailable: unavailable_here(),"],
+        "`main.rs` 生产段里给 `unavailable` 赋值的地方应当恰好一处、填 `unavailable_here()`\n\
+             （0 处 ⇒ 抽取坏了；≥2 处 ⇒ 有第二条路；`Vec::new()` ⇒ 退回了恒空）。实得：{sites:?}"
     );
+}
+
+/// 〔NET2〕unix 权限位那一维两向：没有权限位 ⇒ 恰好是声明了 `no_unix_mode` 的那几条（今天 `files-chmod`）、码是它；有 ⇒ 空。
+/// 两侧异源：左边是 `unix_mode_unavailable` 的产出，右边是本条手写的名单。
+#[test]
+fn the_unix_mode_axis_lists_exactly_the_commands_that_declare_it() {
+    let got: Vec<(String, String)> = super::unix_mode_unavailable(false)
+        .into_iter()
+        .map(|u| (u.command, u.code))
+        .collect();
     assert_eq!(
-        sites[0], "unavailable: Vec::new(),",
-        "`main.rs` 开始往 `unavailable` 里填东西了 ⇒ hello 帧的线上字节**变了**。\n\
-             那是一次**跨仓契约变更**（仓外 aterm 按精确字节读这一帧，契约冻结 2026-07-18）。\n\
-             要真填就同轮做三件事（见 `wire.rs` 那个字段的头注）：换这一行 · 更新 fixture 期望串 ·\n\
-             **bump `BUILD_ID`**（否则已部署的远端不判 stale、不重装，整轮改动在那边休眠）。"
+        got,
+        [("files-chmod".to_string(), super::NO_UNIX_MODE.to_string())]
+    );
+    assert!(super::unix_mode_unavailable(true).is_empty());
+    // 这份二进制是 unix ⇒ 生产那一格里没有这一维。
+    assert!(
+        !unavailable_here()
+            .iter()
+            .any(|u| u.code == super::NO_UNIX_MODE),
+        "unix 上的 hello 说了没有 unix 权限位"
     );
 }
 
