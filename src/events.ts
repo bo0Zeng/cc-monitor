@@ -657,7 +657,11 @@ export async function bindEvents(
           owedHolds.add(hold);
         }
       } else if (it.t === "gap") {
-        console.warn(`[events] 会话流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 按行号补`);
+        console.warn(
+          it.toSeq === null
+            ? `[events] 会话流 [${origin}] 在第 ${it.fromSeq} 格处丢了一行（超长、说不出是哪一行）—— 按行号补`
+            : `[events] 会话流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 按行号补`,
+        );
         queue.push({ kind: "gap", origin });
       } else if (it.t === "unseen") {
         console.info(`[events] 会话流 [${origin}]：那台机器现在看不见（${it.why}）`);

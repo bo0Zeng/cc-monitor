@@ -256,7 +256,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
         if let Some(from_seq) = sub.gap_from.take() {
             out.push(Item::Gap {
                 from_seq,
-                to_seq: sub.next,
+                to_seq: Some(sub.next),
             });
         }
     }
@@ -286,7 +286,7 @@ fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
     if let Some(from_seq) = sub.gap_from.take() {
         out.push(Item::Gap {
             from_seq,
-            to_seq: sub.next,
+            to_seq: Some(sub.next),
         });
     }
     for body in &rest[..take] {
@@ -421,6 +421,33 @@ impl EventReplay {
                     plans.push((sub.label.clone(), sub.id, items));
                 }
             }
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔RENDER2 · `99 §2.1` ㉓①〕这台机器的内容流上丢了一行、说不出丢在哪个会话（超长整行丢弃）：
+    /// 订了这台 `session-lines` 的每条实时订阅原位收一格 `Gap { to_seq: None }`（不占位置、不占 credit）。
+    pub fn on_lost_somewhere(&self, origin: &str) {
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter()
+                .filter(|s| s.live && s.kind == SubKind::Lines && s.origin == origin)
+                .map(|s| {
+                    let gap = Item::Gap {
+                        from_seq: s.next,
+                        to_seq: None,
+                    };
+                    (s.label.clone(), s.id, vec![gap])
+                })
+                .collect();
             (sink, plans)
         };
         for (label, id, items) in plans {
@@ -709,7 +736,7 @@ impl EventReplay {
                     if sub.credit > 0 {
                         sub.gap_from.take().map(|from_seq| Item::Gap {
                             from_seq,
-                            to_seq: sub.next,
+                            to_seq: Some(sub.next),
                         })
                     } else {
                         None

@@ -396,7 +396,7 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
                 }
             }
         }
-        WItem::Gap { from_seq, to_seq } => ("gap", *from_seq, *to_seq),
+        WItem::Gap { from_seq, to_seq } => ("gap", *from_seq, to_seq.unwrap_or(u64::MAX)),
         WItem::Unseen { .. } => ("unseen", 0, 0),
         WItem::Seen { .. } => ("seen", 0, 0),
         WItem::Closed { .. } => ("closed", 0, 0),
@@ -706,7 +706,11 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
                         };
                         (*id, kind, *seq)
                     }
-                    WItem::Gap { from_seq, to_seq } => (*id, "gap", from_seq * 100 + to_seq),
+                    WItem::Gap { from_seq, to_seq } => (
+                        *id,
+                        "gap",
+                        from_seq * 100 + to_seq.expect("这里只会有有界的 Gap"),
+                    ),
                     WItem::Unseen { .. } => (*id, "unseen", 0),
                     WItem::Seen { .. } => (*id, "seen", 0),
                     WItem::Closed { .. } => (*id, "closed", 0),
@@ -907,4 +911,36 @@ async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
             "{change}：别的会话被连带丢了"
         );
     }
+}
+
+/// 〔RENDER2 · `99 §2.1` ㉓①〕逐字「超长行在流里**原位**给 `Gap`，加『知道丢了、不知道丢到哪』一形（`to_seq` 缺省）」：
+/// 丢在第 2、3 行之间 ⇒ 这台的订阅在那两格之间恰好收一格 `Gap{from=2, to 缺}`，不占位置（下一行仍是位置 2）、不占 credit；
+/// 别的机器的订阅一格不收。
+#[tokio::test]
+async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
+    let (r, rec) = hub();
+    let far = crate::origin::Origin("far".to_string());
+    r.origin_seen(&local(), true);
+    r.origin_seen(&far, true);
+    r.subscribe("w", 1, &local(), "session-lines", None, 3);
+    r.subscribe("w", 2, &far, "session-lines", None, 3);
+    r.ready_point(None).await;
+    rec.clear();
+    r.on_line_batch_awaited(lines("s", 0..2)).await;
+    r.on_lost_somewhere(crate::origin::LOCAL);
+    r.on_line_batch_awaited(lines("s", 2..3)).await;
+    assert_eq!(
+        rec.all().iter().map(what).collect::<Vec<_>>(),
+        vec![
+            ("line", 0, 0),
+            ("line", 1, 1),
+            ("gap", 2, u64::MAX),
+            ("line", 2, 2)
+        ]
+    );
+    let subs: Vec<u64> = rec.0.lock().unwrap().iter().map(|(_, id, _)| *id).collect();
+    assert!(
+        subs.iter().all(|id| *id == 1),
+        "别的机器的订阅收到了：{subs:?}"
+    );
 }

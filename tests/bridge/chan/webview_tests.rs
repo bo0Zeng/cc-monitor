@@ -262,7 +262,12 @@ fn the_item_shapes_equal_the_golden_file_the_ts_side_decodes() {
         },
         Item::Gap {
             from_seq: 8,
-            to_seq: 12,
+            to_seq: Some(12),
+        },
+        // 〔RENDER2 · `99 §2.1` ㉓①〕知道丢了、不知道丢到哪
+        Item::Gap {
+            from_seq: 13,
+            to_seq: None,
         },
         Item::Unseen {
             at: HopId {
