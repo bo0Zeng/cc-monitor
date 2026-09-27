@@ -46,6 +46,8 @@ interface Rule {
   probeKind?: string;
   colloquial?: string[];
   imperative?: string[];
+  /** C-Y3：问号与口语词那一条管哪几档（title ＋ aria，`99 §2.1 ㉛①`）。 */
+  kinds?: string[];
   /** C-Y3：祈使动词那一条管哪几档（用户 09-24 裁：control 档许以动词开头）。 */
   imperativeKinds?: string[];
   /** C-Y3：control 档的正例 —— 以动词开头、按 control 档查必须放过。 */
@@ -60,6 +62,8 @@ interface Ctx {
   terms: Term[];
   colloquial: string[];
   imperative: string[];
+  /** 问号与口语词只查这几档 —— 从 `rules.json` 的 `C-Y3.kinds` 读。 */
+  labelKinds: string[];
   /** 祈使动词那一条只查这几档 —— 从 `rules.json` 的 `C-Y3.imperativeKinds` 读，检法不写死。 */
   imperativeKinds: string[];
 }
@@ -71,11 +75,12 @@ function y3Ctx(rules: Rule[], terms: Term[]): Ctx {
     terms,
     colloquial: y3?.colloquial ?? [],
     imperative: y3?.imperative ?? [],
+    labelKinds: y3?.kinds ?? [],
     imperativeKinds: y3?.imperativeKinds ?? [],
   };
 }
 
-const NARROW = new Set(["title", "control", "action"]);
+const NARROW = new Set(["title", "control", "action", "aria"]);
 const DASH = /——|—/g;
 const PAREN = /（([^（）]*)）|\(([^()]*)\)/g;
 const HAN = /[一-鿿]/g;
@@ -87,13 +92,14 @@ type Check = (e: Entry, ctx: Ctx) => string | null;
 export const CHECKS: Record<string, Check> = {
   "C-Y2": (e) => (/\*\*|`|⇒|🔴/.test(e.zh) ? "有 markdown / 论证符号" : null),
   "C-Y3": (e, ctx) => {
-    if (e.kind !== "title") return null;
+    // 〔FIX2 · 99 §2.1 ㉛①〕问号与口语词的射程读 `C-Y3.kinds`（title ＋ aria）。
+    if (!ctx.labelKinds.includes(e.kind)) return null;
     const s = speech(e.zh);
-    if (/[？?]/.test(s)) return "title 档里有问号";
+    if (/[？?]/.test(s)) return `${e.kind} 档里有问号`;
     const c = ctx.colloquial.find((w) => s.indexOf(w) >= 0);
-    if (c) return `title 档里有口语词「${c}」`;
+    if (c) return `${e.kind} 档里有口语词「${c}」`;
     // 〔ST2 · 用户 09-24 裁〕祈使词只查 `imperativeKinds` 那几档（今天只有 title）。
-    //   ⚠ 上面那一句 `e.kind !== "title"` 管的是问号与口语词，这一句管的是动词开头 —— 两件事，
+    //   ⚠ 上面那一句 `labelKinds` 管的是问号与口语词，这一句管的是动词开头 —— 两件事，
     //   后者的射程住 `rules.json`，改规矩就是改那一格，检法跟着走。
     if (!ctx.imperativeKinds.includes(e.kind)) return null;
     const v = ctx.imperative.find((w) => s.trimStart().startsWith(w));
@@ -254,6 +260,22 @@ describe("〔ST2 · 用户 09-24 裁〕复选框 / 开关标签允许动词开�
     for (const zh of verbStart) {
       expect(CHECKS["C-Y3"]({ kind: "title", zh, args: [] }, ctx), `title 档放过了「${zh}」`).toMatch(/祈使动词/);
     }
+  });
+});
+
+// 设计/99 §2.1 ㉛① · 设计/91 §6 第 6 条：「aria-* 单立一个 kind、按标签面规则管」。
+describe("〔FIX2〕aria 档（只进 aria-label 的无障碍名）按标签面规则管", () => {
+  const rules = loadRules();
+  const ctx = y3Ctx(rules, loadTerms());
+  const aria = (zh: string) => ({ kind: "aria", zh, args: [] });
+
+  it("★ 问号与口语词管它、祈使动词不管它、破折号 / 括号说明按窄档管", () => {
+    expect(ctx.labelKinds).toEqual(["title", "aria"]);
+    expect(ctx.imperativeKinds).not.toContain("aria");
+    expect(CHECKS["C-Y3"](aria("关闭"), ctx), "按钮的无障碍名以动词开头是标准形").toBeNull();
+    expect(CHECKS["C-Y3"](aria("要关掉吗？"), ctx)).toMatch(/aria 档里有问号/);
+    expect(CHECKS["C-Y3"](aria("还差什么"), ctx)).toMatch(/aria 档里有口语词/);
+    expect(CHECKS["C-L2"](aria("关闭 — 提示"), ctx)).toMatch(/aria 档里有破折号/);
   });
 });
 
