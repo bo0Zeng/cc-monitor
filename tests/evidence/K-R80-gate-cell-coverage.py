@@ -665,7 +665,7 @@ cell(
     },
 )
 
-E2E_NOTE = ("六套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 接进来的令牌两套）。`e2e/` 下的套件今天远不止四套 —— "
+E2E_NOTE = ("七套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 接进来的令牌两套 ＋ 〔TAIL〕`backend-cc-bus`）。`e2e/` 下的套件今天远不止四套 —— "
             "`ccm-acceptance` / `ccm-pretrust` / `cc-spawn-uplift` 等**都不在这道门里**"
             "（那笔账逐字记在本文件头注引的 `gate.sh` 那一段：一次真行为变更的 71 条红里"
             "「这道门看得见 9 条、看不见 62 条」）")
@@ -678,6 +678,8 @@ for suite, anchor in [
     #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。
     ("ccm tests/e2e/backend-rbind-token", "run_e2e backend-rbind-token   11"),
     ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend   9"),
+    # 〔TAIL 09-26〕后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
+    ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        96"),
 ]:
     cell(
         suite,
@@ -1380,7 +1382,7 @@ for _s in ("backend-rbind-token", "rbind-token-endtoend"):
            "〔第二波 T4 09-24〕`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
            "`ci.yml` 步 2 / 步 3 那两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」。"
            "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
-for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity"):
+for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus"):
     invoke("ccm tests/e2e/" + _s, ELSEWHERE,
            "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
            "⚠ 那几条调用行**在 GitHub runner 上一趟都没跑过**（本仓不推送）—— "
