@@ -112,6 +112,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/filewin/shell_keys_tests.rs",
     "tests/bridge/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
     "tests/bridge/filewin/extract_tests.rs", // 〔FILES2〕解压到这里（窗口那一侧，合成后端）
+    "tests/bridge/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载（窗口那一侧，合成对端）
     "tests/bridge/filewin/workspace_tests.rs",
     "tests/bridge/filewin/writeops_tests.rs",
     "tests/bridge/lib_batch_tests.rs",

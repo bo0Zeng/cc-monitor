@@ -36,6 +36,7 @@
 //! 撤 = 一面旗 ＋ 一个 `Notify`（等拨号那一段可以被当场打断）；进度 = `watch`（转发任务按变更合并，堵住时只合并不堆积）。
 
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -106,34 +107,36 @@ pub fn staging_part(key: &str) -> String {
 // ═══ 本机落点（第三层：每一处改动先过路径解析）══════════════════════════════════════════════
 
 /// 本机落点拆成 `(父目录 = 路径解析的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
-fn land_parts(local_path: &str) -> Result<(PathBuf, String, String), String> {
-    let p = Path::new(local_path);
+/// 〔FILES2 · Q4〕名字按 `OsString` 拿（Linux 上落点可以是非 UTF-8 的原始字节：有损名下载「字节原样当文件名」）。
+fn land_parts(local_path: &Path) -> Result<(PathBuf, OsString, OsString), String> {
+    let p = local_path;
+    let shown = p.display();
     if !p.is_absolute() {
-        return Err(format!("本机落点必须是绝对路径：{local_path}"));
+        return Err(format!("本机落点必须是绝对路径：{shown}"));
     }
     let name = p
         .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| format!("本机落点没有文件名：{local_path}"))?
-        .to_string();
+        .ok_or_else(|| format!("本机落点没有文件名：{shown}"))?
+        .to_os_string();
     let root = p
         .parent()
-        .ok_or_else(|| format!("本机落点没有父目录：{local_path}"))?
+        .ok_or_else(|| format!("本机落点没有父目录：{shown}"))?
         .to_path_buf();
-    let part = format!("{name}.part");
+    let mut part = name.clone();
+    part.push(".part");
     Ok((root, name, part))
 }
 
 /// 开单时的那一判（不动盘）：落点与它的半成品都过得了路径解析。
-pub fn land_check(local_path: &str) -> Result<(), String> {
-    let (root, name, part) = land_parts(local_path)?;
+pub fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
+    let (root, name, part) = land_parts(local_path.as_ref())?;
     resolve_in_root(&root, &name)?;
     resolve_in_root(&root, &part)?;
     Ok(())
 }
 
 /// 从 0 开一份半成品：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
-fn land_open_fresh(root: &Path, part: &str) -> Result<std::fs::File, String> {
+fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, String> {
     let at = resolve_in_root(root, part)?;
     if std::fs::symlink_metadata(&at).is_ok() {
         std::fs::remove_file(&at).map_err(|e| format!("删旧半成品 {} 失败: {e}", at.display()))?;
@@ -148,9 +151,10 @@ fn land_open_fresh(root: &Path, part: &str) -> Result<std::fs::File, String> {
 /// 续传：**不原地接着写**（第三层禁「续写」那种开法：每一个写句柄都得是 `O_EXCL` 新建）⇒
 /// 旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
 /// 回来的句柄游标停在 `keep`。代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
-fn land_carry_over(root: &Path, part: &str, keep: u64) -> Result<std::fs::File, String> {
+fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File, String> {
     let at = resolve_in_root(root, part)?;
-    let old_name = format!("{part}.old");
+    let mut old_name = part.to_os_string();
+    old_name.push(".old");
     let old = resolve_in_root(root, &old_name)?;
     if std::fs::symlink_metadata(&old).is_ok() {
         std::fs::remove_file(&old).map_err(|e| format!("删残留 {} 失败: {e}", old.display()))?;
@@ -175,14 +179,14 @@ fn land_carry_over(root: &Path, part: &str, keep: u64) -> Result<std::fs::File, 
 }
 
 /// 传完：半成品改名上位。
-fn land_commit(root: &Path, part: &str, name: &str) -> Result<(), String> {
+fn land_commit(root: &Path, part: &OsStr, name: &OsStr) -> Result<(), String> {
     let from = resolve_in_root(root, part)?;
     let to = resolve_in_root(root, name)?;
     std::fs::rename(&from, &to).map_err(|e| format!("落地 {} 失败: {e}", to.display()))
 }
 
 /// 失败（不是撤）：删掉半成品。
-fn land_discard(root: &Path, part: &str) {
+fn land_discard(root: &Path, part: &OsStr) {
     if let Ok(at) = resolve_in_root(root, part) {
         let _ = std::fs::remove_file(&at);
     }
@@ -396,11 +400,11 @@ pub(crate) async fn upload_to_staging(
 pub(crate) async fn download_to_local(
     s: &Session,
     remote_path: &str,
-    local_path: &str,
+    local_path: impl AsRef<Path>,
     cancel: &Cancel,
     on_progress: &Sink<'_>,
 ) -> Result<u64, String> {
-    let (root, name, part) = land_parts(local_path)?;
+    let (root, name, part) = land_parts(local_path.as_ref())?;
     let total = sftp::metadata_size(s, remote_path)
         .await
         .flatten()
@@ -498,7 +502,7 @@ pub(crate) async fn download_to_local(
 
 enum Job {
     Upload { local: String, key: String },
-    Download { remote: String, local: String },
+    Download { remote: String, local: PathBuf },
 }
 
 struct Ticket {
@@ -549,6 +553,15 @@ fn err(id: &str, code: &str, message: &str) -> Frame {
         message: Some(message.to_string()),
         data: None,
     }
+}
+
+/// 〔FILES2 · Q4〕下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
+fn local_path_of(args: &serde_json::Value) -> Result<PathBuf, String> {
+    args.get("local_path")
+        .and_then(crate::files::raw::from_json)
+        .filter(|b| !b.is_empty())
+        .map(|b| crate::files::raw::to_path_buf(&b))
+        .ok_or_else(|| "少了 `local_path`，或者它不是字符串 / `{\"b16\": …}`".to_string())
 }
 
 fn text<'a>(args: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
@@ -658,11 +671,12 @@ impl Desk {
 
     /// `transfer-download`：开单；本机落点当场过路径解析。
     fn download(&self, id: &str, args: &serde_json::Value) -> Frame {
+        // 〔FILES2 · Q4〕本机落点收字符串或 `{"b16": …}`（有损名下载在 Linux 上按原始字节落名）。
         let parsed = dial_of(args).and_then(|d| {
             Ok((
                 d,
                 text(args, "remote_path")?.to_string(),
-                text(args, "local_path")?.to_string(),
+                local_path_of(args)?,
             ))
         });
         let (dial, remote, local) = match parsed {

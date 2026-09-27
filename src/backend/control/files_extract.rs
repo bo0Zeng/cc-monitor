@@ -615,7 +615,10 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
             };
             Err((
                 code,
-                copy_text("beFilesExtract.stopped.say", &[("why", &why), ("tail", &tail)]),
+                copy_text(
+                    "beFilesExtract.stopped.say",
+                    &[("why", &why), ("tail", &tail)],
+                ),
             ))
         }
     }

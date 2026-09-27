@@ -54,7 +54,6 @@ use crate::copy_table::copy_text;
 use std::collections::BTreeSet;
 
 use super::copy::copyable;
-use super::download::is_downloadable;
 use super::editor::editable;
 use super::source::Listed;
 use super::writeops::is_writable;
@@ -518,7 +517,8 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             if copyable(r) {
                 out.push(Action::Copy);
             }
-            if is_downloadable(r) {
+            // 〔FILES2 · Q4〕有损名带着字节也拉得下来（远端按字节就地拷进暂存区再下）。
+            if super::download::is_downloadable_listed(r) {
                 out.push(Action::Download);
             }
             // 〔W5-FILES〕算大小：名字寻址得到就给（文件也收，后端回它自己）。
