@@ -1,0 +1,582 @@
+{
+  "note": "RENDER2 骨架外框秤（RENDER2-skel-run.ts 生成，勿手改）",
+  "generatedAt": "2026-09-27T17:45:12.362Z",
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "colWidth": 780,
+  "rows": [
+    {
+      "id": "real#1",
+      "cls": "card-assistant",
+      "slot": 1994.640625,
+      "header": 18.046875,
+      "body": 1944.59375
+    },
+    {
+      "id": "real#2",
+      "cls": "card-assistant",
+      "slot": 3564.015625,
+      "header": 18.046875,
+      "body": 3513.96875
+    },
+    {
+      "id": "real#3",
+      "cls": "card-assistant",
+      "slot": 2874.453125,
+      "header": 18.046875,
+      "body": 2824.40625
+    },
+    {
+      "id": "real#4",
+      "cls": "card-assistant",
+      "slot": 1881.734375,
+      "header": 18.046875,
+      "body": 1831.6875
+    },
+    {
+      "id": "real#5",
+      "cls": "card-assistant",
+      "slot": 2382.40625,
+      "header": 18.046875,
+      "body": 2332.359375
+    },
+    {
+      "id": "real#6",
+      "cls": "card-assistant",
+      "slot": 1975,
+      "header": 18.046875,
+      "body": 1924.953125
+    },
+    {
+      "id": "real#7",
+      "cls": "card-assistant",
+      "slot": 2259.078125,
+      "header": 18.046875,
+      "body": 2209.03125
+    },
+    {
+      "id": "real#8",
+      "cls": "card-assistant",
+      "slot": 1891.328125,
+      "header": 18.046875,
+      "body": 1841.28125
+    },
+    {
+      "id": "real#9",
+      "cls": "card-assistant",
+      "slot": 1274.734375,
+      "header": 18.046875,
+      "body": 1224.6875
+    },
+    {
+      "id": "real#10",
+      "cls": "card-assistant",
+      "slot": 2428.859375,
+      "header": 18.046875,
+      "body": 2378.8125
+    },
+    {
+      "id": "real#11",
+      "cls": "card-assistant",
+      "slot": 3457.359375,
+      "header": 18.046875,
+      "body": 3407.3125
+    },
+    {
+      "id": "real#12",
+      "cls": "card-assistant",
+      "slot": 8894.453125,
+      "header": 18.046875,
+      "body": 8829.734375
+    },
+    {
+      "id": "real#13",
+      "cls": "card-assistant",
+      "slot": 4745.671875,
+      "header": 18.046875,
+      "body": 4695.625
+    },
+    {
+      "id": "real#14",
+      "cls": "card-assistant",
+      "slot": 3263.5625,
+      "header": 18.046875,
+      "body": 3213.515625
+    },
+    {
+      "id": "real#15",
+      "cls": "card-assistant",
+      "slot": 3457.359375,
+      "header": 18.046875,
+      "body": 3407.3125
+    },
+    {
+      "id": "real#16",
+      "cls": "card-assistant",
+      "slot": 3104.84375,
+      "header": 18.046875,
+      "body": 3054.796875
+    },
+    {
+      "id": "real#17",
+      "cls": "card-assistant",
+      "slot": 4753.8125,
+      "header": 18.046875,
+      "body": 4703.765625
+    },
+    {
+      "id": "real#18",
+      "cls": "card-assistant",
+      "slot": 3263.5625,
+      "header": 18.046875,
+      "body": 3213.515625
+    },
+    {
+      "id": "real#19",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#20",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#21",
+      "cls": "card-assistant",
+      "slot": 99.546875,
+      "header": 18.046875,
+      "body": 49.5
+    },
+    {
+      "id": "real#22",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#23",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#24",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#25",
+      "cls": "card-assistant",
+      "slot": 99.546875,
+      "header": 18.046875,
+      "body": 49.5
+    },
+    {
+      "id": "real#26",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#27",
+      "cls": "card-assistant",
+      "slot": 74.796875,
+      "header": 18.046875,
+      "body": 24.75
+    },
+    {
+      "id": "real#28",
+      "cls": "card-assistant",
+      "slot": 99.546875,
+      "header": 18.046875,
+      "body": 49.5
+    },
+    {
+      "id": "real#29",
+      "cls": "card-compact",
+      "slot": 64.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#30",
+      "cls": "card-user",
+      "slot": 71.6875,
+      "header": 0,
+      "body": 21.6875
+    },
+    {
+      "id": "real#31",
+      "cls": "card-user",
+      "slot": 180.125,
+      "header": 0,
+      "body": 130.125
+    },
+    {
+      "id": "real#32",
+      "cls": "card-user",
+      "slot": 115.0625,
+      "header": 0,
+      "body": 65.0625
+    },
+    {
+      "id": "real#33",
+      "cls": "card-user",
+      "slot": 93.375,
+      "header": 0,
+      "body": 43.375
+    },
+    {
+      "id": "real#34",
+      "cls": "card-user",
+      "slot": 93.375,
+      "header": 0,
+      "body": 43.375
+    },
+    {
+      "id": "real#35",
+      "cls": "card-user",
+      "slot": 201.8125,
+      "header": 0,
+      "body": 151.8125
+    },
+    {
+      "id": "real#36",
+      "cls": "card-user",
+      "slot": 245.1875,
+      "header": 0,
+      "body": 195.1875
+    },
+    {
+      "id": "real#37",
+      "cls": "card-user",
+      "slot": 71.6875,
+      "header": 0,
+      "body": 21.6875
+    },
+    {
+      "id": "real#38",
+      "cls": "card-user",
+      "slot": 93.375,
+      "header": 0,
+      "body": 43.375
+    },
+    {
+      "id": "real#39",
+      "cls": "card-user",
+      "slot": 115.0625,
+      "header": 0,
+      "body": 65.0625
+    },
+    {
+      "id": "real#40",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#41",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#43",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#44",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#46",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#47",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#48",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#50",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#51",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#52",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#53",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#54",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#55",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#57",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#58",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#61",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#62",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#64",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#65",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#66",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#67",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#68",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "real#69",
+      "cls": "card-tool-group",
+      "slot": 48.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#0",
+      "cls": "card-api-retry",
+      "slot": 27.046875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#1",
+      "cls": "card-api-retry",
+      "slot": 27.046875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#2",
+      "cls": "card-api-retry",
+      "slot": 27.046875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#3",
+      "cls": "card-api-retry",
+      "slot": 27.046875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#4",
+      "cls": "card-api-retry",
+      "slot": 51.046875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#5",
+      "cls": "card-api-error",
+      "slot": 95.375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#6",
+      "cls": "card-api-error",
+      "slot": 95.375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#7",
+      "cls": "card-api-error",
+      "slot": 290.5625,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#8",
+      "cls": "card-bash-input",
+      "slot": 36.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#9",
+      "cls": "card-bash-input",
+      "slot": 36.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#10",
+      "cls": "card-bash-input",
+      "slot": 36.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#11",
+      "cls": "card-bash-output",
+      "slot": 59.1875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#12",
+      "cls": "card-bash-output",
+      "slot": 143.296875,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#13",
+      "cls": "card-bash-output",
+      "slot": 445.40625,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#14",
+      "cls": "card-bash-output",
+      "slot": 522.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#15",
+      "cls": "card-bash-output",
+      "slot": 488.453125,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#16",
+      "cls": "card-bash-output",
+      "slot": 152.203125,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#17",
+      "cls": "card-slash",
+      "slot": 36.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#18",
+      "cls": "card-slash",
+      "slot": 36.59375,
+      "header": 0,
+      "body": 0
+    },
+    {
+      "id": "syn#19",
+      "cls": "card-slash",
+      "slot": 38.59375,
+      "header": 0,
+      "body": 0
+    }
+  ]
+}

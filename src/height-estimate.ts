@@ -436,15 +436,24 @@ export interface SkeletonFacts {
 export type SkeletonKind = "none" | "tool" | "card";
 
 /**
- * 卡片外框（padding + border + 卡间 margin）的偏保守常数。
- * ⚠ 这几个数**是估的**：它们对着 styles.css 的量级取整，**没有秤对拍过**（秤 2 量的是
- * `contain-intrinsic-size` 那条 content-box 路，不量卡间距）。`设计/10 §2.5b`：粗估宁可偏高 ——
- * 精算后是往下修，视觉上比往上撑好。
+ * 卡片外框（padding + border + 卡间 margin）的常数。
+ * 〔RENDER2 · `设计/10 §7` 第 1 条〕有秤了：`tests/evidence/RENDER2-skel-golden.json`（真 Chromium 里读每张卡在流里占的位置
+ * − 头 − 体，`RENDER2-skel-run.ts` 复算），门禁在 `tests/scale2-height-truth.vitest.ts`「骨架外框」那一组：
+ * 每一格 == 向上取整的中位数（`设计/10 §2.5b`「粗估宁可偏高」—— 取整只往上，不再拍）。
+ * 原先拍的值与秤的差：user 36 → 50（少算了 14）· 工具组 46 → 49 · 系统细条 32 → 28 · assistant 20 → 19。
  */
-const SKEL_USER_CHROME = 36;
-const SKEL_CARD_CHROME = 20;
-const SKEL_TOOL_GROUP_H = SUMMARY_H + 8;
-const SKEL_SYSTEM_H = 32;
+const SKEL_USER_CHROME = 50;
+const SKEL_CARD_CHROME = 19;
+const SKEL_TOOL_GROUP_H = 49;
+const SKEL_SYSTEM_H = 28;
+
+/** 〔RENDER2〕第一级里「正文之外那一段」四格（秤对拍的就是它们；assistant 那一格含头与块距）。只给判据读。 */
+export const SKEL_OUTER = {
+  user: SKEL_USER_CHROME,
+  assistant: CARD_HEADER_H + BLOCK_GAP + SKEL_CARD_CHROME,
+  toolGroup: SKEL_TOOL_GROUP_H,
+  system: SKEL_SYSTEM_H,
+} as const;
 
 /** 字宽算术（口径 = `fallbackTextHeight`：CJK 全宽、其余 0.52em），折成行数的**上界**。 */
 function factLines(f: SkeletonFacts, fontSizePx: number, widthPx: number): number {
