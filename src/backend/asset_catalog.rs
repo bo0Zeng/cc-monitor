@@ -23,6 +23,7 @@
 //!
 //! FNV-1a 64（[`Fnv`]）—— 稳定、零新依赖。**只答「相同 / 不同」，不防篡改**（同 `bytes_carry_build_stamp` 那条买不到）。
 
+use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -210,7 +211,10 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
         let ent = match ent {
             Ok(e) => e,
             Err(e) => {
-                notice.push(format!("走目录时有一处读不出来：{e}"));
+                notice.push(copy_text(
+                    "beAssetCatalog.digest.walkFailed",
+                    &[("e", &e.to_string())],
+                ));
                 continue;
             }
         };
@@ -218,7 +222,10 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
             continue;
         }
         if files >= SKILL_MAX_FILES {
-            notice.push(format!("文件超过 {SKILL_MAX_FILES} 个，后面的没进摘要"));
+            notice.push(copy_text(
+                "beAssetCatalog.digest.tooMany",
+                &[("max", &SKILL_MAX_FILES.to_string())],
+            ));
             break;
         }
         files += 1;
@@ -233,8 +240,9 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
         let len = match std::fs::metadata(ent.path()) {
             Ok(m) if m.is_file() => m.len(),
             _ => {
-                notice.push(format!(
-                    "{rel} 不是普通文件（指向目录的链接 / 特殊文件），没进摘要"
+                notice.push(copy_text(
+                    "beAssetCatalog.digest.notRegular",
+                    &[("rel", &rel.to_string())],
                 ));
                 f.part(b"not-a-file");
                 continue;
@@ -249,7 +257,10 @@ pub fn skill_asset(name: &str, dir: &Path, description: Option<&str>) -> Asset {
                 f.part(&body);
             }
             Err(error) => {
-                notice.push(format!("{rel} 只按长度算进摘要：{error}"));
+                notice.push(copy_text(
+                    "beAssetCatalog.digest.lenOnly",
+                    &[("rel", &rel.to_string()), ("e", &error.to_string())],
+                ));
                 f.part(b"len").part(&len.to_le_bytes());
             }
         }
@@ -410,34 +421,52 @@ pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Pat
 
 /// 线上 `catalog` → 各台快照（入参校验：缺格 / 类型不对 / 种类不在闭集 ⇒ `bad_args`，不猜）。
 pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, String> {
-    let arr = v
-        .get("machines")
-        .and_then(Value::as_array)
-        .ok_or("`catalog.machines` 缺了或不是数组")?;
+    let arr =
+        v.get("machines")
+            .and_then(Value::as_array)
+            .ok_or(crate::common::contract::malformed(
+                "`catalog.machines` missing or not an array",
+            ))?;
     let mut out = BTreeMap::new();
     for m in arr {
         let id = m
             .get("id")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty() && s.len() <= MAX_ID_BYTES)
-            .ok_or("一台机器的 `id` 缺了 / 空 / 太长")?;
-        let label = m
-            .get("label")
-            .and_then(Value::as_str)
-            .ok_or("一台机器的 `label` 缺了或不是串")?;
-        let gen = m
-            .get("gen")
-            .and_then(Value::as_u64)
-            .ok_or("一台机器的 `gen` 缺了或不是非负整数")?;
-        let seen_at = m
-            .get("seenAt")
-            .and_then(Value::as_u64)
-            .ok_or("一台机器的 `seenAt` 缺了或不是非负整数")?;
-        let assets: Vec<Asset> =
-            serde_json::from_value(m.get("assets").cloned().ok_or("一台机器的 `assets` 缺了")?)
-                .map_err(|e| format!("一台机器的 `assets` 形状不对：{e}"))?;
+            .ok_or(crate::common::contract::malformed(
+                "a machine `id` is missing, empty or too long",
+            ))?;
+        let label =
+            m.get("label")
+                .and_then(Value::as_str)
+                .ok_or(crate::common::contract::malformed(
+                    "a machine `label` is missing or not a string",
+                ))?;
+        let gen =
+            m.get("gen")
+                .and_then(Value::as_u64)
+                .ok_or(crate::common::contract::malformed(
+                    "a machine `gen` is missing or not a non-negative integer",
+                ))?;
+        let seen_at =
+            m.get("seenAt")
+                .and_then(Value::as_u64)
+                .ok_or(crate::common::contract::malformed(
+                    "a machine `seenAt` is missing or not a non-negative integer",
+                ))?;
+        let assets: Vec<Asset> = serde_json::from_value(m.get("assets").cloned().ok_or(
+            crate::common::contract::malformed("a machine `assets` is missing"),
+        )?)
+        .map_err(|e| {
+            crate::common::contract::malformed(&format!(
+                "a machine `assets` has the wrong shape: {e}"
+            ))
+        })?;
         if let Some(a) = assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
-            return Err(format!("条目种类 `{}` 不在闭集 {KINDS:?} 里", a.kind));
+            return Err(crate::common::contract::malformed(&format!(
+                "asset kind `{}` is not one of {KINDS:?}",
+                a.kind
+            )));
         }
         out.insert(
             id.to_string(),
@@ -523,16 +552,27 @@ pub fn read_at(path: &Path) -> Read {
     let bytes = match crate::common::fs::read_regular_capped(path, CATALOG_MAX_BYTES) {
         Ok(b) => b,
         Err(_) if !path.exists() => return Read::Absent,
-        Err(e) => return Read::Unreadable(format!("读 {} 失败：{e}", path.display())),
+        Err(e) => {
+            return Read::Unreadable(copy_text(
+                "beAssetCatalog.read.failed",
+                &[("path", &path.display().to_string()), ("e", &e.to_string())],
+            ))
+        }
     };
     match serde_json::from_slice::<Catalog>(&bytes) {
         Ok(c) if c.v == FORMAT_V => Read::Ok(c),
-        Ok(c) => Read::Unreadable(format!(
-            "{} 是更新版本的后端写的（格式 {}，这个后端只认 {FORMAT_V}），没有覆盖它",
-            path.display(),
-            c.v
+        Ok(c) => Read::Unreadable(copy_text(
+            "beAssetCatalog.read.newer",
+            &[
+                ("path", &path.display().to_string()),
+                ("mine", &FORMAT_V.to_string()),
+                ("theirs", &c.v.to_string()),
+            ],
         )),
-        Err(e) => Read::Unreadable(format!("{} 不是这个后端认得的目录：{e}", path.display())),
+        Err(e) => Read::Unreadable(copy_text(
+            "beAssetCatalog.read.unknown",
+            &[("path", &path.display().to_string()), ("e", &e.to_string())],
+        )),
     }
 }
 
@@ -540,24 +580,50 @@ pub fn read_at(path: &Path) -> Read {
 /// 目录由 [`update_at`] 在拿锁之前建（那一层）。
 fn write_at(path: &Path, cat: &Catalog) -> Result<(), String> {
     use std::io::Write as _;
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
-    let body = serde_json::to_string(cat).map_err(|e| format!("目录序列化失败：{e}"))?;
+    let dir = path.parent().ok_or_else(|| {
+        copy_text(
+            "beAssetCatalog.write.noParent",
+            &[("path", &path.display().to_string())],
+        )
+    })?;
+    let body = serde_json::to_string(cat).map_err(|e| {
+        copy_text(
+            "beAssetCatalog.write.encodeFailed",
+            &[("e", &e.to_string())],
+        )
+    })?;
     let tmp = dir.join(format!("{FILE_NAME}.{}.tmp", std::process::id()));
     let result = (|| {
         let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&tmp)
-            .map_err(|e| format!("建临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beAssetCatalog.write.tmpCreateFailed",
+                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
+                )
+            })?;
         f.write_all(body.as_bytes())
             .and_then(|()| f.write_all(b"\n"))
             .and_then(|()| f.sync_all())
-            .map_err(|e| format!("写临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beAssetCatalog.write.tmpWriteFailed",
+                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
+                )
+            })?;
         drop(f);
-        std::fs::rename(&tmp, path)
-            .map_err(|e| format!("把 {} 挪到 {} 失败：{e}", tmp.display(), path.display()))
+        std::fs::rename(&tmp, path).map_err(|e| {
+            copy_text(
+                "beAssetCatalog.write.renameFailed",
+                &[
+                    ("tmp", &tmp.display().to_string()),
+                    ("path", &path.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        })
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -576,12 +642,23 @@ pub fn update_at(
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<Value, (&'static str, String)> {
-    let dir = path
-        .parent()
-        .ok_or(("io_failed", format!("{} 没有父目录", path.display())))?;
+    let dir = path.parent().ok_or((
+        "io_failed",
+        copy_text(
+            "beAssetCatalog.write.noParent",
+            &[("path", &path.display().to_string())],
+        ),
+    ))?;
     // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
-    crate::own_dir::ensure_private_dir(dir)
-        .map_err(|e| ("io_failed", format!("建 {} 失败：{e}", dir.display())))?;
+    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+        (
+            "io_failed",
+            copy_text(
+                "beAssetCatalog.write.mkdirFailed",
+                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            ),
+        )
+    })?;
     let _lock = crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))?;
     let mut cat = match read_at(path) {
         Read::Ok(c) => c,
@@ -602,10 +679,8 @@ pub fn update_at(
 fn update_now(
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<Value, (&'static str, String)> {
-    let path = catalog_path().ok_or((
-        "io_failed",
-        "家目录解析不出来（HOME / USERPROFILE 都没有）—— 不猜一个路径去记目录".to_string(),
-    ))?;
+    let path =
+        catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
     let scanned = assets_from(&crate::agents::asset_sightings());
     update_at(&path, scanned, &machine_label(), incoming)
 }
@@ -619,7 +694,7 @@ pub fn answer_catalog(_args: &Value) -> Result<Value, (&'static str, String)> {
 pub fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)> {
     let cat = args.get("catalog").ok_or((
         "bad_args",
-        "缺 `catalog`（另一台后端的整份目录）".to_string(),
+        crate::common::contract::malformed("missing `catalog`"),
     ))?;
     let incoming = machines_from_wire(cat).map_err(|e| ("bad_args", e))?;
     update_now(Some(incoming))

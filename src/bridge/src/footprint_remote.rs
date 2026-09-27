@@ -1,4 +1,6 @@
 //! 〔RM1a · 第四波〕「足迹」的**远端那一栏**：问那台机器的后端要路径事实，判定走本机同一份 `build_rows`。
+//! 〔C5 · TAIL〕本机那一栏也走这里（[`local_report_of`]）：事实问本机后端，只有 `HostScope::Client`
+//! 那一族（monitor 自己那台的东西）由 monitor 进程自己查（`config_surface::with_monitor_probe`）。
 //!
 //! # 形状
 //!
@@ -28,8 +30,8 @@
 use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
 use crate::backend::control::inbound_client;
 use crate::config_surface::{
-    build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage,
-    HOOK_PROGRAMS,
+    build_rows, build_settings_scopes, with_monitor_probe, ConfigSurfaceReport, FsProbe,
+    SurfaceEnv, Vantage, HOOK_PROGRAMS,
 };
 use crate::copy_table::copy_text;
 use serde_json::{json, Value};
@@ -82,56 +84,80 @@ pub(crate) struct Asked {
 pub(crate) async fn report_of(host: &str) -> Result<ConfigSurfaceReport, String> {
     let env = env_from_wire(host, &call(host, json!({})).await?)?;
     let asked = ask(&env);
-    let args = json!({
-        "stat": asked.stat.iter().collect::<Vec<_>>(),
-        "hooks": { "paths": asked.hooks.iter().collect::<Vec<_>>(), "needles": HOOK_PROGRAMS },
-    });
-    let answers = answers_from_wire(host, &call(host, args).await?)?;
+    let answers = answers_from_wire(host, &call(host, stat_args(&asked)).await?)?;
     Ok(ConfigSurfaceReport {
         origin: crate::origin::Origin(host.to_string()),
         ..build(&env, &answers).0
     })
 }
 
+/// 〔C5〕本机那一栏：同一套两趟问法问本机后端；`HostScope::Client` 那一族由 monitor 自己的探针答。
+/// 本机后端与 monitor 同一个平台 ⇒ `PATH` 原样用、路径不换分隔符。
+pub(crate) async fn local_report_of() -> Result<ConfigSurfaceReport, String> {
+    let host = inbound_client::LOCAL_ORIGIN;
+    let env = local_env_from_wire(host, &call(host, json!({})).await?)?;
+    let env2 = env.clone();
+    let asked = tokio::task::spawn_blocking(move || {
+        with_monitor_probe(|m| {
+            let (asked, _) = run_recording(&env2, None, Some(m));
+            asked
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking: {e}"))??;
+    let answers = answers_from_wire(host, &call(host, stat_args(&asked)).await?)?;
+    tokio::task::spawn_blocking(move || {
+        with_monitor_probe(|m| ConfigSurfaceReport {
+            origin: crate::origin::Origin::local(),
+            ..run_recording(&env, Some(&answers), Some(m)).1
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking: {e}"))?
+}
+
+fn stat_args(asked: &Asked) -> Value {
+    json!({
+        "stat": asked.stat.iter().collect::<Vec<_>>(),
+        "hooks": { "paths": asked.hooks.iter().collect::<Vec<_>>(), "needles": HOOK_PROGRAMS },
+    })
+}
+
 /// 第 2 步：记账的探针（一律答「不在」）跑一遍，记下想问的路径。
 pub(crate) fn ask(env: &RemoteEnv) -> Asked {
-    let asked = RefCell::new(Asked::default());
-    let meta = |p: &Path| {
-        asked.borrow_mut().stat.insert(wire_path(p));
-        None
-    };
-    let list = |p: &Path| {
-        asked.borrow_mut().stat.insert(wire_path(p));
-        None
-    };
-    let hooks = |p: &Path| {
-        asked.borrow_mut().hooks.insert(wire_path(p));
-        None
-    };
-    run(env, &meta, &list, &hooks);
-    asked.into_inner()
+    run_recording(env, None, None).0
 }
 
 /// 第 4 步：答题的探针跑一遍。第二项是这一趟**问到**的路径（给判据核「没问过的一条都没有」）。
 pub(crate) fn build(env: &RemoteEnv, a: &Answers) -> (ConfigSurfaceReport, Asked) {
+    let (asked, report) = run_recording(env, Some(a), None);
+    (report, asked)
+}
+
+/// 两步共用：`answers` 为 `None` ＝ 第 2 步（一律答「不在」）；`client` 有 ＝ 本机那一栏（见 [`local_report_of`]）。
+fn run_recording(
+    env: &RemoteEnv,
+    answers: Option<&Answers>,
+    client: Option<&SurfaceEnv>,
+) -> (Asked, ConfigSurfaceReport) {
     let asked = RefCell::new(Asked::default());
     let meta = |p: &Path| {
         let k = wire_path(p);
         asked.borrow_mut().stat.insert(k.clone());
-        a.meta.get(&k).copied()
+        answers.and_then(|a| a.meta.get(&k).copied())
     };
     let list = |p: &Path| {
         let k = wire_path(p);
         asked.borrow_mut().stat.insert(k.clone());
-        a.list.get(&k).cloned()
+        answers.and_then(|a| a.list.get(&k).cloned())
     };
     let hooks = |p: &Path| {
         let k = wire_path(p);
         asked.borrow_mut().hooks.insert(k.clone());
-        a.hooks.get(&k).copied()
+        answers.and_then(|a| a.hooks.get(&k).copied())
     };
-    let report = run(env, &meta, &list, &hooks);
-    (report, asked.into_inner())
+    let report = run(env, &meta, &list, &hooks, client);
+    (asked.into_inner(), report)
 }
 
 /// 两步共用的那一趟：**同一份判定、同一组输入**，只有探针不同。
@@ -140,7 +166,10 @@ fn run(
     meta: &dyn Fn(&Path) -> Option<(bool, u64)>,
     list: &dyn Fn(&Path) -> Option<Vec<String>>,
     hooks: &dyn Fn(&Path) -> Option<bool>,
+    client: Option<&SurfaceEnv>,
 ) -> ConfigSurfaceReport {
+    // 本机那一栏：视角是 monitor 那台（远端落点照旧「本页不连 SSH」），路径原样不换分隔符。
+    let local = client.is_some();
     let agent_home = env.agent_home.clone();
     let agent_home_is_dir = env.agent_home_is_dir;
     let is_dir = move |p: &Path| agent_home_is_dir && wire_path(p) == wire_path(&agent_home);
@@ -151,25 +180,38 @@ fn run(
         is_dir: &is_dir,
         fs: &fs,
         path_env: env.path.as_deref(),
-        vantage: Vantage::Remote,
+        vantage: if local {
+            Vantage::Monitor
+        } else {
+            Vantage::Remote
+        },
     };
     let cfg_dir = crate::hooks_diag::claude_config_dir(Some(&env.agent_home), &env.home, &is_dir);
-    let mut rows = build_rows(&surface_env);
-    for r in &mut rows {
-        if let Some(p) = r.path_resolved.as_mut() {
-            *p = p.replace('\\', "/");
-        }
-    }
+    let mut rows = build_rows(&surface_env, client);
     let mut settings_scopes =
         build_settings_scopes(&env.home, Some(&env.agent_home), &is_dir, hooks, &fs);
-    for s in &mut settings_scopes {
-        s.path = s.path.replace('\\', "/");
+    let shown = |p: &Path| {
+        if local {
+            p.to_string_lossy().into_owned()
+        } else {
+            wire_path(p)
+        }
+    };
+    if !local {
+        for r in &mut rows {
+            if let Some(p) = r.path_resolved.as_mut() {
+                *p = p.replace('\\', "/");
+            }
+        }
+        for s in &mut settings_scopes {
+            s.path = s.path.replace('\\', "/");
+        }
     }
     ConfigSurfaceReport {
         rows,
         settings_scopes,
-        claude_config_dir: wire_path(&cfg_dir),
-        home: wire_path(&env.home),
+        claude_config_dir: shown(&cfg_dir),
+        home: shown(&env.home),
         // 由 [`report_of`] 填实（那台的名字）；这一趟单跑（判据）时它就是一个空名。
         origin: crate::origin::Origin(String::new()),
     }
@@ -177,6 +219,19 @@ fn run(
 
 /// 第 1 步的应答 → 环境。`home` 缺 ⇒ 报错（没有家目录就解不了任何 `~/…`，**不猜**）。
 pub(crate) fn env_from_wire(host: &str, d: &Value) -> Result<RemoteEnv, String> {
+    env_from_wire_as(host, d, native_path_list)
+}
+
+/// 〔C5〕本机后端的应答：与 monitor 同一个平台 ⇒ `PATH` 原样（不按 `:` 切）。
+fn local_env_from_wire(host: &str, d: &Value) -> Result<RemoteEnv, String> {
+    env_from_wire_as(host, d, |p| Some(p.to_string()))
+}
+
+fn env_from_wire_as(
+    host: &str,
+    d: &Value,
+    path_list: fn(&str) -> Option<String>,
+) -> Result<RemoteEnv, String> {
     let e = d.get("env").ok_or_else(|| {
         copy_text(
             "rsFootprintRemote.wire.noEnv",
@@ -207,7 +262,7 @@ pub(crate) fn env_from_wire(host: &str, d: &Value) -> Result<RemoteEnv, String> 
         })?;
     Ok(RemoteEnv {
         home: PathBuf::from(home),
-        path: s("path").and_then(|p| native_path_list(&p)),
+        path: s("path").and_then(|p| path_list(&p)),
         agent_home: PathBuf::from(agent_home),
         agent_home_is_dir,
     })

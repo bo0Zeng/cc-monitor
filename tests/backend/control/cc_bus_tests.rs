@@ -353,7 +353,7 @@ fn the_not_installed_message_names_the_places_it_looked() {
     let fixed = fixed_candidates(None, Some(&home), "cc-list");
     assert_eq!(fixed.len(), 2, "固定位置应当是两处：{fixed:?}");
     let msg =
-        crate::plugin::discover::not_installed_message("cc-list", &fixed, 9, NOT_INSTALLED_HINT);
+        crate::plugin::discover::not_installed_message("cc-list", &fixed, 9, &NOT_INSTALLED_HINT);
     assert!(msg.contains("/home/u/.local/bin/cc-list"), "{msg}");
     assert!(
         msg.contains(".claude/skills/cc-bus/scripts/cc-list"),
@@ -545,7 +545,7 @@ fn bus_spawn_timeout_warns_that_the_agent_may_already_be_running() {
     let (c, m) = classify_spawn(Some(TIMED_OUT_CODE), "x").unwrap_err();
     assert_eq!(c, "timed_out");
     assert!(
-        m.contains("可能已经起来了") && m.contains("bus-state"),
+        m.contains("可能已经起来了") && m.contains("直接重试"),
         "超时那句没把「副作用可能已经发生」说出来 —— 用户会直接重试、再起一个真 agent：{m}"
     );
     assert_eq!(classify_spawn(Some(1), "x").unwrap_err().0, "failed");

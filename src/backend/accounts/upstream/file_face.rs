@@ -39,6 +39,7 @@
 //! （`creds_core::perm::create_private`，O_EXCL）· 写满 · 落盘 · 原子改名 · 失败删自己的临时文件。
 //! ⚠ 现有文件**解析不了 ⇒ 拒绝、不覆盖**（`bad_file`）：人手编打错一个逗号时，覆盖等于把他写的东西抹掉。
 
+use copy_core::copy_text;
 use creds_core::perm::{self, Verdict};
 use creds_core::store;
 use creds_core::SecretKey;
@@ -74,37 +75,42 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
     if args.get("account").is_some() {
         return Err((
             "bad_args",
-            "不收 `account`：账号 id 由这台后端从 `configDir` 推（全仓一份规则）".to_string(),
+            crate::common::contract::malformed(
+                "`account` is not accepted; the account id is derived from `configDir`",
+            ),
         ));
     }
     let config_dir = args.get("configDir").and_then(Value::as_str).ok_or((
         "bad_args",
-        "缺 `configDir`（这个号的账号目录，要一个字符串）".to_string(),
+        crate::common::contract::malformed("missing `configDir` (string)"),
     ))?;
     let account_id = acct_core::apikey_account_id_of_dir(config_dir).ok_or((
         "bad_args",
-        format!("从账号目录 {config_dir:?} 推不出账号 id —— 不写"),
+        copy_text(
+            "beUpstreamFileFace.keySet.noAccount",
+            &[("dir", &format!("{config_dir:?}"))],
+        ),
     ))?;
     let account = account_id.as_str();
     // ★ 与装表那一步**同一个谓词**：写得进去、却装不进表 ⇒ 那一行的请求永远 404，而文件里明明有它。
     if !crate::relay::segment_is_safe(account) {
         return Err((
             "bad_args",
-            format!(
-                "账号 id {account:?} 当不了路由段（只许字母数字、`-`、`_`，1–128 个字节）—— \
-                 写进去也装不进表，不写"
+            copy_text(
+                "beUpstreamFileFace.keySet.badId",
+                &[("account", &format!("{account:?}"))],
             ),
         ));
     }
-    let plain = args
-        .get("key")
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", "缺 `key`（要一个字符串）".to_string()))?;
+    let plain = args.get("key").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `key` (string)"),
+    ))?;
     let key = SecretKey::new(plain);
     if !key.is_configured() {
         return Err((
             "bad_args",
-            "`key` 是空的 —— 空 key 等于「没配」，不写".to_string(),
+            copy_text("beUpstreamFileFace.keySet.emptyKey", &[]),
         ));
     }
     // 〔ST2 × RM1a〕Base URL（加账号表单 apikey 那一支的第二格）：缺席 / null / 空串 = **不碰那一格**
@@ -114,7 +120,12 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) if s.trim().is_empty() => None,
         Some(Value::String(s)) => Some(s.trim()),
-        Some(_) => return Err(("bad_args", "`baseUrl` 要一个字符串（或不给）".to_string())),
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("`baseUrl` must be a string when given"),
+            ))
+        }
     };
     if let Some(url) = base_url {
         super::table::base_if_usable(url).map_err(|why| ("bad_args", why.to_string()))?;
@@ -129,9 +140,12 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
     let base_url_now = row.as_ref().and_then(|e| e.base_url.clone());
     let masked = row.and_then(|e| e.key.map(|k| k.masked())).ok_or((
         "io_failed",
-        format!(
-            "写完读回，{} 里找不到 {account:?} 那一行的 key",
-            path.display()
+        copy_text(
+            "beUpstreamFileFace.keySet.notReadBack",
+            &[
+                ("path", &path.display().to_string()),
+                ("account", &format!("{account:?}")),
+            ],
         ),
     ))?;
     Ok(json!({
@@ -214,7 +228,15 @@ fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, St
     let raw = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(("io_failed", format!("读不动 {}：{e}", path.display()))),
+        Err(e) => {
+            return Err((
+                "io_failed",
+                copy_text(
+                    "beUpstreamFileFace.read.failed",
+                    &[("path", &path.display().to_string()), ("e", &e.to_string())],
+                ),
+            ))
+        }
     };
     store::parse(&raw)
         .map(Some)
@@ -225,7 +247,10 @@ fn read_doc(path: &Path) -> Result<Option<Map<String, Value>>, (&'static str, St
 fn notice_of(v: &Verdict) -> Option<String> {
     match v {
         Verdict::OwnerOnly => None,
-        Verdict::TooWide { how, fix } => Some(format!("{how}。怎么修：{fix}")),
+        Verdict::TooWide { how, fix } => Some(copy_text(
+            "beUpstreamFileFace.perm.tooWide",
+            &[("how", how), ("fix", fix)],
+        )),
         Verdict::Undetermined { why } => Some(why.clone()),
     }
 }
@@ -238,13 +263,23 @@ fn write_at(
     base_url: Option<&str>,
 ) -> Result<(), (&'static str, String)> {
     use std::io::Write as _;
-    let dir = path
-        .parent()
-        .ok_or(("io_failed", format!("{} 没有父目录", path.display())))?;
+    let dir = path.parent().ok_or((
+        "io_failed",
+        copy_text(
+            "beUpstreamFileFace.write.noParent",
+            &[("path", &path.display().to_string())],
+        ),
+    ))?;
     // 只建**这一层**（`claudecode-frontend/`）；它的父目录是 agent 的家目录，不在就说出来、不替它建。
     if let Err(e) = std::fs::create_dir(dir) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(("io_failed", format!("建 {} 失败：{e}", dir.display())));
+            return Err((
+                "io_failed",
+                copy_text(
+                    "beUpstreamFileFace.write.mkdirFailed",
+                    &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+                ),
+            ));
         }
     }
     // 〔HX2〕读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
@@ -265,7 +300,10 @@ fn write_at(
         let mut f = perm::create_private(&tmp).map_err(|e| {
             (
                 "io_failed",
-                format!("建临时文件 {} 失败：{e}", tmp.display()),
+                copy_text(
+                    "beUpstreamFileFace.write.tmpCreateFailed",
+                    &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
+                ),
             )
         })?;
         f.write_all(text.as_bytes())
@@ -273,14 +311,24 @@ fn write_at(
             .map_err(|e| {
                 (
                     "io_failed",
-                    format!("写临时文件 {} 失败：{e}", tmp.display()),
+                    copy_text(
+                        "beUpstreamFileFace.write.tmpWriteFailed",
+                        &[("tmp", &tmp.display().to_string()), ("e", &e.to_string())],
+                    ),
                 )
             })?;
         drop(f);
         std::fs::rename(&tmp, path).map_err(|e| {
             (
                 "io_failed",
-                format!("把 {} 挪到 {} 失败：{e}", tmp.display(), path.display()),
+                copy_text(
+                    "beUpstreamFileFace.write.renameFailed",
+                    &[
+                        ("tmp", &tmp.display().to_string()),
+                        ("path", &path.display().to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                ),
             )
         })
     })();

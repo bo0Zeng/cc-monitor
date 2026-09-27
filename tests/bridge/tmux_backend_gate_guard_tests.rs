@@ -6,7 +6,8 @@ use std::path::PathBuf;
 /// 选这几个是因为它们是 monitor 侧那道门的**产物名**（拒绝码 / 拒绝文案）——
 /// backend 复现 Gate 2 最自然的形态就是回一个同族的拒绝码，F03 正是这么做的
 /// （`control/gate.rs::admit` 回 `wrong_owner` + `CCM_GUARD_REJECTED …`）。
-const BACKEND_GATE_MARKERS: &[&str] = &["CCM_GUARD_REJECTED", "wrong_owner"];
+// 〔TAIL · CP2c 续〕拒绝那句话进了文案表（不再逐字带 `CCM_GUARD_REJECTED`）⇒ 标志换成真做判定的那一下 `gate_core::gate2`。
+const BACKEND_GATE_MARKERS: &[&str] = &["gate_core::gate2", "wrong_owner"];
 
 /// Gate 3（`windows==1`，只约束破坏性动作）在后端侧的形状。
 /// **F04a 起：必须存在**（此前是「一个都不该有」）。

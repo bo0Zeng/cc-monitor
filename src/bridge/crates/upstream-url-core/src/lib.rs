@@ -64,7 +64,7 @@ impl Unusable {
     }
 }
 
-/// 形状：无空白 · `<协议>://` · 协议在 [`SCHEMES`] · authority 非空、无 `?#` · 最后一个 `:` 之后是 u16 · 主机非空 ·
+/// 形状：无空白 · `<协议>://` · 协议在 [`SCHEMES`] · authority 非空、无 `?#` · 最后一个 `:` 之后是 u16（整段 `[…]` 不带口 ⇒ 默认口）· 主机非空 ·
 /// 路径前缀无 `?#`、去掉尾 `/` 之后不以 `//` 开头。逐步照搬先前 `Base::parse`（外加写口那一格「无空白」）。
 pub fn parse(url: &str) -> Result<UpstreamUrl, ShapeIssue> {
     if url.chars().any(char::is_whitespace) {
@@ -86,9 +86,12 @@ pub fn parse(url: &str) -> Result<UpstreamUrl, ShapeIssue> {
     if authority.contains('?') || authority.contains('#') {
         return Err(ShapeIssue::HasQuery);
     }
+    let default_port = if tls { 443 } else { 80 };
     let (host, port) = match authority.rsplit_once(':') {
+        // 〔TAIL · DUP3 §5 ④〕整段就是一对方括号（`[::1]`）⇒ 里面的 `:` 是 IPv6 的，不是端口分隔符。
+        Some(_) if is_bracketed(authority) => (authority, default_port),
         Some((h, p)) => (h, p.parse::<u16>().map_err(|_| ShapeIssue::BadPort)?),
-        None => (authority, if tls { 443 } else { 80 }),
+        None => (authority, default_port),
     };
     if host.is_empty() {
         return Err(ShapeIssue::NoHost);
@@ -99,6 +102,14 @@ pub fn parse(url: &str) -> Result<UpstreamUrl, ShapeIssue> {
         port,
         path: normalize_prefix(raw_path)?,
     })
+}
+
+/// authority 整段是 `[…]`：以 `[` 开头、以 `]` 结尾、中间再没有 `]`（生成物的 `badPort` 式子按同一形排除它）。
+fn is_bracketed(authority: &str) -> bool {
+    authority.len() >= 2
+        && authority.starts_with('[')
+        && authority.ends_with(']')
+        && !authority[1..authority.len() - 1].contains(']')
 }
 
 /// 路径前缀：去掉没有意义的尾 `/`，不做任何猜测；带 `?#` 或以 `//` 开头（会被读成 authority）⇒ 拒。

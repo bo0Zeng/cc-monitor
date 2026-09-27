@@ -1,4 +1,4 @@
-//! [`super`] 的判据 —— 前半是书签的**存储**（归一 · 切换 · 搬家合并 · 锁 · 原子换），
+//! [`super`] 的判据 —— 前半是书签的**存储**（归一 · 切换 · 锁 · 原子换），
 //! 后半是**窗口上那一半**（书签栏真画得出、真点得到，跑生产那个 `frame_body`）。
 //!
 //! | 判据 | 钉的那一形 | 两侧异源在哪 |
@@ -6,7 +6,6 @@
 //! | [`normalize_matches_the_old_panel_case_by_case`] | 归一与老面板 `normalize` 逐格相等 | 期望是老面板那份 vitest 里的原样例（F7b 删面板那一拍的父提交里现读）＋ 手推的几格 |
 //! | [`normalize_agrees_with_the_two_step_rewrite_on_a_generated_corpus`] | 同上，在 4 096 条生成路径上 | 另一侧是老面板那两步替换的逐字移植（「折叠」与「去尾」分两趟做），与生产那一趟扫描不同写法 |
 //! | [`toggle_and_remove_follow_the_old_panel`] | 切换 / 删除的列表逐格相等（去重 · 保序 · 归一比较） | 期望手写 |
-//! | [`merge_is_idempotent_and_keeps_existing_first`] | 搬两次 == 搬一次（整份逐格相等）；已有的在前 | 期望手写 |
 //! | [`the_disk_holds_exactly_what_was_written`] | 盘上那份读回来逐格相等；文件不在 ⇒ 空；读不懂 ⇒ 报错且**不覆盖** | 盘上字节读回 |
 //! | [`two_writers_lose_nothing`] | 两条线程各切 N 条不同目录，完了盘上集合 == 全部 2N 条（两向） | 期望集合由循环下标另算 |
 //! | [`a_writer_waits_while_another_holds_the_lock`] | 锁被拿着 ⇒ 写等着、盘上不变；锁一放 ⇒ 写进去（上一条的确定性那一半） | 锁由判据自己拿 |
@@ -133,24 +132,6 @@ fn book(pairs: &[(&str, &[&str])]) -> Book {
 }
 
 #[test]
-fn merge_is_idempotent_and_keeps_existing_first() {
-    let mut b = book(&[("aya", &["/srv", "/home/zbl"])]);
-    let legacy = book(&[
-        ("aya", &["/home/zbl/", "/opt//x/", ""]),
-        ("gpd", &["/data"]),
-        ("", &["/nobody"]),
-    ]);
-    assert_eq!(merge(&mut b, &legacy), 2, "新加的恰好 /opt/x 与 /data 两条");
-    let want = book(&[
-        ("aya", &["/srv", "/home/zbl", "/opt/x"]),
-        ("gpd", &["/data"]),
-    ]);
-    assert_eq!(b, want);
-    assert_eq!(merge(&mut b, &legacy), 0, "第二次一条都不加");
-    assert_eq!(b, want, "搬两次 == 搬一次");
-}
-
-#[test]
 fn the_disk_holds_exactly_what_was_written() {
     let dir = scratch("disk");
     let file = file_in(&dir);
@@ -160,18 +141,13 @@ fn the_disk_holds_exactly_what_was_written() {
         "文件不在 ⇒ 空的一份"
     );
 
-    let legacy = book(&[("aya", &["/srv/", "/home/zbl"])]);
-    assert_eq!(carry(&file, &legacy).unwrap(), 2);
-    let first = std::fs::read(&file).unwrap();
+    mutate(&file, |b| {
+        b.insert("aya".into(), vec!["/srv".into(), "/home/zbl".into()]);
+    })
+    .unwrap();
     assert_eq!(
         read_book(&file).unwrap(),
         book(&[("aya", &["/srv", "/home/zbl"])])
-    );
-    assert_eq!(carry(&file, &legacy).unwrap(), 0);
-    assert_eq!(
-        std::fs::read(&file).unwrap(),
-        first,
-        "搬两次与搬一次盘上逐字节相同"
     );
 
     // 切掉最后一条 ⇒ 那台机器那一格整个不在（不留空数组）。

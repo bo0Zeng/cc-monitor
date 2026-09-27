@@ -105,7 +105,8 @@ impl Env {
         let cfg_path = get("CCM_CONFIG").unwrap_or_else(|| under_home(&home, Defaults::CONFIG_REL));
         if std::path::Path::new(&cfg_path).is_file() {
             eprintln!(
-                "ccm: {cfg_path} 在，但本实现**不读它**（旧版是 source 一段 bash，原生实现没有等价物）。\n                 里面那两个值请改成环境变量：CCM_ACCTS_MANIFEST / CCM_ENV。\n                 （`CCM_WORKSPACE` 不用改了：`K-R58` 起 ccm 不再替你跳目录，不给 --cwd 就是当前目录。）"
+                "{}",
+                copy_text("bePlan.env.configIgnored", &[("path", &cfg_path)])
             );
         }
         let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
@@ -975,9 +976,7 @@ pub(crate) fn build(
         let bus = if o.bus_register {
             match env.bus_scripts.as_ref() {
                 None => {
-                    eprintln!(
-                        "ccm: --bus-register 要了登记，但找不到 cc-bus 的脚本（CC_BUS_SCRIPTS / <本程序目录>/cc-bus/scripts / PATH）——**没有登记**"
-                    );
+                    eprintln!("{}", copy_text("bePlan.bus.noScripts", &[]));
                     None
                 }
                 Some(d) => {
@@ -985,8 +984,17 @@ pub(crate) fn build(
                         is_exec(&std::path::Path::new(d).join("cc-spawned-record"));
                     if !has_spawned_record {
                         eprintln!(
-                            "ccm: {} 不可执行 —— 会话照建、也会登记，但**不进 spawn 台账**（孤儿检测看不到它）",
-                            std::path::Path::new(d).join("cc-spawned-record").display()
+                            "{}",
+                            copy_text(
+                                "bePlan.bus.noSpawnRecord",
+                                &[(
+                                    "path",
+                                    &std::path::Path::new(d)
+                                        .join("cc-spawned-record")
+                                        .display()
+                                        .to_string()
+                                )]
+                            )
                         );
                     }
                     Some(BusRegister {

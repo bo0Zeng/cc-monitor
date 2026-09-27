@@ -67,6 +67,7 @@
 //! 那一格与本文件的 [`tests::TRANSCALLS`] **不是同一条规矩的两处住址**：
 //! 前者钉「只读铁律的豁免理由覆盖了哪几条」，后者钉「`K33`『不要 bash 脚本』对每一条各裁了什么」。
 
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 use crate::plugin::invoke::Done;
@@ -74,7 +75,8 @@ use crate::plugin::invoke::NotRun;
 use crate::plugin::invoke::TIMED_OUT_CODE;
 
 /// 找不到时那句话的**尾巴** —— 这是 cc-bus 自己的话，通用层不该认识它。
-const NOT_INSTALLED_HINT: &str = "cc-bus 装了吗？（装在别处可以用 CC_BUS_BIN_DIR 指过来）";
+static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("beCcBus.find.notInstalled", &[]));
 
 /// 命令级错误：`(code, message)`。与 [`super::kill`] / [`super::launch`] 同型。
 type CmdErr = (&'static str, String);
@@ -122,7 +124,7 @@ fn find(name: &str) -> Result<PathBuf, CmdErr> {
         home.as_ref().map(Path::new),
         name,
     );
-    crate::plugin::discover::find(name, &fixed, true, NOT_INSTALLED_HINT)
+    crate::plugin::discover::find(name, &fixed, true, &NOT_INSTALLED_HINT)
         .map_err(|msg| ("not_installed", msg))
 }
 
@@ -222,9 +224,7 @@ fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr
         //   由它来说这句话只能说成「不是那个程序坏了」，而 e2e 逐字核的是前者。
         NotRun::ArgListTooLong => (
             "too_long",
-            "这条消息塞不进一次命令调用（内核的单参数上限是 128 KiB）—— 发短一点。\
-             ⚠ 不是 cc-bus 坏了。"
-                .to_string(),
+            copy_text("beCcBus.notRun.tooLong", &[]).to_string(),
         ),
         NotRun::Failed(msg) => ("failed", msg),
     })
@@ -234,10 +234,9 @@ fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr
 fn timed_out_err() -> (String, String) {
     (
         "timed_out".to_string(),
-        format!(
-            "跑了超过 {} 秒还没退出，已被 timeout 命令结束。cc-bus 的投递走 flock —— \
-             多半是锁被别的进程占住了（先看 `cc-list` 与 $CC_BUS_HOME 下的 *.lock）。",
-            timeout_secs()
+        copy_text(
+            "beCcBus.timedOut.say",
+            &[("secs", &timeout_secs().to_string())],
         ),
     )
 }
@@ -275,7 +274,7 @@ const SKIPPED_TAIL: &str = "#skipped\t";
 fn too_old(cmd: &str) -> (String, String) {
     (
         "failed".to_string(),
-        format!("这台的 cc-bus 比后端旧，重新部署 cc-bus 之后再读（{cmd} 认不出）"),
+        copy_text("beCcBus.read.tooOld", &[("cmd", &cmd.to_string())]),
     )
 }
 
@@ -299,7 +298,7 @@ fn framed<'a>(
         .ok_or_else(|| {
             (
                 "failed".to_string(),
-                format!("{cmd} 的输出缺末行（`#skipped`）—— 只读到半份，不当完整的用"),
+                copy_text("beCcBus.read.truncated", &[("cmd", &cmd.to_string())]),
             )
         })?;
     Ok((lines[1..lines.len() - 1].to_vec(), skipped))
@@ -388,21 +387,27 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
         // cc-send 自己的白名单校验（`仅 [A-Za-z0-9_-]`）
         Some(2) => Err((
             "invalid_args".to_string(),
-            format!("cc-send 拒绝了这个收件人：{detail}"),
+            copy_text("beCcBus.send.refused", &[("detail", &detail.to_string())]),
         )),
         // 路由层拦截（ACL / 限流 / 去重 / 灭环），bus.log 里有 REJECT/THROTTLE 一行
         Some(3) => Err((
             "rejected".to_string(),
-            format!("被路由层拦下（见 bus.log）：{detail}"),
+            copy_text("beCcBus.send.rejected", &[("detail", &detail.to_string())]),
         )),
         Some(TIMED_OUT_CODE) => Err(timed_out_err()),
         Some(c) => Err((
             "failed".to_string(),
-            format!("cc-send 退出码 {c}：{detail}"),
+            copy_text(
+                "beCcBus.send.failed",
+                &[("status", &c.to_string()), ("detail", &detail.to_string())],
+            ),
         )),
         None => Err((
             "failed".to_string(),
-            format!("cc-send 被信号打断：{detail}"),
+            copy_text(
+                "beCcBus.send.interrupted",
+                &[("detail", &detail.to_string())],
+            ),
         )),
     }
 }
@@ -426,19 +431,23 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
 /// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。〔DUP2〕`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
 /// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
 fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
-    let obj = args
-        .as_object()
-        .ok_or(("invalid_args", "args 不是对象".to_string()))?;
-    let to = obj
-        .get("to")
-        .and_then(|v| v.as_str())
-        .ok_or(("invalid_args", "缺 `to`".to_string()))?;
-    let text = obj
-        .get("text")
-        .and_then(|v| v.as_str())
-        .ok_or(("invalid_args", "缺 `text`".to_string()))?;
+    let obj = args.as_object().ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("args must be an object"),
+    ))?;
+    let to = obj.get("to").and_then(|v| v.as_str()).ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("missing `to`"),
+    ))?;
+    let text = obj.get("text").and_then(|v| v.as_str()).ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("missing `text`"),
+    ))?;
     if to.trim().is_empty() {
-        return Err(("invalid_args", "`to` 是空的".to_string()));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("`to` is empty"),
+        ));
     }
     refuse_bad_bus_id(to, |v| {
         copy_core::copy_text("beCcBus.parse.badRecipient", &[("id", v)])
@@ -540,7 +549,13 @@ fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
     if out.code != Some(0) {
         return Err((
             "failed".to_string(),
-            format!("cc-list 退出码 {:?}：{}", out.code, out.diagnosis()),
+            copy_text(
+                "beCcBus.list.failed",
+                &[
+                    ("status", &format!("{:?}", out.code)),
+                    ("detail", &out.diagnosis()),
+                ],
+            ),
         ));
     }
     let text = String::from_utf8_lossy(&out.stdout);
@@ -559,11 +574,21 @@ fn read_via(name: &str, args: &[&str]) -> Result<String, (String, String)> {
         Some(0) => Ok(String::from_utf8_lossy(&out.stdout).into_owned()),
         Some(2) => Err((
             "invalid_args".to_string(),
-            format!("{name} 拒了这组参数：{}", out.diagnosis()),
+            copy_text(
+                "beCcBus.run.refused",
+                &[("name", &name.to_string()), ("detail", &out.diagnosis())],
+            ),
         )),
         c => Err((
             "failed".to_string(),
-            format!("{name} 退出码 {c:?}：{}", out.diagnosis()),
+            copy_text(
+                "beCcBus.run.failed",
+                &[
+                    ("name", &name.to_string()),
+                    ("status", &format!("{c:?}")),
+                    ("detail", &out.diagnosis()),
+                ],
+            ),
         )),
     }
 }
@@ -659,8 +684,13 @@ pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (St
         .and_then(|o| o.get("id"))
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?;
-    refuse_bad_bus_id(id, |v| format!("收件箱的 id 形状不对：{v}"))
+        .ok_or_else(|| {
+            (
+                "invalid_args".to_string(),
+                crate::common::contract::malformed("missing `id`"),
+            )
+        })?;
+    refuse_bad_bus_id(id, |v| copy_text("beCcBus.inbox.badId", &[("id", v)]))
         .map_err(|(c, m)| (c.to_string(), m))?;
     let lines = match obj.and_then(|o| o.get("lines")) {
         None | Some(serde_json::Value::Null) => INBOX_LINES_DEFAULT,
@@ -670,7 +700,9 @@ pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (St
             .ok_or_else(|| {
                 (
                     "invalid_args".to_string(),
-                    format!("`lines` 要 1..={INBOX_LINES_MAX} 的整数"),
+                    crate::common::contract::malformed(&format!(
+                        "`lines` must be an integer in 1..={INBOX_LINES_MAX}"
+                    )),
                 )
             })?,
     };
@@ -686,7 +718,10 @@ pub(crate) fn inbox_for_inbound(
         if c == "not_installed" {
             (
                 c,
-                format!("{m}（有 cc-bus 却没有 cc-log ⇒ 这台的 cc-bus 比后端旧，先重新部署）"),
+                copy_text(
+                    "beCcBus.inbox.tooOld",
+                    &[("reason", m.trim_end_matches('。'))],
+                ),
             )
         } else {
             (c, m)
@@ -804,19 +839,25 @@ fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
         Some(2) => {
             return Err((
                 "invalid_args".to_string(),
-                format!("cc-kill 拒绝了这个 id：{detail}"),
+                copy_text("beCcBus.kill.refused", &[("detail", &detail.to_string())]),
             ))
         }
         Some(c) => {
             return Err((
                 "failed".to_string(),
-                format!("cc-kill 退出码 {c}：{detail}"),
+                copy_text(
+                    "beCcBus.kill.failed",
+                    &[("status", &c.to_string()), ("detail", &detail.to_string())],
+                ),
             ))
         }
         None => {
             return Err((
                 "failed".to_string(),
-                format!("cc-kill 被信号打断：{detail}"),
+                copy_text(
+                    "beCcBus.kill.interrupted",
+                    &[("detail", &detail.to_string())],
+                ),
             ))
         }
     }
@@ -872,7 +913,12 @@ pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, St
         .and_then(|v| v.as_str())
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?;
+        .ok_or_else(|| {
+            (
+                "invalid_args".to_string(),
+                crate::common::contract::malformed("missing `id`"),
+            )
+        })?;
     refuse_bad_bus_id(id, |v| {
         copy_core::copy_text("beCcBus.parse.badKillId", &[("id", v)])
     })
@@ -917,7 +963,10 @@ fn deliver(to: &str, text: &str, from: Option<&str>) -> Result<(), (String, Stri
         if c == "too_long" {
             return (
                 c.to_string(),
-                format!("{m}（这条正文 {} 字节）", text.len()),
+                copy_text(
+                    "beCcBus.deliver.tooLong",
+                    &[("reason", &m), ("n", &text.len().to_string())],
+                ),
             );
         }
         (c.to_string(), m)
@@ -968,15 +1017,19 @@ pub(crate) fn send_reply(
 
 /// `bus-broadcast` 的入参 —— 纯函数。`text` 必须非空（空广播不是缺省）；`from` 可选（同 [`parse_send`]）。
 fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>), CmdErr> {
-    let obj = args
-        .as_object()
-        .ok_or(("invalid_args", "args 不是对象".to_string()))?;
-    let text = obj
-        .get("text")
-        .and_then(|v| v.as_str())
-        .ok_or(("invalid_args", "缺 `text`".to_string()))?;
+    let obj = args.as_object().ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("args must be an object"),
+    ))?;
+    let text = obj.get("text").and_then(|v| v.as_str()).ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("missing `text`"),
+    ))?;
     if text.trim().is_empty() {
-        return Err(("invalid_args", "`text` 是空的".to_string()));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("`text` is empty"),
+        ));
     }
     // 〔DUP3〕`from` 给了就先判（同 `bus-send` 那一处）：判不过 ⇒ 整条 `bad_id`，一个人都没发。
     let from = given_sender(obj)?;
@@ -1118,9 +1171,10 @@ pub(crate) struct SpawnArgs {
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）·
 /// 〔DUP2〕给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
 pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
-    let obj = args
-        .as_object()
-        .ok_or(("invalid_args", "args 不是对象".to_string()))?;
+    let obj = args.as_object().ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("args must be an object"),
+    ))?;
     let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
     // ⚠ **不在后端白名单 agent 种类**〔BS1b 09-24〕：初版这里是 `matches!(tool, <两个字面量>)`，
     //   `agent_locality_guard::kind_dispatch_sites_are_enumerated_one_by_one` 当场红 ——
@@ -1129,11 +1183,17 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
     //   「收件人合法性归 cc-bus，后端不写第二份白名单」同一条。
     let tool = s("tool");
     if tool.is_empty() {
-        return Err(("invalid_args", "缺 `tool`".to_string()));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("missing `tool`"),
+        ));
     }
     let dir = s("dir");
     if dir.is_empty() {
-        return Err(("invalid_args", "缺 `dir`（工作目录）".to_string()));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("missing `dir` (working directory)"),
+        ));
     }
     let base = obj.get("base").and_then(|v| v.as_bool()).unwrap_or(false);
     let account = s("account");
@@ -1143,23 +1203,23 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
             copy_core::copy_text("beCcBus.parse.badAccount", &[("account", v)])
         })?;
     }
-    let account =
-        match (account.is_empty(), base) {
-            (false, false) => Some(account.to_string()),
-            (true, true) => None,
-            (false, true) => {
-                return Err((
-                    "invalid_args",
-                    "`account` 与 `base` 互斥 —— 要么选一个号，要么显式说就用基座".to_string(),
-                ))
-            }
-            (true, false) => return Err((
+    let account = match (account.is_empty(), base) {
+        (false, false) => Some(account.to_string()),
+        (true, true) => None,
+        (false, true) => {
+            return Err((
                 "invalid_args",
-                "`account` 与 `base:true` 必须给一个 —— 不表态的话 ccm 会落 manifest 的默认号，\
-                 等于替用户选了一个他没选过的号去烧额度"
+                crate::common::contract::malformed("`account` and `base` are mutually exclusive"),
+            ))
+        }
+        (true, false) => {
+            return Err((
+                "invalid_args",
+                crate::common::contract::malformed("one of `account` or `base:true` is required")
                     .to_string(),
-            )),
-        };
+            ))
+        }
+    };
     Ok(SpawnArgs {
         tool: tool.to_string(),
         dir: dir.to_string(),
@@ -1248,25 +1308,25 @@ pub(crate) fn classify_spawn(code: Option<i32>, detail: &str) -> Result<(), (Str
         Some(0) => Ok(()),
         Some(2) => Err((
             "invalid_args".to_string(),
-            format!("cc-spawn 拒绝了这组参数：{detail}"),
+            copy_text("beCcBus.spawn.refused", &[("detail", &detail.to_string())]),
         )),
         Some(TIMED_OUT_CODE) => {
             let (c, m) = timed_out_err();
-            Err((
-                c,
-                format!(
-                    "{m}\n🔴 **会话可能已经起来了**（cc-spawn 是在建完会话之后才回显的）——\
-                     先看 `bus-state` 再决定要不要重来，别直接重试：重试会再起一个真 agent。"
-                ),
-            ))
+            Err((c, copy_text("beCcBus.spawn.timedOut", &[("reason", &m)])))
         }
         Some(c) => Err((
             "failed".to_string(),
-            format!("cc-spawn 退出码 {c}：{detail}"),
+            copy_text(
+                "beCcBus.spawn.failed",
+                &[("status", &c.to_string()), ("detail", &detail.to_string())],
+            ),
         )),
         None => Err((
             "failed".to_string(),
-            format!("cc-spawn 被信号打断：{detail}"),
+            copy_text(
+                "beCcBus.spawn.interrupted",
+                &[("detail", &detail.to_string())],
+            ),
         )),
     }
 }

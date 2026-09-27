@@ -34,7 +34,7 @@ fn attach_is_not_a_mode_here() {
     })))
     .unwrap_err();
     assert_eq!(e.0, "invalid_args");
-    assert!(e.1.contains("平面 ③"), "错误没说清楚为什么：{}", e.1);
+    assert!(e.1.contains("unknown mode"), "错误没说清楚为什么：{}", e.1);
 }
 
 #[test]
@@ -44,7 +44,6 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
         ("", "p", "空名字"),
         ("n", "", "空载荷"),
         ("a:b", "p", "名字含 `:`（tmux 目标语法）"),
-        ("a=b", "p", "名字含 `=`"),
         ("n", "a\nb", "载荷含控制字符（会多敲一次回车）"),
     ] {
         match parse_request(&base(name, payload)) {
@@ -375,7 +374,8 @@ fn the_payload_is_still_only_shape_checked() {
     // 今天的三件形状检查，一件都不许少（少了 = 姿态变松，也要有人看见）。
     for (needle, what) in [
         ("is_empty()", "非空"),
-        ("MAX_FIELD_BYTES", "长度上限"),
+        // 〔TAIL〕长度那一件抽成 `check_len`（会话名也用它，名字的其余两件归 Gate 1 那一份）。
+        ("check_len(", "长度上限"),
         ("is_control", "无控制字符"),
     ] {
         assert!(
@@ -1007,7 +1007,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     let e = ran(std::process::Command::new(dir.join("gone")), &["x"]).unwrap_err();
     assert_eq!(e.0, "no_tmux");
     // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
-    assert_eq!(said_of(b"  \n"), "（tmux 没说原因）");
+    assert_eq!(said_of(b"  \n"), "tmux 没说原因");
     let long = "错".repeat(SAID_CAP);
     let s = said_of(long.as_bytes());
     assert!(

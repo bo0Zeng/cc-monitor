@@ -261,6 +261,11 @@ SINKS = [
          re=re.compile(r"\.map_err\s*\(")),
     dict(id="rs.okor", lang="rs", bucket="rust-err", mode="call", kind="error",
          re=re.compile(r"\.ok_or(?:_else)?\s*\(")),
+    # 〔TAIL · 设计/91 §6 第 12 条〕`ccm` 是一次性命令行，它的 stderr / stdout **就是用户的终端** ⇒
+    #   只在 `ccm` 那几份里，`eprintln!` / `println!` 按对外算（别处仍按调试输出排除，见 `DECLINED_CTX`）。
+    dict(id="rs.ccm.print", lang="rs", bucket="rust-err", mode="call", kind="error",
+         only="src/backend/control/ccm/",
+         re=re.compile(r"(?<![\w])e?println!\s*\(")),
 
     # ══ 第 2 层出口：**文案字段** ══════════════════════════════════════
     # 文案不一定直接写进 DOM —— 大量是先装进一个结构体/对象字段，再由渲染层取出来贴。
@@ -981,6 +986,8 @@ def scan(root: Path):
         consumed_refs = set()  # 〔CP2b〕已被某个出口吃掉的 copyText / copy_text 调用起点
         for sink in SINKS:
             if sink["lang"] not in (lang, "both"):
+                continue
+            if sink.get("only") and not rel.startswith(sink["only"]):
                 continue
             for m in sink["re"].finditer(masked):
                 if sink["mode"] == "field":

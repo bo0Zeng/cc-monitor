@@ -802,7 +802,7 @@ mod tests {
         let prod = real_adapter_production();
         guard_core::pin_line(
             &prod,
-            "crate::plugin::discover::find(name, &fixed, true, NOT_INSTALLED_HINT)",
+            "crate::plugin::discover::find(name, &fixed, true, &NOT_INSTALLED_HINT)",
         )
         .unwrap_or_else(|why| {
             panic!(

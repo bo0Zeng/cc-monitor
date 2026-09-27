@@ -1,5 +1,6 @@
 //! Claude 的目录布局：配置根怎么解析、根下面有哪两个子目录。
 
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 覆盖配置根的环境变量名。**账号隔离（cc-acct-iso）就是靠切它**，
@@ -205,39 +206,58 @@ pub fn is_session_record_path(target: &Path) -> bool {
 /// 判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
 pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, String> {
     let root = projects_root(home);
-    let found =
-        branch_core::find_session_file(&root, sid).map_err(|e| format!("删不了会话 {sid}：{e}"))?;
+    let found = branch_core::find_session_file(&root, sid).map_err(|e| {
+        copy_text(
+            "beClaudePaths.delete.notFound",
+            &[("id", sid), ("e", &e.to_string())],
+        )
+    })?;
     let real_root = std::fs::canonicalize(&root).map_err(|e| {
-        format!(
-            "删不了会话 {sid}：记录树解析不了（{}：{e}）",
-            root.display()
+        copy_text(
+            "beClaudePaths.delete.rootUnresolved",
+            &[
+                ("id", sid),
+                ("path", &root.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         )
     })?;
     let real = std::fs::canonicalize(&found).map_err(|e| {
-        format!(
-            "删不了会话 {sid}：那份文件解析不了（{}：{e}）",
-            found.display()
+        copy_text(
+            "beClaudePaths.delete.fileUnresolved",
+            &[
+                ("id", sid),
+                ("path", &found.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         )
     })?;
     let rel = real.strip_prefix(&real_root).map_err(|_| {
-        format!(
-            "删不了会话 {sid}：解完链接之后那份文件不在记录树里（{} 不在 {} 里）",
-            real.display(),
-            real_root.display()
+        copy_text(
+            "beClaudePaths.delete.outsideRoot",
+            &[
+                ("id", sid),
+                ("path", &real.display().to_string()),
+                ("root", &real_root.display().to_string()),
+            ],
         )
     })?;
     let want = format!("{sid}.jsonl");
     let segs: Vec<&std::ffi::OsStr> = rel.iter().collect();
     if segs.len() != 2 || segs[1] != std::ffi::OsStr::new(&want) {
-        return Err(format!(
-            "删不了会话 {sid}：只删 `<项目>/{want}` 这一形（找到的是 {}）",
-            rel.display()
+        return Err(copy_text(
+            "beClaudePaths.delete.wrongShape",
+            &[
+                ("id", sid),
+                ("want", &want.to_string()),
+                ("path", &rel.display().to_string()),
+            ],
         ));
     }
     if !is_session_record_path(&real) {
-        return Err(format!(
-            "删不了会话 {sid}：{} 不是一份会话记录的形状",
-            real.display()
+        return Err(copy_text(
+            "beClaudePaths.delete.notRecord",
+            &[("id", sid), ("path", &real.display().to_string())],
         ));
     }
     Ok(real)

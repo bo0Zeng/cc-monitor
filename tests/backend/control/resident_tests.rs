@@ -113,3 +113,42 @@ fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     assert!(crate::listen::resolve(m).is_err(), "空钥匙文件也起了一个口");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 〔TAIL · HOST 余项〕远端起的常驻后端也带上数据目录那两格（与那台自己的 monitor 交的同一对值）⇒ 那台 monitor 收养它、HX2 不拒。
+/// 守的要求：主会话裁 HOST 待拍 1「后端自己按默认推出这两格路径（谁起都一样）」（`_施工/paused-state.md`）。期望路径手写。
+#[test]
+fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
+    let names = ("CCM_APIKEY_CREDENTIALS", "CCM_HISTORY_METADATA");
+    let got = data_dir_envs(&env_of(&[]), Path::new("/h"), names.0, names.1);
+    assert_eq!(
+        got,
+        vec![
+            (
+                names.0,
+                "/h/.claude/claudecode-frontend/apikey-credentials.json".to_string()
+            ),
+            (
+                names.1,
+                "/h/.claude/claudecode-frontend/history-metadata.json".to_string()
+            ),
+        ]
+    );
+    // `CCM_DATA_DIR` 跟着走；本进程已有的那一格不覆盖；相对路径 ⇒ 两格都缺席（不退回真 profile）。
+    let iso = data_dir_envs(
+        &env_of(&[("CCM_DATA_DIR", "/iso"), (names.0, "/x/c.json")]),
+        Path::new("/h"),
+        names.0,
+        names.1,
+    );
+    assert_eq!(
+        iso,
+        vec![(names.1, "/iso/history-metadata.json".to_string())]
+    );
+    assert!(data_dir_envs(
+        &env_of(&[("CCM_DATA_DIR", "rel")]),
+        Path::new("/h"),
+        names.0,
+        names.1
+    )
+    .is_empty());
+}

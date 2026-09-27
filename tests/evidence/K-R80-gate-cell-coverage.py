@@ -618,6 +618,20 @@ cell(
     },
 )
 
+# ── 〔TAIL 09-26〕第 32 格 `panorama-engine`：全景小程序是独立 crate（自己一份 lock），别的格编不到它 ──
+cell(
+    "panorama-engine",
+    anchor="run_gate panorama-engine '单包 src/panorama-engine",
+    cwd="src/panorama-engine/",
+    cmd="cargo test",
+    **{
+        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/panorama/types.ts` 一处"),
+        "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
+        VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `ci.yml` 的 `-p code-picture-core`）"),
+        "src/bridge/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
+    },
+)
+
 # ── `K-R118`（09-14）：第 16 格 `tsc` ─────────────────────────────────────────
 # `KR118D1` ②：**「这棵树编不编得出发版产物」这一维此前门禁一格都没有**。
 # `npm` 那一格跑的是 `npm test`（`tsx` / `vitest` 都是转译执行，`esbuild` 只剥类型），
@@ -665,7 +679,7 @@ cell(
     },
 )
 
-E2E_NOTE = ("六套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 接进来的令牌两套）。`e2e/` 下的套件今天远不止四套 —— "
+E2E_NOTE = ("七套后端二进制 e2e 之一（`ccm` 四套 ＋ 第二波 T4 接进来的令牌两套 ＋ 〔TAIL〕`backend-cc-bus`）。`e2e/` 下的套件今天远不止四套 —— "
             "`ccm-acceptance` / `ccm-pretrust` / `cc-spawn-uplift` 等**都不在这道门里**"
             "（那笔账逐字记在本文件头注引的 `gate.sh` 那一段：一次真行为变更的 71 条红里"
             "「这道门看得见 9 条、看不见 62 条」）")
@@ -678,6 +692,8 @@ for suite, anchor in [
     #   被测对象同是那个后端二进制（`ccm` 即 `cc-monitor-backend`），读法与上面四格一字不差。
     ("ccm tests/e2e/backend-rbind-token", "run_e2e backend-rbind-token   11"),
     ("ccm tests/e2e/rbind-token-endtoend", "run_e2e rbind-token-endtoend   9"),
+    # 〔TAIL 09-26〕后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
+    ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        96"),
 ]:
     cell(
         suite,
@@ -1354,6 +1370,9 @@ invoke("test-tiers", ELSEWHERE,
 invoke("backend", ELSEWHERE,
        "`backend` 那个 job 在 `src/backend` 上跑单包 `cargo test`",
        anchor="name: Remote backend (Linux) lint + test")
+invoke("panorama-engine", NOWHERE,
+       "`ci.yml` 在这棵树里只跑 `cargo test -p code-picture-core`（vendor 自己的测试），"
+       "不跑本程序的 `cli_tests` ⇒ 这一维云端零覆盖，只有本机这一格")
 invoke("tsc", ELSEWHERE,
        "`frontend` 那个 job 跑 `npm run build`，而 `tsc --noEmit` 是它的第一步。"
        "⚠ 云端买的是「build 过得去」，**没有**本格那条「真读进 tsc 的份数 == 盘上现打份数」的恒等对账"
@@ -1380,7 +1399,7 @@ for _s in ("backend-rbind-token", "rbind-token-endtoend"):
            "〔第二波 T4 09-24〕`ci.yml` 里这一套**只在 shellcheck 人群里**，没有 `assert-pass-floor.sh` 调用行 —— "
            "`ci.yml` 步 2 / 步 3 那两段注释逐字「也没有加 `assert-pass-floor` 那一行 …… 待拍板」。"
            "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
-for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity"):
+for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus"):
     invoke("ccm tests/e2e/" + _s, ELSEWHERE,
            "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
            "⚠ 那几条调用行**在 GitHub runner 上一趟都没跑过**（本仓不推送）—— "
@@ -1873,7 +1892,8 @@ def main():
     order = [c for c in ("worktree-clean", "hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
                          "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend", "winlink",
-                         "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "comm-boundary", "test-tiers", "deadcode", "generated", "backend",
+                         "panorama-engine", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
