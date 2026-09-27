@@ -34,7 +34,7 @@ fn attach_is_not_a_mode_here() {
     })))
     .unwrap_err();
     assert_eq!(e.0, "invalid_args");
-    assert!(e.1.contains("平面 ③"), "错误没说清楚为什么：{}", e.1);
+    assert!(e.1.contains("unknown mode"), "错误没说清楚为什么：{}", e.1);
 }
 
 #[test]
@@ -1007,7 +1007,7 @@ fn w5vis_s4_ran_keeps_what_the_real_process_said_on_stderr() {
     let e = ran(std::process::Command::new(dir.join("gone")), &["x"]).unwrap_err();
     assert_eq!(e.0, "no_tmux");
     // `said_of`：没说话 ⇒ 那句占位；一个灌一整屏的 tmux 截在 `SAID_CAP` 之内（字符边界上）并标 `…`。
-    assert_eq!(said_of(b"  \n"), "（tmux 没说原因）");
+    assert_eq!(said_of(b"  \n"), "tmux 没说原因");
     let long = "错".repeat(SAID_CAP);
     let s = said_of(long.as_bytes());
     assert!(
