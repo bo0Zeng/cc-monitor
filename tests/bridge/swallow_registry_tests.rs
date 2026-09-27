@@ -84,6 +84,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=capture 却没给 capture 参数\".into(), fp)).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=forward 却没给 forward 参数\".into(), fp)).await;", 1, Why::DeadLink, ""),
+    // 〔HOST〕隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=tunnel 却没给 tunnel_port\".into(), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"远端 127.0.0.1:{port} 连不上: {e}\"), fp)).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", 4, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"exec {} 失败: {e}\", req.command), fp)).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"绑定本地端口 127.0.0.1:{} 失败: {e}\", spec.local_port), fp)", 1, Why::DeadLink, ""),
@@ -98,7 +101,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/inbound.rs", "let _ = replies.try_send(err(&req.id, \"not_cancellable\", &copy_text(\"beInbound.dispatch.cannotCancel\", &[])));", 1, Why::Backpressure, ""),
     ("src/backend/inbound.rs", "let _ = replies.try_send(ok(&req.id));", 1, Why::Backpressure, ""),
     ("src/backend/inbound.rs", "let _ = replies_sup.send(err(&id_sup, \"handler_panicked\", &copy_text(\"beInbound.spawnHandler.crashed\", &[]))).await;", 1, Why::PeerGone, ""),
-    ("src/backend/main.rs", "let _ = done.send(()).await;", 1, Why::Signal, ""),
+    // 〔HOST〕多客户：流结束那一格带上连接号（原 `done.send(())`）；认证通过的连接交主循环 —— 主循环不在了 = 进程在收尾。
+    ("src/backend/main.rs", "let _ = done.send(id).await;", 1, Why::Signal, ""),
+    ("src/backend/main.rs", "let _ = attached.send(Attached { reader: r, writer: w, hello_flushed, flags: flags.unwrap_or(None), }).await;", 1, Why::PeerGone, ""),
     ("src/backend/main.rs", "let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;", 1, Why::DeadLink, ""),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(dir);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(sessions);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
@@ -115,6 +120,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/plugin/invoke.rs", "let _ = crate::platform::signal::kill_group(g);", 1, Why::Reap, ""),
     ("src/backend/plugin/invoke.rs", "let _ = tokio::io::copy(r, &mut tokio::io::sink()).await;", 1, Why::Drain, ""),
     ("src/backend/relay/door.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "〔HOST〕钥匙 / pid 文件的原子写临时件：换名失败之后删它；主错误已在回"),
     ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut s, server::BUSY);", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/backend/relay/listen.rs", "let _ = server::respond_and_drain(&mut stream, server::BUSY);", 1, Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/backend/relay/server.rs", "let _ = down.set_nonblocking(false);", 1, Why::DeadLink, "已经答完的那条连接上排掉已到的字节，排不掉就算了"),

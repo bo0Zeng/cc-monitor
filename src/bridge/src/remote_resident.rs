@@ -21,9 +21,6 @@ use crate::ssh_source::RemoteConfig;
 const TUNNEL_TRIES: u32 = 30;
 const TUNNEL_WAIT: Duration = Duration::from_millis(200);
 
-/// hello / attach 应答那一行的字节上限（与本机宿主同一个量级）。
-const HANDSHAKE_LINE_CAP: usize = crate::local_backend_host::LISTEN_HANDSHAKE_LINE_CAP;
-
 /// 不认 `--resident-ensure` 的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就收工、当「太旧」。
 const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
 
@@ -165,7 +162,14 @@ async fn read_line(
 ) -> Result<String, AttachErr> {
     let what = copy_text(what_key, &[]);
     let mut buf = Vec::new();
-    match crate::ssh_source::read_capped_line(r, &mut buf, HANDSHAKE_LINE_CAP).await {
+    match crate::ssh_source::read_capped_line(
+        r,
+        &mut buf,
+        // hello / attach 应答那一行：与本机宿主同一个上限（同一条监听协议）。
+        crate::local_backend_host::LISTEN_HANDSHAKE_LINE_CAP,
+    )
+    .await
+    {
         Ok(crate::ssh_source::CappedLine::Line) => Ok(String::from_utf8_lossy(&buf)
             .trim_end_matches(['\n', '\r'])
             .to_string()),

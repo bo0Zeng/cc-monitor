@@ -235,7 +235,12 @@ pub async fn backend_stop(origin: String) -> Result<String, String> {
             h.abort();
         }
     }
-    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+    stop_remote_resident(&origin).await
+}
+
+/// 〔HOST〕停那台的常驻后端（`--resident-stop`，经链路在那台跑）。只由 [`backend_stop`] 在分过本机之后调。
+async fn stop_remote_resident(origin: &str) -> Result<String, String> {
+    let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
         copy_text(
             "rsBackendControl.handle.missing",
             &[("origin", &origin.to_string())],
