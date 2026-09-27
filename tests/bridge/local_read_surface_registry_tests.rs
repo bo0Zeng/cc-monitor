@@ -330,7 +330,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "local_ccm_entry_status",
         "`~/.cc-monitor/bin/<本机 ccm 入口名>`（`K-R69`：在不在 + 它自报的身份）",
         "**不是伸手拿用户的东西**：这是 monitor 自己的目录，那一份也是我们自己放下去的\
-             （写侧登记在 `write_site_registry` 的 `local_backend.rs::install_local_ccm_entry`）。\
+             （写侧登记在 `write_site_registry` 的 `local_backend.rs::extract_embedded_to`；〔E2〕它就是后端本身）。\
              `home_dir()` 只为「每个用户各一份」。\
              🔴 **它刻意够不到 `~/.local/bin/ccm`** —— 用户那份旧的由产品**一个字节都不碰**\
              （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\

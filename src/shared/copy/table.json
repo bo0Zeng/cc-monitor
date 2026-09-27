@@ -12090,14 +12090,21 @@
       "zh": "改名到 {dest} 失败：{e}",
       "args": ["dest", "e"]
     },
-    "rsLocalBackend.ccmEntry.copyFailed": {
-      "kind": "error",
-      "zh": "把后端 {bin} 复制成本机 ccm 入口失败：{e}",
-      "args": ["bin", "e"]
+
+
+    "rsLocalBackend.place.thisMachine": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
     },
-    "rsLocalBackend.ccmEntry.readFailed": {
+    "rsLocalBackend.place.besideUnstamped": {
       "kind": "error",
-      "zh": "读不到后端程序 {bin}：{e}",
+      "zh": "安装包旁边那份后端 {bin} 说不出自己是哪一版，没拿它放 ~/.cc-monitor/bin/ccm。重装 cc-monitor 再试",
+      "args": ["bin"]
+    },
+    "rsLocalBackend.place.besideReadFailed": {
+      "kind": "error",
+      "zh": "读不了安装包旁边那份后端 {bin}：{e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackend.extract.writeFailed": {
@@ -16036,16 +16043,8 @@
       "zh": "推到远端那台机器上跑的那一份后端。在那台机器上它就是本地后端",
       "args": []
     },
-    "rsToolRegistry.tools.backendEmbeddedNote": {
-      "kind": "body",
-      "zh": "本机释放出来的那份后端，文件名带版本号。同一版不会重复写，旧版本不回收",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendEmbeddedWhat": {
-      "kind": "body",
-      "zh": "cc-monitor 自己带着的那一份后端。旁边没有本机后端时释放出来用",
-      "args": []
-    },
+
+
     "rsToolRegistry.tools.backendBesideNote": {
       "kind": "body",
       "zh": "本机，随安装包落盘；文件名带目标平台，Windows 上再带 .exe",
@@ -16123,12 +16122,12 @@
     },
     "rsToolRegistry.tools.ccmLocalNote": {
       "kind": "body",
-      "zh": "本机那条 ccm 入口，放在 cc-monitor 自己的目录里。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
+      "zh": "本机那条 ccm，放在 cc-monitor 自己的目录里（就是本机后端那个文件）。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
       "args": []
     },
     "rsToolRegistry.tools.ccmLocalWhat": {
       "kind": "body",
-      "zh": "本机上的 ccm 命令。它就是后端程序本身换了个名字，不是另一份实现",
+      "zh": "本机上的 ccm 命令。它就是后端程序本身，不是另一份实现",
       "args": []
     },
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
@@ -16504,6 +16503,11 @@
     "rsToolRegistry.tools.ccmLegacyNote": {
       "kind": "body",
       "zh": "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendLegacyExtractNote": {
+      "kind": "body",
+      "zh": "旧版 cc-monitor 在本机放的后端（文件名带版本号）。今天后端就是 ~/.cc-monitor/bin/ccm；启动时认出是 cc-monitor 编的就删，删不掉的下次再删",
       "args": []
     },
     "rsToolRegistry.tools.backendLegacyNote": {

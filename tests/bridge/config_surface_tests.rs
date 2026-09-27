@@ -583,6 +583,7 @@ fn every_host_declaration_is_pinned() {
         //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
         //    放下去的（`local_backend::install_local_ccm_entry`），远端那台上没有它。
         ("ccm", "~/.cc-monitor/bin/ccm*", Client),
+        ("ccm", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
         // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`RetiredLegacy`，认出是我们编的就删）。
         ("ccm", "~/.cc-monitor/bin/cc-monitor-backend", Remote),
         ("ccm", "~/.bashrc", Remote),
@@ -608,7 +609,7 @@ fn every_host_declaration_is_pinned() {
         //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
         //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
         ("backend", "$APP_DIR", Client),
-        ("backend", "~/.cc-monitor/bin/cc-monitor-backend-*", Client),
+        // 〔E2 · V28〕自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
         // 〔E2 · V28〕`$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
         // 〔TL1 · 4C〕代码全景小程序（RM1f 起有落点的部署物）：两个载体、同一个相对落点、两台机器 ——

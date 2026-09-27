@@ -246,6 +246,36 @@ pub(crate) enum RemoteIdentity {
     Unreadable(String),
 }
 
+/// 〔E2 · `96 §7.2.2`〕**手上一份字节自报的身份**（本机那一跳：不经 shell、不跑它，直接扫字节）。
+/// 与远端那条扫描（[`stamp_scan_cmd`] ＋ [`interpret_stamp_scan`]）同一条规矩：界标之间 `[[:alnum:]_.-]+`，恰好一个才是身份。**纯函数**。
+pub(crate) fn identity_of_bytes(bytes: &[u8]) -> RemoteIdentity {
+    if bytes.is_empty() {
+        return RemoteIdentity::Empty;
+    }
+    let (open, close) = (
+        env!("BACKEND_STAMP_OPEN").as_bytes(),
+        env!("BACKEND_STAMP_CLOSE").as_bytes(),
+    );
+    let ok = |b: &u8| b.is_ascii_alphanumeric() || b"_.-".contains(b);
+    let mut ids: Vec<String> = Vec::new();
+    let mut i = 0;
+    while let Some(k) = bytes[i..].windows(open.len()).position(|w| w == open) {
+        let start = i + k + open.len();
+        let n = bytes[start..].iter().take_while(|b| ok(b)).count();
+        if n > 0 && bytes[start + n..].starts_with(close) {
+            ids.push(String::from_utf8_lossy(&bytes[start..start + n]).into_owned());
+        }
+        i = start;
+    }
+    ids.sort();
+    ids.dedup();
+    match ids.len() {
+        0 => RemoteIdentity::NoStamp,
+        1 => RemoteIdentity::Stamp(ids.remove(0)),
+        _ => RemoteIdentity::Ambiguous(ids),
+    }
+}
+
 /// 在目标机器上扫身份戳的那一条命令（`96 §7.2.1` 档 A：目标机器**自己的**只读工具，一次 exec，常数字节回传）。
 ///
 /// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——

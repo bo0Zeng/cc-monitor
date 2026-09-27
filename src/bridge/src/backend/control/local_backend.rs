@@ -982,74 +982,12 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
     )
 }
 
-/// # 诚实边界 8c：**不清理旧的按 build_id 命名的文件**
+/// 〔E2 · V28 · `设计/01 §6.7b`〕**本机后端的落点：`dir/ccm(.exe)` —— 它就是后端本身**（文件名 = [`local_ccm_entry_name`]）。
 ///
-/// 文件名带 build_id 是为了幂等与不撞版（见下方 D1 段），代价是
-/// **每换一次后端构建就在 `~/.cc-monitor/bin/` 多留一个 10MB 级的旧文件，永不回收**。
-/// 今天没有任何清理逻辑，也没有判据钉它。
-/// ⇒ 刻意不做：按 mtime/版本回收要先定「谁还可能在跑旧的那份」，那是 `P2d`（认已有实例）的前提。
-///
-/// 🔴 **`K-R42` 09-10 补一条：这笔账的分母变大了，而处置没变。**
-/// 本段写下时，这条路**只在 Linux 上真跑过**（宿主那侧压着 `cfg!(target_os = "linux")`），
-/// 而 Linux 上安装包与 dev 树旁边多半就有 local_backend ⇒ 释放这一支很少走到。
-/// 本件把 Windows 那一格接上之后，**裸 exe 每换一个后端版本就在
-/// `%USERPROFILE%\.cc-monitor\bin\` 多留一份**（这一次是 14 MB 级，见 `K-R42` 交回的体积读数）。
-/// ⇒ **仍然不清理**，三条理由都还成立、且新添一条：
-/// ① 判「谁还在跑旧的那份」仍是 `P2d` 的前提，本件没做那件事；
-/// ② 真删要扩 `sweep_stale_partials` 的射程（它今天**只删自己那套 `.partial` 命名**），
-///    而那条射程逐字登记在 `write_site_registry::WRITE_SITES` 里 —— 那张表不在本件写区，
-///    改了代码不改登记 = 让一条登记变成假话，比多留一个文件贵；
-/// ③ 幂等这一半是好的：**同一个 build_id 不会重复写**（下面那个 size 相等就跳过的分支）
-///    ⇒ 留下的份数上界是「这台机上装过几个不同后端版本」，不是「起过几次 monitor」。
-/// ⚠ **这是一笔如实记着的欠账，不是「已解决」** —— 建议作跟进件，与 `P2d` 同拍做。
-///
-/// P2z（`control-parity` 的定框 C10 —— 单 exe 那一条，不是 `backend-split` 那条平台原语）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl backend
-/// 写到 `dir` 下，文件名**带 build_id**，返回落点。
-///
-/// # 为什么文件名必须带 build_id（自批 D1，别改成和远端部署同一个文件）
-///
-/// 远端自部署的落点也是 `~/.cc-monitor/bin/`（`sftp.rs` 头注 F08）。**实测 08-11**：本机那份
-/// `.build_id` 是 `p1r-event-liveness`（别的 monitor 把这台当远端连时装的，当时还有进程跑在上面），
-/// 而本机源码是 `p1x-overflow-identity`。两边对同一个文件有**不同期望** ⇒ 各自判对方 stale、
-/// 互相覆盖 ⇒ **无限重装循环**。`build.rs` 那段 panic 逐字警告过同一个形状：
-/// 「装上去之后**永远判 stale** ⇒ 无限重装循环。这不是「慢一点」，是坏的。」
-/// ⇒ 本机这条路**按 build_id 命名**，与远端那条**结构上不可能撞**（不是靠「配置别配成一样」）。
-///
-/// # 宿主知识留调用方
-///
-/// `dir` 由调用方给（`lib.rs` 那侧算 `~/.cc-monitor/bin`）——同 `resolve_beside_this_exe`
-/// 把 exe 目录留给调用方的理由，本模块过 `backend::tests::the_backend_layer_stays_host_agnostic`。
-///
-/// # 它不做什么
-///
-/// **不校验写完的字节是不是真能跑** —— `deploy_decision` 只回答「要不要装」，不回答「装完对不对」。
-/// 起不起得来由监护层（[`supervise_with_stdio`]）的崩溃计数说话。
-/// 本机释放的**文件名**（唯一真相源）。
-///
-/// ⚠ 抽成函数不是为了好看：判据 `the_local_extract_path_is_build_id_scoped` 要断言这条命名规则，
-/// 而如果判据自己**抄一份** `format!` 就成了「测自己的副本」—— 改了这里判据照样绿。
-/// 本仓在别处栽过同族（`strip-comments` 那次两份手抄语义漂移）。⇒ 两边共用这一个。
-///
-/// # `K-R42`：名字尾巴上那个后缀
-///
-/// 释放出来的这份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上它得带着自己那个后缀。
-/// 🔴 **后缀不是在这里现算的** —— 算它要 `env::consts::EXE_SUFFIX`，那是**平台原语**，
-/// 而本文件在 `backend/backend_tests.rs::PLATFORM_EXCEPTIONS` 里**只有一格例外额度**
-/// （那张表挂着递减棘轮 `len() <= 1`，今天正好占满，占的是 `resolve_beside_this_exe`）。
-/// ⇒ 由 `build.rs` 从 **`TARGET`** 算好、当编译期常量交进来
-/// （`CCM_TARGET_EXE_SUFFIX`，同 `CCM_TARGET_TRIPLE` 那条先例）。
-/// 顺带买到一件现算买不到的事：交叉编译时 `env::consts::` 给的是**构建机**的后缀，
-/// 而这里要的是**目标机**的。
-/// ⚠ 非 Windows 上这个常量是**空串** ⇒ 名字与本行改动之前**逐字相同**，盘上已有的那份照旧命中。
-pub fn local_extract_name(build_id: &str) -> String {
-    format!(
-        "cc-monitor-backend-{build_id}{}",
-        env!("CCM_TARGET_EXE_SUFFIX")
-    )
-}
-
-// 〔DP1 · 第四波〕这里原来住着这一份产物按 `TARGET` 内嵌的本机后端那一槽（`K-R42`）。它搬进了 `src/bridge/src/byte_table.rs`：全仓只有一处按 (OS, arch) 取字节（`设计/96 §7.1.1b`），
-//   本层不再自己问「这份产物带没带」—— 宿主从那张表取来、经 `embedded` 交进来，本层只管释放。
+/// 从前释放成 `cc-monitor-backend-<build_id>`、再逐字节拷一份叫 `ccm`（V28「第二份拷贝」）；今天只有这一个文件，
+/// 本机常驻后端跑的就是它，终端里敲的 `ccm` 也是它。名字不带 build_id 之后「两个版本的 monitor 互相换掉对方」那一形
+/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（[`crate::sftp::identity_decision`]，与远端部署同一条），见 [`extract_embedded_to`]。
+/// 名字的后缀由 `build.rs` 从 `TARGET` 算好（`CCM_TARGET_EXE_SUFFIX`，`K-R42`），本层不现算平台原语。
 
 /// 陈旧 `.partial` 的年龄阈值。
 ///
@@ -1088,6 +1026,57 @@ fn sweep_stale_partials(dir: &std::path::Path, extract_name: &str) {
     }
 }
 
+/// 挪开的旧 `ccm`（`.<名>.<pid>.old`，Windows 上正在跑的那份删不掉、只能改名挪开）：下一次放置时收，删不掉就下次再说。
+fn sweep_moved_aside(dir: &Path, name: &str) {
+    let prefix = format!(".{name}.");
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for ent in rd.flatten() {
+        let n = ent.file_name();
+        if n.to_str()
+            .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".old"))
+        {
+            let _ = std::fs::remove_file(ent.path());
+        }
+    }
+}
+
+/// 〔E2 · E-c〕旧版本机释放的 `cc-monitor-backend-<build_id>` 们：身份戳恰一个（是我们编的）才删；删不掉（正在跑）不管。
+/// 回删掉了几份（给日志）。
+pub fn sweep_legacy_extracts(dir: &Path) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut n = 0;
+    for ent in rd.flatten() {
+        let name = ent.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with(LEGACY_EXTRACT_PREFIX) {
+            continue;
+        }
+        let ours = std::fs::read(ent.path()).is_ok_and(|b| {
+            matches!(
+                crate::sftp::identity_of_bytes(&b),
+                crate::sftp::RemoteIdentity::Stamp(_)
+            )
+        });
+        if ours && std::fs::remove_file(ent.path()).is_ok() {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// 旧版本机释放名的前缀（`cc-monitor-backend-<build_id>[.exe]`）。
+pub const LEGACY_EXTRACT_PREFIX: &str = "cc-monitor-backend-";
+
+/// P2z：**单 exe 自释放** ——〔E2〕把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
+///
+/// 换不换照 HX2 D-b（与远端部署同一条判定 [`crate::sftp::identity_decision`]，对照物是手上这份字节自报的 `build_id`）：
+/// 盘上缺 / 0 字节 ⇒ 放；同一版且逐字节相同 ⇒ 留；同一版字节不同（开发树重编）⇒ 换；盘上的更旧 ⇒ 换；
+/// 盘上的不比我旧 ⇒ 留、跑盘上那份；盘上那份不说自己是谁 / 身份不唯一 ⇒ `Err`（不覆盖，那句话说清出路）。
+/// 写法：`.<名>.<pid>.partial` → 置可执行位 → `rename` 上位；`rename` 不成（Windows 上旧的正在跑）⇒ 先把旧的改名挪开再上位。
 pub fn extract_embedded_to(
     dir: &Path,
     build_id: &str,
@@ -1096,43 +1085,40 @@ pub fn extract_embedded_to(
     // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
-    let dest = dir.join(local_extract_name(build_id));
-    // 已经在且大小对得上 ⇒ 幂等跳过（不重写，省一次 IO，也不动 mtime）。
-    if let Ok(m) = std::fs::metadata(&dest) {
-        if m.is_file() && m.len() == bytes.len() as u64 {
-            return Ok(dest);
-        }
+    let name = local_ccm_entry_name();
+    let dest = dir.join(&name);
+    sweep_moved_aside(dir, &name);
+    let disk = std::fs::read(&dest).ok();
+    let id = match &disk {
+        None => crate::sftp::RemoteIdentity::Missing,
+        Some(b) => crate::sftp::identity_of_bytes(b),
+    };
+    let machine = copy_text("rsLocalBackend.place.thisMachine", &[]);
+    match crate::sftp::identity_decision(&id, build_id, &machine, &dest.display().to_string())? {
+        crate::sftp::DeployAction::Skip if disk.as_deref() == Some(bytes) => return Ok(dest),
+        crate::sftp::DeployAction::Keep { .. } => return Ok(dest),
+        crate::sftp::DeployAction::Skip | crate::sftp::DeployAction::Deploy(_) => {}
     }
     ensure_dir(dir)?;
-    // 先写临时文件再 rename：半截文件不许被当成可执行的后端（rename 在同一文件系统上原子）。
-    // ★★ 临时名**带 pid**〔`P2t` 摸底 08-12〕：原来是**固定名**，两个同版本 monitor 同时释放
-    // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
-    // 而这道 `.partial` + `rename` 存在的全部理由就是「半截文件不许被当成可执行的后端起起来」。
-    // ⚠ 这不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
-    // （`lib.rs::run` 里那段 `#[cfg(windows)]`）⇒ Linux/macOS 上两个 monitor 天然并存。
-    // ⇒ 每个进程写自己那份，`rename` 仍是原子的，互不覆盖。
-    let tmp = dir.join(format!(
-        ".{}.{}.partial",
-        local_extract_name(build_id),
-        std::process::id()
-    ));
-    // 带 pid 之后，崩在中途的那些**不会再被下一次覆盖掉** ⇒ 得自己收。
-    // ⚠ 不按「pid 还活着吗」判：那是**平台知识**，而本模块按 `C10` 不许认识平台
-    // （`bind.rs::is_pid_alive` 在非 Windows 上恒 false，拿来用会误删活的）。
-    // ⇒ 按**年龄**判，阈值给得极宽（见常量头注）。
-    sweep_stale_partials(dir, &local_extract_name(build_id));
+    // 临时名**带 pid**〔`P2t` 摸底 08-12〕：两个同版本 monitor 同时释放各写各的，`rename` 仍是原子的。
+    let tmp = dir.join(format!(".{name}.{}.partial", std::process::id()));
+    sweep_stale_partials(dir, &name);
     std::fs::write(&tmp, bytes).map_err(|e| {
         copy_text(
             "rsLocalBackend.extract.writeFailed",
             &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
         )
     })?;
-    // `backend-split` 的 C10：**「怎么置可执行位」是平台知识，不许住在 backend**。
-    // 这里只知道「写完要让它可执行」，那句话在本平台上怎么落由宿主注入
-    // （`platform_fs::make_executable`）。原来这处是个 `#[cfg(unix)]` 块，
-    // `the_backend_half_stays_platform_agnostic` 逮到了它。
+    // `backend-split` 的 C10：「怎么置可执行位」是平台知识，由宿主注入（`platform_fs::make_executable`）。
     make_executable(&tmp)?;
-    std::fs::rename(&tmp, &dest).map_err(|e| {
+    let placed = std::fs::rename(&tmp, &dest).or_else(|first| {
+        // 〔E2 · E-b〕Windows 上正在跑的 `ccm.exe` 删不掉、换不掉，但改得了名：挪开再上位，挪开的下次放置时收。
+        let aside = dir.join(format!(".{name}.{}.old", std::process::id()));
+        std::fs::rename(&dest, &aside)
+            .and_then(|_| std::fs::rename(&tmp, &dest))
+            .map_err(|_| first)
+    });
+    placed.map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         copy_text(
             "rsLocalBackend.extract.renameFailed",
@@ -1221,7 +1207,7 @@ pub const CCM_ENTRY_WORD: &str = "ccm";
 
 /// 本机 `ccm` 入口的**文件名**（唯一真相源，判据与生产共用这一个）。
 ///
-/// 后缀与 [`local_extract_name`] 同一个来路：`build.rs` 按 **`TARGET`** 算好的编译期常量
+/// 后缀与本机落点同一个来路：`build.rs` 按 **`TARGET`** 算好的编译期常量
 /// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
 /// 它得带着自己那个后缀。
 /// ⚠ 这里**不许**现算 `env::consts::EXE_SUFFIX` —— 那是平台原语，而本文件在
@@ -1234,98 +1220,8 @@ pub fn local_ccm_entry_name() -> String {
 // 〔E2 · V28 · `设计/01 §6.7b`〕远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
 //   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由 `ccm_legacy::is_ours` 认（它记着那一形的第二行）。
 
-/// 🔴 `K-R69`：把**本机的 `ccm` 入口**放到后端二进制旁边（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。
-///
-/// # 它写的是什么：`backend_bin` 的**逐字节副本**，改名成 [`local_ccm_entry_name`]
-///
-/// 三条路各自为什么不走，写清楚免得下一个人以为是随手选的：
-/// · **不写一个壳** —— `K33` 逐字「所有命令只许有一处」。多一份壳就多一处要跟着改的东西，
-///   而 `KR69D1` 的失效方向逐字写着「在本机再写一个 `ccm` 壳 ⇒ 不算兑现」。
-/// · **不写 shim** —— 远端那条只能是 shim（后端落点由用户配置的 `backend_path` 决定，
-///   而且推过去的是文本）；本机这一份的字节**我们手里就有**，直接给它一个名字最省。
-///   而且 `#!/bin/sh` 那一形在 Windows 上根本起不来，本层不许认识平台（`C10`）。
-/// · **不做软链** —— `std::os::unix::fs::symlink` 与 Windows 那条都是**平台原语**，
-///   本文件的例外额度已被占满（见 [`local_ccm_entry_name`]）。
-///
-/// # 落点为什么是 `~/.cc-monitor/bin`，不是 `~/.local/bin`
-///
-/// 后者是**用户那份旧 `ccm` 住的地方**。往那儿写就是覆盖用户的文件，而 `K34` 逐字
-/// 「原本的配置**要手动删除**」、`K31`「不许动用户机器」⇒ **产品一个字节都不动它**。
-/// 写进 monitor 自己的目录还买到第二件事：两份**同时在盘上**，
-/// 「你 PATH 上那个不是我们装的这一份」才有得可判（`KR69D2`）。
-///
-/// # 幂等
-///
-/// 已经在、长度与后端相同、且**不比后端旧** ⇒ 跳过。否则写 `.<名字>.<pid>.partial`
-/// → 置可执行位 → `rename` 覆盖（与 [`extract_embedded_to`] 同一套，理由住那儿）。
-/// ⚠ **这两条不是「内容相同」的证明，是便宜的止损**：长度相同的两版二进制是可能的，
-/// 所以第二条要「不比后端旧」——换了一版后端，释放出来那份是新的 ⇒ 这一份跟着重写。
-/// 真正的保证在写的那一步：整份字节**从 `backend_bin` 读**，没有第二个来源。
-///
-/// # 它不做什么
-///
-/// **不碰 PATH、不碰任何 rc、不碰用户的 `~/.local/bin`。** 「怎么让终端里那句 `ccm`
-/// 指到它」是别名层与 `KR69D3` 的事，不是这里。
-pub fn install_local_ccm_entry(
-    dir: &Path,
-    backend_bin: &Path,
-    make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
-    ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
-) -> Result<PathBuf, String> {
-    let name = local_ccm_entry_name();
-    let dest = dir.join(&name);
-    // 后端自己就叫 `ccm`（有人把它改名部署了）⇒ 本机那条落点**已经是它**，没有第二份要放。
-    if dest == backend_bin {
-        return Ok(dest);
-    }
-    let src_meta = std::fs::metadata(backend_bin).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.ccmEntry.readFailed",
-            &[
-                ("bin", &(backend_bin.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
-        )
-    })?;
-    if let Ok(m) = std::fs::metadata(&dest) {
-        if m.is_file() && m.len() == src_meta.len() && !older_than(&m, &src_meta) {
-            return Ok(dest);
-        }
-    }
-    ensure_dir(dir)?;
-    let tmp = dir.join(format!(".{}.{}.partial", name, std::process::id()));
-    sweep_stale_partials(dir, &name);
-    std::fs::copy(backend_bin, &tmp).map_err(|e| {
-        copy_text(
-            "rsLocalBackend.ccmEntry.copyFailed",
-            &[
-                ("bin", &(backend_bin.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
-        )
-    })?;
-    make_executable(&tmp)?;
-    std::fs::rename(&tmp, &dest).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        copy_text(
-            "rsLocalBackend.extract.renameFailed",
-            &[
-                ("dest", &(dest.display()).to_string()),
-                ("e", &e.to_string()),
-            ],
-        )
-    })?;
-    Ok(dest)
-}
-
-/// 盘上那份比后端旧吗。**取不到时间就当旧的**（宁可多写一次，也不要留一份过期的入口）。
-fn older_than(dest: &std::fs::Metadata, src: &std::fs::Metadata) -> bool {
-    match (dest.modified(), src.modified()) {
-        (Ok(d), Ok(s)) => d < s,
-        _ => true,
-    }
-}
+// 〔E2 · V28〕`install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，V28「第二份拷贝」）删了：
+//   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。
 
 /// 「带着后端但放不下来」这一形的**认路标记**。
 ///
@@ -1971,7 +1867,7 @@ fn local_stdio_consumer_guarded(
 /// `resolve_backend_bin` 一个字没动 —— 顺序仍是「先旁边、再释放」⇒ 那条判据**照样绿**。
 /// 于是同一台机器上，两条路对**同一个失败**给出的是两句性质不同的话。
 /// ⇒ 处置**不是**再加一条「两边内容也要一样」的对拍（那是「测自己的副本」的近亲，
-/// 本模块 [`local_extract_name`] 的头注逐字论证过同一件事），是**只留一份**。
+/// 本模块 `local_extract_name`〔散文墓碑〕的头注逐字论证过同一件事），是**只留一份**。
 ///
 /// # 它不做什么
 ///
@@ -1985,58 +1881,76 @@ pub fn resolve_or_extract(
     // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Resolved {
-    // 🔴 `K-R69`：整段解析包进一个**带标号的块**，只为在返回之前多做一件事
-    //    （放本机那条 `ccm` 入口）。**刻意不抽成第二个函数** ——
-    //    `the_self_extract_path_really_asks_the_product_whether_it_carries_one`
-    //    切的就是本函数的体，抽走等于把那三条断言切到一段空文本上（它们会恒答）。
+    // 〔E2 · V28〕字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
+    //   **落点恒是 `extract_dir/ccm`** —— 本机常驻后端跑的与终端里敲的 `ccm` 是同一个文件（`设计/01 §6.7b`）。
+    //   带标号的块照旧：`the_self_extract_path_really_asks_the_product_whether_it_carries_one` 切的是本函数的体。
     let resolved = 'resolve: {
         let beside = resolve_beside_this_exe(target_triple);
-        if matches!(beside, Resolved::Found(_)) {
-            break 'resolve beside;
-        }
-        // 〔DP1〕宿主从那张表里取不到 ⇒ 它交进来的是那句拒绝的话：接在「旁边没有」后面，两件事都说。
-        let (build_id, bytes) = match embedded {
-            Ok(b) => b,
-            Err(why) => {
-                break 'resolve match beside {
-                    Resolved::Missing { reason, looked_at } => Resolved::Missing {
-                        reason: format!("{reason}\n{why}"),
-                        looked_at,
-                    },
-                    found @ Resolved::Found(_) => found,
-                };
-            }
+        let from_beside: Option<(String, Vec<u8>)> = match &beside {
+            Resolved::Found(p) => match std::fs::read(p) {
+                Ok(b) => match crate::sftp::identity_of_bytes(&b) {
+                    crate::sftp::RemoteIdentity::Stamp(id) => Some((id, b)),
+                    _ => {
+                        break 'resolve Resolved::Missing {
+                            reason: copy_text(
+                                "rsLocalBackend.place.besideUnstamped",
+                                &[("bin", &p.display().to_string())],
+                            ),
+                            looked_at: vec![p.clone()],
+                        }
+                    }
+                },
+                Err(e) => {
+                    break 'resolve Resolved::Missing {
+                        reason: copy_text(
+                            "rsLocalBackend.place.besideReadFailed",
+                            &[("bin", &p.display().to_string()), ("e", &e.to_string())],
+                        ),
+                        looked_at: vec![p.clone()],
+                    }
+                }
+            },
+            Resolved::Missing { .. } => None,
+        };
+        // 〔DP1〕旁边没有、宿主从那张表里也取不到 ⇒ 它交进来的是那句拒绝的话：接在「旁边没有」后面，两件事都说。
+        let (build_id, bytes): (&str, &[u8]) = match &from_beside {
+            Some((id, b)) => (id.as_str(), b.as_slice()),
+            None => match embedded {
+                Ok(e) => e,
+                Err(why) => {
+                    break 'resolve match beside {
+                        Resolved::Missing { reason, looked_at } => Resolved::Missing {
+                            reason: format!("{reason}\n{why}"),
+                            looked_at,
+                        },
+                        found @ Resolved::Found(_) => found,
+                    };
+                }
+            },
         };
         match extract_embedded_to(extract_dir, build_id, bytes, make_executable, ensure_dir) {
             Ok(p) => Resolved::Found(p),
             Err(e) => {
                 // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
-                //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同
-                //    （前者去装安装包，后者去看那个目录的权限 / 杀毒软件）。
-                //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
+                //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同。
                 let reason = extraction_failure_reason(extract_dir, &e);
-                // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
-                //（`K-R43` 之前，`local_backend_host.rs` 那条自动起的路对没有记录的失败就是这么走的
-                //  —— 而它当时**根本走不到这里**，那条路自己拼了一句分不开的话）。
-                // ⇒ 这一支自己吼一声 error，日志里一定留得下。**两条路今天共用这一声。**
+                // 这一支自己吼一声 error，日志里一定留得下（两条生产路共用这一声）。
                 tracing::error!("{reason}");
                 Resolved::Missing {
                     reason,
                     looked_at: match beside {
                         Resolved::Missing { looked_at, .. } => looked_at,
-                        Resolved::Found(_) => Vec::new(),
+                        Resolved::Found(p) => vec![p],
                     },
                 }
             }
         }
     };
-    // 🔴 `K-R69`：**后端在哪儿，本机那条 `ccm` 入口就跟到哪儿。**
-    //    放在这里而不是放在两个生产入口里，理由与 `K-R43` 抽出本函数时那条逐字相同：
-    //    两份手写实现之间只会漂，而漂开的后果是同一台机器上两条路给出不同的答案。
-    // ⚠ **它失败不许拖垮后端**：少一条终端命令 ≠ 后端起不来。诚实吼一声，照常返回。
-    if let Resolved::Found(bin) = &resolved {
-        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir) {
-            tracing::warn!("本机 ccm 入口没放下来（后端本身没事，只是终端里少一条 `ccm`）：{e}");
+    // 〔E2 · E-c〕放好之后清旧版释放的 `cc-monitor-backend-<id>` 们（身份戳认得出才删；失败不拖垮后端）。
+    if matches!(resolved, Resolved::Found(_)) {
+        let n = sweep_legacy_extracts(extract_dir);
+        if n > 0 {
+            tracing::info!("本机旧版后端释放件清掉 {n} 份（今天后端就是 ~/.cc-monitor/bin/ccm）");
         }
     }
     resolved
