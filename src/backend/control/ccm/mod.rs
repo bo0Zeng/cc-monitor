@@ -241,23 +241,55 @@ pub(crate) fn own_source() -> &'static str {
 /// ⚠ 刻意**不是** `--ccm`：那样它会长得像一条 wire 子命令，而它不是。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
 
-/// 这一趟是不是在当 `ccm` 用？是就返回**要交给 [`run`] 的那串 argv**。
+/// 〔V151〕这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entry {
+    /// 当 `ccm` 用：交给 [`run`] 的那串 argv（`[交给 claude 的…] -- [ccm 自己的…]`）。
+    Ccm(Vec<String>),
+    /// 当后端用：一次性子命令或流模式的 argv（已去掉打头的 `--`）。
+    Backend(Vec<String>),
+}
+
+/// 〔V151〕后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
+pub(crate) fn is_backend_word(w: &str) -> bool {
+    crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
+}
+
+/// 〔V151 · 用户 09-27〕分流：
+/// ① 打头的 `--` 紧跟后端词 ⇒ 后端（名字是不是 `ccm` 都一样：`ccm -- --stream` 与开发树 `cc-monitor-backend -- --stream` 同形）；
+///    第一个 `--` 就是分隔 ⇒ 后端子命令自己的参数里再出现 `--` 也不会被误切。
+/// ② 名字是 `ccm`（`~/.cc-monitor/bin/ccm`，它就是后端本身）⇒ 其余一律当 ccm（切 claude / ccm 两半归 `argv::parse`）。
+/// ③ 名字不是 `ccm`：首词 `ccm` ⇒ ccm（入口②）；打头的 `--` 去掉；其余原样当后端（开发树直接跑的那一形）。
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
-/// 从 argv 里**任意位置**剥掉，而 `ccm -- --tail-only` 里那个是要原样透传给 agent 的。
-pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
+/// 从 argv 里**任意位置**剥掉，而 `ccm --tail-only` 里那个是要原样交给 agent 的。
+/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕），claude 自己的 `--fork-session` 会被抢进后端；V151 取消。〕
+pub fn route(argv0: &str, args: &[String]) -> Entry {
     let base = argv0
         .rsplit(['/', '\\'])
         .next()
         .unwrap_or(argv0)
         .trim_end_matches(".exe");
+    let first = args.first().map(String::as_str);
+    if first == Some(argv::flag::END) && args.get(1).is_some_and(|w| is_backend_word(w)) {
+        return Entry::Backend(args[1..].to_vec());
+    }
     if base == SUBCOMMAND_WORD {
-        return Some(args.to_vec());
+        return Entry::Ccm(args.to_vec());
     }
-    if args.first().map(String::as_str) == Some(SUBCOMMAND_WORD) {
-        return Some(args[1..].to_vec());
+    match first {
+        Some(SUBCOMMAND_WORD) => Entry::Ccm(args[1..].to_vec()),
+        Some(argv::flag::END) => Entry::Backend(args[1..].to_vec()),
+        _ => Entry::Backend(args.to_vec()),
     }
-    None
+}
+
+/// [`route`] 的 ccm 那一支（给只关心「是不是在当 ccm 用」的调用方）。
+pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
+    match route(argv0, args) {
+        Entry::Ccm(v) => Some(v),
+        Entry::Backend(_) => None,
+    }
 }
 
 /// 「我是被怎么叫进 `ccm` 模式的」—— 进程 argv 里**排在 ccm 参数前面**的那一段。
@@ -368,6 +400,18 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, 
 /// 一条别名的预置参数最多几个词、每个词最长多少（帧面入参的上界；别名表单产出的远小于它）。
 const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: usize = 4096;
+
+/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕帧命令 `ccm-probe`：**这台的 `ccm` 会哪些** —— 与 `ccm --ccm-probe` 同一份（[`probe_output`]），
+/// 原文整段交回（`{ "probe": "<那几行>" }`），monitor 用解析 `--ccm-probe` 的同一个函数读它。
+/// 为什么问后端而不是进交互 shell 查 `PATH`：`ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`），
+/// 「它会哪些」这一问退化成问它自己。`self=` 那一行报的是这个进程的真身（常驻后端没有「怎么被敲出来的」那一段）。
+/// 纯函数：不起进程、不碰盘。
+pub(crate) fn answer_probe() -> serde_json::Value {
+    let me = std::env::current_exe()
+        .map(|p| plan::qarg(&p.display().to_string()))
+        .unwrap_or_default();
+    serde_json::json!({ "probe": probe_output(&me) })
+}
 
 /// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：**一条别名实际会执行什么**（`设计/71 §2.3`：
 /// 「`ccm --ccm-print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。

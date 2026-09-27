@@ -85,14 +85,14 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = out.flush().await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = self.close().await;", 1, Why::Reap, "放弃 / 提前收工时向远端发关通道：对端撤活只是尽力（`05 §3.3.3`）"),
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=capture 却没给 capture 参数\".into(), fp)).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=forward 却没给 forward 参数\".into(), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=capture without `cap", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=forward without `for", 1, Why::DeadLink, ""),
     // 〔HOST〕隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=tunnel 却没给 tunnel_port\".into(), fp)).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"远端 127.0.0.1:{port} 连不上: {e}\"), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=tunnel without `tunn", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.tunnel.unreachable\", &[(\"port\", &port.to_s", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", 4, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"exec {} 失败: {e}\", req.command), fp)).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"绑定本地端口 127.0.0.1:{} 失败: {e}\", spec.local_port), fp)", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.failed\", &[(\"e\", &e.to_string())]), f", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.forward.bindFailed\", &[ (\"port\", &spec.loc", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &fail(e)).await;", 1, Why::DeadLink, ""),
     ("src/backend/files/browse_watch.rs", "let _ = self.inner.unwatch(&super::raw::to_path_buf(d));", 1, Why::Reap, "撤不再看的目录的 watch：目录已删时 unwatch 本来就会失败"),
     ("src/backend/files/mod.rs", "let _ = write!(out, \"{b:02x}\");", 1, Why::InfallibleWrite, "`out` 是 `String`（十六进制摘要）"),
@@ -147,8 +147,10 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/src/backend/control/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),
-    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 3, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
-    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 1, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）；删不掉下次再清"),
+    // 〔E2〕3 → 2：逐字节副本那一处删了。
+    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 2, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    // 〔E2〕1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
+    ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
     ("src/bridge/src/backend/control/payload.rs", "let _ = write!(out, \"export ANTHROPIC_MODEL={}; \", shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
     ("src/bridge/src/backend/control/payload.rs", "let _ = write!(out, \"export CCM_RBIND_TOKEN={}; \", shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
@@ -210,9 +212,10 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(stderr.as_bytes());", 1, Why::Diag, ""),
     ("src/panorama-engine/main.rs", "let _ = std::io::stdout().write_all(stdout.as_bytes());", 1, Why::Diag, ""),
     // 〔W5-AUX · `设计/96 §3.6`〕capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"远端命令起来了，但交给它的那一行没送过去: {e}\"), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.stdinLost\", &[(\"e\", &e.to_string())])", 1, Why::DeadLink, ""),
     // 〔VIS2 · 09-26〕`agent_home` 的可重入挂法（`rewatch_agent_home`，`设计/15 §4.7 S3`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", 1, Why::Reap, "〔STOP〕停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。

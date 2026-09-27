@@ -1016,7 +1016,6 @@ pub fn window_on(wired: &Wired, cwd: &str) -> crate::filewin::shell::FileWindow 
         port: 22,
         user: "nobody".into(),
         key_path: None,
-        backend_path: "/nonexistent".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

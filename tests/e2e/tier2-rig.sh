@@ -69,7 +69,8 @@ cfg = {
             "port": 22,
             "user": os.environ.get("USER") or os.getlogin(),
             "keyPath": f"{real_home}/.ssh/id_ed25519",
-            "backendPath": f"{rig}/backend-wrapper.sh",
+            # 〔E2 · V28〕`backendPath` 那一格删了：远端后端恒是那台 `~/.cc-monitor/bin/ccm`。本台架连的是本机回环 sshd（真 HOME），
+            #   wrapper 要换进那个落点才接得上 —— 那是真家目录，本脚本不写；要用 wrapper 得换一台 HOME 在沙箱里的 sshd（待补）。
             "hostKeyFingerprint": fp,
             "addresses": [],
             "jump": "",

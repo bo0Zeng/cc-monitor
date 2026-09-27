@@ -793,7 +793,16 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         // 〔HX1 · D-f〕第三个键：只折成「走不走本机中转」一个布尔；值带钥匙，这一行之后就丢掉。
         let via_relay = if alive {
             match proc_env_var(pid, env_keys.base_url) {
-                EnvRead::Value(v) => Some(relay_route_core::split_keyed_base_url(&v).is_some()),
+                // 〔E2 · V146〕环境里是中转地址 ≠ 真走中转：agent 自己的设置文件可能压过它（`settings_may_set_base_url`）⇒ 那时说不清。
+                EnvRead::Value(v) if relay_route_core::split_keyed_base_url(&v).is_some() => {
+                    let settings_win = (env_keys.settings_may_set_base_url)(
+                        cfg.as_deref().map(Path::new),
+                        agent_home,
+                        cwd.map(Path::new),
+                    );
+                    (!settings_win).then_some(true)
+                }
+                EnvRead::Value(_) => Some(false),
                 EnvRead::Unset => Some(false),
                 EnvRead::Unreadable => None,
             }

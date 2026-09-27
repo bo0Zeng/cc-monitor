@@ -135,10 +135,9 @@
 //!    - 🔴 **而「在这台机器上做不到」那个轴与本轴还没对上**，两件事别混：
 //!      本轴（`设计/96 §2` 的 target 轴）逐字答「每个平台**编不编得过**」，是**编译期**的；
 //!      [`crate::wire::Unavailable`] 那个轴答「这条命令我接得下，但**在这台机器上**做不到」，
-//!      是**运行期逐机器**的。后者今天还**恒空**（`main.rs` 硬写 `Vec::new()`，
-//!      `main_fourth_face_tests::production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
-//!      钉着）⇒ 那一侧**根本还没有清单可以对**，而真填它是一次**跨仓契约变更**
-//!      （仓外 aterm 按精确字节读 hello）。
+//!      是**运行期逐机器**的。〔NET2〕后者已真填（`main.rs` 填 `unavailable_here()`，
+//!      `main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` 钉着），
+//!      判准与本轴同源（`codes` 里的 `no_tmux` / `no_unix_mode`）。
 //!    ⇒ 这两样都在步 `8a` 的射程之外，登记在 `设计/99 §4.8.3 P12`。
 
 pub mod browse_watch;
@@ -187,8 +186,8 @@ pub use crate::{Target, TARGETS};
 pub struct Capability {
     /// 线上能力名。`设计/96 §2.9` 那张表逐字。
     pub name: &'static str,
-    /// 它做什么。
-    pub what: &'static str,
+    /// 它做什么（登记散文，只给判据读、不上界面 ⇒ 不叫 `what`：那个字段名会被普查当成文案出口）。
+    pub purpose: &'static str,
     /// 🔴 副作用档。边界① 的兑现处 —— 判据把它与**从实现派生**出来的那一格判相等。
     pub effect: Effect,
     /// 实现它的那几份文件（本族目录下的文件名）。**派生的人群就是这张表。**
@@ -210,7 +209,7 @@ pub struct Capability {
 pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "files.ls",
-        what: "列一个目录的直接子项（名字走原始字节）",
+        purpose: "列一个目录的直接子项（名字走原始字节）",
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -226,7 +225,7 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         name: "files.stat",
-        what: "一个路径的元数据",
+        purpose: "一个路径的元数据",
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -237,7 +236,7 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         name: "files.find",
-        what: "🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由",
+        purpose: "🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由",
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "index.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -254,7 +253,7 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         name: "files.index.status",
-        what: "索引的新鲜度 ／ 条目数 ／ 常驻字节，**以及后端声明的重走周期**（边界③）",
+        purpose: "索引的新鲜度 ／ 条目数 ／ 常驻字节，**以及后端声明的重走周期**（边界③）",
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "index.rs", "mod.rs"],
         targets: TARGETS,
@@ -286,7 +285,7 @@ pub const CAPABILITIES: &[Capability] = &[
     //   ⇒ 整族仍然纯读，`readonly_guard` 那 4259 行照旧一行不用改。
     Capability {
         name: "files.index.rebuild",
-        what: "🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）",
+        purpose: "🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）",
         effect: Effect::ReadsOnly,
         impl_files: &["index.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -306,7 +305,7 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         name: "files.browse",
-        what: "告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）",
+        purpose: "告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）",
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -332,7 +331,7 @@ pub const CAPABILITIES: &[Capability] = &[
     //   `设计/60 §8`（薄窗口 ＋ 逻辑在后端）之后窗口的每一问都该有一条后端命令。
     Capability {
         name: "files.read.text",
-        what: "读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒",
+        purpose: "读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒",
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -344,7 +343,7 @@ pub const CAPABILITIES: &[Capability] = &[
     //   在那台机器上走一遍、只回几个数（V45 ＋「零流量」）。纯读，整族照旧一个字节不写。
     Capability {
         name: "files.size",
-        what: "算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数",
+        purpose: "算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数",
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs", "size.rs"],
         targets: TARGETS,
@@ -366,7 +365,7 @@ pub const CAPABILITIES: &[Capability] = &[
     //   与 `files-stage-chunk` 对称（那条是分块写进暂存区）。纯读。
     Capability {
         name: "files.read.chunk",
-        what: "从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块",
+        purpose: "从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块",
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -376,7 +375,7 @@ pub const CAPABILITIES: &[Capability] = &[
     },
     Capability {
         name: "files.home",
-        what: "后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问",
+        purpose: "后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问",
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
@@ -483,16 +482,17 @@ fn limit_of(args: &serde_json::Value) -> usize {
 fn path_arg(args: &serde_json::Value) -> Result<std::path::PathBuf, (&'static str, String)> {
     let v = args.get("path").ok_or((
         "bad_path",
-        "少了 `path` —— 它要么是一个字符串，要么是 `{\"b16\": \"<十六进制>\"}`".to_string(),
+        crate::common::contract::malformed("missing `path` (a string or {\"b16\": \"<hex>\"})"),
     ))?;
     let bytes = raw::from_json(v).ok_or((
         "bad_path",
-        "`path` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`；\
-         这里刻意不「尽力而为」地猜，猜错一个字节就是去看另一个文件"
-            .to_string(),
+        crate::common::contract::malformed("`path` must be a string or {\"b16\": \"<hex>\"}"),
     ))?;
     if bytes.is_empty() {
-        return Err(("bad_path", "`path` 是空的".to_string()));
+        return Err((
+            "bad_path",
+            crate::common::contract::malformed("`path` is empty"),
+        ));
     }
     Ok(raw::to_path_buf(&bytes))
 }
@@ -511,27 +511,29 @@ fn path_arg(args: &serde_json::Value) -> Result<std::path::PathBuf, (&'static st
 fn dirs_arg(args: &serde_json::Value) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
     let v = args.get("dirs").ok_or((
         "bad_args",
-        "少了 `dirs` —— 它是一个数组，每项要么是字符串，要么是 `{\"b16\": \"<十六进制>\"}`；\
-         空数组合法（意思是「现在什么都没在看」），但**不给**这个参数不是"
-            .to_string(),
+        crate::common::contract::malformed(
+            "missing `dirs` (an array of strings or {\"b16\": \"<hex>\"}; empty array is valid)",
+        ),
     ))?;
     let arr = v.as_array().ok_or((
         "bad_args",
-        "`dirs` 不是一个数组 —— 只看一个目录也要放在数组里：\
-         这条命令收的是「此刻的整份名单」，不是「再加一个」（差分由后端算）"
-            .to_string(),
+        crate::common::contract::malformed(
+            "`dirs` must be an array (the whole current list, not a delta)",
+        ),
     ))?;
     let mut out: Vec<std::path::PathBuf> = Vec::new();
     for (i, item) in arr.iter().enumerate() {
         let bytes = raw::from_json(item).ok_or((
             "bad_path",
-            format!(
-                "`dirs[{i}]` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`；\
-                 这里刻意不「尽力而为」地猜，猜错一个字节就是去盯另一个目录"
-            ),
+            crate::common::contract::malformed(&format!(
+                "`dirs[{i}]` must be a string or {{\"b16\": \"<hex>\"}}"
+            )),
         ))?;
         if bytes.is_empty() {
-            return Err(("bad_path", format!("`dirs[{i}]` 是空的")));
+            return Err((
+                "bad_path",
+                crate::common::contract::malformed(&format!("`dirs[{i}]` is empty")),
+            ));
         }
         out.push(raw::to_path_buf(&bytes));
     }
@@ -574,8 +576,15 @@ pub const KINDS: &[&str] = &["dir", "file", "other", "symlink"];
 fn answer_ls(args: &serde_json::Value) -> Answer {
     let dir = path_arg(args)?;
     let limit = limit_of(args);
-    let rd = std::fs::read_dir(&dir)
-        .map_err(|e| ("unreadable", format!("这个目录打不开：{:?}", e.kind())))?;
+    let rd = std::fs::read_dir(&dir).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.ls.unreadable",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut seen = 0usize;
     for e in rd {
@@ -620,8 +629,15 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
 ///（那一栏走的是不跟链接的读法）。
 fn answer_stat(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
-    let md = std::fs::metadata(&path)
-        .map_err(|e| ("unreadable", format!("这个路径读不到：{:?}", e.kind())))?;
+    let md = std::fs::metadata(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.size.unreadable",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     let mut out = serde_json::Map::new();
     out.insert("path".to_string(), raw::to_json(raw::path_bytes(&path)));
     let t = md.file_type();
@@ -655,11 +671,11 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
 fn answer_find(args: &serde_json::Value) -> Answer {
     let v = args.get("needle").ok_or((
         "bad_args",
-        "少了 `needle` —— 它要么是一个字符串，要么是 `{\"b16\": \"<十六进制>\"}`".to_string(),
+        crate::common::contract::malformed("missing `needle` (a string or {\"b16\": \"<hex>\"})"),
     ))?;
     let needle = raw::from_json(v).ok_or((
         "bad_args",
-        "`needle` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+        crate::common::contract::malformed("`needle` must be a string or {\"b16\": \"<hex>\"}"),
     ))?;
     let r = index::find(&index::FindArgs {
         needle,
@@ -720,8 +736,15 @@ fn answer_status() -> Answer {
 fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
     let root = path_arg(args)?;
     // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
-    std::fs::read_dir(&root)
-        .map_err(|e| ("unreadable", format!("这个根打不开：{:?}", e.kind())))?;
+    std::fs::read_dir(&root).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.rebuild.rootUnreadable",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     // 🔴 **「有一趟已经在跑」走错误码那条路，不走成功回参。**
     //
     // 2026-09-21 起 `rebuild_once` 是非阻塞互斥的（理由与业界对照住它的头注）。
@@ -736,9 +759,9 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
     let stats = index::rebuild_once(&root).ok_or_else(|| {
         (
             "already_rebuilding",
-            format!(
-                "已经有一趟重走在跑，这一趟没走（至今被抢占 {} 趟）",
-                index::rebuild_skipped()
+            copy_core::copy_text(
+                "beFilesRead.rebuild.busy",
+                &[("n", &index::rebuild_skipped().to_string())],
             ),
         )
     })?;
@@ -878,33 +901,49 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
     use std::io::{Read as _, Seek as _};
     let path = path_arg(args)?;
     let num = |v: Option<&serde_json::Value>, k: &str| {
-        v.and_then(serde_json::Value::as_u64)
-            .ok_or(("bad_args", format!("少了 `{k}`，或者它不是一个非负整数")))
+        v.and_then(serde_json::Value::as_u64).ok_or((
+            "bad_args",
+            crate::common::contract::malformed(&format!("missing `{k}` (non-negative integer)")),
+        ))
     };
     let offset = num(args.get("offset"), "offset")?;
     let len = num(args.get("len"), "len")?;
     if len == 0 || len > READ_CHUNK_MAX_BYTES {
         return Err((
             "bad_args",
-            format!("`len` 给的是 {len} —— 只收 1..={READ_CHUNK_MAX_BYTES}"),
+            crate::common::contract::malformed(&format!(
+                "`len` is {len}; accepted range 1..={READ_CHUNK_MAX_BYTES}, not clamped"
+            )),
         ));
     }
-    let md = std::fs::metadata(&path)
-        .map_err(|e| ("unreadable", format!("这个路径读不到：{:?}", e.kind())))?;
+    let kind = |e: std::io::Error| format!("{:?}", e.kind());
+    let md = std::fs::metadata(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text("beFilesRead.size.unreadable", &[("kind", &kind(e))]),
+        )
+    })?;
     if !md.is_file() {
         return Err((
             "not_text",
-            "这不是一份普通文件（目录 / 设备 / 管道），没有字节可读".to_string(),
+            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
         ));
     }
-    let mut f = std::fs::File::open(&path)
-        .map_err(|e| ("unreadable", format!("这个文件打不开：{:?}", e.kind())))?;
-    f.seek(std::io::SeekFrom::Start(offset))
-        .map_err(|e| ("unreadable", format!("定位不到 {offset}：{:?}", e.kind())))?;
+    let broke = |e: std::io::Error| {
+        (
+            "unreadable",
+            copy_core::copy_text("beFilesRead.text.readBroke", &[("kind", &kind(e))]),
+        )
+    };
+    let mut f = std::fs::File::open(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text("beFilesRead.text.openFailed", &[("kind", &kind(e))]),
+        )
+    })?;
+    f.seek(std::io::SeekFrom::Start(offset)).map_err(broke)?;
     let mut buf: Vec<u8> = Vec::new();
-    f.take(len)
-        .read_to_end(&mut buf)
-        .map_err(|e| ("unreadable", format!("读到一半断了：{:?}", e.kind())))?;
+    f.take(len).read_to_end(&mut buf).map_err(broke)?;
     let size = md.len();
     Ok(serde_json::json!({
         "path": raw::to_json(raw::path_bytes(&path)),
@@ -922,51 +961,75 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
         .and_then(serde_json::Value::as_u64)
         .ok_or((
             "bad_args",
-            "少了 `max_bytes`，或者它不是一个非负整数 —— 编辑上限是调用方的，每趟都要给"
-                .to_string(),
+            crate::common::contract::malformed(
+                "missing `max_bytes` (non-negative integer, required every call)",
+            ),
         ))?;
     if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
         return Err((
             "bad_args",
-            format!(
-                "`max_bytes` 给的是 {max} —— 只收 1..={READ_TEXT_MAX_BYTES}（后端一趟肯交的天花板）；\
-                 这里刻意不替调用方夹小：夹了，调用方以为的上限与真实的上限就是两个数"
-            ),
+            crate::common::contract::malformed(&format!(
+                "`max_bytes` is {max}; accepted range 1..={READ_TEXT_MAX_BYTES}, not clamped"
+            )),
         ));
     }
-    let md = std::fs::metadata(&path)
-        .map_err(|e| ("unreadable", format!("这个路径读不到：{:?}", e.kind())))?;
+    let md = std::fs::metadata(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.size.unreadable",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     if !md.is_file() {
         return Err((
             "not_text",
-            "这不是一份普通文件（目录 / 设备 / 管道），没有文本可读".to_string(),
+            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
         ));
     }
     if md.len() > max {
         return Err((
             "too_large",
-            format!(
-                "这份 {} 字节，超过上限 {max}，多了 {} 字节 —— 超限**整趟拒，不截断**",
-                md.len(),
-                md.len() - max
+            copy_core::copy_text(
+                "beFilesRead.text.tooLarge",
+                &[
+                    ("size", &md.len().to_string()),
+                    ("max", &max.to_string()),
+                    ("over", &(md.len() - max).to_string()),
+                ],
             ),
         ));
     }
-    let f = std::fs::File::open(&path)
-        .map_err(|e| ("unreadable", format!("这个文件打不开：{:?}", e.kind())))?;
+    let f = std::fs::File::open(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.text.openFailed",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     let mut buf: Vec<u8> = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf)
-        .map_err(|e| ("unreadable", format!("读到一半断了：{:?}", e.kind())))?;
+    std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text(
+                "beFilesRead.text.readBroke",
+                &[("kind", &format!("{:?}", e.kind()))],
+            ),
+        )
+    })?;
     if buf.len() as u64 > max {
         return Err((
             "too_large",
-            format!("读的时候它比刚才看的时候大了（已经超过上限 {max}）—— 文件正在变，整趟拒"),
+            copy_core::copy_text("beFilesRead.text.grew", &[("max", &max.to_string())]),
         ));
     }
     if buf.contains(&0) {
         return Err((
             "not_text",
-            "里面有 NUL 字节 —— 多半是二进制，不当文本编辑".to_string(),
+            copy_core::copy_text("beFilesRead.text.hasNul", &[]),
         ));
     }
     let n = buf.len();
@@ -975,9 +1038,9 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
     let text = String::from_utf8(buf).map_err(|e| {
         (
             "not_text",
-            format!(
-                "不是合法 UTF-8（第 {} 字节起解不动）—— 不猜编码，也不有损替换",
-                e.utf8_error().valid_up_to()
+            copy_core::copy_text(
+                "beFilesRead.text.notUtf8",
+                &[("at", &e.utf8_error().valid_up_to().to_string())],
             ),
         )
     })?;
@@ -1047,13 +1110,13 @@ fn answer_home() -> Answer {
 fn home_from(h: Option<std::ffi::OsString>) -> Answer {
     let h = h.filter(|v| !v.is_empty()).ok_or((
         "no_home",
-        "后端这个进程的环境里没有 home（那一格没设或是空的）—— 说不出开在哪儿".to_string(),
+        copy_core::copy_text("beFilesRead.home.missing", &[]),
     ))?;
     let p = std::path::PathBuf::from(h);
     if !p.is_absolute() {
         return Err((
             "no_home",
-            "后端这个进程的 home 不是一条绝对路径 —— 当不了起点".to_string(),
+            copy_core::copy_text("beFilesRead.home.relative", &[]),
         ));
     }
     Ok(serde_json::json!({ "path": raw::to_json(raw::path_bytes(&p)) }))
@@ -1079,7 +1142,10 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.home" => answer_home(),
         "files.size" => answer_size(args),
         "files.read.chunk" => answer_read_chunk(args),
-        other => Err(("unknown_capability", format!("`{other}` 不是这一族的能力"))),
+        other => Err((
+            "unknown_capability",
+            crate::common::contract::malformed(&format!("unknown capability `{other}`")),
+        )),
     }
 }
 

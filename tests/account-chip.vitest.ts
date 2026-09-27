@@ -50,7 +50,6 @@ function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
     port: 22,
     user: "u",
     keyPath: "",
-    backendPath: "",
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",

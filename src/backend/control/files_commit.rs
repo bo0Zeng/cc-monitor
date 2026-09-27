@@ -108,7 +108,7 @@ pub fn parse_chunk_name(name: &str) -> Option<(&str, u64)> {
 pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-commit-upload",
-        what:
+        purpose:
             "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\
              不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
         // 〔FILES2 · Q5〕+`chunks`（入，可缺席；`bytes` 同时是入）：块形 ⇒ 先把块拼成暂存件（`files_upload_chunks`）再走这同一条提交。
@@ -119,14 +119,14 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
     // ── 〔F9c · 第四波〕存盘装不进一行时的两步（头注「第二种件」一节）──────────────
     ManageCommand {
         name: "files-stage-chunk",
-        what: "把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）",
+        purpose: "把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）",
         args: &["content", "key", "seq"],
         fields: &["bytes"],
         codes: &["bad_args", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-commit-text",
-        what: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
+        purpose: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
                `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\
                盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
         args: &["bytes", "chunks", "expect", "key", "rel", "root"],
@@ -151,8 +151,8 @@ pub fn is_key(key: &str) -> bool {
 /// 暂存件的绝对路径。`key` 不合法 ⇒ 拒（**不**猜、不清洗）。
 pub fn staged_path(home: &Path, key: &str) -> Result<PathBuf, WriteRefusal> {
     if !is_key(key) {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
+        return Err(WriteRefusal::Refused(crate::common::contract::malformed(
+            &format!("staging key must be {KEY_LEN} lowercase hex chars (got {key:?})"),
         )));
     }
     Ok(home.join(STAGING_DIR).join(format!("{key}{PART_SUFFIX}")))
@@ -199,22 +199,28 @@ pub fn commit_upload_in(
     let staged = staged_path(home, key)?;
     // 不跟链接地看暂存件一眼：它必须是一份普通文件（一条链接当「源」＝ 挪走链接指向之外的东西，不许）。
     let meta = std::fs::symlink_metadata(&staged).map_err(|e| {
-        WriteRefusal::Io(format!(
-            "refuse write: 暂存件不在（{}：{e}）—— 传输没跑完，或者 SFTP 的起始目录不是这台后端的 home",
-            staged.display()
+        WriteRefusal::Io(copy_text(
+            "beFilesCommit.upload.stagedMissing",
+            &[
+                ("path", &staged.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         ))
     })?;
     if !meta.file_type().is_file() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 暂存件不是一份普通文件（{}）",
-            staged.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesCommit.upload.stagedNotRegular",
+            &[("path", &staged.display().to_string())],
         )));
     }
     let bytes = meta.len();
     let got = crate::files::file_sha256(&staged).map_err(|e| {
-        WriteRefusal::Io(format!(
-            "refuse write: 暂存件读不出来（{}：{e}）",
-            staged.display()
+        WriteRefusal::Io(copy_text(
+            "beFilesCommit.upload.stagedUnreadable",
+            &[
+                ("path", &staged.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         ))
     })?;
     if got != expect_sha256 {
@@ -222,20 +228,23 @@ pub fn commit_upload_in(
         let removed = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))
             .ok()
             .is_some_and(|at| std::fs::remove_file(at).is_ok());
-        return Err(WriteRefusal::Stale(format!(
-            "refuse write: 传上来的那份和本机那份对不上（中间有坏块）—— 目标一个字节没动，{}，要从头重传",
-            if removed {
-                "坏的暂存件已删掉"
-            } else {
-                "坏的暂存件没删掉（下一次上传会先对尾块、对不上就从头来）"
-            }
+        return Err(WriteRefusal::Stale(copy_text(
+            "beFilesCommit.upload.corrupt",
+            &[(
+                "tail",
+                &if removed {
+                    copy_text("beFilesCommit.upload.corruptRemoved", &[])
+                } else {
+                    copy_text("beFilesCommit.upload.corruptKept", &[])
+                },
+            )],
         )));
     }
     if overwrite {
         land_staged(home, key, root, rel, &dest, cross_device).map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 暂存件改名上位到 {} 失败：{e}",
-                dest.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesCommit.upload.moveFailed",
+                &[("path", &dest.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
         return Ok((dest, bytes));
@@ -246,19 +255,22 @@ pub fn commit_upload_in(
         .create_new(true)
         .open(&dest)
         .map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 目标已经在了、或者占不了位（{}：{e}）—— 不覆盖，先删掉它或换个名字",
-                dest.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesCommit.upload.exists",
+                &[("path", &dest.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
     if let Err(e) = land_staged(home, key, root, rel, &dest, cross_device) {
         // 撤掉自己那个 0 字节的占位（它是这一次刚建的，不是用户既有数据）。
         // 〔HX1 · E 吞错〕撤不掉 ⇒ 说出来：此前 `let _ =` 吞掉，用户目录里留一份 0 字节文件、报错一个字不提，重试撞「目标已经在了」。
         let undo = std::fs::remove_file(&dest);
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 暂存件改名上位到 {} 失败：{e}{}",
-            dest.display(),
-            placeholder_note(&dest, &undo)
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesCommit.upload.moveFailedNote",
+            &[
+                ("path", &dest.display().to_string()),
+                ("e", &e.to_string()),
+                ("note", &placeholder_note(&dest, &undo)),
+            ],
         )));
     }
     Ok((dest, bytes))
@@ -332,9 +344,9 @@ fn land_staged(
 pub(crate) fn placeholder_note(dest: &Path, undo: &std::io::Result<()>) -> String {
     match undo {
         Ok(()) => String::new(),
-        Err(e) => format!(
-            "；目标位置留下了一个 0 字节的空文件 {}，没能删掉：{e}。它不是你的数据，删掉后再试",
-            dest.display()
+        Err(e) => copy_text(
+            "beFilesCommit.upload.placeholderLeft",
+            &[("path", &dest.display().to_string()), ("e", &e.to_string())],
         ),
     }
 }
@@ -351,15 +363,15 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
         // 〔HX1〕这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
         crate::own_dir::ensure_private_dir(&next).map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 建暂存区 {} 失败：{e}",
-                next.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesCommit.staging.mkdirFailed",
+                &[("path", &next.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
         if !std::fs::metadata(&next).is_ok_and(|m| m.is_dir()) {
-            return Err(WriteRefusal::Refused(format!(
-                "refuse write: {} 在，但不是一个目录 —— 暂存区放不进去",
-                next.display()
+            return Err(WriteRefusal::Refused(copy_text(
+                "beFilesCommit.staging.notDir",
+                &[("path", &next.display().to_string())],
             )));
         }
         at = next;
@@ -373,8 +385,8 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
 pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64, WriteRefusal> {
     use std::io::Write as _;
     if !is_key(key) {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
+        return Err(WriteRefusal::Refused(crate::common::contract::malformed(
+            &format!("staging key must be {KEY_LEN} lowercase hex chars (got {key:?})"),
         )));
     }
     let dir = ensure_staging(home)?;
@@ -384,17 +396,25 @@ pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64
         .create_new(true)
         .open(&at)
         .map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 第 {seq} 块建不了（{}：{e}）—— 同一块只写一次，已经在就是重发了",
-                at.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesCommit.chunk.createFailed",
+                &[
+                    ("seq", &seq.to_string()),
+                    ("path", &at.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
             ))
         })?;
     if let Err(e) = f.write_all(bytes) {
         drop(f);
         let _ = std::fs::remove_file(&at);
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 第 {seq} 块写到一半断了（{}：{e}）",
-            at.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesCommit.chunk.writeBroke",
+            &[
+                ("seq", &seq.to_string()),
+                ("path", &at.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         )));
     }
     Ok(bytes.len() as u64)
@@ -404,8 +424,8 @@ pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64
 /// **纯读**（不跟链接地看每一块一眼：它必须是一份普通文件）。
 fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<u8>, WriteRefusal> {
     if !is_key(key) {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 暂存件的键只收 {KEY_LEN} 位小写十六进制（给的是 {key:?}）"
+        return Err(WriteRefusal::Refused(crate::common::contract::malformed(
+            &format!("staging key must be {KEY_LEN} lowercase hex chars (got {key:?})"),
         )));
     }
     let dir = home.join(STAGING_DIR);
@@ -414,39 +434,57 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
     for seq in 0..chunks {
         let p = dir.join(chunk_name(key, seq));
         let meta = std::fs::symlink_metadata(&p).map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 第 {seq} 块不在（共 {chunks} 块；{}：{e}）—— 没送到，或者已经被提交过",
-                p.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesCommit.chunk.missing",
+                &[
+                    ("seq", &seq.to_string()),
+                    ("chunks", &chunks.to_string()),
+                    ("path", &p.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
             ))
         })?;
         if !meta.file_type().is_file() {
-            return Err(WriteRefusal::Refused(format!(
-                "refuse write: 第 {seq} 块不是一份普通文件（{}）",
-                p.display()
+            return Err(WriteRefusal::Refused(copy_text(
+                "beFilesCommit.chunk.notRegular",
+                &[
+                    ("seq", &seq.to_string()),
+                    ("path", &p.display().to_string()),
+                ],
             )));
         }
         if out.len() as u64 + meta.len() > bytes {
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 读到第 {seq} 块就超过了说好的 {bytes} 字节 —— 块对不上，一个字节没写"
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesCommit.chunk.overflow",
+                &[("seq", &seq.to_string()), ("bytes", &bytes.to_string())],
             )));
         }
         let got = std::fs::read(&p).map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 第 {seq} 块读不出来（{}：{e}）",
-                p.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesCommit.chunk.unreadable",
+                &[
+                    ("seq", &seq.to_string()),
+                    ("path", &p.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
             ))
         })?;
         out.extend_from_slice(&got);
     }
     if out.len() as u64 != bytes {
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: {chunks} 块拼回来 {} 字节，说好的是 {bytes} —— 块对不上，一个字节没写",
-            out.len()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesCommit.chunk.lengthMismatch",
+            &[
+                ("chunks", &chunks.to_string()),
+                ("got", &out.len().to_string()),
+                ("bytes", &bytes.to_string()),
+            ],
         )));
     }
     if std::fs::symlink_metadata(dir.join(chunk_name(key, chunks))).is_ok() {
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 说好 {chunks} 块，暂存区里还有第 {chunks} 块 —— 块对不上，一个字节没写"
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesCommit.chunk.extra",
+            &[("chunks", &chunks.to_string())],
         )));
     }
     Ok(out)
@@ -564,22 +602,31 @@ pub fn sweep_stale(home: &Path, now_secs: u64, keep: &str) -> Vec<String> {
 
 /// 取一个路径参数（字符串 或 `{"b16": …}`，与写面同一口径）。
 fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or(("bad_path", format!("少了 `{key}`")))?;
+    let v = args.get(key).ok_or((
+        "bad_path",
+        crate::common::contract::malformed(&format!("missing `{key}`")),
+    ))?;
     let raw = crate::files::raw::from_json(v).ok_or((
         "bad_path",
-        format!("`{key}` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`"),
+        crate::common::contract::malformed(&format!(
+            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+        )),
     ))?;
     if raw.is_empty() {
-        return Err(("bad_path", format!("`{key}` 是空的")));
+        return Err((
+            "bad_path",
+            crate::common::contract::malformed(&format!("`{key}` is empty")),
+        ));
     }
     Ok(crate::files::raw::to_path_buf(&raw))
 }
 
 /// 取一个字符串参数。
 fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(key)
-        .and_then(serde_json::Value::as_str)
-        .ok_or(("bad_args", format!("少了 `{key}`，或者它不是一个字符串")))
+    args.get(key).and_then(serde_json::Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed(&format!("missing `{key}` or not a string")),
+    ))
 }
 
 fn answer_commit(args: &serde_json::Value) -> Answer {
@@ -599,7 +646,7 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
         .and_then(serde_json::Value::as_bool)
         .ok_or((
             "bad_args",
-            "少了 `overwrite`（true / false）—— 覆盖不覆盖不给默认值".to_string(),
+            crate::common::contract::malformed("missing `overwrite` (true / false, no default)"),
         ))?;
     // 〔FW1〕整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
     let expect = sha256_expect_of(args)?;
@@ -625,34 +672,37 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
 
 /// 取一个非负整数参数。
 fn u64_arg(args: &serde_json::Value, key: &str) -> Result<u64, (&'static str, String)> {
-    args.get(key)
-        .and_then(serde_json::Value::as_u64)
-        .ok_or(("bad_args", format!("少了 `{key}`，或者它不是一个非负整数")))
+    args.get(key).and_then(serde_json::Value::as_u64).ok_or((
+        "bad_args",
+        crate::common::contract::malformed(&format!(
+            "missing `{key}` or not a non-negative integer"
+        )),
+    ))
 }
 
 /// 这台后端的家（暂存区拼在它底下）。
 fn home_dir() -> Result<PathBuf, (&'static str, String)> {
-    std::env::var_os("HOME").map(PathBuf::from).ok_or((
-        "io_failed",
-        "这台后端不知道自己的 home（没有 `HOME`）—— 暂存区拼不出来".to_string(),
-    ))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
 }
 
 /// 〔F9c〕`files-stage-chunk`。
 fn answer_stage_at(home: &Path, args: &serde_json::Value) -> Answer {
     let key = str_arg(args, "key")?.to_string();
     let seq = u64_arg(args, "seq")?;
-    let v = args
-        .get("content")
-        .ok_or(("bad_args", "少了 `content` —— 一块至少 1 字节".to_string()))?;
+    let v = args.get("content").ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `content` (at least 1 byte)"),
+    ))?;
     let bytes = crate::files::raw::from_json(v).ok_or((
         "bad_args",
-        "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+        crate::common::contract::malformed("`content` must be a string or {\"b16\": \"<hex>\"}"),
     ))?;
     if bytes.is_empty() {
         return Err((
             "bad_args",
-            "空块 —— 每块至少 1 字节（块数的上界就靠这一条：块数 ≤ 总长）".to_string(),
+            crate::common::contract::malformed("empty chunk (each chunk is at least 1 byte)"),
         ));
     }
     let n =
@@ -671,16 +721,18 @@ fn answer_commit_text_at(home: &Path, args: &serde_json::Value) -> Answer {
     if bytes > cap {
         return Err((
             "bad_args",
-            format!(
-                "`bytes` 是 {bytes}，超过 {cap}（`files-read-text` 一趟的天花板：存得回的要读得回来），多了 {} 字节",
-                bytes - cap
+            copy_text(
+                "beFilesCommit.text.tooLarge",
+                &[("bytes", &bytes.to_string()), ("cap", &cap.to_string())],
             ),
         ));
     }
     if chunks == 0 || chunks > bytes {
         return Err((
             "bad_args",
-            format!("`chunks` 是 {chunks}、`bytes` 是 {bytes} —— 每块至少 1 字节，块数只能在 1..=总长 之间"),
+            crate::common::contract::malformed(&format!(
+                "`chunks` is {chunks} and `bytes` is {bytes}; chunks must be within 1..=bytes"
+            )),
         ));
     }
     let expect = sha256_expect_of(args)?;
@@ -705,7 +757,10 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-commit-upload" => answer_commit(args),
         "files-stage-chunk" => answer_stage_at(&home_dir()?, args),
         "files-commit-text" => answer_commit_text_at(&home_dir()?, args),
-        other => Err(("bad_args", format!("`{other}` 不是上传提交那一面的命令"))),
+        other => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("unknown command `{other}`")),
+        )),
     }
 }
 

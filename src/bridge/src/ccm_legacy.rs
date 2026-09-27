@@ -11,7 +11,7 @@
 //!
 //! | 形 | 第二行（记号） | 来自 |
 //! |---|---|---|
-//! | 三行 shim（09-11 起，历代都是这一行） | 与今天 `local_backend::ccm_entry_shim` 的第二行**逐字相同** | `ccm_entry_shim` 历代 |
+//! | 三行 shim（09-11 起，历代都是这一行） | [`SHIM_MARK`]（生成器〔E2〕删了，记号留成字面量） | `ccm_entry_shim`〔散文墓碑〕历代 |
 //! | bash 启动器（09-11 之前，`shared/ccm`，后端 ccm 的第二份实现 ＝ ③ 那份「与后端重复的」） | `# ccm — cc-monitor 统一启动器…` | `K-R48` 删掉的那份文件 |
 //!
 //! 第一行必须是 `#!`、第二行认得出其中一形 ⇒ 是我们放的 ⇒ 经**那台机器的后端**删（`user_files::Door::delete`，带 CAS：
@@ -25,9 +25,8 @@
 //!
 //! # 买不到的
 //!
-//! - 本机那一份（monitor 跑着的这台上的 `~/.local/bin/ccm`）本模块不碰：`01 §6.7b` 那句说的是远端；
-//!   本机 `~/.cc-monitor/bin/ccm` 是后端的逐字节副本（V28「第二份拷贝」），消掉它要 `ccm` 就是后端本身 ——
-//!   卡在 `tests/evidence/MC1-AL1-摸底.md` 第三节那道 argv 设计题，报告里交主会话。
+//! - 本机那一份（monitor 跑着的这台上的 `~/.local/bin/ccm`）本模块不碰：`01 §6.7b` 那句说的是远端。
+//!   〔E2〕本机 `~/.cc-monitor/bin/ccm` 今天就是后端本身（逐字节副本那一形删了）。
 //! - 真远端一次都没跑过（判据用内存替身 `Door`）。
 
 use crate::copy_table::copy_text;
@@ -39,7 +38,12 @@ pub(crate) const LEGACY_REL: &str = ".local/bin/ccm";
 /// 09-11 之前那份 bash 启动器第二行的开头（那份文件已删，记号只能是字面量；出处：`git show e8f9e08e^:shared/ccm`）。
 const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
 
-/// 这份文本是不是我们放的（两形之一）。**纯函数**。
+/// 三行 shim（09-11 起历代）第二行的原文。〔E2〕它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
+/// 记号从此只能是字面量（出处：`git show f32fba42:src/bridge/src/backend/control/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
+const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
+
+/// 这份文本是不是我们放的（两形之一）。**纯函数**。〔E2〕两个用户：旧落点 `~/.local/bin/ccm`（[`sweep`]）与
+/// 今天的落点 `~/.cc-monitor/bin/ccm` 上从前那份三行入口（`sftp.rs::landing_decision`：认出来就换成后端本体）。
 pub(crate) fn is_ours(text: &str) -> bool {
     let mut lines = text.lines();
     let (Some(first), Some(second)) = (lines.next(), lines.next()) else {
@@ -48,10 +52,7 @@ pub(crate) fn is_ours(text: &str) -> bool {
     if !first.starts_with("#!") {
         return false;
     }
-    // shim 那一形的记号取自**今天的生成器**（第二行历代未变）—— 不在这里抄第二份字面量。
-    let shim = crate::backend::control::local_backend::ccm_entry_shim("/x");
-    let shim_mark = shim.lines().nth(1).unwrap_or("\u{0}");
-    second == shim_mark || second.starts_with(LAUNCHER_MARK)
+    second == SHIM_MARK || second.starts_with(LAUNCHER_MARK)
 }
 
 /// 一次清理的结局。

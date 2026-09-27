@@ -123,11 +123,7 @@ fn injection_attempts_arrive_as_plain_args_in_bash() {
             .lines()
             .map(str::to_string)
             .collect();
-        assert_eq!(
-            got,
-            vec!["--account".to_string(), v.to_string()],
-            "{v:?} 没有原样到达"
-        );
+        assert_eq!(got, a.args, "{v:?} 没有原样到达");
     }
     // 换行 / 控制字符根本进不了渲染（一条别名只许占一行）。
     assert!(check_alias(&al("nl", &["--account", "a\nb"]), P).is_err());
@@ -442,10 +438,46 @@ fn the_generated_file_is_byte_stable() {
 // 〔AL1 · 2026-09-24〕`设计/71`：一类别名 · 两跳（渲染纯 / 写入唯一副作用）· 读回口
 // ═══════════════════════════════════════════════════════════════════════
 
+/// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项与 claude 的词混写、`--` 之后全交 claude）⇒ 换成 V151 排列
+/// （`<交给 claude 的…> -- <ccm 自己的…>`），意图逐词不变。ccm 的词 = [`ALIAS_FLAGS`] ∪ [`NOT_IN_ALIASES`] ∪ `--ccm-tmux=…`。
 fn al(name: &str, args: &[&str]) -> Alias {
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    let mut i = 0;
+    while i < args.len() {
+        let w = args[i];
+        if w == "--" {
+            left.extend(args[i + 1..].iter().map(|s| s.to_string()));
+            break;
+        }
+        let takes = ALIAS_FLAGS
+            .iter()
+            .find(|(f, _)| *f == w)
+            .map(|(_, t)| *t)
+            .or_else(|| {
+                NOT_IN_ALIASES
+                    .contains(&w)
+                    .then_some(matches!(w, "--attach" | "--ccm-sid"))
+            });
+        match takes {
+            _ if w.starts_with("--ccm-tmux=") => right.push(w.to_string()),
+            Some(t) => {
+                right.push(w.to_string());
+                if t && i + 1 < args.len() {
+                    i += 1;
+                    right.push(args[i].to_string());
+                }
+            }
+            None => left.push(w.to_string()),
+        }
+        i += 1;
+    }
+    if !right.is_empty() || left.iter().any(|w| w == "--") {
+        left.push("--".into());
+        left.extend(right);
+    }
     Alias {
         name: name.to_string(),
-        args: args.iter().map(|s| s.to_string()).collect(),
+        args: left,
     }
 }
 
@@ -468,9 +500,11 @@ fn rendering_is_byte_stable_and_quotes_only_what_needs_it() {
     assert_eq!(
         r.lines,
         vec![
-            r#"zcc() { ccm --account z "$@"; }"#.to_string(),
-            r#"convz() { ccm --ccm-tmux --account z --cwd '/home/u/文档/c c' "$@"; }"#.to_string(),
-            r#"mo() { ccm --model 'it'\''s' -- --verbose "$@"; }"#.to_string(),
+            // 〔V151〕调用时跟的参数（`"$@"`）交 claude，别名自己的 ccm 选项在 `--` 右边。
+            r#"zcc() { ccm "$@" -- --account z; }"#.to_string(),
+            r#"convz() { ccm "$@" -- --ccm-tmux --account z --cwd '/home/u/文档/c c'; }"#
+                .to_string(),
+            r#"mo() { ccm --model 'it'\''s' --verbose "$@"; }"#.to_string(),
         ]
     );
     for l in &r.lines {
@@ -506,8 +540,11 @@ fn a_rendered_alias_really_appends_the_callers_args_in_bash() {
         .lines()
         .map(str::to_string)
         .collect();
-    let mut want = a.args.clone();
+    // 〔V151〕调用时跟的参数落在 `--` 左边（交 claude），别名自己的 ccm 选项留在右边。
+    let cut = a.args.iter().rposition(|w| w == "--").expect("有 ccm 部分");
+    let mut want = a.args[..cut].to_vec();
     want.extend(["--cwd".to_string(), "/elsewhere".to_string()]);
+    want.extend(a.args[cut..].iter().cloned());
     assert_eq!(got, want, "bash 真执行下来的 argv 与清单对不上");
 }
 
@@ -557,10 +594,10 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         &p,
         "# === cc-monitor account aliases BEGIN v1 ===\n\
          # 注释\n\
-         zcc() { ccm --account 'z' \"$@\"; }\n\
-         bcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" --ccm-tmux --account 'b' \"$@\"; }\n\
+         zcc() { ccm \"$@\" -- --account 'z'; }\n\
+         bcct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" \"$@\" -- --ccm-tmux --account 'b'; }\n\
          alias x=ls\n\
-         bad() { ccm --ccm-print \"$@\"; }\n\
+         bad() { ccm \"$@\" -- --ccm-print; }\n\
          # === cc-monitor account aliases END ===\n",
     )
     .unwrap();

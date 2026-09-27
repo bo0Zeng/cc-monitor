@@ -269,10 +269,11 @@ def main():
         print("⑥ 停：--resident-stop")
         c5 = be.capture("s1", base, f"{remote} --resident-stop")
         ans5 = json.loads(c5["stdout"]) if c5 and c5.get("exit_status") == 0 else {}
-        check("答 stopped = 那个 pid", ans5.get("stopped") == pid_new, ans5)
-        check("它排空后退了、口关了", wait_for(lambda: not pid_alive(pid_new), 10) and socket.socket().connect_ex(("127.0.0.1", rport)) != 0)
+        # 〔STOP〕结局三个词：那台自己等到它退了才答 ⇒ 答回来的那一刻它已经不在（不用再等）。
+        check("答 graceful ＋ 那个 pid", ans5 == {"stopped": "graceful", "pid": pid_new}, ans5)
+        check("答回来时它已经退了、口关了", not pid_alive(pid_new) and socket.socket().connect_ex(("127.0.0.1", rport)) != 0)
         c6 = be.capture("s2", base, f"{remote} --resident-stop")
-        check("再停一次 ⇒ stopped = null（本来就没在跑）", c6 and json.loads(c6["stdout"]).get("stopped") is None, c6)
+        check("再停一次 ⇒ not_running（本来就没在跑）", c6 and json.loads(c6["stdout"]) == {"stopped": "not_running", "pid": None}, c6)
     finally:
         for be in bes:
             try:

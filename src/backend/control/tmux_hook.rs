@@ -77,8 +77,9 @@ pub(crate) fn hook_set_args(
     pid: u32,
     starttime: u64,
 ) -> Vec<String> {
+    // 〔V151〕本二进制就叫 `ccm` ⇒ 叫后端子命令一律 `<exe> -- <子命令>`（没有 `--` 会整行交给 claude）。
     let payload = format!(
-        "{} {NOTIFY_FLAG} {pid} {starttime}",
+        "{} -- {NOTIFY_FLAG} {pid} {starttime}",
         sq(&exe.to_string_lossy())
     );
     vec![

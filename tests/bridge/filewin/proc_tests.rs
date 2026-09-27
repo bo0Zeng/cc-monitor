@@ -41,7 +41,6 @@ fn synthetic_cfg() -> RemoteConfig {
         port: 2222,
         user: "zbl".to_string(),
         key_path: Some("/home/zbl/.ssh/id_ed25519".to_string()),
-        backend_path: "/opt/cc-monitor-backend".to_string(),
         host_key_fingerprint: Some("SHA256:xxxx".to_string()),
         addresses: vec!["10.0.0.7".to_string(), "fd00::7".to_string()],
         jump: None,
@@ -142,7 +141,6 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
                     a.port,
                     &a.user,
                     &a.key_path,
-                    &a.backend_path,
                     &a.host_key_fingerprint,
                     &a.addresses
                 ),
@@ -152,7 +150,6 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
                     b.port,
                     &b.user,
                     &b.key_path,
-                    &b.backend_path,
                     &b.host_key_fingerprint,
                     &b.addresses
                 ),

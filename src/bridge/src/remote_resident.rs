@@ -4,7 +4,7 @@
 //! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（它无条件起一个脱离的自己；口上已有常驻后端时子进程退 3）→
 //!   回 `{port, token}`；再经链路 `tunnel`（本机常驻后端开 direct-tcpip 到远端回环口）连上去读 hello、交 attach 行。
 //! - 只升不降：hello 的 build 比手上这一版旧 ⇒ `--resident-ensure --replace` 一次；比我新 ⇒ 照接。
-//! - 停：`--resident-stop`。
+//! - 停：`--resident-stop`（〔STOP〕那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
 //!
 //! 流模式（exec 一个随 SSH 生死的后端）只留作一格回落：远端答「脱离不了」（非 unix）或太旧不认这条子命令。
 //! ⚠ 钥匙只在内存里过一趟（ensure 的 stdout → attach 行），不进日志、不进报错。
@@ -103,8 +103,12 @@ fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, AttachErr> {
 }
 
 async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr> {
-    let bin = cfg.backend_path_for_shell().map_err(AttachErr::Failed)?;
-    let mut cmd = format!("{} --resident-ensure", crate::ssh_source::shell_quote(bin));
+    // 〔V151〕`ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
+    let mut cmd = format!(
+        "{} {} --resident-ensure",
+        crate::ssh_source::BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP
+    );
     if replace {
         cmd.push_str(" --replace");
     }
@@ -328,16 +332,56 @@ pub(crate) async fn attach(
     }
 }
 
-/// **停那台的常驻后端**（机器页「停」）。回被停的 pid（本来就没在跑 ⇒ `None`）。
-pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<Option<u32>, String> {
-    let bin = cfg.backend_path_for_shell()?;
-    let cmd = format!("{} --resident-stop", crate::ssh_source::shell_quote(bin));
-    let exec =
-        crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    let v = parse_answer(&exec).map_err(|e| match e {
+/// 〔STOP〕「停」的结局 —— 后端 `--resident-stop` 那一行原样的三个词（`control/resident.rs::Stopped`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopWord {
+    /// 收到「请你收尾」之后在宽限期内自己退了。
+    Graceful,
+    /// 宽限期满还在 ⇒ 强杀了（在跑的写可能只做了一半）。
+    Killed,
+    /// 本来就没在跑。
+    NotRunning,
+}
+
+/// 〔STOP〕`backend_stop` 交给机器页的结局：`{stopped, pid}`（本机远端同形）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct StopAnswer {
+    pub stopped: StopWord,
+    pub pid: Option<u32>,
+}
+
+/// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟也经它，`local_backend_host::run_resident_stop`）。
+pub(crate) fn read_stop(exec: &crate::ssh_source::RemoteExec) -> Result<StopAnswer, String> {
+    let v = parse_answer(exec).map_err(|e| match e {
         AttachErr::Unsupported(m) | AttachErr::Failed(m) => m,
     })?;
-    Ok(v["stopped"].as_u64().and_then(|p| u32::try_from(p).ok()))
+    let stopped = match v["stopped"].as_str() {
+        Some("graceful") => StopWord::Graceful,
+        Some("killed") => StopWord::Killed,
+        Some("not_running") => StopWord::NotRunning,
+        _ => {
+            return Err(copy_text(
+                "rsRemoteResident.stop.unknownAnswer",
+                &[("line", &exec.stdout.trim().to_string())],
+            ))
+        }
+    };
+    let pid = v["pid"].as_u64().and_then(|p| u32::try_from(p).ok());
+    Ok(StopAnswer { stopped, pid })
+}
+
+/// **停那台的常驻后端**（机器页「停」）：发**一次** `--resident-stop`，等与强杀由那台自己做（同机监督者），这里只拿回结局。
+pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
+    // 〔E2 · V151〕落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
+    let cmd = format!(
+        "{} {} --resident-stop",
+        crate::ssh_source::BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP
+    );
+    let exec =
+        crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
+    read_stop(&exec)
 }
 
 #[cfg(test)]
