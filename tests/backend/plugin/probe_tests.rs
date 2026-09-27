@@ -175,11 +175,11 @@ fn the_message_does_not_blame_the_call() {
         msg.contains(&format!("「{}」", required[0])),
         "缺的那个 token 没被引起来单独点名：{msg}"
     );
-    // 〔CP2c〕句子照 CP1 裁词去掉了「这不是调用失败」那半句反驳（`91 §2.2`）；要的仍是「归因到能力」：
-    //   说出「这一版不支持」＋ 缺的那一个（上一条），而不是一句笼统的失败。
+    // 〔CP2c〕句子照 CP1 裁词去掉了「这不是调用失败」那半句反驳（`91 §2.2`）；要的仍是「归因到能力」。
+    // 〔FIX2 · 99 §2.1 ㉛②〕按拒绝种类断言、不钉原文：拒的是「缺能力」那一种、缺的是那一个。
     assert!(
-        msg.contains("这一版不支持"),
-        "没把「是这一版不会做这件事」说出来，调用方会去查错方向：{msg}"
+        matches!(&err, Rejected::MissingCapability { token, .. } if *token == required[0]),
+        "没归因到能力，调用方会去查错方向：{msg}"
     );
 }
 

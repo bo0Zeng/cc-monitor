@@ -5,6 +5,7 @@
 //   2. 计数的量纲**逐面不同**，不许统一写成「次」（那会让人横向比一个没有可比性的数）；
 //   3. 读不到账本 ⇒ 说「读不到」，**绝不显示成「没有漂移」**。
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { copyText } from "../../src/copy-table";
 import { countUnit, faceTitle, formatEntry, formatReport } from "../../src/settings/drift-ledger-section";
 import type { DriftFace, DriftFaceReport } from "../../src/settings/drift-ledger-section";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
@@ -112,8 +113,12 @@ describe("DriftLedgerSection（DOM）", () => {
     document.body.appendChild(s.element);
     await new Promise((r) => setTimeout(r, 0));
     const text = s.element.textContent ?? "";
-    expect(text).toContain("读不到格式兼容记录"); // 〔CP2b · CP1 裁〕「漂移账本」是自造概念名，对外叫「格式兼容记录」
-    expect(text).toContain("这不等于");
+    // 〔CP2b · CP1 裁〕「漂移账本」是自造概念名，对外叫「格式兼容记录」。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言：
+    //   取的是 `driftLedger.refresh.failed` 那一条（原因那一格是录音机的原话，这里只认它两边的固定部分）。
+    const [head, tail] = copyText("driftLedger.refresh.failed", { e: "\u0000" }).split("\u0000");
+    expect(head.length + tail.length).toBeGreaterThan(0);
+    expect(text).toContain(head);
+    expect(text).toContain(tail);
     expect(text).not.toContain("没有遇到看不懂的东西");
   });
 

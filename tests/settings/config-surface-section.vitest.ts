@@ -5,6 +5,7 @@
 // ② `invoke` resolve 成 `undefined` / 形状不对时整页炸掉（B03 的真 bug，第三次别再犯）；
 // ③ 不可撤销的工具给出一个"可以撤"的暗示。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { copyText } from "../../src/copy-table";
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -143,8 +144,8 @@ describe("describeUndo", () => {
     expect(owed).toBe("暂无撤销：还没有安装入口");
     expect(owed).not.toContain("不该");
     expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写/);
-    // 「你自己装」那一档要说清是你自己装（〔CP2b〕CP1 裁 §2.2 之后说「需自行安装」）
-    expect(theirs).toContain("自行安装");
+    // 「你自己装」那一档要说清是你自己装（〔CP2b〕CP1 裁 §2.2）。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文。
+    expect(theirs).toBe(copyText("configSurface.undo.userInstalls"));
     // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
     expect(new Set([owed, theirs, notOurs]).size).toBe(3);
   });
