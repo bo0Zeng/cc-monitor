@@ -56,6 +56,7 @@ import {
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { killSession, saidOfControl } from "./tmux-control";
+import { isIdentityRefusal, offerResyncRetry } from "./resync";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -603,7 +604,7 @@ export class TabSessionActions {
     origin: string,
     tmuxName: string,
     viaCwd: boolean,
-    opts?: { confirm?: ConfirmFn; idle?: boolean },
+    opts?: { confirm?: ConfirmFn; idle?: boolean; sid?: string },
   ): void {
     const caveat = viaCwd
       ? // 〔U2 · 按 `terms.json` ＋ CP1 台账改词〕不说标记、不派「重装 ccm 助手」；「可能杀到别的 Claude」这条后果必须留着。
@@ -624,20 +625,28 @@ export class TabSessionActions {
     // 〔W5-UI〕默认走应用内对话框（真 app 里 `window.confirm` 返回 Promise、恒真值 ⇒ 从前这里根本没问）。
     const confirmFn: ConfirmFn = opts?.confirm ?? askConfirm;
     const message = copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat });
+    const kill = async (): Promise<void> => {
+      await killSession(origin, tmuxName);
+      const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
+      showActionFailureToast(
+        copyText("tabSessionActions.kill.done"),
+        opts?.idle
+          ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
+          : copyText("sessionState.killLive.done", { who, name: tmuxName }),
+        { level: "info", durationMs: 6000 },
+      );
+    };
     void (async () => {
       if (!(await confirmFn(message))) return;
       try {
-        await killSession(origin, tmuxName);
-        const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
-        showActionFailureToast(
-          copyText("tabSessionActions.kill.done"),
-          opts?.idle
-            ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
-            : copyText("sessionState.killLive.done", { who, name: tmuxName }),
-          { level: "info", durationMs: 6000 },
-        );
+        await kill();
       } catch (err) {
-        showActionFailureToast(copyText("tabSessionActions.kill.failed"), saidOfControl(err));
+        // 〔RESYNC · V149〕关卡 2 拒的 ⇒ 提示带「对齐后重试」（只对这个会话重验 ＋ 重打，再过一次关卡）。
+        if (isIdentityRefusal(err)) {
+          offerResyncRetry(origin, opts?.sid, copyText("tabSessionActions.kill.failed"), saidOfControl(err), kill);
+        } else {
+          showActionFailureToast(copyText("tabSessionActions.kill.failed"), saidOfControl(err));
+        }
       }
     })();
   }

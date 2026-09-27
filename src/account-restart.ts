@@ -13,6 +13,7 @@
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { killSession, saidOfControl, sendKeys } from "./tmux-control";
+import { isIdentityRefusal, offerResyncRetry } from "./resync";
 import { runRemoteResumeTmux } from "./remote-launch-run";
 import { accountConfigDir, type SessionAccount } from "./accounts";
 import { fetchAccounts, checkTrust } from "./account-reads";
@@ -179,11 +180,15 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   try {
     await killSession(origin, tmuxName);
   } catch (e) {
-    showActionFailureToast(
-      copyText("accountRestart.aborted.title"),
-      copyText("accountRestart.aborted.body", { e: saidOfControl(e) }),
-      { level: "error", durationMs: 10000 },
-    );
+    const said = copyText("accountRestart.aborted.body", { e: saidOfControl(e) });
+    // 〔RESYNC · V149〕关卡 2 拒的 ⇒ 「对齐后重试」：只对这个会话重验 ＋ 重打，再从头走一遍（二次确认照问）。
+    if (isIdentityRefusal(e)) {
+      offerResyncRetry(origin, sessionId, copyText("accountRestart.aborted.title"), said, async () => {
+        await restartWithAccount(opts);
+      });
+    } else {
+      showActionFailureToast(copyText("accountRestart.aborted.title"), said, { level: "error", durationMs: 10000 });
+    }
     return false;
   }
 

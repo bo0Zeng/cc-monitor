@@ -479,6 +479,7 @@ const SCAN: &[&str] = &[
     "tests/scanning-guard-registry.vitest.ts",
     "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
     "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/resync.vitest.ts", // 〔RESYNC〕读跨语言金样（`tests/__fixtures__/resync.golden.json`）
     "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
     "tests/settings/accounts-section.vitest.ts",
     "tests/settings/backend-section.vitest.ts",
@@ -669,6 +670,7 @@ const INTEGRATION: &[&str] = &[
 const SUPPORT: &[&str] = &[
     "tests/bridge/support/scripted_backend.rs", // 〔LOC1a〕`<local>` 上挂照脚本应答的假后端，数它收到的帧命令
     "tests/backend/files/index_testing.rs",
+    "tests/backend/control/identity_tag_door.rs", // 〔RESYNC〕`identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/sftp_rig.rs",
     "tests/bridge/backend/control/backend_kill_creation_detect.rs",
     "tests/bridge/filewin/copy_testing.rs",

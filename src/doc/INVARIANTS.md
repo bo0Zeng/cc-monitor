@@ -2296,7 +2296,7 @@ monitor 那一半 `payload_tests.rs::the_rendered_relay_export_carries_no_key_an
 **拿不到就炸，不许降级裸跑**。人群按「那个二进制从哪来」派生，不按测试属性（`#[ignore]` 是可以不写的）。
 只 `env_remove("TMUX")` 不算（`TMUX` 一空就回落到默认 socket，**正是**用户那台）；靠 `TMUX_TMPDIR` 不算（`$TMUX` 一有值就压过它）。
 〔RESYNC · 09-27〕**人群第二族：进程内会走到 `identity_tag::tag` 的测试**（不起二进制，但用自己的 pid 造 pidfile ⇒ `TMUX_PANE` 是跑测试那个终端的 ⇒ 对用户真 tmux 打 `@ccm_sid`；09-27 本会话被写成 `bg-sid`）。
-唯一的口是 `control/identity_tag.rs::tmux`：测试构建里它只交本线程注入的假 tmux（`identity_tag_tests::isolate` / `isolate_with`），**没注入就在 `tag` 入口炸**（不看走不走得到 tmux）⇒ 人群按「调了 `tag`」派生，不靠逐条测试自觉。
+唯一的口是 `control/identity_tag.rs` 的 `door::tmux`：测试构建里整个 `door` 换成 `tests/backend/control/identity_tag_door.rs`，只交本线程注入的假 tmux（`door::isolate` / `isolate_with`），**没注入就在 `tag` 入口炸**（不看走不走得到 tmux）⇒ 人群按「调了 `tag`」派生，不靠逐条测试自觉。
 
 **为什么不能松动**：后端一上来就**无条件**往它连得到的 tmux server 装三条全局 hook（〔HX2〕今天是段 `[50, 100)` 里自己那一格，并摘掉段内的死槽；从前是固定槽位 `[50]`；没有关掉的开关）⇒ 不隔离就是去改用户真实 tmux 的状态。
 

@@ -74,6 +74,10 @@ vi.mock("../../src/ipc/commands", () => ({
         return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
       };
       const noChannel = { err: { Hop: { idx: 1, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] };
+      if (a.op === "resync") {
+        calls.push({ name: "resync", args: { origin: a.origin, body } });
+        return bytes({ added: 0, removed: 0, retagged: 1, watchers: 1 });
+      }
       if (a.op === "backend-log") {
         calls.push({ name: "backend_log", args: { origin: a.origin } });
         return a.origin in logAnswers ? bytes(logAnswers[a.origin]) : Promise.reject(noChannel);
@@ -539,13 +543,29 @@ describe("P2s backend 开关区", () => {
     ).toBe(EXIT_KILLS);
     expect(box.checked).toBe(true);
   });
-  it("★ 〔ST2〕那一行有 [起][停]〔GAP1〕[日志]、状态照实说「已连上」", async () => {
+  it("★ 〔ST2〕那一行有 [起][停]〔GAP1〕[日志]〔RESYNC〕[重新对齐]、状态照实说「已连上」", async () => {
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
     const row = s.element.querySelector<HTMLElement>(".backend-row")!;
-    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停", "日志"]);
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["起", "停", "日志", "重新对齐"]);
     expect(row.querySelector(".backend-row-state")?.textContent).toBe("已连上（pid 42）");
+  });
+  // 〔RESYNC · V149 · `设计/15 §4.1b`「机器一行『重新对齐』（上面整套）」〕按一下 ⇒ 问**那一行那台**的后端 `resync`、整机（不带 sid）。
+  it("★ 〔RESYNC〕[重新对齐] 问的是那一行那台的后端、整机", async () => {
+    const s = new BackendSection({ headless: true });
+    await flush();
+    await flush();
+    const rows = [...s.element.querySelectorAll<HTMLElement>("[data-backend-cells]")];
+    const ask = (i: number) => [...rows[i].querySelectorAll("button")].find((b) => b.textContent === "重新对齐")!.click();
+    calls.length = 0;
+    ask(1);
+    ask(0);
+    await flush();
+    expect(calls.filter((c) => c.name === "resync").map((c) => c.args)).toEqual([
+      { origin: rows[1].dataset.backendCells, body: {} },
+      { origin: rows[0].dataset.backendCells, body: {} },
+    ]);
   });
 });
 
@@ -566,7 +586,7 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
       expect(cells.dataset.backendCells).toBe(r.dataset.origin);
       expect([...cells.children].map((c) => (c as HTMLElement).dataset.col)).toEqual(want);
       // 控件各归各格：按钮在「操作」、勾在「退出行为」、读数在「健康」。
-      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(3); // 起 · 停 ·〔GAP1〕日志
+      expect(cells.querySelector('[data-col="ops"]')!.querySelectorAll("button").length).toBe(4); // 起 · 停 ·〔GAP1〕日志 ·〔RESYNC〕重新对齐
       expect(cells.querySelector('[data-col="exit"] .backend-row-kill')).not.toBeNull();
       expect(cells.querySelector('[data-col="health"] .backend-row-health')).not.toBeNull();
     }
