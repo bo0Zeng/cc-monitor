@@ -395,12 +395,9 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
 /// 下面那条判据按字面量 `"<op>"` 数 monitor 里还剩几个发送点；`kill` 这个词在 monitor 里另有一处正当的用法
 /// （起系统的 `kill` 进程），它与帧命令 `kill` 同拼写、不同义。两向相等：多一处 = 又长出一个发送点（或又一处同拼写，
 /// 要来这里表态）；少一处 = 那一处用法没了，这一行馊了。
-const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[(
-    "kill",
-    1,
-    "`local_backend_host.rs::signal_term` 起系统的 `kill` 进程（`kill -TERM <pid>`，Linux 上给一个进程发 SIGTERM）—— \
-     与后端的帧命令 `kill`（结束 tmux 会话）同一个拼写，不是发送点",
-)];
+// 〔STOP〕原先唯一一行（`kill`：`local_backend_host.rs` 起系统的 `kill` 进程发 SIGTERM）随那条路一起删了 ——
+//   本机「停」改走一次性 `--resident-stop`，monitor 生产段里 `kill` 这个拼写一处都不剩 ⇒ 表空着（两向相等照旧成立）。
+const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
 ///

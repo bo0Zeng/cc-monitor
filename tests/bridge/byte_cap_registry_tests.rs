@@ -57,6 +57,26 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "STOP_GRACE_MS",
+        "〔STOP〕**时间**不是体量：一次性子命令 `--resident-stop` 请常驻后端收尾之后等它退的宽限期（毫秒）；比后端自己的排空上限长（`resident_tests` 钉）。",
+    ),
+    (
+        "KILL_WAIT_MS",
+        "〔STOP〕**时间**不是体量：强杀之后再等它没了的上限（毫秒）；还在 ⇒ 出声说没停掉。",
+    ),
+    (
+        "GRACE_MAX_SECS",
+        "〔STOP〕**时间**不是体量：`--grace <秒>` 收下的上界（越界 ⇒ `bad_args` 拒）。",
+    ),
+    (
+        "WAIT_TIMEOUT",
+        "〔STOP〕Win32 **返回码**不是体量：`WaitForSingleObject` 的「期限到了、对象没被触发」（`0x102`）。",
+    ),
+    (
+        "PROCESS_TERMINATE",
+        "〔STOP〕Win32 **访问掩码位**不是体量：开进程句柄时要「能强杀」那一位。",
+    ),
+    (
         "INBOX_LINES_MAX",
         "〔SH1 · V136〕**行数**不是体量：后端 `bus-inbox` 的 `lines` 入参上界（看收件箱尾巴最多几行，越界 ⇒ `invalid_args`）；\
              限字节总量的是同文件的 `INBOX_CAP`。",
