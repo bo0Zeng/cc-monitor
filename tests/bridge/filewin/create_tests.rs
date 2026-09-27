@@ -220,7 +220,6 @@ fn no_line_says_so_instead_of_doing_nothing() {
             port: 22,
             user: "nobody".into(),
             key_path: None,
-            backend_path: "/nonexistent".into(),
             host_key_fingerprint: None,
             addresses: Vec::new(),
             jump: None,

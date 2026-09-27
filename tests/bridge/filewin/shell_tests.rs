@@ -12,7 +12,6 @@ fn synth_cfg(label: &str) -> crate::ssh_source::RemoteConfig {
         port: 22,
         user: "nobody".into(),
         key_path: None,
-        backend_path: "/nonexistent/cc-monitor-backend".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,
