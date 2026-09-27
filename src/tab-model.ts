@@ -176,8 +176,8 @@ export interface Tab {
    * 本机后端不在 / seq 与索引对不上）⇒ 退回 `window` 的尾部窗口 + `fillAbove`，行为与之前逐字相同。
    */
   skeleton: SkeletonView | null;
-  /** 索引拉取：`idle` 没拉过 · `pending` 在途 · `done` 拉过（成不成都不重拉，免得每次切 tab 起一次进程） */
-  skeletonFetch: "idle" | "pending" | "done";
+  /** 索引拉取：`idle` 没拉过 · `pending` 在途 · `again` 瞬时失败过一次、下一次触发点再问一次 · `done` 定了（不再拉）。 */
+  skeletonFetch: "idle" | "pending" | "again" | "done";
   /**
    * F40b R-1:批期「窗口内中部插入」缓冲——大增量批(>600 行切块,末块先发)落在
    * 已渲染 tab 上时,老块 seq≥floor 但 <timeline.maxSeq,逐条挂 DOM 会跨帧上方
