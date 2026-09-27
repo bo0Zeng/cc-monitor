@@ -9,6 +9,296 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beSftp.open.subsystem": {
+      "kind": "error",
+      "zh": "开不了远端的 SFTP：{e}。可能是远端 sshd 没开 SFTP",
+      "args": ["e"]
+    },
+    "beSftp.open.initFailed": {
+      "kind": "error",
+      "zh": "SFTP 连接没建起来：{e}",
+      "args": ["e"]
+    },
+    "beSftp.open.noHome": {
+      "kind": "error",
+      "zh": "问不出远端的家目录：{e}",
+      "args": ["e"]
+    },
+    "beSftp.fence.empty": {
+      "kind": "error",
+      "zh": "远端路径是空的",
+      "args": []
+    },
+    "beSftp.fence.homeNotAbsolute": {
+      "kind": "error",
+      "zh": "远端家目录不是绝对路径（{home}），不往里写",
+      "args": ["home"]
+    },
+    "beSftp.fence.outsideHome": {
+      "kind": "error",
+      "zh": "{path} 不在远端家目录（{home}）底下，不写",
+      "args": ["path", "home"]
+    },
+    "beSftp.fence.irregular": {
+      "kind": "error",
+      "zh": "{path} 里有空段、. 或 ..，只收规整的路径",
+      "args": ["path"]
+    },
+    "beSftp.fence.outsideRoots": {
+      "kind": "error",
+      "zh": "远端只许写 ~/{a} 和 ~/{b} 底下，{path} 不在其中",
+      "args": ["a", "b", "path"]
+    },
+    "beSftp.fence.rootUnresolved": {
+      "kind": "error",
+      "zh": "~/{root} 解析不了，可能还不存在：{e}",
+      "args": ["root", "e"]
+    },
+    "beSftp.fence.parentUnresolved": {
+      "kind": "error",
+      "zh": "~/{parent} 解析不了，可能父目录不存在：{e}",
+      "args": ["parent", "e"]
+    },
+    "beSftp.fence.escaped": {
+      "kind": "error",
+      "zh": "~/{parent} 解开链接后落到了可写目录外面（{real} 不在 {root} 里），不写",
+      "args": ["parent", "real", "root"]
+    },
+    "beSftp.put.createFailed": {
+      "kind": "error",
+      "zh": "创建 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.writeFailed": {
+      "kind": "error",
+      "zh": "写 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.flushFailed": {
+      "kind": "error",
+      "zh": "写 ~/{path} 没有得到远端确认：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.closeFailed": {
+      "kind": "error",
+      "zh": "关闭 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.put.backupFailed": {
+      "kind": "error",
+      "zh": "备份旧文件 ~/{path} 到 ~/{backup} 失败：{e}",
+      "args": ["path", "backup", "e"]
+    },
+    "beSftp.put.renameFailed": {
+      "kind": "error",
+      "zh": "把 ~/{tmp} 换成 ~/{path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beSftp.remove.failed": {
+      "kind": "error",
+      "zh": "删除 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.mkdir.failed": {
+      "kind": "error",
+      "zh": "建目录 ~/{path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.open.isLink": {
+      "kind": "error",
+      "zh": "~/{path} 是一条链接，写进去会写到别处，不写",
+      "args": ["path"]
+    },
+    "beSftp.open.writeFailed": {
+      "kind": "error",
+      "zh": "打开 ~/{path} 写入失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.open.readFailed": {
+      "kind": "error",
+      "zh": "打开远端 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beSftp.request.readFailed": {
+      "kind": "error",
+      "zh": "和本机之间的连接读不动：{e}",
+      "args": ["e"]
+    },
+    "beSftp.read.tooBig": {
+      "kind": "error",
+      "zh": "{path} 有 {size} 字节，超过上限 {max}",
+      "args": ["path", "size", "max"]
+    },
+    "beSftp.put.receiveFailed": {
+      "kind": "error",
+      "zh": "接收上传的内容失败：{e}",
+      "args": ["e"]
+    },
+    "beSftp.put.short": {
+      "kind": "error",
+      "zh": "上传的内容不完整：应有 {size} 字节，只收到 {got}",
+      "args": ["size", "got"]
+    },
+    "beConnect.race.taskFailed": {
+      "kind": "error",
+      "zh": "连接中断：{e}",
+      "args": ["e"]
+    },
+    "beConnect.race.noAddress": {
+      "kind": "error",
+      "zh": "没有可连的地址",
+      "args": []
+    },
+    "beConnect.race.allFailed": {
+      "kind": "error",
+      "zh": "所有地址都连不上：{errors}",
+      "args": ["errors"]
+    },
+    "beConnect.race.tried": {
+      "kind": "error",
+      "zh": "{e}（试过的地址：{addrs}）",
+      "args": ["e", "addrs"]
+    },
+    "beConnect.auth.rsaHash": {
+      "kind": "error",
+      "zh": "和远端商定 RSA 签名算法失败：{e}",
+      "args": ["e"]
+    },
+    "beConnect.auth.keyLoad": {
+      "kind": "error",
+      "zh": "读不了私钥 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beConnect.auth.keyFailed": {
+      "kind": "error",
+      "zh": "用私钥登录失败：{e}",
+      "args": ["e"]
+    },
+    "beConnect.auth.keyRejected": {
+      "kind": "error",
+      "zh": "远端不接受这把私钥（用户 {user}）",
+      "args": ["user"]
+    },
+    "beConnect.agent.unreachable": {
+      "kind": "error",
+      "zh": "没配密钥文件，改用 ssh-agent 也失败了：{e}",
+      "args": ["e"]
+    },
+    "beConnect.agent.listFailed": {
+      "kind": "error",
+      "zh": "读不出 ssh-agent 里的密钥：{e}",
+      "args": ["e"]
+    },
+    "beConnect.agent.empty": {
+      "kind": "error",
+      "zh": "ssh-agent 里一把密钥都没有，也没配密钥文件。可以先用 ssh-add 加一把",
+      "args": []
+    },
+    "beConnect.agent.rejected": {
+      "kind": "error",
+      "zh": "ssh-agent 里的密钥被拒（用户 {user}）",
+      "args": ["user"]
+    },
+    "beConnect.agent.signFailed": {
+      "kind": "error",
+      "zh": "ssh-agent 签名登录出错：{e}",
+      "args": ["e"]
+    },
+    "beConnect.agent.allFailed": {
+      "kind": "error",
+      "zh": "ssh-agent 里的密钥都登录不上",
+      "args": []
+    },
+    "beConnect.jump.label": {
+      "kind": "body",
+      "zh": "跳板 {hop}",
+      "args": ["hop"]
+    },
+    "beConnect.jump.dialFailed": {
+      "kind": "error",
+      "zh": "跳板 {hop} 连不上：{e}",
+      "args": ["hop", "e"]
+    },
+    "beConnect.jump.authFailed": {
+      "kind": "error",
+      "zh": "跳板 {hop} 登录失败：{e}",
+      "args": ["hop", "e"]
+    },
+    "beConnect.jump.tunnelFailed": {
+      "kind": "error",
+      "zh": "经跳板连 {host}:{port} 失败：{e}",
+      "args": ["host", "port", "e"]
+    },
+    "beConnect.jump.target": {
+      "kind": "body",
+      "zh": "{host}:{port}（经跳板）",
+      "args": ["host", "port"]
+    },
+    "beConnect.jump.targetFailed": {
+      "kind": "error",
+      "zh": "经跳板连上目标后，SSH 连接没建起来：{e}",
+      "args": ["e"]
+    },
+    "beUses.session.noSlot": {
+      "kind": "error",
+      "zh": "开不了新的 SSH 会话：这条连接的名额用完了",
+      "args": []
+    },
+    "beUses.session.openFailed": {
+      "kind": "error",
+      "zh": "开不了新的 SSH 会话：{e}",
+      "args": ["e"]
+    },
+    "beUses.session.refusedAll": {
+      "kind": "error",
+      "zh": "远端不让开新的 SSH 会话：{e}。可能是远端 sshd 的 MaxSessions 设成了 0",
+      "args": ["e"]
+    },
+    "beUses.session.exhausted": {
+      "kind": "error",
+      "zh": "换了几条连接都开不了新的 SSH 会话",
+      "args": []
+    },
+    "beUses.exec.failed": {
+      "kind": "error",
+      "zh": "远端命令没能启动：{e}",
+      "args": ["e"]
+    },
+    "beUses.exec.stdinLost": {
+      "kind": "error",
+      "zh": "远端命令起来了，但交给它的那一行没送过去：{e}",
+      "args": ["e"]
+    },
+    "beUses.forward.bindFailed": {
+      "kind": "error",
+      "zh": "绑定本地端口 127.0.0.1:{port} 失败：{e}",
+      "args": ["port", "e"]
+    },
+    "beUses.tunnel.unreachable": {
+      "kind": "error",
+      "zh": "远端 127.0.0.1:{port} 连不上：{e}",
+      "args": ["port", "e"]
+    },
+    "beLink.install.tooMany": {
+      "kind": "error",
+      "zh": "同时开着的远端连接太多了，上限 {max} 条",
+      "args": ["max"]
+    },
+    "beLink.gone.say": {
+      "kind": "error",
+      "zh": "和远端的连接已经断了",
+      "args": []
+    },
+    "beLink.gone.withError": {
+      "kind": "error",
+      "zh": "和远端的连接断了：{e}",
+      "args": ["e"]
+    },
+    "beLink.gone.bug": {
+      "kind": "error",
+      "zh": "和远端的连接断了（内部计数出错）",
+      "args": []
+    },
     "bePlan.env.configIgnored": {
       "kind": "error",
       "zh": "ccm: {path} 不会被读取。里面的两个值改用环境变量 CCM_ACCTS_MANIFEST 和 CCM_ENV。",

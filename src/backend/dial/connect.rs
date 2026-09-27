@@ -9,6 +9,7 @@
 //! 〔NT1 · 2026-09-24〕TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
 //! （`platform::tcp_rtt`），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
 
+use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
@@ -301,13 +302,19 @@ async fn race(
                 }
                 Ok(Err(e)) => errors.push(e),
                 Err(je) if je.is_cancelled() => {}
-                Err(je) => errors.push(format!("拨号任务异常: {je}")),
+                Err(je) => errors.push(copy_text(
+                    "beConnect.race.taskFailed",
+                    &[("e", &je.to_string())],
+                )),
             }
         }
         Err(if errors.is_empty() {
-            "无可用地址".to_string()
+            copy_text("beConnect.race.noAddress", &[])
         } else {
-            format!("所有地址连接失败: {}", errors.join("; "))
+            copy_text(
+                "beConnect.race.allFailed",
+                &[("errors", &errors.join("; "))],
+            )
         })
     };
     // ⚠ **这里没有握手看门狗**：本 crate 按调用形态禁 `timeout(`（`no_timer_guard`）。
@@ -316,7 +323,13 @@ async fn race(
         Ok(w) => Ok(w),
         Err(e) => {
             let fp = seen.lock().ok().and_then(|g| g.clone());
-            Err((format!("{e}（竞速：{addr_list}）"), fp))
+            Err((
+                copy_text(
+                    "beConnect.race.tried",
+                    &[("e", &e.to_string()), ("addrs", &addr_list.to_string())],
+                ),
+                fp,
+            ))
         }
     }
 }
@@ -332,21 +345,25 @@ async fn authenticate(
     let best_hash = session
         .best_supported_rsa_hash()
         .await
-        .map_err(|e| format!("协商 rsa hash 失败: {e}"))?
+        .map_err(|e| copy_text("beConnect.auth.rsaHash", &[("e", &e.to_string())]))?
         .flatten();
     match key_path.filter(|s| !s.trim().is_empty()) {
         Some(key_path) => {
-            let key_pair = load_secret_key(key_path, None)
-                .map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
+            let key_pair = load_secret_key(key_path, None).map_err(|e| {
+                copy_text(
+                    "beConnect.auth.keyLoad",
+                    &[("path", key_path), ("e", &e.to_string())],
+                )
+            })?;
             let authenticated = session
                 .authenticate_publickey(
                     user,
                     PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
                 )
                 .await
-                .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
+                .map_err(|e| copy_text("beConnect.auth.keyFailed", &[("e", &e.to_string())]))?;
             if !authenticated.success() {
-                return Err(format!("publickey 鉴权被拒（user={user}）"));
+                return Err(copy_text("beConnect.auth.keyRejected", &[("user", user)]));
             }
             Ok(())
         }
@@ -378,13 +395,13 @@ async fn agent_auth(
 ) -> Result<(), String> {
     let mut agent = crate::platform::ssh_agent::connect(agent_sock)
         .await
-        .map_err(|e| format!("未配置私钥路径(keyPath)，尝试 ssh-agent 失败：{e}"))?;
+        .map_err(|e| copy_text("beConnect.agent.unreachable", &[("e", &e.to_string())]))?;
     let identities = agent
         .request_identities()
         .await
-        .map_err(|e| format!("ssh-agent 枚举身份失败: {e}"))?;
+        .map_err(|e| copy_text("beConnect.agent.listFailed", &[("e", &e.to_string())]))?;
     if identities.is_empty() {
-        return Err("ssh-agent 没有任何身份（ssh-add 了吗？），且未配置 keyPath".to_string());
+        return Err(copy_text("beConnect.agent.empty", &[]));
     }
     let mut last_err: Option<String> = None;
     for id in identities {
@@ -394,11 +411,16 @@ async fn agent_auth(
             .await
         {
             Ok(res) if res.success() => return Ok(()),
-            Ok(_) => last_err = Some(format!("agent 身份被拒（user={user}）")),
-            Err(e) => last_err = Some(format!("agent 签名鉴权出错: {e}")),
+            Ok(_) => last_err = Some(copy_text("beConnect.agent.rejected", &[("user", user)])),
+            Err(e) => {
+                last_err = Some(copy_text(
+                    "beConnect.agent.signFailed",
+                    &[("e", &e.to_string())],
+                ))
+            }
         }
     }
-    Err(last_err.unwrap_or_else(|| "ssh-agent 所有身份均鉴权失败".to_string()))
+    Err(last_err.unwrap_or_else(|| copy_text("beConnect.agent.allFailed", &[])))
 }
 
 /// 连 ＋ 鉴权。`jump` 在就先连跳板、经它开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
@@ -429,7 +451,7 @@ pub(crate) async fn establish(
                 hop.label.clone()
             };
             stages.emit(Stage::Dialing {
-                endpoint: format!("跳板 {hop_name}"),
+                endpoint: copy_text("beConnect.jump.label", &[("hop", &hop_name)]),
             });
             let hop_ep = Endpoint {
                 host: hop.host.clone(),
@@ -445,7 +467,15 @@ pub(crate) async fn establish(
                 &Arc::default(),
             )
             .await
-            .map_err(|(e, fp)| (format!("跳板 {hop_name} 连接失败: {e}"), fp))?;
+            .map_err(|(e, fp)| {
+                (
+                    copy_text(
+                        "beConnect.jump.dialFailed",
+                        &[("hop", &hop_name), ("e", &e.to_string())],
+                    ),
+                    fp,
+                )
+            })?;
             authenticate(
                 &mut jump_session,
                 &hop.user,
@@ -453,7 +483,15 @@ pub(crate) async fn establish(
                 req.agent_sock.as_deref(),
             )
             .await
-            .map_err(|e| (format!("跳板 {hop_name} 鉴权失败: {e}"), None))?;
+            .map_err(|e| {
+                (
+                    copy_text(
+                        "beConnect.jump.authFailed",
+                        &[("hop", &hop_name), ("e", &e.to_string())],
+                    ),
+                    None,
+                )
+            })?;
             let channel = jump_session
                 .channel_open_direct_tcpip(
                     req.host.clone(),
@@ -464,12 +502,22 @@ pub(crate) async fn establish(
                 .await
                 .map_err(|e| {
                     (
-                        format!("经跳板开隧道到 {}:{} 失败: {e}", req.host, req.port),
+                        copy_text(
+                            "beConnect.jump.tunnelFailed",
+                            &[
+                                ("host", &req.host),
+                                ("port", &req.port.to_string()),
+                                ("e", &e.to_string()),
+                            ],
+                        ),
                         None,
                     )
                 })?;
             let observed: Arc<Mutex<Option<String>>> = Arc::default();
-            let ep_label = format!("{}:{}（经跳板）", req.host, req.port);
+            let ep_label = copy_text(
+                "beConnect.jump.target",
+                &[("host", &req.host), ("port", &req.port.to_string())],
+            );
             let checker = Checker {
                 expected: req.host_key_fingerprint.clone(),
                 observed: Arc::clone(&observed),
@@ -485,7 +533,10 @@ pub(crate) async fn establish(
             .await
             .map_err(|e| {
                 let fp = observed.lock().ok().and_then(|g| g.clone());
-                (format!("目标 SSH 握手失败（经跳板）: {e}"), fp)
+                (
+                    copy_text("beConnect.jump.targetFailed", &[("e", &e.to_string())]),
+                    fp,
+                )
             })?;
             let winner = Endpoint {
                 host: req.host.clone(),
