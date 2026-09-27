@@ -653,12 +653,17 @@ export class TabStreamView {
    * 〔`设计/10` 骨架 · 子步 4〕向后端要这个会话的**骨架索引**，到了就接骨架。
    *
    * 只对**已经有渲染后缀**的 tab 要（`floor !== null`：骨架顶的是 `[0, floor)`）；
-   * 每个 tab 只要一次（`skeletonFetch`），成不成都不重拉 —— 免得每切一次 tab 起一次本机后端进程。
+   * 每个 tab 只要一次（`skeletonFetch`）；〔GAP1 · `设计/10 §7` 第 5 条〕瞬时失败 ⇒ 下一次触发点再问**一次**（有界、零定时器）。
    * 调用点只有两处：批结束时的 active tab、`switchTo` 切进来的那个 tab ⇒ 后台 tab 不花这一次。
    */
   private requestSkeleton(tab: Tab): void {
-    if (tab.skeletonFetch !== "idle" || !tab.parentPath) return;
+    if ((tab.skeletonFetch !== "idle" && tab.skeletonFetch !== "again") || !tab.parentPath) return;
     if (tab.window.floorSeq === null) return;
+    const retry = tab.skeletonFetch === "again";
+    // 瞬时失败的第一次 ⇒ `again`；结构性（老后端）或已经重问过 ⇒ `done`。
+    const failed = (transient: boolean): void => {
+      tab.skeletonFetch = transient && !retry ? "again" : "done";
+    };
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
     const origin = tab.origin;
@@ -672,6 +677,7 @@ export class TabStreamView {
         tab.skeletonFetch = "done";
         const got = ledgerFromIndex(res);
         if (!got.ok) {
+          failed(res.failure !== "oldBackend");
           console.info(`[tabs] 骨架未接（${tab.sessionId.slice(0, 8)}）：${got.reason}`);
           return;
         }
@@ -685,7 +691,7 @@ export class TabStreamView {
         this.attachSkeleton(tab, got.ledger);
       })
       .catch((e: unknown) => {
-        tab.skeletonFetch = "done";
+        failed(true);
         console.warn(`[tabs] 骨架索引拉取失败（${tab.sessionId.slice(0, 8)}）：`, e);
       });
   }
@@ -840,7 +846,7 @@ export class TabStreamView {
    *
    * 回来的行：没见过的 ⇒ `feedHistoryRows`（批语义 ＋ 不复活远端 tab，落进账本）；见过而被修剪出账本的 ⇒
    * 直接放回账本（`restore`，旁路账早记过了）。然后照旧从账本补到屏上（`fillAbove`）。
-   * 一个 tab 同时只问一批（`fetching`）；失败不自动重问（`BelowState` 头注）。
+   * 一个 tab 同时只问一批（`fetching`）；失败 ⇒ 下一次上翻再问一次，连续第二次才停（`BelowState` 头注）。
    */
   private fetchBelow(tab: Tab): void {
     const range = tab.window.belowRange(TabStreamView.FILL_BATCH);

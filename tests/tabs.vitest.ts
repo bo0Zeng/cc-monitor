@@ -4684,11 +4684,11 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(indexCalls().length).toBe(1);
   });
 
-  it("老后端 / 本机后端不在（available:false）⇒ 不接，尾部窗口照旧（账本还在、哨兵还在）", async () => {
+  it("老后端（available:false · oldBackend）⇒ 不接、不再问，尾部窗口照旧（账本还在、哨兵还在）", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
       Promise.resolve(
         cmd === "read_session_index"
-          ? { available: false, reason: "老后端", from: 0, end: 0, rows: [] }
+          ? { available: false, reason: "老后端", failure: "oldBackend", from: 0, end: 0, rows: [] }
           : undefined,
       ),
     ) as never));
@@ -4698,6 +4698,32 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(t.skeletonFetch).toBe("done");
     expect(t.window.pendingCount).toBe(200);
     expect(t.stream.contentElement.querySelector(".stream-more-above")).not.toBeNull();
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    expect(indexCalls().length, "结构性失败不该再问").toBe(1);
+  });
+
+  // 〔GAP1 · `设计/10 §7` 第 5 条〕「索引或清单一次瞬时失败（ssh 抖一下）⇒ 这个 tab 灰到关掉重开」⇒ 下一次触发点再问一次。
+  it("★ 〔GAP1〕瞬时失败 ⇒ 下一次触发点（批结束）再问**一次**；再失败 ⇒ 定死不再问", async () => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) =>
+      Promise.resolve(
+        cmd === "read_session_index"
+          ? { available: false, reason: "抖了一下", failure: "transport", from: 0, end: 0, rows: [] }
+          : undefined,
+      ),
+    ) as never));
+    const t = replay("flap");
+    await settle();
+    expect(t.skeletonFetch).toBe("again");
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    await settle();
+    expect(indexCalls().length, "瞬时失败之后的下一次触发点该再问一次").toBe(2);
+    expect(t.skeletonFetch).toBe("done");
+    tm.onBatchStart();
+    tm.onBatchEnd();
+    await settle();
+    expect(indexCalls().length, "重问过一次还失败 ⇒ 不再问（有界）").toBe(2);
   });
 
   it("🔴 seq 空间对不上（uuid 在索引里落在别的 seq）⇒ 不接 —— 不许硬对", async () => {
@@ -5328,7 +5354,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     expect(asks().length, "到顶了还在问").toBe(3);
   });
 
-  it("★ L3：问不动（老后端 / 断了）⇒ 哨兵说原因、不自动重问；切走再切回来才再问一次", async () => {
+  it("★ L3：问不动（老后端 / 断了）⇒ 〔GAP1〕下一次上翻再问一次；连续第二次才哨兵说原因、不再自动重问；切走再切回来才再问一次", async () => {
     vi.mocked(invoke).mockImplementation(((cmd: string) =>
       cmd === "read_session_lines"
         ? Promise.reject(new Error("那台后端还不认这条查询"))
@@ -5339,17 +5365,22 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     tm.switchTo("fb");
     await settle();
     expect(asks().length).toBe(1);
+    // 〔GAP1 · `设计/10 §7` 第 5 条〕第一次失败：不定死，下一次触发点（上翻）再问同一段 —— 恰好一次。
+    expect(t.window.belowState).toEqual({ kind: "maybe" });
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    await settle();
+    expect(asks().length, "第一次失败之后的下一次上翻该再问一次").toBe(2);
+    expect(asks()[1]).toEqual(asks()[0]);
     expect(t.window.belowState).toEqual({ kind: "failed", reason: "那台后端还不认这条查询" });
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain(
       "那台后端还不认这条查询",
     );
-    // 上翻（fillAbove 的每一个入口）不自动重问
+    // 连续第二次失败之后：上翻（fillAbove 的每一个入口）不自动重问
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
+    expect(asks().length, "连续两次失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
     home(tm).view.activate(t);
-    expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(2);
-    await settle();
-    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
-    (home(tm).view as unknown as { fillAbove(t: unknown): void }).fillAbove(t);
-    expect(asks().length, "失败之后的上翻不许自己重问（否则是一个无界的重试环）").toBe(2);
+    expect(asks().length, "activate 自己就是「切进来」—— 这一脚允许重问").toBe(3);
   });
 
   it("★ L3：回来的行里**见过**的（被修剪出账本的）直接放回账本、不再过 onLine；没见过的走 onLine", async () => {

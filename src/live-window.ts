@@ -63,8 +63,9 @@ export const PENDING_CAP = 3000;
  * - `maybe`：还没问过（或上次问回来之后还没到 0）；
  * - `fetching`：问着；
  * - `none`：问到了第 0 行 —— 到顶了；
- * - `failed`：问不动（老后端不认 / 断了），带一句给人看的原因。**不自动重问**：上翻是逐 scroll 事件触发的，
- *   失败了自动重问就是一个无界的重试环；切走再切回来（`retryBelow`）才再问一次。
+ * - `failed`：问不动（老后端不认 / 断了），带一句给人看的原因。〔GAP1 · `设计/10 §7` 第 5 条〕第一次失败回 `maybe`
+ *   （下一次上翻触发再问一次），**连续**第二次才落这里；此后不自动重问（上翻逐 scroll 事件触发，无界重问是重试环），
+ *   切走再切回来（`retryBelow`）才再问一次。
  */
 export type BelowState =
   | { kind: "maybe" }
@@ -92,6 +93,8 @@ export class TailWindow {
    * （那一形在这里是一个同步发起的无限循环，不是慢一点）。与 {@link askedDownTo} 同时复位。
    */
   private lastUntil: number | null = null;
+  /** 〔GAP1〕这一串失败里已经自动重问过一次了（问回来 / 切回来清掉）。 */
+  private belowRetried = false;
 
   get floorSeq(): number | null {
     return this.floor;
@@ -130,10 +133,17 @@ export class TailWindow {
   markFetchedBelow(from: number): void {
     this.below = from <= 0 ? { kind: "none" } : { kind: "maybe" };
     this.askedDownTo = from;
+    this.belowRetried = false;
   }
 
-  /** 〔CF2〕问不动。 */
+  /** 〔CF2〕问不动。〔GAP1〕这一串里第一次 ⇒ 回 `maybe`（下一次触发再问同一段），第二次才 `failed`。 */
   markBelowFailed(reason: string): void {
+    if (!this.belowRetried) {
+      this.belowRetried = true;
+      this.below = { kind: "maybe" };
+      this.lastUntil = null; // 失败的那一问没取回东西：再问同一段是本意
+      return;
+    }
     this.below = { kind: "failed", reason };
   }
 
@@ -142,6 +152,7 @@ export class TailWindow {
     if (this.below.kind === "failed") {
       this.below = { kind: "maybe" };
       this.lastUntil = null; // 失败的那一问没取回东西：再问同一段是本意
+      this.belowRetried = false;
     }
   }
 

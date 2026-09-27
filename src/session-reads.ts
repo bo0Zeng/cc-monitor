@@ -100,6 +100,8 @@ export interface SessionIndexResult {
   end: number;
   /** 每个可计行一条（形状 = 后端 `IndexRow`，`IPC-PROTOCOL.md §10.3`）。本文件**不解释**这些行。 */
   rows: SkeletonFacts[];
+  /** 要不到的种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时 ⇒ 下一次触发点再问一次，`设计/10 §7` 第 5 条）。 */
+  failure?: OutlineFailure;
 }
 
 /**
@@ -320,8 +322,9 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
     const { from, end, rows } = decodeIndex(readJson(reply));
     return { available: true, from, end, rows };
   } catch (e) {
+    const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     const reason = reasonOf(e, "这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）");
-    return { available: false, reason, from: fromOffset, end: fromOffset, rows: [] };
+    return { available: false, reason, failure, from: fromOffset, end: fromOffset, rows: [] };
   }
 }
 
