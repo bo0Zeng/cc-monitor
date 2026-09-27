@@ -47,6 +47,45 @@ pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
 /// 按行那六条整份输出的上限（同上，留一半余量）。
 pub(crate) const LINES_CAP_BYTES: usize = 32 << 20;
 
+/// 〔GAP1〕`backend-log` 一次最多回多少字节（尾部）。
+pub(crate) const LOG_TAIL_BYTES: u64 = 256 << 10;
+
+/// 〔GAP1 · `设计/15 §4.7 S1`〕本进程的 stderr 此刻落在哪份文件（`main.rs` 装上之后交进来；没装 ⇒ 空）。
+static BACKEND_LOG: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// `main.rs` 装上 stderr 诊断文件之后调一次（诊断文件的门在那里，本模块只读它）。
+pub fn note_backend_log(path: std::path::PathBuf) {
+    let _ = BACKEND_LOG.set(path);
+}
+
+/// 那份文件的尾部 ⇒ `{path, size, text, truncated}`；没装 ⇒ `path: null`。截断时从截点后第一个换行起（不给半行）。
+pub(crate) fn log_tail(path: Option<&std::path::Path>, max: u64) -> Answer {
+    use std::io::{Read, Seek, SeekFrom};
+    let Some(path) = path else {
+        return Ok(json!({ "path": null, "size": 0, "text": "", "truncated": false }));
+    };
+    let mut f = std::fs::File::open(path).map_err(|e| ("failed", e.to_string()))?;
+    let size = f.metadata().map_err(|e| ("failed", e.to_string()))?.len();
+    let from = size.saturating_sub(max);
+    let mut buf = Vec::new();
+    f.seek(SeekFrom::Start(from))
+        .and_then(|_| f.take(max).read_to_end(&mut buf))
+        .map_err(|e| ("failed", e.to_string()))?;
+    let body = if from > 0 {
+        buf.iter()
+            .position(|&b| b == b'\n')
+            .map_or(&buf[..0], |k| &buf[k + 1..])
+    } else {
+        &buf[..]
+    };
+    Ok(json!({
+        "path": path.display().to_string(),
+        "size": size,
+        "text": String::from_utf8_lossy(body),
+        "truncated": from > 0,
+    }))
+}
+
 /// 本族的应答：`data` 或 `(code, message)`。
 pub(crate) type Answer = Result<Value, (&'static str, String)>;
 
@@ -60,6 +99,11 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     use crate::observe::{accounts_query, history_query, search_query};
     match cmd {
+        // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。
+        "backend-log" => {
+            let max = u64_arg(args, "maxBytes")?.map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
+            log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
+        }
         // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两臂搬走了：它们从此出成品（并注解 ＋ 判活 ＋ 远端那一跳），
         //   住 `history_join.rs`（历史跨机 join 的唯一的家）；这里只剩按行 / 按页的换壳。
         "history-subagents" => {

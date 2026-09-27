@@ -32,6 +32,8 @@ const FAMILY: &[&str] = &[
     "history-search",
     "history-subagents",
     "history-tail",
+    // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端的 stderr 诊断文件尾部（异源是题面 GAP1 第 2 件「经那台后端的只读面」，不是 `inbound.rs`）。
+    "backend-log",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -968,6 +970,49 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
         crate::observe::search_query::resident_last(&home),
         Some((0, 1, 0)),
         "(整份, 追加, 没读)：该只追加读这一份"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// ★ 〔GAP1 · `设计/15 §4.7 S1`〕`backend-log`：没装 ⇒ `path: null`；装了 ⇒ 尾部，截断时从截点后第一个换行起（不给半行）。期望手写。
+#[test]
+fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
+    let home = scratch("gap1-log");
+    let p = home.join("stderr.log");
+    std::fs::write(&p, "first line\nsecond line\nthird\n").unwrap();
+    assert_eq!(
+        log_tail(None, 100).unwrap(),
+        serde_json::json!({"path": null, "size": 0, "text": "", "truncated": false})
+    );
+    let all = log_tail(Some(&p), 1000).unwrap();
+    assert_eq!(
+        (
+            all["text"].as_str(),
+            all["size"].as_u64(),
+            all["truncated"].as_bool()
+        ),
+        (
+            Some("first line\nsecond line\nthird\n"),
+            Some(29),
+            Some(false)
+        )
+    );
+    // 尾 10 字节 = "ine\nthird\n" ⇒ 截点落在 second line 中间 ⇒ 从下一行起。
+    let tail = log_tail(Some(&p), 10).unwrap();
+    assert_eq!(
+        (tail["text"].as_str(), tail["truncated"].as_bool()),
+        (Some("third\n"), Some(true))
+    );
+    // 帧面那一臂：没被交路径的进程（判据进程就是）⇒ `path: null`，`maxBytes` 形状不对 ⇒ `bad_args`。
+    assert_eq!(
+        answer_at(&home, "backend-log", &serde_json::json!({})).unwrap()["path"],
+        Value::Null
+    );
+    assert_eq!(
+        answer_at(&home, "backend-log", &serde_json::json!({"maxBytes": "x"}))
+            .unwrap_err()
+            .0,
+        "bad_args"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

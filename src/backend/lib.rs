@@ -670,6 +670,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔C4c · 第四波 4B〕帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
     //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump —— 本路不 bump，合并那一拍统一做。
     "--accounts-trust",
+    // 〔GAP1 · `设计/15 §4.7 S1`〕帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
+    //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
+    "--backend-log",
     // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
     // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，

@@ -99,6 +99,8 @@ pub const COMMANDS: &[&str] = &[
     "assets-catalog-merge",
     // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
     "assets-sync",
+    // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端自己的 stderr 诊断文件（尾部，只读）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "backend-log",
     "bus-broadcast",
     // 〔SH1 · V136〕只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置）。
     "bus-inbox",
@@ -2052,6 +2054,18 @@ pub const REGISTRY: &[CommandSpec] = &[
             "touchedFiles",
             "usage",
         ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "backend-log",
+        doc_anchor: Some("#### `backend-log`"),
+        codes: &["bad_args", "failed"],
+        fields: &["maxBytes", "path", "size", "text", "truncated"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
