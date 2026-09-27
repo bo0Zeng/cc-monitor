@@ -13,9 +13,7 @@ const KEY = "claudeDir";
 /** 读取当前持久化的 claudeDir（设置面板里填的）。无字段 → null。 */
 export async function getClaudeDirOverride(): Promise<string | null> {
   try {
-    const cfg = (await loadConfig()) as Record<string, unknown>;
-    const v = cfg[KEY];
-    return typeof v === "string" && v.trim() ? v : null;
+    return claudeDirIn((await loadConfig()) as Record<string, unknown>);
   } catch (e) {
     // ★〔audit-0805 §5 2c〕**降级要给身份**（定框 E4）。
     //
@@ -27,6 +25,12 @@ export async function getClaudeDirOverride(): Promise<string | null> {
     console.warn("读 claudeDir 覆盖失败，回退默认目录（会话可能看起来消失了）：", e);
     return null;
   }
+}
+
+/** 从一份已读回的配置里取 claudeDir 覆盖（设置窗「读一次配置派生三格」共用这一处，`70 §10` #5）。无字段 → null。 */
+export function claudeDirIn(cfg: Record<string, unknown>): string | null {
+  const v = cfg[KEY];
+  return typeof v === "string" && v.trim() ? v : null;
 }
 
 /** 保存 claudeDir 字段。传 null 删除字段（回到 env / 默认）。 */
