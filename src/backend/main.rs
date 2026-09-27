@@ -146,26 +146,7 @@ async fn main() {
             Some("--relay") => accounts::upstream::run_relay(&agent_home, &args),
             // 〔HOST · V139〕远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // V139：远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
-            Some("--resident-ensure") => {
-                let mut hosted = vec![
-                    (listen::RELAY_PORT_ENV, relay_route_core::PORT.to_string()),
-                    (
-                        stderr_log::ENV,
-                        format!("~/{}", control::resident::STDERR_LOG_REL),
-                    ),
-                ];
-                // 〔TAIL · HOST 余项〕数据目录那两格按默认推（谁起都一样）⇒ 那台自己的 monitor 能收养它。
-                let [_, creds_env, meta_env] = wire::HOST_ECHO_ENVS;
-                if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
-                    hosted.extend(control::resident::data_dir_envs(
-                        &|k| std::env::var(k).ok(),
-                        std::path::Path::new(&home),
-                        creds_env,
-                        meta_env,
-                    ));
-                }
-                control::resident::run_ensure(&agent_home, &args[1..], &hosted)
-            }
+            Some("--resident-ensure") => control::resident::ensure(&agent_home, &args[1..]),
             Some("--resident-stop") => control::resident::run_stop(&agent_home, &args[1..]),
             // 〔SR1a〕`--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。

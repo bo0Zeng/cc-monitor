@@ -9,6 +9,116 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beCcBus.find.notInstalled": {
+      "kind": "error",
+      "zh": "这台机器上可能没装 cc-bus。装在别处的话，用 CC_BUS_BIN_DIR 指过去。",
+      "args": []
+    },
+    "beCcBus.notRun.tooLong": {
+      "kind": "error",
+      "zh": "这条消息太长，一次发不出去。发短一点再试。",
+      "args": []
+    },
+    "beCcBus.timedOut.say": {
+      "kind": "error",
+      "zh": "超过 {secs} 秒还没结束，已经停下了。多半是别的进程占着 cc-bus 的锁。",
+      "args": ["secs"]
+    },
+    "beCcBus.read.tooOld": {
+      "kind": "error",
+      "zh": "这台机器上的 cc-bus 比后端旧，认不出 {cmd}。重新部署 cc-bus 之后再试。",
+      "args": ["cmd"]
+    },
+    "beCcBus.read.truncated": {
+      "kind": "error",
+      "zh": "{cmd} 的输出只读到半份，没有用它。",
+      "args": ["cmd"]
+    },
+    "beCcBus.send.refused": {
+      "kind": "error",
+      "zh": "cc-bus 拒绝了这个收件人：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.send.rejected": {
+      "kind": "error",
+      "zh": "cc-bus 的路由规则拦下了这条消息：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.send.failed": {
+      "kind": "error",
+      "zh": "发送失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.send.interrupted": {
+      "kind": "error",
+      "zh": "发送被打断了：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.list.failed": {
+      "kind": "error",
+      "zh": "读 cc-bus 名单失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.run.refused": {
+      "kind": "error",
+      "zh": "{name} 拒绝了这组参数：{detail}",
+      "args": ["name", "detail"]
+    },
+    "beCcBus.run.failed": {
+      "kind": "error",
+      "zh": "{name} 失败，退出码 {status}：{detail}",
+      "args": ["name", "status", "detail"]
+    },
+    "beCcBus.inbox.badId": {
+      "kind": "error",
+      "zh": "收件箱的名字不合法：{id}",
+      "args": ["id"]
+    },
+    "beCcBus.inbox.tooOld": {
+      "kind": "error",
+      "zh": "{reason}。这台机器上的 cc-bus 比后端旧，重新部署 cc-bus 之后再试。",
+      "args": ["reason"]
+    },
+    "beCcBus.kill.refused": {
+      "kind": "error",
+      "zh": "cc-bus 拒绝结束这个 agent：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.kill.failed": {
+      "kind": "error",
+      "zh": "结束 agent 失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.kill.interrupted": {
+      "kind": "error",
+      "zh": "结束 agent 被打断了：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.deliver.tooLong": {
+      "kind": "error",
+      "zh": "{reason}这条消息有 {n} 字节。",
+      "args": ["reason", "n"]
+    },
+    "beCcBus.spawn.refused": {
+      "kind": "error",
+      "zh": "起 agent 被拒绝了：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.spawn.timedOut": {
+      "kind": "error",
+      "zh": "{reason}\n会话可能已经起来了。先看一眼名单再决定，直接重试会再起一个 agent。",
+      "args": ["reason"]
+    },
+    "beCcBus.spawn.failed": {
+      "kind": "error",
+      "zh": "起 agent 失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.spawn.interrupted": {
+      "kind": "error",
+      "zh": "起 agent 被打断了：{detail}",
+      "args": ["detail"]
+    },
     "beCapturePane.run.noTmux": {
       "kind": "error",
       "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
@@ -176,7 +286,7 @@
     },
     "credsStore.error.notJson": {
       "kind": "error",
-      "zh": "凭据文件不是合法的 JSON，没有改动它：{e}。多半是少了逗号或引号，改好再试。",
+      "zh": "凭据文件不是合法的 JSON，没有改动它：{e}。这份文件是手编的，多半是少了逗号或引号，改好再试。",
       "args": ["e"]
     },
     "credsStore.error.notObject": {

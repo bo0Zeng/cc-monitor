@@ -454,7 +454,7 @@
       "say": "不说实现，说结果：watcher →「自动刷新」· invoke / spawn / dispatch →「启动」「执行」· panic →「程序出错」· rollback →「还原」· flock →「锁」· uuid →「ID」· vendored / 编译期内嵌 →「随 cc-monitor 一起安装」· sftp-server →「远端的 SFTP 服务」· 其余（pidfd · tokio 运行时 · Win32 · SessionMap · ToolSpec · CLI 渲染器 · SFTP 句柄 · copy-data）→ 不说。",
       "scan": { "re": "\\b(?:watcher|invoke|spawn|dispatch|panic|tokio|pidfd|rollback|flock|uuid|vendored|Win32|SessionMap|ToolSpec|copy-data|sftp-server)\\b|CLI\\s*渲染器|SFTP\\s*句柄|编译期内嵌|交叉编译内嵌", "flags": "i" },
       "examples": ["tokio运行时", "watcher", "SFTP句柄"],
-      "ledger": ["flock"],
+      "ledger": [],
       "source": "设计/91 §7.3（英文我方名）· CP1 台账"
     },
     {
