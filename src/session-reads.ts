@@ -322,8 +322,8 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
     const { from, end, rows } = decodeIndex(readJson(reply));
     return { available: true, from, end, rows };
   } catch (e) {
-    const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     const reason = reasonOf(e, "这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）");
+    const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     return { available: false, reason, failure, from: fromOffset, end: fromOffset, rows: [] };
   }
 }
