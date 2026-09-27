@@ -18,7 +18,15 @@ use copy_core::copy_text;
 
 /// `--resident-ensure` 起子进程时给的流模式默认旗标（空转那份 watcher 用；每条连接按 attach 行自己的 `flags`）。
 /// 与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
-pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg", "--with-rbind-token"];
+/// 〔E2〕流模式显式词打头（本二进制就叫 `ccm` 时零参数是起会话；这里其实已有 `--tail-only` 打头，带上它是为了与宿主那组同形）。
+pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &[
+    // 〔V151〕打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）。
+    "--",
+    crate::STREAM_FLAG_EXPLICIT,
+    "--tail-only",
+    "--with-bg",
+    "--with-rbind-token",
+];
 
 /// 〔STOP〕宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`inbound::DRAIN_DEADLINE`）：
 /// 后端先把「哪几条没做完」说出来、自己退；强杀只兜它连那一步都走不到的情形。关系由 `resident_tests` 钉住。

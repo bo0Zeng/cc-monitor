@@ -1731,7 +1731,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
     // 〔SH1 · 4D〕地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
     assert!(
-        population >= 8, // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了
+        population >= 7, // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 〔E2〕8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
         "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
              `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
     );

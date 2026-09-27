@@ -817,6 +817,11 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ("bus-spawn", "同 `bus-list`（转调 `cc-spawn`；那个子进程自己起 tmux，本进程只经 gate 挂 `live`）"),
     ("bus-state", "同 `bus-list`（`agents` 那一半就是 `bus-list` 那一个函数）"),
     (
+        "ccm-probe",
+        "〔E2〕同 `ccm-print` 那一族（`control/ccm/mod.rs`）：`--ccm-probe` 那几行里 `capabilities=` 按本二进制的平台档摘掉 tmux 载体，\
+         不问 tmux server；命令本身恒答",
+    ),
+    (
         "ccm-print",
         "〔合并主线时本条当场点出〕W5-ALIAS 的别名预览：`control/ccm/mod.rs::plan_of` 经 \
          `session_snapshot::global().taken_names().ok()` 问一次会话快照做铸名避让 —— 问不到 ⇒ `None` ⇒ 不退让\
@@ -1036,7 +1041,8 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     }]);
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        match parse(&a) {
+        // 〔V151〕探针沿用 V138 写法（ccm 选项在前）⇒ 喂解析器前换成 V151 排列。
+        match parse(&crate::control::ccm::argv::tests::v138_to_v151(&a)) {
             Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
             Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),
             Err(d) => Err(d.0),

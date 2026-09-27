@@ -238,7 +238,8 @@ chk "任务仍原样送达" "$(sed -n 's/^args=//p' "$WORK/rec-wrap_cc.txt" 2>/d
 echo "[11] 【审计重要-7】ccm 版本太旧要报得准（不能说成"建会话失败"）"
 cat > "$SANDBOX/oldccm" << 'EOF'
 #!/bin/bash
-[ "$1" = "--ccm-probe" ] && { printf 'capabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print\n'; exit 0; }
+# 〔V151〕cc-spawn 问的是 `ccm -- --ccm-probe`（ccm 的诊断口写在 `--` 右边）。
+[ "$1" = "--" ] && [ "$2" = "--ccm-probe" ] && { printf 'capabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print\n'; exit 0; }
 echo "ccm: 未知选项: --detach" >&2; exit 2
 EOF
 chmod +x "$SANDBOX/oldccm"
@@ -282,7 +283,7 @@ chk "地址簿恰好一条" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'onc
 chk "台账第 4 列是初始任务" \
   "$(awk -F'\t' '$1=="once_cc"{print $4}' "$CC_BUS_HOME/spawned.tsv")" "任务O"
 # 没装 cc-bus 的人不该被总线脚本挡住起会话 —— ccm 静默 no-op，但**要吭一声**。
-CC_BUS_SCRIPTS=/nonexistent CCM_NO_PRETRUST=1 timeout 30 "$CCM" \
+CC_BUS_SCRIPTS=/nonexistent CCM_NO_PRETRUST=1 timeout 30 "$CCM" -- \
   --tmux-base=nobus --detach --bus-register --cwd "$WORK/once" \
   --launcher "$BIN/FAKEAGENT" > "$WORK/out-nobus.txt" 2>&1 || true
 chk "找不到 cc-bus 时会话照样建出来" \
@@ -377,11 +378,11 @@ cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/script
 chmod -x "$TB/cc-spawned-record"
 # 〔AL3 · V138〕位置动作 `new` 取消、预览改 `--ccm-print`（`new` 留着会被当成交给 claude 的位置参数）。
 chk "台账脚本不可执行 ⇒ 明说「不记进派生台账」" \
-  "$(CC_BUS_SCRIPTS="$TB" "$CCM" --tmux-base=q --detach --bus-register \
+  "$(CC_BUS_SCRIPTS="$TB" "$CCM" -- --tmux-base=q --detach --bus-register \
       --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '不记进派生台账')" "1"
 chmod -x "$TB/cc-register"
 chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
-  "$(CC_BUS_SCRIPTS="$TB" "$CCM" --tmux-base=q --detach --bus-register \
+  "$(CC_BUS_SCRIPTS="$TB" "$CCM" -- --tmux-base=q --detach --bus-register \
       --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '没有登记')" "1"
 rm -rf "$TB"
 # 超长任务：**干净失败**（rc≠0、零会话、零台账），不是假成功。

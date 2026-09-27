@@ -17,23 +17,19 @@ import { budgetWithin, jsonBody } from "../ipc/chan-caller";
 import type { Origin } from "../ipc/origin";
 
 /**
- * F5：从 backendPath / user 推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
- * 约定与后端同根：`<...>/.cc-monitor/bin/cc-acct-iso`。backendPath 含 `.cc-monitor` 则取其根；
- * 否则回退 `/home/<user>/.cc-monitor/bin/cc-acct-iso`。都拿不到（无 backendPath 且 user 非法）→ null。
+ * F5：从远端用户名推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
+ * 约定与后端同根：`<那台 home>/.cc-monitor/bin/cc-acct-iso`（root 的 home 是 `/root`）。user 缺 / 非法 → null。
+ * 〔E2 · V28〕从前先从「后端路径」那一格取根；那一格删了（后端落点恒是 `~/.cc-monitor/bin/ccm`），只剩按用户名推。
  *
  * 〔SR1b · 2026-09-24〕`…/.cc-monitor/cc-acct-iso` → `…/.cc-monitor/bin/cc-acct-iso`：SFTP 住本机常驻后端之后，
  * 远端写只许落 `~/.cc-monitor/bin/` 与暂存区两处（用户 V89）；cc-acct-iso 是部署物，落部署那一根。
  */
 const ACCT_ISO_UNDER = ".cc-monitor/bin/cc-acct-iso";
 
-export function deriveAcctIsoDir(backendPath?: string, user?: string): string | null {
-  const p = (backendPath ?? "").trim();
-  const idx = p.indexOf("/.cc-monitor/");
-  if (idx >= 0) return `${p.slice(0, idx)}/${ACCT_ISO_UNDER}`;
-  if (p.endsWith("/.cc-monitor")) return `${p.slice(0, -"/.cc-monitor".length)}/${ACCT_ISO_UNDER}`;
+export function deriveAcctIsoDir(user?: string): string | null {
   const u = (user ?? "").trim();
-  if (u && /^[A-Za-z0-9._-]+$/.test(u)) return `/home/${u}/${ACCT_ISO_UNDER}`;
-  return null;
+  if (!u || !/^[A-Za-z0-9._-]+$/.test(u)) return null;
+  return `${u === "root" ? "/root" : `/home/${u}`}/${ACCT_ISO_UNDER}`;
 }
 
 export type NameCheck = { ok: true } | { ok: false; reason: string };

@@ -210,7 +210,7 @@ pub enum ToolDestination {
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
     /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
     ///
-    /// `token` 是申报路径里用的占位符（形如 `$BACKEND_PATH`，与 `$PROFILE` 同一套写法，
+    /// `token` 是申报路径里用的占位符（形如 `$APP_DIR`，与 `$PROFILE` 同一套写法，
     /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
     UserConfiguredPath { token: &'static str, what: Text },
     /// **我们不装它** —— 这一格回答的不是「装到哪」，而是「它本来在哪」。
@@ -373,8 +373,8 @@ pub enum TouchEffect {
 /// # 它同时治掉 `ToolSource` 那一半（`R26` 裁定二：两者是同一个形状问题的两半）
 ///
 /// `ccm` 那一行的 `source` 先前**自己的注释逐字承认是假的**：远端那一份的来源是
-/// `local_backend::ccm_entry_shim` 现造的 shim，而**本机那一份的来源是后端二进制
-/// 自己的改名副本**（`local_backend::install_local_ccm_entry`）——
+/// `local_backend::ccm_entry_shim`〔散文墓碑〕现造的 shim，而**本机那一份的来源是后端二进制
+/// 自己的改名副本**（`local_backend::install_local_ccm_entry`〔散文墓碑〕）——
 /// 一个 `source` 字段装不下两个来源，于是那条注释只能写「不为它再开一个变体，
 /// 在这里如实写清」。载体这一维立起来之后，两个来源各归各的载体，**注释里那句
 /// 「这一格是假的」不再需要**。
@@ -474,7 +474,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
         // 🔴 〔`K-R81` 09-12〕**上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
         //    `K-R69` 当时逐字写的是：「本机那一半的来源不是这个 shim —— 是后端二进制自己的
-        //    改名副本（`local_backend::install_local_ccm_entry`）。`ToolSource` 一个字段
+        //    改名副本（`local_backend::install_local_ccm_entry`〔散文墓碑〕）。`ToolSource` 一个字段
         //    同样装不下两个来源……**不为它再开一个变体**，在这里如实写清」。
         //    ⇒ 那句「在注释里如实写清」是**用散文顶替一个字段**。载体这一维立起来之后，
         //    两个来源各归各的载体，注释不再承重（`R26` 裁定二：`ToolSource` 与
@@ -486,8 +486,9 @@ pub const TOOLS: &[ToolSpec] = &[
         carriers: &[
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmRemoteWhat", &[])),
-                source: ToolSource::EmbeddedText {
-                    repo_path: "src/bridge/src/backend/control/local_backend.rs::ccm_entry_shim",
+                // 〔E2 · V28〕远端 `ccm` 就是推过去的那一份后端字节（三行 shim 与它的生成器删了）。
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "embedded-backends",
                 },
                 // 〔SR1b · 2026-09-24〕`.local/bin/ccm` → `.cc-monitor/bin/ccm`：远端写只许两处（V89），入口是部署物；
                 //   也正是 `设计/01 §6.7b` 的落点（本机那一条早就在那儿）。
@@ -516,6 +517,16 @@ pub const TOOLS: &[ToolSpec] = &[
                         host: HostScope::Remote,
                         effect: TouchEffect::RetiredLegacy,
                     },
+                    // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
+                    //   （`sftp.rs::sweep_legacy_backend`）。
+                    TouchedFile {
+                        path: "~/.cc-monitor/bin/cc-monitor-backend",
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.backendLegacyNote", &[])
+                        })),
+                        host: HostScope::Remote,
+                        effect: TouchEffect::RetiredLegacy,
+                    },
                 ],
             },
             // 🔴 〔`K-R69` 09-12〕本机那条落点是这一件建出来的。
@@ -526,23 +537,35 @@ pub const TOOLS: &[ToolSpec] = &[
             //    `K34` 逐字「原本的配置**要手动删除**」。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
+                // 〔E2 · V28〕本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
                 source: ToolSource::EmbeddedBinary {
                     repo_path:
-                        "src/bridge/src/backend/control/local_backend.rs::install_local_ccm_entry",
+                        "src/bridge/src/backend/control/local_backend.rs::extract_embedded_to",
                 },
                 destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
-                touches: &[TouchedFile {
-                    // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
-                    // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
-                    // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
-                    // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
-                    // 头注禁的「对能用的安装报假警报」。两边由
-                    // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
-                    path: "~/.cc-monitor/bin/ccm*",
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
-                    host: HostScope::Client,
-                    effect: TouchEffect::OwnedFile,
-                }],
+                touches: &[
+                    TouchedFile {
+                        // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
+                        // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
+                        // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
+                        // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
+                        // 头注禁的「对能用的安装报假警报」。两边由
+                        // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
+                        path: "~/.cc-monitor/bin/ccm*",
+                        note: Some(Text(|| copy_text("rsToolRegistry.tools.ccmLocalNote", &[]))),
+                        host: HostScope::Client,
+                        effect: TouchEffect::OwnedFile,
+                    },
+                    // 〔E2 · E-c〕旧版释放的 `cc-monitor-backend-<build_id>` 们：放好 `ccm` 之后扫一次，身份戳认得出才删。
+                    TouchedFile {
+                        path: "~/.cc-monitor/bin/cc-monitor-backend-*",
+                        host: HostScope::Client,
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.backendLegacyExtractNote", &[])
+                        })),
+                        effect: TouchEffect::RetiredLegacy,
+                    },
+                ],
             },
         ],
     },
@@ -707,7 +730,7 @@ pub const TOOLS: &[ToolSpec] = &[
         // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
         // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
-        // （删后端二进制 + 同目录 `.build_id`，`is_safe_remote_backend_path` 守着）。
+        // （删后端二进制；〔E2〕落点是固定的 `~/.cc-monitor/bin/ccm`，`is_safe_remote_backend_path`〔散文墓碑〕那道守卫随之删了）。
         // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
         //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
@@ -725,7 +748,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     repo_path: "src/bridge/binaries/cc-monitor-backend",
                 },
                 // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
-                // 而那个目录是装机时由人选的。同 `$BACKEND_PATH` 那一格的理由：
+                // 而那个目录是装机时由人选的。同 `$ACCT_ISO_DEST` 那一格的理由：
                 // 申报一个我们其实没在用的常量，审计页会拿它去查一个没人写的路径
                 // 然后言之凿凿地报「缺失」。
                 destination: ToolDestination::UserConfiguredPath {
@@ -741,37 +764,17 @@ pub const TOOLS: &[ToolSpec] = &[
                     effect: TouchEffect::OwnedFile,
                 }],
             },
-            Carrier {
-                what: Text(|| copy_text("rsToolRegistry.tools.backendEmbeddedWhat", &[])),
-                source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/native-backend/cc-monitor-native",
-                },
-                // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
-                // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
-                // 无限重装。glob 只在末段、只有一个 `*`（`resolve_local_home` 的两条校验）。
-                destination: ToolDestination::LocalHomeRelative(
-                    ".cc-monitor/bin/cc-monitor-backend-*",
-                ),
-                touches: &[TouchedFile {
-                    path: "~/.cc-monitor/bin/cc-monitor-backend-*",
-                    host: HostScope::Client,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.backendEmbeddedNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                }],
-            },
+            // 〔E2 · V28〕内嵌那份的本机载体并进了 `ccm` 那一条的本机载体：它放下去的就是 `~/.cc-monitor/bin/ccm`（后端本身），
+            //   同一个文件不在两个工具底下各记一遍（那张「本机 `ccm` 落点恰一条」的对拍要这一格）。
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
-                destination: ToolDestination::UserConfiguredPath {
-                    token: "$BACKEND_PATH",
-                    what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteDestWhat", &[])),
-                },
+                // 〔E2 · V28〕可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
+                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
                 touches: &[TouchedFile {
-                    path: "$BACKEND_PATH",
+                    path: "~/.cc-monitor/bin/ccm",
                     host: HostScope::Remote,
                     note: Some(Text(|| {
                         copy_text("rsToolRegistry.tools.backendRemoteNote", &[])
@@ -928,7 +931,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 repo_path: "src/shared/ccm-aliases.sh",
             },
             // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
-            // 理由与后端那条 `$BACKEND_PATH` 逐字同源：申报一个我们其实没在用的常量，
+            // 理由与后端那条 `$APP_DIR` 逐字同源：申报一个我们其实没在用的常量，
             // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
             // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
             // （`account_aliases` 的 `§0e`）。
@@ -1032,7 +1035,7 @@ pub const TOOLS: &[ToolSpec] = &[
 /// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
 /// 不是「盘上那份**真的**在哪」。两者对不对得上由
 /// `profile_installer` 那条跨文件判据钉住（它去读真正调
-/// `install_local_ccm_entry` 的那一行源码）。
+/// `extract_embedded_to` 的那一行源码；〔E2〕从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
 pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS {

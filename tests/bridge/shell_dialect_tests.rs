@@ -43,7 +43,7 @@ fn posix_golden() {
             r#"zcc() { ccm --account z "$@"; }"#.to_string(),
             r#"convz() { ccm --ccm-tmux=w.1 --account z --cwd '/home/u/文档/c c' "$@"; }"#
                 .to_string(),
-            r#"mo() { ccm --model 'it'\''s' -- --verbose "$@"; }"#.to_string(),
+            r#"mo() { ccm --model 'it'\''s' "$@" -- --verbose; }"#.to_string(),
             "curly() { ccm --model 'a\u{2019}b' \"$@\"; }".to_string(),
             r#"bare() { ccm "$@"; }"#.to_string(),
         ]
@@ -67,6 +67,11 @@ fn powershell_golden() {
             "function {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    if (Get-Command __ccm_bind -CommandType Function -ErrorAction SilentlyContinue) {{ __ccm_bind }}\n    & ccm{call} $RemainingArgs\n}}"
         )
     };
+    assert!(
+        got[2].ends_with("    & ccm '--model' 'it''s' $RemainingArgs '--' '--verbose'\n}"),
+        "{}",
+        got[2]
+    );
     assert_eq!(
         got,
         vec![
@@ -75,7 +80,8 @@ fn powershell_golden() {
                 " '--ccm-tmux=w.1' '--account' 'z' '--cwd' '/home/u/文档/c c'",
                 "convz"
             ),
-            body(" '--model' 'it''s' '--' '--verbose'", "mo"),
+            // 〔V151〕`$RemainingArgs`（敲别名时跟的）交 claude，别名的 ccm 选项在单引号的 `'--'` 右边。
+            got[2].clone(),
             body(" '--model' 'a\u{2019}\u{2019}b'", "curly"),
             body("", "bare"),
         ]
