@@ -49,67 +49,50 @@ fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
     );
 }
 
-/// 两条进入路都只经 [`intercept`]，而**别的写法一律进不来**。
-#[test]
-fn there_are_exactly_two_ways_in() {
-    let none: Vec<String> = vec![];
-    assert_eq!(intercept("/usr/local/bin/ccm", &none), Some(vec![]));
-    assert_eq!(intercept("ccm", &none), Some(vec![]));
-    assert_eq!(intercept("C:\\x\\ccm.exe", &none), Some(vec![]));
-    let sub = vec!["ccm".to_string(), "resume".to_string()];
-    assert_eq!(
-        intercept("/opt/cc-monitor-backend", &sub),
-        Some(vec!["resume".to_string()])
-    );
-    // 不是 ccm ⇒ 一律放行给流模式 / wire 子命令
-    assert_eq!(intercept("/opt/cc-monitor-backend", &none), None);
-    assert_eq!(
-        intercept("/opt/cc-monitor-backend", &vec!["--ping".to_string()]),
-        None
-    );
-    assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");
-}
-
 // 〔V151〕`under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
 
-/// 〔CC1〕「怎么叫我」＝ 进程 argv 里 `intercept` **吃掉的那一段**；两个入口各一格，再加回环。
-///
-/// 回环是这条的正题：把 `self_invocation` 交出来的那一段 ＋ 任意一串 ccm 参数**再喂给 `intercept`**，
-/// 必须原样拿回那串参数 —— 也就是「pane 里把自己再叫一次，叫得回 ccm 模式、参数一个不多一个不少」。
-/// 〔BS1b 现打的那一形：入口② 只取 argv0 ⇒ `intercept("cc-monitor-backend", ["--cwd", …])` 是 `None`，
-///  那一跳直接掉进后端直连口。〕⚠ 这是单元层的**同源**自检；异源判据在 e2e `backend-cc-bus.sh` [17]。
+/// 〔主会话 09-27 裁「路由不看 argv0」〕要求住址：`99 §1` V151「没有 `--` ⇒ 整行原样交 claude」＋ 本路题面「删 route 里 base ≠ ccm 那一支」。
+/// 分流只看 argv：同一串 argv 不论二进制叫什么都进同一边；零参数是「起一个 claude」；打头的 `--` 紧跟后端词才进后端。
+/// 回环：pane 里把自己再叫一次（[`self_invocation`] ＋ 内层参数）叫得回 ccm、参数一个不多一个不少。
 #[test]
-fn calling_myself_again_goes_back_through_the_same_way_in() {
+fn routing_reads_the_argv_only_never_the_binary_name() {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    // 入口①：只有 argv0。
+    assert_eq!(route(&[]), Entry::Ccm(vec![]), "零参数不再是流模式");
     assert_eq!(
-        self_invocation(&v(&["/x/ccm", "--ccm-tmux", "--cwd", "/p"])),
-        v(&["/x/ccm"])
+        route(&v(&["--stream"])),
+        Entry::Ccm(v(&["--stream"])),
+        "没有打头的 `--` 就交 claude"
     );
-    // 入口②：argv0 ＋ 子命令词（这一格就是 BS1b 那个缺陷的反面）。
     assert_eq!(
-        self_invocation(&v(&[
-            "/x/cc-monitor-backend",
-            "ccm",
-            "--ccm-tmux",
-            "--cwd",
-            "/p"
-        ])),
-        v(&["/x/cc-monitor-backend", SUBCOMMAND_WORD])
+        route(&v(&["ccm", "--resume", "x"])),
+        Entry::Ccm(v(&["ccm", "--resume", "x"])),
+        "入口② 不在了"
     );
-    // 回环：两个入口、同一串内层参数 ⇒ 都叫得回 ccm 模式、拿回的参数逐字相同。
-    let inner = v(&["--cwd", "/p", "--ccm-agent", "claude", "--", "--tail-only"]);
-    for outer in [
-        v(&["/x/ccm", "--ccm-tmux=n"]),
-        v(&["/x/cc-monitor-backend", "ccm", "--ccm-tmux=n"]),
-    ] {
-        let mut again = self_invocation(&outer);
+    assert_eq!(
+        route(&v(&["--", "--stream", "--tail-only"])),
+        Entry::Backend(v(&["--stream", "--tail-only"]))
+    );
+    assert_eq!(route(&v(&["--", "--ping"])), Entry::Backend(v(&["--ping"])));
+    assert_eq!(
+        route(&v(&["--", "--ccm-tmux"])),
+        Entry::Ccm(v(&["--", "--ccm-tmux"]))
+    );
+    let prod = guard_core::production_code(own_source());
+    let at = guard_core::find_pinned(&prod, "pub fn route(").expect("route 不在了");
+    let body = &prod[at..at + prod[at..].find("\n}\n").expect("route 没收尾")];
+    assert!(
+        !body.contains("argv0") && !body.contains("rsplit"),
+        "分流又去看二进制的名字了：{body}"
+    );
+    let inner = v(&["--tail-only", "--", "--cwd", "/p", "--ccm-agent", "claude"]);
+    for a0 in ["/x/ccm", "/x/cc-monitor-backend"] {
+        let mut again = self_invocation(&v(&[a0, "--", "--ccm-tmux=n"]));
+        assert_eq!(again, v(&[a0]), "「怎么叫我」不只是 argv0");
         again.extend(inner.iter().cloned());
-        let (a0, rest) = again.split_first().expect("非空");
         assert_eq!(
-            intercept(a0, rest),
+            intercept(&again[1..]),
             Some(inner.clone()),
-            "从 {outer:?} 进来的，在 pane 里把自己再叫一次（{again:?}）叫不回 ccm 模式"
+            "从 {a0} 进来的在 pane 里叫不回 ccm"
         );
     }
 }

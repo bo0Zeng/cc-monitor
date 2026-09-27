@@ -247,6 +247,8 @@ export function aliasToForm(a: Alias): AliasForm {
   const cut = a.args.lastIndexOf("--");
   const left = cut < 0 ? a.args : a.args.slice(0, cut);
   const right = cut < 0 ? [] : a.args.slice(cut + 1);
+  // 〔V153〕右边第一个词 `new`（起新会话，缺省就是它）是 ccm 的位置词，表单里没有对应格、也不进透传。
+  if (right[0] === "new") right.shift();
   for (let i = 0; i < left.length; i++) {
     if (left[i] === "--model" && i + 1 < left.length && !f.model) f.model = left[++i];
     else extra.push(left[i]);
