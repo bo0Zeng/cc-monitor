@@ -2681,6 +2681,7 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 
 本机落点**当场**过路径解析（绝对路径 · 有文件名 · 父目录在盘上；出声早），起跑时再过一次。错误 code：`bad_args` · `refused`（路径解析拒）· `too_many_transfers`。
 〔FN1 · V119〕此前两处都判「落点是不是会话文件」（monitor 开单时一道、后端一道），都删了。
+〔FILES2 · Q4〕`local_path` 也收 `{"b16": "<十六进制>"}`（与文件管理面同一个字节形）：有损名下载在 Linux 上按原始字节落名（monitor 中继原样转）。
 
 #### `transfer-start`：起跑
 

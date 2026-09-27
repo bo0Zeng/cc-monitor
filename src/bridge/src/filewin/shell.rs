@@ -458,6 +458,8 @@ pub struct FileWindow {
     /// 「存到哪儿 / 盖掉它吗」那两问。`None` = 没在问。
     /// **UI 线程自己的**（同 [`Self::write_prompt`] 的理由：它是一个正在被编辑的草稿）。
     pull_ask: Option<super::download::Ask>,
+    /// 〔FILES2 · Q4〕那一问摆着的那一行，若整条路径不是 UTF-8：`(整条路径的字节, 显示名, 名字的字节)`。
+    pull_raw: Option<(Vec<u8>, String, Vec<u8>)>,
     /// 〔F7c · 第三波 09-24〕工具栏「上传」那一问（状态与判定全在 `upload.rs`，这里只挂着）。
     pub upload: super::upload::UploadPrompt,
     /// 🔴〔第九刀〕编辑那一趟的共享落点（读到货 · 存结局）。
@@ -608,6 +610,7 @@ impl FileWindow {
             seen_write_rounds: 0,
             pull: super::download::DownloadBoard::default(),
             pull_ask: None,
+            pull_raw: None,
             upload: super::upload::UploadPrompt::default(),
             edits: super::editor::EditBoard::default(),
             editing: None,
@@ -1655,13 +1658,19 @@ impl FileWindow {
     /// 往外拖就是往本机盘上写一份，落点当然在本机。用户裁的是「本地不需要**文件管理器**」。
     /// 🔴〔2026-09-23 本机侧退役〕开头那道「本机源出声拒」的闸删了 —— 同 [`Self::begin_copy`]。
     pub fn begin_pull(&mut self, i: usize) -> bool {
-        let row = {
+        let (row, full) = {
             let rows = self.listing.rows.lock().unwrap();
             match rows.get(i) {
-                Some(r) if super::download::is_downloadable(r) => r.clone(),
+                // 〔FILES2 · Q4〕有损名带着字节 / 有损目录里的行也拉得下来（按字节，`lossy_pull.rs`）。
+                Some(r) if super::download::is_downloadable_listed(r) => {
+                    (r.clone(), self.row_path(r))
+                }
                 _ => return false,
             }
         };
+        self.pull_raw = full
+            .is_lossy()
+            .then(|| (full.bytes(), row.name.clone(), name_bytes(&row)));
         self.pull_ask = Some(super::download::Ask::for_row(&row));
         true
     }
@@ -1669,6 +1678,15 @@ impl FileWindow {
     /// 收掉那个框，什么都不做。
     pub fn cancel_pull(&mut self) {
         self.pull_ask = None;
+        self.pull_raw = None;
+    }
+
+    /// 〔FILES2 · Q4〕框里那一串 → 线上的本机落点（有损名那一行按平台换成原始字节 / 有损形），外加结局旁那一句。
+    fn pull_local(&self, dest: &str) -> (serde_json::Value, Option<String>) {
+        match &self.pull_raw {
+            Some((_, shown, raw)) => super::lossy_pull::local_dest(dest, shown, raw),
+            None => (serde_json::Value::String(dest.to_string()), None),
+        }
     }
 
     /// 答完当前这一问 → 下一步。回值 = **这一下真的推进了**。
@@ -1691,7 +1709,12 @@ impl FileWindow {
                 true
             }
             Ask::Dest { .. } => {
-                match super::download::judge_dest(&ask, super::download::dest_exists) {
+                // 〔FILES2 · Q4〕「那儿已经有东西了吗」问的是**真落点**（有损名在 Linux 上是原始字节那一份）。
+                let exists = |d: &str| {
+                    super::lossy_pull::local_path_of(&self.pull_local(d).0)
+                        .is_some_and(|p| super::download::dest_exists_at(&p))
+                };
+                match super::download::judge_dest(&ask, exists) {
                     DestVerdict::Rejected(why) => {
                         *self.listing.error.lock().unwrap() = Some(why);
                         false
@@ -1733,6 +1756,10 @@ impl FileWindow {
         board.attach(ctx);
         let src = src_path.to_string();
         let to = dest.to_string();
+        // 〔FILES2 · Q4〕有损名：远端按字节（就地拷进暂存区再下）、本机按平台落名；否则与此前逐字同一条路。
+        let (local, note) = self.pull_local(dest);
+        let raw_src = self.pull_raw.take().map(|(b, _, _)| b);
+        board.set_note(note);
         // ⚠ 走 `source::remote_basename`（**那一对**里的尾段那一份）——
         //   这里原先是第四份 `rsplit('/')`，而那一对的头注逐字说了
         //   「多一份就多一种『Windows 上 `\` 被当分隔符』的机会」。
@@ -1747,7 +1774,16 @@ impl FileWindow {
                 let (line, origin) = (line.clone(), origin.clone());
                 let src = src.clone();
                 let to = to.clone();
-                async move { super::download::pull_one(&line, &origin, &src, &to, &b).await }
+                let (local, raw_src) = (local.clone(), raw_src.clone());
+                async move {
+                    match raw_src {
+                        Some(bytes) => {
+                            super::lossy_pull::pull_by_bytes(&line, &origin, &bytes, local, &b)
+                                .await
+                        }
+                        None => super::download::pull_one(&line, &origin, &src, &to, &b).await,
+                    }
+                }
             })
             .await;
             let (got, total) = board.seen();
@@ -2363,6 +2399,14 @@ impl FileWindow {
         // ── 上一趟的结局：**成功也出声** ──
         //    只在失败时说话的话，「拖完了」与「点了没反应」在屏幕上长得一样。
         if let Some(o) = self.pull.last() {
+            // 〔FILES2 · Q4〕有损名在 Windows 上落成了有损形 ⇒ 结局旁边说一句改成了什么。
+            if let Some(n) = self
+                .pull
+                .note()
+                .filter(|_| matches!(o, Outcome::Done { .. }))
+            {
+                ui.label(n);
+            }
             match o {
                 Outcome::Done { dest, bytes } => ui.colored_label(
                     egui::Color32::from_rgb(0x3C, 0xB3, 0x71),

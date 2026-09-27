@@ -134,10 +134,14 @@ pub async fn transfer_call(
         TRANSFER_UPLOAD => serde_json::json!({ "dial": dial, "local_path": text("local_path")? }),
         // 〔FN1 · V119〕这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
+        // 〔FILES2 · Q4〕下载的本机落点收字符串或 `{"b16": …}`（有损名在 Linux 上按原始字节落名），原样转给本机后端判。
         TRANSFER_DOWNLOAD => serde_json::json!({
             "dial": dial,
             "remote_path": text("remote_path")?,
-            "local_path": text("local_path")?,
+            "local_path": match payload.get("local_path") {
+                Some(v) if v.is_string() || v.get("b16").is_some_and(serde_json::Value::is_string) => v.clone(),
+                _ => serde_json::Value::String(text("local_path")?),
+            },
         }),
         other => {
             return Err((

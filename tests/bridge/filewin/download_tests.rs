@@ -178,7 +178,9 @@ fn an_illegal_path_is_its_own_verdict_not_a_confirmation() {
 fn the_existence_check_has_exactly_one_production_address() {
     let prod =
         guard_core::production_code(include_str!("../../../src/bridge/src/filewin/download.rs"));
-    let needle = format!("{}::{}", "std::path::Path", "new(p).exists()");
+    // 〔FILES2 · Q4〕碰盘那一下挪进了 `dest_exists_at`（落点可以是一条装不进串的原始字节路径），`dest_exists` 转调它 ⇒
+    //   针从 `Path::new(p).exists()` 换成 `.exists()` 本身：整个生产段恰好一处。
+    let needle = format!(".{}()", "exists");
     assert_eq!(
         prod.matches(needle.as_str()).count(),
         1,

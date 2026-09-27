@@ -18103,6 +18103,16 @@
       "kind": "body",
       "zh": "{path}：{e}",
       "args": ["path", "e"]
+    },
+    "rsFilewinLossyPull.note.renamed": {
+      "kind": "body",
+      "zh": "名字里有认不出的字节，已改成「{name}」",
+      "args": ["name"]
+    },
+    "rsFilewinLossyPull.stage.failed": {
+      "kind": "error",
+      "zh": "那台机器上没能先复制一份到后端自己的目录：{why}",
+      "args": ["why"]
     }
   }
 }

@@ -279,6 +279,34 @@ fn remote_file(fs: &Arc<Mutex<rig::Fs>>, path: &str, bytes: Vec<u8>) {
     g.files.insert(path.to_string(), Entry { bytes });
 }
 
+/// 〔FILES2 · Q4〕要求住址：`_施工/4d-lanes.md` `### FILES2` Q4「落到 Linux 本机 ⇒ 字节原样当文件名」。
+/// 本机落点是非 UTF-8 的原始字节（线上 `local_path: {"b16": …}`）⇒ 落出来的那份文件名逐字节就是它，`.part` 不留。
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_lands_under_a_non_utf8_local_name_byte_for_byte() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let fs = rig::home(false, false);
+    remote_file(&fs, "srv/x.bin", b"BYTES".to_vec());
+    let s = rig::session_on(fs.clone()).await;
+    let tmp = Tmp::dir("dl-raw");
+    let name = std::ffi::OsStr::from_bytes(b"f\xfe\xff.bin");
+    let local = tmp.path("").join(name);
+    let args = serde_json::json!({
+        "local_path": crate::files::raw::to_json(crate::files::raw::path_bytes(&local)),
+    });
+    assert_eq!(local_path_of(&args).expect("b16 落点没认出来"), local);
+    download_to_local(&s, "srv/x.bin", &local, &Cancel::default(), &no_progress)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(&local).unwrap(), b"BYTES");
+    let mut part = name.to_os_string();
+    part.push(".part");
+    assert!(
+        std::fs::symlink_metadata(tmp.path("").join(part)).is_err(),
+        "`.part` 没收掉"
+    );
+}
+
 /// 下载：字节原样落地、`.part` 改名上位后不留。
 #[tokio::test]
 async fn a_download_lands_verbatim_and_leaves_no_part() {
@@ -461,9 +489,10 @@ fn a_download_onto_a_session_file_is_let_through() {
         crate::agents::claudecode::paths::is_session_record_path(&session),
         "夹具那条路径不是会话记录的形状 —— 本条此刻在量别的东西"
     );
-    land_check(&session.to_string_lossy()).expect("🔴 V119：往会话文件那个位置上落地被拒了");
+    land_check(session.to_string_lossy().as_ref())
+        .expect("🔴 V119：往会话文件那个位置上落地被拒了");
     // 阴性对照：父目录不在盘上 ⇒ 拒（路径解析那一关）。
-    assert!(land_check(&tmp.path("nope/x.txt").to_string_lossy()).is_err());
+    assert!(land_check(tmp.path("nope/x.txt").to_string_lossy().as_ref()).is_err());
     // 相对路径不认。
     assert!(land_check("rel/x.txt").is_err());
 }

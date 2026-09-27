@@ -227,7 +227,21 @@ pub fn judge_dest(ask: &Ask, exists: impl Fn(&str) -> bool) -> DestVerdict {
 
 /// 生产那一侧的存在性判定。**全树恰好一处**（判据钉着）。
 pub fn dest_exists(p: &str) -> bool {
-    std::path::Path::new(p).exists()
+    dest_exists_at(std::path::Path::new(p))
+}
+
+/// 〔FILES2 · Q4〕同 [`dest_exists`]，落点是一条 `Path`（有损名在 Linux 上落成原始字节，串装不下）。
+/// 碰盘判存在只住这一个函数（[`dest_exists`] 转调它）。
+pub fn dest_exists_at(p: &std::path::Path) -> bool {
+    p.exists()
+}
+
+/// 〔FILES2 · Q4〕这一行拉不拉得下来（看 [`Listed`] 那一格原始字节）：名字不是 UTF-8 但带着字节 ⇒ 也拉得下来
+/// （远端按字节就地拷进暂存区再下，`lossy_pull.rs`）。[`is_downloadable`] 照旧只看 [`Row`]（与复制那一道对拍的那条不动）。
+///
+/// [`Listed`]: super::source::Listed
+pub fn is_downloadable_listed(r: &super::source::Listed) -> bool {
+    is_downloadable(r) || (!r.is_dir && r.raw_name.is_some())
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -255,6 +269,8 @@ struct Board {
     got: u64,
     total: u64,
     last: Option<Outcome>,
+    /// 〔FILES2 · Q4〕上一趟结局旁边要说的那一句（Windows 上有损名改成了什么）。
+    note: Option<String>,
 }
 
 /// 跨线程共享的那一格（UI 线程画，tokio 那条写）。同 `transfer::DropBoard` 的理由。
@@ -324,6 +340,15 @@ impl DownloadBoard {
         self.lock().in_flight.clone()
     }
 
+    /// 〔FILES2 · Q4〕这一趟结局旁边要说的那一句（`None` ＝ 不说）。每一趟开头都要设一次（上一趟的不留）。
+    pub fn set_note(&self, note: Option<String>) {
+        self.lock().note = note;
+    }
+
+    pub fn note(&self) -> Option<String> {
+        self.lock().note.clone()
+    }
+
     pub fn seen(&self) -> (u64, u64) {
         let b = self.lock();
         (b.got, b.total)
@@ -361,6 +386,24 @@ pub async fn pull_one(
     origin: &super::source::Origin,
     remote_path: &str,
     dest: &str,
+    board: &DownloadBoard,
+) -> Result<(), String> {
+    pull_one_at(
+        line,
+        origin,
+        remote_path,
+        serde_json::Value::String(dest.to_string()),
+        board,
+    )
+    .await
+}
+
+/// 〔FILES2 · Q4〕同 [`pull_one`]，本机落点给线上那一形（字符串或 `{"b16": …}`：有损名在 Linux 上按原始字节落名）。
+pub async fn pull_one_at(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    remote_path: &str,
+    dest: serde_json::Value,
     board: &DownloadBoard,
 ) -> Result<(), String> {
     let stop = board.cancels().stop_token();

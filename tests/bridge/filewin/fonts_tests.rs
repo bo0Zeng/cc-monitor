@@ -333,8 +333,9 @@ fn the_probe_equals_every_non_ascii_char_in_the_window_labels() {
         //   18 → 19，多的是 `preview.rs`（预览面板那几句）。
         // 〔W5-FILES · 第五波〕19 → 20，多的是 `size.rs`（算大小：菜单那一项 · 在算那一行 · 结局那一句）；
         //   20 → 21，多的是 `picker.rs`（原生选文件框；它自己一个字都不画，「浏览…」那颗按钮在 upload.rs / shell.rs 上）。
-        // 〔FILES2 · 第四波〕21 → 22，多的是 `extract.rs`（解压到这里：菜单那一项 · 撞名那一问 · 在解那一行 · 结局那一句）。
-        22,
+        // 〔FILES2 · 第四波〕21 → 22，多的是 `extract.rs`（解压到这里：菜单那一项 · 撞名那一问 · 在解那一行 · 结局那一句）；
+        //   22 → 23，多的是 `lossy_pull.rs`（有损名下载：Windows 上「已改成 X」那一句 · 拷进暂存区没成那一句；字形一个没多）。
+        23,
         "人群应当是 10 份（2026-09-21 现打：copy · corpus · entry · **find** · rows · scale · \
          shell · source · transfer · **writeops**；`fonts.rs` 与 `mod.rs` 摘掉了。\
          ⚠ `corpus.rs` 的非 ASCII 字面量是 0，按字符数统计时看不见它 —— \
