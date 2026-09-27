@@ -376,7 +376,7 @@
     },
     "beCcBus.notRun.tooLong": {
       "kind": "error",
-      "zh": "这条消息太长，一次发不出去。发短一点再试。",
+      "zh": "这条消息太长，一次发不出去。不是 cc-bus 坏了，发短一点再试。",
       "args": []
     },
     "beCcBus.timedOut.say": {
@@ -646,7 +646,7 @@
     },
     "credsStore.error.notJson": {
       "kind": "error",
-      "zh": "凭据文件不是合法的 JSON，没有改动它：{e}。这份文件是手编的，多半是少了逗号或引号，改好再试。",
+      "zh": "凭据文件不是合法的 JSON，没有动它：{e}。这份文件是手编的，多半是少了逗号或引号，改好再试。",
       "args": ["e"]
     },
     "credsStore.error.notObject": {
