@@ -2189,7 +2189,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 
 | 值 | 本侧放行判定 | 判据 |
 |---|---|---|
-| cc-bus agent id（①；〔DUP2〕**后端交给 `cc-send` / `cc-kill` 之前**） | `shell_quote_core::bus_id_ok`（全仓唯一一份）：后端 `control/cc_bus.rs` 的 `parse_send` / `parse_kill` 入口（拒码 `bad_id`）· monitor `cc_bus.rs` 读收件箱那一条（名字仍叫 `is_valid_bus_id`，是它的再导出）。查在线不把 id 交给任何人，不判。〔DUP3〕`bus-send` / `bus-broadcast` 给的 `from`（作 `CC_BUS_ID` 交给 `cc-send`，`given_sender`，拒码 `bad_id`）· 广播名单里的收件人（`cc-list` 的输出、对端来的值，`recipient_refused`：不发、照实进 `failed`）同一个判定 | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`（金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids` 正反两向，拒在起进程之前）· monitor `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · `cc_bus_tests.rs::builders_reject_bad_ids_at_the_call_site` · `cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples`（同一份 `ids`）· `tests/cc-bus-control.vitest.ts`（界面不判、原样交；`bad_id` 逐动作一句、带后端原话）· 〔DUP3〕后端 `cc_bus_tests.rs::senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send`（同一份 `ids` 正反两向） |
+| cc-bus agent id（①；〔DUP2〕**后端交给 `cc-send` / `cc-kill` 之前**） | `shell_quote_core::bus_id_ok`（全仓唯一一份）：后端 `control/cc_bus.rs` 的 `parse_send` / `parse_kill` 入口（拒码 `bad_id`）·〔SH1〕读收件箱搬进后端 `bus-inbox` 的 `parse_inbox`（拒码 `bad_id`，交给 `cc-log` 之前判）；monitor `cc_bus.rs` 留 `is_valid_bus_id` 这个再导出名。查在线不把 id 交给任何人，不判。〔DUP3〕`bus-send` / `bus-broadcast` 给的 `from`（作 `CC_BUS_ID` 交给 `cc-send`，`given_sender`，拒码 `bad_id`）· 广播名单里的收件人（`cc-list` 的输出、对端来的值，`recipient_refused`：不发、照实进 `failed`）同一个判定 | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`（金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids` 正反两向，拒在起进程之前）· monitor `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · 后端 `cc_bus_tests.rs::the_cockpit_read_products_match_the_cross_language_golden`（`--help` 当收件箱 id 在起进程之前拒）· `cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples`（同一份 `ids`）· `tests/cc-bus-control.vitest.ts`（界面不判、原样交；`bad_id` 逐动作一句、带后端原话） · 〔DUP3〕后端 `cc_bus_tests.rs::senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send`（同一份 `ids` 正反两向） |
 | 派生时的账号名（①；〔DUP2〕**后端交给 `cc-spawn` 之前**） | 同一个 `shell_quote_core::bus_id_ok`：后端 `parse_spawn` 入口（拒码 `bad_id`；〔C4e〕那一道原住界面 `checkSpawnShape`，界面今天只判「选了 tool · 目录非空」） | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `tests/cc-bus-control.vitest.ts`（含「不许白名单 agent 种类」那一格） |
 | 唯一的 quote（②） | `ssh_source.rs::shell_quote` | `cc_bus_tests.rs::quote_roundtrip_is_the_real_property` |
 | 本工具新建的 tmux 会话名（①；〔DUP2 · J6〕monitor 载荷外层 · `ccm …` 调用行 · 后端 ccm） | `gate_core::new_tmux_name_issue`（全仓唯一一份）：monitor `payload.rs` 的 `TmuxTarget::check`（新建那一格）· `ccm_invocation.rs` 的 `--tmux=`（`Refusal::IdentifierRefused`）· 后端 `plan.rs::validate_tmux_name`（只管说哪一句）。attach / 送进已有会话走 `gate_core::existing_tmux_name_issue`（②：拒绝集 ＋ 非空，寻址 `=<名>:`） | `gate-core lib_tests::a_new_session_name_passes_real_names_and_refuses_what_would_confuse_tmux` · `lib_tests::an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_cannot_hold` · `payload_tests.rs::a_tmux_name_follows_the_create_or_existing_rule_from_gate_core` · `ccm_invocation_tests.rs::a_tmux_name_is_judged_before_it_becomes_a_ccm_argument` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
@@ -2336,7 +2336,7 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 - 调用点带没带 UTF-8：`gate_tests.rs::both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand` ·
   `watcher_tests.rs::every_sh_call_site_in_this_module_carries_the_utf8_env` ·
   `session_snapshot_tests.rs::the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand` ·
-  monitor 跨 SSH 那一处 `tmux_tests.rs::the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand`。
+  〔SH1〕monitor 那条跨 SSH `tmux ls` 已改问那台后端的 `tmux-list`（同 `watcher.rs` 那一趟），monitor 侧零处跨 SSH 的 tmux 读。
 - 下溢出声：`gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `watcher_tests.rs::the_underflow_predicate_only_fires_downward` ·
   `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today`。
 - 口径一个家：`tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `tmux_utf8_tests.rs::both_consumer_layers_reference_the_home_instead_of_declaring_their_own` ·
@@ -2349,8 +2349,10 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 ⚠ **它买不到的**：
 - **人群判据是按行认的**〔TL2 · 4D 立：`lib_invariant_population_tests.rs::every_tmux_print_site_is_registered_with_how_it_carries_utf8`，
   两棵树 ＋ 随部署的 shell 脚本里每一处「tmux 打印子命令 ＋ `-F` / `-p`」== 登记表（文件 × 子命令 × 带法 → 处数，两向）〕：一条命令串被拆在两行上它认不到；
-  `show-options` 那类不按格式串读的不在人群里。登记表里**不带** UTF-8 的有两类，如实写着：只读 ASCII 的（pid · 窗口数 · `%N` pane id，今天无害，
-  含 `IV1` 升格当天现打的 `ccm/plan.rs` 那条 `list-panes … -F '#{pane_id}'`）与**读会话名 / 地址的五处**（`ccm/mod.rs` 的 `BUS_ID_RECIPE` · cc-bus 的 `cc-register` · `cc-whoami` ×3）——
-  后者是本条的真违反，待裁（改它们是载荷 / 随部署脚本的字节变更）。
+  `show-options` 那类不按格式串读的不在人群里。登记表里**不带** UTF-8 的只剩一类：只读 ASCII 的（pid · 窗口数 · `%N` pane id，今天无害，
+  含 `IV1` 升格当天现打的 `ccm/plan.rs` 那条 `list-panes … -F '#{pane_id}'`）。〔SH1 · 09-26〕原先另一类「**读会话名 / 地址的五处**」
+  （`ccm/mod.rs` 的 `BUS_ID_RECIPE` · cc-bus 的 `cc-register` · `cc-whoami` ×3，TL2 现打的真违反）按 V121 加了旗（`-u`，排在子命令前），
+  由 `tests/e2e/backend-cc-bus.sh` 的 `[SH1-a]` 在非 UTF-8 客户端 ＋ 中文会话名下真跑钉住（带反向正控：同台架上不带旗的那一条确实被改写）。
+  ⚠ 随部署脚本那四处要在各台机器上**重新部署 cc-bus** 才生效；`BUS_ID_RECIPE` 随后端载荷走。
 - **上溢今天仍被丢弃**：`pane_current_path` 里的真 TAB 会多切一段，monitor 的 `!= N` 判法会把那个会话静默丢掉（`tmux_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today` 的名字就写着「今天仍丢」）。本条只要求下溢出声，不管上溢。
 - 旗放错位置是 `rc=1 + unknown flag -u` 的**响错**，而几处调用点刻意不看退出码 ⇒ 那一声在生产里会被压成「一个会话都没有」。位置由各调用点判据单独钉，不由本条的家管。

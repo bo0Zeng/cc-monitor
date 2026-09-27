@@ -370,6 +370,18 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
          ⚠ monitor 自己**另有**一处问它（本机任务 watcher，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那是推送，不是替界面转",
     ),
+    // 〔SH1 · V136〕驾驶舱读面两条：后端转调 cc-bus 新加的机器可读读命令、出成品，界面 `cc-bus-control.ts` 按形状收；
+    //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。
+    (
+        "bus-state",
+        "后端出成品 `{agents, spawned, skipped}`（`cc-list --tsv` ＋ `cc-agents --tsv`：登记时间 · 派生时间 · 坏行数），\
+         界面 `cc-bus-control.ts::decodeState` 按形状收（金样 `cc-bus-read.golden.json`）",
+    ),
+    (
+        "bus-inbox",
+        "新帧命令：后端转调只读的 `cc-log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
+         界面 `cc-bus-control.ts::decodeInbox` 按形状收",
+    ),
 ];
 
 /// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
@@ -1073,12 +1085,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "问那台 `cc-acct-iso shellinit` 的片段（`acct-iso-shellinit`，一问）：`ACCT_ISO_BUDGET`",
     ),
-    (
-        "local_accounts.rs",
-        "local_acct_iso_shellinit",
-        1,
-        "本机那一侧的 shellinit 片段（同一条帧命令、问本机那条长连接，一问）：`ACCT_ISO_BUDGET`",
-    ),
+    // 〔SH1〕本机那一条 `local_acct_iso_shellinit`〔散文墓碑〕 那一行摘了：本机远端合成 `acct_iso_shellinit`，期限由 `snippet_on` 那一处造（已在表里）。
     (
         "remote_branch.rs",
         "fork_on",
@@ -1091,6 +1098,27 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "按行号取一段（一次 invoke 一问）：前端交「那一件还剩多少」（`left_ms`），过进程边界在这里换回绝对时刻 —— \
          造那一件期限的一手在前端（`tab-stream-view.ts` 的往上翻 / 丢格之后往后补）",
+    ),
+    // 〔SH1 · V136〕远端钩子诊断：三趟（取环境 · 读 settings.json · 逐条 stat）共用一个总时限。
+    (
+        "hooks_diag.rs",
+        "diagnose_remote_cc_bus_hooks",
+        1,
+        "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
+    ),
+    // 〔SH1 · V137〕MCP 列表问那台后端（本机远端同一条 `mcp-read`，一问）。
+    (
+        "mcp.rs",
+        "mcp_on",
+        1,
+        "MCP 列表问那台后端（`mcp-read`，一问；值 `MCP_READ_BUDGET` 30 s —— 读一份 `.claude.json`，重度用户可数 MB）",
+    ),
+    // 〔SH1〕列远端 tmux 会话问那台后端（`tmux-list`，一问）。
+    (
+        "backend/control/tmux.rs",
+        "list_remote_tmux",
+        1,
+        "列那台 tmux 会话（`tmux-list`，一问；值 `TMUX_LIST_BUDGET` 15 s —— 后端那一趟 `tmux ls` 自带 5 s 上界）",
     ),
 ];
 

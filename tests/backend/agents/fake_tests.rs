@@ -218,6 +218,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         assets: None,
         history: None,
         upstream: None,
+        mcp: None,
         home: home_of_announce,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
@@ -458,4 +459,46 @@ fn the_fixture_agent_never_ships() {
         "`{decl}` 上面没有 `#[cfg(test)]` —— 夹具 agent 会被编进生产二进制。\n\
              上一行：{prev_line:?}\n上上行：{prev_prev:?}"
     );
+}
+
+/// 〔SH1 · V137〕**fake 适配器同拍长一格 MCP 读**：通用层经注册表那一格读到假 agent 的 MCP 条目 ——
+/// 通用层（`agents::mcp_read_among`）不认识 `.fake-mcp.json` 这个名字，认它的只有假 agent 自己。
+/// 要求住址：`99 §1` V137「`agents::Adapter` 长一格『MCP 读』（fake 适配器同拍）」。
+#[test]
+fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
+    let dir = std::env::temp_dir().join(format!("sh1-fake-mcp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("建夹具目录");
+    std::fs::write(
+        dir.join(".fake-mcp.json"),
+        r#"{"servers":{"alpha":{"command":"/x"}}}"#,
+    )
+    .expect("写夹具");
+    let adapter = crate::agents::Adapter {
+        kind: AGENT_KIND,
+        account_env: None,
+        assets: None,
+        history: None,
+        upstream: None,
+        mcp: Some(super::MCP),
+        home: home_of_announce,
+    };
+    let got = crate::agents::mcp_read_among(std::slice::from_ref(&adapter), Some(&dir));
+    let _ = std::fs::remove_dir_all(&dir);
+    let got = got.expect("注册表里有 MCP 读面，通用层却没读它");
+    assert_eq!(got.entries.len(), 1, "{got:?}");
+    assert_eq!(
+        (got.entries[0].scope, got.entries[0].name.as_str()),
+        ("project", "alpha")
+    );
+    // 反向：没有这一格的注册表 ⇒ 通用层说「没有」，不回一份空的当成读过了。
+    let bare = crate::agents::Adapter {
+        mcp: None,
+        ..adapter
+    };
+    assert!(crate::agents::mcp_read_among(
+        std::slice::from_ref(&bare),
+        Some(std::path::Path::new("/"))
+    )
+    .is_none());
 }

@@ -47,9 +47,10 @@ fn every_project_file_name_this_module_builds_is_mcp_json() {
         }
     }
     // 抽取器自检：一处都没抓到 ⇒ 下面整条空转。
+    // 〔SH1 · V137〕3 → 2：读侧那一处（本机直读 `<dir>/.mcp.json`）随 MCP 列表改问后端删了；写侧两处不动。
     assert!(
-        sites.len() >= 3,
-        "只抓到 {} 处「往项目目录里拼文件名」（08-08 实测 3：读侧 1 + 本机写侧 1 + 远端写侧 1）\
+        sites.len() >= 2,
+        "只抓到 {} 处「往项目目录里拼文件名」（08-08 实测 3：读侧 1 + 本机写侧 1 + 远端写侧 1；SH1 09-26 读侧退役 ⇒ 2）\
              —— 抽取器坏了，本条此刻无效：{sites:?}",
         sites.len()
     );
@@ -194,15 +195,31 @@ fn the_local_exit_refuses_empty_and_relative_project_dirs() {
     );
 }
 
+/// 〔SH1 · V137〕跨语言金样的 monitor 那一侧：后端 `mcp-read` 的成品按形状严格收（金样 `tests/__fixtures__/mcp-read.golden.json`，
+/// 后端 `agents/claudecode/mcp_tests.rs` 读同一份）；多一格 / scope 认不出 ⇒ 两端契约对不上。
 #[test]
-fn project_dirs_from_sorted_and_tolerant() {
-    let cj = json!({ "projects": { "/b": {}, "/a": {} } });
+fn the_backend_mcp_product_decodes_on_this_side() {
+    let g: Value = serde_json::from_str(include_str!("../__fixtures__/mcp-read.golden.json"))
+        .expect("金样读不出来");
+    let got = decode_mcp_read("本机", &g["reply"]).expect("金样那份成品收不下");
+    assert_eq!(got.entries.len(), 3);
     assert_eq!(
-        project_dirs_from(&cj),
-        vec!["/a".to_string(), "/b".to_string()]
+        got.entries
+            .iter()
+            .map(|e| (e.scope.as_str(), e.name.as_str()))
+            .collect::<Vec<_>>(),
+        [("user", "u1"), ("local", "l1"), ("project", "p1")]
     );
-    assert!(project_dirs_from(&json!({})).is_empty()); // 缺 projects
-    assert!(project_dirs_from(&json!({ "projects": "bad" })).is_empty()); // 非对象
+    assert_eq!(got.dirs, ["/other", "<DIR>"]);
+    let mut extra = g["reply"].clone();
+    extra["more"] = json!(1);
+    assert!(decode_mcp_read("本机", &extra).is_err(), "多一格要拒");
+    let mut scope = g["reply"].clone();
+    scope["entries"][0]["scope"] = json!("global");
+    assert!(
+        decode_mcp_read("本机", &scope).is_err(),
+        "认不出的 scope 要拒"
+    );
 }
 
 /// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；②形（远端落点路径）。

@@ -12,7 +12,10 @@ if [ -z "${TMUX_PANE:-}" ]; then
   echo "cc-register: 不在 tmux 里(TMUX_PANE 为空),无法登记地址" >&2
   exit 1
 fi
-target=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_index}.#{pane_index}')
+# 〔SH1 · INVARIANTS §49 · V121〕地址里有**会话名**(可以是中文)⇒ 读它的 tmux 客户端必须是 UTF-8 客户端:
+#   非 UTF-8 客户端下非 ASCII 被改写成 `_`,记下的地址指向一个不存在的会话,而退出码仍是 0。
+#   `-u` 必须排在子命令之前(`display-message -u` 是 rc=1 的响错)。
+target=$(tmux -u display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_index}.#{pane_index}')
 # ★★ **第 4 列：这个 pane 的身份**〔08-13 实测误投〕
 #
 # 地址是**名字型**的(`proj_cc:0.0`),而名字**会被重用** —— `cc-spawn` 就按目录基名取会话名。

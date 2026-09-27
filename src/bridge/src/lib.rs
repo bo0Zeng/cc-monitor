@@ -1391,9 +1391,7 @@ pub fn run() {
             aliases_block_install,
             aliases_block_remove,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
-            // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
-            backend::control::cc_bus::read_cc_bus_state,
-            backend::control::cc_bus::read_cc_bus_inbox,
+            // B03 批一：cc-bus 驾驶舱的两条读命令〔SH1 · V136〕退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
@@ -1468,8 +1466,9 @@ pub fn run() {
             sftp::deploy_remote_backend,
             sftp::uninstall_remote_backend,
             acct_iso_deploy::deploy_remote_acct_iso,
-            acct_iso_deploy::check_remote_acct_iso,
-            acct_iso_deploy::remote_acct_iso_shellinit,
+            // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
+            acct_iso_deploy::acct_iso_status,
+            acct_iso_deploy::acct_iso_shellinit,
             history::delete_history_session,
             history::create_branch_session,
             history::resume_history_session,
@@ -1486,8 +1485,6 @@ pub fn run() {
             // 〔C4a · 第四波〕「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
             //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
             // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
-            local_accounts::check_local_acct_iso,
-            local_accounts::local_acct_iso_shellinit,
             launch::launch_remote_terminal,
             // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）；
             //   〔第四波 S4〕最后一条（零流量复制）随门禁那一格退役一起删了 ⇒ 池子零条 Tauri 命令。

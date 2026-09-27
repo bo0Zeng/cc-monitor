@@ -278,7 +278,6 @@ const SCAN: &[&str] = &[
     "tests/backend/common/tmux_utf8_tests.rs",
     "tests/backend/control/cc_bus_tests.rs",
     "tests/backend/control/ccm/argv_tests.rs",
-    "tests/backend/control/ccm_tests.rs",
     "tests/backend/control/cli_control_tests.rs",
     "tests/backend/control/gate_tests.rs",
     "tests/backend/control/kill_tests.rs",
@@ -506,6 +505,8 @@ const SCAN: &[&str] = &[
     "tests/views/live-user-inputs.vitest.ts",
     "tests/views/session-viewer-user-inputs.vitest.ts",
     "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
+    "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
@@ -588,7 +589,6 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/adapter_tests.rs",
     "tests/bridge/auto_launch_tests.rs",
     "tests/bridge/backend/control/cc_bus_deploy_tests.rs",
-    "tests/bridge/backend/control/cc_bus_tests.rs",
     "tests/bridge/backend/control/launch_wire_k_r95_launch_render_facts.rs",
     "tests/bridge/backend/control/local_backend_tests.rs",
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
@@ -653,6 +653,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/search_query_golden_tests.rs", // 〔SX1〕J1 合成语料写临时目录、对冻结金样
     "tests/backend/observe/search_query_reading.rs", // 〔SX1〕秤（真机层那一条）：起 python3 丢页缓存
     "tests/backend/observe/search_query_index_tests.rs", // 〔SX1〕J2 / J3 临时目录上一串变更
+    "tests/backend/control/ccm_tests.rs", // 〔SH1〕SCAN → INTEGRATION：多了一条隔离 socket 真 tmux 判据（`BUS_ID_RECIPE` 读会话名走 UTF-8 客户端）
+    "tests/backend/agents/claudecode/mcp_tests.rs", // 〔SH1 · V137〕Claude 的 MCP 布局读法（临时目录夹具 ＋ 跨语言金样 mcp-read.golden.json）
 ];
 
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。

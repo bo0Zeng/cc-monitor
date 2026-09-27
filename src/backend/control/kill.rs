@@ -17,12 +17,19 @@
 //! 之后 `kill-session -t '$3'`：名字在窗口期内被重新绑定到别的会话也**杀不到别人**。
 //! 这与 `super::gate` 头注那段 TOCTOU 分析是同一条纪律 —— **破坏性动作尤其不能对名字下手。**
 //!
+//! # 〔SH1 · D-g〕杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
+//!
+//! 杀之前读下全部 pane 的根进程 pid，杀成之后按 `agents.tsv` 第 4 列那个 pid 认人、逐个 `cc-kill`（`cc_bus::unregister_panes`）；
+//! 那一步失败只 warn，不改杀会话的结局，应答形状不变。
+//!
 //! # 错误码
 //!
 //! 命令级（本模块 / `gate`）：`invalid_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
 use std::process::{Command, Stdio};
+
+use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] 同型。
 type CmdErr = (&'static str, String);
@@ -60,6 +67,8 @@ pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
     //   ⇒ 通过后拿到句柄。**顺序不可反**：门在 kill 之前，由
     //   `the_kill_path_admits_before_it_kills` 钉住。
     let handle = super::gate::admit_destructive(name, &target)?;
+    // 〔SH1 · D-g〕杀之前记下这个会话全部 pane 的根进程 pid：杀完按它认 cc-bus 名册里登记在这里的 id（不按会话名猜）。
+    let panes = pane_pids(&handle);
     let out = Command::new("tmux")
         .args(["kill-session", "-t", &handle])
         .stdin(Stdio::null())
@@ -73,6 +82,7 @@ pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
             )
         })?;
     if out.status.success() {
+        super::cc_bus::unregister_panes(name, &panes);
         return Ok(());
     }
     Err((
@@ -82,6 +92,31 @@ pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
             String::from_utf8_lossy(&out.stderr).trim()
         ),
     ))
+}
+
+/// 〔SH1 · D-g〕这个会话（句柄）全部 pane 的根进程 pid。只读 tmux；问不到 ⇒ 空（顺手注销那一步随之不做，不影响杀）。
+/// `INVARIANTS §49`：argv 直传 ⇒ UTF-8 旗排在子命令前（读的虽是数字，照表带）。
+fn pane_pids(handle: &str) -> Vec<u32> {
+    Command::new("tmux")
+        .args([
+            UTF8_CLIENT_FLAG,
+            "list-panes",
+            "-F",
+            "#{pane_pid}",
+            "-s",
+            "-t",
+            handle,
+        ])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter_map(|l| l.trim().parse().ok())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// 入方向命令的入口：`args` → 结局 JSON。

@@ -1,15 +1,13 @@
 //! F87（#50+#51）本机 / **F87b+F89a（#52 跨机）** MCP 管理。**SS-14 读写分界**（doc/../plan SS-14 + INVARIANTS §1 例外 #5）：
-//! - **读**：本机跨 scope（用户 `~/.claude.json` 顶层 + local `projects[<dir>]` + 项目 `<dir>/.mcp.json`）+
-//!   **远端** user scope（`read_remote_mcp_servers`：SSH-exec cat 远端 `~/.claude.json`）+ **远端项目**
-//!   （`read_remote_project_mcp`：SFTP 读远端 `<dir>/.mcp.json`）。**宽容读**（INVARIANTS §18）：缺/坏/字段缺跳过、server 原样。
+//! - **读**：〔SH1 · V137〕本机远端都问那台后端的 `mcp-read`（user / local / project 三段成品，布局知识住后端适配层）；
+//!   远端项目段另有 `read_remote_project_mcp`（经 `files-peek`）。**宽容读**（INVARIANTS §18）：缺/坏/字段缺跳过、server 原样。
 //! - **写**：**只** `<dir>/.mcp.json`（增/改/删）。**绝不写 `~/.claude.json` / `settings.json`**——本机经 `mcp_json_path`
 //!   硬编码 / **远端**经 `remote_mcp_json_path`+`is_safe_remote_mcp_json` 守卫。SS-G：写仅用户显式触发。
 //!   🔴 **〔RW1 · 第四波 09-24〕落盘不在本进程**：两侧都经那台机器的后端（`edit_project_mcp` →
 //!   `user_files::edit` → `files-peek` / `files-put`），本机与远端同一条路、只差 origin；
 //!   上线的两条命令是 `write_project_mcp_server` / `remove_project_mcp_server`（各吃一个 `origin`）。
 //!
-//! `~/.claude.json` 路径有变体（`CLAUDE_CONFIG_DIR` vs `$HOME`），故 `claude_json_candidates` 取多候选、
-//! 读第一个存在的——防御式，schema 真机可能变，不硬假设完整。
+//! 〔SH1〕`~/.claude.json` 找哪一份从此只住后端（`agents/claudecode/assets.rs::claude_json`）；monitor 那份三候选〔散文墓碑〕删了。
 
 use crate::copy_table::copy_text;
 use crate::origin::{Origin, Route};
@@ -32,26 +30,6 @@ pub struct McpServerEntry {
     pub server: Value,
     /// 来源文件绝对路径（展示 / 诊断用）。
     pub source_path: String,
-}
-
-/// `~/.claude.json` 候选路径（防御多变体：`CLAUDE_CONFIG_DIR` / `$HOME`）。取第一个存在的。
-fn claude_json_candidates() -> Vec<PathBuf> {
-    let mut v = Vec::new();
-    if let Ok(cfg) = std::env::var("CLAUDE_CONFIG_DIR") {
-        let p = PathBuf::from(&cfg);
-        v.push(p.join(".claude.json")); // $CLAUDE_CONFIG_DIR/.claude.json
-        if let Some(parent) = p.parent() {
-            v.push(parent.join(".claude.json"));
-        }
-    }
-    if let Some(home) = dirs::home_dir() {
-        v.push(home.join(".claude.json")); // 经典位置
-    }
-    v
-}
-
-fn first_existing(cands: &[PathBuf]) -> Option<PathBuf> {
-    cands.iter().find(|p| p.is_file()).cloned()
 }
 
 /// 从一个 `mcpServers` 对象抽条目（宽容：非对象 → 不加）。**纯**，供单测。
@@ -100,201 +78,112 @@ fn collect_entries(
     out
 }
 
-/// 宽容读一个 JSON 文件为 Value（缺 / 坏 → None，不报错）。§3：解析前剥 BOM（Claude 写的
-/// 文件偶带 UTF-8 BOM，全库读端统一剥，见 parser.rs/tasks.rs/history.rs 等）。
-///
-/// 〔W5-VIS · E 吞错普查点名〕「坏」与「没有」照旧同一个返回值（MCP 区照旧显示空；要让界面说「这份文件坏了」得改前端，
-/// 登记为买不到），但**坏的那一形说出来**：文件在而读不动 / 不是 JSON ⇒ `warn` 一行（哪份、为什么）。不存在那一形照旧静默。
-fn read_json_lenient(path: &Path) -> Option<Value> {
-    let raw = match std::fs::read_to_string(path) {
-        Ok(r) => r,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(e) => {
-            tracing::warn!("MCP：读不动 {}（{e}），这一份当作没有", path.display());
-            return None;
-        }
+/// 〔SH1 · V137〕MCP 列表问那台后端（`mcp-read`，本机远端同一条路）：`.claude.json` 的布局只住后端适配层那一格
+/// （`agents/claudecode/mcp.rs`），monitor 这边从前那两个读者（本机直读三候选 · 远端 SSH `cat`）〔散文墓碑〕退役。
+pub(crate) struct McpRead {
+    pub(crate) entries: Vec<McpServerEntry>,
+    pub(crate) dirs: Vec<String>,
+}
+
+/// 问的期限（读一份 `.claude.json`，重度用户可数 MB）。
+const MCP_READ_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// `mcp-read` 的成品 → 条目 ＋ 项目目录 —— 纯函数，按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 两端契约对不上）；
+/// `problems` 那几句写进日志（读法宽容：坏的那份照旧当空段，但说出来）。
+pub(crate) fn decode_mcp_read(who: &str, v: &Value) -> Result<McpRead, String> {
+    let bad = |why: &str| copy_text("rsMcp.read.shape", &[("who", who), ("why", why)]);
+    let o = v
+        .as_object()
+        .filter(|o| o.len() == 3)
+        .ok_or_else(|| bad("not exactly {entries, dirs, problems}"))?;
+    let arr = |k: &str| o.get(k).and_then(Value::as_array).ok_or_else(|| bad(k));
+    let strs = |k: &str| -> Result<Vec<String>, String> {
+        arr(k)?
+            .iter()
+            .map(|x| x.as_str().map(str::to_string).ok_or_else(|| bad(k)))
+            .collect()
     };
-    match serde_json::from_str(raw.trim_start_matches('\u{feff}')) {
-        Ok(v) => Some(v),
-        Err(e) => {
-            tracing::warn!(
-                "MCP：{} 不是合法 JSON（{e}），这一份当作没有",
-                path.display()
-            );
-            None
+    let mut entries = Vec::new();
+    for e in arr("entries")? {
+        let e = e
+            .as_object()
+            .filter(|e| e.len() == 4)
+            .ok_or_else(|| bad("entry"))?;
+        let s = |k: &str| {
+            e.get(k)
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .ok_or_else(|| bad(k))
+        };
+        let scope = s("scope")?;
+        if !matches!(scope.as_str(), "user" | "local" | "project") {
+            return Err(bad("scope"));
         }
+        entries.push(McpServerEntry {
+            scope,
+            name: s("name")?,
+            server: e.get("server").cloned().ok_or_else(|| bad("server"))?,
+            source_path: s("sourcePath")?,
+        });
     }
+    for p in strs("problems")? {
+        tracing::warn!("MCP：{who} 那份读不出来 —— {p}");
+    }
+    Ok(McpRead {
+        entries,
+        dirs: strs("dirs")?,
+    })
 }
 
-/// **纯核心**（供单测）：从 `~/.claude.json` Value 抽 `projects` 键（排序）。宽容：非对象 → 空。
-fn project_dirs_from(claude_json: &Value) -> Vec<String> {
-    let mut dirs: Vec<String> = claude_json
-        .get("projects")
-        .and_then(Value::as_object)
-        .map(|o| o.keys().cloned().collect())
-        .unwrap_or_default();
-    dirs.sort();
-    dirs
-}
-
-fn read_mcp_servers_impl(project_dir: Option<String>) -> Vec<McpServerEntry> {
-    let claude_path = first_existing(&claude_json_candidates());
-    let claude_json = claude_path.as_deref().and_then(read_json_lenient);
-    let claude_src = claude_path
-        .as_ref()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
-
-    let (project_mcp, project_src) = match project_dir.as_deref() {
-        Some(dir) if !dir.trim().is_empty() => {
-            let mcp = Path::new(dir).join(".mcp.json");
-            let src = mcp.to_string_lossy().into_owned();
-            (read_json_lenient(&mcp), src)
-        }
-        _ => (None, String::new()),
+/// 问 `origin` 那台机器的后端要 MCP 列表（本机 = `<local>` 长连接）。
+pub(crate) async fn mcp_on(origin: &Origin, project_dir: Option<&str>) -> Result<McpRead, String> {
+    let who = crate::backend::control::frame_query::who(origin);
+    let args = match project_dir.map(str::trim).filter(|d| !d.is_empty()) {
+        Some(d) => serde_json::json!({ "projectDir": d }),
+        None => serde_json::json!({}),
     };
-
-    collect_entries(
-        claude_json.as_ref(),
-        &claude_src,
-        project_mcp.as_ref(),
-        &project_src,
-        project_dir.as_deref(),
+    let v = crate::backend::control::frame_query::call(
+        origin,
+        "mcp-read",
+        args,
+        crate::backend::control::frame_query::Deadline::within(MCP_READ_BUDGET),
     )
+    .await?;
+    decode_mcp_read(&who, &v)
 }
 
-/// F87 读命令：跨 scope 展示项目的 MCP servers。宽容——缺/坏文件返回空段。
-/// §10：文件 IO（`~/.claude.json` 重度用户可数 MB）走 `spawn_blocking`，不阻塞 IPC 派发线程。
+/// F87 读命令：跨 scope 展示项目的 MCP servers（本机）。宽容——缺/坏文件返回空段。〔SH1〕问本机后端 `mcp-read`。
 #[tauri::command]
 pub async fn read_mcp_servers(project_dir: Option<String>) -> Result<Vec<McpServerEntry>, String> {
-    tokio::task::spawn_blocking(move || read_mcp_servers_impl(project_dir))
-        .await
-        .map_err(|e| format!("spawn_blocking: {e}"))
-}
-
-fn list_mcp_project_dirs_impl() -> Vec<String> {
-    first_existing(&claude_json_candidates())
-        .as_deref()
-        .and_then(read_json_lenient)
-        .map(|v| project_dirs_from(&v))
-        .unwrap_or_default()
+    Ok(mcp_on(&Origin::local(), project_dir.as_deref())
+        .await?
+        .entries)
 }
 
 /// F87 读命令：候选项目目录（`~/.claude.json` 的 `projects` 键，排序）——前端 datalist 自动补全用。
 /// 设置窗独立于主窗口、拿不到活跃会话 cwd，故让用户从「用过的项目」里选/补全。宽容：缺/坏 → 空。§10 spawn_blocking。
 ///
 /// 🔴 **〔步 12·C 2026-09-20〕这里原先是两条命令**（`list_mcp_project_dirs` ＋
-/// `list_remote_mcp_project_dirs`），今天是一条带 `origin` 的。`设计/00 §2.5 ①` 逐字
+/// `list_remote_mcp_project_dirs`〔散文墓碑〕），今天是一条带 `origin` 的。`设计/00 §2.5 ①` 逐字
 /// 「同义双份命令合成一条带 origin 参数的」。
 ///
-/// **凭什么说这一对是同一件事**（不是按名字判的，按 `真相源/97 §二b` 那两条判据判的）：
-/// 两侧问的是**同一份文件的同一个键**（`~/.claude.json` 的 `projects`），
-/// 而且**算它的那一份代码本来就只有一份** —— [`project_dirs_from`]。
-/// 两侧的差别只在「那个文件的字节从哪来」：本机 `read_json_lenient` 直接读盘，
-/// 远端 `fetch_remote_claude_json` 走 SSH `cat`。⇒ 这正是 `INVARIANTS §40`
-/// 「本地 ＝ 不走 ssh 的远端」那一句在命令面上的样子。
+/// 两侧问的是**同一份文件的同一个键**；〔SH1 · V137〕今天连「字节从哪来」都是同一条路（那台后端的 `mcp-read`），
+/// 这正是 `INVARIANTS §40`「本地 ＝ 不走 ssh 的远端」那一句在命令面上的样子。
 ///
 /// ⚠ **本机是 `Origin::local()`（线上 `"<local>"`），不是 `null`** ——
 /// 「没说」那一支由 [`Origin::route`] 当场拒掉，理由见它的头注。
 #[tauri::command]
 pub async fn list_mcp_project_dirs(origin: Origin) -> Result<Vec<String>, String> {
-    match origin.route("list_mcp_project_dirs")? {
-        Route::Local => tokio::task::spawn_blocking(list_mcp_project_dirs_impl)
-            .await
-            .map_err(|e| format!("spawn_blocking: {e}")),
-        Route::Remote(host) => list_remote_mcp_project_dirs(host).await,
-    }
+    // 〔SH1 · V137〕本机远端同一条路：问那台后端的 `mcp-read`（它的 `dirs`）。`route` 只为当场拒掉「没说」那一形。
+    origin.route("list_mcp_project_dirs")?;
+    Ok(mcp_on(&origin, None).await?.dirs)
 }
 
-/// F87b③：跨机读远端 MCP。**只读**（守 §1：SSH exec `cat` 远端**用户自己**的 `~/.claude.json`，
-/// 不写、不驱动远端 agent）。**不依赖未建的 backend**。
-/// 命令是**定值、无用户输入插值**（origin 只用于解析 cfg）→ 零注入面；远端 shell 展开变量。
-/// 复用纯核心 `collect_entries` 取 **user scope**（顶层 mcpServers = 机器全局 MCP）。local/project scope 是
-/// per-项目、跨机无稳定映射，**不取**（见 F87b 计划）。带 30s 超时 + 32MB 上限（config 重度用户可数 MB）。
-/// 宽容：缺/坏文件 → 空段（cat 失败 stdout 空 → 解析 None → 空 Vec）。
-/// F87b-fix(batch18 审计修)：① **多候选路径**——先试 `$CLAUDE_CONFIG_DIR/.claude.json`、再回退 `$HOME/.claude.json`
-/// （覆盖本机 `claude_json_candidates` 的**两个主候选**；原只试单一 `${CLAUDE_CONFIG_DIR:-$HOME}`，当用户把
-/// CLAUDE_CONFIG_DIR 指向数据目录却把 .claude.json 留在 $HOME 时静默误报空）。**注**：本机还有第三候选
-/// `parent($CLAUDE_CONFIG_DIR)/.claude.json`，跨机侧未覆盖（极罕见：CFGDIR 指子目录、.claude.json 在其父且父≠$HOME）。
-/// ② 大解析进 spawn_blocking（对齐 §10）。
+/// F87b③：跨机读远端 MCP 的 user 段（顶层 `mcpServers` = 机器全局 MCP）。**只读**。
+/// 〔SH1 · V137〕问那台后端的 `mcp-read`（不带项目目录 ⇒ 只有 user 段），不再经拨号链路 `cat ~/.claude.json`。
 #[tauri::command]
 pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntry>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-        copy_text(
-            "rsMcp.remote.notConfigured",
-            &[("machine", &origin.to_string())],
-        )
-    })?;
-    let claude_json = fetch_remote_claude_json(&cfg).await?;
-    let src = format!("[{}] ~/.claude.json", cfg.origin_label());
-    Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
-}
-
-/// 读远端 `~/.claude.json` 的上限〔devbench F10b 提成具名常量〕。
-const REMOTE_CLAUDE_JSON_CAP: u64 = 32 * 1024 * 1024;
-
-/// F87b③ 抽出（F89a 复用）：SSH exec `cat` 远端 `~/.claude.json` → 宽容解析（缺/坏 → None）。**只读**。
-/// 定值命令、无用户输入拼接 → 零注入面；多候选（CLAUDE_CONFIG_DIR 优先、否则 $HOME）；30s 超时 + 32MB 上限
-/// （⚠ **超限是拒收+回错**，devbench F10b —— 不是「宽容解析」那一档：截断的 JSON 解析失败会
-/// 报「解析失败」而不是「超限」，那是误导性的错误）；
-/// 大解析进 spawn_blocking（对齐 §10）。
-async fn fetch_remote_claude_json(
-    cfg: &crate::ssh_source::RemoteConfig,
-) -> Result<Option<Value>, String> {
-    use tokio::io::AsyncReadExt;
-    const CMD: &str = r#"{ [ -n "$CLAUDE_CONFIG_DIR" ] && cat "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; } || cat "$HOME/.claude.json" 2>/dev/null || true"#;
-    let read = async {
-        let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CMD).await?;
-        let mut buf = Vec::new();
-        // `+ 1` 见 src/backend/common/fs.rs：不多读一个字节就分不清
-        // 「刚好读满」与「其实还有」。⚠ 截断的 JSON 会在下面解析失败，用户看到的是
-        // 「解析失败」而不是「超限」—— 那是**误导性的错误**，不是诚实的降级。
-        stream
-            .take(REMOTE_CLAUDE_JSON_CAP + 1)
-            .read_to_end(&mut buf)
-            .await
-            .map_err(|e| copy_text("rsMcp.remote.readFailed", &[("e", &e.to_string())]))?;
-        if buf.len() as u64 > REMOTE_CLAUDE_JSON_CAP {
-            return Err(copy_text(
-                "rsMcp.remote.tooBig",
-                &[("cap", &REMOTE_CLAUDE_JSON_CAP.to_string())],
-            ));
-        }
-        Ok::<Vec<u8>, String>(buf)
-    };
-    let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
-        .await
-        .map_err(|_| {
-            copy_text(
-                "rsMcp.remote.timeout",
-                &[("machine", &(cfg.origin_label()).to_string())],
-            )
-        })??;
-    tokio::task::spawn_blocking(move || {
-        let text = String::from_utf8_lossy(&raw);
-        serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')).ok()
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking: {e}"))
-}
-
-/// F89a：列远端项目目录（`~/.claude.json` 的 `projects` 键，排序）——前端远端项目选择器 datalist 用。**只读**。
-///
-/// 🔴 **〔步 12·C〕它不再是一条 Tauri 命令** —— 上线的那一条是
-/// [`list_mcp_project_dirs`]，本函数是它的远端那一支。名字**刻意没改**：
-/// `local_origin_registry::TRIAGE_DEBT` 按「文件::函数」登记着这一处，
-/// 改名会让那张表静默失配（那条判据的 `stale` 断言逐字治这件事）。
-pub(crate) async fn list_remote_mcp_project_dirs(host: &str) -> Result<Vec<String>, String> {
-    let cfg = crate::load_remote_config_by_label(host).ok_or_else(|| {
-        copy_text(
-            "rsMcp.remote.notConfigured",
-            &[("machine", &host.to_string())],
-        )
-    })?;
-    let claude_json = fetch_remote_claude_json(&cfg).await?;
-    Ok(claude_json
-        .map(|v| project_dirs_from(&v))
-        .unwrap_or_default())
+    Ok(mcp_on(&Origin(origin), None).await?.entries)
 }
 
 /// F87b③：机器选择器用——返回**已配置且启用**的远端 origin（**canonical** `origin_label()`，后端口径）。

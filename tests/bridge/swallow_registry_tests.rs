@@ -132,8 +132,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/crates/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", 1, Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
     ("src/bridge/crates/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", 5, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/bridge/crates/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", 2, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/bridge/src/backend/control/cc_bus.rs", "let _ = child.start_kill();", 1, Why::Reap, ""),
-    ("src/bridge/src/backend/control/cc_bus.rs", "let _ = child.wait().await;", 1, Why::Reap, ""),
+    // 〔SH1 · V136〕`cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
     ("src/bridge/src/backend/control/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),

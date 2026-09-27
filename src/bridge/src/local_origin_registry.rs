@@ -31,7 +31,7 @@
 //!   「本机这条路被单独想过一次」，不保证想对了。这条边界写在这里，
 //!   免得下一个人以为它保证了更多。
 //! - **不挡（08-12 由变异逼出来的第二格）**：**隔了一层包装的调用**。
-//!   `cc_bus.rs::cfg_of` 就是这种 —— 它自己直接调，所以本护栏看得见它；
+//!   cc-bus 驾驶舱那份 `cfg_of`〔散文墓碑〕（〔SH1〕随 shell 读删了）就是这种 —— 它自己直接调，所以本护栏看得见它；
 //!   而 `cc_bus_send` / `cc_bus_spawn` 调的是 `cfg_of`，**本护栏对它们是瞎的**。
 //!   实测：拿掉 `cc_bus_send` 的本机拒绝，本条**照样绿**（P4a 的变异 M5）。〔散文墓碑〕
 //!   〔C4e〕那两条命令今天都不在了（写面迁到界面经通道直接说后端），这一格的样本随之只剩历史。
@@ -98,10 +98,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔C4c · 第四波 4B〕账号面那一行（`cfg_for`，原住 `accounts.rs`）〔散文墓碑〕**还掉了**：它只服务远端账号清单与信任预检两条 Tauri 命令，
     //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
     ("ccm_probe.rs", "probe_ccm_cli"),
-    ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks"),
+    // 〔SH1〕`hooks_diag.rs::diagnose_remote_cc_bus_hooks` 那一行还掉了：它不再查远端配置（事实经 `frame_query::call(origin, …)` 问那台后端）。
     ("launch.rs", "build_remote_ssh_ps_command"),
-    ("mcp.rs", "list_remote_mcp_project_dirs"),
-    ("mcp.rs", "read_remote_mcp_servers"),
+    // 〔SH1 · V137〕`mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
     ("mcp.rs", "read_remote_project_mcp"),
     // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
     //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
@@ -116,7 +115,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
-    ("backend/control/tmux.rs", "list_remote_tmux"),
+    // 〔SH1〕`backend/control/tmux.rs::list_remote_tmux` 那一行还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
     // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。

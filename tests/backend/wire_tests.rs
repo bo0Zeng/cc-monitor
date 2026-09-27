@@ -832,8 +832,8 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
     #[rustfmt::skip]
     let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None },
+        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None },
+        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None },
     ];
     let discovered = crate::agents::visible_among(synth);
     assert_eq!(

@@ -11,7 +11,13 @@ use super::*;
 /// 本族的帧命令 —— **题面给的**那几样（任务列表 · 插件市场），写成帧面名。
 /// 它是判据的**异源**那一侧：下面那条从 `inbound.rs` 源码里数「谁把活交给了
 /// `feature_face::answer`」，两边必须相等。
-const FAMILY: &[&str] = &["plugins-marketplaces", "tasks-list"];
+// 〔SH1 · V137〕＋ `mcp-read`（MCP 列表成品，读法住适配层）。
+const FAMILY: &[&str] = &[
+    "mcp-read",
+    "plugins-marketplaces",
+    "tasks-list",
+    "tmux-list",
+];
 
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("rm1b-face-{tag}-{}", std::process::id()));
