@@ -567,7 +567,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4h-search-index-hostkey**（2026-09-26，SX1 ＋ VIS2 合并那一拍）：行为 —— `history-search` 背后常驻内存增量索引（应答逐字节不变）·
 /// watcher `agent_home` 不在先挂父目录、出现后挂它本身（`rewatch_agent_home`）· `DialAck` 多一格 `fingerprints`（additive，`ACK_V` 不动）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4h-search-index-hostkey";
+///
+/// ★★★ **p4i-bus-mcp-tmux-reads**（2026-09-26，第四波 4D SH1 合并那一拍）：子命令 ＋3 `--bus-inbox` · `--mcp-read` · `--tmux-list`（帧命令同名 ＋3）。
+/// ＋ 行为：`bus-state` 读 `cc-list --tsv`（应答形状变）· `kill` 成功后按 pane pid `cc-kill` 注销 · `BUS_ID_RECIPE` 读会话名走 UTF-8 客户端（`-u`）。
+pub const BUILD_ID: &str = "p4i-bus-mcp-tmux-reads";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -664,6 +667,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   界面改经通道直接说后端之后收进后端。登记理由同下面那几条；⚠ 加这一行逼出一次 `BUILD_ID` bump
     //   （`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--bus-broadcast",
+    // 〔SH1 · V136〕帧面 `bus-inbox` 自动派生的 CLI 面（只读看收件箱尾巴）。⚠ 加这一行逼出 `BUILD_ID` bump，本路不 bump。
+    "--bus-inbox",
     "--bus-kill",
     "--bus-list",
     "--bus-send",
@@ -704,6 +709,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--acct-iso-cmd",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
     // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
+    // 〔SH1 · V137〕帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--mcp-read",
     "--mcp-sync-plan",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
@@ -837,6 +844,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--tasks-list",
+    // 〔SH1〕帧面 `tmux-list` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--tmux-list",
     "--tmux-notify",
 ];
 

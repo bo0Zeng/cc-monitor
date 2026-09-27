@@ -97,8 +97,6 @@ import type { BranchResult } from "../generated/BranchResult";
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 //   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { CcBusMessage } from "../generated/CcBusMessage";
-import type { CcBusState } from "../generated/CcBusState";
 import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
@@ -372,12 +370,7 @@ export const commands = {
     onChunk: Channel<JsonlLinePayload[]>;
   }) => invoke<number>("stream_read_session_jsonl", args),
 
-  /** 读某 agent 的 inbox。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  read_cc_bus_inbox: (args: { origin: string; id: string }) =>
-    invoke<CcBusMessage[]>("read_cc_bus_inbox", args),
-
-  /** 读 bus 的完整状态（agents + spawned + 坏行数）。`skipped: usize` → `number`。 */
-  read_cc_bus_state: (args: { origin: string }) => invoke<CcBusState>("read_cc_bus_state", args),
+  // 〔SH1 · V136〕`read_cc_bus_inbox` / `read_cc_bus_state` 两条退役：驾驶舱读面经通道直接问后端（`src/cc-bus-control.ts`）。
 
   /**
    * 把本机公钥推到远端 `authorized_keys`。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -508,8 +501,8 @@ export const commands = {
    * 把 `path` 与 `vendor_id` 藏掉了。而 Rust 那两个字段的注释明写「附带回传，
    * 避免以后要它时再加一趟往返」⇒ **是手写镜像把后端的好意抹掉了**。
    */
-  check_remote_acct_iso: (args: { cfg: unknown }) =>
-    invoke<AcctIsoStatus>("check_remote_acct_iso", args),
+  // 〔SH1 · `设计/00 §2.5 ①`〕`acct-iso.check` 本机 / 远端两条合成这一条（带 `origin`；本机是 `"<local>"`）。
+  acct_iso_status: (args: { origin: Origin }) => invoke<AcctIsoStatus>("acct_iso_status", args),
 
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),
@@ -602,14 +595,9 @@ export const commands = {
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
     invoke<string>("deploy_remote_acct_iso", args),
-  /** Z05：抓远端 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。 */
-  remote_acct_iso_shellinit: (args: { cfg: unknown }) =>
-    invoke<string>("remote_acct_iso_shellinit", args),
-  /** 〔`A3` 第二波〕上面两条的**本机**对侧：问本机后端（`--acct-iso-status` / `--acct-iso-shellinit`）。
-   *  出参与远端那条逐字相同。⚠ 今天**还没有界面调用点** —— 设置页账号那一节归 A2+ST1，
-   *  接线在那边；这里先把口开好（账本 `acct-iso.check` / `acct-iso.shellinit` 两笔欠账随之结清）。 */
-  check_local_acct_iso: () => invoke<AcctIsoStatus>("check_local_acct_iso"),
-  local_acct_iso_shellinit: () => invoke<string>("local_acct_iso_shellinit"),
+  /** Z05：抓那台 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。
+   *  〔SH1 · `设计/00 §2.5 ①`〕本机 / 远端两条合成这一条（带 `origin`）。 */
+  acct_iso_shellinit: (args: { origin: Origin }) => invoke<string>("acct_iso_shellinit", args),
 
   /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
@@ -677,7 +665,7 @@ export const commands = {
   /**
    * 有 `.mcp.json` 的项目目录候选（`~/.claude.json` 的 `projects` 键）。
    *
-   * 🔴 **〔步 12·C〕`list_remote_mcp_project_dirs` 已退役，两条收成这一条。**
+   * 🔴 **〔步 12·C〕`list_remote_mcp_project_dirs`〔散文墓碑〕 已退役，两条收成这一条。**
    * 两侧算它的那一份代码本来就只有一份（Rust `project_dirs_from`），
    * 差别只在「那份 `~/.claude.json` 的字节从哪来」。
    */

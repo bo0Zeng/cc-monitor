@@ -12,7 +12,6 @@
 use crate::copy_table::copy_text;
 use crate::ssh_source;
 use serde::Serialize;
-use tokio::io::{AsyncReadExt, BufReader};
 
 /// `tmux ls -F` 的格式串。字段以**真 TAB**分隔(见模块注释):
 /// name ⇥ pane_current_path ⇥ pane_current_command ⇥ attached(1/0) ⇥ windows ⇥ @ccm_sid。
@@ -20,86 +19,18 @@ use tokio::io::{AsyncReadExt, BufReader};
 /// 哪个 CC sid」的权威信号(pane title 被 Claude 活动标题抢写、不可靠;user option Claude 碰
 /// 不到)。**未设置的会话此列为空串**(老会话 / 未装 wrapper)→ 解析成 `sid: None`,消费方回退
 /// 旧的 path/cmd 匹配,向后兼容。
+// 〔SH1〕生产段今天零处用它（跨 SSH 那条 `tmux ls` 改问后端了）；留着是因为它是与后端 watcher 那一份对拍的双写点
+//   （帧流里推的 raw 就按这个格式串切，`TMUX_LS_FMT_FIELDS` 仍在用）。
+#[cfg_attr(not(test), allow(dead_code))]
 const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
 /// `TMUX_LS_FMT` 的列数 —— [`tmux_tab_underflow`] 的 N。**改格式串必须同步这个数**
 /// （格式串本身是红线 I8 双写点，见上面头注）。
 const TMUX_LS_FMT_FIELDS: usize = 6;
 
-/// ★★ **K-R12（09-04）：`-u` —— 让**远端**那个 tmux 客户端始终按 UTF-8 输出。**
-///
-/// # 病：不是「格式串写错了」，是 **tmux 自己把输出重写了**
-///
-/// 模块头注那条「格式串不解释字面 `\t`、必须给真 TAB」说的是**我们怎么写**；
-/// 这一条说的是**tmux 怎么打**。tmux 对输出通道做 sanitize：**客户端不是 UTF-8 时，
-/// 控制字符与非 ASCII 一律换成 `_`**（按**显示宽度**替换，不按字节数：实测 `文`(3B)→`__`）。
-/// 我们靠来分列的真 TAB（0x09）首当其冲。沙箱实测（`tests/evidence/K-R12-locale-lab.md`，
-/// 容器内 tmux 3.4 + 私有 socket + `od -c` 读字节）：POSIX 客户端下 `TMUX_LS_FMT`
-/// 那**六列塌成 1 段** ⇒ [`parse_tmux_ls`] 的 `f.len() != 6` 把**每一行**都丢掉
-/// ⇒ **右键菜单里一个 tmux 会话都没有，而 rc=0、stderr 空、一条日志都没有。**
-///
-/// # 判「是不是 UTF-8 客户端」的规则**不问 glibc**，所以配置推不出结果
-///
-/// 实测：tmux 取 `LC_ALL` → `LC_CTYPE` → `LANG` 的第一个非空值，做一次
-/// **大小写不敏感的 `UTF-8`/`UTF8` 子串匹配**。`zz_ZZ.UTF-8`（locale 根本不存在）**干净**，
-/// 而 `C` / `zh_CN.GB18030` / `LC_ALL=''` / 什么都不设 **全脏**。
-///
-/// # 🔴 为什么跨 SSH 这两处必须用 `-u`，不能学后端那边挂 `LC_ALL`
-///
-/// 1. **这里没有本地 `Command` 可挂 env** —— 命令是一条字符串，交给 `russh` 的
-///    `channel.exec` 在**对端**跑。
-/// 2. 走 SSH 的 `request_env` 要赌**对端 sshd 的 `AcceptEnv`**：不认就**静默拒绝**，
-///    我们这侧看不出任何区别 —— 拿一条静默失效去治另一条静默失效。
-///    （全仓 `.env("LANG"/"LC_ALL"/"LC_CTYPE")` 命中 0 处，`channel.exec` 也不带 env 请求。）
-/// 3. 在命令串里前缀 `LC_ALL=C.UTF-8 tmux …` 也能成（实测 dash 上成立），但它要求
-///    **对端认得这个赋值前缀**；而 `-u` 实测**连 `env -i`（环境全清）都盖得住**，
-///    **不需要对端装任何 locale、不需要 sshd 配合**。这是本仓对远端假设最少的一条。
-/// 4. 位置是硬的：`-u` 必须在子命令**之前**。实测 `tmux ls -u -F …` 与
-///    `tmux display-message -u -p …` 都是 `rc=1 + unknown flag -u` ⇒ **放错是响的**。
-///
-/// ⚠ `capture-pane -p` **不在人群里**：实测它抓回来的中文是原始 UTF-8 字节，
-/// POSIX / `C.UTF-8` / `-u` 三种模式逐字节相同 ⇒ 抓屏（今天由后端 `control/capture_pane.rs` 跑）
-/// **不受本件影响**，本拍**刻意不给它加 `-u`**（不扩面）。
-/// 〔`设计/50`：原话还并列了 `account_usage.rs` 的用量探针 —— 那条整轴退役了。〕
-///
-/// ⚠ **`-u` 单独不够**，它的失效面是「某一处忘了插」，而那是静默的。
-/// 处置那一半今天在 `list_remote_tmux` 上：[`tmux_tab_underflow`]（K-R12 `J1`）。
-/// **预防（本条）与处置（那条）是两件事，缺一不可，且必须能共存。**
-///
-/// ⚠ `K-R72`（09-12）：处置那一半原先是**两条** —— 另一条是 `build_guarded_tmux_cmd`
-/// 那道门用 `K-R23` 落的 `CCM_GUARD_UNPARSABLE`。那条门随送键与杀会话的桌面侧回落
-/// 一起走了 ⇒ **跨 SSH 的 tmux 读今天只剩 `ls` 一条**，人群与处置一起缩到 1。
-/// backend 侧同族的那一条仍在（`control/gate.rs` 的 `CCM_TMUX_UNPARSABLE`），
-/// 它守的是 backend **本机**那次 `display-message`，与跨 SSH 这条不是同一处。
-///
-/// # ★★ K-R12 下一拍（09-04）：**这一份为什么留在这里** —— 两条路各自的论据
-///
-/// backend 那两份上一拍是三份里的两份，本拍已经归位到**一个家**
-/// （`src/backend/common/tmux_utf8.rs`，`control/` 与 `observe/` 两层各自 `use` 它，
-/// 编译器兜住、漂不了）。本份是**第三份**，它跨的是二进制，两条路都量过：
-///
-/// - **乙 · 放进某个已有的 `*-core` 共享 crate**（那是本仓治「五份逐字节相同」的成方，
-///   `shell-quote-core` 的头注逐字写着「两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体」）。
-///   逐个对职责，**七个都装不下**，其中两条是硬的、不是口味：
-///   ① `guard-core` 在后端那侧只是 `[dev-dependencies]` ⇒ 生产段**引不到**它，
-///      而本 const 恰恰长在生产段（结构性不可能，不是取舍）；
-///   ② `gate-core` 的边界头注逐字是「**本 crate 只判，不取**」，而「怎么起 tmux」正是**取**那一侧
-///      （它自己接着写：把取值塞进来「共享当场破掉」）；
-///   ③ `shell-quote-core` 头注逐字「**本 crate 只剩这一件事**」，而它缩到只剩一件的理由
-///      逐字是「那批东西**不是共享的，是没处放的**」—— 往它塞一个无关口径，
-///      正是 `P4b` 刚治完的那个病复发；
-///   ④ `branch-core` / `usage-core` / `acct-core` / `creds-core` 是各自的域（分叉记录变换 /
-///      用量 / 账号 / 凭据），职责上不沾。
-///   ⚠ **新开一个 crate 不在本拍的选项里**（要动 `src/bridge/Cargo.toml` 的 workspace，PM 未裁）。
-/// - **甲 · 留在这里 + 一条跨仓对拍**（本拍选它）。它不是妥协，有两条正面理由：
-///   ① 本仓对**同一族**的同一个问题已经这么解过两次，而且就在本文件里：
-///      `tmux_ls_fmt_double_write_point_stays_in_sync` 与
-///      `observation_tokens_double_write_point_stays_in_sync` —— 那两条钉的
-///      `TMUX_LS_FMT`、`OBS_*` 与本 const **读的是同一条 `tmux ls` 输出**。
-///      同族的第三个口径用同一种机制钉，读的人对得起来；
-///   ② 对拍的作用域**说得清**：它读两棵树、跑在 monitor 那格 cargo 里
-///      （逐字见 `utf8_client_kou_jing_has_one_home_and_this_side_matches_it` 的头注）。
-const UTF8_CLIENT_FLAG: &str = "-u";
+// 〔SH1 · 09-26〕这里原先住着跨 SSH 那条 `tmux ls` 用的 UTF-8 旗 `UTF8_CLIENT_FLAG`〔散文墓碑〕（K-R12 · `INVARIANTS §49`，与后端那个家跨仓对拍）。
+//   `list_remote_tmux` 改问那台后端的 `tmux-list` 之后 monitor 侧**零处**跨 SSH 的 tmux 读 ⇒ 旗随之删（它的家在后端 `common/tmux_utf8.rs`，
+//   那一趟 `tmux ls` 用的是 env 形 `UTF8_CLIENT_ENV`）；段数下溢的处置（下面那个谓词）照旧留着，仍与后端那个家对拍。
 
 /// ★★ **K-R12 `J1`：段数下溢 —— 「拆不出段」不许被当成好数据。**
 ///
@@ -222,42 +153,27 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
         .collect()
 }
 
-/// 列远端 tmux 会话(通道 B,一次性 exec)。`command -v tmux` 门控:无 tmux → 哨兵 `NO_TMUX`
-/// → 返 `None`(前端隐藏 attach 项);有 tmux 但无会话 → `Some(空)`。
+/// 列远端 tmux 会话。〔SH1〕问那台后端的 `tmux-list`（与流里推的那份观测同一趟 `tmux ls`），不再经拨号链路跑 shell。
+/// 三档不共用读数：没装 tmux = `None`（前端隐藏 attach 项）· 零会话 = `Some([])` · 通道脏 / 问不到 = `Err`（fail-closed）。
 #[tauri::command]
 pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>, String> {
-    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-        copy_text(
-            "rsTmux.list.noConfig",
-            &[("origin", &format!("{:?}", origin))],
-        )
-    })?;
-    // `tmux ls` 无会话时非零退出("no server running")→ `|| true` 吞掉,得空输出=空列表。
-    // K-R12：`-u` 在子命令**之前**（`tmux ls -u -F` 是 rc=1 的响错）。见 `UTF8_CLIENT_FLAG`。
-    let cmd = format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux {UTF8_CLIENT_FLAG} ls -F '{TMUX_LS_FMT}' 2>/dev/null || true; else printf 'NO_TMUX\\n'; fi"
-    );
-    let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
-    let mut reader = BufReader::new(stream);
-    // lossy 解码(对齐全批 exec 输出读取:非 UTF-8 字节不该整体失败)。
-    let mut buf: Vec<u8> = Vec::new();
-    reader
-        .read_to_end(&mut buf)
-        .await
-        .map_err(|e| copy_text("rsTmux.list.failed", &[("e", &e.to_string())]))?;
-    let out = String::from_utf8_lossy(&buf);
-    if out.trim() == "NO_TMUX" {
+    let o = crate::origin::Origin(origin);
+    let v = crate::backend::control::frame_query::call(
+        &o,
+        "tmux-list",
+        serde_json::json!({}),
+        crate::backend::control::frame_query::Deadline::within(TMUX_LIST_BUDGET),
+    )
+    .await?;
+    let who = crate::backend::control::frame_query::who(&o);
+    let (installed, lines) =
+        decode_tmux_list(&v).ok_or_else(|| copy_text("rsTmux.list.shape", &[("who", &who)]))?;
+    if !installed {
         return Ok(None);
     }
-    // ★★ K-R12 `J1`：**raw 的入口**（这条路上 raw 只从这里进）。段数下溢 ⇒ 通道被改写。
-    //
-    // 🔴 处置必须是 `Err`，不能是 `Ok(Some(vec![]))`：后者与「远端真的一个会话都没有」
-    // **逐字相同**，正是本件那条「没有任何判据看得见它」的成因。也不能是 `Ok(None)` ——
-    // 那一档的语义是「远端没装 tmux」（前端据此隐藏 attach 项），同样是另一件事。
-    // ⇒ 三档不共用读数：没装 tmux = `None`、零会话 = `Some([])`、通道脏 = `Err`。
-    // 调用方（`tabs.ts` / `fork-flow.ts`）对 `Err` 一律走失败路径 ⇒ **fail-closed**。
-    if let Some(bad) = out
-        .lines()
+    // K-R12 `J1`：段数下溢 ⇒ 通道被改写 ⇒ `Err`（后端那一侧已判过一次；老后端没有那道关，这里照旧再判）。
+    if let Some(bad) = lines
+        .iter()
         .find(|l| !l.trim().is_empty() && tmux_tab_underflow(l, TMUX_LS_FMT_FIELDS))
     {
         return Err(copy_text(
@@ -269,7 +185,23 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
             ],
         ));
     }
-    Ok(Some(parse_tmux_ls(&out)))
+    Ok(Some(parse_tmux_ls(&lines.join("\n"))))
+}
+
+/// 问 `tmux-list` 的期限（后端那一趟 `tmux ls` 自带 5 s 上界）。
+const TMUX_LIST_BUDGET: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// `tmux-list` 的成品 → `(装了没有, 原样行)` —— 纯函数，严格收（恰好两格、类型对）；对不上 ⇒ `None`。
+pub(crate) fn decode_tmux_list(v: &serde_json::Value) -> Option<(bool, Vec<String>)> {
+    let o = v.as_object().filter(|o| o.len() == 2)?;
+    let installed = o.get("installed")?.as_bool()?;
+    let lines = o
+        .get("lines")?
+        .as_array()?
+        .iter()
+        .map(|l| l.as_str().map(str::to_string))
+        .collect::<Option<Vec<_>>>()?;
+    Some((installed, lines))
 }
 
 /// P3-刀2-UI：**本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形。

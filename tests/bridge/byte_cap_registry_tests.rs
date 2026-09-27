@@ -57,6 +57,11 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "INBOX_LINES_MAX",
+        "〔SH1 · V136〕**行数**不是体量：后端 `bus-inbox` 的 `lines` 入参上界（看收件箱尾巴最多几行，越界 ⇒ `invalid_args`）；\
+             限字节总量的是同文件的 `INBOX_CAP`。",
+    ),
+    (
         "READ_FLOOR_BPS",
         "〔DL1 · 第五波〕**速率**（字节 / 秒）不是体量：`frame_query·rs::read_budget` 拿它把「要读多少字节」折成分页读那一件的\
              总时限（`设计/05 §3.3.2` 一件事一个绝对时刻）。它不限任何字节总量、不截任何东西 —— 限总量的是各自的字节上限\
@@ -445,46 +450,27 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 读满就停、缓冲区里是半份数据，而调用方拿它当完整的用。那正是本表这个封闭集合
     // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
     // （形态照抄 `src/backend/common/fs.rs` 那条既有注释）。
-    (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "CC_BUS_TSV_CAP",
-        32 * 1024 * 1024,
-        "读远端 cc-bus 的两份登记表（`agents.tsv` + `spawned.tsv`）",
-        "拒收+回错",
-    ),
+    // 〔SH1 · V136〕这里原先登记着 `cc_bus.rs` 读两份登记表的 `CC_BUS_TSV_CAP`〔散文墓碑〕（32 MiB，拒收+回错）：
+    //   驾驶舱读名册改由界面经通道问后端 `bus-state`（转调 `cc-list --tsv`），monitor 这边不再读流 ⇒ 常量随那条读删了。
     // 🔴 `K-R112`（09-13）：**cc-bus 查在线那条读上限删了，不是「忘了」。**
     //    它是老那条按名字探在线的 shell 串（`tmux has-session`）的读上限，
     //    而查在线整条改走后端的 `bus-list` 帧之后**没有一条流要读** ——
     //    帧应答是结构化的，上限由入方向通道自己那一层管。
     //    ⇒ 常量不存在了，留着这一行就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
+    // 〔SH1 · V136〕monitor 读收件箱那条 `INBOX_READ_CAP`〔散文墓碑〕（4 MiB，截断+说清）搬进后端 `bus-inbox`（下一行）。
     (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "INBOX_READ_CAP",
+        "src/backend/control/cc_bus.rs",
+        "INBOX_CAP",
         4 * 1024 * 1024,
-        "读某个 agent 的 inbox",
-        // ★〔G 审计改档〕原登记「拒收+回错」，那是**行为回归**：命令是 `tail -n 200`，
-        // 而 `parse_inbox_jsonl` 的契约逐字是「坏行跳过并计数，不因坏行丢好行」——
-        // 旧的截断行为下末行被跳过、前 199 条照常显示；改成回错之后**一条都不显示**。
-        // 这是唯一一处调用方**明确**依赖宽容降级的地方。
+        "`bus-inbox` 交回的收件箱尾巴（`cc-log` 的回显）",
+        // 这是回显不是清单：超了保尾、成品里 `truncated: true` 说清（与 monitor 旧那条同档）。
         "截断+说清",
     ),
     // 〔BS1b 09-24〕这里原先登记着 `cc_bus.rs` 的控制类回显上限（发消息 / spawn 的回显，64 KiB，截断+说清）。
     //   发消息 `K-R98`、派生 BS1b 先后改走后端原语，那两条回显不再经 SSH 读 ⇒ 常量随最后一个用户删了。
     //   「截断没毒、回 Err 有毒（用户会重试、再起一个 agent）」那条理由今天住在 `OnOverflow::Truncate` 的头注里。
-    (
-        "src/bridge/src/mcp.rs",
-        "REMOTE_CLAUDE_JSON_CAP",
-        32 * 1024 * 1024,
-        "读远端 `.claude.json`",
-        "拒收+回错",
-    ),
-    (
-        "src/bridge/src/hooks_diag.rs",
-        "REMOTE_SETTINGS_CAP",
-        4 * 1024 * 1024,
-        "读远端 `settings.json`",
-        "拒收+回错",
-    ),
+    // 〔SH1 · V137〕`mcp.rs` 读远端 `.claude.json` 那条 `REMOTE_CLAUDE_JSON_CAP`〔散文墓碑〕（32 MiB）删了：改问那台后端 `mcp-read`（后端那份读上限是 `MAX_CONFIG_BYTES`）。
+    // 〔SH1〕`hooks_diag.rs` 读远端 `settings.json` 那条 `REMOTE_SETTINGS_CAP`〔散文墓碑〕（4 MiB）删了：改经那台后端 `files-peek`（上限归后端 `PEEK_MAX_BYTES`，已在表里）。
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
     // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
@@ -1408,12 +1394,6 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
              读满即停并回续点，由调用方翻下一页 —— 分页，不是截断。",
     ),
     (
-        "src/bridge/src/backend/control/cc_bus.rs",
-        "cap + 1",
-        "`exec_read` 是远端读的助手，上限是入参。〔BS1b 09-24〕今天只剩一个调用点（读 inbox），\
-             给的是具名常量 `INBOX_READ_CAP`，已在 `CAPS` 里。",
-    ),
-    (
         "src/backend/common/fs.rs",
         "cap + 1",
         "`read_file_capped` 是后端侧共用的有界读助手，上限是入参；\
@@ -1711,10 +1691,11 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    `check_cc_bus_agent_online`〔散文墓碑〕（`cc_bus.rs`，〔C4e〕已迁到界面）与 `capture_remote_pane`〔散文墓碑〕（`tmux.rs`，〔C4e〕已迁到界面）
     //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走后端帧面而
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
+    // 〔SH1 · 4D〕地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
     assert!(
-        population >= 11,
+        population >= 8, // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了
         "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
-             `K-R112` 09-13 现打 11）—— 抽取器坏了，本条此刻是空转的"
+             `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
     );
     assert!(
         orphans.is_empty(),

@@ -167,7 +167,11 @@ pub(crate) static SELF_CHECK_FAILED_FMT: std::sync::LazyLock<String> =
 pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
 
 /// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--print` 仍然不查实时 tmux 状态。
-pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\"$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && export CC_BUS_ID=\"$_ccm_bus\"; unset _ccm_bus; fi;";
+///
+/// 〔SH1 · `INVARIANTS §49` · V121〕`#S` 是**会话名**，用户起的会话名可以是中文 ⇒ 读它的那个 tmux 客户端必须是
+/// UTF-8 客户端（非 UTF-8 客户端下非 ASCII 被改写成 `_`，codex 的 cc-bus 身份就错了，且退出码仍是 0）。
+/// 这是拼进 pane 里跑的命令串 ⇒ 按 `common/tmux_utf8.rs` 那张表用**旗**（`-u`，排在子命令之前）。
+pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\"$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && export CC_BUS_ID=\"$_ccm_bus\"; unset _ccm_bus; fi;";
 
 /// `--help` 的正文。**每个认得的旗标都要在这里有一行** ——
 /// 由 `protocol_doc_guard` 那条受管例外的配套判据机检。
@@ -213,7 +217,7 @@ pub(crate) fn nested_env(agent: &str) -> Vec<String> {
 /// # ⚠ 〔`P19` 09-22〕它答的是「**要不要**」，不是「**能不能**」—— 两者别混
 ///
 /// 这一格为真只说明「codex 要一个 `CC_BUS_ID`」。**值从哪来**是另一件事：
-/// 来源恒是 tmux 的会话名（[`BUS_ID_RECIPE`] 里那句 `display-message -p "#S"`）
+/// 来源恒是 tmux 的会话名（[`BUS_ID_RECIPE`] 里那句 `tmux -u display-message -p "#S"`）
 /// ⇒ **没有 tmux 就没有这个值**，而这不是「codex 这一支做不到」，是**载体没了**
 ///（与 `base-url-across-tmux` 同一形，`lib.rs::TARGET_GAPS` 里 tmux 那一族 6 条已覆盖）。
 ///

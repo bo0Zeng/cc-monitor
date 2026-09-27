@@ -62,7 +62,15 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
              ⇒ 门要住在懂那套语义的一侧，本模块不重写一遍。",
         "同 `cc-agents`：pid 那一列能从命令面拿到的那天。**这一条是四条里最后收的**\
              —— 破坏性动作的门重写错一次的代价，本仓已经付过。",
-    ),    (
+    ),
+    (
+        "cc-log",
+        "只读（共享锁，不推已读位置）",
+        "〔SH1 · V136〕驾驶舱读收件箱的尾巴：收件箱与它的锁是 cc-bus 的私有格式（`inbox/<id>.jsonl` ＋ `<inbox>.lock`），\
+             `95 §3.3` 把命令当接口 ⇒ 后端转调它、不读那份文件；消费性读仍只走 `cc-peek` / `cc-commit`。",
+        "同 `cc-list`：cc-bus 本身被收成后端的一部分的那天。",
+    ),
+    (
         "cc-spawn",
         "写：起一个真 agent 会话（tmux ＋ claude/codex 进程，烧额度）· 登记进名册与 spawn 台账 · 预信任目录",
         "〔ccbus-spawn 09-24〕`bus-spawn` 那条原语的实现（**今天没登记进帧面**，等 `BUILD_ID`）。\
@@ -82,7 +90,7 @@ fn transcalled_today() -> Vec<String> {
         "../../../src/backend/control/cc_bus.rs"
     ));
     let mut out: Vec<String> = Vec::new();
-    for opener in ["run(\"", "run_as(\""] {
+    for opener in ["run(\"", "run_as(\"", "read_via(\""] {
         let mut from = 0usize;
         while let Some(k) = prod[from..].find(opener) {
             let at = from + k + opener.len();
@@ -160,12 +168,7 @@ fn every_shelled_out_command_carries_a_written_ruling() {
     }
 }
 
-/// ★ `KR113D1`：`bus-state` **一次回全**，而且 `agents` 那一半与 `bus-list` **同源**。
-///
-/// 钉的是**数据流**，不是「函数存在」：两条命令必须落到同一个 `agents_via_cc_list`，
-/// 否则 `bus-state.agents` 与 `bus-list.agents` 会各自漂。
-/// ⚠ 起子进程那一步在沙箱里跑不了（没装 cc-bus）⇒ 本条扫的是生产段的**接线**，
-/// 真跑由 `tests/e2e/backend-cc-bus.sh` 那一族负责。
+/// ★ `KR113D1`：`bus-state` **一次回全**（两半在同一个函数里取）。〔SH1〕两半改读 cc-bus 的机器可读形。
 #[test]
 fn bus_state_answers_both_halves_from_one_call() {
     let prod = crate::guard_support::production_code(include_str!(
@@ -176,72 +179,128 @@ fn bus_state_answers_both_halves_from_one_call() {
         .nth(1)
         .expect("`state_for_inbound` 不在生产段里了 —— `bus-state` 的本体没了");
     let body = &body[..body.find("\n}").expect("函数体没有收尾 —— 抽取坏了")];
-    for half in ["agents_via_cc_list()", "spawned_via_cc_agents()"] {
+    for half in ["roster()", "spawned_via_cc_agents()"] {
         assert!(
             body.contains(half),
-            "`state_for_inbound` 里没有 `{half}` —— 「一次回全」少了一半。\n\
-                 少的那一半会让调用方拿到一份**看上去完整**的答案（`spawned: []` 与\n\
-                 「问不到」在它那儿长得一模一样）。"
+            "`state_for_inbound` 里没有 `{half}` —— 「一次回全」少了一半"
         );
     }
-    // 〔C4e · 第四波 4C〕成品那一层抽成了纯构造器 `list_reply`（跨语言金样拿它对拍），数据流一格没变：
-    //   `bus-list` 仍是 `agents_via_cc_list()` 的原样一份。
-    assert!(
-        prod.contains("fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {\n    Ok(list_reply(agents_via_cc_list()?))"),
-        "`bus-list` 不再走 `agents_via_cc_list` 了 —— 两条命令的 `agents` 从此会各漂各的"
+}
+
+/// 〔SH1 · V136〕**跨语言金样**：驾驶舱读面两份成品，两侧读同一份 `tests/__fixtures__/cc-bus-read.golden.json`。
+/// 要求住址：`设计/05 §14.3`「成品的两侧对拍 … 后端测试产出 == 金样 · TS 解码器读同一份」· V136（登记时间 · 派生时间 · 坏行数 · 收件箱只看尾巴）。
+/// 异源：输入样例经**生产**解析器（`parse_roster_tsv` / `parse_spawned_tsv` / `parse_inbox` / `inbox_reply`）现算，reply 是手写期望；码集合 == `inbound::REGISTRY`。
+#[test]
+fn the_cockpit_read_products_match_the_cross_language_golden() {
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/cc-bus-read.golden.json"))
+            .expect("金样读不出来");
+    let st = &g["state"];
+    let (agents, sk1) = parse_roster_tsv(st["rosterTsv"].as_str().expect("缺 rosterTsv"))
+        .expect("名册样例过不了生产解析器");
+    let (spawned, sk2) = parse_spawned_tsv(st["spawnedTsv"].as_str().expect("缺 spawnedTsv"))
+        .expect("台账样例过不了生产解析器");
+    let sessions: Vec<(String, String)> = st["sessions"]
+        .as_array()
+        .expect("缺 sessions")
+        .iter()
+        .map(|p| {
+            (
+                p[0].as_str().unwrap().to_string(),
+                p[1].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        state_reply(agents, spawned, sk1 + sk2, Some(&sessions)),
+        st["reply"],
+        "`bus-state` 成品与金样不相等"
     );
-}
-
-/// ★ `cc-agents` 那张表的三态，逐态一格；**认不出的行落选，不当成「已退」**。
-#[test]
-fn parse_spawned_reads_the_table_and_keeps_the_three_states() {
-    let text = "ID                 状态   目录                                     初始任务\n\
-                    proj_cc            活     /home/zbl/proj                           跑门禁\n\
-                    ghost_cc           已退   /home/zbl/ghost                          收尾\n\
-                    old_cc             活?    /home/zbl/old                            \n";
-    let got = parse_spawned(text);
-    assert_eq!(got.len(), 3, "表头没被跳过或数据行丢了：{got:?}");
-    assert_eq!(got[0]["id"], "proj_cc");
-    assert_eq!(got[0]["live"], json!(true));
-    assert_eq!(got[0]["dir"], "/home/zbl/proj");
-    assert_eq!(got[0]["task"], "跑门禁");
-    assert_eq!(got[1]["live"], json!(false));
-    // ★ 「核不了」必须是 `null`，不是 `false` —— 与 `bus-list` 的 `live` 同一套三态。
-    //   把这一档并进「已退」正是 cc-bus 自己头注里记着的那族事故的共同起点。
-    assert_eq!(got[2]["live"], serde_json::Value::Null);
-    assert_eq!(got[2]["task"], "");
-}
-
-#[test]
-fn non_data_lines_never_become_spawned_rows() {
-    for line in [
-        "(还没 spawn 过会话)",
-        "ID 状态 目录 初始任务",
-        "",
-        "只有一列",
-        "some_id 不是状态 /d 任务",
-    ] {
-        assert!(
-            parse_spawned(line).is_empty(),
-            "这行不该被当成 spawn 记录：{line:?}"
-        );
+    let ib = &g["inbox"];
+    assert_eq!(
+        parse_inbox(&ib["request"]).expect("金样请求过不了生产解析器"),
+        ("alpha_cc".to_string(), 200)
+    );
+    assert_eq!(
+        parse_inbox(&ib["badRequest"])
+            .expect_err("`--help` 当 id 必须在起进程之前拒")
+            .0,
+        "bad_id"
+    );
+    assert_eq!(
+        inbox_reply(ib["log"].as_str().expect("缺 log")).expect("`cc-log` 样例解析失败"),
+        ib["reply"],
+        "`bus-inbox` 成品与金样不相等"
+    );
+    for (op, key) in [("bus-state", "state"), ("bus-inbox", "inbox")] {
+        let mut want: Vec<&str> = crate::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == op)
+            .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
+            .codes
+            .to_vec();
+        want.sort_unstable();
+        let mut got: Vec<&str> = g[key]["codes"]
+            .as_array()
+            .expect("缺 codes")
+            .iter()
+            .map(|c| c.as_str().unwrap())
+            .collect();
+        got.sort_unstable();
+        assert_eq!(got, want, "金样 `{op}` 的拒绝码与后端登记的不相等");
     }
 }
 
-/// ★ 三态的**字面量**取自 cc-bus 的输出，不是我们自己发明的枚举 —— 三者互不相同。
-///
-/// ⚠ 钉「互不相同」而不是逐条对字符串：把 `活?` 并进 `活`，这一格才是它要拦的东西。
+/// 〔SH1 · D-g〕杀会话顺手注销：只认名册第 4 列 pane pid 落在那个会话 pane 上的 id（主会话裁 TL2 A：不按会话名猜）。
+/// 要求住址：`4d-lanes.md` AL3「〔09-26 追加进 SH1〕D-g …… 认人核 `agents.tsv` 第 4 列的 pane pid（不按会话名猜）」。
 #[test]
-fn the_three_spawned_states_stay_three_different_answers() {
-    let live = spawned_live_of(SPAWNED_LIVE).expect("`活` 认不出来了");
-    let unver = spawned_live_of(SPAWNED_UNVERIFIED).expect("`活?` 认不出来了");
-    let exited = spawned_live_of(SPAWNED_EXITED).expect("`已退` 认不出来了");
-    assert_ne!(live, unver, "「活着」与「核不了」必须分得开");
-    assert_ne!(exited, unver, "「已退」与「核不了」必须分得开");
-    assert_ne!(live, exited);
-    assert!(
-        spawned_live_of("活着").is_none(),
-        "认不出的状态串必须落选（回 None），不许猜一个具体答案"
+fn only_ids_registered_on_the_killed_panes_are_unregistered() {
+    let row = |id: &str, target: &str, pid: Option<u32>| RosterRow {
+        id: id.to_string(),
+        target: target.to_string(),
+        registered_at: String::new(),
+        pane_pid: pid,
+        unread: 0,
+    };
+    let rows = [
+        row("mine_cc", "proj-cc:0.0", Some(4242)),
+        row("second_cc", "proj-cc:0.1", Some(4343)),
+        row("namesake_cc", "proj-cc:0.0", Some(9999)), // 同一个会话名、pid 不是被杀的那组 ⇒ 不是它
+        row("old_cc", "proj-cc:0.0", None),            // 老格式核不了 ⇒ 不动
+        row("--help", "proj-cc:0.0", Some(4242)),      // 形状不过 `bus_id_ok` ⇒ 不交给 cc-kill
+    ];
+    assert_eq!(ids_on_panes(&rows, &[4242, 4343]), ["mine_cc", "second_cc"]);
+    assert!(ids_on_panes(&rows, &[]).is_empty());
+}
+
+/// 〔SH1 · V136〕老 cc-bus（不认 `--tsv` / 没有 `cc-log`）与半份输出都**明说**，不猜着解成一份空名单。
+#[test]
+fn an_old_cc_bus_or_a_half_read_is_said_not_read_as_empty() {
+    let human = "ID           TMUX               待读\nx_cc         x_cc:0.0           2\n";
+    for (what, got) in [
+        ("名册", parse_roster_tsv(human).map(|_| ())),
+        (
+            "台账",
+            parse_spawned_tsv("(还没 spawn 过会话)\n").map(|_| ()),
+        ),
+        (
+            "收件箱",
+            inbox_reply("{\"from\":\"a\",\"text\":\"b\"}\n").map(|_| ()),
+        ),
+    ] {
+        let e = got.expect_err(what);
+        assert!(
+            e.1.contains("重新部署"),
+            "{what}：老 cc-bus 那一句没说清下一步：{e:?}"
+        );
+    }
+    let half = parse_roster_tsv("#cc-list-tsv\t1\nalpha_cc\ta:0.0\tts\t1\t0\n")
+        .expect_err("缺末行的名册必须回错");
+    assert!(half.1.contains("半份"), "{half:?}");
+    // 正控：首尾齐的空名单是「真的一个都没有」，不是错。
+    assert_eq!(
+        parse_roster_tsv("#cc-list-tsv\t1\n#skipped\t0\n").unwrap(),
+        (Vec::new(), 0)
     );
 }
 

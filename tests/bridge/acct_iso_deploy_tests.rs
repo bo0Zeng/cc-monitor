@@ -35,7 +35,7 @@ async fn the_deploy_entry_point_actually_checks_the_destination() {
 /// ★ **shellinit 入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 49 件下半〕。
 ///
 /// 下面那几条判的是 `validate_shellinit_output` **这个函数本身**（截断、空、缺标记）。
-/// 08-07 实测：把 `remote_acct_iso_shellinit` 的尾表达式换成 `Ok(out)`（跳过围栏），
+/// 08-07 实测：把 `remote_acct_iso_shellinit`〔散文墓碑〕的尾表达式换成 `Ok(out)`（跳过围栏），
 /// **全仓 980 条判据一条不红** —— 与删除路 / 建分支路 / 端口转发同一族的第四例。
 ///
 /// # ⚠ 本条是**源码层**，不是真路 —— 这是刻意的降级，理由写在这里
@@ -52,13 +52,14 @@ fn the_shellinit_entry_point_still_ends_with_the_fence() {
     let src = include_str!("../../src/bridge/src/acct_iso_deploy.rs");
     let prod = guard_core::production_code(src);
     // 抽取器自检：切没了就零命中地绿。
+    // 〔SH1 · `00 §2.5 ①`〕入口是带 origin 的那一条（本机远端合一）；围栏在远端那一支。
     assert!(
-        prod.contains("pub async fn remote_acct_iso_shellinit"),
-        "生产段里没有 `remote_acct_iso_shellinit` —— 切点变了，本条会零命中地绿"
+        prod.contains("pub async fn acct_iso_shellinit"),
+        "生产段里没有 `acct_iso_shellinit` —— 切点变了，本条会零命中地绿"
     );
     // 取那个函数的体（到下一个顶格行；`where` / `)` 顶格的算头 —— 本会话栽过三次）。
     let at = prod
-        .find("pub async fn remote_acct_iso_shellinit")
+        .find("pub async fn acct_iso_shellinit")
         .expect("上面已确认它存在");
     let mut body = Vec::new();
     for (i, line) in prod[at..].lines().enumerate() {
@@ -70,8 +71,8 @@ fn the_shellinit_entry_point_still_ends_with_the_fence() {
     }
     let body = body.join("\n");
     assert!(
-        body.contains("validate_shellinit_output("),
-        "`remote_acct_iso_shellinit` 不再调 `validate_shellinit_output` —— \n\
+        body.contains("validate_shellinit_output(") && body.contains("local_fence("),
+        "`acct_iso_shellinit` 不再对两支各过围栏（远端 `validate_shellinit_output` · 本机 `local_fence`）—— \n\
              远端输出会**原样**回到前端，而那正是围栏存在的理由（fail-closed）。\n\
              ⚠ 本条只看「那行还在」（源码层，理由见头注）；\n\
              围栏还在却被喂了洗过的值，本条看不见 —— 那一半已进 `ROADMAP §5`。"
@@ -176,13 +177,11 @@ fn the_remote_acct_iso_questions_are_asked_of_that_machines_backend() {
         .expect("runtime");
     let _enter = rt.enter();
     let label = "loc1a-acctiso-remote";
-    let cfg = RemoteConfig {
-        label: label.into(),
-        ..probe_cfg()
-    };
+    // 〔SH1 · `00 §2.5 ①`〕入口是带 origin 的那两条（远端传那台的 origin 标签）。
+    let origin = || crate::origin::Origin(label.to_string());
     // 没连上
     let e = rt
-        .block_on(check_remote_acct_iso(cfg.clone()))
+        .block_on(acct_iso_status(origin()))
         .expect_err("那台没有通道，不该答出装没装");
     assert!(
         e.starts_with("查不出") && e.contains("没连上") && e.contains(label),
@@ -191,9 +190,7 @@ fn the_remote_acct_iso_questions_are_asked_of_that_machines_backend() {
     // 老后端：不认 ⇒ 当场说、不发
     {
         let rig = scripted::rig(label, &["ping"], vec![]);
-        let e = rt
-            .block_on(check_remote_acct_iso(cfg.clone()))
-            .expect_err("不认");
+        let e = rt.block_on(acct_iso_status(origin())).expect_err("不认");
         assert!(e.contains("太旧"), "{e}");
         assert!(rig.cmds().is_empty(), "不认的命令照样发出去了");
     }
@@ -215,12 +212,10 @@ fn the_remote_acct_iso_questions_are_asked_of_that_machines_backend() {
             ),
         ],
     );
-    let st = rt
-        .block_on(check_remote_acct_iso(cfg.clone()))
-        .expect("答了");
+    let st = rt.block_on(acct_iso_status(origin())).expect("答了");
     assert!(!st.installed && st.path.is_none());
     assert_eq!(
-        rt.block_on(remote_acct_iso_shellinit(cfg)).expect("片段"),
+        rt.block_on(acct_iso_shellinit(origin())).expect("片段"),
         whole
     );
     assert_eq!(
@@ -242,8 +237,8 @@ fn the_remote_acct_iso_questions_no_longer_run_a_shell_over_the_dial() {
         rest[..rest.find("\n}\n").expect("函数没收尾")].to_string()
     };
     for sig in [
-        "pub async fn check_remote_acct_iso(",
-        "pub async fn remote_acct_iso_shellinit(",
+        "pub async fn acct_iso_status(",
+        "pub async fn acct_iso_shellinit(",
     ] {
         let b = body(sig);
         assert!(

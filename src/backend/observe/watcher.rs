@@ -473,6 +473,24 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
 /// **无超时**：`output()` 是无超时阻塞调用，远端 tmux 卡死（D-state/socket 卡住/NFS home）时会永不返回。
 /// 故**只能在一次性后台线程里调用**（见 `watch_loop` 的 `tmux_inflight`），**绝不可**直接跑在 watch_loop
 /// 线程上——否则会冻结整个 reader（Line/notify/判活全停）。
+/// 〔SH1〕帧命令 `tmux-list` 的读法：同一趟 `tmux ls`（同一段脚本、同一个四态分类）。
+/// `Ok((装了没有, 原样行))`；观测无效（通道脏 / 超时 / 起不来）⇒ `Err` —— 绝不当成零会话。
+pub(crate) fn list_for_query() -> Result<(bool, Vec<String>), String> {
+    query_reply(run_tmux_ls())
+}
+
+/// [`list_for_query`] 的四态折叠 —— 纯函数（判据逐态喂）。
+fn query_reply(obs: TmuxObservation) -> Result<(bool, Vec<String>), String> {
+    match obs {
+        TmuxObservation::NoTmux => Ok((false, Vec::new())),
+        TmuxObservation::NoServer | TmuxObservation::ServerEmpty => Ok((true, Vec::new())),
+        TmuxObservation::Sessions(raw) => Ok((true, raw.lines().map(str::to_string).collect())),
+        TmuxObservation::Unobservable => {
+            Err(copy_core::copy_text("beTmuxList.query.unobservable", &[]))
+        }
+    }
+}
+
 fn run_tmux_ls() -> TmuxObservation {
     // 🔴 `K-R55`（09-11）：起 shell 这一跳住适配层（`K33` 裁定二）。
     //    先前这里是裸 `Command::new("sh")` —— `K-R52` 的 A2「真漏」堆头一条。

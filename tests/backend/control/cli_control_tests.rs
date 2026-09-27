@@ -262,6 +262,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问：无入参（问的就是「这台」）。
         "acct-iso-status",
         "acct-iso-shellinit",
+        // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
+        "tmux-list",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

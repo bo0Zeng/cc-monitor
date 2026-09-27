@@ -118,6 +118,57 @@ pub fn parse_push_outcome(output: &str) -> Result<PushOutcome, String> {
     }
 }
 
+/// 〔SH1〕把一行公钥并进 `authorized_keys` 的原文 —— 纯函数，与 shell 那一串逐条同义：
+/// 已有**整行相等**的一行 ⇒ `Already`、不写（`grep -qxF`）；否则末行没换行先补一个再追加 ⇒ `Added`。
+pub fn plan_authorized_keys(existing: Option<&str>, key: &str) -> (PushOutcome, Option<String>) {
+    let text = existing.unwrap_or("");
+    if text.lines().any(|l| l == key) {
+        return (PushOutcome::Already, None);
+    }
+    let sep = if !text.is_empty() && !text.ends_with('\n') {
+        "\n"
+    } else {
+        ""
+    };
+    (PushOutcome::Added, Some(format!("{text}{sep}{key}\n")))
+}
+
+/// 〔SH1〕那台后端在 ⇒ 写 `authorized_keys` 经它的文件管理面（`files-home` → 读改写 `files-peek` / `files-put`，CAS ＋
+/// 建父目录 → `files-chmod` `.ssh` 700 · `authorized_keys` 600，与 shell 那一串的 `chmod` 逐条同）。
+pub(crate) async fn push_via_backend<D: crate::user_files::Door>(
+    door: &D,
+    key: &str,
+) -> Result<PushOutcome, String> {
+    let home = door.home().await?;
+    let mut outcome = PushOutcome::Already;
+    crate::user_files::edit(
+        door,
+        &home,
+        ".ssh/authorized_keys",
+        false,
+        true,
+        |existing| {
+            let (o, next) = plan_authorized_keys(existing, key);
+            outcome = o;
+            Ok(next)
+        },
+    )
+    .await?;
+    door.chmod(&home, ".ssh", 0o700).await?;
+    door.chmod(&home, ".ssh/authorized_keys", 0o600).await?;
+    Ok(outcome)
+}
+
+/// 那台的长连接在、且认得写用户文件那几条 ⇒ 走后端；否则（密钥登录建立之前、后端还没装）走 shell 那一串（Bootstrap）。
+/// ⚠ 按**此刻的状态**分支，不是「后端失败了再退回 shell」（`D11` 不许那一形）。
+fn backend_ready(origin: &crate::origin::Origin) -> bool {
+    crate::backend::control::inbound_client::client_for(origin.as_wire_str()).is_some_and(|c| {
+        ["files-home", "files-peek", "files-put", "files-chmod"]
+            .iter()
+            .all(|cmd| c.accepts(cmd))
+    })
+}
+
 /// 一键推送本地公钥到远端 authorized_keys。`pub_key_path` 显式指定 .pub;为空时回退
 /// `{key_path}.pub`(私钥同名公钥);再无则报错让前端选文件。
 #[tauri::command]
@@ -145,7 +196,16 @@ pub async fn push_public_key(
     })?;
     let key = sanitize_public_key(&raw)?;
 
-    // 3) 构造 + 一次性 exec,读 stdout 取标记。
+    // 3) 〔SH1〕那台后端在 ⇒ 经它的文件管理面写；否则构造 + 一次性 exec,读 stdout 取标记。
+    let origin = crate::origin::Origin(cfg.origin_label());
+    if backend_ready(&origin) {
+        let door = crate::user_files::BackendDoor::new(origin);
+        let outcome = push_via_backend(&door, &key).await?;
+        return Ok(PushResult {
+            outcome: outcome.as_str().to_string(),
+            pub_path: path,
+        });
+    }
     let cmd = build_authorized_keys_cmd(&key);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);

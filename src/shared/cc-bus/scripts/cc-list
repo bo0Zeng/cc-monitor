@@ -1,7 +1,25 @@
 #!/usr/bin/env bash
 # cc-list  列出已登记的 agent 及各自 inbox 待读条数(看谁在线、有没有积压)
+# cc-list --tsv  机器可读形(V136:后端 bus-state / 杀会话顺手注销读它,不读 agents.tsv 本身):
+#   首行 `#cc-list-tsv<TAB>1` · 每条 `id<TAB>地址<TAB>登记时间<TAB>pane pid<TAB>待读` · 末行 `#skipped<TAB><坏行数>`。
+#   坏行 = 有内容但字段 < 3 或 id 不过字符集(真空行不算)。
 set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
+if [ "${1:-}" = --tsv ]; then
+  printf '#cc-list-tsv\t1\n'
+  [ -f "$BUS/agents.tsv" ] || { printf '#skipped\t0\n'; exit 0; }
+  # 待读与下面人读表同口径(末行无换行也计);字段按 TAB 精确切(awk 不像 read 那样把连续 TAB 并成一个)。
+  awk -F'\t' -v bus="$BUS" '
+    { sub(/\r$/, "") }
+    $0 !~ /\t/ && $0 ~ /^[[:space:]]*$/ { next }
+    NF < 3 || $1 !~ /^[A-Za-z0-9_-]+$/ { bad++; next }
+    { total = 0; pos = 0; f = bus "/inbox/" $1 ".jsonl"; p = bus "/state/" $1 ".pos"
+      while ((getline l < f) > 0) total++; close(f)
+      if ((getline v < p) > 0) pos = v + 0; close(p)
+      printf "%s\t%s\t%s\t%s\t%d\n", $1, $2, $3, $4, total - pos }
+    END { printf "#skipped\t%d\n", bad + 0 }' "$BUS/agents.tsv"
+  exit 0
+fi
 [ -f "$BUS/agents.tsv" ] || { echo "(还没有登记的 agent)"; exit 0; }
 printf '%-12s %-18s %s\n' ID TMUX 待读
 while IFS=$'\t' read -r id target ts; do

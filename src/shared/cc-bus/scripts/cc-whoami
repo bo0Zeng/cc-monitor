@@ -13,7 +13,9 @@ if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
   id=$(resolve "$tag")
 fi
 if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
-  sess=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null || true)
+  # 〔SH1 · INVARIANTS §49 · V121〕读**会话名**的三处都用 UTF-8 客户端(`-u`,排在子命令之前):
+  #   非 UTF-8 客户端下中文被改写成 `_`,`resolve` 之后的身份与 UTF-8 客户端下不一样 —— 同一个会话两种身份。
+  sess=$(tmux -u display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null || true)
   id=$(resolve "$sess")
 fi
 # 兜底1(主兜底,给【不继承 $TMUX_PANE】的子进程——尤其 Codex 的 shell 工具命令:模型的 cc-send
@@ -22,7 +24,7 @@ fi
 if [ -z "$id" ] && [ -n "${TMUX:-}" ] && command -v tmux >/dev/null 2>&1; then
   sock=${TMUX%%,*}; sid=${TMUX##*,}
   if [ -n "$sock" ] && [ -n "$sid" ]; then
-    sess=$(tmux -S "$sock" list-sessions -F '#{session_id} #{session_name}' 2>/dev/null \
+    sess=$(tmux -u -S "$sock" list-sessions -F '#{session_id} #{session_name}' 2>/dev/null \
            | awk -v s="\$$sid" '$1==s{print $2; exit}')
     id=$(resolve "$sess")
   fi
@@ -30,7 +32,7 @@ fi
 # 兜底2(再下一层):沿进程树上溯到某个 tmux pane 的 pid(pane_pid 是 pane 的 shell;codex/claude
 # 与本进程都是它后代)。若沙箱切断了 /proc ancestry 则可能失败。
 if [ -z "$id" ] && [ -n "${TMUX:-}" ] && command -v tmux >/dev/null 2>&1; then
-  panes=$(tmux list-panes -a -F '#{pane_pid} #{session_name}' 2>/dev/null || true)
+  panes=$(tmux -u list-panes -a -F '#{pane_pid} #{session_name}' 2>/dev/null || true)
   if [ -n "$panes" ]; then
     p=$$
     for _i in $(seq 1 40); do

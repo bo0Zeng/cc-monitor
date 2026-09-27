@@ -227,6 +227,19 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         "`bus-spawn` 转调 `cc-spawn` 时的旗标（`control/cc_bus.rs::spawn_argv`）。\
          它们是 cc-spawn 的命令面：后端 argv 从不认它们，线上契约里也没有它们的位置。",
     ),
+    // 〔SH1 · V136〕同一份文件发给另两个子进程的旗标（一份文件可以登记几行，① 按文件取并集）。
+    (
+        "control/cc_bus.rs",
+        "src/shared/cc-bus/scripts/cc-list",
+        &["--tsv"],
+        "`bus-state` / 杀会话顺手注销转调 `cc-list --tsv`（机器可读的名册）。是 cc-list 的命令面，不是后端的子命令。",
+    ),
+    (
+        "control/cc_bus.rs",
+        "src/shared/cc-bus/scripts/cc-agents",
+        &["--tsv"],
+        "`bus-state` 转调 `cc-agents --tsv`（机器可读的派生台账）。是 cc-agents 的命令面，不是后端的子命令。",
+    ),
     // 〔RM1c · 第四波〕子进程是一个 **Rust 程序**（不是 shell 脚本）⇒ ② 那一侧改读它生产段里的
     // `"--x"` 字面量（同一把 [`dashdash_literals`]），见接盘判据里按扩展名分的那一支。
     (
@@ -839,10 +852,18 @@ mod tests {
                 .1;
             let mut sent = dashdash_literals(raw);
             sent.sort();
+            // 〔SH1〕一份文件可以对几个子进程各登记一行 ⇒ ① 比的是这份文件所有行的并集。
+            let mut all: Vec<String> = CHILD_PROCESS_FLAGS
+                .iter()
+                .filter(|(f, ..)| f == file)
+                .flat_map(|(_, _, fl, _)| fl.iter().map(|s| s.to_string()))
+                .collect();
+            all.sort();
+            all.dedup();
             let mut reg: Vec<String> = flags.iter().map(|s| s.to_string()).collect();
             reg.sort();
             assert_eq!(
-                sent, reg,
+                sent, all,
                 "\n`{file}` 里的 `--x` 字面量与登记的子进程旗标对不上。\n\
                  多出来的 ⇒ 要么是一条**真 wire 子命令**（那它不该躲在这张表里，去三分表与 §10），\n\
                  要么是新发给子进程的旗标（登记它）；少掉的 ⇒ 不再发了，把登记摘掉。"
@@ -853,8 +874,10 @@ mod tests {
             // 〔RM1c〕子进程是 Rust 程序 ⇒ 它认的旗标 = 它生产段里的 `"--x"` 字面量（同一把尺子）。
             let mut accepts: Vec<String> = if child.ends_with(".rs") {
                 dashdash_literals(&script)
-            } else {
+            } else if script.lines().any(|l| l.trim() == "while true; do") {
                 shell_loop_flags(&script)
+            } else {
+                shell_first_arg_flags(&script)
             };
             accepts.sort();
             accepts.dedup();
@@ -911,6 +934,22 @@ mod tests {
             }
         }
         accepts
+    }
+
+    /// 〔SH1〕没有旗标循环的 shell 子进程：它只认第一个参数那一形 `[ "${1:-}" = --x ]`（`cc-list` / `cc-agents` 的 `--tsv`）。
+    fn shell_first_arg_flags(script: &str) -> Vec<String> {
+        let pat = "[ \"${1:-}\" = --";
+        script
+            .match_indices(pat)
+            .map(|(at, _)| {
+                // 变量名刻意不叫 `rest`：棘轮按文件内变量名认语料，同名会卷进本文件别处的无关匹配。
+                let flag_tail = &script[at + pat.len() - 2..];
+                flag_tail
+                    .chars()
+                    .take_while(|c| *c == '-' || c.is_ascii_alphanumeric())
+                    .collect()
+            })
+            .collect()
     }
 
     /// 🔴 [`TERMINAL_SURFACE_FILES`] 里的每一份，都必须**真的**被它声称的那条判据接住。

@@ -194,7 +194,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   **不往任何机器装东西**（「装到这台」要用户点，走 ③ 那几条的路）⇒ 不是装口。
     ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
-    ("cc-bus.cockpit", (NA, "—", "cc-bus 驾驶舱的读 / 发消息，不是装 cc-bus")),
+    # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
+    #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
     # 〔墓碑 · 第四波 4D HX2〕`creds.apikey` 随本机写 key 改由界面经通道直发后端 `apikey-key-set`（`apikey-reads.ts::writeApikeyKey`）、monitor 那条 Tauri 命令与 `apikey_remote` 写臂删了而退役；理由同上面几条墓碑。
     ("backend.lifecycle", (NA, "—", "起 / 停 / 列后端进程 —— 是**跑**它，不是**装**它")),
     ("backend.status", (NA, "—", "问后端活没活 —— 同上，不是查装态")),
@@ -344,13 +345,14 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
-        "check_remote_acct_iso",
+        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条「装没装」合成一条带 origin 的 `acct_iso_status`（同一件，改名不改归属）。
+        "acct_iso_status",
         "deploy_remote_acct_iso",
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
         # 那一份本来就在 `FRONTEND_PIN['S3']` 里 ⇒ 名单按实数现打**不变**（1 → 1，没有换份）。
-        "check_local_acct_iso",
+        # 〔SH1〕它与远端那条今天是同一条 `acct_iso_status`（上面那行）。
     ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
        "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
        "那「1 条欠口」今天盘上还不存在 ⇒ 不进闭集")),
@@ -360,12 +362,13 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_install",
         "aliases_read",
         "aliases_render",
-        "remote_acct_iso_shellinit",
+        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条 shellinit 合成一条带 origin 的 `acct_iso_shellinit`（改名不改归属）。
+        "acct_iso_shellinit",
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
         # 「生成 rc 片段」），那一份本来就在 `FRONTEND_PIN['S4']` 里 ⇒ 名单按实数现打**不变**（2 → 2）。
-        "local_acct_iso_shellinit",
+        # 〔SH1〕它与远端那条今天是同一条 `acct_iso_shellinit`（上面那行）。
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
        "（`§S5` 归处栏）；〔AL1〕那条 `write_account_aliases` 拆成三条、〔A3〕加了本机那条 shellinit 之后是 5 条。"
        "写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),
