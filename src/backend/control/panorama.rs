@@ -248,12 +248,14 @@ pub(crate) async fn answer_with(
         }
         Err(n) => return Err(not_run(&bin, n)),
     };
-    crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[op], Some(SHAPE)).map_err(|r| match r {
-        Rejected::MissingCapability { .. } | Rejected::StaleShape { .. } => {
-            ("unsupported", r.message())
-        }
-        Rejected::NotThePlugin { .. } => ("not_installed", r.message()),
-    })?;
+    crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[op], Some(SHAPE)).map_err(
+        |r| match r {
+            Rejected::MissingCapability { .. } | Rejected::StaleShape { .. } => {
+                ("unsupported", r.message())
+            }
+            Rejected::NotThePlugin { .. } => ("not_installed", r.message()),
+        },
+    )?;
     // ③ 起它。argv 直传不过 shell。
     let store_s = store.display().to_string();
     let mut argv: Vec<&str> = vec![op, "--store", store_s.as_str()];
