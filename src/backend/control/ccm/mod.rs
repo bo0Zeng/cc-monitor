@@ -252,12 +252,21 @@ pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
         .unwrap_or(argv0)
         .trim_end_matches(".exe");
     if base == SUBCOMMAND_WORD {
-        return Some(args.to_vec());
+        // 〔E2 · V28〕二进制本身就叫 `ccm`（`~/.cc-monitor/bin/ccm`）：后端认得的第一个词 ⇒ 后端；其余（含空）⇒ ccm。
+        //   流模式靠显式词 `--stream` 解开（`lib.rs::STREAM_FLAG_EXPLICIT`）；两边的词不相交由 `argv_tests` 的路由判据钉住。
+        return (!routes_to_backend(args)).then(|| args.to_vec());
     }
     if args.first().map(String::as_str) == Some(SUBCOMMAND_WORD) {
         return Some(args[1..].to_vec());
     }
     None
+}
+
+/// 〔E2〕名字是 `ccm` 时，这串 argv 是不是在叫后端：`args[0]` ∈ `SUBCOMMANDS ∪ STREAM_FLAGS`。
+pub(crate) fn routes_to_backend(args: &[String]) -> bool {
+    args.first().is_some_and(|a| {
+        crate::SUBCOMMANDS.contains(&a.as_str()) || crate::STREAM_FLAGS.contains(&a.as_str())
+    })
 }
 
 /// 「我是被怎么叫进 `ccm` 模式的」—— 进程 argv 里**排在 ccm 参数前面**的那一段。

@@ -49,6 +49,12 @@ pub(crate) mod flag {
     pub(crate) const END: &str = "--";
 }
 
+/// 〔E2〕这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器：单独喂它，不原样进透传就算。
+/// 后端 CLI 面不许派生出这样的名字（`cli_control::cli_exposed`）。
+pub(crate) fn is_ccm_word(word: &str) -> bool {
+    !matches!(parse(&[word.to_string()]), Ok(Parsed::Opts(o)) if o.passthru == [word.to_string()])
+}
+
 /// `--cwd` 的取值：`auto`（默认）或一个显式目录。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CwdSpec {
