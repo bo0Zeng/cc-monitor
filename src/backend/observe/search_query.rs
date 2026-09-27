@@ -210,18 +210,6 @@ pub(crate) fn find_indexed(
     index.find(&path, &q, include_tools, limit, on_hit)
 }
 
-/// 判据用：那一棵常驻索引上一问读盘的账 `(整份, 追加, 没读)`（没建过 ⇒ `None`）。
-#[cfg(test)]
-pub(crate) fn resident_last(agent_home: &Path) -> Option<(usize, usize, usize)> {
-    let root = Fence::at(&projects_root(agent_home))
-        .ok()?
-        .root()
-        .to_path_buf();
-    let g = RESIDENT.lock().ok()?;
-    g.get(&root)
-        .map(|i| (i.last.full, i.last.appended, i.last.reused))
-}
-
 /// 〔SX1〕进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问时懒建，不预热。
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());

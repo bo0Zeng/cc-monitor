@@ -96,7 +96,7 @@ pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
 }
 
 /// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
-fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
+pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
     use crate::observe::{accounts_query, history_query, search_query};
     match cmd {
         // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。

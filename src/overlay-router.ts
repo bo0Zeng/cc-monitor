@@ -19,13 +19,13 @@ export class OverlayRouter {
   private readonly views = new Map<OverlayName, OverlayView>();
 
   register(name: OverlayName, view: OverlayView): void {
-    if (this.views.has(name)) throw new Error(`overlay 重复登记：${name}`);
+    if (this.views.has(name)) throw new Error(`overlay registered twice: ${name}`); // 我们自己代码的契约错
     this.views.set(name, view);
   }
 
   private view(name: OverlayName): OverlayView {
     const v = this.views.get(name);
-    if (!v) throw new Error(`overlay 没登记：${name}`);
+    if (!v) throw new Error(`overlay not registered: ${name}`);
     return v;
   }
 
