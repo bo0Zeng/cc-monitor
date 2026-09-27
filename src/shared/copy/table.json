@@ -9,6 +9,21 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "bePlan.env.configIgnored": {
+      "kind": "error",
+      "zh": "ccm: {path} 不会被读取。里面的两个值改用环境变量 CCM_ACCTS_MANIFEST 和 CCM_ENV。",
+      "args": ["path"]
+    },
+    "bePlan.bus.noScripts": {
+      "kind": "error",
+      "zh": "ccm: 找不到 cc-bus，没有登记到总线。装在别处的话，用 CC_BUS_SCRIPTS 指过去。",
+      "args": []
+    },
+    "bePlan.bus.noSpawnRecord": {
+      "kind": "error",
+      "zh": "ccm: {path} 不能执行。会话照建、也会登记，但不进 spawn 台账。",
+      "args": ["path"]
+    },
     "beAssetCatalog.digest.walkFailed": {
       "kind": "body",
       "zh": "有一处读不出来：{e}",

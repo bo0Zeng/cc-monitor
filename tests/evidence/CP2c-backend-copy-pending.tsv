@@ -1,10 +1,10 @@
 文件	理由
-src/backend/control/files_commit.rs	FN1 在改（去数据围栏），留最后一批
-src/backend/control/files_write.rs	FN1 在改（去数据围栏），留最后一批
-src/backend/control/transfer.rs	FN1 在改（它的分支已动这份），留最后一批
-src/backend/dial/connect.rs	NT2 在改（期限；uses.rs 它的分支已动），留最后一批
-src/backend/dial/link.rs	NT2 在改（期限；uses.rs 它的分支已动），留最后一批
-src/backend/dial/sftp.rs	GP1（部署时清旧垫片）/ NT2（期限）在改，留最后一批
-src/backend/dial/uses.rs	NT2 在改（期限；uses.rs 它的分支已动），留最后一批
-src/backend/files/mod.rs	FN1 在改（去数据围栏），留最后一批
-src/bridge/crates/creds-core/src/store.rs	GP1 在改（它的分支已动这份），留最后一批
+src/backend/control/files_commit.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
+src/backend/control/files_write.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
+src/backend/control/transfer.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
+src/backend/dial/connect.rs	〔TAIL 09-26〕拨号层的话经 monitor 按原文分类（如「所有地址连接失败」「refuse write:」前缀），先把判定换成码再抽，留下一棒
+src/backend/dial/link.rs	〔TAIL 09-26〕拨号层的话经 monitor 按原文分类（如「所有地址连接失败」「refuse write:」前缀），先把判定换成码再抽，留下一棒
+src/backend/dial/sftp.rs	〔TAIL 09-26〕拨号层的话经 monitor 按原文分类（如「所有地址连接失败」「refuse write:」前缀），先把判定换成码再抽，留下一棒
+src/backend/dial/uses.rs	〔TAIL 09-26〕拨号层的话经 monitor 按原文分类（如「所有地址连接失败」「refuse write:」前缀），先把判定换成码再抽，留下一棒
+src/backend/files/mod.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
+src/bridge/crates/creds-core/src/store.rs	〔TAIL〕两句报错已进表；剩 TEMPLATE —— 写进用户文件的整份 JSON 模板（不是一句话），进不进表、怎么进待拍
