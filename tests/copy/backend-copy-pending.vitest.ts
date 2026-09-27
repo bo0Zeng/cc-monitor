@@ -24,13 +24,23 @@
  * - 契约错的英文诊断（`common/contract.rs::malformed`）不在人群里 —— 它们该不该是英文，是 CP2c 记录 §3 的裁量，靠人复核。
  * - 没有 python3 / python 的机器上**判不了**（`console.warn` 说出来，**不是绿**）。
  * - 终态待办表是空的 ⇒ 「表非空」当不了正控；反空真靠「射程里扫到的生产文件数过地板」＋ 量具现造一棵临时树的探针。
+ *
+ * # 第二段（COPY · 09-27）：生产代码不许按原文认话
+ *
+ * 要求住址：`设计/91 §5.5`，逐字：「线上契约 | 不变：`Reply {code, message}`，`code` 仍是命令级粗码」——
+ * 判「是哪一种失败」靠 `code` / 结构化字段；句子进了表就会被改写，谁按原文认它，改一个字就静默失灵
+ *（CP2c 待办表的理由列：「refuse write:」等前缀被按原文认，先把判定换成码再抽）。
+ * 判法：生产段（`src/backend` · `src/bridge/src` · `src/bridge/crates` 的 `.rs` ＋ `src` 的 `.ts`，剥注释）里
+ * 字符串匹配调用的字面量参数带汉字或 `refuse write/delete` 的地方 == `RECOGNIZE_BY_TEXT`（两向，按「文件 · 串」比）。
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { productionRsFiles, productionTsFiles } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
+import { stripComments } from "../test-support/strip-comments.ts";
 
 const METER = resolve(REPO_ROOT, "tests", "evidence", "CP2c-backend-copy-pending.py");
 const PENDING = resolve(REPO_ROOT, "tests", "evidence", "CP2c-backend-copy-pending.tsv");
@@ -117,4 +127,63 @@ describe("CP2c · 后端与子 crate 里还有对外字面量的文件 == 待办
     },
     120_000,
   );
+});
+
+/**
+ * 登记的例外（都在 COPY 写区外，交主会话；`调研/第四波记录/COPY.md` §设计 ①）：
+ * - cc_bus 三条认的是 cc-bus 脚本自己的输出行（`设计/91 §3.2`：cc-bus 的文本不归文案表），不是表里的句子；
+ * - `accounts.ts::deriveUi` 按「过旧」「不支持账号」认 —— 两支结果相同（都是 needs-update、reason 都是 e），是死判断，可直接删；
+ * - `tab-drop.ts::defaultGroupName` 认自己起的默认组名「组 N」来续号 —— 那句改写（`tabDrop.group.defaultName`）续号就断。
+ */
+const RECOGNIZE_BY_TEXT = [
+  "src/backend/control/cc_bus.rs · 已杀会话",
+  "src/backend/control/cc_bus.rs · 已摘掉",
+  "src/backend/control/cc_bus.rs · 已 spawn:",
+  "src/accounts.ts · 过旧",
+  "src/accounts.ts · 不支持账号",
+  "src/tab-drop.ts · ^组\\s*(\\d+)$",
+];
+
+const MATCH_CALL =
+  /\.(?:contains|starts_with|ends_with|strip_prefix|strip_suffix|find|rfind|split_once|rsplit_once|matches|includes|startsWith|endsWith|indexOf|lastIndexOf)\(\s*b?(?:"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`([^`]*)`)/g;
+const EQ_LIT = /(?:==|!=)\s*"((?:[^"\\\n]|\\.)*)"/g;
+const RE_LIT = /\/((?:[^/\\\n]|\\.)+)\/[a-z]*\.(?:test|exec)\(/g;
+const OUR_TEXT = /[\u4e00-\u9fff]|refuse (?:write|delete)/i;
+
+/** 一段源码里按原文认话的串（剥过注释之后）。 */
+function textRecognizers(src: string, lang: "rust" | "ts"): string[] {
+  const code = stripComments(src, lang);
+  const out: string[] = [];
+  for (const rx of [MATCH_CALL, EQ_LIT, RE_LIT]) {
+    for (const m of code.matchAll(rx)) {
+      const lit = m[1] ?? m[2] ?? m[3] ?? "";
+      if (OUR_TEXT.test(lit)) out.push(lit);
+    }
+  }
+  return out;
+}
+
+describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码，不靠句子）", () => {
+  it("正控：现造的源码里认得出三种写法，注释里的不算", () => {
+    const rs = 'fn f(e: &str) { if e.contains("超时") {} }\n// e.starts_with("指纹")\nlet x = m == "所有地址连接失败";';
+    const ts = 'if (msg.startsWith("refuse write:")) {}\nif (/握手超时/.test(m)) {}';
+    expect(textRecognizers(rs, "rust")).toEqual(["超时", "所有地址连接失败"]);
+    expect(textRecognizers(ts, "ts")).toEqual(["refuse write:", "握手超时"]);
+  });
+
+  it("★ 生产段里按原文认话的地方 == 登记的例外（两向）", () => {
+    const rs = [
+      ...productionRsFiles("src/backend"),
+      ...productionRsFiles("src/bridge/src"),
+      ...productionRsFiles("src/bridge/crates"),
+    ].map((f) => ({ ...f, lang: "rust" as const }));
+    const ts = productionTsFiles("src").map((f) => ({ ...f, lang: "ts" as const }));
+    expect(rs.length, "Rust 生产文件一份都没扫到").toBeGreaterThan(100);
+    expect(ts.length, "TS 生产文件一份都没扫到").toBeGreaterThan(100);
+    const found = [...rs, ...ts].flatMap((f) => textRecognizers(f.text, f.lang).map((lit) => `${f.file} · ${lit}`));
+    expect(
+      [...new Set(found)].sort(),
+      "有生产代码按句子原文判断是哪种失败 —— 句子会被改写（文案表），改成认 code / 结构化字段",
+    ).toEqual([...RECOGNIZE_BY_TEXT].sort());
+  });
 });

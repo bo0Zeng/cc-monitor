@@ -173,15 +173,13 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           `Inherit` 与 C2 那一版的拨号代理同形（SR1a 起它不再起进程）：它 stderr 上只有「窗口为什么没立起来」那一句，\
           接管它要再起一条泵。⚠ 代价如实记：装机那份 GUI app 没有 stderr 控制台 ⇒ 那句话今天会丢。",
      "Hidden · Detached · Inherit"),
-    ("local_backend_host.rs", "send_signal", "`kill -TERM|-KILL <pid>`",
-     "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
-          〔HX1 · D-a〕先 `-TERM` 请它收尾，等满还在才 `-KILL`（强杀前再核一次身份）；本 monitor 自己起的那个也用 `-TERM` 请它收尾（强杀走 `Child::kill`）。\
-          必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
-          为一次「停」按钮加一条直接依赖是更大的代价。\
-          ⚠ 参数是**我们自己算出来的 pid**、零用户输入；而且杀之前先过 `kill_adopted` 的身份核对\
-          （`/proc/<pid>/exe` 必须是同一个二进制）—— pid 会被复用，杀错一个无关进程是不可逆的
-          ★ 三条策略为什么是这三格：只在 Linux 上编译，`Hidden` 那格是空的**但得有人回答**；结论在退出码里，stderr 用不上。",
-     "Hidden · JobKillOnClose · Null"),
+    ("local_backend_host.rs", "run_resident_stop", "`<本机后端> --resident-stop`（不经 shell）",
+     "〔STOP · 主会话裁〕停本机常驻后端：本机远端同一条 —— 在这台机器上跑一次那个一次性子命令，\
+          由它做「请它收尾 → 宽限期内按 pidfd 等 → 到点强杀」（同机监督者，k8s / systemd 同形），monitor 只拿回结局。\
+          必须起进程的理由：等与强杀住后端那一份（`control/resident.rs::stop_pid`），monitor 不再自己发信号、自己等；\
+          参数是**我们自己记下的那个二进制**与一个常量 flag，零用户输入
+          ★ 三条策略为什么是这三格：一次性子命令不该闪窗；就地等它退（别留后代）；失败那句 `{code,message}` 在 stderr 上，要读回来说给人听。",
+     "Hidden · JobKillOnClose · Captured"),
 ];
 
 fn src_root() -> PathBuf {

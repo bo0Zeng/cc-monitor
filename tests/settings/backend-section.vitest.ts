@@ -38,6 +38,8 @@ let statusQueue: Record<string, unknown>[] = [];
 let exitAnswer: Record<string, unknown> | null = null;
 /** 〔C4c〕下一次「交后端写」要回的失败（`null` = 照常写）。原先用 `spyOn(commands.set_backend_exit_policy)`，那条命令退役了。 */
 let failNextSet: Error | null = null;
+/** 〔STOP〕`backend_stop` 这一趟回的结局。 */
+let stopAnswer: { stopped: "graceful" | "killed" | "not_running"; pid: number | null } = { stopped: "graceful", pid: 42 };
 /** 〔GAP1〕`backend-log` 那一问各台答什么（按 origin；缺 ⇒ 通道失败）。 */
 let logAnswers: Record<string, unknown> = {};
 
@@ -56,7 +58,7 @@ vi.mock("../../src/ipc/commands", () => ({
     },
     backend_stop: (a: unknown) => {
       calls.push({ name: "backend_stop", args: a });
-      return Promise.resolve("已停");
+      return Promise.resolve(stopAnswer);
     },
     backend_machines: () => {
       calls.push({ name: "backend_machines", args: null });
@@ -105,7 +107,7 @@ vi.mock("../../src/remote-config", () => ({
 
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
 
-import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopWarning } from "../../src/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopSaid, stopWarning } from "../../src/settings/backend-section";
 import type { SessionAccount } from "../../src/accounts";
 import { srcDirOf } from "../test-support/repo-root";
 import COPY_TABLE from "../../src/shared/copy/table.json";
@@ -153,6 +155,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   calls.length = 0;
   failNextSet = null;
+  stopAnswer = { stopped: "graceful", pid: 42 };
   exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x" };
   // 〔PB1〕`backend_status` 今天恒带 `health` 成品（远端那一格恒是「无记录」）；缺它的那一形单列一格判。
   status = { channel: true, pid: 42, health: FACE["无记录"] };
@@ -742,6 +745,51 @@ describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
     expect(sessionsAsked, "远端的「停」数的不是那台").toEqual(["甲机"]);
     expect(asked).toEqual([zh("backend.stop.relayConfirm", { n: 1 })]);
     expect(stops(), "远端答了否还是停了").toBe(before);
+  });
+});
+
+// 〔STOP〕T6「停」的结局说出来：`{stopped: graceful | killed | not_running}` 三个词各一句，落在那一行上（不只进 console）。
+// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「monitor 发一次远端 exec、按结局出声」· `70 §2.3`「强杀 / 没停掉出声」。
+describe("〔STOP〕停的结局在机器页那一行说一句", () => {
+  const zh = (k: string, args: Record<string, string> = {}) =>
+    (COPY_TABLE.entries as Record<string, { zh: string }>)[k].zh.replace(/\{(\w+)\}/g, (_m, n: string) => String(args[n]));
+  it("stopSaid 三个词三句、互不相同、带 pid；没在跑那句不带", () => {
+    const g = stopSaid({ stopped: "graceful", pid: 7 });
+    const k = stopSaid({ stopped: "killed", pid: 7 });
+    const n = stopSaid({ stopped: "not_running", pid: null });
+    expect([g, k, n]).toEqual([
+      zh("backend.stopSaid.graceful", { pid: "7" }),
+      zh("backend.stopSaid.killed", { pid: "7" }),
+      zh("backend.stopSaid.notRunning"),
+    ]);
+    expect(new Set([g, k, n]).size).toBe(3);
+    expect(g).toContain("7");
+    expect(k).toContain("7");
+  });
+
+  it("接线：点「停」⇒ 那一行说后端回的那个结局；再点一次换成新结局", async () => {
+    const s = new BackendSection({ headless: true, confirm: () => true, sessions: () => Promise.resolve([]) });
+    await flush();
+    await flush();
+    const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL_ORIGIN}"]`);
+    const said = () => r?.querySelector<HTMLElement>("[data-stop-said]")?.textContent ?? null;
+    const stop = [...(r?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
+      (x) => x.textContent === zh("backend.buildCells.stop"),
+    );
+    expect(stop, "本机那一行的「停」找不到").toBeTruthy();
+    expect(said(), "没停过就该空着").toBe("");
+    // 停之后状态落到「没连上」⇒ 轮询当场落定、按钮放开（否则第二下点在禁用的按钮上）。
+    status = { ...status, channel: false };
+    for (const a of [
+      { stopped: "killed" as const, pid: 9 },
+      { stopped: "not_running" as const, pid: null },
+    ]) {
+      stopAnswer = a;
+      stop!.click();
+      for (let i = 0; i < 100 && said() !== stopSaid(a); i++) await new Promise((x) => setTimeout(x, 10));
+      expect(said()).toBe(stopSaid(a));
+      for (let i = 0; i < 100 && stop!.disabled; i++) await new Promise((x) => setTimeout(x, 10));
+    }
   });
 });
 

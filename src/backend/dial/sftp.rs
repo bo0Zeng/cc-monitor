@@ -30,6 +30,7 @@
 //! - **`ChrootDirectory` / `internal-sftp -d`**：起始目录不是 `$HOME` 的机器上，这里的「home」是 SFTP 的起始目录，
 //!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files_commit` 头注那一格照旧）。
 
+use copy_core::copy_text;
 use std::sync::Arc;
 
 use russh_sftp::client::SftpSession;
@@ -132,7 +133,7 @@ pub(crate) async fn open(
     let (channel, permit) = lease.session_channel(req, stages).await?;
     subsystem(&channel)
         .await
-        .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 没开 sftp？）: {e}"))?;
+        .map_err(|e| copy_text("beSftp.open.subsystem", &[("e", &e.to_string())]))?;
     let stream = channel.into_stream();
     let linked = Arc::clone(lease.linked());
     if lease.lane() != Lane::Transfer {
@@ -193,9 +194,9 @@ pub(crate) struct Dial(DialRequest);
 
 impl Dial {
     pub(crate) fn parse(v: &serde_json::Value) -> Result<Dial, String> {
-        super::parse_request_value(v)
-            .map(Dial)
-            .map_err(|e| format!("拨号请求读不动：{e}"))
+        super::parse_request_value(v).map(Dial).map_err(|e| {
+            crate::common::contract::malformed(&format!("unreadable dial request: {e}"))
+        })
     }
 }
 
@@ -220,11 +221,11 @@ where
 {
     let sftp = SftpSession::new(stream)
         .await
-        .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
+        .map_err(|e| copy_text("beSftp.open.initFailed", &[("e", &e.to_string())]))?;
     let home = sftp
         .canonicalize(".")
         .await
-        .map_err(|e| format!("问不出 SFTP 起始目录（realpath .）: {e}"))?;
+        .map_err(|e| copy_text("beSftp.open.noHome", &[("e", &e.to_string())]))?;
     Ok((sftp, home))
 }
 
@@ -315,20 +316,24 @@ pub(crate) fn fence_lexical(
 ) -> Result<(String, Option<&'static str>), String> {
     let p = path.trim();
     if p.is_empty() {
-        return Err("refuse write: 远端路径是空的".to_string());
+        return Err(copy_text("beSftp.fence.empty", &[]));
     }
     let rel = if let Some(abs) = p.strip_prefix('/') {
         let h = home.trim_end_matches('/');
         if !home.starts_with('/') || h.is_empty() {
-            return Err(format!(
-                "refuse write: SFTP 起始目录不是一个 POSIX 绝对路径（{home}）—— 归一化不认它，不猜"
-            ));
+            return Err(copy_text("beSftp.fence.homeNotAbsolute", &[("home", home)]));
         }
         let Some(rest) = abs.strip_prefix(h.trim_start_matches('/')) else {
-            return Err(format!("refuse write: {p} 不在远端 home（{home}）底下"));
+            return Err(copy_text(
+                "beSftp.fence.outsideHome",
+                &[("path", p), ("home", home)],
+            ));
         };
         let Some(rest) = rest.strip_prefix('/') else {
-            return Err(format!("refuse write: {p} 不在远端 home（{home}）底下"));
+            return Err(copy_text(
+                "beSftp.fence.outsideHome",
+                &[("path", p), ("home", home)],
+            ));
         };
         rest
     } else {
@@ -340,9 +345,7 @@ pub(crate) fn fence_lexical(
         .iter()
         .any(|c| c.is_empty() || *c == "." || *c == ".." || c.contains('\0'))
     {
-        return Err(format!(
-            "refuse write: {p} 里有空段 / `.` / `..` —— 只收规整的路径"
-        ));
+        return Err(copy_text("beSftp.fence.irregular", &[("path", p)]));
     }
     let rel = comps.join("/");
     if intent == Intent::Dir && rel == ROOTS_HOME {
@@ -356,9 +359,13 @@ pub(crate) fn fence_lexical(
             return Ok((rel, Some(root)));
         }
     }
-    Err(format!(
-        "refuse write: 远端只许往 ~/{} 与 ~/{} 底下写（用户 V89「只写暂存区」＋ 自部署），{p} 不在其中",
-        REMOTE_WRITE_ROOTS[0], REMOTE_WRITE_ROOTS[1]
+    Err(copy_text(
+        "beSftp.fence.outsideRoots",
+        &[
+            ("a", REMOTE_WRITE_ROOTS[0]),
+            ("b", REMOTE_WRITE_ROOTS[1]),
+            ("path", p),
+        ],
     ))
 }
 
@@ -381,14 +388,16 @@ pub(crate) async fn fenced_remote(
         return Ok(rel);
     }
     let real_root = s.sftp().canonicalize(root).await.map_err(|e| {
-        fenced(format!(
-            "refuse write: 写根 ~/{root} 解析不了（它还不在？）：{e}"
+        fenced(copy_text(
+            "beSftp.fence.rootUnresolved",
+            &[("root", root), ("e", &e.to_string())],
         ))
     })?;
     let parent = parent_of(&rel);
     let real_parent = s.sftp().canonicalize(parent).await.map_err(|e| {
-        fenced(format!(
-            "refuse write: ~/{parent} 解析不了（父目录不在？）：{e}"
+        fenced(copy_text(
+            "beSftp.fence.parentUnresolved",
+            &[("parent", parent), ("e", &e.to_string())],
         ))
     })?;
     let inside = real_parent == real_root
@@ -396,8 +405,13 @@ pub(crate) async fn fenced_remote(
             .strip_prefix(real_root.as_str())
             .is_some_and(|rest| rest.starts_with('/'));
     if !inside {
-        return Err(fenced(format!(
-            "refuse write: ~/{parent} 解到底之后跑出了写根（{real_parent} 不在 {real_root} 里）"
+        return Err(fenced(copy_text(
+            "beSftp.fence.escaped",
+            &[
+                ("parent", parent),
+                ("real", &real_parent),
+                ("root", &real_root),
+            ],
         )));
     }
     Ok(rel)
@@ -445,18 +459,32 @@ pub(crate) async fn put_atomic(
             attrs,
         )
         .await
-        .map_err(|e| io(format!("创建 ~/{tmp} 失败: {e}")))?;
+        .map_err(|e| {
+            io(copy_text(
+                "beSftp.put.createFailed",
+                &[("path", &tmp), ("e", &e.to_string())],
+            ))
+        })?;
     let written = async {
-        file.write_all(bytes)
-            .await
-            .map_err(|e| io(format!("写 ~/{tmp} 失败: {e}")))?;
+        file.write_all(bytes).await.map_err(|e| {
+            io(copy_text(
+                "beSftp.put.writeFailed",
+                &[("path", &tmp), ("e", &e.to_string())],
+            ))
+        })?;
         // `write_all` 只把 WRITE 包入队；ack 只在 flush / shutdown 里收（同 monitor 那一份的理由）。
-        file.flush()
-            .await
-            .map_err(|e| io(format!("flush ~/{tmp} 失败（写未确认）: {e}")))?;
-        file.shutdown()
-            .await
-            .map_err(|e| io(format!("关闭 ~/{tmp} 失败: {e}")))
+        file.flush().await.map_err(|e| {
+            io(copy_text(
+                "beSftp.put.flushFailed",
+                &[("path", &tmp), ("e", &e.to_string())],
+            ))
+        })?;
+        file.shutdown().await.map_err(|e| {
+            io(copy_text(
+                "beSftp.put.closeFailed",
+                &[("path", &tmp), ("e", &e.to_string())],
+            ))
+        })
     }
     .await;
     drop(file);
@@ -469,7 +497,10 @@ pub(crate) async fn put_atomic(
         let b = format!("{rel}.{}.bak", trip_tag());
         if let Err(e) = s.sftp().rename(rel.clone(), b.clone()).await {
             let _ = s.sftp().remove_file(tmp.clone()).await;
-            return Err(io(format!("备份旧文件 ~/{rel} → ~/{b} 失败: {e}")));
+            return Err(io(copy_text(
+                "beSftp.put.backupFailed",
+                &[("path", &rel), ("backup", &b), ("e", &e.to_string())],
+            )));
         }
         Some(b)
     } else {
@@ -486,7 +517,10 @@ pub(crate) async fn put_atomic(
                 let _ = s.sftp().rename(b, rel.clone()).await;
             }
         }
-        return Err(io(format!("rename ~/{tmp} → ~/{rel} 失败: {e}")));
+        return Err(io(copy_text(
+            "beSftp.put.renameFailed",
+            &[("tmp", &tmp), ("path", &rel), ("e", &e.to_string())],
+        )));
     }
     if let Some(b) = bak {
         let _ = s.sftp().remove_file(b).await;
@@ -517,10 +551,12 @@ pub(crate) async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
     if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         return Ok(false);
     }
-    s.sftp()
-        .remove_file(rel.clone())
-        .await
-        .map_err(|e| io(format!("删除 ~/{rel} 失败: {e}")))?;
+    s.sftp().remove_file(rel.clone()).await.map_err(|e| {
+        io(copy_text(
+            "beSftp.remove.failed",
+            &[("path", &rel), ("e", &e.to_string())],
+        ))
+    })?;
     Ok(true)
 }
 
@@ -540,7 +576,10 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
     if let Err(e) = s.sftp().create_dir(rel.clone()).await {
         // 并发的另一趟刚建好它 —— 那不算错（也不是这一趟建的 ⇒ 不去动它的权限位）。
         if !s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
-            return Err(io(format!("建目录 ~/{rel} 失败: {e}")));
+            return Err(io(copy_text(
+                "beSftp.mkdir.failed",
+                &[("path", &rel), ("e", &e.to_string())],
+            )));
         }
         return Ok(());
     }
@@ -580,9 +619,7 @@ pub(crate) async fn open_for_write(
     let rel = fenced_remote(s, path, Intent::File).await?;
     if let Ok(m) = s.sftp().symlink_metadata(rel.clone()).await {
         if m.is_symlink() {
-            return Err(fenced(format!(
-                "refuse write: ~/{rel} 是一条链接 —— 开写会跟过去，拒"
-            )));
+            return Err(fenced(copy_text("beSftp.open.isLink", &[("path", &rel)])));
         }
     }
     let mut flags = OpenFlags::CREATE | OpenFlags::WRITE | OpenFlags::READ;
@@ -592,7 +629,12 @@ pub(crate) async fn open_for_write(
     s.sftp()
         .open_with_flags(rel.clone(), flags)
         .await
-        .map_err(|e| io(format!("开 ~/{rel} 写失败: {e}")))
+        .map_err(|e| {
+            io(copy_text(
+                "beSftp.open.writeFailed",
+                &[("path", &rel), ("e", &e.to_string())],
+            ))
+        })
 }
 
 // ═══ 读（不改任何东西；不过围栏）══════════════════════════════════════════════════════
@@ -602,7 +644,12 @@ pub(crate) async fn open_for_read(s: &Session, path: &str) -> Result<RemoteFile,
     s.sftp()
         .open_with_flags(path.to_string(), OpenFlags::READ)
         .await
-        .map_err(|e| format!("打开远端 {path} 失败: {e}"))
+        .map_err(|e| {
+            copy_text(
+                "beSftp.open.readFailed",
+                &[("path", path), ("e", &e.to_string())],
+            )
+        })
 }
 
 /// `metadata` 的大小：`None` = 那次调用失败；`Some(None)` = 服务器没给 size（**不是 0 字节**）。
@@ -639,12 +686,14 @@ async fn read_line_capped<R: AsyncBufRead + Unpin>(
         .take(cap + 1)
         .read_line(&mut line)
         .await
-        .map_err(|e| format!("读请求行失败：{e}"))?;
+        .map_err(|e| copy_text("beSftp.request.readFailed", &[("e", &e.to_string())]))?;
     if n == 0 {
         return Ok(None);
     }
     if n as u64 > cap && !line.ends_with('\n') {
-        return Err(format!("请求行超过 {cap} 字节"));
+        return Err(crate::common::contract::malformed(&format!(
+            "request line longer than {cap} bytes"
+        )));
     }
     Ok(Some(line.trim_end_matches(['\n', '\r']).to_string()))
 }
@@ -652,13 +701,13 @@ async fn read_line_capped<R: AsyncBufRead + Unpin>(
 fn arg_str<'a>(v: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
     v.get(k)
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| format!("缺 `{k}`（字符串）"))
+        .ok_or_else(|| crate::common::contract::malformed(&format!("missing `{k}` (string)")))
 }
 
 fn arg_u64(v: &serde_json::Value, k: &str) -> Result<u64, String> {
-    v.get(k)
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| format!("缺 `{k}`（非负整数）"))
+    v.get(k).and_then(serde_json::Value::as_u64).ok_or_else(|| {
+        crate::common::contract::malformed(&format!("missing `{k}` (non-negative integer)"))
+    })
 }
 
 /// 失败那一形：与后端 CLI 错误信封同一对键（`code` ＋ `message`，`readonly_guard::error_envelope_registry` 签字）。
@@ -726,7 +775,14 @@ async fn answer<R: AsyncRead + Unpin>(
                     if d.len() as u64 > max {
                         return Err(refused(
                             "too_big",
-                            &format!("{path} 有 {} 字节，超过这一问给的上限 {max}", d.len()),
+                            &copy_text(
+                                "beSftp.read.tooBig",
+                                &[
+                                    ("path", path),
+                                    ("size", &d.len().to_string()),
+                                    ("max", &max.to_string()),
+                                ],
+                            ),
                         ));
                     }
                 }
@@ -756,7 +812,9 @@ async fn answer<R: AsyncRead + Unpin>(
                         .await;
                     return Err(refused(
                         "too_big",
-                        &format!("一次 put {size} 字节，超过上限 {MAX_PUT_BYTES}"),
+                        &crate::common::contract::malformed(&format!(
+                            "put of {size} bytes exceeds {MAX_PUT_BYTES}"
+                        )),
                     ));
                 }
                 let mut bytes = Vec::with_capacity(size as usize);
@@ -764,11 +822,22 @@ async fn answer<R: AsyncRead + Unpin>(
                     .take(size)
                     .read_to_end(&mut bytes)
                     .await
-                    .map_err(|e| refused("io", &format!("收 put 的字节失败：{e}")))?;
+                    .map_err(|e| {
+                        refused(
+                            "io",
+                            &copy_text("beSftp.put.receiveFailed", &[("e", &e.to_string())]),
+                        )
+                    })?;
                 if bytes.len() as u64 != size {
                     return Err(refused(
                         "bad_request",
-                        &format!("put 说 {size} 字节，只收到 {}", bytes.len()),
+                        &copy_text(
+                            "beSftp.put.short",
+                            &[
+                                ("size", &size.to_string()),
+                                ("got", &bytes.len().to_string()),
+                            ],
+                        ),
                     ));
                 }
                 put_atomic(s, path, &bytes, mode)
@@ -794,9 +863,9 @@ async fn answer<R: AsyncRead + Unpin>(
             }
             other => Err(refused(
                 "unknown_op",
-                &format!(
-                    "files 链路不认 `{other}`（认 home / stat / read / put / remove / mkdirs）"
-                ),
+                &crate::common::contract::malformed(&format!(
+                    "unknown op `{other}` (known: home / stat / read / put / remove / mkdirs)"
+                )),
             )),
         }
     }

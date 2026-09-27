@@ -82,10 +82,10 @@ mod win32;
 
 #[cfg(target_os = "linux")]
 pub(crate) use linux::watch_pid_until_exit;
-// `pidfd_open` 只被 `watcher.rs` 的测试段用（生产段的唯一调用点在 `linux.rs` 内部）。
+// `pidfd_open`：`watcher.rs` 的测试段 ＋〔STOP〕`platform/signal.rs::stoppable`（一次性子命令 `--resident-stop` 的进程把手）。
 #[cfg(not(any(target_os = "linux", windows)))]
 pub(crate) use fallback::watch_pid_until_exit;
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(target_os = "linux")]
 pub(crate) use linux::pidfd_open;
 #[cfg(windows)]
 pub(crate) use win32::watch_pid_until_exit;

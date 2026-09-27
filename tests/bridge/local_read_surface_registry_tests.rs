@@ -77,13 +77,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/local_backend_host.rs",
         "non-read",
-        4,
+        6,
         "〔`K-P1` 08-26〕**一个字节的用户数据都没读。**四个命中全是「拿这条路径当身份比」：\
              3 处在 `hello_verdict`（解 hello 帧的**冻结 wire 字段** `claude_dir` + 比 + 那句诊断），\
              1 处是 `start_detached` 里问一次 `paths::resolve_claude_dir()` —— \
              它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的后端看的是不是同一个目录」。\
              ⚠ 这一格恰恰是**反过来**的：它存在的理由是**不许静默复用**别人的后端。\
-             ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。",
+             ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。\
+             〔STOP 09-27：4 → 6〕多的两处在 `run_resident_stop`：问一次 `resolve_claude_dir()` 并把它交给一次性 `--resident-stop` 的\
+             `CLAUDE_CONFIG_DIR` —— 同一个用途（让它算出同一个口、找到同一份 pid 记录），同样不读内容。",
     ),
     (
         "src/backend/control/payload.rs",
