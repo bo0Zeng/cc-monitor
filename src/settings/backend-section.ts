@@ -44,6 +44,8 @@ const SETTLE_TRIES = 30;
 const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
 import { resync, resyncSaid } from "../resync";
+import { emit } from "@tauri-apps/api/event";
+import { RESYNC_DONE_EVENT } from "./events";
 import { makeInfoIcon } from "./info-icon";
 import {
   LOCAL_ORIGIN,
@@ -447,6 +449,7 @@ export class BackendSection {
     try {
       const r = await resync(origin);
       showActionFailureToast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info", durationMs: 6000 });
+      void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {
       showActionFailureToast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e));
     } finally {

@@ -44,6 +44,7 @@ import type { CcmProbeResult } from "./ccm-probe.ts";
 import { probeCcm } from "./ccm-probe";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
+import { offerResyncRetry } from "./resync";
 import { AGENT_PROFILE } from "./agent-profile";
 // 〔FE1〕起新会话的名字只从一个家取：`tmux-name-mint.ts`（列名单 ＋ 铸名 ＋ 「列不出 ⇒ 不起」）。
 import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
@@ -702,7 +703,15 @@ export async function runRemoteResumeIntoExistingTmux(
       // ★ F14：**不许回落**。那条整串没有 §34 的门 ⇒ 回落等于用一条无门的路把
       //   「被门拒绝」或「可能已经键入过」重做一遍（后者会把载荷第二次提交给正在跑的 claude）。
       //   ⇒ 就地失败，并且**要让用户看见** —— 这次就地 resume 没做成。
-      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), sent.reason ?? copyText("remoteLaunchRun.inPlace.refusedUnsure"));
+      // 〔RESYNC · `99 §2.1` ㉒〕关卡 2 拒的 ⇒ 提示带「对齐后重试」（与结束会话那颗同一个动作）。
+      const said = sent.reason ?? copyText("remoteLaunchRun.inPlace.refusedUnsure");
+      if (sent.gate2) {
+        offerResyncRetry(origin, sid, copyText("remoteLaunchRun.inPlace.notRun"), said, async () => {
+          await runRemoteResumeIntoExistingTmux(origin, sid, name, launcher, mods);
+        });
+      } else {
+        showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
+      }
       return false;
     }
     if (sent.verdict === "typed") {
@@ -770,10 +779,15 @@ export async function runLocalResumeIntoExistingTmux(
   if (sent.verdict !== "typed") {
     // `fallback` 与 `refused` 在本机是**同一种处置** —— 见头注：本机没有第二条路，
     // 而造一条就是 `C1` 排除的那件事。两者的 `reason` 都原样交给用户。
-    showActionFailureToast(
-      copyText("remoteLaunchRun.inPlace.notRun"),
-      sent.reason ?? copyText("remoteLaunchRun.inPlaceLocal.noBackend"),
-    );
+    const said = sent.reason ?? copyText("remoteLaunchRun.inPlaceLocal.noBackend");
+    // 〔RESYNC · `99 §2.1` ㉒〕关卡 2 拒的 ⇒ 提示带「对齐后重试」。
+    if (sent.verdict === "refused" && sent.gate2) {
+      offerResyncRetry(LOCAL_ORIGIN, sid, copyText("remoteLaunchRun.inPlace.notRun"), said, async () => {
+        await runLocalResumeIntoExistingTmux(sid, name, launcher, mods);
+      });
+    } else {
+      showActionFailureToast(copyText("remoteLaunchRun.inPlace.notRun"), said);
+    }
     return false;
   }
   // ★ attach 那半**与远端共用同一条路**〔用户裁定 08-12：「attach 暂时就用纯 linux bash

@@ -25,6 +25,7 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
+import { RESYNC_DONE_EVENT } from "./settings/events";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
@@ -369,6 +370,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 用户去设置里补齐了一格，广播过来这一拍就是「状态维」该重算的那一刻；
   // 不挂的话「补齐了 ⇒ 指路消失」要等下次启动才兑现（那就成了一句半真的话）。
   let refreshFirstRunHint: () => void = () => {};
+  // 〔RESYNC · `99 §2.1` ㉟①〕设置窗「重新对齐」做完 ⇒ 标出那台上记录没了的固定条（不自动摘）。
+  void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为

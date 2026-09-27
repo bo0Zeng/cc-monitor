@@ -9,6 +9,7 @@
  * | 请求体 / 成品 == 跨语言金样（后端 `watcher_tests::resync_face_reply_matches_the_cross_language_golden` 对同一份） | 「金样」 |
  * | 关卡 2 的拒绝（真 `killSession` 抛出来的那个）认得出，别的拒绝不认 | 「认得出关卡 2」 |
  * | 点「对齐后重试」⇒ 先对齐**那一个会话**、再做一次原动作；顺序就是这个 | 「对齐后重试」 |
+ * | 〔`99 §2.1` ㉟①〕对齐后固定条记录没了 ⇒ 标出来、说一句，**不自动摘**；点了才摘；问不到的不标 | 「固定条」 |
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -22,7 +23,20 @@ vi.mock("../src/error-toast", () => ({
   },
 }));
 
+const { records } = vi.hoisted(() => ({ records: new Map<string, boolean | "throw">() }));
+vi.mock("../src/session-reads", () => ({
+  probeSessionRecord: async (_origin: string, sid: string) => {
+    const r = records.get(sid);
+    if (r === "throw" || r === undefined) throw new Error("问不到");
+    return { present: r, root: "/r" };
+  },
+}));
+vi.mock("../src/account-reads", () => ({ fetchAccounts: async () => ({ available: true, accounts: [] }) }));
+vi.mock("../src/history-reads", () => ({ lastAccounts: async () => ({}) }));
+
 import { invoke } from "@tauri-apps/api/core";
+import { TabSessionActions } from "../src/tab-session-actions";
+import type { Tab } from "../src/tab-model";
 import { ControlError } from "../src/control-said";
 import { decodeResynced, isIdentityRefusal, offerResyncRetry, resync } from "../src/resync";
 import { killSession } from "../src/tmux-control";
@@ -94,5 +108,28 @@ describe("〔RESYNC〕手动对齐", () => {
     await flush();
     await flush();
     expect(order).toEqual(['resync {"sid":"sid-7"}', "again"]);
+  });
+
+  it("★ 〔㉟①〕固定条记录没了 ⇒ 标出来、说一句、不自动摘；点那条才摘；问不到的不标", async () => {
+    records.clear();
+    records.set("s-gone", false).set("s-here", true).set("s-dunno", "throw");
+    const marked: [string, boolean][] = [];
+    const unpinned: string[] = [];
+    const actions = new TabSessionActions({
+      tab: () => undefined,
+      isAttachable: () => false,
+      sessionAccount: () => undefined,
+      refreshAccountBadgeFor: () => {},
+      markRecord: (sid, present) => marked.push([sid, present]),
+    });
+    const tab = (sid: string) => ({ sessionId: sid, origin: "aya", title: sid, pinned: true }) as unknown as Tab;
+    await actions.flagPinsWithoutRecord("aya", [tab("s-gone"), tab("s-here"), tab("s-dunno")], (sid) => unpinned.push(sid));
+    expect(marked).toEqual([
+      ["s-gone", false],
+      ["s-here", true],
+    ]);
+    expect([toasts.length, unpinned]).toEqual([1, []]);
+    toasts[0].onClick!();
+    expect(unpinned).toEqual(["s-gone"]);
   });
 });

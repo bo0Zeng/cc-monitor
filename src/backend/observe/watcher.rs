@@ -2432,7 +2432,7 @@ fn retag_tracked(state: &ReaderState, only: Option<&str>) -> usize {
 /// ⇒ 客户端收到它时，这台机器此刻全部的活会话都已经报过了 —— 靠它把「固定、却没被报过」的会话
 /// 从「说不清」落到「已结束」（`设计/30 §3.5.7a`）。
 fn initial_session_scan(sessions: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
-    let _ = reconcile_sessions(sessions, state, sink, None);
+    reconcile_sessions(sessions, state, sink, None);
     sink.send(Frame::SessionsReplayed);
 }
 
