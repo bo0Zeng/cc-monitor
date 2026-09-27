@@ -121,6 +121,8 @@ pub(crate) struct Opts {
     pub(crate) tmux_size: String,
     /// 交给 agent 的那一串，按用户写的顺序（V138：ccm 不认的词全在这里，含 `--resume` / `--model`）。
     pub(crate) passthru: Vec<String>,
+    /// 〔FIX · V138〕透传里 resume 的那条会话（只看不吃：词仍原样在 `passthru` 里）；见 [`resume_sid`]。
+    pub(crate) resumes: Option<String>,
 }
 
 /// 一次**立即结束**的请求：解析期就能答完、不必走计划面。
@@ -188,6 +190,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         detach: Defaults::DETACH,
         tmux_size: String::new(),
         passthru: Vec::new(),
+        resumes: None,
     };
 
     // 位置动作 `new` 只认第一个词（用户 09-26「new不要删掉」—— claude 没有 `new` 子命令）；
@@ -249,8 +252,34 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         i += 1;
     }
 
+    o.resumes = resume_sid(&o.passthru).map(str::to_string);
     validate(&o)?;
     Ok(Parsed::Opts(Box::new(o)))
+}
+
+/// 透传里 claude 的 `--resume <值>` / `--resume=<值>` / `-r <值>`（最后一个算；claude 自己的 `--` 之后不看）。
+/// 值可能是 claude 的搜索词而不是 sid —— 那只会对不上快照里任何 `@ccm_sid`，不误伤。
+pub(crate) fn resume_sid(passthru: &[String]) -> Option<&str> {
+    let mut found = None;
+    let mut i = 0;
+    while let Some(w) = passthru.get(i) {
+        match w.as_str() {
+            flag::END => break,
+            "--resume" | "-r" => {
+                if let Some(v) = passthru.get(i + 1).filter(|v| !v.starts_with('-')) {
+                    found = Some(v.as_str());
+                    i += 1;
+                }
+            }
+            w => {
+                if let Some(v) = w.strip_prefix("--resume=").filter(|v| !v.is_empty()) {
+                    found = Some(v);
+                }
+            }
+        }
+        i += 1;
+    }
+    found
 }
 
 /// 组合校验。**一条都不许静默忽略** —— 静默忽略正是本工作区反复消灭的那类病

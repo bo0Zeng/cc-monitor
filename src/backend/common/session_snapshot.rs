@@ -66,12 +66,21 @@ pub(crate) struct SessionRow {
 /// 这就是 `R52` 裁定二那张「hash 表」的类型形态：铸名避让（`ccm::plan::build`）
 /// 只收这个类型，于是「另起一份名字集合」不是靠注释劝阻，是**编译不过**。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TakenNames(Vec<String>);
+pub(crate) struct TakenNames(Vec<String>, Vec<SessionRow>);
 
 impl TakenNames {
     /// 给避让算法用的那一份。
     pub(crate) fn as_slice(&self) -> &[String] {
         &self.0
+    }
+
+    /// 〔FIX · V138 · `设计/71 §8` 第 12 条〕claude 会话 `sid` 正在哪个 tmux 会话里跑（`@ccm_sid` 对上）；没有 ⇒ `None`。
+    /// 与避让同一份快照（同一次探测）⇒ `ccm --ccm-print` 与真跑对「在跑」也同答。
+    pub(crate) fn running(&self, sid: &str) -> Option<&str> {
+        self.1
+            .iter()
+            .find(|r| !sid.is_empty() && r.ccm_sid == sid)
+            .map(|r| r.name.as_str())
     }
 }
 
@@ -108,8 +117,10 @@ impl SessionSnapshot {
 
     /// 铸名避让要的那份「已占用的名字」。**同样会触发一次更新**（它就是 `query` 的投影）。
     pub(crate) fn taken_names(&self) -> Result<TakenNames, CmdErr> {
+        let rows = self.query()?;
         Ok(TakenNames(
-            self.query()?.into_iter().map(|r| r.name).collect(),
+            rows.iter().map(|r| r.name.clone()).collect(),
+            rows,
         ))
     }
 
