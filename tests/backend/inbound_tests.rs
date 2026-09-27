@@ -761,6 +761,29 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     );
 }
 
+/// 〔NET2 · `设计/05 §3.3.3`〕hello 的 `uncancellable` == 真 `dispatch` 会送进阻塞档（开跑之后撤不动）的那几条，两向。
+/// 两侧异源：左边是 `uncancellable()`（读表的档位），右边是真调一次 `dispatch` 看它回哪种 `Disposition`。
+#[test]
+fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
+    let (tx, _rx) = mpsc::channel::<Frame>(64);
+    let running: Running = Arc::new(Mutex::new(HashMap::new()));
+    let links = crate::dial::link::Table::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let blocking: Vec<String> = REGISTRY
+        .iter()
+        .map(|spec| spec.name)
+        .filter(|name| {
+            matches!(
+                dispatch(req("x", name), &tx, &running, &links, &xfers),
+                Disposition::SpawnBlocking(..)
+            )
+        })
+        .map(str::to_string)
+        .collect();
+    assert!(!blocking.is_empty(), "一条阻塞档都没有 —— 本条在空转");
+    assert_eq!(super::uncancellable(), blocking);
+}
+
 /// ★ **不可取消的命令不许回一条撒谎的 `cancelled`。**
 ///
 /// D 设计审计（视角 A · P4）：`launch` 的处理器是同步阻塞的，`abort()` 对

@@ -173,7 +173,9 @@ pub enum CallError {
     /// ② 对端错 —— 通道是通的；它收到了并答了「不行」，或它事前就说不认。
     Peer { why: PeerFault },
     /// ③ 我们自己错 —— 与对面无关。
-    Ours { why: OursFault },
+    /// 〔NET2〕`runs_on`：本地撤单（`Cancelled`）时那台对这一条不认撤 ⇒ 那件事可能还在跑（`05 §3.3.3`「在结果里说明」）。
+    /// 由手里有那台 `Offer` 的一方填（回环客户端 · TS）；别的 `why` 恒 `false`。
+    Ours { why: OursFault, runs_on: bool },
 }
 
 /// 🔴 只答「我们发没发出去」，不答「对面做没做」。**拿不准一律 `Unknown`。**
@@ -216,7 +218,10 @@ pub enum OursFault {
 /// 「我们自己错」那一层的简写：`OursFault::Misuse.into()`。
 impl From<OursFault> for CallError {
     fn from(why: OursFault) -> Self {
-        CallError::Ours { why }
+        CallError::Ours {
+            why,
+            runs_on: false,
+        }
     }
 }
 
@@ -238,7 +243,10 @@ impl std::fmt::Display for CallError {
                 PeerFault::Unsupported => copy_text("rsChanWire.peer.unsupported", &[]),
                 PeerFault::Refused { .. } => copy_text("rsChanWire.peer.refused", &[]),
             }),
-            CallError::Ours { why } => f.write_str(&match why {
+            CallError::Ours { why, runs_on } => f.write_str(&match why {
+                OursFault::Cancelled if *runs_on => {
+                    copy_text("rsChanWire.ours.cancelledRunsOn", &[])
+                }
                 OursFault::Cancelled => copy_text("rsChanWire.ours.cancelled", &[]),
                 OursFault::Misuse => copy_text("rsChanWire.ours.misuse", &[]),
                 OursFault::Broken => copy_text("rsChanWire.ours.broken", &[]),
@@ -354,10 +362,17 @@ pub const WITHDRAW_OP: &str = "cancel";
 /// 对端对补发的撤单回这个码 ⇒ 那一条它停不下来（阻塞档），会照跑完。
 pub const WITHDRAW_REFUSED: &str = "not_cancellable";
 
-/// 对端握手时交出的「我接哪些 op」。一条连接一份；认不认只问它（`admits`），事前不认就一个字节都不发。
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// 对端握手时交出的能力事实：接哪些 op · 哪几条在这台做不到（附码）· 哪几条撤不动。
+/// 一条连接一份；「认不认 / 做不做得到 / 撤不撤得动」只问它。外部前端与 webview 拿的是它的拷贝（序列化形）。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Offer {
     ops: Vec<String>,
+    /// `(op, 码)`：接得下、这台做不到；码与对端事后会回的同一个。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unavailable: Vec<(String, String)>,
+    /// 撤不动的 op（对端开跑之后停不下）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    uncancellable: Vec<String>,
 }
 
 /// 本地撤单之后，对端那一半怎样了（`05 §3.3.3`：本地照撤；对端不认要说出来）。
@@ -365,16 +380,24 @@ pub struct Offer {
 pub enum Withdraw {
     /// 请求还没出本侧，对端没见过它 —— 没什么可撤。
     Unsent,
-    /// 对端认撤单，已补发（尽力；停不下来的那一条由它回 [`WITHDRAW_REFUSED`] 说）。
+    /// 对端认撤这一条，已补发（尽力；旧对端没说哪几条撤不动，停不下的那一条由它回 [`WITHDRAW_REFUSED`] 说）。
     Asked,
-    /// 🔴 对端握手时没说认撤单 ⇒ 一帧都不补，那件事可能照跑完。
+    /// 🔴 对端不认撤这一条（没交出撤单 op，或它在撤不动那一栏）⇒ 一帧都不补，那件事可能照跑完。
     NotOffered,
 }
 
 impl Offer {
-    /// 对端握手时交出的 op 集，原样收下。
-    pub fn new(ops: Vec<String>) -> Self {
-        Self { ops }
+    /// 对端握手时交出的三格，原样收下。
+    pub fn new(
+        ops: Vec<String>,
+        unavailable: Vec<(String, String)>,
+        uncancellable: Vec<String>,
+    ) -> Self {
+        Self {
+            ops,
+            unavailable,
+            uncancellable,
+        }
     }
 
     /// 对端认不认这个 op。
@@ -387,9 +410,17 @@ impl Offer {
         &self.ops
     }
 
-    /// 一条**已发出**的请求被本地撤掉之后，对端那一半的处置。
-    pub fn withdraw(&self) -> Withdraw {
-        if self.admits(WITHDRAW_OP) {
+    /// 这台做不到这个 op ⇒ 那个码（与对端事后会回的同一个）；做得到 / 没把握 ⇒ `None`。
+    pub fn unavailable(&self, op: &str) -> Option<&str> {
+        self.unavailable
+            .iter()
+            .find(|(o, _)| o == op)
+            .map(|(_, code)| code.as_str())
+    }
+
+    /// 这个 op 的请求**已发出**、被本地撤掉之后，对端那一半的处置。
+    pub fn withdraw(&self, op: &str) -> Withdraw {
+        if self.admits(WITHDRAW_OP) && !self.uncancellable.iter().any(|o| o == op) {
             Withdraw::Asked
         } else {
             Withdraw::NotOffered
@@ -434,6 +465,11 @@ pub(crate) enum Head {
     Stop {
         id: u64,
     },
+    /// 〔NET2 · additive〕要那台机器的能力事实（`Offer`）；路由器回 `Done{id}`，体是 `Option<Offer>` 的 JSON。
+    OfferOf {
+        id: u64,
+        origin: Origin,
+    },
     // ── 路由器 → 客户端 ──
     Welcome,
     Denied,
@@ -462,6 +498,8 @@ pub(crate) enum WireErr {
     Unsupported,
     Refused,
     Ours(OursFault),
+    /// 〔NET2 · additive〕`Ours` 且那台对这一条不认撤（`CallError::Ours.runs_on`）。
+    OursRunsOn(OursFault),
 }
 
 /// `Item` 的线上形状。`Frame` 与 `Closed{by: Peer}` 的体走帧体。
@@ -493,7 +531,11 @@ pub(crate) fn err_to_wire(e: CallError) -> (WireErr, Vec<u8>) {
         CallError::Peer {
             why: PeerFault::Refused { body },
         } => (WireErr::Refused, body.0),
-        CallError::Ours { why } => (WireErr::Ours(why), Vec::new()),
+        CallError::Ours {
+            why,
+            runs_on: false,
+        } => (WireErr::Ours(why), Vec::new()),
+        CallError::Ours { why, runs_on: true } => (WireErr::OursRunsOn(why), Vec::new()),
     }
 }
 
@@ -511,9 +553,7 @@ pub(crate) fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
                 reach,
                 why,
             },
-            None => CallError::Ours {
-                why: OursFault::Broken,
-            },
+            None => OursFault::Broken.into(),
         },
         WireErr::Unsupported => CallError::Peer {
             why: PeerFault::Unsupported,
@@ -521,7 +561,8 @@ pub(crate) fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
         WireErr::Refused => CallError::Peer {
             why: PeerFault::Refused { body: Body(body) },
         },
-        WireErr::Ours(why) => CallError::Ours { why },
+        WireErr::Ours(why) => why.into(),
+        WireErr::OursRunsOn(why) => CallError::Ours { why, runs_on: true },
     }
 }
 

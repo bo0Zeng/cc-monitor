@@ -43,6 +43,8 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         homes: vec![],
         capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
+        unavailable: vec![],
+        uncancellable: vec![],
     };
     let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);

@@ -1231,3 +1231,32 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
         "线上那几行 files-delete 不对（目录要带 recursive，乱码名要走 b16）"
     );
 }
+
+/// 〔NET2 · 主会话 09-27 裁 A〕那台握手时说过「改不了权限」（`hello.unavailable` 里的 `files-chmod`）⇒ 「权限」那一件
+/// 不做、出声说为什么；那台没说 ⇒ 照常摆出框。两侧异源：左边是真 `perform`，右边是手里那份 `Offer`。
+#[test]
+fn chmod_is_refused_out_loud_where_the_machine_said_it_cannot() {
+    for (said, allowed) in [(true, false), (false, true)] {
+        let mut w = window(vec![file("a.bin")]);
+        if said {
+            *w.offer.lock().unwrap() = Some(crate::chan::wire::Offer::new(
+                vec!["files-chmod".into()],
+                vec![("files-chmod".into(), "no_unix_mode".into())],
+                vec![],
+            ));
+        }
+        let mut d = Drive::new();
+        d.pick(&mut w, "a.bin", NONE);
+        assert_eq!(w.perform(Action::Chmod, None), allowed, "said={said}");
+        if said {
+            assert!(
+                w.key_notice().is_some_and(|n| n.contains("改不了权限")),
+                "做不到却没说为什么：{:?}",
+                w.key_notice()
+            );
+            assert!(w.write_prompt().is_none());
+        } else {
+            assert!(w.write_prompt().is_some(), "没说做不到却没摆出框");
+        }
+    }
+}

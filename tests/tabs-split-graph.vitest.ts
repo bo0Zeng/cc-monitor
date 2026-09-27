@@ -193,6 +193,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/agent-profile.ts",
     "src/ask-dialog.ts", // 〔W5-UI〕「新建集合…」问名字（原 `window.prompt`）
     "src/behavior.ts",
+    "src/control-said.ts", // 〔NET2〕那台握手时说过做不到的几项置灰：`unavailableSaid`（事实住 monitor 那份 Offer）
     "src/copy-table.ts", // 〔U4〕固定那一项的两句提示（说到会话状态）住文案表
     "src/error-toast.ts",
     "src/ipc/origin.ts", // 〔C4a〕本机 / 远端各给哪几项（原先是 backend-policy 的 LOCAL_ORIGIN ＋ 各处 `=== null`）

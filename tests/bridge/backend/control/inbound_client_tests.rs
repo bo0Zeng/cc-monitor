@@ -16,6 +16,8 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         homes: vec![],
         capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
+        unavailable: vec![],
+        uncancellable: vec![],
     }
 }
 
@@ -1025,4 +1027,62 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
         include_str!("../../../../src/bridge/src/backend/control/inbound_client.rs"),
         &["impl<W> ParkedWriter<W>", "pub fn into_client("],
     );
+}
+
+/// 〔NET2 续 · 主会话 09-27 裁 A · B〕握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
+/// ① `unavailable` 列了的命令 ⇒ 不发、回 `Unavailable{code}`（与那台事后回的码同一个）；没列的照发。
+/// ② `uncancellable` 列了的命令超时 ⇒ `NotOffered`、一条撤单都不补；没列的 ⇒ `Asked`、补一条。
+/// 两侧异源：左边是真 hello 行经 `ssh_source::parse_frame` 解出来的，右边是本条手写的期望。
+#[tokio::test]
+async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
+    let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{"command":"kill","code":"no_tmux"},{"command":7}],"uncancellable":["launch",null]}"#;
+    let frame = crate::ssh_source::parse_frame(line).expect("是 hello");
+    let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(mine).into_client(hello);
+    let mut peer = tokio::io::BufReader::new(theirs);
+
+    // ①
+    let err = client
+        .call("kill", Value::Null, Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err,
+        CallError::Unavailable {
+            cmd: "kill".into(),
+            code: "no_tmux".into()
+        }
+    );
+    let mut stray = String::new();
+    let read = tokio::time::timeout(Duration::from_millis(100), peer.read_line(&mut stray)).await;
+    assert!(read.is_err(), "做不到的命令还是发出去了：{stray:?}");
+
+    // ②
+    for (cmd, want, cancels) in [
+        ("launch", Withdraw::NotOffered, 0usize),
+        ("ping", Withdraw::Asked, 1),
+    ] {
+        let c = client.clone();
+        let caller =
+            tokio::spawn(async move { c.call(cmd, Value::Null, Duration::from_millis(60)).await });
+        let sent = next_line(&mut peer).await;
+        assert!(sent.contains(&format!("\"cmd\":\"{cmd}\"")), "{sent}");
+        let err = caller.await.expect("task").unwrap_err();
+        assert!(
+            matches!(err, CallError::Timeout { withdraw, .. } if withdraw == want),
+            "{cmd}: {err:?}"
+        );
+        let mut got = 0;
+        let mut extra = String::new();
+        while tokio::time::timeout(Duration::from_millis(100), peer.read_line(&mut extra))
+            .await
+            .is_ok()
+        {
+            assert!(extra.contains("\"cmd\":\"cancel\""), "{extra}");
+            got += 1;
+            extra.clear();
+        }
+        assert_eq!(got, cancels, "{cmd}");
+    }
 }

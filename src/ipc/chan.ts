@@ -76,7 +76,7 @@ export type CallError =
   | { layer: "hop"; at: { idx: number; tag: HopTag }; reach: Reach; why: HopFault }
   | { layer: "peer"; why: "unsupported" }
   | { layer: "peer"; why: "refused"; body: Uint8Array }
-  | { layer: "ours"; why: OursFault };
+  | { layer: "ours"; why: OursFault; runsOn?: boolean };
 
 /** `call` 失败时抛的那一个。`error` 是分好层的结局；`message` 只给日志看。 */
 export class ChanError extends Error {
@@ -145,15 +145,70 @@ export function decodeFail(raw: unknown): CallError {
     if (typeof o.Ours === "string" && OURS_FAULTS.includes(o.Ours)) {
       return { layer: "ours", why: o.Ours as OursFault };
     }
+    // 〔NET2 · additive〕本侧撤了、那台对这一条不认撤 ⇒ 它可能还在跑。
+    if (typeof o.OursRunsOn === "string" && OURS_FAULTS.includes(o.OursRunsOn)) {
+      return { layer: "ours", why: o.OursRunsOn as OursFault, runsOn: true };
+    }
   }
   return BROKEN;
 }
 
-/** 本地撤单那一格：拨下的那一刻就回（不等 monitor）。 */
-function whenAborted(signal: AbortSignal): { promise: Promise<never>; dispose: () => void } {
+/**
+ * 〔NET2〕那台机器的能力事实（monitor 那边的 `chan::wire::Offer` 判完之后的一份拷贝，`chan/webview.rs::OfferView`）。
+ * 本侧**只查成员**，不另算：做不到的那几条带码；`stoppable` 是撤掉之后停得下的那几条。
+ */
+export interface Offer {
+  readonly ops: readonly string[];
+  readonly unavailable: readonly (readonly [string, string])[];
+  readonly stoppable: readonly string[];
+}
+
+/** 这台做不到 `op` ⇒ 那个码（与那台事后会回的同一个）；做得到 / 没把握 ⇒ `null`。 */
+export function unavailableCode(offer: Offer | null | undefined, op: string): string | null {
+  return offer?.unavailable.find(([o]) => o === op)?.[1] ?? null;
+}
+
+/** 每台一份：第一次对它 `call` 时去问（不等它），通道那一跳出了事就作废（重连之后可能换了一份）。 */
+const offers = new Map<Origin, Offer | null>();
+const asking = new Map<Origin, Promise<Offer | null>>();
+
+const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
+
+/** monitor 交回来的那一份 ⇒ `Offer`；形状不对 ⇒ `null`（当作没把握，不猜）。 */
+export function decodeOffer(raw: unknown): Offer | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const { ops, unavailable, stoppable } = raw as Record<string, unknown>;
+  const pairs =
+    Array.isArray(unavailable) &&
+    unavailable.every((p) => Array.isArray(p) && p.length === 2 && strings(p));
+  if (!strings(ops) || !pairs || !strings(stoppable)) return null;
+  return { ops, unavailable: unavailable as [string, string][], stoppable };
+}
+
+function askOffer(origin: Origin): Promise<Offer | null> {
+  const inFlight = asking.get(origin);
+  if (inFlight) return inFlight;
+  const p = commands
+    .chan_offer({ origin })
+    .then(
+      (raw) => {
+        const o = decodeOffer(raw);
+        offers.set(origin, o);
+        return o;
+      },
+      () => null,
+    )
+    .finally(() => asking.delete(origin));
+  asking.set(origin, p);
+  return p;
+}
+
+/** 本地撤单那一格：拨下的那一刻就回（不等 monitor）。`runsOn`：那台对这一条不认撤 ⇒ 它可能还在跑。 */
+function whenAborted(signal: AbortSignal, runsOn: () => boolean): { promise: Promise<never>; dispose: () => void } {
   let onAbort: (() => void) | null = null;
   const promise = new Promise<never>((_, reject) => {
-    onAbort = () => reject(new ChanError({ layer: "ours", why: "Cancelled" }));
+    onAbort = () =>
+      reject(new ChanError(runsOn() ? { layer: "ours", why: "Cancelled", runsOn: true } : { layer: "ours", why: "Cancelled" }));
     signal.addEventListener("abort", onAbort, { once: true });
   });
   return {
@@ -256,6 +311,16 @@ function dispatchDelivery(raw: unknown): void {
 
 /** 前端对通信层的说法（`§3.1`：前端只有两个动作）。 */
 export const chan = {
+  /** 〔NET2〕那台的能力事实：先问一次（`null` = 没有控制通道）。 */
+  offer(origin: Origin): Promise<Offer | null> {
+    return askOffer(origin);
+  },
+
+  /** 〔NET2〕手里那份（没问过 ⇒ `undefined`；界面画菜单时用它，同时 `offer()` 去补）。 */
+  cachedOffer(origin: Origin): Offer | null | undefined {
+    return offers.get(origin);
+  },
+
   /**
    * 一次性请求。失败一定抛一个 [`ChanError`]，**永远不会**「返回一个空答案」。
    * 载荷两个方向都原样：本文件不 `JSON.parse`、不 `JSON.stringify`。
@@ -276,13 +341,21 @@ export const chan = {
       .then(
         (buf) => new Uint8Array(buf),
         (raw: unknown) => {
-          throw new ChanError(decodeFail(raw));
+          const e = decodeFail(raw);
+          if (e.layer === "hop") offers.delete(origin);
+          throw new ChanError(e);
         },
       );
     if (!budget.cancel) return sent;
+    // 撤得掉的那一问才要那台的 Offer（撤了之后说「可能还在跑」）：没问过就去问（不等它）。
+    if (!offers.has(origin)) void askOffer(origin);
     // 撤了之后 monitor 那一侧照跑完（不买对端撤活）；它那时的结局没人收了 —— 别让它变成一次未处理的拒绝。
     sent.catch(() => {});
-    const abort = whenAborted(budget.cancel);
+    const offer = (): Offer | null | undefined => offers.get(origin);
+    const abort = whenAborted(budget.cancel, () => {
+      const o = offer();
+      return o !== null && o !== undefined && !o.stoppable.includes(op);
+    });
     try {
       return await Promise.race([sent, abort.promise]);
     } finally {

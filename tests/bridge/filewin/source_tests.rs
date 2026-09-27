@@ -988,7 +988,7 @@ fn each_layer_of_a_channel_failure_says_something_different() {
     let ours: std::collections::BTreeSet<String> =
         [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
             .into_iter()
-            .map(|why| said("x", &CallError::Ours { why }))
+            .map(|why| said("x", &why.into()))
             .collect();
     assert_eq!(ours.len(), 3, "本侧三种错说成了同一句");
 }
