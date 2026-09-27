@@ -12259,6 +12259,11 @@
       "zh": "同时在等的命令已达上限 {max}，远端可能没在回应",
       "args": ["max"]
     },
+    "rsInboundClient.error.unavailable": {
+      "kind": "error",
+      "zh": "这台机器做不到这件事（{code}），没有发出去",
+      "args": ["code"]
+    },
     "rsInboundClient.error.unsupported": {
       "kind": "error",
       "zh": "远端后端版本旧，不支持这个操作",

@@ -18,6 +18,8 @@ fn parses_hello_and_captures_build_id() {
             capabilities: Vec::new(),
             // U8a-2a：同理，无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
             commands: Vec::new(),
+            unavailable: vec![],
+            uncancellable: vec![],
         }
     );
 }

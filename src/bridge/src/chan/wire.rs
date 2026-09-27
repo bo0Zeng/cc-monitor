@@ -354,10 +354,17 @@ pub const WITHDRAW_OP: &str = "cancel";
 /// 对端对补发的撤单回这个码 ⇒ 那一条它停不下来（阻塞档），会照跑完。
 pub const WITHDRAW_REFUSED: &str = "not_cancellable";
 
-/// 对端握手时交出的「我接哪些 op」。一条连接一份；认不认只问它（`admits`），事前不认就一个字节都不发。
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// 对端握手时交出的能力事实：接哪些 op · 哪几条在这台做不到（附码）· 哪几条撤不动。
+/// 一条连接一份；「认不认 / 做不做得到 / 撤不撤得动」只问它。外部前端与 webview 拿的是它的拷贝（序列化形）。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Offer {
     ops: Vec<String>,
+    /// `(op, 码)`：接得下、这台做不到；码与对端事后会回的同一个。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    unavailable: Vec<(String, String)>,
+    /// 撤不动的 op（对端开跑之后停不下）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    uncancellable: Vec<String>,
 }
 
 /// 本地撤单之后，对端那一半怎样了（`05 §3.3.3`：本地照撤；对端不认要说出来）。
@@ -365,16 +372,24 @@ pub struct Offer {
 pub enum Withdraw {
     /// 请求还没出本侧，对端没见过它 —— 没什么可撤。
     Unsent,
-    /// 对端认撤单，已补发（尽力；停不下来的那一条由它回 [`WITHDRAW_REFUSED`] 说）。
+    /// 对端认撤这一条，已补发（尽力；旧对端没说哪几条撤不动，停不下的那一条由它回 [`WITHDRAW_REFUSED`] 说）。
     Asked,
-    /// 🔴 对端握手时没说认撤单 ⇒ 一帧都不补，那件事可能照跑完。
+    /// 🔴 对端不认撤这一条（没交出撤单 op，或它在撤不动那一栏）⇒ 一帧都不补，那件事可能照跑完。
     NotOffered,
 }
 
 impl Offer {
-    /// 对端握手时交出的 op 集，原样收下。
-    pub fn new(ops: Vec<String>) -> Self {
-        Self { ops }
+    /// 对端握手时交出的三格，原样收下。
+    pub fn new(
+        ops: Vec<String>,
+        unavailable: Vec<(String, String)>,
+        uncancellable: Vec<String>,
+    ) -> Self {
+        Self {
+            ops,
+            unavailable,
+            uncancellable,
+        }
     }
 
     /// 对端认不认这个 op。
@@ -387,9 +402,17 @@ impl Offer {
         &self.ops
     }
 
-    /// 一条**已发出**的请求被本地撤掉之后，对端那一半的处置。
-    pub fn withdraw(&self) -> Withdraw {
-        if self.admits(WITHDRAW_OP) {
+    /// 这台做不到这个 op ⇒ 那个码（与对端事后会回的同一个）；做得到 / 没把握 ⇒ `None`。
+    pub fn unavailable(&self, op: &str) -> Option<&str> {
+        self.unavailable
+            .iter()
+            .find(|(o, _)| o == op)
+            .map(|(_, code)| code.as_str())
+    }
+
+    /// 这个 op 的请求**已发出**、被本地撤掉之后，对端那一半的处置。
+    pub fn withdraw(&self, op: &str) -> Withdraw {
+        if self.admits(WITHDRAW_OP) && !self.uncancellable.iter().any(|o| o == op) {
             Withdraw::Asked
         } else {
             Withdraw::NotOffered

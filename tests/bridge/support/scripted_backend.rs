@@ -56,6 +56,8 @@ pub(crate) fn rig(host: &str, accepts: &[&str], script: Vec<Step>) -> Rig {
         homes: vec![],
         capabilities: vec![],
         commands: accepts.iter().map(|s| s.to_string()).collect(),
+        unavailable: vec![],
+        uncancellable: vec![],
     };
     let client = park(mon_w).into_client(BackendHello::from_hello_frame(&hello).expect("hello"));
     let c2 = Arc::clone(&client);
