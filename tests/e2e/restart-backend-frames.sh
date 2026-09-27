@@ -136,8 +136,8 @@ echo "old(acct bold)=$OLD  new(acct znew)=$NEW"
 tmux new-session -d -s "$KEEP" "exec sh"
 
 # 两个 backend:分别监视旧号 / 新号目录。
-CLAUDE_CONFIG_DIR="$OLD" "$BACKEND" >"$OLD_FR" 2>"$WORK/old.err" & DP_OLD=$!
-CLAUDE_CONFIG_DIR="$NEW" "$BACKEND" >"$NEW_FR" 2>"$WORK/new.err" & DP_NEW=$!
+CLAUDE_CONFIG_DIR="$OLD" "$BACKEND" -- --stream >"$OLD_FR" 2>"$WORK/old.err" & DP_OLD=$!
+CLAUDE_CONFIG_DIR="$NEW" "$BACKEND" -- --stream >"$NEW_FR" 2>"$WORK/new.err" & DP_NEW=$!
 
 # ── 1. 旧号持有:make_live 在旧号目录 → backend_OLD SessionAdded；backend_NEW 无 ──────────────────
 CLAUDE_CONFIG_DIR="$OLD" CCM_E2E_FAKE_CLAUDE="$FAKE" bash "$E2E/gen-idle-tmux.sh" "$SID" >/dev/null

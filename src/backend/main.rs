@@ -83,7 +83,7 @@ async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
-    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-backend ccm …`）。
+    // ⇒ 终端里敲的 `ccm` 就是本二进制（〔主会话 09-27〕分流只看 argv、不看名字）。
     //
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
     //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
@@ -93,9 +93,8 @@ async fn main() {
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
     // 〔V151〕分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
     let backend_args: Vec<String> = {
-        let argv0 = std::env::args().next().unwrap_or_default();
         let rest: Vec<String> = std::env::args().skip(1).collect();
-        match control::ccm::route(&argv0, &rest) {
+        match control::ccm::route(&rest) {
             control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(&ccm_args)),
             control::ccm::Entry::Backend(a) => a,
         }
