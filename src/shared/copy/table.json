@@ -5642,12 +5642,12 @@
     },
     "readiness.meaning.accounts": {
       "kind": "body",
-      "zh": "还没读过这台机器上有哪些账号",
+      "zh": "不能在这台机器上按账号隔离地起会话",
       "args": []
     },
     "readiness.meaning.accountIso": {
       "kind": "body",
-      "zh": "不能在这台机器上按账号隔离地起会话",
+      "zh": "这台机器上没有 cc-acct-iso，开不了多账号",
       "args": []
     },
     "readiness.meaning.cc": {
@@ -6851,20 +6851,10 @@
       "zh": "命令无法生成",
       "args": []
     },
-    "accounts.status.enabled": {
-      "kind": "body",
-      "zh": "已启用",
-      "args": []
-    },
     "accounts.status.count": {
       "kind": "body",
       "zh": "{n} 个",
       "args": ["n"]
-    },
-    "accounts.status.disabled": {
-      "kind": "body",
-      "zh": "未启用",
-      "args": []
     },
     "accounts.status.read": {
       "kind": "body",
@@ -17392,6 +17382,41 @@
     "beRelayUpstream.parse.whitespace": {
       "kind": "error",
       "zh": "base_url 里有空白字符（空格、制表符或换行），去掉它",
+      "args": []
+    },
+    "accounts.status.multiOff": {
+      "kind": "body",
+      "zh": "多账号没启用",
+      "args": []
+    },
+    "accounts.status.isoInstalled": {
+      "kind": "body",
+      "zh": "已装",
+      "args": []
+    },
+    "accounts.status.isoMissing": {
+      "kind": "body",
+      "zh": "没装",
+      "args": []
+    },
+    "accounts.status.isoUnknown": {
+      "kind": "body",
+      "zh": "查不出来",
+      "args": []
+    },
+    "rsDialHost.hostKey.pinned": {
+      "kind": "body",
+      "zh": "已记下 {origin} 的 SSH 主机指纹，之后只认它：{fingerprint}",
+      "args": ["origin", "fingerprint"]
+    },
+    "rsDialHost.hostKey.differs": {
+      "kind": "body",
+      "zh": "{origin} 的几个地址报的 SSH 主机指纹不一样，没有自动记下：{list}。请在设置里这台机器上选一个填进去",
+      "args": ["origin", "list"]
+    },
+    "rsDialHost.hostKey.listSep": {
+      "kind": "body",
+      "zh": "；",
       "args": []
     }
   }

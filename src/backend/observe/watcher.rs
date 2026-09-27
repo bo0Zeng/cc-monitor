@@ -604,6 +604,203 @@ fn rewatch_dir(
     }
 }
 
+/// 〔VIS2 · `设计/15 §4.7 S3`〕可重入地挂 `agent_home` 本身；不在 ⇒ 退一层挂它的上一层（同 tmux socket 目录）。回 `true` = 这次刚挂上它本身。
+/// 上一层挂上不摘：它可能与别的挂点同一目录（`unwatch` 会连带摘掉），留着也听得见 `agent_home` 被删后重建。
+fn rewatch_agent_home(
+    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    agent_home: &Path,
+    home_watched: &mut bool,
+    parent_watched: &mut bool,
+) -> bool {
+    if agent_home.is_dir() {
+        let was = *home_watched;
+        // 无条件先 unwatch 再 watch：分不清「同 inode 的普通事件」与「换了 inode」（`rewatch_dir` 同一条纪律）。
+        let _ = debouncer.watcher().unwatch(agent_home);
+        return match debouncer
+            .watcher()
+            .watch(agent_home, RecursiveMode::NonRecursive)
+        {
+            Ok(()) => {
+                *home_watched = true;
+                if !was {
+                    tracing::info!("已挂上 agent home: {}", agent_home.display());
+                }
+                !was
+            }
+            Err(e) => {
+                *home_watched = false;
+                // 挂不上不致命（退回「起来时是什么样就什么样」），但**要说出来**。
+                tracing::warn!(
+                    "watch failed for {}: {e} —— 子目录若被重建，本后端将听不见（下次事件再试）",
+                    agent_home.display()
+                );
+                false
+            }
+        };
+    }
+    if *home_watched {
+        tracing::info!(
+            "agent home 消失了 {} —— 解除记账，等它回来再挂",
+            agent_home.display()
+        );
+        let _ = debouncer.watcher().unwatch(agent_home);
+        *home_watched = false;
+    }
+    if *parent_watched {
+        return false;
+    }
+    match agent_home.parent().filter(|d| d.is_dir()) {
+        Some(parent) => match debouncer
+            .watcher()
+            .watch(parent, RecursiveMode::NonRecursive)
+        {
+            Ok(()) => {
+                *parent_watched = true;
+                tracing::warn!(
+                    "agent home 还没有：{} —— 先盯着它的上一层 {}，出现时自动挂上",
+                    agent_home.display(),
+                    parent.display()
+                );
+            }
+            Err(e) => tracing::warn!(
+                "agent home 还没有：{}，它的上一层 {} 挂不上 watch（{e}）—— 它之后被建出来，本后端看不见，要重启后端",
+                agent_home.display(),
+                parent.display()
+            ),
+        },
+        // 设计只退一层（与 tmux socket 目录那条同形）；上一层也不在 ⇒ 说真话，不再往上爬。
+        None => tracing::warn!(
+            "agent home 还没有：{}，它的上一层也不在 —— 本后端不会看见它，建出来之后要重启后端",
+            agent_home.display()
+        ),
+    }
+    false
+}
+
+/// 〔VIS2 · S3〕`agent_home` · `projects/` · `sessions/` 三道耳朵：起步 [`Self::arm`]，之后每个事件路径交 [`Self::on_path`]。
+/// 抽出来是为了真 inotify 判据与 `watch_loop` 走同一段代码。
+struct HomeEars {
+    agent_home: PathBuf,
+    projects: PathBuf,
+    sessions: PathBuf,
+    /// `agent_home` **本身**此刻挂上了没有。
+    home_watched: bool,
+    /// `agent_home` 不在时退一层挂的那道（它的上一层）挂过没有。挂上之后不摘（[`rewatch_agent_home`] 头注）。
+    parent_watched: bool,
+    projects_watched: bool,
+    /// `sessions/` 的「**当前这个 inode** 我挂上了没有」。事件循环里靠它决定要不要重挂。
+    sessions_watched: bool,
+}
+
+impl HomeEars {
+    fn new(agent_home: &Path, projects: &Path, sessions: &Path) -> Self {
+        HomeEars {
+            agent_home: agent_home.to_path_buf(),
+            projects: projects.to_path_buf(),
+            sessions: sessions.to_path_buf(),
+            home_watched: false,
+            parent_watched: false,
+            projects_watched: false,
+            sessions_watched: false,
+        }
+    }
+
+    /// 起步挂一次：`agent_home`（不在 ⇒ 它的上一层）· `projects/`（可重入挂法）· `sessions/`。
+    fn arm(&mut self, debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>) {
+        // ★★ `P0b-Y2`〔08-13〕：**监视 `agent_home` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
+        //
+        // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
+        // 之后是**另一个 inode**，旧 watch 还挂在那个已删的 inode 上 ⇒ 新目录里发生什么都听不见，
+        // **而且不会有任何错误**（backend 活着、不吭声）。
+        // 监视父目录之后，`sessions` 的创建/删除会作为**父目录里的一个事件**送到，我们据此重挂。
+        rewatch_agent_home(
+            debouncer,
+            &self.agent_home,
+            &mut self.home_watched,
+            &mut self.parent_watched,
+        );
+        // ★★ `projects/` 也走**可重入**挂法〔08-13〕：它是 jsonl 的来源，
+        //    被换 inode 之后**行帧再也不来**（实测：删掉重建后写入，line 帧停在 1）。
+        //    这是 `sessions/`（第十拍）与 socket 目录（第二十二拍）之后的**同族第三个**。
+        rewatch_dir(
+            debouncer,
+            &self.projects,
+            &mut self.projects_watched,
+            RecursiveMode::Recursive,
+        );
+        // Watch sessions (flat) for PID.json add/remove. 起步挂一次，之后归 `rewatch_sessions`。
+        if self.sessions.is_dir() {
+            match debouncer
+                .watcher()
+                .watch(&self.sessions, RecursiveMode::NonRecursive)
+            {
+                Ok(()) => self.sessions_watched = true,
+                Err(e) => tracing::error!("watch failed for {}: {e}", self.sessions.display()),
+            }
+        } else if self.home_watched {
+            // 〔VIS2 · S3〕它出现时是 `agent_home` 里的一个事件 ⇒ `on_path` 重挂 ＋ 重扫（原来那句「不会再重试」是假话）。
+            tracing::warn!(
+                "sessions 目录还没有：{} —— 出现时自动挂上",
+                self.sessions.display()
+            );
+        }
+        // `agent_home` 自己不在那一形，`rewatch_agent_home` 已经说过了（挂没挂上它的上一层各一句）。
+    }
+
+    /// 一个事件路径：是这三个目录之一就按**盘上此刻的样子**重挂（不看事件类型 —— notify 会合并事件，
+    /// 「删了又建」很可能只到一个事件，靠 kind 去分辨是猜）。
+    fn on_path(
+        &mut self,
+        debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+        p: &Path,
+        state: &mut ReaderState,
+        sink: &mut FrameSink,
+    ) {
+        // 〔VIS2 · S3〕`agent_home` 刚出现 ⇒ 挂上它本身，再把它下面此刻已在的两个目录挂上（`sessions/` 带重扫）。
+        if p == self.agent_home.as_path()
+            && rewatch_agent_home(
+                debouncer,
+                &self.agent_home,
+                &mut self.home_watched,
+                &mut self.parent_watched,
+            )
+        {
+            rewatch_dir(
+                debouncer,
+                &self.projects,
+                &mut self.projects_watched,
+                RecursiveMode::Recursive,
+            );
+            rewatch_sessions(
+                debouncer,
+                &self.sessions,
+                &mut self.sessions_watched,
+                state,
+                sink,
+            );
+        }
+        // ★ `projects/` 换 inode 时也要重挂（同族第三个，见 `rewatch_dir` 头注）。
+        if p == self.projects.as_path() {
+            rewatch_dir(
+                debouncer,
+                &self.projects,
+                &mut self.projects_watched,
+                RecursiveMode::Recursive,
+            );
+        }
+        // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
+        if p == self.sessions.as_path() {
+            rewatch_sessions(
+                debouncer,
+                &self.sessions,
+                &mut self.sessions_watched,
+                state,
+                sink,
+            );
+        }
+    }
+}
+
 /// ★★ `P0b-Y2` 第十六拍〔08-13〕：**tmux socket 目录的推算规则**（零 server 时唯一的耳朵）。
 ///
 /// # 病（`#60` 的根因）
@@ -947,35 +1144,9 @@ fn watch_loop(
             return;
         }
     };
-    // ★★ `P0b-Y2`〔08-13〕：**监视 `agent_home` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
-    //
-    // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
-    // 之后是**另一个 inode**，旧 watch 还挂在那个已删的 inode 上 ⇒ 新目录里发生什么都听不见，
-    // **而且不会有任何错误**（backend 活着、不吭声）。
-    // 监视父目录之后，`sessions` 的创建/删除会作为**父目录里的一个事件**送到，我们据此重挂。
-    if agent_home.is_dir() {
-        if let Err(e) = debouncer
-            .watcher()
-            .watch(&agent_home, RecursiveMode::NonRecursive)
-        {
-            // 挂不上不致命（退回「起来时是什么样就什么样」），但**要说出来**。
-            tracing::warn!(
-                "watch failed for {}: {e} —— 子目录若被重建，本后端将听不见",
-                agent_home.display()
-            );
-        }
-    }
-    // Watch projects recursively; watch sessions (flat) for PID.json add/remove.
-    // ★★ `projects/` 也走**可重入**挂法〔08-13〕：它是 jsonl 的来源，
-    //    被换 inode 之后**行帧再也不来**（实测：删掉重建后写入，line 帧停在 1）。
-    //    这是 `sessions/`（第十拍）与 socket 目录（第二十二拍）之后的**同族第三个**。
-    let mut projects_watched = false;
-    rewatch_dir(
-        &mut debouncer,
-        &projects,
-        &mut projects_watched,
-        RecursiveMode::Recursive,
-    );
+    // 〔VIS2 · S3〕三道耳朵（`agent_home` 不在 ⇒ 先挂它的上一层），这里与事件循环里各只调一次。
+    let mut ears = HomeEars::new(&agent_home, &projects, &sessions);
+    ears.arm(&mut debouncer);
     // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
     // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
     // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
@@ -1004,40 +1175,6 @@ fn watch_loop(
                 dir.display()
             );
         }
-    }
-
-    // `sessions_watched` = 「**当前这个 inode** 我挂上了没有」。事件循环里靠它决定要不要重挂。
-    let mut sessions_watched = false;
-    if sessions.is_dir() {
-        match debouncer
-            .watcher()
-            .watch(&sessions, RecursiveMode::NonRecursive)
-        {
-            Ok(()) => sessions_watched = true,
-            Err(e) => tracing::error!("watch failed for {}: {e}", sessions.display()),
-        }
-    } else {
-        // ⚠⚠ **这一支是个真缺陷，08-13 实测复现过**〔`P0b` 查 `#60` 时逮到〕：
-        // 目录不存在 ⇒ 只打这一行 `warn!`，**然后再也不重试**。
-        // 而 `<claude_dir>/sessions/` 正是**用户第一次跑 claude 时才被创建**的
-        // ⇒ backend 起得比它早，就**永远看不到 pidfile、永远不宣告会话**。
-        //
-        // 复现（帧的 `kind` 直方图）：
-        // · fixture 目录里**有** `sessions/` ⇒ `hello · line · session_added · tmux_sessions`
-        // · **没有** `sessions/`（其余一模一样）⇒ **只有** `hello · tmux_sessions`
-        //   —— 即便它随后被 fake-claude 建出来也不补发。
-        //
-        // ⚠ **不能靠「把目录建出来」修**：`<claude_dir>` 对我们是**只读**的（`INVARIANTS` 铁律）。
-        // 正确形状是**监视父目录**（`agent_home` 本身）等它出现再挂上去，或按需重试 ——
-        // 那是一次行为改动，要 bump `BUILD_ID` + 重编内嵌，**没在发现它的那一拍顺手做**。
-        //
-        // ⚠ 射程：这是 `#60`（灰灯不出现）的**候选机制**，**不是**已证实的根因 ——
-        // 那次全链复现用的 fixture 里 `sessions/` 是**在**的，所以它解释不了那三跑。
-        tracing::warn!(
-            "sessions dir does not exist: {} —— **本进程不会再重试挂它**（见上方注释：\
-             它若稍后才被创建，本后端将永远不宣告会话）",
-            sessions.display()
-        );
     }
 
     // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
@@ -1072,29 +1209,10 @@ fn watch_loop(
                 }
                 for ev in events {
                     let p = ev.path.as_path();
-                    // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
-                    //
-                    // 触发面刻意宽：`agent_home` 里任何与 `sessions` 有关的动静都来这儿判一次
-                    //（判的是**盘上此刻的样子**，不是事件类型 —— notify 会合并事件，
-                    // 「删了又建」很可能只到一个事件，靠 kind 去分辨是猜）。
-                    // ★ `projects/` 换 inode 时也要重挂（同族第三个，见 `rewatch_dir` 头注）。
-                    if p == projects.as_path() {
-                        rewatch_dir(
-                            &mut debouncer,
-                            &projects,
-                            &mut projects_watched,
-                            RecursiveMode::Recursive,
-                        );
-                    }
-                    if p == sessions.as_path() {
-                        rewatch_sessions(
-                            &mut debouncer,
-                            &sessions,
-                            &mut sessions_watched,
-                            &mut state,
-                            &mut sink,
-                        );
-                    }
+                    // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫**；`projects/` 同族；
+                    // 〔VIS2 · S3〕`agent_home` 自己刚出现 ⇒ 挂上它、再挂它下面那两个。
+                    // 触发面刻意宽：这三个路径上任何动静都来这儿判一次（判的是盘上此刻的样子）。
+                    ears.on_path(&mut debouncer, p, &mut state, &mut sink);
                     // P3：**tmux socket 复活**——我们监视的正是它所在目录，socket 被
                     // unlink+create 时（P0 实测 inode 会变）这里就会命中。
                     // 只当"该重新探一次"的触发器：立刻起一次探测（若无在途），

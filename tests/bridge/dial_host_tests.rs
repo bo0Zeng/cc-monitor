@@ -587,3 +587,158 @@ fn w5vis_open_marks_the_handshake_done_right_after_the_ack() {
         "缺 `mark_shaken` 的 `open` 没被认出 —— 量具瞎了"
     );
 }
+
+// ═══ 〔VIS2 · `设计/15 §3.4 ①`「自动固化 ＋ 默认转严格 ＋ 保住多地址那一格」〕═══════════════════════════════
+
+fn vis2_book(pairs: &[(&str, &str)]) -> std::collections::BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect()
+}
+
+/// 判定逐格（期望手写）：probe 不问 · 已配严格 · 没报不固化 · 全同固化 · 不同说出来。
+#[test]
+fn vis2_the_pin_verdict_is_exactly_this_table() {
+    let same = vis2_book(&[("a:22", "SHA256:x"), ("b:22", "SHA256:x")]);
+    let differ = vis2_book(&[("a:22", "SHA256:x"), ("b:22", "SHA256:y")]);
+    let none = vis2_book(&[]);
+    let got = [
+        pin_verdict(true, None, &same),
+        pin_verdict(false, Some("SHA256:x"), &same),
+        pin_verdict(false, Some("  "), &same),
+        pin_verdict(false, None, &none),
+        pin_verdict(false, None, &same),
+        pin_verdict(false, None, &differ),
+    ];
+    assert_eq!(
+        got,
+        [
+            PinVerdict::NotAsked,
+            PinVerdict::AlreadyStrict,
+            PinVerdict::Pin("SHA256:x".into()),
+            PinVerdict::NoneReported,
+            PinVerdict::Pin("SHA256:x".into()),
+            PinVerdict::Differs(differ.clone()),
+        ]
+    );
+}
+
+/// 写：只改那一台的 `hostKeyFingerprint`、别的逐值不动；已有 / 找不到 / 两台同名 / 读不懂 ⇒ 一个字节不写。
+#[test]
+fn vis2_pinning_writes_only_that_hosts_fingerprint_through_the_patch_door() {
+    let dir = std::env::temp_dir().join(format!("ccm-vis2-pin-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.json");
+    let base = serde_json::json!({
+        "theme": {"x": 1},
+        "remote": {"enabled": true, "hosts": [
+            {"label": "devbox", "host": "h1", "user": "u", "hostKeyFingerprint": ""},
+            {"label": "", "host": "h2", "user": "u", "hostKeyFingerprint": "SHA256:old"},
+            {"label": "dup", "host": "h3", "user": "u"},
+            {"label": "dup", "host": "h3", "user": "v"}
+        ]}
+    });
+    let write = |v: &serde_json::Value| {
+        std::fs::write(&path, serde_json::to_string_pretty(v).unwrap()).unwrap()
+    };
+    let read = || {
+        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).unwrap()).unwrap()
+    };
+
+    write(&base);
+    assert_eq!(
+        pin_host_key_at(&path, "devbox", "h1", "SHA256:new"),
+        Ok(PinWrite::Written)
+    );
+    let mut want = base.clone();
+    want["remote"]["hosts"][0]["hostKeyFingerprint"] = "SHA256:new".into();
+    assert_eq!(read(), want, "只该改 devbox 那一台的指纹");
+
+    for (origin, host, why) in [
+        ("h2", "h2", PinWrite::AlreadySet),
+        ("nope", "h9", PinWrite::NotFound),
+        ("dup", "h3", PinWrite::Ambiguous),
+        ("devbox", "h-other", PinWrite::NotFound),
+    ] {
+        write(&base);
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(
+            pin_host_key_at(&path, origin, host, "SHA256:new"),
+            Ok(why),
+            "{origin}"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "{origin}：不该写却写了"
+        );
+    }
+    std::fs::write(&path, "{ not json").unwrap();
+    assert!(pin_host_key_at(&path, "devbox", "h1", "SHA256:new").is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ not json");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 默认转严格：`cfg` 里没有指纹 ⇒ 用盘上同一台（host 也相同）的；`cfg` 里有 ⇒ 用它；盘上那台 host 不同 ⇒ 不借。
+#[test]
+fn vis2_a_pinned_key_on_disk_makes_the_next_dial_strict() {
+    let mut tofu = cfg("vis2-strict");
+    tofu.host_key_fingerprint = None;
+    let mut disk = tofu.clone();
+    disk.host_key_fingerprint = Some("SHA256:disk".into());
+    let mut elsewhere = disk.clone();
+    elsewhere.host = "other.example".into();
+    let got = [
+        effective_fingerprint_in(&tofu, || Some(disk.clone())),
+        effective_fingerprint_in(&cfg("vis2-strict"), || Some(disk.clone())),
+        effective_fingerprint_in(&tofu, || Some(elsewhere.clone())),
+        effective_fingerprint_in(&tofu, || None),
+    ];
+    assert_eq!(
+        got,
+        [
+            Some("SHA256:disk".to_string()),
+            Some("SHA256:abc".to_string()),
+            None,
+            None
+        ]
+    );
+}
+
+/// 接线（剥注释）：`open` 在 `mark_shaken` 之后恰好一处 `settle_host_key(`；请求里的指纹来自 `effective_fingerprint(cfg)`。带正控。
+#[test]
+fn vis2_open_settles_the_host_key_after_the_ack_and_the_request_uses_the_effective_key() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/dial_host.rs"));
+    let at = prod.find("async fn open(").expect("open 不在了");
+    let end = at + prod[at..].find("\n}\n").expect("open 的尾巴");
+    let body = &prod[at..end];
+    let n = |t: &str, k: &str| t.matches(k).count();
+    assert_eq!(
+        n(body, "settle_host_key(cfg, req, &ack);"),
+        1,
+        "open 里没有（恰好一处）判固化"
+    );
+    let shaken = body.find("mark_shaken()").expect("mark_shaken 不在了");
+    assert!(
+        body.find("settle_host_key(").unwrap() > shaken,
+        "判固化要在读完 ack 之后"
+    );
+    assert_eq!(
+        n(
+            &prod,
+            "\"host_key_fingerprint\": effective_fingerprint(cfg),"
+        ),
+        1,
+        "请求没用有效指纹"
+    );
+    assert_eq!(
+        n(
+            &format!("{body}\nsettle_host_key(cfg, req, &ack);"),
+            "settle_host_key(cfg, req, &ack);"
+        ),
+        2,
+        "量具正控"
+    );
+}

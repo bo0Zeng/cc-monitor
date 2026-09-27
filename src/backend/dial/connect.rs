@@ -9,6 +9,7 @@
 //! 〔NT1 · 2026-09-24〕TCP 改由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间
 //! （`platform::tcp_rtt`），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
 
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -30,6 +31,8 @@ const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
 pub(crate) struct Linked {
     pub(crate) session: client::Handle<Checker>,
     pub(crate) fingerprint: Option<String>,
+    /// 〔VIS2 · `设计/15 §3.4 ①`〕建这条连接那一趟里**报过指纹的每条地址** → 它报的指纹（竞速的输家也在；跳板那台不在）。
+    pub(crate) fingerprints: BTreeMap<String, String>,
     pub(crate) endpoint: String,
     /// 经跳板时跳板那条连接：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub(crate) _jump: Option<client::Handle<Checker>>,
@@ -46,6 +49,8 @@ pub(crate) struct Linked {
 pub(crate) struct Checker {
     expected: Option<String>,
     observed: Arc<Mutex<Option<String>>>,
+    /// 〔VIS2〕这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
+    reported: Arc<Mutex<BTreeMap<String, String>>>,
     stages: StageSink,
     endpoint: String,
 }
@@ -60,6 +65,9 @@ impl client::Handler for Checker {
         let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
         if let Ok(mut slot) = self.observed.lock() {
             *slot = Some(actual.clone());
+        }
+        if let Ok(mut all) = self.reported.lock() {
+            all.insert(self.endpoint.clone(), actual.clone());
         }
         // 到 host key 校验 = 该地址 TCP ＋ KEX 已过。
         self.stages.emit(Stage::HostKey {
@@ -203,13 +211,14 @@ async fn tcp_hop(ep: &Endpoint) -> std::io::Result<(tokio::net::TcpStream, bool)
 /// 〔NT1〕TCP 由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间、过压缩判准
 /// （[`compression_for`]），再在这条 socket 上跑 SSH 握手。`apply = false` ⇒ 判准照问、答案**不用在这一条上**
 /// 而是回给调用方（跳板那一形：跳板自己只运隧道、里面是已加密的字节，压不动；该压的是隧道里的目标那条）。
-/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`。
+/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`；〔VIS2〕`reported` 由调用方给，每个地址的校验器都记进它。
 async fn race(
     probe: bool,
     apply: bool,
     expected: Option<String>,
     order: Vec<Endpoint>,
     stages: &StageSink,
+    reported: &Arc<Mutex<BTreeMap<String, String>>>,
 ) -> Result<
     (
         client::Handle<Checker>,
@@ -231,6 +240,7 @@ async fn race(
             let observed: Arc<Mutex<Option<String>>> = Arc::default();
             let expected = expected.clone();
             let seen = Arc::clone(&seen_for_race);
+            let reported = Arc::clone(reported);
             set.spawn(async move {
                 let ep_label = label(&ep);
                 stages.emit(Stage::Dialing {
@@ -239,6 +249,7 @@ async fn race(
                 let checker = Checker {
                     expected,
                     observed: Arc::clone(&observed),
+                    reported,
                     stages: stages.clone(),
                     endpoint: ep_label.clone(),
                 };
@@ -387,6 +398,8 @@ pub(crate) async fn establish(
     req: &DialRequest,
     stages: &StageSink,
 ) -> Result<Linked, (String, Option<String>)> {
+    // 〔VIS2〕目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
+    let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
     let (mut session, observed, winner, jump) = match &req.jump {
         None => {
             let (s, o, w, _) = race(
@@ -395,6 +408,7 @@ pub(crate) async fn establish(
                 req.host_key_fingerprint.clone(),
                 req.race_order(),
                 stages,
+                &reported,
             )
             .await?;
             (s, o, w, None)
@@ -419,6 +433,7 @@ pub(crate) async fn establish(
                 hop.host_key_fingerprint.clone(),
                 vec![hop_ep],
                 stages,
+                &Arc::default(),
             )
             .await
             .map_err(|(e, fp)| (format!("跳板 {hop_name} 连接失败: {e}"), fp))?;
@@ -449,6 +464,7 @@ pub(crate) async fn establish(
             let checker = Checker {
                 expected: req.host_key_fingerprint.clone(),
                 observed: Arc::clone(&observed),
+                reported: Arc::clone(&reported),
                 stages: stages.clone(),
                 endpoint: ep_label,
             };
@@ -489,9 +505,11 @@ pub(crate) async fn establish(
         detail: None,
     });
     stages.emit(Stage::Established);
+    let fingerprints = reported.lock().map(|g| g.clone()).unwrap_or_default();
     Ok(Linked {
         session,
         fingerprint,
+        fingerprints,
         endpoint: label(&winner),
         _jump: jump,
         budget: super::pool::Budget::new(),
