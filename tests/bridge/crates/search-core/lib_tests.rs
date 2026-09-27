@@ -76,6 +76,52 @@ fn clean_user_text_strips_wrappers_and_interrupt() {
     assert_eq!(clean_user_text("[Request interrupted by user]"), "");
 }
 
+/// 〔RENDER2 · J10〕合并口径（`调研/第四波记录/W5-RENDER.md §2.18` 那张差表，两边各取更对的一半）逐格：
+/// 五种包装全剥（含 stderr）· 两句样板整行剥（不分大小写、句号可省、只认整行）· 中断标记只在**整条**恰是它时归零。
+#[test]
+fn the_one_user_text_rule_takes_the_better_half_of_each_side() {
+    let cases: [(&str, &str, bool); 8] = [
+        (
+            "<local-command-stderr>boom</local-command-stderr>真话",
+            "真话",
+            false,
+        ),
+        ("Continue from where you left off.", "", false),
+        ("no response requested", "", false),
+        (
+            "先说一句\nNo response requested.\n再说一句",
+            "先说一句\n\n再说一句",
+            false,
+        ),
+        (
+            "please continue from where you left off.",
+            "please continue from where you left off.",
+            false,
+        ),
+        ("[Request interrupted by user for tool use]", "", true),
+        (
+            "[Request interrupted by user]\n接着说的真话",
+            "[Request interrupted by user]\n接着说的真话",
+            false,
+        ),
+        (
+            "<system-reminder>x</system-reminder>  [Request interrupted by user]  ",
+            "",
+            true,
+        ),
+    ];
+    for (input, clean, interrupt) in cases {
+        assert_eq!(
+            user_text(input),
+            UserText {
+                clean: clean.to_string(),
+                interrupt
+            },
+            "{input:?}"
+        );
+    }
+}
+
 #[test]
 fn truncate_helpers() {
     assert_eq!(truncate_plain("hello", 3), "hel");
