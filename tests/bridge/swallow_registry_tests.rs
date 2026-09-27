@@ -47,7 +47,7 @@ enum Why {
 /// 归一化 = 字符串字面量之外的空白压成一个空格、`.` `(` `)` `,` 两侧的空格去掉、`,)` 收成 `)`（rustfmt 换不换行不影响键）；
 /// 超过 [`KEY_CHARS`] 个字符的截断。**不含行号**。
 const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
-    ("src/backend/accounts/upstream/creds.rs", "let _ = writeln!(out, \"[apikey] create that file to configure one; it is plain JSON:\\n{}\", store::TEMPLATE);", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
+    ("src/backend/accounts/upstream/creds.rs", "let _ = writeln!(out, \"[apikey] create that file to configure one; it is plain JSON:\\n{}\", store::template());", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream/creds.rs", "let _ = writeln!(out, \"[apikey] credentials file: {}\", loaded.path.display());", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream/creds.rs", "let _ = writeln!(out, \"[apikey] credentials permissions too wide: {how}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream/creds.rs", "let _ = writeln!(out, \"[apikey] credentials permissions unknown: {why}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),

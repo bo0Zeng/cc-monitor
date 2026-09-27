@@ -413,6 +413,12 @@ pub(crate) enum Plan {
     Container(Container),
     /// 在**本进程**里设好环境、`cd`、然后 `exec`。
     Direct(Direct),
+    /// 〔FIX · V138〕resume 的那条会话已经在 tmux 会话 `name` 里跑 ⇒ 接上它，不另起一份（`--detach` ⇒ 只报名字）。
+    Rejoin {
+        name: String,
+        sid: String,
+        detach: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -606,26 +612,11 @@ fn next_free_name(base: &str, taken: &[String]) -> String {
 /// 这里原来自己写了一份（自称「唯一一份」，而 monitor 与界面各还有一份、规则各不相同）；比那一份多出来的两格
 /// （欺骗字符 · 超长）是三份取交集时从 monitor 载荷那一份与界面那一份带进来的。
 pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
-    use gate_core::TmuxNameIssue as I;
-    let said = match gate_core::new_tmux_name_issue(n) {
-        None => return Ok(()),
-        Some(I::Empty | I::LeadingDash) => {
-            copy_text("bePlan.validateTmuxName.emptyOrDash", &[("name", n)])
-        }
-        Some(I::TargetSyntax(_)) => {
-            copy_text("bePlan.validateTmuxName.targetSyntax", &[("name", n)])
-        }
-        Some(I::Control(_)) => copy_text("bePlan.validateTmuxName.control", &[("name", n)]),
-        Some(I::Deceptive(_)) => copy_text("bePlan.validateTmuxName.deceptive", &[("name", n)]),
-        Some(I::TooLong) => copy_text(
-            "bePlan.validateTmuxName.tooLong",
-            &[
-                ("name", n),
-                ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
-            ],
-        ),
-    };
-    Err(Die(said))
+    // 〔FIX · `99 §2 ㊹`〕说哪一句住 `launch::new_tmux_name_said`（后端 `launch` 新建那一支也用它）。
+    match crate::control::launch::new_tmux_name_said(n) {
+        None => Ok(()),
+        Some(said) => Err(Die(said)),
+    }
 }
 
 /// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。
@@ -861,6 +852,20 @@ pub(crate) fn build(
         });
     }
 
+    // ── resume 先查是否已在跑（V138「只看不吃 `--resume` 以复用 tmux 名」· `设计/71 §8` 第 12 条）──
+    //    在跑 ⇒ 接上它，不另起第二份（两份 claude 同写一份记录）。判「在跑」只问避让那同一份快照。
+    if let Some((sid, name)) = o
+        .resumes
+        .as_deref()
+        .and_then(|sid| taken.and_then(|t| t.running(sid)).map(|n| (sid, n)))
+    {
+        return Ok(Plan::Rejoin {
+            name: name.to_string(),
+            sid: sid.to_string(),
+            detach: o.detach,
+        });
+    }
+
     let cwd = resolve_cwd(o, env);
     free_text_gate(&cwd, o)?;
     let (config_dir, account) = resolve_account(o, env, table)?;
@@ -1046,6 +1051,14 @@ pub(crate) fn build(
 pub(crate) fn render(plan: &Plan) -> String {
     match plan {
         Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:"))),
+        // 在不在 tmux 里不进 `--ccm-print`（`INVARIANTS §33a` 铁律 2）⇒ 值不知道就打印配方，真跑也跑这一行。
+        Plan::Rejoin {
+            name, detach: true, ..
+        } => format!("echo {}", sq(&format!("ccm-session={name}"))),
+        Plan::Rejoin { name, .. } => {
+            let t = sq(&format!("={name}:"));
+            format!("if [ -n \"${{TMUX:-}}\" ]; then tmux switch-client -t {t}; else tmux attach -t {t}; fi")
+        }
         Plan::Container(c) => render_container(c),
         Plan::Direct(d) => render_direct(d),
     }

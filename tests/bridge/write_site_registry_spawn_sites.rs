@@ -97,6 +97,12 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
           ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
      "Hidden · JobKillOnClose · Captured"),
+    // 〔FIX · `设计/71 §8` 第 8 条 · WIN2 #4 读数〕别名撞名那一格问 PowerShell 自带的内建别名：只读、固定脚本、不吃用户输入，
+    //   进程内只起一次（`OnceLock`），只在本机 Windows 上起。
+    ("shell_dialect.rs", "ask_get_alias", "`powershell.exe -NoProfile -NonInteractive -Command <固定的 Get-Alias 那一段>`",
+     "内建别名（`ls` / `cd` …）优先级高于函数、撞上了定义了也敲不到；哪几条是内建的只有 PowerShell 自己答得准（PS 5.1 与 7 不同），\
+          抄一份清单就是第二个家。`-NoProfile`：问的是自带那一份。",
+     "Hidden · JobKillOnClose · Captured"),
     ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
      "只探测「本机有没有 ssh」，不带用户参数
           ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",

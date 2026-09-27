@@ -218,6 +218,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { text: "/^[A-Za-z0-9_][A-Za-z0-9_-]*$/", count: 0, file: "src/launch-requests.ts" },
       { text: "[*?=]", count: 0 },
       { text: 'target === ""', count: 0, file: "src/tmux-control.ts" },
+      // 〔FIX · `99 §2 ㊹`〕`sendInto` 那一格也零（空名 / 空载荷交后端，回落那一跳由 Rust 渲染器拒）。
+      { text: '.trim() === ""', count: 0, file: "src/tmux-control.ts" },
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
     rustNeedles: [
@@ -574,7 +576,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     read_accounts: NONE,
     read_auth_style: NONE,
     read_key: NONE,
-    TEMPLATE: NONE,
+    // 〔FIX · COPY ④〕常量 `TEMPLATE` → 运行期拼的 `template()`（三句说明住文案表）；报错的话 `StoreError::said`（带路径）。
+    said: NONE,
+    template: NONE,
     to_pretty_json: NONE,
     WIDE_PRINCIPALS: NONE,
     wide_principals_in_sddl: NONE,

@@ -1050,3 +1050,33 @@ fn w5vis_s4_s5_no_tmux_result_or_stderr_is_thrown_away_any_more() {
     );
     assert_eq!(offences(&old).len(), 3, "旧形没被全认出 —— 量具瞎了");
 }
+
+/// ★ 〔FIX · `设计/99 §2 ㊹`（逐字「后端 `launch` 新建会话那一支没接 J6 新建规则」）〕`create-or-attach` 要新建的名字过 J6 新建那一条：
+/// 过不了、会话也不在 ⇒ `invalid_args` 带与 `ccm` 铸名同一句、**一次 `new-session` 都不起**；过不了但会话已在 ⇒ 照旧幂等接回；
+/// 过得了 ⇒ 与先前逐字同（先 `new-session`）。
+#[test]
+fn the_create_arm_refuses_a_name_the_new_session_rule_refuses_unless_it_already_exists() {
+    let with_name = |n: &str| {
+        let mut r = create_req();
+        r.name = n.to_string();
+        r
+    };
+    for bad in ["-x", "a.b", "a*b"] {
+        let f = FakeTmux::new(|_| said(false, "can't find session"));
+        let e = run_with(&with_name(bad), &|a| f.call(a)).unwrap_err();
+        assert_eq!(e.0, "invalid_args", "{bad}");
+        assert_eq!(
+            Some(e.1),
+            new_tmux_name_said(bad),
+            "{bad}：说的不是 ccm 铸名那一句"
+        );
+        assert_eq!(f.verbs(), ["has-session"], "{bad}：判不过还去建了");
+        let f = FakeTmux::new(|verb| said(verb == "has-session", ""));
+        let o = run_with(&with_name(bad), &|a| f.call(a)).expect("已在的会话照旧幂等接回");
+        assert_eq!((o.created, o.typed), (false, false));
+        assert_eq!(f.verbs(), ["has-session"]);
+    }
+    let f = FakeTmux::new(|_| said(true, ""));
+    run_with(&create_req(), &|a| f.call(a)).expect("合法名照旧建");
+    assert_eq!(f.verbs()[0], "new-session");
+}

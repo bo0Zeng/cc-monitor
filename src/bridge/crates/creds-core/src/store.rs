@@ -20,7 +20,7 @@
 //! # 格式（`KS9`：人能读能改，改完就生效）
 //!
 //! 一份**明文 JSON 对象**。今天本件只认一个键 [`KEY_FIELD`]，**其余键一律原样留着**。
-//! 文件不存在时给 [`TEMPLATE`] —— 一个「能手编但没人知道格式」的文件等于不能手编。
+//! 文件不存在时给 [`template`] —— 一个「能手编但没人知道格式」的文件等于不能手编。
 
 use crate::SecretKey;
 use serde_json::{Map, Value};
@@ -133,19 +133,36 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 /// JSON 没有注释语法，所以说明写成一个**未知键**（`_note`），而
 /// 「未知键原样保留」正是 [`merge_key`] 的性质 ⇒ 这份模板**自己就是那条性质的用例**。
 ///
+/// 〔FIX · COPY ④ · 主会话按 CP1 `[对外]` 裁〕三句说明是用户读的话 ⇒ 住文案表（`credsStore.template.*`）；
+/// JSON 骨架（键与结构）留这里，运行期拼出来（键序与 [`to_pretty_json`] 同一个排法）。
+///
 /// # ⚠ 它刻意**不列举** `auth_style` 的合法值〔`K-R1`，`brief` 13b〕
 ///
 /// 那个闭集只有一个住址（[`AuthStyle::ALL`]）。在这里再抄一份，加第四个成员的那天
 /// 这份模板会**静默变旧**，而它是随产物发到用户机器上的那一份。
 /// ⇒ 模板只点名字段，合法值由上游选择装表时**现算**印出来（`accounts::upstream::creds::announce`）。
-pub const TEMPLATE: &str = r#"{
-  "_note": "把第三方 API key 填进 api_key。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON（导入）。本文件之外的键不会被程序动。",
-  "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key、base_url 与 auth_style。base_url 留空就用这个 agent 的默认上游，写全路径（含网关前缀）也认；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
-  "_note_auth_style": "auth_style 说的是「这一把 key 用哪种鉴权头交给上游」，不是「上游说哪种方言」—— 中转对请求体一个字节都不解析。留空就用今天的默认。写了一个认不出的词不会被悄悄当默认：中转起来时会逐条说出来，并把它认得的那几个值现算着印在同一屏。本地部署（不校验凭据的那种）要的就是「一个鉴权头都不发」那一档。",
-  "accounts": {},
-  "api_key": ""
+pub fn template() -> String {
+    let example = format!(
+        "\"{ACCOUNTS_FIELD}\": {{ \"my-account\": {{ \"{KEY_FIELD}\": \"sk-...\", \"base_url\": \"https://api.example.com\" }} }}"
+    );
+    let note = copy_core::copy_text("credsStore.template.note", &[("keyField", KEY_FIELD)]);
+    let note_accounts = copy_core::copy_text(
+        "credsStore.template.noteAccounts",
+        &[
+            ("accountsField", ACCOUNTS_FIELD),
+            ("keyField", KEY_FIELD),
+            ("example", &example),
+        ],
+    );
+    let note_auth_style = copy_core::copy_text("credsStore.template.noteAuthStyle", &[]);
+    let mut doc = Map::new();
+    doc.insert("_note".into(), Value::String(note));
+    doc.insert("_note_accounts".into(), Value::String(note_accounts));
+    doc.insert("_note_auth_style".into(), Value::String(note_auth_style));
+    doc.insert(ACCOUNTS_FIELD.into(), Value::Object(Map::new()));
+    doc.insert(KEY_FIELD.into(), Value::String(String::new()));
+    to_pretty_json(&doc)
 }
-"#;
 
 /// 读不动那份文件时的说法。**三态，不是两态** —— 「不存在」与「读坏了」必须分开：
 /// 前者是正常的（还没配），后者要出声（人手编时打错了一个逗号，不该被当成「没配」）。
@@ -157,18 +174,16 @@ pub enum StoreError {
     NotAnObject,
 }
 
-impl std::fmt::Display for StoreError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl StoreError {
+    /// 给人看的那一句（`path` = 读的是哪一份文件）。〔FIX · COPY ④〕不再把整份模板插进报错。
+    pub fn said(&self, path: &std::path::Path) -> String {
         match self {
-            StoreError::NotJson(e) => write!(
-                f,
-                "{}",
+            StoreError::NotJson(e) => {
                 copy_core::copy_text("credsStore.error.notJson", &[("e", &e.to_string())])
-            ),
-            StoreError::NotAnObject => write!(
-                f,
-                "{}",
-                copy_core::copy_text("credsStore.error.notObject", &[("template", TEMPLATE)])
+            }
+            StoreError::NotAnObject => copy_core::copy_text(
+                "credsStore.error.notObject",
+                &[("path", &path.display().to_string()), ("shape", "{ … }")],
             ),
         }
     }
@@ -598,7 +613,7 @@ pub fn ordered_value(v: &Value) -> Value {
 /// ⇒ 今天整份走 [`ordered_value`]（**递归**），它的诚实边界写在那个函数的头注里。
 pub fn to_pretty_json(doc: &Map<String, Value>) -> String {
     let ordered = ordered_value(&Value::Object(doc.clone()));
-    let mut s = serde_json::to_string_pretty(&ordered).unwrap_or_else(|_| TEMPLATE.to_string());
+    let mut s = serde_json::to_string_pretty(&ordered).unwrap_or_else(|_| "{}".to_string());
     s.push('\n');
     s
 }

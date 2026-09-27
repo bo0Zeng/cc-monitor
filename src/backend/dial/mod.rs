@@ -203,6 +203,9 @@ pub struct DialAck {
     /// 〔VIS2 · `设计/15 §3.4 ①`「保住多地址那一格」〕这一趟报过指纹的每条地址 → 指纹。additive（`ACK_V` 不动）；
     /// 界面只在各地址一致时自动固化。失败的 ack 恒空（指纹照旧在 `fingerprint`）。
     pub fingerprints: std::collections::BTreeMap<String, String>,
+    /// 〔FIX · `设计/99 §2 ㊶` 第二问〕经跳板时**跳板那一台**报过的指纹（地址 → 指纹）：它是另一台机器，界面按它自己那一格固化
+    /// （同 `fingerprints` 的判定）。直连 / 失败 ⇒ 空。additive。
+    pub jump_fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`）—— 界面记 last-good、测试连接展示「你正连着哪条路」。
     pub endpoint: Option<String>,
     /// 协议版本（[`ACK_V`]）。
@@ -218,6 +221,7 @@ impl DialAck {
             error: Some(error),
             fingerprint,
             fingerprints: Default::default(),
+            jump_fingerprints: Default::default(),
             endpoint: None,
             v: ACK_V,
             uses: USES,

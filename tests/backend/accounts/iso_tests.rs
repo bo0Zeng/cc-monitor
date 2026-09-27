@@ -168,13 +168,21 @@ fn the_account_name_is_judged_by_the_one_shared_rule() {
     }
 }
 
-/// 快照路径那道校验（规则照原样搬）：`"` · 控制符 · `-` 开头 · 空 各拒，句子各不相同；普通路径放行。
+/// 快照路径那道校验：`"` · 控制符 · 空 各拒，句子各不相同；普通路径放行。
+/// 〔FIX · `99 §2 ㊹` 甲〕`-` 开头放行（`cc-acct-iso` 把下一个词原样当值），渲出来原样单引号。
 #[test]
-fn the_snapshot_path_keeps_its_four_refusals() {
+fn the_snapshot_path_keeps_its_three_refusals_and_lets_a_leading_dash_through() {
     use serde_json::json;
     let with = |p: &str| cmd_of(json!({"step":"add-apply","name":"b","credFile":p}));
     with("/home/u/snap.json").expect("普通路径该放行");
-    let said: Vec<String> = ["", "a\"b", "a\u{7}b", "a\u{85}b", "--apply"]
+    for p in ["--apply", "-x.json"] {
+        let step = with(p).unwrap_or_else(|e| panic!("{p:?} 被拒过头：{e:?}"));
+        assert!(
+            step.contains(&format!("--from-credentials '{p}' --apply")),
+            "{p:?}"
+        );
+    }
+    let said: Vec<String> = ["", "a\"b", "a\u{7}b", "a\u{85}b"]
         .iter()
         .map(|p| {
             let e = with(p).expect_err(p);
@@ -182,7 +190,7 @@ fn the_snapshot_path_keeps_its_four_refusals() {
             e.1
         })
         .collect();
-    // 控制符那两形（C0 · C1）说的是同一类；空 · 双引号 · 控制符 · `-` 开头四类两两不同。
+    // 控制符那两形（C0 · C1）说的是同一类；空 · 双引号 · 控制符三类两两不同。
     assert!(
         said[2].contains("控制字符") && said[3].contains("控制字符"),
         "{said:?}"
@@ -191,11 +199,10 @@ fn the_snapshot_path_keeps_its_four_refusals() {
         said[0].as_str(),
         said[1].as_str(),
         said[2].split('：').next().unwrap_or(""),
-        said[4].as_str(),
     ]
     .into_iter()
     .collect();
-    assert_eq!(distinct.len(), 4, "{said:?}");
+    assert_eq!(distinct.len(), 3, "{said:?}");
 }
 
 /// 契约错（调用方是界面，用户手敲不出来）⇒ `bad_args`：不认识的 step · 该带的没带 · 不该带的带了 · 类型不对 · 超上界。

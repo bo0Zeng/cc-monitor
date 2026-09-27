@@ -199,8 +199,11 @@ impl Remote for Far {
         command: String,
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
-        assert_eq!(stdin, None, "历史跨机那几问全在 argv 里，不写 stdin");
-        self.seen.lock().unwrap().push(command.clone());
+        // 〔FIX · `设计/96 §3.6`〕子命令之后的自由文本走 stdin 一行 ⇒ 记成「命令行 <stdin 那一行>」。
+        self.seen.lock().unwrap().push(match &stdin {
+            Some(line) => format!("{command} <stdin {}>", line.trim_end()),
+            None => command.clone(),
+        });
         let out = if command.contains("--list-projects") {
             projects_stdout()
         } else if command.contains("--session-accounts") {
@@ -223,7 +226,7 @@ fn reach(table: &ReachTable) {
     .unwrap();
 }
 
-/// ★ 判据 4：一台只问一次，问的是 CLI 老子命令（远端不必升级）；会话那一问带着项目目录名（逐格引号）。
+/// ★ 判据 4：一台只问一次，问的是 CLI 老子命令（远端不必升级）；会话那一问的项目目录名走 stdin 一行（〔FIX〕命令行里不拼自由文本）。
 #[tokio::test]
 async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     let table = ReachTable::default();
@@ -253,7 +256,10 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     assert_eq!(
         *far.seen.lock().unwrap(),
         vec![
-            crate::remote_ask::command_line(&["--list-sessions", "-w-alpha"]),
+            format!(
+                "{} <stdin [\"-w-alpha\"]>",
+                crate::remote_ask::command_line(&["--list-sessions", "--stdin-line"])
+            ),
             crate::remote_ask::command_line(&["--session-accounts"]),
         ]
     );

@@ -474,11 +474,11 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         .map(|i| enclosing_fn(&main, i))
         .collect();
     exits.sort();
-    // 登记：`main` 里三处（ccm 那一趟 · 一次性查询 · 监听口配置不成立）＋ `serve_listening` 绑不上口那一处。
-    // 四处都发生在**一条命令都还没收**之前 ⇒ 没有可排空的。
+    // 登记：`main` 里四处（ccm 那一趟 · 〔FIX〕argv 一族的 stdin 一行读不动 · 一次性查询 · 监听口配置不成立）＋ `serve_listening` 绑不上口那一处。
+    // 五处都发生在**一条命令都还没收**之前 ⇒ 没有可排空的。
     assert_eq!(
         exits,
-        vec!["main", "main", "main", "serve_listening"],
+        vec!["main", "main", "main", "main", "serve_listening"],
         "`main.rs` 里 `process::exit(` 的所在函数集合变了 —— 流模式的退出口必须经 `inbound::exit_after_drain`"
     );
     let mut drains: Vec<String> = call_sites(&main, "exit_after_drain")
@@ -512,7 +512,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     );
     // 正控：数法认得出多出来的一处 `exit(`。
     let planted = format!("{main}\nfn planted() {{ std::process::exit(0); }}\n");
-    assert_eq!(call_sites(&planted, "process::exit").len(), 5);
+    assert_eq!(call_sites(&planted, "process::exit").len(), 6);
     assert_eq!(
         enclosing_fn(
             &planted,
