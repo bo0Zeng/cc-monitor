@@ -3793,6 +3793,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "sftp_read_text_for_edit",
             1,
         ),
+        // 〔FILES2 · 第四波〕有损目录里上传 / 搜索 / 开终端改成按字节做 ⇒ 那道出声拒的闸没了调用方、删了，原处一块墓碑。
+        ("src/bridge/src/filewin/shell.rs", "refused_in_lossy_cwd", 1),
         // 〔SR1b〕住址 `src/bridge/src/sftp.rs` → `src/backend/dial/sftp.rs`：那段原子上传的来历随函数搬进了本机后端。
         (
             "src/backend/dial/sftp.rs",
@@ -4510,6 +4512,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
         ("src/bridge/src/filewin/writeops.rs", 1),
+        // 〔FILES2 · 第四波〕0 → 1：`refused_in_lossy_cwd` 删了（有损目录里三件改按字节做），原处墓碑。
+        ("src/bridge/src/filewin/shell.rs", 1),
         // 〔第四波 S4〕`sftp_pool.rs` 1 → 0（行删）：那块墓碑随零流量复制一段整块删了，理由同 `TOMBSTONED` 那一行。
         ("tests/bridge/filewin/boundary_tests.rs", 2),
         ("tests/bridge/filewin/transfer_tests.rs", 1),

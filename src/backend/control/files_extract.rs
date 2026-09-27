@@ -32,6 +32,9 @@ use std::path::{Path, PathBuf};
 //  建链接（Q1 · 复制目录与解压共用）
 // ══════════════════════════════════════════════════════════════════════════
 
+/// zip 里一条链接的目标文本最多多长（Linux `PATH_MAX` 同量级）；超了整趟拒、不截断。
+pub const LINK_TARGET_MAX_BYTES: u64 = 4096;
+
 /// 这个平台建不建得了链接（计划趟据此决定「链接 ⇒ 记下来」还是「链接 ⇒ 整趟拒」）。
 pub const LINKS_SUPPORTED: bool = cfg!(unix);
 
@@ -381,11 +384,21 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
                 let raw = if f.is_dir() {
                     Raw::Dir
                 } else if f.is_symlink() {
+                    // zip 里链接的目标文本是那一条的正文；多读一个字节判超限（超了整趟拒，不截一半当目标）。
                     let mut to = Vec::new();
                     f.by_ref()
-                        .take(4096)
+                        .take(LINK_TARGET_MAX_BYTES + 1)
                         .read_to_end(&mut to)
                         .map_err(|e| broken(archive, e))?;
+                    if to.len() as u64 > LINK_TARGET_MAX_BYTES {
+                        return Err(refused(copy_text(
+                            "beFilesExtract.entry.linkTooLong",
+                            &[
+                                ("name", &shown(&name)),
+                                ("cap", &LINK_TARGET_MAX_BYTES.to_string()),
+                            ],
+                        )));
+                    }
                     Raw::Link(to)
                 } else {
                     Raw::File(f.unix_mode())

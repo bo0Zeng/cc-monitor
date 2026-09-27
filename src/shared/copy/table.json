@@ -18233,6 +18233,11 @@
       "kind": "body",
       "zh": "机器名与主窗口上那台的名字相同；目标目录空着就是那台的 home",
       "args": []
+    },
+    "beFilesExtract.entry.linkTooLong": {
+      "kind": "error",
+      "zh": "包里的链接「{name}」目标太长（超过 {cap} 字节），整个包没解",
+      "args": ["name", "cap"]
     }
   }
 }

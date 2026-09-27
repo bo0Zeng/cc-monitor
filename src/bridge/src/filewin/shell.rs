@@ -240,11 +240,13 @@ pub fn build_open_terminal_cmd(cwd: &str) -> Result<String, String> {
             &[("cwd", &format!("{c:?}"))],
         ))
     } else {
-        Ok(format!(
-            "cd {} && {shell}",
-            shell_quote_core::posix_quote(c)
-        ))
+        Ok(cd_then_shell(&shell_quote_core::posix_quote(c)))
     }
+}
+
+/// `cd <已 quote 的目录> && <登录 shell>` —— 「在此打开终端」那一串**只在这里拼**（字符串形与字节形共用）。
+fn cd_then_shell(quoted: &str) -> String {
+    format!("cd {} && exec ${{SHELL:-bash}} -l", quoted)
 }
 
 /// 〔FILES2 · 非 UTF-8 目录〕同 [`build_open_terminal_cmd`]，当前目录可以带字节：有字节 ⇒ 过唯一的 quote 的字节形
@@ -259,10 +261,7 @@ pub fn build_open_terminal_cmd_at(cwd: &super::source::RemotePath) -> Result<Str
             &[("cwd", &format!("{:?}", cwd.shown))],
         ));
     }
-    Ok(format!(
-        "cd {} && exec ${{SHELL:-bash}} -l",
-        shell_quote_core::posix_quote_bytes(raw)
-    ))
+    Ok(cd_then_shell(&shell_quote_core::posix_quote_bytes(raw)))
 }
 
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。

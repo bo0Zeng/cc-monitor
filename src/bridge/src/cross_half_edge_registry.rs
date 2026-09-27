@@ -272,6 +272,22 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          两个数住两棵依赖树（窗口的 `WINDOW_TRANSFER_LANES` · 后端的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；\
          失效方向：窗口起的件数超过车道 ⇒ 多挂的订阅只是白排队；够着整条连接的通道闸 ⇒ 一个窗口把会话与查询饿死。",
     ),
+    (
+        "monitor→backend",
+        "tests/bridge/filewin/lossy_pull_tests.rs",
+        "src/backend/control/files_commit.rs",
+        "★〔FILES2 · 第四波新增〕**窗口拷进去再下的那个暂存区 == 后端的暂存区** —— \
+         `lossy_pull_tests.rs::the_staging_dir_is_the_backend_one`。两个 crate 互相引不到，两侧各写一份 \
+         `.cc-monitor/staging`；失效方向：两份漂开 ⇒ 有损名下载拷进一个后端孤儿扫看不见、也不收的地方（或那一层根本不在）。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/filewin/chunk_upload_tests.rs",
+        "src/backend/control/transfer.rs",
+        "★〔FILES2 · 第四波新增〕**窗口据以换路的收场码 == 传输台发的那个** —— \
+         `chunk_upload_tests.rs::the_mismatch_code_is_the_backend_one`。两侧各写一份 `sftp_home_mismatch`；\
+         失效方向：两份漂开 ⇒ SFTP 起始目录不是后端 home 的那台机器上，窗口认不出那一码、不改走块形，上传永远做不成。",
+    ),
     // 〔LOC1a · 第四波 4D〕`tests/bridge/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
     //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
     //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
