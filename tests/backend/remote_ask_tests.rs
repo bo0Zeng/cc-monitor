@@ -89,7 +89,7 @@ fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
 /// 一个记账的替身对面：记下每次被交的 (拨号请求, 命令)，答一个固定串。
 #[derive(Default)]
 struct Recorder {
-    calls: StdMutex<Vec<(Value, String)>>,
+    calls: StdMutex<Vec<(Value, String, Option<String>)>>,
     n: AtomicUsize,
 }
 
@@ -100,9 +100,11 @@ impl Remote for Recorder {
         command: String,
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
-        assert_eq!(stdin, None, "`ask_with` 只交 argv，不写 stdin");
         self.n.fetch_add(1, Ordering::SeqCst);
-        self.calls.lock().unwrap().push((dial.clone(), command));
+        self.calls
+            .lock()
+            .unwrap()
+            .push((dial.clone(), command, stdin));
         Box::pin(async { Ok("答".to_string()) })
     }
 }
@@ -145,11 +147,50 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
         reach_args("dev", "10.0.0.2", "/opt/c c/ccm")["dial"]
     );
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 死值验 A3：那样两侧同源，拿掉引号也恒绿）。
-    // 逐格单引号；格内的 `'` 写成 `'\''`（POSIX 单引号里没有转义：先关、给一个转义过的单引号、再开）。
+    // 〔FIX · `设计/96 §3.6`〕命令行里只剩后端路径与两个旗标；项目目录名（带 `'`）走 stdin 一行。
     assert_eq!(
         calls[0].1,
-        r#"'/opt/c c/ccm' '--list-sessions' '-home-u-it'\''s'"#
+        r#"'/opt/c c/ccm' '--list-sessions' '--stdin-line'"#
     );
+    assert_eq!(calls[0].2.as_deref(), Some("[\"-home-u-it's\"]\n"));
+}
+
+/// ★ 〔FIX · `设计/96 §3.6`〕守的要求（逐字）：「起远端后端的命令、历史跨机那几问的 argv 仍拼在远端命令行里 ⇒
+/// 远端登录 shell 是 fish 之类时这几条仍不成立」。发的一侧（`ask_with`）交出去的命令行交真 `sh` 拆词、stdin 那一行交收的一侧
+/// （`cli_control::expand_stdin_argv`）⇒ 拼回来的 argv 与调用方给的逐格相等；命令行里没有任何一格自由文本
+/// （只剩后端路径与旗标 —— 那几格不含 `'` 与 `\`，fish 与 POSIX 单引号同读）。
+#[cfg(unix)]
+#[tokio::test]
+async fn the_free_text_rides_stdin_and_the_remote_gets_the_argv_back_verbatim() {
+    let table = Table::default();
+    answer_reach_with(&reach_args("dev", "10.0.0.2", "/opt/b"), &table).unwrap();
+    let far = Recorder::default();
+    let tricky = ["-home-u-it's", "照片 (2019) \\ $HOME `id`", "a & b; c"];
+    for dir in tricky {
+        ask_with("dev", &["--list-sessions", dir], &table, &far)
+            .await
+            .unwrap();
+    }
+    for ((_, line, stdin), dir) in far.calls.lock().unwrap().iter().zip(tricky) {
+        assert!(!line.contains(dir), "自由文本进了远端命令行：{line}");
+        assert!(
+            !line.contains('\\') && line.matches('\'').count() % 2 == 0 && !line.contains("'\\''"),
+            "命令行里有 fish 与 POSIX 读法不同的写法：{line}"
+        );
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("set -- {line}; shift; printf '%s\\n' \"$@\""))
+            .output()
+            .expect("起 sh");
+        let words: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let stdin = stdin.clone().expect("自由文本没走 stdin");
+        let got = crate::control::cli_control::expand_stdin_argv(words, stdin.as_bytes())
+            .expect("收的一侧读得动");
+        assert_eq!(got, vec!["--list-sessions".to_string(), dir.to_string()]);
+    }
 }
 
 /// ★ 判据 2：`remote-reach` 与 `assets-sync` 登记的是同一张表、同一个写口 —— 两条路登记同一台之后表逐格相等；
