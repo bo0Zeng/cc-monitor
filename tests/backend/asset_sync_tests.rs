@@ -394,11 +394,12 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     assert!(out.status.success(), "{out:?}");
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
-        format!("{PUSH_FLAG} {}\n", crate::STDIN_LINE_FLAG)
+        // 〔V151〕打头的 `--` 让那台的 `ccm` 当后端用（替身 `echo` 把它原样印出来）。
+        format!("-- {PUSH_FLAG} {}\n", crate::STDIN_LINE_FLAG)
     );
     assert_eq!(
         pull_command(),
-        "\"$HOME\"/.cc-monitor/bin/ccm '--assets-catalog'"
+        "\"$HOME\"/.cc-monitor/bin/ccm -- '--assets-catalog'"
     );
 }
 

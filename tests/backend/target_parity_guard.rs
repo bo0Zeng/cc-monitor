@@ -1041,7 +1041,8 @@ fn every_ccm_capability_that_rides_tmux_is_declared_tmux_carried() {
     }]);
     let plan_of = |args: &[&str]| -> Result<Plan, String> {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        match parse(&a) {
+        // 〔V151〕探针沿用 V138 写法（ccm 选项在前）⇒ 喂解析器前换成 V151 排列。
+        match parse(&crate::control::ccm::argv::v138_to_v151(&a)) {
             Ok(Parsed::Opts(o)) => build(&o, &env, &table, None).map_err(|d| d.0),
             Ok(Parsed::Early(e)) => Err(format!("落进了立即结束那一支：{e:?}")),
             Err(d) => Err(d.0),

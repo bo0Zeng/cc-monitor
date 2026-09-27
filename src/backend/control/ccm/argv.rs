@@ -49,10 +49,73 @@ pub(crate) mod flag {
     pub(crate) const END: &str = "--";
 }
 
-/// 〔E2〕这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器：单独喂它，不原样进透传就算。
+/// 〔E2〕这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器（放在 `--` 右边喂它）。
 /// 后端 CLI 面不许派生出这样的名字（`cli_control::cli_exposed`）。
 pub(crate) fn is_ccm_word(word: &str) -> bool {
-    !matches!(parse(&[word.to_string()]), Ok(Parsed::Opts(o)) if o.passthru == [word.to_string()])
+    // 〔V151〕放在 `--` 右边问：只要不是「认不得这个词」那两句，就是 ccm 的词（缺值 / 组合不对也算认得）。
+    let w = [("w", word)];
+    let unknown = [
+        copy_text("beArgv.parse.unknownRight", &w),
+        copy_text("beArgv.parse.backendWordAfterClaudeArgs", &w),
+    ];
+    !matches!(parse(&[flag::END.to_string(), word.to_string()]), Err(Die(m)) if unknown.contains(&m))
+}
+
+/// 〔V151 · 只给测试〕把 V138 那一形（ccm 选项与交给 agent 的词混写、`--` 之后全交 agent）改写成 V151 那一形
+/// （`<交给 agent 的…> -- <ccm 的…>`）。给沿用旧写法写夹具的那几份单测用 —— 意图逐词不变，只换排列。
+#[cfg(test)]
+pub(crate) fn v138_to_v151(old: &[String]) -> Vec<String> {
+    const WITH_VALUE: [&str; 10] = [
+        flag::TMUX_BASE,
+        flag::TMUX_SIZE,
+        flag::ACCOUNT,
+        flag::CWD,
+        flag::AGENT,
+        flag::LAUNCHER,
+        flag::BUS_NOTE,
+        flag::ATTACH,
+        flag::CCM_SID,
+        flag::END,
+    ];
+    const BARE: [&str; 9] = [
+        flag::TMUX,
+        flag::DETACH,
+        flag::BASE,
+        flag::BUS_REGISTER,
+        flag::CCM_PRINT,
+        flag::CCM_HELP,
+        flag::CCM_VERSION,
+        flag::CCM_PROBE,
+        flag::END,
+    ];
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    let mut i = 0;
+    while i < old.len() {
+        let a = &old[i];
+        if a == flag::END {
+            left.extend_from_slice(&old[i + 1..]);
+            break;
+        }
+        let key = a.split_once('=').map_or(a.as_str(), |(k, _)| k);
+        if BARE.contains(&key) || (WITH_VALUE.contains(&key) && a.contains('=')) {
+            right.push(a.clone());
+        } else if WITH_VALUE.contains(&key) {
+            right.push(a.clone());
+            if let Some(v) = old.get(i + 1) {
+                right.push(v.clone());
+                i += 1;
+            }
+        } else {
+            left.push(a.clone());
+        }
+        i += 1;
+    }
+    if right.is_empty() && !left.iter().any(|a| a == flag::END) {
+        return left;
+    }
+    left.push(flag::END.to_string());
+    left.extend(right);
+    left
 }
 
 /// `--cwd` 的取值：`auto`（默认）或一个显式目录。
@@ -171,12 +234,22 @@ pub(crate) enum Parsed {
     Opts(Box<Opts>),
 }
 
+/// 〔V151〕`args` 里**最后一个** `--` 的位置（没有 ⇒ `None`）。左边交 claude、右边归 ccm —— 切法只住这一处。
+pub(crate) fn last_end(args: &[String]) -> Option<usize> {
+    args.iter().rposition(|a| a == flag::END)
+}
+
 /// 🔴 **这套 argv 的唯一解析口。**
 ///
-/// 〔V138〕首词 `new` 是 ccm 的位置动作（可省）；壳层选项与 `--ccm-*` 诊断口在哪个位置都认；其余每个词（旗标 · 值 · 位置参数）按原顺序进
-/// [`Opts::passthru`] 交给 agent，不报错、不翻译；`--` 之后一律透传。ccm 不知道 claude 的旗标带不带值 ——
-/// 值恰好与壳层选项同名时写在 `--` 后面。
+/// 〔V151 · 用户 09-27〕格式 `ccm [交给 claude 的…] -- [ccm 自己的…]`：没有 `--` ⇒ 整行原样交 agent（[`Opts::passthru`]，
+/// 一个词都不拦）；有 ⇒ 按**最后一个** `--` 切（[`last_end`]），左边原样交 agent（claude 自己的 `--` 照写，
+/// 没有 ccm 部分时末尾补一个空 `--`），右边逐词只认 ccm 表（壳层选项 ＋ `--ccm-*` 诊断口），认不得就报错、不猜。
+/// 〔墓碑 —— V138 那一版：壳层选项在任何位置都认、首词 `new` 是 ccm 的位置动作、`--` 之后一律透传。〕
 pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
+    let (left, right): (&[String], &[String]) = match last_end(args) {
+        Some(k) => (&args[..k], &args[k + 1..]),
+        None => (args, &[]),
+    };
     let mut o = Opts {
         attach_name: String::new(),
         use_tmux: Defaults::USE_TMUX,
@@ -193,12 +266,10 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         print: Defaults::PRINT,
         detach: Defaults::DETACH,
         tmux_size: String::new(),
-        passthru: Vec::new(),
+        passthru: left.to_vec(),
     };
-
-    // 位置动作 `new` 只认第一个词（用户 09-26「new不要删掉」—— claude 没有 `new` 子命令）；
-    // 位置词 `attach` 不是 ccm 的：claude 有自己的 `attach <id>`，接回 tmux 会话用 `--attach <名>`。
-    let mut i = usize::from(args.first().map(String::as_str) == Some("new"));
+    let args = right;
+    let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
         // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。
@@ -220,10 +291,6 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             };
         }
         match key {
-            flag::END => {
-                o.passthru.extend_from_slice(&args[i + 1..]);
-                break;
-            }
             flag::TMUX => {
                 o.use_tmux = true;
                 if let Some(v) = inline {
@@ -249,8 +316,19 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::CCM_PROBE => return Ok(Parsed::Early(Early::Probe)),
             flag::CCM_VERSION => return Ok(Parsed::Early(Early::Version)),
             flag::CCM_HELP => return Ok(Parsed::Early(Early::Help)),
-            // V138：不是 ccm 的词 ⇒ 原样交给 agent（含 `--resume` / `-p` / `--help` / 位置参数）。
-            _ => o.passthru.push(a.to_string()),
+            // 〔V151〕右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
+            _ if i == 0 && crate::control::ccm::is_backend_word(a) => {
+                return die(copy_text(
+                    "beArgv.parse.backendWordAfterClaudeArgs",
+                    &[("w", &a.to_string())],
+                ))
+            }
+            _ => {
+                return die(copy_text(
+                    "beArgv.parse.unknownRight",
+                    &[("w", &a.to_string())],
+                ))
+            }
         }
         i += 1;
     }

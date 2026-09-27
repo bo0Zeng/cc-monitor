@@ -135,7 +135,8 @@ pub fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static
 /// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv **每一格都过 POSIX 单引号**（项目目录名等是自由文本）。
 /// 〔E2 · V28〕那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
 pub fn command_line(argv: &[&str]) -> String {
-    let mut s = relay_route_core::BACKEND_LANDING_SHELL.to_string();
+    // 〔V151〕`ccm -- <后端子命令…>`：打头的 `--` 让那台的 `ccm` 当后端用。
+    let mut s = format!("{} --", relay_route_core::BACKEND_LANDING_SHELL);
     for a in argv {
         s.push(' ');
         s.push_str(&shell_quote_core::posix_quote(a));

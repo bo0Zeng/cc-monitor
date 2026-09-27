@@ -6,6 +6,12 @@
 
 use super::*;
 
+/// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）；
+/// V151 自己的切法由 `v151_*` 那几条直接喂原文判。
+fn parse(a: &[String]) -> Result<Parsed, Die> {
+    super::parse(&v138_to_v151(a))
+}
+
 fn v(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
@@ -87,12 +93,13 @@ fn the_combination_rules_all_fail_loudly() {
         ok(&["--ccm-agent", "codex", "resume", "s"]).passthru,
         v(&["resume", "s"])
     );
-    // 用户 09-26：claude 自己的 `--tmux` / `--agent` 原样交出去；首词 `new` 是 ccm 的，别处的 `new` / 位置词 `attach` 交给 claude。
+    // 用户 09-26：claude 自己的 `--tmux` / `--agent` 原样交出去；`new` / 位置词 `attach` 交给 claude。
     assert_eq!(
         ok(&["--tmux", "--agent", "x"]).passthru,
         v(&["--tmux", "--agent", "x"])
     );
-    assert!(ok(&["new", "--ccm-tmux"]).passthru.is_empty());
+    // 〔V151〕首词 `new` 不再是 ccm 的位置动作：没有 `--` 的词一律原样交 claude。
+    assert_eq!(ok(&["new", "--ccm-tmux"]).passthru, v(&["new"]));
     assert_eq!(ok(&["-p", "new"]).passthru, v(&["-p", "new"]));
     assert_eq!(ok(&["attach", "abc"]).passthru, v(&["attach", "abc"]));
 }

@@ -241,32 +241,55 @@ pub(crate) fn own_source() -> &'static str {
 /// ⚠ 刻意**不是** `--ccm`：那样它会长得像一条 wire 子命令，而它不是。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
 
-/// 这一趟是不是在当 `ccm` 用？是就返回**要交给 [`run`] 的那串 argv**。
+/// 〔V151〕这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entry {
+    /// 当 `ccm` 用：交给 [`run`] 的那串 argv（`[交给 claude 的…] -- [ccm 自己的…]`）。
+    Ccm(Vec<String>),
+    /// 当后端用：一次性子命令或流模式的 argv（已去掉打头的 `--`）。
+    Backend(Vec<String>),
+}
+
+/// 〔V151〕后端认得的第一个词：一次性子命令 ∪ 流模式旗标。只许紧跟**打头的** `--` 出现（`ccm -- --stream …`）。
+pub(crate) fn is_backend_word(w: &str) -> bool {
+    crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
+}
+
+/// 〔V151 · 用户 09-27〕分流：
+/// ① 打头的 `--` 紧跟后端词 ⇒ 后端（名字是不是 `ccm` 都一样：`ccm -- --stream` 与开发树 `cc-monitor-backend -- --stream` 同形）；
+///    第一个 `--` 就是分隔 ⇒ 后端子命令自己的参数里再出现 `--` 也不会被误切。
+/// ② 名字是 `ccm`（`~/.cc-monitor/bin/ccm`，它就是后端本身）⇒ 其余一律当 ccm（切 claude / ccm 两半归 `argv::parse`）。
+/// ③ 名字不是 `ccm`：首词 `ccm` ⇒ ccm（入口②）；打头的 `--` 去掉；其余原样当后端（开发树直接跑的那一形）。
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
-/// 从 argv 里**任意位置**剥掉，而 `ccm -- --tail-only` 里那个是要原样透传给 agent 的。
-pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
+/// 从 argv 里**任意位置**剥掉，而 `ccm --tail-only` 里那个是要原样交给 agent 的。
+/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕），claude 自己的 `--fork-session` 会被抢进后端；V151 取消。〕
+pub fn route(argv0: &str, args: &[String]) -> Entry {
     let base = argv0
         .rsplit(['/', '\\'])
         .next()
         .unwrap_or(argv0)
         .trim_end_matches(".exe");
+    let first = args.first().map(String::as_str);
+    if first == Some(argv::flag::END) && args.get(1).is_some_and(|w| is_backend_word(w)) {
+        return Entry::Backend(args[1..].to_vec());
+    }
     if base == SUBCOMMAND_WORD {
-        // 〔E2 · V28〕二进制本身就叫 `ccm`（`~/.cc-monitor/bin/ccm`）：后端认得的第一个词 ⇒ 后端；其余（含空）⇒ ccm。
-        //   流模式靠显式词 `--stream` 解开（`lib.rs::STREAM_FLAG_EXPLICIT`）；两边的词不相交由 `argv_tests` 的路由判据钉住。
-        return (!routes_to_backend(args)).then(|| args.to_vec());
+        return Entry::Ccm(args.to_vec());
     }
-    if args.first().map(String::as_str) == Some(SUBCOMMAND_WORD) {
-        return Some(args[1..].to_vec());
+    match first {
+        Some(SUBCOMMAND_WORD) => Entry::Ccm(args[1..].to_vec()),
+        Some(argv::flag::END) => Entry::Backend(args[1..].to_vec()),
+        _ => Entry::Backend(args.to_vec()),
     }
-    None
 }
 
-/// 〔E2〕名字是 `ccm` 时，这串 argv 是不是在叫后端：`args[0]` ∈ `SUBCOMMANDS ∪ STREAM_FLAGS`。
-pub(crate) fn routes_to_backend(args: &[String]) -> bool {
-    args.first().is_some_and(|a| {
-        crate::SUBCOMMANDS.contains(&a.as_str()) || crate::STREAM_FLAGS.contains(&a.as_str())
-    })
+/// [`route`] 的 ccm 那一支（给只关心「是不是在当 ccm 用」的调用方）。
+pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
+    match route(argv0, args) {
+        Entry::Ccm(v) => Some(v),
+        Entry::Backend(_) => None,
+    }
 }
 
 /// 「我是被怎么叫进 `ccm` 模式的」—— 进程 argv 里**排在 ccm 参数前面**的那一段。

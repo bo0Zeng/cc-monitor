@@ -70,44 +70,7 @@ fn there_are_exactly_two_ways_in() {
     assert_eq!(intercept("/opt/ccmonitor", &none), None, "子串不算");
 }
 
-/// 〔E2〕要求住址：V28「`ccm` ＝ 后端二进制本身」· `设计/01 §6.7b` · 主会话裁 E2「由后端的 argv 表决定路由、流模式多一个显式词」。
-///
-/// 名字是 `ccm` 时：后端认得的第一个词（`SUBCOMMANDS ∪ STREAM_FLAGS`）⇒ 后端，其余 ⇒ ccm。两向都要成立：
-/// ① 每个后端第一个词都进后端，而且**不是** ccm 自己认的词（问真解析器 `argv::parse`，异源于那两张表）—— 撞了就是 ccm 的旗标被后端抢走；
-/// ② 空 argv 与交给 claude 的词进 ccm。正控：解析器确实认得 `--ccm-print` / `--account`（抽取没空转）。
-#[test]
-fn under_the_name_ccm_only_backend_first_words_reach_the_backend() {
-    let eaten = |w: &str| !matches!(argv::parse(&[w.to_string()]), Ok(argv::Parsed::Opts(o)) if o.passthru == [w.to_string()]);
-    assert!(
-        eaten("--ccm-print") && eaten("--account"),
-        "解析器认不出 ccm 自己的词 —— 本条在空转"
-    );
-    let backend_words: Vec<&str> = crate::SUBCOMMANDS
-        .iter()
-        .chain(crate::STREAM_FLAGS.iter())
-        .copied()
-        .collect();
-    let stolen: Vec<&str> = backend_words.iter().copied().filter(|w| eaten(w)).collect();
-    assert_eq!(
-        stolen,
-        Vec::<&str>::new(),
-        "这些后端第一个词也是 ccm 自己的词："
-    );
-    for w in &backend_words {
-        assert_eq!(
-            intercept("/h/.cc-monitor/bin/ccm", &[w.to_string()]),
-            None,
-            "`ccm {w}` 没进后端"
-        );
-    }
-    assert_eq!(intercept("/h/.cc-monitor/bin/ccm", &[]), Some(vec![]));
-    let claude = vec!["--resume".to_string(), "abc".to_string()];
-    assert_eq!(intercept("ccm", &claude), Some(claude.clone()));
-    assert!(
-        crate::STREAM_FLAGS.contains(&crate::STREAM_FLAG_EXPLICIT),
-        "流模式显式词不在剥离表里"
-    );
-}
+// 〔V151〕`under_the_name_ccm_only_backend_first_words_reach_the_backend`〔散文墓碑〕并进 `claude_flags_tests` 那一条（切法 ＋ 撞名收成一刀）。
 
 /// 〔CC1〕「怎么叫我」＝ 进程 argv 里 `intercept` **吃掉的那一段**；两个入口各一格，再加回环。
 ///
@@ -287,7 +250,8 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let Parsed::Opts(o) = argv::parse(&args).expect("该解析得动") else {
+        let Parsed::Opts(o) = argv::parse(&argv::v138_to_v151(&args)).expect("该解析得动")
+        else {
             panic!("`--tmux=n1` 不该被解析成 Early")
         };
         match plan::build(&o, env, &AccountTable::default(), None).expect("该算得出计划") {
@@ -473,7 +437,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
         ..Default::default()
     };
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    let o = match argv::parse(&a).expect("该解析得动") {
+    let o = match argv::parse(&argv::v138_to_v151(&a)).expect("该解析得动") {
         Parsed::Opts(o) => o,
         other => panic!("{other:?}"),
     };
@@ -702,9 +666,10 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     }
     let home = std::env::var("HOME").unwrap_or_default();
     for args in [
-        vec!["--cwd", "/p", "--ccm-agent", "claude"],
-        vec!["--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
-        vec!["--base", "--model", "m", "--cwd", "/q"],
+        // 〔V151〕别名的预置参数就是一条 V151 argv（`<交给 claude 的…> -- <ccm 的…>`）。
+        vec!["--", "--cwd", "/p", "--ccm-agent", "claude"],
+        vec!["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
+        vec!["--model", "m", "--", "--base", "--cwd", "/q"],
     ] {
         let got = answer_print(&serde_json::json!({ "args": args }))
             .unwrap_or_else(|e| panic!("{args:?} 预览被拒：{e:?}"));
@@ -772,12 +737,12 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     };
     let home = std::env::var("HOME").unwrap_or_default();
     assert!(
-        line(&["--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
+        line(&["--", "--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
         "不给 --cwd 却没落在家目录"
     );
-    let boxed = line(&["--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
+    let boxed = line(&["--", "--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
     assert!(
-        boxed.contains("'ccm' '--cwd'"),
+        boxed.contains("'ccm' '--' '--cwd'"),
         "容器路内层没有叫回 `ccm`：{boxed}"
     );
 }
@@ -793,19 +758,27 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         "bad_args"
     );
     assert_eq!(
-        code(serde_json::json!({ "args": ["--ccm-help"] })),
+        code(serde_json::json!({ "args": ["--", "--ccm-help"] })),
         "refused"
     );
     // V138：未知旗标交给 claude、不再拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
-    let (c, said) = answer_print(&serde_json::json!({ "args": ["--detach"] }))
+    let (c, said) = answer_print(&serde_json::json!({ "args": ["--", "--detach"] }))
         .expect_err("--detach 不带 --tmux 该被拒");
     assert_eq!(c, "refused");
-    let want = match argv::parse(&["--detach".to_string()]) {
+    let want = match argv::parse(&["--".to_string(), "--detach".to_string()]) {
         Err(argv::Die(m)) => m,
         other => panic!("{other:?}"),
     };
     assert_eq!(said, want, "拒的那句不是 ccm 自己的原话");
-    assert_eq!(code(serde_json::json!({ "args": ["--cwd", "/p"] })), "ok");
+    assert_eq!(
+        code(serde_json::json!({ "args": ["--", "--cwd", "/p"] })),
+        "ok"
+    );
+    // 〔V151〕右边认不得 ⇒ ccm 的原话拒（不猜）。
+    assert_eq!(
+        code(serde_json::json!({ "args": ["--", "--model", "m"] })),
+        "refused"
+    );
 }
 
 // ── 〔WIN1 · 第四波 4D · RT1 F7〕`--ccm-probe` 自报的能力 = 这台机器上做得到的那一份 ──────────
