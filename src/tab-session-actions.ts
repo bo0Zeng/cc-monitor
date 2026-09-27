@@ -225,7 +225,7 @@ export class TabSessionActions {
         // `runRemoteResume` 现在返回 boolean（Phase G：别把失败读成成功）。这条路的
         // 反馈由它自己的 toast 承担，`withAccount` 只要 `void` ⇒ 显式丢弃。
         async (mods) => {
-          if (!(await this.recordStillThere(tab, mods.configDir))) return;
+          if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
           await runRemoteResume(
             origin,
             sid,
@@ -334,7 +334,7 @@ export class TabSessionActions {
         origin,
         accountName ?? null,
         async (mods) => {
-          if (!(await this.recordStillThere(tab, mods.configDir))) return;
+          if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
           await runRemoteResumeIntoExistingTmux(
             origin,
             sid,
@@ -368,7 +368,7 @@ export class TabSessionActions {
       // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
       // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
       async (mods) => {
-        if (!(await this.recordStillThere(tab, mods.configDir))) return;
+        if (!(await this.recordStillThere(tab, mods.configDir))) return false; // 拦下 ⇒ 不记上次的账号
         await runRemoteResumeTmux(
           origin,
           sid,
