@@ -88,7 +88,7 @@ describe("〔DUP2 · J4〕askAcctIsoCmd：命令问那台后端", () => {
   });
 
   it("后端拒了 ⇒ 抛 ControlError，那一句先说结果（「命令拼不出来」）", async () => {
-    const e = await askAcctIsoCmd("devbox", { kind: "add-apply", name: "b", credFile: "--apply" }).catch((x: unknown) => x);
+    const e = await askAcctIsoCmd("devbox", { kind: "add-apply", name: "b", credFile: 'a"b' }).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(ControlError);
     expect((e as ControlError).message).toContain("命令拼不出来");
   });
