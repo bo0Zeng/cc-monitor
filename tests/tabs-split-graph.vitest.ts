@@ -141,9 +141,11 @@ const DEPS: Record<string, readonly string[]> = {
     "src/cards/index.ts",
     "src/copy-table.ts", // 〔CP2b〕上翻哨兵 · 查找失败那几句进了文案表
     "src/height-estimate.ts",
+    "src/height-refiner.ts", // 〔RENDER2 · `设计/10 §2.5b`〕第二级估高：视口附近的占位行交 Worker 精算
     "src/ipc/chan-caller.ts", // 〔DL1〕丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（`设计/05 §3.3.2` 造期限的那一手）
     "src/ipc/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
     "src/ipc/commands.ts",
+    "src/live-window.ts", // 〔RENDER2〕从头重读 ⇒ tab 整份重来时新建 `TailWindow` / `SeqSet`（原先只有类型依赖）
     "src/record-timeline.ts",
     "src/render-stream-record.ts",
     "src/render.ts", // 〔W5-RENDER R5〕关 tab 时 `releaseEnhanceRoot`：lazy 补算的 IO 按滚动容器分（`设计/10 §3.5` D2）
