@@ -70,6 +70,11 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
     "effective_fingerprint",
     "〔VIS2 09-26〕只被 `request` 调（同上一行）：入参 `cfg` 已是一台远端的配置，这里现读的是**同一台**盘上那份的 \
      host key 指纹（固化后下一次拨号就严格）；本机那条路不拨 SSH、没有 host key，`<local>` 结构上走不到这里。",
+), (
+    "backend/control/backend_control.rs",
+    "stop_remote_resident",
+    "〔HOST 09-26〕只被 `backend_stop` 调，且在它 `is_local(&origin)` 那一支已经把本机分走之后（本机停的是本机常驻后端，\
+     走 `local_backend_host::stop_local_backend`）⇒ `<local>` 结构上走不到这里。",
 )];
 
 /// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16；

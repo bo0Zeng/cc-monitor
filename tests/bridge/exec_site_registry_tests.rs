@@ -343,7 +343,11 @@ enum StillShell {
 
 const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     ("ssh_source.rs", "connect_and_exec", StillShell::Bootstrap,
-     "起那台的**流模式后端本身**（长连接的另一头）—— 它就是后端，不能问后端要它自己"),
+     "起那台的**流模式后端本身**（长连接的另一头）—— 它就是后端，不能问后端要它自己〔HOST：今天只剩「那台起不了常驻」的回落〕"),
+    ("remote_resident.rs", "ensure", StillShell::Bootstrap,
+     "〔HOST · V139〕起 / 找那台的**常驻后端本身**（`--resident-ensure`）—— 接上它之前没有后端可问"),
+    ("remote_resident.rs", "stop", StillShell::Bootstrap,
+     "〔HOST〕停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
     ("byte_table.rs", "probe_key", StillShell::Bootstrap,
      "部署后端之前问那台 `uname -s -m`，据此挑哪一份二进制去装（那时还没有后端可问）"),
     ("sftp.rs", "remote_identity", StillShell::Bootstrap,
