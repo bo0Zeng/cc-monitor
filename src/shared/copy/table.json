@@ -9,6 +9,141 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beResident.fs.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beResident.fs.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beResident.fs.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beResident.fs.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beResident.fs.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "rsRemoteResident.ensure.tooOld": {
+      "kind": "error",
+      "zh": "那台机器上的后端太旧，不认常驻那条命令。",
+      "args": []
+    },
+    "rsRemoteResident.ensure.answerUnreadable": {
+      "kind": "error",
+      "zh": "那台机器起常驻后端的回答读不懂：{e}",
+      "args": ["e"]
+    },
+    "rsRemoteResident.ensure.exitCode": {
+      "kind": "error",
+      "zh": "退出码 {code}",
+      "args": ["code"]
+    },
+    "rsRemoteResident.ensure.answerIncomplete": {
+      "kind": "error",
+      "zh": "那台机器起常驻后端的回答里缺端口或钥匙。",
+      "args": []
+    },
+    "rsRemoteResident.hello.notOurs": {
+      "kind": "error",
+      "zh": "那台机器上常驻后端的端口被别的程序占着。",
+      "args": []
+    },
+    "rsRemoteResident.handshake.helloCut": {
+      "kind": "error",
+      "zh": "常驻后端没说完第一句：连接断了，或那行太长。",
+      "args": []
+    },
+    "rsRemoteResident.handshake.replyCut": {
+      "kind": "error",
+      "zh": "常驻后端没回完接入请求：连接断了，或那行太长。",
+      "args": []
+    },
+    "rsRemoteResident.handshake.readFailed": {
+      "kind": "error",
+      "zh": "读那台机器常驻后端的回话失败：{e}",
+      "args": ["e"]
+    },
+    "rsRemoteResident.tunnel.unreachable": {
+      "kind": "error",
+      "zh": "那台机器的常驻后端端口（127.0.0.1:{port}）一直连不上：{e}",
+      "args": ["port", "e"]
+    },
+    "rsRemoteResident.handshake.attachNotSent": {
+      "kind": "error",
+      "zh": "接入请求没送到那台机器的常驻后端：{e}",
+      "args": ["e"]
+    },
+    "rsRemoteResident.handshake.notAttachReply": {
+      "kind": "error",
+      "zh": "回的不是接入应答",
+      "args": []
+    },
+    "rsRemoteResident.handshake.refused": {
+      "kind": "error",
+      "zh": "那台机器的常驻后端拒绝了这条连接：{why}",
+      "args": ["why"]
+    },
+    "rsBackendControl.remote.stopped": {
+      "kind": "error",
+      "zh": "已停 {origin} 的常驻后端（进程 {pid}），它会先做完手上的活再退；这条流也断了。",
+      "args": ["origin", "pid"]
+    },
+    "rsBackendControl.remote.notRunning": {
+      "kind": "error",
+      "zh": "{origin} 上没有在跑的常驻后端；这条流已断。",
+      "args": ["origin"]
+    },
+    "rsBackendControl.remote.stopFailed": {
+      "kind": "error",
+      "zh": "{origin} 的流已断，但停那台的常驻后端没成：{e}",
+      "args": ["origin", "e"]
+    },
+    "beResident.home.missing": {
+      "kind": "error",
+      "zh": "这台机器上没有 HOME，找不到常驻后端的钥匙放哪。没有起。",
+      "args": []
+    },
+    "beResident.spawn.noSelf": {
+      "kind": "error",
+      "zh": "找不到后端自己的程序文件：{e}",
+      "args": ["e"]
+    },
+    "beResident.token.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
+      "args": []
+    },
+    "beResident.spawn.failed": {
+      "kind": "error",
+      "zh": "常驻后端起不来（{exe}）：{e}",
+      "args": ["exe", "e"]
+    },
+    "beResident.stop.cannotVerify": {
+      "kind": "error",
+      "zh": "认不出进程 {pid} 是谁，没有停它：这台机器上读不到它跑的程序。",
+      "args": ["pid"]
+    },
+    "beResident.stop.notOurs": {
+      "kind": "error",
+      "zh": "进程 {pid} 不是记下的那个后端，没有停它。它跑的是 {exe}，进程号可能被别的程序用了。",
+      "args": ["pid", "exe"]
+    },
+    "beResident.stop.signalFailed": {
+      "kind": "error",
+      "zh": "给常驻后端（进程 {pid}）发停止信号没发出去。",
+      "args": ["pid"]
+    },
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",

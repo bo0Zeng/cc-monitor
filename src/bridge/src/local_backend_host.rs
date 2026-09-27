@@ -143,38 +143,11 @@ pub(crate) const LISTEN_TOKEN_ENV: &str = "CCM_LISTEN_TOKEN";
 /// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
 pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
 
-/// 监听口取值区间：IANA 的动态/私有口段 `49152..=65535`。
-///
-/// 为什么不固定一个口：**同一台机上两个用户各有各的 backend**，固定口必然撞；
-/// 而撞了之后的处置（见 [`probe_listen_port`]）是**出声并拒绝**，不是换个口再起一个
-/// —— 换口 = 每台机 N 个后端（中转口与全部 SSH 各 N 份），比今天更糟。
-/// 〔HX2〕从前这里还有一条「互相盖 tmux hook 的 `[50]` 槽位」：今天 hook 按实例一格（`control/tmux_hook.rs`），那一条不成立了；
-/// 不换口的理由剩上面那一条，照样够。
-const PORT_BASE: u16 = 49152;
-const PORT_SPAN: u32 = 16384;
+// 〔HOST〕监听口取值区间（`49152..=65535`）与「撞了出声拒绝、绝不换口」的理由随实现搬进 `relay_route_core::listen_port_for`。
 
-/// `K-P1`：这台机 + 这个数据目录对应的监听口。**全仓唯一一份实现。**
-///
-/// # 为什么端口由宿主算、而不是两边各算一份
-///
-/// 「按家目录 hash 出一个口」若两边各写一份，两份就会漂 —— 本仓有现成的同族先例：
-/// `shared/ccm` 与 Rust 侧各算一份 origin，实测**分叉四处**（`backend_control.rs` 头注那张表）。
-/// ⇒ 只留一份实现，backend 那侧只收一个数（`listen::ENV_PORT`）。
-///
-/// # 算法：FNV-1a，**刻意不用 `DefaultHasher`**
-///
-/// `std::collections::hash_map::DefaultHasher` 的输出**跨 Rust 版本不保证稳定**
-/// （它自己的文档逐字说了）。而这个数必须在**升级 monitor 之后仍然算出同一个口**，
-/// 否则下一次启动会去连一个空口、起第二个 backend —— 那正是本件要防的那件事。
-/// ⇒ 用一个写死的、永远不会变的 FNV-1a。
-pub fn listen_port_for(home: &str) -> u16 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in home.as_bytes() {
-        h ^= u64::from(*b);
-        h = h.wrapping_mul(0x1000_0000_01b3);
-    }
-    PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
-}
+/// `K-P1`：这台机 + 这个 agent 家目录对应的监听口。〔HOST〕实现搬进共享 crate（远端 `--resident-ensure` 用同一个函数，
+/// 一台机器一个常驻后端）；算法与「为什么由一处算」的理由住 `relay_route_core::listen_port_for` 头注。
+pub use relay_route_core::listen_port_for;
 
 /// monitor 自己的目录 —— token 与「谁在听」都住这里。**与后端的落点同一个目录**
 /// （`~/.cc-monitor`），因为它们本来就是同一件事的两半。

@@ -593,6 +593,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
     key_shape_ok: NONE,
+    // 〔HOST〕常驻监听口的门牌（本机宿主与远端 `--resident-ensure` 同一个函数）；TS 侧没有孪生。
+    listen_port_for: NONE,
+    LISTEN_TOKEN_FILE_REL: NONE,
     parse_target: NONE,
     PORT: NONE,
     prefix: NONE,

@@ -98,7 +98,7 @@ pub(crate) fn lane_of(u: Use) -> Lane {
     match u {
         Use::Stream => Lane::Stream,
         Use::Capture | Use::Files => Lane::Query,
-        Use::Forward => Lane::Tunnel,
+        Use::Forward | Use::Tunnel => Lane::Tunnel,
     }
 }
 
@@ -423,6 +423,52 @@ async fn serve<R, W>(
                 return;
             }
             forward(Arc::clone(&lease.linked), listener, spec, &mut input, out).await
+        }
+        Use::Tunnel => {
+            let fp = lease.linked.fingerprint.clone();
+            let Some(port) = req.tunnel_port else {
+                let _ = write_stages_then_ack(
+                    out,
+                    stages,
+                    &DialAck::failed("请求里 use=tunnel 却没给 tunnel_port".into(), fp),
+                )
+                .await;
+                return;
+            };
+            // 只到远端自己的回环（`listen::LOOPBACK` 那一格在远端）：连不上 = 那台上没人在听，落在 ack 里。
+            let opened = lease
+                .linked
+                .session
+                .channel_open_direct_tcpip("127.0.0.1", u32::from(port), "127.0.0.1", 0)
+                .await;
+            let channel = match opened {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = write_stages_then_ack(
+                        out,
+                        stages,
+                        &DialAck::failed(format!("远端 127.0.0.1:{port} 连不上: {e}"), fp),
+                    )
+                    .await;
+                    return;
+                }
+            };
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            // 哪一边先结束就收工（与 `stream` 那一臂同一条理由）。
+            let (mut down, mut up) = tokio::io::split(channel.into_stream());
+            tokio::select! {
+                r = tokio::io::copy(&mut input, &mut up) => {
+                    tracing::info!("dial: 隧道上行结束（界面那头断了）：{r:?}");
+                }
+                r = tokio::io::copy(&mut down, out) => {
+                    tracing::info!("dial: 隧道下行结束（远端那头断了）：{r:?}");
+                }
+            }
         }
         Use::Files => {
             // 〔SR1b〕sftp 子系统开好了才回 ack：「远端没开 sftp」要落在 ack 那一行里，不是第一条应答里。

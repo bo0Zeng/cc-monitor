@@ -121,6 +121,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
+    "tests/bridge/remote_resident_tests.rs", // 〔HOST〕远端常驻后端的判定（纯函数）
     "tests/bridge/session_facts_tests.rs",
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
@@ -407,6 +408,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/snapshot_resume_tests.rs",
     "tests/bridge/spawn_managed_exit_sites.rs",
     "tests/bridge/spawn_managed_tests.rs",
+    "tests/events-tap-machines.vitest.ts", // 〔HOST〕读 `src/main.ts` 的 tap 订阅清单
     "tests/bridge/ssh_source_capped_line_tests.rs",
     "tests/bridge/ssh_source_coldstart_perf_guard.rs",
     "tests/bridge/ssh_source_coldstart_preflight_guard.rs",
@@ -543,6 +545,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/panorama_tests.rs",
+    "tests/backend/control/resident_tests.rs", // 〔HOST〕临时目录上真铸钥匙、读钥匙文件
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",
     "tests/backend/dial_link_tests.rs",

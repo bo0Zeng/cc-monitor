@@ -24,23 +24,27 @@ fn offer_refuses_when_nobody_is_attached_and_accepts_once_someone_is() {
     assert_eq!(rx.try_recv().ok(), Some(ev(1)));
 }
 
-/// 又一条流连接接上 ⇒ 上一条的接收端拿完已有的就是 `None`（不会再有东西进去），新的一条接着收。
+/// 〔HOST · H3 · `设计/01 §3.3b ⑥`〕多客户：每条连着的流各收一份；走了的那条摘掉，剩下的照收。
 #[test]
-fn a_new_attach_retires_the_previous_receiver() {
+fn every_attached_stream_gets_its_own_copy_and_a_gone_one_is_dropped() {
     let hub = TapHub::default();
-    let mut old = hub.attach();
+    let mut a = hub.attach();
+    let mut b = hub.attach();
     assert!(hub.offer(ev(0)));
-    let mut new = hub.attach();
-    assert!(hub.offer(ev(1)));
-    assert_eq!(old.try_recv().ok(), Some(ev(0)));
-    assert!(
-        matches!(
-            old.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
-        ),
-        "旧接收端应当已断开"
+    assert_eq!(a.try_recv().ok(), Some(ev(0)), "第一条没收到");
+    assert_eq!(
+        b.try_recv().ok(),
+        Some(ev(0)),
+        "第二条没收到 —— 扇出只交了一条"
     );
-    assert_eq!(new.try_recv().ok(), Some(ev(1)));
+    drop(a);
+    assert!(hub.offer(ev(1)), "一条走了，剩下那条却不收了");
+    assert_eq!(b.try_recv().ok(), Some(ev(1)));
+    assert_eq!(
+        hub.current.lock().unwrap().len(),
+        1,
+        "走了的那条没摘掉 —— hub 会越攒越多"
+    );
 }
 
 /// 满了 ⇒ 答「没收」，不阻塞；生产容量就是 `TAP_CAPACITY`（第 `TAP_CAPACITY + 1` 件被拒）。

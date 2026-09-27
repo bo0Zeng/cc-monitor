@@ -76,6 +76,7 @@ pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
 pub(crate) mod panorama;
+pub mod resident;
 pub mod resolve_query;
 pub mod tmux_hook;
 // 〔SR1b · 2026-09-24〕传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。

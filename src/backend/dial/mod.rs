@@ -67,7 +67,7 @@ pub(crate) mod uses;
 pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward", "files"];
+pub const USES: &[&str] = &["stream", "capture", "forward", "files", "tunnel"];
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
@@ -102,6 +102,9 @@ pub enum Use {
     Forward,
     /// 〔SR1b〕开 sftp 子系统，之后在链路上一问一答（受限的远端文件操作：写只许两处，[`sftp`]）。
     Files,
+    /// 〔HOST · V139〕一条 direct-tcpip 到远端回环 `tunnel_port`（那台常驻后端的监听口），原样对拷。
+    /// 不绑本机口（与 `forward` 不同）：monitor 经这条链路直接讲监听协议（`设计/05 §5.2`，不另开公网口）。
+    Tunnel,
 }
 
 /// `use: capture` 的参数。
@@ -156,6 +159,9 @@ pub struct DialRequest {
     pub capture: Option<CaptureOpts>,
     #[serde(default)]
     pub forward: Option<ForwardSpec>,
+    /// 〔HOST〕`use: tunnel` 的目标口（远端 `127.0.0.1` 上）。
+    #[serde(default)]
+    pub tunnel_port: Option<u16>,
     /// ack 之前逐行报阶段（测试连接那六格）。
     #[serde(default)]
     pub stages: bool,

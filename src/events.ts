@@ -366,7 +366,7 @@ export interface BindEventsOptions {
    */
   streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
   /**
-   * 〔TAP · V124〕要订 `session-tap` 的机器（中转住本机常驻后端 ⇒ 今天只有本机那一台有来源）。
+   * 〔TAP · V124〕要订 `session-tap` 的机器（〔HOST · V139〕每台的中转住那台的常驻后端 ⇒ 每台都订）。
    * 与会话行同一条帧路、同一套 credit（`设计/05 §15`）；窗口是 {@link TAP_WINDOW}。
    */
   taps?: ReadonlyArray<Origin>;

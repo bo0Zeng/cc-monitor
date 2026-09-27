@@ -1,5 +1,9 @@
 //! `K-P1 KPY8`：**「多客户端的流」本件明确不做 —— 留一个触发器，不留一句话。**
 //!
+//! 〔HOST · 09-26〕**多客户已做**（`设计/01 §3.3b ⑥` · `15 §4.8`）：做法是**每条连接各一份** watcher / inbound / writer
+//! （`main.rs::serve_listening` 每接一条就起一份，与单流那一形逐字同形），不是把一条观测通道扇出 ⇒ `Overflow.lost` 仍按
+//! 「这条连接那一条通道」记，下面几根针的数一处没变；今天它们钉的是「源码里恰好一份，按连接实例化」。
+//!
 //! # 它是什么形状
 //!
 //! **今天绿、那天故意红**（形状抄 `wire::tests::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
@@ -186,16 +190,7 @@ mod tests {
              而 `inbound::REGISTRY` 的取消登记表是**一份**（按 id 去重），两个对端会撞 id。\
              ⇒ 全 crate 也是 2（`wire.rs` 头注里那一处提及是 `///` 行，被 `production_code` 剥掉）。",
         ),
-        (
-            "main.rs",
-            "busy.swap(true",
-            1,
-            1,
-            "「谁拿到那一条流」由**一次原子操作**决出来，**全 crate 只此一处**。\
-             改成「先查后写」就有窗口（两条连接同时握手都拿到流）；\
-             多一处则意味着有第二个地方在发牌。\
-             ⚠ 这条的说法从第一版起就写着「全 crate」，而语料到今天才真的是全 crate。",
-        ),
+        // 〔HOST · `设计/01 §3.3b ⑥`〕`busy.swap(true` 那一行摘了：多客户之后不再有「谁拿到那一张牌」。
         (
             "observe/watcher.rs",
             "mpsc::channel::<Frame>(",

@@ -2552,7 +2552,7 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一
 
 **一条链路上的字节 = C2 拨号代理原来的 stdout，逐字节同形**：`stages=true` 时若干行 `{"stage":{…}}` → **恰好一行** ack
 `{"ok","error","fingerprint","endpoint","v":2,"uses":[…]}` → `stream` 原样双向字节 · `capture` 一行 `{"stdout","stderr","exit_status"}` 后结束 ·
-`forward` 每接进一条连接一行 `{"accepted":n}`。上行（`link-data`）= 原来子进程的 stdin；`link-close` = 原来「界面走了」。
+`forward` 每接进一条连接一行 `{"accepted":n}` · 〔HOST〕`tunnel` 原样双向字节（远端 `127.0.0.1:<tunnel_port>` 那条 direct-tcpip）。上行（`link-data`）= 原来子进程的 stdin；`link-close` = 原来「界面走了」。
 
 **流控**：下行逐链路信用 —— `link-open` 给初始窗口，后端发一块扣一块，扣不到就等；客户端读走之后 `link-credit` 还回来
 ⇒ 一条不读的链路在这条流上最多占一个窗口，堵不住别的链路、别的帧与应答。上行一次一块：`link-data` 的应答在那块**写进链路之后**才回。
@@ -2565,8 +2565,8 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一
 | `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；必须在 [32 KiB, 16 MiB] 之内，否则 `invalid_args`>,"dial":{DialRequest}}` |
 | `data` | 无（登记上、任务起了就回 `ok` —— **不等拨通**：拨通与否在链路字节里那一行 ack） |
 
-`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward｜files）·
-capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_port} · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
+`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward｜files｜tunnel）·
+capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_port} · tunnel_port · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
 `SSH_AUTH_SOCK` —— 常驻后端活得比任何一个客户端都长，它自己身上那份可能早就不指向活的 agent；缺席 = 用后端自己的环境）。
 〔W5-AUX〕`capture.stdin`（可缺）：exec 之后原样写进远端进程 stdin 的字节，**不关 stdin**（收的一侧用 CLI 面的 `--stdin-line`）。
 `probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
@@ -3075,6 +3075,17 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 `CCM_DIAL_REQUEST` / `CCM_DIAL_PROXY` 两个环境变量随之退场。请求的形状一个字没改（从环境变量搬进 `link-open` 的 `dial` 字段，
 多一个可选的 `agent_sock`），链路上的应答与 C2 代理的 stdout 逐字节同形。常驻后端不在 ⇒ monitor **报**，不起代理进程、不进程内拨（`D11`）。
 ⚠ 子命令集少了一条 ⇒ `build_id_guard` 红，合并时 bump `BUILD_ID`。
+
+**〔HOST · V139 · 2026-09-26〕远端常驻后端：`--resident-ensure` / `--resident-stop`**（一次性，monitor 经本机常驻后端的链路 `capture` 在远端跑；住 `control/resident.rs`）。
+- `--resident-ensure`（可带 `--replace`）：读回或铸 `~/.cc-monitor/listen-token`（0600，与本机宿主同一份）→ 起一个脱离的自己（常驻载体：
+  `CCM_LISTEN_PORT` = `relay_route_core::listen_port_for(agent 家目录)` · `CCM_LISTEN_TOKEN_FILE` = 钥匙文件**路径** · `CCM_RELAY_PORT`（远端中转进程内起）·
+  `CCM_BACKEND_STDERR_LOG`）→ stdout 一行 `{"port","token","pid"}`、退出 0。口上已有常驻后端 ⇒ 子进程「绑不上就退 3」，找与起是同一步。
+  `--replace`：先按口上那一位自己记的 `~/.cc-monitor/listen-<口>.pid`（核 `/proc/<pid>/exe`）发 SIGTERM 再起。
+- `--resident-stop`：同一枪，不起；stdout `{"stopped":<pid>|null}`。失败：stderr `{code,message}`、退出 2（`code` ∈ `no_home` · `no_token` · `replace_failed` · `stop_failed` · `spawn_failed` · `unsupported`）。
+- 常驻监听口的握手多一格：attach 行可带 `"flags":[…]`（`STREAM_FLAGS` 的子集，这条连接的流模式旗标；缺 = 进程起参那一份；表外的 ⇒ `malformed-attach`）。
+  **多客户**（`设计/01 §3.3b ⑥`）：钥匙对上就交流，每条连接各一份 watcher / inbound / writer；连接计数归零才按「退出行为」办；`stream-busy` 不再发。
+- 链路多一种用法 `tunnel`（`tunnel_port`）：本机常驻后端开 direct-tcpip 到远端 `127.0.0.1:<口>`，monitor 经它讲上面这条监听协议（不另开公网口）。
+- ⚠ 子命令集多两条 ⇒ `build_id_guard` 红，合并时 bump `BUILD_ID`。
 
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
 （`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— 后端把它当未知 flag、
