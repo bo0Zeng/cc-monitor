@@ -644,6 +644,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     free_text_ok: NONE,
     posix_free_path_ok: NONE,
     posix_quote: "J4",
+    // 〔FILES2〕唯一 quote 的字节形（`$'…'`，非 UTF-8 目录开终端）与它的判定：TS 侧零处拼 shell、零处判它 ⇒ NONE。
+    posix_quote_bytes: NONE,
+    posix_free_path_bytes_ok: NONE,
     // 〔DUP1〕`INVARIANTS §47` ① 标识符那一层。常量是规则的一部分（上界 · 放行的标点），TS 侧不抄它们：
     //   模型名那两格由 monitor 现生成进 `src/generated/judgment-rules.ts`（生成物不是孪生）⇒ NONE。
     SESSION_ID_MAX: NONE,

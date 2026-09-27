@@ -87,6 +87,8 @@ fn synthetic_request() -> OpenRequest {
         bookmarks: Some(std::path::PathBuf::from(
             "/tmp/书签 目录/filewin-bookmarks.json",
         )),
+        // 〔FILES2 · V152〕机器名单也进种子对拍（带中文与空格）。
+        machines: vec!["<local>".to_string(), "台架 远端".to_string()],
     }
 }
 
@@ -117,6 +119,12 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     assert!(
         want.bookmarks.is_some(),
         "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
+    );
+    // 〔FILES2 · V152〕机器名单（「复制到另一台」的下拉）：漂了 ⇒ 下拉里列的不是配置里那几台。
+    assert_eq!(got.machines, want.machines, "机器名单漂了");
+    assert!(
+        !want.machines.is_empty(),
+        "夹具里这一格得非空，否则两侧都是空恒相等"
     );
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
     //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
@@ -287,6 +295,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
+        machines: Vec::new(),
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -420,6 +429,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
+        machines: Vec::new(),
     })
     .expect_err("拿一个不是二进制的文件当窗口进程，居然报了成功");
     println!("  现打：{e}");

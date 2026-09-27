@@ -243,7 +243,8 @@ fn every_tmux_print_site_is_registered_with_how_it_carries_utf8() {
 /// 唯一那份 quote 的**纯转发别名**名（盘上现认）：`use … posix_quote as X` 的 `X`，以及函数体只有一句
 /// `shell_quote_core::posix_quote(参数)` 的那几个函数名。返回 `(名字集, 别名本体所在的文件集)`。
 fn quote_aliases(srcs: &[(String, String)]) -> (Vec<String>, Vec<String>) {
-    let mut names = vec!["posix_quote".to_string()];
+    // 〔FILES2〕唯一的 quote 多了一个字节形（`posix_quote_bytes`，`$'…'`）—— 同一份 quote 的另一形，同样算拼接点。
+    let mut names = vec!["posix_quote".to_string(), "posix_quote_bytes".to_string()];
     let mut bodies = Vec::new();
     for (rel, body) in srcs {
         if !rel.ends_with(".rs") {
@@ -499,13 +500,20 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
     ),
     // 〔TL3 · §47〕文件窗口的当前目录（自由文本路径）拼进 `cd` 之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）。
+    // 〔FILES2〕1 → 2：非 UTF-8 的当前目录走字节形 `posix_quote_bytes`，拼之前过 `posix_free_path_bytes_ok`（同一组规则的字节形）。
     (
         "src/bridge/src/filewin/shell.rs",
-        1,
-        &[(
-            "src/bridge/crates/shell-quote-core/src/lib.rs",
-            "posix_free_path_ok",
-        )],
+        2,
+        &[
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "posix_free_path_ok",
+            ),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "posix_free_path_bytes_ok",
+            ),
+        ],
         "",
         "",
     ),

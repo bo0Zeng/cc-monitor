@@ -360,6 +360,19 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         codes: &["bad_path", "unreadable"],
     },
+    // ── 〔FILES2 · 第四波 · 2026-09-27 · 用户 V152〕读族第十条：按字节寻址分块读回 ─────────────────────────
+    //   非 UTF-8 名的下载（SFTP 库的路径是 `String`，寻址不到）经后端链路一块一块读回；下载对远端只读（`设计/60 §4.4`）。
+    //   与 `files-stage-chunk` 对称（那条是分块写进暂存区）。纯读。
+    Capability {
+        name: "files.read.chunk",
+        purpose: "从一份普通文件的 `offset` 起读至多 `len` 字节（原始字节，b16 送回）—— 下载非 UTF-8 名那条路的一块",
+        effect: Effect::ReadsOnly,
+        impl_files: &["mod.rs", "raw.rs"],
+        targets: TARGETS,
+        args: &["len", "offset", "path"],
+        fields: &["content", "eof", "offset", "path", "size"],
+        codes: &["bad_args", "bad_path", "not_text", "unreadable"],
+    },
     Capability {
         name: "files.home",
         purpose: "后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问",
@@ -805,6 +818,10 @@ fn answer_browse(args: &serde_json::Value) -> Answer {
 ///   ⇒ 调用方要的 `max_bytes` 超过它 ⇒ `bad_args`（说清天花板是多少），**不偷偷夹小**。
 pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 
+/// 〔FILES2 · V152〕`files-read-chunk` 一块最多多少原始字节（b16 翻倍后一帧应答仍远小于 monitor 读一行的上限）。
+/// 调用方给的 `len` 越界 ⇒ `bad_args`、不夹小（同 [`READ_TEXT_MAX_BYTES`] 那一条理由）。
+pub const READ_CHUNK_MAX_BYTES: u64 = 256 * 1024;
+
 /// 〔FW1 · 第四波 4D〕CAS 摘要形里十六进制串的长度（SHA-256 = 32 字节）。
 pub const SHA256_HEX_LEN: usize = 64;
 
@@ -878,6 +895,65 @@ pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
 /// ⚠ 它**不过会话数据围栏**：那道围栏立在写侧（「不许改坏正被 Claude 打开的那份」），
 /// 读一份会话记录进编辑框不改任何东西；存回去那一下才过围栏（写面那条会拒）。
 /// 〔FN1 · 第四波 4C · 用户 V119「文件管理器全部都可以改. 不需要任何围栏」〕写侧那道也拿掉了：存得回去。
+/// 〔FILES2 · V152〕`files.read.chunk`：`{path, offset, len}` → `{path, offset, size, eof, content: {b16}}`。
+/// 只读普通文件（不是 ⇒ `not_text`，与读族同一个码）；`offset` 越过末尾 ⇒ 空块、`eof: true`。
+fn answer_read_chunk(args: &serde_json::Value) -> Answer {
+    use std::io::{Read as _, Seek as _};
+    let path = path_arg(args)?;
+    let num = |v: Option<&serde_json::Value>, k: &str| {
+        v.and_then(serde_json::Value::as_u64).ok_or((
+            "bad_args",
+            crate::common::contract::malformed(&format!("missing `{k}` (non-negative integer)")),
+        ))
+    };
+    let offset = num(args.get("offset"), "offset")?;
+    let len = num(args.get("len"), "len")?;
+    if len == 0 || len > READ_CHUNK_MAX_BYTES {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`len` is {len}; accepted range 1..={READ_CHUNK_MAX_BYTES}, not clamped"
+            )),
+        ));
+    }
+    let kind = |e: std::io::Error| format!("{:?}", e.kind());
+    let md = std::fs::metadata(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text("beFilesRead.size.unreadable", &[("kind", &kind(e))]),
+        )
+    })?;
+    if !md.is_file() {
+        return Err((
+            "not_text",
+            copy_core::copy_text("beFilesRead.text.notRegular", &[]),
+        ));
+    }
+    let broke = |e: std::io::Error| {
+        (
+            "unreadable",
+            copy_core::copy_text("beFilesRead.text.readBroke", &[("kind", &kind(e))]),
+        )
+    };
+    let mut f = std::fs::File::open(&path).map_err(|e| {
+        (
+            "unreadable",
+            copy_core::copy_text("beFilesRead.text.openFailed", &[("kind", &kind(e))]),
+        )
+    })?;
+    f.seek(std::io::SeekFrom::Start(offset)).map_err(broke)?;
+    let mut buf: Vec<u8> = Vec::new();
+    f.take(len).read_to_end(&mut buf).map_err(broke)?;
+    let size = md.len();
+    Ok(serde_json::json!({
+        "path": raw::to_json(raw::path_bytes(&path)),
+        "offset": offset,
+        "size": size,
+        "eof": offset + buf.len() as u64 >= size,
+        "content": { "b16": buf.iter().map(|b| format!("{b:02x}")).collect::<String>() },
+    }))
+}
+
 fn answer_read_text(args: &serde_json::Value) -> Answer {
     let path = path_arg(args)?;
     let max = args
@@ -1065,6 +1141,7 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.read.text" => answer_read_text(args),
         "files.home" => answer_home(),
         "files.size" => answer_size(args),
+        "files.read.chunk" => answer_read_chunk(args),
         other => Err((
             "unknown_capability",
             crate::common::contract::malformed(&format!("unknown capability `{other}`")),

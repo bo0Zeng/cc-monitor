@@ -94,6 +94,17 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "copy_planned",
         "用户的目录（`files-copy` 复制目录，逐条建）",
     ),
+    // 〔FILES2 · 第四波 09-27〕解压（`设计/60 §6.2` Q3）两处，按实数 +2：都是用户的目录，不是 `~/.cc-monitor` 一族。
+    (
+        "control/files_extract.rs",
+        "extract_with",
+        "用户的目录（`files-extract` 的落点目录：解到的那个新目录，不在才建）",
+    ),
+    (
+        "control/files_extract.rs",
+        "land_dir",
+        "用户的目录（`files-extract` 包里的目录，逐条建）",
+    ),
     (
         "history_annotations.rs",
         "lock_for_write",

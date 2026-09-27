@@ -65,6 +65,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&side);", 1, Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&staged);", 1, Why::CleanupAfterFailure, "目标已落好之后删暂存件；删不掉由孤儿扫（`sweep_stale`）按期限收（该处注释原话）"),
     ("src/backend/control/files_write.rs", "std::fs::remove_file(&bak).ok();", 1, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
+    // 〔FILES2 · 第四波〕解压落一份文件写一半 / 设权限失败 ⇒ 删自己 `O_EXCL` 刚建的那一份；上传块形拼暂存件失败 ⇒ 删自己刚建的 `<key>.part`。
+    ("src/backend/control/files_extract.rs", "std::fs::remove_file(&at).ok();", 1, Why::CleanupAfterFailure, "解压写一份失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回（随后整趟回滚）"),
+    ("src/backend/control/files_upload_chunks.rs", "std::fs::remove_file(p).ok();", 1, Why::CleanupAfterFailure, "拼暂存件失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回，块由 `drop_chunks` 收"),
     ("src/backend/control/files_write.rs", "std::fs::remove_file(&land).ok();", 3, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
     ("src/backend/control/files_write.rs", "std::fs::remove_file(&side).ok();", 3, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
     ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", 1, Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（`15 §4.7` 做得好的对照组）"),
@@ -172,6 +175,11 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/src/chan/wire.rs", "rx.wait_for(|c| *c).await.ok();", 1, Why::Signal, ""),
     ("src/bridge/src/config.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "〔CFG1〕原子写的临时件：换名失败之后删它；主错误已在回"),
     ("src/bridge/src/filewin/scale.rs", "let _ = render_headless(&ctx, rows, screen, off);", 1, Why::NotAnError, "量渲染耗时，只要时间不要画出来的东西"),
+    // 〔FILES2 · 第四波〕窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
+    ("src/bridge/src/filewin/extract.rs", "tx.send(fresh).ok();", 1, Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
+    ("src/bridge/src/filewin/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
+    ("src/bridge/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
+    ("src/bridge/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
     ("src/bridge/src/history.rs", "let _ = on_chunk.send(chunk);", 1, Why::PeerGone, ""),
     ("src/bridge/src/launch.rs", "let _ = child.wait();", 1, Why::Reap, ""),
     ("src/bridge/src/lib.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", 1, Why::WindowBestEffort, ""),

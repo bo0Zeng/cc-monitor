@@ -151,6 +151,18 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 ///
 /// - `path` 是空的、且远端 home 问不出来 ⇒ 带着原文回错，不开窗。
 /// - 目录列不出来（连不上 / 没权限 / 不是目录）⇒ 把 `sftp_pool` 那边的原文带回去。
+/// 〔FILES2 · V152〕「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
+/// 来自已有的配置读口，不新建数据源。
+fn machine_names() -> Vec<String> {
+    std::iter::once(super::cross_copy::LOCAL_ORIGIN.to_string())
+        .chain(
+            crate::load_remote_configs()
+                .iter()
+                .map(RemoteConfig::origin_label),
+        )
+        .collect()
+}
+
 #[tauri::command]
 pub async fn open_file_window(
     cfg: RemoteConfig,
@@ -191,6 +203,7 @@ pub async fn open_file_window(
         reveal,
         handoff,
         bookmarks,
+        machines: machine_names(),
     })
     .map_err(|why| copy_text("rsFilewinEntry.open.failed", &[("why", &why.to_string())]))?;
     tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");

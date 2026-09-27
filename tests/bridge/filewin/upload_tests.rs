@@ -181,18 +181,20 @@ async fn clicking_upload_then_ok_runs_the_drop_path_over_the_channel() {
     let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
     assert_eq!(
         names,
+        // 〔FILES2 · Q5〕开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
         [
             "files-stat",
+            "files-home",
             "transfer-upload",
             "subscribe",
             "files-commit-upload"
         ]
     );
     assert_eq!(
-        got[3].1["overwrite"],
+        got[4].1["overwrite"],
         serde_json::json!(true),
         "人答了覆盖，提交却没带"
     );
-    assert_eq!(got[3].1["root"], serde_json::json!("/srv"));
+    assert_eq!(got[4].1["root"], serde_json::json!("/srv"));
     let _ = std::fs::remove_file(&local);
 }

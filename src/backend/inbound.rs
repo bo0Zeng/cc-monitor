@@ -125,6 +125,8 @@ pub const COMMANDS: &[&str] = &[
     "files-create",
     "files-delete",
     "files-delete-session",
+    // 〔FILES2 · 第四波〕解压（`设计/60 §6.2` · §7 第 9 条 Q3）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "files-extract",
     "files-find",
     "files-home",
     "files-index-rebuild",
@@ -133,6 +135,8 @@ pub const COMMANDS: &[&str] = &[
     "files-mkdir",
     "files-peek",
     "files-put",
+    // 〔FILES2 · V152〕读族第十条：按字节寻址分块读回。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "files-read-chunk",
     "files-read-text",
     "files-rename",
     // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
@@ -1615,6 +1619,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "dirs",
             "files",
             "from",
+            "links",
             "overwrite",
             "path",
             "recursive",
@@ -1624,6 +1629,29 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_write::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FILES2 · 第四波 09-27〕解压（`设计/60 §6.2` · `§7` 第 9 条 Q3，主会话按通行做法裁）：处理器住
+    //   `control/files_extract.rs`（第三层第四个登记的模块），本文件照旧是那一层唯一的门。阻塞档（同步读包 ＋ 落盘）。
+    CommandSpec {
+        name: "files-extract",
+        doc_anchor: Some("#### `files-extract`"),
+        codes: &[
+            "bad_args",
+            "bad_path",
+            "exists",
+            "io_failed",
+            "refused",
+            "unsupported",
+        ],
+        fields: &[
+            "bytes", "dirs", "files", "fresh", "links", "path", "rel", "root",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_extract::answer_wire(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1734,7 +1762,16 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-commit-upload",
         doc_anchor: Some("#### `files-commit-upload`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        fields: &["bytes", "expect", "key", "overwrite", "path", "rel", "root"],
+        fields: &[
+            "bytes",
+            "chunks",
+            "expect",
+            "key",
+            "overwrite",
+            "path",
+            "rel",
+            "root",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)
@@ -1881,6 +1918,19 @@ pub const REGISTRY: &[CommandSpec] = &[
             "unreadable",
         ],
         fields: &["bytes", "max_bytes", "path", "sha256", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FILES2 · V152〕读族第十条：按字节寻址分块读回（非 UTF-8 名的下载）。同族同形、同在阻塞档。
+    CommandSpec {
+        name: "files-read-chunk",
+        doc_anchor: Some("#### `files-read-chunk`"),
+        codes: &["bad_args", "bad_path", "not_text", "unreadable"],
+        fields: &["content", "eof", "len", "offset", "path", "size"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

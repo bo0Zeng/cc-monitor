@@ -455,6 +455,19 @@ mod tests {
          （`files_write::resolve_in_root`，根 = 落点的父目录，借用、不抄）。远端暂存区那一半一行都不在这里 \
          （经 `dial/sftp.rs` 的写原语，只许两处）。线上入口只有 `inbound.rs` 那四条 `transfer-*` 硬臂 \
          （`transfer_command_names`）",
+    ), (
+        // 〔FILES2 · 第四波 · 2026-09-27〕主会话按通行做法裁 Q1「复制链接本身」· Q3「解压」（`设计/60 §6.2` · `§7` 第 9 条）。3 → 4。
+        "control/files_extract.rs",
+        "解压（`files-extract`：zip · tar · tar.gz · tgz 解到一个新目录）＋ 建符号链接（复制目录遇链接复制链接本身，= `cp -R` 缺省的 `-P`）。\
+         解压两趟：计划趟只读、逐条目判（`..` / 绝对路径 / 链接出落点 / 设备 ⇒ 整趟拒）；执行趟每一条先过 \
+         `files_write::resolve_in_root`（借用、不抄）再 `O_EXCL` 新建 · 写 · 改权限 · 建目录 · 建链接，中途失败逐条先判后删自己建的。\
+         链接的目标文本原样写（不解、不判，同 `cp -P`）。线上入口只有 `inbound.rs` 的 `files-extract`（`EXTRACT_COMMANDS`）",
+    ), (
+        // 〔FILES2 · 第四波 · 2026-09-27〕Q5「SFTP 起始目录不是后端 home ⇒ 上传改走后端链路分块写」（`设计/60 §7` 第 3 / 9 条）。4 → 5。
+        "control/files_upload_chunks.rs",
+        "上传的块形：把 `files-stage-chunk` 送进暂存区的 `<key>.<seq>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建 · 写；\
+         每一块先过以暂存区为根的 `files_write::resolve_in_root`、不跟链接地核是普通文件），失败删自己刚建的那一份；\
+         块由 `files_commit::drop_chunks` 收（先判后删）。没有线上命令：只被 `files_commit` 的 `files-commit-upload`（带 `chunks`）调用",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。
@@ -467,6 +480,10 @@ mod tests {
         "remove_file",
         "rename",
         "set_permissions",
+        // 〔FILES2 · 第四波 · 6 → 7〕建链接（`std::os::unix::fs::symlink`）：主会话 09-27 裁 Q1「目录复制遇链接 ⇒ 复制链接本身」
+        //   （`设计/60 §6.2` · `§7` 第 9 条；= GNU `cp -R` 缺省的 `-P`）。
+        //   只在 `control/files_extract.rs::land_link` 一处调用；从 [`MUTATING_FACE_STILL_FORBIDDEN`] 挪过来（那边摘掉 `fs::symlink(`，`soft_link` 那个旧名照旧禁）。
+        "symlink",
         "write",
     ];
 
@@ -509,7 +526,7 @@ mod tests {
         "fs::copy",
         "fs::hard_link",
         "fs::soft_link",
-        "fs::symlink(",
+        // 〔FILES2〕`fs::symlink(` 挪进闭集（[`MUTATING_FACE_VERBS`] 的 `symlink`）。
         "File::create",
         "truncate(true)",
         "append(true)",
@@ -1693,6 +1710,7 @@ mod tests {
             crate::control::files_write::manage_command_names()
                 .into_iter()
                 .chain(crate::control::files_commit::commit_command_names())
+                .chain(crate::control::files_extract::extract_command_names())
                 .chain(crate::control::transfer::transfer_command_names())
                 .map(str::to_string)
                 .collect();
@@ -4341,6 +4359,30 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "把上面那条的事件去抖之后再交出来 —— 同一条路上的第二段，同样只在读侧",
+        ),
+        (
+            "flate2",
+            DEPS,
+            UNMEASURED,
+            "〔FILES2 · 第四波〕解压 tar.gz / tgz 与 zip 的 deflate 那一支（`control/files_extract.rs`）：纯内存解码器（`rust_backend` ＝ `miniz_oxide`）。\
+             它本来就在发布二进制里（`russh` 的 `flate2` feature 那一棵），这一行只是把间接依赖提成直接依赖、零新包。\
+             写不写盘：本 crate 对它的用法只有 `read::GzDecoder` 包一个读句柄（用法签字，没扫它的源码）",
+        ),
+        (
+            "tar",
+            DEPS,
+            UNMEASURED,
+            "〔FILES2 · 第四波〕解压 tar / tar.gz（`control/files_extract.rs`，主会话 09-27 裁「用 Rust 库、不调外部命令」）：缺省 feature 关了（不带 `xattr`）。\
+             ⚠ 它**有**一步解到盘上的 API（`unpack` 一族，会自己建文件、设权限与时间）—— 本 crate **不调它**：只用 `Archive::entries` 逐条读头与正文，\
+             落盘由 `files_extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
+        ),
+        (
+            "zip",
+            DEPS,
+            UNMEASURED,
+            "〔FILES2 · 第四波〕解压 zip（`control/files_extract.rs`）：缺省 feature 全关（aes / bzip2 / lzma / xz / zstd / zopfli 不进来），只开读 deflate 那一支。\
+             ⚠ 它**有**一步解到盘上的 API（`ZipArchive::extract`）—— 本 crate **不调它**：只用 `by_index` 逐条读名字、种类、权限位与正文，\
+             落盘由 `files_extract` 自己逐条过路径解析再写。本档是用法签字（没扫它的源码）",
         ),
         (
             "ring",

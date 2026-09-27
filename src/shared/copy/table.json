@@ -11565,26 +11565,6 @@
       "zh": "选择框启动不了，请重开这个窗口",
       "args": []
     },
-    "rsFilewinShell.lossyCwd.refused": {
-      "kind": "error",
-      "zh": "这个目录的名字不是合法 UTF-8，{what}在这里做不了",
-      "args": ["what"]
-    },
-    "rsFilewinShell.lossyCwd.upload": {
-      "kind": "body",
-      "zh": "上传",
-      "args": []
-    },
-    "rsFilewinShell.lossyCwd.search": {
-      "kind": "body",
-      "zh": "搜索",
-      "args": []
-    },
-    "rsFilewinShell.lossyCwd.terminal": {
-      "kind": "body",
-      "zh": "在此打开终端",
-      "args": []
-    },
     "beFilesCommit.exdev.noName": {
       "kind": "error",
       "zh": "目标 {rel} 没有文件名",
@@ -17908,6 +17888,331 @@
     "rsDialHost.hostKey.listSep": {
       "kind": "body",
       "zh": "；",
+      "args": []
+    },
+    "beFilesLink.land.failed": {
+      "kind": "error",
+      "zh": "在 {path} 建符号链接失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesLink.land.unsupported": {
+      "kind": "error",
+      "zh": "这台机器上建不了符号链接（{path}），没建",
+      "args": ["path"]
+    },
+    "beFilesExtract.path.absolute": {
+      "kind": "error",
+      "zh": "包里的「{name}」是绝对路径，整个包没解，一个字节都没建",
+      "args": ["name"]
+    },
+    "beFilesExtract.path.upward": {
+      "kind": "error",
+      "zh": "包里的「{name}」带上跳段（..）。它会落到解压目录外面，整个包没解，一个字节都没建",
+      "args": ["name"]
+    },
+    "beFilesExtract.entry.linkUnsupported": {
+      "kind": "error",
+      "zh": "包里的「{name}」是符号链接，这台机器上建不了，整个包没解",
+      "args": ["name"]
+    },
+    "beFilesExtract.entry.linkEscapes": {
+      "kind": "error",
+      "zh": "包里的链接「{name}」出了解压目录。它指向「{to}」，整个包没解，一个字节都没建",
+      "args": ["name", "to"]
+    },
+    "beFilesExtract.entry.hardEscapes": {
+      "kind": "error",
+      "zh": "包里的硬链接「{name}」指错了地方。它指向「{to}」，不是包里前面的一份文件，整个包没解",
+      "args": ["name", "to"]
+    },
+    "beFilesExtract.entry.special": {
+      "kind": "error",
+      "zh": "包里的「{name}」是{what}，解压只建目录、文件与链接，整个包没解",
+      "args": ["name", "what"]
+    },
+    "beFilesExtract.kind.device": {
+      "kind": "body",
+      "zh": "一个设备文件",
+      "args": []
+    },
+    "beFilesExtract.kind.fifo": {
+      "kind": "body",
+      "zh": "一个命名管道",
+      "args": []
+    },
+    "beFilesExtract.kind.other": {
+      "kind": "body",
+      "zh": "一种认不得的条目",
+      "args": []
+    },
+    "beFilesExtract.entry.twice": {
+      "kind": "error",
+      "zh": "包里「{name}」出现了两次，整个包没解",
+      "args": ["name"]
+    },
+    "beFilesExtract.entry.underNonDir": {
+      "kind": "error",
+      "zh": "包里有条目挂在一个非目录底下。「{name}」是文件或链接，整个包没解",
+      "args": ["name"]
+    },
+    "beFilesExtract.plan.overCap": {
+      "kind": "error",
+      "zh": "包里的条目超过 {cap} 条，整个包没解",
+      "args": ["cap"]
+    },
+    "beFilesExtract.archive.unreadable": {
+      "kind": "error",
+      "zh": "打不开包 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesExtract.archive.broken": {
+      "kind": "error",
+      "zh": "读包 {path} 出错（包坏了，或用了不认的压缩 / 加密方式）：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesExtract.archive.unknownKind": {
+      "kind": "error",
+      "zh": "不认这种包：「{name}」。认得的是 zip、tar、tar.gz、tgz",
+      "args": ["name"]
+    },
+    "beFilesExtract.into.exists": {
+      "kind": "error",
+      "zh": "{path} 已经在了，没解（不往已有的目录里合并）",
+      "args": ["path"]
+    },
+    "beFilesExtract.land.failed": {
+      "kind": "error",
+      "zh": "在 {path} 落盘失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beFilesExtract.undo.all": {
+      "kind": "body",
+      "zh": "这一趟建的都撤掉了",
+      "args": []
+    },
+    "beFilesExtract.undo.stuck": {
+      "kind": "body",
+      "zh": "没撤干净，停在 {what}",
+      "args": ["what"]
+    },
+    "beFilesExtract.stopped.say": {
+      "kind": "error",
+      "zh": "解压停在半路：{why}。{tail}",
+      "args": ["why", "tail"]
+    },
+    "beFilesExtract.args.path": {
+      "kind": "error",
+      "zh": "少了「{key}」，或它的形状不对（只认字符串或 b16 字节形）",
+      "args": ["key"]
+    },
+    "beFilesExtract.into.noFresh": {
+      "kind": "error",
+      "zh": "从「(2)」试到「({n})」都已经在了，没解",
+      "args": ["n"]
+    },
+    "beFilesExtract.args.fresh": {
+      "kind": "error",
+      "zh": "「fresh」只收布尔",
+      "args": []
+    },
+    "rsFilewinExtract.label.extract": {
+      "kind": "action",
+      "zh": "解压到这里",
+      "args": []
+    },
+    "rsFilewinExtract.reply.missingField": {
+      "kind": "error",
+      "zh": "解压回来的话里少了「{field}」",
+      "args": ["field"]
+    },
+    "rsFilewinExtract.outcome.done": {
+      "kind": "body",
+      "zh": "{name} 解到了 {path}：{files} 个文件、{dirs} 个目录、{links} 条链接，共 {human}",
+      "args": ["name", "path", "files", "dirs", "links", "human"]
+    },
+    "rsFilewinExtract.outcome.skipped": {
+      "kind": "body",
+      "zh": "{name} 没解：{said}",
+      "args": ["name", "said"]
+    },
+    "rsFilewinExtract.outcome.failed": {
+      "kind": "error",
+      "zh": "{name} 没解成：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinExtract.ask.taken": {
+      "kind": "body",
+      "zh": "{said}。另起一个不重名的目录（名字后面加「(2)」这样的数）解，还是不解了？",
+      "args": ["said"]
+    },
+    "rsFilewinExtract.ask.fresh": {
+      "kind": "action",
+      "zh": "另起一个名字解",
+      "args": []
+    },
+    "rsFilewinExtract.ask.skip": {
+      "kind": "action",
+      "zh": "不解了",
+      "args": []
+    },
+    "rsFilewinExtract.ui.running": {
+      "kind": "body",
+      "zh": "正在那台机器上解压 {name} …",
+      "args": ["name"]
+    },
+    "rsFilewinExtract.busy.running": {
+      "kind": "body",
+      "zh": "正在解压 {name}",
+      "args": ["name"]
+    },
+    "beFilesExtract.args.unknownCmd": {
+      "kind": "error",
+      "zh": "「{cmd}」不是解压那一面的命令",
+      "args": ["cmd"]
+    },
+    "beFilesExtract.undo.at": {
+      "kind": "body",
+      "zh": "{path}：{e}",
+      "args": ["path", "e"]
+    },
+    "rsFilewinLossyPull.note.renamed": {
+      "kind": "body",
+      "zh": "名字里有认不出的字节，已改成「{name}」",
+      "args": ["name"]
+    },
+    "beTransfer.home.mismatch": {
+      "kind": "error",
+      "zh": "SFTP 起始目录不是后端的 home。起始目录是 {sftp}，home 是 {home}；暂存件会落到后端看不见的地方，一个字节没传",
+      "args": ["sftp", "home"]
+    },
+    "beUploadChunks.args.bad": {
+      "kind": "error",
+      "zh": "块形上传的参数不对（键「{key}」，块数 {chunks}）",
+      "args": ["key", "chunks"]
+    },
+    "beUploadChunks.io.failed": {
+      "kind": "error",
+      "zh": "拼暂存件时 {path} 出错：{e}",
+      "args": ["path", "e"]
+    },
+    "beUploadChunks.chunk.missing": {
+      "kind": "error",
+      "zh": "第 {seq} 块不在或不是普通文件（共 {chunks} 块），一个字节没落进目标",
+      "args": ["seq", "chunks"]
+    },
+    "beUploadChunks.total.mismatch": {
+      "kind": "error",
+      "zh": "{chunks} 块拼回来 {got} 字节，说好的是 {bytes}，一个字节没落进目标",
+      "args": ["chunks", "got", "bytes"]
+    },
+    "rsFilewinChunkUpload.local.unreadable": {
+      "kind": "error",
+      "zh": "读不到本机的 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "rsFilewinChunkUpload.route.switched": {
+      "kind": "body",
+      "zh": "这台的上传改经后端一段一段写：{why}",
+      "args": ["why"]
+    },
+    "rsFilewinCrossCopy.label.cross": {
+      "kind": "action",
+      "zh": "复制到另一台…",
+      "args": []
+    },
+    "rsFilewinCrossCopy.outcome.done": {
+      "kind": "body",
+      "zh": "{name} 复制到了 {machine} 的 {path}（{human}）",
+      "args": ["name", "machine", "path", "human"]
+    },
+    "rsFilewinCrossCopy.outcome.skipped": {
+      "kind": "body",
+      "zh": "{name} 没复制：{path} 已经在了，你选了不盖",
+      "args": ["name", "path"]
+    },
+    "rsFilewinCrossCopy.outcome.failed": {
+      "kind": "error",
+      "zh": "{name} 没复制成：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinCrossCopy.ask.overwrite": {
+      "kind": "action",
+      "zh": "盖掉",
+      "args": []
+    },
+    "rsFilewinCrossCopy.ask.skip": {
+      "kind": "action",
+      "zh": "不复制",
+      "args": []
+    },
+    "rsFilewinCrossCopy.ask.taken": {
+      "kind": "body",
+      "zh": "{machine} 上已经有 {path} 了。盖掉它（没有备份，不可撤销），还是不复制？",
+      "args": ["machine", "path"]
+    },
+    "rsFilewinCrossCopy.ui.running": {
+      "kind": "body",
+      "zh": "正在复制 {name} 到另一台：{got} / {total}",
+      "args": ["name", "got", "total"]
+    },
+    "rsFilewinCrossCopy.ui.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinCrossCopy.dir.notAbsolute": {
+      "kind": "error",
+      "zh": "目标目录要以 / 起头（给的是 {dir}）",
+      "args": ["dir"]
+    },
+    "rsFilewinCrossCopy.target.unreachable": {
+      "kind": "error",
+      "zh": "问不到 {machine} 那台的后端：{why}",
+      "args": ["machine", "why"]
+    },
+    "rsFilewinCrossCopy.busy.running": {
+      "kind": "body",
+      "zh": "正在复制 {name} 到另一台",
+      "args": ["name"]
+    },
+    "rsFilewinCrossCopy.prompt.noMachine": {
+      "kind": "error",
+      "zh": "要给机器名（与主窗口上那台的名字相同）",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.heading": {
+      "kind": "title",
+      "zh": "把 {name} 复制到另一台",
+      "args": ["name"]
+    },
+    "rsFilewinCrossCopy.prompt.machine": {
+      "kind": "control",
+      "zh": "机器名",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.dir": {
+      "kind": "control",
+      "zh": "目标目录",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.hint": {
+      "kind": "body",
+      "zh": "机器名与主窗口上那台的名字相同；目标目录空着就是那台的 home",
+      "args": []
+    },
+    "beFilesExtract.entry.linkTooLong": {
+      "kind": "error",
+      "zh": "包里的链接「{name}」目标太长（超过 {cap} 字节），整个包没解",
+      "args": ["name", "cap"]
+    },
+    "rsFilewinLossyPull.local.badDest": {
+      "kind": "error",
+      "zh": "本机那一头的路径没有目录或没有名字，没下",
+      "args": []
+    },
+    "rsFilewinLossyPull.reply.badChunk": {
+      "kind": "error",
+      "zh": "那台后端回来的一段读不懂，没下完",
       "args": []
     },
     "beFilesWrite.deleteTree.stopped": {
