@@ -9,6 +9,226 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beAssetCatalog.digest.walkFailed": {
+      "kind": "body",
+      "zh": "有一处读不出来：{e}",
+      "args": ["e"]
+    },
+    "beAssetCatalog.digest.tooMany": {
+      "kind": "body",
+      "zh": "文件超过 {max} 个，后面的没算进去。",
+      "args": ["max"]
+    },
+    "beAssetCatalog.digest.notRegular": {
+      "kind": "body",
+      "zh": "{rel} 不是普通文件，没算进去。",
+      "args": ["rel"]
+    },
+    "beAssetCatalog.digest.lenOnly": {
+      "kind": "body",
+      "zh": "{rel} 读不出内容，只按长度算：{e}",
+      "args": ["rel", "e"]
+    },
+    "beAssetCatalog.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beAssetCatalog.read.newer": {
+      "kind": "error",
+      "zh": "{path} 是更新版本的后端写的，没有覆盖它。这个后端认格式 {mine}，它是 {theirs}。",
+      "args": ["path", "mine", "theirs"]
+    },
+    "beAssetCatalog.read.unknown": {
+      "kind": "error",
+      "zh": "{path} 读不出来，格式不对：{e}",
+      "args": ["path", "e"]
+    },
+    "beAssetCatalog.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beAssetCatalog.write.encodeFailed": {
+      "kind": "error",
+      "zh": "资产清单写不出来：{e}",
+      "args": ["e"]
+    },
+    "beAssetCatalog.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beAssetCatalog.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beAssetCatalog.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beAssetCatalog.write.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beAssetCatalog.write.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，资产清单没有记。",
+      "args": []
+    },
+    "beSkillInstall.read.badName": {
+      "kind": "error",
+      "zh": "「{name}」不能当 skill 的名字。",
+      "args": ["name"]
+    },
+    "beSkillInstall.read.noRoot": {
+      "kind": "error",
+      "zh": "找不到这台机器上放 skill 的目录。",
+      "args": []
+    },
+    "beSkillInstall.text.binary": {
+      "kind": "body",
+      "zh": "不是文本文件",
+      "args": []
+    },
+    "beSkillInstall.text.notUtf8": {
+      "kind": "body",
+      "zh": "不是 UTF-8 文本",
+      "args": []
+    },
+    "beSkillInstall.read.walkFailed": {
+      "kind": "error",
+      "zh": "读 {dir} 时有一处读不出来：{e}",
+      "args": ["dir", "e"]
+    },
+    "beSkillInstall.read.tooMany": {
+      "kind": "error",
+      "zh": "{dir} 里的文件超过 {max} 个，这次没读。",
+      "args": ["dir", "max"]
+    },
+    "beSkillInstall.read.notFound": {
+      "kind": "error",
+      "zh": "这台机器上没有 skill「{name}」：{dir}",
+      "args": ["name", "dir"]
+    },
+    "beSkillInstall.install.tooMany": {
+      "kind": "error",
+      "zh": "文件超过 {max} 个，这次没装。",
+      "args": ["max"]
+    },
+    "beSkillInstall.plan.notRegular": {
+      "kind": "body",
+      "zh": "不是普通文件",
+      "args": []
+    },
+    "beSkillInstall.install.sourceUnreadable": {
+      "kind": "error",
+      "zh": "来源机器上读不出「{p}」的原文，这次一个都没装。",
+      "args": ["p"]
+    },
+    "beSkillInstall.install.targetNotText": {
+      "kind": "error",
+      "zh": "这台机器上的「{p}」不是文本，不能覆盖它。这次一个都没装。",
+      "args": ["p"]
+    },
+    "beSkillInstall.install.noRoot": {
+      "kind": "error",
+      "zh": "{dir} 和它的上一级都不在，这台机器上没有放 skill 的地方。",
+      "args": ["dir"]
+    },
+    "beSkillInstall.ledger.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，不知道装记录放在哪。",
+      "args": []
+    },
+    "beSkillInstall.uninstall.notRecorded": {
+      "kind": "error",
+      "zh": "这台机器上没有从别处装到 {dir} 的 skill 记录。只能卸装时记下的那几个文件。",
+      "args": ["dir"]
+    },
+    "beSkillInstall.uninstall.notInLedger": {
+      "kind": "error",
+      "zh": "「{p}」不在这个 skill 的装记录里，这次一个都没删。",
+      "args": ["p"]
+    },
+    "beSkillInstall.uninstall.badState": {
+      "kind": "error",
+      "zh": "「{p}」现在是{state}，删不了。这次一个都没删。",
+      "args": ["p", "state"]
+    },
+    "beSkillInstall.uninstall.needsConsent": {
+      "kind": "error",
+      "zh": "「{p}」装完被改过，或者装之前就在。要你确认才删，这次一个都没删。",
+      "args": ["p"]
+    },
+    "beSkillLedger.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beSkillLedger.read.otherVersion": {
+      "kind": "error",
+      "zh": "{path} 是另一个版本的后端写的，没有动它。这个后端认格式 {mine}，它是 {theirs}。",
+      "args": ["path", "mine", "theirs"]
+    },
+    "beSkillLedger.read.unknown": {
+      "kind": "error",
+      "zh": "{path} 读不出来，格式不对：{e}",
+      "args": ["path", "e"]
+    },
+    "beSkillLedger.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beSkillLedger.write.encodeFailed": {
+      "kind": "error",
+      "zh": "装记录写不出来：{e}",
+      "args": ["e"]
+    },
+    "beSkillLedger.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beSkillLedger.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beSkillLedger.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beSkillLedger.add.tooMany": {
+      "kind": "error",
+      "zh": "一次最多记 {max} 个文件。",
+      "args": ["max"]
+    },
+    "beSkillLedger.drop.notRecorded": {
+      "kind": "error",
+      "zh": "这台机器上没有从别处装到 {dir} 的 skill 记录。",
+      "args": ["dir"]
+    },
+    "beSkillLedger.write.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beSkillLedger.add.noRoot": {
+      "kind": "error",
+      "zh": "找不到这台机器上放 skill 的目录，没有记。",
+      "args": []
+    },
+    "beSkillLedger.path.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，装记录没有记。",
+      "args": []
+    },
     "beUpstreamFileFace.keySet.noAccount": {
       "kind": "error",
       "zh": "认不出账号目录 {dir} 属于哪个账号，没有写。",

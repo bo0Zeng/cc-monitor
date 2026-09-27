@@ -23,6 +23,7 @@
 //!
 //! 一个字节都不写（写经 monitor → 那台后端 `files-put`，带 `expect`）· 不改写任何一个文件的内容。
 
+use copy_core::copy_text;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -61,24 +62,22 @@ pub fn valid_rel(p: &str) -> bool {
 }
 
 fn name_arg(args: &Value) -> Result<String, (&'static str, String)> {
-    let name = args
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or(("bad_args", "少了 `name`（skill 的目录名）".to_string()))?;
+    let name = args.get("name").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `name` (skill directory name)"),
+    ))?;
     if !valid_name(name) {
         return Err((
             "bad_args",
-            format!("「{name}」不是一个能当 skill 目录名的名字"),
+            copy_text("beSkillInstall.read.badName", &[("name", name)]),
         ));
     }
     Ok(name.to_string())
 }
 
 fn skill_dir(name: &str) -> Result<(PathBuf, PathBuf), (&'static str, String)> {
-    let root = crate::agents::skills_root().ok_or((
-        "io_failed",
-        "这台机器说不出 skill 的根在哪 —— 不猜一个路径".to_string(),
-    ))?;
+    let root = crate::agents::skills_root()
+        .ok_or(("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
     let dir = root.join(name);
     Ok((root, dir))
 }
@@ -86,10 +85,10 @@ fn skill_dir(name: &str) -> Result<(PathBuf, PathBuf), (&'static str, String)> {
 /// 读一个文件：`(原文, 读不出原文的原因)`，两者恰有一个。
 fn read_text(p: &Path) -> (Option<String>, Option<String>) {
     match crate::common::fs::read_regular_capped(p, MAX_FILE_BYTES) {
-        Ok(b) if b.contains(&0) => (None, Some("不是文本文件".into())),
+        Ok(b) if b.contains(&0) => (None, Some(copy_text("beSkillInstall.text.binary", &[]))),
         Ok(b) => match String::from_utf8(b) {
             Ok(t) => (Some(t), None),
-            Err(_) => (None, Some("不是 UTF-8 文本".into())),
+            Err(_) => (None, Some(copy_text("beSkillInstall.text.notUtf8", &[]))),
         },
         Err(e) => (None, Some(e)),
     }
@@ -108,8 +107,15 @@ fn walk(dir: &Path) -> Result<Walked, (&'static str, String)> {
         .min_depth(1)
         .sort_by_file_name()
     {
-        let ent =
-            ent.map_err(|e| ("io_failed", format!("走 {} 时读不出来：{e}", dir.display())))?;
+        let ent = ent.map_err(|e| {
+            (
+                "io_failed",
+                copy_text(
+                    "beSkillInstall.read.walkFailed",
+                    &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+                ),
+            )
+        })?;
         if ent.file_type().is_dir() {
             continue;
         }
@@ -126,9 +132,12 @@ fn walk(dir: &Path) -> Result<Walked, (&'static str, String)> {
         if files.len() >= MAX_FILES {
             return Err((
                 "too_large",
-                format!(
-                    "{} 里的文件超过 {MAX_FILES} 个 —— 装一半比不装更坏，这一趟不读",
-                    dir.display()
+                copy_text(
+                    "beSkillInstall.read.tooMany",
+                    &[
+                        ("dir", &dir.display().to_string()),
+                        ("max", &MAX_FILES.to_string()),
+                    ],
                 ),
             ));
         }
@@ -152,7 +161,10 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
     if !std::fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         return Err((
             "not_found",
-            format!("这台机器上没有 skill「{name}」（{}）", dir.display()),
+            copy_text(
+                "beSkillInstall.read.notFound",
+                &[("name", &name), ("dir", &dir.display().to_string())],
+            ),
         ));
     }
     let (paths, skipped) = walk(&dir)?;
@@ -275,10 +287,16 @@ struct SourceFile {
 fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static str, String)> {
     let arr = args.get("source").and_then(Value::as_array).ok_or((
         "bad_args",
-        "少了 `source`（来源那台读到的文件），或它不是数组".to_string(),
+        crate::common::contract::malformed("missing `source` or it is not an array"),
     ))?;
     if arr.len() > MAX_FILES {
-        return Err(("too_large", format!("文件超过 {MAX_FILES} 个")));
+        return Err((
+            "too_large",
+            copy_text(
+                "beSkillInstall.install.tooMany",
+                &[("max", &MAX_FILES.to_string())],
+            ),
+        ));
     }
     let mut out = BTreeMap::new();
     for f in arr {
@@ -288,7 +306,9 @@ fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static st
             .filter(|p| valid_rel(p))
             .ok_or((
                 "bad_args",
-                "有一个文件的 `path` 缺了 / 不是 skill 里的相对路径".to_string(),
+                crate::common::contract::malformed(
+                    "a file `path` is missing or not a relative path inside the skill",
+                ),
             ))?;
         let text = match f.get("text") {
             Some(Value::String(t)) => Some(t.clone()),
@@ -296,7 +316,9 @@ fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static st
             _ => {
                 return Err((
                     "bad_args",
-                    format!("「{path}」的 `text` 只收字符串或 `null`"),
+                    crate::common::contract::malformed(&format!(
+                        "`text` of {path:?} must be a string or null"
+                    )),
                 ))
             }
         };
@@ -305,7 +327,10 @@ fn source_arg(args: &Value) -> Result<BTreeMap<String, SourceFile>, (&'static st
             .insert(path.to_string(), SourceFile { text, exec })
             .is_some()
         {
-            return Err(("bad_args", format!("「{path}」给了两次")));
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed(&format!("{path:?} given twice")),
+            ));
         }
     }
     Ok(out)
@@ -329,7 +354,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     if take.is_none() && overwrite.is_some() {
         return Err((
             "bad_args",
-            "给了 `overwrite` 没给 `take` —— 两张单子对不上".to_string(),
+            crate::common::contract::malformed("`overwrite` given without `take`"),
         ));
     }
     // 这台上现有的那一份（没有这个目录 ⇒ 空）。读不出原文的那几个记下来：它们盖不了（CAS 要原文）。
@@ -353,8 +378,11 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
             }
         }
         for rel in skipped {
-            here.insert(rel.clone(), json!({ "unreadable": "不是普通文件" }));
-            unwritable.insert(rel, "不是普通文件".into());
+            here.insert(
+                rel.clone(),
+                json!({ "unreadable": copy_text("beSkillInstall.plan.notRegular", &[]) }),
+            );
+            unwritable.insert(rel, copy_text("beSkillInstall.plan.notRegular", &[]));
         }
     }
     let there: Map<String, Value> = source
@@ -393,13 +421,13 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
             {
                 return Err((
                     "bad_args",
-                    format!("「{p}」在来源那台读不出原文，今天装不过去 —— 这一趟一个都没写"),
+                    copy_text("beSkillInstall.install.sourceUnreadable", &[("p", p)]),
                 ));
             }
             if let Some(p) = t.iter().find(|p| unwritable.contains_key(*p)) {
                 return Err((
                     "bad_file",
-                    format!("这台上的「{p}」不是能按原文比对的文本，盖不了它 —— 这一趟一个都没写"),
+                    copy_text("beSkillInstall.install.targetNotText", &[("p", p)]),
                 ));
             }
             Some(mcp_sync::plan(&rows, &t, &overwrite.unwrap_or_default())?)
@@ -432,9 +460,9 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
             .map(Path::to_path_buf)
             .ok_or((
                 "io_failed",
-                format!(
-                    "{} 与它的上一层都不在 —— 这台机器上没有可以放 skill 的地方",
-                    root.display()
+                copy_text(
+                    "beSkillInstall.install.noRoot",
+                    &[("dir", &root.display().to_string())],
                 ),
             ))?
     };
@@ -480,10 +508,8 @@ pub const UNINSTALL_MODIFIED: &str = "modified";
 pub const UNINSTALL_UNREADABLE: &str = "unreadable";
 
 fn ledger_file() -> Result<PathBuf, (&'static str, String)> {
-    crate::skill_ledger::ledger_path().ok_or((
-        "io_failed",
-        "家目录解析不出来（HOME / USERPROFILE 都没有）—— 不猜装记录在哪".to_string(),
-    ))
+    crate::skill_ledger::ledger_path()
+        .ok_or(("io_failed", copy_text("beSkillInstall.ledger.noHome", &[])))
 }
 
 /// `skill-installs`：这台记着的、从别的机器装来的 skill。
@@ -534,20 +560,23 @@ pub fn answer_uninstall_plan(args: &Value) -> Answer {
 pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
     let dir = args.get("dir").and_then(Value::as_str).ok_or((
         "bad_args",
-        "少了 `dir`（装记录里那个 skill 目录）".to_string(),
+        crate::common::contract::malformed("missing `dir`"),
     ))?;
     let take = mcp_sync::names_arg(args.get("take"), "take")?;
     let confirm = mcp_sync::names_arg(args.get("confirm"), "confirm")?;
     if take.is_none() && confirm.is_some() {
         return Err((
             "bad_args",
-            "给了 `confirm` 没给 `take` —— 两张单子对不上".to_string(),
+            crate::common::contract::malformed("`confirm` given without `take`"),
         ));
     }
     let l = crate::skill_ledger::load_at(ledger)?;
     let install = l.installs.get(dir).ok_or((
         "not_found",
-        format!("这台没有记着从别处装到 {dir} 的 skill —— 只卸装时记下来的那几个文件"),
+        copy_text(
+            "beSkillInstall.uninstall.notRecorded",
+            &[("dir", &dir.to_string())],
+        ),
     ))?;
     let base = Path::new(dir);
     let mut rows = Vec::new();
@@ -578,7 +607,9 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
             if let Some(p) = confirm.iter().find(|p| !take.contains(*p)) {
                 return Err((
                     "bad_args",
-                    format!("「{p}」在 `confirm` 里却不在 `take` 里 —— 两张单子对不上"),
+                    crate::common::contract::malformed(&format!(
+                        "{p:?} is in `confirm` but not in `take`"
+                    )),
                 ));
             }
             for p in &take {
@@ -586,19 +617,22 @@ pub fn answer_uninstall_plan_at(ledger: &Path, args: &Value) -> Answer {
                     None => {
                         return Err((
                             "bad_args",
-                            format!("「{p}」不在这个 skill 的装记录里 —— 只卸装时写进去的那几个，这一趟一个都没删"),
+                            copy_text("beSkillInstall.uninstall.notInLedger", &[("p", p)]),
                         ))
                     }
                     Some((state, false, _)) => {
                         return Err((
                             "bad_args",
-                            format!("「{p}」现在是 {state}，删不了 —— 这一趟一个都没删"),
+                            copy_text(
+                                "beSkillInstall.uninstall.badState",
+                                &[("p", p), ("state", &state.to_string())],
+                            ),
                         ))
                     }
                     Some((_, true, true)) if !confirm.contains(p) => {
                         return Err((
                             "needs_consent",
-                            format!("「{p}」装完被改过、或装之前就在 —— 要你点名确认才删；这一趟一个都没删"),
+                            copy_text("beSkillInstall.uninstall.needsConsent", &[("p", p)]),
                         ))
                     }
                     Some(_) => {}
