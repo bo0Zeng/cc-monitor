@@ -276,3 +276,107 @@ describe("〔U3b〕attachGaps（查看器：已渲染集不是后缀）", () => 
     expect(s.view.gapCount).toBe(1);
   });
 });
+
+// ===== 〔RENDER2 · `设计/10 §2.5b` 第二级 · `§6` 步 9〕Worker 精算：按需 ＋ 后台 =====
+// 要求住址：`设计/10 §2.5b` 逐字「Worker 做成『按需 ＋ 后台』：窗口附近上下各 N 屏优先精算，其余空闲时补或干脆不算」
+// ＋「第二级（Worker 算完回来）：pretext 精确高度覆盖粗估」。量法在这里是替身（jsdom 没有 Worker / canvas）。
+describe("〔RENDER2〕第二级估高", () => {
+  it("账本换进精算高之后，任意区间的高 == 逐行（精算 ?? 粗估）相加（随机）", () => {
+    let x = 7;
+    const rnd = (n: number): number => ((x = (x * 1103515245 + 12345) % 2147483648) % n);
+    const rows: SkeletonFacts[] = Array.from({ length: 400 }, (_, i) =>
+      i % 5 === 0 ? { o: i, n: 1, t: "attachment" } : { o: i, n: 1, t: "assistant", u: `r${i}`, ch: 30 + rnd(900), pl: 1 + rnd(4) },
+    );
+    const ledger = new SkeletonLedger(0, rows);
+    const first = Array.from({ length: 400 }, (_, i) => ledger.heightOf(i, i + 1));
+    const want = [...first];
+    for (let k = 0; k < 60; k++) {
+      const s = rnd(400);
+      const h = 10 + rnd(500);
+      ledger.refine([[s, h]]);
+      if (rows[s].t !== "attachment") want[s] = h; // 不建卡的行不收
+    }
+    for (let k = 0; k < 100; k++) {
+      const a = rnd(400);
+      const b = a + rnd(400 - a + 1);
+      expect(ledger.heightOf(a, b)).toBeCloseTo(want.slice(a, b).reduce((p, q) => p + q, 0), 6);
+    }
+    // 列宽变了 ⇒ 精算过的那些交回来重算、账本回到第一级
+    const redo = ledger.relayout(undefined);
+    expect(new Set(redo)).toEqual(new Set([...want.keys()].filter((i) => want[i] !== first[i])));
+    expect(ledger.totalHeight).toBeCloseTo(first.reduce((p, q) => p + q, 0), 6);
+  });
+
+  it("只交视口上下 2 屏之内的占位行；回来的高换进占位、视口里那张已渲染卡的屏幕位置不动", async () => {
+    const { HeightRefiner } = await import("../src/height-refiner");
+    const s = setup(3000, 2990);
+    s.view.attach(2990);
+    // 视口停在占位最下沿、露出已渲染的第一张卡（seq 2990）
+    s.layout.scrollTop = s.ledger.heightOf(0, 2990) - VIEW_H / 2;
+    const anchor = cardsIn(s.content)[0] as HTMLElement;
+    const before = anchor.getBoundingClientRect().top;
+    const rowH = s.ledger.heightOf(0, 1);
+    const asked = s.view.nearbyUnrefined(2);
+    // 期望集合手算：占位在视口里的那半屏 ＋ 上面 2 屏 ⇒ 下沿往上 (VIEW_H/2 + 2·VIEW_H) 像素覆盖的行
+    const px = VIEW_H / 2 + 2 * VIEW_H;
+    const lo = 2990 - Math.ceil(px / rowH);
+    expect(asked).toEqual(Array.from({ length: 2990 - lo }, (_, i) => lo + i));
+    const seen: number[] = [];
+    const refiner = new HeightRefiner(async (items) => {
+      seen.push(items.length);
+      return items.map(() => 90);
+    });
+    await refiner.refine(
+      s.view,
+      asked.map((seq) => ({
+        seq,
+        rec: { type: "assistant", uuid: `u${seq}`, message: { role: "assistant", content: [{ type: "text", text: "x".repeat(200) }] } } as never,
+      })),
+    );
+    expect(seen).toEqual([asked.length]);
+    expect(s.ledger.heightOf(lo, 2990)).toBeCloseTo(90 * (2990 - lo), 6);
+    const gap = s.content.querySelector<HTMLElement>(`.${SKELETON_GAP_CLASS}`)!;
+    expect(parseFloat(gap.style.height)).toBeCloseTo(s.ledger.heightOf(0, 2990), 6);
+    expect(anchor.getBoundingClientRect().top, "精算把视口推走了").toBeCloseTo(before, 6);
+    // 再问：精算过的不再给
+    expect(s.view.nearbyUnrefined(2).filter((q) => q >= lo)).toEqual([]);
+  });
+});
+
+describe("〔RENDER2〕第二级与第一级同一套外框常数", () => {
+  it("正文量法换成第一级那份算术时，第二级 == 第一级（user / assistant、带代码块与折叠单元）", async () => {
+    const { refineItemOf, refinedHeight, estimateFromFacts } = await import("../src/height-estimate");
+    // 第一级的字宽算术（`factLines`：CJK 全宽、其余 0.52em，硬行数 ＋ 总宽 / 列宽）——替身量法照抄它
+    const arith = (it: { text: string; font: string; lineHeightPx: number; widthPx: number }): number => {
+      const size = it.font.startsWith("14px") ? 14 : 15;
+      let w = 0;
+      for (const ch of it.text) if (ch !== "\n") w += ch.charCodeAt(0) > 0x2e80 ? size : size * 0.52;
+      const pl = it.text.split("\n").filter((l) => l.trim()).length;
+      return (pl + w / it.widthPx) * it.lineHeightPx;
+    };
+    const cases: Array<[unknown, SkeletonFacts]> = [
+      [
+        { type: "user", uuid: "a", isMeta: false, message: { role: "user", content: "第一行abc\nsecond line" } },
+        { o: 0, n: 1, t: "user", u: "a", ch: "第一行abc".length + "second line".length, cj: 3, pl: 2 },
+      ],
+      [
+        {
+          type: "assistant",
+          uuid: "b",
+          message: {
+            role: "assistant",
+            content: [
+              { type: "text", text: "para one\n\npara two\n```\ncode 1\ncode 2\n```" },
+              { type: "tool_use" },
+            ],
+          },
+        },
+        { o: 0, n: 1, t: "assistant", u: "b", ch: "para one".length + "para two".length, pl: 2, cb: 1, cl: 2, fd: 1 },
+      ],
+    ];
+    for (const [rec, facts] of cases) {
+      const it = refineItemOf(rec as never)!;
+      expect(refinedHeight(it, arith), JSON.stringify(facts)).toBeCloseTo(estimateFromFacts(facts, "none"), 6);
+    }
+  });
+});

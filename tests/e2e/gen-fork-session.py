@@ -2,7 +2,7 @@
 """Batch13-F40c:生成含 ESC 分叉的合成会话 jsonl(fold E2E fixture)。
 
 形态:u1→a1 后分叉——u2a/a2a(被弃分支,off-main,应折叠)与 u2b/a2b(胜者)。
-每次生成用全新 session/记录 uuid(防 processedUuids 去重吃掉重复注入)。
+每次生成用全新 session/记录 uuid(防拓扑层按 uuid 去重吃掉重复注入)。
 用法:gen-fork-session.py <输出目录> [sid]  → 打印 session id。
 sid 可由调用方预生成(套件需要先写宿主 pidfile 再落 jsonl——watcher 的
 process_file 可能抢在 pidfile 之前跑,判非活跃后整文件静默跳过)。

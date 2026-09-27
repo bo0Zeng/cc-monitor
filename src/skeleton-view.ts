@@ -26,8 +26,9 @@
  *
  * # 买不到
  *
- * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高（第二级 = `applyIntrinsicSize` ＋
- *   `contain-intrinsic-size: auto`）。Worker 精算（`设计/10 步 9`）没做。
+ * - **精度**：占位高是第一级粗估，滚到那里、建了卡才换成真高（`applyIntrinsicSize` ＋ `contain-intrinsic-size: auto`）；
+ *   〔RENDER2〕视口上下几屏之内的占位行由 Worker 精算（第二级，`applyRefined` · `nearbyUnrefined`，宿主 `tab-stream-view.ts`），
+ *   更远的一直是第一级。
  * - **正文仍从前端账本取**：宿主的 `materialize` 今天从 `TailWindow.pending` 拿 payload（重放已经推过来了）；
  *   没到的行先空着，到了由宿主按 `isPending` 判定直接建卡。「骨架不带正文、按偏移取」那一半
  *   （`read_session_range`）命令已通，宿主侧的接线留给下一刀。
@@ -128,6 +129,58 @@ export class SkeletonView {
   /** 索引续传接上新行之后，重算每块占位的高（行没变，高可能从 0 变成估值）。 */
   refreshHeights(): void {
     for (const g of this.gaps) g.el.style.height = `${this.ledger.heightOf(g.lo, g.hi)}px`;
+  }
+
+  /**
+   * 〔RENDER2 · `设计/10 §2.5b` 第二级〕Worker 精算回来的高换进账本、占位跟着改高。视口钉法同物化：
+   * 视口里有已渲染的卡 ⇒ 钉住它的屏幕位置；视口整个落在占位里 ⇒ 钉住那块占位的顶（它上面的改动不许把视口推走）。
+   */
+  applyRefined(entries: Iterable<readonly [number, number]>): void {
+    if (this.disposed || !this.ledger.refine(entries)) return;
+    const el = this.scrollEl;
+    const anchor = this.visibleRenderedAnchor() ?? this.visibleGap();
+    const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
+    try {
+      el.style.overflowAnchor = "none";
+      this.refreshHeights();
+      if (anchor && anchor.isConnected) {
+        const delta = anchor.getBoundingClientRect().top - anchorTop;
+        if (delta !== 0) el.scrollTop += delta;
+      }
+    } finally {
+      el.style.overflowAnchor = "";
+    }
+  }
+
+  /**
+   * 〔RENDER2 · 第二级「按需 ＋ 后台」〕视口上下各 `screens` 屏之内、还在占位里、没精算过的行（按 seq 升序）。
+   * 视口拿不到布局 ⇒ 空（不猜）。远处的一行都不给 —— 「全量精算」那一版不建（`设计/10 §2.5b` 规模那一段）。
+   */
+  nearbyUnrefined(screens: number): number[] {
+    const view = this.scrollEl.getBoundingClientRect();
+    if (view.height <= 0) return [];
+    const top = view.top - view.height * screens;
+    const bottom = view.bottom + view.height * screens;
+    const out: number[] = [];
+    for (const g of this.gaps) {
+      const r = g.el.getBoundingClientRect();
+      if (r.bottom <= top || r.top >= bottom || r.height <= 0) continue;
+      const i = this.ledger.seqAt(g.lo, g.hi, Math.max(0, top - r.top));
+      const j = Math.min(g.hi, this.ledger.seqAt(g.lo, g.hi, Math.min(r.height, bottom - r.top)) + 1);
+      for (let s = i; s < j; s++) if (!this.ledger.isRefined(s)) out.push(s);
+    }
+    return out;
+  }
+
+  /** 与视口相交的第一块占位（视口里没有已渲染卡时拿它当钉子）。 */
+  private visibleGap(): HTMLElement | null {
+    const view = this.scrollEl.getBoundingClientRect();
+    if (view.height <= 0) return null;
+    for (const g of this.gaps) {
+      const r = g.el.getBoundingClientRect();
+      if (r.bottom > view.top && r.top < view.bottom) return g.el;
+    }
+    return null;
   }
 
   /**

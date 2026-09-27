@@ -1775,12 +1775,15 @@ pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::Rem
 pub(crate) fn batch_to_payloads(
     lines: Vec<ssh_source::JsonlLine>,
     origin: &crate::origin::Origin,
+    runs: &mut SkipRuns,
 ) -> Vec<bridge::JsonlLinePayload> {
     let label = origin.host_name().map(str::to_string);
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
+        let skipped = runs.pending(&line.session_id, line.seq);
         match parser::parse_line(origin, &line.raw) {
             Ok(Some(record)) if record.is_displayable() => {
+                runs.saw(&line.session_id, line.seq, None);
                 let cwd = extract_cwd(&record);
                 payloads.push(bridge::JsonlLinePayload {
                     session_id: line.session_id.clone(),
@@ -1790,15 +1793,52 @@ pub(crate) fn batch_to_payloads(
                     seq: line.seq,
                     origin: label.clone(),
                     message: record,
+                    skipped_from: skipped,
                 });
             }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::warn!("parse line failed in {}: {e}", line.path.display());
+            other => {
+                // 不可显示 / 解析不出：照占号、不出 payload —— 记进「连着的不可显示那一段」。
+                if let Err(e) = other {
+                    tracing::warn!("parse line failed in {}: {e}", line.path.display());
+                }
+                runs.saw(
+                    &line.session_id,
+                    line.seq,
+                    Some(skipped.unwrap_or(line.seq)),
+                );
             }
         }
     }
     payloads
+}
+
+/// 〔RENDER2 · `设计/10 §3.2`〕每个会话**最近见过的那一行**（不论可不可显示）＋ 它之后连着的不可显示那一段从哪起。
+/// 只在行号**连着**（这一行 == 上一行 + 1）时才认那一段 —— 中间丢过行（通道满 / 快照与实时交错）就不认，宁少记不多记。
+/// 一个收口（`LineIntake`）一份、一次旁路快照一份；会话走了就摘（`forget`）。
+#[derive(Debug, Default)]
+pub(crate) struct SkipRuns(std::collections::HashMap<String, (u64, Option<u64>)>);
+
+impl SkipRuns {
+    /// 这一行之前连着的不可显示那一段的起点（这一行紧接着上一行才有）。
+    fn pending(&self, sid: &str, seq: u64) -> Option<u64> {
+        self.0
+            .get(sid)
+            .filter(|(last, _)| last.checked_add(1) == Some(seq))
+            .and_then(|(_, from)| *from)
+    }
+
+    fn saw(&mut self, sid: &str, seq: u64, run_from: Option<u64>) {
+        match self.0.get_mut(sid) {
+            Some(slot) => *slot = (seq, run_from),
+            None => {
+                self.0.insert(sid.to_string(), (seq, run_from));
+            }
+        }
+    }
+
+    pub(crate) fn forget(&mut self, sid: &str) {
+        self.0.remove(sid);
+    }
 }
 
 // 〔US1 · 第四波 4D〕`read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`

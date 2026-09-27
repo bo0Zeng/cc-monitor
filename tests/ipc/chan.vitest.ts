@@ -204,14 +204,15 @@ function lastSubId(): number {
 }
 
 describe("〔CF2〕webview 通道客户端 · subscribe", () => {
-  it("★★ S5 金标准：Rust 造的那七种格，TS 逐个解回 `§3.3.4` 的 `Item`", () => {
+  it("★★ S5 金标准：Rust 造的那八种格，TS 逐个解回 `§3.3.4` 的 `Item`", () => {
     const golden = JSON.parse(
       readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/chan-webview-items.golden.json"), "utf8"),
     ) as { sub: number; items: unknown[] };
-    expect(golden.items.length, "金标准的格数变了 —— 两侧要同拍改").toBe(7);
+    expect(golden.items.length, "金标准的格数变了 —— 两侧要同拍改").toBe(8);
     const want: Item[] = [
       { t: "frame", seq: 7, body: '{"line":{"x":1}}' },
       { t: "gap", fromSeq: 8, toSeq: 12 },
+      { t: "gap", fromSeq: 13, toSeq: null }, // 〔RENDER2 · ㉓①〕知道丢了、不知道丢到哪
       { t: "unseen", at: { idx: 1, tag: "open" }, why: "Unreachable" },
       { t: "seen", from: null },
       { t: "seen", from: Uint8Array.from([1, 2]) },

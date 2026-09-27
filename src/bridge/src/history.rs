@@ -125,6 +125,7 @@ impl SessionPager {
                 seq,
                 origin: self.payload_origin.clone(),
                 message: rec,
+                skipped_from: None, // 〔RENDER2〕前端按这一段 `[from, next)` 整段记见过（取回路都是连着的一段）
             });
         }
         out

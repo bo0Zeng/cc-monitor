@@ -267,7 +267,9 @@ pub enum Item {
     /// 不透明载荷。
     Frame { seq: u64, body: Body },
     /// 丢在哪两个序号之间 —— **原位**出现，不是旁路通知。
-    Gap { from_seq: u64, to_seq: u64 },
+    /// 〔RENDER2 · `99 §2.1` ㉓①〕`to_seq == None`：知道这里丢了、不知道丢到哪（例：一行超长、整行没读进来，
+    /// 说不出是哪个会话的哪一行）；不占序号。接收侧照 `05 §15.3` 的补法：从已见最大 seq ＋ 1 往后取。
+    Gap { from_seq: u64, to_seq: Option<u64> },
     /// 那台机器现在看不见。
     Unseen { at: HopId, why: HopFault },
     /// 又看得见了，以及它从哪续上。
@@ -505,10 +507,22 @@ pub(crate) enum WireErr {
 /// `Item` 的线上形状。`Frame` 与 `Closed{by: Peer}` 的体走帧体。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum WireItem {
-    Frame { seq: u64 },
-    Gap { from_seq: u64, to_seq: u64 },
-    Unseen { idx: u8, tag: String, why: HopFault },
-    Seen { from: Option<Cursor> },
+    Frame {
+        seq: u64,
+    },
+    Gap {
+        from_seq: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to_seq: Option<u64>,
+    },
+    Unseen {
+        idx: u8,
+        tag: String,
+        why: HopFault,
+    },
+    Seen {
+        from: Option<Cursor>,
+    },
     ClosedByPeer,
     ClosedByOurs(OursFault),
 }

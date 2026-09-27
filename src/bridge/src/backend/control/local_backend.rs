@@ -1321,7 +1321,8 @@ pub fn start_if_present(
 ///
 /// # 返回
 ///
-/// `Ok(None)` = EOF（**判死信号**）· `Ok(Some(s))` = 一行（超限的整行丢弃，回空串）·
+/// `Ok(None)` = EOF（**判死信号**）· `Ok(Some(Some(s)))` = 一行 ·
+/// `Ok(Some(None))` = 〔RENDER2〕超限、整行丢了（调用方原位说出来，`local_lines::line_lost_blocking`）·
 /// `Err` = 真的读错误。
 ///
 /// ⚠ **字节转字符串走 `from_utf8_lossy`**〔D 阶段补审 08-11 修〕：
@@ -1333,10 +1334,11 @@ pub fn start_if_present(
 ///
 /// 〔W5-VIS · `设计/15 §3.4 ②`〕行旁边多回一位「这一行不是合法 UTF-8、按替换字符读的」，
 /// 让调用方记进丢帧账（`frame_tally`）—— lossy 这条取舍不动，只是不再静默。
+#[allow(clippy::type_complexity)]
 fn read_capped_line_sync<R: std::io::BufRead>(
     rd: &mut R,
     cap: usize,
-) -> std::io::Result<Option<(String, bool)>> {
+) -> std::io::Result<Option<Option<(String, bool)>>> {
     let mut buf: Vec<u8> = Vec::new();
     let mut seen: usize = 0;
     let mut overflowed = false;
@@ -1350,9 +1352,9 @@ fn read_capped_line_sync<R: std::io::BufRead>(
             return Ok(if seen == 0 {
                 None // 真 EOF
             } else if overflowed {
-                Some((String::new(), false))
+                Some(None)
             } else {
-                Some(decode_line(buf))
+                Some(Some(decode_line(buf)))
             });
         }
         let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
@@ -1370,9 +1372,9 @@ fn read_capped_line_sync<R: std::io::BufRead>(
         rd.consume(consume);
         if done {
             return Ok(if overflowed {
-                Some((String::new(), false))
+                Some(None)
             } else {
-                Some(decode_line(buf))
+                Some(Some(decode_line(buf)))
             });
         }
     }
@@ -1689,7 +1691,12 @@ pub(crate) fn local_stdio_consumer(
     let mut tally = crate::frame_tally::FrameTally::new("本机后端（stdio 载体）");
     loop {
         let line = match read_capped_line_sync(&mut rd, crate::ssh_source::BACKEND_FRAME_LINE_CAP) {
-            Ok(Some((l, lossy))) => {
+            Ok(Some(None)) => {
+                // 〔RENDER2 · `99 §2.1` ㉓①〕超长整行丢了 ⇒ 原位说出来（与远端 / 常驻载体同形：订阅收一格 `Gap`）。
+                crate::local_lines::line_lost_blocking();
+                continue;
+            }
+            Ok(Some(Some((l, lossy)))) => {
                 if lossy {
                     if let Some(n) = tally.note_bad_utf8(l.as_bytes()) {
                         tracing::warn!("{n}");
@@ -1710,7 +1717,7 @@ pub(crate) fn local_stdio_consumer(
             }
         };
         if line.is_empty() {
-            continue; // 超长行已整行丢弃，或空行
+            continue; // 空行
         }
         let Some(frame) = crate::ssh_source::parse_frame(&line) else {
             if let Some(n) = tally.note_unparsed(&line) {

@@ -66,6 +66,16 @@ pub(crate) fn deliver_blocking(frame: InboundFrame) {
     send_blocking(LocalItem::Frame(frame))
 }
 
+/// 〔RENDER2 · `99 §2.1` ㉓①〕常驻载体上一行超长、整行丢了（下游原位给订阅一格 `Gap`）。
+pub(crate) async fn line_lost() {
+    send(LocalItem::LineLost).await
+}
+
+/// 〔RENDER2〕stdio 载体上一行超长、整行丢了。
+pub(crate) fn line_lost_blocking() {
+    send_blocking(LocalItem::LineLost)
+}
+
 /// 常驻载体的流结束了。
 pub(crate) async fn stream_ended() {
     send(LocalItem::StreamEnded).await

@@ -25,6 +25,7 @@
  * ⇒ 改这里任何一个常数,都要跑一次 `npx vitest run tests/scale2-height-truth.vitest.ts`;
  *   0.0.8→0.0.9 那一跳的对照仍然缺(没有 0.0.8 的读数),那一格今天仍然判不了。
  */
+import type { JsonlRecord } from "./generated/JsonlRecord";
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
 // 否则"装了 Source Serif Pro 没装 4"的机器上 DOM 与 canvas 各走各的字体,度量漂移)
@@ -435,15 +436,24 @@ export interface SkeletonFacts {
 export type SkeletonKind = "none" | "tool" | "card";
 
 /**
- * 卡片外框（padding + border + 卡间 margin）的偏保守常数。
- * ⚠ 这几个数**是估的**：它们对着 styles.css 的量级取整，**没有秤对拍过**（秤 2 量的是
- * `contain-intrinsic-size` 那条 content-box 路，不量卡间距）。`设计/10 §2.5b`：粗估宁可偏高 ——
- * 精算后是往下修，视觉上比往上撑好。
+ * 卡片外框（padding + border + 卡间 margin）的常数。
+ * 〔RENDER2 · `设计/10 §7` 第 1 条〕有秤了：`tests/evidence/RENDER2-skel-golden.json`（真 Chromium 里读每张卡在流里占的位置
+ * − 头 − 体，`RENDER2-skel-run.ts` 复算），门禁在 `tests/scale2-height-truth.vitest.ts`「骨架外框」那一组：
+ * 每一格 == 向上取整的中位数（`设计/10 §2.5b`「粗估宁可偏高」—— 取整只往上，不再拍）。
+ * 原先拍的值与秤的差：user 36 → 50（少算了 14）· 工具组 46 → 49 · 系统细条 32 → 28 · assistant 20 → 19。
  */
-const SKEL_USER_CHROME = 36;
-const SKEL_CARD_CHROME = 20;
-const SKEL_TOOL_GROUP_H = SUMMARY_H + 8;
-const SKEL_SYSTEM_H = 32;
+const SKEL_USER_CHROME = 50;
+const SKEL_CARD_CHROME = 19;
+const SKEL_TOOL_GROUP_H = 49;
+const SKEL_SYSTEM_H = 28;
+
+/** 〔RENDER2〕第一级里「正文之外那一段」四格（秤对拍的就是它们；assistant 那一格含头与块距）。只给判据读。 */
+export const SKEL_OUTER = {
+  user: SKEL_USER_CHROME,
+  assistant: CARD_HEADER_H + BLOCK_GAP + SKEL_CARD_CHROME,
+  toolGroup: SKEL_TOOL_GROUP_H,
+  system: SKEL_SYSTEM_H,
+} as const;
 
 /** 字宽算术（口径 = `fallbackTextHeight`：CJK 全宽、其余 0.52em），折成行数的**上界**。 */
 function factLines(f: SkeletonFacts, fontSizePx: number, widthPx: number): number {
@@ -503,4 +513,115 @@ export function estimateFromFacts(
     BLOCK_GAP +
     SKEL_CARD_CHROME
   );
+}
+
+/**
+ * 〔RENDER2 · `设计/17 §1.1` · `§6`「字节不是成本轴，卡型才是 …… 同一种卡正文越长越贵」〕**这条记录建卡时要当场物化的正文字符数**：
+ * user 的文本（字符串 content 或 text 块）· assistant 的 text 块 · queue-operation 的 content。thinking / 工具调用 / 工具结果
+ * 是折叠卡（展开才物化）、元数据不建卡 ⇒ 0。O(块数)：只取 `.length`，不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
+ */
+export function eagerBodyChars(message: JsonlRecord): number {
+  switch (message.type) {
+    case "user":
+    case "assistant": {
+      const c: unknown = (message.message as { content?: unknown } | undefined)?.content; // 残缺记录（夹具）不抛
+      if (typeof c === "string") return message.type === "user" ? c.length : 0;
+      if (!Array.isArray(c)) return 0;
+      let n = 0;
+      for (const b of c as Array<{ type?: unknown; text?: unknown }>) {
+        if (b && b.type === "text" && typeof b.text === "string") n += b.text.length;
+      }
+      return n;
+    }
+    case "queue-operation":
+      return message.content?.length ?? 0;
+    default:
+      return 0;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔RENDER2 · `设计/10 §2.5b` · `§6` 步 9〕**第二级估高**：同一套外框常数，正文那一段换成 pretext 精算（在 Worker 里跑）。
+// ═══════════════════════════════════════════════════════════════════════
+
+/** 交 Worker 精算的一件：`text` 按 `font` / `widthPx` / `lineHeightPx`（pre-wrap）排出来的高，加上 `fixed` 就是这一行的高。 */
+export interface RefineItem {
+  text: string;
+  font: string;
+  lineHeightPx: number;
+  widthPx: number;
+  /** 正文以外那几段（外框 · 头 · 代码 · 折叠单元 · 段距），与第一级 `estimateFromFacts` 同一套常数。 */
+  fixed: number;
+  /** 超长正文只交前缀（`MEASURE_PREFIX_CHARS`，同 `textHeight`）：排出来的高 × `scale` 外推回全长（不超长 ⇒ 1）。 */
+  scale: number;
+}
+
+/** 一段 markdown：围栏代码块外的正文 ＋ 代码行数 ＋ 代码块数 ＋ 非空硬行数（口径同后端索引的 `ch` / `cl` / `cb` / `pl`）。 */
+function splitFences(md: string): { prose: string; codeLines: number; codeBlocks: number; paras: number } {
+  const prose: string[] = [];
+  let codeLines = 0;
+  let codeBlocks = 0;
+  let inCode = false;
+  for (const line of md.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      if (!inCode) codeBlocks++;
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) codeLines++;
+    else prose.push(line);
+  }
+  const text = prose.join("\n");
+  const paras = prose.filter((l) => l.trim().length > 0).length;
+  return { prose: text, codeLines, codeBlocks, paras };
+}
+
+/**
+ * 一条记录 ⇒ 第二级那一件；不值得精算的（不建卡 · 工具组 · 细条卡 · 没有正文）⇒ `null`（第一级就是它的高）。
+ * 与 `estimateFromFacts` 逐项同形：只把 `factLines(…) × 行高` 换成 pretext 排出来的高。`colW` 同第一级。
+ */
+export function refineItemOf(rec: JsonlRecord, colW: number = COL_W): RefineItem | null {
+  if (rec.type !== "user" && rec.type !== "assistant") return null;
+  if (rec.type === "user" && rec.isMeta) return null;
+  const c: unknown = (rec.message as { content?: unknown } | undefined)?.content;
+  let md = "";
+  let folded = 0;
+  if (typeof c === "string") md = c;
+  else if (Array.isArray(c)) {
+    const texts: string[] = [];
+    for (const b of c as Array<{ type?: unknown; text?: unknown }>) {
+      if (b?.type === "text" && typeof b.text === "string") texts.push(b.text);
+      else if (b?.type === "tool_use" || b?.type === "tool_result" || b?.type === "thinking" || b?.type === "image") folded++;
+    }
+    md = texts.join("\n");
+  }
+  const { prose, codeLines, codeBlocks, paras } = splitFences(md);
+  if (!prose.trim()) return null; // 纯工具 / 纯代码：第一级那份算术已经是它
+  const code = codeLines * LH_MONO + codeBlocks * (CODE_BAR_H + CODE_PAD_V + CODE_MARGIN);
+  const over = prose.length > MEASURE_PREFIX_CHARS;
+  const text = over ? prose.slice(0, MEASURE_PREFIX_CHARS) : prose;
+  const scale = over ? prose.length / MEASURE_PREFIX_CHARS : 1;
+  if (rec.type === "user") {
+    return {
+      text,
+      scale,
+      font: `14px ${FONT_BASE}`,
+      lineHeightPx: LH_BASE,
+      widthPx: colW * 0.8 - 34,
+      fixed: code + folded * SUMMARY_H + SKEL_USER_CHROME,
+    };
+  }
+  return {
+    text,
+    scale,
+    font: FONT_PROSE,
+    lineHeightPx: LH_PROSE,
+    widthPx: colW,
+    fixed: CARD_HEADER_H + Math.max(0, paras - 1) * P_GAP + code + folded * SUMMARY_H + BLOCK_GAP + SKEL_CARD_CHROME,
+  };
+}
+
+/** 一件的高（给定「这段正文排出来多高」的量法）。Worker 与判据共用这一份组合式。 */
+export function refinedHeight(it: RefineItem, measure: (it: RefineItem) => number): number {
+  return it.fixed + measure(it) * it.scale;
 }

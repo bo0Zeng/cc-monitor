@@ -36,9 +36,10 @@
 //! `trim_start_matches('\u{feff}')`, skip blank lines, and `is_subagent_path`
 //! excludes any path containing a `subagents` segment. Truncation is detected
 //! against `cursor.seen_len` (the observed EOF high-water mark, which covers a
-//! deferred torn tail); on truncation the cursor resets to byte 0 **but the
-//! per-file seq keeps climbing** (the seq comes from [`SeqCounter`], which is
-//! never reset) — see [`read_new_lines`].
+//! deferred torn tail); on truncation the cursor resets to byte 0 and
+//! 〔RENDER2〕[`process_jsonl`] restarts the per-file seq after announcing the
+//! re-read (`session_file_reread`) — seq is the line number in the file as it is
+//! now, never a number past it (see [`process_jsonl`]).
 //!
 //! On a mid-read I/O error this reader gives up the whole pass (cursor untouched)
 //! — at-least-once-safe. (The deleted monitor copy kept the complete lines it had
@@ -1579,8 +1580,8 @@ struct ReaderState {
     /// 〔TL1〕monitor 那一侧从前的「会话出现就强制重扫」随它自己的读者 CF1 删了，今天只剩这一处).
     projects: PathBuf,
     /// Per-file consumed byte offset, keyed by [`path_key`]. Reset to 0 on
-    /// truncation; the climbing seq lives separately in [`Self::seqs`] so a
-    /// truncation never rolls the seq back.
+    /// truncation; the seq lives separately in [`Self::seqs`] and is restarted
+    /// together with it by [`process_jsonl`] (〔RENDER2〕seq = 当前文件里的行号).
     offsets: HashMap<PathBuf, ReadCursor>,
     /// 〔FW1 · 第四波 4D · D-d〕每份 jsonl **已消费前缀的末尾那几个字节**（至多 [`TAIL_PROBE`]）。
     /// 续读之前核一遍：对不上 ⇒ 这份文件在游标之前被原地改写过（整份覆盖、长度没变短）⇒ 当截断办：从 0 重读并出声。
@@ -1588,10 +1589,8 @@ struct ReaderState {
     tails: HashMap<PathBuf, Vec<u8>>,
     /// 〔FW1 · D-d〕已经说过「记录文件不见了」的那几份（每次「在 → 不在」只说一次；再出现就摘掉）。
     gone: HashSet<PathBuf>,
-    /// Per-file monotonic seq source. `SeqCounter` only ever climbs for a given
-    /// path (it is never reset), so truncation resetting `offsets` cannot pull
-    /// the seq back — exactly the invariant this module's header states as
-    /// `on truncation the cursor resets to byte 0`.
+    /// Per-file seq source. 〔RENDER2〕只在「从 0 重读、且已先发出 `session_file_reread`」那一刻归零
+    /// （[`process_jsonl`] · [`prime_file_cursor`]）⇒ seq 恒是当前文件内容里的行号。
     seqs: SeqCounter,
     /// PID-file path → [`SessionEntry`] for sessions currently considered ACTIVE
     /// (announced via `SessionAdded`). The pid + captured procStart let the
@@ -1729,15 +1728,15 @@ pub struct ReadCursor {
 ///   so the next event re-reads it once completed (Batch4-F14; the old
 ///   behaviour emitted the half line — the record was then lost for good after
 ///   the JSON parse failure — and a torn multibyte tail decayed into U+FFFD).
-///   Accepted trade-off: a final line that is complete JSON but never gets its
-///   `\n` (writer killed between the two writes) is never emitted if the file
-///   never grows again — real jsonl ends with `\n` (8/8 sampled);
+///   A final line that is complete JSON but never gets its `\n` (writer killed
+///   between the two writes) is handed out once the session retires
+///   (〔RENDER2 · A6〕[`catch_up_session`]), never while the writer is alive;
 /// - **truncation**: judged against the high-water mark
 ///   (`len < cursor.seen_len`), so a rewrite landing inside a pending torn-tail
 ///   window `[consumed, seen_len)` is still caught → start over from byte 0;
-/// - on truncation the byte cursor resets but the seq keeps climbing (it comes
-///   from `SeqCounter`, which never resets), so a client that already placed
-///   the old seqs still sorts the new lines after them;
+/// - on truncation the byte cursor resets; this pure core does not touch the
+///   seq counter — the production caller ([`process_jsonl`]) restarts it right
+///   after announcing the re-read (〔RENDER2〕seq = line number in the file now);
 /// - strip a leading UTF-8 BOM (`\u{feff}`) and skip blank lines;
 /// - the returned `raw` is the original (untrimmed) line, exactly as
 ///   `watcher.rs` pushes `line` (not `trimmed`) into the batch.
@@ -2018,7 +2017,7 @@ fn tail_of(chunk: &[u8], chunk_start: u64, consumed: u64) -> Vec<u8> {
     chunk.get(from..to).map(<[u8]>::to_vec).unwrap_or_default()
 }
 
-/// 〔FW1〕这份文件的游标、指纹一起丢（不在了 ⇒ 同名再出现从 0 读；行号计数器不丢，seq 照旧往上）。
+/// 〔FW1〕这份文件的游标、指纹一起丢（不在了 ⇒ 同名再出现从 0 读；〔RENDER2〕那一趟当改写办：先出声、行号从 0 重数）。
 fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.offsets.remove(key);
     state.tails.remove(key);
@@ -2063,7 +2062,15 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
                 reread,
             } => (chunk, chunk_start, file_len, from, reread),
         };
-    state.gone.remove(&key);
+    // 〔RENDER2 · `设计/10 §3.2`〕这一趟要从 0 重读 ⇒ 行号从 0 重数（seq ＝ 当前文件里的行号），出声那一帧排在重读的行之前。
+    //   三种来路：`read_tail_from` 认出的截短 / 改写 · 读的那一下文件又缩了（扫描自己按高水位判截断）· 删了之后同名又长出来。
+    let reappeared = state.gone.remove(&key);
+    let reread = reread
+        .or_else(|| (file_len < from.seen_len).then_some(RereadWhy::Truncated))
+        .or_else(|| reappeared.then_some(RereadWhy::Rewritten));
+    if reread.is_some() {
+        state.seqs.restart(&key_str);
+    }
     let (lines, new_cursor) = read_new_lines_at(
         &chunk,
         chunk_start,
@@ -2085,28 +2092,86 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
         });
     }
     for line in lines {
-        // backend-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
-        // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
-        let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
-            .ok()
-            .and_then(|v| crate::observe::turn_detect::turn_end_uuid(&v).map(str::to_string));
-        sink.send(Frame::Line {
-            session_id: session_id.clone(),
-            path: path_str.clone(),
-            seq: line.seq,
-            raw: line.raw,
-            byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+        send_line(&session_id, &path_str, line, sink);
+    }
+}
+
+/// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
+fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameSink) {
+    // backend-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
+    // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
+    let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
+        .ok()
+        .and_then(|v| crate::observe::turn_detect::turn_end_uuid(&v).map(str::to_string));
+    sink.send(Frame::Line {
+        session_id: session_id.to_string(),
+        path: path_str.to_string(),
+        seq: line.seq,
+        raw: line.raw,
+        byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
+    });
+    // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
+    // 方案 C raw-per-record、backend 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
+    // #backend 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
+    if let Some(uuid) = turn_uuid {
+        sink.send(Frame::TurnEnd {
+            session_id: session_id.to_string(),
+            uuid,
         });
-        // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
-        // 方案 C raw-per-record、backend 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
-        // #backend 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
-        if let Some(uuid) = turn_uuid {
-            sink.send(Frame::TurnEnd {
-                session_id: session_id.clone(),
-                uuid,
-            });
+    }
+}
+
+/// 〔RENDER2 · `设计/10 §3.1` A6〕**从游标补读这个会话的 jsonl**（与文件事件同一个 [`process_jsonl`]，不另写一条路）。
+///
+/// `writer_dead`（只由会话退休那一刻传真）⇒ 补读完之后，游标之后那截没 `\n` 收尾、但本身是**一整个 JSON 对象**的残行
+/// 当一行交出去：写端写完 JSON、没来得及写 `\n` 就被杀，这一行从此不会再有文件事件。活着的写端照旧等 `\n`。
+/// 这一行**不推进游标、不占计数器**：同一文件日后被续写时，残行与新字节拼成的那一行仍是这个号（冷读的行号空间里它也是
+/// 这个号），前端按 seq 去重吸收；冷读（`history_query::line_counts` 口径）不数这截残行 —— 会话已死、没人再写，差的只是它自己。
+/// 退休之前先补读还有一层用处：pidfd 比 debounce 快，死前最后几行的文件事件可能在退休之后才到、被判活过滤挡掉。
+fn catch_up_session(sid: &str, writer_dead: bool, state: &mut ReaderState, sink: &mut FrameSink) {
+    let mine: Vec<PathBuf> = state
+        .offsets
+        .keys()
+        .filter(|k| file_stem_str(k).as_deref() == Some(sid) && !is_subagent_path(k))
+        .cloned()
+        .collect();
+    for path in mine {
+        process_jsonl(&path, state, sink);
+        if writer_dead {
+            flush_final_line(&path, sid, state, sink);
         }
     }
+}
+
+/// [`catch_up_session`] 的收尾那一半：`[consumed, EOF)` 是一整个 JSON 对象 ⇒ 交出去（号 = 计数器现值，不推进）。
+fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+    use std::io::{Read, Seek, SeekFrom};
+    let key = path_key(path);
+    let Some(cursor) = state.offsets.get(&key).copied() else {
+        return;
+    };
+    let mut rest = Vec::new();
+    let read = std::fs::File::open(path).and_then(|mut f| {
+        f.seek(SeekFrom::Start(cursor.consumed))?;
+        f.read_to_end(&mut rest)
+    });
+    if read.is_err() || rest.contains(&b'\n') {
+        return; // 读不动 / 还有完整行没消费（补读那一步没读动）⇒ 不猜
+    }
+    let text = String::from_utf8_lossy(&rest);
+    let raw = text.trim_start_matches('\u{feff}').trim_end_matches('\r');
+    if !raw.trim_start().starts_with('{')
+        || serde_json::from_str::<serde::de::IgnoredAny>(raw).is_err()
+    {
+        return; // 半行 / 空白 / 不是对象 ⇒ 永不误发
+    }
+    let key_str = key.to_string_lossy().into_owned();
+    let line = ReadLine {
+        seq: state.seqs.peek(&key_str),
+        raw: raw.to_string(),
+        byte_offset: cursor.consumed + rest.len() as u64,
+    };
+    send_line(sid, &path.to_string_lossy(), line, sink);
 }
 
 /// ★★ `P0b-Y2`〔08-13〕：`<claude_dir>/sessions/` **换了 inode 或刚出现**，重新挂上并重扫。
@@ -2514,6 +2579,7 @@ fn retire_sid_if_unreferenced(
         tracing::debug!("sid {sid} still referenced by another pidfile; not retiring");
         return;
     }
+    catch_up_session(sid, true, state, sink); // 〔RENDER2 · A6〕写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
@@ -2569,8 +2635,14 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
                 chunk_start,
                 file_len,
                 from,
-                ..
-            } => (chunk, chunk_start, file_len, from),
+                reread,
+            } => {
+                // 〔RENDER2〕从 0 重数，同 `process_jsonl`（这里不出声：宣告还没发，下游的快照按行号从 0 拉）。
+                if reread.is_some() || file_len < from.seen_len {
+                    state.seqs.restart(&key_str);
+                }
+                (chunk, chunk_start, file_len, from)
+            }
             Look::Gone => {
                 forget_cursor(state, &key);
                 return 0;
@@ -2839,3 +2911,7 @@ fn file_stem_str(p: &Path) -> Option<String> {
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/watcher_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/watcher_lines_tests.rs"]
+mod lines_tests;

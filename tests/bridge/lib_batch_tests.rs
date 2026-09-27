@@ -13,6 +13,7 @@ fn jline(session_id: &str, seq: u64, raw: &str) -> ssh_source::JsonlLine {
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,
         raw: raw.to_string(),
+        end: None,
     }
 }
 
@@ -39,7 +40,11 @@ fn filters_non_displayable_and_survives_malformed() {
         jline("s-abc", 7, malformed),
     ];
 
-    let payloads = batch_to_payloads(lines, &crate::origin::Origin::local());
+    let payloads = batch_to_payloads(
+        lines,
+        &crate::origin::Origin::local(),
+        &mut SkipRuns::default(),
+    );
 
     // 只有 displayable user 行进 payload
     assert_eq!(payloads.len(), 1, "只应保留 1 条 displayable 记录");
@@ -65,7 +70,11 @@ fn origin_is_propagated_to_payloads() {
             "cwd":"/home/pi/proj"
         }"#;
     let lines = vec![jline("s-remote", 0, displayable_user)];
-    let payloads = batch_to_payloads(lines, &crate::origin::Origin("pi".to_string()));
+    let payloads = batch_to_payloads(
+        lines,
+        &crate::origin::Origin("pi".to_string()),
+        &mut SkipRuns::default(),
+    );
     assert_eq!(payloads.len(), 1);
     assert_eq!(
         payloads[0].origin.as_deref(),
@@ -92,10 +101,12 @@ fn unreadable_lines_are_booked_under_the_batch_origin() {
     let _ = batch_to_payloads(
         vec![jline("s-r", 0, r#"{"type":"st3-batch-remote-probe"}"#)],
         &remote,
+        &mut SkipRuns::default(),
     );
     let _ = batch_to_payloads(
         vec![jline("s-l", 0, r#"{"type":"st3-batch-local-probe"}"#)],
         &local,
+        &mut SkipRuns::default(),
     );
     assert!(
         find(&remote, "st3-batch-remote-probe").is_some(),
@@ -112,5 +123,55 @@ fn unreadable_lines_are_booked_under_the_batch_origin() {
     assert!(
         find(&remote, "st3-batch-local-probe").is_none(),
         "本机那批记进了远端那一本"
+    );
+}
+
+/// 〔RENDER2 · `设计/10 §3.2` 逐字「要封顶得有后端的保证 ……」· `真相源/130 §3`「不可显示的行照占 seq 却不发 payload，
+/// 每一处都在集合里留一个洞」〕每条 payload 的 `skipped_from` == 它之前**连着见过**的不可显示那一段的起点（跨批照认；
+/// 行号断过 / 别的会话不混）。期望表手写（异源）。
+#[test]
+fn every_payload_says_the_undisplayable_run_right_before_it() {
+    let user = |u: &str| {
+        format!(r#"{{"type":"user","uuid":"{u}","message":{{"role":"user","content":"x"}}}}"#)
+    };
+    let meta = r#"{"type":"permission-mode"}"#;
+    let mut runs = SkipRuns::default();
+    let origin = crate::origin::Origin::local();
+    let first = batch_to_payloads(
+        vec![
+            jline("s", 0, meta),
+            jline("s", 1, &user("a")), // 前面 [0,1) 连着见过
+            jline("s", 2, meta),
+            jline("s", 3, "not json"), // 解析不出也照占号
+        ],
+        &origin,
+        &mut runs,
+    );
+    let second = batch_to_payloads(
+        vec![
+            jline("t", 7, meta),
+            jline("s", 4, &user("b")), // 跨批：[2,4)
+            jline("s", 6, &user("c")), // 5 没见过 ⇒ 不认
+            jline("s", 7, meta),
+            jline("s", 8, &user("d")), // [7,8)
+            jline("t", 8, &user("e")), // 别的会话自己那一段 [7,8)
+        ],
+        &origin,
+        &mut runs,
+    );
+    let got: Vec<(u64, Option<u64>)> = first
+        .iter()
+        .chain(&second)
+        .map(|p| (p.seq, p.skipped_from))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (1, Some(0)),
+            (4, Some(2)),
+            (6, None),
+            (8, Some(7)),
+            (8, Some(7))
+        ]
     );
 }

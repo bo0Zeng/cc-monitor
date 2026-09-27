@@ -262,12 +262,12 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 ## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证（v2.6 B 重构）
 
 **后端契约**：后端的 `watcher.rs::read_new_lines`（`src/backend/observe/`）给每读出的一行分配 per-file 单调递增的
-`seq: u64`（`SeqCounter` 跨调用累加、截断不重置；`--tail-only` 下起点是当前完整行数 ⇒ seq 就是行号，
+`seq: u64`（`SeqCounter` 跨调用累加；〔RENDER2〕从 0 重读时先发 `session_file_reread` 再从 0 重数；`--tail-only` 下起点是当前完整行数 ⇒ seq 就是行号，
 与 monitor 旁路快照的编号同一个空间，§25a）；〔CF1 · 2026-09-24〕**本机与远端同一个来源**：monitor 自己那套
 jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是本机后端的 `line` 帧（`ssh_source·rs::LineIntake`）。
 `bridge::JsonlLinePayload` 携带该 seq 字段；所有交付路径（〔CF2 · 第四波 4B〕会话流经通道 `subscribe`：
 实时逐行 / 成批切块 / 就绪点重放，一格的体是 `bridge::SessionStreamFrame`）都透传 seq 不变。seq 保证**时序**、不保证**投递次数**——投递语义是 at-least-once
-（截断重读会换新 seq 重投整个文件），详 § 25。
+（重连重放、快照与实时的重叠区是同 seq 重投；〔RENDER2〕截断重读不再换新 seq，而是换代：先出声、从 0 重数），详 § 25。
 
 **前端契约**：每个 Tab / SessionViewer 持一个 `RecordTimeline`，
 `insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)`
@@ -635,12 +635,12 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 后端到前端的 jsonl 行投递**不保证 exactly-once**。已知重投路径：
 
-- **后端截断重读**（`src/backend` 的 `watcher.rs::read_new_lines`：`len < cursor.seen_len → start=0`）：整个文件**换新 seq** 重投（seq 不重置，见 § 5）；触发时有 `jsonl truncated` warn 留痕。**已知静默缺口**：截断到空（len==0）那一轮刻意不喊（无重读发生），文件随后重新长出内容的全量重投也无 warn——排查重投时「日志无 truncated」不能排除此路径。〔CF1 · 2026-09-24〕本机与远端是**同一份**实现（monitor 自己那套本地 watcher 已删，原先它与后端各一份、靠注释对齐）；
+- **后端截断重读**（`src/backend` 的 `watcher.rs::read_new_lines`：`len < cursor.seen_len → start=0`）：〔RENDER2 · `设计/10 §3.2`〕先发 `session_file_reread`、行号**从 0 重数**再整份重投（seq ＝ 当前文件里的行号；monitor 丢这个会话的留存与续点，前端 tab 整份重来 ⇒ 不再是「换新 seq 重投」）。以下是换代之前的旧形，留作沿革：整个文件换新 seq 重投；触发时有 `jsonl truncated` warn 留痕。**已知静默缺口**：截断到空（len==0）那一轮刻意不喊（无重读发生），文件随后重新长出内容的全量重投也无 warn——排查重投时「日志无 truncated」不能排除此路径。〔CF1 · 2026-09-24〕本机与远端是**同一份**实现（monitor 自己那套本地 watcher 已删，原先它与后端各一份、靠注释对齐）；
 - **远端后端重连重放**（issue #17）：从 seq 0 重发整个活跃会话（**通常同 seq**——后端 SeqCounter 是进程内存态，重连即新进程从 0 起编号。**已知缺口**：若断连前发生过远端截断重读，旧 seq 已爬过文件行数，重连后前端 `tab.seenSeqs`（重连不清空）会把断连期间新增行的 seq 误判为已见而拒渲染，直到 seq 超过旧高水位——三条件叠加的低概率场景，后端转正前需修：重连时按 origin 清 seenSeqs 或 uuid 去重前置，见 Batch4 Phase G 验收记录）。
 
 Batch4-F14 起两端只消费以 `\n` 结尾的**完整行**（torn tail 延迟到补全，offset 按实际消费推进，截断判定用 seen_len 高水位）——"读中文件增长导致 offset 回退换 seq 重投"这条历史路径已消除。**已接受的取舍**：①最后一行是完整 JSON 但永远等不到尾 `\n`（写端在两次 write 之间被 kill 且文件从此不再增长）→ 该行永不投递、无日志；实测 Claude Code 每条记录以 `\n` 收尾（2026-07-03 抽查 8/8），此情形视为非标准写端。②长度基截断检测的固有盲区：两次事件之间文件先长到 X > seen_len 再被重写为 Y ∈ [seen_len, X) → 任何仅凭长度的方案都检不出（pre-F14 同样检不出，非回归）；需内容指纹才能封死，成本不值。
 
-`tab.seenSeqs`（#17）只挡**同 seq** 重投；换新 seq 的重投在 seq 层不可见。因此：**任何按 uuid（记录身份）累积状态或构建拓扑的前端模块，必须对"同一记录再来一遍"幂等**——入口按 uuid 拒重（保首见），不得假设上游只投一次。现有履约点：`tabs.ts onLine` 的 `processedUuids`（入口整体拒重——渲染、活卡定稿与两个真事件等副作用一并挡住；无 uuid 的元信息记录放行，issue #26。〔STC · 第四波 4D〕会话事实（分叉血缘 · agent 列表 · 改动文件集 · 最新 usage）不再在这里攒 —— 后端读一遍文件出成品 `history-facts`，没有「按 uuid 累积」这一格了）+ `computeMainBranch` 入口去重 + `BranchFolder.seenUuids`（issue #25）三层。新增"消费行事件"的模块（如 viewer 新路径、#16 远端历史）必须同样履约。
+`tab.seenSeqs`（#17）挡**同 seq** 重投；〔RENDER2〕换新 seq 的重投已随「从头重读即换代」消失，`tabs.ts onLine` 入口按 uuid 再挡的那一道随之删了。以下「按 uuid 幂等」对**拓扑层**仍成立（纵深防御）。因此：**任何按 uuid（记录身份）累积状态或构建拓扑的前端模块，必须对"同一记录再来一遍"幂等**——入口按 uuid 拒重（保首见），不得假设上游只投一次。现有履约点：`computeMainBranch` 入口去重 + `BranchFolder.seenUuids`（issue #25）两层（〔RENDER2〕入口那一层 issue #26 删了，理由见上）。新增"消费行事件"的模块（如 viewer 新路径、#16 远端历史）必须同样履约。
 
 **为什么不能松动**：实测 1 条重复 attachment 即把 1541/4331 条主线误折成「已被 ESC 回退」、全文件重投折掉 4137/4331 且首条 user root 出局（issue #25 两次实锤）。重复记录毒化 Kahn 拓扑的 remaining 计数 → 重复点全部祖先落 leftover fallback（latestDescTs/hasAssistant 全错）→ 被 fork 赢家 / 多 root 分类（#22）放大成整段历史折叠。且重复常是 attachment/isMeta 等**不渲染 DOM 的记录**——肉眼不可见、每次重算复现、进了 event_replay buffer 后 F5 带毒，不自愈。
 

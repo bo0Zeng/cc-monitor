@@ -6,6 +6,7 @@ fn line(sid: &str, seq: u64) -> JsonlLine {
         path: std::path::PathBuf::from(format!("/fake/{sid}.jsonl")),
         seq,
         raw: format!("{{\"seq\":{seq}}}"),
+        end: None,
     }
 }
 

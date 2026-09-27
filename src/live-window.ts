@@ -29,6 +29,70 @@ import {
   type SkeletonKind,
 } from "./height-estimate";
 
+/**
+ * 〔RENDER2 · `设计/10 §3.2`〕**一个 tab 见过的行号**（入口按 seq 去重的那一格），存成升序、互不相邻的半开区间 `[lo, hi)`。
+ * 段数的上界：不可显示的行由 monitor 以 `skipped_from` 告知、取回的整段按 `[from, next)` 记 ⇒ 一份收全了的会话收成一段；
+ * 余下的段只来自真没到过的洞（重放在途 · 丢格）与「最后一个可显示行之后那一截不可显示的」，不随会话长度涨。
+ */
+export class SeqSet {
+  /** `[lo0, hi0, lo1, hi1, …]`，升序、段与段之间至少隔一个号。 */
+  private edges: number[] = [];
+
+  /** 段数（读数与判据用）。 */
+  get segments(): number {
+    return this.edges.length / 2;
+  }
+
+  get isEmpty(): boolean {
+    return this.edges.length === 0;
+  }
+
+  /** 见过的最大行号（空 ⇒ -1）。 */
+  get max(): number {
+    return this.edges.length === 0 ? -1 : this.edges[this.edges.length - 1] - 1;
+  }
+
+  /** 第一个 `hi > x` 的段的下标（段号，不是 edges 下标）。 */
+  private segAtOrAfter(x: number): number {
+    let l = 0;
+    let r = this.edges.length / 2;
+    while (l < r) {
+      const m = (l + r) >>> 1;
+      if (this.edges[2 * m + 1] <= x) l = m + 1;
+      else r = m;
+    }
+    return l;
+  }
+
+  has(seq: number): boolean {
+    const i = this.segAtOrAfter(seq);
+    return i < this.edges.length / 2 && this.edges[2 * i] <= seq;
+  }
+
+  add(seq: number): void {
+    this.addRange(seq, seq + 1);
+  }
+
+  /** 记下 `[lo, hi)`（空区间不动）；与相交 / 相邻的段并成一段。 */
+  addRange(lo: number, hi: number): void {
+    if (hi <= lo) return;
+    // 第一个 hi >= lo 的段（相邻也并）与第一个 lo > hi 的段之间的全部并掉。
+    const a = this.segAtOrAfter(lo - 1);
+    let b = a;
+    const n = this.edges.length / 2;
+    while (b < n && this.edges[2 * b] <= hi) b++;
+    if (a < b) {
+      lo = Math.min(lo, this.edges[2 * a]);
+      hi = Math.max(hi, this.edges[2 * b - 1]);
+    }
+    this.edges.splice(2 * a, 2 * (b - a), lo, hi);
+  }
+
+  clear(): void {
+    this.edges = [];
+  }
+}
+
 /** 升序 pending 里第一个 `seq >= x` 的下标 */
 function lowerBound(arr: JsonlLinePayload[], x: number): number {
   let l = 0;
@@ -72,6 +136,12 @@ export type BelowState =
   | { kind: "fetching" }
   | { kind: "none" }
   | { kind: "failed"; reason: string };
+
+/** 〔RENDER2〕一批的第二道闸：每条的分量（调用方给）与这一批的上限。 */
+export interface TakeBudget {
+  weight: (p: JsonlLinePayload) => number;
+  max: number;
+}
 
 export class TailWindow {
   /** 窗口低水位;null = virgin(该 tab 尚未渲染任何 content 记录) */
@@ -202,19 +272,37 @@ export class TailWindow {
    * 弹出 pending 中 seq 最高的 ≤k 条(升序返回,已出账),并把 floor 压到取出段
    * 的最低 seq——上翻补批/物化的口粮。空账返回 [],floor 不动。
    */
-  takeTail(k: number): JsonlLinePayload[] {
+  takeTail(k: number, budget?: TakeBudget): JsonlLinePayload[] {
     if (this.pending.length === 0 || k <= 0) return [];
     if (this.dirty) {
       this.pending.sort((a, b) => a.seq - b.seq);
       this.dirty = false;
     }
-    const taken = this.pending.splice(Math.max(0, this.pending.length - k));
+    let from = Math.max(0, this.pending.length - k);
+    if (budget) {
+      // 〔RENDER2 · `设计/17 §1.1`〕条数与分量双闸、先到先停；至少取一条（单条超预算也要能前进）。
+      let used = 0;
+      let i = this.pending.length;
+      while (i > from) {
+        const w = budget.weight(this.pending[i - 1]);
+        if (i < this.pending.length && used + w > budget.max) break;
+        used += w;
+        i--;
+      }
+      from = i;
+    }
+    const taken = this.pending.splice(from);
     if (taken.length > 0) this.pinFloor(taken[0].seq);
     return taken;
   }
 
   get pendingCount(): number {
     return this.pending.length;
+  }
+
+  /** 〔RENDER2〕账本里这几个 seq 的 payload（不出账；没有的跳过）。第二级估高借正文用，看完就丢。 */
+  peekSeqs(seqs: ReadonlySet<number>): JsonlLinePayload[] {
+    return this.pending.filter((p) => seqs.has(p.seq));
   }
 
   /**
@@ -312,6 +400,10 @@ export class SkeletonLedger {
   /** prefix[i] = seq [base, base+i) 的估高之和；长度 = 行数 + 1 */
   private prefix: number[] = [0];
   private kinds: SkeletonKind[] = [];
+  /** 每行第一级粗估（`prefix` 由它与 `refined` 合出来）。 */
+  private est: number[] = [];
+  /** 〔RENDER2 · `设计/10 §2.5b` 第二级〕Worker 精算回来的高（seq → px，当前列宽下）；有它就用它、没有用第一级。 */
+  private refined = new Map<number, number>();
   private colW: number | undefined;
   /** uuid → seq（无 uuid 的行不占） */
   readonly uuidToSeq = new Map<string, number>();
@@ -331,20 +423,58 @@ export class SkeletonLedger {
       const h = estimateFromFacts(r, prev, this.colW);
       this.rows.push(r);
       this.kinds.push(kind);
-      this.prefix.push(this.prefix[this.prefix.length - 1] + h);
+      this.est.push(h);
+      this.prefix.push(this.prefix[this.prefix.length - 1] + (this.refined.get(seq) ?? h));
       if (r.u) this.uuidToSeq.set(r.u, seq);
     }
   }
 
-  /** 列宽变了：整份重估（O(n)，纯算术）。 */
-  relayout(colW: number | undefined): void {
+  /**
+   * 列宽变了：整份重估（O(n)，纯算术）。精算过的那几行在新列宽下作废 —— 返回它们（`设计/10 §2.5b`「列宽变化只重算已精算过的」，
+   * 调用方把它们重交 Worker）。⚠ 今天没有调用方：列宽只在模块求值时量一次（`height-estimate.ts::COL_W` 头注）。
+   */
+  relayout(colW: number | undefined): number[] {
     const rows = this.rows;
+    const redo = [...this.refined.keys()];
     this.colW = colW;
     this.rows = [];
     this.kinds = [];
+    this.est = [];
+    this.refined.clear();
     this.prefix = [0];
     this.uuidToSeq.clear();
     this.append(rows);
+    return redo;
+  }
+
+  /** 当前列宽（`undefined` = 模块量出来的那个）。 */
+  get columnWidth(): number | undefined {
+    return this.colW;
+  }
+
+  /** 〔RENDER2〕这一行精算过没有。 */
+  isRefined(seq: number): boolean {
+    return this.refined.has(seq);
+  }
+
+  /**
+   * 〔RENDER2 · 第二级〕Worker 精算回来的高换进账本（越界 / 不建卡的行不收）；从改动的最低那一行起重合一次前缀和。
+   * 返回有没有哪一行真的变了。
+   */
+  refine(entries: Iterable<readonly [number, number]>): boolean {
+    let lowest = Infinity;
+    for (const [seq, h] of entries) {
+      const i = seq - this.base;
+      if (i < 0 || i >= this.rows.length || this.kinds[i] === "none" || !(h >= 0)) continue;
+      if (this.refined.get(seq) === h) continue;
+      this.refined.set(seq, h);
+      lowest = Math.min(lowest, i);
+    }
+    if (lowest === Infinity) return false;
+    for (let i = lowest; i < this.rows.length; i++) {
+      this.prefix[i + 1] = this.prefix[i] + (this.refined.get(this.base + i) ?? this.est[i]);
+    }
+    return true;
   }
 
   private lastCardKind(): SkeletonKind {

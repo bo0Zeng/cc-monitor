@@ -170,12 +170,30 @@ pub const ITEMS_EVENT: &str = "chan-items";
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub(crate) enum WebviewItem {
-    Frame { seq: u64, body: String },
-    Gap { from_seq: u64, to_seq: u64 },
-    Unseen { idx: u8, tag: String, why: HopFault },
-    Seen { from: Option<Vec<u8>> },
-    ClosedByPeer { body: String },
-    ClosedByOurs { why: OursFault },
+    Frame {
+        seq: u64,
+        body: String,
+    },
+    /// 〔RENDER2〕`to_seq` 缺 = 知道丢了、不知道丢到哪（`Item::Gap` 头注）。
+    Gap {
+        from_seq: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        to_seq: Option<u64>,
+    },
+    Unseen {
+        idx: u8,
+        tag: String,
+        why: HopFault,
+    },
+    Seen {
+        from: Option<Vec<u8>>,
+    },
+    ClosedByPeer {
+        body: String,
+    },
+    ClosedByOurs {
+        why: OursFault,
+    },
 }
 
 /// 一次投递：哪条订阅 ＋ 一串格。
