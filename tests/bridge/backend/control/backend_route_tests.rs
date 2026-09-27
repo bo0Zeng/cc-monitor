@@ -607,9 +607,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         ),
         (
             CallError::Cancelled,
-            w::CallError::Ours {
-                why: w::OursFault::Cancelled,
-            },
+            w::OursFault::Cancelled.into(),
         ),
         (
             CallError::Remote {

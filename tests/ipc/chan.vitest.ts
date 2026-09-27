@@ -47,7 +47,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, type Item } from "../../src/ipc/chan";
-import { budgetWithin } from "../../src/ipc/chan-caller";
+import { budgetWithin, saidOf } from "../../src/ipc/chan-caller";
 import { REPO_ROOT } from "../test-support/repo-root";
 import { stripComments } from "../test-support/strip-comments";
 
@@ -124,6 +124,29 @@ describe("〔C4a〕webview 通道客户端", () => {
     ac.abort();
     expect(await failOf(p)).toEqual({ layer: "ours", why: "Cancelled" });
     answer(new ArrayBuffer(0)); // monitor 那一侧晚到的结局没人收了 —— 不许炸
+  });
+
+  it("〔NET2 · `05 §3.3.3`〕本地撤单按手里那份 Offer 说清「那台可能还在跑」：撤不动的带 runsOn、撤得动的不带", async () => {
+    let answer: (v: ArrayBuffer) => void = () => {};
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "chan_offer"
+        ? Promise.resolve({ ops: ["cancel", "slow", "quick"], unavailable: [["kill", "no_tmux"]], stoppable: ["quick"] })
+        : new Promise<ArrayBuffer>((r) => (answer = r)),
+    );
+    const offer = await chan.offer("net2-m");
+    expect(offer?.stoppable).toEqual(["quick"]);
+    expect(chan.cachedOffer("net2-m")).toEqual(offer);
+    for (const [op, runsOn] of [["slow", true], ["quick", false]] as const) {
+      const ac = new AbortController();
+      const p = chan.call("net2-m", op, new Uint8Array(), budgetWithin(5_000, ac.signal));
+      ac.abort();
+      const e = await failOf(p);
+      expect(e, op).toEqual(runsOn ? { layer: "ours", why: "Cancelled", runsOn: true } : { layer: "ours", why: "Cancelled" });
+      expect(saidOf(new ChanError(e), "旧").includes("可能还在跑"), op).toBe(runsOn);
+    }
+    answer(new ArrayBuffer(0));
+    // monitor 交回的那一形（`WireErr::OursRunsOn`）解回同一格。
+    expect(decodeFail({ err: { OursRunsOn: "Cancelled" }, body: [] })).toEqual({ layer: "ours", why: "Cancelled", runsOn: true });
   });
 
   it("★ 载荷两个方向逐字节原样（含 NUL 与非 UTF-8 字节）", async () => {

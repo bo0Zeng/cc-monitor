@@ -1517,6 +1517,7 @@ pub fn run() {
             // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
             // 〔CF2 · 第四波 4B〕会话内容经通道的 `subscribe`（本地撤单 · credit）。
+            chan::webview::chan_offer,
             chan::webview::chan_subscribe,
             chan::webview::chan_want,
             chan::webview::chan_stop,

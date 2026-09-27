@@ -42,8 +42,8 @@
 
 use super::wire::{
     err_from_wire, item_from_wire, read_frame, write_frame, Body, Budget, By, CallError, Comms,
-    Cursor, Head, HopFault, HopId, Item, Key, Kind, Op, Origin, OursFault, PeerFault, Reach,
-    ReadFault, Sub,
+    Cursor, Head, HopFault, HopId, Item, Key, Kind, Offer, Op, Origin, OursFault, PeerFault, Reach,
+    ReadFault, Sub, Withdraw,
 };
 use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
@@ -93,6 +93,8 @@ struct Shared {
     /// 为的是「断线时清空」与「新登记」不会交错出一个永远没人答的编号。
     calls: Mutex<Option<HashMap<u64, Answer>>>,
     taps: Mutex<HashMap<u64, Arc<Mutex<Tap>>>>,
+    /// 〔NET2〕问过的那几台的能力事实（[`Client::offer`] 填）：本地撤单时据此说「那台可能还在跑」。
+    offers: Mutex<HashMap<String, Offer>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -108,8 +110,14 @@ fn hop(idx: u8, tag: &'static str, reach: Reach, why: HopFault) -> CallError {
 }
 
 fn cancelled() -> CallError {
+    OursFault::Cancelled.into()
+}
+
+/// 已发出的那条被本地撤掉：`runs_on` = 那台对这一条不认撤（`05 §3.3.3`「在结果里说明」）。
+fn withdrawn(runs_on: bool) -> CallError {
     CallError::Ours {
         why: OursFault::Cancelled,
+        runs_on,
     }
 }
 
@@ -159,11 +167,7 @@ impl Client {
                     why: PeerFault::Refused { body: Body(body) },
                 })
             }
-            Ok(Ok(_)) | Ok(Err(ReadFault::Bad(_))) => {
-                return Err(CallError::Ours {
-                    why: OursFault::Broken,
-                })
-            }
+            Ok(Ok(_)) | Ok(Err(ReadFault::Bad(_))) => return Err(OursFault::Broken.into()),
             Ok(Err(ReadFault::Eof)) | Ok(Err(ReadFault::Io(_))) => {
                 return Err(hop(0, "auth", Reach::Sent, HopFault::Dropped))
             }
@@ -176,6 +180,7 @@ impl Client {
             next: AtomicU64::new(1),
             calls: Mutex::new(Some(HashMap::new())),
             taps: Mutex::new(HashMap::new()),
+            offers: Mutex::new(HashMap::new()),
         });
         // 写任务：只有它碰写半边 ⇒ 帧不交错。写不出去就收工（读任务会看到断线并通知各方）。
         tokio::spawn(async move {
@@ -218,12 +223,70 @@ impl Client {
         }
     }
 
+    /// 〔NET2〕问 `origin` 那台的能力事实（`Offer`：认哪些 op · 这台做不到哪几条 · 哪几条撤不动）。
+    /// `None` = 那台今天没有控制通道。问到的那份记下来，之后本地撤单据它说「那台可能还在跑」。
+    ///
+    /// # Errors
+    ///
+    /// 同 `call`（期限 · 撤单 · 断线）；体解不出来 ⇒ `Ours{Broken}`。
+    pub async fn offer(&self, origin: &Origin, budget: Budget) -> Result<Option<Offer>, CallError> {
+        let o = origin.clone();
+        let body = self
+            .exchange(
+                |id| Head::OfferOf { id, origin: o },
+                Body::default(),
+                budget,
+                false,
+            )
+            .await?;
+        let offer: Option<Offer> =
+            serde_json::from_slice(&body.0).map_err(|_| CallError::from(OursFault::Broken))?;
+        let mut cache = lock(&self.shared.offers);
+        match &offer {
+            Some(x) => cache.insert(origin.as_wire_str().to_string(), x.clone()),
+            None => cache.remove(origin.as_wire_str()),
+        };
+        Ok(offer)
+    }
+
+    /// 这一条被本地撤掉之后，那台是不是可能还在跑（手里那份 `Offer` 说它不认撤这一条）。没问过那台 ⇒ `false`。
+    fn runs_on_after_cancel(&self, origin: &Origin, op: &Op) -> bool {
+        lock(&self.shared.offers)
+            .get(origin.as_wire_str())
+            .is_some_and(|o| o.withdraw(&op.0) == Withdraw::NotOffered)
+    }
+
     async fn call_inner(
         &self,
         origin: &Origin,
         op: &Op,
         payload: Body,
         budget: Budget,
+    ) -> Result<Body, CallError> {
+        let left = budget.remaining();
+        let runs_on = self.runs_on_after_cancel(origin, op);
+        let (o, name) = (origin.clone(), op.0.clone());
+        self.exchange(
+            move |id| Head::Call {
+                id,
+                origin: o,
+                op: name,
+                left,
+            },
+            payload,
+            budget,
+            runs_on,
+        )
+        .await
+    }
+
+    /// 一问一答的三段（见头注那张表）。`runs_on` 只用在「已发出之后被本地撤掉」那两格。
+    async fn exchange(
+        &self,
+        head: impl FnOnce(u64) -> Head,
+        payload: Body,
+        budget: Budget,
+        runs_on: bool,
     ) -> Result<Body, CallError> {
         if budget.cancel.is_cancelled() {
             return Err(cancelled());
@@ -242,12 +305,7 @@ impl Client {
         }
         let (written_tx, written_rx) = oneshot::channel();
         let job = Job {
-            head: Head::Call {
-                id,
-                origin: origin.clone(),
-                op: op.0.clone(),
-                left,
-            },
+            head: head(id),
             body: payload.0,
             written: Some(written_tx),
         };
@@ -279,7 +337,7 @@ impl Client {
             () = budget.cancel.cancelled() => {
                 self.forget(id);
                 self.post(Head::Cancel { id });
-                return Err(cancelled());
+                return Err(withdrawn(runs_on));
             }
         };
         match written {
@@ -301,15 +359,13 @@ impl Client {
             () = budget.cancel.cancelled() => {
                 self.forget(id);
                 self.post(Head::Cancel { id });
-                return Err(cancelled());
+                return Err(withdrawn(runs_on));
             }
         };
         match answer {
             Ok(Ok(r)) => r,
             // 回信口被丢了而没说话 —— 只有读任务收工时会这样，而它收工前会先说话；到这里是不变量破了。
-            Ok(Err(_)) => Err(CallError::Ours {
-                why: OursFault::Broken,
-            }),
+            Ok(Err(_)) => Err(OursFault::Broken.into()),
             Err(_elapsed) => {
                 self.forget(id);
                 self.post(Head::Cancel { id });
@@ -418,6 +474,7 @@ async fn read_loop<R: AsyncRead + Unpin>(mut rd: R, frame: usize, shared: Arc<Sh
             | Head::Subscribe { .. }
             | Head::Want { .. }
             | Head::Stop { .. }
+            | Head::OfferOf { .. }
             | Head::Welcome
             | Head::Denied => break,
         }

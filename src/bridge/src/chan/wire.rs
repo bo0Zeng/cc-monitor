@@ -173,7 +173,9 @@ pub enum CallError {
     /// ② 对端错 —— 通道是通的；它收到了并答了「不行」，或它事前就说不认。
     Peer { why: PeerFault },
     /// ③ 我们自己错 —— 与对面无关。
-    Ours { why: OursFault },
+    /// 〔NET2〕`runs_on`：本地撤单（`Cancelled`）时那台对这一条不认撤 ⇒ 那件事可能还在跑（`05 §3.3.3`「在结果里说明」）。
+    /// 由手里有那台 `Offer` 的一方填（回环客户端 · TS）；别的 `why` 恒 `false`。
+    Ours { why: OursFault, runs_on: bool },
 }
 
 /// 🔴 只答「我们发没发出去」，不答「对面做没做」。**拿不准一律 `Unknown`。**
@@ -216,7 +218,10 @@ pub enum OursFault {
 /// 「我们自己错」那一层的简写：`OursFault::Misuse.into()`。
 impl From<OursFault> for CallError {
     fn from(why: OursFault) -> Self {
-        CallError::Ours { why }
+        CallError::Ours {
+            why,
+            runs_on: false,
+        }
     }
 }
 
@@ -238,7 +243,10 @@ impl std::fmt::Display for CallError {
                 PeerFault::Unsupported => copy_text("rsChanWire.peer.unsupported", &[]),
                 PeerFault::Refused { .. } => copy_text("rsChanWire.peer.refused", &[]),
             }),
-            CallError::Ours { why } => f.write_str(&match why {
+            CallError::Ours { why, runs_on } => f.write_str(&match why {
+                OursFault::Cancelled if *runs_on => {
+                    copy_text("rsChanWire.ours.cancelledRunsOn", &[])
+                }
                 OursFault::Cancelled => copy_text("rsChanWire.ours.cancelled", &[]),
                 OursFault::Misuse => copy_text("rsChanWire.ours.misuse", &[]),
                 OursFault::Broken => copy_text("rsChanWire.ours.broken", &[]),
@@ -457,6 +465,11 @@ pub(crate) enum Head {
     Stop {
         id: u64,
     },
+    /// 〔NET2 · additive〕要那台机器的能力事实（`Offer`）；路由器回 `Done{id}`，体是 `Option<Offer>` 的 JSON。
+    OfferOf {
+        id: u64,
+        origin: Origin,
+    },
     // ── 路由器 → 客户端 ──
     Welcome,
     Denied,
@@ -485,6 +498,8 @@ pub(crate) enum WireErr {
     Unsupported,
     Refused,
     Ours(OursFault),
+    /// 〔NET2 · additive〕`Ours` 且那台对这一条不认撤（`CallError::Ours.runs_on`）。
+    OursRunsOn(OursFault),
 }
 
 /// `Item` 的线上形状。`Frame` 与 `Closed{by: Peer}` 的体走帧体。
@@ -516,7 +531,11 @@ pub(crate) fn err_to_wire(e: CallError) -> (WireErr, Vec<u8>) {
         CallError::Peer {
             why: PeerFault::Refused { body },
         } => (WireErr::Refused, body.0),
-        CallError::Ours { why } => (WireErr::Ours(why), Vec::new()),
+        CallError::Ours {
+            why,
+            runs_on: false,
+        } => (WireErr::Ours(why), Vec::new()),
+        CallError::Ours { why, runs_on: true } => (WireErr::OursRunsOn(why), Vec::new()),
     }
 }
 
@@ -534,9 +553,7 @@ pub(crate) fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
                 reach,
                 why,
             },
-            None => CallError::Ours {
-                why: OursFault::Broken,
-            },
+            None => OursFault::Broken.into(),
         },
         WireErr::Unsupported => CallError::Peer {
             why: PeerFault::Unsupported,
@@ -544,7 +561,8 @@ pub(crate) fn err_from_wire(w: WireErr, body: Vec<u8>) -> CallError {
         WireErr::Refused => CallError::Peer {
             why: PeerFault::Refused { body: Body(body) },
         },
-        WireErr::Ours(why) => CallError::Ours { why },
+        WireErr::Ours(why) => why.into(),
+        WireErr::OursRunsOn(why) => CallError::Ours { why, runs_on: true },
     }
 }
 

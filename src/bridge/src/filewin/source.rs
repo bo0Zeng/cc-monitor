@@ -1117,7 +1117,9 @@ pub fn said(cmd: &str, e: &crate::chan::wire::CallError) -> String {
                 ],
             )
         }
-        CallError::Ours { why } => match why {
+        CallError::Ours { why, runs_on } => match why {
+            // 〔NET2〕那台对这一条不认撤 ⇒ 说它可能还在跑（`05 §3.3.3`）。
+            OursFault::Cancelled if *runs_on => copy_text("rsChanWire.ours.cancelledRunsOn", &[]),
             OursFault::Cancelled => copy_text("rsFilewinSource.said.cancelled", &[]),
             OursFault::Misuse => copy_text("rsFilewinSource.said.internal", &[]),
             OursFault::Broken => copy_text("rsFilewinSource.said.badReply", &[]),

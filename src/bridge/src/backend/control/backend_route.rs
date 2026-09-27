@@ -144,9 +144,7 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             detail: text(e.to_string()),
         },
         CallError::Cancelled => Layered {
-            error: w::CallError::Ours {
-                why: w::OursFault::Cancelled,
-            },
+            error: w::OursFault::Cancelled.into(),
             detail: text(e.to_string()),
         },
         CallError::Remote { code, message } => Layered {
