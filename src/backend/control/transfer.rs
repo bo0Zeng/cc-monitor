@@ -35,6 +35,7 @@
 //!
 //! 撤 = 一面旗 ＋ 一个 `Notify`（等拨号那一段可以被当场打断）；进度 = `watch`（转发任务按变更合并，堵住时只合并不堆积）。
 
+use copy_core::copy_text;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -109,16 +110,19 @@ pub fn staging_part(key: &str) -> String {
 fn land_parts(local_path: &str) -> Result<(PathBuf, String, String), String> {
     let p = Path::new(local_path);
     if !p.is_absolute() {
-        return Err(format!("本机落点必须是绝对路径：{local_path}"));
+        return Err(copy_text(
+            "beTransfer.land.notAbsolute",
+            &[("path", local_path)],
+        ));
     }
     let name = p
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or_else(|| format!("本机落点没有文件名：{local_path}"))?
+        .ok_or_else(|| copy_text("beTransfer.land.noName", &[("path", local_path)]))?
         .to_string();
     let root = p
         .parent()
-        .ok_or_else(|| format!("本机落点没有父目录：{local_path}"))?
+        .ok_or_else(|| copy_text("beTransfer.land.noParent", &[("path", local_path)]))?
         .to_path_buf();
     let part = format!("{name}.part");
     Ok((root, name, part))
@@ -136,13 +140,23 @@ pub fn land_check(local_path: &str) -> Result<(), String> {
 fn land_open_fresh(root: &Path, part: &str) -> Result<std::fs::File, String> {
     let at = resolve_in_root(root, part)?;
     if std::fs::symlink_metadata(&at).is_ok() {
-        std::fs::remove_file(&at).map_err(|e| format!("删旧半成品 {} 失败: {e}", at.display()))?;
+        std::fs::remove_file(&at).map_err(|e| {
+            copy_text(
+                "beTransfer.land.dropPartFailed",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            )
+        })?;
     }
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&at)
-        .map_err(|e| format!("创建本地 {} 失败: {e}", at.display()))
+        .map_err(|e| {
+            copy_text(
+                "beTransfer.land.createFailed",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            )
+        })
 }
 
 /// 续传：**不原地接着写**（第三层禁「续写」那种开法：每一个写句柄都得是 `O_EXCL` 新建）⇒
@@ -153,23 +167,54 @@ fn land_carry_over(root: &Path, part: &str, keep: u64) -> Result<std::fs::File, 
     let old_name = format!("{part}.old");
     let old = resolve_in_root(root, &old_name)?;
     if std::fs::symlink_metadata(&old).is_ok() {
-        std::fs::remove_file(&old).map_err(|e| format!("删残留 {} 失败: {e}", old.display()))?;
+        std::fs::remove_file(&old).map_err(|e| {
+            copy_text(
+                "beTransfer.land.dropLeftoverFailed",
+                &[("path", &old.display().to_string()), ("e", &e.to_string())],
+            )
+        })?;
     }
-    std::fs::rename(&at, &old).map_err(|e| format!("挪开旧半成品 {} 失败: {e}", at.display()))?;
+    std::fs::rename(&at, &old).map_err(|e| {
+        copy_text(
+            "beTransfer.land.moveAsideFailed",
+            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let mut fresh = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&at)
-        .map_err(|e| format!("创建本地 {} 失败: {e}", at.display()))?;
+        .map_err(|e| {
+            copy_text(
+                "beTransfer.land.createFailed",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            )
+        })?;
     let copied = {
-        let src = std::fs::File::open(&old)
-            .map_err(|e| format!("读旧半成品 {} 失败: {e}", old.display()))?;
-        std::io::copy(&mut std::io::Read::take(src, keep), &mut fresh)
-            .map_err(|e| format!("抄旧半成品的前 {keep} 字节失败: {e}"))?
+        let src = std::fs::File::open(&old).map_err(|e| {
+            copy_text(
+                "beTransfer.land.readPartFailed",
+                &[("path", &old.display().to_string()), ("e", &e.to_string())],
+            )
+        })?;
+        std::io::copy(&mut std::io::Read::take(src, keep), &mut fresh).map_err(|e| {
+            copy_text(
+                "beTransfer.land.copyPrefixFailed",
+                &[("n", &keep.to_string()), ("e", &e.to_string())],
+            )
+        })?
     };
-    std::fs::remove_file(&old).map_err(|e| format!("删旧半成品 {} 失败: {e}", old.display()))?;
+    std::fs::remove_file(&old).map_err(|e| {
+        copy_text(
+            "beTransfer.land.dropPartFailed",
+            &[("path", &old.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
     if copied != keep {
-        return Err(format!("旧半成品只抄出 {copied} 字节（要 {keep}）"));
+        return Err(copy_text(
+            "beTransfer.land.copyPrefixShort",
+            &[("got", &copied.to_string()), ("n", &keep.to_string())],
+        ));
     }
     Ok(fresh)
 }
@@ -178,7 +223,12 @@ fn land_carry_over(root: &Path, part: &str, keep: u64) -> Result<std::fs::File, 
 fn land_commit(root: &Path, part: &str, name: &str) -> Result<(), String> {
     let from = resolve_in_root(root, part)?;
     let to = resolve_in_root(root, name)?;
-    std::fs::rename(&from, &to).map_err(|e| format!("落地 {} 失败: {e}", to.display()))
+    std::fs::rename(&from, &to).map_err(|e| {
+        copy_text(
+            "beTransfer.land.commitFailed",
+            &[("path", &to.display().to_string()), ("e", &e.to_string())],
+        )
+    })
 }
 
 /// 失败（不是撤）：删掉半成品。
@@ -287,17 +337,21 @@ pub(crate) async fn upload_to_staging(
     let total = tokio::fs::metadata(local_path)
         .await
         .map(|m| m.len())
-        .map_err(|e| format!("读本地 {local_path} 失败: {e}"))?;
-    let mut lf = tokio::fs::File::open(local_path)
-        .await
-        .map_err(|e| format!("打开本地 {local_path} 失败: {e}"))?;
+        .map_err(|e| {
+            copy_text(
+                "beTransfer.local.readFailed",
+                &[("path", local_path), ("e", &e.to_string())],
+            )
+        })?;
+    let mut lf = tokio::fs::File::open(local_path).await.map_err(|e| {
+        copy_text(
+            "beTransfer.local.openFailed",
+            &[("path", local_path), ("e", &e.to_string())],
+        )
+    })?;
     if sftp::exists(s, sftp::STAGING_ROOT).await != Some(true) {
         if sftp::exists(s, ".cc-monitor").await != Some(true) {
-            return Err(
-                "那台机器上没有 ~/.cc-monitor（后端还没部署）—— 上传要先落进它底下的暂存区，\
-                 而提交要那台机器上的后端来做"
-                    .to_string(),
-            );
+            return Err(copy_text("beTransfer.upload.notDeployed", &[]));
         }
         sftp::make_dir(s, sftp::STAGING_ROOT)
             .await
@@ -319,27 +373,47 @@ pub(crate) async fn upload_to_staging(
     // 两侧无条件 seek：尾块对拍动过 `lf` 的游标。
     rf.seek(std::io::SeekFrom::Start(resume_from))
         .await
-        .map_err(|e| format!("暂存件定位到 {resume_from} 失败: {e}"))?;
+        .map_err(|e| {
+            copy_text(
+                "beTransfer.upload.seekStagedFailed",
+                &[("n", &resume_from.to_string()), ("e", &e.to_string())],
+            )
+        })?;
     // 〔FW1〕续传：接上的那一截前缀在本机读一遍算进摘要（与发出去的那一份逐字节同源：同一个本机文件）。
     let mut digest = crate::files::ContentDigest::new();
     if resume_from > 0 {
-        lf.seek(std::io::SeekFrom::Start(0))
-            .await
-            .map_err(|e| format!("本地 {local_path} 定位到 0 失败: {e}"))?;
+        lf.seek(std::io::SeekFrom::Start(0)).await.map_err(|e| {
+            copy_text(
+                "beTransfer.local.rewindFailed",
+                &[("path", local_path), ("e", &e.to_string())],
+            )
+        })?;
         let mut left = resume_from;
         let mut buf = vec![0u8; CHUNK];
         while left > 0 {
             let want = left.min(CHUNK as u64) as usize;
-            lf.read_exact(&mut buf[..want])
-                .await
-                .map_err(|e| format!("读本地 {local_path} 的前缀失败: {e}"))?;
+            lf.read_exact(&mut buf[..want]).await.map_err(|e| {
+                copy_text(
+                    "beTransfer.local.prefixFailed",
+                    &[("path", local_path), ("e", &e.to_string())],
+                )
+            })?;
             digest.update(&buf[..want]);
             left -= want as u64;
         }
     }
     lf.seek(std::io::SeekFrom::Start(resume_from))
         .await
-        .map_err(|e| format!("本地 {local_path} 定位到 {resume_from} 失败: {e}"))?;
+        .map_err(|e| {
+            copy_text(
+                "beTransfer.local.seekFailed",
+                &[
+                    ("path", local_path),
+                    ("n", &resume_from.to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        })?;
     let core = async {
         let mut buf = vec![0u8; CHUNK];
         let mut done: u64 = resume_from;
@@ -347,18 +421,23 @@ pub(crate) async fn upload_to_staging(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err("已取消".to_string());
+                return Err(copy_text("beTransfer.run.cancelled", &[]));
             }
-            let n = lf
-                .read(&mut buf)
-                .await
-                .map_err(|e| format!("读本地失败: {e}"))?;
+            let n = lf.read(&mut buf).await.map_err(|e| {
+                copy_text(
+                    "beTransfer.upload.readLocalFailed",
+                    &[("e", &e.to_string())],
+                )
+            })?;
             if n == 0 {
                 break;
             }
-            rf.write_all(&buf[..n])
-                .await
-                .map_err(|e| format!("写暂存件失败: {e}"))?;
+            rf.write_all(&buf[..n]).await.map_err(|e| {
+                copy_text(
+                    "beTransfer.upload.writeRemoteFailed",
+                    &[("e", &e.to_string())],
+                )
+            })?;
             digest.update(&buf[..n]);
             done += n as u64;
             if done - last_report >= PROGRESS_EVERY {
@@ -368,7 +447,7 @@ pub(crate) async fn upload_to_staging(
         }
         rf.flush()
             .await
-            .map_err(|e| format!("flush 暂存件失败（写未确认）: {e}"))?;
+            .map_err(|e| copy_text("beTransfer.upload.flushFailed", &[("e", &e.to_string())]))?;
         Ok(done)
     }
     .await;
@@ -439,7 +518,16 @@ pub(crate) async fn download_to_local(
     if rf_at != Some(resume_from) {
         rf.seek(std::io::SeekFrom::Start(resume_from))
             .await
-            .map_err(|e| format!("远端 {remote_path} 定位到 {resume_from} 失败: {e}"))?;
+            .map_err(|e| {
+                copy_text(
+                    "beTransfer.download.seekFailed",
+                    &[
+                        ("path", remote_path),
+                        ("n", &resume_from.to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                )
+            })?;
     }
     let core = async {
         let mut buf = vec![0u8; CHUNK];
@@ -448,18 +536,23 @@ pub(crate) async fn download_to_local(
         on_progress(done, total);
         loop {
             if cancel.is_set() {
-                return Err("已取消".to_string());
+                return Err(copy_text("beTransfer.run.cancelled", &[]));
             }
-            let n = rf
-                .read(&mut buf)
-                .await
-                .map_err(|e| format!("读远端失败: {e}"))?;
+            let n = rf.read(&mut buf).await.map_err(|e| {
+                copy_text(
+                    "beTransfer.download.readRemoteFailed",
+                    &[("e", &e.to_string())],
+                )
+            })?;
             if n == 0 {
                 break;
             }
-            lf.write_all(&buf[..n])
-                .await
-                .map_err(|e| format!("写本地失败: {e}"))?;
+            lf.write_all(&buf[..n]).await.map_err(|e| {
+                copy_text(
+                    "beTransfer.download.writeLocalFailed",
+                    &[("e", &e.to_string())],
+                )
+            })?;
             done += n as u64;
             if done - last_report >= PROGRESS_EVERY {
                 last_report = done;
@@ -468,7 +561,7 @@ pub(crate) async fn download_to_local(
         }
         lf.flush()
             .await
-            .map_err(|e| format!("flush 本地失败: {e}"))?;
+            .map_err(|e| copy_text("beTransfer.download.flushFailed", &[("e", &e.to_string())]))?;
         Ok(done)
     }
     .await;
@@ -554,13 +647,15 @@ fn err(id: &str, code: &str, message: &str) -> Frame {
 fn text<'a>(args: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
     args.get(k)
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| format!("少了 `{k}`，或者它不是一个字符串"))
+        .ok_or_else(|| {
+            crate::common::contract::malformed(&format!("missing `{k}` or not a string"))
+        })
 }
 
 fn dial_of(args: &serde_json::Value) -> Result<Dial, String> {
     let d = args
         .get("dial")
-        .ok_or_else(|| "少了 `dial`（一份拨号请求）".to_string())?;
+        .ok_or_else(|| crate::common::contract::malformed("missing `dial` (a dial request)"))?;
     Dial::parse(d)
 }
 
@@ -588,7 +683,7 @@ impl Desk {
             other => err(
                 id,
                 "unknown_command",
-                &format!("`{other}` 不是传输台的命令"),
+                &crate::common::contract::malformed(&format!("unknown transfer command `{other}`")),
             ),
         }
     }
@@ -604,7 +699,10 @@ impl Desk {
             return Err(err(
                 id,
                 "too_many_transfers",
-                &format!("这条连接上已经有 {MAX_TICKETS_PER_CONNECTION} 趟传输在册"),
+                &copy_text(
+                    "beTransfer.register.tooMany",
+                    &[("max", &MAX_TICKETS_PER_CONNECTION.to_string())],
+                ),
             ));
         }
         if let Some(k) = &t.key {
@@ -612,7 +710,7 @@ impl Desk {
                 return Err(err(
                     id,
                     "busy",
-                    "同一份文件正在往那台机器上传（同一个暂存件），等它收场再来",
+                    &copy_text("beTransfer.register.sameFile", &[]),
                 ));
             }
         }
@@ -629,10 +727,23 @@ impl Desk {
         };
         let meta = match std::fs::metadata(local) {
             Ok(m) => m,
-            Err(e) => return err(id, "io_failed", &format!("读本地 {local} 失败: {e}")),
+            Err(e) => {
+                return err(
+                    id,
+                    "io_failed",
+                    &copy_text(
+                        "beTransfer.local.readFailed",
+                        &[("path", local), ("e", &e.to_string())],
+                    ),
+                )
+            }
         };
         if !meta.is_file() {
-            return err(id, "bad_args", &format!("{local} 不是一份普通文件"));
+            return err(
+                id,
+                "bad_args",
+                &copy_text("beTransfer.local.notRegular", &[("path", local)]),
+            );
         }
         let mtime_ns = meta
             .modified()
@@ -709,13 +820,17 @@ impl Desk {
         let (dial, job, cancel) = {
             let mut g = lock(&self.tickets);
             let Some(t) = g.get_mut(&tid) else {
-                return err(id, "no_such_transfer", &format!("没有这一趟传输（{tid}）"));
+                return err(
+                    id,
+                    "no_such_transfer",
+                    &copy_text("beTransfer.start.unknown", &[("tid", &tid.to_string())]),
+                );
             };
             let Some(job) = t.job.take() else {
                 return err(
                     id,
                     "already_started",
-                    &format!("这一趟传输已经起跑了（{tid}）"),
+                    &copy_text("beTransfer.start.already", &[("tid", &tid.to_string())]),
                 );
             };
             (t.dial.clone(), job, Arc::clone(&t.cancel))
@@ -793,7 +908,7 @@ async fn run(
 ) -> Result<(u64, Option<String>), String> {
     let session = tokio::select! {
         s = sftp::open_for_transfer(dial) => s?,
-        _ = cancel.wait() => return Err("已取消".to_string()),
+        _ = cancel.wait() => return Err(copy_text("beTransfer.run.cancelled", &[])),
     };
     match job {
         Job::Upload { local, key } => upload_to_staging(&session, &local, &key, cancel, sink)

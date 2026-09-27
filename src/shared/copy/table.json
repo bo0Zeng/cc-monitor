@@ -9,6 +9,161 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beTransfer.land.notAbsolute": {
+      "kind": "error",
+      "zh": "本机目标路径必须是绝对路径：{path}",
+      "args": ["path"]
+    },
+    "beTransfer.land.noName": {
+      "kind": "error",
+      "zh": "本机目标路径没有文件名：{path}",
+      "args": ["path"]
+    },
+    "beTransfer.land.noParent": {
+      "kind": "error",
+      "zh": "本机目标路径没有上一级目录：{path}",
+      "args": ["path"]
+    },
+    "beTransfer.land.dropPartFailed": {
+      "kind": "error",
+      "zh": "删掉没下载完的旧文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.createFailed": {
+      "kind": "error",
+      "zh": "创建本地 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.dropLeftoverFailed": {
+      "kind": "error",
+      "zh": "删掉上次留下的 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.moveAsideFailed": {
+      "kind": "error",
+      "zh": "挪开没下载完的旧文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.readPartFailed": {
+      "kind": "error",
+      "zh": "读没下载完的旧文件 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.land.copyPrefixFailed": {
+      "kind": "error",
+      "zh": "接着下载时抄回前 {n} 字节失败：{e}",
+      "args": ["n", "e"]
+    },
+    "beTransfer.land.copyPrefixShort": {
+      "kind": "error",
+      "zh": "接着下载时只抄回 {got} 字节，应有 {n} 字节",
+      "args": ["got", "n"]
+    },
+    "beTransfer.land.commitFailed": {
+      "kind": "error",
+      "zh": "把下载好的文件放到 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.readFailed": {
+      "kind": "error",
+      "zh": "读本地 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.openFailed": {
+      "kind": "error",
+      "zh": "打开本地 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.upload.notDeployed": {
+      "kind": "error",
+      "zh": "那台机器上还没部署后端，传不了文件",
+      "args": []
+    },
+    "beTransfer.upload.seekStagedFailed": {
+      "kind": "error",
+      "zh": "接着上传时定位到第 {n} 字节失败：{e}",
+      "args": ["n", "e"]
+    },
+    "beTransfer.local.rewindFailed": {
+      "kind": "error",
+      "zh": "回到本地 {path} 开头失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.prefixFailed": {
+      "kind": "error",
+      "zh": "读本地 {path} 已传过的那一段失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beTransfer.local.seekFailed": {
+      "kind": "error",
+      "zh": "本地 {path} 定位到第 {n} 字节失败：{e}",
+      "args": ["path", "n", "e"]
+    },
+    "beTransfer.run.cancelled": {
+      "kind": "error",
+      "zh": "已取消",
+      "args": []
+    },
+    "beTransfer.upload.readLocalFailed": {
+      "kind": "error",
+      "zh": "读本地文件失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.upload.writeRemoteFailed": {
+      "kind": "error",
+      "zh": "写到那台机器上失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.upload.flushFailed": {
+      "kind": "error",
+      "zh": "写到那台机器上的内容没有得到确认：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.download.seekFailed": {
+      "kind": "error",
+      "zh": "远端 {path} 定位到第 {n} 字节失败：{e}",
+      "args": ["path", "n", "e"]
+    },
+    "beTransfer.download.readRemoteFailed": {
+      "kind": "error",
+      "zh": "读远端文件失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.download.writeLocalFailed": {
+      "kind": "error",
+      "zh": "写本地文件失败：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.download.flushFailed": {
+      "kind": "error",
+      "zh": "写本地文件没有写完：{e}",
+      "args": ["e"]
+    },
+    "beTransfer.register.tooMany": {
+      "kind": "error",
+      "zh": "同时进行的传输太多了，上限 {max} 趟",
+      "args": ["max"]
+    },
+    "beTransfer.register.sameFile": {
+      "kind": "error",
+      "zh": "同一份文件正在往那台机器上传，等它传完再来",
+      "args": []
+    },
+    "beTransfer.local.notRegular": {
+      "kind": "error",
+      "zh": "{path} 不是普通文件",
+      "args": ["path"]
+    },
+    "beTransfer.start.unknown": {
+      "kind": "error",
+      "zh": "没有这一趟传输（{tid}）",
+      "args": ["tid"]
+    },
+    "beTransfer.start.already": {
+      "kind": "error",
+      "zh": "这一趟传输已经开始了（{tid}）",
+      "args": ["tid"]
+    },
     "beFilesCommit.upload.corruptRemoved": {
       "kind": "body",
       "zh": "坏的临时文件已删掉",
