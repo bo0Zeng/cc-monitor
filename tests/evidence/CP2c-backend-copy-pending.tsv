@@ -1,7 +1,4 @@
 文件	理由
-src/backend/accounts/upstream/file_face.rs	GP1 在改（本机 apikey 写者改成常驻后端），留最后一批
-src/backend/agents/claudecode/assets.rs	SU1 在改（skill 卸载），留最后一批
-src/backend/agents/claudecode/paths.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/asset_catalog.rs	SU1 在改（skill 卸载），留最后一批
 src/backend/control/files_commit.rs	FN1 在改（去数据围栏），留最后一批
 src/backend/control/files_write.rs	FN1 在改（去数据围栏），留最后一批
