@@ -21,7 +21,9 @@
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SessionAccount } from "./accounts";
-import { withAccount } from "./launch-account";
+import { localFollowPlan, withAccount } from "./launch-account";
+import { fetchAccounts } from "./account-reads";
+import { resolveAccount } from "./accounts";
 import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
@@ -201,6 +203,46 @@ export class TabSessionActions {
       }),
     );
     return false;
+  }
+
+  /**
+   * 〔RESYNC · `99 §2.1` ㉟①〕那台「重新对齐」过 ⇒ 它上面的固定条逐条问一次记录还在不在（与 resume 前那一问同一个
+   * `history-record`，查的是 resume 会用的那棵账号树，解析规则同 `withAccount` 跟随 / `localFollowPlan`）。
+   * 没了的**标出来**（`markRecord`）、说一句；**不自动摘** —— 点那条提示才摘（`unpin`）。问不到 / 说不清查哪棵树 ⇒ 不标。
+   */
+  async flagPinsWithoutRecord(origin: string, pinned: Tab[], unpin: (sid: string) => void): Promise<void> {
+    if (pinned.length === 0) return;
+    const local = isLocalOrigin(origin);
+    const state = local ? undefined : await fetchAccounts(origin).catch(() => undefined);
+    const pins = local ? undefined : await lastAccounts().catch(() => undefined);
+    const gone: Tab[] = [];
+    for (const tab of pinned) {
+      let configDir: string | undefined;
+      if (local) {
+        const plan = localFollowPlan(tab.sessionId);
+        if (plan.kind === "pinGone") continue;
+        configDir = plan.kind === "named" ? plan.configDir : undefined;
+      } else {
+        const lastAccount = pins?.[tab.sessionId] ?? null;
+        const r = state ? resolveAccount(state, { follow: { lastAccount } }) : lastAccount ? null : ({ kind: "base" } as const);
+        if (r === null || r.kind === "unavailable") continue;
+        configDir = r.kind === "account" ? r.configDir : undefined;
+      }
+      let probe: RecordProbe;
+      try {
+        probe = await probeSessionRecord(origin, tab.sessionId, configDir);
+      } catch {
+        continue;
+      }
+      this.host.markRecord(tab.sessionId, probe.present);
+      if (!probe.present) gone.push(tab);
+    }
+    if (gone.length === 0) return;
+    showActionFailureToast(
+      copyText("sessionState.pinGone.title"),
+      copyText("sessionState.pinGone.body", { n: gone.length, names: gone.map((t) => t.title).join(", ") }),
+      { level: "info", durationMs: 20_000, onClick: () => gone.forEach((t) => unpin(t.sessionId)) },
+    );
   }
 
   /**

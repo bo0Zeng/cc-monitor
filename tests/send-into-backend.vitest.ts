@@ -29,6 +29,7 @@ vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口）；`remote-launch-run.ts` 不再读行为配置。
 
 import { runRemoteResumeIntoExistingTmux } from "../src/remote-launch-run";
+import { showActionFailureToast } from "../src/error-toast";
 import { renderLaunchPayloadStub } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
@@ -129,6 +130,24 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
       launchedCmd(),
       "回落了 —— 那条整串没有 §34 的门，等于把一次门拒绝洗成另一条路的成功",
     ).toBeUndefined();
+  });
+
+  // 〔RESYNC · `99 §2.1` ㉒〕拒绝提示带「对齐后重试」只在**关卡 2** 拒的那一形；「拿不准执行没有」那一形不带
+  //   （重试会把载荷再键一遍）。两形都照旧不回落。
+  it("★ ②d 关卡 2 拒的 ⇒ 提示可点（对齐后重试）；拿不准执行没有 ⇒ 提示不可点", async () => {
+    const toast = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
+    const clickable = async (reply: unknown): Promise<boolean> => {
+      toast.mockClear();
+      sendIntoReply = reply;
+      expect(await runRemoteResumeIntoExistingTmux("h1", SID, NAME, "claude")).toBe(false);
+      expect(launchedCmd()).toBeUndefined();
+      expect(toast).toHaveBeenCalledTimes(1);
+      return typeof (toast.mock.calls[0][2] as { onClick?: unknown } | undefined)?.onClick === "function";
+    };
+    expect([
+      await clickable({ typed: false, mayFallBack: false, code: "wrong_owner", reason: "不是本工具的会话" }),
+      await clickable({ typed: false, mayFallBack: false, reason: "拿不准" }),
+    ]).toEqual([true, false]);
   });
 
   it("★ ②c 读不出 mayFallBack ⇒ **按 fail-closed 当成不许回落**", async () => {

@@ -955,6 +955,14 @@ export class TabManager {
    * 不在 ⇒ 已结束落到「记录没了」；在 ⇒ 「记录没了」翻回已结束（记录回来了，例：同步盘补齐）。
    * 别的态不动（`nextState`：可重连的终端还在，接得回去；活的不走 resume）。
    */
+  /** 〔RESYNC · `99 §2.1` ㉟①〕那台「重新对齐」过 ⇒ 标出记录没了的固定条、说一句，点了才摘（本体在 `actions`）。 */
+  flagPinsWithoutRecord(origin: string): Promise<void> {
+    const pinned = [...this.store.tabs.values()].filter((t) => t.pinned && t.origin === origin);
+    return this.actions.flagPinsWithoutRecord(origin, pinned, (sid) => {
+      if (this.store.tabs.get(sid)?.pinned) this.togglePin(sid);
+    });
+  }
+
   markRecord(sessionId: string, present: boolean): void {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return;

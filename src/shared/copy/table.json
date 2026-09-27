@@ -18891,7 +18891,7 @@
     },
     "resync.done.diff": {
       "kind": "body",
-      "zh": "补上 {added} 个会话，移除 {removed} 个已结束的，重新认出 {retagged} 个会话。",
+      "zh": "补上 {added} 个会话，去掉 {removed} 个，重新认出 {retagged} 个。",
       "args": ["added", "removed", "retagged"]
     },
     "resync.done.same": {
@@ -18913,6 +18913,16 @@
       "kind": "error",
       "zh": "对齐后重试没有成功",
       "args": []
+    },
+    "sessionState.pinGone.title": {
+      "kind": "title",
+      "zh": "固定的会话找不到记录了",
+      "args": []
+    },
+    "sessionState.pinGone.body": {
+      "kind": "body",
+      "zh": "这台上有 {n} 个固定的会话找不到记录：{names}。没有自动摘掉；点这条提示把它们从固定里摘掉。",
+      "args": ["n", "names"]
     }
   }
 }
