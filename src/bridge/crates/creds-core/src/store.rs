@@ -162,12 +162,11 @@ impl std::fmt::Display for StoreError {
         match self {
             StoreError::NotJson(e) => write!(
                 f,
-                "凭据文件不是合法 JSON（{e}）。它是人能手编的明文 JSON —— \
-                 多半是少了逗号或引号。**没有动它**，修好再试。"
+                "{}", copy_core::copy_text("credsStore.error.notJson", &[("e", &e.to_string())])
             ),
             StoreError::NotAnObject => write!(
                 f,
-                "凭据文件的顶层不是一个 JSON 对象。正确形状见模板：{TEMPLATE}"
+                "{}", copy_core::copy_text("credsStore.error.notObject", &[("template", TEMPLATE)])
             ),
         }
     }

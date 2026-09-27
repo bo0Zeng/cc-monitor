@@ -8,15 +8,17 @@
 //! 非 unix 那一臂是 `Err`：脱离那条载体今天只在 Linux 上有（monitor 那侧 `spawn_detached` 的非 Linux 臂就回 `Err`），
 //! Windows 本机后端走被监护的 stdio 载体、stderr 进 monitor 日志 —— 这一格答不上来，照实说（`fallback_guard` 那条纪律）。
 
+use copy_core::copy_text;
+
 /// 让 fd 2 指向 `f` 那份文件（原来的 fd 2 被原子地替掉）。`f` 之后可以丢：fd 2 持着同一个打开的文件。
 #[cfg(unix)]
 pub(crate) fn point_stderr_at(f: &std::fs::File) -> Result<(), String> {
     use std::os::fd::AsRawFd;
     // SAFETY: `f` 在本函数里活着，它的 fd 有效；`dup2` 只把它复制到 2，不动 `f` 本身。
     if unsafe { libc::dup2(f.as_raw_fd(), libc::STDERR_FILENO) } < 0 {
-        return Err(format!(
-            "换不了 stderr：{}",
-            std::io::Error::last_os_error()
+        return Err(copy_text(
+            "beStderrFd.point.dupFailed",
+            &[("e", &std::io::Error::last_os_error().to_string())],
         ));
     }
     Ok(())
@@ -36,7 +38,7 @@ pub(crate) fn stderr_len() -> Option<u64> {
 /// 非 unix：没有这一格（见模块头注）。
 #[cfg(not(unix))]
 pub(crate) fn point_stderr_at(_f: &std::fs::File) -> Result<(), String> {
-    Err("这台机器不是 unix：不知道怎么把 stderr 换到一份文件上，没换".to_string())
+    Err(copy_text("beStderrFd.point.notUnix", &[]))
 }
 
 /// 非 unix：没有这一格（见模块头注）。

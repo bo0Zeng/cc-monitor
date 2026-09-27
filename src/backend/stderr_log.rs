@@ -32,6 +32,7 @@
 //! - 远端后端的 stderr（`15 §S1` 表后两行）：本件不接。
 //! - 真 Windows：非 unix 臂回 `Failed`。
 
+use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -102,13 +103,29 @@ impl<T: Target> Roller<T> {
         let moved = match std::fs::rename(&self.cur, &self.old) {
             Ok(()) => true,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-            Err(e) => return Err(format!("挪不动上一份（{}）：{e}", self.cur.display())),
+            Err(e) => {
+                return Err(copy_text(
+                    "beStderrLog.roll.moveFailed",
+                    &[
+                        ("path", &self.cur.display().to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                ))
+            }
         };
         let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&self.cur)
-            .map_err(|e| format!("建不了 {}：{e}", self.cur.display()))?;
+            .map_err(|e| {
+                copy_text(
+                    "beStderrLog.roll.createFailed",
+                    &[
+                        ("path", &self.cur.display().to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                )
+            })?;
         if moved {
             let _ = f.write_all(roll_note(&self.old).as_bytes());
         }
