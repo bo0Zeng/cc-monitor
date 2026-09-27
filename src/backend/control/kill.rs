@@ -27,6 +27,7 @@
 //! 命令级（本模块 / `gate`）：`invalid_args` · `no_tmux` · `no_such_session` ·
 //! `wrong_owner`（Gate 2 不通过）· `too_many_windows`（Gate 3 不通过）· `kill_failed`。
 
+use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
@@ -43,7 +44,10 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
         .as_object()
         .and_then(|o| o.get("name"))
         .and_then(|v| v.as_str())
-        .ok_or(("invalid_args", "缺 `name`".to_string()))?;
+        .ok_or((
+            "invalid_args",
+            crate::common::contract::malformed("missing `name`"),
+        ))?;
     admit_existing_name(name)?;
     Ok(name.to_string())
 }
@@ -56,16 +60,22 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
     match gate_core::existing_tmux_name_issue(name) {
         None if name.contains(':') => Err((
             "invalid_args",
-            format!("`name` 不许含 `:`（它是 tmux 目标语法）：{name:?}"),
+            copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),
         )),
         None => Ok(()),
-        Some(I::Empty) => Err(("invalid_args", "`name` 为空".to_string())),
-        Some(I::Control(_)) => Err(("invalid_args", "`name` 含控制字符".to_string())),
+        Some(I::Empty) => Err(("invalid_args", copy_text("beKill.name.empty", &[]))),
+        Some(I::Control(_)) => Err(("invalid_args", copy_text("beKill.name.control", &[]))),
         Some(I::Deceptive(c)) => Err((
             "invalid_args",
-            format!("`name` 含视觉欺骗字符 U+{:04X}", c as u32),
+            copy_text(
+                "beKill.name.deceptive",
+                &[("cp", &format!("U+{:04X}", c as u32))],
+            ),
         )),
-        Some(other) => Err(("invalid_args", format!("`name` 不合规：{other:?}"))),
+        Some(other) => Err((
+            "invalid_args",
+            crate::common::contract::malformed(&format!("unexpected name issue: {other:?}")),
+        )),
     }
 }
 
@@ -87,7 +97,7 @@ pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
         .map_err(|e| {
             (
                 "no_tmux",
-                format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
+                copy_text("beKill.run.noTmux", &[("e", &e.to_string())]),
             )
         })?;
     if out.status.success() {
@@ -96,9 +106,9 @@ pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
     }
     Err((
         "kill_failed",
-        format!(
-            "kill-session 失败（会话已过门但没杀成）：{}",
-            String::from_utf8_lossy(&out.stderr).trim()
+        copy_text(
+            "beKill.run.failed",
+            &[("e", String::from_utf8_lossy(&out.stderr).trim())],
         ),
     ))
 }

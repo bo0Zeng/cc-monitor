@@ -50,6 +50,7 @@
 //! （用户以为在复用那个 idle 会话，实际上被丢进一个新建的空 shell）。
 //! 由 `send_into_never_creates_a_session` 钉住。
 
+use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
 /// 载荷 / 名字 / cwd 的长度上限。取值同 monitor 侧 `launch.rs::MAX_REMOTE_CMD` 的量级 ——
@@ -154,30 +155,41 @@ pub(crate) fn exact_target(name: &str) -> String {
 
 /// 从入方向的 `args` 解析 + **形状校验**。见模块头注：这不是安全边界。
 pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
-    let obj = args
-        .as_object()
-        .ok_or(("invalid_args", "args 必须是对象".to_string()))?;
+    let obj = args.as_object().ok_or((
+        "invalid_args",
+        crate::common::contract::malformed("args must be an object"),
+    ))?;
 
     let get_str = |k: &str| -> Option<&str> { obj.get(k).and_then(|v| v.as_str()) };
 
     let mode_raw = get_str("mode").ok_or((
         "invalid_args",
-        "缺 `mode`（create-or-attach / send-into / send-keys-raw）".to_string(),
+        crate::common::contract::malformed(
+            "missing `mode` (create-or-attach / send-into / send-keys-raw)",
+        ),
     ))?;
     let mode = Mode::parse(mode_raw).ok_or((
         "invalid_args",
-        format!("未知 mode `{mode_raw}` —— 只有 create-or-attach / send-into / send-keys-raw；attach 是平面 ③，不归 backend"),
+        crate::common::contract::malformed(&format!(
+            "unknown mode `{mode_raw}`; expected create-or-attach / send-into / send-keys-raw"
+        )),
     ))?;
 
     let name = get_str("name")
-        .ok_or(("invalid_args", "缺 `name`".to_string()))?
+        .ok_or((
+            "invalid_args",
+            crate::common::contract::malformed("missing `name`"),
+        ))?
         .to_string();
     // 〔TAIL · DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate-core`）；长度照旧。
     super::kill::admit_existing_name(&name)?;
     check_len("name", &name)?;
 
     let payload = get_str("payload")
-        .ok_or(("invalid_args", "缺 `payload`".to_string()))?
+        .ok_or((
+            "invalid_args",
+            crate::common::contract::malformed("missing `payload`"),
+        ))?
         .to_string();
     // ★★ 🔴 〔`K-P2` `F` 拍 09-04〕**`create-or-attach` 的 `payload` 放行 `\n` / `\t`，
     //    别的模式一个字节不动。** 这是 `§19 裁六` 登记的那条「真搬那拍的硬前置」。
@@ -231,7 +243,9 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         {
             return Err((
                 "invalid_args",
-                format!("`ccm_sid` 只许 [A-Za-z0-9_-]：{s:?}"),
+                crate::common::contract::malformed(&format!(
+                    "`ccm_sid` must match [A-Za-z0-9_-]: {s:?}"
+                )),
             ));
         }
     }
@@ -245,7 +259,12 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            return Err(("invalid_args", format!("`agent` 只许 [A-Za-z0-9_-]：{a:?}")));
+            return Err((
+                "invalid_args",
+                crate::common::contract::malformed(&format!(
+                    "`agent` must match [A-Za-z0-9_-]: {a:?}"
+                )),
+            ));
         }
     }
 
@@ -261,8 +280,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         _ => {
             return Err((
                 "invalid_args",
-                "`width` 与 `height` 必须同时给 —— 只给一半时 tmux 会拿默认值补另一半，\
-                 那是「写了个修饰、看起来生效了、其实只生效了一半」"
+                crate::common::contract::malformed("`width` and `height` must be given together")
                     .to_string(),
             ))
         }
@@ -289,7 +307,9 @@ fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.is_empty() || v.len() > 4 || !v.chars().all(|c| c.is_ascii_digit()) {
         return Err((
             "invalid_args",
-            format!("`{what}` 只许 1–4 位十进制数字：{v:?}"),
+            crate::common::contract::malformed(&format!(
+                "`{what}` must be 1-4 decimal digits: {v:?}"
+            )),
         ));
     }
     Ok(())
@@ -297,12 +317,18 @@ fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
 
 fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.trim().is_empty() {
-        return Err(("invalid_args", format!("`{what}` 为空")));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed(&format!("`{what}` is empty")),
+        ));
     }
     check_len(what, v)?;
     // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
     if v.chars().any(char::is_control) {
-        return Err(("invalid_args", format!("`{what}` 含控制字符")));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed(&format!("`{what}` contains a control character")),
+        ));
     }
     Ok(())
 }
@@ -311,7 +337,10 @@ fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.len() > MAX_FIELD_BYTES {
         return Err((
             "invalid_args",
-            format!("`{what}` 过长（{} > {MAX_FIELD_BYTES}）", v.len()),
+            crate::common::contract::malformed(&format!(
+                "`{what}` is too long ({} > {MAX_FIELD_BYTES})",
+                v.len()
+            )),
         ));
     }
     Ok(())
@@ -329,12 +358,18 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
     // 这样「空」「过长」「别的控制字符」三条判法**逐字复用**，且长度判的仍是原串
     // （下面那次 `check_field` 收到的是抹过的串，只用来判控制字符）。
     if v.trim().is_empty() {
-        return Err(("invalid_args", "`payload` 为空".to_string()));
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("`payload` is empty"),
+        ));
     }
     if v.len() > MAX_FIELD_BYTES {
         return Err((
             "invalid_args",
-            format!("`payload` 过长（{} > {MAX_FIELD_BYTES}）", v.len()),
+            crate::common::contract::malformed(&format!(
+                "`payload` is too long ({} > {MAX_FIELD_BYTES})",
+                v.len()
+            )),
         ));
     }
     if let Some(bad) = v
@@ -343,11 +378,10 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
     {
         return Err((
             "invalid_args",
-            format!(
-                "`payload` 含 `\\n` / `\\t` 之外的控制字符（U+{:04X}）—— \
-                 那些不是「键」，是会改掉终端状态的东西",
+            crate::common::contract::malformed(&format!(
+                "`payload` has a control character other than \\n / \\t (U+{:04X})",
                 bad as u32
-            ),
+            )),
         ));
     }
     Ok(())
@@ -370,7 +404,7 @@ pub(crate) fn said_of(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
     let text = text.trim();
     if text.is_empty() {
-        return "（tmux 没说原因）".to_string();
+        return copy_text("beLaunch.said.silent", &[]);
     }
     if text.len() <= SAID_CAP {
         return text.to_string();
@@ -406,7 +440,7 @@ fn ran(mut cmd: Command, args: &[&str]) -> Result<Ran, CmdErr> {
         }),
         Err(e) => Err((
             "no_tmux",
-            format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
+            copy_text("beLaunch.run.noTmux", &[("e", &e.to_string())]),
         )),
     }
 }
@@ -552,9 +586,9 @@ fn run_with(
                 // 〔W5-VIS · S4〕带上 tmux 自己说的原因（cwd 不在 / 名字不合法 / server 起不来 …），不再让人猜。
                 return Err((
                     "create_failed",
-                    format!(
-                        "建不出会话 {:?}，且它也不存在。tmux 说：{}",
-                        req.name, made.said
+                    copy_text(
+                        "beLaunch.create.failed",
+                        &[("name", &format!("{:?}", req.name)), ("said", &made.said)],
                     ),
                 ));
             }
@@ -666,9 +700,9 @@ fn type_payload(
     }
     Err((
         "typed_unconfirmed",
-        format!(
-            "会话 {target:?} 在，但 send-keys 失败（tmux 说：{}）—— 载荷未必落进去了；别重试新建",
-            r.said
+        copy_text(
+            "beLaunch.type.failed",
+            &[("target", &format!("{target:?}")), ("said", &r.said)],
         ),
     ))
 }
@@ -691,9 +725,9 @@ fn type_keys_raw(
     }
     Err((
         "typed_unconfirmed",
-        format!(
-            "会话 {target:?} 在，但 send-keys（裸键）失败（tmux 说：{}）—— 键未必落进去了",
-            r.said
+        copy_text(
+            "beLaunch.typeRaw.failed",
+            &[("target", &format!("{target:?}")), ("said", &r.said)],
         ),
     ))
 }

@@ -9,6 +9,121 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beCapturePane.run.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beCapturePane.classify.noServer": {
+      "kind": "error",
+      "zh": "这台机器上没有在跑的 tmux，抓不到画面。tmux 的原话：{tail}",
+      "args": ["tail"]
+    },
+    "beCapturePane.classify.noTarget": {
+      "kind": "error",
+      "zh": "这个 tmux 会话不存在，抓不到画面。tmux 的原话：{tail}",
+      "args": ["tail"]
+    },
+    "beCapturePane.classify.failed": {
+      "kind": "error",
+      "zh": "抓取画面失败，退出码 {status}。tmux 的原话：{tail}",
+      "args": ["status", "tail"]
+    },
+    "beCapturePane.cli.noName": {
+      "kind": "error",
+      "zh": "缺会话名。要给一个 tmux 会话名。",
+      "args": []
+    },
+    "beCapturePane.cli.extra": {
+      "kind": "error",
+      "zh": "多了参数 {extra}。只收一个会话名。",
+      "args": ["extra"]
+    },
+    "beGate.probe.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beGate.admit.noSession": {
+      "kind": "error",
+      "zh": "会话 {name} 不存在，没有发送。",
+      "args": ["name"]
+    },
+    "beGate.admit.notOurs": {
+      "kind": "error",
+      "zh": "会话 {name} 不是 cc-monitor 起的，没有往里发送。",
+      "args": ["name"]
+    },
+    "beGate.admitDestructive.noSession": {
+      "kind": "error",
+      "zh": "会话 {name} 不存在，没有可结束的。",
+      "args": ["name"]
+    },
+    "beGate.admitDestructive.notOurs": {
+      "kind": "error",
+      "zh": "会话 {name} 不是 cc-monitor 起的，没有结束它。",
+      "args": ["name"]
+    },
+    "beGate.admitDestructive.manyWindows": {
+      "kind": "error",
+      "zh": "会话 {name} 有 {n} 个窗口，没有结束它。里面可能开着别的东西，到那个 tmux 会话里自己处理。",
+      "args": ["name", "n"]
+    },
+    "beKill.name.colon": {
+      "kind": "error",
+      "zh": "会话名里不能有冒号：{name}",
+      "args": ["name"]
+    },
+    "beKill.name.empty": {
+      "kind": "error",
+      "zh": "会话名是空的。",
+      "args": []
+    },
+    "beKill.name.control": {
+      "kind": "error",
+      "zh": "会话名里有控制字符。",
+      "args": []
+    },
+    "beKill.name.deceptive": {
+      "kind": "error",
+      "zh": "会话名里有看起来像空格或会反转文字方向的字符 {cp}。",
+      "args": ["cp"]
+    },
+    "beKill.run.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beKill.run.failed": {
+      "kind": "error",
+      "zh": "结束会话失败：{e}",
+      "args": ["e"]
+    },
+    "beLaunch.said.silent": {
+      "kind": "body",
+      "zh": "tmux 没说原因",
+      "args": []
+    },
+    "beLaunch.run.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beLaunch.create.failed": {
+      "kind": "error",
+      "zh": "建不出会话 {name}，它也不存在。tmux 的原话：{said}",
+      "args": ["name", "said"]
+    },
+    "beLaunch.type.failed": {
+      "kind": "error",
+      "zh": "往会话 {target} 发送失败，内容可能没有进去。tmux 的原话：{said}",
+      "args": ["target", "said"]
+    },
+    "beLaunch.typeRaw.failed": {
+      "kind": "error",
+      "zh": "往会话 {target} 发送按键失败，按键可能没有进去。tmux 的原话：{said}",
+      "args": ["target", "said"]
+    },
     "beStderrFd.point.dupFailed": {
       "kind": "error",
       "zh": "错误输出改不到日志文件：{e}",

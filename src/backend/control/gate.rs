@@ -33,6 +33,7 @@
 //! 所以「目标在不在」的判据是**输出为空**，不是退出码。这与 monitor 侧
 //! `[ -z "$info" ] → CCM_NO_SESSION` 是同一条判据，刻意保持一致。
 
+use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] 同型。
@@ -170,7 +171,7 @@ pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
         .map_err(|e| {
             (
                 "no_tmux",
-                format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
+                copy_text("beGate.probe.noTmux", &[("e", &e.to_string())]),
             )
         })?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -229,18 +230,14 @@ pub(crate) fn admit(name: &str, target: &str) -> Result<String, CmdErr> {
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
-            format!("会话 {name:?} 不存在；send-into 只往**已存在**的会话键入，不新建"),
+            copy_text("beGate.admit.noSession", &[("name", &format!("{name:?}"))]),
         ));
     };
     let verdict = gate_core::gate2(name, Some(&p.ccm_sid));
     if !verdict.allowed() {
         return Err((
             "wrong_owner",
-            format!(
-                "CCM_GUARD_REJECTED sid= —— 会话 {name:?} 既不是本工具的命名形状，\
-                 远端 `@ccm_sid` 也没设 ⇒ 拒绝键入（§34 Gate 2）。\
-                 这道门挡的是「往一个不是本工具管理的 tmux 会话里打字」。"
-            ),
+            copy_text("beGate.admit.notOurs", &[("name", &format!("{name:?}"))]),
         ));
     }
     Ok(p.session_id)
@@ -266,26 +263,30 @@ pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdE
     let Some(p) = probe(target)? else {
         return Err((
             "no_such_session",
-            format!("会话 {name:?} 不存在；没有可杀的目标"),
+            copy_text(
+                "beGate.admitDestructive.noSession",
+                &[("name", &format!("{name:?}"))],
+            ),
         ));
     };
     if !gate_core::gate2(name, Some(&p.ccm_sid)).allowed() {
         return Err((
             "wrong_owner",
-            format!(
-                "CCM_GUARD_REJECTED sid= —— 会话 {name:?} 既不是本工具的命名形状，\
-                 远端 `@ccm_sid` 也没设 ⇒ 拒绝杀它（§34 Gate 2）"
+            copy_text(
+                "beGate.admitDestructive.notOurs",
+                &[("name", &format!("{name:?}"))],
             ),
         ));
     }
     if p.windows != 1 {
         return Err((
             "too_many_windows",
-            format!(
-                "CCM_GUARD_REJECTED windows={} —— 会话 {name:?} 有 {} 个窗口，\
-                 不是干净的单窗口会话 ⇒ 拒绝杀它（§34 Gate 3）。\
-                 用户可能在里面开了别的东西；请到那个 tmux 里自行处理",
-                p.windows, p.windows
+            copy_text(
+                "beGate.admitDestructive.manyWindows",
+                &[
+                    ("name", &format!("{name:?}")),
+                    ("n", &p.windows.to_string()),
+                ],
             ),
         ));
     }

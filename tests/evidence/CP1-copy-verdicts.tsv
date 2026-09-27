@@ -6,9 +6,6 @@ src/backend/control/capture_pane.rs:113	tmux 在**默认 socket**（生产走的
 src/backend/control/capture_pane.rs:128	tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane（`F01`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:132	同上，只是解析走到了 target-session 那一支（旧版 tmux / 别的目标形）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:136	另一种措辞，一并收 —— 多认一种不会把别的失败误判成它（默认档是 `capture_failed`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
-src/backend/control/capture_pane.rs:161	起不来 tmux（这台机装了吗？PATH 里有吗？）：{e}	改·§2.4	[对外] 经 bridge tmux.rs::describe_capture_refusal 拼进「抓不了…：那台机器上起不来 tmux（{message}）」，括号套括号；反问句「装了吗？PATH 里有吗？」把排查派给用户 兼§2.3 →「找不到 tmux：{e}」
-src/backend/control/capture_pane.rs:281	缺会话名 —— 这条子命令收一个位置参数：要抓的 tmux 会话名	改·§2.1	[对外] invalid_args 经 describe_capture_refusal 拼进「这个会话名后端不收（{message}）」；「子命令/位置参数」是后端 CLI 的实现面，用户在界面上看不到子命令 新词:子命令 →「缺会话名」
-src/backend/control/capture_pane.rs:288	多余参数 {:?} —— 这条子命令只收一个位置参数（会话名），\n                 「抓几次」由调用方决定，不由它自己循环	改·§2.2	[对外] 同上一路进界面；「『抓几次』由调用方决定，不由它自己循环」是设计论证 兼§2.4（破折号＋括号）→「只收一个会话名，多给了 {…}」
 src/backend/control/cc_bus.rs:77	cc-bus 装了吗？（装在别处可以用 CC_BUS_BIN_DIR 指过来）	改·§2.4	[可达存疑] 作为 {hint} 拼进 discover::not_installed_message，经 cc-bus 命令的错误回到设置页 cc-bus 区；反问句＋括号里才是正文（91 §2.6 那条「括号里是正文就拿掉括号」）→「没装 cc-bus？装在别处的话设 CC_BUS_BIN_DIR 指过去」
 src/backend/control/cc_bus.rs:238	跑了超过 {} 秒还没退出，已被 timeout 命令结束。cc-bus 的投递走 flock —— \n             多半是锁被别的进程占住了（先看 `cc-list` 与 $CC_BUS_HOME 下的 *.lock）。	改·§2.1	[可达存疑] cc-bus 命令超时的错误回帧；「已被 timeout 命令结束」「投递走 flock」是实现，括号里让用户去看 *.lock 与 cc-list 是派活 兼§2.3 兼§2.4 新词:flock →「cc-bus 超过 {} 秒没响应，可能有别的进程占着它」
 src/backend/control/cc_bus.rs:622	已杀会话	保留	[不对外] 在 cc-kill 的 stdout/stderr 里找它自己说的话，匹配串，只决定 killed/stale_only 两个布尔
@@ -18,7 +15,6 @@ src/backend/control/identity_tag.rs:142	打标的结局要经 `failure_note` 说
 src/backend/control/identity_tag.rs:184	sid 的形状不对（只认字母、数字、`-`、`_`，长度 1–128），不往 tmux 里写	保留	[不对外] 〔W5-VIS〕Outcome::failure_note 的原因半句，只进后端 tracing 日志
 src/backend/control/identity_tag.rs:192	会话身份标没打上（pid {pid} · sid {sid}）：{why} —— 之后对这个会话的 kill / 送键会被身份门拒（wrong_owner）	保留	[不对外] 〔W5-VIS〕S2：watcher 里 tracing::warn! 打出去的那一行，只进后端日志
 src/backend/control/identity_tag.rs:416	tmux set-option 退出码 {}：{}	保留	[不对外] 〔W5-VIS〕Outcome::Failed 的载荷（带 tmux 原话），经 failure_note 只进后端 tracing 日志
-src/backend/control/launch.rs:374	（tmux 没说原因）	保留	[对外] 〔W5-VIS〕S4：create_failed / typed_unconfirmed 报错里「tmux 说：」后面的占位（tmux 一个字都没说时）；launch 那三条的 message 经 CLI 面与日志对外（CP2c §3）
 src/backend/control/launch.rs:432	agent 标没打上，这个会话在列表里认不出是哪个 agent	保留	[不对外] 〔W5-VIS〕S5：次要动作没做成时那一行 tracing::warn! 的后果半句，只进后端日志
 src/backend/control/launch.rs:434	身份意图没写上：之后对这个会话的 kill / 送键可能被身份门拒（wrong_owner）	保留	[不对外] 〔W5-VIS〕同上，只进后端日志
 src/backend/control/launch.rs:437	窗口标题没设上：拉前终端按标题找窗口的那条退路失效（启动期令牌那条主路不受影响）	保留	[不对外] 〔W5-VIS〕同上，只进后端日志

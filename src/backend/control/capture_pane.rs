@@ -65,6 +65,7 @@
 //! （生产段里不出现任何会改 tmux 状态的动词）＋ 反向自检（合成样本必须被逮到）。
 
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
+use copy_core::copy_text;
 use std::process::{Command, Stdio};
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] / [`super::gate`] / [`super::kill`] 同型。
@@ -159,7 +160,7 @@ pub(crate) struct RawCapture {
 pub(crate) fn tmux_unavailable(e: &std::io::Error) -> CmdErr {
     (
         "no_tmux",
-        format!("起不来 tmux（这台机装了吗？PATH 里有吗？）：{e}"),
+        copy_text("beCapturePane.run.noTmux", &[("e", &e.to_string())]),
     )
 }
 
@@ -176,21 +177,29 @@ pub(crate) fn classify(raw: &RawCapture) -> Result<String, CmdErr> {
     if hit(NO_SERVER_NEEDLES) {
         return Err((
             "no_server",
-            format!("这台机上没有在跑的 tmux server ⇒ 无屏可抓。tmux 原话：{tail}"),
+            copy_text(
+                "beCapturePane.classify.noServer",
+                &[("tail", &tail.to_string())],
+            ),
         ));
     }
     if hit(NO_TARGET_NEEDLES) {
         return Err((
             "no_such_session",
-            format!("tmux server 在，而这个目标不存在 ⇒ 无屏可抓。tmux 原话：{tail}"),
+            copy_text(
+                "beCapturePane.classify.noTarget",
+                &[("tail", &tail.to_string())],
+            ),
         ));
     }
     Err((
         "capture_failed",
-        format!(
-            "抓屏失败，而这条失败不在已登记的两张针里（退出码 {:?}）—— \
-             原样回包，别拿一个具体而错误的原因冒充它：{tail}",
-            raw.code
+        copy_text(
+            "beCapturePane.classify.failed",
+            &[
+                ("status", &format!("{:?}", raw.code)),
+                ("tail", &tail.to_string()),
+            ],
         ),
     ))
 }
@@ -283,18 +292,14 @@ pub(crate) fn reply(name: &str, screen: &str) -> serde_json::Value {
 /// 收人，本文件一旦持有它就得进 `DISPATCH_FILES`（那份文件不在本件写区）。
 pub fn run(args: &[String]) -> i32 {
     let Some(name) = args.get(1) else {
-        return emit_err((
-            "invalid_args",
-            "缺会话名 —— 这条子命令收一个位置参数：要抓的 tmux 会话名".to_string(),
-        ));
+        return emit_err(("invalid_args", copy_text("beCapturePane.cli.noName", &[])));
     };
     if args.len() > 2 {
         return emit_err((
             "invalid_args",
-            format!(
-                "多余参数 {:?} —— 这条子命令只收一个位置参数（会话名），\
-                 「抓几次」由调用方决定，不由它自己循环",
-                &args[2..]
+            copy_text(
+                "beCapturePane.cli.extra",
+                &[("extra", &format!("{:?}", &args[2..]))],
             ),
         ));
     }
