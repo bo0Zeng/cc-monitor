@@ -126,7 +126,6 @@ pub(crate) fn cfg(label: &str) -> RemoteConfig {
         port: 22,
         user: "nobody".into(),
         key_path: Some("/k".into()),
-        backend_path: "/home/nobody/.cc-monitor/bin/cc-monitor-backend".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

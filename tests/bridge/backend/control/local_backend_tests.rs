@@ -1192,293 +1192,105 @@ fn never(_: &Path) -> bool {
     false
 }
 
-/// P2z-Y2（自批 D1）：**本机释放点与远端部署点结构上不许撞**。
+/// 带身份戳的一份假后端字节（界标取自 `build.rs` 交来的 env，与生产扫描同一对）。
+fn stamped(id: &str, salt: u8) -> Vec<u8> {
+    let mut b: Vec<u8> = (0u8..=255).cycle().skip(salt as usize).take(2048).collect();
+    b.extend_from_slice(env!("BACKEND_STAMP_OPEN").as_bytes());
+    b.extend_from_slice(id.as_bytes());
+    b.extend_from_slice(env!("BACKEND_STAMP_CLOSE").as_bytes());
+    b
+}
+
+fn tmpdir_e2(tag: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("ccm-e2-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("建夹具目录");
+    d
+}
+
+/// 〔E2 · E-b〕要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」· `W5-ALIAS.md §2.5.2` E-b
+/// 「名字不带 id ⇒ 两个不同版本的 monitor 会互相换掉对方的后端（主会话 D-b『只在我的比盘上的新时才换』要搬到本机这一侧）」。
 ///
-/// 钉的是**构造方式**不是两个字面量不相等 —— 后者一改配置就绕过去了
-/// （远端落点由 `cfg.backend_path` 给，是**运行期**的值，编译期比不了）。
-/// 所以断言：那条路径必须由 `build_id` 拼出来。
-///
-/// 病史：实测 08-11 本机 `~/.cc-monitor/bin/.build_id` = `p1r-event-liveness`
-/// （别的 monitor 把这台当远端连时装的），而本机源码是 `p1x-overflow-identity`
-/// ⇒ 同名会让两个 monitor 互判 stale、互相覆盖 ⇒ **无限重装循环**。
+/// 真跑 [`extract_embedded_to`]，逐格比盘上那份字节（不读源码）：缺 ⇒ 放；同版同字节 ⇒ 不动；同版字节不同（开发树重编）⇒ 换；
+/// 盘上更旧 ⇒ 换；盘上不旧 ⇒ 不动；盘上那份不说自己是谁 ⇒ 拒、一个字节不动。落点文件名恒是 [`local_ccm_entry_name`]。
 #[test]
-fn the_local_extract_path_is_build_id_scoped() {
-    // ★ 用**生产函数**，不是判据自己抄一份 `format!`（那就成了「测自己的副本」）。
-    let a = local_extract_name("p1x-overflow-identity");
-    let b = local_extract_name("p1r-event-liveness");
-    assert_ne!(
-        a, b,
-        "两个不同 build_id 竟然产出同一个文件名 —— 那就等于回到「同路径互相覆盖」"
-    );
-    for (id, name) in [("p1x-overflow-identity", &a), ("p1r-event-liveness", &b)] {
-        assert!(
-            name.contains(id),
-            "本机释放文件名 `{name}` 里没有 build_id `{id}`。\n\
-                 ⚠ 这条钉的是**构造方式**：远端自部署落点同为 `~/.cc-monitor/bin/`，\n\
-                 只有把 build_id 拼进文件名才能让两条路**结构上**撞不上。\n\
-                 改成固定名 = 把「无限重装循环」装回来（见 `extract_embedded_to` 头注 D1 段）。"
-        );
-    }
-    // 〔SR1a · 09-24〕释放名从 `cc-monitor-local-<id>` 改成 `cc-monitor-backend-<id>`（题面：进程表里
-    //   它就该叫「后端」）。要避开的从来不是「名字里有 backend 这个词」，是两件具体的事：
-    //   ① **与远端自部署落点同名**（`~/.cc-monitor/bin/cc-monitor-backend`，D1 段那次无限重装）；
-    //   ② **被按 exe 收孤儿的脚本认成远端那一份**（`reap-orphan-backends.sh` / `graylight-suite.sh`
-    //      都按 exe 路径 `*cc-monitor-backend` 结尾判 —— 常驻的本机后端 PPID 就是 1，认错了会被收掉）。
-    //   ⇒ 两条都按「结尾」判：带着 `-<build_id>` 尾巴，两条都结构上撞不上。
-    let remote = "cc-monitor-backend";
-    for name in [&a, &b] {
-        assert!(
-            name.as_str() != remote && !name.ends_with(remote),
-            "本机释放名 `{name}` 撞上了远端自部署那个名字（或以它结尾）—— 那正是 D1 段要避开的文件，\
-             也会被按 exe 收孤儿的脚本认成远端那一份"
-        );
-    }
-    assert!(
-        a.starts_with("cc-monitor-backend-"),
-        "本机释放名 `{a}` 不是 `cc-monitor-backend-<build_id>` 那一形（SR1a 题面改名）"
-    );
+fn the_local_landing_is_ccm_and_only_an_older_or_rebuilt_one_is_replaced() {
+    let d = tmpdir_e2("place");
+    let mark = |_: &Path| Ok(());
+    let dirs = |p: &Path| std::fs::create_dir_all(p).map_err(|e| e.to_string());
+    let put = |id: &str, bytes: &[u8]| extract_embedded_to(&d, id, bytes, &mark, &dirs);
+    let dest = d.join(local_ccm_entry_name());
+    let disk = || std::fs::read(&dest).unwrap_or_default();
+    let mine = stamped("p5a-mine", 1);
+    // 缺 ⇒ 放
+    assert_eq!(put("p5a-mine", &mine).expect("缺 ⇒ 放"), dest);
+    assert_eq!(disk(), mine);
+    // 同版字节不同（开发树重编）⇒ 换
+    let rebuilt = stamped("p5a-mine", 9);
+    put("p5a-mine", &rebuilt).expect("同版重编 ⇒ 换");
+    assert_eq!(disk(), rebuilt, "同一版、字节不同没换");
+    // 盘上更旧 ⇒ 换
+    std::fs::write(&dest, stamped("p4z-old", 2)).unwrap();
+    put("p5a-mine", &mine).expect("更旧 ⇒ 换");
+    assert_eq!(disk(), mine, "盘上更旧却没换");
+    // 盘上不旧 ⇒ 不动（两个版本的 monitor 从此只升不降）
+    let newer = stamped("p5b-newer", 3);
+    std::fs::write(&dest, &newer).unwrap();
+    assert_eq!(put("p5a-mine", &mine).expect("不旧 ⇒ 照用盘上那份"), dest);
+    assert_eq!(disk(), newer, "盘上那份不比我旧却被换掉了");
+    // 不说自己是谁 ⇒ 拒、不动
+    std::fs::write(&dest, b"#!/bin/sh\necho mine\n").unwrap();
+    assert!(put("p5a-mine", &mine).is_err(), "无戳的文件被覆盖了");
+    assert_eq!(disk(), b"#!/bin/sh\necho mine\n");
+    let _ = std::fs::remove_dir_all(&d);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 🔴 `K-R69` / `KR69D1`：**本机那条 `ccm` 入口，与远端那条同源**
 // ═══════════════════════════════════════════════════════════════════════
 
-/// `KR69D1` 的**同源那一半（内容侧）**：本机那条落点**就是后端二进制本身**。
-///
-/// # 它是这一格的死值验第二向
-///
-/// `KR69D1` 逐字：「让本机那条改用**另一份**二进制 / 另一套 argv 解析 ⇒ **必须红**」。
-/// 本条断的正是这件事，而且断得比「路径对不对」硬：**逐字节相同**。
-/// 谁把这里改成写一段 shim 文本、或改成从别处取字节，当场红。
-///
-/// # 为什么不能拿「文件在不在」当判据
-///
-/// 「在」只说明有个叫 `ccm` 的文件，说不出它是谁 —— 而**本机上恰好有另一个叫 `ccm`
-/// 的东西**正是这一整件的题面（用户 `~/.local/bin/ccm` 那份旧 bash）。
-/// 「同名不同物」认不出来的判据，在这一件上等于没有。
-#[test]
-fn the_local_ccm_entry_is_a_copy_of_the_backend_itself() {
-    let base = std::env::temp_dir().join(format!("ccm-kr69-copy-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).expect("建夹具目录");
-    // 夹具名**中性**、内容**唯一**：断言比的是这串字节，不是任何路径 / 目录名
-    //〔固定项 12 那条 `6g`：断言用的子串不许取自夹具的名字〕。
-    let bytes: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
-    let backend = base.join("some-backend-binary");
-    std::fs::write(&backend, &bytes).expect("写夹具后端");
+// 〔E2 · V28〕`the_local_ccm_entry_is_a_copy_of_the_backend_itself` · `the_resolution_path_really_puts_the_local_ccm_entry_down`（两条都〔散文墓碑〕）
+//   随逐字节副本删了：本机没有「副本」可比，落点本身就是后端。下面那条改成直接问「解析出来的那份就是 `ccm`」。
 
-    let marked = std::sync::Mutex::new(Vec::<PathBuf>::new());
-    let mark = |p: &Path| {
-        marked.lock().unwrap().push(p.to_path_buf());
-        Ok(())
-    };
-    let dest = install_local_ccm_entry(
-        &base,
-        &backend,
-        &mark,
-        &crate::platform_fs::ensure_private_dir,
-    )
-    .expect("放本机 ccm 入口");
-
-    assert_eq!(
-        dest.file_name().and_then(|s| s.to_str()),
-        Some(local_ccm_entry_name().as_str()),
-        "放下去的名字不是 `local_ccm_entry_name()` 说的那个 —— 名字有了第二个来源"
-    );
-    assert_eq!(
-        std::fs::read(&dest).expect("读回本机 ccm 入口"),
-        bytes,
-        "本机那条 `ccm` 落点的内容**不是后端那份字节** —— \n\
-             那它就是第二份东西了，而 `K33` 逐字「所有命令只许有一处」。\n\
-             `KR69D1` 的失效方向逐字：「在本机再写一个 `ccm` 壳 ⇒ 不算兑现」。"
-    );
-    assert_eq!(
-        marked.lock().unwrap().len(),
-        1,
-        "置可执行位那一步没走（或走了不止一次）—— 放下去一个起不来的文件\n\
-             比不放更坏：`--ccm-probe` 探它会失败，而失败长得像「没装」"
-    );
-    // 幂等：再放一次不重写（长度相同、且不比后端旧）。
-    let before = std::fs::metadata(&dest).and_then(|m| m.modified()).ok();
-    let again = install_local_ccm_entry(
-        &base,
-        &backend,
-        &mark,
-        &crate::platform_fs::ensure_private_dir,
-    )
-    .expect("第二趟");
-    assert_eq!(again, dest);
-    assert_eq!(
-        std::fs::metadata(&dest).and_then(|m| m.modified()).ok(),
-        before,
-        "第二趟重写了 —— 每次起 app 都白付一次几 MB 的顺序写"
-    );
-    // 反向：后端换了一版（字节变了、时间更新）⇒ 这一份必须跟着换。
-    let newer: Vec<u8> = (0u8..=255).cycle().skip(7).take(4096).collect();
-    assert_ne!(newer, bytes, "夹具自己塌了：两版字节竟然相同");
-    std::fs::write(&backend, &newer).expect("换一版后端");
-    filetime_bump(&backend);
-    install_local_ccm_entry(
-        &base,
-        &backend,
-        &mark,
-        &crate::platform_fs::ensure_private_dir,
-    )
-    .expect("第三趟");
-    assert_eq!(
-        std::fs::read(&dest).expect("读回"),
-        newer,
-        "后端换了一版，本机那条 `ccm` 入口还停在上一版 —— \n\
-             用户终端里那条命令与 app 里跑的后端**不是同一份**，而两边都不会出声"
-    );
-    let _ = std::fs::remove_dir_all(&base);
-}
-
-/// 把一个文件的 mtime 往后推一点。**不引新依赖**：重写一次内容之后
-/// 有些文件系统的时间戳粒度是秒级 ⇒ 直接改内容不一定改得动 `modified()`。
-/// 这里显式把**目标**那份的时间戳往回拨（比推源那份便宜，也不碰时钟）。
-fn filetime_bump(newer_than_this: &Path) {
-    let dir = newer_than_this.parent().expect("有父目录");
-    let stale = dir.join(local_ccm_entry_name());
-    // 把目标那份的 mtime 设成 1970 —— 于是它一定「比后端旧」。
-    // ⚠ **必须以可写方式打开**：只读句柄在有些平台上 `set_modified` 直接 `EBADF`，
-    //   而那时上面第三条断言会**因为夹具没生效**而红 —— 那是假红，比不测还坏。
-    //   ⇒ 这里不吞错：夹具塌了就当场说出来。
-    std::fs::OpenOptions::new()
-        .write(true)
-        .open(&stale)
-        .expect("夹具：打不开本机 ccm 入口")
-        .set_modified(std::time::UNIX_EPOCH)
-        .expect("夹具：改不动 mtime —— 下面那条「换版必刷新」判的就不是它了");
-}
-
-/// `KR69D1` 的**防空转**：那条入口真的有生产调用点，而且就在解析出后端之后。
-///
-/// # 没有这一条会怎样
-///
-/// [`install_local_ccm_entry`] 是个自足的函数，上面那条判据喂它一份夹具就能全绿 ——
-/// 而**只要没人在生产段里调它，本机就还是一条 `ccm` 都没有**，
-/// 也就是 `K-R69` 立件时那个读数原封不动。本仓这一形有名字（`K-R28` 那条「防空转」）。
-///
-/// # ⚠ 它守什么、**不守什么**〔`K-R69` 收窗口前订正 —— 原话不完整，PM 一刀切中〕
-///
-/// **约定型守卫**（查源码形态）。原话只写「挡得住『接线被删掉』，挡不住『换个名字继续错』」，
-/// 而 PM 09-12 的**刀 T** 实测出第三样它当时也挡不住：**接线还在、名字没改、
-/// 而调用点喂进去的可以不是后端本体** —— 把第二个实参从 `bin` 换成
-/// `&extract_dir.join("<随便一个不存在的名字>")`，别处一字不动，
-/// 判定行逐字 `test result: ok. 1393 passed; 0 failed` —— **一条都没红**。
-/// 后果不是编译错，是**静默放下一份不是后端的文件**，而 `--ccm-probe` 探它会失败，
-/// **失败长得像「没装」**（那句话正是本模块另一条判据自己写的）。
-///
-/// ⇒ 本条今天多钉一格：**那唯一一处调用喂进去的，就是 `Resolved::Found` 解开的那个绑定**。
-/// ⚠ 这一格仍是**形态**（换个变量名照样能骗过它）—— 真正不看拼法的那一半在
-/// [`tests::the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`]：
-/// 它真跑一趟 `resolve_or_extract`，比的是**落下来那份的字节**。
-/// **两条合起来才是那道缝，单独任何一条都不够。**
-#[test]
-fn the_resolution_path_really_puts_the_local_ccm_entry_down() {
-    let sect = shared_resolution_body();
-    let put = guard_core::find_pinned(&sect, "install_local_ccm_entry(").unwrap_or_else(|e| {
-        panic!(
-            "那份共用的解析体内 `install_local_ccm_entry(` 不是恰好一处（{e}）——\n\
-                 一处都没有 ⇒ 本机那条 `ccm` 入口**没有任何生产调用点**，\n\
-                 盘上回到 `K-R69` 立件时那个读数（本机 0 条），而上面那条判据照样绿。\n\
-                 多于一处 ⇒ 有第二条放法，下面那条顺序断言说不清它断的是哪一处。\n逐字：{sect}"
-        )
-    });
-    let found = guard_core::find_pinned(&sect, "extract_embedded_to(")
-        .expect("那份共用的解析体内 `extract_embedded_to(` 不是恰好一处 —— 切歪了");
-    assert!(
-        found < put,
-        "「放本机 ccm 入口」排到了「把后端释放出来」前面 —— 顺序反了：\n\
-             那时它复制的是一份还不存在（或还是上一版）的二进制。"
-    );
-    // 🔴 **PM 刀 T 逼出来的那一格**：喂进去的**是解析出来的那份后端**，不是别的什么路径。
-    // ⚠ 钉的是**这一对**，不是两个孤立的串：一头是 `Resolved::Found` 解开的那个绑定，
-    //   另一头是那唯一一处调用的实参表。分开钉的话，把绑定留着、实参换掉照样过。
-    guard_core::find_pinned(&sect, "if let Resolved::Found(bin) = &resolved {").unwrap_or_else(
-        |e| {
-            panic!(
-                "那份共用的解析体内「解开 `Resolved::Found`」不是恰好一处（{e}）——\n\
-                     下面那条断言指不明它说的是哪一个 `bin`，本条此刻无效。\n逐字：{sect}"
-            )
-        },
-    );
-    guard_core::find_pinned(
-        &sect,
-        "install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir)",
-    )
-        .unwrap_or_else(|e| {
-            panic!(
-                "那一处调用喂进去的不是解析出来的那份后端（{e}）。\n\
-                     🔴 这正是 PM 09-12 刀 T 切中的那道缝：接线还在、函数没改，\n\
-                     而实参换成别的路径 ⇒ **静默放下一份不是后端的文件**，\n\
-                     `--ccm-probe` 探它会失败，而**失败长得像「没装」**。\n\
-                     期望逐字：`install_local_ccm_entry(extract_dir, bin, make_executable, ensure_dir)`（〔HX1〕第四个实参是宿主注入的建目录）\n逐字：{sect}"
-            )
-        });
-}
-
-/// 🔴 **刀 T 那道缝的另一半，而且这一半不看拼法**：真跑一趟 `resolve_or_extract`，
-/// 断言落下来那条 `ccm` 入口**与它刚解析出来的那份后端逐字节相同**。
-///
-/// # 为什么非要行为判据不可
-///
-/// 上面那条是**形态**判据：换个变量名、换个等价写法都能绕过去。
-/// 本条不读一个字源码 —— 它只问「盘上那两份字节一样吗」，
-/// 于是「喂进去的不是后端本体」这一形**不论怎么拼**都会在这里现原形。
-///
-/// # 夹具怎么保证走的是我要盯的那一支
-///
-/// `target_triple` 取一个**盘上必不存在**的中性串 ⇒ `resolve_beside_this_exe` 必回
-/// `Missing` ⇒ 走「释放内嵌那份」那一支，而本条盯的正是那一支之后那一跳。
-/// 三条反向自检（缺一条这里就会零命中地绿）：① 真的 `Found` 了；
-/// ② 释放出来那份就是我喂进去的字节；③ 那两个文件**不是同一个**
-/// （否则「两份相同」靠自反恒真）。
+/// 〔E2〕要求住址：`设计/01 §6.7b`「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
+/// 真跑一趟 `resolve_or_extract`（旁边必没有 ⇒ 走内嵌那份）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节；
+/// 旧版释放的 `cc-monitor-backend-<id>` 认得出（有戳）就删、认不出（无戳）不动。
 #[test]
 fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
-    let base = std::env::temp_dir().join(format!("ccm-kr69-wire-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    std::fs::create_dir_all(&base).expect("建夹具目录");
-    // 内容唯一、夹具名中性：断言比的是这串字节，不是任何路径 / 目录名〔固定项 12 的 `6g`〕。
-    let bytes: Vec<u8> = (0u8..=255).cycle().skip(3).take(3072).collect();
+    let base = tmpdir_e2("resolve");
+    let bytes = stamped("p5a-wire", 5);
+    let old_ours = base.join(format!("{LEGACY_EXTRACT_PREFIX}p4y-old"));
+    let not_ours = base.join(format!("{LEGACY_EXTRACT_PREFIX}mine-own"));
+    std::fs::write(&old_ours, stamped("p4y-old", 6)).unwrap();
+    std::fs::write(&not_ours, b"not a backend").unwrap();
     let mark = |_: &Path| Ok(());
-
     let r = resolve_or_extract(
         "no-such-target-triple",
         &base,
-        Ok(("kr69wire", &bytes)),
+        Ok(("p5a-wire", &bytes)),
         &mark,
         &crate::platform_fs::ensure_private_dir,
     );
-    // ① 反向自检：真的走到了「释放出来并 Found」那一支。
     let Resolved::Found(bin) = r.clone() else {
-        panic!("夹具塌了：内嵌那份没释放出来 ⇒ 本条此刻无效。实得 {r:?}");
+        panic!("夹具塌了：内嵌那份没放出来 ⇒ 本条此刻无效。实得 {r:?}");
     };
-    // ② 反向自检：释放出来那份就是我喂进去的字节。
     assert_eq!(
-        std::fs::read(&bin).expect("读回释放出来那份"),
+        bin,
+        base.join(local_ccm_entry_name()),
+        "本机后端的落点不是 `ccm` 本身"
+    );
+    assert_eq!(
+        std::fs::read(&bin).unwrap(),
         bytes,
-        "夹具塌了：释放出来那份不是我喂进去的字节"
+        "落点上不是喂进去的那份字节"
     );
-    let entry = base.join(local_ccm_entry_name());
-    // ③ 反向自检：两个文件不是同一个（否则下面那条比较靠自反恒真）。
-    assert_ne!(
-        entry, bin,
-        "夹具塌了：本机 `ccm` 入口与释放出来那份是同一个文件 ⇒ 下面那条比较恒真"
-    );
+    assert!(!old_ours.exists(), "旧版释放件（认得出是我们编的）没清");
+    assert!(not_ours.exists(), "认不出的文件被删了");
     assert!(
-        entry.is_file(),
-        "解析出后端之后，本机那条 `ccm` 入口**没被放下来**：{}\n\
-             要么那一跳没接上，要么它拿到的路径根本不存在（PM 刀 T 那一形）。",
-        entry.display()
-    );
-    assert_eq!(
-        std::fs::read(&entry).expect("读回本机 ccm 入口"),
-        bytes,
-        "本机那条 `ccm` 入口的字节**不是刚解析出来的那份后端** ——\n\
-             🔴 静默放下一份不是后端的文件，而 `--ccm-probe` 探它会失败，\n\
-             **失败长得像「没装」**：用户看到的是「你没装」，而真相是「我们放错了东西」。"
+        !base
+            .join(format!("{LEGACY_EXTRACT_PREFIX}p5a-wire"))
+            .exists(),
+        "又按旧名（带 build_id）放了第二份后端字节"
     );
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -1502,12 +1314,11 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
         Some(env!("CCM_TARGET_EXE_SUFFIX").to_string()),
         "本机那条入口的文件名不是「那个词 + 目标平台后缀」：{name:?}"
     );
-    // ② 远端：shim 把 argv 交给的就是那个子命令词。
-    let shim = ccm_entry_shim("/x/cc-monitor-backend");
-    let handoff = format!(" {CCM_ENTRY_WORD} \"$@\"");
-    assert!(
-        shim.contains(&handoff),
-        "远端那条 shim 交给后端的不是 `{CCM_ENTRY_WORD}` 子命令：\n{shim}"
+    // ② 远端：〔E2〕落点那个文件的名字就是这个词（shim 删了，远端也走入口① basename）。
+    assert_eq!(
+        relay_route_core::BACKEND_LANDING_REL.rsplit('/').next(),
+        Some(CCM_ENTRY_WORD),
+        "远端落点的文件名不是 `{CCM_ENTRY_WORD}`"
     );
     // ③ 反向自检：那个词不许是空串 / 空白 —— 否则上面两条都会**空真**。
     assert!(
@@ -1517,32 +1328,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
     );
 }
 
-/// 〔MC1 · 2026-09-24〕远端 shim **一个环境变量都不设**（`CCM_SELF` 那一行删了）。
-///
-/// 这条从前叫 `remote_shim_carries_the_entry_name_for_the_container_path`〔散文墓碑〕，钉的是
-/// 09-15 真机逮到的那一格：容器路的内层命令缺 `ccm` 子命令词 ⇒ 要 shim 把 `$0` 塞进 `CCM_SELF`。
-/// CC1 之后后端自己从 argv 取「被 `intercept` 吃掉的那一段」（`control/ccm/mod.rs::self_invocation`），
-/// 入口② 自带那个词 ⇒ 那个补丁的前提没了，`设计/01 §6.7b` 要它删。
-///
-/// ⚠ **那一格的性质没丢，只是换了住址**：「经入口② 进来、内层命令仍带着 `ccm`」今天由后端
-/// `self_invocation` 的单测与 `tests/e2e/backend-cc-bus.sh` 的 `[17]`（两个入口 pane 那一跳逐字同形）钉。
-/// 本条钉的是删干净：shim 里不许再出现任何一处 `CCM_SELF`，也不许长出任何环境变量前缀。
-#[test]
-fn remote_shim_sets_no_environment_of_its_own() {
-    let shim = ccm_entry_shim("/x/cc-monitor-backend");
-    assert!(
-        !guard_core::contains_word(&shim, "CCM_SELF"),
-        "远端 shim 里还有 `CCM_SELF` —— 那个变量删了（设计/01 §6.7b）：\n{shim}"
-    );
-    let exec_line = shim
-        .lines()
-        .find(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .expect("shim 里没有可执行行 —— 这条判据的前提没了");
-    assert!(
-        exec_line.starts_with("exec "),
-        "shim 那一行不是以 `exec` 打头（前面挂了环境变量赋值？）：{exec_line}"
-    );
-}
+// 〔E2 · V28〕`remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
 
 /// P2z-Y3：**本机那条路不许自己写版本比较** —— 复用 `sftp::deploy_decision`（纯函数）。
 ///
@@ -1957,16 +1743,13 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
 #[test]
 fn the_extracted_name_carries_the_target_exe_suffix() {
     let suffix = env!("CCM_TARGET_EXE_SUFFIX");
-    let name = local_extract_name("p2e-dial");
-    assert!(
-        name.ends_with(suffix),
-        "释放名 `{name}` 没带目标平台的可执行后缀 `{suffix}` —— \
+    // 〔E2〕落点名就是 `ccm` ＋ 目标平台后缀（从前带 build_id 的那一形删了）。
+    let name = local_ccm_entry_name();
+    assert_eq!(
+        name,
+        format!("{CCM_ENTRY_WORD}{suffix}"),
+        "落点名 `{name}` 不是「ccm ＋ 目标平台的可执行后缀 `{suffix}`」—— \
              在把扩展名当身份的平台上，那个文件起不起得来是碰运气"
-    );
-    assert!(
-        !suffix.is_empty() || name.ends_with("p2e-dial"),
-        "后缀是空串，而释放名 `{name}` 却不再以 build_id 收尾 —— \
-             本件在没有后缀的平台上**必须逐字不变**（盘上已有的那份要照旧命中）"
     );
     // 后缀是**编译期常量**、不是现算的平台原语 —— 现算要 `env::consts::`，
     // 而本文件在 `PLATFORM_EXCEPTIONS` 里的例外额度已经占满（那张表挂着递减棘轮）。

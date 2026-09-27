@@ -21,7 +21,9 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
         "backend/control/local_backend.rs",
         "rename",
-        3,
+        // 〔E2 · V28〕3 → 4：逐字节副本那一处删（-1）；落点就是 `ccm` 之后，上位那一步多一条「旧的正在跑 ⇒ 先改名挪开、再上位」（+2）。
+        //   仍是 monitor 自己目录里的部署物（`~/.cc-monitor/bin/ccm`），结论不变。
+        4,
         "monitor 自己的缓存（自释放出来的后端二进制 · `K-R69` 起还有本机那条 `ccm` 入口 · 〔RM1f〕本机那一份代码全景小程序）",
         "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的后端起起来**。\
              §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\

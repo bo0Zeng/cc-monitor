@@ -1690,7 +1690,7 @@ fn parse_remote_hosts(
     Ok(out)
 }
 
-/// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user/backendPath) → None+warn。
+/// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user) → None+warn。
 fn parse_host_obj(
     obj: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<ssh_source::RemoteConfig> {
@@ -1700,14 +1700,11 @@ fn parse_host_obj(
             .filter(|s| !s.is_empty())
     };
 
-    let (host, user, backend_path) = match (
-        str_field("host"),
-        str_field("user"),
-        str_field("backendPath"),
-    ) {
-        (Some(h), Some(u), Some(d)) => (h.to_string(), u.to_string(), d.to_string()),
+    // 〔E2 · V28〕`backendPath` 那一格删了（落点恒是那台的 `~/.cc-monitor/bin/ccm`）；盘上旧值不读（V41）。
+    let (host, user) = match (str_field("host"), str_field("user")) {
+        (Some(h), Some(u)) => (h.to_string(), u.to_string()),
         _ => {
-            tracing::warn!("remote host 缺必填字段(host/user/backendPath)，跳过该台");
+            tracing::warn!("remote host 缺必填字段(host/user)，跳过该台");
             return None;
         }
     };
@@ -1752,7 +1749,6 @@ fn parse_host_obj(
         port,
         user,
         key_path,
-        backend_path,
         host_key_fingerprint,
         addresses,
         jump,
