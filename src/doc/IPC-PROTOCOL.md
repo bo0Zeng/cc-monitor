@@ -2388,6 +2388,23 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。替掉 monitor `list_remote_tmux` 那条拨号 shell。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
+#### `resync`：手动对齐（RESYNC，09-27，V149）
+
+```text
+→ {"id":"r1","cmd":"resync","args":{}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"added":0,"removed":1,"retagged":1,"watchers":1}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `sid` | → | 可选。给了 ⇒ 只对这一个会话（关卡 2「对齐后重试」：重验 ＋ 重打标签）；不给 ⇒ 整机。给了却不是非空字符串 ⇒ `bad_args` |
+| `added` / `removed` | ← | 这次补宣告 / 补移除的会话数（各份 watcher 取最大：看的是同一台机器） |
+| `retagged` | ← | 这次真写了几处 `@ccm_sid`（值一样的不写） |
+| `watchers` | ← | 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份；CLI 面的一次性进程里是 0） |
+
+整机那一趟与起步初探是**同一套**（`设计/15 §4.1b`）：耳朵重挂 · 账号清单（发一帧 `accounts_changed`）· pidfile 目录对后端的表（多的补 `session_added`，少的补 `session_removed`，在跟的顺手对账标签）· 重探 tmux。只对差异发帧；不另发 `sessions_replayed`。
+错误码：`bad_args`。
+
 #### `tasks-list`：一个会话的任务列表
 
 ```text
@@ -2815,6 +2832,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
+
+**RESYNC 追加一条（09-27）**：`--resync` —— 手动对齐（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{sid?}`）。一次性进程里没有 watcher ⇒ 回 `watchers: 0`，真正的用法是常驻后端的帧面。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。
