@@ -314,6 +314,8 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         unavailable: unavailable_here(),
         // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
         host_env: wire::host_env_from(|name| std::env::var(name).ok()),
+        // 〔NET2〕撤不动的那几条（阻塞档），从命令表派生。
+        uncancellable: inbound::uncancellable(),
     }
 }
 

@@ -402,6 +402,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         // 空表 ⇒ 省略 ⇒ 下面那串期望字节一个都没动。
         unavailable: vec![],
         host_env: Default::default(),
+        uncancellable: vec![],
     })
     .map_err(|_| Stop::MissingCapability {
         stage: STAGES[1],
