@@ -155,7 +155,13 @@ const PROBE_FMT_FIELDS: usize = 3;
 /// 复用这一处等于**不新增起进程点**。⚠ 空串 target 会被 tmux 静默解析成「某个会话」，
 /// 调用方必须自己挡（`identity_tag::pane_is_safe` 就是那道门）。
 pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
-    let out = Command::new("tmux")
+    probe_with(Command::new("tmux"), target)
+}
+
+/// [`probe`] 的本体，`tmux` 由调用方造：[`super::identity_tag`] 经它自己那一个口递进来
+/// （测试构建里那个口是注入的假 tmux，`INVARIANTS §48.3`）。
+pub(crate) fn probe_with(mut tmux: Command, target: &str) -> Result<Option<Probed>, CmdErr> {
+    let out = tmux
         // K-R12：`-u` 必须在子命令**之前**（`display-message -u -p` 是 rc=1 的响错）。
         .args([
             UTF8_CLIENT_FLAG,

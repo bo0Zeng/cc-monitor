@@ -1888,6 +1888,7 @@ fn tmux_socket_dir_follows_tmux_tmpdir() {
 #[cfg(target_os = "linux")]
 #[test]
 fn sid_change_in_place_retires_old_sid() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-sidchange-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -1976,6 +1977,7 @@ fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
 #[cfg(target_os = "linux")]
 #[test]
 fn same_sid_two_pidfiles_refcount() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-refcount-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -2035,6 +2037,7 @@ fn same_sid_two_pidfiles_refcount() {
 #[cfg(target_os = "linux")]
 #[test]
 fn plain_lifecycle_regression() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-plainlife-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -2066,6 +2069,7 @@ fn plain_lifecycle_regression() {
 #[cfg(target_os = "linux")]
 #[test]
 fn status_diff_emits_session_status_frame() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-status-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("projects")).unwrap();
     let pid = std::process::id();
@@ -2131,6 +2135,7 @@ fn status_diff_emits_session_status_frame() {
 #[cfg(target_os = "linux")]
 #[test]
 fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-tailonly-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-x");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2191,6 +2196,7 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
 #[cfg(target_os = "linux")]
 #[test]
 fn full_replay_mode_still_streams_history() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-fullmode-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-y");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2218,6 +2224,7 @@ fn full_replay_mode_still_streams_history() {
 #[cfg(target_os = "linux")]
 #[test]
 fn with_bg_and_tail_only_combined() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-combo-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-c");
     std::fs::create_dir_all(&proj).unwrap();
@@ -2258,6 +2265,7 @@ fn with_bg_and_tail_only_combined() {
 #[cfg(target_os = "linux")]
 #[test]
 fn with_bg_announces_bg_with_metadata() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-withbg-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -2314,6 +2322,7 @@ fn parse_kind_variants() {
 #[cfg(target_os = "linux")]
 #[test]
 fn bg_pidfile_is_gated_even_when_author_is_alive() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let dir = std::env::temp_dir().join(format!("ccm-kind-gate-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let pid = std::process::id();
@@ -3147,6 +3156,7 @@ fn vis2_pidfile(sessions: &Path, pid: u32, sid: &str) -> PathBuf {
 #[cfg(target_os = "linux")]
 #[test]
 fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     let root = std::env::temp_dir().join(format!("ccm-vis2-s3-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -3284,6 +3294,7 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
 #[cfg(target_os = "linux")]
 #[test]
 fn the_launch_token_rides_the_session_added_frame_only_when_the_client_asked() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     /// 起一个 `sleep`，可选地给它注一个 `CCM_RBIND_TOKEN`。
     fn spawn_sleeper(token: Option<&str>) -> std::process::Child {
         let mut cmd = std::process::Command::new("sleep");
@@ -3428,6 +3439,7 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
 /// 期望是手写的序列（不从实现生成）。子进程摘掉 `TMUX_PANE`：打标那一步不会去碰真机 tmux。
 #[test]
 fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     fn sleeper() -> std::process::Child {
         let kid = std::process::Command::new("sleep")
             .arg("60")
@@ -3526,6 +3538,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
 #[cfg(target_os = "linux")]
 #[test]
 fn loc1b_the_pid_rides_the_session_added_frame_only_behind_the_same_gate_as_the_token() {
+    let _iso = crate::control::identity_tag::tests::isolate(); // §48.3：打标只落假 tmux
     fn probe(label: &str, asked: bool) -> (u32, Option<u32>) {
         let dir =
             std::env::temp_dir().join(format!("ccm-loc1b-pid-{}-{label}", std::process::id()));

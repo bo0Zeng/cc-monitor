@@ -2295,13 +2295,16 @@ monitor 那一半 `payload_tests.rs::the_rendered_relay_export_carries_no_key_an
 **性质**：任何一条起**真后端二进制**的测试 / e2e 套件，都必须经**唯一的口**拿到私有 tmux 隔离（shim 放进后端 `PATH` 最前、强插 `-L`），
 **拿不到就炸，不许降级裸跑**。人群按「那个二进制从哪来」派生，不按测试属性（`#[ignore]` 是可以不写的）。
 只 `env_remove("TMUX")` 不算（`TMUX` 一空就回落到默认 socket，**正是**用户那台）；靠 `TMUX_TMPDIR` 不算（`$TMUX` 一有值就压过它）。
+〔RESYNC · 09-27〕**人群第二族：进程内会走到 `identity_tag::tag` 的测试**（不起二进制，但用自己的 pid 造 pidfile ⇒ `TMUX_PANE` 是跑测试那个终端的 ⇒ 对用户真 tmux 打 `@ccm_sid`；09-27 本会话被写成 `bg-sid`）。
+唯一的口是 `control/identity_tag.rs::tmux`：测试构建里它只交本线程注入的假 tmux（`identity_tag_tests::isolate` / `isolate_with`），**没注入就在 `tag` 入口炸**（不看走不走得到 tmux）⇒ 人群按「调了 `tag`」派生，不靠逐条测试自觉。
 
 **为什么不能松动**：后端一上来就**无条件**往它连得到的 tmux server 装三条全局 hook（〔HX2〕今天是段 `[50, 100)` 里自己那一格，并摘掉段内的死槽；从前是固定槽位 `[50]`；没有关掉的开关）⇒ 不隔离就是去改用户真实 tmux 的状态。
 
 **谁在守**：`local_backend_host_tests.rs::every_test_that_starts_the_real_backend_demands_a_private_tmux`（正题：人群按二进制来历派生，两个文件一起扫）·
 `local_backend_host_tests.rs::the_one_shim_gate_really_fails_closed`（那个口在默认门禁里真跑一遍：缺变量必炸、有值原样交出）·
 `local_backend_host_tests.rs::every_ignored_test_here_that_spawns_a_real_backend_demands_private_tmux` · `local_backend_tests.rs::every_real_backend_e2e_demands_a_private_tmux_dir`（两条窄的，守 `#[ignore]` 那一族的形状）；
-shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tmux_tmpdir` · `e2e_gate_registry_tests.rs::the_tmux_shim_primitive_has_exactly_one_home`。
+shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tmux_tmpdir` · `e2e_gate_registry_tests.rs::the_tmux_shim_primitive_has_exactly_one_home`；
+进程内打标那一族 `identity_tag_tests.rs::an_in_process_tag_without_a_fake_tmux_blows_up`（没注入必炸、注入了探测真落到假 tmux 上）。
 
 **违反过几次**（三条合计）：
 1. **tmux 隔离**：08-11 同族事故打没了用户 **9 个**真实会话（`TMUX_TMPDIR=… tmux kill-server`，被 `$TMUX` 压过）；08-13 `backend-cc-bus.sh` 照着过期注释省掉 shim，
@@ -2313,7 +2316,8 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 ⚠ **它买不到的**：
 - **中转口没有钥匙**（见 48.1 射程），本条对它不说话。
 - **只量了 Linux**：僵尸那条是 `#[cfg(target_os = "linux")]`；Windows 上脱离的形态与收尸没有真机判据（`RT1` 虚拟机那一路的射程）。
-- 48.3 的人群是「起**真后端二进制**的测试」。直接起 tmux server 而不起后端的测试（例：`watcher_tests.rs` 那条 pidfd 判据自带 `-L`）不在人群里，各自隔离、没有一条人群判据管。
+- 48.3 的人群是「起**真后端二进制**的测试」＋「进程内走到 `identity_tag::tag` 的测试」。直接起 tmux server 而不起后端的测试（例：`watcher_tests.rs` 那条 pidfd 判据自带 `-L`）不在人群里，各自隔离、没有一条人群判据管。
+- 进程内那一族只守 `identity_tag` 这一个口：别的生产代码进程内直接起 `tmux`（例：`gate::probe` 的 `admit` 路、`watch_loop` 的探测与装 hook）不经它 —— 今天没有测试进程内走到那几处（`watch_loop` 整条不在单测里起）。
 - 48.3 自己的头注登记着若干条「手滑」形状的诚实边界（块注释包住取 shim 那一句 · `catch_unwind` 接住那声炸 ⋯⋯）—— 它防的是手滑，不是恶意。
 
 ---
