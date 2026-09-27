@@ -648,6 +648,16 @@ pub(crate) async fn open_stream(cfg: &RemoteConfig, cmd: &str) -> Result<DialStr
         .map_err(|(e, _)| e)
 }
 
+/// 〔HOST · V139〕**一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
+/// direct-tcpip 到远端 `127.0.0.1:port`）。出生带一次性总时限；接成流之后由调用方摘（`remote_resident::attach`）。
+pub(crate) async fn tunnel(cfg: &RemoteConfig, port: u16) -> Result<DialStream, String> {
+    let req = request(cfg, "tunnel", serde_json::json!({ "tunnel_port": port }))?;
+    open(cfg, &req, "tunnel", &mut |_| {})
+        .await
+        .map(|(s, _)| s)
+        .map_err(|(e, _)| e)
+}
+
 /// **收全一条 exec**：stdout / stderr / 退出码。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。
 pub(crate) async fn capture(
     cfg: &RemoteConfig,

@@ -2458,7 +2458,7 @@ const EXPECTED_PROTO_V: u64 = 1;
 /// **SS-B（issue #33/#29）已单源**：值来自编译期 env `BACKEND_BUILD_ID`，由 `build.rs` 从
 /// `src/backend/lib.rs::BUILD_ID` 抠出 emit——与后端源码、F08b 内嵌二进制的
 /// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
-const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
+pub(crate) const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
 
 /// F66（#58③）：monitor **内嵌** backend 声明的能力 token（= backend `lib.rs::CAPABILITIES`）。
 ///
@@ -3279,7 +3279,21 @@ async fn stream_loop(
     // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台后端被删/被换旧的机器会
     // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
     // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
-    let stream = match connect_and_exec(cfg, with_bg, tail_only, with_rbind_token).await {
+    // 〔HOST · V139〕先接那台的**常驻后端**（没有就起一个；与本机同形）；那台起不了常驻（非 unix / 太旧）才回落流模式。
+    let flags = (with_bg, tail_only, with_rbind_token);
+    let attached = match crate::remote_resident::attach(cfg, flags).await {
+        Ok(s) => Ok(s),
+        Err(crate::remote_resident::AttachErr::Unsupported(why)) => {
+            tracing::warn!(
+                "ssh_source [{host_label}] 那台起不了常驻后端（{why}）⇒ 回落流模式（随 SSH 生死）"
+            );
+            connect_and_exec(cfg, with_bg, tail_only, with_rbind_token)
+                .await
+                .map(crate::remote_resident::Replayed::plain)
+        }
+        Err(crate::remote_resident::AttachErr::Failed(e)) => Err(e),
+    };
+    let stream = match attached {
         Ok(s) => s,
         Err(e) => {
             if skip_preflight {
@@ -3977,15 +3991,9 @@ async fn stream_loop(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
                 );
             }
-            // 〔TAP · V124〕远端的中转是脱离的 `--relay`，不在那台的流模式后端进程里 ⇒ 今天远端流上**没有** tap 来源
-            //   （怎么接是设计题，住仓外 `调研/第四波记录/TAP.md §8` 题 1）。真来了：没有设计过它怎么对 sid，不转；
-            //   不按帧刷 warn（token 级的频率会把日志淹掉）—— 记一句 debug。
-            Some(InboundFrame::Tap(t)) => {
-                tracing::debug!(
-                    "ssh_source [{host_label}] 远端后端发来了 tap 帧（stream={}）—— 远端 tap 还没有设计，丢掉",
-                    t.stream
-                );
-            }
+            // 〔HOST · V139〕远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
+            //   （origin = 这台；V141 之后标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
+            Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
                 // 〔W5-VIS · `设计/15 §3.4 ②`〕记账：按 2 的幂次说（带累计数），流结束出总账（原先逐帧一行、从不计数）。

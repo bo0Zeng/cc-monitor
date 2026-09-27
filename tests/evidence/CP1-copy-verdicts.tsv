@@ -37,6 +37,8 @@ src/backend/dial/connect.rs:316	{}:{}（经跳板）	保留	[对外] 〔C2〕搬
 src/backend/dial/uses.rs:84	请求里 use=capture 却没给 capture 参数	改·§2.1	[可达存疑] 〔C2〕两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=capture 是线上字段名 →「本机后端与界面版本不一致」
 src/backend/dial/uses.rs:105	exec {} 失败: {e}	改·§2.1	[可达存疑] 〔C2〕拨号代理 ack 的 error，界面原样冒泡；exec 是实现词、{} 是整条命令行 →「远端命令没能启动：{e}」
 src/backend/dial/uses.rs:127	请求里 use=forward 却没给 forward 参数	改·§2.1	[可达存疑] 〔C2〕两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=forward 是线上字段名 →「本机后端与界面版本不一致」
+src/backend/dial/uses.rs:433	请求里 use=tunnel 却没给 tunnel_port	改·§2.1	[可达存疑] 〔HOST〕同上一行 use=forward 那一句：两端契约坏了的兜底话（按构造走不到），ack 的 error 会冒泡；use=tunnel / tunnel_port 是线上字段名 →「本机后端与界面版本不一致」
+src/backend/dial/uses.rs:450	远端 127.0.0.1:{port} 连不上: {e}	保留	[对外] 〔HOST〕远端常驻后端的监听口没人在听时 ack 的 error；monitor 那一侧把它当「那台还没起」去起一次，起不来才把它原样带进报错
 src/backend/dial/uses.rs:141	绑定本地端口 127.0.0.1:{} 失败: {e}	保留	[对外] 〔C2〕端口转发起不来的原因，toast 直接给用户；本地端口是用户自己填的，无内部词（搬自 port_forward.rs 同句）
 src/backend/files/mod.rs:344	定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目（`真相源/98 §3.2`）⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
@@ -72,8 +74,6 @@ src/bridge/src/backend/control/backend_control.rs:163	已起：{}	保留	[不对
 src/bridge/src/backend/control/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
 src/bridge/src/backend/control/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）
 src/bridge/src/backend/control/backend_control.rs:187	{origin} 的流已重起	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词，将来若上界面要换 新词:流
-src/bridge/src/backend/control/backend_control.rs:209	{origin} 的流已断（远端后端随管道破裂退出，本机看不见它）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」「管道破裂」是内部词 新词:流
-src/bridge/src/backend/control/backend_control.rs:212	{origin} 的流本来就没在跑	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词 新词:流
 src/bridge/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
 src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
 src/bridge/src/backend/control/local_backend.rs:1226	#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} "$@"\n	保留	[不对外] 远端 ~/.local/bin/ccm 那个 shim 的文件内容（shebang ＋ 一行注释 ＋ 一行 exec），不上屏；〔MC1〕CCM_SELF 那一行删了

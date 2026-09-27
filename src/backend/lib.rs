@@ -574,7 +574,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26，RELAY 合并那一拍）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关，V135 真跑一次过了）·
 /// V141：注入地址不带会话段，路由 `/s|t/<agent>/<账号>` 两段（`relay_route_core`）· `launch-endpoint` 入参去掉 `key` · 中转从 claude 自己的请求头取流标签
 /// （头名登记在适配层 `DefaultUpstream::session_header`）。升级那一刻带旧三段地址的在飞会话会断（不留兼容）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4j-relay-all-sid-from-claude";
+///
+/// ★★★ **p4k-remote-resident**（2026-09-26，HOST 合并那一拍）：子命令 ＋2 `--resident-ensure [--replace]` / `--resident-stop`（远端后端常驻，与本机同形）。
+/// ＋ 协议：链路新用法 `tunnel`（池里那条 SSH 上开 direct-tcpip 到远端回环口）· 常驻后端多客户（每条连接各一份 watcher / inbound / writer，tap 扇出）·
+/// attach 行可带 `flags` · V139 远端中转在远端常驻后端进程内起、远端 Tap 回 monitor。
+pub const BUILD_ID: &str = "p4k-remote-resident";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -841,6 +845,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // K-H1：起 HTTP 中转（常驻，不是一次性查询 —— 它住在这张表里是因为
     // `is_query_mode` 那道闸门读的是本表；不登记就会被当成未知 flag 静默进流模式）。
     "--relay",
+    // 〔HOST · V139〕远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
+    "--resident-ensure",
+    "--resident-stop",
     "--resolve",
     "--search",
     "--session-accounts",
@@ -1750,6 +1758,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--limit",
     // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
     "--query",
+    // 〔HOST〕`--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
+    "--replace",
     "--scope",
     // 〔W5-AUX · `设计/96 §3.6`〕CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,

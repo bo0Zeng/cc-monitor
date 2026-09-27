@@ -777,8 +777,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onStreamGap: (origin) => tabs.onStreamGap(origin),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
-    // 〔TAP · V124〕中转住本机常驻后端（V107）⇒ 只有本机有 tap 来源（远端 tap 是 `调研/第四波记录/TAP.md §8` 题 1）。
-    taps: [LOCAL_ORIGIN],
+    // 〔HOST · V139〕每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
+    taps: machines,
     // 〔DL1〕每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
     accounts: machines,
   });

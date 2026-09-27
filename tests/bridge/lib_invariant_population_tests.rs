@@ -434,6 +434,10 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ("src/bridge/src/ssh_source.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
      "",
      ""),
+    // 〔HOST · §47〕`--resident-ensure` / `--resident-stop` 两条命令的落点 = 这台的后端路径，经 `backend_path_for_shell`（规则 = `config_dir_command_safe`）。
+    ("src/bridge/src/remote_resident.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
+     "",
+     ""),
 ];
 
 /// 〔TL2〕`INVARIANTS §47` 人群判据：盘上每一份调 quote 的 Rust 生产文件 == 登记表（两向，含处数）；

@@ -72,6 +72,20 @@ pub(crate) fn send_sigusr1(pid: u32) -> bool {
     }
 }
 
+/// 〔HOST〕给 `pid` 发 `SIGTERM`（常驻后端收到后排空再退）。**调用方必须已核过身份**（同 [`send_sigusr1`]）。非 Unix 恒 `false`。
+pub(crate) fn send_sigterm(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: 见 `send_sigusr1` 头注 —— 身份校验是调用方的责任，这里只做系统调用。
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
 /// 〔RM1f〕给**整个进程组** `pgid` 发 `SIGKILL`。返回是否发成功。
 ///
 /// 谁要它：`plugin::invoke::run_abortable` —— 调用方放弃等待时，要连同 `timeout(1)` 前缀
