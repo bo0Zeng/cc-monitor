@@ -15,7 +15,6 @@ export interface RemoteHostConfig {
   port: number;
   user: string;
   keyPath: string;
-  backendPath: string;
   hostKeyFingerprint: string;
   /**
    * Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
@@ -93,7 +92,6 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   port: 22,
   user: "",
   keyPath: "",
-  backendPath: "",
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
@@ -125,7 +123,6 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
         : HOST_DEFAULTS.port,
     user: str("user", HOST_DEFAULTS.user),
     keyPath: str("keyPath", HOST_DEFAULTS.keyPath),
-    backendPath: str("backendPath", HOST_DEFAULTS.backendPath),
     hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
@@ -212,7 +209,6 @@ const REMOTE_HOST_FIELDS = [
   "port",
   "user",
   "keyPath",
-  "backendPath",
   "hostKeyFingerprint",
   "addresses",
   "jump",

@@ -88,7 +88,8 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
   it("★ 容器路那一侧也要显式表态（内层载荷带 `--base`，不靠继承穿 tmux 边界）", () => {
     // 这一条接的是 bash 那版「两处落点」里的第二处：从前是两段手写副本各 unset 一次，
     // 今天是「容器路把 `--base` 原样传进内层，内层再走同一条渲染」。
-    expect(ccmPlan).toContain("inner.push(flag::BASE.into());");
+    // 〔V151〕内层 `self <交给 agent 的…> -- <ccm 的…>`：`--base` 进 ccm 那一半（`opts`）。
+    expect(ccmPlan).toContain("opts.push(flag::BASE.into());");
   });
 
   it("`--account` 与 `--base` 互斥仍在 ccm 里（否则可能同时 export + unset，顺序决定结果）", () => {

@@ -1471,11 +1471,11 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     // 〔RK1〕钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
     assert_eq!(
         relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b"),
-        "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b'; "
+        "[ -n \"${ANTHROPIC_BASE_URL:-}\" ] && printf '%s\\n' 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' || export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b'; "
     );
     assert_eq!(
         relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b"),
-        "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/a/b'; "
+        "if ($env:ANTHROPIC_BASE_URL) { Write-Host 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' } else { $env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '.cc-monitor/relay-key')).Trim() + '/s/a/b' }; "
     );
 }
 
@@ -1515,6 +1515,7 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
             .arg("-c")
             .arg(format!("{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\""))
             .env("HOME", home)
+            .env_remove("ANTHROPIC_BASE_URL")
             .output()
             .expect("起 sh");
         String::from_utf8(out.stdout).expect("utf-8")
@@ -1549,6 +1550,7 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
             relay_env_prefix_posix(&t)
         ))
         .env("HOME", &home)
+        .env_remove("ANTHROPIC_BASE_URL")
         .output()
         .expect("起 sh");
     assert_eq!(
@@ -2094,4 +2096,56 @@ fn a_tmux_name_follows_the_create_or_existing_rule_from_gate_core() {
         let e = attach(t.clone()).expect_err(&format!("已有会话那一条放过了 {t:?}"));
         assert!(e.starts_with(REFUSE_TAG), "{e}");
     }
+}
+
+/// 〔E2 · V146〕要求住址：`99 §1` V146「起会话的载荷里先看 `ANTHROPIC_BASE_URL` 有没有值：有 ⇒ 不注入中转地址（不抢用户的端点）、
+/// pane 里说一行「这个会话用你自己设的端点，拿不到流式」」。
+///
+/// 真 `sh` 跑渲染出来的前缀（判在 pane 的 shell 里，不由 monitor 猜）：用户设了 ⇒ 值原样、说了那一行、钥匙没被读进去；
+/// 设成空串 ⇒ 当没设、照常注入中转；没设 ⇒ 注入中转。PowerShell 那一形只到「编得过 ＋ 形状」（真机归 WIN1）。
+#[cfg(unix)]
+#[test]
+fn a_base_url_the_user_already_set_is_left_alone_and_said_out_loud() {
+    let url = relay_route_core::base_url(
+        RELAY_PORT,
+        relay_route_core::RouteMode::Passthrough,
+        "claude-code",
+        "0",
+    )
+    .expect("构造口");
+    let prefix = relay_env_prefix_posix(&url);
+    let run = |user: Option<&str>| {
+        let mut c = std::process::Command::new("sh");
+        c.arg("-c")
+            .arg(format!("{prefix}printf '[%s]' \"$ANTHROPIC_BASE_URL\""))
+            .env("HOME", "/nonexistent-e2-home")
+            .env_remove("ANTHROPIC_BASE_URL");
+        if let Some(u) = user {
+            c.env("ANTHROPIC_BASE_URL", u);
+        }
+        let out = c.output().expect("起 sh");
+        String::from_utf8(out.stdout).expect("utf-8")
+    };
+    let say = crate::copy_table::copy_text("rsPayload.relay.userBaseUrl", &[]);
+    assert_eq!(
+        run(Some("https://my.proxy.example/v1")),
+        format!("{say}\n[https://my.proxy.example/v1]"),
+        "用户自己设的端点被盖了，或那一行没说"
+    );
+    assert_eq!(
+        run(None),
+        "[http://127.0.0.1:8788//t/claude-code/0]",
+        "没设时没注入中转"
+    );
+    assert_eq!(
+        run(Some("")),
+        "[http://127.0.0.1:8788//t/claude-code/0]",
+        "设成空串该当没设"
+    );
+    let ps = relay_env_prefix_ps(&url);
+    assert!(
+        ps.starts_with("if ($env:ANTHROPIC_BASE_URL) { Write-Host '")
+            && ps.contains("} else { $env:ANTHROPIC_BASE_URL="),
+        "PowerShell 那一形没先看用户设没设：{ps}"
+    );
 }

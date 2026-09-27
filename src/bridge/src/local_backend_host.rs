@@ -1431,7 +1431,9 @@ fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::St
         return Err(copy_text("rsLocalBackendHost.stop.noBin", &[]));
     }
     let mut cmd = std::process::Command::new(bin);
-    cmd.arg("--resident-stop")
+    // 〔V151〕本机落点就是 `ccm`：打头的 `--` 让它当后端用（没有它整行交给 claude）。
+    let words = [local_backend::BACKEND_SEP, "--resident-stop"];
+    cmd.args(words)
         .env_remove("TMUX")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped());

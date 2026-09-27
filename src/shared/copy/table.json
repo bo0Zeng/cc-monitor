@@ -6224,7 +6224,7 @@
     },
     "machineAliases.form.passthru": {
       "kind": "control",
-      "zh": "透传给 agent 的参数，放在 -- 之后",
+      "zh": "原样交给 agent 的参数，放在 -- 左边",
       "args": []
     },
     "machineAliases.form.busNote": {
@@ -6652,12 +6652,12 @@
     },
     "machineCard.uninstall.confirm": {
       "kind": "body",
-      "zh": "确认从 {host} 删除后端？\n会删：{path}\n（若该机器仍勾选启用，下次连接会自动装回。）",
-      "args": ["host", "path"]
+      "zh": "确认从 {host} 删除后端？\n会删：~/.cc-monitor/bin/ccm\n（若该机器仍勾选启用，下次连接会自动装回。）",
+      "args": ["host"]
     },
     "machineCard.uninstall.needFields": {
       "kind": "error",
-      "zh": "请先填好主机、用户和后端路径再卸载后端。",
+      "zh": "请先填好主机和用户再卸载后端。",
       "args": []
     },
     "machineCard.status.installFailed": {
@@ -6677,7 +6677,7 @@
     },
     "machineCard.deploy.needFields": {
       "kind": "error",
-      "zh": "请先填好主机、用户和后端路径再部署后端。",
+      "zh": "请先填好主机和用户再部署后端。",
       "args": []
     },
     "machineCard.launch.start": {
@@ -6807,7 +6807,7 @@
     },
     "machineCard.test.needFields": {
       "kind": "error",
-      "zh": "请先填好主机、用户和后端路径再测试。",
+      "zh": "请先填好主机和用户再测试。",
       "args": []
     },
     "machineCard.displayName.unnamed": {
@@ -6980,19 +6980,8 @@
       "zh": "私钥路径（可选）",
       "args": []
     },
-    "machineCard.field.backendPathHint": {
-      "kind": "body",
-      "zh": "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接执行、不经 shell，~ 不会被展开。",
-      "args": [],
-      "waive": {
-        "C-T1": "例子里是后端程序在盘上的真实文件名 cc-monitor-backend，用户要照着填"
-      }
-    },
-    "machineCard.field.backendPath": {
-      "kind": "control",
-      "zh": "后端路径",
-      "args": []
-    },
+
+
     "machineCard.field.userHint": {
       "kind": "control",
       "zh": "如 ubuntu / pi / root",
@@ -10236,26 +10225,6 @@
       "zh": "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。",
       "args": ["path"]
     },
-    "rsSftp.uninstall.suspicious": {
-      "kind": "error",
-      "zh": "拒绝删除可疑的后端路径（须为含 cc-monitor 的绝对路径、不含 ..）：{path}",
-      "args": ["path"]
-    },
-    "rsSftp.uninstall.tildeRefused": {
-      "kind": "error",
-      "zh": "后端路径里有 ~（SFTP 不展开 ~），请改用绝对路径后再卸载",
-      "args": []
-    },
-    "rsSftp.ccmEntry.placed": {
-      "kind": "body",
-      "zh": "终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。",
-      "args": []
-    },
-    "rsSftp.ccmEntry.ready": {
-      "kind": "body",
-      "zh": "终端里的 ccm 入口已就位。",
-      "args": []
-    },
     "rsSftp.deploy.done": {
       "kind": "body",
       "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。重连远端即可用。",
@@ -10266,19 +10235,6 @@
       "zh": "远端已是最新后端（{buildId}，{machine}）：{path}，无需重装。",
       "args": ["buildId", "machine", "path"]
     },
-    "rsSftp.deploy.tildeRefused": {
-      "kind": "error",
-      "zh": "后端路径里有 ~（SFTP 不展开 ~），请改用绝对路径",
-      "args": []
-    },
-    "rsSftp.deploy.needPath": {
-      "kind": "error",
-      "zh": "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）",
-      "args": [],
-      "waive": {
-        "C-T1": "例子里是后端程序在盘上的真实文件名 cc-monitor-backend"
-      }
-    },
     "rsSftp.deploy.noBuildId": {
       "kind": "error",
       "zh": "这一版 cc-monitor 带的后端说不出自己是哪一版，没有把它装上去。",
@@ -10288,11 +10244,6 @@
       "kind": "error",
       "zh": "问 {machine} 是什么机器没问成，没有装后端：{e}",
       "args": ["machine", "e"]
-    },
-    "rsSftp.deploy.tildePath": {
-      "kind": "error",
-      "zh": "{machine} 的后端路径里有 ~，自动部署不认这种写法，没有装。在机器页把后端路径改成完整路径。",
-      "args": ["machine"]
     },
     "rsSftp.identity.undecidable": {
       "kind": "error",
@@ -10308,6 +10259,26 @@
       "kind": "error",
       "zh": "{machine} 的 {path} 自报了不止一个版本（{ids}），{handsOff}",
       "args": ["machine", "path", "ids", "handsOff"]
+    },
+    "rsSftp.identity.oldEntry": {
+      "kind": "body",
+      "zh": "那里是旧版 cc-monitor 放的三行 ccm 入口，换成后端本身",
+      "args": []
+    },
+    "rsSftp.legacyBackend.removed": {
+      "kind": "body",
+      "zh": "旧版放的后端 {rel} 认出是 cc-monitor 编的，已删掉（今天后端就是 ~/.cc-monitor/bin/ccm）。",
+      "args": ["rel"]
+    },
+    "rsSftp.legacyBackend.kept": {
+      "kind": "body",
+      "zh": "{rel} 没动：它说不出自己是 cc-monitor 编的哪一版。",
+      "args": ["rel"]
+    },
+    "rsSftp.legacyBackend.failed": {
+      "kind": "error",
+      "zh": "没查成旧版后端 {rel}：{e}。",
+      "args": ["rel", "e"]
     },
     "rsSftp.identity.unstamped": {
       "kind": "error",
@@ -12114,6 +12085,11 @@
       "zh": "嵌套环境变量的键表是空的，会渲染出一句空的 unset",
       "args": []
     },
+    "rsPayload.relay.userBaseUrl": {
+      "kind": "body",
+      "zh": "cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式",
+      "args": []
+    },
     "rsPayload.relayUrl.bad": {
       "kind": "error",
       "zh": "中转地址格式不对，不能拼进命令：{value}（要 http://127.0.0.1:<端口>/s|t/<两段>）",
@@ -12159,14 +12135,21 @@
       "zh": "改名到 {dest} 失败：{e}",
       "args": ["dest", "e"]
     },
-    "rsLocalBackend.ccmEntry.copyFailed": {
-      "kind": "error",
-      "zh": "把后端 {bin} 复制成本机 ccm 入口失败：{e}",
-      "args": ["bin", "e"]
+
+
+    "rsLocalBackend.place.thisMachine": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
     },
-    "rsLocalBackend.ccmEntry.readFailed": {
+    "rsLocalBackend.place.besideUnstamped": {
       "kind": "error",
-      "zh": "读不到后端程序 {bin}：{e}",
+      "zh": "安装包旁边那份后端 {bin} 说不出自己是哪一版，没拿它放 ~/.cc-monitor/bin/ccm。重装 cc-monitor 再试",
+      "args": ["bin"]
+    },
+    "rsLocalBackend.place.besideReadFailed": {
+      "kind": "error",
+      "zh": "读不了安装包旁边那份后端 {bin}：{e}",
       "args": ["bin", "e"]
     },
     "rsLocalBackend.extract.writeFailed": {
@@ -12841,6 +12824,11 @@
       "kind": "error",
       "zh": "{flag} 后面缺一个值",
       "args": ["flag"]
+    },
+    "rsAccountAliases.check.notCcmFlag": {
+      "kind": "error",
+      "zh": "-- 右边只放 ccm 自己的选项，{word} 不是；交给 claude 的参数写在 -- 左边",
+      "args": ["word"]
     },
     "rsAccountAliases.check.notAllowed": {
       "kind": "error",
@@ -14257,11 +14245,7 @@
       "zh": "探测 ccm 失败：{e}",
       "args": ["e"]
     },
-    "rsCcmProbe.probe.noConfig": {
-      "kind": "error",
-      "zh": "未找到远端配置：{machine}",
-      "args": ["machine"]
-    },
+
     "rsLib.activeSessions.notListed": {
       "kind": "error",
       "zh": "本机后端还没报完活会话清单",
@@ -14406,11 +14390,6 @@
       "kind": "error",
       "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
       "args": ["machine"]
-    },
-    "rsSshSource.backendPath.refused": {
-      "kind": "error",
-      "zh": "{machine} 的后端路径 {path} 不能用。要绝对路径，不含 ..、反斜杠、引号、分号这类 shell 字符、控制字符或看不见的字符；去机器页改对它",
-      "args": ["machine", "path"]
     },
     "rsSshSource.control.unsupported": {
       "kind": "body",
@@ -16102,12 +16081,7 @@
     },
     "rsToolRegistry.tools.backendRemoteNote": {
       "kind": "body",
-      "zh": "路径由这条连接的「后端路径」配置项决定。在那台机器上它就是那台机器的本地后端，「远端」只是相对这台 cc-monitor 说的",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendRemoteDestWhat": {
-      "kind": "body",
-      "zh": "每个远端连接的「后端路径」配置项",
+      "zh": "固定放在那台的 ~/.cc-monitor/bin/ccm。在那台机器上它就是那台机器的本地后端，「远端」只是相对这台 cc-monitor 说的",
       "args": []
     },
     "rsToolRegistry.tools.backendRemoteWhat": {
@@ -16115,16 +16089,8 @@
       "zh": "推到远端那台机器上跑的那一份后端。在那台机器上它就是本地后端",
       "args": []
     },
-    "rsToolRegistry.tools.backendEmbeddedNote": {
-      "kind": "body",
-      "zh": "本机释放出来的那份后端，文件名带版本号。同一版不会重复写，旧版本不回收",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendEmbeddedWhat": {
-      "kind": "body",
-      "zh": "cc-monitor 自己带着的那一份后端。旁边没有本机后端时释放出来用",
-      "args": []
-    },
+
+
     "rsToolRegistry.tools.backendBesideNote": {
       "kind": "body",
       "zh": "本机，随安装包落盘；文件名带目标平台，Windows 上再带 .exe",
@@ -16202,12 +16168,12 @@
     },
     "rsToolRegistry.tools.ccmLocalNote": {
       "kind": "body",
-      "zh": "本机那条 ccm 入口，放在 cc-monitor 自己的目录里。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
+      "zh": "本机那条 ccm，放在 cc-monitor 自己的目录里（就是本机后端那个文件）。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
       "args": []
     },
     "rsToolRegistry.tools.ccmLocalWhat": {
       "kind": "body",
-      "zh": "本机上的 ccm 命令。它就是后端程序本身换了个名字，不是另一份实现",
+      "zh": "本机上的 ccm 命令。它就是后端程序本身，不是另一份实现",
       "args": []
     },
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
@@ -16217,7 +16183,7 @@
     },
     "rsToolRegistry.tools.ccmRemoteWhat": {
       "kind": "body",
-      "zh": "远端那台机器上的 ccm 命令。它只是一个小入口，把参数转给那台机器上的后端",
+      "zh": "远端那台机器上的 ccm 命令。它就是推过去的那一份后端本身，不是另一份实现",
       "args": []
     },
     "rsToolRegistry.tools.ccmName": {
@@ -16530,6 +16496,16 @@
       "zh": "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
       "args": []
     },
+    "rsToolRegistry.tools.backendLegacyExtractNote": {
+      "kind": "body",
+      "zh": "旧版 cc-monitor 在本机放的后端（文件名带版本号）。今天后端就是 ~/.cc-monitor/bin/ccm；启动时认出是 cc-monitor 编的就删，删不掉的下次再删",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendLegacyNote": {
+      "kind": "body",
+      "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端（今天后端就是 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
+      "args": []
+    },
     "rsSkillInstall.record.noLedger": {
       "kind": "error",
       "zh": "装好了，但「{path}」这台没说该怎么记 —— 这一趟装的文件卸不掉。",
@@ -16655,6 +16631,16 @@
       "zh": "--account 与 --base 互斥",
       "args": []
     },
+    "beArgv.parse.unknownRight": {
+      "kind": "error",
+      "zh": "-- 右边只放 ccm 自己的选项，{w} 不是；交给 claude 的参数写在 -- 左边（ccm -- --ccm-help 看选项）",
+      "args": ["w"]
+    },
+    "beArgv.parse.backendWordAfterClaudeArgs": {
+      "kind": "error",
+      "zh": "{w} 是后端的子命令，只能紧跟打头的 --（ccm -- {w} …），前面不许有交给 claude 的参数",
+      "args": ["w"]
+    },
     "beArgv.validate.unknownAgent": {
       "kind": "error",
       "zh": "未知 agent: {agent}（支持 {known}）",
@@ -16752,7 +16738,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [new] [ccm 自己的选项…] [交给 claude 的参数…] [-- 原样交给 claude 的参数…]\n\nccm 是 claude 的壳：下面这些选项它自己用，其余的（--resume / --continue / --model / --tmux / --agent / -p / --help / 位置参数…）\n原样交给 claude（--ccm-agent codex 时交给 codex）。首词 new 是 ccm 的（起新会话，可省）；\n位置词 attach 交给 claude（它自己的 attach 子命令），接回 tmux 会话用 --attach <会话名>。\n\n选项\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
@@ -17157,11 +17143,6 @@
       "kind": "error",
       "zh": "记得住的远端机器已经满了（{max} 台）",
       "args": ["max"]
-    },
-    "beRemoteAsk.register.backendPathRefused": {
-      "kind": "error",
-      "zh": "机器 {origin} 登记的后端路径 {path} 不能用。要绝对路径，不含 ..、引号、分号这类 shell 字符、控制字符或看不见的字符",
-      "args": ["origin", "path"]
     },
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",

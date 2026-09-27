@@ -595,6 +595,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   },
   "relay-route-core": {
     ALL: NONE,
+    // 〔E2 · V28〕后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。
+    BACKEND_LANDING_REL: NONE,
+    BACKEND_LANDING_SHELL: NONE,
     base_url: NONE,
     base_url_shape_ok: NONE,
     KEY_FILE_REL: "J14",
