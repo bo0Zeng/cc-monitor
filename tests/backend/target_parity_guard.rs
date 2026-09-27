@@ -961,10 +961,10 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("account", &["--account", "acct-x"], &[]),
     ("account-via-backend", &["--account", "acct-x"], &[]),
     ("agent", &["--agent", "codex"], &[]),
-    ("attach", &["attach", "foo"], &[]),
+    ("attach", &["--attach", "foo"], &[]), // V138：位置动作改成 `--attach`
     (
         "backend-discover",
-        &["resume", "11111111-2222-3333-4444-555555555555"],
+        &["--resume", "11111111-2222-3333-4444-555555555555"], // V138：交给 claude 的那一形
         &[],
     ),
     (
@@ -978,7 +978,7 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("model", &["--model", "opus"], &[]),
     (
         "resume",
-        &["resume", "11111111-2222-3333-4444-555555555555"],
+        &["--resume", "11111111-2222-3333-4444-555555555555"], // V138：交给 claude 的那一形
         &[],
     ),
     ("tmux", &["--tmux"], &[]),

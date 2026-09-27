@@ -12219,8 +12219,13 @@
     },
     "rsAccountAliases.check.notAllowed": {
       "kind": "error",
-      "zh": "{word} 不能放进别名（只收 ccm 的修饰）",
+      "zh": "{word} 不能放进别名（这个选项每次现敲）",
       "args": ["word"]
+    },
+    "rsAccountAliases.check.cwdNotAbsolute": {
+      "kind": "error",
+      "zh": "--cwd 要写完整路径（不含 ..）：{value}",
+      "args": ["value"]
     },
     "rsAccountAliases.check.tmuxNoName": {
       "kind": "error",
@@ -16065,30 +16070,15 @@
       "zh": "请求格式不对：{detail}",
       "args": ["detail"]
     },
-    "beArgv.validate.badSid": {
-      "kind": "error",
-      "zh": "会话 ID {sid} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
-      "args": ["sid"]
-    },
     "beArgv.validate.badCcmSid": {
       "kind": "error",
       "zh": "会话标记 {sid} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["sid"]
     },
-    "beArgv.validate.badModel": {
-      "kind": "error",
-      "zh": "模型名 {model} 用不了（字母数字开头，只许字母数字与 . _ - : @ / [ ]，最长 256）",
-      "args": ["model"]
-    },
     "beArgv.validate.badAccount": {
       "kind": "error",
       "zh": "账号名 {account} 用不了（字母数字开头，只许字母数字与 _ -，最长 32）",
       "args": ["account"]
-    },
-    "beArgv.validate.noResume": {
-      "kind": "error",
-      "zh": "{agent} 不支持 resume",
-      "args": ["agent"]
     },
     "beArgv.validate.badSize": {
       "kind": "error",
@@ -16129,26 +16119,6 @@
       "kind": "error",
       "zh": "未知 agent: {agent}（支持 {known}）",
       "args": ["agent", "known"]
-    },
-    "beArgv.parse.extraPositional": {
-      "kind": "error",
-      "zh": "多余的位置参数: {other}（动作只能是 new/resume/attach 且必须在最前）",
-      "args": ["other"]
-    },
-    "beArgv.parse.unknownOption": {
-      "kind": "error",
-      "zh": "未知选项: {other}（用 --help 看用法）",
-      "args": ["other"]
-    },
-    "beArgv.parse.attachNeedsName": {
-      "kind": "error",
-      "zh": "attach 需要 <会话名>",
-      "args": []
-    },
-    "beArgv.parse.resumeNeedsId": {
-      "kind": "error",
-      "zh": "resume 需要 <会话ID>",
-      "args": []
     },
     "beArgv.needVal.looksMissing": {
       "kind": "error",
@@ -16242,7 +16212,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [new|resume <会话ID>|attach <会话名>] [选项…] [-- 透传给 agent 的参数…]\n\n动作（位置参数，必须在最前；不给就是 new）\n  new                起一个新会话\n  resume <会话ID>    接着某个会话往下跑\n  attach <会话名>    不起 agent，直接接回一个 tmux 会话\n\n选项\n  --resume <会话ID>  与 resume <会话ID> 等价\n  --tmux[=<名>]      在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --tmux）\n  --detach           建完就返回，不接进去（要带 --tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录\n  --agent <名>       claude | codex\n  --model <名>       指定模型（设 ANTHROPIC_MODEL）\n  --launcher <命令>  换掉默认的启动命令\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --print            不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --version          印版本号\n  --help, -h         这一段\n",
+      "zh": "用法：ccm [ccm 自己的选项…] [交给 claude 的参数…] [-- 原样交给 claude 的参数…]\n\nccm 是 claude 的壳：下面这些选项它自己用，其余的（--resume / --continue / --model / -p / --help / 位置参数…）\n原样交给 claude（--agent codex 时交给 codex）。claude 自己也有同名选项（如 --tmux）时，写在 -- 后面。\n\n选项\n  --tmux[=<名>]      在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --tmux）\n  --detach           建完就返回，不接进去（要带 --tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录\n  --agent <名>       claude | codex\n  --launcher <命令>  换掉默认的启动命令\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
@@ -16252,11 +16222,6 @@
     "beCcm.whyShell.ccmEnv": {
       "kind": "body",
       "zh": "设了环境变量 CCM_ENV，它得交给 sh 解释",
-      "args": []
-    },
-    "beCcm.whyShell.resolved": {
-      "kind": "body",
-      "zh": "要接着跑的那条命令得交给 sh 拆开",
       "args": []
     },
     "beCcm.whyShell.busId": {
