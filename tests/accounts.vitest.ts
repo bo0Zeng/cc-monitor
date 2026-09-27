@@ -740,6 +740,17 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
       patch: { lastAccount: "z" },
     });
   });
+  // 〔GAP1 · `设计/30 §8` 第 4 条〕「resume 被记录探针拦下时，`withAccount` 照样记一次『上次用的账号』」⇒ run 回 false 就不记。
+  it("★ 〔GAP1〕run 回 false（被记录探针拦下）⇒ 不记 lastAccount；回 undefined ⇒ 记一次（正控）", async () => {
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
+    await withAccount("devbox", "z", vi.fn().mockResolvedValue(false), { sessionId: "s1" });
+    expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toEqual([]);
+    await withAccount("devbox", "z", vi.fn().mockResolvedValue(undefined), { sessionId: "s1" });
+    expect(historyCalls(invokeMock.mock.calls, "update_history_metadata")).toEqual([
+      { sessionId: "s1", patch: { lastAccount: "z" } },
+    ]);
+  });
   it("可选账号但无 sessionId（新会话）→ run({configDir, accountName})，不记账", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockImplementation(withHistoryReads(withAccountReads(() => (okRaw([acct({ name: "z", configDir: "/h/z" })])))));
