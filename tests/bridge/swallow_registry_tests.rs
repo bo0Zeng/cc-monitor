@@ -205,6 +205,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"远端命令起来了，但交给它的那一行没送过去: {e}\"), fp)).await;", 1, Why::DeadLink, ""),
     // 〔VIS2 · 09-26〕`agent_home` 的可重入挂法（`rewatch_agent_home`，`设计/15 §4.7 S3`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
+    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", 1, Why::Reap, "〔STOP〕停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。

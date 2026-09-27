@@ -181,11 +181,11 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/bridge/stop_grace_tests.rs",
-        "src/backend/inbound.rs",
-        "〔HX1 · 4D〕**两个期限的先后**：后端自己兜的退出排空期限（`inbound::DRAIN_DEADLINE`）与 monitor「停」等它的时长\
-         （`stop_grace::STOP_GRACE_TRIES × STOP_POLL`）。monitor 等得比后端短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断、\
-         **不会报错**；只有同时读两侧才验得了（现抠后端生产段那个字面量，恰好一处）。",
+        "tests/bridge/remote_resident_tests.rs",
+        "src/backend/control/resident.rs",
+        "〔STOP · 替 HX1 那一行〕**两个期限的先后**：那台停一次的最长时间（`resident::STOP_GRACE_MS ＋ KILL_WAIT_MS`，一次性子命令 `--resident-stop` 里）\
+         与 monitor 等那一趟的期限（`dial_host::ONE_SHOT_DEADLINE`）。monitor 等得比它短 ⇒ 那台其实停成了、界面却说超时，**不会报错**；\
+         只有同时读两侧才验得了（现抠后端生产段那两个字面量，各恰好一处）。宽限期与排空上限的先后在后端一侧同 crate 钉（`resident_tests`）。",
     ),
     (
         "monitor→backend",

@@ -679,6 +679,11 @@
       "zh": "把 {tmp} 换成 {path} 失败：{e}",
       "args": ["tmp", "path", "e"]
     },
+    "rsRemoteResident.stop.unknownAnswer": {
+      "kind": "error",
+      "zh": "停后端的结局认不出来：{line}",
+      "args": ["line"]
+    },
     "rsRemoteResident.ensure.tooOld": {
       "kind": "error",
       "zh": "那台机器上的后端太旧，不认常驻那条命令。",
@@ -739,16 +744,6 @@
       "zh": "那台机器的常驻后端拒绝了这条连接：{why}",
       "args": ["why"]
     },
-    "rsBackendControl.remote.stopped": {
-      "kind": "error",
-      "zh": "已停 {origin} 的常驻后端（进程 {pid}），它会先做完手上的活再退；这条流也断了。",
-      "args": ["origin", "pid"]
-    },
-    "rsBackendControl.remote.notRunning": {
-      "kind": "error",
-      "zh": "{origin} 上没有在跑的常驻后端；这条流已断。",
-      "args": ["origin"]
-    },
     "rsBackendControl.remote.stopFailed": {
       "kind": "error",
       "zh": "{origin} 的流已断，但停那台的常驻后端没成：{e}",
@@ -784,10 +779,40 @@
       "zh": "进程 {pid} 不是记下的那个后端，没有停它。它跑的是 {exe}，进程号可能被别的程序用了。",
       "args": ["pid", "exe"]
     },
-    "beResident.stop.signalFailed": {
+    "beResident.stop.badGrace": {
       "kind": "error",
-      "zh": "给常驻后端（进程 {pid}）发停止信号没发出去。",
+      "zh": "--grace 只收 {min} 到 {max} 秒。再短的话，后端还没收尾就会被强杀。",
+      "args": ["min", "max"]
+    },
+    "beResident.stop.stuck": {
+      "kind": "error",
+      "zh": "常驻后端（进程 {pid}）强杀之后还在，没有停掉。",
       "args": ["pid"]
+    },
+    "beStop.handle.failed": {
+      "kind": "error",
+      "zh": "拿不到进程 {pid} 的句柄，没有停它：{e}",
+      "args": ["pid", "e"]
+    },
+    "beStop.signal.failed": {
+      "kind": "error",
+      "zh": "信号 {sig} 没发出去：{e}",
+      "args": ["sig", "e"]
+    },
+    "beStop.wait.failed": {
+      "kind": "error",
+      "zh": "等进程退出时出错：{e}",
+      "args": ["e"]
+    },
+    "beStop.term.none": {
+      "kind": "body",
+      "zh": "这个平台没法请进程自己收尾，直接强杀。",
+      "args": []
+    },
+    "beStop.platform.unsupported": {
+      "kind": "error",
+      "zh": "这个平台上停不了常驻后端。",
+      "args": []
     },
     "panePreview.head.title": {
       "kind": "title",
@@ -9926,6 +9951,21 @@
       "zh": "后端写完回来的内容格式不对，两边版本可能对不上",
       "args": []
     },
+    "backend.stopSaid.graceful": {
+      "kind": "body",
+      "zh": "已停：后端（进程 {pid}）做完手上的事，自己退了。",
+      "args": ["pid"]
+    },
+    "backend.stopSaid.killed": {
+      "kind": "body",
+      "zh": "已强杀：后端（进程 {pid}）到时间没退。正在做的事可能只做了一半。",
+      "args": ["pid"]
+    },
+    "backend.stopSaid.notRunning": {
+      "kind": "body",
+      "zh": "这台机器上没有在跑的常驻后端。",
+      "args": []
+    },
     "backend.stop.failed": {
       "kind": "error",
       "zh": "停后端失败",
@@ -16210,15 +16250,20 @@
       "zh": "这个口上的后端属于另一个数据目录，没有接它。{diffs}。接上它，凭据与历史注解会写进那个数据目录。多半是用 CCM_DATA_DIR 隔离跑的 monitor 碰上了平常那个 monitor 起的后端：换一个 CLAUDE_CONFIG_DIR 跑，或者先把那个后端停掉。",
       "args": ["diffs"]
     },
-    "rsLocalBackendHost.stop.notRunning": {
-      "kind": "body",
-      "zh": "本机后端本来就没在跑",
+    "rsLocalBackendHost.stop.noBin": {
+      "kind": "error",
+      "zh": "不知道本机常驻后端是哪个程序，停不了它。",
       "args": []
     },
-    "rsLocalBackendHost.stop.local": {
-      "kind": "body",
-      "zh": "本机后端已停止",
-      "args": []
+    "rsLocalBackendHost.stop.spawnFailed": {
+      "kind": "error",
+      "zh": "起不来停后端用的 {bin}：{e}",
+      "args": ["bin", "e"]
+    },
+    "rsLocalBackendHost.stop.noRecord": {
+      "kind": "error",
+      "zh": "本机常驻后端（进程 {pid}）还在跑，但找不到它的进程记录。没有停它。",
+      "args": ["pid"]
     },
     "rsLocalBackendHost.lock.poisoned": {
       "kind": "error",
@@ -16233,66 +16278,6 @@
     "rsLocalBackendHost.local.machine": {
       "kind": "body",
       "zh": "本机",
-      "args": []
-    },
-    "rsLocalBackendHost.signal.failed": {
-      "kind": "error",
-      "zh": "结束进程 {pid} 的命令退出码 {st}",
-      "args": ["pid", "st"]
-    },
-    "rsLocalBackendHost.signal.spawnFailed": {
-      "kind": "error",
-      "zh": "没能执行结束进程的命令：{e}",
-      "args": ["e"]
-    },
-    "rsLocalBackendHost.kill.unsupported": {
-      "kind": "error",
-      "zh": "这个平台上后端不能常驻，也就没有上次留下的后端",
-      "args": []
-    },
-    "rsLocalBackendHost.kill.notOurs": {
-      "kind": "error",
-      "zh": "进程 {pid} 现在跑的是 {exe}，不是 cc-monitor 的后端，不动它（进程号被复用了）",
-      "args": ["pid", "exe"]
-    },
-    "rsLocalBackendHost.kill.exeUnreadable": {
-      "kind": "error",
-      "zh": "读不到 /proc/{pid}/exe（{e}），它可能已经不在了",
-      "args": ["pid", "e"]
-    },
-    "rsLocalBackendHost.kill.noExe": {
-      "kind": "error",
-      "zh": "不知道进程 {pid} 该是哪个程序（那份记录缺了一行），不动它",
-      "args": ["pid"]
-    },
-    "rsLocalBackendHost.kill.noPid": {
-      "kind": "error",
-      "zh": "不知道它的进程号（起它的那次 cc-monitor 没能记下来）",
-      "args": []
-    },
-    "rsLocalBackendHost.stop.adoptedKillFailed": {
-      "kind": "error",
-      "zh": "已断开本机后端，但没能结束它（pid={pid}：{e}），请手动结束这个进程。",
-      "args": ["pid", "e"]
-    },
-    "rsLocalBackendHost.stop.adopted": {
-      "kind": "body",
-      "zh": "上次留下的本机后端已停（pid={pid}）",
-      "args": ["pid"]
-    },
-    "rsLocalBackendHost.stop.detached": {
-      "kind": "body",
-      "zh": "本机后端已停（常驻，pid={pid}）",
-      "args": ["pid"]
-    },
-    "rsLocalBackendHost.stop.forced": {
-      "kind": "error",
-      "zh": "本机后端 {secs} 秒内没收完手上的活，已强制结束（pid={pid}）。那一刻在跑的写可能没做完。",
-      "args": ["pid", "secs"]
-    },
-    "rsLocalBackendHost.stop.stillThere": {
-      "kind": "error",
-      "zh": "强制结束之后它还在",
       "args": []
     },
     "rsLocalBackendHost.adopt.waited": {

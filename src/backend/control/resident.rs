@@ -4,8 +4,10 @@
 //! - `--resident-ensure [--replace]`：读回或铸这台的监听钥匙（`~/.cc-monitor/listen-token`，与本机宿主同一份文件）→
 //!   **无条件起一个脱离的自己**（常驻载体；钥匙经文件交，不进 env / argv）→ 回一行 `{"port","token","pid"}`。
 //!   口上已有常驻后端时，子进程照旧「绑不上就退 3、绝不换口」⇒ 找与起是同一步，本进程不等任何东西（零定时器）。
-//!   `--replace`：先按口上那一位自己记的 pid 文件发 SIGTERM（它排空后退），再起（只升不降由 monitor 按 hello 判）。
-//! - `--resident-stop`：同上那一枪，不起。回 `{"stopped":pid|null}`。
+//!   `--replace`：先按下面那个停法停掉口上那一位（它自己记的 pid 文件），再起（只升不降由 monitor 按 hello 判）。
+//! - `--resident-stop [--grace <秒>]`：〔STOP〕**同机监督者**那一形（k8s `terminationGracePeriodSeconds` · systemd `TimeoutStopSec`）：
+//!   SIGTERM（它按 HX1 排空后自己退）→ 在宽限期内等内核通知 → 到点 SIGKILL → 回 `{"stopped":"graceful"|"killed"|"not_running","pid":n|null}`。
+//!   等待住这个一次性进程里，常驻后端的事件循环不加定时器（`no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`）。
 //!
 //! 口按 agent 家目录算（共享 crate `relay_route_core::listen_port_for`，本机宿主同一个函数）⇒ 一台机器一个常驻后端。
 //! ⚠ 钥匙会出现在 `--resident-ensure` 的 stdout 上：那一行只走 SSH 通道到 monitor 内存，不进日志（调用侧不许打印它）。
@@ -17,6 +19,14 @@ use copy_core::copy_text;
 /// `--resident-ensure` 起子进程时给的流模式默认旗标（空转那份 watcher 用；每条连接按 attach 行自己的 `flags`）。
 /// 与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
 pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg", "--with-rbind-token"];
+
+/// 〔STOP〕宽限期默认值（毫秒）。**必须大于**常驻后端自己的退出排空上限（`inbound::DRAIN_DEADLINE`）：
+/// 后端先把「哪几条没做完」说出来、自己退；强杀只兜它连那一步都走不到的情形。关系由 `resident_tests` 钉住。
+pub(crate) const STOP_GRACE_MS: u32 = 35_000;
+/// 强杀之后再等它没了的上限（毫秒）：SIGKILL 是立刻的，还在 ⇒ 卡在内核里（D 态），如实报「没停掉」。
+pub(crate) const KILL_WAIT_MS: u32 = 5_000;
+/// `--grace` 的上限（秒）：再大就没有意义（monitor 那头一次性那一趟的期限先到）。
+const GRACE_MAX_SECS: u32 = 3_600;
 
 /// 钥匙字节数：16 字节 = 128 位（`INVARIANTS §48.1`「新生成时 128 位随机」），落盘 32 个小写十六进制字符（同本机宿主）。
 const TOKEN_BYTES: usize = 16;
@@ -58,7 +68,8 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
         Err(e) => return fail("no_token", e),
     };
     if args.iter().any(|a| a == "--replace") {
-        if let Err(e) = terminate_owner(&home, port) {
+        // 旧的不先让出口，新的必然绑不上 ⇒ 与「停」同一个停法（等它真退了再起）。
+        if let Err(e) = stop_owner(&home, port, STOP_GRACE_MS) {
             return fail("replace_failed", e);
         }
     }
@@ -107,17 +118,76 @@ pub fn ensure(agent_home: &Path, args: &[String]) -> i32 {
     run_ensure(agent_home, args, &hosted)
 }
 
-/// `--resident-stop`。
-pub fn run_stop(agent_home: &Path, _args: &[String]) -> i32 {
+/// `--resident-stop [--grace <秒>]`。
+pub fn run_stop(agent_home: &Path, args: &[String]) -> i32 {
     let Some(home) = home() else {
         return fail("no_home", copy_text("beResident.home.missing", &[]));
     };
-    match terminate_owner(&home, port_for(agent_home)) {
-        Ok(pid) => {
-            println!("{}", serde_json::json!({ "stopped": pid }));
+    let grace_ms = match parse_grace(args) {
+        Ok(g) => g,
+        Err(e) => return fail("bad_args", e),
+    };
+    match stop_owner(&home, port_for(agent_home), grace_ms) {
+        Ok(end) => {
+            println!(
+                "{}",
+                serde_json::json!({ "stopped": end.word(), "pid": end.pid() })
+            );
             0
         }
         Err(e) => fail("stop_failed", e),
+    }
+}
+
+/// `--grace <秒>` ⇒ 毫秒；不给 ⇒ [`STOP_GRACE_MS`]。不大于排空上限的拒：那样后端还没说完就被强杀（纯函数）。
+pub(crate) fn parse_grace(args: &[String]) -> Result<u32, String> {
+    let Some(i) = args.iter().position(|a| a == "--grace") else {
+        return Ok(STOP_GRACE_MS);
+    };
+    let drain_secs = u32::try_from(crate::inbound::DRAIN_DEADLINE.as_secs()).unwrap_or(u32::MAX);
+    let bad = || {
+        copy_text(
+            "beResident.stop.badGrace",
+            &[
+                ("min", &(drain_secs + 1).to_string()),
+                ("max", &GRACE_MAX_SECS.to_string()),
+            ],
+        )
+    };
+    let secs: u32 = args
+        .get(i + 1)
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(bad)?;
+    if secs <= drain_secs || secs > GRACE_MAX_SECS {
+        return Err(bad());
+    }
+    Ok(secs * 1000)
+}
+
+/// 「停」的结局（线上三个词）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Stopped {
+    /// 收到 SIGTERM 之后在宽限期内自己退了。
+    Graceful(u32),
+    /// 宽限期满还在 ⇒ 强杀了，而且它确实没了。
+    Killed(u32),
+    /// 没有记录，或记下的那个已经不在。
+    NotRunning,
+}
+
+impl Stopped {
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            Self::Graceful(_) => "graceful",
+            Self::Killed(_) => "killed",
+            Self::NotRunning => "not_running",
+        }
+    }
+    pub(crate) fn pid(self) -> Option<u32> {
+        match self {
+            Self::Graceful(p) | Self::Killed(p) => Some(p),
+            Self::NotRunning => None,
+        }
     }
 }
 
@@ -309,30 +379,61 @@ pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
     Path::new(seen) == recorded
 }
 
-/// 按 pid 文件给口上那一位发 SIGTERM（先核身份：pid 会被复用）。没有记录 / 进程已不在 ⇒ `Ok(None)`。
-fn terminate_owner(home: &Path, port: u16) -> Result<Option<u32>, String> {
-    let Some((pid, bin)) = std::fs::read_to_string(pid_path(home, port))
+/// 按 pid 文件停口上那一位。没有记录 ⇒ `NotRunning`。
+fn stop_owner(home: &Path, port: u16, grace_ms: u32) -> Result<Stopped, String> {
+    let path = pid_path(home, port);
+    let Some((pid, bin)) = std::fs::read_to_string(&path)
         .ok()
         .and_then(|b| parse_owner(&b))
     else {
-        return Ok(None);
+        return Ok(Stopped::NotRunning);
     };
-    if !crate::platform::proc::pid_alive(pid) {
-        return Ok(None);
+    let end = stop_pid(pid, &bin, grace_ms, KILL_WAIT_MS)?;
+    // 它已不在 ⇒ 那份记录是陈的：还指着它就收掉（下一个起来的会自己再记；指着别人的不动）。
+    if std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|b| parse_owner(&b))
+        .is_some_and(|(p, _)| p == pid)
+    {
+        let _ = std::fs::remove_file(&path);
     }
+    Ok(end)
+}
+
+/// 〔STOP〕同机监督者本体：先拿进程把手、再核身份（pid 会被复用；拿到把手之后信号只打得到它）→ SIGTERM →
+/// 至多等 `grace_ms` → 还在 ⇒ 强杀 → 至多再等 `kill_wait_ms`；还在 ⇒ `Err`（不说「停了」）。
+pub(crate) fn stop_pid(
+    pid: u32,
+    bin: &Path,
+    grace_ms: u32,
+    kill_wait_ms: u32,
+) -> Result<Stopped, String> {
+    let Some(target) = crate::platform::signal::stoppable(pid)? else {
+        return Ok(Stopped::NotRunning);
+    };
     let seen = crate::platform::proc::exe_of(pid)
         .ok_or_else(|| copy_text("beResident.stop.cannotVerify", &[("pid", &pid.to_string())]))?;
-    if !exe_matches(&seen, &bin) {
+    if !exe_matches(&seen, bin) {
         return Err(copy_text(
             "beResident.stop.notOurs",
             &[("pid", &pid.to_string()), ("exe", &seen)],
         ));
     }
-    if crate::platform::signal::send_sigterm(pid) {
-        Ok(Some(pid))
+    match target.ask_to_finish() {
+        Ok(()) => {
+            if target.exited_within(grace_ms)? {
+                return Ok(Stopped::Graceful(pid));
+            }
+        }
+        // 发不出「请你收尾」（Windows 没有这一格）⇒ 等也等不来它自己退，直接强杀、如实报「强杀」。
+        Err(e) => tracing::warn!("{e}"),
+    }
+    target.kill()?;
+    if target.exited_within(kill_wait_ms)? {
+        Ok(Stopped::Killed(pid))
     } else {
         Err(copy_text(
-            "beResident.stop.signalFailed",
+            "beResident.stop.stuck",
             &[("pid", &pid.to_string())],
         ))
     }
