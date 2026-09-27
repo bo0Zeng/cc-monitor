@@ -470,7 +470,8 @@ fn push_on_equals_the_codes_the_backend_gives_for_missing_or_old_bytes() {
     theirs.extend(codes_in_statement(
         &prod,
         "plugin::probe::negotiate(",
-        "})?;",
+        // 收尾按 `)?;` 认（`cargo fmt` 会把 `.map_err(|r| match …)` 折成两种排法，`})?;` 只认其中一种）。
+        ")?;",
     ));
     theirs.sort();
     theirs.dedup();
