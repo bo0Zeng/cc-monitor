@@ -34,12 +34,18 @@ fn scratch(tag: &str) -> PathBuf {
 /// 其余调用照 `body`（一段 sh，`$@` 是 argv）。
 #[cfg(unix)]
 fn fake_program(dir: &Path, first_line: &str, caps: &str, body: &str) -> PathBuf {
+    fake_program_shaped(dir, first_line, caps, &format!("shape={SHAPE}"), body)
+}
+
+/// 同 [`fake_program`]，`--probe` 的形状那一行由调用方给（空串 = 老一代，没有这一行）。
+#[cfg(unix)]
+fn fake_program_shaped(dir: &Path, first_line: &str, caps: &str, shape_line: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let f = dir.join(PLUGIN_NAME);
     std::fs::write(
         &f,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf '{first_line}\\nversion=t\\ncapabilities={caps}\\n'; exit 0; fi\n{body}\n"
+            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf '{first_line}\\nversion=t\\ncapabilities={caps}\\n{shape_line}\\n'; exit 0; fi\n{body}\n"
         ),
     )
     .unwrap();
@@ -219,6 +225,28 @@ esac"#;
     // 不兜 `PATH`（同名的无关程序不该有机会被当成它）：那句话里 PATH 那一格是 0 个目录。
     assert!(m.contains("PATH 上的 0 个目录"), "{m}");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 设计/97 §8 · §6.5 · 99 §2.1 ㉝①：「`--probe` 加形状代号，后端判旧回 `unsupported`，放字节那条自动接上」。
+/// 能力都在、形状代号对不上（或老一代压根没这一行）⇒ `unsupported`（`PUSH_ON` 里有它 ⇒ monitor 放字节），且不起那个 op。
+#[cfg(unix)]
+#[test]
+fn an_old_generation_with_every_op_is_still_unsupported() {
+    for (tag, shape_line) in [("stale", "shape=0000000000000000"), ("none", "")] {
+        let dir = scratch(tag);
+        let ran = dir.join("ran");
+        let bin = fake_program_shaped(
+            &dir,
+            "name=cc-monitor-panorama",
+            "status",
+            shape_line,
+            &format!("touch '{}'; printf '{{\"ok\":true,\"data\":1}}\\n'", ran.display()),
+        );
+        let (c, _) = answer_now(&[bin], &dir.join("s"), &json!({"op": "status"})).unwrap_err();
+        assert_eq!(c, "unsupported", "{tag}：旧一代没被判旧");
+        assert!(!ran.exists(), "{tag}：判了旧还是把 op 起了");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(unix)]
