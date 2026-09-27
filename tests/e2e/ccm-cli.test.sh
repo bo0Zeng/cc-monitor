@@ -97,8 +97,9 @@ ck "--resume=<sid> 等号形式" \
 # 会话名必须经 env 透进去），只是 `--print` 从来没说 —— 而整个仓拿 `--print` 当离线预言机。
 # 打印的是**配方不是值**（`TMUX` 判断留在串里、执行时才求值），所以这条串对宿主 `TMUX`
 # 仍然逐字节稳定，不需要给这个 helper 加 `env -u TMUX`（那就成了为实现让路改判据）。
+# 〔SH1 · INVARIANTS §49〕读会话名走 UTF-8 客户端 ⇒ 配方里是 `tmux -u display-message`（意图不变：会话名经 env 透进去）。
 ck "--agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方" \
-   "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex" \
+   "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex" \
    "$(ccm --agent codex --cwd /p --print)"
 ck "--agent codex 不支持 resume → 报错" \
    "ccm: codex 不支持 resume" \

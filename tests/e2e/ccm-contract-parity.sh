@@ -82,6 +82,7 @@ CWD="$W/proj"
 # 其余（set-option 等）一律吞掉回 0。PATH 前置 ⇒ ccm 与它起的 poller 都只看得到这份。
 cat > "$W/bin/tmux" <<'SHIM'
 #!/bin/sh
+[ "$1" = "-u" ] && shift  # 〔SH1 · §49〕读会话名那一处带 `-u`（UTF-8 客户端）
 if [ "$1" = "display-message" ]; then printf 'faux-sess\n'; fi
 exit 0
 SHIM
