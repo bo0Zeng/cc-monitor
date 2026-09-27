@@ -91,14 +91,17 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
         list: &|_| None,
     };
     let no_dir = |_: &Path| false;
-    let monitor_rows = build_rows(&SurfaceEnv {
-        home: &e.home,
-        cfg_dir_env: None,
-        is_dir: &no_dir,
-        fs: &empty,
-        path_env: None,
-        vantage: Vantage::Monitor,
-    });
+    let monitor_rows = build_rows(
+        &SurfaceEnv {
+            home: &e.home,
+            cfg_dir_env: None,
+            is_dir: &no_dir,
+            fs: &empty,
+            path_env: None,
+            vantage: Vantage::Monitor,
+        },
+        None,
+    );
     let client = crate::config_surface::host_label(crate::tool_registry::HostScope::Client);
     let want: Vec<(&str, &str)> = monitor_rows
         .iter()
@@ -162,6 +165,103 @@ fn the_remote_vantage_drops_the_monitor_machine_rows_and_really_probes_the_rest(
         absent.settings_scopes[0].has_cc_bus_hooks, None,
         "没答 ⇒ 不猜"
     );
+}
+
+/// 〔C5 · TAIL〕本机那一栏：人群与本机视角逐条相等（含 `本机` 那一族）；`本机` 那一族**只**问 monitor 自己的探针，
+/// 其余**只**问本机后端（记账那一趟记下的路径里没有一条是 `本机` 那一族的）。
+/// 要求住址：用户裁决经主会话定稿 C5「本机那台机器事实改问本机后端 `footprint-probe`」（`_施工/paused-state.md`）。
+#[test]
+fn the_local_column_asks_the_local_backend_except_the_monitor_own_rows() {
+    let e = env();
+    let client_asked = RefCell::new(BTreeSet::<PathBuf>::new());
+    let meta = |p: &Path| {
+        client_asked.borrow_mut().insert(p.to_path_buf());
+        Some((false, 1))
+    };
+    let list = |p: &Path| {
+        client_asked.borrow_mut().insert(p.to_path_buf());
+        Some(vec!["ccm".to_string()])
+    };
+    let fs = FsProbe {
+        meta: &meta,
+        list: &list,
+    };
+    let no_dir = |_: &Path| false;
+    let mhome = PathBuf::from("/m/home");
+    let monitor = SurfaceEnv {
+        home: &mhome,
+        cfg_dir_env: None,
+        is_dir: &no_dir,
+        fs: &fs,
+        path_env: None,
+        vantage: Vantage::Monitor,
+    };
+    let (backend_asked, report) = run_recording(&e, None, Some(&monitor));
+    let client = crate::config_surface::host_label(crate::tool_registry::HostScope::Client);
+    let own: Vec<_> = report
+        .rows
+        .iter()
+        .filter(|r| r.host_label == client)
+        .collect();
+    assert!(
+        !own.is_empty(),
+        "本机那一栏里没有 `本机` 那一族 —— 下面是空真"
+    );
+    // `本机` 那一族里解析得出路径的：按 monitor 的家目录解、monitor 探针答；后端一条都没被问到。
+    let resolved: Vec<_> = own.iter().filter(|r| r.path_resolved.is_some()).collect();
+    assert!(
+        !resolved.is_empty(),
+        "`本机` 那一族一条路径都没解析 —— 下面是空真"
+    );
+    for r in &resolved {
+        assert!(
+            r.path_resolved.as_deref().unwrap().starts_with("/m/home"),
+            "{r:?}"
+        );
+    }
+    assert!(
+        backend_asked.stat.iter().all(|p| !p.starts_with("/m/home")),
+        "本机后端被问到了 monitor 自己那一族：{:?}",
+        backend_asked.stat
+    );
+    // monitor 探针被问到了、且只问到 `本机` 那一族（不碰后端那一半的路径）。
+    assert!(
+        !client_asked.borrow().is_empty(),
+        "monitor 探针一条都没被问到"
+    );
+    assert!(
+        client_asked
+            .borrow()
+            .iter()
+            .all(|p| p.starts_with("/m/home")),
+        "monitor 探针被问到了别的路径：{:?}",
+        client_asked.borrow()
+    );
+    // 人群：与本机视角逐条相等（按 (工具, 申报路径) 比）。
+    let empty = FsProbe {
+        meta: &|_| None,
+        list: &|_| None,
+    };
+    let want: Vec<(&str, &str)> = build_rows(
+        &SurfaceEnv {
+            home: &e.home,
+            cfg_dir_env: None,
+            is_dir: &no_dir,
+            fs: &empty,
+            path_env: None,
+            vantage: Vantage::Monitor,
+        },
+        None,
+    )
+    .iter()
+    .map(|r| (r.tool_id, r.path_declared))
+    .collect();
+    let got: Vec<(&str, &str)> = report
+        .rows
+        .iter()
+        .map(|r| (r.tool_id, r.path_declared))
+        .collect();
+    assert_eq!(got, want, "本机那一栏的人群不等于本机视角");
 }
 
 #[test]

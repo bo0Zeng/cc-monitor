@@ -303,8 +303,8 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "config_surface.rs",
-        // 〔RM1a〕命令收了 origin 之后，本机那一臂的体搬进 `local_report`（一字未改）；远端那一臂不碰本机 home。
-        "local_report",
+        // 〔C5 · TAIL〕本机事实改问本机后端，monitor 只剩 `HostScope::Client` 那一族自己查（`with_monitor_probe`）。
+        "with_monitor_probe",
         "配置面清单的根",
         "只读诊断页；落点由本模块的 claude 棘轮数着",
     ),
