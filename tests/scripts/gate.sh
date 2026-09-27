@@ -33,13 +33,13 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕31 格
+# │ 〔自述·格数〕32 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
-# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm ·
+# │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
 # │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend · ccm tests/e2e/backend-cc-bus
@@ -1616,6 +1616,10 @@ esac
 
 run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd src/backend && cargo test 2>&1'
+# 〔TAIL · 09-26〕全景小程序是独立 crate（自己一份 Cargo.lock，不进任何 workspace）⇒ 上面两格都编不到它；
+#   它自己的 `tests/panorama-engine/cli_tests.rs`（含「引擎零写用户文件」）此前不在任何执行链上。
+run_gate panorama-engine '单包 src/panorama-engine（独立 crate），只有一行 test result ⇒ 最大值 = 合计' \
+         bash -c 'cd src/panorama-engine && cargo test 2>&1'
 # ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
 #
 # ## 题面：一条缺陷 09-12 进来、09-14 才被发现，而发现它的不是任何判据
@@ -2118,8 +2122,9 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
     # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
-  # 〔TAIL · 09-26〕**30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）。
-  echo "GATE: OK —— 31 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus），可以出货"
+  # 〔TAIL · 09-26〕**30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
+  #   **31 → 32**，加的是 `panorama-engine`（全景小程序自己的测试，见 `backend` 那一格下面）。
+  echo "GATE: OK —— 32 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus），可以出货"
   gate_print_blind
   exit 0
 fi
