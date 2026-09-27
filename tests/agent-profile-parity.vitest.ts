@@ -230,15 +230,10 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
 
   it("★ resume 的形状（flag 还是子命令）：golden ↔ ccm ↔ backend 三边一致", () => {
     const g = golden();
-    const ccm = ccmTable("resume_flag");
+    // 〔AL3 · V138〕ccm 成了 claude 的壳、只看不吃 `--resume` ⇒ 它那张 `resume_flag` 表删了，这一格只剩 golden ↔ backend 两边。
+    expect(/^\s*pub\(crate\) fn resume_flag\(/m.test(read(CCM)), `${CCM} 又长出了 resume 表 —— V138 之后 ccm 不做 resume 决定`).toBe(false);
     for (const a of AGENTS) {
       const kind = g[a]?.resume_kind; // "flag" | "subcommand"
-      const token = g[a]?.resume_token; // "--resume" | "resume"
-      // ccm：flag 形存 token，子命令形存空串（它把 token 拼在别处）。
-      expect(
-        ccm[a],
-        `${CCM} 的 resume_flag 与 golden 的 resume_kind=${kind} 对不上（agent=${a}）`,
-      ).toBe(kind === "flag" ? token : "");
       // backend：整条命令模板按**形状**比，不是找子串。
       //   flag 形     `{base} --resume {session_id}`
       //   子命令形    `{base} resume {session_id}`
