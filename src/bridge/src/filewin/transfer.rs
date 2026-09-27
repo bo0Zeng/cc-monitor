@@ -583,6 +583,8 @@ async fn upload_once(
         .map_err(Once::Failed)?;
     let id = field(&opened, OP_UPLOAD, "id").map_err(Once::Failed)?;
     let key = field(&opened, OP_UPLOAD, "key").map_err(Once::Failed)?;
+    // 〔FILES2 · Q2〕记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
+    board.note_staged(&key);
     let name = p.name.clone();
     let sink = board.clone();
     let watched = super::source::watch_coded(
@@ -659,6 +661,8 @@ struct Board {
     backend_home: Option<String>,
     /// 〔FILES2 · Q5〕这一窗的上传改走后端链路分块写了 ⇒ 为什么（传输台原话；出声一次，之后不再问 SFTP）。
     via_backend: Option<String>,
+    /// 〔FILES2 · Q2〕开过单的暂存件键（[`DropBoard::note_staged`]）。
+    staged: Vec<String>,
 }
 
 impl DropBoard {
@@ -735,6 +739,36 @@ impl DropBoard {
     pub fn switch_to_backend(&self, why: String) {
         self.inner.lock().unwrap().via_backend.get_or_insert(why);
         self.poke();
+    }
+
+    /// 〔FILES2 · Q2〕这一件在传的进度（`(已传, 总共)`；不在传 ⇒ `None`）。
+    pub fn seen(&self, name: &str) -> Option<(u64, u64)> {
+        self.inner
+            .lock()
+            .unwrap()
+            .progress
+            .iter()
+            .find(|(n, ..)| n == name)
+            .map(|(_, g, t)| (*g, *t))
+    }
+
+    /// 〔FILES2 · Q2〕记一份开过单的暂存件键（SFTP 那条路）。
+    pub fn note_staged(&self, key: &str) {
+        self.inner.lock().unwrap().staged.push(key.to_string());
+    }
+
+    /// 〔FILES2 · Q2〕开过单的暂存件键（跨机复制半路失败时逐个删掉）；取走即清。
+    pub fn take_staged(&self) -> Vec<String> {
+        std::mem::take(&mut self.inner.lock().unwrap().staged)
+    }
+
+    /// 〔FILES2 · Q2〕换一台目标机器之前：记着的 home / 改走后端链路那一句 / 暂存件键 / 进度都清掉（它们说的是上一台）。
+    pub fn reset_target(&self) {
+        let mut b = self.inner.lock().unwrap();
+        b.backend_home = None;
+        b.via_backend = None;
+        b.staged.clear();
+        b.progress.clear();
     }
 
     /// 〔FILES2 · Q5〕那台后端的 `$HOME`：问过就用记着的；没问过 ⇒ 问一次（问不到 ⇒ `None`，这一趟不比，照旧走 SFTP）。

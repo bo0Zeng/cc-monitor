@@ -18148,6 +18148,91 @@
       "kind": "body",
       "zh": "这台的上传改经后端一段一段写：{why}",
       "args": ["why"]
+    },
+    "rsFilewinCrossCopy.label.cross": {
+      "kind": "action",
+      "zh": "复制到另一台…",
+      "args": []
+    },
+    "rsFilewinCrossCopy.outcome.done": {
+      "kind": "body",
+      "zh": "{name} 复制到了 {machine} 的 {path}（{human}）",
+      "args": ["name", "machine", "path", "human"]
+    },
+    "rsFilewinCrossCopy.outcome.skipped": {
+      "kind": "body",
+      "zh": "{name} 没复制：{path} 已经在了，你选了不盖",
+      "args": ["name", "path"]
+    },
+    "rsFilewinCrossCopy.outcome.failed": {
+      "kind": "error",
+      "zh": "{name} 没复制成：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinCrossCopy.ask.overwrite": {
+      "kind": "action",
+      "zh": "盖掉",
+      "args": []
+    },
+    "rsFilewinCrossCopy.ask.skip": {
+      "kind": "action",
+      "zh": "不复制",
+      "args": []
+    },
+    "rsFilewinCrossCopy.ask.taken": {
+      "kind": "body",
+      "zh": "{machine} 上已经有 {path} 了。盖掉它（没有备份，不可撤销），还是不复制？",
+      "args": ["machine", "path"]
+    },
+    "rsFilewinCrossCopy.ui.running": {
+      "kind": "body",
+      "zh": "正在复制 {name} 到另一台：{got} / {total}",
+      "args": ["name", "got", "total"]
+    },
+    "rsFilewinCrossCopy.ui.cancel": {
+      "kind": "action",
+      "zh": "取消",
+      "args": []
+    },
+    "rsFilewinCrossCopy.dir.notAbsolute": {
+      "kind": "error",
+      "zh": "目标目录要以 / 起头（给的是 {dir}）",
+      "args": ["dir"]
+    },
+    "rsFilewinCrossCopy.target.unreachable": {
+      "kind": "error",
+      "zh": "问不到 {machine} 那台的后端：{why}",
+      "args": ["machine", "why"]
+    },
+    "rsFilewinCrossCopy.busy.running": {
+      "kind": "body",
+      "zh": "正在复制 {name} 到另一台",
+      "args": ["name"]
+    },
+    "rsFilewinCrossCopy.prompt.noMachine": {
+      "kind": "error",
+      "zh": "要给机器名（与主窗口上那台的名字相同）",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.heading": {
+      "kind": "title",
+      "zh": "把 {name} 复制到另一台",
+      "args": ["name"]
+    },
+    "rsFilewinCrossCopy.prompt.machine": {
+      "kind": "control",
+      "zh": "机器名",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.dir": {
+      "kind": "control",
+      "zh": "目标目录",
+      "args": []
+    },
+    "rsFilewinCrossCopy.prompt.hint": {
+      "kind": "body",
+      "zh": "机器名与主窗口上那台的名字相同；目标目录空着就是那台的 home",
+      "args": []
     }
   }
 }

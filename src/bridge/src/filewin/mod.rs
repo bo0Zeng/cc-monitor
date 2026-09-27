@@ -241,6 +241,8 @@ pub mod bookmarks;
 pub mod chunk_upload;
 pub mod copy;
 pub mod corpus;
+// 〔FILES2 · 第四波〕**复制到另一台机器**（`设计/60 §6.2` · §7 第 9 条 Q2）：A 下到本机暂存 → 传到 B → B 提交，一条进度、可撤、半路清暂存。
+pub mod cross_copy;
 // 🔴〔F7b 2026-09-24〕**新建空文件** —— 老面板 7 项里写侧那一项（`files-create`，经通道）。
 pub mod create;
 // 🔴〔第八刀 2026-09-21〕**往外拖** —— `sftp_download` 在窗口上的落点

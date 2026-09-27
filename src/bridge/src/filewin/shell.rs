@@ -431,6 +431,10 @@ pub struct FileWindow {
     pick_notice: Option<String>,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
+    /// 〔FILES2 · Q2〕「复制到另一台」那一问（UI 线程自己的）。
+    cross_prompt: Option<super::cross_copy::CrossPrompt>,
+    /// 〔FILES2 · Q2〕复制到另一台那一趟的看板（盖不盖那一问 · 一条进度 · 结局）。
+    pub cross_board: super::cross_copy::CrossBoard,
     /// 已经消化过几趟复制（同 [`Self::seen_rounds`]，两条路各一个数）。
     seen_copy_rounds: u64,
     /// `fonts.rs`：这个窗口的字体装没装上、复核没复核过。
@@ -600,6 +604,8 @@ impl FileWindow {
             pick_board: super::picker::PickBoard::default(),
             pick_notice: None,
             copy_prompt: None,
+            cross_prompt: None,
+            cross_board: super::cross_copy::CrossBoard::default(),
             seen_copy_rounds: 0,
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
@@ -1335,6 +1341,90 @@ impl FileWindow {
             board.finish(&name, o);
         });
         true
+    }
+
+    /// 〔FILES2 · Q2〕摆出「复制到另一台」那一问（机器名 ＋ 目标目录，空 ＝ 那台的 home）。回值 ＝ 真的摆出来了。
+    pub fn begin_cross(&mut self, i: usize) -> bool {
+        let Some((name, src)) = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .filter(|r| !r.is_dir)
+            .map(|r| (r.name.clone(), self.row_path(r)))
+        else {
+            return false;
+        };
+        self.cross_prompt = Some(super::cross_copy::CrossPrompt {
+            name,
+            src,
+            machine: String::new(),
+            dir: String::new(),
+        });
+        true
+    }
+
+    /// 〔FILES2 · Q2〕那一问里正在填的（判据与 [`Self::cross_ui`] 用）。
+    pub fn cross_prompt_mut(&mut self) -> Option<&mut super::cross_copy::CrossPrompt> {
+        self.cross_prompt.as_mut()
+    }
+
+    /// 〔FILES2 · Q2〕答完那一问 ⇒ 起那一趟（机器名空 ⇒ 框留着、出声）。回值 ＝ 真的起来了。
+    pub fn confirm_cross(&mut self, ctx: Option<egui::Context>) -> bool {
+        let Some(p) = self.cross_prompt.clone() else {
+            return false;
+        };
+        if p.machine.trim().is_empty() {
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinCrossCopy.prompt.noMachine", &[]));
+            return false;
+        }
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        self.cross_prompt = None;
+        self.cross_board.attach(ctx);
+        super::cross_copy::spawn(&h, line, self.source.origin(), p, self.cross_board.clone());
+        true
+    }
+
+    /// 〔FILES2 · Q2〕画「复制到另一台」那一问。**模态**。
+    fn cross_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(mut p) = self.cross_prompt.clone() else {
+            return;
+        };
+        let (mut go, mut cancel) = (false, false);
+        egui::Modal::new(egui::Id::new("filewin-cross-copy")).show(ui.ctx(), |ui| {
+            ui.heading(copy_text(
+                "rsFilewinCrossCopy.prompt.heading",
+                &[("name", &p.name)],
+            ));
+            ui.label(copy_text("rsFilewinCrossCopy.prompt.machine", &[]));
+            ui.text_edit_singleline(&mut p.machine);
+            ui.label(copy_text("rsFilewinCrossCopy.prompt.dir", &[]));
+            ui.text_edit_singleline(&mut p.dir);
+            ui.label(copy_text("rsFilewinCrossCopy.prompt.hint", &[]));
+            ui.horizontal(|ui| {
+                go = ui.button(super::cross_copy::CROSS_LABEL.as_str()).clicked();
+                cancel = ui
+                    .button(copy_text("rsFilewinShell.copyUi.cancel", &[]))
+                    .clicked();
+            });
+        });
+        self.cross_prompt = Some(p);
+        if cancel {
+            self.cross_prompt = None;
+        } else if go {
+            let ctx = ui.ctx().clone();
+            self.confirm_cross(Some(ctx));
+        }
     }
 
     /// 复制跑完一趟就重列当前目录（新文件要出现在列表里）。同 [`Self::settle_finished_drops`]。
@@ -2632,6 +2722,12 @@ impl FileWindow {
         if let Some(n) = self.extract_board.running() {
             return Some(copy_text("rsFilewinExtract.busy.running", &[("name", &n)]));
         }
+        if let Some(n) = self.cross_board.running() {
+            return Some(copy_text(
+                "rsFilewinCrossCopy.busy.running",
+                &[("name", &n)],
+            ));
+        }
         if let Some(n) = self.copy_board.running() {
             return Some(copy_text(
                 "rsFilewinShell.busy.copying",
@@ -2679,6 +2775,9 @@ impl FileWindow {
             || self.copy_board.is_asking()
             // 〔FILES2〕解压撞名那一问。
             || self.extract_board.is_asking()
+            // 〔FILES2 · Q2〕复制到另一台：填机器名那一问 · 盖不盖那一问。
+            || self.cross_prompt.is_some()
+            || self.cross_board.is_asking()
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
@@ -2838,6 +2937,8 @@ impl FileWindow {
             (Action::Size, _) => self.start_sizes(&idx, ctx),
             // 〔FILES2〕恰好一份文件。
             (Action::Extract, [i]) => self.start_extract(*i, ctx),
+            // 〔FILES2 · Q2〕恰好一份文件。
+            (Action::CrossCopy, [i]) => self.begin_cross(*i),
             (Action::Rename, [i]) => self.begin_rename(*i),
             // 〔FW5〕一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
@@ -3201,6 +3302,8 @@ impl FileWindow {
         self.copy_board.ui(ui);
         self.size_board.ui(ui);
         self.extract_board.ui(ui);
+        self.cross_board.ui(ui);
+        self.cross_ui(ui);
         self.copy_ui(ui);
         // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。
