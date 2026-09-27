@@ -121,7 +121,7 @@ async fn a_symlinked_directory_under_a_root_cannot_carry_a_write_out() {
     let s = rig::session_on(fs.clone()).await;
     let r = super::put_atomic(&s, ".cc-monitor/bin/evil/authorized_keys", b"k", 0o600).await;
     assert!(
-        matches!(&r, Err(Refusal::Fenced(m)) if m.contains("跑出了写根")),
+        matches!(&r, Err(Refusal::Fenced(m)) if m.contains("落到了可写目录外面")),
         "解链接那一道没拦住：{r:?}"
     );
     let r2 = super::make_dirs(&s, ".cc-monitor/bin/evil/deeper").await;
