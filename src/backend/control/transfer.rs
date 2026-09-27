@@ -501,8 +501,16 @@ pub(crate) async fn download_to_local(
 // ═══ 票表（每条流连接一张）═══════════════════════════════════════════════════════════════
 
 enum Job {
-    Upload { local: String, key: String },
-    Download { remote: String, local: PathBuf },
+    /// 〔FILES2 · Q5〕`home`：窗口问那台后端拿到的 `$HOME`（给了才比）—— SFTP 起始目录与它不一致 ⇒ 一个字节不写、以 `sftp_home_mismatch` 收场。
+    Upload {
+        local: String,
+        key: String,
+        home: Option<String>,
+    },
+    Download {
+        remote: String,
+        local: PathBuf,
+    },
 }
 
 struct Ticket {
@@ -659,6 +667,10 @@ impl Desk {
             job: Some(Job::Upload {
                 local: local.to_string(),
                 key: key.clone(),
+                home: args
+                    .get("home")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string),
             }),
             key: Some(key.clone()),
             cancel: Arc::new(Cancel::default()),
@@ -754,7 +766,10 @@ impl Desk {
             let end = match r {
                 Ok((bytes, sha256)) => TransferEnd::Done { bytes, sha256 },
                 Err(_) if cancel.is_set() => TransferEnd::Cancelled,
-                Err(why) => TransferEnd::Failed { why },
+                Err((why, code)) => TransferEnd::Failed {
+                    why,
+                    code: code.map(str::to_string),
+                },
             };
             tx.send_modify(|p| p.end = Some(end));
             // 等转发把终局那一帧送出去再摘票（摘早了，一条同键的新上传可能抢在撤删之前开单）。
@@ -804,21 +819,55 @@ async fn run(
     job: Job,
     cancel: &Cancel,
     sink: &Sink<'_>,
-) -> Result<(u64, Option<String>), String> {
+) -> Result<(u64, Option<String>), (String, Option<&'static str>)> {
     let session = tokio::select! {
-        s = sftp::open_for_transfer(dial) => s?,
-        _ = cancel.wait() => return Err("已取消".to_string()),
+        s = sftp::open_for_transfer(dial) => s.map_err(|e| (e, None))?,
+        _ = cancel.wait() => return Err(("已取消".to_string(), None)),
     };
     match job {
-        Job::Upload { local, key } => upload_to_staging(&session, &local, &key, cancel, sink)
-            .await
-            .map(|(n, sha)| (n, Some(sha))),
+        Job::Upload { local, key, home } => {
+            // 〔FILES2 · Q5〕连上时比：SFTP 起始目录（`realpath(".")`）≠ 那台后端的 `$HOME` ⇒ 暂存件会落到后端看不见的地方
+            //   （chroot / `internal-sftp -d`），一个字节不写，交窗口改走后端链路分块写。
+            if let Some(why) = home
+                .as_deref()
+                .and_then(|h| start_dir_mismatch(session.home(), h))
+            {
+                return Err((why, Some(SFTP_HOME_MISMATCH)));
+            }
+            upload_to_staging(&session, &local, &key, cancel, sink)
+                .await
+                .map(|(n, sha)| (n, Some(sha)))
+                .map_err(|e| (e, None))
+        }
         Job::Download { remote, local } => {
             download_to_local(&session, &remote, &local, cancel, sink)
                 .await
                 .map(|n| (n, None))
+                .map_err(|e| (e, None))
         }
     }
+}
+
+/// 〔FILES2 · Q5〕上传收场码：SFTP 起始目录不是那台后端的 home。
+pub const SFTP_HOME_MISMATCH: &str = "sftp_home_mismatch";
+
+/// SFTP 起始目录与后端 `$HOME` 不一致 ⇒ 那一句话；一致（去掉尾 `/` 逐字节相等）⇒ `None`。
+/// ⚠ 认下的：home 经符号链接指过去（`/home` → `/usr/home`）时两串不等 ⇒ 判成不一致、走慢路（仍做得成，只是慢）。
+pub fn start_dir_mismatch(sftp_start: &str, backend_home: &str) -> Option<String> {
+    let norm = |s: &str| {
+        let t = s.trim_end_matches('/');
+        if t.is_empty() {
+            "/".to_string()
+        } else {
+            t.to_string()
+        }
+    };
+    (norm(sftp_start) != norm(backend_home)).then(|| {
+        copy_core::copy_text(
+            "beTransfer.home.mismatch",
+            &[("sftp", sftp_start), ("home", backend_home)],
+        )
+    })
 }
 
 #[cfg(test)]

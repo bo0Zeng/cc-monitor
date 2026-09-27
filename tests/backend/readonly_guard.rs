@@ -462,6 +462,12 @@ mod tests {
          解压两趟：计划趟只读、逐条目判（`..` / 绝对路径 / 链接出落点 / 设备 ⇒ 整趟拒）；执行趟每一条先过 \
          `files_write::resolve_in_root`（借用、不抄）再 `O_EXCL` 新建 · 写 · 改权限 · 建目录 · 建链接，中途失败逐条先判后删自己建的。\
          链接的目标文本原样写（不解、不判，同 `cp -P`）。线上入口只有 `inbound.rs` 的 `files-extract`（`EXTRACT_COMMANDS`）",
+    ), (
+        // 〔FILES2 · 第四波 · 2026-09-27〕Q5「SFTP 起始目录不是后端 home ⇒ 上传改走后端链路分块写」（`设计/60 §7` 第 3 / 9 条）。4 → 5。
+        "control/files_upload_chunks.rs",
+        "上传的块形：把 `files-stage-chunk` 送进暂存区的 `<key>.<seq>.chunk` 依次拼成 `<key>.part`（`O_EXCL` 新建 · 写；\
+         每一块先过以暂存区为根的 `files_write::resolve_in_root`、不跟链接地核是普通文件），失败删自己刚建的那一份；\
+         块由 `files_commit::drop_chunks` 收（先判后删）。没有线上命令：只被 `files_commit` 的 `files-commit-upload`（带 `chunks`）调用",
     )];
 
     /// 第三层模块**能用**的改动动词（`fs::` 之后那个词）。**闭集**。

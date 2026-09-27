@@ -639,6 +639,8 @@ pub(crate) enum Ends {
     /// 〔FW1〕传完，但提交那一趟前 `n` 次答 `stale`（整份摘要对不上：暂存件中间有坏块）。
     DoneStaleCommits(usize),
     Failed,
+    /// 〔FILES2 · Q5〕传输台以 `sftp_home_mismatch` 收场（SFTP 起始目录不是后端 home，一个字节没传）。
+    Mismatch,
     /// 永不收场（只有被停订才结束）——「撤」那一条用。
     Hang,
 }
@@ -751,6 +753,15 @@ impl crate::chan::router::Backends for XferHost {
                     i
                 })
                 .boxed(),
+            Ends::Mismatch => head
+                .chain(futures::stream::iter([end(serde_json::json!({
+                    "state": "failed", "why": "起始目录不是 home（合成）", "code": "sftp_home_mismatch",
+                }))]))
+                .map(move |i| {
+                    let _keep = &mark;
+                    i
+                })
+                .boxed(),
             Ends::Hang => head
                 .chain(futures::stream::pending())
                 .map(move |i| {
@@ -823,14 +834,21 @@ async fn an_upload_opens_watches_then_commits_with_the_humans_answer() {
         .cloned()
         .collect();
     let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
+    // 〔FILES2 · Q5〕开单之前先问一次那台后端的 `$HOME`（开单带上，传输台连上之后比 SFTP 起始目录）。
     assert_eq!(
         &names[..],
-        ["transfer-upload", "subscribe", "files-commit-upload"],
+        [
+            "files-home",
+            "transfer-upload",
+            "subscribe",
+            "files-commit-upload"
+        ],
         "三步的顺序不对：{names:?}"
     );
+    let got = &got[1..];
     assert_eq!(
         got[0].1,
-        serde_json::json!({ "local_path": "/home/u/a.bin" })
+        serde_json::json!({ "local_path": "/home/u/a.bin", "home": "/srv/a.bin" })
     );
     assert_eq!(got[1].1, serde_json::json!("transfer/x-up"));
     assert_eq!(
@@ -852,7 +870,12 @@ async fn a_commit_that_finds_a_bad_staging_part_restarts_once_and_says_so() {
     upload_remote(&line, &origin, &p("a.bin"), &board)
         .await
         .expect("重传一次该成");
-    let names: Vec<String> = steps(&log).into_iter().filter(|s| s != "dropped").collect();
+    // 〔FILES2 · Q5〕开头那一次问 `$HOME`（问过就记着，重传那一遍不再问）。
+    let names: Vec<String> = steps(&log)
+        .into_iter()
+        .filter(|s| s != "dropped" && s != "files-home")
+        .collect();
+    assert_eq!(steps(&log).iter().filter(|s| *s == "files-home").count(), 1);
     let once = ["transfer-upload", "subscribe", "files-commit-upload"];
     assert_eq!(
         names,

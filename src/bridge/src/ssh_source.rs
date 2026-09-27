@@ -2340,7 +2340,14 @@ fn transfer_end(e: &serde_json::Value) -> Option<crate::sftp_pool::End> {
             // 〔FW1〕可缺席（下载那一路没有）；在就原样带着（窗口提交时交回，形状由后端那一关判）。
             sha256: e.get("sha256").and_then(|v| v.as_str()).map(str::to_string),
         },
-        "failed" => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
+        // 〔FILES2 · Q5〕带码的那一形（今天只有 `sftp_home_mismatch`）单列一形，窗口按码换路。
+        "failed" => match e.get("code").and_then(|v| v.as_str()) {
+            Some(code) => crate::sftp_pool::End::FailedCoded {
+                why: e.get("why")?.as_str()?.to_string(),
+                code: code.to_string(),
+            },
+            None => crate::sftp_pool::End::Failed(e.get("why")?.as_str()?.to_string()),
+        },
         "cancelled" => crate::sftp_pool::End::Cancelled,
         _ => return None,
     })

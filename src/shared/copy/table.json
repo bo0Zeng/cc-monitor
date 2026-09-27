@@ -18113,6 +18113,41 @@
       "kind": "error",
       "zh": "那台机器上没能先复制一份到后端自己的目录：{why}",
       "args": ["why"]
+    },
+    "beTransfer.home.mismatch": {
+      "kind": "error",
+      "zh": "SFTP 起始目录不是后端的 home。起始目录是 {sftp}，home 是 {home}；暂存件会落到后端看不见的地方，一个字节没传",
+      "args": ["sftp", "home"]
+    },
+    "beUploadChunks.args.bad": {
+      "kind": "error",
+      "zh": "块形上传的参数不对（键「{key}」，块数 {chunks}）",
+      "args": ["key", "chunks"]
+    },
+    "beUploadChunks.io.failed": {
+      "kind": "error",
+      "zh": "拼暂存件时 {path} 出错：{e}",
+      "args": ["path", "e"]
+    },
+    "beUploadChunks.chunk.missing": {
+      "kind": "error",
+      "zh": "第 {seq} 块不在或不是普通文件（共 {chunks} 块），一个字节没落进目标",
+      "args": ["seq", "chunks"]
+    },
+    "beUploadChunks.total.mismatch": {
+      "kind": "error",
+      "zh": "{chunks} 块拼回来 {got} 字节，说好的是 {bytes}，一个字节没落进目标",
+      "args": ["chunks", "got", "bytes"]
+    },
+    "rsFilewinChunkUpload.local.unreadable": {
+      "kind": "error",
+      "zh": "读不到本机的 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "rsFilewinChunkUpload.route.switched": {
+      "kind": "body",
+      "zh": "这台的上传改经后端一段一段写：{why}",
+      "args": ["why"]
     }
   }
 }

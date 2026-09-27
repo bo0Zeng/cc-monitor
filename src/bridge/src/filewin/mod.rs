@@ -237,6 +237,8 @@ pub mod bigfile;
 // 🔴〔FW34 · 第四波 2026-09-24〕**书签** —— 老面板 7 项里剩下的最后一项。存 monitor 自己的状态文件
 //    （不是用户文件），两个进程的写都走同一个「上锁 → 现读 → 改 → 原子换」。逐条理由住那份头注。
 pub mod bookmarks;
+// 〔FILES2 · 第四波〕**上传的块形**（`设计/60 §7` 第 9 条 Q5）：SFTP 起始目录不是后端 home 时经后端链路分块写。
+pub mod chunk_upload;
 pub mod copy;
 pub mod corpus;
 // 🔴〔F7b 2026-09-24〕**新建空文件** —— 老面板 7 项里写侧那一项（`files-create`，经通道）。

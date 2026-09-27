@@ -610,7 +610,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     }
     match frames.last() {
         Some(Frame::Transfer {
-            end: Some(TransferEnd::Failed { why }),
+            end: Some(TransferEnd::Failed { why, .. }),
             ..
         }) => assert!(!why.is_empty()),
         other => panic!("终局不是 failed：{other:?}"),
@@ -796,4 +796,26 @@ async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
             assert_eq!(std::fs::read(root.join("h.bin")).unwrap(), body);
         }
     }
+}
+
+/// 〔FILES2 · Q5〕要求住址：`_施工/4d-lanes.md` `### FILES2` Q5「连上时比 SFTP `realpath(".")` 与那台后端的 `$HOME`；不一致 ⇒
+/// 这台的上传改走后端链路分块写」。判定：去尾 `/` 逐字节相等才算一致（正）；chroot 形（`/` 对 `/home/u`）· 别的目录（反）⇒ 说出两个路径。
+#[test]
+fn the_start_dir_check_passes_the_same_home_and_names_both_paths_otherwise() {
+    for (sftp, home) in [("/home/u", "/home/u"), ("/home/u/", "/home/u"), ("/", "/")] {
+        assert_eq!(start_dir_mismatch(sftp, home), None, "{sftp} vs {home}");
+    }
+    for (sftp, home) in [
+        ("/", "/home/u"),
+        ("/data/u", "/home/u"),
+        ("/home/u2", "/home/u"),
+    ] {
+        let why =
+            start_dir_mismatch(sftp, home).unwrap_or_else(|| panic!("{sftp} vs {home} 判成一致了"));
+        assert!(
+            why.contains(sftp) && why.contains(home),
+            "没说出两个路径：{why}"
+        );
+    }
+    assert_eq!(SFTP_HOME_MISMATCH, "sftp_home_mismatch");
 }
