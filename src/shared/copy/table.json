@@ -10016,6 +10016,21 @@
       "zh": "日志",
       "args": []
     },
+    "backend.buildCells.resync": {
+      "kind": "action",
+      "zh": "重新对齐",
+      "args": []
+    },
+    "backend.resync.doneTitle": {
+      "kind": "title",
+      "zh": "对齐完成",
+      "args": []
+    },
+    "backend.resync.failed": {
+      "kind": "error",
+      "zh": "对齐失败",
+      "args": []
+    },
     "backend.log.none": {
       "kind": "body",
       "zh": "这台的后端没有把输出写进文件",
@@ -18857,6 +18872,41 @@
     "beLink.gone.bug": {
       "kind": "error",
       "zh": "和远端的连接断了（内部计数出错）",
+      "args": []
+    },
+    "resync.call.refused": {
+      "kind": "error",
+      "zh": "后端拒绝了这次对齐（{detail}）",
+      "args": ["detail"]
+    },
+    "resync.call.noReason": {
+      "kind": "error",
+      "zh": "后端拒绝了这次对齐，没说原因。",
+      "args": []
+    },
+    "resync.done.diff": {
+      "kind": "body",
+      "zh": "补上 {added} 个会话，移除 {removed} 个已结束的，重新认出 {retagged} 个会话。",
+      "args": ["added", "removed", "retagged"]
+    },
+    "resync.done.same": {
+      "kind": "body",
+      "zh": "和实际情况一致，没有要改的。",
+      "args": []
+    },
+    "resync.done.nobody": {
+      "kind": "body",
+      "zh": "这台后端现在没有在看会话，没有可对齐的。",
+      "args": []
+    },
+    "resync.retry.hint": {
+      "kind": "body",
+      "zh": "点这条提示：先对齐这个会话，再试一次。",
+      "args": []
+    },
+    "resync.retry.failed": {
+      "kind": "error",
+      "zh": "对齐后重试没有成功",
       "args": []
     }
   }

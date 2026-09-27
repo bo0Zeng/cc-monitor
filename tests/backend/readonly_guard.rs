@@ -2546,7 +2546,9 @@ mod spawn_registry {
              这一处的立身之本就是「列全部会话只有一处」，加一个子命令就要回来重判。",
         ),
         (
-            "control/identity_tag.rs",
+            // 〔RESYNC · 09-27〕搬家不是新增：`Command::new("tmux")` 从 `identity_tag.rs` 挪进它的 `door`
+            //   （测试构建整个换成假 tmux，`INVARIANTS §48.3`）；`set-option` 那条 argv 仍在 `identity_tag.rs::set_sid`。
+            "control/identity_tag/door.rs",
             "tmux",
             "`U-NP④`：`set-option @ccm_sid`（argv 直传）—— 把「这个 tmux 会话在跑哪个 sid」\
              这条事实打上去。接的是 `shared/ccm` 那条**每会话一条、每秒一轮**的身份 poller 的班\

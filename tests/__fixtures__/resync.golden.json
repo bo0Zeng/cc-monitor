@@ -1,0 +1,5 @@
+{
+  "说明": "〔RESYNC · V149〕帧命令 `resync` 的跨语言金样：后端 `watcher_tests::resync_face_reply_matches_the_cross_language_golden` 对它（键集合与类型），界面 `tests/resync.vitest.ts` 按它解、按它发。",
+  "request": { "sid": "0c1d-demo" },
+  "reply": { "added": 0, "removed": 1, "retagged": 1, "watchers": 1 }
+}

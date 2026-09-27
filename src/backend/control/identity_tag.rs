@@ -381,7 +381,7 @@ pub(crate) fn rbind_token_of(pid: u32) -> Option<String> {
 /// 那份 pidfile 的那个 claude」被证过之后。跨层边已登记进 `layering_guard`。
 pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     // 先取口再做别的：测试构建里没注入假 tmux 就在这里炸，与走不走得到 tmux 无关（人群按「调了 tag」算）。
-    let probe_cmd = tmux();
+    let probe_cmd = door::tmux();
     if !sid_is_safe(sid) {
         return Outcome::RejectedSid;
     }
@@ -403,22 +403,15 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     // ★ 对 `#{session_id}` **句柄**下手，不对名字 —— 与 `gate` / `kill` 同一条纪律：
     // 名字在探测与动手之间可能被重新绑定到别的会话，句柄不会（server 生命周期内唯一、不复用）。
     let target = probed.session_id.clone();
-    set_sid(tmux(), target, sid)
+    set_sid(door::tmux(), target, sid)
 }
 
-/// 打标路上起 tmux 的唯一口（探测与写都经它）。
+/// 打标路上起 tmux 的唯一口（探测与写都经 `door::tmux`）。
 ///
-/// 测试构建里换成**本线程注入的假 tmux**，没注入就炸（`INVARIANTS §48.3`）：进程内测试用自己的 pid
-/// 造 pidfile 时，`TMUX_PANE` 是跑测试那个终端的 ⇒ 不隔离就是往用户真 tmux 上打标（09-27 `bg-sid` 事故）。
-#[cfg(not(test))]
-fn tmux() -> std::process::Command {
-    std::process::Command::new("tmux")
-}
-
-#[cfg(test)]
-fn tmux() -> std::process::Command {
-    tests::isolated_tmux()
-}
+/// 测试构建里整个口换成 `tests/` 那一份：只交**本线程注入的假 tmux**，没注入就炸（`INVARIANTS §48.3`）——
+/// 进程内测试用自己的 pid 造 pidfile 时，`TMUX_PANE` 是跑测试那个终端的 ⇒ 不隔离就是往用户真 tmux 上打标（09-27 `bg-sid` 事故）。
+#[cfg_attr(test, path = "../../../tests/backend/control/identity_tag_door.rs")]
+pub(crate) mod door;
 
 /// 真写那一下：`set-option -t <句柄> <事实键> <sid>`。
 ///
@@ -445,4 +438,4 @@ fn set_sid(mut cmd: std::process::Command, target: String, sid: &str) -> Outcome
 
 #[cfg(test)]
 #[path = "../../../tests/backend/control/identity_tag_tests.rs"]
-pub(crate) mod tests;
+mod tests;

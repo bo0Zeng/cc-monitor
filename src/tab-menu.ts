@@ -214,7 +214,7 @@ export class TabMenu {
               id: "kill",
               label: copyText("tabMenu.kill.plain"),
               danger: true,
-              onClick: () => this.actions.killRemoteTmux(remote, m.name, viaCwd),
+              onClick: () => this.actions.killRemoteTmux(remote, m.name, viaCwd, { sid }),
             });
           }
         } else {
@@ -234,7 +234,7 @@ export class TabMenu {
               id: "kill",
               label: copyText("tabMenu.kill.idle", { name: idle.name }),
               danger: true,
-              onClick: () => this.actions.killRemoteTmux(remote, idle.name, false, { idle: true }),
+              onClick: () => this.actions.killRemoteTmux(remote, idle.name, false, { idle: true, sid }),
             });
           }
         }
@@ -334,7 +334,7 @@ export class TabMenu {
         id: "kill",
         label: copyText("tabMenu.kill.idle", { name: idle.name }),
         danger: true,
-        onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, idle.name, false, { idle: true }),
+        onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, idle.name, false, { idle: true, sid }),
       });
       // 就地 resume 是**非破坏性**的，与 kill 并列给出（远端那侧同样两格并列）。
       updateTabContextMenuItem("resume-into", {
@@ -372,7 +372,7 @@ export class TabMenu {
       id: "kill",
       label: copyText("tabMenu.kill.named", { name }),
       danger: true,
-      onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, name, false),
+      onClick: () => this.actions.killRemoteTmux(LOCAL_ORIGIN, name, false, { sid }),
     });
   }
 
@@ -439,7 +439,7 @@ export class TabMenu {
           id: "kill",
           label: copyText("tabMenu.kill.plain"),
           danger: true,
-          onClick: () => this.actions.killRemoteTmux(origin, match.name, viaCwd),
+          onClick: () => this.actions.killRemoteTmux(origin, match.name, viaCwd, { sid }),
         });
       }
     } else {
@@ -460,7 +460,7 @@ export class TabMenu {
           id: "kill",
           label: copyText("tabMenu.kill.idle", { name: idle.name }),
           danger: true,
-          onClick: () => this.actions.killRemoteTmux(origin, idle.name, false, { idle: true }),
+          onClick: () => this.actions.killRemoteTmux(origin, idle.name, false, { idle: true, sid }),
         });
       } else {
         removeTabContextMenuItem("attach");
