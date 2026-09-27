@@ -643,7 +643,16 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
         .to_string();
 
     let err = caller.await.expect("task").unwrap_err();
-    assert!(matches!(err, CallError::Timeout { .. }), "{err:?}");
+    assert!(
+        matches!(
+            err,
+            CallError::Timeout {
+                withdraw: Withdraw::Asked,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
 
     let mut second = String::new();
     tokio::time::timeout(Duration::from_secs(2), peer.read_line(&mut second))
@@ -748,6 +757,109 @@ async fn no_cancel_is_fired_when_the_backend_does_not_declare_it() {
     assert!(read.is_err(), "不该补发 cancel，却发了：{second:?}");
 }
 
+/// 抓本线程上 warn 级以上的日志（`#[tokio::test]` 是单线程运行时，任务都在这条线程上跑）。
+#[derive(Clone, Default)]
+struct Warns(Arc<std::sync::Mutex<Vec<u8>>>);
+impl std::io::Write for Warns {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(b);
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+impl Warns {
+    /// 装到本线程上。另握一个空的 `Dispatch`：只剩一个登记的 dispatcher 时，tracing 按「碰到 callsite 的那条线程」
+    /// 的默认去算 interest 并缓存 —— 别的线程先碰到就会缓存成「没人要」（本条第一版因此时红时绿）。
+    fn install(&self) -> (tracing::subscriber::DefaultGuard, tracing::Dispatch) {
+        let sink = self.clone();
+        let spare = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+        let guard = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || sink.clone())
+                .with_ansi(false)
+                .with_max_level(tracing::Level::WARN)
+                .finish(),
+        );
+        tracing::callsite::rebuild_interest_cache();
+        (guard, spare)
+    }
+    /// 说「对端不认撤单」的那几行。
+    fn peer_cannot_withdraw(&self) -> Vec<String> {
+        String::from_utf8(self.0.lock().unwrap().clone())
+            .unwrap()
+            .lines()
+            .filter(|l| l.contains("对端不认撤单"))
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// 〔NET2 · `设计/05 §3.3.3`〕「对面认不认撤是一条能力……不认 ⇒ 本地照撤，**并且在结果里说明对端不认**」。
+/// 两形各两向：① 握手没交出 `cancel` ⇒ 结果 `NotOffered` ＋ 那句话多说一句 ＋ warn 一条；交出了 ⇒ `Asked`、零条。
+/// ② 补发的撤单被回 `not_cancellable` ⇒ warn 一条、点名那条命令；回 ok ⇒ 零条。
+#[tokio::test]
+async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
+    // ① 握手那一形。
+    for (ops, want) in [
+        (&["ping"][..], Withdraw::NotOffered),
+        (&["ping", "cancel"][..], Withdraw::Asked),
+    ] {
+        let warns = Warns::default();
+        let _g = warns.install();
+        let (client, mut peer) = client_on_duplex(ops);
+        let c = client.clone();
+        let caller =
+            tokio::spawn(
+                async move { c.call("ping", Value::Null, Duration::from_millis(60)).await },
+            );
+        let _first = next_line(&mut peer).await;
+        let err = caller.await.expect("task").unwrap_err();
+        let CallError::Timeout { withdraw, .. } = err else {
+            panic!("{err:?}");
+        };
+        assert_eq!(withdraw, want, "{ops:?}");
+        let said = err.to_string();
+        let told = warns.peer_cannot_withdraw();
+        match want {
+            Withdraw::NotOffered => {
+                assert!(said.contains("不认撤单"), "结果里没说对端不认：{said}");
+                assert_eq!(told.len(), 1, "{told:?}");
+                assert!(told[0].contains("`ping`"), "没点名那条命令：{told:?}");
+            }
+            Withdraw::Asked | Withdraw::Unsent => {
+                assert!(!said.contains("不认撤单"), "{said}");
+                assert!(told.is_empty(), "{told:?}");
+            }
+        }
+    }
+
+    // ② 补发之后对端说「停不下来」。
+    for (code, loud) in [(Some("not_cancellable"), true), (None, false)] {
+        let warns = Warns::default();
+        let _g = warns.install();
+        let (client, mut peer) = client_on_duplex(&["ping", "cancel"]);
+        let c = client.clone();
+        let caller =
+            tokio::spawn(
+                async move { c.call("ping", Value::Null, Duration::from_millis(60)).await },
+            );
+        let _first = next_line(&mut peer).await;
+        assert!(caller.await.expect("task").is_err());
+        let cancel: Value =
+            serde_json::from_str(next_line(&mut peer).await.trim_end()).expect("JSON");
+        let cid = cancel["id"].as_str().expect("id").to_string();
+        let ok = code.is_none();
+        assert!(client.route_reply(&cid, ok, code.map(str::to_string), None, None));
+        let told = warns.peer_cannot_withdraw();
+        assert_eq!(told.len(), usize::from(loud), "{code:?} ⇒ {told:?}");
+        if loud {
+            assert!(told[0].contains("`ping`"), "没点名那条命令：{told:?}");
+        }
+    }
+}
+
 /// 超时之后**晚到的应答**不许触发「未登记的 id」——那是预期内的事，不该刷 warn。
 #[tokio::test]
 async fn a_late_reply_after_timeout_still_finds_its_registration() {
@@ -779,12 +891,12 @@ async fn the_pending_table_is_capped_by_live_waiters() {
     for i in 0..MAX_PENDING {
         held.push(
             client
-                .register(&format!("x{i}"))
+                .register(&format!("x{i}"), None)
                 .unwrap_or_else(|| panic!("第 {i} 条就满了")),
         );
     }
     assert!(
-        client.register("overflow").is_none(),
+        client.register("overflow", None).is_none(),
         "登记表没有上限 —— 死后端下会无界增长"
     );
     drop(held);
@@ -801,11 +913,11 @@ async fn a_full_table_reclaims_registrations_whose_caller_has_left() {
     let (client, _peer) = client_on_duplex(&["ping"]);
     // 全部丢掉接收端 = 全是「调用方已走」的僵尸登记。
     for i in 0..MAX_PENDING {
-        assert!(client.register(&format!("zombie{i}")).is_some());
+        assert!(client.register(&format!("zombie{i}"), None).is_some());
     }
     assert_eq!(client.pending_len(), MAX_PENDING);
     assert!(
-        client.register("fresh").is_some(),
+        client.register("fresh", None).is_some(),
         "表被僵尸登记撑满后再也登记不上 —— 那正是审计说的「不自愈」"
     );
     assert_eq!(
@@ -817,10 +929,10 @@ async fn a_full_table_reclaims_registrations_whose_caller_has_left() {
     let (client2, _peer2) = client_on_duplex(&["ping"]);
     let mut held = Vec::new();
     for i in 0..MAX_PENDING {
-        held.push(client2.register(&format!("live{i}")).expect("登记"));
+        held.push(client2.register(&format!("live{i}"), None).expect("登记"));
     }
     assert!(
-        client2.register("fresh").is_none(),
+        client2.register("fresh", None).is_none(),
         "把还在等的调用方当成僵尸回收了 —— 那会让它们永远收不到应答"
     );
     drop(held);

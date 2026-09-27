@@ -36,8 +36,11 @@
 //! 这顺带让 U6b-1 写好的 `cancel` 命令第一次有真调用方。
 //! 〔RM1f〕**调用方放弃等待**（这个 future 被丢）与超时同一格：命令已入队、还没拿到结局就走人
 //! ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对后端的可取消档（`Run::Async`）这一条真能把活停下；
-//! 对阻塞档它照旧回 `not_cancellable`（那条应答落进已登记的 cancel id，不刷 warn）。
+//! 对阻塞档它照旧回 `not_cancellable`。
+//! 〔NET2 · `05 §3.3.3`〕对端不认撤单要说出来：握手没交出 `cancel` ⇒ 不补发、`Timeout.withdraw` 带
+//! `NotOffered`（那句话多说一句）＋ warn；补发之后被回 `not_cancellable` ⇒ warn 点名那条命令。
 
+use crate::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
 use crate::copy_table::copy_text;
 use crate::ssh_source::InboundFrame;
 use serde::Serialize;
@@ -73,8 +76,8 @@ pub enum CallError {
     Disconnected,
     /// backend 回了 `{"kind":"cancelled"}`。
     Cancelled,
-    /// 本地超时。已补发 `cancel`（best-effort）。
-    Timeout { after: Duration },
+    /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（〔NET2〕要说出来）。
+    Timeout { after: Duration, withdraw: Withdraw },
     /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状对齐 `--resolve` 的错误契约）。
     Remote { code: String, message: String },
 }
@@ -99,15 +102,18 @@ impl std::fmt::Display for CallError {
             CallError::Cancelled => {
                 write!(f, "{}", copy_text("rsInboundClient.error.cancelled", &[]))
             }
-            CallError::Timeout { after } => {
-                write!(
-                    f,
-                    "{}",
-                    copy_text(
-                        "rsInboundClient.error.timeout",
-                        &[("after", &(after.as_millis()).to_string())]
-                    )
-                )
+            CallError::Timeout { after, withdraw } => {
+                let ms = after.as_millis().to_string();
+                let said = match withdraw {
+                    Withdraw::Unsent | Withdraw::Asked => {
+                        copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
+                    }
+                    // 〔NET2 · `05 §3.3.3`〕对端不认撤单：本地照撤，结果里说出来。
+                    Withdraw::NotOffered => {
+                        copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)])
+                    }
+                };
+                write!(f, "{said}")
             }
             CallError::Remote { code, message } => write!(
                 f,
@@ -158,7 +164,8 @@ enum WriteJob {
 /// 字段私有 ⇒ 外部造不出来。
 #[derive(Debug, Clone)]
 pub struct BackendHello {
-    commands: Vec<String>,
+    /// 〔NET2〕握手交出的 op 集 —— 「认不认」只问它（家在 `chan::wire::Offer`）。
+    offer: Offer,
 }
 
 impl BackendHello {
@@ -166,7 +173,7 @@ impl BackendHello {
     pub fn from_hello_frame(frame: &InboundFrame) -> Option<Self> {
         match frame {
             InboundFrame::Hello { commands, .. } => Some(Self {
-                commands: commands.clone(),
+                offer: Offer::new(commands.clone()),
             }),
             _ => None,
         }
@@ -292,7 +299,7 @@ where
             // 长连接上那是不可接受的，所以关不关由调用方用 `CloseWrite` 明说。
         });
         Arc::new(InboundClient {
-            commands: hello.commands,
+            offer: hello.offer,
             nonce: connection_nonce(),
             seq: AtomicU64::new(0),
             writes: tx,
@@ -303,18 +310,24 @@ where
 
 /// 一条连接上的入方向客户端。
 pub struct InboundClient {
-    commands: Vec<String>,
+    offer: Offer,
     /// 本连接的号段前缀。**每连接一套** —— 重连后的 `id` 与上一条连接不撞。
     nonce: String,
     seq: AtomicU64,
     writes: mpsc::Sender<WriteJob>,
-    pending: Mutex<HashMap<String, oneshot::Sender<Outcome>>>,
+    pending: Mutex<HashMap<String, Waiter>>,
+}
+
+/// 登记表里的一格：等结局的那一头 ＋〔NET2〕它若是补发的撤单，撤的是哪条命令（回「停不下来」时点名）。
+struct Waiter {
+    tx: oneshot::Sender<Outcome>,
+    withdraws: Option<String>,
 }
 
 impl InboundClient {
-    /// backend 声明接受这条命令吗。
+    /// backend 声明接受这条命令吗。答案只住 [`Offer::admits`]（〔NET2〕能力协商的家）。
     pub fn accepts(&self, cmd: &str) -> bool {
-        self.commands.iter().any(|c| c == cmd)
+        self.offer.admits(cmd)
     }
 
     /// 本连接内唯一的请求 `id`。
@@ -390,11 +403,11 @@ impl InboundClient {
         if !self.accepts(cmd) {
             return Err(CallError::Unsupported {
                 cmd: cmd.to_string(),
-                offered: self.commands.clone(),
+                offered: self.offer.ops().to_vec(),
             });
         }
         let id = self.next_id();
-        let rx = self.register(&id).ok_or(CallError::TooManyPending)?;
+        let rx = self.register(&id, None).ok_or(CallError::TooManyPending)?;
         let line = WriteJob::Line(encode_request(&id, cmd, &args));
         match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
             Ok(Ok(())) => {}
@@ -405,7 +418,10 @@ impl InboundClient {
             Err(_elapsed) => {
                 // 没入队 ⇒ 不会有应答 ⇒ 摘掉，也不用补 cancel（backend 没见过这条命令）。
                 self.take_pending(&id);
-                return Err(CallError::Timeout { after: timeout });
+                return Err(CallError::Timeout {
+                    after: timeout,
+                    withdraw: Withdraw::Unsent,
+                });
             }
         }
         // 〔RM1f〕从这一刻起它**已经入队**、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个
@@ -415,6 +431,7 @@ impl InboundClient {
         let mut abandon = AbandonGuard {
             client: self,
             id: Some(id),
+            cmd,
         };
         let outcome = tokio::time::timeout_at(deadline, rx).await;
         if outcome.is_ok() {
@@ -431,7 +448,10 @@ impl InboundClient {
             // 登记条目被摘掉/连接没了 ⇒ 发送端 drop。
             Ok(Err(_)) => Err(CallError::Disconnected),
             // 超时：`abandon` 还拿着 id ⇒ 它在本函数返回时补发那条 `cancel`（与「被丢」同一处，不发两次）。
-            Err(_elapsed) => Err(CallError::Timeout { after: timeout }),
+            Err(_elapsed) => Err(CallError::Timeout {
+                after: timeout,
+                withdraw: self.offer.withdraw(),
+            }),
         }
     }
 
@@ -489,7 +509,7 @@ impl InboundClient {
     }
 
     fn deliver(&self, id: &str, outcome: Outcome) -> bool {
-        let Some(tx) = self.take_pending(id) else {
+        let Some(Waiter { tx, withdraws }) = self.take_pending(id) else {
             // ★ 归不到任何命令头上的应答。**最要紧的是别把 code/message 丢了** ——
             // 它们往往是唯一能说清「为什么那条命令没反应」的东西。
             //
@@ -521,6 +541,20 @@ impl InboundClient {
             }
             return false;
         };
+        // 〔NET2 · `05 §3.3.3`〕补发的撤单被回「停不下来」⇒ 说出来（先前落 debug，等于静默）。
+        if let (
+            Some(cmd),
+            Outcome::Reply {
+                ok: false,
+                code: Some(code),
+                ..
+            },
+        ) = (&withdraws, &outcome)
+        {
+            if code == WITHDRAW_REFUSED {
+                tracing::warn!("对端不认撤单：`{cmd}` 停不下来，会照跑完（本地已不再等它）");
+            }
+        }
         if tx.send(outcome).is_err() {
             // 正常：调用方已超时走人（或那是一条 fire-and-forget 的 cancel）。
             tracing::debug!("入方向应答 `{id}` 晚到，调用方已走");
@@ -541,12 +575,12 @@ impl InboundClient {
     /// 回收判据用 `oneshot::Sender::is_closed()`：接收端已 drop = 调用方早走了，
     /// 这条登记留着只是为了「让晚到的应答别刷 warn」，满的时候它显然不值那个价。
     /// 不需要定时器，只在真要满的那一刻扫一次。
-    fn register(&self, id: &str) -> Option<oneshot::Receiver<Outcome>> {
+    fn register(&self, id: &str, withdraws: Option<String>) -> Option<oneshot::Receiver<Outcome>> {
         let (tx, rx) = oneshot::channel();
         let mut p = lock(&self.pending);
         if p.len() >= MAX_PENDING {
             let before = p.len();
-            p.retain(|_, waiter| !waiter.is_closed());
+            p.retain(|_, waiter| !waiter.tx.is_closed());
             let reclaimed = before - p.len();
             if reclaimed > 0 {
                 tracing::debug!("入方向登记表满，回收了 {reclaimed} 条调用方已走的登记");
@@ -555,7 +589,7 @@ impl InboundClient {
                 return None;
             }
         }
-        p.insert(id.to_string(), tx);
+        p.insert(id.to_string(), Waiter { tx, withdraws });
         Some(rx)
     }
 
@@ -565,7 +599,7 @@ impl InboundClient {
         lock(&self.pending).len()
     }
 
-    fn take_pending(&self, id: &str) -> Option<oneshot::Sender<Outcome>> {
+    fn take_pending(&self, id: &str) -> Option<Waiter> {
         lock(&self.pending).remove(id)
     }
 
@@ -576,16 +610,23 @@ impl InboundClient {
     ///
     /// **登记不上就不发**：登记表满时硬发出去，那条应答回来一定落进 unknown-id 的 warn，
     /// 而那正是登记它想避免的噪声 —— 在表已经满、日志最该干净的时候刷。
-    fn fire_and_forget_cancel(&self, target: &str) {
-        if !self.accepts("cancel") {
-            return;
+    fn fire_and_forget_cancel(&self, target: &str, cmd: &str) {
+        match self.offer.withdraw() {
+            Withdraw::Asked => {}
+            // 〔NET2 · `05 §3.3.3`〕对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
+            Withdraw::NotOffered => {
+                tracing::warn!("对端不认撤单：`{cmd}` 没法叫它停，可能照跑完（本地已不再等它）");
+                return;
+            }
+            // `Offer::withdraw` 不给这一档（它只问已发出的那条）。
+            Withdraw::Unsent => return,
         }
         let id = self.next_id();
-        let Some(_keep_quiet) = self.register(&id) else {
+        let Some(_keep_quiet) = self.register(&id, Some(cmd.to_string())) else {
             tracing::debug!("登记表满，跳过超时补发的 cancel：target={target}");
             return;
         };
-        let line = encode_request(&id, "cancel", &serde_json::json!({ "target": target }));
+        let line = encode_request(&id, WITHDRAW_OP, &serde_json::json!({ "target": target }));
         // `try_send`：这是 best-effort 的收尾，绝不为它阻塞调用方。
         if self.writes.try_send(WriteJob::Line(line)).is_err() {
             self.take_pending(&id);
@@ -600,12 +641,14 @@ impl InboundClient {
 struct AbandonGuard<'a> {
     client: &'a InboundClient,
     id: Option<String>,
+    /// 撤的是哪条命令 —— 对端不认 / 停不下来时点名用。
+    cmd: &'a str,
 }
 
 impl Drop for AbandonGuard<'_> {
     fn drop(&mut self) {
         if let Some(id) = self.id.take() {
-            self.client.fire_and_forget_cancel(&id);
+            self.client.fire_and_forget_cancel(&id, self.cmd);
         }
     }
 }

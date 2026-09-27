@@ -65,29 +65,29 @@ const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
 /** 用例集 —— **这是对拍面的唯一定义处**。ok / refusal 两类都要有。 */
 export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   // ---- ok 类 ----
-  { name: "new + base", caps: ALL_CAPS, ctx: base(), ok: true, out: "ccm --base" },
+  { name: "new + base", caps: ALL_CAPS, ctx: base(), ok: true, out: "ccm -- --base" },
   { name: "new + 具名账号", caps: ALL_CAPS, ctx: base({ account: { kind: "account", name: "z", configDir: ACCT } }),
-    ok: true, out: "ccm --account z" },
+    ok: true, out: "ccm -- --account z" },
   { name: "resume + tmux + 具名账号", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "abc-123" },
       container: { kind: "tmux", name: "cc-abc123", nameQuoting: "raw", mode: "create" },
       account: { kind: "account", name: "z", configDir: ACCT },
-    }), ok: true, out: "ccm --resume abc-123 --ccm-tmux=cc-abc123 --account z" },
+    }), ok: true, out: "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --account z" },
   { name: "resume + cwd + model", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "s1" }, cwd: "/w", modelOverride: "opus",
-    }), ok: true, out: "ccm --resume s1 --base --model opus --cwd /w" },
+    }), ok: true, out: "ccm --resume s1 --model opus -- --base --cwd /w" },
   { name: "identity（--ccm-sid）", caps: ALL_CAPS, ctx: base({ ccmSid: "sid-1" }),
-    ok: true, out: "ccm --ccm-sid=sid-1 --base" },
+    ok: true, out: "ccm -- --ccm-sid=sid-1 --base" },
   { name: "自定义 launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: "mycc" }),
-    ok: true, out: "ccm --base --launcher mycc" },
+    ok: true, out: "ccm -- --base --launcher mycc" },
   { name: "launcher 等于默认 ⇒ 不吐 --launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: AGENT_PROFILE.defaultLauncher }),
-    ok: true, out: "ccm --base" },
+    ok: true, out: "ccm -- --base" },
   { name: "attach（分支在维度循环之前 return）", caps: ALL_CAPS, ctx: base({
       action: { kind: "attach", name: "cc-foo" },
       container: { kind: "tmux", name: "cc-foo", nameQuoting: "raw", mode: "attach-only" },
-    }), ok: true, out: "ccm --attach cc-foo" },
+    }), ok: true, out: "ccm -- --attach cc-foo" },
   { name: "需要 quote 的 cwd", caps: ALL_CAPS, ctx: base({ cwd: "/home/用户/带 空格" }),
-    ok: true, out: "ccm --base --cwd '/home/用户/带 空格'" },
+    ok: true, out: "ccm -- --base --cwd '/home/用户/带 空格'" },
   // ---- refusal 类（§33：表达不了就必须放弃） ----
   { name: "未装 ccm", caps: null, ctx: base(), ok: false, out: "远端还没装后端" },
   // 〔LR2 · R95b〕`设计/80 §9.4`：「没探出来」不许被说成「没装」—— 线上第三态，Rust 回 `Refusal::ProbeUnknown`。
@@ -112,21 +112,21 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
       cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1",
-    }), ok: true, out: "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp" },
+    }), ok: true, out: "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp" },
   { name: "print-parity:newTmuxCustomLauncher", caps: ALL_CAPS, ctx: base({
       container: { kind: "tmux", name: "cc-proj", nameQuoting: "quoted", mode: "create" },
       cwd: "/home/pi/my proj", launcherOverride: "CCMPROBE",
-    }), ok: true, out: "ccm --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE" },
+    }), ok: true, out: "ccm -- --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE" },
   { name: "print-parity:attach", caps: ALL_CAPS, ctx: base({
       action: { kind: "attach", name: "cc-p1" },
       container: { kind: "tmux", name: "cc-p1", nameQuoting: "quoted", mode: "attach-only" },
-    }), ok: true, out: "ccm --attach cc-p1" },
+    }), ok: true, out: "ccm -- --attach cc-p1" },
   // F08：真 ccm 收到 --model 后真的 export ANTHROPIC_MODEL。
   { name: "print-parity:resumeTmuxWithModel", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
       cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1", modelOverride: "opus",
-    }), ok: true, out: "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp" },
+    }), ok: true, out: "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp" },
 ];
 
 function probeOf(caps: CliGoldenCase["caps"]): CcmProbeResult {

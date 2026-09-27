@@ -82,7 +82,7 @@ describe("VIS2 机器页收 host key 告知", () => {
         ? Promise.resolve({
             remote: {
               enabled: true,
-              hosts: [{ label: "aya", host: "h", user: "u", backendPath: "/b", hostKeyFingerprint: "SHA256:disk" }],
+              hosts: [{ label: "aya", host: "h", user: "u", hostKeyFingerprint: "SHA256:disk" }],
             },
           })
         : Promise.resolve([]),

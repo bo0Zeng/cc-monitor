@@ -5,6 +5,7 @@
 //! 规格那张表把 `server.rs` 拆成三份，本文件是其中一份，逐字：
 //! 「`relay/listen.rs`  🔴 **要劈两半**：listen / accept / `INFLIGHT_CONNECTIONS` → 后端侧
 //! （`01 C5`）；serve / `apply_downstream_deadline` → 中转」。
+//! 〔NET2〕在途上界 `INFLIGHT_CONNECTIONS` 与在途计数今天住本文件（`设计/20 §10` 第 7 条）。
 //!
 //! ⚠⚠ **那「两半」本拍只劈了一半，另一半劈不动，理由现打**：
 //! 把 bind/accept 挪到**后端侧**要在 `relay/` 之外新开一个模块，而本拍的写区
@@ -12,7 +13,7 @@
 //! 边界用注释标着；真正的搬家归 `99 §4` 的步 **13c**（「后端 `bind`/`listen`，
 //! 把 `accept` 到的连接交给面 B」）—— 那一步自己就写着「它不挡 14」。
 //!
-//! # ⚠ 有三样东西**职责在这里、代码还在 `server.rs`** —— 逐条给现打的理由
+//! # ⚠ 有两样东西**职责在这里、代码还在 `server.rs`** —— 逐条给现打的理由
 //!
 //! 它们**不是**按职责留在那儿的，是被**写区外的住址登记**钉住的：搬一步就当场红，
 //! 而那几处登记都不在本拍的写区里。如实列，别读成设计要它们分开：
@@ -21,18 +22,24 @@
 //! |---|---|
 //! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
 //! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」）。〔US1〕它的值今天是 `relay_route_core::PORT`（共享 crate，monitor 用同一个 const） |
-//! | `INFLIGHT_CONNECTIONS` | 同上，钉它的是 `src/bridge/src/local_backend_host.rs` 那句散文 |
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!
 //! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
 //! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
-use super::server::{self, Relay, DEFAULT_PORT, INFLIGHT_CONNECTIONS, LOOPBACK};
+use super::server::{self, Relay, DEFAULT_PORT, LOOPBACK};
 use super::{door, tee::TeeSink, Startup};
 use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
+
+/// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**；NET2 从 `server.rs` 挪来〕。
+///
+/// 住宿主不住中转：上界与绑口同是策略值（`设计/01 §2.1 C5` · `20 §4`）；中转只剩 `handle`。
+/// ⚠ **是条数不是体量**，名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`（`byte_cap_registry` 的钩子）。
+/// 超了 **回 `503` 并关连接**，不是静默 FIN。
+pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
 
 pub(crate) const ENV_PORT: &str = "CCM_RELAY_PORT";
 
@@ -169,7 +176,9 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 /// 上游那条 socket 由 `upstream::connect` 装 [`UPSTREAM_DEADLINE`]（本文件交下去的）。
 ///
 /// ⇒ 三样齐了：**顶不满**（上界）· **拒绝有声**（503 而不是静默 FIN）· **顶住的会自己散**（期限）。
-pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
+///
+/// `inflight` 是在途计数（本函数进出各动一次），由调用方交进来 —— 与上界同住宿主这一侧。
+pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<AtomicUsize>) {
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else {
             continue;
@@ -184,7 +193,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
             eprintln!("[relay] cannot set connection deadline: {e}");
             continue;
         }
-        if relay.inflight().load(SeqCst) >= INFLIGHT_CONNECTIONS {
+        if inflight.load(SeqCst) >= INFLIGHT_CONNECTIONS {
             // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
             // 这一支根本还没读过一个字节，连请求头都还不存在。
             eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
@@ -196,8 +205,8 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
         //   `try_clone` 是一次 `dup`，成功那条路上它立刻 drop（dup 出来的 fd 关掉不关 socket）。
         let spare = stream.try_clone().ok();
         let relay = Arc::clone(&relay);
-        let inflight = Arc::clone(relay.inflight());
         inflight.fetch_add(1, SeqCst);
+        let mine = Arc::clone(&inflight);
         // 每连接一个线程。与参考实现同形（它用 ThreadingHTTPServer）。
         let spawned = std::thread::Builder::new()
             .name("ccm-relay-conn".to_string())
@@ -206,7 +215,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
                     // ⚠ 只印错误本身，**永不印请求头**（`K9` 裁定四第 1 条）。
                     eprintln!("[relay] connection ended: {e}");
                 }
-                relay.inflight().fetch_sub(1, SeqCst);
+                mine.fetch_sub(1, SeqCst);
             });
         if let Err(e) = spawned {
             inflight.fetch_sub(1, SeqCst);
@@ -252,7 +261,7 @@ pub(super) fn run_with(
     let Ok((listener, relay)) = prepare(port, get, home, startup, TeeSink::to_stdout()) else {
         return 2;
     };
-    serve(listener, relay);
+    serve(listener, relay, Arc::default());
     0
 }
 
@@ -388,7 +397,7 @@ pub(crate) fn host(
     // 常驻后端按「退出行为」退的那一刻，中转一起走（`设计/01 §3.3b`，V107）。
     match std::thread::Builder::new()
         .name("ccm-relay-accept".to_string())
-        .spawn(move || serve(listener, relay))
+        .spawn(move || serve(listener, relay, Arc::default()))
     {
         Ok(_) => Hosted::Listening(addr),
         Err(e) => {

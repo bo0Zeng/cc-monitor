@@ -278,7 +278,9 @@ const POSIX_RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".p
 /// POSIX 函数声明的头与尾（写与读回共用这一对 —— 渲染与解析不许各写一份字面量）。
 /// ⚠ 住常量还有一个理由：`structural_scan` 那把尺子按大括号配平切函数体，字面量里落单的 `{` 会让它切过界。
 const POSIX_FN_HEAD: &str = "() { ";
-const POSIX_FN_TAIL: &str = " \"$@\"; }";
+/// 〔V151〕`"$@"`（用户敲别名时跟的参数）落在 `--` 左边 —— 交给 claude；别名自己的 ccm 选项在它后面的 `--` 右边。
+const POSIX_ARGS: &str = " \"$@\"";
+const POSIX_FN_TAIL: &str = "; }";
 
 /// POSIX 那份别名文件在 home 下的相对路径。〔RW1〕从 `account-aliases.sh` 改名而来，旧名不读不写不删。
 const POSIX_ALIAS_FILE_REL: &str = ".cc-monitor/aliases.sh";
@@ -354,7 +356,17 @@ impl Posix {
         let (name, body) = rest
             .split_once(POSIX_FN_HEAD)
             .ok_or(&copy_text("rsShellDialect.posix.badShape", &[]))?;
-        let mut words = Self::split_words(body)?.into_iter();
+        // 〔V151〕`ccm <左…> "$@"[ -- <右…>]`：`"$@"` 是分界（最后一处；用户的值经 [`Self::word`] 单引号，不会长成它）。
+        let at = body
+            .rfind(POSIX_ARGS)
+            .ok_or(&copy_text("rsShellDialect.posix.badTail", &[]))?;
+        let (lead, tail) = (&body[..at], &body[at + POSIX_ARGS.len()..]);
+        let right: Option<Vec<String>> = match tail.strip_prefix(" --") {
+            None if tail.is_empty() => None,
+            None => return Err(copy_text("rsShellDialect.posix.badShape", &[])),
+            Some(r) => Some(Self::split_words(r.trim_start())?),
+        };
+        let mut words = Self::split_words(lead)?.into_iter();
         let head = words.next().unwrap_or_default();
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         if head != word && !head.starts_with("\"${CCM:-") {
@@ -363,8 +375,25 @@ impl Posix {
                 &[("word", &word.to_string())],
             ));
         }
-        Ok((name.to_string(), words.collect()))
+        Ok((name.to_string(), join_last_end(words.collect(), right)))
     }
+}
+
+/// 〔V151〕别名那条 argv 按最后一个 `--` 切成两半（没有 ⇒ 右边 `None`）。两种方言渲染共用。
+fn split_last_end(argv: &[String]) -> (&[String], Option<&[String]>) {
+    match argv.iter().rposition(|w| w == "--") {
+        Some(k) => (&argv[..k], Some(&argv[k + 1..])),
+        None => (argv, None),
+    }
+}
+
+/// [`split_last_end`] 的逆：两种方言读回共用。
+fn join_last_end(mut left: Vec<String>, right: Option<Vec<String>>) -> Vec<String> {
+    if let Some(r) = right {
+        left.push("--".into());
+        left.extend(r);
+    }
+    left
 }
 
 impl ShellDialect for Posix {
@@ -415,10 +444,19 @@ impl ShellDialect for Posix {
     /// 调用时再给的参数接在后面、后者胜。
     fn render_alias(&self, name: &str, argv: &[String]) -> String {
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        let (left, right) = split_last_end(argv);
         let mut out = format!("{name}{POSIX_FN_HEAD}{word}");
-        for w in argv {
+        for w in left {
             out.push(' ');
             out.push_str(&Self::word(w));
+        }
+        out.push_str(POSIX_ARGS);
+        if let Some(right) = right {
+            out.push_str(" --");
+            for w in right {
+                out.push(' ');
+                out.push_str(&Self::word(w));
+            }
         }
         out.push_str(POSIX_FN_TAIL);
         out
@@ -501,6 +539,8 @@ const PS_BLOCK_OPEN: &str = "{";
 const PS_BLOCK_CLOSE: &str = "}";
 /// 最后一行的尾巴：调用时再给的参数原样接在后面（与 `cc` 同一写法：数组变量交给原生程序时逐个展开）。
 const PS_TAIL: &str = " $RemainingArgs";
+/// 〔V151〕分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
+const PS_END: &str = " '--'";
 
 impl PowerShell {
     /// 一个参数：**每个都单引号**（引号字符双写）。
@@ -554,17 +594,20 @@ impl PowerShell {
         Ok(out)
     }
 
-    /// `& ccm '…' '…' $RemainingArgs` → 参数。
+    /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（〔V151〕`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
     fn parse_call(line: &str) -> Result<Vec<String>, String> {
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         let head = format!("    & {word}");
-        let mid = line
-            .strip_prefix(&head)
-            .and_then(|r| r.strip_suffix(PS_TAIL))
-            .ok_or_else(|| {
-                copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())])
-            })?;
-        Self::split_words(mid)
+        let bad = || copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())]);
+        let body = line.strip_prefix(&head).ok_or_else(bad)?;
+        let at = body.rfind(PS_TAIL).ok_or_else(bad)?;
+        let (lead, tail) = (&body[..at], &body[at + PS_TAIL.len()..]);
+        let right = match tail.strip_prefix(PS_END) {
+            None if tail.is_empty() => None,
+            None => return Err(bad()),
+            Some(r) => Some(Self::split_words(r)?),
+        };
+        Ok(join_last_end(Self::split_words(lead)?, right))
     }
 }
 
@@ -640,12 +683,20 @@ impl ShellDialect for PowerShell {
     /// 与 `scripts/cc.ps1.tpl` 里的 `function cc` 逐字同形（只多了预置参数，握手那一行带守卫）。
     fn render_alias(&self, name: &str, argv: &[String]) -> String {
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        let (left, right) = split_last_end(argv);
         let mut call = format!("    & {word}");
-        for w in argv {
+        for w in left {
             call.push(' ');
             call.push_str(&Self::word(w));
         }
         call.push_str(PS_TAIL);
+        if let Some(right) = right {
+            call.push_str(PS_END);
+            for w in right {
+                call.push(' ');
+                call.push_str(&Self::word(w));
+            }
+        }
         [
             format!("function {name} {PS_BLOCK_OPEN}"),
             PS_PARAM_OPEN.to_string(),

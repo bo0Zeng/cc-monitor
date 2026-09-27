@@ -103,7 +103,6 @@ async fn clicking_upload_then_ok_runs_the_drop_path_over_the_channel() {
         port: 22,
         user: "nobody".into(),
         key_path: None,
-        backend_path: "/nonexistent".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

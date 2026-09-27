@@ -3,9 +3,7 @@
 //! 当年 F60 抓屏那条（`capture_remote_pane`〔散文墓碑〕，〔C4e〕已迁到界面经通道问）的范式（通道 B，不干扰前台终端、不涉及后端）。
 
 use crate::copy_table::copy_text;
-use crate::ssh_source;
 use serde::Serialize;
-use tokio::io::{AsyncReadExt, BufReader};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -70,14 +68,12 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
     }
 }
 
-/// 探测命令本身 —— **本机与远端逐字同一条**。
+/// 探「本机交互 shell 的 `PATH` 上那个 `ccm`」的命令（交给 `bash -lic`）。
 ///
-/// P3t-Y2：这就是 §40「本地 = 不走 ssh 的远端」在探测这一跳的落点 ——
-/// 同一个命令串，远端包进 ssh，本机直接交给 `bash -lic`。
-/// 抽成常量不是为了省字，是为了让「两侧探的是不是同一件事」这个问题**不必靠读两遍确认**
-/// （`the_local_and_remote_probe_ask_the_same_question` 钉住它只有一处定义）。
+/// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（[`probe_ccm_cli`]）。
+/// 本机仍问它：`KR69D2`「你 PATH 上那个是不是我们这一份」答的正是交互 shell 的 `PATH`。
 const CCM_PROBE_CMD: &str =
-    "command -v ccm >/dev/null 2>&1 && ccm --ccm-probe || printf 'NO_CCM\\n'";
+    "command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe || printf 'NO_CCM\\n'";
 
 /// 本机探测结果的缓存。TTL 与前端 `ccm-probe.ts::CCM_PROBE_TTL_MS` 同为 5 分钟 ——
 /// 用户装完 ccm 不必重启 app，但也不必每次拉起都付一次 `bash -lic` 的钱。
@@ -196,7 +192,8 @@ pub(crate) fn probe_binary_uncached(
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     probe_spawned(timeout, &|| {
         let mut c = std::process::Command::new(bin);
-        c.arg("--ccm-probe")
+        // 〔V151〕`ccm -- --ccm-probe`：ccm 自己的诊断口写在 `--` 右边。
+        c.args(["--", "--ccm-probe"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped());
         // 三条策略与上一条逐字相同，理由只有 `Hidden` 那格更重：这一跳在 Windows 上
@@ -273,22 +270,21 @@ fn probe_spawned(
 
 /// 探测远端 `ccm` 是否已装 + 能力集。`command -v` 找不到 → 走 `NO_CCM` 哨兵分支，不报错
 /// （未装是正常状态之一，不是异常）。
+/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕远端那台的 `ccm` 会哪些：**问那台后端自己**（帧命令 `ccm-probe`，与 `ccm --ccm-probe` 同一份），
+/// 不再进交互 shell 查 `PATH` —— `ccm` 就是那台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`）。
+/// 问不到（那台没连上 / 后端太旧不认这条）⇒ `Err`，界面按「不知道」走兜底渲染器（`src/ccm-probe.ts` 三态）。
 #[tauri::command]
 pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
-    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-        copy_text(
-            "rsCcmProbe.probe.noConfig",
-            &[("machine", &format!("{:?}", origin))],
-        )
-    })?;
-    let stream = ssh_source::connect_and_exec_cmd(&cfg, CCM_PROBE_CMD).await?;
-    let mut reader = BufReader::new(stream);
-    let mut buf: Vec<u8> = Vec::new();
-    reader
-        .read_to_end(&mut buf)
+    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(origin));
+    let v = door
+        .ask("ccm-probe", serde_json::json!({}))
         .await
-        .map_err(|e| copy_text("rsCcmProbe.probe.failed", &[("e", &e.to_string())]))?;
-    Ok(parse_probe_output(&String::from_utf8_lossy(&buf)))
+        .map_err(|r| copy_text("rsCcmProbe.probe.failed", &[("e", &r.said())]))?;
+    let text = v
+        .get("probe")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    Ok(parse_probe_output(text))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -436,7 +432,7 @@ const OURS_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3
 ///
 /// 🔴 **登记一条诚实边界，别读成「做了」**：唯一一条「问 PATH 上那个」的机制是
 /// [`CCM_PROBE_CMD`] ＋ `bash -lic`（非走登录 shell 不可 —— PATH 就是 rc 决定的，
-/// `src/shared/ccm-aliases.sh` 里那行 `export PATH="$HOME/.local/bin:$PATH"` 就是活例）。
+/// `src/shared/ccm-aliases.sh` 里那行往 `PATH` 前插 `~/.cc-monitor/bin` 的就是活例）。
 /// Windows 上没有对应物，而**照着 `PATH` 变量自己走一遍不是同一件事**
 /// （少了 rc 那一层，还要按 `PATHEXT` 判可执行 —— 那一格已经是一条待决 `KU22`）。
 /// ⇒ 这里**不发明第二套机制**，回 `None`，由上面那句话说成「查不了」。
@@ -447,6 +443,16 @@ fn probe_path_ccm() -> Option<CcmProbeResult> {
 #[cfg(windows)]
 fn probe_path_ccm() -> Option<CcmProbeResult> {
     None
+}
+
+/// 〔E2 · `96 §7.2.2`〕这个文件的字节是不是我们编的后端（身份戳恰一个）—— 只读字节，不跑它。
+pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
+    std::fs::read(p).is_ok_and(|b| {
+        matches!(
+            crate::sftp::identity_of_bytes(&b),
+            crate::sftp::RemoteIdentity::Stamp(_)
+        )
+    })
 }
 
 /// 🔴 `K-R69` / `KR69D2` 的生产入口：本机 `ccm` 这一格现在是什么样。
@@ -464,9 +470,11 @@ pub fn local_ccm_entry_status() -> LocalCcmEntry {
             .join(crate::backend::control::local_backend::local_ccm_entry_name())
     });
     let installed = path.as_ref().filter(|p| p.is_file());
+    // 〔E2 · `96 §7.2.2`〕**先读字节认身份，再决定跑不跑**：落点上那一份自报的身份戳恰一个（是我们编的后端）才起它问
+    //   `--ccm-probe`；认不出（不是我们的 / 读不了）⇒ 不跑，按「没装我们这一份」答。
     let ours = match installed {
-        Some(p) => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),
-        None => parse_probe_output(""),
+        Some(p) if ours_by_bytes(p) => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),
+        _ => parse_probe_output(""),
     };
     // ⚠ **`$HOME/…` 形态，不是绝对路径**：这个串会被别名生成器嵌进用户的 shell 命令里，
     //   而用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）⇒ 写死绝对路径把自定义堵死，

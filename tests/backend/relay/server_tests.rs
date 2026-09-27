@@ -6,7 +6,7 @@ use super::*;
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
 use super::super::listen::{
     listen, resolve_port, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
-    UPSTREAM_DEADLINE,
+    INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
 use crate::accounts::upstream::creds;
@@ -14,6 +14,7 @@ use crate::accounts::upstream::{self as accounts, table::RoutingTable, Accounts}
 use creds_core::SecretKey;
 use std::io::BufRead;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc;
 
 /// 判据里把一张表包成上游选择、再交给中转的那一步。
@@ -676,6 +677,15 @@ fn spawn_relay_with_sink(
     up: SocketAddr,
     custom: Option<Box<dyn Write + Send>>,
 ) -> (SocketAddr, Arc<Relay>, TeeTap) {
+    let (addr, relay, tee, _inflight) = spawn_relay_counted(up, custom);
+    (addr, relay, tee)
+}
+
+/// 同上，另交回监听面那份在途计数（〔NET2〕它住宿主 `listen.rs`，不在 `Relay` 身上）。
+fn spawn_relay_counted(
+    up: SocketAddr,
+    custom: Option<Box<dyn Write + Send>>,
+) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<AtomicUsize>) {
     let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (tick, rx) = mpsc::channel();
     struct Shared(Arc<std::sync::Mutex<Vec<u8>>>, mpsc::Sender<()>);
@@ -702,8 +712,10 @@ fn spawn_relay_with_sink(
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
     let r2 = Arc::clone(&relay);
-    std::thread::spawn(move || serve(listener, r2));
-    (addr, relay, TeeTap { buf, rx })
+    let inflight = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&inflight);
+    std::thread::spawn(move || serve(listener, r2, counted));
+    (addr, relay, TeeTap { buf, rx }, inflight)
 }
 
 fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
@@ -1309,7 +1321,7 @@ fn a_wedged_tee_consumer_stalls_neither_its_own_connection_nor_another() {
 #[test]
 fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
     let up = spawn_fake_upstream(None);
-    let (relay_addr, relay, _tee) = spawn_relay(up.addr);
+    let (relay_addr, _relay, _tee, inflight) = spawn_relay_counted(up.addr, None);
 
     // ㈠ 半开一条：只发半个请求头，**永不**发结尾空行、不关连接。
     let mut half = TcpStream::connect(relay_addr).expect("connect");
@@ -1317,15 +1329,13 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
         .expect("half head");
     half.flush().expect("flush");
     assert!(
-        wait_until(|| relay.inflight.load(Ordering::SeqCst) >= 1),
+        wait_until(|| inflight.load(Ordering::SeqCst) >= 1),
         "半开连接必须算进在途数（今天是 {}）",
-        relay.inflight.load(Ordering::SeqCst)
+        inflight.load(Ordering::SeqCst)
     );
 
     // ㈢ 非空对照先做：`上限 - 1` 时同一发请求必须拿到 200。
-    relay
-        .inflight
-        .store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
+    inflight.store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
     let (got, _clean) = send_raw(
         relay_addr,
         "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
@@ -1338,13 +1348,13 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
     //    不等就 `store` 的话，那一次减会落在我们设的值**之后** ⇒ 计数被减回 255，
     //    下面那一发就不会被拒 —— 本条第一版正是这么红的（拿到的是一条正常的 200）。
     assert!(
-        wait_until(|| relay.inflight.load(Ordering::SeqCst) == INFLIGHT_CONNECTIONS - 1),
+        wait_until(|| inflight.load(Ordering::SeqCst) == INFLIGHT_CONNECTIONS - 1),
         "上一发的连接线程没收工（在途数停在 {}）",
-        relay.inflight.load(Ordering::SeqCst)
+        inflight.load(Ordering::SeqCst)
     );
 
     // ㈡ 顶到上限：新连接必须拿到 **503**，不是一个没有任何响应的 FIN。
-    relay.inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
+    inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
     let (got, clean) = send_raw(
         relay_addr,
         "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
@@ -1362,14 +1372,14 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
     );
 
     // ㈣ 计数会还：把它放回 0，跑一发正常的，走完之后必须回到 0。
-    relay.inflight.store(0, Ordering::SeqCst);
+    inflight.store(0, Ordering::SeqCst);
     let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
     let mut sink = Vec::new();
     c.read_to_end(&mut sink).expect("read");
     assert!(
-        wait_until(|| relay.inflight.load(Ordering::SeqCst) == 0),
+        wait_until(|| inflight.load(Ordering::SeqCst) == 0),
         "连接走完之后在途数必须回落（今天是 {}）",
-        relay.inflight.load(Ordering::SeqCst)
+        inflight.load(Ordering::SeqCst)
     );
     drop(half);
 }
@@ -1818,7 +1828,7 @@ fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
-    std::thread::spawn(move || serve(listener, relay));
+    std::thread::spawn(move || serve(listener, relay, Default::default()));
     addr
 }
 
@@ -3772,7 +3782,7 @@ fn spawn_relay_with_upstream_deadline(
     ));
     let listener = listen(0).expect("listen");
     let addr = listener.local_addr().expect("addr");
-    std::thread::spawn(move || serve(listener, relay));
+    std::thread::spawn(move || serve(listener, relay, Default::default()));
     addr
 }
 

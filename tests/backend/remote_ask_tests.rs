@@ -109,11 +109,10 @@ impl Remote for Recorder {
     }
 }
 
-fn reach_args(origin: &str, host: &str, backend: &str) -> Value {
+fn reach_args(origin: &str, host: &str) -> Value {
     json!({
         "origin": origin,
         "dial": {"host": host, "port": 22, "user": "u", "key_path": "/k"},
-        "backend": backend,
     })
 }
 
@@ -134,7 +133,7 @@ async fn an_unregistered_origin_is_said_and_never_dialed() {
 #[tokio::test]
 async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command() {
     let table = Table::default();
-    answer_reach_with(&reach_args("dev", "10.0.0.2", "/opt/c c/ccm"), &table).unwrap();
+    answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
     let far = Recorder::default();
     let out = ask_with("dev", &["--list-sessions", "-home-u-it's"], &table, &far)
         .await
@@ -142,15 +141,13 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
     assert_eq!(out, "答");
     let calls = far.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
-    assert_eq!(
-        calls[0].0,
-        reach_args("dev", "10.0.0.2", "/opt/c c/ccm")["dial"]
-    );
+    assert_eq!(calls[0].0, reach_args("dev", "10.0.0.2")["dial"]);
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 死值验 A3：那样两侧同源，拿掉引号也恒绿）。
-    // 〔FIX · `设计/96 §3.6`〕命令行里只剩后端路径与两个旗标；项目目录名（带 `'`）走 stdin 一行。
+    // 〔FIX · `设计/96 §3.6`〕命令行里只剩落点与旗标；项目目录名（带 `'`）走 stdin 一行。
+    // 〔E2〕那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
     assert_eq!(
         calls[0].1,
-        r#"'/opt/c c/ccm' '--list-sessions' '--stdin-line'"#
+        r#""$HOME"/.cc-monitor/bin/ccm -- '--list-sessions' '--stdin-line'"#
     );
     assert_eq!(calls[0].2.as_deref(), Some("[\"-home-u-it's\"]\n"));
 }
@@ -163,7 +160,7 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
 #[tokio::test]
 async fn the_free_text_rides_stdin_and_the_remote_gets_the_argv_back_verbatim() {
     let table = Table::default();
-    answer_reach_with(&reach_args("dev", "10.0.0.2", "/opt/b"), &table).unwrap();
+    answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
     let far = Recorder::default();
     let tricky = ["-home-u-it's", "照片 (2019) \\ $HOME `id`", "a & b; c"];
     for dir in tricky {
@@ -179,7 +176,7 @@ async fn the_free_text_rides_stdin_and_the_remote_gets_the_argv_back_verbatim() 
         );
         let out = std::process::Command::new("sh")
             .arg("-c")
-            .arg(format!("set -- {line}; shift; printf '%s\\n' \"$@\""))
+            .arg(format!("set -- {line}; shift 2; printf '%s\\n' \"$@\""))
             .output()
             .expect("起 sh");
         let words: Vec<String> = String::from_utf8_lossy(&out.stdout)
@@ -194,28 +191,26 @@ async fn the_free_text_rides_stdin_and_the_remote_gets_the_argv_back_verbatim() 
 }
 
 /// ★ 判据 2：`remote-reach` 与 `assets-sync` 登记的是同一张表、同一个写口 —— 两条路登记同一台之后表逐格相等；
-/// 再登记一次换掉拨号请求与路径、对面的 id 留着。
+/// 再登记一次换掉拨号请求、对面的 id 留着。
 #[test]
 fn both_doors_register_through_the_one_writer() {
     let a = Table::default();
     let b = Table::default();
-    answer_reach_with(&reach_args("dev", "h1", "/b1"), &a).unwrap();
-    register(&b, &reach_args("dev", "h1", "/b1")).unwrap();
+    answer_reach_with(&reach_args("dev", "h1"), &a).unwrap();
+    register(&b, &reach_args("dev", "h1")).unwrap();
     assert_eq!(*lock(&a), *lock(&b), "两扇门登记出来的表不一样");
     // 对面的 id（资产目录那一路拉回来之后写的）在再登记时留着。
     lock(&a).get_mut("dev").unwrap().peer = Some("p".into());
-    answer_reach_with(&reach_args("dev", "h2", "/b2"), &a).unwrap();
+    answer_reach_with(&reach_args("dev", "h2"), &a).unwrap();
     let row = lock(&a).get("dev").cloned().unwrap();
     assert_eq!(row.peer.as_deref(), Some("p"));
-    assert_eq!(row.backend, "/b2");
     assert_eq!(row.dial["host"], "h2");
     // 半给的入参拒，表不动。
     for bad in [
         json!({}),
         json!({"origin": ""}),
-        json!({"origin": "x", "dial": {}}),
-        json!({"origin": "x", "backend": "/b"}),
-        json!({"origin": "x", "dial": "nope", "backend": "/b"}),
+        json!({"origin": "x"}),
+        json!({"origin": "x", "dial": "nope"}),
     ] {
         let before = lock(&a).clone();
         let e = answer_reach_with(&bad, &a).expect_err("半给的入参该拒");
@@ -229,15 +224,13 @@ fn both_doors_register_through_the_one_writer() {
 fn the_table_is_bounded() {
     let t = Table::default();
     for i in 0..MAX_REACH {
-        register(&t, &reach_args(&format!("m{i}"), "h", "/b")).unwrap();
+        register(&t, &reach_args(&format!("m{i}"), "h")).unwrap();
     }
     assert_eq!(
-        register(&t, &reach_args("one-more", "h", "/b"))
-            .unwrap_err()
-            .0,
+        register(&t, &reach_args("one-more", "h")).unwrap_err().0,
         "bad_args"
     );
-    register(&t, &reach_args("m0", "h9", "/b")).expect("已在表里的那台照样能再登记");
+    register(&t, &reach_args("m0", "h9")).expect("已在表里的那台照样能再登记");
     assert_eq!(lock(&t).len(), MAX_REACH);
 }
 
@@ -248,7 +241,9 @@ fn a_real_posix_shell_reads_every_argument_back_verbatim() {
     let tricky = ["it's", "say \"hi\"", "$HOME", "`id`", "a b", "中文-项目"];
     let mut argv = vec!["%s\\n"];
     argv.extend(tricky.iter());
-    let line = command_line("printf", &argv);
+    // 〔E2〕落点是固定常量 ⇒ 把打头那一格换成 `printf` 再交给真 `sh`（量的是 argv 那几格的引号）。
+    let line = command_line(&argv).replacen(relay_route_core::BACKEND_LANDING_SHELL, "printf", 1);
+    assert!(line.starts_with("printf "), "命令行不以落点打头：{line}");
     let out = std::process::Command::new("sh")
         .arg("-c")
         .arg(&line)
@@ -262,6 +257,20 @@ fn a_real_posix_shell_reads_every_argument_back_verbatim() {
     assert_eq!(
         got,
         tricky.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+    );
+    // 〔E2〕落点那一格在真 `sh` 里展开成「那台的家目录 ＋ `/.cc-monitor/bin/ccm`」（家目录带空格也不拆词）。
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "printf '%s' {}",
+            relay_route_core::BACKEND_LANDING_SHELL
+        ))
+        .env("HOME", "/h o/me")
+        .output()
+        .expect("起 sh");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        format!("/h o/me/{}", relay_route_core::BACKEND_LANDING_REL)
     );
 }
 
@@ -320,48 +329,13 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         .expect("哨兵没报信就没了");
 }
 
-/// ★ 〔TL3 · `INVARIANTS §47` ②〕可达表唯一的写口先过放行判定：那台后端的路径不合形 / 撞拒绝集 ⇒ `bad_args`、一条都不登记；
-/// 真实落点照登（§47「拒过头也算违反」⇒ 正反各一格）。要求住址：`INVARIANTS §47`，逐字「在它被**拼进 shell 命令串**、
-/// 或被**交给对端去执行 / 去寻址**之前，**本侧**先过一道按这个值的种类写成的放行判定」—— 表里的值随后被 `command_line` ·
-/// `asset_sync::{pull_command, push_command}` 拼进远端命令。
-#[test]
-fn the_reach_table_refuses_a_backend_path_that_must_not_be_spliced() {
-    let t = Table::default();
-    for good in [
-        "/home/u/.cc-monitor/bin/cc-monitor-backend",
-        "/opt/my tools/b",
-    ] {
-        register(&t, &reach_args("ok", "h", good))
-            .unwrap_or_else(|e| panic!("真实好值被拒了：{good:?} ⇒ {e:?}"));
-    }
-    for bad in [
-        "bin/b",
-        "/",
-        "/home/u/../etc/x",
-        "/home/u/x;reboot",
-        "/home/u/$(id)",
-        "/home/u/x`id`",
-        "/home/u/x\nboom",
-        "/home/u/x\u{202E}",
-    ] {
-        let (code, msg) = register(&t, &reach_args("bad", "h", bad))
-            .expect_err(&format!("坏值登进表了：{bad:?}"));
-        assert_eq!(code, "bad_args");
-        assert!(
-            msg.contains("bad") && msg.contains(&format!("{bad:?}")),
-            "那句话没说清哪台 / 哪个值：{msg}"
-        );
-    }
-    assert!(!lock(&t).contains_key("bad"), "拒了，却还是登进了可达表");
-}
-
 /// ★ 〔TL3 · `INVARIANTS §47` ②〕一次性子命令的 argv 是自由文本：拒绝集只收 NUL / CR / LF（**不拒 shell 元字符**），
 /// 判不过一次都不拨；真实名字（带 `'` `(` `&` 的目录名 · 中文 · 空格）照发。要求住址：`INVARIANTS §47` ②；
 /// 主会话 09-26 按 V131 裁「自由文本路径……拒绝集只收控制字符（NUL / CR / LF）……不拒 shell 元字符（拒过头同样违反 §47）」。
 #[tokio::test]
 async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
     let table = Table::default();
-    answer_reach_with(&reach_args("dev", "10.0.0.2", "/opt/b"), &table).unwrap();
+    answer_reach_with(&reach_args("dev", "10.0.0.2"), &table).unwrap();
     let far = Recorder::default();
     for good in ["-home-u-Bob's notes", "照片 (2019)", "a & b; c"] {
         ask_with("dev", &["--list-sessions", good], &table, &far)

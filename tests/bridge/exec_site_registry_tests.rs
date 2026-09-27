@@ -37,12 +37,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
     // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     // 〔SH1 · V137〕`mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
-    (
-        "ccm_probe.rs",
-        "probe_ccm_cli",
-        Origin::Const,
-        "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**",
-    ),
+    // 〔E2〕`ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
@@ -83,7 +78,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
         "ssh_source.rs",
         "connect_and_exec",
         Origin::Quoted,
-        "backend 路径经引用",
+        "〔E2〕插的只有常量：固定落点 `BACKEND_CMD` ＋ 流模式旗标字面量（`backendPath` 那一格删了）",
     ),
     // 〔SH1〕`tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
@@ -212,7 +207,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
         // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
-        found.len() >= 5,
+        // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。
+        found.len() >= 4,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
@@ -285,7 +281,9 @@ fn every_remote_exec_declares_where_its_command_came_from() {
             Origin::Quoted => {
                 per_class[2] += 1;
                 assert!(
-                    body.contains("shell_quote(") || body.contains("TMUX_LS_FMT"),
+                    body.contains("shell_quote(")
+                        || body.contains("TMUX_LS_FMT")
+                        || body.contains("BACKEND_CMD"),
                     "`{f}::{n}` 申报成「在本函数里拼但引用了」（{why}），实参 `{arg}`，\
                          而函数体里既没有 `shell_quote(`、插的也不是那个受守的常量 —— \
                          自由文本正裸着进远端命令。"
@@ -305,9 +303,15 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     // 常驻自检：某一类归零时上面那一支就没人行使，而它看起来照样绿。
     // ⚠ 本仓已连着六次栽在「新分支平时没人走」上，所以四类各要一个活样本。
+    // 〔E2〕`Const` 那一类收敛到零（最后一条 `ccm_probe.rs::probe_ccm_cli` 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
+    assert_eq!(
+        per_class[0], 0,
+        "`Const` 那一类又长出了样本 —— 回来把它放回自检"
+    );
     for (i, name) in ["Const", "Builder", "Quoted", "PassThrough"]
         .iter()
         .enumerate()
+        .skip(1)
     {
         assert!(
             per_class[i] >= 1,
@@ -358,13 +362,8 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
     // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。
     // 〔SH1〕`hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
-    // 〔W5-ALIAS · 现打后写清〕这一问答的是「那台**交互 shell** 的 PATH 上敲 `ccm` 找不找得到、是哪一版、会哪些」
-    //   （`remote-launch-run.ts` 据此选 CLI 渲染器 —— pane 里敲的就是那个名字）。那台后端进程答不了交互 shell 的 PATH
-    //   （rc 改过的环境它看不见，`footprint-probe` 的 `env.path` 同一个口径缺口）⇒ 今天换成后端具名命令会答错问题。
-    //   件 E（`ccm` 就是后端本体、落点恒 `~/.cc-monitor/bin/ccm`，`第四波记录/W5-ALIAS.md §2.5`）落地之后，这一问退化成
-    //   「那台后端自己会哪些」（hello 已带能力 ＋ build），届时这一处删、本行摘。
-    ("ccm_probe.rs", "probe_ccm_cli", StillShell::Pending("W5-ENTRY（`W5-ALIAS.md §2.5` 件 E：ccm 就是后端，落地同拍删）"),
-     "探那台交互 shell 的 PATH 上的 `ccm`：后端进程答不了交互 shell 的 PATH；件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己（hello）"),
+    // 〔E2 · `96 §7.2.2`〕`ccm_probe.rs::probe_ccm_cli` 那一行摘了：`ccm` 就是那台后端本身（V28），「会哪些」改问那台后端 `ccm-probe`
+    //   （与 `ccm --ccm-probe` 同一份），不再进交互 shell 查 `PATH`（W5-ALIAS §3.6 写好的解锁条件兑现）。
     // 〔SH1〕`tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。
     // 〔SH1 · V136〕`cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。
 ];

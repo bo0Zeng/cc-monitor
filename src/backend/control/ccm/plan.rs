@@ -924,38 +924,37 @@ pub(crate) fn build(
             // 不退让 / 问不到快照 ⇒ 原样（后者是诚实降级，见本函数头注）。
             _ => base,
         };
-        // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
-        let mut inner: Vec<String> = env.self_argv.clone();
-        inner.push(flag::CWD.into());
-        inner.push(cwd.clone());
-        inner.push(flag::AGENT.into());
-        inner.push(o.agent.clone());
+        // 内层：同一条命令去掉 `--ccm-tmux`，并把**继承来的**那几个变量显式化。
+        // 〔V151〕形状 `self <交给 agent 的…> -- <ccm 自己的…>`（ccm 那一半恒非空 ⇒ 恒带 `--`，透传里有 claude 自己的 `--` 也切得对）。
+        let mut opts: Vec<String> = vec![
+            flag::CWD.into(),
+            cwd.clone(),
+            flag::AGENT.into(),
+            o.agent.clone(),
+        ];
         if !account.is_empty() {
-            inner.push(flag::ACCOUNT.into());
-            inner.push(account.clone());
+            opts.push(flag::ACCOUNT.into());
+            opts.push(account.clone());
         }
         if o.use_base {
-            inner.push(flag::BASE.into());
+            opts.push(flag::BASE.into());
         }
         if !launcher.is_empty() {
-            inner.push(flag::LAUNCHER.into());
-            inner.push(launcher.clone());
+            opts.push(flag::LAUNCHER.into());
+            opts.push(launcher.clone());
         }
         if !o.ccm_sid.is_empty() {
-            inner.push(flag::CCM_SID.into());
-            inner.push(o.ccm_sid.clone());
+            opts.push(flag::CCM_SID.into());
+            opts.push(o.ccm_sid.clone());
         }
-        // 🔴 〔CC1〕**自检那一趟与 pane 里那一趟是同一串 argv**，只在 `--` 之前多一个 `--ccm-print`
-        //    （放在 `--` 之后就成了透传给 agent 的参数）。两条都从这一个 `inner` 渲出来，
-        //    不许在别处另拼一份 —— 另拼的那份一旦漂了，自检过的就不是 pane 里跑的那条。
+        let mut inner: Vec<String> = env.self_argv.clone();
+        inner.extend(o.passthru.iter().cloned());
+        inner.push(flag::END.into());
+        inner.extend(opts);
+        // 🔴 〔CC1〕**自检那一趟与 pane 里那一趟是同一串 argv**，只在 ccm 那一半末尾多一个 `--ccm-print`。
+        //    两条都从这一个 `inner` 渲出来，不许在别处另拼一份。
         let mut dry = inner.clone();
         dry.push(flag::CCM_PRINT.into());
-        if !o.passthru.is_empty() {
-            for v in [&mut inner, &mut dry] {
-                v.push(flag::END.into());
-                v.extend(o.passthru.iter().cloned());
-            }
-        }
         let mut payload = inner.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ");
         let bare = payload.clone();
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，

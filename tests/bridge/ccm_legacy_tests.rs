@@ -19,12 +19,11 @@ const LAUNCHER_HEAD: &str =
 /// L1：`is_ours` 两形都认、别的一律不认（手写表）。
 #[test]
 fn gp1_only_the_two_forms_we_ever_placed_are_recognised() {
-    let today = crate::backend::control::local_backend::ccm_entry_shim(
-        "/home/u/.cc-monitor/bin/cc-monitor-backend",
-    );
+    // 〔E2〕生成器 `ccm_entry_shim`〔散文墓碑〕删了（`ccm` 就是后端本体）⇒ 最后一代（MC1 起，不带 `CCM_SELF`）手写字面量。
+    let today = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n".to_string();
     let cells: [(&str, &str, bool); 8] = [
         ("09-15 那一代 shim", SHIM_0915, true),
-        ("今天这一代 shim", &today, true),
+        ("最后一代 shim", &today, true),
         ("09-11 之前的 bash 启动器", LAUNCHER_HEAD, true),
         ("用户自己的脚本", "#!/bin/sh\nexec my-own-ccm \"$@\"\n", false),
         ("空文件", "", false),
