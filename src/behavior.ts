@@ -124,39 +124,43 @@ const DEFAULTS: BehaviorConfig = {
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
 export async function getBehavior(): Promise<BehaviorConfig> {
   try {
-    const cfg = (await loadConfig()) as Record<string, unknown>;
-    return {
-      autoFollowUserActive:
-        typeof cfg[KEY_AUTO_FOLLOW] === "boolean"
-          ? (cfg[KEY_AUTO_FOLLOW] as boolean)
-          : DEFAULTS.autoFollowUserActive,
-      bringMonitorToFrontOnUserActive:
-        typeof cfg[KEY_BRING_FRONT] === "boolean"
-          ? (cfg[KEY_BRING_FRONT] as boolean)
-          : DEFAULTS.bringMonitorToFrontOnUserActive,
-      showBgSessions:
-        typeof cfg[KEY_SHOW_BG] === "boolean"
-          ? (cfg[KEY_SHOW_BG] as boolean)
-          : DEFAULTS.showBgSessions,
-      resumeCommandLocal:
-        typeof cfg[KEY_RESUME_LOCAL] === "string"
-          ? (cfg[KEY_RESUME_LOCAL] as string)
-          : DEFAULTS.resumeCommandLocal,
-      resumeCommandRemote:
-        typeof cfg[KEY_RESUME_REMOTE] === "string"
-          ? (cfg[KEY_RESUME_REMOTE] as string)
-          : DEFAULTS.resumeCommandRemote,
-      resumeCommandLocalPresets: readPresets(cfg[KEY_RESUME_LOCAL_PRESETS]),
-      resumeCommandRemotePresets: readPresets(cfg[KEY_RESUME_REMOTE_PRESETS]),
-      notifyTurnEnd:
-        typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
-          ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
-          : DEFAULTS.notifyTurnEnd,
-    };
+    return behaviorIn((await loadConfig()) as Record<string, unknown>);
   } catch (e) {
     console.warn("getBehavior failed:", e);
     return { ...DEFAULTS };
   }
+}
+
+/** 从一份已读回的配置里派生行为那一格；缺失 / 类型不对走默认值（设置窗「读一次配置派生三格」共用这一处，`70 §10` #5）。 */
+export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
+  return {
+    autoFollowUserActive:
+      typeof cfg[KEY_AUTO_FOLLOW] === "boolean"
+        ? (cfg[KEY_AUTO_FOLLOW] as boolean)
+        : DEFAULTS.autoFollowUserActive,
+    bringMonitorToFrontOnUserActive:
+      typeof cfg[KEY_BRING_FRONT] === "boolean"
+        ? (cfg[KEY_BRING_FRONT] as boolean)
+        : DEFAULTS.bringMonitorToFrontOnUserActive,
+    showBgSessions:
+      typeof cfg[KEY_SHOW_BG] === "boolean"
+        ? (cfg[KEY_SHOW_BG] as boolean)
+        : DEFAULTS.showBgSessions,
+    resumeCommandLocal:
+      typeof cfg[KEY_RESUME_LOCAL] === "string"
+        ? (cfg[KEY_RESUME_LOCAL] as string)
+        : DEFAULTS.resumeCommandLocal,
+    resumeCommandRemote:
+      typeof cfg[KEY_RESUME_REMOTE] === "string"
+        ? (cfg[KEY_RESUME_REMOTE] as string)
+        : DEFAULTS.resumeCommandRemote,
+    resumeCommandLocalPresets: readPresets(cfg[KEY_RESUME_LOCAL_PRESETS]),
+    resumeCommandRemotePresets: readPresets(cfg[KEY_RESUME_REMOTE_PRESETS]),
+    notifyTurnEnd:
+      typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
+        ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
+        : DEFAULTS.notifyTurnEnd,
+  };
 }
 
 /** 保存行为字段。只交这 9 个顶层键（〔CFG1〕按键补丁），不动 theme / diagnostics 等。 */

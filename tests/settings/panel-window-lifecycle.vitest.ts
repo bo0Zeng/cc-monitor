@@ -13,7 +13,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { win, theme } = vi.hoisted(() => ({
+const { win, theme, ipc } = vi.hoisted(() => ({
+  ipc: { calls: [] as string[] },
   win: {
     closeRequested: null as null | ((e: { preventDefault: () => void }) => void),
     focus: null as null | ((e: { payload: boolean }) => void),
@@ -22,7 +23,6 @@ const { win, theme } = vi.hoisted(() => ({
     destroy: vi.fn(() => Promise.resolve()),
   },
   theme: {
-    load: vi.fn(() => Promise.resolve({})),
     save: vi.fn(() => Promise.resolve()),
     apply: vi.fn(),
   },
@@ -44,17 +44,25 @@ vi.mock("@tauri-apps/api/window", () => ({
   }),
 }));
 vi.mock("../../src/theme", () => ({
-  loadTheme: theme.load,
+  themeIn: () => ({}),
   saveTheme: theme.save,
   applyTheme: theme.apply,
   applyThemeToken: vi.fn(),
 }));
 vi.mock("../../src/paths", () => ({
-  getClaudeDirOverride: () => Promise.resolve(null),
+  claudeDirIn: () => null,
   setClaudeDirOverride: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../../src/ipc/commands", () => ({
-  commands: new Proxy({}, { get: () => () => Promise.reject(new Error("[录音机]")) }),
+  commands: new Proxy(
+    {},
+    {
+      get: (_t, name: string) => () => {
+        ipc.calls.push(name);
+        return Promise.reject(new Error("[录音机]"));
+      },
+    },
+  ),
 }));
 vi.mock("../../src/settings/remote-section", () => ({
   MACHINE_PAGE_PREFIX: "machine:",
@@ -206,16 +214,18 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
 
   it("藏起来之后再拿到焦点（= 被重新 show）⇒ 重跑 open()：重读外观；没藏过的焦点不算", async () => {
     await mount();
-    theme.load.mockClear();
+    // 〔FIX2〕「重读」＝ 那一发 load_config（三格从同一份配置派生，`70 §10` #5）。
+    const reads = () => ipc.calls.filter((c) => c === "load_config").length;
+    ipc.calls = [];
     win.focus!({ payload: true }); // 没藏过：只是普通的切回来
     await tick();
-    expect(theme.load, "没藏过也重读 —— 每次切回窗口都会白打一趟").not.toHaveBeenCalled();
+    expect(reads(), "没藏过也重读 —— 每次切回窗口都会白打一趟").toBe(0);
     nativeX();
     await tick();
     expect(win.hide).toHaveBeenCalledTimes(1);
     win.focus!({ payload: true });
     await tick();
-    expect(theme.load).toHaveBeenCalledTimes(1);
+    expect(reads()).toBe(1);
     expect(document.querySelector(".settings-panel")!.classList.contains("open")).toBe(true);
   });
 });
