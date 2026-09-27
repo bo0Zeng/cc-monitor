@@ -33,7 +33,7 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕30 格
+# │ 〔自述·格数〕31 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
@@ -42,10 +42,10 @@
 # │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
-# │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend
-# │ 〔自述·现物〕六套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
+# │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend · ccm tests/e2e/backend-cc-bus
+# │ 〔自述·现物〕七套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
 # │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh` ·
-# │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
+# │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh` · `tests/e2e/backend-cc-bus.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
@@ -1769,13 +1769,13 @@ gate_selftest_e2e
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   local suite
-  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend; do
+  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend backend-cc-bus; do
     case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
   done
   return 1
 }
 if gate_e2e_wanted; then
-printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（六套 e2e 的被测对象）"
+printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（七套 e2e 的被测对象）"
 ( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
 else
 printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
@@ -1888,6 +1888,10 @@ run_e2e ccm-contract-parity   45
 #   这一维仍是零格（`设计/80 §10.4` / §11 同一句）。
 run_e2e backend-rbind-token   11
 run_e2e rbind-token-endtoend   9
+# 〔TAIL · 09-26〕`backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
+#   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
+#   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
+run_e2e backend-cc-bus        96
 
 # ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
 #   它量的那条池子命令与核心随浏览 / 复制离开 SFTP 一起退役（窗口的复制走后端 `files-copy`），
@@ -2114,7 +2118,8 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
     # 🔴 第二波 T4（09-24）：**27 → 29**，加的是令牌那两套 e2e（`backend-rbind-token` ·
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
-  echo "GATE: OK —— 30 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend），可以出货"
+  # 〔TAIL · 09-26〕**30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）。
+  echo "GATE: OK —— 31 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus），可以出货"
   gate_print_blind
   exit 0
 fi
