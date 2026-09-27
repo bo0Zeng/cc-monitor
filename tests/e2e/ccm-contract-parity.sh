@@ -82,6 +82,7 @@ CWD="$W/proj"
 # 其余（set-option 等）一律吞掉回 0。PATH 前置 ⇒ ccm 与它起的 poller 都只看得到这份。
 cat > "$W/bin/tmux" <<'SHIM'
 #!/bin/sh
+[ "$1" = "-u" ] && shift   # 〔SH1 · §49〕配方里那一发带 `-u`（UTF-8 客户端）
 if [ "$1" = "display-message" ]; then printf 'faux-sess\n'; fi
 exit 0
 SHIM
@@ -134,7 +135,7 @@ actual_env() {
 
 # 预言：同一组 flag 的 `--print` 串，在**同一个基础环境**里跑一遍。
 predicted_env() {
-  base_env "$CCM" --cwd "$CWD" --launcher env "$@" --print > "$W/p.line" 2>&1
+  base_env "$CCM" --cwd "$CWD" --launcher env "$@" --ccm-print > "$W/p.line" 2>&1
   base_env bash -c "$(cat "$W/p.line")" > "$W/p.out" 2>&1
   ccm_keys < "$W/p.out"
 }
@@ -148,20 +149,21 @@ pair() { # pair <标签> <flags…>
   ck "A · print↔exec 环境一致：$label" "$a" "$(predicted_env "$@")"
 }
 
-echo "===== A 组：--print 说的 == 真跑做的 ====="
+echo "===== A 组：--ccm-print 说的 == 真跑做的 ====="
 # ★ 这一格是本套件的开张理由：修复前 exec 侧有 CC_BUS_ID=faux-sess、print 侧没有。
 pair "codex（CC_BUS_ID 派生）"            --agent codex
 pair "claude（嵌套 env 清理）"             --agent claude
 pair "claude + --account b"               --agent claude --account b
-pair "claude + --model opus"              --agent claude --model opus
-pair "codex + --account b + --model opus" --agent codex --account b --model opus
+# 〔AL3 · V138〕`--model` 交给 agent 了（启动器是 `env` 时它会被 env 当选项拒）⇒ 两格换成「账号 × codex」与「透传不改环境」。
+pair "codex + --account b"                --agent codex --account b
+pair "claude + --account b + 透传（交给 agent 的词不改环境）" --agent claude --account b AL3_PASSTHRU=1
 
 # `--base` 要有意义，基础环境里必须**先有**一个 CLAUDE_CONFIG_DIR 让它去 unset。
-# **必须再带一个 `--model`**：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
+# 〔V138〕从前靠再带一个 `--model` 撑住受控键集合，今天换成 codex（它留着 CC_BUS_ID 与嵌套标记）：`claude + --base` 单独跑的话，受控键集合会被清成**空集**
 # （config_dir 被 unset、四个嵌套标记被 unset、codex 专属的 CC_BUS_ID 又不适用）⇒
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
-pair "claude + --base + --model（#75 逃生口）" --agent claude --base --model opus
+pair "codex + --base（#75 逃生口）" --agent codex --base
 BASE_EXTRA=()
 
 # ⚠ 〔`K-R48` 第二拍 09-11〕**`A″` 组 7 条整组删了**（判词 `N`，住 `tests/evidence/K-R48-356-verdicts.tsv`
@@ -195,14 +197,13 @@ chmod +x "$W/bin/argvstub"
 
 # 真跑：`--launcher argvstub` ⇒ 最终 `exec argvstub …` ⇒ stdout 就是**真实** argv。
 actual_argv() {
-  # ⚠ 动作（resume/new/attach）**必须是第一个位置参数**，所以 `"$@"` 排在 flag 前面
-  #   —— 第一版写反了，ccm 当场 die「多余的位置参数」，被下面那条差分自检逮住。
+  # 〔V138〕位置动作取消，`--resume` 在哪个位置都原样交给 agent；`"$@"` 仍排在前面（原顺序即交出去的顺序）。
   base_env "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/argvstub" > "$W/aa.out" 2>&1
   grep '^ARGV|' "$W/aa.out" | head -1
 }
 # 预言：同一组 flag 的 `--print` 串，在同一个基础环境里跑一遍。
 predicted_argv() {
-  base_env "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/argvstub" --print > "$W/pa.line" 2>&1
+  base_env "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/argvstub" --ccm-print > "$W/pa.line" 2>&1
   base_env bash -c "$(cat "$W/pa.line")" > "$W/pa.out" 2>&1
   grep '^ARGV|' "$W/pa.out" | head -1
 }
@@ -213,8 +214,8 @@ pair_argv() { # pair_argv <标签> <flags…>
   ck "A′ · 真跑确实产出了 argv（差分自检）：$label" "yes" "$([ -n "$a" ] && echo yes || echo no)"
   ck "A′ · print↔exec argv 一致：$label" "$a" "$(predicted_argv "$@")"
 }
-pair_argv "resume（本组的正题：F06b 要接 --resolve 的就是这条）" resume abc-123 --agent claude
-pair_argv "resume + --model（修饰不许只落一边）"                  resume abc-123 --agent claude --model opus
+pair_argv "resume（V138：--resume 原样交给 agent）" --resume abc-123 --agent claude
+pair_argv "resume + --model（交给 agent 的词不许只落一边）" --resume abc-123 --agent claude --model opus
 pair_argv "new（对照组：证明差分不是只对 resume 有效）"            --agent claude
 # ⚠ 〔`K-R48` 第二拍 09-11〕**`A′d` / `A′e` 共 13 条整组删了**（判词 `N`，verdicts 第 310–322 行）。
 #   它们量的是「backend 在位/不在位时 argv 从哪来」「不给 `CCM_BACKEND_BIN` 也找得到部署落点」
@@ -225,15 +226,15 @@ pair_argv "new（对照组：证明差分不是只对 resume 有效）"         
 
 # 绝对断言：差分两边一起坏掉时的最后一道。
 ck "A′ · resume 真跑的 argv 必须逐字带 --resume <sid>" "ARGV|--resume abc-123" \
-   "$(actual_argv resume abc-123 --agent claude)"
-ck "A′ · resume 的 --print 串也必须说出同一句" "ARGV|--resume abc-123" \
-   "$(predicted_argv resume abc-123 --agent claude)"
+   "$(actual_argv --resume abc-123 --agent claude)"
+ck "A′ · resume 的 --ccm-print 串也必须说出同一句" "ARGV|--resume abc-123" \
+   "$(predicted_argv --resume abc-123 --agent claude)"
 
 echo
 echo "===== A 组绝对断言（差分两边一起坏掉时它们才是最后一道）====="
 ck "codex 在 tmux 内：真跑必须 export CC_BUS_ID=<会话名>" "CC_BUS_ID=faux-sess" \
    "$(actual_env --agent codex | tr '|' '\n' | grep '^CC_BUS_ID=')"
-ck "codex 在 tmux 内：--print 也必须说出这一句（U9a 修复点）" "CC_BUS_ID=faux-sess" \
+ck "codex 在 tmux 内：--ccm-print 也必须说出这一句（U9a 修复点）" "CC_BUS_ID=faux-sess" \
    "$(predicted_env --agent codex | tr '|' '\n' | grep '^CC_BUS_ID=')"
 ck "claude 不得被注入 CC_BUS_ID（会盖掉 @cc_id 细分）" "" \
    "$(actual_env --agent claude | tr '|' '\n' | grep '^CC_BUS_ID=')"
@@ -241,8 +242,9 @@ ck "--account b 真跑注入其 configDir" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(actual_env --agent claude --account b | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
 # `--model` 与 `--base` 原先**只有差分**，两边一起坏掉时全绿（审计变异 M6/M7 实证）。
 # §33a 铁律 3 要求每条保住项都配一条绝对断言 —— 这两条就是补上的那两条。
-ck "--model opus 真跑 export ANTHROPIC_MODEL" "ANTHROPIC_MODEL=opus" \
-   "$(actual_env --agent claude --model opus | tr '|' '\n' | grep '^ANTHROPIC_MODEL=')"
+# 〔V138〕`--model` 不再 export `ANTHROPIC_MODEL`，原样交给 agent。
+ck "--model opus 真跑原样交给 agent" "ARGV|--model opus" \
+   "$(actual_argv --agent claude --model opus)"
 # 继承值刻意用 **b**（≠ manifest 的默认号 z）：这样下面「不带 --base 时它还在」
 # 同时证明了 R11 的「继承优先于默认号」，而不是与「默认号被注入」不可区分。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-b")
@@ -263,7 +265,7 @@ echo "===== B 组：eval \"\$CCM_ENV\"（S10 七项里唯一零覆盖的一条�
 BASE_EXTRA=(CCM_ENV="export CCM_ENV_PROBE=from-ccm-env")
 ck "真跑：CCM_ENV 被 eval 掉（不是原样透传、不是丢弃）" "CCM_ENV_PROBE=from-ccm-env" \
    "$(actual_env --agent claude | tr '|' '\n' | grep '^CCM_ENV_PROBE=')"
-ck "--print：CCM_ENV 也在预言里" "CCM_ENV_PROBE=from-ccm-env" \
+ck "--ccm-print：CCM_ENV 也在预言里" "CCM_ENV_PROBE=from-ccm-env" \
    "$(predicted_env --agent claude | tr '|' '\n' | grep '^CCM_ENV_PROBE=')"
 ck "B · print↔exec 环境一致（带 CCM_ENV）" "$(actual_env --agent claude)" "$(predicted_env --agent claude)"
 # 顺序：CCM_ENV 是**机器级**（代理等），必须先于会话级 env ——
@@ -274,7 +276,7 @@ ck "CCM_ENV 早于会话级 env：真跑时 --account 仍然赢" "CLAUDE_CONFIG_
 # ★ **孪生条不能少**：`ccm_keys()` 做了 sort ⇒ 差分对**顺序**结构性失明。
 # 只钉 exec 侧的话，把 `--print` 里的 `$CCM_ENV` 挪到会话级 env 之后 —— 预言机会输出
 # 一条**落错账号**的命令串，而 21 条断言全绿（审计变异 M13 实证）。
-ck "CCM_ENV 早于会话级 env：--print 侧同样（差分对顺序失明，必须单钉）" "CLAUDE_CONFIG_DIR=$W/acct-b" \
+ck "CCM_ENV 早于会话级 env：--ccm-print 侧同样（差分对顺序失明，必须单钉）" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(predicted_env --agent claude --account b | tr '|' '\n' | grep '^CLAUDE_CONFIG_DIR=')"
 BASE_EXTRA=()
 
@@ -341,13 +343,13 @@ ck "build= 与 version= 不是同一个值（前者答『你是谁』，后者�
 ck "capabilities= 声明 base-url-across-tmux（monitor 侧退役条件点名的那个 token）" "1" \
    "$(printf '%s\n' "$CAPS" | grep -cx 'base-url-across-tmux')"
 RELAY_PRINT="$(base_env ANTHROPIC_BASE_URL=https://relay.example/v1 \
-                 "$CCM" --print --tmux=r61-caps --cwd "$CWD" 2>&1)"
+                 "$CCM" --ccm-print --tmux=r61-caps --cwd "$CWD" 2>&1)"
 # ⚠ 只 grep `export ANTHROPIC_BASE_URL=` 这个头：值那一半在载荷里是**被 quote 过的**
 #   （`send-keys` 那一层把内层单引号转义成 `'\''`），照原样 grep 整条值必然零命中 —— 那会是假红。
 #   「值真的带对了」那一格由后端侧那条 Rust 判据逐字钉（它量的是 quote 之前那一串）。
 ck "兑现：--tmux 的载荷内侧真带 export ANTHROPIC_BASE_URL=（否则上面那个 token 是假申报）" "1" \
    "$(printf '%s\n' "$RELAY_PRINT" | grep -c 'export ANTHROPIC_BASE_URL=')"
-NORELAY_PRINT="$(base_env "$CCM" --print --tmux=r61-caps --cwd "$CWD" 2>&1)"
+NORELAY_PRINT="$(base_env "$CCM" --ccm-print --tmux=r61-caps --cwd "$CWD" 2>&1)"
 ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" \
    "$(printf '%s\n' "$NORELAY_PRINT" | grep -c 'ANTHROPIC_BASE_URL')"
 

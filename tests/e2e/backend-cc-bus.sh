@@ -392,7 +392,7 @@ _sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样
       "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
 }
 # 判据：每个入口的调用按内容分三类（探针 `--ccm-probe` / 建会话那趟 `--detach` / 其余 = pane 里那一跳；
-#   带 `--print` 的是自检那一趟，单列）。「入口前缀」**从 cc-spawn 那一趟的真实 argv 里现取**：
+#   带 `--ccm-print` 的是自检那一趟，单列）。「入口前缀」**从 cc-spawn 那一趟的真实 argv 里现取**：
 #   两个入口的建会话 argv 取最长公共后缀 = cc-spawn 交给 ccm 的那串，余下的前段就是各自的入口前缀
 #   ⇒ 判据里**不写死** `ccm` 这个词。要求：pane 那一跳 = 各自入口前缀 ＋ 同一串参数（逐字节）。
 _entry_judge() {
@@ -403,7 +403,7 @@ def calls(d):
 def split(cs):
     outer = [c for c in cs if b'--detach' in c]
     rest = [c for c in cs if b'--ccm-probe' not in c and b'--detach' not in c]
-    return outer, [c for c in rest if b'--print' not in c]
+    return outer, [c for c in rest if b'--ccm-print' not in c]  # V138：自检那一趟带的是 --ccm-print
 (o1, p1), (o2, p2) = split(calls(sys.argv[1])), split(calls(sys.argv[2]))
 if len(o1) != 1 or len(o2) != 1:
     print(f"建会话那趟不是恰好各一次：{len(o1)}/{len(o2)}"); sys.exit()
