@@ -3991,15 +3991,9 @@ async fn stream_loop(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
                 );
             }
-            // 〔TAP · V124〕远端的中转是脱离的 `--relay`，不在那台的流模式后端进程里 ⇒ 今天远端流上**没有** tap 来源
-            //   （怎么接是设计题，住仓外 `调研/第四波记录/TAP.md §8` 题 1）。真来了：没有设计过它怎么对 sid，不转；
-            //   不按帧刷 warn（token 级的频率会把日志淹掉）—— 记一句 debug。
-            Some(InboundFrame::Tap(t)) => {
-                tracing::debug!(
-                    "ssh_source [{host_label}] 远端后端发来了 tap 帧（stream={}）—— 远端 tap 还没有设计，丢掉",
-                    t.stream
-                );
-            }
+            // 〔HOST · V139〕远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
+            //   （origin = 这台；V141 之后标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
+            Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
                 // 〔W5-VIS · `设计/15 §3.4 ②`〕记账：按 2 的幂次说（带累计数），流结束出总账（原先逐帧一行、从不计数）。

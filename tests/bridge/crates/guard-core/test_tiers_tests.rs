@@ -408,6 +408,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/snapshot_resume_tests.rs",
     "tests/bridge/spawn_managed_exit_sites.rs",
     "tests/bridge/spawn_managed_tests.rs",
+    "tests/events-tap-machines.vitest.ts", // 〔HOST〕读 `src/main.ts` 的 tap 订阅清单
     "tests/bridge/ssh_source_capped_line_tests.rs",
     "tests/bridge/ssh_source_coldstart_perf_guard.rs",
     "tests/bridge/ssh_source_coldstart_preflight_guard.rs",
