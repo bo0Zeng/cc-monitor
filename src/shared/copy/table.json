@@ -9,6 +9,131 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beUpstreamFileFace.keySet.noAccount": {
+      "kind": "error",
+      "zh": "认不出账号目录 {dir} 属于哪个账号，没有写。",
+      "args": ["dir"]
+    },
+    "beUpstreamFileFace.keySet.badId": {
+      "kind": "error",
+      "zh": "账号名 {account} 不能用，没有写。只许字母、数字、- 和 _，最长 128 字节。",
+      "args": ["account"]
+    },
+    "beUpstreamFileFace.keySet.emptyKey": {
+      "kind": "error",
+      "zh": "API key 是空的，没有写。",
+      "args": []
+    },
+    "beUpstreamFileFace.keySet.notReadBack": {
+      "kind": "error",
+      "zh": "写完再读，{path} 里找不到账号 {account} 的 API key。",
+      "args": ["path", "account"]
+    },
+    "beUpstreamFileFace.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beUpstreamFileFace.perm.tooWide": {
+      "kind": "error",
+      "zh": "{how}。怎么修：{fix}",
+      "args": ["how", "fix"]
+    },
+    "beUpstreamFileFace.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beUpstreamFileFace.write.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beUpstreamFileFace.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beUpstreamFileFace.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beUpstreamFileFace.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beClaudeAssets.scan.noHome": {
+      "kind": "body",
+      "zh": "找不到家目录，列不出项目，MCP 也没扫。",
+      "args": []
+    },
+    "beClaudeAssets.scan.listFailed": {
+      "kind": "body",
+      "zh": "列不出 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.scan.notUtf8": {
+      "kind": "body",
+      "zh": "{path} 的名字不是 UTF-8，跳过了。",
+      "args": ["path"]
+    },
+    "beClaudeAssets.skill.docFailed": {
+      "kind": "body",
+      "zh": "读不了 {path}，这个 skill 没有说明：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.configFailed": {
+      "kind": "body",
+      "zh": "读不了 {path}，MCP 没扫：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.statFailed": {
+      "kind": "body",
+      "zh": "看不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.readFailed": {
+      "kind": "body",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.notObject": {
+      "kind": "body",
+      "zh": "{path} 里的 MCP 服务器列表格式不对，跳过了。",
+      "args": ["path"]
+    },
+    "beClaudePaths.delete.notFound": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{e}",
+      "args": ["id", "e"]
+    },
+    "beClaudePaths.delete.rootUnresolved": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：会话记录目录 {path} 解析不了：{e}",
+      "args": ["id", "path", "e"]
+    },
+    "beClaudePaths.delete.fileUnresolved": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{path} 解析不了：{e}",
+      "args": ["id", "path", "e"]
+    },
+    "beClaudePaths.delete.outsideRoot": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{path} 指到了会话记录目录 {root} 之外。",
+      "args": ["id", "path", "root"]
+    },
+    "beClaudePaths.delete.wrongShape": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：只删项目目录下的 {want}，找到的是 {path}。",
+      "args": ["id", "want", "path"]
+    },
+    "beClaudePaths.delete.notRecord": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{path} 不像一份会话记录。",
+      "args": ["id", "path"]
+    },
     "beCcBus.find.notInstalled": {
       "kind": "error",
       "zh": "这台机器上可能没装 cc-bus。装在别处的话，用 CC_BUS_BIN_DIR 指过去。",

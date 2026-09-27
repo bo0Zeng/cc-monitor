@@ -7,6 +7,7 @@
 //! 读法宽容：缺 / 坏的那一份不让整次扫描失败，但**说出来**（[`Sightings::problems`]）—— 「这台没有」与
 //! 「这台那份读不出来」不许合成一句。
 
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 use crate::common::fs::read_regular_capped;
@@ -55,7 +56,7 @@ pub(crate) fn scan() -> Sightings {
         Some(cfg) => scan_mcp_at(&cfg, &mut out),
         None => out
             .problems
-            .push("家目录解析不出来，列不出项目（MCP 那一半没扫）".to_string()),
+            .push(copy_text("beClaudeAssets.scan.noHome", &[])),
     }
     out
 }
@@ -66,8 +67,10 @@ pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
-            out.problems
-                .push(format!("列 {} 失败：{e}", root.display()));
+            out.problems.push(copy_text(
+                "beClaudeAssets.scan.listFailed",
+                &[("path", &root.display().to_string()), ("e", &e.to_string())],
+            ));
             return;
         }
     };
@@ -81,8 +84,10 @@ pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
             continue;
         }
         let Some(name) = ent.file_name().to_str().map(str::to_string) else {
-            out.problems
-                .push(format!("{} 的名字不是 UTF-8，没记", path.display()));
+            out.problems.push(copy_text(
+                "beClaudeAssets.scan.notUtf8",
+                &[("path", &path.display().to_string())],
+            ));
             continue;
         };
         if name.starts_with('.') {
@@ -92,9 +97,9 @@ pub(crate) fn scan_skills_at(root: &Path, out: &mut Sightings) {
         let description = match skill_description(&doc) {
             Ok(d) => d,
             Err(e) => {
-                out.problems.push(format!(
-                    "读 {} 失败：{e}（这个 skill 没取到说明）",
-                    doc.display()
+                out.problems.push(copy_text(
+                    "beClaudeAssets.skill.docFailed",
+                    &[("path", &doc.display().to_string()), ("e", &e.to_string())],
                 ));
                 None
             }
@@ -143,9 +148,12 @@ pub(crate) fn scan_mcp_at(claude_json: &Path, out: &mut Sightings) {
     {
         Ok(v) => v,
         Err(e) => {
-            out.problems.push(format!(
-                "读 {} 失败：{e}（MCP 那一半没扫）",
-                claude_json.display()
+            out.problems.push(copy_text(
+                "beClaudeAssets.mcp.configFailed",
+                &[
+                    ("path", &claude_json.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
             ));
             return;
         }
@@ -161,8 +169,10 @@ pub(crate) fn scan_mcp_at(claude_json: &Path, out: &mut Sightings) {
         match std::fs::metadata(&file) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                out.problems
-                    .push(format!("看 {} 失败：{e}", file.display()));
+                out.problems.push(copy_text(
+                    "beClaudeAssets.mcp.statFailed",
+                    &[("path", &file.display().to_string()), ("e", &e.to_string())],
+                ));
                 continue;
             }
             Ok(_) => {}
@@ -173,7 +183,10 @@ pub(crate) fn scan_mcp_at(claude_json: &Path, out: &mut Sightings) {
         let v = match parsed {
             Ok(v) => v,
             Err(e) => {
-                let why = format!("读 {} 失败：{e}", file.display());
+                let why = copy_text(
+                    "beClaudeAssets.mcp.readFailed",
+                    &[("path", &file.display().to_string()), ("e", &e.to_string())],
+                );
                 tracing::warn!("资产目录：{why}");
                 out.problems.push(why);
                 continue;
@@ -183,9 +196,9 @@ pub(crate) fn scan_mcp_at(claude_json: &Path, out: &mut Sightings) {
             continue;
         };
         let Some(servers) = servers.as_object() else {
-            out.problems.push(format!(
-                "{} 里 `{SERVERS_KEY}` 不是对象，没记",
-                file.display()
+            out.problems.push(copy_text(
+                "beClaudeAssets.mcp.notObject",
+                &[("path", &file.display().to_string())],
             ));
             continue;
         };
