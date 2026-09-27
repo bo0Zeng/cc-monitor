@@ -150,23 +150,28 @@ fn write_private(path: &Path, body: &str) -> Result<(), String> {
         .unwrap_or_default();
     let tmp = path.with_file_name(format!("{name}.{}.tmp", std::process::id()));
     let result = (|| {
-        let say = |key: &str, e: std::io::Error| {
+        let (t, p) = (tmp.display().to_string(), path.display().to_string());
+        let mut f = creds_core::perm::create_private(&tmp).map_err(|e| {
             copy_text(
-                key,
-                &[
-                    ("tmp", &tmp.display().to_string()),
-                    ("path", &path.display().to_string()),
-                    ("e", &e.to_string()),
-                ],
+                "beResident.fs.tmpCreateFailed",
+                &[("tmp", &t), ("e", &e.to_string())],
             )
-        };
-        let mut f = creds_core::perm::create_private(&tmp)
-            .map_err(|e| say("beResident.fs.tmpCreateFailed", e))?;
+        })?;
         f.write_all(body.as_bytes())
             .and_then(|()| f.sync_all())
-            .map_err(|e| say("beResident.fs.tmpWriteFailed", e))?;
+            .map_err(|e| {
+                copy_text(
+                    "beResident.fs.tmpWriteFailed",
+                    &[("tmp", &t), ("e", &e.to_string())],
+                )
+            })?;
         drop(f);
-        std::fs::rename(&tmp, path).map_err(|e| say("beResident.fs.renameFailed", e))
+        std::fs::rename(&tmp, path).map_err(|e| {
+            copy_text(
+                "beResident.fs.renameFailed",
+                &[("tmp", &t), ("path", &p), ("e", &e.to_string())],
+            )
+        })
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);

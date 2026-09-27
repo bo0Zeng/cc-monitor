@@ -56,28 +56,23 @@
     },
     "rsRemoteResident.hello.notOurs": {
       "kind": "error",
-      "zh": "那台机器的常驻后端端口上，答话的不是我们的后端。",
+      "zh": "那台机器上常驻后端的端口被别的程序占着。",
       "args": []
     },
-    "rsRemoteResident.what.hello": {
+    "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
-      "zh": "握手",
+      "zh": "常驻后端没说完第一句：连接断了，或那行太长。",
       "args": []
     },
-    "rsRemoteResident.what.attach": {
+    "rsRemoteResident.handshake.replyCut": {
       "kind": "error",
-      "zh": "接入应答",
+      "zh": "常驻后端没回完接入请求：连接断了，或那行太长。",
       "args": []
-    },
-    "rsRemoteResident.handshake.lineCut": {
-      "kind": "error",
-      "zh": "那台机器的常驻后端没答完{what}（连接断了，或那一行太长）。",
-      "args": ["what"]
     },
     "rsRemoteResident.handshake.readFailed": {
       "kind": "error",
-      "zh": "读那台机器常驻后端的{what}失败：{e}",
-      "args": ["what", "e"]
+      "zh": "读那台机器常驻后端的回话失败：{e}",
+      "args": ["e"]
     },
     "rsRemoteResident.tunnel.unreachable": {
       "kind": "error",
@@ -126,7 +121,7 @@
     },
     "beResident.token.noRandom": {
       "kind": "error",
-      "zh": "取不到系统随机数，铸不出常驻后端的钥匙。没有起。",
+      "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
       "args": []
     },
     "beResident.spawn.failed": {
@@ -136,12 +131,12 @@
     },
     "beResident.stop.cannotVerify": {
       "kind": "error",
-      "zh": "认不出进程 {pid} 是不是这台的常驻后端（这台机器上读不到它跑的程序），没有停它。",
+      "zh": "认不出进程 {pid} 是谁，没有停它：这台机器上读不到它跑的程序。",
       "args": ["pid"]
     },
     "beResident.stop.notOurs": {
       "kind": "error",
-      "zh": "进程 {pid} 跑的是 {exe}，不是记下的那个常驻后端（进程号可能被别的程序用了），没有停它。",
+      "zh": "进程 {pid} 不是记下的那个后端，没有停它。它跑的是 {exe}，进程号可能被别的程序用了。",
       "args": ["pid", "exe"]
     },
     "beResident.stop.signalFailed": {
