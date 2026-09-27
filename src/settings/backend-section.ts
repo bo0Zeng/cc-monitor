@@ -68,11 +68,11 @@ export function stopSaid(a: StopAnswer): string {
   const pid = a.pid === null ? "" : String(a.pid);
   switch (a.stopped) {
     case "graceful":
-      return copyText("backend.stop.said.graceful", { pid });
+      return copyText("backend.stopSaid.graceful", { pid });
     case "killed":
-      return copyText("backend.stop.said.killed", { pid });
+      return copyText("backend.stopSaid.killed", { pid });
     case "not_running":
-      return copyText("backend.stop.said.notRunning");
+      return copyText("backend.stopSaid.notRunning");
   }
 }
 
@@ -472,7 +472,8 @@ export class BackendSection {
     ops.appendChild(log);
     // 〔STOP〕上一次「停」的结局（`stopSaid`）；没停过就空着。
     const said = document.createElement("span");
-    said.className = "backend-row-said";
+    said.className = "settings-hint";
+    said.dataset.stopSaid = "";
     ops.appendChild(said);
 
     const exitCol = col("exit");
@@ -640,7 +641,7 @@ export class BackendSection {
         return;
       }
     }
-    const said = cells?.querySelector<HTMLElement>(".backend-row-said") ?? null;
+    const said = cells?.querySelector<HTMLElement>("[data-stop-said]") ?? null;
     if (said) said.textContent = "";
     try {
       if (what === "start") {
