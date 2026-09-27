@@ -82,7 +82,7 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
         store::KEY_FIELD
     );
     // 非空对照：这把尺子**认得出**那个字段名（不是恒不含）。
-    assert!(store::TEMPLATE.contains(store::KEY_FIELD));
+    assert!(store::template().contains(store::KEY_FIELD));
 }
 
 // 〔HX2 · 第四波 4D〕`brace_block`〔散文墓碑〕随它唯一的调用方（明文逐跳那一条）一起删了。

@@ -123,7 +123,11 @@ async fn main() {
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args_rest, with_bg, tail_only, with_rbind_token) = split_stream_flags(args);
-    let args = args_rest;
+    // 〔FIX · `设计/96 §3.6`〕`--<老子命令> --stdin-line` ⇒ 其余 argv 从 stdin 一行拿（远端命令行里不拼自由文本）。
+    let args = match control::cli_control::expand_stdin_argv(args_rest, std::io::stdin().lock()) {
+        Ok(a) => a,
+        Err((code, message)) => std::process::exit(control::cli_control::emit_err(code, message)),
+    };
     if is_query_mode(&args) {
         // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（backend-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
@@ -199,6 +203,8 @@ async fn main() {
     //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
     tracing::info!("{}", accounts::upstream::host_relay(&agent_home));
+    // 〔FIX · `99 §2 ㊵`〕全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
+    observe::search_query::warm_in_background(agent_home.clone());
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //

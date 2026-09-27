@@ -19,7 +19,7 @@
       "cmd": "cc-acct-iso add 'b' --from-credentials '/home/z/.claude/accounts/b.json' --apply"
     },
     { "args": { "step": "login", "name": "z" }, "cmd": "cc-acct-iso run 'z'" },
-    { "args": { "step": "add-apply", "name": "b", "credFile": "--apply" }, "code": "refused" },
+    { "args": { "step": "add-apply", "name": "b", "credFile": "--apply" }, "cmd": "cc-acct-iso add 'b' --from-credentials '--apply' --apply" },
     { "args": { "step": "add-apply", "name": "b", "credFile": "a\"b" }, "code": "refused" },
     { "args": { "step": "init-apply", "name": "z.edu" }, "code": "refused" },
     { "args": { "step": "deploy" }, "code": "bad_args" }

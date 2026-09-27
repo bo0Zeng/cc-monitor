@@ -414,11 +414,6 @@
       "zh": "发送被打断了：{detail}",
       "args": ["detail"]
     },
-    "beCcBus.list.failed": {
-      "kind": "error",
-      "zh": "读 cc-bus 名单失败，退出码 {status}：{detail}",
-      "args": ["status", "detail"]
-    },
     "beCcBus.run.refused": {
       "kind": "error",
       "zh": "{name} 拒绝了这组参数：{detail}",
@@ -651,8 +646,23 @@
     },
     "credsStore.error.notObject": {
       "kind": "error",
-      "zh": "凭据文件的最外层不是一个 JSON 对象。正确的样子见模板：{template}",
-      "args": ["template"]
+      "zh": "凭据文件 {path} 的顶层要是一个对象 {shape}，没有动它。",
+      "args": ["path", "shape"]
+    },
+    "credsStore.template.note": {
+      "kind": "body",
+      "zh": "把第三方 API key 填进 {keyField}。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON。别的键程序不会动。",
+      "args": ["keyField"]
+    },
+    "credsStore.template.noteAccounts": {
+      "kind": "body",
+      "zh": "多账号写进 {accountsField}，每条一个 id（只许字母、数字、- 和 _），可带 {keyField}、base_url、auth_style。base_url 留空用默认上游，写全路径也认；{keyField} 留空就转发客户端自己的鉴权头。例：{example}",
+      "args": ["accountsField", "keyField", "example"]
+    },
+    "credsStore.template.noteAuthStyle": {
+      "kind": "body",
+      "zh": "auth_style 是这把 key 交给上游时用哪种鉴权头。留空用默认；写了认不出的词不会被当成默认，后端起来时会说出来，并列出认得的几个值。本地部署不校验凭据的，就选不发鉴权头的那个值。",
+      "args": []
     },
     "beResident.fs.noParent": {
       "kind": "error",
@@ -1846,11 +1856,6 @@
       "kind": "error",
       "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，不会换一条路重发。",
       "args": ["machine", "target"]
-    },
-    "tmuxControl.resume.emptyInput": {
-      "kind": "error",
-      "zh": "会话名或要键入的内容是空的，这次没有发出去。",
-      "args": []
     },
     "ccBus.online.notInstalled": {
       "kind": "error",
@@ -6558,11 +6563,6 @@
     "beIso.cmd.snapshotControl": {
       "kind": "error",
       "zh": "凭据快照路径不能含控制字符：{path}",
-      "args": ["path"]
-    },
-    "beIso.cmd.snapshotDash": {
-      "kind": "error",
-      "zh": "凭据快照路径不能以「-」开头：{path}",
       "args": ["path"]
     },
     "acctDeploy.name.shape": {
@@ -12910,6 +12910,16 @@
       "zh": "PowerShell 传给 ccm 时会把空参数整个丢掉",
       "args": []
     },
+    "rsShellDialect.ps.nameTakenBuiltinAlias": {
+      "kind": "body",
+      "zh": "{name} 是 PowerShell 自带的别名（指 {target}）。别名比函数先被找到，用这个名字定义了也敲不到",
+      "args": ["name", "target"]
+    },
+    "rsShellDialect.ps.builtinAliasUnknown": {
+      "kind": "body",
+      "zh": "没问到 PowerShell 自带的别名（{e}），{name} 撞没撞它说不准",
+      "args": ["name", "e"]
+    },
     "rsShellDialect.ps.nameTakenPath": {
       "kind": "body",
       "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在 PowerShell 里敲 {name}，打到的是这条别名，不再是那个程序",
@@ -16778,7 +16788,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [交给 claude 的参数…] -- [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n",
+      "zh": "用法：ccm [交给 claude 的参数…] -- [ccm 自己的选项…]\n\nccm 是 claude 的壳。没有 -- 时整行原样交给 claude（--ccm-agent codex 时交给 codex）；\n有 -- 时按最后一个 -- 切开：左边原样交给 claude，右边只放下面这些 ccm 自己的选项，认不得就报错。\n要给 claude 它自己的 -- 又没有 ccm 选项时，末尾补一个空的 --（如 ccm -p -- -x --）。\n\n选项\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n\n左边交给 claude 的参数里，ccm 只看一个（照样交给 claude）\n  --resume <会话ID>  这条会话已经在某个 tmux 会话里跑时，接上它、不另起（-r 同）\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
@@ -16822,6 +16832,11 @@
       "kind": "error",
       "zh": "ccm: 起不来 —— {subject}：{e}",
       "args": ["subject", "e"]
+    },
+    "beCcm.execute.rejoin": {
+      "kind": "body",
+      "zh": "ccm: 会话 {sid} 已经在 tmux 会话「{name}」里跑，接上它（不另起一份）",
+      "args": ["sid", "name"]
     },
     "beCcm.execute.launchFailed": {
       "kind": "error",

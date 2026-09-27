@@ -477,57 +477,34 @@ pub(crate) enum PinWrite {
     Ambiguous,
 }
 
-/// 往 `config.json` 的 `remote.hosts` 里那一台写指纹：现读 → 只改那一台的 `hostKeyFingerprint` → 经补丁口
-/// （`config::patch_config_at`）交 `remote.hosts` 一条。⚠ 补丁口够不着数组元素 ⇒ 整列是锁外算的（报备过）。
+/// 往 `config.json` 的 `remote.hosts` 里那一台写指纹：经补丁口（`config::patch_config_at`）交一条**按键认数组元素**的
+/// `SetIn`（〔FIX · `99 §2 ㊶`〕锁内现读现判：认 origin（`label` 非空取它、否则 `host`，同 `lib.rs::parse_host_obj`）与 `host`
+/// 都相等的恰好一台，只改它的 `hostKeyFingerprint`，已有值不动 —— CAS）。别的机器、别的格与设置页同时写的改动都不会被盖掉。
 pub(crate) fn pin_host_key_at(
     path: &std::path::Path,
     origin: &str,
     host: &str,
     fp: &str,
 ) -> Result<PinWrite, String> {
-    use serde_json::Value;
-    let raw = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let root: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    let Some(hosts) = root.pointer("/remote/hosts").and_then(Value::as_array) else {
-        return Ok(PinWrite::NotFound);
+    use crate::config::{Applied, ConfigEdit, ElemKey};
+    let key = |fields: &[&str], equals: &str| ElemKey {
+        fields: fields.iter().map(|f| f.to_string()).collect(),
+        equals: equals.to_string(),
     };
-    let field = |h: &Value, k: &str| {
-        h.get(k)
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
+    let edit = ConfigEdit::SetIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![key(&["label", "host"], origin), key(&["host"], host)],
+        field: "hostKeyFingerprint".into(),
+        value: serde_json::Value::String(fp.to_string()),
+        if_empty: true,
     };
-    // origin 的口径同 `lib.rs::parse_host_obj`：`label` 非空取它，否则 `host`。
-    let hits: Vec<usize> = (0..hosts.len())
-        .filter(|&i| {
-            field(&hosts[i], "label")
-                .or_else(|| field(&hosts[i], "host"))
-                .as_deref()
-                == Some(origin)
-                && field(&hosts[i], "host").as_deref() == Some(host)
-        })
-        .collect();
-    let [i] = hits[..] else {
-        return Ok(if hits.is_empty() {
-            PinWrite::NotFound
-        } else {
-            PinWrite::Ambiguous
-        });
-    };
-    if field(&hosts[i], "hostKeyFingerprint").is_some_and(|f| !f.trim().is_empty()) {
-        return Ok(PinWrite::AlreadySet);
-    }
-    let mut next = hosts.clone();
-    next[i]["hostKeyFingerprint"] = Value::String(fp.to_string());
-    crate::config::patch_config_at(
-        path,
-        &[crate::config::ConfigEdit::Set {
-            path: vec!["remote".into(), "hosts".into()],
-            value: Value::Array(next),
-        }],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(PinWrite::Written)
+    let applied = crate::config::patch_config_at(path, &[edit]).map_err(|e| e.to_string())?;
+    Ok(match applied.first() {
+        Some(Applied::Done) => PinWrite::Written,
+        Some(Applied::Kept) => PinWrite::AlreadySet,
+        Some(Applied::Ambiguous) => PinWrite::Ambiguous,
+        Some(Applied::NoMatch) | None => PinWrite::NotFound,
+    })
 }
 
 /// 〔VIS2 · 默认转严格〕这一趟交给后端的指纹：`cfg` 里有就用；没有 ⇒ 盘上同一台（origin 与 host 都相同）的。
@@ -591,31 +568,76 @@ fn notice(origin: String, kind: &'static str, message: String) {
     }
 }
 
-/// 成功拨号之后：判 → 固化 / 说出来。
+/// 成功拨号之后：判 → 固化 / 说出来。目标那一台一格；经跳板时跳板那一台另一格（〔FIX · `99 §2 ㊶` 第二问〕它是另一台机器，
+/// 按它自己在 `remote.hosts` 里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
 fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
     let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
-    let configured = req
-        .get("host_key_fingerprint")
-        .and_then(serde_json::Value::as_str);
-    let origin = cfg.origin_label();
-    match pin_verdict(probe, configured, &ack.fingerprints) {
-        PinVerdict::Pin(fp) => {
-            let Some(path) = crate::paths::resolve_config_path() else {
-                return;
-            };
-            match pin_host_key_at(&path, &origin, &cfg.host, &fp) {
-                Ok(PinWrite::Written) => notice(
-                    origin.clone(),
-                    HOST_KEY_PINNED,
-                    copy_text(
-                        "rsDialHost.hostKey.pinned",
-                        &[("origin", &origin), ("fingerprint", &fp)],
-                    ),
+    let Some(path) = crate::paths::resolve_config_path() else {
+        return;
+    };
+    for (origin, host, configured, reported) in pin_targets(cfg, req, ack) {
+        settle_one(
+            &path,
+            &origin,
+            &host,
+            pin_verdict(probe, configured.as_deref(), reported),
+        );
+    }
+}
+
+/// 这一趟要判的几台：`(origin, host, 请求里交的指纹, 它报过的逐地址指纹)` —— 目标一台，经跳板再加跳板那一台
+/// （跳板的 origin / host / 指纹取请求里 `jump` 那一格：宿主按配置现查填的，`hop_json`）。纯函数。
+pub(crate) fn pin_targets<'a>(
+    cfg: &RemoteConfig,
+    req: &serde_json::Value,
+    ack: &'a Ack,
+) -> Vec<(
+    String,
+    String,
+    Option<String>,
+    &'a std::collections::BTreeMap<String, String>,
+)> {
+    let text = |v: &serde_json::Value, k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    let mut out = vec![(
+        cfg.origin_label(),
+        cfg.host.clone(),
+        text(req, "host_key_fingerprint"),
+        &ack.fingerprints,
+    )];
+    if let Some(hop) = req.get("jump").filter(|j| j.is_object()) {
+        let host = text(hop, "host").unwrap_or_default();
+        let origin = text(hop, "label")
+            .filter(|l| !l.is_empty())
+            .unwrap_or_else(|| host.clone());
+        out.push((
+            origin,
+            host,
+            text(hop, "host_key_fingerprint"),
+            &ack.jump_fingerprints,
+        ));
+    }
+    out
+}
+
+fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerdict) {
+    let origin = origin.to_string();
+    match verdict {
+        PinVerdict::Pin(fp) => match pin_host_key_at(path, &origin, host, &fp) {
+            Ok(PinWrite::Written) => notice(
+                origin.clone(),
+                HOST_KEY_PINNED,
+                copy_text(
+                    "rsDialHost.hostKey.pinned",
+                    &[("origin", &origin), ("fingerprint", &fp)],
                 ),
-                Ok(other) => tracing::info!("[{origin}] 没有自动固化 host key：{other:?}"),
-                Err(e) => tracing::warn!("[{origin}] 自动固化 host key 没写成：{e}"),
-            }
-        }
+            ),
+            Ok(other) => tracing::info!("[{origin}] 没有自动固化 host key：{other:?}"),
+            Err(e) => tracing::warn!("[{origin}] 自动固化 host key 没写成：{e}"),
+        },
         PinVerdict::Differs(all) => {
             let list = all
                 .iter()

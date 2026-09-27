@@ -368,9 +368,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 〔TL3 · §47 · 主会话 09-26 按 V131 裁〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
     // 〔AL3 · V138〕29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
+    // 〔FIX · V138〕28 → 30：resume 接上已在跑的那一个（`Plan::Rejoin`）渲两处 —— attach 目标 `=<名>:` 与 `ccm-session=<名>` 那一行。
+    //   名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
     (
         "src/backend/control/ccm/plan.rs",
-        28,
+        30,
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

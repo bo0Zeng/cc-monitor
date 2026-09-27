@@ -25,8 +25,7 @@
 //! 改的时候前者会被当接口对待，后者不会。
 //!
 //! ⚠ 张力如实写：不读文件就意味着**依赖输出格式**。二者必居其一。
-//! 今天 `cc-list` 的输出是空白分列、且 id/target 都过 `[A-Za-z0-9_-]` 白名单消毒
-//! （不含空白）⇒ 解析可靠（`parse_list` 有判据）。
+//! 〔FIX · `99 §2 ㊷`〕名册只读 `cc-list --tsv` 那一形（首尾两行有标记，行形状归 cc-bus、id 形状本侧判）⇒ 一个解析器（[`parse_roster_tsv`]）。
 //!
 //! 这条由 [`tests::no_cc_bus_data_layout_leaks_into_the_backend`] 钉住。
 //!
@@ -239,28 +238,6 @@ fn timed_out_err() -> (String, String) {
             &[("secs", &timeout_secs().to_string())],
         ),
     )
-}
-
-/// 把 `cc-list` 的**人类可读表**变成结构化的行 —— 纯函数。
-///
-/// 今天的形状：表头 `ID TMUX 待读` + 每行 `id target 待读`。
-/// id/target 都过 `[A-Za-z0-9_-]` 白名单消毒 ⇒ 不含空白，按空白分列是可靠的。
-/// 「还没有登记的 agent」那行不足三列，自然落选。
-pub(crate) fn parse_list(text: &str) -> Vec<serde_json::Value> {
-    text.lines()
-        .filter_map(|line| {
-            let mut it = line.split_whitespace();
-            let id = it.next()?;
-            let target = it.next()?;
-            let unread = it.next()?;
-            if id == "ID" {
-                return None; // 表头
-            }
-            // 第三列不是数字 ⇒ 这不是数据行（宁可漏也别把表头/提示语当 agent）
-            let unread: i64 = unread.parse().ok()?;
-            Some(serde_json::json!({ "id": id, "target": target, "unread": unread }))
-        })
-        .collect()
 }
 
 /// 〔SH1 · V136〕机器可读形的首行标记（`cc-list --tsv` / `cc-agents --tsv` / `cc-log`）。老 cc-bus 不认 `--tsv`、
@@ -538,30 +515,24 @@ pub(crate) fn join_identity(
         .collect()
 }
 
-/// 总线名单（人读表那一形）—— `bus-list` 与 `bus-broadcast` 读它。
-/// 〔SH1〕`bus-state` 改读机器可读形（[`roster`]）；本函数没跟着换：没重部署 cc-bus 的机器上老脚本不认 `--tsv`，
-/// 换了查在线 / 广播就当场失灵 —— 两种印法各一个解析器，待主会话裁（`第四波记录/SH1.md §3` 问 1）。
+/// 总线名单 —— `bus-list` 与 `bus-broadcast` 读它。〔FIX · `设计/99 §2 ㊷`〕与 `bus-state` 同读机器可读形（[`roster`]，
+/// `cc-list --tsv`）：名册只有一个解析器。没重部署 cc-bus 的机器上老脚本不认 `--tsv` ⇒ 明说「cc-bus 比后端旧」（[`too_old`]），
+/// 不退回去按人读表猜（`95 §3.3`：命令是接口，接口认不出就说）。
 fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
-    let out = run("cc-list", &[]).map_err(|(c, m)| (c.to_string(), m))?;
-    if out.timed_out() {
-        return Err(timed_out_err());
+    let (rows, skipped) = roster()?;
+    if skipped > 0 {
+        tracing::warn!("cc-bus 名册里有 {skipped} 行读不懂，这一趟没算进去");
     }
-    if out.code != Some(0) {
-        return Err((
-            "failed".to_string(),
-            copy_text(
-                "beCcBus.list.failed",
-                &[
-                    ("status", &format!("{:?}", out.code)),
-                    ("detail", &out.diagnosis()),
-                ],
-            ),
-        ));
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
     // ★ 去问**身份空间**谁还活着（用户 08-13 那条架构点）。问不到就回 `null`，不假装知道。
     let sessions = super::gate::list_sessions().ok();
-    Ok(join_identity(parse_list(&text), sessions.as_deref()))
+    Ok(join_identity(roster_agents(&rows), sessions.as_deref()))
+}
+
+/// 名册行 → `bus-list` 那一格的 `{id, target, unread}`（纯函数；`live` / `ccm_sid` 由 [`join_identity`] 补）。
+pub(crate) fn roster_agents(rows: &[RosterRow]) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|r| serde_json::json!({ "id": r.id, "target": r.target, "unread": r.unread }))
+        .collect()
 }
 
 /// 转调一条只读的 cc-bus 命令、要求它 0 退出，交回 stdout —— `--tsv` 两条与 `cc-log` 共用。
@@ -777,11 +748,10 @@ pub(crate) fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, Stri
 /// `live` 与 `bus-list` 同一套三态：`true` / `false` / `null`（问不到身份空间，或不在名单里）。
 /// ⚠ 任何一步失败都**不影响投递**：这是投完之后的"顺带说一句"，不是前置条件。
 fn recipient_status(to: &str) -> (bool, serde_json::Value) {
-    let Ok(out) = run("cc-list", &[]) else {
+    let Ok((roster, _)) = roster() else {
         return (false, serde_json::Value::Null);
     };
-    let text = String::from_utf8_lossy(&out.stdout);
-    let rows = parse_list(&text);
+    let rows = roster_agents(&roster);
     let Some(row) = rows
         .iter()
         .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(to))
@@ -1253,7 +1223,7 @@ pub(crate) fn spawn_argv(a: &SpawnArgs) -> Vec<String> {
 /// 从 `cc-spawn` 的回显里取新会话的 id —— 纯函数。
 ///
 /// 今天的形状（`src/shared/cc-bus/scripts/cc-spawn` 末尾现打）：`已 spawn: <id>   (目录: …)`。
-/// ⚠ 拿输出当接口的代价（同 [`parse_list`]）：cc-bus 换个说法这里就认不出 ⇒ 回 `None`，
+/// ⚠ 拿输出当接口的代价（同 [`parse_roster_tsv`]）：cc-bus 换个说法这里就认不出 ⇒ 回 `None`，
 /// **不猜**。调用方拿到 `None` 时要说「起了，但 id 没认出来」，而不是「没起来」。
 pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
     said.lines().find_map(|l| {

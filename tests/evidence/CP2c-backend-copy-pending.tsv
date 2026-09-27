@@ -1,2 +1,1 @@
 文件	理由
-src/bridge/crates/creds-core/src/store.rs	〔TAIL〕两句报错已进表；剩 TEMPLATE —— 写进用户文件的整份 JSON 模板（不是一句话），进不进表、怎么进待拍。〔COPY 09-27〕题面默认不进表，但 CP1 裁它 [对外]（三句 _note 是用户读的说明）、且 credsStore.error.notObject 把整份模板插进报错 ⇒ 与「不对外」前提不符，停在这一件交主会话拍

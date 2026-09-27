@@ -58,12 +58,49 @@ pub enum ConfigEdit {
     Remove {
         path: Vec<String>,
     },
+    /// 〔FIX · `设计/99 §2 ㊶` 第一问〕**按键认数组元素**：`path` 指到一个数组，在里面认出满足 `where` 每一条的**恰好一个**对象，
+    /// 只改它的 `field` 那一格（锁内现读现判 ⇒ 别的元素、别的格与并发写者的改动都不会被一份锁外算好的整列盖掉）。
+    /// `ifEmpty` = CAS：那一格已有值（非空串 / 非 null）就不动。认不出 / 认出多个 ⇒ 不动（结局见 [`Applied`]）。
+    #[serde(rename = "setin", rename_all = "camelCase")]
+    SetIn {
+        path: Vec<String>,
+        r#where: Vec<ElemKey>,
+        field: String,
+        #[cfg_attr(test, ts(type = "unknown"))]
+        value: Value,
+        #[serde(default)]
+        if_empty: bool,
+    },
+}
+
+/// [`ConfigEdit::SetIn`] 认元素的一条：元素里 `fields` 按序取**第一个非空字符串**，它 == `equals`
+/// （`remote.hosts` 的 origin 就是 `["label", "host"]`：`label` 非空取它、否则 `host`）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct ElemKey {
+    pub fields: Vec<String>,
+    pub equals: String,
+}
+
+/// 一条补丁落下去的结局（与交进来的补丁逐条对应）。`Set` / `Remove` 恒 `Done`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Applied {
+    Done,
+    /// `SetIn`：一个都认不出（路径不在 / 不是数组 / 没有满足的元素）。
+    NoMatch,
+    /// `SetIn`：认出不止一个 ⇒ 不猜是哪个。
+    Ambiguous,
+    /// `SetIn` 带 `ifEmpty`：那一格已有值。
+    Kept,
 }
 
 impl ConfigEdit {
     fn path(&self) -> &[String] {
         match self {
-            ConfigEdit::Set { path, .. } | ConfigEdit::Remove { path } => path,
+            ConfigEdit::Set { path, .. }
+            | ConfigEdit::Remove { path }
+            | ConfigEdit::SetIn { path, .. } => path,
         }
     }
 }
@@ -100,11 +137,16 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 #[tauri::command]
 pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), String> {
     let path = paths::resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
-    patch_config_at(&path, &edits).map_err(|e| e.to_string())
+    patch_config_at(&path, &edits)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
-/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。
-pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), ConfigWriteError> {
+/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局；一条都没改动 ⇒ 不写。
+pub(crate) fn patch_config_at(
+    path: &Path,
+    edits: &[ConfigEdit],
+) -> Result<Vec<Applied>, ConfigWriteError> {
     // ① 先验全部：一条不成形 ⇒ 整批拒，连锁都不拿。
     if let Some(bad) = edits.iter().find(|e| e.path().is_empty()) {
         return Err(ConfigWriteError::BadEdit(format!(
@@ -112,7 +154,7 @@ pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), C
         )));
     }
     if edits.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -149,8 +191,9 @@ pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), C
     };
 
     // ④ 逐条应用。
-    for e in edits {
-        apply_edit(&mut root, e);
+    let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(&mut root, e)).collect();
+    if !applied.contains(&Applied::Done) {
+        return Ok(applied);
     }
 
     // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
@@ -163,13 +206,57 @@ pub(crate) fn patch_config_at(path: &Path, edits: &[ConfigEdit]) -> Result<(), C
         let _ = std::fs::remove_file(&tmp);
         ConfigWriteError::Io(format!("replace → {}: {e}", path.display()))
     })?;
-    Ok(())
+    Ok(applied)
 }
 
-fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) {
+/// 元素里 `fields` 按序第一个非空字符串（[`ElemKey`]）。
+fn elem_key<'a>(elem: &'a Map<String, Value>, fields: &[String]) -> Option<&'a str> {
+    fields.iter().find_map(|f| {
+        elem.get(f)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+    })
+}
+
+fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
     let (last, parents) = edit.path().split_last().expect("空路径在 ① 已拒");
     let mut cur = root;
     match edit {
+        ConfigEdit::SetIn {
+            r#where,
+            field,
+            value,
+            if_empty,
+            ..
+        } => {
+            for seg in parents {
+                match cur.get_mut(seg).and_then(Value::as_object_mut) {
+                    Some(next) => cur = next,
+                    None => return Applied::NoMatch,
+                }
+            }
+            let Some(arr) = cur.get_mut(last).and_then(Value::as_array_mut) else {
+                return Applied::NoMatch;
+            };
+            let mut hits = arr.iter_mut().filter_map(Value::as_object_mut).filter(|o| {
+                r#where
+                    .iter()
+                    .all(|k| elem_key(o, &k.fields) == Some(k.equals.as_str()))
+            });
+            let elem = match (hits.next(), hits.next()) {
+                (Some(e), None) => e,
+                (None, _) => return Applied::NoMatch,
+                (Some(_), Some(_)) => return Applied::Ambiguous,
+            };
+            let taken = elem
+                .get(field)
+                .is_some_and(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.trim().is_empty()));
+            if *if_empty && taken {
+                return Applied::Kept;
+            }
+            elem.insert(field.clone(), value.clone());
+            Applied::Done
+        }
         ConfigEdit::Set { value, .. } => {
             for seg in parents {
                 let slot = cur.entry(seg.clone()).or_insert(Value::Null);
@@ -179,16 +266,18 @@ fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) {
                 cur = slot.as_object_mut().expect("上一行保证是对象");
             }
             cur.insert(last.clone(), value.clone());
+            Applied::Done
         }
         ConfigEdit::Remove { .. } => {
             for seg in parents {
                 // 路上就没有（或不是对象）⇒ 要删的东西本来就不在；**不**顺手建出空段。
                 match cur.get_mut(seg).and_then(Value::as_object_mut) {
                     Some(next) => cur = next,
-                    None => return,
+                    None => return Applied::Done,
                 }
             }
             cur.remove(last);
+            Applied::Done
         }
     }
 }

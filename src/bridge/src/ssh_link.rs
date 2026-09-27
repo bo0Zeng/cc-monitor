@@ -69,6 +69,9 @@ pub struct Ack {
     /// 〔VIS2〕这一趟报过指纹的每条地址 → 指纹（老后端不报 ⇒ 空）。
     #[serde(default)]
     pub fingerprints: std::collections::BTreeMap<String, String>,
+    /// 〔FIX · `设计/99 §2 ㊶`〕经跳板时跳板那一台报过的指纹（老后端 / 直连 ⇒ 空）。
+    #[serde(default)]
+    pub jump_fingerprints: std::collections::BTreeMap<String, String>,
     /// 竞速胜出的地址（`host:port`）。
     #[serde(default)]
     pub endpoint: Option<String>,

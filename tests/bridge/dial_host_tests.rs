@@ -746,3 +746,61 @@ fn vis2_open_settles_the_host_key_after_the_ack_and_the_request_uses_the_effecti
         "量具正控"
     );
 }
+
+/// ★ 〔FIX · `设计/99 §2 ㊶` 第二问「只当跳板用的机器一直 TOFU（设计没写）」〕经跳板那一趟要判两台：目标按它自己那一格、
+/// 跳板按请求里 `jump` 那一台（origin = 它的 label、否则 host）与 ack 的 `jump_fingerprints`；直连只判目标一台。
+/// 固化之后跳板那一台交进下一趟请求的就是盘上那份（`request` 现查跳板配置 ⇒ 默认转严格对跳板同样成立）。
+#[test]
+fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_target() {
+    let fp = |pairs: &[(&str, &str)]| -> std::collections::BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    };
+    let ack = Ack {
+        ok: true,
+        error: None,
+        fingerprint: None,
+        fingerprints: fp(&[("h.example:2222", "SHA256:T")]),
+        jump_fingerprints: fp(&[("j.lan:22", "SHA256:J")]),
+        endpoint: None,
+        v: 2,
+        uses: vec![],
+    };
+    let target = cfg("tgt");
+    let direct = serde_json::json!({"host": "h.example", "host_key_fingerprint": null});
+    let got = pin_targets(&target, &direct, &ack);
+    assert_eq!(got.len(), 1, "直连只该判目标一台");
+    let via = serde_json::json!({"host": "h.example", "host_key_fingerprint": null,
+        "jump": {"host": "j.lan", "port": 22, "label": "bastion", "host_key_fingerprint": null}});
+    let got: Vec<_> = pin_targets(&target, &via, &ack)
+        .into_iter()
+        .map(|(o, h, c, r)| (o, h, c, pin_verdict(false, None, r)))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            (
+                "tgt".into(),
+                "h.example".into(),
+                None,
+                PinVerdict::Pin("SHA256:T".into())
+            ),
+            (
+                "bastion".into(),
+                "j.lan".into(),
+                None,
+                PinVerdict::Pin("SHA256:J".into())
+            ),
+        ]
+    );
+    // 跳板没有 label ⇒ origin 是它的 host（同 `origin_label`）；配过指纹 ⇒ 那一格已严格。
+    let via2 = serde_json::json!({"jump": {"host": "j.lan", "label": "", "host_key_fingerprint": "SHA256:J"}});
+    let (o, h, c, r) = pin_targets(&target, &via2, &ack).pop().expect("跳板那一台");
+    assert_eq!((o.as_str(), h.as_str()), ("j.lan", "j.lan"));
+    assert_eq!(
+        pin_verdict(false, c.as_deref(), r),
+        PinVerdict::AlreadyStrict
+    );
+}

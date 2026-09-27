@@ -329,11 +329,12 @@ describe("〔C4e〕就地 resume（F14：只有能证明没发出去才许回落
     expect((await sendInto("aya", "demo-cc", "PAYLOAD")).verdict).toBe("refused");
   });
 
-  it("★ 会话名或载荷为空 ⇒ refused，一个字节都不发", async () => {
-    answer({ ok: LAUNCH.reply });
+  it("★ 〔FIX · `99 §2 ㊹`〕会话名或载荷为空 ⇒ 原样交给后端，后端拒 ⇒ refused（界面零判定）", async () => {
+    answer({ fail: refusedReply("invalid_args", "name is empty") });
     expect((await sendInto("aya", "  ", "PAYLOAD")).verdict).toBe("refused");
+    expect(sentCalls().at(-1)).toEqual(["aya", "launch", { mode: "send-into", name: "  ", payload: "PAYLOAD" }]);
     expect((await sendInto("aya", "demo-cc", "")).verdict).toBe("refused");
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(sentCalls().at(-1)).toEqual(["aya", "launch", { mode: "send-into", name: "demo-cc", payload: "" }]);
   });
 });
 

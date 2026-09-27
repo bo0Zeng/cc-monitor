@@ -355,3 +355,116 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
         "后端那一份不是排他锁"
     );
 }
+
+// ── 〔FIX · `设计/99 §2 ㊶` 第一问〕按键认数组元素 ──────────────────────────────────────────
+// 守的要求（`99 §2 ㊶` 逐字）：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口（要不要给补丁口加「按键认数组元素」）」。
+// 主会话裁：加，且带 CAS（已有值不动）。
+
+fn set_in(where_: &[(&[&str], &str)], field: &str, value: Value, if_empty: bool) -> ConfigEdit {
+    ConfigEdit::SetIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: where_
+            .iter()
+            .map(|(f, e)| ElemKey {
+                fields: f.iter().map(|s| s.to_string()).collect(),
+                equals: e.to_string(),
+            })
+            .collect(),
+        field: field.into(),
+        value,
+        if_empty,
+    }
+}
+
+/// ★ `SetIn` 锁内认出恰好一台、只改它那一格；别的机器与别的键逐字不动；已有值（CAS）/ 零台 / 两台 ⇒ 不动、盘上一个字节不写。
+#[test]
+fn set_in_changes_one_field_of_exactly_one_element_and_nothing_else() {
+    let dir = tmpdir("setin");
+    let file = dir.join("config.json");
+    let start = json!({
+        "remote": {"enabled": true, "hosts": [
+            {"label": "", "host": "a.lan", "user": "u"},
+            {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:old"},
+            {"label": "dup", "host": "d1"},
+            {"label": "dup", "host": "d2"}
+        ]},
+        "theme": {"x": 1}
+    });
+    std::fs::write(&file, start.to_string()).unwrap();
+    let fp = || json!("SHA256:new");
+    let a = set_in(
+        &[(&["label", "host"], "a.lan"), (&["host"], "a.lan")],
+        "hostKeyFingerprint",
+        fp(),
+        true,
+    );
+    assert_eq!(patch_config_at(&file, &[a]).unwrap(), vec![Applied::Done]);
+    let mut want = start.clone();
+    want["remote"]["hosts"][0]["hostKeyFingerprint"] = fp();
+    assert_eq!(read(&file), want, "只该改 a.lan 那一格");
+
+    let before = std::fs::read(&file).unwrap();
+    for (edit, outcome) in [
+        (
+            set_in(
+                &[(&["label", "host"], "beta")],
+                "hostKeyFingerprint",
+                fp(),
+                true,
+            ),
+            Applied::Kept,
+        ),
+        (
+            set_in(
+                &[(&["label", "host"], "nope")],
+                "hostKeyFingerprint",
+                fp(),
+                true,
+            ),
+            Applied::NoMatch,
+        ),
+        (
+            set_in(
+                &[(&["label", "host"], "dup")],
+                "hostKeyFingerprint",
+                fp(),
+                false,
+            ),
+            Applied::Ambiguous,
+        ),
+        (
+            set_in(
+                &[(&["label", "host"], "beta"), (&["host"], "other")],
+                "hostKeyFingerprint",
+                fp(),
+                true,
+            ),
+            Applied::NoMatch,
+        ),
+    ] {
+        assert_eq!(patch_config_at(&file, &[edit]).unwrap(), vec![outcome]);
+        assert_eq!(
+            std::fs::read(&file).unwrap(),
+            before,
+            "{outcome:?} 却动了盘"
+        );
+    }
+    // 不带 CAS ⇒ 覆盖已有值。
+    let b = set_in(
+        &[(&["label", "host"], "beta")],
+        "hostKeyFingerprint",
+        fp(),
+        false,
+    );
+    assert_eq!(patch_config_at(&file, &[b]).unwrap(), vec![Applied::Done]);
+    assert_eq!(
+        read(&file)["remote"]["hosts"][1]["hostKeyFingerprint"],
+        fp()
+    );
+    // 线上形状（手写字面量）。
+    let wire: ConfigEdit = serde_json::from_value(json!({"op": "setin", "path": ["remote", "hosts"],
+        "where": [{"fields": ["label", "host"], "equals": "a"}], "field": "f", "value": 1, "ifEmpty": true}))
+    .expect("setin 解不出来");
+    assert!(matches!(wire, ConfigEdit::SetIn { if_empty: true, .. }));
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -306,6 +306,9 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             fingerprints: [("a:22", "SHA256:x"), ("b:22", "SHA256:y")]
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .into(),
+            jump_fingerprints: [("j:22", "SHA256:j")]
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .into(),
             endpoint: Some("h:22".into()),
             v: ACK_V,
             uses: USES,
@@ -322,6 +325,11 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert_eq!(
         v["fingerprints"],
         serde_json::json!({"a:22": "SHA256:x", "b:22": "SHA256:y"})
+    );
+    // 〔FIX · `99 §2 ㊶`〕跳板那一台自己那一格（additive）。
+    assert_eq!(
+        v["jump_fingerprints"],
+        serde_json::json!({"j:22": "SHA256:j"})
     );
 }
 

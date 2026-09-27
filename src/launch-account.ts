@@ -15,7 +15,8 @@ import type { LaunchModifiers } from "./launch-types";
 // 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
 // （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
-import { isLocalOrigin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
+import { appStore, putAccounts } from "./app-store";
 // 〔C4d〕上次账号那一份注解归本机常驻后端（`history-last-accounts` / `history-annotate`）。
 import { annotate, lastAccounts } from "./history-reads";
 import { showActionFailureToast } from "./error-toast";
@@ -66,7 +67,17 @@ import { getModelForAccount } from "./account-prefs";
  * `configDir` ⇒ 一律 `undefined`。⚠ 尤其**不回落到「当前账号」** —— 那会把一条
  * resume 悄悄换到别的号上，正是 `#75` 那个病灶的形状。
  */
-let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } | null = null;
+let localLaunchPins: Record<string, string> | null = null;
+
+/**
+ * 〔FIX · `设计/99 §2 ㊸` · `01 §1.5`「账号快照……收进一处」〕本机那份账号清单**不在这里另存**：读 `appStore.accounts` 里本机那一格
+ * （`account-reads.ts::fetchAccounts` 每取回一次就换进去）；这里只留 resume 跟随要的「上次用的号」（history-metadata 的 pin，不是账号快照）。
+ * 两样都到了才算热 —— 只有清单没有 pin 时照旧不表态（否则 resume 会落到当前号上，`#75` 那一形）。
+ */
+function localLaunchSnapshotNow(): { state: AccountsState; pins: Record<string, string> } | null {
+  const state = appStore.accounts.get().get(LOCAL_ORIGIN) ?? null;
+  return state && localLaunchPins ? { state, pins: localLaunchPins } : null;
+}
 
 /**
  * 上面那条的**取名字**半 —— 与取 `configDir` 那半共用同一条规则（不许两处各判一次）。
@@ -85,7 +96,7 @@ let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } 
  * ⇒ 快照现在整份存 `AccountsState`（`defaultName` 在里面），这里直接调那条唯一的规则。
  */
 export function localLaunchAccountNameSync(sid: string | null): string | null {
-  const snap = localLaunchSnapshot;
+  const snap = localLaunchSnapshotNow();
   if (!snap) return null; // 快照还是冷的 ⇒ 没表态（见下面那条诚实边界）
   const pin = sid ? snap.pins[sid] : undefined;
   if (pin) {
@@ -124,7 +135,7 @@ export type LocalFollowPlan =
     };
 
 export function localFollowPlan(sid: string): LocalFollowPlan {
-  const snap = localLaunchSnapshot;
+  const snap = localLaunchSnapshotNow();
   if (!snap) return { kind: "silent" };
   const pin = snap.pins[sid];
   if (pin) {
@@ -178,14 +189,14 @@ export type LocalLaunchAccountWire = Record<
  * （`tab-session-actions.ts::recordStillThere`；`设计/30 §8` 第 4 条）。
  */
 export function localLaunchConfigDirSync(sid: string | null): string | undefined {
-  const snap = localLaunchSnapshot;
+  const snap = localLaunchSnapshotNow();
   const name = localLaunchAccountNameSync(sid);
   if (!snap || !name) return undefined;
   return snap.state.accounts.find((a) => a.name === name)?.configDir || undefined;
 }
 
 export function localLaunchAccountSync(sid: string | null): LocalLaunchAccountWire | undefined {
-  const snap = localLaunchSnapshot;
+  const snap = localLaunchSnapshotNow();
   const name = localLaunchAccountNameSync(sid);
   if (!snap || !name) return undefined;
   const picked = snap.state.accounts.find((a) => a.name === name);
@@ -268,7 +279,8 @@ export function primeLocalLaunchAccounts(): void {
       // ⚠ 整份存 `state`，**不是**只存 `accounts` —— 「当前账号」这条规则要读
       //   `state.defaultName`（config.json），只留 accounts 就只剩 manifest 的 `isDefault`，
       //   那正是上一拍那条静默串号的成因（`D2 阻-3`）。
-      if (state) localLaunchSnapshot = { state, pins: pins ?? {} };
+      // 清单已由 `fetchLocalAccounts` 换进 `appStore.accounts`（本机那一格）；这里只记 pin。
+      if (state) localLaunchPins = pins ?? {};
     } catch {
       /* 保持旧快照 —— 见上 */
     }
@@ -277,7 +289,10 @@ export function primeLocalLaunchAccounts(): void {
 
 /** 只给判据用：把快照清回冷态（生产段没有调用方）。 */
 export function __resetLocalLaunchSnapshotForTests(): void {
-  localLaunchSnapshot = null;
+  localLaunchPins = null;
+  const next = new Map(appStore.accounts.get());
+  next.delete(LOCAL_ORIGIN);
+  appStore.accounts.set(next);
 }
 
 /** 只给判据用：直接喂一份快照（免得判据去摆布两条 IPC 的时序）。 */
@@ -285,7 +300,8 @@ export function __setLocalLaunchSnapshotForTests(
   state: AccountsState,
   pins: Record<string, string>,
 ): void {
-  localLaunchSnapshot = { state, pins };
+  putAccounts(LOCAL_ORIGIN, state);
+  localLaunchPins = pins;
 }
 
 /**

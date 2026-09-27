@@ -106,7 +106,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
             path: path.to_path_buf(),
             accounts: Vec::new(),
             verdict,
-            problem: Some(e.to_string()),
+            problem: Some(e.said(path)),
         },
     }
 }
@@ -227,7 +227,7 @@ pub(crate) fn announce(
             let _ = writeln!(
                 out,
                 "[apikey] create that file to configure one; it is plain JSON:\n{}",
-                store::TEMPLATE
+                store::template()
             );
             n += 1;
         }

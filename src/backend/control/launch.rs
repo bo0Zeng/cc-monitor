@@ -515,6 +515,27 @@ fn secondary(
 }
 
 /// 真做事。**只在 `Disposition::spawn` 的独立 task 上跑** —— 它会阻塞（起进程）。
+/// J6 新建那一条（`gate_core::new_tmux_name_issue`）判不过时说哪一句；过得了 ⇒ `None`。
+/// `ccm` 铸名（`ccm/plan.rs::validate_tmux_name`）与 `create-or-attach` 新建那一支说的是同一句。
+pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
+    use gate_core::TmuxNameIssue as I;
+    Some(match gate_core::new_tmux_name_issue(n)? {
+        I::Empty | I::LeadingDash => {
+            copy_text("bePlan.validateTmuxName.emptyOrDash", &[("name", n)])
+        }
+        I::TargetSyntax(_) => copy_text("bePlan.validateTmuxName.targetSyntax", &[("name", n)]),
+        I::Control(_) => copy_text("bePlan.validateTmuxName.control", &[("name", n)]),
+        I::Deceptive(_) => copy_text("bePlan.validateTmuxName.deceptive", &[("name", n)]),
+        I::TooLong => copy_text(
+            "bePlan.validateTmuxName.tooLong",
+            &[
+                ("name", n),
+                ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+            ],
+        ),
+    })
+}
+
 pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
     run_with(req, &tmux)
 }
@@ -557,6 +578,17 @@ fn run_with(
             })
         }
         Mode::CreateOrAttach => {
+            // 〔FIX · `设计/99 §2 ㊹` · DUP3 §5 ⑤〕要**新建**的名字过 J6 新建那一条（`gate-core`，与 `ccm` 铸名同一条）：
+            //   过不了、而那个会话已经在 ⇒ 照旧幂等接回（已有会话走的是已有那一条，进门时判过）；不在 ⇒ 拒并说清。
+            if let Some(said) = new_tmux_name_said(&req.name) {
+                if tmux(&["has-session", "-t", &t])?.ok {
+                    return Ok(LaunchOutcome {
+                        created: false,
+                        typed: false,
+                    });
+                }
+                return Err(("invalid_args", said));
+            }
             let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", &req.name];
             if let Some(cwd) = &req.cwd {
                 new_args.push("-c");

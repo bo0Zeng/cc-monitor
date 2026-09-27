@@ -22,6 +22,7 @@ fn ok_ack(l: &Linked) -> DialAck {
         error: None,
         fingerprint: l.fingerprint.clone(),
         fingerprints: l.fingerprints.clone(),
+        jump_fingerprints: l.jump_fingerprints.clone(),
         endpoint: Some(l.endpoint.clone()),
         v: ACK_V,
         uses: USES,

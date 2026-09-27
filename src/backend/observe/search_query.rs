@@ -164,13 +164,7 @@ pub(crate) fn search_counting(
     }
     // 路径白名单根（read 的文件必须在其下，挡 symlink 逃逸）：observe 唯一那道围栏（`observe/fence.rs`）。
     let fence = Fence::at(&root)?;
-    // 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
-    let mut resident = RESIDENT.lock().unwrap_or_else(|p| {
-        let mut g = p.into_inner();
-        g.clear();
-        RESIDENT.clear_poison();
-        g
-    });
+    let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
     let unreadable = index.search(&fence, &q, opts, out)?;
     let r = index.last;
@@ -200,29 +194,113 @@ pub(crate) fn find_indexed(
     }
     let fence = Fence::at(&projects_root(agent_home)).ok()?;
     let path = fence.admit(target).ok()?;
-    let mut resident = RESIDENT.lock().unwrap_or_else(|p| {
-        let mut g = p.into_inner();
-        g.clear();
-        RESIDENT.clear_poison();
-        g
-    });
+    let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
     index.find(&path, &q, include_tools, limit, on_hit)
 }
 
-/// 〔SX1〕进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问时懒建，不预热。
+/// 〔SX1〕进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建（〔FIX · `99 §2 ㊵`〕）；
+/// 第一问赶在它前面到了也不白等：谁先拿到锁谁读那一份，另一方见它没变就不再读。
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());
+
+/// 〔FIX · `99 §2 ㊵` 第二问〕常驻索引最多留这么多字节的可搜文本（[`FileEntry::weight`] 的和）。按最近优先留；
+/// 留不下的那几份照样读、照样搜，只是不留（下一问再读）⇒ 答案与不设上界逐字相等，变的只是那几份的读盘。
+/// 本机正文约 11 MB、勾过「含工具」约 40 MB（`SX1.md §4`）⇒ 本机整份都留得下；历史大一个数量级的远端封在这里。
+pub(crate) const RESIDENT_MAX_BYTES: usize = 64 << 20;
+
+/// 中毒（某一问 panic 在半路）⇒ 整张表丢掉重建，不带着半截状态答。
+fn resident() -> std::sync::MutexGuard<'static, BTreeMap<PathBuf, SearchIndex>> {
+    RESIDENT.lock().unwrap_or_else(|p| {
+        let mut g = p.into_inner();
+        g.clear();
+        RESIDENT.clear_poison();
+        g
+    })
+}
+
+/// 〔FIX · `99 §2 ㊵` 第一问〕后端一起来就后台建索引（一条一次性线程，不是定时器；建完就退）。
+/// 只在内存（理由同 `SX1.md §1`，不落盘）；远端流后端与本机常驻后端同一个调用点（`main.rs`）。
+pub fn warm_in_background(agent_home: PathBuf) {
+    let spawned = std::thread::Builder::new()
+        .name("search-warm".into())
+        .spawn(move || {
+            let (files, kept) = warm(&agent_home);
+            tracing::info!(
+                "全文搜索索引：后台建好 {files} 份，常驻 {kept} 字节（上界 {RESIDENT_MAX_BYTES}）"
+            );
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("全文搜索索引：后台建索引的线程起不来（{e}），第一问会现读");
+    }
+}
+
+/// [`warm_in_background`] 的本体（判据直接调它）：按最近优先把每份会话读进常驻表，留到上界为止就停（再读也留不下）。
+/// 每一份单独拿一次锁 ⇒ 半路来的一问不必等整棵建完。回 `(这一趟读进来的份数, 常驻字节)`。
+pub(crate) fn warm(agent_home: &Path) -> (usize, usize) {
+    let root = projects_root(agent_home);
+    let Ok(fence) = Fence::at(&root) else {
+        return (0, 0);
+    };
+    let mut read = 0usize;
+    for (path, _) in session_files(&fence) {
+        if fence.admit(&path).is_err() {
+            continue;
+        }
+        let mut guard = resident();
+        let index = guard.entry(fence.root().to_path_buf()).or_default();
+        let prev = index.files.remove(&path);
+        let was_there = prev.is_some();
+        let Ok(entry) = index.bring_up(&path, prev, false) else {
+            continue; // 读不动的留给那一问去说（它会逐份出声、计数）
+        };
+        let others = index.kept();
+        if others + entry.weight > index.budget {
+            break;
+        }
+        read += usize::from(!was_there);
+        index.files.insert(path, entry);
+    }
+    let kept = resident().get(fence.root()).map_or(0, SearchIndex::kept);
+    (read, kept)
+}
+
+/// 一棵 projects 下的会话文件，按最近优先排（搜索与预热同一个 walk、同一个排序）。
+fn session_files(fence: &Fence) -> Vec<(PathBuf, i64)> {
+    let mut files: Vec<(PathBuf, i64)> = WalkDir::new(fence.root())
+        .max_depth(2)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path())
+        })
+        .map(|e| {
+            let p = e.into_path();
+            let m = mtime_ms(&p);
+            (p, m)
+        })
+        .collect();
+    // 🔴 `K-R100`：**snippet 预算按最近优先花**（`search_core::sort_by_recency`，理由在它的文档注释里）。
+    search_core::sort_by_recency(&mut files, |(_, m)| *m);
+    files
+}
 
 /// 〔SX1〕追加读之前核的那一段：`consumed` 之前最多这么多字节；对不上 ⇒ 被改写过、整份重读。
 const WITNESS_BYTES: usize = 256;
 
 /// 〔SX1〕一棵 projects 的索引：每份会话文件一格，按 (mtime, 长度) 增量读。
-#[derive(Default)]
 pub(crate) struct SearchIndex {
     files: BTreeMap<PathBuf, FileEntry>,
     /// 上一问读盘的账（判据 J3 看它）。
     last: Refresh,
+    /// 常驻上界（生产恒为 [`RESIDENT_MAX_BYTES`]；判据用小的量「留不下」那一格）。
+    budget: usize,
+}
+
+impl Default for SearchIndex {
+    fn default() -> Self {
+        Self::with_budget(RESIDENT_MAX_BYTES)
+    }
 }
 
 /// 一问里读盘的账：整份读几份 · 追加读几份 · 没读几份 · 一共读了多少字节。
@@ -246,6 +324,8 @@ struct FileEntry {
     bad: Option<(BadAt, String)>,
     /// 记录里抽没抽工具文本。
     tools: bool,
+    /// 这一格常驻的字节（估算：可搜文本 ＋ 每条记录的定长开销 ＋ 见证）；每次 [`FileEntry::take`] 之后重算。
+    weight: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +404,20 @@ impl Facts {
         }
     }
 
+    fn weight(&self) -> usize {
+        let text = |o: &Option<String>| o.as_ref().map_or(0, String::len);
+        text(&self.cwd)
+            + text(&self.title)
+            + self.excerpt.len()
+            + self
+                .records
+                .iter()
+                .map(|r| {
+                    std::mem::size_of::<Rec>() + r.rt.main.len() + r.rt.tool.len() + r.uuid.len()
+                })
+                .sum::<usize>()
+    }
+
     /// 把**后面**那一段并进来：按段序合并与整份顺扫相等。
     fn extend(&mut self, later: Facts) {
         if self.cwd.is_none() {
@@ -349,6 +443,7 @@ impl FileEntry {
             tail: Facts::default(),
             bad: None,
             tools,
+            weight: 0,
         }
     }
 
@@ -386,10 +481,31 @@ impl FileEntry {
             }
         }
         self.seen = (mtime, end);
+        self.weight = self.witness.len() + self.done.weight() + self.tail.weight();
     }
 }
 
 impl SearchIndex {
+    pub(crate) fn with_budget(budget: usize) -> Self {
+        Self {
+            files: BTreeMap::new(),
+            last: Refresh::default(),
+            budget,
+        }
+    }
+
+    /// 常驻的字节（每格 [`FileEntry::weight`] 的和）。
+    pub(crate) fn kept(&self) -> usize {
+        self.files.values().map(|e| e.weight).sum()
+    }
+
+    /// 留得下就留（会话内查找那一臂；全局搜索那一臂按最近优先整趟重排）。
+    fn keep(&mut self, path: &Path, entry: FileEntry) {
+        if self.kept() + entry.weight <= self.budget {
+            self.files.insert(path.to_path_buf(), entry);
+        }
+    }
+
     /// 这一份带到这一问：(mtime, 长度) 没变不读 · 变长且见证对得上只读尾巴 · 其余整份重读。打不开 / 读不了 ⇒ `Err(原因)`。
     fn bring_up(
         &mut self,
@@ -447,7 +563,7 @@ impl SearchIndex {
         let prev = self.files.remove(path);
         let entry = self.bring_up(path, prev, include_tools).ok()?;
         if entry.bad.is_some() {
-            self.files.insert(path.to_path_buf(), entry);
+            self.keep(path, entry);
             return None; // 读不动：现扫那一臂是 lossy 读，口径不许在这里变
         }
         let (mut count, mut total) = (0u64, 0u64);
@@ -469,7 +585,7 @@ impl SearchIndex {
                 count += 1;
             }
         }
-        self.files.insert(path.to_path_buf(), entry);
+        self.keep(path, entry);
         Some(result.map(|()| (count, total)))
     }
 
@@ -481,32 +597,15 @@ impl SearchIndex {
         opts: &SearchOpts,
         out: &mut impl Write,
     ) -> Result<usize, String> {
-        let files: Vec<PathBuf> = WalkDir::new(fence.root())
-            .max_depth(2)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| {
-                e.file_type().is_file()
-                    && crate::agents::claudecode::records::is_session_file(e.path())
-            })
-            .map(|e| e.into_path())
-            .collect();
-
-        // 🔴 `K-R100`：**snippet 预算按最近优先花**（`search_core::sort_by_recency`，理由在它的文档注释里）。
-        let mut files: Vec<(PathBuf, i64)> = files
-            .into_iter()
-            .map(|p| {
-                let m = mtime_ms(&p);
-                (p, m)
-            })
-            .collect();
-        search_core::sort_by_recency(&mut files, |(_, m)| *m);
+        let files = session_files(fence);
 
         // 这一趟 walk 没走到的（删了 / 改名）随旧表一起丢掉。
         let mut prev = std::mem::take(&mut self.files);
         self.last = Refresh::default();
         let mut budget = SnippetBudget::new(opts.limit);
         let mut unreadable = 0usize;
+        // 按最近优先留到上界（`files` 已是这个序）；留不下的这一问照样搜，只是不留。
+        let mut kept = 0usize;
         for (path, updated_at) in files {
             // 防 symlink 逃逸：解开之后仍须在 projects/ 下；解不开 / 越界 ⇒ 跳过这一份（与先前同）。
             if fence.admit(&path).is_err() {
@@ -525,7 +624,8 @@ impl SearchIndex {
                 (Some(e), None) => session_hits_in(&path, e, q, opts, &mut budget, updated_at),
                 _ => None,
             };
-            if let Some(e) = entry {
+            if let Some(e) = entry.filter(|e| kept + e.weight <= self.budget) {
+                kept += e.weight;
                 self.files.insert(path.clone(), e);
             }
             if let Some(e) = bad {

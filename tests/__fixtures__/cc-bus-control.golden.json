@@ -10,7 +10,7 @@
     "bad": ["", "--help", "-x", "a b", "a;rm", "a$x", "a:b", "a.b", "a/b", "é"]
   },
   "input": {
-    "ccList": "ID               TMUX              待读\nalpha_cc         alpha_cc:0.0      2\ngone_cc          gone_cc:0.0       0\nx_cc             x_cc:0.0          1\n",
+    "ccListTsv": "#cc-list-tsv\t1\nalpha_cc\talpha_cc:0.0\t2026-09-01T00:00:00Z\t101\t2\ngone_cc\tgone_cc:0.0\t2026-09-01T00:00:00Z\t\t0\nx_cc\tx_cc:0.0\t2026-09-01T00:00:00Z\t103\t1\n#skipped\t0\n",
     "sessions": [["alpha_cc", "sid-1"], ["x_cc", ""]]
   },
   "bus-list": {
