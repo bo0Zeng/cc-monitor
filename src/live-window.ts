@@ -137,6 +137,12 @@ export type BelowState =
   | { kind: "none" }
   | { kind: "failed"; reason: string };
 
+/** 〔RENDER2〕一批的第二道闸：每条的分量（调用方给）与这一批的上限。 */
+export interface TakeBudget {
+  weight: (p: JsonlLinePayload) => number;
+  max: number;
+}
+
 export class TailWindow {
   /** 窗口低水位;null = virgin(该 tab 尚未渲染任何 content 记录) */
   private floor: number | null = null;
@@ -266,13 +272,26 @@ export class TailWindow {
    * 弹出 pending 中 seq 最高的 ≤k 条(升序返回,已出账),并把 floor 压到取出段
    * 的最低 seq——上翻补批/物化的口粮。空账返回 [],floor 不动。
    */
-  takeTail(k: number): JsonlLinePayload[] {
+  takeTail(k: number, budget?: TakeBudget): JsonlLinePayload[] {
     if (this.pending.length === 0 || k <= 0) return [];
     if (this.dirty) {
       this.pending.sort((a, b) => a.seq - b.seq);
       this.dirty = false;
     }
-    const taken = this.pending.splice(Math.max(0, this.pending.length - k));
+    let from = Math.max(0, this.pending.length - k);
+    if (budget) {
+      // 〔RENDER2 · `设计/17 §1.1`〕条数与分量双闸、先到先停；至少取一条（单条超预算也要能前进）。
+      let used = 0;
+      let i = this.pending.length;
+      while (i > from) {
+        const w = budget.weight(this.pending[i - 1]);
+        if (i < this.pending.length && used + w > budget.max) break;
+        used += w;
+        i--;
+      }
+      from = i;
+    }
+    const taken = this.pending.splice(from);
     if (taken.length > 0) this.pinFloor(taken[0].seq);
     return taken;
   }
