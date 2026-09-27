@@ -12254,6 +12254,11 @@
       "zh": "等回答超时（{after} 毫秒）",
       "args": ["after"]
     },
+    "rsInboundClient.error.timeoutPeerRunsOn": {
+      "kind": "error",
+      "zh": "等回答超时（{after} 毫秒）；那台的后端不认撤单，那件事可能还在跑",
+      "args": ["after"]
+    },
     "rsInboundClient.error.cancelled": {
       "kind": "error",
       "zh": "命令已被取消",

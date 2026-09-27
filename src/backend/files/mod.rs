@@ -135,10 +135,9 @@
 //!    - 🔴 **而「在这台机器上做不到」那个轴与本轴还没对上**，两件事别混：
 //!      本轴（`设计/96 §2` 的 target 轴）逐字答「每个平台**编不编得过**」，是**编译期**的；
 //!      [`crate::wire::Unavailable`] 那个轴答「这条命令我接得下，但**在这台机器上**做不到」，
-//!      是**运行期逐机器**的。后者今天还**恒空**（`main.rs` 硬写 `Vec::new()`，
-//!      `main_fourth_face_tests::production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
-//!      钉着）⇒ 那一侧**根本还没有清单可以对**，而真填它是一次**跨仓契约变更**
-//!      （仓外 aterm 按精确字节读 hello）。
+//!      是**运行期逐机器**的。〔NET2〕后者已真填（`main.rs` 填 `unavailable_here()`，
+//!      `main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` 钉着），
+//!      判准与本轴同源（`codes` 里的 `no_tmux` / `no_unix_mode`）。
 //!    ⇒ 这两样都在步 `8a` 的射程之外，登记在 `设计/99 §4.8.3 P12`。
 
 pub mod browse_watch;
