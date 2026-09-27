@@ -361,14 +361,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
      ""),
     // 〔TL3 · §47 · 主会话 09-26 按 V131 裁〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
-    ("src/backend/control/ccm/plan.rs", 29, &[
+    // 〔AL3 · V138〕29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
+    ("src/backend/control/ccm/plan.rs", 28, &[
         ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
         ("src/backend/control/ccm/plan.rs", "free_text_gate"),
         ("src/backend/control/ccm/plan.rs", "inherited_gate"),
         ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
-        // 〔DUP1 · §47 ①〕模型名 · `--ccm-sid` · resume 的 sid 在 `argv.rs::validate` 进门判（判定住共享 crate）。
+        // 〔DUP1 · §47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
         ("src/bridge/crates/shell-quote-core/src/lib.rs", "session_id_ok"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "model_name_ok"),
         ("src/bridge/crates/shell-quote-core/src/lib.rs", "account_name_ok"), // 〔DUP1〕`--account`
         // 〔DUP1 · §47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
         ("src/bridge/crates/acct-core/src/lib.rs", "config_dir_ok"),

@@ -35,12 +35,19 @@ fn the_ways_to_say_resume_all_reach_claude_untouched() {
         v(&["-c"]),
         v(&["resume", "abc-123"]),
     ] {
-        assert_eq!(ok(&a.iter().map(String::as_str).collect::<Vec<_>>()).passthru, a, "写法 {a:?} 被 ccm 改了");
+        assert_eq!(
+            ok(&a.iter().map(String::as_str).collect::<Vec<_>>()).passthru,
+            a,
+            "写法 {a:?} 被 ccm 改了"
+        );
     }
     // 壳层选项夹在中间照认，其余按原顺序交出去。
     let o = ok(&["--resume", "s1", "--tmux", "--model", "opus", "-p", "hi"]);
     assert!(o.use_tmux);
-    assert_eq!(o.passthru, v(&["--resume", "s1", "--model", "opus", "-p", "hi"]));
+    assert_eq!(
+        o.passthru,
+        v(&["--resume", "s1", "--model", "opus", "-p", "hi"])
+    );
 }
 
 /// 〔V138〕`--attach <名>` 取值时不许把下一个旗标吞成名字（从前位置动作 `attach <名>` 那一条的同形）。
@@ -66,7 +73,10 @@ fn the_combination_rules_all_fail_loudly() {
     assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
     // V138：从前报「未知选项 / 多余的位置参数」的这几形，今天原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
-    assert_eq!(ok(&["--agent", "codex", "resume", "s"]).passthru, v(&["resume", "s"]));
+    assert_eq!(
+        ok(&["--agent", "codex", "resume", "s"]).passthru,
+        v(&["resume", "s"])
+    );
 }
 
 /// 〔搬自 `ccm-cli`「非法 --tmux-size」那一格 —— 它是一条**注入面**，不是排版〕
@@ -165,9 +175,6 @@ fn an_account_name_is_judged_before_it_goes_anywhere() {
     assert_eq!(ok(&["--account", "work"]).account, "work");
     for bad in ["a.b", "_a", "a b"] {
         let arg = format!("--account={bad}");
-        assert!(
-            err(&[&arg]).contains("用不了"),
-            "坏账号名 {bad:?} 放行了"
-        );
+        assert!(err(&[&arg]).contains("用不了"), "坏账号名 {bad:?} 放行了");
     }
 }

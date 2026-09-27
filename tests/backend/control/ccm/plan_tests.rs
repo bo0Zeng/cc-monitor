@@ -118,10 +118,8 @@ fn the_four_ways_an_account_gets_picked() {
     ]);
     let mut e = env();
     // ① 显式 --account 赢
-    assert!(
-        render(&plan_of(&["--cwd", "/p", "--account", "b"], &e, &t))
-            .contains(&format!("export CLAUDE_CONFIG_DIR='{db}'"))
-    );
+    assert!(render(&plan_of(&["--cwd", "/p", "--account", "b"], &e, &t))
+        .contains(&format!("export CLAUDE_CONFIG_DIR='{db}'")));
     // ② 裸终端（无继承）⇒ 落 manifest 默认号 z
     assert!(render(&plan_of(&["--cwd", "/p"], &e, &t))
         .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'")));
@@ -133,13 +131,12 @@ fn the_four_ways_an_account_gets_picked() {
         "不许覆盖继承：{line}"
     );
     // ④ --base 显式清空，不受继承影响
-    assert!(render(&plan_of(&["--cwd", "/p", "--base"], &e, &t))
-        .contains("unset CLAUDE_CONFIG_DIR"));
-    // ⑤ 显式 --account 压过继承
     assert!(
-        render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t))
-            .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'"))
+        render(&plan_of(&["--cwd", "/p", "--base"], &e, &t)).contains("unset CLAUDE_CONFIG_DIR")
     );
+    // ⑤ 显式 --account 压过继承
+    assert!(render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t))
+        .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'")));
 }
 
 /// 〔搬自 `ccm-cli`「账号不存在 → 中止」「可用列表」「无账号库 → 退化为基座」〕
@@ -163,9 +160,7 @@ fn picking_an_account_never_falls_back_to_a_different_one() {
     );
     // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
     let empty = AccountTable::default();
-    assert!(
-        !render(&plan_of(&["--cwd", "/p"], &env(), &empty)).contains("CLAUDE_CONFIG_DIR=")
-    );
+    assert!(!render(&plan_of(&["--cwd", "/p"], &env(), &empty)).contains("CLAUDE_CONFIG_DIR="));
 }
 
 /// 〔搬自 `ccm-cli`「deriveTmuxName 对拍」那 5 条（跨语言双写点的**本侧**）〕
@@ -235,12 +230,18 @@ fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
     let e = env();
     let t = AccountTable::default();
     let taken = snapshot_of(&["proj-cc", "proj-cc-2"]);
-    let once = render(
-        &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken))
-    );
-    let twice = render(
-        &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken))
-    );
+    let once = render(&plan_of_with(
+        &["--tmux", "--cwd", "/x/proj"],
+        &e,
+        &t,
+        Some(&taken),
+    ));
+    let twice = render(&plan_of_with(
+        &["--tmux", "--cwd", "/x/proj"],
+        &e,
+        &t,
+        Some(&taken),
+    ));
     assert_eq!(once, twice, "同一份快照喂两次，`--print` 吐了两样东西");
     assert!(
         once.contains("proj-cc-3"),
@@ -412,7 +413,11 @@ fn the_container_path_carries_every_intent_inward() {
         "{}",
         c4.payload
     );
-    assert!(c4.payload.ends_with("'--' '--model' 'opus'"), "{}", c4.payload);
+    assert!(
+        c4.payload.ends_with("'--' '--model' 'opus'"),
+        "{}",
+        c4.payload
+    );
     // 继承账号那条路：内层必须显式 export 继承来的那个目录
     let p2 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &t);
     let Plan::Container(c2) = &p2 else {
@@ -602,13 +607,11 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
 /// 〔搬自 `ccm-print-parity`「含空格 cwd 正确带引号」与 `ccm-cli` 的 quote 那族〕
 #[test]
 fn every_value_that_reaches_a_shell_is_quoted() {
-    let out = render(
-        &plan_of(
-            &["--tmux", "--cwd", "/home/pi/my proj"],
-            &env(),
-            &AccountTable::default(),
-        )
-    );
+    let out = render(&plan_of(
+        &["--tmux", "--cwd", "/home/pi/my proj"],
+        &env(),
+        &AccountTable::default(),
+    ));
     assert!(out.contains("-c '/home/pi/my proj'"), "{out}");
     assert!(out.contains("-s 'my-proj-cc'"), "{out}");
     assert_eq!(qarg("a b"), "'a b'");
