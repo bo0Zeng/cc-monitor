@@ -1405,16 +1405,14 @@ fn account_wire(account: Option<&LaunchAccount>) -> serde_json::Value {
     }
 }
 
-/// `launch-endpoint` 的入参。`key` 是这一发的流标签：resume ⇒ sid；新开 ⇒ 现铸的 nonce（与身份 token 同一份铸法）。
+/// `launch-endpoint` 的入参。〔V141〕没有会话身份：地址不随会话变，中转从 claude 自己的请求头认会话。
 pub(crate) fn launch_endpoint_args(
     account: Option<&LaunchAccount>,
-    sid: Option<&str>,
     all_sessions: bool,
 ) -> serde_json::Value {
     serde_json::json!({
         "agent": launch_agent_id(),
         "account": account_wire(account),
-        "key": crate::backend::control::payload::route_key_for_session(sid),
         "allSessions": all_sessions,
     })
 }
@@ -1479,15 +1477,12 @@ pub(crate) struct InjectFactSources {
     pub(crate) all_sessions: fn() -> bool,
 }
 
-/// 全量注入开关的生产取值口：环境变量 [`RELAY_ALL_SESSIONS_ENV`] 恰好是 `1` 才算开。
+/// 全量注入开关的生产取值口：**默认开**，环境变量 [`RELAY_ALL_SESSIONS_ENV`] 恰好是 `0` 才关。
 ///
-/// # 为什么是一个环境变量、为什么默认关（`设计/20 §7` 步 4 逐字「必须带开关，默认关；真机验过再默认开」）
-///
-/// - **默认关**：没设 / 设成别的值 ⇒ 关 ⇒ 起会话的命令逐字节与本件之前相同。
-/// - **环境变量**：真机验证那一趟要能不重编就翻（`CCM_NO_DEVTOOLS` / `CCM_CJK_FONT` 同形）。
-/// - ⚠ 它**不是**设置页上的一个开关：「真机验过再默认开」那一天要做的是把默认值翻过来，不是加一个界面。
+/// 〔RL2 · V120 · V135〕并发真机量过（RT1）、真 claude 走过一次「无账号 → `/t/…/_/…`」（RL2，读数住 `调研/第四波记录/RELAY.md §1.1`）⇒ 翻成默认开；
+/// 旋钮留作退路（不重编就能关），它不是设置页上的开关。
 pub(crate) fn relay_all_sessions_switch() -> bool {
-    std::env::var(RELAY_ALL_SESSIONS_ENV).is_ok_and(|v| v == "1")
+    std::env::var(RELAY_ALL_SESSIONS_ENV).map_or(true, |v| v != "0")
 }
 
 /// 全量注入开关的环境变量名。
@@ -1556,7 +1551,6 @@ pub(crate) static LOCAL_RELAY_NOT_LISTENING: std::sync::LazyLock<String> =
 pub(crate) async fn relay_endpoint_on(
     origin: &crate::origin::Origin,
     account: Option<&LaunchAccount>,
-    sid: Option<&str>,
 ) -> Result<Option<String>, String> {
     let facts = inject_facts();
     let remote = match origin.route("relay_endpoint_for_launch")? {
@@ -1567,7 +1561,7 @@ pub(crate) async fn relay_endpoint_on(
         || copy_text("rsHistory.relay.here", &[]),
         |h| format!("[{h}] "),
     );
-    let args = launch_endpoint_args(account, sid, (facts.all_sessions)());
+    let args = launch_endpoint_args(account, (facts.all_sessions)());
     let data = (facts.endpoint)(remote.clone(), args).await.map_err(|e| {
         copy_text(
             "rsHistory.relay.unreachable",
@@ -1623,16 +1617,16 @@ async fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
-    let sid = match action {
-        LocalPsAction::Resume(sid) => Some(sid.as_str()),
-        LocalPsAction::New => None,
-        // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题 ⇒ **不问**那台后端（空前缀）；
-        // [`launch_local`] 随后在渲染那一截拒掉 attach（它不走 spawn 那条路），拒的理由由那里说。
-        #[cfg(not(windows))]
-        LocalPsAction::Attach => return Ok(String::new()),
-    };
+    // attach 不起 agent ⇒ 这一跳没有「往中转上指」这个问题 ⇒ **不问**那台后端（空前缀）；
+    // [`launch_local`] 随后在渲染那一截拒掉 attach（它不走 spawn 那条路），拒的理由由那里说。
+    #[cfg(not(windows))]
+    if matches!(action, LocalPsAction::Attach) {
+        return Ok(String::new());
+    }
+    #[cfg(windows)]
+    let _ = action;
     let windows = (inject_facts().windows)();
-    let url = relay_endpoint_on(&crate::origin::Origin::local(), account, sid).await?;
+    let url = relay_endpoint_on(&crate::origin::Origin::local(), account).await?;
     Ok(relay_prefix_for(url.as_deref(), windows))
 }
 
@@ -1666,12 +1660,7 @@ pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
 ///    （sid 过不了段闸 `relay_route_core::segment_is_safe` 时那一份回落到 nonce），而那一格恰恰是
 ///    「本条真的调了那一份铸法吗」唯一能被判据翻出来的一维。
 ///
-/// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
-///
-/// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
-/// 中转路由键那一份在 [`launch_endpoint_args`] 里（作 `launch-endpoint` 的 `key` 交给那台后端），与本 token 各铸各的。
-/// 〔TL3〕先前这里写的是「在 `payload::apikey_endpoint_for` 里」—— US1 把上游选择搬进后端之后，铸它的那一口挪到了这边的入参组装。
-/// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性」，而身份 token 与它**不共享任何消费者**。
+/// 〔V141〕先前这里登记过「新开会话时中转路由键与本 token 是两个不同的 nonce」：路由键那一段退役之后，本 token 是它唯一的去处。
 fn launch_identity_token(action: &LocalPsAction) -> String {
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),

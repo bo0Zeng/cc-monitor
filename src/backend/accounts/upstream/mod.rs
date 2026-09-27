@@ -298,6 +298,11 @@ impl Destinations for Accounts {
         let table = self.table.read().expect("lock");
         decide(&table, &self.upstreams, mode, key, act);
     }
+
+    /// 〔V141〕名单只从适配层来（`agents::session_headers`，与默认上游同一张注册表）。
+    fn stream_label_headers(&self) -> Vec<&'static str> {
+        crate::agents::session_headers()
+    }
 }
 
 /// 上游选择 `Refuse` 的两个码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。

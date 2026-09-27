@@ -363,8 +363,8 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
         ),
         (
             "route_key_for_session(",
-            3,
-            "`payload.rs` 的定义 1 + 中转那一处 1 + `history.rs` 身份那一处 1",
+            2,
+            "`payload.rs` 的定义 1 + `history.rs` 身份那一处 1（〔V141〕中转那一处随路由第 3 段退役：3 → 2）",
         ),
     ];
     let mut counts = [0usize; 2];

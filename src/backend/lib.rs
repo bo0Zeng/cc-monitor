@@ -570,7 +570,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4i-bus-mcp-tmux-reads**（2026-09-26，第四波 4D SH1 合并那一拍）：子命令 ＋3 `--bus-inbox` · `--mcp-read` · `--tmux-list`（帧命令同名 ＋3）。
 /// ＋ 行为：`bus-state` 读 `cc-list --tsv`（应答形状变）· `kill` 成功后按 pane pid `cc-kill` 注销 · `BUS_ID_RECIPE` 读会话名走 UTF-8 客户端（`-u`）。
-pub const BUILD_ID: &str = "p4i-bus-mcp-tmux-reads";
+///
+/// ★★★ **p4j-relay-all-sid-from-claude**（2026-09-26，RELAY 合并那一拍）：行为 / 协议 —— 全量中转默认开（`CCM_RELAY_ALL_SESSIONS=0` 才关，V135 真跑一次过了）·
+/// V141：注入地址不带会话段，路由 `/s|t/<agent>/<账号>` 两段（`relay_route_core`）· `launch-endpoint` 入参去掉 `key` · 中转从 claude 自己的请求头取流标签
+/// （头名登记在适配层 `DefaultUpstream::session_header`）。升级那一刻带旧三段地址的在飞会话会断（不留兼容）。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4j-relay-all-sid-from-claude";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

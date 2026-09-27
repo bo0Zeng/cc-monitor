@@ -1,7 +1,8 @@
 //! 路由：从请求路径里切出**路由键**，把其余部分原样交给上游。
 //!
-//! 形状 `/<前缀>/<seg1>/<seg2>/<seg3>/<真路径>` —— 三段都是**不透明串**。
-//! 中转不认识任何 agent 叫什么，也不解释 `<seg3>` 是会话 id 还是别的什么。
+//! 形状 `/<前缀>/<seg1>/<seg2>/<真路径>` —— 两段都是**不透明串**。中转不认识任何 agent 叫什么。
+//! 〔V141〕先前的第 3 段（流标签，resume 时是 sid、新开时是启动器铸的 nonce）退役：会话 id 归 agent 自己，
+//! 流标签取自请求头（`server.rs::stream_label`）。
 //!
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/05 §8` 步 4，2026-09-21〕
 //!
@@ -35,10 +36,9 @@
 //! 「**静默用了下游自己的凭据**」—— 那正是 `KH2` 在治的病的镜像。
 //! 两个前缀把这件事变成**构造上不可能**：`/s/` 永远 fail-closed，`/t/` 从来不代入。
 //!
-//! ⚠ **四个槽位一格没动** ⇒ [`segment_is_safe`] 一字不改，`parse` 只多剥一次前缀
-//! （`20 §0`：线格式本来就是对的，要动的只是中转怎么称呼它们）。
+//! ⚠ 加 `/t/` 时槽位一格没动 ⇒ [`segment_is_safe`] 一字不改，`parse` 只多剥一次前缀；〔V141〕之后槽位少了第 3 段。
 //!
-//! ⚠ `/t/` 的流量挂在全量注入开关后面（默认关，`设计/20 §7` 步 4）。〔US1〕注入哪个地址由上游选择
+//! ⚠ `/t/` 的流量挂在全量注入开关后面（默认开，RL2；`设计/20 §7` 步 4）。〔US1〕注入哪个地址由上游选择
 //! `accounts/upstream/endpoint.rs` 拼（`relay_route_core::base_url`，与本文件切的是同一份语法）。
 //!
 //! # ⚠ `<account>` 那一段是 `K-H2` 加的，理由与代价逐条记这里
@@ -64,8 +64,8 @@
 /// # 🔴 条 48（2026-09-18 拍板 (a)）：这几个字段**用位置名，不用业务名**
 ///
 /// 先前它是 `{ agent, account, key }` 三个业务名。今天是
-/// `{ mode, key: RouteKey{seg1,seg2}, stream }` —— 中转只知道「第 1/2/3 段」，
-/// 把前两段整包交给上游选择当键、把第 3 段当自己那条流的名字。
+/// `{ mode, key: RouteKey{seg1,seg2}, rest }` —— 中转只知道「第 1/2 段」，整包交给上游选择当键
+/// （〔V141〕第 3 段退役）。
 /// 谁是 agent、谁是账号，**只在 `accounts/` 那一层才有这两个词**。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Route {
@@ -73,19 +73,7 @@ pub(crate) struct Route {
     pub(crate) mode: super::Mode,
     /// 前两段，整包交给上游选择当键。中转**不解释**它们。
     pub(crate) key: super::RouteKey,
-    /// 第 3 段 —— 中转自己那条流的名字（它是 sid，但中转不需要知道）。
-    pub(crate) stream: String,
     pub(crate) rest: String,
-}
-
-impl Route {
-    /// 这一条请求在 tee 上的身份。**三个标签收成一个**（`20 §4`）。
-    pub(crate) fn stream_id(&self) -> super::StreamId<'_> {
-        super::StreamId {
-            key: &self.key,
-            stream: &self.stream,
-        }
-    }
 }
 
 /// 一段路由键里允许的字符 —— 白名单，不是黑名单（ASCII 字母数字与 `-` `_`，1..=128 字节）。
@@ -99,9 +87,7 @@ impl Route {
 /// 那个 crate 不是业务 crate（没有账号 / 凭据的名字），本文件是通信层成员也可以依赖它（`05 §2` `C2`）。
 pub(crate) use relay_route_core::segment_is_safe;
 
-/// 解析 `/<前缀>/<seg1>/<seg2>/<seg3>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
-///
-/// ⚠ 四个槽位**一格没动**（`20 §0`：线格式本来就是对的），动的只是中转怎么称呼它们。
+/// 解析 `/<前缀>/<seg1>/<seg2>/<rest>`。不是这个形状就返回 `None`（调用方回 404）。
 /// 〔US1〕前缀闭集与切法住 `relay_route_core::parse_target`（唯一住址）；本函数只把共享 crate 的模式
 /// 换成中转自己的契约类型 `super::Mode`（上游选择收的是它）。
 pub(crate) fn parse(target: &str) -> Option<Route> {
@@ -115,7 +101,6 @@ pub(crate) fn parse(target: &str) -> Option<Route> {
             seg1: p.seg1.to_string(),
             seg2: p.seg2.to_string(),
         },
-        stream: p.seg3.to_string(),
         rest: format!("/{}", p.rest),
     })
 }
