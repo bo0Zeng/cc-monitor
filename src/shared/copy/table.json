@@ -4832,6 +4832,16 @@
       "zh": "远端 [{machine}]",
       "args": ["machine"]
     },
+    "tabSessionActions.recordUnknown.title": {
+      "kind": "error",
+      "zh": "查不到记录还在不在，照常 resume",
+      "args": []
+    },
+    "tabSessionActions.recordUnknown.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，问不了会话记录还在不在。重装后端之后就有。",
+      "args": []
+    },
     "tabSessionActions.who.local": {
       "kind": "body",
       "zh": "本机",
