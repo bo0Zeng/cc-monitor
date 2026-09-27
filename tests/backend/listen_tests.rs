@@ -74,6 +74,29 @@ fn both_present_gives_listen_mode() {
     );
 }
 
+/// 〔HOST · H4〕attach 行可带这条连接的流模式旗标：缺 ⇒ 用进程默认；只认 `STREAM_FLAGS` 里那几个，别的一律当 malformed。
+#[test]
+fn attach_flags_are_optional_closed_and_per_connection() {
+    assert_eq!(attach_flags(r#"{"attach":"t"}"#), Ok(None));
+    assert_eq!(
+        attach_flags(r#"{"attach":"t","flags":["--tail-only","--with-rbind-token"]}"#),
+        Ok(Some((false, true, true)))
+    );
+    assert_eq!(
+        attach_flags(r#"{"attach":"t","flags":[]}"#),
+        Ok(Some((false, false, false))),
+        "空表 = 三个都不要（老后端那一形），不是「用默认」"
+    );
+    assert_eq!(
+        attach_flags(r#"{"attach":"t","flags":["--search"]}"#),
+        Err(())
+    );
+    assert_eq!(
+        attach_flags(r#"{"attach":"t","flags":"--tail-only"}"#),
+        Err(())
+    );
+}
+
 /// ★ 三张脸各判一次，且**错的 token 不许被判成 `Malformed`** ——
 /// 两者的处置一样（都拒），但诊断不一样，而诊断是这条路上唯一能查的东西。
 #[test]
@@ -115,31 +138,12 @@ fn tokens_match_is_exact() {
     assert!(!tokens_match("ABC", "abc"));
 }
 
-/// ★★ **分档表逐格钉死** —— 这是「一条流 + 不限次 hello」那一刀的全部内容。
-///
-/// ⚠ `stream_taken` 是**入参**而不是全局，正是为了让「已经有人占着」这一支
-/// 在不起两个真客户端的前提下也走得到（`brief` 第 9 条：空真那一族）。
+/// ★★ **分档表逐格钉死**。〔HOST · `设计/01 §3.3b ⑥`〕多客户：钥匙对上就交流（不再有「口被占着」那一格）。
 #[test]
 fn the_two_tier_split_is_pinned_cell_by_cell() {
-    assert_eq!(admit(Verdict::Attach, false), Admit::Stream);
-    assert_eq!(
-        admit(Verdict::Attach, true),
-        Admit::Refuse(REFUSE_BUSY),
-        "第二条要流的连接必须**出声地**拒（不是静默 FIN），否则客户端只能靠超时去猜"
-    );
-    assert_eq!(
-        admit(Verdict::WrongToken, false),
-        Admit::Refuse(REFUSE_AUTH)
-    );
-    assert_eq!(
-        admit(Verdict::Malformed, true),
-        Admit::Refuse(REFUSE_MALFORMED)
-    );
-    assert_ne!(
-        admit(Verdict::WrongToken, false),
-        admit(Verdict::Attach, true),
-        "「token 不对」与「口被占着」拒得一样 ⇒ 现场没法区分「我配置错了」与「已经有一个 monitor 连着」"
-    );
+    assert_eq!(admit(Verdict::Attach), Admit::Stream);
+    assert_eq!(admit(Verdict::WrongToken), Admit::Refuse(REFUSE_AUTH));
+    assert_eq!(admit(Verdict::Malformed), Admit::Refuse(REFUSE_MALFORMED));
 }
 
 /// 拒绝理由是闭集，且拼出来的每一行都是**合法 JSON**。
@@ -359,4 +363,21 @@ async fn the_three_handshake_line_outcomes_are_each_reachable() {
 fn the_two_exit_codes_are_distinct_and_nonzero() {
     assert_ne!(EXIT_ADDR_IN_USE, EXIT_BAD_LISTEN_CONFIG);
     assert!(EXIT_ADDR_IN_USE > 0 && EXIT_BAD_LISTEN_CONFIG > 0);
+}
+
+/// 〔HOST · H2 · `设计/01 §3.3b ⑥`〕多客户：A 与 C 同时连着，A 走了不算「最后一个」；都走了才归零；同一个号走两次不重复扣。
+#[test]
+fn the_last_client_is_the_last_of_all_connections_not_the_first_to_leave() {
+    let mut c = Clients::default();
+    let a = c.join();
+    let b = c.join();
+    assert_ne!(a, b);
+    assert_ne!(a, 0, "0 是空转那一份 watcher 的槽位号");
+    assert_eq!(
+        c.leave(a),
+        1,
+        "A 走了就算归零 —— C 还连着，后端却会按退出行为退"
+    );
+    assert_eq!(c.leave(a), 1, "同一条走两次扣了两次");
+    assert_eq!(c.leave(b), 0);
 }

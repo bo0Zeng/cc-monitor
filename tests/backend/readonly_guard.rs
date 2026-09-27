@@ -753,6 +753,14 @@ mod tests {
              不建目录、不截断、不追加。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer`）只从 `main.rs` 进（与〔RK1〕`relay/listen.rs` 一样，是不走 `inbound.rs` 的门）",
         ),
         (
+            "control/resident.rs",
+            "〔HOST · V139〕**常驻监听口的钥匙** `~/.cc-monitor/listen-token`（与本机宿主同一份）＋ 远端常驻后端自己记的 \
+             `~/.cc-monitor/listen-<口>.pid`。文件名 / 格式 / 落点都是本仓定的、只有常驻后端与起它的一方读 ⇒ 后端**自己的**状态，\
+             不是用户数据。钥匙：读回；没有才在目录锁里铸 → 临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ \
+             写满 → 原子挪过去；pid 文件同一条写法（只有绑上了口的那一个写）；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件。\
+             入口只有 `main.rs`（CLI 子命令 `--resident-ensure` · 常驻载体绑上口之后那一处）",
+        ),
+        (
             "own_dir.rs",
             "〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
@@ -813,7 +821,8 @@ mod tests {
         (
             "main.rs",
             "〔NT2 · S1〕流模式起来那一刻（一次性子命令全部 `exit` 之后、选载体之前）装 stderr 诊断文件 —— \
-             那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装",
+             那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装；\
+             〔HOST〕远端常驻后端的钥匙与 pid 文件（`--resident-ensure` 子命令 · 常驻载体绑上口之后），也没有帧命令可走",
         ),
     ];
 
@@ -848,6 +857,8 @@ mod tests {
         ("stderr_log.rs", "stderr_log::", "main.rs"),
         // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
         ("skill_ledger.rs", "skill_ledger::answer_", "inbound.rs"),
+        // 〔HOST〕针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
+        ("control/resident.rs", "resident::", "main.rs"),
         // 〔HX1〕后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
             "own_dir.rs",
@@ -2209,6 +2220,8 @@ mod tests {
             // ⚠ 刻意走 `fs::` 这个前缀而不是同义的方法写法：后者**这条判据看不见**，
             //    靠换调用形状绕过白名单正是本护栏 08-06 逮到过的那种逃生口。
             "canonicalize",
+            // 〔HOST〕`read_link`：读 `/proc/<pid>/exe`（停远端常驻后端之前核身份，`platform::proc::exe_of`）—— 纯读。
+            "read_link",
         ];
         let root = crate::guard_support::src_root();
         let mut bad: Vec<String> = Vec::new();
@@ -2638,6 +2651,15 @@ mod spawn_registry {
             "远端的中转改由别的东西起（比如常驻后端自己带着它）的那天摘掉。\
              ⚠ 在那之前**不许**往这一处起法底下加第二种用途 —— 它起的永远是本二进制的 `--relay`。",
         ),
+        (
+            "control/resident.rs",
+            "<非字面量>",
+            "〔HOST · V139〕远端那台的常驻后端由那台的 `--resident-ensure` 起：**本后端这个二进制自己**（`current_exe`）\
+             以常驻载体起（stdio 全空、自成进程组、钥匙经文件交）。被起的就是流模式那一臂，它自己的写面由本护栏照样管；\
+             **不是**后端进程自身写用户既有数据。只从 CLI 子命令 `--resident-ensure` 一条进来（monitor 经链路 capture 跑）。",
+            "缩性质",
+            "远端常驻后端改由别的东西起的那天摘掉。⚠ 在那之前**不许**往这一处底下加第二种用途 —— 它起的永远是本二进制的常驻载体。",
+        ),
     ];
 
     /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
@@ -2751,7 +2773,8 @@ mod spawn_registry {
         //    ⚠ 真的新面，不是搬家：远端起中转这件事此前后端侧一处都没有（`ALLOWED` 里那条新登记写了它起什么）。
         // 〔SH1 · D-g〕**12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
         //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
-        const SPAWN_SITES_TODAY: usize = 13;
+        // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
+        const SPAWN_SITES_TODAY: usize = 14;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -4889,6 +4912,8 @@ mod g6_dependency_signoff {
         // 〔RK1〕第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
         let want: std::collections::BTreeSet<String> = [
             "accounts/upstream/file_face.rs".to_string(),
+            // 〔HOST〕第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
+            "control/resident.rs".to_string(),
             "relay/door.rs".to_string(),
         ]
         .into_iter()

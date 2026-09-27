@@ -25,6 +25,23 @@
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 渲染 `$(cat "$HOME/<钥匙>")` 那一段（[`KEY_FILE_REL`]）·
 //!   载荷里那条中转地址的 fail-closed 校验（[`base_url_shape_ok`]，[`base_url`] 的逆）· 起会话身份 token 的字符集（[`segment_is_safe`]）。
 
+/// 〔HOST · `设计/05 §5.2` 两个端口〕**常驻监听口**的门牌也住这里（它与中转口是这台机器上后端的两个门）：
+/// 这台机器 ＋ 这个 agent 家目录 ⇒ 那一个口。本机宿主（monitor `local_backend_host`）与远端 `--resident-ensure` 同一个函数
+/// ⇒ 一台机器一个常驻后端，本机 / 远端视角收敛（`01 §3.3a`）。FNV-1a 写死（`DefaultHasher` 跨 Rust 版本不稳定，升级后要算出同一个口）。
+pub fn listen_port_for(home: &str) -> u16 {
+    const PORT_BASE: u16 = 49152;
+    const PORT_SPAN: u32 = 16384;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in home.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
+}
+
+/// 〔HOST〕常驻监听口的钥匙文件（相对家目录；0600，本机宿主与远端 `--resident-ensure` 同一份）。
+pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
+
 /// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
 /// **远端**：`relay-status` / `relay-ensure` 的 `port` 入参。独立 `--relay` 没被交端口时也用它。
 pub const PORT: u16 = 8788;

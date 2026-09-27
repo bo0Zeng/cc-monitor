@@ -841,6 +841,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // K-H1：起 HTTP 中转（常驻，不是一次性查询 —— 它住在这张表里是因为
     // `is_query_mode` 那道闸门读的是本表；不登记就会被当成未知 flag 静默进流模式）。
     "--relay",
+    // 〔HOST · V139〕远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
+    // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
+    "--resident-ensure",
+    "--resident-stop",
     "--resolve",
     "--search",
     "--session-accounts",
@@ -1750,6 +1754,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--limit",
     // 〔SE2〕`--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
     "--query",
+    // 〔HOST〕`--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
+    "--replace",
     "--scope",
     // 〔W5-AUX · `设计/96 §3.6`〕CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,

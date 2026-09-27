@@ -73,6 +73,13 @@ pub const ENV_PORT: &str = "CCM_LISTEN_PORT";
 /// 而 token 必须在两个宿主进程之间传得下去（上一个 monitor 退了，下一个要接上同一个后端）。
 pub const ENV_TOKEN: &str = "CCM_LISTEN_TOKEN";
 
+/// 〔HOST〕钥匙文件的**路径**（不是钥匙）：远端那台由 `--resident-ensure` 起常驻后端时交，子进程自己读 ——
+/// 钥匙一次都不经过 env / argv（与中转钥匙同形，`relay/door.rs` 头注）。本机宿主仍交 [`ENV_TOKEN`]。
+pub const ENV_TOKEN_FILE: &str = "CCM_LISTEN_TOKEN_FILE";
+
+/// 〔HOST · V139〕远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
+pub const RELAY_PORT_ENV: &str = crate::relay::ENV_PORT;
+
 /// bind 不上（多半是 `EADDRINUSE`）的退出码。**与「起不来」区分开**：
 /// 宿主看到它就知道「那个口上已经有人了」，该去连而不是再起一个。
 pub const EXIT_ADDR_IN_USE: i32 = 3;
@@ -159,6 +166,7 @@ where
 
 /// 拒绝的三种理由。**是闭集**：`refusal_line` 只拼这几个常量，没有任何一段外来字节
 /// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
+/// 〔HOST〕多客户之后**不再发**（[`admit`]）；常量留着只因 monitor 本机宿主还认它（那一臂成死路，列报主会话）。
 pub const REFUSE_BUSY: &str = "stream-busy";
 pub const REFUSE_AUTH: &str = "bad-token";
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
@@ -173,6 +181,8 @@ pub enum Mode {
     Stdio,
     /// 常驻：听一个回环口，认 token 之后才交出流。
     Listen { port: u16, token: String },
+    /// 〔HOST〕同上，钥匙在文件里（[`ENV_TOKEN_FILE`]）；`main` 读出来再换成 [`Mode::Listen`]（[`token_from_file`]）。
+    ListenTokenFile { port: u16, path: String },
 }
 
 /// 从环境算出形态。**纯函数**（`get` 是入参），所以两条错误支都测得到 ——
@@ -187,7 +197,15 @@ pub enum Mode {
 pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
     let raw_port = get(ENV_PORT).filter(|s| !s.trim().is_empty());
     let raw_token = get(ENV_TOKEN).filter(|s| !s.trim().is_empty());
+    let raw_file = get(ENV_TOKEN_FILE).filter(|s| !s.trim().is_empty());
     match (raw_port, raw_token) {
+        (Some(p), None) if raw_file.is_some() => {
+            let port = parse_port(&p)?;
+            Ok(Mode::ListenTokenFile {
+                port,
+                path: raw_file.unwrap_or_default().trim().to_string(),
+            })
+        }
         (None, None) => Ok(Mode::Stdio),
         (None, Some(_)) => Err(crate::common::contract::malformed(&format!(
             "{ENV_TOKEN} is set but {ENV_PORT} is not; refusing to fall back to stdio"
@@ -195,21 +213,44 @@ pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
         (Some(_), None) => Err(crate::common::contract::malformed(&format!(
             "{ENV_PORT} is set but {ENV_TOKEN} is not; refusing to open an unauthenticated port"
         ))),
-        (Some(p), Some(t)) => {
-            let port: u16 = p.trim().parse().map_err(|e| {
-                crate::common::contract::malformed(&format!(
-                    "{ENV_PORT}={p:?} is not a port number: {e}"
-                ))
-            })?;
-            if port == 0 {
-                return Err(crate::common::contract::malformed(&format!("{ENV_PORT}=0 would let the kernel pick a random port, but the host waits on the one it chose")));
-            }
-            Ok(Mode::Listen {
-                port,
-                token: t.trim().to_string(),
-            })
-        }
+        (Some(p), Some(t)) => Ok(Mode::Listen {
+            port: parse_port(&p)?,
+            token: t.trim().to_string(),
+        }),
     }
+}
+
+fn parse_port(p: &str) -> Result<u16, String> {
+    let port: u16 = p.trim().parse().map_err(|e| {
+        crate::common::contract::malformed(&format!("{ENV_PORT}={p:?} is not a port number: {e}"))
+    })?;
+    if port == 0 {
+        return Err(crate::common::contract::malformed(&format!("{ENV_PORT}=0 would let the kernel pick a random port, but the host waits on the one it chose")));
+    }
+    Ok(port)
+}
+
+/// 〔HOST〕形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙在文件里那一形此刻读出来）。
+pub fn resolve(m: Mode) -> Result<Option<(u16, String)>, String> {
+    match m {
+        Mode::Stdio => Ok(None),
+        Mode::Listen { port, token } => Ok(Some((port, token))),
+        Mode::ListenTokenFile { port, path } => Ok(Some((port, token_from_file(&path)?))),
+    }
+}
+
+/// 〔HOST〕读钥匙文件：读不动 / 空 ⇒ `Err`（fail closed：不起一个不设防的口）。报错里只有路径。
+pub fn token_from_file(path: &str) -> Result<String, String> {
+    let t = std::fs::read_to_string(path).map_err(|e| {
+        crate::common::contract::malformed(&format!("{ENV_TOKEN_FILE}={path:?}: {e}"))
+    })?;
+    let t = t.trim();
+    if t.is_empty() {
+        return Err(crate::common::contract::malformed(&format!(
+            "{ENV_TOKEN_FILE}={path:?} is empty; refusing to open an unauthenticated port"
+        )));
+    }
+    Ok(t.to_string())
 }
 
 /// 一条 attach 请求的裁决。
@@ -246,6 +287,27 @@ pub fn attach_verdict(line: &str, expected: &str) -> Verdict {
     }
 }
 
+/// 〔HOST〕attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
+/// 缺 ⇒ `Ok(None)`（用进程起参那一份）；有但不是串数组、或含 `lib::STREAM_FLAGS` 以外的 ⇒ `Err`（当 malformed 拒）。
+/// 回 `(with_bg, tail_only, with_rbind_token)`：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
+pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
+    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
+    let Some(raw) = v.get("flags") else {
+        return Ok(None);
+    };
+    let list = raw.as_array().ok_or(())?;
+    let mut words = Vec::with_capacity(list.len());
+    for f in list {
+        let w = f.as_str().ok_or(())?;
+        if !crate::STREAM_FLAGS.contains(&w) {
+            return Err(());
+        }
+        words.push(w.to_string());
+    }
+    let (_, with_bg, tail_only, with_rbind_token) = crate::split_stream_flags(words);
+    Ok(Some((with_bg, tail_only, with_rbind_token)))
+}
+
 /// 定长时间的字节比对：**跑完全部**，不提前返回。
 ///
 /// 长度不同直接判不等（长度本来就藏不住，它在 `read_line` 的字节数里）。
@@ -279,13 +341,40 @@ pub enum Admit {
     Refuse(&'static str),
 }
 
-/// 分档。`stream_taken` = 此刻是不是已经有一条流挂着。
-pub fn admit(verdict: Verdict, stream_taken: bool) -> Admit {
+/// 分档。〔HOST · `设计/01 §3.3b ⑥`〕多客户：钥匙对上就交流，不再看「有没有人占着」（[`REFUSE_BUSY`] 不再发）。
+pub fn admit(verdict: Verdict) -> Admit {
     match verdict {
         Verdict::Malformed => Admit::Refuse(REFUSE_MALFORMED),
         Verdict::WrongToken => Admit::Refuse(REFUSE_AUTH),
-        Verdict::Attach if stream_taken => Admit::Refuse(REFUSE_BUSY),
         Verdict::Attach => Admit::Stream,
+    }
+}
+
+/// 〔HOST · `设计/01 §3.3b ⑥`〕此刻连着的流（多客户）。连接号从 1 起（0 留给空转那一份 watcher 的槽位）；
+/// 「最后一个客户走了」= [`Clients::leave`] 回 0 —— 不是「起我的那个 monitor 退了」。
+#[derive(Debug, Default)]
+pub struct Clients {
+    live: std::collections::BTreeSet<u64>,
+    next: u64,
+}
+
+impl Clients {
+    /// 接上一条：回它的连接号。
+    pub fn join(&mut self) -> u64 {
+        self.next += 1;
+        self.live.insert(self.next);
+        self.next
+    }
+
+    /// 走了一条：回还剩几条（同一个号走两次不重复扣）。
+    pub fn leave(&mut self, id: u64) -> usize {
+        self.live.remove(&id);
+        self.live.len()
+    }
+
+    /// 此刻几条。
+    pub fn count(&self) -> usize {
+        self.live.len()
     }
 }
 

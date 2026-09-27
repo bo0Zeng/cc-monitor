@@ -30,14 +30,15 @@ use crate::wire::{Frame, TapEnd};
 /// 登记住址 `src/bridge/src/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
 pub(crate) const TAP_CAPACITY: usize = 256;
 
-/// 进程级 hub：此刻那条流连接的 tap 发送端。
+/// 进程级 hub：此刻每条流连接的 tap 发送端。
+/// 〔HOST · `设计/01 §3.3b ⑥`〕多客户：每条连接一条，扇出；那条连接走了（接收端没了）下一次交的时候摘掉。
 #[derive(Default)]
 pub(crate) struct TapHub {
-    current: std::sync::Mutex<Option<tokio::sync::mpsc::Sender<TapEvent>>>,
+    current: std::sync::Mutex<Vec<tokio::sync::mpsc::Sender<TapEvent>>>,
 }
 
 impl TapHub {
-    /// 一条流连接接上了：新建一条有界通道，发送端换进来（上一条连接的发送端随之丢掉），接收端交给它的写者。
+    /// 一条流连接接上了：新建一条有界通道，发送端加进来，接收端交给它的写者。
     pub(crate) fn attach(&self) -> tokio::sync::mpsc::Receiver<TapEvent> {
         self.attach_bounded(TAP_CAPACITY)
     }
@@ -45,18 +46,25 @@ impl TapHub {
     /// 同 [`Self::attach`]，容量由调用方给（生产只经 `attach` 走 [`TAP_CAPACITY`]；判据拿小容量造「跟不上」）。
     pub(crate) fn attach_bounded(&self, cap: usize) -> tokio::sync::mpsc::Receiver<TapEvent> {
         let (tx, rx) = tokio::sync::mpsc::channel::<TapEvent>(cap);
-        *self.current.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        self.current
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(tx);
         rx
     }
 }
 
 impl TapPort for TapHub {
-    /// 立刻答收没收（`try_send`）。没人连着 / 通道满 / 那条连接已走 ⇒ `false`（号已由 tee 占掉，缺口在接收侧可算）。
+    /// 立刻答收没收（`try_send`）：每条连接各交一份，至少一条收下 ⇒ `true`。没人连着 / 都满 ⇒ `false`
+    /// （号已由 tee 占掉，缺口在各自接收侧可算）。已走的连接当场摘掉。
     fn offer(&self, ev: TapEvent) -> bool {
-        match &*self.current.lock().unwrap_or_else(|e| e.into_inner()) {
-            Some(tx) => tx.try_send(ev).is_ok(),
-            None => false,
+        let mut g = self.current.lock().unwrap_or_else(|e| e.into_inner());
+        g.retain(|tx| !tx.is_closed());
+        let mut took = false;
+        for tx in g.iter() {
+            took |= tx.try_send(ev.clone()).is_ok();
         }
+        took
     }
 }
 
