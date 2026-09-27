@@ -148,7 +148,7 @@ if grep -qE "\"kind\":\"session_added\".*$SID" "$NEW_FR" 2>/dev/null; then bad "
 
 # ── 2. 驱动真源换号重启到 znew（新号目录）:真 kill 旧、真 resume 到新号 ────────────────────────
 echo "-- 驱动真源 restartWithAccount 换号 → znew（kill 旧进程 + resume 到新号目录）--"
-ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true}]}'
+ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 OUT="$(CCM_ACCOUNTS_JSON="$ACCTS" CCM_SEQ_LOG="$WORK/seq.log" CCM_TOAST_LOG="$WORK/toast.log" \
   npx tsx "$DRV" restart devbox "$SID" /tmp/e2e-remote "$S" znew "$FAKE" 0 1 1 1)"
 echo "   $(echo "$OUT" | paste -sd' ' -)  | seq: $(paste -sd' ' -<"$WORK/seq.log")"
