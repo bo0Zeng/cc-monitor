@@ -460,6 +460,8 @@ const SCAN: &[&str] = &[
     "tests/online-bypass-ledger.vitest.ts",
     // 〔TL3〕「是不是本机」只在 `src/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
     "tests/origin-single-home.vitest.ts",
+    // 〔GAP1 · `设计/01 §1.5`〕overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
+    "tests/overlay-router.vitest.ts",
     "tests/panorama/api-remote.vitest.ts",
     "tests/panorama/diagram-guards.vitest.ts",
     "tests/paste-block-guard.vitest.ts",

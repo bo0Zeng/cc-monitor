@@ -184,6 +184,32 @@ pub(crate) fn search_counting(
     Ok(unreadable)
 }
 
+/// 〔GAP1 · `设计/10 §7` 第 10 条〕会话内查找走同一份常驻索引：这一份 (mtime, 长度) 没变不读、变长只读尾巴。
+/// 回 `None` = 这一份不归索引管（不在 projects 下 / 读不动）⇒ 调用方退回现扫（[`scan_session_find`]，口径同一套）。
+pub(crate) fn find_indexed(
+    agent_home: &Path,
+    target: &Path,
+    query: &str,
+    include_tools: bool,
+    limit: usize,
+    on_hit: impl FnMut(&Value) -> std::io::Result<()>,
+) -> Option<std::io::Result<(u64, u64)>> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return Some(Ok((0, 0)));
+    }
+    let fence = Fence::at(&projects_root(agent_home)).ok()?;
+    let path = fence.admit(target).ok()?;
+    let mut resident = RESIDENT.lock().unwrap_or_else(|p| {
+        let mut g = p.into_inner();
+        g.clear();
+        RESIDENT.clear_poison();
+        g
+    });
+    let index = resident.entry(fence.root().to_path_buf()).or_default();
+    index.find(&path, &q, include_tools, limit, on_hit)
+}
+
 /// 〔SX1〕进程级常驻索引：规范化的 projects 根 → 那一棵的索引。第一问时懒建，不预热。
 static RESIDENT: std::sync::Mutex<BTreeMap<PathBuf, SearchIndex>> =
     std::sync::Mutex::new(BTreeMap::new());
@@ -406,6 +432,45 @@ impl SearchIndex {
         let mut e = FileEntry::empty(seen.0, tools);
         e.take(seen.0, &buf);
         Ok(e)
+    }
+
+    /// 〔GAP1〕一份会话里按文件序出命中：只看完整行（`done`，与 [`scan_session_find`] 同）、跳过没 uuid 的。`q` 已小写、已 trim。
+    fn find(
+        &mut self,
+        path: &Path,
+        q: &str,
+        include_tools: bool,
+        limit: usize,
+        mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
+    ) -> Option<std::io::Result<(u64, u64)>> {
+        self.last = Refresh::default();
+        let prev = self.files.remove(path);
+        let entry = self.bring_up(path, prev, include_tools).ok()?;
+        if entry.bad.is_some() {
+            self.files.insert(path.to_path_buf(), entry);
+            return None; // 读不动：现扫那一臂是 lossy 读，口径不许在这里变
+        }
+        let (mut count, mut total) = (0u64, 0u64);
+        let mut result = Ok(());
+        for rec in entry.done.records.iter().filter(|r| !r.uuid.is_empty()) {
+            let Some((kind, hit)) = record_hit(&rec.rt, q, include_tools) else {
+                continue;
+            };
+            total += 1;
+            if (count as usize) < limit && result.is_ok() {
+                let (before, matched, after) = search_core::make_snippet(hit, q);
+                result = on_hit(&serde_json::json!({
+                    "uuid": rec.uuid,
+                    "kind": kind,
+                    "before": before,
+                    "matched": matched,
+                    "after": after,
+                }));
+                count += 1;
+            }
+        }
+        self.files.insert(path.to_path_buf(), entry);
+        Some(result.map(|()| (count, total)))
     }
 
     /// 扫 projects/**/*.jsonl（与旧现扫同一个 walk、同一个排序、同一道围栏），每命中会话输出一行 JSON。`q` 已小写、已 trim。

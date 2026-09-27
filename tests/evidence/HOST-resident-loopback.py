@@ -201,7 +201,7 @@ def main():
         cmd_raw = open(f"/proc/{pid1}/cmdline", "rb").read() if pid1 and pid_alive(pid1) else b""
         check("钥匙不在子进程的 env / argv 里（env 里只有钥匙文件路径）", bool(token) and token.encode() not in env_raw and token.encode() not in cmd_raw and b"CCM_LISTEN_TOKEN_FILE=" in env_raw)
         check("子进程被交了中转口（V139：远端中转进程内起）", b"CCM_RELAY_PORT=8788" in env_raw)
-        log = os.path.join(rhome, ".cc-monitor", "resident-stderr.log")
+        log = os.path.join(rhome, ".cc-monitor", "logs", "backend", "stderr.log")  # 〔GAP1〕与本机同一层级
         check("它的诊断落进远端家目录下的 stderr 文件、里面有中转那一句", wait_for(lambda: os.path.exists(log) and "relay" in open(log, errors="replace").read(), 5))
 
         print("② 接：tunnel → hello → attach（多客户：两条同时）")

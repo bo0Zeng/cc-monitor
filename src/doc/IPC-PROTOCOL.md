@@ -2453,6 +2453,24 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
   〔RM1f · 本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
   放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
 
+#### `backend-log`：这台后端的 stderr 诊断文件尾部（〔GAP1〕`设计/15 §4.7 S1`，2026-09-26）
+
+```text
+→ {"id":"q20","cmd":"backend-log","args":{"maxBytes":262144}}
+← {"kind":"reply","id":"q20","ok":true,"data":{"path":"/home/u/.cc-monitor/logs/backend/stderr.log","size":81920,"text":"…","truncated":false}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `maxBytes` | → | 可选，缺省 = 封顶 256 KiB：只回尾部这么多字节 |
+| `path` | ← | 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null` |
+| `size` | ← | 那份文件的总字节数 |
+| `text` | ← | 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行 |
+| `truncated` | ← | 前面还有没回的字节 |
+
+**为什么**：远端常驻后端的 stderr 落它自己那台的 `~/.cc-monitor/logs/backend/stderr.log`（`--resident-ensure` 交路径），
+而那台没有人看得见；机器页「日志」经这台后端的只读面取回来看（不另开通道）。只读，不写盘。CLI 面随之自动多一条 `--backend-log`。
+
 #### `history-find`：会话内查找（〔SR1a × SE2〕2026-09-24 上帧面）
 
 ```text

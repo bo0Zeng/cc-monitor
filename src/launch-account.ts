@@ -337,7 +337,8 @@ export async function withAccount(
    *  注意这只对"值能由本函数自己推出"的维度成立；若是用户在 UI 现场勾选的维度
    *  （如 `--dangerously-skip-permissions`），本函数推不出来，届时需给 `opts` 加
    *  `extraModifiers?: LaunchModifiers` 让调用方注入并在内部 merge，那时 lambda 才真的零改。 */
-  run: (mods: LaunchModifiers) => Promise<void>,
+  /** 回 `false` = 这一趟没起（被记录探针拦下，`设计/30 §8` 第 4 条）⇒ 不记「上次用的账号」。 */
+  run: (mods: LaunchModifiers) => Promise<void | false>,
   opts: {
     sessionId?: string;
     /** account-ux U2:仅当 accountName===null 时生效——启用「跟随」解析(lastAccount→当前账号→基座)。 */
@@ -393,12 +394,12 @@ export async function withAccount(
   }
   const modelOverride =
     resolution.kind === "account" ? await getModelForAccount(resolution.name) : undefined;
-  await run({
+  const launched = await run({
     configDir,
     accountName: resolution.kind === "account" ? resolution.name : undefined,
     modelOverride,
   });
-  if (recordName && configDir && opts.sessionId) {
+  if (launched !== false && recordName && configDir && opts.sessionId) {
     void recordLastAccount(opts.sessionId, recordName);
   }
 }

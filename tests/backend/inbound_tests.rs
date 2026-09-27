@@ -519,6 +519,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-index",
         "history-user-inputs",
         "history-find",
+        "backend-log",   // 〔GAP1〕
         "history-facts", // 〔STC〕
         "history-read",
         "history-lines",  // 〔CF2〕
@@ -631,6 +632,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-index",
         "history-user-inputs",
         "history-find",
+        "backend-log",   // 〔GAP1〕
         "history-facts", // 〔STC〕
         "history-read",
         "history-lines",  // 〔CF2〕
