@@ -82,14 +82,14 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = out.flush().await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = self.close().await;", 1, Why::Reap, "放弃 / 提前收工时向远端发关通道：对端撤活只是尽力（`05 §3.3.3`）"),
     ("src/backend/dial/uses.rs", "let _ = write_line(out, &got).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=capture 却没给 capture 参数\".into(), fp)).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=forward 却没给 forward 参数\".into(), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=capture without `cap", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=forward without `for", 1, Why::DeadLink, ""),
     // 〔HOST〕隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(\"请求里 use=tunnel 却没给 tunnel_port\".into(), fp)).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"远端 127.0.0.1:{port} 连不上: {e}\"), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=tunnel without `tunn", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.tunnel.unreachable\", &[(\"port\", &port.to_s", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", 4, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"exec {} 失败: {e}\", req.command), fp)).await;", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"绑定本地端口 127.0.0.1:{} 失败: {e}\", spec.local_port), fp)", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.failed\", &[(\"e\", &e.to_string())]), f", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.forward.bindFailed\", &[ (\"port\", &spec.loc", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &fail(e)).await;", 1, Why::DeadLink, ""),
     ("src/backend/files/browse_watch.rs", "let _ = self.inner.unwatch(&super::raw::to_path_buf(d));", 1, Why::Reap, "撤不再看的目录的 watch：目录已删时 unwatch 本来就会失败"),
     ("src/backend/files/mod.rs", "let _ = write!(out, \"{b:02x}\");", 1, Why::InfallibleWrite, "`out` 是 `String`（十六进制摘要）"),
@@ -202,7 +202,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(stderr.as_bytes());", 1, Why::Diag, ""),
     ("src/panorama-engine/main.rs", "let _ = std::io::stdout().write_all(stdout.as_bytes());", 1, Why::Diag, ""),
     // 〔W5-AUX · `设计/96 §3.6`〕capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(format!(\"远端命令起来了，但交给它的那一行没送过去: {e}\"), fp)).await;", 1, Why::DeadLink, ""),
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.stdinLost\", &[(\"e\", &e.to_string())])", 1, Why::DeadLink, ""),
     // 〔VIS2 · 09-26〕`agent_home` 的可重入挂法（`rewatch_agent_home`，`设计/15 §4.7 S3`）：同上面三个目录那一族。
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", 2, Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
 ];
