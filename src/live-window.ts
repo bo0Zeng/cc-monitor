@@ -29,6 +29,70 @@ import {
   type SkeletonKind,
 } from "./height-estimate";
 
+/**
+ * 〔RENDER2 · `设计/10 §3.2`〕**一个 tab 见过的行号**（入口按 seq 去重的那一格），存成升序、互不相邻的半开区间 `[lo, hi)`。
+ * 段数的上界：不可显示的行由 monitor 以 `skipped_from` 告知、取回的整段按 `[from, next)` 记 ⇒ 一份收全了的会话收成一段；
+ * 余下的段只来自真没到过的洞（重放在途 · 丢格）与「最后一个可显示行之后那一截不可显示的」，不随会话长度涨。
+ */
+export class SeqSet {
+  /** `[lo0, hi0, lo1, hi1, …]`，升序、段与段之间至少隔一个号。 */
+  private edges: number[] = [];
+
+  /** 段数（读数与判据用）。 */
+  get segments(): number {
+    return this.edges.length / 2;
+  }
+
+  get isEmpty(): boolean {
+    return this.edges.length === 0;
+  }
+
+  /** 见过的最大行号（空 ⇒ -1）。 */
+  get max(): number {
+    return this.edges.length === 0 ? -1 : this.edges[this.edges.length - 1] - 1;
+  }
+
+  /** 第一个 `hi > x` 的段的下标（段号，不是 edges 下标）。 */
+  private segAtOrAfter(x: number): number {
+    let l = 0;
+    let r = this.edges.length / 2;
+    while (l < r) {
+      const m = (l + r) >>> 1;
+      if (this.edges[2 * m + 1] <= x) l = m + 1;
+      else r = m;
+    }
+    return l;
+  }
+
+  has(seq: number): boolean {
+    const i = this.segAtOrAfter(seq);
+    return i < this.edges.length / 2 && this.edges[2 * i] <= seq;
+  }
+
+  add(seq: number): void {
+    this.addRange(seq, seq + 1);
+  }
+
+  /** 记下 `[lo, hi)`（空区间不动）；与相交 / 相邻的段并成一段。 */
+  addRange(lo: number, hi: number): void {
+    if (hi <= lo) return;
+    // 第一个 hi >= lo 的段（相邻也并）与第一个 lo > hi 的段之间的全部并掉。
+    const a = this.segAtOrAfter(lo - 1);
+    let b = a;
+    const n = this.edges.length / 2;
+    while (b < n && this.edges[2 * b] <= hi) b++;
+    if (a < b) {
+      lo = Math.min(lo, this.edges[2 * a]);
+      hi = Math.max(hi, this.edges[2 * b - 1]);
+    }
+    this.edges.splice(2 * a, 2 * (b - a), lo, hi);
+  }
+
+  clear(): void {
+    this.edges = [];
+  }
+}
+
 /** 升序 pending 里第一个 `seq >= x` 的下标 */
 function lowerBound(arr: JsonlLinePayload[], x: number): number {
   let l = 0;

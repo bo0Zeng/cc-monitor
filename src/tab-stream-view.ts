@@ -18,7 +18,7 @@ import { attachBranchButton } from "./branch-button"; // G4：实时会话的分
 import type { BranchResult } from "./generated/BranchResult";
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
-import { TailWindow, type SkeletonLedger } from "./live-window";
+import { SeqSet, TailWindow, type SkeletonLedger } from "./live-window";
 // 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 import { skeletonKind } from "./height-estimate";
@@ -274,7 +274,7 @@ export class TabStreamView {
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       pendingToolResults: new Map(),
-      seenSeqs: new Set(),
+      seenSeqs: new SeqSet(),
       window: new TailWindow(),
       skeleton: null,
       skeletonFetch: "idle",
@@ -826,6 +826,7 @@ export class TabStreamView {
             (p) => tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content",
           );
           this.feedHistoryRows(tab, fresh);
+          tab.seenSeqs.addRange(a, b); // 〔RENDER2〕这一段整段到过（不可显示的也算）
           if (again.length > 0) this.renderPayloadsBatch(tab, again);
         })
         .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
@@ -897,6 +898,7 @@ export class TabStreamView {
           }
         }
         this.feedHistoryRows(tab, fresh);
+        tab.seenSeqs.addRange(page.from, page.next); // 〔RENDER2〕同上
         tab.window.markFetchedBelow(range.from);
         this.updateSentinel(tab);
         if (this.store.activeId === tab.sessionId && tab.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) {
@@ -929,9 +931,8 @@ export class TabStreamView {
   recoverFromGap(tab: Tab): void {
     tab.window.dropPending();
     this.updateSentinel(tab);
-    if (!tab.parentPath || tab.seenSeqs.size === 0 || this.forwardFills.has(tab)) return;
-    let max = -1;
-    for (const s of tab.seenSeqs) if (s > max) max = s;
+    if (!tab.parentPath || tab.seenSeqs.isEmpty || this.forwardFills.has(tab)) return;
+    const max = tab.seenSeqs.max;
     this.forwardFills.add(tab);
     const jsonlPath = tab.parentPath;
     const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
@@ -952,6 +953,7 @@ export class TabStreamView {
             tab,
             page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
           );
+          tab.seenSeqs.addRange(page.from, page.next); // 〔RENDER2〕同上
           if (page.eof || page.next <= from) return this.forwardFills.delete(tab);
           step(page.next);
           return true;

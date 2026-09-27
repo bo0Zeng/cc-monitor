@@ -22,7 +22,7 @@ import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
-import { TailWindow } from "./live-window";
+import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
@@ -339,6 +339,8 @@ export class TabManager {
     // 〔RENDER2 · `设计/10 §3.2`〕这是**唯一**一道：seq ＝ 当前文件里的行号，从头重读先出声、tab 整份重来
     //   （`onRecordFileReread`）⇒「换新 seq 重投同一条记录」那条路没了，原先按 uuid 再挡的那一道随之删了。
     if (tab.seenSeqs.has(payload.seq)) return;
+    // 〔RENDER2〕monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。
+    if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
     // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在去重**之后**：
@@ -671,7 +673,7 @@ export class TabManager {
       toolUseElements: new Map(),
       branchFolder,
       pendingToolResults: new Map(),
-      seenSeqs: new Set(),
+      seenSeqs: new SeqSet(),
       window: new TailWindow(),
       skeleton: null,
       skeletonFetch: "idle",

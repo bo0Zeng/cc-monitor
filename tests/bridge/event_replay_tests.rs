@@ -11,6 +11,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         seq: idx as u64,
         origin: None,
         message: JsonlRecord::Unknown,
+        skipped_from: None,
     }
 }
 
