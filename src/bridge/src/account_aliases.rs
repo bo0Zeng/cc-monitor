@@ -195,7 +195,7 @@ pub struct AliasInstallReport {
 
 /// 能进别名的 ccm 壳层选项：`(旗标, 要不要跟一个值)`。`71 §2.1` 第一、二档；
 /// 第三档（[`NOT_IN_ALIASES`]）每次取值都不同，做成固定别名没意义 ⇒ 不收。
-/// `--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，另判。〔V138〕其余的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
+/// `--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，另判。〔V151〕它们只许写在最后一个 `--` 右边；左边的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
 ///
 /// ⚠ 每一个旗标都得是后端 `ccm --help` 里真有的那个词 —— 判据
 /// `account_aliases_tests.rs::every_alias_flag_is_a_real_ccm_flag` 去后端的用法文本里对（异源）。
@@ -314,21 +314,24 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
     let (mut account, mut base, mut tmux, mut tmux_named, mut tmux_base) =
         (false, false, false, false, false);
     let (mut size, mut detach, mut bus, mut note) = (false, false, false, false);
-    let mut it = a.args.iter();
+    // 〔V151〕别名的预置参数就是一条 `ccm` argv：`<交给 claude 的…> -- <ccm 自己的…>`（按最后一个 `--` 切）。
+    //   左边原样放行（只过控制字符与方言那一关）；右边只认能进别名的壳层选项，认不得就拒（与 ccm 运行时同一条）。
+    let (left, right) = match a.args.iter().rposition(|w| w == "--") {
+        Some(k) => (&a.args[..k], &a.args[k + 1..]),
+        None => (&a.args[..], &a.args[..0]),
+    };
+    for w in left {
+        if w.chars().any(char::is_control) {
+            return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
+        }
+        d.arg_is_passable(w)?;
+    }
+    let mut it = right.iter();
     while let Some(w) = it.next() {
         if w.chars().any(char::is_control) {
             return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
         }
         d.arg_is_passable(w)?;
-        if w == "--" {
-            for x in it.by_ref() {
-                if x.chars().any(char::is_control) {
-                    return Err(copy_text("rsAccountAliases.check.controlChar", &[]).into());
-                }
-                d.arg_is_passable(x)?;
-            }
-            break;
-        }
         // 能力闸（`71 §4.6 ①`：「`cct` 在 Windows 上没有」从硬编码变成能力查询）。
         let head = w.split_once('=').map_or(w.as_str(), |(h, _)| h);
         if !caps.tmux && NEEDS_TMUX.contains(&head) {
@@ -359,9 +362,12 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
                 &[("word", &w.to_string())],
             ));
         }
-        // V138：不是 ccm 的壳层选项 ⇒ 交给 claude 的词，原样放行（控制字符与方言那一关上面已过）。
+        // 〔V151〕`--` 右边认不得 ⇒ 拒（ccm 运行时同样拒；交给 claude 的词写在 `--` 左边）。
         let Some((flag, takes)) = ALIAS_FLAGS.iter().find(|(f, _)| f == w) else {
-            continue;
+            return Err(copy_text(
+                "rsAccountAliases.check.notCcmFlag",
+                &[("word", &w.to_string())],
+            ));
         };
         if *takes {
             match it.next() {

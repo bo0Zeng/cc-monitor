@@ -40,7 +40,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --base"
+      "out": "ccm -- --base"
     },
     {
       "name": "new + 具名账号",
@@ -81,7 +81,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --account z"
+      "out": "ccm -- --account z"
     },
     {
       "name": "resume + tmux + 具名账号",
@@ -125,7 +125,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume abc-123 --ccm-tmux=cc-abc123 --account z"
+      "out": "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --account z"
     },
     {
       "name": "resume + cwd + model",
@@ -166,7 +166,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume s1 --base --model opus --cwd /w"
+      "out": "ccm --resume s1 --model opus -- --base --cwd /w"
     },
     {
       "name": "identity（--ccm-sid）",
@@ -206,7 +206,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --ccm-sid=sid-1 --base"
+      "out": "ccm -- --ccm-sid=sid-1 --base"
     },
     {
       "name": "自定义 launcher",
@@ -246,7 +246,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --base --launcher mycc"
+      "out": "ccm -- --base --launcher mycc"
     },
     {
       "name": "launcher 等于默认 ⇒ 不吐 --launcher",
@@ -286,7 +286,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --base"
+      "out": "ccm -- --base"
     },
     {
       "name": "attach（分支在维度循环之前 return）",
@@ -329,7 +329,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --attach cc-foo"
+      "out": "ccm -- --attach cc-foo"
     },
     {
       "name": "需要 quote 的 cwd",
@@ -369,7 +369,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --base --cwd '/home/用户/带 空格'"
+      "out": "ccm -- --base --cwd '/home/用户/带 空格'"
     },
     {
       "name": "未装 ccm",
@@ -703,7 +703,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
+      "out": "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
     },
     {
       "name": "print-parity:newTmuxCustomLauncher",
@@ -745,7 +745,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
+      "out": "ccm -- --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
     },
     {
       "name": "print-parity:attach",
@@ -788,7 +788,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --attach cc-p1"
+      "out": "ccm -- --attach cc-p1"
     },
     {
       "name": "print-parity:resumeTmuxWithModel",
@@ -831,7 +831,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp"
+      "out": "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
     }
   ]
 }
