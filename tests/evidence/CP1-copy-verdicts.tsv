@@ -21,8 +21,6 @@ src/backend/control/launch.rs:444	写身份意图	保留	[不对外] 〔W5-VIS�
 src/backend/control/launch.rs:445	打开窗口标题	保留	[不对外] 〔W5-VIS〕同上（哪一步），只进后端日志
 src/backend/control/launch.rs:446	设窗口标题格式	保留	[不对外] 〔W5-VIS〕同上（哪一步），只进后端日志
 src/backend/control/launch.rs:466	会话 {session:?} 建好了，但{}没做成：{why} —— {}	保留	[不对外] 〔W5-VIS〕S5：secondary_note 拼出的那一行，只经 tracing::warn! 进后端日志
-src/backend/dial/connect.rs:90	超时	保留	[不对外] 〔C2〕dial::connect::classify_stage 的匹配关键词（搬自 ssh_source.rs 同一函数），不上界面
-src/backend/dial/connect.rs:92	指纹	保留	[不对外] 〔C2〕dial::connect::classify_stage 的匹配关键词（搬自 ssh_source.rs:442 同句同裁），不上界面
 src/backend/dial/connect.rs:181	拨号任务异常: {je}	改·§2.1	[可达存疑] 〔C2〕搬自 ssh_source.rs:602 同句同裁：收进拨号错误列表、可能拼进连接失败报错；「拨号任务异常」是 tokio JoinError 的实现话 →「连接中断：{je}」
 src/backend/dial/connect.rs:250	agent 身份被拒（user={user}）	改·§2.1	[可达存疑] 〔C2〕搬自 ssh_source.rs:845 同句同裁：鉴权失败原因进 last_err 最终上报；`user={user}` 是日志行格式 →「ssh-agent 里的密钥被拒（用户 {user}）」
 src/backend/dial/connect.rs:251	agent 签名鉴权出错: {e}	保留	[可达存疑] 〔C2〕搬自 ssh_source.rs:846 同句同裁：鉴权失败原因，ssh-agent 是用户认得的词（R1b 语境内）

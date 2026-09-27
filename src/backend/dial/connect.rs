@@ -99,18 +99,27 @@ impl client::Handler for Checker {
     }
 }
 
-/// 把 russh 的连接错误粗分成阶段标签（界面泳道用不同图标）。命中关键词才归类，否则 `other`。
-/// 〔搬自界面侧 `ssh_source::classify_stage`，那一份随拨号一起删了 —— 只此一份。〕
-pub(crate) fn classify_stage(err: &str) -> &'static str {
-    let e = err.to_ascii_lowercase();
-    if e.contains("refused") || e.contains("no route") || e.contains("unreachable") {
-        "tcp"
-    } else if e.contains("timeout") || e.contains("超时") || e.contains("timed out") {
-        "timeout"
-    } else if e.contains("key") || e.contains("mismatch") || e.contains("指纹") {
-        "hostkey"
-    } else {
-        "other"
+/// 把一次拨号失败粗分成阶段标签（界面泳道用不同图标）：按错误的**类型**分（`io::ErrorKind` / `russh::Error` 变体），
+/// 不看错误串 —— 串是给人读的，改一个字不该改分类。认不出的一律 `other`。
+pub(crate) fn stage_of_io(e: &std::io::Error) -> &'static str {
+    use std::io::ErrorKind as K;
+    match e.kind() {
+        K::ConnectionRefused | K::HostUnreachable | K::NetworkUnreachable => "tcp",
+        K::TimedOut => "timeout",
+        _ => "other",
+    }
+}
+
+/// 同上，russh 那一侧（握手期的错误；`IO` 那一支交给 [`stage_of_io`]）。
+pub(crate) fn stage_of_russh(e: &russh::Error) -> &'static str {
+    match e {
+        russh::Error::IO(io) => stage_of_io(io),
+        russh::Error::ConnectionTimeout
+        | russh::Error::KeepaliveTimeout
+        | russh::Error::InactivityTimeout
+        | russh::Error::Elapsed(_) => "timeout",
+        russh::Error::UnknownKey | russh::Error::WrongServerSig => "hostkey",
+        _ => "other",
     }
 }
 
@@ -259,9 +268,9 @@ async fn race(
                         client::connect_stream(config, tcp, checker)
                             .await
                             .map(|h| (h, compress))
-                            .map_err(|e| e.to_string())
+                            .map_err(|e| (stage_of_russh(&e), e.to_string()))
                     }
-                    Err(e) => Err(e.to_string()),
+                    Err(e) => Err((stage_of_io(&e), e.to_string())),
                 };
                 if let Some(fp) = observed.lock().ok().and_then(|g| g.clone()) {
                     if let Ok(mut s) = seen.lock() {
@@ -270,10 +279,10 @@ async fn race(
                 }
                 match r {
                     Ok((h, compress)) => Ok((h, observed, ep, compress)),
-                    Err(e) => {
+                    Err((stage, e)) => {
                         stages.emit(Stage::Failed {
                             endpoint: ep_label.clone(),
-                            reason: format!("[{}] {e}", classify_stage(&e)),
+                            reason: format!("[{stage}] {e}"),
                         });
                         Err(format!("{ep_label} {e}"))
                     }
