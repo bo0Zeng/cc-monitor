@@ -9951,17 +9951,17 @@
       "zh": "后端写完回来的内容格式不对，两边版本可能对不上",
       "args": []
     },
-    "backend.stop.said.graceful": {
+    "backend.stopSaid.graceful": {
       "kind": "body",
       "zh": "已停：后端（进程 {pid}）做完手上的事，自己退了。",
       "args": ["pid"]
     },
-    "backend.stop.said.killed": {
+    "backend.stopSaid.killed": {
       "kind": "body",
-      "zh": "已强杀：后端（进程 {pid}）到时间还没退，正在做的事可能只做了一半。",
+      "zh": "已强杀：后端（进程 {pid}）到时间没退。正在做的事可能只做了一半。",
       "args": ["pid"]
     },
-    "backend.stop.said.notRunning": {
+    "backend.stopSaid.notRunning": {
       "kind": "body",
       "zh": "这台机器上没有在跑的常驻后端。",
       "args": []
@@ -16262,7 +16262,7 @@
     },
     "rsLocalBackendHost.stop.noRecord": {
       "kind": "error",
-      "zh": "本机常驻后端（进程 {pid}）还在跑，但找不到它的进程记录，没有停它。",
+      "zh": "本机常驻后端（进程 {pid}）还在跑，但找不到它的进程记录。没有停它。",
       "args": ["pid"]
     },
     "rsLocalBackendHost.lock.poisoned": {

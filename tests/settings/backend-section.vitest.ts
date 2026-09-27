@@ -758,9 +758,9 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     const k = stopSaid({ stopped: "killed", pid: 7 });
     const n = stopSaid({ stopped: "not_running", pid: null });
     expect([g, k, n]).toEqual([
-      zh("backend.stop.said.graceful", { pid: "7" }),
-      zh("backend.stop.said.killed", { pid: "7" }),
-      zh("backend.stop.said.notRunning"),
+      zh("backend.stopSaid.graceful", { pid: "7" }),
+      zh("backend.stopSaid.killed", { pid: "7" }),
+      zh("backend.stopSaid.notRunning"),
     ]);
     expect(new Set([g, k, n]).size).toBe(3);
     expect(g).toContain("7");
@@ -772,7 +772,7 @@ describe("〔STOP〕停的结局在机器页那一行说一句", () => {
     await flush();
     await flush();
     const r = s.element.querySelector<HTMLElement>(`.backend-row[data-origin="${LOCAL_ORIGIN}"]`);
-    const said = () => r?.querySelector<HTMLElement>(".backend-row-said")?.textContent ?? null;
+    const said = () => r?.querySelector<HTMLElement>("[data-stop-said]")?.textContent ?? null;
     const stop = [...(r?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
       (x) => x.textContent === zh("backend.buildCells.stop"),
     );
