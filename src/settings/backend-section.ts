@@ -43,6 +43,9 @@ import { isLocalOrigin, type Origin } from "../ipc/origin";
 const SETTLE_TRIES = 30;
 const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
+import { resync, resyncSaid } from "../resync";
+import { emit } from "@tauri-apps/api/event";
+import { RESYNC_DONE_EVENT } from "./events";
 import { makeInfoIcon } from "./info-icon";
 import {
   LOCAL_ORIGIN,
@@ -440,6 +443,20 @@ export class BackendSection {
    * 四格本体（不含名字）。〔步 14〕机器列表那一行也挂这一份 —— 同一套格子、同一套重画，
    * 只是宿主不同（见 `cellsFor`）。
    */
+  /** 〔RESYNC〕「重新对齐」：问那台后端 `resync`（整机），结果说一句。 */
+  private async realign(origin: string, btn: HTMLButtonElement): Promise<void> {
+    btn.disabled = true;
+    try {
+      const r = await resync(origin);
+      showActionFailureToast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info", durationMs: 6000 });
+      void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
+    } catch (e) {
+      showActionFailureToast(copyText("backend.resync.failed"), e instanceof Error ? e.message : String(e));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   private buildCells(origin: string): HTMLElement {
     const cells = document.createElement("span");
     cells.dataset.backendCells = origin;
@@ -470,6 +487,11 @@ export class BackendSection {
     log.textContent = copyText("backend.buildCells.log");
     log.onclick = () => void this.toggleLog(origin, cells, log);
     ops.appendChild(log);
+    // 〔RESYNC · V149 · `设计/15 §4.1b`〕事件驱动漏了一拍时的手动兜底：这台后端重跑起步那套对齐（会话 · 判死 · tmux · 身份标签 · 账号清单 · 监视）。
+    const realign = document.createElement("button");
+    realign.textContent = copyText("backend.buildCells.resync");
+    realign.onclick = () => void this.realign(origin, realign);
+    ops.appendChild(realign);
     // 〔STOP〕上一次「停」的结局（`stopSaid`）；没停过就空着。
     const said = document.createElement("span");
     said.className = "settings-hint";

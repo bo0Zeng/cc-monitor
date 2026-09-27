@@ -195,6 +195,11 @@ impl Outcome {
         ))
     }
 
+    /// 〔RESYNC〕这一次真往 tmux 里写了（对账据此决定要不要再探一次快照）。
+    pub(crate) fn wrote(&self) -> bool {
+        matches!(self, Outcome::Tagged(_))
+    }
+
     /// 〔U4b · 第四波〕**打标那一次探测的结局 → 这条会话的容器**（`session_added.container`）。
     ///
     /// | 结局 | 容器 | 为什么 |
@@ -375,6 +380,8 @@ pub(crate) fn rbind_token_of(pid: u32) -> Option<String> {
 /// 调用点只有一处：`observe/watcher.rs::process_session_added`，在「这个 pid 确实是写
 /// 那份 pidfile 的那个 claude」被证过之后。跨层边已登记进 `layering_guard`。
 pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
+    // 先取口再做别的：测试构建里没注入假 tmux 就在这里炸，与走不走得到 tmux 无关（人群按「调了 tag」算）。
+    let probe_cmd = door::tmux();
     if !sid_is_safe(sid) {
         return Outcome::RejectedSid;
     }
@@ -385,7 +392,7 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     };
     // 探测复用 gate 那一处（**零新增起进程点**）。它顺带把当前 `@ccm_sid` 取回来 ⇒
     // 值没变就一次 `set-option` 都不用起。
-    let probed = match super::gate::probe(&pane) {
+    let probed = match super::gate::probe_with(probe_cmd, &pane) {
         Ok(Some(p)) => p,
         Ok(None) => return Outcome::NoSuchPane,
         Err((code, msg)) => return Outcome::Failed(format!("{code}: {msg}")),
@@ -396,8 +403,15 @@ pub(crate) fn tag(pid: u32, sid: &str) -> Outcome {
     // ★ 对 `#{session_id}` **句柄**下手，不对名字 —— 与 `gate` / `kill` 同一条纪律：
     // 名字在探测与动手之间可能被重新绑定到别的会话，句柄不会（server 生命周期内唯一、不复用）。
     let target = probed.session_id.clone();
-    set_sid(std::process::Command::new("tmux"), target, sid)
+    set_sid(door::tmux(), target, sid)
 }
+
+/// 打标路上起 tmux 的唯一口（探测与写都经 `door::tmux`）。
+///
+/// 测试构建里整个口换成 `tests/` 那一份：只交**本线程注入的假 tmux**，没注入就炸（`INVARIANTS §48.3`）——
+/// 进程内测试用自己的 pid 造 pidfile 时，`TMUX_PANE` 是跑测试那个终端的 ⇒ 不隔离就是往用户真 tmux 上打标（09-27 `bg-sid` 事故）。
+#[cfg_attr(test, path = "../../../tests/backend/control/identity_tag_door.rs")]
+pub(crate) mod door;
 
 /// 真写那一下：`set-option -t <句柄> <事实键> <sid>`。
 ///

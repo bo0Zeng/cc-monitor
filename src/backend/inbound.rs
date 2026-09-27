@@ -186,6 +186,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     "remote-reach",
     "resolve",
+    // 〔RESYNC · V149〕手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
+    "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
@@ -2339,6 +2341,19 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
+    CommandSpec {
+        name: "resync",
+        doc_anchor: Some("#### `resync`"),
+        codes: &["bad_args"],
+        fields: &["added", "removed", "retagged", "sid", "watchers"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::resync_face::answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

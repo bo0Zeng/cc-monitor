@@ -1,5 +1,51 @@
 use super::*;
 
+/// 〔RESYNC · `INVARIANTS §48.3`〕**那个口真的 fail-closed**：没注入 ⇒ `tag` 炸（连 sid 都不看）；
+/// 注入了 ⇒ 探测真落到假 tmux 上（带着子进程环境里的那个 pane）。
+/// 住址 `INVARIANTS §48.3` 原文：「拿不到就炸，不许降级裸跑」。
+#[cfg(unix)]
+#[test]
+fn an_in_process_tag_without_a_fake_tmux_blows_up() {
+    let blew = std::panic::catch_unwind(|| tag(std::process::id(), "bad sid")).is_err();
+    assert!(
+        blew,
+        "没注入假 tmux，`tag` 却没炸 —— 测试构建里它会去起真 tmux"
+    );
+
+    let dir = std::env::temp_dir().join(format!("ccm-resync-rec-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("argv");
+    let script = dir.join("tmux");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", log.display()),
+    )
+    .unwrap();
+    let mut kid = std::process::Command::new("sleep")
+        .arg("5")
+        .env("TMUX_PANE", "%4242")
+        .spawn()
+        .expect("起得来 sleep");
+    let _iso = door::isolate_with(&script);
+    let mut got = Outcome::PaneUnknown;
+    for _ in 0..50 {
+        got = tag(kid.id(), "9d66c46d-bf88-4f99-877e-455555555555");
+        if got != Outcome::PaneUnknown {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let _ = kid.kill();
+    let _ = kid.wait();
+    assert_eq!(got, Outcome::NoSuchPane);
+    let said = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        said.contains("display-message") && said.contains("%4242"),
+        "探测没落到注入的假 tmux 上：{said:?}"
+    );
+}
+
 #[test]
 fn a_real_session_id_is_accepted() {
     assert!(sid_is_safe("9d66c46d-bf88-4f99-877e-455555555555"));
@@ -49,6 +95,7 @@ fn only_percent_digits_is_a_pane_id() {
 /// 不许把前者报成 `"none"`。打标行为不变（两支都不打）。
 #[test]
 fn a_pid_without_tmux_pane_never_reaches_tmux() {
+    let _iso = door::isolate();
     // PID 0 在 Linux 上不是一个可读的 `/proc` 目录 ⇒ 读不到环境。
     assert_eq!(
         tag(0, "9d66c46d-bf88-4f99-877e-455555555555"),
@@ -60,6 +107,7 @@ fn a_pid_without_tmux_pane_never_reaches_tmux() {
 /// ⇒ `NotInTmux`（容器 `"none"` 的唯一来源）。与上一条合起来，两格两向各有一个活例。
 #[test]
 fn a_readable_env_without_tmux_pane_is_not_in_tmux() {
+    let _iso = door::isolate();
     let mut child = std::process::Command::new("sleep")
         .arg("5")
         .env_remove("TMUX_PANE")
@@ -84,6 +132,7 @@ fn a_readable_env_without_tmux_pane_is_not_in_tmux() {
 /// sid 不合法时**连环境都不读**（顺序也是判据的一部分：先 fail closed 再做 IO）。
 #[test]
 fn a_bad_sid_short_circuits_before_any_io() {
+    let _iso = door::isolate();
     assert_eq!(tag(std::process::id(), "bad sid"), Outcome::RejectedSid);
 }
 

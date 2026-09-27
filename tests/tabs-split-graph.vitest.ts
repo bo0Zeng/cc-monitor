@@ -213,7 +213,9 @@ const DEPS: Record<string, readonly string[]> = {
   //   本份从此与其余几份一样只经 `ipc/commands.ts` 说话。
   "src/tab-session-actions.ts": [
     "npm:@tauri-apps/plugin-opener",
+    "src/account-reads.ts", // 〔RESYNC · ㉟①〕标记录没了的固定条：先解出 resume 会查的那棵账号树（同 `withAccount` 跟随）
     "src/account-restart.ts",
+    "src/accounts.ts", // 〔RESYNC · ㉟①〕同上（`resolveAccount`）
     "src/ask-dialog.ts", // 〔W5-UI〕杀会话的确认（原 `window.confirm`：真 app 里恒真值，等于没问）
     "src/behavior.ts",
     "src/copy-table.ts", // 〔U4〕杀空 tmux / 杀会话的确认与回执（说到会话状态）住文案表
@@ -229,6 +231,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/local-resume.ts",
     "src/remote-config.ts",
     "src/remote-launch-run.ts",
+    "src/resync.ts", // 〔RESYNC · V149〕关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
     "src/session-reads.ts", // 〔C4c〕resume 之前问记录还在不在（经通道问 `history-record`）
     "src/tmux-control.ts", // 〔C4e〕杀会话经通道直接说后端的 `kill`（原 Tauri 命令 `kill_remote_tmux` 退役）
     "src/tmux-name-mint.ts", // 〔FE1〕tmux 全新 resume 的铸名只经这一个家（名单没问到 ⇒ 不起、说清）
