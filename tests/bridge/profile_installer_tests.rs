@@ -4,7 +4,11 @@
 /// （用户指 `~/.config/fish/config.fish` 这种），那是把一个洞换成一个回归。
 #[test]
 fn the_profile_fence_keeps_writes_inside_home() {
+    // 〔AL2 · 第四波 4D〕围栏拆成词法（两侧）＋ 符号链接（只本机）两层，入口是 `fence_on(origin, home, raw)`；
+    //   本条量的是**本机**那一侧（两层都过），用真 home 当基准只为「父目录真存在」那一格（只解路径、不读不写）。
     let home = dirs::home_dir().expect("测试需要 home");
+    let home_s = home.display().to_string();
+    let fence = |raw: &str| super::fence_on(&crate::origin::Origin::local(), &home_s, raw);
     // 正例：home 下的裸文件名 · home 子目录 · `~` 前缀（用户会手打）· 不存在的新文件
     for ok in [
         home.join(".bashrc").to_string_lossy().to_string(),
@@ -17,7 +21,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
             .to_string(),
     ] {
         assert!(
-            super::fence_profile_path(&ok).is_ok(),
+            fence(&ok).is_ok(),
             "围栏拒了一个合法路径：{ok:?} —— 收太紧会砍掉「其它文件」这个特性"
         );
     }
@@ -36,7 +40,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
             home.to_string_lossy()
         ),
     ] {
-        let r = super::fence_profile_path(&bad);
+        let r = fence(&bad);
         assert!(
             r.is_err(),
             "围栏放行了 {bad:?} —— 那三条命令会往它写/重写/探测存在性"
@@ -82,7 +86,8 @@ fn every_profile_command_passes_through_the_fence() {
     .expect("读不到 lib.rs");
     let prod = guard_core::production_code(&lib);
     const CMDS: &[&str] = &["aliases_block_install", "aliases_block_remove"];
-    let fence = format!("{}_profile_path", "fence");
+    // 〔AL2 · 第四波 4D〕围栏入口今天是 `fence_on`（home 问那台后端，符号链接那一步只对本机）。
+    let fence = format!("{}_on(", "fence");
     for cmd in CMDS {
         let at = prod
             .find(&format!("fn {cmd}("))
@@ -257,6 +262,7 @@ fn damaged_fence_aborts_instead_of_eating_user_content() {
     //   → `function cc { }` **被吃掉**。
 }
 use super::*;
+use std::path::PathBuf;
 
 #[test]
 fn render_cc_code_with_function() {
@@ -959,7 +965,15 @@ fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
 
     // 〔AL1d〕扫一份今天走读回口那一趟（`account_aliases::rc_candidates_in`：读一次、算块的现状），
     //   把这份 rc 当「其它文件」递进去 —— 那正是界面上扫它的那条路。
-    let cands = crate::account_aliases::rc_candidates_in(&td.0, Shell::Posix, Some(&p));
+    //   〔AL2 · 第四波 4D〕那一趟改走门（`rc_candidates_via`，读经那台后端的 `files-peek`）；这里的门是落在临时目录上的替身。
+    let door = crate::user_files::tests::DiskDoor::new(&td.0);
+    let cands = futures::executor::block_on(crate::account_aliases::rc_candidates_via(
+        &door,
+        &td.0.display().to_string(),
+        Shell::Posix,
+        Some(&p.display().to_string()),
+    ))
+    .expect("替身门读候选");
     let scan = &cands
         .iter()
         .find(|c| c.path == p.display().to_string())
@@ -1405,8 +1419,8 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
 /// # 病是什么（`R80 §二` 的 `R2`，现打出来的，不是推理）
 ///
 /// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
-/// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端走
-/// `profile_installer::install_remote_alias_block` 合进远端 rc —— **合进去的是逐字同一份文本**。
+/// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端〔AL2〕也走同一个 [`plan_install`]（`aliases_block_install` 带远端 `origin`）
+/// —— **合进去的是逐字同一份文本**。
 /// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
 /// 本机 `.cc-monitor/bin`、远端 `.local/bin`）。
 /// ⇒ 那一行只写一个目录时，**它只可能对其中一边是对的**。
@@ -1947,7 +1961,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
 /// 人群（从源码现打，monitor 生产段全树）：函数体里碰「别名块内容」的函数 —— 调合 / 剥 / 计划装卸 / 装卸入口
 /// （`merge_profile_block(` · `strip_profile_block(` · `plan_install(` · `plan_uninstall(` · `install_to_profile(` ·
 /// `uninstall_from_profile(`）的那几个。两向相等于下面这张手写表（异源：表是人按角色写的，右边是源码现扫）：
-/// - **写的**（四个）函数体里必须恰好一处 `crate::user_files::edit(`；
+/// - **写的**（〔AL2〕两个：远端那两条命令并进了转交那两条）函数体里必须恰好一处 `crate::user_files::edit(`；
 /// - **纯规划 / 预览**（三个）与**转交**（两条命令，交给写的那两个）一处写原语都不许有；
 /// - 全体都不许碰别的写原语（`.put(` · `std::fs::write` · `fenced_block::apply`〔散文墓碑〕）。
 ///
@@ -1970,16 +1984,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
             "uninstall_from_profile",
             Role::Writes,
         ),
-        (
-            "profile_installer.rs",
-            "install_remote_alias_block",
-            Role::Writes,
-        ),
-        (
-            "profile_installer.rs",
-            "uninstall_remote_alias_block",
-            Role::Writes,
-        ),
+        // 〔AL2 · 第四波 4D〕远端装 / 卸那两条（写的）删了：并进下面两条转交（带 `origin`）。
         ("lib.rs", "aliases_block_install", Role::Delegates),
         ("lib.rs", "aliases_block_remove", Role::Delegates),
     ];

@@ -24,4 +24,9 @@ exists: boolean,
 /**
  * 〔AL1d〕这份文件里别名块的现状（不在盘上 ⇒ 全空）。
  */
-block: BlockState, };
+block: BlockState, 
+/**
+ * 〔AL2〕在盘上、可那台后端读不了它（非 UTF-8 · 太大 · 解到 home 外 · I/O）—— 后端原话；`None` = 读得了或不在。
+ * 从前本机直读时这一形被吞成「没有别名块」。
+ */
+unreadable: string | null, };

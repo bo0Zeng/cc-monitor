@@ -246,6 +246,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     const m = await import("../../src/settings/machine-aliases");
     const el = m.buildAliasManager({
       platform: plat,
+      origin: () => "<local>",
       loadAccounts: async () => ["z", "b", "0"],
     }) as HTMLDetailsElement;
     document.body.appendChild(el);
@@ -455,6 +456,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     clickText(el, "装别名块");
     await flush();
     expect(seen.find((c) => c.cmd === "aliases_block_install")!.args).toEqual({
+      origin: "<local>",
       rcPath: "/h/rc-a",
       withCc: false,
     });
@@ -467,7 +469,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     ]);
     clickText(el, "卸载别名块");
     await flush();
-    expect(seen.find((c) => c.cmd === "aliases_block_remove")!.args).toEqual({ rcPath: "/h/rc-a" });
+    expect(seen.find((c) => c.cmd === "aliases_block_remove")!.args).toEqual({
+      origin: "<local>",
+      rcPath: "/h/rc-a",
+    });
     expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("还没有别名块");
   });
 
@@ -494,6 +499,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     clickText(el, "预览别名块");
     await flush();
     expect(seen.find((c) => c.cmd === "aliases_block_render")!.args).toEqual({
+      origin: "<local>",
       rcPath: "/h/rc-b",
       withCc: false,
     });
@@ -588,11 +594,70 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
       clickText(el, "装别名块");
       await flush();
       expect(seen.find((c) => c.cmd === "aliases_block_install")!.args).toEqual({
+        origin: "<local>",
         rcPath: "/h/rc-a",
         withCc: true,
       });
     });
   }
+
+  /**
+   * 〔AL2 · 第四波 4D〕**B5**：远端卡与本机是同一个组件（`设计/71 §5` · `§6`「`origin` 是本机还是远端，对这些命令没有区别」）——
+   * 每一发 `aliases_*` 与别名预览都带那台的 origin；首开集合相等（本机才答得了的那几发一发都没有）；
+   * 平台格与「打开这份文件」不挂、块预览挂（`71 §8 #6`）；卸那颗叫「卸载 ccm」（V134）。
+   */
+  // 远端恒 POSIX（表 B）：不管这一轮 `plat` 是哪种，远端卡都按 `posix` 建（两轮各跑一遍，结论相同）。
+  it("〔AL2〕B5：远端卡是同一个组件，每一发都带那台的 origin，只本机的那几格不挂", async () => {
+    const m = await import("../../src/settings/machine-aliases");
+    const done: string[] = [];
+    const el = m.buildAliasManager({
+      platform: "posix",
+      origin: () => "aya",
+      loadAccounts: async () => ["z"],
+      onBlockDone: (verb, err) => done.push(`${verb}:${err ?? "ok"}`),
+    }) as HTMLDetailsElement;
+    document.body.appendChild(el);
+    await flush();
+    expect(seen, "构造零 I/O").toEqual([]);
+    expect(el.dataset.origin).toBe("aya");
+    await open(el);
+    expect(seen.map((c) => c.cmd).sort()).toEqual(["aliases_read", "aliases_render"]);
+    clickText(el, "写入");
+    await flush();
+    el.querySelector<HTMLInputElement>(".ccm-rc-other")!.value = "~/.zshrc";
+    clickText(el, "用这份");
+    await flush();
+    await pick(el, "/h/rc-a");
+    clickText(el, "预览别名块");
+    await flush();
+    clickText(el, "装别名块");
+    await flush();
+    clickText(el, "卸载 ccm");
+    await flush();
+    clickText(el.querySelector<HTMLElement>(".machine-aliases-row")!, "预览");
+    await flush();
+    const sent = seen.filter((c) => c.cmd.startsWith("aliases_") || c.cmd === "chan:ccm-print");
+    expect(new Set(sent.map((c) => c.cmd))).toEqual(
+      new Set([
+        "aliases_read",
+        "aliases_render",
+        "aliases_install",
+        "aliases_block_render",
+        "aliases_block_install",
+        "aliases_block_remove",
+        "chan:ccm-print",
+      ]),
+    );
+    expect(
+      sent.filter((c) => (c.args as { origin?: string }).origin !== "aya"),
+      "有一发没带那台的 origin",
+    ).toEqual([]);
+    expect(seen.filter((c) => !sent.includes(c)), "远端卡问了只有本机才答得了的事").toEqual([]);
+    expect(done).toEqual(["install:ok", "remove:ok"]);
+    expect(el.querySelector(".ccm-user-path-block")).toBeNull();
+    expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("打开这份文件");
+    expect(el.textContent).toContain("那台机器 PATH 上的同名程序没查");
+  });
 });
 
 describe("localShell：本机用哪种方言", () => {

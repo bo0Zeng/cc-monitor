@@ -1075,6 +1075,7 @@ export class SettingsPanel {
         el: this.safeBlock(copyText("settingsPanel.group.aliases"), () =>
           buildAliasManager({
             platform: localShell(),
+            origin: () => LOCAL_ORIGIN,
             loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
           }),
         ),

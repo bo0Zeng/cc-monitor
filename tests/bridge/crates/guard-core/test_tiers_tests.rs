@@ -507,6 +507,8 @@ const SCAN: &[&str] = &[
     "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
     "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
+    // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
+    "tests/bridge/shell_dialect_tests.rs",
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
@@ -635,7 +637,7 @@ const INTEGRATION: &[&str] = &[
     // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。
     "tests/bridge/sftp_tests.rs",
     "tests/bridge/shared_crate_registry_tests.rs",
-    "tests/bridge/shell_dialect_tests.rs",
+    // 〔AL2 · 第四波 4D〕`shell_dialect_tests.rs` 挪进 SCAN：候选那一条不再建临时目录（方言只给路径与列法、不读盘）。
     "tests/bridge/skill_host_tests.rs",
     "tests/bridge/structural_scan_tests.rs",
     "tests/bridge/subagent_tests.rs",

@@ -343,9 +343,9 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    ⚠ 顺带说清它安不安全：`settings-hint` 在 `src/styles.css` 里**没有 display 规则**
   //      ⇒ UA 的 `[hidden] { display: none }` 不会被压过，那两句不是空写。
   //      这一条是**人工核过的**，不是这把尺子判的 —— 所以它在登记表里，不在绿里。
-  "src/settings/panel.ts:1289": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行 · 〔LR2〕再 −7（同上）
+  "src/settings/panel.ts:1290": // 〔CP2b〕行号 −6：字面量进表后几段多行拼接收成一行 · 〔LR2〕再 −7（同上） · 〔AL2〕+1（别名管理器多传一行 origin）
     "`this.perMachineFallbackHint` —— 类名由 `skeleton.ts::makeSkeleton` 挂，跨文件",
-  "src/settings/panel.ts:1302": // 〔CP2b〕同上 · 〔LR2〕−7
+  "src/settings/panel.ts:1303": // 〔CP2b〕同上 · 〔LR2〕−7 · 〔AL2〕+1
     "`this.perMachineFallbackHint` —— 同上（兜底态亮出来那一支）",
   // 🔴 〔步 20 · `设计/70 §10.1`〕「足迹」那一块里，本机那一整套的显隐包装。
   //    它**刻意不挂任何类**：只负责显隐、不要样式。挂了类就得在 CSS 里给它写规则

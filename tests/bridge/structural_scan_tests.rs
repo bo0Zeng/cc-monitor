@@ -3340,14 +3340,10 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔W5-ALIAS · 第五波先行〕别名块两条命令连同头注从 `sftp.rs` 搬进 `profile_installer.rs`：
         //    头注里那两块墓碑（`install_remote_ccm_helper` · `uninstall_remote_ccm_helper` 各一）跟着搬 ⇒
         //    `profile_installer.rs` 的 `install_…` 1 → 2、`uninstall_…` 0 → 1；`sftp.rs` 的 `install_…` 2 → 1、`uninstall_…` 1 → 0（行删）。
+        // 〔AL2 · 第四波 4D〕远端装 / 卸那两条命令删了，头注里那两块墓碑随之走：`install_…` 2 → 1、`uninstall_…` 1 → 0（行删）。
         (
             "src/bridge/src/profile_installer.rs",
             "install_remote_ccm_helper",
-            2,
-        ),
-        (
-            "src/bridge/src/profile_installer.rs",
-            "uninstall_remote_ccm_helper",
             1,
         ),
         ("src/bridge/src/sftp.rs", "install_remote_ccm_helper", 1),
@@ -4379,7 +4375,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
         ("src/bridge/src/sftp.rs", 7), // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕8 → 7：`rollback_note` · `SftpFile` 两块随读取器 / 落点原语删了，`put_ccm_entry` 头注进一块 `fenced_block::apply` // 〔W5-ALIAS〕10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
-        ("src/bridge/src/profile_installer.rs", 13), // 〔W5-ALIAS〕11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
+        ("src/bridge/src/profile_installer.rs", 11), // 〔AL2 · 第四波 4D〕13 → 11：远端装 / 卸别名块两条命令删了，头注两块墓碑随之走 // 〔W5-ALIAS〕11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕`src/bridge/src/verified_write.rs`（3）与 `tests/bridge/verified_write_tests.rs`（1）两行摘掉：整份模块零调用方删了（整轴退役），
         //   它的墓碑说的那几件（`install_remote_ccm_helper` 两块 · `verify_and_rollback`）另有住址记着。
         // 〔SR1b〕+2：传输台那三行摘掉时留的墓碑（暂存区上传 · 本机下载落地两个旧名）。
