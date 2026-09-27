@@ -44,7 +44,7 @@ fn a_hand_authored_json_is_accepted_as_is_with_no_migration_step() {
 /// `KS9`：文件不存在时要给一份模板 —— 否则「导入」这条要靠猜。
 #[test]
 fn the_template_is_itself_a_valid_store_and_names_the_field() {
-    let doc = parse(TEMPLATE).expect("模板自己必须是合法的一份 store");
+    let doc = parse(&template()).expect("模板自己必须是合法的一份 store");
     assert!(doc.contains_key(KEY_FIELD), "模板里没点名那个字段");
     // 模板里的 key 是空的 ⇒ 读出来是「还没配」，不是一把假 key。
     assert!(read_key(&doc).is_none(), "模板不该看起来像已经配好了");
@@ -190,7 +190,9 @@ fn a_broken_file_is_reported_instead_of_being_read_as_not_configured() {
     ));
     assert_eq!(parse("[1,2,3]"), Err(StoreError::NotAnObject));
     // 说法里要带得走「怎么修」——人手编打错时看得懂。
-    let msg = parse(r#"{"a":}"#).unwrap_err().to_string();
+    let msg = parse(r#"{"a":}"#)
+        .unwrap_err()
+        .said(std::path::Path::new("/p"));
     assert!(
         msg.contains("手编"),
         "错误说法没告诉人这文件是手编的：{msg}"
@@ -331,8 +333,9 @@ fn an_unconfigured_file_yields_no_rows_at_all() {
     assert_eq!(read_accounts(&filled).len(), 1, "这把尺子是瞎的");
 
     // 分母 = 我列出的这 4 种「没配」的写法。
+    let tpl = template();
     for raw in [
-        TEMPLATE,
+        tpl.as_str(),
         r#"{}"#,
         r#"{"_note":"什么都没写"}"#,
         r#"{"accounts":{},"api_key":""}"#,
@@ -663,4 +666,43 @@ fn arrays_keep_their_order_because_that_order_is_data() {
         iaaa < izzz,
         "数组里那个对象没被递归排序 —— `ordered_value` 的 `Value::Array` 那一支没有往下走：{nested_text}"
     );
+}
+
+/// ★ 〔FIX · COPY ④ · 主会话按 CP1 `[对外]` 裁〕模板的三句说明住文案表、骨架住源码：拼出来的那份键序与今天逐字同
+/// （三句 note 在前、`accounts` · `api_key` 在后）、每句 == 文案表那一条；读坏那一句只说「顶层要是对象」＋ 路径，不再贴整份模板。
+#[test]
+fn the_template_notes_come_from_the_copy_table_and_the_error_names_the_file() {
+    let t = template();
+    let keys: Vec<usize> = [
+        "\"_note\"",
+        "\"_note_accounts\"",
+        "\"_note_auth_style\"",
+        "\"accounts\": {}",
+        "\"api_key\": \"\"",
+    ]
+    .iter()
+    .map(|k| t.find(k).unwrap_or_else(|| panic!("模板里没有 {k}：{t}")))
+    .collect();
+    assert!(keys.windows(2).all(|w| w[0] < w[1]), "键序变了：{t}");
+    let doc = parse(&t).expect("模板读得动");
+    assert_eq!(
+        doc["_note"],
+        copy_core::copy_text("credsStore.template.note", &[("keyField", KEY_FIELD)])
+    );
+    assert_eq!(
+        doc["_note_auth_style"],
+        copy_core::copy_text("credsStore.template.noteAuthStyle", &[])
+    );
+    // 例子里点的就是骨架里那两个字段名（名字只住常量一处）。
+    let acc = doc["_note_accounts"].as_str().expect("说明是字符串");
+    assert!(
+        acc.contains(&format!(
+            "\"{ACCOUNTS_FIELD}\": {{ \"my-account\": {{ \"{KEY_FIELD}\""
+        )),
+        "{acc}"
+    );
+    assert_eq!(doc.len(), 5, "骨架多了 / 少了键：{t}");
+    let said = StoreError::NotAnObject.said(std::path::Path::new("/h/c/apikey-credentials.json"));
+    assert!(said.contains("/h/c/apikey-credentials.json"), "{said}");
+    assert!(!said.contains("_note"), "报错里又贴了整份模板：{said}");
 }
