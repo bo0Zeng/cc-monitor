@@ -1540,7 +1540,18 @@ fn decode_line(buf: Vec<u8>) -> (String, bool) {
 ///
 /// 几个字面量都必须是后端 `lib.rs::STREAM_FLAGS` 的成员（后端据它剥旗标；不认的会被当成一次性查询跑完就退）——
 /// 由判据对拍后端源码。
-pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &["--tail-only", "--with-bg", "--with-rbind-token"];
+///
+/// - 〔E2 · V28〕[`STREAM_WORD`] 打头：后端就叫 `ccm` 之后零参数是「起会话」，流模式靠这个显式词。
+pub(crate) const LOCAL_STREAM_ARGS: &[&str] = &[
+    STREAM_WORD,
+    "--tail-only",
+    "--with-bg",
+    "--with-rbind-token",
+];
+
+/// 〔E2 · V28〕「我是流模式后端」的显式词（后端 `lib.rs::STREAM_FLAG_EXPLICIT`，由判据对拍后端源码）。
+/// monitor 起流的每一发（本机两条载体 · 远端流 · 测试连接探针）都以它打头。
+pub(crate) const STREAM_WORD: &str = "--stream";
 
 /// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///

@@ -524,7 +524,12 @@ pub async fn connect_and_exec(
     // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
     // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
     // （历史由本侧旁路快照拉取），实时通道流量趋零。
-    let mut cmd = shell_quote(cfg.backend_path_for_shell()?);
+    // 〔E2 · V28〕流模式显式词打头：落点那个文件就叫 `ccm`，零参数是「起会话」。
+    let mut cmd = format!(
+        "{} {}",
+        shell_quote(cfg.backend_path_for_shell()?),
+        crate::backend::control::local_backend::STREAM_WORD
+    );
     if with_bg {
         cmd.push_str(" --with-bg");
     }
@@ -4420,7 +4425,12 @@ pub async fn test_remote_connection(
     };
     // 〔TL3 · §47〕探针那一发先过放行判定、再走唯一的 quote —— 先前这里把 `backendPath` **原样**当命令串交给拨号代理
     //   （远端 shell 会解析它；TL2 那张 quote 人群表逮不到裸插值）。判不过 ⇒ 这是「构造不出测试」的硬错，照实回 `Err`。
-    let probe_cmd = shell_quote(cfg.backend_path_for_shell()?);
+    // 〔E2〕探的是流模式的 hello ⇒ 同样带流模式显式词（零参数的 `ccm` 是起会话）。
+    let probe_cmd = format!(
+        "{} {}",
+        shell_quote(cfg.backend_path_for_shell()?),
+        crate::backend::control::local_backend::STREAM_WORD
+    );
     let (link, ack) = match crate::dial_host::probe(&cfg, &probe_cmd, &mut to_ui).await {
         Ok(v) => v,
         Err((e, _seen_fingerprint)) => {
