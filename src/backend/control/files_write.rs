@@ -1916,8 +1916,8 @@ pub type Answer = Result<serde_json::Value, (&'static str, String)>;
 pub struct ManageCommand {
     /// 线上命令名（连字符那一套，与 `inbound::REGISTRY` 逐字相同）。
     pub name: &'static str,
-    /// 它做什么。
-    pub what: &'static str,
+    /// 它做什么（登记散文，只给判据读、不上界面 ⇒ 不叫 `what`：那个字段名会被普查当成文案出口）。
+    pub purpose: &'static str,
     /// 入方向参数名。
     pub args: &'static [&'static str],
     /// 出方向字段名。
@@ -1933,7 +1933,7 @@ pub struct ManageCommand {
 pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-create",
-        what: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
+        purpose: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
         args: &["content", "rel", "root"],
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
@@ -1941,21 +1941,21 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔波 5 ㈡ 09-23〕`设计/60 §8.6` 第 3 步：**改动既有数据**的那五件 ──────────
     ManageCommand {
         name: "files-mkdir",
-        what: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
+        purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
         args: &["rel", "root"],
         fields: &["path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-rename",
-        what: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
+        purpose: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
         args: &["from", "root", "to"],
         fields: &["path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-delete",
-        what:
+        purpose:
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
                才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
                ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {\"empty_dir\": true}` \
@@ -1966,7 +1966,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-chmod",
-        what: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
+        purpose: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
                〔FW5〕没有 unix 权限位的平台上回 `no_unix_mode`",
         args: &["mode", "rel", "root"],
         fields: &["mode", "path"],
@@ -1975,7 +1975,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔F7a · 第三波 09-24〕`设计/60 §13`：窗口的「复制」换走通道 ──────────────────
     ManageCommand {
         name: "files-copy",
-        what: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
+        purpose: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
                显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；〔W5-FILES〕显式 `recursive: true` \
                才复制目录 —— 逐条目过路径解析，链接 / 跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）",
         args: &["from", "overwrite", "recursive", "root", "to"],
@@ -1984,7 +1984,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-write-text",
-        what: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
+        purpose: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
                〔FW1〕`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
         args: &["content", "expect", "rel", "root"],
         fields: &["bytes", "path", "sha256"],
@@ -1993,14 +1993,14 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
     ManageCommand {
         name: "files-peek",
-        what: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
+        purpose: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
         args: &["rel", "root"],
         fields: &["exists", "path", "text"],
         codes: &["bad_args", "bad_path", "io_failed", "not_text", "refused", "too_large"],
     },
     ManageCommand {
         name: "files-put",
-        what: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
+        purpose: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
                回读比对 → 不符回滚** —— 用户文件的写规则只有这一份",
         args: &["backup", "content", "expect", "parents", "rel", "root"],
         fields: &["backup", "bytes", "changed", "created", "path"],
@@ -2008,7 +2008,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-delete-session",
-        what: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
+        purpose: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
         args: &["sid"],
         fields: &["path"],
         codes: &["bad_args", "io_failed", "refused"],
