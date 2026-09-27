@@ -3,10 +3,10 @@
 # 实现是一个可执行文件（不是 shell 函数 —— 与 shell 无关，zsh/fish 同样可用）；落点见下面那行 PATH。
 # 本块只放**组合层别名**：自定义在这里，不在实现里。随便改、随便加。
 #
-#   ccm [动作] [修饰...] [-- 透传给 agent]
-#     动作: (缺省)=new | resume <sid> | attach <名>
-#     修饰: --tmux[=<名>]  --account <名>|--base  --cwd auto|<dir>  --agent claude|codex  --launcher <cmd>
-#   配置(代理/工作区/账号库路径): ~/.config/ccm/config      详见 `ccm --help`
+#   ccm 是 claude 的壳：ccm [壳层选项...] [交给 claude 的参数...]
+#     壳层选项: --tmux[=<名>]  --account <名>|--base  --cwd <dir>  --agent claude|codex  --launcher <cmd>  --attach <名>
+#     其余(--resume <sid> / --continue / --model / -p ...)原样交给 claude；claude 自己的同名选项写在 -- 后面
+#   详见 `ccm --ccm-help`
 #
 # 加一个新维度 = ccm 多一个 flag + 这里多一行别名，不是再写一个实现。
 
@@ -23,6 +23,9 @@ cc()  { ccm "$@"; }                        # 在当前目录起会话
 fi
 if ! declare -f cct >/dev/null 2>&1; then
 cct() { ccm --tmux "$@"; }                 # 在 tmux 里起（断线可 attach 回来）
+fi
+if ! declare -f cca >/dev/null 2>&1; then
+cca() { ccm --attach "$@"; }               # 接回一个 tmux 会话（cca <会话名>）
 fi
 
 # 每账号别名 —— K-R49 起**不用再自己加了**：在 cc-monitor 的「账号」里点一下「生成命令」，

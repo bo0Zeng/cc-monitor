@@ -510,7 +510,7 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
          alphacc() { ccm --account 'z' \"$@\"; }\n\
          betacct() { \"${CCM:-/h/.cc-monitor/bin/ccm}\" --tmux --account 'b' \"$@\"; }\n\
          alias x=ls\n\
-         bad() { ccm --print \"$@\"; }\n\
+         bad() { ccm --ccm-print \"$@\"; }\n\
          # === cc-monitor account aliases END ===\n",
     )
     .unwrap();
@@ -528,7 +528,8 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         "{:?}",
         back.unparsed
     );
-    assert!(back.unparsed[1].contains("--print"), "{:?}", back.unparsed);
+    // V138：`--print` 是 claude 的了，拿 ccm 的诊断口 `--ccm-print` 当认不出的那一行。
+    assert!(back.unparsed[1].contains("--ccm-print"), "{:?}", back.unparsed);
     // 文件不在 ≠ 读失败。
     let empty = tmp_home("none");
     let l = read_in(&empty.0, P, None, 0).unwrap();
@@ -545,8 +546,11 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         al("c", &["--tmux", "--bus-register"]),
         al("d", &["--detach"]),
         al("e", &["--tmux-size", "80x24"]),
-        al("f", &["--print"]),
-        al("g", &["resume", "abc"]),
+        // V138：第三档改名后的样子（诊断口 · `--attach`）；`71 §8 #11` 相对 / 带 `..` 的 `--cwd`。
+        al("f", &["--ccm-print"]),
+        al("g", &["--attach", "abc"]),
+        al("j", &["--cwd", "rel/dir"]),
+        al("k", &["--cwd", "/a/../b"]),
         al("h", &["--account"]),
         al("i", &["--cwd", "a\nb"]),
     ];
@@ -560,9 +564,16 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         ),
         al("ok2", &["--tmux=w", "--tmux-size", "80x24"]),
         al("ok3", &["--base", "--agent", "codex"]),
+        // V138：交给 claude 的词原样放行；绝对 `--cwd` 放行（正控）。
+        al("ok4", &["--model", "opus", "--continue"]),
+        al("ok5", &["--cwd", "/srv/my proj"]),
     ];
     for a in &good {
         assert_eq!(check_alias(a, P), Ok(()), "{a:?}");
+    }
+    // PowerShell 目标：盘符根 / UNC 放行，相对与 POSIX 形拒。
+    for (cwd, want_ok) in [("C:\\work", true), ("\\\\srv\\share", true), ("work", false), ("/srv", false), ("C:\\a\\..\\b", false)] {
+        assert_eq!(check_alias(&al("w", &["--cwd", cwd]), PS).is_ok(), want_ok, "{cwd:?}");
     }
     let h = tmp_home("bad");
     let mut list = good.to_vec();
@@ -776,7 +787,8 @@ fn powershell_duplicates_fold_case() {
 /// PowerShell 传不过去的值在渲染前就拦住（方言答「传不传得过去」，通用层判「那就不合格」）。
 #[test]
 fn a_value_powershell_would_mangle_is_a_problem_there_only() {
-    let a = al("x", &["--cwd", "C:\\a \"b\""]);
+    // `71 §8 #11` 之后 `--cwd` 要是这种 shell 的绝对路径 ⇒ 把那个值换到交给 claude 的位置上测。
+    let a = al("x", &["--", "C:\\a \"b\""]);
     assert!(check_alias(&a, PS).is_err());
     assert_eq!(check_alias(&a, P), Ok(()));
 }

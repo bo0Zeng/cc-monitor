@@ -1,18 +1,18 @@
-//! 从一套 [`Opts`] 算出「这一趟到底要干什么」，以及 `--print` 那条等价命令行。
+//! 从一套 [`Opts`] 算出「这一趟到底要干什么」，以及 `--ccm-print` 那条等价命令行（V138 前叫 `--print`）。
 //!
 //! # 为什么计划与执行分开
 //!
-//! `--print` 是这套 CLI 的**平价预言机**：它吐的那一行必须与真跑那一趟**同源**，
+//! `--ccm-print` 是这套 CLI 的**平价预言机**：它吐的那一行必须与真跑那一趟**同源**，
 //! 否则「print 说的」与「真做的」会各漂各的（`tests/e2e/ccm-contract-parity.sh` 的 A / A′ 两组
 //! 整组就是在钉这一条，07-31 真逮到过一次「print 退回读文件」）。
-//! ⇒ 这里只产出 [`Plan`]，`--print` 与真跑**读同一个 `Plan`**，结构上不可能分叉。
+//! ⇒ 这里只产出 [`Plan`]，`--ccm-print` 与真跑**读同一个 `Plan`**，结构上不可能分叉。
 //!
 //! # 本文件不许出现 ccm 旗标的字面量
 //!
 //! 旗标名的唯一住址是 [`super::argv::flag`]。由
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
-use super::argv::{flag, parse_size, Action, CwdSpec, Die, Opts};
+use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::common::session_snapshot::TakenNames;
@@ -403,7 +403,7 @@ impl AccountTable {
     }
 }
 
-/// 一趟要干的事。`--print` 与真跑读的是**同一个**。
+/// 一趟要干的事。`--ccm-print` 与真跑读的是**同一个**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Plan {
     /// 不起 agent，直接接回一个既有会话。
@@ -425,21 +425,21 @@ pub(crate) struct Container {
     /// 送进容器的那条内层命令（已经是一整条 POSIX 命令串）。
     pub(crate) payload: String,
     /// 〔CC1〕**同一条内层命令的自检形**：同一段 `export` 前缀、同一个入口、同一串参数，
-    /// 只在 `--` 前多一个 `--print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
+    /// 只在 `--` 前多一个 `--ccm-print`。收尾那段在登记之前先跑它（见 [`render_container_tail`]）。
     pub(crate) self_check: String,
     /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
     pub(crate) trust_poll: bool,
     // ★★ 〔`K-R96` 09-12〕**`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
     //
     // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
-    // ——**只在真跑那条路上**，`--print` 吐的是没退让过的名字。
+    // ——**只在真跑那条路上**，`--ccm-print` 吐的是没退让过的名字。
     //
     // 用户 09-12 逐字（`R52` 裁定二）：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」。
     // ⇒ 退让搬进 [`build`]：它拿一份 [`TakenNames`]（那张 hash 表，来源只有会话快照一处），
     //   **算完就把最终名钉进 `Container::name`**。于是：
     //   ① 「产名」与「避让」不再是两个人干的两件事（前端 `mintTmuxName` 那条纪律的对侧）；
-    //   ② `--print` 与真跑吐的是**同一个名字** —— 平价预言机从此在名字这一维上也是平的；
-    //   ③ `--print` 的「纯」口径改成**相对于快照**：同一份快照 ＋ 同一份输入 ⇒ 同一份输出。
+    //   ② `--ccm-print` 与真跑吐的是**同一个名字** —— 平价预言机从此在名字这一维上也是平的；
+    //   ③ `--ccm-print` 的「纯」口径改成**相对于快照**：同一份快照 ＋ 同一份输入 ⇒ 同一份输出。
     //
     // 三条取名路的态度**仍然不一样，别合并**（判据见
     // `only_two_of_the_three_naming_paths_step_aside_on_a_collision`）：
@@ -470,7 +470,7 @@ pub(crate) struct Direct {
     /// （[`super::needs_shell`]）—— 而那正是 `--agent codex` 在 Windows 上
     /// `program not found` 的那一跳（读数住 `真相源/106 §3.3`）。
     ///
-    /// ⚠ **只有真跑那一侧读它；[`render`] 一个字不看** —— `--print` 必须对宿主环境
+    /// ⚠ **只有真跑那一侧读它；[`render`] 一个字不看** —— `--ccm-print` 必须对宿主环境
     /// 逐字节稳定（`INVARIANTS §33a` 铁律 2：不查实时 tmux 状态，**值不知道就打印配方**）。
     /// 把这一格接进 `render` 会让同一条计划在 tmux 内外吐出两种输出，那正是 `§33a` 的原病。
     pub(crate) inside_tmux: bool,
@@ -480,15 +480,11 @@ pub(crate) struct Direct {
     pub(crate) config_dir: String,
     /// `--base`：显式 `unset CLAUDE_CONFIG_DIR`。
     pub(crate) unset_config_dir: bool,
-    pub(crate) model: String,
     /// 要 unset 的嵌套标记（claude 四个 / codex 零个）。
     pub(crate) nested: Vec<String>,
     pub(crate) cwd: String,
-    /// 最终 exec 的 argv。
+    /// 最终 exec 的 argv：启动器 ＋ 原样透传（V138：`--resume` 这类 ccm 不吃，照写交出去）。
     pub(crate) argv: Vec<String>,
-    /// 要不要先问后端「这个会话该怎么起」（`resume` 且没给显式 `--launcher`）。
-    pub(crate) resolve_sid: Option<String>,
-    pub(crate) passthru: Vec<String>,
     /// 这一趟有没有身份面（claude 有、codex 没有）。
     pub(crate) has_identity: bool,
     /// 〔S5 · 第四波〕`--ccm-sid` 在直路上交给谁 —— 见 [`DirectIdentity`]。
@@ -507,7 +503,7 @@ pub(crate) struct Direct {
 /// **不需要**调用方预告 sid。而「把 sid `export` 成一个新变量」没有任何读者（后端读别的进程环境的
 /// 只有两族、各两个键，`identity_tag_tests` / `accounts_query_tests` 钉着）⇒ 不造。
 ///
-/// ⇒ 直路要做的只是**看一眼载体在不在**，不在就说一句（不报错、照常起）。`--print` 不看它
+/// ⇒ 直路要做的只是**看一眼载体在不在**，不在就说一句（不报错、照常起）。`--ccm-print` 不看它
 /// （`INVARIANTS §33a` 铁律 2：不看宿主环境；令牌是继承的环境，不是命令文本）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DirectIdentity {
@@ -532,7 +528,7 @@ pub(crate) fn direct_identity(ccm_sid: &str, launch_token: Option<&str>) -> Dire
 
 /// POSIX argv 元素的**最省引号**写法：能裸写就裸写。
 ///
-/// 与 `--print` 的可读性直接相关：`exec claude --resume abc` 比
+/// 与 `--ccm-print` 的可读性直接相关：`exec claude --resume abc` 比
 /// `exec 'claude' '--resume' 'abc'` 好读，而两者语义相同。
 pub(crate) fn qarg(s: &str) -> String {
     if s.is_empty()
@@ -587,7 +583,7 @@ pub(crate) fn derive_tmux_name(cwd: &str) -> String {
 ///
 /// 〔`K-R96` 09-12〕**谁给那份 `taken`，今天只有一个答案**：[`build`] 从
 /// [`TakenNames`] 里拿，而 `TakenNames` 的字段是 `common::session_snapshot` 模块私有的
-/// ⇒ 「另起一份名字集合」在类型层面就造不出来。`--print` 与真跑用的是同一份。
+/// ⇒ 「另起一份名字集合」在类型层面就造不出来。`--ccm-print` 与真跑用的是同一份。
 fn next_free_name(base: &str, taken: &[String]) -> String {
     if !taken.iter().any(|t| t == base) {
         return base.to_string();
@@ -648,7 +644,7 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
 /// ⚠ **`resume`/`attach` 那一支一个字都没动，而它今天与 `new` 同值**：
 /// 那两个动作的目标目录由 sid / 会话决定、调用方已经定位好了，再解析一次会把工作目录
 /// 换掉 ⇒ claude 按 `projects/<enc(cwd)>/<sid>.jsonl` **找不到会话**（实测踩过）。
-/// 🔴 **谁要是哪天再往这里加一档非恒等的分支，它必须只对 [`Action::New`] 生效** ——
+/// 🔴 **谁要是哪天再往这里加一档非恒等的分支，它必须只对「新起会话」生效**（透传里没有 `--resume` / `--continue`）——
 /// 今天不留那个 `if`，是因为恒等之下它是死代码，而不是因为那条约束过期了。
 ///
 /// 〔一并作废的旧注：从前这里逐字复刻旧 bash `_cc_resolve_target`，并登记着
@@ -718,7 +714,7 @@ pub(crate) fn resolve_account(
     }
 }
 
-/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**那几格拼进 shell（`--print` 那一串 · pane 里键入的载荷 ·
+/// 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕**自由文本**那几格拼进 shell（`--ccm-print` 那一串 · pane 里键入的载荷 ·
 /// 收尾那几段 `sh -c`）之前的放行判定：
 ///
 /// | 格 | 形式（按本机语境） | 拒绝集 |
@@ -799,7 +795,7 @@ fn refuse(what: &str, v: &str) -> Die {
 /// `created:false` ⇒ rc=3 那条响亮失败兜底。
 ///
 /// 🔴 **本函数相对 `taken` 是纯的**：同一份快照 ＋ 同一份 `o`/`env`/`table`
-/// ⇒ 同一份 `Plan`（`--print` 的「纯」今天就是这个口径）。
+/// ⇒ 同一份 `Plan`（`--ccm-print` 的「纯」今天就是这个口径）。
 pub(crate) fn build(
     o: &Opts,
     env: &Env,
@@ -807,8 +803,8 @@ pub(crate) fn build(
     taken: Option<&TakenNames>,
 ) -> Result<Plan, Die> {
     // ── attach：不起 agent，早于容器逻辑就定了 ──────────────────────────
-    if o.action == Action::Attach {
-        // `ccm attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
+    if !o.attach_name.is_empty() {
+        // `ccm --attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
         // 静默忽略正是本工作区反复消灭的病。
         if o.detach {
             return Err(Die(copy_text("bePlan.build.attachDetach", &[]).into()));
@@ -858,7 +854,7 @@ pub(crate) fn build(
         } else {
             (derive_tmux_name(&cwd), true)
         };
-        // ★★ `K-R96`：**退让就在这里发生**，`--print` 与真跑因此拿到同一个名字。
+        // ★★ `K-R96`：**退让就在这里发生**，`--ccm-print` 与真跑因此拿到同一个名字。
         let name = match (step_aside, taken) {
             (true, Some(t)) => next_free_name(&base, t.as_slice()),
             // 不退让 / 问不到快照 ⇒ 原样（后者是诚实降级，见本函数头注）。
@@ -866,10 +862,6 @@ pub(crate) fn build(
         };
         // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
         let mut inner: Vec<String> = env.self_argv.clone();
-        if o.action == Action::Resume {
-            inner.push("resume".into());
-            inner.push(o.sid.clone());
-        }
         inner.push(flag::CWD.into());
         inner.push(cwd.clone());
         inner.push(flag::AGENT.into());
@@ -881,10 +873,6 @@ pub(crate) fn build(
         if o.use_base {
             inner.push(flag::BASE.into());
         }
-        if !o.model.is_empty() {
-            inner.push(flag::MODEL.into());
-            inner.push(o.model.clone());
-        }
         if !launcher.is_empty() {
             inner.push(flag::LAUNCHER.into());
             inner.push(launcher.clone());
@@ -893,11 +881,11 @@ pub(crate) fn build(
             inner.push(flag::CCM_SID.into());
             inner.push(o.ccm_sid.clone());
         }
-        // 🔴 〔CC1〕**自检那一趟与 pane 里那一趟是同一串 argv**，只在 `--` 之前多一个 `--print`
+        // 🔴 〔CC1〕**自检那一趟与 pane 里那一趟是同一串 argv**，只在 `--` 之前多一个 `--ccm-print`
         //    （放在 `--` 之后就成了透传给 agent 的参数）。两条都从这一个 `inner` 渲出来，
         //    不许在别处另拼一份 —— 另拼的那份一旦漂了，自检过的就不是 pane 里跑的那条。
         let mut dry = inner.clone();
-        dry.push(flag::PRINT.into());
+        dry.push(flag::CCM_PRINT.into());
         if !o.passthru.is_empty() {
             for v in [&mut inner, &mut dry] {
                 v.push(flag::END.into());
@@ -985,12 +973,6 @@ pub(crate) fn build(
 
     // ── 非容器路 ────────────────────────────────────────────────────────
     let mut argv = vec![launcher.clone()];
-    if o.action == Action::Resume {
-        if let Some(rf) = super::resume_flag(&o.agent) {
-            argv.push(rf.to_string());
-            argv.push(o.sid.clone());
-        }
-    }
     argv.extend(o.passthru.iter().cloned());
 
     Ok(Plan::Direct(Direct {
@@ -1002,26 +984,20 @@ pub(crate) fn build(
         account_env: env.account_env.clone(),
         config_dir,
         unset_config_dir: o.use_base,
-        model: o.model.clone(),
         nested: super::nested_env(&o.agent),
         cwd,
         argv,
-        resolve_sid: (o.action == Action::Resume && !o.launcher_explicit).then(|| o.sid.clone()),
-        passthru: o.passthru.clone(),
         has_identity: super::has_identity(&o.agent),
         identity: direct_identity(&o.ccm_sid, env.launch_token.as_deref()),
     }))
 }
 
-/// `--print`：吐出这一趟的**等价 shell**。
-///
-/// `resolved` = 后端对 `resume` 那一问的答案（没有就 `None`）。它是**唯一**的外部输入，
-/// 其余全部来自 [`Plan`] ⇒ 与真跑同源。
-pub(crate) fn render(plan: &Plan, resolved: Option<&str>) -> String {
+/// `--ccm-print`：吐出这一趟的**等价 shell**。全部来自 [`Plan`] ⇒ 与真跑同源。
+pub(crate) fn render(plan: &Plan) -> String {
     match plan {
         Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:"))),
         Plan::Container(c) => render_container(c),
-        Plan::Direct(d) => render_direct(d, resolved),
+        Plan::Direct(d) => render_direct(d),
     }
 }
 
@@ -1080,13 +1056,13 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     // 还登记上了总线（**假成功**）。登记就发生在本段下面 ⇒ 确认必须排在它前面、住在 ccm 里；
     // 放进 cc-spawn 只能「先登记、再撤回」。
     //
-    // 确认的形状：**用 pane 里那一跳的同一个入口、同一串参数、同一段 export 前缀，加 `--print` 真跑一次**
+    // 确认的形状：**用 pane 里那一跳的同一个入口、同一串参数、同一段 export 前缀，加 `--ccm-print` 真跑一次**
     //（[`Container::self_check`]，与载荷出自 `build` 里同一个 `inner`）。等的是**一个进程退出**，
     // 不是一段时间 —— 零定时器、零轮询。它不过 ⇒ 把它自己的原话转给调用方、`exit 4`（起不来），
     // 后面的接进去与登记一段都不跑。
     //
     // ⚠ 它**买到**的：入口路由（BS1b 那一形）· 参数解析 · 账号解析 · 被叫的那个入口（`argv[0]`）是一份不认这套参数的旧副本。
-    // ⚠ 它**买不到**的（别读成做到了）：`--print` 不解析启动器 ⇒ 「启动器在 PATH 上找不到」仍会在 pane 里
+    // ⚠ 它**买不到**的（别读成做到了）：`--ccm-print` 不解析启动器 ⇒ 「启动器在 PATH 上找不到」仍会在 pane 里
     //   退回 shell 而这里照报成功；agent exec 起来之后自己当场退出，同样看不见。要看见这两类得有一个
     //   **exec 那一刻的正信号**（今天没有），登记在 `设计/95` 末尾。
     seq.push_str(&format!(
@@ -1134,7 +1110,7 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
     seq
 }
 
-fn render_direct(d: &Direct, resolved: Option<&str>) -> String {
+fn render_direct(d: &Direct) -> String {
     let mut line = String::new();
     if !d.ccm_env.is_empty() {
         line.push_str(&format!("{}; ", d.ccm_env));
@@ -1150,45 +1126,17 @@ fn render_direct(d: &Direct, resolved: Option<&str>) -> String {
     if d.unset_config_dir {
         line.push_str(&format!("unset {cfg_env}; "));
     }
-    if !d.model.is_empty() {
-        line.push_str(&format!("export ANTHROPIC_MODEL={}; ", sq(&d.model)));
-    }
     if !d.nested.is_empty() {
         line.push_str(&format!("unset {}; ", d.nested.join(" ")));
     }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
     }
-    let local_exec = std::iter::once("exec".to_string())
+    let exec = std::iter::once("exec".to_string())
         .chain(d.argv.iter().map(|a| qarg(a)))
         .collect::<Vec<_>>()
         .join(" ");
-    match resolved {
-        Some(cmd) if !cmd.is_empty() && d.resolve_sid.is_some() => {
-            // 后端答得出「这个会话该怎么起」⇒ 用它那条，透传参数接在后面。
-            //
-            // 🔴 **`set -f` 不许省。** 后端回的是**一整条命令串**，它要被 shell 拆成词才跑得了
-            // （`exec $cmd` 而不是 `exec "$cmd"`）—— 拆词那一步同时会**做路径展开**：
-            // 命令里一个 `*` 会被当前目录的文件名改写掉。`set -f` 关掉的正是这一步。
-            // ⚠ 它**不**关命令替换：`$(…)` 靠的是「这条串没有再经过 `eval`」，
-            // 而这里也确实没有 —— 两条各守一半，别把其中一条读成两条都买到了。
-            //〔搬自 `tests/e2e/ccm-contract-parity.sh` A′g 那两条；那套 e2e 的 `shared/ccm` 侧
-            //  逐字也是 `set -f; exec $_ccm_c`。〕
-            let pt = d
-                .passthru
-                .iter()
-                .map(|a| qarg(a))
-                .collect::<Vec<_>>()
-                .join(" ");
-            line.push_str("set -f; exec ");
-            line.push_str(cmd);
-            if !pt.is_empty() {
-                line.push(' ');
-                line.push_str(&pt);
-            }
-        }
-        _ => line.push_str(&local_exec),
-    }
+    line.push_str(&exec);
     line
 }
 

@@ -3218,7 +3218,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
 按标题扫窗口。全部代码：远端 **`shared/ccm`**（部署为 `~/.local/bin/ccm`，字节源是
 `sftp.rs` 的 `CCM_CLI_SCRIPT`）—— **不是** `remote-section.ts::CCM_WRAPPER_SNIPPET`，
-那个其实是 `src/shared/ccm-aliases.sh`，**36 行、别名只有 `cc`/`cct` 这 2 个**，
+那个其实是 `src/shared/ccm-aliases.sh`，**39 行、别名只有 `cc`/`cct`/`cca` 这 3 个**，
 无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
 
 > ⚠ **上面那句里的「N 行」与那份名单由机器对账**（`KR58D2`，判据住

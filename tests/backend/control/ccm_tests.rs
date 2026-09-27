@@ -283,8 +283,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     for a in AGENTS {
         assert!(!default_launcher(a).is_empty(), "{a} 没有默认启动器");
     }
-    assert_eq!(resume_flag("claude"), Some("--resume"));
-    assert_eq!(resume_flag("codex"), None, "codex 没有 resume flag");
     assert_eq!(nested_env("claude").len(), 4);
     assert!(
         nested_env("codex").is_empty(),
@@ -493,7 +491,7 @@ fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() 
 /// ⚠ **本条买不到的那一维**：它判的是「这一趟要不要请 shell 进来」这个**判定**，
 /// **不是**「在真 Windows 上真的起来了」。后者要那台 Win11 虚拟机，本路没去动它。
 #[test]
-fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
+fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
     // ── 🔴 P19 买的就是这一格：codex + 不在 tmux（Windows 上 `$TMUX` 恒空）────
     let codex_bare = direct_of(&["--agent", "codex", "--cwd", "/p"], None);
     // 反空真自检：`None` 必须是**因为守卫为假**得来的，不许是因为配方那一格自己没了。
@@ -503,7 +501,7 @@ fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of
     );
     assert!(!codex_bare.inside_tmux, "夹具没把 `$TMUX` 置空，本格白测");
     assert_eq!(
-        needs_shell(&codex_bare, None),
+        needs_shell(&codex_bare),
         None,
         "codex 不在 tmux 里还要请一个 `sh` 进来 —— 那正是 Windows 上那句 `program not found`"
     );
@@ -515,7 +513,7 @@ fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of
     );
     assert!(codex_in_tmux.inside_tmux, "夹具没把 `$TMUX` 置上，本格白测");
     assert_eq!(
-        needs_shell(&codex_in_tmux, None),
+        needs_shell(&codex_in_tmux),
         Some(WHY_SHELL_BUS_ID.as_str()),
         "在 tmux 里那段配方要现问一次 tmux ⇒ 这一趟**必须**经 shell（`INVARIANTS §33a` 那条实测例）"
     );
@@ -525,30 +523,19 @@ fn only_three_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of
         let d = direct_of(&["--agent", "claude", "--cwd", "/p"], tmux);
         assert!(!d.bus_id_recipe, "claude 不该有 cc-bus 配方");
         assert_eq!(
-            needs_shell(&d, None),
+            needs_shell(&d),
             None,
             "claude 这一趟不该要 shell（tmux={tmux:?}）"
         );
     }
 
-    // ── 另两件**是真的要 shell**，本轮一件都没假装它们不要 ──────────────────
+    // ── 另一件**是真的要 shell**，本轮没假装它不要（V138 删了 `resolve` 那一件）──
     let mut with_env = direct_of(&["--agent", "codex", "--cwd", "/p"], None);
     with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
     assert_eq!(
-        needs_shell(&with_env, None),
+        needs_shell(&with_env),
         Some(WHY_SHELL_CCM_ENV.as_str()),
         "`CCM_ENV` 是一段任意 shell，只有 shell 解释得了 —— 这一条不许被收窄掉"
-    );
-    assert_eq!(
-        needs_shell(&codex_bare, Some("claude --resume x")),
-        Some(WHY_SHELL_RESOLVED.as_str()),
-        "后端答出的是一整条命令串，要 shell 拆词（`set -f; exec $cmd`）—— 这一条也不许被收窄掉"
-    );
-    // 优先级：`CCM_ENV` 先答（它是最外那一段），与 `render_direct` 的拼串顺序同向。
-    assert_eq!(
-        needs_shell(&with_env, Some("claude --resume x")),
-        Some(WHY_SHELL_CCM_ENV.as_str()),
-        "两件都在时该先说最外那一段"
     );
 }
 
@@ -569,7 +556,6 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
 
     let reasons: &[(&str, &str)] = &[
         ("WHY_SHELL_CCM_ENV", WHY_SHELL_CCM_ENV.as_str()),
-        ("WHY_SHELL_RESOLVED", WHY_SHELL_RESOLVED.as_str()),
         ("WHY_SHELL_BUS_ID", WHY_SHELL_BUS_ID.as_str()),
         ("WHY_SHELL_ATTACH", WHY_SHELL_ATTACH.as_str()),
         (
@@ -591,7 +577,7 @@ fn every_reason_for_needing_a_shell_is_declared_once_and_used_once() {
             text.chars().count()
         );
     }
-    // 五句话两两不同：同一句话贴在两处出口上等于没有归因。
+    // 四句话两两不同：同一句话贴在两处出口上等于没有归因。
     let mut seen: std::collections::BTreeSet<&str> = Default::default();
     for (_, text) in reasons {
         assert!(seen.insert(text), "有两条出口贴着同一句归因：{text:?}");
@@ -643,7 +629,7 @@ fn exec_direct_really_reads_the_identity_cell() {
         .unwrap_or_else(|e| panic!("`exec_direct` 不再读直路身份那一格：{e}"));
     let fn_at = guard_core::pin_line(
         &prod,
-        "fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {",
+        "fn exec_direct(d: &plan::Direct) -> i32 {",
     )
     .expect("`exec_direct` 的签名变了");
     assert_eq!(
@@ -718,7 +704,7 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
         let plan = plan::build(&o, &e, &table, None).expect("该算得出计划");
         assert_eq!(
             got["line"].as_str().expect("line"),
-            plan::render(&plan, None),
+            plan::render(&plan),
             "{args:?}：预览与同一语境下的 `--print` 不是同一行"
         );
     }
@@ -770,11 +756,12 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         code(serde_json::json!({ "args": vec!["x"; PRINT_MAX_WORDS + 1] })),
         "bad_args"
     );
-    assert_eq!(code(serde_json::json!({ "args": ["--help"] })), "refused");
-    let (c, said) = answer_print(&serde_json::json!({ "args": ["--no-such-flag"] }))
-        .expect_err("未知旗标该被拒");
+    assert_eq!(code(serde_json::json!({ "args": ["--ccm-help"] })), "refused");
+    // V138：未知旗标交给 claude、不再拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
+    let (c, said) = answer_print(&serde_json::json!({ "args": ["--detach"] }))
+        .expect_err("--detach 不带 --tmux 该被拒");
     assert_eq!(c, "refused");
-    let want = match argv::parse(&["--no-such-flag".to_string()]) {
+    let want = match argv::parse(&["--detach".to_string()]) {
         Err(argv::Die(m)) => m,
         other => panic!("{other:?}"),
     };

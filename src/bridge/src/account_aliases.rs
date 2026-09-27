@@ -191,9 +191,9 @@ pub struct AliasInstallReport {
     pub notes: Vec<String>,
 }
 
-/// 能进别名的 ccm 修饰：`(旗标, 要不要跟一个值)`。`71 §4` 第一、二档；
-/// 第三档（`resume` / `attach` / `--ccm-sid` / `--print` / …）每次取值都不同，做成固定别名没意义 ⇒ 不收。
-/// `--tmux=<名>` 是 `--tmux` 的内联形，另判；`--` 之后原样透传给 agent。
+/// 能进别名的 ccm 壳层选项：`(旗标, 要不要跟一个值)`。`71 §2.1` 第一、二档；
+/// 第三档（[`NOT_IN_ALIASES`]）每次取值都不同，做成固定别名没意义 ⇒ 不收。
+/// `--tmux=<名>` 是 `--tmux` 的内联形，另判。〔V138〕其余的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
 ///
 /// ⚠ 每一个旗标都得是后端 `ccm --help` 里真有的那个词 —— 判据
 /// `account_aliases_tests.rs::every_alias_flag_is_a_real_ccm_flag` 去后端的用法文本里对（异源）。
@@ -204,12 +204,21 @@ pub(crate) const ALIAS_FLAGS: &[(&str, bool)] = &[
     ("--tmux", false),
     ("--tmux-base", true),
     ("--agent", true),
-    ("--model", true),
     ("--launcher", true),
     ("--tmux-size", true),
     ("--detach", false),
     ("--bus-register", false),
     ("--bus-note", true),
+];
+
+/// 〔V138〕ccm 自己的、不进别名的那几个（`71 §2.1` 第三档改名后的样子）：接回会话 ＋ `--ccm-*` 诊断口。
+pub(crate) const NOT_IN_ALIASES: &[&str] = &[
+    "--attach",
+    "--ccm-sid",
+    "--ccm-print",
+    "--ccm-probe",
+    "--ccm-help",
+    "--ccm-version",
 ];
 
 /// 〔AL1c〕**载体是 tmux 的那几个旗标**（`--tmux=<名>` 是 `--tmux` 的内联形，一并算）。
@@ -294,16 +303,27 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
             tmux_named = true;
             continue;
         }
-        let Some((flag, takes)) = ALIAS_FLAGS.iter().find(|(f, _)| f == w) else {
+        if NOT_IN_ALIASES.contains(&head) {
             return Err(copy_text(
                 "rsAccountAliases.check.notAllowed",
                 &[("word", &w.to_string())],
             ));
+        }
+        // V138：不是 ccm 的壳层选项 ⇒ 交给 claude 的词，原样放行（控制字符与方言那一关上面已过）。
+        let Some((flag, takes)) = ALIAS_FLAGS.iter().find(|(f, _)| f == w) else {
+            continue;
         };
         if *takes {
             match it.next() {
                 Some(v) if !v.is_empty() && !v.chars().any(char::is_control) => {
-                    d.arg_is_passable(v)?
+                    d.arg_is_passable(v)?;
+                    // `71 §8 #11`：相对 / 带 `..` 的 `--cwd` ccm 运行时会拒（`INVARIANTS §47`）⇒ 生成前就拦。
+                    if *flag == "--cwd" && !cwd_form_ok(v, shell) {
+                        return Err(copy_text(
+                            "rsAccountAliases.check.cwdNotAbsolute",
+                            &[("value", &v.to_string())],
+                        ));
+                    }
                 }
                 _ => {
                     return Err(copy_text(
@@ -345,6 +365,24 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
         return Err(copy_text("rsAccountAliases.check.sizeNeedsTmux", &[]).into());
     }
     Ok(())
+}
+
+/// `--cwd` 的形式判定，与 ccm 运行时同一条（`plan.rs::free_text_gate`：绝对 · 无 `..` 段 · 无 NUL/CR/LF）。
+/// POSIX 调共享那一份；PowerShell 目标是 Windows 路径（盘符根或 UNC），分隔符两种都认。
+fn cwd_form_ok(v: &str, shell: Shell) -> bool {
+    match shell {
+        Shell::Posix => shell_quote_core::posix_free_path_ok(v),
+        Shell::PowerShell => {
+            let b = v.as_bytes();
+            let drive = b.len() >= 3
+                && b[0].is_ascii_alphabetic()
+                && b[1] == b':'
+                && matches!(b[2], b'\\' | b'/');
+            (drive || v.starts_with("\\\\"))
+                && !v.split(['/', '\\']).any(|seg| seg == "..")
+                && shell_quote_core::free_text_ok(v)
+        }
+    }
 }
 
 /// 一条（合格的）别名在这种 shell 里的写法（方言那一份的薄包装）。

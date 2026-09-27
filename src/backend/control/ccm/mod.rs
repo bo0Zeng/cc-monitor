@@ -29,7 +29,7 @@
 //! - **预信任**（`~/.claude.json` / `~/.codex/config.toml` 那两处写入）：**没搬**。
 //!   backend 这个 crate 有一条「进程自身不许写用户既有数据」的红线
 //!   （`readonly_guard`，白名单恰好一个模块）⇒ 搬它要先动那条红线，那是另一件活。
-//!   后果：`claude` 起来可能弹信任框。`--print` 那条兜底轮询照旧在，捞得回来。
+//!   后果：`claude` 起来可能弹信任框。`--ccm-print` 那条兜底轮询照旧在，捞得回来。
 //! - **`$CCM_CONFIG` 是 bash 源文件**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash）。
 //!   这里只认 `KEY=value` 三个键（见 [`Env::from_process`]），**不是等价**。
 //! - **`--help` 的正文**：旧实现是 `sed` 自己的注释块；这里是 [`USAGE`] 常量，**文本不同**。
@@ -44,8 +44,9 @@ use plan::{AccountTable, Env, Plan};
 /// 这套 CLI 的版本号。**行为变了就要动它** —— 消费者（`ccm_probe.rs`）靠
 /// `version=` 这一行分辨对面是哪一版。
 ///
-/// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）。
-pub(crate) const CCM_VERSION: &str = "5";
+/// `4` 是最后一版 bash 实现；`5` 起是**后端的原生命令**（本模块）；`6` 起是 claude 的壳（V138：
+/// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）。
+pub(crate) const CCM_VERSION: &str = "6";
 
 /// 认得的 agent。**闭集只有这一处住址**（`brief` 13b）。
 pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
@@ -134,8 +135,8 @@ pub(crate) const CCM_TMUX_CARRIED: &[&str] = &[
 
 /// 撞名时那句话的**唯一格式串**。
 /// ⚠ 结尾那两个字符是**反斜杠 + n**，不是一个真换行 —— 它是一条 **`printf` 格式串**：
-/// 要被原样拼进 `--print` 吐的那条 shell 里（`printf '<本串>' '<名字>'`），
-/// 由**那个 shell 里的 printf** 去解释它。写成真换行的话，`--print` 吐出来的命令会断成两行。
+/// 要被原样拼进 `--ccm-print` 吐的那条 shell 里（`printf '<本串>' '<名字>'`），
+/// 由**那个 shell 里的 printf** 去解释它。写成真换行的话，`--ccm-print` 吐出来的命令会断成两行。
 /// 自己要打这句话时（`execute` 的撞名出口）记得把它译回真换行。
 /// 〔CP2c〕句子住文案表（`beCcm.nameTaken.say`，占位符 `{name}` 在这里填成 printf 的 `%s`）。
 pub(crate) static NAME_TAKEN_FMT: std::sync::LazyLock<String> =
@@ -166,7 +167,7 @@ pub(crate) static SELF_CHECK_FAILED_FMT: std::sync::LazyLock<String> =
 /// 点 ↗ 必弹「未绑定窗口」。⚠ 改它之前先读 `e2e` 那条已经删掉的套件在件文件 `§8` 里的登记。
 pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}";
 
-/// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--print` 仍然不查实时 tmux 状态。
+/// codex 的 cc-bus 身份配方。**输出的是配方不是值** —— 这样 `--ccm-print` 仍然不查实时 tmux 状态。
 pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\"$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && export CC_BUS_ID=\"$_ccm_bus\"; unset _ccm_bus; fi;";
 
 /// `--help` 的正文。**每个认得的旗标都要在这里有一行** ——
@@ -180,15 +181,6 @@ pub(crate) fn default_launcher(agent: &str) -> &'static str {
     match agent {
         "codex" => "codex",
         _ => "claude",
-    }
-}
-
-/// 这个 agent 的 resume 旗标；`None` = 它不支持 resume。
-pub(crate) fn resume_flag(agent: &str) -> Option<&'static str> {
-    match agent {
-        // 旗标字面量的住址是 `argv::flag`，这里只许引它（`KR48D2`）。
-        "claude" => Some(argv::flag::RESUME),
-        _ => None,
     }
 }
 
@@ -326,7 +318,7 @@ pub fn run(args: &[String]) -> i32 {
                 Err(Die(msg)) => return die(&msg),
             };
             if o.print {
-                println!("{}", plan::render(&plan, resolved(&plan).as_deref()));
+                println!("{}", plan::render(&plan));
                 return 0;
             }
             execute(plan)
@@ -334,7 +326,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
-/// 解析好的 argv ＋ 一份环境 ⇒ 那一条计划。**真跑、`--print`、别名预览（[`answer_print`]）都从这里拿计划**，
+/// 解析好的 argv ＋ 一份环境 ⇒ 那一条计划。**真跑、`--ccm-print`、别名预览（[`answer_print`]）都从这里拿计划**，
 /// 三条路结构上不可能各算各的。
 ///
 /// `inherit_account`：要不要读**这个进程**环境里继承来的账号目录变量。一次性模式（用户终端里敲的）要；
@@ -360,7 +352,7 @@ fn plan_of(o: &argv::Opts, mut env: Env, inherit_account: bool) -> Result<Plan, 
     //
     // 用户 `R52` 裁定二逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
     // 那张表就是 `common::session_snapshot`（`TakenNames` 的字段模块私有 ⇒
-    // 本文件造不出第二份）。⇒ `--print` 与真跑从此**吐同一个名字**，
+    // 本文件造不出第二份）。⇒ `--ccm-print` 与真跑从此**吐同一个名字**，
     // 而「纯」的口径改成**相对于快照**（`§0c`）。
     //
     // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
@@ -374,10 +366,10 @@ const PRINT_MAX_WORDS: usize = 64;
 const PRINT_MAX_WORD_BYTES: usize = 4096;
 
 /// 〔W5-ALIAS · 第五波先行〕帧命令 `ccm-print`：**一条别名实际会执行什么**（`设计/71 §2.3`：
-/// 「`ccm --print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
+/// 「`ccm --ccm-print` 不跑、吐出等价的一行 shell ⇒ 生成器旁边显示这条别名实际会执行什么，是真验证，不是前端拼串」）。
 ///
-/// 入：`{ "args": [..] }`（一条别名的预置参数，原样 ccm argv）。出：`{ "line": "<--print 那一行>" }`。
-/// 与 `ccm --print` 走**同一个** [`plan_of`] ＋ `plan::render`；差别只在环境 —— 用 [`Env::for_preview`]：
+/// 入：`{ "args": [..] }`（一条别名的预置参数，原样 ccm argv）。出：`{ "line": "<--ccm-print 那一行>" }`。
+/// 与 `ccm --ccm-print` 走**同一个** [`plan_of`] ＋ `plan::render`；差别只在环境 —— 用 [`Env::for_preview`]：
 /// 「从这台机器家目录里的一个新终端敲这条别名」（叫的是 `ccm` · 不在 tmux 里 · 不继承账号目录），
 /// 账号表与会话快照照这台机器的真值（撞名退让因此与真跑同一个名字）。
 ///
@@ -436,7 +428,7 @@ pub(crate) fn answer_print(
         Err(Die(msg)) => return Err(("refused", msg)),
     };
     let plan = plan_of(&o, Env::for_preview(), false).map_err(|Die(msg)| ("refused", msg))?;
-    Ok(serde_json::json!({ "line": plan::render(&plan, resolved(&plan).as_deref()) }))
+    Ok(serde_json::json!({ "line": plan::render(&plan) }))
 }
 
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
@@ -490,25 +482,15 @@ fn die(msg: &str) -> i32 {
     2
 }
 
-/// `resume` 那一问：这个会话该怎么起。**在同一个进程里答** ——
-/// 从前这里要跨一次进程去问后端（`--resolve`），那整段是 bash 与后端说话的税。
-fn resolved(plan: &Plan) -> Option<String> {
-    let Plan::Direct(d) = plan else { return None };
-    let sid = d.resolve_sid.as_deref()?;
-    let input = serde_json::json!({ "sessionId": sid }).to_string();
-    let v = crate::control::resolve_query::resolve_json_for_inbound(&input).ok()?;
-    v.get("command")?.as_str().map(|s| s.to_string())
-}
-
 /// 真跑。
 fn execute(plan: Plan) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
-        // 它与 `--print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
-        Plan::Attach { .. } => exec_shell(&plan::render(&plan, None), &WHY_SHELL_ATTACH),
+        // 它与 `--ccm-print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
+        Plan::Attach { .. } => exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH),
         Plan::Container(c) => {
             // 🔴 〔`K-R96` 09-12〕**这里从前有一段退让** —— 它只发生在真跑这条路上，
-            //    于是 `--print` 吐的名字与真跑起出来的名字**可以不一样**。
+            //    于是 `--ccm-print` 吐的名字与真跑起出来的名字**可以不一样**。
             //    用户 `R52` 裁定二之后退让搬进了 `plan::build`（问同一张快照），
             //    计划里的 `name` 就是最终名 ⇒ **这里一个字都不许再改它**。
             //    往回加 = 「产名」与「避让」又变回两个人干的两件事，
@@ -554,12 +536,12 @@ fn execute(plan: Plan) -> i32 {
             if tail.is_empty() {
                 0
             } else {
-                // 收尾片段以 ` && ` / `; ` 开头（它在 `--print` 里是接在建会话那段后面的）
+                // 收尾片段以 ` && ` / `; ` 开头（它在 `--ccm-print` 里是接在建会话那段后面的）
                 // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
                 exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL)
             }
         }
-        Plan::Direct(d) => exec_direct(d, resolved(&plan).as_deref()),
+        Plan::Direct(d) => exec_direct(d),
     }
 }
 
@@ -586,7 +568,7 @@ fn launch_args(c: &plan::Container) -> serde_json::Value {
     serde_json::Value::Object(m)
 }
 
-/// 「这一趟非得经 POSIX shell」的**归因**——五句，一句一处，**都在 [`needs_shell`] /
+/// 「这一趟非得经 POSIX shell」的**归因**——四句，一句一处，**都在 [`needs_shell`] /
 /// [`execute`] 的判定旁边取用**，不许在别处另写一句
 ///（「一句只许一处用」由 [`tests::every_reason_for_needing_a_shell_is_declared_once_and_used_once`]
 /// 机检，人群从本文件生产段现打）。
@@ -597,9 +579,6 @@ fn launch_args(c: &plan::Container) -> serde_json::Value {
 /// 「找不到的不是 `hostname`，是 `sh`」—— 错的归因比失败本身更贵。
 pub(crate) static WHY_SHELL_CCM_ENV: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.ccmEnv", &[]));
-/// 同上：后端答出了 `resume` 那一问。
-pub(crate) static WHY_SHELL_RESOLVED: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.resolved", &[]));
 /// 同上：codex 的 cc-bus 身份配方，**而且这一趟真在 tmux 里**。
 pub(crate) static WHY_SHELL_BUS_ID: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.whyShell.busId", &[]));
@@ -632,14 +611,11 @@ pub(crate) static WHY_SHELL_CONTAINER_TAIL: std::sync::LazyLock<String> =
 ///
 /// # 它**没有**买到什么
 ///
-/// 另两条（`CCM_ENV` / `resume` 被后端答出来）**是真的要 shell**，本函数不假装它们不要
+/// 另一条（`CCM_ENV`）**是真的要 shell**，本函数不假装它不要
 /// ⇒ 在没有 `sh` 的机器上它们照旧做不到，只是从今天起**说得出口**（`no_shell:`）。
-fn needs_shell(d: &plan::Direct, resolved: Option<&str>) -> Option<&'static str> {
+fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
     if !d.ccm_env.is_empty() {
         return Some(WHY_SHELL_CCM_ENV.as_str());
-    }
-    if resolved.is_some() {
-        return Some(WHY_SHELL_RESOLVED.as_str());
     }
     if d.bus_id_recipe && d.inside_tmux {
         return Some(WHY_SHELL_BUS_ID.as_str());
@@ -682,13 +658,13 @@ pub(crate) fn direct_identity_note(d: &plan::Direct) -> Option<&'static str> {
     (d.identity == plan::DirectIdentity::NoCarrier).then_some(DIRECT_SID_NO_CARRIER.as_str())
 }
 
-fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
+fn exec_direct(d: &plan::Direct) -> i32 {
     if let Some(note) = direct_identity_note(d) {
         eprintln!("{note}");
     }
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`。
-    if let Some(why) = needs_shell(d, resolved) {
-        return exec_shell(&plan::render(&Plan::Direct(d.clone()), resolved), why);
+    if let Some(why) = needs_shell(d) {
+        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why);
     }
     for k in &d.nested {
         std::env::remove_var(k);
@@ -699,9 +675,6 @@ fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
     }
     if d.unset_config_dir {
         std::env::remove_var(cfg_env);
-    }
-    if !d.model.is_empty() {
-        std::env::set_var("ANTHROPIC_MODEL", &d.model);
     }
     if !d.cwd.is_empty() && std::env::set_current_dir(&d.cwd).is_err() {
         return die(&copy_text(

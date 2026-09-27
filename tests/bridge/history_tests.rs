@@ -277,9 +277,10 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
         Some("ccm"),
         "attach 那一句不是在调后端的命令行入口（`K26`：`ccm` 就是它）：{attach}"
     );
+    // V138：接回从位置动作 `attach <名>` 改成壳层选项 `--attach <名>`。
     assert_eq!(
         toks.next(),
-        Some("attach"),
+        Some("--attach"),
         "\n★ 本机后端渲出来的**动作不是 attach**（实得整串：{attach}）。\n\
              最可能的形状：`Attach` 那一臂掉进了 `render_ccm_invocation` 的 `_ => new` 兜底 ——\n\
              那一刀的后果不是「没接上」，是**另起一条 claude**，而用户以为回到了原会话。"
@@ -290,7 +291,7 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
     assert_eq!(
         toks.next(),
         None,
-        "`ccm attach <名>` 不收任何修饰 flag（`ccm_invocation` 那一支早于维度循环 return），\
+        "`ccm --attach <名>` 不收任何修饰 flag（`ccm_invocation` 那一支早于维度循环 return），\
              多出来的东西说明它走了别的分支：{attach}"
     );
     assert_eq!(
@@ -314,15 +315,13 @@ fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created
         argv_prod.len(),
         plan_prod.len()
     );
-    let attach_verb = format!("\"{}\" => {{", "attach");
     assert!(
-        argv_prod.contains(attach_verb.as_str()),
-        "后端那份 `ccm` 的 argv 解析里，位置动作 `{attach_verb}` 那一支不见了 —— \
-             我们产的这一句它读不成 attach"
+        argv_prod.contains("pub(crate) const ATTACH: &str = \"--attach\";"),
+        "后端那份 `ccm` 的旗标表里 `--attach` 不见了 —— 我们产的这一句它读不成 attach"
     );
     assert!(
-        argv_prod.contains("o.attach_name = v.clone()"),
-        "`ccm attach <名>` 后面那个位置参数不再落进 `attach_name` —— \
+        argv_prod.contains("flag::ATTACH => o.attach_name = val!(),"),
+        "`ccm --attach <名>` 的值不再落进 `attach_name` —— \
              那么「接哪一个」这条信息在后端那半就断了"
     );
     assert!(
