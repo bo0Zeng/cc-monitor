@@ -82,6 +82,28 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
     }
 }
 
+/// `--resident-ensure` 的入口：宿主层环境 = 中转口（V139）· stderr 诊断文件 ·
+/// 〔TAIL · HOST 余项〕数据目录那两格按默认推（谁起都一样）⇒ 那台自己的 monitor 能收养它。
+pub fn ensure(agent_home: &Path, args: &[String]) -> i32 {
+    let mut hosted = vec![
+        (
+            crate::listen::RELAY_PORT_ENV,
+            relay_route_core::PORT.to_string(),
+        ),
+        (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
+    ];
+    let [_, creds_env, meta_env] = crate::wire::HOST_ECHO_ENVS;
+    if let Some(h) = home() {
+        hosted.extend(data_dir_envs(
+            &|k| std::env::var(k).ok(),
+            &h,
+            creds_env,
+            meta_env,
+        ));
+    }
+    run_ensure(agent_home, args, &hosted)
+}
+
 /// `--resident-stop`。
 pub fn run_stop(agent_home: &Path, _args: &[String]) -> i32 {
     let Some(home) = home() else {
