@@ -1,6 +1,4 @@
 文件	理由
-src/backend/control/files_commit.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
 src/backend/control/files_write.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
 src/backend/control/transfer.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
-src/backend/files/mod.rs	〔TAIL 09-26〕文件管理写面：「refuse write:」等前缀被 monitor / 文件窗口按原文认，先把判定换成码再抽，留下一棒
 src/bridge/crates/creds-core/src/store.rs	〔TAIL〕两句报错已进表；剩 TEMPLATE —— 写进用户文件的整份 JSON 模板（不是一句话），进不进表、怎么进待拍

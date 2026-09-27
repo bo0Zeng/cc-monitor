@@ -195,7 +195,6 @@ src/bridge/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	�
 src/bridge/src/filewin/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字；〔W5-FILES〕−1 字 `恰`）
 src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] 〔FW1 · D-c〕files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
 src/bridge/src/filewin/fonts.rs:324	仍然摘盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW1 · D-c〕＋4 字，编辑器存盘 CAS 那几句）
-src/backend/control/files_commit.rs:219	；目标位置留下了一个 0 字节的空文件 {}，没能删掉：{e}。它不是你的数据，删掉后再试	保留	[对外] 〔HX1〕上传提交失败、撤占位也失败时接在报错后面的半句（files-commit-upload 的 io_failed 回到窗口）；先说留下了什么、再说用户能做什么
 src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] 〔HX1〕exit_after_drain 的 why，只进后端 tracing 日志
 src/backend/main.rs:361	hello 写不出去	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:424	收到停机信号	保留	[不对外] 〔HX1〕同上，只进后端日志
@@ -208,3 +207,25 @@ src/bridge/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不�
 src/bridge/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/bridge/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/bridge/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/backend/control/files_commit.rs:112	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_commit.rs:121	把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_commit.rs:128	按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \n               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\n               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1936	在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1944	新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1951	改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1959	删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \n               才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \n               ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {"empty_dir": true}` \n               ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1969	改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\n               〔FW5〕没有 unix 权限位的平台上回 `no_unix_mode`	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1978	同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\n               显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；〔W5-FILES〕显式 `recursive: true` \n               才复制目录 —— 逐条目过路径解析，链接 / 跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1987	覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\n               〔FW1〕`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:1996	读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2003	整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \n               回读比对 → 不符回滚** —— 用户文件的写规则只有这一份	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/control/files_write.rs:2011	删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:213	列一个目录的直接子项（名字走原始字节）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:229	一个路径的元数据	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:240	🔴 **在常驻索引里查** —— SFTP 给不了的那一条，整族的存在理由	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:257	索引的新鲜度 ／ 条目数 ／ 常驻字节，**以及后端声明的重走周期**（边界③）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:289	🔴 **走一遍，就一遍，做完返回** —— `index::rebuild_once` 的线上面（只有机制，没有节拍）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:309	告诉后端「用户现在在看哪几个目录」—— `browse_watch::set_browsing` 的线上面（保鲜的另一半）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:335	读一份文本进编辑器 —— **超上限整趟拒、不截断**；含 NUL / 不是 UTF-8 也拒	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:347	算一个目录（或文件）有多大 —— 不跟链接、不进别的文件系统，只回几个数	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
+src/backend/files/mod.rs:366	后端这个进程的用户 home（绝对路径）—— 窗口开窗时「开在哪儿」那一问	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
