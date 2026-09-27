@@ -6627,12 +6627,12 @@
     },
     "machineCard.uninstall.confirm": {
       "kind": "body",
-      "zh": "确认从 {host} 删除后端？\n会删：{path}\n（若该机器仍勾选启用，下次连接会自动装回。）",
-      "args": ["host", "path"]
+      "zh": "确认从 {host} 删除后端？\n会删：~/.cc-monitor/bin/ccm\n（若该机器仍勾选启用，下次连接会自动装回。）",
+      "args": ["host"]
     },
     "machineCard.uninstall.needFields": {
       "kind": "error",
-      "zh": "请先填好主机、用户和后端路径再卸载后端。",
+      "zh": "请先填好主机和用户再卸载后端。",
       "args": []
     },
     "machineCard.status.installFailed": {
@@ -6652,7 +6652,7 @@
     },
     "machineCard.deploy.needFields": {
       "kind": "error",
-      "zh": "请先填好主机、用户和后端路径再部署后端。",
+      "zh": "请先填好主机和用户再部署后端。",
       "args": []
     },
     "machineCard.launch.start": {
@@ -6782,7 +6782,7 @@
     },
     "machineCard.test.needFields": {
       "kind": "error",
-      "zh": "请先填好主机、用户和后端路径再测试。",
+      "zh": "请先填好主机和用户再测试。",
       "args": []
     },
     "machineCard.displayName.unnamed": {
@@ -6955,19 +6955,8 @@
       "zh": "私钥路径（可选）",
       "args": []
     },
-    "machineCard.field.backendPathHint": {
-      "kind": "body",
-      "zh": "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接执行、不经 shell，~ 不会被展开。",
-      "args": [],
-      "waive": {
-        "C-T1": "例子里是后端程序在盘上的真实文件名 cc-monitor-backend，用户要照着填"
-      }
-    },
-    "machineCard.field.backendPath": {
-      "kind": "control",
-      "zh": "后端路径",
-      "args": []
-    },
+
+
     "machineCard.field.userHint": {
       "kind": "control",
       "zh": "如 ubuntu / pi / root",
@@ -10196,26 +10185,6 @@
       "zh": "已删除 {path}。若这台机器仍勾选「启用」，下次连接时会自动装回；彻底移除请取消启用或删除这台机器。",
       "args": ["path"]
     },
-    "rsSftp.uninstall.suspicious": {
-      "kind": "error",
-      "zh": "拒绝删除可疑的后端路径（须为含 cc-monitor 的绝对路径、不含 ..）：{path}",
-      "args": ["path"]
-    },
-    "rsSftp.uninstall.tildeRefused": {
-      "kind": "error",
-      "zh": "后端路径里有 ~（SFTP 不展开 ~），请改用绝对路径后再卸载",
-      "args": []
-    },
-    "rsSftp.ccmEntry.placed": {
-      "kind": "body",
-      "zh": "终端里的 ccm 入口已放好（~/.cc-monitor/bin/ccm；装了别名块的终端里直接能用）。",
-      "args": []
-    },
-    "rsSftp.ccmEntry.ready": {
-      "kind": "body",
-      "zh": "终端里的 ccm 入口已就位。",
-      "args": []
-    },
     "rsSftp.deploy.done": {
       "kind": "body",
       "zh": "已安装后端（{buildId}，{machine}）到 {path}（{reason}）。重连远端即可用。",
@@ -10226,19 +10195,6 @@
       "zh": "远端已是最新后端（{buildId}，{machine}）：{path}，无需重装。",
       "args": ["buildId", "machine", "path"]
     },
-    "rsSftp.deploy.tildeRefused": {
-      "kind": "error",
-      "zh": "后端路径里有 ~（SFTP 不展开 ~），请改用绝对路径",
-      "args": []
-    },
-    "rsSftp.deploy.needPath": {
-      "kind": "error",
-      "zh": "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）",
-      "args": [],
-      "waive": {
-        "C-T1": "例子里是后端程序在盘上的真实文件名 cc-monitor-backend"
-      }
-    },
     "rsSftp.deploy.noBuildId": {
       "kind": "error",
       "zh": "这一版 cc-monitor 带的后端说不出自己是哪一版，没有把它装上去。",
@@ -10248,11 +10204,6 @@
       "kind": "error",
       "zh": "问 {machine} 是什么机器没问成，没有装后端：{e}",
       "args": ["machine", "e"]
-    },
-    "rsSftp.deploy.tildePath": {
-      "kind": "error",
-      "zh": "{machine} 的后端路径里有 ~，自动部署不认这种写法，没有装。在机器页把后端路径改成完整路径。",
-      "args": ["machine"]
     },
     "rsSftp.identity.undecidable": {
       "kind": "error",
@@ -10268,6 +10219,26 @@
       "kind": "error",
       "zh": "{machine} 的 {path} 自报了不止一个版本（{ids}），{handsOff}",
       "args": ["machine", "path", "ids", "handsOff"]
+    },
+    "rsSftp.identity.oldEntry": {
+      "kind": "body",
+      "zh": "那里是旧版 cc-monitor 放的三行 ccm 入口，换成后端本身",
+      "args": []
+    },
+    "rsSftp.legacyBackend.removed": {
+      "kind": "body",
+      "zh": "旧版放的后端 {rel} 认出是 cc-monitor 编的，已删掉（今天后端就是 ~/.cc-monitor/bin/ccm）。",
+      "args": ["rel"]
+    },
+    "rsSftp.legacyBackend.kept": {
+      "kind": "body",
+      "zh": "{rel} 没动：它说不出自己是 cc-monitor 编的哪一版。",
+      "args": ["rel"]
+    },
+    "rsSftp.legacyBackend.failed": {
+      "kind": "error",
+      "zh": "没查成旧版后端 {rel}：{e}。",
+      "args": ["rel", "e"]
     },
     "rsSftp.identity.unstamped": {
       "kind": "error",
@@ -14362,11 +14333,6 @@
       "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
       "args": ["machine"]
     },
-    "rsSshSource.backendPath.refused": {
-      "kind": "error",
-      "zh": "{machine} 的后端路径 {path} 不能用。要绝对路径，不含 ..、反斜杠、引号、分号这类 shell 字符、控制字符或看不见的字符；去机器页改对它",
-      "args": ["machine", "path"]
-    },
     "rsSshSource.control.unsupported": {
       "kind": "body",
       "zh": "control=unsupported：后端太旧，不能在远端起会话",
@@ -16062,12 +16028,7 @@
     },
     "rsToolRegistry.tools.backendRemoteNote": {
       "kind": "body",
-      "zh": "路径由这条连接的「后端路径」配置项决定。在那台机器上它就是那台机器的本地后端，「远端」只是相对这台 cc-monitor 说的",
-      "args": []
-    },
-    "rsToolRegistry.tools.backendRemoteDestWhat": {
-      "kind": "body",
-      "zh": "每个远端连接的「后端路径」配置项",
+      "zh": "固定放在那台的 ~/.cc-monitor/bin/ccm。在那台机器上它就是那台机器的本地后端，「远端」只是相对这台 cc-monitor 说的",
       "args": []
     },
     "rsToolRegistry.tools.backendRemoteWhat": {
@@ -16177,7 +16138,7 @@
     },
     "rsToolRegistry.tools.ccmRemoteWhat": {
       "kind": "body",
-      "zh": "远端那台机器上的 ccm 命令。它只是一个小入口，把参数转给那台机器上的后端",
+      "zh": "远端那台机器上的 ccm 命令。它就是推过去的那一份后端本身，不是另一份实现",
       "args": []
     },
     "rsToolRegistry.tools.ccmName": {
@@ -16543,6 +16504,11 @@
     "rsToolRegistry.tools.ccmLegacyNote": {
       "kind": "body",
       "zh": "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
+      "args": []
+    },
+    "rsToolRegistry.tools.backendLegacyNote": {
+      "kind": "body",
+      "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端（今天后端就是 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
       "args": []
     },
     "rsSkillInstall.record.noLedger": {
@@ -17172,11 +17138,6 @@
       "kind": "error",
       "zh": "记得住的远端机器已经满了（{max} 台）",
       "args": ["max"]
-    },
-    "beRemoteAsk.register.backendPathRefused": {
-      "kind": "error",
-      "zh": "机器 {origin} 登记的后端路径 {path} 不能用。要绝对路径，不含 ..、引号、分号这类 shell 字符、控制字符或看不见的字符",
-      "args": ["origin", "path"]
     },
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",

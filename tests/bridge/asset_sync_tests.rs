@@ -29,7 +29,6 @@ fn cfg() -> crate::ssh_source::RemoteConfig {
         "port": 2222,
         "user": "u",
         "keyPath": "/home/me/.ssh/id_ed25519",
-        "backendPath": "/home/u/.cc-monitor/bin/ccm",
     }))
     .or_else(|_| {
         serde_json::from_value(json!({
@@ -38,7 +37,6 @@ fn cfg() -> crate::ssh_source::RemoteConfig {
             "port": 2222,
             "user": "u",
             "key_path": "/home/me/.ssh/id_ed25519",
-            "backend_path": "/home/u/.cc-monitor/bin/ccm",
         }))
     })
     .expect("夹具配置")
@@ -71,7 +69,8 @@ async fn a_remote_page_hands_over_how_to_reach_it_and_the_local_page_hands_over_
     let sent = rec.sent.lock().unwrap().clone();
     assert_eq!(sent.len(), 2);
     assert_eq!(sent[0]["origin"], json!("dev"));
-    assert_eq!(sent[0]["backend"], json!("/home/u/.cc-monitor/bin/ccm"));
+    // 〔E2〕那台后端的路径不交（落点是固定常量）。
+    assert_eq!(sent[0].get("backend"), None);
     assert_eq!(sent[0]["dial"]["use"], json!("capture"));
     assert_eq!(sent[0]["dial"]["host"], json!("10.0.0.2"));
     assert_eq!(
@@ -136,11 +135,10 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         .step_by(2)
         .map(str::to_string)
         .collect();
-    let used: std::collections::BTreeSet<String> =
-        ["origin", "dial", "backend", "self", "synced", "reach"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+    let used: std::collections::BTreeSet<String> = ["origin", "dial", "self", "synced", "reach"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         declared, used,
         "本侧发 / 读的字段与后端声明的不相等（两向）"
@@ -197,7 +195,7 @@ fn this_module_holds_no_sync_rule() {
 /// 〔C4d · 第四波 4B〕跨半边：可达表登记那一条 —— 本侧发的三格 ＋ 读回的那一格 == 后端 `REGISTRY` 里 `remote-reach` 声明的 `fields`（两向），
 /// 且那条命令真在后端命令镜子里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
 ///
-/// 守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 1 条）「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在
+/// 守的要求：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 1 条）「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（〔E2〕`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
 /// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {

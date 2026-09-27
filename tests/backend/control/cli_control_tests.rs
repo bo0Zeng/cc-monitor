@@ -363,7 +363,7 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
     let r = read_input(std::io::BufReader::new(ThenPanic(Some(big))), true);
     assert_eq!(r.map_err(|e| e.0), Err("args_too_large"));
     // 旗标字面量与 `asset_sync` 推那一趟拼的是同一个常量（远端认的就是它）。
-    assert!(crate::asset_sync::push_command("/b").ends_with(&format!(
+    assert!(crate::asset_sync::push_command().ends_with(&format!(
         " {}",
         shell_quote_core::posix_quote(STDIN_LINE_FLAG)
     )));

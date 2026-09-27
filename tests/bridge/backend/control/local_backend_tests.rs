@@ -1500,12 +1500,11 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
         Some(env!("CCM_TARGET_EXE_SUFFIX").to_string()),
         "本机那条入口的文件名不是「那个词 + 目标平台后缀」：{name:?}"
     );
-    // ② 远端：shim 把 argv 交给的就是那个子命令词。
-    let shim = ccm_entry_shim("/x/cc-monitor-backend");
-    let handoff = format!(" {CCM_ENTRY_WORD} \"$@\"");
-    assert!(
-        shim.contains(&handoff),
-        "远端那条 shim 交给后端的不是 `{CCM_ENTRY_WORD}` 子命令：\n{shim}"
+    // ② 远端：〔E2〕落点那个文件的名字就是这个词（shim 删了，远端也走入口① basename）。
+    assert_eq!(
+        relay_route_core::BACKEND_LANDING_REL.rsplit('/').next(),
+        Some(CCM_ENTRY_WORD),
+        "远端落点的文件名不是 `{CCM_ENTRY_WORD}`"
     );
     // ③ 反向自检：那个词不许是空串 / 空白 —— 否则上面两条都会**空真**。
     assert!(
@@ -1515,32 +1514,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
     );
 }
 
-/// 〔MC1 · 2026-09-24〕远端 shim **一个环境变量都不设**（`CCM_SELF` 那一行删了）。
-///
-/// 这条从前叫 `remote_shim_carries_the_entry_name_for_the_container_path`〔散文墓碑〕，钉的是
-/// 09-15 真机逮到的那一格：容器路的内层命令缺 `ccm` 子命令词 ⇒ 要 shim 把 `$0` 塞进 `CCM_SELF`。
-/// CC1 之后后端自己从 argv 取「被 `intercept` 吃掉的那一段」（`control/ccm/mod.rs::self_invocation`），
-/// 入口② 自带那个词 ⇒ 那个补丁的前提没了，`设计/01 §6.7b` 要它删。
-///
-/// ⚠ **那一格的性质没丢，只是换了住址**：「经入口② 进来、内层命令仍带着 `ccm`」今天由后端
-/// `self_invocation` 的单测与 `tests/e2e/backend-cc-bus.sh` 的 `[17]`（两个入口 pane 那一跳逐字同形）钉。
-/// 本条钉的是删干净：shim 里不许再出现任何一处 `CCM_SELF`，也不许长出任何环境变量前缀。
-#[test]
-fn remote_shim_sets_no_environment_of_its_own() {
-    let shim = ccm_entry_shim("/x/cc-monitor-backend");
-    assert!(
-        !guard_core::contains_word(&shim, "CCM_SELF"),
-        "远端 shim 里还有 `CCM_SELF` —— 那个变量删了（设计/01 §6.7b）：\n{shim}"
-    );
-    let exec_line = shim
-        .lines()
-        .find(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .expect("shim 里没有可执行行 —— 这条判据的前提没了");
-    assert!(
-        exec_line.starts_with("exec "),
-        "shim 那一行不是以 `exec` 打头（前面挂了环境变量赋值？）：{exec_line}"
-    );
-}
+// 〔E2 · V28〕`remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
 
 /// P2z-Y3：**本机那条路不许自己写版本比较** —— 复用 `sftp::deploy_decision`（纯函数）。
 ///

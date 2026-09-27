@@ -210,7 +210,7 @@ pub enum ToolDestination {
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
     /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
     ///
-    /// `token` 是申报路径里用的占位符（形如 `$BACKEND_PATH`，与 `$PROFILE` 同一套写法，
+    /// `token` 是申报路径里用的占位符（形如 `$APP_DIR`，与 `$PROFILE` 同一套写法，
     /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
     UserConfiguredPath { token: &'static str, what: Text },
     /// **我们不装它** —— 这一格回答的不是「装到哪」，而是「它本来在哪」。
@@ -486,8 +486,9 @@ pub const TOOLS: &[ToolSpec] = &[
         carriers: &[
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmRemoteWhat", &[])),
-                source: ToolSource::EmbeddedText {
-                    repo_path: "src/bridge/src/backend/control/local_backend.rs::ccm_entry_shim",
+                // 〔E2 · V28〕远端 `ccm` 就是推过去的那一份后端字节（三行 shim 与它的生成器删了）。
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "embedded-backends",
                 },
                 // 〔SR1b · 2026-09-24〕`.local/bin/ccm` → `.cc-monitor/bin/ccm`：远端写只许两处（V89），入口是部署物；
                 //   也正是 `设计/01 §6.7b` 的落点（本机那一条早就在那儿）。
@@ -512,6 +513,16 @@ pub const TOOLS: &[ToolSpec] = &[
                         path: "~/.local/bin/ccm",
                         note: Some(Text(|| {
                             copy_text("rsToolRegistry.tools.ccmLegacyNote", &[])
+                        })),
+                        host: HostScope::Remote,
+                        effect: TouchEffect::RetiredLegacy,
+                    },
+                    // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
+                    //   （`sftp.rs::sweep_legacy_backend`）。
+                    TouchedFile {
+                        path: "~/.cc-monitor/bin/cc-monitor-backend",
+                        note: Some(Text(|| {
+                            copy_text("rsToolRegistry.tools.backendLegacyNote", &[])
                         })),
                         host: HostScope::Remote,
                         effect: TouchEffect::RetiredLegacy,
@@ -707,7 +718,7 @@ pub const TOOLS: &[ToolSpec] = &[
         // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
         // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
-        // （删后端二进制 + 同目录 `.build_id`，`is_safe_remote_backend_path` 守着）。
+        // （删后端二进制；〔E2〕落点是固定的 `~/.cc-monitor/bin/ccm`，`is_safe_remote_backend_path`〔散文墓碑〕那道守卫随之删了）。
         // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
         //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
@@ -725,7 +736,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     repo_path: "src/bridge/binaries/cc-monitor-backend",
                 },
                 // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
-                // 而那个目录是装机时由人选的。同 `$BACKEND_PATH` 那一格的理由：
+                // 而那个目录是装机时由人选的。同 `$ACCT_ISO_DEST` 那一格的理由：
                 // 申报一个我们其实没在用的常量，审计页会拿它去查一个没人写的路径
                 // 然后言之凿凿地报「缺失」。
                 destination: ToolDestination::UserConfiguredPath {
@@ -766,12 +777,10 @@ pub const TOOLS: &[ToolSpec] = &[
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "embedded-backends",
                 },
-                destination: ToolDestination::UserConfiguredPath {
-                    token: "$BACKEND_PATH",
-                    what: Text(|| copy_text("rsToolRegistry.tools.backendRemoteDestWhat", &[])),
-                },
+                // 〔E2 · V28〕可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
+                destination: ToolDestination::RemoteHomeRelative(".cc-monitor/bin/ccm"),
                 touches: &[TouchedFile {
-                    path: "$BACKEND_PATH",
+                    path: "~/.cc-monitor/bin/ccm",
                     host: HostScope::Remote,
                     note: Some(Text(|| {
                         copy_text("rsToolRegistry.tools.backendRemoteNote", &[])
@@ -928,7 +937,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 repo_path: "src/shared/ccm-aliases.sh",
             },
             // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
-            // 理由与后端那条 `$BACKEND_PATH` 逐字同源：申报一个我们其实没在用的常量，
+            // 理由与后端那条 `$APP_DIR` 逐字同源：申报一个我们其实没在用的常量，
             // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
             // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
             // （`account_aliases` 的 `§0e`）。

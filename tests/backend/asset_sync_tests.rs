@@ -110,13 +110,12 @@ impl Remote for FakeRemotes {
                 .push((host.clone(), command.clone()));
             self.stdins.lock().unwrap().push(stdin.clone());
             let m = self.by_host.get(&host).ok_or("没这台")?;
-            let backend = "/opt/cc b/ccm";
-            if command == pull_command(backend) {
+            if command == pull_command() {
                 assert_eq!(stdin, None, "拉那一趟不写 stdin");
                 return m.update(None).map(|v| v.to_string()).map_err(|e| e.1);
             }
-            // 〔W5-AUX〕推那一趟：命令行逐字 == `'<后端>' --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
-            if command != push_command(backend) {
+            // 〔W5-AUX〕推那一趟：命令行逐字 == `<落点> --assets-catalog-merge --stdin-line`（不含载荷），载荷恰好一行进 stdin。
+            if command != push_command() {
                 return Err(format!("认不出的命令：{command}"));
             }
             let line = stdin.ok_or("推那一趟没写 stdin")?;
@@ -137,7 +136,7 @@ fn dial(host: &str) -> Value {
 }
 
 fn sync_args(host: &str) -> Value {
-    json!({ "origin": format!("o-{host}"), "dial": dial(host), "backend": "/opt/cc b/ccm" })
+    json!({ "origin": format!("o-{host}"), "dial": dial(host) })
 }
 
 #[tokio::test]
@@ -196,7 +195,7 @@ async fn one_sync_pulls_merges_and_pushes_exactly_what_the_other_side_lacks() {
     // 恰好两条命令：一拉、一推
     let seen = fakes.seen.lock().unwrap().clone();
     assert_eq!(seen.len(), 2, "{seen:?}");
-    assert_eq!(seen[0].1, pull_command("/opt/cc b/ccm"));
+    assert_eq!(seen[0].1, pull_command());
 
     // 第二趟：零移动
     let again = answer_with(&sync_args("r"), local.fold(), &fakes, &table)
@@ -311,9 +310,7 @@ async fn half_given_arguments_are_refused() {
     for bad in [
         json!({"origin": ""}),
         json!({"origin": "o"}),
-        json!({"origin": "o", "dial": dial("x")}),
-        json!({"origin": "o", "backend": "/b"}),
-        json!({"dial": dial("x"), "backend": "/b"}),
+        json!({"dial": dial("x")}),
     ] {
         let e = answer_with(&bad, local.fold(), &fakes, &table)
             .await
@@ -361,16 +358,19 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
 fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_line() {
     let nasty =
         "{\"catalog\":{\"machines\":[{\"label\":\"it's \\\"x\\\" — 中文 $HOME `id` \\\\n\"}]}}";
-    let backend = "/opt/cc b/ccm";
-    let cmd = push_command(backend);
+    let cmd = push_command();
     assert_eq!(
         cmd,
-        crate::remote_ask::command_line(backend, &[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
+        crate::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG]),
         "推那一趟的命令行不是「后端路径 ＋ 两个旗标」"
     );
+    // 〔E2〕命令行以固定落点打头（它自己带 `"$HOME"`）⇒ 查的是落点之后那一段。
+    let tail = cmd
+        .strip_prefix(relay_route_core::BACKEND_LANDING_SHELL)
+        .expect("推那一趟的命令行不以后端落点打头");
     for frag in ["printf", "|", "machines", "中文", "$HOME"] {
         assert!(
-            !cmd.contains(frag),
+            !tail.contains(frag),
             "命令行里出现了 `{frag}` —— 载荷（或管道）又回到命令行里了：{cmd}"
         );
     }
@@ -388,7 +388,7 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
     // 命令行本身交给真 `sh` 也跑得通（后端换成 `echo`，印出来的就是那两个旗标）。
     let out = std::process::Command::new("sh")
         .arg("-c")
-        .arg(push_command("echo"))
+        .arg(push_command().replacen(relay_route_core::BACKEND_LANDING_SHELL, "echo", 1))
         .output()
         .expect("起 sh");
     assert!(out.status.success(), "{out:?}");
@@ -397,8 +397,8 @@ fn the_push_command_line_carries_no_payload_and_the_payload_rides_stdin_as_one_l
         format!("{PUSH_FLAG} {}\n", crate::STDIN_LINE_FLAG)
     );
     assert_eq!(
-        pull_command("/opt/a'b/ccm"),
-        "'/opt/a'\\''b/ccm' --assets-catalog"
+        pull_command(),
+        "\"$HOME\"/.cc-monitor/bin/ccm '--assets-catalog'"
     );
 }
 

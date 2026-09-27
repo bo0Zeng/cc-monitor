@@ -251,7 +251,8 @@ pub(crate) enum RemoteIdentity {
 /// 正则与 `tests/scripts/re-embed.sh::bytes_id` 同一条（界标之间是 `[[:alnum:]_.-]`，这里要**至少一个字符** ——
 /// 两个界标在 `.rodata` 里挨着就是空串那一形，`build.rs::bytes_build_id` 也不收它）。
 /// 界标**不写字面量**，只从 `build.rs` 交进来的 env 取（闭集唯一住址在后端源码）。**纯函数**。
-pub(crate) fn stamp_scan_cmd(path: &str) -> String {
+/// 〔E2〕`word` 是那个文件在远端 shell 里的**写法**（固定落点常量，自带 `"$HOME"`），不再是一条要 quote 的外来路径。
+pub(crate) fn stamp_scan_cmd(word: &str) -> String {
     let ere = |s: &str| -> String {
         s.chars()
             .map(|c| {
@@ -269,9 +270,8 @@ pub(crate) fn stamp_scan_cmd(path: &str) -> String {
         ere(env!("BACKEND_STAMP_CLOSE"))
     );
     format!(
-        "LC_ALL=C grep -aoE {} -- {}",
+        "LC_ALL=C grep -aoE {} -- {word}",
         crate::ssh_source::shell_quote(&pattern),
-        crate::ssh_source::shell_quote(path)
     )
 }
 
@@ -403,16 +403,18 @@ pub(crate) fn identity_decision(
 }
 
 /// 〔DP1〕问那台落点那一份是谁：先 stat（没有 / 0 字节就不必再问），在就扫它字节里的身份戳（一次 exec，不跑它）。
+/// `rel` = SFTP 那一侧（家目录相对），`word` = 同一个文件在远端 shell 里的写法（两格都是固定常量，〔E2〕）。
 async fn remote_identity(
     cfg: &RemoteConfig,
     fs: &RemoteFs,
-    path: &str,
+    rel: &str,
+    word: &str,
 ) -> Result<RemoteIdentity, String> {
-    Ok(match probe_target_binary(fs, path).await? {
+    Ok(match probe_target_binary(fs, rel).await? {
         TargetBinary::Missing => RemoteIdentity::Missing,
         TargetBinary::Empty => RemoteIdentity::Empty,
         TargetBinary::Present | TargetBinary::Unknown => {
-            match crate::ssh_source::connect_and_exec_capture(cfg, &stamp_scan_cmd(path), None)
+            match crate::ssh_source::connect_and_exec_capture(cfg, &stamp_scan_cmd(word), None)
                 .await
             {
                 Ok(r) => interpret_stamp_scan(r.exit_status, &r.stdout, &r.stderr),
@@ -505,11 +507,54 @@ impl From<String> for DeployError {
     }
 }
 
-/// 连接前确保远端后端已（自动）部署到 `cfg.backend_path`（issue #29）。
+/// 〔E2 · V28 · `设计/01 §6.7b`〕后端的落点：SFTP 那一侧（家目录相对）· shell 里 · 给人看的。**本机与远端同一个**，常量住 `relay_route_core`。
+pub(crate) const LANDING_REL: &str = relay_route_core::BACKEND_LANDING_REL;
+const LANDING_SHOWN: &str = "~/.cc-monitor/bin/ccm";
+
+/// 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）。
+pub(crate) const LEGACY_BACKEND_REL: &str = ".cc-monitor/bin/cc-monitor-backend";
+const LEGACY_BACKEND_WORD: &str = "\"$HOME\"/.cc-monitor/bin/cc-monitor-backend";
+
+/// 〔E2〕落点那一份怎么办：先按身份戳判（[`identity_decision`]）；「不说自己是谁」时再看它是不是我们从前放的
+/// 三行入口（`ccm_legacy::is_ours`，读它的字节）—— 是 ⇒ 换成后端本体（部署那一步是原子替换）；不是 ⇒ 照旧显式失败、不动。
+/// 为什么不先 `files-delete`：部署在连上之前，那台的后端还够不着；旧入口转给旧后端的 `ccm` 模式，连它本身都连不上。
+async fn landing_decision(
+    cfg: &RemoteConfig,
+    fs: &RemoteFs,
+    expected: &str,
+) -> Result<DeployAction, String> {
+    let id = remote_identity(cfg, fs, LANDING_REL, crate::ssh_source::BACKEND_CMD).await?;
+    if matches!(id, RemoteIdentity::NoStamp) {
+        let old = read_marker(fs, LANDING_REL).await.ok().flatten();
+        if old.is_some_and(|b| crate::ccm_legacy::is_ours(&String::from_utf8_lossy(&b))) {
+            return Ok(DeployAction::Deploy(copy_text(
+                "rsSftp.identity.oldEntry",
+                &[],
+            )));
+        }
+    }
+    identity_decision(&id, expected, &cfg.origin_label(), LANDING_SHOWN)
+}
+
+/// 〔E2 · E-c〕旧落点那份后端字节：身份戳恰一个（是我们编的）⇒ 删；不在 ⇒ 不说话；别的 ⇒ 不动、说一句为什么。
+/// 部署时与每次连上（预检）各走一次。回「要对人说的那一句」（空 = 没东西）。
+pub(crate) async fn sweep_legacy_backend(cfg: &RemoteConfig, fs: &RemoteFs) -> String {
+    let shown = format!("~/{LEGACY_BACKEND_REL}");
+    match remote_identity(cfg, fs, LEGACY_BACKEND_REL, LEGACY_BACKEND_WORD).await {
+        Ok(RemoteIdentity::Missing) => String::new(),
+        Ok(RemoteIdentity::Stamp(_)) => match fs.remove(LEGACY_BACKEND_REL).await {
+            Ok(_) => copy_text("rsSftp.legacyBackend.removed", &[("rel", &shown)]),
+            Err(e) => copy_text("rsSftp.legacyBackend.failed", &[("rel", &shown), ("e", &e)]),
+        },
+        Ok(_) => copy_text("rsSftp.legacyBackend.kept", &[("rel", &shown)]),
+        Err(e) => copy_text("rsSftp.legacyBackend.failed", &[("rel", &shown), ("e", &e)]),
+    }
+}
+
+/// 连接前确保远端后端已（自动）部署到固定落点 `~/.cc-monitor/bin/ccm`（issue #29；〔E2〕那个文件就是后端本身）。
 ///
-/// 流程：① S-2 守卫（backend_path 含 `~` ⇒ 说清楚，SFTP 不展开 `~`）；② 〔DP1〕问远端是什么机器、查表选内嵌
-/// 二进制（[`remote_backend_binary`]）——表拒绝则 [`DeployError::Refused`]；
-/// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
+/// 流程：① 〔DP1〕问远端是什么机器、查表选内嵌二进制（[`remote_backend_binary`]）——表拒绝则 [`DeployError::Refused`]；
+/// ② 开 SFTP、读落点那一份的身份（[`landing_decision`]）、需要则 mkdir -p + 原子上传；③ 〔E2〕清旧落点那份字节。
 ///
 /// **不阻断**：调用方（ssh_source::run）拿到 `Err` 仍接着试连已有后端（手动部署的后端照样能连），
 /// 但〔DP1〕那句话经远端健康通道（`kind = "deploy"`）发到界面上，不再只是一行日志（`设计/96 §7.1.4` 第 2 条）。
@@ -517,16 +562,6 @@ impl From<String> for DeployError {
 /// 是否传新版才认识的流模式参数（如 `--with-bg`）——`Err` 一律降级不传，
 /// 避免旧后端把未知参数当一次性查询处理后退出（无 hello 死循环）。
 pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, DeployError> {
-    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 backend exec 路径会展开——backend_path 含 `~`
-    // 会两边错位。含 `~` 不装（用户应填完整路径），手动部署的后端仍可连 —— 〔DP1〕但要说出来。
-    if cfg.backend_path.contains('~') {
-        return Err(DeployError::Failed(copy_text(
-            "rsSftp.deploy.tildePath",
-            &[("machine", &(cfg.origin_label()).to_string())],
-        )));
-    }
-    // 〔TL3 · `INVARIANTS §47` ②〕落点要拼进身份扫描那条远端命令（`stamp_scan_cmd`）、也是写的落点 ⇒ 先过放行判定。
-    let backend = cfg.backend_path_for_shell().map_err(DeployError::Failed)?;
     // 〔DP1〕先问那台是什么机器、再查表；表拒绝 ⇒ `Refused`（那句话由 `byte_table::Refusal::say` 说）。
     let bin = match remote_backend_binary(cfg).await {
         Ok(Ok(b)) => b,
@@ -542,16 +577,7 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
         }
     };
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
-    //
-    // 〔墓碑 —— 原来这里逐字写着：「首选 .build_id 清单（bin.build_id 即字节真实身份）……
-    //  无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品」，
-    //  条件是 `!bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes())`。
-    //  两处病：① 括号里那句「清单即字节真实身份」是假的（清单从源码常量抄，见 `K-R68`）；
-    //  ② 有清单时这道闸**整个跳过** ⇒ 真正会出事的那一形（有人手工塞了别的字节、
-    //  清单照旧）恰恰不检查。〕
-    //
-    // 今天判据**无条件**跑，而且不再是启发式：戳是一段 `#[used] static [u8; N]`，
-    // 连续、拆不成立即数（backend 侧 `CC_MONITOR_BUILD_STAMP`）。
+    //   戳是一段 `#[used] static [u8; N]`，连续、拆不成立即数（backend 侧 `CC_MONITOR_BUILD_STAMP`）；判据无条件跑。
     if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {
         tracing::warn!(
             "内嵌后端的字节里问不出 `{}` 这个身份戳——按身份未知不推\
@@ -563,18 +589,16 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             &[],
         )));
     }
-    // 〔SR1b〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区；`backend_path` 不在
-    //   `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒，这里原话往上报 —— 调用方对 Err 只 warn，手动部署的后端照旧能连）。
+    // 〔SR1b〕经本机常驻后端那条 `files` 链路（写只许 `~/.cc-monitor/bin/` 与暂存区）。
     let fs = RemoteFs::open(cfg).await?;
 
     // 〔DP1〕那台上那一份是谁：读它字节里的身份戳（不跑它）；判不了 / 它不肯说 ⇒ 显式失败、一个字节都不写。
-    let id = remote_identity(cfg, &fs, backend).await?;
-    match identity_decision(&id, bin.build_id, &cfg.origin_label(), backend)? {
+    let theirs = match landing_decision(cfg, &fs, bin.build_id).await? {
         // 〔HX2 · D-b〕不比这一版旧 ⇒ 一个字节不写、照旧连上那一份；回**那台上的**身份（不是这一版的 ——
         //   否则调用方的乐观路径会拿这一版内嵌的能力常量去发 flag），能力由那一份的 hello 自报。
         DeployAction::Keep { theirs, why } => {
             tracing::info!("远端 [{}] 不部署：{why}", cfg.origin_label());
-            return Ok(theirs);
+            Some(theirs)
         }
         DeployAction::Skip => {
             tracing::info!(
@@ -582,22 +606,29 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
                 cfg.origin_label(),
                 bin.build_id
             );
+            None
         }
         DeployAction::Deploy(reason) => {
             tracing::info!(
-                "远端 [{}] 自动部署后端（{reason}）→ {backend}",
+                "远端 [{}] 自动部署后端（{reason}）→ {LANDING_SHOWN}",
                 cfg.origin_label(),
             );
-            fs.mkdirs(remote_parent(backend)).await?;
-            upload_verified(&fs, backend, bin.bytes, 0o700).await?;
+            fs.mkdirs(remote_parent(LANDING_REL)).await?;
+            upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
             tracing::info!(
                 "远端 [{}] backend 部署完成：{}",
                 cfg.origin_label(),
                 bin.build_id
             );
+            None
         }
+    };
+    // 〔E2 · E-c〕每次连上（预检）都扫一次旧落点；结局只进日志，不挡连接。
+    let swept = sweep_legacy_backend(cfg, &fs).await;
+    if !swept.is_empty() {
+        tracing::info!("远端 [{}] {swept}", cfg.origin_label());
     }
-    Ok(bin.build_id.to_string())
+    Ok(theirs.unwrap_or_else(|| bin.build_id.to_string()))
 }
 
 /// 朴素子串搜索（8MB × 16B 一次性毫秒级；不为此引 memchr 依赖）。
@@ -637,7 +668,7 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
 
 // ============================================================================
 // F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
-// 卸载删后端二进制 + 同目录 .build_id（is_safe_remote_backend_path 守卫）。
+// 卸载删落点那个文件（〔E2〕固定落点 `~/.cc-monitor/bin/ccm`，没有外来路径要守）。
 // ============================================================================
 
 /// 远端受管路径的安全谓词。**T04 审计⑤：两个消费者、5 个条件里 4 个逐字相同，
@@ -656,26 +687,11 @@ pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool 
         && markers.iter().any(|m| p.contains(m))
 }
 
-/// 远端后端路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
-/// （约定 `~/.cc-monitor/bin/cc-monitor-backend`）—— 杜绝把卸载误用成删任意远端文件。
-fn is_safe_remote_backend_path(path: &str) -> bool {
-    is_safe_remote_managed_path(path, &["cc-monitor"])
-}
-
-/// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）。逻辑同自动部署
-/// [`ensure_backend_deployed`]，但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况
-/// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
+/// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）。逻辑同自动部署 [`ensure_backend_deployed`]，
+/// 但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况（探测不到 arch / 无该 arch 内嵌）显式报错。
+/// 〔E2 · V28〕落点就是 `~/.cc-monitor/bin/ccm`（后端本体，没有 shim）⇒ 部署后端就是放 `ccm`，没有第二样要放。
 #[tauri::command]
 pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    let raw = cfg.backend_path.trim();
-    if raw.is_empty() {
-        return Err(copy_text("rsSftp.deploy.needPath", &[]).into());
-    }
-    if raw.contains('~') {
-        return Err(copy_text("rsSftp.deploy.tildeRefused", &[]).into());
-    }
-    // 〔TL3 · `INVARIANTS §47` ②〕上面两格说的是最常见的两种填错；其余的形式 / 拒绝集由同一道放行判定兜住。
-    let path = cfg.backend_path_for_shell()?.to_string();
     // 〔DP1〕与自动部署同一个取字节口、同一句拒绝的话。
     let bin = match remote_backend_binary(&cfg).await? {
         Ok(b) => b,
@@ -683,11 +699,10 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             return Err(refusal.say(crate::byte_table::Product::Backend, &cfg.origin_label()))
         }
     };
-    // 〔SR1b〕经本机常驻后端那条 `files` 链路；`path` 不在 `~/.cc-monitor/bin/` 下 ⇒ 后端围栏拒、原话带回。
+    // 〔SR1b〕经本机常驻后端那条 `files` 链路。
     let fs = RemoteFs::open(&cfg).await?;
     // 〔DP1〕与自动部署同一条判定：读那台上那一份字节自报的身份，不读旁挂标记。
-    let id = remote_identity(&cfg, &fs, &path).await?;
-    let backend_msg = match identity_decision(&id, bin.build_id, &cfg.origin_label(), &path)? {
+    let backend_msg = match landing_decision(&cfg, &fs, bin.build_id).await? {
         // 〔HX2 · D-b〕手动点也不降级：出路与「它不说自己是谁」那一格同一句（先卸载再部署 = 明确授权覆盖）。
         DeployAction::Keep { why, .. } => copy_text("rsSftp.deploy.keptNotOlder", &[("why", &why)]),
         DeployAction::Skip => copy_text(
@@ -695,12 +710,12 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             &[
                 ("buildId", &bin.build_id.to_string()),
                 ("machine", &bin.machine.to_string()),
-                ("path", &path.to_string()),
+                ("path", &LANDING_SHOWN.to_string()),
             ],
         ),
         DeployAction::Deploy(reason) => {
-            fs.mkdirs(remote_parent(&path)).await?;
-            upload_verified(&fs, &path, bin.bytes, 0o700).await?;
+            fs.mkdirs(remote_parent(LANDING_REL)).await?;
+            upload_verified(&fs, LANDING_REL, bin.bytes, 0o700).await?;
             tracing::info!(
                 "远端 [{}] 手动部署后端完成：{}",
                 cfg.origin_label(),
@@ -711,22 +726,14 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
                 &[
                     ("buildId", &bin.build_id.to_string()),
                     ("machine", &bin.machine.to_string()),
-                    ("path", &path.to_string()),
+                    ("path", &LANDING_SHOWN.to_string()),
                     ("reason", &reason.to_string()),
                 ],
             )
         }
     };
-    // 〔MC1 · 2026-09-24〕`设计/71 §13.3` ①：**部署后端只有一个动作** —— 后端本体 ＋ `ccm` 入口
-    //   一起放（从前入口住「装 ccm 启动器」那颗按钮里，要点两次）。后端先、入口后：入口转发给后端，
-    //   后端没就位时放入口等于给一条当场报错的命令。**只在这颗按钮上放**，连接时的自动部署
-    //   （[`ensure_backend_deployed`]）不碰入口 —— 那是用户点了才发生的事。
-    //   〔SR1b〕入口落在 `~/.cc-monitor/bin/ccm`（两个写根之内；`设计/01 §6.7b` 的落点）。
-    let entry = if put_ccm_entry(&fs, &path).await? {
-        copy_text("rsSftp.ccmEntry.placed", &[])
-    } else {
-        copy_text("rsSftp.ccmEntry.ready", &[])
-    };
+    // 〔E2 · E-c〕旧落点那份后端字节（认出是我们编的才删）。
+    let swept = sweep_legacy_backend(&cfg, &fs).await;
     // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
     //   （经那台的后端、带 CAS；那一格在 SFTP 两个写根之外）。没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
     let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
@@ -740,44 +747,26 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             ],
         ),
     };
-    Ok(format!("{backend_msg}{entry}{legacy}"))
+    Ok(format!("{backend_msg}{swept}{legacy}"))
 }
 
-/// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制。
-/// 〔DP1 · 第四波〕旁挂的版本标记退役了（身份读字节自己的戳）⇒ 只删二进制；从前留在那台上的旧标记不读、不写、不删。
-/// [`is_safe_remote_backend_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
-/// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
+/// 卸载远端后端（设置面板「卸载后端」按钮）：删落点那个文件（〔E2〕它就是 `ccm`，卸后端就是卸 `ccm`）。
+/// 只读铁律豁免（SS-G）：用户显式触发的删。注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
 pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
-    if cfg.backend_path.contains('~') {
-        return Err(copy_text("rsSftp.uninstall.tildeRefused", &[]).into());
-    }
-    // 〔TL3 · `INVARIANTS §47` ②〕先过放行判定（形式 ＋ 拒绝集），再过下面那道「只删我们自己的落点」。
-    let path = cfg.backend_path_for_shell()?.to_string();
-    if !is_safe_remote_backend_path(&path) {
-        return Err(copy_text(
-            "rsSftp.uninstall.suspicious",
-            &[("path", &path.to_string())],
-        ));
-    }
     // 〔SR1b〕经本机常驻后端那条 `files` 链路删（写只许 `~/.cc-monitor/bin/` 与暂存区 —— 围栏拒 ⇒ 原话带回）。
     let fs = RemoteFs::open(&cfg).await?;
-    let removed = fs.remove(&path).await?;
+    let removed = fs.remove(LANDING_REL).await?;
     tracing::info!(
-        "远端 [{}] 卸载后端：{path} {}",
+        "远端 [{}] 卸载后端：{LANDING_SHOWN} {}",
         cfg.origin_label(),
         if removed { "已删" } else { "本来就不在" }
     );
+    let path = LANDING_SHOWN.to_string();
     if removed {
-        Ok(copy_text(
-            "rsSftp.uninstall.done",
-            &[("path", &path.to_string())],
-        ))
+        Ok(copy_text("rsSftp.uninstall.done", &[("path", &path)]))
     } else {
-        Ok(copy_text(
-            "rsSftp.uninstall.absent",
-            &[("path", &path.to_string())],
-        ))
+        Ok(copy_text("rsSftp.uninstall.absent", &[("path", &path)]))
     }
 }
 
@@ -794,60 +783,9 @@ pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, Strin
 //   别名块的真相 —— 围栏那一对 · 块的内容 · 自带的名字 · 合 / 剥 · 远端装 / 卸两条命令 —— 归别名域）。
 //   本文件只剩部署：后端字节 · 身份 · 读回 · `ccm` 入口。
 
-/// 🔴 **`K-R48` 第二拍（09-11）：`CCM_CLI_SCRIPT` 没了，这里是它的墓碑。**
-///
-/// 原来这一行是 `pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");`
-/// —— 把那个 1592 行的 bash 启动器整份编进产物，再 SFTP 推到远端 `~/.local/bin/ccm`。
-/// 〔用@09-11 `K33`〕逐字：「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。
-/// **所有命令只许有一处**，其他都是**根据传参来调用**」⇒ 那个文件删了。
-///
-/// **`KR48D1` 盯的就是这一行**：那句 `include_str!` 在 = 脚本仍是产品的一部分。今天 0。
-///
-/// 远端那份 `~/.local/bin/ccm` 换成 [`ccm_entry_shim`] —— **三行、零实现**，
-/// 只把 argv 原样转给已经部署好的后端（`intercept` 的第二条入口 `<bin> ccm <argv…>`）。
-fn _kr48d1_tombstone() {}
-
-/// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
-///
-/// 🔴 **`K-R69` 09-12：这个生成器搬到了 `backend/control/local_backend.rs`。**
-/// 理由是它有了**第二个读者** —— 本机也要一条 `ccm` 入口，而「本机那条与远端那条同源」
-/// 这句话只有在两边取自**同一处**时才是结构性的（各写一份就只是巧合，而巧合会漂）。
-/// ⇒ 本文件不再自己拼那三行，改成调它；`ccm` 这个词的唯一住址是
-/// [`crate::backend::control::local_backend::CCM_ENTRY_WORD`]。
-/// 头注（不许有第二个 `case` / 为什么不是软链）逐字跟着搬过去了，别在这里再写一份。
-use crate::backend::control::local_backend::ccm_entry_shim;
-
-/// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
-///
-/// 〔SR1b · 2026-09-24〕`.local/bin/ccm` → **`.cc-monitor/bin/ccm`**：远端写只许两处（V89），入口是部署物，
-/// 落进部署那一根；这也正是 `设计/01 §6.7b`（用户 09-18「落点选 `~/.cc-monitor/bin`，两边尽量同形」）的落点，
-/// 本机那一条早就在那儿。PATH：自带别名块（`src/shared/ccm-aliases.sh`）把 `~/.cc-monitor/bin` 排进去。
-/// 〔GP1 · 第四波〕旧的 `~/.local/bin/ccm` 今天**删**（`设计/01 §6.7b` 迁移 ② ③；认出是我们放的才删，经那台后端，
-/// 那一格在两个写根之外）—— 住 `crate::ccm_legacy`，部署按钮与连上那一刻各扫一次。
-/// 〔墓碑 —— SR1b 那一版这里写「旧的 `~/.local/bin/ccm` **不删也不再更新**」。〕
-const CCM_CLI_REMOTE_PATH: &str = ".cc-monitor/bin/ccm";
-
-/// 〔MC1 · 2026-09-24〕把 `ccm` 入口放到远端（〔SR1b〕`~/.cc-monitor/bin/ccm`，[`deploy_remote_backend`] 的后半）。
-///
-/// 🔴 **它仍是那三行 shim**（[`ccm_entry_shim`]）。`设计/01 §6.7b` 的目标是「`ccm` 就是后端
-/// 二进制本身、落 `~/.cc-monitor/bin/ccm`、没有 shim」—— 那一步卡在写区外：monitor 起远端后端的
-/// 两处（`ssh_source.rs` 流模式与零参数探针）直接 exec `backend_path`，而后端 `main.rs` 头一件事就是
-/// 「basename ＝ `ccm` ⇒ 进一次性 ccm 模式」⇒ 把后端文件名改成 `ccm`，探针那一发会变成
-/// 「在当前目录起一个 agent」。改哪一侧都在本路写区外（摸底住 `tests/evidence/MC1-AL1-摸底.md`）。
-/// ⇒ 本拍只做**界面与动作的归一**：装后端与放入口是**一个按钮、一次调用**，不再分成两颗。
-async fn put_ccm_entry(fs: &RemoteFs, backend_path: &str) -> Result<bool, String> {
-    // 〔W5-ALIAS · 第五波先行〕从前这里走 `fenced_block::apply`〔散文墓碑〕（读 → 相同不写 → 原子替换 → 回读 → 回滚）；
-    //   那一个序列在 monitor 里只剩这一个用户，而这一份是**部署物**、不是用户文件 ⇒ 改走部署那一族的原语：
-    //   先读（相同就不写）· 再 `upload_verified`（读回逐字节比对，不对当场删掉 —— 下一次部署重放，与后端本体同一条规矩）。
-    //   回报「写没写」：`true` = 这一次放了（或换了）。
-    let shim = ccm_entry_shim(backend_path);
-    if read_marker(fs, CCM_CLI_REMOTE_PATH).await?.as_deref() == Some(shim.as_bytes()) {
-        return Ok(false);
-    }
-    fs.mkdirs(remote_parent(CCM_CLI_REMOTE_PATH)).await?;
-    upload_verified(fs, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755).await?;
-    Ok(true)
-}
+// 〔E2 · V28 · `设计/01 §6.7b`〕这里原先是 `ccm` 入口那一段（三行 shim 的推送口 `put_ccm_entry`〔散文墓碑〕、落点常量
+//   `CCM_CLI_REMOTE_PATH`〔散文墓碑〕）：`ccm` 就是后端本身之后，落点 `~/.cc-monitor/bin/ccm` 上放的就是后端字节（[`LANDING_REL`]），
+//   没有第二样要放。`K-R48` 那句墓碑（打包 bash 启动器的 `include_str!` 已删，`KR48D1` 盯着）照旧成立。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/sftp_tests.rs"]

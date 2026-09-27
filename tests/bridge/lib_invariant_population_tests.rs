@@ -347,97 +347,201 @@ type QuoteRow = (
 const QUOTE_SITES: &[QuoteRow] = &[
     // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（帧命令 `acct-iso-cmd`，原先界面自己拼）：账号名过 `account_name_ok`（§47 ①），
     //   凭据快照路径过 `check_snapshot_path`（规则照界面原样搬：非空 · 无 `"` · 无控制符 · 不以 `-` 开头），再走唯一的 quote。
-    ("src/backend/accounts/iso.rs", 6, &[
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "account_name_ok"),
-        ("src/backend/accounts/iso.rs", "check_snapshot_path"),
-     ],
-     "",
-     ""),
+    (
+        "src/backend/accounts/iso.rs",
+        6,
+        &[
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "account_name_ok",
+            ),
+            ("src/backend/accounts/iso.rs", "check_snapshot_path"),
+        ],
+        "",
+        "",
+    ),
     // 〔TL3 · §47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
     // 〔W5-AUX · `设计/96 §3.6`〕3 → 1：推那一趟不再把载荷 quote 进命令行（改走 capture 的 stdin 一行，`--stdin-line`），
     //   后端路径那一格改由 `remote_ask::command_line` 拼（那一份文件的处数不变，它本来就逐格 quote argv）⇒ 本文件只剩拉那一趟的路径。
-    ("src/backend/asset_sync.rs", 1, &[("src/backend/observe/accounts_query.rs", "is_safe_config_dir")],
-     "",
-     ""),
+    // 〔E2 · V28〕1 → 0：拉那一趟也改由 `remote_ask::command_line` 拼（落点是固定常量，`backendPath` 那一格删了）⇒ 本行出列。
     // 〔TL3 · §47 · 主会话 09-26 按 V131 裁〕cwd（绝对 · 无 `..` 段）· 启动器 · 透传参数 · 登记备注 · 继承来的三个变量 → 过 `free_text_gate` /
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
     // 〔AL3 · V138〕29 → 28：`--model` 交给 claude 了，`export ANTHROPIC_MODEL=<quote>` 那一处删；模型名 / resume 的 sid 不再由 ccm 判。
-    ("src/backend/control/ccm/plan.rs", 28, &[
-        ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
-        ("src/backend/control/ccm/plan.rs", "free_text_gate"),
-        ("src/backend/control/ccm/plan.rs", "inherited_gate"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
-        // 〔DUP1 · §47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "session_id_ok"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "account_name_ok"), // 〔DUP1〕`--account`
-        // 〔DUP1 · §47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
-        ("src/bridge/crates/acct-core/src/lib.rs", "config_dir_ok"),
-     ],
-     "",
-     "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷"),
-    ("src/backend/control/tmux_hook.rs", 2, &[], "",
-     "本进程自己的可执行文件路径 · 本侧拼的 hook 命令"),
+    (
+        "src/backend/control/ccm/plan.rs",
+        28,
+        &[
+            ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
+            ("src/backend/control/ccm/plan.rs", "free_text_gate"),
+            ("src/backend/control/ccm/plan.rs", "inherited_gate"),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "free_text_ok",
+            ),
+            // 〔DUP1 · §47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "session_id_ok",
+            ),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "account_name_ok",
+            ), // 〔DUP1〕`--account`
+            // 〔DUP1 · §47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
+            ("src/bridge/crates/acct-core/src/lib.rs", "config_dir_ok"),
+        ],
+        "",
+        "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷",
+    ),
+    (
+        "src/backend/control/tmux_hook.rs",
+        2,
+        &[],
+        "",
+        "本进程自己的可执行文件路径 · 本侧拼的 hook 命令",
+    ),
     // 〔TL3 · §47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF，主会话 09-26 按 V131 裁）。
-    ("src/backend/remote_ask.rs", 2, &[
-        ("src/backend/observe/accounts_query.rs", "is_safe_config_dir"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
-     ],
-     "",
-     ""),
-    ("src/bridge/src/acct_iso_deploy.rs", 1, &[("src/bridge/src/acct_iso_deploy.rs", "is_safe_remote_acct_iso_dir")], "", ""),
+    // 〔E2 · V28〕2 → 1：那台后端的路径不再登记（固定落点常量打头，不 quote）⇒ 只剩 argv 那一格。
+    (
+        "src/backend/remote_ask.rs",
+        1,
+        &[(
+            "src/bridge/crates/shell-quote-core/src/lib.rs",
+            "free_text_ok",
+        )],
+        "",
+        "",
+    ),
+    (
+        "src/bridge/src/acct_iso_deploy.rs",
+        1,
+        &[(
+            "src/bridge/src/acct_iso_deploy.rs",
+            "is_safe_remote_acct_iso_dir",
+        )],
+        "",
+        "",
+    ),
     // 〔TL3 · §47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
-    ("src/bridge/src/backend/control/ccm_invocation.rs", 1, &[
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "free_text_ok"),
-        // 〔DUP1 · §47 ①〕resume 的 sid · `--ccm-sid=` · `--model` · `--account`：`Refusal::IdentifierRefused`。
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "session_id_ok"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "model_name_ok"),
-        ("src/bridge/crates/shell-quote-core/src/lib.rs", "account_name_ok"),
-     ],
-     "",
-     ""),
-    ("src/bridge/src/backend/control/local_backend.rs", 1, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")], "",
-     "本机后端的落点（本侧算的 `~/.cc-monitor/bin/…`）· 〔TL3〕远端那台的后端落点（`sftp.rs::put_ccm_entry` 交进来之前已过 `RemoteConfig::backend_path_for_shell`）"),
-    ("src/bridge/src/backend/control/payload.rs", 11,
-     &[
-         ("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe"),
-         ("src/bridge/crates/shell-quote-core/src/lib.rs", "rbind_token_ok"), // 〔DUP3 · J8〕payload.rs 里是 `pub use … as rbind_token_shape_ok`
-         ("src/bridge/crates/relay-route-core/src/lib.rs", "base_url_shape_ok"), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
-         ("src/bridge/src/backend/control/payload.rs", "check"),
-         ("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok"), // 〔TL3 · §47〕cwd 两处
-         ("src/bridge/crates/shell-quote-core/src/lib.rs", "session_id_ok"), // 〔DUP1 · §47 ①〕外层 `@ccm_sid`（原 `ccm_sid_safe` 收进来）
-         ("src/bridge/crates/shell-quote-core/src/lib.rs", "model_name_ok"), // 〔DUP1 · §47 ①〕`export ANTHROPIC_MODEL=`（原「刻意宽容渲染」那一格）
-     ],
-     "",
-     "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）"),
+    (
+        "src/bridge/src/backend/control/ccm_invocation.rs",
+        1,
+        &[
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "posix_free_path_ok",
+            ),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "free_text_ok",
+            ),
+            // 〔DUP1 · §47 ①〕resume 的 sid · `--ccm-sid=` · `--model` · `--account`：`Refusal::IdentifierRefused`。
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "session_id_ok",
+            ),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "model_name_ok",
+            ),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "account_name_ok",
+            ),
+        ],
+        "",
+        "",
+    ),
+    // 〔E2 · V28〕local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
+    (
+        "src/bridge/src/backend/control/payload.rs",
+        11,
+        &[
+            (
+                "src/bridge/src/backend/control/payload.rs",
+                "config_dir_command_safe",
+            ),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "rbind_token_ok",
+            ), // 〔DUP3 · J8〕payload.rs 里是 `pub use … as rbind_token_shape_ok`
+            (
+                "src/bridge/crates/relay-route-core/src/lib.rs",
+                "base_url_shape_ok",
+            ), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
+            ("src/bridge/src/backend/control/payload.rs", "check"),
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "posix_free_path_ok",
+            ), // 〔TL3 · §47〕cwd 两处
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "session_id_ok",
+            ), // 〔DUP1 · §47 ①〕外层 `@ccm_sid`（原 `ccm_sid_safe` 收进来）
+            (
+                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "model_name_ok",
+            ), // 〔DUP1 · §47 ①〕`export ANTHROPIC_MODEL=`（原「刻意宽容渲染」那一格）
+        ],
+        "",
+        "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）",
+    ),
     // 〔DUP3〕Gate 1 并进 gate-core 的 tmux 名那一族（已有会话那一条），本侧那个私有谓词删了。
-    ("src/bridge/src/backend/control/tmux.rs", 1, &[("src/bridge/crates/gate-core/src/lib.rs", "existing_tmux_name_issue")], "", ""),
+    (
+        "src/bridge/src/backend/control/tmux.rs",
+        1,
+        &[(
+            "src/bridge/crates/gate-core/src/lib.rs",
+            "existing_tmux_name_issue",
+        )],
+        "",
+        "",
+    ),
     // 〔TL3 · §47〕文件窗口的当前目录（自由文本路径）拼进 `cd` 之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）。
-    ("src/bridge/src/filewin/shell.rs", 1, &[("src/bridge/crates/shell-quote-core/src/lib.rs", "posix_free_path_ok")],
-     "",
-     ""),
+    (
+        "src/bridge/src/filewin/shell.rs",
+        1,
+        &[(
+            "src/bridge/crates/shell-quote-core/src/lib.rs",
+            "posix_free_path_ok",
+        )],
+        "",
+        "",
+    ),
     ("src/bridge/src/history.rs", 1, &[], "", "本侧铸的启动 id"),
-    ("src/bridge/src/launch.rs", 1, &[], "",
-     "本侧渲染好的整条远端命令（拼它的那几处各自判过；这里只包一层 `bash -lic`）"),
-    ("src/bridge/src/pubkey.rs", 1, &[("src/bridge/src/pubkey.rs", "sanitize_public_key")], "", ""),
-    // 〔TL3 · §47〕身份扫描那条命令的落点 = 这台的后端路径，经 `RemoteConfig::backend_path_for_shell`（规则 = `config_dir_command_safe`）。
-    ("src/bridge/src/sftp.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
-     "",
-     "身份戳正则（构建期常量拼的）"),
+    (
+        "src/bridge/src/launch.rs",
+        1,
+        &[],
+        "",
+        "本侧渲染好的整条远端命令（拼它的那几处各自判过；这里只包一层 `bash -lic`）",
+    ),
+    (
+        "src/bridge/src/pubkey.rs",
+        1,
+        &[("src/bridge/src/pubkey.rs", "sanitize_public_key")],
+        "",
+        "",
+    ),
+    // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
+    (
+        "src/bridge/src/sftp.rs",
+        1,
+        &[],
+        "",
+        "身份戳正则（构建期常量拼的）",
+    ),
     // 〔TL3 · §47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
     //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比主会话 09-26 裁的 NUL / CR / LF 宽一点，既有、没放松）。
-    ("src/bridge/src/shell_dialect.rs", 1, &[("src/bridge/src/account_aliases.rs", "check_alias")],
-     "",
-     "我们那份别名文件的路径"),
-    // 〔TL3 · §47〕1 → 2：测试连接的探针先前把 `backendPath` **原样**当命令串交出去（裸插值，这张表看不见），改走唯一的 quote；
-    //   两处都先过 `RemoteConfig::backend_path_for_shell`（规则 = `config_dir_command_safe`）。
-    ("src/bridge/src/ssh_source.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
-     "",
-     ""),
-    // 〔HOST · §47〕`--resident-ensure` / `--resident-stop` 两条命令的落点 = 这台的后端路径，经 `backend_path_for_shell`（规则 = `config_dir_command_safe`）。
-    ("src/bridge/src/remote_resident.rs", 2, &[("src/bridge/src/backend/control/payload.rs", "config_dir_command_safe")],
-     "",
-     ""),
+    (
+        "src/bridge/src/shell_dialect.rs",
+        1,
+        &[("src/bridge/src/account_aliases.rs", "check_alias")],
+        "",
+        "我们那份别名文件的路径",
+    ),
+    // 〔E2 · V28〕ssh_source.rs 2 → 0 · remote_resident.rs 2 → 0：远端后端落点是固定常量 `BACKEND_CMD`（`backendPath` 那一格删了），
+    //   流 / 探针 / 常驻起停四条命令不再 quote 任何外来值 ⇒ 两行出列。
 ];
 
 /// 〔TL2〕`INVARIANTS §47` 人群判据：盘上每一份调 quote 的 Rust 生产文件 == 登记表（两向，含处数）；
@@ -487,46 +591,5 @@ fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
         余下 plan.rs · payload.rs · ccm_invocation.rs 卡在模型名 / sid（交 DUP1）与账号名 / 配置目录的家）：多了是新缺口，少了是补上了 —— 改这个数并在提交信息里写清是哪份");
 }
 
-/// 〔TL3 · `INVARIANTS §47` ②〕monitor 生产段里读 `.backend_path` 字段的地方 == 登记（两向，含处数）。
-///
-/// 要求住址：`INVARIANTS §47`，逐字「一个值只要**从本进程外面来**（…用户输入…）…… 在它被**拼进 shell 命令串**、
-/// 或被**交给对端去执行 / 去寻址**之前，**本侧**先过一道按这个值的种类写成的放行判定」。`backendPath` 是机器页手填的，
-/// 拼进远端命令的每一处都该经 `RemoteConfig::backend_path_for_shell`（形式 ＋ 拒绝集，规则 = `payload.rs::config_dir_command_safe`）。
-/// ⇒ 直接读那个字段的地方要逐条说清它为什么不是一处拼接：新长一处裸读（例如又一处把它原样交给拨号代理）⇒ 红，逼人回来表态。
-/// 人群按字段访问 `.backend_path` 认（结构体字面量里的 `backend_path:` / 简写不算读）。
-/// 买不到：先把字段拷进一个局部变量再拼（`let p = cfg.backend_path.clone();` 那一处算一次读，之后怎么用看不见）。
-const BACKEND_PATH_READS: &[(&str, usize, &str)] = &[
-    ("src/bridge/src/asset_sync.rs", 1, "登记可达表时交给本机后端（`remote-reach` 的 `backend`）；那一侧唯一的写口 `remote_ask::register` 进门判"),
-    ("src/bridge/src/sftp.rs", 3, "部署 / 手动部署 / 卸载三处先认「含 `~`」「空」那两种最常见的填错、说专门的话；随后都经 `backend_path_for_shell` 取值再拼"),
-    ("src/bridge/src/ssh_source.rs", 2, "`backend_path_for_shell` 本体 · `run` 起头那一行连接日志（只进日志，不拼命令）"),
-];
-
-#[test]
-fn every_read_of_the_backend_path_field_is_registered() {
-    let mut on_disk: BTreeMap<String, usize> = BTreeMap::new();
-    for (rel, body) in production_sources() {
-        // 按路径分量认（`needle_anchor_registry` 那条棘轮不许在语料变量上裸 `.starts_with`）。
-        if !rel.split('/').take(3).eq(["src", "bridge", "src"]) || !rel.ends_with(".rs") {
-            continue;
-        }
-        let n =
-            body.matches(".backend_path").count() - body.matches(".backend_path_for_shell").count();
-        if n > 0 {
-            on_disk.insert(rel, n);
-        }
-    }
-    assert!(
-        on_disk.contains_key("src/bridge/src/ssh_source.rs"),
-        "扫描面里连判定本体住的 ssh_source.rs 都没读到 `.backend_path` —— 认法坏了，下面的相等会空真"
-    );
-    let registered: BTreeMap<String, usize> = BACKEND_PATH_READS
-        .iter()
-        .map(|&(f, n, _)| (f.to_string(), n))
-        .collect();
-    assert_eq!(
-        on_disk, registered,
-        "monitor 里读 `backendPath` 字段的地方与登记对不上（两向，含处数）。\n\
-         多出来的 = 新长的一处裸读：要拼进命令 / 交给对端就改走 `RemoteConfig::backend_path_for_shell`（`INVARIANTS §47` ②）；\
-         只进日志 / 只作标识就登记一行写清。少了 = 收掉了，跟着改表。"
-    );
-}
+// 〔E2 · V28〕`every_read_of_the_backend_path_field_is_registered`〔散文墓碑〕 与它的登记表删了：`RemoteConfig` 没有 `backend_path` 这一格了
+//   （落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`），「裸读那个字段」这一形编译期就不存在。

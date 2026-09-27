@@ -3356,13 +3356,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("tests/bridge/sftp_tests.rs", "interpret_profile_read", 1),
         ("tests/bridge/sftp_tests.rs", "read_profile_text", 1),
-        // 〔MC1 · 2026-09-24〕`CCM_SELF` 删掉（`设计/01 §6.7b`）⇒ 钉「shim 必须传它」的那条判据改成
-        //    「shim 一个环境变量都不设」（`remote_shim_sets_no_environment_of_its_own`）。
-        (
-            "tests/bridge/backend/control/local_backend_tests.rs",
-            "remote_shim_carries_the_entry_name_for_the_container_path",
-            1,
-        ),
+        // 〔E2 · V28〕local_backend_tests.rs 那一行（`remote_shim_carries_the_entry_name_for_the_container_path`）出列：
+        //    它挂在 MC1 那条 shim 判据的头注里，远端 shim 本身删了（落点就是后端字节），那条判据连同头注整轴退役。
         // 〔W5-ALIAS〕`verified_write.rs` 那一行（`install_remote_ccm_helper` ×2）随整份模块删了（整轴退役）。
         (
             "tests/bridge/remote_write_registry_tests.rs",
@@ -4049,6 +4044,47 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "remote_acct_iso_shellinit",
             1,
         ),
+        // 〔E2 · V28〕`backendPath` 那一格删了（落点固定）⇒ 它的放行判定、卸载守卫、远端三行入口与守它们的几条判据一起走；点旧名的散文挂墓碑。
+        (
+            "src/bridge/src/acct_iso_deploy.rs",
+            "is_safe_remote_backend_path",
+            1,
+        ),
+        (
+            "src/bridge/src/tool_registry.rs",
+            "is_safe_remote_backend_path",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_tests.rs",
+            "is_safe_remote_backend_path",
+            1,
+        ),
+        (
+            "tests/bridge/ssh_source_tier1_tests.rs",
+            "backend_path_for_shell",
+            1,
+        ),
+        (
+            "tests/bridge/backend/control/local_backend_tests.rs",
+            "remote_shim_sets_no_environment_of_its_own",
+            1,
+        ),
+        (
+            "tests/bridge/lib_invariant_population_tests.rs",
+            "every_read_of_the_backend_path_field_is_registered",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_tests.rs",
+            "both_remote_path_sinks_still_ask_their_fence",
+            1,
+        ),
+        (
+            "tests/bridge/sftp_tests.rs",
+            "the_remote_ccm_entry_is_an_entry_not_an_implementation",
+            1,
+        ),
     ];
 
     let corpus = dead_name_corpus();
@@ -4374,7 +4410,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/main_argv_table_guard.rs", 1),
         ("tests/evidence/C2-dial-loopback.py", 1),
         // 〔MC1〕+3：模块头注 ＋ 装 / 卸两条命令头注里各一块（`…_ccm_helper` 改名成 `…_alias_block`）。
-        ("src/bridge/src/sftp.rs", 7), // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕8 → 7：`rollback_note` · `SftpFile` 两块随读取器 / 落点原语删了，`put_ccm_entry` 头注进一块 `fenced_block::apply` // 〔W5-ALIAS〕10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
+        ("src/bridge/src/sftp.rs", 8), // 〔E2〕7 → 8：`ccm` 入口那一段（`put_ccm_entry` · `CCM_CLI_REMOTE_PATH`）删了，原地一块（两个名同一块只算一处） // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕8 → 7：`rollback_note` · `SftpFile` 两块随读取器 / 落点原语删了，`put_ccm_entry` 头注进一块 `fenced_block::apply` // 〔W5-ALIAS〕10 → 8：别名块两条命令的头注（两块墓碑）随命令搬去 `profile_installer.rs` // 〔SR1b〕9 → 10（进 3 出 2）：执行那一半（SFTP）搬进本机后端 —— 模块头注两块（开会话 · 原子上传）＋ `SftpFile` 改名一块进；原子上传那段头注的两块随函数搬去后端 `dial/sftp.rs`
         ("src/bridge/src/profile_installer.rs", 11), // 〔AL2 · 第四波 4D〕13 → 11：远端装 / 卸别名块两条命令删了，头注两块墓碑随之走 // 〔W5-ALIAS〕11 → 13：从 `sftp.rs` 搬来别名块两条命令，头注里两块墓碑跟着来 // 〔AL1d〕5 → 11（`ProfileKind` / `ProfileScan` · `$PROFILE` 两份认法与遗留扫描 · 扫一份那两个 · 「终端集成」命令名 · 模块头表那一格，逐处挂墓碑） // 〔AL1〕+1：`AccountAliasReport` 那一句 · 〔RW1〕+3：本机原子写原语 `atomic_write_string` / `atomic_replace_path` 删了（原住址一块 ＋ BOM 那段两句）
         // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕`src/bridge/src/verified_write.rs`（3）与 `tests/bridge/verified_write_tests.rs`（1）两行摘掉：整份模块零调用方删了（整轴退役），
         //   它的墓碑说的那几件（`install_remote_ccm_helper` 两块 · `verify_and_rollback`）另有住址记着。
@@ -4400,7 +4436,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
         ("src/bridge/src/backend/control/cc_bus.rs", 1), // 〔SH1 · V136〕19 → 1：驾驶舱读面迁走、整份收成两句共用说法，旧墓碑段随之删，新头注一处 // 〔C4e 批 3b〕11 → 19：−1 点杀会话发送端那条理由的一处随收掉命令删了；＋9 写面五条迁到界面，原处两块墓碑 ＋ 更早几块墓碑里「换了住址」指向的住址也走了、逐行补标 // 〔C4e 批 2〕+1：点 monitor 杀会话发送端那条读 `killed` 的理由，发送端迁到界面
         // 〔MC1〕+1：`install_remote_ccm_helper` 改名。
-        ("src/bridge/src/backend/control/local_backend.rs", 2),
+        ("src/bridge/src/backend/control/local_backend.rs", 3), // 〔E2〕2 → 3：`ccm_entry_shim` 删了，原地留一块
         ("src/bridge/src/backend/control/payload.rs", 7), // 〔DUP1〕+2：模型名那一格原先「刻意宽容渲染」、TS `isValidModelName` 删了 · launcher 那道闸头注里点 TS `sanitizeRemoteLauncher` 那句（TS 那份删了） // 〔US1〕+3：上游选择那半搬走留下的墓碑 // 〔TL3 · 🔴-3〕+1：`ExportRelayBaseUrl` 头注里链到已删判断口那一句改成今天的出处，旧名留一块
         ("src/bridge/src/backend/control/tmux.rs", 11), // 〔SH1〕+1：跨 SSH 那条 `tmux ls` 用的旗随改问后端删了，原处留墓碑 // 〔C4e 批 2〕+2：杀会话 / 送键两条 Tauri 命令与「通道不在」那句文案迁到界面，原处各一块 // 〔C4e〕+1：抓屏整条迁到界面，发送端与 Tauri 命令原处一块
         ("src/bridge/src/cc_bus_deploy.rs", 1),
@@ -4484,7 +4520,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/panorama/diagram-guards.vitest.ts", 1), // 〔RM1f〕它原先点的那条 monitor 真引擎判据（随内嵌引擎删了）
         ("tests/bridge/polling_registry_tests.rs", 1),
         // 〔AL1 · 2026-09-24〕+1：`rollback_note_matches_what_actually_happened` 搬走的那块墓碑。
-        ("tests/bridge/sftp_tests.rs", 10), // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕5 → 8：读取器四条判据的墓碑（四块）＋ 回报换型那一句（一块）进；随判据删掉的两块出 // 〔SR1b〕+1：`SftpFile` 改名 `RemoteFile`
+        ("tests/bridge/sftp_tests.rs", 12), // 〔E2〕10 → 12：点两条删掉的判据（围栏 · 远端入口） // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕5 → 8：读取器四条判据的墓碑（四块）＋ 回报换型那一句（一块）进；随判据删掉的两块出 // 〔SR1b〕+1：`SftpFile` 改名 `RemoteFile`
         ("tests/bridge/shared_crate_registry_tests.rs", 1),
         // 〔`C1` · 09-24〕快照那一格的墓碑（`parse_snapshot_meta` 随改走长连接删了）。
         ("tests/bridge/ssh_source_snapshot_tail_tests.rs", 1),
@@ -4548,7 +4584,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/relay/mod.rs", 1),
         ("src/bridge/src/ssh_source.rs", 2), // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/subagent.rs", 2), // 〔LOC1a〕+1：exec 本机后端那条路删了 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("src/bridge/src/tool_registry.rs", 5), // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/tool_registry.rs", 6), // 〔E2〕5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/exec_site_registry_tests.rs", 1), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/remote_history_tests.rs", 2), // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("tests/backend/observe/accounts_query_tests.rs", 1), // 〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
@@ -4626,6 +4662,13 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/launch-orchestration-single-home.vitest.ts", 1),
         // 〔DUP1 · 第二轮〕模型名那一格（J17）：设置里写入点那一句原先调 TS `isValidModelName`。
         ("src/account-prefs.ts", 1),
+        // 〔E2 · V28〕`backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
+        ("src/bridge/src/acct_iso_deploy.rs", 1),
+        ("src/bridge/src/ccm_legacy.rs", 2),
+        ("tests/bridge/ccm_legacy_tests.rs", 1),
+        ("tests/bridge/lib_invariant_population_tests.rs", 2),
+        ("tests/bridge/ssh_source_tier1_tests.rs", 1),
+        ("src/settings/machine-card.ts", 1), // 〔E2〕「后端路径」那一格删了，按用户名预填它的函数原地留一块
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

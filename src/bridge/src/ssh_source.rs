@@ -181,7 +181,7 @@ fn next_backoff(cur: Duration) -> Duration {
 /// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
 ///
 /// **serde camelCase 必须与前端 RemoteHostConfig / lib.rs::load_remote_configs 严格一致**：
-/// host / port / user / keyPath / backendPath / hostKeyFingerprint / label（多机 #30，
+/// host / port / user / keyPath / hostKeyFingerprint / label（多机 #30，
 /// 可选，缺省回退 host）。前端多发的 `enabled`
 /// 字段被忽略（serde 默认丢弃未知字段，测试连接不关心 enabled）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,8 +198,6 @@ pub struct RemoteConfig {
     /// 私钥文件路径（OpenSSH 格式）。None / 空 = 走 ssh-agent（见 connect_session）。
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub key_path: Option<String>,
-    /// 远端要 exec 的后端命令（含参数前缀由 S5 决定）。
-    pub backend_path: String,
     /// 期望的 server host key 指纹（`SHA256:...` 形式）。
     /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
     #[serde(default, deserialize_with = "empty_string_as_none")]
@@ -273,29 +271,6 @@ pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
 }
 
 impl RemoteConfig {
-    /// 〔TL3 · `INVARIANTS §47` ②〕**这台的后端路径，拼进 shell 命令 / 交给对端去执行之前的那一道放行判定。**
-    ///
-    /// `backendPath` 是用户在机器页手填的（从本进程外面来），而它会被拼进远端命令串（流模式 exec · 测试连接的探针 ·
-    /// 自动 / 手动部署 · 卸载 · 身份扫描 · `ccm` 入口）。它是**本仓自管的远端落点**（默认 `~/.cc-monitor/bin/cc-monitor-backend`，
-    /// 远端 Windows 今天不承诺 ⇒ 只收 POSIX 形），于是走 §47 ②形的全套：唯一的 quote（调用方）＋ 形式判定（绝对 · 非 `/` ·
-    /// 无 `..` 段 · 无 `\`）＋ 拒绝集权威表（控制字符 · shell 元字符 · 视觉欺骗字符）—— 规则就是
-    /// [`crate::backend::control::payload::config_dir_command_safe`] 那一条，这里不另写一份。
-    /// 不过 ⇒ 带着「哪台 · 哪个值 · 为什么」的 `Err`，**一个请求都不发**。取值前 trim（与部署 / 卸载那两条既有的口一致）。
-    pub(crate) fn backend_path_for_shell(&self) -> Result<&str, String> {
-        let p = self.backend_path.trim();
-        if crate::backend::control::payload::config_dir_command_safe(p) {
-            Ok(p)
-        } else {
-            Err(copy_text(
-                "rsSshSource.backendPath.refused",
-                &[
-                    ("machine", &self.origin_label()),
-                    ("path", &format!("{p:?}")),
-                ],
-            ))
-        }
-    }
-
     /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
     /// 未传 label 时与单机时代 `origin = host` 行为一致）。多机 #30 用作 Tab 前缀 /
     /// 历史分组 / `load_remote_config_by_label` 选台 key。
@@ -400,7 +375,7 @@ pub(crate) fn winner_order(
     out
 }
 
-/// 连接远端、鉴权、开 session channel、exec `cfg.backend_path`，
+/// 连接远端、鉴权、开 session channel、exec [`BACKEND_CMD`]，
 /// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即后端的 stdout 数据。
 ///
 /// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
@@ -514,6 +489,10 @@ mod stream_flag_gate_tests;
 // 二进制就**报**，不再进程内拨。**唯一还在界面进程里拨的是 SFTP**（`F7c` 独占的 `sftp.rs`，
 // 用的是 `inproc_dial.rs` 那一份搬来的旧实现），登记在 `dial_move_judge::DIAL_SITES`。
 
+/// 〔E2 · V28 · `设计/01 §6.7b`〕远端后端在 shell 里的写法：恒是那台的 `~/.cc-monitor/bin/ccm`（后端二进制本身），
+/// 可填的 `backendPath` 删了。常量一份住 `relay_route_core`（后端往远端拼命令也读它）。
+pub(crate) const BACKEND_CMD: &str = relay_route_core::BACKEND_LANDING_SHELL;
+
 pub async fn connect_and_exec(
     cfg: &RemoteConfig,
     with_bg: bool,
@@ -527,7 +506,7 @@ pub async fn connect_and_exec(
     // 〔E2 · V28〕流模式显式词打头：落点那个文件就叫 `ccm`，零参数是「起会话」。
     let mut cmd = format!(
         "{} {}",
-        shell_quote(cfg.backend_path_for_shell()?),
+        BACKEND_CMD,
         crate::backend::control::local_backend::STREAM_WORD
     );
     if with_bg {
@@ -1572,7 +1551,7 @@ pub(crate) fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
-/// `<backend_path> --list-projects` 等一次性命令，与流式后端同一连接建立逻辑、
+/// `<后端落点> --list-projects` 等一次性命令，与流式后端同一连接建立逻辑、
 /// 各自独立连接互不影响）。
 pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
@@ -2571,11 +2550,10 @@ pub async fn run(
     connected: Arc<AtomicBool>,
 ) -> Result<(), String> {
     tracing::info!(
-        "ssh_source connecting to {}@{}:{} (backend={})",
+        "ssh_source connecting to {}@{}:{}",
         cfg.user,
         cfg.host,
-        cfg.port,
-        cfg.backend_path
+        cfg.port
     );
 
     // FIX 2（issue #15 review）：跟踪当前**已向前端宣告**的远端 sid。stream_loop 在每条
@@ -3221,7 +3199,7 @@ async fn stream_loop(
     // ⚠ 埋点本身**不改任何行为**，也不该改：它只是让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
 
-    // issue #29（F08）：连接前确保远端后端已（自动）部署到 cfg.backend_path。
+    // issue #29（F08）：连接前确保远端后端已（自动）部署到固定落点（〔E2〕`~/.cc-monitor/bin/ccm`）。
     // 嵌入二进制就位前（F08b 未做）〔DP1〕`byte_table::choose` 回「这一版没带」→ ensure_backend_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
     // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
@@ -4423,12 +4401,10 @@ pub async fn test_remote_connection(
             tracing::warn!("connect stage emit failed: {e}");
         }
     };
-    // 〔TL3 · §47〕探针那一发先过放行判定、再走唯一的 quote —— 先前这里把 `backendPath` **原样**当命令串交给拨号代理
-    //   （远端 shell 会解析它；TL2 那张 quote 人群表逮不到裸插值）。判不过 ⇒ 这是「构造不出测试」的硬错，照实回 `Err`。
-    // 〔E2〕探的是流模式的 hello ⇒ 同样带流模式显式词（零参数的 `ccm` 是起会话）。
+    // 〔E2〕落点是固定常量（`backendPath` 那一格删了，没有外来值要过放行判定）；探的是流模式的 hello ⇒ 同样带流模式显式词。
     let probe_cmd = format!(
         "{} {}",
-        shell_quote(cfg.backend_path_for_shell()?),
+        BACKEND_CMD,
         crate::backend::control::local_backend::STREAM_WORD
     );
     let (link, ack) = match crate::dial_host::probe(&cfg, &probe_cmd, &mut to_ui).await {
@@ -4451,7 +4427,7 @@ pub async fn test_remote_connection(
             .unwrap_or_else(|| format!("{}:{}", win.host, win.port)),
     );
 
-    // 2. 读后端首行 hello ＋ 探一次控制通道（链路里跑的就是 `backend_path`）。
+    // 2. 读后端首行 hello ＋ 探一次控制通道（链路里跑的就是 [`BACKEND_CMD`]）。
     match probe_backend(link).await {
         Ok(Some(probe)) => {
             result.backend_ok = true;

@@ -21,8 +21,8 @@ fn remote_obj(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value
 #[test]
 fn a_remote_section_without_a_hosts_array_is_refused_not_emptied() {
     for shape in [
-        json!({ "enabled": true, "host": "pi.local", "user": "pi", "backendPath": "/x" }),
-        json!({ "enabled": true, "hosts": { "host": "pi.local", "user": "pi", "backendPath": "/x" } }),
+        json!({ "enabled": true, "host": "pi.local", "user": "pi" }),
+        json!({ "enabled": true, "hosts": { "host": "pi.local", "user": "pi" } }),
         json!({ "enabled": true }),
     ] {
         let got = parse_remote_hosts(&remote_obj(shape.clone()));
@@ -45,9 +45,9 @@ fn a_remote_section_without_a_hosts_array_is_refused_not_emptied() {
 fn jump_field_parsed() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"host": "internal", "user": "u", "backendPath": "/x", "jump": "bastion"},
-            {"host": "direct", "user": "u", "backendPath": "/y"},
-            {"host": "empty", "user": "u", "backendPath": "/z", "jump": ""}
+            {"host": "internal", "user": "u", "jump": "bastion"},
+            {"host": "direct", "user": "u"},
+            {"host": "empty", "user": "u", "jump": ""}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote).expect("hosts 数组该认得");
@@ -62,8 +62,8 @@ fn jump_field_parsed() {
 fn hosts_array_multi() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"label": "pi", "host": "pi.local", "user": "pi", "backendPath": "/x"},
-            {"host": "nano.local", "user": "u", "backendPath": "/y", "port": 2222}
+            {"label": "pi", "host": "pi.local", "user": "pi"},
+            {"host": "nano.local", "user": "u", "port": 2222}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote).expect("hosts 数组该认得");
@@ -73,13 +73,13 @@ fn hosts_array_multi() {
     assert_eq!(cfgs[1].port, 2222);
 }
 
-/// 缺必填字段(backendPath)的台被跳过，不影响其他台。
+/// 缺必填字段(user)的台被跳过，不影响其他台。〔E2〕`backendPath` 不再是字段（盘上旧值不读，V41）。
 #[test]
 fn missing_required_field_skipped() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"host": "ok.local", "user": "u", "backendPath": "/x"},
-            {"host": "bad.local", "user": "u"}
+            {"host": "ok.local", "user": "u"},
+            {"host": "bad.local"}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote).expect("hosts 数组该认得");
@@ -92,8 +92,8 @@ fn missing_required_field_skipped() {
 fn duplicate_label_suffixed() {
     let remote = remote_obj(json!({
         "hosts": [
-            {"label": "box", "host": "a", "user": "u", "backendPath": "/x"},
-            {"label": "box", "host": "b", "user": "u", "backendPath": "/y"}
+            {"label": "box", "host": "a", "user": "u"},
+            {"label": "box", "host": "b", "user": "u"}
         ]
     }));
     let cfgs = parse_remote_hosts(&remote).expect("hosts 数组该认得");

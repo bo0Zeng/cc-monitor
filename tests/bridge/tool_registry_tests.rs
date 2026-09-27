@@ -776,7 +776,8 @@ fn the_backend_is_one_thing_landing_in_several_places() {
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
         (
             "embedded-backends".into(),
-            "$BACKEND_PATH".into(),
+            // 〔E2 · V28〕可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
+            "~/.cc-monitor/bin/ccm".into(),
             HostScope::Remote,
         ),
     ];
@@ -1007,7 +1008,7 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/skill_host.rs", Why::OldId, 1),
     ("src/structural_scan.rs", Why::OldId, 1),
     ("src/tool_registry.rs", Why::OldId, 2),
-    ("tests/bridge/config_surface_tests.rs", Why::OldId, 4),
+    ("tests/bridge/config_surface_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
     ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
     ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
     (
