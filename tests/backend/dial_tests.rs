@@ -383,6 +383,8 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("forward", Use::Forward),
         // 〔SR1b〕受限的远端文件一问一答（部署）。
         ("files", Use::Files),
+        // 〔HOST〕到远端常驻后端监听口的隧道。
+        ("tunnel", Use::Tunnel),
     ] {
         let raw = format!(
             r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#
@@ -395,8 +397,16 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     }
     assert_eq!(
         USES.len(),
-        4,
+        5,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
+    );
+    // 〔HOST · H1〕隧道：目标口读得进来；它走不占 `MaxSessions` 的那一道（与 `forward` 同，`05 §13.5`）。
+    let tun = r#"{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"tunnel","tunnel_port":49999}"#;
+    assert_eq!(parse_request(tun).unwrap().tunnel_port, Some(49999));
+    assert_eq!(
+        super::uses::lane_of(Use::Tunnel),
+        super::uses::Lane::Tunnel,
+        "隧道占了 session 通道的格 —— 远端 MaxSessions 会被常驻那条流白白吃掉一格"
     );
     // 原始子系统字节流刻意不认（〔SR1b〕SFTP 住本机后端，界面只拿 `files` 的一问一答与 `transfer-*`，
     // 见 `dial/mod.rs` 头注）：读到它就是请求坏了。

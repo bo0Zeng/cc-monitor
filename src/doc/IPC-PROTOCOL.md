@@ -2552,7 +2552,7 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一
 
 **一条链路上的字节 = C2 拨号代理原来的 stdout，逐字节同形**：`stages=true` 时若干行 `{"stage":{…}}` → **恰好一行** ack
 `{"ok","error","fingerprint","endpoint","v":2,"uses":[…]}` → `stream` 原样双向字节 · `capture` 一行 `{"stdout","stderr","exit_status"}` 后结束 ·
-`forward` 每接进一条连接一行 `{"accepted":n}`。上行（`link-data`）= 原来子进程的 stdin；`link-close` = 原来「界面走了」。
+`forward` 每接进一条连接一行 `{"accepted":n}` · 〔HOST〕`tunnel` 原样双向字节（远端 `127.0.0.1:<tunnel_port>` 那条 direct-tcpip）。上行（`link-data`）= 原来子进程的 stdin；`link-close` = 原来「界面走了」。
 
 **流控**：下行逐链路信用 —— `link-open` 给初始窗口，后端发一块扣一块，扣不到就等；客户端读走之后 `link-credit` 还回来
 ⇒ 一条不读的链路在这条流上最多占一个窗口，堵不住别的链路、别的帧与应答。上行一次一块：`link-data` 的应答在那块**写进链路之后**才回。
@@ -2565,8 +2565,8 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一
 | `args` | `{"link":"<不透明 id，客户端给、客户端负责唯一>","window":<初始信用，字节；必须在 [32 KiB, 16 MiB] 之内，否则 `invalid_args`>,"dial":{DialRequest}}` |
 | `data` | 无（登记上、任务起了就回 `ok` —— **不等拨通**：拨通与否在链路字节里那一行 ack） |
 
-`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward｜files）·
-capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_port} · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
+`dial` 就是 C2 那份蛇形键请求：`host · port · user · key_path · host_key_fingerprint · command · endpoints · jump · use（stream｜capture｜forward｜files｜tunnel）·
+capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_port} · tunnel_port · stages · probe`，外加 **`agent_sock`**（Unix：客户端此刻的
 `SSH_AUTH_SOCK` —— 常驻后端活得比任何一个客户端都长，它自己身上那份可能早就不指向活的 agent；缺席 = 用后端自己的环境）。
 〔W5-AUX〕`capture.stdin`（可缺）：exec 之后原样写进远端进程 stdin 的字节，**不关 stdin**（收的一侧用 CLI 面的 `--stdin-line`）。
 `probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
