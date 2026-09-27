@@ -584,11 +584,12 @@ export function tmuxControlShim(
       return chanReply({ session: name, created: false, typed: true });
     }
     const res = (await inner("backend_send_into", { req: { origin: a.origin, name, payload: body.payload } })) as
-      | { typed?: unknown; mayFallBack?: unknown; reason?: unknown }
+      | { typed?: unknown; mayFallBack?: unknown; reason?: unknown; code?: unknown }
       | undefined;
     if (res?.typed === true) return chanReply({ session: name, created: false, typed: true });
     if (res?.mayFallBack === true) throw NO_CHANNEL;
-    throw refusedReply("typed_unconfirmed", String(res?.reason ?? ""));
+    // 〔RESYNC〕夹具可以点名拒绝码（例 `wrong_owner` = 关卡 2）；不点名 ⇒ 照旧「拿不准」那一档。
+    throw refusedReply(typeof res?.code === "string" ? res.code : "typed_unconfirmed", String(res?.reason ?? ""));
   };
 }
 

@@ -53,6 +53,7 @@ import {
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, provablyNotSent } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
+import { isIdentityRefusal } from "./resync";
 
 // 〔C4e 批 3〕这一层与 `src/cc-bus-control.ts` 说的是同一件事的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 ·
 //   `settle`）搬进了 `src/control-said.ts`；本文件的调用方照旧从这里取那两样。
@@ -229,8 +230,9 @@ export type SendIntoOutcome =
   | { verdict: "typed" }
   /** **能证明一个字节都没到对端** ⇒ 调用方可以回落到那条整串（重做不会重复执行）。 */
   | { verdict: "fallback"; reason: string }
-  /** 对端说了话，**或者**拿不准它执行没有 ⇒ **不许回落**，把这句话交给用户。 */
-  | { verdict: "refused"; reason: string };
+  /** 对端说了话，**或者**拿不准它执行没有 ⇒ **不许回落**，把这句话交给用户。
+   *  〔RESYNC · `99 §2.1` ㉒〕`gate2` = 是关卡 2（身份门）拒的 ⇒ 提示可以带「对齐后重试」（别的拒绝不带：拿不准执行没有时重试会重复键入）。 */
+  | { verdict: "refused"; reason: string; gate2?: true };
 
 /**
  * 就地恢复：往已存在的空 tmux 会话 `name` 里键入载荷 `payload`（`launch{mode:"send-into"}`）。**不抛。**
@@ -250,6 +252,6 @@ export async function sendInto(origin: Origin, name: string, payload: string): P
     if (e instanceof ControlError && e.error !== undefined && provablyNotSent(e.error)) {
       return { verdict: "fallback", reason };
     }
-    return { verdict: "refused", reason };
+    return isIdentityRefusal(e) ? { verdict: "refused", reason, gate2: true } : { verdict: "refused", reason };
   }
 }

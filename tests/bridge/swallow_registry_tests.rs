@@ -114,7 +114,11 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Notify(event));", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", 1, Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", 3, Why::PeerGone, ""),
+    // 〔RESYNC〕基数 3 → 1：起探测收成 `start_tmux_probe` 一处（三处搬进去，不是删）。
+    ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", 1, Why::PeerGone, ""),
+    // 〔RESYNC〕+2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
+    ("src/backend/observe/watcher.rs", "let _ = done.send(got);", 1, Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Resync { only: only.map(str::to_string), done: tx.clone(), });", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxProbeDue);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(target.death_event(pid));", 1, Why::PeerGone, ""),
     ("src/backend/platform/signal.rs", "let _ = t.recv().await;", 1, Why::Signal, "装不上 SIGTERM 时退回只等 SIGINT（〔HX1〕从 `main.rs` 下沉来）"),
