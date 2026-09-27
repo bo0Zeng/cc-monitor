@@ -784,10 +784,17 @@ fn observe_unmanaged(
 /// 后者的人群里有一整档是 app 装不了也不查的东西，它们一条都不在 `TOOLS` 里。
 /// 拿前者当后者用是**分母对不上**。
 /// 钉住它的是 `the_view_population_is_exactly_the_closed_set`。
-pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
+///
+/// 〔C5 · TAIL〕`client` 有 ⇒ `HostScope::Client` 那一族改由它答：本机那一栏的事实问本机后端，
+/// 只有 monitor 自己那台的东西留在 monitor 进程里查。
+pub fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<SurfaceRow> {
     // 〔RM1a〕从远端那台看：住 monitor 所在那台的那一族（`HostScope::Client`）**不在这台上** ⇒ 不进人群。
     //   不是「查不到」，是「这一格不属于这台机器」—— 画成一行「未确定」反而是在说一句关于这台的假话。
-    let here = |h: HostScope| env.vantage == Vantage::Monitor || h != HostScope::Client;
+    let pick = |h: HostScope| match (h, client) {
+        (HostScope::Client, Some(c)) => Some(c),
+        (HostScope::Client, None) if env.vantage == Vantage::Remote => None,
+        _ => Some(env),
+    };
     crate::tool_registry::environment()
         .iter()
         .flat_map(|e| match e.backing {
@@ -796,13 +803,12 @@ pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
             //    行数不变（touch 总数没变过），变的是**每一行知道自己属于哪一份产物**。
             EnvBacking::Managed(t) => t
                 .carrier_touches()
-                .filter(|(_, f)| here(f.host))
-                .map(|(c, f)| row(e, t, c, f, env))
+                .filter_map(|(c, f)| pick(f.host).map(|env| row(e, t, c, f, env)))
                 .collect::<Vec<_>>(),
-            EnvBacking::Named { named, host, probe } if here(host) => {
-                vec![unmanaged_row(e, named, host, probe, env)]
-            }
-            EnvBacking::Named { .. } => Vec::new(),
+            EnvBacking::Named { named, host, probe } => pick(host)
+                .map(|env| unmanaged_row(e, named, host, probe, env))
+                .into_iter()
+                .collect(),
         })
         .collect()
 }
@@ -850,17 +856,10 @@ fn scope_row(
     }
 }
 
-/// 一份 settings 的原文里有没有那两个钩子程序的字样。读不到（`None`）⇒ `None`（**不猜**）。
-///
-/// 〔RM1a〕抽出来：本机那条路读原文、在这里判；远端那条路把 [`HOOK_PROGRAMS`] 交给那台的后端
-/// （`footprint-probe` 的 `hooks.needles`），原文不过线 —— 字样表只有这一份。
-pub fn hooks_in_text(raw: Option<&str>) -> Option<bool> {
-    raw.map(|s| HOOK_PROGRAMS.iter().any(|p| s.contains(p)))
-}
-
 /// 列出**用户级**的两个 settings 作用域，并把「项目级没查」如实写成一行。
 ///
-/// 〔RM1a〕第四个参数从「读原文」换成「有没有钩子字样」：远端那条路原文不过线（见 [`hooks_in_text`]）。
+/// 〔RM1a〕第四个参数是「有没有钩子字样」：字样表 [`HOOK_PROGRAMS`] 交给那台后端判（`footprint-probe` 的 `hooks.needles`），原文不过线。
+/// 〔C5〕本机也一样问本机后端。
 pub fn build_settings_scopes(
     home: &Path,
     cfg_dir_env: Option<&Path>,
@@ -914,71 +913,51 @@ pub struct ConfigSurfaceReport {
 
 /// 扫一次配置面。**只读、一次性**（不新增轮询）。
 ///
-/// 〔RM1a · 第四波〕**收 `origin`**：本机照旧在本进程里扫（下面那一段，一字未改）；
-/// 远端问那台机器的后端要路径事实（`footprint_remote::report_of`），判定走同一个 [`build_rows`]。
+/// 〔RM1a · 第四波〕**收 `origin`**：远端问那台机器的后端要路径事实（`footprint_remote::report_of`），判定走同一个 [`build_rows`]。
+/// 〔C5 · TAIL〕本机同一套：事实问本机后端（`footprint_remote::local_report_of`），
+/// 只有 `HostScope::Client` 那一族由 monitor 自己查（[`with_monitor_probe`]）。
 #[tauri::command]
 pub async fn config_surface_report(
     origin: crate::origin::Origin,
 ) -> Result<ConfigSurfaceReport, String> {
     match origin.route("config_surface_report")? {
-        crate::origin::Route::Local => local_report().await,
+        crate::origin::Route::Local => crate::footprint_remote::local_report_of().await,
         crate::origin::Route::Remote(host) => crate::footprint_remote::report_of(host).await,
     }
 }
 
-/// 本机那一臂（原 `config_surface_report` 的体，一字未改）。
-async fn local_report() -> Result<ConfigSurfaceReport, String> {
-    tokio::task::spawn_blocking(|| {
-        let home =
-            dirs::home_dir().ok_or_else(|| copy_text("rsConfigSurface.local.noHome", &[]))?;
-        let cfg_env = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from);
-        let is_dir = |p: &Path| p.is_dir();
-        let meta = |p: &Path| {
-            std::fs::metadata(p)
-                .ok()
-                .map(|m| (m.is_dir(), if m.is_dir() { 0 } else { m.len() }))
-        };
-        let list = |p: &Path| {
-            std::fs::read_dir(p).ok().map(|it| {
-                it.filter_map(|e| e.ok())
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
-                    .collect::<Vec<_>>()
-            })
-        };
-        let has_hooks = |p: &Path| hooks_in_text(std::fs::read_to_string(p).ok().as_deref());
-        let fs = FsProbe {
-            meta: &meta,
-            list: &list,
-        };
-        // 🔴 〔`K-R65`〕`PATH` 也是一件**注入**进去的东西 —— 读不到就是 `None`，
-        // 那一族显示成「查不动」而不是「不存在」（`SurfaceEnv::path_env` 的头注）。
-        let path_env = std::env::var("PATH").ok();
-        let surface_env = SurfaceEnv {
-            home: &home,
-            cfg_dir_env: cfg_env.as_deref(),
-            is_dir: &is_dir,
-            fs: &fs,
-            path_env: path_env.as_deref(),
-            vantage: Vantage::Monitor,
-        };
-        let cfg_dir = crate::hooks_diag::claude_config_dir(cfg_env.as_deref(), &home, &is_dir);
-        Ok(ConfigSurfaceReport {
-            rows: build_rows(&surface_env),
-            settings_scopes: build_settings_scopes(
-                &home,
-                cfg_env.as_deref(),
-                &is_dir,
-                &has_hooks,
-                &fs,
-            ),
-            claude_config_dir: cfg_dir.to_string_lossy().into_owned(),
-            home: home.to_string_lossy().into_owned(),
-            // 本机那一臂：答的就是本机。
-            origin: crate::origin::Origin::local(),
+/// monitor 这台自己的探针（本进程 `std::fs` ＋ 本进程的 `HOME` / `CLAUDE_CONFIG_DIR` / `PATH`）。
+/// 〔C5〕只给 `HostScope::Client` 那一族用：那是 monitor 自己的东西，不问后端。
+pub(crate) fn with_monitor_probe<R>(f: impl FnOnce(&SurfaceEnv) -> R) -> Result<R, String> {
+    let home = dirs::home_dir().ok_or_else(|| copy_text("rsConfigSurface.local.noHome", &[]))?;
+    let cfg_env = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from);
+    let is_dir = |p: &Path| p.is_dir();
+    let meta = |p: &Path| {
+        std::fs::metadata(p)
+            .ok()
+            .map(|m| (m.is_dir(), if m.is_dir() { 0 } else { m.len() }))
+    };
+    let list = |p: &Path| {
+        std::fs::read_dir(p).ok().map(|it| {
+            it.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
         })
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking: {e}"))?
+    };
+    let fs = FsProbe {
+        meta: &meta,
+        list: &list,
+    };
+    // 🔴 〔`K-R65`〕`PATH` 读不到就是 `None`，那一族显示成「查不动」而不是「不存在」。
+    let path_env = std::env::var("PATH").ok();
+    Ok(f(&SurfaceEnv {
+        home: &home,
+        cfg_dir_env: cfg_env.as_deref(),
+        is_dir: &is_dir,
+        fs: &fs,
+        path_env: path_env.as_deref(),
+        vantage: Vantage::Monitor,
+    }))
 }
 
 #[cfg(test)]

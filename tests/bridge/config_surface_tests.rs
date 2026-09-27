@@ -969,7 +969,7 @@ fn the_view_population_is_exactly_the_closed_set() {
     use std::collections::BTreeSet;
     let h = home();
     let fs = empty_probe();
-    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
+    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
     let shown: BTreeSet<&str> = rows.iter().map(|r| r.tool_id).collect();
     let want: BTreeSet<&str> = environment().iter().map(|e| e.id).collect();
     assert!(
@@ -1031,7 +1031,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
         list: &|_| None,
     };
 
-    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
+    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
     let pick = |id: &str| {
         rows.iter()
             .find(|r| r.tool_id == id)
@@ -1072,7 +1072,7 @@ fn the_prompt_tier_really_looks_before_it_speaks() {
     );
 
     // ③ 读不到 PATH：查不动 —— 与 ② **必须是两回事**
-    let blind_rows = build_rows(&env_with(&h, &fs, None));
+    let blind_rows = build_rows(&env_with(&h, &fs, None), None);
     let blind = blind_rows.iter().find(|r| r.tool_id == "tmux").unwrap();
     match &blind.state {
         SurfaceState::Undetermined { why } => assert!(
@@ -1147,7 +1147,7 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
     use std::collections::BTreeSet;
     let h = home();
     let fs = empty_probe();
-    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
+    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
 
     // ① 每一行的档 = 闭集里那一项的档（不是这一页自己算的第二份）
     let want: std::collections::HashMap<&str, EnvTier> =
@@ -1207,7 +1207,7 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
 fn rows_cover_every_touched_file_and_use_all_spec_fields() {
     let f = empty_probe();
     let h = home();
-    let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")));
+    let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")), None);
     // 〔`K-R60`〕人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
     //   + 手写那一半每项一行。**两半都现算**，不写死一个数〔`13b`〕。
     let expected: usize = TOOLS.iter().map(|t| t.touches().count()).sum::<usize>()
@@ -1257,7 +1257,7 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
 fn rows_carry_the_host_label() {
     let h = home();
     let fs = empty_probe();
-    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
+    let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")), None);
     for r in &rows {
         assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
     }
@@ -1306,14 +1306,9 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
             Some("{}".to_string())
         }
     };
-    // 〔RM1a〕第四个参数换成「有没有钩子字样」：本机那条路读原文、交 `hooks_in_text` 判（与生产那一臂同一个函数）。
-    let s = build_settings_scopes(
-        &home(),
-        None,
-        &no_dir,
-        &|p| hooks_in_text(read(p).as_deref()),
-        &f,
-    );
+    // 〔RM1a〕第四个参数是「有没有钩子字样」（〔C5〕生产两臂都交后端判；这里按同一张字样表现判）。
+    let has = |p: &Path| read(p).map(|s| HOOK_PROGRAMS.iter().any(|n| s.contains(n)));
+    let s = build_settings_scopes(&home(), None, &no_dir, &has, &f);
     assert_eq!(s.len(), 3);
     // E67①：**按「路径分量」比，不按斜杠比**。原来写的是
     // `s[0].path.ends_with("/.claude/settings.json")`，在 Windows 上恒假 ——
@@ -1341,13 +1336,7 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
 /// 读不到文件时 `has_cc_bus_hooks` 必须是 `None`（**不猜 false**）。
 #[test]
 fn unreadable_settings_does_not_claim_absence_of_hooks() {
-    let s = build_settings_scopes(
-        &home(),
-        None,
-        &no_dir,
-        &|_| hooks_in_text(None),
-        &empty_probe(),
-    );
+    let s = build_settings_scopes(&home(), None, &no_dir, &|_| None, &empty_probe());
     assert_eq!(s[0].has_cc_bus_hooks, None);
     assert_eq!(s[1].has_cc_bus_hooks, None);
 }
@@ -1478,18 +1467,14 @@ fn this_module_only_reads() {
         !crate::write_site_registry::writers::names().is_empty(),
         "`WRITE_SITES` 是空的 —— 上面那条在空转"
     );
-    // 允许集合就这三个，全部只读
-    for u in &uses {
-        assert!(
-            matches!(u.as_str(), "metadata" | "read_dir" | "read_to_string"),
-            "本模块只准只读的 fs 调用，发现 fs::{u}"
-        );
-    }
-    // 计数自检（要件 3）：一处都没扫到 = 守卫失效了，而不是代码变干净了
-    assert!(
-        uses.len() >= 3,
-        "只扫到 {} 处 fs:: 用法——守卫可能失效了（期望 metadata/read_dir/read_to_string 各至少一处）",
-        uses.len()
+    // 允许集合就这两个，全部只读（〔C5〕`read_to_string` 随本机 settings 改问本机后端走了）。
+    // 相等不是地板：一处都没扫到 = 守卫失效了，而不是代码变干净了。
+    let mut got = uses.clone();
+    got.sort();
+    assert_eq!(
+        got,
+        ["metadata", "read_dir"],
+        "本模块的 fs:: 用法变了（只准只读的 metadata / read_dir 各一处）"
     );
     // **钉死 `use` 列表**（要件 4：逃生口的定义必须逐字钉住）。不钉的话
     // `use tokio::fs as fs;` 之类能把上面的白名单整体架空。

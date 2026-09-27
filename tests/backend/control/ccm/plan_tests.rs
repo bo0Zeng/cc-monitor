@@ -588,7 +588,22 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     }
 
     // ③ 两句诊断在生产段里（**这一格只钉形状，行为归 e2e**，见头注）。
-    for say in ["**没有登记**", "**不进 spawn 台账**"] {
+    // 〔TAIL · CP2c 续〕两句进了文案表：生产段认 key，表里那句认话。
+    let table: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../src/shared/copy/table.json")).expect("表");
+    for (key, say) in [
+        ("bePlan.bus.noScripts", "没有登记"),
+        ("bePlan.bus.noSpawnRecord", "不记进派生台账"),
+    ] {
+        assert!(
+            table["entries"][key]["zh"]
+                .as_str()
+                .unwrap_or("")
+                .contains(say),
+            "表里 {key} 那句没说「{say}」"
+        );
+    }
+    for say in ["\"bePlan.bus.noScripts\"", "\"bePlan.bus.noSpawnRecord\""] {
         assert!(
             me.contains(say),
             "`--bus-register` 登记不成时那句「{say}」不见了 —— \n\
@@ -603,7 +618,7 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
         .expect("找不到 `--bus-register` 那一段 —— 抽取器坏了，本条会零命中地绿");
     let head = &bus_block[..bus_block.len().min(1200)];
     assert!(
-        head.contains("**没有登记**") && head.contains("**不进 spawn 台账**"),
+        head.contains("\"bePlan.bus.noScripts\"") && head.contains("\"bePlan.bus.noSpawnRecord\""),
         "那两句不在 `--bus-register` 那一段里了 —— 它们要在**决定登记不成的那一刻**说出来"
     );
 }

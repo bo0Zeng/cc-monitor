@@ -101,6 +101,27 @@ pub const LEGACY_ACCOUNT_ID: &str = "default";
 /// `~/.claude/work/` 下，不跟随 `claudeDir` 字段变化」）。
 pub const FILE_NAME: &str = "apikey-credentials.json";
 
+/// monitor 数据目录的覆盖变量（monitor `paths::DATA_DIR_ENV` 与远端常驻后端的默认推导共用这一个名字）。
+pub const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
+
+/// 历史注解文件在 monitor 数据目录下的名字（monitor `history::metadata_path` 与常驻后端默认推导共用）。
+pub const HISTORY_METADATA_FILE: &str = "history-metadata.json";
+
+/// monitor 数据目录：`CCM_DATA_DIR`（非空且绝对）优先，否则 `<home>/.claude/work`；
+/// 设了却不是绝对路径 ⇒ `None`（不退回真 profile）。〔TAIL〕两侧共用这一份，谁起常驻后端推出来的路径都一样。
+pub fn monitor_data_dir(
+    env_val: Option<&str>,
+    home: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    match env_val.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => {
+            let p = std::path::PathBuf::from(t);
+            p.is_absolute().then_some(p)
+        }
+        None => Some(home?.join(".claude").join("work")),
+    }
+}
+
 /// `<claude 家目录>/work/apikey-credentials.json`。
 pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
     home.join("work").join(FILE_NAME)
@@ -141,12 +162,13 @@ impl std::fmt::Display for StoreError {
         match self {
             StoreError::NotJson(e) => write!(
                 f,
-                "凭据文件不是合法 JSON（{e}）。它是人能手编的明文 JSON —— \
-                 多半是少了逗号或引号。**没有动它**，修好再试。"
+                "{}",
+                copy_core::copy_text("credsStore.error.notJson", &[("e", &e.to_string())])
             ),
             StoreError::NotAnObject => write!(
                 f,
-                "凭据文件的顶层不是一个 JSON 对象。正确形状见模板：{TEMPLATE}"
+                "{}",
+                copy_core::copy_text("credsStore.error.notObject", &[("template", TEMPLATE)])
             ),
         }
     }

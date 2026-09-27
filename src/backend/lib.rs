@@ -582,7 +582,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4l-ccm-shell**（2026-09-26，AL3 合并那一拍）：行为 —— V138 / V142–V145：ccm 是 claude 的壳，壳层选项不加前缀、其余原样交 claude；
 /// `--tmux` / `--agent` 让给 claude、ccm 自己的改 `--ccm-tmux` / `--ccm-agent`；`ccm new` 保留、位置词 `attach` 交 claude、接 tmux 用 `--attach`；
 /// 启动器按空格拆词 ＋ 打头 `~/` 展开；相对 `--cwd` 补绝对再过 §47；诊断口 `--ccm-print` / `--ccm-help` / `--ccm-version`；`CCM_VERSION` 6。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4l-ccm-shell";
+///
+/// ★★★ **p4m-tail**（2026-09-26，TAIL 合并那一拍）：`build_id_guard` 指纹补数 `SUBCOMMAND_OPTIONS`（`#options` 段，W5-AUX `--stdin-line` 那次没红的漏洞）⇒ 追加历史行。
+/// ＋ 行为：常驻后端按 `creds_core::store::monitor_data_dir` 自推数据目录两格（谁起都一样，那台自己的 monitor 可收养）· 多客户后 `Adopt::Busy` 删 ·
+/// 后端 Gate 1 并进 gate-core、不再拒 `=` · `http://[::1]` 不带端口按默认口读 · CP2c 续抽空 14 份后端文案。
+pub const BUILD_ID: &str = "p4m-tail";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

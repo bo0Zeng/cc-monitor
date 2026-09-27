@@ -28,7 +28,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="$REPO/.build/backend/debug/cc-monitor-backend"
+D="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$D" ] || { echo "需要先 build backend：cd src/backend && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }
@@ -102,12 +102,12 @@ chk "★ 收件箱真的多了一行" "$(( $(wc -l < "$BUS/inbox/alpha_cc.jsonl"
 chk "  正文一字不差" \
   "$(tail -1 "$BUS/inbox/alpha_cc.jsonl" | jq -r .text)" "来自后端的一条"
 
-echo "[4] ★ 收件人非法：backend **不预判**，由 cc-bus 自己拒（白名单只有一份）"
+echo "[4] ★ 收件人非法：交给 cc-send 之前后端先判形状（〔DUP2〕INVARIANTS §47 ①，拒码 bad_id）"
 printf '{"to":"a/b","text":"x"}' | d --bus-send >"$SANDBOX/o4.txt"; rc4=$?
 chk "退出码非 0" "$([ "$rc4" -ne 0 ] && echo yes || echo no)" "yes"
-chk "码是 invalid_args" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "invalid_args"
-chk "  消息里带着 cc-send 自己那句话（证明是它拒的，不是我们）" \
-  "$(jq -r .message < "$SANDBOX/err.txt" | grep -c '非法收件人')" "1"
+chk "码是 bad_id" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_id"
+chk "  消息里点名那个值（后端拒的，不是 cc-send）" \
+  "$(jq -r .message < "$SANDBOX/err.txt" | grep -c '"a/b"')" "1"
 
 echo "[5] ★ 被路由层拦下：与「名字写错了」必须分得开"
 printf 'probe_cc\tnobody\n' > "$BUS/policy.tsv"
@@ -159,8 +159,8 @@ _el=$(( $(date +%s) - _t0 ))
 chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外面掐）" \
   "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
 chk "  码是 timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err8.txt" 2>/dev/null)" "timed_out"
-chk "  消息说得出去哪儿看（flock / *.lock）" \
-  "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c 'flock')" "1"
+chk "  消息说得出多半卡在哪（cc-bus 的锁；〔TAIL〕flock 是禁档词，句子改说「锁」）" \
+  "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c '锁')" "1"
 
 echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
 # ★ 真事故：CLI 入口原来从 `fields` **派生**「要不要读 stdin」，而 `fields` 是
@@ -305,8 +305,8 @@ chk "★★ 名字被别人占：**不是 killed**，而是 stale_only" \
 chk "★★ 无辜会话还在" "$(tmux has-session -t '=kocc_cc' 2>/dev/null && echo 在 || echo 没了)" "在"
 chk "★★ 无辜进程还在" "$(ps -p "$_occpid" >/dev/null 2>&1 && echo 在 || echo 被杀了)" "在"
 _dk 'bad/id' >/dev/null
-chk "  非法 id ⇒ invalid_args（由 cc-kill 自己拒，白名单只有一份）" \
-  "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "invalid_args"
+chk "  非法 id ⇒ bad_id（交给 cc-kill 之前后端先判形状，〔DUP2〕§47 ①）" \
+  "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "bad_id"
 
 echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc-spawn，启动器是假 agent"
 # ⚠ 后端起插件前先 `env_clear()`，只放行白名单 ＋ `CC_BUS_*`/`CCBUS_*` 两个前缀

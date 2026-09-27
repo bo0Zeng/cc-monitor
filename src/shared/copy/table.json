@@ -9,6 +9,651 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "bePlan.env.configIgnored": {
+      "kind": "error",
+      "zh": "ccm: {path} 不会被读取。里面的两个值改用环境变量 CCM_ACCTS_MANIFEST 和 CCM_ENV。",
+      "args": ["path"]
+    },
+    "bePlan.bus.noScripts": {
+      "kind": "error",
+      "zh": "ccm: 找不到 cc-bus，没有登记到总线。装在别处的话，用 CC_BUS_SCRIPTS 指过去。",
+      "args": []
+    },
+    "bePlan.bus.noSpawnRecord": {
+      "kind": "error",
+      "zh": "ccm: {path} 不能执行。会话照建、也会登记，但不记进派生台账。",
+      "args": ["path"]
+    },
+    "beAssetCatalog.digest.walkFailed": {
+      "kind": "body",
+      "zh": "有一处读不出来：{e}",
+      "args": ["e"]
+    },
+    "beAssetCatalog.digest.tooMany": {
+      "kind": "body",
+      "zh": "文件超过 {max} 个，后面的没算进去。",
+      "args": ["max"]
+    },
+    "beAssetCatalog.digest.notRegular": {
+      "kind": "body",
+      "zh": "{rel} 不是普通文件，没算进去。",
+      "args": ["rel"]
+    },
+    "beAssetCatalog.digest.lenOnly": {
+      "kind": "body",
+      "zh": "{rel} 读不出内容，只按长度算：{e}",
+      "args": ["rel", "e"]
+    },
+    "beAssetCatalog.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beAssetCatalog.read.newer": {
+      "kind": "error",
+      "zh": "{path} 是更新版本的后端写的，没有覆盖它。这个后端认格式 {mine}，它是 {theirs}。",
+      "args": ["path", "mine", "theirs"]
+    },
+    "beAssetCatalog.read.unknown": {
+      "kind": "error",
+      "zh": "{path} 读不出来，格式不对：{e}",
+      "args": ["path", "e"]
+    },
+    "beAssetCatalog.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beAssetCatalog.write.encodeFailed": {
+      "kind": "error",
+      "zh": "资产清单写不出来：{e}",
+      "args": ["e"]
+    },
+    "beAssetCatalog.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beAssetCatalog.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beAssetCatalog.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beAssetCatalog.write.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beAssetCatalog.write.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，资产清单没有记。",
+      "args": []
+    },
+    "beSkillInstall.read.badName": {
+      "kind": "error",
+      "zh": "「{name}」不能当 skill 的名字。",
+      "args": ["name"]
+    },
+    "beSkillInstall.read.noRoot": {
+      "kind": "error",
+      "zh": "找不到这台机器上放 skill 的目录。",
+      "args": []
+    },
+    "beSkillInstall.text.binary": {
+      "kind": "body",
+      "zh": "不是文本文件",
+      "args": []
+    },
+    "beSkillInstall.text.notUtf8": {
+      "kind": "body",
+      "zh": "不是 UTF-8 文本",
+      "args": []
+    },
+    "beSkillInstall.read.walkFailed": {
+      "kind": "error",
+      "zh": "读 {dir} 时有一处读不出来：{e}",
+      "args": ["dir", "e"]
+    },
+    "beSkillInstall.read.tooMany": {
+      "kind": "error",
+      "zh": "{dir} 里的文件超过 {max} 个，这次没读。",
+      "args": ["dir", "max"]
+    },
+    "beSkillInstall.read.notFound": {
+      "kind": "error",
+      "zh": "这台机器上没有 skill「{name}」：{dir}",
+      "args": ["name", "dir"]
+    },
+    "beSkillInstall.install.tooMany": {
+      "kind": "error",
+      "zh": "文件超过 {max} 个，这次没装。",
+      "args": ["max"]
+    },
+    "beSkillInstall.plan.notRegular": {
+      "kind": "body",
+      "zh": "不是普通文件",
+      "args": []
+    },
+    "beSkillInstall.install.sourceUnreadable": {
+      "kind": "error",
+      "zh": "来源机器上读不出「{p}」的原文，这次一个都没装。",
+      "args": ["p"]
+    },
+    "beSkillInstall.install.targetNotText": {
+      "kind": "error",
+      "zh": "这台机器上的「{p}」不是文本，不能覆盖它。这次一个都没装。",
+      "args": ["p"]
+    },
+    "beSkillInstall.install.noRoot": {
+      "kind": "error",
+      "zh": "{dir} 和它的上一级都不在，这台机器上没有放 skill 的地方。",
+      "args": ["dir"]
+    },
+    "beSkillInstall.ledger.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，不知道装记录放在哪。",
+      "args": []
+    },
+    "beSkillInstall.uninstall.notRecorded": {
+      "kind": "error",
+      "zh": "这台机器上没有从别处装到 {dir} 的 skill 记录。只能卸装时记下的那几个文件。",
+      "args": ["dir"]
+    },
+    "beSkillInstall.uninstall.notInLedger": {
+      "kind": "error",
+      "zh": "「{p}」不在这个 skill 的装记录里，这次一个都没删。",
+      "args": ["p"]
+    },
+    "beSkillInstall.uninstall.badState": {
+      "kind": "error",
+      "zh": "「{p}」现在是{state}，删不了。这次一个都没删。",
+      "args": ["p", "state"]
+    },
+    "beSkillInstall.uninstall.needsConsent": {
+      "kind": "error",
+      "zh": "「{p}」装完被改过，或者装之前就在。要你确认才删，这次一个都没删。",
+      "args": ["p"]
+    },
+    "beSkillLedger.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beSkillLedger.read.otherVersion": {
+      "kind": "error",
+      "zh": "{path} 是另一个版本的后端写的，没有动它。这个后端认格式 {mine}，它是 {theirs}。",
+      "args": ["path", "mine", "theirs"]
+    },
+    "beSkillLedger.read.unknown": {
+      "kind": "error",
+      "zh": "{path} 读不出来，格式不对：{e}",
+      "args": ["path", "e"]
+    },
+    "beSkillLedger.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beSkillLedger.write.encodeFailed": {
+      "kind": "error",
+      "zh": "装记录写不出来：{e}",
+      "args": ["e"]
+    },
+    "beSkillLedger.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beSkillLedger.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beSkillLedger.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beSkillLedger.add.tooMany": {
+      "kind": "error",
+      "zh": "一次最多记 {max} 个文件。",
+      "args": ["max"]
+    },
+    "beSkillLedger.drop.notRecorded": {
+      "kind": "error",
+      "zh": "这台机器上没有从别处装到 {dir} 的 skill 记录。",
+      "args": ["dir"]
+    },
+    "beSkillLedger.write.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beSkillLedger.add.noRoot": {
+      "kind": "error",
+      "zh": "找不到这台机器上放 skill 的目录，没有记。",
+      "args": []
+    },
+    "beSkillLedger.path.noHome": {
+      "kind": "error",
+      "zh": "找不到家目录，装记录没有记。",
+      "args": []
+    },
+    "beUpstreamFileFace.keySet.noAccount": {
+      "kind": "error",
+      "zh": "认不出账号目录 {dir} 属于哪个账号，没有写。",
+      "args": ["dir"]
+    },
+    "beUpstreamFileFace.keySet.badId": {
+      "kind": "error",
+      "zh": "账号名 {account} 不能用，没有写。只许字母、数字、- 和 _，最长 128 字节。",
+      "args": ["account"]
+    },
+    "beUpstreamFileFace.keySet.emptyKey": {
+      "kind": "error",
+      "zh": "API key 是空的，没有写。",
+      "args": []
+    },
+    "beUpstreamFileFace.keySet.notReadBack": {
+      "kind": "error",
+      "zh": "写完再读，{path} 里找不到账号 {account} 的 API key。",
+      "args": ["path", "account"]
+    },
+    "beUpstreamFileFace.read.failed": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beUpstreamFileFace.perm.tooWide": {
+      "kind": "error",
+      "zh": "{how}。怎么修：{fix}",
+      "args": ["how", "fix"]
+    },
+    "beUpstreamFileFace.write.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beUpstreamFileFace.write.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beUpstreamFileFace.write.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beUpstreamFileFace.write.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beUpstreamFileFace.write.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beClaudeAssets.scan.noHome": {
+      "kind": "body",
+      "zh": "找不到家目录，列不出项目，MCP 也没扫。",
+      "args": []
+    },
+    "beClaudeAssets.scan.listFailed": {
+      "kind": "body",
+      "zh": "列不出 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.scan.notUtf8": {
+      "kind": "body",
+      "zh": "{path} 的名字不是 UTF-8，跳过了。",
+      "args": ["path"]
+    },
+    "beClaudeAssets.skill.docFailed": {
+      "kind": "body",
+      "zh": "读不了 {path}，这个 skill 没有说明：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.configFailed": {
+      "kind": "body",
+      "zh": "读不了 {path}，MCP 没扫：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.statFailed": {
+      "kind": "body",
+      "zh": "看不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.readFailed": {
+      "kind": "body",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "beClaudeAssets.mcp.notObject": {
+      "kind": "body",
+      "zh": "{path} 里的 MCP 服务器列表格式不对，跳过了。",
+      "args": ["path"]
+    },
+    "beClaudePaths.delete.notFound": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{e}",
+      "args": ["id", "e"]
+    },
+    "beClaudePaths.delete.rootUnresolved": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：会话记录目录 {path} 解析不了：{e}",
+      "args": ["id", "path", "e"]
+    },
+    "beClaudePaths.delete.fileUnresolved": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{path} 解析不了：{e}",
+      "args": ["id", "path", "e"]
+    },
+    "beClaudePaths.delete.outsideRoot": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{path} 指到了会话记录目录 {root} 之外。",
+      "args": ["id", "path", "root"]
+    },
+    "beClaudePaths.delete.wrongShape": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：只删项目目录下的 {want}，找到的是 {path}。",
+      "args": ["id", "want", "path"]
+    },
+    "beClaudePaths.delete.notRecord": {
+      "kind": "error",
+      "zh": "删不了会话 {id}：{path} 不像一份会话记录。",
+      "args": ["id", "path"]
+    },
+    "beCcBus.find.notInstalled": {
+      "kind": "error",
+      "zh": "这台机器上可能没装 cc-bus。装在别处的话，用 CC_BUS_BIN_DIR 指过去。",
+      "args": []
+    },
+    "beCcBus.notRun.tooLong": {
+      "kind": "error",
+      "zh": "这条消息太长，一次发不出去。不是 cc-bus 坏了，发短一点再试。",
+      "args": []
+    },
+    "beCcBus.timedOut.say": {
+      "kind": "error",
+      "zh": "超过 {secs} 秒还没结束，已经停下了。多半是别的进程占着 cc-bus 的锁。",
+      "args": ["secs"]
+    },
+    "beCcBus.read.tooOld": {
+      "kind": "error",
+      "zh": "这台机器上的 cc-bus 比后端旧，认不出 {cmd}。重新部署 cc-bus 之后再试。",
+      "args": ["cmd"]
+    },
+    "beCcBus.read.truncated": {
+      "kind": "error",
+      "zh": "{cmd} 的输出只读到半份，没有用它。",
+      "args": ["cmd"]
+    },
+    "beCcBus.send.refused": {
+      "kind": "error",
+      "zh": "cc-bus 拒绝了这个收件人：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.send.rejected": {
+      "kind": "error",
+      "zh": "cc-bus 的路由规则拦下了这条消息：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.send.failed": {
+      "kind": "error",
+      "zh": "发送失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.send.interrupted": {
+      "kind": "error",
+      "zh": "发送被打断了：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.list.failed": {
+      "kind": "error",
+      "zh": "读 cc-bus 名单失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.run.refused": {
+      "kind": "error",
+      "zh": "{name} 拒绝了这组参数：{detail}",
+      "args": ["name", "detail"]
+    },
+    "beCcBus.run.failed": {
+      "kind": "error",
+      "zh": "{name} 失败，退出码 {status}：{detail}",
+      "args": ["name", "status", "detail"]
+    },
+    "beCcBus.inbox.badId": {
+      "kind": "error",
+      "zh": "收件箱的名字不合法：{id}",
+      "args": ["id"]
+    },
+    "beCcBus.inbox.tooOld": {
+      "kind": "error",
+      "zh": "{reason}。这台机器上的 cc-bus 比后端旧，重新部署 cc-bus 之后再试。",
+      "args": ["reason"]
+    },
+    "beCcBus.kill.refused": {
+      "kind": "error",
+      "zh": "cc-bus 拒绝结束这个 agent：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.kill.failed": {
+      "kind": "error",
+      "zh": "结束 agent 失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.kill.interrupted": {
+      "kind": "error",
+      "zh": "结束 agent 被打断了：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.deliver.tooLong": {
+      "kind": "error",
+      "zh": "{reason}这条消息有 {n} 字节。",
+      "args": ["reason", "n"]
+    },
+    "beCcBus.spawn.refused": {
+      "kind": "error",
+      "zh": "起 agent 被拒绝了：{detail}",
+      "args": ["detail"]
+    },
+    "beCcBus.spawn.timedOut": {
+      "kind": "error",
+      "zh": "{reason}\n会话可能已经起来了。先看一眼名单再决定，直接重试会再起一个 agent。",
+      "args": ["reason"]
+    },
+    "beCcBus.spawn.failed": {
+      "kind": "error",
+      "zh": "起 agent 失败，退出码 {status}：{detail}",
+      "args": ["status", "detail"]
+    },
+    "beCcBus.spawn.interrupted": {
+      "kind": "error",
+      "zh": "起 agent 被打断了：{detail}",
+      "args": ["detail"]
+    },
+    "beCapturePane.run.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beCapturePane.classify.noServer": {
+      "kind": "error",
+      "zh": "这台机器上没有在跑的 tmux，抓不到画面。tmux 的原话：{tail}",
+      "args": ["tail"]
+    },
+    "beCapturePane.classify.noTarget": {
+      "kind": "error",
+      "zh": "这个 tmux 会话不存在，抓不到画面。tmux 的原话：{tail}",
+      "args": ["tail"]
+    },
+    "beCapturePane.classify.failed": {
+      "kind": "error",
+      "zh": "抓取画面失败，退出码 {status}。tmux 的原话：{tail}",
+      "args": ["status", "tail"]
+    },
+    "beCapturePane.cli.noName": {
+      "kind": "error",
+      "zh": "缺会话名。要给一个 tmux 会话名。",
+      "args": []
+    },
+    "beCapturePane.cli.extra": {
+      "kind": "error",
+      "zh": "多了参数 {extra}。只收一个会话名。",
+      "args": ["extra"]
+    },
+    "beGate.probe.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beGate.admit.noSession": {
+      "kind": "error",
+      "zh": "会话 {name} 不存在，没有发送。",
+      "args": ["name"]
+    },
+    "beGate.admit.notOurs": {
+      "kind": "error",
+      "zh": "会话 {name} 不是 cc-monitor 起的，没有往里发送。",
+      "args": ["name"]
+    },
+    "beGate.admitDestructive.noSession": {
+      "kind": "error",
+      "zh": "会话 {name} 不存在，没有可结束的。",
+      "args": ["name"]
+    },
+    "beGate.admitDestructive.notOurs": {
+      "kind": "error",
+      "zh": "会话 {name} 不是 cc-monitor 起的，没有结束它。",
+      "args": ["name"]
+    },
+    "beGate.admitDestructive.manyWindows": {
+      "kind": "error",
+      "zh": "会话 {name} 有 {n} 个窗口，没有结束它。里面可能开着别的东西，到那个 tmux 会话里自己处理。",
+      "args": ["name", "n"]
+    },
+    "beKill.name.colon": {
+      "kind": "error",
+      "zh": "会话名里不能有冒号：{name}",
+      "args": ["name"]
+    },
+    "beKill.name.empty": {
+      "kind": "error",
+      "zh": "会话名是空的。",
+      "args": []
+    },
+    "beKill.name.control": {
+      "kind": "error",
+      "zh": "会话名里有控制字符。",
+      "args": []
+    },
+    "beKill.name.deceptive": {
+      "kind": "error",
+      "zh": "会话名里有看起来像空格或会反转文字方向的字符 {cp}。",
+      "args": ["cp"]
+    },
+    "beKill.run.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beKill.run.failed": {
+      "kind": "error",
+      "zh": "结束会话失败：{e}",
+      "args": ["e"]
+    },
+    "beLaunch.said.silent": {
+      "kind": "body",
+      "zh": "tmux 没说原因",
+      "args": []
+    },
+    "beLaunch.run.noTmux": {
+      "kind": "error",
+      "zh": "启动不了 tmux：{e}。这台机器上可能没装 tmux，或它不在 PATH 里。",
+      "args": ["e"]
+    },
+    "beLaunch.create.failed": {
+      "kind": "error",
+      "zh": "建不出会话 {name}，它也不存在。tmux 的原话：{said}",
+      "args": ["name", "said"]
+    },
+    "beLaunch.type.failed": {
+      "kind": "error",
+      "zh": "往会话 {target} 发送失败，内容可能没有进去。tmux 的原话：{said}",
+      "args": ["target", "said"]
+    },
+    "beLaunch.typeRaw.failed": {
+      "kind": "error",
+      "zh": "往会话 {target} 发送按键失败，按键可能没有进去。tmux 的原话：{said}",
+      "args": ["target", "said"]
+    },
+    "beStderrFd.point.dupFailed": {
+      "kind": "error",
+      "zh": "错误输出改不到日志文件：{e}",
+      "args": ["e"]
+    },
+    "beStderrFd.point.notUnix": {
+      "kind": "error",
+      "zh": "这台机器上错误输出写不进日志文件。",
+      "args": []
+    },
+    "beDoor.fs.noParent": {
+      "kind": "error",
+      "zh": "{path} 没有上一级目录。",
+      "args": ["path"]
+    },
+    "beDoor.fs.mkdirFailed": {
+      "kind": "error",
+      "zh": "建目录 {dir} 失败：{e}",
+      "args": ["dir", "e"]
+    },
+    "beDoor.key.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数，生成不了中转钥匙。",
+      "args": []
+    },
+    "beDoor.fs.tmpCreateFailed": {
+      "kind": "error",
+      "zh": "建临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beDoor.fs.tmpWriteFailed": {
+      "kind": "error",
+      "zh": "写临时文件 {tmp} 失败：{e}",
+      "args": ["tmp", "e"]
+    },
+    "beDoor.fs.renameFailed": {
+      "kind": "error",
+      "zh": "把 {tmp} 换成 {path} 失败：{e}",
+      "args": ["tmp", "path", "e"]
+    },
+    "beStderrLog.roll.moveFailed": {
+      "kind": "error",
+      "zh": "上一份日志挪不走（{path}）：{e}",
+      "args": ["path", "e"]
+    },
+    "beStderrLog.roll.createFailed": {
+      "kind": "error",
+      "zh": "建不了日志文件 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "credsStore.error.notJson": {
+      "kind": "error",
+      "zh": "凭据文件不是合法的 JSON，没有动它：{e}。这份文件是手编的，多半是少了逗号或引号，改好再试。",
+      "args": ["e"]
+    },
+    "credsStore.error.notObject": {
+      "kind": "error",
+      "zh": "凭据文件的最外层不是一个 JSON 对象。正确的样子见模板：{template}",
+      "args": ["template"]
+    },
     "beResident.fs.noParent": {
       "kind": "error",
       "zh": "{path} 没有上一级目录。",
@@ -9288,17 +9933,17 @@
     },
     "backend.stop.relayConfirm": {
       "kind": "body",
-      "zh": "有 {n} 条会话在走本机中转。停了本机后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
+      "zh": "有 {n} 条会话在走这台机器的中转。停了这台的后端之后，它们的每一次请求都会失败，直到再起后端。仍然停？",
       "args": ["n"]
     },
     "backend.stop.relayMaybe": {
       "kind": "body",
-      "zh": "有 {n} 条会话在走本机中转，另有 {k} 条说不清走不走。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "zh": "有 {n} 条会话在走这台机器的中转，另有 {k} 条说不清走不走。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
       "args": ["k", "n"]
     },
     "backend.stop.relayUnknown": {
       "kind": "body",
-      "zh": "问不到现在有几条会话在走本机中转。停了本机后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
+      "zh": "问不到现在有几条会话在走这台机器的中转。停了这台的后端之后，走中转的会话每一次请求都会失败，直到再起后端。仍然停？",
       "args": []
     },
     "backend.start.failed": {
@@ -11198,16 +11843,6 @@
       "kind": "error",
       "zh": "请求的参数拼不出来：{e}",
       "args": ["e"]
-    },
-    "rsFilewinEntry.legacy.failed": {
-      "kind": "error",
-      "zh": "老面板的书签搬不过来（旧书签还留在原处）：{e}",
-      "args": ["e"]
-    },
-    "rsFilewinEntry.legacy.noDataDir": {
-      "kind": "error",
-      "zh": "老面板的书签搬不过来：找不到本程序的数据目录。旧书签还留在原处。",
-      "args": []
     },
     "rsFilewinEntry.open.failed": {
       "kind": "error",
@@ -15649,16 +16284,6 @@
       "kind": "error",
       "zh": "端口 {port} 上已经有程序，但接不上它：{why}。不会再起第二个，也不会换端口。要重来，先把那个进程停掉",
       "args": ["port", "why"]
-    },
-    "rsLocalBackendHost.start.busy": {
-      "kind": "error",
-      "zh": "端口 {port} 上的本机后端正被另一个 cc-monitor 连着，这一个接不上",
-      "args": ["port"]
-    },
-    "rsLocalBackendHost.start.busyNotice": {
-      "kind": "error",
-      "zh": "本机后端正被另一个 cc-monitor 连着，这一个没有接上。关掉另一个 cc-monitor 再打开这一个。",
-      "args": []
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",

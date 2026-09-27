@@ -493,6 +493,12 @@ mod tests {
             "p4k-remote-resident",
             "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--accounts-trust\n--acct-iso-cmd\n--acct-iso-shellinit\n--acct-iso-status\n--apikey-key-set\n--apikey-read\n--apikey-routing\n--assets-catalog\n--assets-catalog-merge\n--assets-sync\n--backend-probe\n--bus-broadcast\n--bus-inbox\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--ccm-print\n--exit-policy-read\n--exit-policy-set\n--files-browse\n--files-chmod\n--files-commit-text\n--files-commit-upload\n--files-copy\n--files-create\n--files-delete\n--files-delete-session\n--files-find\n--files-home\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-peek\n--files-put\n--files-read-text\n--files-rename\n--files-size\n--files-stage-chunk\n--files-stat\n--files-write-text\n--find-in-session\n--footprint-probe\n--fork-session\n--history-annotate\n--history-facts\n--history-find\n--history-forget\n--history-index\n--history-last-accounts\n--history-lines\n--history-projects\n--history-read\n--history-record\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--history-user-inputs\n--kill\n--launch\n--launch-endpoint\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--mcp-read\n--mcp-sync-plan\n--panorama\n--ping\n--plugins-marketplaces\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--relay-ensure\n--relay-status\n--remote-reach\n--resident-ensure\n--resident-stop\n--resolve\n--search\n--session-accounts\n--session-fork\n--skill-install-plan\n--skill-install-record\n--skill-installs\n--skill-read\n--skill-uninstall-plan\n--tasks-list\n--tmux-list\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:accounts-trust\nch:acct-iso-cmd\nch:acct-iso-shellinit\nch:acct-iso-status\nch:apikey-key-set\nch:apikey-read\nch:apikey-routing\nch:assets-catalog\nch:assets-catalog-merge\nch:assets-sync\nch:bus-broadcast\nch:bus-inbox\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:ccm-print\nch:exit-policy-read\nch:exit-policy-set\nch:files-browse\nch:files-chmod\nch:files-commit-text\nch:files-commit-upload\nch:files-copy\nch:files-create\nch:files-delete\nch:files-delete-session\nch:files-find\nch:files-home\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-peek\nch:files-put\nch:files-read-text\nch:files-rename\nch:files-size\nch:files-stage-chunk\nch:files-stat\nch:files-write-text\nch:footprint-probe\nch:history-annotate\nch:history-facts\nch:history-find\nch:history-forget\nch:history-index\nch:history-last-accounts\nch:history-lines\nch:history-projects\nch:history-read\nch:history-record\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:history-user-inputs\nch:kill\nch:launch\nch:launch-endpoint\nch:link-close\nch:link-credit\nch:link-data\nch:link-open\nch:mcp-read\nch:mcp-sync-plan\nch:panorama\nch:ping\nch:plugins-marketplaces\nch:relay-ensure\nch:relay-status\nch:remote-reach\nch:resolve\nch:session-fork\nch:skill-install-plan\nch:skill-install-record\nch:skill-installs\nch:skill-read\nch:skill-uninstall-plan\nch:tasks-list\nch:tmux-list\nch:transfer-download\nch:transfer-start\nch:transfer-stop\nch:transfer-upload",
         ),
+        // ★ p4m（2026-09-26 TAIL 合并）：子命令集没变；指纹从这一行起多数一段 `#options`（`SUBCOMMAND_OPTIONS`）—— W5-AUX 加 `--stdin-line` 那次没红就是因为它不在指纹里。
+        // ⚠ p4l AL3 子命令集没变，没加行。🔴 上面各行快照一个字节没改（它们不带 `#options` 段，旧快照照旧只作历史）。
+        (
+            "p4m-tail",
+            "--account-trust\n--account-trust-zero\n--accounts-list\n--accounts-sessions\n--accounts-trust\n--acct-iso-cmd\n--acct-iso-shellinit\n--acct-iso-status\n--apikey-key-set\n--apikey-read\n--apikey-routing\n--assets-catalog\n--assets-catalog-merge\n--assets-sync\n--backend-probe\n--bus-broadcast\n--bus-inbox\n--bus-kill\n--bus-list\n--bus-send\n--bus-spawn\n--bus-state\n--capture-pane\n--ccm-print\n--exit-policy-read\n--exit-policy-set\n--files-browse\n--files-chmod\n--files-commit-text\n--files-commit-upload\n--files-copy\n--files-create\n--files-delete\n--files-delete-session\n--files-find\n--files-home\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-mkdir\n--files-peek\n--files-put\n--files-read-text\n--files-rename\n--files-size\n--files-stage-chunk\n--files-stat\n--files-write-text\n--find-in-session\n--footprint-probe\n--fork-session\n--history-annotate\n--history-facts\n--history-find\n--history-forget\n--history-index\n--history-last-accounts\n--history-lines\n--history-projects\n--history-read\n--history-record\n--history-search\n--history-sessions\n--history-subagents\n--history-tail\n--history-user-inputs\n--kill\n--launch\n--launch-endpoint\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--list-user-inputs\n--mcp-read\n--mcp-sync-plan\n--panorama\n--ping\n--plugins-marketplaces\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--relay-ensure\n--relay-status\n--remote-reach\n--resident-ensure\n--resident-stop\n--resolve\n--search\n--session-accounts\n--session-fork\n--skill-install-plan\n--skill-install-record\n--skill-installs\n--skill-read\n--skill-uninstall-plan\n--tasks-list\n--tmux-list\n--tmux-notify\n#channel\nch:accounts-list\nch:accounts-sessions\nch:accounts-trust\nch:acct-iso-cmd\nch:acct-iso-shellinit\nch:acct-iso-status\nch:apikey-key-set\nch:apikey-read\nch:apikey-routing\nch:assets-catalog\nch:assets-catalog-merge\nch:assets-sync\nch:bus-broadcast\nch:bus-inbox\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-spawn\nch:bus-state\nch:cancel\nch:capture-pane\nch:ccm-print\nch:exit-policy-read\nch:exit-policy-set\nch:files-browse\nch:files-chmod\nch:files-commit-text\nch:files-commit-upload\nch:files-copy\nch:files-create\nch:files-delete\nch:files-delete-session\nch:files-find\nch:files-home\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-mkdir\nch:files-peek\nch:files-put\nch:files-read-text\nch:files-rename\nch:files-size\nch:files-stage-chunk\nch:files-stat\nch:files-write-text\nch:footprint-probe\nch:history-annotate\nch:history-facts\nch:history-find\nch:history-forget\nch:history-index\nch:history-last-accounts\nch:history-lines\nch:history-projects\nch:history-read\nch:history-record\nch:history-search\nch:history-sessions\nch:history-subagents\nch:history-tail\nch:history-user-inputs\nch:kill\nch:launch\nch:launch-endpoint\nch:link-close\nch:link-credit\nch:link-data\nch:link-open\nch:mcp-read\nch:mcp-sync-plan\nch:panorama\nch:ping\nch:plugins-marketplaces\nch:relay-ensure\nch:relay-status\nch:remote-reach\nch:resolve\nch:session-fork\nch:skill-install-plan\nch:skill-install-record\nch:skill-installs\nch:skill-read\nch:skill-uninstall-plan\nch:tasks-list\nch:tmux-list\nch:transfer-download\nch:transfer-start\nch:transfer-stop\nch:transfer-upload\n#options\nopt:--accts-dir\nopt:--after-ms\nopt:--from\nopt:--include-tools\nopt:--index\nopt:--limit\nopt:--query\nopt:--replace\nopt:--scope\nopt:--stdin-line\nopt:--until",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
@@ -596,6 +602,15 @@ mod tests {
         let mut out = subs.join("\n");
         out.push_str("\n#channel\n");
         out.push_str(&chans.join("\n"));
+        // 〔TAIL · 09-26〕第三段：子命令的选项（`SUBCOMMAND_OPTIONS`）。W5-AUX 加 `--stdin-line` 时本条没红、
+        //   p4f 靠人记得手动 bump —— 旧后端不认新选项同样会卡住调用方，所以它也算命令面。
+        let mut opts: Vec<String> = crate::SUBCOMMAND_OPTIONS
+            .iter()
+            .map(|o| format!("opt:{o}"))
+            .collect();
+        opts.sort_unstable();
+        out.push_str("\n#options\n");
+        out.push_str(&opts.join("\n"));
         out
     }
 
@@ -901,6 +916,13 @@ mod tests {
         // 也确认它认得出「少了一个」
         let shortened = now.split('\n').skip(1).collect::<Vec<_>>().join("\n");
         assert_ne!(now, shortened);
+        // 〔TAIL〕选项那一段真在指纹里：每一个 `SUBCOMMAND_OPTIONS` 都得有自己的一行。
+        for o in crate::SUBCOMMAND_OPTIONS {
+            assert!(
+                now.lines().any(|l| l == format!("opt:{o}")),
+                "指纹里没有选项 `{o}` —— 加选项又会不逼 bump"
+            );
+        }
         // 以及：注释里的字面量不该被算进去（剥注释这一步是有效的）
         assert!(
             !now.contains("--account-trust-zero\n--account-trust-zero"),

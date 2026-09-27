@@ -641,9 +641,9 @@ describe("〔ST2 · 设计/70 第二刀 步 6〕后端开关表格式四栏：�
  * 〔HX1 · 主会话裁 HX1 拍板项 3 · D-f〕**停本机后端之前数一数走本机中转的活会话，>0 就先问一句、说几条会断**。
  * 守的要求：主会话 D-f 逐字「停后端时有走中转的活会话 ⇒ 先确认（说几条会断）」；主会话裁「设置页『停』前 >0 就确认，说几条会断」
  * ＋ 用 `ask-dialog.ts::askConfirm`（真 app 里 `window.confirm` 从来不拦）。形状：话按表逐格相等；接线两向（答否 ⇒ 零次 `backend_stop` ·
- * 答是 ⇒ 恰好一次；一条都没有 ⇒ 不问；问不到 ⇒ 照样问；远端 ⇒ 不数不问）。
+ * 答是 ⇒ 恰好一次；一条都没有 ⇒ 不问；问不到 ⇒ 照样问；〔TAIL〕远端 ⇒ 数那台、照样问（V139 后远端中转住那台常驻后端里）。
  */
-describe("〔HX1 · D-f〕停本机后端之前数走中转的会话", () => {
+describe("〔HX1 · D-f〕停后端之前数走中转的会话", () => {
   const row = (o: Partial<SessionAccount>): SessionAccount => ({
     pid: 1,
     sessionId: "s",
@@ -682,7 +682,7 @@ describe("〔HX1 · D-f〕停本机后端之前数走中转的会话", () => {
   };
   const stops = () => calls.filter((c) => c.name === "backend_stop").length;
 
-  it("接线：答否不停 · 答是停一次 · 没有走中转的不问 · 远端不数", async () => {
+  it("接线：答否不停 · 答是停一次 · 没有走中转的不问 · 远端数那台", async () => {
     let asked: string[] = [];
     let answer = false;
     let rows: SessionAccount[] | null = [row({ viaRelay: true }), row({ viaRelay: true })];
@@ -722,12 +722,19 @@ describe("〔HX1 · D-f〕停本机后端之前数走中转的会话", () => {
     await until(() => stops() === 2);
     expect(asked, "没有走中转的会话也问了").toEqual([]);
     await until(() => !localStop!.disabled);
-    // 远端 ⇒ 不数也不问。
+    // 〔TAIL〕远端 ⇒ 数那台的会话、有走中转的就问；答否不停。
     sessionsAsked = [];
+    asked = [];
+    answer = false;
+    rows = [row({ viaRelay: true })];
+    const before = stops();
     const remoteStop = stopOf(s, "甲机");
     expect(remoteStop).toBeTruthy();
     remoteStop!.click();
-    await until(() => stops() === 3);
-    expect(sessionsAsked, "远端的「停」也去数本机中转的会话了").toEqual([]);
+    await until(() => asked.length === 1);
+    await flush();
+    expect(sessionsAsked, "远端的「停」数的不是那台").toEqual(["甲机"]);
+    expect(asked).toEqual([zh("backend.stop.relayConfirm", { n: 1 })]);
+    expect(stops(), "远端答了否还是停了").toBe(before);
   });
 });

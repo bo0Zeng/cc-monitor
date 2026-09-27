@@ -10,7 +10,7 @@
 //!   按机器分的那个键与老面板逐字同一个取法（`RemoteConfig::origin_label`：label 空才退 host）。
 //! - **路径由 monitor 定**：开窗那一跳算好、放进开窗种子（[`super::proc::OpenRequest`]）交过来，
 //!   窗口进程自己不找数据目录 ⇒ 判据可以把它指到临时目录，真数据目录一个字节都不碰。
-//! - **写者两个进程、一个函数**：窗口进程（★ / ×）与 monitor（搬家那一跳，[`carry`]）都走
+//! - **写者可以是几个窗口进程、一个函数**：每个窗口（★ / ×）都走
 //!   [`mutate`]：**上锁 → 现读 → 改 → 原子换**。
 //!   - 锁：旁件 `<文件>.lock` 上的独占锁。一窗一进程 ⇒ 两个窗口可以同时开着同一台机器，
 //!     各自读-改-写会**静默丢掉**另一个刚加的那一条（判据 `two_writers_lose_nothing` 钉着）。
@@ -57,7 +57,7 @@ fn lock_path(file: &Path) -> PathBuf {
 /// 连续的 `/` 折成一个；只剩 `/` 就是根；否则去掉尾巴上那一个 `/`。
 ///
 /// ⚠ 空串照旧是空串、相对路径照旧是相对的（老面板也不补前导 `/`）；
-///   空串由调用方（[`toggle_in`] / [`merge`]）挡掉，不在这里编一个路径出来。
+///   空串由调用方（[`toggle_in`]）挡掉，不在这里编一个路径出来。
 pub fn normalize_dir(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     let mut prev_slash = false;
@@ -105,30 +105,6 @@ pub fn remove_in(list: &mut Vec<String>, dir: &str) -> bool {
     let before = list.len();
     list.retain(|x| normalize_dir(x) != d);
     list.len() != before
-}
-
-/// 把 `legacy` 并进 `book`：逐台「已有的在前、旧的不重样地接在后面」。回值 ＝ 新加了几条。
-///
-/// 🔴 **幂等**：并两次与并一次逐字节相同 —— 搬家那一跳成了、开窗却失败时，下一次开窗会再搬一遍。
-/// 空机器名 / 归一之后是空串的那几条跳过（不编一个名字 / 路径出来）。
-pub fn merge(book: &mut Book, legacy: &Book) -> usize {
-    let mut added = 0;
-    for (origin, dirs) in legacy {
-        if origin.is_empty() {
-            continue;
-        }
-        let list = book.entry(origin.clone()).or_default();
-        for d in dirs {
-            let d = normalize_dir(d);
-            if d.is_empty() || list.iter().any(|x| normalize_dir(x) == d) {
-                continue;
-            }
-            list.push(d);
-            added += 1;
-        }
-    }
-    book.retain(|_, v| !v.is_empty());
-    added
 }
 
 /// 读整份。文件不在 ⇒ 空的一份（还没存过书签）；读得到却读不懂 ⇒ `Err`（**不当成空的**）。
@@ -179,15 +155,6 @@ pub fn mutate<R>(file: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book
     crate::utils::atomic_write_json(file, &book)
         .map_err(|e| copy_text("rsFilewinBookmarks.mutate.failed", &[("e", &e.to_string())]))?;
     Ok((r, book))
-}
-
-/// 搬家那一跳（monitor 这一侧，开窗之前）：把 webview 里老面板那几把键的内容并进书签文件。
-/// 回值 ＝ 新加了几条。
-///
-/// ⚠〔待退役〕它只为认出老面板留在 webview 里的状态而存在。退役条件：用户那台机器上
-///   开过一次窗、旧键被删掉之后，连同它的判据与 `entry::open_file_window` 那一格参数一起删。
-pub fn carry(file: &Path, legacy: &Book) -> Result<usize, String> {
-    mutate(file, |book| merge(book, legacy)).map(|(n, _)| n)
 }
 
 /// 窗口里的书签 —— **一个窗口一份**，所有标签页 / 两栏共用（克隆便宜）。
