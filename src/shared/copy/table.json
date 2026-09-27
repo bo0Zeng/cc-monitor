@@ -15856,7 +15856,7 @@
     },
     "accounts.badge.apikeyRelayedHint": {
       "kind": "body",
-      "zh": "已配置：本机会话的 ANTHROPIC_BASE_URL 指向本机中转。后端按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
+      "zh": "已配置：本机会话经本机中转发送请求。后端按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
       "args": []
     },
     "accounts.badge.apikeyRelayed": {
@@ -16338,7 +16338,7 @@
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
-      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。下一步：结束那个进程再重开 cc-monitor，它的进程号记在 {pidPath}。",
+      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。结束那个进程再重开 cc-monitor 就行，它的进程号记在 {pidPath}。",
       "args": ["port", "why", "pidPath"]
     },
     "rsLocalBackendHost.start.noToken": {
@@ -16468,7 +16468,7 @@
     },
     "rsLocalBackendHost.token.empty": {
       "kind": "error",
-      "zh": "{path} 在盘上，但内容是空的，本机后端起不来也接不上。下一步：删掉这个文件再起一次（rm {path}）；还在跑的旧后端删了之后也接不上，一并停掉它",
+      "zh": "{path} 在盘上，但内容是空的，本机后端起不来也接不上。删掉这个文件再起一次（rm {path}）；还在跑的旧后端删了之后也接不上，一并停掉它",
       "args": ["path"]
     },
     "rsLocalBackendHost.fs.readFailed": {
