@@ -977,15 +977,18 @@ fn each_layer_of_a_channel_failure_says_something_different() {
         refused.contains("refused") && refused.contains("refuse write: fence"),
         "{refused}"
     );
-    // 不认这条命令 ⇒ 点名是哪一条。
-    assert!(said(
-        "files-chmod",
-        &CallError::Peer {
-            why: PeerFault::Unsupported
-        }
-    )
-    .contains("不支持这个操作")); // 〔CP2b · CP1 裁〕不再点内部命令名，说「版本旧了，不支持这个操作」
-                                  // 本侧三种互不相同。
+    // 不认这条命令 ⇒ 说「版本旧了、不支持」那一条。
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文（CP1 裁掉了命令名，「是哪条命令」那一维不在句子里）。
+    assert_eq!(
+        said(
+            "files-chmod",
+            &CallError::Peer {
+                why: PeerFault::Unsupported
+            }
+        ),
+        copy_text("rsFilewinSource.said.unknownCmd", &[])
+    );
+    // 本侧三种互不相同。
     let ours: std::collections::BTreeSet<String> =
         [OursFault::Cancelled, OursFault::Misuse, OursFault::Broken]
             .into_iter()

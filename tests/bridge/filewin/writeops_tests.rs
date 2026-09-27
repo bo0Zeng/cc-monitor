@@ -188,8 +188,12 @@ async fn a_refusal_from_the_backend_fence_comes_back_as_a_sentence() {
     )
     .await
     .expect_err("后端没声明 `files-chmod`，却成了");
-    // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再点内部命令名 ⇒ 认「版本旧了，不支持这个操作」那一句。
-    assert!(e.contains("不支持这个操作"), "没说后端不支持：`{e}`");
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言，不按原文：「是哪条命令」由下面线上那张单子认（没上线），不靠句子点名。
+    assert_eq!(
+        e,
+        copy_text("rsFilewinSource.said.unknownCmd", &[]),
+        "没说后端不支持"
+    );
     assert_eq!(
         wired.cmds(),
         ["files-mkdir", "files-mkdir"],

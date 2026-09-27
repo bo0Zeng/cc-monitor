@@ -59,8 +59,11 @@ async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot
     //    （`source::said` 逐字「`files-home` 没走通…」）⇒ 是哪一跳失败的，文本分得开了。
     // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再带内部命令名（`files-home`）⇒ 改认「没走通」那一族：
     //   它只在真发出去问了、那一跳失败时才说；本地就拒（路径是空的）说的是别的话。
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言：认 `hopFault` 那一条的固定开头（取自表，不抄原文）。
+    let hop_head = copy_text("rsFilewinSource.said.hopFault", &[]);
+    let hop_head = &hop_head[..hop_head.find('{').unwrap_or(hop_head.len())];
     assert!(
-        e.contains("没走通"),
+        !hop_head.is_empty() && e.contains(hop_head),
         "空路径的报错不是「问了、那一跳没走通」—— 那就不是在问 home（原文：{e}）"
     );
     assert_eq!(
