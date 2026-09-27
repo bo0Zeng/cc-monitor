@@ -22,7 +22,7 @@ import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
-import { TailWindow } from "./live-window";
+import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
@@ -336,20 +336,14 @@ export class TabManager {
     // 老后端重连还会从 seq 0 重发整段。必须在 renderStreamRecord 之前、且覆盖 skip 记录
     // （attachment/isMeta/空 user 有 seq 但不入 timeline，timeline.has 漏判）。
     // 〔CF1〕本机会话的行也走后端的帧与旁路快照之后，这一道本机同样会命中（原先写「本地永不命中」）。
+    // 〔RENDER2 · `设计/10 §3.2`〕这是**唯一**一道：seq ＝ 当前文件里的行号，从头重读先出声、tab 整份重来
+    //   （`onRecordFileReread`）⇒「换新 seq 重投同一条记录」那条路没了，原先按 uuid 再挡的那一道随之删了。
     if (tab.seenSeqs.has(payload.seq)) return;
+    // 〔RENDER2〕monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。
+    if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
     tab.seenSeqs.add(payload.seq);
 
-    // issue #26：按 uuid 去重——截断重读换新 seq 重投时上面的 seq 去重放行，这里把
-    // "同一记录再来一遍"整体拒掉（不渲染、不触发事件），否则内容在 timeline 末尾
-    // 翻倍（INVARIANTS § 25 的渲染层履约点）。必须放在 ensureTab 之后（远端
-    // un-archive 靠"收到行"翻转，重投行也要触发它）、seq 去重之后。
-    const uuid = (payload.message as { uuid?: unknown }).uuid;
-    if (typeof uuid === "string" && uuid.length > 0) {
-      if (tab.processedUuids.has(uuid)) return;
-      tab.processedUuids.add(uuid);
-    }
-
-    // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在双重去重**之后**：
+    // 〔TAP · V124〕jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮覆盖（撤掉）；挂在去重**之后**：
     //   `设计/20 §8`「前端现有的去重层就是吸收层」—— 重投 / 快照重叠区的重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.message);
 
@@ -679,13 +673,12 @@ export class TabManager {
       toolUseElements: new Map(),
       branchFolder,
       pendingToolResults: new Map(),
-      seenSeqs: new Set(),
+      seenSeqs: new SeqSet(),
       window: new TailWindow(),
       skeleton: null,
       skeletonFetch: "idle",
       midBatchBuffer: [],
       fillHandler: null,
-      processedUuids: new Set(),
       outline,
       inputsPanel,
       inputsEl,
@@ -893,6 +886,17 @@ export class TabManager {
    */
   streamElOf(sessionId: string): HTMLElement | null {
     return this.store.tabs.get(sessionId)?.streamEl ?? null;
+  }
+
+  /**
+   * 〔RENDER2 · `设计/10 §3.2` · `§7` 第 4 / 12 条〕记录文件从头重读了（截短 / 改写）：后端行号从 0 重数、旧的一代作废
+   * ⇒ 这个 tab 的内容整份重来（`TabStreamView.restartContent`），之后到的行按新的一代建。「不见了」不重来（号没换代）。
+   * 要在「顶上说一句」之前调：重来换了流容器，那句话画在新的上面。
+   */
+  onRecordFileReread(sessionId: string, change: string): void {
+    if (change !== "truncated" && change !== "rewritten") return;
+    const tab = this.store.tabs.get(sessionId);
+    if (tab) this.view.restartContent(tab);
   }
 
   /**

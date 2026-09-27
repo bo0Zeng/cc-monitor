@@ -63,6 +63,7 @@ fn cursor(path: &str, anchor_total: u64, anchor_end: u64, next: u64) -> Cursor {
         anchor_total,
         anchor_end,
         next,
+        next_byte: None, // 说不准第 `next` 行的起点 ⇒ 挑锚那一形（〔RENDER2〕确知起点那一形另有一格）
         witness: None,
     }
 }
@@ -162,7 +163,7 @@ fn the_cursor_only_moves_on_contiguous_lines() {
     let o = &crate::origin::Origin("c2-test-origin".to_string());
     let s = "c2-test-sid";
     forget(o, s);
-    note_flushed(o, [(s, 0)]);
+    note_flushed(o, [(s, 0, None)]);
     assert_eq!(
         cursor_of(o, s),
         None,
@@ -176,11 +177,11 @@ fn the_cursor_only_moves_on_contiguous_lines() {
     };
     note_snapshot_done(o, s, "/p.jsonl", &plan);
     assert_eq!(cursor_of(o, s).map(|c| c.next), Some(10));
-    note_flushed(o, [(s, 10), (s, 11)]);
+    note_flushed(o, [(s, 10, None), (s, 11, None)]);
     assert_eq!(cursor_of(o, s).map(|c| c.next), Some(12));
-    note_flushed(o, [(s, 20)]); // 跳号：中间那几行没拿到
+    note_flushed(o, [(s, 20, None)]); // 跳号：中间那几行没拿到
     assert_eq!(cursor_of(o, s).map(|c| c.next), Some(12), "跳号不许前推");
-    note_flushed(o, [(s, 5)]); // 重复的旧行
+    note_flushed(o, [(s, 5, None)]); // 重复的旧行
     assert_eq!(cursor_of(o, s).map(|c| c.next), Some(12));
     // 再做完一次（总数没超过已有）⇒ 不回退
     note_snapshot_done(o, s, "/p.jsonl", &plan);
@@ -400,4 +401,43 @@ fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
         1,
     );
     assert!(wired(&old).is_err(), "摘掉核那一步没被认出 —— 量具瞎了");
+}
+
+/// 〔RENDER2 · `99 §2.1` ㊱②〕逐字「续传：『锚到续点那一截照样过线』要修 —— 续订从续点 seq 起发」：
+/// 推续点的那一行带着自己的末端 ⇒ 续传只读 `[第 next 行的起点, end)`，一行都不数掉（过线的 == 发出去的）。
+/// 阴性：推的那一行说不准末端 ⇒ 退回挑锚（锚到续点那一截照样过线）。
+#[test]
+fn a_resume_reads_from_the_cursor_line_itself() {
+    let (text, rows) = fixture(300);
+    let o = &crate::origin::Origin("r2-resume-origin".to_string());
+    let s = "r2-resume-sid";
+    forget(o, s);
+    let anchor = plan_of(&text[..rows[120].0 as usize], &rows[..120], 500);
+    note_snapshot_done(o, s, "/p.jsonl", &anchor);
+    // 实时行 120..170 连续到达，各带末端（= 下一行的起点）
+    note_flushed(o, (120..170).map(|i| (s, i as u64, Some(rows[i + 1].0))));
+    let plan = plan_of(&text, &rows, 500);
+    let how = plan_read(cursor_of(o, s).as_ref(), "/p.jsonl", &plan);
+    assert_eq!(
+        how,
+        Read::Resume {
+            from_byte: rows[170].0,
+            upto: plan.end,
+            first_seq: 170,
+            skip_below: 170
+        }
+    );
+    let (sent, walk) = run(&text, &how, &plan);
+    let want: Vec<(u64, String)> = (170..300).map(|i| (i as u64, rows[i].1.clone())).collect();
+    assert_eq!(sent, want);
+    assert_eq!(
+        walk.arrived(),
+        130,
+        "过线的行数 == 发出去的行数（一行都没数掉）"
+    );
+    // 阴性：末端说不准
+    note_flushed(o, [(s, 170, None)]);
+    let how = plan_read(cursor_of(o, s).as_ref(), "/p.jsonl", &plan);
+    assert!(matches!(how, Read::Resume { skip_below: 171, first_seq, .. } if first_seq < 171));
+    forget(o, s);
 }

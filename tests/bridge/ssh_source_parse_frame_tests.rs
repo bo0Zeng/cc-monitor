@@ -327,6 +327,7 @@ fn parses_two_line_frames_with_all_fields() {
             path: "/home/pi/.claude/projects/p/s-1.jsonl".to_string(),
             seq: 0,
             raw: r#"{"type":"user"}"#.to_string(),
+            end: None, // 〔RENDER2〕这条金样没带 `byte_offset`
         }
     );
 

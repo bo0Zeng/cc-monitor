@@ -719,7 +719,12 @@ fn every_error_and_item_shape_round_trips() {
         },
         Item::Gap {
             from_seq: 3,
-            to_seq: 7,
+            to_seq: Some(7),
+        },
+        // 〔RENDER2 · `99 §2.1` ㉓①〕知道丢了、不知道丢到哪 —— 线上省掉 `to_seq`，读回来仍是 `None`
+        Item::Gap {
+            from_seq: 8,
+            to_seq: None,
         },
         Item::Unseen {
             at: HopId {

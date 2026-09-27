@@ -256,7 +256,7 @@ fn plan_live(sub: &mut Sub, frames: Vec<Body>) -> Vec<Item> {
         if let Some(from_seq) = sub.gap_from.take() {
             out.push(Item::Gap {
                 from_seq,
-                to_seq: sub.next,
+                to_seq: Some(sub.next),
             });
         }
     }
@@ -286,7 +286,7 @@ fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
     if let Some(from_seq) = sub.gap_from.take() {
         out.push(Item::Gap {
             from_seq,
-            to_seq: sub.next,
+            to_seq: Some(sub.next),
         });
     }
     for body in &rest[..take] {
@@ -396,10 +396,16 @@ impl EventReplay {
     /// 〔FW1 · 第四波 4D · D-d〕一个会话的记录文件不见了 / 被改过已从头重读：交给订了那台（或那一个会话）的实时订阅一格。
     ///
     /// 与行同一套记账（占 credit、占位置、没 credit 就原位记 `Gap`）；**不进留存**（F5 不重放这句话，主会话 09-25 认的已知缺口）。
+    ///
+    /// 〔RENDER2 · `设计/10 §3.2`〕「已从头重读」（截短 / 改写）⇒ 后端的行号从 0 重数：留存里这个会话旧的一代同一拍丢
+    /// （F5 之后只重放新的一代，与前端收到这一格时整份重来对得上）。
     pub async fn on_session_notice(&self, notice: crate::bridge::SessionFileNoticePayload) {
         let body = body_of(&SessionStreamFrame::FileNotice(notice.clone()));
         let (sink, plans) = {
             let mut inner = self.inner.lock();
+            if notice.change != "gone" {
+                drop_session(&mut inner, &notice.session_id);
+            }
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
@@ -415,6 +421,33 @@ impl EventReplay {
                     plans.push((sub.label.clone(), sub.id, items));
                 }
             }
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔RENDER2 · `99 §2.1` ㉓①〕这台机器的内容流上丢了一行、说不出丢在哪个会话（超长整行丢弃）：
+    /// 订了这台 `session-lines` 的每条实时订阅原位收一格 `Gap { to_seq: None }`（不占位置、不占 credit）。
+    pub fn on_lost_somewhere(&self, origin: &str) {
+        let (sink, plans) = {
+            let inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter()
+                .filter(|s| s.live && s.kind == SubKind::Lines && s.origin == origin)
+                .map(|s| {
+                    let gap = Item::Gap {
+                        from_seq: s.next,
+                        to_seq: None,
+                    };
+                    (s.label.clone(), s.id, vec![gap])
+                })
+                .collect();
             (sink, plans)
         };
         for (label, id, items) in plans {
@@ -703,7 +736,7 @@ impl EventReplay {
                     if sub.credit > 0 {
                         sub.gap_from.take().map(|from_seq| Item::Gap {
                             from_seq,
-                            to_seq: sub.next,
+                            to_seq: Some(sub.next),
                         })
                     } else {
                         None
@@ -781,14 +814,7 @@ impl EventReplay {
     /// 把指定 session_id 的全部历史从 buffer 移除。
     /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新 history 会重放出来"复活" Tab。
     pub fn forget(&self, session_id: &str) {
-        let mut inner = self.inner.lock();
-        inner.sessions.remove(session_id);
-        let before = inner.history.len();
-        inner.history.retain(|p| p.session_id != session_id);
-        let removed = before - inner.history.len();
-        if removed > 0 {
-            tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
-        }
+        drop_session(&mut self.inner.lock(), session_id);
     }
 
     /// 〔U3b〕读数口（日志与判据用）。
@@ -861,6 +887,17 @@ impl Default for EventReplay {
 
 /// 〔U3b〕→〔CF2〕进账：push 进 history、给**每个**会话计数，超过 `KEEP + SLACK` 就修回 `KEEP`。
 ///
+/// 一个会话的留存整份丢（关掉已结束的 tab · 〔RENDER2〕记录文件从头重读、旧的一代作废）。
+fn drop_session(inner: &mut Inner, session_id: &str) {
+    inner.sessions.remove(session_id);
+    let before = inner.history.len();
+    inner.history.retain(|p| p.session_id != session_id);
+    let removed = before - inner.history.len();
+    if removed > 0 {
+        tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
+    }
+}
+
 /// 修剪过的会话，之后到达、seq **低于**它最低留存那一条的行（尾部优先快照的头段回填）⇒ **不进缓冲**：
 /// 它们进来也会在下一次修剪时被第一批丢掉，而每进 150 条就要付一次 O(history) 的修剪。
 /// 这些行照样实时发给已就绪的前端（本函数只管缓冲）；F5 之后前端要，按行号取回。

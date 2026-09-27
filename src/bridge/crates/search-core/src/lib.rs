@@ -262,8 +262,21 @@ const INJECTED_WRAPPERS: [&str; 5] = [
     "local-command-stderr",
 ];
 
-/// 去掉 CLI 注入的 prompt 包装 + ESC 中断标记。
-pub fn clean_user_text(s: &str) -> String {
+/// 〔RENDER2 · J10〕整行就是它、不分大小写（句号可省）⇒ CLI 续跑样板，整行剥。
+const BOILERPLATE_LINES: [&str; 2] = ["continue from where you left off", "no response requested"];
+
+/// 〔RENDER2 · J10 · 渲染 / 大纲 / 搜索 / 分叉折叠共用的**一条**规则〕一条 user 正文剥完 CLI 注入之后是什么。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserText {
+    /// 剥完、trim 过的真内容；空 = 整条都是注入噪声（渲染不建卡、大纲不列、搜索不命中）。
+    pub clean: String,
+    /// 整条恰是 ESC 中断标记（`[Request interrupted by user…]`）—— 分叉折叠要认它。
+    pub interrupt: bool,
+}
+
+/// 判一条 user 正文（`设计/10 §2.2b ⑤` 那条不等价的根：规则从此只有这一份）：
+/// 五种包装全剥 · 两句样板整行剥 · 剩下的**整条**恰是中断标记才归零（标记后面跟着真话就留着） · trim。
+pub fn user_text(s: &str) -> UserText {
     let mut out = s.to_string();
     for tag in INJECTED_WRAPPERS {
         let open = format!("<{tag}>");
@@ -276,12 +289,37 @@ pub fn clean_user_text(s: &str) -> String {
             }
         }
     }
-    let trimmed = out.trim();
-    // 纯 ESC 中断标记 → 不是真用户内容
-    if trimmed.starts_with("[Request interrupted by user") {
-        return String::new();
+    let kept: Vec<&str> = out
+        .split('\n')
+        .map(|l| {
+            let t = l.trim_end_matches('\r');
+            let bare = t.strip_suffix('.').unwrap_or(t).to_ascii_lowercase();
+            if BOILERPLATE_LINES.contains(&bare.as_str()) {
+                ""
+            } else {
+                l
+            }
+        })
+        .collect();
+    let joined = kept.join("\n");
+    let trimmed = joined.trim();
+    let interrupt = trimmed
+        .strip_prefix("[Request interrupted by user")
+        .and_then(|rest| rest.find(']').map(|i| (rest, i)))
+        .is_some_and(|(rest, i)| !rest[..i].contains('\n') && rest[i + 1..].trim().is_empty());
+    UserText {
+        clean: if interrupt {
+            String::new()
+        } else {
+            trimmed.to_string()
+        },
+        interrupt,
     }
-    trimmed.to_string()
+}
+
+/// 去掉 CLI 注入的 prompt 包装、样板行与 ESC 中断标记（[`user_text`] 的 `clean`）。
+pub fn clean_user_text(s: &str) -> String {
+    user_text(s).clean
 }
 
 // ── snippet ──────────────────────────────────────────────────────────────

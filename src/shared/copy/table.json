@@ -14566,11 +14566,6 @@
       "zh": "远端 [{host}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。",
       "args": ["host", "dropped"]
     },
-    "rsSshSource.health.lineTooLong": {
-      "kind": "body",
-      "zh": "远端 [{host}] 有一条记录过大（{bytes} 字节），已跳过。重开会话可看完整历史",
-      "args": ["host", "bytes"]
-    },
     "rsSshSource.snapshot.incompletePlan": {
       "kind": "error",
       "zh": "快照不完整：{total}/{expected} 行（连接中断或后端报错）",

@@ -18,10 +18,11 @@ import { attachBranchButton } from "./branch-button"; // G4：实时会话的分
 import type { BranchResult } from "./generated/BranchResult";
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
-import type { SkeletonLedger } from "./live-window";
+import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live-window";
+import { HeightRefiner, workerMeasure } from "./height-refiner";
 // 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
-import { skeletonKind } from "./height-estimate";
+import { eagerBodyChars, skeletonKind } from "./height-estimate";
 // K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
 // 〔SE2〕大纲并进会话内查找面板（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
 import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
@@ -113,6 +114,16 @@ export class TabStreamView {
   private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
   /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
   private static readonly FILL_BATCH = 200;
+  /**
+   * 〔RENDER2 · `设计/17 §1.1`〕一批（物化尾段 / 上翻补批）的第二道闸：急路要当场物化的正文字符（`eagerBodyChars`）。
+   * 64 Ki 字符：W5-RENDER 普查按文件序连续 150 条窗口的正文字符 p50 6.5 K、p99 136 K ⇒ 常态批碰不到它，只截那几份长尾批
+   * （一条 617 KB 正文的 assistant 就是一整批）。截下来的下一帧接着补（`materializeUntilFilled` / `fillAbove` 的 rAF 自链）。
+   */
+  private static readonly BATCH_BODY_CHARS = 64 * 1024;
+  private static readonly BATCH_BUDGET: TakeBudget = {
+    weight: (p) => eagerBodyChars(p.message),
+    max: TabStreamView.BATCH_BODY_CHARS,
+  };
   private static readonly TOP_TRIGGER_PX = 800;
   /**
    * 〔DL1 · `设计/05 §3.3.2`〕往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
@@ -140,7 +151,61 @@ export class TabStreamView {
     private readonly store: TabStore,
     private readonly streamRootEl: HTMLElement,
     private readonly host: TabStreamHost,
+    /** 〔RENDER2 · `设计/10 §2.5b`〕第二级估高（Worker 精算）；环境里没有 Worker 时它自己不开。 */
+    private readonly refiner: HeightRefiner = new HeightRefiner(workerMeasure()),
   ) {}
+
+  /** 〔RENDER2〕视口上下几屏之内的占位行交第二级（`设计/10 §2.5b`「窗口附近上下各 N 屏优先精算」）。 */
+  private static readonly REFINE_SCREENS = 2;
+  /** 〔RENDER2〕一趟最多精算几行（视口里估高荒谬地偏小时，一屏装下几千行也只交这么多）。 */
+  private static readonly REFINE_MAX_ROWS = 200;
+  /** 〔RENDER2〕每个骨架问过第二级的行（问过就不再问：排不出 / 不值得精算的也不重问）与在途标记。 */
+  private readonly refineAsked = new WeakMap<SkeletonView, Set<number>>();
+  private readonly refining = new WeakSet<SkeletonView>();
+
+  /**
+   * 〔RENDER2 · `设计/10 §2.5b` 第二级「按需 ＋ 后台」〕视口上下 `REFINE_SCREENS` 屏之内还在占位里、没精算过的行：
+   * 正文先从账本借（不出账），没有的按索引字节边界取一次（与 `fetchMissingRows` 同一条命令，回来的只交 Worker、不建卡），
+   * 交 `HeightRefiner`，回来换进账本、占位改高（视口钉住）。一个骨架同时只一趟。
+   */
+  private refineNearby(tab: Tab): void {
+    const sk = tab.skeleton;
+    if (!sk || !this.refiner.enabled || this.refining.has(sk) || !tab.parentPath) return;
+    let asked = this.refineAsked.get(sk);
+    if (!asked) this.refineAsked.set(sk, (asked = new Set()));
+    const want = sk.nearbyUnrefined(TabStreamView.REFINE_SCREENS).filter((s) => !asked!.has(s));
+    if (want.length === 0) return;
+    const seqs = new Set(want.slice(0, TabStreamView.REFINE_MAX_ROWS));
+    for (const s of seqs) asked.add(s);
+    const known = tab.window.peekSeqs(seqs);
+    for (const p of known) seqs.delete(p.seq);
+    const runs: Array<[number, number]> = [];
+    for (const s of [...seqs].sort((a, b) => a - b)) {
+      const f = sk.ledger.factsOf(s);
+      if (!f || skeletonKind(f) !== "card") continue;
+      const last = runs[runs.length - 1];
+      if (last && last[1] === s) last[1] = s + 1;
+      else runs.push([s, s + 1]);
+    }
+    const origin = tab.origin;
+    const jsonlPath = tab.parentPath;
+    this.refining.add(sk);
+    const fetched = runs.map(([a, b]) => {
+      const first = sk.ledger.factsOf(a)!;
+      const lastRow = sk.ledger.factsOf(b - 1)!;
+      return commands
+        .read_session_range({ origin, jsonlPath, offset: first.o, until: lastRow.o + lastRow.n, seqBase: a, lineCount: b - a })
+        .catch((): JsonlLinePayload[] => []);
+    });
+    void Promise.all(fetched)
+      .then((pages) => {
+        if (this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== sk) return;
+        const rows = [...known, ...pages.flat()].map((p) => ({ seq: p.seq, rec: p.message }));
+        return this.refiner.refine(sk, rows);
+      })
+      .catch((e: unknown) => console.warn(`[tabs] 第二级估高失败（${tab.sessionId.slice(0, 8)}）：`, e))
+      .finally(() => this.refining.delete(sk));
+  }
 
   /**
    * 建一个 tab 的流 DOM：`.stream` 容器 ＋ 消息流 ＋ 折叠层 ＋ 时间线 ＋ 查找面板（含大纲）与大纲的数据源。
@@ -203,6 +268,7 @@ export class TabStreamView {
       // 视口里有没有占位 —— 不能沿用「离顶 800px 内才补」那道门（那是尾部窗口单洞后缀的假设）
       if (t?.skeleton) {
         t.skeleton.fillVisible();
+        this.refineNearby(t); // 〔RENDER2〕第二级：视口附近的占位行交 Worker 精算
         return;
       }
       if (t && t.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) this.fillAbove(t);
@@ -249,7 +315,6 @@ export class TabStreamView {
     tab.toolUseElements.clear();
     tab.pendingToolResults.clear();
     tab.seenSeqs.clear();
-    tab.processedUuids.clear();
     // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
     tab.window.dispose();
     tab.skeleton?.dispose(); // 〔`设计/10` 骨架〕
@@ -258,6 +323,34 @@ export class TabStreamView {
     if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
     tab.timeline.dispose();
     tab.branchFolder.dispose();
+  }
+
+  /**
+   * 〔RENDER2 · `设计/10 §3.2`〕记录文件从头重读了（后端行号从 0 重数）⇒ 这个 tab 的内容整份重来：拆掉流 DOM 与全部账本
+   * （时间线 · 去重集 · 尾部窗口 · 骨架 · 大纲 · 查找面板 · 会话事实），按新建的样子再装一份；身份 / 标题 / 状态 / 固定照留。
+   * **换一个新的 `Tab` 对象进表**：在途那几趟（骨架索引 · 按偏移取正文 · 往下 / 往后补）回来时认的是「表里还是不是它」，
+   * 认不出就自己作废 —— 旧的一代的行不会落进新的一代。
+   */
+  restartContent(old: Tab): Tab {
+    const wasActive = this.store.activeId === old.sessionId;
+    this.disposeTab(old);
+    const tab: Tab = {
+      ...old,
+      ...this.mountTabDom(old.sessionId),
+      toolUseNames: new Map(),
+      toolUseElements: new Map(),
+      pendingToolResults: new Map(),
+      seenSeqs: new SeqSet(),
+      window: new TailWindow(),
+      skeleton: null,
+      skeletonFetch: "idle",
+      midBatchBuffer: [],
+      fillHandler: null,
+    };
+    this.store.tabs.set(tab.sessionId, tab);
+    this.wireTab(tab);
+    if (wasActive) this.showOnly(tab.sessionId);
+    return tab;
   }
 
   /** 切 tab：只让这一条流（连同它的查找面板）可见（原是 `switchTo` 开头那一段）。 */
@@ -645,7 +738,7 @@ export class TabStreamView {
    * 的手动补偿在 fillAbove(F40b)。
    */
   private materializeTail(tab: Tab, k = TabStreamView.MATERIALIZE_TAIL_K): void {
-    this.renderPayloadsBatch(tab, tab.window.takeTail(k));
+    this.renderPayloadsBatch(tab, tab.window.takeTail(k, TabStreamView.BATCH_BUDGET));
     this.updateSentinel(tab);
   }
 
@@ -735,7 +828,10 @@ export class TabStreamView {
     }
     tab.skeleton = view;
     this.updateSentinel(tab);
-    if (this.store.activeId === tab.sessionId) view.fillVisible();
+    if (this.store.activeId === tab.sessionId) {
+      view.fillVisible();
+      this.refineNearby(tab); // 〔RENDER2〕第二级
+    }
     // 〔U3b · `设计/10` 步 8〕骨架接上 ⇒ 正文不必再驻留：丢掉的那些滚到时按偏移要回来。
     // 前端账本只留离已渲染尾巴最近的一批（第一次上翻不用等 IPC）。
     // 〔CF2〕monitor 的重放缓冲那一半不用再登记了：它对**每个**会话都只留尾巴（`event_replay·rs` 头注「容量」）。
@@ -799,6 +895,7 @@ export class TabStreamView {
             (p) => tab.seenSeqs.has(p.seq) && routeMetaAndBranch(p, NOOP_META) === "content",
           );
           this.feedHistoryRows(tab, fresh);
+          tab.seenSeqs.addRange(a, b); // 〔RENDER2〕这一段整段到过（不可显示的也算）
           if (again.length > 0) this.renderPayloadsBatch(tab, again);
         })
         .catch((e: unknown) => console.warn(`[tabs] 按偏移取正文失败 [${a},${b})：`, e));
@@ -870,6 +967,7 @@ export class TabStreamView {
           }
         }
         this.feedHistoryRows(tab, fresh);
+        tab.seenSeqs.addRange(page.from, page.next); // 〔RENDER2〕同上
         tab.window.markFetchedBelow(range.from);
         this.updateSentinel(tab);
         if (this.store.activeId === tab.sessionId && tab.streamEl.scrollTop <= TabStreamView.TOP_TRIGGER_PX) {
@@ -902,9 +1000,8 @@ export class TabStreamView {
   recoverFromGap(tab: Tab): void {
     tab.window.dropPending();
     this.updateSentinel(tab);
-    if (!tab.parentPath || tab.seenSeqs.size === 0 || this.forwardFills.has(tab)) return;
-    let max = -1;
-    for (const s of tab.seenSeqs) if (s > max) max = s;
+    if (!tab.parentPath || tab.seenSeqs.isEmpty || this.forwardFills.has(tab)) return;
+    const max = tab.seenSeqs.max;
     this.forwardFills.add(tab);
     const jsonlPath = tab.parentPath;
     const budget = budgetWithin(TabStreamView.GAP_FILL_BUDGET_MS);
@@ -925,6 +1022,7 @@ export class TabStreamView {
             tab,
             page.payloads.filter((p) => !tab.seenSeqs.has(p.seq)),
           );
+          tab.seenSeqs.addRange(page.from, page.next); // 〔RENDER2〕同上
           if (page.eof || page.next <= from) return this.forwardFills.delete(tab);
           step(page.next);
           return true;
@@ -980,7 +1078,7 @@ export class TabStreamView {
       el.style.overflowAnchor = "none";
       const beforeH = el.scrollHeight;
       const beforeTop = el.scrollTop;
-      this.renderPayloadsBatch(tab, tab.window.takeTail(TabStreamView.FILL_BATCH));
+      this.renderPayloadsBatch(tab, tab.window.takeTail(TabStreamView.FILL_BATCH, TabStreamView.BATCH_BUDGET));
       // 哨兵刷新必须在补偿回写**之前**:账尽移除的 ±30px 计入 Δ 一并吃掉——
       // 移除若在补偿后,dev(无锚定)会在"会话第一条"处一次性跳 30px(D 审计)。
       this.updateSentinel(tab);

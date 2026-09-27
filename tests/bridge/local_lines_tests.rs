@@ -275,12 +275,14 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         path: "/p/a.jsonl".into(),
         seq: 4,
         raw: r#"{"x":1}"#.into(),
+        end: None,
     };
     let line_b = LocalStep::Line {
         session_id: "b".into(),
         path: "/p/b.jsonl".into(),
         seq: 0,
         raw: "{}".into(),
+        end: None,
     };
 
     // ① 显示 bg：一切照转。

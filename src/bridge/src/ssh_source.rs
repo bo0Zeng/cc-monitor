@@ -69,6 +69,9 @@ pub struct JsonlLine {
     pub path: std::path::PathBuf,
     pub seq: u64,
     pub raw: String,
+    /// 〔RENDER2 · `99 §2.1` ㊱②〕这一行之后（含它的 `\n`）那一个字节的偏移 = 下一行的起点（后端 `line.byte_offset` ·
+    /// 快照的行区间末端）；说不准 ⇒ `None`。续点据它记「从哪个字节接着读」。
+    pub end: Option<u64>,
 }
 
 /// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
@@ -1389,6 +1392,19 @@ async fn fetch_snapshot(
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
     let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
     let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
+    // 〔RENDER2 · `设计/10 §3.2`〕断线期间文件变短了（续点比这一次的图长）⇒ 这一次整份读出来的是另一代的行号：
+    //   先交那个会话一格「变短了、已从头重读」（前端据它整份重来、留存丢旧的一代），再整份读。
+    //   续点不必另丢：这一次整份读完立的新锚盖掉它。
+    if crate::snapshot_resume::shrank(cursor.as_ref(), path, &plan) {
+        replay
+            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                session_id: sid.to_string(),
+                origin: host_label.to_string(),
+                path: path.to_string(),
+                change: FileChange::Truncated.as_wire().to_string(),
+            })
+            .await;
+    }
     // 〔W5-VIS · `设计/15 §3.4 ②`〕续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
     //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、整份重读、交那个会话一格「被改过」。
     if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
@@ -1439,6 +1455,7 @@ async fn fetch_snapshot(
     let mut pick = crate::snapshot_resume::WitnessPick::default();
     let mut total_bytes: u64 = 0;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
+    let mut runs = crate::SkipRuns::default(); // 〔RENDER2〕这一次快照自己一份（与实时那一路不交错）
     let mut cancelled = false;
     let segments = walk.segments().to_vec();
     let body_bytes: u64 = segments
@@ -1472,13 +1489,14 @@ async fn fetch_snapshot(
                     path: std::path::PathBuf::from(path),
                     seq,
                     raw: line.to_string(),
+                    end: span.map(|(_, e)| e),
                 });
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                     if q.is_cancelled(sid) {
                         cancelled = true;
                         break 'read;
                     }
-                    flush_lines(replay, host_label, std::mem::take(&mut chunk)).await;
+                    flush_lines(replay, host_label, std::mem::take(&mut chunk), &mut runs).await;
                 }
             }
             offset = page.next;
@@ -1500,7 +1518,7 @@ async fn fetch_snapshot(
         return Ok(FetchOutcome::Cancelled);
     }
     if !chunk.is_empty() {
-        flush_lines(replay, host_label, chunk).await;
+        flush_lines(replay, host_label, chunk, &mut runs).await;
     }
     // 完整性校验：`total` 精确对账（F30）—— 续传时对的是「锚之后那一截」。
     let (arrived, want) = (walk.arrived(), walk.want());
@@ -1696,18 +1714,6 @@ where
     }
 }
 
-/// 超限那一行的用户可见说法。**抽成纯函数**的理由与 [`overflow_health_message`] 逐字相同：
-/// 消费点要真 `AppHandle` 测不了，而措辞对不对恰恰是要钉的东西。
-fn line_too_long_health_message(host_label: &str, bytes: u64) -> String {
-    copy_text(
-        "rsSshSource.health.lineTooLong",
-        &[
-            ("host", &host_label.to_string()),
-            ("bytes", &bytes.to_string()),
-        ],
-    )
-}
-
 /// exec 一条命令并**收全** stdout / stderr / 退出码（见 [`RemoteExec`]）。
 ///
 /// 与 `connect_and_exec_cmd` 一样每次独立连接（一次性查询语义），
@@ -1821,6 +1827,8 @@ pub enum InboundFrame {
         path: String,
         seq: u64,
         raw: String,
+        /// 〔RENDER2 · ㊱②〕后端的 `byte_offset`（这一行末尾含 `\n` 的累计字节）；老后端不带 ⇒ `None`。
+        end: Option<u64>,
     },
     /// 远端新出现一个 session 文件。Batch7-F24：p1e backend 附带 pidfile 元信息
     /// （additive）；旧后端缺字段 → None（保守视为交互）。
@@ -2101,11 +2109,13 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             let path = obj.get("path")?.as_str()?.to_string();
             let seq = obj.get("seq")?.as_u64()?;
             let raw = obj.get("raw")?.as_str()?.to_string();
+            let end = obj.get("byte_offset").and_then(serde_json::Value::as_u64);
             Some(InboundFrame::Line {
                 session_id,
                 path,
                 seq,
                 raw,
+                end,
             })
         }
         "session_added" => {
@@ -2767,18 +2777,26 @@ const BATCH_MAX_AGE_MS: u64 = 200;
 /// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
 /// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
 /// backend 帧流形成天然背压。
-async fn flush_lines(replay: &Arc<EventReplay>, host_label: &str, lines: Vec<JsonlLine>) {
-    let flushed: Vec<(String, u64)> = lines
+async fn flush_lines(
+    replay: &Arc<EventReplay>,
+    host_label: &str,
+    lines: Vec<JsonlLine>,
+    runs: &mut crate::SkipRuns,
+) {
+    let flushed: Vec<(String, u64, Option<u64>)> = lines
         .iter()
-        .map(|l| (l.session_id.clone(), l.seq))
+        .map(|l| (l.session_id.clone(), l.seq, l.end))
         .collect();
     // 〔ST3〕同一个 origin 既是载荷上的机器名、也是看不懂的行记账的那台。
     let origin = crate::origin::Origin(host_label.to_string());
-    let payloads = crate::batch_to_payloads(lines, &origin);
+    let payloads = crate::batch_to_payloads(lines, &origin, runs);
     // 〔CF2〕交给订了它的那些会话流（`event_replay` 头注「订阅」）；出口在它手里，不再经 `app` 广播。
     replay.on_line_batch_awaited(payloads).await;
     // 〔C2〕发出去了才推续点（连续才推，见 `snapshot_resume::note_flushed`）。
-    crate::snapshot_resume::note_flushed(&origin, flushed.iter().map(|(s, q)| (s.as_str(), *q)));
+    crate::snapshot_resume::note_flushed(
+        &origin,
+        flushed.iter().map(|(s, q, e)| (s.as_str(), *q, *e)),
+    );
 }
 
 /// 〔CF1 · 2026-09-24〕**内容那一半的唯一收口** —— 远端每条连接一个、本机每条流一个。
@@ -2803,6 +2821,8 @@ pub(crate) struct LineIntake {
     batcher: Batcher,
     snapshots: std::sync::Arc<SnapshotQueue>,
     tail_only: bool,
+    /// 〔RENDER2〕实时那一路的「连着的不可显示那一段」（`SkipRuns`）。
+    runs: crate::SkipRuns,
     _closer: SnapshotQueueCloser,
 }
 
@@ -2830,6 +2850,7 @@ impl LineIntake {
             _closer: SnapshotQueueCloser(snapshots.clone()),
             snapshots,
             tail_only,
+            runs: crate::SkipRuns::default(),
         }
     }
 
@@ -2851,14 +2872,14 @@ impl LineIntake {
     /// 收一行（达容量 / 批龄就整批冲出去）。
     async fn line(&mut self, line: JsonlLine) {
         if let Some(full) = self.batcher.push(line) {
-            flush_lines(&self.replay, &self.origin_label, full).await;
+            flush_lines(&self.replay, &self.origin_label, full, &mut self.runs).await;
         }
     }
 
     /// 把攒着的行冲出去（攒批边界：会话走了 / 流断了 / 静默窗到了）。
     async fn flush(&mut self) {
         if let Some(lines) = self.batcher.take() {
-            flush_lines(&self.replay, &self.origin_label, lines).await;
+            flush_lines(&self.replay, &self.origin_label, lines, &mut self.runs).await;
         }
     }
 
@@ -2880,6 +2901,11 @@ impl LineIntake {
     /// 重读出来的行前面 —— 后端发它就在重读的行之前），再交那个会话的内容流一格。
     async fn notice(&mut self, sid: &str, path: &str, change: FileChange) {
         self.flush().await;
+        // 〔RENDER2 · `设计/10 §3.2`〕从头重读 ⇒ 后端的行号从 0 重数：在飞 / 排队的快照（旧的一代）撤掉、续点作废。
+        //   （与「会话走了」同一件事：`removed`）。留存里旧的一代由 `on_session_notice` 同一拍丢。
+        if change != FileChange::Gone {
+            self.removed(sid);
+        }
         self.replay
             .on_session_notice(crate::bridge::SessionFileNoticePayload {
                 session_id: sid.to_string(),
@@ -2890,8 +2916,16 @@ impl LineIntake {
             .await;
     }
 
+    /// 〔RENDER2 · `99 §2.1` ㉓①〕这条流上有一行丢了、说不出是哪个会话的哪一行（超长整行丢弃）：残批先冲，
+    /// 再给订了这台的每条订阅原位一格「丢了、不知道丢到哪」（`Item::Gap` 的 `to_seq` 缺）——前端照 `05 §15.3` 往后补。
+    async fn lost(&mut self) {
+        self.flush().await;
+        self.replay.on_lost_somewhere(&self.origin_label);
+    }
+
     /// 一个会话走了：撤它的快照（排队的摘掉、在飞的打取消标记）、续点作废（再宣告时整份拉）。
-    fn removed(&self, sid: &str) {
+    fn removed(&mut self, sid: &str) {
+        self.runs.forget(sid);
         self.snapshots.cancel(sid);
         crate::snapshot_resume::forget(&crate::origin::Origin(self.origin_label.clone()), sid);
     }
@@ -2936,6 +2970,8 @@ pub(crate) enum LocalItem {
     Frame(InboundFrame),
     /// 这条流结束了（两条读循环的收尾各送一次）。
     StreamEnded,
+    /// 〔RENDER2 · `99 §2.1` ㉓①〕这条流上一行超长、整行丢了（说不出是哪个会话的哪一行）。
+    LineLost,
 }
 
 /// 〔CF1〕本机消费者对一件东西的处置 —— **纯函数**的输出，异步那半只照做。
@@ -2947,6 +2983,7 @@ pub(crate) enum LocalStep {
         path: String,
         seq: u64,
         raw: String,
+        end: Option<u64>,
     },
     /// 进 [`LineIntake::announced`]。
     Announce {
@@ -2966,6 +3003,8 @@ pub(crate) enum LocalStep {
     Skip,
     /// 冲掉残批、换一个新的 [`LineIntake`]（下一条流从头来）。
     StreamEnded,
+    /// 〔RENDER2〕进 [`LineIntake::lost`]（冲掉残批、原位给一格 `Gap`）。
+    Lost,
 }
 
 /// 〔CF1〕`bg` 会话要不要藏：口径与 `session_map::is_interactive` 逐字同一条 ——
@@ -2990,6 +3029,7 @@ pub(crate) fn local_lifecycle(
         LocalItem::StreamEnded => Some(Lifecycle::StreamEnded {
             idle: local_idle.to_vec(),
         }),
+        LocalItem::LineLost => None,
         LocalItem::Frame(InboundFrame::SessionAdded {
             sid,
             session_kind,
@@ -3065,11 +3105,13 @@ pub(crate) fn local_step(
             hidden.clear();
             LocalStep::StreamEnded
         }
+        LocalItem::LineLost => LocalStep::Lost,
         LocalItem::Frame(InboundFrame::Line {
             session_id,
             path,
             seq,
             raw,
+            end,
         }) => {
             if hidden.contains(&session_id) {
                 LocalStep::Skip
@@ -3079,6 +3121,7 @@ pub(crate) fn local_step(
                     path,
                     seq,
                     raw,
+                    end,
                 }
             }
         }
@@ -3176,6 +3219,7 @@ pub(crate) async fn consume_local(
                     path,
                     seq,
                     raw,
+                    end,
                 } => {
                     intake
                         .line(JsonlLine {
@@ -3183,6 +3227,7 @@ pub(crate) async fn consume_local(
                             path: std::path::PathBuf::from(path),
                             seq,
                             raw,
+                            end,
                         })
                         .await
                 }
@@ -3193,6 +3238,7 @@ pub(crate) async fn consume_local(
                 }
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Skip => {}
+                LocalStep::Lost => intake.lost().await,
                 LocalStep::StreamEnded => {
                     intake.flush().await;
                     replay.origin_seen(&crate::origin::Origin(label.clone()), false);
@@ -3372,8 +3418,9 @@ async fn stream_loop(
     // 丢 buffer 里的半帧）；mpsc::Receiver::recv 是 cancel-safe 的，超时打在
     // recv 上帧零丢失。reader task 在 EOF/读错时投递 Err 后退出；本函数返回
     // （重连）时 rx drop → task 的 send 失败 → task 自然退出，不泄漏。
-    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Result<String, String>>(1024);
-    let reader_app = app.clone();
+    // `Ok(None)`：〔RENDER2 · `99 §2.1` ㉓①〕这里有一行超长、整行丢了（说不出是哪个会话的哪一行）⇒ 主循环原位给订阅一格 `Gap`（`to_seq` 缺）。
+    let (frame_tx, mut frame_rx) =
+        tokio::sync::mpsc::channel::<Result<Option<String>, String>>(1024);
     let reader_host = host_label.clone();
     tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stream);
@@ -3396,20 +3443,15 @@ async fn stream_loop(
                     break;
                 }
                 Ok(CappedLine::TooLong(bytes)) => {
-                    // 超限语义 = **丢弃 + 带身份报告**，绝不静默（定框 E4）。
-                    // ⚠ 走 REMOTE_HEALTH 而不是 frame_tx 的 Err 臂 —— Err 会被主循环
-                    // 当成致命错误去重连，而超长行只是**这一行**坏了，连接本身没问题。
+                    // 超限语义 = **丢弃 + 原位说出来**，绝不静默（定框 E4）。
+                    // 〔RENDER2 · `99 §2.1` ㉓①〕不走 Err 臂（那会被当成致命错误去重连，而坏的只是这一行），
+                    //   也不再走旁路健康提示：与行同一条路交 `Ok(None)`，主循环原位给订阅一格 `Gap`（本机两条载体同形）。
                     tracing::warn!(
                         "ssh_source remote [{reader_host}] line too long: {bytes} bytes \
                          (cap {BACKEND_FRAME_LINE_CAP}); line dropped"
                     );
-                    let payload = crate::bridge::RemoteHealthPayload {
-                        origin: reader_host.clone(),
-                        kind: "line_too_long".to_string(),
-                        message: line_too_long_health_message(&reader_host, bytes),
-                    };
-                    if let Err(e) = reader_app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
-                        tracing::warn!("ssh_source line-too-long emit failed: {e}");
+                    if frame_tx.send(Ok(None)).await.is_err() {
+                        break;
                     }
                 }
                 Ok(CappedLine::Line) => {
@@ -3424,7 +3466,7 @@ async fn stream_loop(
                     if line.is_empty() {
                         continue;
                     }
-                    if frame_tx.send(Ok(line.to_string())).await.is_err() {
+                    if frame_tx.send(Ok(Some(line.to_string()))).await.is_err() {
                         break; // 主循环已退出（重连中）
                     }
                 }
@@ -3453,7 +3495,11 @@ async fn stream_loop(
             return Err("ssh backend frame channel closed".to_string());
         };
         let line = match msg {
-            Ok(l) => l,
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                intake.lost().await;
+                continue;
+            }
             Err(e) => {
                 // EOF/读错：flush 残余（at-least-once 安全；重连会从 seq 0 重放，
                 // 但没有理由主动丢已收到的行）**并等它发完**再报错——run() 随后的
@@ -3596,6 +3642,7 @@ async fn stream_loop(
                 path,
                 seq,
                 raw,
+                end,
             }) => {
                 // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
                 // SessionRemoved 边界触发的 flush 在循环头。
@@ -3605,6 +3652,7 @@ async fn stream_loop(
                         path: std::path::PathBuf::from(path),
                         seq,
                         raw,
+                        end,
                     })
                     .await;
             }

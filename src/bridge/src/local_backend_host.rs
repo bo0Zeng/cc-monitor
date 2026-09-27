@@ -1047,8 +1047,9 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             {
                 Ok(CappedLine::Eof) => break,
                 Ok(CappedLine::TooLong(bytes)) => {
-                    // 丢弃 + 带身份报告，绝不静默（定框 E4）。
+                    // 丢弃 + 原位说出来，绝不静默（定框 E4；〔RENDER2 · ㉓①〕与远端同形：订阅收一格 `Gap`）。
                     tracing::warn!("本机常驻后端发来一行 {bytes} 字节，超过单行上限；整行丢弃");
+                    crate::local_lines::line_lost().await;
                     continue;
                 }
                 Ok(CappedLine::Line) => {}

@@ -37,9 +37,10 @@
 //! - 见证只钉**锚那一行**：锚之后、续点之前那几条实时行被单独改掉（前缀原样、只改中段）看不见 —— 实时行没带字节偏移。
 //! - 见证那一行本身含非 UTF-8 字节（后端有损解码过、字节位对不上）⇒ 那一次不记见证，续传照今天的样子不核。
 //! - 改写之后整份重读出来的行，行号与旧行同号（远端 `seq` 是行号空间，`INVARIANTS §25a`）—— 前端怎么把两份收成一份不在本处。
-//! - 锚到 `next` 之间那一截**照样过线**（只是不发给前端）：锚只有「快照做完那一刻」与「这次的尾段起点」两个，
-//!   实时行没带字节偏移。最坏多读「上次快照之后的实时行」那么多字节 —— 与整份重拉比小几个数量级，但不是零。
-//! - 进程重启续点全丢（本来就是进程内软状态）。
+//! - 〔RENDER2 · `99 §2.1` ㊱②〕实时行带着后端的 `byte_offset`（它的末端）⇒ 推续点时记下第 `next` 行的起点（`Cursor::next_byte`），
+//!   续传就从那一行读起、一行都不数掉。只剩「推的那一行说不准末端」（老后端不带 `byte_offset` · 快照那一行含非 UTF-8）
+//!   才退回挑锚、锚到续点那一截照样过线。
+//! - 进程重启续点全丢（本来就是进程内软状态；主会话 09-27 销案：monitor 重启时界面状态本就没了，要的是整份）。
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -58,6 +59,8 @@ pub(crate) struct Cursor {
     pub(crate) anchor_end: u64,
     /// 已有到哪：`[0, next)` 这些行号前端**确实**拿到过（发出去过）。
     pub(crate) next: u64,
+    /// 〔RENDER2 · `99 §2.1` ㊱②〕第 `next` 行从哪个字节起（推 `next` 的那一行带着它的末端）；说不准 ⇒ `None`（退回挑锚）。
+    pub(crate) next_byte: Option<u64>,
     /// 〔W5-VIS〕锚那一行的见证（续传之前先核它）；`None` = 这一次没记下（那一行含非 UTF-8 / 一行可计行都没有）。
     pub(crate) witness: Option<Witness>,
 }
@@ -162,6 +165,14 @@ pub(crate) enum Read {
     },
 }
 
+/// 〔RENDER2〕同一份文件的续点比这一次的图还长（行数 / 字节 / 已有到哪 任一越过）⇒ 文件在断线期间变短了。
+pub(crate) fn shrank(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> bool {
+    cursor.is_some_and(|c| {
+        c.path == path
+            && (c.anchor_total > plan.total || c.anchor_end > plan.end || c.next > plan.total)
+    })
+}
+
 /// **纯函数**：续点 × 这一次的尾段图 ⇒ 怎么读。
 ///
 /// 续点缺席 / 路径不同 / 文件比锚短（被截断重写过）/ `next` 超过这次的总行数 ⇒ [`Read::Full`]。
@@ -169,8 +180,17 @@ pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) ->
     let Some(c) = cursor.filter(|c| c.path == path) else {
         return Read::Full;
     };
-    if c.anchor_total > plan.total || c.anchor_end > plan.end || c.next > plan.total {
+    if shrank(Some(c), path, plan) {
         return Read::Full;
+    }
+    // 〔RENDER2 · ㊱②〕确知第 `next` 行的起点 ⇒ 就从那里读：锚到续点之间那一截不再过线。
+    if let Some(b) = c.next_byte.filter(|b| *b <= plan.end) {
+        return Read::Resume {
+            from_byte: b,
+            upto: plan.end,
+            first_seq: c.next,
+            skip_below: c.next,
+        };
     }
     // 两个确知的「行号 → 字节」锚，挑行号不超过 `next` 的最近一个。
     let mine = (c.anchor_total, c.anchor_end);
@@ -272,6 +292,11 @@ pub(crate) fn note_snapshot_done(origin: &Origin, sid: &str, path: &str, plan: &
     let key = (origin.as_wire_str().to_string(), sid.to_string());
     let same = g.get(&key).filter(|c| c.path == path);
     let next = same.map_or(plan.total, |c| c.next.max(plan.total));
+    // 〔RENDER2〕`next` 落在锚上 ⇒ 起点就是锚的末字节；推得比锚远 ⇒ 沿用推的那一行带来的。
+    let next_byte = match same {
+        Some(c) if c.next > plan.total => c.next_byte,
+        _ => Some(plan.end),
+    };
     // 〔W5-VIS〕见证先照旧带过来（这一趟没读到新的可计行时它仍是锚那一行）；[`note_witness`] 随后按这一趟的走读改。
     let witness = same.and_then(|c| c.witness.clone());
     g.insert(
@@ -281,6 +306,7 @@ pub(crate) fn note_snapshot_done(origin: &Origin, sid: &str, path: &str, plan: &
             anchor_total: plan.total,
             anchor_end: plan.end,
             next,
+            next_byte,
             witness,
         },
     );
@@ -300,13 +326,18 @@ pub(crate) fn note_witness(origin: &Origin, sid: &str, picked: Option<Option<Wit
     }
 }
 
-/// 一批行发给前端之后：有续点的会话，行号**恰好接上** `next` 才往前推（连续才推）。
-pub(crate) fn note_flushed<'a>(origin: &Origin, flushed: impl IntoIterator<Item = (&'a str, u64)>) {
+/// 一批行发给前端之后：有续点的会话，行号**恰好接上** `next` 才往前推（连续才推）；
+/// 〔RENDER2 · ㊱②〕推的那一行带着它的末端 ⇒ 记成新 `next` 的起点（不带 ⇒ 说不准）。
+pub(crate) fn note_flushed<'a>(
+    origin: &Origin,
+    flushed: impl IntoIterator<Item = (&'a str, u64, Option<u64>)>,
+) {
     let mut g = registry().lock().unwrap_or_else(|e| e.into_inner());
-    for (sid, seq) in flushed {
+    for (sid, seq, end) in flushed {
         if let Some(c) = g.get_mut(&(origin.as_wire_str().to_string(), sid.to_string())) {
             if seq == c.next {
                 c.next += 1;
+                c.next_byte = end;
             }
         }
     }
