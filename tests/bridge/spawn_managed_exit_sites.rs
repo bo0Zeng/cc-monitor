@@ -151,6 +151,13 @@ const SITES: &[(&str, &str, &str, &str)] = &[
          而本件刚把我们自己那段从 profile 里删掉）· `-NonInteractive`（界面点一下不许挂住）\
          · `-Command <我们自己 render 出来的脚本>`。stdout 要 piped：它是返回值。",
     ),
+    // 〔FIX · `设计/71 §8` 第 8 条〕别名撞名问 PowerShell 内建别名。
+    (
+        "shell_dialect.rs",
+        "ask_get_alias",
+        "spawn_managed_cmd",
+        "`-NoProfile`（问自带那一份，不被用户 profile 左右）· `-NonInteractive` · `-Command <固定的 Get-Alias 那一段>`。stdout 要 piped：它是返回值。",
+    ),
     // 〔SR1a · 2026-09-24〕拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
     (
         "ssh_source.rs",

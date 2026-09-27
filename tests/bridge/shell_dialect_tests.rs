@@ -407,3 +407,30 @@ fn the_profile_location_census_sees_the_old_shapes() {
     .collect();
     assert_eq!(got, want);
 }
+
+/// ★ 〔FIX · `设计/71 §8` 第 8 条（逐字「PowerShell **内建别名**优先级高于函数（`ls` / `cd` 这类名字撞上了，定义了也敲不到）」）· WIN2 #4 读数〕
+/// `Get-Alias` 那一段的输出读成表（名字不分大小写）；撞上 ⇒ 那句话带它指向谁；没撞 ⇒ 不说；问不到 ⇒ 说问不到（不当成没撞）。
+/// ⚠ 买不到：真 PowerShell 那一跳（本机 Linux；读数见 `第四波记录/WIN2.md` #4）。
+#[test]
+fn a_powershell_builtin_alias_is_named_and_an_unknown_listing_is_said() {
+    let listing = "ls\tGet-ChildItem\r\ncd\tSet-Location\r\n%\tForEach-Object\r\n\r\n";
+    let table = parse_alias_listing(listing);
+    assert_eq!(
+        table
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("%", "ForEach-Object"),
+            ("cd", "Set-Location"),
+            ("ls", "Get-ChildItem")
+        ]
+    );
+    let ok: PsAliases = Ok(table);
+    let hit = builtin_alias_note("LS", &ok).expect("撞了内建别名却没说");
+    assert!(hit.contains("LS") && hit.contains("Get-ChildItem"), "{hit}");
+    assert_eq!(builtin_alias_note("zcc", &ok), None);
+    let unknown: PsAliases = Err("exit Some(1)".into());
+    let said = builtin_alias_note("zcc", &unknown).expect("问不到却当成没撞");
+    assert!(said.contains("exit Some(1)"), "{said}");
+}

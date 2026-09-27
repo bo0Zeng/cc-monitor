@@ -12887,6 +12887,16 @@
       "zh": "PowerShell 传给 ccm 时会把空参数整个丢掉",
       "args": []
     },
+    "rsShellDialect.ps.nameTakenBuiltinAlias": {
+      "kind": "body",
+      "zh": "{name} 是 PowerShell 自带的别名（指 {target}）。别名比函数先被找到，用这个名字定义了也敲不到",
+      "args": ["name", "target"]
+    },
+    "rsShellDialect.ps.builtinAliasUnknown": {
+      "kind": "body",
+      "zh": "没问到 PowerShell 自带的别名（{e}），{name} 撞没撞它说不准",
+      "args": ["name", "e"]
+    },
     "rsShellDialect.ps.nameTakenPath": {
       "kind": "body",
       "zh": "{name}：PATH 上已经有一个同名程序（{cand}）。装上之后在 PowerShell 里敲 {name}，打到的是这条别名，不再是那个程序",
