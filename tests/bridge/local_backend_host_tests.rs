@@ -612,6 +612,45 @@ fn the_stop_command_really_calls_this_module() {
     });
 }
 
+/// 〔STOP〕T5 **本机「停」走同一条一次性子命令**：`stop_detached_locked` 恰好调一次 `run_resident_stop`，自己不发信号、不强杀、不等；
+/// 整份生产段里没有发 `-TERM` / `-KILL` 的路（HX1 那套 SIGTERM → 等 → SIGKILL 删干净）；`run_resident_stop` 起的是那个二进制 ＋ `--resident-stop`。
+/// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「本机那一格也改走同一条 `--resident-stop`（本机远端同形），
+/// monitor 侧 `local_backend_host.rs` 那套 SIGTERM → 等 → SIGKILL 删掉」。
+#[test]
+fn the_local_stop_rides_the_same_one_shot_supervisor() {
+    let me =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    let body_of = |head: &str| -> String {
+        let at = guard_core::find_pinned(&me, head).unwrap_or_else(|e| panic!("{e}"));
+        me[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let stop = body_of("fn stop_detached_locked(");
+    assert_eq!(stop.matches("run_resident_stop(").count(), 1, "{stop}");
+    for banned in ["kill(", "SIGTERM", "SIGKILL", "sleep("] {
+        assert_eq!(
+            stop.matches(banned).count(),
+            0,
+            "`stop_detached_locked` 里又出现了 `{banned}`：{stop}"
+        );
+    }
+    for banned in ["\"-TERM\"", "\"-KILL\"", "Command::new(\"kill\")"] {
+        assert_eq!(
+            me.matches(banned).count(),
+            0,
+            "生产段又长出发信号的路：`{banned}`"
+        );
+    }
+    let run = body_of("fn run_resident_stop(");
+    guard_core::find_pinned(&run, ".arg(\"--resident-stop\")").unwrap_or_else(|e| panic!("{e}"));
+    guard_core::find_pinned(&run, "crate::remote_resident::read_stop(")
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
 /// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增 · 〔DP1〕换了机制〕。
 ///
 /// 〔墓碑 —— 原先内嵌的两份 musl Linux 由一个**只按 arch 分派、不看 OS** 的函数取，本条钉的是
@@ -3611,7 +3650,12 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         assert!(alive(pid), "起出来的 pid={pid} 不在进程表里");
 
         // **从外面**把它结束掉（不是走我们的 `stop`）—— 那才是「它自己崩了」的形状。
-        signal_term(pid).expect("发不出 SIGTERM");
+        // 〔STOP〕生产段那个发信号的 `signal_term` 删了（「停」改走一次性 `--resident-stop`）⇒ 这里自己发。
+        let st = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()
+            .expect("起不来 kill");
+        assert!(st.success(), "发不出 SIGTERM：{st}");
 
         // 流断了 ⇒ 读方拿到 EOF ⇒ 收尸。**事件驱动**，这里只是等那个事件走完。
         let mut gone = false;

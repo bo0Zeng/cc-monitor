@@ -590,7 +590,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p4n-backend-log**（2026-09-26，GAP1 合并那一拍）：子命令 ＋1 `--backend-log`、帧命令 ＋1 `backend-log`（远端常驻后端的 stderr 落
 /// `~/.cc-monitor/logs/backend/stderr.log`，机器页「日志」经它读尾巴，`15 §4.7 S1`）。＋ 行为：`history-find` 走 SX1 常驻索引 · 账号目录不在 / 重建不再失聪 ·
 /// 远端历史判活由那台后端 `--session-accounts` 答。
-pub const BUILD_ID: &str = "p4n-backend-log";
+///
+/// ★★★ **p4o-resident-stop**（2026-09-27，STOP 合并那一拍）：行为 —— `--resident-stop` 成为同机监督者（SIGTERM → 宽限期内按 pidfd 等 →
+/// 到点 SIGKILL → 回 `graceful` / `killed` / `not_running`），选项 ＋1 `--grace`；本机远端同一条停法，monitor 只发一次、拿回结局；停完收掉陈 pid 记录。
+pub const BUILD_ID: &str = "p4o-resident-stop";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1765,6 +1768,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--after-ms",
     // 〔SE1〕`--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
+    // 〔STOP〕`--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
+    "--grace",
     "--include-tools",
     // 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
     // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的

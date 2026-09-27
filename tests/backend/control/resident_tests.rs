@@ -178,3 +178,129 @@ fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
     }
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 〔STOP〕T1 **宽限期 > 退出排空上限**：默认值与 `--grace` 的下限两格都比 `inbound::DRAIN_DEADLINE` 长。
+/// 守的要求：`4d-lanes.md` `### STOP`（主会话裁）逐字「常驻后端自己收 SIGTERM 排空在飞写的上限（HX1）必须 < 宽限期（判据钉两者关系）」。
+/// 等得比排空短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断，而且不会报错。
+#[test]
+fn the_grace_period_outlasts_the_backend_drain_cap() {
+    let drain_ms = crate::inbound::DRAIN_DEADLINE.as_millis();
+    assert!(
+        u128::from(STOP_GRACE_MS) > drain_ms,
+        "默认宽限期 {STOP_GRACE_MS}ms 不比排空上限 {drain_ms}ms 长"
+    );
+    let drain_secs = crate::inbound::DRAIN_DEADLINE.as_secs();
+    let args = |v: &str| vec!["--grace".to_string(), v.to_string()];
+    assert_eq!(parse_grace(&[]), Ok(STOP_GRACE_MS));
+    assert!(
+        parse_grace(&args(&drain_secs.to_string())).is_err(),
+        "等于排空上限的宽限期被收下了"
+    );
+    assert_eq!(
+        parse_grace(&args(&(drain_secs + 1).to_string())),
+        Ok(u32::try_from((drain_secs + 1) * 1000).unwrap())
+    );
+    for bad in ["", "x", "-5", "3601"] {
+        assert!(parse_grace(&args(bad)).is_err(), "{bad:?}");
+    }
+    assert!(parse_grace(&["--grace".to_string()]).is_err(), "缺值");
+}
+
+/// 起一个 `sh`，`trap` 决定它怎么对 SIGTERM；装好 trap 才往 stdout 写一行（事件，不是睡）。
+#[cfg(target_os = "linux")]
+fn sh_child(script: &str) -> std::process::Child {
+    use std::io::BufRead as _;
+    let mut c = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(script)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("起 sh");
+    let mut line = String::new();
+    std::io::BufReader::new(c.stdout.take().expect("stdout"))
+        .read_line(&mut line)
+        .expect("读就绪行");
+    assert_eq!(line.trim(), "ready");
+    c
+}
+
+/// 判据红了（panic）也收掉那个 `sh`（纪律 21）。
+#[cfg(target_os = "linux")]
+struct Reap(std::process::Child);
+
+#[cfg(target_os = "linux")]
+impl Drop for Reap {
+    fn drop(&mut self) {
+        if matches!(self.0.try_wait(), Ok(None)) {
+            let _ = self.0.kill();
+        }
+        let _ = self.0.wait();
+    }
+}
+
+/// 〔STOP〕T2 **同机监督者三态，真进程 ＋ 真信号**：听话的（收 SIGTERM 就退）⇒ `graceful`；聋的（忽略 SIGTERM）⇒ 宽限期满强杀、
+/// `killed`、它真没了（收尸后 `/proc` 里没有）；不在的 ⇒ `not_running`；记下的程序对不上 ⇒ 拒、不发信号。
+/// 守的要求：`4d-lanes.md` `### STOP` 逐字「读 pid → SIGTERM → 在本机按 pidfd 等到退出或宽限期到 → 到点 SIGKILL → 回结局」。
+#[test]
+#[cfg(target_os = "linux")]
+fn the_one_shot_supervisor_stops_politely_then_by_force() {
+    let exe = |pid: u32| PathBuf::from(crate::platform::proc::exe_of(pid).expect("exe"));
+    // 听话的。
+    let mut c = Reap(sh_child(
+        "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
+    ));
+    let pid = c.0.id();
+    assert_eq!(
+        stop_pid(pid, &exe(pid), 5_000, 1_000),
+        Ok(Stopped::Graceful(pid))
+    );
+    assert_eq!(
+        c.0.wait().expect("wait").code(),
+        Some(0),
+        "它自己给的退出码"
+    );
+    // 聋的：宽限期 200ms 满 ⇒ 强杀。
+    let mut c = Reap(sh_child(
+        "trap '' TERM; echo ready; while :; do sleep 0.05; done",
+    ));
+    let pid = c.0.id();
+    assert_eq!(
+        stop_pid(pid, &exe(pid), 200, 2_000),
+        Ok(Stopped::Killed(pid))
+    );
+    use std::os::unix::process::ExitStatusExt as _;
+    assert_eq!(
+        c.0.wait().expect("wait").signal(),
+        Some(9),
+        "应当是被强杀的"
+    );
+    assert!(
+        !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+        "进程表里还有 {pid}"
+    );
+    // 已经不在的（刚收过尸的那个 pid）⇒ not_running。
+    assert_eq!(
+        stop_pid(pid, &exe(std::process::id()), 200, 200),
+        Ok(Stopped::NotRunning)
+    );
+    // 记下的程序对不上 ⇒ 拒，且它照样活着（没发任何信号）。
+    let mut c = Reap(sh_child(
+        "trap 'exit 0' TERM; echo ready; while :; do sleep 0.05; done",
+    ));
+    let pid = c.0.id();
+    let err = stop_pid(pid, Path::new("/nonexistent/cc-monitor-backend"), 200, 200).unwrap_err();
+    assert!(err.contains(&pid.to_string()), "{err}");
+    assert!(matches!(c.0.try_wait(), Ok(None)), "对不上身份的也被停了");
+    // 线上三个词。
+    let words: Vec<&str> = [
+        Stopped::Graceful(1),
+        Stopped::Killed(1),
+        Stopped::NotRunning,
+    ]
+    .iter()
+    .map(|s| s.word())
+    .collect();
+    assert_eq!(words, ["graceful", "killed", "not_running"]);
+}
