@@ -650,6 +650,8 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         homes: vec![],
         capabilities: vec![],
         commands: vec!["ping".into()],
+        unavailable: vec![],
+        uncancellable: vec![],
     };
     let witness =
         crate::backend::control::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();

@@ -82,6 +82,7 @@ pub(crate) enum Routed {
 /// | 进来的 | 分层结果 | 理由（与模块头注那张表逐档对应） |
 /// |---|---|---|
 /// | `Unsupported` | `Peer{Unsupported}` | 对端**事前**就说不认（`hello.commands`），一个字节没发 |
+/// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","message"}` | 〔NET2〕对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
 /// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
 /// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
 /// | `Timeout` | `Hop{wait, Unknown, Overrun}` | 同上 |
@@ -99,6 +100,24 @@ pub(crate) fn layer_call_error(e: &CallError, hop: u8) -> Layered {
                 why: w::PeerFault::Unsupported,
             },
             detail: text(copy_text("rsBackendRoute.layer.unsupported", &[])),
+        },
+        // 〔NET2〕那台握手时说过做不到、本侧没发：对端的话（只是来得早）⇒ 与它事后回同一个码时同形，
+        //   调用方按码说人话；不回落（换条路也做不到）。
+        CallError::Unavailable { code, .. } => Layered {
+            error: w::CallError::Peer {
+                why: w::PeerFault::Refused {
+                    body: w::Body(
+                        serde_json::to_vec(
+                            &serde_json::json!({ "code": code, "message": e.to_string() }),
+                        )
+                        .unwrap_or_default(),
+                    ),
+                },
+            },
+            detail: Detail::Remote {
+                code: code.clone(),
+                message: e.to_string(),
+            },
         },
         CallError::TooManyPending => Layered {
             error: w::CallError::Hop {

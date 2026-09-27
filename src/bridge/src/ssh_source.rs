@@ -1824,6 +1824,10 @@ pub enum InboundFrame {
         /// `capabilities` 说的是「我认识哪些流 flag」（出方向），这一条说的是入方向 ——
         /// 两者正交。旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
+        /// 〔NET2〕`hello.unavailable`：这台接得下却做不到的 `(命令, 码)`。旧后端无此字段 ⇒ 空（没把握）。
+        unavailable: Vec<(String, String)>,
+        /// 〔NET2〕`hello.uncancellable`：撤不动的那几条。旧后端无此字段 ⇒ 空（没把握，照旧补发撤单）。
+        uncancellable: Vec<String>,
     },
     /// 一行从后端 session jsonl 尾随读到的原始行（远端流与〔CF1〕本机流同一种帧）。字段语义见 [`JsonlLine`]。
     Line {
@@ -2069,6 +2073,31 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                         .collect()
                 })
                 .unwrap_or_default();
+            // 〔NET2〕能力事实的另两格（additive，同上口径：坏项逐项丢，不丢整帧）。
+            let unavailable = obj
+                .get("unavailable")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| {
+                            let o = x.as_object()?;
+                            Some((
+                                o.get("command")?.as_str()?.to_string(),
+                                o.get("code")?.as_str()?.to_string(),
+                            ))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let uncancellable = obj
+                .get("uncancellable")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
             Some(InboundFrame::Hello {
                 v,
                 build_id,
@@ -2077,6 +2106,8 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 homes,
                 capabilities,
                 commands,
+                unavailable,
+                uncancellable,
             })
         }
         "line" => {
@@ -3476,6 +3507,7 @@ async fn stream_loop(
                 homes,
                 capabilities,
                 commands,
+                ..
             }) => {
                 // `S4`：日志报的是**解析后**的 Claude home（优先 `homes`、回退 `claude_dir`），
                 // 同时把原样的 `homes` 一起打出来 —— 排障时要能一眼看出
@@ -4554,6 +4586,7 @@ fn describe_hello(frame: &InboundFrame) -> String {
             homes,
             capabilities,
             commands,
+            ..
         } => format!(
             "v={v} build={build_id} arch={host_arch} claude_home={} caps={capabilities:?} cmds={commands:?}",
             claude_home_from_hello(homes, claude_dir)

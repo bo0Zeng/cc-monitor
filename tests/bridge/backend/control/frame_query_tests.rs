@@ -828,6 +828,8 @@ fn client_for_test(
         homes: vec![],
         capabilities: vec![],
         commands: commands.iter().map(|s| s.to_string()).collect(),
+        unavailable: vec![],
+        uncancellable: vec![],
     })
     .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);
