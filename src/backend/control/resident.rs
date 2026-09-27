@@ -381,13 +381,23 @@ pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
 
 /// 按 pid 文件停口上那一位。没有记录 ⇒ `NotRunning`。
 fn stop_owner(home: &Path, port: u16, grace_ms: u32) -> Result<Stopped, String> {
-    let Some((pid, bin)) = std::fs::read_to_string(pid_path(home, port))
+    let path = pid_path(home, port);
+    let Some((pid, bin)) = std::fs::read_to_string(&path)
         .ok()
         .and_then(|b| parse_owner(&b))
     else {
         return Ok(Stopped::NotRunning);
     };
-    stop_pid(pid, &bin, grace_ms, KILL_WAIT_MS)
+    let end = stop_pid(pid, &bin, grace_ms, KILL_WAIT_MS)?;
+    // 它已不在 ⇒ 那份记录是陈的：还指着它就收掉（下一个起来的会自己再记；指着别人的不动）。
+    if std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|b| parse_owner(&b))
+        .is_some_and(|(p, _)| p == pid)
+    {
+        let _ = std::fs::remove_file(&path);
+    }
+    Ok(end)
 }
 
 /// 〔STOP〕同机监督者本体：先拿进程把手、再核身份（pid 会被复用；拿到把手之后信号只打得到它）→ SIGTERM →
