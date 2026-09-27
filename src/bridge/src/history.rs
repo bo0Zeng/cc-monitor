@@ -2104,7 +2104,7 @@ pub(crate) static WINDOWS_HAS_NO_TMUX_CONTAINER: std::sync::LazyLock<String> =
 /// 文件留在原处、同一路径）：monitor 起本机后端时用 `CCM_HISTORY_METADATA` 把**本函数算出来的这一个**交过去
 /// （`local_backend_host::relay_host_envs`），同一路径因此是构造出来的，不是两侧算法对齐出来的。
 pub(crate) fn metadata_path() -> Option<PathBuf> {
-    Some(paths::resolve_monitor_data_dir()?.join("history-metadata.json"))
+    Some(paths::resolve_monitor_data_dir()?.join(creds_core::store::HISTORY_METADATA_FILE))
 }
 
 #[cfg(test)]

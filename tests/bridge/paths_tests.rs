@@ -140,10 +140,17 @@ fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
         scanned > 50,
         "只扫到 {scanned} 份 `.rs` —— 扫描面塌了，下面那一比会空真地绿"
     );
+    // 〔TAIL〕规则搬进共享 crate（`creds_core::store::monitor_data_dir`，远端常驻后端按同一份推默认路径）⇒
+    //   monitor 这棵树里一处都不该自己拼；`paths.rs` 转交它（正控，防「一处都没扫到」的空真）。
+    assert!(
+        guard_core::production_code(include_str!("../../src/bridge/src/paths.rs"))
+            .contains("creds_core::store::monitor_data_dir("),
+        "`paths.rs` 不再转交共享那一份规则"
+    );
     assert_eq!(
         builders,
-        vec!["paths.rs".to_string()],
-        "monitor 这棵树里自己拼那条路径的地方不只 `paths.rs` 一处。\n\
+        Vec::<String>::new(),
+        "monitor 这棵树里有地方自己拼那条路径（规则只该住 `creds_core::store::monitor_data_dir`）。\n\
          ★ 多一处就意味着 `CCM_DATA_DIR` 盖不住它 ⇒ 一趟自以为被隔离的跑\n\
            仍然会往用户真 profile 里写那一样东西。\n\
          ⇒ 处置：让它经 `paths::resolve_monitor_data_dir()` 派生。"
