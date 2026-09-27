@@ -34,6 +34,8 @@ pub(crate) struct Linked {
     pub(crate) fingerprint: Option<String>,
     /// 〔VIS2 · `设计/15 §3.4 ①`〕建这条连接那一趟里**报过指纹的每条地址** → 它报的指纹（竞速的输家也在；跳板那台不在）。
     pub(crate) fingerprints: BTreeMap<String, String>,
+    /// 〔FIX · `99 §2 ㊶`〕经跳板时跳板那一趟报过的「地址 → 指纹」（另一格；直连 ⇒ 空）。
+    pub(crate) jump_fingerprints: BTreeMap<String, String>,
     pub(crate) endpoint: String,
     /// 经跳板时跳板那条连接：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub(crate) _jump: Option<client::Handle<Checker>>,
@@ -431,6 +433,8 @@ pub(crate) async fn establish(
 ) -> Result<Linked, (String, Option<String>)> {
     // 〔VIS2〕目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
     let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
+    // 〔FIX · `99 §2 ㊶` 第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
+    let jump_reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
     let (mut session, observed, winner, jump) = match &req.jump {
         None => {
             let (s, o, w, _) = race(
@@ -464,7 +468,7 @@ pub(crate) async fn establish(
                 hop.host_key_fingerprint.clone(),
                 vec![hop_ep],
                 stages,
-                &Arc::default(),
+                &jump_reported,
             )
             .await
             .map_err(|(e, fp)| {
@@ -566,10 +570,12 @@ pub(crate) async fn establish(
     });
     stages.emit(Stage::Established);
     let fingerprints = reported.lock().map(|g| g.clone()).unwrap_or_default();
+    let jump_fingerprints = jump_reported.lock().map(|g| g.clone()).unwrap_or_default();
     Ok(Linked {
         session,
         fingerprint,
         fingerprints,
+        jump_fingerprints,
         endpoint: label(&winner),
         _jump: jump,
         budget: super::pool::Budget::new(),
