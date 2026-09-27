@@ -201,27 +201,31 @@ fn loopback_host(with_v6: bool) -> String {
     let v4 = format!("127\\.{o}\\.{o}\\.{o}");
     let mut alts = vec![name, v4];
     if with_v6 {
-        // `Ipv6Addr` 的口径：组 = 1–4 位十六进制；`::` 至少代表一组；尾部可嵌 IPv4（占两组）；`is_loopback` = 值为 1。
-        let (z, one, v4one) = ("0{1,4}", "0{0,3}1", "0\\.0\\.0\\.1");
-        let mut v6 = vec![
-            format!("(?:{z}:){{7}}{one}"),
-            format!("(?:{z}:){{6}}{v4one}"),
-        ];
-        for h in 0..=6usize {
-            let head = match h {
-                0 => String::new(),
-                1 => z.to_string(),
-                _ => format!("{z}(?::{z}){{{}}}", h - 1),
-            };
-            let mut tails = vec![format!("(?:{z}:){{0,{}}}{one}", 6 - h)];
-            if h <= 5 {
-                tails.push(format!("(?:{z}:){{0,{}}}{v4one}", 5 - h));
-            }
-            v6.push(format!("{head}::(?:{})", tails.join("|")));
-        }
-        alts.push(format!("(?:{})", v6.join("|")));
+        alts.push(v6_loopback());
     }
     format!("\\[*(?:{})\\]*", alts.join("|"))
+}
+
+/// IPv6 回环的写法。`Ipv6Addr` 的口径：组 = 1–4 位十六进制；`::` 至少代表一组；尾部可嵌 IPv4（占两组）；`is_loopback` = 值为 1。
+fn v6_loopback() -> String {
+    let (z, one, v4one) = ("0{1,4}", "0{0,3}1", "0\\.0\\.0\\.1");
+    let mut v6 = vec![
+        format!("(?:{z}:){{7}}{one}"),
+        format!("(?:{z}:){{6}}{v4one}"),
+    ];
+    for h in 0..=6usize {
+        let head = match h {
+            0 => String::new(),
+            1 => z.to_string(),
+            _ => format!("{z}(?::{z}){{{}}}", h - 1),
+        };
+        let mut tails = vec![format!("(?:{z}:){{0,{}}}{one}", 6 - h)];
+        if h <= 5 {
+            tails.push(format!("(?:{z}:){{0,{}}}{v4one}", 5 - h));
+        }
+        v6.push(format!("{head}::(?:{})", tails.join("|")));
+    }
+    format!("(?:{})", v6.join("|"))
 }
 
 /// J9 的有序式子表：`[code, 式子]`。
@@ -245,7 +249,8 @@ fn base_url_issue_patterns() -> Vec<(&'static str, String)> {
         (S::HasQuery.code(), "^[^:]*://[^/]*[?#]".to_string()),
         (
             S::BadPort.code(),
-            format!("^[^:]*://[^/]*:(?!{port}(?:/|$))[^:/]*(?:/|$)"),
+            // 〔TAIL〕整段 `[…]` 不带口（`is_bracketed`）不算端口不对。
+            format!("^[^:]*://(?!\\[[^\\]/]*\\](?:/|$))[^/]*:(?!{port}(?:/|$))[^:/]*(?:/|$)"),
         ),
         (S::NoHost.code(), "^[^:]*://:[^:/]*(?:/|$)".to_string()),
         (S::HasQuery.code(), "[?#]".to_string()),
@@ -256,10 +261,11 @@ fn base_url_issue_patterns() -> Vec<(&'static str, String)> {
         (
             U::PlaintextOffLoopback.code(),
             format!(
-                "^(?:{})://(?!(?:{}:[^:/]*|{})(?:/|$))",
+                "^(?:{})://(?!(?:{}:[^:/]*|{}|\\[+{}\\])(?:/|$))",
                 plain.join("|"),
                 loopback_host(true),
-                loopback_host(false)
+                loopback_host(false),
+                v6_loopback()
             ),
         ),
     ]

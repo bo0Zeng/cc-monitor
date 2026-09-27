@@ -44,7 +44,6 @@ fn shape_validation_rejects_the_things_that_would_break_tmux() {
         ("", "p", "空名字"),
         ("n", "", "空载荷"),
         ("a:b", "p", "名字含 `:`（tmux 目标语法）"),
-        ("a=b", "p", "名字含 `=`"),
         ("n", "a\nb", "载荷含控制字符（会多敲一次回车）"),
     ] {
         match parse_request(&base(name, payload)) {
@@ -375,7 +374,8 @@ fn the_payload_is_still_only_shape_checked() {
     // 今天的三件形状检查，一件都不许少（少了 = 姿态变松，也要有人看见）。
     for (needle, what) in [
         ("is_empty()", "非空"),
-        ("MAX_FIELD_BYTES", "长度上限"),
+        // 〔TAIL〕长度那一件抽成 `check_len`（会话名也用它，名字的其余两件归 Gate 1 那一份）。
+        ("check_len(", "长度上限"),
         ("is_control", "无控制字符"),
     ] {
         assert!(

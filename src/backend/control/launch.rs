@@ -172,15 +172,9 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     let name = get_str("name")
         .ok_or(("invalid_args", "缺 `name`".to_string()))?
         .to_string();
-    check_field("name", &name)?;
-    // `=` / `:` 是 tmux 目标语法的一部分；名字里带它们会让 `=name:` 变成别的意思。
-    // 这是**形状**问题（会静默打到别的会话上），不是安全问题。
-    if name.contains(':') || name.contains('=') {
-        return Err((
-            "invalid_args",
-            format!("`name` 不许含 `:` 或 `=`（它们是 tmux 目标语法）：{name:?}"),
-        ));
-    }
+    // 〔TAIL · DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate-core`）；长度照旧。
+    super::kill::admit_existing_name(&name)?;
+    check_len("name", &name)?;
 
     let payload = get_str("payload")
         .ok_or(("invalid_args", "缺 `payload`".to_string()))?
@@ -305,15 +299,20 @@ fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.trim().is_empty() {
         return Err(("invalid_args", format!("`{what}` 为空")));
     }
+    check_len(what, v)?;
+    // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
+    if v.chars().any(char::is_control) {
+        return Err(("invalid_args", format!("`{what}` 含控制字符")));
+    }
+    Ok(())
+}
+
+fn check_len(what: &str, v: &str) -> Result<(), CmdErr> {
     if v.len() > MAX_FIELD_BYTES {
         return Err((
             "invalid_args",
             format!("`{what}` 过长（{} > {MAX_FIELD_BYTES}）", v.len()),
         ));
-    }
-    // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
-    if v.chars().any(char::is_control) {
-        return Err(("invalid_args", format!("`{what}` 含控制字符")));
     }
     Ok(())
 }

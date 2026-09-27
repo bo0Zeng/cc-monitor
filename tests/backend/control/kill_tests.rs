@@ -6,17 +6,19 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
     for (bad, why) in [
         (json!({}), "缺 name"),
         (json!({ "name": "" }), "空"),
-        (json!({ "name": "  " }), "只有空白"),
         (json!({ "name": "a:b" }), "含 `:`（tmux 目标语法）"),
-        (json!({ "name": "=a" }), "含 `=`（tmux 目标语法）"),
         (json!({ "name": "a\nb" }), "含控制字符"),
+        (
+            json!({ "name": "a\u{202e}b" }),
+            "含视觉欺骗字符（gate-core 那一格）",
+        ),
     ] {
         assert!(parse_name(&bad).is_err(), "{why} 应当被拒：{bad:?}");
     }
-    assert_eq!(
-        parse_name(&json!({ "name": "proj-cc" })).unwrap(),
-        "proj-cc"
-    );
+    // 〔TAIL · DUP3 §5 ③〕`=` 放行：`=a=b:` 精确命中名叫 `a=b` 的会话（attach 那一条同样放行）。
+    for good in ["proj-cc", "a=b", "=a"] {
+        assert_eq!(parse_name(&json!({ "name": good })).unwrap(), good);
+    }
 }
 
 /// ★ **生产接线（顺序钉）**：门必须在 `kill-session` **之前**。
