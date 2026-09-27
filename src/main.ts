@@ -62,6 +62,8 @@ import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
 import { resolvePendingLocalLaunches } from "./local-launch-backfill";
 import { copyText } from "./copy-table";
+import { appStore } from "./app-store";
+import { OverlayRouter } from "./overlay-router";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -203,7 +205,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
   // 未连远端 / 未启用多账号 各自安静降级（不报错）。点击弹选单切默认账号。
   // **构造在 `refreshSessionAccounts` 定义之前**（D 审计）：`onDefaultChanged` 回调间接调用
-  // `refreshSessionAccounts`（下方 `const` 声明，函数体里会调 `tabs.setSessionAccounts`）——
+  // `refreshSessionAccounts`（下方 `const` 声明，函数体里会写 `appStore.sessionAccounts`）——
   // 回调本身只在用户切号时才真正执行，届时 `refreshSessionAccounts` 早已初始化完毕，不会踩
   // TDZ；但这条"届时早已初始化"的保证依赖"这中间没有 await 会提前执行到回调"这条隐式不变量，
   // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
@@ -221,7 +223,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 未迁移 / 旧后端零副作用。
   // audit-fixes I4：refreshSessionAccounts 无重入/顺序保护 → 慢的旧快照可覆盖新快照（把切号后刚
   // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
-  // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
+  // 写账号快照前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
   // ⚠ 句柄留着：F14 第三刀之前这个 interval 的句柄是**丢掉的**，全仓没人停得了它。
   let refreshSeq = 0;
   const refreshSessionAccounts = async (forceAccounts: boolean): Promise<void> => {
@@ -230,7 +232,14 @@ window.addEventListener("DOMContentLoaded", async () => {
       const cfg = await readRemoteConfig();
       if (mySeq !== refreshSeq) return; // 有更晚的刷新已开始 → 本次作废，别覆盖它
       if (!cfg.enabled) {
-        tabs.setSessionAccounts([], new Map());
+        // 〔GAP1 · `设计/01 §1.5`〕账号快照整份换进 store，tab 栏徽章订阅它（同一拍应用）。
+        appStore.sessionAccounts.set({
+          rows: [],
+          emailByName: new Map(),
+          lastByS: new Map(),
+          readyOrigins: new Set(),
+          currentByOrigin: new Map(),
+        });
         return;
       }
       // audit-0805 F14 第三刀（报告 I-5）：这圈扇出原来是**串行**的（`for` 里直接 `await`，
@@ -254,7 +263,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         console.warn("history-last-accounts failed:", e);
       }
       if (mySeq !== refreshSeq) return; // I4：晚到的旧快照不覆盖新快照
-      tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins, currentByOrigin);
+      appStore.sessionAccounts.set({ rows, emailByName, lastByS, readyOrigins, currentByOrigin });
     } catch (e) {
       console.warn("refreshSessionAccounts failed:", e);
     }
@@ -281,12 +290,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabs.onManualSwitch = () => {
     pendingStartupActive = null;
   };
-  // F88b：活跃会话 usage 变化 → 刷新 HUD context% chip（〔STC〕后端的会话事实到了 / switchTo 切会话）
-  // 〔STC〕活跃会话的会话事实要不到 ⇒ chip 说原因（`null` = 可用）。
-  tabs.onActiveFactsAvailability = (reason) => usageHud.setUnavailable(reason);
-  tabs.onActiveUsageChanged = (model, promptTokens) => {
-    usageHud.setActive(model, promptTokens);
-  };
+  // F88b：当前 tab 那一格变了 → 刷新 HUD context% chip（〔STC〕后端的会话事实到了 / switchTo 切会话 / 要不到 ⇒ chip 说原因）。
+  // 〔GAP1 · `设计/01 §1.5`〕订阅 store（原先是两个点对点回调）。
+  tabs.active.subscribe((a) => {
+    usageHud.setActive(a.model, a.promptTokens);
+    usageHud.setUnavailable(a.unavailable);
+  });
 
   // F77（#53）：点 agents 面板某行 → load_subagent 拿子 agent jsonl 路径 → SessionViewer 只读展示该
   // agent 的记录。★ P7c-1（08-12）起**远端会话也支持**（同 subagent 卡片：origin 传下去，
@@ -389,6 +398,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过 ⇒ 那个 tab 顶上说一句（只在主窗口接，理由见 `record-file-notice.ts`）。
   const recordFile = recordFileWiring((sid) => tabs.streamElOf(sid));
   const historyView = new HistoryView();
+  // 〔GAP1 · `设计/01 §1.5`〕overlay 开关只经路由（顶栏按钮 · 快捷键 · 命令面板同一口）。
+  const overlays = new OverlayRouter();
+  overlays.register("history", historyView);
   // 〔FW1 · 第四波 4D · D-e〕删会话前看活不活：条目自己那一格可能是列表拉下来那一刻的，tab 栏是此刻的。
   historyView.liveInTabs = (sid) => tabs.isSessionLive(sid);
   const historyTrigger = document.createElement("button");
@@ -397,13 +409,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyTrigger.title = copyText("main.topbar.historyHint");
   historyTrigger.setAttribute("aria-label", copyText("main.topbar.openHistory"));
   // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
-  historyTrigger.addEventListener("click", () => {
-    if (historyView.isVisible()) {
-      historyView.close();
-    } else {
-      void historyView.open();
-    }
-  });
+  historyTrigger.addEventListener("click", () => overlays.toggle("history"));
   document.getElementById("app")?.appendChild(historyTrigger);
 
   // Batch15-P2：代码全景入口 —— 顶栏右侧，紧邻历史按钮左边。自挂 body 作 fixed overlay
@@ -411,6 +417,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const panoramaView = new PanoramaView(() => tabs.activeRepoInfo());
   // devbench F03b：收件箱 overlay —— 与 panorama 同一个 cwd 取法（活跃 tab）。
   const inboxView = new InboxView(() => tabs.activeRepoInfo());
+  overlays.register("panorama", panoramaView);
+  overlays.register("inbox", inboxView);
   // F70（护城河）：右键 tab「在全景高亮本会话改动」→ 切到该会话 → 打开全景 → 高亮它改过的
   // 节点。TabManager 不直接持有 PanoramaView，走注入回调（同 onManualSwitch 范式）。
   tabs.requestPanoramaHighlight = (sid) => {
@@ -418,7 +426,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!info) return;
     tabs.switchTo(sid); // 置活跃 → activeRepoInfo=该仓 → 全景加载该仓
     void (async () => {
-      await panoramaView.open(); // 同仓复用；异仓重索引/加载
+      await overlays.show("panorama"); // 同仓复用；异仓重索引/加载
       await panoramaView.highlightSession(info.files);
     })();
   };
@@ -427,24 +435,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   panoramaTrigger.className = "panorama-trigger";
   panoramaTrigger.title = copyText("main.topbar.panoramaHint");
   panoramaTrigger.setAttribute("aria-label", copyText("main.cmd.openPanorama"));
-  panoramaTrigger.addEventListener("click", () => {
-    if (panoramaView.isVisible()) panoramaView.close();
-    else void panoramaView.open();
-  });
+  panoramaTrigger.addEventListener("click", () => overlays.toggle("panorama"));
   document.getElementById("app")?.appendChild(panoramaTrigger);
 
   // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（🗂 左边，right:168px）。跨机器只读
   // mission-control 状态板（一屏看所有会话实时状态，点卡片跳会话；只读——不派发/不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
+  overlays.register("grid", gridMonitorView);
   const gridTrigger = document.createElement("button");
   gridTrigger.type = "button";
   gridTrigger.className = "grid-monitor-trigger";
   gridTrigger.title = copyText("main.topbar.gridHint");
   gridTrigger.setAttribute("aria-label", copyText("main.cmd.openGrid"));
-  gridTrigger.addEventListener("click", () => {
-    if (gridMonitorView.isVisible()) gridMonitorView.close();
-    else gridMonitorView.open();
-  });
+  gridTrigger.addEventListener("click", () => overlays.toggle("grid"));
   document.getElementById("app")?.appendChild(gridTrigger);
 
   // F83（#39）：顶栏远端文件入口 —— 设置搬独立窗后腾出的入口位。点击按远端主机数分支：
@@ -462,6 +465,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   //（那次逐字写着「键位唯一入口…按钮延后」）。驾驶舱是低频运营视图，正是面板服务的对象。
   // 理由完整版见 `views/cc-bus-view.ts` 头注。
   const ccBusView = new CcBusView();
+  overlays.register("cc-bus", ccBusView);
 
   // F84（#57）：键盘命令栏（Ctrl+K）。只读命令面板——组装既有 view/dispatcher 目标 + F91
   // snapshotSessions() 的「切到会话…」。写/驱动动作（resume/kill/delete）首刀排除（守北极星）。
@@ -476,12 +480,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       return raw ? KeybindingDispatcher.prettyChord(raw) : undefined;
     };
     const cmds: Command[] = [
-      { id: "open-history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => { if (!historyView.isVisible()) void historyView.open(); } },
-      { id: "open-panorama", title: copyText("main.cmd.openPanorama"), keywords: copyText("main.cmd.panoramaKeywords"), hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
+      { id: "open-history", title: copyText("main.cmd.openHistory"), keywords: copyText("main.cmd.historyKeywords"), hint: chordHint("app.toggle-history"), run: () => overlays.open("history") },
+      { id: "open-panorama", title: copyText("main.cmd.openPanorama"), keywords: copyText("main.cmd.panoramaKeywords"), hint: chordHint("app.toggle-panorama"), run: () => overlays.open("panorama") },
       // devbench F03b：**开 overlay 属命令面板首刀允许的只读动作**（写发生在 overlay 内的保存上）。
-      { id: "open-inbox", title: copyText("main.cmd.openInbox"), keywords: copyText("main.cmd.inboxKeywords"), run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
-      { id: "open-cc-bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
-      { id: "open-grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
+      { id: "open-inbox", title: copyText("main.cmd.openInbox"), keywords: copyText("main.cmd.inboxKeywords"), run: () => overlays.open("inbox") },
+      { id: "open-cc-bus", title: copyText("main.cmd.openCcBus"), keywords: copyText("main.cmd.ccBusKeywords"), run: () => overlays.open("cc-bus") },
+      { id: "open-grid", title: copyText("main.cmd.openGrid"), keywords: copyText("main.cmd.gridKeywords"), run: () => overlays.open("grid") },
       { id: "open-settings", title: copyText("main.cmd.openSettings"), keywords: copyText("main.cmd.settingsKeywords"), hint: chordHint("app.open-settings"), run: () => void openSettingsWindow() },
       { id: "open-sftp", title: copyText("main.cmd.openFiles"), keywords: copyText("main.cmd.filesKeywords"), run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: copyText("main.cmd.minimize"), keywords: copyText("main.cmd.minimizeKeywords"), hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
@@ -625,14 +629,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("session.find", () => tabs.openFind()); // 〔SE2〕会话内查找（大纲同一块面板）
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
-  dispatcher.bind("app.toggle-history", () => {
-    if (historyView.isVisible()) historyView.close();
-    else void historyView.open();
-  });
-  dispatcher.bind("app.toggle-panorama", () => {
-    if (panoramaView.isVisible()) panoramaView.close();
-    else void panoramaView.open();
-  });
+  dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
+  dispatcher.bind("app.toggle-panorama", () => overlays.toggle("panorama"));
   dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // F84（#57）Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", () => {
