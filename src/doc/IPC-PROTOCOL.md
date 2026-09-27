@@ -1864,13 +1864,13 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 #### `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录（AS2 · 第四波 4B，2026-09-25）
 
 「目录自动同步」那一半（V113）：`设计/01 §3.5`「观测方沿它本来就拥有的那条连接去拉被观测方」。只有**本机常驻后端**有意义（SSH 连接与可达表都住在它的进程里）。
-一趟对一台远端：① 在池里那条连接上多开一个 exec 通道，capture `<远端后端> --assets-catalog`（远端现扫、记下、回它的整份）；
+一趟对一台远端：① 在池里那条连接上多开一个 exec 通道，capture `"$HOME"/.cc-monitor/bin/ccm --assets-catalog`（远端现扫、记下、回它的整份）；
 ② 并进本机目录（同 `assets-catalog-merge`）；③ 远端缺的 / 比远端新的那几台快照（不含远端自己那格）经 `printf '%s\n' '<json>' | <远端后端> --assets-catalog-merge` 推过去（一块 ≤ 96 KiB，单台超了那一台不推、说出来）；
 ④ 本机目录因这一趟变了（或开头那一次现扫发现本机自己那份变了）⇒ 对可达表里其余每台各做一趟（只一层）。**不往任何机器装东西**（装要用户点）。
 不起远端的流模式（流模式会往 tmux 装指向自己 pid 的全局 hook，一个用完就退的流会把真流的 hook 盖掉）；老远端不认子命令会进流模式 —— capture 见到 hello 就收工、报「太旧」。
 
 ```text
-→ {"id":"s1","cmd":"assets-sync","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+→ {"id":"s1","cmd":"assets-sync","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"}}}
 ← {"kind":"reply","id":"s1","ok":true,"data":{"self":"9f…","synced":[{"origin":"dev","peer":"4c…","changed":true,"pushed":1,"error":null}],"reach":[{"origin":"dev","machine":"4c…"}]}}
 ```
 
@@ -1878,12 +1878,11 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 |---|---|---|
 | `origin` | → | 可缺席。给了 ⇒ 记进可达表（内存，后端重启就空）并先对它做一趟；缺席 ⇒ 对可达表里每一台各做一趟 |
 | `dial` | → | 给了 `origin` 就必给：那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。本条会把 `use` 改成 `capture` |
-| `backend` | → | 给了 `origin` 就必给：那台上后端的路径 |
 | `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`；`changed` 本机目录因这一趟变了没有；`pushed` 推过去几台快照；`error` 那一趟哪里没办成（`null` = 全办成了） |
 | `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
 | `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
 
-**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` / `backend` · 给了 `dial` / `backend` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
+**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` · 给了 `dial` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
@@ -1943,12 +1942,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 #### `remote-reach`：本机后端的可达表登记（C4d · 第四波 4B，2026-09-25）
 
 「本机后端问远端后端」那一跳（`设计/01 §3.5`；实现住后端 `remote_ask.rs`，全后端只此一处）要先知道「怎么够到那台」。
-monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次：拨号请求 ＋ 那台后端的路径。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
+monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交一次拨号请求（〔E2〕那台后端恒在固定落点 `"$HOME"/.cc-monitor/bin/ccm`，不再交路径）。本机后端记进**内存**可达表（后端重启就空，下次那台连上再填），**只登记、不拨号**。
 之后的两路都查这张表：资产目录同步（`assets-sync`）· 历史跨机 join（`history-projects` / `history-sessions` 带 `origin`）。
 老远端也登记：历史那一路问它的是 `--list-projects` / `--list-sessions` 这种老子命令。
 
 ```text
-→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"},"backend":"/home/u/.cc-monitor/bin/ccm"}}
+→ {"id":"r1","cmd":"remote-reach","args":{"origin":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519"}}}
 ← {"kind":"reply","id":"r1","ok":true,"data":{"origin":"dev","reach":[{"origin":"dev","machine":null}]}}
 ```
 
@@ -1956,10 +1955,9 @@ monitor（宿主，只交事实）在**每台**远端流握手成功那一刻交
 |---|---|---|
 | `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
 | `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。用时会把 `use` 改成 `capture` |
-| `backend` | → | 那台上后端的路径。〔TL3 · `INVARIANTS §47` ②〕这个值随后被拼进远端命令 ⇒ 登记之前先过放行判定（`accounts_query::is_safe_config_dir`：绝对路径 · 无 `..` 段 · 无 shell 元字符 / 控制字符 / 视觉欺骗字符），判不过 ⇒ `bad_args`、一条都不登记 |
 | `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
 
-**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` / `backend` · `backend` 过不了放行判定 · 可达表满）。
+**错误码**：`bad_args`（缺 `origin` / `origin` 空串 · 缺 `dial` · 可达表满）。
 ⚠ **CLI 面也有它**（`--remote-reach`，入参从 stdin 读），但一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。
 
 #### `skill-read`：读来源那台上的一个 skill（AS2 · 第四波 4B，2026-09-25，**只读**）

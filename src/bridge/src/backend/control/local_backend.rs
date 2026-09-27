@@ -1215,12 +1215,8 @@ pub fn place_local_panorama(
 
 /// 🔴 `ccm` 这个词的**唯一住址**〔`13b`：闭集只许有一个住址〕。
 ///
-/// 本机与远端两条落点都取自这里：
-/// · **本机** —— 它是文件名（[`local_ccm_entry_name`]）⇒ 走 `intercept` 的入口①（basename）；
-/// · **远端** —— 它是 shim 里交给后端的那个子命令（[`ccm_entry_shim`]）⇒ 走入口②（`<bin> ccm …`）。
-///
-/// ⇒ **「两条同源」不是一句声明**：它们把 argv 交给的是同一份后端里的同一处解析
-/// （`remote_daemon_proto::control::ccm::intercept`），两条路上一处第二实现都没有。
+/// 〔E2〕本机与远端的落点都是**后端二进制本身**，文件名就是这个词（[`local_ccm_entry_name`]；远端 `relay_route_core::BACKEND_LANDING_REL`）
+/// ⇒ 都走 `intercept` 的入口①（basename）；别名块（`profile_installer.rs` / `shell_dialect.rs`）也取这个词。
 pub const CCM_ENTRY_WORD: &str = "ccm";
 
 /// 本机 `ccm` 入口的**文件名**（唯一真相源，判据与生产共用这一个）。
@@ -1235,41 +1231,8 @@ pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }
 
-/// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
-///
-/// 🔴 **它里面不许有第二个 `case` / `if` / 任何行为** —— 一旦有，`K33` 那句
-/// 「所有命令只许有一处」就又破了，而这正是 `K-R48` 这一整件要根除的东西。
-/// 它做且只做一件事：把 argv 原样交给后端。
-///
-/// **为什么不是软链**：软链更干净（`intercept` 头一条入口逐字写着「别名 / 软链指过来」），
-/// 但本仓的 SFTP 客户端今天**一处都没用过 `symlink`**，而这条路**没有任何一台真远端机器可以验**
-/// （`K-R48` `§0-Bx-7` 同族）⇒ 用已经被 12 条 print-parity + 真机验收盯过的 `upload_atomic`
-/// 那条路，把「没验过的新机制」这个变量拿掉。换软链是一件独立的活，别搭在这一拍上。
-///
-/// # 🔴 `K-R69` 09-12：它从 `sftp.rs` 搬到这里，理由是**它有了第二个读者**
-///
-/// 从前只有远端那条装口读它，住在 `sftp.rs` 里刚好；今天本机也要一条入口，
-/// 而「本机那条与远端那条同源」这句话**只有在两边取自同一处时才是结构性的**。
-/// ⇒ 生成器与 [`CCM_ENTRY_WORD`] 一起住在后端层，`sftp.rs` 改成调它。
-/// ⚠ 搬过来**没有**把平台知识带进 `backend/`：它是个纯字符串生成器，
-/// 一处 `cfg`、一处平台原语都没有（`the_backend_half_stays_platform_agnostic` 照旧绿）。
-/// # 〔MC1 · 2026-09-24〕它不再传 `CCM_SELF`（09-15 加的那一行删了）
-///
-/// 09-15 真机逮到过：容器路（`--tmux`）的**内层命令**以「我是被怎么叫的」开头，而那时它只取
-/// `argv[0]` ⇒ 经本 shim `exec <后端> ccm …` 进来时内层变成 `cc-monitor-backend --cwd …`，
-/// **缺了 `ccm` 这个子命令词**，当场 `unknown argument: --cwd`。补法是让 shim 先
-/// `CCM_SELF="${CCM_SELF:-$0}"` 再 exec。
-/// ⇒ CC1 把根治放进了后端：`control/ccm/mod.rs::self_invocation` 从进程 argv 里取「被 `intercept`
-/// 吃掉的那一段」，入口② 自己就带着那个词 ⇒ 那个环境变量没有要补的东西了，`设计/01 §6.7b`
-/// 逐字「`CCM_SELF` 这个环境变量随之删掉」—— **shim 制造了它自己要解决的那个问题**。
-/// 代价如实写：pane 里显示的是 `<后端真身> ccm …` 而不是用户 PATH 上那个 `ccm` 名字（行为一样）。
-/// 🔴 shim 本身还在：「`ccm` 就是后端二进制本身」卡在写区外（`tests/evidence/MC1-AL1-摸底.md` 第三节）。
-pub fn ccm_entry_shim(backend_path: &str) -> String {
-    format!(
-        "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} \"$@\"\n",
-        shell_quote_core::posix_quote(backend_path)
-    )
-}
+// 〔E2 · V28 · `设计/01 §6.7b`〕远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
+//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由 `ccm_legacy::is_ours` 认（它记着那一形的第二行）。
 
 /// 🔴 `K-R69`：把**本机的 `ccm` 入口**放到后端二进制旁边（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。
 ///

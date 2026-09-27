@@ -1413,68 +1413,28 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
     assert!(!user_path_has_our_bin("", dir));
 }
 
-/// ★★ 〔`KR135D3` 09-15〕**那份共用的 POSIX 别名 snippet，真的把两边申报的
-/// `ccm` 目录都放上了 PATH，而且本机那个赢。**
+/// ★★ 〔`KR135D3` 09-15 · 〔E2〕改裁〕**那份共用的 POSIX 别名 snippet，真的把 `ccm` 落点放上了 PATH，而且只放它。**
 ///
-/// # 病是什么（`R80 §二` 的 `R2`，现打出来的，不是推理）
+/// 要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· V41（不为旧状态留兼容）。
+/// 〔E2〕从前这一行把 `~/.local/bin` 也加进来（「更早的版本放在那儿，不删、照旧能用」）—— 旧入口今天部署时认出来就删（GP1），
+/// `ccm` 就是后端本身、只住 `~/.cc-monitor/bin` ⇒ 那一格退役。两边落点相等由 `tool_registry` 现算钉住。
 ///
-/// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
-/// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端〔AL2〕也走同一个 [`plan_install`]（`aliases_block_install` 带远端 `origin`）
-/// —— **合进去的是逐字同一份文本**。
-/// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
-/// 本机 `.cc-monitor/bin`、远端 `.local/bin`）。
-/// ⇒ 那一行只写一个目录时，**它只可能对其中一边是对的**。
-/// 上一轮它只写 `~/.local/bin` ⇒ **对远端对、对本机错**，
-/// 而那正是 `R80` 逐字记下的那条预判（干净机器上 `ccm`/`cc`/`cct` 全 command not found）。
-///
-/// # 修法为什么是「两个都加」而不是「改成本机那个」
-///
-/// 改成本机那个只是把错换到另一边。这份 snippet **必须只有一个住址**
-/// （同文件另有一条判据在数 `include_str!` 恰好一处）⇒ 不能按边分叉
-/// ⇒ 两个都上，各自那台机器上只有一个真的存在（不存在的那个在 PATH 上无害）。
-///
-/// # 顺序是承重的，不是风格
-///
-/// `.cc-monitor/bin` 必须**赢过** `.local/bin`：后者是用户那份**旧的** `ccm`
-/// 住的地方（`K34` 逐字「原本的配置要手动删除」，产品一个字节都不删）。
-/// 它输了的那一形有人在数：`ccm_probe::classify_path_ccm` 的 `NotOurs`。
-///
-/// # 🔴 诚实边界 —— 这一条**证不了** POSIX 那一臂通了
-///
-/// 它量的是「这份 snippet 被 `source` 之后 `$PATH` 长什么样」，
-/// **不是**「干净 Linux 机上装完真敲得到 `ccm`」—— 后者要一台干净 Linux 机，
-/// 本件没有。⇒ `R80` 的 `R2` 今天仍然**既没被证实也没被证伪**，
-/// 被治掉的只是它的**静态成因**。别把这一条读成「验过了」。
-///
-/// ⚠ 它跑在 `cfg(unix)` 下（要 `bash` 来 `source`）。Windows 上这条不出声 ——
-/// 而那**不是漏**：这份 snippet 本来就只装进 POSIX rc。
-///
-/// # 死值验（`KR135D3` 刀①）
-///
-/// 把那一行改回只有 `$HOME/.local/bin` ⇒ 本条红（本机那个目录不在 PATH 上）。
+/// 量真实输出：真 `source` 一趟问 `$PATH`，**加进来的目录集合 == {落点}**（两向）；source 两趟 PATH 不变（幂等）。
+/// ⚠ 它跑在 `cfg(unix)` 下（要 `bash`）；这份 snippet 本来就只装进 POSIX rc。证不了「干净 Linux 机上真敲得到 `ccm`」（要一台干净机）。
 #[cfg(unix)]
 #[test]
-fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
+fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
     let local = crate::tool_registry::local_ccm_bin_dir_rel().expect("本机申报的 bin 目录");
-    // 〔SR1b · 2026-09-24〕**前提变了，照这里原话「回到 `KR135D3` 重裁一次」**：远端入口挪到 `.cc-monitor/bin`
-    //   （远端写只许 `~/.cc-monitor/{bin,staging}`，V89；也正是 `设计/01 §6.7b` 用户 09-18「两边尽量同形」的落点）
-    //   ⇒ 两边落点**相等**了。本条从「一份文本、两个落点，两个都上 PATH、本机那个赢」改裁成：
-    //   ① 两边相等（`tool_registry` 现算，钉住「同形」）；② 那个落点在 PATH 上；③ 它赢过 `~/.local/bin` ——
-    //   那一格今天住的是**旧的**东西（用户早年那份 bash `ccm` · 远端更早部署留下的 shim，产品一个字节都不删）。
-    //   这一裁要主会话签字（写进 SR1b 的记录「要拍板的」）。
     let remote = crate::tool_registry::remote_ccm_bin_dir_rel().expect("远端申报的 bin 目录");
     assert_eq!(
         local, remote,
-        "两边的 ccm 落点又分开了 —— `设计/01 §6.7b` 要的是两边同形（SR1b 把远端挪到了 `.cc-monitor/bin`）"
+        "两边的 ccm 落点又分开了 —— `设计/01 §6.7b` 要的是两边同形"
     );
-    let remote = ".local/bin".to_string();
     let td = tmpdir("aliassnip");
     let home = td.0.join("h");
     std::fs::create_dir_all(&home).expect("造假家目录");
     let snip = td.0.join("snippet.sh");
     std::fs::write(&snip, crate::profile_installer::CCM_WRAPPER_SNIPPET).expect("写 snippet");
-
-    // **量真实输出，不量源码**（`brief` 第 5 条）：真 source 一趟，问 `$PATH`。
     let run = |times: usize| -> String {
         let dots = ". '".to_string() + &snip.display().to_string() + "'; ";
         let script = dots.repeat(times) + "printf '%s' \"$PATH\"";
@@ -1492,48 +1452,26 @@ fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
         );
         String::from_utf8_lossy(&out.stdout).to_string()
     };
-
     let path = run(1);
-    // ── 地板：真读到东西了，而且原来的 PATH 没被吃掉 ──────────────
-    assert!(
-        path.contains("/usr/bin"),
-        "原来的 PATH 不见了 —— 这一行把用户的 PATH 覆盖掉了，而它只该往前插。\n实得：{path}"
-    );
-    let want_local = format!("{}/{local}", home.display());
-    let want_remote = format!("{}/{remote}", home.display());
+    let added: Vec<&str> = path
+        .split(':')
+        .filter(|s| !["/usr/bin", "/bin"].contains(s))
+        .collect();
     let segs: Vec<&str> = path.split(':').collect();
-    for (who, want) in [
-        ("ccm 落点（两边同一个）", &want_local),
-        ("旧的那一格（`~/.local/bin`）", &want_remote),
-    ] {
-        assert!(
-            segs.contains(&want.as_str()),
-            "{who}那个 `ccm` 落点不在 PATH 上：`{want}`。\n\
-                 ⚠ 只写一个目录时这一行**只可能对其中一边是对的** —— 见本判据头注。\n\
-                 实得 {} 段：{segs:?}",
-            segs.len()
-        );
-    }
-    // ── 顺序：本机那个要赢过远端那个（旧的 ccm 住在远端那个目录里）──
-    let i_local = segs
-        .iter()
-        .position(|s| *s == want_local)
-        .expect("本机那格");
-    let i_remote = segs
-        .iter()
-        .position(|s| *s == want_remote)
-        .expect("远端那格");
-    assert!(
-        i_local < i_remote,
-        "`{want_local}`（我们放下去的那一份）排在 `{want_remote}`（你那份旧的住处）后面 —— \
-             那样赢的是旧的那个，而 `ccm_probe::classify_path_ccm` 会把它记成 `NotOurs`。\n\
-             实得：{segs:?}"
+    assert_eq!(
+        segs[segs.len().saturating_sub(2)..],
+        ["/usr/bin", "/bin"],
+        "原来的 PATH 被动了：{path}"
     );
-    // ── 幂等：source 两趟不许让 PATH 长一截 ────────────────────────
+    assert_eq!(
+        added,
+        vec![format!("{}/{local}", home.display())],
+        "别名块加进 PATH 的目录不是恰好 `ccm` 落点那一个（旧的 `~/.local/bin` 退役了）"
+    );
     assert_eq!(
         run(2),
         path,
-        "source 两趟 PATH 变了 —— 「已经在就不插」那一道破了，嵌套 shell 会让 PATH 无限变长"
+        "source 两趟 PATH 变了 —— 嵌套 shell 会让 PATH 无限变长"
     );
 }
 

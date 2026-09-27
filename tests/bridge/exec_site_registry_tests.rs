@@ -83,7 +83,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
         "ssh_source.rs",
         "connect_and_exec",
         Origin::Quoted,
-        "backend 路径经引用",
+        "〔E2〕插的只有常量：固定落点 `BACKEND_CMD` ＋ 流模式旗标字面量（`backendPath` 那一格删了）",
     ),
     // 〔SH1〕`tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
@@ -285,7 +285,9 @@ fn every_remote_exec_declares_where_its_command_came_from() {
             Origin::Quoted => {
                 per_class[2] += 1;
                 assert!(
-                    body.contains("shell_quote(") || body.contains("TMUX_LS_FMT"),
+                    body.contains("shell_quote(")
+                        || body.contains("TMUX_LS_FMT")
+                        || body.contains("BACKEND_CMD"),
                     "`{f}::{n}` 申报成「在本函数里拼但引用了」（{why}），实参 `{arg}`，\
                          而函数体里既没有 `shell_quote(`、插的也不是那个受守的常量 —— \
                          自由文本正裸着进远端命令。"

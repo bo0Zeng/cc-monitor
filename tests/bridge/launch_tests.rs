@@ -7,7 +7,6 @@ fn cfg(host: &str, user: &str, port: u16, key: Option<&str>) -> RemoteConfig {
         port,
         user: user.into(),
         key_path: key.map(String::from),
-        backend_path: "d".into(),
         host_key_fingerprint: None,
         addresses: Vec::new(),
         jump: None,

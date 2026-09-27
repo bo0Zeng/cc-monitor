@@ -10,8 +10,8 @@
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
 //!
 //! ```text
-//!  monitor（宿主，只交事实） ── remote-reach {origin, dial, backend} ──▶ 可达表（内存）
-//!  调用方 ── ask_with(machine, argv, 表, 对面) ──▶ 查表 ──▶ DialRemote.run(dial, "<backend> <argv…>")
+//!  monitor（宿主，只交事实） ── remote-reach {origin, dial} ──▶ 可达表（内存）
+//!  调用方 ── ask_with(machine, argv, 表, 对面) ──▶ 查表 ──▶ DialRemote.run(dial, "<落点> <argv…>")
 //!                                          └─ dial::uses::run（池里那条 SSH，多一个 exec 通道，不是新连接）
 //! ```
 //!
@@ -23,7 +23,7 @@
 //!
 //! # 可达表（内存）
 //!
-//! `origin → {拨号请求, 远端后端路径, 对面的资产目录 id}`：只在本进程里，后端重启就空（下次那台连上再填）。
+//! `origin → {拨号请求, 对面的资产目录 id}`（〔E2〕后端路径恒是固定落点，不登记）：只在本进程里，后端重启就空（下次那台连上再填）。
 //! 拨号请求里只有路径（`key_path`），没有私钥本体（凭据面 `K11` 同 `dial_host::request`）。
 //! **写口只有 [`register`] 一个**：`remote-reach`（每台远端流握手时 monitor 无条件交）与 `assets-sync`
 //! （顺手登记）都调它。
@@ -61,7 +61,6 @@ pub trait Remote: Send + Sync {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reach {
     pub(crate) dial: Value,
-    pub(crate) backend: String,
     pub(crate) peer: Option<String>,
 }
 
@@ -74,8 +73,8 @@ pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reac
     t.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 可达表**唯一的写口**：`{origin, dial, backend}` 三格齐了才记（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
-/// 同一台再记一次 ⇒ 换新的拨号请求与路径，`peer`（对面的资产目录 id）留着。
+/// 可达表**唯一的写口**：`{origin, dial}` 两格齐了才记（〔E2〕那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
+/// 同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
 /// 〔C4d〕这一段原样搬自 `asset_sync::answer_with`（AS2），逻辑一字不改；`remote-reach` 与 `assets-sync` 都经它。
 pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
     let o = args.get("origin").and_then(Value::as_str).ok_or((
@@ -92,31 +91,6 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
         "bad_args",
         crate::common::contract::malformed("`origin` given without `dial` (a dial request)"),
     ))?;
-    let backend = args
-        .get("backend")
-        .and_then(Value::as_str)
-        .filter(|b| !b.is_empty())
-        .ok_or((
-            "bad_args",
-            crate::common::contract::malformed(
-                "`origin` given without `backend` (the backend path on that machine)",
-            ),
-        ))?;
-    // 〔TL3 · `INVARIANTS §47` ②〕可达表是这台后端往远端拼命令时「那台后端在哪」的唯一出处（`command_line` ·
-    //   `asset_sync::{pull_command, push_command}` 都读它）⇒ 在这扇唯一的写口先过放行判定，判不过一条都不登记。
-    //   规则是本后端里那一份同族判定（形式 ＋ 拒绝集，`accounts_query::is_safe_config_dir`），不另写。
-    if !crate::observe::accounts_query::is_safe_config_dir(backend) {
-        return Err((
-            "bad_args",
-            copy_text(
-                "beRemoteAsk.register.backendPathRefused",
-                &[
-                    ("origin", &o.to_string()),
-                    ("path", &format!("{backend:?}")),
-                ],
-            ),
-        ));
-    }
     let mut t = lock(table);
     if !t.contains_key(o) && t.len() >= MAX_REACH {
         return Err((
@@ -132,7 +106,6 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
         o.to_string(),
         Reach {
             dial: dial.clone(),
-            backend: backend.to_string(),
             peer,
         },
     );
@@ -159,9 +132,10 @@ pub fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static
     Ok(json!({ "origin": o, "reach": reach_rows(table) }))
 }
 
-/// 远端上那条一次性命令的完整字面：`<后端> <argv…>`，**每一格都过 POSIX 单引号**（路径、项目目录名都是自由文本）。
-pub fn command_line(backend: &str, argv: &[&str]) -> String {
-    let mut s = shell_quote_core::posix_quote(backend);
+/// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv **每一格都过 POSIX 单引号**（项目目录名等是自由文本）。
+/// 〔E2 · V28〕那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
+pub fn command_line(argv: &[&str]) -> String {
+    let mut s = relay_route_core::BACKEND_LANDING_SHELL.to_string();
     for a in argv {
         s.push(' ');
         s.push_str(&shell_quote_core::posix_quote(a));
@@ -189,7 +163,7 @@ pub async fn ask_with(
 ) -> Result<String, String> {
     // 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
     //   拼进远端命令之前先过拒绝集（只收 NUL / CR / LF，**不拒 shell 元字符** —— 交给 `command_line` 里那一处 quote）。
-    //   判不过 ⇒ 一次都不拨。那台后端的路径在可达表唯一的写口（[`register`]）进门时已经判过。
+    //   判不过 ⇒ 一次都不拨。那台后端的路径是固定常量（〔E2〕）。
     if let Some(a) = argv.iter().find(|a| !shell_quote_core::free_text_ok(a)) {
         return Err(copy_text(
             "beRemoteAsk.argv.refused",
@@ -203,9 +177,7 @@ pub async fn ask_with(
         .get(machine)
         .cloned()
         .ok_or_else(|| unreachable_message(machine))?;
-    remote
-        .run(&r.dial, command_line(&r.backend, argv), None)
-        .await
+    remote.run(&r.dial, command_line(argv), None).await
 }
 
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────
