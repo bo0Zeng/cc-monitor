@@ -197,6 +197,8 @@ async fn main() {
     //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
     tracing::info!("{}", accounts::upstream::host_relay(&agent_home));
+    // 〔FIX · `99 §2 ㊵`〕全文搜索的常驻索引起来就后台建（两条载体都要；一次性线程，建完就退）。
+    observe::search_query::warm_in_background(agent_home.clone());
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //
