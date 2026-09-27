@@ -47,7 +47,7 @@ fn hook_args_shape() {
     assert_eq!(a[2], "session-closed[63]");
     assert_eq!(
         a[3],
-        "run-shell -b ''\\''/opt/ccm/backend'\\'' --tmux-notify 42 999'"
+        "run-shell -b ''\\''/opt/ccm/backend'\\'' -- --tmux-notify 42 999'"
     );
 }
 

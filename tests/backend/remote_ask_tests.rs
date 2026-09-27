@@ -145,7 +145,7 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
     // 〔E2〕那台后端恒在固定落点：`"$HOME"` 在那台上展开，其后是安全字节。
     assert_eq!(
         calls[0].1,
-        r#""$HOME"/.cc-monitor/bin/ccm '--list-sessions' '-home-u-it'\''s'"#
+        r#""$HOME"/.cc-monitor/bin/ccm -- '--list-sessions' '-home-u-it'\''s'"#
     );
 }
 

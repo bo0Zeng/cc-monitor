@@ -18,6 +18,8 @@ use copy_core::copy_text;
 /// 与本机宿主 `LOCAL_STREAM_ARGS` 同一组。
 /// 〔E2〕流模式显式词打头（本二进制就叫 `ccm` 时零参数是起会话；这里其实已有 `--tail-only` 打头，带上它是为了与宿主那组同形）。
 pub(crate) const DEFAULT_STREAM_ARGS: &[&str] = &[
+    // 〔V151〕打头的 `--`：后面是后端的词（本二进制就叫 `ccm`，没有它整行交给 claude）。
+    "--",
     crate::STREAM_FLAG_EXPLICIT,
     "--tail-only",
     "--with-bg",

@@ -91,13 +91,15 @@ async fn main() {
     //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
     //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
-    {
+    // 〔V151〕分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
+    let backend_args: Vec<String> = {
         let argv0 = std::env::args().next().unwrap_or_default();
         let rest: Vec<String> = std::env::args().skip(1).collect();
-        if let Some(ccm_args) = control::ccm::intercept(&argv0, &rest) {
-            std::process::exit(control::ccm::run(&ccm_args));
+        match control::ccm::route(&argv0, &rest) {
+            control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(&ccm_args)),
+            control::ccm::Entry::Backend(a) => a,
         }
-    }
+    };
 
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
@@ -117,7 +119,7 @@ async fn main() {
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧后端不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = backend_args;
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args_rest, with_bg, tail_only, with_rbind_token) = split_stream_flags(args);
