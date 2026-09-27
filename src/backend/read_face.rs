@@ -196,10 +196,22 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
                 .unwrap_or(false);
             let limit = u64_arg(args, "limit")?
                 .map_or(FIND_DEFAULT_LIMIT, |n| (n as usize).min(FIND_MAX_LIMIT));
-            let r = history_query::open_session_at(home, path, 0).map_err(|e| ("failed", e))?;
+            let target = history_query::session_path_at(home, path).map_err(|e| ("failed", e))?;
             let mut hits = CappedRows::default();
+            // 〔GAP1 · `设计/10 §7` 第 10 条〕先走 SX1 常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
             let scanned =
-                search_query::scan_session_find(r, query, include_tools, limit, |h| hits.push(h));
+                match search_query::find_indexed(home, &target, query, include_tools, limit, |h| {
+                    hits.push(h)
+                }) {
+                    Some(r) => r,
+                    None => {
+                        let r = history_query::open_session_at(home, path, 0)
+                            .map_err(|e| ("failed", e))?;
+                        search_query::scan_session_find(r, query, include_tools, limit, |h| {
+                            hits.push(h)
+                        })
+                    }
+                };
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }

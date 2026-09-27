@@ -754,6 +754,14 @@ pub(crate) fn session_index_into(
     Ok(())
 }
 
+/// 〔GAP1〕过了围栏的会话文件路径（`history-find` 先拿它问常驻索引）。
+pub(crate) fn session_path_at(
+    agent_home: &Path,
+    jsonl_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    validate_session_path(agent_home, jsonl_path)
+}
+
 /// 〔C4b · 第四波 4B〕过围栏、打开、定位到 `offset` —— 骨架索引与会话内查找的 CLI 臂和帧面臂共用这一处
 /// （帧面那一臂出成品，不经 `out`，见 `read_face.rs`）。
 pub(crate) fn open_session_at(
