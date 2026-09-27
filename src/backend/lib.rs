@@ -1765,6 +1765,8 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     "--after-ms",
     // 〔SE1〕`--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
     "--from",
+    // 〔STOP〕`--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
+    "--grace",
     "--include-tools",
     // 〔`设计/10` 骨架 · 子步 1〕`--read-session-from-offset` 的两个选项（出骨架索引 / 右端收口）。
     // 刻意是**选项**不是新子命令：新子命令会逼出 `BUILD_ID` bump，本轮不许 —— 理由与老后端上的
