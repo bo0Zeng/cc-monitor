@@ -133,21 +133,28 @@ use std::path::{Component, Path, PathBuf};
 pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
     let rel = rel.as_ref();
     if rel.to_string_lossy().trim().is_empty() {
-        return Err("refuse write: 相对路径是空的".to_string());
+        return Err(copy_text("beFilesWrite.path.empty", &[]));
     }
     let shown = rel.display();
     for c in rel.components() {
         match c {
             Component::Normal(_) => {}
             Component::ParentDir => {
-                return Err(format!("refuse write: 相对路径里有上跳段（{shown}）"));
+                return Err(copy_text(
+                    "beFilesWrite.path.parentStep",
+                    &[("path", &shown.to_string())],
+                ));
             }
             Component::CurDir => {
-                return Err(format!("refuse write: 相对路径里有当前目录段（{shown}）"));
+                return Err(copy_text(
+                    "beFilesWrite.path.dotStep",
+                    &[("path", &shown.to_string())],
+                ));
             }
             Component::RootDir | Component::Prefix(_) => {
-                return Err(format!(
-                    "refuse write: 只收相对段，给的是绝对路径（{shown}）"
+                return Err(copy_text(
+                    "beFilesWrite.path.absolute",
+                    &[("path", &shown.to_string())],
                 ));
             }
         }
@@ -156,10 +163,12 @@ pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
     // 上面已经把非 Normal 的段全拒了 ⇒ 这一条恒真。**留着它是自证**：
     // 哪天有人往上面那个 match 里加一档放行，这里会当场把后果说出来。
     if !target.starts_with(root) {
-        return Err(format!(
-            "refuse write: 拼出来的路径不在目标根底下（{} 不在 {} 里）",
-            target.display(),
-            root.display()
+        return Err(copy_text(
+            "beFilesWrite.path.outsideRoot",
+            &[
+                ("path", &target.display().to_string()),
+                ("root", &root.display().to_string()),
+            ],
         ));
     }
     Ok(target)
@@ -186,22 +195,41 @@ pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
 /// ⚠ 父目录**必须已经在盘上**。本模块不建目录（那是白名单层明令禁止的），
 /// 所以「父目录不在」是一条正常的拒绝理由，不是内部错误。
 pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
-    let real_root = std::fs::canonicalize(root)
-        .map_err(|e| format!("refuse write: 目标根解析不了（{}：{e}）", root.display()))?;
-    let parent = target
-        .parent()
-        .ok_or_else(|| format!("refuse write: 目标没有父目录（{}）", target.display()))?;
-    let name = target
-        .file_name()
-        .ok_or_else(|| format!("refuse write: 目标没有文件名（{}）", target.display()))?;
-    let real_parent = std::fs::canonicalize(parent)
-        .map_err(|e| format!("refuse write: 父目录解析不了（{}：{e}）", parent.display()))?;
+    let real_root = std::fs::canonicalize(root).map_err(|e| {
+        copy_text(
+            "beFilesWrite.path.unresolved",
+            &[("path", &root.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
+    let parent = target.parent().ok_or_else(|| {
+        copy_text(
+            "beFilesWrite.path.noParent",
+            &[("path", &target.display().to_string())],
+        )
+    })?;
+    let name = target.file_name().ok_or_else(|| {
+        copy_text(
+            "beFilesWrite.path.noName",
+            &[("path", &target.display().to_string())],
+        )
+    })?;
+    let real_parent = std::fs::canonicalize(parent).map_err(|e| {
+        copy_text(
+            "beFilesWrite.path.unresolved",
+            &[
+                ("path", &parent.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
+    })?;
     let resolved = real_parent.join(name);
     if !real_parent.starts_with(&real_root) {
-        return Err(format!(
-            "refuse write: 解完 symlink 之后写点跑出了目标根（{} 不在 {} 里）",
-            real_parent.display(),
-            real_root.display()
+        return Err(copy_text(
+            "beFilesWrite.path.escaped",
+            &[
+                ("path", &real_parent.display().to_string()),
+                ("root", &real_root.display().to_string()),
+            ],
         ));
     }
     Ok(resolved)
@@ -301,11 +329,23 @@ pub fn create_new_file(
         .create_new(true)
         .open(&target)
         .map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 新建 {} 失败：{e}", target.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.create.failed",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
         })?;
     // 写失败（盘满等）也要把原因带回去 —— 静默的半截文件比报错糟得多。
     f.write_all(bytes).map_err(|e| {
-        WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", target.display()))
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.write.failed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        ))
     })?;
     Ok(target)
 }
@@ -337,15 +377,25 @@ pub fn create_new_file(
 /// 〔FN1 · V119〕旧名 `fenced_existing`；「解出来是一份会话文件 ⇒ 拒」那一判删了。
 pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
     let at = resolve_in_root(root, rel)?;
-    let real = std::fs::canonicalize(&at)
-        .map_err(|e| format!("refuse write: 目标解析不了（{}：{e}）", at.display()))?;
-    let real_root = std::fs::canonicalize(root)
-        .map_err(|e| format!("refuse write: 目标根解析不了（{}：{e}）", root.display()))?;
+    let real = std::fs::canonicalize(&at).map_err(|e| {
+        copy_text(
+            "beFilesWrite.path.unresolved",
+            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
+    let real_root = std::fs::canonicalize(root).map_err(|e| {
+        copy_text(
+            "beFilesWrite.path.unresolved",
+            &[("path", &root.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
     if !real.starts_with(&real_root) {
-        return Err(format!(
-            "refuse write: 解到底之后跑出了目标根（{} 不在 {} 里）",
-            real.display(),
-            real_root.display()
+        return Err(copy_text(
+            "beFilesWrite.path.escaped",
+            &[
+                ("path", &real.display().to_string()),
+                ("root", &real_root.display().to_string()),
+            ],
         ));
     }
     Ok(real)
@@ -356,9 +406,12 @@ pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Pa
 pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     std::fs::create_dir(&target).map_err(|e| {
-        WriteRefusal::Io(format!(
-            "refuse write: 建目录 {} 失败：{e}",
-            target.display()
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.mkdirFailed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         ))
     })?;
     Ok(target)
@@ -380,16 +433,19 @@ pub fn rename_entry(
     let src = resolve_in_root(root, from).map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(root, to).map_err(WriteRefusal::Refused)?;
     if std::fs::symlink_metadata(&dst).is_ok() {
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 目标已经在了（{}）—— 改名不覆盖，先删掉它或换个名字",
-            dst.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.rename.exists",
+            &[("path", &dst.display().to_string())],
         )));
     }
     std::fs::rename(&src, &dst).map_err(|e| {
-        WriteRefusal::Io(format!(
-            "refuse write: 改名 {} → {} 失败：{e}",
-            src.display(),
-            dst.display()
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.rename.failed",
+            &[
+                ("src", &src.display().to_string()),
+                ("dst", &dst.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         ))
     })?;
     Ok(dst)
@@ -406,13 +462,29 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     let is_dir = std::fs::symlink_metadata(&target)
         .map(|m| m.is_dir())
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", target.display())))?;
+        .map_err(|e| {
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
+        })?;
     let done = if is_dir {
         std::fs::remove_dir(&target)
     } else {
         std::fs::remove_file(&target)
     };
-    done.map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", target.display())))?;
+    done.map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.delete.failed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        ))
+    })?;
     Ok(target)
 }
 
@@ -435,26 +507,36 @@ pub fn delete_file_expecting(
     let md = match std::fs::symlink_metadata(&target) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(WriteRefusal::Stale(format!(
-                "refuse delete: {} 已经不在了（读的时候还在）—— 什么都没删，重读再来",
-                target.display()
+            return Err(WriteRefusal::Stale(copy_text(
+                "beFilesWrite.delete.gone",
+                &[("path", &target.display().to_string())],
             )))
         }
         Err(e) => {
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 读不到 {}：{e}",
-                target.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
             )))
         }
     };
     if !md.is_file() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse delete: {} 不是一份普通文件 —— 带 `expect` 的删只收普通文件（不收目录、不收链接）",
-            target.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.delete.notRegular",
+            &[("path", &target.display().to_string())],
         )));
     }
-    let current = std::fs::read(&target)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", target.display())))?;
+    let current = std::fs::read(&target).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.read.failed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        ))
+    })?;
     if current.is_empty() && md.len() > 0 {
         return Err(WriteRefusal::Io(format!(
             "refuse write: {}",
@@ -462,13 +544,19 @@ pub fn delete_file_expecting(
         )));
     }
     if current != expect {
-        return Err(WriteRefusal::Stale(format!(
-            "refuse delete: {} 在你读过之后被改过了 —— 一个字节没删，重读再来",
-            target.display()
+        return Err(WriteRefusal::Stale(copy_text(
+            "beFilesWrite.delete.changed",
+            &[("path", &target.display().to_string())],
         )));
     }
     std::fs::remove_file(&target).map_err(|e| {
-        WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", target.display()))
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.delete.failed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        ))
     })?;
     Ok(target)
 }
@@ -485,35 +573,41 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
     let md = match std::fs::symlink_metadata(&target) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(WriteRefusal::Stale(format!(
-                "refuse delete: {} 已经不在了（看的时候还在）—— 什么都没删",
-                target.display()
+            return Err(WriteRefusal::Stale(copy_text(
+                "beFilesWrite.rmdir.gone",
+                &[("path", &target.display().to_string())],
             )))
         }
         Err(e) => {
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 读不到 {}：{e}",
-                target.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[
+                    ("path", &target.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
             )))
         }
     };
     if !md.is_dir() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse delete: {} 不是一个目录 —— 「只删空目录」这一形只收目录（不收文件、不收链接）",
-            target.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.rmdir.notDir",
+            &[("path", &target.display().to_string())],
         )));
     }
     match std::fs::remove_dir(&target) {
         Ok(()) => Ok(target),
         Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
-            Err(WriteRefusal::Stale(format!(
-                "refuse delete: {} 里面还有东西 —— 只删空目录，一个字节没动",
-                target.display()
+            Err(WriteRefusal::Stale(copy_text(
+                "beFilesWrite.rmdir.notEmpty",
+                &[("path", &target.display().to_string())],
             )))
         }
-        Err(e) => Err(WriteRefusal::Io(format!(
-            "refuse write: 删目录 {} 失败：{e}",
-            target.display()
+        Err(e) => Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.rmdir.failed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         ))),
     }
 }
@@ -530,24 +624,28 @@ enum DeleteExpect {
 pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<PathBuf, WriteRefusal> {
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     if mode > 0o7777 {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 权限位只收低 12 位（给的是 {mode:o}）"
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.chmod.badMode",
+            &[("mode", &format!("{mode:o}"))],
         )));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
         std::fs::set_permissions(&real, std::fs::Permissions::from_mode(mode)).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 改权限 {} 失败：{e}", real.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.chmod.failed",
+                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+            ))
         })?;
         Ok(real)
     }
     #[cfg(not(unix))]
     {
         // 〔FW5〕回 `no_unix_mode`，不回 `io_failed`（理由住 [`WriteRefusal::Unsupported`]）。
-        Err(WriteRefusal::Unsupported(format!(
-            "refuse write: 这个平台没有 unix 权限位，{} 一个字节没动",
-            real.display()
+        Err(WriteRefusal::Unsupported(copy_text(
+            "beFilesWrite.chmod.unsupported",
+            &[("path", &real.display().to_string())],
         )))
     }
 }
@@ -575,12 +673,16 @@ pub fn overwrite_text(
 ) -> Result<PathBuf, WriteRefusal> {
     let rel = rel.as_ref();
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let md = std::fs::metadata(&real)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
+    let md = std::fs::metadata(&real).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.unreadable",
+            &[("path", &real.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     if !md.is_file() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: {} 不是一份普通文件 —— 覆盖写只收普通文件",
-            real.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.overwrite.notRegular",
+            &[("path", &real.display().to_string())],
         )));
     }
     let links_owner = links_and_owner(&real);
@@ -593,7 +695,10 @@ pub fn overwrite_text(
             real.display()
         );
         std::fs::write(&real, bytes).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", real.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.write.failed",
+                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+            ))
         })?;
         return Ok(real);
     }
@@ -616,16 +721,16 @@ fn links_and_owner(_p: &Path) -> Option<(u64, u32)> {
 /// 〔HX1 · 主会话裁拍板项 2〕这一份目标**不该原子换**的原因（`None` = 该原子换）：换名上位会让 inode 换掉 ⇒
 /// 有硬链接（`links > 1`）的另一个名字仍指旧内容；属主不是后端这个用户（只是给了写权限）⇒ 换完属主变成后端用户。
 pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String> {
-    let mut why: Vec<String> = Vec::new();
+    let mut parts: Vec<String> = Vec::new();
     if links > 1 {
-        why.push(format!("它有 {links} 个硬链接"));
+        parts.push(format!("它有 {links} 个硬链接"));
     }
     if owner != me {
-        why.push(format!(
+        parts.push(format!(
             "它的属主（uid {owner}）不是后端这个用户（uid {me}）"
         ));
     }
-    (!why.is_empty()).then(|| why.join("、"))
+    (!parts.is_empty()).then(|| parts.join("、"))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -647,7 +752,9 @@ pub use crate::files::{content_sha256, SHA256_HEX_LEN};
 pub fn sha256_expect_of(args: &serde_json::Value) -> Result<String, (&'static str, String)> {
     let v = args.get("expect").ok_or((
         "bad_args",
-        "少了 `expect` —— 覆盖写必须说清「我看的时候那一份」（`{\"sha256\": …}`，读那一趟交出来的那个）".to_string(),
+        crate::common::contract::malformed(
+            "missing `expect` ({\"sha256\": ...} handed out by the read)",
+        ),
     ))?;
     let bad = || {
         (
@@ -692,30 +799,38 @@ pub fn overwrite_text_expecting(
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     match std::fs::symlink_metadata(&at) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Err(WriteRefusal::Stale(format!(
-                "refuse write: {} 已经不在了（你打开的时候还在）—— 一个字节没写",
-                at.display()
+            return Err(WriteRefusal::Stale(copy_text(
+                "beFilesWrite.overwrite.gone",
+                &[("path", &at.display().to_string())],
             )))
         }
         Err(e) => {
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 读不到 {}：{e}",
-                at.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
             )))
         }
         Ok(_) => {}
     }
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let md = std::fs::metadata(&real)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display())))?;
+    let md = std::fs::metadata(&real).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.unreadable",
+            &[("path", &real.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     if !md.is_file() {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: {} 不是一份普通文件 —— 覆盖写只收普通文件",
-            real.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.overwrite.notRegular",
+            &[("path", &real.display().to_string())],
         )));
     }
-    let current = std::fs::read(&real)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", real.display())))?;
+    let current = std::fs::read(&real).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.read.failed",
+            &[("path", &real.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     if current.is_empty() && md.len() > 0 {
         return Err(WriteRefusal::Io(format!(
             "refuse write: {}",
@@ -723,9 +838,9 @@ pub fn overwrite_text_expecting(
         )));
     }
     if content_sha256(&current) != expect_sha256 {
-        return Err(WriteRefusal::Stale(format!(
-            "refuse write: {} 在你打开之后被改过了 —— 一个字节没写",
-            real.display()
+        return Err(WriteRefusal::Stale(copy_text(
+            "beFilesWrite.overwrite.changed",
+            &[("path", &real.display().to_string())],
         )));
     }
     overwrite_text(root, rel, bytes)
@@ -791,8 +906,12 @@ pub fn plan_tree(root: &Path, rel: impl AsRef<Path>) -> Result<Vec<Planned>, Wri
 /// [`plan_tree`] 的本体，上限由调用方给（判据拿一个小上限验「超了整趟拒」，不必真铺十万条）。
 pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Planned>, WriteRefusal> {
     let top = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let (top_is_dir, top_dev) = kind_and_device(&top)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", top.display())))?;
+    let (top_is_dir, top_dev) = kind_and_device(&top).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.unreadable",
+            &[("path", &top.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     let mut plan = vec![Planned {
         rel: rel.to_path_buf(),
         is_dir: top_is_dir,
@@ -805,26 +924,42 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
     while let Some(dir_rel) = pending.pop() {
         let dir_at = resolve_in_root(root, &dir_rel).map_err(WriteRefusal::Refused)?;
         let listing = std::fs::read_dir(&dir_at).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 列不出 {}：{e}", dir_at.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unlistable",
+                &[
+                    ("path", &dir_at.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            ))
         })?;
         for item in listing {
             let item = item.map_err(|e| {
-                WriteRefusal::Io(format!("refuse write: 列 {} 时断了：{e}", dir_at.display()))
+                WriteRefusal::Io(copy_text(
+                    "beFilesWrite.copyTree.listBroke",
+                    &[
+                        ("path", &dir_at.display().to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                ))
             })?;
             let child_rel = dir_rel.join(item.file_name());
             // ★ **逐条目过路径解析**：这一条就是本函数存在的理由。
             let at = resolve_in_root(root, &child_rel).map_err(|m| {
-                WriteRefusal::Refused(format!(
-                    "{m}\n—— 递归删整趟拒：这棵树里有一条路径解析不过，一个字节都没动"
+                WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.deleteTree.entryRefused",
+                    &[("why", &m)],
                 ))
             })?;
             let (is_dir, dev) = kind_and_device(&at).map_err(|e| {
-                WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", at.display()))
+                WriteRefusal::Io(copy_text(
+                    "beFilesWrite.copyTree.unreadable",
+                    &[("path", &at.display().to_string()), ("e", &e.to_string())],
+                ))
             })?;
             if dev != top_dev {
-                return Err(WriteRefusal::Refused(format!(
-                    "refuse write: {} 在另一个文件系统上（挂载点）—— 递归删不走进去，整趟拒、一个字节没动",
-                    at.display()
+                return Err(WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.deleteTree.crossMount",
+                    &[("path", &at.display().to_string())],
                 )));
             }
             plan.push(Planned {
@@ -832,9 +967,12 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
                 is_dir,
             });
             if plan.len() > cap {
-                return Err(WriteRefusal::Refused(format!(
-                    "refuse write: {} 底下超过 {cap} 条 —— 一次手势不删这么多，整趟拒、一个字节没动",
-                    top.display()
+                return Err(WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.deleteTree.overCap",
+                    &[
+                        ("path", &top.display().to_string()),
+                        ("cap", &cap.to_string()),
+                    ],
                 )));
             }
             if is_dir {
@@ -852,11 +990,16 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
     let at = resolve_in_root(root, &p.rel).map_err(WriteRefusal::Refused)?;
     let is_dir = std::fs::symlink_metadata(&at)
         .map(|m| m.is_dir())
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", at.display())))?;
+        .map_err(|e| {
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
+            ))
+        })?;
     if is_dir != p.is_dir {
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: {} 在计划与动手之间换了种类（目录 ↔ 非目录）—— 不删",
-            at.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.deleteTree.kindChanged",
+            &[("path", &at.display().to_string())],
         )));
     }
     let done = if is_dir {
@@ -864,7 +1007,12 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
     } else {
         std::fs::remove_file(&at)
     };
-    done.map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", at.display())))?;
+    done.map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.delete.failed",
+            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     Ok(at)
 }
 
@@ -881,10 +1029,13 @@ pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize
     let mut removed = 0usize;
     for p in plan.iter().rev() {
         remove_planned(root, p).map_err(|e| {
-            let said = format!(
-                "{}\n—— 递归删删了 {removed} 条之后停在这一条（共计划 {} 条）",
-                e.message(),
-                plan.len()
+            let said = copy_text(
+                "beFilesWrite.deleteTree.stopped",
+                &[
+                    ("why", e.message()),
+                    ("n", &removed.to_string()),
+                    ("total", &plan.len().to_string()),
+                ],
             );
             match e {
                 WriteRefusal::Refused(_) => WriteRefusal::Refused(said),
@@ -940,13 +1091,17 @@ pub fn copy_entry(
     let src = resolve_existing_in_root(root, from).map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(root, to).map_err(WriteRefusal::Refused)?;
     if src == dst {
-        return Err(WriteRefusal::Refused(format!(
-            "refuse write: 复制的源与目标是同一份（{}）",
-            dst.display()
+        return Err(WriteRefusal::Refused(copy_text(
+            "beFilesWrite.copy.same",
+            &[("path", &dst.display().to_string())],
         )));
     }
-    let src_md = std::fs::metadata(&src)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", src.display())))?;
+    let src_md = std::fs::metadata(&src).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copyTree.unreadable",
+            &[("path", &src.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     if !src_md.is_file() {
         return Err(WriteRefusal::Refused(copy_text(
             "beFilesWrite.copy.notRegular",
@@ -956,7 +1111,10 @@ pub fn copy_entry(
     // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍路径解析）。
     let land_rel = if overwrite {
         let name = to.file_name().ok_or_else(|| {
-            WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", to.display()))
+            WriteRefusal::Refused(copy_text(
+                "beFilesWrite.path.noName",
+                &[("path", &to.display().to_string())],
+            ))
         })?;
         let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // 〔FW5〕旁名按**原始字节**拼（名字可以不是 UTF-8）：`.` ＋ 原名 ＋ 固定后缀。
@@ -971,9 +1129,9 @@ pub fn copy_entry(
     if overwrite {
         if let Err(e) = std::fs::rename(&land, &dst) {
             std::fs::remove_file(&land).ok();
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 换名上位 {} 失败：{e}",
-                dst.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.swap.failed",
+                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
             )));
         }
     }
@@ -993,16 +1151,20 @@ fn land_copy(
     perms: std::fs::Permissions,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
     let land = resolve_in_root(root, land_rel).map_err(WriteRefusal::Refused)?;
-    let mut reader = std::fs::File::open(src)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 打不开源 {}：{e}", src.display())))?;
+    let mut reader = std::fs::File::open(src).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.copy.openSrcFailed",
+            &[("path", &src.display().to_string()), ("e", &e.to_string())],
+        ))
+    })?;
     let mut writer = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&land)
         .map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 新建 {} 失败（不覆盖时目标已在就停在这一步）：{e}",
-                land.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.create.failed",
+                &[("path", &land.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
     let n = match std::io::copy(&mut reader, &mut writer) {
@@ -1011,9 +1173,9 @@ fn land_copy(
             drop(writer);
             // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
             std::fs::remove_file(&land).ok();
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 复制到一半断了（{}）：{e}",
-                land.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.copy.broke",
+                &[("path", &land.display().to_string()), ("e", &e.to_string())],
             )));
         }
     };
@@ -1443,37 +1605,68 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
                 text: None,
             })
         }
-        Err(e) => return Err(("io_failed", format!("读不到 {}：{e}", at.display()))),
+        Err(e) => {
+            return Err((
+                "io_failed",
+                copy_text(
+                    "beFilesWrite.copyTree.unreadable",
+                    &[("path", &at.display().to_string()), ("e", &e.to_string())],
+                ),
+            ))
+        }
         Ok(_) => {}
     }
     let real = resolve_existing_in_root(root, rel).map_err(|m| ("refused", m))?;
-    let md = std::fs::metadata(&real)
-        .map_err(|e| ("io_failed", format!("读不到 {}：{e}", real.display())))?;
+    let md = std::fs::metadata(&real).map_err(|e| {
+        (
+            "io_failed",
+            copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+            ),
+        )
+    })?;
     if !md.is_file() {
         return Err((
             "refused",
-            format!("{} 不是一份普通文件 —— 读改写只收普通文件", real.display()),
+            copy_text(
+                "beFilesWrite.peek.notRegular",
+                &[("path", &real.display().to_string())],
+            ),
         ));
     }
     if md.len() > PEEK_MAX_BYTES as u64 {
         return Err((
             "too_large",
-            format!(
-                "{} 有 {} 字节，超过读改写一趟的上限 {PEEK_MAX_BYTES} —— 不截断（截断的那一份写回去就是把尾巴删了）",
-                real.display(),
-                md.len()
+            copy_text(
+                "beFilesWrite.peek.tooBig",
+                &[
+                    ("path", &real.display().to_string()),
+                    ("size", &md.len().to_string()),
+                    ("max", &PEEK_MAX_BYTES.to_string()),
+                ],
             ),
         ));
     }
-    let bytes = std::fs::read(&real)
-        .map_err(|e| ("io_failed", format!("读不出 {}：{e}", real.display())))?;
+    let bytes = std::fs::read(&real).map_err(|e| {
+        (
+            "io_failed",
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+            ),
+        )
+    })?;
     if bytes.is_empty() && md.len() > 0 {
         return Err(("io_failed", hollow_read(&real, md.len())));
     }
     let text = String::from_utf8(bytes).map_err(|_| {
         (
             "not_text",
-            format!("{} 不是 UTF-8 文本 —— 读改写只收文本", real.display()),
+            copy_text(
+                "beFilesWrite.peek.notUtf8",
+                &[("path", &real.display().to_string())],
+            ),
         )
     })?;
     Ok(Peeked {
@@ -1487,9 +1680,12 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
 /// 🔴 继续走的后果是拿「空 ＋ 新内容」整份盖掉原文 —— 读改写的读那一半与写那一半都在这里停。
 /// 从前住 monitor 的 `fenced_block::LocalFile::read`〔散文墓碑〕，〔RW1〕随写规则一起搬到后端。
 fn hollow_read(p: &Path, on_disk: u64) -> String {
-    format!(
-        "{} 在盘上有 {on_disk} 字节，但读出来是空的（可能被 OneDrive 或杀毒软件锁着）。已取消，没改任何东西。",
-        p.display()
+    copy_text(
+        "beFilesWrite.put.hollow",
+        &[
+            ("path", &p.display().to_string()),
+            ("size", &on_disk.to_string()),
+        ],
     )
 }
 
@@ -1536,25 +1732,31 @@ pub fn put_text(
         Ok(_) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
         Err(e) => {
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 读不到 {}：{e}",
-                at.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[("path", &at.display().to_string()), ("e", &e.to_string())],
             )))
         }
     };
     let (dst, current, perms) = if existed {
         let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
         let md = std::fs::metadata(&real).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 读不到 {}：{e}", real.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.copyTree.unreadable",
+                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+            ))
         })?;
         if !md.is_file() {
-            return Err(WriteRefusal::Refused(format!(
-                "refuse write: {} 不是一份普通文件 —— 整份替换只收普通文件",
-                real.display()
+            return Err(WriteRefusal::Refused(copy_text(
+                "beFilesWrite.overwrite.notRegular",
+                &[("path", &real.display().to_string())],
             )));
         }
         let cur = std::fs::read(&real).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 读不出 {}：{e}", real.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.read.failed",
+                &[("path", &real.display().to_string()), ("e", &e.to_string())],
+            ))
         })?;
         if cur.is_empty() && md.len() > 0 {
             return Err(WriteRefusal::Io(format!(
@@ -1568,17 +1770,17 @@ pub fn put_text(
     };
     if current.as_deref() != expect {
         return Err(WriteRefusal::Stale(match (&current, expect) {
-            (None, Some(_)) => format!(
-                "refuse write: {} 已经不在了（读的时候还在）—— 一个字节没写，重读再来",
-                dst.display()
+            (None, Some(_)) => copy_text(
+                "beFilesWrite.put.gone",
+                &[("path", &dst.display().to_string())],
             ),
-            (Some(_), None) => format!(
-                "refuse write: {} 现在已经在了（读的时候还不在）—— 一个字节没写，重读再来",
-                dst.display()
+            (Some(_), None) => copy_text(
+                "beFilesWrite.put.appeared",
+                &[("path", &dst.display().to_string())],
             ),
-            _ => format!(
-                "refuse write: {} 在你读过之后被改过了 —— 一个字节没写，重读再来",
-                dst.display()
+            _ => copy_text(
+                "beFilesWrite.put.changed",
+                &[("path", &dst.display().to_string())],
             ),
         }));
     }
@@ -1601,27 +1803,39 @@ pub fn put_text(
     let back = std::fs::read(&dst);
     if back.as_deref().ok() != Some(bytes) {
         let why = match &back {
-            Ok(b) => format!(
-                "回读 {} 字节，与写进去的 {} 字节不一致",
-                b.len(),
-                bytes.len()
+            Ok(b) => copy_text(
+                "beFilesWrite.put.verifyMismatch",
+                &[
+                    ("got", &b.len().to_string()),
+                    ("want", &bytes.len().to_string()),
+                ],
             ),
-            Err(e) => format!("写完读不回来（{e}）"),
+            Err(e) => copy_text(
+                "beFilesWrite.put.verifyUnreadable",
+                &[("e", &e.to_string())],
+            ),
         };
         let undone = match current.as_deref() {
             Some(orig) => swap_in(root, rel, orig, perms).is_ok(),
             None => remove_created(root, rel).is_ok(),
         };
         let note = match (existed, undone, &backup) {
-            (true, true, _) => "原文件已恢复。".to_string(),
-            (false, true, _) => "刚建出来的那份已删掉。".to_string(),
-            (true, false, Some(b)) => format!("恢复原文件也失败了，原文备份在 {}。", b.display()),
-            (true, false, None) => "恢复原文件也失败了，请打开它看一眼。".to_string(),
-            (false, false, _) => "刚建出来的那份没删掉，请手动删掉它。".to_string(),
+            (true, true, _) => copy_text("beFilesWrite.put.restored", &[]),
+            (false, true, _) => copy_text("beFilesWrite.put.createdRemoved", &[]),
+            (true, false, Some(b)) => copy_text(
+                "beFilesWrite.put.restoreFailedBackup",
+                &[("path", &b.display().to_string())],
+            ),
+            (true, false, None) => copy_text("beFilesWrite.put.restoreFailed", &[]),
+            (false, false, _) => copy_text("beFilesWrite.put.createdKept", &[]),
         };
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 写后校验失败（{}）：{why}。{note}",
-            dst.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.put.verifyFailed",
+            &[
+                ("path", &dst.display().to_string()),
+                ("why", &why),
+                ("note", &note),
+            ],
         )));
     }
     Ok(Put {
@@ -1648,20 +1862,23 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
         match std::fs::metadata(&at) {
             Ok(m) if m.is_dir() => continue,
             Ok(_) => {
-                return Err(WriteRefusal::Refused(format!(
-                    "refuse write: {} 已经在了、但不是目录",
-                    at.display()
+                return Err(WriteRefusal::Refused(copy_text(
+                    "beFilesWrite.mkdirs.notDir",
+                    &[("path", &at.display().to_string())],
                 )))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 std::fs::create_dir(&at).map_err(|e| {
-                    WriteRefusal::Io(format!("refuse write: 建目录 {} 失败：{e}", at.display()))
+                    WriteRefusal::Io(copy_text(
+                        "beFilesWrite.copyTree.mkdirFailed",
+                        &[("path", &at.display().to_string()), ("e", &e.to_string())],
+                    ))
                 })?;
             }
             Err(e) => {
-                return Err(WriteRefusal::Io(format!(
-                    "refuse write: 读不到 {}：{e}",
-                    at.display()
+                return Err(WriteRefusal::Io(copy_text(
+                    "beFilesWrite.copyTree.unreadable",
+                    &[("path", &at.display().to_string()), ("e", &e.to_string())],
                 )))
             }
         }
@@ -1692,12 +1909,18 @@ fn swap_in(
     if std::fs::symlink_metadata(&dst).is_ok() {
         let _ = &perms;
         std::fs::write(&dst, bytes).map_err(|e| {
-            WriteRefusal::Io(format!("refuse write: 写 {} 失败：{e}", dst.display()))
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.write.failed",
+                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
+            ))
         })?;
         return Ok(dst);
     }
     let name = dst.file_name().ok_or_else(|| {
-        WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", rel.display()))
+        WriteRefusal::Refused(copy_text(
+            "beFilesWrite.path.noName",
+            &[("path", &rel.display().to_string())],
+        ))
     })?;
     let seq = PUT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     // 〔FW5 之后〕名字可以不是 UTF-8 ⇒ 旁名按 `OsString` 拼，不经 `str`。
@@ -1710,34 +1933,34 @@ fn swap_in(
         .create_new(true)
         .open(&side)
         .map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 新建暂存旁名 {} 失败：{e}",
-                side.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.swap.sideCreateFailed",
+                &[("path", &side.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
     if let Err(e) = f.write_all(bytes) {
         drop(f);
         std::fs::remove_file(&side).ok();
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 写暂存旁名 {} 失败：{e}",
-            side.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.swap.sideWriteFailed",
+            &[("path", &side.display().to_string()), ("e", &e.to_string())],
         )));
     }
     drop(f);
     if let Some(p) = perms {
         if let Err(e) = std::fs::set_permissions(&side, p) {
             std::fs::remove_file(&side).ok();
-            return Err(WriteRefusal::Io(format!(
-                "refuse write: 给暂存旁名沿用原权限位失败（{}）：{e}",
-                side.display()
+            return Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.swap.sideModeFailed",
+                &[("path", &side.display().to_string()), ("e", &e.to_string())],
             )));
         }
     }
     if let Err(e) = std::fs::rename(&side, &dst) {
         std::fs::remove_file(&side).ok();
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 换名上位 {} 失败：{e}",
-            dst.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.swap.failed",
+            &[("path", &dst.display().to_string()), ("e", &e.to_string())],
         )));
     }
     Ok(dst)
@@ -1752,7 +1975,10 @@ fn land_backup(
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let name = rel.file_name().ok_or_else(|| {
-        WriteRefusal::Refused(format!("refuse write: `{}` 没有文件名", rel.display()))
+        WriteRefusal::Refused(copy_text(
+            "beFilesWrite.path.noName",
+            &[("path", &rel.display().to_string())],
+        ))
     })?;
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1768,17 +1994,17 @@ fn land_backup(
         .create_new(true)
         .open(&bak)
         .map_err(|e| {
-            WriteRefusal::Io(format!(
-                "refuse write: 备份 {} 没建成，原文件没动：{e}",
-                bak.display()
+            WriteRefusal::Io(copy_text(
+                "beFilesWrite.backup.createFailed",
+                &[("path", &bak.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
     if let Err(e) = f.write_all(original) {
         drop(f);
         std::fs::remove_file(&bak).ok();
-        return Err(WriteRefusal::Io(format!(
-            "refuse write: 写备份 {} 失败，原文件没动：{e}",
-            bak.display()
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.backup.writeFailed",
+            &[("path", &bak.display().to_string()), ("e", &e.to_string())],
         )));
     }
     drop(f);
@@ -1808,20 +2034,28 @@ fn keep_mode(
         return Ok(());
     };
     let gone = match remove(bak) {
-        Ok(()) => "这份备份已删掉".to_string(),
-        Err(re) => format!("这份备份也没删掉（{re}），它可能比原文件更多人读得到，请手动删"),
+        Ok(()) => copy_text("beFilesWrite.backup.removed", &[]),
+        Err(re) => copy_text("beFilesWrite.backup.notRemoved", &[("e", &re.to_string())]),
     };
-    Err(WriteRefusal::Io(format!(
-        "refuse write: 备份 {} 没能沿用原文件的权限位（{e}）；{gone}；原文件没动",
-        bak.display()
+    Err(WriteRefusal::Io(copy_text(
+        "beFilesWrite.backup.modeFailed",
+        &[
+            ("path", &bak.display().to_string()),
+            ("e", &e.to_string()),
+            ("gone", &gone),
+        ],
     )))
 }
 
 /// 回滚那一支：删掉**这一趟自己刚建出来**的那一份（只在「原来不存在」时调）。
 fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    std::fs::remove_file(&at)
-        .map_err(|e| WriteRefusal::Io(format!("refuse write: 删 {} 失败：{e}", at.display())))
+    std::fs::remove_file(&at).map_err(|e| {
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.delete.failed",
+            &[("path", &at.display().to_string()), ("e", &e.to_string())],
+        ))
+    })
 }
 
 /// 🔴 **删一份历史会话 —— 只收 sid。**
@@ -1842,9 +2076,12 @@ pub fn delete_session_with(
 ) -> Result<PathBuf, WriteRefusal> {
     let target = fenced_session_file(sid, locate).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&target).map_err(|e| {
-        WriteRefusal::Io(format!(
-            "refuse write: 删会话 {} 失败：{e}",
-            target.display()
+        WriteRefusal::Io(copy_text(
+            "beFilesWrite.session.deleteFailed",
+            &[
+                ("path", &target.display().to_string()),
+                ("e", &e.to_string()),
+            ],
         ))
     })?;
     Ok(target)
@@ -1859,15 +2096,18 @@ fn fenced_session_file(
     let p = locate(sid)?;
     let want = format!("{sid}.jsonl");
     if p.file_name() != Some(std::ffi::OsStr::new(&want)) {
-        return Err(format!(
-            "refuse delete: 找到的那一份（{}）不叫 {want}",
-            p.display()
+        return Err(copy_text(
+            "beFilesWrite.session.nameMismatch",
+            &[
+                ("path", &p.display().to_string()),
+                ("want", &want.to_string()),
+            ],
         ));
     }
     if !is_session_record_path(&p) {
-        return Err(format!(
-            "refuse delete: {} 不是一份会话记录 —— 这一条只删会话",
-            p.display()
+        return Err(copy_text(
+            "beFilesWrite.session.notRecord",
+            &[("path", &p.display().to_string())],
         ));
     }
     Ok(p)
@@ -1916,8 +2156,8 @@ pub type Answer = Result<serde_json::Value, (&'static str, String)>;
 pub struct ManageCommand {
     /// 线上命令名（连字符那一套，与 `inbound::REGISTRY` 逐字相同）。
     pub name: &'static str,
-    /// 它做什么。
-    pub what: &'static str,
+    /// 它做什么（登记散文，只给判据读、不上界面 ⇒ 不叫 `what`：那个字段名会被普查当成文案出口）。
+    pub purpose: &'static str,
     /// 入方向参数名。
     pub args: &'static [&'static str],
     /// 出方向字段名。
@@ -1933,7 +2173,7 @@ pub struct ManageCommand {
 pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-create",
-        what: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
+        purpose: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
         args: &["content", "rel", "root"],
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
@@ -1941,21 +2181,21 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔波 5 ㈡ 09-23〕`设计/60 §8.6` 第 3 步：**改动既有数据**的那五件 ──────────
     ManageCommand {
         name: "files-mkdir",
-        what: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
+        purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
         args: &["rel", "root"],
         fields: &["path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-rename",
-        what: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
+        purpose: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
         args: &["from", "root", "to"],
         fields: &["path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-delete",
-        what:
+        purpose:
             "删一个文件或一个**空**目录（删的是链接本身，不跟过去）；〔FW5〕显式 `recursive: true` \
                才删整棵树 —— 逐条目过路径解析，任一条被拒整趟不动（`delete_tree`）；〔RM1e〕给了 `expect` \
                ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；〔FW1〕`expect: {\"empty_dir\": true}` \
@@ -1966,7 +2206,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-chmod",
-        what: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
+        purpose: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
                〔FW5〕没有 unix 权限位的平台上回 `no_unix_mode`",
         args: &["mode", "rel", "root"],
         fields: &["mode", "path"],
@@ -1975,7 +2215,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔F7a · 第三波 09-24〕`设计/60 §13`：窗口的「复制」换走通道 ──────────────────
     ManageCommand {
         name: "files-copy",
-        what: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
+        purpose: "同根内复制一份普通文件；**三条路径各过一遍路径解析**；缺省不覆盖（`O_EXCL`），\
                显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；〔W5-FILES〕显式 `recursive: true` \
                才复制目录 —— 逐条目过路径解析，链接 / 跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）",
         args: &["from", "overwrite", "recursive", "root", "to"],
@@ -1984,7 +2224,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-write-text",
-        what: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
+        purpose: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
                〔FW1〕`expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
         args: &["content", "expect", "rel", "root"],
         fields: &["bytes", "path", "sha256"],
@@ -1993,14 +2233,14 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     // ── 〔RW1 · 第四波 09-24〕用户文件的读改写 ＋ 删历史会话（用户裁「只管用户的文件、本机也管」）──
     ManageCommand {
         name: "files-peek",
-        what: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
+        purpose: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
         args: &["rel", "root"],
         fields: &["exists", "path", "text"],
         codes: &["bad_args", "bad_path", "io_failed", "not_text", "refused", "too_large"],
     },
     ManageCommand {
         name: "files-put",
-        what: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
+        purpose: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
                回读比对 → 不符回滚** —— 用户文件的写规则只有这一份",
         args: &["backup", "content", "expect", "parents", "rel", "root"],
         fields: &["backup", "bytes", "changed", "created", "path"],
@@ -2008,7 +2248,7 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     },
     ManageCommand {
         name: "files-delete-session",
-        what: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
+        purpose: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
         args: &["sid"],
         fields: &["path"],
         codes: &["bad_args", "io_failed", "refused"],
@@ -2027,17 +2267,21 @@ fn path_of(
 ) -> Result<std::path::PathBuf, (&'static str, String)> {
     let v = args.get(key).ok_or((
         "bad_path",
-        format!("少了 `{key}` —— 它要么是一个字符串，要么是 `{{\"b16\": \"<十六进制>\"}}`"),
+        crate::common::contract::malformed(&format!(
+            "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
+        )),
     ))?;
     let bytes = crate::files::raw::from_json(v).ok_or((
         "bad_path",
-        format!(
-            "`{key}` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`；\
-             这里刻意不「尽力而为」地猜，猜错一个字节就是往另一个地方落盘"
-        ),
+        crate::common::contract::malformed(&format!(
+            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+        )),
     ))?;
     if bytes.is_empty() {
-        return Err(("bad_path", format!("`{key}` 是空的")));
+        return Err((
+            "bad_path",
+            crate::common::contract::malformed(&format!("`{key}` is empty")),
+        ));
     }
     Ok(crate::files::raw::to_path_buf(&bytes))
 }
@@ -2055,7 +2299,9 @@ fn answer_create(args: &serde_json::Value) -> Answer {
         None => Vec::new(),
         Some(v) => crate::files::raw::from_json(v).ok_or((
             "bad_args",
-            "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+            crate::common::contract::malformed(
+                "`content` must be a string or {\"b16\": \"<hex>\"}",
+            ),
         ))?,
     };
     let landed = create_new_file(&root, &rel, &bytes).map_err(|e| {
@@ -2077,14 +2323,15 @@ fn answer_create(args: &serde_json::Value) -> Answer {
 fn rel_of(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
     let v = args.get(key).ok_or((
         "bad_args",
-        format!("少了 `{key}` —— 它要么是一个字符串，要么是 `{{\"b16\": \"<十六进制>\"}}`"),
+        crate::common::contract::malformed(&format!(
+            "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
+        )),
     ))?;
     let bytes = crate::files::raw::from_json(v).ok_or((
         "bad_args",
-        format!(
-            "`{key}` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`；\
-             猜错一个字节就是对另一个名字动手"
-        ),
+        crate::common::contract::malformed(&format!(
+            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+        )),
     ))?;
     Ok(crate::files::raw::to_path_buf(&bytes))
 }
@@ -2122,7 +2369,7 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
         None => false,
         Some(v) => v.as_bool().ok_or((
             "bad_args",
-            "`recursive` 只收布尔 —— 删整棵树是一件要说清的事，这里不猜".to_string(),
+            crate::common::contract::malformed("`recursive` must be a boolean"),
         ))?,
     };
     // 〔RM1e〕CAS **显式**：不给 ⇒ 射程与此前一个字节不差。给了 ⇒ 只删一份普通文件、盘上逐字节等于它才删。
@@ -2132,7 +2379,7 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
         Some(serde_json::Value::Null) => {
             return Err((
                 "bad_args",
-                "`expect` 不收 `null` —— 带 `expect` 的删说的是「读到的是这一份，删它」，不在就没有可删的".to_string(),
+                crate::common::contract::malformed("`expect` must not be null here"),
             ))
         }
         // 〔FW1 · SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
@@ -2146,8 +2393,7 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
     if recursive && expect.is_some() {
         return Err((
             "bad_args",
-            "`expect` 与 `recursive` 不能同给 —— CAS 比的是一份文件的字节，整棵树没有「那一份」"
-                .to_string(),
+            crate::common::contract::malformed("`expect` and `recursive` are mutually exclusive"),
         ));
     }
     let (done, removed) = if recursive {
@@ -2173,7 +2419,9 @@ fn answer_chmod(args: &serde_json::Value) -> Answer {
         .and_then(|m| u32::try_from(m).ok())
         .ok_or((
             "bad_args",
-            "少了 `mode`，或者它不是一个非负整数（十进制数值，例如 420 = 0o644）".to_string(),
+            crate::common::contract::malformed(
+                "missing `mode` or not a non-negative integer (decimal, e.g. 420 = 0o644)",
+            ),
         ))?;
     let done = change_mode(&root, &rel, mode).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done), "mode": mode }))
@@ -2188,7 +2436,7 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
         None => false,
         Some(v) => v.as_bool().ok_or((
             "bad_args",
-            "`overwrite` 只收布尔 —— 覆盖是一件要说清的事，这里不猜".to_string(),
+            crate::common::contract::malformed("`overwrite` must be a boolean"),
         ))?,
     };
     // 〔W5-FILES〕复制目录**显式**：不给 ⇒ 射程与此前一个字节不差；与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
@@ -2218,11 +2466,11 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
     // 🔴 这里**必须给** `content`：不给就把一份既有文件写成空的，那不是一个该有默认值的动作。
     let v = args.get("content").ok_or((
         "bad_args",
-        "少了 `content` —— 覆盖写不给默认值（默认成空等于把那份文件清空）".to_string(),
+        crate::common::contract::malformed("missing `content` (no default)"),
     ))?;
     let bytes = crate::files::raw::from_json(v).ok_or((
         "bad_args",
-        "`content` 的形状不对 —— 只认字符串或 `{\"b16\": \"<十六进制>\"}`".to_string(),
+        crate::common::contract::malformed("`content` must be a string or {\"b16\": \"<hex>\"}"),
     ))?;
     // 〔FW1〕CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
     let expect = sha256_expect_of(args)?;
@@ -2238,7 +2486,9 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
 fn bytes_of(v: &serde_json::Value, key: &str) -> Result<Vec<u8>, (&'static str, String)> {
     crate::files::raw::from_json(v).ok_or((
         "bad_args",
-        format!("`{key}` 的形状不对 —— 只认字符串或 `{{\"b16\": \"<十六进制>\"}}`"),
+        crate::common::contract::malformed(&format!(
+            "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
+        )),
     ))
 }
 
@@ -2246,7 +2496,10 @@ fn bytes_of(v: &serde_json::Value, key: &str) -> Result<Vec<u8>, (&'static str, 
 fn flag_of(args: &serde_json::Value, key: &str) -> Result<bool, (&'static str, String)> {
     match args.get(key) {
         None => Ok(false),
-        Some(v) => v.as_bool().ok_or(("bad_args", format!("`{key}` 只收布尔"))),
+        Some(v) => v.as_bool().ok_or((
+            "bad_args",
+            crate::common::contract::malformed(&format!("`{key}` must be a boolean")),
+        )),
     }
 }
 
@@ -2266,17 +2519,20 @@ fn answer_put(args: &serde_json::Value) -> Answer {
     let rel = rel_of(args, "rel")?;
     let content = args.get("content").ok_or((
         "bad_args",
-        "少了 `content` —— 整份替换不给默认值（默认成空等于把那份文件清空）".to_string(),
+        crate::common::contract::malformed("missing `content` (no default)"),
     ))?;
     let content = bytes_of(content, "content")?;
     // 🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」。
     //    缺席 ⇒ 拒 —— 没有「不问就盖」这一形（理由住本节头注）。
     let expect = match args.get("expect") {
-        None => return Err((
-            "bad_args",
-            "少了 `expect` —— 读改写的写那一半必须说清读到的是哪一份（`null` = 读的时候不存在）"
-                .to_string(),
-        )),
+        None => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed(
+                    "missing `expect` (null means absent at read time)",
+                ),
+            ))
+        }
         Some(serde_json::Value::Null) => None,
         Some(v) => Some(bytes_of(v, "expect")?),
     };
@@ -2300,14 +2556,16 @@ fn answer_delete_session(args: &serde_json::Value) -> Answer {
         if let Some(extra) = obj.keys().find(|k| k.as_str() != "sid") {
             return Err((
                 "bad_args",
-                format!("`files-delete-session` 只收 `sid`，多给了 `{extra}`"),
+                crate::common::contract::malformed(&format!(
+                    "`files-delete-session` takes only `sid`, got `{extra}`"
+                )),
             ));
         }
     }
-    let sid = args
-        .get("sid")
-        .and_then(serde_json::Value::as_str)
-        .ok_or(("bad_args", "少了 `sid`，或者它不是一个字符串".to_string()))?;
+    let sid = args.get("sid").and_then(serde_json::Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `sid` or not a string"),
+    ))?;
     let done = delete_session(sid).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }
@@ -2328,7 +2586,10 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-peek" => answer_peek(args),
         "files-put" => answer_put(args),
         "files-delete-session" => answer_delete_session(args),
-        other => Err(("bad_args", format!("`{other}` 不是文件管理写面的命令"))),
+        other => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("unknown write command `{other}`")),
+        )),
     }
 }
 

@@ -5,6 +5,7 @@
 //! （常驻后端里是那条链路的两根内存管子，`link.rs`）；连接从「这一趟自己拨的」换成
 //! 「池里拿的」（[`Lease`]，同身份复用）。三种用法本身一行语义没改。
 
+use copy_core::copy_text;
 use std::sync::Arc;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -202,10 +203,7 @@ impl Lease {
     ) -> Result<(russh::Channel<russh::client::Msg>, pool::Permit), String> {
         for _ in 0..=pool::MAX_CONNECTIONS_PER_HOST {
             let Some(permit) = self.permit.take() else {
-                return Err(format!(
-                    "这一道（{:?}）没借到通道格，开不了 session 通道",
-                    self.lane
-                ));
+                return Err(copy_text("beUses.session.noSlot", &[]));
             };
             // 〔NT1〕等远端回「开好了」这一段被打断（链路被关）⇒ 摘掉这条连接（`pool::Watch`）。
             let opened = {
@@ -225,7 +223,10 @@ impl Lease {
             };
             drop(permit);
             let Some(key) = self.key.clone() else {
-                return Err(format!("打开 session channel 失败: {e}"));
+                return Err(copy_text(
+                    "beUses.session.openFailed",
+                    &[("e", &e.to_string())],
+                ));
             };
             if refused_by_remote(&e) && !self.linked.session.is_closed() {
                 let cap = self.linked.budget.refused();
@@ -234,21 +235,25 @@ impl Lease {
                     self.linked.endpoint
                 );
                 if cap == 0 {
-                    return Err(format!(
-                        "远端不给开 session 通道（{e}；这条连接上一格都开不出来 —— sshd 的 MaxSessions 是 0？）"
+                    return Err(copy_text(
+                        "beUses.session.refusedAll",
+                        &[("e", &e.to_string())],
                     ));
                 }
             } else if self.reused {
                 tracing::warn!("dial: 复用的连接上开 channel 失败（{e}）—— 摘掉它、重拨一次");
                 pool::ssh().evict(&key, &self.linked);
             } else {
-                return Err(format!("打开 session channel 失败: {e}"));
+                return Err(copy_text(
+                    "beUses.session.openFailed",
+                    &[("e", &e.to_string())],
+                ));
             }
             *self = Self::place(req, stages, key, self.lane)
                 .await
                 .map_err(|(e, _)| e)?;
         }
-        Err("换了几条连接都开不出 session 通道".to_string())
+        Err(copy_text("beUses.session.exhausted", &[]))
     }
 }
 
@@ -307,7 +312,7 @@ async fn serve<R, W>(
             // want_reply = true：等远端确认 exec 成功再回 ack。
             let opened = exec(&channel, req.command.as_bytes().to_vec())
                 .await
-                .map_err(|e| format!("exec {} 失败: {e}", req.command));
+                .map_err(|e| copy_text("beUses.exec.failed", &[("e", &e.to_string())]));
             if let Err(e) = opened {
                 let _ = write_stages_then_ack(out, stages, &fail(e)).await;
                 return;
@@ -340,7 +345,10 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed("请求里 use=capture 却没给 capture 参数".into(), fp),
+                    &DialAck::failed(
+                        crate::common::contract::malformed("use=capture without `capture`"),
+                        fp,
+                    ),
                 )
                 .await;
                 return;
@@ -359,7 +367,10 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed(format!("exec {} 失败: {e}", req.command), fp),
+                    &DialAck::failed(
+                        copy_text("beUses.exec.failed", &[("e", &e.to_string())]),
+                        fp,
+                    ),
                 )
                 .await;
                 return;
@@ -371,7 +382,7 @@ async fn serve<R, W>(
                         out,
                         stages,
                         &DialAck::failed(
-                            format!("远端命令起来了，但交给它的那一行没送过去: {e}"),
+                            copy_text("beUses.exec.stdinLost", &[("e", &e.to_string())]),
                             fp,
                         ),
                     )
@@ -394,7 +405,10 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed("请求里 use=forward 却没给 forward 参数".into(), fp),
+                    &DialAck::failed(
+                        crate::common::contract::malformed("use=forward without `forward`"),
+                        fp,
+                    ),
                 )
                 .await;
                 return;
@@ -408,7 +422,13 @@ async fn serve<R, W>(
                         out,
                         stages,
                         &DialAck::failed(
-                            format!("绑定本地端口 127.0.0.1:{} 失败: {e}", spec.local_port),
+                            copy_text(
+                                "beUses.forward.bindFailed",
+                                &[
+                                    ("port", &spec.local_port.to_string()),
+                                    ("e", &e.to_string()),
+                                ],
+                            ),
                             fp,
                         ),
                     )
@@ -430,7 +450,10 @@ async fn serve<R, W>(
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed("请求里 use=tunnel 却没给 tunnel_port".into(), fp),
+                    &DialAck::failed(
+                        crate::common::contract::malformed("use=tunnel without `tunnel_port`"),
+                        fp,
+                    ),
                 )
                 .await;
                 return;
@@ -447,7 +470,13 @@ async fn serve<R, W>(
                     let _ = write_stages_then_ack(
                         out,
                         stages,
-                        &DialAck::failed(format!("远端 127.0.0.1:{port} 连不上: {e}"), fp),
+                        &DialAck::failed(
+                            copy_text(
+                                "beUses.tunnel.unreachable",
+                                &[("port", &port.to_string()), ("e", &e.to_string())],
+                            ),
+                            fp,
+                        ),
                     )
                     .await;
                     return;

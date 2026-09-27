@@ -593,7 +593,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4o-resident-stop**（2026-09-27，STOP 合并那一拍）：行为 —— `--resident-stop` 成为同机监督者（SIGTERM → 宽限期内按 pidfd 等 →
 /// 到点 SIGKILL → 回 `graceful` / `killed` / `not_running`），选项 ＋1 `--grace`；本机远端同一条停法，monitor 只发一次、拿回结局；停完收掉陈 pid 记录。
-pub const BUILD_ID: &str = "p4o-resident-stop";
+///
+/// ★★★ **p4p-copy-extract**（2026-09-27，COPY 合并那一拍）：行为 —— CP2c 余下 8 份的对外文字进文案表（后端 `files/mod` 等按码出话）·
+/// 拨号失败按类型分阶段（kex 失败归 `other`，不再报成 hostkey）。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4p-copy-extract";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
