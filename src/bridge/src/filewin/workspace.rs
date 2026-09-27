@@ -202,6 +202,7 @@ impl Workspace {
             p.attach_line(line);
         }
         p.shelf = like.shelf.clone();
+        p.machines = like.machines.clone();
         p.font = like.font.clone();
         p.reload();
         p

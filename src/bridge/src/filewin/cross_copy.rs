@@ -27,6 +27,13 @@ pub static CROSS_LABEL: std::sync::LazyLock<String> =
 /// 判据 `cross_copy_tests::the_local_origin_is_the_app_one` 读两侧源码钉相等）。
 pub const LOCAL_ORIGIN: &str = "<local>";
 
+/// 暂存区（相对 home）。⚠ 与后端 `control/files_commit.rs::STAGING_DIR` 是同一个值的两份（两个 crate 互相引不到），
+/// 判据 `cross_copy_tests::the_staging_dir_is_the_backend_one` 读两侧源码钉相等。
+pub const STAGING_DIR: &str = ".cc-monitor/staging";
+
+/// 暂存区自建时收成的权限位（与后端 `own_dir` 建自家目录同一个 0700）。
+pub const STAGING_MODE: u32 = 0o700;
+
 /// 那一问（UI 线程自己的）：要复制的那一行 ＋ 用户正在填的机器名与目标目录。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CrossPrompt {
@@ -324,6 +331,31 @@ where
         }
         overwrite = true;
     }
+    // 〔FILES2 · V152〕目标就是本机 ⇒ 没有第二腿：直接下到落点（有损名走按字节读回那一条）。
+    if to.0 == LOCAL_ORIGIN {
+        let got = if src.is_lossy() {
+            super::lossy_pull::pull_by_bytes(
+                line,
+                from,
+                &src.bytes(),
+                serde_json::Value::String(dest.clone()),
+                overwrite,
+                &board.pull,
+            )
+            .await
+        } else {
+            super::download::pull_one(line, from, &src.shown, &dest, &board.pull).await
+        };
+        return match got {
+            Ok(()) => Outcome::Done {
+                name: name.to_string(),
+                machine: machine.trim().to_string(),
+                path: dest,
+                bytes: board.pull.seen().1,
+            },
+            Err(why) => failed(why),
+        };
+    }
     // ② 本机暂存（经本机后端：home · 暂存区 · 落点）。
     let local = crate::chan::wire::Origin(LOCAL_ORIGIN.to_string());
     let lhome = match super::source::ask(
@@ -355,7 +387,7 @@ where
             line,
             &local,
             "files-chmod",
-            &serde_json::json!({ "root": own, "rel": "staging", "mode": super::lossy_pull::STAGING_MODE }),
+            &serde_json::json!({ "root": own, "rel": "staging", "mode": STAGING_MODE }),
             super::writeops::WRITE_BUDGET,
         )
         .await
@@ -373,6 +405,7 @@ where
             from,
             &src.bytes(),
             serde_json::Value::String(local_path.clone()),
+            false,
             &board.pull,
         )
         .await
@@ -412,11 +445,7 @@ where
             bytes: board.pull.seen().1,
         },
         Err(why) => {
-            let bstaging = format!(
-                "{}/{}",
-                bhome.trim_end_matches('/'),
-                super::lossy_pull::STAGING_DIR
-            );
+            let bstaging = format!("{}/{}", bhome.trim_end_matches('/'), STAGING_DIR);
             for k in board.push.take_staged() {
                 let _ = super::source::ask(
                     line,

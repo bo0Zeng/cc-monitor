@@ -9,6 +9,7 @@
 //! | [`a_failed_push_removes_the_staging_on_b_too`] | 传 B 那一腿失败 ⇒ 结局是失败、B 那头开过单的暂存件删掉、本机的也删掉 | 同上 |
 //! | [`the_target_dir_defaults_to_home_and_must_be_absolute`] | 目标目录：空 ⇒ B 的 home；不是 `/` 起头 ⇒ 拒 | 期望手写 |
 //! | [`the_local_origin_is_the_app_one`] | 窗口那份 `<local>` == app 侧 `inbound_client::LOCAL_ORIGIN` | 读两侧源码 |
+//! | [`the_staging_dir_is_the_backend_one`] | 窗口那份暂存区（清 B 那头暂存件用）== 后端 `files_commit::STAGING_DIR` | 读两侧源码 |
 
 use super::*;
 use crate::chan::wire::{Body, By, CallError, CancelToken, Cursor, Item, Kind, Op, Origin};
@@ -127,6 +128,10 @@ fn args_of(log: &Log, origin: &str, op: &str) -> Vec<serde_json::Value> {
 }
 
 async fn go(push_fails: bool) -> (Outcome, Log) {
+    go_to("B", push_fails).await
+}
+
+async fn go_to(machine: &str, push_fails: bool) -> (Outcome, Log) {
     let (line, log) = rig(push_fails).await;
     let board = CrossBoard::default();
     let o = run(
@@ -134,7 +139,7 @@ async fn go(push_fails: bool) -> (Outcome, Log) {
         &Origin("A".into()),
         &crate::filewin::source::RemotePath::plain("/srv/a.bin"),
         "a.bin",
-        "B",
+        machine,
         "/data",
         &board,
         |_| async { true },
@@ -239,5 +244,38 @@ fn the_local_origin_is_the_app_one() {
         app.matches(needle.as_str()).count(),
         1,
         "窗口那份 <local> 与 app 侧不是同一个值"
+    );
+}
+
+#[test]
+fn the_staging_dir_is_the_backend_one() {
+    let backend =
+        guard_core::production_code(include_str!("../../../src/backend/control/files_commit.rs"));
+    let needle = format!("pub const STAGING_DIR: &str = \"{STAGING_DIR}\";");
+    assert_eq!(
+        backend.matches(needle.as_str()).count(),
+        1,
+        "窗口那份暂存区与后端 `files_commit::STAGING_DIR` 不是同一个值"
+    );
+}
+
+/// 〔FILES2 · V152〕目标选的是本机（下拉里的 `<local>`）⇒ 没有第二腿：直接从 A 下到落点，不开上传的单、不碰本机暂存区。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn copying_to_this_machine_is_just_a_download_to_the_target() {
+    let (o, log) = go_to(LOCAL_ORIGIN, false).await;
+    assert!(
+        matches!(&o, Outcome::Done { path, .. } if path == "/data/a.bin"),
+        "{o:?}"
+    );
+    assert_eq!(
+        args_of(&log, "A", "transfer-download")[0]["local_path"],
+        "/data/a.bin",
+        "没直接下到落点"
+    );
+    let s = steps(&log);
+    assert!(
+        !s.iter()
+            .any(|(_, op)| op == "transfer-upload" || op == "files-mkdir"),
+        "目标是本机却走了第二腿：{s:?}"
     );
 }

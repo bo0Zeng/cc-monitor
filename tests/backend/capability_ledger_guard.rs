@@ -100,6 +100,8 @@ const ROSTER: &[(&str, &str)] = &[
     // 〔W5-FILES · 第五波〕我看过这条能力，它该在清单里：算目录大小（`设计/60 §6.2`，V45「能连 ssh 做什么后端就能做什么」）。
     // 纯读，资产轴，四个 target 都有（非 unix 上「不进别的文件系统」那一判不开口，如实写在 `files/size.rs` 头注）。
     ("files-read", "files.size"),
+    // 〔FILES2 · V152〕我看过这条能力，它该在清单里：按字节寻址分块读回（非 UTF-8 名的下载，下载对远端只读）。纯读，四个 target 都有。
+    ("files-read", "files.read.chunk"),
     // 〔F7a · 第三波 09-24〕同上：编辑器读一份文本经通道问后端（此前 SFTP 整份搬字节）。
     // 纯读，超上限整趟拒不截断，上限由调用方给、后端有自己的天花板。
     ("files-read", "files.read.text"),

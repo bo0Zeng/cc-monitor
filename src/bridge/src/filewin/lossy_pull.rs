@@ -3,22 +3,15 @@
 //! 主会话按通行做法裁：「落到 Linux 本机 ⇒ 字节原样当文件名；落到 Windows 本机 ⇒ 名字按有损形替换并在结局里说一句
 //! 『名字里有认不出的字节，已改成 X』（Windows 文件名是 UTF-16，没法原样）」。
 //!
-//! # 远端那一头怎么寻址（本路补的手段，记录 `FILES2.md` 第二节）
+//! # 远端那一头怎么寻址（用户 09-27 V152）
 //!
-//! SFTP 库（`russh-sftp`）的路径是 `String`（`设计/60 §4.1`）⇒ 非 UTF-8 的字节结构上发不出去。于是：
-//! ① 让那台机器的后端就地拷一份到我们自己的暂存区，名字是 UTF-8 的 `<32hex>.part`（`files-copy`，根 `/`、源按字节）——
-//!    同机拷贝，零网络；② 照常 `transfer-download` 那份暂存件；③ 不论成败都删掉它（`files-delete`）。
-//! 窗口在 ② 与 ③ 之间崩了 ⇒ 暂存件的名字就是孤儿扫认的形（`files_commit::sweep_stale`，七天）。
-//! 暂存区不在（这台还没传过东西）⇒ 先 `files-mkdir` 建、`files-chmod` 收成 0700（与后端自建那一层同权限）。
+//! SFTP 库（`russh-sftp`）的路径是 `String`（`设计/60 §4.1`）⇒ 非 UTF-8 的字节结构上发不出去 ⇒ **经那台后端链路按字节寻址分块读回**
+//! （`files-read-chunk`，读族，远端只读 —— `设计/60 §4.4`「下载对远端只读」照旧）；本机那一头经本机后端落盘：
+//! 逐块 `files-stage-chunk` 进本机暂存区 → `files-commit-upload`（带 `chunks` / `bytes` / 整份摘要，`rel` 收字节）。
+//! monitor / 窗口进程对用户文件一个字节不写（`§3.8`）；不另造传输台。撤 ⇒ 下一块不读，已送的块交本机孤儿扫。
+//! V152 之前这里是「远端 `files-copy` 进暂存区 → SFTP 下 → 删暂存」，用户不认（远端要只读），整条删了。
 
 use crate::copy_table::copy_text;
-
-/// 暂存区（相对远端 home）。⚠ 与后端 `control/files_commit.rs::STAGING_DIR` 是同一个值的两份（两个 crate 互相引不到），
-/// 判据 `lossy_pull_tests::the_staging_dir_is_the_backend_one` 读两侧源码钉相等。
-pub const STAGING_DIR: &str = ".cc-monitor/staging";
-
-/// 暂存区自建时收成的权限位（与后端 `own_dir` 建自家目录同一个 0700）。
-pub const STAGING_MODE: u32 = 0o700;
 
 /// 本机落点：`dest` 是框里那一串（有损显示形），`shown` / `raw` 是那一行的显示名与原始字节。
 /// 回 `(线上那一形, 结局里要说的那一句)`。
@@ -83,79 +76,101 @@ pub fn local_path_of(v: &serde_json::Value) -> Option<std::path::PathBuf> {
     }
 }
 
-/// 远端暂存件的整条路径（显示形 == 真字节：home 与键都是 UTF-8）。
-pub fn staged_path(home: &str, key: &str) -> String {
-    format!("{}/{STAGING_DIR}/{key}.part", home.trim_end_matches('/'))
+/// 一块读多少（== 后端 `files::READ_CHUNK_MAX_BYTES`，读两侧源码钉相等）。
+pub const PULL_CHUNK: u64 = 256 * 1024;
+
+/// 十六进制 → 字节（`{"b16": …}` 的内容；形状不对 ⇒ `None`）。
+pub fn unhex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len() / 2)
+        .map(|k| u8::from_str_radix(s.get(2 * k..2 * k + 2)?, 16).ok())
+        .collect()
 }
 
-/// 整趟：暂存区就位 → 就地拷进暂存区 → 下载那份暂存件 → 删暂存件（不论成败）。
+/// 本机落点（线上那一形）→ `(父目录那一形, 名字那一形)`：按最后一个 `/`（Windows 上还有 `\`）切，都保持字节。
+pub fn split_local(local: &serde_json::Value) -> Option<(serde_json::Value, serde_json::Value)> {
+    let b = super::find::decode_path(local)?;
+    let cut = b
+        .iter()
+        .rposition(|c| *c == b'/' || (cfg!(windows) && *c == b'\\'))?;
+    let (dir, name) = (&b[..cut.max(1)], &b[cut + 1..]);
+    if name.is_empty() {
+        return None;
+    }
+    Some((
+        super::source::wire_bytes(dir),
+        super::source::wire_bytes(name),
+    ))
+}
+
+/// 整趟：远端逐块读回（按字节寻址）→ 本机逐块进暂存区 → 本机提交（摘要照核）。`overwrite` ＝ 人在「盖不盖」那一问里答了盖。
 pub async fn pull_by_bytes(
     line: &super::source::Line,
     origin: &super::source::Origin,
     remote: &[u8],
     local: serde_json::Value,
+    overwrite: bool,
     board: &super::download::DownloadBoard,
 ) -> Result<(), String> {
     use super::source::ask;
-    let home = super::source::home_from_reply(
-        &ask(
-            line,
-            origin,
-            "files-home",
-            &serde_json::json!({}),
-            super::transfer::PROBE_BUDGET,
-        )
-        .await?,
-    )?;
+    use sha2::Digest as _;
+    let (root, rel) =
+        split_local(&local).ok_or_else(|| copy_text("rsFilewinLossyPull.local.badDest", &[]))?;
+    let here = crate::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
     let key = uuid::Uuid::new_v4().simple().to_string();
-    let own = format!("{}/.cc-monitor", home.trim_end_matches('/'));
-    let staging = format!("{}/{STAGING_DIR}", home.trim_end_matches('/'));
-    // 暂存区不在 ⇒ 建、收成 0700；已在 ⇒ 建那一下失败，不管它（拷的那一步会照实说）。
-    let made = ask(
-        line,
-        origin,
-        "files-mkdir",
-        &serde_json::json!({ "root": own, "rel": "staging" }),
-        super::writeops::WRITE_BUDGET,
-    )
-    .await
-    .is_ok();
-    if made {
-        ask(
+    let path = super::source::wire_bytes(remote);
+    let mut sha = sha2::Sha256::new();
+    let (mut off, mut seq) = (0u64, 0u64);
+    loop {
+        if board.cancels().is_cancelled() {
+            return Err(super::transfer::CANCELLED.to_string());
+        }
+        let d = ask(
             line,
             origin,
-            "files-chmod",
-            &serde_json::json!({ "root": own, "rel": "staging", "mode": STAGING_MODE }),
-            super::writeops::WRITE_BUDGET,
+            "files-read-chunk",
+            &serde_json::json!({ "path": path, "offset": off, "len": PULL_CHUNK }),
+            super::chunk_upload::CHUNK_BUDGET,
         )
         .await?;
+        let body = d["content"]["b16"]
+            .as_str()
+            .and_then(unhex)
+            .ok_or_else(|| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
+        let size = d["size"].as_u64().unwrap_or(0);
+        if !body.is_empty() {
+            sha.update(&body);
+            ask(
+                line,
+                &here,
+                "files-stage-chunk",
+                &serde_json::json!({ "key": key, "seq": seq, "content": { "b16": super::chunk_upload::hex(&body) } }),
+                super::chunk_upload::CHUNK_BUDGET,
+            )
+            .await?;
+            seq += 1;
+            off += body.len() as u64;
+        }
+        board.progress(off, size);
+        if d["eof"].as_bool() != Some(false) || body.is_empty() {
+            break;
+        }
     }
-    let from: Vec<u8> = remote.strip_prefix(b"/").unwrap_or(remote).to_vec();
-    let to = staged_path(&home, &key);
+    let digest = super::chunk_upload::hex(&sha.finalize());
     ask(
         line,
-        origin,
-        "files-copy",
+        &here,
+        super::transfer::CMD_COMMIT,
         &serde_json::json!({
-            "root": "/",
-            "from": super::source::wire_bytes(&from),
-            "to": to.trim_start_matches('/'),
+            "key": key, "root": root, "rel": rel, "overwrite": overwrite,
+            "expect": { "sha256": digest }, "chunks": seq, "bytes": off,
         }),
-        super::copy::COPY_BUDGET,
+        super::transfer::COMMIT_BUDGET,
     )
     .await
-    .map_err(|e| copy_text("rsFilewinLossyPull.stage.failed", &[("why", &e)]))?;
-    let pulled = super::download::pull_one_at(line, origin, &to, local, board).await;
-    // 不论成败都删掉暂存件（删不掉交孤儿扫；不盖住下载本身的结局）。
-    let _ = ask(
-        line,
-        origin,
-        "files-delete",
-        &serde_json::json!({ "root": staging, "rel": format!("{key}.part") }),
-        super::writeops::WRITE_BUDGET,
-    )
-    .await;
-    pulled
+    .map(|_| ())
 }
 
 #[cfg(test)]

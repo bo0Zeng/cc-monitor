@@ -133,6 +133,8 @@ pub const COMMANDS: &[&str] = &[
     "files-mkdir",
     "files-peek",
     "files-put",
+    // 〔FILES2 · V152〕读族第十条：按字节寻址分块读回。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "files-read-chunk",
     "files-read-text",
     "files-rename",
     // 〔W5-FILES · 第五波〕读族第九条：算目录大小（`设计/60 §6.2`）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
@@ -1902,6 +1904,19 @@ pub const REGISTRY: &[CommandSpec] = &[
             "unreadable",
         ],
         fields: &["bytes", "max_bytes", "path", "sha256", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::files::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FILES2 · V152〕读族第十条：按字节寻址分块读回（非 UTF-8 名的下载）。同族同形、同在阻塞档。
+    CommandSpec {
+        name: "files-read-chunk",
+        doc_anchor: Some("#### `files-read-chunk`"),
+        codes: &["bad_args", "bad_path", "not_text", "unreadable"],
+        fields: &["content", "eof", "len", "offset", "path", "size"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::files::answer_wire(&r.cmd, &r.args)

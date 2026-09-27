@@ -18109,11 +18109,6 @@
       "zh": "名字里有认不出的字节，已改成「{name}」",
       "args": ["name"]
     },
-    "rsFilewinLossyPull.stage.failed": {
-      "kind": "error",
-      "zh": "那台机器上没能先复制一份到后端自己的目录：{why}",
-      "args": ["why"]
-    },
     "beTransfer.home.mismatch": {
       "kind": "error",
       "zh": "SFTP 起始目录不是后端的 home。起始目录是 {sftp}，home 是 {home}；暂存件会落到后端看不见的地方，一个字节没传",
@@ -18238,6 +18233,16 @@
       "kind": "error",
       "zh": "包里的链接「{name}」目标太长（超过 {cap} 字节），整个包没解",
       "args": ["name", "cap"]
+    },
+    "rsFilewinLossyPull.local.badDest": {
+      "kind": "error",
+      "zh": "本机那一头的路径没有目录或没有名字，没下",
+      "args": []
+    },
+    "rsFilewinLossyPull.reply.badChunk": {
+      "kind": "error",
+      "zh": "那台后端回来的一段读不懂，没下完",
+      "args": []
     }
   }
 }

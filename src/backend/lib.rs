@@ -810,6 +810,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔F7a · 第三波 09-24〕同族第七、第八条（`设计/60 §13`）。登记理由与上面那几条逐字相同。
     "--files-home",
     "--files-read-text",
+    // 〔FILES2 · V152〕读族第十条（按字节寻址分块读回）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "--files-read-chunk",
     // 〔W5-FILES · 第五波〕读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
     "--files-size",
     // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，

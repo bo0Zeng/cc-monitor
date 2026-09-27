@@ -832,7 +832,7 @@ fn a_cross_device_commit_falls_back_to_copy_and_delete() {
             &home,
             KEY,
             &root,
-            "a.bin",
+            Path::new("a.bin"),
             overwrite,
             &staged_sha(&home, KEY),
             true,
@@ -858,7 +858,7 @@ fn a_cross_device_commit_falls_back_to_copy_and_delete() {
         &home,
         KEY,
         &root,
-        "c.bin",
+        Path::new("c.bin"),
         false,
         &staged_sha(&home, KEY),
         false,
@@ -900,5 +900,26 @@ fn the_commit_face_assembles_chunks_when_asked() {
         .expect_err("摘要对不上却上位了");
     assert_eq!(e.0, "stale", "{e:?}");
     assert!(std::fs::symlink_metadata(h.join("dst/b.txt")).is_err());
+    std::fs::remove_dir_all(&h).ok();
+}
+
+/// 〔FILES2 · V152〕`rel` 收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）⇒ 落出来的名字逐字节就是它。
+#[test]
+#[cfg(unix)]
+fn the_commit_face_lands_under_a_byte_named_rel() {
+    use std::os::unix::ffi::OsStrExt as _;
+    let h = std::env::temp_dir().join(format!("ccm-fc-b16-{}", std::process::id()));
+    std::fs::remove_dir_all(&h).ok();
+    std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
+    std::fs::create_dir_all(h.join("dst")).expect("铺目标");
+    let key = "d".repeat(32);
+    stage_chunk(&h, &key, 0, b"raw").expect("块 0");
+    let args = serde_json::json!({
+        "key": key, "root": h.join("dst").to_string_lossy(), "rel": {"b16": "66fe"}, "overwrite": false,
+        "expect": {"sha256": crate::files::content_sha256(b"raw")}, "chunks": 1, "bytes": 3,
+    });
+    answer_commit_at(&h, &args).expect("字节名的提交被拒");
+    let want = h.join("dst").join(std::ffi::OsStr::from_bytes(b"f\xfe"));
+    assert_eq!(std::fs::read(&want).expect("字节名的那份不在"), b"raw");
     std::fs::remove_dir_all(&h).ok();
 }

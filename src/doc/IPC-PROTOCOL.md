@@ -1201,6 +1201,25 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 
 **错误码**：`no_home`。
 
+#### `files-read-chunk`：按字节寻址分块读回（FILES2 · 第四波，2026-09-27 · 用户 V152）
+
+```
+→ {"id":"c1","cmd":"files-read-chunk","args":{"path":{"b16":"2f7372762f66fe"},"offset":0,"len":262144}}
+← {"id":"c1","ok":true,"data":{"path":{"b16":"2f7372762f66fe"},"offset":0,"size":5,"eof":true,"content":{"b16":"68656c6c6f"}}}
+```
+
+| 字段 | 方向 | 说明 |
+|---|---|---|
+| `path` | → ← | 一份普通文件（字符串或 `{"b16": …}`；非 UTF-8 名的下载就走这一形，SFTP 库的路径是 `String` 寻址不到） |
+| `offset` / `len` | → | 从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小 |
+| `size` | ← | 此刻整份多大（调用方据此报进度、判读完） |
+| `eof` | ← | 这一块读到了末尾（`offset` 越过末尾 ⇒ 空块、`eof: true`） |
+| `content` | ← | 这一块的原始字节，恒为 `{"b16": …}` |
+
+- 纯读（读族第十条），与 `files-stage-chunk`（分块写进暂存区）对称。**下载对远端只读**（`设计/60 §4.4`）：非 UTF-8 名的下载逐块读回，本机那一头由本机后端 `files-stage-chunk` ＋ `files-commit-upload`（带 `chunks`，`rel` 收 b16）落盘。
+- 不是普通文件 ⇒ `not_text`；读不到 / 打不开 ⇒ `unreadable`。
+- **CLI 面同样有它**（`--files-read-chunk`，载荷走 stdin）。
+
 #### `files-size`：算一个目录有多大（W5-FILES · 第五波，2026-09-25，**只读**）
 
 同族第九条（`设计/60 §6.2`「算目录大小」）。在那台机器上走一遍、只回几个数 —— 字节不过网。
@@ -1404,7 +1423,7 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `key` | → | 暂存件的键：**恰好 32 位小写十六进制**。暂存件路径由后端自己拼（`$HOME/.cc-monitor/staging/<key>.part`），调用方指不到暂存区之外任何文件 |
-| `root` / `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；〔FN1〕「会话文件那一问」删了） |
+| `root` / `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；〔FN1〕「会话文件那一问」删了）；〔FILES2 · V152〕`rel` 也收 `{"b16": …}` |
 | `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值。`false` ⇒ 先 `O_EXCL` 占位（目标已在 ⇒ `io_failed`），再改名上位；`true` ⇒ 直接改名上位（同盘原子） |
 | `expect` | → | 〔FW1 · 第四波 4D〕🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来）。改名上位**之前**对暂存件整份算一遍：不等 ⇒ `stale`、目标一个字节不动、**坏暂存件删掉**（调用方从 0 重传）；缺了 / 形状不对 ⇒ `bad_args`。为什么：续传只对尾块，看不见「前缀 ＋ 洞 ＋ 尾巴」（失败后晚到的写在中间留的洞，`设计/60 §7` 第 8 条） |
 | `chunks` / `bytes` | → | 〔FILES2 · Q5〕可缺席（缺席 ＝ 此前那一形）。给了 ⇒ **块形**：先把 `files-stage-chunk` 送来的 `<key>.0.chunk` … `<key>.<chunks-1>.chunk` 依次拼成 `<key>.part`（`O_EXCL`、流式），总长必须恰好 `bytes`、不多一块，否则 `io_failed`、目标一个字节不动；**不论成败**这一键的块都删掉。拼好之后走下面同一条提交（`expect` 照核）。SFTP 起始目录不是这台后端的 home（chroot / `internal-sftp -d`）时窗口走这一形 |

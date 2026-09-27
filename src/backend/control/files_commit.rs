@@ -170,11 +170,19 @@ pub fn commit_upload(
     home: &Path,
     key: &str,
     root: &Path,
-    rel: &str,
+    rel: impl AsRef<Path>,
     overwrite: bool,
     expect_sha256: &str,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    commit_upload_in(home, key, root, rel, overwrite, expect_sha256, false)
+    commit_upload_in(
+        home,
+        key,
+        root,
+        rel.as_ref(),
+        overwrite,
+        expect_sha256,
+        false,
+    )
 }
 
 /// [`commit_upload`] 的本体。`cross_device` ＝ 判据注入「改名上位回 `EXDEV`」（跨盘在测试里造不出来）；生产恒 `false`。
@@ -182,7 +190,7 @@ pub fn commit_upload_in(
     home: &Path,
     key: &str,
     root: &Path,
-    rel: &str,
+    rel: &Path,
     overwrite: bool,
     expect_sha256: &str,
     cross_device: bool,
@@ -266,17 +274,20 @@ fn land_staged(
     home: &Path,
     key: &str,
     root: &Path,
-    rel: &str,
+    rel: &Path,
     dest: &Path,
     cross_device: bool,
 ) -> Result<(), String> {
     let staging = home.join(STAGING_DIR);
     let staged = resolve_in_root(&staging, format!("{key}{PART_SUFFIX}"))?;
     let side_rel = {
-        let p = Path::new(rel);
-        let name = p
-            .file_name()
-            .ok_or_else(|| copy_text("beFilesCommit.exdev.noName", &[("rel", rel)]))?;
+        let p = rel;
+        let name = p.file_name().ok_or_else(|| {
+            copy_text(
+                "beFilesCommit.exdev.noName",
+                &[("rel", &rel.display().to_string())],
+            )
+        })?;
         let mut side = std::ffi::OsString::from(".");
         side.push(name);
         side.push(format!(".ccm-commit-{key}.part"));
@@ -579,7 +590,8 @@ fn answer_commit(args: &serde_json::Value) -> Answer {
 /// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
 fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
-    let rel = str_arg(args, "rel")?.to_string();
+    // 〔FILES2 · V152〕`rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
+    let rel = path_arg(args, "rel")?;
     let key = str_arg(args, "key")?.to_string();
     // 🔴 覆盖策略**必须显式给**：默认成哪一边都是替用户做了一个他没做的决定。
     let overwrite = args

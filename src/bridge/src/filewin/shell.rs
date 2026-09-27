@@ -430,6 +430,8 @@ pub struct FileWindow {
     pick_notice: Option<String>,
     /// 「复制为」那个框。`None` = 没在问名字。**UI 线程自己的**（理由见 [`CopyPrompt`]）。
     copy_prompt: Option<CopyPrompt>,
+    /// 〔FILES2 · V152〕「复制到另一台」下拉里的机器（开窗种子带来；新标签页照抄）。
+    pub machines: Vec<String>,
     /// 〔FILES2 · Q2〕「复制到另一台」那一问（UI 线程自己的）。
     cross_prompt: Option<super::cross_copy::CrossPrompt>,
     /// 〔FILES2 · Q2〕复制到另一台那一趟的看板（盖不盖那一问 · 一条进度 · 结局）。
@@ -603,6 +605,7 @@ impl FileWindow {
             pick_board: super::picker::PickBoard::default(),
             pick_notice: None,
             copy_prompt: None,
+            machines: Vec::new(),
             cross_prompt: None,
             cross_board: super::cross_copy::CrossBoard::default(),
             seen_copy_rounds: 0,
@@ -1406,6 +1409,15 @@ impl FileWindow {
                 &[("name", &p.name)],
             ));
             ui.label(copy_text("rsFilewinCrossCopy.prompt.machine", &[]));
+            // 〔FILES2 · V152〕下拉选（本机 ＋ 已配远端，除开这一台），下面那一格照旧可以手填。
+            let here = self.source.origin().0;
+            egui::ComboBox::from_id_salt("filewin-cross-machine")
+                .selected_text(p.machine.clone())
+                .show_ui(ui, |ui| {
+                    for m in self.machines.iter().filter(|m| **m != here) {
+                        ui.selectable_value(&mut p.machine, m.clone(), m.as_str());
+                    }
+                });
             ui.text_edit_singleline(&mut p.machine);
             ui.label(copy_text("rsFilewinCrossCopy.prompt.dir", &[]));
             ui.text_edit_singleline(&mut p.dir);
@@ -1791,7 +1803,7 @@ impl FileWindow {
         match ask {
             // 第二问答了「盖」⇒ 直接做（存在性已经问过，不再判一遍）。
             Ask::Overwrite { src_path, dest, .. } => {
-                if !self.start_pull(&src_path, &dest, ctx) {
+                if !self.start_pull(&src_path, &dest, true, ctx) {
                     return false;
                 }
                 self.pull_ask = None;
@@ -1813,7 +1825,7 @@ impl FileWindow {
                         true
                     }
                     DestVerdict::Go { src_path, dest } => {
-                        if !self.start_pull(&src_path, &dest, ctx) {
+                        if !self.start_pull(&src_path, &dest, false, ctx) {
                             return false;
                         }
                         self.pull_ask = None;
@@ -1829,7 +1841,14 @@ impl FileWindow {
     /// 🔴 `transfer_id` 经 [`super::transfer::launch_unless_cancelled`] 造
     /// （那是池子取消登记表的唯一造键落点）⇒ 这一趟从此**取消得掉**，
     /// 与上传/复制两条路共用同一张在飞表。
-    pub fn start_pull(&mut self, src_path: &str, dest: &str, ctx: Option<egui::Context>) -> bool {
+    /// 〔FILES2 · V152〕`overwrite` ＝ 人在「盖掉它？」那一问里答了盖（有损名那条路经本机后端提交，覆盖要显式给）。
+    pub fn start_pull(
+        &mut self,
+        src_path: &str,
+        dest: &str,
+        overwrite: bool,
+        ctx: Option<egui::Context>,
+    ) -> bool {
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.pull.noRuntime", &[]).into());
@@ -1867,8 +1886,10 @@ impl FileWindow {
                 async move {
                     match raw_src {
                         Some(bytes) => {
-                            super::lossy_pull::pull_by_bytes(&line, &origin, &bytes, local, &b)
-                                .await
+                            super::lossy_pull::pull_by_bytes(
+                                &line, &origin, &bytes, local, overwrite, &b,
+                            )
+                            .await
                         }
                         None => super::download::pull_one(&line, &origin, &src, &to, &b).await,
                     }
@@ -3506,7 +3527,7 @@ pub fn open_detached(
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
-    open_detached_seeded(source, cwd, rt, None, Vec::new(), None, None)
+    open_detached_seeded(source, cwd, rt, None, Vec::new(), None, None, Vec::new())
 }
 
 /// 同 [`open_detached`]，但**带着已经列好的那一屏**开窗。
@@ -3534,6 +3555,8 @@ pub fn open_detached_seeded(
     reveal: Option<String>,
     // 〔FW34〕书签文件（monitor 算好交过来；`None` ＝ 数据目录解不出来，书签栏上出声）。
     bookmarks: Option<std::path::PathBuf>,
+    // 〔FILES2 · V152〕「复制到另一台」下拉里的机器（开窗种子带来的）。
+    machines: Vec<String>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -3561,6 +3584,7 @@ pub fn open_detached_seeded(
                 }
                 // 〔FW34〕书签：按这台机器的 origin 读一次。
                 w.shelf = Some(super::bookmarks::Shelf::open(bookmarks, &w.source.origin()));
+                w.machines = machines;
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
                 w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
                 // 〔FW34〕最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
