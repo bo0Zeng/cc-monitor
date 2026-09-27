@@ -1403,6 +1403,19 @@ async fn fetch_snapshot(
     // 〔C2 · U3 第 3 件〕断线重连后从续点接着拉（`snapshot_resume` 头注），续点对不上才整份。
     let cursor = crate::snapshot_resume::cursor_of(&origin, sid);
     let mut how = crate::snapshot_resume::plan_read(cursor.as_ref(), path, &plan);
+    // 〔RENDER2 · `设计/10 §3.2`〕断线期间文件变短了（续点比这一次的图长）⇒ 这一次整份读出来的是另一代的行号：
+    //   先交那个会话一格「变短了、已从头重读」（前端据它整份重来、留存丢旧的一代），再整份读。
+    //   续点不必另丢：这一次整份读完立的新锚盖掉它。
+    if crate::snapshot_resume::shrank(cursor.as_ref(), path, &plan) {
+        replay
+            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                session_id: sid.to_string(),
+                origin: host_label.to_string(),
+                path: path.to_string(),
+                change: FileChange::Truncated.as_wire().to_string(),
+            })
+            .await;
+    }
     // 〔W5-VIS · `设计/15 §3.4 ②`〕续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
     //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、整份重读、交那个会话一格「被改过」。
     if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
@@ -2857,6 +2870,11 @@ impl LineIntake {
     /// 重读出来的行前面 —— 后端发它就在重读的行之前），再交那个会话的内容流一格。
     async fn notice(&mut self, sid: &str, path: &str, change: FileChange) {
         self.flush().await;
+        // 〔RENDER2 · `设计/10 §3.2`〕从头重读 ⇒ 后端的行号从 0 重数：在飞 / 排队的快照（旧的一代）撤掉、续点作废。
+        //   （与「会话走了」同一件事：`removed`）。留存里旧的一代由 `on_session_notice` 同一拍丢。
+        if change != FileChange::Gone {
+            self.removed(sid);
+        }
         self.replay
             .on_session_notice(crate::bridge::SessionFileNoticePayload {
                 session_id: sid.to_string(),

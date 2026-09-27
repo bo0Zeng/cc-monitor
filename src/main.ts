@@ -713,7 +713,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 〔DL1〕那台的长连接又通了 / 那台账号清单变了 ⇒ 强制刷账号清单 ＋ chip（`accounts-changed` 流）。
     onAccountsChanged,
     // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
-    onSessionFileNotice: recordFile.onSessionFileNotice,
+    onSessionFileNotice: (sessionId, change) => {
+      tabs.onRecordFileReread(sessionId, change); // 〔RENDER2〕从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
+      recordFile.onSessionFileNotice(sessionId, change);
+    },
     // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
     onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。

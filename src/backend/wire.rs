@@ -547,14 +547,15 @@ pub enum Frame {
     /// 〔FW1 · 第四波 4D · 主会话裁 D-d〕**活会话的记录文件不见了**（被删 / 被改名走了）。
     ///
     /// V119 之后文件管理器改得动活会话的 jsonl；观察侧当它是「看的、不是管的」：不崩、不误判结束（判活不看 jsonl），
-    /// 出声一次 —— 每次「在 → 不在」只发一帧；同名文件再出现（agent 按路径追加重建）从 0 读、行号接着往上，之后再不见才再发。
+    /// 出声一次 —— 每次「在 → 不在」只发一帧；同名文件再出现（agent 按路径追加重建）从 0 读，〔RENDER2〕当改写办：先发 [`Frame::SessionFileReread`]、行号从 0 重数；之后再不见才再发。
     /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     SessionFileGone { session_id: String, path: String },
 
     /// 〔FW1 · 第四波 4D · 主会话裁 D-d〕**活会话的记录文件被改过了，已从头重读**（截短 · 或游标之前被原地改写）。
     ///
-    /// 紧跟在这一趟重读出来的 `line` 帧**之前**（同一个 sink、同一条线程）。重读的行号照旧往上（`INVARIANTS §25`），
-    /// 前端按 uuid 去重（`设计/10 §3.2` `processedUuids`）⇒ 已画的不重复、新的照接；这一帧只负责出声。
+    /// 紧跟在这一趟重读出来的 `line` 帧**之前**（同一个 sink、同一条线程）。〔RENDER2 · `设计/10 §3.2`〕重读的行号从 0 重数
+    /// （seq ＝ 当前文件里的行号，[`SeqCounter::restart`]）⇒ 下游据这一帧把这个会话旧的一代整份作废：monitor 丢留存与续点，
+    /// 前端 tab 整份重来。
     SessionFileReread {
         session_id: String,
         path: String,
@@ -903,9 +904,9 @@ pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
 /// Per-file monotonic sequence counter.
 ///
 /// The counter is keyed by file path, returns the current value then increments
-/// by 1 (so the first line of a file gets seq 0, then 1, 2, ...), is monotonic
-/// across calls, and is never reset — there is no truncation handling here, the
-/// counter only ever climbs for a given path within the process.
+/// by 1 (so the first line of a file gets seq 0, then 1, 2, ...), and climbs
+/// until the reader restarts it (〔RENDER2〕[`SeqCounter::restart`]: the file was
+/// re-read from byte 0 ⇒ seq is again the line number in the file as it is now).
 ///
 /// 〔TL1 · 4C〕从前这里写「逐字移植自 monitor 那份 jsonl 读者的 seq 语义」—— 那份读者 CF1 删了，
 /// 今天全仓 seq 只有这一个生成器（本机会话也走本机后端的 `line` 帧，`设计/00 §2.5 ②`）。
@@ -924,6 +925,12 @@ impl SeqCounter {
     /// Batch8：当前计数器值（= 下一个将分配的 seq = 已计完整行数），不推进。
     pub fn peek(&self, path: &str) -> u64 {
         self.next.get(path).copied().unwrap_or(0)
+    }
+
+    /// 〔RENDER2 · `设计/10 §3.2`〕这份文件从 0 重读（截短 / 改写 / 删了又长回来）⇒ 行号从 0 重数：seq ＝ 当前文件里的行号。
+    /// 调用方先发 `session_file_reread` 再发重读出来的行（下游据它把这个会话的旧号整份作废）。
+    pub fn restart(&mut self, path: &str) {
+        self.next.remove(path);
     }
 
     /// Return the current seq for `path`, then bump it by one.

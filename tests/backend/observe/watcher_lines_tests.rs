@@ -73,3 +73,49 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     assert_eq!(lines(&mut rx), vec![(1, r#"{"n":1}"#.to_string())]);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 这一趟的帧摊平：重读出声给 `reread`，行帧给 `seq`。
+fn frames(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
+    let mut out = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        match f {
+            Frame::Line { seq, .. } => out.push(format!("{seq}")),
+            Frame::SessionFileReread { .. } => out.push("reread".to_string()),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// `设计/10 §7` 第 12 条逐字「要后端给『seq 跨截断稳定』的保证 …… seq ＝ 当前文件里的行号，截断即换代，
+/// 先发一帧『这份文件重写了』再从 0 重投」。截短 / 原地改写 / 删了又长回来三种从 0 重读 ⇒ 出声在前、行号从 0 数。
+#[test]
+fn a_reread_restarts_the_line_numbers_after_saying_so() {
+    let (dir, path, mut state, mut sink, mut rx) = rig("seq-gen");
+    std::fs::write(&path, b"{\"n\":0,\"uuid\":\"aaaaaaaa-0000\"}\n{\"n\":1,\"uuid\":\"aaaaaaaa-0001\"}\n{\"n\":2,\"uuid\":\"aaaaaaaa-0002\"}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(frames(&mut rx), vec!["0", "1", "2"]);
+    // 截短
+    std::fs::write(&path, b"{\"n\":9}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(frames(&mut rx), vec!["reread", "0"], "截短");
+    // 原地改写且变长（末尾指纹对不上）
+    std::fs::write(
+        &path,
+        b"{\"n\":9,\"edited-and-longer\":true,\"uuid\":\"bbbbbbbb-0000\"}\n{\"n\":10}\n",
+    )
+    .unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(frames(&mut rx), vec!["reread", "0", "1"], "改写");
+    // 删了又长回来
+    std::fs::remove_file(&path).unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    std::fs::write(&path, b"{\"n\":20}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(frames(&mut rx), vec!["reread", "0"], "删了又长回来");
+    // 阴性：纯追加 ⇒ 不出声、号接着走。
+    std::fs::write(&path, b"{\"n\":20}\n{\"n\":21}\n").unwrap();
+    process_jsonl(&path, &mut state, &mut sink);
+    assert_eq!(frames(&mut rx), vec!["1"], "纯追加");
+    std::fs::remove_dir_all(&dir).ok();
+}

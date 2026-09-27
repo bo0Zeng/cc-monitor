@@ -878,3 +878,32 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
         other => panic!("{other:?}"),
     }
 }
+
+/// 〔RENDER2 · `设计/10 §3.2` / `§7` 第 12 条〕「已从头重读」（截短 / 改写）⇒ 后端行号从 0 重数 ⇒ 留存里这个会话旧的一代
+/// 同一拍丢（别的会话不动）；「不见了」不丢（没重读、号没换代）。
+#[tokio::test]
+async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
+    for (change, s_left) in [
+        ("truncated", vec![]),
+        ("rewritten", vec![]),
+        ("gone", vec![0u64, 1, 2]),
+    ] {
+        let replay = EventReplay::new();
+        push_and_trim(&mut replay.inner.lock(), &lines("s", 0..3));
+        push_and_trim(&mut replay.inner.lock(), &lines("t", 0..2));
+        replay
+            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                session_id: "s".into(),
+                origin: crate::origin::LOCAL.into(),
+                path: "/p/s.jsonl".into(),
+                change: change.into(),
+            })
+            .await;
+        assert_eq!(seqs_of(&replay, "s"), s_left, "{change}");
+        assert_eq!(
+            seqs_of(&replay, "t"),
+            vec![0, 1],
+            "{change}：别的会话被连带丢了"
+        );
+    }
+}

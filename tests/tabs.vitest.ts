@@ -6080,3 +6080,31 @@ describe("〔GRP1 · V140〕组员关系是 tab 自己的属性", () => {
     expect(membersOf(tm, "H")).toEqual(["p", "c"]);
   });
 });
+
+// ===== 〔RENDER2 · `设计/10 §3.2` · `§7` 第 12 条〕记录文件从头重读 ⇒ 后端行号从 0 重数 ⇒ tab 整份重来 =====
+// 要求住址：`设计/10 §7` 第 12 条逐字「seq ＝ 当前文件里的行号，截断即换代，先发一帧『这份文件重写了』再从 0 重投」。
+// 入口只剩按 seq 那一道去重 ⇒ 不重来的话，新的一代的第 0 行会被旧的一代的第 0 行挡掉（渲染内核在本文件里是替身，数它收到了谁）。
+describe("〔RENDER2〕从头重读 ⇒ tab 整份重来", () => {
+  const mk = (seq: number, uuid: string) =>
+    ({ session_id: "rr-sid", cwd: "/p", path: "/p/rr-sid.jsonl", seq, message: { type: "assistant", uuid } }) as never;
+  const rendered = async (): Promise<string[]> => {
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    return (renderContentRecord as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => (c[0] as { message: { uuid: string } }).message.uuid,
+    );
+  };
+
+  it("截短 / 改写 ⇒ 新的一代的第 0 行建卡、换了新的 Tab 对象；「不见了」⇒ 不重来", async () => {
+    for (const change of ["truncated", "rewritten", "gone"]) {
+      vi.clearAllMocks();
+      const tm = makeTM();
+      for (const [s, u] of [[0, "a"], [1, "b"]] as const) tm.onLine(mk(s, u));
+      const old = home(tm).store.tabs.get("rr-sid")!;
+      tm.onRecordFileReread("rr-sid", change);
+      tm.onLine(mk(0, "z"));
+      const again = change !== "gone";
+      expect(await rendered(), change).toEqual(again ? ["a", "b", "z"] : ["a", "b"]);
+      expect(home(tm).store.tabs.get("rr-sid") !== old, `${change}：在途那几趟认的是「表里还是不是它」`).toBe(again);
+    }
+  });
+});

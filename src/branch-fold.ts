@@ -49,9 +49,8 @@ export class BranchFolder {
    *  被消费的队列消息（永久裸 user 叶）豁免折叠用。 */
   private queuedContents = new Set<string>();
   /**
-   * issue #25：已见 uuid 集，recordAdded 拒重。投递层是 at-least-once（watcher
-   * 截断重读会换 seq 重投整个文件，seenSeqs 防不住，违反此约束见
-   * src/doc/INVARIANTS.md § 25），重复记录会毒化 computeMainBranch 的 Kahn 拓扑 →
+   * issue #25：已见 uuid 集，recordAdded 拒重。投递层是 at-least-once（违反此约束见
+   * src/doc/INVARIANTS.md § 25；〔RENDER2〕截断重读已改成换代、tab 整份重来，这一道留作纵深防御），重复记录会毒化 computeMainBranch 的 Kahn 拓扑 →
    * 大段误折叠。computeMainBranch 入口也有去重（双层防御）；这里挡住还能避免
    * records 数组被重投无界增长。
    */
