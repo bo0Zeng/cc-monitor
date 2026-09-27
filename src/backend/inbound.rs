@@ -885,6 +885,16 @@ pub(crate) struct CommandSpec {
     pub(crate) run: Run,
 }
 
+/// 〔NET2〕撤不动的那几条：阻塞档（`Run::Blocking`）开跑之后打不断，`cancel` 命中回 `not_cancellable`。
+/// hello 的 `uncancellable` 就是它 —— 与 `dispatch` 按档位分流读的是同一张表。
+pub fn uncancellable() -> Vec<String> {
+    REGISTRY
+        .iter()
+        .filter(|s| matches!(s.run, Run::Blocking(_)))
+        .map(|s| s.name.to_string())
+        .collect()
+}
+
 /// **单一事实源。** `COMMANDS` 是它的镜子，`dispatch` 从它查。
 pub const REGISTRY: &[CommandSpec] = &[
     // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
