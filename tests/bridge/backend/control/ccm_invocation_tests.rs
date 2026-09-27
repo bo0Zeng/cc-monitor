@@ -674,7 +674,7 @@ fn the_capability_gate_is_interleaved_per_dimension_not_hoisted() {
 // ── 整条命令的形状 ──────────────────────────────────────────────────────
 
 /// 一条把五个维度里会吐 flag 的三个**同时**触发的命令 —— 顺序即契约，
-/// 而且它同时钉住 `--tmux=`/`--cwd`/`--launcher`/`--` 各自的位置。
+/// 而且它同时钉住 `--ccm-tmux=`/`--cwd`/`--launcher`/`--` 各自的位置。
 #[test]
 fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     let mut s = base_spec();
@@ -692,7 +692,7 @@ fn a_fully_loaded_invocation_emits_every_part_in_registry_order() {
     assert_eq!(
         render(&s).as_deref(),
         Ok(concat!(
-            "ccm --resume s1 --tmux=cc-x --ccm-sid=sid-1 ",
+            "ccm --resume s1 --ccm-tmux=cc-x --ccm-sid=sid-1 ",
             "--account z --model opus --cwd /w --launcher claude-dev -- -p"
         ))
     );
@@ -910,7 +910,7 @@ fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
     }
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J6〕`--tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
+/// 〔DUP2 · 主会话 09-26 裁 J6〕`--ccm-tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
 /// 写成 ccm 参数之前先过 gate-core 那两条（全仓唯一一份；界面那两个谓词按 `设计/90 §3` 判据 2 删了 —— 这条路此前零判定、
 /// 只靠界面那一道），**正反各一格**。
 #[test]
@@ -925,7 +925,7 @@ fn a_tmux_name_is_judged_before_it_becomes_a_ccm_argument() {
     };
     for good in ["proj-cc", "my session", "项目"] {
         let cmd = create(good).unwrap_or_else(|e| panic!("真实会话名被拒了：{good:?} ⇒ {e:?}"));
-        assert!(cmd.contains("--tmux="), "{cmd}");
+        assert!(cmd.contains("--ccm-tmux="), "{cmd}");
     }
     for bad in [
         "-x",

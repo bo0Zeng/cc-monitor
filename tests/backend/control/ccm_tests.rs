@@ -81,7 +81,7 @@ fn calling_myself_again_goes_back_through_the_same_way_in() {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     // 入口①：只有 argv0。
     assert_eq!(
-        self_invocation(&v(&["/x/ccm", "--tmux", "--cwd", "/p"])),
+        self_invocation(&v(&["/x/ccm", "--ccm-tmux", "--cwd", "/p"])),
         v(&["/x/ccm"])
     );
     // 入口②：argv0 ＋ 子命令词（这一格就是 BS1b 那个缺陷的反面）。
@@ -89,17 +89,17 @@ fn calling_myself_again_goes_back_through_the_same_way_in() {
         self_invocation(&v(&[
             "/x/cc-monitor-backend",
             "ccm",
-            "--tmux",
+            "--ccm-tmux",
             "--cwd",
             "/p"
         ])),
         v(&["/x/cc-monitor-backend", SUBCOMMAND_WORD])
     );
     // 回环：两个入口、同一串内层参数 ⇒ 都叫得回 ccm 模式、拿回的参数逐字相同。
-    let inner = v(&["--cwd", "/p", "--agent", "claude", "--", "--tail-only"]);
+    let inner = v(&["--cwd", "/p", "--ccm-agent", "claude", "--", "--tail-only"]);
     for outer in [
-        v(&["/x/ccm", "--tmux=n"]),
-        v(&["/x/cc-monitor-backend", "ccm", "--tmux=n"]),
+        v(&["/x/ccm", "--ccm-tmux=n"]),
+        v(&["/x/cc-monitor-backend", "ccm", "--ccm-tmux=n"]),
     ] {
         let mut again = self_invocation(&outer);
         again.extend(inner.iter().cloned());
@@ -244,7 +244,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
         ..Default::default()
     };
     let payload_of = |env: &Env| -> String {
-        let args: Vec<String> = ["--tmux=n1", "--cwd", "/p"]
+        let args: Vec<String> = ["--ccm-tmux=n1", "--cwd", "/p"]
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -493,7 +493,7 @@ fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() 
 #[test]
 fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_them() {
     // ── 🔴 P19 买的就是这一格：codex + 不在 tmux（Windows 上 `$TMUX` 恒空）────
-    let codex_bare = direct_of(&["--agent", "codex", "--cwd", "/p"], None);
+    let codex_bare = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);
     // 反空真自检：`None` 必须是**因为守卫为假**得来的，不许是因为配方那一格自己没了。
     assert!(
         codex_bare.bus_id_recipe,
@@ -508,7 +508,7 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
 
     // ── 在 tmux 里：配方真有事可做 ⇒ 照旧经 shell，且**说得出为什么** ─────────
     let codex_in_tmux = direct_of(
-        &["--agent", "codex", "--cwd", "/p"],
+        &["--ccm-agent", "codex", "--cwd", "/p"],
         Some("/faux/socket,1,0"),
     );
     assert!(codex_in_tmux.inside_tmux, "夹具没把 `$TMUX` 置上，本格白测");
@@ -520,7 +520,7 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
 
     // ── claude 两态都不要 shell（它压根没有那段配方）──────────────────────
     for tmux in [None, Some("/faux/socket,1,0")] {
-        let d = direct_of(&["--agent", "claude", "--cwd", "/p"], tmux);
+        let d = direct_of(&["--ccm-agent", "claude", "--cwd", "/p"], tmux);
         assert!(!d.bus_id_recipe, "claude 不该有 cc-bus 配方");
         assert_eq!(
             needs_shell(&d),
@@ -530,7 +530,7 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
     }
 
     // ── 另一件**是真的要 shell**，本轮没假装它不要（V138 删了 `resolve` 那一件）──
-    let mut with_env = direct_of(&["--agent", "codex", "--cwd", "/p"], None);
+    let mut with_env = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);
     with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
     assert_eq!(
         needs_shell(&with_env),
@@ -663,8 +663,8 @@ fn the_alias_preview_is_the_same_plan_as_ccm_print() {
     }
     let home = std::env::var("HOME").unwrap_or_default();
     for args in [
-        vec!["--cwd", "/p", "--agent", "claude"],
-        vec!["--tmux=w5alias-preview-probe", "--cwd", "/p"],
+        vec!["--cwd", "/p", "--ccm-agent", "claude"],
+        vec!["--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"],
         vec!["--base", "--model", "m", "--cwd", "/q"],
     ] {
         let got = answer_print(&serde_json::json!({ "args": args }))
@@ -733,10 +733,10 @@ fn the_alias_preview_speaks_for_a_fresh_terminal_at_home() {
     };
     let home = std::env::var("HOME").unwrap_or_default();
     assert!(
-        line(&["--agent", "claude"]).contains(&plan::qarg(&home)),
+        line(&["--ccm-agent", "claude"]).contains(&plan::qarg(&home)),
         "不给 --cwd 却没落在家目录"
     );
-    let boxed = line(&["--tmux=w5alias-preview-probe", "--cwd", "/p"]);
+    let boxed = line(&["--ccm-tmux=w5alias-preview-probe", "--cwd", "/p"]);
     assert!(
         boxed.contains("'ccm' '--cwd'"),
         "容器路内层没有叫回 `ccm`：{boxed}"

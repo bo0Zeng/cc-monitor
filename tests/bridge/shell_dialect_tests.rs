@@ -10,13 +10,19 @@ fn sv(xs: &[&str]) -> Vec<String> {
     xs.iter().map(|s| s.to_string()).collect()
 }
 
-/// 同一份清单（带空格、单引号、弯引号、中文、`--tmux=`、`--` 透传），两个方言各钉逐字一份。
+/// 同一份清单（带空格、单引号、弯引号、中文、`--ccm-tmux=`、`--` 透传），两个方言各钉逐字一份。
 fn sample() -> Vec<(&'static str, Vec<String>)> {
     vec![
         ("alphacc", sv(&["--account", "z"])),
         (
             "convz",
-            sv(&["--tmux=w.1", "--account", "z", "--cwd", "/home/u/文档/c c"]),
+            sv(&[
+                "--ccm-tmux=w.1",
+                "--account",
+                "z",
+                "--cwd",
+                "/home/u/文档/c c",
+            ]),
         ),
         ("mo", sv(&["--model", "it's", "--", "--verbose"])),
         ("curly", sv(&["--model", "a\u{2019}b"])),
@@ -35,7 +41,8 @@ fn posix_golden() {
         got,
         vec![
             r#"alphacc() { ccm --account z "$@"; }"#.to_string(),
-            r#"convz() { ccm --tmux=w.1 --account z --cwd '/home/u/文档/c c' "$@"; }"#.to_string(),
+            r#"convz() { ccm --ccm-tmux=w.1 --account z --cwd '/home/u/文档/c c' "$@"; }"#
+                .to_string(),
             r#"mo() { ccm --model 'it'\''s' -- --verbose "$@"; }"#.to_string(),
             "curly() { ccm --model 'a\u{2019}b' \"$@\"; }".to_string(),
             r#"bare() { ccm "$@"; }"#.to_string(),
@@ -65,7 +72,7 @@ fn powershell_golden() {
         vec![
             body(" '--account' 'z'", "alphacc"),
             body(
-                " '--tmux=w.1' '--account' 'z' '--cwd' '/home/u/文档/c c'",
+                " '--ccm-tmux=w.1' '--account' 'z' '--cwd' '/home/u/文档/c c'",
                 "convz"
             ),
             body(" '--model' 'it''s' '--' '--verbose'", "mo"),

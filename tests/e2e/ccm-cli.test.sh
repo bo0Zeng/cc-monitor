@@ -53,12 +53,14 @@ echo "===== 契约：壳层选项 × 交给 claude 的参数（V138）====="
 # 〔AL3 · V138〕ccm 是 claude 的壳：位置动作取消、`--resume` / `--model` / 未知旗标原样交 claude、诊断口改 `--ccm-*`；
 #   从前 resume 那条 `set -f; exec <后端答案>` 的配方随进程内 `resolve` 一起删了（留着会与透传的 `--resume` 叠两份）。
 
-# 〔主会话 09-26 · `INVARIANTS §47` 形式判定「绝对路径 · 不含 `..` · 不空」〕这条原来用 `--cwd .` 钉工作目录；
-#   §47 ② 落地后相对路径在 `plan.rs::free_text_gate` 就被拒（拒绝那一格由 `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` 盯），
-#   ⇒ 改用绝对路径钉 —— 这条测的是「零修饰」，`.` 只是占位，意图不变。
-ck "零修饰（--cwd /p）：最终 exec 与今天 ccm() 逐字节一致" \
-   "$UNSET; cd '/p' && exec claude" \
-   "$(ccm --cwd /p --ccm-print)"
+# 〔用户 09-26〕相对 `--cwd` 按当前目录补成绝对、按字面折掉 `.` / `..`，再过 §47 形式判定 ⇒ 零修饰回到 `--cwd .`，期望是绝对路径。
+HERE_P="$(pwd -P)"
+ck "零修饰（--cwd .）：补成绝对的当前目录" \
+   "$UNSET; cd '$HERE_P' && exec claude" \
+   "$(ccm --cwd . --ccm-print)"
+ck "相对 --cwd ../x：按当前目录补全、折掉 .." \
+   "$UNSET; cd '$(dirname "$HERE_P")/x' && exec claude" \
+   "$(ccm --cwd ../x --ccm-print)"
 ck "--resume <sid> 原样交给 claude（ccm 只看不吃）" \
    "$UNSET; cd '/p' && exec claude --resume abc-123" \
    "$(ccm --resume abc-123 --cwd /p --ccm-print)"
@@ -74,12 +76,12 @@ ck "--resume=<sid> 等号形式原样交出去" \
 # 打印的是**配方不是值**（`TMUX` 判断留在串里、执行时才求值），所以这条串对宿主 `TMUX`
 # 仍然逐字节稳定，不需要给这个 helper 加 `env -u TMUX`（那就成了为实现让路改判据）。
 # 〔SH1 · §49〕配方里读会话名那一发带 `-u`（主线 SH1 改了配方、这一行没跟上，本路合并时补）。
-ck "--agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方" \
+ck "--ccm-agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方" \
    "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex" \
-   "$(ccm --agent codex --cwd /p --ccm-print)"
-ck "--agent codex：resume <sid> 原样交给 codex（它自己的子命令形；从前 ccm 报「不支持 resume」）" \
+   "$(ccm --ccm-agent codex --cwd /p --ccm-print)"
+ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形；从前 ccm 报「不支持 resume」）" \
    "yes" \
-   "$(ccm resume x --agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec codex resume x\$" && echo yes || echo no)"
+   "$(ccm resume x --ccm-agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec codex resume x\$" && echo yes || echo no)"
 ck "--launcher 覆盖默认启动器" \
    "$UNSET; cd '/p' && exec mycc --resume s1" \
    "$(ccm --resume s1 --cwd /p --launcher mycc --ccm-print)"
@@ -98,15 +100,21 @@ ck "-- 之后透传给 agent，含特殊字符正确 quote" \
 ck "不写 -- 也透传，按原顺序（V138：不再需要 --）" \
    "$UNSET; cd '/p' && exec claude -p 'a b' --verbose" \
    "$(ccm -p "a b" --cwd /p --verbose --ccm-print)"
-ck "claude 自己的 --tmux 写在 -- 后面交出去（壳层选项同名时的逃生口）" \
-   "$UNSET; cd '/p' && exec claude --tmux" \
-   "$(ccm --cwd /p --ccm-print -- --tmux)"
+ck "claude 自己的 --tmux / --agent 原样交出去（用户 09-26：ccm 的改名 --ccm-tmux / --ccm-agent）" \
+   "$UNSET; cd '/p' && exec claude --tmux --agent x" \
+   "$(ccm --cwd /p --tmux --agent x --ccm-print)"
+ck "首词 new 是 ccm 的（用户 09-26「new不要删掉」）" \
+   "$UNSET; cd '/p' && exec claude" \
+   "$(ccm new --cwd /p --ccm-print)"
+ck "--launcher 'ccr code' 拆成词（用户 09-26）" \
+   "$UNSET; cd '/p' && exec ccr code -p x" \
+   "$(ccm --launcher 'ccr code' --cwd /p -p x --ccm-print)"
 ck "--account 与 --base 互斥" \
    "ccm: --account 与 --base 互斥" \
    "$(ccm --cwd /p --account z --base --ccm-print)"
 ck "未知 agent 报错" \
    "ccm: 未知 agent: gpt（支持 claude|codex）" \
-   "$(ccm --agent gpt --cwd /p --ccm-print)"
+   "$(ccm --ccm-agent gpt --cwd /p --ccm-print)"
 ck "未知选项原样交给 claude（V138：从前报「未知选项」）" \
    "$UNSET; cd '/p' && exec claude --nope" \
    "$(ccm --nope --cwd /p --ccm-print)"
@@ -173,9 +181,9 @@ echo "===== 动作/目录语义（D 审计：auto 只对 new 生效）====="
 ck "resume 不做 auto 解析（cc-monitor 已 cd 到会话目录，再解析会跑到 git 仓父目录）" \
    "$UNSET; cd '$PWD' && exec claude --resume s1" \
    "$(ccm --resume s1 --ccm-print)"
-ck "--attach 后跟 flag → 报错（别把 --tmux 当会话名）" \
-   "ccm: --attach 需要一个值，但拿到的是 '--tmux'（像是漏了参数）" \
-   "$(ccm --attach --tmux --ccm-print)"
+ck "--attach 后跟 flag → 报错（别把 --ccm-tmux 当会话名）" \
+   "ccm: --attach 需要一个值，但拿到的是 '--ccm-tmux'（像是漏了参数）" \
+   "$(ccm --attach --ccm-tmux --ccm-print)"
 ck "--attach 缺值 → 报错" \
    "ccm: --attach 需要一个值" \
    "$(ccm --attach)"
@@ -218,19 +226,19 @@ ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export 
 unesc() { sed "s/'\\\\''/'/g"; }
 ck "R08：容器路径 + 继承账号 b → 内层载荷必须显式带上 b（不能靠继承穿 tmux 边界）" \
    "yes" \
-   "$(inherit_acct --tmux --cwd /p --ccm-print | unesc | grep -qF "$ACCTMP/b" && echo yes || echo no)"
+   "$(inherit_acct --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$ACCTMP/b" && echo yes || echo no)"
 ck "R08：容器路径 + 继承账号 b → 内层绝不能落到默认号 z" \
    "yes" \
-   "$(inherit_acct --tmux --cwd /p --ccm-print | unesc | grep -qF "$ACCTMP/z" && echo no || echo yes)"
+   "$(inherit_acct --ccm-tmux --cwd /p --ccm-print | unesc | grep -qF "$ACCTMP/z" && echo no || echo yes)"
 ck "R08：容器路径 + --base → 内层显式 --base（不受继承影响，issue #75 逃生口不被削弱）" \
    "yes" \
-   "$(inherit_acct --tmux --cwd /p --base --ccm-print | unesc | grep -qF -- '--base' && echo yes || echo no)"
+   "$(inherit_acct --ccm-tmux --cwd /p --base --ccm-print | unesc | grep -qF -- '--base' && echo yes || echo no)"
 ck "R08：容器路径 + 显式 --account z → 内层带 --account z（优先级不变）" \
    "yes" \
-   "$(inherit_acct --tmux --cwd /p --account z --ccm-print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
+   "$(inherit_acct --ccm-tmux --cwd /p --account z --ccm-print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
    "yes" \
-   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" --tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
+   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" --ccm-tmux --cwd /p --ccm-print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 rm -rf "$ACCTMP"
 
 echo
@@ -283,7 +291,7 @@ echo "===== 会话名派生：与前端 deriveTmuxName **真值对拍**（跨语
 # 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
 # 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条跨语言对拍**全部拿到空串、静默常红**。
 # 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「对拍不一致」，真因是抽取器失灵。
-name_of() { env -u TMUX CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" --tmux --cwd "$1" --ccm-print 2>&1 \
+name_of() { env -u TMUX CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
             | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 if command -v npx >/dev/null 2>&1; then
   for d in /home/pi/proj "/home/pi/a  b" /home/pi/proj/// / /home/pi/.hidden.dir; do
@@ -351,7 +359,7 @@ echo "===== 〔MC1〕CCM_SELF 删了：内层载荷只认「这个进程自己�
 # 〔MC1 · 2026-09-24〕`设计/01 §6.7b`：「`CCM_SELF` 这个环境变量随之删掉」。
 # 两向：① 设了一个假值，容器路的内层载荷里**一处都不许出现它**（有人把那一格读回来 ⇒ 当场红）；
 #       ② 正控：内层载荷真的以本进程的入口（`$CCM` 这条软链）开头 —— 否则 ① 可以靠「内层根本没打出来」零命中地绿。
-SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" --tmux --cwd /p --ccm-print 2>&1)"
+SELF_OUT="$(env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/bogus/old-ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" --ccm-tmux --cwd /p --ccm-print 2>&1)"
 ck "设了 CCM_SELF 也不被读（内层载荷里零命中）" "0" "$(printf '%s\n' "$SELF_OUT" | grep -c 'bogus/old-ccm')"
 ck "正控：内层载荷以本进程被叫的那个入口开头" "yes" "$(printf '%s\n' "$SELF_OUT" | unesc | grep -qF "'$CCM' '--cwd'" && echo yes || echo no)"
 

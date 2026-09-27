@@ -147,8 +147,8 @@ fi
 ok "拿到生产渲染器的串：$CMD"
 
 case "$CMD" in
-  *"--tmux=$TMUXNAME"*) ok "串里带 --tmux=$TMUXNAME（会话容器）" ;;
-  *) bad "串里没有 --tmux=$TMUXNAME —— 本件的正题没落地：$CMD" ;;
+  *"--ccm-tmux=$TMUXNAME"*) ok "串里带 --ccm-tmux=$TMUXNAME（会话容器；用户 09-26 改名）" ;;
+  *) bad "串里没有 --ccm-tmux=$TMUXNAME —— 本件的正题没落地：$CMD" ;;
 esac
 # C7d：串里必须显式指定假 launcher。缺了它 ccm 会去 PATH 上找 `claude` —— 那是真的。
 case "$CMD" in

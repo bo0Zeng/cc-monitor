@@ -26,15 +26,16 @@ use copy_core::copy_text;
 /// 每个 `--flag` 的字面量，**唯一住址**。
 ///
 /// 〔V138〕ccm 是 claude 的壳：它只认下面这些（壳层选项 ＋ `--ccm-*` 诊断口 ＋ `--`），其余每个词原样交给 agent。
+/// 用户 09-26：与 claude 同名的两个改名 `--ccm-tmux` / `--ccm-agent`（claude 2.1.283 自己有 `--tmux` / `--agent`）。
 pub(crate) mod flag {
-    pub(crate) const TMUX: &str = "--tmux";
+    pub(crate) const TMUX: &str = "--ccm-tmux";
     pub(crate) const TMUX_BASE: &str = "--tmux-base";
     pub(crate) const TMUX_SIZE: &str = "--tmux-size";
     pub(crate) const DETACH: &str = "--detach";
     pub(crate) const ACCOUNT: &str = "--account";
     pub(crate) const BASE: &str = "--base";
     pub(crate) const CWD: &str = "--cwd";
-    pub(crate) const AGENT: &str = "--agent";
+    pub(crate) const AGENT: &str = "--ccm-agent";
     pub(crate) const LAUNCHER: &str = "--launcher";
     pub(crate) const BUS_REGISTER: &str = "--bus-register";
     pub(crate) const BUS_NOTE: &str = "--bus-note";
@@ -166,9 +167,9 @@ pub(crate) enum Parsed {
 
 /// 🔴 **这套 argv 的唯一解析口。**
 ///
-/// 〔V138〕壳层选项与 `--ccm-*` 诊断口在哪个位置都认；其余每个词（旗标 · 值 · 位置参数）按原顺序进
+/// 〔V138〕首词 `new` 是 ccm 的位置动作（可省）；壳层选项与 `--ccm-*` 诊断口在哪个位置都认；其余每个词（旗标 · 值 · 位置参数）按原顺序进
 /// [`Opts::passthru`] 交给 agent，不报错、不翻译；`--` 之后一律透传。ccm 不知道 claude 的旗标带不带值 ——
-/// 值恰好与壳层选项同名、或要交 claude 自己的 `--tmux` / `--agent` 时，写在 `--` 后面。
+/// 值恰好与壳层选项同名时写在 `--` 后面。
 pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
     let mut o = Opts {
         attach_name: String::new(),
@@ -189,7 +190,9 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
         passthru: Vec::new(),
     };
 
-    let mut i = 0usize;
+    // 位置动作 `new` 只认第一个词（用户 09-26「new不要删掉」—— claude 没有 `new` 子命令）；
+    // 位置词 `attach` 不是 ccm 的：claude 有自己的 `attach <id>`，接回 tmux 会话用 `--attach <名>`。
+    let mut i = usize::from(args.first().map(String::as_str) == Some("new"));
     while i < args.len() {
         let a = args[i].as_str();
         // `--flag=值` 这一形先拆开，省得每个旗标写两条臂。

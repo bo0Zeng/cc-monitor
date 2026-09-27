@@ -216,10 +216,10 @@ export function formToAlias(f: AliasForm): Alias {
   if (f.account === BASE_CHOICE) args.push("--base");
   else if (f.account.trim()) args.push("--account", f.account.trim());
   const tn = f.tmuxName.trim();
-  if (f.tmux === "auto") args.push("--tmux");
-  else if (f.tmux === "named" && tn) args.push(`--tmux=${tn}`);
+  if (f.tmux === "auto") args.push("--ccm-tmux");
+  else if (f.tmux === "named" && tn) args.push(`--ccm-tmux=${tn}`);
   else if (f.tmux === "base" && tn) args.push("--tmux-base", tn);
-  if (f.agent) args.push("--agent", f.agent);
+  if (f.agent) args.push("--ccm-agent", f.agent);
   if (f.model.trim()) args.push("--model", f.model.trim());
   if (f.launcher.trim()) args.push("--launcher", f.launcher.trim());
   if (f.tmux !== "none") {
@@ -251,18 +251,18 @@ export function aliasToForm(a: Alias): AliasForm {
       for (let x = it.next(); !x.done; x = it.next()) extra.push(x.value);
       break;
     }
-    if (w.startsWith("--tmux=")) {
+    if (w.startsWith("--ccm-tmux=")) {
       f.tmux = "named";
-      f.tmuxName = w.slice("--tmux=".length);
+      f.tmuxName = w.slice("--ccm-tmux=".length);
       continue;
     }
     switch (w) {
       case "--cwd": f.cwd = next(); break;
       case "--account": f.account = next(); break;
       case "--base": f.account = BASE_CHOICE; break;
-      case "--tmux": f.tmux = "auto"; break;
+      case "--ccm-tmux": f.tmux = "auto"; break;
       case "--tmux-base": f.tmux = "base"; f.tmuxName = next(); break;
-      case "--agent": f.agent = next(); break;
+      case "--ccm-agent": f.agent = next(); break;
       case "--model": f.model = next(); break;
       case "--launcher": f.launcher = next(); break;
       case "--tmux-size": f.tmuxSize = next(); break;

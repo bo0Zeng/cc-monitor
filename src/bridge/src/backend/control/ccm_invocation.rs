@@ -521,7 +521,7 @@ pub fn render_ccm_invocation(
                 value: format!("{name:?}"),
             });
         }
-        tokens.push(format!("--tmux={name}"));
+        tokens.push(format!("--ccm-tmux={name}")); // 用户 09-26：ccm 的 tmux 旗标改名（claude 自己有 `--tmux`）
     }
 
     tokens.extend(dimension_flags(spec, caps)?);
