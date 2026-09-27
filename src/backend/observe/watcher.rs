@@ -1153,10 +1153,11 @@ pub fn spawn(
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
     let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let poke = WatcherPoke(events_tx.clone());
+    // 〔RESYNC〕登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
+    let me = live_enter(events_tx.clone());
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            let me = live_enter(events_tx.clone());
             watch_loop(
                 agent_home,
                 tx,
@@ -1172,7 +1173,9 @@ pub fn spawn(
     (rx, poke)
 }
 
-/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份）。`resync` 是整机的：每一份都对齐。
+/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份 / stdio 那一份）—— **唯一的名单**：
+/// SIGUSR1（[`poke_all`]）与 `resync` 都按它找人。`spawn` 登记、`watch_loop` 返回即摘
+/// ⇒ 不会去 poke 一个已经退掉的 watcher（`K-P1`：那不报错，它只是再也不响应 tmux hook）。
 static LIVE: std::sync::Mutex<Vec<(u64, std::sync::mpsc::Sender<WatchEvent>)>> =
     std::sync::Mutex::new(Vec::new());
 
@@ -1189,6 +1192,13 @@ fn live_leave(id: u64) {
     LIVE.lock()
         .unwrap_or_else(|e| e.into_inner())
         .retain(|(k, _)| *k != id);
+}
+
+/// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下（语义同 [`WatcherPoke::poke`]）。
+pub fn poke_all() {
+    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let _ = w.send(WatchEvent::Poke);
+    }
 }
 
 /// 〔RESYNC · `设计/15 §4.1b`〕**手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
