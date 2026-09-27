@@ -2458,7 +2458,7 @@ const EXPECTED_PROTO_V: u64 = 1;
 /// **SS-B（issue #33/#29）已单源**：值来自编译期 env `BACKEND_BUILD_ID`，由 `build.rs` 从
 /// `src/backend/lib.rs::BUILD_ID` 抠出 emit——与后端源码、F08b 内嵌二进制的
 /// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
-const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
+pub(crate) const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
 
 /// F66（#58③）：monitor **内嵌** backend 声明的能力 token（= backend `lib.rs::CAPABILITIES`）。
 ///
@@ -3279,7 +3279,21 @@ async fn stream_loop(
     // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台后端被删/被换旧的机器会
     // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
     // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
-    let stream = match connect_and_exec(cfg, with_bg, tail_only, with_rbind_token).await {
+    // 〔HOST · V139〕先接那台的**常驻后端**（没有就起一个；与本机同形）；那台起不了常驻（非 unix / 太旧）才回落流模式。
+    let flags = (with_bg, tail_only, with_rbind_token);
+    let attached = match crate::remote_resident::attach(cfg, flags).await {
+        Ok(s) => Ok(s),
+        Err(crate::remote_resident::AttachErr::Unsupported(why)) => {
+            tracing::warn!(
+                "ssh_source [{host_label}] 那台起不了常驻后端（{why}）⇒ 回落流模式（随 SSH 生死）"
+            );
+            connect_and_exec(cfg, with_bg, tail_only, with_rbind_token)
+                .await
+                .map(crate::remote_resident::Replayed::plain)
+        }
+        Err(crate::remote_resident::AttachErr::Failed(e)) => Err(e),
+    };
+    let stream = match attached {
         Ok(s) => s,
         Err(e) => {
             if skip_preflight {

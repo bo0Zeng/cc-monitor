@@ -48,7 +48,7 @@ fn fail(code: &str, message: String) -> i32 {
 /// （本层不许伸手进 `relay/`，`layering_guard`）。
 pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)]) -> i32 {
     let Some(home) = home() else {
-        return fail("no_home", copy_text("beResident.noHome", &[]));
+        return fail("no_home", copy_text("beResident.home.missing", &[]));
     };
     let port = port_for(agent_home);
     let token_path = home.join(relay_route_core::LISTEN_TOKEN_FILE_REL);
@@ -66,7 +66,7 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
         Err(e) => {
             return fail(
                 "spawn_failed",
-                copy_text("beResident.noSelf", &[("e", &e.to_string())]),
+                copy_text("beResident.spawn.noSelf", &[("e", &e.to_string())]),
             )
         }
     };
@@ -85,7 +85,7 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
 /// `--resident-stop`。
 pub fn run_stop(agent_home: &Path, _args: &[String]) -> i32 {
     let Some(home) = home() else {
-        return fail("no_home", copy_text("beResident.noHome", &[]));
+        return fail("no_home", copy_text("beResident.home.missing", &[]));
     };
     match terminate_owner(&home, port_for(agent_home)) {
         Ok(pid) => {
@@ -107,11 +107,13 @@ fn ensure_token(path: &Path) -> Result<String, String> {
     if let Some(t) = read() {
         return Ok(t);
     }
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} 没有父目录", path.display()))?;
-    crate::own_dir::ensure_private_dir(dir)
-        .map_err(|e| format!("建 {} 失败：{e}", dir.display()))?;
+    let dir = path.parent().ok_or_else(|| {
+        copy_text(
+            "beResident.fs.noParent",
+            &[("path", &path.display().to_string())],
+        )
+    })?;
+    ensure_dir(dir)?;
     let _lock = crate::platform::lock::hold(dir)?;
     if let Some(t) = read() {
         return Ok(t);
@@ -121,12 +123,21 @@ fn ensure_token(path: &Path) -> Result<String, String> {
     Ok(t)
 }
 
+fn ensure_dir(dir: &Path) -> Result<(), String> {
+    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+        copy_text(
+            "beResident.fs.mkdirFailed",
+            &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+        )
+    })
+}
+
 fn mint() -> Result<String, String> {
     let mut buf = [0u8; TOKEN_BYTES];
     rustls::crypto::ring::default_provider()
         .secure_random
         .fill(&mut buf)
-        .map_err(|_| copy_text("beResident.noRandom", &[]))?;
+        .map_err(|_| copy_text("beResident.token.noRandom", &[]))?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -139,14 +150,23 @@ fn write_private(path: &Path, body: &str) -> Result<(), String> {
         .unwrap_or_default();
     let tmp = path.with_file_name(format!("{name}.{}.tmp", std::process::id()));
     let result = (|| {
+        let say = |key: &str, e: std::io::Error| {
+            copy_text(
+                key,
+                &[
+                    ("tmp", &tmp.display().to_string()),
+                    ("path", &path.display().to_string()),
+                    ("e", &e.to_string()),
+                ],
+            )
+        };
         let mut f = creds_core::perm::create_private(&tmp)
-            .map_err(|e| format!("建临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| say("beResident.fs.tmpCreateFailed", e))?;
         f.write_all(body.as_bytes())
             .and_then(|()| f.sync_all())
-            .map_err(|e| format!("写临时文件 {} 失败：{e}", tmp.display()))?;
+            .map_err(|e| say("beResident.fs.tmpWriteFailed", e))?;
         drop(f);
-        std::fs::rename(&tmp, path)
-            .map_err(|e| format!("把 {} 挪到 {} 失败：{e}", tmp.display(), path.display()))
+        std::fs::rename(&tmp, path).map_err(|e| say("beResident.fs.renameFailed", e))
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -194,7 +214,7 @@ fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static
         (
             "spawn_failed",
             copy_text(
-                "beResident.spawnFailed",
+                "beResident.spawn.failed",
                 &[("exe", &exe.display().to_string()), ("e", &e.to_string())],
             ),
         )
@@ -203,12 +223,11 @@ fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static
 
 /// 常驻后端绑上口之后记下「谁在听」（`pid\n二进制\n`，与本机宿主写的同形）—— 远端起它的那一方不在场，由它自己记。
 pub fn record_owner(port: u16) -> Result<(), String> {
-    let home = home().ok_or_else(|| copy_text("beResident.noHome", &[]))?;
+    let home = home().ok_or_else(|| copy_text("beResident.home.missing", &[]))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let path = pid_path(&home, port);
     if let Some(dir) = path.parent() {
-        crate::own_dir::ensure_private_dir(dir)
-            .map_err(|e| format!("建 {} 失败：{e}", dir.display()))?;
+        ensure_dir(dir)?;
     }
     write_private(
         &path,
@@ -242,10 +261,10 @@ fn terminate_owner(home: &Path, port: u16) -> Result<Option<u32>, String> {
         return Ok(None);
     }
     let seen = crate::platform::proc::exe_of(pid)
-        .ok_or_else(|| copy_text("beResident.cannotVerify", &[("pid", &pid.to_string())]))?;
+        .ok_or_else(|| copy_text("beResident.stop.cannotVerify", &[("pid", &pid.to_string())]))?;
     if !exe_matches(&seen, &bin) {
         return Err(copy_text(
-            "beResident.notOurs",
+            "beResident.stop.notOurs",
             &[("pid", &pid.to_string()), ("exe", &seen)],
         ));
     }
@@ -253,7 +272,7 @@ fn terminate_owner(home: &Path, port: u16) -> Result<Option<u32>, String> {
         Ok(Some(pid))
     } else {
         Err(copy_text(
-            "beResident.signalFailed",
+            "beResident.stop.signalFailed",
             &[("pid", &pid.to_string())],
         ))
     }

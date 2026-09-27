@@ -121,6 +121,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
+    "tests/bridge/remote_resident_tests.rs", // 〔HOST〕远端常驻后端的判定（纯函数）
     "tests/bridge/session_facts_tests.rs",
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",

@@ -208,9 +208,8 @@ pub async fn backend_start(origin: String) -> Result<String, String> {
 
 /// P2s（`C8`②）：**停这台机的 backend**。
 ///
-/// ⚠ 远端这一侧是 `abort()` 那条流 —— 远端后端随之因管道破裂退出。
-/// 本层**不等它退**（我们在这台机上看不见那个进程），所以返回的是「已断流」不是「已停进程」。
-/// **文案不许把这两件事写成一件**（P2s-Y5）。
+/// 〔HOST · V139〕远端这一侧：先 `abort()` 那条流，再经链路在那台跑 `--resident-stop`（SIGTERM 那台的常驻后端，它排空后退）。
+/// 那台起不了常驻、走的是流模式回落时，远端后端随管道破裂退出 —— 两种结局文案分开说（P2s-Y5）。
 ///
 /// 〔HX1 · 4D〕本机那一支今天会**等**（SIGTERM → 最多约 35 秒 → 还在才强杀，`stop_grace`）⇒ 不能再是同步命令
 /// （同步命令跑在主线程上，等的那几秒整个界面卡住）：改成 `async`，等的那一段进阻塞线程池。
@@ -222,23 +221,40 @@ pub async fn backend_stop(origin: String) -> Result<String, String> {
             .await
             .map_err(|e| e.to_string())?;
     }
-    let mut g = remotes()
-        .lock()
-        .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
-    let slot = g.get_mut(&origin).ok_or_else(|| {
+    {
+        let mut g = remotes()
+            .lock()
+            .map_err(|e| copy_text("rsBackendControl.lock.poisoned", &[("e", &e.to_string())]))?;
+        let slot = g.get_mut(&origin).ok_or_else(|| {
+            copy_text(
+                "rsBackendControl.handle.missing",
+                &[("origin", &origin.to_string())],
+            )
+        })?;
+        if let Some(h) = slot.handle.take() {
+            h.abort();
+        }
+    }
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
         copy_text(
             "rsBackendControl.handle.missing",
             &[("origin", &origin.to_string())],
         )
     })?;
-    match slot.handle.take() {
-        Some(h) => {
-            h.abort();
-            Ok(format!(
-                "{origin} 的流已断（远端后端随管道破裂退出，本机看不见它）"
-            ))
-        }
-        None => Ok(format!("{origin} 的流本来就没在跑")),
+    let o = origin.to_string();
+    match crate::remote_resident::stop(&cfg).await {
+        Ok(Some(pid)) => Ok(copy_text(
+            "rsBackendControl.remote.stopped",
+            &[("origin", &o), ("pid", &pid.to_string())],
+        )),
+        Ok(None) => Ok(copy_text(
+            "rsBackendControl.remote.notRunning",
+            &[("origin", &o)],
+        )),
+        Err(e) => Err(copy_text(
+            "rsBackendControl.remote.stopFailed",
+            &[("origin", &o), ("e", &e)],
+        )),
     }
 }
 
