@@ -158,10 +158,10 @@ export interface Tab {
    * 〔TL1 · 4C〕CF1 起本机会话也走本机后端，从前「本地 watcher 的 per-path seqs」那一份没了）。重连后新后端会从
    * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍（本机后端重连也一样，从前「本地 seq 全程唯一 → 永不命中」不再成立）。
    *
-   * 注意：本集合**只防同 seq 重投**。后端的 jsonl 读者截断重读是**换新 seq** 重投整个
-   * 文件、此处放行（at-least-once 投递，INVARIANTS § 25）——uuid 级幂等由下面的
-   * processedUuids（#26）+ computeMainBranch 入口去重 + BranchFolder.seenUuids
-   * （#25）分层兜住。closeTab 时 clear。
+   * 〔RENDER2 · `设计/10 §3.2`〕**这是入口唯一一道去重**：seq ＝ 当前文件里的行号；文件从头重读时后端先出声、
+   * 行号从 0 重数，这个 tab 整份重来（`TabStreamView.restartContent`，新的一代配一个新的集合）⇒ 不再有
+   * 「换新 seq 重投同一条记录」（INVARIANTS § 25）。拓扑那一层的 uuid 幂等（computeMainBranch 入口去重 ＋
+   * BranchFolder.seenUuids，#25）照留。closeTab 时 clear。
    */
   seenSeqs: Set<number>;
   /**
@@ -186,15 +186,6 @@ export interface Tab {
   midBatchBuffer: JsonlLinePayload[];
   /** F40b:上翻补批 scroll listener 引线(closeTab 摘) */
   fillHandler: (() => void) | null;
-  /**
-   * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
-   * （违反此约束见 src/doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
-   * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
-   * 翻倍），且事件 / unread 等副作用也会被重投误触发——故在入口整体拒掉（〔STC〕会话事实不在前端攒了，这一格只剩渲染与事件）。
-   * 无 uuid 的记录（ai-title/mode 等元信息）不占集合、照常处理（它们本身幂等；
-   * 已知微小残留：无 uuid 的 system 细条理论上可翻倍，影响面可忽略）。closeTab 时 clear。
-   */
-  processedUuids: Set<string>;
   /**
    * 〔SE1 · `设计/10 §2.2b ⑥`〕大纲的数据源 —— **问后端要**（`--list-user-inputs`），不在前端攒。
    * 本 tab 只持有「上次要到哪个字节」与已列出的 uuid，不存正文；摘要在面板的行上。

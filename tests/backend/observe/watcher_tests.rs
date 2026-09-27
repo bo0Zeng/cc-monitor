@@ -3642,12 +3642,13 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     );
 
     // agent 按路径追加 ⇒ 同名文件重新长出来，只有新行（比读到过的短也好、长也好，都从 0 读）。
+    // 〔RENDER2 · `设计/10 §3.2`〕长回来的是另一份文件 ⇒ 先说「已从头重读」（行号从 0 重数，下游据它作废旧号）。
     std::fs::write(&path, "{\"n\":3}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     assert_eq!(
         fw1_drain(&mut rx),
-        vec!["line:{\"n\":3}"],
-        "重建之后不是从 0 读（或者多说了一句重读）"
+        vec!["reread:s-fw1:Rewritten", "line:{\"n\":3}"],
+        "重建之后不是「出声 ＋ 从 0 读」"
     );
     std::fs::write(&path, "{\"n\":3}\n{\"n\":4-a-longer-line-than-before}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
@@ -3663,7 +3664,7 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；行号照旧往上（`INVARIANTS §25`）。
+/// ★ **截短 ⇒ 先出声（why = 截短）再从头重读**；〔RENDER2〕行号从 0 重数（`watcher_lines_tests` 钉号）。
 #[test]
 fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let (dir, path, mut state, mut sink, mut rx) = fw1_rig("trunc");

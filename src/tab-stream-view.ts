@@ -18,7 +18,7 @@ import { attachBranchButton } from "./branch-button"; // G4：实时会话的分
 import type { BranchResult } from "./generated/BranchResult";
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
-import type { SkeletonLedger } from "./live-window";
+import { TailWindow, type SkeletonLedger } from "./live-window";
 // 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
 import { skeletonKind } from "./height-estimate";
@@ -249,7 +249,6 @@ export class TabStreamView {
     tab.toolUseElements.clear();
     tab.pendingToolResults.clear();
     tab.seenSeqs.clear();
-    tab.processedUuids.clear();
     // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
     tab.window.dispose();
     tab.skeleton?.dispose(); // 〔`设计/10` 骨架〕
@@ -258,6 +257,34 @@ export class TabStreamView {
     if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
     tab.timeline.dispose();
     tab.branchFolder.dispose();
+  }
+
+  /**
+   * 〔RENDER2 · `设计/10 §3.2`〕记录文件从头重读了（后端行号从 0 重数）⇒ 这个 tab 的内容整份重来：拆掉流 DOM 与全部账本
+   * （时间线 · 去重集 · 尾部窗口 · 骨架 · 大纲 · 查找面板 · 会话事实），按新建的样子再装一份；身份 / 标题 / 状态 / 固定照留。
+   * **换一个新的 `Tab` 对象进表**：在途那几趟（骨架索引 · 按偏移取正文 · 往下 / 往后补）回来时认的是「表里还是不是它」，
+   * 认不出就自己作废 —— 旧的一代的行不会落进新的一代。
+   */
+  restartContent(old: Tab): Tab {
+    const wasActive = this.store.activeId === old.sessionId;
+    this.disposeTab(old);
+    const tab: Tab = {
+      ...old,
+      ...this.mountTabDom(old.sessionId),
+      toolUseNames: new Map(),
+      toolUseElements: new Map(),
+      pendingToolResults: new Map(),
+      seenSeqs: new Set(),
+      window: new TailWindow(),
+      skeleton: null,
+      skeletonFetch: "idle",
+      midBatchBuffer: [],
+      fillHandler: null,
+    };
+    this.store.tabs.set(tab.sessionId, tab);
+    this.wireTab(tab);
+    if (wasActive) this.showOnly(tab.sessionId);
+    return tab;
   }
 
   /** 切 tab：只让这一条流（连同它的查找面板）可见（原是 `switchTo` 开头那一段）。 */

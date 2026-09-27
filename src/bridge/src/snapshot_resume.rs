@@ -162,6 +162,14 @@ pub(crate) enum Read {
     },
 }
 
+/// 〔RENDER2〕同一份文件的续点比这一次的图还长（行数 / 字节 / 已有到哪 任一越过）⇒ 文件在断线期间变短了。
+pub(crate) fn shrank(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> bool {
+    cursor.is_some_and(|c| {
+        c.path == path
+            && (c.anchor_total > plan.total || c.anchor_end > plan.end || c.next > plan.total)
+    })
+}
+
 /// **纯函数**：续点 × 这一次的尾段图 ⇒ 怎么读。
 ///
 /// 续点缺席 / 路径不同 / 文件比锚短（被截断重写过）/ `next` 超过这次的总行数 ⇒ [`Read::Full`]。
@@ -169,7 +177,7 @@ pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) ->
     let Some(c) = cursor.filter(|c| c.path == path) else {
         return Read::Full;
     };
-    if c.anchor_total > plan.total || c.anchor_end > plan.end || c.next > plan.total {
+    if shrank(Some(c), path, plan) {
         return Read::Full;
     }
     // 两个确知的「行号 → 字节」锚，挑行号不超过 `next` 的最近一个。

@@ -228,7 +228,7 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 
 ### 会话内容在 timeline 底部整段重复（已修 issue #26，回归排查）
 - 根因：watcher 截断重读换新 seq 重投整个文件（at-least-once，INVARIANTS § 25），seq 去重放行 → 每条记录以更大 seq 在末尾再渲染一遍
-- 检查：`tabs.ts onLine` 的 `processedUuids` 按 uuid 整体拒重还在（ensureTab/seq 去重之后、活卡定稿 / 两个真事件 / 渲染之前；〔STC〕会话事实早已不在 `onLine` 上攒）
+- 检查：〔RENDER2〕截断重读先出 `session_file_reread`、行号从 0 重数（`watcher_lines_tests`）；前端收到后 tab 整份重来（`TabManager.onRecordFileReread`），入口只剩按 seq 那一道
 - 复现：对一个被 watch 的活跃 jsonl 手动截短再追加回去 → 后端出 `jsonl truncated ... full re-read` warn → Tab 内容应**不**翻倍
 
 ### 大段消息被误折成「已被 ESC 回退」（已修 issue #25，回归排查）

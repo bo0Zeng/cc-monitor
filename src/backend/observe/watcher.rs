@@ -36,9 +36,10 @@
 //! `trim_start_matches('\u{feff}')`, skip blank lines, and `is_subagent_path`
 //! excludes any path containing a `subagents` segment. Truncation is detected
 //! against `cursor.seen_len` (the observed EOF high-water mark, which covers a
-//! deferred torn tail); on truncation the cursor resets to byte 0 **but the
-//! per-file seq keeps climbing** (the seq comes from [`SeqCounter`], which is
-//! never reset) — see [`read_new_lines`].
+//! deferred torn tail); on truncation the cursor resets to byte 0 and
+//! 〔RENDER2〕[`process_jsonl`] restarts the per-file seq after announcing the
+//! re-read (`session_file_reread`) — seq is the line number in the file as it is
+//! now, never a number past it (see [`process_jsonl`]).
 //!
 //! On a mid-read I/O error this reader gives up the whole pass (cursor untouched)
 //! — at-least-once-safe. (The deleted monitor copy kept the complete lines it had
@@ -1488,8 +1489,8 @@ struct ReaderState {
     /// 〔TL1〕monitor 那一侧从前的「会话出现就强制重扫」随它自己的读者 CF1 删了，今天只剩这一处).
     projects: PathBuf,
     /// Per-file consumed byte offset, keyed by [`path_key`]. Reset to 0 on
-    /// truncation; the climbing seq lives separately in [`Self::seqs`] so a
-    /// truncation never rolls the seq back.
+    /// truncation; the seq lives separately in [`Self::seqs`] and is restarted
+    /// together with it by [`process_jsonl`] (〔RENDER2〕seq = 当前文件里的行号).
     offsets: HashMap<PathBuf, ReadCursor>,
     /// 〔FW1 · 第四波 4D · D-d〕每份 jsonl **已消费前缀的末尾那几个字节**（至多 [`TAIL_PROBE`]）。
     /// 续读之前核一遍：对不上 ⇒ 这份文件在游标之前被原地改写过（整份覆盖、长度没变短）⇒ 当截断办：从 0 重读并出声。
@@ -1497,10 +1498,8 @@ struct ReaderState {
     tails: HashMap<PathBuf, Vec<u8>>,
     /// 〔FW1 · D-d〕已经说过「记录文件不见了」的那几份（每次「在 → 不在」只说一次；再出现就摘掉）。
     gone: HashSet<PathBuf>,
-    /// Per-file monotonic seq source. `SeqCounter` only ever climbs for a given
-    /// path (it is never reset), so truncation resetting `offsets` cannot pull
-    /// the seq back — exactly the invariant this module's header states as
-    /// `on truncation the cursor resets to byte 0`.
+    /// Per-file seq source. 〔RENDER2〕只在「从 0 重读、且已先发出 `session_file_reread`」那一刻归零
+    /// （[`process_jsonl`] · [`prime_file_cursor`]）⇒ seq 恒是当前文件内容里的行号。
     seqs: SeqCounter,
     /// PID-file path → [`SessionEntry`] for sessions currently considered ACTIVE
     /// (announced via `SessionAdded`). The pid + captured procStart let the
@@ -1644,9 +1643,9 @@ pub struct ReadCursor {
 /// - **truncation**: judged against the high-water mark
 ///   (`len < cursor.seen_len`), so a rewrite landing inside a pending torn-tail
 ///   window `[consumed, seen_len)` is still caught → start over from byte 0;
-/// - on truncation the byte cursor resets but the seq keeps climbing (it comes
-///   from `SeqCounter`, which never resets), so a client that already placed
-///   the old seqs still sorts the new lines after them;
+/// - on truncation the byte cursor resets; this pure core does not touch the
+///   seq counter — the production caller ([`process_jsonl`]) restarts it right
+///   after announcing the re-read (〔RENDER2〕seq = line number in the file now);
 /// - strip a leading UTF-8 BOM (`\u{feff}`) and skip blank lines;
 /// - the returned `raw` is the original (untrimmed) line, exactly as
 ///   `watcher.rs` pushes `line` (not `trimmed`) into the batch.
@@ -1927,7 +1926,7 @@ fn tail_of(chunk: &[u8], chunk_start: u64, consumed: u64) -> Vec<u8> {
     chunk.get(from..to).map(<[u8]>::to_vec).unwrap_or_default()
 }
 
-/// 〔FW1〕这份文件的游标、指纹一起丢（不在了 ⇒ 同名再出现从 0 读；行号计数器不丢，seq 照旧往上）。
+/// 〔FW1〕这份文件的游标、指纹一起丢（不在了 ⇒ 同名再出现从 0 读；〔RENDER2〕那一趟当改写办：先出声、行号从 0 重数）。
 fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.offsets.remove(key);
     state.tails.remove(key);
@@ -1972,7 +1971,15 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
                 reread,
             } => (chunk, chunk_start, file_len, from, reread),
         };
-    state.gone.remove(&key);
+    // 〔RENDER2 · `设计/10 §3.2`〕这一趟要从 0 重读 ⇒ 行号从 0 重数（seq ＝ 当前文件里的行号），出声那一帧排在重读的行之前。
+    //   三种来路：`read_tail_from` 认出的截短 / 改写 · 读的那一下文件又缩了（扫描自己按高水位判截断）· 删了之后同名又长出来。
+    let reappeared = state.gone.remove(&key);
+    let reread = reread
+        .or_else(|| (file_len < from.seen_len).then_some(RereadWhy::Truncated))
+        .or_else(|| reappeared.then_some(RereadWhy::Rewritten));
+    if reread.is_some() {
+        state.seqs.restart(&key_str);
+    }
     let (lines, new_cursor) = read_new_lines_at(
         &chunk,
         chunk_start,
@@ -2471,8 +2478,14 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
                 chunk_start,
                 file_len,
                 from,
-                ..
-            } => (chunk, chunk_start, file_len, from),
+                reread,
+            } => {
+                // 〔RENDER2〕从 0 重数，同 `process_jsonl`（这里不出声：宣告还没发，下游的快照按行号从 0 拉）。
+                if reread.is_some() || file_len < from.seen_len {
+                    state.seqs.restart(&key_str);
+                }
+                (chunk, chunk_start, file_len, from)
+            }
             Look::Gone => {
                 forget_cursor(state, &key);
                 return 0;
