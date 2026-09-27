@@ -68,6 +68,16 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              （`SNAPSHOT_MAX_BYTES` / `MAX_SESSION_BYTES`）。",
     ),
     (
+        "CHUNK_RAW",
+        "〔FILES2 · Q5〕**步长**不是上限：文件窗口上传块形每一块读多少原始字节（`filewin/chunk_upload.rs`，b16 翻倍后一行仍远小于后端入方向一行 \
+             `MAX_LINE_BYTES`）。它不限任何字节总量（整份文件多大都一块一块送完）、不截任何东西。",
+    ),
+    (
+        "STAGING_MODE",
+        "〔FILES2〕**权限位**不是体量：文件窗口经那台后端自建暂存区时收成的 unix 权限（0o700，与后端 `PRIVATE_DIR_MODE` 同值），\
+             不限任何字节总量、不截任何东西。",
+    ),
+    (
         "PRIVATE_DIR_MODE",
         "〔HX1 · 4D〕**权限位**不是体量：后端 `control/files_commit·rs` 建 `~/.cc-monitor` 与暂存区那一下给的 unix 权限（0o700，只给本人），\
              不限任何字节总量、不截任何东西。",
@@ -577,6 +587,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔RW1 · 第四波 09-24〕用户文件读改写的**读那一半**一趟肯交多少。写那一半要把新内容与
     //   读到的那一份装进同一行请求（后端一行 `MAX_LINE_BYTES` = 1 MiB）⇒ 两份各 256 KiB、给转义留余量。
+    // 〔FILES2 · 第四波〕解压：zip 里一条链接的目标文本（那一条的正文）最多读多少；超了整趟拒、不截一半当目标。
+    (
+        "src/backend/control/files_extract.rs",
+        "LINK_TARGET_MAX_BYTES",
+        4096,
+        "`files-extract` 读 zip 里一条符号链接的目标文本（那一条的正文）",
+        "拒收+回错",
+    ),
     (
         "src/backend/control/files_write.rs",
         "PEEK_MAX_BYTES",

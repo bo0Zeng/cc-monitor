@@ -372,3 +372,27 @@ fn a_taken_name_answers_exists_and_fresh_takes_the_first_free_number() {
     assert_eq!(std::fs::read(base.join("p (3)/f")).expect("f"), b"1");
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// zip 里一条链接的目标文本超过 `LINK_TARGET_MAX_BYTES` ⇒ 整趟拒（不截一半当目标）；上限以内（Linux 建得出的最长那一档）⇒ 照收。
+#[test]
+#[cfg(unix)]
+fn a_zip_link_target_over_the_cap_refuses_instead_of_truncating() {
+    let base = temp_root("longlink");
+    let long = "a/".repeat(LINK_TARGET_MAX_BYTES as usize / 2 + 1);
+    plant(
+        &base,
+        "l.zip",
+        &zip_bytes(&[("ln", None, Some(long.as_str()))]),
+    );
+    let e = extract(&base, Path::new("l.zip"), Path::new("l")).expect_err("超长目标却解成了");
+    assert_eq!(e.0, "refused", "{e:?}");
+    assert!(std::fs::symlink_metadata(base.join("l")).is_err());
+    let ok = "a/".repeat(LINK_TARGET_MAX_BYTES as usize / 2 - 1);
+    plant(
+        &base,
+        "k.zip",
+        &zip_bytes(&[("ln", None, Some(ok.as_str()))]),
+    );
+    extract(&base, Path::new("k.zip"), Path::new("k")).expect("恰好到上限的目标被拒了");
+    std::fs::remove_dir_all(&base).ok();
+}
