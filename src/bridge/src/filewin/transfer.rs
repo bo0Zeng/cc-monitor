@@ -137,9 +137,32 @@ pub struct Pending {
     /// 〔F7c〕提交时交给后端的覆盖策略。**只有人在那一问里点了「覆盖」的那几件是 `true`**
     /// （由 [`run_drop`] 在「一次问完」之后标上）；造出来时一律 `false`。
     pub overwrite: bool,
+    /// 〔FILES2 · 非 UTF-8 目录〕目标目录的原始字节（目录名不是合法 UTF-8 时才有）：探在不在与提交都按字节寻址。
+    pub remote_dir_raw: Option<Vec<u8>>,
 }
 
 impl Pending {
+    /// 〔FILES2〕提交的 `root`：目标目录有字节 ⇒ 按字节发；否则照旧切字符串路径。
+    pub fn root_wire(&self) -> serde_json::Value {
+        match &self.remote_dir_raw {
+            Some(b) => super::source::wire_bytes(b),
+            None => serde_json::Value::String(super::source::parent_dir(&self.remote_path)),
+        }
+    }
+
+    /// 〔FILES2〕探「在不在」的那条整路径（线上那一形）。
+    pub fn path_wire(&self) -> serde_json::Value {
+        match &self.remote_dir_raw {
+            Some(b) => {
+                let mut v = b.clone();
+                v.push(b'/');
+                v.extend_from_slice(self.name.as_bytes());
+                super::source::wire_bytes(&v)
+            }
+            None => serde_json::Value::String(self.remote_path.clone()),
+        }
+    }
+
     /// 「把本机这个文件放到远端这个目录里」。
     ///
     /// ⚠ 远端路径**恒用 `/`** 拼（同 [`super::source::parent_dir`] 那条理由）。
@@ -155,6 +178,7 @@ impl Pending {
             remote_path: format!("{base}/{name}"),
             name,
             overwrite: false,
+            remote_dir_raw: None,
         })
     }
 }
@@ -562,7 +586,7 @@ async fn upload_once(
         CMD_COMMIT,
         &serde_json::json!({
             "key": key,
-            "root": super::source::parent_dir(&p.remote_path),
+            "root": p.root_wire(),
             "rel": super::source::remote_basename(&p.remote_path),
             "overwrite": p.overwrite,
             "expect": { "sha256": sha256 },

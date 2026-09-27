@@ -461,6 +461,8 @@ pub enum Action {
     Download,
     /// 〔W5-FILES · `设计/60 §6.2`〕算大小（后端 `files-size`）—— 一项或多项。
     Size,
+    /// 〔FILES2 · `设计/60 §6.2` Q3〕解压到这里（后端 `files-extract`）—— 恰好一份文件。
+    Extract,
     Rename,
     /// 改权限 —— 〔FW5〕对一项或多项（头注 §三）。
     Chmod,
@@ -482,6 +484,7 @@ impl Action {
             Action::Copy => super::copy::COPY_LABEL.to_string(),
             Action::Download => super::download::DOWNLOAD_LABEL.to_string(),
             Action::Size => super::size::SIZE_LABEL.to_string(),
+            Action::Extract => super::extract::EXTRACT_LABEL.to_string(),
             Action::Rename => super::writeops::RENAME_LABEL.to_string(),
             Action::Chmod if n > 1 => {
                 copy_text("rsFilewinSelect.label.chmodMany", &[("n", &n.to_string())])
@@ -521,6 +524,10 @@ pub fn actions_for(picked: &[&Listed]) -> Vec<Action> {
             // 〔W5-FILES〕算大小：名字寻址得到就给（文件也收，后端回它自己）。
             if !r.lossy_name || r.raw_name.is_some() {
                 out.push(Action::Size);
+                // 〔FILES2〕解压：一份文件就给（认不认这种包由后端判，窗口不写第二份后缀表）。
+                if !r.is_dir {
+                    out.push(Action::Extract);
+                }
             }
             if is_writable(r) {
                 out.push(Action::Rename);

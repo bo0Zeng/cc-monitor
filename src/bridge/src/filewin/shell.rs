@@ -247,6 +247,24 @@ pub fn build_open_terminal_cmd(cwd: &str) -> Result<String, String> {
     }
 }
 
+/// 〔FILES2 · 非 UTF-8 目录〕同 [`build_open_terminal_cmd`]，当前目录可以带字节：有字节 ⇒ 过唯一的 quote 的字节形
+/// （`shell_quote_core::posix_quote_bytes`，`$'…'`）；判定是 `posix_free_path_bytes_ok`（与字符串形逐条同规则）。
+pub fn build_open_terminal_cmd_at(cwd: &super::source::RemotePath) -> Result<String, String> {
+    let Some(raw) = &cwd.raw else {
+        return build_open_terminal_cmd(&cwd.shown);
+    };
+    if !shell_quote_core::posix_free_path_bytes_ok(raw) {
+        return Err(copy_text(
+            "rsFilewinShell.terminal.badCwd",
+            &[("cwd", &format!("{:?}", cwd.shown))],
+        ));
+    }
+    Ok(format!(
+        "cd {} && exec ${{SHELL:-bash}} -l",
+        shell_quote_core::posix_quote_bytes(raw)
+    ))
+}
+
 /// 列目录这件事的**共享落点** —— 一次列目录要写的东西全在这儿。
 ///
 /// 🔴 抽成一个结构是因为它要被**两条线程**看：UI 线程读，tokio 那条写。
@@ -401,6 +419,10 @@ pub struct FileWindow {
     pub copy_board: CopyBoard,
     /// 〔W5-FILES · `设计/60 §6.2`〕算大小那一摞的看板（在算哪一项 · 上一摞的结局）。
     pub size_board: super::size::SizeBoard,
+    /// 〔FILES2 · `设计/60 §6.2` Q3〕解压那一趟的看板（在解哪一个 · 撞名那一问 · 结局）。
+    pub extract_board: super::extract::ExtractBoard,
+    /// 已经消化过几趟解压（同 [`Self::seen_rounds`]）。
+    seen_extract_rounds: u64,
     /// 〔W5-FILES〕正在读的那一份的原始字节（到货时交给编辑面；`(显示路径, 字节)`）。
     edit_raw: Option<(String, Vec<u8>)>,
     /// 〔W5-FILES · `设计/60 §6.2`「原生选文件框」〕选择框（生产是操作系统自己的，判据换一个假的）＋ 结局落点 ＋ 下载那一问上「没选到」那句话。
@@ -569,6 +591,8 @@ impl FileWindow {
             seen_rounds: 0,
             copy_board: CopyBoard::default(),
             size_board: super::size::SizeBoard::default(),
+            extract_board: super::extract::ExtractBoard::default(),
+            seen_extract_rounds: 0,
             edit_raw: None,
             picker: super::picker::native(),
             pick_board: super::picker::PickBoard::default(),
@@ -669,17 +693,8 @@ impl FileWindow {
         join_path(&self.cwd_path(), &name_bytes(r))
     }
 
-    /// 〔W5-FILES〕当前目录是有损的 ⇒ 这件事做不了（它要一条字符串路径），出声、回 `true`。
-    fn refused_in_lossy_cwd(&mut self, what: impl FnOnce() -> String) -> bool {
-        if self.cwd_raw.is_none() {
-            return false;
-        }
-        *self.listing.error.lock().unwrap() = Some(copy_text(
-            "rsFilewinShell.lossyCwd.refused",
-            &[("what", &what())],
-        ));
-        true
-    }
+    // 〔散文墓碑〕〔FILES2〕这里原有 `refused_in_lossy_cwd`（W5-FILES：有损目录里上传 / 搜索 / 开终端出声拒）——
+    //   三件都改成按字节做了（搜索 `find::run_search_at` · 上传 `Pending::remote_dir_raw` · 终端 `build_open_terminal_cmd_at`），它没了调用方。
 
     /// 〔W5-FILES · 有损名全寻址〕进一个目录（显示串 ＋ 可能有的字节）。与 [`Self::navigate_to`] 同一套收摊。
     pub fn navigate_to_at(&mut self, at: super::source::RemotePath) {
@@ -766,17 +781,14 @@ impl FileWindow {
     /// 是前端剪贴板兜底干的活（`remote-launch-run.ts`），**这个窗口没有它**
     /// ⇒ 那半句在这儿是假的。如实登记为**没做**（旧面板那颗按钮同样没有）。
     pub fn open_terminal_here(&mut self, ctx: Option<egui::Context>) -> bool {
-        // 〔W5-FILES〕有损目录：`cd` 那一串是 shell 字符串，拼字节要另一套转义 ⇒ 不开、出声。
-        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.terminal", &[])) {
-            return false;
-        }
+        // 〔FILES2〕有损目录：`cd` 那一串走唯一的 quote 的字节形（`$'…'`），不再出声拒。
         let Some(h) = self.rt.clone() else {
             *self.term_notice.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.terminal.noRuntime", &[]).into());
             return false;
         };
         let origin = self.source.origin();
-        let cmd = match build_open_terminal_cmd(&self.cwd) {
+        let cmd = match build_open_terminal_cmd_at(&self.cwd_path()) {
             Ok(c) => c,
             Err(why) => {
                 *self.term_notice.lock().unwrap() = Some(why);
@@ -902,10 +914,7 @@ impl FileWindow {
     /// 平时是 `false`，要不要重走由**后端报的** `index_missing` / `stale` 决定
     /// （`设计/60 §3.5.2a`；周期那个数不在这一侧，见 [`super::find`] 头注 §四）。
     pub fn fire_search(&mut self, ctx: Option<egui::Context>, force_rebuild: bool) -> bool {
-        // 〔W5-FILES〕有损目录：索引的根与浏览名单是字符串，做不了 ⇒ 出声。
-        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.search", &[])) {
-            return false;
-        }
+        // 〔FILES2〕有损目录里也搜：索引的根与浏览名单按字节发（此前 W5-FILES 在这里出声拒）。
         let needle = self.query.trim().to_string();
         self.search.attach(ctx);
         self.search.invalidate(&needle);
@@ -924,9 +933,9 @@ impl FileWindow {
         let mine = self.search.start();
         let board = self.search.clone();
         let origin = self.source.origin();
-        let root = self.cwd.clone();
+        let root = self.cwd_path();
         h.spawn(async move {
-            find::run_search(board, line, origin, root, needle, mine, force_rebuild).await;
+            find::run_search_at(board, line, origin, root, needle, mine, force_rebuild).await;
         });
         true
     }
@@ -970,10 +979,14 @@ impl FileWindow {
         if items.is_empty() {
             return false;
         }
-        // 〔W5-FILES〕有损目录：上传的提交要一条字符串落点（传输台那一侧），做不了 ⇒ 出声。
-        if self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.upload", &[])) {
-            return false;
-        }
+        // 〔FILES2〕有损目录里也传：暂存区那一段与目录无关，探在不在与提交按目录的字节寻址（此前 W5-FILES 在这里出声拒）。
+        let items: Vec<Pending> = items
+            .into_iter()
+            .map(|p| Pending {
+                remote_dir_raw: self.cwd_raw.clone(),
+                ..p
+            })
+            .collect();
         let Some(h) = self.rt.clone() else {
             *self.listing.error.lock().unwrap() =
                 Some(copy_text("rsFilewinShell.upload.noRuntime", &[]).into());
@@ -1004,7 +1017,7 @@ impl FileWindow {
                         let line = line.clone();
                         let origin = origin.clone();
                         async move {
-                            super::transfer::probe_remote(&line, &origin, &p.remote_path).await
+                            super::transfer::probe_remote_at(&line, &origin, p.path_wire()).await
                         }
                     },
                     move |clashes| {
@@ -1267,6 +1280,56 @@ impl FileWindow {
             )
             .await;
             board.finish(out);
+        });
+        true
+    }
+
+    /// 〔FILES2〕解压跑完一趟就重列当前目录（新目录要出现在列表里）。同 [`Self::settle_finished_copies`]。
+    pub fn settle_finished_extracts(&mut self) -> bool {
+        let now = self.extract_board.rounds();
+        if now == self.seen_extract_rounds {
+            return false;
+        }
+        self.seen_extract_rounds = now;
+        self.reload();
+        true
+    }
+
+    /// 〔FILES2 · `设计/60 §6.2` Q3〕第 `i` 行那份文件「解压到这里」：发 `files-extract`，撞名就问（[`super::extract::run`]）。
+    /// 接不上（没运行时 / 没通道）⇒ 出声。回值 ＝ 真的起来了。
+    pub fn start_extract(&mut self, i: usize, ctx: Option<egui::Context>) -> bool {
+        let Some(h) = self.rt.clone() else {
+            *self.listing.error.lock().unwrap() =
+                Some(copy_text("rsFilewinShell.size.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
+        let Some((rel, name)) = self
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .get(i)
+            .filter(|r| !r.is_dir)
+            .map(|r| (super::source::wire_bytes(&name_bytes(r)), r.name.clone()))
+        else {
+            return false;
+        };
+        let root = self.cwd_path().wire();
+        let origin = self.source.origin();
+        let board = self.extract_board.clone();
+        board.attach(ctx);
+        board.begin(&name);
+        h.spawn(async move {
+            let asker = board.clone();
+            let o = super::extract::run(&line, &origin, &root, &rel, |said| async move {
+                asker.ask(said).await.unwrap_or(false)
+            })
+            .await;
+            board.finish(&name, o);
         });
         true
     }
@@ -2522,6 +2585,9 @@ impl FileWindow {
         if let Some(n) = self.size_board.running() {
             return Some(copy_text("rsFilewinShell.busy.sizing", &[("name", &n)]));
         }
+        if let Some(n) = self.extract_board.running() {
+            return Some(copy_text("rsFilewinExtract.busy.running", &[("name", &n)]));
+        }
         if let Some(n) = self.copy_board.running() {
             return Some(copy_text(
                 "rsFilewinShell.busy.copying",
@@ -2567,6 +2633,8 @@ impl FileWindow {
     fn modal_up(&self) -> bool {
         self.board.is_asking()
             || self.copy_board.is_asking()
+            // 〔FILES2〕解压撞名那一问。
+            || self.extract_board.is_asking()
             || self.copy_prompt.is_some()
             || self.write_board.is_asking()
             || self.write_prompt.is_some()
@@ -2724,6 +2792,8 @@ impl FileWindow {
             (Action::Download, [i]) => self.begin_pull(*i),
             // 〔W5-FILES〕一项或多项。
             (Action::Size, _) => self.start_sizes(&idx, ctx),
+            // 〔FILES2〕恰好一份文件。
+            (Action::Extract, [i]) => self.start_extract(*i, ctx),
             (Action::Rename, [i]) => self.begin_rename(*i),
             // 〔FW5〕一项或多项：同一个框（多项时框上说件数）。
             (Action::Chmod, _) => self.begin_chmod_rows(&idx),
@@ -2963,9 +3033,7 @@ impl FileWindow {
                 new_file = true;
             }
             // 〔F7c〕「上传」—— 选完走拖入那一条（`upload.rs` 头注）。
-            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked()
-                && !self.refused_in_lossy_cwd(|| copy_text("rsFilewinShell.lossyCwd.upload", &[]))
-            {
+            if ui.button(super::upload::UPLOAD_LABEL.as_str()).clicked() {
                 self.upload.open();
             }
             // 🔴〔补齐五项〕「在此打开终端」—— 旧面板表头上那颗。
@@ -3088,6 +3156,7 @@ impl FileWindow {
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
         self.copy_board.ui(ui);
         self.size_board.ui(ui);
+        self.extract_board.ui(ui);
         self.copy_ui(ui);
         // 🔴〔第五刀〕`§4.6.4` 那一摞：一次问完的确认框 ／ 结果（〔FN1〕「被围栏挡住那几句话」那一段删了）。
         //    同样模态、同样画在列表之前。
@@ -3118,6 +3187,7 @@ impl FileWindow {
         self.take_drops(&ctx);
         self.settle_finished_drops();
         self.settle_finished_copies();
+        self.settle_finished_extracts();
         self.settle_finished_writes();
         ui.separator();
         // 每帧从零数起 —— 这两个数是「这一帧物化了多少行」，不是累计。

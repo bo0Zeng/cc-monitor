@@ -11554,26 +11554,6 @@
       "zh": "选择框启动不了，请重开这个窗口",
       "args": []
     },
-    "rsFilewinShell.lossyCwd.refused": {
-      "kind": "error",
-      "zh": "这个目录的名字不是合法 UTF-8，{what}在这里做不了",
-      "args": ["what"]
-    },
-    "rsFilewinShell.lossyCwd.upload": {
-      "kind": "body",
-      "zh": "上传",
-      "args": []
-    },
-    "rsFilewinShell.lossyCwd.search": {
-      "kind": "body",
-      "zh": "搜索",
-      "args": []
-    },
-    "rsFilewinShell.lossyCwd.terminal": {
-      "kind": "body",
-      "zh": "在此打开终端",
-      "args": []
-    },
     "beFilesCommit.exdev.noName": {
       "kind": "error",
       "zh": "目标 {rel} 没有文件名",
@@ -17956,7 +17936,7 @@
     },
     "beFilesExtract.path.upward": {
       "kind": "error",
-      "zh": "包里的「{name}」带上跳段（..），会落到解压目录外面，整个包没解，一个字节都没建",
+      "zh": "包里的「{name}」带上跳段（..）。它会落到解压目录外面，整个包没解，一个字节都没建",
       "args": ["name"]
     },
     "beFilesExtract.entry.linkUnsupported": {
@@ -17966,12 +17946,12 @@
     },
     "beFilesExtract.entry.linkEscapes": {
       "kind": "error",
-      "zh": "包里的链接「{name}」指向「{to}」，出了解压目录，整个包没解，一个字节都没建",
+      "zh": "包里的链接「{name}」出了解压目录。它指向「{to}」，整个包没解，一个字节都没建",
       "args": ["name", "to"]
     },
     "beFilesExtract.entry.hardEscapes": {
       "kind": "error",
-      "zh": "包里的硬链接「{name}」指向「{to}」，那不是包里前面的一份文件，整个包没解",
+      "zh": "包里的硬链接「{name}」指错了地方。它指向「{to}」，不是包里前面的一份文件，整个包没解",
       "args": ["name", "to"]
     },
     "beFilesExtract.entry.special": {
@@ -18001,7 +17981,7 @@
     },
     "beFilesExtract.entry.underNonDir": {
       "kind": "error",
-      "zh": "包里有条目挂在「{name}」底下，而它不是目录（是文件或链接），整个包没解",
+      "zh": "包里有条目挂在一个非目录底下。「{name}」是文件或链接，整个包没解",
       "args": ["name"]
     },
     "beFilesExtract.plan.overCap": {
@@ -18044,7 +18024,7 @@
       "zh": "没撤干净，停在 {what}",
       "args": ["what"]
     },
-    "beFilesExtract.stopped": {
+    "beFilesExtract.stopped.say": {
       "kind": "error",
       "zh": "解压停在半路：{why}。{tail}",
       "args": ["why", "tail"]
@@ -18063,6 +18043,66 @@
       "kind": "error",
       "zh": "「fresh」只收布尔",
       "args": []
+    },
+    "rsFilewinExtract.label.extract": {
+      "kind": "action",
+      "zh": "解压到这里",
+      "args": []
+    },
+    "rsFilewinExtract.reply.missingField": {
+      "kind": "error",
+      "zh": "解压回来的话里少了「{field}」",
+      "args": ["field"]
+    },
+    "rsFilewinExtract.outcome.done": {
+      "kind": "body",
+      "zh": "{name} 解到了 {path}：{files} 个文件、{dirs} 个目录、{links} 条链接，共 {human}",
+      "args": ["name", "path", "files", "dirs", "links", "human"]
+    },
+    "rsFilewinExtract.outcome.skipped": {
+      "kind": "body",
+      "zh": "{name} 没解：{said}",
+      "args": ["name", "said"]
+    },
+    "rsFilewinExtract.outcome.failed": {
+      "kind": "error",
+      "zh": "{name} 没解成：{why}",
+      "args": ["name", "why"]
+    },
+    "rsFilewinExtract.ask.taken": {
+      "kind": "body",
+      "zh": "{said}。另起一个不重名的目录（名字后面加「(2)」这样的数）解，还是不解了？",
+      "args": ["said"]
+    },
+    "rsFilewinExtract.ask.fresh": {
+      "kind": "action",
+      "zh": "另起一个名字解",
+      "args": []
+    },
+    "rsFilewinExtract.ask.skip": {
+      "kind": "action",
+      "zh": "不解了",
+      "args": []
+    },
+    "rsFilewinExtract.ui.running": {
+      "kind": "body",
+      "zh": "正在那台机器上解压 {name} …",
+      "args": ["name"]
+    },
+    "rsFilewinExtract.busy.running": {
+      "kind": "body",
+      "zh": "正在解压 {name}",
+      "args": ["name"]
+    },
+    "beFilesExtract.args.unknownCmd": {
+      "kind": "error",
+      "zh": "「{cmd}」不是解压那一面的命令",
+      "args": ["cmd"]
+    },
+    "beFilesExtract.undo.at": {
+      "kind": "body",
+      "zh": "{path}：{e}",
+      "args": ["path", "e"]
     }
   }
 }
