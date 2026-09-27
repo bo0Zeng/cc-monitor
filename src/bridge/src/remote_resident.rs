@@ -156,30 +156,34 @@ pub(crate) fn attach_line(token: &str, flags: (bool, bool, bool)) -> String {
     line
 }
 
+/// 读握手那一行（hello / attach 应答）；`hello` 选哪一句说「没答完」。
 async fn read_line(
     r: &mut tokio::io::BufReader<DialStream>,
-    what_key: &str,
+    hello: bool,
 ) -> Result<String, AttachErr> {
-    let what = copy_text(what_key, &[]);
     let mut buf = Vec::new();
-    match crate::ssh_source::read_capped_line(
+    let got = crate::ssh_source::read_capped_line(
         r,
         &mut buf,
         // hello / attach 应答那一行：与本机宿主同一个上限（同一条监听协议）。
         crate::local_backend_host::LISTEN_HANDSHAKE_LINE_CAP,
     )
-    .await
-    {
+    .await;
+    match got {
         Ok(crate::ssh_source::CappedLine::Line) => Ok(String::from_utf8_lossy(&buf)
             .trim_end_matches(['\n', '\r'])
             .to_string()),
+        Ok(_) if hello => Err(AttachErr::Failed(copy_text(
+            "rsRemoteResident.handshake.helloCut",
+            &[],
+        ))),
         Ok(_) => Err(AttachErr::Failed(copy_text(
-            "rsRemoteResident.handshake.lineCut",
-            &[("what", &what)],
+            "rsRemoteResident.handshake.replyCut",
+            &[],
         ))),
         Err(e) => Err(AttachErr::Failed(copy_text(
             "rsRemoteResident.handshake.readFailed",
-            &[("what", &what), ("e", &e.to_string())],
+            &[("e", &e.to_string())],
         ))),
     }
 }
@@ -268,7 +272,7 @@ pub(crate) async fn attach(
     loop {
         let link = tunnel_when_bound(cfg, ensured.port).await?;
         let mut r = tokio::io::BufReader::new(link);
-        let hello = read_line(&mut r, "rsRemoteResident.what.hello").await?;
+        let hello = read_line(&mut r, true).await?;
         match hello_decision(
             &hello,
             crate::ssh_source::EXPECTED_BACKEND_BUILD_ID,
@@ -295,7 +299,7 @@ pub(crate) async fn attach(
             .await
             .map_err(not_sent)?;
         r.get_mut().flush().await.map_err(not_sent)?;
-        let reply = read_line(&mut r, "rsRemoteResident.what.attach").await?;
+        let reply = read_line(&mut r, false).await?;
         let v: serde_json::Value = serde_json::from_str(&reply).unwrap_or_default();
         if v["attach"] != "ok" {
             let why = match v["reason"].as_str() {
