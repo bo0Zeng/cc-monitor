@@ -10,7 +10,8 @@
 //! # 线上契约（1 exec = 1 请求 = 1 行应答）
 //!
 //! - `cc-monitor-panorama --probe` ⇒ 插件口那套 `key=value` 方言：首行 `name=`（身份）·
-//!   `version=`（只进诊断）· `capabilities=`（逗号列表 = [`OPS`] 的名字，集合语义）。
+//!   `version=`（只进诊断）· `capabilities=`（逗号列表 = [`OPS`] 的名字，集合语义）·
+//!   `shape=`（形状代号 [`shape_code`]，后端按它判「是不是同一代」）。
 //! - `cc-monitor-panorama <op> [--repo <仓>] [--store <索引根>] [--args <JSON>]` ⇒ stdout **恰一行**：
 //!   成功 `{"ok":true,"data":…}`（退出码 0）；失败 `{"ok":false,"code":…,"message":…}`，
 //!   退出码 [`EXIT_BAD_ARGS`]（调用方给错了东西）/ [`EXIT_FAILED`]（仓打不开 / 引擎报错）。
@@ -185,13 +186,35 @@ pub fn parse_argv(argv: &[String]) -> Result<Parsed, Fail> {
     })
 }
 
+/// vendored 副本的 pin（`VENDOR.md` 里 `vendored commit:` 后那对反引号里的值）。
+fn vendor_pin() -> &'static str {
+    const MD: &str = include_str!("../bridge/vendor/code-picture-core/VENDOR.md");
+    let at = MD.find("vendored commit:`").expect("VENDOR.md 没有 vendored commit 那一行");
+    let rest = &MD[at + "vendored commit:`".len()..];
+    &rest[..rest.find('`').expect("pin 没收尾")]
+}
+
+/// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕**形状代号**：op 表（名 ＋ 档）＋ vendored pin 的摘要（FNV-1a 64）。
+/// 能力表相同、某个 op 的应答形状变了（re-vendor）时它会变 ⇒ 后端按它判旧、回 `unsupported`、monitor 重放字节。
+pub fn shape_code() -> String {
+    let ops: Vec<String> = OPS.iter().map(|(n, need)| format!("{n}:{need:?}")).collect();
+    let canon = format!("ops={};vendor={}", ops.join(","), vendor_pin());
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in canon.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
 /// `--probe` 的全文（插件口方言，首行是身份）。
 pub fn probe_text() -> String {
     let caps: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
     format!(
-        "name={NAME}\nversion={}\ncapabilities={}\n",
+        "name={NAME}\nversion={}\ncapabilities={}\nshape={}\n",
         env!("CARGO_PKG_VERSION"),
-        caps.join(",")
+        caps.join(","),
+        shape_code()
     )
 }
 

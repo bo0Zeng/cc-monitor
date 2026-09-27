@@ -957,9 +957,10 @@ async fn a_cancel_really_stops_an_in_flight_panorama_index() {
     std::fs::write(
         &bin,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf 'name=cc-monitor-panorama\\nversion=t\\ncapabilities=index\\n'; exit 0; fi\n\
+            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf 'name=cc-monitor-panorama\\nversion=t\\ncapabilities=index\\nshape={shape}\\n'; exit 0; fi\n\
              echo $$ > '{p}.tmp'; mv '{p}.tmp' '{p}'\nexec sleep 300\n",
-            p = pidf.display()
+            p = pidf.display(),
+            shape = crate::control::panorama::SHAPE
         ),
     )
     .unwrap();

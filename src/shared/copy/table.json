@@ -16858,6 +16858,11 @@
       "zh": "{plugin} 这一版不支持「{token}」（版本 {version}），换一份新的就行。",
       "args": ["plugin", "token", "version"]
     },
+    "beProbe.message.staleShape": {
+      "kind": "error",
+      "zh": "{plugin} 这一份和后端不是同一代（版本 {version}），换一份新的就行。",
+      "args": ["plugin", "version"]
+    },
     "beProbe.message.wrongProgram": {
       "kind": "error",
       "zh": "找错了程序：找到的 {want} 报的是 {saw}，多半是 PATH 上有个同名的无关命令。",

@@ -60,6 +60,11 @@ pub(crate) const PLUGIN_NAME: &str = "cc-monitor-panorama";
 /// 它的探测旗标（插件口 `key=value` 方言）。
 const PROBE_FLAG: &str = "--probe";
 
+/// 〔FIX2 · `设计/97 §8` · `§6.5`〕要的那一代小程序的形状代号（`--probe` 的 `shape=`）。
+/// 对不上 ⇒ `unsupported` ⇒ monitor 放字节。== 小程序 `shape_code()`（`tests/panorama-engine/cli_tests.rs` 运行时读本文件对拍）：
+/// op 表或 vendored pin 一动，那条就红，这里跟着换。
+pub(crate) const SHAPE: &str = "fc90734129492e26";
+
 /// 探测的期限（秒）：只打三行字，给得很宽也只是「卡死时最多等这么久」。
 const PROBE_DEADLINE_SECS: u64 = 10;
 
@@ -243,8 +248,10 @@ pub(crate) async fn answer_with(
         }
         Err(n) => return Err(not_run(&bin, n)),
     };
-    crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[op]).map_err(|r| match r {
-        Rejected::MissingCapability { .. } => ("unsupported", r.message()),
+    crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[op], Some(SHAPE)).map_err(|r| match r {
+        Rejected::MissingCapability { .. } | Rejected::StaleShape { .. } => {
+            ("unsupported", r.message())
+        }
         Rejected::NotThePlugin { .. } => ("not_installed", r.message()),
     })?;
     // ③ 起它。argv 直传不过 shell。
