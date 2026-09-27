@@ -166,31 +166,29 @@ pub(crate) async fn snippet_on(origin: &crate::origin::Origin) -> Result<String,
     )
 }
 
-/// 远端装没装 `cc-acct-iso`。
-///
-/// 〔LOC1a · 第四波 4D〕**问那台机器的后端**（帧命令 `acct-iso-status`，与本机那条同一个 [`status_on`]），
-/// monitor 只转交。此前这里经拨号链路跑一串 shell（`PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso`），
-/// 那串的知识（先查 `~/.local/bin`、再查 `PATH`）今天住后端 `accounts/iso.rs::fixed_candidates` 一处（`设计/05 §14.3` B 组）。
-/// ⚠ 行为变化：那台的长连接不在 ⇒ 说「没连上」（前端照旧落到向导那一支），不再单拨一条 SSH；老后端 ⇒ 说「后端太旧」。
+/// 〔SH1 · `00 §2.5 ①`〕这台机器装没装 `cc-acct-iso` —— **一条命令带 origin**（原是本机 / 远端两条）。
+/// 问那台机器的后端（帧命令 `acct-iso-status`，[`status_on`]）；那台长连接不在 ⇒ 说「没连上」（前端照旧落到向导那一支），不再单拨 SSH。
 #[tauri::command]
-pub async fn check_remote_acct_iso(cfg: RemoteConfig) -> Result<AcctIsoStatus, String> {
-    status_on(&crate::origin::Origin(cfg.origin_label())).await
+pub async fn acct_iso_status(origin: crate::origin::Origin) -> Result<AcctIsoStatus, String> {
+    origin.route("acct_iso_status")?;
+    status_on(&origin).await
 }
 
-/// Z05：抓远端 `cc-acct-iso shellinit` 的输出，交给前端做「待贴文本」。
+/// 〔SH1 · `00 §2.5 ①`〕这台机器 `cc-acct-iso shellinit` 的片段 —— **一条命令带 origin**（原是本机 / 远端两条）。
 ///
-/// **为什么是抓远端而不是在 TS 里重新生成一份**：片段的形态（`export CLAUDE_CONFIG_DIR=<默认号>`
-/// + 每账号一个 `<名>cc()` + Z01 的 `0cc()` 逃生口）是 `cc-acct-iso` 的知识。在 TS 里照抄一份
-/// 就多一个**跨语言双写点**。抓输出则**单一来源留在 bash**，一处都不用同步。
-///
-/// 〔LOC1a · 第四波 4D〕**问那台机器的后端**（帧命令 `acct-iso-shellinit`，与本机那条同一个 [`snippet_on`]），
-/// 此前经拨号链路跑 `cc-acct-iso shellinit`。**只读**：`cmd_shellinit` 全是 `printf`；warn 走 stderr、后端不混进片段。
+/// **为什么是抓那台的输出而不是在 TS 里重新生成一份**（Z05）：片段的形态是 `cc-acct-iso` 的知识，单一来源留在 bash。
+/// 围栏判定只有一个（[`shellinit_fence_state`]），话按那台是本机还是远端各说各的（远端说「先在『维护』里部署」，本机没有那个口）。
 #[tauri::command]
-pub async fn remote_acct_iso_shellinit(cfg: RemoteConfig) -> Result<String, String> {
-    validate_shellinit_output(snippet_on(&crate::origin::Origin(cfg.origin_label())).await?)
+pub async fn acct_iso_shellinit(origin: crate::origin::Origin) -> Result<String, String> {
+    let route = origin.route("acct_iso_shellinit")?;
+    let out = snippet_on(&origin).await?;
+    match route {
+        crate::origin::Route::Local => crate::local_accounts::local_fence(out),
+        crate::origin::Route::Remote(_) => validate_shellinit_output(out),
+    }
 }
 
-/// `remote_acct_iso_shellinit` 的**fail-closed 校验**，抽成纯函数好单测（SSH 那半测不了）。
+/// 远端那一支（[`acct_iso_shellinit`]）的**fail-closed 校验**，抽成纯函数好单测。
 ///
 /// `shellinit` 的输出恒被 BEGIN/END 围栏夹住。**两条都要在**：只查 BEGIN 的话，
 /// 一次被截断的输出（SSH 中途断、超时）会带着半截片段过关，而**半截片段贴进 rc
@@ -217,7 +215,7 @@ pub(crate) fn validate_shellinit_output(out: String) -> Result<String, String> {
 }
 
 /// 片段的围栏齐不齐 —— 〔`A3` 第二波〕从 [`validate_shellinit_output`] 里抽出来的**判定**，
-/// 远端那条与本机那条（`local_accounts::classify_local_shellinit`）共用它；两边只是话不同
+/// 远端那一支与本机那一支（`local_accounts::local_fence`）共用它；两边只是话不同
 /// （远端说「先在『维护』里部署」，本机今天没有那个口）。**两条都要在**的理由见上面那个函数的头注。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FenceState {

@@ -55,6 +55,36 @@ fn the_kill_path_admits_before_it_kills() {
     );
 }
 
+/// 〔SH1 · D-g〕顺序钉：读 pane pid 在**过门之后、杀之前**（杀了就读不到了）；顺手注销在**杀成之后**（没杀成不注销）。
+#[test]
+fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
+    let src =
+        crate::guard_support::production_code(include_str!("../../../src/backend/control/kill.rs"));
+    let at = |needle: &str| {
+        assert_eq!(
+            src.matches(needle).count(),
+            1,
+            "`{needle}` 在生产段里不是恰好一处"
+        );
+        src.find(needle).unwrap()
+    };
+    let admit = at("gate::admit_destructive");
+    let panes = at("let panes = pane_pids(&handle);");
+    let kill = at(".args([\"kill-session\"");
+    let ok = at("if out.status.success() {");
+    let unregister = at("super::cc_bus::unregister_panes(name, &panes);");
+    assert!(
+        admit < panes && panes < kill,
+        "pane pid 要在过门之后、kill-session 之前读"
+    );
+    assert!(ok < unregister, "顺手注销只能在杀成那一支里");
+    let after_ok = &src[ok..];
+    assert!(
+        after_ok.find("unregister_panes").unwrap() < after_ok.find("return Ok(())").unwrap(),
+        "顺手注销要在杀成那一支返回之前"
+    );
+}
+
 /// ★ Gate 3 只给破坏性动作：本模块用 `admit_destructive`，**不是** `admit`。
 #[test]
 fn kill_uses_the_destructive_gate_not_the_plain_one() {

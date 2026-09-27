@@ -323,6 +323,40 @@ pub(crate) enum Stop {
 /// 因此本函数走得通，**只证明这 12 种能力凑得出一条完整的路**（`D4`：接口面够不够用），
 /// **不证明**通用层能用它们。后者今天不成立，差距逐条登记在
 /// `agent_locality_guard::tests::NEW_AGENT_BLOCKERS`（27 处）。
+/// 〔SH1 · V137〕假 agent 的 MCP 读面（夹具家那一份布局）：只认 `<项目>/.fake-mcp.json` 的 `servers` 表，一律记成 project 段。
+/// 它要证的是「通用层经注册表那一格读 MCP、不认识任何一家的文件名」—— 判据 `fake_tests.rs::the_fake_agents_mcp_face_is_read_through_the_generic_layer`。
+pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace { read: read_mcp };
+
+fn read_mcp(project_dir: Option<&Path>) -> crate::agents::McpRead {
+    let mut out = crate::agents::McpRead::default();
+    let Some(dir) = project_dir else { return out };
+    let file = dir.join(".fake-mcp.json");
+    let Ok(text) = std::fs::read_to_string(&file) else {
+        return out;
+    };
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(v) => {
+            for (name, server) in v
+                .get("servers")
+                .and_then(|s| s.as_object())
+                .into_iter()
+                .flatten()
+            {
+                out.entries.push(crate::agents::McpEntry {
+                    scope: "project",
+                    name: name.clone(),
+                    server: server.clone(),
+                    source: file.display().to_string(),
+                });
+            }
+        }
+        Err(e) => out
+            .problems
+            .push(format!("读 {} 失败：{e}", file.display())),
+    }
+    out
+}
+
 pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static str>, Stop> {
     let mut done: Vec<&'static str> = Vec::new();
 
@@ -341,6 +375,8 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         history: None,
         // 〔NT2 · V25〕最小假 agent 没有默认上游（未登记 ⇒ 上游选择拒）。
         upstream: None,
+        // 〔SH1 · V137〕MCP 读面同拍长一格：假 agent 的布局是 `<项目>/.fake-mcp.json` 的 `servers` 表（见 [`MCP`]）。
+        mcp: Some(MCP),
         home: home_fn,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));

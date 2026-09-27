@@ -137,6 +137,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "bus-kill"
                 | "bus-spawn"
                 | "bus-state"
+                // 〔SH1 · V136〕起一个 `cc-log` 子进程并等它退出。
+                | "bus-inbox"
                 // 〔LOC1a · 第四波 4D〕`cc-acct-iso` 两问（`shellinit` 起一次插件进程）· 分叉（读整份 jsonl ＋ `O_EXCL` 写）。
                 | "acct-iso-status"
                 | "acct-iso-shellinit"
@@ -193,6 +195,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔RM1b · 第四波〕功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "plugins-marketplaces"
                 | "tasks-list"
+                // 〔SH1 · V137〕MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
+                | "mcp-read"
+                // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
+                | "tmux-list"
                 // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
                 //   `cancel` 打得断 ⇒ `Run::Async`。〔墓碑 —— RM1c 那一版在这一档：「起一个进程、等它退出」。〕
                 // 〔RM1a · 第四波〕上游选择那份凭据文件的两条：同步文件 I/O（读一份小文件 / 原子写一份）。
@@ -278,6 +284,7 @@ fn every_registered_command_declares_its_run_kind() {
         "bus-kill",
         "bus-spawn",
         "bus-state",
+        "bus-inbox",
         "acct-iso-status",
         "acct-iso-shellinit",
         "session-fork",
@@ -320,6 +327,8 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-set",
         "plugins-marketplaces",
         "tasks-list",
+        "mcp-read",
+        "tmux-list",
         "panorama",
         "apikey-key-set",
         "apikey-read",

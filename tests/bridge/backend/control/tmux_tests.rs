@@ -263,52 +263,7 @@ fn gate1_admits_an_existing_target_by_the_one_gate_core_rule() {
     }
 }
 
-/// ★★ **K-R12：跨 SSH 的 tmux 读要 `-u`，且必须在子命令之前。**
-///
-/// # ⚠ `K-R72`（09-12）：人群**真的缩了一半**，名字跟着改
-///
-/// 原名叫 `both_cross_ssh_tmux_reads_…`，那个「both」指的是
-/// `build_guarded_tmux_cmd` 的取值 `display-message` ＋ `list_remote_tmux` 的 `ls`。
-/// 前者随两条回落一起走了 ⇒ **monitor 侧今天只剩 `ls` 这一条跨 SSH 的 tmux 读**
-/// （`capture-pane` 实测不在人群里：它吐原始 UTF-8 字节，见 [`UTF8_CLIENT_FLAG`] 头注）。
-/// ⇒ 留「both」在名字里就是一句假话；性质本身**一个字没变**，只是分母从 2 变 1。
-///
-/// 位置这一维必须单独钉：`-u` 放到子命令**后面**实测是
-/// `rc=1 + unknown flag -u`，而这条串把 stderr 与 rc 都丢了 ⇒ 静默退化。
-///
-/// ⚠ **本条扫的是源码**（那条串拼在 `async fn` 里、外面取不到），如实标注：
-/// **盘上有 ≠ 被走到**。行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md` ②/S5
-/// （真 tmux 3.4，改前段数 1 / 改后段数 6）。
-///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
-#[test]
-fn the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/tmux.rs"
-    ));
-    guard_core::assert_no_test_code("tmux.rs", &prod);
-    // 抽取器自检：生产段塌了下面两条就零命中地绿。
-    assert!(
-        prod.len() > 5_000,
-        "生产段只剩 {} 字节 —— 剥法坏了，本条此刻量不到东西",
-        prod.len()
-    );
-    assert!(
-        prod.contains("tmux {UTF8_CLIENT_FLAG} ls -F"),
-        "`list_remote_tmux` 的命令串没有把 `-u` 放在 `ls` 之前"
-    );
-    assert!(
-        !prod.contains("ls {UTF8_CLIENT_FLAG}") && !prod.contains("ls -u"),
-        "`-u` 被放到了 `ls` 后面（实测 rc=1 + unknown flag）"
-    );
-    // ★ 反向自检：这把尺子分得清「放对了」与「放错了」——
-    //   没有它，上面那两句在一份**根本没有 tmux 命令**的语料上也会「绿」。
-    let bad = "tmux ls {UTF8_CLIENT_FLAG} -F '{TMUX_LS_FMT}'";
-    assert!(
-        !bad.contains("tmux {UTF8_CLIENT_FLAG} ls -F") && bad.contains("ls {UTF8_CLIENT_FLAG}"),
-        "本条的两个针分不出「`-u` 在子命令前」与「在子命令后」—— 它此刻什么都没在守"
-    );
-}
+// 〔SH1〕`the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand`〔散文墓碑〕 那条退役：它守的那条跨 SSH `tmux ls` 串不在了（改问那台后端 `tmux-list`）。
 
 /// backend 侧那个「一个口径一个家」的家（相对**仓根**）—— 跨仓对拍的被读对象。
 ///
@@ -364,41 +319,8 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     ));
     guard_core::assert_no_test_code("tmux.rs", &prod);
 
-    // ── ① 本侧只有一个声明 ────────────────────────────────────────────
-    let decl_prefix = format!("{}: &str =", "UTF8_CLIENT_FLAG");
-    guard_core::find_pinned(&prod, &decl_prefix)
-        .unwrap_or_else(|e| panic!("本文件生产段里 `{decl_prefix}` 不是恰好一处：{e}"));
+    // ── ① 〔SH1〕本侧的旗随跨 SSH 那条读删了（monitor 零处跨 SSH tmux 读）；下面只对拍下溢谓词。
     let root = crate::guard_support::repo_root();
-    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**排掉的是谁、为什么 —— 明写。**
-    //
-    // 排掉 `src/bridge/src/backend/control/tmux.rs`：它就是「那一个家」，上面第 ① 段已经用 `find_pinned`
-    // 单独钉过它「恰好一处」。这里数的是**第二个家**，本来就不该把它自己算进去。
-    //
-    // 上一版靠 `scan_tree!` 的 `file!()` 自摘 —— 当年判据住在 `tmux.rs` 自己的
-    // `#[cfg(test)]` 段里，「摘掉调用者」恰好等于「摘掉被测那份」。剖分之后 `file!()`
-    // 指向本测试文件，那一刀**整个落空**，`tmux.rs` 回到人群里 ⇒ 报「monitor 侧有第二个」，
-    // 而盘上真的只有一个。⇒ 换成明写的排除（摘不到它，`scan_tree_excluding` 当场红）。
-    let others = guard_core::scan_tree_excluding(
-        &root.join("src/bridge/src"),
-        &["rs"],
-        &["src/bridge/src/backend/control/tmux.rs"],
-    );
-    assert!(
-        others.len() >= 60,
-        "monitor 树只采到 {} 个 .rs —— 遍历坏了，「无第二处」此刻是空转的",
-        others.len()
-    );
-    let dup: Vec<String> = others
-        .iter()
-        .filter(|(_, raw)| guard_core::production_code(raw).contains(&decl_prefix))
-        .map(|(p, _)| p.to_string_lossy().into_owned())
-        .collect();
-    assert!(
-        dup.is_empty(),
-        "monitor 侧有**第二个** `{decl_prefix}`：{dup:?}\n\
-             ⇒ 从此两份靠人对齐。正解是引用本文件那一处。"
-    );
-
     // ── ② 与后端那个家逐字相等（值现取，不写死） ──────────────────
     let home_path = root.join(BACKEND_KOU_JING_HOME);
     let home = std::fs::read_to_string(&home_path).unwrap_or_else(|e| {
@@ -412,12 +334,6 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
         home.len() > 2_000,
         "backend 那个家只有 {} 字节 —— 没读到内容，下面的对拍是空转的",
         home.len()
-    );
-    let want_flag = format!("{}: &str = {UTF8_CLIENT_FLAG:?};", "UTF8_CLIENT_FLAG");
-    assert!(
-        home.contains(&want_flag),
-        "跨仓漂移：本侧的旗是 {UTF8_CLIENT_FLAG:?}，而后端那个家里找不到 `{want_flag}`。\n\
-             两侧漂开时**两边都不会因为别的判据变红** —— 那正是本件立件时的那个形状。"
     );
     // 段数下溢那个谓词是同一族的第二个口径：比的是**函数体**，不是名字。
     let body = format!("{}.count() < expected", ".split('\\t')");
@@ -471,12 +387,12 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     );
     assert!(
         !code.contains("LC_ALL"),
-        "monitor 这一侧长出了 env 形 —— 跨 SSH 那两处该用旗，理由在 `UTF8_CLIENT_FLAG` 头注"
+        "monitor 这一侧长出了 env 形 —— 〔SH1〕它今天零处跨 SSH 的 tmux 读，更不该自带口径"
     );
 
     // ── 反向自检：上面那两条 `contains` 真的分得清 ────────────────────
     // 没有这一格，② 就可能是「随便什么串都在那个大文件里」式的恒真。
-    let drifted = format!("{}: &str = \"{UTF8_CLIENT_FLAG}x\";", "UTF8_CLIENT_FLAG");
+    let drifted = format!("{}: &str = \"-ux\";", "UTF8_CLIENT_FLAG");
     assert!(
         !home.contains(&drifted),
         "喂一个**漂了的**值居然也在后端那个家里命中（`{drifted}`）—— \
@@ -833,4 +749,26 @@ fn tmux_ls_fmt_double_write_point_stays_in_sync() {
         "TMUX_LS_FMT 双写点漂移：backend watcher.rs 不含与 monitor 侧一致的定义 {expected_def:?}\n\
              （改了 tmux ls 格式串就得两侧同步——红线 I8）"
     );
+}
+
+/// 〔SH1〕`tmux-list` 成品在 monitor 这一侧严格收：恰好 `{installed, lines}`，类型不对 / 多一格 ⇒ 认不出（回错，不猜成空表）。
+#[test]
+fn the_tmux_list_product_is_read_strictly() {
+    use serde_json::json;
+    assert_eq!(
+        decode_tmux_list(&json!({ "installed": true, "lines": ["a\tb"] })),
+        Some((true, vec!["a\tb".to_string()]))
+    );
+    assert_eq!(
+        decode_tmux_list(&json!({ "installed": false, "lines": [] })),
+        Some((false, vec![]))
+    );
+    for bad in [
+        json!({ "installed": true }),
+        json!({ "installed": "yes", "lines": [] }),
+        json!({ "installed": true, "lines": [1] }),
+        json!({ "installed": true, "lines": [], "more": 1 }),
+    ] {
+        assert_eq!(decode_tmux_list(&bad), None, "{bad}");
+    }
 }

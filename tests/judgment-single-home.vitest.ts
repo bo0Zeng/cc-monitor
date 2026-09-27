@@ -66,7 +66,7 @@ import { stripComments } from "./test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7" | "J8"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20";
+  | "J17" | "J18" | "J19" | "J20" | "J21";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -467,6 +467,22 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     defs: [],
     needles: [],
     rustGone: ["src/backend/relay/door.rs::host_is_loopback"],
+  },
+  J21: {
+    what: "后端健康读数落哪一档（无记录 / 没崩过 / 崩过）、每一档给界面什么",
+    // 〔PB1 · `设计/90 §4` 阶段 B · `设计/70 §2.2`〕判准是「账上一条记录都没有」不是 `crashed === 0`。原来两份：
+    //   TS `backend-policy.ts::describeBackendHealth` ＋ `describeHealthDetail`（界面）与 monitor `backend_policy.rs::describe_health`
+    //   （同逻辑，只有测试读）。收成后端一份 `health_face`：`backend_status` 交成品（状态 ＋ 一句 ＋ ⓘ ＋ [详情]），
+    //   界面只排版（`settings/backend-section.ts::decodeHealthFace` 按形状收、不判）。TS 那两个判定 · 取文口 · 缺格当无记录的
+    //   `readHealth` 一起删；Rust 那份并进来（`rustGone`）。形状两侧同读金样 `tests/__fixtures__/backend-health.golden.json`。
+    homes: ["src/bridge/src/backend_policy.rs::health_face"],
+    status: "zero",
+    defs: ["describeBackendHealth", "describeHealthDetail", "healthCrashed", "readHealth"],
+    needles: [
+      { text: "seen === 0", count: 0 },
+      { text: "crashed === 0", count: 0 },
+    ],
+    rustGone: ["src/bridge/src/backend_policy.rs::describe_health"],
   },
 };
 

@@ -13,14 +13,15 @@
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
 import { Channel } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { invalidateCcmProbeCache } from "../ccm-probe";
-import { buildRemoteAliasPaste } from "./machine-aliases"; // 〔MC1〕② 别名：远端那一半只给手贴
+import { buildAliasManager } from "./machine-aliases"; // 〔AL2〕② 别名：远端卡与本机同一个组件（`origin` = 这台）
 import { recordFacet, type MachineFacet } from "./machine-status";
-import { hostKey, type RemoteHostConfig } from "../remote-config";
+import { hostKey, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
@@ -188,7 +189,25 @@ export interface MachineCardParts {
 }
 
 /** 按钮结果写在哪一栏。 */
-type ResultArea = "conn" | "comp" | "tools";
+type ResultArea = "conn" | "comp";
+
+/** 〔VIS2 · `设计/15 §3.4 ①`〕后端那边自动固化 / 各地址指纹不一 ⇒ 既有的 `remote-health` 上这两个 kind（`dial_host.rs`）。 */
+export const HOST_KEY_NOTICE_KINDS: readonly string[] = ["host_key_pinned", "host_key_differs"];
+export interface HostKeyNotice {
+  origin: string;
+  kind: string;
+  message: string;
+}
+const liveCards = new Set<MachineCard>();
+let hostKeyNoticesBound = false;
+/** 整个设置窗只订一次，按 origin 分给各张卡。 */
+function bindHostKeyNotices(): void {
+  if (hostKeyNoticesBound) return;
+  hostKeyNoticesBound = true;
+  listen<HostKeyNotice>("remote-health", (e) => {
+    for (const c of liveCards) void c.onHostKeyNotice(e.payload);
+  }).catch((e: unknown) => console.warn("订不上 remote-health（host key 告知）", e));
+}
 
 export class MachineCard {
   readonly element: HTMLElement;
@@ -207,10 +226,8 @@ export class MachineCard {
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
-  private installButton!: HTMLButtonElement;
   private backendInstallButton!: HTMLButtonElement;
   private backendUninstallButton!: HTMLButtonElement;
-  private ccmUninstallButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
   /** 〔MC1〕「组件」栏那几个动作的结果区（「连接」栏的结果仍在 `testResult`）。 */
   private actionResult!: HTMLElement;
@@ -225,8 +242,6 @@ export class MachineCard {
    * ⇒ 统一放「工具」栏：本机远端同一个位置。
    */
   private toolsPart!: HTMLElement;
-  /** 「工具」栏里别名那几颗按钮的结果区（原来借「组件」栏的 `actionResult`，搬栏之后结果得跟着按钮走）。 */
-  private toolsResult!: HTMLElement;
   /** legend 里承载机器名的 span（label || host）。 */
   private nameSpan!: HTMLElement;
   /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
@@ -253,6 +268,29 @@ export class MachineCard {
     this.syncInputs(initial);
     this.updateLegend();
     this.setCollapsed(collapsed);
+    liveCards.add(this);
+    bindHostKeyNotices();
+  }
+
+  /**
+   * 〔VIS2〕只认自己那台：固化了 ⇒ 从盘上把指纹同步进输入框（机器页保存是整台 upsert，不同步会用空值盖回去）；
+   * 各地址不一 ⇒ 把那句话（带逐地址指纹）说在结果区，让人在指纹那一栏选一个填上。
+   */
+  async onHostKeyNotice(n: HostKeyNotice): Promise<void> {
+    if (!HOST_KEY_NOTICE_KINDS.includes(n.kind)) return;
+    if (n.origin !== (this.persistedKey ?? hostKey(this.collect()))) return;
+    if (n.kind === "host_key_pinned") {
+      const disk = await resolveRemoteConfigByOrigin(n.origin);
+      if (disk?.hostKeyFingerprint) {
+        this.fingerprintInput.value = disk.hostKeyFingerprint;
+        this.syncResetFpVisibility();
+      }
+    }
+    this.testResult.style.display = "block";
+    const line = document.createElement("div");
+    line.className = `remote-test-line ${n.kind === "host_key_pinned" ? "remote-test-ok" : "remote-test-caution"}`;
+    line.textContent = n.message;
+    this.testResult.appendChild(line);
   }
 
   /** 读出本卡片的 RemoteHostConfig（trim；port 兜底 22）。 */
@@ -586,38 +624,35 @@ export class MachineCard {
     // ↓↓ 从这里起归「工具」栏 ↓↓〔ST2：原来在「组件」栏，与本机那一格不在同一个位置〕
     body = this.toolsPart;
 
-    // ── ② 别名 ──
+    // ── ② 别名 ──〔AL2 · 第四波 4D〕与本机同一个组件（`设计/71 §5`）：清单在这台读、在这台写，别名块装 / 卸 / 预览都在里面。
     const aliasTitle = document.createElement("div");
     aliasTitle.className = "settings-label";
     aliasTitle.textContent = copyText("machineCard.aliases.title");
     body.appendChild(aliasTitle);
-    const aliasHint = document.createElement("div");
-    aliasHint.className = "settings-hint remote-install-info";
-    aliasHint.textContent =
-      copyText("machineCard.aliases.intro");
-    body.appendChild(aliasHint);
-    const aliasRow = document.createElement("div");
-    aliasRow.className = "settings-row settings-row-actions";
-    this.installButton = mkBtn(
-      copyText("machineCard.aliases.install"),
-      "",
-      copyText("machineCard.aliases.installHint"),
-      () => void this.onInstallAliasBlock(),
+    const origin = (): string => this.persistedKey ?? hostKey(this.collect());
+    body.appendChild(
+      buildAliasManager({
+        // 远端恒 POSIX：`设计/01 §6.7b` 表 B 只承诺远端 Linux（`第四波记录/W5-ALIAS.md §2.2`）。
+        platform: "posix",
+        origin,
+        loadAccounts: async () => {
+          const st = await fetchAccounts(origin());
+          if (!st.available) throw new Error(st.error ?? "");
+          return st.accounts.map((a) => a.name);
+        },
+        // 机器列表那一格（`ccm`）照旧记装 / 卸的结论；装完清一次 ccm 探针缓存（别名块带 PATH 那一行）。
+        onBlockDone: (verb, error) => {
+          if (verb === "install") {
+            this.recordFacet("ccm", error
+              ? { kind: "fail", detail: copyText("machineCard.status.installFailed") }
+              : { kind: "ok", detail: copyText("machineCard.status.installed") });
+            invalidateCcmProbeCache(this.collect().label);
+          } else if (!error) {
+            this.recordFacet("ccm", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
+          }
+        },
+      }),
     );
-    aliasRow.appendChild(this.installButton);
-    this.ccmUninstallButton = mkBtn(
-      copyText("machineCard.aliases.uninstall"),
-      "",
-      copyText("machineCard.aliases.uninstallHint"),
-      () => void this.onUninstallAliasBlock(),
-    );
-    aliasRow.appendChild(this.ccmUninstallButton);
-    body.appendChild(aliasRow);
-    this.toolsResult = document.createElement("div");
-    this.toolsResult.className = "remote-test-result";
-    this.toolsResult.style.display = "none";
-    body.appendChild(this.toolsResult);
-    body.appendChild(buildRemoteAliasPaste());
 
     return card;
   }
@@ -698,7 +733,6 @@ export class MachineCard {
   /** 结果区：哪一栏的按钮，结果就写在哪一栏里。 */
   private resultArea(where: ResultArea): HTMLElement {
     if (where === "comp") return this.actionResult;
-    if (where === "tools") return this.toolsResult;
     return this.testResult;
   }
 
@@ -776,24 +810,6 @@ export class MachineCard {
     line.textContent = `${icon} ${text}`;
     log.appendChild(line);
     log.scrollTop = log.scrollHeight; // F46 建议 D：新事件自动滚到底,最新阶段始终可见
-  }
-
-  /** ②「装别名块」—— 把 `src/shared/ccm-aliases.sh` 经 SFTP 装进这台远端的 ~/.bashrc。 */
-  private async onInstallAliasBlock(): Promise<void> {
-    const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.aliases.needHost"), "tools");
-      return;
-    }
-    // 别名块由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）。
-    await this.runRemoteAction(
-      this.installButton,
-      copyText("machineCard.aliases.installing"),
-      () => commands.install_remote_alias_block({ cfg, profile: ".bashrc" }),
-      { facet: "ccm", ok: copyText("machineCard.status.installed"), fail: copyText("machineCard.status.installFailed") },
-      "tools",
-    );
-    invalidateCcmProbeCache(cfg.label);
   }
 
   /** F50：一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
@@ -1014,7 +1030,7 @@ export class MachineCard {
      * 停在旧结论上，而 UI 上看不出来。
      */
     ledger?: { facet: MachineFacet; ok: string; fail: string },
-    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`，〔ST2〕「工具」栏的写 `toolsResult`。 */
+    /** 〔MC1〕结果写到哪一栏：「连接」栏的动作写 `testResult`，「组件」栏的写 `actionResult`（〔AL2〕「工具」栏的别名那一块自带结果区）。 */
     where: ResultArea = "conn",
   ): Promise<void> {
     const out = this.resultArea(where);
@@ -1088,31 +1104,6 @@ export class MachineCard {
       "comp",
     );
     this.recordFacet("backend", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
-  }
-
-  /** ②「卸载 ccm」（V80 · V134：名字按用户原裁；做的事是从远端 ~/.bashrc 删掉 cc-monitor 那一块别名块，二次确认）。 */
-  private async onUninstallAliasBlock(): Promise<void> {
-    const cfg = this.collect();
-    if (!cfg.host || !cfg.user) {
-      this.showResultText(copyText("machineCard.aliases.uninstallNeedHost"), "tools");
-      return;
-    }
-    if (
-      !(await askConfirm(
-        copyText("machineCard.aliases.uninstallConfirm", { host: cfg.host }),
-      ))
-    ) {
-      return;
-    }
-    await this.runRemoteAction(
-      this.ccmUninstallButton,
-      copyText("machineCard.aliases.uninstalling"),
-      () => commands.uninstall_remote_alias_block({ cfg, profile: ".bashrc" }),
-      undefined,
-      "tools",
-    );
-    // 同后端卸载：动作成功 = 组件不在了。
-    this.recordFacet("ccm", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
   }
 
   /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、backend ✓/✗（+hello）。

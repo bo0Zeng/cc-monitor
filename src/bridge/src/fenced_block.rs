@@ -287,10 +287,11 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
         host: "远端 POSIX 的 ~/<用户选的那份 rc>",
         what_goes_in: "整块别名 snippet（src/shared/ccm-aliases.sh）",
         begin_marker: crate::profile_installer::CCM_PROFILE_BEGIN,
-        install_site: "profile_installer.rs::install_remote_alias_block",
-        uninstall_site: Some("profile_installer.rs::uninstall_remote_alias_block"),
+        // 〔AL2 · 第四波 4D〕远端那两条命令并进 `aliases_block_*`（带 `origin`）⇒ 装口与本机同一处。
+        install_site: "profile_installer.rs::install_to_profile",
+        uninstall_site: Some("profile_installer.rs::uninstall_from_profile"),
         pairing: "fenced_block.rs::find_pair",
-        differs_in: "落盘走 SFTP（upload_atomic + 远端备份），本机那两套走本地原子替换",
+        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）",
     },
     FenceShape {
         id: "local-windows-ps",

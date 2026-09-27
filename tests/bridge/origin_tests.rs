@@ -200,7 +200,7 @@ fn local_and_remote_are_exactly_complementary() {
 //      · `remote_history.rs::delete_remote_history_session`
 //      · `stream_remote_history_sessions`〔散文墓碑〕（〔C4d〕随远端会话清单搬进本机后端一起删了）
 //      · `stream_read_remote_session`〔散文墓碑〕（〔LOC1b〕函数也删了：本机远端合成一条 `history·rs::stream_read_session_jsonl`）
-//      · `mcp.rs::list_remote_mcp_project_dirs`
+//      · `list_remote_mcp_project_dirs`〔散文墓碑〕（〔SH1 · V137〕本机远端同一条 `mcp-read`，那个远端分支删了）
 //
 // 🔴 **为什么参数名从 `origin` 改成 `host`，而不是原样留着**：
 //    这五个函数今天拿到的是**已经分过本机**的机器名（分本机那一步住合并后那条命令里）。

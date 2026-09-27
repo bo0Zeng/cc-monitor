@@ -331,9 +331,7 @@ pub fn resolves_on_path(
 
 // ===== IPC 层：本机与远端各读一次 settings.json。**全程只读。** =====
 //
-// 远端形状照抄 `mcp.rs::fetch_remote_claude_json`：定值命令（零用户输入拼接 → 零注入面）、
-// 30s 超时、大小上限（⚠ **超限拒收+回错**，devbench F10b —— 不是「宽容解析」那一档）。
-// 本机直接 `read_to_string`。
+// 〔SH1〕远端那一条今天问那台后端（见下面 `diagnose_remote_cc_bus_hooks`）；本机直接 `read_to_string`。
 // **本模块没有任何写路径**——下方 `this_module_never_writes` 那条测试把它变成门禁，
 // 而不是只靠我记得。
 
@@ -463,134 +461,119 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
     .map_err(|e| format!("spawn_blocking: {e}"))
 }
 
-/// 一条**定值**命令：读回 settings.json 原文 + 那两个钩子程序在远端存不存在。
-/// `origin` 只用于选连接配置，**不参与命令串拼接**（同 `mcp.rs` 那条 CMD 常量的形状）。
-const REMOTE_HOOKS_CMD: &str = concat!(
-    r#"cat "$HOME/.claude/settings.json" 2>/dev/null; "#,
-    r#"printf '\n@@CCMON-HOOKS-SPLIT@@\n'; "#,
-    // **两类命中各打一个标记**（T03 审计阻塞 3）：`X` = `$HOME/.local/bin/` 下 `-x` 命中，
-    // `P` = PATH 上 `command -v` 命中。不打标记的话两者在回报里**完全分不出来**，
-    // 于是同一份含混证据被用出了两个互相矛盾的结论：`on_path` 说"分不清所以不猜"，
-    // 而 `home_path_exists` 却确定地说"在"。真实假阴性：远端 cc-register 只装在
-    // `/usr/local/bin` 且在 PATH 上时，`command -v` 打出它 → 按 basename 匹配上 →
-    // `home_path_exists = true` → `$HOME` 形态**不警示** → 用户贴上去正是一个
-    // path-missing 钩子，就是这次要修的那件事。
-    r#"for f in "$HOME/.local/bin/cc-register" "$HOME/.local/bin/cc-bus-stop-hook"; do "#,
-    r#"[ -x "$f" ] && printf 'X\t%s\n' "$f"; done; "#,
-    // **把 PATH 上的真实路径也吐出来**（B04 审计 B04-7）：原先只 `-x` 两个固定路径 +
-    // 两行 `HAS_PATH_*` 标记，而那两个标记的 basename 与目标不相等、等于没参与匹配。
-    // 于是装在 `/usr/local/bin` 且在 PATH 上的**能用的安装**会被报成「指不到」——
-    // 注释说这是"保守方向"，但对能用的安装报假警报，方向并不保守。
-    r#"for p in cc-register cc-bus-stop-hook; do "#,
-    r#"h="$(command -v "$p" 2>/dev/null)" && printf 'P\t%s\n' "$h"; done; true"#
-);
+// 〔SH1 · V136〕远端那条原先是一条拨号 shell（`cat settings.json` ＋ `-x` / `command -v` 探测，
+//   按 basename 宽容匹配）〔散文墓碑〕。今天事实经**那台的后端**问（`footprint-probe` 取家目录 / PATH / agent 家 ·
+//   `files-peek` 读 `<agentHome>/settings.json` · 再一趟 `footprint-probe` 逐条 stat）；诊断口径照旧住本文件。
 
-pub const HOOKS_SPLIT_MARKER: &str = "@@CCMON-HOOKS-SPLIT@@";
+/// 远端诊断问那台后端的期限（三趟往返共用一个总时限）。
+const REMOTE_DIAG_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// 解析远端探测回报：`X\t<path>` = `$HOME/.local/bin/` 下 `-x` 命中，
-/// `P\t<path>` = PATH 上 `command -v` 命中。返回 `(宽容清单, 探测结论)`。
-///
-/// 抽成纯函数是因为**这段此前零覆盖**（T03 审计阻塞 3 实测：把远端
-/// `home_path_exists` 改成 `= true`，`cargo test hooks_diag` 24 项照样全绿）。
-/// 它藏在 `#[tauri::command] async fn` 里、要一条真 ssh 才走得到 = 不可测 = 没门禁。
-///
-/// **旧协议（不打标记）的远端一律落到"说不知道"**：两个字段都 `None`，
-/// 不拿含混回报当精确证据用。
-pub fn parse_remote_probe(probe_part: &str) -> (Vec<String>, SnippetProbe) {
-    let (mut x_hits, mut p_hits, mut legacy) = (Vec::new(), Vec::new(), Vec::new());
-    for line in probe_part.lines() {
-        let l = line.trim();
-        if l.is_empty() {
-            continue;
-        }
-        match l.split_once('\t') {
-            Some(("X", v)) => x_hits.push(v.to_string()),
-            Some(("P", v)) => p_hits.push(v.to_string()),
-            _ => legacy.push(l.to_string()),
-        }
+/// `$HOME/…` · `${HOME}/…` · `~/…` 按那台的家目录展开；已是绝对路径的原样；其余（裸命令名）回 `None`。
+pub(crate) fn expand_on(s: &str, home: &str) -> Option<String> {
+    let home = home.trim_end_matches('/');
+    let rest = s
+        .strip_prefix("$HOME/")
+        .or_else(|| s.strip_prefix("${HOME}/"))
+        .or_else(|| s.strip_prefix("~/"));
+    match rest {
+        Some(r) if !home.is_empty() => Some(format!("{home}/{r}")),
+        Some(_) => None,
+        None if s.starts_with('/') => Some(s.to_string()),
+        None => None,
     }
-    let basename_hit = |list: &[String], s: &str| -> bool {
-        let base = s.rsplit('/').next().unwrap_or(s);
-        list.iter()
-            .any(|p| p.rsplit('/').next().unwrap_or(p) == base)
-    };
-    // 有任一带标记的行 → 新协议；一行都没有（对方啥也没找到）也算新协议；
-    // 只有无标记的行 → 旧协议，分不清。
-    let tagged = !x_hits.is_empty() || !p_hits.is_empty() || legacy.is_empty();
-    let progs = ["cc-register", "cc-bus-stop-hook"];
-    let probe = SnippetProbe {
-        home_path_exists: tagged.then(|| progs.iter().all(|p| basename_hit(&x_hits, p))),
-        on_path: tagged.then(|| progs.iter().all(|p| basename_hit(&p_hits, p))),
-    };
-    let lenient: Vec<String> = x_hits.into_iter().chain(p_hits).chain(legacy).collect();
-    (lenient, probe)
 }
 
-/// 读远端 `~/.claude/settings.json` 的上限〔devbench F10b 提成具名常量〕。
-const REMOTE_SETTINGS_CAP: u64 = 4 * 1024 * 1024;
+/// 要问那台 stat 的路径全集（纯）：诊断在钩子命令里点名过的路径（展开后）· `$HOME/.local/bin` 下那两个程序 ·
+/// `PATH` 每一段 × 两个程序名。远端恒是 POSIX ⇒ `PATH` 按 `:` 切（不按本机平台的分隔符）。
+pub(crate) fn stat_plan(asked: &[String], home: &str, path: &str) -> Vec<String> {
+    let progs = ["cc-register", "cc-bus-stop-hook"];
+    let mut out: Vec<String> = asked.iter().filter_map(|s| expand_on(s, home)).collect();
+    out.extend(
+        progs
+            .iter()
+            .filter_map(|p| expand_on(&format!("$HOME/.local/bin/{p}"), home)),
+    );
+    for d in path
+        .split(':')
+        .map(|d| d.trim_end_matches('/'))
+        .filter(|d| d.starts_with('/'))
+    {
+        out.extend(progs.iter().map(|p| format!("{d}/{p}")));
+    }
+    out.sort();
+    out.dedup();
+    out.truncate(256); // `footprint-probe` 一趟最多 256 条
+    out
+}
 
-/// 诊断**远端**的 `~/.claude/settings.json`。只读，绝不写远端任何文件。
+/// 远端的诊断：事实问那台后端，判定用本文件那一套（与本机同一个 `diagnose` / `snippet`）。
 #[tauri::command]
 pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport, String> {
-    use tokio::io::AsyncReadExt;
-    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-        copy_text(
-            "rsHooksDiag.remote.notConfigured",
-            &[("machine", &origin.to_string())],
-        )
-    })?;
-    let read = async {
-        let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD).await?;
-        let mut buf = Vec::new();
-        // `+ 1` 见 src/backend/common/fs.rs：截断的 settings.json 解析失败之后
-        // 用户看到的是「解析失败」而不是「超限」，那是误导性的错误。
-        stream
-            .take(REMOTE_SETTINGS_CAP + 1)
-            .read_to_end(&mut buf)
-            .await
-            .map_err(|e| copy_text("rsHooksDiag.remote.readFailed", &[("e", &e.to_string())]))?;
-        if buf.len() as u64 > REMOTE_SETTINGS_CAP {
-            return Err(copy_text(
-                "rsHooksDiag.remote.tooBig",
-                &[("cap", &REMOTE_SETTINGS_CAP.to_string())],
-            ));
-        }
-        Ok::<Vec<u8>, String>(buf)
+    use crate::backend::control::frame_query::{call, Deadline};
+    let o = crate::origin::Origin(origin.clone());
+    let deadline = Deadline::within(REMOTE_DIAG_BUDGET);
+    let env = call(&o, "footprint-probe", serde_json::json!({}), deadline).await?;
+    let s = |k: &str| env["env"][k].as_str().unwrap_or("").to_string();
+    let (home, path, agent_home) = (s("home"), s("path"), s("agentHome"));
+    let door = crate::user_files::BackendDoor::new(o.clone());
+    let (raw, note) = match crate::user_files::Door::peek(&door, &agent_home, "settings.json").await
+    {
+        Ok(p) => (p.text, None),
+        Err(e) => (
+            None,
+            Some(copy_text("rsHooksDiag.remote.peekFailed", &[("e", &e)])),
+        ),
     };
-    let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
-        .await
-        .map_err(|_| {
-            copy_text(
-                "rsHooksDiag.remote.timeout",
-                &[("machine", &origin.to_string())],
-            )
-        })??;
-    let text = String::from_utf8_lossy(&raw).into_owned();
-    tokio::task::spawn_blocking(move || {
-        let (json_part, probe_part) = match text.split_once(HOOKS_SPLIT_MARKER) {
-            Some((a, b)) => (a.to_string(), b.to_string()),
-            // 缺分隔标记 → 宽容降级：全当 JSON，探测结果为空（于是显式路径一律判 PathMissing，
-            // 这是**保守**方向：宁可说"指不到"也不要假称"装好了"）。
-            None => (text.clone(), String::new()),
+    // 先空跑一遍诊断，记下它会问哪几个路径；再一趟 stat 问完。
+    let plan = {
+        let asked = std::cell::RefCell::new(Vec::<String>::new());
+        let record = |q: &str| {
+            asked.borrow_mut().push(q.to_string());
+            false
         };
-        let (lenient, probe) = parse_remote_probe(&probe_part);
-        // `exists` 的宽容语义**刻意不变**（B04 审计 B04-7 的决定）：`-x` 与 PATH 命中
-        // 任一都算"这个程序在远端存在"。这里只是不再拿它去回答"$HOME 那个具体路径在不在"。
-        let exists = move |s: &str| -> bool {
-            let base = s.rsplit('/').next().unwrap_or(s);
-            lenient
+        diagnose(raw.as_deref(), &record);
+        let asked = asked.into_inner();
+        stat_plan(&asked, &home, &path)
+    };
+    let got = call(
+        &o,
+        "footprint-probe",
+        serde_json::json!({ "stat": plan }),
+        deadline,
+    )
+    .await?;
+    let present: std::collections::BTreeSet<String> = plan
+        .iter()
+        .filter(|p| got["stat"][p.as_str()].get("kind").and_then(|k| k.as_str()) == Some("file"))
+        .cloned()
+        .collect();
+    let exists = |q: &str| expand_on(q, &home).is_some_and(|p| present.contains(&p));
+    let progs = ["cc-register", "cc-bus-stop-hook"];
+    let known = !home.is_empty();
+    let probe = SnippetProbe {
+        home_path_exists: known.then(|| {
+            progs
                 .iter()
-                .any(|p| p.rsplit('/').next().unwrap_or(p) == base)
-        };
-        let d = if json_part.trim().is_empty() {
-            diagnose(None, &exists)
-        } else {
-            diagnose(Some(&json_part), &exists)
-        };
-        report(d, format!("[{origin}] ~/.claude/settings.json"), probe)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking: {e}"))
+                .all(|p| exists(&format!("$HOME/.local/bin/{p}")))
+        }),
+        on_path: (!path.trim().is_empty()).then(|| {
+            progs.iter().all(|p| {
+                path.split(':')
+                    .map(|d| d.trim_end_matches('/'))
+                    .filter(|d| d.starts_with('/'))
+                    .any(|d| present.contains(&format!("{d}/{p}")))
+            })
+        }),
+    };
+    let mut d = diagnose(raw.as_deref(), &exists);
+    if let Some(n) = note {
+        d.note = n;
+    }
+    Ok(report(
+        d,
+        format!("[{origin}] {agent_home}/settings.json"),
+        probe,
+    ))
 }
 
 #[cfg(test)]

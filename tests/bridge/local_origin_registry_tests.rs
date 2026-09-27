@@ -132,10 +132,12 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     //    随那份文件整份删了（界面进程零 SSH）⇒ 这个人群**恰好少一处**（登记表那一行同拍还掉）。
     // 🔴 〔LOC1a · 第四波 4D〕地板 16 → **15**：`remote_branch.rs::create_remote_branch_session` 不再自己去查远端配置
     //    （分叉本机远端同一条帧命令，`client_for(origin)` 对 `<local>` 与远端一视同仁）⇒ 这个人群**恰好少一处**。
+    // 🔴 〔SH1 · 4D〕地板 15 → **13**：驾驶舱读名册 / 读收件箱那两处（`read_cc_bus_state` · `cfg_of`，〔散文墓碑〕）随 shell 读删了。
+    // 〔SH1〕13 → 12：钩子诊断远端那一处不再查远端配置（改问那台后端）；12 → 10：MCP 远端两处同理。
     assert!(
-        sites >= 15,
+        sites >= 9, // 〔SH1〕10 → 9：列 tmux 那一处改问那台后端
         "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
-             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16，LOC1a 09-25 现打 15）"
+             `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16，LOC1a 09-25 现打 15，SH1 09-26 现打 13）"
     );
     // 反向自检之二：**函数定位不许大面积退回文件头**。
     // 退回文件头会让位置比较退化成「文件里有没有」——那比本护栏声称的弱，
@@ -162,7 +164,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // 〔SR1b · 第四波 09-24〕12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
     // 〔C4c · 第四波 4B〕11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
     // 〔LOC1a · 第四波 4D〕10 → **9**：`remote_branch.rs::create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。
-    const TRIAGE_DEBT_TODAY: usize = 9;
+    const TRIAGE_DEBT_TODAY: usize = 5; // 〔SH1〕6 → 5：列 tmux 那一处还掉了 // 〔SH1〕9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
     assert_eq!(
         TRIAGE_DEBT.len(),
         TRIAGE_DEBT_TODAY,

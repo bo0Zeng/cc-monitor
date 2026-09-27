@@ -72,6 +72,29 @@ impl Shell {
 /// 解析回来的一条：`(名字, 参数)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
 pub type Parsed = Result<(String, Vec<String>), String>;
 
+/// 〔AL2 · 第四波 4D〕一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，`71 §4.4` 表第一行）。
+///
+/// 方言**只给路径与列法**，一个字节的盘都不读：在不在、里面是什么由**那台机器的后端**答
+/// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `files-peek` / `files-stat`）——
+/// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的（`第四波记录/W5-ALIAS.md §2.2`）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupCandidate {
+    /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
+    pub path: String,
+    pub listed: Listed,
+}
+
+/// 一份候选**不在盘上时**列不列。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Listed {
+    /// 不在就不列（POSIX 那四份：只列真有的）。
+    IfFileExists,
+    /// 不在也列（`$PROFILE` 常常要装的时候才建）。
+    Always,
+    /// 这个目录在才列，文件在不在都列（PowerShell 7 那两份：目录在 ⇒ 装过且至少跑过一次）。
+    IfDirExists(String),
+}
+
 /// 🔴 **`71 §4.4` 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
 pub trait ShellDialect: Sync {
@@ -88,7 +111,8 @@ pub trait ShellDialect: Sync {
 
     /// shell 启动时会执行的那几份文件（界面「别名块装进哪份」的候选），按优先级。
     /// 「列不列一份还不存在的文件」是读法，由实现答（POSIX 只列在的 · PowerShell 的 `$PROFILE` 常常要装时才建）。
-    fn startup_files(&self, home: &Path) -> Vec<PathBuf>;
+    /// 〔AL2〕`home` 是**那台机器**的 home（后端 `files-home` 答的字符串）；这里一个字节的盘都不读（[`StartupCandidate`]）。
+    fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate>;
 
     // 〔TL1 · 4C〕墓碑：这里从前有一格「用户选的那份启动文件还不在时，装 source 那一行要不要新建它」——
     //   代装那一行的那一跳退役了（`71 §6.1`：source 那一行只住别名块里），这一格零调用方 ⇒ 删。
@@ -120,7 +144,10 @@ pub trait ShellDialect: Sync {
     fn same_name(&self, a: &str, b: &str) -> bool;
 
     /// 这个名字是不是已经被占了（**只出声、不拦**）。报出来的话里带住址。
-    fn name_taken(&self, name: &str) -> Option<String>;
+    ///
+    /// 〔AL2〕`look_on_path`：要不要查 `PATH` 上的同名程序。查的是 **monitor 这个进程**的 `PATH` ⇒ 只有那台机器就是
+    /// monitor 所在这台时才说得了（调用方按 `origin` 给）；远端给 `false`，只查自带别名块（`第四波记录/W5-ALIAS.md §2.2`）。
+    fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String>;
 
     /// 一个参数能不能**原样**到达 `ccm`（传参那一跳这个 shell 会不会改坏它）。
     fn arg_is_passable(&self, word: &str) -> Result<(), String>;
@@ -277,11 +304,13 @@ impl ShellDialect for Posix {
         raw
     }
 
-    fn startup_files(&self, home: &Path) -> Vec<PathBuf> {
+    fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
         POSIX_RC_CANDIDATES
             .iter()
-            .map(|n| home.join(n))
-            .filter(|p| p.is_file())
+            .map(|n| StartupCandidate {
+                path: crate::user_files::join_under(home, n),
+                listed: Listed::IfFileExists,
+            })
             .collect()
     }
 
@@ -344,12 +373,15 @@ impl ShellDialect for Posix {
     ///    （`profile_installer::builtin_alias_names`），不在这里抄一份名字清单；
     /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器（`/usr/bin/cc`），
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
-    fn name_taken(&self, name: &str) -> Option<String> {
+    fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String> {
         if crate::profile_installer::builtin_alias_names().contains(&name) {
             return Some(copy_text(
                 "rsShellDialect.posix.nameTakenBuiltin",
                 &[("name", &name.to_string())],
             ));
+        }
+        if !look_on_path {
+            return None;
         }
         on_path(name, &[""]).map(|cand| {
             copy_text(
@@ -484,16 +516,29 @@ impl ShellDialect for PowerShell {
     ///
     /// 「文档」目录优先问系统（OneDrive 会把它挪走），问到的不在这个 home 底下时退回 `home/Documents`
     /// （判据拿临时目录当 home，结构上碰不到真实家目录）。
-    fn startup_files(&self, home: &Path) -> Vec<PathBuf> {
+    ///
+    /// 〔AL2 · 第四波 4D〕PS 7 那两份「目录在才列」从前在这里 `is_dir()`，今天交给调用方问那台后端（[`Listed::IfDirExists`]）。
+    /// ⚠ **诚实边界**：「文档目录在哪」仍是 monitor 这个进程问系统（`dirs::document_dir()`），不是问后端 ——
+    /// 这一臂今天只有本机（远端 × PowerShell 在命令口显式拒，`account_aliases::dialect_promised` · `01 §6.7b` 表 B），
+    /// 本机 = monitor 所在那台；路径按本机的写法拼（`Path::join`）也是这个缘故。
+    fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
+        let home = Path::new(home);
         let docs = dirs::document_dir()
             .filter(|d| d.starts_with(home))
             .unwrap_or_else(|| home.join("Documents"));
         let mut out = Vec::new();
         for (dir, always) in [("WindowsPowerShell", true), ("PowerShell", false)] {
             let d = docs.join(dir);
-            if always || d.is_dir() {
-                out.push(d.join("Microsoft.PowerShell_profile.ps1"));
-                out.push(d.join("profile.ps1"));
+            let listed = if always {
+                Listed::Always
+            } else {
+                Listed::IfDirExists(d.display().to_string())
+            };
+            for f in ["Microsoft.PowerShell_profile.ps1", "profile.ps1"] {
+                out.push(StartupCandidate {
+                    path: d.join(f).display().to_string(),
+                    listed: listed.clone(),
+                });
             }
         }
         out
@@ -621,7 +666,7 @@ impl ShellDialect for PowerShell {
     /// ⚠ **够不着的一格**：PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
     /// 撞上它们的别名定义了也敲不到。要问得真准得起一个 PowerShell 跑 `Get-Command`，本机没有（W1 那一族）⇒
     /// 如实不查，不编一份内建别名清单出来。
-    fn name_taken(&self, name: &str) -> Option<String> {
+    fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String> {
         // 只问模板里定义了哪几个函数 —— 与数据目录无关，喂一个占位目录。
         let block =
             crate::profile_installer::render_cc_code("cc", true, std::path::Path::new("/_"));
@@ -636,6 +681,9 @@ impl ShellDialect for PowerShell {
                 "rsShellDialect.ps.nameTakenIntegration",
                 &[("name", &name.to_string())],
             ));
+        }
+        if !look_on_path {
+            return None;
         }
         on_path(name, &["exe", "cmd", "bat", "ps1", "com"]).map(|cand| {
             copy_text(

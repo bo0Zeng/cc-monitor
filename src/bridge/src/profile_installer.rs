@@ -18,7 +18,7 @@
 //!
 //! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
 //! |---|---|---|---|
-//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔MC1〕`install_remote_alias_block`；〔W5-ALIAS〕今天与下面几样一起住本模块尾部） |
+//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper`〔散文墓碑〕（〔AL2〕今天就是 [`install_to_profile`]，带远端 `origin`） |
 //! | 查「你 rc 里那几行是旧的」 | `scan_legacy_profiles`〔散文墓碑〕（〔AL1d〕删了：每份候选各带块的现状） | 🔴 **零口** | —— |
 //!
 //! 补法有两条硬边界，两条都是**这件事的一半价值**：
@@ -40,7 +40,7 @@
 
 use crate::copy_table::copy_text;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::shell_dialect::Shell;
 
@@ -389,7 +389,7 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
 /// 从前叫 `cc_integration_*`〔散文墓碑〕）收的是 **webview 给的字符串**（前端那一格是用户可输入的
 /// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：装往那里写、
 /// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
-/// 而**远端**那条同名功能一直有围栏（`sftp.rs`：「profile 只能是 home 下的文件名」）。
+/// 而**远端**那条同名功能一直有围栏（从前 `sftp.rs`：「profile 只能是 home 下的文件名」）。
 ///
 /// # 为什么是「home 之内」而不是「home 下的裸文件名」
 ///
@@ -397,46 +397,46 @@ pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
 /// 而「其它文件」是产品特性（用户可以指 `~/.config/fish/config.fish`）。
 /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
 ///
-/// 三条规则：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
-/// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
-/// 另外：父目录若已存在，用它的 canonical 形态再查一次前缀 —— 挡掉
-/// `~/link -> /etc` 这种**符号链接逃逸**（`install` 会跟着链接写过去）。
-pub fn fence_profile_path(raw: &str) -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| copy_text("rsProfileInstaller.fence.noHome", &[]))?;
-    fence_path_under(&home, raw)
-}
-
-/// 同一道围栏，**home 由调用方给**。
+/// # 〔AL2 · 第四波 4D〕拆成两层：**词法**（本函数，两侧都过）＋ **符号链接**（[`fence_on`]，只对本机）
 ///
-/// ⚠ `K-R49` 起抽出这一层，理由是**可测性**而不是通用性：调用方拿一个临时目录当 home，
-/// 围栏的四条规则就能在**碰不到真实家目录**的前提下被真跑一遍
-/// （〔用 08-29〕「你只能做产品, 不能动机器」）。上面那个入口一个字节的语义都没变 ——
-/// 它只是把 `dirs::home_dir()` 填进来。
-pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, String> {
-    let home = home.to_path_buf();
-    let expanded: PathBuf = if raw == "~" {
-        home.clone()
+/// 词法四条：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
+/// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
+/// 全是**字符串**上的判断（与 `user_files::rel_under` 同一种算法）：`home` 是**那台机器**的后端答的
+/// （`files-home`），而那台可能不是 monitor 这台 —— `std::path::Path::is_absolute` 在 Windows 上把 `/home/user/.bashrc`
+/// 判成相对（没有盘符），`Path::join` 又用本机分隔符（`第四波记录/W5-ALIAS.md §2.2` · `AL2.md §2.5`）。
+pub fn fence_lexical(home: &str, raw: &str) -> Result<String, String> {
+    let expanded = if raw == "~" {
+        home.to_string()
     } else if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
-        home.join(rest)
+        crate::user_files::join_under(home, rest)
     } else {
-        PathBuf::from(raw)
+        raw.to_string()
     };
-    if !expanded.is_absolute() {
+    let b = expanded.as_bytes();
+    let absolute = expanded.starts_with('/')
+        || expanded.starts_with("\\\\")
+        || (b.len() >= 3
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && matches!(b[2], b'/' | b'\\'));
+    if !absolute {
         return Err(copy_text(
             "rsProfileInstaller.fence.notAbsolute",
             &[("raw", &format!("{:?}", raw))],
         ));
     }
-    if expanded
-        .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
+    if expanded.split(['/', '\\']).any(|seg| seg == "..") {
         return Err(copy_text(
             "rsProfileInstaller.fence.dotdot",
             &[("raw", &format!("{:?}", raw))],
         ));
     }
-    if !expanded.starts_with(&home) {
+    let norm = |s: &str| s.replace('\\', "/");
+    let h = norm(home);
+    let h = h.trim_end_matches('/');
+    let a = norm(&expanded);
+    let inside = !h.is_empty() && (a == h || a.starts_with(&format!("{h}/")));
+    if !inside {
         return Err(copy_text(
             "rsProfileInstaller.fence.outsideHome",
             &[
@@ -445,17 +445,31 @@ pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, St
             ],
         ));
     }
-    // 符号链接逃逸：父目录已存在时用它的真身再查一次。
-    if let Some(parent) = expanded.parent() {
-        if let (Ok(real_parent), Ok(real_home)) = (parent.canonicalize(), home.canonicalize()) {
-            if !real_parent.starts_with(&real_home) {
-                return Err(copy_text(
-                    "rsProfileInstaller.fence.symlinkEscape",
-                    &[
-                        ("raw", &format!("{:?}", raw)),
-                        ("realParent", &format!("{:?}", real_parent)),
-                    ],
-                ));
+    Ok(expanded)
+}
+
+/// 同一道围栏按**这台机器是谁**过：词法（[`fence_lexical`]）两侧都过；**符号链接逃逸**那一步只对本机做。
+///
+/// 符号链接那一步：父目录已存在时用它的真身再查一次前缀 —— 挡掉 `~/link -> /etc` 这种逃逸（`install` 会跟着链接写过去）。
+/// 它量的是 **monitor 这台的盘**（`canonicalize`）⇒ 只有那台就是本机时才说得了；远端那一步由那台后端管
+/// （`files-peek` / `files-put` 先过 `control/files_write.rs::resolve_existing_in_root`：解到底之后跑出 home 就拒）。
+/// 从前这一步对远端路径也量本机盘：远端 `/home/user` 恰好在本机也存在时，量到的是本机的链接（`W5-ALIAS.md §2.2`）。
+pub fn fence_on(origin: &crate::origin::Origin, home: &str, raw: &str) -> Result<String, String> {
+    let expanded = fence_lexical(home, raw)?;
+    if origin.is_local() {
+        let (at, home_p) = (Path::new(&expanded), Path::new(home));
+        if let Some(parent) = at.parent() {
+            if let (Ok(real_parent), Ok(real_home)) = (parent.canonicalize(), home_p.canonicalize())
+            {
+                if !real_parent.starts_with(&real_home) {
+                    return Err(copy_text(
+                        "rsProfileInstaller.fence.symlinkEscape",
+                        &[
+                            ("raw", &format!("{:?}", raw)),
+                            ("realParent", &format!("{:?}", real_parent)),
+                        ],
+                    ));
+                }
             }
         }
     }
@@ -1309,136 +1323,8 @@ pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String>
     )
 }
 
-/// `profile` 只许是远端 home 下的一个文件名。空 ⇒ `.bashrc`。
-fn remote_profile_name(profile: &str) -> Result<String, String> {
-    let p = profile.trim();
-    let p = if p.is_empty() { ".bashrc" } else { p };
-    if p.contains('/') || p.contains('\\') || p.contains("..") {
-        return Err(copy_text("rsProfileInstaller.remoteProfile.badName", &[]));
-    }
-    Ok(p.to_string())
-}
-
-/// 〔MC1 · 2026-09-24〕**别名块**卸载（远端机器卡 ②「别名」里那颗按钮 —— 〔V134 · 09-25〕用户选「改回「卸载 ccm」」，
-/// 按钮名照 V80 原裁叫「卸载 ccm」，命令名与做的事不变）：从远端 rc 删 BEGIN/END 块。
-///
-/// 从前它叫 `uninstall_remote_ccm_helper`〔散文墓碑〕、按钮叫「卸载 ccm」——「ccm 助手」这个词
-/// 盖着两件事（`设计/71 §13.1`：① 推入口 ② 写别名块），而这一条只做过 ②。用户 2026-09-17 逐字
-/// 「装/卸 ccm 助手是假的，删掉这个东西」⇒ 名字跟着它真做的事走。
-/// 〔RW1〕读改写经那台远端的后端（`files-peek` / `files-put`）：没有块 ⇒ 一个字节都不写；否则
-/// **先备份**（`.ccm-backup-<ms>-<序号>`）→ 写 → **读回逐字比对**，不符则回滚（规则住后端）。
-#[tauri::command]
-pub async fn uninstall_remote_alias_block(
-    cfg: crate::ssh_source::RemoteConfig,
-    profile: String,
-) -> Result<String, String> {
-    let profile = remote_profile_name(&profile)?;
-    // 〔RW1 · 第四波 09-24〕F10 按推荐改：**经那台远端的后端**写（`user_files`），不再 SFTP 直写 rc。
-    //   备份 · 原子替换 · 回读 · 回滚那一份规则住后端（`files-put`），与本机同一条路、只差 origin。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text(
-        "rsProfileInstaller.remoteProfile.what",
-        &[("profile", &profile.to_string())],
-    );
-    let mut missing = false;
-    let done =
-        crate::user_files::edit(
-            &door,
-            &home,
-            &profile,
-            true,
-            false,
-            |existing| match existing {
-                None => {
-                    missing = true;
-                    Ok(None)
-                }
-                Some(t) => strip_profile_block(t, &what).map(Some),
-            },
-        )
-        .await?;
-    let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(if missing {
-            copy_text(
-                "rsProfileInstaller.remoteAliasBlock.noProfile",
-                &[("profile", &profile.to_string())],
-            )
-        } else {
-            copy_text(
-                "rsProfileInstaller.remoteAliasBlock.noBlock",
-                &[("profile", &profile.to_string())],
-            )
-        });
-    };
-    tracing::info!("远端 [{}] 已卸载别名块（{profile}）", cfg.origin_label());
-    Ok(match landed.backup {
-        Some(b) => copy_text(
-            "rsProfileInstaller.remoteAliasBlock.removedWithBackup",
-            &[("profile", &profile.to_string()), ("b", &b.to_string())],
-        ),
-        None => copy_text(
-            "rsProfileInstaller.remoteAliasBlock.removed",
-            &[("profile", &profile.to_string())],
-        ),
-    })
-}
-
-/// 〔MC1 · 2026-09-24〕**别名块**装进远端 rc（机器页 ②「别名」里的「装别名块」）。
-///
-/// 从前它叫 `install_remote_ccm_helper`〔散文墓碑〕，一次做两件事：① 推 `ccm` 入口到
-/// `~/.local/bin/ccm` ② 把别名块合进 rc。`设计/71 §13.3`：① 并进「部署后端」（本文件
-/// `sftp::deploy_remote_backend`），② 并进「别名」⇒ 本函数只剩 ②。
-///
-/// `profile` 默认 `.bashrc`（相对远端后端的 home；拒 `/`、`\`、`..` 防写 home 外）。
-/// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
-/// bash）。〔RW1〕读改写经那台远端的后端（与本机同一条路）：相同则不写；否则
-/// 备份 → 原子写 → 读回逐字比对 → 不符回滚。别名块引用 `ccm` —— 那条入口由「部署后端」放。
-///
-/// 注：〔RW1〕替换沿用原文件的权限位（从前 SFTP 那一路统一写 `0o644`，`chmod 600` 的 rc 会被归一 —— 那一形没了）；
-/// rc 是一条链接（dotfiles 仓）⇒ 改的是真文件，链接留着。
-#[tauri::command]
-pub async fn install_remote_alias_block(
-    cfg: crate::ssh_source::RemoteConfig,
-    profile: String,
-) -> Result<String, String> {
-    let profile = remote_profile_name(&profile)?;
-    // 〔RW1 · 第四波 09-24〕F10 按推荐改：经那台远端的后端写（同 `uninstall_remote_alias_block`）。
-    // 损坏块 ⇒ `merge_profile_block` 回 `Err`，不动原文件。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let home = crate::user_files::Door::home(&door).await?;
-    let what = copy_text(
-        "rsProfileInstaller.remoteProfile.what",
-        &[("profile", &profile.to_string())],
-    );
-    let done = crate::user_files::edit(&door, &home, &profile, true, false, |existing| {
-        merge_profile_block(existing.unwrap_or(""), CCM_WRAPPER_SNIPPET, &what).map(Some)
-    })
-    .await?;
-    let crate::user_files::Edited::Written(landed) = done else {
-        return Ok(copy_text(
-            "rsProfileInstaller.remoteAliasBlock.upToDate",
-            &[("profile", &profile.to_string())],
-        ));
-    };
-    let backup_note = landed
-        .backup
-        .map(|b| {
-            copy_text(
-                "rsProfileInstaller.remoteAliasBlock.backupNote",
-                &[("b", &b.to_string())],
-            )
-        })
-        .unwrap_or_default();
-    tracing::info!("远端 [{}] 已装别名块到 {profile}", cfg.origin_label());
-    Ok(copy_text(
-        "rsProfileInstaller.remoteAliasBlock.written",
-        &[
-            ("profile", &profile.to_string()),
-            ("backupNote", &backup_note.to_string()),
-        ],
-    ))
-}
+// 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条 Tauri 命令（连同只收 home 下裸文件名的那道小围栏）删了：
+//   并进 `lib.rs` 的 `aliases_block_install` / `_remove`（带 `origin`，本机远端同一条）。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/profile_installer_tests.rs"]

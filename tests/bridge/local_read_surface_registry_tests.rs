@@ -126,19 +126,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 〔C4c · 第四波 4B〕`src/accounts.rs` 那条 `remote`（2 处：「远端后端版本较旧…」那两句提示里提到了配置目录那个环境变量）
     //   **整行摘掉**：那两句随 `degraded_notice`〔散文墓碑〕一起删了（账号清单改由那台机器的后端出成品、「缺账号 0」那句由后端说）
     //   ⇒ 本文件 0 处。⚠ 与这张表别的「往下走」一样**不算工作量减少**：它本来就不是本机读面。
-    (
-        "src/mcp.rs",
-        "reader",
-        6,
-        "读 `.claude.json` 里的 MCP 服务器声明。退役归 F10 本体。\
-             ⚠ 08-06 从 2 改到 7：`.claude.json` 的**三个候选路径**（项目 / 上级 / 家目录）\
-             与本地·远端两个来源标签此前都不在针里 —— 也就是说这条读面的**大部分**没被数到。\
-             ⚠ 〔devbench F10b，08-10〕7 → 8，多出来的**不是新读点**：是给远端读加超限拒收时\
-             那句错误文案里提到了 `.claude.json`。★ 与上一条〔F10b-2 订正分类〕同一个口径问题 ——\
-             `hits()` 数的是「提到那几个词的行」，**提示文案也算**。⇒ 这一格**不算工作量增加**。\
-             〔CP2b · 第四波 09-25〕**8 → 6**：同一口径反过来 —— 读远端 `.claude.json` 失败 / 超限的两句报错\
-             搬进文案表（`rsMcp.remote.*`），本文件少了两行「提到」。读点一个没少，**不算退役**。",
-    ),
+    // 〔SH1 · V137〕`src/mcp.rs` 那一行（读 `.claude.json` 的 MCP 声明，6 处）退役：MCP 列表改问那台后端 `mcp-read`，monitor 零处读它。
     (
         "src/adapter/claude_code.rs",
         "reader",
@@ -156,7 +144,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/hooks_diag.rs",
         "reader",
-        4,
+        2, // 〔SH1 · 4D〕4 → 2：远端那条拨号 shell 串（读 `~/.claude/settings.json` 的探测串 · 来源标签）改问那台后端，本机读盘那几行不动
         "hooks 诊断读 settings。退役归 F10 本体。\
              ⚠ 08-06 从 1 改到 7：原先只数到 `CLAUDE_CONFIG_DIR` 那一行，\
              而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \
@@ -324,7 +312,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "data_paths.rs",
         "candidate_profile_dirs",
         "PowerShell profile 的候选目录",
-        "profile 安装面；路径围栏在 `profile_installer::fence_profile_path`",
+        "profile 安装面；路径围栏在 `profile_installer::fence_on`",
     ),
     (
         "hooks_diag.rs",
@@ -332,14 +320,8 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "cc-bus 钩子的安装位置",
         "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
     ),
-    // 〔AL1 · 2026-09-24〕`设计/71` 别名两跳里要落盘 / 读回的那两条。纯渲染那一条不碰 home。
-    (
-        "lib.rs",
-        "aliases_read",
-        "`~/.cc-monitor/aliases.sh`（读回口：那份别名文件今天有哪几条）",
-        "只读。monitor 自己的目录，用 `home_dir()` 只为「每个用户各一份」；\
-             `home_dir()` 在这里而不在 `account_aliases.rs` 里 —— 那边把 `home` 当参数收，测试拿临时目录当 home。",
-    ),
+    // 〔AL2 · 第四波 4D〕这里原来有 `lib.rs::aliases_read` 一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
+    //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。
     // 〔RW1 · 第四波 09-24〕这里原来还有 `lib.rs::aliases_install` 一行（它自己 `home_dir()`、再交本进程落盘）。
     //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
@@ -383,12 +365,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     // 〔C4d · 第四波 4B〕`("local_accounts.rs", "local_accts_dir")` 那一行同拍去掉 —— 它自己写的退役条件兑现了：
     //   钉契约目录名的那条判据搬到了后端（`accounts_query_tests.rs::the_accounts_library_lives_under_the_contract_directory_name`，
     //   对 `acct-core` 的常量与后端缺省解析那一处），本机那份参照实现连同这一处 `home_dir()` 一起删了。
-    (
-        "mcp.rs",
-        "claude_json_candidates",
-        "`~/.claude.json`",
-        "**读**用户配置（SS-14 只许写 `.mcp.json`，写侧由 `mcp.rs` 的项目目录判据钉）",
-    ),
+    // 〔SH1 · V137〕`mcp.rs` 那一行（`.claude.json` 三候选的 `home_dir()`〔散文墓碑〕）去掉：MCP 列表改问那台后端，monitor 不再伸手进 home 找它。
     (
         "paths.rs",
         "resolve_claude_dir",
@@ -401,12 +378,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "`~/.claude/work`",
         "monitor 自己的数据目录；写侧在 `write_site_registry`",
     ),
-    (
-        "profile_installer.rs",
-        "fence_profile_path",
-        "home 本身（当**围栏基准**）",
-        "它不是「伸手拿东西」，是**拿 home 来划界** —— 第 86 件加的那道围栏",
-    ),
+    // 〔AL2 · 第四波 4D〕`profile_installer.rs` 那一行（围栏拿 `home_dir()` 当基准）摘了：围栏的 home 今天问那台后端（`fence_on`）。
     (
         // 〔`设计/60 §5.4e` · `24e` 第二刀 · 09-20〕原生文件管理窗口那颗「本机」按钮的落脚点。
         "shell.rs",
@@ -415,7 +387,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "它不是「伸手拿东西」，是给那个窗口一个开始浏览的地方 —— \
              之后列哪个目录**由用户走到哪决定**，而列目录那一条是 \
              `filewin::source::list_local`（只读 `read_dir` ＋ `metadata`，不落盘）。\
-             ⚠ 与 `profile_installer.rs::fence_profile_path` 那一行**不是同一类**：\
+             ⚠ 与 profile 围栏（`profile_installer.rs::fence_on`）**不是同一类**：\
              那一条拿 home 划界（围栏），这一条只是起点，**它不围任何东西** —— \
              也就是说「用户能在这个窗口里浏览到 home 之外」是设计如此，不是漏了围栏。\
              写侧归 `filewin::transfer`（〔F7c 09-24〕上传经通道：monitor 的传输台只写远端暂存区，\
@@ -576,9 +548,10 @@ fn every_reader_names_its_retirement_owner() {
         }
     }
     // 抽取器自检：一条 reader 都没认出来时上面全空转。
+    // 〔SH1 · V137〕4 → **3**：`mcp.rs` 真退役（MCP 列表改问那台后端 `mcp-read`，monitor 零处读 `.claude.json`）。
     assert_eq!(
-        readers, 4,
-        "`reader` 条数变了（**实测 4 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 3,
+        "`reader` 条数变了（**实测 3 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\

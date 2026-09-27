@@ -100,6 +100,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
     "assets-sync",
     "bus-broadcast",
+    // 〔SH1 · V136〕只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置）。
+    "bus-inbox",
     "bus-kill",
     "bus-list",
     "bus-send",
@@ -163,6 +165,8 @@ pub const COMMANDS: &[&str] = &[
     "link-credit",
     "link-data",
     "link-open",
+    // 〔SH1 · V137〕MCP 列表出成品（读法住适配层那一格 `agents::Adapter.mcp`）。
+    "mcp-read",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
@@ -185,6 +189,8 @@ pub const COMMANDS: &[&str] = &[
     "skill-read",
     "skill-uninstall-plan",
     "tasks-list",
+    // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
+    "tmux-list",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
     "transfer-start",
@@ -978,11 +984,48 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "bus-state",
         doc_anchor: Some("#### `bus-state`"),
         codes: &["not_installed", "timed_out", "failed"],
+        // 〔SH1 · V136〕多了 `registered_at` · `spawned_at` · `skipped`（cc-bus 的 `--tsv` 形答）。
         fields: &[
-            "agents", "ccm_sid", "dir", "id", "live", "spawned", "target", "task", "unread",
+            "agents",
+            "ccm_sid",
+            "dir",
+            "id",
+            "live",
+            "registered_at",
+            "skipped",
+            "spawned",
+            "spawned_at",
+            "target",
+            "task",
+            "unread",
         ],
         takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::state_for_inbound().map(Some)),
+    },
+    // 〔SH1 · V136〕驾驶舱读收件箱：转调 `cc-log`（只读，不推已读位置 —— 不是 `bus-recv`，`设计/95 §3.3`）。阻塞档。
+    CommandSpec {
+        name: "bus-inbox",
+        doc_anchor: Some("#### `bus-inbox`"),
+        codes: &[
+            "invalid_args",
+            "bad_id",
+            "not_installed",
+            "timed_out",
+            "failed",
+        ],
+        fields: &[
+            "class",
+            "from",
+            "id",
+            "lines",
+            "messages",
+            "skipped",
+            "text",
+            "truncated",
+            "ts",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::cc_bus::inbox_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
         name: "cancel",
@@ -2186,6 +2229,41 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::fork_face::answer(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SH1 · V137〕MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
+    CommandSpec {
+        name: "mcp-read",
+        doc_anchor: Some("#### `mcp-read`"),
+        codes: &["bad_args", "too_large"],
+        fields: &[
+            "dirs",
+            "entries",
+            "name",
+            "problems",
+            "projectDir",
+            "scope",
+            "server",
+            "sourcePath",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔SH1〕列这台的 tmux 会话：`{installed, lines}`（原样 `tmux ls -F` 行，与流里推的那份同一个格式串）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    CommandSpec {
+        name: "tmux-list",
+        doc_anchor: Some("#### `tmux-list`"),
+        codes: &["unobservable", "too_large"],
+        fields: &["installed", "lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

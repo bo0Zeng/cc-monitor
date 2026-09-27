@@ -55,9 +55,9 @@ const STATE = {
   skipped: 8, // 任意非零值，只为验证"如实显示"；真实盘面是 5（15 行里 5 畸形 + 3 空行）
 };
 
-/** 等微任务队列排空（section 内部是 async invoke 链）。 */
+/** 等微任务队列排空（section 内部是 async invoke 链）。〔SH1〕读面改经通道（settle ＋ 解码）之后链更长，8 → 24。 */
 const flush = async () => {
-  for (let i = 0; i < 8; i++) await Promise.resolve();
+  for (let i = 0; i < 24; i++) await Promise.resolve();
 };
 
 beforeEach(() => {
@@ -859,8 +859,9 @@ describe("P4c 广播与收掉", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
   const STATE2 = {
     agents: [
-      { id: "a_cc", target: "a_cc:0.0", ts: "2026-08-01T00:00:00Z" },
-      { id: "b_cc", target: "b_cc:0.0", ts: "2026-08-01T00:00:00Z" },
+      // 〔SH1〕夹具按 monitor 旧命令的形状写（`chan-fake.ts::ccBusControlShim` 把它翻成后端 `bus-state` 的成品形）。
+      { id: "a_cc", pane: "a_cc:0.0", registered_at: "2026-08-01T00:00:00Z" },
+      { id: "b_cc", pane: "b_cc:0.0", registered_at: "2026-08-01T00:00:00Z" },
     ],
     spawned: [],
     skipped: 0,

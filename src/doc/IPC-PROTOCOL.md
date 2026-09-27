@@ -638,52 +638,41 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 〔DUP3〕名单里的收件人（`cc-list` 的输出，对端来的值）也在交给 `cc-send` 之前逐个过同一个判定：过不了的**不发**、照实列进 `failed`
 （`{id, error:"bad_id", detail}`），不整条回错（可能已经投出去几个了）。
 
-#### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13）
+#### `bus-state`：总线名单 ＋ spawn 台账**一次回全**（`K-R113`，09-13；〔SH1 · V136〕09-26 改读 cc-bus 的机器可读形）
 
 ```text
 → {"id":"B4","cmd":"bus-state","args":{}}
 ← {"kind":"reply","id":"B4","ok":true,"data":{
-     "agents":[{"id":"proj_cc","target":"proj_cc:0.0","unread":2,"live":true,"ccm_sid":"1a2b3c4d"}],
-     "spawned":[{"id":"proj_cc","live":true,"dir":"/home/user/proj","task":"跑门禁"}]}}
+     "agents":[{"id":"proj_cc","target":"proj_cc:0.0","registered_at":"2026-09-26T10:00:00+08:00","unread":2,"live":true,"ccm_sid":"1a2b3c4d"}],
+     "spawned":[{"id":"proj_cc","dir":"/home/user/proj","spawned_at":"2026-09-26T09:59:58+08:00","task":"跑门禁","live":true}],
+     "skipped":1}}
 ```
 
-**入参：无**（不读 stdin —— 与 `bus-list` 同一条纪律：声明无输入的命令必须秒回）。
+**入参：无**（不读 stdin —— 与 `bus-list` 同一条纪律：声明无输入的命令必须秒回）。转调 `cc-list --tsv` ＋ `cc-agents --tsv`
+（cc-bus 的机器可读形：首行形状标记、末行坏行数；**后端仍不读 cc-bus 的任何文件**）。
 
-回值两半：
+- `agents` —— 名册：`id` · `target`（登记的 pane 地址）· `registered_at`（登记时间，cc-bus 原样）· `unread` · `live` · `ccm_sid`（后两格与 `bus-list` 同一套：对身份空间对账，「登记 ≠ 在线」）。
+- `spawned` —— `cc-spawn` 派生过的会话：`id` · `dir` · `spawned_at` · `task`（余下全部，含 TAB）· `live`（三态：`true` / `false` / `null` = 核不了，**不是**「不在」）。
+- `skipped` —— 两张表里读不懂的行数（cc-bus 数的 ＋ 本侧 id 形状判定拒掉的，`INVARIANTS §47`）。真空行不算。
 
-- `agents` —— **与 `bus-list` 逐字同一份**（同一个实现，不是长得像）：
-  `id` · `target` · `unread` · `live` · `ccm_sid`，语义见上面 `bus-list` 那一小节。
-- `spawned` —— `cc-spawn` **派生**过的会话（区别于手工起的）：
-  `id`（总线身份）· `live`（三态，见下）· `dir`（那个 agent 的工作目录）·
-  `task`（spawn 时给的初始任务，自由文本）。
+★ 两半在**同一条命令**里回：两份名单互相引用（判派生会话活不活要回名册借 pane pid），分两次取是两个时刻。
+**要么两半都答，要么明说失败**，不回看上去完整的半份。老 cc-bus（不认 `--tsv`，没有首行标记）⇒ `failed`，话里说「先重新部署 cc-bus」，**不猜着按人读表解**；末行缺 ⇒ `failed`（半份）。
 
-★ **为什么是一条命令而不是两条**：这两份名单**互相引用** —— 判一个 spawn 记录还活不活着，
-要回总线名册借「登记时记下的 pane 根进程 pid」去核身份。分两条命令取回来的是**两个时刻**的两份，
-在调用方拼起来会拼出一份**盘上从没存在过**的状态。
+错误码：`not_installed`（找不到 `cc-list` / `cc-agents`，消息里带查过哪些位置）· `timed_out` · `failed`。**只读**：两条被调命令都不写任何文件。
 
-⚠ **`spawned` 的 `live` 与 `bus-list` 的 `live` 是同一套三态**：`true` / `false` / `null`。
-`null` = **核不了**（那份 spawn 台账没有身份列，借不到 pid），**不是**「不在」。
-把「核不了」并进「活着」是这一族全部事故的共同起点（会话名被重用是常态，
-实测后果是敲门文字打进**陌生占用者**的屏幕）。
+#### `bus-inbox`：只读看一个 agent 收件箱的尾巴（SH1 · V136，09-26）
 
-⚠ **一次回全的另一半含义：要么两半都答，要么明说失败。** 任何一半取不到都回错误，
-**不回一份看上去完整的半份** —— `spawned` 是空数组还是「问不到」，在调用方那儿长得一模一样。
+```text
+→ {"id":"B6","cmd":"bus-inbox","args":{"id":"proj_cc","lines":200}}
+← {"kind":"reply","id":"B6","ok":true,"data":{"messages":[{"from":"peer_cc","ts":"2026-09-26T10:01:00+08:00","text":"……","class":""}],"skipped":0,"truncated":false}}
+```
 
-🔴 **它今天答不出的三样，如实登记**（下游要用就得先给 cc-bus 加一条机器可读的输出，
-**不是**绕到它背后去读那两份 `.tsv`）：
+入参：`id`（必给；交给 `cc-log` 之前先过 `bus_id_ok`，不过 ⇒ `bad_id`、一个进程都不起）· `lines`（可缺席，1..=2000，缺省 200）。
+转调 `cc-log <id> -n <lines>`：**不推已读位置、不写任何状态**（与 `cc-peek` 同一条零写面；消费性读只走 `cc-peek` / `cc-commit`，`设计/95 §3.3`）。
+回值：`messages`（逐行解析，只取 `from` · `ts` · `text` · `class`；`from` 与 `text` 都空的行不算消息）· `skipped`（读不懂的行数）·
+`truncated`（回显超过 4 MiB ⇒ 保尾，`true`）。老 cc-bus（没有 `cc-log` 或没有首行标记）⇒ `not_installed` / `failed`，话里说「先重新部署 cc-bus」。
 
-| 拿不到的 | 为什么 |
-|---|---|
-| 登记时间（`agents` 那半） | `cc-list` 不打印它 |
-| spawn 时间（`spawned` 那半） | `cc-agents` 读了台账第 3 列却不打印它 |
-| 坏行计数 | 两条命令都**静默跳过**读不懂的行，数不出来 |
-
-⚠ 还有一处**认不准**：`cc-agents` 的输出是定宽 `printf` 的表，列间没有唯一分隔符 ⇒
-**目录名里含空格时**，`dir` 只取到第一段、余下的并进 `task`。`id` 与 `live` 两列不受影响
-（前者过 `[A-Za-z0-9_-]` 白名单、后者是三个固定字面量之一）。
-
-错误码：`not_installed`（找不到 `cc-list` / `cc-agents`，消息里带查过哪些位置）·
-`timed_out` · `failed`。**只读**：两条被调命令都不写任何文件。
+错误码：`invalid_args`（缺 `id` / `lines` 越界 / `cc-log` 拒了参数）· `bad_id` · `not_installed` · `timed_out` · `failed`。
 
 #### `bus-spawn`：派生一个协作 agent（BS1b，09-24）
 
@@ -742,6 +731,10 @@ monitor 的本机与远端分叉都经那台机器常驻后端的长连接说这
 → {"id":"K1","cmd":"kill","args":{"name":"1a2b3c4d-cc"}}
 ← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true}}
 ```
+
+〔SH1 · D-g · 09-26〕杀成之后**顺手从 cc-bus 收掉登记在这个会话上的 id**：过门之后、杀之前读下这个会话全部 pane 的根进程 pid，
+杀成之后经 `cc-list --tsv` 读名册、按第 4 列 pane pid 认人（不按会话名猜），逐个 `cc-kill <id>`（名册 · 台账 · 状态 · 收件箱一起清）。
+这一步不改结局：cc-bus 没装就跳过，读不到名册 / `cc-kill` 失败只写一行 warn；应答形状不变。
 
 **它必须过 §34 的三道门**
 （⚠ **`K-R72` 2026-09-12**：monitor 侧 `kill_remote_tmux` 那条 shell 路**已经删了**——
@@ -2367,6 +2360,35 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 - CLI 面同样自动派生（`--tasks-list` · `--plugins-marketplaces`），已进 `SUBCOMMANDS`。
 - 全在阻塞档（同步文件 I/O）⇒ `cancel` 命中回 `not_cancellable`。
 
+#### `mcp-read`：这台机器的 MCP 列表成品（SH1 · V137，09-26，**只读**）
+
+```text
+→ {"id":"m2","cmd":"mcp-read","args":{"projectDir":"/home/u/proj"}}
+← {"kind":"reply","id":"m2","ok":true,"data":{"entries":[{"scope":"user","name":"fs","server":{"command":"/opt/fs"},"sourcePath":"/home/u/.claude.json"}],"dirs":["/home/u/proj"],"problems":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 可缺席 / `null`。给了就必须是绝对路径（拒 NUL / CR / LF）⇒ 多读 local 段（`.claude.json` 的 `projects[<它>].mcpServers`）与 project 段（`<它>/.mcp.json`） |
+| `entries` | ← | `{scope, name, server, sourcePath}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
+| `dirs` | ← | `.claude.json` 里那张项目表的键（排序）—— 「用过的项目目录」 |
+| `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
+
+读法住适配层（`agents::Adapter.mcp`，Claude 那一格 `agents/claudecode/mcp.rs`；`.claude.json` 找哪一份与资产目录同一处）。
+错误码：`bad_args`（`projectDir` 不是绝对路径）· `too_large`（成品超过一帧上限，不截断）。⚠ **CLI 面也有它**（`--mcp-read`，入参从 stdin 读）。
+
+#### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
+
+```text
+→ {"id":"t9","cmd":"tmux-list","args":{}}
+← {"kind":"reply","id":"t9","ok":true,"data":{"installed":true,"lines":["proj-cc\t/home/u/proj\tclaude\t0\t1\tsid-1"]}}
+```
+
+**入参：无**。与流里推的那份 tmux 观测**同一趟** `tmux ls -F`（同一段脚本、同一个格式串、同一个四态分类，`observe/watcher.rs`）：
+`installed:false` = 那台没装 tmux；没有 server / 零会话 ⇒ `installed:true, lines:[]`；`lines` 是原样行（真 TAB 分列，解析在 monitor 那一份 `parse_tmux_ls`）。
+错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。替掉 monitor `list_remote_tmux` 那条拨号 shell。
+⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
+
 #### `tasks-list`：一个会话的任务列表
 
 ```text
@@ -2770,6 +2792,12 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **LOC1a 追加三条（09-25）**：`--acct-iso-status` · `--acct-iso-shellinit`（不读 stdin；名字与退役的 argv 形同名，形状换成信封）·
 `--session-fork`（读 stdin）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
+
+**SH1 追加一条（09-26）**：`--bus-inbox` —— 只读看一个 agent 收件箱的尾巴（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{id, lines?}`）。
+
+**SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
+
+**SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
 **步 `24f` 追加四条（09-20）**：`--files-ls` / `--files-stat` / `--files-find` /
 `--files-index-status` —— `files-read` 这一族的 CLI 面（逐条见上面各自那一小节）。
