@@ -106,7 +106,7 @@ fn ensure_starts_nothing_when_our_relay_already_listens() {
         std::time::Duration::from_secs(10),
         std::time::Duration::from_secs(10),
     ));
-    std::thread::spawn(move || super::super::listen::serve(listener, relay));
+    std::thread::spawn(move || super::super::listen::serve(listener, relay, Default::default()));
     let get = home_env(&home);
     assert_eq!(occupant(port, &get), Occupant::Ours);
     let got = answer_ensure_with(&json!({ "port": port }), &get).expect("应当成功");
@@ -301,9 +301,9 @@ fn what_ensure_starts_is_the_relay_arm_of_main() {
         "../../../src/backend/relay/machine.rs"
     ));
     let at = prod
-        .find("start(&exe, &[\"")
-        .expect("生产段里找不到 `start(&exe, &[…` 那一行");
-    let rest = &prod[at + "start(&exe, &[\"".len()..];
+        .find("start(&exe, &[\"--\", \"")
+        .expect("生产段里找不到 `start(&exe, &[\"--\", …` 那一行（〔V151〕叫自己的后端子命令带打头的 `--`）");
+    let rest = &prod[at + "start(&exe, &[\"--\", \"".len()..];
     let arg = &rest[..rest.find('"').expect("argv 字面量没收尾")];
     // `main.rs` 的分派臂 —— 同一个字面量必须恰好一条臂。
     let main = include_str!("../../../src/backend/main.rs");

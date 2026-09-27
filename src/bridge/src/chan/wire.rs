@@ -31,6 +31,8 @@
 //! - `05 §3.3` 的签名在盘上第一次有了类型：`Budget`（绝对时刻 ＋ 撤单手柄）·
 //!   `CallError` 三层 · `Reach` 三档 · `Item` 五个变体（`Unseen` 与 `Closed` 是两个不同的变体）。
 //! - 载荷不进 JSON ⇒ 通道对载荷的形状**零假设**。
+//! - 〔NET2〕能力协商的家（`Offer` · `Withdraw`，`05 §8` 步 8）：对端握手交出的 op 集只在这里被问；
+//!   撤单也是其中一条能力，不认就本地照撤并说出来（`§3.3.3`）。
 //!
 //! # 买不到什么
 //!
@@ -339,6 +341,59 @@ impl Key {
             diff |= x ^ b.get(i).copied().unwrap_or(0);
         }
         diff == 0
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  五b、能力协商（`05 §8` 步 8 · `§3.3.3`）—— 面 A 上「对端认不认」的唯一答处
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 撤单那条 op 的名字（对端握手时交出的 op 集里有它 ⇒ 认撤单）。
+pub const WITHDRAW_OP: &str = "cancel";
+
+/// 对端对补发的撤单回这个码 ⇒ 那一条它停不下来（阻塞档），会照跑完。
+pub const WITHDRAW_REFUSED: &str = "not_cancellable";
+
+/// 对端握手时交出的「我接哪些 op」。一条连接一份；认不认只问它（`admits`），事前不认就一个字节都不发。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Offer {
+    ops: Vec<String>,
+}
+
+/// 本地撤单之后，对端那一半怎样了（`05 §3.3.3`：本地照撤；对端不认要说出来）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Withdraw {
+    /// 请求还没出本侧，对端没见过它 —— 没什么可撤。
+    Unsent,
+    /// 对端认撤单，已补发（尽力；停不下来的那一条由它回 [`WITHDRAW_REFUSED`] 说）。
+    Asked,
+    /// 🔴 对端握手时没说认撤单 ⇒ 一帧都不补，那件事可能照跑完。
+    NotOffered,
+}
+
+impl Offer {
+    /// 对端握手时交出的 op 集，原样收下。
+    pub fn new(ops: Vec<String>) -> Self {
+        Self { ops }
+    }
+
+    /// 对端认不认这个 op。
+    pub fn admits(&self, op: &str) -> bool {
+        self.ops.iter().any(|o| o == op)
+    }
+
+    /// 对端交出的全部 op（报「不认」时附上，给人看它认什么）。
+    pub fn ops(&self) -> &[String] {
+        &self.ops
+    }
+
+    /// 一条**已发出**的请求被本地撤掉之后，对端那一半的处置。
+    pub fn withdraw(&self) -> Withdraw {
+        if self.admits(WITHDRAW_OP) {
+            Withdraw::Asked
+        } else {
+            Withdraw::NotOffered
+        }
     }
 }
 

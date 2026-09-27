@@ -760,15 +760,26 @@ pub fn route_key_for_session(sid: Option<&str>) -> String {
 ///
 /// ⚠ **那条判据的人群只有本文件**（它 `include_str!("payload.rs")`）—— 别把它读成「全仓唯一一处」。
 /// 〔US1〕后端 `control/ccm/plan.rs::base_url_word` 是另一处（`ccm` 把继承来的地址转进新 pane），同形、各自一个 crate。
+///
+/// 〔E2 · V146〕**pane 里先看 `ANTHROPIC_BASE_URL` 有没有值**（用户在 rc 里自己设了端点）：有 ⇒ 不注入、打一行话
+/// （[`user_base_url_say`]），不抢用户的端点、也不把给用户端点的鉴权头送去官方；没有 ⇒ 照旧 export 中转地址。
+/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（`history.rs::relay_prefix_for`）。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
     // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
+    //   〔E2〕写成 `判 && 说 || 注入` 一段（不拆成 if/then/else 几段）：载荷按 `; ` 分段的读者照旧认得出「中转前缀是第一段」。
     let (origin, path) = relay_url_halves(base_url);
     format!(
-        "export ANTHROPIC_BASE_URL={}\"$(cat \"$HOME/{RELAY_KEY_FILE_REL}\")\"{}; ",
+        "[ -n \"${{ANTHROPIC_BASE_URL:-}}\" ] && printf '%s\\n' {} || export ANTHROPIC_BASE_URL={}\"$(cat \"$HOME/{RELAY_KEY_FILE_REL}\")\"{}; ",
+        shell_quote_core::posix_quote(&user_base_url_say()),
         shell_quote_core::posix_quote(origin),
         shell_quote_core::posix_quote(path),
     )
+}
+
+/// 〔E2 · V146〕用户自己设了 `ANTHROPIC_BASE_URL` 时 pane 里说的那一行（两种 shell 同一句，住文案表）。
+fn user_base_url_say() -> String {
+    copy_text("rsPayload.relay.userBaseUrl", &[])
 }
 
 /// 〔RK1 · `INVARIANTS §48.1`〕**中转钥匙文件**相对家目录的路径 —— 中转口进门要出示的那一把就住这里
@@ -813,9 +824,11 @@ fn relay_url_halves(base_url: &str) -> (&str, &str) {
 pub fn relay_env_prefix_ps(base_url: &str) -> String {
     // 〔RK1〕与 POSIX 那一形同构：钥匙段现读 `$HOME` 底下那一份（PowerShell 的 `$HOME` 即 `USERPROFILE`，
     //   与后端 `door::key_path` 的退路同一个）。仍只到「编得过」。
+    //   〔E2 · V146〕同 POSIX 那一形：pane 里先看 `$env:ANTHROPIC_BASE_URL` 有没有值，有 ⇒ 不注入、说一行（单引号里 `'` 写成 `''`）。
     let (origin, path) = relay_url_halves(base_url);
+    let say = user_base_url_say().replace('\'', "''");
     format!(
-        "$env:ANTHROPIC_BASE_URL='{origin}' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '{RELAY_KEY_FILE_REL}')).Trim() + '{path}'; "
+        "if ($env:ANTHROPIC_BASE_URL) {{ Write-Host '{say}' }} else {{ $env:ANTHROPIC_BASE_URL='{origin}' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '{RELAY_KEY_FILE_REL}')).Trim() + '{path}' }}; "
     )
 }
 

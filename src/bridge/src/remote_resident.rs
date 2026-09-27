@@ -103,8 +103,12 @@ fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, AttachErr> {
 }
 
 async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr> {
-    let bin = cfg.backend_path_for_shell().map_err(AttachErr::Failed)?;
-    let mut cmd = format!("{} --resident-ensure", crate::ssh_source::shell_quote(bin));
+    // 〔V151〕`ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
+    let mut cmd = format!(
+        "{} {} --resident-ensure",
+        crate::ssh_source::BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP
+    );
     if replace {
         cmd.push_str(" --replace");
     }
@@ -369,8 +373,12 @@ pub(crate) fn read_stop(exec: &crate::ssh_source::RemoteExec) -> Result<StopAnsw
 
 /// **停那台的常驻后端**（机器页「停」）：发**一次** `--resident-stop`，等与强杀由那台自己做（同机监督者），这里只拿回结局。
 pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
-    let bin = cfg.backend_path_for_shell()?;
-    let cmd = format!("{} --resident-stop", crate::ssh_source::shell_quote(bin));
+    // 〔E2 · V151〕落点固定、打头的 `--` 让那台的 `ccm` 当后端用。
+    let cmd = format!(
+        "{} {} --resident-stop",
+        crate::ssh_source::BACKEND_CMD,
+        crate::backend::control::local_backend::BACKEND_SEP
+    );
     let exec =
         crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
     read_stop(&exec)

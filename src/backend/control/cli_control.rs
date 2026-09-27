@@ -139,8 +139,12 @@ const CLI_REQUEST_ID: &str = "cli";
 ///
 /// 判据是 `Run::Builtin`：那种命令的实现住在 `inbound::dispatch` 的硬臂里，
 /// 要 `replies` 通道与在飞表才能跑，而**一次性 exec 里两样都不存在**。
+///
+/// 〔E2 · V138〕另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
+/// 按 `SUBCOMMANDS` 分流（`control::ccm::intercept`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
     !matches!(spec.run, Run::Builtin)
+        && !crate::control::ccm::argv::is_ccm_word(&flag_of(spec.name))
 }
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

@@ -184,7 +184,7 @@ export interface AliasForm {
   detach: boolean;
   busRegister: boolean;
   busNote: string;
-  /** `--` 之后原样透传给 agent 的那几个词（按空白切）。 */
+  /** 原样交给 agent 的那几个词（按空白切；〔V151〕渲在 `--` 左边）。 */
   passthru: string;
 }
 
@@ -208,49 +208,56 @@ export function emptyForm(): AliasForm {
   };
 }
 
-/** 表单 → 一条别名（原样的 ccm argv）。纯函数。 */
+/**
+ * 表单 → 一条别名（原样的 ccm argv）。纯函数。
+ * 〔V151〕`<交给 claude 的…> -- <ccm 自己的…>`：`--model` 与透传栏是 claude 的（左边），其余是 ccm 的（右边）。
+ */
 export function formToAlias(f: AliasForm): Alias {
-  const args: string[] = [];
+  const claude: string[] = [];
+  const ours: string[] = [];
   const cwd = f.cwd.trim();
-  if (cwd) args.push("--cwd", cwd);
-  if (f.account === BASE_CHOICE) args.push("--base");
-  else if (f.account.trim()) args.push("--account", f.account.trim());
+  if (cwd) ours.push("--cwd", cwd);
+  if (f.account === BASE_CHOICE) ours.push("--base");
+  else if (f.account.trim()) ours.push("--account", f.account.trim());
   const tn = f.tmuxName.trim();
-  if (f.tmux === "auto") args.push("--ccm-tmux");
-  else if (f.tmux === "named" && tn) args.push(`--ccm-tmux=${tn}`);
-  else if (f.tmux === "base" && tn) args.push("--tmux-base", tn);
-  if (f.agent) args.push("--ccm-agent", f.agent);
-  if (f.model.trim()) args.push("--model", f.model.trim());
-  if (f.launcher.trim()) args.push("--launcher", f.launcher.trim());
+  if (f.tmux === "auto") ours.push("--ccm-tmux");
+  else if (f.tmux === "named" && tn) ours.push(`--ccm-tmux=${tn}`);
+  else if (f.tmux === "base" && tn) ours.push("--tmux-base", tn);
+  if (f.agent) ours.push("--ccm-agent", f.agent);
+  if (f.model.trim()) claude.push("--model", f.model.trim());
+  if (f.launcher.trim()) ours.push("--launcher", f.launcher.trim());
   if (f.tmux !== "none") {
-    if (f.tmuxSize.trim()) args.push("--tmux-size", f.tmuxSize.trim());
-    if (f.detach) args.push("--detach");
+    if (f.tmuxSize.trim()) ours.push("--tmux-size", f.tmuxSize.trim());
+    if (f.detach) ours.push("--detach");
     if (f.detach && f.busRegister) {
-      args.push("--bus-register");
-      if (f.busNote.trim()) args.push("--bus-note", f.busNote.trim());
+      ours.push("--bus-register");
+      if (f.busNote.trim()) ours.push("--bus-note", f.busNote.trim());
     }
   }
-  const rest = f.passthru.trim().split(/\s+/).filter(Boolean);
-  if (rest.length) args.push("--", ...rest);
-  return { name: f.name.trim(), args };
+  claude.push(...f.passthru.trim().split(/\s+/).filter(Boolean));
+  const needsEnd = ours.length > 0 || claude.includes("--");
+  return { name: f.name.trim(), args: needsEnd ? [...claude, "--", ...ours] : claude };
 }
 
-/** 一条别名 → 表单（「改」那一下）。认不出的参数原样塞回透传栏，**不静默丢**。 */
+/** 一条别名 → 表单（「改」那一下）。〔V151〕按最后一个 `--` 切；认不出的参数原样塞回透传栏，**不静默丢**。 */
 export function aliasToForm(a: Alias): AliasForm {
   const f = emptyForm();
   f.name = a.name;
   const extra: string[] = [];
-  const it = a.args[Symbol.iterator]();
+  const cut = a.args.lastIndexOf("--");
+  const left = cut < 0 ? a.args : a.args.slice(0, cut);
+  const right = cut < 0 ? [] : a.args.slice(cut + 1);
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] === "--model" && i + 1 < left.length && !f.model) f.model = left[++i];
+    else extra.push(left[i]);
+  }
+  const it = right[Symbol.iterator]();
   const next = (): string => {
     const r = it.next();
     return r.done ? "" : r.value;
   };
   for (let r = it.next(); !r.done; r = it.next()) {
     const w = r.value;
-    if (w === "--") {
-      for (let x = it.next(); !x.done; x = it.next()) extra.push(x.value);
-      break;
-    }
     if (w.startsWith("--ccm-tmux=")) {
       f.tmux = "named";
       f.tmuxName = w.slice("--ccm-tmux=".length);
@@ -263,7 +270,6 @@ export function aliasToForm(a: Alias): AliasForm {
       case "--ccm-tmux": f.tmux = "auto"; break;
       case "--tmux-base": f.tmux = "base"; f.tmuxName = next(); break;
       case "--ccm-agent": f.agent = next(); break;
-      case "--model": f.model = next(); break;
       case "--launcher": f.launcher = next(); break;
       case "--tmux-size": f.tmuxSize = next(); break;
       case "--detach": f.detach = true; break;
@@ -661,7 +667,7 @@ export function buildAliasManager(opts: {
       const name = suggestAliasName(account);
       if (!name || have.has(name)) continue;
       have.add(name);
-      list = [...list, { name, args: ["--account", account] }];
+      list = [...list, { name, args: ["--", "--account", account] }]; // 〔V151〕ccm 的选项在 `--` 右边
     }
     void changed();
   };

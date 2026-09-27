@@ -28,6 +28,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
         CallError::Disconnected,
         CallError::Timeout {
             after: Duration::from_secs(1),
+            withdraw: crate::chan::wire::Withdraw::Asked,
         },
         CallError::Cancelled,
         CallError::Remote {
@@ -507,6 +508,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
         (
             CallError::Timeout {
                 after: Duration::from_millis(1500),
+                withdraw: crate::chan::wire::Withdraw::Asked,
             },
             Routed::Refused(format!("等回答超时（1500 毫秒）{suffix}")),
         ),
@@ -590,6 +592,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         (
             CallError::Timeout {
                 after: Duration::from_millis(5),
+                withdraw: crate::chan::wire::Withdraw::Asked,
             },
             hop("wait", w::Reach::Unknown, w::HopFault::Overrun),
         ),

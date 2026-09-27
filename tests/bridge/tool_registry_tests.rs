@@ -767,16 +767,13 @@ fn the_backend_is_one_thing_landing_in_several_places() {
             "$APP_DIR".into(),
             HostScope::Client,
         ),
-        // ① 这一份产物自己带着、旁边没有本机后端时自释放的那份
-        (
-            "src/bridge/native-backend/cc-monitor-native".into(),
-            "~/.cc-monitor/bin/cc-monitor-backend-*".into(),
-            HostScope::Client,
-        ),
+        // 〔E2 · V28〕① 自释放那一份的本机落点就是 `~/.cc-monitor/bin/ccm`（后端本身）—— 声明挂在 `ccm` 那一条的本机载体上，
+        //   不在这里再记一遍（`the_declared_local_ccm_path_really_matches_the_name_we_install` 要本机 `ccm` 落点恰一条）。
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
         (
             "embedded-backends".into(),
-            "$BACKEND_PATH".into(),
+            // 〔E2 · V28〕可填的 `backendPath` 删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`（它就是 `ccm`）。
+            "~/.cc-monitor/bin/ccm".into(),
             HostScope::Remote,
         ),
     ];
@@ -814,14 +811,14 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
     assert_eq!(
         ccm.carriers.len(),
         2,
-        "`ccm` 今天是**两份**：远端那条 shim + 本机那份后端二进制的改名副本"
+        "`ccm` 今天是**两个载体**：远端那台的后端本身 + 本机那台的后端本身（〔E2〕shim 与改名副本都删了）"
     );
     let srcs: Vec<&ToolSource> = ccm.carriers.iter().map(|c| &c.source).collect();
     assert_ne!(
         srcs[0], srcs[1],
         "`ccm` 两个载体的 `source` 逐字相同 —— 那正是本件治的那句假话：\n\
-             远端那条是 `local_backend::ccm_entry_shim` 现造的三行 `exec` 串，\n\
-             本机那条是**后端二进制自己的改名副本**（`install_local_ccm_entry`）。\n\
+             远端那条是推过去的那份后端字节（`embedded-backends`），\n\
+             本机那条是本机释放的那份（`extract_embedded_to`）。\n\
              一个 `source` 装不下两个来源，而「在注释里如实写清」不是一个字段。"
     );
     // 本机那一份的来源必须指到那个**放二进制**的符号，不是那个造 shim 的符号。
@@ -832,12 +829,12 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
         .expect("`ccm` 本机那个载体不见了（`K-R69` 建的那条）");
     match &local.source {
         ToolSource::EmbeddedBinary { repo_path } => assert!(
-            repo_path.ends_with("::install_local_ccm_entry"),
+            repo_path.ends_with("::extract_embedded_to"),
             "本机那条 `ccm` 的来源指到了 {repo_path:?} —— 它该指到真把那份字节\
-                 放下去的那个符号（`local_backend::install_local_ccm_entry`）"
+                 放下去的那个符号（〔E2〕`local_backend::extract_embedded_to`：落点就是后端本身）"
         ),
         other => {
-            panic!("本机那条 `ccm` 是**一份二进制**（后端本体的改名副本），不是 {other:?}")
+            panic!("本机那条 `ccm` 是**一份二进制**（后端本身），不是 {other:?}")
         }
     }
 }
@@ -1007,7 +1004,7 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/skill_host.rs", Why::OldId, 1),
     ("src/structural_scan.rs", Why::OldId, 1),
     ("src/tool_registry.rs", Why::OldId, 2),
-    ("tests/bridge/config_surface_tests.rs", Why::OldId, 4),
+    ("tests/bridge/config_surface_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
     ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
     ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
     (
@@ -1360,8 +1357,8 @@ fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
 ///
 /// 守的是**申报**（这张表里有没有这条落点、在哪台机器上）。
 /// 「那个文件真的被放下去了吗」「放下去的是不是后端本体」由
-/// `local_backend` 那两条管（`the_local_ccm_entry_is_a_copy_of_the_backend_itself`
-/// 与 `the_resolution_path_really_puts_the_local_ccm_entry_down`）。
+/// `local_backend` 那两条管（〔E2〕今天是 `the_local_landing_is_ccm_and_only_an_older_or_rebuilt_one_is_replaced`
+/// 与 `the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`：落点就是后端本身，没有副本可比）。
 /// **三条合起来才是那一格，单独任何一条都不够。**
 #[test]
 fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {

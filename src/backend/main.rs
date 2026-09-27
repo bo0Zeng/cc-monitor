@@ -91,13 +91,15 @@ async fn main() {
     //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
     //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
-    {
+    // 〔V151〕分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
+    let backend_args: Vec<String> = {
         let argv0 = std::env::args().next().unwrap_or_default();
         let rest: Vec<String> = std::env::args().skip(1).collect();
-        if let Some(ccm_args) = control::ccm::intercept(&argv0, &rest) {
-            std::process::exit(control::ccm::run(&ccm_args));
+        match control::ccm::route(&argv0, &rest) {
+            control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(&ccm_args)),
+            control::ccm::Entry::Backend(a) => a,
         }
-    }
+    };
 
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
@@ -117,7 +119,7 @@ async fn main() {
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧后端不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = backend_args;
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args_rest, with_bg, tail_only, with_rbind_token) = split_stream_flags(args);
@@ -313,24 +315,11 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
-        // ★★〔`K-P4` 09-04〕**握手帧第四条面：「我做得到什么」。这一行也是空表，
-        // 而它同样已经不是因为"做不到"了。** `unavailable_here()` 今天就能答出这台机器上
-        // 哪几条命令做不到（判准 = `tmux` 在不在 `PATH` 上，与真调用那一刻同一个判准；
-        // 表本身从 `inbound::REGISTRY` 的 `codes` **派生**，不是手写的第二份真相）。
-        //
-        // 换过去只要改这一行 —— 口径与 `homes` 那一行逐字相同：**能填不真填**。
-        //   填 = 一次**跨仓契约变更**（仓外 aterm 的 hello fixture 按精确字节对，
-        //   契约冻结 2026-07-18），而本机没有 aterm 仓、验不了它的运行时
-        //   ⇒ 把「何时真填」留成一次**纯发布决策**。
-        // 真填那天要同轮做的三件事写在 `wire.rs` 那个字段的头注里（第三件是 **bump `BUILD_ID`**）。
-        //
-        // 🔴 **真填之前，这一格买到的不是「事前协商」本身，是它的形状 + 一条能验的填法。**
-        // 别把「字段加上了」读成「界面已经不会画死按钮了」——那要等消费侧接线。
-        // 这一行由 `production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
-        // 钉住（它会在那天**故意变红**：那是提醒，不是障碍）；旁边那条
-        // `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉的是另一半 ——
-        // **空表不等于这个字段是个编译期常量**。
-        unavailable: Vec::new(),
+        // ★★〔`K-P4` · NET2 真填〕握手帧第四条面「我做得到什么」：这台机器上接得下却做不到的命令（tmux · unix 权限位两维，
+        // 表从 `inbound::REGISTRY` 的 `codes` 派生）。是**提示不是闸门**（读数是握手那一刻的，`wire.rs` 那个字段头注口径③）。
+        // 仓外 aterm 不读这个字段（只读核过 `DaemonTransport.kt::parseHello`，未知字段忽略）；有 tmux 的 unix 机器上恒空 ⇒ 字节不变。
+        // 钉它的：`main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine`。
+        unavailable: unavailable_here(),
         // 〔HX2〕回显起我的宿主交来的那几格（名单 `wire::HOST_ECHO_ENVS`）；一格都没交 ⇒ 省略、线上字节不变。
         host_env: wire::host_env_from(|name| std::env::var(name).ok()),
     }

@@ -38,7 +38,7 @@ pub(crate) fn vendor_id() -> &'static str {
 /// 远端部署目录安全守卫（纯函数，可单测）：绝对路径、无 `..`、非根，且含约定标记词
 /// （`cc-acct-iso` 或 `.cc-monitor`）——杜绝把部署误用成往任意远端目录写文件。
 pub fn is_safe_remote_acct_iso_dir(path: &str) -> bool {
-    // T04 审计⑤：与 `is_safe_remote_backend_path` 5 个条件里 4 个逐字相同，已抽到
+    // T04 审计⑤：与 `is_safe_remote_backend_path`〔散文墓碑〕5 个条件里 4 个逐字相同，已抽到
     // `sftp::is_safe_remote_managed_path`（2 个消费者，同 `find_pair` 那把 ≥2 尺子）。
     crate::sftp::is_safe_remote_managed_path(path, &["cc-acct-iso", ".cc-monitor"])
 }

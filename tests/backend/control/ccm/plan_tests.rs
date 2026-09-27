@@ -7,7 +7,12 @@
 //! 容器收尾先自检对 `设计/95 §4.1`「确认放在 ccm 收尾最前面」。账号四条路 / quote / `set -f` / BOM 那几条是普通单测，没有逐字原文。〔JA1 点址 2026-09-24〕
 
 use super::*;
-use crate::control::ccm::argv::{parse, Parsed};
+use crate::control::ccm::argv::Parsed;
+
+/// 〔V151〕本文件的夹具沿用 V138 写法（ccm 选项在前）⇒ 喂解析器之前换成 V151 排列（意图逐词不变）。
+fn parse(a: &[String]) -> Result<Parsed, crate::control::ccm::argv::Die> {
+    crate::control::ccm::argv::parse(&crate::control::ccm::argv::tests::v138_to_v151(a))
+}
 
 fn env() -> Env {
     Env {
@@ -381,7 +386,8 @@ fn the_container_path_carries_every_intent_inward() {
     // 内层载荷：按 argv 元素逐个 quote 过一层，所以判的是 payload 本身
     // V138：`--resume` 是透传，内层放在 `--` 后面原样交出去。
     assert!(
-        c.payload.ends_with("'--' '--resume' 'p1'"),
+        // 〔V151〕内层 `self <交给 claude 的…> -- <ccm 的…>`：`--resume` 在 `--` 左边。
+        c.payload.contains("/ccm' '--resume' 'p1' '--' '--cwd'"),
         "resume 没进内层：{}",
         c.payload
     );
@@ -414,7 +420,7 @@ fn the_container_path_carries_every_intent_inward() {
         c4.payload
     );
     assert!(
-        c4.payload.ends_with("'--' '--model' 'opus'"),
+        c4.payload.contains("/ccm' '--model' 'opus' '--' '--cwd'"), // 〔V151〕`--model` 在 `--` 左边
         "{}",
         c4.payload
     );
@@ -977,11 +983,9 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
         let Plan::Container(c) = &p else {
             panic!("该是容器路：{p:?}")
         };
-        let want = if has_passthru {
-            c.payload.replacen(" '--' ", " '--ccm-print' '--' ", 1)
-        } else {
-            format!("{} '--ccm-print'", c.payload)
-        };
+        // 〔V151〕ccm 那一半在 `--` 右边、恒在末尾 ⇒ 自检那一趟就是载荷末尾多一个 `--ccm-print`（有没有透传都一样）。
+        let _ = has_passthru;
+        let want = format!("{} '--ccm-print'", c.payload);
         assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
         assert!(
             c.self_check
@@ -1516,6 +1520,7 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
         (&["--resume", "sid-1"][..], Some(rejoin(false))),
         (&["-r", "sid-1", "--model", "x"][..], Some(rejoin(false))),
         (&["--resume=sid-1"][..], Some(rejoin(false))),
+        // 这一族的参数按 V138 形写、由 `parse` 那层换成 V151 形（`v138_to_v151`）。
         (
             &["--ccm-tmux", "--resume", "sid-1"][..],
             Some(rejoin(false)),

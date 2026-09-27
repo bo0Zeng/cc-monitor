@@ -88,6 +88,14 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
          进度没人收、终局也没人收（而且它手里压根没有那张票 —— 见 `transfer-upload`）。",
     ),
     (
+        "ccm-probe",
+        "〔E2 · V138〕派生名 `--ccm-probe` 是 ccm 自己的诊断口（同 `ccm-print`）；CLI 上要这几行就敲 `ccm --ccm-probe`，同一个函数。",
+    ),
+    (
+        "ccm-print",
+        "〔E2 · V138〕派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
+    ),
+    (
         "transfer-stop",
         "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
     ),
@@ -245,6 +253,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
         "files-home",
         "exit-policy-read",
+        // 〔E2〕`ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
+        "ccm-probe",
         // 〔RM1a · 第四波〕`apikey-read`：这台机器上那份凭据文件的状态，无入参。
         // 同族 `apikey-key-set` 要输入（`account` / `key`，key 从 stdin 进），不在表里。
         "apikey-read",
@@ -359,7 +369,7 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
     let r = read_input(std::io::BufReader::new(ThenPanic(Some(big))), true);
     assert_eq!(r.map_err(|e| e.0), Err("args_too_large"));
     // 旗标字面量与 `asset_sync` 推那一趟拼的是同一个常量（远端认的就是它）。
-    assert!(crate::asset_sync::push_command("/b").ends_with(&format!(
+    assert!(crate::asset_sync::push_command().ends_with(&format!(
         " {}",
         shell_quote_core::posix_quote(STDIN_LINE_FLAG)
     )));
