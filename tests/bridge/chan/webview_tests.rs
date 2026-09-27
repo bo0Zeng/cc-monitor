@@ -355,6 +355,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
             "timeout",
             Inbound::Timeout {
                 after: Duration::from_secs(10),
+                withdraw: crate::chan::wire::Withdraw::Asked,
             },
         ),
         ("cancelled", Inbound::Cancelled),

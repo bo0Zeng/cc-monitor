@@ -106,7 +106,7 @@ fn ensure_starts_nothing_when_our_relay_already_listens() {
         std::time::Duration::from_secs(10),
         std::time::Duration::from_secs(10),
     ));
-    std::thread::spawn(move || super::super::listen::serve(listener, relay));
+    std::thread::spawn(move || super::super::listen::serve(listener, relay, Default::default()));
     let get = home_env(&home);
     assert_eq!(occupant(port, &get), Occupant::Ours);
     let got = answer_ensure_with(&json!({ "port": port }), &get).expect("应当成功");

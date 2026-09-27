@@ -597,7 +597,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4p-copy-extract**（2026-09-27，COPY 合并那一拍）：行为 —— CP2c 余下 8 份的对外文字进文案表（后端 `files/mod` 等按码出话）·
 /// 拨号失败按类型分阶段（kex 失败归 `other`，不再报成 hostkey）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4p-copy-extract";
+///
+/// ★★★ **p4q-hello-unavailable**（2026-09-27，NET2 合并那一拍）：协议 —— `hello.unavailable` 真填（按这台机器现算，含 unix 权限位一维 `unix_mode_unavailable`）;
+/// 中转在飞上界挪到宿主 `relay/listen.rs`。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4q-hello-unavailable";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1552,19 +1555,11 @@ fn tmux_by_platform(t: Target) -> Option<bool> {
 /// tmux 那一维读的就是生产里填 `hello.unavailable` 的那一个函数（[`unavailable_from`]），不另写判准；
 /// unix 权限位那一维同形：**谁声明会回那个码，谁就依赖那个机制**，从 `codes` 现推，不抄名单。
 fn wire_commands_unavailable_on(t: Target) -> Vec<String> {
-    let mut out: Vec<String> = unavailable_from(tmux_by_platform(t))
+    unavailable_from(tmux_by_platform(t))
         .into_iter()
+        .chain(unix_mode_unavailable(unix_mode_bits_on(t)))
         .map(|u| u.command)
-        .collect();
-    if !unix_mode_bits_on(t) {
-        out.extend(
-            inbound::REGISTRY
-                .iter()
-                .filter(|s| s.codes.contains(&NO_UNIX_MODE))
-                .map(|s| s.name.to_string()),
-        );
-    }
-    out
+        .collect()
 }
 
 /// `ccm-launcher`：载体是 tmux 的那几条，在平台确证没有 tmux 的 target 上摘掉。
@@ -1894,9 +1889,24 @@ pub const NO_TMUX: &str = "no_tmux";
 /// target 轴（[`unix_mode_bits_on`] × 这个码）由此现推「Windows 上没有 `files-chmod`」
 /// ——`设计/96 §8.5` 待拍 3 那一格（「得让它的声明带一个『这个平台没有』的码」）。
 ///
-/// ⚠ 运行期那条轴（`hello.unavailable`，[`unavailable_here`] 今天不接线）**本刀没动**：
-/// 它的判准住 [`unavailable_from`]，只看 tmux。要接那天同拍把这一维加进去。
+/// 运行期那条轴（`hello.unavailable`）读的是同一个判准：[`unix_mode_unavailable`]（〔NET2〕接线那一拍加进来）。
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
+
+/// 〔NET2〕unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
+/// 与 tmux 那一维同形：谁声明会回那个码，谁就依赖那个机制，从 `inbound::REGISTRY` 的 `codes` 现推。
+pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<wire::Unavailable> {
+    if unix_mode_bits {
+        return Vec::new();
+    }
+    inbound::REGISTRY
+        .iter()
+        .filter(|s| s.codes.contains(&NO_UNIX_MODE))
+        .map(|s| wire::Unavailable {
+            command: s.name.to_string(),
+            code: NO_UNIX_MODE.to_string(),
+        })
+        .collect()
+}
 
 /// `K-P4`：这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
 ///
@@ -1918,7 +1928,6 @@ pub const NO_UNIX_MODE: &str = "no_unix_mode";
 /// 压成**做得到** ⇒ 客户端照今天的样子办（照发、点了看 `no_tmux`）⇒
 /// **一个字节都没退化**，只是这一格没买到。⇒ 后者是唯一安全的那一侧。
 /// 一句话：**这张表只在有把握时才开口，没把握时它退回今天的行为。**
-#[allow(dead_code)] // 同 `unavailable_here`：唯一的生产调用点是它，而它今天不接线。
 pub fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
     let mut out = Vec::new();
     if tmux == Some(false) {
@@ -1958,7 +1967,6 @@ pub fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
 /// （`tmux_present` 在 windows 那一档调的是 [`tmux_exe_in`]）。
 /// ⇒ 这一行留着，只表达**它自己那一句**：「扫 `PATH` 找无后缀 `tmux`」这个判准
 /// 只在 unix 上与 `execvp` 等价，别处不等价，所以它在别处**不开口**。
-#[allow(dead_code)] // 同上。
 pub fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
     if !cfg!(unix) {
         return None;
@@ -1991,7 +1999,6 @@ pub fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
 /// 它论证过「不知道」压成「做不到」会让**能用的功能从界面上无声消失**。
 /// 上一拍的病不在那条规则，在**把 Windows 归进了「不知道」这一档**。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(dead_code)] // 同 `unavailable_here`：生产今天不接线。
 pub enum TmuxPlatform {
     /// **unix** —— 平台这一维**没有结论**，整件事交给探针（[`tmux_in`] 扫 `PATH`）。
     /// 探针的三档原样保留：找到 = `Some(true)` · 没找到 = `Some(false)` ·
@@ -2027,7 +2034,6 @@ pub enum TmuxPlatform {
 /// `CreateProcess` 的查找面比 `PATH` 大（进程自身目录 · 当前目录 · `System32` · `Windows`），
 /// 还会按 `PATHEXT` 补后缀 ⇒ **它可能漏看**。漏看之后答案是「没有」，
 /// 而那正是 [`TmuxPlatform::AbsentUnlessExeOnPath`] 头注里论证过的安全方向。
-#[allow(dead_code)] // 同上。
 pub fn tmux_exe_in(path: Option<&std::ffi::OsStr>) -> bool {
     let Some(path) = path else {
         return false;
@@ -2042,7 +2048,6 @@ pub fn tmux_exe_in(path: Option<&std::ffi::OsStr>) -> bool {
 /// 三个入参组合的答案由 [`TmuxPlatform`] 各档头注给；这个函数本身**不碰 `cfg!`**，
 /// 平台是**入参**。⇒ 本机是 Linux 也能把「Windows 那台机器」当成一个入参跑出来，
 /// 而那正是 `the_windows_answer_is_confirmed_absent_not_unknown` 拿到读数的方式。
-#[allow(dead_code)] // 同上。
 pub fn tmux_present(platform: TmuxPlatform, path: Option<&std::ffi::OsStr>) -> Option<bool> {
     match platform {
         TmuxPlatform::AskThePath => tmux_in(path),
@@ -2055,7 +2060,6 @@ pub fn tmux_present(platform: TmuxPlatform, path: Option<&std::ffi::OsStr>) -> O
 ///
 /// 「唯一一处」与「windows 那一支给的是哪一档」由
 /// `the_windows_arm_is_wired_into_the_source` 钉住（它读的是**磁盘上的源码文本**）。
-#[allow(dead_code)] // 同上。
 pub const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {
     TmuxPlatform::AbsentUnlessExeOnPath
 } else if cfg!(unix) {
@@ -2078,21 +2082,19 @@ const _: () = assert!(
      改回 NoOpinion 会让握手帧第四条面在 Windows 上恒空，而 Windows 正是这一件的动机平台。"
 );
 
-/// `K-P4`：生产入口 —— 这一帧**真填的话**该填什么。
+/// `K-P4`：生产入口 —— hello 那一帧填的就是它（〔NET2〕真填：`main.rs::build_hello`）。
+/// 两维：tmux（[`unavailable_from`]）· unix 权限位（[`unix_mode_unavailable`]，这份二进制是不是 unix）。
 ///
-/// ⚠ 今天生产**不调它**（`build_hello` 硬写 `Vec::new()`）——与 `agents::visible_homes()`
-/// 同一个口径：**能填不真填**。摘掉下面这个 `allow` 的那天，就是把 `build_hello` 那一行
-/// 换成本函数的那天；要**同轮**做的三件事写在 `wire.rs` 那个字段的头注里。
-///
-/// 🔴 **真填那天连着要想清楚的一件事：这一趟探测的结果会被用很久。**
+/// 🔴 **这一趟探测的结果会被用很久。**
 /// `build_hello` 在分档**之前**只调一次，那一帧随后交给两条载体；常驻那条（`listen.rs`）
 /// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
 /// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
 /// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
-#[allow(dead_code)] // `K-P4`：能填不真填 —— 接线是一次纯发布决策，不是忘了。
 pub fn unavailable_here() -> Vec<wire::Unavailable> {
-    unavailable_from(tmux_present(
+    let mut out = unavailable_from(tmux_present(
         TMUX_PLATFORM,
         std::env::var_os("PATH").as_deref(),
-    ))
+    ));
+    out.extend(unix_mode_unavailable(cfg!(unix)));
+    out
 }

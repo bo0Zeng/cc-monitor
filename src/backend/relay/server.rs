@@ -53,7 +53,8 @@ use std::sync::Arc;
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
 
-// ══ 下面这三个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
+// ══ 下面这两个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
+//    〔NET2〕原先是三个：在途上界 `INFLIGHT_CONNECTIONS` 与在途计数已挪去 `listen.rs`（`设计/20 §4` · `§10` 第 7 条）。
 //    理由**不是**职责，是两处**写区外的散文住址**逐字点着 `…/relay/server.rs::<常量名>`，
 //    而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` 真的判得了
 //    那种住址（现打：搬去 `listen.rs` 之后它当场红，诊断逐字「符号还在，但**搬家了**」）。
@@ -68,16 +69,6 @@ pub(super) const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 /// 〔US1 · 4D〕值只住共享 crate `relay_route_core::PORT`（monitor 起本机后端交的 `CCM_RELAY_PORT` 是同一个 const）——
 /// 先前这里与 monitor `payload::RELAY_PORT` 是同一个数的两处写法、零对拍。
 pub(super) const DEFAULT_PORT: u16 = relay_route_core::PORT;
-
-/// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**〕。
-///
-/// ⚠ **是条数不是体量**，所以名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`
-/// —— 那几个词是 `byte_cap_registry` 的钩子，带了会让它把一个**连接数**当成字节上限收进人群。
-///
-/// 超了怎么办：**回 `503 Service Unavailable` 并关连接**，不是静默 FIN。
-/// 先前 `serve()` 是每连接无条件 spawn、且 `let _ = …spawn(…)` 把失败**整个吞掉**
-/// ⇒ 线程顶满之后下游拿到的是一个**没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印。
-pub(super) const INFLIGHT_CONNECTIONS: usize = 256;
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;
@@ -124,10 +115,9 @@ const PAYLOAD_TOO_LARGE: &str = "413 Payload Too Large";
 /// 路径**根本不是路由的形状**。与上游选择那个 404（表里没这一行）同属「路由不成立」一组，
 /// 下游读到的字节逐字节相同 —— 这是 `wire_golden` ③④ 两格钉着的**今天的行为**。
 const NOT_A_ROUTE: &str = "404 Not Found";
-/// 在飞连接顶满（`INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
+/// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
 ///
-/// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（理由见 `INFLIGHT_CONNECTIONS` 头注：
-/// 那几个词是 `byte_cap_registry` 的钩子）。
+/// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
 pub(super) const BUSY: &str = "503 Service Unavailable";
 /// 🔴 **中转自己的传输失败**：上游连不上 · 没回应 · 回的不是 HTTP 响应〔`设计/20 §3.1a`〕。
 ///
@@ -246,8 +236,6 @@ pub(crate) struct Relay {
     served: AtomicU64,
     /// 每条连接透传收尾时落一笔 —— `DoD-2` acceptor ㈡「下游读到的块数 ≈ 上游发出的块数」量的就是它。
     ///
-    /// 同时在途的连接数〔回修轮之五 08-25，`阻-3(D3)`〕。`serve()` 进出各动一次。
-    inflight: Arc<std::sync::atomic::AtomicUsize>,
     /// `Some(n)` = 干净 EOF 收尾，`n` 是**写给下游并 flush 成功的次数**；
     /// `None` = `pump` 以错误收尾（上游 RST 那一路）。
     ///
@@ -281,7 +269,6 @@ impl Relay {
             downstream_deadline,
             upstream_deadline,
             served: AtomicU64::new(0),
-            inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
         }
     }
@@ -291,14 +278,6 @@ impl Relay {
         if let Ok(mut g) = self.pumps.lock() {
             g.push(outcome.as_ref().ok().copied());
         }
-    }
-
-    /// 在途连接数 —— **监听面**（`listen.rs::serve`）进出各动一次。
-    ///
-    /// ⚠ 它是 `pub(super)` 的**访问器**而不是 `pub(super)` 的字段：字段一旦开出去，
-    /// 「谁能改这个数」就没有边界了。访问器只交出那个 `Arc`，改法还是原子操作那几下。
-    pub(super) fn inflight(&self) -> &Arc<std::sync::atomic::AtomicUsize> {
-        &self.inflight
     }
 
     /// 透传收尾账。**只给判据用** —— 生产路径不读它。
