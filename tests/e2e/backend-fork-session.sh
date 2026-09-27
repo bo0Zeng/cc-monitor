@@ -38,7 +38,7 @@ SRC_SID="11111111-2222-3333-4444-555555555555"
 } > "$PROJ/$SRC_SID.jsonl"
 SRC_BEFORE="$(sha256sum "$PROJ/$SRC_SID.jsonl" | cut -d' ' -f1)"
 
-run_fork() { CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BIN" --fork-session "$@" 2>"$WORK/err" ; }
+run_fork() { CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BIN" -- --fork-session "$@" 2>"$WORK/err" ; }
 
 echo "== 1. 正常分叉：exit 0 + stdout 一行 JSON =="
 if OUT="$(run_fork "$SRC_SID" u3)"; then

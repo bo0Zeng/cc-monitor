@@ -105,7 +105,7 @@ CCM_E2E_FAKE_CLAUDE="$FAKE" CLAUDE_CONFIG_DIR="$CLAUDE_DIR" \
   bash "$E2E_DIR/gen-idle-tmux.sh" "$SID" >/dev/null
 
 # 启动 backend(隔离 CLAUDE_CONFIG_DIR),stdout=帧。
-CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" >"$FRAMES" 2>"$BACKEND_ERR" &
+CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --stream >"$FRAMES" 2>"$BACKEND_ERR" &
 BACKEND_PID=$!
 
 # ── 1. LIVE:SessionAdded(sid)────────────────────────────────────────────────
