@@ -376,9 +376,9 @@ TB="$(mktemp -d)"
 cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"
 # 〔AL3 · V138〕位置动作 `new` 取消、预览改 `--ccm-print`（`new` 留着会被当成交给 claude 的位置参数）。
-chk "台账脚本不可执行 ⇒ 明说「不进 spawn 台账」" \
+chk "台账脚本不可执行 ⇒ 明说「不记进派生台账」" \
   "$(CC_BUS_SCRIPTS="$TB" "$CCM" --tmux-base=q --detach --bus-register \
-      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '不进 spawn 台账')" "1"
+      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '不记进派生台账')" "1"
 chmod -x "$TB/cc-register"
 chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
   "$(CC_BUS_SCRIPTS="$TB" "$CCM" --tmux-base=q --detach --bus-register \

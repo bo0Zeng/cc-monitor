@@ -21,7 +21,7 @@
     },
     "bePlan.bus.noSpawnRecord": {
       "kind": "error",
-      "zh": "ccm: {path} 不能执行。会话照建、也会登记，但不进 spawn 台账。",
+      "zh": "ccm: {path} 不能执行。会话照建、也会登记，但不记进派生台账。",
       "args": ["path"]
     },
     "beAssetCatalog.digest.walkFailed": {
