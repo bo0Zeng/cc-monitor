@@ -9,6 +9,41 @@
     "本波只抽了一个样板区（src/views/pane-preview.ts）；全量抽表排在最后一波。"
   ],
   "entries": {
+    "beResident.noHome": {
+      "kind": "error",
+      "zh": "这台机器上没有 HOME，找不到常驻后端的钥匙放哪。没有起。",
+      "args": []
+    },
+    "beResident.noSelf": {
+      "kind": "error",
+      "zh": "找不到后端自己的程序文件：{e}",
+      "args": ["e"]
+    },
+    "beResident.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数，铸不出常驻后端的钥匙。没有起。",
+      "args": []
+    },
+    "beResident.spawnFailed": {
+      "kind": "error",
+      "zh": "常驻后端起不来（{exe}）：{e}",
+      "args": ["exe", "e"]
+    },
+    "beResident.cannotVerify": {
+      "kind": "error",
+      "zh": "认不出进程 {pid} 是不是这台的常驻后端（这台机器上读不到它跑的程序），没有停它。",
+      "args": ["pid"]
+    },
+    "beResident.notOurs": {
+      "kind": "error",
+      "zh": "进程 {pid} 跑的是 {exe}，不是记下的那个常驻后端（进程号可能被别的程序用了），没有停它。",
+      "args": ["pid", "exe"]
+    },
+    "beResident.signalFailed": {
+      "kind": "error",
+      "zh": "给常驻后端（进程 {pid}）发停止信号没发出去。",
+      "args": ["pid"]
+    },
     "panePreview.head.title": {
       "kind": "title",
       "zh": "预览画面 · [{origin}] tmux: {target}",

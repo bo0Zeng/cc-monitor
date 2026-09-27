@@ -543,6 +543,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
     "tests/backend/control/panorama_tests.rs",
+    "tests/backend/control/resident_tests.rs", // 〔HOST〕临时目录上真铸钥匙、读钥匙文件
     "tests/backend/control/transfer_tests.rs",
     "tests/backend/dial_compress_tests.rs",
     "tests/backend/dial_link_tests.rs",

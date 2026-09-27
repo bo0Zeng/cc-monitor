@@ -1371,7 +1371,7 @@ fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
         "同一个输入两次算出不同的口"
     );
     assert!(
-        (PORT_BASE..=u16::MAX).contains(&a),
+        (49152..=u16::MAX).contains(&a),
         "算出来的口 {a} 不在动态/私有口段里 —— 那可能撞上系统服务"
     );
     assert_ne!(
@@ -1382,8 +1382,10 @@ fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
     // ★ 反向锚点：**不许用 `DefaultHasher`**（它跨 Rust 版本不保证稳定）。
     //   升级一次 monitor 就换一个口 = 下一次启动去连空口、起第二个后端，
     //   而那正是本件要防的那件事。
-    let me =
-        guard_core::production_code(include_str!("../../src/bridge/src/local_backend_host.rs"));
+    // 〔HOST〕实现搬进共享 crate（本机宿主与远端 `--resident-ensure` 同一个函数）⇒ 锚点跟着看那一份。
+    let me = guard_core::production_code(include_str!(
+        "../../src/bridge/crates/relay-route-core/src/lib.rs"
+    ));
     assert!(
         !me.contains("DefaultHasher"),
         "端口用上了 `DefaultHasher` —— 它的输出**跨 Rust 版本不保证稳定**（标准库自己写的）。\

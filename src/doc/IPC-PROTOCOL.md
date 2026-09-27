@@ -3076,6 +3076,17 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 多一个可选的 `agent_sock`），链路上的应答与 C2 代理的 stdout 逐字节同形。常驻后端不在 ⇒ monitor **报**，不起代理进程、不进程内拨（`D11`）。
 ⚠ 子命令集少了一条 ⇒ `build_id_guard` 红，合并时 bump `BUILD_ID`。
 
+**〔HOST · V139 · 2026-09-26〕远端常驻后端：`--resident-ensure` / `--resident-stop`**（一次性，monitor 经本机常驻后端的链路 `capture` 在远端跑；住 `control/resident.rs`）。
+- `--resident-ensure`（可带 `--replace`）：读回或铸 `~/.cc-monitor/listen-token`（0600，与本机宿主同一份）→ 起一个脱离的自己（常驻载体：
+  `CCM_LISTEN_PORT` = `relay_route_core::listen_port_for(agent 家目录)` · `CCM_LISTEN_TOKEN_FILE` = 钥匙文件**路径** · `CCM_RELAY_PORT`（远端中转进程内起）·
+  `CCM_BACKEND_STDERR_LOG`）→ stdout 一行 `{"port","token","pid"}`、退出 0。口上已有常驻后端 ⇒ 子进程「绑不上就退 3」，找与起是同一步。
+  `--replace`：先按口上那一位自己记的 `~/.cc-monitor/listen-<口>.pid`（核 `/proc/<pid>/exe`）发 SIGTERM 再起。
+- `--resident-stop`：同一枪，不起；stdout `{"stopped":<pid>|null}`。失败：stderr `{code,message}`、退出 2（`code` ∈ `no_home` · `no_token` · `replace_failed` · `stop_failed` · `spawn_failed` · `unsupported`）。
+- 常驻监听口的握手多一格：attach 行可带 `"flags":[…]`（`STREAM_FLAGS` 的子集，这条连接的流模式旗标；缺 = 进程起参那一份；表外的 ⇒ `malformed-attach`）。
+  **多客户**（`设计/01 §3.3b ⑥`）：钥匙对上就交流，每条连接各一份 watcher / inbound / writer；连接计数归零才按「退出行为」办；`stream-busy` 不再发。
+- 链路多一种用法 `tunnel`（`tunnel_port`）：本机常驻后端开 direct-tcpip 到远端 `127.0.0.1:<口>`，monitor 经它讲上面这条监听协议（不另开公网口）。
+- ⚠ 子命令集多两条 ⇒ `build_id_guard` 红，合并时 bump `BUILD_ID`。
+
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
 （`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— 后端把它当未知 flag、
 打一行 warn 之后照常进流模式，调用方拿到一堆 jsonl 行。08-13 实测撞到过，

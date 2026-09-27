@@ -152,7 +152,8 @@ pub fn handles(flag: &str) -> bool {
     flag == PROBE_FLAG || spec_for(flag).is_some()
 }
 
-fn emit_err(code: &str, message: impl Into<String>) -> i32 {
+/// 〔HOST〕`control/resident.rs` 那两条子命令也走这一份（不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
+pub(crate) fn emit_err(code: &str, message: impl Into<String>) -> i32 {
     let body = serde_json::json!({ "code": code, "message": message.into() });
     eprintln!("{body}");
     2

@@ -310,6 +310,21 @@ pub(crate) fn unix_secs_from_filetime(filetime: u64) -> Option<u64> {
         .map(|t| t / FILETIME_TICKS_PER_SEC)
 }
 
+/// 〔HOST〕`pid` 此刻跑的二进制路径（Linux `/proc/<pid>/exe`；别的平台答不上 ⇒ `None`，调用方不杀）。
+pub(crate) fn exe_of(pid: u32) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_link(format!("/proc/{pid}/exe"))
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
 /// `/proc/<pid>/cmdline`, NUL separators turned into spaces, lossily decoded.
 /// None when unreadable (vanished PID, permissions) → check skipped.
 pub(crate) fn proc_cmdline(pid: u32) -> Option<String> {
