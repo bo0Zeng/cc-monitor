@@ -156,7 +156,8 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
     let v = transfer_call(
         cfg("中继·上传"),
         TRANSFER_UPLOAD,
-        &serde_json::json!({ "local_path": "/tmp/x.bin" }),
+        // 〔FILES2 · Q5〕`home` 原样转给传输台（它连上之后比 SFTP 起始目录）。
+        &serde_json::json!({ "local_path": "/tmp/x.bin", "home": "/home/u" }),
     )
     .await
     .expect("开单");
@@ -168,6 +169,10 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
     );
     let req = rig.next("transfer-upload").await;
     assert_eq!(req["args"]["local_path"], "/tmp/x.bin");
+    assert_eq!(
+        req["args"]["home"], "/home/u",
+        "后端的 home 没原样转给传输台"
+    );
     assert_eq!(
         req["args"]["dial"]["host"], "example.invalid",
         "拨号请求不是那台远端的"
@@ -343,7 +348,7 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
 /// 都认得出；`end` 认不出 ⇒ 整帧 `None`（不猜一个结局）。
 #[test]
 fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
-    let cases: [(&str, Option<End>); 4] = [
+    let cases: [(&str, Option<End>); 5] = [
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000}"#,
             None,
@@ -358,6 +363,14 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"写暂存件失败"}}"#,
             Some(End::Failed("写暂存件失败".into())),
+        ),
+        // 〔FILES2 · Q5〕带码的那一形（后端 `wire_tests` 同一行逐字节）⇒ 单列一形，码原样带着。
+        (
+            r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"failed","why":"w","code":"sftp_home_mismatch"}}"#,
+            Some(End::FailedCoded {
+                why: "w".into(),
+                code: "sftp_home_mismatch".into(),
+            }),
         ),
         (
             r#"{"kind":"transfer","id":"xfer-7","got":262144,"total":1000000,"end":{"state":"cancelled"}}"#,

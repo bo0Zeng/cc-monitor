@@ -112,7 +112,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/filewin/shell_keys_tests.rs",
     "tests/bridge/filewin/size_tests.rs", // 〔W5-FILES〕算大小（窗口那一侧）
     "tests/bridge/filewin/extract_tests.rs", // 〔FILES2〕解压到这里（窗口那一侧，合成后端）
-    "tests/bridge/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载（窗口那一侧，合成对端）
     "tests/bridge/filewin/workspace_tests.rs",
     "tests/bridge/filewin/writeops_tests.rs",
     "tests/bridge/lib_batch_tests.rs",
@@ -366,6 +365,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/filewin/download_tests.rs",
     "tests/bridge/filewin/entry_tests.rs", // 〔TAIL〕INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
     "tests/bridge/filewin/find_tests.rs",
+    "tests/bridge/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
     "tests/bridge/filewin/fonts_tests.rs",
     "tests/bridge/filewin/select_tests.rs",
     "tests/bridge/filewin/transfer_tests.rs",
@@ -527,6 +527,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
     "tests/bridge/stop_grace_tests.rs", // 〔HX1〕S1 真 sh 两形：trap exit ⇒ Stopped · trap '' ⇒ Forced
     "tests/bridge/crates/shell-quote-core/lib_tests.rs", // 〔FILES2〕单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
+    "tests/bridge/filewin/chunk_upload_tests.rs", // 〔FILES2〕上传块形：临时目录里一份本机文件 ＋ 合成对端
     "tests/backend/accounts/upstream/creds_tests.rs",
     "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream/file_face_tests.rs",
@@ -547,6 +548,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/exit_policy_tests.rs",
     "tests/backend/control/files_commit_tests.rs",
     "tests/backend/control/files_extract_tests.rs",
+    "tests/backend/control/files_upload_chunks_tests.rs",
     "tests/backend/control/files_write_tests.rs",
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",

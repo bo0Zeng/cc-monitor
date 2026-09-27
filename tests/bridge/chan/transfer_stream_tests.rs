@@ -242,3 +242,32 @@ async fn opening_a_transfer_for_an_unknown_machine_is_refused_out_loud() {
         other => panic!("该是对端拒：{other:?}"),
     }
 }
+
+/// 〔FILES2 · Q5〕带码的失败经生产句柄原样到窗口：`{"state":"failed","why","code"}` —— 窗口据 `sftp_home_mismatch` 换路。
+/// 要求住址：`设计/60 §7` 第 9 条 Q5（主会话 09-27 裁「不一致 ⇒ 这台的上传改走后端链路分块写」）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_coded_failure_reaches_the_window_with_its_code() {
+    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let mut be = backend_rig(&ALL);
+    let client = rig().await;
+    let label = "判据机器·transfer-coded";
+    let id = open_upload(label).await;
+    let sub = client.subscribe(
+        &crate::chan::wire::Origin(label.to_string()),
+        &kind(&id),
+        None,
+        4,
+    );
+    be.next("transfer-start").await;
+    be.frame(&format!(
+        r#"{{"kind":"transfer","id":{id:?},"got":0,"total":0,"end":{{"state":"failed","why":"w","code":"sftp_home_mismatch"}}}}"#
+    ));
+    let items = drain(sub).await;
+    let Some(Item::Closed { by: By::Peer(end) }) = items.last() else {
+        panic!("最后一格不是对端收场：{items:?}");
+    };
+    assert_eq!(
+        body_json(end),
+        serde_json::json!({ "state": "failed", "why": "w", "code": "sftp_home_mismatch" })
+    );
+}

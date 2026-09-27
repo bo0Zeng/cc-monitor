@@ -503,8 +503,13 @@ fn transfer_frames_have_exactly_these_bytes() {
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"done\",\"bytes\":1000000,\"sha256\":\"abababababababababababababababababababababababababababababababab\"}}\n",
         ),
         (
-            f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into() })),
+            f(Some(crate::wire::TransferEnd::Failed { why: "写暂存件失败".into(), code: None })),
             "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"写暂存件失败\"}}\n",
+        ),
+        // 〔FILES2 · Q5〕带码的那一形（今天只有 SFTP 起始目录不是后端 home 那一码）。
+        (
+            f(Some(crate::wire::TransferEnd::Failed { why: "w".into(), code: Some("sftp_home_mismatch".into()) })),
+            "{\"kind\":\"transfer\",\"id\":\"xfer-7\",\"got\":262144,\"total\":1000000,\"end\":{\"state\":\"failed\",\"why\":\"w\",\"code\":\"sftp_home_mismatch\"}}\n",
         ),
         (
             f(Some(crate::wire::TransferEnd::Cancelled)),

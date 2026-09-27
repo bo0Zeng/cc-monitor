@@ -311,6 +311,12 @@ fn snap_item(seq: u64, snap: &crate::sftp_pool::Snap) -> Item {
         Some(End::Failed(why)) => Item::Closed {
             by: By::Peer(json(serde_json::json!({ "state": "failed", "why": why }))),
         },
+        // 〔FILES2 · Q5〕带码的失败：码原样交给窗口（它按码换路）。
+        Some(End::FailedCoded { why, code }) => Item::Closed {
+            by: By::Peer(json(
+                serde_json::json!({ "state": "failed", "why": why, "code": code }),
+            )),
+        },
         Some(End::Cancelled) => Item::Closed {
             by: By::Peer(json(serde_json::json!({ "state": "cancelled" }))),
         },

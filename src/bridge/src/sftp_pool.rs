@@ -74,6 +74,8 @@ pub enum End {
     Done { bytes: u64, sha256: Option<String> },
     /// 失败（带下层原话）。上传那一路的暂存件**留着**给续传。
     Failed(String),
+    /// 〔FILES2 · Q5〕带码的失败（传输台说的码，今天只有 `sftp_home_mismatch`：SFTP 起始目录不是那台后端的 home）。
+    FailedCoded { why: String, code: String },
     /// 撤了（停订 / 连接断了）。上传那一路的暂存件已删。
     Cancelled,
 }
@@ -131,7 +133,14 @@ pub async fn transfer_call(
     };
     let dial = crate::dial_host::transfer_dial(&cfg).map_err(|e| ("bad_args".to_string(), e))?;
     let args = match op {
-        TRANSFER_UPLOAD => serde_json::json!({ "dial": dial, "local_path": text("local_path")? }),
+        // 〔FILES2 · Q5〕`home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比，原样转。
+        TRANSFER_UPLOAD => {
+            let mut a = serde_json::json!({ "dial": dial, "local_path": text("local_path")? });
+            if let Some(h) = payload.get("home").filter(|v| v.is_string()) {
+                a["home"] = h.clone();
+            }
+            a
+        }
         // 〔FN1 · V119〕这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
         // 〔FILES2 · Q4〕下载的本机落点收字符串或 `{"b16": …}`（有损名在 Linux 上按原始字节落名），原样转给本机后端判。

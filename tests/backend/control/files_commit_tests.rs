@@ -867,3 +867,38 @@ fn a_cross_device_commit_falls_back_to_copy_and_delete() {
     assert_eq!(std::fs::read(root.join("c.bin")).unwrap(), b"same");
     assert!(!staged.exists());
 }
+
+/// 〔FILES2 · Q5〕线上那一臂：`files-commit-upload` 带 `chunks` ⇒ 先把块拼成暂存件再走同一条提交（整份摘要照核）；
+/// 摘要对不上 ⇒ `stale`、目标不在（块形与 SFTP 那条路同一道 CAS）。要求住址：`设计/60 §7` 第 9 条 Q5。
+#[test]
+fn the_commit_face_assembles_chunks_when_asked() {
+    let h = std::env::temp_dir().join(format!("ccm-fc-chunks-{}", std::process::id()));
+    std::fs::remove_dir_all(&h).ok();
+    std::fs::create_dir_all(h.join(".cc-monitor")).expect("铺家");
+    std::fs::create_dir_all(h.join("dst")).expect("铺目标");
+    let key = "c".repeat(32);
+    stage_chunk(&h, &key, 0, b"hello ").expect("块 0");
+    stage_chunk(&h, &key, 1, b"world").expect("块 1");
+    let args = |sha: &str, rel: &str| {
+        serde_json::json!({
+            "key": key, "root": h.join("dst").to_string_lossy(), "rel": rel, "overwrite": false,
+            "expect": {"sha256": sha}, "chunks": 2, "bytes": 11,
+        })
+    };
+    answer_commit_at(
+        &h,
+        &args(&crate::files::content_sha256(b"hello world"), "a.txt"),
+    )
+    .expect("块形提交被拒");
+    assert_eq!(
+        std::fs::read(h.join("dst/a.txt")).expect("目标"),
+        b"hello world"
+    );
+    stage_chunk(&h, &key, 0, b"hello ").expect("块 0");
+    stage_chunk(&h, &key, 1, b"world").expect("块 1");
+    let e = answer_commit_at(&h, &args(&crate::files::content_sha256(b"other"), "b.txt"))
+        .expect_err("摘要对不上却上位了");
+    assert_eq!(e.0, "stale", "{e:?}");
+    assert!(std::fs::symlink_metadata(h.join("dst/b.txt")).is_err());
+    std::fs::remove_dir_all(&h).ok();
+}

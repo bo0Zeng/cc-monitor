@@ -111,7 +111,8 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
         what:
             "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\
              不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
-        args: &["expect", "key", "overwrite", "rel", "root"],
+        // 〔FILES2 · Q5〕+`chunks`（入，可缺席；`bytes` 同时是入）：块形 ⇒ 先把块拼成暂存件（`files_upload_chunks`）再走这同一条提交。
+        args: &["bytes", "chunks", "expect", "key", "overwrite", "rel", "root"],
         fields: &["bytes", "path"],
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
@@ -443,7 +444,7 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
 /// 删掉这个键的**全部**块（列暂存区、按名字认 —— 不按块号数：说错块数、中间缺一块时照样删干净）。
 /// 尽力而为，删不掉不挡调用方（孤儿扫会收）。每一处删之前先过以暂存区为根的路径解析；链接不删
 /// （那不是我们放的一块）。
-fn drop_chunks(home: &Path, key: &str) {
+pub fn drop_chunks(home: &Path, key: &str) {
     let dir = home.join(STAGING_DIR);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return;
@@ -590,6 +591,12 @@ fn answer_commit_at(home: &Path, args: &serde_json::Value) -> Answer {
         ))?;
     // 〔FW1〕整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
     let expect = sha256_expect_of(args)?;
+    // 〔FILES2 · Q5〕块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
+    if args.get("chunks").is_some() {
+        let (chunks, bytes) = (u64_arg(args, "chunks")?, u64_arg(args, "bytes")?);
+        super::files_upload_chunks::assemble_part(home, &key, chunks, bytes)
+            .map_err(|e| (e.code(), e.message().to_string()))?;
+    }
     let (landed, bytes) = commit_upload(home, &key, &root, &rel, overwrite, &expect)
         .map_err(|e| (e.code(), e.message().to_string()))?;
     // 暂存区清理「孤儿」那一格的事件：一次提交成功（`设计/60 §13.2 ④`）。

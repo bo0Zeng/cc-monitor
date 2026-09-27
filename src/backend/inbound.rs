@@ -1746,7 +1746,16 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "files-commit-upload",
         doc_anchor: Some("#### `files-commit-upload`"),
         codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
-        fields: &["bytes", "expect", "key", "overwrite", "path", "rel", "root"],
+        fields: &[
+            "bytes",
+            "chunks",
+            "expect",
+            "key",
+            "overwrite",
+            "path",
+            "rel",
+            "root",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_commit::answer_wire(&r.cmd, &r.args)

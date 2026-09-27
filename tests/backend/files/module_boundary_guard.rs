@@ -148,6 +148,7 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 const MEMBERS_ELSEWHERE: &[&str] = &[
     "control/files_commit.rs",
     "control/files_extract.rs",
+    "control/files_upload_chunks.rs",
     "control/files_write.rs",
     "control/transfer.rs",
 ];
@@ -157,6 +158,7 @@ const MODULE_PATHS: &[&str] = &[
     "files::",
     "control::files_commit::",
     "control::files_extract::",
+    "control::files_upload_chunks::",
     "control::files_write::",
     "control::transfer::",
 ];
@@ -515,8 +517,9 @@ fn the_file_backend_is_mounted_from_exactly_its_three_declarations() {
         ("control/mod.rs", "pub mod files_commit;"),
         // 〔SR1b · 第四波 09-24〕传输台那一份。
         ("control/mod.rs", "pub mod transfer;"),
-        // 〔FILES2 · 第四波 09-27〕解压 ＋ 建链接那一份。
+        // 〔FILES2 · 第四波 09-27〕解压 ＋ 建链接那一份；上传块形那一份。
         ("control/mod.rs", "pub mod files_extract;"),
+        ("control/mod.rs", "pub mod files_upload_chunks;"),
     ] {
         let src = std::fs::read_to_string(root.join(file))
             .unwrap_or_else(|e| panic!("读不到 `{file}`：{e}"));

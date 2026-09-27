@@ -1407,10 +1407,12 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 | `root` / `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；〔FN1〕「会话文件那一问」删了） |
 | `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值。`false` ⇒ 先 `O_EXCL` 占位（目标已在 ⇒ `io_failed`），再改名上位；`true` ⇒ 直接改名上位（同盘原子） |
 | `expect` | → | 〔FW1 · 第四波 4D〕🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来）。改名上位**之前**对暂存件整份算一遍：不等 ⇒ `stale`、目标一个字节不动、**坏暂存件删掉**（调用方从 0 重传）；缺了 / 形状不对 ⇒ `bad_args`。为什么：续传只对尾块，看不见「前缀 ＋ 洞 ＋ 尾巴」（失败后晚到的写在中间留的洞，`设计/60 §7` 第 8 条） |
+| `chunks` / `bytes` | → | 〔FILES2 · Q5〕可缺席（缺席 ＝ 此前那一形）。给了 ⇒ **块形**：先把 `files-stage-chunk` 送来的 `<key>.0.chunk` … `<key>.<chunks-1>.chunk` 依次拼成 `<key>.part`（`O_EXCL`、流式），总长必须恰好 `bytes`、不多一块，否则 `io_failed`、目标一个字节不动；**不论成败**这一键的块都删掉。拼好之后走下面同一条提交（`expect` 照核）。SFTP 起始目录不是这台后端的 home（chroot / `internal-sftp -d`）时窗口走这一形 |
 | `path` | ← | 落点（父目录解过 symlink 的那一个） |
 | `bytes` | ← | 暂存件的字节数（改名不搬字节，这个数就是它在盘上的长度） |
 
 ⚠ 暂存件不在（传输没跑完 · SFTP 起始目录不是这台后端的 home）⇒ `io_failed`；暂存件是链接或目录 ⇒ `refused`。
+〔FILES2 · Q5〕上传开单时窗口带上那台后端的 `$HOME`（`transfer-upload` 的 `home`），传输台连上之后比 SFTP 起始目录：不一致 ⇒ 一个字节不传、`transfer` 帧以 `{"state":"failed","code":"sftp_home_mismatch"}` 收场，窗口改走上面的块形并出声一次。
 ⚠ 暂存区与目标不在同一个文件系统上 ⇒ 改名回 `EXDEV`、`io_failed`（复制 ＋ 删那一形在第三层禁表里，没做）。
 - **CLI 面同样有它**（从命令注册那一处派生，与写面同一条理由）：`--files-commit-upload`，载荷走 stdin，与帧面的 `args` 同形。
 
@@ -2671,6 +2673,8 @@ monitor 的做法：链路的读者每读走半个窗口就还一次（`link_mux
 | `data` | `{"id":"xfer-<n>","key":"<32 位十六进制>"}` —— `key` = 暂存件的键（本机路径 · 大小 · 修改时间派生；同一份文件重拖一次同一个键 ⇒ 续传），提交时交给远端后端 |
 
 **不起跑**。错误 code：`bad_args` · `io_failed`（读不到本机文件）· `busy`（同一个键已有一张票在册）· `too_many_transfers`（每连接 64 张）。
+〔FILES2 · Q5〕`args` 可带 `"home":"<那台后端的 $HOME>"`：起跑连上之后与 SFTP 起始目录（`realpath(".")`）比，去尾 `/` 不等 ⇒ 一个字节不写，
+终局 `{"state":"failed","why":…,"code":"sftp_home_mismatch"}`（chroot / `internal-sftp -d`：暂存件会落到后端看不见的地方）。
 
 #### `transfer-download`：开单（下载）
 
