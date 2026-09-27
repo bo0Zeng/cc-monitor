@@ -2,7 +2,7 @@
   "说明": [
     "对外文案表（设计/91 §5.1 · §5.1.1 四个决定）。在表里 = 对外，不在表里 = 不对外，没有第三种。",
     "key = <面>.<场景>.<变体>，三段，每段小写开头的 camel；key 是标识符，不许出现在界面上。",
-    "kind 五档：title（页面名 / 区块标题，名词短语）· control（复选框 / 开关 / 输入框标签）· action（按钮）· body（正文）· error（报错）。由写文案的人填，不由扫描器猜。",
+    "kind 六档：title（页面名 / 区块标题，名词短语）· control（复选框 / 开关 / 输入框标签）· action（按钮）· body（正文）· error（报错）· aria（只给读屏器念的无障碍名 aria-label，按标签面规则管：不许问句、不许口语词、许动词开头；与界面上看得见的字共用一条的，按看得见的那一档填）。由写文案的人填，不由扫描器猜。",
     "zh 里的插值点只许具名（{origin}），不许 {} / {0}；args 显式登记，与 zh 里出现的占位符两向相等。",
     "waive：这一条对某条规矩的豁免（规矩号 → 理由）。豁免了却没违反 ⇒ 红（死豁免）。规矩表在 src/shared/copy/rules.json。",
     "生产代码只经 src/copy-table.ts 的 copyText(key, {…}) 取文，key 必须是字面量；表里的 key 与代码里的引用两向相等（tests/copy/copy-table.vitest.ts）。",
@@ -2533,7 +2533,7 @@
       "args": []
     },
     "commandBar.build.ariaLabel": {
-      "kind": "control",
+      "kind": "aria",
       "zh": "命令栏",
       "args": []
     },
@@ -4578,7 +4578,7 @@
       "args": []
     },
     "main.topbar.openHistory": {
-      "kind": "action",
+      "kind": "aria",
       "zh": "打开历史会话浏览器",
       "args": []
     },
@@ -5288,7 +5288,7 @@
       "args": []
     },
     "firstRunHint.mount.closeLabel": {
-      "kind": "body",
+      "kind": "aria",
       "zh": "关掉这次的提示",
       "args": []
     },
@@ -6561,7 +6561,7 @@
       "args": []
     },
     "router.ctor.ariaLabel": {
-      "kind": "body",
+      "kind": "aria",
       "zh": "设置分类",
       "args": []
     },

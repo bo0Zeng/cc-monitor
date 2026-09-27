@@ -65,6 +65,10 @@
 
   一条同时中几类时，裁词取**最要紧的那一类**（外泄 > 推理 > 派活 > 形状），其余写进依据：`兼§2.x`。
 
+  · 〔FIX2 · `99 §2.1 ㉛①`〕`aria-*` 的无障碍名（普查桶 a11y）**对外**（读屏器念给用户听）：按标签面裁 ——
+    不许问句、不许口语词、许动词开头（R5 / R6）。进表时只进 `aria-label` 的键填 `kind: "aria"`，
+    与看得见的字共用的按看得见的那一档填；`aria_kind_check` 两向判这件事（表里 aria == 只落在 a11y 出口的键）。
+
 ═══════════════════════════════════════════════════════════════════════════════
  五、依据列的机读标记（摘要是从这些标记数出来的，别自由发挥）
 ═══════════════════════════════════════════════════════════════════════════════
@@ -129,6 +133,10 @@ def probe_control(census=None, body: str = PROBE_BODY) -> tuple[bool, list[str]]
     return got == [PROBE_BAND], got
 
 
+def census_table() -> dict:
+    return json.loads((REPO / "src" / "shared" / "copy" / "table.json").read_text(encoding="utf-8")).get("entries", {})
+
+
 def load_census():
     spec = importlib.util.spec_from_file_location("k_t68_census", CENSUS_PATH)
     mod = importlib.util.module_from_spec(spec)
@@ -154,11 +162,43 @@ def unesc(s: str) -> str:
     return "".join(out)
 
 
+# 最近一趟对真树 `scan()` 的主集（`aria_kind_check` 借它，免得同一趟再扫一遍）。
+LAST_MAIN: list = []
+
+
+def all_copy_refs(census) -> Counter:
+    """真树生产源码里每个键被 `copyText("key")` / `copy_text("key")` 引了几次（遮注释、剥测块，同普查）。"""
+    n = Counter()
+    for path, rel in census.production_files(census.SRC_ROOT):
+        lang = "rs" if rel.endswith(".rs") else "ts"
+        m = census.mask_comments(path.read_text(encoding="utf-8"), lang)
+        if lang == "rs":
+            m = census.strip_cfg_test(m)
+        n.update(r.group(1) for r in census.COPY_REF.finditer(m))
+    return n
+
+
+def aria_kind_check(main: list, refs: Counter, table: dict) -> dict:
+    """设计/99 §2.1 ㉛① · 设计/91 §6 第 6 条：「aria-* 单立一个 kind、按标签面规则管」。
+
+    两向相等：表里 `kind == "aria"` 的键 == 生产源码里**每一处**引用都落在 a11y 出口（`aria-label`）的键。
+    与看得见的字共用的键（别处还引它，如命令栏的 `title:`）按看得见的那一档管，不算 aria。
+    经变量转交的（`const X = copyText(…)` 再 `setAttribute("aria-label", X)`）不落在出口上，不在人群里（已登记缺口）。
+    """
+    at = Counter(e["key"] for e in main if e.get("via") == "table" and e["bucket"] == "a11y")
+    want = {k for k, c in at.items() if refs[k] == c}
+    got = {k for k, v in table.items() if v.get("kind") == "aria"}
+    return dict(ok=bool(want) and want == got, want=len(want),
+                untagged=sorted(want - got), stray=sorted(got - want))
+
+
 def doubt_band(census, src_root: Path | None = None):
     """→ [dict(file, line, text, ctx, occ)]，**人群定义全部来自普查模块**。"""
     if src_root is not None:
         census.SRC_ROOT = src_root
-    _files, _lines, _entries, residual, _en, _cc = census.scan(census.SRC_ROOT)
+    _files, _lines, entries, residual, _en, _cc = census.scan(census.SRC_ROOT)
+    if src_root is None:  # 正控那棵临时树不覆盖真树的主集
+        LAST_MAIN[:] = entries
     unsure = [r for r in residual if not census.is_declined(r)]
 
     # 回源码取全文（普查残差里的 text 截到 80 字）
@@ -266,10 +306,16 @@ def run_check(band, ledger_path: Path, as_json: bool, probe: tuple[bool, list[st
     for r in rows:
         v = r["verdict"]
         vc[next(p for p in VERDICT_PREFIXES if v.startswith(p)) if v.startswith(VERDICT_PREFIXES) else "?"] += 1
+    aria = aria_kind_check(LAST_MAIN, all_copy_refs(load_census()), census_table())
+    if not aria["ok"]:
+        problems += [f"只进 aria-label 的键 kind 不是 aria：{k}" for k in aria["untagged"]]
+        problems += [f"kind 是 aria、却不是只进 aria-label：{k}" for k in aria["stray"]]
+        if not aria["want"]:
+            problems.append("普查一条只进 aria-label 的取文都没认出来 ⇒ aria 那一格空转")
     ok = not (missing or extra or problems or not probe_ok)
     rep = dict(ok=ok, band=len(band), ledger=len(rows), missing=len(missing), extra=len(extra),
                line_drift=len(drift), problems=problems[:40], probe_ok=probe_ok, probe_got=probe_got[:5],
-               verdicts=dict(vc),
+               verdicts=dict(vc), aria=aria,
                missing_sample=[f"{e['file']}:{e['line']}\t{e['text'][:60]}" for e in sorted(missing, key=lambda x: (x['file'], x['line']))[:40]],
                extra_sample=[f"{r['file']}:{r['line']}\t{r['text'][:60]}" for r in sorted(extra, key=lambda x: (x['file'], x['line']))[:40]])
     if as_json:

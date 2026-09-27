@@ -998,7 +998,9 @@ def scan(root: Path):
                     lo, hi = col + 1, end
                     op = None
                 elif sink["mode"] == "call":
-                    op = masked.find("(", m.end() - 1)
+                    # 〔FIX2〕从匹配起点找第一个 `(`：`setAttribute("aria-label"` 这类锚串越过了实参开头，
+                    #   从匹配末尾找会落到下一个 `copyText(` 里，经表取文的那几处整批漏掉。
+                    op = masked.find("(", m.start())
                     if op < 0:
                         continue
                     end = span_of_call(masked, op)
