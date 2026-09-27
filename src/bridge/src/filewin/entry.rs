@@ -156,16 +156,10 @@ pub async fn open_file_window(
     cfg: RemoteConfig,
     path: String,
     reveal_file: Option<String>,
-    // 〔FW34〕〔待退役〕老 SFTP 面板留在 webview 里的目录书签（机器名 → 目录）。有就先并进书签文件，
-    //   并不进去整趟报错、不开窗（webview 那侧据此决定删不删旧键）。逐条理由住 [`carry_legacy`]。
-    carry_bookmarks: Option<super::bookmarks::Book>,
 ) -> Result<usize, String> {
     let source = Source::remote(cfg);
     // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
     let bookmarks = crate::paths::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d));
-    if let Some(legacy) = carry_bookmarks.filter(|m| !m.is_empty()) {
-        carry_legacy(bookmarks.as_deref(), &legacy)?;
-    }
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     let (path, reveal) = match plan_target(&path, reveal_file.as_deref())? {
         Target::Dir(d) => (d, None),
@@ -201,26 +195,6 @@ pub async fn open_file_window(
     .map_err(|why| copy_text("rsFilewinEntry.open.failed", &[("why", &why.to_string())]))?;
     tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");
     Ok(n)
-}
-
-/// 〔FW34〕〔待退役〕**搬家那一跳**：把 webview 里老面板的书签并进书签文件（monitor 这一侧、开窗之前）。
-/// 回新加了几条。
-///
-/// - 走的是书签唯一那个写口（`bookmarks::carry` → `mutate`：上锁 → 现读 → 并 → 原子换），合并幂等
-///   ⇒ 这一步成了、后面开窗却失败时，下一次再搬一遍不会重样。
-/// - 并不进去（数据目录解不出来 / 写不进去 / 书签文件读不懂）⇒ **整趟报错**：webview 那侧据此不删旧键，
-///   原话带回 toast。静默开窗、丢书签是更坏的那一形。
-/// - 退役条件：用户那台机器上开过一次窗、旧键被删之后，连同 `open_file_window` 那一格参数、
-///   `src/file-window.ts` 那一段与它们的判据一起删。
-pub fn carry_legacy(
-    file: Option<&std::path::Path>,
-    legacy: &super::bookmarks::Book,
-) -> Result<usize, String> {
-    let Some(file) = file else {
-        return Err(copy_text("rsFilewinEntry.legacy.noDataDir", &[]));
-    };
-    super::bookmarks::carry(file, legacy)
-        .map_err(|e| copy_text("rsFilewinEntry.legacy.failed", &[("e", &e.to_string())]))
 }
 
 /// 开窗之前那一屏 —— 问后端 `files-ls`，经通道宿主的生产句柄（monitor 进程里）。

@@ -69,66 +69,6 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   });
 });
 
-// ═══════════════ 〔FW34〕〔待退役〕老面板书签的一次性搬家 ═══════════════
-//
-// 老 SFTP 面板的书签留在 webview localStorage（`cc-monitor.sftp.bookmarks.<机器名>`，值是目录数组）。
-// 开窗那一跳顺手带给 Rust 侧（`carryBookmarks`），**搬成（开窗成功）才删**，失败一把不删。
-// 期望手写（按老面板那把键的形状）；实得是 mock 住的 `invoke` 真收到的那一份 ＋ 之后 localStorage 里还剩什么。
-describe("FW34 搬家：老面板书签随开窗带过去，成了才删", () => {
-  const OLD = "cc-monitor.sftp.bookmarks.";
-  beforeEach(() => {
-    invokeMock.mockReset();
-    toastMock.mockReset();
-    localStorage.clear();
-  });
-
-  it("有旧键 ⇒ 全部机器一次带上；成功后正是那几把被删，读不懂的与无关的留着", async () => {
-    localStorage.setItem(`${OLD}aya`, JSON.stringify(["/home/zbl", "/srv/"]));
-    localStorage.setItem(`${OLD}gpd`, JSON.stringify(["/data"]));
-    localStorage.setItem(`${OLD}broken`, "{not json");
-    localStorage.setItem("cc-monitor.last-active-sid", "s1");
-    invokeMock.mockResolvedValue(1);
-    expect(await openFileWindow(CFG, { dir: "/srv" })).toBe(true);
-    expect(invokeMock.mock.calls).toEqual([
-      [
-        "open_file_window",
-        {
-          cfg: CFG,
-          path: "/srv",
-          revealFile: null,
-          carryBookmarks: { aya: ["/home/zbl", "/srv/"], gpd: ["/data"] },
-        },
-      ],
-    ]);
-    const left = Object.keys(localStorage).sort();
-    expect(left).toEqual(["cc-monitor.last-active-sid", `${OLD}broken`]);
-  });
-
-  it("开窗失败（含搬不进去）⇒ 一把都不删，下一次再带", async () => {
-    localStorage.setItem(`${OLD}aya`, JSON.stringify(["/home/zbl"]));
-    invokeMock.mockRejectedValue("老面板的书签搬不过来：…");
-    expect(await openFileWindow(CFG)).toBe(false);
-    expect(localStorage.getItem(`${OLD}aya`)).toBe(JSON.stringify(["/home/zbl"]));
-    invokeMock.mockResolvedValue(1);
-    expect(await openFileWindow(CFG)).toBe(true);
-    expect(invokeMock.mock.calls[1][1]).toEqual({
-      cfg: CFG,
-      path: "",
-      revealFile: null,
-      carryBookmarks: { aya: ["/home/zbl"] },
-    });
-    expect(localStorage.getItem(`${OLD}aya`)).toBeNull();
-  });
-
-  it("没有旧键 ⇒ 实参里不带这一格（与搬家之前逐字相同）", async () => {
-    localStorage.setItem("cc-monitor.last-active-sid", "s1");
-    invokeMock.mockResolvedValue(1);
-    expect(await openFileWindow(CFG)).toBe(true);
-    expect(invokeMock.mock.calls[0][1]).toEqual({ cfg: CFG, path: "", revealFile: null });
-    expect("carryBookmarks" in (invokeMock.mock.calls[0][1] as object)).toBe(false);
-  });
-});
-
 /** 生产树里（剥掉注释）每一处 `openFileWindow(…)` 的 (文件, 落点)。 */
 function entryCensus(): string[] {
   const out: string[] = [];
