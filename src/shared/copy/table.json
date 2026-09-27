@@ -5366,7 +5366,7 @@
     },
     "machineAliases.rc.uninstall": {
       "kind": "action",
-      "zh": "卸载别名块",
+      "zh": "卸载 ccm",
       "args": []
     },
     "machineAliases.rc.withCcHint": {
@@ -11974,7 +11974,7 @@
     },
     "rsAccountAliases.check.tmuxXorBase": {
       "kind": "error",
-      "zh": "--tmux=<名> 与 --tmux-base 只能选一个",
+      "zh": "--ccm-tmux=<名> 与 --tmux-base 只能选一个",
       "args": []
     },
     "rsAccountAliases.check.accountXorBase": {
@@ -11999,7 +11999,7 @@
     },
     "rsAccountAliases.check.tmuxNoName": {
       "kind": "error",
-      "zh": "--tmux= 后面缺会话名",
+      "zh": "--ccm-tmux= 后面缺会话名",
       "args": []
     },
     "rsAccountAliases.check.noTmux": {
@@ -15852,17 +15852,17 @@
     },
     "beArgv.validate.nameAndBase": {
       "kind": "error",
-      "zh": "--tmux=<名> 与 --tmux-base=<基名> 互斥",
+      "zh": "--ccm-tmux=<名> 与 --tmux-base=<基名> 互斥",
       "args": []
     },
     "beArgv.validate.sizeNeedsTmux": {
       "kind": "error",
-      "zh": "--tmux-size 需要配合 --tmux",
+      "zh": "--tmux-size 需要配合 --ccm-tmux",
       "args": []
     },
     "beArgv.validate.detachNeedsTmux": {
       "kind": "error",
-      "zh": "--detach 只能和 --tmux 一起用",
+      "zh": "--detach 只能和 --ccm-tmux 一起用",
       "args": []
     },
     "beArgv.validate.accountAndBase": {
@@ -15902,7 +15902,7 @@
     },
     "bePlan.build.inTmuxNoName": {
       "kind": "error",
-      "zh": "已经在 tmux 里又没给会话名时会就地起，--detach 和 --tmux-size 用不上。请用 --tmux=<名> 指定会话名。",
+      "zh": "已经在 tmux 里又没给会话名时会就地起，--detach 和 --tmux-size 用不上。请用 --ccm-tmux=<名> 指定会话名。",
       "args": []
     },
     "bePlan.build.attachSize": {
@@ -15967,7 +15967,7 @@
     },
     "beCcm.usage.body": {
       "kind": "body",
-      "zh": "用法：ccm [ccm 自己的选项…] [交给 claude 的参数…] [-- 原样交给 claude 的参数…]\n\nccm 是 claude 的壳：下面这些选项它自己用，其余的（--resume / --continue / --model / -p / --help / 位置参数…）\n原样交给 claude（--agent codex 时交给 codex）。claude 自己也有同名选项（如 --tmux）时，写在 -- 后面。\n\n选项\n  --tmux[=<名>]      在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --tmux）\n  --detach           建完就返回，不接进去（要带 --tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录\n  --agent <名>       claude | codex\n  --launcher <命令>  换掉默认的启动命令\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n",
+      "zh": "用法：ccm [new] [ccm 自己的选项…] [交给 claude 的参数…] [-- 原样交给 claude 的参数…]\n\nccm 是 claude 的壳：下面这些选项它自己用，其余的（--resume / --continue / --model / --tmux / --agent / -p / --help / 位置参数…）\n原样交给 claude（--ccm-agent codex 时交给 codex）。首词 new 是 ccm 的（起新会话，可省）；\n位置词 attach 交给 claude（它自己的 attach 子命令），接回 tmux 会话用 --attach <会话名>。\n\n选项\n  --ccm-tmux[=<名>]  在一个 tmux 会话里跑；给名就用那个名\n  --tmux-base <基名> 以这个为底取名，撞了就换一个（与 --ccm-tmux=<名> 互斥）\n  --tmux-size <W>xH  新建 tmux 会话的宽高（要带 --ccm-tmux）\n  --detach           建完就返回，不接进去（要带 --ccm-tmux）\n  --bus-register     把新会话登记上 cc-bus（要带 --detach）\n  --bus-note <备注>  给上面那条登记带一行备注\n  --account <名>     用这个账号起（与 --base 互斥）\n  --base             不用任何账号，按 agent 自己的默认配置起\n  --cwd <目录>       工作目录；不给就是当前目录，相对路径按当前目录补全\n  --ccm-agent <名>   claude | codex\n  --launcher <命令>  换掉默认的启动命令（可带参数，如 'ccr code'；开头的 ~/ 是家目录）\n  --attach <会话名>  不起 agent，直接接回一个 tmux 会话\n  --ccm-sid <会话ID> 给会话标上会话ID，cc-monitor 靠它找到终端窗口\n  --ccm-print        不跑，印出等价的一行 shell 命令\n  --ccm-probe        印出这台机器上 ccm 的身份信息（六行）\n  --ccm-version      印版本号\n  --ccm-help         这一段\n",
       "args": [],
       "waive": {
         "C-L3": "--help 正文是逐行的选项表，每行一处括号是那一行的补充",
@@ -16001,7 +16001,7 @@
     },
     "beCcm.directSidNoCarrier.say": {
       "kind": "body",
-      "zh": "ccm: 没带 --tmux 时 --ccm-sid 不生效，要靠环境变量 CCM_RBIND_TOKEN，而现在没有它。会话照常起，但 cc-monitor 切不到它的终端窗口。",
+      "zh": "ccm: 没带 --ccm-tmux 时 --ccm-sid 不生效，要靠环境变量 CCM_RBIND_TOKEN，而现在没有它。会话照常起，但 cc-monitor 切不到它的终端窗口。",
       "args": [],
       "waive": {
         "C-T1": "--ccm-sid 是用户在终端里敲的真实旗标名"

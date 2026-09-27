@@ -126,7 +126,7 @@ pub fn render_file(shell: Shell, lines: &[String]) -> String {
 //      由两跳调同一个 [`render`] 保证。
 // 读回口：[`read_in`] 把盘上那份解析回清单（`70 §3.1` 那张「没有的」表第一条）。
 
-/// 一条别名。`args` 是原样的 ccm argv（`["--tmux", "--account", "z"]`），渲染时由方言逐个按需加引号。
+/// 一条别名。`args` 是原样的 ccm argv（`["--ccm-tmux", "--account", "z"]`），渲染时由方言逐个按需加引号。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -195,7 +195,7 @@ pub struct AliasInstallReport {
 
 /// 能进别名的 ccm 壳层选项：`(旗标, 要不要跟一个值)`。`71 §2.1` 第一、二档；
 /// 第三档（[`NOT_IN_ALIASES`]）每次取值都不同，做成固定别名没意义 ⇒ 不收。
-/// `--tmux=<名>` 是 `--tmux` 的内联形，另判。〔V138〕其余的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
+/// `--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，另判。〔V138〕其余的词（`--model` · `--resume` · `-p` …）是交给 claude 的，原样放行。
 ///
 /// ⚠ 每一个旗标都得是后端 `ccm --help` 里真有的那个词 —— 判据
 /// `account_aliases_tests.rs::every_alias_flag_is_a_real_ccm_flag` 去后端的用法文本里对（异源）。
@@ -203,9 +203,9 @@ pub(crate) const ALIAS_FLAGS: &[(&str, bool)] = &[
     ("--cwd", true),
     ("--account", true),
     ("--base", false),
-    ("--tmux", false),
+    ("--ccm-tmux", false),
     ("--tmux-base", true),
-    ("--agent", true),
+    ("--ccm-agent", true),
     ("--launcher", true),
     ("--tmux-size", true),
     ("--detach", false),
@@ -223,14 +223,14 @@ pub(crate) const NOT_IN_ALIASES: &[&str] = &[
     "--ccm-version",
 ];
 
-/// 〔AL1c〕**载体是 tmux 的那几个旗标**（`--tmux=<名>` 是 `--tmux` 的内联形，一并算）。
+/// 〔AL1c〕**载体是 tmux 的那几个旗标**（`--ccm-tmux=<名>` 是 `--ccm-tmux` 的内联形，一并算）。
 /// 这台机器没有 tmux ⇒ 它们一个都不许进别名（生成出来就是一条当场 `no_tmux` 的别名）。
 ///
 /// 🔴 它**不是**本模块自己的判断：事实源是后端 `control/ccm/mod.rs::CCM_TMUX_CARRIED`（靠 tmux 活着的 ccm 能力）。
 /// 判据 `account_aliases_tests.rs::the_tmux_gate_is_exactly_the_backends_tmux_carried_flags`
 /// 读后端原文、按「本表 == 那张表 ∩ [`ALIAS_FLAGS`]」两向相等钉着。
 pub(crate) const NEEDS_TMUX: &[&str] = &[
-    "--tmux",
+    "--ccm-tmux",
     "--tmux-base",
     "--tmux-size",
     "--detach",
@@ -240,7 +240,7 @@ pub(crate) const NEEDS_TMUX: &[&str] = &[
 /// 〔AL1c〕这台机器的**能力**（`设计/96`）—— 不是方言（`71 §4.4` 逐字：`has_tmux()` 不进那一族）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Caps {
-    /// 有没有 tmux（`--tmux` 那一族能不能用）。
+    /// 有没有 tmux（`--ccm-tmux` 那一族能不能用）。
     pub tmux: bool,
 }
 
@@ -345,7 +345,7 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
                 )],
             ));
         }
-        if let Some(n) = w.strip_prefix("--tmux=") {
+        if let Some(n) = w.strip_prefix("--ccm-tmux=") {
             if n.is_empty() {
                 return Err(copy_text("rsAccountAliases.check.tmuxNoName", &[]).into());
             }
@@ -386,7 +386,7 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
         match *flag {
             "--account" => account = true,
             "--base" => base = true,
-            "--tmux" => tmux = true,
+            "--ccm-tmux" => tmux = true,
             "--tmux-base" => {
                 tmux = true;
                 tmux_base = true;

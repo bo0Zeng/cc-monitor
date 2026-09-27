@@ -42,7 +42,15 @@ fn the_ways_to_say_resume_all_reach_claude_untouched() {
         );
     }
     // 壳层选项夹在中间照认，其余按原顺序交出去。
-    let o = ok(&["--resume", "s1", "--tmux", "--model", "opus", "-p", "hi"]);
+    let o = ok(&[
+        "--resume",
+        "s1",
+        "--ccm-tmux",
+        "--model",
+        "opus",
+        "-p",
+        "hi",
+    ]);
     assert!(o.use_tmux);
     assert_eq!(
         o.passthru,
@@ -53,7 +61,7 @@ fn the_ways_to_say_resume_all_reach_claude_untouched() {
 /// 〔V138〕`--attach <名>` 取值时不许把下一个旗标吞成名字（从前位置动作 `attach <名>` 那一条的同形）。
 #[test]
 fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
-    assert!(err(&["--attach", "--tmux"]).contains("--attach"));
+    assert!(err(&["--attach", "--ccm-tmux"]).contains("--attach"));
     assert!(err(&["--attach"]).contains("--attach"));
     assert_eq!(ok(&["--attach", "cc-foo"]).attach_name, "cc-foo");
 }
@@ -61,22 +69,32 @@ fn the_attach_option_never_swallows_the_next_flag_as_its_value() {
 /// 〔搬自 `ccm-cli`「未知 agent 报错」「--account 与 --base 互斥」〕
 #[test]
 fn the_combination_rules_all_fail_loudly() {
-    assert!(err(&["--agent", "gemini"]).starts_with("未知 agent: gemini"));
+    assert!(err(&["--ccm-agent", "gemini"]).starts_with("未知 agent: gemini"));
     assert_eq!(
         err(&["--account", "z", "--base"]),
         "--account 与 --base 互斥"
     );
-    assert!(err(&["--detach"]).starts_with("--detach 只能和 --tmux 一起用"));
-    assert!(err(&["--tmux-size", "1x1"]).starts_with("--tmux-size 需要配合 --tmux"));
-    assert!(err(&["--tmux=a", "--tmux-base", "b"]).starts_with("--tmux=<名> 与 --tmux-base"));
-    assert!(err(&["--tmux", "--bus-register"]).starts_with("--bus-register 需要配合 --detach"));
+    assert!(err(&["--detach"]).starts_with("--detach 只能和 --ccm-tmux 一起用"));
+    assert!(err(&["--tmux-size", "1x1"]).starts_with("--tmux-size 需要配合 --ccm-tmux"));
+    assert!(
+        err(&["--ccm-tmux=a", "--tmux-base", "b"]).starts_with("--ccm-tmux=<名> 与 --tmux-base")
+    );
+    assert!(err(&["--ccm-tmux", "--bus-register"]).starts_with("--bus-register 需要配合 --detach"));
     assert!(err(&["--bus-note", "x"]).starts_with("--bus-note 需要配合 --bus-register"));
     // V138：从前报「未知选项 / 多余的位置参数」的这几形，今天原样交给 agent。
     assert_eq!(ok(&["--nope", "foo"]).passthru, v(&["--nope", "foo"]));
     assert_eq!(
-        ok(&["--agent", "codex", "resume", "s"]).passthru,
+        ok(&["--ccm-agent", "codex", "resume", "s"]).passthru,
         v(&["resume", "s"])
     );
+    // 用户 09-26：claude 自己的 `--tmux` / `--agent` 原样交出去；首词 `new` 是 ccm 的，别处的 `new` / 位置词 `attach` 交给 claude。
+    assert_eq!(
+        ok(&["--tmux", "--agent", "x"]).passthru,
+        v(&["--tmux", "--agent", "x"])
+    );
+    assert!(ok(&["new", "--ccm-tmux"]).passthru.is_empty());
+    assert_eq!(ok(&["-p", "new"]).passthru, v(&["-p", "new"]));
+    assert_eq!(ok(&["attach", "abc"]).passthru, v(&["attach", "abc"]));
 }
 
 /// 〔搬自 `ccm-cli`「非法 --tmux-size」那一格 —— 它是一条**注入面**，不是排版〕
@@ -88,17 +106,17 @@ fn the_size_is_two_plain_decimals_or_it_is_refused() {
     ] {
         assert!(parse_size(bad).is_none(), "'{bad}' 不该被当成合法尺寸");
     }
-    assert!(err(&["--tmux", "--tmux-size", "x50"]).starts_with("非法 --tmux-size"));
+    assert!(err(&["--ccm-tmux", "--tmux-size", "x50"]).starts_with("非法 --tmux-size"));
 }
 
 /// 〔搬自 `ccm-cli`「`-- 之后透传给 agent`」〕`--` 之后的壳层选项名也交给 agent（claude 自己的 `--tmux` 走这条）。
 #[test]
 fn everything_after_the_terminator_goes_to_the_agent_untouched() {
-    let o = ok(&["--", "-p", "hi there", "--tmux"]);
-    assert_eq!(o.passthru, v(&["-p", "hi there", "--tmux"]));
+    let o = ok(&["--", "-p", "hi there", "--ccm-tmux"]);
+    assert_eq!(o.passthru, v(&["-p", "hi there", "--ccm-tmux"]));
     assert!(
         o.use_tmux == Defaults::USE_TMUX,
-        "`--` 之后的 --tmux 不许被本层认走"
+        "`--` 之后的 --ccm-tmux 不许被本层认走"
     );
 }
 

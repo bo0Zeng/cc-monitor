@@ -966,7 +966,7 @@ fn the_tmux_reach_ruler_works_on_a_synthetic_tree() {
 const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ("account", &["--account", "acct-x"], &[]),
     ("account-via-backend", &["--account", "acct-x"], &[]),
-    ("agent", &["--agent", "codex"], &[]),
+    ("agent", &["--ccm-agent", "codex"], &[]),
     ("attach", &["--attach", "foo"], &[]), // V138：位置动作改成 `--attach`
     (
         "backend-discover",
@@ -975,11 +975,11 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
     ),
     (
         "bus-register",
-        &["--tmux", "--detach", "--bus-register"],
-        &["--tmux", "--detach"],
+        &["--ccm-tmux", "--detach", "--bus-register"],
+        &["--ccm-tmux", "--detach"],
     ),
     ("cwd", &["--cwd", "/srv"], &[]),
-    ("detach", &["--tmux", "--detach"], &["--tmux"]),
+    ("detach", &["--ccm-tmux", "--detach"], &["--ccm-tmux"]),
     ("launcher", &["--launcher", "claude-nightly"], &[]),
     ("model", &["--model", "opus"], &[]),
     (
@@ -987,12 +987,12 @@ const CCM_PROBES: &[(&str, &[&str], &[&str])] = &[
         &["--resume", "11111111-2222-3333-4444-555555555555"], // V138：交给 claude 的那一形
         &[],
     ),
-    ("tmux", &["--tmux"], &[]),
+    ("tmux", &["--ccm-tmux"], &[]),
     ("tmux-base", &["--tmux-base", "proj"], &[]),
     (
         "tmux-size",
-        &["--tmux", "--tmux-size", "80x24"],
-        &["--tmux"],
+        &["--ccm-tmux", "--tmux-size", "80x24"],
+        &["--ccm-tmux"],
     ),
 ];
 

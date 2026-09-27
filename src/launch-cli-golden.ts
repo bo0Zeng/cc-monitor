@@ -72,7 +72,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
       action: { kind: "resume", sid: "abc-123" },
       container: { kind: "tmux", name: "cc-abc123", nameQuoting: "raw", mode: "create" },
       account: { kind: "account", name: "z", configDir: ACCT },
-    }), ok: true, out: "ccm --resume abc-123 --tmux=cc-abc123 --account z" },
+    }), ok: true, out: "ccm --resume abc-123 --ccm-tmux=cc-abc123 --account z" },
   { name: "resume + cwd + model", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "s1" }, cwd: "/w", modelOverride: "opus",
     }), ok: true, out: "ccm --resume s1 --base --model opus --cwd /w" },
@@ -112,11 +112,11 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
       cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1",
-    }), ok: true, out: "ccm --resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp" },
+    }), ok: true, out: "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp" },
   { name: "print-parity:newTmuxCustomLauncher", caps: ALL_CAPS, ctx: base({
       container: { kind: "tmux", name: "cc-proj", nameQuoting: "quoted", mode: "create" },
       cwd: "/home/pi/my proj", launcherOverride: "CCMPROBE",
-    }), ok: true, out: "ccm --tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE" },
+    }), ok: true, out: "ccm --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE" },
   { name: "print-parity:attach", caps: ALL_CAPS, ctx: base({
       action: { kind: "attach", name: "cc-p1" },
       container: { kind: "tmux", name: "cc-p1", nameQuoting: "quoted", mode: "attach-only" },
@@ -126,7 +126,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
       cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1", modelOverride: "opus",
-    }), ok: true, out: "ccm --resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp" },
+    }), ok: true, out: "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp" },
 ];
 
 function probeOf(caps: CliGoldenCase["caps"]): CcmProbeResult {

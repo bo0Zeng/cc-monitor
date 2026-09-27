@@ -125,7 +125,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume abc-123 --tmux=cc-abc123 --account z"
+      "out": "ccm --resume abc-123 --ccm-tmux=cc-abc123 --account z"
     },
     {
       "name": "resume + cwd + model",
@@ -703,7 +703,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
+      "out": "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp"
     },
     {
       "name": "print-parity:newTmuxCustomLauncher",
@@ -745,7 +745,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
+      "out": "ccm --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
     },
     {
       "name": "print-parity:attach",
@@ -831,7 +831,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm --resume p1 --tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp"
+      "out": "ccm --resume p1 --ccm-tmux=cc-p1 --ccm-sid=p1 --base --model opus --cwd /tmp"
     }
   ]
 }

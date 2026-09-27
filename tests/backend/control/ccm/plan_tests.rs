@@ -82,7 +82,7 @@ fn the_shape_of_one_launch_command_line() {
     );
     // codex：换启动器 + **不清** claude 的嵌套标记 + cc-bus 身份配方
     assert_eq!(
-        printed(&["--cwd", "/p", "--agent", "codex"]),
+        printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
         format!("{} cd '/p' && exec codex", super::super::BUS_ID_RECIPE)
     );
     // 透传参数含特殊字符 ⇒ 正确 quote
@@ -101,7 +101,7 @@ fn the_shape_of_one_launch_command_line() {
 #[test]
 fn only_codex_gets_the_bus_id_recipe() {
     assert!(!printed(&["--cwd", "/p"]).contains("CC_BUS_ID"));
-    assert!(printed(&["--cwd", "/p", "--agent", "codex"]).contains("CC_BUS_ID"));
+    assert!(printed(&["--cwd", "/p", "--ccm-agent", "codex"]).contains("CC_BUS_ID"));
 }
 
 /// 〔搬自 `ccm-cli` 账号那一族：显式 / 继承 / 默认号 / --base 四条路〕
@@ -199,14 +199,14 @@ fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
         other => panic!("该是容器路：{other:?}"),
     };
     // 显式名：**不退让** —— 调用方说的就是要这个名，撞了走 C14 响亮失败
-    assert_eq!(path(&["--tmux=n1", "--cwd", "/p"]), "n1");
+    assert_eq!(path(&["--ccm-tmux=n1", "--cwd", "/p"]), "n1");
     // 基名：退让（cc-spawn 随后要读回真名字）
     assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), "n1-2");
     // 不给名、从 cwd 派生：退让
-    assert_eq!(path(&["--tmux", "--cwd", "/x/proj"]), "proj-cc-2");
+    assert_eq!(path(&["--ccm-tmux", "--cwd", "/x/proj"]), "proj-cc-2");
     // 问不到快照（`None`）⇒ 诚实降级成「不退让」，不是「假装没占」之外的第三种行为
     assert_eq!(
-        match plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, None) {
+        match plan_of_with(&["--ccm-tmux", "--cwd", "/x/proj"], &e, &t, None) {
             Plan::Container(c) => c.name,
             other => panic!("该是容器路：{other:?}"),
         },
@@ -231,13 +231,13 @@ fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
     let t = AccountTable::default();
     let taken = snapshot_of(&["proj-cc", "proj-cc-2"]);
     let once = render(&plan_of_with(
-        &["--tmux", "--cwd", "/x/proj"],
+        &["--ccm-tmux", "--cwd", "/x/proj"],
         &e,
         &t,
         Some(&taken),
     ));
     let twice = render(&plan_of_with(
-        &["--tmux", "--cwd", "/x/proj"],
+        &["--ccm-tmux", "--cwd", "/x/proj"],
         &e,
         &t,
         Some(&taken),
@@ -258,7 +258,7 @@ fn a_different_snapshot_moves_the_name() {
     let e = env();
     let t = AccountTable::default();
     let name = |taken: &TakenNames| match plan_of_with(
-        &["--tmux", "--cwd", "/x/proj"],
+        &["--ccm-tmux", "--cwd", "/x/proj"],
         &e,
         &t,
         Some(taken),
@@ -286,7 +286,7 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
             SID,
             "--ccm-sid",
             SID,
-            "--tmux",
+            "--ccm-tmux",
             "--cwd",
             "/home/pi/my-proj",
         ],
@@ -357,7 +357,7 @@ fn the_container_path_carries_every_intent_inward() {
         &[
             "--resume",
             "p1",
-            "--tmux=cc-p1",
+            "--ccm-tmux=cc-p1",
             "--cwd",
             "/tmp",
             "--ccm-sid",
@@ -394,7 +394,7 @@ fn the_container_path_carries_every_intent_inward() {
     // 〔搬自 `ccm-print-parity` 场景 newTmuxCustomLauncher / resumeTmuxWithModel〕
     let p4 = plan_of(
         &[
-            "--tmux=n4",
+            "--ccm-tmux=n4",
             "--cwd",
             "/p",
             "--launcher",
@@ -419,7 +419,7 @@ fn the_container_path_carries_every_intent_inward() {
         c4.payload
     );
     // 继承账号那条路：内层必须显式 export 继承来的那个目录
-    let p2 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &t);
+    let p2 = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], &e, &t);
     let Plan::Container(c2) = &p2 else {
         panic!("该是容器路")
     };
@@ -438,7 +438,7 @@ fn the_container_path_carries_every_intent_inward() {
     // 裸终端（无继承）⇒ 内层仍落默认号 z（粘滞体验）
     let mut e2 = env();
     e2.inherited_config_dir = None;
-    let p3 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e2, &t);
+    let p3 = plan_of(&["--ccm-tmux=n1", "--cwd", "/p"], &e2, &t);
     let Plan::Container(c3) = &p3 else {
         panic!("该是容器路")
     };
@@ -471,7 +471,11 @@ fn the_container_path_carries_every_intent_inward() {
 fn the_container_path_forwards_every_inherited_variable_inward() {
     let db = tempdir();
     let base = |e: &Env| -> String {
-        let p = plan_of(&["--tmux=n1", "--cwd", "/p"], e, &AccountTable::default());
+        let p = plan_of(
+            &["--ccm-tmux=n1", "--cwd", "/p"],
+            e,
+            &AccountTable::default(),
+        );
         let Plan::Container(c) = p else {
             panic!("该是容器路")
         };
@@ -608,7 +612,7 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
 #[test]
 fn every_value_that_reaches_a_shell_is_quoted() {
     let out = render(&plan_of(
-        &["--tmux", "--cwd", "/home/pi/my proj"],
+        &["--ccm-tmux", "--cwd", "/home/pi/my proj"],
         &env(),
         &AccountTable::default(),
     ));
@@ -729,7 +733,7 @@ fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
         tmux: Some("/faux/socket,1,0".into()),
         ..env()
     };
-    let args = &["--agent", "codex", "--cwd", "/p"];
+    let args = &["--ccm-agent", "codex", "--cwd", "/p"];
     let po = plan_of(args, &outside, &AccountTable::default());
     let pi = plan_of(args, &inside, &AccountTable::default());
 
@@ -945,8 +949,11 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
     e.anthropic_base_url = Some("https://relay.example/v1".into());
     e.bus_scripts = Some("/opt/bus".into());
     for (args, has_passthru) in [
-        (&["--tmux=n1", "--cwd", "/p", "--", "task", "--x"][..], true),
-        (&["--tmux=n1", "--cwd", "/p"][..], false),
+        (
+            &["--ccm-tmux=n1", "--cwd", "/p", "--", "task", "--x"][..],
+            true,
+        ),
+        (&["--ccm-tmux=n1", "--cwd", "/p"][..], false),
     ] {
         // 旗标排在最前（排到 `--` 后面就成了透传参数）。
         let mut a = vec!["--bus-register", "--detach"];
@@ -1253,9 +1260,11 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
     let payload_of = |v: &str| -> String {
         let mut e = env();
         e.anthropic_base_url = Some(v.to_string());
-        let Plan::Container(c) =
-            plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &AccountTable::default())
-        else {
+        let Plan::Container(c) = plan_of(
+            &["--ccm-tmux=n1", "--cwd", "/p"],
+            &e,
+            &AccountTable::default(),
+        ) else {
             panic!("该是容器路")
         };
         c.payload
@@ -1318,7 +1327,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
         vec!["--cwd", "/home/u/Bob's notes (2019)"],
         vec!["--cwd", "/srv/a&b", "--", "--print", "a;b|c"],
         vec![
-            "--tmux=n",
+            "--ccm-tmux=n",
             "--detach",
             "--bus-register",
             "--bus-note",
@@ -1327,16 +1336,40 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     ] {
         build_of(&args, &env()).unwrap_or_else(|e| panic!("真实好值被拒了：{args:?} ⇒ {}", e.0));
     }
-    // 反：相对 · `..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注。
+    // 用户 09-26：相对 `--cwd` 按当前目录补成绝对、折掉 `.` / `..`（从前这里是「反」那一格）。
+    let e0 = env();
+    for (rel, want) in [
+        ("rel/dir", format!("{}/rel/dir", e0.pwd)),
+        (".", e0.pwd.clone()),
+        ("../x/./y", "/x/y".to_string()),
+    ] {
+        let a: Vec<String> = ["--cwd", rel].iter().map(|s| s.to_string()).collect();
+        let Parsed::Opts(o) = parse(&a).expect("解析得动") else {
+            panic!()
+        };
+        assert_eq!(resolve_cwd(&o, &e0), want, "{rel:?}");
+        build_of(&["--cwd", rel], &e0)
+            .unwrap_or_else(|e| panic!("相对 {rel:?} 补全后被拒：{}", e.0));
+    }
+    // 用户 09-26：启动器按空格拆词、打头 `~/` 是家目录（与载荷那条路交给 shell 拆词同一个结果）。
+    for (l, want) in [
+        ("ccr code", vec!["ccr", "code", "-p"]),
+        ("~/bin/claude --x", vec!["/home/pi/bin/claude", "--x", "-p"]),
+    ] {
+        let Plan::Direct(d) = build_of(&["--launcher", l, "-p"], &e0).expect("该起得来") else {
+            panic!("该是直路")
+        };
+        assert_eq!(d.argv, want, "{l:?}");
+    }
+    // 反：`..` 段 · 换行 / CR / NUL，分别落在工作目录 · 启动器 · 透传参数 · 备注。
     for (args, what) in [
-        (vec!["--cwd", "rel/dir"], "--cwd"),
         (vec!["--cwd", "/home/u/../etc"], "--cwd"),
         (vec!["--cwd", "/home/u/x\ny"], "--cwd"),
         (vec!["--launcher", "claude\rrm"], "--launcher"),
         (vec!["--", "ok", "bad\0"], "--"),
         (
             vec![
-                "--tmux=n",
+                "--ccm-tmux=n",
                 "--detach",
                 "--bus-register",
                 "--bus-note",
@@ -1358,7 +1391,7 @@ fn free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold() {
     let mut dirty = env();
     dirty.anthropic_base_url = Some("http://x\nevil".into());
     build_of(&[], &dirty).unwrap_or_else(|e| panic!("直路上用不上的继承值挡住了起会话：{}", e.0));
-    let e = build_of(&["--tmux=n"], &dirty)
+    let e = build_of(&["--ccm-tmux=n"], &dirty)
         .err()
         .expect("容器路把带换行的继承值拼进载荷了");
     assert!(e.0.contains("ANTHROPIC_BASE_URL"), "{}", e.0);

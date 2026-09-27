@@ -651,11 +651,54 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
 /// 「自己往上走找 `.git`」与 `git rev-parse --show-toplevel` 在 `GIT_DIR` /
 /// `GIT_WORK_TREE` / `GIT_CEILING_DIRECTORIES` 上的那一格不等价 —— 那整条路没了，
 /// 那格不等价也跟着没了。〕
+///
+/// 〔用户 09-26〕相对的 `--cwd`（`.` / `../x`）按调用方当前目录补成绝对、按字面折掉 `.` / `..`，之后再过 §47 形式判定；
+/// 已是绝对的原样交给判定（带 `..` 照旧拒）。
 pub(crate) fn resolve_cwd(o: &Opts, env: &Env) -> String {
     match &o.cwd_spec {
+        CwdSpec::Explicit(d) if !std::path::Path::new(d).is_absolute() && !env.pwd.is_empty() => {
+            lexical_join(&env.pwd, d)
+        }
         CwdSpec::Explicit(d) => d.clone(),
         CwdSpec::Auto => env.pwd.clone(),
     }
+}
+
+/// `base` ＋ 相对的 `rel`，按字面折掉 `.` / `..`（不碰盘、不解符号链接；`..` 到根为止）。
+fn lexical_join(base: &str, rel: &str) -> String {
+    use std::path::{Component, PathBuf};
+    let mut out = PathBuf::new();
+    for c in std::path::Path::new(base).join(rel).components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if out.parent().is_some() {
+                    out.pop();
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out.to_string_lossy().into_owned()
+}
+
+/// 启动器按空格拆成词（`ccr code` ⇒ `ccr` `code`），打头的 `~/` 换成家目录 —— 与载荷那条路交给 shell 拆词、展开 `~` 同一个结果
+/// （用户 09-26 选拆词）。字符白名单在 [`free_text_gate`] 对整串判过（`launcher_refused_char`）。
+fn launcher_words(launcher: &str, home: &str) -> Vec<String> {
+    let mut words: Vec<String> = launcher
+        .split(' ')
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    if let Some(first) = words.first_mut() {
+        if let (Some(rest), false) = (
+            first.strip_prefix(shell_quote_core::LAUNCHER_HOME_PREFIX),
+            home.is_empty(),
+        ) {
+            *first = format!("{}/{rest}", home.trim_end_matches('/'));
+        }
+    }
+    words
 }
 
 /// 账号解析。三态，**一个字都没改**（这是从 `shared/ccm:996-1015` 搬过来的语义）：
@@ -972,7 +1015,7 @@ pub(crate) fn build(
     }
 
     // ── 非容器路 ────────────────────────────────────────────────────────
-    let mut argv = vec![launcher.clone()];
+    let mut argv = launcher_words(&launcher, &env.home);
     argv.extend(o.passthru.iter().cloned());
 
     Ok(Plan::Direct(Direct {
