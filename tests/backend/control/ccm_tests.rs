@@ -627,11 +627,8 @@ fn exec_direct_really_reads_the_identity_cell() {
     let prod = crate::guard_support::production_code(own_source());
     let at = guard_core::pin_line(&prod, "if let Some(note) = direct_identity_note(d) {")
         .unwrap_or_else(|e| panic!("`exec_direct` 不再读直路身份那一格：{e}"));
-    let fn_at = guard_core::pin_line(
-        &prod,
-        "fn exec_direct(d: &plan::Direct) -> i32 {",
-    )
-    .expect("`exec_direct` 的签名变了");
+    let fn_at = guard_core::pin_line(&prod, "fn exec_direct(d: &plan::Direct) -> i32 {")
+        .expect("`exec_direct` 的签名变了");
     assert_eq!(
         at,
         fn_at + 1,
@@ -756,7 +753,10 @@ fn the_alias_preview_refuses_in_the_words_of_ccm() {
         code(serde_json::json!({ "args": vec!["x"; PRINT_MAX_WORDS + 1] })),
         "bad_args"
     );
-    assert_eq!(code(serde_json::json!({ "args": ["--ccm-help"] })), "refused");
+    assert_eq!(
+        code(serde_json::json!({ "args": ["--ccm-help"] })),
+        "refused"
+    );
     // V138：未知旗标交给 claude、不再拒 ⇒ 拿一条 ccm 自己的组合规则当「拒」的样本。
     let (c, said) = answer_print(&serde_json::json!({ "args": ["--detach"] }))
         .expect_err("--detach 不带 --tmux 该被拒");

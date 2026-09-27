@@ -68,7 +68,11 @@ ck "-r <sid> 同样原样交出去（不翻译成长形）" \
 ck "--resume=<sid> 等号形式原样交出去" \
    "$UNSET; cd '/p' && exec claude --resume=abc-123" \
    "$(ccm --resume=abc-123 --cwd /p --ccm-print)"
-# U9a 2026-08-02：codex 的黄金串多了 cc-bus 身份注入那一段（配方不是值，对宿主 `TMUX` 逐字节稳定）。
+# U9a 2026-08-02：codex 的黄金串多了 cc-bus 身份注入那一段。
+# **它一直都在真 exec 那条路上**（`shared/ccm::derive_bus_id`，codex 沙箱够不着 tmux socket ⇒
+# 会话名必须经 env 透进去），只是 `--print` 从来没说 —— 而整个仓拿 `--print` 当离线预言机。
+# 打印的是**配方不是值**（`TMUX` 判断留在串里、执行时才求值），所以这条串对宿主 `TMUX`
+# 仍然逐字节稳定，不需要给这个 helper 加 `env -u TMUX`（那就成了为实现让路改判据）。
 # 〔SH1 · §49〕配方里读会话名那一发带 `-u`（主线 SH1 改了配方、这一行没跟上，本路合并时补）。
 ck "--agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方" \
    "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex" \

@@ -579,7 +579,11 @@ fn the_reader_takes_the_old_file_and_names_what_it_cannot_parse() {
         back.unparsed
     );
     // V138：`--print` 是 claude 的了，拿 ccm 的诊断口 `--ccm-print` 当认不出的那一行。
-    assert!(back.unparsed[1].contains("--ccm-print"), "{:?}", back.unparsed);
+    assert!(
+        back.unparsed[1].contains("--ccm-print"),
+        "{:?}",
+        back.unparsed
+    );
     // 文件不在 ≠ 读失败。
     let empty = tmp_home("none");
     let l = read_in(&empty.0, P, None, 0).unwrap();
@@ -622,8 +626,18 @@ fn every_combination_rule_stops_a_bad_alias_and_nothing_is_written() {
         assert_eq!(check_alias(a, P), Ok(()), "{a:?}");
     }
     // PowerShell 目标：盘符根 / UNC 放行，相对与 POSIX 形拒。
-    for (cwd, want_ok) in [("C:\\work", true), ("\\\\srv\\share", true), ("work", false), ("/srv", false), ("C:\\a\\..\\b", false)] {
-        assert_eq!(check_alias(&al("w", &["--cwd", cwd]), PS).is_ok(), want_ok, "{cwd:?}");
+    for (cwd, want_ok) in [
+        ("C:\\work", true),
+        ("\\\\srv\\share", true),
+        ("work", false),
+        ("/srv", false),
+        ("C:\\a\\..\\b", false),
+    ] {
+        assert_eq!(
+            check_alias(&al("w", &["--cwd", cwd]), PS).is_ok(),
+            want_ok,
+            "{cwd:?}"
+        );
     }
     let h = tmp_home("bad");
     let mut list = good.to_vec();
@@ -1070,7 +1084,10 @@ fn remote() -> Origin {
 #[test]
 fn local_and_remote_are_the_same_function_with_a_different_origin() {
     // 〔AL3 · 71 §8 #11〕`--cwd` 要是那种 shell 的绝对路径 ⇒ PowerShell 那一轮换成 Windows 形。
-    for (sh, cwd) in [(P, "/home/u/文档/c c"), (Shell::PowerShell, "C:\\Users\\u\\文档\\c c")] {
+    for (sh, cwd) in [
+        (P, "/home/u/文档/c c"),
+        (Shell::PowerShell, "C:\\Users\\u\\文档\\c c"),
+    ] {
         let list = vec![
             al("zcc", &["--account", "z"]),
             al("wcc", &["--cwd", cwd, "--agent", "codex"]),
