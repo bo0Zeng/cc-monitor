@@ -162,11 +162,13 @@ impl std::fmt::Display for StoreError {
         match self {
             StoreError::NotJson(e) => write!(
                 f,
-                "{}", copy_core::copy_text("credsStore.error.notJson", &[("e", &e.to_string())])
+                "{}",
+                copy_core::copy_text("credsStore.error.notJson", &[("e", &e.to_string())])
             ),
             StoreError::NotAnObject => write!(
                 f,
-                "{}", copy_core::copy_text("credsStore.error.notObject", &[("template", TEMPLATE)])
+                "{}",
+                copy_core::copy_text("credsStore.error.notObject", &[("template", TEMPLATE)])
             ),
         }
     }

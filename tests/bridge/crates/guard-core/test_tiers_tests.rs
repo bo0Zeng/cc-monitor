@@ -363,6 +363,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/filewin/boundary_tests.rs",
     "tests/bridge/filewin/copy_tests.rs",
     "tests/bridge/filewin/download_tests.rs",
+    "tests/bridge/filewin/entry_tests.rs", // 〔TAIL〕INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
     "tests/bridge/filewin/find_tests.rs",
     "tests/bridge/filewin/fonts_tests.rs",
     "tests/bridge/filewin/select_tests.rs",
@@ -615,7 +616,6 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/dial_host_tests.rs",
     "tests/bridge/doc_claim_registry_tests.rs",
     "tests/bridge/filewin/bookmarks_tests.rs",
-    "tests/bridge/filewin/entry_tests.rs",
     "tests/bridge/filewin/proc_tests.rs",
     "tests/bridge/filewin/shell_tests.rs",
     "tests/bridge/filewin/source_tests.rs",
