@@ -48,7 +48,7 @@
 
 use super::wire::{
     err_to_wire, item_to_wire, read_frame, write_frame, Body, By, CallError, CancelToken, Cursor,
-    Head, HopFault, HopId, Item, Key, Kind, Op, Origin, OursFault, Reach, ReadFault,
+    Head, HopFault, HopId, Item, Key, Kind, Offer, Op, Origin, OursFault, Reach, ReadFault,
 };
 use futures::future::BoxFuture;
 use futures::stream::{BoxStream, StreamExt};
@@ -81,6 +81,10 @@ pub trait Backends: Send + Sync {
         kind: Kind,
         from: Option<Cursor>,
     ) -> BoxStream<'static, Item>;
+    /// 〔NET2〕那台机器的能力事实（`Offer`）的一份拷贝。`None` = 今天没有控制通道（默认）。
+    fn offer(&self, _origin: &Origin) -> Option<Offer> {
+        None
+    }
 }
 
 /// 宿主交进来的全部条件（`C4`：一个都不由路由器自己去拿）。
@@ -212,6 +216,12 @@ where
                     inflight.clone(),
                 ));
             }
+            Head::OfferOf { id, origin } => {
+                // 原样转交：体是那份 `Option<Offer>` 的 JSON，路由器不读它。
+                let body = serde_json::to_vec(&backends.offer(&origin)).unwrap_or_default();
+                let tx = tx.clone();
+                tokio::spawn(async move { tx.send((Head::Done { id }, body)).await.ok() });
+            }
             Head::Cancel { id } | Head::Stop { id } => {
                 // 已经答完的编号再撤是合法的（竞态），什么都不用做。
                 if let Some(slot) = lock(&inflight).get(&id) {
@@ -307,7 +317,7 @@ pub(crate) async fn settle(
             // 到的时候这个编号已经摘掉了，不靠这一下就没人通知句柄。
             Err(_elapsed) => Err(overrun(&cancel)),
         },
-        () = cancel.cancelled() => Err(CallError::Ours { why: OursFault::Cancelled }),
+        () = cancel.cancelled() => Err(OursFault::Cancelled.into()),
     }
 }
 

@@ -73,7 +73,9 @@ export function saidOfTransport(origin: Origin, err: CallError): string {
       // `unsupported`：那台后端事前就说不认这条命令（比这条动作老）。`refused` 由调用方先接走，走不到这里。
       return copyText("control.channel.oldBackend", { machine: machineName(origin) });
     case "ours":
-      return err.why === "Cancelled" ? copyText("control.channel.cancelled") : copyText("control.channel.broken");
+      if (err.why !== "Cancelled") return copyText("control.channel.broken");
+      // 〔NET2 · `05 §3.3.3`〕那台对这一条不认撤 ⇒ 说它可能还在跑。
+      return err.runsOn === true ? copyText("control.channel.cancelledRunsOn") : copyText("control.channel.cancelled");
   }
 }
 

@@ -1687,6 +1687,11 @@
       "zh": "这次操作已撤回。",
       "args": []
     },
+    "control.channel.cancelledRunsOn": {
+      "kind": "error",
+      "zh": "这次操作已撤回；那台机器停不了它，它可能还在跑。",
+      "args": []
+    },
     "control.channel.broken": {
       "kind": "error",
       "zh": "这次操作没有完成，cc-monitor 内部出错了。",
@@ -3940,6 +3945,11 @@
     "chanCaller.said.withdrawn": {
       "kind": "body",
       "zh": "这次查询已撤回",
+      "args": []
+    },
+    "chanCaller.said.withdrawnRunsOn": {
+      "kind": "body",
+      "zh": "这次查询已撤回；那台机器停不了它，它可能还在跑",
       "args": []
     },
     "chanCaller.said.unreachable": {
@@ -13487,6 +13497,11 @@
     "rsChanWire.ours.cancelled": {
       "kind": "error",
       "zh": "已取消",
+      "args": []
+    },
+    "rsChanWire.ours.cancelledRunsOn": {
+      "kind": "error",
+      "zh": "已撤回；那台机器撤不了这一件，它可能还在做",
       "args": []
     },
     "rsChanWire.ours.misuse": {

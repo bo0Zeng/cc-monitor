@@ -122,6 +122,42 @@ pub async fn chan_call(
     }
 }
 
+/// 〔NET2〕webview 手里那份能力事实：判断已在这边做完（`Offer` 的方法），TS 只查成员、不另算。
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct OfferView {
+    /// 那台认的 op。
+    ops: Vec<String>,
+    /// `[op, 码]`：这台做不到（码与那台事后会回的同一个）。
+    unavailable: Vec<(String, String)>,
+    /// 本地撤掉之后那台停得下的 op（`Offer::withdraw == Asked`）；不在里面的 ⇒ 撤了它可能还在跑。
+    stoppable: Vec<String>,
+}
+
+/// `Offer` ⇒ webview 那一份。
+pub fn offer_view(o: &super::wire::Offer) -> OfferView {
+    let ops = o.ops().to_vec();
+    OfferView {
+        unavailable: ops
+            .iter()
+            .filter_map(|op| o.unavailable(op).map(|c| (op.clone(), c.to_string())))
+            .collect(),
+        stoppable: ops
+            .iter()
+            .filter(|op| o.withdraw(op) == super::wire::Withdraw::Asked)
+            .cloned()
+            .collect(),
+        ops,
+    }
+}
+
+/// 〔NET2〕主界面要那台机器的能力事实。与回环那条同一个句柄（`InboundBackends::offer`）；
+/// `None` = 今天没有控制通道 / 空白名。
+#[tauri::command]
+pub fn chan_offer(origin: crate::origin::Origin) -> Option<OfferView> {
+    origin.route("chan_offer").ok()?;
+    InboundBackends.offer(&origin).as_ref().map(offer_view)
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  〔CF2 · 第四波 4B〕`subscribe`
 // ════════════════════════════════════════════════════════════════════════════
