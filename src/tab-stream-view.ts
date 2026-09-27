@@ -18,10 +18,10 @@ import { attachBranchButton } from "./branch-button"; // G4：实时会话的分
 import type { BranchResult } from "./generated/BranchResult";
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
-import { SeqSet, TailWindow, type SkeletonLedger } from "./live-window";
+import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live-window";
 // 〔`设计/10` 骨架 · 子步 4〕骨架层（占位 ＋ 只物化可见区）。接入点全部带「骨架」字样，搜得到。
 import { SkeletonView, ledgerFromIndex } from "./skeleton-view";
-import { skeletonKind } from "./height-estimate";
+import { eagerBodyChars, skeletonKind } from "./height-estimate";
 // K-R45 乙（`KR45D2`）：「大纲」。界面 / 跳 与历史查看器共用同一份；〔SE1〕清单问后端要（`OutlineSource`）。
 // 〔SE2〕大纲并进会话内查找面板（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
 import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
@@ -113,6 +113,16 @@ export class TabStreamView {
   private static readonly MATERIALIZE_ROUNDS_PER_CALL = 4;
   /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
   private static readonly FILL_BATCH = 200;
+  /**
+   * 〔RENDER2 · `设计/17 §1.1`〕一批（物化尾段 / 上翻补批）的第二道闸：急路要当场物化的正文字符（`eagerBodyChars`）。
+   * 64 Ki 字符：W5-RENDER 普查按文件序连续 150 条窗口的正文字符 p50 6.5 K、p99 136 K ⇒ 常态批碰不到它，只截那几份长尾批
+   * （一条 617 KB 正文的 assistant 就是一整批）。截下来的下一帧接着补（`materializeUntilFilled` / `fillAbove` 的 rAF 自链）。
+   */
+  private static readonly BATCH_BODY_CHARS = 64 * 1024;
+  private static readonly BATCH_BUDGET: TakeBudget = {
+    weight: (p) => eagerBodyChars(p.message),
+    max: TabStreamView.BATCH_BODY_CHARS,
+  };
   private static readonly TOP_TRIGGER_PX = 800;
   /**
    * 〔DL1 · `设计/05 §3.3.2`〕往上翻那一问的期限：60 秒 —— 与它上一个住址（monitor `frame_query::PAGE_BUDGET`，
@@ -672,7 +682,7 @@ export class TabStreamView {
    * 的手动补偿在 fillAbove(F40b)。
    */
   private materializeTail(tab: Tab, k = TabStreamView.MATERIALIZE_TAIL_K): void {
-    this.renderPayloadsBatch(tab, tab.window.takeTail(k));
+    this.renderPayloadsBatch(tab, tab.window.takeTail(k, TabStreamView.BATCH_BUDGET));
     this.updateSentinel(tab);
   }
 
@@ -1009,7 +1019,7 @@ export class TabStreamView {
       el.style.overflowAnchor = "none";
       const beforeH = el.scrollHeight;
       const beforeTop = el.scrollTop;
-      this.renderPayloadsBatch(tab, tab.window.takeTail(TabStreamView.FILL_BATCH));
+      this.renderPayloadsBatch(tab, tab.window.takeTail(TabStreamView.FILL_BATCH, TabStreamView.BATCH_BUDGET));
       // 哨兵刷新必须在补偿回写**之前**:账尽移除的 ±30px 计入 Δ 一并吃掉——
       // 移除若在补偿后,dev(无锚定)会在"会话第一条"处一次性跳 30px(D 审计)。
       this.updateSentinel(tab);

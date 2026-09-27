@@ -6164,3 +6164,31 @@ describe("〔RENDER2〕去重集是区间、收全了的会话收成一段", () 
     }
   });
 });
+
+// ===== 〔RENDER2 · `设计/17 §1.1`〕批的第二道闸：急路要当场物化的正文字符 =====
+// 要求住址：`设计/17 §1.1` 逐字「批的闸门应是字节预算（或『字节 ＋ 条数』双闸）」＋ 同节「要做的话闸的单位该换成『急路要物化的正文字符』」。
+describe("〔RENDER2〕物化一批按正文字符截", () => {
+  it("两条长正文合起来超预算 ⇒ 第一批只有最高那条、第二批是另一条连同其余短的 ⇒ 建卡顺序 == 手算的 [149, 0‥148]", async () => {
+    const { renderContentRecord } = await import("../src/render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+    const tm = makeTM();
+    tm.onLine({ session_id: "bgA", cwd: "/p", path: "/p/bgA.jsonl", seq: 0, message: { type: "assistant", uuid: "a0" } } as never);
+    tm.onBatchStart();
+    const big = 40 * 1024; // 两条合起来超过 64 Ki，各自一条不超
+    for (let s = 0; s < 150; s++) {
+      const text = s >= 148 ? "x".repeat(big) : "y";
+      tm.onLine({
+        session_id: "bgB",
+        cwd: "/p",
+        path: "/p/bgB.jsonl",
+        seq: s,
+        message: { type: "assistant", uuid: `b${s}`, message: { role: "assistant", content: [{ type: "text", text }] } },
+      } as never);
+    }
+    tm.onBatchEnd();
+    spy.mockClear();
+    tm.switchTo("bgB");
+    const order = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq);
+    expect(order).toEqual([149, ...Array.from({ length: 149 }, (_, i) => i)]);
+  });
+});

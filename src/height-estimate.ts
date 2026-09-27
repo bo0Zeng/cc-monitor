@@ -25,6 +25,7 @@
  * ⇒ 改这里任何一个常数,都要跑一次 `npx vitest run tests/scale2-height-truth.vitest.ts`;
  *   0.0.8→0.0.9 那一跳的对照仍然缺(没有 0.0.8 的读数),那一格今天仍然判不了。
  */
+import type { JsonlRecord } from "./generated/JsonlRecord";
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
 // 否则"装了 Source Serif Pro 没装 4"的机器上 DOM 与 canvas 各走各的字体,度量漂移)
@@ -503,4 +504,29 @@ export function estimateFromFacts(
     BLOCK_GAP +
     SKEL_CARD_CHROME
   );
+}
+
+/**
+ * 〔RENDER2 · `设计/17 §1.1` · `§6`「字节不是成本轴，卡型才是 …… 同一种卡正文越长越贵」〕**这条记录建卡时要当场物化的正文字符数**：
+ * user 的文本（字符串 content 或 text 块）· assistant 的 text 块 · queue-operation 的 content。thinking / 工具调用 / 工具结果
+ * 是折叠卡（展开才物化）、元数据不建卡 ⇒ 0。O(块数)：只取 `.length`，不序列化。批闸（`TabStreamView.BATCH_BODY_CHARS`）按它算。
+ */
+export function eagerBodyChars(message: JsonlRecord): number {
+  switch (message.type) {
+    case "user":
+    case "assistant": {
+      const c: unknown = (message.message as { content?: unknown } | undefined)?.content; // 残缺记录（夹具）不抛
+      if (typeof c === "string") return message.type === "user" ? c.length : 0;
+      if (!Array.isArray(c)) return 0;
+      let n = 0;
+      for (const b of c as Array<{ type?: unknown; text?: unknown }>) {
+        if (b && b.type === "text" && typeof b.text === "string") n += b.text.length;
+      }
+      return n;
+    }
+    case "queue-operation":
+      return message.content?.length ?? 0;
+    default:
+      return 0;
+  }
 }
