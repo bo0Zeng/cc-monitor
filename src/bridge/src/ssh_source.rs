@@ -618,9 +618,10 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 /// - backend 的 `TmuxProbeDue` **只在 `initial_tmux_probe` 发一次**（一次性初探）；
 ///   之后每一拍由 `Poke` 驱动，而 `Poke` 来自 tmux hook，**hook 只有 3 条**：
 ///   `session-created` / `session-closed` / `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`）。
-/// - 而 `tabs.ts` 的 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
+/// - 而当年唯一的轮询方 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
 ///   会话还在，只是里面的命令换了。**那个变化不触发任何一条 hook** ⇒ 这份快照在那个场景下
 ///   **永不刷新** ⇒ 改读它 = 每次都等到 10s 超时再降级 kill，**功能退化**。
+///   〔V154〕那条轮询已随「换号重启直接 kill」删了；「快照不刷新 pane 前台命令」这条事实照旧成立。
 ///
 /// ⇒ 今天开出口**没有消费者**：另两个真实调用点（`fork-flow.ts` · `settings/machine-card.ts`）
 /// 是**一次性查询**、不是轮询，走 SSH 没问题。开一个没人用的出口是装饰。
