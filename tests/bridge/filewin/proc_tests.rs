@@ -4,7 +4,9 @@
 //!
 //! | 判据 | 它钉的那一形 | 少了它会怎样 |
 //! |---|---|---|
-//! | [`a_seed_survives_the_trip_through_a_process_boundary`] | 那一屏 ＋ 源 ＋ cwd ＋ reveal **整份**过得去（相等断言） | 种子漂一格 ⇒ 窗口开在别处 / 少几行，而没有一句话 |
+//! | [`a_seed_survives_the_trip_through_a_process_boundary`] | 源 ＋ cwd ＋ reveal ＋ 交接件 **整份**过得去（相等断言） | 种子漂一格 ⇒ 窗口开在别处，而没有一句话 |
+//! | 🔴 [`the_window_process_lists_first_and_the_parent_carries_its_words`] | 〔09-28 裁 3〕就绪那一行：列到 N 行 ⇒ 回 N；列不出来 ⇒ 原话原样回、窗口不开；一句不说 ⇒ 进程层的错 | 「列不出来就不开窗、带原话」搬进窗口进程后没人钉 |
+//! | [`the_first_screen_asks_home_only_when_told_nothing`] | 〔09-28 裁 3〕窗口进程自己问第一屏：没给目录才问 home、问不到带原话 | 给了目录也去问 home（多一趟、先失败盖掉真原因） |
 //! | [`a_seed_that_cannot_be_read_is_a_loud_failure_not_a_default_window`] | 解不出来的种子**出声**，不补默认值（含阴性对照） | 「开了个空窗」与「成功」在屏幕上分不开 |
 //! | [`the_window_binary_is_never_guessed`] | 那份二进制**只有两处**来路，都不在就出声并说出看过哪儿 | `D11`：静默回落 / `D7`：归因说成「窗口画不出来」 |
 //! | 🔴 [`opening_a_window_three_times_really_starts_three_independent_processes`] | **一趟一个进程、pid 互不相同、三趟结局逐字相同** | 那正是旧形态的病：第二趟被一个**进程级**标志挡回来 |
@@ -24,7 +26,6 @@
 //!   而「够不着之后窗口上那行橙字说得对不对」是 `source` / `find` 那两摞的活。
 
 use super::*;
-use crate::filewin::source::Row;
 use crate::ssh_source::RemoteConfig;
 
 /// 改环境变量那几条**必须串行**：`std::env` 是进程级的，而 `cargo test` 默认并行。
@@ -50,37 +51,9 @@ fn synthetic_cfg() -> RemoteConfig {
 fn synthetic_request() -> OpenRequest {
     OpenRequest {
         source: Source::remote(synthetic_cfg()),
-        cwd: "/home/user/带空格 的目录".to_string(),
-        rows: vec![
-            // 🔴〔补齐五项〕链接与时间两格**也进种子对拍**：它们过不了这条边界的话，
-            //    窗口第一屏就画不出那两列（上一版就是这样，登记成代价挂着）。
-            Listed {
-                row: Row {
-                    name: "子目录".to_string(),
-                    path: "/home/user/带空格 的目录/子目录".to_string(),
-                    is_dir: true,
-                    size: 0,
-                    lossy_name: false,
-                },
-                link: true,
-                mtime_secs: Some(1_700_000_000),
-                raw_name: None,
-            },
-            Listed {
-                // 〔FW5〕有损名的**原始字节**也要过这条边界：丢了它，窗口那侧这一行退回「不许写」。
-                raw_name: Some(b"\xe5\x9d\x8f\xff\xe5\x90\x8d\xe5\xad\x97".to_vec()),
-                ..Listed::plain(Row {
-                    // 🔴 有损那一格**必须进种子对拍**：它是一个**事实**（那串字节不是合法
-                    //    UTF-8），而 JSON 只装得下 `String` ⇒ 不把这一格带过去，
-                    //    窗口那侧就会把一个有损名字画成一个正常名字。
-                    name: "坏\u{FFFD}名字".to_string(),
-                    path: "/home/user/带空格 的目录/坏\u{FFFD}名字".to_string(),
-                    is_dir: false,
-                    size: 4_097,
-                    lossy_name: true,
-                })
-            },
-        ],
+        cwd: Some("/home/user/带空格 的目录".to_string()),
+        // 〔MIG-3a · 09-28 裁 3〕「那一屏」（`rows`，含链接 · 时间 · 有损名原始字节几格）不再过这条边界：
+        //   窗口进程自己列（`first_screen`）；那几格的解法由 `source_tests` 的 `row_from_ls_entry` 那几条判。
         reveal: Some("坏\u{FFFD}名字".to_string()),
         handoff: synthetic_handoff(),
         // 〔FW34〕书签文件那一格也进种子对拍（带空格 ＋ 多字节，同 `cwd` 那一格的理由）。
@@ -113,7 +86,10 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     //    （漏掉的那一格两侧都是默认值）。
     assert_eq!(got.cwd, want.cwd, "cwd 漂了 —— 窗口会开在别处");
     assert_eq!(got.reveal, want.reveal, "reveal 漂了 —— 高亮落在别的行上");
-    assert_eq!(got.rows, want.rows, "那一屏漂了");
+    assert!(
+        want.cwd.is_some(),
+        "夹具里 cwd 得是 `Some`，否则两侧都是 `None` 恒相等"
+    );
     // 〔FW34〕书签文件那一格：漂了 ⇒ 窗口读写的是另一份书签。
     assert_eq!(got.bookmarks, want.bookmarks, "书签文件的路径漂了");
     assert!(
@@ -290,8 +266,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
     std::env::set_var(BIN_ENV, stdin_eating_stand_in());
     let req = OpenRequest {
         source: Source::remote(synthetic_cfg()),
-        cwd: "/tmp".to_string(),
-        rows: Vec::new(),
+        cwd: Some("/tmp".to_string()),
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
@@ -333,33 +308,23 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
 /// 分成独立一条（而不是并进上面那条）的理由：上面那条钉「三趟一样」，
 /// 而**三趟一样也可能是三趟都什么都没收到**。这一条是那条的反空真锚。
 ///
-/// ⚠ **它走的不是 [`spawn_window`] 整条，而是那一跳本身**（`write_seed`）：
-/// 生产那条路刻意**不接** stdout（接成管子而没人读，对面一写满就卡死）
-/// ⇒ 判据要把这一跳量成端到端的，只能自己接一根。
-/// ⇒ 本条买「那份字节真的到了对面」，`spawn_window` 整条由上面那条买。
-///
-/// ⚠ 本条自己那句 `.stdin(piped())` 是**第二份**写法，而那件耦合**有人守**：
-/// 生产那侧漏了它 ⇒ `write_seed` 当场拿不到管子 ⇒ `spawn_window` 回 `Err`
-/// ⇒ 上面那条三趟判据会**响亮地**红（「连进程都起不来」）。如实记，别读成零判据。
+/// 〔MIG-3a · 09-28 裁 3〕生产那条路今天**接了** stdout（就绪那一行从那里回来）⇒ 本条走的就是 [`spawn_window`] 整条：
+/// 替身 `cat` 把 stdin 原样吐到 stdout，读回来就是它收到的那一份。上一版这里自己拼一根 `.stdin(piped())`（第二份写法）的缘由没了。
 #[cfg(unix)]
 #[test]
 fn the_seed_really_arrives_on_the_child_process_stdin() {
+    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(BIN_ENV, stdin_eating_stand_in());
     let req = synthetic_request();
     let seed = encode_request(&req).expect("序列化");
-    let mut cmd = std::process::Command::new(stdin_eating_stand_in());
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    let mut child = crate::spawn_managed::spawn_managed_cmd(
-        &mut cmd,
-        crate::spawn_managed::ConsolePolicy::Hidden,
-        crate::spawn_managed::Lifetime::Detached,
-        crate::spawn_managed::StderrSink::Inherit,
-    )
-    .expect("起不了替身进程 —— 台架坏了");
-    write_seed(&mut child, &seed).expect("种子送不进替身的 stdin");
+    let mut child = spawn_window(&req).expect("起不了替身进程 —— 台架坏了");
+    std::env::remove_var(BIN_ENV);
     let mut seen = String::new();
     std::io::Read::read_to_string(
-        &mut child.stdout.take().expect("替身没有 stdout 管子"),
+        &mut child
+            .stdout
+            .take()
+            .expect("生产那条路没接 stdout —— 就绪那一行回不来"),
         &mut seen,
     )
     .expect("读不到替身吐回来的东西");
@@ -375,6 +340,115 @@ fn the_seed_really_arrives_on_the_child_process_stdin() {
         "送到对面的种子看起来是空的（{} 字节）—— 上面那条相等此刻是空真：{seen}",
         seen.len()
     );
+}
+
+/// 一个替身窗口进程：读完种子、在 stdout 上说 `say`（原样一行）、再睡 `linger` 秒退出。
+#[cfg(unix)]
+fn scripted_stand_in(
+    dir: &std::path::Path,
+    tag: &str,
+    say: &str,
+    linger: u32,
+) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let p = dir.join(format!("stand-in-{tag}.sh"));
+    let body = if say.is_empty() {
+        format!("#!/bin/sh\ncat >/dev/null\nsleep {linger}\nexit 3\n")
+    } else {
+        format!("#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{say}'\nsleep {linger}\n")
+    };
+    std::fs::write(&p, body).expect("写不出替身脚本");
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    p
+}
+
+/// 🔴〔MIG-3a · 主会话 09-28 裁 3〕**第一屏由窗口进程列，父进程只读它那一行。**
+///
+/// ① 它说「列到 7 行」、然后还活着（窗口开着）⇒ 回 `(pid, 7)`；
+/// ② 它说「列不出来：原话」⇒ **原话原样**回（[`Unopened::Said`]），而且那是它不开窗就退的那一形；
+/// ③ 它一句不说就退 ⇒ 进程层的错（[`Unopened::Process`]），不是「列到 0 行」；
+/// ④ 它说了一句不是约定形状的话 ⇒ 进程层的错（两端契约漂了）。
+/// ⚠ 替身是 shell 脚本，不是那份真窗口进程：「真窗口进程在列不出来时真的不开窗」由 `child_main` 的行序代理
+///   （[`the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it`] ④⑤）钉。
+#[cfg(unix)]
+#[test]
+fn the_window_process_lists_first_and_the_parent_carries_its_words() {
+    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("filewin-ready-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("造不出临时目录");
+    let req = OpenRequest {
+        source: Source::remote(synthetic_cfg()),
+        cwd: None,
+        reveal: None,
+        handoff: synthetic_handoff(),
+        bookmarks: None,
+        machines: Vec::new(),
+    };
+    let run = |tag: &str, say: &str, linger: u32| {
+        std::env::set_var(BIN_ENV, scripted_stand_in(&dir, tag, say, linger));
+        let r = open_in_new_process(&req);
+        std::env::remove_var(BIN_ENV);
+        r
+    };
+    // ①
+    let (_pid, n) = run(
+        "listed",
+        &encode_ready(&Ready::Listed(7)).trim().to_string(),
+        2,
+    )
+    .expect("说了列到 7 行、人还活着，却回了错");
+    assert_eq!(n, 7, "行数不是它说的那个");
+    // ②
+    let said = "列不出来：那台说没有这个目录 /srv/不在";
+    assert_eq!(
+        run(
+            "failed",
+            encode_ready(&Ready::Failed(said.into())).trim(),
+            0
+        ),
+        Err(Unopened::Said(said.into())),
+        "列不出来的原话没原样带回来"
+    );
+    // ③
+    match run("silent", "", 0) {
+        Err(Unopened::Process(e)) => assert!(!e.is_empty()),
+        other => panic!("一句不说就退，却回了：{other:?}"),
+    }
+    // ④
+    match run("garbled", "{\"ok\":1}", 0) {
+        Err(Unopened::Process(e)) => assert!(!e.is_empty()),
+        other => panic!("说了一句不是约定形状的话，却回了：{other:?}"),
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 就绪那一行的线上形：两种来回过得去；别的形状一律拒（不猜）。**纯函数**。
+#[test]
+fn the_ready_line_has_exactly_two_shapes() {
+    for r in [
+        Ready::Listed(0),
+        Ready::Listed(50_000),
+        Ready::Failed("原话 \n 带换行".into()),
+    ] {
+        let line = encode_ready(&r);
+        assert!(
+            line.ends_with('\n') && line.matches('\n').count() == 1,
+            "不是恰好一行：{line:?}"
+        );
+        assert_eq!(decode_ready(&line), Ok(r));
+    }
+    for bad in [
+        "",
+        "{}",
+        "{\"listed\":-1}",
+        "{\"failed\":1}",
+        "{\"listed\":1,\"failed\":\"x\"}",
+        "listed 3",
+    ] {
+        assert!(decode_ready(bad).is_err(), "{bad:?} 被认成了就绪");
+    }
+    let mut eof = std::io::Cursor::new(Vec::<u8>::new());
+    assert_eq!(read_ready(&mut eof), Ok(None), "EOF 不是「一句没说」");
 }
 
 /// **那个 `[[bin]]` 真的托管着窗口进程的躯体。**
@@ -424,15 +498,17 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
     std::env::set_var(BIN_ENV, &fake);
     let e = open_in_new_process(&OpenRequest {
         source: Source::remote(synthetic_cfg()),
-        cwd: dir.to_string_lossy().to_string(),
-        rows: Vec::new(),
+        cwd: Some(dir.to_string_lossy().to_string()),
         reveal: None,
         handoff: synthetic_handoff(),
         bookmarks: None,
         machines: Vec::new(),
     })
     .expect_err("拿一个不是二进制的文件当窗口进程，居然报了成功");
-    println!("  现打：{e}");
+    println!("  现打：{e:?}");
+    let Unopened::Process(e) = e else {
+        panic!("起不来那一形被说成了窗口进程的话：{e:?}")
+    };
     assert!(!e.is_empty(), "报了错但原因是空的 —— 上层连话都没有");
     std::env::remove_var(BIN_ENV);
     std::fs::remove_dir_all(&dir).ok();
@@ -545,10 +621,29 @@ async fn the_window_dials_back_with_the_handoff_and_refuses_to_open_without_it()
     );
     // ⑤〔FW34〕种子里每一格都真的交给了开窗那一下（漏交一格 ＝ 那一格在窗口那侧恒是默认值，
     //    种子对拍照样绿 —— 它只判「过得了进程边界」，判不了「过去之后有人接」）。
-    for f in ["source", "cwd", "rows", "reveal", "bookmarks"] {
-        let at = guard_core::find_pinned(&prod, &format!("req.{f},"))
+    for f in ["source", "reveal", "bookmarks", "machines"] {
+        let at = guard_core::find_pinned(&prod, &format!("        req.{f},\n"))
             .unwrap_or_else(|e| panic!("child_main 没把种子里的 `{f}` 交给开窗那一下：{e}"));
         assert!(at > at_open, "`req.{f}` 不在开窗那一下的实参里");
+    }
+    // ⑥〔MIG-3a · 09-28 裁 3〕第一屏：拨通之后、开窗之前列；列不出来就退（不开窗）；起点与那一屏是它列出来的那一份。
+    let at_first = guard_core::find_pinned(
+        &prod,
+        "rt.block_on(first_screen(&line, &req.source, req.cwd.clone()))",
+    )
+    .expect("child_main 里没有列第一屏那一下");
+    let at_refuse = guard_core::find_pinned(&prod, "Err(e) => return refuse(e, EXIT_NOT_LISTED),")
+        .expect("第一屏列不出来那一支不是「说原话、退」");
+    let at_ready = guard_core::find_pinned(&prod, "say(&Ready::Listed(rows.len()));")
+        .expect("列出来之后没说就绪那一行");
+    assert!(
+        at_dial < at_first && at_first < at_refuse && at_refuse < at_ready && at_ready < at_open,
+        "行序不是「拨 → 列 → 列不出来就退 → 说就绪 → 开窗」"
+    );
+    for f in ["cwd", "rows"] {
+        let at = guard_core::find_pinned(&prod, &format!("        {f},\n"))
+            .unwrap_or_else(|e| panic!("开窗那一下没收列出来的 `{f}`：{e}"));
+        assert!(at > at_open, "列出来的 `{f}` 不在开窗那一下的实参里");
     }
 }
 
@@ -593,4 +688,127 @@ impl crate::chan::router::Backends for FakeBackendHost {
     ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
         Box::pin(futures::stream::empty())
     }
+}
+
+/// 〔MIG-3a · 09-28 裁 3〕答 `files-home` / `files-ls` 的替身后端：记下问了哪几条；`refuse` 里的那条回「不行 + 原话」。
+struct ScreenHost {
+    asked: std::sync::Mutex<Vec<String>>,
+    refuse: Option<&'static str>,
+}
+
+impl crate::chan::router::Backends for ScreenHost {
+    fn call(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        op: crate::chan::wire::Op,
+        payload: crate::chan::wire::Body,
+        _left: std::time::Duration,
+        _cancel: crate::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<crate::chan::wire::Body, crate::chan::wire::CallError>,
+    > {
+        self.asked.lock().unwrap().push(op.0.clone());
+        let refused = self.refuse == Some(op.0.as_str());
+        let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
+        Box::pin(async move {
+            let json =
+                |v: serde_json::Value| Ok(crate::chan::wire::Body(v.to_string().into_bytes()));
+            if refused {
+                return Err(crate::chan::wire::CallError::Peer {
+                    why: crate::chan::wire::PeerFault::Refused {
+                        body: crate::chan::wire::Body(
+                            r#"{"code":"io_failed","message":"那台说：没有这个目录"}"#
+                                .as_bytes()
+                                .to_vec(),
+                        ),
+                    },
+                });
+            }
+            match op.0.as_str() {
+                "files-home" => json(serde_json::json!({ "path": "/home/台架" })),
+                "files-ls" => {
+                    let dir = args
+                        .get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    json(serde_json::json!({
+                        "entries": [
+                            { "path": format!("{dir}/甲"), "kind": "dir" },
+                            { "path": format!("{dir}/乙.txt"), "kind": "file", "size": 3 },
+                        ],
+                        "truncated": false,
+                    }))
+                }
+                _ => Err(crate::chan::wire::CallError::Peer {
+                    why: crate::chan::wire::PeerFault::Unsupported,
+                }),
+            }
+        })
+    }
+
+    fn subscribe(
+        &self,
+        _origin: crate::chan::wire::Origin,
+        _kind: crate::chan::wire::Kind,
+        _from: Option<crate::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, crate::chan::wire::Item> {
+        Box::pin(futures::stream::empty())
+    }
+}
+
+/// 🔴〔MIG-3a · 主会话 09-28 裁 3〕**窗口进程自己问第一屏**（真通道口 ＋ 替身后端）：
+/// ① 没给目录 ⇒ 先问 home、再列 home（恰好这两问，按这个顺序）；② 给了目录 ⇒ 只列它、**不问 home**；
+/// ③ 列不出来 ⇒ 带那台的原话回错（窗口那侧据此说 `Failed` 并不开窗）；④ home 问不到 ⇒ 同样带原话、不去列。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_first_screen_asks_home_only_when_told_nothing() {
+    async fn run(
+        refuse: Option<&'static str>,
+        cwd: Option<String>,
+    ) -> (Result<(String, Vec<String>), String>, Vec<String>) {
+        let be = std::sync::Arc::new(ScreenHost {
+            asked: std::sync::Mutex::new(Vec::new()),
+            refuse,
+        });
+        let h = crate::chan::host::start_with(
+            be.clone(),
+            crate::chan::host::mint_key(),
+            1 << 20,
+            std::time::Duration::from_secs(5),
+        )
+        .await
+        .expect("回环口绑得上");
+        let line = dial_back(&h).await.expect("拨得通");
+        let got = first_screen(&line, &Source::remote(synthetic_cfg()), cwd)
+            .await
+            .map(|(d, rows)| (d, rows.into_iter().map(|l| l.row.name).collect()));
+        let asked = be.asked.lock().unwrap().clone();
+        (got, asked)
+    }
+    // ①
+    let (got, asked) = run(None, None).await;
+    assert_eq!(
+        asked,
+        ["files-home", "files-ls"],
+        "没给目录时问的不是「先 home、再列」"
+    );
+    let (dir, names) = got.expect("问得到 home、列得出来，却回了错");
+    assert_eq!(dir, "/home/台架");
+    assert_eq!(names.len(), 2, "那一屏不是替身答的那两行：{names:?}");
+    // ②
+    let (got, asked) = run(None, Some("/srv/给了".into())).await;
+    assert_eq!(asked, ["files-ls"], "给了目录还去问了 home");
+    assert_eq!(got.expect("列得出来").0, "/srv/给了");
+    // ③
+    let (got, asked) = run(Some("files-ls"), Some("/srv/不在".into())).await;
+    assert_eq!(asked, ["files-ls"]);
+    let e = got.expect_err("列不出来竟然回了一屏");
+    assert!(e.contains("那台说：没有这个目录"), "原话没带回来：{e}");
+    // ④
+    let (got, asked) = run(Some("files-home"), None).await;
+    assert_eq!(asked, ["files-home"], "home 问不到还去列了");
+    assert!(got
+        .expect_err("home 问不到竟然过了")
+        .contains("那台说：没有这个目录"));
 }

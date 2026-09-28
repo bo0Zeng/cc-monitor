@@ -85,6 +85,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("open_session_in_new_window", Own::Window, "开窗"),
     ("open_settings_window", Own::Window, "开窗"),
+    (
+        "open_file_window",
+        Own::Window,
+        "〔MIG-3a · 09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",
+    ),
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
@@ -290,11 +295,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     ),
     ("panorama_edit", Lane::Mig3b, "全景一问经 monitor 转"),
     ("panorama_cancel", Lane::Mig3b, "全景撤单经 monitor 转"),
-    (
-        "open_file_window",
-        Lane::Mig3a,
-        "开窗前先列一屏那一问在 monitor（文件窗口独立前端之后由它自己问，`99 §2.1 ⑰`）",
-    ),
+    // 〔MIG-3a · 主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
+    //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];
 
 // ---------------------------------------------------------------- 读 `generate_handler!`
