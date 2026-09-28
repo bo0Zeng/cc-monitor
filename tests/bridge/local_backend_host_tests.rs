@@ -3377,12 +3377,13 @@ fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// `KPY2` / `KPY3`：**真进程**判据。⛔ 它们**不在 `npm run gate` 里**
+// `KPY2` / `KPY3`：**真进程**判据（`#[ignore]`，`cargo test` 不跑它们）。
 //
-// 只在 CI 的 `E2E real-machine` job 里跑（`ci.yml` 的
-// `assert-pass-floor.sh local-backend <地板>`），入口是
-// `tests/e2e/local-backend-supervise.sh`。本机 `npm run gate` **看不见它们**
-// —— 这句话是 `§1` 那张「在哪一步会被执行」表逐字要求写明的。
+// 入口是 `tests/e2e/local-backend-supervise.sh`（第二趟 `--ignored`），执行链有两条：
+// 本机门禁 `tests/scripts/gate.sh` 的 `run_e2e local-backend <地板>`（〔E2 尾 09-27〕接上 ——
+// 此前只挂在 `ci.yml` 的 `assert-pass-floor.sh local-backend <地板>` 上，而那条流水线不通电，
+// 于是「两趟过滤串重叠、本条跑两遍当场红」红了几天没人看见）与 `ci.yml` 那一行。
+// —— 「在哪一步会被执行」这句话是 `§1` 那张表逐字要求写明的。
 // ══════════════════════════════════════════════════════════════════
 
 /// 起真后端的沙箱。**三样东西一个都不许缺**（fail closed）。
@@ -3395,6 +3396,13 @@ struct E2eSandbox {
     /// 本轮起过的那些进程。**一交出 `DETACHED` 就立刻塞进这里**，
     /// 中间不留任何「拿在手里但没人管」的窗口 —— 那个窗口正是 08-26 漏网的机制。
     kept: std::sync::Mutex<Vec<crate::spawn_managed::ManagedChild>>,
+    /// 〔E2 尾 09-27〕本轮在 `DETACHED` 里出现过的每一个 pid。**`kept` 那一格兜不住脱离那条路**：
+    /// 「上一个宿主退了」一关写半边、那条流就断 ⇒ `reap_detached` 当场把 `Child` 取进收尸线程
+    /// （它在那儿等一个还活着的进程）⇒ [`Self::forget_like_a_host_that_exited`] 拿到的是 `None`、`Drop` 手里没有它
+    /// ⇒ `KPY2` 第一个宿主起的那个后端活过本条。e2e 收尾那句 `pkill -f` 替它兜了一个月；
+    /// 换成「只收本套件自己的」并先查漏网之后当场现形（`local-backend-supervise.sh` 那一格）。
+    /// ⇒ 按 pid 收，杀前核 `/proc/<pid>/exe` 是不是 [`Self::bin`]（防 pid 复用误伤）。
+    seen: std::sync::Mutex<Vec<u32>>,
 }
 
 #[cfg(target_os = "linux")]
@@ -3414,6 +3422,17 @@ impl E2eSandbox {
             ),
             work,
             kept: std::sync::Mutex::new(Vec::new()),
+            seen: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// 记下一个出现在 `DETACHED` 里的 pid（0 = 不知道，不记）。
+    fn remember(&self, pid: u32) {
+        if pid != 0 {
+            self.seen
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(pid);
         }
     }
 
@@ -3437,12 +3456,11 @@ impl E2eSandbox {
             // 关写半边是**入队**的（`WriteJob::CloseWrite`）⇒ 给写任务一拍把它送出去。
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
-        let taken = DETACHED
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-            .and_then(|h| h.child);
-        if let Some(c) = taken {
+        let taken = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(h) = &taken {
+            self.remember(h.pid);
+        }
+        if let Some(c) = taken.and_then(|h| h.child) {
             self.kept.lock().unwrap_or_else(|e| e.into_inner()).push(c);
         }
     }
@@ -3485,11 +3503,31 @@ impl Drop for E2eSandbox {
         let mut all: Vec<crate::spawn_managed::ManagedChild> =
             std::mem::take(&mut *self.kept.lock().unwrap_or_else(|e| e.into_inner()));
         if let Some(h) = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            self.remember(h.pid);
             all.extend(h.child);
         }
         for mut c in all {
             let _ = c.kill();
             let _ = c.wait();
+        }
+        // 句柄已经不在我们手里的那几个（见 `seen` 头注）：按 pid 收，只收二进制对得上的。
+        let bin = std::fs::canonicalize(&self.bin).unwrap_or_else(|_| self.bin.clone());
+        let seen = std::mem::take(&mut *self.seen.lock().unwrap_or_else(|e| e.into_inner()));
+        for pid in seen {
+            let exe = std::fs::read_link(format!("/proc/{pid}/exe"));
+            if exe.as_deref().ok() != Some(bin.as_path()) {
+                continue; // 已经走了，或 pid 被别人复用了 —— 都不许动
+            }
+            let _ = std::process::Command::new("kill")
+                .args(["-KILL", &pid.to_string()])
+                .status();
+            // 它是本进程的子进程（`process_group` 不改父子关系）⇒ 收尸线程会 `wait` 它；这里只等它从表里消失。
+            for _ in 0..50 {
+                if !alive(pid) || proc_state(pid) == Some('Z') {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
         }
     }
 }

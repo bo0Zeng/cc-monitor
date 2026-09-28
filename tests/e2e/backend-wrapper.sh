@@ -17,6 +17,16 @@
 #   ssh_source EXPECTED_BACKEND_BUILD_ID)
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
+# 🔴 〔E2 尾 09-27〕**防呆：直接跑就拒。** 本脚本是夹具（loopback 远端的后端包装器），合法的叫法只有一种：
+#   `tests/e2e/tier2-rig.sh` 把它**拷进台架目录、旁边放一个 `backend-path`**，再由 app 经 SSH 当远端后端执行。
+#   认的是那个文件，不是环境变量 —— SSH exec 不带 env（下面 `backend-path` 那段同一个理由）。
+#   不拒的后果现打过：分流不看 argv0 之后，没有打头 `--` 的调用就是「起 claude」⇒ 在仓里直接跑它
+#   会起一次 PATH 上**真的** claude。拒在一切副作用之前（tap 文件、自愈换二进制都在后面）。
+if [ ! -f "$E2E_DIR/backend-path" ]; then
+  echo "backend-wrapper.sh 是夹具：由 tests/e2e/tier2-rig.sh 布进台架目录（旁边带 backend-path）后经 app 调用，不直接跑。" >&2
+  echo "  直接跑会把参数原样交给真后端，没有打头的 -- 时就起真 claude —— 拒绝（$E2E_DIR 下没有 backend-path）。" >&2
+  exit 2
+fi
 : "${CCM_E2E_CLAUDE_DIR:=/tmp/e2e-remote-claude}"
 : "${CCM_E2E_BACKEND:=$REPO/.build/backend/debug/cc-monitor-backend}"
 # ★★ 〔`P0b` 第十拍 08-13〕**同目录的 `backend-path` 文件优先于下面的自愈**。
@@ -106,7 +116,7 @@ if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
     #   —— 两个诊断天差地别，而我第一版就在这上面读岔了一次。
     echo "=== wrapper 起 backend: $CCM_E2E_BACKEND  argv=[$*]"
     echo "    claude_dir=$CCM_E2E_CLAUDE_DIR  pid=$$  $(date -Iseconds)"
-    "$CCM_E2E_BACKEND" --backend-probe 2>/dev/null | head -1
+    "$CCM_E2E_BACKEND" -- --backend-probe 2>/dev/null | head -1
   } >> "${CCM_E2E_FRAME_TAP}.err" 2>&1
   # ⚠⚠ **stderr 也要抄**〔第八拍 08-13〕：backend 的 `tracing` 日志走 stderr，
   #   而它正是唯一会说出「watch failed / sessions dir does not exist / 我在盯哪」的地方。

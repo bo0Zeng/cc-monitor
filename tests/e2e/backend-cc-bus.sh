@@ -72,7 +72,7 @@ chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "
 d() {
   env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
       CCBUS_POLICY_MODE="${POLICY:-off}" CC_BUS_ID=probe_cc \
-      "$TIMEOUT" 20 "$D" "$@" 2>"$SANDBOX/err.txt"
+      "$TIMEOUT" 20 "$D" -- "$@" 2>"$SANDBOX/err.txt"
 }
 
 echo "===== P4f：backend 的 cc-bus 基础命令 ====="
@@ -120,7 +120,7 @@ rm -f "$BUS/policy.tsv"
 
 echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$EMPTY" HOME="$NOHOME" PATH="$EMPTY" \
-    "$TIMEOUT" 20 "$D" --bus-list </dev/null >/dev/null 2>"$SANDBOX/err6.txt"
+    "$TIMEOUT" 20 "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err6.txt"
 chk "码是 not_installed（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err6.txt" 2>/dev/null)" "not_installed"
 msg="$(jq -r .message < "$SANDBOX/err6.txt" 2>/dev/null)"
 chk "  列出了 ~/.local/bin 那一处" "$(printf '%s' "$msg" | grep -c '.local/bin/cc-list')" "1"
@@ -154,7 +154,7 @@ cp "$SCRIPTS/cc-list" "$SANDBOX/hangbin/cc-list"
 _t0=$(date +%s)
 printf '{"to":"x_cc","text":"hi"}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" \
     CC_BUS_BIN_DIR="$SANDBOX/hangbin" CC_BUS_TIMEOUT_SECS=2 \
-    "$TIMEOUT" 30 "$D" --bus-send >/dev/null 2>"$SANDBOX/err8.txt"
+    "$TIMEOUT" 30 "$D" -- --bus-send >/dev/null 2>"$SANDBOX/err8.txt"
 _el=$(( $(date +%s) - _t0 ))
 chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外面掐）" \
   "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
@@ -171,7 +171,7 @@ echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
 for _c in --ping --bus-list; do
   _t0=$(date +%s%N)
   _o="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-        "$TIMEOUT" 6 "$D" "$_c" < <(sleep 30) 2>/dev/null)"
+        "$TIMEOUT" 6 "$D" -- "$_c" < <(sleep 30) 2>/dev/null)"
   _ms=$(( ($(date +%s%N) - _t0) / 1000000 ))
   chk "★ $_c：stdin 不关也返回了（不是挂到被掐）" \
     "$([ -n "$_o" ] && [ "$_ms" -lt 5000 ] && echo yes || echo "no（${_ms}ms，输出 ${_o:-<空>}）")" "yes"
@@ -193,7 +193,7 @@ new_bus_state() {
 }
 new_bus_state
 _j="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-      "$TIMEOUT" 20 "$D" --bus-list </dev/null 2>/dev/null)"
+      "$TIMEOUT" 20 "$D" -- --bus-list </dev/null 2>/dev/null)"
 chk "★ 活着的成员 live=true" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .live')" "true"
 chk "  且挂到了真身份上（@ccm_sid）" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .ccm_sid')" "sid-1234"
 chk "★ 名单里有、会话已经没了的 live=false" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="gone_cc") | .live')" "false"
@@ -207,7 +207,7 @@ done
 chk "  台架自检：这个 PATH 里确实没有 tmux" \
   "$(PATH="$_NT" command -v tmux >/dev/null 2>&1 && echo 有 || echo 没有)" "没有"
 _j2="$(env PATH="$_NT" CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-       "$TIMEOUT" 20 "$D" --bus-list </dev/null 2>/dev/null)"
+       "$TIMEOUT" 20 "$D" -- --bus-list </dev/null 2>/dev/null)"
 chk "★ 问不到身份空间 ⇒ live 是 **null**（不是 false）" \
   "$(printf '%s' "$_j2" | jq -r '.agents[0].live')" "null"
 chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）" \
@@ -220,7 +220,7 @@ echo "[11] ★ bus-send 也要说清「有没有人会读」"
 printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
 _snd() {
   printf '{"to":"%s","text":"x"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-send 2>/dev/null
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" -- --bus-send 2>/dev/null
 }
 _a="$(_snd alive_cc)"; _g="$(_snd gone_cc)"; _n="$(_snd nobody_cc)"
 chk "★ 活着的收件人：registered=true live=true" \
@@ -243,7 +243,7 @@ echo "[12] ★ 正文太长要**归对因**：不是 cc-bus 坏了，是塞不�
 python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"x"*200000}))' \
   > "$SANDBOX/big.json"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-    "$TIMEOUT" 20 "$D" --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
+    "$TIMEOUT" 20 "$D" -- --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
 chk "★ 码是 too_long（不是兜底的 failed）" "$(jq -r .code < "$SANDBOX/err12.txt" 2>/dev/null)" "too_long"
 _m12="$(jq -r .message < "$SANDBOX/err12.txt" 2>/dev/null)"
 chk "  说了实测字节数（别让人自己去量）" "$(printf '%s' "$_m12" | grep -c '200000 字节')" "1"
@@ -252,7 +252,7 @@ chk "  明说不是 cc-bus 坏了（归因不许甩锅）" "$(printf '%s' "$_m12
 python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"y"*120000}))' \
   > "$SANDBOX/mid.json"
 _o12="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-        "$TIMEOUT" 20 "$D" --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
+        "$TIMEOUT" 20 "$D" -- --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
 chk "  对照：120KB 照样发得出去" "$(printf '%s' "$_o12" | jq -r .sent)" "true"
 
 echo "[13] ★ 以谁的身份发：不给 from 的话，回复会掉进没人读的收件箱"
@@ -266,7 +266,7 @@ printf 'x_cc	x_cc:0.0	ts	1
 ' > "$_fb/agents.tsv"
 _send_from() {
   printf '%s' "$2" | env -u TMUX -u TMUX_PANE -u CC_BUS_ID CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$_fb" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-send 2>/dev/null
+    CC_BUS_HOME="$_fb" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" -- --bus-send 2>/dev/null
 }
 : > "$_fb/inbox/x_cc.jsonl"
 _r1="$(_send_from x '{"to":"x_cc","text":"没给 from"}')"
@@ -294,7 +294,7 @@ tmux new-session -d -s kocc_cc -c /tmp 'sleep 999'; sleep 0.3     # 同名的无
 _occpid="$(tmux list-panes -t '=kocc_cc' -F '#{pane_pid}' | head -1)"
 _dk() {
   printf '{"id":"%s"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-kill 2>"$SANDBOX/kerr.txt"
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" -- --bus-kill 2>"$SANDBOX/kerr.txt"
 }
 _k1="$(_dk kreal_cc)"
 chk "★ 真 agent：killed=true" "$(printf '%s' "$_k1" | jq -r .killed)" "true"
@@ -314,13 +314,10 @@ echo "[16] ★ bus-spawn：本机派生走后端原语（BS1b）—— 真跑 cc
 #   ⇒ 本格改从 **PATH** 与 **HOME**（两者都在白名单里）喂，而且 PATH 是**收窄过的**
 #   （`$_SB` ＋ tmux 垫片 ＋ 系统目录，**不含**用户的 `~/.local/bin` / `~/.cc-monitor/bin`）：
 #   沙箱 HOME 里没有 `~/.cc-monitor/bin/`、PATH 上也没有 `cc-monitor-backend` ⇒ cc-spawn 按查找次序
-#   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份，按名字 `ccm` 走入口①），它再起 PATH 上的
+#   落到 PATH 上的 `ccm`（= 本工作树刚 build 的那一份），它再起 PATH 上的
 #   `claude`（= 下面那个只记参数然后 sleep 的假 agent）。
-# ⚠ 为什么是 `ccm` 这个名字而不是 `cc-monitor-backend`〔BS1b 首跑现打，写区外的一个真缺陷〕：
-#   走入口②（`cc-monitor-backend ccm …`）时，ccm 在 pane 里**重新起自己**那一跳丢了 `ccm` 这个词
-#   ⇒ pane 里逐字是 `cc-monitor-backend --cwd … --launcher claude …` ⇒「unknown argument: --cwd」，
-#   会话是一个空 bash，而 cc-spawn **rc=0 且登记上了总线**（假成功）。住址 `control/ccm/plan.rs`，
-#   不在本件写区 ⇒ 已报备，本格按入口①跑，不替它洗绿。
+# 〔主会话 09-27 裁〕分流只看 argv、不看 argv[0] ⇒ 叫 `ccm` 还是叫 `cc-monitor-backend` 走同一条规则；
+#   从前的入口②（`cc-monitor-backend ccm …`）〔散文墓碑〕。两个名字同形由下面 [17] 真跑判。
 _SB="$SANDBOX/spawnbin"; _SH="$SANDBOX/spawnhome"; _SW="$SANDBOX/spawnwork"
 mkdir -p "$_SB" "$_SH" "$_SW/proj"
 ln -sf "$D" "$_SB/ccm"
@@ -349,7 +346,7 @@ chk "起飞前：隔离服务端的 pane 里 claude 解析到假 agent" "$_which
 _ds() {
   printf '%s' "$1" | env HOME="$_SH" PATH="$_SPATH" CLAUDE_CONFIG_DIR="$CLA" \
     CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" CC_BUS_SCRIPTS="$SCRIPTS" CC_BUS_TIMEOUT_SECS=40 \
-    "$TIMEOUT" 60 "$D" --bus-spawn 2>"$SANDBOX/serr.txt"
+    "$TIMEOUT" 60 "$D" -- --bus-spawn 2>"$SANDBOX/serr.txt"
 }
 if [ "$_which" != "$_SB/claude" ]; then
   echo "  !! 自检没过 —— 本格不派生（宁可少判，也不在用户的 claude 上起会话）"
@@ -368,10 +365,10 @@ chk "★ 不认的 tool ⇒ 由 cc-spawn 自己拒成 invalid_args（后端不�
   "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "invalid_args"
 chk "  …而且没起出第二个会话" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo 起了 || echo 没起)" "没起"
 fi
-echo "[17] ★ ccm 在 pane 里重起自己：入口①（名叫 ccm）与入口②（cc-monitor-backend ccm …）同形（CC1）"
-# 〔BS1b 现打〕走入口②时，pane 里那一跳逐字是 `cc-monitor-backend --cwd … --launcher …`
-#   —— **丢了 `ccm` 这个词** ⇒「unknown argument: --cwd」、pane 退回空 bash，而 cc-spawn 照报 rc=0
-#   还登记上了总线（假成功）。本格两个入口各真跑一次 cc-spawn，把 pane 里真正执行的那条 argv 抓出来比。
+echo "[17] ★ ccm 在 pane 里重起自己：名叫 ccm 与名叫 cc-monitor-backend 同形（CC1；分流不看 argv0）"
+# 〔BS1b 现打〕从前走入口②时，pane 里那一跳丢了 `ccm` 这个词 ⇒ 空 bash 而 cc-spawn 照报 rc=0（假成功）。
+#   〔09-27〕入口②删了、分流不看名字 ⇒ 本格改钉「换个文件名结果逐字节一样」：两个名字各真跑一次
+#   cc-spawn，把 pane 里真正执行的那条 argv 抓出来比。
 # ⚠ **两个入口是同一份 wrapper 换个名字**：它把「自己被怎么叫」（`$0` ＋ argv）按 NUL 逐字落一个文件，
 #   再用**同一个 argv0**（`exec -a`）交给真二进制 ⇒ ccm 看到的入口就是那个名字，而我们看到的是
 #   **真实产物**（cc-spawn 怎么叫它的、pane 里怎么叫它的），不是任何一个拼串函数的自述。
@@ -420,7 +417,7 @@ t1, t2 = p1[len(pre1):], p2[len(pre2):]
 print("同形" if t1 == t2 else f"参数不同：{t1!r} ≠ {t2!r}")
 PY
 }
-_wait_agent() {  # 等到第 $1 个假 agent 真的起来（入口② 修前永远等不到，给 3 秒上限）
+_wait_agent() {  # 等到第 $1 个假 agent 真的起来（坏了永远等不到，给 3 秒上限）
   for _i in $(seq 1 30); do
     [ "$(find "$_EW/proj" -maxdepth 1 -name 'agent-args.*' | wc -l)" -ge "$1" ] && break; sleep 0.1
   done
@@ -431,12 +428,12 @@ _o2="$(_sp CCM_BIN="$_EW/e2/cc-monitor-backend" 2>"$_EW/err2.txt")"; _r2=$?
 _wait_agent 2
 _n1="$(printf '%s\n' "$_o1" | sed -n 's/^已 spawn: \([^ ]*\).*/\1/p')"
 _n2="$(printf '%s\n' "$_o2" | sed -n 's/^已 spawn: \([^ ]*\).*/\1/p')"
-chk "  对照：入口① cc-spawn rc=0" "$_r1" "0"
-chk "★ 入口② cc-spawn rc=0" "$_r2" "0"
-chk "★★ pane 里那一跳：两个入口 = 各自入口前缀 ＋ **逐字节同一串**参数" "$(_entry_judge)" "同形"
-chk "★ 两个入口的 pane 都真的起到了 agent（任务原样送达）" \
+chk "  对照：名叫 ccm cc-spawn rc=0" "$_r1" "0"
+chk "★ 名叫 cc-monitor-backend cc-spawn rc=0" "$_r2" "0"
+chk "★★ pane 里那一跳：两个名字 = 各自入口前缀 ＋ **逐字节同一串**参数" "$(_entry_judge)" "同形"
+chk "★ 两个名字的 pane 都真的起到了 agent（任务原样送达）" \
   "$(cat "$_EW/proj"/agent-args.* 2>/dev/null | grep -cx '任务乙')" "2"
-chk "  两个入口都登记上了总线（各一条）" \
+chk "  两个名字都登记上了总线（各一条）" \
   "$(cut -f1 "$_EW/bus/agents.tsv" 2>/dev/null | grep -cxF -e "${_n1:-<无>}" -e "${_n2:-<无>}")" "2"
 
 echo "[17b] ★ pane 里起的东西当场报参数错误 ⇒ cc-spawn **不许**报成功、**不许**登记（CC1）"
@@ -473,7 +470,7 @@ sleep 0.3
 printf 'bcast_cc\tbcast_cc:0.0\tts\t1\nbgone_cc\tbgone_cc:0.0\tts\t2\nbcme_cc\tbcme_cc:0.0\tts\t3\n' > "$BUS/agents.tsv"
 : > "$BUS/inbox/bcast_cc.jsonl"; : > "$BUS/inbox/bgone_cc.jsonl"; : > "$BUS/inbox/bcme_cc.jsonl"
 _b="$(printf '{"text":"来自后端的广播","from":"bcme_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" \
-      CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 30 "$D" --bus-broadcast 2>"$SANDBOX/berr.txt")"
+      CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 30 "$D" -- --bus-broadcast 2>"$SANDBOX/berr.txt")"
 chk "★ 只投给在线的那一个（sent=1）" "$(printf '%s' "$_b" | jq -r .sent 2>/dev/null)" "1"
 chk "★ 会话没了的那一个计进 skipped_offline（不是悄悄丢掉）" "$(printf '%s' "$_b" | jq -r .skipped_offline 2>/dev/null)" "1"
 chk "  身份空间答得上 ⇒ liveness_unknown=false" "$(printf '%s' "$_b" | jq -r .liveness_unknown 2>/dev/null)" "false"
@@ -482,7 +479,7 @@ chk "★ 在线那一个的收件箱真的收到了" "$(grep -c '来自后端的
 chk "★ 会话没了的那一个没被投（不再造幽灵收件箱）" "$(grep -c '来自后端的广播' "$BUS/inbox/bgone_cc.jsonl" 2>/dev/null || true)" "0"
 chk "★ 不发给自己（from）" "$(grep -c '来自后端的广播' "$BUS/inbox/bcme_cc.jsonl" 2>/dev/null || true)" "0"
 printf '{"text":"   "}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-  "$TIMEOUT" 30 "$D" --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
+  "$TIMEOUT" 30 "$D" -- --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
 chk "★ 空正文 ⇒ invalid_args（空广播不是缺省）" "$(jq -r .code < "$SANDBOX/berr.txt" 2>/dev/null)" "invalid_args"
 tmux kill-session -t '=bcast_cc' 2>/dev/null || true
 tmux kill-session -t '=bcme_cc' 2>/dev/null || true
@@ -542,7 +539,7 @@ chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -
 # 老 cc-bus：`cc-list` / `cc-agents` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
 _old="$SANDBOX/oldbus"; mkdir -p "$_old"
 printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; cp "$_old/cc-list" "$_old/cc-agents"; chmod +x "$_old/cc-list" "$_old/cc-agents"
-env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" 20 "$D" --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
+env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" 20 "$D" -- --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
 chk "★ 老 cc-bus ⇒ failed 且说「重新部署」" "$(jq -r '.code + " " + (.message | contains("重新部署") | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
 rm -f "$BUS/agents.tsv" "$BUS/spawned.tsv"
 

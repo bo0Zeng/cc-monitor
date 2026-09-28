@@ -79,13 +79,13 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
         flag::CCM_VERSION,
         flag::CCM_PROBE,
         flag::CCM_SID,
+        flag::NEW, // 〔V153〕
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
-    let ccm = "/h/.cc-monitor/bin/ccm";
     let passes = |line: &[String]| {
-        crate::control::ccm::route(ccm, line) == crate::control::ccm::Entry::Ccm(line.to_vec())
+        crate::control::ccm::route(line) == crate::control::ccm::Entry::Ccm(line.to_vec())
             && matches!(parse(line), Ok(Parsed::Opts(o)) if o.passthru == line)
     };
     // ①
@@ -125,13 +125,13 @@ fn only_the_right_of_the_last_end_is_ccm_and_nothing_is_intercepted_without_it()
     for b in &backend {
         assert!(!is_ccm_word(b), "后端词 {b} 也是 ccm 的词");
         assert_eq!(
-            crate::control::ccm::route(ccm, &[end(), b.clone(), "x".into()]),
+            crate::control::ccm::route(&[end(), b.clone(), "x".into()]),
             crate::control::ccm::Entry::Backend(vec![b.clone(), "x".into()]),
             "`ccm -- {b}` 没进后端"
         );
         let mixed = vec!["-p".to_string(), end(), b.clone()];
         assert_eq!(
-            crate::control::ccm::route(ccm, &mixed),
+            crate::control::ccm::route(&mixed),
             crate::control::ccm::Entry::Ccm(mixed.clone())
         );
         assert!(parse(&mixed).is_err(), "`ccm -p -- {b}` 没报错");

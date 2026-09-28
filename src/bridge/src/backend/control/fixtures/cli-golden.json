@@ -40,7 +40,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --base"
+      "out": "ccm -- new --base"
     },
     {
       "name": "new + 具名账号",
@@ -81,7 +81,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --account z"
+      "out": "ccm -- new --account z"
     },
     {
       "name": "resume + tmux + 具名账号",
@@ -206,7 +206,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --ccm-sid=sid-1 --base"
+      "out": "ccm -- new --ccm-sid=sid-1 --base"
     },
     {
       "name": "自定义 launcher",
@@ -246,7 +246,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --base --launcher mycc"
+      "out": "ccm -- new --base --launcher mycc"
     },
     {
       "name": "launcher 等于默认 ⇒ 不吐 --launcher",
@@ -286,7 +286,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --base"
+      "out": "ccm -- new --base"
     },
     {
       "name": "attach（分支在维度循环之前 return）",
@@ -369,7 +369,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --base --cwd '/home/用户/带 空格'"
+      "out": "ccm -- new --base --cwd '/home/用户/带 空格'"
     },
     {
       "name": "未装 ccm",
@@ -745,7 +745,7 @@
         "defaultLauncher": "claude"
       },
       "ok": true,
-      "out": "ccm -- --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
+      "out": "ccm -- new --ccm-tmux=cc-proj --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
     },
     {
       "name": "print-parity:attach",

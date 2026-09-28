@@ -225,7 +225,7 @@ def main() -> int:
         "CCM_AGENT_UPSTREAM_CLAUDE_CODE": f"http://127.0.0.1:{up_port}",
         "CCM_APIKEY_CREDENTIALS": str(creds),
     }
-    be = subprocess.Popen([str(BACKEND), "--tail-only"], env=env, stdin=subprocess.PIPE,
+    be = subprocess.Popen([str(BACKEND), "--", "--tail-only"], env=env, stdin=subprocess.PIPE,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     frames: list[dict] = []
     listening = threading.Event()

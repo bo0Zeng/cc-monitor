@@ -58,7 +58,7 @@ def dial(bin_path, req, stdin=b"", env_extra=None, env_drop=()):
         env.pop(k, None)
     env.update(env_extra or {})
     env["CCM_DIAL_REQUEST"] = json.dumps(req)
-    r = subprocess.run([bin_path, "--dial"], input=stdin, capture_output=True, env=env, timeout=30)
+    r = subprocess.run([bin_path, "--", "--dial"], input=stdin, capture_output=True, env=env, timeout=30)
     return r.returncode, [ln for ln in r.stdout.decode("utf-8", "replace").split("\n") if ln]
 
 
@@ -131,7 +131,7 @@ def main():
         print("④ stream")
         # 界面的写半边一直开着（真实用法：一次性查询从不关它），只看下行
         env = {**os.environ, "CCM_DIAL_REQUEST": json.dumps({**base, "host_key_fingerprint": fp, "command": "echo hello; echo world"})}
-        pr = subprocess.Popen([bin_path, "--dial"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        pr = subprocess.Popen([bin_path, "--", "--dial"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
         out = [ln for ln in pr.stdout.read().decode().split("\n") if ln]
         rc = pr.wait(timeout=10)
         pr.stdin.close()
@@ -174,7 +174,7 @@ def main():
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         time.sleep(0.5)
         env = {**os.environ, "CCM_DIAL_REQUEST": json.dumps({**base, "use": "forward", "forward": {"local_port": lp, "remote_host": "127.0.0.1", "remote_port": web}})}
-        fw = subprocess.Popen([bin_path, "--dial"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        fw = subprocess.Popen([bin_path, "--", "--dial"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
         first = json.loads(fw.stdout.readline())
         codes = [urllib.request.urlopen(f"http://127.0.0.1:{lp}/sshd_config", timeout=5).status for _ in range(2)]
         fw.stdin.close()

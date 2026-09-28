@@ -490,10 +490,12 @@ pub fn render_ccm_invocation(
                     value: format!("{sid:?}"),
                 });
             }
-            // V138：`--resume <sid>` 是 claude 的旗标，ccm 原样交过去；起新会话不再写 `new`。
+            // V138：`--resume <sid>` 是 claude 的旗标，ccm 原样交过去。
             tokens.push("--resume".into());
             tokens.push(sid.to_string());
         }
+        // 〔V153 · 用户 09-27〕起新会话是 ccm 自己的位置词 `new`，写在 `--` 右边第一个（`ccm -- new …`）。
+        Action::New => ours.push("new".into()),
         _ => {}
     }
     // 〔DUP1 · §47 ①〕身份标记同一条 sid 规则（`--ccm-sid=` 由下面的 identity 维度吐）。
