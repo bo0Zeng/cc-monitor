@@ -11920,16 +11920,6 @@
       "zh": "上传",
       "args": []
     },
-    "rsFilewinEntry.ask.unreadable": {
-      "kind": "error",
-      "zh": "后端的回答读不懂：{e}",
-      "args": ["e"]
-    },
-    "rsFilewinEntry.ask.badArgs": {
-      "kind": "error",
-      "zh": "请求的参数拼不出来：{e}",
-      "args": ["e"]
-    },
     "rsFilewinEntry.open.failed": {
       "kind": "error",
       "zh": "文件窗口没起来：{why}",
@@ -19184,6 +19174,31 @@
       "kind": "body",
       "zh": "{config} 已在，没覆盖。",
       "args": ["config"]
+    },
+    "rsFilewinProc.spawn.noStdout": {
+      "kind": "error",
+      "zh": "文件窗口进程起来了，但收不到它的回话（程序内部出错）",
+      "args": []
+    },
+    "rsFilewinProc.ready.readFailed": {
+      "kind": "error",
+      "zh": "收不到文件窗口的回话：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.ready.unreadable": {
+      "kind": "error",
+      "zh": "文件窗口回的话读不懂（两端版本对不上）：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.seed.readFailed": {
+      "kind": "error",
+      "zh": "启动参数读不到：{e}",
+      "args": ["e"]
+    },
+    "rsFilewinProc.child.noRuntime": {
+      "kind": "error",
+      "zh": "文件窗口起不来（程序内部出错）：{e}",
+      "args": ["e"]
     }
   }
 }

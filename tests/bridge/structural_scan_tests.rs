@@ -4734,6 +4734,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/account-prefs.ts", 1),
         // 〔E2 · V28〕`backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
         ("src/bridge/src/acct_iso_deploy.rs", 3), // 〔MIG-3a〕+1：acct-iso 两问的判读随命令进后端 // 〔MIG-3a · 09-28 裁 2〕2 → 3：exec_collect · sq 随跑安装脚本退役
+        ("src/bridge/src/filewin/entry.rs", 2), // 〔MIG-3a · 09-28 裁 3〕新贴：开窗前那两问进窗口进程，monitor 侧三个函数退役
         ("src/bridge/src/quote_singleton_guard.rs", 1), // 〔MIG-3a · 09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
         ("src/bridge/src/ccm_legacy.rs", 2),
         ("tests/bridge/ccm_legacy_tests.rs", 1),
