@@ -171,15 +171,11 @@ const SENDERS: &[(&str, Verdict)] = &[
     // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
     //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
     ("footprint_remote.rs", Verdict::UsesRouter),
-    // ★ 〔AS1 · 第四波 4B〕MCP 推 / 拉：请**要被写的那一台**的后端判（`mcp-sync-plan`），经 `mcp_sync.rs::BackendJudge::plan`
-    //   这一口；读 / 写那两跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由逐字同上几条。
-    ("mcp_sync.rs", Verdict::UsesRouter),
+    // 〔MIG-3a〕`mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
     // ★ 〔AS2 · 第四波 4B〕资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
-    // ★ 〔AS2〕skill「装到这台」：来源那台 `skill-read` · 被写那台 `skill-install-plan`，经 `skill_install.rs::BackendAsk::ask`
-    //   这一口；写那一跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由同 `mcp_sync.rs` 那一条。
-    ("skill_install.rs", Verdict::UsesRouter),
+    // 〔MIG-3a〕skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
     // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
     //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机

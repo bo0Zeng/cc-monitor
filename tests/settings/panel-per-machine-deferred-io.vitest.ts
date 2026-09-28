@@ -87,10 +87,9 @@ const LOCAL_PAGE_IPC = [
   //   与下面插件那一条同名，不另起一行。
   // 〔AL1c · 4B〕这里原来还有终端集成那两发（终端集成的状态那一发〔AL1d：今天并进 `aliases_read`〕/ `cc_get_auto_launch`）：那块并进了「别名」
   // （一个 `<details>`，**第一次展开**才建它、才发那两发）⇒ 子页可见时不再发，往后又延了一层。
-  "read_mcp_servers", // MCP（本机）
-  "list_mcp_project_dirs", // MCP 的项目候选
+  // 〔MIG-3a〕MCP（本机）那两发改走通道（`mcp-read` 发给 `<local>`：列表一发 ＋ 项目候选一发）—— 本表按集合比，与插件那一条同名。
   "chan_call", // 插件（〔C4b〕经通道说 `plugins-marketplaces`，包装层那一条 `chan_call`）
-  "assets_sync", // 〔AS2〕资产目录：先让本机后端对这台做一趟同步（本机页 = 对它够得到的每一台），再经通道问 `assets-catalog`（`chan_call`，同上一行）
+  // 〔AS2〕资产目录：先让本机后端对这台做一趟同步（〔MIG-3a〕同步那一问也走通道 `assets-sync` 问 `<local>`），再经通道问 `assets-catalog` —— 都是 `chan_call`，同上一行。
   "list_remote_mcp_origins", // cc-bus 钩子：认得哪些远端
   "diagnose_local_cc_bus_hooks", // cc-bus 钩子：本机诊断
 ] as const;
@@ -103,13 +102,13 @@ const LOCAL_PAGE_IPC = [
  *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
 const SWITCH_TO_AYA_IPC: readonly string[] = [
-  "list_mcp_project_dirs",
-  "read_remote_mcp_servers",
+  "chan_call", // 〔MIG-3a〕MCP：devbox 的项目候选（经通道说 `mcp-read`）
+  "chan_call", // 〔MIG-3a〕MCP：devbox 的 user scope（同上一问，列表那一发）
   // 〔RM1b · 第四波〕插件那块也跟着机器走了（`plugins-marketplaces` 按 origin 问那台后端）。
   // 〔C4b〕它经通道问 ⇒ 录音机录到的是包装层那一条 `chan_call`。
   "chan_call",
   // 〔AS2〕资产目录也跟着机器走：切到 devbox 由它自己的订阅重读（先 `assets_sync` 对 devbox 做一趟，再经通道问 devbox 的目录）。
-  "assets_sync",
+  "chan_call", // 〔AS2〕资产目录：先对 devbox 做一趟同步（〔MIG-3a〕经通道问本机后端 `assets-sync`，只报 origin）
   "chan_call", // 〔AS2〕资产目录：经通道问 devbox 的目录（与插件那一发同名，带重数比）
   "chan_call", // 〔SU1〕资产目录：再经通道问 devbox 记着的「从别处装来的 skill」（`skill-installs`，目录读没读成都问）
   "config_surface_report",
@@ -127,10 +126,10 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "drift_ledger_report", // 未识别的数据：〔ST3〕按 devbox 去问
   "load_config", // 账号：读远端清单
   "chan_call", // 账号：devbox 那一台（〔C4c〕经通道说 `accounts-list`）
-  "list_mcp_project_dirs", // MCP：devbox 的项目候选
-  "read_remote_mcp_servers", // MCP：devbox 的 user scope
+  "chan_call", // MCP：devbox 的项目候选（〔MIG-3a〕经通道说 `mcp-read`）
+  "chan_call", // MCP：devbox 的 user scope（同上）
   "chan_call", // 插件：〔C4b〕经通道说 `plugins-marketplaces`
-  "assets_sync", // 〔AS2〕资产目录：对 devbox 做一趟同步
+  "chan_call", // 〔AS2〕资产目录：对 devbox 做一趟同步（〔MIG-3a〕经通道问本机后端 `assets-sync`）
   "chan_call", // 〔AS2〕资产目录：经通道问 devbox 的目录（与插件那一发同名，带重数比）
   "chan_call", // 〔SU1〕资产目录：再经通道问 devbox 记着的「从别处装来的 skill」（`skill-installs`）
   "list_remote_mcp_origins",

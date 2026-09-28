@@ -115,7 +115,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件份数被钉住（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(30); // 〔SH1 · 4D〕−1（monitor `backend/control/cc_bus.rs` 不再派生：驾驶舱读面的四个类型随两条读命令删了）// 〔合并 LOC1b × 主线 290d8c33〕主线 32 ＋ LOC1b −1（`search.rs` 删了）⇒ 31 // 〔CFG1 · 4D〕+1（`config.rs`：`ConfigEdit` —— config.json 按键补丁的线上形状，整份替换的 `save_config` 删了 〔散文墓碑〕） // 〔合并 C4d × 主线 cf3277f4〕主线 33 ＋ 本路 -2 ⇒ 31 // 〔C4d · 第四波 4B〕子步 6 −1（`remote_history.rs` 不再派生：`RemoteProjectsResult` 随远端项目清单那条命令删了；`history.rs` 仍派生 `BranchResult`，照旧在列） // 〔C4d · 第四波 4B〕子步 3 −1（`accounts.rs` 整份删了：`AuthKind` / `RemoteAccount` 两个生成物没了产出者、同拍出列，形状手写在 `src/accounts.ts`） // 〔合并 CF2 × 主线 28a5f652〕主线 32 ＋ 本路 `session_skeleton.rs` ＋1（`SessionLinesPage`）⇒ 33 // 〔合并 AS2 × RM1f〕主线 31 ＋ AS2 +2 ＋ RM1f −1 ⇒ 32（跑出来核过） // 〔AS2〕+1（`skill_install.rs`：skill「装到这台」的六个形状） // 〔合并 AS2〕主线 31 ＋ AS2 +1（`asset_sync.rs`：`AssetsSynced` / `AssetsSyncRow` / `AssetsReach`） // 〔合并 AL1d × AS1〕主线 31 ＋ AL1d -1 ＋ AS1 +1 ⇒ 31（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **〔AL1d · 4B〕`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 d07c6d14 按两边增量相加 31 − 1）； // **〔C4b · 第四波 4B〕`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **〔C4b · 第四波 4B〕`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **〔AL1c · 4B〕`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(26); // 〔MIG-3a〕28 → 26（`skill_install.rs` 整份删了、`asset_sync.rs` 不再派生：skill 装卸与同步那一问进了后端 / 走通道，十个生成物同拍出列，形状手写在 `src/skill-install-reads.ts` · `src/assets-sync-reads.ts`）// 〔MIG-3a〕−2（`mcp.rs` · `mcp_sync.rs` 整份删了：MCP 读写与推拉进了那台后端，五个生成物同拍出列，形状手写在 `src/mcp-reads.ts` · `src/mcp-sync-reads.ts`，解码器严格收）// 〔SH1 · 4D〕−1（monitor `backend/control/cc_bus.rs` 不再派生：驾驶舱读面的四个类型随两条读命令删了）// 〔合并 LOC1b × 主线 290d8c33〕主线 32 ＋ LOC1b −1（`search.rs` 删了）⇒ 31 // 〔CFG1 · 4D〕+1（`config.rs`：`ConfigEdit` —— config.json 按键补丁的线上形状，整份替换的 `save_config` 删了 〔散文墓碑〕） // 〔合并 C4d × 主线 cf3277f4〕主线 33 ＋ 本路 -2 ⇒ 31 // 〔C4d · 第四波 4B〕子步 6 −1（`remote_history.rs` 不再派生：`RemoteProjectsResult` 随远端项目清单那条命令删了；`history.rs` 仍派生 `BranchResult`，照旧在列） // 〔C4d · 第四波 4B〕子步 3 −1（`accounts.rs` 整份删了：`AuthKind` / `RemoteAccount` 两个生成物没了产出者、同拍出列，形状手写在 `src/accounts.ts`） // 〔合并 CF2 × 主线 28a5f652〕主线 32 ＋ 本路 `session_skeleton.rs` ＋1（`SessionLinesPage`）⇒ 33 // 〔合并 AS2 × RM1f〕主线 31 ＋ AS2 +2 ＋ RM1f −1 ⇒ 32（跑出来核过） // 〔AS2〕+1（`skill_install.rs`：skill「装到这台」的六个形状） // 〔合并 AS2〕主线 31 ＋ AS2 +1（`asset_sync.rs`：`AssetsSynced` / `AssetsSyncRow` / `AssetsReach`） // 〔合并 AL1d × AS1〕主线 31 ＋ AL1d -1 ＋ AS1 +1 ⇒ 31（跑出来核过；AS1：mcp_sync_preview / mcp_sync_apply，Both，新能力 `mcp.sync`） // **〔AL1d · 4B〕`lib.rs` −1**（「终端集成」五条命令退役，`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 随之删了，`lib.rs` 从此不派生 TS 类型；合并主线 d07c6d14 按两边增量相加 31 − 1）； // **〔C4b · 第四波 4B〕`plugins.rs` 删了 −1（`MarketplaceSurvey` / `MarketplaceEntry` 两个生成物同拍出列，形状改住 `settings/plugins-section.ts`）** // **〔C4b · 第四波 4B〕`session_find.rs` / `session_outline.rs` 删了 −2、`session_skeleton.rs` 不再派生（`SessionIndexResult` 随骨架索引那条命令删了）−1** // **〔AL1c · 4B〕`shell_dialect.rs` +1**（`Shell`：别名三条命令的方言入参）； **〔SE2〕`session_find.rs` +1**（`FindResult` / `FindHit`）； **〔第四波 S4〕`sftp_pool.rs` −1**（`TransferProgress` 随池子最后那条命令删了，那份文件从此不派生任何 TS 类型）； **〔C2〕`ssh_link.rs` +1**（`ConnectStage` 从 `ssh_source.rs` 搬过去；`ssh_source.rs` 自己还派生别的几个，照旧在列）； **〔SE1〕`session_outline.rs` +1**（`UserInputsResult` / `UserInputEntry`）； **〔`设计/10` 骨架 · 子步 3〕`session_skeleton.rs` +1**（`SessionIndexResult`）； **〔步 12 · 09-20〕`origin.rs` +1**（`Origin` —— 「这一趟问的是哪台机器」的唯一类型；生成物 `Origin.ts` ＝ `null | string`，与今天 TS 侧逐字等价 ⇒ 零协议变更）；**`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -143,9 +143,6 @@ describe("C01 边界生成物", () => {
       "AliasRender.ts",
       "ApiMessage.ts", //             C04c
       // 〔AS2 · 第四波 4B〕资产目录同步的应答（`assets_sync`）：每一趟的结局 ＋ 可达表。
-      "AssetsReach.ts",
-      "AssetsSyncRow.ts",
-      "AssetsSynced.ts",
       // K-A1：账号的**鉴权方式**（`subscription` | `api-key`）。
       // 加它之前 `RemoteAccount` 压根没有 ts_rs derive，两侧靠一行注释对齐 ⇒
       // 往一侧加字段没有任何门禁会红。
@@ -192,11 +189,6 @@ describe("C01 边界生成物", () => {
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
       // P8a：marketplace 只读枚举的两个载荷（`declared_plugins` 刻意是可空的
       // ——`null` 是「读不到」，`0` 是「真的一个都没声明」，两者不许合并）。
-      "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
-      "McpSyncApplied.ts", // 〔AS1〕MCP 推 / 拉：写的结果
-      "McpSyncPreview.ts", // 〔AS1〕MCP 推 / 拉：看差异（两份原文原样带回，写时当 CAS 期望送回去）
-      "McpSyncRow.ts", // 〔AS1〕MCP 推 / 拉：差异表一行（态 / 可疑项由后端判，值原样）
-      "McpSyncSuspect.ts", // 〔AS1〕MCP 推 / 拉：一条可疑项
       "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/bridge/src/origin.rs` 头注）
       "OriginSessionsListedPayload.ts", // 〔U4b〕某台机器的活会话清单报完了（`origin-sessions-listed`）
       // 〔RM1f〕`PanoramaStatus.ts` 出列：它的 Rust 源（monitor `panorama.rs`）随内嵌引擎删了；
@@ -226,13 +218,6 @@ describe("C01 边界生成物", () => {
       "SessionUnseenPayload.ts", //   〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（`session-unseen`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
-      "SkillFile.ts", // 〔AS2〕skill「装到这台」的形状
-      "SkillInstallApplied.ts", // 〔AS2〕skill「装到这台」的形状
-      "SkillInstallPreview.ts", // 〔AS2〕skill「装到这台」的形状
-      "SkillInstallRow.ts", // 〔AS2〕skill「装到这台」的形状
-      "SkillInstallSuspect.ts", // 〔AS2〕skill「装到这台」的形状
-      "SkillTargetText.ts", // 〔AS2〕skill「装到这台」的形状
-      "SkillUninstallApplied.ts", // 〔SU1 · 第四波 4C〕skill 卸的结果（删了哪几个 ＋ 记录没摘成的原因）
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
       "StartupFile.ts", //            〔AL1d · 4B〕启动文件候选（别名文件那一行 ＋ 别名块共用一份，原 `AccountAliasRc.ts`）
@@ -466,7 +451,7 @@ describe("C01 边界生成物", () => {
     //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
     //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
     //    人群小了是因为被盖的对象少了，策略本身一个字没松。
-    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(14); // 〔RENDER2〕+1（`JsonlLinePayload.skipped_from`：行号） // 〔合并 TAP × 主线 06b5dc08〕主线 11 ＋ TAP ＋2（`SessionTapPayload.resp` / `.n`）⇒ 13 // 〔LOC1b · 第四波 4D〕−3（`Hit.ts_ms` · `SessionHits.updated_at` · `SearchIndexStatus.built_at_ms`：`search.rs` 删了；跑出来核过） // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(13); // 〔MIG-3a〕−1（`AssetsSyncRow.pushed` 随那个形状删了）// 〔RENDER2〕+1（`JsonlLinePayload.skipped_from`：行号） // 〔合并 TAP × 主线 06b5dc08〕主线 11 ＋ TAP ＋2（`SessionTapPayload.resp` / `.n`）⇒ 13 // 〔LOC1b · 第四波 4D〕−3（`Hit.ts_ms` · `SessionHits.updated_at` · `SearchIndexStatus.built_at_ms`：`search.rs` 删了；跑出来核过） // 〔合并 C4d × 主线 cf3277f4〕主线 18 ＋ 本路 -4 ⇒ 14 // 〔C4d · 第四波 4B〕−4（`HistoryProject.last_activity` · `HistorySessionEntry.started_at` / `.updated_at` · `EntryMetadata.updated_at`：随那三个形状删了） // 〔合并 CF2 × 主线 28a5f652〕主线 16 ＋ 本路 ＋2（`SessionLinesPage.from` / `.next`）⇒ 18 // 〔合并 AS2 × RM1f〕主线 16 ＋ AS2 +1 ＋ RM1f −1 ⇒ 16（跑出来核过） // 〔合并 AS2〕主线 16 ＋ AS2 +1（`AssetsSyncRow.pushed`：推过去几台快照，量纲是「机器台数」） // 〔AL1d · 4B〕−1（`ProfileScan.size_bytes` 随那个类型删了；合并主线 d07c6d14 按两边增量相加 17 − 1） // 〔C4b · 第四波 4B〕−5（`FindResult.total` · `UserInputsResult.from` / `.end` · `SessionIndexResult.from` / `.end`：随那三个回包类型删了）； // 〔SE2〕+1（`FindResult.total`：命中条数）； 〔第四波 S4〕−2（`TransferProgress.transferred` / `.total` 随那个类型删了）； 〔F7c 收尾 09-24〕−1（`SftpEntry.size` 随那个类型删了）； 〔SE1〕+2（`UserInputsResult.from` / `.end`：字节偏移）； 〔`设计/10` 骨架 · 子步 3〕+2（`SessionIndexResult.from` / `.end`：字节偏移）
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {

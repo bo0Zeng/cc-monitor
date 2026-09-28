@@ -3,8 +3,7 @@
 //! 守的要求（住址）：用户裁决 **V113** 逐字「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
 //! `设计/01 §1.1`（一切判定都在后端）· `§3.5`（观测方沿它本来就拥有的那条连接去拉 —— 拉的是本机常驻后端，不是 monitor）。
 //!
-//! 买到：远端那一页交的是「拨号请求（`capture`）＋ 那台后端路径 ＋ origin」、本机那一页什么都不交；
-//! 发的字段 ⊆ 后端登记的那一条（跨半边，读后端源码）；应答缺格就报错不猜；monitor 这一侧零合并规则。
+//! 买到：握手那一刻交的是「拨号请求（`capture`）＋ origin」；发的字段 ⊆ 后端登记的那一条（跨半边，读后端源码）；monitor 这一侧零合并规则。
 //! 买不到：🔴 真远端 / 真本机后端（本机后端那一跳是替身）；连上那一刻的钩子只验「不认就不碰」这一半。
 
 use super::*;
@@ -51,23 +50,16 @@ fn good_reply() -> Value {
 }
 
 #[tokio::test]
-async fn a_remote_page_hands_over_how_to_reach_it_and_the_local_page_hands_over_nothing() {
+async fn the_handshake_hands_over_how_to_reach_that_machine() {
     let rec = Recorder {
         sent: Mutex::new(vec![]),
         reply: good_reply(),
     };
-    let got = sync_with(Some(&cfg()), &rec).await.expect("远端那一页");
-    assert_eq!(got.synced[0].peer.as_deref(), Some("4c"));
-    assert_eq!(
-        got.reach,
-        vec![AssetsReach {
-            origin: "dev".into(),
-            machine: Some("4c".into())
-        }]
-    );
-    sync_with(None, &rec).await.expect("本机那一页");
+    // 〔MIG-3a〕应答原样交回（monitor 不解释它，界面那一问经通道直问、`src/assets-sync-reads.ts` 按形状收）。
+    let got = sync_with(&cfg(), &rec).await.expect("握手那一刻");
+    assert_eq!(got, good_reply());
     let sent = rec.sent.lock().unwrap().clone();
-    assert_eq!(sent.len(), 2);
+    assert_eq!(sent.len(), 1);
     assert_eq!(sent[0]["origin"], json!("dev"));
     // 〔E2〕那台后端的路径不交（落点是固定常量）。
     assert_eq!(sent[0].get("backend"), None);
@@ -78,42 +70,9 @@ async fn a_remote_page_hands_over_how_to_reach_it_and_the_local_page_hands_over_
         json!("/home/me/.ssh/id_ed25519"),
         "只交路径"
     );
-    assert_eq!(
-        sent[1],
-        json!({}),
-        "本机那一页什么都不交（后端对可达表里每台各一趟）"
-    );
 }
 
-#[test]
-fn a_reply_that_breaks_the_contract_is_an_error_not_a_guess() {
-    assert!(parse_reply(&good_reply()).is_ok());
-    for (path, bad) in [
-        ("synced", Value::Null),
-        ("reach", json!({})),
-        ("synced.0.changed", Value::Null),
-        ("synced.0.pushed", json!("1")),
-        ("synced.0.origin", json!(3)),
-        ("synced.0.error", json!(false)),
-        ("reach.0.machine", json!(7)),
-        ("self", json!(1)),
-    ] {
-        let mut v = good_reply();
-        let mut at = &mut v;
-        let parts: Vec<&str> = path.split('.').collect();
-        for (i, p) in parts.iter().enumerate() {
-            if i + 1 == parts.len() {
-                at[*p] = bad.clone();
-                break;
-            }
-            at = match p.parse::<usize>() {
-                Ok(n) => &mut at[n],
-                Err(_) => &mut at[*p],
-            };
-        }
-        assert!(parse_reply(&v).is_err(), "坏了 `{path}` 仍被收下：{v}");
-    }
-}
+// 〔MIG-3a〕「应答缺格就报错不猜」那一条随 `parse_reply`〔散文墓碑〕挪到界面：`tests/assets-sync-reads.vitest.ts`（金样 ＋ 逐格坏样）。
 
 /// 跨半边：本侧发的命令名与字段 ⊆ 后端 `REGISTRY` 那一条声明的 `fields`，读的两格也在里面；远端要认的那条命令真在后端命令表里。
 #[test]

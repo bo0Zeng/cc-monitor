@@ -337,6 +337,9 @@ const SCAN: &[&str] = &[
     "tests/bridge/ccm_cli_contract_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
     "tests/bridge/claude_data_fence_tests.rs",
+    "tests/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
+    "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
+    "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
     "tests/bridge/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
@@ -573,7 +576,10 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
-    "tests/backend/mcp_sync_tests.rs", // 〔AS1〕
+    "tests/backend/mcp_sync_tests.rs",             // 〔AS1〕
+    "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
+    "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
+    "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
     "tests/backend/observe/accounts_query_tests.rs",
     "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
@@ -637,9 +643,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/local_backend_host_tests.rs",
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
-    "tests/bridge/mcp_sync_tests.rs",      // 〔AS1〕
-    "tests/bridge/skill_install_tests.rs", // 〔AS2〕
-    "tests/bridge/mcp_tests.rs",
+    // 〔AS2〕
     // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
     "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_call_tests.rs",

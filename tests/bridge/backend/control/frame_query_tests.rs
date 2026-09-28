@@ -323,7 +323,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "skill-uninstall-plan",
         "卸之前看：逐文件的态与「要不要问」都是那台后端答的成品，界面 `settings/assets-section.ts::decodeUninstallPlan` 按形状收。\
-         ⚠ monitor 自己**另有**一处问它（带 `take` 的那一问，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+         〔MIG-3a〕带 `take` 的那一问随卸进了后端（`skill-uninstall-apply` 自己判），monitor 零处问它",
     ),
     // 〔C4e · 第四波 4C〕`C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏。
     (
@@ -394,6 +394,55 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：后端转调只读的 `cc-log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
          界面 `cc-bus-control.ts::decodeInbox` 按形状收",
     ),
+    // 〔MIG-3a · `99 §2.1 ⑬`〕D 组 MCP：读写与推拉的计算、读、写都进了那台后端（`assets/mcp_edit.rs` · `assets/mcp_sync_flow.rs`），
+    //   monitor 那八条 Tauri 命令（`mcp.rs` · `mcp_sync.rs`〔散文墓碑〕）删了；界面经 `src/mcp-reads.ts` / `src/mcp-sync-reads.ts` 按形状收。
+    (
+        "mcp-read",
+        "MCP 三段 ＋ 用过的项目目录：后端从来就出成品，monitor 那几条命令（`read_mcp_servers` 等）只在核形状 ＋ 转 —— \
+         核验搬到 `mcp-reads.ts::decodeMcpRead`（金样 `mcp-read.golden.json`）",
+    ),
+    (
+        "mcp-server-put",
+        "新帧命令：项目 `.mcp.json` 增 / 改一条，那台后端自己读 · 规划 · 经自己的文件管理面写；成品 `{path, changed}`",
+    ),
+    (
+        "mcp-server-remove",
+        "新帧命令：删一条，同上",
+    ),
+    (
+        "mcp-sync-source",
+        "新帧命令：推 / 拉的来源那份原文 `{path, text}`（界面原样递给要被写的那一台）",
+    ),
+    (
+        "mcp-sync-preview",
+        "新帧命令：被写那台读自己那份、判差异与可疑项（判定原样是 `mcp-sync-plan`），成品带两份原文 ＋ 逐行两边的值",
+    ),
+    (
+        "mcp-sync-apply",
+        "新帧命令：被写那台把勾的那几条原样合进去（CAS 期望 = 看差异时那份，`stale` 就停）",
+    ),
+    // 〔MIG-3a〕D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
+    (
+        "assets-sync",
+        "界面直问本机常驻后端（远端那一页只报 `origin`，够到那台用握手时 `remote-reach` 登记的那一行）；成品 `{self, synced, reach}`，\
+         `assets-sync-reads.ts::decodeAssetsSynced` 按形状收",
+    ),
+    (
+        "skill-read",
+        "来源那台的 skill 原文：从前 monitor 转、今天界面直问，原样递给被写那台（`skill-install-reads.ts`）",
+    ),
+    (
+        "skill-install-plan",
+        "被写那台看差异（逐文件四态 ＋ 可疑项 ＋ 这台那几份原文）：从前 monitor 转、今天界面直问",
+    ),
+    (
+        "skill-install-apply",
+        "新帧命令：被写那台判 · 写 · 记同一台（`assets/skill_flow.rs`），`stale` 就停并说清前面写了哪几个",
+    ),
+    (
+        "skill-uninstall-apply",
+        "新帧命令：被卸那台判 · 删 · 摘记录 · 收空目录同一台，`stale` 就停并说清前面删了哪几个",
+    ),
 ];
 
 /// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
@@ -423,11 +472,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     ),
     // 〔HX2 · 第四波 4D〕`apikey-read` 那一行退役：写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂删了。
     (
-        "skill-uninstall-plan",
+        "assets-sync",
         1,
-        "〔SU1〕卸那一趟真要删之前，带 `take` / `confirm` 再问一次「真要删哪几个」（`skill_install.rs::uninstall_with`）：\
-         它的 `delete` / `forget` 是 monitor 自己编排删与摘记录要的，不给界面（同装那一侧 `skill-install-plan` 带 `take` 那一问）",
+        "〔MIG-3a〕流握手那一刻（`asset_sync.rs::on_remote_ready`）交「怎么够到那台」并顺手同步一趟 —— 宿主交事实，\
+         应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
+    // 〔MIG-3a〕`skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     (
         "tasks-list",
         1,
@@ -1121,13 +1171,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
     ),
-    // 〔SH1 · V137〕MCP 列表问那台后端（本机远端同一条 `mcp-read`，一问）。
-    (
-        "mcp.rs",
-        "mcp_on",
-        1,
-        "MCP 列表问那台后端（`mcp-read`，一问；值 `MCP_READ_BUDGET` 30 s —— 读一份 `.claude.json`，重度用户可数 MB）",
-    ),
+    // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/mcp-reads.ts`），期限在那边造。
     // 〔SH1〕列远端 tmux 会话问那台后端（`tmux-list`，一问）。
     (
         "backend/control/tmux.rs",
