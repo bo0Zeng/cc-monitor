@@ -76,13 +76,8 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
             }
             Ok(v)
         }
-        // 〔SH1〕列这台的 tmux 会话（monitor `list_remote_tmux` 那条拨号 shell 退役）：同 watcher 那一趟 `tmux ls`，
-        //   回原样行（格式串与 monitor 对拍焊住，解析仍是那一份 `parse_tmux_ls`）。
-        "tmux-list" => {
-            let (installed, lines) =
-                crate::observe::watcher::list_for_query().map_err(|m| ("unobservable", m))?;
-            capped(json!({ "installed": installed, "lines": lines }))
-        }
+        // 〔SH1〕列这台的 tmux 会话：同 watcher 那一趟 `tmux ls`。〔MIG-1 续 · ⑬〕出成品（`observe/tmux_list.rs`，解析从 monitor 搬来）。
+        "tmux-list" => capped(crate::observe::tmux_list::answer()?),
         // 〔SH1 · V137〕MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，注册表里第一家认得 MCP 的），这里只换壳。
         "mcp-read" => {
             let dir = match args.get("projectDir") {

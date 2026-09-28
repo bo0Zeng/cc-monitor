@@ -33,7 +33,8 @@ pub(crate) mod session_ledger;
 pub(crate) mod plugins_query;
 // 〔RM1b · 第四波〕会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod tasks_query;
-// 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
+pub(crate) mod tmux_list; // 〔MIG-1 续 · ⑬〕`tmux-list` 出成品（解析从 monitor `parse_tmux_ls`〔散文墓碑〕 搬来）
+                          // 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
 pub(crate) mod turn_detect;
 pub(crate) mod user_inputs;
 pub mod watcher;

@@ -2682,7 +2682,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "classify_tmux_observation",
             1,
         ),
-        ("src/bridge/src/backend/control/tmux.rs", "tmux_raw_for", 1),
+        // 〔MIG-1 续〕`tmux.rs` 里 `tmux_raw_for` 那一行摘了：点它的那段文档随本机列会话那条命令（`list_local_tmux`）整条删了。
         ("src/bridge/src/bind.rs", "is_process_alive", 1),
         ("src/bridge/src/lib.rs", "load_with_changes", 1),
         ("src/bridge/src/spawn_managed.rs", "is_process_alive", 1),
@@ -4348,6 +4348,54 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "tmux_raw_registry",
             1,
         ), // 〔MIG-1 续〕tmux 快照帧删后这本旧账名只剩订正段
+        ("src/backend/common/tmux_utf8.rs", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/mod.rs", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/tmux_list.rs", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/watcher.rs", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/watcher.rs", "tmux_tab_underflow", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "decode_tmux_list",
+            1,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/bridge/src/backend/control/tmux.rs", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "tmux_tab_underflow",
+            1,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "src/bridge/src/cross_half_edge_registry.rs",
+            "backend_watcher_src",
+            1,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/tmux-reads.ts", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "tests/backend/observe/tmux_list_tests.rs",
+            "parse_tmux_ls",
+            1,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "tests/bridge/backend/control/inbound_client_tests.rs",
+            "capture_pane_args",
+            1,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "tests/bridge/backend/control/tmux_tests.rs",
+            "backend_watcher_src",
+            2,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "tests/bridge/backend/control/tmux_tests.rs",
+            "the_local_send_keys_never_falls_back_to_ssh",
+            1,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
+            2,
+        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("tests/tmux-reads.vitest.ts", "parse_tmux_ls", 1), // 〔MIG-1 续〕列 tmux 会话改走通道，旧命令名挂墓碑
     ];
 
     let corpus = dead_name_corpus();
@@ -4586,7 +4634,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/ssh_source_capped_line_tests.rs", 2), // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         ("tests/bridge/rust_timer_registry_tests.rs", 1), // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         ("src/bridge/src/bind.rs", 1), // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
-        ("src/backend/observe/watcher.rs", 1), // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
+        ("src/backend/observe/watcher.rs", 3), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 3 // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
         // 〔CFG1 · 4D〕config.json 写口从整份（`save_config` / `saveConfig`）换成按键补丁、`remote-config.ts` 那个整表写函数
         //   换成只出补丁的 `remoteEdit`：讲来历的散文逐处一块（配置写口的头注 · 诊断写口 · 远端保存那段 · 各判据头注），
         //   以及 KS7 那一格为什么改盯 `patch_config`。
@@ -4697,7 +4745,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 2), // 〔MIG-1〕1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
-        ("src/bridge/README.md", 15), // 〔合并 MIG-1 × 主线 862be034〕主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 〔MIG-2〕11 → 13
+        ("src/bridge/README.md", 15), // 〔MIG-1 续〕列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 〔合并 MIG-1 × 主线 862be034〕主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 〔MIG-2〕11 → 13
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
@@ -4706,7 +4754,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔MC1〕+1：`install_remote_ccm_helper` 改名。
         ("src/bridge/src/backend/control/local_backend.rs", 12), // 〔合并 MIG-1 × 主线 862be034〕主线 5 ＋ MIG-1 本路增量 ⇒ 12（盘上现打） // 〔E2 · 子步 4〕3 → 5：逐字节副本 `install_local_ccm_entry` 与带 id 的释放名 `local_extract_name` 删了，点旧名处各一块 //, // 〔E2〕2 → 3：`ccm_entry_shim` 删了，原地留一块
         ("src/backend/control/launch_render/payload.rs", 7), // 〔DUP1〕+2：模型名那一格原先「刻意宽容渲染」、TS `isValidModelName` 删了 · launcher 那道闸头注里点 TS `sanitizeRemoteLauncher` 那句（TS 那份删了） // 〔US1〕+3：上游选择那半搬走留下的墓碑 // 〔TL3 · 🔴-3〕+1：`ExportRelayBaseUrl` 头注里链到已删判断口那一句改成今天的出处，旧名留一块
-        ("src/bridge/src/backend/control/tmux.rs", 13), // 〔合并 MIG-1 × 主线 862be034〕主线 11 ＋ MIG-1 本路增量 ⇒ 13（盘上现打） // 〔SH1〕+1：跨 SSH 那条 `tmux ls` 用的旗随改问后端删了，原处留墓碑 // 〔C4e 批 2〕+2：杀会话 / 送键两条 Tauri 命令与「通道不在」那句文案迁到界面，原处各一块 // 〔C4e〕+1：抓屏整条迁到界面，发送端与 Tauri 命令原处一块
+        ("src/bridge/src/backend/control/tmux.rs", 15), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 13 → 15 // 〔合并 MIG-1 × 主线 862be034〕主线 11 ＋ MIG-1 本路增量 ⇒ 13（盘上现打） // 〔SH1〕+1：跨 SSH 那条 `tmux ls` 用的旗随改问后端删了，原处留墓碑 // 〔C4e 批 2〕+2：杀会话 / 送键两条 Tauri 命令与「通道不在」那句文案迁到界面，原处各一块 // 〔C4e〕+1：抓屏整条迁到界面，发送端与 Tauri 命令原处一块
         ("src/bridge/src/cc_bus_deploy.rs", 1),
         ("src/bridge/src/ccm_cli_contract.rs", 1),
         // 🔴〔本机侧退役 2026-09-23〕文件管理器「本机」那一侧整条退役，
@@ -4755,7 +4803,7 @@ fn every_prose_tombstone_mark_is_registered() {
             "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
             2, // 〔RST 续 · V41〕3 → 2：裸键 mode `send-keys-raw` 删了，守「它只有一个家」那条判据整条退役，它头注里点旧住址那块墓碑随之删 // 〔C4e 批 2〕+1：送键 mode 名的家从 monitor 搬到界面，点旧住址 · 〔LR2〕−2（见上）⇒ 4 +1 −2 = 3
         ),
-        ("tests/bridge/backend/control/tmux_tests.rs", 14), // 〔MIG-1〕13 → 14：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔SH1〕+1：守跨 SSH `tmux ls` 那条判据退役 // 〔C4e 批 2〕+3：本机杀会话 / 送键不许回落那两条退役 ＋ Gate 1 那条的说明点旧命令名 // 〔C4e〕+6：抓屏迁到界面，`KR112D2` 两刀 ＋ 五档那条随 monitor 那一份退役，原处与 Gate 1 那条的说明里点旧名
+        ("tests/bridge/backend/control/tmux_tests.rs", 16), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 14 → 16 // 〔MIG-1〕13 → 14：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔SH1〕+1：守跨 SSH `tmux ls` 那条判据退役 // 〔C4e 批 2〕+3：本机杀会话 / 送键不许回落那两条退役 ＋ Gate 1 那条的说明点旧命令名 // 〔C4e〕+6：抓屏迁到界面，`KR112D2` 两刀 ＋ 五档那条随 monitor 那一份退役，原处与 Gate 1 那条的说明里点旧名
         ("tests/bridge/backend_tests.rs", 1),
         ("tests/bridge/byte_cap_registry_tests.rs", 9), // 〔SH1〕+1：远端 `.claude.json` 那条上限删了；+1：钩子诊断读远端 settings.json 的上限删了；+2：驾驶舱读面那两个上限（名册 · 收件箱）随 shell 读删了 // 〔合并 LOC1b〕+1：F10b 那段病史点的远端读会话函数删了 // 〔C4e 批 3b〕+1：`K-R112` 地板那段点的查在线命令迁到界面 // 〔C4e〕+1：`K-R112` 地板那段点的抓屏命令迁到界面 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/hooks_diag.rs", 1), // 〔SH1〕新贴：远端诊断那条拨号 shell 改问那台后端，原处留墓碑
@@ -4782,7 +4830,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
         ("src/bridge/src/asset_sync.rs", 2), // 〔MIG-3a〕+2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
         ("tests/bridge/asset_sync_tests.rs", 1), // 〔MIG-3a〕+1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
-        ("tests/bridge/parity_ledger_tests.rs", 51), // 〔合并 MIG-1 × 主线 862be034〕主线 49 ＋ MIG-1 本路增量 ⇒ 51（盘上现打） // 〔MIG-3a〕+1：`assets_sync` 那一条理由随命令摘掉 // // 〔MIG-3a〕+1：理由表摘掉 MCP 三条处一块 // // 〔SH1〕+2：acct-iso 两对合一处点的旧名 // 〔合并 HX2 × 主线 290d8c33〕主线 39 ＋ HX2 +1（写 key 那条命令退役） // 〔合并 LOC1a × 主线 1c2c4c97〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 cf3277f4〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 28a5f652〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔MIG-2〕44 → 49
+        ("tests/bridge/parity_ledger_tests.rs", 49), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 51 → 49 // 〔合并 MIG-1 × 主线 862be034〕主线 49 ＋ MIG-1 本路增量 ⇒ 51（盘上现打） // 〔MIG-3a〕+1：`assets_sync` 那一条理由随命令摘掉 // // 〔MIG-3a〕+1：理由表摘掉 MCP 三条处一块 // // 〔SH1〕+2：acct-iso 两对合一处点的旧名 // 〔合并 HX2 × 主线 290d8c33〕主线 39 ＋ HX2 +1（写 key 那条命令退役） // 〔合并 LOC1a × 主线 1c2c4c97〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 cf3277f4〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 28a5f652〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑） // 〔MIG-2〕44 → 49
         ("tests/bridge/plugin_class_registry_tests.rs", 3), // 〔RM1f〕2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("src/panorama-engine/main.rs", 1), // 〔RM1f〕monitor 那份按文件列符号的旧函数名（随内嵌引擎删了）
         ("tests/bridge/panorama_seam_registry_tests.rs", 1), // 〔RM1f〕PN1b 那一行增量账里的旧命令名（随内嵌引擎退役）
@@ -4811,7 +4859,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/session-reads.ts", 3), // 〔C4c〕+2：第四问（记录还在不在）头注点名它替掉的命令与发送端
         ("src/settings/plugins-section.ts", 1),
         ("tests/settings/plugins-section.vitest.ts", 1),
-        ("tests/test-support/chan-fake.ts", 6), // 〔MIG-2〕+1：起会话渲染那一节点六条旧命令名 // 〔C4e 批 3b〕+1：cc-bus 驾驶舱那一节点五条旧命令名 // 〔C4e〕+1：tmux 控制类那一节点四条旧命令名 // 〔C4c〕+1：账号那两问的翻译节点名三条旧命令名 ·〔C4d〕远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
+        ("tests/test-support/chan-fake.ts", 7), // 〔MIG-1 续〕列 tmux 会话改走通道，旧命令名挂墓碑 6 → 7 // 〔MIG-2〕+1：起会话渲染那一节点六条旧命令名 // 〔C4e 批 3b〕+1：cc-bus 驾驶舱那一节点五条旧命令名 // 〔C4e〕+1：tmux 控制类那一节点四条旧命令名 // 〔C4c〕+1：账号那两问的翻译节点名三条旧命令名 ·〔C4d〕远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         // 〔F7c 收尾 09-24〕SFTP 那一族收到只剩传输：删掉的命令 / 函数 / 判据名在这几份里逐处挂了墓碑。
         ("src/bridge/src/filewin/mod.rs", 2),
         ("src/bridge/src/filewin/transfer.rs", 4),
@@ -4909,7 +4957,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/accounts/iso.rs", 2), // 〔SH1〕+1：远端 shellinit 旧名
         ("src/backend/observe/tasks_query.rs", 1),
         ("src/backend/control/fork_write.rs", 1),
-        ("src/bridge/src/cross_half_edge_registry.rs", 1),
+        ("src/bridge/src/cross_half_edge_registry.rs", 2), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 1 → 2
         ("src/bridge/src/doc_claim_registry.rs", 1),
         ("src/bridge/src/tasks.rs", 3),
         ("tests/bridge/backend_layering.rs", 1),
@@ -4963,6 +5011,13 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/sync_command_registry_tests.rs", 2), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("tests/bridge/utils_tests.rs", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/bridge/src/parity_ledger.rs", 1), // 〔合并 MIG-1 × 主线 862be034〕MIG-1 那一行合并时丢了，补回
+        ("src/backend/common/tmux_utf8.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/mod.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/tmux_list.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/tmux-reads.ts", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("tests/backend/observe/tmux_list_tests.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("tests/tmux-cache-single-writer.vitest.ts", 1), // 〔MIG-1 续〕列 tmux 会话改走通道，旧命令名挂墓碑
+        ("tests/tmux-reads.vitest.ts", 1), // 〔MIG-1 续〕列 tmux 会话改走通道，旧命令名挂墓碑
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

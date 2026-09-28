@@ -1,11 +1,5 @@
-// `include_str!` 只接**字面量 token**，喂 `const` 会报 `argument must be a string literal`
-// ⇒ 用单臂宏拿到「单一落点」。原住 `src/bridge/src/backend/control/tmux.rs`，步 7b 随它唯一的消费者搬来这里；
-// 路径也跟着换成相对本文件（`16 §5.4a` 规则 1：路径不只住在字面量里，也住在宏展开里）。
-macro_rules! backend_watcher_src {
-    () => {
-        "../../../../src/backend/observe/watcher.rs"
-    };
-}
+// 〔MIG-1 续〕这里原来住着单一落点宏 `backend_watcher_src`〔散文墓碑〕（`include_str!` 读后端 `watcher.rs` 那条 `TMUX_LS_FMT` 双写点）；
+//   格式串只剩后端一个家、那条对拍随之删了 ⇒ 宏没有消费者，一起删。
 
 // 〔MIG-1〕monitor 这一侧的 tmux 观测分类（`classify_tmux_observation`〔散文墓碑〕）与它那条 `OBS_*` 双写点判据删了：
 //   收割搬进后端会话账本（`tests/backend/observe/session_ledger_tests.rs` 钉「不可观测不收割」）。
@@ -146,7 +140,7 @@ const BACKEND_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 ///   ⚠ 代价如实写下：这条边因此**不出现在** `CROSS_EDGES` 里。
 ///   PM 若要它以编译期形态登记，改法是**两处一起动、不许只动一处**：
 ///   ① 把下面那句运行期读换成编译期读（`include_str!` 配 `concat!` / `env!` 拼路径，
-///      形状照本文件已有的 `backend_watcher_src` 那个单一落点宏）；
+///      形状照本文件原有的 `backend_watcher_src`〔散文墓碑〕那个单一落点宏）；
 ///   ② 同轮在 `CROSS_EDGES` 里加一条 `monitor→backend` 的登记
 ///      （读者 `src/bridge/src/backend/control/tmux.rs` · 被读 `src/backend/common/tmux_utf8.rs` ·
 ///      理由「跨轨对拍：口径的家在对面，本侧那一份必须与它逐字相等」）。
@@ -179,13 +173,15 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
         home.len()
     );
     // 段数下溢那个谓词是同一族的第二个口径：比的是**函数体**，不是名字。
+    // 〔MIG-1 续〕本侧那一份随解析搬进后端删了 ⇒ 改钉「只剩那个家」：家里有它、本侧没有第二份。
     let body = format!("{}.count() < expected", ".split('\\t')");
-    guard_core::find_pinned(&prod, &body)
-        .unwrap_or_else(|e| panic!("本侧那个下溢谓词的体不是恰好一处：{e}"));
+    assert!(
+        !prod.contains(&body),
+        "monitor 这一侧又长出了一份下溢谓词 —— 解析住后端（`observe/tmux_list.rs`），口径只许一个家"
+    );
     assert!(
         home.contains(&body),
-        "跨仓漂移：下溢谓词的体两侧不一致（本侧是 `{body}`，backend 家里找不到）。\n\
-             口径一致本身就是要买的东西：一侧改成 `!=` 就会开始误伤合法内容。"
+        "backend 那个家里找不到下溢谓词 `{body}` —— 口径的家变了，或被改成了 `!=`（会误伤合法内容）"
     );
 
     // ── ③ backend 家里两种表示都还在 ───────────────────────────────────
@@ -224,7 +220,7 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     //   （那是**警告**，不是用法），不剥就当场误报 —— 本仓「判据数到注释」已栽过三次。
     let code = guard_core::strip_comment_lines(&prod);
     assert!(
-        code.len() > 5_000,
+        code.len() > 800, // 〔MIG-1 续〕5000 → 800：列会话那一族搬进后端，本文件生产段只剩 Gate 1 对拍锚点与转调壳（现打约 1.2k）
         "剥注释之后只剩 {} 字节 —— 剥过头了，下面那条在空转",
         code.len()
     );
@@ -244,49 +240,6 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     assert!(
         !home.contains(&format!("{}.count() != expected", ".split('\\t')")),
         "backend 家里同时存在 `!=` 那一版下溢谓词 —— 口径不一致，且 `!=` 会误伤合法内容"
-    );
-}
-
-/// ★★ **K-R12 `J1` 死值验（monitor 这一侧）：段数下溢必须被判废。**
-///
-/// 死值取自 `tests/evidence/K-R12-deathvalue.md` ①/S5：真 tmux 3.4 + POSIX 客户端，
-/// 六列塌成 1 段，连 `文档` 都按显示宽度变成了 `____`。
-///
-/// 这一条同时把 `§5.4` 点名的那条**误伤**钉成一个可见的读数：**过溢的行今天照样被丢掉**。
-/// 处置本拍**刻意没改**（理由见 [`parse_tmux_ls`] 头注），所以这里断言的是**现状**——
-/// 哪天有人去修那条误伤，本条会红，那正是它该红的时候。
-///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
-#[test]
-fn a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today() {
-    const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1";
-    const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1";
-    const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1";
-
-    assert!(
-        tmux_tab_underflow(DIRTY, TMUX_LS_FMT_FIELDS),
-        "真脏字节必须判下溢"
-    );
-    assert!(
-        !tmux_tab_underflow(CLEAN, TMUX_LS_FMT_FIELDS),
-        "干净六段不许红"
-    );
-    assert!(
-        !tmux_tab_underflow(OVERFLOW, TMUX_LS_FMT_FIELDS),
-        "过溢是合法内容 ⇒ 判据不许红（这一格就是「下溢」而不是「不等于 6」的死值）"
-    );
-
-    assert!(parse_tmux_ls(DIRTY).is_empty(), "脏行不许进结果");
-    let ok = parse_tmux_ls(CLEAN);
-    assert_eq!(ok.len(), 1, "干净行必须解析出来（正对照）");
-    assert_eq!(ok[0].name, "kr12");
-    assert_eq!(ok[0].path, "/tmp/kr12dv/文档/proj");
-    assert_eq!(ok[0].sid.as_deref(), Some("cc-deadval1"));
-    assert!(
-        parse_tmux_ls(OVERFLOW).is_empty(),
-        "⚠ 现状：过溢的行**今天照样被整行丢掉**（`f.len() != 6`）—— \
-             这是 K-R12 §5.4 点名的误伤，本拍只让它出声、没有改处置。\
-             修它的那一拍会让本条红，那是对的。"
     );
 }
 
@@ -406,7 +359,7 @@ fn every_target_placeholder_comes_from_exact_target() {
 /// （`K-R112` 删掉的那一形：`command -v tmux` 门控 ＋ 两个哨兵）。
 /// 帧命令名 `"capture-pane"` 那一格由 `frame_query_tests::the_channeled_ops_are_sent_only_through_the_channel` 管
 /// （`CHANNELED_ELSEWHERE` 那一行：monitor 生产段零字面量），本条管**shell 串那几种形态**。
-/// 正控：同一份语料上认得出今天真在的那条只读 tmux 调用（`list_remote_tmux` 的格式串常量）。
+/// 正控：同一份语料上认得出今天真在的 `tmux.rs` 那个转调壳（〔MIG-1 续〕原来认的是列会话那条的格式串常量，那一族搬进了后端）。
 #[test]
 fn the_monitor_has_no_capture_path_any_more() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -433,9 +386,10 @@ fn the_monitor_has_no_capture_path_any_more() {
              它只许住界面一处（`src/tmux-control.ts::capturePane`）"
         );
     }
+    // 〔MIG-1 续〕正控换锚：列会话那条只读调用（格式串常量）随解析搬进了后端 ⇒ 认今天真在的 Gate 1 对拍锚点。
     assert!(
-        guard_core::contains_word(&corpus, "TMUX_LS_FMT"),
-        "正控失败：同一份语料里认不出 `list_remote_tmux` 那条只读 tmux 调用 —— 上面的零命中不可信"
+        guard_core::contains_word(&corpus, "is_ccm_tmux_name"),
+        "正控失败：同一份语料里认不出 `tmux.rs` 那个 Gate 2 转调壳 —— 上面的零命中不可信"
     );
 }
 
@@ -509,109 +463,9 @@ fn tmux_targets_use_exact_match() {
     assert_eq!(checked, 2, "只核到 {checked} 处 —— 本断言在空转");
 }
 
-#[test]
-fn parse_multi_session() {
-    // 真 TAB 分隔(Rust "\t" = 0x09)。6 列,末列 @ccm_sid。
-    let out = "cc-abc12345\t/home/pi/proj\tclaude\t1\t2\tsess-42\nweb\t/srv/web\tzsh\t0\t1\t\n";
-    let s = parse_tmux_ls(out);
-    assert_eq!(s.len(), 2);
-    assert_eq!(s[0].name, "cc-abc12345");
-    assert_eq!(s[0].path, "/home/pi/proj");
-    assert_eq!(s[0].command, "claude");
-    assert!(s[0].attached);
-    assert_eq!(s[0].windows, 2);
-    // @ccm_sid 有值 → Some;空串 → None(向后兼容老会话)。
-    assert_eq!(s[0].sid.as_deref(), Some("sess-42"));
-    assert!(!s[1].attached);
-    assert_eq!(s[1].command, "zsh");
-    assert_eq!(s[1].sid, None);
-}
-
-#[test]
-fn parse_skips_malformed_and_handles_edges() {
-    // 空输出 → 空。
-    assert!(parse_tmux_ls("").is_empty());
-    assert!(parse_tmux_ls("\n\n").is_empty());
-    // 字段数不符(无 TAB / 少字段 / 旧 5 列)→ 跳过;name 空 → 跳过。
-    let out = "no tabs here\nn\t/p\tsh\t0\n\t/p\tclaude\t1\t1\told5\t/p\tclaude\t1\t2\ngood\t/home/a b\tclaude\t1\t3\t";
-    let s = parse_tmux_ls(out);
-    assert_eq!(s.len(), 1, "只有最后一行(6 列)合法");
-    assert_eq!(s[0].name, "good");
-    // 路径含空格(非 TAB)保留。
-    assert_eq!(s[0].path, "/home/a b");
-    assert_eq!(s[0].windows, 3);
-    // 末列空串 → sid None。
-    assert_eq!(s[0].sid, None);
-}
-
-#[test]
-fn parse_windows_nonnumeric_falls_back_zero() {
-    let s = parse_tmux_ls("n\t/p\tclaude\t1\tNaN\tsid-x");
-    assert_eq!(s.len(), 1);
-    assert_eq!(s[0].windows, 0);
-    assert_eq!(s[0].sid.as_deref(), Some("sid-x"));
-}
-
-#[test]
-fn parse_sid_rejects_unexpanded_format_and_garbage() {
-    // 极老 tmux 不展开 `#{@ccm_sid}` → 原样字面串(含 `#{}`)→ 当 None,否则 findClaudeTmux 的
-    // anySidKnown 恒真、老 wrapper 用户永远走不到 cwd 回退(审计建议)。
-    let s = parse_tmux_ls("n\t/p\tclaude\t1\t1\t#{@ccm_sid}");
-    assert_eq!(s.len(), 1);
-    assert_eq!(s[0].sid, None, "未展开格式串不当 sid");
-    // 合法 sid 字符集(字母数字 + - + _)照收。
-    let s2 = parse_tmux_ls("n\t/p\tclaude\t1\t1\tab_c-12");
-    assert_eq!(s2[0].sid.as_deref(), Some("ab_c-12"));
-}
-
 // 〔C4e · 第四波 4C〕这里原来住着「抓不到的五档分得开、认不出的码不许猜」（`the_five_capture_refusals_stay_apart`〔散文墓碑〕，
 //   驱动 monitor 的 `describe_capture_refusal`〔散文墓碑〕）。那一份说法随抓屏迁到界面：同一条性质住
 //   `tests/tmux-control.vitest.ts`（码集合取自跨语言金样 —— 与后端 `REGISTRY` 那一块对拍过的同一份，不是手抄）。
 
-#[test]
-fn fmt_uses_real_tab_not_literal_backslash_t() {
-    // 回归调研 03 §3.1 坑:格式串里必须是真 TAB 字节,不能是字面 \t。
-    assert!(TMUX_LS_FMT.contains('\t'), "格式串须含真 TAB");
-    assert!(!TMUX_LS_FMT.contains("\\t"), "格式串不得含字面反斜杠-t");
-}
-
-#[test]
-fn tmux_ls_fmt_double_write_point_stays_in_sync() {
-    // F08a：TMUX_LS_FMT 双写点断言（红线 I8 的机器化护栏）。monitor(本 const) 与 backend
-    // (`src/backend/observe/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
-    // `tmux ls -F` 格式串**必须逐字一致**（否则后端推的列 monitor 解错位）。编译期
-    // include_str! 读后端源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言后端源
-    // 含该带引号字面量——**双向**：改 monitor 或后端任一侧忘同步，本测即红。
-    let backend_src = include_str!(backend_watcher_src!());
-    let source_literal = TMUX_LS_FMT.replace('\t', "\\t");
-    // 锚定到 const 定义行（非裸字面量）——否则该字面量若也出现在某条注释里，会掩盖真 const 漂移
-    // （假阴性）。backend 侧常量名同为 TMUX_LS_FMT（红线 I8 不许改），故按定义行精确比对。
-    let expected_def = format!("const TMUX_LS_FMT: &str = \"{source_literal}\";");
-    assert!(
-        backend_src.contains(&expected_def),
-        "TMUX_LS_FMT 双写点漂移：backend watcher.rs 不含与 monitor 侧一致的定义 {expected_def:?}\n\
-             （改了 tmux ls 格式串就得两侧同步——红线 I8）"
-    );
-}
-
-/// 〔SH1〕`tmux-list` 成品在 monitor 这一侧严格收：恰好 `{installed, lines}`，类型不对 / 多一格 ⇒ 认不出（回错，不猜成空表）。
-#[test]
-fn the_tmux_list_product_is_read_strictly() {
-    use serde_json::json;
-    assert_eq!(
-        decode_tmux_list(&json!({ "installed": true, "lines": ["a\tb"] })),
-        Some((true, vec!["a\tb".to_string()]))
-    );
-    assert_eq!(
-        decode_tmux_list(&json!({ "installed": false, "lines": [] })),
-        Some((false, vec![]))
-    );
-    for bad in [
-        json!({ "installed": true }),
-        json!({ "installed": "yes", "lines": [] }),
-        json!({ "installed": true, "lines": [1] }),
-        json!({ "installed": true, "lines": [], "more": 1 }),
-    ] {
-        assert_eq!(decode_tmux_list(&bad), None, "{bad}");
-    }
-}
+// 〔MIG-1 续 · `99 §2.1 ⑬`〕列会话那一族的判据（解析四条 · 格式串真 TAB · `TMUX_LS_FMT` 双写点 · `tmux-list` 成品严格收 ·
+//   K-R12 `J1` 下溢死值）随解析搬进后端：`tests/backend/observe/tmux_list_tests.rs`（格式串只剩后端一个家，双写点那条随之无所对拍）。

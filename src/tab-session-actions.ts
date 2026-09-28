@@ -41,6 +41,7 @@ import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
 import { listingFromFetch, mintFromListing, refuseUnmintable } from "./tmux-name-mint";
+import { listTmux } from "./tmux-reads";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
 import { openFileWindow } from "./file-window";
@@ -420,7 +421,7 @@ export class TabSessionActions {
     // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
     // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
     // 〔FE1〕铸名只经 `tmux-name-mint.ts`；名单没问到 ⇒ 不铸、不起、说清（不拿空集去避让）。
-    const name = mintFromListing(cwd, listingFromFetch(origin, fetched));
+    const name = mintFromListing(cwd, listingFromFetch(fetched));
     if (name === null) {
       refuseUnmintable(origin, copyText("tmuxMint.unknown.notAsked"));
       return;
@@ -453,7 +454,7 @@ export class TabSessionActions {
   }
 
   /**
-   * ★ **`list_remote_tmux` 在 TabManager 里的唯一取数点**〔audit-0805 F14 第五刀，报告 I9′〕。
+   * ★ **tmux 名单在 TabManager 里的唯一取数点**〔audit-0805 F14 第五刀，报告 I9′〕（〔MIG-1 续〕问那台后端的 `tmux-list`，`tmux-reads.ts::listTmux`）。
    *
    * # 为什么要收成一个
    *
@@ -469,8 +470,8 @@ export class TabSessionActions {
    * # 返回值三态，不许压成两态
    *
    * - `TmuxSession[]` —— 查到了，有会话
-   * - `null` —— 查到了，**远端没装 tmux / 没有会话**（`NO_TMUX`）
-   * - `undefined` —— **查询本身失败**（ssh 抖动）
+   * - `null` —— 查到了，**那台没装 tmux**
+   * - `undefined` —— **查询本身失败**（那台后端不在 / 观测无效）
    *
    * ⚠ 后两者必须分开：`null` 是**确定的答案**（会写进缓存），`undefined` 是**没有答案**
    * （不写缓存 —— 免得一次 ssh 抖动把 8s 内的重试全抑制掉，D-Sug3）。
@@ -483,10 +484,8 @@ export class TabSessionActions {
       // ★ P3 刀 2 UI：本机走自己的读口 —— 它读的是后端推来的快照，不走 SSH
       //（`<local>` 拿去查远端配置只会报「未找到远端配置」，与真实原因毫无关系）。
       // 这就是 `C1`「差别只允许出现在传输这一跳」在读面上的样子：同一个返回类型、同一批消费者。
-      const sessions =
-        isLocalOrigin(origin)
-          ? await commands.list_local_tmux()
-          : await commands.list_remote_tmux({ origin });
+      // 〔MIG-1 续〕本机远端同一问：那台后端的 `tmux-list` 成品（`tmux-reads.ts`）。
+      const sessions = await listTmux(origin);
       // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
       this.tmuxCache.set(origin, { ts: Date.now(), sessions });
       return sessions;

@@ -12227,11 +12227,6 @@
       "zh": "非法 tmux 目标（空）：{target}",
       "args": ["target"]
     },
-    "rsTmux.list.unparsable": {
-      "kind": "error",
-      "zh": "CCM_TMUX_UNPARSABLE 认不出远端 tmux 的会话列表：有一行只切出 {split} 段，少于 {fields} 段。远端 tmux 的输出被改写过（客户端不是 UTF-8 时，TAB 和非 ASCII 字符会变成 _）。这一趟的会话列表整份作废，不当成远端零会话。原样：{bad}",
-      "args": ["split", "fields", "bad"]
-    },
     "rsBackendControl.handle.missing": {
       "kind": "error",
       "zh": "没有这台机器的记录：{origin}（启动时没登记过？）",
@@ -12621,11 +12616,6 @@
       "kind": "error",
       "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）。说明请写在备注里，路径栏只放路径。",
       "args": ["bad", "declared"]
-    },
-    "rsTmux.list.shape": {
-      "kind": "error",
-      "zh": "{who}的 tmux 会话列表形状对不上 —— 两边版本不一样，先别重试",
-      "args": ["who"]
     },
     "beTmuxList.query.unobservable": {
       "kind": "error",
@@ -15201,6 +15191,16 @@
       "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
       "args": []
     },
+    "tmuxReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 tmux 会话清单，两端版本对不上",
+      "args": []
+    },
+    "tmuxReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不认列 tmux 会话这一问。重装那台机器的后端就有了",
+      "args": []
+    },
     "portForwardReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂本机后端回的转发清单，两端版本对不上",
@@ -17420,11 +17420,6 @@
     "tmuxMint.unknown.notAsked": {
       "kind": "error",
       "zh": "没问到那台机器上已有哪些 tmux 会话",
-      "args": []
-    },
-    "tmuxMint.unknown.localNotYet": {
-      "kind": "error",
-      "zh": "本机后端还没报过这台机器上已有哪些 tmux 会话",
       "args": []
     },
     "tmuxMint.refused.title": {

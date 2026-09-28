@@ -243,6 +243,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "ssh-config-resolve",
         "一个别名的有效连接参数：`ssh -G` 由后端起（`dial/ssh_config.rs::resolve`），monitor 从此不起 `ssh`（`00 §1.1`「monitor 零 SSH」）",
     ),
+    // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话：monitor 那两条 Tauri 命令（本机 · 远端）与它们那份解析退役，那台后端出成品。
+    (
+        "tmux-list",
+        "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/tmux-reads.ts` 按恰好的键集合收",
+    ),
     // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",
@@ -1217,13 +1222,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
     ),
     // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/mcp-reads.ts`），期限在那边造。
-    // 〔SH1〕列远端 tmux 会话问那台后端（`tmux-list`，一问）。
-    (
-        "backend/control/tmux.rs",
-        "list_remote_tmux",
-        1,
-        "列那台 tmux 会话（`tmux-list`，一问；值 `TMUX_LIST_BUDGET` 15 s —— 后端那一趟 `tmux ls` 自带 5 s 上界）",
-    ),
+    // 〔SH1〕列远端 tmux 会话那一行（monitor 问那台后端 `tmux-list`）〔MIG-1 续〕摘了：界面经通道直问（`src/tmux-reads.ts`），期限在那边造。
 ];
 
 /// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。
