@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
     "tests/backend/dial_probe_tests.rs",   // 〔MIG-1 续〕测试连接三步的结局（链路替身）
     "tests/remote-probe.vitest.ts",        // 〔MIG-1 续〕测试连接的读口（请求体 · 严格收）

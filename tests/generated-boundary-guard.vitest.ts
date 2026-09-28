@@ -660,7 +660,8 @@ describe("〔DL1〕accounts-changed：两侧同一个串 · 零裸事件", () =>
     expect(count(main, "accounts: machines,"), "main.ts 不是恰好一处订 accounts-changed（`bindEvents` 的 `accounts`）").toBe(1);
     expect(count(main, "    onAccountsChanged,\n"), "main.ts 没把处理器交给 `bindEvents`").toBe(1);
     // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
-    expect(count(main, 'listen("remote-session-added"'), "正控失败：数法认不出一处真在的 listen").toBe(1);
+    // 〔MIG-1 续〕正控换锚：`remote-session-added` 那一处裸 listen 随会话起停并进会话流删了 ⇒ 认今天真在的那一处（设置已应用）。
+    expect(count(main, "listen(SETTINGS_APPLIED_EVENT"), "正控失败：数法认不出一处真在的 listen").toBe(1);
     expect(count(strip(`listen("${dead}", f);`), `"${dead}"`), "正控失败：剥法把代码剥掉了").toBe(1);
   });
 });
