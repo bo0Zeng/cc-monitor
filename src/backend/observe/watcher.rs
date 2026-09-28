@@ -341,7 +341,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 //    而挂 env 一个字节都不用动它。
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 
-// ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
+// ---------- P1（zero-poll-liveness）：tmux 观测的取值（〔MIG-1 续〕原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
 // **双写点**：与 monitor `src/bridge/src/backend/control/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
 // `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 测试钉住（`include_str!` 读本文件 +
@@ -386,7 +386,7 @@ enum TmuxObservation {
     ///
     /// 与 `ServerEmpty` **在 wire 上是同一个取值**（`zero_sessions`）——两者对 retire 决策
     /// 完全等价，区别只对 P3 的复活监视与"真异常"判定有意义。**这正是 P0/P1 预判的
-    /// "P3 加细分时不必改帧契约"**：`observation_to_frame` 把两者映射到同一格。
+    /// "P3 加细分时不必改帧契约"**：`observation_parts` 把两者映射到同一格。
     NoServer,
     /// PATH 里没有 tmux。
     NoTmux,
@@ -1087,9 +1087,9 @@ fn diff_closed_into(
     closed
 }
 
-/// 〔MIG-1〕一帧 `tmux_sessions`（[`observation_to_frame`] 的产物）**能不能拿来收割**：有会话 · 确证零会话 ⇒ 能；
-/// 没装 tmux · 观测无效 ⇒ 不能（「不知道」绝不当成「都没了」）。与 [`observation_to_frame`] 读同一组 `OBS_*`，一个家。
-pub(crate) fn tmux_frame_is_observable(raw: &str, observation: Option<&str>) -> bool {
+/// 〔MIG-1〕一份 tmux 观测（[`observation_parts`] 的产物）**能不能拿来收割**：有会话 · 确证零会话 ⇒ 能；
+/// 没装 tmux · 观测无效 ⇒ 不能（「不知道」绝不当成「都没了」）。与 [`observation_parts`] 读同一组 `OBS_*`，一个家。
+pub(crate) fn tmux_view_is_observable(raw: &str, observation: Option<&str>) -> bool {
     match observation {
         Some(OBS_NO_TMUX) | Some(OBS_UNOBSERVABLE) => false,
         Some(OBS_ZERO_SESSIONS) if raw.trim().is_empty() => true,
@@ -1097,27 +1097,17 @@ pub(crate) fn tmux_frame_is_observable(raw: &str, observation: Option<&str>) -> 
     }
 }
 
-fn observation_to_frame(obs: TmuxObservation) -> Frame {
+/// 一份观测 → 会话账本读的那两格 `(tmux ls 原文, 观测取值)`（〔MIG-1 续 · V41〕原 `tmux_sessions` 帧的载荷，那一帧不再上线）。
+fn observation_parts(obs: TmuxObservation) -> (String, Option<&'static str>) {
     match obs {
-        TmuxObservation::Sessions(raw) => Frame::TmuxSessions {
-            raw,
-            // 有会话时**刻意省略**：raw 非空本身就说明是有会话，省略保持热路径字节不变。
-            observation: None,
-        },
-        // P3：两个细分映射到**同一个** wire 取值 ⇒ 帧契约与 P1 逐字节一致。
-        TmuxObservation::ServerEmpty | TmuxObservation::NoServer => Frame::TmuxSessions {
-            raw: String::new(),
-            observation: Some(OBS_ZERO_SESSIONS.to_string()),
-        },
-        TmuxObservation::NoTmux => Frame::TmuxSessions {
-            // 保留 `NO_TMUX` 哨兵：旧 monitor 认它（`raw.trim() != "NO_TMUX"` 那道门）。
-            raw: "NO_TMUX\n".to_string(),
-            observation: Some(OBS_NO_TMUX.to_string()),
-        },
-        TmuxObservation::Unobservable => Frame::TmuxSessions {
-            raw: String::new(),
-            observation: Some(OBS_UNOBSERVABLE.to_string()),
-        },
+        // 有会话：原文本身就说明是有会话。
+        TmuxObservation::Sessions(raw) => (raw, None),
+        // P3：两个细分映射到**同一个**取值（对收割完全等价）。
+        TmuxObservation::ServerEmpty | TmuxObservation::NoServer => {
+            (String::new(), Some(OBS_ZERO_SESSIONS))
+        }
+        TmuxObservation::NoTmux => (String::new(), Some(OBS_NO_TMUX)),
+        TmuxObservation::Unobservable => (String::new(), Some(OBS_UNOBSERVABLE)),
     }
 }
 
@@ -1541,11 +1531,10 @@ fn watch_loop(
                 // 「直接 retire」，快照帧是「对账」；先 retire 再对账，两者对同一 sid 的结论
                 // 一致（retire 幂等）。反过来则会出现「快照说它不在 → miss+1」这种多余一跳。
                 for name in diff_closed(&mut last_names, &obs) {
-                    tracing::info!("tmux 会话 {name} 已关闭（快照差分）⇒ 发正向死亡帧");
-                    sink.send(Frame::TmuxSessionClosed { name });
+                    tracing::info!("tmux 会话 {name} 已关闭（快照差分）");
                 }
-                // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
-                sink.send(observation_to_frame(obs));
+                // 〔MIG-1 续 · V41〕四态观测只喂这条流的会话账本（成品帧由它发），快照本身不上线。
+                sink.tmux(obs);
                 // 〔RESYNC · `设计/15 §4.1b`〕探测结果到达 ⇒ 顺手对账身份标签（hook 不报选项变化）。
                 // 真改了 ⇒ 刚发的那份快照里的 `@ccm_sid` 已过期 ⇒ 再探一次（下一次全是 AlreadyCurrent，不会连环）。
                 if retag_tracked(&state, None) > 0 {
@@ -1561,9 +1550,9 @@ fn watch_loop(
                     // P5：server 没了 = 它上面的会话全没了 ⇒ 逐个报死亡，别只发一个零会话帧
                     // 就指望 monitor 自己推断（那又回到「靠快照 + miss 计数」那条慢路）。
                     for name in diff_closed(&mut last_names, &TmuxObservation::NoServer) {
-                        sink.send(Frame::TmuxSessionClosed { name });
+                        tracing::info!("tmux 会话 {name} 随 server 退出关闭");
                     }
-                    sink.send(observation_to_frame(TmuxObservation::NoServer));
+                    sink.tmux(TmuxObservation::NoServer);
                 }
             }
             // 〔RESYNC · `设计/15 §4.1b`〕与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
@@ -2926,6 +2915,17 @@ impl FrameSink {
         FrameSink {
             ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
             ..FrameSink::new(tx)
+        }
+    }
+
+    /// 〔MIG-1 续 · V41〕一份 tmux 观测：只交会话账本（有的话），它补发的成品帧照常发；观测本身不上线。
+    fn tmux(&mut self, obs: TmuxObservation) {
+        let Some(l) = self.ledger.as_mut() else {
+            return;
+        };
+        let (raw, observation) = observation_parts(obs);
+        for f in l.on_tmux(&raw, observation) {
+            self.push(f);
         }
     }
 

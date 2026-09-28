@@ -1330,14 +1330,8 @@ pub enum InboundFrame {
         lost: Vec<LostFrameInfo>,
         lost_truncated: bool,
     },
-    /// B2 / P5：后端的 tmux 观测（整份快照 · 差分出的正向死亡帧）。〔MIG-1〕**monitor 认得、不消费**：
-    /// 收割与「可重连」的裁决搬进了那台后端的会话账本（它看着自己发出的这两种帧裁，成品是 [`InboundFrame::SessionState`]）；
-    /// 帧照发（仓外 aterm · e2e 帧级套件读它们）。
-    TmuxSessionClosed { name: String },
-    TmuxSessions {
-        raw: String,
-        observation: Option<String>,
-    },
+    // 〔MIG-1 续 · V41〕这里原是后端 tmux 观测两帧（整份快照 · 差分出的正向死亡）：收割与「可重连」进了那台后端的会话账本、
+    //   后端也不再发它们 ⇒ 删。老后端发来 ⇒ 落未知 kind（照常 warn 后跳过）。
     /// U6b-1 / U8a-2a：**入方向命令的应答**。`id` 是 monitor 自己生成的不透明串，
     /// backend 原样回显。由 `inbound_client` 按 `id` 路由回请求方。
     Reply {
@@ -1614,23 +1608,6 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 lost_truncated,
             })
         }
-        // P5：additive 新帧。缺 `name` / 非字符串 → 坏帧跳过（不 panic），
-        // 与其余帧同一口径。**旧后端不发它** ⇒ 这条分支永不命中，行为退回快照+miss。
-        "tmux_session_closed" => {
-            let name = obj.get("name")?.as_str()?.to_string();
-            Some(InboundFrame::TmuxSessionClosed { name })
-        }
-        "tmux_sessions" => {
-            // B2：raw = tmux ls 原文（或 NO_TMUX）。缺/非字符串 → 坏帧跳过。
-            let raw = obj.get("raw")?.as_str()?.to_string();
-            // P1：observation 是 additive 可选字段——**缺失/非字符串都当 None**（不是坏帧）。
-            // 旧后端没有它；非字符串是坏后端，退化成旧判据即今天的保守行为。
-            let observation = obj
-                .get("observation")
-                .and_then(|v| v.as_str())
-                .map(str::to_string);
-            Some(InboundFrame::TmuxSessions { raw, observation })
-        }
         // U8a-2a：入方向应答，**真消费** —— 由 `inbound_client` 按 `id` 路由回请求方。
         // `id`/`ok` 必需（缺则坏帧跳过，同其余帧的口径）；`code`/`message`/`data` 可选。
         "reply" => {
@@ -1744,8 +1721,6 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "session_status",
     "sessions_replayed",
     "tap",
-    "tmux_session_closed",
-    "tmux_sessions",
     "transfer",
     "turn_end",
 ];
@@ -3110,9 +3085,6 @@ async fn stream_loop(
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
             }
-            // 〔MIG-1 · `99 §2.1 ⑬`〕tmux 观测两种帧：收割与「可重连」的裁决搬进了那台后端的会话账本（`observe/session_ledger.rs`，
-            //   它看着自己发出的这两种帧裁、发成品 `session_state`）⇒ monitor 认得、不消费。
-            Some(InboundFrame::TmuxSessionClosed { .. } | InboundFrame::TmuxSessions { .. }) => {}
             // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
                 route_inbound_frame(&host_label, inbound.as_ref(), f);

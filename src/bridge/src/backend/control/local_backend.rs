@@ -1433,7 +1433,7 @@ pub(crate) const BACKEND_SEP: &str = "--";
 /// 与 `P5L` 把终端出口做成入参是同一手：**把够得到的那半做成可测，别拿够不到的当借口**。
 ///
 /// ⚠ **射程如实登记**：本函数可测的是「**收到帧之后**账本里有」。
-/// 「backend **真的会发**这个帧」仍归后端侧 `EMITS "tmux_sessions"` 的登记
+/// 「backend **真的会发**这个帧」仍归后端侧 `EMITS` 的登记
 /// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
 /// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
 ///
@@ -1457,7 +1457,7 @@ pub(crate) fn absorb_local_frame(
 ) -> Option<crate::ssh_source::InboundFrame> {
     use crate::ssh_source::InboundFrame;
     match frame {
-        // 〔MIG-1 · `99 §2.1 ⑬`〕本机的 tmux 观测两种帧（`tmux_sessions` · `tmux_session_closed`）monitor 不再消费：
+        // 〔MIG-1 · `99 §2.1 ⑬`〕本机的 tmux 观测两种帧 monitor 不再消费（〔MIG-1 续〕后端也不再发，那两帧删了）：
         //   收割与「可重连」由本机后端的会话账本裁（`observe/session_ledger.rs`），成品 `session_state` 走下面那一臂进本机内容通道。
         //   〔从前这里记 tmux 原文账（`ssh_source::record_tmux_raw`〔散文墓碑〕）＋ 本机收割器（`local_idle_retirements`〔散文墓碑〕）；
         //    `session_added` 这一臂还记容器（`session_facts::note_container`〔散文墓碑〕）——容器今天随活会话成品一起进 `session_book`。〕

@@ -5,7 +5,23 @@
 use super::*;
 use crate::wire::{Frame, RemovalCause, SessionFate};
 
-fn added(sid: &str) -> Frame {
+/// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（〔MIG-1 续〕观测不再是帧）。
+enum Ev {
+    F(Frame),
+    T(String, Option<&'static str>),
+}
+
+impl From<Frame> for Ev {
+    fn from(f: Frame) -> Self {
+        Ev::F(f)
+    }
+}
+
+fn listed() -> Ev {
+    Frame::SessionsReplayed.into()
+}
+
+fn added(sid: &str) -> Ev {
     Frame::SessionAdded {
         sid: sid.into(),
         agent_kind: None,
@@ -22,13 +38,15 @@ fn added(sid: &str) -> Frame {
         container: None,
         pid: None,
     }
+    .into()
 }
 
-fn removed(sid: &str, cause: RemovalCause) -> Frame {
+fn removed(sid: &str, cause: RemovalCause) -> Ev {
     Frame::SessionRemoved {
         sid: sid.into(),
         cause,
     }
+    .into()
 }
 
 /// `tmux ls -F` 的一行（6 列，末列 `@ccm_sid`）。
@@ -36,33 +54,27 @@ fn row(name: &str, sid: &str) -> String {
     format!("{name}\t/w\tzsh\t0\t1\t{sid}\n")
 }
 
-fn tmux(rows: &[(&str, &str)]) -> Frame {
+fn tmux(rows: &[(&str, &str)]) -> Ev {
     if rows.is_empty() {
-        return Frame::TmuxSessions {
-            raw: String::new(),
-            observation: Some("zero_sessions".into()),
-        };
+        return Ev::T(String::new(), Some("zero_sessions"));
     }
-    Frame::TmuxSessions {
-        raw: rows.iter().map(|(n, s)| row(n, s)).collect(),
-        observation: None,
-    }
+    Ev::T(rows.iter().map(|(n, s)| row(n, s)).collect(), None)
 }
 
-fn unobservable() -> Frame {
-    Frame::TmuxSessions {
-        raw: String::new(),
-        observation: Some("unobservable".into()),
-    }
+fn unobservable() -> Ev {
+    Ev::T(String::new(), Some("unobservable"))
 }
 
 /// 喂一串帧，收每一帧的「发不发」与补发的成品（按 `(sid, 成品)` 记；清单记成 `("*", None)`）。
-fn run(frames: Vec<Frame>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
+fn run(frames: Vec<Ev>) -> (Vec<bool>, Vec<(String, Option<SessionFate>)>) {
     let mut l = SessionLedger::new();
     let mut passed = Vec::new();
     let mut out = Vec::new();
     for f in frames {
-        let (pass, extra) = l.on_frame(&f);
+        let (pass, extra) = match f {
+            Ev::F(f) => l.on_frame(&f),
+            Ev::T(raw, o) => (true, l.on_tmux(&raw, o)),
+        };
         passed.push(pass);
         for e in extra {
             match e {
@@ -137,7 +149,7 @@ fn a_bound_session_missing_from_two_snapshots_is_reaped_but_never_a_never_bound_
 fn an_unobservable_snapshot_reaps_nothing_and_releases_the_held_list() {
     let (passed, out) = run(vec![
         added("a"),
-        Frame::SessionsReplayed,
+        listed(),
         unobservable(),
         unobservable(),
         unobservable(),
@@ -155,7 +167,7 @@ fn the_first_observable_snapshot_announces_reconnectables_before_the_list() {
     // 新连接从 tmux 自己推出可重连（挂着 `@ccm_sid`、却不在活会话里的），**先于**清单（替掉 monitor「重连后重新裁」那一套）。
     let (passed, out) = run(vec![
         added("live"),
-        Frame::SessionsReplayed,
+        listed(),
         tmux(&[("t1", "live"), ("t2", "old"), ("t3", "")]),
         tmux(&[("t1", "live"), ("t2", "old"), ("t4", "later")]),
     ]);
@@ -172,7 +184,7 @@ fn a_session_that_comes_back_leaves_reconnectable_and_the_list_passes_once_tmux_
     let (passed, out) = run(vec![
         tmux(&[("t", "a")]),
         added("a"),
-        Frame::SessionsReplayed,
+        listed(),
         removed("a", RemovalCause::Gone),
         added("a"),
         tmux(&[]),

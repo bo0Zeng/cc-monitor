@@ -4,11 +4,12 @@
 # 线协议帧(JSON-per-line,`{"kind":...}`)。序列:
 #   SessionAdded(sid)               —— fake-claude 活 + @ccm_sid 已置 → live
 #   (kill fake-claude 进程,tmux 会话留活)
-#   SessionRemoved(sid)             —— backend 2s 判活轮询发现 claude 死
-#   TmuxSessions.raw 仍含 @ccm_sid   —— **关键**:claude 死但 tmux 还在 → monitor emitter 据此走
-#                                       Idle(灰)而非 Archive(前端半场:markTmuxIdle→可重连)
+#   SessionRemoved(sid)             —— backend 判活发现 claude 死
+#   SessionState(sid, reconnectable) —— **关键**:claude 死但 tmux 还挂着 @ccm_sid → 后端会话账本裁「可重连」(灰)
 #   (tmux kill-session)
-#   TmuxSessions.raw 不再含 sid      —— @ccm_sid 没了 → monitor 归档触发边沿(archived)
+#   SessionState(sid, ended)        —— 会话名消失 = 确证关了 → 后端裁「已结束」(归档边沿)
+# 〔MIG-1 续 · V41〕原来看的是 `tmux_sessions` 快照帧（monitor 拿它自己裁）；裁决进了后端的会话账本
+# （`observe/session_ledger.rs`），快照帧删了 ⇒ 本套件改看成品帧 `session_state`；「标签挂着谁」直接问 tmux（经 shim）。
 # 前端 emitter→灰灯半场由单测(tabs.vitest.ts)+ 全链 GUI 跑覆盖;本脚本钉住后端边沿。
 # 红线:backend 零改动(只跑它) / 不碰真 ~/.claude(CLAUDE_CONFIG_DIR 隔离) / 不改 TMUX_LS_FMT。
 set -euo pipefail
@@ -133,10 +134,13 @@ SA="$(wait_line 0 "\"kind\":\"session_added\".*$SID" 15 'session_added')" \
   && { ok "SessionAdded(live):$SA"; } \
   || { bad "15s 内未见 SessionAdded($SID)"; }
 
-# tmux 帧带 @ccm_sid(claude 活时)
-TS_LIVE="$(wait_line 0 "\"kind\":\"tmux_sessions\".*$SID" 12 'tmux_sessions live')" \
-  && ok "TmuxSessions 带 @ccm_sid(live):$(printf '%.160s' "$TS_LIVE")" \
-  || bad "12s 内未见含 @ccm_sid 的 tmux_sessions 帧"
+# 「@ccm_sid」挂着这个 sid（claude 活时）—— 直接问 tmux（经 `-L` shim，打不到真 server）。
+tag_of() { tmux show-options -v -t "=$1:" @ccm_sid 2>/dev/null || true; }
+wait_tag() { # <会话名> <期望 sid> <秒>
+  local i; for ((i=0; i<$3*2; i++)); do [ "$(tag_of "$1")" = "$2" ] && return 0; sleep 0.5; done; return 1; }
+wait_tag "$SESSION" "$SID" 12 \
+  && ok "tmux 会话 $SESSION 挂着 @ccm_sid=$SID(live)" \
+  || bad "12s 内 $SESSION 的 @ccm_sid 不是 $SID（实得 '$(tag_of "$SESSION")'）"
 
 # ── 1bis. S0：**同 pidfile 原地换 sid**（= 用户的 `/branch`）───────────────────
 #
@@ -231,13 +235,12 @@ else
   #
   # 三岔的第二支（新 sid 在、老 sid 也在）挡的是 `identity_tag` 目标解析打偏那一族
   #（08-14 真事故：`display-message -t ''` 被静默解析成「某个会话」⇒ 标打错 ⇒ kill 杀错）。
-  TS_TAG="$(wait_line "$MARK_BRANCH" "\"kind\":\"tmux_sessions\".*$NEWSID" 12 'tmux frame carrying the drifted tag' || true)"
-  if [ -z "$TS_TAG" ]; then
-    bad "S0 前提：换 sid 后 12s 内没有任何一帧 tmux_sessions 带新 sid ⇒ 「@ccm_sid」没漂到新 sid（打标没跑，或 sid 漂移没触发重探）。下面两节的前提不成立，它们的结论不可信"
-  elif printf '%s' "$TS_TAG" | grep -q "$OLD_SID"; then
-    bad "S0 前提：新 sid 出现了，但**老 sid 也还在同一份快照里** ⇒ 标签打到了别的会话上（identity_tag 目标解析打偏）⇒ kill 会杀错会话:$TS_TAG"
+  if ! wait_tag "$SESSION" "$NEWSID" 12; then
+    bad "S0 前提：换 sid 后 12s 内 $SESSION 的 @ccm_sid 没漂到新 sid（实得 '$(tag_of "$SESSION")'）⇒ 打标没跑。下面两节的前提不成立，它们的结论不可信"
+  elif tmux list-sessions -F '#{@ccm_sid}' 2>/dev/null | grep -q "$OLD_SID"; then
+    bad "S0 前提：新 sid 挂上了，但**老 sid 还挂在某个会话上** ⇒ 标签打到了别的会话上（identity_tag 目标解析打偏）⇒ kill 会杀错会话"
   else
-    ok "S0 前提：「@ccm_sid」已从老 sid 漂到新 sid，老 sid 不在快照里了:$(printf '%.160s' "$TS_TAG")"
+    ok "S0 前提：「@ccm_sid」已从老 sid 漂到新 sid，老 sid 不再挂在任何会话上"
   fi
 fi
 
@@ -264,120 +267,63 @@ else
   fi
 fi
 
-# claude 死后，**monitor 手上最新的那份 tmux 快照**必须仍含 @ccm_sid
-#（claude 死但 tmux 未亡 = 灰灯的后端条件）。
-#
-# ★ P5 之后这条断言的形态必须变，否则它测的就不是灰灯条件了：
-# 原来写的是「等一个 **新** tmux 帧」。那能过，是因为当时有 8s ticker 每隔一阵就重发一份
-# 快照。**P5 把 ticker 删了**（判活改成纯事件驱动），而「杀掉会话里的 claude 进程」**不动
-# tmux 会话本身** ⇒ 不触发任何 hook ⇒ **本来就不该有新帧**。等新帧会一直等到超时。
-#
-# 灰灯真正依赖的是「**最新已知**快照里还有这个 sid」—— monitor 侧本来就是拿缓存的那份判的
-#（`tmux_raw_registry` 只存最新一份）。所以改成读**最后一条** tmux 帧，语义与原意一致、
-# 且不再依赖一个已经被有意删掉的节拍。
-#
-# **这条是 P5 留下的真回归，被 P6 的 e2e 工作撞出来的**：P5 那轮只跑了 cargo/npm 门禁，
-# 而这 6 套是 CI-only、不在其中 ⇒ 没接住。教训已记进 P6 文档。
-# ★ 找的针是 **`$SID`** —— S0 之后它已经是新 sid，而 tmux 上的 `@ccm_sid` 也已经跟着漂到新 sid
-#（上一格「S0 前提」刚刚正面证过）。这正是灰灯要问的那个问题：**刚刚死掉的那个会话的 sid，
-# 在 monitor 手上这份快照里还找不找得到**。找得到 ⇒ Idle（灰）；找不到 ⇒ Archive。
-#
-#〔09-09 修〕原来拿的是 `TAG_SID` ＝ S0 **之前**那个 sid，依据是 §1bis 里那条
-# 「本 fixture 没有 ccm 的 1s poller 所以标签不动」的假设 —— 那条假设 08-14 起两头都不成立
-#（poller 已删；打标搬进了本夹具正在跑的这个后端）。云端 run `34441405591` 就是被它拦红的，
-# 而**红的是夹具、不是产品**：标签跟着 `/branch` 漂到新 sid 恰恰是对的，停在旧 sid 才会杀错会话。
-TS_GRAY="$(grep '"kind":"tmux_sessions"' "$FRAMES" | tail -1 || true)"
-if [ -n "$TS_GRAY" ]; then
-  if printf '%s' "$TS_GRAY" | grep -q "$SID"; then
-    ok "claude 死后最新 tmux 快照仍含当前 sid 的 @ccm_sid ⇒ 灰(Idle 非 Archive):$(printf '%.160s' "$TS_GRAY")"
-  else
-    bad "claude 死后最新 tmux 快照丢了当前 sid 的 @ccm_sid(不该):$TS_GRAY"
-  fi
+# claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰灯的后端条件；原来 monitor 拿缓存的 tmux 快照自己裁）。
+# ★ 找的针是 **`$SID`** —— S0 之后它已经是新 sid（上一格「S0 前提」刚证过标签漂过去了）。
+SS_GRAY="$(wait_line 0 "\"kind\":\"session_state\".*$SID" 12 'session_state(reconnectable)' || true)"
+if [ -z "$SS_GRAY" ]; then
+  bad "claude 死后 12s 内没有 $SID 的 session_state 帧"
+elif printf '%s' "$SS_GRAY" | grep -q '"state":"reconnectable"'; then
+  ok "claude 死、tmux 会话还挂着它 ⇒ 后端裁可重连(灰):$SS_GRAY"
 else
-  bad "至今一条 tmux_sessions 帧都没有（连起飞初探那拍都没到？）"
+  bad "claude 死、tmux 会话还在，却被裁成别的(不该):$SS_GRAY"
 fi
 
-# ── 3. ARCHIVE:tmux kill-session → 新 tmux 帧不再含 sid ───────────────────────
-echo "-- tmux kill-session $SESSION(@ccm_sid 消失 → 归档触发)--"
-tmux kill-session -t "=$SESSION:" 2>/dev/null || true
-MARK_KS="$(wc -l <"$FRAMES")"
-TS_ARCH="$(wait_line "$MARK_KS" "\"kind\":\"tmux_sessions\"" 14 'tmux frame post-kill-session')"
-# ★ 与上一格**同一根针**（`$SID`），这是刻意的：上一格证「它在」，这一格证「它没了」。
-# 一根针被两格反向咬住 ⇒ 任何一格退化成恒真，另一格必红。这就是它们各自「能失败」的凭据。
+# ── 3. ARCHIVE ＋ P6 延迟：多个会话里杀掉其中一个 → session_state ended ─────────
 #
-# 🔴〔09-09 救活〕这一格此前和上一格一样拿的是 `TAG_SID` ＝ S0 **之前**那个完整 UUID。
-# 它**没红过，但已经没牙了 —— 是恒真的**：S0 之后那串完整老 UUID 在任何一帧里都不会再出现
-#（会话名是 `cc-<老 sid8>`，只含前 8 位；`@ccm_sid` 列已经是新 sid）⇒ `grep -q` 恒不命中
-# ⇒ **恒走下面的 PASS 分支**。也就是说它本来要挡的形状（kill-session 之后快照里还赖着那一行）
-# 今天一点都挡不住。**地板 12 看不见这件事**：条数没变，掉的是牙口 —— 恒真比红贵得多。
-#
-# 举证（产品若退化成「kill-session 之后那一行连同标签还留在快照里」，两种写法各判什么）：
-#   拿云端 34441405591 那份真 raw 当退化后的帧：
-#     raw = "cc-87503085\t…\t11111111-2222-3333-4444-555555555555\ncc-e2ekeep-22967\t…\t"
-#   · 旧写法 `grep -q "$TAG_SID"`（TAG_SID ＝ 老完整 UUID，例如 87503085-….…）：
-#     raw 里只有 `cc-87503085` 这个**前 8 位**，完整老 UUID 一次都不出现 ⇒ **不命中**
-#     ⇒ 走 else ⇒ `ok "kill-session 后 tmux 帧不再含 @ccm_sid"` ⇒ **假 PASS，退化溜过去**。
-#   · 新写法 `grep -q "$SID"`（SID ＝ 11111111-2222-3333-4444-555555555555）：
-#     raw 第一行末列逐字就是它 ⇒ **命中** ⇒ 走 then ⇒ `bad` ⇒ **FAIL，退化被逮住**。
-if [ -n "$TS_ARCH" ]; then
-  if printf '%s' "$TS_ARCH" | grep -q "$SID"; then
-    bad "kill-session 后 tmux 帧仍含当前 sid(不该):$TS_ARCH"
-  else
-    ok "kill-session 后 tmux 帧不再含 @ccm_sid ⇒ 归档触发边沿:$(printf '%.160s' "$TS_ARCH")"
-  fi
-else
-  bad "kill-session 后 14s 内无新 tmux_sessions 帧"
-fi
-
-# ── 4. P6：端到端延迟 —— 「多个会话里杀掉其中一个」必须是**事件驱动**的 ────────────
-#
-# 这是**唯一**没有内核事件源的场景：server 还活着、socket 还在，pidfd 与 inotify 都不响。
-# P4 用 tmux hook → `--tmux-notify` → SIGUSR1 补上了它，P5 据此删掉了 8s 轮询。
-# **删了轮询之后，这条路一旦坏掉，该场景就从「16s」直接变成「永不」** —— 那正是本断言要挡的。
-#
-# **阈值是数量级判据，不是性能指标。** 本机手工实测 126ms；这里给 5s 的宽松上限：
-# CI runner 比开发机慢得多，把阈值卡在实测值上只会换来随机红。它要区分的是
-# 「事件驱动（亚秒）」与「退回轮询（≥8s）／永不」，5s 足够把这三者分开。
+# 这是**唯一**没有内核事件源的场景：server 还活着（`$KEEP` 撑着）、socket 还在，pidfd 与 inotify 都不响。
+# P4 用 tmux hook → `--tmux-notify` → SIGUSR1 补上了它，P5 据此删掉了 8s 轮询 ⇒ 这条路一旦坏掉，该场景就从「亚秒」直接变成「永不」。
+# **阈值是数量级判据，不是性能指标**（本机手工实测百毫秒级）：5s 分得开「事件驱动」与「退回轮询（≥8s）／永不」。
 LAT_CEIL_S=5
+echo "-- tmux kill-session $SESSION(会话名消失 → 后端裁已结束)--"
+MARK_KS="$(wc -l <"$FRAMES")"
+T0_NS="$(date +%s%N)"   # 别用 `%3N`：本机 date 不认，会吐 9 位纳秒
+tmux kill-session -t "=$SESSION:" 2>/dev/null || true
+SS_ARCH="$(wait_line "$MARK_KS" "\"kind\":\"session_state\".*$SID" "$LAT_CEIL_S" 'session_state(ended)' || true)"
+ELAPSED=$(( ($(date +%s%N) - T0_NS) / 1000000 ))
+if [ -z "$SS_ARCH" ]; then
+  bad "kill-session 后 ${LAT_CEIL_S}s 内没有 $SID 的 session_state 帧 —— 事件通路坏了（hook 没装上？SIGUSR1 没接上？），而轮询已在 P5 删除"
+elif printf '%s' "$SS_ARCH" | grep -q '"state":"ended"'; then
+  ok "kill-session ⇒ 后端裁已结束(归档边沿) ${ELAPSED}ms（上限 ${LAT_CEIL_S}s）:$SS_ARCH"
+else
+  bad "kill-session 后裁成了别的(不该):$SS_ARCH"
+fi
 
-echo "-- P6：再起一个会话，杀掉其中一个，量到死亡帧的墙上时间 --"
-OTHER="p6-other-$$"
-tmux new-session -d -s "$OTHER" 2>/dev/null || true
-if tmux has-session -t "=$OTHER:" 2>/dev/null; then
-  # 等它进过一次快照再杀 —— backend 的差分要有「上一份」才能算出消失
-  #（第一次观测不报死亡，那是刻意的：否则后端一启动就诬告一批）。
-  MARK_SEEN="$(wc -l <"$FRAMES")"
-  # **`|| true` 不能省**：本套件开了 `set -e`，`V="$(cmd)"` 里 cmd 失败会**直接中止脚本**
-  # ⇒ 下面那句 `bad` 里精心写的诊断永远打不出来（本轮变异验收实测：脚本在这儿静默停住，
-  # 只剩一个 rc=1）。让它返回空串，交给 `[ -z ]` 分支去报。
-  SEEN="$(wait_line "$MARK_SEEN" "\"kind\":\"tmux_sessions\".*$OTHER" 10 'snapshot containing the new session' || true)"
-  if [ -z "$SEEN" ]; then
-    bad "P6：新会话 $OTHER 10s 内没进过任何 tmux_sessions 快照（差分无基线可比）"
+# ── 4. P6：活会话所在的 tmux 会话被带外杀掉 ⇒ 同样事件驱动地「已结束」，点名的是被杀的那个 ──────
+SID2="$(cat /proc/sys/kernel/random/uuid)"
+OTHER="cc-${SID2:0:8}"
+echo "-- P6：再起一个活会话 $OTHER，杀掉它的 tmux 会话，量到成品帧的墙上时间 --"
+CCM_E2E_FAKE_CLAUDE="$E2E_DIR/fake-claude" CLAUDE_CONFIG_DIR="$CLAUDE_DIR" \
+  bash "$E2E_DIR/gen-idle-tmux.sh" "$SID2" >/dev/null
+if wait_line 0 "\"kind\":\"session_added\".*$SID2" 15 'session_added(SID2)' >/dev/null && wait_tag "$OTHER" "$SID2" 5; then
+  ok "P6 前置：$SID2 活着、挂在 $OTHER 上"
+  MARK_P6="$(wc -l <"$FRAMES")"
+  T0_NS="$(date +%s%N)"
+  tmux kill-session -t "=$OTHER:" 2>/dev/null || true
+  CLOSED="$(wait_line "$MARK_P6" "\"kind\":\"session_state\".*\"state\":\"ended\"" "$LAT_CEIL_S" 'session_state ended(SID2)' || true)"
+  ELAPSED=$(( ($(date +%s%N) - T0_NS) / 1000000 ))
+  if [ -z "$CLOSED" ]; then
+    bad "P6：带外杀掉活会话的 tmux 会话后，${LAT_CEIL_S}s 内**没有**「已结束」—— 事件通路坏了"
   else
-    ok "P6 前置：新会话已进快照（差分有基线）"
-    MARK_P6="$(wc -l <"$FRAMES")"
-    # **别用 `date +%s%3N`**：本机的 date 不认 `%3N`，会原样吐 9 位纳秒 ⇒ 算出来的
-    # 「ms」是个天文数字。断言照样过，但 CI 日志里那个数会误导人（本轮实测踩到）。
-    T0_NS="$(date +%s%N)"
-    tmux kill-session -t "=$OTHER:" 2>/dev/null || true
-    CLOSED="$(wait_line "$MARK_P6" "\"kind\":\"tmux_session_closed\"" "$LAT_CEIL_S" 'tmux_session_closed frame' || true)"
-    T1_NS="$(date +%s%N)"
-    ELAPSED=$(( (T1_NS - T0_NS) / 1000000 ))
-    if [ -z "$CLOSED" ]; then
-      bad "P6：杀掉多个会话中的一个后，${LAT_CEIL_S}s 内**没有**死亡帧 —— 事件通路坏了（hook 没装上？SIGUSR1 没接上？），而轮询已在 P5 删除 ⇒ 该场景现在是「永不」"
-    else
-      ok "P6：死亡帧 ${ELAPSED}ms（上限 ${LAT_CEIL_S}s；本机手工实测约 126ms）:$(printf '%.120s' "$CLOSED")"
-      # 报的必须是**被杀的那个**，不是随便一个 —— 差分方向搞反 / 报全量都会在这里露馅。
-      if printf '%s' "$CLOSED" | grep -q "$OTHER"; then
-        ok "P6：死亡帧点名的是被杀的那个会话（$OTHER）"
-      else
-        bad "P6：死亡帧报的不是 $OTHER:$CLOSED"
-      fi
-    fi
+    ok "P6：「已结束」${ELAPSED}ms（上限 ${LAT_CEIL_S}s）:$(printf '%.120s' "$CLOSED")"
+    # 报的必须是**被杀的那个**，不是随便一个 —— 差分方向搞反 / 报全量都会在这里露馅。
+    printf '%s' "$CLOSED" | grep -q "$SID2" \
+      && ok "P6：成品帧点名的是被杀的那个会话（$SID2）" \
+      || bad "P6：成品帧报的不是 $SID2:$CLOSED"
   fi
 else
-  bad "P6：起不来第二个会话，无法验「多个中杀一个」这个场景"
+  bad "P6：第二个活会话 $SID2 没起来 / 标签没挂上，无法验「多个中杀一个」"
 fi
+tmux kill-session -t "=$OTHER:" 2>/dev/null || true
 
 echo "== 结果:$pass 过 / $fail 败 =="
 # G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。

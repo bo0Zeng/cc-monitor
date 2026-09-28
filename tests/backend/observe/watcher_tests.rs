@@ -1108,41 +1108,24 @@ fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     );
 }
 
-/// **`raw` 载荷与 P1 之前逐字节一致**——旧 monitor 行为零变化的那条保证。
-/// 有会话时 `observation` 必须**省略**（热路径不加字节）。
+/// 四态观测 → 会话账本读的那两格（〔MIG-1 续〕原 `tmux_sessions` 帧载荷，那一帧不再上线）：有会话 ⇒ 原文、不带取值；
+/// P3 那两个细分（`ServerEmpty` / `NoServer`）**必须落同一个取值**（对收割完全等价）；没装 tmux / 观测无效各有自己的取值，
+/// 账本据此「不知道」绝不当成「都没了」。
 #[test]
-fn observation_frame_keeps_raw_payload_backward_compatible() {
-    match observation_to_frame(TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tx".into())) {
-        Frame::TmuxSessions { raw, observation } => {
-            assert_eq!(raw, "s1\t/p\tclaude\t1\t1\tx");
-            assert_eq!(observation, None, "有会话时必须省略，否则热路径白涨字节");
-        }
-        f => panic!("期望 TmuxSessions，实得 {f:?}"),
-    }
-    // 无 tmux：保留 NO_TMUX 哨兵（旧 monitor 那道门认它）
-    match observation_to_frame(TmuxObservation::NoTmux) {
-        Frame::TmuxSessions { raw, observation } => {
-            assert_eq!(raw.trim(), "NO_TMUX");
-            assert_eq!(observation.as_deref(), Some(OBS_NO_TMUX));
-        }
-        f => panic!("期望 TmuxSessions，实得 {f:?}"),
-    }
-    // 零会话 / 观测无效：raw 都是空串（旧 monitor 一律保守跳过 = 今天的行为），
-    // 区别只在 observation ⇒ 只有新 monitor 分得开。
-    // P3：`ServerEmpty` 与 `NoServer` 两个细分**必须映射到同一个 wire 取值**
-    // ——这就是"P3 加细分不改帧契约"那条承诺的机器化。
+fn observation_parts_keep_the_four_states_apart_for_the_ledger() {
+    assert_eq!(
+        observation_parts(TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tx".into())),
+        ("s1\t/p\tclaude\t1\t1\tx".to_string(), None)
+    );
     for (obs, token) in [
         (TmuxObservation::ServerEmpty, OBS_ZERO_SESSIONS),
         (TmuxObservation::NoServer, OBS_ZERO_SESSIONS),
+        (TmuxObservation::NoTmux, OBS_NO_TMUX),
         (TmuxObservation::Unobservable, OBS_UNOBSERVABLE),
     ] {
-        match observation_to_frame(obs) {
-            Frame::TmuxSessions { raw, observation } => {
-                assert_eq!(raw, "", "旧 monitor 必须看到与今天相同的空 raw");
-                assert_eq!(observation.as_deref(), Some(token));
-            }
-            f => panic!("期望 TmuxSessions，实得 {f:?}"),
-        }
+        let (raw, o) = observation_parts(obs);
+        assert_eq!((raw.as_str(), o), ("", Some(token)));
+        assert_eq!(tmux_view_is_observable(&raw, o), token == OBS_ZERO_SESSIONS);
     }
 }
 

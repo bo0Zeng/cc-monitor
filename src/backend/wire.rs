@@ -70,7 +70,7 @@ pub enum SessionFate {
 /// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F03〕。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
-/// 重开会话就补上）；对**状态增量帧**（`session_added`/`session_removed`/`tmux_session_closed`）
+/// 重开会话就补上）；对**状态增量帧**（`session_added`/`session_removed`/`session_state`）
 /// 就不行 —— 它是一次差分的结果，**别处不存在**，客户端只知道「丢了 N 条」是没法重同步的。
 /// ⇒ 本结构给那些帧带上身份，让客户端能精确地重新问那几个主体。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -466,47 +466,9 @@ pub enum Frame {
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
     /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
     TurnEnd { session_id: String, uuid: String },
-    /// B2（tmux 对账改后端推送）：backend 在**远端本地**跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**
-    /// （或哨兵 `NO_TMUX`），周期性推给 monitor——替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。
-    /// **送 raw、client 解析**（照 `Line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`，零解析重复）。
-    /// **monitor 专属**：aterm DaemonTransport 未知 kind 跳过。旧 monitor 忽略未知 kind（additive）。
-    /// **P5（zero-poll-liveness，additive、不 bump `PROTO_VERSION`）**：某个 tmux 会话
-    /// **关闭了**——正向死亡帧。
-    ///
-    /// **它补的是什么**：`TmuxSessions` 是「当前还剩哪些」的快照，monitor 靠**连续两次
-    /// 没看见**（`RETIRE_MISS_THRESHOLD >= 2`）才敢 retire —— 那道门是为了容忍观测抖动，
-    /// 但也意味着「多个会话里关掉一个」至少要等两个节拍。本帧是后端与上一份快照
-    /// 差分出来的**确定结论**，monitor 收到即可直接 retire，**绕过 miss 计数**。
-    ///
-    /// **快照路径与 miss 计数原样保留**（重同步 / 旧后端降级都靠它）⇒ 同一 sid 可能
-    /// 两条路都到，retire 必须幂等（`SidTrack.retired` 本就是幂等设计）。
-    ///
-    /// **旧 monitor 忽略本帧**：未知 kind 走 `warn` 后跳过（`ssh_source.rs` 那条已有测试
-    /// `unknown_kind_returns_none` 钉住）⇒ 行为退回今天的「靠快照 + miss 计数」，不崩。
-    TmuxSessionClosed {
-        /// 会话名（`tmux ls` 第一列）。**不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到
-        /// （P0 实测会拿到空 ⇒ 把活会话判灰），而后端这边是**差分算出来的名字**，
-        /// sid 由 monitor 用最新快照反查 —— 那份映射它本来就有。
-        name: String,
-    },
-    TmuxSessions {
-        raw: String,
-        /// P1（zero-poll-liveness，**additive、不 bump `PROTO_VERSION`**）：本次观测的**分类**
-        /// ——`"zero_sessions"`（确证零会话）/ `"no_tmux"` / `"unobservable"`（观测失败）。
-        ///
-        /// **有会话时省略**（`skip_serializing_if`）⇒ 热路径字节与 P1 之前**逐字节一致**。
-        ///
-        /// **为什么需要它**：P1 之前 `raw` 的空串同时意味着「零会话」和「`tmux ls` 出错被
-        /// `|| true` 吞了」，两者不可分 ⇒ monitor 只能一律保守跳过 ⇒ 当被杀的是该 origin
-        /// 最后一个 tmux 会话时（server 随之退出、`tmux ls` 回空）对账整段跳过 ⇒ idle 灰灯
-        /// **卡到断连 flush 才清**（`src/doc/INVARIANTS.md` §24bis 预先登记的残留 bug）。
-        ///
-        /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
-        /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
-        /// `src/bridge/src/backend/control/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        observation: Option<String>,
-    },
+    // 〔MIG-1 续 · V41 · `99 §2.1 ⑬`〕这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
+    //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
+    //   仓外 aterm 的 `DaemonTransport.parseFrame` 从来按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live
@@ -716,15 +678,12 @@ impl Frame {
             Frame::Line { .. } => true,
             // 派生自某一行 jsonl（`turn_detect` 只看那条记录）⇒ 与 `Line` 同命。
             Frame::TurnEnd { .. } => true,
-            // 整份快照，下一次 tmux 探测会重发一份完整的 ⇒ 丢一份不损失信息。
-            Frame::TmuxSessions { .. } => true,
 
             // ↓ 以下都是「丢了别处没有」或「拿不准」，一律按不可恢复算。
             //
             // 一次差分的结果，别处不存在 —— 这三个正是 B-3 的正题。
             Frame::SessionAdded { .. } => false,
             Frame::SessionRemoved { .. } => false,
-            Frame::TmuxSessionClosed { .. } => false,
             // 〔MIG-1〕账本的成品：一次裁决的结果，别处没有 ⇒ 不可恢复。
             Frame::SessionState { .. } => false,
             // 状态变迁；没有「下一次必然重发」的保证 ⇒ 保守。
@@ -770,8 +729,6 @@ impl Frame {
             Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
             Frame::SessionState { sid, .. } => ("session_state", Some(sid.clone())),
             Frame::TurnEnd { session_id, .. } => ("turn_end", Some(session_id.clone())),
-            Frame::TmuxSessionClosed { name, .. } => ("tmux_session_closed", Some(name.clone())),
-            Frame::TmuxSessions { .. } => ("tmux_sessions", None),
             Frame::Overflow { .. } => ("overflow", None),
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
