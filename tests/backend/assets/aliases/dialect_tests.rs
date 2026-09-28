@@ -1,4 +1,4 @@
-//! 〔AL1c · 第四波 4B〕`shell_dialect.rs` 的判据：`设计/71 §4.4` 那组接口在两种方言上逐项的**读法**。
+//! 〔AL1c · 第四波 4B〕`shell_dialect.rs`（〔MIG-3a〕今天是后端 `assets/aliases/dialect.rs`）的判据：`设计/71 §4.4` 那组接口在两种方言上逐项的**读法**。
 //!
 //! 规则（合不合格）不在这里判 —— 那一份住 `account_aliases`，判据在 `account_aliases_tests.rs`。
 //! 🔴 PowerShell 那一臂**一次都没被 PowerShell 解析过**（本机无 `pwsh`，Win11 虚拟机不许碰）：
@@ -54,7 +54,7 @@ fn posix_golden() {
     );
 }
 
-/// 黄金串 · PowerShell：函数体与 `scripts/cc.ps1.tpl` 里的 `function cc` 逐字同形（那一形在 `K-R132` 真机上
+/// 黄金串 · PowerShell：函数体与 `src/shared/cc.ps1.tpl` 里的 `function cc` 逐字同形（那一形在 `K-R132` 真机上
 /// `parse-errors=0`），预置参数**每个都单引号**、四种引号字符都双写。
 #[test]
 fn powershell_golden() {
@@ -91,7 +91,7 @@ fn powershell_golden() {
         r"if (Test-Path -LiteralPath 'C:\Users\u\.cc-monitor/aliases.ps1') { . 'C:\Users\u\.cc-monitor/aliases.ps1' }"
     );
     // 与自带 `cc` 同形这一句**不是**抄来的：从那份模板现渲染一个 `cc`，逐行比骨架。
-    let cc = crate::profile_installer::render_cc_code("cc", true, std::path::Path::new("/_"));
+    let cc = super::super::block::render_cc_code("cc", true, std::path::Path::new("/_"));
     for fixed in [
         "    [CmdletBinding()] param(",
         "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs",
@@ -220,7 +220,7 @@ fn a_startup_file_that_already_sources_us_is_recognized() {
 /// 启动文件候选：POSIX 只列在的；PowerShell 的 5.1 两份恒列（不在也列），7 的两份只在它的目录在时列。
 ///
 /// 〔AL2 · 第四波 4D〕方言**只给路径与列法**、一个字节的盘都不读（在不在由那台后端答 —— 那一半的判据是
-/// `account_aliases_tests.rs::the_candidates_are_listed_by_each_dialects_rule_through_the_door`）。
+/// `aliases_tests.rs::the_candidates_are_listed_by_each_dialects_rule_through_the_door`）。
 /// ⇒ 这里拿一个**盘上不存在的 home 字符串**也判得完：读了盘就量不出这张表。
 #[test]
 fn startup_files_follow_each_shells_own_convention() {
@@ -276,15 +276,15 @@ fn startup_files_follow_each_shells_own_convention() {
 fn powershell_knows_the_names_its_own_block_defines() {
     for n in ["__ccm_bind", "CC"] {
         let note = PowerShell
-            .name_taken(n, true)
+            .name_taken(n)
             .unwrap_or_else(|| panic!("`{n}` 在终端集成模板里就有，却一声不吭"));
         assert!(note.contains("终端集成块"), "{note}");
     }
     assert!(PowerShell
-        .name_taken("zzz_no_such_command_anywhere", true)
+        .name_taken("zzz_no_such_command_anywhere")
         .is_none());
     // 〔AL2〕不查 `PATH`（远端）时，模板里的名字照样认得出 —— 那一格不是本机才答得了的事实。
-    assert!(PowerShell.name_taken("__ccm_bind", false).is_some());
+    assert!(PowerShell.name_taken("__ccm_bind").is_some());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -344,9 +344,12 @@ fn the_profile_location_has_exactly_one_home() {
     // 表名 `SITES`：`scanning_guard_registry::TABLE_DECLS` 那条纪律（扫描面 ＋ 常量表型判据的表名闭集）。
     const SITES: &[(&str, usize, usize)] = &[
         // (住址, 记号在 `profile_needles()` 里的下标, 处数)
-        ("src/bridge/src/shell_dialect.rs", 0, 1),
-        ("src/bridge/src/shell_dialect.rs", 1, 1),
-        ("src/bridge/src/shell_dialect.rs", 2, 1),
+        ("src/backend/assets/aliases/dialect.rs", 0, 1),
+        ("src/backend/assets/aliases/dialect.rs", 1, 1),
+        ("src/backend/assets/aliases/dialect.rs", 2, 1),
+        // 〔MIG-3a〕方言进了后端；monitor 的「数据」区（⑬ monitor 自己的事、不碰后端）探 `$PROFILE` 备份只留两个**目录名**
+        //   （没有文件名）—— 第二个读者，待主会话认（`第四波记录/MIG-3a.md`）。
+        ("src/bridge/src/data_paths.rs", 2, 1),
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root = root.canonicalize().expect("仓根");

@@ -44,7 +44,7 @@
 //! 配置面申报」，并要求「每一项都必须能被现有五套工具中的**至少两套**实例化」。
 //!
 //! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说 `cc-acct-iso` 的探测是
-//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔SH1〕今天 `acct_iso_deploy.rs::acct_iso_status`，问那台后端）实际跑的是远端
+//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔MIG-3a〕今天是那台后端的帧命令 `acct-iso-status`，`iso.rs::answer_wire_status`）实际跑的是远端
 //! `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 再解析 stdout，
 //! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。`.vendor_id` 指纹比对
 //! 发生在**部署决策**那一步（`deploy_decision` 读远端 marker 文件），不是探测。
@@ -1385,7 +1385,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "git",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
-        site: "skill_host_tests.rs::git_common_dir",
+        site: "dial_home_registry_tests.rs::git_read",
     },
     UnmanagedEnv {
         id: "ssh",
@@ -1452,7 +1452,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "~/.local/bin/cc-acct-iso",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalWhy", &[])),
-        site: "acct_iso_deploy.rs::acct_iso_status",
+        site: "iso.rs::answer_wire_status",
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //

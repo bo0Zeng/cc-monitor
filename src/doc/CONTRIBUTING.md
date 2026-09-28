@@ -50,7 +50,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 修改 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 定义的任一文件 schema 都要：
 
-- [ ] 改 **写入方** 代码（PS 端模板 `src/bridge/scripts/cc.ps1.tpl` 或 Rust 端 `bind.rs` / `profile_installer.rs`）
+- [ ] 改 **写入方** 代码（PS 端模板 `src/shared/cc.ps1.tpl` 或 Rust 端 `bind.rs` / `profile_installer.rs`）
 - [ ] 改 **读取方** 代码（serde struct）
 - [ ] 更新 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 字段定义
 - [ ] **向后兼容性**：旧文件应能被新版本读取（serde `#[serde(default)]` 字段新增 OK，删字段需 RFC）

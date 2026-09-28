@@ -42,6 +42,38 @@ pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
     }
 }
 
+/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕备一条 `powershell.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
+/// **非 Windows 上回 `None`** —— 那里没有自带的 PowerShell（同 [`posix_shell`] 的反面，理由同）。
+///
+/// 只给**固定脚本**用（今天唯一的调用方：别名方言问内建别名 `Get-Alias`，`assets/aliases/dialect.rs`）；
+/// `-NoProfile` 让结果不被用户 profile 左右，`-NonInteractive` 让它绝不等人回车。不 `spawn`，送出去那一下归调用方。
+pub(crate) fn powershell_readonly(script: &str) -> Option<std::process::Command> {
+    if !speaks_powershell() {
+        return None;
+    }
+    let mut c = std::process::Command::new("powershell.exe");
+    c.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+    hide_console(&mut c);
+    Some(c)
+}
+
+/// `CREATE_NO_WINDOW`：挡掉 Windows 给控制台程序新开的那个黑框。别处没有控制台窗口这一说 ⇒ 什么都不做。
+#[cfg(windows)]
+fn hide_console(c: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt as _;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    c.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_console(_c: &mut std::process::Command) {}
+
+/// 〔MIG-3a · 主会话 09-27 裁〕这台后端**说不说 PowerShell** —— 别名方言那一道闸（`assets/aliases::dialect_here`）只问它。
+/// 「本机」与「远端」对后端没有区别（本机＝不走 ssh 的远端）：PowerShell ⇔ 这台是 Windows。
+pub(crate) fn speaks_powershell() -> bool {
+    cfg!(windows)
+}
+
 /// 〔MIG-2〕这台机器上「开一个终端窗口跑一串命令」那一串是哪种语言：Windows 是 PowerShell，别处是 POSIX shell
 /// （本机起会话的渲染按它挑写法，`control/launch_render/local.rs`）。
 pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
