@@ -631,7 +631,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4z-assets-in-backend**（2026-09-27，MIG-3a 前半合并那一拍）：子命令 ＋7（MCP 增删 · MCP 同步三问 · skill 装卸），后端新模块 `assets/`；
 /// `assets-sync` 多认只给 `origin` 的调用（查握手登记的可达表）。MCP 编辑 / 同步、skill 装卸的判定与写都在被写那台。
-pub const BUILD_ID: &str = "p4z-assets-in-backend";
+///
+/// ★★★ **p5a-resync-caught-up**（2026-09-28，REREAD 续合并那一拍）：协议 —— `resync` 应答 ＋1 格 `caught_up`（本次从游标补读出的行数合计），
+/// 给 V155「重新读取」按台说补读了几条。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p5a-resync-caught-up";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

@@ -24,6 +24,7 @@ pub(crate) fn answer(args: &Value) -> Result<Value, (&'static str, String)> {
         "added": d.added,
         "removed": d.removed,
         "retagged": d.retagged,
+        "caught_up": d.caught_up, // 〔REREAD · V155〕在跟的会话从游标补读出的行数合计
         "watchers": watchers,
         "unavailable": crate::unavailable_here(),
         "uncancellable": crate::inbound::uncancellable(),
