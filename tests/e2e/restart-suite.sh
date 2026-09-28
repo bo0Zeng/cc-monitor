@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# auto-e2e F-E3(命令级整合):换号重启编排（#68/#69）——`compact → exit → kill → resume(新账号)` 序列 +
+# auto-e2e F-E3(命令级整合):换号重启编排（#68/#69）——`compact → kill → resume(新账号)` 序列（〔V154〕不再键入 /exit）+
 # resume 落**新账号的 CLAUDE_CONFIG_DIR** + §5.2 失败语义。驱动**真源** src/account-restart.ts
 # `restartWithAccount`（经 restart-cmd-driver.ts + restart-shims/ 把 Tauri IPC 边界重定向到真 tmux +
 # fake-claude,见那两个文件头注),逐边界断言编排真正发出的命令序列 / resume argv / 账号解析 / 失败语义。
@@ -95,8 +95,9 @@ make_live() {  # <sid> <dir>
   echo "$sess"
 }
 
-# SEQ 里只保留主序列步（compact/exit/kill/resume），空格连成一行。pipefail 安全。
-seq_core() { { grep -E '^(compact|exit|kill|resume)$' "$1" 2>/dev/null || true; } | paste -sd' ' -; }
+# SEQ 里只保留主序列步（compact/escape/exit/kill/resume），空格连成一行。pipefail 安全。
+# 〔V154〕escape / exit 仍收进来：换号重启直接 kill，它俩再出现在序列里 ⇒ 下面的相等判据当场红。
+seq_core() { { grep -E '^(compact|escape|exit|kill|resume)$' "$1" 2>/dev/null || true; } | paste -sd' ' -; }
 # 等某账号目录 argv.log 出现该 sid 的 --resume 行,回显之。超时非零。
 wait_argv() {  # <dir> <sid> <timeout-s>
   local dir="$1" sid="$2" to="$3" i hit
@@ -114,21 +115,21 @@ drive_restart() {
   local sid="$1" sess="$2" acct="$3" cf="$4" cfm="$5" seqf="$6" toastf="$7"; shift 7
   : >"$seqf"; : >"$toastf"
   env "$@" CCM_SEQ_LOG="$seqf" CCM_TOAST_LOG="$toastf" \
-    npx tsx "$DRV" restart devbox "$sid" "$CWD_DIR" "$sess" "$acct" "$FAKE" "$cf" "$cfm" 1 1
+    npx tsx "$DRV" restart devbox "$sid" "$CWD_DIR" "$sess" "$acct" "$FAKE" "$cf" "$cfm" 1
 }
 
 echo "== F-E3 换号重启编排 命令级整合套件（真源 restartWithAccount + 真 tmux + fake-claude）=="
 echo "repo=$REPO  old(acct bold)=$OLD  new(acct znew)=$NEW  cwd=$CWD_DIR"
 
-# ── B1:restart 账号 znew + compactFirst=true → compact→exit→kill→resume + argv 落新账号目录 ──────
-echo "-- B1 compactFirst=true:序列 compact→exit→kill→resume + resume argv CLAUDE_CONFIG_DIR=新账号 --"
+# ── B1:restart 账号 znew + compactFirst=true → compact→kill→resume + argv 落新账号目录 ──────
+echo "-- B1 compactFirst=true:序列 compact→kill→resume + resume argv CLAUDE_CONFIG_DIR=新账号 --"
 SID1="$(new_sid)"; S1="cc-${SID1:0:8}"
 make_live "$SID1" "$OLD" >/dev/null
 OUT1="$(drive_restart "$SID1" "$S1" znew 1 1 "$WORK/b1.seq" "$WORK/b1.toast")"
 echo "   driver: $(echo "$OUT1" | paste -sd' ' -)"
 CORE1="$(seq_core "$WORK/b1.seq")"
 echo "   seq(core): [$CORE1]"
-[ "$CORE1" = "compact exit kill resume" ] && ok "B1 序列 = compact→exit→kill→resume（真编排发出的有序命令）" || bad "B1 序列=[$CORE1]（期望 compact exit kill resume）"
+[ "$CORE1" = "compact kill resume" ] && ok "B1 序列 = compact→kill→resume（真编排发出的有序命令）" || bad "B1 序列=[$CORE1]（期望 compact kill resume）"
 echo "$OUT1" | grep -q "^RESULT true$" && ok "B1 restartWithAccount 返回 true（真拉起）" || bad "B1 RESULT≠true"
 echo "$OUT1" | grep -q "^CONFIGDIR $NEW$" && ok "B1 真 accountConfigDir 解析 znew → $NEW（非旧号 $OLD）" || bad "B1 CONFIGDIR≠新账号目录"
 if AL="$(wait_argv "$NEW" "$SID1" 12)"; then
@@ -137,14 +138,14 @@ if AL="$(wait_argv "$NEW" "$SID1" 12)"; then
 else bad "B1 12s 内新账号目录 argv.log 无 resume 行"; fi
 if grep -qE "sid=$SID1 .*argv=--resume" "$OLD/argv.log" 2>/dev/null; then bad "B1 串号:resume 泄漏到**旧账号**目录($OLD)"; else ok "B1 隔离:旧账号目录无该 sid 的 resume（换号未落回旧号）"; fi
 
-# ── B2:restart 无 compact → 直接 exit→kill→resume（无 compact 等待）──────────────────────────
-echo "-- B2 compactFirst=false:直接 exit→kill→resume（序列无 compact）--"
+# ── B2:restart 无 compact → 直接 kill→resume（无 compact 等待、不发 Esc / /exit）──────────────────
+echo "-- B2 compactFirst=false:直接 kill→resume（序列无 compact / escape / exit）--"
 SID2="$(new_sid)"; S2="cc-${SID2:0:8}"
 make_live "$SID2" "$OLD" >/dev/null
 OUT2="$(drive_restart "$SID2" "$S2" znew 0 1 "$WORK/b2.seq" "$WORK/b2.toast")"
 CORE2="$(seq_core "$WORK/b2.seq")"
 echo "   seq(core): [$CORE2]"
-[ "$CORE2" = "exit kill resume" ] && ok "B2 序列 = exit→kill→resume（无 compact 等待）" || bad "B2 序列=[$CORE2]（期望 exit kill resume）"
+[ "$CORE2" = "kill resume" ] && ok "B2 序列 = kill→resume（〔V154〕直接杀，不发 Esc / /exit）" || bad "B2 序列=[$CORE2]（期望 kill resume）"
 { grep -qx "compact" "$WORK/b2.seq" 2>/dev/null && bad "B2 不该发 /compact 却发了"; } || ok "B2 全程未发 /compact（未勾选 compact）"
 echo "$OUT2" | grep -q "^RESULT true$" && ok "B2 返回 true" || bad "B2 RESULT≠true"
 wait_argv "$NEW" "$SID2" 12 >/dev/null && ok "B2 resume argv 落新账号目录" || bad "B2 无 resume argv"
@@ -165,7 +166,7 @@ BEFORE_LINES="$(wc -l <"$NEW/argv.log" 2>/dev/null || echo 0)"
 OUT4="$(drive_restart "$SID4" "$S4" znew 0 0 "$WORK/b4.seq" "$WORK/b4.toast")"
 CORE4="$(seq_core "$WORK/b4.seq")"
 echo "   seq(core): [$CORE4]  result: $(echo "$OUT4" | grep '^RESULT')"
-[ -z "$CORE4" ] && ok "B4 序列为空（confirm 拒 → 不 compact/不 exit/不 kill/不 resume）" || bad "B4 序列非空=[$CORE4]（取消后仍动手）"
+[ -z "$CORE4" ] && ok "B4 序列为空（confirm 拒 → 不 compact/不 kill/不 resume）" || bad "B4 序列非空=[$CORE4]（取消后仍动手）"
 echo "$OUT4" | grep -q "^RESULT false$" && ok "B4 返回 false（no-op）" || bad "B4 RESULT≠false"
 [ "$(session_alive "$S4")" = 1 ] && ok "B4 会话未被杀（仍活）" || bad "B4 会话被误杀（取消后不该动）"
 sleep 1

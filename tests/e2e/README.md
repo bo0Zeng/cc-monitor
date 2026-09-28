@@ -302,7 +302,7 @@ fixtures / 驱动:
 
 ## auto-e2e:换号重启编排(F-E3,#68/#69)
 
-命令级 + backend-frame 验优雅换号:`compact→exit→kill→resume(新账号)` 序列、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
+命令级 + backend-frame 验换号:`compact→kill→resume(新账号)` 序列（〔V154〕不再键入 /exit，直接杀）、resume 落新账号 `CLAUDE_CONFIG_DIR`、失败中止语义(kill 失败不续 resume / resume 未起不记账)、批量对齐 idle/busy 分流。诚实分层同 F-E2(GUI 结构性不可执行 → 命令级天花板)。
 - `restart-cmd-driver.ts` + `restart-shims/`(ESM loader 只重定向 Tauri IPC 边界到真 tmux+fake-claude,其余全真源;含 kill/resume 失败注入)。
 - 跑:`bash tests/e2e/restart-suite.sh`(命令级 24/0) + `bash tests/e2e/restart-backend-frames.sh`(5/0:旧号 `SessionRemoved`→新号 `SessionAdded` 迁移、无孤儿)。批量对齐 idle/busy 另由 `tabs.vitest.ts`「account-ux U6」覆盖。
 
