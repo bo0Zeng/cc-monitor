@@ -909,7 +909,7 @@ export function markdownPieces(md: string, max: number): string[] {
     block = [];
   };
   for (const line of md.split("\n")) {
-    if (/^\s*(```|~~~)/.test(line)) inCode = !inCode;
+    if (/^\s*(\x60{3}|~{3})/.test(line)) inCode = !inCode;
     block.push(line);
     if (!inCode && line.trim() === "") flushBlock();
   }
@@ -922,8 +922,8 @@ export function markdownPieces(md: string, max: number): string[] {
  * 一个比 `max` 还长的块按行切（一行比 `max` 还长就按字硬切）；是围栏代码块的，每一截各自补上开 / 合围栏，渲染出来仍是代码块。
  */
 function splitOversizeBlock(lines: string[], max: number): string[] {
-  const fence = /^\s*(```+|~~~+)/.exec(lines[0] ?? "")?.[1] ?? null;
-  const body = fence ? lines.slice(1, lines.length - (/^\s*(```|~~~)/.test(lines[lines.length - 1] ?? "") ? 1 : 0)) : lines;
+  const fence = /^\s*(\x60{3,}|~{3,})/.exec(lines[0] ?? "")?.[1] ?? null;
+  const body = fence ? lines.slice(1, lines.length - (/^\s*(\x60{3}|~{3})/.test(lines[lines.length - 1] ?? "") ? 1 : 0)) : lines;
   const open = fence ? `${lines[0]}\n` : "";
   const close = fence ? `\n${fence}` : "";
   const room = Math.max(1, max - open.length - close.length);
