@@ -814,7 +814,11 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
 
     let h = supervise_with_stdio(
         bin,
-        vec![super::BACKEND_SEP.into(), super::STREAM_WORD.into(), "--tail-only".into()],
+        vec![
+            super::BACKEND_SEP.into(),
+            super::STREAM_WORD.into(),
+            "--tail-only".into(),
+        ],
         vec![
             ("HOME".into(), home.display().to_string()),
             ("CLAUDE_CONFIG_DIR".into(), cfg_dir.display().to_string()),
@@ -1121,7 +1125,11 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
 
     let h = supervise_with_stdio(
         bin,
-        vec![super::BACKEND_SEP.into(), super::STREAM_WORD.into(), "--tail-only".into()],
+        vec![
+            super::BACKEND_SEP.into(),
+            super::STREAM_WORD.into(),
+            "--tail-only".into(),
+        ],
         envs,
         CrashLimits::default(),
         Arc::new(|| {
@@ -2608,7 +2616,11 @@ fn e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed() {
     let ev = events.clone();
     let h = supervise(
         PathBuf::from(&bin),
-        vec![super::BACKEND_SEP.into(), super::STREAM_WORD.into(), "--tail-only".into()],
+        vec![
+            super::BACKEND_SEP.into(),
+            super::STREAM_WORD.into(),
+            "--tail-only".into(),
+        ],
         vec![
             // `C7i`：给后端一条**前面挂着 shim** 的 PATH —— 它 shell out 的 tmux
             // 会被强插 `-L`。比传 `TMUX_TMPDIR` 硬：`$TMUX` 压不过显式选择器。
