@@ -1723,7 +1723,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `agent` | → | 这一家 agent 的路由名（凭据文件的行只属于 `claude-code`；别家 ⇒ `routed` 恒空）|
 | `configDirs` | → | 要问的那几个号的配置目录（id 由后端按 `acct-core` 那一份规则推，前端一个字都不推）|
 | `routed` | ← | 传进来的里面、**表里有对应行**的那几个（原样回）。「表里有行」= 上游选择装表真收进表的那几行（`base_url` 坏的那一行不算）|
-| `running` | ← | 这台机器上**我们的**中转在不在听（差分探针：对的钥匙 ⇒ 404、同形错钥匙 ⇒ 403 才算；钥匙不出线）|
+| `running` | ← | 这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里）|
 
 **错误码**：`bad_args`。界面经 `chan.call` 直接问（金样同上）。
 
@@ -1742,13 +1742,13 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 那一侧默认开）|
 | `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是起会话那一侧的事）；`null` = 不注入 |
-| `listening` | ← | 这台机器上我们的中转在不在听（只在 `baseUrl` 非空时探；为空时 `false`）|
+| `listening` | ← | 这台机器上我们的中转在不在听（读常驻后端进程内的监听状态；只在 `baseUrl` 非空时问；为空时 `false`）|
 | `whenDown` | ← | 中转不在时：`refuse`（`/s/`，拒绝起会话）· `direct`（`/t/`，照旧直连）；`baseUrl` 为空时 `null` |
 | `account` | ← | `/s/` 那一格的表 id（拒绝时点名用）；否则 `null` |
 
 四个键恒在（形状恒定）。**错误码**：`bad_args`。中转不在时本机远端同一条：不另起一个，按 `whenDown` 拒或直连（〔DEL〕中转只住那台的常驻后端里）。
 
-⚠ **CLI 面也有它们**（`--apikey-routing` / `--launch-endpoint`），从 `inbound::REGISTRY` 派生，入参从 stdin 读。
+⚠ **只上帧面**〔DEL 续〕：一次性进程里没有中转，那一格恒答「不在」是假话 ⇒ 不派生 CLI 面（`cli_control::STREAM_ONLY`）。
 
 〔DEL〕这里原是帧面 `relay-status` / `relay-ensure`（远端那台上起一个脱离的 `--relay`）：中转只住常驻后端进程里（本机远端同形，V139），那一族随远端回落一形删了。
 

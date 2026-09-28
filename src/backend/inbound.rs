@@ -1224,7 +1224,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
-    //   阻塞档：读一次凭据文件、装一次表；要注入时在回环上探一次中转（RK1 的差分探针，每发一次读期限）。
+    //   阻塞档：读一次凭据文件、装一次表；「中转在不在」读本进程的监听状态（中转住这里）。
+    //   〔DEL 续〕只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
     CommandSpec {
         name: "launch-endpoint",
         doc_anchor: Some("#### `launch-endpoint`"),

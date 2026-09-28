@@ -49,7 +49,8 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::ssh_source::Rem
 }
 
 /// 〔DEL〕D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
-/// 带上那台原话；别的失败 ⇒ 那台原话原样；老后端掉进流模式发 hello ⇒ 「太旧」。四样都是失败，没有「回落」那一格。
+/// 带上那台原话，并归成 `Unsupported`（〔DEL 续〕`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
+/// 老后端掉进流模式发 hello ⇒ 「太旧」（`Failed`：部署会把它换掉，照常重连）。四样都是失败，没有「回落」那一格。
 /// 守的要求：`4d-lanes.md` `## DEL` 逐字「非 unix 远端（Windows 远端，V29 / V132 不承诺）连不上常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
@@ -61,10 +62,10 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             r#"{"code":"unsupported","message":"不是 unix"}"#,
             Some(2)
         )),
-        Err(copy_text(
+        Err(AttachErr::Unsupported(copy_text(
             "rsRemoteResident.ensure.unsupported",
             &[("why", "不是 unix")]
-        ))
+        )))
     );
     assert_eq!(
         parse_answer(&exec(
@@ -72,11 +73,14 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
             r#"{"code":"spawn_failed","message":"x"}"#,
             Some(2)
         )),
-        Err("x".to_string())
+        Err(AttachErr::Failed("x".to_string()))
     );
     assert_eq!(
         parse_answer(&exec(&hello("p1a-old"), "", None)),
-        Err(copy_text("rsRemoteResident.ensure.tooOld", &[]))
+        Err(AttachErr::Failed(copy_text(
+            "rsRemoteResident.ensure.tooOld",
+            &[]
+        )))
     );
     assert!(parse_ensured(&serde_json::json!({"port":51000})).is_err());
     assert!(

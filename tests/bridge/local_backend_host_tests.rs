@@ -60,7 +60,7 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 }
 
 // 〔US1 · 第四波 4D〕M3（`relay_running_really_asks_the_loopback_port`〔散文墓碑〕）随 `relay_running` 一起退役：
-//   本机中转在不在由本机常驻后端自己答（RK1 的差分探针），monitor 这一侧不再连回环口。
+//   本机中转在不在由本机常驻后端自己答（读它进程内的监听状态），monitor 这一侧不再连回环口。
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
 //    这条判据整条删了**，新住址是 `history.rs` 里那几条判据

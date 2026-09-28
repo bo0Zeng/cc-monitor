@@ -594,7 +594,6 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
     "tests/backend/relay/door_tests.rs",
     "tests/backend/relay/host_tests.rs",
-    "tests/backend/relay/machine_tests.rs",
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
