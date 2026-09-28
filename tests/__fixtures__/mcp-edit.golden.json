@@ -1,0 +1,12 @@
+{
+  "说明": [
+    "〔MIG-3a〕`mcp-server-put` / `mcp-server-remove` 的跨语言金样：后端对临时目录现算 == reply；界面 `src/mcp-reads.ts::decodeMcpEdited` 读同一份。",
+    "只采结构（占位 server 名 / 占位命令）。`<DIR>` 由测试换成临时目录下的真路径。"
+  ],
+  "put": { "projectDir": "<DIR>", "name": "p1", "server": { "command": "p1", "args": ["-x"] } },
+  "putReply": { "path": "<DIR>/.mcp.json", "changed": true },
+  "mcpJson": "{\n  \"mcpServers\": {\n    \"p1\": {\n      \"args\": [\n        \"-x\"\n      ],\n      \"command\": \"p1\"\n    }\n  }\n}",
+  "removeAbsent": { "projectDir": "<DIR>", "name": "nope" },
+  "removeAbsentReply": { "path": "<DIR>/.mcp.json", "changed": false },
+  "codes": ["bad_args", "bad_path", "refused"]
+}

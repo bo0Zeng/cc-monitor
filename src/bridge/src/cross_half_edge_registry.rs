@@ -79,19 +79,25 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `inbound_client_tests.rs` → `launch.rs`）守的「发出去的字段 / mode 名 == 后端解析器认的」改由跨语言金样 \
          `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
     ),
+    // 〔MIG-3a〕`mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
     (
         "monitor→backend",
-        "tests/bridge/mcp_sync_tests.rs",
-        "src/backend/inbound.rs",
-        "〔AS1〕MCP 推 / 拉：monitor 发的命令名、发的四格与读的两格必须就是后端登记表里声明的那几个 \
-         —— 读它才能两向对拍（本侧手抄一份就成了两侧同源的恒等）",
+        "tests/bridge/config_surface_tests.rs",
+        "src/backend/assets/mcp_edit.rs",
+        "〔MIG-3a〕足迹里项目 MCP 的落点：注册表声明的文件名必须就是那台后端写口的落点常量 `MCP_JSON` \
+         —— 写进了后端之后，落点只在那一处（本侧抄一份就成了两侧同源的恒等）",
     ),
     (
         "monitor→backend",
-        "tests/bridge/mcp_sync_tests.rs",
-        "src/backend/mcp_sync.rs",
-        "〔AS1〕「判定只住后端」的零命中判据：monitor 这一侧不许出现后端那几个闭集的线上名 —— \
-         闭集的人群必须从后端现抠（本侧抄一份，后端加一态这条就静默失效）",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/skill_flow.rs",
+        "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/mcp_edit.rs",
+        "〔MIG-3a〕`project-mcp` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
     ),
     (
         "monitor→backend",

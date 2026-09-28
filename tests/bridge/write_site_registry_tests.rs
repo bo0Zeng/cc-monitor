@@ -95,8 +95,8 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //    （`user_files::edit` → `files-peek` / `files-put`），本进程**一个字节都不落** ⇒ 三行随原语一起走了。
     //    写的规则（备份 · 原子替换 · 回读 · 回滚）从此只住后端 `control/files_write.rs::put_text`。
     // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来还有三行：`profile_installer.rs` 的 `atomic_write_string`〔散文墓碑〕 /
-    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs` 的
-    //    `write_json_atomic`（`project-mcp` 那条的真落点）。`$PROFILE` / rc / 项目 `.mcp.json` 全改经后端写
+    //    `atomic_replace_path`（本机用户文件的原子写原语，申报成 `ccm` 的安装动作）与 `mcp.rs`（〔MIG-3a〕整份删了）的
+    //    本机原子写（`project-mcp` 那条的真落点）。`$PROFILE` / rc / 项目 `.mcp.json` 全改经后端写
     //    （`user_files` → `files-put`），三件零调用方、删了 ⇒ 三行随之走。那两个工具的装 / 卸动作今天在后端落盘，
     //    本表（monitor 进程的写盘人群）里**不再有它们** —— 那正是用户那一裁要的形状。
     // ── 不是安装动作：写的是 monitor 自己的东西
@@ -527,7 +527,7 @@ const MOVED_OUT: &[&str] = &[
     "account_aliases.rs",
     "profile_installer.rs",
     "fenced_block.rs",
-    "mcp.rs",
+    // 〔MIG-3a〕`mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
     "skill_host.rs",
     "cc_bus_deploy.rs",
     "history.rs",

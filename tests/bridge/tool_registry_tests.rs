@@ -1518,10 +1518,12 @@ struct Claim {
 fn claims() -> Vec<Claim> {
     const SFTP: &str = include_str!("../../src/bridge/src/sftp.rs");
     const PROFILE_INSTALLER: &str = include_str!("../../src/bridge/src/profile_installer.rs");
-    const MCP: &str = include_str!("../../src/bridge/src/mcp.rs");
+    // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
+    const MCP: &str = include_str!("../../src/backend/assets/mcp_edit.rs");
     const CC_BUS_DEPLOY: &str = include_str!("../../src/bridge/src/cc_bus_deploy.rs");
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
-    const SKILL_INSTALL: &str = include_str!("../../src/bridge/src/skill_install.rs");
+    // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
+    const SKILL_INSTALL: &str = include_str!("../../src/backend/assets/skill_flow.rs");
     const ACCT_ISO_DEPLOY: &str = include_str!("../../src/bridge/src/acct_iso_deploy.rs");
     // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
     const PANORAMA_BYTES: &str = include_str!("../../src/bridge/src/panorama_bytes.rs");
@@ -1610,39 +1612,35 @@ fn claims() -> Vec<Claim> {
         Claim {
             tool: "project-mcp",
             home: Some(ImplHome {
-                addr: "mcp.rs",
+                addr: "assets/mcp_edit.rs",
                 text: MCP,
             }),
             install: Some(ImplSite {
-                addr: "mcp.rs::write_project_mcp_server",
-                // 🔴 〔步 12·C 收尾 09-20〕签名多了一个 `origin: Origin` —— 本机与远端
-                //    两条 MCP 写命令合成了一条。**逐字签名是钉住实现的那把锁**，
-                //    实现真的变了就得跟着改；判法（住址 ↔ 逐字签名互校）一个字没动。
-                definition: "pub async fn write_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
+                addr: "assets/mcp_edit.rs::answer_put",
+                // 〔MIG-3a〕从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
+                definition: "pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {",
             }),
             uninstall: Some(ImplSite {
-                addr: "mcp.rs::remove_project_mcp_server",
-                // 同上那一条：`remove_remote_mcp_server` 并进来之后，签名多了 `origin`
-                // 并因此被 rustfmt 折成多行。
-                definition: "pub async fn remove_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n) -> Result<(), String> {",
+                addr: "assets/mcp_edit.rs::answer_remove",
+                definition: "pub(crate) fn answer_remove(d: &dyn Door, args: &Value) -> Answer {",
             }),
         },
-        // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill：装口是 `skill_install_apply`（经那台后端 `files-put`）；
-        // 〔SU1 · 第四波 4C · V116〕卸口 `skill_uninstall_apply`（只删装记录里那几个文件，经那台后端 `files-delete` 带 `expect`）。
+        // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill；〔SU1 · V116〕卸只删装记录里那几个文件。
+        // 〔MIG-3a〕装 / 卸口进了被写那台后端（`skill-install-apply` / `skill-uninstall-apply` 的本体）。
         //   〔墓碑 —— AS2 那一版这里是 `uninstall: None`，负向扫描守着「家里长出 `uninstall…` 就红」；SU1 落卸口那一拍它当场红了（`uninstall_with`），照它说的登记。〕
         Claim {
             tool: "skill-install",
             home: Some(ImplHome {
-                addr: "skill_install.rs",
+                addr: "assets/skill_flow.rs",
                 text: SKILL_INSTALL,
             }),
             install: Some(ImplSite {
-                addr: "skill_install.rs::skill_install_apply",
-                definition: "pub async fn skill_install_apply(\n    to: Origin,\n    name: String,\n    source: Vec<SkillFile>,\n    target: Vec<SkillTargetText>,\n    take: Vec<String>,\n    overwrite: Vec<String>,\n) -> Result<SkillInstallApplied, String> {",
+                addr: "assets/skill_flow.rs::answer_install",
+                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
             }),
             uninstall: Some(ImplSite {
-                addr: "skill_install.rs::skill_uninstall_apply",
-                definition: "pub async fn skill_uninstall_apply(\n    to: Origin,\n    dir: String,\n    seen: Vec<SkillTargetText>,\n    take: Vec<String>,\n    confirm: Vec<String>,\n) -> Result<SkillUninstallApplied, String> {",
+                addr: "assets/skill_flow.rs::answer_uninstall",
+                definition: "pub(crate) fn answer_uninstall(\n    d: &dyn Door,\n    ledger: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
             }),
         },
         Claim {

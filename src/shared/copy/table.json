@@ -12607,11 +12607,6 @@
       "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）。说明请写在备注里，路径栏只放路径。",
       "args": ["bad", "declared"]
     },
-    "rsMcp.target.pathNoProjectDir": {
-      "kind": "error",
-      "zh": "{path} 切不出项目目录",
-      "args": ["path"]
-    },
     "rsTmux.list.shape": {
       "kind": "error",
       "zh": "{who}的 tmux 会话列表形状对不上 —— 两边版本不一样，先别重试",
@@ -12631,114 +12626,6 @@
       "kind": "error",
       "zh": "读 {path} 失败：{e}",
       "args": ["path", "e"]
-    },
-    "rsMcp.read.shape": {
-      "kind": "error",
-      "zh": "{who}的 MCP 列表形状对不上（{why}）—— 两边版本不一样，先别重试",
-      "args": ["who", "why"]
-    },
-    "rsMcp.remote.notConfigured": {
-      "kind": "error",
-      "zh": "远端「{machine}」未配置或未启用",
-      "args": ["machine"]
-    },
-    "rsMcp.plan.parseFailed": {
-      "kind": "error",
-      "zh": "{what} 解析失败（拒绝覆盖）：{e}",
-      "args": ["what", "e"]
-    },
-    "rsMcp.target.noProjectDir": {
-      "kind": "error",
-      "zh": "拒绝写：{target} 切不出项目目录",
-      "args": ["target"]
-    },
-    "rsMcp.remote.pathIllegal": {
-      "kind": "error",
-      "zh": "拒绝写非法远端路径：{path}",
-      "args": ["path"]
-    },
-    "rsMcp.remote.pathNotAbsolute": {
-      "kind": "error",
-      "zh": "远端项目目录须为绝对路径",
-      "args": []
-    },
-    "rsMcp.mcpJson.rootNotObject": {
-      "kind": "error",
-      "zh": ".mcp.json 根不是对象",
-      "args": []
-    },
-    "rsMcp.mcpJson.serversNotObject": {
-      "kind": "error",
-      "zh": ".mcp.json 里的 mcpServers 不是对象",
-      "args": [],
-      "waive": {
-        "C-T1": "mcpServers 是用户自己那份 .mcp.json 里的键名，指路要用原名"
-      }
-    },
-    "rsMcp.upsert.emptyName": {
-      "kind": "error",
-      "zh": "MCP 服务名为空",
-      "args": []
-    },
-    "rsMcp.path.notAbsolute": {
-      "kind": "error",
-      "zh": "项目目录须为绝对路径（实得 {dir}）",
-      "args": ["dir"]
-    },
-    "rsMcp.path.emptyDir": {
-      "kind": "error",
-      "zh": "项目目录为空，拒绝写",
-      "args": []
-    },
-    "rsMcpSync.preview.sameFile": {
-      "kind": "error",
-      "zh": "两边是同一份文件 —— 换一台机器或换一个项目目录",
-      "args": []
-    },
-    "rsMcpSync.apply.notInCopy": {
-      "kind": "error",
-      "zh": "「{name}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写",
-      "args": ["name"]
-    },
-    "rsMcpSync.stale.changed": {
-      "kind": "error",
-      "zh": "{machine} 上那份配置在你看差异之后又被改过了。这一趟一个字节都没写，重新看一次差异再决定。",
-      "args": ["machine"]
-    },
-    "rsMcpSync.preview.missing": {
-      "kind": "error",
-      "zh": "{from} 上没有 {path} —— 没有可以拷过去的条目",
-      "args": ["from", "path"]
-    },
-    "rsMcpSync.reply.unreadable": {
-      "kind": "error",
-      "zh": "对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。",
-      "args": []
-    },
-    "rsMcpSync.plan.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的后端回了一条空应答",
-      "args": ["who"]
-    },
-    "rsMcpSync.plan.internal": {
-      "kind": "error",
-      "zh": "{who}：比对时出了内部错误，没有拿到结果",
-      "args": ["who"]
-    },
-    "rsMcpSync.plan.tooBig": {
-      "kind": "error",
-      "zh": "两份配置合起来太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
-      "args": ["bytes", "cap"]
-    },
-    "rsMcpSync.plan.cannotCompare": {
-      "kind": "error",
-      "zh": "没法比对，一个字节都没动",
-      "args": []
-    },
-    "rsMcpSync.plan.backendDown": {
-      "kind": "error",
-      "zh": "{who} 的后端没连上，比对要经它来做（{why}）—— 一个字节都没动",
-      "args": ["who", "why"]
     },
     "rsHooksDiag.local.noHome": {
       "kind": "body",
@@ -13176,76 +13063,6 @@
       "zh": "在场",
       "args": []
     },
-    "rsSkillInstall.preview.sameMachine": {
-      "kind": "error",
-      "zh": "来源与要装的是同一台 —— 换一台机器",
-      "args": []
-    },
-    "rsSkillInstall.apply.stale": {
-      "kind": "error",
-      "zh": "那一份在你看差异之后又被改过了。重新看一次差异再决定",
-      "args": []
-    },
-    "rsSkillInstall.apply.noOriginal": {
-      "kind": "error",
-      "zh": "「{path}」没有原文 —— 两端对不上，停下了",
-      "args": ["path"]
-    },
-    "rsSkillInstall.apply.notInCopy": {
-      "kind": "error",
-      "zh": "「{path}」不在拷出来的那一份里 —— 两端对不上，停下了",
-      "args": ["path"]
-    },
-    "rsSkillInstall.stopped.at": {
-      "kind": "error",
-      "zh": "{machine} 上写「{at}」时停下了：{why}。{done}。",
-      "args": ["machine", "at", "why", "done"]
-    },
-    "rsSkillInstall.stopped.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "rsSkillInstall.stopped.some": {
-      "kind": "body",
-      "zh": "前面已经写了 {list}",
-      "args": ["list"]
-    },
-    "rsSkillInstall.stopped.none": {
-      "kind": "body",
-      "zh": "一个都还没写",
-      "args": []
-    },
-    "rsSkillInstall.reply.unreadable": {
-      "kind": "error",
-      "zh": "后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。",
-      "args": []
-    },
-    "rsSkillInstall.ask.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的后端回了一条空应答",
-      "args": ["who"]
-    },
-    "rsSkillInstall.ask.internal": {
-      "kind": "error",
-      "zh": "{who}：装 skill 时出了内部错误，没有拿到结果",
-      "args": ["who"]
-    },
-    "rsSkillInstall.ask.tooBig": {
-      "kind": "error",
-      "zh": "这个 skill 的文本合起来太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
-      "args": ["bytes", "cap"]
-    },
-    "rsSkillInstall.ask.failed": {
-      "kind": "error",
-      "zh": "装不了 skill，一个字节都没动",
-      "args": []
-    },
-    "rsSkillInstall.ask.backendDown": {
-      "kind": "error",
-      "zh": "{who} 的后端没连上（{why}）—— 一个字节都没动",
-      "args": ["who", "why"]
-    },
     "rsCcBusDeploy.win.ok": {
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{pathCaveat}",
@@ -13416,11 +13233,6 @@
       "kind": "error",
       "zh": "本机后端：{message}",
       "args": ["message"]
-    },
-    "rsAssetSync.reply.unreadable": {
-      "kind": "error",
-      "zh": "本机后端答的同步结果认不出来，多半是两边版本不一样。",
-      "args": []
     },
     "rsUserFiles.list.notArray": {
       "kind": "error",
@@ -16431,11 +16243,6 @@
       "zh": "cc-monitor 旧版放的：认出是它放的就删，认不出的不动",
       "args": []
     },
-    "rsSkillInstall.ask.uninstallFailed": {
-      "kind": "error",
-      "zh": "卸不了 skill，一个字节都没动",
-      "args": []
-    },
     "rsToolRegistry.tools.skillInstallsLedgerNote": {
       "kind": "body",
       "zh": "装到哪台就记在哪台。那台后端自己的装记录：每个装写进去的文件的摘要，和装之前在不在。卸只认这里记着的，卸掉的从这里摘掉",
@@ -16515,56 +16322,6 @@
       "kind": "body",
       "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端（今天后端就是 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
       "args": []
-    },
-    "rsSkillInstall.record.noLedger": {
-      "kind": "error",
-      "zh": "装好了，但「{path}」这台没说该怎么记 —— 这一趟装的文件卸不掉。",
-      "args": ["path"]
-    },
-    "rsSkillInstall.record.failed": {
-      "kind": "error",
-      "zh": "装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。",
-      "args": ["e"]
-    },
-    "rsSkillInstall.uninstall.noSeen": {
-      "kind": "error",
-      "zh": "「{path}」你看的时候没有它的原文 —— 两端对不上，停下了",
-      "args": ["path"]
-    },
-    "rsSkillInstall.uninstall.stale": {
-      "kind": "error",
-      "zh": "那一份在你看过之后又被改过了，或已经不在了。重新看一次再决定",
-      "args": []
-    },
-    "rsSkillInstall.uninstall.dropFailed": {
-      "kind": "error",
-      "zh": "删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。",
-      "args": ["e"]
-    },
-    "rsSkillInstall.uninstall.noneDeleted": {
-      "kind": "body",
-      "zh": "一个都还没删",
-      "args": []
-    },
-    "rsSkillInstall.uninstall.someDeleted": {
-      "kind": "body",
-      "zh": "前面已经删了 {paths}",
-      "args": ["paths"]
-    },
-    "rsSkillInstall.uninstall.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "rsSkillInstall.uninstall.dirFailed": {
-      "kind": "error",
-      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
-      "args": ["path", "e"]
-    },
-    "rsSkillInstall.uninstall.stopped": {
-      "kind": "error",
-      "zh": "{machine} 上删「{at}」时停下了：{why}。{done}。",
-      "args": ["machine", "at", "why", "done"]
     },
     "ccBus.broadcast.listSep": {
       "kind": "body",
@@ -19233,6 +18990,184 @@
     "tabSessionActions.reread.failed": {
       "kind": "error",
       "zh": "重新读取失败",
+      "args": []
+    },
+    "beMcpEdit.path.emptyDir": {
+      "kind": "error",
+      "zh": "项目目录为空，拒绝写",
+      "args": []
+    },
+    "beMcpEdit.path.notAbsolute": {
+      "kind": "error",
+      "zh": "项目目录须为绝对路径（实得 {dir}）",
+      "args": ["dir"]
+    },
+    "beMcpEdit.upsert.emptyName": {
+      "kind": "error",
+      "zh": "MCP 服务名为空",
+      "args": []
+    },
+    "beMcpEdit.mcpJson.rootNotObject": {
+      "kind": "error",
+      "zh": ".mcp.json 根不是对象",
+      "args": []
+    },
+    "beMcpEdit.mcpJson.serversNotObject": {
+      "kind": "error",
+      "zh": ".mcp.json 里的 mcpServers 不是对象",
+      "args": [],
+      "waive": {
+        "C-T1": "mcpServers 是用户自己那份 .mcp.json 里的键名，指路要用原名"
+      }
+    },
+    "beMcpEdit.plan.parseFailed": {
+      "kind": "error",
+      "zh": "{what} 解析失败（拒绝覆盖）：{e}",
+      "args": ["what", "e"]
+    },
+    "beAssets.door.editGaveUp": {
+      "kind": "error",
+      "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
+      "args": ["last", "attempts"]
+    },
+    "beAssets.door.outsideHome": {
+      "kind": "error",
+      "zh": "{abs} 不在 home（{home}）底下 —— 只改 home 里的文件",
+      "args": ["abs", "home"]
+    },
+    "beAssets.door.homeUnknown": {
+      "kind": "error",
+      "zh": "这台机器的后端没答出 home 在哪",
+      "args": []
+    },
+    "mcpReads.read.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 MCP 列表，两端版本对不上",
+      "args": []
+    },
+    "mcpReads.edit.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 MCP 写入结果，两端版本对不上",
+      "args": []
+    },
+    "mcpReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "beMcpSyncFlow.preview.sameFile": {
+      "kind": "error",
+      "zh": "两边是同一份文件 —— 换一台机器或换一个项目目录",
+      "args": []
+    },
+    "beMcpSyncFlow.apply.notInCopy": {
+      "kind": "error",
+      "zh": "「{name}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写",
+      "args": ["name"]
+    },
+    "beMcpSyncFlow.apply.stale": {
+      "kind": "error",
+      "zh": "要写的那份配置在你看差异之后又被改过了。这一趟一个字节都没写，重新看一次差异再决定。",
+      "args": []
+    },
+    "beMcpSyncFlow.source.missing": {
+      "kind": "error",
+      "zh": "来源那台上没有 {path} —— 没有可以拷过去的条目",
+      "args": ["path"]
+    },
+    "mcpSyncReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的差异 / 写入结果，两端版本对不上。这一趟什么都没写。",
+      "args": []
+    },
+    "mcp.read.problem": {
+      "kind": "body",
+      "zh": "这一份读不出来，当作没有：{what}",
+      "args": ["what"]
+    },
+    "beSkillFlow.install.noOriginal": {
+      "kind": "error",
+      "zh": "「{path}」没有原文 —— 两端对不上，停下了",
+      "args": ["path"]
+    },
+    "beSkillFlow.install.stale": {
+      "kind": "error",
+      "zh": "那一份在你看差异之后又被改过了。重新看一次差异再决定",
+      "args": []
+    },
+    "beSkillFlow.install.noneWritten": {
+      "kind": "body",
+      "zh": "一个都还没写",
+      "args": []
+    },
+    "beSkillFlow.install.recordFailed": {
+      "kind": "error",
+      "zh": "装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。",
+      "args": ["e"]
+    },
+    "beSkillFlow.uninstall.noSeen": {
+      "kind": "error",
+      "zh": "「{path}」你看的时候没有它的原文 —— 两端对不上，停下了",
+      "args": ["path"]
+    },
+    "beSkillFlow.uninstall.stale": {
+      "kind": "error",
+      "zh": "那一份在你看过之后又被改过了，或已经不在了。重新看一次再决定",
+      "args": []
+    },
+    "beSkillFlow.uninstall.dropFailed": {
+      "kind": "error",
+      "zh": "删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。",
+      "args": ["e"]
+    },
+    "beSkillFlow.uninstall.noneDeleted": {
+      "kind": "body",
+      "zh": "一个都还没删",
+      "args": []
+    },
+    "beSkillFlow.uninstall.dirFailed": {
+      "kind": "error",
+      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
+      "args": ["path", "e"]
+    },
+    "beSkillFlow.install.someWritten": {
+      "kind": "body",
+      "zh": "前面已经写了 {list}",
+      "args": ["list"]
+    },
+    "beSkillFlow.uninstall.someDeleted": {
+      "kind": "body",
+      "zh": "前面已经删了 {list}",
+      "args": ["list"]
+    },
+    "beSkillFlow.install.stoppedAt": {
+      "kind": "error",
+      "zh": "写「{at}」时停下了：{why}。{done}。",
+      "args": ["at", "why", "done"]
+    },
+    "beSkillFlow.uninstall.stoppedAt": {
+      "kind": "error",
+      "zh": "删「{at}」时停下了：{why}。{done}。",
+      "args": ["at", "why", "done"]
+    },
+    "skillInstallReads.preview.sameMachine": {
+      "kind": "error",
+      "zh": "来源与要装的是同一台 —— 换一台机器",
+      "args": []
+    },
+    "skillInstallReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 skill 差异 / 装卸结果，两端版本对不上。这一趟什么都没写。",
+      "args": []
+    },
+    "assetsSyncReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的同步结果，两端版本对不上。",
+      "args": []
+    },
+    "beSkillFlow.stopped.listSep": {
+      "kind": "body",
+      "zh": "、",
       "args": []
     }
   }

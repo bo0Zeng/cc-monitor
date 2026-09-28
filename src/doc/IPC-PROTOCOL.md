@@ -1882,12 +1882,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `origin` | → | 可缺席。给了 ⇒ 记进可达表（内存，后端重启就空）并先对它做一趟；缺席 ⇒ 对可达表里每一台各做一趟 |
-| `dial` | → | 给了 `origin` 就必给：那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。本条会把 `use` 改成 `capture` |
+| `dial` | → | 可缺席。给了 ⇒ 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体），记进可达表；本条会把 `use` 改成 `capture`。〔MIG-3a〕只给 `origin`（界面直问）⇒ 用可达表里握手那一刻 `remote-reach` 记下的那一行，没有就 `unreachable` |
 | `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`；`changed` 本机目录因这一趟变了没有；`pushed` 推过去几台快照；`error` 那一趟哪里没办成（`null` = 全办成了） |
 | `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
 | `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
 
-**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` · 给了 `dial` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
+**错误码**：`bad_args`（`origin` 空串 · 给了 `dial` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）· `unreachable`（只给 `origin` 而可达表里还没有那一台 —— 那台的流还没握过手）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
@@ -2380,6 +2380,131 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 读法住适配层（`agents::Adapter.mcp`，Claude 那一格 `agents/claudecode/mcp.rs`；`.claude.json` 找哪一份与资产目录同一处）。
 错误码：`bad_args`（`projectDir` 不是绝对路径）· `too_large`（成品超过一帧上限，不截断）。⚠ **CLI 面也有它**（`--mcp-read`，入参从 stdin 读）。
 
+#### `mcp-server-put`：增 / 改这台一个项目 `.mcp.json` 里的一条（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"m3","cmd":"mcp-server-put","args":{"projectDir":"/home/u/proj","name":"fs","server":{"command":"/opt/fs"}}}
+← {"kind":"reply","id":"m3","ok":true,"data":{"path":"/home/u/proj/.mcp.json","changed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 这台机器上的绝对路径（不含 `..`）；落点恒是 `<它>/.mcp.json`（写面只此一个，`~/.claude.json` / `settings.json` 一个字节不碰） |
+| `name` | → | server 名（空 ⇒ 拒） |
+| `server` | → | 那一条的配置，原样写进 `mcpServers[name]` |
+| `path` | ← | 写到了哪（解过链接的那一份） |
+| `changed` | ← | 真写了吗（算出来与盘上逐字节相同 ⇒ `false`，一个字节不动） |
+
+D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「一处后端」收进这台：读 → 规划（`assets/mcp_edit.rs::plan_project_mcp`，已存在但读不懂 ⇒ **拒绝覆盖**）→ 本进程文件管理面 `files-put`（CAS = 刚读到的那一份；`stale` 重读重算，最多三趟）。不留备份、不建父目录。
+错误码：`bad_args`（缺 / 类型不对 · 名字空）· `bad_path`（`projectDir` 不是绝对路径）· `refused`（读不懂原文 / 写面拒）。⚠ **CLI 面也有它**（`--mcp-server-put`）。
+
+#### `mcp-server-remove`：删这台一个项目 `.mcp.json` 里的一条（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"m4","cmd":"mcp-server-remove","args":{"projectDir":"/home/u/proj","name":"fs"}}
+← {"kind":"reply","id":"m4","ok":true,"data":{"path":"/home/u/proj/.mcp.json","changed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 同 `mcp-server-put` |
+| `name` | → | 要删的那一条 |
+| `path` | ← | 那份文件 |
+| `changed` | ← | 文件不在 / 那一条不在 ⇒ `false`（一个字节不写、不建文件） |
+
+错误码同 `mcp-server-put`。⚠ **CLI 面也有它**（`--mcp-server-remove`）。
+
+#### `mcp-sync-source`：推 / 拉的来源那份原文（MIG-3a，09-27，**只读**）
+
+```text
+→ {"id":"s1","cmd":"mcp-sync-source","args":{"projectDir":"/home/u/proj"}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"path":"/home/u/proj/.mcp.json","text":"{\"mcpServers\":{}}"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 来源那台上的绝对路径 |
+| `path` | ← | 读的是哪一份 |
+| `text` | ← | 原文（原样；界面看差异时把它递给要被写的那一台，写的时候再原样递一次） |
+
+错误码：`bad_args` · `bad_path` · `missing`（来源那份不存在 —— 没有可拷的条目）· `refused`（读不出）。⚠ **CLI 面也有它**。
+
+#### `mcp-sync-preview`：在要被写的那一台看推 / 拉的差异（MIG-3a，09-27，**只读**）
+
+```text
+→ {"id":"s2","cmd":"mcp-sync-preview","args":{"projectDir":"/srv/proj","source":"…","sourcePath":"/home/u/proj/.mcp.json","sameMachine":false}}
+← {"kind":"reply","id":"s2","ok":true,"data":{"sourcePath":"/home/u/proj/.mcp.json","targetPath":"/srv/proj/.mcp.json","sourceText":"…","targetText":null,"rows":[{"name":"fs","state":"new","suspects":[],"source":{"command":"fs"},"target":null}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 这台（要被写的那一台）上的绝对路径 |
+| `source` · `sourcePath` | → | 来源那台 `mcp-sync-source` 交回的原文与路径，原样 |
+| `sameMachine` | → | 来源与这台是不是同一台（界面说的事实）；是且两份路径相同 ⇒ 拒 |
+| `sourceText` · `targetText` | ← | 两份原文原样（`targetText` = 这台那份，不存在 ⇒ `null`）—— 写的时候原样交回，后者当 CAS 期望 |
+| `targetPath` | ← | 这台那份的路径 |
+| `rows` | ← | 判定原样是 `mcp-sync-plan` 的 `rows`（`name` · `state` · `suspects[]` 各带 `kind` · `field` · `value` · `there`），每行再带两边那一条的配置原样：`source` · `target`（没有 ⇒ `null`） |
+
+错误码：`bad_args` · `bad_file`（任一份不是合法 JSON 等，同 `mcp-sync-plan`）· `bad_path` · `refused`。⚠ **CLI 面也有它**。
+
+#### `mcp-sync-apply`：在要被写的那一台把勾的那几条合进去（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"s3","cmd":"mcp-sync-apply","args":{"projectDir":"/srv/proj","source":"…","target":null,"take":["fs"],"overwrite":[]}}
+← {"kind":"reply","id":"s3","ok":true,"data":{"path":"/srv/proj/.mcp.json","written":true,"names":["fs"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 这台上的绝对路径 |
+| `source` · `target` | → | 看差异时拿到的两份原文，原样（`target` 是 CAS 期望：这台在那之后变了 ⇒ `stale`，**一个字节不写、不重读重算**） |
+| `take` · `overwrite` | → | 同 `mcp-sync-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`） |
+| `path` | ← | 写到了哪 |
+| `written` | ← | 真写了吗（一条都没选 / 算出来逐字相同 ⇒ `false`） |
+| `names` | ← | 写进去的条目名 |
+
+值取自 `source` 的解析、原样合进 `target`（与 `mcp-server-put` 同一份规划）。错误码：`bad_args` · `bad_file` · `bad_path` · `needs_consent` · `refused` · `stale`。⚠ **CLI 面也有它**。
+
+#### `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"k1","cmd":"skill-install-apply","args":{"name":"demo","source":[{"path":"SKILL.md","text":"…","exec":false,"why":null}],"target":[],"take":["SKILL.md"],"overwrite":[]}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"dir":"/home/u/.claude/skills/demo","written":["SKILL.md"],"chmodFailed":[],"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | skill 名（同 `skill-read`） |
+| `source` | → | 来源那台 `skill-read` 的 `files`，原样（`path` · `text` · `exec`；`text` 为 `null` 的装不过去） |
+| `target` | → | 看差异时这台 `skill-install-plan` 回的 `target`（这台那几份原文），原样 —— 写时的 CAS 期望 |
+| `take` · `overwrite` | → | 同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`） |
+| `dir` | ← | 装到了哪 |
+| `written` | ← | 真写成了的那几个（按写的顺序） |
+| `chmodFailed` | ← | 写成了但执行位没置上的那几个 |
+| `recordFailed` | ← | 装记录没记下来时那一句（`null` = 记下了）—— 记不下来 ⇒ 这一趟装的卸不掉 |
+
+判（`skill_install::answer_plan_with`）· 写（本进程文件管理面 `files-put`，`parents`，不备份）· 记（`skill-install-record` 同一个写口）都在这一台。
+看过之后这台那一份变了 ⇒ **停在那一个**（`stale`），话里说清前面写了哪几个；写了的照记。错误码：`bad_args` · `bad_file` · `io_failed` · `needs_consent` · `stale`。⚠ **CLI 面也有它**。
+
+#### `skill-uninstall-apply`：在被卸的那一台删装时写进去的那几个（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"k2","cmd":"skill-uninstall-apply","args":{"dir":"/home/u/.claude/skills/demo","seen":[{"path":"SKILL.md","text":"…"}],"take":["SKILL.md"],"confirm":[]}}
+← {"kind":"reply","id":"k2","ok":true,"data":{"dir":"/home/u/.claude/skills/demo","deleted":["SKILL.md"],"recordFailed":null,"dirRemoved":true,"dirFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dir` | → | 装记录里那一条的键（skill 目录的绝对路径） |
+| `seen` | → | 看的时候这台 `skill-uninstall-plan` 回的 `seen`（现有原文），原样 —— 删时的 CAS 期望 |
+| `take` · `confirm` | → | 同 `skill-uninstall-plan`（要问的没在 `confirm` 里点名 ⇒ 整趟拒 `needs_consent`） |
+| `deleted` | ← | 真删掉的那几个 |
+| `recordFailed` | ← | 删掉的没从装记录里摘掉时那一句 |
+| `dirRemoved` | ← | skill 目录自己空了、收掉了没有（装时 `parents` 建出来的子目录先收） |
+| `dirFailed` | ← | 收空目录没成时那一句 |
+
+错误码：`bad_args` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found`（记录里没有这一条）· `stale`（看过之后被改过 / 已经不在 —— 停在那一个，说清前面删了哪几个）。⚠ **CLI 面也有它**。
+
 #### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
 
 ```text
@@ -2846,6 +2971,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **SH1 追加一条（09-26）**：`--bus-inbox` —— 只读看一个 agent 收件箱的尾巴（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{id, lines?}`）。
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
+
+**MIG-3a 追加七条（09-27）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` —— D 组 MCP 与 skill 那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
