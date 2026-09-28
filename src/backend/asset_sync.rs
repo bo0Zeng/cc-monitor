@@ -261,7 +261,13 @@ pub async fn answer_with(
 ) -> Result<Value, (&'static str, String)> {
     let origin = args.get("origin").and_then(Value::as_str);
     let mut first: Option<String> = None;
-    if origin.is_some() {
+    if let (Some(o), None) = (origin.filter(|o| !o.is_empty()), args.get("dial")) {
+        // 〔MIG-3a〕界面经通道直问（只给 `origin`）：怎么够到那台由握手那一刻的 `remote-reach` 登记过 —— 查不到就明说，不猜。
+        if !lock(table).contains_key(o) {
+            return Err(("unreachable", crate::remote_ask::unreachable_message(o)));
+        }
+        first = Some(o.to_string());
+    } else if origin.is_some() {
         // 〔C4d〕登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
         first = Some(crate::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() {

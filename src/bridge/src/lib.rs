@@ -21,7 +21,7 @@
 mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
-mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻 / 看机器页前把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定）
+mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；〔MIG-3a〕看机器页那一问界面直问）
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
@@ -104,7 +104,6 @@ mod spawn_managed;
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
 mod skill_host;
-mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：只编排 I/O（来源那台 skill-read → 被写那台 skill-install-plan 判 → files-put 带 expect），判定住后端
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
                 // 〔W5-ALIAS · 第五波先行〕`verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
                 //   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
@@ -1402,12 +1401,9 @@ pub fn run() {
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
             config::list_remote_mcp_origins,
-            // 〔AS2 · 第四波 4B · V113〕资产目录同步：看机器页前让本机常驻后端对那一台（本机那一页 = 每一台）做一趟。
-            asset_sync::assets_sync,
-            // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。
-            skill_install::skill_install_preview,
-            skill_install::skill_install_apply,
-            skill_install::skill_uninstall_apply,
+            // 〔MIG-3a · `99 §2.1 ⑬`〕资产目录同步（`assets_sync`）与 skill 装 / 卸三条退役：界面经通道直问那台后端
+            //   （`assets-sync` 问 `<local>` · `skill-read` / `skill-install-plan` / `skill-install-apply` / `skill-uninstall-apply`，
+            //   `src/assets-sync-reads.ts` · `src/skill-install-reads.ts`）。
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）

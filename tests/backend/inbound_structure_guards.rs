@@ -221,7 +221,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "ccm-print"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
                 | "mcp-sync-plan"
-                // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
+                // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
+                | "skill-install-apply"
+                | "skill-uninstall-apply"
                 | "mcp-server-put"
                 | "mcp-server-remove"
                 | "mcp-sync-source"
@@ -373,7 +375,9 @@ fn every_registered_command_declares_its_run_kind() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
-        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条（阻塞档，理由在上面 `expected_blocking`）。
+        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
+        "skill-install-apply",
+        "skill-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",
         "mcp-sync-source",

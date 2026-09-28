@@ -13063,76 +13063,6 @@
       "zh": "在场",
       "args": []
     },
-    "rsSkillInstall.preview.sameMachine": {
-      "kind": "error",
-      "zh": "来源与要装的是同一台 —— 换一台机器",
-      "args": []
-    },
-    "rsSkillInstall.apply.stale": {
-      "kind": "error",
-      "zh": "那一份在你看差异之后又被改过了。重新看一次差异再决定",
-      "args": []
-    },
-    "rsSkillInstall.apply.noOriginal": {
-      "kind": "error",
-      "zh": "「{path}」没有原文 —— 两端对不上，停下了",
-      "args": ["path"]
-    },
-    "rsSkillInstall.apply.notInCopy": {
-      "kind": "error",
-      "zh": "「{path}」不在拷出来的那一份里 —— 两端对不上，停下了",
-      "args": ["path"]
-    },
-    "rsSkillInstall.stopped.at": {
-      "kind": "error",
-      "zh": "{machine} 上写「{at}」时停下了：{why}。{done}。",
-      "args": ["machine", "at", "why", "done"]
-    },
-    "rsSkillInstall.stopped.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "rsSkillInstall.stopped.some": {
-      "kind": "body",
-      "zh": "前面已经写了 {list}",
-      "args": ["list"]
-    },
-    "rsSkillInstall.stopped.none": {
-      "kind": "body",
-      "zh": "一个都还没写",
-      "args": []
-    },
-    "rsSkillInstall.reply.unreadable": {
-      "kind": "error",
-      "zh": "后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。",
-      "args": []
-    },
-    "rsSkillInstall.ask.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的后端回了一条空应答",
-      "args": ["who"]
-    },
-    "rsSkillInstall.ask.internal": {
-      "kind": "error",
-      "zh": "{who}：装 skill 时出了内部错误，没有拿到结果",
-      "args": ["who"]
-    },
-    "rsSkillInstall.ask.tooBig": {
-      "kind": "error",
-      "zh": "这个 skill 的文本合起来太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
-      "args": ["bytes", "cap"]
-    },
-    "rsSkillInstall.ask.failed": {
-      "kind": "error",
-      "zh": "装不了 skill，一个字节都没动",
-      "args": []
-    },
-    "rsSkillInstall.ask.backendDown": {
-      "kind": "error",
-      "zh": "{who} 的后端没连上（{why}）—— 一个字节都没动",
-      "args": ["who", "why"]
-    },
     "rsCcBusDeploy.win.ok": {
       "kind": "body",
       "zh": "cc-monitor 装的 ccm（{at}）是这一版，cc-spawn 需要的 {needs} 都支持。\n{pathCaveat}",
@@ -13303,11 +13233,6 @@
       "kind": "error",
       "zh": "本机后端：{message}",
       "args": ["message"]
-    },
-    "rsAssetSync.reply.unreadable": {
-      "kind": "error",
-      "zh": "本机后端答的同步结果认不出来，多半是两边版本不一样。",
-      "args": []
     },
     "rsUserFiles.list.notArray": {
       "kind": "error",
@@ -16318,11 +16243,6 @@
       "zh": "cc-monitor 旧版放的：认出是它放的就删，认不出的不动",
       "args": []
     },
-    "rsSkillInstall.ask.uninstallFailed": {
-      "kind": "error",
-      "zh": "卸不了 skill，一个字节都没动",
-      "args": []
-    },
     "rsToolRegistry.tools.skillInstallsLedgerNote": {
       "kind": "body",
       "zh": "装到哪台就记在哪台。那台后端自己的装记录：每个装写进去的文件的摘要，和装之前在不在。卸只认这里记着的，卸掉的从这里摘掉",
@@ -16402,56 +16322,6 @@
       "kind": "body",
       "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端（今天后端就是 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
       "args": []
-    },
-    "rsSkillInstall.record.noLedger": {
-      "kind": "error",
-      "zh": "装好了，但「{path}」这台没说该怎么记 —— 这一趟装的文件卸不掉。",
-      "args": ["path"]
-    },
-    "rsSkillInstall.record.failed": {
-      "kind": "error",
-      "zh": "装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。",
-      "args": ["e"]
-    },
-    "rsSkillInstall.uninstall.noSeen": {
-      "kind": "error",
-      "zh": "「{path}」你看的时候没有它的原文 —— 两端对不上，停下了",
-      "args": ["path"]
-    },
-    "rsSkillInstall.uninstall.stale": {
-      "kind": "error",
-      "zh": "那一份在你看过之后又被改过了，或已经不在了。重新看一次再决定",
-      "args": []
-    },
-    "rsSkillInstall.uninstall.dropFailed": {
-      "kind": "error",
-      "zh": "删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。",
-      "args": ["e"]
-    },
-    "rsSkillInstall.uninstall.noneDeleted": {
-      "kind": "body",
-      "zh": "一个都还没删",
-      "args": []
-    },
-    "rsSkillInstall.uninstall.someDeleted": {
-      "kind": "body",
-      "zh": "前面已经删了 {paths}",
-      "args": ["paths"]
-    },
-    "rsSkillInstall.uninstall.listSep": {
-      "kind": "body",
-      "zh": "、",
-      "args": []
-    },
-    "rsSkillInstall.uninstall.dirFailed": {
-      "kind": "error",
-      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
-      "args": ["path", "e"]
-    },
-    "rsSkillInstall.uninstall.stopped": {
-      "kind": "error",
-      "zh": "{machine} 上删「{at}」时停下了：{why}。{done}。",
-      "args": ["machine", "at", "why", "done"]
     },
     "ccBus.broadcast.listSep": {
       "kind": "body",
@@ -19214,6 +19084,91 @@
       "kind": "body",
       "zh": "这一份读不出来，当作没有：{what}",
       "args": ["what"]
+    },
+    "beSkillFlow.install.noOriginal": {
+      "kind": "error",
+      "zh": "「{path}」没有原文 —— 两端对不上，停下了",
+      "args": ["path"]
+    },
+    "beSkillFlow.install.stale": {
+      "kind": "error",
+      "zh": "那一份在你看差异之后又被改过了。重新看一次差异再决定",
+      "args": []
+    },
+    "beSkillFlow.install.noneWritten": {
+      "kind": "body",
+      "zh": "一个都还没写",
+      "args": []
+    },
+    "beSkillFlow.install.recordFailed": {
+      "kind": "error",
+      "zh": "装好了，但没记下来（{e}）—— 这一趟装的文件卸不掉。",
+      "args": ["e"]
+    },
+    "beSkillFlow.uninstall.noSeen": {
+      "kind": "error",
+      "zh": "「{path}」你看的时候没有它的原文 —— 两端对不上，停下了",
+      "args": ["path"]
+    },
+    "beSkillFlow.uninstall.stale": {
+      "kind": "error",
+      "zh": "那一份在你看过之后又被改过了，或已经不在了。重新看一次再决定",
+      "args": []
+    },
+    "beSkillFlow.uninstall.dropFailed": {
+      "kind": "error",
+      "zh": "删掉的没从装记录里摘掉（{e}）—— 下次看它们会显示「已经不在」。",
+      "args": ["e"]
+    },
+    "beSkillFlow.uninstall.noneDeleted": {
+      "kind": "body",
+      "zh": "一个都还没删",
+      "args": []
+    },
+    "beSkillFlow.uninstall.dirFailed": {
+      "kind": "error",
+      "zh": "文件删完了，收空目录 {path} 时没成：{e}",
+      "args": ["path", "e"]
+    },
+    "beSkillFlow.install.someWritten": {
+      "kind": "body",
+      "zh": "前面已经写了 {list}",
+      "args": ["list"]
+    },
+    "beSkillFlow.uninstall.someDeleted": {
+      "kind": "body",
+      "zh": "前面已经删了 {list}",
+      "args": ["list"]
+    },
+    "beSkillFlow.install.stoppedAt": {
+      "kind": "error",
+      "zh": "写「{at}」时停下了：{why}。{done}。",
+      "args": ["at", "why", "done"]
+    },
+    "beSkillFlow.uninstall.stoppedAt": {
+      "kind": "error",
+      "zh": "删「{at}」时停下了：{why}。{done}。",
+      "args": ["at", "why", "done"]
+    },
+    "skillInstallReads.preview.sameMachine": {
+      "kind": "error",
+      "zh": "来源与要装的是同一台 —— 换一台机器",
+      "args": []
+    },
+    "skillInstallReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 skill 差异 / 装卸结果，两端版本对不上。这一趟什么都没写。",
+      "args": []
+    },
+    "assetsSyncReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的同步结果，两端版本对不上。",
+      "args": []
+    },
+    "beSkillFlow.stopped.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
     }
   }
 }

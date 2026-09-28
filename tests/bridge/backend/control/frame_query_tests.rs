@@ -323,7 +323,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "skill-uninstall-plan",
         "卸之前看：逐文件的态与「要不要问」都是那台后端答的成品，界面 `settings/assets-section.ts::decodeUninstallPlan` 按形状收。\
-         ⚠ monitor 自己**另有**一处问它（带 `take` 的那一问，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那不是替界面转",
+         〔MIG-3a〕带 `take` 的那一问随卸进了后端（`skill-uninstall-apply` 自己判），monitor 零处问它",
     ),
     // 〔C4e · 第四波 4C〕`C4c.md §5.6` A 组 `tmux.manage` 第一格：抓一屏。
     (
@@ -421,6 +421,28 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "mcp-sync-apply",
         "新帧命令：被写那台把勾的那几条原样合进去（CAS 期望 = 看差异时那份，`stale` 就停）",
     ),
+    // 〔MIG-3a〕D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
+    (
+        "assets-sync",
+        "界面直问本机常驻后端（远端那一页只报 `origin`，够到那台用握手时 `remote-reach` 登记的那一行）；成品 `{self, synced, reach}`，\
+         `assets-sync-reads.ts::decodeAssetsSynced` 按形状收",
+    ),
+    (
+        "skill-read",
+        "来源那台的 skill 原文：从前 monitor 转、今天界面直问，原样递给被写那台（`skill-install-reads.ts`）",
+    ),
+    (
+        "skill-install-plan",
+        "被写那台看差异（逐文件四态 ＋ 可疑项 ＋ 这台那几份原文）：从前 monitor 转、今天界面直问",
+    ),
+    (
+        "skill-install-apply",
+        "新帧命令：被写那台判 · 写 · 记同一台（`assets/skill_flow.rs`），`stale` 就停并说清前面写了哪几个",
+    ),
+    (
+        "skill-uninstall-apply",
+        "新帧命令：被卸那台判 · 删 · 摘记录 · 收空目录同一台，`stale` 就停并说清前面删了哪几个",
+    ),
 ];
 
 /// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
@@ -450,11 +472,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     ),
     // 〔HX2 · 第四波 4D〕`apikey-read` 那一行退役：写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂删了。
     (
-        "skill-uninstall-plan",
+        "assets-sync",
         1,
-        "〔SU1〕卸那一趟真要删之前，带 `take` / `confirm` 再问一次「真要删哪几个」（`skill_install.rs::uninstall_with`）：\
-         它的 `delete` / `forget` 是 monitor 自己编排删与摘记录要的，不给界面（同装那一侧 `skill-install-plan` 带 `take` 那一问）",
+        "〔MIG-3a〕流握手那一刻（`asset_sync.rs::on_remote_ready`）交「怎么够到那台」并顺手同步一趟 —— 宿主交事实，\
+         应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
+    // 〔MIG-3a〕`skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     (
         "tasks-list",
         1,
