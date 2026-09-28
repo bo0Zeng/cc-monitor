@@ -452,7 +452,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 
 **为什么不能松动**：实测 Claude Code 2.1.150 写 `~/.claude/sessions/<PID>.json` 时**偶发漏 `procStart` 字段**——同版本不同 session 写法不一致，可能是某种启动路径（`/resume`？多线程 race）下 procStart 还没拿到就先写文件，后续 status 更新路径不补写。
 
-v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失败 → `read_one` 返 None → 整个 session 被静默忽略 → monitor 漏 Tab。修复 `Option<String>` 后，缺失时 `is_process_alive` 跳过 PID 复用校验只看 STILL_ACTIVE，**代价是极小概率误判活跃但远好过完全看不见 Tab**。
+v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失败 → `read_one` 返 None → 整个 session 被静默忽略 → monitor 漏 Tab。修复 `Option<String>` 后，缺失时 `is_process_alive`〔散文墓碑〕 跳过 PID 复用校验只看 STILL_ACTIVE，**代价是极小概率误判活跃但远好过完全看不见 Tab**。
 
 **应用范围**：
 - `sessions/<PID>.json` (`session_map::SessionInfo`) —— procStart 字段在 v2.6 后端按 `Option<String>` 反序列化；调用点用 `utils::NetTicks::parse_str` 转 typed value 比较。同样 wire 字符串可缺，Rust 内部用 newtype 隔离避免跟 `bind.rs::HwndEntry.owner_proc_start` (FILETIME) 单位混用
@@ -574,6 +574,8 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ## 24. 远端活跃集 `remote_active` 恒等于"前端当前应视为 live 的远端 sid"（issue #20）
 
+> 〔MIG-1 · `设计/99 §2.1 ⑬` · 09-27〕**本节描述的 monitor 侧机制已整体搬进后端**：活 / 可重连 / 已结束由那台后端的会话账本裁（`src/backend/observe/session_ledger.rs`，成品帧 `session_state`），monitor 只剩成品缓存 `session_book.rs`（转交 ＋ F5 重放 ＋ 断连说「说不清」）。下文是那套机制的来历，性质的判据今天住 `tests/backend/observe/session_ledger_tests.rs`。
+
 `lib.rs` 的 `remote_active`（`Arc<Mutex<HashSet<String>>>`）**唯一写者**是 `remote-session-emitter` 线程：后端的 session added/removed 与断连 flush 都经同一 `remote_tx` 通道到达，且**先维护集合、再做 emit 等副作用**。`frontend-ready` 对账用"sid 在 EventReplay buffer 里、但不在集合里"判死、补发 `session-ended`。
 
 两条派生约束：
@@ -597,29 +599,31 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ## 24bis. 远端 idle-tmux 灰灯（audit-fixes F03.2）：`REMOTE_IDLE` 与 `remote_active` 正交、同一 emitter 单写
 
+> 〔MIG-1 · `设计/99 §2.1 ⑬` · 09-27〕**本节描述的 monitor 侧机制已整体搬进后端**：活 / 可重连 / 已结束由那台后端的会话账本裁（`src/backend/observe/session_ledger.rs`，成品帧 `session_state`），monitor 只剩成品缓存 `session_book.rs`（转交 ＋ F5 重放 ＋ 断连说「说不清」）。下文是那套机制的来历，性质的判据今天住 `tests/backend/observe/session_ledger_tests.rs`。
+
 远端会话三态：**live**（claude 在跑）/ **idle-tmux**（claude 退出但 tmux 会话仍在 → 灰灯、可 attach 复用）/ **archived**（tmux 也没了）。承接 §24 单写者不变量，落地约束：
 
 1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只在 `lib.rs` 的会话 emitter 里调（〔U4b · 第四波〕远端那条 `remote-session-emitter` 的 removed/added 臂，外加本机 emitter 的 `classify_removed` 分流与 `session_facts` 出口 —— 都在 `lib.rs`，单写者判据照旧），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
-2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`）——
+2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`〔散文墓碑〕）——
    ★ **S0（2026-07-31）加了一道前置：`cause` 先于快照裁决**。后端现在在 `session_removed` 帧上
    带 `cause`（additive，`Gone` 不上线、缺省即 `Gone`）：`Superseded` = 同一个 pidfile **原地换了 sid**
    （`/branch`、`/clear` —— claude 进程不重启，只是 sessionId 变了）⇒ **恒归档，根本不查快照**。
    为什么必须绕开快照：那个入参对这个场景**恒错** —— 旧 sid 的 tmux 格子确实还在，但它现在挂的是
    **新** sid；而这份快照在 P5 删掉 8s ticker 之后，`/branch` 不触发任何事件路径去刷新它（§41.3 盲区 ④）
    ⇒ 判成 idle 就是一个**永远消不掉、也 attach 不上**的灰点（用户 2026-07-30 实测「杀不掉」）。
-   `Gone` 维持下述原语义：`Some(origin)`=tmux 会话尚在 → `mark_idle` + emit `SESSION_IDLE` + **不 forget**（不进归档、`remote_active` 早已在上方移出该 sid，idle 天然在集合外，**不新增 `remote_active` 写点**）；`None`=tmux 也没了 → `clear_idle` + `forget` + emit `SESSION_ENDED`（原归档路径）。判据 **command-agnostic**：`TmuxSessions` 帧可能是陈旧的（⚠ **F12 订正**：原写「最长 8s 陈旧」，那是 P5 前那个 8s ticker 的口径；今天推帧由 hook 驱动，**陈旧上界取决于 hook 覆盖面**——F02 量清后端只装 `session-created`/`closed`/`renamed` 三条，覆盖不到的变化可能**永不刷新**），退出瞬间 command 列可能仍是 claude，故「claude 死」由 backend-removed 边沿判、「tmux 在」由 `@ccm_sid` present 判（见 `tmux_origin_for_sid`）。
+   `Gone` 维持下述原语义：`Some(origin)`=tmux 会话尚在 → `mark_idle` + emit `SESSION_IDLE` + **不 forget**（不进归档、`remote_active` 早已在上方移出该 sid，idle 天然在集合外，**不新增 `remote_active` 写点**）；`None`=tmux 也没了 → `clear_idle` + `forget` + emit `SESSION_ENDED`（原归档路径）。判据 **command-agnostic**：`TmuxSessions` 帧可能是陈旧的（⚠ **F12 订正**：原写「最长 8s 陈旧」，那是 P5 前那个 8s ticker 的口径；今天推帧由 hook 驱动，**陈旧上界取决于 hook 覆盖面**——F02 量清后端只装 `session-created`/`closed`/`renamed` 三条，覆盖不到的变化可能**永不刷新**），退出瞬间 command 列可能仍是 claude，故「claude 死」由 backend-removed 边沿判、「tmux 在」由 `@ccm_sid` present 判（见 `tmux_origin_for_sid`〔散文墓碑〕）。
 3. **idle→archived 的产出者 = 收帧收割器**：idle sid 并入收割器 `tracked`；且因 `@ccm_sid` 铁证其绑过 tmux，作 `reconcile_step` 的 `pre_bound` 直接播种 `ever_bound`——否则「SessionRemoved 删 announced」与「emitter mark_idle」之间的跨线程缝里那帧会漏置 `ever_bound`，令 idle sid 永不累计缺失 = 连接内卡灰关不掉。tmux 真消失 → 收割器去抖后 retire → emitter 走 `None` 归档。
 4. **前端灰灯与 §24 第 2 条同源**：`session-idle` 与 `session-ended` 同进 `events.ts` 的 queue（对同一 sid 二者互斥、emitter 择一）。〔U4 · 第四波起〕tab 的会话状态是**两轴**的 `Tab.state`（`tab-session-state.ts::SessionState`，活性 × 可恢复性）：`session-idle` ⇒ **可重连**（死了、容器还在 —— 不再算活，状态栏「活跃」数不含它），`session-ended` ⇒ **已结束**（只能 resume）；转移只在 `nextState` 一处，行为只经 `isResumeOnly` / `hasTerminal` / `isLive` 三个谓词读。（旧的 `Tab.tmuxIdle` ＋ `TabStatus` 一轴半写法已退役。）清灰**主**信号 = `ensureTab`（远端 tab 又收后端重宣告/行 = claude 复活，queue 内与行保序）；`session-activity` 为次要（非 queue、null-activity 后端下不可靠，**不可**作唯一清灰路径）。
 
-**单写者已机器化**（Phase G）：第 1 条「`mark_idle`/`clear_idle` 唯一写者=emitter」原靠注释约定、`cargo check` 抓不住；现有 `ssh_source.rs::f032_idle_tests::remote_idle_single_writer_guard` 扫源码断言这两个写函数**只被 lib.rs 调用**，emitter 之外新增写者即测红（同 F08 后端只读护栏的机器化思路）。
+**单写者已机器化**（Phase G）：第 1 条「`mark_idle`/`clear_idle` 唯一写者=emitter」原靠注释约定、`cargo check` 抓不住；曾有 `remote_idle_single_writer_guard`〔散文墓碑〕 扫源码断言这两个写函数**只被 lib.rs 调用**，emitter 之外新增写者即测红（同 F08 后端只读护栏的机器化思路）。
 
 **原「已知残留」已修（2026-07-30，`zero-poll-liveness` P1；用户当日松了「后端零改」红线）**：收帧收割器原先对**空 backend 一律保守跳过**（`ssh_source.rs` 的 `!backend.is_empty()` 门），代价是当**被杀的是该 origin 最后一个 tmux 会话**时（tmux server 随之退出、`run_tmux_ls` 回空串）收割器整段跳过 ⇒ 该 idle-tmux 灰灯**卡到断连 flush 才清**。
 
 **修法**（比原记档设想的更细，因为 P0 实测把状态空间量清了）：
 1. **后端让 rc 透出**——`run_tmux_ls` 原先 `tmux ls … 2>/dev/null || true` 把 tmux 的 rc **吞掉**，五种观测压成"空串/有内容"两种；现改为 `exec tmux …`（rc 原样成为 `sh` 的 rc）+ 一个约定 rc 表示"PATH 里无 tmux"，折成四态 `Sessions / ZeroSessions / NoTmux / Unobservable`（`watcher.rs::classify_tmux_probe`）。
 2. **P0 实测订正了原记档的措辞**：原文说的「命令成功但零会话」在默认 `exit-empty on` 下**不出现**（server 随最后一个会话退出、rc=1）；但 `exit-empty off` 下**确实出现**且 **rc=0 + stdout 空**。两者对 retire 决策等价 ⇒ 合成一个 `ZeroSessions`（区别只对 P3 的复活监视有意义 ⇒ 将来加细分**不必改帧契约**）。
-3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔后端的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），由 `tmux_tests.rs::observation_tokens_double_write_point_stays_in_sync` 钉住。
-4. **monitor 把那条内联 if 提成纯函数** `tmux::classify_tmux_observation`（原判断住在需要真远端连接的 `async fn` 里、单测碰不到）。`ZeroSessions` ⇒ 返回**空集但有效**的 `Backend(∅)` ⇒ 照常进 `reconcile_step` 累计缺失；`NoTmux`/`Unobservable` 才跳过。
+3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔后端的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），曾由 `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 钉住（〔MIG-1〕monitor 这一侧的分类删了，取值集只剩后端一个家 `watcher.rs::tmux_frame_is_observable`）。
+4. **monitor 把那条内联 if 提成纯函数** `tmux::classify_tmux_observation`〔散文墓碑〕（原判断住在需要真远端连接的 `async fn` 里、单测碰不到）。`ZeroSessions` ⇒ 返回**空集但有效**的 `Backend(∅)` ⇒ 照常进 `reconcile_step` 累计缺失；`NoTmux`/`Unobservable` 才跳过。
 
 **修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × **当时**的推帧节拍（P5 前那个 ticker，已删）≈ 16s**——**是有界化，不是即时化**。
 

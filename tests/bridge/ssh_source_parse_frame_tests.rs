@@ -455,41 +455,46 @@ fn session_status_frame_parses() {
     );
 }
 
-/// session_removed 映射到对应 variant。
+/// session_removed 映射到对应 variant。〔MIG-1〕monitor 不再读 `cause`（去向由后端裁成 `session_state`）：带不带都解成同一形。
 #[test]
 fn parses_session_removed() {
-    let line = r#"{"kind":"session_removed","sid":"s-dead"}"#;
-    let frame = parse_frame(line).expect("session_removed must parse");
-    assert_eq!(
-        frame,
-        InboundFrame::SessionRemoved {
-            sid: "s-dead".to_string(),
-            // ★ S0 向后兼容：**旧后端不发 cause** ⇒ 必须解析成 Gone，
-            // 即维持今天的行为（查快照判灰点）。
-            cause: RemovalCause::Gone,
-        }
-    );
+    for line in [
+        r#"{"kind":"session_removed","sid":"s-dead"}"#,
+        r#"{"kind":"session_removed","sid":"s-dead","cause":"superseded"}"#,
+    ] {
+        assert_eq!(
+            parse_frame(line),
+            Some(InboundFrame::SessionRemoved {
+                sid: "s-dead".to_string(),
+            })
+        );
+    }
 }
 
-/// ★ S0：带 cause 的帧解析 + 未知取值的降级方向。
+/// 〔MIG-1 · `99 §2.1 ⑬`〕`session_state`：两个字面量认得（帧串 == 后端 `wire_tests::mig1_session_state_has_exactly_these_bytes`，异源）；
+/// 不认识的取值 / 缺格 ⇒ 整帧坏帧（`None`，不猜成哪一种）。
 #[test]
-fn parses_session_removed_cause() {
+fn session_state_reads_two_literals_and_anything_else_is_a_bad_frame() {
+    use crate::session_book::Fate;
     assert_eq!(
-        parse_frame(r#"{"kind":"session_removed","sid":"s","cause":"superseded"}"#),
-        Some(InboundFrame::SessionRemoved {
-            sid: "s".to_string(),
-            cause: RemovalCause::Superseded,
+        parse_frame(r#"{"kind":"session_state","sid":"abc","state":"reconnectable"}"#),
+        Some(InboundFrame::SessionState {
+            sid: "abc".into(),
+            state: Fate::Reconnectable
         })
     );
-    // 未知取值退回 Gone：宁可保守判活（可能多留一个灰点），也不能凭一个不认识的词
-    // 直接归档掉一个其实还活着的会话——归档是**破坏性**的（forget 绑定 + 关 tab）。
     assert_eq!(
-        parse_frame(r#"{"kind":"session_removed","sid":"s","cause":"从未见过的词"}"#),
-        Some(InboundFrame::SessionRemoved {
-            sid: "s".to_string(),
-            cause: RemovalCause::Gone,
+        parse_frame(r#"{"kind":"session_state","sid":"abc","state":"ended"}"#),
+        Some(InboundFrame::SessionState {
+            sid: "abc".into(),
+            state: Fate::Ended
         })
     );
+    assert_eq!(
+        parse_frame(r#"{"kind":"session_state","sid":"abc","state":"idle"}"#),
+        None
+    );
+    assert_eq!(parse_frame(r#"{"kind":"session_state","sid":"abc"}"#), None);
 }
 
 /// issue #32：overflow 帧解析出 dropped 计数；缺/错 dropped 当坏帧跳过（None）。
@@ -790,7 +795,7 @@ fn accounts_changed_is_recognised_and_reaches_the_frontend_as_ready() {
 /// 帧串与后端 `wire_tests::session_added_container_is_additive_with_two_literals` 的精确字节逐字相同（异源：那边是后端序列化器的产物）。
 #[test]
 fn session_added_container_reads_two_literals_and_unknown_is_none() {
-    use crate::session_facts::Container;
+    use crate::session_book::Container;
     let get = |line: &str| match parse_frame(line).expect("session_added 要解得出") {
         InboundFrame::SessionAdded { container, .. } => container,
         other => panic!("解出来不是 session_added：{other:?}"),

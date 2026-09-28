@@ -164,7 +164,7 @@ impl Drop for LifetimeGuard {
         if let Some(h) = self.0.take() {
             // 关掉 Job 的最后一个句柄 = 连同 Job 里**所有**进程一起收掉
             // （`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）。这就是本件要买的那一下。
-            // 形状照 `session_map::is_process_alive`：一个 `unsafe` 块，句柄显式关。
+            // 形状照 `session_map::is_process_alive`〔散文墓碑〕：一个 `unsafe` 块，句柄显式关。
             unsafe {
                 let _ = windows::Win32::Foundation::CloseHandle(h);
             }

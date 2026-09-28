@@ -24,7 +24,7 @@
 //!
 //! ## 心跳清理
 //!
-//! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`，
+//! 每 10s 扫一遍内存中的 ps-registry，对每个 PS_PID 调 `is_process_alive`〔散文墓碑〕，
 //! 死 PS 的条目从内存 + 磁盘移除。避免长期累积。
 //!
 //! 〔第二波 T4〕它同时是 ↗ 令牌路的「死绑定周期清」（`设计/80 §0.1` ④）：
@@ -798,14 +798,10 @@ impl SidHwndCache {
     ///
     /// # 今天的行为，逐字一句
     ///
-    /// **两种 cause 一视同仁，都忘。** `Gone` 是真死；`Superseded` 是同一个 pidfile
-    /// 原地换了 sid（`/branch` `/clear`），旧 sid 连 attach 都 attach 不上
-    /// ⇒ 那条绑定对它已经没有任何意义。
-    ///
-    /// ⚠ **在这里长出 `match cause` 是一次行为改动，不是重构。** 判据两条各钉一格
-    /// （`Gone` / `Superseded`），谁在这里加分支，那一格会出声。
-    pub fn apply_local_removal(&self, removed: &crate::session_map::RemovedSid) {
-        self.forget(&removed.sid);
+    /// **离开活跃集的一律忘**（〔MIG-1〕可重连 · 已结束 · 说不清三种去向都走这里，由 `lib.rs::session_side_effects` 调）：
+    /// 本机 ↗ 只在 Windows 上有，而 Windows 没有 tmux ⇒ 本机走不到「可重连」；被顶替的旧 sid 连 attach 都接不上。
+    pub fn apply_local_removal(&self, sid: &str) {
+        self.forget(sid);
     }
 
     fn persist(&self) {
@@ -844,16 +840,14 @@ impl RemoteHwndCache {
         self.by_sid.write().remove(sid);
     }
 
-    /// K-W1C：**远端**那条 removed 的分流结果到达时，这份缓存该变成什么样。
+    /// K-W1C：**远端**一条会话的去向到达时，这份缓存该变成什么样。
     ///
-    /// 入参是 `classify_removed` 的裁决，不是原始 cause —— 「该归档还是该判灰」
-    /// 那个判断只有一个住址（那个纯函数），本方法**只答缓存忘不忘**，不许在这里
-    /// 重算一遍分流（那会长出第二份语义）。
+    /// 〔MIG-1〕去向是那台后端裁好的成品（`session_state`，`ended` = 已结束）—— 本方法**只答缓存忘不忘**，不重算去向。
     ///
     /// # 今天的行为，两句
     ///
-    /// - `Archive`（claude 死了、tmux 那一格也没了）⇒ **忘**。
-    /// - `Idle`（claude 退了、tmux 会话还在，灰灯那一格）⇒ **不忘**：
+    /// - 已结束（claude 死了、tmux 那一格也没了）⇒ **忘**。
+    /// - 可重连（claude 退了、tmux 会话还在，灰灯那一格）⇒ **不忘**：
     ///   本地那个 ssh 窗口可能还开着，那条绑定仍然拉得前。
     /// - 〔GP1 · 第四波〕`Unseen`（到那台的连接断了，说不清）⇒ **不忘**，理由同 `Idle`：monitor 那条后端连接断了
     ///   不等于用户那个 ssh 窗口没了；重连之后会话若还活着，↗ 照旧指得到它。代价如实记：重连后它若不在清单里
@@ -862,15 +856,11 @@ impl RemoteHwndCache {
     /// ⚠ 「`Idle` 到底该不该忘」这一问**还没裁**（件计划 D5 在问它，理由是那条绑定
     /// 此刻指的窗口未必还是那个会话的窗口）。本方法只把**今天是这样**钉住，
     /// 好让哪天有人改它的时候有一条判据出声，而不是靠读注释。
-    pub fn apply_remote_disposition(
-        &self,
-        sid: &str,
-        disposition: &crate::ssh_source::RemovedDisposition,
-    ) {
-        if matches!(disposition, crate::ssh_source::RemovedDisposition::Archive) {
+    pub fn apply_remote_disposition(&self, sid: &str, ended: bool) {
+        if ended {
             self.forget(sid);
             // 〔`设计/80 §8.7` 步 4，第二波 T4〕令牌账本跟着忘，口径与上面那条绑定**同一条**：
-            // `Archive` 忘、`Idle` 不忘（本地那个 ssh 窗口可能还开着，令牌指的正是它）。
+            // 已结束忘、可重连不忘（本地那个 ssh 窗口可能还开着，令牌指的正是它）。
             remote_rbind_tokens().forget(sid);
         }
     }

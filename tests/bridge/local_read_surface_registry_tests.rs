@@ -658,7 +658,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     // `/branch` 的灰点 bug 会回来」）。当时成立，是因为本地那条 diff **只产 `Gone`**；
     // P3 刀 0 让它按 `pid + procStart` 判出 `Superseded`（要正面证据，缺 `procStart` 退回 `Gone`）
     // ⇒ 进表之后 `/branch` 会走 `(Some(origin), Superseded)` = 归档，不再是灰点。
-    // 〔LOC1b · 4D〕判出它的今天是本机后端（`session_removed.cause`），monitor 这边钉「原样交出去」（`ssh_source_f032_idle_tests` ③）。
+    // 〔LOC1b · 4D · MIG-1〕判出它的今天是本机后端（`session_removed.cause` ⇒ 会话账本裁成 `session_state`），monitor 只转交成品。
     // ★ 留着这段而不是删掉：**限制解除的理由本身是要交代的** ——
     // 否则下一个人只看到限制没了，不知道换了什么在保证它。
 }
