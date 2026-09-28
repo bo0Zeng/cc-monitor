@@ -14,14 +14,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// issue #12: jsonl 顶层 `forkedFrom` 字段 —— `/branch` 命令分叉出新 session 时
-/// 写入。`sessionId` 是 parent session 的 sessionId（**全前缀共享同一个**）；`messageUuid`
-/// 则是**该条记录自身的 uuid**（= 它在父会话里的原 uuid），逐条不同。
-///
-/// **实证**（本机原生 branch 会话 fe4aad07/0473c3a0 逐条比对，F62 落盘亦按此）：`/branch`
-/// 把 root→分叉点的线性前缀复制进新文件，每条 `sessionId` 改新 id、`forkedFrom.messageUuid`
-/// = 自身 uuid（**不是**"整段共享同一个 messageUuid"——早期注释误述，勿据此把 F62 改回错的）。
-/// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 /// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -57,6 +49,14 @@ impl JsonlRecord {
     }
 }
 
+/// issue #12: jsonl 顶层 `forkedFrom` 字段 —— `/branch` 命令分叉出新 session 时
+/// 写入。`sessionId` 是 parent session 的 sessionId（**全前缀共享同一个**）；`messageUuid`
+/// 则是**该条记录自身的 uuid**（= 它在父会话里的原 uuid），逐条不同。
+///
+/// **实证**（本机原生 branch 会话 fe4aad07/0473c3a0 逐条比对，F62 落盘亦按此）：`/branch`
+/// 把 root→分叉点的线性前缀复制进新文件，每条 `sessionId` 改新 id、`forkedFrom.messageUuid`
+/// = 自身 uuid（**不是**"整段共享同一个 messageUuid"——早期注释误述，勿据此把 F62 改回错的）。
+/// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
