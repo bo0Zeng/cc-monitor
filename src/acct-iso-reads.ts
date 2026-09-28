@@ -5,9 +5,12 @@
  * |---|---|---|
  * | 装没装、装在哪 | `acct-iso-status` | `{installed, path, looked}` |
  * | rc 片段（围栏已由那台后端校验过） | `acct-iso-shellinit` | `{snippet}` |
+ * | 落进用户目录（部署推完字节之后） | `acct-iso-install` | `{link, linked, config, configWritten, recordFailed}` |
  *
  * 从前是 monitor 的两条 Tauri 命令（本机远端合一的 `acct_iso_status` / `acct_iso_shellinit`），它们在 monitor 里判读应答、
  * 校验围栏（本机远端各一份话）；那一份判读进了后端（`accounts/iso.rs`），这里只按形状严格收。
+ * 〔09-28 裁 2〕落进用户目录那一步（`~/.local/bin` 链接 ＋ 配置样例）从前是部署命令经 ssh 跑安装脚本，今天是那台后端的
+ * `acct-iso-install`（链接走写面 `files-link`，装卸账记 skill 装记录）；这里一样只按形状收。
  */
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
@@ -44,7 +47,32 @@ export function decodeAcctIsoSnippet(v: unknown): string {
   return v.snippet;
 }
 
-/** 两问的期限：`status` 只看文件在不在；`shellinit` 起一次 `cc-acct-iso`（后端那侧自带 20 秒）。给 30 秒。 */
+/** 一次落进用户目录的结果。`linked` / `configWritten` 为假 = 那儿已有东西、没动它。 */
+export interface AcctIsoInstalled {
+  link: string;
+  linked: boolean;
+  config: string;
+  configWritten: boolean;
+  /** 装好了但没记进装记录时那一句；`null` = 记上了 / 没东西要记。 */
+  recordFailed: string | null;
+}
+
+/** `acct-iso-install` 的成品。严格收。 */
+export function decodeAcctIsoInstalled(v: unknown): AcctIsoInstalled {
+  if (
+    !isObj(v) ||
+    !sameKeys(v, ["link", "linked", "config", "configWritten", "recordFailed"]) ||
+    typeof v.link !== "string" ||
+    typeof v.linked !== "boolean" ||
+    typeof v.config !== "string" ||
+    typeof v.configWritten !== "boolean" ||
+    !optStr(v.recordFailed)
+  )
+    throw bad();
+  return { link: v.link, linked: v.linked, config: v.config, configWritten: v.configWritten, recordFailed: v.recordFailed };
+}
+
+/** 三件的期限：`status` 只看文件在不在；`shellinit` 起一次 `cc-acct-iso`（后端那侧自带 20 秒）；`install` 几个小文件。给 30 秒。 */
 const ACCT_ISO_BUDGET_MS = 30_000;
 const said = (e: unknown): Error => new Error(saidOf(e, copyText("mcpReads.backend.tooOld")));
 
@@ -65,6 +93,17 @@ export async function readAcctIsoSnippet(origin: Origin): Promise<string> {
     const budget = budgetWithin(ACCT_ISO_BUDGET_MS);
     const body = jsonBody({});
     return decodeAcctIsoSnippet(readJson(await chan.call(origin, "acct-iso-shellinit", body, budget)));
+  } catch (e) {
+    throw said(e);
+  }
+}
+
+/** 把部署推到 `dir` 的那一份落进那台的用户目录（用户显式点了「部署」、字节推完之后才调）。 */
+export async function installAcctIso(origin: Origin, dir: string): Promise<AcctIsoInstalled> {
+  try {
+    const budget = budgetWithin(ACCT_ISO_BUDGET_MS);
+    const body = jsonBody({ dir });
+    return decodeAcctIsoInstalled(readJson(await chan.call(origin, "acct-iso-install", body, budget)));
   } catch (e) {
     throw said(e);
   }

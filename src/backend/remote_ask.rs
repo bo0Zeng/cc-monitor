@@ -347,15 +347,8 @@ impl Drop for AbortOnDrop {
 
 /// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
 /// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
-pub(crate) async fn pull_over<F, Fut>(serve: F) -> Result<String, String>
-where
-    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
-    Fut: Future<Output = ()> + Send + 'static,
-{
-    pull_over_coded(serve).await.map_err(|s| s.message)
-}
-
-/// [`pull_over`] 的本体：失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）。
+/// 〔MIG-3a · 09-28 裁 4〕失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`
+/// （不另留一个只丢码的包装 —— 它唯一的生产调用方 `DialRemote::run` 已改转 `run_coded`）。
 pub(crate) async fn pull_over_coded<F, Fut>(serve: F) -> Result<String, Said>
 where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,

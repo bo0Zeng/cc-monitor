@@ -379,3 +379,30 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     assert_eq!(names.len(), 2, "有一条被盖掉了：{names:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕装在家目录底下的那一件（acct-iso）记进**同一份**账：`at:"home"` ⇒ 键是本记录自己所在的那个家
+/// （`<家>/.cc-monitor/<本文件>` 的上两层），不收调用方给的路径；`at` 认不得的值 ⇒ 拒、文件一个字节不动。
+#[test]
+fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
+    let h = temp_dir("at-home");
+    let path = h.join(".cc-monitor").join(FILE_NAME);
+    let v = record_at(
+        &path,
+        None,
+        &json!({ "op": "add", "name": "acct-iso", "at": "home", "files": { ".local/bin/cc-acct-iso": rec(D1, true) } }),
+    )
+    .expect("记");
+    assert_eq!(v["dir"], json!(h.display().to_string()));
+    assert!(read_ok(&path)
+        .installs
+        .contains_key(&h.display().to_string()));
+    let before = std::fs::read(&path).unwrap();
+    let (code, _) = record_at(
+        &path,
+        None,
+        &json!({ "op": "add", "name": "x", "at": "/etc", "files": {} }),
+    )
+    .expect_err("认不得的 at 也记了");
+    assert_eq!(code, "bad_args");
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+}

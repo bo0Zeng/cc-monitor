@@ -218,7 +218,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     (
         "deploy_remote_acct_iso",
         Lane::Mig3a,
-        "落进用户目录与软链由 monitor 经 SFTP 直写（⑯）",
+        "〔09-28 裁 2〕落进用户目录 ＋ 软链 ＋ 记账已进那台后端（`acct-iso-install`，链接走写面 `files-link`）；\
+         剩字节那一推：vendored 脚本住 monitor 二进制（`include_bytes!`），经本机后端 SFTP 推 —— 字节是否随 cc-bus 那样进后端二进制待主会话裁",
     ),
     // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。

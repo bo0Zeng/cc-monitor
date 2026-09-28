@@ -415,16 +415,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    (
-        "src/bridge/src/acct_iso_deploy.rs",
-        1,
-        &[(
-            "src/bridge/src/acct_iso_deploy.rs",
-            "is_safe_remote_acct_iso_dir",
-        )],
-        "",
-        "",
-    ),
+    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：它唯一一处拼 shell（跑安装脚本）随「落进用户目录进那台后端」退役。
     // 〔TL3 · §47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
     (
         "src/backend/control/launch_render/ccm_invocation.rs",

@@ -6,7 +6,7 @@
 //
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
-import { readAcctIsoSnippet, readAcctIsoStatus } from "../acct-iso-reads";
+import { installAcctIso, readAcctIsoSnippet, readAcctIsoStatus, type AcctIsoInstalled } from "../acct-iso-reads";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
@@ -839,7 +839,7 @@ export class AccountsSection {
     this.renderNotEnabled(manifestPath, reason);
   }
 
-  /** F5：远端没装 cc-acct-iso → 一键部署（vendored 内嵌 → sftp 推 → 装软链，不碰 rc）。 */
+  /** F5：远端没装 cc-acct-iso → 一键部署（vendored 内嵌 → sftp 推 → 那台后端落进用户目录，不碰 rc）。 */
   private renderNeedsDeploy(host: RemoteHostConfig, dest: string | null): void {
     const box = document.createElement("div");
     box.className = "accounts-needs-deploy";
@@ -871,8 +871,11 @@ export class AccountsSection {
       btn.disabled = true;
       const prev = btn.textContent;
       btn.textContent = copyText("accounts.needsDeploy.deploying");
+      // 〔MIG-3a · 09-28 裁 2〕两步：monitor 推字节（部署命令）→ 那台后端落进用户目录（`acct-iso-install`，每趟都问：幂等、已在不动）。
+      const origin = this.origin;
       void commands
         .deploy_remote_acct_iso({ cfg: host, destDir: dest })
+        .then(async (pushed) => [pushed, installedLine(await installAcctIso(origin, dest))].join("\n"))
         .then(
           (msg) => {
             showActionFailureToast(copyText("accounts.needsDeploy.done"), msg, {
@@ -1583,4 +1586,18 @@ function mkBtn(text: string): HTMLButtonElement {
   b.type = "button";
   b.textContent = text;
   return b;
+}
+
+/** 〔MIG-3a · 09-28 裁 2〕`acct-iso-install` 的成品 ⇒ 给人读的一两句（已在的不动，如实说）。 */
+function installedLine(r: AcctIsoInstalled): string {
+  const parts = [
+    r.linked
+      ? copyText("accounts.needsDeploy.linked", { link: r.link })
+      : copyText("accounts.needsDeploy.linkKept", { link: r.link }),
+    r.configWritten
+      ? copyText("accounts.needsDeploy.configWritten", { config: r.config })
+      : copyText("accounts.needsDeploy.configKept", { config: r.config }),
+  ];
+  if (r.recordFailed) parts.push(r.recordFailed);
+  return parts.join("");
 }

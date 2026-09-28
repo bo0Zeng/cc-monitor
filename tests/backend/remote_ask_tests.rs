@@ -296,7 +296,7 @@ impl Drop for Sentinel {
 async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
     // ① 永不答：内层攥着哨兵、永远等上行（上行那根管子外层一个字节都不写）。
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let outer = pull_over(move |mut up_r, down_w| async move {
+    let outer = pull_over_coded(move |mut up_r, down_w| async move {
         let _slot = Sentinel(Some(tx));
         let _keep = down_w; // 下行不关：外层就一直等 ack（远端不答的那一形）
         let mut b = [0u8; 1];
@@ -313,7 +313,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 
     // ② 另一向：正常答完 ⇒ 结果照常，那一格同样放掉。
     let (tx2, rx2) = tokio::sync::oneshot::channel::<()>();
-    let got = pull_over(move |_up_r, mut down_w| async move {
+    let got = pull_over_coded(move |_up_r, mut down_w| async move {
         let _slot = Sentinel(Some(tx2));
         let ack = "{\"ok\":true}\n";
         let res = "{\"stdout\":\"答\",\"stderr\":\"\",\"exit_status\":0}\n";
@@ -321,7 +321,8 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, res.as_bytes()).await;
         std::future::pending::<()>().await;
     })
-    .await;
+    .await
+    .map_err(|s| s.message);
     assert_eq!(got, Ok("答".to_string()));
     tokio::time::timeout(std::time::Duration::from_secs(10), rx2)
         .await

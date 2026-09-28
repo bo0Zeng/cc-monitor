@@ -497,6 +497,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "acct-iso-shellinit",
         "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
     ),
+    (
+        "acct-iso-install",
+        "〔MIG-3a · 09-28 裁 2〕新帧命令：cc-acct-iso 落进用户目录（链接走写面 `files-link` ＋ 配置样例 ＋ 记 skill 装记录）；\
+         从前是部署命令经 ssh 跑安装脚本",
+    ),
     // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     (
         "skill-install-hub-preview",
