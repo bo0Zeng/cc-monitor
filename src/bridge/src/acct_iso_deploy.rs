@@ -12,7 +12,6 @@ use crate::copy_table::copy_text;
 use crate::dial_host::RemoteFs;
 use crate::sftp::{deploy_decision, put_marker, read_marker, upload_verified, DeployAction};
 use crate::ssh_source::{connect_and_exec_cmd, RemoteConfig};
-use serde::Serialize;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 
@@ -41,20 +40,6 @@ pub fn is_safe_remote_acct_iso_dir(path: &str) -> bool {
     // T04 审计⑤：与 `is_safe_remote_backend_path`〔散文墓碑〕5 个条件里 4 个逐字相同，已抽到
     // `sftp::is_safe_remote_managed_path`（2 个消费者，同 `find_pair` 那把 ≥2 尺子）。
     crate::sftp::is_safe_remote_managed_path(path, &["cc-acct-iso", ".cc-monitor"])
-}
-
-/// 远端 cc-acct-iso 状态（供前端决定：一键部署 / 走 init 向导 / 正常）。
-#[derive(Debug, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct AcctIsoStatus {
-    /// 远端 PATH（含 ~/.local/bin）里能否找到 `cc-acct-iso`。
-    pub installed: bool,
-    /// `command -v cc-acct-iso` 命中的绝对路径（软链本身），未装为 None。
-    pub path: Option<String>,
-    /// 本 monitor 内嵌的 vendor 指纹——前端可比对提示「有更新」（当前 installed 判定用不到，
-    /// 附带回传，避免以后要它时再加一趟往返）。
-    pub vendor_id: String,
 }
 
 /// 一次性远端 exec，收全 stdout（非交互 shell）。带超时（D 审计 S1）。
@@ -89,159 +74,8 @@ pub(crate) fn sq(s: &str) -> String {
     shell_quote_core::posix_quote(s)
 }
 
-/// 〔LOC1a · 第四波 4D〕`acct-iso.*` 两问的期限（本机远端同一个）：`status` 只看文件在不在；
-/// `shellinit` 起一次 `cc-acct-iso`（后端那侧自带 20 s 期限）。
-pub(crate) const ACCT_ISO_BUDGET: Duration = Duration::from_secs(30);
-
-/// `acct-iso-status` 的结局 → `AcctIsoStatus` —— **纯函数**，本机远端同一份。
-///
-/// 「没装」是 `Ok(installed:false)`（后端答了「没有」），不是 `Err`；
-/// `Err` 只给「问不出来」的两档（够不着 / 对端说不行 · 应答缺格），且**不许**说成「没装」。
-pub(crate) fn classify_status(
-    who: &str,
-    got: Result<serde_json::Value, String>,
-) -> Result<AcctIsoStatus, String> {
-    let v = got.map_err(|e| {
-        copy_text(
-            "rsAcctIsoDeploy.status.cannotAsk",
-            &[("who", who), ("e", &e)],
-        )
-    })?;
-    let installed = v
-        .get("installed")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| copy_text("rsAcctIsoDeploy.status.noInstalled", &[("who", who)]))?;
-    Ok(AcctIsoStatus {
-        installed,
-        path: v.get("path").and_then(|p| p.as_str()).map(str::to_string),
-        vendor_id: vendor_id().to_string(),
-    })
-}
-
-/// 问 `origin` 那台机器的后端：装没装 `cc-acct-iso`（帧命令 `acct-iso-status`）。**本机远端同一个函数。**
-pub(crate) async fn status_on(origin: &crate::origin::Origin) -> Result<AcctIsoStatus, String> {
-    let who = crate::backend::control::frame_query::who(origin);
-    classify_status(
-        &who,
-        crate::backend::control::frame_query::call(
-            origin,
-            "acct-iso-status",
-            serde_json::json!({}),
-            crate::backend::control::frame_query::Deadline::within(ACCT_ISO_BUDGET),
-        )
-        .await,
-    )
-}
-
-/// `acct-iso-shellinit` 的结局 → 片段原文（围栏还没判）—— **纯函数**，本机远端同一份。
-pub(crate) fn snippet_of(
-    who: &str,
-    got: Result<serde_json::Value, String>,
-) -> Result<String, String> {
-    let v = got.map_err(|e| {
-        copy_text(
-            "rsAcctIsoDeploy.shellinit.failed",
-            &[("who", who), ("message", &e)],
-        )
-    })?;
-    v.get("snippet")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| copy_text("rsAcctIsoDeploy.shellinit.noSnippet", &[("who", who)]))
-}
-
-/// 问 `origin` 那台机器的后端：`cc-acct-iso shellinit` 的片段原文（帧命令 `acct-iso-shellinit`）。**本机远端同一个函数**；
-/// 围栏由各自的调用方判（话不同：远端说「先在『维护』里部署」，本机今天没有那个口）。
-pub(crate) async fn snippet_on(origin: &crate::origin::Origin) -> Result<String, String> {
-    let who = crate::backend::control::frame_query::who(origin);
-    snippet_of(
-        &who,
-        crate::backend::control::frame_query::call(
-            origin,
-            "acct-iso-shellinit",
-            serde_json::json!({}),
-            crate::backend::control::frame_query::Deadline::within(ACCT_ISO_BUDGET),
-        )
-        .await,
-    )
-}
-
-/// 〔SH1 · `00 §2.5 ①`〕这台机器装没装 `cc-acct-iso` —— **一条命令带 origin**（原是本机 / 远端两条）。
-/// 问那台机器的后端（帧命令 `acct-iso-status`，[`status_on`]）；那台长连接不在 ⇒ 说「没连上」（前端照旧落到向导那一支），不再单拨 SSH。
-#[tauri::command]
-pub async fn acct_iso_status(origin: crate::origin::Origin) -> Result<AcctIsoStatus, String> {
-    origin.route("acct_iso_status")?;
-    status_on(&origin).await
-}
-
-/// 〔SH1 · `00 §2.5 ①`〕这台机器 `cc-acct-iso shellinit` 的片段 —— **一条命令带 origin**（原是本机 / 远端两条）。
-///
-/// **为什么是抓那台的输出而不是在 TS 里重新生成一份**（Z05）：片段的形态是 `cc-acct-iso` 的知识，单一来源留在 bash。
-/// 围栏判定只有一个（[`shellinit_fence_state`]），话按那台是本机还是远端各说各的（远端说「先在『维护』里部署」，本机没有那个口）。
-#[tauri::command]
-pub async fn acct_iso_shellinit(origin: crate::origin::Origin) -> Result<String, String> {
-    let route = origin.route("acct_iso_shellinit")?;
-    let out = snippet_on(&origin).await?;
-    match route {
-        crate::origin::Route::Local => crate::local_accounts::local_fence(out),
-        crate::origin::Route::Remote(_) => validate_shellinit_output(out),
-    }
-}
-
-/// 远端那一支（[`acct_iso_shellinit`]）的**fail-closed 校验**，抽成纯函数好单测。
-///
-/// `shellinit` 的输出恒被 BEGIN/END 围栏夹住。**两条都要在**：只查 BEGIN 的话，
-/// 一次被截断的输出（SSH 中途断、超时）会带着半截片段过关，而**半截片段贴进 rc
-/// 会让用户的登录 shell 直接报错**（未闭合的函数体）。这就是这条必须 fail-closed 的理由。
-pub(crate) fn validate_shellinit_output(out: String) -> Result<String, String> {
-    let state = shellinit_fence_state(&out);
-    if state == FenceState::Complete {
-        return Ok(out);
-    }
-    Err(if state == FenceState::Truncated {
-        copy_text(
-            "rsAcctIsoDeploy.shellinit.truncated",
-            &[
-                ("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN)),
-                ("end", &format!("{:?}", SHELLINIT_FENCE_END)),
-            ],
-        )
-    } else {
-        copy_text(
-            "rsAcctIsoDeploy.shellinit.missing",
-            &[("begin", &format!("{:?}", SHELLINIT_FENCE_BEGIN))],
-        )
-    })
-}
-
-/// 片段的围栏齐不齐 —— 〔`A3` 第二波〕从 [`validate_shellinit_output`] 里抽出来的**判定**，
-/// 远端那一支与本机那一支（`local_accounts::local_fence`）共用它；两边只是话不同
-/// （远端说「先在『维护』里部署」，本机今天没有那个口）。**两条都要在**的理由见上面那个函数的头注。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FenceState {
-    /// BEGIN 与 END 都在。
-    Complete,
-    /// 有 BEGIN 没 END —— 多半是被截断了。
-    Truncated,
-    /// 连 BEGIN 都没有 —— 没产出片段。
-    Missing,
-}
-
-pub(crate) fn shellinit_fence_state(out: &str) -> FenceState {
-    match (
-        out.contains(SHELLINIT_FENCE_BEGIN),
-        out.contains(SHELLINIT_FENCE_END),
-    ) {
-        (true, true) => FenceState::Complete,
-        (true, false) => FenceState::Truncated,
-        (false, _) => FenceState::Missing,
-    }
-}
-
-/// `cc-acct-iso shellinit` 输出的围栏 —— **跨语言双写点**，由
-/// `acct_iso_shellinit_fence_matches_vendored_script` 钉住（它读 vendored 脚本对拍）。
-pub(crate) const SHELLINIT_FENCE_BEGIN: &str = "# ===== BEGIN cc-acct-iso =====";
-pub(crate) const SHELLINIT_FENCE_END: &str = "# ===== END cc-acct-iso =====";
+// 〔MIG-3a · `99 §2.1 ⑬`〕`acct-iso.*` 两问（装没装 · rc 片段）的 Tauri 命令与判读（`classify_status` · 围栏校验〔散文墓碑〕）
+//   退役：那台后端出成品（`accounts/iso.rs`：`acct-iso-status` · `acct-iso-shellinit` 自己校验围栏），界面经通道直问（`src/acct-iso-reads.ts`）。
 
 /// 一键部署 / 更新 vendored cc-acct-iso 到远端 `dest_dir`，随后跑 install 脚本建软链。
 /// 返回人读结果。逻辑对标 [`crate::sftp::deploy_remote_backend`]。

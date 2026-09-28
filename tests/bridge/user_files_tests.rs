@@ -30,13 +30,8 @@ pub(crate) struct DiskDoor {
     /// 删会话那一条收到的 sid。
     /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
     pub deleted: RefCell<Vec<(String, String)>>,
-    /// 〔FW1〕`delete_empty_dir` 收到的 `(root, rel)`（按到达顺序）。
-    pub emptied: RefCell<Vec<(String, String)>>,
     /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
     pub peeked: RefCell<usize>,
-    /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
-    /// `scanning_guard_registry` 不许测试段裸遍历目录）。键是目录的绝对路径。
-    pub listings: RefCell<std::collections::BTreeMap<String, Vec<(String, bool)>>>,
 }
 
 impl DiskDoor {
@@ -46,9 +41,7 @@ impl DiskDoor {
             interfere: RefCell::new(Vec::new()),
             puts: RefCell::new(Vec::new()),
             deleted: RefCell::new(Vec::new()),
-            emptied: RefCell::new(Vec::new()),
             peeked: RefCell::new(0),
-            listings: RefCell::new(std::collections::BTreeMap::new()),
         }
     }
 
@@ -134,14 +127,6 @@ impl Door for DiskDoor {
         })
     }
 
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
-        let (a, b) = (Self::at(root, from), Self::at(root, to));
-        if b.exists() {
-            return Err(format!("替身：{} 已经在了", b.display()));
-        }
-        std::fs::rename(&a, &b).map_err(|e| e.to_string())
-    }
-
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         let p = Self::at(root, rel);
         self.deleted
@@ -158,28 +143,6 @@ impl Door for DiskDoor {
             .map_err(|e| Refused::Other(format!("替身：删 {} 失败：{e}", p.display())))
     }
 
-    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
-        let p = Self::at(root, rel);
-        self.emptied
-            .borrow_mut()
-            .push((root.to_string(), rel.to_string()));
-        // 〔FW1〕同后端 `files_write::delete_empty_dir`：不在 / 不空 ⇒ stale；不是目录 ⇒ 拒。
-        match std::fs::symlink_metadata(&p) {
-            Err(_) => return Err(Refused::Stale(format!("替身：{} 不在了", p.display()))),
-            Ok(m) if !m.is_dir() => {
-                return Err(Refused::Other(format!("替身：{} 不是目录", p.display())))
-            }
-            Ok(_) => {}
-        }
-        std::fs::remove_dir(&p).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
-                Refused::Stale(format!("替身：{} 不空", p.display()))
-            } else {
-                Refused::Other(format!("替身：删 {} 失败：{e}", p.display()))
-            }
-        })
-    }
-
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
         #[cfg(unix)]
         {
@@ -192,24 +155,6 @@ impl Door for DiskDoor {
             let _ = (root, rel, mode);
             Ok(())
         }
-    }
-
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
-        Ok(std::fs::metadata(path).ok().map(|m| {
-            if m.is_dir() {
-                "dir".to_string()
-            } else {
-                "file".to_string()
-            }
-        }))
-    }
-
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
-        self.listings
-            .borrow()
-            .get(path)
-            .cloned()
-            .ok_or_else(|| format!("替身：没给 {path} 摆目录列表"))
     }
 }
 
@@ -319,18 +264,7 @@ fn nothing_to_do_and_same_content_both_hand_over_nothing() {
     std::fs::remove_dir_all(&h).ok();
 }
 
-#[test]
-fn rel_under_keeps_writes_inside_home_on_both_path_styles() {
-    assert_eq!(rel_under("/home/u", "/home/u/.bashrc").unwrap(), ".bashrc");
-    assert_eq!(rel_under("/home/u/", "/home/u/a/b").unwrap(), "a/b");
-    assert_eq!(
-        rel_under(r"C:\Users\u", r"C:\Users\u\Documents\PowerShell\p.ps1").unwrap(),
-        "Documents/PowerShell/p.ps1"
-    );
-    for bad in ["/home/uu/.bashrc", "/etc/passwd", "/home/u", "/home/u/"] {
-        assert!(rel_under("/home/u", bad).is_err(), "{bad} 竟然过了");
-    }
-}
+// 〔MIG-3a〕`rel_under` 那条判据随函数搬进了后端（`tests/backend/assets/aliases/aliases_tests.rs`）。
 
 // ── J2：门发出去的命令 == 后端登记的写面 ∪ 读面里真用到的那几条（两侧异源：一侧 monitor 源码，一侧后端源码）──
 
@@ -418,7 +352,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
             "files-delete",
             "files-peek",
             "files-put",
-            "files-rename"
+            // 〔MIG-3a · 子步 3〕`files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。
         ]
         .into_iter()
         .collect(),
@@ -426,42 +360,4 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     );
 }
 
-/// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕门发的「只删空目录」那一形的键 == 后端认的那一个（两侧源码现抠，异源）。
-/// 替身门（`DiskDoor`）不走线上，这一格只有源码对拍看得见：键拼错 ⇒ 后端按逐字节形取、取不出 ⇒ `bad_args`，卸 skill 收空目录那一步整个失效。
-#[test]
-fn the_door_s_empty_dir_expect_key_is_the_one_the_backend_recognizes() {
-    let root = crate::guard_support::repo_src_root();
-    let door = guard_core::production_code(
-        &std::fs::read_to_string(root.join("bridge/src/user_files.rs")).expect("读门"),
-    );
-    let back = guard_core::production_code(
-        &std::fs::read_to_string(root.join("backend/control/files_write.rs")).expect("读后端写面"),
-    );
-    let between = |src: &str, pre: &str, post: &str| -> Vec<String> {
-        src.match_indices(pre)
-            .filter_map(|(i, _)| {
-                let rest = &src[i + pre.len()..];
-                rest.find(post).map(|j| rest[..j].to_string())
-            })
-            // 键只可能是一个标识符形的词；跨到别处的长片段（`pre` 撞上别的 `json!` 起头）不算。
-            .filter(|k| !k.is_empty() && k.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'))
-            .collect()
-    };
-    let ours = between(&door, "serde_json::json!({ \"", "\": true })");
-    let theirs = between(
-        &back,
-        "o.get(\"",
-        "\") == Some(&serde_json::Value::Bool(true))",
-    );
-    assert_eq!(
-        ours.len(),
-        1,
-        "门上「只删空目录」那一形不是恰好一处：{ours:?}"
-    );
-    assert_eq!(
-        theirs.len(),
-        1,
-        "后端认「只删空目录」那一形不是恰好一处：{theirs:?}"
-    );
-    assert_eq!(ours, theirs, "门发的键与后端认的键对不上");
-}
+// 〔MIG-3a〕「门发的只删空目录那一形的键 == 后端认的那一个」那一条随门上那一形删了（收空目录进了后端 `skill_flow.rs`，同一进程里直接调写面）。

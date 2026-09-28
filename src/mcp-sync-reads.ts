@@ -1,19 +1,18 @@
 /**
- * 〔MIG-3a · `设计/99 §2.1 ⑬`〕MCP 推 / 拉**走通道**，每一问只问一台：
+ * 〔MIG-3a · `设计/99 §2.1 ⑬` · `01 §3.5` · 主会话 09-28 裁〕MCP 推 / 拉**走通道、只问本机一次**，本机常驻后端当枢纽：
  *
  * | 一步 | 问哪台 | 帧命令 | 成品 |
  * |---|---|---|---|
- * | 拿来源那份原文 | `from` | `mcp-sync-source` | `{path, text}` |
- * | 看差异（读自己那份 ＋ 判差异与可疑项） | `to` | `mcp-sync-preview` | `{sourcePath, targetPath, sourceText, targetText, rows}` |
- * | 写（CAS 期望 = 看差异时那份） | `to` | `mcp-sync-apply` | `{path, written, names}` |
+ * | 看差异（枢纽向 `from` 取原文、交 `to` 判） | 本机 | `mcp-sync-hub-preview` | `{sourcePath, targetPath, sourceText, targetText, rows}` |
+ * | 写（枢纽向 `from` 再取一次核对、交 `to` 写，CAS 期望 = 看差异时那份） | 本机 | `mcp-sync-hub-apply` | `{path, written, names}` |
  *
- * 从前是 monitor 的两条 Tauri 命令（`mcp_sync_preview` / `mcp_sync_apply`）编排这几跳；判定一直在被写那台后端
- * （`mcp-sync-plan`），今天连读写都在它（`src/backend/assets/mcp_sync_flow.rs`）。这里零判定：把来源那份原文原样递给被写那台、
- * 按形状严格收（金样 `tests/__fixtures__/mcp-sync-flow.golden.json`）。
+ * 前半那一形是界面先问来源那台拿原文、再递给被写那台 —— 经前端中继，撞 `01 §3.5`，主会话 09-28 裁改掉。
+ * 判定与读写都在后端（`src/backend/assets/hub.rs` · `mcp_sync_flow.rs`）；这里零判定、按形状严格收（金样 `mcp-sync-flow.golden.json`）。
+ * `from` / `to` 线上是可达表的键，**本机那台发 `null`**（后端不认 `<local>` 这个名字）。
  */
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 
 /** 一条可疑项（被写那台后端判的，原样上屏）。 */
@@ -89,13 +88,6 @@ function rowOf(v: unknown): McpSyncRow {
   };
 }
 
-/** `mcp-sync-source` 的成品。严格收。 */
-export function decodeMcpSyncSource(v: unknown): { path: string; text: string } {
-  if (!isObj(v) || !sameKeys(v, ["path", "text"]) || typeof v.path !== "string" || typeof v.text !== "string")
-    throw bad();
-  return { path: v.path, text: v.text };
-}
-
 /** `mcp-sync-preview` 的成品。严格收。 */
 export function decodeMcpSyncPreview(v: unknown): McpSyncPreview {
   if (
@@ -138,6 +130,9 @@ const OLD_BACKEND = (): string => copyText("mcpReads.backend.tooOld");
 /** 通道三层 / 拒绝码 → 一句人话（同 `mcp-reads.ts`）。 */
 const said = (e: unknown): Error => new Error(saidOf(e, OLD_BACKEND()));
 
+/** 枢纽线上的那一台：本机 ⇒ `null`（= 枢纽自己），远端 ⇒ 可达表的键。 */
+export const hubMachine = (o: Origin): string | null => (isLocalOrigin(o) ? null : o);
+
 /** 看差异：`from` 那台 `fromDir` 的 `.mcp.json` 拷到 `to` 那台 `toDir` 会发生什么。推 / 拉同一问，界面换个方向说。 */
 export async function mcpSyncPreview(a: {
   from: Origin;
@@ -146,23 +141,18 @@ export async function mcpSyncPreview(a: {
   toDir: string;
 }): Promise<McpSyncPreview> {
   try {
-    const body = jsonBody({ projectDir: a.fromDir });
+    const body = jsonBody({ from: hubMachine(a.from), fromDir: a.fromDir, to: hubMachine(a.to), toDir: a.toDir });
     const budget = budgetWithin(SYNC_BUDGET_MS);
-    const src = decodeMcpSyncSource(readJson(await chan.call(a.from, "mcp-sync-source", body, budget)));
-    const ask = jsonBody({
-      projectDir: a.toDir,
-      source: src.text,
-      sourcePath: src.path,
-      sameMachine: a.from === a.to,
-    });
-    return decodeMcpSyncPreview(readJson(await chan.call(a.to, "mcp-sync-preview", ask, budget)));
+    return decodeMcpSyncPreview(readJson(await chan.call(LOCAL_ORIGIN, "mcp-sync-hub-preview", body, budget)));
   } catch (e) {
     throw said(e);
   }
 }
 
-/** 写：把勾的那几条原样合进 `to` 那台那份。`sourceText` / `targetText` 原样送回看差异时拿到的那两份。 */
+/** 写：把勾的那几条合进 `to` 那台那份。`sourceText` / `targetText` 是看差异时拿到的那两份，只当 CAS 期望送回（写的内容由枢纽自己取）。 */
 export async function mcpSyncApply(a: {
+  from: Origin;
+  fromDir: string;
   to: Origin;
   toDir: string;
   sourceText: string;
@@ -172,14 +162,17 @@ export async function mcpSyncApply(a: {
 }): Promise<McpSyncApplied> {
   try {
     const body = jsonBody({
-      projectDir: a.toDir,
-      source: a.sourceText,
+      from: hubMachine(a.from),
+      fromDir: a.fromDir,
+      to: hubMachine(a.to),
+      toDir: a.toDir,
+      expectSource: a.sourceText,
       target: a.targetText,
       take: a.take,
       overwrite: a.overwrite,
     });
     const budget = budgetWithin(SYNC_BUDGET_MS);
-    return decodeMcpSyncApplied(readJson(await chan.call(a.to, "mcp-sync-apply", body, budget)));
+    return decodeMcpSyncApplied(readJson(await chan.call(LOCAL_ORIGIN, "mcp-sync-hub-apply", body, budget)));
   } catch (e) {
     throw said(e);
   }

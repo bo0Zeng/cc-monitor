@@ -104,7 +104,7 @@
       "word": "PowerShell",
       "tier": "限用",
       "tally": { "re": "powershell", "flags": "i" },
-      "inTable": 35,
+      "inTable": 37,
       "meaning": "Windows 上的 shell。",
       "context": "讲终端集成、$PROFILE 时许说；不许缩写成 PS。",
       "source": "设计/91 §4 R1b"
@@ -133,7 +133,7 @@
       "word": "Claude Code",
       "tier": "限用",
       "tally": { "re": "claude\\s*code", "flags": "i" },
-      "inTable": 24,
+      "inTable": 23,
       "meaning": "Anthropic 的命令行工具；命令名 claude。",
       "context": "产品名，许说。讲它的 hooks、settings.json 等它自己的概念时许用它的原名。",
       "source": "外部产品名"

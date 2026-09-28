@@ -36,7 +36,7 @@
 - `chan/webview.rs::chan_subscribe(webview, origin, kind, from, want, id, replay: State<'_, Arc<EventReplay>>)` · `chan_want` · `chan_stop`（〔CF2 · 第四波 4B〕会话内容经通道 `subscribe`：主窗口每台机器一条 `session-lines`，独立窗口一条 `session-lines/<sid>`；原来的定向重放命令〔散文墓碑〕退役）
 
 ### `Arc<BindRegistry>`
-- `lib.rs::aliases_read(origin, shell, rc_path, bind_state: State<'_, Arc<BindRegistry>>)`（〔AL1d〕别名读回口带回握手终端数，〔AL2〕只本机有、远端给 0；接替了原「终端集成」的状态命令）
+- `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（〔MIG-3a〕握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`

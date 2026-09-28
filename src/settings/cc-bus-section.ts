@@ -22,6 +22,7 @@
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
+import { installCcBus, readCcBusInstallState } from "../cc-bus-install-reads";
 // 〔C4e · 第四波 4C〕查在线 · 发消息 · 收掉 · 派生 · 广播五件经通道直接问那台机器的后端（原是五条 Tauri 命令）。
 import { agentOnline, broadcast, killAgent, readInbox, readState, sendMessage, spawnAgent, type BusState } from "../cc-bus-control";
 import { saidOfControl } from "../control-said";
@@ -163,7 +164,7 @@ export class CcBusSection {
   /**
    * `PS2`：按**三态**说话，并让按钮的**文案跟着状态变**。
    *
-   * ⚠ 三态刻意不合并（理由见 `cc_bus_deploy::CcBusInstallState` 的头注）：
+   * ⚠ 三态刻意不合并（理由见 `src/cc-bus-install-reads.ts` 与后端 `cc_bus_install.rs::state_at` 的头注）：
    * 把「装了旧版」说成「已装」，正是 `P4b` 那一刀卡了两天的形态 ——
    * 装着的是旧的，而界面说已装，于是**没人会去点那颗按钮**。
    * ⚠ 读失败**说读失败**，不退化成「未装」（本仓一路在收的那一族）。
@@ -171,7 +172,7 @@ export class CcBusSection {
   private async refreshInstallState(): Promise<void> {
     if (!this.deployBtn) return;
     try {
-      const st = await commands.cc_bus_install_state();
+      const st = await readCcBusInstallState();
       if (st.state === "not_installed") {
         this.deployBtn.textContent = copyText("ccBus.refreshInstallState.install");
         this.deployBtn.title = copyText("ccBus.install.missing");
@@ -196,7 +197,9 @@ export class CcBusSection {
     btn.disabled = true;
     btn.textContent = copyText("ccBus.deploy.running");
     try {
-      const r = await commands.deploy_local_cc_bus();
+      // 〔MIG-3a · 子步 3〕判 · 写 · 记在本机后端（`cc-bus-install`）；「ccm 够不够新」是 monitor 探本机 ccm 的事，另问一次。
+      const r = await installCcBus();
+      const warning = await commands.cc_bus_ccm_precheck();
       if (r.written === 0) {
         this.statusEl.textContent = copyText("ccBus.deploy.unchanged", { dest: r.dest, unchanged: r.unchanged });
       } else {
@@ -210,10 +213,11 @@ export class CcBusSection {
       // ⚠ 后端那侧同时也写了日志 —— 但**用户不会去翻日志**：「成功 + 一句日志」
       //   在他眼里就是纯成功，正是本仓一路在治的「假成功比失败更坏」。
       // ⚠ 它**不是错误**（装本身做完了），所以接在成功文案后面，而不是走失败 toast。
-      if (r.warning) {
+      if (r.recordFailed) this.statusEl.textContent += ` ⚠ ${r.recordFailed}`;
+      if (warning) {
         // ⚠ 分隔符用普通空格：全角空格会被 `no-irregular-whitespace` 判错，
         //   而 `eslint-baseline` 那条判据是**等号**（全仓错误数就是基线那个数）—— 它当场逮住了。
-        this.statusEl.textContent += ` ⚠ ${r.warning}`;
+        this.statusEl.textContent += ` ⚠ ${warning}`;
       }
     } catch (e) {
       showActionFailureToast(copyText("ccBus.deploy.failed"), String(e));

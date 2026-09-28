@@ -1605,8 +1605,14 @@ deadcode_t0=$(date +%s)
 # 🔴 **2026-09-26（合并 PB1 × SH1）：23 − 2（PB1）− 1（SH1）= 20**。
 # 🔴 **2026-09-28（MIG-2 · 起会话进后端）：本路 −0**：起会话搬进后端之后 `apikey_remote.rs` 的发送口（`BUDGET` · `call` · `said`）零调用方，
 #    按 V41 整个模块删了（没有抬这个数）。现打本工作树 = 21，多的那一条是 `user_files.rs::delete_empty_dir`，归 MIG-3a（它合后回 20）。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 20，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=20; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-28（第四波 MIG-3a × MIG-2 合并）：MIG-2 那 −0（`apikey_remote` 整删）＋ MIG-3a 21 → 20 → 19，现打，逐条记**：① −1 `user_files·rs::BackendDoor::delete_empty_dir`（卸 skill 进后端后零生产调用方，连同测试侧假门删，回到 20）；
+#    ② −1 `fenced_block·rs::FENCE_SHAPES`（那张形状账只有判据读，随别名块进后端时住进判据文件 `tests/backend/assets/aliases/fence_tests.rs`）。
+#    同拍另有 `user_files·rs::list_dir` / `LIST_LIMIT`（收件箱进后端）· `rel_under` / `join_under`（别名进后端）四项零调用方，**当拍删了**，不进这个数。
+#    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 19。
+# 🔴 **2026-09-28（合并 MIG-3b × 主线 81f92f6a）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了，〔MIG-3b 子步 2〕）；
+#    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 81f92f6a 现打 19，逐条对过只差这一条）。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 18，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=18; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \

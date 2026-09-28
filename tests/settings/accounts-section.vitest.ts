@@ -22,7 +22,30 @@ const fetchLocalAccountsMock = vi.fn();
 const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
+// 〔MIG-3a〕acct-iso 两问改走通道（`chan_call`，op = `acct-iso-status` / `acct-iso-shellinit`，那台后端出成品）：
+//   替身翻译层把那一发译回旧名交给 `invokeMock`（各条断言按旧名数「问了几次、问的哪台」），把它答的译成成品字节；
+//   它拒 ⇒ 译成那台后端拒绝（`Refused`，话原样带着）。
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...a: unknown[]) => {
+    const [cmd, args] = a as [string, { origin?: string; op?: string } | undefined];
+    const legacy = cmd === "chan_call" ? { "acct-iso-status": "acct_iso_status", "acct-iso-shellinit": "acct_iso_shellinit" }[args?.op ?? ""] : undefined;
+    if (legacy === undefined) return invokeMock(...a);
+    const bytes = (v: unknown) => {
+      const u = new TextEncoder().encode(JSON.stringify(v));
+      return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
+    };
+    return Promise.resolve(invokeMock(legacy, { origin: args?.origin })).then(
+      (v: unknown) => {
+        if (legacy === "acct_iso_shellinit") return bytes(typeof v === "string" ? { snippet: v } : v);
+        const o = (v ?? {}) as { installed?: unknown; path?: unknown };
+        return bytes(v === undefined ? {} : { installed: o.installed, path: o.path ?? null, looked: null });
+      },
+      (e: unknown) => {
+        throw { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "x", message: String(e instanceof Error ? e.message : e) }))) };
+      },
+    );
+  },
+}));
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
