@@ -383,8 +383,10 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
     let probes: [(&str, usize, &str); 2] = [
         (
             "\"CCM_LAUNCH_ID\"",
-            4,
-            "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路转发那两处（读继承的 · 往里转）",
+            // 〔OSA · V156〕4 → 5：容器路「往里转」那一处从格式串 `"export CCM_LAUNCH_ID={}; …"` 换成 `posix::export("CCM_LAUNCH_ID", …)`
+            //   （`export` 的写法搬进 `platform::shell::posix`），同一处、变量名成了独立字面量 —— 家没多。
+            5,
+            "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路三处（读继承的 · 判继承值 · 往里转）",
         ),
         (
             "route_key_for_session(",

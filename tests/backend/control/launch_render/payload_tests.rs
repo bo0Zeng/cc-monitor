@@ -713,8 +713,12 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
         !prod.contains("这把尺子是瞎的"),
         "测试段没剥干净 —— 下面的计数会把判据自己的字面量数进去"
     );
+    // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`：数的是本文件里交给它的那几处的变量名。
     assert_eq!(
-        prod.matches("export ANTHROPIC_BASE_URL=").count(),
+        posix_export_args(&prod)
+            .iter()
+            .filter(|a| *a == "\"ANTHROPIC_BASE_URL\"")
+            .count(),
         1,
         "**本文件**生产段里产出 `export ANTHROPIC_BASE_URL=` 的地方不再是 1 处。\n\
              ⇒ 两处各拼一遍就会各自答错同一个问题，而症状是中转回一个查不出来的 404。\n\
@@ -811,6 +815,42 @@ fn fn_body(prod: &str, sig: &str) -> String {
     panic!("`{sig}` 的体花括号没配平 —— 抽取器坏了，别当它切出来了");
 }
 
+/// 〔OSA · V156〕一段源码里每一处交给 `posix::export(` / `posix::export_unless_set(` 的**第一个实参**（空白去掉）。
+/// `export` 的写法住 `platform::shell::posix` 之后，「谁 export 了哪个变量」在源码里就是这个实参。
+fn posix_export_args(code: &str) -> Vec<String> {
+    let flat: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut out = Vec::new();
+    for (at, _) in flat.match_indices("posix::export") {
+        let rest = &flat[at + "posix::export".len()..];
+        let rest = rest.strip_prefix("_unless_set").unwrap_or(rest);
+        let Some(args) = rest.strip_prefix('(') else {
+            continue;
+        };
+        let arg = &args[..args
+            .find(',')
+            .unwrap_or_else(|| panic!("`posix::export…(` 后面没有 `,`：{args:.60}"))];
+        out.push(arg.to_string());
+    }
+    out
+}
+
+/// 判据本体·**左半（源码那一侧）**：渲染器函数体里交给 `posix::export…` 的变量名。
+/// 字面量 ⇒ 原样；`LAUNCH_ID_VAR` ⇒ 用生产常量解析开（一个字面量都不写死）；别的 ⇒ **panic**（解析不开不许混进人群）。
+fn exported_names_in_body(body: &str) -> Vec<String> {
+    posix_export_args(body)
+        .into_iter()
+        .map(|a| {
+            if let Some(lit) = a.strip_prefix('"').and_then(|x| x.strip_suffix('"')) {
+                lit.to_string()
+            } else if a == "LAUNCH_ID_VAR" {
+                crate::control::launch_render::local::LAUNCH_ID_VAR.to_string()
+            } else {
+                panic!("`posix::export…({a}, …)` 的变量名解析不开 —— 回来给这个新形状写一条解析法，别让它混进人群")
+            }
+        })
+        .collect()
+}
+
 /// 判据本体·**左半**：从「拼在 `ccm` 外面那几截」里逐截抠出**被 `export` 的变量名**。
 ///
 /// 入参是**生产代码现取的那几截**（渲染器的函数体 / 渲染器真跑出来的串），
@@ -888,31 +928,51 @@ fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
     );
     let (s, e) = (plan_rs.find(START).unwrap(), plan_rs.find(END).unwrap());
     assert!(s < e, "两个锚点的先后反了 —— 窗口取错了");
+    // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`，形状换成
+    //   `payload = format!("{}{payload}", posix::export("<VAR>", &sq(v)));`（rustfmt 可能折行 ⇒ 剥注释、去空白再认）。
+    //   先剥整份（`guard_core::strip_comment_lines`，逐行对应），再按原文锚点的行号切窗口（终点锚点本身是注释）。
+    let stripped = guard_core::strip_comment_lines(plan_rs);
+    let (ls, le) = (
+        plan_rs[..s].matches('\n').count(),
+        plan_rs[..e].matches('\n').count(),
+    );
+    let code: String = stripped
+        .lines()
+        .skip(ls)
+        .take(le - ls + 1)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let flat: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+    const PREFIX_SHAPE: &str = "payload=format!(\"{}{payload}\",posix::export(";
     let mut out = Vec::new();
-    for line in plan_rs[s..e].lines() {
-        let Some(rest) = line.trim().strip_prefix("payload = format!(\"export ") else {
+    for (at, _) in flat.match_indices("posix::export(") {
+        let call_end = at + "posix::export(".len();
+        assert!(
+            flat[..call_end].ends_with(PREFIX_SHAPE),
+            "\n★ 容器路那条转发的形状跑偏了：{:.120}\n\
+                 要的是 `payload = format!(\"{{}}{{payload}}\", posix::export(\"<VAR>\", &sq(v)));` —— \
+                 拼在载荷**内侧**（前缀，不是后缀）。",
+            &flat[at.saturating_sub(40)..]
+        );
+        let (name, tail) = flat[call_end..]
+            .split_once(',')
+            .unwrap_or_else(|| panic!("这一处像转发却没有第二个实参：{:.80}", &flat[at..]));
+        // 名字不是字面量 ⇒ 那是运行期才定的（账号那条），按头注说明跳过。
+        let Some(name) = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) else {
             continue;
         };
-        let Some((name, tail)) = rest.split_once('=') else {
-            panic!("这一行像转发却没有 `=`：{line:?}");
-        };
-        // 名字里带 `{` ⇒ 那是运行期才定的（账号那条），按头注说明跳过。
-        if name.contains('{') {
-            continue;
-        }
         // 〔US1 · RK1 报 2〕中转地址那一条的值经 `base_url_word`：认出是我们注入的（钥匙已展开）就渲回
         //   `sq(钥匙之前)"$(cat …)"sq(钥匙之后)`，认不出就是 `sq(v)` —— 两段常量仍都经 `sq`（`plan_tests::
         //   us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key` 用真 shell 钉住）。别的变量照旧只许 `sq(v)`。
         let want_tail = if name == "ANTHROPIC_BASE_URL" {
-            "{}; {payload}\", base_url_word(v));"
+            "&base_url_word(v)));"
         } else {
-            "{}; {payload}\", sq(v));"
+            "&sq(v)));"
         };
-        assert_eq!(
-            tail, want_tail,
-            "\n★ 容器路那条转发的形状跑偏了：{line:?}\n\
-                 要的是 `payload = format!(\"export <VAR>={{}}; {{payload}}\", sq(v));` —— \
-                 值必须经 `sq`，且拼在载荷**内侧**（前缀，不是后缀）。"
+        assert!(
+            tail.starts_with(want_tail),
+            "\n★ 容器路那条转发的值没经 `sq`：{name} → {:.60}（要 `{want_tail}`）",
+            tail
         );
         out.push(name.to_string());
     }
@@ -1056,33 +1116,33 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // ── ② 左集：**按函数体切**，变量名从生产代码现取 ─────────────────────────
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
     let body_id = fn_body(&hist, "fn identity_prefix(");
+    // 〔OSA · V156〕`export` / `$env:` 的写法搬进 `platform::shell::{posix, powershell}`：体里数的是交给它们的那几处。
     assert_eq!(
-        body_relay.matches("export ").count(),
+        posix_export_args(&body_relay).len(),
         1,
-        "中转那个渲染器的**体**里 `export ` 不再是恰好 1 处 —— 同一个渲染器多 export 了一个变量？\
+        "中转那个渲染器的**体**里 `export` 不再是恰好 1 处 —— 同一个渲染器多 export 了一个变量？\
              那一个也要进左集、也要有人转发。实得体：{body_relay}"
     );
     assert_eq!(
-        body_id.matches("export ").count(),
+        posix_export_args(&body_id).len(),
         1,
-        "身份那个渲染器的**体**里 `export ` 不再是恰好 1 处 —— 同上。实得体：{body_id}"
+        "身份那个渲染器的**体**里 `export` 不再是恰好 1 处 —— 同上。实得体：{body_id}"
     );
     assert_eq!(
-        body_id.matches("$env:").count(),
+        body_id.matches("powershell::set_env(").count(),
         1,
         "身份那个渲染器的 Windows 那一形不再是恰好 1 处 —— 形状变了先回来读头注。实得体：{body_id}"
     );
-    // 身份那截：把体里那个**生产常量**的插值解析开。解析不开 ⇒ `exported_var_names` 会 panic。
-    let id_chunk = body_id.replace(
-        "{LAUNCH_ID_VAR}",
-        crate::control::launch_render::local::LAUNCH_ID_VAR,
-    );
-    assert_ne!(
-        id_chunk, body_id,
+    // 身份那截：变量名是**生产常量** `LAUNCH_ID_VAR`（`exported_names_in_body` 解析开；解析不开会 panic）。
+    assert!(
+        posix_export_args(&body_id)
+            .iter()
+            .any(|a| a == "LAUNCH_ID_VAR"),
         "身份渲染器的体里不再用 `LAUNCH_ID_VAR` 那个常量了 —— \
              本条的「变量名从生产现取」就断了，回来重接，别让它悄悄退回写死字面量"
     );
-    let left = exported_var_names(&[body_relay, id_chunk]);
+    let mut left = exported_names_in_body(&body_relay);
+    left.extend(exported_names_in_body(&body_id));
     assert_eq!(
         left.len(),
         2,
@@ -1175,11 +1235,9 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
         "../../../../src/backend/control/launch_render/payload.rs"
     ));
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
-    let body_id = fn_body(&hist, "fn identity_prefix(").replace(
-        "{LAUNCH_ID_VAR}",
-        crate::control::launch_render::local::LAUNCH_ID_VAR,
-    );
-    let left = exported_var_names(&[body_relay, body_id]);
+    let body_id = fn_body(&hist, "fn identity_prefix(");
+    let mut left = exported_names_in_body(&body_relay);
+    left.extend(exported_names_in_body(&body_id));
     let right = forwarded_by_container_path(&ccm);
     // 非空对照：干净树上差集是空的 —— 证明下面两格的红不是「本来就红」。
     assert!(
@@ -1195,7 +1253,8 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     //    今天抠的是 Rust 那行 `payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));`。
     //    造的仍是**同一个坑的复发形**（`R08` · `K-H2b` · `K-P5c` 三次同坑）。
     let var = crate::control::launch_render::local::LAUNCH_ID_VAR;
-    let line = format!("payload = format!(\"export {var}={{}}; {{payload}}\", sq(v));");
+    // 〔OSA · V156〕形状跟着 `export` 搬进 `platform::shell::posix` 换了一次，造的坑一个字没变。
+    let line = format!("payload = format!(\"{{}}{{payload}}\", posix::export(\"{var}\", &sq(v)));");
     assert_eq!(
         ccm.matches(line.as_str()).count(),
         1,
@@ -1216,9 +1275,9 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
 
     // ── 活体乙：外面多 export 了一个没人转发的变量（本件买的「第四次」） ──────
     const LIVE: &str = "CCM_P5E_LIVE_PROBE";
-    let fourth = format!("{{ format!(\"export {LIVE}={{}}; \", x) }}");
+    let fourth = format!("{{ posix::export(\"{LIVE}\", &x) }}");
     let mut left_plus = left.clone();
-    left_plus.extend(exported_var_names(&[fourth]));
+    left_plus.extend(exported_names_in_body(&fourth));
     assert_eq!(
         not_forwarded(&left_plus, &right),
         vec![LIVE.to_string()],
@@ -1291,7 +1350,8 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         Site {
             what: "A · payload.rs（POSIX 串级）",
             src: include_str!("../../../../src/backend/control/launch_render/payload.rs"),
-            needle: "export ANTHROPIC_BASE_URL=",
+            // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`：决定点是交给它的那一处。
+            needle: "posix::export_unless_set(",
             want: 1,
             wired: None,
         },
@@ -1299,7 +1359,8 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             // 〔MIG-2〕本机起会话搬进后端 `launch_render/local.rs`；账号载体名改从适配层取（`payload::account_env`），针跟着换。
             what: "B · launch_render/local.rs（Windows 串级）",
             src: include_str!("../../../../src/backend/control/launch_render/local.rs"),
-            needle: "\"$env:{}",
+            // 〔OSA · V156〕`$env:` 的写法搬进 `platform::shell::powershell`：决定点是账号载体交给它的那两处。
+            needle: "_env(payload::account_env()",
             want: 2,
             wired: None,
         },
@@ -1312,7 +1373,8 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             src: &plan_rs,
             // 3 处：`--print`/真跑共用的那条渲染（`render_direct` 的账号段）· 容器路把继承值
             // 写进载荷内侧 · `--base` 那条 `unset` 的对侧。
-            needle: "export {cfg_env}=",
+            // 〔OSA · V156〕`export` 的写法搬进 `platform::shell::posix`。
+            needle: "posix::export(cfg_env,",
             want: 1,
             wired: Some(NOT_WIRED_CCM),
         },

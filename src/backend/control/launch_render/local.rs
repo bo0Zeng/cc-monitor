@@ -7,6 +7,7 @@
 
 use super::ccm_invocation as ci;
 use super::payload;
+use crate::platform::shell::{posix, powershell};
 use copy_core::copy_text;
 use serde::Deserialize;
 use serde_json::Value;
@@ -202,12 +203,9 @@ fn identity_token(action: &LocalAction) -> Result<String, String> {
 
 fn identity_prefix(token: &str, windows: bool) -> String {
     if windows {
-        format!("$env:{LAUNCH_ID_VAR}='{token}'; ")
+        powershell::set_env(LAUNCH_ID_VAR, token)
     } else {
-        format!(
-            "export {LAUNCH_ID_VAR}={}; ",
-            shell_quote_core::posix_quote(token)
-        )
+        posix::export(LAUNCH_ID_VAR, &shell_quote_core::posix_quote(token))
     }
 }
 
@@ -276,9 +274,7 @@ fn build_posix(req: &LocalLaunchRequest) -> Result<String, String> {
                 alias,
                 preferred,
                 fallback,
-            } => format!(
-                "if command -v {alias} >/dev/null 2>&1; then {preferred}; else {fallback}; fi"
-            ),
+            } => posix::if_command(&alias, &preferred, &fallback),
         })
 }
 
@@ -292,9 +288,7 @@ fn build_ps(req: &LocalLaunchRequest) -> Result<String, String> {
                 alias,
                 preferred,
                 fallback,
-            } => format!(
-                "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {preferred} }} else {{ {fallback} }}"
-            ),
+            } => powershell::if_command(&alias, &preferred, &fallback),
         })
 }
 
@@ -325,14 +319,14 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
 fn config_dir_prefix_ps(account: Option<&LaunchAccount>) -> Result<String, String> {
     match account {
         None => Ok(String::new()),
-        Some(LaunchAccount::Base) => Ok(format!("$env:{}=$null; ", payload::account_env())),
+        Some(LaunchAccount::Base) => Ok(powershell::clear_env(payload::account_env())),
         Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             if d.is_empty() {
                 return Err(copy_text("rsHistory.configDir.empty", &[]));
             }
             validate_config_dir_ps(d)?;
-            Ok(format!("$env:{}='{d}'; ", payload::account_env()))
+            Ok(powershell::set_env(payload::account_env(), d))
         }
     }
 }
@@ -422,7 +416,10 @@ fn render_ccm_with(
 /// 探这台的 `ccm`：在加载了 rc 的 `bash` 里问 PATH 上那个 `ccm` 会哪些。期限交给子进程（`timeout` 前缀，零定时器）。
 /// 没有 `bash` / 起不来 / 超时 / 答非所问 ⇒ 按没装办（诚实降级到旧路，不是安全边界）。
 fn probe_local_ccm() -> CcmSeen {
-    const CMD: &str = "command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe || printf 'NO_CCM\\n'";
+    let cmd = format!(
+        "{} && ccm -- --ccm-probe || printf 'NO_CCM\\n'",
+        posix::has_command("ccm")
+    );
     const DEADLINE_SECS: u64 = 5;
     let not_installed = CcmSeen {
         installed: false,
@@ -431,7 +428,7 @@ fn probe_local_ccm() -> CcmSeen {
     let Ok(bash) = crate::plugin::discover::find("bash", &[], true, "") else {
         return not_installed;
     };
-    match crate::plugin::invoke::run(&bash, &["-lic", CMD], DEADLINE_SECS, &[]) {
+    match crate::plugin::invoke::run(&bash, &["-lic", &cmd], DEADLINE_SECS, &[]) {
         Ok(done) if done.code == Some(0) => parse_probe(&String::from_utf8_lossy(&done.stdout)),
         _ => not_installed,
     }

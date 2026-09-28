@@ -82,7 +82,8 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
     // `CLAUDE_CONFIG_DIR` —— 判据刻意钉**那条渲染**，不钉变量名的字面量：
     // 变量名今天有唯一住址（`agents/mod.rs`），在这里再抄一份就是第三个双写点。
     expect(ccmPlan).toContain("unset_config_dir: o.use_base,");
-    expect(ccmPlan).toContain('line.push_str(&format!("unset {cfg_env}; "));');
+    // 〔OSA · V156〕`unset` 的写法搬进后端 OS 适配层（`platform::shell::posix::unset`），落点这一行跟着换形。
+    expect(ccmPlan).toContain("line.push_str(&posix::unset(&[cfg_env]));");
   });
 
   it("★ 容器路那一侧也要显式表态（内层载荷带 `--base`，不靠继承穿 tmux 边界）", () => {
