@@ -160,7 +160,9 @@ fn us1_the_launch_answer_is_the_product_and_probes_only_when_injecting() {
         probes.set(probes.get() + 1);
         true
     };
-    let none = answer_launch(&json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}));
+    let none = answer_launch(
+        &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
+    );
     assert_eq!(none.unwrap(), json!({"baseUrl":null}));
     let named = json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/acct-a","name":"a"},"allSessions":false});
     assert_eq!(
@@ -169,19 +171,38 @@ fn us1_the_launch_answer_is_the_product_and_probes_only_when_injecting() {
     );
     assert_eq!(probes.get(), 1);
     assert_eq!(
-        launch_relay_with(&json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}), &rows, &probe).unwrap(),
+        launch_relay_with(
+            &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
+            &rows,
+            &probe
+        )
+        .unwrap(),
         None
     );
     assert_eq!(probes.get(), 1, "不注入也去探了中转");
     // 非它不可而没在听 ⇒ 拒，说得出是哪个号。
     let down = launch_relay_with(&named, &rows, &|_| false).unwrap_err();
     assert_eq!(down.0, "relay_down");
-    assert!(down.1.contains("acct-a"), "拒的那一句没说是哪个号：{}", down.1);
+    assert!(
+        down.1.contains("acct-a"),
+        "拒的那一句没说是哪个号：{}",
+        down.1
+    );
     // 有它更好（`/t/`）而没在听 ⇒ 这一发直连。
-    let direct = launch_relay_with(&json!({"agent":"claude-code","allSessions":true}), &rows, &|_| false);
+    let direct = launch_relay_with(
+        &json!({"agent":"claude-code","allSessions":true}),
+        &rows,
+        &|_| false,
+    );
     assert_eq!(direct.unwrap(), None);
     assert_eq!(
-        launch_relay_with(&json!({"agent":"claude-code","allSessions":true}), &rows, &|_| true).unwrap().as_deref(),
+        launch_relay_with(
+            &json!({"agent":"claude-code","allSessions":true}),
+            &rows,
+            &|_| true
+        )
+        .unwrap()
+        .as_deref(),
         Some("http://127.0.0.1:8788/t/claude-code/_")
     );
 }

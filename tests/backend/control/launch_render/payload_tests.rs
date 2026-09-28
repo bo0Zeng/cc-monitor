@@ -249,7 +249,10 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     );
     // 〔MIG-2〕两棵树并成一个人群之后，后端 `ccm` 容器路自己拼载荷那一处（`control/ccm/plan.rs`）第一次被数到 ——
     //   一直都在、原先不在本条人群里；与载荷内核是同一件事的两个家，如实登记成已知的第二处（报备，收它要改 `ccm` 容器路）。
-    let ccm: Vec<&String> = sites.iter().filter(|l| l.starts_with("plan.rs: ")).collect();
+    let ccm: Vec<&String> = sites
+        .iter()
+        .filter(|l| l.starts_with("plan.rs: "))
+        .collect();
     assert_eq!(ccm.len(), 1, "`ccm` 容器路那一处不再恰好一处：{sites:?}");
     let sites: Vec<String> = sites
         .iter()
@@ -1004,7 +1007,9 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 #[test]
 fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let ccm = container_path_source();
-    let hist = guard_core::production_code(include_str!("../../../../src/backend/control/launch_render/local.rs"));
+    let hist = guard_core::production_code(include_str!(
+        "../../../../src/backend/control/launch_render/local.rs"
+    ));
     let pay = guard_core::production_code(include_str!(
         "../../../../src/backend/control/launch_render/payload.rs"
     ));
@@ -1068,7 +1073,10 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
         "身份那个渲染器的 Windows 那一形不再是恰好 1 处 —— 形状变了先回来读头注。实得体：{body_id}"
     );
     // 身份那截：把体里那个**生产常量**的插值解析开。解析不开 ⇒ `exported_var_names` 会 panic。
-    let id_chunk = body_id.replace("{LAUNCH_ID_VAR}", crate::control::launch_render::local::LAUNCH_ID_VAR);
+    let id_chunk = body_id.replace(
+        "{LAUNCH_ID_VAR}",
+        crate::control::launch_render::local::LAUNCH_ID_VAR,
+    );
     assert_ne!(
         id_chunk, body_id,
         "身份渲染器的体里不再用 `LAUNCH_ID_VAR` 那个常量了 —— \
@@ -1160,13 +1168,17 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 #[test]
 fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     let ccm = container_path_source();
-    let hist = guard_core::production_code(include_str!("../../../../src/backend/control/launch_render/local.rs"));
+    let hist = guard_core::production_code(include_str!(
+        "../../../../src/backend/control/launch_render/local.rs"
+    ));
     let pay = guard_core::production_code(include_str!(
         "../../../../src/backend/control/launch_render/payload.rs"
     ));
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
-    let body_id = fn_body(&hist, "fn identity_prefix(")
-        .replace("{LAUNCH_ID_VAR}", crate::control::launch_render::local::LAUNCH_ID_VAR);
+    let body_id = fn_body(&hist, "fn identity_prefix(").replace(
+        "{LAUNCH_ID_VAR}",
+        crate::control::launch_render::local::LAUNCH_ID_VAR,
+    );
     let left = exported_var_names(&[body_relay, body_id]);
     let right = forwarded_by_container_path(&ccm);
     // 非空对照：干净树上差集是空的 —— 证明下面两格的红不是「本来就红」。
@@ -1780,12 +1792,17 @@ fn a_base_url_the_user_already_set_is_left_alone_and_said_out_loud() {
 /// 的放行集，逐个喂后端 kill 形状门拒的字符必须拒、合法名字必须过（建得出来就得杀得掉）。字符集从 `control/kill.rs` 现抠。
 #[test]
 fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses() {
-    let kill_prod = guard_core::production_code(include_str!("../../../../src/backend/control/kill.rs"));
+    let kill_prod =
+        guard_core::production_code(include_str!("../../../../src/backend/control/kill.rs"));
     let forbidden: Vec<char> = [':']
         .into_iter()
         .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))
         .collect();
-    assert_eq!(forbidden, vec![':'], "kill 形状门不再拒 `:` —— 字符集来源变了，回来重裁");
+    assert_eq!(
+        forbidden,
+        vec![':'],
+        "kill 形状门不再拒 `:` —— 字符集来源变了，回来重裁"
+    );
     // 量的是**建**那一格（`Create`：名字从这里进 tmux，建出来就得杀得掉；`Attach` 接的是已在的会话，tmux 自己不让 `:` 进名字）。
     // 两支都量：`Raw` 另有一道「能不能不加引号」的字符白名单，只量它会让名字规则那一道（`Quoted` 唯一的一道）隐身。
     fn raw(n: &str) -> TmuxTarget<'_> {
@@ -1798,11 +1815,29 @@ fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses() {
     for (arm, mk) in arms {
         for c in &forbidden {
             let name = format!("cc{c}1");
-            let got = render_tmux_outer(&TmuxOuter::Create { target: mk(&name), cwd: None, ccm_sid: None }, Some("claude"));
-            assert!(got.is_err(), "{arm}：放行集放过了禁字 `{c}`（{name:?} ⇒ {got:?}）—— 建得出来、主路杀不掉");
+            let got = render_tmux_outer(
+                &TmuxOuter::Create {
+                    target: mk(&name),
+                    cwd: None,
+                    ccm_sid: None,
+                },
+                Some("claude"),
+            );
+            assert!(
+                got.is_err(),
+                "{arm}：放行集放过了禁字 `{c}`（{name:?} ⇒ {got:?}）—— 建得出来、主路杀不掉"
+            );
         }
         assert!(
-            render_tmux_outer(&TmuxOuter::Create { target: mk("cc-1"), cwd: None, ccm_sid: None }, Some("claude")).is_ok(),
+            render_tmux_outer(
+                &TmuxOuter::Create {
+                    target: mk("cc-1"),
+                    cwd: None,
+                    ccm_sid: None
+                },
+                Some("claude")
+            )
+            .is_ok(),
             "{arm}：合法名字 `cc-1` 也渲不出来 —— 上面那一圈「拒了」说明不了任何事"
         );
     }
