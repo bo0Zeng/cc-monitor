@@ -693,18 +693,8 @@ mod tests {
         "缩性质",
         "后端的收场改由外部（宿主 / 进程管理器）保证上限、远端也有人叫它退的那天 —— 那时这一条与 `REGISTERED_EXIT_DEADLINE` 一起摘。",
     ),
-        (
-        // 〔RK1 · 第四波 4C 新增〕
-        "relay/machine.rs",
-        "Duration::from_millis(2_000)",
-        "〔RK1 · US1〕「这台机器上我们的中转在不在听」那两发**差分探针**的 socket 读写期限\
-         （`machine::PROBE_DEADLINE`）：回环上连一次、发一条 `GET`、读一行状态行 —— 对端一个字节都不回就会\
-         永远挂住（那一格正是它要识别的「别的东西占着口」），而读它的 `launch-endpoint` / `apikey-routing` 跑在阻塞档上。\
-         它说的是「**这一次**阻塞的读/写最多等多久」：有字节立刻返回、没字节报错返回；不让任何线程自己醒来、\
-         不驱动任何循环，读不到就当场答「不在」，**没有任何一层重试**。不是定时器。",
-        "收窄人群",
-        "差分探针被别的认法取代（中转有了自报身份的端点、或「在不在」改由常驻后端进程内的状态答）的那天一起摘。",
-    )];
+    ];
+    // 〔DEL 续〕`relay/machine.rs` 那一行（差分探针的 socket 读写期限）摘了：「在不在」改由常驻后端进程内的状态答，探针删了。
 
     use crate::guard_support::production_code;
 
@@ -1370,9 +1360,10 @@ mod g6_reach {
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
         // 〔HX1 · 4D〕6 → **7**：多的那一条是 `inbound.rs` 的 `DRAIN_DEADLINE`（退出排空期限）—— 它是本表第一条
         //   **真会醒来**的登记（cell `缩性质`），调用那一处另住 `REGISTERED_EXIT_DEADLINE`。
+        // 〔DEL 续〕7 → **6**：`relay/machine.rs` 的 `PROBE_DEADLINE` 随差分探针删了（「在不在」改读进程内状态）。
         assert_eq!(
-            registered, 7,
-            "登记表从 7 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 6,
+            "登记表从 6 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }
