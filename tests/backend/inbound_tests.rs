@@ -581,6 +581,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
         "mcp-sync-plan",
+        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条：同步文件 I/O（经本进程文件管理面）。
+        "mcp-server-put",
+        "mcp-server-remove",
+        "mcp-sync-source",
+        "mcp-sync-preview",
+        "mcp-sync-apply",
     ] {
         assert!(
             matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -693,6 +699,12 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定，阻塞档。
         "mcp-sync-plan",
+        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条，阻塞档。
+        "mcp-server-put",
+        "mcp-server-remove",
+        "mcp-sync-source",
+        "mcp-sync-preview",
+        "mcp-sync-apply",
         // 〔SR1b〕传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
         "transfer-upload",
         "transfer-download",

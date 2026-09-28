@@ -1433,7 +1433,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "$MCP_COMMAND",
         host: HostScope::ProjectDir,
         why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
-        site: "mcp.rs::write_project_mcp_server",
+        site: "mcp_edit.rs::answer_put",
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**这一条是 `KR65D2` 的题面本身** ═══
     //

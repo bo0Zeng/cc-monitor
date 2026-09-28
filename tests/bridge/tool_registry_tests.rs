@@ -1518,7 +1518,8 @@ struct Claim {
 fn claims() -> Vec<Claim> {
     const SFTP: &str = include_str!("../../src/bridge/src/sftp.rs");
     const PROFILE_INSTALLER: &str = include_str!("../../src/bridge/src/profile_installer.rs");
-    const MCP: &str = include_str!("../../src/bridge/src/mcp.rs");
+    // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
+    const MCP: &str = include_str!("../../src/backend/assets/mcp_edit.rs");
     const CC_BUS_DEPLOY: &str = include_str!("../../src/bridge/src/cc_bus_deploy.rs");
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
     const SKILL_INSTALL: &str = include_str!("../../src/bridge/src/skill_install.rs");
@@ -1610,21 +1611,17 @@ fn claims() -> Vec<Claim> {
         Claim {
             tool: "project-mcp",
             home: Some(ImplHome {
-                addr: "mcp.rs",
+                addr: "assets/mcp_edit.rs",
                 text: MCP,
             }),
             install: Some(ImplSite {
-                addr: "mcp.rs::write_project_mcp_server",
-                // 🔴 〔步 12·C 收尾 09-20〕签名多了一个 `origin: Origin` —— 本机与远端
-                //    两条 MCP 写命令合成了一条。**逐字签名是钉住实现的那把锁**，
-                //    实现真的变了就得跟着改；判法（住址 ↔ 逐字签名互校）一个字没动。
-                definition: "pub async fn write_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
+                addr: "assets/mcp_edit.rs::answer_put",
+                // 〔MIG-3a〕从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
+                definition: "pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {",
             }),
             uninstall: Some(ImplSite {
-                addr: "mcp.rs::remove_project_mcp_server",
-                // 同上那一条：`remove_remote_mcp_server` 并进来之后，签名多了 `origin`
-                // 并因此被 rustfmt 折成多行。
-                definition: "pub async fn remove_project_mcp_server(\n    origin: Origin,\n    project_dir: String,\n    name: String,\n) -> Result<(), String> {",
+                addr: "assets/mcp_edit.rs::answer_remove",
+                definition: "pub(crate) fn answer_remove(d: &dyn Door, args: &Value) -> Answer {",
             }),
         },
         // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill：装口是 `skill_install_apply`（经那台后端 `files-put`）；

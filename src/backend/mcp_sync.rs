@@ -289,7 +289,7 @@ pub(crate) fn judge(cands: &[Candidate], facts: &dyn Facts) -> Vec<Suspect> {
 /// 一份原文里的 `mcpServers`。`None`（那份文件不存在）⇒ 空表。
 ///
 /// 解析不了 / 根不是对象 / `mcpServers` 不是对象 ⇒ 拒（`bad_file`）—— **不拿骨架比、更不拿骨架盖**
-/// （与单条写 `mcp.rs::edit_project_mcp` 同一句承诺）。`side` 是给人看的「哪一份」。
+/// （与单条写 `mcp_edit.rs::plan_project_mcp` 同一句承诺）。`side` 是给人看的「哪一份」。
 pub(crate) fn servers_of(
     text: Option<&str>,
     side: &str,
