@@ -746,6 +746,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 只读（读一份凭据文件 ＋ 回环上探一次中转），入参从 stdin 读。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-routing",
     "--launch-endpoint",
+    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染三条（`inbound::REGISTRY` 的 `launch-local` / `launch-render-*`）自动派生的 CLI 面。
+    //   入参从 stdin 读。加这三行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--launch-local",
+    "--launch-render-cli",
+    "--launch-render-payload",
     // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
     // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--relay-ensure",

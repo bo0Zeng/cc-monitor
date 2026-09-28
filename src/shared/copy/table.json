@@ -769,6 +769,11 @@
       "zh": "找不到后端自己的程序文件：{e}",
       "args": ["e"]
     },
+    "beLaunchRender.token.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数，铸不出这次拉起的身份令牌。没有起。",
+      "args": []
+    },
     "beResident.token.noRandom": {
       "kind": "error",
       "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
@@ -4421,6 +4426,11 @@
       "kind": "error",
       "zh": "后端生成命令失败，改用本机的写法：{e}",
       "args": ["e"]
+    },
+    "launchRender.refusedOn": {
+      "kind": "error",
+      "zh": "{machine}：{said}",
+      "args": ["machine", "said"]
     },
     "remoteLaunchRun.renderCli.noReason": {
       "kind": "error",
@@ -17589,6 +17599,16 @@
       "kind": "error",
       "zh": "{field} 要一个对象或空",
       "args": ["field"]
+    },
+    "beUpstreamEndpoint.relay.thisMachine": {
+      "kind": "body",
+      "zh": "这台机器",
+      "args": []
+    },
+    "beUpstreamEndpoint.relay.notListening": {
+      "kind": "body",
+      "zh": "这台后端里的中转没在听。多半是口被别的程序占着，原因在这台后端的日志里",
+      "args": []
     },
     "beUpstreamTable.whyIdUnusable.say": {
       "kind": "error",

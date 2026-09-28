@@ -268,24 +268,8 @@ fn probe_spawned(
     parse_probe_output(&String::from_utf8_lossy(&buf))
 }
 
-/// 探测远端 `ccm` 是否已装 + 能力集。`command -v` 找不到 → 走 `NO_CCM` 哨兵分支，不报错
-/// （未装是正常状态之一，不是异常）。
-/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕远端那台的 `ccm` 会哪些：**问那台后端自己**（帧命令 `ccm-probe`，与 `ccm --ccm-probe` 同一份），
-/// 不再进交互 shell 查 `PATH` —— `ccm` 就是那台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`）。
-/// 问不到（那台没连上 / 后端太旧不认这条）⇒ `Err`，界面按「不知道」走兜底渲染器（`src/ccm-probe.ts` 三态）。
-#[tauri::command]
-pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(origin));
-    let v = door
-        .ask("ccm-probe", serde_json::json!({}))
-        .await
-        .map_err(|r| copy_text("rsCcmProbe.probe.failed", &[("e", &r.said())]))?;
-    let text = v
-        .get("probe")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    Ok(parse_probe_output(text))
-}
+// 🪦〔MIG-2 · `99 §2.1 ⑬`〕这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
+//   `ccm …` 调用行的渲染进了那台后端，能力问它自己（`launch_render/wire.rs::render_ccm_launch`），这一跳删了。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R69` / `KR69D2`：**装了之后，产品说得出「你 PATH 上那个是旧的」**

@@ -42,6 +42,7 @@ import { isSelectable } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
 import { rememberLocalLaunch } from "../local-launch-backfill";
+import { launchLocal } from "../launch-render";
 import {
   actionsFor,
   type HistoryActionCtx,
@@ -1584,7 +1585,7 @@ export class HistoryView {
       );
     } else {
       try {
-        // 本地：后端 new_local_session（cc 优先 + F34 自定义，无 sid/resume flag）。
+        // 本地：本机后端 `launch-local`（cc 优先 + F34 自定义，无 sid/resume flag）。
         // 〔DUP1〕这里原来调一次 `validateLocalLaunch`〔散文墓碑〕（new 动作恒不 throw，只为「让本地那条路活过」）——
         // 那个函数随它唯一的一格（sid 字符集，交 Rust 判）删了。
         // ★★ `K-H2b` `D1 阻-1`：起新会话这条主路同样一个账号都不传。
@@ -1599,12 +1600,18 @@ export class HistoryView {
         //    ⇒ 把 token 挂进待回填表，等这条会话真的跑起来之后拿它反查 sid 再补写 pin。
         //    ⚠ **不 `await` 回填**（它要等进程起来，见 `resolvePendingLocalLaunches` 头注）；
         //      这里只是登记，一拍都不多花 —— 那两条只放行一个微任务的 DOM 判据在盯着。
-        const launchId = await commands.new_local_session({
-          cwd: ctx.cwd,
-          launcher: behavior.resumeCommandLocal || null,
-          account: localLaunchAccountSync(null),
-        });
-        rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
+        // 〔MIG-2 · `99 §2.1 ⑬`〕计划与渲染问本机后端（`launch-local`），monitor 只在 cwd 开一个终端窗口跑那一串。
+        const launchId = await launchLocal(
+          {
+            action: { kind: "new" },
+            cwd: ctx.cwd,
+            launcher: behavior.resumeCommandLocal || null,
+            account: localLaunchAccountSync(null),
+            tmuxName: null,
+          },
+          ctx.cwd,
+        );
+        if (launchId !== null) rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
         showActionFailureToast(
           copyText("history.newSession.started"),
           copyText("history.newSession.startedDetail", { cwd: ctx.cwd }),

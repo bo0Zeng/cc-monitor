@@ -1281,7 +1281,7 @@ U8c-1 摸底后拆成三步：
   tests/test-support/launch-payload-golden.ts（〔LR2〕用例表 ＋ 手写期望；原住 src/、原先调真 renderFallback）
         │ npm run gen:payload-golden
         ▼
-  src/bridge/src/backend/control/fixtures/payload-golden.json   ← 入库（P4b 起）
+  src/backend/control/launch_render/fixtures/payload-golden.json   ← 入库（P4b 起）
         ▲                                    ▲
         │ launch-payload-golden.vitest.ts    │ launch_payload_parity.rs
         │ 「入库的 == 现场渲染的」            │ 「Rust 渲染的 == 入库的」

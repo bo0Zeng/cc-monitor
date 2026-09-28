@@ -11,7 +11,7 @@
 //!
 //! | 格 | 前端此前哪一处自己写 | 现在的源 |
 //! |---|---|---|
-//! | 本机拉起载荷「哪个号」那一格的 wire 键名 | `accounts.ts` 里 `{ kind: "named", configDir, name }` | [`crate::history::LaunchAccount`] 的 serde 契约 |
+//! | 本机拉起载荷「哪个号」那一格的 wire 键名 | `accounts.ts` 里 `{ kind: "named", configDir, name }` | [`crate::control::launch_render::local::LaunchAccount`] 的 serde 契约 |
 //!
 //! 〔LR1 · U8c-3〕原来还有两格 —— `ccm …` 调用行每次都要的能力集、八句降级理由的措辞 ——
 //! 唯一的消费者是 TS 那份 `ccm …` 渲染器；它删了（生产从 U8c-2c-2 起只走 Rust），
@@ -61,7 +61,7 @@ fn lines(s: &mut String, ts: &[&str]) {
 ///
 /// 返回 `(TS 侧的键, 线上的名字)`。
 fn local_launch_account_wire() -> Vec<(&'static str, &'static str)> {
-    use crate::history::LaunchAccount;
+    use crate::control::launch_render::local::LaunchAccount;
     let named: LaunchAccount = serde_json::from_value(serde_json::json!({
         "kind": "named", "configDir": "/d", "name": "n"
     }))

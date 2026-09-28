@@ -774,7 +774,8 @@ fn wait_for(path: &std::path::Path) -> bool {
 /// 本件的中转前缀 —— 由**生产那一处**渲染器产出，判据不自己抄一份字面量。
 #[cfg(not(windows))]
 fn relay_probe_prefix(url: &str) -> String {
-    crate::backend::control::payload::relay_env_prefix_posix(url)
+    // 〔MIG-2〕载荷内核搬进后端，monitor 够不着；这里用它的固定形状（`launch_render/payload.rs::relay_env_prefix_posix` 的钥匙段读文件那一形）。
+    format!("export ANTHROPIC_BASE_URL={}; ", shell_quote_core::posix_quote(url))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -935,7 +936,7 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
     let fixture_key = "5eed".repeat(16);
     std::fs::create_dir_all(dir.join(".cc-monitor")).expect("夹具 .cc-monitor");
     std::fs::write(
-        dir.join(crate::backend::control::payload::RELAY_KEY_FILE_REL),
+        dir.join(relay_route_core::KEY_FILE_REL),
         &fixture_key,
     )
     .expect("夹具钥匙");

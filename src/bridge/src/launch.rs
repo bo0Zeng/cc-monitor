@@ -805,6 +805,22 @@ pub async fn launch_remote_terminal(
     .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
 }
 
+/// 〔MIG-2 · `99 §2.1 ⑬`〕**在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
+/// 那一串由本机后端出成品（帧命令 `launch-local`：计划 · 账号前缀 · 中转前缀 · 身份 token 全在那里），这里不判、不拼。
+/// POSIX：交用户的终端出口（[`launch_local_posix`]）；Windows：PowerShell 窗口（[`launch_powershell_window`]）。阻塞那一截不占 IPC 线程。
+#[tauri::command]
+pub async fn open_local_terminal(cmd: String, cwd: Option<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        #[cfg(not(windows))]
+        let out = launch_local_posix(&cmd, cwd.as_deref());
+        #[cfg(windows)]
+        let out = launch_powershell_window(&cmd, cwd.as_deref());
+        out
+    })
+    .await
+    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
+}
+
 #[cfg(test)]
 #[path = "../../../tests/bridge/launch_tests.rs"]
 mod tests;

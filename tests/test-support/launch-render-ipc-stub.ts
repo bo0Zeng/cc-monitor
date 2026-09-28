@@ -13,7 +13,7 @@
  *
  * ⚠⚠ **它不是第三份渲染实现，也不许被当成真相源。**
  * 「这条命令渲出来的字节对不对」由**入库夹具的跨语言逐字节对拍**钉着：
- * `src/bridge/src/backend/control/fixtures/payload-golden.json`（内层，10 条）与
+ * `src/backend/control/launch_render/fixtures/payload-golden.json`（内层，10 条）与
  * `fixtures/tmux-outer-golden.json`（外层三格，13 条）——
  * 左边是用例表里的手写期望（〔LR2〕原来是 TS 的真渲染器 + 真座，那一族删了），右边是 Rust 的生产命令。
  * 本文件只负责让 IPC 桩**吐出形状对的串**，好让上层那些「终端那条命令里有没有

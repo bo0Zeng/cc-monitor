@@ -14,7 +14,7 @@
 //!
 //! # 🔴 本模块一个上游选择的名字都没有
 //!
-//! 只有端口（[`crate::backend::control::payload::RELAY_PORT`]，注入侧与中转侧用同一个值）。
+//! 只有端口（[`relay_route_core::PORT`]，注入侧与中转侧用同一个值）。
 //! 凭据文件在哪、表里有哪几行，是 `apikey_remote.rs` 的事；两个模块互不引用。
 //!
 //! # 触发点〔RL1〕：**起远端会话、且要注入那一刻**（用到才起）
@@ -112,7 +112,7 @@ pub(crate) async fn listening_or_started(origin: &Origin) -> Result<(), String> 
 
 /// 两条命令共用的入参：只有端口。
 fn port_args() -> Value {
-    json!({ "port": crate::backend::control::payload::RELAY_PORT })
+    json!({ "port": relay_route_core::PORT })
 }
 
 /// `relay-status` 的应答 → 口上有没有人。

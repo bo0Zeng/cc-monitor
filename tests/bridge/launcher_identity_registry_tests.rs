@@ -13,7 +13,7 @@ const LAUNCH_CAPS: &[&str] = &["session.launch"];
 ///
 /// ⚠ 这一格买的只是「那条判据还在」，**不是**「那条判据有牙」。
 /// 有没有牙由它自己那五格与逐刀变异回答，本表不重复买。
-const PLANTED_JUDGE: &str = "the_launcher_plants_the_session_identity_into_the_process_environment";
+const PLANTED_JUDGE: &str = "the_identity_token_is_planted_and_handed_back";
 
 /// 一处**起会话方**。
 ///
@@ -39,9 +39,11 @@ struct Launcher {
 /// 并回答「它把身份塞进环境了吗；没有的话为什么、归谁」。
 const REGISTERED: &[Launcher] = &[
     Launcher {
-        label: "L1 · 本机 UI 起（tauri 命令 → `history.rs::launch_local`）",
-        ledger_cmds: &["resume_history_session", "new_local_session"],
-        anchors: &[],
+        // 〔MIG-2 · `99 §2.1 ⑬`〕住址换了：计划与渲染搬进本机后端（帧命令 `launch-local`，`control/launch_render/local.rs::plan`），
+        //   monitor 只剩开终端窗口那一条 Tauri 命令（`open_local_terminal`）⇒ 账本那半是它，锚点那半指后端那一处。
+        label: "L1 · 本机 UI 起（本机后端 `launch-local` → monitor `open_local_terminal`）",
+        ledger_cmds: &["open_local_terminal"],
+        anchors: &[("src/backend/control/launch_render/local.rs", "let prefix = identity_prefix(&token, facts.windows);", 1)],
         plants: true,
         why: "★ **本拍落的就是这一处**：`history.rs::launch_local` 在拼装那一行把 \
                   `launch_identity` 算出来的那句前缀拼进真正交出去的那一串，token 由 \
@@ -318,11 +320,11 @@ fn exactly_one_launcher_plants_the_identity_today() {
         "还没落身份的起会话方从 4 处变了 —— 棘轮该往下拧了（或者有人往回走了）"
     );
 
-    // `L1` 那条路的行为判据还在 —— 它没了，本表也要红。
-    let hist = read("src/bridge/src/history.rs");
+    // `L1` 那条路的行为判据还在 —— 它没了，本表也要红。〔MIG-2〕判据随那条路搬进了后端测试段。
+    let hist = read("tests/backend/control/launch_render/local_tests.rs");
     assert!(
         hist.contains(PLANTED_JUDGE),
-        "`L1` 那条路的行为判据 `{PLANTED_JUDGE}` 不在 `history.rs` 里了 —— \
+        "`L1` 那条路的行为判据 `{PLANTED_JUDGE}` 不在 `local_tests.rs` 里了 —— \
              登记表说它落了身份，而**证明这件事的那条判据被删了**"
     );
 }
@@ -346,33 +348,33 @@ fn exactly_one_launcher_plants_the_identity_today() {
 ///   后者是 `PLANTED_JUDGE` 那五格的活。
 #[test]
 fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
-    let root = repo_root().join("src/bridge/src");
-    let files = guard_core::scan_tree!(&root, &["rs"]);
+    // 〔MIG-2〕身份那一格随本机起会话搬进后端：人群 = 两棵 Rust 生产树（monitor ＋ 后端）。
+    let files: Vec<(PathBuf, String)> = ["src/bridge/src", "src/backend"]
+        .iter()
+        .flat_map(|t| guard_core::scan_tree_excluding(&repo_root().join(t), &["rs"], &[]))
+        .collect();
     assert!(
-        files.len() >= 90,
-        "只扫到 {} 份 `.rs`（09-02 现打 104）—— 遍历坏了，本条会零命中地绿",
+        files.len() >= 250,
+        "只扫到 {} 份 `.rs` —— 遍历坏了，本条会零命中地绿",
         files.len()
     );
-
     // (针, 该有几处, 那几处分别是什么)
     let probes: [(&str, usize, &str); 2] = [
         (
-            crate::history::LAUNCH_ID_VAR,
-            1,
-            "`history.rs` 里那个 `LAUNCH_ID_VAR` 常量的字面量，仅此一处",
+            "\"CCM_LAUNCH_ID\"",
+            4,
+            "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路转发那两处（读继承的 · 往里转）",
         ),
         (
             "route_key_for_session(",
             2,
-            "`payload.rs` 的定义 1 + `history.rs` 身份那一处 1（〔V141〕中转那一处随路由第 3 段退役：3 → 2）",
+            "`launch_render/payload.rs` 的定义 1 ＋ `launch_render/local.rs` 身份那一处 1",
         ),
     ];
     let mut counts = [0usize; 2];
-    let mut prod_total = 0usize;
     let mut sites: Vec<String> = Vec::new();
     for (path, raw) in &files {
         let prod = guard_core::production_code(raw);
-        prod_total += prod.len();
         for (k, (needle, _, _)) in probes.iter().enumerate() {
             let n = prod.matches(needle).count();
             if n > 0 {
@@ -381,20 +383,10 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
             }
         }
     }
-    assert!(
-        prod_total > 200_000,
-        "全树剥完只剩 {prod_total} 字节 —— 剥法坏了，本条是空真"
-    );
     for (k, (needle, want, what)) in probes.iter().enumerate() {
         assert_eq!(
-            counts[k],
-            *want,
-            "\n★★ `{needle}` 在 `src/bridge/src` 的生产段里有 {} 处（期望 {want} 处 = {what}）。\n\
-                 **多了** ⇒ 身份这件事长出了第二个家。`KP5BD1` 的「铸法只有一份」是承重的：\n\
-                 照 `K-H2c` 那一拍买到的形状，**共用一份实现**才能让「漂开」在结构上不可表示；\n\
-                 两处各写一份、再用判据焊住，买到的只是「今天这几条输入两侧同答」。\n\
-                 **少了** ⇒ 身份注入或那份铸法被摘掉了。\n\
-                 命中分布：\n  {}",
+            counts[k], *want,
+            "\n★★ `{needle}` 在两棵生产树里有 {} 处（期望 {want} 处 = {what}）。多了 ⇒ 身份长出了第二个家；少了 ⇒ 注入或铸法被摘掉了。\n  {}",
             counts[k],
             sites.join("\n  ")
         );

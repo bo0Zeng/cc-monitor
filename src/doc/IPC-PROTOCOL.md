@@ -1731,25 +1731,83 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 #### `launch-endpoint`：这个号这一发走哪、注入什么（US1 · 4D）
 
 起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是 `设计/20 §3.2` 那一张（上游选择 `accounts/upstream/endpoint.rs::decide_launch` 是唯一实现）。
+〔MIG-2〕回的是**成品**：「中转不在时拒还是直连」也在这里判完（原先回四格、由 monitor 再判一遍）。
 
 ```text
 → {"id":"k4","cmd":"launch-endpoint","args":{"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-accts/work"},"allSessions":false}}
-← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work","listening":true,"whenDown":"refuse","account":"work"}}
+← {"kind":"reply","id":"k4","ok":true,"data":{"baseUrl":"http://127.0.0.1:8788/s/claude-code/work"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `agent` | → | 这一家 agent 的路由名（第 1 段）|
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
-| `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 那一侧默认开）|
-| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是起会话那一侧的事）；`null` = 不注入 |
-| `listening` | ← | 这台机器上我们的中转在不在听（只在 `baseUrl` 非空时探；为空时 `false`）|
-| `whenDown` | ← | 中转不在时：`refuse`（`/s/`，拒绝起会话）· `direct`（`/t/`，照旧直连）；`baseUrl` 为空时 `null` |
-| `account` | ← | `/s/` 那一格的表 id（拒绝时点名用）；否则 `null` |
+| `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`，默认开，由调用方带来）|
+| `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是渲染那一侧的事）；`null` = 不注入（含「有它更好而中转没在听 ⇒ 这一发直连」）|
 
-四个键恒在（形状恒定）。**错误码**：`bad_args`。远端「中转不在就起、有界等」那一截要定时器 ⇒ 在 monitor（`relay-status` → `relay-ensure` → 再问）。
+**错误码**：`bad_args` · `relay_down`（非它不可 —— API 号代入 `/s/` —— 而这台的中转没在听：拒绝起会话，一句话说清是哪个号）。
+只在要注入时才探中转。
 
 ⚠ **CLI 面也有它们**（`--apikey-routing` / `--launch-endpoint`），从 `inbound::REGISTRY` 派生，入参从 stdin 读。
+
+#### `launch-render-cli`：`ccm …` 调用行（MIG-2）
+
+〔MIG-2 · `99 §2.1 ⑬`〕原 monitor 的 Tauri 命令 `render_ccm_launch`〔散文墓碑〕搬进那台后端：渲的是那台要跑的那一行，`ccm` 就是这台后端本身（V28）⇒
+能力问它自己（与 `--ccm-probe` 同一份），入参不再带探测结果。**纯函数**（不起进程、不碰盘）。
+
+```text
+→ {"id":"c1","cmd":"launch-render-cli","args":{"isSsh":true,"action":{"kind":"attach","name":"proj-cc"},"container":{"kind":"tmux","name":"proj-cc","send_into":false},"cwd":null,"account":{"kind":"base"},"ccmSid":null,"model":null,"launcher":"claude","defaultLauncher":"claude"}}
+← {"kind":"reply","id":"c1","ok":true,"data":{"ok":true,"cmd":"ccm -- --attach proj-cc","reason":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `isSsh` · `action` · `container` · `cwd` · `account` · `ccmSid` · `model` · `launcher` · `defaultLauncher` | → | 这次拉起的结构化描述（`deny_unknown_fields`：多送一格就拒）|
+| `ok` | ← | 渲不渲得出 |
+| `cmd` | ← | 渲出来的那一行；`ok:false` 时 `null` |
+| `reason` | ← | 渲不出来的理由（**诚实降级**，不是错：调用方换 `launch-render-payload` 那条）；`ok:true` 时 `null` |
+
+**错误码**：`bad_args`（入参形状不对）。CLI 面（`--launch-render-cli`）从 `inbound::REGISTRY` 派生，入参从 stdin 读。
+
+#### `launch-render-payload`：裸载荷 ＋ 外层 tmux 三格（MIG-2）
+
+〔MIG-2〕原 monitor 的 Tauri 命令 `render_launch_payload`〔散文墓碑〕搬进那台后端。`container:"none"` ⇒ `env → cd → argv → wrap`；带 `outer`（`create` / `send-into` / `attach`）⇒ 外层 tmux 命令。**纯函数**。
+
+```text
+→ {"id":"p1","cmd":"launch-render-payload","args":{"env":[{"kind":"unset-nested-env"}],"cwd":"/w","launcher":"claude","args":[],"nestedEnv":["CLAUDECODE"],"wrap":[]}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"cmd":"unset CLAUDECODE; cd '/w' && claude"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `env` · `cwd` · `launcher` · `args` · `nestedEnv` · `wrap` · `outer` · `resumeSid` | → | 载荷与外层（`deny_unknown_fields`；`outer` / `wrap` / `resumeSid` 可缺席）|
+| `cmd` | ← | 渲出来的那一串 |
+
+**错误码**：`bad_args` · `refused`（坏输入：非法 configDir · 会裂的参数 · 令牌 / 中转地址形状不对 · 两层 cwd 同时送 …，理由原样；调用方**不许换条路糊过去**）。CLI 面 `--launch-render-payload`（派生，入参从 stdin 读）。
+
+#### `launch-local`：本机起会话的整条计划（MIG-2）
+
+〔MIG-2〕原 monitor `history.rs` 的 `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕里「校验 · 账号前缀 · `ccm` 容器路 / 旧路 · 中转前缀 · 身份 token」那一整条。
+回的是要在**本机一个新终端窗口里跑的那一串**；开窗口是 monitor 的事（`open_local_terminal`）。只对本机有意义（问的是这台的 `ccm` 与中转）。
+
+```text
+→ {"id":"l1","cmd":"launch-local","args":{"action":{"kind":"new"},"cwd":"/w","launcher":null,"account":null,"tmuxName":"w-cc","agent":{"id":"claude-code","defaultLauncher":"claude","launcherAlias":"cc","resumeFlag":"--resume"},"allSessions":true}}
+← {"kind":"reply","id":"l1","ok":true,"data":{"cmd":"…; export CCM_LAUNCH_ID='…'; ccm -- new --ccm-tmux=w-cc","launchId":"…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach"}`（接回 `tmuxName` 那个会话，不起 agent）|
+| `cwd` | → | 只用来核「新起」那一格的目录在不在 |
+| `launcher` | → | 自定义启动命令（空 = 没设）|
+| `account` | → | 缺席 / `null`（继承）· `{"kind":"base"}` · `{"kind":"named","configDir":…,"name"?:…}` |
+| `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 不走 `ccm` 容器路 |
+| `agent` | → | 当前 agent 的画像：`id` · `defaultLauncher` · `launcherAlias` · `resumeFlag` |
+| `allSessions` | → | 全量注入开关（同 `launch-endpoint`）|
+| `cmd` | ← | 要跑的那一串（中转前缀 ＋ 身份前缀 ＋ 本体）|
+| `launchId` | ← | 铸进进程环境的身份 token（`CCM_LAUNCH_ID`，调用方拿它回填新会话的 sid）；接回那一格 `null` |
+
+**错误码**：`bad_args` · `refused`（坏输入 · 目录不在 · 中转非它不可却没在听 · Windows 上接回）。阻塞档：探一次 `ccm`（`bash -lic`，期限交给子进程）、读一次凭据表。CLI 面 `--launch-local`（派生，入参从 stdin 读）。
 
 #### 中转在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
 

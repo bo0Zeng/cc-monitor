@@ -161,10 +161,18 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
     );
     // 剥整行注释 + 行尾注释（F10 那次学到的：行尾注释里的提及不算数）。
     let prod = production_ts(&ts);
+    // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/launch-render.ts` 问（那一份里 `chan.call` 的操作名是字面量）。
+    let client = production_ts(&read_ts("src/launch-render.ts"));
     for needle in [
-        "commands.render_ccm_launch(",
-        "commands.render_launch_payload(",
+        "chan.call(origin, \"launch-render-cli\"",
+        "chan.call(origin, \"launch-render-payload\"",
     ] {
+        assert!(
+            client.contains(needle),
+            "`launch-render.ts` 的生产段里找不到 `{needle}` —— 渲染那一问不再发往那台后端了"
+        );
+    }
+    for needle in ["renderCli(", "renderPayload("] {
         assert!(
             prod.contains(needle),
             "`remote-launch-run.ts` 的生产段里找不到 `{needle}` ——\n\
@@ -193,7 +201,8 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
     // **运行时拼，免得命中本文件自己的说明。**
     let mode = format!("\"create-or-{}\"", "attach");
     let mut hits: Vec<String> = Vec::new();
-    let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+    // 〔MIG-2〕monitor 那棵树（本组判据搬进了后端测试段，那棵树改按仓根取）。
+    let mut stack = vec![repo_root().join("src/bridge/src")];
     let mut scanned = 0usize;
     while let Some(d) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&d) else {
@@ -208,7 +217,7 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
             if p.extension().and_then(|x| x.to_str()) != Some("rs") {
                 continue;
             }
-            if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
+            if p.file_name().is_some_and(|n| n == "wire.rs") {
                 continue; // 本文件的说明里逐字写着那个串
             }
             scanned += 1;
@@ -299,7 +308,8 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
 fn the_send_keys_mode_names_have_exactly_one_production_home() {
     let raw = format!("\"send-keys-{}\"", "raw");
     let mut homes: Vec<String> = Vec::new();
-    let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+    // 〔MIG-2〕monitor 那棵树（本组判据搬进了后端测试段，那棵树改按仓根取）。
+    let mut stack = vec![repo_root().join("src/bridge/src")];
     while let Some(d) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&d) else {
             continue;
@@ -313,7 +323,7 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
             if p.extension().and_then(|x| x.to_str()) != Some("rs") {
                 continue;
             }
-            if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
+            if p.file_name().is_some_and(|n| n == "wire.rs") {
                 continue;
             }
             let src = guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
@@ -346,7 +356,7 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
 /// 那份入库夹具（`fixtures/payload-golden.json`）与 `TS_HALF` 仍然住生产段
 /// ⇒ 本条第 ①②③④ 格要的东西**跨在剖分线两侧**，少喂一边就有一半在空转。
 const PARITY_SRC: &str = concat!(
-    include_str!("../../../../src/bridge/src/backend/control/launch_payload_parity.rs"),
+    include_str!("../../../../src/backend/control/launch_render/payload_parity.rs"),
     include_str!("launch_payload_parity_tests.rs")
 );
 
@@ -758,13 +768,13 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
 // 那一格同样换成了用例表里的手写期望（`tests/test-support/launch-payload-golden.ts` / `launch-tmux-outer-golden.ts` 头注）。
 const LAUNCH_RENDERERS: &[(&str, &str, &str, &str)] = &[
     (
-        "src/bridge/src/backend/control/ccm_invocation.rs",
+        "src/backend/control/launch_render/ccm_invocation.rs",
         "render_ccm_invocation",
         "Rust · ccm 调用行",
         "✅ **目标态那两份之一**。生产在跑（`render_ccm_launch` ⇒ 装了 ccm 的远端）。",
     ),
     (
-        "src/bridge/src/backend/control/payload.rs",
+        "src/backend/control/launch_render/payload.rs",
         "render_payload",
         "Rust · 载荷（`设计/90 §4 E` 起同时管外层那三格）",
         "✅ **目标态那两份之一**。🔴 **〔步 22b·B 2026-09-20〕内层与外层三格今天都在生产上跑** \
@@ -845,15 +855,18 @@ fn the_outer_tmux_command_has_exactly_one_home() {
     let mut scanned = 0usize;
 
     let root = repo_root();
-    for (p, raw) in guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]) {
-        scanned += 1;
-        if guard_core::production_code(&raw).contains(needle.as_str()) {
-            homes.push(format!(
-                "src/bridge/src/{}",
-                p.strip_prefix(root.join("src/bridge/src"))
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-            ));
+    // 〔MIG-2〕两棵 Rust 生产树（monitor ＋ 后端）一起数：那一份搬进了后端。
+    for tree in ["src/bridge/src", "src/backend"] {
+        for (p, raw) in guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]) {
+            scanned += 1;
+            if guard_core::production_code(&raw).contains(needle.as_str()) {
+                homes.push(format!(
+                    "{tree}/{}",
+                    p.strip_prefix(root.join(tree))
+                        .unwrap_or(&p)
+                        .to_string_lossy()
+                ));
+            }
         }
     }
     // 〔LR2〕原来这里接着扫 `src/**/*.ts`（那时 TS 座 `session-backend.ts` 是第二个家）。座删了之后
@@ -868,7 +881,13 @@ fn the_outer_tmux_command_has_exactly_one_home() {
 
     homes.sort();
     // 〔LR2〕两个家 → **一个**：TS 那个座（`src/session-backend.ts`）删了，`设计/90 §4 E` 收官。
-    let want = vec!["src/bridge/src/backend/control/payload.rs".to_string()];
+    // 〔MIG-2〕载荷内核搬进后端之后，两棵树并成一个人群 ⇒ 后端 `ccm` 容器路那一份（`control/ccm/plan.rs`，一直都在、
+    //   原先不在这条的人群里）第一次被数到。它是 `ccm --ccm-tmux` 自己起容器的那一串，与载荷内核是**同一件事的两个家**
+    //   —— 如实登记成已知的第二个（报备：收成一个家要改 `ccm` 容器路，不在本件写区）。
+    let want = vec![
+        "src/backend/control/ccm/plan.rs".to_string(),
+        "src/backend/control/launch_render/payload.rs".to_string(),
+    ];
     assert_eq!(
         homes, want,
         "\n★ 外层 tmux 命令的家变了。两向集合相等，所以多一个少一个都在这儿说话：\n\
