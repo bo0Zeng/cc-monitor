@@ -519,6 +519,29 @@ fn the_plan_decoder_reads_the_golden() {
     );
 }
 
+/// 🔴〔MIG-3b 续 · VIS2〕`deploy-plan` 那一跳在本机后端里拨号 ⇒ 它的逐地址指纹随计划交回、由 monitor 按**同一个**判定固化
+/// （`dial_host::settle_host_key`，monitor 自己开链路那几条也走它），不另写一份。两向：解码器把金样里的 `ack` 原样收进来；
+/// 问计划那一口恰好一处把它交给 `settle_host_key`。
+#[test]
+fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../__fixtures__/deploy-plan.golden.json")).unwrap();
+    let p = decode_plan(&golden["product"]).expect("金样解不开");
+    assert_eq!(
+        p.ack.fingerprints.get("10.0.0.2:22").map(String::as_str),
+        Some("SHA256:placeholder"),
+        "解码器没把 ack 的逐地址指纹收进来：{:?}",
+        p.ack
+    );
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    let body = dp1_body(&prod, "async fn ask_plan_for(");
+    guard_core::find_pinned(
+        &body,
+        "crate::dial_host::settle_host_key(cfg, &dial, &plan.ack)",
+    )
+    .unwrap_or_else(|e| panic!("问计划那一口没把 ack 交给固化判定（{e}）：\n{body}"));
+}
+
 // 〔RW1 · 第四波 09-24〕这里原来是远端删会话那道结构守卫的单元判据；守卫随 SFTP 直删一起走了，
 //   「哪几份才许删」那一问的判据住后端（`session_file_for_delete` 的删会话那一族）。
 

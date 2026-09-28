@@ -752,19 +752,8 @@ async fn answer<R: AsyncRead + Unpin>(
         let bad = |m: String| refused("bad_request", &m);
         match op {
             "home" => Ok(serde_json::json!({ "home": s.home() })),
-            "stat" => {
-                let path = arg_str(req, "path").map_err(bad)?;
-                let meta = metadata_size(s, path).await;
-                // `metadata` 成功就够判了，不多问一次（与 monitor `interpret_target_probe` 入参同形）。
-                let exists = match meta {
-                    Some(_) => None,
-                    None => exists(s, path).await,
-                };
-                Ok(serde_json::json!({
-                    "meta": meta.map(|size| serde_json::json!({ "size": size })),
-                    "exists": exists,
-                }))
-            }
+            // 〔MIG-3b 续 · V41〕`stat` 那一问删了：它唯一的问者（monitor 部署时问落点在不在）随部署判定进了本机后端
+            //   （`control/deploy_plan.rs` 直接用本文件的 `metadata_size` / `exists`），这条链路上零调用方。
             "read" => {
                 let path = arg_str(req, "path").map_err(bad)?;
                 let max = arg_u64(req, "max").map_err(bad)?;
@@ -862,7 +851,7 @@ async fn answer<R: AsyncRead + Unpin>(
             other => Err(refused(
                 "unknown_op",
                 &crate::common::contract::malformed(&format!(
-                    "unknown op `{other}` (known: home / stat / read / put / remove / mkdirs)"
+                    "unknown op `{other}` (known: home / read / put / remove / mkdirs)"
                 )),
             )),
         }

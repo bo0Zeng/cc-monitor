@@ -5,7 +5,7 @@
 //! 本模块的判据**多数是声明表内部的自洽检查**：字段有没有区分力 · 落点在不在
 //! `touches` 里 · 拥有就必须装得了 · 有围栏就必须卸得掉 · 解析器有没有真看见源码。
 //! 〔`K-R63` 09-11 订正两处：① 原文写死了一个基数（「15 条」），而判据条数只有一份
-//!  住址 —— 本文件里的 `#[test]`，要数就现数〔`13b`〕；② 「**全部**是表内部自洽」
+//!  住址 —— 本文件判据档里的测试函数，要数就现数〔`13b`〕；② 「**全部**是表内部自洽」
 //!  今天不成立 —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
 //!  一边读字段值、一边去别的文件里钉那个装 / 卸实现的签名，它跨出了这张表。〕
 //! 两条探针实测它**确实有牙**（把 `ccm` 的落点改成 `.local/bin/ccm-x` ⇒
@@ -84,8 +84,8 @@
 //! **T02 是紧接着的下一个功能；若 T02 收工时 `TOOLS` 仍无生产消费者，就该删掉本模块**，
 //! 而不是留着当纸面资产。提醒不靠我记得：`cargo clippy` 现在会对本模块的 6 个类型
 //! 各报一条 `never used`——**那 6 条警告就是这笔债的存根**，T02 接上之后它们会自己消失。
-//! （对比：`structural_scan` 的消费者全在 `#[cfg(test)]` 里，它是测试支撑模块，
-//! 已在 `lib.rs` 标 `#[cfg(test)]`，不占这笔债。）
+//! （对比：`structural_scan` 的消费者全在测试段里，它是测试支撑模块，
+//! 已在 monitor 的 `lib.rs` 整个挂在测试属性下，不占这笔债。）
 //!
 //! ## 字段纪律
 //!
@@ -97,7 +97,7 @@
 //! 的文档正在痛批固定 needle。现在审计那条手法被钉成了常驻测试
 //! （`the_scan_catches_the_audits_own_single_use_field`，直接变异**真文件**）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 
 /// 〔CP2b · 4C〕表里给人看的那一句 —— **取文函数**，不是字面量。
 ///
@@ -439,6 +439,7 @@ impl ToolSpec {
     ///
     /// ⚠ 只在「不关心是哪个载体」时用它；关心的时候用 [`Self::carrier_touches`] ——
     /// 铺平会把本件刚立起来的那个 key 又丢掉一次。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn touches(&self) -> impl Iterator<Item = &'static TouchedFile> {
         self.carriers.iter().flat_map(|c| c.touches.iter())
     }
@@ -456,6 +457,8 @@ impl ToolSpec {
 /// 五套既有机制 + cc-bus 的声明。**本轮只声明，不改它们任何行为**
 /// （MASTERPLAN §4 第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
 pub const TOOLS: &[ToolSpec] = &[
+    // 〔MIG-3b 续〕落在 Claude 布局里的那几条（`cc-bus` · `cc-acct-iso` · `skill-install` · `claude-code`）住适配层
+    //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools`]。
     ToolSpec {
         id: "ccm",
         display_name: Text(|| copy_text("rsToolRegistry.tools.ccmName", &[])),
@@ -567,149 +570,6 @@ pub const TOOLS: &[ToolSpec] = &[
                 ],
             },
         ],
-    },
-    ToolSpec {
-        id: "cc-bus",
-        display_name: Text(|| copy_text("rsToolRegistry.tools.ccBusName", &[])),
-        // ★★ **不是「实现一下就能翻 true」——落点被只读铁律排除**〔PS1 重摸底 08-12〕。
-        //
-        // 原注释只写「部署尚未实现（B01 只做了"搬进仓固化为基线"）」，那是**浅一层**的理由，
-        // 会让下一个人以为补个递归拷贝就行。真实的墙在 `src/doc/INVARIANTS.md` 开头：
-        // 「`monitor` 对 `<claude_dir>/…` **只读**」，后附**穷举**的 6 条例外 ——
-        // **没有一条覆盖「往 `~/.claude/skills/` 装东西」**，而第 2 条逐字写着
-        // 「只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`」。
-        //
-        // ⇒ 把 cc-bus 装到上面那个 `destination`，需要给那条铁律**开第 7 条豁免** ——
-        // 那是**裁定**，不是实现工作。要开的话，配套应照既有 6 条的形状：
-        // 用户**显式**动作 + 独立 realpath 白名单 + 幂等 + 可撤销。
-        //
-        // ★★ **08-13 用户裁：开**（`U10b`）。⇒ `installable` 从 `false` 翻成 `true`，
-        // 实现在 `cc_bus_deploy.rs`，那四个配套**逐条落地**（模块头注里四个 `★` 一一对应），
-        // 例外本身写成 `src/doc/INVARIANTS.md` 的第 7 条。
-        // ⚠ `uninstallable` **仍是 `false`** —— 卸载没做，如实声明（不因为「装做了」就顺手标 true）。
-        //
-        // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份 `cc-spawn`，而 `~/.local/bin/cc-*`
-        // 指向的是 `~/.claude/skills/cc-bus/`（实测两份差 167 行）—— **改动到不了本机**。
-        //
-        // 🔴 **09-11 `K-R60`：上面那句「翻成 true」到今天才真的落到字段上。**
-        // `K-R57` 摸底逮到：字段一直是 `false`，而同一个注释块逐字写着要翻成 `true`，
-        // 实现（`deploy_local_cc_bus`）**一直在**。⇒ 那张表对「cc-bus 装不装得了」的申报
-        // 假了一个月，而 `config_surface` 的「能否装/撤」列**正是读这个字段的**。
-        // 🔴 **为什么一个月没红**：守这一格的 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
-        // 是**必需词守卫** —— 它数注释里两个词的出现次数，**看不见字段的值**。
-        // ⇒ `K-R60` 那一轮补了一条真读字段值的判据：左边读这个字段、右边钉
-        // `cc_bus_deploy.rs` 的函数签名，两边必须相等。
-        // 🔴 **09-11 `K-R63`：那一条是专名的（名字里带工具名），本轮把它收成了覆盖全表的
-        // 一条性质** —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`。
-        // 理由：专名判据只把静默从 1 个工具挪走，下一个工具照样静默（件文件 `§0c`）。
-        installable: true,
-        uninstallable: false,
-        // 一个载体（仓内目录整份铺过去）—— `cc-bus` 不是「同一份字节两处使用」那一族，
-        // 这里一条 `Carrier` 就够；载体这一维只在真有几份的那几条上才多。
-        carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.ccBusWhat", &[])),
-            source: ToolSource::RepoDir {
-                repo_path: "src/shared/cc-bus",
-            },
-            destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-bus"),
-            touches: &[
-                TouchedFile {
-                    // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
-                    // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
-                    // 字段一直是 `false` ⇒ 这条判据一直**跳过** cc-bus ⇒ 部署真正写的那个目录
-                    // （`deploy_local_cc_bus` 往 `<claude_dir>/skills/cc-bus/` 铺 17 个文件）
-                    // **在这一页上一行都没有**。翻成 `true` 的当场它就红了。
-                    // ⇒ 一处假申报盖住的不止它自己那一格。
-                    path: "~/.claude/skills/cc-bus",
-                    host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusDirNote", &[]))),
-                    effect: TouchEffect::OwnedFile,
-                },
-                TouchedFile {
-                    path: "~/.claude/settings.json",
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.ccBusHooksNote", &[])
-                    })),
-                    effect: TouchEffect::GenerateOnly,
-                },
-                TouchedFile {
-                    path: "~/.local/bin/cc-*",
-                    host: HostScope::Either,
-                    note: Some(Text(|| copy_text("rsToolRegistry.tools.ccBusBinNote", &[]))),
-                    effect: TouchEffect::ReadOnly,
-                },
-                TouchedFile {
-                    path: "~/.cc-bus/",
-                    // ★★ **P4c 订正（08-12）：这段理由整个过期了，而过期的是 `P4a` 那一刀造成的。**
-                    //
-                    // 原文（T04 审计阻塞 2）写「`cc_bus.rs` 的全部 5 个 IPC……都以 `origin` 入参走
-                    // `cfg_of` → ssh 远端 exec，**一条本机读取路径都没有**；驾驶舱的 origin 下拉
-                    // 来自 `list_remote_mcp_origins`，连"本机"这一档都没有」。
-                    //
-                    // 两句今天都不成立：`P4a`（08-12）把**读面三条**做成了本机可用
-                    // （同一条命令串，只是不包进 ssh），并给驾驶舱的下拉**加了「本机」那一档**。
-                    //
-                    // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
-                    // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
-                    // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/〔散文墓碑〕
-                    // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
-                    // 〔C4e 订正〕这半句早已不成立（P4f / BS1b 起写面本机也走后端，〔C4e〕起由界面经通道直接说，本机与远端同一条路）；
-                    // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.ccBusStateNote", &[])
-                    })),
-                    effect: TouchEffect::IndirectWrite,
-                },
-            ],
-        }],
-    },
-    ToolSpec {
-        id: "cc-acct-iso",
-        display_name: Text(|| copy_text("rsToolRegistry.tools.acctIsoName", &[])),
-        installable: true,
-        uninstallable: false,
-        carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.acctIsoWhat", &[])),
-            source: ToolSource::Vendored {
-                repo_path: "src/shared/cc-acct-iso",
-                fingerprint_file: ".vendor_id",
-            },
-            destination: ToolDestination::UserConfiguredPath {
-                token: "$ACCT_ISO_DEST",
-                what: Text(|| copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[])),
-            },
-            touches: &[
-                TouchedFile {
-                    path: "$ACCT_ISO_DEST",
-                    host: HostScope::Remote,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.acctIsoDestNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                },
-                TouchedFile {
-                    path: "~/.claude-accts/",
-                    // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
-                    //
-                    // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
-                    // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
-                    // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
-                    // （这台机器上就是 `~/.claude-accts/z`），`config_surface::claude_config_dir` 与
-                    // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
-                    // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
-                    // `<用户家目录>/.claude-accts/<账号>`，而这一行写着「位置：远端」。
-                    //
-                    // 按 `Either` 的定义（"Claude Code 跑在哪台，这东西就在哪台"）它本就是两端皆可。
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.acctIsoVaultNote", &[])
-                    })),
-                    effect: TouchEffect::ReadOnly,
-                },
-            ],
-        }],
     },
     // ═══ 🔴 〔`K-R81` 09-12〕**这一条改名了，而改名不是清洁工作** ═══
     //
@@ -869,42 +729,6 @@ pub const TOOLS: &[ToolSpec] = &[
             },
         ],
     },
-    // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
-    //   文件原样从来源那台拷来（V112），〔MIG-3a〕判、写、记都在这台后端（`skill_flow.rs::answer_install`）。
-    //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
-    //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
-    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_flow.rs::answer_uninstall` 只删记着的那几个（装完改过的先问）。
-    //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
-    ToolSpec {
-        id: "skill-install",
-        display_name: Text(|| copy_text("rsToolRegistry.tools.skillInstallName", &[])),
-        installable: true,
-        uninstallable: true,
-        carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.skillInstallWhat", &[])),
-            source: ToolSource::Generated,
-            // 落在 skills 目录下（以那个 skill 为名的那一个子目录；名字由你点的那一条定）—— 与 cc-bus 那一格同一个根。
-            destination: ToolDestination::LocalHomeRelative(".claude/skills"),
-            touches: &[
-                TouchedFile {
-                    path: "~/.claude/skills",
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.skillInstallNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                },
-                TouchedFile {
-                    path: "~/.cc-monitor/skill-installs.json",
-                    host: HostScope::Either,
-                    note: Some(Text(|| {
-                        copy_text("rsToolRegistry.tools.skillInstallsLedgerNote", &[])
-                    })),
-                    effect: TouchEffect::OwnedFile,
-                },
-            ],
-        }],
-    },
     // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
     //
     // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
@@ -967,141 +791,11 @@ pub const TOOLS: &[ToolSpec] = &[
             }],
         }],
     },
-    // ═══ 〔`K-R60` 09-11 加〕**这一条我们装不了，而它是这张表最吃重的一项。** ═══
-    //
-    // 来历：`K-R57` 摸底现打 —— 这一页「根本看不见」的 9 项里，`<claude_dir>/projects/*.jsonl`
-    // 是**历史面与搜索索引的全部输入**。app 是 Claude Code 的监视器，
-    // 被监视对象自己写的那份记录不在表里，这一页就答不了「你要的东西齐了没有」。
-    //
-    // 🔴 **这一条同时把 `installable` 的区分力带了回来，理由如实写在这里，别让它看起来很巧**：
-    // cc-bus 翻成 `true` 之后，`installable` 在**全部 6 条**上都为真 ⇒
-    // `every_declared_field_has_at_least_two_instantiations` **对地**报「没有区分力」
-    // （`K-R60` 实打过那一趟红）。按本仓准则那时该**删字段**，
-    // 而删掉它，「cc-bus 装不装得了」就再没有任何字段可以申报、也没有任何判据读得到 ——
-    // 那恰好是本件要治的病的反面。
-    // ⇒ 处置不是删字段，是**让这张表收进本来就该收的那一档**：
-    //   app 会去碰 / 去读、但**装不了**的东西。`installable` 于是重新分得开两类人。
-    // ⚠ 代价如实记：这张表的语义从「装到别处的受管工具」扩到了「app 会碰的环境项」，
-    //   模块头注那句话本轮已改。`NOT_MANAGED`（刻意不收的）语义不变。
-    ToolSpec {
-        id: "claude-code",
-        display_name: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsName", &[])),
-        installable: false,
-        uninstallable: false,
-        carriers: &[Carrier {
-            what: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWhat", &[])),
-            source: ToolSource::NotOurs {
-                who: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWho", &[])),
-            },
-            destination: ToolDestination::NotInstalledByUs {
-                whose: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsWhose", &[])),
-            },
-            touches: &[TouchedFile {
-                path: "~/.claude/projects/",
-                host: HostScope::Either,
-                note: Some(Text(|| {
-                    copy_text("rsToolRegistry.tools.sessionRecordsNote", &[])
-                })),
-                effect: TouchEffect::ReadOnly,
-            }],
-        }],
-    },
 ];
 
-/// 🔴 `K-R132`：本机那条 `ccm` 入口**所在的目录**（home 相对，`/` 分隔，不带末尾斜杠）。
-///
-/// # 它**不是**一个新的字面量〔`13b`：闭集只许有一个住址〕
-///
-/// 它从 [`TOOLS`] 里 `ccm` 那条**本机载体**的落点**现算**
-/// （`LocalHomeRelative(".cc-monitor/bin/ccm*")` ⇒ `".cc-monitor/bin"`）。
-/// 本函数体内一个 `.cc-monitor` 都没有 —— 改了上面那张表，这里跟着变。
-///
-/// # 为什么要有它：**PATH 上要写的那个目录，必须与我们真放下去的那个是同一个**
-///
-/// `K-R129` 在真机上证实的缺陷是「装上了、能跑、用户敲不到」——
-/// `ccm.exe` 真在 `%USERPROFILE%\.cc-monitor\bin\`，而那个目录不在 PATH 上。
-/// 补 PATH 的那一步（`profile_installer::render_cc_code`）**不许自己写一个目录字面量**：
-/// 写了，它与真落点就是两个住址，哪天落点搬家，PATH 会指着一个空目录，
-/// 而「指着空目录」与「根本没补」在终端上一模一样。
-///
-/// # 取不到就是 `None`，**不兜默认值**
-///
-/// 兜一个默认值 = 上面那张表被改坏了也看不出来，而那正是本函数要买的东西。
-/// 调用方拿到 `None` 时**不发明一个目录**：`profile_installer` 那两条用户级 PATH 命令
-/// 会原样往上传 `None`（**一条命令都不吐**），界面那一格显示「拿不到落点」
-/// 而不是一个编出来的目录 —— **指错目录与根本没补，在用户终端上是同一个结果**。
-///
-/// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
-/// 不是「盘上那份**真的**在哪」。两者对不对得上由
-/// `profile_installer` 那条跨文件判据钉住（它去读真正调
-/// `extract_embedded_to` 的那一行源码；〔E2〕从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
-pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
-    let mut found: Option<&'static str> = None;
-    for spec in TOOLS {
-        // ⚠ `"ccm"` 这里是**这张表自己的键**（上面那条 `ToolSpec { id: "ccm", … }`），
-        //    **不是** `local_backend::CCM_ENTRY_WORD` 那个命令名的第二个住址。
-        //    两者今天字面相同是巧合 —— 拿命令名来查表，是把「注册表的键」与
-        //    「终端里敲的那个词」当成同一件事，那正是本工作区最贵的那个病
-        //    （一个值装了两件事）。
-        if spec.id != "ccm" {
-            continue;
-        }
-        for carrier in spec.carriers {
-            if let ToolDestination::LocalHomeRelative(p) = carrier.destination {
-                // 末段是文件名（可能带 glob，见那一条的 `path` 注释）⇒ 砍掉它。
-                let (dir, _last) = p.rsplit_once('/')?;
-                if found.is_some() {
-                    // 同一个工具声明了两条本机落点 ⇒ 「那个目录」这个问题没有唯一答案，
-                    // 而**猜一个**正是这一格不许做的事。
-                    return None;
-                }
-                found = Some(dir);
-            }
-        }
-    }
-    found
-}
-
-/// 🔴 `KR135D3`：**远端那条 `ccm` 落点的目录**（`$HOME` 相对，末段文件名已砍掉）。
-///
-/// 与 [`local_ccm_bin_dir_rel`] 是**同一个问题的另一边**，所以形状逐字照它：
-/// 从这张表现算，不写死目录字面量（`13b`：闭集只许有一个住址）。
-///
-/// # 为什么本机那个不够用，非要把远端这个也取出来
-///
-/// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**（本机 rc 与远端 rc 合的是
-/// 逐字同一份文本），而两边的落点**不是同一个目录** ⇒ 那一行里两个目录都得在。
-/// 判据要判「两个都在」，就得两个都能从这张表问出来 ——
-/// 在判据里手抄一个 `.local/bin` 就是第二个住址，而那正是本病的成因。
-///
-/// 两条同名落点 ⇒ 回 `None`（「那个目录」没有唯一答案时**不许猜一个**，同本机那条）。
-// 🔴 〔`K-R135` 09-15〕**它今天的使用者只有判据，所以住在判据档里，而不是挂一个
-// `#[allow(dead_code)]` 把警告压掉。** 两者的差别是**下一个人读得出什么**：
-// `allow` 说的是「有人用，只是编译器看不见」，而这一档说的是「**今天只有判据用它**」——
-// 后者才是实话。⚠ 它不是可有可无的：判据要证「那一行把**两边申报的**目录都放上了 PATH」，
-// 而在判据里手抄一个 `.local/bin` 就是那个落点的第二个住址 —— 正是本病的成因。
-// ⇒ 哪天生产侧真要问「远端那个目录是哪个」，把这一行 `#[cfg(test)]` 摘掉即可。
-#[cfg(test)]
-pub fn remote_ccm_bin_dir_rel() -> Option<&'static str> {
-    let mut found: Option<&'static str> = None;
-    for spec in TOOLS {
-        // 同 `local_ccm_bin_dir_rel`：`"ccm"` 是**这张表自己的键**，
-        // 不是 `local_backend::CCM_ENTRY_WORD` 那个命令名的第二个住址。
-        if spec.id != "ccm" {
-            continue;
-        }
-        for carrier in spec.carriers {
-            if let ToolDestination::RemoteHomeRelative(p) = carrier.destination {
-                let (dir, _last) = p.rsplit_once('/')?;
-                if found.is_some() {
-                    return None;
-                }
-                found = Some(dir);
-            }
-        }
-    }
-    found
-}
+// 〔MIG-3b 续〕`local_ccm_bin_dir_rel` / `remote_ccm_bin_dir_rel`〔散文墓碑〕（从本表现算 `ccm` 两个载体落点的目录）搬进了判据档：
+//   生产上要那个目录的只有 monitor 补 PATH 那一步，它今天取共享 crate 里后端的落点（`relay_route_core::BACKEND_LANDING_REL`，
+//   本机远端同一个，V28）；本表申报的那两条与它相等由 `tests/backend/footprint/registry_tests.rs` 对拍。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
@@ -1136,7 +830,8 @@ pub enum Provisioning {
 }
 
 impl Provisioning {
-    /// 三值的**闭集**本身。现算用〔`13b`：报一个基数也是复述〕。
+    /// 三值的**闭集**本身。现算用〔`13b`：报一个基数也是复述〕。〔MIG-3b 续〕今天只有判据用它与 [`Self::label`]。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub const ALL: &'static [Provisioning] = &[
         Provisioning::AppShips,
         Provisioning::UserProvides,
@@ -1144,6 +839,7 @@ impl Provisioning {
     ];
 
     /// 给人看的措辞。定在这里，UI 与诊断文本不再各写一遍。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn label(self) -> String {
         match self {
             Provisioning::AppShips => copy_text("rsToolRegistry.provisioning.appShips", &[]),
@@ -1214,8 +910,6 @@ impl Provisioning {
 /// 而 `every_tier_has_members_so_absence_never_encodes_a_judgement` 自己的报错逐字写着
 /// 「要么给它一个成员，**要么把这一档从 EnvTier 里删掉**」⇒ 删。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,
@@ -1231,7 +925,8 @@ pub enum EnvTier {
 }
 
 impl EnvTier {
-    /// 四档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。
+    /// 四档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。〔MIG-3b 续〕今天只有判据用它与 [`Self::label`]。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub const ALL: &'static [EnvTier] = &[
         EnvTier::AppInstalls,
         EnvTier::AppShipsNoInstallerYet,
@@ -1240,6 +935,7 @@ impl EnvTier {
     ];
 
     /// 给人看的档名。措辞定在这里，UI 与诊断文本不再各写一遍。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn label(self) -> String {
         match self {
             EnvTier::AppInstalls => copy_text("rsToolRegistry.envTier.appInstalls", &[]),
@@ -1281,6 +977,7 @@ impl EnvTier {
 ///
 /// ⚠ **别把「今天这台机器上恰好有」写成一个 `who`** —— 前者是读数（`K-R57` 量具 A 量的那种），
 /// 后者是设计判断。本表只收后者，所以每一条的 `why` 要给**代码里的住址**，不是一句形容。
+#[derive(Clone)]
 pub struct UnmanagedEnv {
     pub id: &'static str,
     pub display_name: Text,
@@ -1326,13 +1023,13 @@ pub struct UnmanagedEnv {
 /// **不许再造一套**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvProbe {
-    /// `PATH` 上的一个裸命令 —— 走 `config_surface.rs::resolves_on_path`。
+    /// `PATH` 上的一个裸命令 —— 走 `rows.rs::resolves_on_path`。
     ///
     /// **用已有那一把，不新写一个 `which`**：它已经把两条坑填了 ——
     /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
     /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
     OnPath,
-    /// 一条 `~/` 路径 —— 走 `config_surface.rs::resolve_touched_path` 那条既有的本机解析。
+    /// 一条 `~/` 路径 —— 走 `rows.rs::resolve_touched_path` 那条既有的本机解析。
     HomePath,
     /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
@@ -1347,16 +1044,7 @@ pub enum EnvProbe {
 /// `K38` 之后它分成了两群：9 项通用工具是 [`Provisioning::UserProvides`]，
 /// `cc-acct-iso-local` 是 [`Provisioning::AppShips`]（app 独有、该我们装，而装口还欠着）。
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
-    UnmanagedEnv {
-        id: "claude-cli",
-        display_name: Text(|| copy_text("rsToolRegistry.env.agentCliName", &[])),
-        who: Provisioning::UserProvides,
-        probe: EnvProbe::OnPath,
-        named: "claude",
-        host: HostScope::Either,
-        why: Text(|| copy_text("rsToolRegistry.env.agentCliWhy", &[])),
-        site: "adapter/claude_code.rs::default_launcher",
-    },
+    // 〔MIG-3b 续〕`claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {
         id: "tmux",
         display_name: Text(|| copy_text("rsToolRegistry.env.tmuxName", &[])),
@@ -1513,15 +1201,33 @@ pub enum EnvBacking {
 pub struct EnvEntry {
     pub id: &'static str,
     pub display_name: String,
-    /// **谁该装**（`K38`）。「app 自带」这个人群就是 `who == AppShips` 的那几项。
+    /// **谁该装**（`K38`）。「app 自带」这个人群就是 `who == AppShips` 的那几项。上界面的是由它派生的 [`Self::tier`] ⇒ 生产段零读者。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub who: Provisioning,
     /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
     pub tier: EnvTier,
     /// 给人看的那一句（〔CP2b〕取过文的）。
     pub why: String,
-    /// 代码住址（〔CP2b〕从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。
+    /// 代码住址（〔CP2b〕从 `why` 拆出来的那一半，见 [`UnmanagedEnv::site`]）。不上界面 ⇒ 生产段零读者，只有判据核它。
+    #[cfg_attr(not(test), allow(dead_code))]
     pub site: &'static str,
     pub backing: EnvBacking,
+}
+
+/// 〔MIG-3b 续〕受管工具的**全集**：本表 [`TOOLS`] ＋ 注册表里各家足迹面带来的那一半（落在那一家布局里的），按注册表顺序。
+pub fn tools() -> Vec<&'static ToolSpec> {
+    TOOLS
+        .iter()
+        .chain(crate::agents::footprint_faces().flat_map(|f| f.tools.iter()))
+        .collect()
+}
+
+/// 〔MIG-3b 续〕环境清单手写那一半的**全集**：本表 [`UNMANAGED_ENV`] ＋ 各家足迹面带来的那几条。
+pub fn unmanaged() -> Vec<&'static UnmanagedEnv> {
+    UNMANAGED_ENV
+        .iter()
+        .chain(crate::agents::footprint_faces().flat_map(|f| f.env.iter()))
+        .collect()
 }
 
 /// 🔴 **环境清单的闭集 —— 唯一一份，现算。**
@@ -1544,8 +1250,8 @@ pub struct EnvEntry {
 /// （本页不连 SSH）—— 那仍是「查了、只是查不动」，不是「没查」，但它**不等于**
 /// 「app 有一个真能回答它在不在的口」。要那一格得另立判据。
 pub fn environment() -> Vec<EnvEntry> {
-    let mut out: Vec<EnvEntry> = TOOLS
-        .iter()
+    let mut out: Vec<EnvEntry> = tools()
+        .into_iter()
         .map(|t| {
             let who = Provisioning::of_tool(t);
             EnvEntry {
@@ -1554,12 +1260,12 @@ pub fn environment() -> Vec<EnvEntry> {
                 who,
                 tier: EnvTier::of(who, t.installable),
                 why: copy_text("rsToolRegistry.environment.managedWhy", &[]),
-                site: "tool_registry.rs::environment",
+                site: "footprint/registry.rs::environment",
                 backing: EnvBacking::Managed(t),
             }
         })
         .collect();
-    out.extend(UNMANAGED_ENV.iter().map(|u| EnvEntry {
+    out.extend(unmanaged().into_iter().map(|u| EnvEntry {
         id: u.id,
         display_name: u.display_name.get(),
         who: u.who,
@@ -1597,6 +1303,7 @@ pub fn environment() -> Vec<EnvEntry> {
 /// ⚠ **这张表最容易变成许愿池**（什么都往里塞、理由写「暂不支持」）。
 /// 所以判据要求每条理由**说清它为什么不属这张表的语义**，而不只是「还没做」。
 /// ⚠ 但判据**判不了论证的质量** —— 只能判「有没有在论证那件事」。如实记。
+#[cfg_attr(not(test), allow(dead_code))]
 pub const NOT_MANAGED: &[(&str, &str)] = &[
     (
         "code-picture",
@@ -1614,7 +1321,7 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
     ),
     (
         "planned-build",
-        "**不由 cc-monitor 安装** —— 它是用户自己装在 `<claude_dir>/skills/planned-build/` 的 \
+        "**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \
          skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\
          ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\
          ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\
@@ -1624,13 +1331,13 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
 ];
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/tool_registry_not_managed_tests.rs"]
+#[path = "../../../tests/backend/footprint/registry_not_managed_tests.rs"]
 mod not_managed_tests;
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/tool_registry_tests.rs"]
+#[path = "../../../tests/backend/footprint/registry_tests.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/tool_registry_environment_tests.rs"]
+#[path = "../../../tests/backend/footprint/registry_environment_tests.rs"]
 mod environment_tests;

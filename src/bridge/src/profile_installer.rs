@@ -45,10 +45,17 @@ use crate::copy_table::copy_text;
 
 /// 本机 `ccm` 入口所在目录的 **Windows 写法**（`%USERPROFILE%` 之下的相对路径）。
 ///
-/// 目录本身取自 [`crate::tool_registry::local_ccm_bin_dir_rel`]（唯一住址是那张表），
-/// 这里只做一件事：把 `/` 换成 `\`。**本函数体内没有任何目录字面量。**
+/// 目录本身取自共享 crate 里后端的落点 `relay_route_core::BACKEND_LANDING_REL`（本机远端同一个，V28；
+/// 〔MIG-3b 续〕足迹申报表进了后端，那一格与它相等由后端判据对拍），这里只做一件事：把 `/` 换成 `\`。**本函数体内没有任何目录字面量。**
 fn ccm_bin_dir_windows() -> Option<String> {
-    crate::tool_registry::local_ccm_bin_dir_rel().map(|d| d.replace('/', "\\"))
+    ccm_bin_dir_rel().map(|d| d.replace('/', "\\"))
+}
+
+/// 后端落点所在的目录（家目录相对，`/` 分隔）。取不到 ⇒ `None`（不发明一个目录）。
+pub(crate) fn ccm_bin_dir_rel() -> Option<&'static str> {
+    relay_route_core::BACKEND_LANDING_REL
+        .rsplit_once('/')
+        .map(|(d, _)| d)
 }
 
 // 🔴 〔`R86` 09-15 用户裁〕**这里原本住着两个函数，本件把它们整个删掉了** ——

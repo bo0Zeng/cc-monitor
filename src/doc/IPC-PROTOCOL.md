@@ -1863,26 +1863,29 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 ⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
 〔DEL〕这里原是帧面 `relay-status` / `relay-ensure`（远端那台上起一个脱离的 `--relay`）：中转只住常驻后端进程里（本机远端同形，V139），那一族随远端回落一形删了。
 
-#### `footprint-probe`：「足迹」的这台机器那一半（RM1a · 第四波，2026-09-24，**只读**）
+#### `footprint-report`：「足迹」由这台后端出整份成品（〔MIG-3b 续〕2026-09-28，**只读**）
 
-设置里「足迹」那一块（cc-monitor 在这台机器上碰过哪些文件）的远端那一半：**判定只住 monitor**
-（`config_surface::build_rows`：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分），后端只交**路径事实**。
-monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~/…`），再把解出来的路径一次问完。
+设置里「足迹」那一块（cc-monitor 在这台机器上碰过哪些文件、app 要的东西齐不齐）：申报表与判定（哪一行属于哪个工具、
+存在 / 缺失 / 查不动怎么分）都在后端（`footprint/`，Claude 布局那一半在 `agents/claudecode/footprint.rs`），这台 stat 这台自己的盘。
+〔墓碑 —— RM1a 那一版是 `footprint-probe`：后端只交路径事实，判定住 monitor，monitor 问两趟。〕
 
 ```text
-→ {"id":"f1","cmd":"footprint-probe","args":{"stat":["/home/u/.local/bin/ccm"],"hooks":{"paths":["/home/u/.claude/settings.json"],"needles":["cc-register"]}}}
-← {"kind":"reply","id":"f1","ok":true,"data":{"env":{"home":"/home/u","path":"/usr/bin:/bin","agentHome":"/home/u/.claude","agentHomeIsDir":true},"stat":{"/home/u/.local/bin/ccm":{"kind":"file","size":1234}},"hooks":{"/home/u/.claude/settings.json":true}}}
+→ {"id":"f1","cmd":"footprint-report","args":{}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"report":{"rows":[…],"settings_scopes":[…],"claude_config_dir":"/home/u/.claude","home":"/home/u"},"clientAsks":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `stat` | ↔ | 入：一组**绝对**路径（最多 256 条）。出：逐条 `{kind:"file",size}` / `{kind:"dir",size:0,entries:[一层文件名]}` / `null`（不在或读不动）。目录名字超过 4096 个 / 列不动 ⇒ `entries:null` ＋ `notice`（**不截断**） |
-| `hooks` | ↔ | 入：`{paths, needles}`（一组绝对路径 · 最多 16 个非空字样）。出：逐条文件**有没有**任何一个字样（`true`/`false`），读不动 / 超过 1 MiB / 不是文件 ⇒ `null`。**文件内容一个字节都不回** |
-| `notices` | ← | `hooks` 里答 `null` 的那几条各自为什么（不在 / 太大 / 读不动）。`stat` 里列不动的目录那一格自带 `notice` |
-| `env` | ← | 这个**后端进程**看到的 `home`（`HOME`，没有再退 `USERPROFILE`）· `path`（`PATH`）· `agentHome`（agent 的家目录，同帧面其余几条的出处）· `agentHomeIsDir`。⚠ 用户交互 shell 的 rc 改过的环境这里看不见 |
+| `client` | → | 可选。**本机那一栏**才带：monitor 自己那台的事实 `{env: {home, agentHome, path?}, stat?: {<绝对路径>: {kind, size, entries?} \| null}}`（`HostScope::Client` 那一族照旧由 monitor 答事实，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
+| `report` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home`。带了 `client` 而没带 `client.stat` ⇒ `null` |
+| `clientAsks` | ← | `HostScope::Client` 那一族要 monitor stat 的绝对路径（本机那一栏第一趟拿它去问 monitor，第二趟带着 `client.stat` 再问）。远端那一栏恒 `[]` |
 
-**错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
-⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
+- 目录最多列 4096 个名字（超了 ⇒ 列不动，**不截断**）· 查 cc-bus 钩子字样的文件最多 1 MiB，**文件内容一个字节都不回**。
+- 第二趟答的少于这一趟要问的 ⇒ `bad_args`（没问过的一条不许当「不在」画成「缺」）。
+- 环境是这个**后端进程**的（`HOME`，没有再退 `USERPROFILE`；`PATH`）—— 用户交互 shell 的 rc 改过的环境这里看不见。
+
+**错误码**：`bad_args`（`client` 形状不对 / 相对路径 / 第二趟答少了）· `too_large`（`client.stat` 超过 1024 条）· `failed`（这台后端进程没有家目录）。
+⚠ **CLI 面也有它**（`--footprint-report`），入参从 stdin 读。
 
 #### `ccm-print`：一条别名实际会执行什么（W5-ALIAS · 第五波先行，2026-09-25，**只读**）
 
@@ -2020,6 +2023,47 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `pubkey-push`：把本机公钥推进那台的 `authorized_keys`（MIG-3b 续，09-28；本机常驻后端答）
+
+F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。入参同 `remote-probe`（`machine` · `saved?` · `jump?`，拨号请求在 `dial/machine.rs` 组）＋ `pubKeyPath?`：
+读本机那份 `.pub`（给了就读它，否则私钥同名 `.pub`）→ 校验（恰一行非空 · 无控制字符 · 已知类型前缀 ＋ base64 主体）→
+那台此刻在可达表里（长连接握过手）⇒ 问**那台后端** `authorized-keys-add {key}`；不在（密钥登录建立之前 · 后端还没装）⇒ 沿池里那条 SSH **一次** exec
+（`printf '%s\n'` 不用 echo · `grep -qxF` 整行去重 · 目录 700 / 文件 600 · 末字节不是换行先补一个），只写这一件。按此刻状态分支，不是失败退回（`D11`）。
+
+```text
+→ {"id":"k1","cmd":"pubkey-push","args":{"machine":{"host":"10.0.0.2","label":"dev","user":"u","keyPath":"/home/me/.ssh/id_ed25519"},"saved":null,"jump":null,"pubKeyPath":null}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"outcome":"added","pubPath":"/home/me/.ssh/id_ed25519.pub","via":"exec"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `machine` / `saved` / `jump` | → | 同 `remote-probe` |
+| `pubKeyPath` | → | 本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件） |
+| `outcome` | ← | `added`（新加的）· `already`（本就有整行相等的一行，没写） |
+| `pubPath` | ← | 实际推的是哪一份（给人看） |
+| `via` | ← | 走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec） |
+
+**错误码**：`invalid_args` · `bad_jump`（同 `remote-probe`）· `refused`（找不到 / 读不了 / 不像公钥）· `failed`（那台没加上：原话）。
+⚠ **CLI 面也有它**（`--pubkey-push`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：一次性进程没有常驻那一个的可达表 ⇒ 只走 exec 那一条。
+
+#### `authorized-keys-add`：把一行公钥并进这台的 `authorized_keys`（MIG-3b 续，09-28；被写那台答）
+
+`{key}` → 校验同上 → 读改写 `~/.ssh/authorized_keys`（经这台自己的文件管理面：CAS ＋ 建父目录；整行相等已有 ⇒ 不写）→ `.ssh` 700 · `authorized_keys` 600。
+本机常驻后端的 `pubkey-push` 经 `remote_ask`（可达表里那台的 CLI 面）问它。
+
+```text
+→ {"id":"a1","cmd":"authorized-keys-add","args":{"key":"ssh-ed25519 AAAA… me@host"}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"outcome":"already"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 一行公钥（本条自己也校验一遍） |
+| `outcome` | ← | `added` · `already` |
+
+**错误码**：`bad_args` · `refused`（不像公钥）· `io_failed`（读 / 写 / chmod 没成：原话）。
+本机后端问那台走的正是它的 CLI 面（`--authorized-keys-add`，入参从 stdin 读一行 JSON）。
+
 #### `deploy-plan`：那台的后端要不要换、换成哪一格（MIG-3b，09-28；**只读**那台）
 
 「部署决策进后端、monitor 只放字节」（`4d-lanes` MIG-3b 第 1 条）。只有**本机常驻后端**有意义（沿池里那条 SSH 问那台，同 `assets-sync`）。
@@ -2045,6 +2089,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `theirs` | ← | `keep` 时那台上那一份自报的身份，否则 `null` |
 | `legacy` | ← | 旧落点那一份：`absent`（不在）· `remove`（身份戳恰一个 ⇒ 删）· `keep`（别的 ⇒ 不动）· `unknown`（连问都没问成） |
 | `legacy_why` | ← | `unknown` 时的原话，否则 `null` |
+| `ack` | ← | 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定） |
 
 **错误码**：`bad_args`（`carried` / `machine` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）·
 `io_failed`（stat 落点那一问没问成）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 扫不动 —— 显式失败、不覆盖，出路是机器页「卸载后端」）。
@@ -3121,15 +3166,34 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 - 错误码：`bad_args`（op 不在词表 / 参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
 - 〔RM1d · V110「引擎只算、文件管理来写」〕本命令**不写用户文件**。批注 / 文档关联的 `plan_*` 只读盘上那一两份、回一份编辑计划
   `{"value": …, "edit": null | {"rel", "before", "after", "parents"}}`（`rel` 仓相对；`before` = 算的那一刻盘上原样、`null` = 不存在；
-  `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。落盘是调用方拿着计划另发 `files-put`（`root` = 仓、`expect = before`、`parents`）
-  或 `files-delete`；`stale` ⇒ 重新 `plan_*`。写了 `.md` 之后发 `refresh_doc_links` 让文档关联的查询跟上（只写索引）。
+  `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。〔MIG-3b 续〕拿着计划落盘的是同一台后端的 `panorama-edit`（下一节），不再是 monitor。
 - 〔RM1f〕**可取消**：异步档（起进程走插件口的 `run_abortable`，异步等子进程）⇒ `cancel` 命中时处理器被撤、小程序连同 `timeout` 前缀那一组子进程一起被杀，回 `cancelled` 帧。〔墓碑 —— RM1c 那一版是阻塞档：`cancel` 命中回 `not_cancellable`。〕
-- 〔RM1e · V108「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：monitor 听到这两个码
-  （只对远端）⇒ `uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
+- 〔RM1e · V108「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：〔MIG-3b 续〕界面（经通道直问）听到这两个码
+  ⇒ 请 monitor 放字节（Tauri 命令 `panorama_place`）：`uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
   推到 `~/.cc-monitor/bin/cc-monitor-panorama`（`0755`，后端读回逐字节比对）→ **再问一次**；仍是这两个码 ⇒ 原话交给人，不循环。
   本命令自己不推、不写。
   〔RM1f · 本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
   放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
+
+#### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
+
+```text
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"}}}
+← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `repo` | → | 被写的仓在**这台机器上**的绝对路径 |
+| `op` | → | 写哪一种：`add_annotation` · `propose_annotation` · `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`（别的 ⇒ `bad_args`） |
+| `args` | → | 这一种写自己的参数（原样交给对应的 `plan_*`） |
+| `data` | ← | 计划里的 `value` 原样（id / 在不在 / `null`，随 op 而定） |
+
+- 一件事全在这台：① 问这台的小程序要计划（`panorama` 的 `plan_*`，不写）→ ② `edit = null` ⇒ 原样回 → ③ 经**这台的文件管理面**落盘
+  （`files-put`：`root` = 仓、`expect = before`、`parents`；`after = null` ⇒ `files-delete` 带 `expect = before`）→ ④ `stale` ⇒ 回 ① 重算，最多 3 趟
+  → ⑤ 文档关联那两种写成之后再 `refresh_doc_links`。写的规则（CAS · 暂存旁名换名上位 · 回读 · 围栏）只在文件管理面。
+- 错误码：「算」那一步的码原样交回（`not_installed` / `unsupported` 同样是界面请 monitor 放字节、再问一次的触发条件）· `stale`（3 趟都撞上别人改）·
+  文件管理面的码原样（`refused` 等）· `failed`（计划形状对不上）。可取消档（同 `panorama`）。CLI 面自动派生（`--panorama-edit`）。
 
 #### `backend-log`：这台后端的 stderr 诊断文件尾部（〔GAP1〕`设计/15 §4.7 S1`，2026-09-26）
 
@@ -3271,8 +3335,8 @@ capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_p
 〔W5-AUX〕`capture.stdin`（可缺）：exec 之后原样写进远端进程 stdin 的字节，**不关 stdin**（收的一侧用 CLI 面的 `--stdin-line`）。
 `probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
 〔SR1b · 2026-09-24〕`use:"files"`：在池里那条连接上开 sftp 子系统（`dial/sftp.rs`），ack 之后**一问一答** ——
-上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `stat{path}` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
-上限 64 MiB）· `remove{path}` · `mkdirs{path}`。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
+上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
+上限 64 MiB）· `remove{path}` · `mkdirs{path}`（〔MIG-3b 续 · V41〕`stat` 那一问删了：唯一的问者随部署判定进了本机后端）。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
 🔴 **写只许两处**：远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（用户 V89；`INVARIANTS §41.6` 的 SR1b 订正）。读不受限。
 它服务自部署（F08 后端二进制 · cc-acct-iso）：〔MIG-3b〕后端二进制那一路的判定在本机常驻后端（`deploy-plan`），monitor 照计划经它放字节（`dial_host::RemoteFs`）；cc-acct-iso 那一路的判定仍在 monitor。
 `use:"subsystem"`（把原始 SFTP 字节交给客户端）**不开** ⇒ 回 `unsupported_use`：SFTP 协议住后端，客户端只有 `files` 与 `transfer-*` 两条路。

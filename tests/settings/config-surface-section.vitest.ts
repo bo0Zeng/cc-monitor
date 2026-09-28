@@ -33,7 +33,6 @@ import {
   owedInstallerNames,
   UNKNOWN_IS_NOT_ABSENT,
   REMOTE_UNANSWERED_WHY,
-  answersFor,
   readFootprint,
   type ConfigSurfaceReport,
   type SurfaceRow,
@@ -41,6 +40,26 @@ import {
 import { GAP_HEAD } from "../../src/settings/readiness";
 import { setCurrentMachine, __resetMachineContextForTests } from "../../src/settings/machine-context";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
+import { chanArgsJson, chanReply, isChanCall, UNSUPPORTED, type ChanCallArgs } from "../test-support/chan-fake";
+
+/** 〔MIG-3b 续〕monitor 那一半交的事实（本机那一栏四拍里的第 1 / 3 拍）。 */
+const CLIENT_FACTS = { env: { home: "/m", agentHome: "/m/.claude", path: null }, stat: {} };
+
+/** 〔MIG-3b 续〕足迹经通道问那台后端：本机那一栏第一趟回「要 stat 哪些」、第二趟回报告；远端一趟回报告。 */
+function footprintInvoke(rep: unknown): (cmd: string, args?: unknown) => Promise<unknown> {
+  return async (cmd: string, args?: unknown) => {
+    if (cmd === "footprint_client_facts") return CLIENT_FACTS;
+    if (isChanCall(cmd, args, "footprint-report")) {
+      const body = chanArgsJson(args as ChanCallArgs) as { client?: { stat?: unknown } };
+      if (body.client !== undefined && body.client.stat === undefined) return chanReply({ report: null, clientAsks: [] });
+      return chanReply({ report: rep, clientAsks: [] });
+    }
+    throw new Error(`不该问 ${cmd}`);
+  };
+}
+function serve(rep: unknown): void {
+  invokeMock.mockImplementation(footprintInvoke(rep));
+}
 
 function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
   return {
@@ -83,8 +102,6 @@ function report(over: Partial<ConfigSurfaceReport> = {}): ConfigSurfaceReport {
     ],
     claude_config_dir: "/h/.claude",
     home: "/h",
-    // 〔RM1a 合并〕报告带回它答的是哪台（生成物里 `origin` 是必填的）；夹具默认是本机那一份。
-    origin: "<local>",
     ...over,
   };
 }
@@ -223,7 +240,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
   });
 
   it("🔴 那句话必须**真进 DOM**（纯函数被断言 ≠ 它上了屏 —— T02 审计重要 5）", async () => {
-    invokeMock.mockResolvedValue(
+    serve(
       report({ rows: [prompted({ state: { kind: "absent" } })] }),
     );
     const s = new ConfigSurfaceSection();
@@ -250,7 +267,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(txt).toBe("⚠ 1 项还没有安装入口");
     expect(owedInstallerNames([owed, prompted()])).toEqual(["cc-acct-iso 本机那份"]);
 
-    invokeMock.mockResolvedValue(report({ rows: [owed] }));
+    serve(report({ rows: [owed] }));
     const s = new ConfigSurfaceSection();
     await s.refresh();
     const el = s.element.querySelector(".config-surface-owed") as HTMLElement;
@@ -288,7 +305,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
   });
 
   it("〔ST2 · `§11.4` #3〕「查不动」那一句：前半留在行上，后半（查不动 ≠ 不在）进 ⓘ", async () => {
-    invokeMock.mockResolvedValue(
+    serve(
       report({ rows: [prompted({ state: { kind: "undetermined", why: "Windows 侧才知道" } })] }),
     );
     const s = new ConfigSurfaceSection();
@@ -299,7 +316,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(why, "区分的后半被一起扫掉了（§2.2：只换位置，不删义）").not.toBeNull();
     expect(why!.getAttribute("aria-label")).toBe(UNKNOWN_IS_NOT_ABSENT());
     // 「缺」那一档不挂这个 ⓘ（它说的就是确认没有）。
-    invokeMock.mockResolvedValue(report({ rows: [prompted({ state: { kind: "absent" } })] }));
+    serve(report({ rows: [prompted({ state: { kind: "absent" } })] }));
     const s2 = new ConfigSurfaceSection();
     await s2.refresh();
     expect(s2.element.querySelector('.config-surface-prompt[data-gap="missing"] [aria-label]')).toBeNull();
@@ -330,7 +347,7 @@ describe("formatReportText", () => {
 
 describe("ConfigSurfaceSection", () => {
   it("正常路径：渲染分组标题 + 每条 touches 一行", async () => {
-    invokeMock.mockResolvedValue(
+    serve(
       report({
         rows: [
           row(),
@@ -356,7 +373,7 @@ describe("ConfigSurfaceSection", () => {
   });
 
   it("未确定的行用 tone-unknown，不用 tone-bad", async () => {
-    invokeMock.mockResolvedValue(
+    serve(
       report({
         rows: [
           row({
@@ -378,7 +395,7 @@ describe("ConfigSurfaceSection", () => {
   });
 
   it("invoke resolve 成 undefined 不许炸（B03 的真 bug，第三处）", async () => {
-    invokeMock.mockResolvedValue(undefined);
+    serve(undefined);
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
     // **必须断言是形状校验拦下的**，不能只断言"报了个失败"（T02 审计重要 4）。
@@ -390,14 +407,14 @@ describe("ConfigSurfaceSection", () => {
   });
 
   it("形状不对（rows 不是数组）同样走失败分支而不是抛", async () => {
-    invokeMock.mockResolvedValue({ rows: null, settings_scopes: [] });
+    serve({ rows: null, settings_scopes: [] });
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
     expect(s.element.textContent).toContain("形状不对");
   });
 
   it("扫描失败时「复制诊断文本」保持禁用（没东西可复制）", async () => {
-    invokeMock.mockRejectedValue(new Error("boom"));
+    invokeMock.mockRejectedValue(new Error("boom")); // 每一拍都失败
     const s = new ConfigSurfaceSection();
     await s.refresh();
     const btn = [...s.element.querySelectorAll("button")].find(
@@ -408,7 +425,7 @@ describe("ConfigSurfaceSection", () => {
 
   it("成功后才允许复制，且复制的是纯文本报告", async () => {
     const rep = report();
-    invokeMock.mockResolvedValue(rep);
+    serve(rep);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
@@ -430,7 +447,7 @@ describe("ConfigSurfaceSection", () => {
     // T02 审计重要 5：把这两段渲染整体删掉，15 条测试**全绿**——
     // `effect_label` / `describeUndo` 只作为纯函数被断言过，没人管它们有没有进 DOM。
     // 这一页的两个核心列可以静默消失。
-    invokeMock.mockResolvedValue(
+    serve(
       report({
         rows: [
           row({ note: "12 条软链", uninstallable: false, installable: false }),
@@ -458,19 +475,20 @@ describe("ConfigSurfaceSection", () => {
   });
 
   it("只读：本 section 不得出现任何写入用的 invoke", async () => {
-    invokeMock.mockResolvedValue(report());
+    serve(report());
     const s = new ConfigSurfaceSection();
     await s.refresh();
     // 〔ST2〕读面：配置面那一条（〔OSA〕「PowerShell profile 备份」那一格改问本机后端，不再借 `get_data_paths`）。
     const names = new Set(invokeMock.mock.calls.map((c) => c[0]));
-    expect([...names].sort()).toEqual(["config_surface_report"]);
+    // 〔MIG-3b 续〕成品经通道问本机后端（`chan_call`），monitor 自己那几行的事实问 `footprint_client_facts`。
+    expect([...names].sort()).toEqual(["chan_call", "footprint_client_facts"]);
   });
 });
 
 describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬进本机「足迹」", () => {
-  const answer = (dirs: string[]) => () => {
+  const answer = (dirs: string[]) => {
     backupsMock.mockResolvedValueOnce(dirs);
-    return Promise.resolve(report());
+    return footprintInvoke(report());
   };
 
   it("★ 有备份 ⇒ 这一格出现，每一个备份目录的路径都以纯文本上屏", async () => {
@@ -495,7 +513,7 @@ describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬�
   });
 
   it("★★ 读不到 ⇒ 说读不到，不拿「没有备份」糊过去；上面那张表不受影响", async () => {
-    invokeMock.mockImplementation(() => Promise.resolve(report()));
+    serve(report());
     backupsMock.mockRejectedValueOnce(new Error("盘坏了"));
     const s = new ConfigSurfaceSection();
     await s.refresh();
@@ -506,31 +524,55 @@ describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬�
   });
 });
 
-describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器去问，回声对上才画", () => {
+describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足迹按机器经通道问那台后端", () => {
   afterEach(() => __resetMachineContextForTests());
   const flush = async () => {
-    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   };
+  const chanCalls = () =>
+    invokeMock.mock.calls
+      .filter((c) => isChanCall(String(c[0]), c[1], "footprint-report"))
+      .map((c) => ({ origin: (c[1] as ChanCallArgs).origin, body: chanArgsJson(c[1] as ChanCallArgs) }));
 
-  it("★ 问的时候带着这台机器（本机 = LOCAL_ORIGIN），不再是零参数", async () => {
-    const mod = await import("../../src/ipc/commands");
-    const spy = vi.spyOn(mod.commands, "config_surface_report").mockResolvedValue(report());
-    try {
-      await readFootprint(LOCAL_ORIGIN);
-      await readFootprint("aya");
-      expect(spy.mock.calls.map((c) => (c as unknown[])[0])).toEqual([{ origin: "<local>" }, { origin: "aya" }]);
-    } finally {
-      spy.mockRestore();
-    }
+  it("★ 本机那一栏四拍（monitor 环境 → 后端要 stat 哪些 → monitor stat → 带着答案出报告），远端一拍、不问 monitor", async () => {
+    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "footprint_client_facts") {
+        const stat = (args as { stat: string[] | null }).stat;
+        return { env: CLIENT_FACTS.env, stat: stat === null ? {} : { [stat[0]]: null } };
+      }
+      const body = chanArgsJson(args as ChanCallArgs) as { client?: { stat?: unknown } };
+      if (body.client !== undefined && body.client.stat === undefined) return chanReply({ report: null, clientAsks: ["/m/x"] });
+      return chanReply({ report: report(), clientAsks: body.client ? ["/m/x"] : [] });
+    });
+    const local = await readFootprint(LOCAL_ORIGIN);
+    expect(local.rows.length).toBe(1);
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual([
+      "footprint_client_facts",
+      "chan_call",
+      "footprint_client_facts",
+      "chan_call",
+    ]);
+    expect(invokeMock.mock.calls[0][1]).toEqual({ stat: null });
+    expect(invokeMock.mock.calls[2][1]).toEqual({ stat: ["/m/x"] });
+    expect(chanCalls()).toEqual([
+      { origin: LOCAL_ORIGIN, body: { client: { env: CLIENT_FACTS.env } } },
+      { origin: LOCAL_ORIGIN, body: { client: { env: CLIENT_FACTS.env, stat: { "/m/x": null } } } },
+    ]);
+    invokeMock.mockClear();
+    await readFootprint("aya");
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["chan_call"]);
+    expect(chanCalls()).toEqual([{ origin: "aya", body: {} }]);
   });
 
-  it("★★ 读口没合进来（参数被静默丢掉、回的是不带 origin 的本机那份）⇒ 远端页说答不了，**不画表**", async () => {
-    invokeMock.mockResolvedValue(report());
+  it("★★ 那台的后端太旧（不认这条命令）⇒ 远端页说答不了，**不画表**", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "chan_call" ? Promise.reject(UNSUPPORTED) : Promise.reject(new Error(`不该问 ${cmd}`)),
+    );
     setCurrentMachine("aya");
     const s = new ConfigSurfaceSection();
     s.loadNow();
     await flush();
-    expect(s.element.querySelectorAll(".config-surface-row").length, "拿本机的答案冒充 aya 的").toBe(0);
+    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
     const box = s.element.querySelector<HTMLElement>("[data-footprint-unanswered]")!;
     expect(box.hidden).toBe(false);
     const why = box.querySelector<HTMLElement>("[aria-label]");
@@ -538,59 +580,34 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器�
     expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY());
   });
 
-  it("★★ 回声对上（报告说它答的就是 aya）⇒ 远端页画表；`$PROFILE` 备份那一格不问（只答本机）", async () => {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "config_surface_report"
-        ? Promise.resolve({ ...report(), origin: "aya" })
-        : Promise.reject(new Error(`不该问 ${cmd}`)),
-    );
+  it("★★ 远端答了 ⇒ 远端页画表；`$PROFILE` 备份那一格不问（只答本机）、monitor 那一半一次都不问", async () => {
+    serve(report());
     setCurrentMachine("aya");
     const s = new ConfigSurfaceSection();
     s.loadNow();
     await flush();
     expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
     expect(s.element.textContent).not.toContain("还查不了");
-    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["config_surface_report"]);
-  });
-
-  it("★ 回声是另一台（答错了机器）⇒ 照样不画", async () => {
-    invokeMock.mockResolvedValue({ ...report(), origin: "gpd" });
-    setCurrentMachine("aya");
-    const s = new ConfigSurfaceSection();
-    s.loadNow();
-    await flush();
-    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
-    expect(s.element.textContent).toContain("这台机器（aya）的足迹还查不了");
-  });
-
-  it("★ 本机：旧读口不带 origin ⇒ 照画（反向对照）；带的是别的机器 ⇒ 扫描失败，不画", async () => {
-    expect(answersFor(report(), LOCAL_ORIGIN)).toBe(true);
-    expect(answersFor({ ...report(), origin: "<local>" } as never, LOCAL_ORIGIN)).toBe(true);
-    expect(answersFor({ ...report(), origin: "aya" } as never, LOCAL_ORIGIN)).toBe(false);
-    invokeMock.mockResolvedValue({ ...report(), origin: "aya" });
-    const s = new ConfigSurfaceSection();
-    await s.refresh();
-    expect(s.element.querySelectorAll(".config-surface-row").length).toBe(0);
-    expect(s.element.textContent).toContain("扫描失败");
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["chan_call"]);
   });
 
   it("★ 切机器快过答复：晚到的上一台的答复不许盖掉当前这台", async () => {
     let releaseLocal!: (v: unknown) => void;
-    invokeMock.mockImplementation((cmd: string, args?: { origin?: string }) => {
-      void args;
-      if (cmd !== "config_surface_report") return Promise.resolve({});
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd !== "footprint_client_facts") return Promise.resolve(chanReply({}));
       return new Promise((r) => {
         releaseLocal = r;
       });
     });
     const s = new ConfigSurfaceSection();
-    s.loadNow(); // 本机那一趟挂着
+    s.loadNow(); // 本机那一趟挂在第一拍
     const firstRelease = releaseLocal;
-    invokeMock.mockImplementation(() => Promise.resolve({ ...report(), origin: "aya" }));
+    serve(report());
     setCurrentMachine("aya"); // 订阅那一路重读 aya
     await flush();
     expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
-    firstRelease(report({ rows: [row(), row({ path_declared: "~/.bashrc" })] })); // 本机那份晚到
+    serve(report({ rows: [row(), row({ path_declared: "~/.bashrc" })] }));
+    firstRelease(CLIENT_FACTS); // 本机那份晚到
     await flush();
     expect(
       s.element.querySelectorAll(".config-surface-row").length,

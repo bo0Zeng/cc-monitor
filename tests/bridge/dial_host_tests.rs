@@ -126,7 +126,7 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
     guard_core::find_pinned(&prod, "let client = local_channel().await")
         .expect("拿本机那条流的那一处不是恰好一处");
     for entry in [
-        "pub(crate) async fn open_stream(",
+        // 〔MIG-3b 续〕`open_stream(` 那一格随 `stream` 用法的一次性 exec 删了。
         "pub(crate) async fn capture(",
         // 〔MIG-1 续〕`probe(` 那一格随测试连接搬进本机后端删了。
     ] {
@@ -198,7 +198,6 @@ fn the_dial_proxy_leaves_no_trace_in_monitor_production() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1a-link-loopback.py --monitor 带环境变量来跑"]
 async fn loopback_roundtrip_through_the_resident_backend() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let _local = crate::backend::control::inbound_client::local_origin_test_lock();
     let raw = std::env::var("SR1A_LOOPBACK").expect("没有 SR1A_LOOPBACK —— 这条只该由读数脚本来跑");
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -228,26 +227,8 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         addresses: vec![],
         jump: None,
     };
-    // ① 字节流：远端 `head -n1`，写进去什么回来什么；它读完一行自己退 ⇒ 下行 EOF ⇒ 链路收工
-    //   （第一条链路：池里没有 ⇒ 真拨一次）
-    let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "head -n1")
-        .await
-        .expect("开不了流");
-    s.write_all(b"hello\n").await.unwrap();
-    s.flush().await.unwrap();
-    let mut got = String::new();
-    s.read_to_string(&mut got).await.unwrap();
-    assert_eq!(got, "hello\n");
-    // ①b 界面关了写半边 ⇒ 链路收工（`D3③`：界面走了它跟着走）—— 远端 `cat` 永不自己退
-    let mut s = crate::ssh_source::connect_and_exec_cmd(&cfg, "cat")
-        .await
-        .expect("开不了流");
-    s.shutdown().await.unwrap();
-    let mut rest = Vec::new();
-    tokio::time::timeout(std::time::Duration::from_secs(10), s.read_to_end(&mut rest))
-        .await
-        .expect("关了写半边 10 秒链路还没收工 —— 它挂在一条没人收的下行上了")
-        .unwrap();
+    // 〔MIG-3b 续〕① 字节流那两段（`head -n1` 往返 · 关写半边链路收工）删了：monitor 不再开 `stream` 用法的链路
+    //   （那个一次性 exec 原语随公钥推送进本机后端一起走了）；后端那一侧的流用法照旧由 `remote-probe` 与后端判据驱动。
     // ② 收全：stdout / stderr / 退出码
     let ex = crate::ssh_source::connect_and_exec_capture(&cfg, "echo o; echo e >&2; exit 5", None)
         .await

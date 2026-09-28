@@ -456,9 +456,16 @@ mod tests {
         assert_eq!(
             lits,
             // 命令名本身 ＋ 它在协议文档里那一小节的标题（`doc_anchor`，给人查的住址，不是第二条命令）。
-            vec!["#### `panorama`".to_string(), "panorama".to_string()],
-            "`inbound.rs` 里含「全景」那个词的字符串字面量不再恰好是那一条命令名 —— \
-             全景在协议面只许以一条命令出现，op 走载荷（请先读本判据的头注）。"
+            // 〔MIG-3b 续 · 主会话 09-28 裁「`panorama-edit` 进后端」〕多一条写命令 `panorama-edit`（算与写都在这台，op 同样走载荷）；
+            //   查询面仍只有 `panorama` 一条。
+            vec![
+                "#### `panorama-edit`".to_string(),
+                "#### `panorama`".to_string(),
+                "panorama".to_string(),
+                "panorama-edit".to_string(),
+            ],
+            "`inbound.rs` 里含「全景」那个词的字符串字面量不再恰好是那两条命令名（查询 `panorama` · 写 `panorama-edit`）—— \
+             全景在协议面只许以这两条命令出现，op 走载荷（请先读本判据的头注）。"
         );
         assert!(
             !guard_core::production_code(wire).contains("panorama"),

@@ -354,7 +354,10 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
     );
 
     // ★★ 4b 要的那条连线：安装动作必须点名 `TOOLS` 里真实存在的 id。
-    let table = guard_core::production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    // 〔MIG-3b 续〕申报表进了后端：本表 ＋ 落在 Claude 布局里的那一半（适配层）。
+    const HOME: &str = include_str!("../../src/backend/footprint/registry.rs");
+    const AGENT: &str = include_str!("../../src/backend/agents/claudecode/footprint.rs");
+    let table = guard_core::production_code(HOME) + &guard_core::production_code(AGENT);
     let mut checked = 0usize;
     for (f, n, tool, _) in WRITE_SITES {
         let Some(id) = tool else { continue };

@@ -17,7 +17,7 @@
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
 //!   〔RW1 · 第四波 09-24〕**落盘已不在本模块**：经那台后端读改写（`user_files`）；规划那一半
 //!   （`merge_profile_block` / `strip_profile_block`）〔W5-ALIAS〕住 `profile_installer`。
-//! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
+//! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`〔MIG-3b 续〕今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
 //!
 //! 原子写（EXCL 临时件 → 旧目标先**改名成 `.bak`**（不是删）→ 上位 → 清 `.bak`）与它的来历住后端
 //! `dial/sftp.rs::put_atomic`（F89a 审计后加固 · DN-7 订正「删旧」那句 · setstat 截断事故）。
@@ -156,11 +156,15 @@ pub(crate) struct Plan {
     pub(crate) expected: String,
     pub(crate) action: DeployAction,
     pub(crate) legacy: deploy_core::LegacyVerdict,
+    /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
+    /// `dial_host::settle_host_key` 固化 —— 与 monitor 自己开链路那几条同一个判定，不另写。
+    pub(crate) ack: crate::ssh_link::Ack,
 }
 
 /// `deploy-plan` 的应答 → [`Plan`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
-    const KEYS: [&str; 9] = [
+    const KEYS: [&str; 10] = [
+        "ack",
         "action",
         "arch",
         "expected",
@@ -198,7 +202,13 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         (Some("unknown"), Some(e)) => deploy_core::LegacyVerdict::Unknown(e.to_string()),
         _ => return Err(bad()),
     };
+    let ack: crate::ssh_link::Ack = obj
+        .get("ack")
+        .cloned()
+        .and_then(|a| serde_json::from_value(a).ok())
+        .ok_or_else(bad)?;
     Ok(Plan {
+        ack,
         key,
         expected: text("expected")
             .filter(|s| !s.is_empty())
@@ -230,8 +240,9 @@ async fn ask_plan_for(
         .iter()
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))
         .collect();
+    let dial = crate::dial_host::transfer_dial(cfg)?;
     let args = serde_json::json!({
-        "dial": crate::dial_host::transfer_dial(cfg)?,
+        "dial": dial,
         "carried": carried,
         "machine": cfg.origin_label(),
     });
@@ -246,7 +257,10 @@ async fn ask_plan_for(
                     Routed::Done => copy_text("rsSftp.plan.internal", &[]),
                 },
             )?;
-    decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)
+    let plan = decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)?;
+    // 〔MIG-3b 续 · VIS2〕第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
+    crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
+    Ok(plan)
 }
 
 /// 〔MIG-3b〕照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。

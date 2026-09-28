@@ -1,6 +1,23 @@
 use super::*;
 use std::collections::BTreeSet;
 
+/// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
+    std::sync::LazyLock::new(|| {
+        crate::footprint::registry::tools()
+            .into_iter()
+            .cloned()
+            .collect()
+    });
+#[allow(dead_code)]
+static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::footprint::registry::UnmanagedEnv>> =
+    std::sync::LazyLock::new(|| {
+        crate::footprint::registry::unmanaged()
+            .into_iter()
+            .cloned()
+            .collect()
+    });
+
 /// `KR60D1` ③ 用的抽取器 —— **直接用盘上已有那一把**，不自己再写一个。
 ///
 /// 〔`K-R60` 09-11 自抓〕本条第一版手写了一个同形的抠取器（找 `.rs::`、向前吃路径、
@@ -8,7 +25,7 @@ use std::collections::BTreeSet;
 /// 而且它那一侧**更强**：还会去全仓解析那个符号今天在不在、有没有搬家。
 /// 抄一份被测逻辑正是本仓反复判过的那族病 ⇒ 删掉自己那份，改调它。
 fn addresses_in(why: &str) -> Vec<(usize, String, String, bool)> {
-    crate::structural_scan::symbol_addresses(why)
+    guard_core::symbol_addresses(why)
 }
 
 /// `KR60D1` ①：**清单是一个闭集，而且只有一份。**
@@ -30,7 +47,7 @@ fn the_environment_is_one_closed_list() {
         TOOLS.len() + UNMANAGED_ENV.len(),
         "闭集的人数 ≠ 两半之和 —— environment() 漏了一半还是加了第三份"
     );
-    for u in UNMANAGED_ENV {
+    for u in UNMANAGED_ENV.iter() {
         assert!(
             !TOOLS.iter().any(|t| t.id == u.id),
             "`{}` 同时在 TOOLS 与 UNMANAGED_ENV 里 —— 有 ToolSpec 的不许再手写一条",
@@ -95,7 +112,7 @@ fn every_unmanaged_entry_names_a_code_address() {
     );
 
     let mut checked = 0usize;
-    for u in UNMANAGED_ENV {
+    for u in UNMANAGED_ENV.iter() {
         // 〔CP2b〕住址从 `why`（给人看的话，进了文案表）拆到了 `site`。
         let addrs = addresses_in(u.site);
         assert!(
@@ -373,7 +390,7 @@ fn every_provisioning_value_is_really_used() {
 /// 自相矛盾**吸收成一个正常档**，所以矛盾本身要在这里单独判红，不能靠那个 `match`。
 #[test]
 fn nobody_declares_an_installer_for_something_we_should_not_install() {
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         let who = Provisioning::of_tool(t);
         if who != Provisioning::AppShips {
             assert!(
@@ -449,7 +466,7 @@ fn the_prompt_tier_declares_how_it_will_look() {
 #[test]
 fn every_managed_tool_reaches_the_closed_set() {
     let env = environment();
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         let n = env.iter().filter(|e| e.id == t.id).count();
         assert_eq!(
             n, 1,

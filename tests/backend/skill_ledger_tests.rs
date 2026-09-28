@@ -285,11 +285,12 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         }
     }
     assert!(scanned > 500, "只扫到 {scanned} 份源码 —— 遍历坏了");
-    // 两个家、各一个身份：写者（本模块）· 足迹里的**申报字面量**（`tool_registry.rs` 的 `skill-install` 那一格，不读不写 ——
+    // 两个家、各一个身份：写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，〔MIG-3b 续〕随 Claude 布局那一半住
+    // `agents/claudecode/footprint.rs`；不读不写 ——
     // V116「足迹里看得见」）。第三个家 ⇒ 红（第二个写者或者第二份申报）。
     let want: std::collections::BTreeSet<String> = [
         "backend/skill_ledger.rs".to_string(),
-        "bridge/src/tool_registry.rs".to_string(),
+        "backend/agents/claudecode/footprint.rs".to_string(),
     ]
     .into();
     assert_eq!(
@@ -300,7 +301,7 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     // 〔MG1 合 SU1〕直接从仓根拼整条路径：`test_tiers` 的 T2（根锚路径字面量要指得到盘上东西）把 `let src = repo_root().join("src")`
     // 读成「src 绑的是 repo_root」，`src.join("bridge/…")` 就被核成 `./bridge/…` 报断 —— 写成整条之后 T2 真核得到它。
     let registry = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/bridge/src/tool_registry.rs"),
+        crate::guard_support::repo_root().join("src/backend/agents/claudecode/footprint.rs"),
     )
     .unwrap();
     let declared = format!(

@@ -126,6 +126,23 @@ pub(crate) struct Adapter {
     /// 〔SH1 · V137〕这一家的 **MCP 读**（server 表住哪几层、项目表住哪 —— 那一家的格式知识）。`None` = 这一家今天没有。
     /// 收进注册表而不是让帧面宿主直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) mcp: Option<McpFace>,
+    /// 〔MIG-3b 续〕这一家的**足迹面**：落在它自己布局里的那几条申报 ＋ 申报路径里 `~/<它的家>/…` 怎么认 ＋ 用户级 settings 住哪。
+    /// 收进注册表而不是让 `footprint/` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
+    pub(crate) footprint: Option<FootprintFace>,
+}
+
+/// 〔MIG-3b 续〕见 [`Adapter::footprint`]。
+#[derive(Clone, Copy)]
+pub(crate) struct FootprintFace {
+    pub(crate) tools: &'static [crate::footprint::registry::ToolSpec],
+    pub(crate) env: &'static [crate::footprint::registry::UnmanagedEnv],
+    pub(crate) under_agent_home: fn(&str) -> Option<&str>,
+    pub(crate) user_settings: fn(&Path) -> [PathBuf; 2],
+}
+
+/// 注册表里带足迹面的那几家（按注册表顺序）。
+pub(crate) fn footprint_faces() -> impl Iterator<Item = FootprintFace> {
+    REGISTRY.iter().filter_map(|a| a.footprint)
 }
 
 /// 〔SH1 · V137〕一家的 MCP 读面：函数指针（同 [`Adapter::home`]，不立 trait）。入参是项目目录（可缺）。
@@ -291,13 +308,13 @@ pub(crate) fn skill_asset_face() -> Option<AssetFace> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

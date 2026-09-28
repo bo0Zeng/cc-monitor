@@ -126,6 +126,26 @@ describe("〔C4a〕webview 通道客户端", () => {
     answer(new ArrayBuffer(0)); // monitor 那一侧晚到的结局没人收了 —— 不许炸
   });
 
+  it("🔴〔MIG-3b 续 · 撤单不许回退〕撤单过 webview 那一跳：带撤单的那一问带编号，拨下 ⇒ 恰一发 `chan_cancel` 带着同一个编号；不带撤单的不带编号、不发", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "chan_call" ? new Promise<ArrayBuffer>(() => {}) : Promise.resolve(cmd === "chan_cancel" ? true : null),
+    );
+    const ac = new AbortController();
+    const p = chan.call("aya", "slow", new Uint8Array(), budgetWithin(5_000, ac.signal));
+    const callArgs = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as { callId: string | null };
+    expect(typeof callArgs.callId).toBe("string");
+    expect(invokeMock.mock.calls.some((c) => c[0] === "chan_cancel"), "还没撤就发了撤单").toBe(false);
+    ac.abort();
+    await failOf(p);
+    const cancels = invokeMock.mock.calls.filter((c) => c[0] === "chan_cancel");
+    expect(cancels).toEqual([["chan_cancel", { id: callArgs.callId }]]);
+
+    invokeMock.mockClear();
+    void chan.call("aya", "fire", new Uint8Array(), budgetWithin(5_000));
+    const plain = invokeMock.mock.calls.find((c) => c[0] === "chan_call")?.[1] as { callId: string | null };
+    expect(plain.callId, "不带撤单的那一问不该带编号").toBeNull();
+  });
+
   it("〔NET2 · `05 §3.3.3`〕本地撤单按手里那份 Offer 说清「那台可能还在跑」：撤不动的带 runsOn、撤得动的不带", async () => {
     let answer: (v: ArrayBuffer) => void = () => {};
     invokeMock.mockImplementation((cmd: string) =>

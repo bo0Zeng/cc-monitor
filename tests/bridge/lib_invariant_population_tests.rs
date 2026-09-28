@@ -361,6 +361,14 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
+    // 〔MIG-3b 续〕公钥推送进了本机后端：一行公钥拼进那一次 exec 之前先过 `sanitize_public_key`（恰一行 · 无控制字符 · 类型前缀 ＋ base64 主体），原住 monitor `pubkey.rs`。
+    (
+        "src/backend/assets/pubkey.rs",
+        1,
+        &[("src/backend/assets/pubkey.rs", "sanitize_public_key")],
+        "",
+        "",
+    ),
     // 〔TL3 · §47〕那台后端的路径在可达表唯一的写口 `remote_ask::register` 先过放行判定（后端那一份同族判定），第四列清空。
     // 〔W5-AUX · `设计/96 §3.6`〕3 → 1：推那一趟不再把载荷 quote 进命令行（改走 capture 的 stdin 一行，`--stdin-line`），
     //   后端路径那一格改由 `remote_ask::command_line` 拼（那一份文件的处数不变，它本来就逐格 quote argv）⇒ 本文件只剩拉那一趟的路径。
@@ -523,13 +531,6 @@ const QUOTE_SITES: &[QuoteRow] = &[
         &[],
         "",
         "本侧渲染好的整条远端命令（拼它的那几处各自判过；这里只包一层 `bash -lic`）",
-    ),
-    (
-        "src/bridge/src/pubkey.rs",
-        1,
-        &[("src/bridge/src/pubkey.rs", "sanitize_public_key")],
-        "",
-        "",
     ),
     // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
     // 〔MIG-3b〕那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。

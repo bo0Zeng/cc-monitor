@@ -53,11 +53,11 @@
 //!
 //! # 买不到
 //!
-//! - **TS 那侧撤单不传到这一跳**：TS 本地撤单是立即的（`Ours{Cancelled}`），而这一跳没有「撤单」命令，
-//!   照跑到「还剩多少」为止；到点那一刻路由器丢掉那次调用（`router::settle`）⇒ `inbound_client` 的
-//!   `AbandonGuard` 补发 `cancel`（〔RM1f〕，同回环那条，见 `host.rs` 头注）⇒ 后端可取消档在那时停下。
-//!   〔AR1 订正〕上一版写「与回环那条同一条边界」—— 回环那条今天撤单即补发，已不是同一条边界；
-//!   这一跳缺的只剩 TS → monitor 的撤单命令 ＋ 在飞编号表，本拍不开。
+//! - 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕**TS 那侧撤单传到这一跳了**：`Budget.cancel` 拨下 ⇒ TS 本地立即回
+//!   `Ours{Cancelled}`，同时带着那一问的编号发 [`chan_cancel`] ⇒ 在飞表里那一格的撤单手柄拨下 ⇒ 路由器丢掉那次调用
+//!   （`router::settle`）⇒ `inbound_client` 的 `AbandonGuard` 补发 `cancel`（〔RM1f〕，同回环那条）⇒ 后端可取消档停下。
+//!   〔墓碑 —— 上一版这里写着「这一跳缺的只剩 TS → monitor 的撤单命令 ＋ 在飞编号表，本拍不开」：这一拍开了。〕
+//!   撤单那一条先于 `chan_call` 本身到（两条 IPC 不保序）⇒ 记下编号，那一问登记时当场撤、一个字节不发。
 //! - **webview 这一跳的 `subscribe` 没有续传**（`from` 给了就原位说用法错）与**回环那条上没有会话流**
 //!   （进程外前端今天不订会话内容；`host.rs::InboundBackends::subscribe` 对它照旧回「没有这条流」）。
 
@@ -82,16 +82,87 @@ fn fail(e: CallError) -> Fail {
 }
 
 /// 经给定句柄走一次 `call`（第 1 跳）。判据用它喂合成句柄；生产由 [`chan_call`] 喂 [`InboundBackends`]。
+/// 〔MIG-3b 续〕`call_id` 给了 ⇒ 这一问登记进在飞表，[`chan_cancel`] 拨下它的撤单手柄（见头注「撤单」）。
 pub(crate) async fn call_via(
     backends: &dyn Backends,
     origin: super::wire::Origin,
     op: String,
     payload: Vec<u8>,
     left: Duration,
+    call_id: Option<String>,
 ) -> Result<Body, CallError> {
     let cancel = CancelToken::new();
+    let _inflight = call_id.map(|id| Inflight::enter(id, cancel.clone()));
+    // 撤单先于这一问到了（两条 IPC 不保序）⇒ 一个字节都不发。
+    if cancel.is_cancelled() {
+        return Err(OursFault::Cancelled.into());
+    }
     let fut = backends.call(origin, Op(op), Body(payload), left, cancel.clone());
     router::settle(fut, left, cancel).await
+}
+
+/// 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕webview 这一跳在飞的调用：TS 给的编号 → 撤单手柄；
+/// 外加「撤单先到、那一问还没登记」的编号（两条 IPC 不保序），留最近 [`EARLY_KEEP`] 个，那一问登记时当场撤。
+/// 有结局 / 被撤 / 调用方被丢都摘掉（[`Inflight`] 的 `Drop`）。编号由 TS 那一侧现造（每一问一个 UUID），本侧只当不透明的键。
+#[derive(Default)]
+struct Table {
+    live: std::collections::HashMap<String, CancelToken>,
+    early: std::collections::VecDeque<String>,
+}
+
+/// 先到的撤单留几个（晚到的撤单 —— 那一问已经有结局 —— 也落在这里，所以要有上限；编号不复用，挤掉的只是最旧的）。
+const EARLY_KEEP: usize = 64;
+
+fn inflight() -> std::sync::MutexGuard<'static, Table> {
+    use std::sync::{Mutex, OnceLock};
+    static TABLE: OnceLock<Mutex<Table>> = OnceLock::new();
+    TABLE
+        .get_or_init(|| Mutex::new(Table::default()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 在飞表里的一格，随这一问一起走。
+pub(crate) struct Inflight(String);
+
+impl Inflight {
+    fn enter(id: String, cancel: CancelToken) -> Inflight {
+        let mut t = inflight();
+        if let Some(i) = t.early.iter().position(|e| *e == id) {
+            t.early.remove(i);
+            cancel.cancel();
+        }
+        t.live.insert(id.clone(), cancel);
+        Inflight(id)
+    }
+}
+
+impl Drop for Inflight {
+    fn drop(&mut self) {
+        inflight().live.remove(&self.0);
+    }
+}
+
+/// 拨下编号 `id` 那一问的撤单手柄。回它此刻在不在飞（不在 ⇒ 记进「先到的撤单」，那一问随后登记时当场撤）。
+pub(crate) fn cancel_inflight(id: &str) -> bool {
+    let mut t = inflight();
+    if let Some(c) = t.live.get(id).cloned() {
+        c.cancel();
+        return true;
+    }
+    if t.early.len() >= EARLY_KEEP {
+        t.early.pop_front();
+    }
+    t.early.push_back(id.to_string());
+    false
+}
+
+/// 〔MIG-3b 续〕主界面撤掉一问（`src/ipc/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
+/// 撤单手柄拨下 ⇒ `router::settle` 丢掉那次调用 ⇒ `inbound_client` 的放弃守卫补发 `cancel{target}` ⇒ 后端可取消档停下
+/// （全景：小程序连同 `timeout` 前缀那一组子进程被杀）。
+#[tauri::command]
+pub fn chan_cancel(id: String) -> bool {
+    cancel_inflight(&id)
 }
 
 /// 主界面说 `call` 的那一条命令。`left_ms` = 这一跳还剩多少（TS 那侧由绝对时刻换算，过期的根本不发）。
@@ -104,6 +175,7 @@ pub async fn chan_call(
     op: String,
     payload: Vec<u8>,
     left_ms: u64,
+    call_id: Option<String>,
 ) -> Result<tauri::ipc::Response, Fail> {
     if origin.route("chan_call").is_err() {
         return Err(fail(OursFault::Misuse.into()));
@@ -114,6 +186,7 @@ pub async fn chan_call(
         op,
         payload,
         Duration::from_millis(left_ms),
+        call_id,
     )
     .await
     {

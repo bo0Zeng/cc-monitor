@@ -38,12 +38,16 @@ vi.mock("../../src/ipc/commands", () => ({
   commands: new Proxy(
     {},
     {
-      get: (_t, name: string) => () => {
+      get: (_t, name: string) => (args?: unknown) => {
         ipc.calls.push(name);
         // 〔ST2 · `70 §11.4` 末〕默认一律 reject（各块自有 catch）；给了答复的命令照答复回 ——
         //   原来这里**只有** reject ⇒ 足迹那张表一行都不渲染 ⇒ `describeUndo` / `summarizeOwedInstallers`
         //   的输出**从来没上过被扫的 DOM**（「判据不在执行链上就等于不存在」的一个活例）。
-        if (ipc.replies.has(name)) return Promise.resolve(ipc.replies.get(name));
+        // 〔MIG-3b 续〕答复可以是函数（按入参答：足迹经通道问，`chan_call` 要看 op 与载荷）。
+        if (ipc.replies.has(name)) {
+          const r = ipc.replies.get(name);
+          return typeof r === "function" ? (r as (a: unknown) => Promise<unknown>)(args) : Promise.resolve(r);
+        }
         return Promise.reject(new Error(`[录音机] ${name} 没有真后端`));
       },
     },
@@ -250,7 +254,8 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       uninstallable: false,
       tier,
     });
-    ipc.replies.set("config_surface_report", {
+    // 〔MIG-3b 续〕足迹经通道问本机后端（`footprint-report`，两趟）；monitor 自己那几行的事实问 `footprint_client_facts`。
+    const report = {
       rows: [
         row("AppInstalls", "甲", { kind: "present", detail: "文件，1 字节" }),
         row("AppShipsNoInstallerYet", "乙", { kind: "absent" }),
@@ -260,6 +265,14 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       settings_scopes: [],
       claude_config_dir: "/h/.claude",
       home: "/h",
+    };
+    ipc.replies.set("footprint_client_facts", { env: { home: "/h", agentHome: "/h/.claude", path: null }, stat: {} });
+    ipc.replies.set("chan_call", (a: unknown) => {
+      const { op, payload } = a as { op: string; payload: number[] };
+      if (op !== "footprint-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
+      const body = JSON.parse(new TextDecoder().decode(Uint8Array.from(payload))) as { client?: { stat?: unknown } };
+      const reply = body.client && body.client.stat === undefined ? { report: null, clientAsks: [] } : { report, clientAsks: [] };
+      return Promise.resolve(new TextEncoder().encode(JSON.stringify(reply)).buffer);
     });
     try {
       const p = new SettingsPanel({ windowMode: true });

@@ -17,7 +17,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 /// 钩子命令里那两个程序（`SessionStart` → `cc-register` · `Stop` → `cc-bus-stop-hook`）。
-const PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
+pub(crate) const PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
 
 /// 读 `settings.json` 的上限（它是几 KB 的配置；超了按「读不到」说）。
 const SETTINGS_CAP_BYTES: u64 = 1 << 20;

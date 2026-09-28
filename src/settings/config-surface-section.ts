@@ -18,20 +18,20 @@
 // **一条硬纪律来自后端，前端不许在这里放水**：查不了的东西显示成「未确定 + 为什么」，
 // **绝不显示成"缺失"**。远端路径、相对项目目录的 `.mcp.json`、Windows 侧 `$PROFILE`
 // 本机都查不到，把它们画成红叉就是对能用的安装报假警报——B04 审计已经抓过一次同型病。
-import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 
-// C04d 批 2：**四个线上类型全部改用生成物**（`config_surface.rs` 是源）。
-// `SurfaceState` 是 `#[serde(tag = "kind", rename_all = "snake_case")]` 的内部标记枚举
-// ——`ts-rs` 认 serde 属性，生成的判别联合与手写版逐字等价（本批次实测零漂移）。
-//
+// 〔MIG-3b 续〕线上类型改住读者 `footprint-reads.ts`（成品由那台后端出，解码器按金样严格收；原 ts-rs 生成物随判定进后端删了）。
 // 本文件内部与 `.vitest.ts` 都用这些名字，所以 **import + 单独 re-export 都要有**：
 // 只写 `export type { … } from` 不会把名字带进本地作用域（C02 栽两次、C04c 第三次）。
-import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
-import type { EnvTier } from "../generated/EnvTier";
-import type { SettingsScope } from "../generated/SettingsScope";
-import type { SurfaceRow } from "../generated/SurfaceRow";
-import type { SurfaceState } from "../generated/SurfaceState";
+import {
+  FootprintUnanswered,
+  readFootprint,
+  type ConfigSurfaceReport,
+  type EnvTier,
+  type SettingsScope,
+  type SurfaceRow,
+  type SurfaceState,
+} from "./footprint-reads";
 
 export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceState };
 
@@ -225,32 +225,10 @@ export function formatReportText(r: ConfigSurfaceReport): string {
   return lines.join("\n");
 }
 
-/**
- * 〔第四波 ST2 · 用户 09-24 裁「远端也有真栏」· `设计/70 §10.1` ② · `§8` #12〕**按机器去问足迹**。
- *
- * 读口是 RM1a 那一路补的（后端 `config_surface` 收 origin）；本路只接界面。约定的形状：
- * `config_surface_report({ origin })`，本机传 `LOCAL_ORIGIN`，回来的报告**带回它答的是哪台**（`origin`）。
- *
- * ⚠⚠ **回声校验是这一格的全部重量**：读口合进来之前，包装层那条命令不收参数 ——
- *   参数会被**静默丢掉**，后端照旧回本机那一份。那时候照原样画，就是拿本机的答案冒充 aya 的
- *   （`§10.1` 逐字要防的那一形）。⇒ 远端那一台：报告里的 `origin` 与所问**相等**才算数，
- *   否则当作「这台还答不了」；本机：没带 `origin`（旧读口）或带的是本机，才算数。
- *
- * 〔RM1a 合并〕包装层那条的签名就是 `{ origin }`，报告里的 `origin` 由后端那一侧填（本机 `"<local>"`、远端那台的名字）。
- */
-export async function readFootprint(origin: Origin): Promise<ConfigSurfaceReport> {
-  // 〔C4a × RM1a〕共用 store 里本机就是 `LOCAL_ORIGIN`（不再是 `null`）⇒ 原样过线；命令签名本来就收 `{ origin }`。
-  return commands.config_surface_report({ origin });
-}
-
-/** 这份报告是不是**所问那台**的答复（见 `readFootprint` 的头注）。 */
-export function answersFor(r: ConfigSurfaceReport, origin: Origin): boolean {
-  const said = (r as { origin?: unknown }).origin;
-  // 本机：旧读口不带 `origin`（缺省 / null 那是**线上**的旧形，不是 TS 侧的本机表示）或带的是本机，才算数。
-  // 〔TL3 · 🔴-5〕带回来的与所问那台相等才算 —— 与远端那一支同一句（进这一支时所问的就是本机），不再直比常量。
-  if (isLocalOrigin(origin)) return said === undefined || said === null || said === origin;
-  return said === origin;
-}
+// 〔MIG-3b 续〕按机器问足迹的那一口（`readFootprint`）搬进 `footprint-reads.ts`（经通道直问那台后端）；
+//   回声校验 `answersFor`〔散文墓碑〕删了：它防的是旧 Tauri 命令静默丢掉 `origin` 参数，通道按 origin 路由、那一形不存在了
+//   （留着就是两侧同源的恒真）。远端那台答不了（后端太旧）⇒ 读者抛 `FootprintUnanswered`，这里说「这台还答不了」。
+export { readFootprint };
 
 /** 远端那一台答不了时那一句的 ⓘ —— 区分（答不出来 ≠ 没动过）只换位置（`§11.4` #4）。 */
 // 〔CP2b〕做成函数、用到时才取文（顶层不留取文口调用，同 remote-section）。
@@ -285,7 +263,7 @@ export class ConfigSurfaceSection {
     this.element = this.build();
     // 🔴 步 2（`70 §1.3 B` · `§10.4`）：**构造期不再发 I/O。**
     // 原来这里是 `void this.refresh()`，而这一块住的页**不是落地页**
-    //（落地页是 `machines`）⇒ 每次打开设置都白发一趟 `config_surface_report`。
+    //（落地页是 `machines`）⇒ 每次打开设置都白发一趟 `config_surface_report`〔散文墓碑〕（今天是 `readFootprint`）。
     // 现在由宿主（`panel.ts`）在这一块**真正被搬到用户正在看的那一页上**时调 `loadNow()`。
     //
     // 🔴 步 14a（`70 §10.1`）：这一块已从顶层「改动足迹」页搬进**机器子页的第五栏「足迹」**。
@@ -471,13 +449,6 @@ export class ConfigSurfaceSection {
           copyText("configSurface.refresh.badShape"),
         );
       }
-      if (!answersFor(r, origin)) {
-        if (isRemoteOrigin(origin)) {
-          this.showUnanswered(origin);
-          return;
-        }
-        throw new Error(copyText("configSurface.refresh.wrongMachine"));
-      }
       this.last = r;
       this.copyBtn.disabled = false;
       this.render(r);
@@ -486,6 +457,10 @@ export class ConfigSurfaceSection {
       else this.backups.replaceChildren();
     } catch (e) {
       if (my !== this.seq) return;
+      if (e instanceof FootprintUnanswered && isRemoteOrigin(origin)) {
+        this.showUnanswered(origin);
+        return;
+      }
       this.last = null;
       this.copyBtn.disabled = true;
       this.body.textContent = copyText("configSurface.refresh.failed", { e: String(e) });

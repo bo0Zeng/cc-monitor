@@ -57,6 +57,8 @@ const PROSE: &[(&str, &str, usize)] = &[
     ("lib.rs", "exec ", 1),
     // 判活那一格的说明（「exec 窗口，或进程已成僵尸」）。
     ("platform/proc.rs", "exec ", 1),
+    // 〔MIG-3b 续〕足迹申报表里 `ccm` 远端那一份碰的 rc 文件（`~/.bashrc`，一条**申报路径**，给人看「动过哪份文件」，不产 shell）。
+    ("footprint/registry.rs", ".bashrc", 1),
 ];
 
 const HOME: &str = "platform/shell/";

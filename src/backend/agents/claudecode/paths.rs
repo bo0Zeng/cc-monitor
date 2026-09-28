@@ -55,7 +55,7 @@ pub(crate) fn settings_may_set_base_url(
 }
 
 /// 默认配置根在 `$HOME` 下的名字。
-const HOME_DIR_NAME: &str = ".claude";
+pub(crate) const HOME_DIR_NAME: &str = ".claude";
 
 /// 解析配置根：`$CLAUDE_CONFIG_DIR` 优先，否则 `$HOME/.claude`。
 ///

@@ -15,8 +15,7 @@ use super::*;
 /// 而**没有任何判据钉住它保持一处** —— 加一句读 `~/.ssh/id_ed25519` 或
 /// `known_hosts`，全仓判据一条不会红。
 ///
-/// ⚠ `pubkey.rs` 里那段 `$HOME/.ssh` **刻意不在人群里**：它是拼给**远端**执行的
-/// shell 串（往远端 `authorized_keys` 追加公钥），归 `exec_site_registry` 管。
+/// ⚠ 〔MIG-3b 续〕从前 `pubkey.rs` 里那段拼给**远端**执行的 `$HOME/.ssh` shell 串登记在这里；它随公钥推送进了本机后端。
 /// 人群只取**本机路径构造**（`join(".ssh")` / `expand_tilde("~/.ssh`），
 /// 不取字符串里出现的 `.ssh` —— 否则「远端的事」会被算成「读了用户本机的东西」。
 #[test]
@@ -31,13 +30,8 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     const SSH_SITES: &[(&str, &str, &str, &str)] = &[
         // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh_source.rs` 读 `~/.ssh/config` 那一行走了：导入搬进后端 `dial/ssh_config.rs`
         //   ⇒ monitor 生产段碰本机 `.ssh` 的从此是零处（下面只剩拼给远端的那一行）。
-        (
-            "pubkey.rs",
-            "**远端**（用户的服务器）",
-            "拼一段往远端 `~/.ssh/authorized_keys` 追加公钥的 shell 串",
-            "免密登录的安装动作；命令串本身由 `exec_site_registry` 管（它是 `Builder` 类），\
-                 这里登记是为了让「谁碰 .ssh」这张表**没有沉默的第二类**",
-        ),
+        // 〔MIG-3b 续 · ⑬〕`pubkey.rs` 那一行（拼给远端的 `authorized_keys` 那一串）也走了：公钥推送进了本机后端（`pubkey-push`），
+        //   读本机那份 `.pub` 也在那里 ⇒ monitor 生产段碰 `.ssh` 的**零处**。人群空了，下面那条正控保证尺子不是瞎的。
     ];
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -82,6 +76,12 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     }
     found.sort();
     found.dedup();
+    // 正控：同一把尺子在合成语料上认得这个目录名（人群为空时，这一条防它零命中地绿）。
+    assert!(
+        guard_core::contains_word("let p = home.join(\".ssh\");", &dot)
+            && !guard_core::contains_word("let p = \".sshx\";", &dot),
+        "`contains_word` 认不出 `.ssh` 了 —— 尺子瞎了"
+    );
     let mut declared: Vec<String> = SSH_SITES.iter().map(|(f, _, _, _)| f.to_string()).collect();
     declared.sort();
     assert_eq!(
