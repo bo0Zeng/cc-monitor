@@ -2004,3 +2004,21 @@ function loaded<T extends { loadNow(): void }>(s: T): T {
   s.loadNow();
   return s;
 }
+
+// 〔RESYNC · 主会话 09-27 裁「本机点刷新不清账号缓存：缺陷」〕刷新清的是**这一页那台**的缓存，本机远端同一条（与账号 chip 同）。
+describe("〔RESYNC〕[刷新] 清这一页那台的账号缓存", () => {
+  it("本机页、远端页各点一次 ⇒ 各清各的那台", async () => {
+    const inval = vi.spyOn(accountReads, "invalidateAccountsCache").mockImplementation(() => {});
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [{ label: "devbox", host: "devbox" }] });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const got: unknown[] = [];
+    for (const origin of [LOCAL_ORIGIN, "devbox"]) {
+      setCurrentMachine(origin);
+      const el = await mount();
+      inval.mockClear();
+      el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+      got.push(inval.mock.calls.map((c) => c[0]));
+    }
+    expect(got).toEqual([[LOCAL_ORIGIN], ["devbox"]]);
+  });
+});

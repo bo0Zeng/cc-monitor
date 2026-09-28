@@ -23,12 +23,19 @@ export interface Resynced {
   watchers: number;
 }
 
-const FIELDS = ["added", "removed", "retagged", "watchers"] as const;
+const COUNTS = ["added", "removed", "retagged", "watchers"] as const;
+/** 那台当下的能力事实：monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面只核形状、不读。 */
+const FACTS = ["unavailable", "uncancellable"] as const;
 
-/** 成品恰好是那四个非负整数 ⇒ 收；否则抛（两边版本对不上）。 */
+/** 成品恰好是四个非负整数 ＋ 两格数组 ⇒ 收；否则抛（两边版本对不上）。 */
 export function decodeResynced(origin: Origin, v: unknown): Resynced {
-  if (!isObj(v) || !exactKeys(v, FIELDS) || !FIELDS.every((k) => Number.isInteger(v[k]) && (v[k] as number) >= 0)) {
-    throw unreadable(origin, "resync", "is not exactly {added, removed, retagged, watchers} (four counts)");
+  if (
+    !isObj(v) ||
+    !exactKeys(v, [...COUNTS, ...FACTS]) ||
+    !COUNTS.every((k) => Number.isInteger(v[k]) && (v[k] as number) >= 0) ||
+    !FACTS.every((k) => Array.isArray(v[k]))
+  ) {
+    throw unreadable(origin, "resync", "is not exactly {added, removed, retagged, watchers, unavailable, uncancellable}");
   }
   return { added: v.added as number, removed: v.removed as number, retagged: v.retagged as number, watchers: v.watchers as number };
 }

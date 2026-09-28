@@ -2350,7 +2350,15 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "resync",
         doc_anchor: Some("#### `resync`"),
         codes: &["bad_args"],
-        fields: &["added", "removed", "retagged", "sid", "watchers"],
+        fields: &[
+            "added",
+            "removed",
+            "retagged",
+            "sid",
+            "uncancellable",
+            "unavailable",
+            "watchers",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::resync_face::answer(&r.args)

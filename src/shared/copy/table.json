@@ -19284,6 +19284,21 @@
       "kind": "body",
       "zh": "这台上有 {n} 个固定的会话找不到记录：{names}。没有自动摘掉；点这条提示把它们从固定里摘掉。",
       "args": ["n", "names"]
+    },
+    "tabMenu.reread.label": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "tabMenu.reread.hint": {
+      "kind": "body",
+      "zh": "从上次读到的地方接着读，补上没显示的内容",
+      "args": []
+    },
+    "tabSessionActions.reread.failed": {
+      "kind": "error",
+      "zh": "重新读取失败",
+      "args": []
     }
   }
 }

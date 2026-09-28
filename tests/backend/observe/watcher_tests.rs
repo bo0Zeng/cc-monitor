@@ -3260,6 +3260,10 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
         body[resync_arm..].contains("arm_ears("),
         "「重新对齐」那一臂没有重挂耳朵"
     );
+    assert!(
+        body[resync_arm..].contains("resync_sessions("),
+        "「重新对齐」那一臂没走 `resync_sessions`（对表 ＋ 补读）"
+    );
     let arm_fn = prod.find("fn arm_ears(").expect("`arm_ears` 不在了");
     assert_eq!(
         count(&prod[arm_fn..arm_fn + 400], "ears.arm(debouncer)"),
@@ -4086,12 +4090,26 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         k
     };
     assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
+    // 四格计数 ＋ 两格能力事实（与 hello 同形：`[{command, code}]` · `[op]`）。
+    for k in ["added", "removed", "retagged", "watchers"] {
+        assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
+    }
+    let facts = got["unavailable"]
+        .as_array()
+        .expect("`unavailable` 不是数组");
     assert!(
-        got.as_object()
-            .unwrap()
-            .values()
-            .all(|v| v.as_u64().is_some()),
-        "成品里有一格不是计数：{got}"
+        facts
+            .iter()
+            .all(|e| e["command"].is_string() && e["code"].is_string()),
+        "`unavailable` 的项不是 {{command, code}}：{got}"
+    );
+    let ops = got["uncancellable"]
+        .as_array()
+        .expect("`uncancellable` 不是数组");
+    assert_eq!(
+        ops.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>(),
+        crate::inbound::uncancellable(),
+        "`uncancellable` 不是命令表派生的那一份"
     );
     for bad in [
         serde_json::json!({"sid": 5}),
@@ -4103,4 +4121,57 @@ fn resync_face_reply_matches_the_cross_language_golden() {
             "{bad}"
         );
     }
+}
+
+/// 〔RESYNC · 主会话 09-27 裁 · `设计/15 §4.1b`「每个 tab『重新读取』（从游标补读 jsonl）」〕文件事件丢了一拍（这里干脆不发）：
+/// `resync{sid}` 那一趟从游标把漏的那一行补出来，别的会话不碰。
+#[test]
+fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
+    let dir = std::env::temp_dir().join(format!("ccm-resync-catchup-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (script, _label) = fake_tmux_world(&dir.join("tmux"));
+    let _iso = crate::control::identity_tag::door::isolate_with(&script);
+    let sessions = dir.join("sessions");
+    let proj = dir.join("projects").join("p");
+    std::fs::create_dir_all(&proj).unwrap();
+    let mut a = claude_in_pane(&sessions, "%1", "sid-a", "idle");
+    let mut b = claude_in_pane(&sessions, "%2", "sid-b", "idle");
+    for sid in ["sid-a", "sid-b"] {
+        std::fs::write(proj.join(format!("{sid}.jsonl")), "{\"n\":0}\n").unwrap();
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    for k in [&a, &b] {
+        process_session_added(
+            &sessions.join(format!("{}.json", k.id())),
+            &mut state,
+            &mut sink,
+        );
+    }
+    while rx.try_recv().is_ok() {}
+    for sid in ["sid-a", "sid-b"] {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(proj.join(format!("{sid}.jsonl")))
+            .unwrap();
+        writeln!(f, "{{\"n\":1}}").unwrap();
+    }
+    resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a"));
+    let mut lines: Vec<(String, String)> = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Line {
+            session_id, raw, ..
+        } = f
+        {
+            lines.push((session_id, raw));
+        }
+    }
+    for k in [&mut a, &mut b] {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(lines, vec![("sid-a".to_string(), "{\"n\":1}".to_string())]);
 }

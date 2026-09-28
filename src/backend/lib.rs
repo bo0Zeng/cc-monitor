@@ -612,7 +612,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4t-ccm-new-right**（2026-09-27，E2 续合并那一拍）：行为 —— V153 `new` 只能写在 `--` 右边第一个（`ccm new` 整行交 claude）·
 /// 路由不看 argv0（只有「打头 `--` ＋ 后端词」进后端，其余走 ccm；入口②「`<bin> ccm …`」删）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4t-ccm-new-right";
+///
+/// ★★★ **p4u-resync-offer**（2026-09-27，RESYNC 续合并那一拍）：子命令 −1 `--resync`（CLI 面摘，只留帧面）· `resync` 应答带当下的
+/// `unavailable` / `uncancellable`（与 hello 同一个函数）· `resync{sid}` 顺手从游标补读 jsonl（tab「重新读取」）· SIGUSR1 按 `watcher::LIVE` 一张名单戳。
+pub const BUILD_ID: &str = "p4u-resync-offer";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -890,8 +893,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
-    // 〔RESYNC · V149〕帧面 `resync` 自动派生的 CLI 面（一次性进程里没有 watcher ⇒ `watchers: 0`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--resync",
+    // 〔RESYNC〕`--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
     // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），

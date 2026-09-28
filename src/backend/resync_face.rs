@@ -18,10 +18,14 @@ pub(crate) fn answer(args: &Value) -> Result<Value, (&'static str, String)> {
         }
     };
     let (d, watchers) = crate::observe::watcher::resync(only);
+    // 〔RESYNC · 主会话 09-27 裁〕顺带交回这台**当下**的能力事实（与 hello 那两格同一个函数、同形）：
+    // 握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来（monitor 换进 `chan::wire::Offer`）。
     Ok(json!({
         "added": d.added,
         "removed": d.removed,
         "retagged": d.retagged,
         "watchers": watchers,
+        "unavailable": crate::unavailable_here(),
+        "uncancellable": crate::inbound::uncancellable(),
     }))
 }
