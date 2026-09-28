@@ -133,6 +133,7 @@ export class TabManager {
       beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
       takeSuppressedClick: (sid) => this.dragger.takeSuppressedClick(sid),
       openMenu: (e, sid) => this.menu.open(e, sid),
+      rereadAll: () => this.rereadAll(),
     });
     this.dragger = new TabBarDrag(this.store, this.prefs, barEl, this.bar.tabButtons, {
       refreshTabBar: () => this.refreshTabBar(),
@@ -957,6 +958,15 @@ export class TabManager {
    * 不在 ⇒ 已结束落到「记录没了」；在 ⇒ 「记录没了」翻回已结束（记录回来了，例：同步盘补齐）。
    * 别的态不动（`nextState`：可重连的终端还在，接得回去；活的不走 resume）。
    */
+  /**
+   * 〔REREAD · V155〕栏顶「重新读取」：栏上每个 tab 所在的机器各对齐 ＋ 补读一次（`resyncMachines` 去重、并行）；
+   * 成功的那几台照 `设计/15 §4.1b`「对齐做完」标出记录没了的固定条（与设置页「重新对齐」同一步）。
+   */
+  private async rereadAll(): Promise<void> {
+    const ok = await this.actions.rereadMachines([...this.store.tabs.values()].map((t) => t.origin));
+    for (const o of ok) void this.flagPinsWithoutRecord(o);
+  }
+
   /** 〔RESYNC · `99 §2.1` ㉟①〕那台「重新对齐」过 ⇒ 标出记录没了的固定条、说一句，点了才摘（本体在 `actions`）。 */
   flagPinsWithoutRecord(origin: string): Promise<void> {
     const pinned = [...this.store.tabs.values()].filter((t) => t.pinned && t.origin === origin);

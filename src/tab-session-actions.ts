@@ -57,7 +57,7 @@ import {
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { killSession, saidOfControl } from "./tmux-control";
-import { isIdentityRefusal, offerResyncRetry, resync } from "./resync";
+import { isIdentityRefusal, offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -210,15 +210,20 @@ export class TabSessionActions {
     return false;
   }
 
-  /** 〔RESYNC · V149〕tab「重新读取」：只对这个会话对齐 ＋ 从游标补读（`resync{sid}`）。补出来的行照常经流到达。 */
-  async rereadTab(sid: string): Promise<void> {
-    const tab = this.host.tab(sid);
-    if (!tab) return;
-    try {
-      await resync(tab.origin, sid);
-    } catch (e) {
-      showActionFailureToast(copyText("tabSessionActions.reread.failed"), saidOfControl(e));
+  /**
+   * 〔REREAD · V155〕tab 栏「重新读取」：`origins` 里每台一次整机对齐 ＋ 补读，做完按台说一句。补出来的行照常经流到达。
+   * 回成功的那几台（调用方对它们做「对齐做完」那一步）。
+   */
+  async rereadMachines(origins: Iterable<string>): Promise<string[]> {
+    const rs = await resyncMachines(origins);
+    if (rs.length === 0) {
+      showActionFailureToast(copyText("resync.machines.title"), copyText("resync.machines.none"), { level: "info", durationMs: 4000 });
+      return [];
     }
+    const ok = rs.filter((m) => "r" in m).map((m) => m.origin);
+    const title = ok.length === rs.length ? copyText("resync.machines.title") : copyText("resync.machines.titlePartial");
+    showActionFailureToast(title, resyncMachinesSaid(rs), ok.length === rs.length ? { level: "info", durationMs: 6000 } : undefined);
+    return ok;
   }
 
   /**

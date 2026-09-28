@@ -992,7 +992,10 @@ fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
         if *follow {
             args.push("--follow");
         }
-        args.extend(["--format=%h", "--name-only", "--", rel]);
+        // 〔MIG-2〕sha 那一行打 `@` 标：合并提交若与两个父都不同，`--name-only` **不列文件名**（组合 diff 缺省不出），
+        //   原先「一行 sha、一行路径」交替取 ⇒ 下一个提交的 sha 被当成路径（`git show <sha>:<sha>` 退出 128）。
+        //   有标 ⇒ 没有路径跟着的 sha 自己丢掉（那一提交在历史面上照样有它的父可读），不再错位。
+        args.extend(["--format=@%h", "--name-only", "--", rel]);
         let log = git_read(root, &args);
         let mut cur: Option<String> = None;
         for line in log.lines() {
@@ -1000,9 +1003,10 @@ fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
             if line.is_empty() {
                 continue;
             }
-            match cur.take() {
-                None => cur = Some(line.to_string()),
-                Some(sha) => pairs.push((sha, line.to_string())),
+            if let Some(sha) = line.strip_prefix('@') {
+                cur = Some(sha.to_string());
+            } else if let Some(sha) = cur.take() {
+                pairs.push((sha, line.to_string()));
             }
         }
     }
