@@ -308,11 +308,11 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
 ///
 /// 〔audit-0805 V7-2〕当初点名的十个名字里有五个是**IPC 包装**
 /// （`sftp_write_text` / `sftp_upload` / `deploy_remote_backend` /
-/// `write_remote_mcp_server` / `delete_remote_history_session`）——
+/// `write_remote_mcp_server` / `delete_remote_history_session`）——〔散文墓碑〕
 /// 它们自己**不调写原语**，所以按能力边界派生的人群里**一个都没有**。
 ///
 /// ⚠ 〔步 12·C 收尾 09-20〕上面那句话是 audit-0805 当时的**现打**，留着不改；
-/// 但今天它里面的 `write_remote_mcp_server` 与 `delete_remote_history_session`
+/// 但今天它里面的 `write_remote_mcp_server` 与 `delete_remote_history_session`〔散文墓碑〕
 /// **已经不是 IPC 命令**了（`origin` 归一把它们并进了本机同族那条）。
 /// 它们仍留在下面那张路由表里，而且**必须留** —— 本表这一条判的是
 /// 「**按得到的那一层 ↔ 真正写盘的那一层**」这条边，而合并之后那条边是

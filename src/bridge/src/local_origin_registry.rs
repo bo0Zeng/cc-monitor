@@ -113,7 +113,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
     //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
     ("dial_host.rs", "forward"),
-    // 〔LOC1a · 第四波 4D〕`remote_branch.rs::create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，
+    // 〔LOC1a · 第四波 4D〕`remote_branch.rs` 的 `create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，〔散文墓碑〕
     //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
     ("remote_history.rs", "require_cfg_by_label"),
     // 〔SR1b · 09-24〕`inproc_dial.rs` 那一行（跳板那一跳查配置，只服务 SFTP）**还掉了**：界面进程零 SSH，

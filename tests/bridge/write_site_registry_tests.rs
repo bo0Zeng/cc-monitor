@@ -139,7 +139,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend_host.rs", "spawn_detached", None,
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs::delete_history_session` 一行（**删用户数据**：
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs` 的 `delete_history_session` 一行（**删用户数据**：〔散文墓碑〕
     //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
     //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
     //    〔AR1 · V119〕FN1 之后写面已无那道围栏），
@@ -532,7 +532,6 @@ const MOVED_OUT: &[&str] = &[
     "cc_bus_deploy.rs",
     "history.rs",
     "remote_history.rs",
-    "remote_branch.rs",
     "user_files.rs",
 ];
 

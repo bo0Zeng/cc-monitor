@@ -36,7 +36,7 @@ import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
 import { readSessionIndex, type SessionIndexResult } from "../session-reads";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
-import type { BranchResult } from "../generated/BranchResult";
+import type { BranchResult } from "../session-writes";
 // 〔SE1〕大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
 // K-R45：清单界面两条路共用一份，只有一个住址

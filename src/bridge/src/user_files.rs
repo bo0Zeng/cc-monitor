@@ -1,9 +1,9 @@
 //! 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程够用户文件的唯一开口 —— 它一个字节都不自己落盘。**
 //!
 //! 用户逐字：「现在只允许后端的文件管理部分写文件」；追问后裁「**只管用户的文件**」「**也管本机**」。
-//! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/` ·
-//! 删历史会话，这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
-//! `files-chmod` / `files-delete-session`），本机与远端**同一条路**，只差 origin。
+//! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/`，
+//! 这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
+//! `files-chmod`），本机与远端**同一条路**，只差 origin。〔MIG-3b〕删历史会话不经这扇门了：界面经通道直说那台后端。
 //! 〔RM1d〕代码全景的批注 / 文档关联（V110「引擎只算、文件管理来写」）也经这扇门：计划由全景小程序算
 //! （`panorama_call.rs::edit_via`），落盘是这里的 `put` / `delete`（后者 = `files-delete`）。
 //!
@@ -92,7 +92,7 @@ pub(crate) trait Door {
     /// 不空 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动；不是目录 ⇒ 对端 `refused`。今天唯一的用户：卸 skill 收掉装时建的空目录。
     async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused>;
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
-    async fn delete_session(&self, sid: &str) -> Result<String, String>;
+    // 〔MIG-3b〕`delete_session` 那一问走了：删会话由界面经通道直说那台后端（`src/session-writes.ts`），门不再转交。
     /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
     /// ⚠ 「读不到」与「不存在」在这一问上分不开（权限不够也是 `None`）—— 只给「在不在场」那种展示用。
     async fn stat_kind(&self, path: &str) -> Result<Option<String>, String>;
@@ -410,14 +410,6 @@ impl Door for BackendDoor {
         .await
         .map(|_| ())
         .map_err(Refused::said)
-    }
-
-    async fn delete_session(&self, sid: &str) -> Result<String, String> {
-        let v = self
-            .ask("files-delete-session", serde_json::json!({ "sid": sid }))
-            .await
-            .map_err(Refused::said)?;
-        Ok(path_text(v.get("path").unwrap_or(&serde_json::Value::Null)))
     }
 
     async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {

@@ -22,6 +22,7 @@
  *  - delete 从缓存移除条目，并 -1 project.sessionCount
  */
 
+import { deleteSession } from "../session-writes";
 import { resolveResumeCommand } from "../remote-config";
 import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
@@ -1638,12 +1639,8 @@ export class HistoryView {
       );
       if (!ok2) return;
       try {
-        // 〔步 12·C〕与本机那条是**同一条命令**了，只是 origin 不同。
-        await commands.delete_history_session({
-          origin: e.origin,
-          sessionId: e.sessionId,
-          jsonlPath: e.jsonlPath,
-        });
+        // 〔步 12·C〕与本机那条是**同一条命令**了，只是 origin 不同。〔MIG-3b〕界面经通道直说那台后端（`session-writes.ts::deleteSession`）。
+        await deleteSession(e.origin, e.sessionId);
       } catch (err) {
         showActionFailureToast(copyText("history.delete.remoteFailed"), String(err));
         return;
@@ -1654,11 +1651,7 @@ export class HistoryView {
       );
       if (!ok) return;
       try {
-        await commands.delete_history_session({
-          origin: LOCAL_ORIGIN,
-          sessionId: e.sessionId,
-          jsonlPath: e.jsonlPath,
-        });
+        await deleteSession(LOCAL_ORIGIN, e.sessionId);
       } catch (err) {
         showActionFailureToast(copyText("history.delete.failed"), String(err));
         return;

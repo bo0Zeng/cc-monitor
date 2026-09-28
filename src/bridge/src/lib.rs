@@ -87,7 +87,7 @@ mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给�
 mod port_forward;
 mod profile_installer;
 mod pubkey;
-mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
+// 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
 mod remote_history;
 mod remote_relay; // 〔RM1a〕中转按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
@@ -1465,8 +1465,6 @@ pub fn run() {
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
             acct_iso_deploy::acct_iso_status,
             acct_iso_deploy::acct_iso_shellinit,
-            history::delete_history_session,
-            history::create_branch_session,
             history::resume_history_session,
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             history::new_local_session,

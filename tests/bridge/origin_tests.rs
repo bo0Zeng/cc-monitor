@@ -196,8 +196,8 @@ fn local_and_remote_are_exactly_complementary() {
 //
 //    五处全部出自「同义双份命令合成一条带 origin 的」那一刀 —— 被合掉的那 5 条
 //    远端命令，签名从 `origin: String` 变成了 `host: &str`：
-//      · `remote_branch.rs::create_remote_branch_session`
-//      · `remote_history.rs::delete_remote_history_session`
+//      · `remote_branch.rs` 的 `create_remote_branch_session`〔散文墓碑〕
+//      · `remote_history.rs` 的 `delete_remote_history_session`〔散文墓碑〕
 //      · `stream_remote_history_sessions`〔散文墓碑〕（〔C4d〕随远端会话清单搬进本机后端一起删了）
 //      · `stream_read_remote_session`〔散文墓碑〕（〔LOC1b〕函数也删了：本机远端合成一条 `history·rs::stream_read_session_jsonl`）
 //      · `list_remote_mcp_project_dirs`〔散文墓碑〕（〔SH1 · V137〕本机远端同一条 `mcp-read`，那个远端分支删了）
