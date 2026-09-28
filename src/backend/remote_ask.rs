@@ -190,6 +190,31 @@ pub async fn ask_with(
     remote.run(&r.dial, line, stdin).await
 }
 
+/// 〔MIG-3a · `设计/01 §3.5` · 主会话 09-28 裁〕问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
+/// 参数（JSON 对象）一行写进它的 stdin，交回它 stdout 那一行 JSON（成品本身）。两台之间那几件的枢纽（`assets/hub.rs`）用它；
+/// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
+pub async fn ask_json(
+    machine: &str,
+    cmd: &str,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<Value, String> {
+    let r = lock(table)
+        .get(machine)
+        .cloned()
+        .ok_or_else(|| unreachable_message(machine))?;
+    let flag = crate::cli_flag(cmd);
+    let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
+    let out = remote.run(&r.dial, line, Some(format!("{args}\n"))).await?;
+    serde_json::from_str(out.trim()).map_err(|e| {
+        copy_text(
+            "beRemoteAsk.json.unreadable",
+            &[("machine", machine), ("e", &e.to_string())],
+        )
+    })
+}
+
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────
 
 /// 经本机常驻后端池里那条 SSH 连接跑 capture（`dial::uses::run`，与 monitor 开的链路同一条路，零新连接）。

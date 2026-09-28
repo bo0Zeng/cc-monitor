@@ -15,7 +15,6 @@ import { decodeMcpEdited, decodeMcpRead, putMcpServer, readMcp } from "../src/mc
 import {
   decodeMcpSyncApplied,
   decodeMcpSyncPreview,
-  decodeMcpSyncSource,
   mcpSyncApply,
   mcpSyncPreview,
 } from "../src/mcp-sync-reads";
@@ -38,7 +37,6 @@ describe("金样：后端出的成品，TS 读得懂", () => {
     expect(decodeMcpRead(READ.reply).entries.map((e) => e.scope)).toEqual(["user", "local", "project"]);
     expect(decodeMcpEdited(EDIT.putReply)).toEqual({ path: "<DIR>/.mcp.json", changed: true });
     expect(decodeMcpEdited(EDIT.removeAbsentReply).changed).toBe(false);
-    expect(decodeMcpSyncSource(SYNC.sourceReply).path).toBe("<SRC>/.mcp.json");
     expect(decodeMcpSyncPreview(SYNC.previewReply).rows.map((r) => r.state)).toEqual(["new", "differs", "only-there"]);
     expect(decodeMcpSyncApplied(SYNC.applyReply).names).toEqual(["a", "b"]);
   });
@@ -70,18 +68,20 @@ describe("请求：问对那台、说对那条", () => {
       ["<local>", "mcp-server-put", { projectDir: "/p", name: "s", server: { command: "x" } }],
     ]);
   });
-  it("推拉：来源那台交原文、被写那台看差异（原文原样递过去）· 写只问被写那台", async () => {
-    invokeMock.mockResolvedValueOnce(chanReply(SYNC.sourceReply));
+  // 〔MIG-3a · `01 §3.5` · 主会话 09-28 裁〕★ 推拉**只问本机一次**：枢纽（本机常驻后端）向来源那台取、向被写那台写 —— 界面一个字节的原文都不递。
+  it("推拉：看差异 · 写 各恰好一问、都问本机（枢纽），本机那台在线上是 null", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(SYNC.previewReply));
     await mcpSyncPreview({ from: "<local>", fromDir: "/a", to: "devbox", toDir: "/b" });
     invokeMock.mockResolvedValueOnce(chanReply(SYNC.applyReply));
-    await mcpSyncApply({ to: "devbox", toDir: "/b", sourceText: "S", targetText: null, take: ["a"], overwrite: [] });
+    await mcpSyncApply({ from: "<local>", fromDir: "/a", to: "devbox", toDir: "/b", sourceText: "S", targetText: null, take: ["a"], overwrite: [] });
     const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
-    const src = SYNC.sourceReply as { path: string; text: string };
     expect(calls.map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([
-      ["<local>", "mcp-sync-source", { projectDir: "/a" }],
-      ["devbox", "mcp-sync-preview", { projectDir: "/b", source: src.text, sourcePath: src.path, sameMachine: false }],
-      ["devbox", "mcp-sync-apply", { projectDir: "/b", source: "S", target: null, take: ["a"], overwrite: [] }],
+      ["<local>", "mcp-sync-hub-preview", { from: null, fromDir: "/a", to: "devbox", toDir: "/b" }],
+      [
+        "<local>",
+        "mcp-sync-hub-apply",
+        { from: null, fromDir: "/a", to: "devbox", toDir: "/b", expectSource: "S", target: null, take: ["a"], overwrite: [] },
+      ],
     ]);
   });
 });

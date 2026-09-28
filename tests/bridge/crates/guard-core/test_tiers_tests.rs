@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
     "tests/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
     "tests/bridge/acct_iso_deploy_tests.rs", // 〔MIG-3a〕SCAN → UNIT：扫源码的那几条随 acct-iso 两问进后端删了，只剩纯函数与围栏在 I/O 之前那一条

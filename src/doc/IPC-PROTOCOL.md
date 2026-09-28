@@ -2414,6 +2414,67 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 错误码同 `mcp-server-put`。⚠ **CLI 面也有它**（`--mcp-server-remove`）。
 
+#### `mcp-sync-hub-preview`：MCP 推 / 拉看差异，本机后端当枢纽（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"g1","cmd":"mcp-sync-hub-preview","args":{"from":null,"fromDir":"/home/u/p","to":"devbox","toDir":"/home/u/q"}}
+← {"kind":"reply","id":"g1","ok":true,"data":{"sourcePath":"…","targetPath":"…","sourceText":"…","targetText":null,"rows":[…]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `to` | → | 来源那台 · 被写那台：可达表的键（`remote-reach` 登记的那台的名字），**`null` = 这台自己** |
+| `fromDir` · `toDir` | → | 两台上各自的项目目录 |
+| ← | ← | 被写那台 `mcp-sync-preview` 的成品原样 |
+
+只问本机这一台（`设计/01 §3.5`「不是经前端中继」，主会话 09-28 裁）：本机后端向 `from` 取原文（`mcp-sync-source`）、交 `to` 判（`mcp-sync-preview`）；
+远端那一跳走池里那条 SSH 上的 capture（那台 CLI 面的同名子命令，参数一行进 stdin）。错误码：`bad_args` · `refused`（远端那一跳的原话）· `stale` · `unreachable`（可达表里没有那台）· `io_failed`。⚠ **CLI 面也有它**（`--mcp-sync-hub-preview`）。
+
+#### `mcp-sync-hub-apply`：MCP 推 / 拉写入，本机后端当枢纽（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"g2","cmd":"mcp-sync-hub-apply","args":{"from":null,"fromDir":"/home/u/p","to":"devbox","toDir":"/home/u/q","expectSource":"…","target":null,"take":["a"],"overwrite":[]}}
+← {"kind":"reply","id":"g2","ok":true,"data":{"path":"…","written":true,"names":["a"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `fromDir` · `to` · `toDir` | → | 同 `mcp-sync-hub-preview` |
+| `expectSource` | → | 看差异时那份来源原文：枢纽向 `from` 再取一次，不同 ⇒ `stale`、一个字节不写 |
+| `target` · `take` · `overwrite` | → | 交被写那台 `mcp-sync-apply`（`target` 是它的 CAS 期望） |
+
+写的内容由枢纽自己取（不收界面递来的原文）。错误码同上。⚠ **CLI 面也有它**（`--mcp-sync-hub-apply`）。
+
+#### `skill-install-hub-preview`：skill 装到这台看差异，本机后端当枢纽（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"g3","cmd":"skill-install-hub-preview","args":{"from":"devbox","to":null,"name":"demo"}}
+← {"kind":"reply","id":"g3","ok":true,"data":{"dir":"…","rows":[…],"target":[…],"source":[…]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `to` · `name` | → | 来源那台 · 被写那台（同上，`null` = 这台）· skill 名 |
+| `dir` · `rows` · `target` | ← | 被写那台 `skill-install-plan` 的那几格 |
+| `source` | ← | 来源那台 `skill-read` 读出的那几份（界面照它显示、写时当期望送回） |
+
+来源与目标同一台 ⇒ `refused`。错误码同上。⚠ **CLI 面也有它**（`--skill-install-hub-preview`）。
+
+#### `skill-install-hub-apply`：skill 装到这台写入，本机后端当枢纽（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"g4","cmd":"skill-install-hub-apply","args":{"from":"devbox","to":null,"name":"demo","expectSource":[…],"target":[…],"take":["SKILL.md"],"overwrite":[]}}
+← {"kind":"reply","id":"g4","ok":true,"data":{"dir":"…","written":["SKILL.md"],"chmodFailed":[],"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `to` · `name` | → | 同 `skill-install-hub-preview` |
+| `expectSource` | → | 看差异时那几份（`path` · `text` · `exec`）：枢纽向 `from` 再读一次，不同 ⇒ `stale`、一个字节不写 |
+| `target` · `take` · `overwrite` | → | 交被写那台 `skill-install-apply`（判 · 写 · 记同一台） |
+
+错误码同上。⚠ **CLI 面也有它**（`--skill-install-hub-apply`）。
+
 #### `mcp-sync-source`：推 / 拉的来源那份原文（MIG-3a，09-27，**只读**）
 
 ```text
@@ -3109,7 +3170,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
-**MIG-3a 追加十六条（09-27 · 09-28）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+**MIG-3a 追加二十条（09-27 · 09-28）**：`--mcp-sync-hub-preview` · `--mcp-sync-hub-apply` · `--skill-install-hub-preview` · `--skill-install-hub-apply`（两台之间那几件的枢纽）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 

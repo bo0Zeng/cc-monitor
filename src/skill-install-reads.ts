@@ -1,20 +1,19 @@
 /**
- * 〔MIG-3a · `设计/99 §2.1 ⑬`〕skill「装到这台」与「卸」**走通道**，每一问只问一台：
+ * 〔MIG-3a · `设计/99 §2.1 ⑬` · `01 §3.5` · 主会话 09-28 裁〕skill「装到这台」**只问本机一次**（本机常驻后端当枢纽），「卸」只问被卸那台：
  *
  * | 一步 | 问哪台 | 帧命令 | 成品 |
  * |---|---|---|---|
- * | 来源那份（原文 ＋ 执行位 ＋ 读不出的原因） | `from` | `skill-read` | `{files}` |
- * | 看差异（逐文件四态 ＋ 可疑项 ＋ 这台那几份原文） | `to` | `skill-install-plan` | `{dir, rows, target, …}` |
- * | 写（判 · 写 · 记同一台） | `to` | `skill-install-apply` | `{dir, written, chmodFailed, recordFailed}` |
- * | 卸（只删装时写的那几个） | `to` | `skill-uninstall-apply` | `{dir, deleted, recordFailed, dirRemoved, dirFailed}` |
+ * | 看差异（枢纽向 `from` 读、交 `to` 判） | 本机 | `skill-install-hub-preview` | `{dir, rows, target, source}` |
+ * | 写（枢纽向 `from` 再读一次核对、交 `to` 判 · 写 · 记） | 本机 | `skill-install-hub-apply` | `{dir, written, chmodFailed, recordFailed}` |
+ * | 卸（只删装时写的那几个；只涉一台） | `to` | `skill-uninstall-apply` | `{dir, deleted, recordFailed, dirRemoved, dirFailed}` |
  *
- * 从前是 monitor 的三条 Tauri 命令编排这几跳；判定一直在被写那台，
- * 今天写与记也在它（`src/backend/assets/skill_flow.rs`）。这里零判定：把来源那份原样递给被写那台、按形状严格收
- * （金样 `tests/__fixtures__/skill-flow.golden.json`）。
+ * 前半那一形是界面先问来源那台读、再把原文递给被写那台 —— 经前端中继，撞 `01 §3.5`，主会话 09-28 裁改掉。
+ * 判 · 写 · 记都在后端（`src/backend/assets/hub.rs` · `skill_flow.rs`）；这里零判定、按形状严格收（金样 `skill-flow.golden.json`）。
  */
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
-import type { Origin } from "./ipc/origin";
+import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { hubMachine } from "./mcp-sync-reads";
 import { copyText } from "./copy-table";
 
 /** 来源那台的一个文件（原样；`text` 为 `null` ⇒ 读不出，`why` 说为什么）。 */
@@ -150,27 +149,30 @@ export function decodeSkillUninstalled(v: unknown): SkillUninstallApplied {
 const SKILL_BUDGET_MS = 60_000;
 const said = (e: unknown): Error => new Error(saidOf(e, copyText("mcpReads.backend.tooOld")));
 
-/** 看差异：`from` 那台的 skill `name` 装到 `to` 那台会发生什么（来源那台读、被写那台判）。 */
+/** 看差异：`from` 那台的 skill `name` 装到 `to` 那台会发生什么（枢纽向来源那台读、交被写那台判）。 */
 export async function skillInstallPreview(a: { from: Origin; to: Origin; name: string }): Promise<SkillInstallPreview> {
-  if (a.from === a.to) throw new Error(copyText("skillInstallReads.preview.sameMachine"));
   try {
     const budget = budgetWithin(SKILL_BUDGET_MS);
-    const readBody = jsonBody({ name: a.name });
-    const read = readJson(await chan.call(a.from, "skill-read", readBody, budget));
-    if (!isObj(read) || !Array.isArray(read.files)) throw bad();
-    const source = read.files.map(fileOf);
-    const ask = jsonBody({ name: a.name, source: source.map(({ path, text, exec }) => ({ path, text, exec })) });
-    const plan = readJson(await chan.call(a.to, "skill-install-plan", ask, budget));
-    if (!isObj(plan) || typeof plan.dir !== "string" || !Array.isArray(plan.rows) || !Array.isArray(plan.target))
+    const body = jsonBody({ from: hubMachine(a.from), to: hubMachine(a.to), name: a.name });
+    const v = readJson(await chan.call(LOCAL_ORIGIN, "skill-install-hub-preview", body, budget));
+    if (
+      !isObj(v) ||
+      !sameKeys(v, ["dir", "rows", "target", "source"]) ||
+      typeof v.dir !== "string" ||
+      !Array.isArray(v.rows) ||
+      !Array.isArray(v.target) ||
+      !Array.isArray(v.source)
+    )
       throw bad();
-    return { dir: plan.dir, rows: plan.rows.map(rowOf), source, target: plan.target.map(targetOf) };
+    return { dir: v.dir, rows: v.rows.map(rowOf), source: v.source.map(fileOf), target: v.target.map(targetOf) };
   } catch (e) {
     throw said(e);
   }
 }
 
-/** 写：把勾的那几个原样写进 `to` 那台（`source` / `target` 原样送回看差异时拿到的那两份）。 */
+/** 写：把勾的那几个写进 `to` 那台。`source` / `target` 是看差异时那两份，只当期望送回（写的内容由枢纽向来源那台再读）。 */
 export async function skillInstallApply(a: {
+  from: Origin;
   to: Origin;
   name: string;
   source: SkillFile[];
@@ -179,9 +181,17 @@ export async function skillInstallApply(a: {
   overwrite: string[];
 }): Promise<SkillInstallApplied> {
   try {
-    const body = jsonBody({ name: a.name, source: a.source, target: a.target, take: a.take, overwrite: a.overwrite });
+    const body = jsonBody({
+      from: hubMachine(a.from),
+      to: hubMachine(a.to),
+      name: a.name,
+      expectSource: a.source,
+      target: a.target,
+      take: a.take,
+      overwrite: a.overwrite,
+    });
     const budget = budgetWithin(SKILL_BUDGET_MS);
-    return decodeSkillInstalled(readJson(await chan.call(a.to, "skill-install-apply", body, budget)));
+    return decodeSkillInstalled(readJson(await chan.call(LOCAL_ORIGIN, "skill-install-hub-apply", body, budget)));
   } catch (e) {
     throw said(e);
   }

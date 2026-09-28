@@ -222,7 +222,10 @@ describe("〔AS1〕面板：看差异 → 勾 → 写", () => {
     expect(apply.textContent).toContain("2 条");
     apply.click();
     await settle();
+    // 〔MIG-3a · 主会话 09-28 裁〕写那一问带上来源（`from` / `fromDir`）：枢纽向来源那台再取一次核对、写的内容由它自己取。
     expect(mockInvoke).toHaveBeenCalledWith("mcp_sync_apply", {
+      from: LOCAL_ORIGIN,
+      fromDir: "/p",
       to: "devbox",
       toDir: "/q",
       sourceText: preview.sourceText,

@@ -150,6 +150,8 @@ export interface McpSyncApi {
 
 /** 看差异那一刻定下的一切（写的时候原样用，不再读界面上的输入框）。 */
 interface Pending {
+  from: Origin;
+  fromDir: string;
   to: Origin;
   toDir: string;
   preview: McpSyncPreview;
@@ -340,7 +342,7 @@ export class McpSyncPanel {
       return;
     }
     if (want !== this.seq) return;
-    this.pending = { to, toDir, preview, checked: defaultTake(preview.rows) };
+    this.pending = { from, fromDir, to, toDir, preview, checked: defaultTake(preview.rows) };
     this.renderPreview(from, to);
   }
 
@@ -467,6 +469,8 @@ export class McpSyncPanel {
     let done;
     try {
       done = await this.api.apply({
+        from: p.from,
+        fromDir: p.fromDir,
         to: p.to,
         toDir: p.toDir,
         sourceText: p.preview.sourceText,

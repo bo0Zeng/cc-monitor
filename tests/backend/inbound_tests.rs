@@ -432,6 +432,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "acct-iso-cmd",
         "ccm-probe", // 〔E2〕纯函数，普通 spawn
         "assets-sync",
+        // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
+        "mcp-sync-hub-preview",
+        "mcp-sync-hub-apply",
+        "skill-install-hub-preview",
+        "skill-install-hub-apply",
         "panorama",
         "remote-reach",
         "history-projects",
@@ -614,6 +619,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔E2〕`ccm-probe`：纯函数，普通 spawn。
         "ccm-probe",
         "assets-sync",
+        "mcp-sync-hub-preview",
+        "mcp-sync-hub-apply",
+        "skill-install-hub-preview",
+        "skill-install-hub-apply",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",
         "cancel",
