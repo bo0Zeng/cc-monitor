@@ -64,12 +64,9 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
     "request",
     "〔C2 09-24〕它查的是**跳板那一台**（`cfg.jump` 那个标签），而入参 `cfg` 已经是一台远端的配置 —— \
      本机没有「经跳板连本机」这一形（本机那条路不拨 SSH），`<local>` 结构上走不到这里：\
-     调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。",
-), (
-    "dial_host.rs",
-    "effective_fingerprint",
-    "〔VIS2 09-26〕只被 `request` 调（同上一行）：入参 `cfg` 已是一台远端的配置，这里现读的是**同一台**盘上那份的 \
-     host key 指纹（固化后下一次拨号就严格）；本机那条路不拨 SSH、没有 host key，`<local>` 结构上走不到这里。",
+     调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。\
+     〔MIG-1 收尾〕另一处是**同一台**盘上那份（当 `saved` 交给后端，固化之后下一次拨号就严格；原住 `effective_fingerprint`〔散文墓碑〕，\
+     指纹继承规则随组请求搬进后端 `dial/machine.rs`）—— 同一条理由：本机那条路不拨 SSH、没有 host key。",
 ), (
     "backend/control/backend_control.rs",
     "stop_remote_resident",

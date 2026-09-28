@@ -2511,7 +2511,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         [
             ("call", 1usize),
             ("chan.call", 78usize), // 〔合并 MIG-1 × 主线 eebf51de〕主线 70 ＋ MIG-1 本路 +8（ssh 配置 3 · 端口转发 3 · 列 tmux 1 · 测试连接 1）⇒ 78
-            ("chan.subscribe", 1usize),
+            ("chan.subscribe", 2usize), // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]
         .into_iter()

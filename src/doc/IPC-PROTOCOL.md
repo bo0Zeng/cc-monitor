@@ -418,6 +418,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 | `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
+| `probe` | `ticket`, `cell` | **〔MIG-1 收尾〕测试连接那一趟的一格进度**（`remote-probe` 在跑时才出现）：`cell` 恰好一个键 —— `stage`（拨号阶段行）· `reached`（`ssh` / `hello` / `control`）· `end`（结局，最后一格）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的 `remote-probe` |
 | `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（常驻后端，本机远端同形）会发。`stream` = 〔V141〕claude 请求头 `x-claude-code-session-id` 的值（== 它的 sid，新开 / resume / 分叉同一形；没带 / 过不了段闸 ⇒ 空串），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
@@ -2949,13 +2950,22 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）、**拨一次**（短命探活，不进连接池）、回结局。monitor 的 `test_remote_connection` 退役。
 
 ```text
-→ {"id":"p1","cmd":"remote-probe","args":{"machine":{"host":"10.0.0.2","label":"aya","port":22,"user":"u","keyPath":"","hostKeyFingerprint":"","addresses":[],"jump":""},"saved":null,"jump":null}}
-← {"kind":"reply","id":"p1","ok":true,"data":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"v=1 build=… control=ok(12ms)","message":"SSH 与后端均正常。","stages":[{"kind":"dialing","endpoint":"10.0.0.2:22"},…]}}
+→ {"id":"p1","cmd":"remote-probe","args":{"ticket":"6f1c…","machine":{"host":"10.0.0.2","label":"aya","port":22,"user":"u","keyPath":"","hostKeyFingerprint":"","addresses":[],"jump":""},"saved":null,"jump":null}}
+← {"kind":"probe","ticket":"6f1c…","cell":{"stage":{"kind":"dialing","endpoint":"10.0.0.2:22"}}}
+← …（握手那几行各一格）
+← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"ssh"}}
+← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"hello"}}
+← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"control"}}
+← {"kind":"probe","ticket":"6f1c…","cell":{"end":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"v=1 build=… control=ok(12ms)","message":"SSH 与后端均正常。"}}}
+← {"kind":"reply","id":"p1","ok":true,"data":null}
 ```
 
-三步：拨号 ＋ 鉴权 ＋ exec 那台后端（流模式）→ 读首行 hello（上限 8 s）→ 那台认 `ping` ⇒ 同一条流上往返一次（上限 5 s）。每步结论都进回包（部分成功照样回）：
-`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）；`stages` = 拨号阶段行（与界面 `ConnectStage` 同形），**结局里一并交回**（原先经 Tauri `Channel` 边拨边推）。
-错误码：`invalid_args`（缺 `machine` / 缺 host · user / 端口不对）· `bad_jump` · `failed`（链路那一侧回话读不懂）。
+三步：拨号 ＋ 鉴权 ＋ exec 那台后端（流模式）→ 读首行 hello → 那台认 `ping` ⇒ 同一条流上往返一次。本后端零定时器：**期限归发起方**（界面给 15 s，到点撤单）。
+〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe`（见出方向那张表），`cell` 恰好一个键 ——
+`stage`（拨号阶段行，与界面 `ConnectStage` 同形）· `reached`（`ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了）· `end`（结局，**最后一格**）；
+应答本身不带体。`ticket` 是界面交来的票（1..=64 个 `[A-Za-z0-9-]`，进度流 `probe-progress/<ticket>` 的名字），本后端只当不透明的串回填。
+结局里每步结论都在（部分成功照样回）：`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）。界面到点没等到 `end` ⇒ 最后收到的那一格说得出停在哪一段。
+错误码：`invalid_args`（缺 `ticket` / `machine` / 缺 host · user / 端口不对）· `bad_jump` · `failed`（链路那一侧回话读不懂 · 发起它的那条连接关了）。**只在帧面**（硬臂：要拿本连接的应答通道）。
 
 #### `forward-stop`：停一条转发（MIG-1，09-28）
 

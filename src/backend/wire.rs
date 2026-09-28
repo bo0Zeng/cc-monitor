@@ -592,6 +592,17 @@ pub enum Frame {
         end: Option<TransferEnd>,
     },
 
+    /// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕**测试连接那一趟的一格进度**（`dial/probe.rs`，`remote-probe` 在跑时才出现）。
+    ///
+    /// `ticket` = 界面发起时交来的票（进度流 `probe-progress/<ticket>` 的名字，本后端只当不透明的串回填）；`cell` 恰好一个键：
+    /// `stage`（握手那几行，与界面 `ConnectStage` 同形）· `reached`（`ssh` / `hello` / `control` 走完了那一段）· `end`（结局，最后一格）。
+    /// 🔴 **不丢**：走应答那条独立通道（`end` 丢了，界面就说不出结局；中间格丢了，就说不清停在哪一段）。
+    /// 旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    Probe {
+        ticket: String,
+        cell: serde_json::Value,
+    },
+
     /// 〔TAP · V124 · `设计/20 §8`〕**中转抄出来的一个 SSE 事件**（或一个响应的收尾）。
     ///
     /// 常驻后端会发（中转住在它进程里，`relay::host`；本机远端同形，V139）。
@@ -719,6 +730,8 @@ impl Frame {
             Frame::LinkEnd { .. } => false,
             // 〔SR1b〕传输的进度 / 终局：丢了终局那一帧，看的人永远等下去；也走应答通道。
             Frame::Transfer { .. } => false,
+            // 〔MIG-1 收尾〕测试连接的进度 / 结局：同上（走应答通道）。
+            Frame::Probe { .. } => false,
             // 〔TAP〕SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对，V24），丢了由位置号 `n` 原位说出来。
             // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
             Frame::Tap { .. } => true,
@@ -752,6 +765,7 @@ impl Frame {
             Frame::LinkData { link, .. } => ("link_data", Some(link.clone())),
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
+            Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
             Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
         };
         LostFrame { kind, subject }

@@ -110,8 +110,7 @@ pub(crate) fn forward_request(dial: &Value, spec: &Spec) -> Result<DialRequest, 
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::parse_request_value(&v)
-        .map_err(|e| crate::common::contract::malformed(&format!("dial request unreadable: {e}")))
+    crate::dial::parse_request_value(&v).map_err(|(_, m)| m)
 }
 
 /// 账上一条。**丢掉它 = 收掉这条转发**（`pump` 是 [`AbortOnDrop`]，它手里攥着链路那一侧的任务）。
@@ -171,9 +170,10 @@ where
         .map(|r| r.dial.clone());
     let dial = match reached {
         Some(d) => d,
+        // 界面交来的那台原样的配置（线上那一份拨号的形状，组法在 `dial/machine.rs::resolve`）；先读一遍，坏了当场拒。
         None if args.get("machine").is_some_and(|m| !m.is_null()) => {
-            let (m, saved, jump) = super::machine::from_args(args)?;
-            super::machine::request(&m, saved.as_ref(), jump.as_ref(), "forward", json!({}))?
+            super::machine::from_args(args)?;
+            json!({ "machine": args.get("machine"), "saved": args.get("saved"), "jump": args.get("jump") })
         }
         None => return Err(("unreachable", remote_ask::unreachable_message(&spec.origin))),
     };

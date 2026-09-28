@@ -238,11 +238,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/bridge/dial_host_tests.rs",
         "src/backend/dial/mod.rs",
-        "★〔C2 · `设计/05 §13` 09-24 新增〕**拨号请求的键两侧同形** —— \
-         `dial_host::tests::the_request_keys_are_the_ones_the_proxy_reads`。写侧是 monitor 的 \
-         `dial_host::request`（`serde_json::json!` 拼的蛇形键），读侧是后端 `dial::DialRequest` 的字段。\
-         失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，代理照样读得动、那一项悄悄变成缺省 \
-         （竞速只剩一个地址 · 跳板被当成直连 · 用法退回长流），两侧各自的判据全绿。",
+        "★〔C2 · `设计/05 §13` 09-24 新增 · 〔MIG-1 收尾〕改判〕**本侧写的可选格后端真读** —— \
+         `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request` \
+         （这台原样的配置 ＋ `command` / `agent_sock` 等可选格），可选格的读侧是后端 `dial::DialRequest` 的字段。\
+         失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，后端照样读得动、那一项悄悄变成缺省，两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/dial_host_tests.rs",
+        "src/backend/dial/machine.rs",
+        "★〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕**这台原样的配置交过去的那几格两侧同形** —— \
+         `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request`（`machine` · `saved` · \
+         `jump` · `prefer` · `use`），读侧是后端 `dial/machine.rs::resolve`（组拨号请求只在那里）。失效方向同上一行：写错一格名， \
+         后端读成缺席（`saved` 缺 ⇒ 固化之后的重连照旧 TOFU · `prefer` 缺 ⇒ 上次赢的那条不排首），两侧各自的判据全绿。",
     ),
     (
         "monitor→backend",

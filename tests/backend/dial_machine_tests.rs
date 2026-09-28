@@ -42,6 +42,7 @@ fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
         &form,
         Some(&saved_same),
         None,
+        None,
         "stream",
         json!({"stages": true}),
     )
@@ -60,13 +61,13 @@ fn the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint() {
         (r["use"].as_str(), r["stages"].as_bool()),
         (Some("stream"), Some(true))
     );
-    let r = request(&form, Some(&saved_moved), None, "stream", json!({})).unwrap();
+    let r = request(&form, Some(&saved_moved), None, None, "stream", json!({})).unwrap();
     assert_eq!(
         r["host_key_fingerprint"],
         Value::Null,
         "换了 host 不许继承旧指纹"
     );
-    crate::dial::parse_request_value(&r).expect("组出来的请求后端自己读得动");
+    serde_json::from_value::<crate::dial::DialRequest>(r).expect("组出来的请求后端自己读得动");
 }
 
 #[test]
@@ -74,11 +75,11 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
     let via = m(json!({"host": "10.0.0.2", "label": "aya", "user": "u", "jump": "bastion"}));
     let bastion =
         m(json!({"host": "b.example", "label": "bastion", "user": "j", "jump": "elsewhere"}));
-    let r = request(&via, None, Some(&bastion), "forward", json!({})).unwrap();
+    let r = request(&via, None, Some(&bastion), None, "forward", json!({})).unwrap();
     assert_eq!(r["jump"]["host"], "b.example");
     assert_eq!(r["jump"]["label"], "bastion");
     assert_eq!(
-        request(&via, None, None, "forward", json!({}))
+        request(&via, None, None, None, "forward", json!({}))
             .unwrap_err()
             .0,
         "bad_jump",
@@ -86,17 +87,95 @@ fn a_jump_must_be_handed_over_and_must_not_point_at_itself() {
     );
     let wrong = m(json!({"host": "x", "label": "other", "user": "j"}));
     assert_eq!(
-        request(&via, None, Some(&wrong), "forward", json!({}))
+        request(&via, None, Some(&wrong), None, "forward", json!({}))
             .unwrap_err()
             .0,
         "bad_jump"
     );
     let selfish = m(json!({"host": "10.0.0.2", "label": "aya", "user": "u", "jump": "aya"}));
     assert_eq!(
-        request(&selfish, None, Some(&selfish), "forward", json!({}))
+        request(&selfish, None, Some(&selfish), None, "forward", json!({}))
             .unwrap_err()
             .0,
         "bad_jump",
         "环"
+    );
+}
+
+#[test]
+fn a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first() {
+    // 〔MIG-1 收尾〕线上交来的是一台原样的配置（monitor 不再解析地址 / 组请求）：组法只在这里。
+    let wire = json!({
+        "machine": {"host": "10.0.0.2", "user": "u", "addresses": ["aya.lan", "[fe80::1]:2200"]},
+        "prefer": {"host": "fe80::1", "port": 2200},
+        "use": "capture",
+        "command": "x",
+        "agent_sock": "/run/agent",
+    });
+    let r = resolve(&wire).unwrap();
+    let order: Vec<(String, u16)> = r
+        .race_order()
+        .into_iter()
+        .map(|e| (e.host, e.port))
+        .collect();
+    assert_eq!(
+        order,
+        vec![
+            ("fe80::1".into(), 2200),
+            ("10.0.0.2".into(), 22),
+            ("aya.lan".into(), 22)
+        ],
+        "上次赢的那条排首，其余保序"
+    );
+    assert_eq!(r.use_, crate::dial::Use::Capture);
+    assert_eq!(
+        (r.command.as_str(), r.agent_sock.as_deref()),
+        ("x", Some("/run/agent"))
+    );
+    // 上次赢的那条已不在这台的地址里（配置改过）⇒ 顺序不动。
+    let mut stale = wire.clone();
+    stale["prefer"] = json!({"host": "gone.lan", "port": 22});
+    let order: Vec<String> = resolve(&stale)
+        .unwrap()
+        .race_order()
+        .into_iter()
+        .map(|e| e.host)
+        .collect();
+    assert_eq!(order, vec!["10.0.0.2", "aya.lan", "fe80::1"]);
+    // 没有 `machine` ⇒ 拒（线上不再收组好的那一形）。
+    assert_eq!(
+        resolve(&json!({"host": "10.0.0.2", "user": "u", "port": 22}))
+            .map(|_| ())
+            .map_err(|(c, _)| c),
+        Err("invalid_args")
+    );
+}
+
+#[test]
+fn the_ack_says_how_strict_the_composed_request_was() {
+    // 〔MIG-1 收尾〕界面判「要不要自动固化」看 ack 的 `strict` / `jump_strict`，不再自己重推指纹继承（规则只在本文件）。
+    let strict_of = |wire: Value| crate::dial::uses::strictness(&resolve(&wire).unwrap());
+    let form = json!({"host": "10.0.0.2", "label": "aya", "user": "u", "jump": "bastion"});
+    let bastion = |fp: &str| json!({"host": "b.lan", "label": "bastion", "user": "u", "hostKeyFingerprint": fp});
+    assert_eq!(
+        strict_of(json!({"machine": form, "jump": bastion("")})),
+        (false, false),
+        "谁都没带指纹 ⇒ 两台都 TOFU"
+    );
+    assert_eq!(
+        strict_of(
+            json!({"machine": form, "saved": {"host": "10.0.0.2", "user": "u", "hostKeyFingerprint": "SHA256:s"},
+            "jump": bastion("SHA256:j")})
+        ),
+        (true, true),
+        "目标从同一个 host 的已保存那份继承了指纹 ⇒ 严格；跳板自己带了 ⇒ 严格"
+    );
+    assert_eq!(
+        strict_of(
+            json!({"machine": form, "saved": {"host": "10.9.9.9", "user": "u", "hostKeyFingerprint": "SHA256:s"},
+            "jump": bastion("  ")})
+        ),
+        (false, false),
+        "换了 host 不继承；空白指纹不算"
     );
 }

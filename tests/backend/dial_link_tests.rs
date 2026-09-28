@@ -320,7 +320,7 @@ async fn open_refuses_what_it_should_with_a_code() {
         Frame::Reply { code, .. } => code.unwrap_or_default(),
         _ => String::new(),
     };
-    let dial = serde_json::json!({"host":"127.0.0.1","port":1,"user":"u","key_path":null,"host_key_fingerprint":null});
+    let dial = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u"}});
     assert_eq!(
         code(table.open("a", &serde_json::json!({}))),
         "invalid_args"
@@ -433,8 +433,8 @@ async fn a_real_dial_to_a_dead_port_answers_one_failed_ack_on_the_link() {
         &serde_json::json!({
             "link": "D",
             "window": 1 << 20,
-            "dial": {"host":"127.0.0.1","port":port,"user":"u","key_path":null,
-                     "host_key_fingerprint":null,"use":"capture","command":"true",
+            "dial": {"machine": {"host":"127.0.0.1","port":port,"user":"u"},
+                     "use":"capture","command":"true",
                      "capture":{"max_bytes":16}}
         }),
     );
