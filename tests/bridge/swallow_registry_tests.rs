@@ -118,6 +118,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", 1, Why::PeerGone, ""),
     // 〔RESYNC〕+2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", 1, Why::PeerGone, ""),
+    // 〔RESYNC 续〕+1：SIGUSR1 戳名单上的每一份（`PokeSlot` 并进来；那一份可能正在退出）。
+    ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Poke);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = w.send(WatchEvent::Resync { only: only.map(str::to_string), done: tx.clone(), });", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxProbeDue);", 1, Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(target.death_event(pid));", 1, Why::PeerGone, ""),
