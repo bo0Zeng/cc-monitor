@@ -699,6 +699,11 @@
       "zh": "那台机器上的后端太旧，不认常驻那条命令。",
       "args": []
     },
+    "rsRemoteResident.ensure.unsupported": {
+      "kind": "error",
+      "zh": "接不上：那台机器不是 Unix。远端只支持 Unix 机器，后端要在那里常驻。那台说：{why}",
+      "args": ["why"]
+    },
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
       "zh": "那台机器起常驻后端的回答读不懂：{e}",
