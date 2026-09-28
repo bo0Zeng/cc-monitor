@@ -594,8 +594,6 @@ async fn serve_listening(
     defaults: (bool, bool, bool),
     self_record: bool,
 ) {
-    use std::sync::Arc;
-
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
