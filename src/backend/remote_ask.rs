@@ -409,14 +409,24 @@ where
     }
     if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
         let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-        let envelope = serde_json::from_str::<Value>(stderr.trim()).ok();
-        let said = envelope
-            .as_ref()
-            .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-            .unwrap_or_else(|| stderr.trim().to_string());
-        let code = envelope
-            .as_ref()
-            .and_then(|e| e.get("code").and_then(Value::as_str).map(str::to_string));
+        // 那台 CLI 面的失败信封（`cli_control::emit_err` 那一份）：读得出来就把码与原话都取出来。
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            code: Option<String>,
+            message: Option<String>,
+        }
+        let envelope = serde_json::from_str::<Envelope>(stderr.trim()).ok();
+        let (code, said) = match envelope {
+            Some(Envelope {
+                code,
+                message: Some(m),
+            }) => (code, m),
+            Some(Envelope {
+                code,
+                message: None,
+            }) => (code, stderr.trim().to_string()),
+            None => (None, stderr.trim().to_string()),
+        };
         return Err(Said {
             code,
             message: copy_text("beRemoteAsk.run.failed", &[("said", &said.to_string())]),
