@@ -2,7 +2,7 @@
 //! 〔V114 · 2026-09-25〕原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
 //!
 //! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream/`：`accounts/` 是账号**域**，
-//! 它下面「挂在 `--relay` 进程上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
+//! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
 //!
@@ -53,7 +53,7 @@
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（上游选择搬家带过来的）
                       // 〔RM1a · 第四波〕这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
                       // 上游选择自己的状态文件，不是用户文件 ⇒ `readonly_guard` 第四层登记它，只从 `inbound.rs` 进来。
-                      // ⚠ 它**不在** `--relay` 那条启动路径上：中转进程里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
+                      // ⚠ 它**不在**中转那条启动路径上：中转里的上游选择仍然只读（`creds`），写只在流模式的帧面上发生。
 pub(crate) mod file_face;
 // 〔US1 · 4D〕起会话那一发走哪、注入什么（帧面 `launch-endpoint`）· 界面「这几个号在表里有没有行」（`apikey-routing`）——
 // `设计/20 §3.2` 那张表的唯一住址（先前住 monitor `payload::relay_endpoint_for`〔散文墓碑〕）。
@@ -125,34 +125,27 @@ impl Upstreams {
     }
 }
 
-/// **`--relay` 这个进程的装配口**：中转的入口 ＋ 上游选择那只手。`main.rs` 的 `--relay` 那一臂调它。
+/// 〔RL1 · V107〕**常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处调它。
 ///
 /// # 它为什么住上游选择（而不是中转）
 ///
 /// 装配要同时叫得出两层的名字。依赖方向只许上游选择 → 中转（上游选择本来就用中转的契约类型），
 /// 反过来就是「中转层里有账号」—— 那正是用户 2026-09-24 那句话要拆掉的。
-/// ⇒ 中转的 `run` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；中转的生产段里
+/// ⇒ 中转的 `host` 收一个 `&dyn Startup`，本函数把 [`Boot`] 递进去；中转的生产段里
 ///   **一个上游选择的名字都没有**（`relay::upstream_selection_guard` ㈢ 零命中）。
 ///
-/// ⚠ 它**不是**第二条入口：`--relay` 只有这一臂，本函数一行逻辑都没有，只做接线。
-pub fn run_relay(home: &std::path::Path, args: &[String]) -> i32 {
-    crate::relay::run(home, args, &Boot)
-}
-
-/// 〔RL1 · V107〕**流模式常驻后端里的中转装配口**：中转的 `host` ＋ 上游选择那只手。`main.rs` 流模式那一处调它。
-///
-/// 与 [`run_relay`] 同一条理由住上游选择：装配要同时叫得出两层，依赖只许上游选择 → 中转。
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
-/// 取值器是**真环境**（与 `--relay` 那条 `run` 同一个来源）。回一句给宿主日志看的话。
+/// 取值器是**真环境**。回一句给宿主日志看的话。
+/// 〔DEL〕先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
 /// 〔TAP · V124〕tee 的落点是进程级那一个 tap 口（`crate::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （`设计/20 §11` I2：② 不碰响应体）。
 pub fn host_relay(home: &std::path::Path) -> String {
     crate::relay::host(&|k| std::env::var(k).ok(), home, &Boot, crate::tap::port()).to_string()
 }
 
-/// 上游选择在 `--relay` 启动路径上交给中转的那一只手（[`Startup`]）。
+/// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）。
 ///
-/// ★ 中转**叫不出**它的名字：[`run_relay`] 把它递进中转的 `run`，中转只见得到
+/// ★ 中转**叫不出**它的名字：[`host_relay`] 把它递进中转的 `host`，中转只见得到
 /// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
 pub(crate) struct Boot;
 

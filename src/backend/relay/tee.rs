@@ -280,10 +280,6 @@ impl TeeSink {
         }
     }
 
-    pub(crate) fn to_stdout() -> Self {
-        Self::new(Box::new(std::io::stdout()))
-    }
-
     /// 〔TAP · V124〕**tap 口**落点：常驻后端进程内那一份中转用它（`listen::host`）。
     ///
     /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注）—— NDJSON 行写进去当场污染协议；

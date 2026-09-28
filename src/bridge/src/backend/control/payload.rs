@@ -726,7 +726,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 
 /// 本机中转的端口。**值只住共享 crate**（`relay_route_core::PORT`）：起本机后端时以 `CCM_RELAY_PORT`
 /// 交给它（`local_backend_host::relay_host_envs`），远端 `--resident-ensure` 起常驻后端时交的也是它；
-/// 后端 `src/backend/relay/server.rs::DEFAULT_PORT` 是同一个 const。〔US1〕先前两处各写一个 8788、零对拍。
+/// 〔US1〕先前两处各写一个 8788、零对拍。
 pub const RELAY_PORT: u16 = relay_route_core::PORT;
 
 /// 〔RL1〕载荷里那条中转地址（`EnvOp::ExportRelayBaseUrl`）的 fail-closed 校验：必须是构造口产得出的形状

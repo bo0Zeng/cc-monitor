@@ -2552,9 +2552,10 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     ),
     (
         "src/backend/relay/listen.rs",
-        &["C4", "C5", "X2"],
-        &["读环境"],
-        "自己 `TcpListener::bind` 端口（`C5`）、自己 `std::env::var` 读环境（`C4`）。\
+        &["C5", "X2"],
+        &[],
+        "自己 `TcpListener::bind` 端口（`C5`）。〔DEL〕先前还自己 `std::env::var` 读环境（`C4`，`--relay` 入口那一处）—— 那一形删了，\
+         进程内那一形的取值器是宿主递进来的。\
          按 `设计/05 §2.1` `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
          这一份**语义上就该在外面**，不是「等它变干净」。\
          🔴 **`X2` 是 `P16`（2026-09-22）新加的一条，而它是「变干净」的反面**：\
@@ -2911,7 +2912,9 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
         RELAY_LEFT_OUTSIDE,
         "`relay/` 今天还进不来的那几份（面 B）",
         2,
-        1,
+        // 〔DEL〕`C4` 判词处数 1 → 0：`relay/listen.rs` 那一处读环境（`--relay` 入口）随那一形删了；
+        //   那一份仍被 `C5` / `X2` 咬 ⇒ 仍圈不进来（份数 2 不变）。
+        0,
     );
 }
 
