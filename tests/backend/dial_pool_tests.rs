@@ -200,7 +200,7 @@ fn the_identity_ignores_what_a_link_uses_it_for() {
         for (k, x) in e.as_object().unwrap() {
             v[k] = x.clone();
         }
-        identity(&super::super::parse_request_value(&v).unwrap())
+        identity(&serde_json::from_value::<super::super::DialRequest>(v).unwrap())
     };
     let id0 = with("{}");
     // 不进身份的：用法 · 命令 · 阶段 · 探活 · agent 套接字。

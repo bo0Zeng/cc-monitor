@@ -141,6 +141,23 @@ pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<()
     .map_err(refused)
 }
 
+/// 建一层目录（`files-mkdir`，父目录要在）。
+pub(crate) fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
+    d.ask("files-mkdir", json!({ "root": root, "rel": rel }))
+        .map(|_| ())
+        .map_err(|e| refused(e).said())
+}
+
+/// 建一条链接（`files-link`：目标文本原样，链接那条路径过根底下的解析；已在 ⇒ 拒）。
+pub(crate) fn link(d: &dyn Door, root: &str, rel: &str, target: &str) -> Result<(), String> {
+    d.ask(
+        "files-link",
+        json!({ "root": root, "rel": rel, "target": target }),
+    )
+    .map(|_| ())
+    .map_err(|e| refused(e).said())
+}
+
 /// 改名（同一个根底下，`files-rename`）。
 pub(crate) fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
     d.ask(

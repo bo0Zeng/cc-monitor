@@ -1,7 +1,7 @@
 //! 〔C2 · `设计/05 §13`〕拨号宿主（`dial_host`）的判据。〔SR1a〕起它不再起任何进程：链路开在本机常驻后端里。
 //!
-//! 买到：请求按蛇形键写（与后端 `dial::DialRequest` 读的那一侧逐键对拍，异源：后端源码）·
-//! 只放私钥**路径**不放本体 · 竞速顺序 last-good 排首 · 跳板环当场拒 · **没有进程内回落、也不起代理进程**
+//! 买到：〔MIG-1 收尾〕请求是这台原样的配置（与后端 `dial/machine.rs::resolve` 读的那几格逐键对拍，异源：后端源码）·
+//! 只放私钥**路径**不放本体 · 上次赢的那条当 `prefer` 交（配置改过就不交）· **没有进程内回落、也不起代理进程**
 //! （本文件生产段零 `russh`、零起进程；monitor 生产段 `--dial` 那一套零命中）。
 //! **买不到**：真后端 × 真 sshd（读数脚本 `tests/evidence/SR1a-link-loopback.py`）。
 
@@ -20,97 +20,91 @@ fn cfg(label: &str) -> RemoteConfig {
     }
 }
 
-/// 请求的键 == 后端 `DialRequest` 读的键（两向，只看本侧会写的那些）。异源：从后端源码里现抠字段名。
+/// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `dial/machine.rs::resolve` 读的那几格
+/// （`machine` · `saved` · `jump` · `prefer` · `use`）＋ 其余照进 `DialRequest` 的可选格。异源：从后端源码里现抠。
 #[test]
-fn the_request_keys_are_the_ones_the_proxy_reads() {
-    let req = request(
-        &cfg("c2-dial-host-a"),
-        "stream",
-        serde_json::json!({"command": "x"}),
-    )
-    .expect("造不出请求");
+fn the_request_hands_over_the_machine_as_is() {
+    let c = cfg("c2-dial-host-a");
+    let req = request(&c, "stream", serde_json::json!({"command": "x"})).expect("造不出请求");
     let written: std::collections::BTreeSet<String> =
         req.as_object().unwrap().keys().cloned().collect();
+    let machine_rs = include_str!("../../src/backend/dial/machine.rs");
+    let resolve = &machine_rs[machine_rs
+        .find("pub(crate) fn resolve(")
+        .expect("后端没有 resolve 了")..];
+    let resolve = &resolve[..resolve.find("\n}\n").unwrap()];
+    for k in ["machine", "saved", "jump", "prefer", "use"] {
+        assert!(written.contains(k), "请求里缺 `{k}`");
+        assert!(
+            resolve.contains(&format!("\"{k}\"")),
+            "后端 resolve 不读 `{k}` —— 两端契约漂了"
+        );
+    }
     let backend = include_str!("../../src/backend/dial/mod.rs");
     let body = &backend[backend
         .find("pub struct DialRequest {")
         .expect("后端没有 DialRequest 了")..];
     let body = &body[..body.find("\n}\n").unwrap()];
-    // 后端字段名（`use_` 线上叫 `use`）
-    let read: std::collections::BTreeSet<String> = body
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("pub "))
-        .filter_map(|l| l.split(':').next())
-        .map(|f| {
-            if f == "use_" {
-                "use".to_string()
-            } else {
-                f.to_string()
-            }
-        })
-        .collect();
-    for k in &written {
+    for extra in ["command", "agent_sock"] {
+        assert!(written.contains(extra), "请求里缺 `{extra}`");
         assert!(
-            read.contains(k),
-            "本侧写了 `{k}`，后端 DialRequest 不读它 —— 两端契约漂了"
+            body.contains(&format!("pub {extra}:")),
+            "后端 DialRequest 不读 `{extra}`"
         );
     }
-    for must in [
-        "host",
-        "port",
-        "user",
-        "key_path",
-        "host_key_fingerprint",
-        "command",
-        "endpoints",
-        "use",
-        // 〔SR1a〕常驻后端活得比界面长 ⇒ agent 套接字由界面交过去（缺席时是 null，键照样在）。
-        "agent_sock",
-    ] {
-        assert!(written.contains(must), "请求里缺 `{must}`");
-    }
+    // 这台原样：camelCase 的那一格，地址行不解析、原样过去（组法在后端）。
+    assert_eq!(
+        req["machine"]["addresses"],
+        serde_json::json!(["10.0.0.9", "[::1]:22"])
+    );
+    assert_eq!(req["machine"]["keyPath"], "/home/u/.ssh/id_ed25519");
+    assert!(
+        req.get("endpoints").is_none() && req.get("host").is_none(),
+        "本侧不再组请求"
+    );
     // 🔴 凭据面 `K11`：只放路径，不放私钥本体
-    assert_eq!(req["key_path"], "/home/u/.ssh/id_ed25519");
     assert!(
         !req.to_string().contains("PRIVATE KEY"),
         "请求里出现了私钥本体的样子"
     );
 }
 
-/// 竞速顺序：last-good 排首，其余保序（地址解析与 `RemoteConfig::endpoints` 同一份）。
+/// 上次赢的那条：结构化地当 `prefer` 交过去（排首由后端做）；这台的地址配置改过 ⇒ 不再交。
 #[test]
-fn the_race_order_puts_last_good_first() {
+fn the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged() {
     let c = cfg("c2-dial-host-b");
     let req = request(&c, "stream", serde_json::json!({})).unwrap();
-    let order = |r: &serde_json::Value| -> Vec<String> {
-        r["endpoints"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|e| format!("{}:{}", e["host"].as_str().unwrap(), e["port"]))
-            .collect()
-    };
-    assert_eq!(order(&req), ["h.example:2222", "10.0.0.9:2222", "::1:22"]);
+    assert_eq!(req["prefer"], serde_json::Value::Null, "没连过 ⇒ 不交");
     crate::ssh_source::record_last_good(
-        &c.origin_label(),
+        &c,
         &crate::ssh_source::Endpoint {
             host: "10.0.0.9".into(),
             port: 2222,
         },
     );
     let req = request(&c, "stream", serde_json::json!({})).unwrap();
-    assert_eq!(order(&req), ["10.0.0.9:2222", "h.example:2222", "::1:22"]);
+    assert_eq!(
+        req["prefer"],
+        serde_json::json!({"host": "10.0.0.9", "port": 2222})
+    );
+    let mut moved = c.clone();
+    moved.addresses = vec!["10.0.0.7".into()];
+    let req = request(&moved, "stream", serde_json::json!({})).unwrap();
+    assert_eq!(
+        req["prefer"],
+        serde_json::Value::Null,
+        "地址配置改过 ⇒ 上次那条失效"
+    );
 }
 
-/// 跳板指向自己 ⇒ 当场拒（fail-closed，不去拨）。
+/// 跳板指向自己：本侧不去查它（`jump` 交 `null`），这台原样过去 —— 环由后端当场拒（`dial_machine_tests` 的跳板那条，fail-closed）。
 #[test]
-fn a_jump_to_itself_is_refused_before_dialing() {
+fn a_jump_to_itself_is_not_looked_up_here() {
     let mut c = cfg("c2-dial-host-c");
     c.jump = Some("c2-dial-host-c".into());
-    assert_eq!(
-        request(&c, "stream", serde_json::json!({})).unwrap_err(),
-        "跳板配置指向自己（环）"
-    );
+    let req = request(&c, "stream", serde_json::json!({})).unwrap();
+    assert_eq!(req["jump"], serde_json::Value::Null);
+    assert_eq!(req["machine"]["jump"], "c2-dial-host-c");
 }
 
 /// 🔴 **没有退路**（`D11`）：宿主生产段里零 `russh`、**零起进程**（〔SR1a〕C2 那一版恰好一处，起的是
@@ -134,8 +128,7 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
     for entry in [
         "pub(crate) async fn open_stream(",
         "pub(crate) async fn capture(",
-        "pub(crate) async fn probe(",
-        "pub(crate) async fn forward(",
+        // 〔MIG-1 续〕`probe(` 那一格随测试连接搬进本机后端删了。
     ] {
         let at = prod
             .find(entry)
@@ -263,25 +256,7 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         (ex.stdout.as_str(), ex.stderr.as_str(), ex.exit_status),
         ("o\n", "e\n", Some(5))
     );
-    // ③ 测试连接那一趟：阶段按序、ack 带指纹与胜出地址
-    let mut kinds: Vec<String> = Vec::new();
-    let (_link, ack) = probe(&cfg, "true", &mut |s| {
-        kinds.push(
-            serde_json::to_value(&s).unwrap()["kind"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-        )
-    })
-    .await
-    .expect("探活失败");
-    assert_eq!(kinds, ["dialing", "hostKey", "won", "auth", "established"]);
-    assert!(ack
-        .fingerprint
-        .as_deref()
-        .is_some_and(|f| f.starts_with("SHA256:")));
-    assert_eq!(ack.endpoint, Some(format!("{}:{}", cfg.host, cfg.port)));
-    drop(_link);
+    // 〔MIG-1 续〕③ 测试连接那一趟（阶段按序、ack 带指纹与胜出地址）随那一跳搬进本机后端（`dial/probe.rs`）删了。
     let _ = child.kill();
     let _ = child.wait();
     println!("SR1A-LOOPBACK-MONITOR ok");
@@ -347,12 +322,6 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
 
 /// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
-    (
-        "dial_host.rs",
-        "forward",
-        1,
-        "端口转发：用户开着就一直在，关了（丢 `ForwardLink`）就收",
-    ),
     (
         "remote_resident.rs",
         "attach",
@@ -602,19 +571,17 @@ fn vis2_the_pin_verdict_is_exactly_this_table() {
     let differ = vis2_book(&[("a:22", "SHA256:x"), ("b:22", "SHA256:y")]);
     let none = vis2_book(&[]);
     let got = [
-        pin_verdict(true, None, &same),
-        pin_verdict(false, Some("SHA256:x"), &same),
-        pin_verdict(false, Some("  "), &same),
-        pin_verdict(false, None, &none),
-        pin_verdict(false, None, &same),
-        pin_verdict(false, None, &differ),
+        pin_verdict(true, false, &same),
+        pin_verdict(false, true, &same),
+        pin_verdict(false, false, &none),
+        pin_verdict(false, false, &same),
+        pin_verdict(false, false, &differ),
     ];
     assert_eq!(
         got,
         [
             PinVerdict::NotAsked,
             PinVerdict::AlreadyStrict,
-            PinVerdict::Pin("SHA256:x".into()),
             PinVerdict::NoneReported,
             PinVerdict::Pin("SHA256:x".into()),
             PinVerdict::Differs(differ.clone()),
@@ -679,35 +646,23 @@ fn vis2_pinning_writes_only_that_hosts_fingerprint_through_the_patch_door() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 默认转严格：`cfg` 里没有指纹 ⇒ 用盘上同一台（host 也相同）的；`cfg` 里有 ⇒ 用它；盘上那台 host 不同 ⇒ 不借。
+/// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——
+/// 「表单 / 手里那份没有 ⇒ 用盘上同一个 host 的」那条继承规则〔MIG-1 收尾〕只在后端 `dial/machine.rs::request`
+/// （`dial_machine_tests::the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint`）。
 #[test]
-fn vis2_a_pinned_key_on_disk_makes_the_next_dial_strict() {
-    let mut tofu = cfg("vis2-strict");
-    tofu.host_key_fingerprint = None;
-    let mut disk = tofu.clone();
-    disk.host_key_fingerprint = Some("SHA256:disk".into());
-    let mut elsewhere = disk.clone();
-    elsewhere.host = "other.example".into();
-    let got = [
-        effective_fingerprint_in(&tofu, || Some(disk.clone())),
-        effective_fingerprint_in(&cfg("vis2-strict"), || Some(disk.clone())),
-        effective_fingerprint_in(&tofu, || Some(elsewhere.clone())),
-        effective_fingerprint_in(&tofu, || None),
-    ];
-    assert_eq!(
-        got,
-        [
-            Some("SHA256:disk".to_string()),
-            Some("SHA256:abc".to_string()),
-            None,
-            None
-        ]
-    );
+fn vis2_the_saved_copy_goes_over_so_a_pinned_key_makes_the_next_dial_strict() {
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/dial_host.rs"));
+    guard_core::find_pinned(
+        &prod,
+        "\"saved\": crate::load_remote_config_by_label(&origin),",
+    )
+    .expect("盘上那一份没当 `saved` 交过去（恰好一处）");
 }
 
-/// 接线（剥注释）：`open` 在 `mark_shaken` 之后恰好一处 `settle_host_key(`；请求里的指纹来自 `effective_fingerprint(cfg)`。带正控。
+/// 接线（剥注释）：`open` 在 `mark_shaken` 之后恰好一处 `settle_host_key(`。带正控。
+/// 〔MIG-1 收尾〕「请求里的指纹是有效指纹」那一格随组请求搬进后端（见上一条）。
 #[test]
-fn vis2_open_settles_the_host_key_after_the_ack_and_the_request_uses_the_effective_key() {
+fn vis2_open_settles_the_host_key_after_the_ack() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/dial_host.rs"));
     let at = prod.find("async fn open(").expect("open 不在了");
     let end = at + prod[at..].find("\n}\n").expect("open 的尾巴");
@@ -722,14 +677,6 @@ fn vis2_open_settles_the_host_key_after_the_ack_and_the_request_uses_the_effecti
     assert!(
         body.find("settle_host_key(").unwrap() > shaken,
         "判固化要在读完 ack 之后"
-    );
-    assert_eq!(
-        n(
-            &prod,
-            "\"host_key_fingerprint\": effective_fingerprint(cfg),"
-        ),
-        1,
-        "请求没用有效指纹"
     );
     assert_eq!(
         n(
@@ -759,18 +706,21 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
         fingerprints: fp(&[("h.example:2222", "SHA256:T")]),
         jump_fingerprints: fp(&[("j.lan:22", "SHA256:J")]),
         endpoint: None,
+        winner: None,
+        strict: false,
+        jump_strict: false,
         v: 2,
         uses: vec![],
     };
     let target = cfg("tgt");
-    let direct = serde_json::json!({"host": "h.example", "host_key_fingerprint": null});
+    let direct = serde_json::json!({"machine": {"host": "h.example"}, "jump": null});
     let got = pin_targets(&target, &direct, &ack);
     assert_eq!(got.len(), 1, "直连只该判目标一台");
-    let via = serde_json::json!({"host": "h.example", "host_key_fingerprint": null,
-        "jump": {"host": "j.lan", "port": 22, "label": "bastion", "host_key_fingerprint": null}});
+    let via = serde_json::json!({"machine": {"host": "h.example"},
+        "jump": {"host": "j.lan", "port": 22, "label": "bastion"}});
     let got: Vec<_> = pin_targets(&target, &via, &ack)
         .into_iter()
-        .map(|(o, h, c, r)| (o, h, c, pin_verdict(false, None, r)))
+        .map(|(o, h, c, r)| (o, h, c, pin_verdict(false, c, r)))
         .collect();
     assert_eq!(
         got,
@@ -778,23 +728,33 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
             (
                 "tgt".into(),
                 "h.example".into(),
-                None,
+                false,
                 PinVerdict::Pin("SHA256:T".into())
             ),
             (
                 "bastion".into(),
                 "j.lan".into(),
-                None,
+                false,
                 PinVerdict::Pin("SHA256:J".into())
             ),
         ]
     );
-    // 跳板没有 label ⇒ origin 是它的 host（同 `origin_label`）；配过指纹 ⇒ 那一格已严格。
-    let via2 = serde_json::json!({"jump": {"host": "j.lan", "label": "", "host_key_fingerprint": "SHA256:J"}});
-    let (o, h, c, r) = pin_targets(&target, &via2, &ack).pop().expect("跳板那一台");
+    // 跳板没有 label ⇒ origin 是它的 host（同 `origin_label`）；后端说那一趟跳板已严格（〔MIG-1 收尾〕`jump_strict`）⇒ 那一格已严格。
+    let via2 = serde_json::json!({"jump": {"host": "j.lan", "label": ""}});
+    let strict_jump = Ack {
+        jump_strict: true,
+        ..ack.clone()
+    };
+    let (o, h, c, r) = pin_targets(&target, &via2, &strict_jump)
+        .pop()
+        .expect("跳板那一台");
     assert_eq!((o.as_str(), h.as_str()), ("j.lan", "j.lan"));
-    assert_eq!(
-        pin_verdict(false, c.as_deref(), r),
-        PinVerdict::AlreadyStrict
-    );
+    assert_eq!(pin_verdict(false, c, r), PinVerdict::AlreadyStrict);
+    // 目标那一格同理：严格与否取 ack 的 `strict`（本侧不再重推指纹继承）。
+    let strict = Ack {
+        strict: true,
+        ..ack.clone()
+    };
+    let (_, _, c, r) = pin_targets(&target, &direct, &strict).remove(0);
+    assert_eq!(pin_verdict(false, c, r), PinVerdict::AlreadyStrict);
 }

@@ -48,9 +48,10 @@ describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
     );
     expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-tap"]]);
     expect(chanStreamModule.chan.subscribe.mock.calls[0]?.[3]).toBe(TAP_WINDOW);
-    // 没有叫 session-tap 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    // 没有叫 session-tap 的裸事件监听（零命中，正控：task-update 那一个在；〔MIG-1〕session-ended 并进了会话流）。
     expect(subs.has("session-tap")).toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    expect(subs.size).toBe(0);
 
     const rec = streamFake.subscriptions[0]!;
     rec.sink([
@@ -98,9 +99,10 @@ describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
       ACCOUNTS_CHANGED_WINDOW,
       ACCOUNTS_CHANGED_WINDOW,
     ]);
-    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：task-update 那一个在）。
     expect(subs.has(["remote", "backend", "ready"].join("-"))).toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    expect(subs.size).toBe(0);
 
     const a = streamFake.subscriptions[1]!;
     a.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
@@ -119,3 +121,54 @@ describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
     expect(streamFake.subscriptions[0]!.wants, "别台那条没动").toEqual([]);
   });
 });
+
+// 〔MIG-3b · 要求住址 `设计/99 §2.1 ㉓②`「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，本机远端同形，monitor 的 notify 与 `task-update` 事件删」〕
+// 每台一条 `session-tasks`；一格 = 一个 sid 要重问；seen / gap ⇒ 那台整台重问；frame 的 credit 当场还；没有 `task-update` 裸事件。
+describe("〔MIG-3b〕session-tasks 走 subscribe（不是裸事件 task-update）", () => {
+  beforeEach(() => {
+    subs.clear();
+    streamFake.reset();
+    chanStreamModule.chan.subscribe.mockClear();
+  });
+
+  it("每台一条 (机器, session-tasks)；frame ⇒ 那几个 sid、seen / gap ⇒ 整台；credit 按格还；unseen 不问", async () => {
+    const asked: [string, string[], boolean][] = [];
+    await bindEvents(
+      { onLine: () => {}, onSessionEnded: () => {}, onTasksChanged: (o, sids, all) => asked.push([o, [...sids], all]) },
+      { tasks: ["<local>", "box-a"] },
+    );
+    expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([
+      ["<local>", SESSION_TASKS_KIND],
+      ["box-a", SESSION_TASKS_KIND],
+    ]);
+    expect(SESSION_TASKS_KIND).toBe("session-tasks");
+    expect(chanStreamModule.chan.subscribe.mock.calls.map((c) => c[3])).toEqual([SESSION_TASKS_WINDOW, SESSION_TASKS_WINDOW]);
+    expect(subs.has(["task", "update"].join("-")), "裸事件 task-update 又长回来了").toBe(false);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    expect(subs.size).toBe(0);
+
+    const a = streamFake.subscriptions[1]!;
+    a.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
+    expect(asked).toEqual([]);
+    a.sink([
+      { t: "frame", seq: 0, body: '{"sid":"s1"}' },
+      { t: "frame", seq: 1, body: '{"sid":"s1"}' },
+      { t: "frame", seq: 2, body: '{"sid":"s2"}' },
+    ]);
+    expect(asked).toEqual([["box-a", ["s1", "s2"], false]]);
+    expect(a.wants).toEqual([3]);
+    a.sink([{ t: "gap", fromSeq: 3, toSeq: 5 }]);
+    expect(asked[1]).toEqual(["box-a", [], true]);
+    expect(a.wants, "gap 不占 credit").toEqual([3]);
+  });
+
+  it("两侧同一个串：Rust `event_replay.rs::SESSION_TASKS_KIND` == TS `SESSION_TASKS_KIND`", () => {
+    const rs = readFileSync(resolve(REPO_ROOT, "src/bridge/src/event_replay.rs"), "utf8");
+    expect(rs).toContain(`pub const SESSION_TASKS_KIND: &str = "${SESSION_TASKS_KIND}";`);
+  });
+});
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "./test-support/repo-root";
+import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW } from "../src/tasks-stream";

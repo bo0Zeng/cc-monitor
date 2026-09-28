@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { decodeAcctIsoSnippet, decodeAcctIsoStatus, readAcctIsoSnippet, readAcctIsoStatus } from "../src/acct-iso-reads";
+import { decodeAcctIsoInstalled, decodeAcctIsoSnippet, decodeAcctIsoStatus, installAcctIso, readAcctIsoSnippet, readAcctIsoStatus } from "../src/acct-iso-reads";
 import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "./test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -46,5 +46,34 @@ describe("请求：问对那台、说对那条；问不出来不当成「没装�
       ["aya", "acct-iso-status", {}],
       ["<local>", "acct-iso-shellinit", {}],
     ]);
+  });
+});
+
+// 〔MIG-3a · 09-28 裁 2 · 预裁〕装到那台（`acct-iso-install`，字节随那台后端带着、落点它自己算）：同样严格收、问对那台、请求体为空。
+describe("acct-iso-install", () => {
+  const ok = {
+    dest: "/h/.cc-monitor/bin/cc-acct-iso",
+    version: "e24bfd164014351a",
+    written: 6,
+    link: "/h/.local/bin/cc-acct-iso",
+    linked: false,
+    config: "/h/.cc-acct-iso/config",
+    configWritten: true,
+    recordFailed: null,
+  };
+  it("严格收：缺格 / 多格 / 类型不对 ⇒ 抛", () => {
+    expect(decodeAcctIsoInstalled(ok)).toEqual(ok);
+    const { recordFailed: _, ...short } = ok;
+    expect(() => decodeAcctIsoInstalled(short)).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoInstalled({ ...ok, extra: 1 })).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoInstalled({ ...ok, linked: "yes" })).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoInstalled({ ...ok, written: -1 })).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoInstalled({ ...ok, written: 1.5 })).toThrow(/两端版本对不上/);
+  });
+  it("一发、origin 原样、请求体为空（落点那台自己算）", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply(ok));
+    expect(await installAcctIso("aya")).toEqual(ok);
+    const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
+    expect(calls.map((a) => [a.origin, a.op, chanArgsJson(a)])).toEqual([["aya", "acct-iso-install", {}]]);
   });
 });

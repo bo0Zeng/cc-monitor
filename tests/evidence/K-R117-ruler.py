@@ -137,7 +137,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   ② 两侧跟上了吗 —— `sftp.rs:743/796` ＋ `ipc/commands.ts:739/959` 都跟上了 ✅
     #   ⇒ 是「有人改了命令名」那一种，**改表是跟上真相，不是凑绿**。
     ("backend.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
-    ("acct-iso.deploy", (B1, "R75〔用@09-14「account进后端」〕", "已裁：account 进后端 ⇒ 落 ①")),
+    # 〔MIG-3a · 09-28 预裁〕`acct-iso.deploy` 摘了：字节随后端二进制走，界面经通道问那台 `acct-iso-install`，不再是 Tauri 命令（R75「account 进后端」兑现）。
     # 〔MIG-3a〕`acct-iso.check` 摘了：装没装那一问界面直问那台后端 `acct-iso-status`，不再是 Tauri 命令。
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
     # 〔AL1 · 2026-09-24〕`alias.account-commands` → `alias.manage`：那条能力 id 随
@@ -192,11 +192,11 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("comm.face-a.subscribe", (NA, "—",
                                "〔CF2〕通信层面 A 在 Tauri IPC 那一跳的订阅（`chan_subscribe` / `chan_want` / `chan_stop`）—— 只搬不透明的流格，"
                                "装什么、查什么装态都不是它的事")),
-    ("history.branch", (NA, "—", "会话历史")),
-    ("history.delete", (NA, "—", "会话历史")),
+    # 〔墓碑 · MIG-3b〕`history.branch` · `history.delete` 随分叉 / 删会话改由界面经通道直说那台后端（`session-fork` · `files-delete-session`）退役；
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，理由同上面几条墓碑。
     ("history.read-session", (NA, "—", "会话历史")),
-    ("hooks.diagnose", (NA, "—",
-                        "**只诊断**钩子，不装它（`TouchEffect::GenerateOnly`：产品自己不动手）")),
+    # 〔墓碑 · MIG-3b〕`hooks.diagnose` 随钩子诊断本机远端合成帧命令 `hooks-diag`（界面经通道直问那台后端）退役：
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
     # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
     # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
@@ -208,21 +208,21 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
-    ("port-forward", (NA, "—", "端口转发")),
+    # 〔墓碑 · MIG-1〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
     # 〔墓碑 · 第四波 4D US1〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
     #   （`src/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     # 〔墓碑 · 第四波 4D LOC1b〕`search.history` · `search.index` 随本机搜索改走 `<local>` 的 `history-search`（monitor 内存索引、三条搜索命令与「重新索引」按钮删）退役；理由同上面几条墓碑。
-    ("session.activity", (NA, "—", "会话")),
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
-    ("session.list-active", (NA, "—", "会话")),
+    # 〔墓碑 · MIG-1〕`session.activity` · `session.list-active` 随会话起停 / 状态并进会话流（`subscribe(origin, "session-lines")` 的成品格）退役：
+    #   `list_session_activity` / `list_active_sessions` 删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。
     # 〔墓碑 · 第四波 4D LOC1a〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
     ("ssh.host-config", (NA, "—", "ssh 主机配置 / 推公钥 —— 连得上那一层，不是装我们的东西")),
     ("subagent.load", (NA, "—", "读 subagent 定义")),
     ("terminal.focus", (NA, "—", "把终端提到前台")),
-    ("tmux.local-census", (NA, "—", "列 tmux 会话")),
-    ("tmux.manage", (NA, "—", "tmux 会话管理")),
+    # 〔墓碑 · MIG-1〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。连带 §S6 连锁里点它的那两处改成「这条能力回来才要求」（见那一段）。
     # 〔墓碑 2026-09-18〕`usage.aggregate` / `usage.per-account` 两条能力随用量 ②③ 两轴
     # 整轴退役（`设计/50`）⇒ 它们已不在 `LEDGER` 里。本表是**归档表**，留一个指向不存在
     # 的 id 会让 `R3b`（「表在腐烂」）恒红 ⇒ 整条摘掉，理由留在这里。
@@ -324,7 +324,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
         # 〔MIG-3a〕`acct_iso_status` 摘了（装没装那一问进了后端出成品、界面直问）。
-        "deploy_remote_acct_iso",
+        # 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso` 摘了（字节随后端二进制走，界面经通道问 `acct-iso-install`）⇒ 本组今天零条。
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
@@ -407,8 +407,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
             "`cc_integration_status`，不是调用点（见 `§S5d` 第二档）")),
-    ("S3", (("src/settings/accounts-section.ts",),
-            "量于 09-15 · 同上",
+    ("S3", ((),
+            "〔MIG-3a · 09-28 预裁〕**1 → 0**：`src/settings/accounts-section.ts` 那一处（`deploy_remote_acct_iso`）改经通道问那台后端 `acct-iso-install`，"
+            "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
             "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
@@ -571,6 +572,9 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
     "assets/mcp_edit.rs::answer_remove":
         "同上，撤那一侧",
+    # 〔MIG-3a · 09-28 预裁〕cc-acct-iso 装进了那台后端：帧命令 `acct-iso-install` 的本体（字节随后端二进制走）。
+    "acct_iso_install.rs::answer_install":
+        "〔MIG-3a · 09-28 预裁〕`cc-acct-iso` 的装口：那台后端的帧命令 `acct-iso-install` 本体，本来就不是 Tauri 命令",
     # 〔MIG-3a · 子步 3〕cc-bus 装到本机进了本机后端：帧命令 `cc-bus-install` 的本体。
     "cc_bus_install.rs::answer_install":
         "〔MIG-3a〕`cc-bus` 的装口：本机后端的帧命令 `cc-bus-install` 本体（资产的装不算部署），本来就不是 Tauri 命令",
@@ -588,7 +592,7 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
 # ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
 #   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
 # 〔主会话 09-25 · LOC1b 合并那一拍〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
-WRAPPER_KEY_FLOOR = 50
+WRAPPER_KEY_FLOOR = 40  # 〔MIG-3a · 09-28 预裁〕50 → 40：包装层按设计在缩（现打 49），地板只防形状塌
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 解析器（全部只读文本；每个都有地板断言）
@@ -1284,9 +1288,10 @@ def main() -> int:
     #   （Tauri 命令逐批迁到通道 `chan.call`，05 §14.3），LOC1b 合并后 `LEDGER` 现打 99 撞了 100。地板只防「解析器塌了」——
     #   塌了读数是个位数，50 照样逮得住；它不是计数棘轮（计数由 parity_ledger / commands.vitest 两向钉着）。
     #   `WRITE_SITES` 同理 20 → 10（monitor 写点随 LOC1b / HX2 等收进后端而减，现打 19）。
+    # 〔MIG-3a · 09-28 预裁〕`LEDGER` / `#[tauri::command]` 两格 50 → 40：同一理由（人群按设计在缩，现打 49；地板只防解析器塌）。
     floors = [("TOOLS", len(tools), 5), ("UNMANAGED_ENV", len(unmanaged), 5),
-              ("LEDGER", len(ledger), 50), ("WRITE_SITES", len(sites), 10),
-              ("claims()", len(claims), 5), ("#[tauri::command]", len(cmd_addr), 50)]
+              ("LEDGER", len(ledger), 40), ("WRITE_SITES", len(sites), 10),
+              ("claims()", len(claims), 5), ("#[tauri::command]", len(cmd_addr), 40)]
     print(head("§S0 地板（反向自检 —— 这几个数塌了，下面每一条都会空真地绿）"))
     for name, got, floor in floors:
         print(f"  {name:<20s} 现打 {got:4d}  地板 {floor}")
@@ -1486,16 +1491,23 @@ def main() -> int:
     lies = [c for c, v in verdicts if v == "LiesTodayOwedACorrection"]
     print(f"  人裁表 `FRAME_PLANE_VERDICTS` {len(verdicts)} 条，其中"
           f"「说假话·欠一次订正」**{len(lies)}** 条：{', '.join(lies)}")
-    print("  连锁四处，现打在不在：")
+    print("  连锁那几处，现打在不在：")
     chain = [
         ("EXPECTED_LOCAL_OR_BOTH",
          re.search(r"const EXPECTED_LOCAL_OR_BOTH: usize = (\d+);", led_src)),
         ("ORIGIN_TAKING_BOTH", re.search(r"const ORIGIN_TAKING_BOTH", led_src)),
-        ("tmux.manage 那条 ASYMMETRY_REASONS",
-         re.search(r'\("tmux\.manage", Asym::', led_src)),
-        ("the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
-         re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_backend_primitive", led_src)),
     ]
+    # 〔MIG-1 · 列 tmux 会话进后端〕`tmux.manage` 那条能力整个出了 `LEDGER`（Tauri 命令删了）⇒ 点它的两处（那条不对称散文 ·
+    #   钉那句散文的判据）随之删了。**不是放宽**：这条能力哪天回到 `LEDGER`，这两处照旧必须同在 —— 下面按现打的能力集合现判。
+    if "tmux.manage" in {c for _, c, _ in ledger}:
+        chain += [
+            ("tmux.manage 那条 ASYMMETRY_REASONS",
+             re.search(r'\("tmux\.manage", Asym::', led_src)),
+            ("the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
+             re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_backend_primitive", led_src)),
+        ]
+    else:
+        print("    · `tmux.manage` 不在 `LEDGER` 里（MIG-1 起列 tmux 会话走通道）⇒ 点它的那两处不再要求")
     for name, m in chain:
         if m is None:
             red("R7b", f"连锁那一处找不到了：{name}")

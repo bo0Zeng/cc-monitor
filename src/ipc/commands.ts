@@ -50,9 +50,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
 //   必须拆 4 点名的「闭合类型环的那条边」）随 `apikey_routing_for` 一起走了。
 
 
-import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
-import type { BranchResult } from "../generated/BranchResult";
 // 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**
 // ⇒ 这里不许手写 `string | null`：手写的那一份与 Rust 的 `origin::Origin` 之间没有任何东西钉着。
 //
@@ -68,8 +66,6 @@ import type { BranchResult } from "../generated/BranchResult";
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 //   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { ConnectStage } from "../generated/ConnectStage";
-import type { ConnTestResult } from "../generated/ConnTestResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -81,17 +77,11 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
-import type { TmuxSession } from "../generated/TmuxSession";
-import type { ForwardStatus } from "../generated/ForwardStatus";
-import type { HooksReport } from "../generated/HooksReport";
-import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PushResult } from "../generated/PushResult";
-import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
-import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 
 /**
@@ -231,24 +221,11 @@ export const commands = {
   //   sftp_cancel_transfer · sftp_chmod · sftp_delete · sftp_download · sftp_list_dir · sftp_mkdir ·
   //   sftp_read_text_for_edit · sftp_realpath · sftp_rename · sftp_stat · sftp_upload · sftp_write_text。
 
-  /** 起一条端口转发。Rust 返回 `Result<String, String>`（转发 id）⇒ 原始类型。 */
-  start_forward: (args: {
-    spec: { origin: string; localPort: number; remoteHost: string; remotePort: number };
-  }) => invoke<string>("start_forward", args),
+  // 〔MIG-1 · `设计/99 §2.1 ⑬`〕端口转发三条（起 · 停 · 列）的包装随命令退役删了：转发账住本机常驻后端，
+  //   界面经通道直接说帧命令 `forward-start` / `forward-stop` / `forward-list`（`src/port-forward-reads.ts`）。
 
-  /** 停一条端口转发。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  stop_forward: (args: { id: string }) => invoke<void>("stop_forward", args),
-
-  /**
-   * 测一条远端配置：连 SSH → 读指纹 → exec backend → 等 hello。
-   *
-   * **`onStage` 是 `Channel<ConnectStage>`**（第二个进包装层的 Channel 参数）。
-   * `ConnectStage` 本轮一并生成——TS 侧 `describeStage` 里有 `const _never: never = st`
-   * 穷尽性兜底，而**手写类型时 Rust 加一个 variant 并不会让它红**；
-   * 换成生成物后那条 `never` 检查才真正对 Rust 的改动有牙。
-   */
-  test_remote_connection: (args: { cfg: unknown; onStage: Channel<ConnectStage> }) =>
-    invoke<ConnTestResult>("test_remote_connection", args),
+  // 〔MIG-1 续 · `设计/99 §2.1 ⑬`〕测试连接的包装（带 `Channel<ConnectStage>` 阶段泳道那一条）随命令退役删了：
+  //   界面把那台配置交给本机后端（帧命令 `remote-probe`，`src/remote-probe.ts`），阶段行随结局一并回来。
 
   /**
    * 流式读会话 jsonl。Rust 返回 `Result<u32, String>`（条数）。
@@ -296,9 +273,6 @@ export const commands = {
   // 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
   //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。
 
-  /** `ssh -G` 解析一个别名。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  resolve_ssh_host: (args: { alias: string }) => invoke<ResolvedHost>("resolve_ssh_host", args),
-
   // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`
   //   （`src/launch-render.ts::planLocalLaunch`），monitor 只剩开终端窗口（下一条）。
 
@@ -308,17 +282,8 @@ export const commands = {
   // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
 
-  /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
-   *
-   *  两个消费者：① 铸名时当 `existing`（P3t-Y2b）② 杀会话的菜单按 `@ccm_sid` 认归属（P3 刀 2 UI）。
-   *
-   *  ⚠ `null` 是「**不知道**」（本机后端通道没起 / 还没推过帧），**不是**「一个都没有」。
-   *  拿 `null` 当空表：铸名那侧会不避让（issue #76），菜单那侧会说「没有会话」而其实有。
-   *
-   *  ⚠ **`command` 那一列可能陈旧**：它由 tmux hook 驱动刷新，而 hook 只有
-   *  `session-created/closed/renamed` 三条 —— pane 前台命令从 claude 变回 shell **不触发任何一条**。
-   *  ⇒ 依赖它判活的流程**不许**改读本机这条（〔V154〕当年那一条 `awaitExitFor` 已删）。 */
-  list_local_tmux: () => invoke<TmuxSession[] | null>("list_local_tmux"),
+  // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话那两条（本机 · 远端）的包装随命令退役删了：界面经通道直接问那台后端的 `tmux-list`
+  //   （成品，`src/tmux-reads.ts::listTmux`，本机远端同一形）。
 
   /** `K-R69`：**本机那条 `ccm` 入口现在是什么样** —— 我们放下去的那一份在哪、它自报什么身份、
    *  你 PATH 上那个 `ccm` 是不是它，以及给人读的那句话。`LocalCcmEntry` 是生成物 ⇒ **桶③**。
@@ -347,40 +312,12 @@ export const commands = {
   /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
 
-  /**
-   * 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。
-   *
-   * 〔`K-R88` 09-13〕入参从 `sourceJsonlPath` 收成 `sourceSessionId` ——
-   * 与下面远端那条**形状一致**，两侧后端走的也是同一份「按 sid 找那份文件」。
-   */
-  create_branch_session: (args: {
-    origin: Origin;
-    sourceSessionId: string;
-    messageUuid: string;
-  }) => invoke<BranchResult>("create_branch_session", args),
+  // 〔MIG-3b〕分叉那条退役：分叉经通道直说那台后端 `session-fork`（`src/session-writes.ts::forkSession`）。
 
   // 〔C4a · 子步 3〕E79 那条本机版「某会话跑在哪个账号下」退役：
   //   本机与远端同一条路 —— `account-reads.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
 
-  /**
-   * 删历史会话。**桶①**。
-   *
-   * 🔴 **〔步 12·C〕`delete_remote_history_session` 已退役，两条收成这一条。**
-   * 〔RW1 · 第四波〕两侧都经那台机器的后端删（`files-delete-session`，只收 sid）；
-   * `jsonlPath` 是一致性闸的另一半：`sessionId` 必须恰是那份文件名的 stem。
-   */
-  delete_history_session: (args: {
-    origin: Origin;
-    sessionId: string;
-    jsonlPath: string;
-  }) => invoke<void>("delete_history_session", args),
-
-  /**
-   * G6：列远端 tmux 会话。`null` = 那台机器上没装 tmux（前端据此隐藏 attach 类操作）。
-   * 返回值字段被真消费 ⇒ 生成物（桶③）。
-   */
-  list_remote_tmux: (args: { origin: string }) =>
-    invoke<TmuxSession[] | null>("list_remote_tmux", args),
+  // 〔MIG-3b〕删会话那条退役：删会话经通道直说那台后端 `files-delete-session`（`src/session-writes.ts::deleteSession`）。
 
   /**
    * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -402,16 +339,9 @@ export const commands = {
   cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染 · 本机接回那一句三条退役：那台后端的帧命令（`src/launch-render.ts`）。
 
-  /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
-  deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
-    invoke<string>("deploy_remote_acct_iso", args),
+  // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 退役：cc-acct-iso 的字节随后端二进制走，界面经通道问那台 `acct-iso-install`（`src/acct-iso-reads.ts`）。
 
-  /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
-
-  /** 远端 cc-bus 钩子诊断。同上。 */
-  diagnose_remote_cc_bus_hooks: (args: { origin: string }) =>
-    invoke<HooksReport>("diagnose_remote_cc_bus_hooks", args),
+  // 〔MIG-3b〕cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
   /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
   load_subagent: (args: {
@@ -460,20 +390,7 @@ export const commands = {
   // 〔C4b · 第四波 4B〕大纲清单与会话内查找那两条（`list_user_inputs` / `find_in_session`〔散文墓碑〕）退役：
   //   经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 
-  /**
-   * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * **线上是 snake_case**（`ActiveSessionPayload` 没有 `rename_all`），C04b 已论证过。
-   */
-  list_active_sessions: () => invoke<ActiveSessionPayload[]>("list_active_sessions"),
 
-  /** `~/.ssh/config` 里的 host 别名清单（不展开 Include、不解析 Match）。 */
-  list_ssh_host_aliases: () => invoke<string[]>("list_ssh_host_aliases"),
-
-  /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
-
-  /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),
 
   /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
   list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),
@@ -594,8 +511,6 @@ export const commands = {
   // 〔C4c · 第四波 4B〕账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
   //   `accounts-list` / `accounts-trust`（`src/account-reads.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
-  /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
-  list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),
 
   /**
    * 〔C4a · 子步 3〕**通道在 Tauri IPC 这一跳上的那条命令**（`chan/webview.rs`）。

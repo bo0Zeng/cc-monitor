@@ -207,6 +207,17 @@ mod tests {
              属工具而非 agent」。同上一条（允许**库的地址**，禁**数据布局**）：\
              这里只有一个路径，账号对象的形状由 `serde` 的字段名说了算，不在这张针底下。",
         ),
+        (
+            "observe/tmux_list.rs",
+            "\"sessions\"",
+            "〔MIG-1 续〕这是 **`tmux-list` 成品的字段名**（这台机器上的 tmux 会话清单），不是哪个 agent 的 `sessions/` 目录布局 —— \
+             tmux 会话与 claude 会话是两回事（`@ccm_sid` 才把它们连起来）。",
+        ),
+        (
+            "inbound.rs",
+            "\"sessions\",",
+            "〔MIG-1 续〕同上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
+        ),
     ];
 
     /// kind 值判别的形状：带引号的 `"codex"`。

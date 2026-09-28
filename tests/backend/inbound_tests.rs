@@ -437,10 +437,16 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-hub-apply",
         "skill-install-hub-preview",
         "skill-install-hub-apply",
+        "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "panorama",
         "remote-reach",
         "history-projects",
         "history-sessions",
+        // 〔MIG-1〕端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
+        "forward-start",
+        "forward-stop",
+        "forward-list",
+        "remote-probe",
     ] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
@@ -549,6 +555,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
+        "hooks-diag",
         // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
         "resync",
         // 〔RM1f〕`panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
@@ -588,6 +596,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
+        "acct-iso-install",
+        "files-link",
         "cc-bus-install-state",
         "aliases-render",
         "aliases-read",
@@ -625,8 +635,15 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-hub-apply",
         "skill-install-hub-preview",
         "skill-install-hub-apply",
+        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
+        "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",
+        // 〔MIG-1〕端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。
+        "forward-start",
+        "forward-stop",
+        "forward-list",
+        "remote-probe",
         "cancel",
         "link-open",
         "link-data",
@@ -689,7 +706,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "resync", // 〔RESYNC〕
+        "ssh-config-aliases", // 〔MIG-1〕读一份文件
+        "ssh-config-import",  // 〔MIG-1〕逐个起 `ssh -G`
+        "ssh-config-resolve", // 〔MIG-1〕起一次 `ssh -G`
+        "hooks-diag",         // 〔MIG-3b〕
+        "resync",             // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",
@@ -725,6 +746,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
+        "acct-iso-install",
+        "files-link",
         "cc-bus-install-state",
         "aliases-render",
         "aliases-read",

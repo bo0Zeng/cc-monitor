@@ -72,7 +72,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
 
 /// 探「本机交互 shell 的 `PATH` 上那个 `ccm`」的命令（交给 `bash -lic`）。
 ///
-/// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（[`probe_ccm_cli`]）。
+/// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（〔MIG-3b〕今天界面经通道直问，`src/ccm-probe.ts`）。
 /// 本机仍问它：`KR69D2`「你 PATH 上那个是不是我们这一份」答的正是交互 shell 的 `PATH`。
 const CCM_PROBE_CMD: &str =
     "command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe || printf 'NO_CCM\\n'";
@@ -435,8 +435,8 @@ fn probe_path_ccm() -> Option<CcmProbeResult> {
 pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
     std::fs::read(p).is_ok_and(|b| {
         matches!(
-            crate::sftp::identity_of_bytes(&b),
-            crate::sftp::RemoteIdentity::Stamp(_)
+            deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
+            deploy_core::RemoteIdentity::Stamp(_)
         )
     })
 }

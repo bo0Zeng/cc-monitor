@@ -324,12 +324,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
 
 /// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
 const MONITOR_SIDE: &[(&str, Kind)] = &[
-    ("chan::host::InboundBackends", Kind::Host),
+    // 〔MIG-3a · 主会话 09-28 裁 3〕开窗前那两问（`files-home` / `files-ls`）进了窗口进程 ⇒ monitor 这一侧问后端的五样
+    //   （宿主句柄 `InboundBackends` · `router::Backends` · `wire::Body` / `CancelToken` / `Op`）退役，只剩交接件那一样。
     ("chan::host::handoff", Kind::Host),
-    ("chan::router::Backends", Kind::Host),
-    ("chan::wire::Body", Kind::Host),
-    ("chan::wire::CancelToken", Kind::Host),
-    ("chan::wire::Op", Kind::Host),
     ("spawn_managed::ConsolePolicy", Kind::Spawn),
     ("spawn_managed::Lifetime", Kind::Spawn),
     ("spawn_managed::ManagedChild", Kind::Spawn),

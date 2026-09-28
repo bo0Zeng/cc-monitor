@@ -152,6 +152,27 @@ pub(crate) fn answer_wire_at(
             })
     };
     let (sid, uuid) = (field("sid")?, field("uuid")?);
+    // 〔MIG-3b · `INVARIANTS §47` ①〕两个 id 在这里先过放行判定（界面经通道直说、不再判；本侧 = 真去用它的这一侧）：
+    //   判定只有共享那一份 `session_id_ok`，这里只把「长度不对」与「形状不对」分成两句话。
+    for (what, id) in [
+        (
+            copy_core::copy_text("rsRemoteBranch.what.sourceId", &[]),
+            &sid,
+        ),
+        (
+            copy_core::copy_text("rsRemoteBranch.what.messageId", &[]),
+            &uuid,
+        ),
+    ] {
+        if !shell_quote_core::session_id_ok(id) {
+            let said = if id.len() > shell_quote_core::SESSION_ID_MAX {
+                copy_core::copy_text("rsRemoteBranch.forkId.badLength", &[("what", &what)])
+            } else {
+                copy_core::copy_text("rsRemoteBranch.forkId.badChar", &[("what", &what)])
+            };
+            return Err(("bad_args", said));
+        }
+    }
     // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。
     let argv = [String::new(), sid, uuid];
     let res = run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))?;

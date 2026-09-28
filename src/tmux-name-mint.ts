@@ -17,13 +17,13 @@
  *
  * 「列不出」与「零会话」是两件事，不许压成一个空集：
  *
- * | 读口 | 回什么 | 读作 |
- * |---|---|---|
- * | 本机 `list_local_tmux` | 列表 | 知道 |
- * | 本机 `list_local_tmux` | `null` / 抛 | **不知道**（本机后端还没报过这份快照） |
- * | 远端 `list_remote_tmux` | 列表（含空表） | 知道 |
- * | 远端 `list_remote_tmux` | `null` | 知道：那台**没装 tmux**（`NO_TMUX`）⇒ 一个名字都没占 |
- * | 远端 `list_remote_tmux` | 抛 | **不知道**（没连上 / 回话脏，`tmux.rs::list_remote_tmux` 头注的三档） |
+ * 〔MIG-1 续〕读口是 `tmux-reads.ts::listTmux`（那台后端的 `tmux-list` 成品），**本机远端同一形**：
+ *
+ * | 回什么 | 读作 |
+ * |---|---|
+ * | 列表（含空表） | 知道 |
+ * | `null` | 知道：那台**没装 tmux** ⇒ 一个名字都没占 |
+ * | 抛 | **不知道**（那台后端不在 / 太旧 / 观测无效） |
  *
  * 「不铸名」之后怎么办归调用方：本机把 `null` 交给后端（它有一条如实的「不进容器」旧路）；
  * 远端**没有**不进 tmux 的起法 ⇒ [`refuseUnmintable`]：不起，说清是哪台、为什么。
@@ -32,8 +32,8 @@
  * `mintTmuxName` · `mintSessionTmuxName`，纯函数、`node` 单测）；本文件只管「拿什么集合去避让」这一格。
  * 分叉那条（`fork-launch.ts::forkTmuxName`，基名 `-fork-cc`）用的是同一份 [`readTmuxListing`]。
  */
-import { commands } from "./ipc/commands";
-import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { listTmux } from "./tmux-reads";
+import type { Origin } from "./ipc/origin";
 import { mintSessionTmuxName } from "./remote-launch";
 import type { TmuxSession } from "./tmux-sessions";
 import { showActionFailureToast } from "./error-toast";
@@ -47,10 +47,7 @@ export type TmuxListing =
 /** 问一次那台机器的 tmux 名单。**不抛**：问不到就是 `unknown`，带着原因。 */
 export async function readTmuxListing(origin: Origin): Promise<TmuxListing> {
   try {
-    const sessions = isLocalOrigin(origin)
-      ? await commands.list_local_tmux()
-      : await commands.list_remote_tmux({ origin });
-    return listingFromFetch(origin, sessions);
+    return listingFromFetch(await listTmux(origin));
   } catch (e) {
     return { kind: "unknown", why: String(e) };
   }
@@ -60,18 +57,13 @@ export async function readTmuxListing(origin: Origin): Promise<TmuxListing> {
  * 把一个**已经取回来**的答案读成 [`TmuxListing`]（给自己已经问过一次的调用方：
  * `tab-session-actions.ts::fetchTmuxFresh` 是 TabManager 里唯一的取数点，别为铸名再问一次）。
  *
- * `undefined` = 调用方那一问抛了（没问到）。`null` 的意思**按机器分**（见头注表）：本机 = 不知道，远端 = 没装 tmux。
+ * `undefined` = 调用方那一问抛了（没问到）。`null` = 那台没装 tmux（〔MIG-1 续〕本机远端同一义，见头注表）。
  */
 export function listingFromFetch(
-  origin: Origin,
   sessions: readonly TmuxSession[] | null | undefined,
 ): TmuxListing {
   if (sessions === undefined) return { kind: "unknown", why: copyText("tmuxMint.unknown.notAsked") };
-  if (sessions === null) {
-    return isLocalOrigin(origin)
-      ? { kind: "unknown", why: copyText("tmuxMint.unknown.localNotYet") }
-      : { kind: "known", sessions: [] };
-  }
+  if (sessions === null) return { kind: "known", sessions: [] };
   return { kind: "known", sessions };
 }
 

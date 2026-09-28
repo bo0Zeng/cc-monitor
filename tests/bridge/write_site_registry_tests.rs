@@ -139,7 +139,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend_host.rs", "spawn_detached", None,
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs::delete_history_session` 一行（**删用户数据**：
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `history.rs` 的 `delete_history_session` 一行（**删用户数据**：〔散文墓碑〕
     //    本进程 `fs::remove_file` 删 `~/.claude/projects/**` 下的会话文件）。用户裁「只允许后端的文件管理部分写文件」
     //    也管本机 ⇒ 删历史会话改成后端一条只收 sid 的命令（`files-delete-session`；当时说「会话文件围栏唯一的例外」，
     //    〔AR1 · V119〕FN1 之后写面已无那道围栏），
@@ -151,12 +151,12 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
 /// # 为什么要有这道
 ///
 /// 本模块的人群靠 **`fs::` 这个前缀**认写盘调用（`WRITE_CALLS` 每一条都带它），
-/// `hooks_diag::this_module_never_writes` 的白名单也是扫 `fs::`。
+/// `hooks_diag::this_module_never_writes` 的白名单也是扫 `fs::`（〔MIG-3b〕那个模块进了后端，本条照旧守 `config_surface`）〔散文墓碑〕。
 /// 两条判据因此**共享同一个前提**：`std::fs` 只能以带前缀的形态出现。
 ///
 /// 08-07 实测这个前提没人守：往 `hooks_diag.rs` 里加
 /// `use std::fs as sysio;` + `sysio::write(p, s)`（一个名叫
-/// `this_module_never_writes` 的模块里真写一次盘），全仓 **974 条判据一条不红** ——
+/// 「绝不写盘」的模块里真写一次盘），全仓 **974 条判据一条不红** ——
 /// 连本模块上一轮刚建的写点人群都漏掉了。⚠ 头一次变异我把别名取成 `ffs`，
 /// 而 `ffs::write(` 里**含有** `fs::write(` 子串 ⇒ 两条判据都红了，
 /// 差点被我读成「有人守着」。**变异要造得像，巧合的红比不红更骗人。**
@@ -187,7 +187,7 @@ fn fs_import_verdict(line: &str) -> Result<(), String> {
 
 /// ★★ **没有一种导入形态能让写盘调用丢掉 `fs::` 前缀**〔audit-0805 08-07〕。
 ///
-/// 这是上面那条人群、以及 `hooks_diag::this_module_never_writes` 白名单的**共同前提**。
+/// 这是上面那条人群、以及只读模块白名单（当年是 `hooks_diag::this_module_never_writes`〔散文墓碑〕）的**共同前提**。
 /// 前提没人守的时候，两条判据会**同时**瞎掉且都保持绿色 —— 08-07 实测过（见
 /// [`fs_import_verdict`] 的头注）。
 #[test]
@@ -244,7 +244,7 @@ fn no_alias_or_item_import_can_hide_a_write_call() {
         "这些导入会让写盘调用**丢掉 `fs::` 前缀**：\n{}\n\n\
              ⚠ 前缀一没，两条判据同时瞎掉且都保持绿色：\n\
              · 本模块的写点人群（`WRITE_CALLS` 每一条都带 `fs::`）；\n\
-             · `hooks_diag::this_module_never_writes` 的白名单（它扫的就是 `fs::`）。\n\
+             · 只读模块的 `fs::` 白名单（`config_surface`）。\n\
              08-07 实测：`use std::fs as sysio;` + `sysio::write(p, s)` 放进 `hooks_diag.rs`，\n\
              974 条判据一条不红 —— 而那个模块判据的名字逐字写着「never writes」。\n\
              修法：用 `use std::fs;` 走全前缀，或直接写 `std::fs::xxx(`。别改本条去迁就它。",
@@ -533,7 +533,6 @@ const MOVED_OUT: &[&str] = &[
     "cc_bus_deploy.rs",
     "history.rs",
     "remote_history.rs",
-    "remote_branch.rs",
     "user_files.rs",
 ];
 

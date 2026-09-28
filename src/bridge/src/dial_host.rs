@@ -113,59 +113,36 @@ fn agent_sock() -> Option<String> {
     }
 }
 
-/// 请求里的一个地址 / 跳板那一台 —— 蛇形键，与后端 `dial::{Endpoint, JumpHop}` 对齐。
-fn hop_json(cfg: &RemoteConfig) -> serde_json::Value {
-    serde_json::json!({
-        "host": cfg.host,
-        "port": cfg.port,
-        "user": cfg.user,
-        "key_path": cfg.key_path,
-        "host_key_fingerprint": cfg.host_key_fingerprint,
-        "label": cfg.origin_label(),
-    })
-}
-
-/// 把一台远端的配置翻成一份拨号请求（**只放路径，不放私钥本体** —— 凭据面 `K11`）。
+/// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕把一台远端**原样的配置**交给本机常驻后端，拨号请求由它组
+/// （`src/backend/dial/machine.rs::resolve`：地址解析 · 指纹继承 · 跳板查无 / 环都在那里）。**只放路径，不放私钥本体**（`K11`）。
 ///
-/// 竞速顺序由这里按 last-good 排好（记忆住界面进程：代理是短命的，记不住）；
-/// 跳板那一台的配置由这里查（`C4`：读配置是宿主的事），环 / 查无当场报错（fail-closed）。
+/// 这里只交宿主手里的几样事实（`C4`：读配置是宿主的事）：
+/// - `machine`：这一台（`RemoteConfig` 的 camelCase 形状，与界面那一格同形）；
+/// - `saved`：盘上同名的那一份（`ssh_source::run` 手里那份是起来时读的 —— 固化指纹之后，靠它让之后的重连转严格，〔VIS2〕）；
+/// - `jump`：跳板那一台的配置（查不到 ⇒ `null`，后端照 fail-closed 拒）；
+/// - `prefer`：上次赢的那条（结构化，[`crate::ssh_source::last_good_for`]；配置改过就失效）；
+/// - `agent_sock`：界面进程此刻的 ssh-agent（常驻后端活得比界面长）。
 pub(crate) fn request(
     cfg: &RemoteConfig,
     use_: &str,
     extra: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let origin = cfg.origin_label();
-    let order = crate::ssh_source::winner_order(
-        cfg.endpoints(),
-        crate::ssh_source::last_good_for(&origin).as_ref(),
-    );
-    let endpoints: Vec<serde_json::Value> = order
-        .iter()
-        .map(|e| serde_json::json!({ "host": e.host, "port": e.port }))
-        .collect();
+    let jump = cfg
+        .jump
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != origin)
+        // 写成显式调用（不写成 point-free）：`local_origin_registry` 那条护栏按调用形状数「查远端配置」的点，这一处要被它看见。
+        .and_then(|jump_label| crate::load_remote_config_by_label(jump_label));
     let mut req = serde_json::json!({
-        "host": cfg.host,
-        "port": cfg.port,
-        "user": cfg.user,
-        "key_path": cfg.key_path,
-        "host_key_fingerprint": effective_fingerprint(cfg),
-        "endpoints": endpoints,
+        "machine": cfg,
+        "saved": crate::load_remote_config_by_label(&origin),
+        "jump": jump,
+        "prefer": crate::ssh_source::last_good_for(cfg).map(|e| serde_json::json!({ "host": e.host, "port": e.port })),
         "use": use_,
         "agent_sock": agent_sock(),
     });
-    if let Some(jump_label) = cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        if jump_label == origin {
-            return Err(copy_text("rsDialHost.jump.loop", &[]));
-        }
-        let jump_cfg = crate::load_remote_config_by_label(jump_label).ok_or_else(|| {
-            copy_text(
-                "rsDialHost.jump.notFound",
-                &[("jumpLabel", &jump_label.to_string())],
-            )
-        })?;
-        // v1 单跳：跳板自身的 jump 忽略（防链式递归 / 环）。
-        req["jump"] = hop_json(&jump_cfg);
-    }
     if let (Some(obj), serde_json::Value::Object(more)) = (req.as_object_mut(), extra) {
         obj.extend(more);
     }
@@ -389,31 +366,30 @@ async fn open(
                         ("secs", &(ACK_DEADLINE.as_secs()).to_string()),
                         (
                             "addr",
-                            &(cfg
-                                .endpoints()
-                                .iter()
-                                .map(|e| format!("{}:{}", e.host, e.port))
+                            // 〔MIG-1 收尾〕原样列出配置里那几行（地址不在这里解析，组法在后端 `dial/machine.rs`）。
+                            &std::iter::once(format!("{}:{}", cfg.host, cfg.port))
+                                .chain(
+                                    cfg.addresses
+                                        .iter()
+                                        .map(|a| a.trim().to_string())
+                                        .filter(|a| !a.is_empty()),
+                                )
                                 .collect::<Vec<_>>()
-                                .join(", "))
-                            .to_string(),
+                                .join(", "),
                         ),
                     ],
                 ),
                 None,
-            ))
+            ));
         }
     };
     // 〔W5-VIS〕握手做完了 ⇒ 记下这一刻：之后若总时限到点，那句话说得出「握手用了多久、远端跑了多久」。
     r.get_mut().mark_shaken();
     // 〔VIS2 · `设计/15 §3.4 ①`〕ack 成功 = 后端那边鉴权已过 ⇒ 判要不要自动固化。
     settle_host_key(cfg, req, &ack);
-    // 竞速胜者记成 last-good（下次排首）。
-    if let Some(won) = ack
-        .endpoint
-        .as_deref()
-        .and_then(|e| crate::ssh_source::parse_address_line(e, cfg.port))
-    {
-        crate::ssh_source::record_last_good(&cfg.origin_label(), &won);
+    // 竞速胜者记成 last-good（下次当 `prefer` 交回去排首）—— 后端交的是结构化的 `winner`，这里不解析地址。
+    if let Some(won) = &ack.winner {
+        crate::ssh_source::record_last_good(cfg, won);
     }
     let origin = cfg.origin_label();
     tracing::info!(
@@ -443,16 +419,16 @@ pub(crate) enum PinVerdict {
     Differs(std::collections::BTreeMap<String, String>),
 }
 
-/// 🔴 判定只此一处。`configured` = 这一趟请求里交的指纹。
+/// 🔴 判定只此一处。`strict` = 这一趟是不是已经严格校验（后端在 ack 里说，〔MIG-1 收尾〕）。
 pub(crate) fn pin_verdict(
     probe: bool,
-    configured: Option<&str>,
+    strict: bool,
     reported: &std::collections::BTreeMap<String, String>,
 ) -> PinVerdict {
     if probe {
         return PinVerdict::NotAsked;
     }
-    if configured.is_some_and(|f| !f.trim().is_empty()) {
+    if strict {
         return PinVerdict::AlreadyStrict;
     }
     let mut fps = reported.values();
@@ -510,25 +486,8 @@ pub(crate) fn pin_host_key_at(
     }
 }
 
-/// 〔VIS2 · 默认转严格〕这一趟交给后端的指纹：`cfg` 里有就用；没有 ⇒ 盘上同一台（origin 与 host 都相同）的。
-/// `ssh_source::run` 手里那份 `cfg` 是起来时读的 —— 不现读的话，固化之后它的每次重连照旧 TOFU 到重启。
-fn effective_fingerprint(cfg: &RemoteConfig) -> Option<String> {
-    effective_fingerprint_in(cfg, || {
-        crate::load_remote_config_by_label(&cfg.origin_label())
-    })
-}
-
-pub(crate) fn effective_fingerprint_in(
-    cfg: &RemoteConfig,
-    on_disk: impl FnOnce() -> Option<RemoteConfig>,
-) -> Option<String> {
-    let set = |f: Option<&String>| f.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    set(cfg.host_key_fingerprint.as_ref()).or_else(|| {
-        on_disk()
-            .filter(|d| d.host == cfg.host)
-            .and_then(|d| set(d.host_key_fingerprint.as_ref()))
-    })
-}
+// 〔MIG-1 收尾〕「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `dial/machine.rs::request`
+//   （宿主把盘上那一份当 `saved` 交过去）；这一趟是不是严格校验，由后端在 ack 里说（`strict` / `jump_strict`）。
 
 /// 告知界面的那一件（经 `lib.rs` 装的出口发 `remote-health`，kind 见下面两个常量）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -578,18 +537,13 @@ fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
     let Some(path) = crate::paths::resolve_config_path() else {
         return;
     };
-    for (origin, host, configured, reported) in pin_targets(cfg, req, ack) {
-        settle_one(
-            &path,
-            &origin,
-            &host,
-            pin_verdict(probe, configured.as_deref(), reported),
-        );
+    for (origin, host, strict, reported) in pin_targets(cfg, req, ack) {
+        settle_one(&path, &origin, &host, pin_verdict(probe, strict, reported));
     }
 }
 
-/// 这一趟要判的几台：`(origin, host, 请求里交的指纹, 它报过的逐地址指纹)` —— 目标一台，经跳板再加跳板那一台
-/// （跳板的 origin / host / 指纹取请求里 `jump` 那一格：宿主按配置现查填的，`hop_json`）。纯函数。
+/// 这一趟要判的几台：`(origin, host, 这一趟是否已严格校验, 它报过的逐地址指纹)` —— 目标一台，经跳板再加跳板那一台
+/// （跳板的 origin / host 取请求里 `jump` 那一格：宿主按配置现查填的那一台原样配置；严格与否取 ack 的 `jump_strict`）。纯函数。
 pub(crate) fn pin_targets<'a>(
     cfg: &RemoteConfig,
     req: &serde_json::Value,
@@ -597,7 +551,7 @@ pub(crate) fn pin_targets<'a>(
 ) -> Vec<(
     String,
     String,
-    Option<String>,
+    bool,
     &'a std::collections::BTreeMap<String, String>,
 )> {
     let text = |v: &serde_json::Value, k: &str| {
@@ -608,7 +562,7 @@ pub(crate) fn pin_targets<'a>(
     let mut out = vec![(
         cfg.origin_label(),
         cfg.host.clone(),
-        text(req, "host_key_fingerprint"),
+        ack.strict,
         &ack.fingerprints,
     )];
     if let Some(hop) = req.get("jump").filter(|j| j.is_object()) {
@@ -616,12 +570,7 @@ pub(crate) fn pin_targets<'a>(
         let origin = text(hop, "label")
             .filter(|l| !l.is_empty())
             .unwrap_or_else(|| host.clone());
-        out.push((
-            origin,
-            host,
-            text(hop, "host_key_fingerprint"),
-            &ack.jump_fingerprints,
-        ));
+        out.push((origin, host, ack.jump_strict, &ack.jump_fingerprints));
     }
     out
 }
@@ -713,77 +662,10 @@ pub(crate) async fn capture(
     })
 }
 
-/// **测试连接那一趟**：短命探活，阶段行逐条交给 `on_stage`，exec `cmd` 之后把链路交回（探后端 hello 用）。
-/// 失败回 `(说法, 看到过的指纹)`。
-pub(crate) async fn probe(
-    cfg: &RemoteConfig,
-    cmd: &str,
-    on_stage: &mut (dyn FnMut(ConnectStage) + Send),
-) -> Result<(DialStream, Ack), (String, Option<String>)> {
-    let req = request(
-        cfg,
-        "stream",
-        serde_json::json!({ "command": cmd, "stages": true, "probe": true }),
-    )
-    .map_err(|e| (e, None))?;
-    open(cfg, &req, "stream", on_stage).await
-}
+// 〔MIG-1 续 · ⑬〕测试连接那一趟（短命探活、阶段行逐条交回）退役：拨号请求改由本机后端按界面交来的配置组（`dial/probe.rs`）。
 
-/// 一条**端口转发**：本机后端那一侧绑好了本机回环口（`127.0.0.1:local_port`），每接进一条连接开一条隧道。
-/// 丢掉它 = 关链路 = 本地口释放、隧道全断（那条 SSH 连接不跟着断，别的链路可能还在用）。
-pub struct ForwardLink {
-    link: DialStream,
-}
-
-impl ForwardLink {
-    /// 等下一条「接进了第 n 条连接」。`None` = 链路收尾了（远端断了 / 后端那侧收工了）。
-    pub(crate) async fn next_accepted(&mut self) -> Result<Option<u64>, String> {
-        ssh_link::accepted(&mut self.link.r, ack_line_cap())
-            .await
-            .map_err(|e| e.to_string())
-    }
-}
-
-/// 起一条端口转发（F58）。收的是**机器标签**：查那台的配置是宿主的事（`C4`），
-/// 调用方（`port_forward.rs`，通信层成员）手里只有一个地址。
-pub(crate) async fn forward(
-    origin: &crate::origin::Origin,
-    local_port: u16,
-    remote_host: &str,
-    remote_port: u16,
-) -> Result<ForwardLink, String> {
-    let origin = origin.as_wire_str();
-    let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
-        copy_text(
-            "rsDialHost.forward.noConfig",
-            &[("machine", &origin.to_string())],
-        )
-    })?;
-    let cfg = &cfg;
-    let req = request(
-        cfg,
-        "forward",
-        serde_json::json!({
-            "forward": {
-                "local_port": local_port,
-                "remote_host": remote_host,
-                "remote_port": remote_port,
-            }
-        }),
-    )?;
-    let (link, _) = open(cfg, &req, "forward", &mut |_| {})
-        .await
-        .map_err(|(e, _)| {
-            copy_text(
-                "rsDialHost.forward.connectFailed",
-                &[("machine", &origin.to_string()), ("e", &e.to_string())],
-            )
-        })?;
-    // 〔NT2〕长活：用户开着就一直在，关了（丢 `ForwardLink`）就收。
-    Ok(ForwardLink {
-        link: link.lives_long(),
-    })
-}
+// 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一形（`ForwardLink` · `forward`）退役：转发账连同开链路一起住本机常驻后端
+//   （`src/backend/dial/forwards.rs`，查的是后端自己的可达表），界面经 `chan.call(<local>, "forward-*")` 直接问。
 
 // ═══ 〔SR1b · 2026-09-24〕部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
 //
@@ -895,43 +777,11 @@ impl RemoteFs {
         Ok(v)
     }
 
-    /// 那个文件在不在 / 多大：`(metadata 的 size, 补问的 exists)` —— 与 `sftp::interpret_target_probe` 入参同形。
-    pub(crate) async fn stat(
-        &self,
-        path: &str,
-    ) -> Result<(Option<Option<u64>>, Option<bool>), String> {
-        let v = self
-            .ask(serde_json::json!({"op": "stat", "path": path}), None)
-            .await?;
-        let meta = v
-            .get("meta")
-            .filter(|m| !m.is_null())
-            .map(|m| m.get("size").and_then(serde_json::Value::as_u64));
-        Ok((meta, v.get("exists").and_then(serde_json::Value::as_bool)))
-    }
+    // 〔MIG-3b〕这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
+    //   monitor 这一侧零调用方 ⇒ 删了。链路那一侧的 `stat` 一问照旧在（`files` 链路协议没动）。
 
-    /// 整份读回来：`(字节, 读不出时补问的 exists, 读到空时补问的 size)`。
-    pub(crate) async fn read(
-        &self,
-        path: &str,
-        max: u64,
-    ) -> Result<(Option<Vec<u8>>, Option<bool>, Option<u64>), String> {
-        let v = self
-            .ask(
-                serde_json::json!({"op": "read", "path": path, "max": max}),
-                None,
-            )
-            .await?;
-        let data = match v.get("data").and_then(serde_json::Value::as_str) {
-            Some(t) => Some(crate::link_mux::b64_decode(t)?),
-            None => None,
-        };
-        Ok((
-            data,
-            v.get("exists").and_then(serde_json::Value::as_bool),
-            v.get("size").and_then(serde_json::Value::as_u64),
-        ))
-    }
+    // 〔MIG-3a · 09-28 预裁〕`read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（`acct_iso_deploy`，随字节进后端退役）⇒ 删了。
+    //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。
 
     /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对，回结论。
     pub(crate) async fn put(

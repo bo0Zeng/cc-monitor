@@ -563,12 +563,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     // 〔SR1b 09-24〕部署读版本标记 / 入口 shim 那一问的上限（经本机后端 `files` 链路的 `read`，`max` 就是它）。
+    // 〔MIG-3a · 09-28 预裁〕`sftp.rs` 读版本标记那一读的上限那一行删了：那一读随 cc-acct-iso 的部署命令退役。
+    // 〔MIG-3b〕部署计划（本机常驻后端）认从前那份三行入口时读落点那一份的上限：先问大小、大了不读。
     (
-        "src/bridge/src/sftp.rs",
-        "MARKER_READ_MAX",
+        "src/backend/control/deploy_plan.rs",
+        "ENTRY_READ_MAX",
         64 * 1024,
-        "部署时读回的一份小文件（`.build_id` / `.vendor_id` 标记 · `ccm` 入口 shim；它们都是几十字节）",
-        "拒收+回错",
+        "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
+        "跳过+说清",
     ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
@@ -714,6 +716,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
         "降级+说清",
     ),
+    // 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag`，只读）读那台自己的 settings 文件多大。
+    (
+        "src/backend/observe/cc_bus_hooks.rs",
+        "SETTINGS_CAP_BYTES",
+        1 << 20,
+        "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
+        "降级+说清",
+    ),
     // 〔AS2 · 第四波 4B〕资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/assets.rs",
@@ -775,6 +785,29 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         16 * 1024 * 1024,
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
+    ),
+    // 〔MIG-1 续 · ⑬〕测试连接进本机后端：探活链路上的每一行（阶段行 · ack · 那台后端的 hello · 应答）。
+    (
+        "src/backend/dial/probe.rs",
+        "LINE_CAP",
+        1024 * 1024,
+        "测试连接那条探活链路上的一行（阶段行 · ack · 那台后端的首行 hello · ping 应答；hello 是后端出方向单行，同量级）",
+        "拒收+回错",
+    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。
+    (
+        "src/backend/dial/forwards.rs",
+        "ACK_CAP",
+        64 * 1024,
+        "起一条端口转发时链路那一侧回的 ack 那一行（同 `remote_ask` 读 ack 的上限）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/dial/forwards.rs",
+        "COUNT_CAP",
+        4 * 1024,
+        "端口转发链路每接进一条连接报的那一行计数（`{\"accepted\":n}`）",
+        "降级+说清",
     ),
     // 〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
     //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
@@ -1518,11 +1551,7 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
     //    `capture-pane` 帧应答的 `screen` 字段，而**帧那一层自己有单行上限**
     //    （backend 侧 `inbound.rs` 的超长行处理 + monitor 侧收帧那一层）。
     //    ⇒ 这一处不再属于「异步流整读」那个人群，留着就是幽灵条目。
-    (
-        "src/bridge/src/acct_iso_deploy.rs",
-        "远端 `cc-acct-iso` 部署脚本的 stdout",
-        "同上一条。**退役归 F10d**。",
-    ),
+    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行删了：部署脚本那次 ssh exec 不在了（落进用户目录改问那台后端 `acct-iso-install`）。
     (
         "src/bridge/src/ccm_probe.rs",
         "远端 `ccm` 探针的 stdout",
@@ -1770,7 +1799,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
     // 〔SH1 · 4D〕地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
     assert!(
-        population >= 7, // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 〔E2〕8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
+        population >= 6, // 〔MIG-3a · 09-28 裁 2〕7 → 6：部署 cc-acct-iso 那处 `read_to_end`（安装脚本的 stdout）随改问那台后端不存在了 // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 〔E2〕8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
         "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
              `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
     );
@@ -1841,8 +1870,9 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         }
     }
     assert!(
-        arms >= 3,
-        "只找到 {arms} 处超限处置臂（08-10 实测 3：主帧读 / 握手 / 应答泵）—— \
+        // 〔MIG-1 续〕3 → 1：握手（`probe_backend`〔散文墓碑〕）与应答泵那两臂随测试连接搬进本机后端删了，只剩主帧读那一臂。
+        arms >= 1,
+        "只找到 {arms} 处超限处置臂（〔MIG-1 续〕今天应为 1：主帧读）—— \
              抽取器坏了，本条此刻是空转的"
     );
     assert!(

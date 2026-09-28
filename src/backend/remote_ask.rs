@@ -55,6 +55,31 @@ pub trait Remote: Send + Sync {
         command: String,
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+
+    /// 〔MIG-3a · 主会话 09-28 裁〕同 [`Self::run`]，失败时**连那台 CLI 信封里的码一起交回**（[`Said`]）——
+    /// 枢纽要把被写那台的 `stale` / `refused` / … 原码转给界面，不许压成一个。缺省实现：码缺席（替身不必各写一份）。
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            self.run(dial, command, stdin)
+                .await
+                .map_err(|message| Said {
+                    code: None,
+                    message,
+                })
+        })
+    }
+}
+
+/// 远端那一跳没成时的一句话 ＋ 那台 CLI 信封里的码（信封读得出来才有；拨号 / 链路坏了没有码）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Said {
+    pub code: Option<String>,
+    pub message: String,
 }
 
 /// 可达表的一行。
@@ -199,19 +224,22 @@ pub async fn ask_json(
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<Value, String> {
-    let r = lock(table)
-        .get(machine)
-        .cloned()
-        .ok_or_else(|| unreachable_message(machine))?;
+) -> Result<Value, Said> {
+    let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
+        code: Some("unreachable".to_string()),
+        message: unreachable_message(machine),
+    })?;
     let flag = crate::cli_flag(cmd);
     let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
-    let out = remote.run(&r.dial, line, Some(format!("{args}\n"))).await?;
-    serde_json::from_str(out.trim()).map_err(|e| {
-        copy_text(
+    let out = remote
+        .run_coded(&r.dial, line, Some(format!("{args}\n")))
+        .await?;
+    serde_json::from_str(out.trim()).map_err(|e| Said {
+        code: None,
+        message: copy_text(
             "beRemoteAsk.json.unreadable",
             &[("machine", machine), ("e", &e.to_string())],
-        )
+        ),
     })
 }
 
@@ -221,7 +249,7 @@ pub async fn ask_json(
 pub struct DialRemote;
 
 /// 读一行（带上限；超了是错，不截断）。
-async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
+pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
     r: &mut R,
     cap: u64,
 ) -> Result<Option<String>, String> {
@@ -266,8 +294,7 @@ pub(crate) fn capture_request(
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::parse_request_value(&v)
-        .map_err(|e| crate::common::contract::malformed(&format!("dial request unreadable: {e}")))
+    crate::dial::parse_request_value(&v).map_err(|(_, m)| m)
 }
 
 impl Remote for DialRemote {
@@ -278,8 +305,24 @@ impl Remote for DialRemote {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
-            let req = capture_request(dial, command, stdin)?;
-            pull_over(move |up_r, mut down_w| async move {
+            self.run_coded(dial, command, stdin)
+                .await
+                .map_err(|s| s.message)
+        })
+    }
+
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            let req = capture_request(dial, command, stdin).map_err(|message| Said {
+                code: None,
+                message,
+            })?;
+            pull_over_coded(move |up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
                 crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
             })
@@ -303,7 +346,45 @@ impl Drop for AbortOnDrop {
 
 /// 经一条内存链路跑一趟 capture：`serve` 拿上行读端与下行写端（生产 = `dial::uses::run`），这里读 ack 与结果那一行。
 /// **抽出来是为了判据**：「外层被丢 ⇒ 内层一起收」不需要真 SSH 就验得动（`remote_ask_tests` 喂一个永不答的 `serve`）。
-pub(crate) async fn pull_over<F, Fut>(serve: F) -> Result<String, String>
+/// 〔MIG-3a · 09-28 裁 4〕失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）；只要话的调用方取 `.message`
+/// （不另留一个只丢码的包装 —— 它唯一的生产调用方 `DialRemote::run` 已改转 `run_coded`）。
+pub(crate) async fn pull_over_coded<F, Fut>(serve: F) -> Result<String, Said>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let got = pull_raw(serve).await.map_err(|message| Said {
+        code: None,
+        message,
+    })?;
+    settle_pulled(&got)
+}
+
+/// 〔MIG-3b〕**原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
+/// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
+pub(crate) async fn capture_full(
+    dial: &Value,
+    command: String,
+) -> Result<crate::dial::Captured, String> {
+    let req = capture_request(dial, command, None)?;
+    let got = pull_raw(move |up_r, mut down_w| async move {
+        let stages = crate::dial::StageSink::new(false);
+        crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+    })
+    .await?;
+    let text = |k: &str| got.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    Ok(crate::dial::Captured {
+        stdout: text("stdout"),
+        stderr: text("stderr"),
+        exit_status: got
+            .get("exit_status")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
+    })
+}
+
+/// 读 ack 与结果那一行，交回结果那一行（解过的 JSON）。
+async fn pull_raw<F, Fut>(serve: F) -> Result<Value, String>
 where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
@@ -335,28 +416,51 @@ where
     let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
         .await?
         .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
-    let got: Value = serde_json::from_str(&got)
-        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+    serde_json::from_str(&got)
+        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))
+}
+
+/// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
+/// 〔MIG-3a · 09-28 裁 4〕非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
+fn settle_pulled(got: &Value) -> Result<String, Said> {
+    let plain = |message: String| Said {
+        code: None,
+        message,
+    };
     let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
     if stdout.contains(HELLO_MARKER) {
-        return Err(copy_text("beRemoteAsk.run.tooOld", &[]));
+        return Err(plain(copy_text("beRemoteAsk.run.tooOld", &[])));
     }
     if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
         let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-        let said = serde_json::from_str::<Value>(stderr.trim())
-            .ok()
-            .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
-            .unwrap_or_else(|| stderr.trim().to_string());
-        return Err(copy_text(
-            "beRemoteAsk.run.failed",
-            &[("said", &said.to_string())],
-        ));
+        // 那台 CLI 面的失败信封（`cli_control::emit_err` 那一份）：读得出来就把码与原话都取出来。
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            code: Option<String>,
+            message: Option<String>,
+        }
+        let envelope = serde_json::from_str::<Envelope>(stderr.trim()).ok();
+        let (code, said) = match envelope {
+            Some(Envelope {
+                code,
+                message: Some(m),
+            }) => (code, m),
+            Some(Envelope {
+                code,
+                message: None,
+            }) => (code, stderr.trim().to_string()),
+            None => (None, stderr.trim().to_string()),
+        };
+        return Err(Said {
+            code,
+            message: copy_text("beRemoteAsk.run.failed", &[("said", &said.to_string())]),
+        });
     }
     if stdout.len() >= PULL_MAX_BYTES {
-        return Err(copy_text(
+        return Err(plain(copy_text(
             "beRemoteAsk.run.tooLarge",
             &[("max", &PULL_MAX_BYTES.to_string())],
-        ));
+        )));
     }
     Ok(stdout.to_string())
 }

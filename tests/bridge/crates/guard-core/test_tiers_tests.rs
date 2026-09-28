@@ -56,11 +56,16 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
+    "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
+    "tests/backend/dial_probe_tests.rs", // 〔MIG-1 续〕测试连接三步的结局（链路替身）
+    // 〔MIG-1 收尾〕`tests/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
+    "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
     "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
     "tests/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
-    "tests/bridge/acct_iso_deploy_tests.rs", // 〔MIG-3a〕SCAN → UNIT：扫源码的那几条随 acct-iso 两问进后端删了，只剩纯函数与围栏在 I/O 之前那一条
+    // 〔MIG-3a · 09-28 预裁〕`tests/bridge/acct_iso_deploy_tests.rs` 那一行删了：整份随那条部署命令删了（字节随后端二进制走）。
     "tests/bridge/crates/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
     "tests/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
@@ -78,6 +83,7 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/codex/resume_tests.rs",
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
+    "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
     "tests/backend/observe/turn_detect_tests.rs",
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
@@ -121,18 +127,16 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_env_scrub_tests.rs",
     "tests/bridge/lib_nudge_skip_tests.rs",
     "tests/bridge/lib_remote_config_tests.rs",
-    "tests/bridge/port_forward_tests.rs",
+    // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
     "tests/bridge/remote_history_tests.rs",
-    "tests/bridge/session_facts_tests.rs",
+    "tests/bridge/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
     "tests/bridge/ssh_link_tests.rs",
     "tests/bridge/ssh_source_batcher_tests.rs",
-    "tests/bridge/ssh_source_reannounce_tests.rs",
     "tests/bridge/ssh_source_seam_tests.rs",
     "tests/bridge/ssh_source_snapshot_tail_tests.rs",
     "tests/bridge/ssh_source_snapshot_tests.rs",
-    "tests/bridge/tmux_reconcile_tests.rs",
     "tests/bridge/tool_registry_environment_tests.rs",
     "tests/bridge/tool_registry_not_managed_tests.rs",
     "tests/cards/api-error.test.ts",
@@ -147,7 +151,6 @@ const UNIT: &[&str] = &[
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
     "tests/events-burst.vitest.ts",
-    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe（不是裸事件）
     "tests/events-yield.vitest.ts",
     "tests/file-window.vitest.ts",
     "tests/fork-ask.vitest.ts",
@@ -248,6 +251,7 @@ const UNIT: &[&str] = &[
     "tests/views/session-viewer-skeleton.vitest.ts",
     "tests/views/user-input-panel.vitest.ts",
     "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
+    "tests/bridge/crates/deploy-core/lib_tests.rs", // 〔MIG-3b〕新共享 crate `deploy-core` 的判定（纯函数）
     "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
@@ -255,11 +259,11 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
     "tests/bridge/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
     "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
     "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
     "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
-    "tests/bridge/remote_branch_tests.rs", // 〔LOC1a〕UNIT → SCAN：改走 `<local>` 长连接后判据读源码 / 脚本假后端（判别器判 SCAN）
     "tests/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
     "tests/config-patch-fake.vitest.ts",  // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
     "tests/tab-bar-width.vitest.ts",      // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
@@ -270,6 +274,10 @@ const SCAN: &[&str] = &[
     "tests/account-chip.vitest.ts",
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
+    "tests/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
+    "tests/tmux-reads.vitest.ts", // 〔MIG-1 续〕读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
+    "tests/port-forward-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
+    "tests/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
@@ -288,6 +296,9 @@ const SCAN: &[&str] = &[
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
+    "tests/backend/observe/tmux_list_tests.rs", // 〔MIG-1 续〕解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
+    "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
+    "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
@@ -383,7 +394,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/guard_support_tests.rs",
     "tests/bridge/history_title_coverage.rs",
-    "tests/bridge/hooks_diag_tests.rs",
     "tests/bridge/launcher_identity_registry_tests.rs",
     "tests/bridge/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
     "tests/bridge/lib_mod_decl_hygiene_tests.rs",
@@ -405,7 +415,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
     "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
-    "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_write_registry_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
@@ -423,17 +432,13 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_coldstart_preflight_guard.rs",
     "tests/bridge/ssh_source_dial_move_judge.rs",
     "tests/bridge/ssh_source_emits_parity.rs",
-    "tests/bridge/ssh_source_f032_idle_tests.rs",
     "tests/bridge/ssh_source_frame_dispatch_shape.rs",
     "tests/bridge/ssh_source_parse_frame_tests.rs",
     "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
     "tests/bridge/ssh_source_tier1_tests.rs",
-    "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
     "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
-    "tests/bridge/tasks_tests.rs",
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
-    "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
     "tests/bridge/tool_registry_tests.rs",
     "tests/bridge/write_site_registry_spawn_sites.rs",
     "tests/bridge/write_site_registry_tests.rs",
@@ -519,6 +524,8 @@ const SCAN: &[&str] = &[
     "tests/views/live-user-inputs.vitest.ts",
     "tests/views/session-viewer-user-inputs.vitest.ts",
     "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
+    "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
     "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
@@ -534,6 +541,7 @@ const SCAN: &[&str] = &[
 const INTEGRATION: &[&str] = &[
     // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
     "tests/bridge/e2e_gate_registry_tests.rs",
+    "tests/backend/observe/cc_bus_hooks_tests.rs", // 〔MIG-3b〕钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
     "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
     "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
     "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记
@@ -586,11 +594,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
-    "tests/backend/mcp_sync_tests.rs",               // 〔AS1〕
+    "tests/backend/mcp_sync_tests.rs",                // 〔AS1〕
     "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
     "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
     "tests/backend/assets/cc_bus_install_tests.rs", // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
+    "tests/backend/assets/acct_iso_install_tests.rs", // 〔MIG-3a · 09-28 裁 2〕cc-acct-iso 落进用户目录（临时 home 上真建链接 ＋ 真抄配置 ＋ 真记账）
     "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
     "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
     "tests/backend/assets/skill_inbox_tests.rs", // 〔MIG-3a〕收件箱读写进了那台后端（临时目录 ＋ 比对写 CAS）
@@ -850,11 +859,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "the_local_backend_host_really_registers_an_inbound_client",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),
-    (
-        "tests/bridge/backend/control/local_backend_tests.rs",
-        "the_local_tmux_frames_really_land_in_the_ledger",
-        Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
-    ),
+    // 〔MIG-1〕`local_backend_tests.rs` 那条真 tmux 实测（本机 tmux 帧进 monitor 账本）随那本账删了（真机层 28 → 27）。
     (
         "tests/bridge/local_lines_tests.rs",
         "a_real_backend_feeds_local_lines_through_the_production_read_loop",

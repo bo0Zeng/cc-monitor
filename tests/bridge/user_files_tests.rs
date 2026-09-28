@@ -28,7 +28,6 @@ pub(crate) struct DiskDoor {
     /// 交给后端的每一次 `put` —— 判据据此核「交出去的期望是读到的那一份」「要没要备份」。
     pub puts: RefCell<Vec<PutCall>>,
     /// 删会话那一条收到的 sid。
-    pub deleted_sids: RefCell<Vec<String>>,
     /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
     pub deleted: RefCell<Vec<(String, String)>>,
     /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
@@ -41,7 +40,6 @@ impl DiskDoor {
             home: home.to_path_buf(),
             interfere: RefCell::new(Vec::new()),
             puts: RefCell::new(Vec::new()),
-            deleted_sids: RefCell::new(Vec::new()),
             deleted: RefCell::new(Vec::new()),
             peeked: RefCell::new(0),
         }
@@ -157,11 +155,6 @@ impl Door for DiskDoor {
             let _ = (root, rel, mode);
             Ok(())
         }
-    }
-
-    async fn delete_session(&self, sid: &str) -> Result<String, String> {
-        self.deleted_sids.borrow_mut().push(sid.to_string());
-        Ok(format!("<替身>/{sid}.jsonl"))
     }
 }
 
@@ -334,7 +327,8 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         "门发出去的这几条后端根本没登记：{unknown:?} —— 发过去只会拿到 unknown_command"
     );
     // 反向：`RW1` 在后端写面加的三条，每一条在 monitor 这一侧都有消费者（不许登记了没人用）。
-    for trio in ["files-peek", "files-put", "files-delete-session"] {
+    // 〔MIG-3b〕`files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/session-writes.ts`）。
+    for trio in ["files-peek", "files-put"] {
         assert!(
             write_face.contains(trio),
             "后端写面没有 `{trio}` —— 那一侧被改名 / 删了？"
@@ -356,7 +350,6 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         [
             "files-chmod",
             "files-delete",
-            "files-delete-session",
             "files-peek",
             "files-put",
             // 〔MIG-3a · 子步 3〕`files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。

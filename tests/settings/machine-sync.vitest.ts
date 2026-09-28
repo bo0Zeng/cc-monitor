@@ -39,9 +39,7 @@ function routeInvoke(cmd: string): unknown {
       return ORIGINS;
     case "read_cc_bus_state":
       return { agents: [], skipped: 0 };
-    case "diagnose_cc_bus_hooks":
-    case "diagnose_remote_cc_bus_hooks":
-      return { entries: [] };
+    // 〔MIG-3b〕钩子诊断改走通道（`chan_call`）：本条不看它的结果，落 `default`。
     default:
       return undefined;
   }

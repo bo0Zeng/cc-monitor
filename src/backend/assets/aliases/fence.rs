@@ -9,7 +9,7 @@
 //!
 //! | 范式 | 使用者 | 现状 |
 //! |---|---|---|
-//! | 指纹判过期 → 决定装/升/跳过 | backend + cc-acct-iso（2） | **已共享** `sftp::deploy_decision` |
+//! | 指纹判过期 → 决定装/升/跳过 | backend（〔MIG-3a · 09-28〕cc-acct-iso 改成逐份比内容、随后端二进制走） | backend 那条住 `deploy-core` 的 `identity_decision` |
 //! | 备份 → 写 → 读回比对 → 回滚 | 5 处 | **已共享**（〔W5-ALIAS〕今天只住后端 `files_write.rs::put_text`） |
 //! | 围栏块插入/替换/剥离 | ccm 远端 profile + PowerShell 本机 profile（2） | **两套独立实现** ← 本模块 |
 //! | 整份 JSON 覆写 | 项目 MCP（1） | 单例，不抽 |

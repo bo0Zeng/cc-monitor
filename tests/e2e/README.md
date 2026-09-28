@@ -257,14 +257,14 @@ fixtures:
 
 1. **backend-frame 级(无 GUI,最稳,后端半场)**:`bash tests/e2e/graylight-backend-frames.sh`
    (需仓内 debug 后端;缺则 `CCM_E2E_BACKEND=<某个 p1p+ 的 cc-monitor-backend>`)。断言后端 stdout 帧:
-   `session_added` → (kill fake-claude) `session_removed` **且** `tmux_sessions.raw` 仍含 `@ccm_sid`
-   (=灰,Idle 非 Archive) → (kill-session) `tmux_sessions` 不再含 sid(=归档触发边沿)。
+   `session_added` → (kill fake-claude) `session_removed` **且** `session_state` = `reconnectable`
+   (=灰) → (kill-session) `session_state` = `ended`(=归档边沿；〔MIG-1 续〕原看 `tmux_sessions` 快照帧，那一帧删了)。
 
 2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
    `backendPath` 指向 `backend-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash tests/e2e/graylight-suite.sh`。断言 monitor
    日志:`[e2e] tab-state … liveness=dead recoverability=attachable`(可重连;〔U4〕原先是 `status=live tmuxIdle=1`)→
    `… liveness=dead recoverability=resumable`(已结束)。**★ app 会自动部署后端**:backendPath 同目录须放一个 `.build_id`(内容=app
-   **内嵌** 后端的 build_id,见 `sftp.rs::deploy_decision`——不是 `EXPECTED_BACKEND_BUILD_ID`),否则
+   **内嵌** 后端的 build_id;〔MIG-3a · 09-28〕那条按旁挂标记判的路已删,今天后端读字节自报的身份戳,见 `deploy-core` 的 `identity_decision`——不是 `EXPECTED_BACKEND_BUILD_ID`),否则
    app 会用内嵌二进制覆盖写 backendPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
 

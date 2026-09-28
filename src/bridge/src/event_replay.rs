@@ -53,9 +53,9 @@
 //!
 //! 🔴 **credit 与「不许晚到」**（`调研/第四波记录/CF2.md §3.3`）：
 //! - **实时那一份**（[`EventReplay::on_line_batch_awaited`]）：有 credit **当场**交（与原来同一个时刻 emit ⇒
-//!   与其后的 `session-ended` 等起停事件的先后不变，issue #20）；没 credit 就**丢**、位置照占，
+//!   与其后的 `ended` 格 等起停事件的先后不变，issue #20）；没 credit 就**丢**、位置照占，
 //!   下一次交出去之前原位先给 `Item::Gap`（`05 §3.3.4` 级 2）。**绝不攒着等 credit** —— 攒着的行会晚于
-//!   其间发出的 `session-ended`（僵尸 tab）；也**绝不让管线等** —— 一个不给 credit 的窗口会卡住那台机器的整条流。
+//!   其间发出的 `ended` 格（僵尸 tab）；也**绝不让管线等** —— 一个不给 credit 的窗口会卡住那台机器的整条流。
 //! - **重放那一份**（就绪点 / 独立窗口开窗）按 credit **等**：它不在起停事件的顺序里（对账由同一个任务在它交完之后发）。
 //! - `Gap` / `Unseen` / `Seen` 不占 credit；`Frame`（含两种边界）每格占一个。
 //!
@@ -91,11 +91,23 @@ pub const SESSION_TAP_KIND: &str = "session-tap";
 /// TS 那一侧的同一个串住 `src/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
 pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 
+/// 〔MIG-3b · `99 §2.1 ㉓②`〕本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
+/// TS 那一侧的同一个串住 `src/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/events-tap.vitest.ts`）。
+pub const SESSION_TASKS_KIND: &str = "session-tasks";
+
+/// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
+/// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
+/// TS 那一侧的同一个串住 `src/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/remote-probe.vitest.ts`）。
+/// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
+pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
+
 /// 〔DL1〕`accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
+    /// 〔MIG-1〕会话成品缓存（生产 = 进程里那一本 `session_book::book()`；判据各给一本自己的，不与并行的判据串味）。
+    book: &'static parking_lot::RwLock<crate::session_book::Book>,
     /// 〔CF2〕有订阅拿到了 credit（或被撤了）—— 等 credit 的重放在这上面醒。
     credit_changed: tokio::sync::Notify,
 }
@@ -154,6 +166,10 @@ enum SubKind {
     Tap,
     /// 〔DL1〕`accounts-changed`：只收看得见 / 看不见与「那台账号清单变了」那一格，没有留存。
     AccountsChanged,
+    /// 〔MIG-3b · ㉓②〕`session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
+    Tasks,
+    /// 〔MIG-1 收尾〕`probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
+    Probe,
 }
 
 impl Sub {
@@ -300,6 +316,65 @@ fn plan_replay(sub: &mut Sub, rest: &[Body]) -> (Vec<Item>, usize) {
     (out, take)
 }
 
+/// 〔MIG-1 · `99 §2.1 ⑬` 登记的例外〕**起停那几格**交给一条订阅的计划（纯函数）：不看 credit、**不丢**、照占位置；
+/// 手里有没说的丢失 ⇒ 原位先给 `Gap`（位置号照样连得上）。只许交 [`SessionStreamFrame::takes_credit`] 为假的那几种。
+fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
+    let mut out = Vec::with_capacity(frames.len() + 1);
+    if frames.is_empty() {
+        return out;
+    }
+    if let Some(from_seq) = sub.gap_from.take() {
+        out.push(Item::Gap {
+            from_seq,
+            to_seq: Some(sub.next),
+        });
+    }
+    for body in frames {
+        out.push(Item::Frame {
+            seq: sub.next,
+            body: body.clone(),
+        });
+        sub.next += 1;
+    }
+    out
+}
+
+/// 〔MIG-1〕一条订阅（整台 / 一个会话）的起停重放：骨架在行前（`before`）、终局在行后（`after`）—— 计划住 `session_book::Book::replay`，
+/// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行。
+fn lifecycle_replay(
+    book: &parking_lot::RwLock<crate::session_book::Book>,
+    origin: &str,
+    only: Option<&str>,
+    history: &[JsonlLinePayload],
+) -> (Vec<Body>, Vec<Body>) {
+    let mut buffered: Vec<(String, String)> = Vec::new();
+    for p in history {
+        let pair = (p.session_id.clone(), origin.to_string());
+        if !buffered.contains(&pair) {
+            buffered.push(pair);
+        }
+    }
+    let plan = book.read().replay(&buffered);
+    let pick = |outs: Vec<crate::session_book::Out>| -> Vec<Body> {
+        outs.into_iter()
+            .filter(|o| o.origin() == origin)
+            .flat_map(|o| o.frames())
+            .filter(|f| f.reaches(only))
+            .map(|f| body_of(&f))
+            .collect()
+    };
+    // 旁路快照在途的电平：只在有在途时补一格（前端初值就是 0）。
+    let mut before = Vec::new();
+    let level = crate::ssh_source::snapshot_inflight_level();
+    if level > 0 && only.is_none() {
+        before.push(body_of(&SessionStreamFrame::SnapshotInflight(
+            crate::bridge::SnapshotInflightPayload { count: level },
+        )));
+    }
+    before.extend(pick(plan.before));
+    (before, pick(plan.after))
+}
+
 /// 〔CF2〕「那台机器看得见 / 看不见」换成流里的一格（不占 credit）。
 fn seen_item(seen: bool, opening: bool) -> Item {
     if seen {
@@ -337,6 +412,10 @@ enum Stream {
     Tap,
     /// 〔DL1〕`accounts-changed`。
     AccountsChanged,
+    /// 〔MIG-3b〕`session-tasks`。
+    Tasks,
+    /// 〔MIG-1 收尾〕`probe-progress/<票>`。
+    Probe(String),
 }
 
 /// 〔CF2〕`kind` ⇒ 哪一种流（〔TAP〕`session-tap` ⇒ [`Stream::Tap`]；〔DL1〕`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
@@ -349,6 +428,16 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     }
     if kind == ACCOUNTS_CHANGED_KIND {
         return Ok(Stream::AccountsChanged);
+    }
+    if kind == SESSION_TASKS_KIND {
+        return Ok(Stream::Tasks);
+    }
+    if let Some(ticket) = kind
+        .strip_prefix(PROBE_PROGRESS_KIND)
+        .and_then(|r| r.strip_prefix('/'))
+        .filter(|t| !t.is_empty())
+    {
+        return Ok(Stream::Probe(ticket.to_string()));
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
@@ -374,6 +463,7 @@ impl EventReplay {
                 sink: None,
             }),
             credit_changed: tokio::sync::Notify::new(),
+            book: crate::session_book::book(),
         }
     }
 
@@ -527,20 +617,32 @@ impl EventReplay {
                 ready_labels,
                 ..
             } = &mut *inner;
-            let mut jobs: Vec<(String, u64, u64, Vec<JsonlLinePayload>)> = Vec::new();
+            let mut jobs: Vec<ReplayJob> = Vec::new();
             for sub in subs.iter_mut().filter(|s| !s.live) {
                 sub.live = true;
                 ready_labels.insert(sub.label.clone());
                 let mine: Vec<JsonlLinePayload> =
                     history.iter().filter(|p| sub.wants(p)).cloned().collect();
-                jobs.push((sub.label.clone(), sub.id, sub.generation, mine));
+                // 〔MIG-1〕会话行那一族才有起停（tap / 账号那两种没有）。
+                let (before, after) = if sub.kind == SubKind::Lines {
+                    lifecycle_replay(self.book, &sub.origin, sub.only.as_deref(), &mine)
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                jobs.push(ReplayJob {
+                    label: sub.label.clone(),
+                    id: sub.id,
+                    generation: sub.generation,
+                    lines: mine,
+                    before,
+                    after,
+                });
             }
             (sink, jobs)
         };
-        let n: usize = jobs.iter().map(|j| j.3.len()).sum();
-        for (label, id, generation, mine) in jobs {
-            self.replay_into(&*sink, &label, id, generation, mine, priority_sid)
-                .await;
+        let n: usize = jobs.iter().map(|j| j.lines.len()).sum();
+        for job in jobs {
+            self.replay_into(&*sink, job, priority_sid).await;
         }
         tracing::info!(
             "[perf] ready point: replayed {n} lines in {}ms",
@@ -549,7 +651,55 @@ impl EventReplay {
     }
 
     /// 〔CF2〕把一份留存按 credit 交给一条订阅（不丢；credit 用完就等 `want`；订阅被撤 / 被重订就停）。
-    async fn replay_into(
+    async fn replay_into(&self, sink: &dyn ItemSink, job: ReplayJob, priority_sid: Option<&str>) {
+        let ReplayJob {
+            label,
+            id,
+            generation,
+            lines: payloads,
+            before,
+            after,
+        } = job;
+        let label = label.as_str();
+        // 〔MIG-1〕骨架（活会话 ＋ 灯 ＋ 容器）先于行，不吃 credit。
+        if !self.deliver_lifecycle(sink, label, id, generation, &before) {
+            return;
+        }
+        if !payloads.is_empty() {
+            self.replay_lines(sink, label, id, generation, payloads, priority_sid)
+                .await;
+        }
+        // 〔MIG-1〕终局（可重连 · 已结束 · 说不清 · 清单报完了）晚于行 —— 否则远端行把刚落定的 tab 翻活（issue #19 / #20）。
+        self.deliver_lifecycle(sink, label, id, generation, &after);
+    }
+
+    /// 〔MIG-1〕按计划交一串起停格给一条订阅（不吃 credit、不丢）；订阅没了 ⇒ `false`。
+    fn deliver_lifecycle(
+        &self,
+        sink: &dyn ItemSink,
+        label: &str,
+        id: u64,
+        generation: u64,
+        frames: &[Body],
+    ) -> bool {
+        let items = {
+            let mut inner = self.inner.lock();
+            let Some(sub) = inner
+                .subs
+                .iter_mut()
+                .find(|s| s.label == label && s.id == id && s.generation == generation)
+            else {
+                return false;
+            };
+            plan_lifecycle(sub, frames)
+        };
+        if !items.is_empty() {
+            sink.deliver(label, id, items);
+        }
+        true
+    }
+
+    async fn replay_lines(
         &self,
         sink: &dyn ItemSink,
         label: &str,
@@ -558,9 +708,6 @@ impl EventReplay {
         payloads: Vec<JsonlLinePayload>,
         priority_sid: Option<&str>,
     ) {
-        if payloads.is_empty() {
-            return;
-        }
         let chunks = batch_chunks(build_priority_chunks(payloads, priority_sid));
         let total = chunks.len();
         for (ci, chunk) in chunks.into_iter().enumerate() {
@@ -625,6 +772,8 @@ impl EventReplay {
             Ok(Stream::Lines(o)) => (o, SubKind::Lines),
             Ok(Stream::Tap) => (None, SubKind::Tap),
             Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
+            Ok(Stream::Tasks) => (None, SubKind::Tasks),
+            Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -668,7 +817,16 @@ impl EventReplay {
                     .filter(|p| sub.wants(p))
                     .cloned()
                     .collect();
-                (generation, mine)
+                let (before, after) =
+                    lifecycle_replay(self.book, origin, sub.only.as_deref(), &mine);
+                ReplayJob {
+                    label: label.to_string(),
+                    id,
+                    generation,
+                    lines: mine,
+                    before,
+                    after,
+                }
             });
             inner.subs.push(sub);
             (
@@ -683,13 +841,83 @@ impl EventReplay {
         if let Some(item) = first {
             sink.deliver(label, id, vec![item]);
         }
-        if let Some((generation, mine)) = job {
+        if let Some(job) = job {
             let this = Arc::clone(self);
-            let label = label.to_string();
             tauri::async_runtime::spawn(async move {
-                this.replay_into(&*sink, &label, id, generation, mine, None)
-                    .await;
+                this.replay_into(&*sink, job, None).await;
             });
+        }
+    }
+
+    /// 〔MIG-1 · `99 §2.1 ⑬`〕那台机器的会话起停成品（`session_book` 的出口线程调）：交给订了那台 `session-lines` 的每条实时订阅
+    /// （`session-lines/<sid>` 那一形只交它那一个会话的）—— **不吃 credit、不丢**、照占位置（登记的例外，[`plan_lifecycle`]）。
+    /// 不进留存：F5 / 开窗的重放从成品缓存重算（[`lifecycle_replay`]）。
+    pub fn on_lifecycle(&self, origin: &str, frames: Vec<SessionStreamFrame>) {
+        debug_assert!(frames.iter().all(|f| !f.takes_credit()), "只许交起停那几格");
+        if frames.is_empty() {
+            return;
+        }
+        let bodies: Vec<(SessionStreamFrame, Body)> = frames
+            .into_iter()
+            .map(|f| {
+                let b = body_of(&f);
+                (f, b)
+            })
+            .collect();
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let mut plans: Vec<(String, u64, Vec<Item>)> = Vec::new();
+            for sub in inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.kind == SubKind::Lines && s.live && s.origin == origin)
+            {
+                let mine: Vec<Body> = bodies
+                    .iter()
+                    .filter(|(f, _)| f.reaches(sub.only.as_deref()))
+                    .map(|(_, b)| b.clone())
+                    .collect();
+                let items = plan_lifecycle(sub, &mine);
+                if !items.is_empty() {
+                    plans.push((sub.label.clone(), sub.id, items));
+                }
+            }
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔MIG-1〕旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢）。
+    pub fn on_snapshot_inflight(&self, count: u32) {
+        let body = body_of(&SessionStreamFrame::SnapshotInflight(
+            crate::bridge::SnapshotInflightPayload { count },
+        ));
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.kind == SubKind::Lines && s.live && s.only.is_none())
+                .map(|s| {
+                    (
+                        s.label.clone(),
+                        s.id,
+                        plan_lifecycle(s, std::slice::from_ref(&body)),
+                    )
+                })
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
         }
     }
 
@@ -811,6 +1039,63 @@ impl EventReplay {
         }
     }
 
+    /// 〔MIG-3b · `99 §2.1 ㉓②`〕那台机器的后端说「这个会话的任务清单变了」（`tasks_changed` 帧；本机那条流同一个口）⇒
+    /// 订了那台 `session-tasks` 的每条订阅收一格 `{"sid": …}`（credit 与 `Gap` 与 `accounts-changed` 同一套）。界面收到就重问 `tasks-list`。
+    pub fn tasks_changed(&self, origin: &crate::origin::Origin, sid: &str) {
+        let origin = origin.as_wire_str();
+        let body = serde_json::json!({ "sid": sid }).to_string().into_bytes();
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.kind == SubKind::Tasks && s.origin == origin)
+                .map(|s| {
+                    let items = plan_live(s, vec![Body(body.clone())]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔MIG-1 收尾〕本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `accounts-changed` 同一套；界面给的窗口远大于一趟的格数）。
+    pub fn on_probe(&self, ticket: &str, cell: String) {
+        let body = Body(cell.into_bytes());
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| {
+                    s.kind == SubKind::Probe
+                        && s.origin == crate::origin::LOCAL
+                        && s.only.as_deref() == Some(ticket)
+                })
+                .map(|s| {
+                    let items = plan_live(s, vec![body.clone()]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
     /// 把指定 session_id 的全部历史从 buffer 移除。
     /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新 history 会重放出来"复活" Tab。
     pub fn forget(&self, session_id: &str) {
@@ -832,51 +1117,18 @@ impl EventReplay {
         self.inner.lock().priority_sid.clone()
     }
 
-    /// replay 后对账用：buffer 里所有**本地**（`origin == None`）session 的去重 sid。
-    ///
-    /// 前端是纯事件增量模型：Tab 见行即建 live，只有一次性的 `session-ended` 能归档。
-    /// F5 / HMR 重载后 replay 把 buffer 里已结束会话的行也重放成 live Tab，但归档信号
-    /// （session-ended）不在 buffer、不会重发 → 僵尸 live Tab（还因 closeTab 门控
-    /// archived 而关不掉）。frontend-ready 重放后，用本集合 × session_map 当前活跃集
-    /// 对账、对已结束的本地 sid 补发 session-ended（issue #19）。**仅本地**：session_map
-    /// 只认本地，远端 sid 不在其中。远端版见 [`Self::buffered_remote_sessions`]（issue #20）。
-    pub fn buffered_local_session_ids(&self) -> Vec<String> {
-        let inner = self.inner.lock();
-        let mut seen = std::collections::HashSet::new();
-        let mut out = Vec::new();
-        for p in inner.history.iter() {
-            if p.origin.is_none() && seen.insert(p.session_id.clone()) {
-                out.push(p.session_id.clone());
-            }
-        }
-        out
-    }
+    // 〔MIG-1〕`buffered_local_session_ids`〔散文墓碑〕· `buffered_remote_sessions`〔散文墓碑〕（F5 对账拿留存里的 sid）删了：
+    //   对账从成品缓存重算，就在各条订阅自己的重放里（[`lifecycle_replay`]）。
+}
 
-    /// `buffered_local_session_ids` 的远端版（issue #20）：buffer 里所有
-    /// **远端**（`origin == Some(host)`）session 的去重 sid。
-    ///
-    /// 远端 sid 不在 session_map 里，对账要用 lib.rs 维护的远端活跃集
-    /// （remote-session-emitter 随后端的 added/removed 增删）。**不区分 host**：
-    /// 多机（#30）下仍依赖「sid 全局唯一」—— Claude sid 是 UUID v4，跨机碰撞概率 ≈ 0，
-    /// 故按裸 sid 去重/对账安全。**若将来后端改用非 UUID sid（PID/自增），必须把
-    /// remote_active / 前端 Tab key / RemoteHwndCache 升为 (origin, sid)**（见 #30 跟进）。
-    ///
-    /// 〔GP1 · 第四波〕每个 sid 连同它**所在的那台机器**一起交（`(sid, origin)`，origin 取它第一条行上的那一格）：
-    /// F5 对账要按「那台报完清单没有」分已结束 / 说不清（`ssh_source::split_stale`）。
-    /// 〔散文墓碑〕改之前它叫 `buffered_remote_session_ids`、只交 sid。
-    pub fn buffered_remote_sessions(&self) -> Vec<(String, String)> {
-        let inner = self.inner.lock();
-        let mut seen = std::collections::HashSet::new();
-        let mut out = Vec::new();
-        for p in inner.history.iter() {
-            if let Some(origin) = &p.origin {
-                if seen.insert(p.session_id.clone()) {
-                    out.push((p.session_id.clone(), origin.clone()));
-                }
-            }
-        }
-        out
-    }
+/// 〔MIG-1〕一条订阅的重放：起停骨架（行前）· 留存行（按 credit）· 起停终局（行后）。
+struct ReplayJob {
+    label: String,
+    id: u64,
+    generation: u64,
+    lines: Vec<JsonlLinePayload>,
+    before: Vec<Body>,
+    after: Vec<Body>,
 }
 
 impl Default for EventReplay {

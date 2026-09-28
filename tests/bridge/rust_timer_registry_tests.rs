@@ -163,7 +163,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "两处 `CHUNK_PAUSE_MS`：分块 emit 之间让 UI 喘一口。\
              **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
     ),
-    // 〔LOC1b · 第四波 4D〕`src/session_map.rs` 那条 `ticker`（`recv_timeout(2s)` 心跳，对每个本机会话跑 `is_process_alive`）
+    // 〔LOC1b · 第四波 4D〕`src/session_map.rs` 那条 `ticker`（`recv_timeout(2s)` 心跳，对每个本机会话跑 `is_process_alive`〔散文墓碑〕）
     //   **真退役**，按它自己写的出路：「事件源存在但住在别的 crate」—— 本机判活改由本机后端的帧来（后端 pidfd 看守
     //   ＋ Windows 的死亡事件，RT1 F9 真机读数：后端 1 ms 就醒），monitor 那份判活连同这条心跳一起删了。
 ];

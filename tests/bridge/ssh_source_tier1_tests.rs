@@ -29,13 +29,8 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     /// 按写法取样正是本工作区一直在治的病（`join(SSH_DIR)` 换个常量就绕过去了）。
     /// ⇒ 人群取「谁提到了这个目录」，**本机还是远端由登记回答**，不由语法判。
     const SSH_SITES: &[(&str, &str, &str, &str)] = &[
-        (
-            "ssh_source.rs",
-            "本机（用户自己的机器）",
-            "读 `~/.ssh/config`",
-            "Tier 1 的「导入别名」：只解析 Host 行拿到一份可点的别名清单，\
-                 不展开 Include、不解析 Match、**不碰任何密钥文件**；真正的参数解析交给 `ssh -G`",
-        ),
+        // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh_source.rs` 读 `~/.ssh/config` 那一行走了：导入搬进后端 `dial/ssh_config.rs`
+        //   ⇒ monitor 生产段碰本机 `.ssh` 的从此是零处（下面只剩拼给远端的那一行）。
         (
             "pubkey.rs",
             "**远端**（用户的服务器）",
@@ -95,218 +90,9 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
              实测：{found:?}    登记：{declared:?}\n\
              ★ 多出来的：那是**用户机器上最敏感的目录之一** —— 私钥、`known_hosts`、\n\
              `authorized_keys` 都在里面。要读就登记，并说清「读的是什么、为什么可以读」。\n\
-             ⚠ 少了的：本文件那一处若被改写/挪走，说明「导入别名」这条路变了形，\n\
-             上面那三条 `parse_host_aliases` 的行为判据可能已经不在生产路径上。\n\
+             ⚠ 少了的：登记的那一处被改写/挪走了 —— 先看它是不是换了形状、还在不在远端那一侧。\n\
              ⚠ 人群按**目录名**取，本机/远端由登记的第二列回答 —— \n\
              别再退回按拼法取样（那是 `needle_anchor` 棘轮 08-08 当场拦下的写法）。"
-    );
-}
-
-/// ★ 那一处读出来的东西**只许是别名**：配置里的敏感值一个都不许流出去。
-///
-/// 既有三条行为判据钉的是「别名抽得对」；本条钉反面 ——
-/// 把 `IdentityFile` / `HostName` / `ProxyCommand` / `User` 一起喂进去，
-/// 输出里**不许出现它们的值**。改法一旦变成「收集每条指令的第二个 token」，
-/// 私钥路径与跳板机命令就会经 `list_ssh_host_aliases` 一路到前端。
-#[test]
-fn parse_host_aliases_never_leaks_sensitive_values() {
-    let cfg = "\
-Host box
-    HostName 10.0.0.7
-    User alice
-    IdentityFile ~/.ssh/id_ed25519_secret
-    ProxyCommand ssh -W %h:%p jump.example.com
-    Port 2222
-";
-    let aliases = parse_host_aliases(cfg);
-    assert_eq!(aliases, vec!["box"], "只该抽出别名本身");
-    for leak in [
-        "10.0.0.7",
-        "alice",
-        "id_ed25519_secret",
-        "jump.example.com",
-        "2222",
-    ] {
-        assert!(
-            !aliases.iter().any(|a| a.contains(leak)),
-            "别名清单里出现了 `{leak}` —— 那是 `~/.ssh/config` 里的敏感值，\n\
-                 它会经 `list_ssh_host_aliases` 直接到前端（并被渲染/记日志）。\n\
-                 抽取规则只该看 `Host` 行。"
-        );
-    }
-}
-
-/// host 别名解析：取 Host 行 token、排除通配 / `!`、去重保序、跳过非 Host 指令。
-#[test]
-fn parse_host_aliases_basics() {
-    let cfg = "\
-# comment
-Host pi server1 server2
-    HostName 1.2.3.4
-    User pi
-
-Host=eqsign
-    Port 2222
-
-Host *.internal wild*card prod ?q !neg
-    User admin
-
-Host prod
-    User dup
-";
-    let aliases = parse_host_aliases(cfg);
-    // pi/server1/server2 来自第一块；eqsign 用 `=` 分隔；prod 出现两次只留一次；
-    // `*.internal` / `wild*card` / `?q` / `!neg` 全被通配/否定规则排除。
-    assert_eq!(aliases, vec!["pi", "server1", "server2", "eqsign", "prod"]);
-}
-
-/// 排除字面量 `*`（catch-all）。
-#[test]
-fn parse_host_aliases_excludes_star() {
-    let aliases = parse_host_aliases("Host *\n    User x\n");
-    assert!(aliases.is_empty());
-}
-
-/// 没有任何 Host 指令 → 空。
-#[test]
-fn parse_host_aliases_empty_when_no_host() {
-    let aliases = parse_host_aliases("# just comments\nUser nobody\nPort 22\n");
-    assert!(aliases.is_empty());
-}
-
-// === F57：智能聚合 ===
-
-fn rh(host: &str, key: Option<&str>, user: &str, pj: Option<&str>) -> ResolvedHost {
-    ResolvedHost {
-        host: host.into(),
-        port: 22,
-        user: user.into(),
-        key_path: key.map(String::from),
-        proxy_jump: pj.map(String::from),
-    }
-}
-
-#[test]
-fn alias_base_variants() {
-    assert_eq!(alias_base("aya-lan"), "aya");
-    assert_eq!(alias_base("aya_wan"), "aya");
-    assert_eq!(alias_base("aya.internal"), "aya");
-    assert_eq!(alias_base("pi"), "pi");
-}
-
-#[test]
-fn aggregate_same_machine_multi_address() {
-    // aya-lan / aya-wan 同 key+user+基名 → 聚合成 1 台多地址;pi 基名不同 → 独立。
-    let groups = aggregate_ssh_hosts(vec![
-        ("aya-lan".into(), rh("10.0.0.2", Some("/k"), "zbl", None)),
-        (
-            "aya-wan".into(),
-            rh("aya.example.com", Some("/k"), "zbl", None),
-        ),
-        ("pi".into(), rh("pi.local", Some("/k"), "zbl", None)),
-    ]);
-    assert_eq!(groups.len(), 2);
-    assert_eq!(groups[0].label, "aya");
-    assert_eq!(groups[0].host, "10.0.0.2");
-    assert_eq!(groups[0].addresses, vec!["aya.example.com".to_string()]);
-    let aliases: Vec<&str> = groups[0].members.iter().map(|m| m.alias.as_str()).collect();
-    assert_eq!(aliases, vec!["aya-lan", "aya-wan"]);
-    assert_eq!(groups[1].label, "pi");
-    assert!(groups[1].addresses.is_empty(), "单机组无备用地址");
-}
-
-#[test]
-fn aggregate_different_key_not_merged() {
-    // 同基名但不同 key → 不聚合(一把 key 一台机)。
-    let groups = aggregate_ssh_hosts(vec![
-        ("web-a".into(), rh("1.1.1.1", Some("/ka"), "u", None)),
-        ("web-b".into(), rh("2.2.2.2", Some("/kb"), "u", None)),
-    ]);
-    assert_eq!(groups.len(), 2, "不同 key → 独立");
-    // F57-1：单成员组用**完整别名**当 label(否则都叫 web → 前端落卡碰撞丢一台)。
-    assert_eq!(groups[0].label, "web-a");
-    assert_eq!(groups[1].label, "web-b");
-}
-
-#[test]
-fn parse_ssh_g_proxyjump_and_fields() {
-    let with = parse_ssh_g_output(
-        "hostname 1.2.3.4\nport 2222\nuser pi\nproxyjump bastion\n",
-        "a",
-    );
-    assert_eq!(with.host, "1.2.3.4");
-    assert_eq!(with.port, 2222);
-    assert_eq!(with.user, "pi");
-    assert_eq!(with.proxy_jump.as_deref(), Some("bastion"));
-    // none(大小写不敏感)→ 无跳板;无 proxyjump 行 → None。
-    assert_eq!(
-        parse_ssh_g_output("hostname h\nproxyjump None\n", "a").proxy_jump,
-        None
-    );
-    assert_eq!(
-        parse_ssh_g_output("hostname h\nuser u\n", "a").proxy_jump,
-        None
-    );
-    // hostname/port 缺 → 回退别名 / 22。
-    let fb = parse_ssh_g_output("user u\n", "myalias");
-    assert_eq!(fb.host, "myalias");
-    assert_eq!(fb.port, 22);
-}
-
-#[test]
-fn aggregate_proxyjump_and_dedup() {
-    // 同 host 去重;jump 取组内首个非空 proxyjump。
-    let groups = aggregate_ssh_hosts(vec![
-        (
-            "aya-lan".into(),
-            rh("10.0.0.2", Some("/k"), "u", Some("bastion")),
-        ),
-        ("aya-wan".into(), rh("10.0.0.2", Some("/k"), "u", None)),
-    ]);
-    assert_eq!(groups.len(), 1);
-    assert_eq!(groups[0].jump.as_deref(), Some("bastion"));
-    assert!(groups[0].addresses.is_empty(), "同 host → 去重无额外地址");
-}
-
-/// allowlist：合法字符通过，含空格 / 选项前缀 / shell 元字符的别名被拒。
-///
-/// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
-#[test]
-fn is_safe_alias_allowlist() {
-    assert!(is_safe_alias("pi"));
-    assert!(is_safe_alias("my-host.example.com"));
-    assert!(is_safe_alias("user@host:22"));
-    assert!(is_safe_alias("a_b.c-1"));
-
-    assert!(!is_safe_alias(""));
-    assert!(!is_safe_alias("has space"));
-    assert!(!is_safe_alias("a;b")); // shell metachar
-    assert!(!is_safe_alias("a$b"));
-    assert!(!is_safe_alias("a/b")); // 路径分隔不在 allowlist
-    assert!(!is_safe_alias("a&b"));
-    // 以 `-` 开头本身在 allowlist 内（`-` 是合法字符），option-injection 由
-    // resolve_ssh_host 里单独的 starts_with('-') 检查兜住，这里只验字符集。
-    assert!(is_safe_alias("-oProxyCommand"));
-}
-
-/// `~` 展开：`~` / `~/x` 展开到 home；非 `~` 前缀原样。
-#[test]
-fn expand_tilde_basics() {
-    let home = dirs::home_dir().expect("home dir for test");
-    assert_eq!(expand_tilde("~"), home);
-    assert_eq!(
-        expand_tilde("~/.ssh/id_ed25519"),
-        home.join(".ssh/id_ed25519")
-    );
-    // 非 ~ 前缀原样（不是 home-relative）。
-    assert_eq!(
-        expand_tilde("/etc/ssh/key"),
-        std::path::PathBuf::from("/etc/ssh/key")
-    );
-    // `~user` 形式（非 `~/`）不展开（我们只处理自己的 home）。
-    assert_eq!(
-        expand_tilde("~otheruser/key"),
-        std::path::PathBuf::from("~otheruser/key")
     );
 }
 
@@ -408,106 +194,15 @@ fn next_backoff_doubles_then_caps() {
     );
 }
 
-// === F45：地址解析 + endpoints ===
+// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
+//   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
+//   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
 fn ep(host: &str, port: u16) -> Endpoint {
     Endpoint {
         host: host.into(),
         port,
     }
-}
-
-#[test]
-fn parse_address_line_four_forms() {
-    assert_eq!(parse_address_line("pi.local", 22), Some(ep("pi.local", 22)));
-    assert_eq!(
-        parse_address_line("10.0.0.2:2222", 22),
-        Some(ep("10.0.0.2", 2222))
-    );
-    // [IPv6]:port 与 [IPv6]
-    assert_eq!(
-        parse_address_line("[fe80::1]:2200", 22),
-        Some(ep("fe80::1", 2200))
-    );
-    assert_eq!(parse_address_line("[::1]", 22), Some(ep("::1", 22)));
-    // 裸 IPv6（trap #7：>1 冒号不误当 host:port）
-    assert_eq!(parse_address_line("::1", 22), Some(ep("::1", 22)));
-    assert_eq!(parse_address_line("fe80::1", 22), Some(ep("fe80::1", 22)));
-}
-
-#[test]
-fn parse_address_line_rejects_garbage() {
-    assert_eq!(parse_address_line("", 22), None);
-    assert_eq!(parse_address_line("   ", 22), None);
-    assert_eq!(parse_address_line("h:notaport", 22), None);
-    assert_eq!(parse_address_line(":2222", 22), None); // 无 host
-    assert_eq!(parse_address_line("[", 22), None); // 未闭合方括号
-    assert_eq!(parse_address_line("[]:22", 22), None); // 空 host
-    assert_eq!(parse_address_line("[fe80::1]:bad", 22), None); // 端口非法
-}
-
-#[test]
-fn endpoints_host_first_dedup_preserve_order() {
-    let cfg = RemoteConfig {
-        host: "pi.local".into(),
-        label: "pi".into(),
-        port: 22,
-        user: "pi".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: vec![
-            "10.0.0.2".into(),
-            "pi.local".into(),    // 与 host 重复 → 去重
-            "10.0.0.2:22".into(), // 与上面同 (host,port) → 去重
-            "pub.example.com:2222".into(),
-            "".into(), // 空行跳过
-        ],
-        jump: None,
-    };
-    assert_eq!(
-        cfg.endpoints(),
-        vec![
-            ep("pi.local", 22),
-            ep("10.0.0.2", 22),
-            ep("pub.example.com", 2222),
-        ]
-    );
-}
-
-#[test]
-fn endpoints_empty_addresses_is_just_host() {
-    let cfg = RemoteConfig {
-        host: "h".into(),
-        label: String::new(),
-        port: 2200,
-        user: "u".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: vec![],
-        jump: None,
-    };
-    assert_eq!(cfg.endpoints(), vec![ep("h", 2200)]);
-}
-
-// === F45：winner_order（last-good 排首）===
-
-#[test]
-fn winner_order_puts_last_good_first() {
-    let eps = vec![ep("a", 22), ep("b", 22), ep("c", 22)];
-    // last-good = b → b 排首，其余保序
-    assert_eq!(
-        winner_order(eps.clone(), Some(&ep("b", 22))),
-        vec![ep("b", 22), ep("a", 22), ep("c", 22)]
-    );
-    // last-good = 已移除的 endpoint → 无视，原序
-    assert_eq!(
-        winner_order(eps.clone(), Some(&ep("gone", 22))),
-        eps.clone()
-    );
-    // 无 last-good → 原序
-    assert_eq!(winner_order(eps.clone(), None), eps);
-    // last-good 已在首位 → 幂等
-    assert_eq!(winner_order(eps.clone(), Some(&ep("a", 22))), eps);
 }
 
 // === F45：winner_address（喂 remote-launch 的拨号地址）===
@@ -535,13 +230,13 @@ fn winner_address_falls_back_to_host_when_no_last_good() {
 fn winner_address_uses_last_good_then_invalidates_on_config_change() {
     // 用独立 origin 避免与其它测试共享的 last-good store 串味。
     let cfg = cfg_with("wa-lg", "h.example", 22, vec!["10.0.0.9".into()]);
-    record_last_good("wa-lg", &ep("10.0.0.9", 22));
+    record_last_good(&cfg, &ep("10.0.0.9", 22));
     assert_eq!(
         winner_address(&cfg),
         ep("10.0.0.9", 22),
         "已连过 → last-good 胜者"
     );
-    // 配置改掉备用地址 → 旧 last-good 不在 endpoints 里 → 回退 host。
+    // 配置改掉备用地址 → 记下 last-good 那一刻的地址配置对不上了 → 回退 host（〔MIG-1 收尾〕不再在界面进程里解析地址来判）。
     let cfg2 = cfg_with("wa-lg", "h.example", 22, vec![]);
     assert_eq!(
         winner_address(&cfg2),
