@@ -64,19 +64,6 @@ pub(crate) enum Mode {
     CreateOrAttach,
     /// 往一个**已存在**的会话键入载荷。不存在 ⇒ 报错，**绝不新建**。
     SendInto,
-    /// F04c：往一个**已存在**的会话发**裸键**——与 [`Mode::SendInto`] 的唯一区别是
-    /// **不附尾 `Enter`**。
-    ///
-    /// # 为什么这必须是一个新 **mode 名**，而不是给 `send-into` 加一个 `enter` 字段
-    ///
-    /// [`parse_request`] 是**手工从 `Map` 取键**的，**不 deny unknown fields** ⇒
-    /// 旧版本后端收到一个它不认识的 `enter` 字段会**静默忽略**，照样附 `Enter`。
-    /// 而 monitor 唯一会发 `enter=false` 的地方是「优雅退出时发 `Escape` 打断当前回合」——
-    /// 多一个 `Enter` 就把它变成「**提交用户输入框里排队的文本**」。
-    /// 换成新 mode 名则天然 **fail-closed**：旧后端的 [`Mode::parse`] 返回 `None`
-    /// ⇒ `invalid_args` ⇒ monitor 拿到明确错误、干净回落到一次性 SSH。
-    /// **能力协商在这里是免费的，不需要新机制。**
-    SendKeysRaw,
 }
 
 impl Mode {
@@ -84,7 +71,6 @@ impl Mode {
         match s {
             "create-or-attach" => Some(Mode::CreateOrAttach),
             "send-into" => Some(Mode::SendInto),
-            "send-keys-raw" => Some(Mode::SendKeysRaw),
             _ => None,
         }
     }
@@ -164,14 +150,12 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
 
     let mode_raw = get_str("mode").ok_or((
         "invalid_args",
-        crate::common::contract::malformed(
-            "missing `mode` (create-or-attach / send-into / send-keys-raw)",
-        ),
+        crate::common::contract::malformed("missing `mode` (create-or-attach / send-into)"),
     ))?;
     let mode = Mode::parse(mode_raw).ok_or((
         "invalid_args",
         crate::common::contract::malformed(&format!(
-            "unknown mode `{mode_raw}`; expected create-or-attach / send-into / send-keys-raw"
+            "unknown mode `{mode_raw}`; expected create-or-attach / send-into"
         )),
     ))?;
 
@@ -210,9 +194,8 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     //   （就是回车），不是畸形字节。本机那条路一直这么理解它。
     // · 别的控制字符（`ESC` / `CR` / `NUL` …）不是「键」，是**会改掉终端状态**的东西
     //   ⇒ 照旧拒收。⚠ 这一格**比本机那条旧路更严**：旧路经 `sq` + `bash` 什么都放过去。
-    // · `send-into` / `send-keys-raw` **一个字节不动**：`§19 裁六` 逐字「放宽它会同时改掉
-    //   已有两个生产调用方的行为」（`backend_launch.rs` 的 send-into · `backend_send_keys.rs`
-    //   的裸键）—— 那两条路的 `payload` 语义不同，不该被这一格牵连。
+    // · `send-into` **一个字节不动**：`§19 裁六` 逐字「放宽它会同时改掉已有生产调用方的行为」
+    //   —— 那条路的 `payload` 语义不同，不该被这一格牵连。〔V41 · RST 续〕裸键那个 mode 已删（无生产调用者）。
     // ⚠ **这里刻意写 `if matches!(…)` 而不是 `match mode { Mode::CreateOrAttach => … }`**
     //   〔本轮现打，判据当场逮住的〕：`create_or_attach_never_types_into_a_session_it_did_not_just_create`
     //   用 `arm_of(&src, "Mode::CreateOrAttach =>")` 取那个分支的源码段，而它取的是**第一处**
@@ -541,7 +524,7 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
 }
 
 /// [`run`] 的本体：起 tmux 的那一下由调用方交进来（生产 = [`tmux`]；判据交一个不起进程的替身，
-/// 驱动 `create-or-attach` 那一臂的每一格结局）。`send-into` 两臂的门（`gate::admit`）照旧起真 tmux。
+/// 驱动 `create-or-attach` 那一臂的每一格结局）。`send-into` 那一臂的门（`gate::admit`）照旧起真 tmux。
 fn run_with(
     req: &LaunchRequest,
     tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
@@ -560,18 +543,6 @@ fn run_with(
             // 由 `the_send_into_arm_admits_before_it_types` 钉住。
             let handle = super::gate::admit(&req.name, &t)?;
             type_payload(&handle, &req.payload, tmux)?;
-            Ok(LaunchOutcome {
-                created: false,
-                typed: true,
-            })
-        }
-        Mode::SendKeysRaw => {
-            // 与 `SendInto` **同一道门、同一个顺序**（F03 的 Gate 2）——发裸键也是往别人的
-            // 会话里打字，身份门一视同仁。⚠ 不给它 Gate 3：`send-keys` 不删除任何东西
-            // （monitor 侧 F04 Phase D 审计修过「给非破坏性动作加 Gate 3」那个错法）。
-            let handle = super::gate::admit(&req.name, &t)?;
-            // ★ 唯一的区别：**不附 `Enter`**。由 `send_keys_raw_never_appends_enter` 钉住。
-            type_keys_raw(&handle, &req.payload, tmux)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -734,31 +705,6 @@ fn type_payload(
         "typed_unconfirmed",
         copy_text(
             "beLaunch.type.failed",
-            &[("target", &format!("{target:?}")), ("said", &r.said)],
-        ),
-    ))
-}
-
-/// F04c：发**裸键**，**不附尾 `Enter`**。
-///
-/// tmux 的 `send-keys` 对每个参数**先试着当键名解析**（`Escape` / `C-c` / `Enter` …），
-/// 解析不出来才按字面串敲。所以同一个位置既能发 `/compact` 这种文本、也能发 `Escape`
-/// 这种键 —— 区别只在**要不要再补一下回车**。
-///
-/// 失败仍是 `typed_unconfirmed`（同 [`type_payload`]）：会话在，键未必落。
-fn type_keys_raw(
-    target: &str,
-    keys: &str,
-    tmux: &dyn Fn(&[&str]) -> Result<Ran, CmdErr>,
-) -> Result<(), CmdErr> {
-    let r = tmux(&["send-keys", "-t", target, keys])?;
-    if r.ok {
-        return Ok(());
-    }
-    Err((
-        "typed_unconfirmed",
-        copy_text(
-            "beLaunch.typeRaw.failed",
             &[("target", &format!("{target:?}")), ("said", &r.said)],
         ),
     ))

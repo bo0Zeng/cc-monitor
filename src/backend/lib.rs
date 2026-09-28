@@ -624,7 +624,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4x-relay-state-in-process**（2026-09-27，DEL 续合并那一拍）：子命令 −2（`--apikey-routing` · `--launch-endpoint` 只留帧面）·
 /// 「我们的中转在不在」读常驻后端进程内的监听状态（差分 HTTP 探针删）· 非 unix 远端归「永久不支持」、流收工不再按退避重连。
-pub const BUILD_ID: &str = "p4x-relay-state-in-process";
+///
+/// ★★★ **p4y-no-raw-keys**（2026-09-27，RST 续合并那一拍）：协议 —— 后端 `launch` 的 `send-keys-raw` mode 删（V154 之后零生产调用者，V41）；
+/// `launch` 只剩 `create-or-attach` / `send-into` 两个 mode。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4y-no-raw-keys";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

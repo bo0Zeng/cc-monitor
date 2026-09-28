@@ -31,10 +31,8 @@
 //!    从「主路必须走 backend **且回落必须还在**」变成「主路必须走 backend
 //!    **且盘上不许再有第二条路**」。⚠ 两次翻面的方向是相反的，别读成同一格改了措辞：
 //!    先前那半逐字要求 `connect_and_exec_cmd` **在**，今天逐字要求它**不在**。
-//!    ⚠ F04c 的表达力缺口是**补掉**的、不是绕开的：backend 多了一个 mode 名
-//!    `send-keys-raw`（发裸键、不附 `Enter`）。**必须是 mode 名而不是字段** ——
-//!    `parse_request` 不 deny unknown fields ⇒ 旧后端会静默忽略字段照样附 `Enter`，
-//!    把「打断当前回合」变成「提交用户输入框里排队的文本」。
+//!    ⚠ F04c 当年给 backend 补过一个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`）；
+//!    〔RST 续 · V41〕V154 换号重启不再发 `Escape` ⇒ 无调用者，mode 已删。
 //! 3. ~~Gate 3 的前提触发器~~ **已在 F04a 触发并改写**：backend 现在**有** Gate 3
 //!    （`control/gate.rs::admit_destructive` + `control/kill.rs`）。那条触发器
 //!    「backend 一出现 `session_windows`/`kill-session` 就红」**如设计般红了一次**
