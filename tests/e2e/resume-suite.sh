@@ -34,7 +34,10 @@ _gc_sock_cleanup() { tmux_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-FAKE="$REPO/tests/e2e/fake-claude"
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 拷到 ASCII 的临时目录再当启动器。
+FAKE_DIR="$(mktemp -d /tmp/e2e-resume-fake.XXXXXX)"
+cp "$REPO/tests/e2e/fake-claude" "$FAKE_DIR/fake-claude" && chmod +x "$FAKE_DIR/fake-claude"
+FAKE="$FAKE_DIR/fake-claude"
 DRIVER="$REPO/tests/e2e/resume-cmd-driver.ts"
 GEN="$REPO/tests/e2e/gen-idle-tmux.sh"
 
@@ -59,6 +62,7 @@ cleanup() {
       [ -n "$p" ] && kill "$p" 2>/dev/null
     done
   done
+  rm -rf "$FAKE_DIR"
 }
 trap 'cleanup; _gc_sock_cleanup' EXIT
 
