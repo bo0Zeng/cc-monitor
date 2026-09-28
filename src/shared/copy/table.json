@@ -3783,7 +3783,7 @@
     },
     "cards.markdown.showRest": {
       "kind": "action",
-      "zh": "显示全部（还有 {kb} KB）",
+      "zh": "显示全部 ({kb} KB)",
       "args": ["kb"]
     },
     "cards.text.showAll": {
