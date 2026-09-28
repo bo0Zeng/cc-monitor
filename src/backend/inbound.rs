@@ -1175,7 +1175,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "exit-policy-read",
         doc_anchor: Some("#### `exit-policy-read`"),
         codes: &[],
-        fields: &["killOnExit", "path", "reason", "state"],
+        fields: &["killOnExit", "path", "reason", "said", "state"],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
     },
@@ -1183,7 +1183,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "exit-policy-set",
         doc_anchor: Some("#### `exit-policy-set`"),
         codes: &["bad_args", "io_failed"],
-        fields: &["killOnExit", "path", "reason", "state"],
+        fields: &["killOnExit", "path", "reason", "said", "state"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::exit_policy::answer_set(&r.args)
