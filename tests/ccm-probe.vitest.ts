@@ -30,14 +30,27 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../src/ipc/commands", () => ({
-  commands: { probe_ccm_cli: vi.fn() },
-}));
+// 〔MIG-3b〕探测改走通道（`chan.call(origin, "ccm-probe")`，那台后端出成品）。替身把那一发交给 `probeMock`：
+//   它答旧形状 `{installed, version, capabilities}`，这里译成后端成品 —— `installed:false` 译成「对端不认这条」（老后端，真答案「用不上」）。
+const probeMock = vi.fn();
+vi.mock("../src/ipc/chan", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/ipc/chan")>();
+  return {
+    ...real,
+    chan: {
+      call: async (origin: string, op: string, _b: Uint8Array, budget: { until: number }) => {
+        if (op !== "ccm-probe" || typeof budget?.until !== "number") throw new Error(`不该这样问：${op}`);
+        const r = (await probeMock({ origin })) as { installed: boolean; version: string | null; capabilities: string[] };
+        if (!r.installed) throw new real.ChanError({ layer: "peer", why: "unsupported" });
+        const product = { version: r.version ?? "", capabilities: r.capabilities, agents: ["claude"], build: "p0a-x" };
+        return new TextEncoder().encode(JSON.stringify(product));
+      },
+    },
+  };
+});
 
-import { commands } from "../src/ipc/commands";
-import { probeCcm, invalidateCcmProbeCache } from "../src/ccm-probe";
-
-const probeMock = commands.probe_ccm_cli as unknown as ReturnType<typeof vi.fn>;
+import { probeCcm, invalidateCcmProbeCache, decodeCcmProbe } from "../src/ccm-probe";
+import golden from "./__fixtures__/ccm-probe.golden.json";
 
 beforeEach(() => {
   probeMock.mockReset();
@@ -91,5 +104,16 @@ describe("KR53D3：探测出错 ≠ 远端没装", () => {
     expect(r.state).toBe("installed");
     expect(r.state === "installed" && r.version).toBe("2026.09");
     expect(r.state === "installed" && r.capabilities.has("tmux")).toBe(true);
+  });
+});
+
+describe("MIG-3b `ccm-probe` 成品按形状严格收", () => {
+  it("金样收成「装了」；多一格 / 缺一格 / 类型不对 ⇒ 抛", () => {
+    const r = decodeCcmProbe(golden.product);
+    expect(r.state === "installed" && [...r.capabilities]).toEqual(golden.product.capabilities);
+    expect(() => decodeCcmProbe({ ...golden.product, extra: 1 })).toThrow(/shape mismatch/);
+    expect(() => decodeCcmProbe({ ...golden.product, build: 1 })).toThrow(/shape mismatch/);
+    const { agents: _agents, ...short } = golden.product;
+    expect(() => decodeCcmProbe(short)).toThrow(/shape mismatch/);
   });
 });

@@ -313,11 +313,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Unassigned,
         "骨架行读仍经 monitor 转",
     ),
-    (
-        "probe_ccm_cli",
-        Lane::Unassigned,
-        "monitor 只在转一条 `ccm-probe`",
-    ),
+    // 〔MIG-3b〕远端 `ccm` 探针那一条已迁（界面经通道直问 `ccm-probe`，那台后端出成品），行删了。
     (
         "push_public_key",
         Lane::Unassigned,

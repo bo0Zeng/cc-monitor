@@ -14,6 +14,7 @@
  * 桩法照 `remote-launch-run.vitest.ts`：mock `@tauri-apps/api/core::invoke` 按 cmd 路由 ——
  * 这样走的是**真的 `commands` 包装层**，包装层写错了这套会红。
  */
+import { isChanCall, UNSUPPORTED } from "./test-support/chan-fake";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // 〔C4e · 第四波 4C〕就地 resume 那一次键入从 Tauri 命令 `backend_send_into`〔散文墓碑〕改成界面经通道直接说后端的
@@ -45,11 +46,10 @@ let sendIntoThrows = false;
 function route(): void {
   invokeMock.mockImplementation((cmd: string, args?: unknown) => {
     seen.push({ cmd, args });
+    // 探测恒答「未装 ccm」⇒ send-into 照常走兜底渲染器（本来也是：CLI 渲染器对
+    // send-into 恒 `ok:false`，#76 防线）。〔MIG-3b〕探测经通道 `ccm-probe`，「未装」＝ 对端不认这条。
+    if (isChanCall(cmd, args, "ccm-probe")) return Promise.reject(UNSUPPORTED);
     switch (cmd) {
-      // 探测恒答「未装 ccm」⇒ send-into 照常走兜底渲染器（本来也是：CLI 渲染器对
-      // send-into 恒 `ok:false`，#76 防线）。
-      case "probe_ccm_cli":
-        return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // 🔴 〔步 22b·B 2026-09-20〕**这一格原来恒返回常量 `PAYLOAD`。**
       // `设计/90 §4 E` 收官之后，`send-into` 与 `attach` 两格的**外层 tmux 命令**
       // 也从这条命令出来 ⇒ 恒返回内层载荷等于把外层那一层从桩里抹掉，
@@ -182,7 +182,7 @@ describe("U8a-2c-1 send-into：send-keys 半边走 backend", () => {
     expect(sent!.args.req.origin).toBe("h1");
     expect(sent!.args.req.name).toBe(NAME);
     // 载荷必须先渲染出来再发 —— 否则就是拿着空载荷去 send-into。
-    const order = seen.map((s) => s.cmd).filter((c) => c !== "probe_ccm_cli");
+    const order = seen.filter((s) => !isChanCall(s.cmd, s.args, "ccm-probe")).map((s) => s.cmd);
     expect(order.indexOf("render_launch_payload")).toBeLessThan(
       order.indexOf("backend_send_into"),
     );

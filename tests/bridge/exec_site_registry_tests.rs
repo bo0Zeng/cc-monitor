@@ -37,7 +37,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
     // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     // 〔SH1 · V137〕`mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
-    // 〔E2〕`ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。
+    // 〔E2〕`ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。〔散文墓碑〕
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
@@ -202,7 +202,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
         // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
-        // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。
+        // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
         // 〔DEL〕4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
         found.len() >= 3,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
@@ -299,7 +299,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     }
     // 常驻自检：某一类归零时上面那一支就没人行使，而它看起来照样绿。
     // ⚠ 本仓已连着六次栽在「新分支平时没人走」上，所以四类各要一个活样本。
-    // 〔E2〕`Const` 那一类收敛到零（最后一条 `ccm_probe.rs::probe_ccm_cli` 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
+    // 〔E2〕`Const` 那一类收敛到零（最后一条 `ccm_probe.rs` 的 `probe_ccm_cli` 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。〔散文墓碑〕
     // 〔DEL〕`Quoted` 那一类也收敛到零（最后一条 `ssh_source.rs` 起远端流模式那一处随那一形删了）⇒ 同上。
     assert_eq!(
         (per_class[0], per_class[2]),
@@ -358,7 +358,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
     // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。
     // 〔SH1〕`hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
-    // 〔E2 · `96 §7.2.2`〕`ccm_probe.rs::probe_ccm_cli` 那一行摘了：`ccm` 就是那台后端本身（V28），「会哪些」改问那台后端 `ccm-probe`
+    // 〔E2 · `96 §7.2.2`〕`ccm_probe.rs` 的 `probe_ccm_cli` 那一行摘了：`ccm` 就是那台后端本身（V28），「会哪些」改问那台后端 `ccm-probe`〔散文墓碑〕
     //   （与 `ccm --ccm-probe` 同一份），不再进交互 shell 查 `PATH`（W5-ALIAS §3.6 写好的解锁条件兑现）。
     // 〔SH1〕`tmux.rs` 那一行摘了：后端新帧命令 `tmux-list`（同 watcher 那一趟 `tmux ls`），monitor 改问它。
     // 〔SH1 · V136〕`cc_bus.rs` 那两行（读名册 · 读收件箱）摘了：cc-bus 加了机器可读的读命令，后端 `bus-state` / `bus-inbox` 转调，界面经通道问。

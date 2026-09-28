@@ -98,7 +98,6 @@ import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { Origin } from "../generated/Origin";
 import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
-import type { CcmProbeResult } from "../generated/CcmProbeResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -202,8 +201,7 @@ export const commands = {
   /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
   get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
 
-  /** 探测远端有没有装 `ccm` CLI 及其能力集。返回**线上形状**（TS 侧另有领域类型）⇒ 桶③。 */
-  probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),
+  // 〔MIG-3b〕远端 `ccm` 探测那条退役：界面经通道直问那台后端 `ccm-probe`（`src/ccm-probe.ts::probeCcm`）。
 
   /**
    * 写配置：只交「改哪几条路径」（〔CFG1〕整份替换的 `save_config` 删了）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 〔散文墓碑〕

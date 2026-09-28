@@ -2504,7 +2504,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 55usize), // 〔合并 MIG-3b × 主线 19671e6b〕主线 52 ＋ MIG-3b +3（钩子诊断 `hooks-diag` · `session-writes.ts` 的删会话 · 分叉）
+            ("chan.call", 56usize), // 〔MIG-3b〕+1：`ccm-probe.ts::probeCcm` // 〔合并 MIG-3b × 主线 19671e6b〕主线 52 ＋ MIG-3b +3（钩子诊断 `hooks-diag` · `session-writes.ts` 的删会话 · 分叉）
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
