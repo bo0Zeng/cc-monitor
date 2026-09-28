@@ -309,6 +309,28 @@ impl std::fmt::Display for Hosted {
     }
 }
 
+/// 〔DEL 续 · 主会话裁〕本进程里**绑上了、接受线程也起来了**的中转口。唯一写者是 [`host`]（生产里一个进程至多一个；
+/// 判据在同一个测试进程里各起各的口 ⇒ 按口记，互不干扰）。接受线程随进程生死、不中途退 ⇒ 记下就不摘。
+static HOSTED_PORTS: std::sync::Mutex<std::collections::BTreeSet<u16>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+fn note_listening(port: u16) {
+    HOSTED_PORTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(port);
+}
+
+/// 〔DEL 续 · 主会话裁〕**这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
+/// （中转就住在这个进程里，V107 · V139；一个事实一个家）。读者：上游选择出的两份成品
+/// （`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
+pub(crate) fn our_relay_listening(port: u16) -> bool {
+    HOSTED_PORTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&port)
+}
+
 /// 〔RL1 · V107 · V139〕**在本进程里起中转**：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
 ///
 /// # 为什么是「交了端口才起」而不是「流模式一律起」
@@ -353,7 +375,10 @@ pub(crate) fn host(
         .name("ccm-relay-accept".to_string())
         .spawn(move || serve(listener, relay, Arc::default()))
     {
-        Ok(_) => Hosted::Listening(addr),
+        Ok(_) => {
+            note_listening(addr.port());
+            Hosted::Listening(addr)
+        }
         Err(e) => {
             eprintln!("[relay] cannot spawn accept thread: {e}");
             Hosted::Failed(format!("起不来接受线程：{e}"))

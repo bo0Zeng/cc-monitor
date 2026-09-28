@@ -38,13 +38,38 @@ impl std::fmt::Debug for Ensured {
     }
 }
 
+/// 为什么没接上那台的常驻后端。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AttachErr {
+    /// 〔DEL 续 · 主会话裁〕那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
+    /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
+    Unsupported(String),
+    /// 别的失败 ⇒ 照常按退避重连。
+    Failed(String),
+}
+
+impl From<String> for AttachErr {
+    fn from(s: String) -> Self {
+        AttachErr::Failed(s)
+    }
+}
+
+impl AttachErr {
+    /// 给人看的那句。
+    pub(crate) fn said(self) -> String {
+        match self {
+            AttachErr::Unsupported(s) | AttachErr::Failed(s) => s,
+        }
+    }
+}
+
 /// 读 `--resident-ensure` / `--resident-stop` 那一趟的结果（纯函数）：退出 0 ⇒ stdout 那一行；退出 2 ⇒ stderr 的 `{code,message}`。
 /// 〔DEL〕`unsupported`（那台脱离不了，非 unix）明说「远端只支持 Unix」；老后端 ⇒ 「太旧」—— 都是失败，没有回落。
 pub(crate) fn parse_answer(
     exec: &crate::ssh_source::RemoteExec,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, AttachErr> {
     if exec.stdout.contains(OLD_BACKEND_MARKER) {
-        return Err(copy_text("rsRemoteResident.ensure.tooOld", &[]));
+        return Err(copy_text("rsRemoteResident.ensure.tooOld", &[]).into());
     }
     match exec.exit_status {
         Some(0) => serde_json::from_str(exec.stdout.trim()).map_err(|e| {
@@ -52,6 +77,7 @@ pub(crate) fn parse_answer(
                 "rsRemoteResident.ensure.answerUnreadable",
                 &[("e", &e.to_string())],
             )
+            .into()
         }),
         _ => {
             let err: serde_json::Value =
@@ -66,12 +92,12 @@ pub(crate) fn parse_answer(
                     )
                 });
             if err["code"] == "unsupported" {
-                Err(copy_text(
+                Err(AttachErr::Unsupported(copy_text(
                     "rsRemoteResident.ensure.unsupported",
                     &[("why", &msg)],
-                ))
+                )))
             } else {
-                Err(msg)
+                Err(AttachErr::Failed(msg))
             }
         }
     }
@@ -92,7 +118,7 @@ fn parse_ensured(v: &serde_json::Value) -> Result<Ensured, String> {
     }
 }
 
-async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, String> {
+async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr> {
     // 〔V151〕`ccm -- --resident-ensure`（打头的 `--` 让那台的 `ccm` 当后端用）。
     let mut cmd = format!(
         "{} {} --resident-ensure",
@@ -104,7 +130,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, String> {
     }
     let exec =
         crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;
-    parse_ensured(&parse_answer(&exec)?)
+    Ok(parse_ensured(&parse_answer(&exec)?)?)
 }
 
 /// 读到的 hello 怎么办（纯函数）。
@@ -242,7 +268,7 @@ async fn tunnel_when_bound(cfg: &RemoteConfig, port: u16) -> Result<DialStream, 
 pub(crate) async fn attach(
     cfg: &RemoteConfig,
     flags: (bool, bool, bool),
-) -> Result<Replayed, String> {
+) -> Result<Replayed, AttachErr> {
     let origin = cfg.origin_label();
     let mut replaced = false;
     let mut ensured = ensure(cfg, false).await?;
@@ -255,7 +281,7 @@ pub(crate) async fn attach(
             crate::ssh_source::EXPECTED_BACKEND_BUILD_ID,
             replaced,
         ) {
-            HelloDecision::NotOurs(why) => return Err(why),
+            HelloDecision::NotOurs(why) => return Err(why.into()),
             HelloDecision::Replace => {
                 tracing::info!("remote_resident [{origin}] 常驻后端比手上这一版旧 ⇒ 换掉再接");
                 drop(r);
@@ -283,10 +309,7 @@ pub(crate) async fn attach(
                 Some(r) => r.to_string(),
                 None => copy_text("rsRemoteResident.handshake.notAttachReply", &[]),
             };
-            return Err(copy_text(
-                "rsRemoteResident.handshake.refused",
-                &[("why", &why)],
-            ));
+            return Err(copy_text("rsRemoteResident.handshake.refused", &[("why", &why)]).into());
         }
         // 预读进缓冲的字节（attach 之后紧跟的帧）连同 hello 一起补吐。
         let mut head = hello.into_bytes();
@@ -326,7 +349,7 @@ pub struct StopAnswer {
 
 /// 读 `--resident-stop` 那一趟（纯函数）：三个词之外的一律是错，不猜（本机那一趟也经它，`local_backend_host::run_resident_stop`）。
 pub(crate) fn read_stop(exec: &crate::ssh_source::RemoteExec) -> Result<StopAnswer, String> {
-    let v = parse_answer(exec)?;
+    let v = parse_answer(exec).map_err(AttachErr::said)?;
     let stopped = match v["stopped"].as_str() {
         Some("graceful") => StopWord::Graceful,
         Some("killed") => StopWord::Killed,

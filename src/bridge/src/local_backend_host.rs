@@ -1751,7 +1751,7 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
 }
 
 // 〔US1 · 第四波 4D〕`relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
-//   （`launch-endpoint` · `apikey-routing` 的成品里那一格，判准是 RK1 的差分探针 —— 「口上有人 ≠ 我们的中转」那条诚实边界随之收掉）。
+//   （`launch-endpoint` · `apikey-routing` 的成品里那一格，读后端进程内的监听状态 —— 「口上有人 ≠ 我们的中转」那条诚实边界随之收掉）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」

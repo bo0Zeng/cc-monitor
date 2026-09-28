@@ -182,6 +182,35 @@ if [ "$MARKS" -lt "$RAN" ]; then
   bad "标记数 $MARKS < 跑成的测试数 $RAN —— 有测试提前退出、断言没走完"
 fi
 
+# 〔DEL 续 · 主会话裁〕**按环境显式分支**：下面这三条起真后端的判据由 `cfg(all(embedded_backends, linux, x86_64))` 门着
+#   （`build.rs` 只在 `src/bridge/embedded-backends/` 两个 arch 都齐时置 cfg；那个目录 gitignore）。
+#   没铺 ⇒ 它们不编译进来 ⇒ 那几条断言记 **SKIP** 并说原因；PASS ＋ SKIP 恒等总条数（门禁 `exact-with-skip`，照 `backend-gate2`）。
+#   ⚠ SKIP 只许出现在「环境真不够」时：落点齐了、本机也是 Linux x86_64，却一条都没跑 ⇒ **FAIL**（多半是换了落点之后
+#   `build.rs` 没重跑 —— `touch src/bridge/build.rs`，见 `local_backend_host_tests.rs` 那段复跑纪律）；只跑了一部分 ⇒ 也 FAIL。
+EMB_TESTS=(
+  backend::control::local_backend::tests::the_local_backend_host_really_registers_an_inbound_client
+  backend::control::local_backend::tests::the_local_tmux_frames_really_land_in_the_ledger
+  local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
+)
+# 那三条合起来打的断言标记数（09-27 在铺了落点的树上现打：26 − 15）。
+EMB_MARKS=11
+skip=0
+emb_ran=0
+for t in "${EMB_TESTS[@]}"; do grep -qF "test $t " "$OUT" && emb_ran=$((emb_ran + 1)); done
+emb_ready=0
+if [ -f "$REPO/src/bridge/embedded-backends/cc-monitor-backend-x86_64" ] \
+   && [ -f "$REPO/src/bridge/embedded-backends/cc-monitor-backend-aarch64" ] \
+   && [ "$(uname -s) $(uname -m)" = "Linux x86_64" ]; then emb_ready=1; fi
+if [ "$emb_ran" -eq "${#EMB_TESTS[@]}" ]; then :
+elif [ "$emb_ran" -eq 0 ] && [ "$emb_ready" -eq 0 ]; then
+  skip=$EMB_MARKS
+  printf '  SKIP %s 条断言（%s 条起真后端的判据）：本树没铺 src/bridge/embedded-backends/ 两个 arch（或本机不是 Linux x86_64）—— build.rs 不置 cfg(embedded_backends)，它们不编译进来\n' "$EMB_MARKS" "${#EMB_TESTS[@]}"
+elif [ "$emb_ran" -eq 0 ]; then
+  bad "落点齐了、本机也是 Linux x86_64，那 ${#EMB_TESTS[@]} 条却一条都没跑 —— build.rs 没重跑？（touch src/bridge/build.rs）"
+else
+  bad "那 ${#EMB_TESTS[@]} 条只跑了 $emb_ran 条 —— 门它们的 cfg 分叉了"
+fi
+
 # 〔E2 尾 09-27〕Rust 那侧自己收尸（`E2eSandbox` 的 `Drop` 按句柄收）；跑完还活着的就是**漏网**的 ——
 #   从前靠收尾那句模式杀兜着，漏了也看不见（两趟过滤串重叠那次，第一趟接上的后端就是这样留到第二趟、
 #   让它当场报「已经在跑」）。收尾照样会收掉它们，但先记一条红。
@@ -190,5 +219,5 @@ if [ -n "${LEFT// /}" ]; then bad "Rust 侧跑完还有本套件起的后端活�
 else ok "Rust 侧跑完没有漏网的后端（进程表里按 exe ＋ \$WORK 认）"; fi
 
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail ====="
+echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip ====="
 [ "$fail" -eq 0 ]

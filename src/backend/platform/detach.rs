@@ -4,7 +4,7 @@
 //!
 //! 〔HOST · V139〕`control/resident.rs`：`--resident-ensure` 起那台的常驻后端 —— 起它的是一趟 SSH exec，SSH 一断那一趟就没了，
 //! 而常驻后端（与它进程内的中转）**不许跟着一起没了**。⇒ 放进**自己的进程组**，不与起它的那一趟共享作业控制与信号。
-//! 〔DEL〕先前的第一个调用方（`relay/machine.rs` 起脱离的 `--relay`）随那一族删了。
+//! 〔DEL〕先前的第一个调用方（起脱离的 `--relay` 那一处）随那一族删了。
 //!
 //! 〔RM1f〕另一个调用方：`plugin::invoke::run_abortable` —— 同一格原语、另一个理由：让插件子进程**自成一组**，
 //! 调用方放弃等待时 `signal::kill_group` 才有一组可杀（`timeout` 前缀下干活的是孙进程）。
