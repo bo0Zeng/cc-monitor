@@ -101,11 +101,6 @@ export async function invoke(cmd, args = {}) {
     //   这里只剩「全部会话走中转」那个开关（monitor 自己的一格：夹具不走中转）。
     case "relay_all_sessions_switch":
       return false;
-    case "update_history_metadata": {
-      const acct = args && args.patch ? args.patch.lastAccount : undefined;
-      seq("record account=" + String(acct));
-      return undefined;
-    }
     default:
       seq("invoke?:" + cmd);
       return undefined;
@@ -164,6 +159,21 @@ function chanCall(op, body) {
       // `ccm …` 调用行由那台后端渲（它自己就是 ccm）；命令级驱动器那一端没有后端可执行 ⇒ 如实说渲不出
       //（成品形状 `{ok, cmd, reason}` 里的降级那一形），编排照生产逻辑降级到载荷那条。
       return enc({ ok: false, cmd: null, reason: "e2e shim：那一端没有后端（ccm）可渲" });
+    case "history-annotate": {
+      // 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 〔C4d〕问本机常驻后端 `history-annotate`。
+      //   记进序列（`record account=<名>`），回成品 `{entry}`（`history-reads.ts::decodeEntry` 逐键要的那一份）。
+      const patch = body.patch || {};
+      if ("lastAccount" in patch) seq("record account=" + String(patch.lastAccount));
+      return enc({
+        entry: {
+          starred: Boolean(patch.starred),
+          customTitle: patch.customTitle ?? null,
+          hidden: Boolean(patch.hidden),
+          updatedAt: 0,
+          lastAccount: patch.lastAccount ?? null,
+        },
+      });
+    }
     case "launch-endpoint":
       // 成品 `{baseUrl}`：`null` = 不注入（夹具的账号都是订阅号，不走中转）。
       return enc({ baseUrl: null });
