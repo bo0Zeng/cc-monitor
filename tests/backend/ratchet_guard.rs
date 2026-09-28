@@ -65,9 +65,9 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 14;",
+            "const SPAWN_SITES_TODAY: usize = 15;",
             1,
-            "backend 侧起进程登记表的**相等断言**（不是地板）。〔HOST · V139：`13` → **14**，往**上**走一格：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端）——真的新面，`ALLOWED` 里已写明；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
+            "backend 侧起进程登记表的**相等断言**（不是地板）。〔MIG-1 · `99 §2.1 ⑯`：`14` → **15**，往**上**走一格：`dial/ssh_config.rs` 那一处 `ssh -G`（解析 ssh config，从 monitor 搬来；monitor 那一处同拍删了）；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕〔HOST · V139：`13` → **14**，往**上**走一格：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端）——真的新面，`ALLOWED` 里已写明；`readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              〔SH1 · D-g：`12` → **13**，往**上**走一格：`control/kill.rs` 多一处只读 `tmux list-panes`（杀之前读 pane 根进程 pid）；\
              `readonly_guard` 那条 `assert_eq!` 自己先红了，本针跟着记新值。〕\
              〔RM1a · 第四波：`11` → **12**，往**上**走一格：`relay/machine.rs` 那一处（远端那台上起一个脱离的 `--relay`）\

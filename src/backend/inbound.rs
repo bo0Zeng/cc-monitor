@@ -198,6 +198,10 @@ pub const COMMANDS: &[&str] = &[
     "skill-installs",
     "skill-read",
     "skill-uninstall-plan",
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`）：界面经 `chan.call(<local>, …)` 问本机常驻后端。
+    "ssh-config-aliases",
+    "ssh-config-import",
+    "ssh-config-resolve",
     "tasks-list",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
@@ -2365,6 +2369,48 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
+    },
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `ssh_source.rs` 原样搬来）。
+    //   阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
+    CommandSpec {
+        name: "ssh-config-aliases",
+        doc_anchor: Some("#### `ssh-config-aliases`"),
+        codes: &[],
+        fields: &["aliases"],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_aliases()))),
+    },
+    CommandSpec {
+        name: "ssh-config-resolve",
+        doc_anchor: Some("#### `ssh-config-resolve`"),
+        codes: &["invalid_args", "bad_alias", "failed"],
+        fields: &["alias", "host", "keyPath", "port", "proxyJump", "user"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::dial::ssh_config::answer_resolve(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "ssh-config-import",
+        doc_anchor: Some("#### `ssh-config-import`"),
+        codes: &[],
+        fields: &[
+            "addresses",
+            "alias",
+            "groups",
+            "host",
+            "jump",
+            "keyPath",
+            "label",
+            "members",
+            "port",
+            "proxyJump",
+            "user",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
     },
     // 〔SH1〕列这台的 tmux 会话：`{installed, lines}`（原样 `tmux ls -F` 行，与流里推的那份同一个格式串）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {

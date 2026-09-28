@@ -2453,6 +2453,14 @@ mod spawn_registry {
     /// 归**被起的那个程序**。这不是巧合，是这张表存在的理由。
     pub(super) const ALLOWED: &[(&str, &str, &str, &str, &str)] = &[
         (
+            "dial/ssh_config.rs",
+            "ssh",
+            "〔MIG-1 · `设计/99 §2.1 ⑯`〕`ssh -G <别名>`：OpenSSH 客户端**只解析** `~/.ssh/config` 打出有效参数、不建连接、不写任何文件。\
+             别名先过 allowlist、`-` 开头另挡，argv 直传不过 shell。从 monitor 搬来（解读与拨号同一个家）。",
+            "缩性质",
+            "自己解析 ssh_config（Include / Match / 通配 / 默认值）的那天 —— 今天交给 `ssh -G` 是因为它最准。",
+        ),
+        (
             "control/ccm/mod.rs",
             "sh",
             "`K-R48`：一次性 `ccm` 模式把**一条已经渲好的命令串**交给 POSIX shell 并 `exec` 掉自己\
@@ -2799,7 +2807,8 @@ mod spawn_registry {
         // 〔SH1 · D-g〕**12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
         //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
         // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
-        const SPAWN_SITES_TODAY: usize = 14;
+        // 〔MIG-1 · `99 §2.1 ⑯`〕**14 → 15**：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
+        const SPAWN_SITES_TODAY: usize = 15;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

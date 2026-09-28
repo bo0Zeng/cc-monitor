@@ -2451,6 +2451,43 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。替掉 monitor `list_remote_tmux` 那条拨号 shell。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
+#### `ssh-config-aliases`：这台 `~/.ssh/config` 里可点的别名（MIG-1，09-27，**只读**）
+
+```text
+→ {"id":"s1","cmd":"ssh-config-aliases","args":{}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"aliases":["devbox-lan","devbox-wan","pi"]}}
+```
+
+**入参：无**。只看 `Host` 行：非通配（`*` / `?` / `!` 开头的不要）、去重保序；不展开 `Include`、不解析 `Match`；别的指令的值一个都不出线。
+文件不在 / 读不了 ⇒ `aliases:[]`（没有 config 是正常的）。`99 §2.1 ⑯`：解读与拨号同一个家（`dial/ssh_config.rs`），界面问 `<local>`。
+
+#### `ssh-config-resolve`：一个别名的有效连接参数（MIG-1，09-27，**只读**）
+
+```text
+→ {"id":"s2","cmd":"ssh-config-resolve","args":{"alias":"devbox-lan"}}
+← {"kind":"reply","id":"s2","ok":true,"data":{"host":"10.0.0.2","port":2222,"user":"user","keyPath":null,"proxyJump":"bastion"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `alias` | → | 必填。过 allowlist（`[A-Za-z0-9._@:-]`）且不以 `-` 开头，否则 `bad_alias` |
+| `host` / `port` / `user` | ← | `ssh -G` 的 `hostname`（缺省回退别名）/ `port`（缺省 22）/ `user`（缺省空串） |
+| `keyPath` | ← | 第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null` |
+| `proxyJump` | ← | `proxyjump`（`none` ⇒ `null`） |
+
+系统 `ssh -G` 只读配置、不建连接。错误码：`invalid_args`（缺 `alias`）· `bad_alias` · `failed`（起不来 / 退出非 0，原话带在 message 里）。
+
+#### `ssh-config-import`：批量导入预览（MIG-1，09-27，**只读**）
+
+```text
+→ {"id":"s3","cmd":"ssh-config-import","args":{}}
+← {"kind":"reply","id":"s3","ok":true,"data":{"groups":[{"label":"devbox","host":"10.0.0.2","port":2222,"user":"user","keyPath":null,"addresses":["devbox.example.com:22"],"jump":"bastion","members":[{"alias":"devbox-lan","host":"10.0.0.2","port":2222,"proxyJump":"bastion"},{"alias":"devbox-wan","host":"devbox.example.com","port":22,"proxyJump":null}]}]}}
+```
+
+**入参：无**。全部别名逐个 `ssh-config-resolve`（解析失败的跳过），同 `(keyPath, user, 基名前缀)` 的聚成一组 = 同一台机器的多个地址：
+`label`（单成员组 = 完整别名，多成员 = 基名）· `host` / `port` / `user` / `keyPath`（组首）· `addresses`（其余地址，端口不同则 `host:port`）·
+`jump`（组内首个非空 proxyjump）· `members`（`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原）。
+
 #### `resync`：手动对齐（RESYNC，09-27，V149）
 
 ```text
@@ -2907,6 +2944,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
+
+**MIG-1 追加三条（09-27）**：`--ssh-config-aliases` · `--ssh-config-import`（不读 stdin）· `--ssh-config-resolve`（读 stdin：`{alias}`）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
 
 〔RESYNC · 09-27〕`resync` **没有 CLI 面**（`cli_control::STREAM_ONLY`）：它对齐的是进程里在跑的 watcher，一次性进程里一份都没有。
 

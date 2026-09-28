@@ -181,8 +181,6 @@ describe("C01 边界生成物", () => {
       "HookState.ts", //              C04d 批3（serde(tag="kind", kebab-case) 内部标记枚举）
       "HooksDiagnosis.ts", //         C04d 批3
       "HooksReport.ts", //            C04d 批3
-      "ImportGroup.ts", // C04d 批5c
-      "ImportMember.ts", // C04d 批5c（ImportGroup 的传递依赖）
       // 〔CF2 · 第四波 4B〕"JsonlBatchPayload.ts" 走了：`jsonl-batch` 事件退役，会话内容改走通道 `subscribe`
       //   （流里一格的体是 `SessionStreamFrame`）。
       "JsonlLinePayload.ts", //       C04c
@@ -208,7 +206,6 @@ describe("C01 边界生成物", () => {
       // 「对齐 A2 的返回结构」的注释）。
       "RemoteHealthPayload.ts", //    C02
       "RemoteSessionAddedPayload.ts", // C02
-      "ResolvedHost.ts", // C04d 批5c
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       // 〔C4a · 第四波〕"SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）
       //   随「会话 ↔ 账号」改走通道一起删了，逐行解释与它的类型只住 `src/accounts.ts`（`parseSessionAccountLines`）。

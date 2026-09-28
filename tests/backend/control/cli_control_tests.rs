@@ -278,6 +278,9 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "acct-iso-shellinit",
         // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
+        // 〔MIG-1〕这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。
+        "ssh-config-aliases",
+        "ssh-config-import",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

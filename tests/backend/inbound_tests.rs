@@ -663,7 +663,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "resync", // 〔RESYNC〕
+        "ssh-config-aliases", // 〔MIG-1〕读一份文件
+        "ssh-config-import",  // 〔MIG-1〕逐个起 `ssh -G`
+        "ssh-config-resolve", // 〔MIG-1〕起一次 `ssh -G`
+        "resync",             // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",

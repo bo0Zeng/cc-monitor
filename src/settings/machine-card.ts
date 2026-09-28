@@ -35,7 +35,7 @@ import { fetchAccounts } from "../account-reads";
 import { withAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
 import type { ConnTestResult } from "../generated/ConnTestResult";
-import type { ResolvedHost } from "../generated/ResolvedHost";
+import type { ResolvedHost } from "../ssh-config-reads";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
