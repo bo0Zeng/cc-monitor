@@ -155,6 +155,9 @@ ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"znew","em
 OUT="$(CCM_ACCOUNTS_JSON="$ACCTS" CCM_SEQ_LOG="$WORK/seq.log" CCM_TOAST_LOG="$WORK/toast.log" \
   npx tsx "$DRV" restart aya "$SID" /tmp/e2e-remote "$S" znew "$FAKE" 0 1 1)"
 echo "   $(echo "$OUT" | paste -sd' ' -)  | seq: $(paste -sd' ' -<"$WORK/seq.log")"
+# 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 序列止于那一笔，且 shim 没有不认的问（`chan?:` / `invoke?:`）。
+SEQ_ALL="$(grep -E '^(kill|resume|record account=.*|chan\?:.*|invoke\?:.*)$' "$WORK/seq.log" | paste -sd' ' -)"
+[ "$SEQ_ALL" = "kill resume record account=znew" ] && ok "编排序列 = kill→resume→记账 znew（没有 shim 不认的问）" || bad "编排序列=[$SEQ_ALL]（期望 kill resume record account=znew）"
 
 # ── 3. 旧号失去（SessionRemoved = kill 后端半场）+ 新号获得（SessionAdded = resume 落新账号）──
 SR_OLD="$(wait_line "$OLD_FR" "\"kind\":\"session_removed\".*$SID" 15)" \

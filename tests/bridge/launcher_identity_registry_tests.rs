@@ -150,13 +150,25 @@ fn repo_root() -> PathBuf {
 ///（账本里有好几处 `assert_eq!(…); // …launch.send-into…` 的行尾注释，
 /// 裸数字面串会把它们一起数进来）。
 ///
-/// ⚠ 它只认**单行三元组** —— 跨行写的那些抠不到。所以下面的自检钉的是「抠到的总行数」，
+/// ⚠ 它认**单行三元组**与 rustfmt 拆开的那一形（`(` 下紧跟两行字面量）；别的跨行写法抠不到。所以下面的自检钉的是「抠到的总行数」，
 /// 而那个数是**下界**，不是账本大小（`K-P5 §3 六` 记过同一格：116 / 141 / 145 是三把
 /// 作用域不同的尺子，别混读）。
 fn ledger_rows(raw: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    for line in raw.lines() {
-        let t = line.trim();
+    let lines: Vec<&str> = raw.lines().map(str::trim).collect();
+    for (k, t) in lines.iter().enumerate() {
+        // 〔MIG-2 · 合并 fmt 之后〕rustfmt 会把放不下一行的三元组拆成 `(` / `"命令",` / `"能力",` / … / `),`
+        //   ⇒ 两种排法都认：拆开那一形取紧跟 `(` 的两行（同样只认「两个字面量打头」）。
+        if *t == "(" {
+            let lit = |l: Option<&&str>| -> Option<String> {
+                let r = l?.strip_prefix('"')?.strip_suffix("\",")?;
+                (!r.contains('"')).then(|| r.to_string())
+            };
+            if let (Some(cmd), Some(cap)) = (lit(lines.get(k + 1)), lit(lines.get(k + 2))) {
+                out.push((cmd, cap));
+            }
+            continue;
+        }
         let Some(rest) = t.strip_prefix("(\"") else {
             continue;
         };
