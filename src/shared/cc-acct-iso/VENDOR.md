@@ -13,7 +13,7 @@ D 审计（F5）：指纹**必须覆盖全部被部署的文件**（不只 3 个
 
 ```bash
 SK=~/.claude/skills/cc-acct-iso
-DEST=src-tauri/vendor/cc-acct-iso      # 从 cc-monitor 仓根跑
+DEST=src/shared/cc-acct-iso           # 从 cc-monitor 仓根跑（〔MIG-3a · 09-28〕从 src/bridge/vendor/ 挪来：字节随后端二进制走）
 cp -a "$SK/scripts/cc-acct-iso" "$SK/scripts/lib.sh" "$SK/scripts/cc-acct-iso-install.sh" "$DEST/scripts/"
 cp -a "$SK/scripts/test/run-tests.sh" "$DEST/scripts/test/"
 cp -a "$SK/SKILL.md" "$DEST/"

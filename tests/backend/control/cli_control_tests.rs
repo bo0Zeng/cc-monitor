@@ -286,6 +286,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔MIG-3a · 子步 3〕cc-bus 装到这台 / 查三态：落点由这台自己算（skills 根），不收任何参数。
         "cc-bus-install",
         "cc-bus-install-state",
+        // 〔MIG-3a · 09-28 预裁〕cc-acct-iso 装到这台：字节随二进制带着、落点由这台按自己的家目录算，不收参数。
+        "acct-iso-install",
         "accounts-sessions",
         "bus-list",
         "bus-state",

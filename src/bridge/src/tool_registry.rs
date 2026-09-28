@@ -204,7 +204,7 @@ pub enum ToolDestination {
     ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.backend_path`，
     ///   每个远端各自配置（当年的逐次拨号那条路 `run_list_query`〔散文墓碑〕直接 `shell_quote(&cfg.backend_path)`，C4d 已删）。
     /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
-    ///   而 `acct_iso_deploy::deploy_remote_acct_iso(cfg, dest_dir)` 是**远端**部署、
+    ///   而当年的 `deploy_remote_acct_iso(cfg, dest_dir)`〔散文墓碑〕是**远端**部署、
     ///   落点还是**前端传进来的** `dest_dir`。
     ///
     /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
@@ -673,7 +673,7 @@ pub const TOOLS: &[ToolSpec] = &[
         carriers: &[Carrier {
             what: Text(|| copy_text("rsToolRegistry.tools.acctIsoWhat", &[])),
             source: ToolSource::Vendored {
-                repo_path: "src/bridge/vendor/cc-acct-iso",
+                repo_path: "src/shared/cc-acct-iso",
                 fingerprint_file: ".vendor_id",
             },
             destination: ToolDestination::UserConfiguredPath {

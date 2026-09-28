@@ -265,15 +265,25 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
     expectNoReadyChrome(el);
   });
 
-  // 〔MIG-3a · 09-28 裁 2〕部署分两步：monitor 推字节（`deploy_remote_acct_iso`）→ 那台后端落进用户目录（`acct-iso-install`）。
-  //   钉：落进用户目录那一步问的是**那一台**、恰好一次、`dir` 就是推字节的那个落点；它的成品进了给人看的那句话。
-  it("F5：点部署 → 推字节之后问那台后端 acct-iso-install 恰好一次（同一落点）", async () => {
+  // 〔MIG-3a · 09-28 预裁〕部署只一步：问那台后端 `acct-iso-install`（字节随它带着），monitor 一条部署命令都不调。
+  //   钉：问的是**那一台**、恰好一次、请求体为空；它的成品进了给人看的那句话。
+  it("F5：点部署 → 只问那台后端 acct-iso-install 恰好一次，不调任何 monitor 部署命令", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
     invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
       if (cmd === "acct_iso_status") return Promise.resolve({ installed: false });
-      if (cmd === "deploy_remote_acct_iso") return Promise.resolve("已推");
       if (isChanCall(cmd as string, args, "acct-iso-install"))
-        return Promise.resolve(chanReply({ link: "/h/.local/bin/cc-acct-iso", linked: true, config: "/h/.cc-acct-iso/config", configWritten: false, recordFailed: null }));
+        return Promise.resolve(
+          chanReply({
+            dest: "/h/.cc-monitor/bin/cc-acct-iso",
+            version: "v1",
+            written: 6,
+            link: "/h/.local/bin/cc-acct-iso",
+            linked: true,
+            config: "/h/.cc-acct-iso/config",
+            configWritten: false,
+            recordFailed: null,
+          }),
+        );
       return Promise.resolve(undefined);
     });
     const el = await mount();
@@ -282,12 +292,11 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
     btn!.click();
     for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
     const calls = invokeMock.mock.calls as Array<[string, unknown]>;
-    const pushed = calls.filter(([c]) => c === "deploy_remote_acct_iso");
     const landed = calls.filter(([c, a]) => isChanCall(c, a, "acct-iso-install")).map(([, a]) => a as ChanCallArgs);
-    expect(pushed).toHaveLength(1);
-    expect(landed.map((a) => [a.origin, chanArgsJson(a)])).toEqual([["devbox", { dir: (pushed[0][1] as { destDir: string }).destDir }]]);
+    expect(landed.map((a) => [a.origin, chanArgsJson(a)])).toEqual([["devbox", {}]]);
+    expect(calls.filter(([c]) => typeof c === "string" && c.startsWith("deploy_")), "又调了 monitor 的部署命令").toEqual([]);
     const said = vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[1])).join("\n");
-    expect(said).toContain("已推");
+    expect(said).toContain(copyText("accounts.needsDeploy.landed", { version: "v1", dest: "/h/.cc-monitor/bin/cc-acct-iso", written: "6" }));
     expect(said).toContain(copyText("accounts.needsDeploy.linked", { link: "/h/.local/bin/cc-acct-iso" }));
     expect(said).toContain(copyText("accounts.needsDeploy.configKept", { config: "/h/.cc-acct-iso/config" }));
   });

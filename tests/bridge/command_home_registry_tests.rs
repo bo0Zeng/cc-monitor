@@ -197,12 +197,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     ),
     // MIG-3a：资产与 D 组。
     // 〔MIG-3a〕别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
-    (
-        "deploy_remote_acct_iso",
-        Lane::Mig3a,
-        "〔09-28 裁 2〕落进用户目录 ＋ 软链 ＋ 记账已进那台后端（`acct-iso-install`，链接走写面 `files-link`）；\
-         剩字节那一推：vendored 脚本住 monitor 二进制（`include_bytes!`），经本机后端 SFTP 推 —— 字节是否随 cc-bus 那样进后端二进制待主会话裁",
-    ),
+    // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso` 已迁：字节随后端二进制走（部署载荷只一种走法），装 · 链接 · 配置 · 记账
+    //   全在那台后端（`acct-iso-install`），界面只问它一次 ⇒ 从本表删（命令本身也删了）。
     // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
     //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。

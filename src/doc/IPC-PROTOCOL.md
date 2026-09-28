@@ -2849,22 +2849,25 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户显式点「装」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
 
-#### `acct-iso-install`：cc-acct-iso 落进这台的用户目录（MIG-3a · 主会话 09-28 裁 2，**写用户文件**）
+#### `acct-iso-install`：把这台二进制带着的 cc-acct-iso 装到这台（MIG-3a · 主会话 09-28 裁 2 · 09-28 预裁，**写用户文件**）
 
 ```text
-→ {"id":"a1","cmd":"acct-iso-install","args":{"dir":"/home/u/.cc-monitor/bin/cc-acct-iso"}}
-← {"kind":"reply","id":"a1","ok":true,"data":{"link":"/home/u/.local/bin/cc-acct-iso","linked":true,"config":"/home/u/.cc-acct-iso/config","configWritten":true,"recordFailed":null}}
+→ {"id":"a1","cmd":"acct-iso-install"}
+← {"kind":"reply","id":"a1","ok":true,"data":{"dest":"/home/u/.cc-monitor/bin/cc-acct-iso","version":"e24bfd164014351a","written":6,"link":"/home/u/.local/bin/cc-acct-iso","linked":true,"config":"/home/u/.cc-acct-iso/config","configWritten":true,"recordFailed":null}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `dir` | → | 部署那一条把字节推到的地方（必须在 `~/.cc-monitor/bin/` 底下，`scripts/cc-acct-iso` 已在） |
+| `dest` · `version` | ← | 字节落在哪（这台按自己的家目录算：`~/.cc-monitor/bin/cc-acct-iso`，不收调用方给的路径）· 带着的那一份的内容指纹（`.vendor_id`，也写成落点里的标记） |
+| `written` | ← | 这一趟写了几份字节（逐份比，盘上已是这一份就不写 ⇒ 再装一次是 `0`） |
 | `link` · `linked` | ← | `~/.local/bin/cc-acct-iso` · 这一趟建了没有（那儿已有任何东西 ⇒ 不动它、`false`） |
 | `config` · `configWritten` | ← | `~/.cc-acct-iso/config` · 这一趟从随包 `examples/config` 抄了没有（已有不覆盖；抄了 ⇒ 目录 `0700`） |
-| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句；装卸账记在 skill 装记录那一份（`name = "acct-iso"`，按家目录记） |
+| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句；装卸账记在 skill 装记录那一份（`name = "acct-iso"`，按家目录记，这一趟写了的都记） |
 
-从前是 monitor 经 ssh 起 `cc-acct-iso-install.sh`；今天字节照推，落进用户目录这一步经本进程文件管理面（`files-link` / `files-mkdir` / `files-put` / `files-chmod`）。
-不改 rc、不动账号 / 凭据。只由用户显式点「部署」触发。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--acct-iso-install`）。
+字节**随后端二进制走**（同 `cc-bus-install`：部署载荷只一种走法），单一事实源 `src/shared/cc-acct-iso/`；
+从前是 monitor 的 `deploy_remote_acct_iso` 把它内嵌的那份经 SFTP 推过来（更早还经 ssh 跑 `cc-acct-iso-install.sh`）。
+落盘全经本进程文件管理面：字节 `files-put`（CAS：读到哪份就对哪份写）· 可执行位 `files-chmod` · 链接 `files-link` · 目录 `files-mkdir`。
+不改 rc、不动账号 / 凭据。只由用户显式点「部署」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--acct-iso-install`，**不读 stdin**）。
 
 #### `skill-host-list`：这台一个项目里接进来的 skill（MIG-3a，09-28，**只读**）
 
@@ -3502,7 +3505,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **MIG-3a 追加二十二条（09-27 · 09-28）**：`--cc-bus-install` · `--cc-bus-install-state`（cc-bus 装到这台）· `--mcp-sync-hub-preview` · `--mcp-sync-hub-apply` · `--skill-install-hub-preview` · `--skill-install-hub-apply`（两台之间那几件的枢纽）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
-**MIG-3a 追加两条（09-28 · 主会话裁 2）**：`--acct-iso-install`（cc-acct-iso 落进这台用户目录）· `--files-link`（写面「建链接」的入口）—— 见上面各自那一小节。与帧面同一个 `run`；**读 stdin**。
+**MIG-3a 追加两条（09-28 · 主会话裁 2）**：`--acct-iso-install`（cc-acct-iso 装到这台，**不读 stdin**）· `--files-link`（写面「建链接」的入口，**读 stdin**）—— 见上面各自那一小节。与帧面同一个 `run`。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 

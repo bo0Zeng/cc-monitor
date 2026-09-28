@@ -123,7 +123,7 @@ fn backend_source_build_id() -> String {
 /// （`~` 展开为 $HOME），若上游存在则比对三个脚本与 vendored 副本，不一致则 `cargo:warning`。
 /// 上游缺席 → no-op（同 `check_vendor_freshness`：开发期上游领先副本是常态，软警告非硬失败）。
 fn check_acct_iso_vendor_freshness() {
-    let vendor_dir = Path::new("vendor/cc-acct-iso");
+    let vendor_dir = Path::new("../shared/cc-acct-iso"); // 〔MIG-3a · 09-28〕从 `vendor/` 挪去 `src/shared/`（字节随后端二进制走，两棵树都不属于）
     let vendor_md = vendor_dir.join("VENDOR.md");
     println!("cargo:rerun-if-changed={}", vendor_md.display());
     println!(
@@ -202,7 +202,7 @@ fn check_acct_iso_vendor_freshness() {
     }
     if stale > 0 {
         println!(
-            "cargo:warning=vendor cc-acct-iso 过期:上游有 {stale} 个文件与 vendored 副本不一致。见 src/bridge/vendor/cc-acct-iso/VENDOR.md 的 re-vendor 菜谱。"
+            "cargo:warning=vendor cc-acct-iso 过期:上游有 {stale} 个文件与 vendored 副本不一致。见 src/shared/cc-acct-iso/VENDOR.md 的 re-vendor 菜谱。"
         );
     }
 }

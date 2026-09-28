@@ -448,7 +448,7 @@ jobs:
       # ——与当初把 `shared/ccm` 纳入的理由一字不差。实测（2026-07-30）`--severity=error`
       # 零告警，连默认档（含 warning/info/style）也是零（脚本自带 `# shellcheck disable=` 指令）。
       #
-      # **不要写成 `src/bridge/vendor/cc-acct-iso/scripts/**`**：不开 globstar 时 `**` 等价于 `*`，
+      # **不要写成 `src/shared/cc-acct-iso/scripts/**`**：不开 globstar 时 `**` 等价于 `*`，
       # 会把 `scripts/test`（目录）喂给 shellcheck ⇒ `openBinaryFile: inappropriate type` ⇒ 恒红。
       # 主计划账本原文就是那个 pattern，G-B 开工实测踩出来的。故显式列四个文件。
       #
@@ -477,10 +477,10 @@ jobs:
             tests/e2e/local-backend-container/*.sh \
             tests/evidence/*.sh \
             tests/scripts/*.sh \
-            src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso \
-            src/bridge/vendor/cc-acct-iso/scripts/lib.sh \
-            src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
-            src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh \
+            src/shared/cc-acct-iso/scripts/cc-acct-iso \
+            src/shared/cc-acct-iso/scripts/lib.sh \
+            src/shared/cc-acct-iso/scripts/cc-acct-iso-install.sh \
+            src/shared/cc-acct-iso/scripts/test/run-tests.sh \
             tests/hooks/*)
           N=$(printf '%s\n' "$FILES" | grep -c .)
           echo "shellcheck 覆盖 $N 个文件"
@@ -705,7 +705,7 @@ jobs:
       - name: vendored cc-acct-iso self-tests (sandboxed, 294 assertions)
         run: |
           set -euo pipefail
-          OUT=$(bash src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh 2>&1) || {
+          OUT=$(bash src/shared/cc-acct-iso/scripts/test/run-tests.sh 2>&1) || {
             echo "$OUT"; exit 1; }
           echo "$OUT" | tail -3
           N=$(printf '%s' "$OUT" | grep -oE '全绿:[0-9]+' | grep -oE '[0-9]+' | tail -1)

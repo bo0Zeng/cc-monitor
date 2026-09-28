@@ -439,10 +439,8 @@ fn byte_table_is_the_only_home_of_embedded_executables() {
         }
     }
     assert!(scanned > 50, "只扫到 {scanned} 份 .rs —— 扫描口坏了");
-    let want: BTreeSet<String> = ["byte_table.rs", "acct_iso_deploy.rs"]
-        .into_iter()
-        .map(String::from)
-        .collect();
+    // 〔MIG-3a · 09-28 预裁〕`acct_iso_deploy.rs`（vendored 脚本）出去了：那份字节随后端二进制走（`src/backend/assets/acct_iso_install.rs`）。
+    let want: BTreeSet<String> = ["byte_table.rs"].into_iter().map(String::from).collect();
     assert_eq!(homes, want);
     // 正控：一段带 `include_bytes!` 的合成生产代码认得出来。
     let sample = format!("static X: &[u8] = {}!(\"../x\");", "include_bytes");
