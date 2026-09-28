@@ -115,7 +115,6 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { TmuxSession } from "../generated/TmuxSession";
 import type { ForwardStatus } from "../generated/ForwardStatus";
-import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
@@ -606,12 +605,7 @@ export const commands = {
    *  〔SH1 · `设计/00 §2.5 ①`〕本机 / 远端两条合成这一条（带 `origin`）。 */
   acct_iso_shellinit: (args: { origin: Origin }) => invoke<string>("acct_iso_shellinit", args),
 
-  /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
-
-  /** 远端 cc-bus 钩子诊断。同上。 */
-  diagnose_remote_cc_bus_hooks: (args: { origin: string }) =>
-    invoke<HooksReport>("diagnose_remote_cc_bus_hooks", args),
+  // 〔MIG-3b〕cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
   /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
   load_subagent: (args: {

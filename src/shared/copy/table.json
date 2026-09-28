@@ -5582,6 +5582,11 @@
       "zh": "不是恰好 present / root 两格",
       "args": []
     },
+    "ccBusHooks.fetch.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，还做不了钩子诊断。重装后端之后就有。",
+      "args": []
+    },
     "sessionReads.inputs.oldBackend": {
       "kind": "error",
       "zh": "这台机器上的后端版本旧，还列不出大纲。重装后端之后就有。",
@@ -12760,11 +12765,6 @@
       "zh": "{who} 的后端没连上，比对要经它来做（{why}）—— 一个字节都没动",
       "args": ["who", "why"]
     },
-    "rsHooksDiag.local.noHome": {
-      "kind": "body",
-      "zh": "取不到 HOME",
-      "args": []
-    },
     "rsHooksDiag.snippet.bareMissing": {
       "kind": "body",
       "zh": "这两个命令不在 PATH 上，照这段贴会用不了。改选「$HOME 显式路径」，或把它们所在目录加进 PATH。",
@@ -12784,11 +12784,6 @@
       "kind": "body",
       "zh": "~/.claude/settings.json 不是合法 JSON —— 未改动它，请先自行修复",
       "args": []
-    },
-    "rsHooksDiag.remote.peekFailed": {
-      "kind": "error",
-      "zh": "读不到那台的 settings.json：{e}",
-      "args": ["e"]
     },
     "rsHooksDiag.diagnose.noSettings": {
       "kind": "body",

@@ -869,6 +869,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-subagents",
     "--history-tail",
     "--history-user-inputs",
+    // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--hooks-diag",
     "--kill",
     "--launch",
     "--list-accounts",
