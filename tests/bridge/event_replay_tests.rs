@@ -944,3 +944,30 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
         "别的机器的订阅收到了：{subs:?}"
     );
 }
+
+/// 〔MIG-3b · 要求住址 `设计/99 §2.1 ㉓②`「`session.tasks` 推送改 `chan.subscribe(origin, …)`」〕`session-tasks` 流：
+/// 这台某个会话的任务变了 ⇒ 只有订了这台 `session-tasks` 的收一格、体恰是 `{"sid": …}`；别台的 · 同台 `accounts-changed` 的都不收。期望手写。
+#[tokio::test]
+async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else() {
+    let (r, rec) = hub();
+    let box_a = crate::origin::Origin("box-a".into());
+    let box_b = crate::origin::Origin("box-b".into());
+    r.subscribe("w", 1, &box_a, "session-tasks", None, 4);
+    r.subscribe("w", 2, &box_a, "accounts-changed", None, 4);
+    r.subscribe("w", 3, &box_b, "session-tasks", None, 4);
+    rec.clear();
+    r.tasks_changed(&box_a, "s1");
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(got, vec![(1, serde_json::json!({"sid": "s1"}))]);
+}

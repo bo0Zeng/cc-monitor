@@ -16,7 +16,6 @@ use std::path::PathBuf;
 /// （非 stem）。`tasks_subdir` 无对应。〔LOC1b · 4D〕会话子目录 / 活性目录 / 扩展名三格随 monitor 读本机盘那几份实现删了
 /// （目录布局归后端 `agents/codex/`）。
 static CODEX_LAYOUT: SessionLayout = SessionLayout {
-    tasks_subdir: None,
     sid_strategy: SidStrategy::CodexRollout,
     // Codex 子 agent 会话是独立 rollout（谱系在 state_5.thread_spawn_edges）；无 Claude 那样的
     // `/subagents/` 路径段可跳。子 agent 过滤（按 agent_role）留后续 feature。

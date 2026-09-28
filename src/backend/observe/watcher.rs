@@ -236,6 +236,24 @@ fn install_tmux_hooks_best_effort() {
     tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
 }
 
+/// 〔MIG-3b · `99 §2.1 ㉓②`〕这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
+/// 批内去重、按名排（同一个 sid 动了几次都只报一帧）。**纯函数**（判据直接喂路径）。
+fn tasks_touched<'a>(paths: impl Iterator<Item = &'a Path>, tasks: &Path) -> Vec<String> {
+    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for p in paths {
+        if let Some(sid) = p
+            .strip_prefix(tasks)
+            .ok()
+            .and_then(|rel| rel.components().next())
+            .and_then(|c| c.as_os_str().to_str())
+            .filter(|s| !s.is_empty())
+        {
+            out.insert(sid.to_string());
+        }
+    }
+    out.into_iter().collect()
+}
+
 /// 〔SR1a〕这一批文件事件里有没有那份账号 manifest。**抽出来是为了判据**：
 /// 事件循环本身要起 tmux 探测，单测不许碰用户真实的 tmux server（`C7i`）。
 fn manifest_touched<'a>(mut paths: impl Iterator<Item = &'a Path>, manifest: &Path) -> bool {
@@ -771,6 +789,9 @@ struct HomeEars {
     agent_home: PathBuf,
     projects: PathBuf,
     sessions: PathBuf,
+    /// 〔MIG-3b · `99 §2.1 ㉓②`〕`<agent 家>/tasks/`（递归）：会话的任务清单变了 ⇒ 一帧 `tasks_changed{sid}`。
+    tasks: PathBuf,
+    tasks_watched: bool,
     /// `agent_home` **本身**此刻挂上了没有。
     home_watched: bool,
     /// `agent_home` 不在时退一层挂的那道（它的上一层）挂过没有。挂上之后不摘（[`rewatch_agent_home`] 头注）。
@@ -786,6 +807,8 @@ impl HomeEars {
             agent_home: agent_home.to_path_buf(),
             projects: projects.to_path_buf(),
             sessions: sessions.to_path_buf(),
+            tasks: crate::observe::tasks_query::tasks_root(agent_home),
+            tasks_watched: false,
             home_watched: false,
             parent_watched: false,
             projects_watched: false,
@@ -815,6 +838,13 @@ impl HomeEars {
             debouncer,
             &self.projects,
             &mut self.projects_watched,
+            RecursiveMode::Recursive,
+        );
+        // 〔MIG-3b〕`tasks/` 同一套可重入挂法（不在 ⇒ 等它作为 `agent_home` 里的一个事件出现再挂）。
+        rewatch_dir(
+            debouncer,
+            &self.tasks,
+            &mut self.tasks_watched,
             RecursiveMode::Recursive,
         );
         // Watch sessions (flat) for PID.json add/remove. 起步挂一次，之后归 `rewatch_sessions`。
@@ -861,6 +891,12 @@ impl HomeEars {
                 &mut self.projects_watched,
                 RecursiveMode::Recursive,
             );
+            rewatch_dir(
+                debouncer,
+                &self.tasks,
+                &mut self.tasks_watched,
+                RecursiveMode::Recursive,
+            );
             rewatch_sessions(
                 debouncer,
                 &self.sessions,
@@ -875,6 +911,15 @@ impl HomeEars {
                 debouncer,
                 &self.projects,
                 &mut self.projects_watched,
+                RecursiveMode::Recursive,
+            );
+        }
+        // 〔MIG-3b〕`tasks/` 刚出现 / 换了 inode ⇒ 重挂（同族第四个）。
+        if p == self.tasks.as_path() {
+            rewatch_dir(
+                debouncer,
+                &self.tasks,
+                &mut self.tasks_watched,
                 RecursiveMode::Recursive,
             );
         }
@@ -1377,6 +1422,10 @@ fn watch_loop(
                 ) || dir_moved
                 {
                     sink.send(Frame::AccountsChanged);
+                }
+                // 〔MIG-3b · `99 §2.1 ㉓②`〕任务目录里的动静 ⇒ 每个动过的会话一帧 `tasks_changed`（批内合并）。
+                for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
+                    sink.send(Frame::TasksChanged { sid });
                 }
                 for ev in events {
                     let p = ev.path.as_path();

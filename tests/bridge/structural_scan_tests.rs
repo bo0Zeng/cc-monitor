@@ -2651,6 +2651,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔MIG-3b〕它唯一还活着的那句提名（在一个表的字符串里）随任务门面那一行删了，剩下的讲来历的散文挂墓碑。
+        (
+            "tests/bridge/agent_dispatch_registry_tests.rs",
+            "has_record_ext",
+            1,
+        ),
+        ("src/bridge/src/adapter.rs", "has_record_ext", 1),
+        ("src/bridge/src/adapter.rs", "session_id_from_path", 1),
         // 〔MIG-3b〕远端 `ccm` 探针那条 Tauri 命令退役（界面经通道直问 `ccm-probe`）：点它旧名讲来历的散文挂墓碑。
         (
             "src/bridge/src/local_origin_registry.rs",
@@ -4779,7 +4787,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/control/fork_write.rs", 1),
         ("src/bridge/src/cross_half_edge_registry.rs", 1),
         ("src/bridge/src/doc_claim_registry.rs", 1),
-        ("src/bridge/src/tasks.rs", 3),
+        // 〔MIG-3b〕`tasks.rs` 那一行随文件删了（本机任务 notify 整轴进后端，那几块墓碑守的来历一起走了）。
         ("tests/bridge/backend_layering.rs", 1),
         ("tests/bridge/spawn_managed_exit_sites.rs", 3), // 〔SH1〕+1：本机 cc-bus 读那一处出表
         ("tests/bridge/write_site_registry_spawn_sites.rs", 3), // 〔SH1〕+1：本机 cc-bus 读那一处出表
@@ -4819,7 +4827,8 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔MIG-3b〕`history.rs` 的 `up_to_message_id` · `read_jsonl_values` · `write_branch_file` 三行摘了：点它们的那段（分叉转交的来历）随命令删了。
         ("src/bridge/src/parity_ledger.rs", 1), // 〔MIG-3b〕新贴：点远端 `ccm` 探针旧命令名
         ("src/bridge/src/user_files.rs", 1),    // 〔MIG-3b〕新贴：点远端 `ccm` 探针旧命令名
-        ("src/README.md", 1),                   // 〔MIG-3b〕新贴：点分叉那条旧命令名的散文挂墓碑
+        ("tests/bridge/agent_dispatch_registry_tests.rs", 1), // 〔MIG-3b〕新贴：点 LOC1b 删掉的那个门面名
+        ("src/README.md", 1), // 〔MIG-3b〕新贴：点分叉那条旧命令名的散文挂墓碑
         ("src/bridge/crates/branch-core/src/lib.rs", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/branch-button.vitest.ts", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/views/history-actions.vitest.ts", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑

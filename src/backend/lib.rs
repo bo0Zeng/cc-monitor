@@ -1760,6 +1760,8 @@ pub const EMITS: &[&str] = &[
     "tmux_session_closed",
     // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
+    // 〔MIG-3b · `99 §2.1 ㉓②`〕某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
+    "tasks_changed",
     // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
     "sessions_replayed",

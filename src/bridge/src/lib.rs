@@ -217,7 +217,7 @@ mod session_skeleton;
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
-mod tasks;
+// 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
@@ -704,9 +704,7 @@ pub fn run() {
             tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
             // 〔LOC1b · 第四波 4D〕这里原来还算 `sessions_dir`（`<claude_dir>/sessions`，喂 monitor 自己那份判活）——
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
-            // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
-            let tasks_dir =
-                adapter::tasks_dir(&claude_dir).unwrap_or_else(|| claude_dir.join("tasks"));
+            // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
             // monitor 自己的数据目录：~/.claude/work
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
@@ -1191,9 +1189,8 @@ pub fn run() {
             // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
             // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
-            // v2.3.0 issue #11：监听 task 文件变更，per-session 重读后 emit 给前端。
-            // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
-            tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
+            // 〔MIG-3b · `99 §2.1 ㉓②`〕任务变更的监视进了后端（`tasks_changed` 帧 ⇒ 通道 `subscribe(origin, "session-tasks")`），
+            //   monitor 这边那条 notify 线程与 `task-update` 事件删了；本机远端同形。
 
             // 〔LOC1b · 第四波 4D〕这里原来起「历史全文搜索索引」那条后台线程（延迟 1.5 s 扫 projects/**/*.jsonl 建内存索引）。
             //   本机搜索改问本机后端（与远端同一条 `history-search`），这条线程与那份索引一起删了。

@@ -37,8 +37,6 @@ pub enum SidStrategy {
 pub struct SessionLayout {
     // 〔LOC1b · 第四波 4D〕「会话记录子目录」「活性 pidfile 子目录」「会话记录扩展名」三格删了：它们的读者只有
     //   monitor 自己读本机会话 / 判活那几个函数（已删，见下面那块墓碑）；那几件事今天问本机后端，目录布局归后端 `agents/`。
-    /// 任务追踪子目录(CC = `"tasks"`),可选。
-    pub tasks_subdir: Option<&'static str>,
     /// 从记录文件路径取 sid 的策略(CC = `Stem`;Codex = `CodexRollout`)。
     pub sid_strategy: SidStrategy,
     // 〔CF1 · 2026-09-24〕「扫描时跳过的路径段」那一格（CC = `subagents`）随 monitor 自己那套 jsonl watcher 删了 ——
@@ -102,10 +100,8 @@ pub fn kind_of_record_name(p: &Path) -> AgentKind {
     }
 }
 
-/// F-MA:agent 数据根下的**任务追踪**目录(CC = `<root>/tasks`);该 agent 无此概念则 `None`。
-pub fn tasks_dir(data_root: &Path) -> Option<PathBuf> {
-    active().layout().tasks_subdir.map(|s| data_root.join(s))
-}
+// 〔MIG-3b · `99 §2.1 ㉓②`〕「任务追踪目录」那个门面删了：它唯一的调用方（monitor 自己那条任务 notify）随监视进后端一起走了，
+//   任务目录住哪只剩后端 `observe/tasks_query.rs::tasks_root` 一份。
 
 /// Phase 2：按 layout 的 [`SidStrategy`] 取 sid（供 per-kind 派发/测）。
 pub fn session_id_from_path_with(layout: &SessionLayout, p: &Path) -> Option<String> {

@@ -403,7 +403,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "tasks-list",
         "后端出成品 `{tasks}`（字段语义挪进后端 `tasks_query.rs::task_entry`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
-         ⚠ monitor 自己**另有**一处问它（本机任务 watcher，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那是推送，不是替界面转",
+         〔MIG-3b〕推送那一路也不经 monitor 问了：后端 `tasks_changed` 帧 ⇒ 通道 `session-tasks`，界面收到自己重问",
     ),
     // 〔SH1 · V136〕驾驶舱读面两条：后端转调 cc-bus 新加的机器可读读命令、出成品，界面 `cc-bus-control.ts` 按形状收；
     //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。
@@ -501,12 +501,8 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
     // 〔MIG-3a〕`skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
-    (
-        "tasks-list",
-        1,
-        "〔LOC1a〕本机任务 watcher（`tasks.rs::fetch_session_tasks`）：notify 报「哪个 sid 变了」之后经 `<local>` 问成品、推 `task-update` \
-         —— 推送那一路是 monitor 自己的事（`05 §14.3`「推送那一路」待定：是否换 `subscribe` 不在本件），它不解释字段",
-    ),
+    // 〔MIG-3b · `99 §2.1 ㉓②`〕`tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`tasks_changed` 帧 ⇒ 通道 `session-tasks`），
+    //   monitor 零处再问它。
 ];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
@@ -1135,12 +1131,7 @@ fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
 /// D5 登记表：**造期限的那一手**（`Deadline::within(` 的调用点，按「所在函数」记）。每行写理由。
 /// 多一处 = 又长出一个发起点（进表、写这件事是什么、值给多少）；少一处 = 那件事不再有期限了（或者搬了家没改表）。
 const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
-    (
-        "tasks.rs",
-        "fetch_session_tasks",
-        1,
-        "问一个会话的任务（`tasks-list`，一问；〔LOC1a〕回成品、值住调用方 `TASKS_BUDGET`）",
-    ),
+    // 〔MIG-3b〕`tasks.rs` 那一行摘了：monitor 那份任务 notify 删了，不再问 `tasks-list`。
     (
         "subagent.rs",
         "query",
