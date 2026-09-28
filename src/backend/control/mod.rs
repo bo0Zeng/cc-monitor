@@ -82,6 +82,8 @@ pub(crate) mod gate;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
+// 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
+pub mod launch_render;
 pub(crate) mod panorama;
 pub mod resident;
 pub mod resolve_query;

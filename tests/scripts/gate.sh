@@ -1603,6 +1603,8 @@ deadcode_t0=$(date +%s)
 #    「value assigned to `overflowed` is never read」—— 那个函数随读面改问后端整个删了。同拍新长的三条零生产调用项
 #    （monitor `tmux.rs::TMUX_LS_FMT` 双写点 · `spawn_managed` 的 async 出口两项）各带 `cfg_attr(not(test), allow(dead_code))` 与理由，不进这个数。
 # 🔴 **2026-09-26（合并 PB1 × SH1）：23 − 2（PB1）− 1（SH1）= 20**。
+# 🔴 **2026-09-28（MIG-2 · 起会话进后端）：本路 −0**：起会话搬进后端之后 `apikey_remote.rs` 的发送口（`BUDGET` · `call` · `said`）零调用方，
+#    按 V41 整个模块删了（没有抬这个数）。现打本工作树 = 21，多的那一条是 `user_files.rs::delete_empty_dir`，归 MIG-3a（它合后回 20）。
 run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 20，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
          bash -c 'pin=20; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
@@ -1913,7 +1915,8 @@ run_e2e backend-gate2         34 exact-with-skip
 #   ★ 〔DEL 续〕`local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
 #     没铺 `src/bridge/embedded-backends/` 的树上它们记 SKIP 并说原因（套件里那一段；落点齐了却不跑 ⇒ FAIL）⇒ 铺了 26+0、没铺 15+11。
 run_e2e local-backend         26 exact-with-skip
-run_e2e restart-frames         5
+# 〔MIG-2 合后〕`restart-frames` 5 → 6：加一格「kill→resume→记账 znew、没有 shim 不认的问」（换号成功后记 pin 那一步此前没被测到）；量于主树同形的非 ASCII 路径。
+run_e2e restart-frames         6
 run_e2e restart               24
 
 # ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。

@@ -36,7 +36,7 @@
 # - **B 组 `CCM_ENV`**：S10 七项里**唯一全仓零覆盖**的一项（摸底 `grep -rn CCM_ENV`
 #   只命中 ccm 自己与计划文档）。它是「真正非 shell 不可」的那一条，U9b 之后也必须还在。
 # - **C 组 `--ccm-probe` 契约**：`src/bridge/src/ccm_probe.rs::parse_probe_output` 靠**字面** `name=ccm`
-#   判「装没装」，`src/bridge/src/backend/control/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
+#   判「装没装」，`src/backend/control/launch_render/ccm_invocation.rs::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
 #   走 CLI 渲染器还是兜底（〔LR1〕TS 那份随 TS 渲染器删了，清单只剩 Rust 这一份）。两处都只对**手写 fixture** 测过。
 #   ⚠ 精确说法（审计订正）：真脚本的 probe 输出**并非全无覆盖** —— `cc-spawn-uplift` 主流程
 #   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `ccm` 并对 `detach`/`tmux-size` 两项
@@ -294,7 +294,7 @@ CAPS="$(printf '%s\n' "$PROBE" | sed -n 's/^capabilities=//p' | tr ',' '\n')"
 # 〔LR1 · U8c-3〕源从 TS `src/launch-render-cli.ts`（已删）换成生产那一份 Rust
 # `ccm_invocation.rs`：从 `pub const CLI_REQUIRED_CAPS` 那一行抽到 `];`，收引号串 ——
 # 不认行形（`rustfmt` 折不折行都抽得到）。
-REQ_CAPS="$(sed -n '/^pub const CLI_REQUIRED_CAPS: /,/\];/p' "$REPO/src/bridge/src/backend/control/ccm_invocation.rs" \
+REQ_CAPS="$(sed -n '/^pub const CLI_REQUIRED_CAPS: /,/\];/p' "$REPO/src/backend/control/launch_render/ccm_invocation.rs" \
            | grep -o '"[^"]*"' | tr -d '"')"
 REQ_N="$(printf '%s\n' "$REQ_CAPS" | grep -c .)"
 # ★ 抽取器自检：抽空了的话下面那条"逐个都在"会**零命中零失败**地变绿。

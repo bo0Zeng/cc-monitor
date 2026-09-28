@@ -16,7 +16,7 @@
 // 本文件因此只读 JSON、不 import 任何 `src/` 符号。
 import { readFileSync } from "node:fs";
 
-const FIXTURE = new URL("../../src/bridge/src/backend/control/fixtures/cli-golden.json", import.meta.url);
+const FIXTURE = new URL("../../src/backend/control/launch_render/fixtures/cli-golden.json", import.meta.url);
 const PREFIX = "print-parity:";
 /** 本套件 12 条断言按这四个名字取行（`ccm-print-parity.sh` 的 `get_line`）。**相等**，不是包含。 */
 const WANT = ["resumeTmuxWithIdentity", "newTmuxCustomLauncher", "attach", "resumeTmuxWithModel"];

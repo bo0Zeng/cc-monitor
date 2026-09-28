@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 〔LR2〕生产命令 `render_launch_payload` 的真输出 —— e2e 取「app 真正会跑的那一串」的 Rust 那一跳。
+# 〔LR2〕生产的载荷渲染（〔MIG-2〕今天是后端帧命令 `launch-render-payload`）的真输出 —— e2e 取「app 真正会跑的那一串」的 Rust 那一跳。
 #
 # 调用方：`tests/e2e/launch-render-driver.ts`（它用生产 TS 的 `plan*` ＋ `buildLaunchRenderRequest`
 # 产请求 JSON，放进环境变量 `CCM_E2E_RENDER_REQ` 再调本脚本）。本脚本只做一件事：跑那个
@@ -11,7 +11,8 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 [ -n "${CCM_E2E_RENDER_REQ:-}" ] || { echo "缺 CCM_E2E_RENDER_REQ（请求 JSON）" >&2; exit 2; }
-OUT="$(cd "$REPO/src/bridge" && cargo test --lib -- --ignored --nocapture emit_launch_render_for_e2e 2>&1)"
+# 〔MIG-2〕载荷渲染住进后端（`src/backend/control/launch_render/`）⇒ 在后端那个工程里跑出口。
+OUT="$(cd "$REPO/src/backend" && cargo test --lib -- --ignored --nocapture emit_launch_render_for_e2e 2>&1)"
 LINE="$(printf '%s\n' "$OUT" | grep -E 'LAUNCH_RENDER(_ERR)?<<<' | head -1)"
 if [ -z "$LINE" ]; then
   printf '%s\n' "$OUT" | tail -40 >&2

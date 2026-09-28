@@ -33,7 +33,7 @@ import { deriveForkSource, runForkFlow } from "../src/fork-flow";
 import { askForkLaunch } from "../src/fork-ask";
 import type { SessionAccount } from "../src/accounts";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
-import { isChanCall, linesReply } from "./test-support/chan-fake";
+import { isChanCall, launchRenderShim, linesReply, localLaunchCalls } from "./test-support/chan-fake";
 import { copyTableTextsIn } from "./test-support/copy-refs.ts";
 
 type TmuxRow = {
@@ -207,7 +207,7 @@ describe("E79：本机只有账号那一半时的推断", () => {
 // 本条与 `views/history.ts` 那条先前都没传（只有 `tabs.ts` 传了）。
 //
 // 🔴 **这条路上这一格先前尤其贵**：POSIX 后端当时只有「显式账号 0」那一态渲染得出容器
-// （`render_local_ccm_with`：具名账号说不出 `--account <名字>` ⇒ §35 降级；
+// （〔MIG-2〕今天是本机后端 `local.rs::render_ccm_with`：具名账号说不出 `--account <名字>` ⇒ §35 降级；
 //  「没表态」⇒ 直接拒），而**分叉是全仓唯一说得出 `{ kind: "base" }` 的生产路**
 // （`localLaunchAccountSync` 只回 `named` / `undefined`，回不出 `base`）。
 // ⇒ 名字没传的时候，这里是本来最有机会建出容器、却建不成的那一条。
@@ -231,7 +231,7 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
 
   /** 源会话活着、账号确认是「账号 0」（⇒ 三格全 known ⇒ 一次都不用问）。 */
   function serveLocal(tmuxNames: string[] | null): void {
-    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+    invokeMock.mockImplementation(launchRenderShim((cmd: string, args: unknown) => {
       // 〔C4a〕本机「会话 ↔ 账号」经通道问本机后端（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
         return Promise.resolve(
@@ -255,13 +255,13 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
         );
       }
       return Promise.resolve(undefined);
-    });
+    }));
   }
 
   function resumePayload(): Record<string, unknown> {
-    const call = invokeMock.mock.calls.find((c) => c[0] === "resume_history_session");
+    const call = localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
     expect(call, "一次 `resume_history_session` 都没发出去 —— 分叉那条本机路没走到").toBeTruthy();
-    return call![1] as Record<string, unknown>;
+    return call!;
   }
 
   async function fork(): Promise<string> {

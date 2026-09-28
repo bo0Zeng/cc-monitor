@@ -15,7 +15,7 @@ static CLAUDE_LAYOUT: SessionLayout = SessionLayout {
 /// `unset A B` 与 `unset B A` 语义等价，两侧的守卫也都按**集合**比 —— 但自从
 /// 载荷改由 Rust 编译（`backend::control::payload`；〔AR1〕当年点名的第一个是用量探针的载荷，
 /// 那条探针轴已随 `设计/50` 删了），这个顺序就**直接决定了送到远端的那条命令的字节**。同序 ⇒ 与搬家前逐字节相同，
-/// 也让 `src/backend/control/fixtures/payload-golden.json`（TS 生成）继续代表生产字节。
+/// 也让 `src/backend/control/launch_render/fixtures/payload-golden.json`（TS 生成）继续代表生产字节。
 static CLAUDE_NESTED_ENV: &[&str] = &[
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",

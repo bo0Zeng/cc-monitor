@@ -315,3 +315,36 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
     ).toEqual([]);
   });
 });
+
+// 〔MIG-2 · `99 §2.1 ㊱③`〕历史查看器的 Ctrl+F 复用 SE2 那块面板（搜索 ／ 大纲），查的是后端 `history-find`。
+//   守的要求（住址逐字）：`99 §2.1 ㊱`「③ 历史查看器 Ctrl+F 复用 SE2 面板 ＋ `history-find`」。
+describe("㊱③ 查看器的 Ctrl+F：SE2 那块面板 ＋ 问后端 `history-find`", () => {
+  it("打开到「搜索」· 问的是这一份会话 · 后端给什么命中就列什么 · 点命中跳到那张卡", async () => {
+    const v = await mount([userLine(1, "u1", "第一句"), assistantLine(2, "a1", "回复里有 needle")]);
+    viewerRig.find = {
+      available: true,
+      total: 1,
+      hits: [{ uuid: "a1", kind: "assistant", before: "回复里有 ", matched: "needle", after: "" }],
+    };
+    // 大纲那一半就是这块面板的另一半：入口按钮还在（上面几组照旧量它）。
+    const box = v.element.querySelector<HTMLElement>(".session-find-panel")!;
+    expect(box, "查看器里没有 SE2 那块面板").toBeTruthy();
+    expect(box.hidden).toBe(true);
+    v.openFind();
+    expect(box.hidden).toBe(false);
+    const input = v.element.querySelector<HTMLInputElement>(".session-find-input")!;
+    expect(document.activeElement).toBe(input);
+    input.value = "needle";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await settleOutline();
+    expect(sessionReadCalls(vi.mocked(invoke).mock.calls, "find_in_session")).toEqual([
+      { origin: "<local>", jsonlPath: "/p/s1.jsonl", query: "needle", includeTools: false },
+    ]);
+    const hits = [...v.element.querySelectorAll<HTMLButtonElement>(".session-find-hit")];
+    expect(hits.map((h) => h.dataset.hitUuid)).toEqual(["a1"]);
+    hits[0].click();
+    await settleOutline();
+    expect(hits[0].dataset.unjumpable, "命中那一条跳空了 —— 查看器的「跳」没接到这块面板上").toBeUndefined();
+    expect(cardOf(v, "a1")).toBeTruthy();
+  });
+});

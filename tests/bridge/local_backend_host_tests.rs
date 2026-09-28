@@ -64,8 +64,8 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
 //    这条判据整条删了**，新住址是 `history.rs` 里那几条判据
-//    （〔US1〕行为：`the_launch_side_really_asks_the_backend_and_uses_its_answer`；
-//     按函数地址对拍：`the_production_relay_facts_are_those_take_points`）。
+//    （〔US1〕行为：`the_launch_side_really_asks_the_backend_and_uses_its_answer`； 〔散文墓碑〕
+//     按函数地址对拍：`the_production_relay_facts_are_those_take_points`）。 〔散文墓碑〕
 //
 // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
 // 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
@@ -76,7 +76,7 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 // ⚠ **别在这里补一个「更聪明的文本判据」**（比如切实参表按逗号分段再比字面量）——
 //   `D4` 那一轮的修法（把判据搬出被扫文件）买到的东西正是被下一层的量法漏掉的，
 //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
-//   两个事实走 `history.rs::InjectFactSources` 那条缝，判据喂替身、断言前缀随答案变。
+//   两个事实走〔MIG-2〕本机后端 `local.rs::Facts` 那张事实表，判据喂替身、断言前缀随答案变。
 //
 // ⚠ 〔US1〕先前本文件上一条买的是另一半（那个取值口自己真的去连那个口）；那个取值口随「本机中转在不在由本机后端答」一起退役。
 
@@ -107,7 +107,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let get = |k: &str| envs.iter().find(|(kk, _)| kk == k).map(|(_, v)| v.clone());
     assert_eq!(
         get("CCM_RELAY_PORT"),
-        Some(crate::backend::control::payload::RELAY_PORT.to_string()),
+        Some(relay_route_core::PORT.to_string()),
         "端口不是注入侧那个常量 —— 注入侧拼的 URL 会指向一个没人听的口"
     );
     assert_eq!(

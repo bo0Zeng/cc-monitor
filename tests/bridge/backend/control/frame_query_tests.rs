@@ -230,11 +230,24 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
-    // 〔MIG-3b · `99 §2.1 ⑬`〕这台 `ccm` 会哪些：那台后端出成品，界面直接问。
+    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染：原 monitor Tauri 命令（`render_ccm_launch` · `render_launch_payload` ·
+    //   `relay_endpoint_for_launch` · `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕）。
     (
-        "ccm-probe",
-        "后端出成品 `{version, capabilities, agents, build}`（`control/ccm/mod.rs::answer_probe`，与 `--ccm-probe` 名片同一组常量）；\
-         前端 `src/ccm-probe.ts::probeCcm` 问、`decodeCcmProbe` 按恰好的键集合收（金样 `ccm-probe.golden.json`），monitor 这一侧零发送点",
+        "launch-render-cli",
+        "`ccm …` 调用行：后端出成品 `{ok, cmd, reason}`（`control/launch_render/wire.rs`）；前端 `src/launch-render.ts::renderCli` 按形状收",
+    ),
+    (
+        "launch-render-payload",
+        "裸载荷 / 外层 tmux 三格：后端出成品 `{cmd}`，坏输入回码 `refused`；前端 `src/launch-render.ts::renderPayload`",
+    ),
+    (
+        "launch-endpoint",
+        "这一发的中转地址：后端出成品 `{baseUrl}`（「不在时拒还是直连」也判完）；前端 `src/launch-render.ts::launchEndpoint`，monitor 零发送点",
+    ),
+    (
+        "launch-local",
+        "本机起会话整条：本机后端出成品 `{cmd, launchId}`（`control/launch_render/local.rs`）；前端 `src/launch-render.ts::planLocalLaunch`，\
+         monitor 只剩开终端窗口（`open_local_terminal`）",
     ),
     // 〔MIG-3b · `设计/05 §9` 第 12 条〕删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
     (

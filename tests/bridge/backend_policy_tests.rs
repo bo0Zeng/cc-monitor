@@ -119,8 +119,9 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         ),
     ];
     for (name, src) in &homes {
+        // 〔MIG-2 · ㊴〕`backend-policy.ts` 的退出行为取文口搬走后只剩 `LOCAL_ORIGIN`（剥完 ~430 字节）⇒ 地板 500 → 300。
         assert!(
-            src.len() > 500,
+            src.len() > 300,
             "{name} 只读到 {} 字节 —— 人群坏了",
             src.len()
         );

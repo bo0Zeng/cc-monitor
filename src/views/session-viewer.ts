@@ -33,14 +33,14 @@ import {
 import { UnrenderedRanges } from "../render-window";
 // 〔U3b〕查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
 import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
-import { readSessionIndex, type SessionIndexResult } from "../session-reads";
+import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../session-writes";
 // 〔SE1〕大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
-// K-R45：清单界面两条路共用一份，只有一个住址
-import { UserInputPanel } from "./user-input-panel";
+// 〔MIG-2 · `99 §2.1 ㊱③`〕查找面板与实时 tab 同一块（SE2：搜索 ／ 大纲两个模式；大纲那一半就是 K-R45 那份清单界面）
+import { SessionFindPanel } from "./session-find";
 import { copyText } from "../copy-table";
 
 /**
@@ -184,9 +184,9 @@ export class SessionViewer {
   private titleEl!: HTMLElement;
   private subtitleEl!: HTMLElement;
   private statusEl!: HTMLElement;
-  // K-R45 甲：用户输入清单（开关在顶栏，面板夹在状态栏与消息流之间）。
-  // 界面本体住 `user-input-panel.ts` —— 实时窗口那条路用的是**同一份**。
-  private inputs!: UserInputPanel;
+  // 〔MIG-2 · ㊱③〕查找面板（SE2 那一块：Ctrl+F 搜索 ／ 大纲），与实时 tab **同一个类**；
+  // 大纲那一半（K-R45 甲的用户输入清单）就是它的 `outline`。
+  private find!: SessionFindPanel;
   /** 〔SE1〕大纲的数据源；`where` 在 `load` 时换成这一份会话。 */
   private outline!: OutlineSource;
   private outlineWhere: { origin: string; jsonlPath: string } | null = null;
@@ -651,6 +651,11 @@ export class SessionViewer {
     void this.outline.refresh();
   }
 
+  /** 〔MIG-2 · ㊱③〕Ctrl+F（动作 `session.find`）落在查看器上：查找面板打开到「搜索」、焦点进输入框。 */
+  openFind(): void {
+    this.find.open("search");
+  }
+
   /** 主动释放（HistoryView 卸载本组件时调） */
   dispose(): void {
     this.disposeStream();
@@ -680,6 +685,8 @@ export class SessionViewer {
     // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
     // 〔SE1〕`reset` 同时让在途那趟回来后不许回写（换会话之后迟到的清单不属于这一份）。
     this.outline?.reset();
+    // 〔㊱③〕查找那一半同理：结果清空、在途那趟作废、收起。
+    this.find?.reset();
   }
 
   // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
@@ -701,15 +708,23 @@ export class SessionViewer {
     backBtn.addEventListener("click", () => this.onBack());
     bar.appendChild(backBtn);
 
-    // K-R45：清单面板（与实时窗口共用一份实现）。
-    // 「怎么跳」与「跳空了怎么解释」是两条路唯一不同的地方，所以只有这两件传进去。
-    this.inputs = new UserInputPanel({
+    // 〔MIG-2 · ㊱③〕查找面板（与实时 tab 共用一份实现，SE2）。宿主的三件事：
+    // ① 怎么查 —— 问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；
+    // ② 怎么跳 —— `scrollToMessage`（大纲行与命中行同一个住址）；
+    // ③ 跳空了怎么解释 —— 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
+    //    剥空了**不建卡**（后端 `observe/user_inputs.rs` 头注那条「已知不等价」）。`scrollToMessage` 会退到底部。
+    this.find = new SessionFindPanel({
+      search: async (query, includeTools) => {
+        const where = this.outlineWhere;
+        if (!where) return { available: false, reason: copyText("sessionViewer.find.noSession"), hits: [], total: 0 };
+        return findInSession(where.origin, where.jsonlPath, query, includeTools);
+      },
       jumpTo: (uuid) => this.scrollToMessage(uuid),
-      // 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
-      // 剥空了**不建卡**（后端 `observe/user_inputs.rs` 头注那条「已知不等价」）。`scrollToMessage` 会退到底部。
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
     });
-    this.outline = new OutlineSource(this.inputs, () => this.outlineWhere);
+    // 查看器一次只摆一份会话 ⇒ 面板恒 `.active`（实时 tab 那边跟着 tab 翻）。
+    this.find.el.classList.add("active");
+    this.outline = new OutlineSource(this.find.outline, () => this.outlineWhere);
     // 开关塞在顶栏标题右边（标题那块 flex:1 会吃掉余量）。
 
     const titles = document.createElement("div");
@@ -721,7 +736,6 @@ export class SessionViewer {
     this.subtitleEl.className = "session-viewer-subtitle";
     titles.appendChild(this.subtitleEl);
     bar.appendChild(titles);
-    bar.appendChild(this.inputs.toggle);
 
     view.appendChild(bar);
 
@@ -729,14 +743,13 @@ export class SessionViewer {
     this.statusEl.className = "history-status";
     view.appendChild(this.statusEl);
 
-    // K-R45：清单面板。默认收着 ⇒ 不改任何既有布局。
-    // 样式住 `styles.css` 的 `.user-inputs`（内联那笔债上一轮还了）。
-    view.appendChild(this.inputs.panel);
-
     // 消息流容器（与实时 Tab 用相同的 .stream 样式）
     this.streamEl = document.createElement("div");
     this.streamEl.className = "stream session-viewer-stream";
     view.appendChild(this.streamEl);
+
+    // 〔㊱③〕查找面板悬浮在流上（`.session-find` 的位置规则与实时 tab 同一条）：入口按钮「大纲 · N」＋ 收着的面板。
+    view.appendChild(this.find.el);
 
     return view;
   }

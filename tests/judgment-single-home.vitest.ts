@@ -123,7 +123,7 @@ interface Judgment {
 /** `mirror` 的 `why` 必须点的设计住址形状。 */
 const DESIGN_ADDRESS = /设计\/\d+ §|INVARIANTS §\d+/;
 
-const PAYLOAD_RS = "src/bridge/src/backend/control/payload.rs";
+const PAYLOAD_RS = "src/backend/control/launch_render/payload.rs"; // 〔MIG-2〕随载荷渲染搬进后端
 
 /**
  * ★ 登记表：判定 → 唯一住址，以及 TS 侧的孪生今天在不在。
@@ -174,6 +174,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustNeedles: [
       { file: PAYLOAD_RS, text: "';' | '|' | '&'", count: 0 },
       { file: "src/bridge/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
+      // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端 ⇒ 私有那份最可能长回来的地方跟着挪。
+      { file: "src/backend/control/launch_render/local.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },
     ],
   },

@@ -23,8 +23,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", async () => {
-  const { tmuxControlShim } = await import("./test-support/chan-fake");
-  return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
+  const { tmuxControlShim, launchRenderShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口）；`remote-launch-run.ts` 不再读行为配置。

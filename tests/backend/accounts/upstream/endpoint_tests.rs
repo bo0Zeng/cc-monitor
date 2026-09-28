@@ -149,9 +149,10 @@ fn us1_the_launch_table_matches_the_hand_written_one() {
     );
 }
 
-/// 线上形状：注入与不注入同一组键；只在要注入时才探中转。
+/// 〔MIG-2 · `99 §2.1 ⑬`〕成品：不注入 ⇒ `{baseUrl:null}`；注入且在听 ⇒ 那个地址；注入而没在听 ⇒ 按「非它不可 / 有它更好」
+/// 拒（`relay_down`）或直连（`null`）。只在要注入时才探中转。原先四格（`listening` / `whenDown` / `account`）交 monitor 再判，那一判收进这里。
 #[test]
-fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_injecting() {
+fn us1_the_launch_answer_is_the_product_and_probes_only_when_injecting() {
     let rows = vec!["acct-a".to_string()];
     let probes = std::cell::Cell::new(0u32);
     let probe = |p: u16| {
@@ -159,45 +160,50 @@ fn us1_the_launch_answer_always_has_the_same_four_keys_and_probes_only_when_inje
         probes.set(probes.get() + 1);
         true
     };
-    let keys = |v: &Value| {
-        let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
-        k.sort();
-        k
-    };
-    let want_keys = vec!["account", "baseUrl", "listening", "whenDown"];
-    let none = answer_launch_with(
+    let none = answer_launch(
         &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
-        &rows,
-        &probe,
-    )
-    .unwrap();
-    assert_eq!(keys(&none), want_keys);
-    assert_eq!(
-        none,
-        json!({"baseUrl":null,"listening":false,"whenDown":null,"account":null})
     );
-    assert_eq!(probes.get(), 0, "不注入也去探了中转");
-    let s = answer_launch_with(
-        &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a","name":"a"},"allSessions":false}),
-        &rows,
-        &probe,
-    )
-    .unwrap();
-    assert_eq!(keys(&s), want_keys);
+    assert_eq!(none.unwrap(), json!({"baseUrl":null}));
+    let named = json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a","name":"a"},"allSessions":false});
     assert_eq!(
-        s,
-        json!({"baseUrl":"http://127.0.0.1:8788/s/claude-code/acct-a","listening":true,"whenDown":"refuse","account":"acct-a"})
+        launch_relay_with(&named, &rows, &probe).unwrap().as_deref(),
+        Some("http://127.0.0.1:8788/s/claude-code/acct-a")
     );
     assert_eq!(probes.get(), 1);
-    let t = answer_launch_with(
+    assert_eq!(
+        launch_relay_with(
+            &json!({"agent":"claude-code","account":{"kind":"base"},"allSessions":false}),
+            &rows,
+            &probe
+        )
+        .unwrap(),
+        None
+    );
+    assert_eq!(probes.get(), 1, "不注入也去探了中转");
+    // 非它不可而没在听 ⇒ 拒，说得出是哪个号。
+    let down = launch_relay_with(&named, &rows, &|_| false).unwrap_err();
+    assert_eq!(down.0, "relay_down");
+    assert!(
+        down.1.contains("acct-a"),
+        "拒的那一句没说是哪个号：{}",
+        down.1
+    );
+    // 有它更好（`/t/`）而没在听 ⇒ 这一发直连。
+    let direct = launch_relay_with(
         &json!({"agent":"claude-code","allSessions":true}),
         &rows,
         &|_| false,
-    )
-    .unwrap();
+    );
+    assert_eq!(direct.unwrap(), None);
     assert_eq!(
-        t,
-        json!({"baseUrl":"http://127.0.0.1:8788/t/claude-code/_","listening":false,"whenDown":"direct","account":null})
+        launch_relay_with(
+            &json!({"agent":"claude-code","allSessions":true}),
+            &rows,
+            &|_| true
+        )
+        .unwrap()
+        .as_deref(),
+        Some("http://127.0.0.1:8788/t/claude-code/_")
     );
 }
 
@@ -213,7 +219,7 @@ fn us1_bad_launch_args_are_refused_before_anything_is_probed() {
         json!({"agent":"claude-code","allSessions":true,"account":{"kind":"other"}}),
         json!({"agent":"claude-code","allSessions":true,"account":"base"}),
     ] {
-        let got = answer_launch_with(&bad, &[], &probe);
+        let got = launch_relay_with(&bad, &[], &probe);
         assert!(matches!(got, Err(("bad_args", _))), "{bad} ⇒ {got:?}");
     }
 }
@@ -274,9 +280,9 @@ fn us1_the_apikey_products_match_the_cross_language_golden() {
         "apikey-routing": answer_routing_with(
             &json!({"agent":"claude-code","configDirs":["/h/.claude-alt/work","/h/.claude-alt/bad-url","/h/.claude-alt/me"]}),
             &rows, &|_| true).unwrap(),
-        "launch-endpoint": answer_launch_with(
+        "launch-endpoint": json!({ "baseUrl": launch_relay_with(
             &json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/work","name":"work"},"allSessions":false}),
-            &rows, &|_| false).unwrap(),
+            &rows, &|_| true).unwrap() }),
     });
     let got: Value = serde_json::from_str(
         &got.to_string()

@@ -774,7 +774,15 @@ fn wait_for(path: &std::path::Path) -> bool {
 /// 本件的中转前缀 —— 由**生产那一处**渲染器产出，判据不自己抄一份字面量。
 #[cfg(not(windows))]
 fn relay_probe_prefix(url: &str) -> String {
-    crate::backend::control::payload::relay_env_prefix_posix(url)
+    // 〔MIG-2〕载荷内核搬进后端，monitor 够不着；这里照它的形状手写一份（钥匙段读 `$HOME` 下那个文件的命令替换，
+    //   `launch_render/payload.rs::relay_env_prefix_posix`）—— 本条验的是开窗那一跳把整串原样交给了进程，不是前缀怎么渲。
+    let (origin, path) = url.split_at(url.find("/s/").expect("夹具 URL 带 /s/"));
+    format!(
+        "export ANTHROPIC_BASE_URL={}\"$(cat \"$HOME/{}\")\"{}; ",
+        shell_quote_core::posix_quote(&format!("{origin}/")),
+        relay_route_core::KEY_FILE_REL,
+        shell_quote_core::posix_quote(path)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -934,11 +942,7 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
     //   放一把夹具钥匙，期望值是**展开之后**那条带钥匙的 URL（不碰用户真实的家目录）。
     let fixture_key = "5eed".repeat(16);
     std::fs::create_dir_all(dir.join(".cc-monitor")).expect("夹具 .cc-monitor");
-    std::fs::write(
-        dir.join(crate::backend::control::payload::RELAY_KEY_FILE_REL),
-        &fixture_key,
-    )
-    .expect("夹具钥匙");
+    std::fs::write(dir.join(relay_route_core::KEY_FILE_REL), &fixture_key).expect("夹具钥匙");
     let expanded = url.replacen("8788/", &format!("8788/{fixture_key}/"), 1);
     let payload = format!(
         "HOME='{}'; {prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
