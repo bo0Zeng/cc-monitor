@@ -13682,6 +13682,16 @@
       "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
       "args": ["jumpUser"]
     },
+    "panoramaApi.backend.tooOld": {
+      "kind": "error",
+      "zh": "这台的后端太旧，不认代码全景这一问（重启 cc-monitor 换上新的后端）。",
+      "args": []
+    },
+    "panoramaApi.reply.noResult": {
+      "kind": "error",
+      "zh": "代码全景的应答里没有结果，两端版本对不上",
+      "args": []
+    },
     "rsPanoramaCall.edit.notRefreshed": {
       "kind": "error",
       "zh": "文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）。点「刷新」重建一次就能看到",
@@ -13707,41 +13717,6 @@
       "zh": "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。",
       "args": []
     },
-    "rsPanoramaCall.call.failed": {
-      "kind": "error",
-      "zh": "{who} 的代码全景没答上来（{code}）：{message}",
-      "args": ["who", "code", "message"]
-    },
-    "rsPanoramaCall.call.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的代码全景回了一条空应答，两端版本对不上",
-      "args": ["who"]
-    },
-    "rsPanoramaCall.call.noResult": {
-      "kind": "error",
-      "zh": "{who} 的代码全景应答里没有结果，两端版本对不上",
-      "args": ["who"]
-    },
-    "rsPanoramaCall.call.unavailable": {
-      "kind": "error",
-      "zh": "代码全景在这台上用不了",
-      "args": []
-    },
-    "rsPanoramaCall.call.internal": {
-      "kind": "error",
-      "zh": "代码全景这一问出了内部错误，没有拿到结果",
-      "args": []
-    },
-    "rsPanoramaCall.ticket.busy": {
-      "kind": "error",
-      "zh": "代码全景：取消票 {ticket} 还有一问没答完，这一问没有发出去。界面应当每一问一张新票",
-      "args": ["ticket"]
-    },
-    "rsPanoramaCall.cancel.done": {
-      "kind": "body",
-      "zh": "已取消（后端那一趟已经停下）",
-      "args": []
-    },
     "rsPanoramaCall.edit.gaveUp": {
       "kind": "error",
       "zh": "{last}\n连着 {attempts} 趟都是算完之后盘上那份又变了，先停下。过一会儿再点一次。",
@@ -13752,12 +13727,12 @@
       "zh": "代码全景组件交回的编辑计划形状不对（{e}），两端版本对不上：{raw}",
       "args": ["e", "raw"]
     },
-    "rsPanoramaCall.push.stillSays": {
+    "panoramaApi.place.stillSays": {
       "kind": "error",
       "zh": "已经把这一版的代码全景组件推过去了，那台机器仍然说：{said}",
       "args": ["said"]
     },
-    "rsPanoramaCall.push.failed": {
+    "panoramaApi.place.failed": {
       "kind": "error",
       "zh": "{said}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
       "args": ["said", "e"]

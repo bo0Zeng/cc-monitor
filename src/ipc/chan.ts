@@ -21,7 +21,9 @@
  *   已经过了 ⇒ `Hop{0 write, NotSent, Overrun}`，**一个字节都不发**（`§10.4` 那张表第一行）。
  *   第 1 跳的上界由 monitor 那一侧执行（`chan/webview.rs` → `router::settle`）⇒ **本文件零定时器**。
  * - **撤单**：`Budget.cancel`（`AbortSignal`）拨下 ⇒ 立即 `Ours{Cancelled}`（本地撤单，`§3.3.3`）。
- *   ⚠ **不买对端撤活**：monitor 那一侧照跑到「还剩多少」为止（与回环那条同一条边界）。
+ *   〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕同时带着这一问的编号发 `chan_cancel` ⇒ monitor 那一侧丢掉那次调用、补发 `cancel`
+ *   给后端 ⇒ 可取消档真停下（全景：小程序那一组子进程被杀）。那台对这一条不认撤（`Offer.stoppable` 里没有）⇒ 仍是 `runsOn`。
+ *   〔墓碑 —— 上一版这里写着「⚠ 不买对端撤活：monitor 那一侧照跑到「还剩多少」为止」。〕
  * - **错误三层**（`§3.3.1`）：`hop`（传输错，带跳号 ＋ `reach`）· `peer`（对端说不认 / 说不行，后者带不透明体）·
  *   `ours`（我们自己错）。monitor 交回来的是回环那条同一份线上形状（`wire::err_to_wire`），这里解回三层；
  *   解不出来的一律 `ours/Broken`（对端说的话解不出来 = 内部不变量破了），**不猜**。
@@ -338,8 +340,10 @@ export const chan = {
         why: "Overrun",
       });
     }
+    // 〔MIG-3b 续〕撤得掉的那一问带一个编号（撤单那一条按它找到在飞的那一问）。
+    const callId = budget.cancel ? crypto.randomUUID() : null;
     const sent = commands
-      .chan_call({ origin, op, payload: Array.from(payload), leftMs: left })
+      .chan_call({ origin, op, payload: Array.from(payload), leftMs: left, callId })
       .then(
         (buf) => new Uint8Array(buf),
         (raw: unknown) => {
@@ -351,8 +355,12 @@ export const chan = {
     if (!budget.cancel) return sent;
     // 撤得掉的那一问才要那台的 Offer（撤了之后说「可能还在跑」）：没问过就去问（不等它）。
     if (!offers.has(origin)) void askOffer(origin);
-    // 撤了之后 monitor 那一侧照跑完（不买对端撤活）；它那时的结局没人收了 —— 别让它变成一次未处理的拒绝。
+    // 撤了之后那一问在 monitor 那一侧以「已撤」收场；它那时的结局没人收了 —— 别让它变成一次未处理的拒绝。
     sent.catch(() => {});
+    const onAbort = (): void => {
+      if (callId !== null) void commands.chan_cancel({ id: callId }).catch(() => {});
+    };
+    budget.cancel.addEventListener("abort", onAbort, { once: true });
     const offer = (): Offer | null | undefined => offers.get(origin);
     const abort = whenAborted(budget.cancel, () => {
       const o = offer();
@@ -362,6 +370,7 @@ export const chan = {
       return await Promise.race([sent, abort.promise]);
     } finally {
       abort.dispose();
+      budget.cancel.removeEventListener("abort", onAbort);
     }
   },
 

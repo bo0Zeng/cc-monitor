@@ -205,7 +205,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # 〔MIG-3a〕`mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
-    ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
+    # 〔墓碑 · MIG-3b 续〕`panorama.annotate` 随它唯一那条命令（`panorama_edit`）进了那台后端（`panorama-edit`，界面经通道直问）而退役：
+    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     # 〔墓碑 · MIG-1〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。

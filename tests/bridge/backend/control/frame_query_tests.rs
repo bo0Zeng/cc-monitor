@@ -308,6 +308,17 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{outcome, pubPath, via}`（`assets/pubkey.rs`）；前端 `src/pubkey-push.ts::pushPublicKey` 问、`decodePush` 按恰好的键集合收\
          （金样 `pubkey-push.golden.json`），monitor 这一侧零发送点（那条 Tauri 命令与它的两条路删了）",
     ),
+    // 〔MIG-3b 续 · 主会话 09-28 裁〕代码全景：界面经通道直问那台后端（原 monitor 那一跳 `panorama_call.rs`〔散文墓碑〕删了）。
+    (
+        "panorama",
+        "后端出成品 `{result}`（`control/panorama.rs` 起那台的全景小程序）；前端 `src/panorama/api.ts::remote` 问，\
+         回「没装 / 太旧」时请 monitor 放字节（`panorama_place`）再问一次；monitor 这一侧零发送点",
+    ),
+    (
+        "panorama-edit",
+        "后端算计划 ＋ 经这台文件管理面落盘（`control/panorama_edit.rs`，`stale` 重算）；前端 `src/panorama/api.ts::edit` 问，\
+         monitor 这一侧零发送点",
+    ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",
@@ -590,11 +601,18 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
 /// 要来这里表态）；少一处 = 那一处用法没了，这一行馊了。
 // 〔STOP〕原先唯一一行（`kill`：`local_backend_host.rs` 起系统的 `kill` 进程发 SIGTERM）随那条路一起删了 ——
 //   本机「停」改走一次性 `--resident-stop`，monitor 生产段里 `kill` 这个拼写一处都不剩 ⇒ 表空着（两向相等照旧成立）。
-const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[(
-    "resync",
-    1,
-    "〔RESYNC〕`inbound_client::RESYNC_OP`：认出 `resync` 的应答、把它交回的那台当下能力事实换进 `Offer` —— 不发任何东西",
-)];
+const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[
+    (
+        "resync",
+        1,
+        "〔RESYNC〕`inbound_client::RESYNC_OP`：认出 `resync` 的应答、把它交回的那台当下能力事实换进 `Offer` —— 不发任何东西",
+    ),
+    (
+        "panorama",
+        1,
+        "〔MIG-3b 续〕足迹登记表 `tool_registry.rs` 里全景小程序那一条的工具 id（`id: \"panorama\"`）—— 不发任何东西",
+    ),
+];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
 ///

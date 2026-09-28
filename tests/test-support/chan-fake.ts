@@ -13,6 +13,8 @@ export interface ChanCallArgs {
   op: string;
   payload: number[];
   leftMs: number;
+  /** 〔MIG-3b 续〕带撤单的那一问的编号（撤单那一条 `chan_cancel` 按它找）；不带撤单 ⇒ `null`。 */
+  callId?: string | null;
 }
 
 /** 这一发 `invoke` 是不是通道那一跳、问的是不是这条帧命令。 */

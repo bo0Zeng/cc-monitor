@@ -672,9 +672,10 @@ const INTEGRATION: &[&str] = &[
     // 〔AS2〕
     // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
     "tests/bridge/panorama_bytes_tests.rs",
-    "tests/bridge/panorama_call_tests.rs",
+    // 〔MIG-3b 续〕`tests/bridge/panorama_call_tests.rs` 删了：问 · 交那一环随实现搬进后端（`tests/backend/control/panorama_edit_tests.rs`）。
     // 〔RM1f〕`tests/bridge/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/bridge/profile_installer_tests.rs",
+    "tests/backend/control/panorama_edit_tests.rs", // 〔MIG-3b 续〕全景写：问 · 交那一环（原 `tests/bridge/panorama_call_tests.rs`）随实现搬来，临时目录当仓
     "tests/backend/assets/pubkey_tests.rs", // 〔MIG-3b 续〕原 `tests/bridge/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/bridge/scanning_guard_registry_tests.rs",
     // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。

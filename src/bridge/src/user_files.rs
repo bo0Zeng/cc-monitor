@@ -4,8 +4,7 @@
 //! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/`，
 //! 这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
 //! `files-chmod`），本机与远端**同一条路**，只差 origin。〔MIG-3b〕删历史会话不经这扇门了：界面经通道直说那台后端。
-//! 〔RM1d〕代码全景的批注 / 文档关联（V110「引擎只算、文件管理来写」）也经这扇门：计划由全景小程序算
-//! （`panorama_call.rs::edit_via`），落盘是这里的 `put` / `delete`（后者 = `files-delete`）。
+//! 〔RM1d → MIG-3b 续〕代码全景的批注 / 文档关联不经这扇门了：算与写都在那台后端（`panorama-edit`，界面经通道直问）。
 //!
 //! # 分工
 //!
@@ -30,15 +29,6 @@ pub(crate) struct Peeked {
     pub path: String,
     /// `None` = 确定不存在（「读不出来」是 `Err`，不是这一形）。
     pub text: Option<String>,
-}
-
-/// 一次 `files-put` 真写了之后的回执。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Landed {
-    pub path: String,
-    pub changed: bool,
-    pub created: bool,
-    pub backup: Option<String>,
 }
 
 /// 一次后端写没成：**`stale` 与别的分得开**（前者该重读重算，后者原话交给用户）。
@@ -74,17 +64,9 @@ pub(crate) trait Door {
     /// 后端这个进程的 home（绝对路径）。
     async fn home(&self) -> Result<String, String>;
     async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String>;
-    async fn put(
-        &self,
-        root: &str,
-        rel: &str,
-        content: &str,
-        expect: Option<&str>,
-        backup: bool,
-        parents: bool,
-    ) -> Result<Landed, Refused>;
+    // 〔MIG-3b 续〕交写那一形（`put`，最后一个用户是全景的批注 / 文档关联）随全景写进那台后端（`panorama-edit`）删了。
     // 〔MIG-3a · 子步 3〕改名那一形（`rename`〔散文墓碑〕，唯一用户是 cc-bus 装前的整目录备份）随装 cc-bus 进后端删了。
-    /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。今天唯一的用户：全景删批注侧车。
+    /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。〔MIG-3b 续〕今天唯一的用户：`ccm_legacy.rs` 删旧入口（全景删批注那一处随全景写进了那台后端）。
     /// 〔RM1e〕带 CAS：`expect` = 读到的那一份，盘上逐字节等于它才删；不等 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动。
     /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
@@ -94,9 +76,6 @@ pub(crate) trait Door {
     // 〔MIG-3a〕「一个路径在不在」那一形（`stat_kind`〔散文墓碑〕）的用户（别名读回 · cc-bus 装）都进了后端 ⇒ 删。
     // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
 }
-
-/// 读改写一次最多重来几趟（`stale` 才重来：盘上那份在读与写之间被别人改了）。
-pub(crate) const EDIT_ATTEMPTS: usize = 3;
 
 // 〔MIG-3b 续〕读 → 算 → 交那一环（`edit`〔散文墓碑〕 与它的结局 `Edited`〔散文墓碑〕、重来趟数）删了：最后一个用户（公钥推送）进了本机后端，
 //   那一环在后端还有一份（`src/backend/assets/door.rs` 的 `edit`，本机后端代管资产与 `authorized-keys-add` 都走它）。
@@ -255,41 +234,6 @@ impl Door for BackendDoor {
                 .get("text")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string),
-        })
-    }
-
-    async fn put(
-        &self,
-        root: &str,
-        rel: &str,
-        content: &str,
-        expect: Option<&str>,
-        backup: bool,
-        parents: bool,
-    ) -> Result<Landed, Refused> {
-        let v = self
-            .ask(
-                "files-put",
-                serde_json::json!({
-                    "root": root,
-                    "rel": rel,
-                    "content": content,
-                    "expect": expect,
-                    "backup": backup,
-                    "parents": parents,
-                }),
-            )
-            .await?;
-        let flag = |k: &str| {
-            v.get(k)
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false)
-        };
-        Ok(Landed {
-            path: path_text(v.get("path").unwrap_or(&serde_json::Value::Null)),
-            changed: flag("changed"),
-            created: flag("created"),
-            backup: v.get("backup").filter(|b| !b.is_null()).map(path_text),
         })
     }
 

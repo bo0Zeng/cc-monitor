@@ -3163,15 +3163,34 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 - 错误码：`bad_args`（op 不在词表 / 参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
 - 〔RM1d · V110「引擎只算、文件管理来写」〕本命令**不写用户文件**。批注 / 文档关联的 `plan_*` 只读盘上那一两份、回一份编辑计划
   `{"value": …, "edit": null | {"rel", "before", "after", "parents"}}`（`rel` 仓相对；`before` = 算的那一刻盘上原样、`null` = 不存在；
-  `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。落盘是调用方拿着计划另发 `files-put`（`root` = 仓、`expect = before`、`parents`）
-  或 `files-delete`；`stale` ⇒ 重新 `plan_*`。写了 `.md` 之后发 `refresh_doc_links` 让文档关联的查询跟上（只写索引）。
+  `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。〔MIG-3b 续〕拿着计划落盘的是同一台后端的 `panorama-edit`（下一节），不再是 monitor。
 - 〔RM1f〕**可取消**：异步档（起进程走插件口的 `run_abortable`，异步等子进程）⇒ `cancel` 命中时处理器被撤、小程序连同 `timeout` 前缀那一组子进程一起被杀，回 `cancelled` 帧。〔墓碑 —— RM1c 那一版是阻塞档：`cancel` 命中回 `not_cancellable`。〕
-- 〔RM1e · V108「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：monitor 听到这两个码
-  （只对远端）⇒ `uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
+- 〔RM1e · V108「只传给开过远端全景的机器」〕`not_installed` / `unsupported` 是**推字节的触发条件**：〔MIG-3b 续〕界面（经通道直问）听到这两个码
+  ⇒ 请 monitor 放字节（Tauri 命令 `panorama_place`）：`uname -s -m` 选内嵌字节 → 经本机常驻后端那条 `files` 链路（部署那一问一答，写只许 `~/.cc-monitor/bin/` 与暂存区）
   推到 `~/.cc-monitor/bin/cc-monitor-panorama`（`0755`，后端读回逐字节比对）→ **再问一次**；仍是这两个码 ⇒ 原话交给人，不循环。
   本命令自己不推、不写。
   〔RM1f · 本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
   放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
+
+#### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
+
+```text
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"}}}
+← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `repo` | → | 被写的仓在**这台机器上**的绝对路径 |
+| `op` | → | 写哪一种：`add_annotation` · `propose_annotation` · `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`（别的 ⇒ `bad_args`） |
+| `args` | → | 这一种写自己的参数（原样交给对应的 `plan_*`） |
+| `data` | ← | 计划里的 `value` 原样（id / 在不在 / `null`，随 op 而定） |
+
+- 一件事全在这台：① 问这台的小程序要计划（`panorama` 的 `plan_*`，不写）→ ② `edit = null` ⇒ 原样回 → ③ 经**这台的文件管理面**落盘
+  （`files-put`：`root` = 仓、`expect = before`、`parents`；`after = null` ⇒ `files-delete` 带 `expect = before`）→ ④ `stale` ⇒ 回 ① 重算，最多 3 趟
+  → ⑤ 文档关联那两种写成之后再 `refresh_doc_links`。写的规则（CAS · 暂存旁名换名上位 · 回读 · 围栏）只在文件管理面。
+- 错误码：「算」那一步的码原样交回（`not_installed` / `unsupported` 同样是界面请 monitor 放字节、再问一次的触发条件）· `stale`（3 趟都撞上别人改）·
+  文件管理面的码原样（`refused` 等）· `failed`（计划形状对不上）。可取消档（同 `panorama`）。CLI 面自动派生（`--panorama-edit`）。
 
 #### `backend-log`：这台后端的 stderr 诊断文件尾部（〔GAP1〕`设计/15 §4.7 S1`，2026-09-26）
 

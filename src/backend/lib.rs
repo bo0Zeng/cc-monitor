@@ -768,6 +768,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--capture-pane",
     // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
+    // 〔MIG-3b 续〕全景写（帧面 `panorama-edit` 的 CLI 面，自动派生）。
+    "--panorama-edit",
     // 〔MIG-3b 续〕公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",
