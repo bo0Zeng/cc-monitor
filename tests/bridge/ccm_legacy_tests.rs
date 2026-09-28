@@ -127,19 +127,6 @@ impl crate::user_files::Door for StaleDoor {
         std::fs::write(std::path::Path::new(root).join(rel), &self.swap_to).unwrap();
         Ok(got)
     }
-    async fn put(
-        &self,
-        root: &str,
-        rel: &str,
-        content: &str,
-        expect: Option<&str>,
-        backup: bool,
-        parents: bool,
-    ) -> Result<crate::user_files::Landed, Refused> {
-        self.inner
-            .put(root, rel, content, expect, backup, parents)
-            .await
-    }
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.inner.delete(root, rel, expect).await
     }

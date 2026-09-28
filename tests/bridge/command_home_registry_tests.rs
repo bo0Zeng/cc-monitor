@@ -151,6 +151,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("chan_subscribe", Own::Channel, "通信层面 A：`subscribe`"),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
+    (
+        "chan_cancel",
+        Own::Channel,
+        "〔MIG-3b 续〕通信层面 A：撤掉 webview 那一跳上带编号的一问（撤单过这一跳，`05 §3.3.3`）",
+    ),
     // 〔MIG-2〕起会话的计划与渲染进了后端之后，monitor 在这件事上只剩下面两格。
     (
         "open_local_terminal",
@@ -172,6 +177,12 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "uninstall_remote_backend",
         Own::Place,
         "删落点那一份后端字节（固定落点，没有判定；经 `files` 链路）",
+    ),
+    // 〔MIG-3b 续 · 主会话 09-28 裁〕那台后端回「没装 / 太旧」时界面请 monitor 放全景小程序的字节（判定「缺不缺」是那台后端答的码）。
+    (
+        "panorama_place",
+        Own::Place,
+        "放 monitor 带着的全景小程序字节：远端经本机后端 `files` 链路推、本机放到 `~/.cc-monitor/bin/`（触发是那台后端回的码）",
     ),
 ];
 
@@ -222,13 +233,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     ("read_session_lines", Lane::Mig2, "骨架行读仍经 monitor 转"),
     // 〔MIG-3b 续〕公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
-    (
-        "panorama_call",
-        Lane::Mig3b,
-        "全景一问经 monitor 转、装引擎字节由 monitor 放",
-    ),
-    ("panorama_edit", Lane::Mig3b, "全景一问经 monitor 转"),
-    ("panorama_cancel", Lane::Mig3b, "全景撤单经 monitor 转"),
+    // 〔MIG-3b 续 · 主会话 09-28 裁〕全景问 · 写 · 撤三条已迁（界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳），
+    //   行删了；放字节那一条（`panorama_place`）进「monitor 自己的事」`Place`，撤单那一条（`chan_cancel`）进 `Channel`。
     // 〔MIG-3a · 主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
     //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];

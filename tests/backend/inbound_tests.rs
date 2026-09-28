@@ -435,7 +435,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
-        "pubkey-push", // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "pubkey-push",   // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
@@ -635,7 +636,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "assets-sync",
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
-        "pubkey-push", // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "pubkey-push",   // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。

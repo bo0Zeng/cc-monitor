@@ -8,7 +8,7 @@
 //!
 //! 〔墓碑 —— RM1c 那一版这里写着「推上去不在这里」：F08 部署路那时正被 SR1b 搬进本机常驻后端，
 //!  本模块零生产调用方。SR1b 已合（部署经 `dial_host::RemoteFs`）。〕
-//! 触发点在 `panorama_call.rs`：远端 `panorama` 回「没装 / 太旧」才推（V108「只传给开过远端全景的机器」），
+//! 触发点在界面（〔MIG-3b 续〕`src/panorama/api.ts::askOrPlace`，经 [`panorama_place`]）：那台 `panorama` 回「没装 / 太旧」才推（V108「只传给开过远端全景的机器」），
 //! 不随后端部署顺手推。推法与 F08 部署后端同一条路：〔TL1 · 4C〕问那台是什么机器（`byte_table::probe_key`；〔MIG-3b〕部署后端那一问进了本机常驻后端，
 //! 两处同一条命令串、同一份解读 `deploy_core::key_from_uname`）→ `byte_table::choose(Panorama, Remote, …)`（表 B 那一步：不承诺 / 这一版没带 ⇒ 写第一个字节之前就拒，
 //! 拒绝的话出自 `Refusal::say` 那一个口）→ 本机常驻后端那条 `files` 链路
@@ -116,7 +116,7 @@ pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String
 /// 本机后端有两条来路：monitor 这一趟**起**它（走 `local_backend::resolve_or_extract`）、或者**接上**一个已经在跑的
 /// 常驻后端（`local_backend_host::start_detached` 的 adopt 那一臂 —— 那一臂**根本不找二进制**）。只在前一条路上放，
 /// 接上旧常驻后端的那一趟就永远没有小程序。⇒ 与远端同一个触发点：本机后端答「没装 / 装的太旧」时放一次、再问一次
-/// （`panorama_call.rs::ask_or_push`）。**写的那一下住 `local_backend.rs`**（与释放本机后端同一套：暂存旁名 → 可执行位 → 换名）。
+/// （〔MIG-3b 续〕界面 `askOrPlace` → [`panorama_place`]）。**写的那一下住 `local_backend.rs`**（与释放本机后端同一套：暂存旁名 → 可执行位 → 换名）。
 fn place_local() -> Result<(), String> {
     let bytes = local_panorama_binary()?;
     // 与推到远端同一个落点（[`PUSH_DIR`]，判据对拍后端的第二个候选）。
@@ -136,6 +136,100 @@ fn place_local() -> Result<(), String> {
         bytes.len()
     );
     Ok(())
+}
+
+// ═══ 〔MIG-3b 续 · 主会话 09-28 裁〕放字节那一条命令 ═══════════════════════════════════════════
+//
+// 界面直问那台后端 `panorama` / `panorama-edit`；那台回「没装 / 太旧」（`not_installed` / `unsupported`）⇒ 界面请这里**放字节**、
+// 再问一次（`src/panorama/api.ts::askOrPlace`）。原 `panorama_call.rs`〔散文墓碑〕那一跳（问 · 转 · 撤）整份删了，放字节那一半搬来这里：
+// 每台一把锁 · 真要放之前在远端健康通道上说一声 · 本机远端同一个口（[`push_to`]）。
+
+/// 每台机器一把「正在放」的锁 ＋ 放成过几次（同一台同时几问都撞上「没装」时只放一份：排队的那一问进锁时发现
+/// 计数变了 ⇒ 前一个刚放完，不再放）。
+fn place_state(origin: &str) -> std::sync::Arc<tokio::sync::Mutex<u64>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<u64>>>>> = OnceLock::new();
+    let mut m = LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    m.entry(origin.to_string()).or_default().clone()
+}
+
+/// 放一次（排队的那一问若发现前一个刚放完就不放）。`seen` = 进来那一刻读到的「放成过几次」；`announce` 恰在真放之前、恰一次。
+/// 抽出来是为了判据：锁 · 计数 · 说一声的次序不靠真 SSH 就验得动（`push` / `announce` 替身数次数）。
+pub(crate) async fn place_once<N, P, F>(
+    origin: &str,
+    seen: u64,
+    announce: N,
+    push: P,
+) -> Result<(), String>
+where
+    N: FnOnce(),
+    P: FnOnce() -> F,
+    F: std::future::Future<Output = Result<(), String>>,
+{
+    let state = place_state(origin);
+    let mut placed = state.lock().await;
+    if *placed != seen {
+        return Ok(());
+    }
+    announce();
+    push().await?;
+    *placed += 1;
+    Ok(())
+}
+
+/// 此刻「放成过几次」（进锁之前读，交给 [`place_once`]）。
+pub(crate) fn placed_count(origin: &str) -> u64 {
+    place_state(origin)
+        .try_lock()
+        .map(|g| *g)
+        .unwrap_or(u64::MAX)
+}
+
+/// 〔RM1f〕远端健康通道上那一句的 `kind`（前端 `remote-health.ts` 的标题表认它）。
+pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
+
+/// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
+pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload {
+    let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+        // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
+        copy_text("rsPanoramaCall.install.local", &[])
+    } else {
+        let who = crate::backend::control::cc_bus::machine_label(origin);
+        copy_text("rsPanoramaCall.install.remote", &[("who", &who)])
+    };
+    crate::bridge::RemoteHealthPayload {
+        origin: origin.to_string(),
+        kind: INSTALL_NOTICE_KIND.to_string(),
+        message,
+    }
+}
+
+/// 〔MIG-3b 续〕放字节：那台（远端推 · 本机放）装上这一版带着的全景小程序。界面听到 `not_installed` / `unsupported` 才调。
+#[tauri::command]
+pub async fn panorama_place(
+    app: tauri::AppHandle,
+    origin: crate::origin::Origin,
+) -> Result<(), String> {
+    let _ = origin.route("panorama_place")?;
+    let wire = origin.as_wire_str().to_string();
+    // 进锁之前读计数：排队等锁期间前一个放成了 ⇒ 这一问不再放。
+    let seen = placed_count(&wire);
+    place_once(
+        &wire,
+        seen,
+        || {
+            use tauri::Emitter;
+            if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, install_notice(&wire)) {
+                tracing::warn!("[{wire}] 「正在装代码全景组件」那一句没发出去：{e}");
+            }
+        },
+        || push_to(&origin),
+    )
+    .await
 }
 
 #[cfg(test)]

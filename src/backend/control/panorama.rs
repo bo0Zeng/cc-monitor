@@ -42,8 +42,8 @@
 //! - 机器上没有 `timeout(1)` ⇒ 插件口如实裸跑（没有期限），那一条降级由插件口自己的判据钉着。
 //! - **字节怎么到那台机器上**不归本模块：〔RM1e〕monitor 听到本模块回 `not_installed` / `unsupported`
 //!   ⇒ 经本机常驻后端那条 `files` 链路把内嵌字节推到 `<家>/.cc-monitor/bin/`（[`fixed_candidates`] 的第二个候选）
-//!   再问一次（`panorama_call.rs::ask_or_push`）。本模块只认「在不在、是不是它、会不会这个 op」，
-//!   不在就说 `not_installed` ＋ 查过哪儿 —— **这两个码是推字节的触发条件**（monitor 那一侧的 `PUSH_ON`
+//!   再问一次（〔MIG-3b 续〕界面 `src/panorama/api.ts::askOrPlace`）。本模块只认「在不在、是不是它、会不会这个 op」，
+//!   不在就说 `not_installed` ＋ 查过哪儿 —— **这两个码是推字节的触发条件**（界面那一侧的 `PUSH_ON`（`src/panorama/api.ts`）
 //!   与下面 `discover::find` / `negotiate` 两处映射出的码两向相等，判据读本文件）。
 
 use copy_core::copy_text;
@@ -121,7 +121,7 @@ fn keep() -> u64 {
 /// 找不到时那句话的尾巴（这个插件自己的话）。
 ///
 /// ⚠ 只说「没装」，不许说「重装后端就有了」：重装后端**不带**这份小程序（它只推给开过远端全景的机器）。
-/// 〔RM1e〕monitor 听到 `not_installed` 会自己推一次再问（`panorama_call.rs`），推完仍缺才把这句话交到人眼前。
+/// 〔RM1e〕界面听到 `not_installed` 会请 monitor 放一次字节再问（〔MIG-3b 续〕界面 `src/panorama/api.ts::askOrPlace`），推完仍缺才把这句话交到人眼前。
 static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("bePanorama.notInstalledHint.say", &[]));
 

@@ -6,14 +6,24 @@
  *
  * ## 〔RM1f · 本机对称〕一条路（用户 09-24 V108：选 B，「之后本机也走这条路、monitor 摘内嵌引擎」）
  *
- * 本机与远端同一条：`panorama_call(origin, op, …)` ⇒ 那台机器的后端 `panorama` 帧命令 ⇒ 后端经插件口起
+ * 本机与远端同一条：〔MIG-3b 续〕`chan.call(origin, "panorama", …)` ⇒ 那台机器的后端 `panorama` 帧命令 ⇒ 后端经插件口起
  * 只装引擎的独立小程序，索引与图都在那台机器上算，线上只回结构化结果（不传源码、不传索引）。本机 = `<local>`。
  * 〔墓碑 —— RM1c 那一版这里是两条路：本机仍走 monitor 进程内那几条命令（per-repo Engine 池），远端才走 `panorama_call`。〕
  * - 〔RM1d · V110「引擎只算、文件管理来写」〕批注 / 文档关联的**写**本机远端同一条：
- *   `panorama_edit(origin, repo, op, args)` ⇒ 那台机器算出编辑计划（新内容），落盘经那台机器后端的
- *   文件管理（`files-put` 带 CAS / `files-delete`）。RM1c 那一拍的「远端仓只读、写入口当场拒」随之取消。
+ *   那台后端的 `panorama-edit`（那台算出编辑计划，落盘经那台后端的文件管理：`files-put` 带 CAS / `files-delete`）。
+ *
+ * ## 〔MIG-3b 续 · 主会话 09-28 裁〕界面直问那台后端
+ *
+ * 读 `chan.call(origin, "panorama", {op, repo, args})`、写 `chan.call(origin, "panorama-edit", {repo, op, args})`，**不再经 monitor 那一跳转**
+ * （原 Tauri 命令 `panorama_call` / `panorama_edit` / `panorama_cancel`〔散文墓碑〕删了）。
+ * - **期限归发起方**：建索引那一档 960 s、其余 100 s（各比后端给小程序的期限多留一段回程，判据读后端源码对拍）。
+ * - **撤单**：`cancel` 拨下 ⇒ 通道撤单过 webview 那一跳（`chan_cancel`）⇒ 后端撤掉处理器、小程序那一组子进程被杀。
+ * - **没装 / 太旧**（对端回码 `not_installed` / `unsupported`）⇒ 请 monitor **放字节**（`panorama_place`：推到那台 / 放到本机），
+ *   再问**一次**；仍这么说 ⇒ 如实说，不循环。
  */
 import { commands } from "../ipc/commands";
+import { chan, ChanError } from "../ipc/chan";
+import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import type {
   Annotation,
@@ -44,37 +54,98 @@ export class PanoramaCancelled extends Error {
   }
 }
 
-/** 问那台机器的后端（本机 = `<local>`；`result` 的形状由 op 定）。给了 `cancel` ⇒ 带一张票，拨下就撤。 */
-function remote<T>(
+/** 建索引那一档的 op（后端给小程序 900 s）。〔RM1d〕`refresh_doc_links` 写的也是索引。 */
+export const BUILD_OPS: readonly string[] = ["index", "reindex", "refresh_doc_links"];
+/** 建索引那一档：后端给小程序 900 s，再留 60 s 给回程（值归发起方，DL1）。 */
+export const BUILD_BUDGET_MS = 960_000;
+/** 其余查询：后端给小程序 60 s（另有 10 s 探测），再留 30 s。 */
+export const QUERY_BUDGET_MS = 100_000;
+/** 〔RM1e〕对端回这几个码 ⇒ 那台缺小程序 / 装的那份太旧 ⇒ 放字节再问一次（== 后端适配层映射出来的码，判据读后端源码两向）。 */
+export const PUSH_ON: readonly string[] = ["not_installed", "unsupported"];
+
+/** 这个 op 等多久。 */
+export const budgetFor = (op: string): number => (BUILD_OPS.includes(op) ? BUILD_BUDGET_MS : QUERY_BUDGET_MS);
+
+/** 那台后端比这条命令老（不认它）时那句话。 */
+const OLD_BACKEND = copyText("panoramaApi.backend.tooOld");
+
+/** 这一次失败是不是「那台缺小程序 / 太旧」（对端说了「不行」、码在 {@link PUSH_ON} 里）。 */
+export function wantsBytes(e: unknown): boolean {
+  if (!(e instanceof ChanError) || e.error.layer !== "peer" || e.error.why !== "refused") return false;
+  const r = refusalOf(e.error.body);
+  return r !== null && PUSH_ON.includes(r.code);
+}
+
+/**
+ * 问一次；撞上「缺 / 旧」⇒ 放一次字节、再问一次。**放最多一次，问最多两次**（原 monitor 那一跳的「问 · 放 · 再问」，搬到发起方）。
+ * `ask` / `place` 由调用方给（生产 = 通道 ＋ `panorama_place`；判据用替身数次数）。撤了（`cancel` 拨下）⇒ {@link PanoramaCancelled}。
+ */
+export async function askOrPlace(
+  ask: () => Promise<Uint8Array>,
+  place: () => Promise<unknown>,
+  cancel?: AbortSignal,
+): Promise<unknown> {
+  const said = (e: unknown): Error =>
+    cancel?.aborted === true ? new PanoramaCancelled() : new Error(saidOf(e, OLD_BACKEND));
+  let first: unknown;
+  try {
+    return resultOf(await ask());
+  } catch (e) {
+    if (!wantsBytes(e)) throw said(e);
+    first = e;
+  }
+  try {
+    await place();
+  } catch (e) {
+    throw new Error(copyText("panoramaApi.place.failed", { said: saidOf(first, OLD_BACKEND), e: String(e) }));
+  }
+  try {
+    return resultOf(await ask());
+  } catch (e) {
+    if (wantsBytes(e)) throw new Error(copyText("panoramaApi.place.stillSays", { said: saidOf(e, OLD_BACKEND) }));
+    throw said(e);
+  }
+}
+
+/** 应答体 ⇒ 它的 JSON（`panorama` 是 `{result}`，`panorama-edit` 整份就是那个值）。 */
+function resultOf(body: Uint8Array): unknown {
+  return readJson(body);
+}
+
+/** 问那台机器的后端（本机 = `<local>`；`result` 的形状由 op 定）。给了 `cancel` ⇒ 拨下就撤（撤单过通道那一跳）。 */
+async function remote<T>(
   at: { origin: Origin; path: string | null },
   op: string,
   args?: object,
   cancel?: AbortSignal,
 ): Promise<T> {
-  const base = { origin: at.origin, op, repo: at.path, args: args ?? null };
-  if (!cancel) return commands.panorama_call({ ...base, ticket: null }) as Promise<T>;
-  if (cancel.aborted) return Promise.reject(new PanoramaCancelled());
-  const ticket = `pano-${crypto.randomUUID()}`;
-  const onAbort = (): void => {
-    void commands.panorama_cancel({ ticket });
-  };
-  cancel.addEventListener("abort", onAbort, { once: true });
-  return (commands.panorama_call({ ...base, ticket }) as Promise<T>).then(
-    (v) => {
-      cancel.removeEventListener("abort", onAbort);
-      return v;
-    },
-    (e: unknown) => {
-      cancel.removeEventListener("abort", onAbort);
-      // 撤了之后那一问回的是「已取消」—— 换成类型，免得调用方去认那句话。
-      throw cancel.aborted ? new PanoramaCancelled() : e;
-    },
+  if (cancel?.aborted === true) throw new PanoramaCancelled();
+  const body = jsonBody({ op, repo: at.path, args: args ?? null });
+  // 每一问现造期限（放字节之后那一问重新起算，同原 monitor 那一跳）。
+  const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(budgetFor(op), cancel);
+  const got = await askOrPlace(
+    () => chan.call(at.origin, "panorama", body, budget()),
+    () => commands.panorama_place({ origin: at.origin }),
+    cancel,
   );
+  const r = got !== null && typeof got === "object" ? (got as { result?: unknown }).result : undefined;
+  if (r === undefined) throw new Error(copyText("panoramaApi.reply.noResult"));
+  return r as T;
 }
 
-/** 〔RM1d〕写：本机远端同一条（`op` 是 monitor `panorama_call.rs::EDITS` 第一列）。 */
+/** 〔RM1d〕写成之后要刷文档关联的那两种（== 后端 `control/panorama_edit.rs::EDITS` 第三列为真的那几行，判据读后端源码两向）。 */
+export const REFRESHES: readonly string[] = ["write_doc_link", "remove_doc_link"];
+
+/** 一次写的期限：至多三趟「算」（`stale` 重算，同后端 `EDIT_ATTEMPTS`）＋ 要刷文档关联的再加建索引那一档。 */
+export const editBudgetFor = (op: string): number => QUERY_BUDGET_MS * 3 + (REFRESHES.includes(op) ? BUILD_BUDGET_MS : 0);
+
+/** 〔RM1d〕写：本机远端同一条（`op` 是后端 `control/panorama_edit.rs::EDITS` 第一列）。 */
 function edit<T>(at: RepoAt, op: string, args: object): Promise<T> {
-  return commands.panorama_edit({ origin: at.origin, repo: at.path, op, args }) as Promise<T>;
+  const body = jsonBody({ repo: at.path, op, args });
+  return askOrPlace(
+    () => chan.call(at.origin, "panorama-edit", body, budgetWithin(editBudgetFor(op))),
+    () => commands.panorama_place({ origin: at.origin }),
+  ) as Promise<T>;
 }
 
 /** 两个 `RepoAt` 说的是不是同一个仓（同一台机器、同一个路径；两个都没有也算同一个）。 */

@@ -218,6 +218,8 @@ pub const COMMANDS: &[&str] = &[
     "mcp-sync-source",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
+    // 〔MIG-3b 续〕全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "panorama-edit",
     "ping",
     "plugins-marketplaces",
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
@@ -265,6 +267,7 @@ pub const COMMANDS: &[&str] = &[
 
 /// 〔MIG-3a〕资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
 /// 住这里是因为 `readonly_guard` 第三层只许 `inbound.rs` 够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
+#[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
 impl crate::assets::door::Door for LocalFiles {
@@ -3350,6 +3353,31 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
+        }),
+    },
+    // 〔MIG-3b 续 · RM1d〕**全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
+    //   文档关联那两种再刷一次索引。「算」那一步的码原样交回（`not_installed` / `unsupported` ⇒ 界面放字节再问一次）。本体 `control/panorama_edit.rs`。
+    CommandSpec {
+        name: "panorama-edit",
+        doc_anchor: Some("#### `panorama-edit`"),
+        codes: &[
+            "bad_args",
+            "not_installed",
+            "unsupported",
+            "timed_out",
+            "too_large",
+            "failed",
+            "stale",
+            "refused",
+        ],
+        fields: &["args", "op", "repo"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::panorama_edit::answer(LocalFiles, &r.args)
+                    .await
+                    .map(Some)
+            })
         }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
