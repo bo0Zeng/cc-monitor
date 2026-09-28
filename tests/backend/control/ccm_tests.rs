@@ -215,7 +215,7 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     assert!(
         CAPABILITIES.contains(&"base-url-across-tmux"),
         "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 那么 monitor 侧\n\
-             `history.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件就**又没有落点了**，\n\
+             `local.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件就**又没有落点了**，\n\
              而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
     );
 

@@ -62,7 +62,7 @@ pub(crate) fn refuse(msg: impl std::fmt::Display) -> String {
     format!("{REFUSE_TAG} {msg}")
 }
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::fmt::Write as _;
 
 /// 两种 shell 共用的元字符黑名单。
@@ -94,8 +94,7 @@ pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
 ///
 /// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
-/// 只剩 Windows 那条路（`history.rs::has_bad_chars`）在用 ⇒ 只在 `windows` / `test` 下编。
-#[cfg(any(windows, test))]
+/// 〔MIG-2〕Windows 那条路（`local.rs::validate_config_dir_ps`）在用。
 pub fn is_command_unsafe_char(c: char) -> bool {
     acct_core::config_dir_char_unsafe(c)
 }
@@ -132,7 +131,7 @@ pub enum Account<'a> {
 pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, String> {
     match account {
         None => Ok(String::new()),
-        Some(Account::Base) => Ok(UNSET_CONFIG_DIR_PREFIX.to_string()),
+        Some(Account::Base) => Ok(unset_config_dir_prefix()),
         Some(Account::Named { config_dir }) => {
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
@@ -145,7 +144,7 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
                     &[("value", &format!("{:?}", d))],
                 )));
             }
-            Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
+            Ok(format!("export {}='{d}'; ", account_env()))
         }
     }
 }
@@ -154,7 +153,18 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 ///
 /// 逐字节形态被 e2e 探针用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言，且与 TS
 /// 〔LR2〕TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
-pub const UNSET_CONFIG_DIR_PREFIX: &str = "unset CLAUDE_CONFIG_DIR; ";
+pub fn unset_config_dir_prefix() -> String {
+    format!("unset {}; ", account_env())
+}
+
+/// 〔MIG-2〕账号维度的载体（环境变量名）从适配层取（`agents::account_env_of`，通用层拿这个名字的唯一入口）。
+/// 这个载荷内核今天只起 claude 那一家（`nestedEnv` 等画像同样是那一家的）；认不出 ⇒ 是程序错，当场炸。
+pub(crate) fn account_env() -> &'static str {
+    crate::agents::account_env_of(LAUNCH_AGENT_KIND).expect("适配层里没有这一家的账号载体")
+}
+
+/// 〔MIG-2〕这个载荷内核起的是哪一家 agent（适配层的 `kind`）。
+pub(crate) const LAUNCH_AGENT_KIND: &str = "claude";
 
 /// 启动期令牌的形状判定 —— 〔DUP3 · 主会话 09-26 裁 · `设计/01 §5` D1〕**全仓唯一的一份住共享 crate**
 /// （`shell_quote_core::rbind_token_ok`，长度与字母表两个常量同住；后端 `identity_tag.rs` 里的 `token_is_safe` 读的是同一个令牌
@@ -280,7 +290,8 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 }
                 let _ = write!(
                     out,
-                    "export CLAUDE_CONFIG_DIR={}; ",
+                    "export {}={}; ",
+                    account_env(),
                     shell_quote_core::posix_quote(value)
                 );
             }
@@ -325,7 +336,7 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 }
                 out.push_str(&relay_env_prefix_posix(value));
             }
-            EnvOp::UnsetConfigDir => out.push_str(UNSET_CONFIG_DIR_PREFIX),
+            EnvOp::UnsetConfigDir => out.push_str(&unset_config_dir_prefix()),
             EnvOp::UnsetNestedEnv { keys } => {
                 if keys.is_empty() {
                     return Err(refuse(&copy_text("rsPayload.nestedEnv.empty", &[])));
@@ -738,18 +749,29 @@ pub use relay_route_core::base_url_shape_ok as relay_base_url_shape_ok;
 ///
 /// 〔V141〕它**不再**是中转路由的第 3 段（那一段退役：中转从 claude 自己的请求头认会话）。
 /// ⚠ 身份 token 本身也是「启动器铸、进 env 的会话身份」—— 与 V141 字面冲突，消费者（判活 / 回填）不在中转写区，报备主会话。
-fn mint_route_key() -> String {
-    // UUID v4 的连字符形态逐字过得了段闸（`[0-9a-f-]`，36 字节）。
-    uuid::Uuid::new_v4().to_string()
+fn mint_route_key() -> Result<String, String> {
+    // 〔MIG-2〕UUID v4 的连字符形态（过得了段闸 `[0-9a-f-]`，36 字节）；随机数取 OS 那一份（经 `rustls` 带进来的 `ring`，不新增依赖）。
+    let mut b = [0u8; 16];
+    if rustls::crypto::ring::default_provider()
+        .secure_random
+        .fill(&mut b)
+        .is_err()
+    {
+        return Err(refuse(copy_text("beLaunchRender.token.noRandom", &[])));
+    }
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    Ok(format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..]))
 }
 
 /// 见 [`mint_route_key`]。**这是身份 token 唯一的取值口** —— resume 用 sid，新开用 nonce。
 ///
 /// sid 过不了段闸（`relay_route_core::segment_is_safe`）时**也回落到 nonce**（而不是 `Err`）：
 /// 为一个标签把一次起会话整个拒掉不划算。
-pub fn route_key_for_session(sid: Option<&str>) -> String {
+pub fn route_key_for_session(sid: Option<&str>) -> Result<String, String> {
     match sid {
-        Some(s) if relay_route_core::segment_is_safe(s) => s.to_string(),
+        Some(s) if relay_route_core::segment_is_safe(s) => Ok(s.to_string()),
         _ => mint_route_key(),
     }
 }
@@ -763,7 +785,7 @@ pub fn route_key_for_session(sid: Option<&str>) -> String {
 ///
 /// 〔E2 · V146〕**pane 里先看 `ANTHROPIC_BASE_URL` 有没有值**（用户在 rc 里自己设了端点）：有 ⇒ 不注入、打一行话
 /// （[`user_base_url_say`]），不抢用户的端点、也不把给用户端点的鉴权头送去官方；没有 ⇒ 照旧 export 中转地址。
-/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（`history.rs::relay_prefix_for`）。
+/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（〔MIG-2〕本机那一支在 `local.rs::relay_prefix`）。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
     // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
@@ -813,7 +835,7 @@ fn relay_url_halves(base_url: &str) -> (&str, &str) {
     }
 }
 
-/// **Windows 命令面**的中转前缀。形状照 `history.rs::config_dir_prefix_ps`（PowerShell
+/// **Windows 命令面**的中转前缀。形状照 `local.rs::config_dir_prefix_ps`（PowerShell
 /// 单引号里无插值）。
 ///
 /// ⚠⚠ **本函数只到「编得过」** —— Windows 上的运行时行为本轮**一格都没量**
@@ -833,10 +855,8 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/payload_tests.rs"]
+#[path = "../../../../tests/backend/control/launch_render/payload_tests.rs"]
 mod tests;
 
-// 〔DUP1〕标识符放行判定的生成物（`src/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）。
-#[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/payload_judgment_rules.rs"]
-mod judgment_rules;
+// 〔MIG-2〕标识符放行判定的生成物（`judgment-rules.ts`）那一段没跟着搬：它只读共享 crate 的常量，与载荷无关，留在 monitor
+//   （`src/bridge/src/backend/control/mod.rs` 的测试段）。

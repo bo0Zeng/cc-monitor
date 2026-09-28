@@ -44,7 +44,8 @@ import { expect, vi } from "vitest";
 import { withSessionReads } from "./chan-fake";
 
 /** 灌给 `invoke` 的那一整块 chunk。每个用例在 `mount()` 里塞，`installViewerRig()` 清空。 */
-export const viewerRig: { chunk: unknown[]; index?: unknown } = { chunk: [] };
+/** `find` = 〔㊱③〕后端 `history-find` 这一刻回什么（旧回包形状 `{available, total, hits}`；没塞 ⇒ 要不到）。 */
+export const viewerRig: { chunk: unknown[]; index?: unknown; find?: unknown } = { chunk: [] };
 
 /**
  * 〔SE1〕**后端那份「你说过的话」清单的替身**（`list_user_inputs`）。
@@ -121,6 +122,7 @@ export function tauriCoreMock(): Record<string, unknown> {
       }
       // 〔U3b〕骨架索引：没塞就回 undefined（== 今天所有既有用例的形状：查看器不接骨架）
       if (cmd === "read_session_index") return viewerRig.index;
+      if (cmd === "find_in_session") return viewerRig.find;
       return undefined;
     })),
   };
@@ -210,6 +212,7 @@ export function installViewerRig(): ViewerRigHandles {
   document.body.replaceChildren();
   viewerRig.chunk = [];
   viewerRig.index = undefined;
+  viewerRig.find = undefined;
   outlineBackend.entries = [];
   outlineBackend.available = true;
   outlineBackend.reason = "";

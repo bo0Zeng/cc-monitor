@@ -135,6 +135,17 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("chan_subscribe", Own::Channel, "通信层面 A：`subscribe`"),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
+    // 〔MIG-2〕起会话的计划与渲染进了后端之后，monitor 在这件事上只剩下面两格。
+    (
+        "open_local_terminal",
+        Own::Window,
+        "开一个本机终端窗口跑那一串（串由本机后端 `launch-local` 出成品；这里不判不拼，只开窗）",
+    ),
+    (
+        "relay_all_sessions_switch",
+        Own::Config,
+        "全量注入开关 = monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（monitor 自己的配置，界面带给那台后端）",
+    ),
 ];
 
 /// 「待迁」：命令 · 哪一路 · 卡在哪。
@@ -180,37 +191,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig1,
         "tmux 名单的解析还在 monitor（`parse_tmux_ls`）",
     ),
-    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。
-    (
-        "new_local_session",
-        Lane::Mig2,
-        "起会话的计划与渲染在 monitor",
-    ),
-    (
-        "resume_history_session",
-        Lane::Mig2,
-        "起会话的计划与渲染在 monitor",
-    ),
-    (
-        "render_local_attach",
-        Lane::Mig2,
-        "接回那一句由 monitor 渲染",
-    ),
-    (
-        "render_ccm_launch",
-        Lane::Mig2,
-        "`launch_wire` 渲染在 monitor",
-    ),
-    (
-        "render_launch_payload",
-        Lane::Mig2,
-        "`launch_wire` 渲染在 monitor",
-    ),
-    (
-        "relay_endpoint_for_launch",
-        Lane::Mig2,
-        "注入哪个中转地址的判定在 monitor",
-    ),
+    // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
+    //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
     (
         "stream_read_session_jsonl",
         Lane::Mig2,
@@ -219,7 +201,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     (
         "launch_remote_terminal",
         Lane::Mig2,
-        "远端拉起那串（ssh 命令 · PowerShell 窗口载荷）还在 monitor 拼",
+        "远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）还在 monitor 拼：它读 monitor 的机器配置，\
+         等 MIG-1 ⑯（`ssh -G` 与 `~/.ssh/config` 解读进本机后端）之后由本机后端渲（〔MIG-2〕报备：待主会话排）",
     ),
     // MIG-3a：资产与 D 组。
     (
@@ -332,11 +315,6 @@ const PENDING: &[(&str, Lane, &str)] = &[
         "read_session_lines",
         Lane::Unassigned,
         "骨架行读仍经 monitor 转",
-    ),
-    (
-        "probe_ccm_cli",
-        Lane::Unassigned,
-        "monitor 只在转一条 `ccm-probe`",
     ),
     (
         "push_public_key",

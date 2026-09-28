@@ -634,7 +634,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5a-resync-caught-up**（2026-09-28，REREAD 续合并那一拍）：协议 —— `resync` 应答 ＋1 格 `caught_up`（本次从游标补读出的行数合计），
 /// 给 V155「重新读取」按台说补读了几条。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p5a-resync-caught-up";
+///
+/// ★★★ **p5b-launch-in-backend**（2026-09-28，MIG-2 合并那一拍）：子命令 ＋2、帧命令 ＋3 —— 起会话渲染核心进后端 `control/launch_render/`
+/// （`launch-render-cli` · `launch-render-payload` · `launch-local`）；`launch-endpoint` 答 `{baseUrl}` 或拒 `relay_down`；㊴ `exit-policy-read` / `-set` 出成品 `said`。
+pub const BUILD_ID: &str = "p5b-launch-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -760,6 +763,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--apikey-read",
     // 〔DEL 续〕`--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 〔DEL〕`--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的两条渲染（`inbound::REGISTRY` 的 `launch-render-*`，纯函数）自动派生的 CLI 面，入参从 stdin 读。
+    //   `launch-local` 不上 CLI 面（`STREAM_ONLY`：要读本进程的中转状态，同 `launch-endpoint`）。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
+    "--launch-render-cli",
+    "--launch-render-payload",
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时

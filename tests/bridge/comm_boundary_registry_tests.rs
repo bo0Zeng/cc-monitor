@@ -2500,11 +2500,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     // 〔MIG-3a〕基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
     //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
+    // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
+    //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 52usize),
+            ("chan.call", 56usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

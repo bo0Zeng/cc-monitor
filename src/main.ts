@@ -629,7 +629,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
-  dispatcher.bind("session.find", () => tabs.openFind()); // 〔SE2〕会话内查找（大纲同一块面板）
+  // 〔SE2〕会话内查找（大纲同一块面板）；〔MIG-2 · ㊱③〕历史查看器开着时落在它上面（它盖在 tab 上）。
+  dispatcher.bind("session.find", () => {
+    if (!historyView.openFind()) tabs.openFind();
+  });
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void openSettingsWindow()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => overlays.toggle("history"));
