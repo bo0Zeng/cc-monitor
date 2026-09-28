@@ -161,6 +161,52 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
     assert_eq!(body, SSE_BODY, "下游收到的 SSE 与上游发的逐字节不等");
 }
 
+/// 〔DEL 续 · 主会话裁〕「我们的中转在不在听」读的是**宿主自己那份监听状态**（`设计/20 §3.3`：中转住这个进程里）：
+/// 起成了 ⇒ 那个口答 `true`；口被别人占着（起不来）⇒ 那个口答 `false` —— 就算口上**确实有人在听**
+/// （正是从外面探会认错的那一形：连得上 ≠ 是我们的）。
+#[test]
+fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the_port() {
+    let up = fake_upstream();
+    let creds = creds_fixture("state");
+    let got = host(
+        &env_of(
+            Some("0"),
+            Some(format!("http://127.0.0.1:{}", up.port())),
+            &creds,
+        ),
+        std::path::Path::new("/nonexistent"),
+        &crate::accounts::upstream::Boot,
+        no_tap(),
+    );
+    let Hosted::Listening(addr) = got else {
+        panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
+    };
+    assert!(
+        our_relay_listening(addr.port()),
+        "起成了的那个口答了「不在」"
+    );
+    let squatter = TcpListener::bind("127.0.0.1:0").expect("占口");
+    let port = squatter.local_addr().expect("地址").port();
+    let failed = host(
+        &env_of(Some(&port.to_string()), None, &creds),
+        std::path::Path::new("/nonexistent"),
+        &crate::accounts::upstream::Boot,
+        no_tap(),
+    );
+    assert!(
+        matches!(failed, Hosted::Failed(_)),
+        "口被占 ⇒ 应是 Failed，得 {failed:?}"
+    );
+    assert!(
+        TcpStream::connect(("127.0.0.1", port)).is_ok(),
+        "正控：那个口上确实有人在听（下一条要的就是这一形）"
+    );
+    assert!(
+        !our_relay_listening(port),
+        "别人占着的口被答成了「我们的中转在听」"
+    );
+}
+
 /// H2：交了端口、那个口被占着 ⇒ `Failed`（点名那个口），**不退出进程**（本条能跑到断言就是证据）。
 #[test]
 fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {
@@ -255,7 +301,7 @@ impl Drop for Child {
     }
 }
 
-/// H3：生产接线 ⇒ 真在听、真转发；转发之后子进程 **stdout 上零 tee 行**（`__meta__` / `"event"` 一行都没有），
+/// H3：生产接线 ⇒ 真在听、真转发；转发之后子进程 **stdout 上零 tee 输出**（`tap` 帧 / 旧 NDJSON 事件行一行都没有 —— tee 只交 tap 口），
 /// 而 stdout 的采集面是活的（libtest 自己那句 `running 1 test` 在上面 —— 非空对照）。
 #[test]
 fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() {
@@ -338,7 +384,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     );
     let tee: Vec<&str> = stdout
         .lines()
-        .filter(|l| l.contains("__meta__") || l.contains("\"event\""))
+        .filter(|l| l.contains("\"kind\":\"tap\"") || l.contains("\"event\""))
         .collect();
     assert!(
         tee.is_empty(),
@@ -348,7 +394,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
 
 /// `main.rs` 那一处：生产段里 `accounts::upstream::host_relay(` **恰好一处**，
 /// 排在一次性分派（`is_query_mode`）之后、选载体（`listen::mode_from`）之前 ——
-/// 前者保证一次性子命令（含 `--relay`）不会多开一个中转，后者保证两条载体都有它。
+/// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
 fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carrier_choice() {
     let raw = std::fs::read_to_string(crate::guard_support::src_root().join("main.rs"))

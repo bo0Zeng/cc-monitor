@@ -216,15 +216,21 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
                 | "apikey-routing"
                 | "launch-endpoint"
-                // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程，同步阻塞。
-                | "relay-ensure"
-                | "relay-status"
+                // 〔DEL〕`relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
                 // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
                 | "mcp-sync-plan"
+                // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
+                | "skill-install-apply"
+                | "skill-uninstall-apply"
+                | "mcp-server-put"
+                | "mcp-server-remove"
+                | "mcp-sync-source"
+                | "mcp-sync-preview"
+                | "mcp-sync-apply"
                 // 〔AS2 · 第四波 4B〕资产目录两条：扫 skill 目录 / 读项目 `.mcp.json` ＋ 原子写目录文件，同步文件 I/O。
                 | "assets-catalog"
                 | "assets-catalog-merge"
@@ -350,8 +356,6 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-read",
         "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
-        "relay-ensure",
-        "relay-status",
         "footprint-probe",
         // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
@@ -374,6 +378,14 @@ fn every_registered_command_declares_its_run_kind() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
+        // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
+        "skill-install-apply",
+        "skill-uninstall-apply",
+        "mcp-server-put",
+        "mcp-server-remove",
+        "mcp-sync-source",
+        "mcp-sync-preview",
+        "mcp-sync-apply",
         // 〔SR1b〕传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

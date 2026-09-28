@@ -193,7 +193,6 @@ vi.mock("../src/behavior", () => ({
 vi.mock("../src/account-restart", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/account-restart")>()),
   restartWithAccount: vi.fn().mockResolvedValue(undefined),
-  DEFAULT_EXIT_WAIT_MS: 10_000, // tabs.ts awaitExitFor 默认参用；mock 需导出，否则 undefined
 }));
 
 import { invoke } from "@tauri-apps/api/core";
@@ -228,7 +227,6 @@ import {
   findClaudeTmuxMatches,
   findIdleTmux,
   isCwdFallbackMatch,
-  claudeExited,
   moveTab,
   groupMoveForDrop,
   commonDirName,
@@ -2529,33 +2527,6 @@ describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () 
       const viaCwd = isCwdFallbackMatch(sessions, "target");
       expect(ambiguous && viaCwd, label).toBe(false);
     }
-  });
-});
-
-describe("A5+ claudeExited（优雅退出检测：目标 sid 前台是否不再是 claude）", () => {
-  const S = (name: string, path: string, command: string, sid: string | null) => ({
-    name,
-    path,
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-  });
-  it("目标 sid 仍精确命中 claude → 未退出(false)", () => {
-    expect(claudeExited([S("b", "/p", "claude", "target")], "target", "/p")).toBe(false);
-  });
-  it("目标会话前台回到 shell（@ccm_sid 犹在但命令变 zsh）→ 已退出(true)", () => {
-    expect(claudeExited([S("b", "/p", "zsh", "target")], "target", "/p")).toBe(true);
-  });
-  it("目标会话已消失（列表里只剩别的 sid）→ 已退出(true)", () => {
-    expect(claudeExited([S("a", "/p", "claude", "other")], "target", "/p")).toBe(true);
-  });
-  it("空列表 → 已退出(true)", () => {
-    expect(claudeExited([], "target", "/p")).toBe(true);
-  });
-  it("cwd 回退命中的是别的 claude（无任何 @ccm_sid）→ live.sid=null!==target → 已退出(true)", () => {
-    // 与破坏性重启守卫一致：cwd 回退命中 sid=null → 不当成目标会话仍活。
-    expect(claudeExited([S("a", "/p", "claude", null)], "target", "/p")).toBe(true);
   });
 });
 

@@ -60,7 +60,7 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
 }
 
 // 〔US1 · 第四波 4D〕M3（`relay_running_really_asks_the_loopback_port`〔散文墓碑〕）随 `relay_running` 一起退役：
-//   本机中转在不在由本机常驻后端自己答（RK1 的差分探针），monitor 这一侧不再连回环口。
+//   本机中转在不在由本机常驻后端自己答（读它进程内的监听状态），monitor 这一侧不再连回环口。
 
 // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
 //    这条判据整条删了**，新住址是 `history.rs` 里那几条判据
@@ -145,7 +145,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
 ///
 /// 本机中转住进常驻后端之后，monitor 这一半再没有任何理由在 argv 里写 `--relay`；
 /// 有一处 = 有人又在 monitor 里另起了第三个进程（`真相源/70` 那个孤儿的来路）。
-/// 正控：同一把尺子喂一段**合成的**起法（形状照后端 `relay/machine.rs` 远端 `relay-ensure` 那一处）数得到它 ⇒ 尺子不瞎。
+/// 正控：同一把尺子喂一段**合成的**起法（形状照先前后端起脱离中转那一处，〔DEL〕已随 `--relay` 一形删了）数得到它 ⇒ 尺子不瞎。
 /// ⚠ 刻意不 `include_str!` 后端那份文件：那会多一条跨半边的编译期边（`cross_half_edge_registry`），为一条正控不值。
 #[test]
 fn the_monitor_half_starts_no_relay_process() {

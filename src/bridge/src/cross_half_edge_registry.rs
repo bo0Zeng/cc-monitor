@@ -79,19 +79,25 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `inbound_client_tests.rs` → `launch.rs`）守的「发出去的字段 / mode 名 == 后端解析器认的」改由跨语言金样 \
          `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
     ),
+    // 〔MIG-3a〕`mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
     (
         "monitor→backend",
-        "tests/bridge/mcp_sync_tests.rs",
-        "src/backend/inbound.rs",
-        "〔AS1〕MCP 推 / 拉：monitor 发的命令名、发的四格与读的两格必须就是后端登记表里声明的那几个 \
-         —— 读它才能两向对拍（本侧手抄一份就成了两侧同源的恒等）",
+        "tests/bridge/config_surface_tests.rs",
+        "src/backend/assets/mcp_edit.rs",
+        "〔MIG-3a〕足迹里项目 MCP 的落点：注册表声明的文件名必须就是那台后端写口的落点常量 `MCP_JSON` \
+         —— 写进了后端之后，落点只在那一处（本侧抄一份就成了两侧同源的恒等）",
     ),
     (
         "monitor→backend",
-        "tests/bridge/mcp_sync_tests.rs",
-        "src/backend/mcp_sync.rs",
-        "〔AS1〕「判定只住后端」的零命中判据：monitor 这一侧不许出现后端那几个闭集的线上名 —— \
-         闭集的人群必须从后端现抠（本侧抄一份，后端加一态这条就静默失效）",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/skill_flow.rs",
+        "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/mcp_edit.rs",
+        "〔MIG-3a〕`project-mcp` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
     ),
     (
         "monitor→backend",
@@ -100,13 +106,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "〔RM1a〕「足迹」远端那一栏：monitor 发的命令名、读的那几格必须就是后端登记表里声明的那几个 \
          —— 读它才能对拍（本侧手抄一份就成了两侧同源的恒等）",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/remote_relay_tests.rs",
-        "src/backend/inbound.rs",
-        "〔RM1a〕中转按机器：monitor 发的两个命令名、解析的那几个字段必须就是后端登记表里声明的那几个 \
-         —— 读它才能拿**后端声明的**字段造样本喂解析器（本侧手抄一份就成了两侧同源的恒等）",
-    ),
+    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
@@ -177,7 +177,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
         "src/backend/lib.rs",
-        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。         而「monitor 拼进命令行的那几个字面量」住 `ssh_source::connect_and_exec`、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push_str` 的那几个串），         不是真起一个老后端看它会不会退出。",
+        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。         〔DEL〕远端只剩常驻一形之后，「monitor 发的那几个字面量」住 `remote_resident::attach_line`（attach 行，远端 `listen::attach_flags` 认不得就整条拒）、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push` 的那几个串），         不是真起一个老后端看它会不会退出。",
     ),
     (
         "monitor→backend",

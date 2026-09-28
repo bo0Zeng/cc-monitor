@@ -418,7 +418,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `link_data` | `link`, `data` | **〔SR1a〕一条链路的下行字节**（`data` = base64，标准字母表带补位；解码后 ≤ 32 KiB）。只在客户端开了链路（`link-open`）之后才出现；链路上的字节与 C2 拨号代理的 stdout 逐字节同形。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「链路四条」 |
 | `link_end` | `link`, `error?` | **〔SR1a〕这条链路不会再有字节了**，后端已忘掉这个 id。`error` 缺席 = 正常收尾；在 = 非正常收尾的人话。拨不通**不**走这里（那是链路字节里那一行失败的 ack） |
 | `transfer` | `id`, `got`, `total`, `end?` | **〔SR1b〕一趟传输此刻的样子**（`transfer-start` 之后才出现）：每一帧是整份快照（`got` / `total` 字节），不是增量 ⇒ 后端按变更合并、堵住时只合并不堆积。带 `end` 的那一帧是这一趟的**最后一帧**：`{"state":"done","bytes","sha256"?}` · `{"state":"failed","why"}` · `{"state":"cancelled"}`（〔FW1 · 第四波 4D〕`sha256` 只有上传那一路有：整份本机文件的摘要，窗口提交 `files-commit-upload` 时原样交回当 `expect`）。**不丢**：走应答那条独立通道。完整语义在「入方向」那一节的「传输四条」 |
-| `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（本机常驻）会发。`stream` = 〔V141〕claude 请求头 `x-claude-code-session-id` 的值（== 它的 sid，新开 / resume / 分叉同一形；没带 / 过不了段闸 ⇒ 空串），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
+| `tap` | `stream`, `resp`, `n`, `data?`, `end?` | **〔TAP · V124 · `设计/20 §8`〕中转抄出来的一个 SSE 事件**（或一个响应的收尾）。只有**进程里住着中转的那个后端**（常驻后端，本机远端同形）会发。`stream` = 〔V141〕claude 请求头 `x-claude-code-session-id` 的值（== 它的 sid，新开 / resume / 分叉同一形；没带 / 过不了段闸 ⇒ 空串），后端不解释；`resp` = 本进程第几个响应；`n` = 这一个响应里第几个事件，**从 0 连续** —— 每个事件先占号再投递，丢了的号不出现 ⇒ 接收侧看 `n` 连不连得上就知道缺在哪（原位缺口，`设计/05 §3.3.4`）。`data`（SSE `data:` 后那段原文，**一个 JSON 串**）与 `end`（`"done"` 上游说完 · `"broken"` 转发以错误收尾；这一帧的 `n` = 一共占了几个号）恰有一个。一个事件都没有的响应（非 SSE）不发。**可丢**：走后端自己那条有界 tap 通道（256 件、单件原文 ≤ 16 KiB），不挤出方向的内容帧、不回推中转；SSE 只保快，jsonl 保对（V24） |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
@@ -767,7 +767,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 
 ```text
 → {"id":"L1","cmd":"launch","args":{
-     "mode":"create-or-attach" | "send-into" | "send-keys-raw",
+     "mode":"create-or-attach" | "send-into",
      "name":"cc-1a2b3c4d",
      "payload":"cd '/x' && claude --resume …",
      "cwd":"/x",             // 可选，仅 create-or-attach
@@ -803,7 +803,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
    引号 / 转义 / 注入这一整类问题在这条路上**不存在**，不是「被挡住了」。
    ⇒ monitor `launch.rs` 里那条「禁双引号」是 **PowerShell 专属**（`wt.exe` 传参畸变），
    **这条路上不成立、也不许照抄**。
-3. **`send-into` / `send-keys-raw` 时不新建会话。** 会话不存在 ⇒ 回 `no_such_session`。
+3. **`send-into` 时不新建会话。** 会话不存在 ⇒ 回 `no_such_session`。
    顺手新建就是 #76 的反向：用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell。
 
 ##### 🔴 ★★ `create-or-attach` 的**唯一调用方 `ccm` 从此没有退路**（`K-P2` F 拍，2026-09-04）
@@ -836,22 +836,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 （钉住它的那条判据 `ccm_cli_contract::the_local_launch_recipe_is_reachable_only_from_print` 〔散文墓碑〕 已随 `shared/ccm` 于 `K-R48` 删除；今天 `--print` 与真跑读同一个 `Plan`，由 `control::ccm::plan::tests::print_and_exec_cannot_drift_because_they_read_the_same_plan` 接住）。
 ⇒ 读 `--print` 的输出时别把它当成「真跑时会发生什么」的描述，这一格今天**对不上**。
 
-##### ★ `send-keys-raw`（F04c）：发裸键、**不附尾 `Enter`**
-
-与 `send-into` 的**唯一**区别就是那个回车。它存在的理由不是「更灵活」，而是：
-monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优雅退出时发 `Escape`
-打断当前回合**，多一个 `Enter` 就变成「**提交用户输入框里排队的文本**」。
-
-⚠ **为什么是一个新 mode 名，而不是给 `launch` 加一个 `enter` 字段**：
-`parse_request` 是手工从 `Map` 取键的、**不 deny unknown fields** ⇒ 旧版本后端会
-**静默忽略**那个字段、照样附 `Enter`（静默做错）。而未知 **mode** 会回 `invalid_args`
-⇒ 客户端拿到明确错误、可以干净回落。**能力协商在 mode 名上是免费的。**
-
-⚠ 它与 `send-into` **同一道门**（§34 Gate 2），**没有** Gate 3 ——
-`send-keys` 不删除任何东西，给它加窗口数判断会让「往多窗口会话里打字」被误拒。
-
-⚠ 客户端侧：`enter=true` 用的是**既有**的 `send-into` ⇒ 旧后端也接得住；
-只有 `Escape` 那一支需要新版本后端。**兼容面不是全有全无。**
+〔RST 续 · V41〕F04c 那个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`、不附尾 `Enter`）已删：V154 换号重启不再发 `Escape`，它没有调用者了。
 
 **`data` 三字段就是失败语义**（能分辨「没起成」与「起了但没确认」）：
 
@@ -859,10 +844,10 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 |---|---|---|---|
 | 新建 + 键入 | true | — | true / true |
 | 会话已存在（幂等短路，**不重复 resume**） | true | — | false / false |
-| `send-into` / `send-keys-raw` 键入成功 | true | — | false / true |
+| `send-into` 键入成功 | true | — | false / true |
 | tmux 不在 PATH | false | `no_tmux` | 没起成 |
-| `send-into` / `send-keys-raw` 但会话不存在 | false | `no_such_session` | 没起成 |
-| `send-into` / `send-keys-raw` 但会话不是本工具的（§34 Gate 2，〔TL2〕原先这一行漏了） | false | `wrong_owner` | 没起成 —— 没往别人的会话里打字 |
+| `send-into` 但会话不存在 | false | `no_such_session` | 没起成 |
+| `send-into` 但会话不是本工具的（§34 Gate 2，〔TL2〕原先这一行漏了） | false | `wrong_owner` | 没起成 —— 没往别人的会话里打字 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
 | 会话在，`send-keys` 失败 | false | `typed_unconfirmed` | **起了但没确认** —— 别重试新建 |
 
@@ -1670,7 +1655,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
   「本机后端写的那份就是这个 monitor 用的那份」由**连接本身**保证：常驻载体接上之前 hello 的 `host_env` 已与 monitor 要交的
   `CCM_APIKEY_CREDENTIALS` 两向比过（`local_backend_host.rs::hello_verdict`），被监护的 stdio 载体是 monitor 按同一份环境起的。
   〔GP1 那一版：monitor 发之前先问一次 `apikey-read` 核 `path`；RM1a 那一版：「monitor **从不**把 `apikey-key-set` 发给本机那条连接」。〕
-- **路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
+- **路径**与那台机器上中转里的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
 - 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
 - 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
 
@@ -1724,7 +1709,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `agent` | → | 这一家 agent 的路由名（凭据文件的行只属于 `claude-code`；别家 ⇒ `routed` 恒空）|
 | `configDirs` | → | 要问的那几个号的配置目录（id 由后端按 `acct-core` 那一份规则推，前端一个字都不推）|
 | `routed` | ← | 传进来的里面、**表里有对应行**的那几个（原样回）。「表里有行」= 上游选择装表真收进表的那几行（`base_url` 坏的那一行不算）|
-| `running` | ← | 这台机器上**我们的**中转在不在听（与 `relay-status` 同一个判准）|
+| `running` | ← | 这台机器上**我们的**中转在不在听（读常驻后端进程内的监听状态；中转住这里）|
 
 **错误码**：`bad_args`。界面经 `chan.call` 直接问（金样同上）。
 
@@ -1743,59 +1728,15 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `account` | → | `{"kind":"named","configDir":…}` · `{"kind":"base"}` · 缺席 / `null`（没表态）|
 | `allSessions` | → | 全量注入开关（`/t/` 那几格；monitor 那一侧默认开）|
 | `baseUrl` | ← | 注入的地址（不带钥匙；渲染成 `$(cat "$HOME/.cc-monitor/relay-key")` 那一形是起会话那一侧的事）；`null` = 不注入 |
-| `listening` | ← | 这台机器上我们的中转在不在听（只在 `baseUrl` 非空时探；为空时 `false`）|
+| `listening` | ← | 这台机器上我们的中转在不在听（读常驻后端进程内的监听状态；只在 `baseUrl` 非空时问；为空时 `false`）|
 | `whenDown` | ← | 中转不在时：`refuse`（`/s/`，拒绝起会话）· `direct`（`/t/`，照旧直连）；`baseUrl` 为空时 `null` |
 | `account` | ← | `/s/` 那一格的表 id（拒绝时点名用）；否则 `null` |
 
-四个键恒在（形状恒定）。**错误码**：`bad_args`。远端「中转不在就起、有界等」那一截要定时器 ⇒ 在 monitor（`relay-status` → `relay-ensure` → 再问）。
+四个键恒在（形状恒定）。**错误码**：`bad_args`。中转不在时本机远端同一条：不另起一个，按 `whenDown` 拒或直连（〔DEL〕中转只住那台的常驻后端里）。
 
-⚠ **CLI 面也有它们**（`--apikey-routing` / `--launch-endpoint`），从 `inbound::REGISTRY` 派生，入参从 stdin 读。
+⚠ **只上帧面**〔DEL 续〕：一次性进程里没有中转，那一格恒答「不在」是假话 ⇒ 不派生 CLI 面（`cli_control::STREAM_ONLY`）。
 
-#### 中转在「这台机器」上的进程（RM1a · 第四波，2026-09-24）
-
-〔RL1 · V107〕本机的中转住**本机常驻后端进程里**（monitor 起本机后端时交 `CCM_RELAY_PORT`，见 `--relay` 那一条下的「进程内」一格）；
-**远端那台机器上的中转由那台的后端起**（下面两条）—— 远端后端随 SSH 退、远端会话活得比 SSH 长，中转必须是脱离的那一个。
-两条都**只收端口**，一个凭据 / 账号的名字都不经过它们（上游选择那份文件由上面 `apikey-*` 两条管）。
-monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就在本机后端进程里，不许再起第二个去抢口）。
-
-起出来的 `--relay` 继承后端的环境，它里面的上游选择与后端账号域那份写口按同一个函数、同一个家目录出处解凭据路径
-⇒ 两边是同一份文件，不必在这两条命令里传路径。
-
-#### `relay-status`：这个口上**我们的中转**在不在听（只读）
-
-```text
-→ {"id":"r1","cmd":"relay-status","args":{"port":8788}}
-← {"kind":"reply","id":"r1","ok":true,"data":{"port":8788,"listening":false}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `port` | ↔ | 中转的端口（monitor 那边的 `payload::RELAY_PORT` 是权威，入参给出） |
-| `listening` | ← | 〔RK1〕口上有人在听，**而且是我们的中转**：读这台机器上的中转钥匙文件（`~/.cc-monitor/relay-key`），带对的钥匙打一次 `GET /<钥匙>/` 得 404、带一把同形错钥匙得 403 才算。口上有人、而这台还没有钥匙文件 ⇒ `false`（刚起的中转在「绑上口」与「钥匙落盘」之间的窄窗）。⚠ 钥匙**不出线** |
-
-**错误码**：`bad_args`（`port` 缺了或不在 1–65535）· `not_ours`（〔RK1〕口上有人、有钥匙文件，但差分探针对不上 —— 多半是升级前起的旧中转或别的程序；`message` 说出两次各得了什么）。
-
-#### `relay-ensure`：没人在听就起一个脱离的中转
-
-```text
-→ {"id":"r2","cmd":"relay-ensure","args":{"port":8788}}
-← {"kind":"reply","id":"r2","ok":true,"data":{"port":8788,"listening":false,"started":true,"pid":4242}}
-```
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `port` | ↔ | 同上 |
-| `listening` | ← | 起之前那一刻口上是不是**我们的中转**（是 ⇒ 什么都不做，`started:false`；判法同 `relay-status`） |
-| `started` | ← | 这一趟起了一个进程。⚠ **不等它 bind**（后端零定时器）：`true` 只说「进程起了」，要知道口上有没有人再问一次 `relay-status` |
-| `pid` | ← | 只在 `started:true` 时有 |
-
-起法：本后端这个二进制自己带 `--relay`，环境多一格 `CCM_RELAY_PORT`，stdio 全接空，自成一个进程组（SSH 断了它不跟着走）。
-⚠ 它的诊断因此到不了人（远端那台上没有监护者收它的 stderr）。
-**错误码**：`bad_args` · `not_ours`（〔RK1〕口上有人，但不是我们的中转 —— 含「有人在听而这台没有钥匙文件」；不起、不抢口）· `spawn_failed`（找不到自己 / 起不动）· `unsupported`（非 unix：不知道怎么起成脱离的一组，没起）。
-
-〔RK1〕起出来的中转**绑上口之后**读回或铸这台机器上的钥匙（`~/.cc-monitor/relay-key`，`0600`），之后每条请求路径的第一段必须是它（`INVARIANTS §48.1`）。
-
-⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
+〔DEL〕这里原是帧面 `relay-status` / `relay-ensure`（远端那台上起一个脱离的 `--relay`）：中转只住常驻后端进程里（本机远端同形，V139），那一族随远端回落一形删了。
 
 #### `footprint-probe`：「足迹」的这台机器那一半（RM1a · 第四波，2026-09-24，**只读**）
 
@@ -1942,12 +1883,12 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `origin` | → | 可缺席。给了 ⇒ 记进可达表（内存，后端重启就空）并先对它做一趟；缺席 ⇒ 对可达表里每一台各做一趟 |
-| `dial` | → | 给了 `origin` 就必给：那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）。本条会把 `use` 改成 `capture` |
+| `dial` | → | 可缺席。给了 ⇒ 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体），记进可达表；本条会把 `use` 改成 `capture`。〔MIG-3a〕只给 `origin`（界面直问）⇒ 用可达表里握手那一刻 `remote-reach` 记下的那一行，没有就 `unreachable` |
 | `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`；`changed` 本机目录因这一趟变了没有；`pushed` 推过去几台快照；`error` 那一趟哪里没办成（`null` = 全办成了） |
 | `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
 | `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
 
-**错误码**：`bad_args`（`origin` 空串 · 给了 `origin` 缺 `dial` · 给了 `dial` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
+**错误码**：`bad_args`（`origin` 空串 · 给了 `dial` 没给 `origin` · 可达表满）· `io_failed`（本机目录开头那一次现扫没办成）· `unreachable`（只给 `origin` 而可达表里还没有那一台 —— 那台的流还没握过手）。某一台连不上 / 太旧 / 没办成**不是整条失败**，落在那一行的 `error`。
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
@@ -2440,6 +2381,131 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 读法住适配层（`agents::Adapter.mcp`，Claude 那一格 `agents/claudecode/mcp.rs`；`.claude.json` 找哪一份与资产目录同一处）。
 错误码：`bad_args`（`projectDir` 不是绝对路径）· `too_large`（成品超过一帧上限，不截断）。⚠ **CLI 面也有它**（`--mcp-read`，入参从 stdin 读）。
 
+#### `mcp-server-put`：增 / 改这台一个项目 `.mcp.json` 里的一条（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"m3","cmd":"mcp-server-put","args":{"projectDir":"/home/u/proj","name":"fs","server":{"command":"/opt/fs"}}}
+← {"kind":"reply","id":"m3","ok":true,"data":{"path":"/home/u/proj/.mcp.json","changed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 这台机器上的绝对路径（不含 `..`）；落点恒是 `<它>/.mcp.json`（写面只此一个，`~/.claude.json` / `settings.json` 一个字节不碰） |
+| `name` | → | server 名（空 ⇒ 拒） |
+| `server` | → | 那一条的配置，原样写进 `mcpServers[name]` |
+| `path` | ← | 写到了哪（解过链接的那一份） |
+| `changed` | ← | 真写了吗（算出来与盘上逐字节相同 ⇒ `false`，一个字节不动） |
+
+D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「一处后端」收进这台：读 → 规划（`assets/mcp_edit.rs::plan_project_mcp`，已存在但读不懂 ⇒ **拒绝覆盖**）→ 本进程文件管理面 `files-put`（CAS = 刚读到的那一份；`stale` 重读重算，最多三趟）。不留备份、不建父目录。
+错误码：`bad_args`（缺 / 类型不对 · 名字空）· `bad_path`（`projectDir` 不是绝对路径）· `refused`（读不懂原文 / 写面拒）。⚠ **CLI 面也有它**（`--mcp-server-put`）。
+
+#### `mcp-server-remove`：删这台一个项目 `.mcp.json` 里的一条（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"m4","cmd":"mcp-server-remove","args":{"projectDir":"/home/u/proj","name":"fs"}}
+← {"kind":"reply","id":"m4","ok":true,"data":{"path":"/home/u/proj/.mcp.json","changed":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 同 `mcp-server-put` |
+| `name` | → | 要删的那一条 |
+| `path` | ← | 那份文件 |
+| `changed` | ← | 文件不在 / 那一条不在 ⇒ `false`（一个字节不写、不建文件） |
+
+错误码同 `mcp-server-put`。⚠ **CLI 面也有它**（`--mcp-server-remove`）。
+
+#### `mcp-sync-source`：推 / 拉的来源那份原文（MIG-3a，09-27，**只读**）
+
+```text
+→ {"id":"s1","cmd":"mcp-sync-source","args":{"projectDir":"/home/u/proj"}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"path":"/home/u/proj/.mcp.json","text":"{\"mcpServers\":{}}"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 来源那台上的绝对路径 |
+| `path` | ← | 读的是哪一份 |
+| `text` | ← | 原文（原样；界面看差异时把它递给要被写的那一台，写的时候再原样递一次） |
+
+错误码：`bad_args` · `bad_path` · `missing`（来源那份不存在 —— 没有可拷的条目）· `refused`（读不出）。⚠ **CLI 面也有它**。
+
+#### `mcp-sync-preview`：在要被写的那一台看推 / 拉的差异（MIG-3a，09-27，**只读**）
+
+```text
+→ {"id":"s2","cmd":"mcp-sync-preview","args":{"projectDir":"/srv/proj","source":"…","sourcePath":"/home/u/proj/.mcp.json","sameMachine":false}}
+← {"kind":"reply","id":"s2","ok":true,"data":{"sourcePath":"/home/u/proj/.mcp.json","targetPath":"/srv/proj/.mcp.json","sourceText":"…","targetText":null,"rows":[{"name":"fs","state":"new","suspects":[],"source":{"command":"fs"},"target":null}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 这台（要被写的那一台）上的绝对路径 |
+| `source` · `sourcePath` | → | 来源那台 `mcp-sync-source` 交回的原文与路径，原样 |
+| `sameMachine` | → | 来源与这台是不是同一台（界面说的事实）；是且两份路径相同 ⇒ 拒 |
+| `sourceText` · `targetText` | ← | 两份原文原样（`targetText` = 这台那份，不存在 ⇒ `null`）—— 写的时候原样交回，后者当 CAS 期望 |
+| `targetPath` | ← | 这台那份的路径 |
+| `rows` | ← | 判定原样是 `mcp-sync-plan` 的 `rows`（`name` · `state` · `suspects[]` 各带 `kind` · `field` · `value` · `there`），每行再带两边那一条的配置原样：`source` · `target`（没有 ⇒ `null`） |
+
+错误码：`bad_args` · `bad_file`（任一份不是合法 JSON 等，同 `mcp-sync-plan`）· `bad_path` · `refused`。⚠ **CLI 面也有它**。
+
+#### `mcp-sync-apply`：在要被写的那一台把勾的那几条合进去（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"s3","cmd":"mcp-sync-apply","args":{"projectDir":"/srv/proj","source":"…","target":null,"take":["fs"],"overwrite":[]}}
+← {"kind":"reply","id":"s3","ok":true,"data":{"path":"/srv/proj/.mcp.json","written":true,"names":["fs"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `projectDir` | → | 这台上的绝对路径 |
+| `source` · `target` | → | 看差异时拿到的两份原文，原样（`target` 是 CAS 期望：这台在那之后变了 ⇒ `stale`，**一个字节不写、不重读重算**） |
+| `take` · `overwrite` | → | 同 `mcp-sync-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`） |
+| `path` | ← | 写到了哪 |
+| `written` | ← | 真写了吗（一条都没选 / 算出来逐字相同 ⇒ `false`） |
+| `names` | ← | 写进去的条目名 |
+
+值取自 `source` 的解析、原样合进 `target`（与 `mcp-server-put` 同一份规划）。错误码：`bad_args` · `bad_file` · `bad_path` · `needs_consent` · `refused` · `stale`。⚠ **CLI 面也有它**。
+
+#### `skill-install-apply`：在要被写的那一台把勾的那几个 skill 文件写进去（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"k1","cmd":"skill-install-apply","args":{"name":"demo","source":[{"path":"SKILL.md","text":"…","exec":false,"why":null}],"target":[],"take":["SKILL.md"],"overwrite":[]}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"dir":"/home/u/.claude/skills/demo","written":["SKILL.md"],"chmodFailed":[],"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `name` | → | skill 名（同 `skill-read`） |
+| `source` | → | 来源那台 `skill-read` 的 `files`，原样（`path` · `text` · `exec`；`text` 为 `null` 的装不过去） |
+| `target` | → | 看差异时这台 `skill-install-plan` 回的 `target`（这台那几份原文），原样 —— 写时的 CAS 期望 |
+| `take` · `overwrite` | → | 同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`） |
+| `dir` | ← | 装到了哪 |
+| `written` | ← | 真写成了的那几个（按写的顺序） |
+| `chmodFailed` | ← | 写成了但执行位没置上的那几个 |
+| `recordFailed` | ← | 装记录没记下来时那一句（`null` = 记下了）—— 记不下来 ⇒ 这一趟装的卸不掉 |
+
+判（`skill_install::answer_plan_with`）· 写（本进程文件管理面 `files-put`，`parents`，不备份）· 记（`skill-install-record` 同一个写口）都在这一台。
+看过之后这台那一份变了 ⇒ **停在那一个**（`stale`），话里说清前面写了哪几个；写了的照记。错误码：`bad_args` · `bad_file` · `io_failed` · `needs_consent` · `stale`。⚠ **CLI 面也有它**。
+
+#### `skill-uninstall-apply`：在被卸的那一台删装时写进去的那几个（MIG-3a，09-27，**写用户文件**）
+
+```text
+→ {"id":"k2","cmd":"skill-uninstall-apply","args":{"dir":"/home/u/.claude/skills/demo","seen":[{"path":"SKILL.md","text":"…"}],"take":["SKILL.md"],"confirm":[]}}
+← {"kind":"reply","id":"k2","ok":true,"data":{"dir":"/home/u/.claude/skills/demo","deleted":["SKILL.md"],"recordFailed":null,"dirRemoved":true,"dirFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dir` | → | 装记录里那一条的键（skill 目录的绝对路径） |
+| `seen` | → | 看的时候这台 `skill-uninstall-plan` 回的 `seen`（现有原文），原样 —— 删时的 CAS 期望 |
+| `take` · `confirm` | → | 同 `skill-uninstall-plan`（要问的没在 `confirm` 里点名 ⇒ 整趟拒 `needs_consent`） |
+| `deleted` | ← | 真删掉的那几个 |
+| `recordFailed` | ← | 删掉的没从装记录里摘掉时那一句 |
+| `dirRemoved` | ← | skill 目录自己空了、收掉了没有（装时 `parents` 建出来的子目录先收） |
+| `dirFailed` | ← | 收空目录没成时那一句 |
+
+错误码：`bad_args` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found`（记录里没有这一条）· `stale`（看过之后被改过 / 已经不在 —— 停在那一个，说清前面删了哪几个）。⚠ **CLI 面也有它**。
+
 #### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
 
 ```text
@@ -2927,6 +2993,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
+**MIG-3a 追加七条（09-27）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` —— D 组 MCP 与 skill 那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
 **MIG-3b 追加一条（09-27）**：`--hooks-diag` —— cc-bus 钩子诊断（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
@@ -2965,15 +3033,16 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 **W5-FILES 追加一条（第五波，2026-09-25）**：`--files-size` —— 同族第九条（算目录大小，逐条见上面 `files-size` 那一小节）。
 与帧面走**同一个 `run`**，读 stdin（那段 JSON 就是它的 `args`）。只读。
 
-**`K-H1` 追加一条**：`--relay` —— 起 **HTTP 中转**（搬字节那半）。它与上面每一条都不同族：
-不是一次性查询，而是一个**常驻**进程，起来就不返回。
+**`K-H1` 那一条：HTTP 中转**（搬字节那半）。〔DEL〕独立进程那一形（子命令 `--relay`）删了：
+中转只住常驻后端进程里（本机 V107 · 远端 V139），下面说的是它。
 
-- **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
-- 〔RL1 · V107〕**进程内那一形**：流模式（`--tail-only` 等，stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
-  ⇒ 在本进程里起同一个中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
-  随进程生死（常驻后端按「退出行为」留或退，中转一起）。与上面独立那一形的差别只有三格：**端口没有缺省值**（认不出 ⇒ 不开）·
-  **tee 丢弃**（stdout 是 wire）· **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（远端经 SSH exec 起的流模式后端就是这一格）。
-  凭据文件路径同样由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。
+- **只监听 `127.0.0.1`**，不对外暴露；端口由宿主以 `CCM_RELAY_PORT` 交（值是 `relay_route_core::PORT`，`8788`），**没有缺省值**（认不出 ⇒ 不开）。
+- 〔RL1 · V107 · V139〕流模式（stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
+  ⇒ 在本进程里起中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
+  随进程生死（常驻后端按「退出行为」留或退，中转一起）。**tee 落 tap 口**（`tap` 帧；stdout 是 wire）·
+  **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（测试连接探针那一趟流模式就是这一格）。
+  宿主：本机 monitor 起后端时交；远端 `--resident-ensure` 起常驻子进程时交同一个值。
+  凭据文件路径由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。
 - 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是一个**进程级**的上游默认
   （`https://api.anthropic.com`，由一个进程级环境变量盖）—— 已整删〕。它是**上游选择**的表，不是中转的配置：
   今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只盖这一家；
@@ -3008,8 +3077,8 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   起会话的那一侧（**本机与远端同一条路**，monitor `history::relay_endpoint_on`）先问**那台机器的后端**要成品
   —— 帧命令 `launch-endpoint`（见上面那一节），决策表的唯一实现是后端上游选择 `accounts/upstream/endpoint.rs::decide_launch`
   （`设计/20 §3.2`），monitor 只转交入参、照成品执行：
-  那台的 apikey 表里有 (agent, 账号) 这一行 ⇒ 注入 `/s/`（`whenDown: refuse`：中转不在 ⇒ 远端先 `relay-status` → `relay-ensure` 有界等，
-  仍不在 ⇒ **拒绝起会话**；本机那一个住在本机常驻后端里，起不了第二个 ⇒ 拒）；没有这一行 ⇒ 默认**不注入**。
+  那台的 apikey 表里有 (agent, 账号) 这一行 ⇒ 注入 `/s/`（`whenDown: refuse`：中转不在 ⇒ **拒绝起会话**；
+  中转住那台的常驻后端里，本机远端同形，不另起一个〔DEL〕）；没有这一行 ⇒ 默认**不注入**。
   全量注入（订阅号 · 不带账号的本机会话也注 `/t/`）**带开关、默认开**（RL2：V135 真跑过一次）：monitor 进程环境里 `CCM_RELAY_ALL_SESSIONS=0` 才关
   （随 `allSessions` 交给那台后端）；开了也只给登记了默认上游的 agent 注（codex 不注）；`/t/` 那一格中转不在 ⇒ 照旧直连（`whenDown: direct`，不拒绝）。
   问不到那台后端 ⇒ **拒绝起会话**并说清（不猜、不退回「自己读凭据文件」）。
@@ -3018,73 +3087,22 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   在途连接顶满 503 · 🔴 **上游连不上 / 没回应 / 回的不是 HTTP ⇒ 504**（2026-09-24 前是 502，与上游选择撞码），
   响应体第二行是一句人话：`上游 <主机>:<端口> <结果>。卡在<哪一步>这一步。`。
   ⚠ 上游**自己**答的 5xx 原样转发，与上面这几个码共用值域 —— 分得开它们的只有那句话。
-- 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份到**本进程的 stdout**
-  （NDJSON；要落文件由启动方重定向）。**这条流上今天是三种行** —— 分母不是印象，是
-  `relay/tee.rs` **生产段**（剥掉 `#[cfg(test)]` 后 304 行）里**把一行送出去的全部落点，
-  现打 08-28 恰好 4 处**：`:220` · `:241` · `:267` · `:190`（后两处产的是同一种行）⇒ 三种：
-  - **每个响应的首行 `__meta__`**（`tee.rs::open` `:211-220`）：
-    `{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":…,"account":…,"key":…,"seq":N}}`
-    ⇒ 三格路由键**带**，但在 `__meta__` 对象**里面**。
-  - **事件行**（`tee.rs::event` `:233-241`）：
-    `{"agent":…,"account":…,"key":…,"event":"<上游 data: 后面那段，转义成一个 JSON 串>"}`
-    ⇒ 三格路由键**带**，在**顶层**。
-  - **`__dropped__` 报账行**（写线程 `:189-190` · `note_dropped_bytes` `:266-267`）：
-    `{"__dropped__":{"lines":N,"bytes":M}}`
-    ⇒ ⚠ **那三格一格都不带**，而它走的是**同一条 stdout**（`:183` 与 `:190` 同一个 `w`，
-    `:267` 与 `:282` 同一个 `tx`）⇒ 消费方得认得它，它不是「异常时才另开一路」的东西。
-    `lines` / `bytes` 的定义见 `tee.rs:48` 那一节。
-
-  ⚠ **「首行」指「每个响应的首行」，不是「这条流的第一行」**：同一个进程里 `__meta__`
-  会出现多次，每条连接一次、`seq` 递增。现打（下面那一刀的判定行里逐字带出来的同一段流）：
-  `seq:0` 是 `acct-a`、`seq:1` 是 `acct-b`，**同一个后端进程**。
-  ⚠ `seq` 在上面**这三种行里只有 `__meta__` 那种**有；`event` 的值是**一个 JSON 串**
-  （上游那段逐字节保住但不参与本行结构，理由见 `tee.rs` 头注）。
-
-  ⚠⚠ **这一格被订正过两轮，两个方向都记下来**：
-  ① 〔`E` 逮到，08-28〕先前逐字写「每行带 `agent` / `key`」，**漏了 `account`** ——
-  路由键从两段变三段是 `K-H2` 自己干的，而这一行没跟着改。
-  ② 〔`D4` 逮到，08-28〕修 ① 的那一拍写成了加粗全称「**每行都带那三格路由键**」，
-  并自称「把**两种**行的字面形状逐字列出」——**实际是三种**，而 `__dropped__` 那种
-  **一格都不带**。⇒ **去修一句假话，换来一句射程更大的假话。**
-  病灶逐字记着：**写了一个没有量过人群的全称。** 第三种行就写在 `tee.rs:48` 那个小标题里
-  （「还有一种行：`__dropped__`（本轮新增，写进契约）」），**与被引的那份头注在同一个文件**，
-  没往下读就下了全称。⇒ 纪律：**写「每 / 所有 / 全部 / 唯一 / 没有任何」之前先现打它的人群、
-  把分母写在旁边；给不出分母就不许写全称。**
-  ⚠ 归属：`__dropped__` 在本文档缺席是 `K-H1` 期留下的（`git log -S` ⇒ `e4f95ba` / `38f27b3`）；
-  `K-H2` 造的是 ② 那句全称与那张自称完整的二分表。
-
-  ⚠⚠ **这一格有牙，但钉的不是内容 —— 要说清是哪一维**〔`D5` 逮到，口径按 `K20`，08-28〕：
-
-  - ⭐ **「这一格里提到的路径还在不在」有人钉着**：
-    `doc_claim_registry::tests::every_repo_path_named_in_the_docs_still_resolves`。
-    现打变异（**只改这份文档，一行代码没动**）：把上面那个 `relay/tee.rs` 改成一个不存在的文件名
-    ⇒ **当场红**，判定行逐字把住址与那个改坏的名字一起印出来（`src/doc/IPC-PROTOCOL.md` 第 807 行）；
-    那一趟 **12 passed / 1 failed**。
-    ⇒ 上面那些 `tee.rs::open` / `::event` 的住址**改了名会被抓**，不会烂在这里。
-  - ❌ **这一格的「内容」与 `tee.rs` 生产段对不对得上，没人对拍。**
-    这句**不靠「数判据」成立**，靠**直接演示**：本拍把这一整块改写、`tee.rs` 一个字没动
-    ⇒ **全量门禁各道读数逐个不变、`GATE: OK`**。
-    ⇒ 三种行的形状 · `seq` 在哪一种上 · `__dropped__` 带不带那三格 —— **这些字今天漂了，门禁不会说。**
-
-  🔴 **别在这里重建「哪些判据看着这份文档」的名单** —— 试过两轮，两轮都被证伪。
-  根因**不是数错**：这一族判据按**形状**认人（反引号里带目录的路径 · 散文模式 · 数量形态），
-  **不按主题名** —— `doc_claim_registry` 里 `tee` 一个字都没有，而咬住上面那一刀的正是它。
-  ⇒ 「grep 判据源码里有没有这个词」这把尺子**在构造上**就量不出「它会不会咬这一格」，
-  建在这把尺子上的枚举**必然**不完备，写进散文只会随时间腐、而且腐的方式是让读者更信它。
-  ⇒ 那次测量的读数与它的限定，留在件计划 `§4 上报`（**带日期的一次测量**，不是长期断言）。
-  ⇒ 这一族的诚实边界：**别把「文档里写着」读成「有人钉着」—— 要接着问「钉的是哪一维」。**
-  ⇒ 这份文档这一族的**诚实边界**：别把「文档里写着」读成「有人钉着」。
-  ★ 把中转这一族纳进那道判据的人群是**另立一件**的活（放宽人群要单独想形状），**不在这里顺手加**。
+- 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份交给宿主的 tap 口（`relay/tee.rs::TeeSink`），
+  宿主把每一件变成出方向帧 `tap`（`{"kind":"tap","stream":…,"resp":N,"n":M,"data":"<上游 data: 后面那段，一个 JSON 串>"}`，
+  收尾那一件 `"end":"done"|"broken"`、`n` = 这个响应一共占了几个号），走 wire 自己那条有界通道（见上面出方向帧表 `tap` 那一行）。
+  **不带路由那两段**（① 不问账号，`设计/20 §11` I2）；丢了的号在接收侧原位看得出（先占号再投递）。
+  〔DEL〕先前独立的 `--relay` 进程把 tee 写成 NDJSON 行落自己的 stdout（`__meta__` · 事件行 · `__dropped__` 三种行，零消费者）——
+  那一形随它删了；这一格原先那两轮订正与「钉的是哪一维」的记账随之销（记录在 git 历史里）。
 - **请求头原样转发，但一个都不落进 tee、不落进日志。**
   ⚠ **例外都在鉴权头上**（`K-H2a` 换头 + `K-R1` 把人群扩到第二个头名）：那一行**有自己的 key**
   （或它的 `auth_style` 声明了「一个鉴权头都不发」）时，客户端自带的 `Authorization` 与 `x-api-key`
   **都被丢掉**，换上这一行自己那一个（写哪个头由该行 `auth_style` 定）。
   ⚠ **`Proxy-Authorization` 仍然照旧转发** —— 它说的是与代理之间的鉴权，收掉它是另一件事，
   **登记为射程外**。那一行**没有** key 时（订阅登录那一档）一个字节都不动。
-- ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受后端零定时器护栏所限，
+- ⚠ tee 事件**不带 `t_ns`**，也**不设上游超时** —— 两处都受后端零定时器护栏所限，
   理由与代价见 `src/backend/relay/mod.rs` 头注。
 
-**`K-P6b` 追加一条**：`--dial` —— 起 **SSH 拨号代理**（候选 E 的字节代理）。它与 `--relay` 同族：
+**`K-P6b` 追加一条**：`--dial` —— 起 **SSH 拨号代理**（候选 E 的字节代理）。它与当时的 `--relay` 同族：
 不是一次性查询，而是一个**常驻**进程，起来就搬字节直到某一头断开。
 
 🔴 **先写死它买到了多少，别读大**：它搬走的是 **后端那条长连接流**的那一跳 SSH 握手 ——
@@ -3160,7 +3178,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
   🔴 **但结论不跟着翻 —— 那一格没测，本节不替它下结论。** 前提假不蕴含结论假：
   代理二进制解析得到（回落①不触发）之后，**还有回落②**——配置里没填 `keyPath` 的那台走 ssh-agent，
-  而代理只会 publickey，仍旧留在进程内（`ssh_source.rs::connect_and_exec` 是 `proxy && has_key` 两个条件）。
+  而代理只会 publickey，仍旧留在进程内（当时 `ssh_source.rs` 起远端流那一处是 `proxy && has_key` 两个条件；〔DEL〕那一处已随远端流模式一形删了）。
   ⇒ **「默认装机走哪条」根本不是一个常数**，它按**每一行远端配置**分叉；
   而「装完之后配了 `keyPath` 的那台到底走没走代理」，**今天一台机器上都没人跑出过读数**。
 
