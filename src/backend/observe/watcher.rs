@@ -1567,7 +1567,7 @@ fn watch_loop(
                     );
                     sink.send(Frame::AccountsChanged);
                 }
-                let got = reconcile_sessions(&sessions, &mut state, &mut sink, only.as_deref());
+                let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx);
                 let _ = done.send(got);
             }
@@ -2517,6 +2517,27 @@ pub(crate) struct Reconciled {
     pub(crate) added: usize,
     pub(crate) removed: usize,
     pub(crate) retagged: usize,
+}
+
+/// 〔RESYNC〕「重新对齐」那一趟的会话部分：对表（与起步同一个 [`reconcile_sessions`]）＋ 每个在跟的会话从游标补读
+/// （tab「重新读取」：`only` = 那一个 sid；与退休前那一次补读同一个 [`catch_up_session`]，写端活着 ⇒ 不收尾残行）。
+fn resync_sessions(
+    sessions: &Path,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    only: Option<&str>,
+) -> Reconciled {
+    let got = reconcile_sessions(sessions, state, sink, only);
+    let sids: Vec<String> = state
+        .active_sids
+        .iter()
+        .filter(|s| only.is_none_or(|o| o == s.as_str()))
+        .cloned()
+        .collect();
+    for sid in sids {
+        catch_up_session(&sid, false, state, sink);
+    }
+    got
 }
 
 /// **pidfile 目录对后端的表**：起步初扫与 `resync` 是这同一个函数（`设计/15 §4.1b`「与初探同一个函数」）。
