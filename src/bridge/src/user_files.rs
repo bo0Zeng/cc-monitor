@@ -1,9 +1,9 @@
 //! 〔RW1 · 第四波 · 2026-09-24〕**monitor 进程够用户文件的唯一开口 —— 它一个字节都不自己落盘。**
 //!
 //! 用户逐字：「现在只允许后端的文件管理部分写文件」；追问后裁「**只管用户的文件**」「**也管本机**」。
-//! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/` ·
-//! 删历史会话，这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
-//! `files-chmod` / `files-delete-session`），本机与远端**同一条路**，只差 origin。
+//! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/`，
+//! 这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
+//! `files-chmod`），本机与远端**同一条路**，只差 origin。〔MIG-3b〕删历史会话不经这扇门了：界面经通道直说那台后端。
 //! 〔RM1d〕代码全景的批注 / 文档关联（V110「引擎只算、文件管理来写」）也经这扇门：计划由全景小程序算
 //! （`panorama_call.rs::edit_via`），落盘是这里的 `put` / `delete`（后者 = `files-delete`）。
 //!
@@ -90,7 +90,7 @@ pub(crate) trait Door {
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
     // 〔MIG-3a〕「只删一个空目录」那一形（〔FW1〕`delete_empty_dir`〔散文墓碑〕）随卸 skill 进后端删了：收空目录今天在那台后端里（`assets/skill_flow.rs`）。
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
-    async fn delete_session(&self, sid: &str) -> Result<String, String>;
+    // 〔MIG-3b〕`delete_session` 那一问走了：删会话由界面经通道直说那台后端（`src/session-writes.ts`），门不再转交。
     // 〔MIG-3a〕「一个路径在不在」那一形（`stat_kind`〔散文墓碑〕）的用户（别名读回 · cc-bus 装）都进了后端 ⇒ 删。
     // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
 }
@@ -166,7 +166,7 @@ impl BackendDoor {
     }
 
     /// 发一条写面命令，拿它的 `data`。失败翻成人话；**对端回 `stale` 单列**。
-    /// 〔E2〕`pub(crate)`：`ccm_probe::probe_ccm_cli` 经同一扇门问那台后端 `ccm-probe`（不另开一条通道）。
+    /// 〔E2〕`pub(crate)`：`ccm_probe::probe_ccm_cli` 经同一扇门问那台后端 `ccm-probe`（不另开一条通道）。〔散文墓碑〕
     pub(crate) async fn ask(
         &self,
         cmd: &str,
@@ -351,14 +351,6 @@ impl Door for BackendDoor {
         .await
         .map(|_| ())
         .map_err(Refused::said)
-    }
-
-    async fn delete_session(&self, sid: &str) -> Result<String, String> {
-        let v = self
-            .ask("files-delete-session", serde_json::json!({ "sid": sid }))
-            .await
-            .map_err(Refused::said)?;
-        Ok(path_text(v.get("path").unwrap_or(&serde_json::Value::Null)))
     }
 }
 

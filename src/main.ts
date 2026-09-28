@@ -4,7 +4,7 @@
  * DOMContentLoaded 后按序：
  * 1. `loadTheme()` 从 config.json 应用 CSS 变量
  * 2. 实例化 TabManager / SettingsPanel / HistoryView / TasksPanel
- * 3. `bindEvents()` 订阅后端事件（jsonl-line / jsonl-batch / session-ended / task-update）
+ * 3. `bindEvents()` 订阅后端事件（session-ended 等 ＋ 通道那几条流：会话行 · tap · 账号 · 任务）
  * 4. 装全局快捷键 dispatcher（keybindings/）+ 外链 click 代理（openUrl）+ ERROR toast
  * 5. `emit("frontend-ready")` 通知后端 replay 历史
  *
@@ -756,7 +756,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onBatchEnd();
     },
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
-    onTasksUpdate: (e) => tabs.updateTasks(e.sessionId, e.tasks),
+    // 〔MIG-3b · ㉓②〕那台后端说这几个会话的任务变了（或期间可能漏了）⇒ 重问 `tasks-list`。
+    onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
@@ -788,6 +789,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     taps: machines,
     // 〔DL1〕每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
     accounts: machines,
+    // 〔MIG-3b · ㉓②〕每台一条 `session-tasks`（替掉本机那个裸事件 `task-update`；远端第一次有推送）。
+    tasks: machines,
   });
   // 〔DL1 · `设计/01 §2.2`〕账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——

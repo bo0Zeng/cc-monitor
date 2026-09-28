@@ -972,25 +972,48 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
 }
 
 /// 〔E2〕要求住址：`设计/96 §7.2.2` · W5-ALIAS §3.6「件 E 让 ccm 恒是那台后端本体之后，这一问改问后端自己」。
-/// 帧 `ccm-probe` 回的就是 `--ccm-probe` 那几行：首行逐字 `name=ccm`、`build=` 是这一份的 `BUILD_ID`、能力行与 CLI 那一口同一个函数。
+/// 〔MIG-3b〕帧 `ccm-probe` 出成品：每一格 == CLI `--ccm-probe` 那张名片的同名行（异源：一边是 JSON，一边切文本行）；
+/// 键集合 == 金样 `tests/__fixtures__/ccm-probe.golden.json` 的键（界面解码器读同一份金样）。
 #[test]
 fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
     let v = answer_probe();
-    let text = v["probe"].as_str().expect("probe 那一格不是字符串");
-    assert_eq!(text.lines().next(), Some("name=ccm"));
-    assert!(
-        text.lines()
-            .any(|l| l == format!("build={}", crate::BUILD_ID)),
-        "{text}"
+    let card = probe_output("x");
+    let line = |k: &str| {
+        card.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .unwrap_or_else(|| panic!("名片里没有 {k}= 那一行"))
+            .to_string()
+    };
+    let list = |k: &str| {
+        v[k].as_array()
+            .expect(k)
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    assert_eq!(v["version"].as_str(), Some(line("version").as_str()));
+    assert_eq!(v["build"].as_str(), Some(crate::BUILD_ID));
+    assert_eq!(line("build"), crate::BUILD_ID);
+    assert_eq!(
+        list("capabilities"),
+        line("capabilities"),
+        "帧面与 CLI 那一口的能力不是同一份"
     );
-    let caps = |t: &str| {
-        t.lines()
-            .find(|l| l.starts_with("capabilities="))
-            .map(str::to_string)
+    assert_eq!(list("agents"), line("agents"));
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/ccm-probe.golden.json")).unwrap();
+    let keys = |x: &serde_json::Value| {
+        x.as_object()
+            .unwrap()
+            .keys()
+            .filter(|k| !k.starts_with('_'))
+            .cloned()
+            .collect::<Vec<_>>()
     };
     assert_eq!(
-        caps(text),
-        caps(&probe_output("x")),
-        "帧面与 CLI 那一口的能力行不是同一份"
+        keys(&v),
+        keys(&golden["product"]),
+        "成品的键 ≠ 金样的键 —— 界面解码器读的是金样"
     );
 }

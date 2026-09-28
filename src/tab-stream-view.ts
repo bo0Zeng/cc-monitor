@@ -15,7 +15,7 @@ import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // G4：实时会话的分叉入口
-import type { BranchResult } from "./generated/BranchResult";
+import type { BranchResult } from "./session-writes";
 import type { JsonlLinePayload } from "./events";
 import { RecordTimeline } from "./record-timeline";
 import { SeqSet, TailWindow, type SkeletonLedger, type TakeBudget } from "./live-window";

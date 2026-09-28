@@ -103,7 +103,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔C4c · 第四波 4B〕账号面那一行（`cfg_for`，原住 `accounts.rs`）〔散文墓碑〕**还掉了**：它只服务远端账号清单与信任预检两条 Tauri 命令，
     //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
     // 〔E2〕`probe_ccm_cli`〔散文墓碑〕 那一行还掉了：它不再查远端配置（改经那台后端的门问 `ccm-probe`，`<local>` 也是一个 origin）。
-    // 〔SH1〕`hooks_diag.rs::diagnose_remote_cc_bus_hooks` 那一行还掉了：它不再查远端配置（事实经 `frame_query::call(origin, …)` 问那台后端）。
+    // 〔SH1〕远端钩子诊断那一行还掉了：它不再查远端配置（〔MIG-3b〕今天整件是那台后端的帧命令 `hooks-diag`）。
     ("launch.rs", "build_remote_ssh_ps_command"),
     // 〔SH1 · V137〕`mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
     // 〔MIG-3a〕`mcp.rs` 那最后一行（远端项目 `.mcp.json` 读）随文件删了：MCP 读写进了那台后端，界面经通道直问、不查远端配置。
@@ -113,7 +113,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
     //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
     ("dial_host.rs", "forward"),
-    // 〔LOC1a · 第四波 4D〕`remote_branch.rs::create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，
+    // 〔LOC1a · 第四波 4D〕`remote_branch.rs` 的 `create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，〔散文墓碑〕
     //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
     ("remote_history.rs", "require_cfg_by_label"),
     // 〔SR1b · 09-24〕`inproc_dial.rs` 那一行（跳板那一跳查配置，只服务 SFTP）**还掉了**：界面进程零 SSH，

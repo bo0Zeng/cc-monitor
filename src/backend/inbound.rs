@@ -125,6 +125,8 @@ pub const COMMANDS: &[&str] = &[
     "ccm-print",
     // 〔E2 · `96 §7.2.2`〕这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
     "ccm-probe",
+    // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "deploy-plan",
     "exit-policy-read",
     "exit-policy-set",
     "files-browse",
@@ -174,6 +176,8 @@ pub const COMMANDS: &[&str] = &[
     "history-subagents",
     "history-tail",
     "history-user-inputs",
+    // 〔MIG-3b〕cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "hooks-diag",
     "kill",
     "launch",
     // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
@@ -1264,10 +1268,49 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "ccm-probe",
         doc_anchor: Some("#### `ccm-probe`"),
         codes: &[],
-        fields: &["probe"],
+        fields: &["agents", "build", "capabilities", "version"],
         takes_input: false,
         run: Run::Async(|_r| {
             Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
+        }),
+    },
+    // 〔MIG-3b · 4d-lanes 子步 1〕**部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
+    //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
+    CommandSpec {
+        name: "deploy-plan",
+        doc_anchor: Some("#### `deploy-plan`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "refused",
+            "unreachable",
+            "undecidable",
+        ],
+        fields: &[
+            "action",
+            "arch",
+            "expected",
+            "label",
+            "legacy",
+            "legacy_why",
+            "os",
+            "theirs",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let facing = crate::control::deploy_plan::DialFacing::new(
+                    r.args
+                        .get("dial")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                crate::control::deploy_plan::answer(&r.args, &facing)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {
@@ -2968,6 +3011,32 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `tmux-list`"),
         codes: &["unobservable", "too_large"],
         fields: &["installed", "lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3b · `设计/95 §6`〕cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
+    CommandSpec {
+        name: "hooks-diag",
+        doc_anchor: Some("#### `hooks-diag`"),
+        codes: &["failed", "too_large"],
+        fields: &[
+            "command",
+            "diagnosis",
+            "kind",
+            "note",
+            "path",
+            "session_start",
+            "snippet_bare",
+            "snippet_home",
+            "source",
+            "stop",
+            "text",
+            "warning",
+        ],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)

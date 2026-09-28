@@ -56,6 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
     "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
@@ -147,7 +148,6 @@ const UNIT: &[&str] = &[
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
     "tests/events-burst.vitest.ts",
-    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe（不是裸事件）
     "tests/events-yield.vitest.ts",
     "tests/file-window.vitest.ts",
     "tests/fork-ask.vitest.ts",
@@ -248,6 +248,7 @@ const UNIT: &[&str] = &[
     "tests/views/session-viewer-skeleton.vitest.ts",
     "tests/views/user-input-panel.vitest.ts",
     "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
+    "tests/bridge/crates/deploy-core/lib_tests.rs", // 〔MIG-3b〕新共享 crate `deploy-core` 的判定（纯函数）
     "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
@@ -259,7 +260,6 @@ const SCAN: &[&str] = &[
     "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
     "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
     "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
-    "tests/bridge/remote_branch_tests.rs", // 〔LOC1a〕UNIT → SCAN：改走 `<local>` 长连接后判据读源码 / 脚本假后端（判别器判 SCAN）
     "tests/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
     "tests/config-patch-fake.vitest.ts",  // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
     "tests/tab-bar-width.vitest.ts",      // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
@@ -383,7 +383,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/guard_support_tests.rs",
     "tests/bridge/history_title_coverage.rs",
-    "tests/bridge/hooks_diag_tests.rs",
     "tests/bridge/launcher_identity_registry_tests.rs",
     "tests/bridge/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
     "tests/bridge/lib_mod_decl_hygiene_tests.rs",
@@ -431,7 +430,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
     "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
-    "tests/bridge/tasks_tests.rs",
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
     "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
     "tests/bridge/tool_registry_tests.rs",
@@ -519,6 +517,8 @@ const SCAN: &[&str] = &[
     "tests/views/live-user-inputs.vitest.ts",
     "tests/views/session-viewer-user-inputs.vitest.ts",
     "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
+    "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
     "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
@@ -532,6 +532,7 @@ const SCAN: &[&str] = &[
 const INTEGRATION: &[&str] = &[
     // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
     "tests/bridge/e2e_gate_registry_tests.rs",
+    "tests/backend/observe/cc_bus_hooks_tests.rs", // 〔MIG-3b〕钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
     "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
     "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
     "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记

@@ -52,6 +52,8 @@
 //! - [`panorama`]（RM1c · 第四波，V108）：**代码全景** —— 经插件通用调用口起那个只装引擎的
 //!   独立小程序（`cc-monitor-panorama`），后端自己一行引擎都不链。起进程走 `plugin::invoke::run`
 //!   （起进程点一处不增）；被起的那个进程只写**索引**（落后端自己的数据目录，不是用户文件）。
+//! - [`deploy_plan`]（MIG-3b）：产出「那台的后端要不要换、换成哪一格」的部署计划（帧命令 `deploy-plan`）。
+//!   **只读**那台（stat · read · 两条只读 exec），放字节归 monitor（经 `files` 链路）。归本层的理由同下面 `resolve_query`。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）。
 //!   名字里有 `query` 但它不是观测 —— 账本 S14 明写它是 backend 的**计划面**。
 //!   按「读 / 改变世界」这条线分，产计划属于控制的前半。
@@ -67,6 +69,7 @@ pub mod capture_pane;
 pub(crate) mod cc_bus;
 pub mod ccm;
 pub mod cli_control;
+pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;
 // 〔FILES2〕解压（`files-extract`）＋ 第三层「建链接」那一个动词的住址（复制链接本身 · 解压包里的链接）。

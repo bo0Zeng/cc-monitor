@@ -52,7 +52,6 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
 
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
-import type { BranchResult } from "../generated/BranchResult";
 // 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**
 // ⇒ 这里不许手写 `string | null`：手写的那一份与 Rust 的 `origin::Origin` 之间没有任何东西钉着。
 //
@@ -83,7 +82,6 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { TmuxSession } from "../generated/TmuxSession";
 import type { ForwardStatus } from "../generated/ForwardStatus";
-import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
@@ -347,33 +345,12 @@ export const commands = {
   /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
 
-  /**
-   * 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。
-   *
-   * 〔`K-R88` 09-13〕入参从 `sourceJsonlPath` 收成 `sourceSessionId` ——
-   * 与下面远端那条**形状一致**，两侧后端走的也是同一份「按 sid 找那份文件」。
-   */
-  create_branch_session: (args: {
-    origin: Origin;
-    sourceSessionId: string;
-    messageUuid: string;
-  }) => invoke<BranchResult>("create_branch_session", args),
+  // 〔MIG-3b〕分叉那条退役：分叉经通道直说那台后端 `session-fork`（`src/session-writes.ts::forkSession`）。
 
   // 〔C4a · 子步 3〕E79 那条本机版「某会话跑在哪个账号下」退役：
   //   本机与远端同一条路 —— `account-reads.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
 
-  /**
-   * 删历史会话。**桶①**。
-   *
-   * 🔴 **〔步 12·C〕`delete_remote_history_session` 已退役，两条收成这一条。**
-   * 〔RW1 · 第四波〕两侧都经那台机器的后端删（`files-delete-session`，只收 sid）；
-   * `jsonlPath` 是一致性闸的另一半：`sessionId` 必须恰是那份文件名的 stem。
-   */
-  delete_history_session: (args: {
-    origin: Origin;
-    sessionId: string;
-    jsonlPath: string;
-  }) => invoke<void>("delete_history_session", args),
+  // 〔MIG-3b〕删会话那条退役：删会话经通道直说那台后端 `files-delete-session`（`src/session-writes.ts::deleteSession`）。
 
   /**
    * G6：列远端 tmux 会话。`null` = 那台机器上没装 tmux（前端据此隐藏 attach 类操作）。
@@ -406,12 +383,7 @@ export const commands = {
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
     invoke<string>("deploy_remote_acct_iso", args),
 
-  /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
-
-  /** 远端 cc-bus 钩子诊断。同上。 */
-  diagnose_remote_cc_bus_hooks: (args: { origin: string }) =>
-    invoke<HooksReport>("diagnose_remote_cc_bus_hooks", args),
+  // 〔MIG-3b〕cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
   /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
   load_subagent: (args: {

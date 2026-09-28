@@ -185,6 +185,8 @@ const FRAMES: &[(&str, &str)] = &[
         "transfer",
         r#"{"kind":"transfer","id":"cf1-no-such-ticket","got":1,"total":2}"#,
     ),
+    // 〔MIG-3b · ㉓②〕某个会话的任务清单变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
+    ("tasks_changed", r#"{"kind":"tasks_changed","sid":"s1"}"#),
     // 〔TAP · V124〕中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
         "tap",
@@ -222,6 +224,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                     | (&"session_removed", InboundFrame::SessionRemoved { .. })
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
+                    | (&"tasks_changed", InboundFrame::TasksChanged { .. })
                     | (
                         &("session_file_gone" | "session_file_reread"),
                         InboundFrame::SessionFileNotice { .. }
@@ -242,6 +245,8 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             // 〔FW1〕记录文件的出声（同一条内容通道，与行同序）。
             "session_file_gone",
             "session_file_reread",
+            // 〔MIG-3b · ㉓②〕任务清单变了（本机消费者交重放缓冲那张订阅表）。
+            "tasks_changed",
         ]
         .iter()
         .map(|s| s.to_string())

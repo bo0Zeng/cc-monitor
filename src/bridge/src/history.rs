@@ -1,5 +1,5 @@
-//! 历史会话的 monitor 这一侧：读一整份会话（按块经 Channel 发给查看器）· 删一份会话（经那台机器的后端）·
-//! resume / 起新会话的命令渲染 · **F62 从某轮建分支**。
+//! 历史会话的 monitor 这一侧：读一整份会话（按块经 Channel 发给查看器）· resume / 起新会话的命令渲染。
+//! 〔MIG-3b〕删一份会话与 **F62 从某轮建分支** 不在这里了：界面经通道直说那台机器的后端（`src/session-writes.ts`）。
 //!
 //! ## 〔C4d · 第四波 4B〕清单与注解不在这里了
 //!
@@ -11,7 +11,7 @@
 //!
 //! ## 物理删除
 //!
-//! 用户明确选了「物理删除」。前端二次确认后调 `delete_history_session`，由那台机器的后端删（`files-delete-session`）；
+//! 用户明确选了「物理删除」。前端二次确认后经通道直说那台机器的后端 `files-delete-session`（〔MIG-3b〕monitor 那条转交删了）；
 //! 删完那条注解由界面交本机后端 `history-forget` 连带删。Claude Code 自己也不再能 resume 这个会话。
 
 use crate::copy_table::copy_text;
@@ -213,182 +213,11 @@ pub async fn stream_read_session_jsonl(
     Ok(total)
 }
 
-// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机删除的路径守卫 `validate_delete_target`〔散文墓碑〕（Batch4-F15：
-// canonicalize 两边、`..` 与 symlink 穿越都拒）与本进程那一次 `fs::remove_file`。用户裁「只允许后端的文件管理部分
-// 写文件」也管本机 ⇒ 删历史会话改成那台机器后端的**一条明确的命令** `files-delete-session`（**只收 sid**；
-// 〔AR1 · V119〕当时说它是「会话文件围栏唯一的例外」，FN1 之后写面已无那道围栏，这是它自己的限制），落点由后端按 sid 在它自己的记录树里找、解到底必须恰是 `<项目>/<sid>.jsonl`
-// （`src/backend/agents/claudecode/paths.rs::session_file_for_delete`）⇒ 那道路径守卫的活由后端干了，本机这一份零调用方、删了。
-
-/// 🔴 **〔步 12·C 2026-09-20〕本机 ＋ 远端两条删除合成了一条带 `origin` 的。**
-///
-/// **凭什么说它们是同一件事**：两侧都是「用户显式删掉一份会话 jsonl，然后清掉本机
-/// 按 sid 存的那份注解」。后半句**本来就只有一份实现** —— 〔C4d〕今天是本机常驻后端的 `history-forget`
-/// （注解的读写者换成了它；界面删成功之后交，`src/history-reads.ts::forgetAnnotation`；当年这里是 `remove_metadata_entry`〔散文墓碑〕）。
-///
-/// 🔴 **〔RW1 · 第四波 · 2026-09-24〕前半句也只剩一份了**：两侧都经那台机器的后端
-/// （[`delete_via_backend`] → `files-delete-session`，只收 sid），本机不再直删、远端不再 SFTP 直删。
-/// `jsonl_path` 仍然收：它是**一致性闸**的另一半 —— 前端送来的 `session_id` 必须恰是那份文件名的 stem，
-/// 对不上就一个字节不动（从前远端那一支「不信前端的 sid、自己从路径算」要防的「删 A 的文件、清 B 的注解」，
-/// 今天由这一闸在两侧同时防：删的是 sid 那一份，清的也是 sid 那一条，而 sid 必须就是界面上那一行的文件名）。
-#[tauri::command]
-pub async fn delete_history_session(
-    origin: crate::origin::Origin,
-    session_id: String,
-    jsonl_path: String,
-) -> Result<(), String> {
-    if let crate::origin::Route::Remote(host) = origin.route("delete_history_session")? {
-        return crate::remote_history::delete_remote_history_session(host, session_id, jsonl_path)
-            .await;
-    }
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin::local());
-    delete_via_backend(&door, &session_id, &jsonl_path).await
-}
-
-/// 删一份历史会话（经门）。**两侧共用这一份**（远端那一支只是门开在那台机器上）。
-/// 〔C4d〕清注解那一半不在这里了：注解归本机常驻后端，界面删成功之后交 `history-forget`。
-pub(crate) async fn delete_via_backend(
-    door: &impl crate::user_files::Door,
-    session_id: &str,
-    jsonl_path: &str,
-) -> Result<(), String> {
-    match crate::remote_history::jsonl_stem(&jsonl_path.replace('\\', "/")) {
-        Some(stem) if stem == session_id => {}
-        other => {
-            return Err(copy_text(
-                "rsHistory.delete.idMismatch",
-                &[
-                    ("sessionId", &session_id.to_string()),
-                    (
-                        "fileName",
-                        &(other
-                            .as_deref()
-                            .unwrap_or(&copy_text("rsHistory.delete.notSessionFile", &[])))
-                        .to_string(),
-                    ),
-                ],
-            ))
-        }
-    }
-    let gone = door.delete_session(session_id).await?;
-    tracing::info!("history: {} 上删掉了 {gone}", door.machine());
-    Ok(())
-}
-
-// === F62：从历史某一轮创建分支 ===
-//
-// **§1 只读铁律：不修约、正交（照 F47 先例）**。建分支是「用户显式点某条消息 → 复制
-// `[根 … 该消息]` 前缀产出一个**全新** jsonl」——原会话一字节不改、纯新增，与「monitor
-// 作为监视器不改坏正在监视的会话文件（尤其防自动/后台写）」这条约正交。防误伤守卫：
-// ①源路径白名单（canonicalize + starts_with(projects) + `.jsonl`）；②只写**新生成的
-// sid**、目标已存在则拒（绝不覆盖任何现存会话）。
-//
-// **落盘格式 = Claude 原生 `/branch`**（issue #12 `forkedFrom`，本机 fe4aad07 实证 +
-// `claude --resume` 回读实测）：复制沿 parentUuid 从分叉点回溯到根的**线性前缀**，逐条
-// 保留原 uuid/parentUuid、`sessionId` 改新 id、加 `forkedFrom{sessionId:源, messageUuid:自身}`。
-// 分叉点之后的记录、被 ESC 回退的兄弟子树、sidechain 全部不带过来（前缀只走祖先链）。
-//
-// === G0（branch-anywhere）：上面那句「= 原生格式」已被扩样本复核，并钉成机检 ===
-//
-// **样本**：两份**早于本功能合入（07-16）**因而只可能是 CC 自己产的 fork
-// —— `0473c3a0`(07-03) 与 `fe4aad07`(07-05)；外加一条三代 fork 链
-// （`a40059e8 → 7c2a26d6 → 4f3fba62`）证明每次 `/branch` 都产**独立文件**、父会话仍可 resume。
-//
-// **决定性指纹**：两份原生 fork 的复制段在源文件里分别跨 1964 / 170 行，却只取了
-// 1402 / 118 条 —— **跳过了 562 / 52 条落在区间内的旁支**。若官方是「线性文件切片」，
-// 那些记录会被一并带走。⇒ **官方 `/branch` 走的就是祖先回溯，与本实现相同。**
-//
-// 逐字段亦一致：uuid **原样保留**（不 remap）· timestamp **不改** ·
-// `slug`/`sourceToolAssistantUUID`/`agentName` **照样带着** · 复制段只有
-// `assistant`/`user`/`attachment`/`system` 四类、不带无 uuid 的旁挂记录
-// （`mode`/`permission-mode`/`ai-title`/`last-prompt`/`file-history-snapshot`/`queue-operation`）·
-// `logicalParentUuid` 在原生 fork 里就带着指向文件外的目标 ⇒ 官方自己不保证这条边。
-//
-// **⚠ 别拿 `claude-agent-sdk` 的 `fork_session` 当规范。**
-// 它也是官方的，但它 remap 全部 uuid、清 `slug` 等字段、改末条 timestamp、
-// 且 `up_to_message_id` 是**线性切片** —— 那些是 SDK 自己的选择，**不是 CC 的落盘规范**。
-// 规划 branch-anywhere 时正是照着它列出六条「我们的缺口」，被上面这批语料全部证伪。
-// 判据只有一个：**CC 自己落在盘上、`claude --resume` 能读回去的那个格式**。
-// `branch_matches_native_fork_shape` 就是这条判据的机检版本，改动本函数前先读它。
-//
-// **用 `serde_json::Value` 原样搬运**（不走有损的 `JsonlRecord` enum，避免丢 gitBranch/
-// version/origin 等 schema 外字段）——除 sessionId/forkedFrom 两处有意改动外逐字段忠实。
-
-/// 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
-///
-/// **`Deserialize` 是给远端那条路用的**（G6）：backend 的 `--fork-session` 在 stdout 吐同形 JSON，
-/// `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct BranchResult {
-    #[serde(rename = "sessionId")]
-    pub session_id: String,
-    #[serde(rename = "jsonlPath")]
-    pub jsonl_path: String,
-}
-
-// 🔴〔`K-R88` 09-13〕**源会话那一步的守卫搬走了，连同它的入参形状一起。**
-//
-// 原先这里有一个收**路径**的门（存在性 → 两边 canonicalize → 前缀落在 projects 内 →
-// 扩展名 `.jsonl`），而后端那条路收的是 **sid**。同一件事两个入参形状 ⇒
-// 「查不到怎么办」两边可以各答各的，而没有任何东西会因此变红。
-//
-// 今天两侧都走 `branch_core::find_session_file`：**入参只有 sid**，
-// 而路径由那一份在记录树里枚举出来。⇒ 界外那种入参**连表达都表达不出来**了 ——
-// 这比「表达得出来但被门拦下」强一档（`K-R88` `§0b` 逐字：少一个可被构造的路径入参
-// 就少一条路径穿越面）。
-// 那道门的两条实证判据（`..` 穿越 · 软链逃逸）没有被删，**换成了新形状的同名两条**，
-// 住在本文件测试段里，读的是同一份实现。
-
-// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机分叉读源会话那一格 `read_jsonl_values`〔散文墓碑〕与
-// `branch_core::build_branch_records` 的引入（记录变换）。本机分叉改成 exec 本机后端 `--fork-session`，
-// 读源 · 变换 · `O_EXCL` 落盘三样全在后端那一份（`control/fork_write.rs`）⇒ 本文件零调用方、删了。
-
-/// F62 IPC：从历史会话的某条消息创建分支。前端点消息卡上的 `⑂` 时调，成功返回新 sid。
-/// 见本段顶部大注释（§1 正交、原生格式、守卫）。〔RW1〕薄壳：按 origin 交给那台机器的后端 `--fork-session`。
-///
-/// 🔴〔`K-R88` 09-13〕**入参从路径改成了 sid**，与远端那条
-/// （`remote_branch::create_remote_branch_session`）**形状一致**。
-/// 前端两条路本来就都拿得到 sid（按钮那份上下文里一直有），所以这不是给调用方加负担。
-///
-/// 🔴 **〔步 12·C 2026-09-20〕两条合成了一条带 `origin` 的。**
-///
-/// **这一对是本批里最便宜的一对，而便宜的理由是前人已经把贵的那部分做完了**：
-/// `K-R88`（09-13）把两侧的入参统一成了 sid，`G1` 把记录变换提成了共享 crate
-/// `branch-core`，`G6` 让远端那条路吐**同一个** [`BranchResult`]。
-/// 被合并掉的那条命令自己的头注逐字写着「与本地那条的差异**今天只剩一处：活儿在远端干**」
-/// —— 那句话就是本次合并的判据，不是我新造的。
-///
-/// ⇒ 合并之后「活儿在哪干」由 `origin` 说，不再由**命令名**说。
-/// ⚠ 本机 ＝ `Origin::local()`（线上 `"<local>"`），**不是 `null`**。
-#[tauri::command]
-pub async fn create_branch_session(
-    origin: crate::origin::Origin,
-    source_session_id: String,
-    message_uuid: String,
-) -> Result<BranchResult, String> {
-    match origin.route("create_branch_session")? {
-        // 〔RW1 · 第四波 09-24〕本机那一支也交给后端写（exec 本机后端 `--fork-session`），本进程一个字节不写。
-        crate::origin::Route::Local => {
-            crate::remote_branch::create_local_branch_session(&source_session_id, &message_uuid)
-                .await
-        }
-        crate::origin::Route::Remote(host) => {
-            crate::remote_branch::create_remote_branch_session(
-                host,
-                &source_session_id,
-                &message_uuid,
-            )
-            .await
-        }
-    }
-}
-
-// 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机建分支的核心 `branch_impl`〔散文墓碑〕与它的落盘
-// `write_branch_file`〔散文墓碑〕（`O_EXCL` 在本进程里写 `~/.claude/projects/<proj>/<new-sid>.jsonl`）。
-// 用户裁「只允许后端的文件管理部分写文件」也管本机 ⇒ 本机分叉与远端同一条路：exec 本机后端的
-// `--fork-session`（`src/backend/control/fork_write.rs`，写盘白名单层那一处 `O_EXCL`），
-// 结果解释与远端共用 `remote_branch::interpret_fork_exec`〔散文墓碑〕（〔LOC1a〕随 exec 那条路一起删了，今天是帧命令 `session-fork`）⇒ 两件零调用方、删了。
+// 〔MIG-3b · `设计/05 §14.3` C 组 · `§9` 第 12 条〕这里原来是删会话与分叉那两条 Tauri 命令、删会话那道 stem 一致性闸
+// 与分叉结果的线上形状。
+// 两件「改世界」的事本来就由那台后端做（`files-delete-session` 只收 sid · `session-fork`）；monitor 只剩转交 ⇒ 界面经通道直说
+// （`src/session-writes.ts`），转交连同命令一起删。stem 闸是恒真的：会话行由后端 `analyze_session` 按文件名 stem 出 `sessionId`，
+// 后端删之前自己再判一次「落点恰是 `<sid>.jsonl`」（`files_write.rs::fenced_session_file`）；删与清注解用的是同一个 sid。
 
 // 🪦〔MIG-2 · `99 §2.1 ⑬`〕这里原来是本机起会话那一整条：三条 Tauri 命令 `resume_history_session` · `new_local_session` ·
 // `render_local_attach`〔散文墓碑〕与它们的计划与渲染（F34 启动器白名单 · 账号三态前缀 · `ccm` 容器路 / 旧路 · 中转前缀

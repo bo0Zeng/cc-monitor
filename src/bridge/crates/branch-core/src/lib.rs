@@ -47,7 +47,7 @@ pub fn build_branch_records(
     }
     // G0：**子 agent 记录不是可分叉的会话**。
     //
-    // `create_branch_session` 是 Tauri 命令，前端传什么 uuid 它就用什么；F77 只是在
+    // `create_branch_session` 是 Tauri 命令，前端传什么 uuid 它就用什么；F77 只是在〔散文墓碑〕
     // 「子 agent 查看器」里不挂那个按钮，**后端从来没拦过**。真让一条 sidechain 记录
     // 进来，产出的是一段 subagent 转录冒充会话。
     //

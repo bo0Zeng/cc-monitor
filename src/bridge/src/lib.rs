@@ -53,10 +53,10 @@ mod event_replay;
 //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
-mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
-                // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
-                // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
-                // 〔MIG-2〕`apikey_remote`〔散文墓碑〕删了：它最后只剩发送口，唯一的调用方（起会话那一侧问 `launch-endpoint`）随本机起会话搬进后端。
+// 〔MIG-3b〕`hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
+// U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
+// 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+// 〔MIG-2〕`apikey_remote`〔散文墓碑〕删了：它最后只剩发送口，唯一的调用方（起会话那一侧问 `launch-endpoint`）随本机起会话搬进后端。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
 mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
@@ -81,7 +81,7 @@ mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给�
 mod port_forward;
 mod profile_installer;
 mod pubkey;
-mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
+// 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
 mod remote_history;
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
@@ -211,7 +211,7 @@ mod session_skeleton;
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
-mod tasks;
+// 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
@@ -698,9 +698,7 @@ pub fn run() {
             tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
             // 〔LOC1b · 第四波 4D〕这里原来还算 `sessions_dir`（`<claude_dir>/sessions`，喂 monitor 自己那份判活）——
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
-            // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
-            let tasks_dir =
-                adapter::tasks_dir(&claude_dir).unwrap_or_else(|| claude_dir.join("tasks"));
+            // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
@@ -1185,9 +1183,8 @@ pub fn run() {
             // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
             // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
-            // v2.3.0 issue #11：监听 task 文件变更，per-session 重读后 emit 给前端。
-            // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
-            tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
+            // 〔MIG-3b · `99 §2.1 ㉓②`〕任务变更的监视进了后端（`tasks_changed` 帧 ⇒ 通道 `subscribe(origin, "session-tasks")`），
+            //   monitor 这边那条 notify 线程与 `task-update` 事件删了；本机远端同形。
 
             // 〔LOC1b · 第四波 4D〕这里原来起「历史全文搜索索引」那条后台线程（延迟 1.5 s 扫 projects/**/*.jsonl 建内存索引）。
             //   本机搜索改问本机后端（与远端同一条 `history-search`），这条线程与那份索引一起删了。
@@ -1383,8 +1380,6 @@ pub fn run() {
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
             // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
-            hooks_diag::diagnose_local_cc_bus_hooks,
-            hooks_diag::diagnose_remote_cc_bus_hooks,
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
@@ -1439,8 +1434,6 @@ pub fn run() {
             acct_iso_deploy::deploy_remote_acct_iso,
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
             // 〔MIG-3a〕`acct_iso_status` / `acct_iso_shellinit` 退役：界面经通道直问那台后端（`acct-iso-status` / `acct-iso-shellinit`，后端出成品）。
-            history::delete_history_session,
-            history::create_branch_session,
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
             //   monitor 只剩「开一个终端窗口跑这串」。
