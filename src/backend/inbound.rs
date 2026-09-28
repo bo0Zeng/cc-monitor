@@ -181,8 +181,7 @@ pub const COMMANDS: &[&str] = &[
     "panorama",
     "ping",
     "plugins-marketplaces",
-    "relay-ensure",
-    "relay-status",
+    // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     "remote-reach",
     "resolve",
@@ -1250,34 +1249,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔RM1a · 第四波〕**中转**：这台机器上的 `--relay` 进程在不在 · 没有就起一个脱离的。
-    //   远端那台上的会话要走中转，那台上就得有一个；本机那一个由 monitor 监护，monitor 从不对本机发 `relay-ensure`。
-    //   ⚠ 只收端口，**一个凭据 / 账号的名字都不经过这两条**（「账号就账号, 中转就中转」）。
-    //   ⚠ 阻塞档：回环连一次 / 起一个进程，开跑之后打不断。
-    CommandSpec {
-        name: "relay-status",
-        doc_anchor: Some("#### `relay-status`"),
-        codes: &["bad_args", "not_ours"],
-        fields: &["listening", "port"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::relay::answer_status(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "relay-ensure",
-        doc_anchor: Some("#### `relay-ensure`"),
-        codes: &["bad_args", "not_ours", "spawn_failed", "unsupported"],
-        fields: &["listening", "pid", "port", "started"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::relay::answer_ensure(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    // 〔DEL〕这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
+    //   中转只住常驻后端进程里（本机远端同形，V139），那一族随回落一形删了。
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半：只交**路径事实**（环境 · stat · 有没有某几个字样），
     //   哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分，**只住 monitor 的 `config_surface`**。只读，阻塞档。
     CommandSpec {

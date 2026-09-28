@@ -2248,21 +2248,21 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused`（口被别人占着 ⇒ 出声拒，不静默复用）。
 
 **射程**：上面几段说的是**控制口**。常驻后端今天还绑两类口，如实列：
-- **中转口**（`relay/listen.rs`，V107 起住常驻后端；远端是 `relay-ensure` 起的脱离 `--relay`）**也要钥匙**〔`RK1` · 主会话 2026-09-25 判「缺口，不是取舍」〕，见下面 48.1a。
+- **中转口**（`relay/listen.rs`，V107 起住常驻后端；V139 起远端同形）**也要钥匙**〔`RK1` · 主会话 2026-09-25 判「缺口，不是取舍」〕，见下面 48.1a。
 - **端口转发**（`dial/uses.rs`）是用户自己配的 `ssh -L` 语义，本就不设钥匙。
 - 文件管理器那条回环通道（`chan/host.rs`）有钥匙，但住 monitor，由 `设计/05 §10.5` 管，是本条的同形邻居。
 
 #### 48.1a 中转口的钥匙
 
-**性质**：中转口（回环；本机常驻后端进程内那一形与远端脱离 `--relay` 那一形同一份代码）每一条请求在读请求体、问上游选择**之前**过三问：
+**性质**：中转口（回环；住常驻后端进程内，本机远端同一份代码）每一条请求在读请求体、问上游选择**之前**过三问：
 带 `Origin` ⇒ **403**（浏览器页面发的请求）；`Host` 不是回环字面量（`127.0.0.1` · `localhost` · `[::1]`，可带口）、缺或不止一个 ⇒ **421**（防 DNS rebinding）；
 路径第一段不是钥匙（没有 / 错 / 前缀 / 多一截 / 大小写不同 / 空段）⇒ **403**，比对定长时间（与控制口同一份 `listen::tokens_match`）。
 过了才剥掉那一段交给路由（`/s/` 与 `/t/` 一样要过）⇒ 「钥匙对、表里没这一行」仍是 **404**，与 403 **可分**；三种拒法各带一句说得清是哪一问的话。
 钥匙 256 位（OS 密码学随机数），住**中转所在那台机器**的 `~/.cc-monitor/relay-key`（`0600`），由中转自己在**绑上口之后**读回或铸（只有绑上口的那一个会写）；
-拿不到钥匙 ⇒ **不起**（`--relay` 退 2，进程内那一形出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
+拿不到钥匙 ⇒ **不起**（出声、后端照常）。钥匙**跨中转重起不变** —— 端口是固定常量，老会话手里的 URL 重起后本来就还有效，换钥匙会打断每一条活会话。
 **钥匙只从那份文件进 agent 进程自己的 env**：注入的 URL 本身不带钥匙，渲染器把钥匙段写成 `$(cat "$HOME/.cc-monitor/relay-key")`、在那台机器的 pane shell 里展开
-⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、`relay-status` 应答里也没有它。
-远端 `relay-status` / `relay-ensure` 认「口上是不是**我们的**中转」用差分探针（对的钥匙 ⇒ 404、同形错钥匙 ⇒ 403），对不上 ⇒ `not_ours`，不抢口。
+⇒ 载荷、`tmux send-keys` 的 argv、shell 历史、终端回滚、webview 里都没有它；后端 / monitor 自己的 argv、env、日志、tee、上游、成品应答里也没有它。
+「口上是不是**我们的**中转」（`launch-endpoint` 的 `listening`）用差分探针（对的钥匙 ⇒ 404、同形错钥匙 ⇒ 403），对不上 ⇒ 当「不在」。
 
 **为什么不能松动**：回环 TCP 没有权限位；中转会**代入账号的凭据**去打上游 —— 门开着，同机任何进程（别的 OS 用户、浏览器里的一张网页）就能以这个账号的额度与身份发请求。
 路由键第三段（会话 id / nonce）是公开可铸的标签，**不是**认证。
@@ -2272,7 +2272,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 `door_tests.rs::the_key_file_is_minted_once_private_and_read_back_across_restarts`（`0600` · 跨重起同一把 · 坏文件换新）· `door_tests.rs::the_key_file_and_the_key_shape_come_from_the_shared_crate`（〔US1〕钥匙路径与形状只住共享 crate `relay-route-core`，两半同一个 const）·
 `server_tests.rs::rk1_the_door_refuses_without_the_key_and_that_is_not_a_404` · `server_tests.rs::rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes` ·
 `server_tests.rs::rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream`（真子进程 · 零命中带正控）·
-`machine_tests.rs::ensure_starts_nothing_when_our_relay_already_listens` · `machine_tests.rs::a_port_held_by_something_else_is_not_ours_and_ensure_says_so`；
+`machine_tests.rs::our_real_relay_with_the_fixture_key_is_ours` · `machine_tests.rs::a_port_held_by_something_else_is_not_ours`；
 monitor 那一半 `payload_tests.rs::the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`；
 写口登记 `readonly_guard` 第四层（`relay/door.rs`，门 `relay/listen.rs`）。设计与读数住 `调研/第四波记录/RK1.md`。
 

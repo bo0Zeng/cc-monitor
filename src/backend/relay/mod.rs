@@ -270,7 +270,7 @@ mod door; // 〔RK1〕中转口的门：钥匙住哪 · 谁铸 · 进门三问�
 mod framer; // `17 §3.7`：`relay/` 里唯一的增量分帧器（游标，不 drain）—— `tee.rs` 与 `http1.rs` 是它的两个客户
 mod http1;
 mod listen; // `20 §4`：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
-mod machine; // 〔RM1a〕这台机器上的中转进程：口上有没有人在听 · 没有就起一个脱离的（帧面 `relay-*`）
+mod machine; // 〔RM1a · DEL〕「这台机器上我们的中转在不在听」那一问（差分探针）
 mod route;
 // 〔AR1 · `设计/15 §2.1` B3〕`nodelay_guard`（Nagle 零命中的源码扫描）退役删了：「两个方向都真的关了 Nagle」
 //   由行为格 `server_tests.rs::both_directions_really_disable_nagle_on_the_socket`（`getsockopt` 背书）判。
@@ -293,11 +293,8 @@ pub(crate) use listen::{host, run, ENV_PORT};
 pub(crate) use tee::{TapBody, TapEvent, TapPort};
 
 /// 〔US1 · 4D〕「这台机器上我们的中转在不在听」—— 上游选择出成品时问它（`launch-endpoint` · `apikey-routing`）。
-/// 与 `relay-status` 同一个判准；只收端口、只回布尔。
+/// 只收端口、只回布尔。对外口的全集由 `layering_guard` 那张登记表两向钉着。
 pub(crate) use machine::our_relay_listening;
-/// 〔RM1a · 第四波〕**第二个口**：帧面 `relay-status` / `relay-ensure` 的两个处理器（这台机器上的中转进程在不在 · 起一个）。
-/// 只交出端口这一个入参，一个上游选择的名字都不经过它。对外口的全集由 `layering_guard` 那张登记表两向钉着。
-pub(crate) use machine::{answer_ensure, answer_status};
 
 // ══════════════════════════════════════════════════════════════════════════
 //  层间契约（`设计/20 §2`）—— 中转问一句，上游选择答一句，**中转不做任何判断**
