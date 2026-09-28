@@ -159,11 +159,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                             "它产出的就是一段 rc 片段（`cc-acct-iso` 的 `cmd_shellinit` "
                             "只 `printf`、一个字节都不写盘）")),
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
-    ("mcp.write", (B3, "K34", "「包括安装 skill / MCP 等等」")),
-    ("mcp.remove", (B3, "K34", "同上，撤那一侧")),
-    # 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B · V111/V112）：把另一台那份 `.mcp.json` 里勾的条目装到这台 ——
-    #   与 `mcp.write` 同一件事（写的是同一份文件、经同一份规划），只是条目来自另一台机器。
-    ("mcp.sync", (B3, "K34+V111+V112", "「装 MCP」的跨机那一形：条目原样从另一台拷来，写之前看差异、不同的要点了才盖")),
+    # 〔MIG-3a · `99 §2.1 ⑬`〕`mcp.write` / `mcp.remove` / `mcp.sync` 三项摘了：D 组 MCP 的计算与写进了那台后端
+    #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
+    #   （归档表留一个不存在的 id 会让 `R3b` 恒红）。「装 MCP」那一件的装口住 `tool_registry` 的 `project-mcp` 那一行（后端写口）。
     # 〔AS2 · 第四波 4B · V113〕skill「装到这台」：资产目录里别的机器有的 skill，用户点了才装到这台 `<skill 根>/<名>/`。
     ("skill.install", (B3, "K34+V112+V113", "「装 skill」：文件原样从来源那台拷来，写之前看差异、不同的要点了才盖（装要你点）")),
     ("cc-bus.deploy", (B3, "K34",
@@ -221,8 +219,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # （`src/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
     # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
-    ("mcp.list-project-dirs", (NA, "—", "列项目目录 —— 读")),
-    ("mcp.read", (NA, "—", "读 MCP 配置")),
+    # 〔MIG-3a〕`mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
     ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
@@ -386,18 +383,13 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   因为它描述的那个现实变了。
         "cc_bus_install_state",
         "deploy_local_cc_bus",
-        # 〔AS1 · 第四波 4B〕MCP 推 / 拉（能力 `mcp.sync`，归档同 `mcp.write` 在 ③）：写的是同一份 `.mcp.json`、
-        #   经同一份规划（`mcp.rs::plan_project_mcp`）⇒ 与下面那两条同一件。
-        "mcp_sync_apply",
-        "mcp_sync_preview",
+        # 〔MIG-3a〕MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # 〔AS2 · 第四波 4B〕skill「装到这台」（能力 `skill.install`，③）：写的是这台 `<skill 根>/<名>/`，与 cc-bus 那一格同一件（装 skill）。
         "skill_install_apply",
         "skill_install_preview",
         # 〔SU1 · 第四波 4C · V116〕skill 卸（同一能力 `skill.install`，③）：删的是同一个 `<skill 根>/<名>/` 里装时写进去的那几个 ⇒ 同一件（装 / 卸 skill）。
         #   前端落点仍只在 `src/settings/mcp-section.ts::assetInstallApi`（`FRONTEND_PIN['S5']` 不动）。
         "skill_uninstall_apply",
-        "remove_project_mcp_server",
-        "write_project_mcp_server",
         "write_skill_file",
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
        "〔步 12·C 收尾 09-20〕③ 这一处**现打是 5 条命令**（`§3-3` 写下时是 7 条，"
@@ -601,6 +593,11 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
     "profile_installer.rs::uninstall_from_profile":
         "同上，摘那一侧",
     # 〔TL1 · 4C〕全景小程序进 `tool_registry::TOOLS`（`id: "panorama"`）时它的装口登记进对拍表。
+    # 〔MIG-3a · `99 §2.1 ⑬`〕`project-mcp` 的装 / 卸口进了那台后端：帧命令 `mcp-server-put` / `-remove` 的本体。
+    "assets/mcp_edit.rs::answer_put":
+        "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
+    "assets/mcp_edit.rs::answer_remove":
+        "同上，撤那一侧",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
         "本来就不是 Tauri 命令：没有用户按钮，触发点是 `panorama_call.rs` 在那台后端答「没装 / 太旧」时调它"

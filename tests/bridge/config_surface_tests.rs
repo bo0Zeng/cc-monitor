@@ -911,12 +911,13 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
         "注册表声明的 ccm 远端落点与 sftp.rs 的 LANDING_REL 不一致"
     );
 
-    // ② 项目 MCP：`mcp.rs` 真正 join 的就是这个文件名
-    let mcp = include_str!("../../src/bridge/src/mcp.rs");
-    let joins = mcp.matches(r#"join(".mcp.json")"#).count();
-    assert!(
-        joins >= 1,
-        "mcp.rs 里找不到 join(\".mcp.json\")——落点变了还是扫描器失效了？"
+    // ② 项目 MCP：〔MIG-3a〕写进了那台后端（`assets/mcp_edit.rs`），落点常量就是这个文件名
+    let mcp = include_str!("../../src/backend/assets/mcp_edit.rs");
+    assert_eq!(
+        mcp.matches(r#"pub(crate) const MCP_JSON: &str = ".mcp.json";"#)
+            .count(),
+        1,
+        "mcp_edit.rs 里找不到落点常量 MCP_JSON——落点变了还是扫描器失效了？"
     );
     let pm = TOOLS.iter().find(|t| t.id == "project-mcp").unwrap();
     assert_eq!(
@@ -924,8 +925,8 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
             .iter()
             .map(|c| &c.destination)
             .collect::<Vec<_>>(),
-        // 〔AS1 · 第四波 4B〕两个载体（单条写 · 推 / 拉）落同一个文件：推 / 拉的落点也只经 `mcp.rs` 那两个出口
-        //    （`mcp.rs::project_mcp_target`；`mcp_sync_tests::the_landing_file_name_lives_only_in_mcp_rs` 钉它自己不拼文件名）。
+        // 〔AS1 · 第四波 4B〕两个载体（单条写 · 推 / 拉）落同一个文件。〔MIG-3a〕两者都进了那台后端，落点常量只有
+        //    `mcp_edit.rs::MCP_JSON` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
         vec![
             &ToolDestination::ProjectRelative(".mcp.json"),
             &ToolDestination::ProjectRelative(".mcp.json")

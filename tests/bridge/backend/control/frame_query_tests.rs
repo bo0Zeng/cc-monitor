@@ -394,6 +394,33 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：后端转调只读的 `cc-log`（不推已读位置）、出成品 `{messages, skipped, truncated}`，\
          界面 `cc-bus-control.ts::decodeInbox` 按形状收",
     ),
+    // 〔MIG-3a · `99 §2.1 ⑬`〕D 组 MCP：读写与推拉的计算、读、写都进了那台后端（`assets/mcp_edit.rs` · `assets/mcp_sync_flow.rs`），
+    //   monitor 那八条 Tauri 命令（`mcp.rs` · `mcp_sync.rs`〔散文墓碑〕）删了；界面经 `src/mcp-reads.ts` / `src/mcp-sync-reads.ts` 按形状收。
+    (
+        "mcp-read",
+        "MCP 三段 ＋ 用过的项目目录：后端从来就出成品，monitor 那几条命令（`read_mcp_servers` 等）只在核形状 ＋ 转 —— \
+         核验搬到 `mcp-reads.ts::decodeMcpRead`（金样 `mcp-read.golden.json`）",
+    ),
+    (
+        "mcp-server-put",
+        "新帧命令：项目 `.mcp.json` 增 / 改一条，那台后端自己读 · 规划 · 经自己的文件管理面写；成品 `{path, changed}`",
+    ),
+    (
+        "mcp-server-remove",
+        "新帧命令：删一条，同上",
+    ),
+    (
+        "mcp-sync-source",
+        "新帧命令：推 / 拉的来源那份原文 `{path, text}`（界面原样递给要被写的那一台）",
+    ),
+    (
+        "mcp-sync-preview",
+        "新帧命令：被写那台读自己那份、判差异与可疑项（判定原样是 `mcp-sync-plan`），成品带两份原文 ＋ 逐行两边的值",
+    ),
+    (
+        "mcp-sync-apply",
+        "新帧命令：被写那台把勾的那几条原样合进去（CAS 期望 = 看差异时那份，`stale` 就停）",
+    ),
 ];
 
 /// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
@@ -1121,13 +1148,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         1,
         "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
     ),
-    // 〔SH1 · V137〕MCP 列表问那台后端（本机远端同一条 `mcp-read`，一问）。
-    (
-        "mcp.rs",
-        "mcp_on",
-        1,
-        "MCP 列表问那台后端（`mcp-read`，一问；值 `MCP_READ_BUDGET` 30 s —— 读一份 `.claude.json`，重度用户可数 MB）",
-    ),
+    // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/mcp-reads.ts`），期限在那边造。
     // 〔SH1〕列远端 tmux 会话问那台后端（`tmux-list`，一问）。
     (
         "backend/control/tmux.rs",

@@ -8,7 +8,7 @@
  *
  * - **目录怎么对上**：这一块看得见时先让本机常驻后端对这台做一趟同步（`assets_sync`），再问**这台**的后端要目录
  *   （帧命令 `assets-catalog`）。「这台缺什么」（`missing` / `differs` / `same`）是这台后端答的，这里只照着画。
- * - **装**：MCP 走 AS1 那条路原样（`mcp_sync_preview` / `mcp_sync_apply`，只看这一条、勾「盖掉」才盖）；
+ * - **装**：MCP 走 AS1 那条路原样（`mcp-sync-reads.ts` 的看差异 / 写，只看这一条、勾「盖掉」才盖）；
  *   skill 走 `skill_install_preview` / `skill_install_apply`（判定在要被写的那台后端）。
  *   🔴 这四条「装」命令**由宿主递进来**（`mcp-section.ts::assetInstallApi`）：「装 MCP / skill」那一件的前端落点
  *   钉在一张名单上（`tests/evidence/K-R117-ruler.py` 的 `R9a`，只许缩），本文件不给它加一份新落点。
@@ -29,16 +29,16 @@ import { copyText } from "../copy-table";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { stateText, suspectText } from "./mcp-sync";
 import type { AssetsSynced } from "../generated/AssetsSynced";
-import type { McpSyncPreview } from "../generated/McpSyncPreview";
+import type { McpSyncPreview, mcpSyncApply, mcpSyncPreview } from "../mcp-sync-reads";
 import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
 import type { SkillInstallRow } from "../generated/SkillInstallRow";
 import type { SkillInstallSuspect } from "../generated/SkillInstallSuspect";
 
 /** 「装」那几条命令（宿主递进来；见头注）。 */
 export interface AssetInstallApi {
-  dirs: typeof commands.list_mcp_project_dirs;
-  mcpPreview: typeof commands.mcp_sync_preview;
-  mcpApply: typeof commands.mcp_sync_apply;
+  dirs: (a: { origin: Origin }) => Promise<string[]>;
+  mcpPreview: typeof mcpSyncPreview;
+  mcpApply: typeof mcpSyncApply;
   skillPreview: typeof commands.skill_install_preview;
   skillApply: typeof commands.skill_install_apply;
   /** 〔SU1〕卸：删经那台后端 `files-delete`（带 `expect`），删掉的从装记录里摘掉。 */

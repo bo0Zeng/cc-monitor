@@ -9,9 +9,8 @@
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
 //! - **F11**：用户**主动**删除远端会话 jsonl。〔RW1 · 第四波 09-24〕**已不在本模块**：经远端后端的
 //!   `files-delete-session`（只收 sid）删，从前那道 SFTP 直删与它的结构守卫〔散文墓碑〕走了。
-//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（字符串守卫 `is_safe_remote_mcp_json`：
-//!   绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸）。〔RW1 · 第四波 09-24〕**写已不在本模块**：
-//!   经远端后端（`mcp::write_project_mcp_server` → `user_files`），不再 SFTP 直写。
+//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`。〔RW1 · 第四波 09-24〕**写已不在本模块**；
+//!   〔MIG-3a〕今天由那台后端自己算、自己写（帧命令 `mcp-server-put` / `-remove`，`mcp_edit.rs::project_root` 守落点）。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
 //! - **F10**：别名块装/卸——〔AL2 · 第四波 4D〕今天是 `lib.rs` 的 `aliases_block_install` / `aliases_block_remove`（带 `origin`，本机远端同一条）
 //!   （〔MC1〕从前这一对叫 `install_remote_ccm_helper`〔散文墓碑〕/ `uninstall_…`，推入口那一半并进了 [`deploy_remote_backend`]）

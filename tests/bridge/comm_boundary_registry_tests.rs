@@ -2486,11 +2486,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔SH1 · 4D〕37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
     // 〔GAP1 · `设计/15 §4.7 S1`〕39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
     // 〔RESYNC · V149〕基数 40 → 增量 +1 ⇒ 41：`resync.ts::resync`（`resync`，机器一行「重新对齐」与关卡 2「对齐后重试」共用这一处）；显式给期限（`RESYNC_BUDGET_MS`）。
+    // 〔MIG-3a〕基数 41 → 增量 +6 ⇒ 47：`mcp-reads.ts` 三处（`mcp-read` · `mcp-server-put` / `-remove`）＋ `mcp-sync-reads.ts` 三处（`mcp-sync-source` / `-preview` / `-apply`），
+    //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 41usize),
+            ("chan.call", 47usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

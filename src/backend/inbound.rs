@@ -175,8 +175,15 @@ pub const COMMANDS: &[&str] = &[
     "link-open",
     // 〔SH1 · V137〕MCP 列表出成品（读法住适配层那一格 `agents::Adapter.mcp`）。
     "mcp-read",
+    // 〔MIG-3a〕项目 `.mcp.json` 增改 / 删（那台后端自己算、经自己的文件管理面写）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "mcp-server-put",
+    "mcp-server-remove",
+    // 〔MIG-3a〕MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "mcp-sync-apply",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
+    "mcp-sync-preview",
+    "mcp-sync-source",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
     "ping",
@@ -207,6 +214,32 @@ pub const COMMANDS: &[&str] = &[
     "transfer-stop",
     "transfer-upload",
 ];
+
+/// 〔MIG-3a〕资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
+/// 住这里是因为 `readonly_guard` 第三层只许 `inbound.rs` 够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
+pub(crate) struct LocalFiles;
+
+impl crate::assets::door::Door for LocalFiles {
+    fn ask(
+        &self,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, (String, String)> {
+        let spec = REGISTRY
+            .iter()
+            .find(|s| s.name == cmd && s.name.starts_with("files-"))
+            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
+        let Run::Blocking(run) = spec.run else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
+        };
+        let req = Request {
+            id: "in-process".to_string(),
+            cmd: cmd.to_string(),
+            args,
+        };
+        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+    }
+}
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
@@ -2343,6 +2376,109 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::feature_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕项目 `.mcp.json` 增改 / 删：计算（`assets/mcp_edit.rs`）与写（本进程文件管理面 [`LocalFiles`]）在同一台。
+    CommandSpec {
+        name: "mcp-server-put",
+        doc_anchor: Some("#### `mcp-server-put`"),
+        codes: &["bad_args", "bad_path", "refused"],
+        fields: &["changed", "name", "path", "projectDir", "server"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_edit::answer_put(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "mcp-server-remove",
+        doc_anchor: Some("#### `mcp-server-remove`"),
+        codes: &["bad_args", "bad_path", "refused"],
+        fields: &["changed", "name", "path", "projectDir"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
+    CommandSpec {
+        name: "mcp-sync-source",
+        doc_anchor: Some("#### `mcp-sync-source`"),
+        codes: &["bad_args", "bad_path", "missing", "refused"],
+        fields: &["path", "projectDir", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_sync_flow::answer_source(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "mcp-sync-preview",
+        doc_anchor: Some("#### `mcp-sync-preview`"),
+        codes: &["bad_args", "bad_file", "bad_path", "refused"],
+        fields: &[
+            "field",
+            "kind",
+            "name",
+            "projectDir",
+            "rows",
+            "sameMachine",
+            "source",
+            "sourcePath",
+            "sourceText",
+            "state",
+            "suspects",
+            "target",
+            "targetPath",
+            "targetText",
+            "there",
+            "value",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_sync_flow::answer_preview(
+                &LocalFiles,
+                &crate::mcp_sync::Live::from_env(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "mcp-sync-apply",
+        doc_anchor: Some("#### `mcp-sync-apply`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "bad_path",
+            "needs_consent",
+            "refused",
+            "stale",
+        ],
+        fields: &[
+            "names",
+            "overwrite",
+            "path",
+            "projectDir",
+            "source",
+            "take",
+            "target",
+            "written",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_sync_flow::answer_apply(
+                &LocalFiles,
+                &crate::mcp_sync::Live::from_env(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。

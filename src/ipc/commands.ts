@@ -123,14 +123,11 @@ import type { PushResult } from "../generated/PushResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { AssetsSynced } from "../generated/AssetsSynced";
-import type { McpServerEntry } from "../generated/McpServerEntry";
-import type { McpSyncApplied } from "../generated/McpSyncApplied";
 import type { SkillFile } from "../generated/SkillFile";
 import type { SkillInstallApplied } from "../generated/SkillInstallApplied";
 import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
 import type { SkillTargetText } from "../generated/SkillTargetText";
 import type { SkillUninstallApplied } from "../generated/SkillUninstallApplied";
-import type { McpSyncPreview } from "../generated/McpSyncPreview";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
@@ -406,27 +403,6 @@ export const commands = {
     account: { kind: "base" } | { kind: "named"; configDir: string; name?: string } | null;
   }) => invoke<string | null>("relay_endpoint_for_launch", args),
 
-  read_mcp_servers: (args: { projectDir: string | null }) =>
-    invoke<McpServerEntry[]>("read_mcp_servers", args),
-
-  /** 读远端的 MCP server 清单。 */
-  read_remote_mcp_servers: (args: { origin: string }) =>
-    invoke<McpServerEntry[]>("read_remote_mcp_servers", args),
-
-  /** 读远端某项目目录的 `.mcp.json`。 */
-  read_remote_project_mcp: (args: { origin: string; projectDir: string }) =>
-    invoke<McpServerEntry[]>("read_remote_project_mcp", args),
-
-  /**
-   * 删项目 `.mcp.json` 里的一个 server。Rust 返回 `Result<(), String>` ⇒ **桶①**。
-   *
-   * 🔴 **〔步 12·C 收尾〕`remove_remote_mcp_server` 已退役，两条收成这一条。**
-   * 本机要**逐字**送 `LOCAL_ORIGIN`（`"<local>"`）—— 省掉它就是线上 `null`，
-   * 而 `null` ≠ 本机，Rust 侧 `Origin::route` 当场拒。
-   */
-  remove_project_mcp_server: (args: { origin: Origin; projectDir: string; name: string }) =>
-    invoke<void>("remove_project_mcp_server", args),
-
   // 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
   //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。
 
@@ -669,16 +645,6 @@ export const commands = {
   /** `~/.ssh/config` 里的 host 别名清单（不展开 Include、不解析 Match）。 */
   list_ssh_host_aliases: () => invoke<string[]>("list_ssh_host_aliases"),
 
-  /**
-   * 有 `.mcp.json` 的项目目录候选（`~/.claude.json` 的 `projects` 键）。
-   *
-   * 🔴 **〔步 12·C〕`list_remote_mcp_project_dirs`〔散文墓碑〕 已退役，两条收成这一条。**
-   * 两侧算它的那一份代码本来就只有一份（Rust `project_dirs_from`），
-   * 差别只在「那份 `~/.claude.json` 的字节从哪来」。
-   */
-  list_mcp_project_dirs: (args: { origin: Origin }) =>
-    invoke<string[]>("list_mcp_project_dirs", args),
-
   /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
 
@@ -790,38 +756,6 @@ export const commands = {
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),
-  /**
-   * 写项目 `.mcp.json` 的一个 server。**桶①**。
-   * `server` 是不透明 JSON（Rust 侧 `serde_json::Value`）⇒ `unknown`，与生成物一致。
-   *
-   * 🔴 **〔步 12·C 收尾〕`write_remote_mcp_server` 已退役，两条收成这一条。**
-   * 本机同样要逐字送 `LOCAL_ORIGIN`，理由见上面 `remove_project_mcp_server`。
-   */
-  write_project_mcp_server: (args: {
-    origin: Origin;
-    projectDir: string;
-    name: string;
-    server: unknown;
-  }) => invoke<void>("write_project_mcp_server", args),
-
-  /**
-   * 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异。`from` 那台 `fromDir` 的 `.mcp.json` 拷到
-   * `to` 那台 `toDir` 会发生什么 —— 判定由 `to` 那台的后端做（`mcp-sync-plan`）。两台都是 `Origin`，本机逐字 `LOCAL_ORIGIN`。
-   */
-  mcp_sync_preview: (args: { from: Origin; fromDir: string; to: Origin; toDir: string }) =>
-    invoke<McpSyncPreview>("mcp_sync_preview", args),
-  /**
-   * 〔AS1〕写：把勾的那几条原样合进 `to` 那台那份（`overwrite` = 对面不同、用户说了要盖的那几条）。
-   * `sourceText` / `targetText` 原样送回看差异时拿到的那两份（后者是 CAS 期望：对面在那之后变了 ⇒ 一个字节不写）。
-   */
-  mcp_sync_apply: (args: {
-    to: Origin;
-    toDir: string;
-    sourceText: string;
-    targetText: string | null;
-    take: string[];
-    overwrite: string[];
-  }) => invoke<McpSyncApplied>("mcp_sync_apply", args),
 
   /**
    * 〔AS2 · 第四波 4B · V113〕skill「装到这台」：看差异。`from` 那台的 skill `name` 装到 `to` 那台会发生什么 ——

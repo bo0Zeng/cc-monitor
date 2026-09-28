@@ -71,8 +71,6 @@ mod local_accounts; // L3a 起：本机账号域 —— 今天只剩 `acct-iso` 
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
-mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
-mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 推 / 拉：只编排 I/O（读两边 · 请对面后端判 · 经对面后端写），判定住后端 `mcp-sync-plan`
 mod messages;
 // 〔STOP〕`stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
 // 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
@@ -183,13 +181,13 @@ mod launcher_identity_registry; // K-P5b：起会话方身份落点清账 + 递�
                                 //  `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个）。
                                 //  今天挡着正题的是后端侧一批有名有姓的缺口，逐条写在
                                 //  那张表**自己每一行**里 —— 这里刻意不抄第二份（定框 E12）。〕
+#[cfg(test)]
+mod command_home_registry; // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表：monitor 自己的事 / 待迁（整体 cfg(test)）
 mod local_read_surface_registry;
 #[cfg(test)]
 mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须为空（超集不算）
 #[cfg(test)]
 mod needle_anchor_registry; // audit-0805 F24：匹配单位不许比事实小（F23 的兄弟族）
-#[cfg(test)]
-mod command_home_registry; // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表：monitor 自己的事 / 待迁（整体 cfg(test)）
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
                    // EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
                    // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
@@ -1401,19 +1399,10 @@ pub fn run() {
             backend::control::launch_wire::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,
             hooks_diag::diagnose_remote_cc_bus_hooks,
-            mcp::read_mcp_servers,
-            mcp::read_remote_mcp_servers,
-            mcp::list_remote_mcp_origins,
-            mcp::read_remote_project_mcp,
-            // 〔步 12·C 收尾 09-20〕`write_remote_mcp_server` / `remove_remote_mcp_server`
-            // **已退役**（不留别名）—— 并进了下面那两条吃 `origin` 的，它们是那两个函数
-            // 今天唯一的调用点。理由住 `mcp.rs` 那两条命令的头注。
-            mcp::list_mcp_project_dirs,
-            mcp::write_project_mcp_server,
-            mcp::remove_project_mcp_server,
-            // 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B）：看差异 ＋ 写，两条都吃 origin（本机远端同一条路）。
-            mcp_sync::mcp_sync_preview,
-            mcp_sync::mcp_sync_apply,
+            // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
+            //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。
+            //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
+            config::list_remote_mcp_origins,
             // 〔AS2 · 第四波 4B · V113〕资产目录同步：看机器页前让本机常驻后端对那一台（本机那一页 = 每一台）做一趟。
             asset_sync::assets_sync,
             // 〔AS2〕skill「装到这台」：看差异 ＋ 写（来源那台读、被写那台判、经被写那台后端 files-put 写）。

@@ -106,7 +106,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔SH1〕`hooks_diag.rs::diagnose_remote_cc_bus_hooks` 那一行还掉了：它不再查远端配置（事实经 `frame_query::call(origin, …)` 问那台后端）。
     ("launch.rs", "build_remote_ssh_ps_command"),
     // 〔SH1 · V137〕`mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
-    ("mcp.rs", "read_remote_project_mcp"),
+    // 〔MIG-3a〕`mcp.rs` 那最后一行（远端项目 `.mcp.json` 读）随文件删了：MCP 读写进了那台后端，界面经通道直问、不查远端配置。
     // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
     //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
     //   **表只许变短，这一次它真的短了。**

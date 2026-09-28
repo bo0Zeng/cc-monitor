@@ -277,6 +277,12 @@ mod tests {
         ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
         (
+            "assets",
+            "〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
+             它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `inbound.rs::LocalFiles` 递进来的\
+             本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`",
+        ),
+        (
             "mcp_sync",
             "〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
              它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\

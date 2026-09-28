@@ -12627,11 +12627,6 @@
       "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）。说明请写在备注里，路径栏只放路径。",
       "args": ["bad", "declared"]
     },
-    "rsMcp.target.pathNoProjectDir": {
-      "kind": "error",
-      "zh": "{path} 切不出项目目录",
-      "args": ["path"]
-    },
     "rsTmux.list.shape": {
       "kind": "error",
       "zh": "{who}的 tmux 会话列表形状对不上 —— 两边版本不一样，先别重试",
@@ -12651,114 +12646,6 @@
       "kind": "error",
       "zh": "读 {path} 失败：{e}",
       "args": ["path", "e"]
-    },
-    "rsMcp.read.shape": {
-      "kind": "error",
-      "zh": "{who}的 MCP 列表形状对不上（{why}）—— 两边版本不一样，先别重试",
-      "args": ["who", "why"]
-    },
-    "rsMcp.remote.notConfigured": {
-      "kind": "error",
-      "zh": "远端「{machine}」未配置或未启用",
-      "args": ["machine"]
-    },
-    "rsMcp.plan.parseFailed": {
-      "kind": "error",
-      "zh": "{what} 解析失败（拒绝覆盖）：{e}",
-      "args": ["what", "e"]
-    },
-    "rsMcp.target.noProjectDir": {
-      "kind": "error",
-      "zh": "拒绝写：{target} 切不出项目目录",
-      "args": ["target"]
-    },
-    "rsMcp.remote.pathIllegal": {
-      "kind": "error",
-      "zh": "拒绝写非法远端路径：{path}",
-      "args": ["path"]
-    },
-    "rsMcp.remote.pathNotAbsolute": {
-      "kind": "error",
-      "zh": "远端项目目录须为绝对路径",
-      "args": []
-    },
-    "rsMcp.mcpJson.rootNotObject": {
-      "kind": "error",
-      "zh": ".mcp.json 根不是对象",
-      "args": []
-    },
-    "rsMcp.mcpJson.serversNotObject": {
-      "kind": "error",
-      "zh": ".mcp.json 里的 mcpServers 不是对象",
-      "args": [],
-      "waive": {
-        "C-T1": "mcpServers 是用户自己那份 .mcp.json 里的键名，指路要用原名"
-      }
-    },
-    "rsMcp.upsert.emptyName": {
-      "kind": "error",
-      "zh": "MCP 服务名为空",
-      "args": []
-    },
-    "rsMcp.path.notAbsolute": {
-      "kind": "error",
-      "zh": "项目目录须为绝对路径（实得 {dir}）",
-      "args": ["dir"]
-    },
-    "rsMcp.path.emptyDir": {
-      "kind": "error",
-      "zh": "项目目录为空，拒绝写",
-      "args": []
-    },
-    "rsMcpSync.preview.sameFile": {
-      "kind": "error",
-      "zh": "两边是同一份文件 —— 换一台机器或换一个项目目录",
-      "args": []
-    },
-    "rsMcpSync.apply.notInCopy": {
-      "kind": "error",
-      "zh": "「{name}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写",
-      "args": ["name"]
-    },
-    "rsMcpSync.stale.changed": {
-      "kind": "error",
-      "zh": "{machine} 上那份配置在你看差异之后又被改过了。这一趟一个字节都没写，重新看一次差异再决定。",
-      "args": ["machine"]
-    },
-    "rsMcpSync.preview.missing": {
-      "kind": "error",
-      "zh": "{from} 上没有 {path} —— 没有可以拷过去的条目",
-      "args": ["from", "path"]
-    },
-    "rsMcpSync.reply.unreadable": {
-      "kind": "error",
-      "zh": "对面的后端答的内容认不出来，多半是两边版本不一样。这一趟什么都没写。",
-      "args": []
-    },
-    "rsMcpSync.plan.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的后端回了一条空应答",
-      "args": ["who"]
-    },
-    "rsMcpSync.plan.internal": {
-      "kind": "error",
-      "zh": "{who}：比对时出了内部错误，没有拿到结果",
-      "args": ["who"]
-    },
-    "rsMcpSync.plan.tooBig": {
-      "kind": "error",
-      "zh": "两份配置合起来太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
-      "args": ["bytes", "cap"]
-    },
-    "rsMcpSync.plan.cannotCompare": {
-      "kind": "error",
-      "zh": "没法比对，一个字节都没动",
-      "args": []
-    },
-    "rsMcpSync.plan.backendDown": {
-      "kind": "error",
-      "zh": "{who} 的后端没连上，比对要经它来做（{why}）—— 一个字节都没动",
-      "args": ["who", "why"]
     },
     "rsHooksDiag.local.noHome": {
       "kind": "body",
@@ -19319,6 +19206,99 @@
       "kind": "error",
       "zh": "重新读取失败",
       "args": []
+    },
+    "beMcpEdit.path.emptyDir": {
+      "kind": "error",
+      "zh": "项目目录为空，拒绝写",
+      "args": []
+    },
+    "beMcpEdit.path.notAbsolute": {
+      "kind": "error",
+      "zh": "项目目录须为绝对路径（实得 {dir}）",
+      "args": ["dir"]
+    },
+    "beMcpEdit.upsert.emptyName": {
+      "kind": "error",
+      "zh": "MCP 服务名为空",
+      "args": []
+    },
+    "beMcpEdit.mcpJson.rootNotObject": {
+      "kind": "error",
+      "zh": ".mcp.json 根不是对象",
+      "args": []
+    },
+    "beMcpEdit.mcpJson.serversNotObject": {
+      "kind": "error",
+      "zh": ".mcp.json 里的 mcpServers 不是对象",
+      "args": [],
+      "waive": {
+        "C-T1": "mcpServers 是用户自己那份 .mcp.json 里的键名，指路要用原名"
+      }
+    },
+    "beMcpEdit.plan.parseFailed": {
+      "kind": "error",
+      "zh": "{what} 解析失败（拒绝覆盖）：{e}",
+      "args": ["what", "e"]
+    },
+    "beAssets.door.editGaveUp": {
+      "kind": "error",
+      "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
+      "args": ["last", "attempts"]
+    },
+    "beAssets.door.outsideHome": {
+      "kind": "error",
+      "zh": "{abs} 不在 home（{home}）底下 —— 只改 home 里的文件",
+      "args": ["abs", "home"]
+    },
+    "beAssets.door.homeUnknown": {
+      "kind": "error",
+      "zh": "这台机器的后端没答出 home 在哪",
+      "args": []
+    },
+    "mcpReads.read.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 MCP 列表，两端版本对不上",
+      "args": []
+    },
+    "mcpReads.edit.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 MCP 写入结果，两端版本对不上",
+      "args": []
+    },
+    "mcpReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "beMcpSyncFlow.preview.sameFile": {
+      "kind": "error",
+      "zh": "两边是同一份文件 —— 换一台机器或换一个项目目录",
+      "args": []
+    },
+    "beMcpSyncFlow.apply.notInCopy": {
+      "kind": "error",
+      "zh": "「{name}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写",
+      "args": ["name"]
+    },
+    "beMcpSyncFlow.apply.stale": {
+      "kind": "error",
+      "zh": "要写的那份配置在你看差异之后又被改过了。这一趟一个字节都没写，重新看一次差异再决定。",
+      "args": []
+    },
+    "beMcpSyncFlow.source.missing": {
+      "kind": "error",
+      "zh": "来源那台上没有 {path} —— 没有可以拷过去的条目",
+      "args": ["path"]
+    },
+    "mcpSyncReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的差异 / 写入结果，两端版本对不上。这一趟什么都没写。",
+      "args": []
+    },
+    "mcp.read.problem": {
+      "kind": "body",
+      "zh": "这一份读不出来，当作没有：{what}",
+      "args": ["what"]
     }
   }
 }
