@@ -34,8 +34,8 @@
 //! 变的只有一件事：先前那是「碰巧撞出来的」，现在是**写出来的**。
 
 pub(crate) mod dialect;
-
-
+pub(crate) mod posix;
+pub(crate) mod powershell;
 
 /// 备一条 `sh -c <脚本>`。**非 unix 上回 `None`** —— 那里没有 `sh`。
 ///

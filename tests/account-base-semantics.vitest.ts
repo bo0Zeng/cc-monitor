@@ -143,7 +143,8 @@ describe("「不指定账号」的文案必须与 --base 的真实语义对上�
         "本文件整套文案论证都建立在「它会清掉账号载体」上。它一变，上面几条要求的文案就成了新的假话。",
     ).toBe(1);
     expect(
-      planLines.filter((l) => l === 'line.push_str(&format!("unset {cfg_env}; "));').length,
+      // 〔OSA · V156〕`unset` 的写法搬进后端 OS 适配层（`platform::shell::posix::unset`），落点这一行跟着换形。
+      planLines.filter((l) => l === "line.push_str(&posix::unset(&[cfg_env]));").length,
       "那条 `unset <账号载体>` 的渲染没了（要恰好一处）—— 同上。\n" +
         "（另有 `base-flag-contract-guard.vitest.ts` 从跨语言双写点那一面钉同一个事实。）",
     ).toBe(1);

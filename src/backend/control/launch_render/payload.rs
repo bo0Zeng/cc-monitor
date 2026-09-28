@@ -62,8 +62,8 @@ pub(crate) fn refuse(msg: impl std::fmt::Display) -> String {
     format!("{REFUSE_TAG} {msg}")
 }
 
+use crate::platform::shell::{posix, powershell};
 use copy_core::copy_text;
-use std::fmt::Write as _;
 
 /// 两种 shell 共用的元字符黑名单。
 ///
@@ -144,7 +144,7 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
                     &[("value", &format!("{:?}", d))],
                 )));
             }
-            Ok(format!("export {}='{d}'; ", account_env()))
+            Ok(posix::export(account_env(), &format!("'{d}'")))
         }
     }
 }
@@ -154,7 +154,7 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
 /// 逐字节形态被 e2e 探针用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言，且与 TS
 /// 〔LR2〕TS 那份同名常量随兜底渲染器删了；逐字节由 `payload-golden.json`「账号 0」那条夹具钉着。
 pub fn unset_config_dir_prefix() -> String {
-    format!("unset {}; ", account_env())
+    posix::unset(&[account_env()])
 }
 
 /// 〔MIG-2〕账号维度的载体（环境变量名）从适配层取（`agents::account_env_of`，通用层拿这个名字的唯一入口）。
@@ -288,12 +288,10 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                         &[("value", &format!("{:?}", value))],
                     )));
                 }
-                let _ = write!(
-                    out,
-                    "export {}={}; ",
+                out.push_str(&posix::export(
                     account_env(),
-                    shell_quote_core::posix_quote(value)
-                );
+                    &shell_quote_core::posix_quote(value),
+                ));
             }
             EnvOp::ExportModel { value } => {
                 // 〔DUP1 · `INVARIANTS §47` ①〕模型名是标识符：共享那一份判（`shell_quote_core::model_name_ok`，
@@ -305,11 +303,10 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                         &[("value", &format!("{:?}", value))],
                     )));
                 }
-                let _ = write!(
-                    out,
-                    "export ANTHROPIC_MODEL={}; ",
-                    shell_quote_core::posix_quote(value)
-                );
+                out.push_str(&posix::export(
+                    "ANTHROPIC_MODEL",
+                    &shell_quote_core::posix_quote(value),
+                ));
             }
             EnvOp::ExportRbindToken { value } => {
                 // ★ fail-closed：形状不对**不许渲染成"这次不带令牌"**，也不许照拼 ——
@@ -321,11 +318,10 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                         &[("value", &format!("{:?}", value))],
                     )));
                 }
-                let _ = write!(
-                    out,
-                    "export CCM_RBIND_TOKEN={}; ",
-                    shell_quote_core::posix_quote(value)
-                );
+                out.push_str(&posix::export(
+                    "CCM_RBIND_TOKEN",
+                    &shell_quote_core::posix_quote(value),
+                ));
             }
             EnvOp::ExportRelayBaseUrl { value } => {
                 if !relay_base_url_shape_ok(value) {
@@ -341,7 +337,7 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 if keys.is_empty() {
                     return Err(refuse(&copy_text("rsPayload.nestedEnv.empty", &[])));
                 }
-                let _ = write!(out, "unset {}; ", keys.join(" "));
+                out.push_str(&posix::unset(keys));
             }
         }
     }
@@ -353,7 +349,7 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
     ordered.sort_by_key(|w| w.order);
     ordered
         .into_iter()
-        .fold(inner, |s, w| format!("( {}; exec {} )", w.prelude, s))
+        .fold(inner, |s, w| posix::wrap_exec(w.prelude, &s))
 }
 
 /// `env ops → cd → argv → wrap` 的编译。与 TS `launch-render-fallback.ts` 的
@@ -797,12 +793,16 @@ pub fn relay_env_prefix_posix(base_url: &str) -> String {
     // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
     //   〔E2〕写成 `判 && 说 || 注入` 一段（不拆成 if/then/else 几段）：载荷按 `; ` 分段的读者照旧认得出「中转前缀是第一段」。
+    // 〔OSA · V156〕写法住 `platform::shell::posix`（`判 && 说 || export` · 钥匙段读家目录那份文件）。
     let (origin, path) = relay_url_halves(base_url);
-    format!(
-        "[ -n \"${{ANTHROPIC_BASE_URL:-}}\" ] && printf '%s\\n' {} || export ANTHROPIC_BASE_URL={}\"$(cat \"$HOME/{RELAY_KEY_FILE_REL}\")\"{}; ",
-        shell_quote_core::posix_quote(&user_base_url_say()),
-        shell_quote_core::posix_quote(origin),
-        shell_quote_core::posix_quote(path),
+    posix::export_unless_set(
+        "ANTHROPIC_BASE_URL",
+        &posix::home_file_between(
+            &shell_quote_core::posix_quote(origin),
+            RELAY_KEY_FILE_REL,
+            &shell_quote_core::posix_quote(path),
+        ),
+        &shell_quote_core::posix_quote(&user_base_url_say()),
     )
 }
 
@@ -854,10 +854,12 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
     // 〔RK1〕与 POSIX 那一形同构：钥匙段现读 `$HOME` 底下那一份（PowerShell 的 `$HOME` 即 `USERPROFILE`，
     //   与后端 `door::key_path` 的退路同一个）。仍只到「编得过」。
     //   〔E2 · V146〕同 POSIX 那一形：pane 里先看 `$env:ANTHROPIC_BASE_URL` 有没有值，有 ⇒ 不注入、说一行（单引号里 `'` 写成 `''`）。
+    //   〔OSA · V156〕写法住 `platform::shell::powershell`。
     let (origin, path) = relay_url_halves(base_url);
-    let say = user_base_url_say().replace('\'', "''");
-    format!(
-        "if ($env:ANTHROPIC_BASE_URL) {{ Write-Host '{say}' }} else {{ $env:ANTHROPIC_BASE_URL='{origin}' + (Get-Content -Raw -LiteralPath (Join-Path $HOME '{RELAY_KEY_FILE_REL}')).Trim() + '{path}' }}; "
+    powershell::set_unless_set(
+        "ANTHROPIC_BASE_URL",
+        &powershell::home_file_between(origin, RELAY_KEY_FILE_REL, path),
+        &user_base_url_say(),
     )
 }
 
