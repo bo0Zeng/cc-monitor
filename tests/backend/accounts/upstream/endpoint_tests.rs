@@ -13,7 +13,7 @@
 //! # 买不到的
 //!
 //! - 「表里有哪几行」答得对不对：那是 `file_face::rows_at` 的事（`file_face_tests` 的 US1 那条）。
-//! - 真中转在不在：探针本体是 RK1 的 `relay::machine::occupant`（`machine_tests`）。
+//! - 真中转在不在：探针本体是 RK1 的 `relay::machine::ours`（`machine_tests`）。
 
 use super::*;
 

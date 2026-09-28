@@ -554,9 +554,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
         "apikey-routing",
         "launch-endpoint",
-        // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
-        "relay-ensure",
-        "relay-status",
+        // 〔DEL〕中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
         // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照。
@@ -669,8 +667,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "apikey-read",
         "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
-        "relay-ensure",
-        "relay-status",
         "footprint-probe",
         // 〔W5-ALIAS〕别名预览，阻塞档。
         "ccm-print",

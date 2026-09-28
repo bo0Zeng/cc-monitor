@@ -715,17 +715,10 @@ mod tests {
             "listen::run",
             "`--relay` 那一臂的中转入口；上游选择那只手由 `accounts::upstream::run_relay` 递进来",
         ),
-        (
-            "machine::answer_ensure",
-            "〔RM1a〕帧面 `relay-ensure`：这台机器上没人在听就起一个脱离的 `--relay`（只收端口）",
-        ),
-        (
-            "machine::answer_status",
-            "〔RM1a〕帧面 `relay-status`：这台机器上那个口有没有人在听（只收端口）",
-        ),
+        // 〔DEL〕`machine::answer_ensure` / `machine::answer_status`（帧面 `relay-*` 那两个处理器）随脱离 `--relay` 一族删了。
         (
             "machine::our_relay_listening",
-            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 与 `relay-status` 同一个判准，只收端口、只回布尔",
+            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
         ),
         (
             "route::segment_is_safe",

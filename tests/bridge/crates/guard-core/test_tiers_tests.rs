@@ -809,11 +809,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
     ),
     (
-        "tests/backend/relay/machine_tests.rs",
-        "machine_child_entry",
-        Trigger::Filter { by: "tests/backend/relay/machine_tests.rs", needle: "relay::machine::tests::machine_child_entry" },
-    ),
-    (
         "tests/backend/relay/server_tests.rs",
         "relay_child_process_entry_point",
         Trigger::Filter { by: "tests/backend/relay/server_tests.rs", needle: "relay::server::tests::relay_child_process_entry_point" },

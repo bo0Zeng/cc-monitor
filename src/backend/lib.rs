@@ -746,10 +746,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 只读（读一份凭据文件 ＋ 回环上探一次中转），入参从 stdin 读。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-routing",
     "--launch-endpoint",
-    // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
-    // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
-    "--relay-ensure",
-    "--relay-status",
+    // 〔DEL〕`--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
