@@ -142,10 +142,16 @@ const CLI_REQUEST_ID: &str = "cli";
 ///
 /// 〔E2 · V138〕另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
 /// 按 `SUBCOMMANDS` 分流（`control::ccm::intercept`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
+/// 〔RESYNC〕第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里答的是假话 ⇒ 不上。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
     !matches!(spec.run, Run::Builtin)
         && !crate::control::ccm::argv::is_ccm_word(&flag_of(spec.name))
+        && !STREAM_ONLY.contains(&spec.name)
 }
+
+/// 〔RESYNC · 主会话 09-27 裁〕**只在流面上有意义**的命令。
+/// `resync` 对齐的是本进程里在跑的 watcher；一次性 exec 里一份都没有 ⇒ 只能答 `watchers: 0`，那是假话。
+pub(crate) const STREAM_ONLY: &[&str] = &["resync"];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
 pub(crate) fn flag_of(name: &str) -> String {
