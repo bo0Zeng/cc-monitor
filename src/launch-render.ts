@@ -28,7 +28,7 @@ const LOCAL_BUDGET_MS = 20_000;
 /** 那台后端拒了（码 `refused` / `relay_down`）：说的就是那一句，前面带上是哪台。 */
 function refusals(origin: Origin): Refusals {
   return {
-    byCode: (_code, detail) => copyText("launchRender.refusedOn", { machine: machineName(origin), said: detail }),
+    byCode: (_code, detail) => copyText("launchRender.refused.onMachine", { machine: machineName(origin), said: detail }),
     noReason: () => copyText("remoteLaunchRun.renderCli.noReason"),
   };
 }
@@ -42,12 +42,9 @@ export type CliRendered = { ok: true; cmd: string } | { ok: false; reason: strin
 
 /** `ccm …` 调用行。通道 / 形状上的失败抛（[`ControlError`]）；`ok:false` 是降级，不是错。 */
 export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<CliRendered> {
-  const v = await settle(
-    origin,
-    "launch-render-cli",
-    chan.call(origin, "launch-render-cli", jsonBody({ ...req }), budgetWithin(RENDER_BUDGET_MS)),
-    refusals(origin),
-  );
+  const body = jsonBody({ ...req });
+  const budget = budgetWithin(RENDER_BUDGET_MS);
+  const v = await settle(origin, "launch-render-cli", chan.call(origin, "launch-render-cli", body, budget), refusals(origin));
   if (!isObj(v) || !exactKeys(v, ["ok", "cmd", "reason"]) || typeof v.ok !== "boolean") {
     throw unreadable(origin, "launch-render-cli", "shape");
   }
@@ -58,12 +55,9 @@ export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<
 
 /** 裸载荷 / 外层 tmux 三格。拒 ⇒ 抛（[`isRefusal`] 为真）。 */
 export async function renderPayload(origin: Origin, req: PayloadRenderRequest): Promise<string> {
-  const v = await settle(
-    origin,
-    "launch-render-payload",
-    chan.call(origin, "launch-render-payload", jsonBody({ ...req }), budgetWithin(RENDER_BUDGET_MS)),
-    refusals(origin),
-  );
+  const body = jsonBody({ ...req });
+  const budget = budgetWithin(RENDER_BUDGET_MS);
+  const v = await settle(origin, "launch-render-payload", chan.call(origin, "launch-render-payload", body, budget), refusals(origin));
   if (!isObj(v) || !exactKeys(v, ["cmd"]) || typeof v.cmd !== "string" || v.cmd === "") {
     throw unreadable(origin, "launch-render-payload", "cmd");
   }
@@ -77,13 +71,9 @@ async function allSessions(): Promise<boolean> {
 
 /** 这一发的中转地址（`null` = 不注入）。拒 ⇒ 抛。`account` 是本机 / 远端载荷里「哪个号」那一格的线上形状。 */
 export async function launchEndpoint(origin: Origin, account: Record<string, unknown>): Promise<string | null> {
-  const body = { agent: AGENT_ADAPTER_ID, account, allSessions: await allSessions() };
-  const v = await settle(
-    origin,
-    "launch-endpoint",
-    chan.call(origin, "launch-endpoint", jsonBody(body), budgetWithin(RENDER_BUDGET_MS)),
-    refusals(origin),
-  );
+  const body = jsonBody({ agent: AGENT_ADAPTER_ID, account, allSessions: await allSessions() });
+  const budget = budgetWithin(RENDER_BUDGET_MS);
+  const v = await settle(origin, "launch-endpoint", chan.call(origin, "launch-endpoint", body, budget), refusals(origin));
   if (!isObj(v) || !exactKeys(v, ["baseUrl"]) || !(v.baseUrl === null || (typeof v.baseUrl === "string" && v.baseUrl !== ""))) {
     throw unreadable(origin, "launch-endpoint", "baseUrl");
   }
@@ -112,7 +102,7 @@ export interface LocalLaunchPlan {
 
 /** 问本机后端要这次拉起的那一串（不开窗口）。拒 ⇒ 抛。 */
 export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLaunchPlan> {
-  const body = {
+  const args = {
     action: req.action,
     cwd: req.cwd,
     launcher: req.launcher,
@@ -126,12 +116,9 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
     },
     allSessions: await allSessions(),
   };
-  const v = await settle(
-    LOCAL_ORIGIN,
-    "launch-local",
-    chan.call(LOCAL_ORIGIN, "launch-local", jsonBody(body), budgetWithin(LOCAL_BUDGET_MS)),
-    refusals(LOCAL_ORIGIN),
-  );
+  const body = jsonBody(args);
+  const budget = budgetWithin(LOCAL_BUDGET_MS);
+  const v = await settle(LOCAL_ORIGIN, "launch-local", chan.call(LOCAL_ORIGIN, "launch-local", body, budget), refusals(LOCAL_ORIGIN));
   if (
     !isObj(v) ||
     !exactKeys(v, ["cmd", "launchId"]) ||
@@ -144,8 +131,13 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
   return { cmd: v.cmd, launchId: v.launchId };
 }
 
-/** 本机起一个会话：问本机后端要那一串，交 monitor 在 `cwd` 开一个终端窗口跑它。回身份 token。失败抛（已说成一句）。 */
-export async function launchLocal(req: LocalLaunchRequest, terminalCwd: string): Promise<string | null> {
+/** 本机起一个会话：问本机后端要那一串，交 monitor 在 `cwd` 开一个终端窗口跑它。回身份 token。失败抛（已说成一句）。
+ *  ⚠ 类型上只收「新起 / resume」：接回（attach）只许经 [`planLocalLaunch`] 产串、交调用方自己那一跳开终端
+ *  （`K-R106`：接回不是一次拉起，原先 monitor `launch_local` 入口那道闸今天是这条签名）。 */
+export async function launchLocal(
+  req: LocalLaunchRequest & { action: Exclude<LocalLaunchAction, { kind: "attach" }> },
+  terminalCwd: string,
+): Promise<string | null> {
   const plan = await planLocalLaunch(req);
   await commands.open_local_terminal({ cmd: plan.cmd, cwd: terminalCwd });
   return plan.launchId;

@@ -87,7 +87,7 @@ src/bridge/
 | **adapter.rs** + **adapter/claude_code.rs** (F-MA) | agent 适配层：把 cc-monitor 对「Claude Code 具体形态」的假设（会话目录布局 / 记录解析 / 活性 / resume 命令）收敛到 `AgentAdapter` 后，`claude_code.rs` 是第一个实例（**零行为变化**）。第一刀只抽浅耦合点（会话源布局等字面量），不碰记录模型（`JsonlRecord` 暂当规范模型） | `SessionLayout / AgentAdapter`（增量长 trait） |
 | **event_replay.rs**（〔CF2 · 第四波 4B〕会话流的句柄 ＋ 重放缓冲） | 内存 buffer（**每个会话只留 seq 最高的 600 条**，摊还余量 150；丢掉的前端按字节 / 按行号取回）＋ 会话流订阅表：`on_line_batch_awaited`（〔CF1〕唯一入口）进缓冲并**当场**交进各条已过就绪点的订阅（< 50 行逐行一格；≥ 50 行切块、带 `batch` 边界、块间 tokio sleep，交完才返回 —— 行先于随后的归档）；有 credit 才交，没有就丢、原位报 `Gap`；`ready_point(priority_sid)`（frontend-ready 那个任务里）按 credit 交留存（不丢，等 `want`），优先会话的块先发 | `EventReplay::on_line_batch_awaited() / ready_point(priority_sid)（async）/ subscribe() / want() / stop() / origin_seen() / forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史会话的 monitor 这一侧：读一整份会话（Channel 分块）+ 物理删除（经那台机器的后端）+ resume / 分叉的命令渲染。〔C4d · 第四波 4B〕项目 / 会话清单与注解（星标 / 改名 / 隐藏 / 上次账号）搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`，界面经 `src/history-reads.ts` 问），注解那份文件原地不动、路径仍由本文件 `metadata_path` 算 | IPC `stream_read_session_jsonl / delete_history_session / create_branch_session / resume` |
-| **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs::resume_impl` 抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `build_remote_ssh_ps_command`（`ssh -t … "bash -lic '<cmd>'"`）+ `launch_remote_terminal`；本地 resume 与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗）。三层引号/注入防线各自独立 | `launch_powershell_window() / build_remote_ssh_ps_command() / launch_remote_terminal()` + IPC `launch_remote_terminal` |
+| **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs` 的 `resume_impl`〔散文墓碑〕抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `build_remote_ssh_ps_command`（`ssh -t … "bash -lic '<cmd>'"`）+ `launch_remote_terminal`；本地 resume 与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗）。三层引号/注入防线各自独立 | `launch_powershell_window() / build_remote_ssh_ps_command() / launch_remote_terminal()` + IPC `launch_remote_terminal` |
 | ~~search.rs~~ (issue #6) | 〔LOC1b · 第四波 4D〕**已删**：本机全文搜索改问本机后端（`history-search`，每次现扫，口径仍是 `search-core` 那一份），monitor 不再建内存索引 | — |
 | **mcp.rs** (F87 #50+#51 / F89a-b #远端MCP) | MCP 管理（SS-14 读写分界）：**读**跨 scope 宽容展示（〔SH1 · V137〕本机远端都问那台后端 `mcp-read`；**远端项目** `.mcp.json` 经 `files-peek`）；**写只**项目 `.mcp.json`——本机 `mcp_json_path` 硬编码 / **远端** `is_safe_remote_mcp_json` 守卫经 `sftp::upload_atomic`（SS-14：绝不写 `~/.claude.json`/`settings.json`，本机远端皆然；SS-G 用户显式触发，见 INVARIANTS §1 例外 #5） | `read_mcp_servers / list_mcp_project_dirs / write_project_mcp_server / remove_project_mcp_server`（〔步 12·C〕后三条**都吃 `origin`，两侧各一条**）` / read_remote_mcp_servers / read_remote_project_mcp / list_remote_mcp_origins` —— 远端那三个写函数（`write_remote_mcp_server` / `remove_remote_mcp_server` / `list_remote_mcp_project_dirs`）**已不是命令**，是上面那三条的远端分支 | 〔散文墓碑〕
 | **sftp_pool.rs** (B14-F47/F49) | SFTP 文件面板后端:per-host utility 连接池(与后端流分离)+ 浏览/传输/写命令 + 小文件编辑(F49:`decode_editable` 三防护 + `sftp_read_text_for_edit`〔散文墓碑〕/`sftp_write_text`);防误伤守卫**已搬走** —— 见下面 `claude_data_fence.rs` 那一行(池子这边只剩一行 `pub use`) | `with_sftp() / sftp_list_dir / sftp_download / sftp_upload / ...`(11 命令) |
@@ -114,22 +114,8 @@ src/bridge/
 |---|---|---|---|
 | `load_config` | — | `Value` | 启动时 / 设置面板打开时 |
 | `patch_config` | `{ edits: ConfigEdit[] }` | `()` | 前端各模块存设置时（只交改哪几条路径） |
-| `read_mcp_servers` (F87 #50) | `{ projectDir? }` | `McpServerEntry[]` | MCP 段打开：跨 scope 宽容读（用户 `~/.claude.json` / local / 项目 `.mcp.json`；缺/坏跳过） |
-| `list_mcp_project_dirs` (F87 #50) | — | `String[]` | MCP 段项目目录输入框 datalist（用过的项目自动补全） |
-| `write_project_mcp_server` (F87 #51) | `{ origin, projectDir, name, server }` | `()` | 增/改项目 `<dir>/.mcp.json` 的一个 server（**只写 .mcp.json**）。〔步 12·C 收尾 09-20〕**吃 `origin`，两侧一条**；本机逐字送 `"<local>"` |
-| `remove_project_mcp_server` (F87 #51) | `{ origin, projectDir, name }` | `()` | 从项目 `<dir>/.mcp.json` 删一个 server。〔步 12·C 收尾〕同上，**吃 `origin`，两侧一条** |
-| `read_remote_mcp_servers` (F87b #52) | `{ origin }` | `McpServerEntry[]` | 跨机**只读**远端 user scope（SSH-exec `cat ~/.claude.json`，机器全局 MCP） |
-| `read_remote_project_mcp` (F89a) | `{ origin, projectDir }` | `McpServerEntry[]` | 只读远端某项目 `.mcp.json`（SFTP） |
 | `list_remote_mcp_origins` (F87b) | `{}` | `String[]` | 远端机器选择器 |
-<!-- 〔步 12·C 09-20〕`list_remote_mcp_project_dirs`〔散文墓碑〕 **已退役** —— 并进了
-     `list_mcp_project_dirs`（见下面那张表），两侧算它的那份代码本来就只有一份
-     （`project_dirs_from`），差别只在那份 `~/.claude.json` 的字节从哪来。 -->
-<!-- 〔步 12·C 收尾 09-20〕`write_remote_mcp_server` / `remove_remote_mcp_server`
-     **已退役** —— 并进了上面那两条 `*_project_*`（同一个写面 `<dir>/.mcp.json`、
-     同一份纯核心 `upsert_mcp_server_value` / `remove_mcp_server_value`，
-     差别只在字节走 SFTP 还是走盘）。
-     ⚠ **它们作为函数还在**（`mcp.rs` 里的 `pub(crate) async fn`，是合并后那两条命令的
-     远端分支，路由表与欠账表都按这两个名字登记着）—— 别把「函数还在」读成「命令还在」。 -->
+<!-- 〔MIG-3a · 09-27〕MCP 读写六条与推 / 拉两条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。`list_remote_mcp_origins` 读的是 monitor 自己的配置，挪进 `config.rs`。 -->
 | `list_remote_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin, dir }` | `AccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经后端纯只读（`accounts.rs`，全 stateless）。〔C4a〕「某会话属哪个账号」那一条退役：前端经通道 `chan_call` 直接说帧命令 `accounts-sessions`（本机与远端同一条路） |
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
@@ -245,7 +231,7 @@ src/bridge/
 ### `history::resume_impl` 用 `powershell.exe -NoExit -EncodedCommand`（v2.8.1 修复）
 旧版用 `cmd /K "claude --resume <sid>"`，有两个 bug：(1) cmd.exe 不是 PowerShell、**更不加载用户 profile** → `cc` wrapper / `__ccm_bind` / 代理 env 全不生效，跑的是裸 `claude`；(2) 退出 claude 后那个壳是 cmd，不认 `cc`。旧注释还把 `pwsh.exe`（PS7，需装）和 `powershell.exe`（PS5.1，系统自带）混为一谈才退回 cmd。
 
-改用系统自带 `powershell.exe -NoExit -EncodedCommand <base64>`：**不带 `-NoProfile`** → 加载 profile → 代理 / `cc` 生效；命令体 `if (Get-Command cc) { cc --resume <sid> } else { claude --resume <sid> }`（装了 wrapper 走 `cc`，没装回退 `claude`，回退也在加载了 profile 的真 PowerShell 里）；`-NoExit` 让 claude 退出后窗口保留且 `cc` 可继续用。命令经 `utils::powershell_encoded_command` 编码（UTF-16LE base64）透过 wt.exe / cmd 多层 shell（绕开引号 / `;` 分隔符），并对 `session_id` 做注入校验（仅 `[A-Za-z0-9_-]`，抽成可测试的 `build_resume_ps_command`）。
+改用系统自带 `powershell.exe -NoExit -EncodedCommand <base64>`：**不带 `-NoProfile`** → 加载 profile → 代理 / `cc` 生效；命令体 `if (Get-Command cc) { cc --resume <sid> } else { claude --resume <sid> }`（装了 wrapper 走 `cc`，没装回退 `claude`，回退也在加载了 profile 的真 PowerShell 里）；`-NoExit` 让 claude 退出后窗口保留且 `cc` 可继续用。命令经 `utils::powershell_encoded_command` 编码（UTF-16LE base64）透过 wt.exe / cmd 多层 shell（绕开引号 / `;` 分隔符），并对 `session_id` 做注入校验（仅 `[A-Za-z0-9_-]`，抽成可测试的 `build_resume_ps_command`）。 〔散文墓碑〕
 
 ### ~~`session_map` 双触发（事件 + 2s 心跳）~~ 〔LOC1b · 第四波 4D〕退役
 monitor 不再自己判本机会话活不活：本机活会话表由本机常驻后端的 `session_added` / `session_removed` 帧喂（后端 pidfd 看守 ＋

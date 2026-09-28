@@ -156,8 +156,9 @@ pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, S
     };
     let token = identity_token(&req.action)?;
     let prefix = identity_prefix(&token, facts.windows);
+    let cmd = relay + &prefix + &base;
     Ok(Planned {
-        cmd: relay + &prefix + &base,
+        cmd,
         launch_id: Some(token),
     })
 }

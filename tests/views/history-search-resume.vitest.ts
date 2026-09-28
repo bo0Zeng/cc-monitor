@@ -36,7 +36,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../../src/views/history";
 import { runRemoteResume } from "../../src/remote-launch-run";
 import { invalidateAccountsCache } from "../../src/account-reads";
-import { withAccountReads } from "../test-support/chan-fake";
+import { launchRenderShim, localLaunchCalls, withAccountReads } from "../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runRemote = runRemoteResume as unknown as ReturnType<typeof vi.fn>;
@@ -53,7 +53,7 @@ function buildCard(view: HistoryView, s: Record<string, unknown>): HTMLElement {
 describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(launchRenderShim(() => Promise.resolve(undefined)));
     runRemote.mockClear();
     document.body.replaceChildren();
   });
@@ -68,9 +68,9 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     // 才铸得出 tmux 会话名（后端故意拒绝自己铸名，见 `tmux-name-mint.ts`）。
     // ⇒ 一个微任务已经不够了，冲一轮宏任务把链排空（同本文件远端那两条的做法）。
     await new Promise((r) => setTimeout(r, 0));
-    const call = invokeMock.mock.calls.find((c) => c[0] === "resume_history_session");
+    const call = localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
     expect(call).toBeTruthy();
-    expect(call![1]).toMatchObject({ sessionId: "s1", cwd: "/p", launcher: null });
+    expect(call).toMatchObject({ sessionId: "s1", cwd: "/p", launcher: null });
     // 点 resume 不误开只读 viewer
     expect((view as unknown as { viewer: unknown }).viewer).toBeNull();
   });
@@ -83,7 +83,7 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(runRemote).toHaveBeenCalledTimes(1);
     expect(runRemote.mock.calls[0].slice(0, 3)).toEqual(["hostA", "s1", "/p"]);
-    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(false);
+    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(false);
   });
 
   // F05 Phase D 审计：本文件此前只用 `.slice(0,3)` 断言前三个参数，从未验证过

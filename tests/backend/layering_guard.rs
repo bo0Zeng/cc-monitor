@@ -630,8 +630,8 @@ mod tests {
         (
             "agents",
             "`relay/mod.rs` 头注第一句逐字写着「**它不懂任何 agent 的语义**」。\
-             今天这条是真的、而且**承重**：`run(home, args)` 的 `home` 是**入参**\
-             （`main.rs` 的 `--relay` 分派臂传进来），不是中转自己去 `agents/` 里问出来的 —— \
+             今天这条是真的、而且**承重**：`host(get, home, …)` 的 `home` 是**入参**\
+             （`main.rs` 流模式那一处经 `accounts::upstream::host_relay` 传进来），不是中转自己去 `agents/` 里问出来的 —— \
              那正是 `E6`「本层要的东西一律走入参」的形状",
         ),
     ];
@@ -711,21 +711,11 @@ mod tests {
             "listen::ENV_PORT",
             "〔HX2〕中转端口那个环境变量**名**：hello 回显宿主交来的那几格（`wire::HOST_ECHO_ENVS`）要点它，名字只住 `listen.rs` 一处",
         ),
+        // 〔DEL〕`listen::run`（`--relay` 那一臂的中转入口）随独立中转进程一形删了。
+        // 〔DEL〕`machine::answer_ensure` / `machine::answer_status`（帧面 `relay-*` 那两个处理器）随脱离 `--relay` 一族删了。
         (
-            "listen::run",
-            "`--relay` 那一臂的中转入口；上游选择那只手由 `accounts::upstream::run_relay` 递进来",
-        ),
-        (
-            "machine::answer_ensure",
-            "〔RM1a〕帧面 `relay-ensure`：这台机器上没人在听就起一个脱离的 `--relay`（只收端口）",
-        ),
-        (
-            "machine::answer_status",
-            "〔RM1a〕帧面 `relay-status`：这台机器上那个口有没有人在听（只收端口）",
-        ),
-        (
-            "machine::our_relay_listening",
-            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 与 `relay-status` 同一个判准，只收端口、只回布尔",
+            "listen::our_relay_listening",
+            "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
         ),
         (
             "route::segment_is_safe",
@@ -799,7 +789,7 @@ mod tests {
             bad.is_empty(),
             "relay/ 引用了它不该认识的层：\n  {}\n\
              **先别急着加例外** —— 中转要的每一样东西都该由**调用方传进来**\n\
-             （`home` 今天就是这么来的：`main.rs` 的 `--relay` 臂把它当参数递进 `relay::run`）。\n\
+             （`home` 今天就是这么来的：`main.rs` 流模式那一处经 `accounts::upstream::host_relay` 把它当参数递进 `relay::host`）。\n\
              先问：跨过来的那个东西，是不是其实该走入参？理由逐条见 `RELAY_MUST_NOT_KNOW`。",
             bad.join("\n  ")
         );
@@ -808,7 +798,7 @@ mod tests {
     /// ★★★ `K-G4` 方向 ②：**别处不许反过来伸手进 `relay/` 内部**。
     ///
     /// 人群是 `observe/` 与 `control/` 两层（`plugin/` 归判据 ③，人群不重叠）。
-    /// 中转对外**只有一个口**：`relay/mod.rs` 里那一行 `pub(crate) use server::run;`。
+    /// 中转对外的口只住 `relay/mod.rs` 的 `pub(crate) use`（逐条登记在 `RELAY_EXPORTS`）。
     /// 谁绕过它去引 `crate::relay::server` / `crate::relay::upstream`，
     /// 中转的内部结构就变成了公共契约 —— 之后 `upstream.rs` 想换个形状都得先问一圈。
     /// （路由表是上游选择的，住 `accounts::upstream::table`，不在 `relay/` 里。）
@@ -817,7 +807,7 @@ mod tests {
     ///
     /// 它的人群是**两个层目录下的 18 个 `.rs`**（09-02 现打：`observe/` 8 + `control/` 10）。
     /// `src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs` …）**不在人群里**，
-    /// 而且就算放进来也扫不到：`mod relay;` 声明在 `main.rs`，它写的是**裸** `relay::run`，
+    /// 而且就算放进来也扫不到：`mod relay;` 声明在 `main.rs`，它写的是**裸** `relay::…`，
     /// 而 `refs_to_layer` 的锚点是 `crate::relay` / `super::super::relay`。
     /// ⇒ 顶层文件伸手进 `relay::upstream::…` 这一形，**本判据看不见**。留作跟进件，不在本件买。
     #[test]
@@ -831,7 +821,7 @@ mod tests {
         bad.sort();
         assert!(
             bad.is_empty(),
-            "有人伸手进了 relay/ 内部（对外只有 `relay::run` 一个口）：\n  {}\n\
+            "有人伸手进了 relay/ 内部（对外的口只住 `relay/mod.rs` 的 `pub(crate) use`）：\n  {}\n\
              **先别急着加例外** —— 先问那个东西是不是根本不属于中转：\n\
              `U3` 摸底时那条反向边的正解就是「被引的那个函数放错了地方」，搬进 `common/` 之后边就没了。\n\
              真要新开一个口，那个口该住 `relay/mod.rs` 的 `pub(crate) use`，并在这里配一张非空登记表。",

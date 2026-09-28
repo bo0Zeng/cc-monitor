@@ -138,7 +138,7 @@ pub(crate) fn decide_launch(
 }
 
 /// `launch-endpoint`：入参 `{agent, account?, allSessions}` → 成品 `{baseUrl}`（`null` = 不注入）。
-/// 〔MIG-2 · `99 §2.1 ⑬`〕「中转不在时拒还是直连」也在这里判完（原先 monitor `history.rs::relay_endpoint_on` 拿四格再判一遍）：
+/// 〔MIG-2 · `99 §2.1 ⑬`〕「中转不在时拒还是直连」也在这里判完（原先 monitor 的 `relay_endpoint_on`〔散文墓碑〕 拿四格再判一遍）：
 /// 非它不可（API 号代入）而没在听 ⇒ 码 `relay_down` ＋ 一句；有它更好（`/t/` 直通）而没在听 ⇒ 这一发直连（`01 §6.5`）。
 pub(crate) fn answer_launch(args: &Value) -> EndpointAnswer {
     launch_relay(args).map(|u| json!({ "baseUrl": u }))
@@ -202,7 +202,7 @@ pub(crate) fn launch_relay_with(
 ///
 /// - `routed`：传进来的那些 configDir 里，这台表里**有对应行**的那几个（原样回，规则住 `acct-core`）。
 ///   ⚠ 它答「表里有这一行」，不答「那把 key 能不能用」。
-/// - `running`：这台机器上**我们的**中转在不在听（RK1 的差分探针，与 `launch-endpoint` 同一个判准）。
+/// - `running`：这个进程里**我们的**中转在不在听（读宿主自己的监听状态 `relay::our_relay_listening`，与 `launch-endpoint` 同一个判准）。
 pub(crate) fn answer_routing(args: &Value) -> EndpointAnswer {
     answer_routing_with(
         args,

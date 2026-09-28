@@ -94,7 +94,7 @@ pub(crate) const SHELL_META_COMMON: &str = acct_core::CONFIG_DIR_SHELL_META;
 /// 写在 `resolve_query.rs` 头注里的纪律（B2），少一层就是少一层。
 ///
 /// 〔DUP1〕判定本身搬进 `acct_core::config_dir_char_unsafe`（全仓唯一一份；C1 那一段 `is_control()` 本来就含），这里转手；
-/// 只剩 Windows 那条路（`history.rs::has_bad_chars`）在用 ⇒ 只在 `windows` / `test` 下编。
+/// 〔MIG-2〕Windows 那条路（`local.rs::validate_config_dir_ps`）在用。
 pub fn is_command_unsafe_char(c: char) -> bool {
     acct_core::config_dir_char_unsafe(c)
 }
@@ -736,8 +736,8 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 // 2. **Windows 那一侧只到「编得过」**（`relay_env_prefix_ps` 一行运行时行为都没量过）。
 
 /// 本机中转的端口。**值只住共享 crate**（`relay_route_core::PORT`）：起本机后端时以 `CCM_RELAY_PORT`
-/// 交给它（`local_backend_host::relay_host_envs`），远端 `relay-status` / `relay-ensure` 的 `port` 入参也是它；
-/// 后端 `src/backend/relay/server.rs::DEFAULT_PORT` 是同一个 const。〔US1〕先前两处各写一个 8788、零对拍。
+/// 交给它（`local_backend_host::relay_host_envs`），远端 `--resident-ensure` 起常驻后端时交的也是它；
+/// 〔US1〕先前两处各写一个 8788、零对拍。
 pub const RELAY_PORT: u16 = relay_route_core::PORT;
 
 /// 〔RL1〕载荷里那条中转地址（`EnvOp::ExportRelayBaseUrl`）的 fail-closed 校验：必须是构造口产得出的形状
@@ -785,7 +785,7 @@ pub fn route_key_for_session(sid: Option<&str>) -> Result<String, String> {
 ///
 /// 〔E2 · V146〕**pane 里先看 `ANTHROPIC_BASE_URL` 有没有值**（用户在 rc 里自己设了端点）：有 ⇒ 不注入、打一行话
 /// （[`user_base_url_say`]），不抢用户的端点、也不把给用户端点的鉴权头送去官方；没有 ⇒ 照旧 export 中转地址。
-/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（`history.rs::relay_prefix_for`）。
+/// 判在 pane 那个 shell 里做（值只在那里），不由 monitor 猜。本机与远端同一个渲染器（〔MIG-2〕本机那一支在 `local.rs::relay_prefix`）。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
     // 〔RK1〕钥匙那一段是**读钥匙文件的命令替换**（见 [`RELAY_KEY_FILE_REL`]）：两段常量各自单引号，
     //   中间只有那一个固定的 `$(cat …)` 会被 shell 展开 ⇒ URL 里别的字节一个都不会被解释。
@@ -835,7 +835,7 @@ fn relay_url_halves(base_url: &str) -> (&str, &str) {
     }
 }
 
-/// **Windows 命令面**的中转前缀。形状照 `history.rs::config_dir_prefix_ps`（PowerShell
+/// **Windows 命令面**的中转前缀。形状照 `local.rs::config_dir_prefix_ps`（PowerShell
 /// 单引号里无插值）。
 ///
 /// ⚠⚠ **本函数只到「编得过」** —— Windows 上的运行时行为本轮**一格都没量**

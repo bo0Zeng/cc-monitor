@@ -1,4 +1,4 @@
-// 🪦〔MIG-2〕这里原有 `the_refuse_tag_is_the_same_string_on_both_sides`（前端按 `REFUSE:` 串标分流，两侧逐字对拍）：
+// 🪦〔MIG-2〕这里原有 `the_refuse_tag_is_the_same_string_on_both_sides`（前端按 `REFUSE:` 串标分流，两侧逐字对拍）： 〔散文墓碑〕
 //   渲染搬进后端帧命令之后，拒绝走码 `refused`（`launch_render/mod.rs::refused` 摘标转码），前端那一份串标删了，
 //   「拒 ⇒ 码 `refused`」由 `launch_render/answers_tests.rs::a_refusal_leaves_the_backend_as_the_refused_code` 钉。
 
@@ -945,9 +945,9 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 ///
 /// **左集 = 拼在 `ccm` 外面 `export` 的变量**，09-02 现打 **2 个**
 /// （`ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`）。枚举法**按函数体切，不按文件切**：
-/// 1. `history.rs` 生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
+/// 1. 〔MIG-2〕`launch_render/local.rs`（原 monitor `history.rs`）生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
 ///    拆成的段，今天**恰好 3 段**：前两段是前缀、末段 `&base` 是命令体；
-/// 2. 两段前缀各自的**渲染器函数体**（`relay_env_prefix_posix` · `launch_identity_env_prefix`），
+/// 2. 两段前缀各自的**渲染器函数体**（`relay_env_prefix_posix` · `identity_prefix`），
 ///    体里 `export ` 各**恰好 1 处**；
 /// 3. 变量名**从生产代码现取**：中转那截从体里读出来再拿**真跑一遍**的产出对拍，
 ///    身份那截把体里 `{LAUNCH_ID_VAR}` 用生产常量 [`crate::control::launch_render::local::LAUNCH_ID_VAR`] 解析开。
@@ -979,7 +979,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 ///
 /// - **Windows 那条腿不在人群里**：`ccm` 容器路只有 POSIX 这一支（`C12`「windows不要tmux」），
 ///   `$env:` 那一形本条只数处数、不进集合。
-/// - **`&base` 内部**（`render_local_ccm` / `build_local_posix_command` 渲的那一截）不在人群里：
+/// - **`&base` 内部**（`render_local_ccm` / `build_local_posix_command` 渲的那一截）不在人群里： 〔散文墓碑〕
 ///   它拼在 `ccm` 的**里面**，不过这个边界。
 /// - **`launch.rs` 的 `.env(k, v)`**（开窗那一跳，进程级）不在人群里：它不是一句 `export`。
 /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux，归真机 e2e。
@@ -1004,7 +1004,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 #[test]
 fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let ccm = container_path_source();
-    let hist = guard_core::production_code(include_str!("../../../../src/bridge/src/history.rs"));
+    let hist = guard_core::production_code(include_str!("../../../../src/backend/control/launch_render/local.rs"));
     let pay = guard_core::production_code(include_str!(
         "../../../../src/backend/control/launch_render/payload.rs"
     ));
@@ -1013,8 +1013,9 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     // —— 门槛按现打值往下留一档，不贴着写。
     // 〔C4d · 第四波 4B〕`history.rs` 那一格 30k → 20k：历史清单与注解那一族搬进本机常驻后端，剥完现打 29,494 字节
     //   （起会话那几段一字未动 —— 本条要读的 export 都在那几段里）；按现打值往下留一档。
+    // 〔MIG-2〕本机起会话那一整条搬进后端 `launch_render/local.rs`（左集那一句拼装跟着搬），门槛按它现打往下留一档。
     assert!(
-        hist.len() > 20_000 && pay.len() > 5_000,
+        hist.len() > 5_000 && pay.len() > 5_000,
         "剥完只剩 history={} payload={} 字节 —— 剥法坏了，本条会零命中地绿",
         hist.len(),
         pay.len()
@@ -1028,7 +1029,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let segs: Vec<&str> = rhs.split('+').map(str::trim).collect();
     assert_eq!(
         segs,
-        vec!["relay", "&identity.prefix", "&base"],
+        vec!["relay", "&prefix", "&base"],
         "\n★★ 本机拉起拼出来的那一串**段数或段名变了**（实得 {segs:?}）。\n\
              ⇒ 如果新那一段也 `export` 了变量，它必须**同一拍**在 `shared/ccm` 的容器路里\n\
              加一条对应的转发（形状抄 `R08`/`K-H2b`/`K-P5c` 那三条），否则走 tmux 的会话\n\
@@ -1037,11 +1038,10 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     );
     // 那两段前缀各自是谁渲的 —— 整条链**逐环钉住**（改名当场红）。
     for anchor in [
-        // 〔TL3 · 🔴-2〕前缀先 `await` 好再交给同步那一截（`launch_local` 的 `relay` 参数），链上这一环换了形。
-        "let relay = relay_prefix_for_launch(&action, account.as_ref()).await?;",
-        "let identity = launch_identity(action);",
-        "relay_env_prefix_posix(u)",
-        "let prefix = launch_identity_env_prefix(&token,",
+        // 〔MIG-2〕链跟着搬进 `launch_render/local.rs::plan`。
+        "let relay = relay_prefix(req, facts)?;",
+        "let prefix = identity_prefix(&token, facts.windows);",
+        "payload::relay_env_prefix_posix(&u)",
     ] {
         guard_core::find_pinned(&hist, anchor).unwrap_or_else(|e| {
             panic!("`{anchor}` 不是恰好一处 —— 前缀那条链换了形状，本条的左集就取歪了：{e}")
@@ -1050,7 +1050,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 
     // ── ② 左集：**按函数体切**，变量名从生产代码现取 ─────────────────────────
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
-    let body_id = fn_body(&hist, "fn launch_identity_env_prefix(");
+    let body_id = fn_body(&hist, "fn identity_prefix(");
     assert_eq!(
         body_relay.matches("export ").count(),
         1,
@@ -1160,12 +1160,12 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 #[test]
 fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     let ccm = container_path_source();
-    let hist = guard_core::production_code(include_str!("../../../../src/bridge/src/history.rs"));
+    let hist = guard_core::production_code(include_str!("../../../../src/backend/control/launch_render/local.rs"));
     let pay = guard_core::production_code(include_str!(
         "../../../../src/backend/control/launch_render/payload.rs"
     ));
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
-    let body_id = fn_body(&hist, "fn launch_identity_env_prefix(")
+    let body_id = fn_body(&hist, "fn identity_prefix(")
         .replace("{LAUNCH_ID_VAR}", crate::control::launch_render::local::LAUNCH_ID_VAR);
     let left = exported_var_names(&[body_relay, body_id]);
     let right = forwarded_by_container_path(&ccm);
@@ -1284,9 +1284,10 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             wired: None,
         },
         Site {
-            what: "B · history.rs（Windows 串级）",
-            src: include_str!("../../../../src/bridge/src/history.rs"),
-            needle: "$env:CLAUDE_CONFIG_DIR",
+            // 〔MIG-2〕本机起会话搬进后端 `launch_render/local.rs`；账号载体名改从适配层取（`payload::account_env`），针跟着换。
+            what: "B · launch_render/local.rs（Windows 串级）",
+            src: include_str!("../../../../src/backend/control/launch_render/local.rs"),
+            needle: "\"$env:{}",
             want: 2,
             wired: None,
         },
@@ -1440,39 +1441,9 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
 // 🪦〔MIG-2〕这里原有 `D6 阻-4` 那道人群闸（谁绕开 monitor `history.rs` 的取值口缝直接调 ⇒ 红）：那两条缝随本机起会话一起搬进后端，
 //   换成纯函数 ＋ 事实表（`launch_render/local.rs::Facts`），同一道闸住 `local_tests.rs::nobody_reads_the_launch_facts_around_the_facts_table`。
 
-// ── P28：给这条源码扫描型守卫立**负对照** ──
-//
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 被扫的 `src/bridge/src/history.rs` 今天 2907 行，第一个 `#[cfg(test)]` 在 **1558** 行
-// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 1557 行，
-// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
-//
-// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
-// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
-
-/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
-#[test]
-fn the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan() {
-    // 🔴 **这条判据的针表被 `assert_stripper_keeps` 砍掉过一半，读数如实留在这里。**
-    //
-    // 第一版填了本文件真正用的两个针：`let relay = relay_prefix_for_launch(…)`（1829）
-    // 与 `fn launch_identity_env_prefix(`（2308）。前者**当场被判成「对照失去意义」**。
-    // 原因是本文件抬头那个 1558 并**不是**便宜近似的切点：
-    // 便宜近似切的是**逐字**的 `\n#[cfg(test)]`，而 `history.rs` 的 1558 行写的是
-    // `#[cfg(all(test, not(windows)))]` —— **匹配不上**（那正是 `guard-core` 头注记的
-    // 「坑 1 的变种」）。它真正的切点在**第一个逐字列 0 `#[cfg(test)]`＝2196 行**
-    // ⇒ 1829 那个针在便宜近似下**照样留得住**，拿它当对照是恒真的。
-    // ⇒ 只留 2308 那个（现打：`good` 有它、`cheap` 没有）。
-    //
-    // ⚠ 本文件已有一条**字节数地板**（`hist.len() > 30_000`）。它在这个方向上**不够**：
-    //    `history.rs` 剥到 2195 行还有 123_670 字节（现打）⇒ 地板照样绿，而 2308 那个针没了。
-    //    这正是「地板挡不住静默缩水」那一族。
-    guard_core::assert_stripper_keeps(
-        "payload_tests · history.rs",
-        include_str!("../../../../src/bridge/src/history.rs"),
-        &["fn launch_identity_env_prefix("],
-    );
-}
+// 🪦〔MIG-2〕这里原有 `the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan`（P28 负对照：monitor `history.rs` 中段有 〔散文墓碑〕
+//   `#[cfg(all(test, …))]`，便宜近似会把要扫的那一段砍掉）。被扫的那一段搬进后端 `launch_render/local.rs`，那份文件的测试段只在文件尾 ⇒
+//   便宜近似与共享剥法在它上面同答，这条对照失去意义，删了（共享剥法本身的判据在 `guard-core`）。
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 🔴 `设计/80 §8.7` 步 3：**启动期令牌那个变量名的双写点** —— 写侧 × 读侧焊死

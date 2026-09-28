@@ -13,7 +13,7 @@ import { productionTsFiles } from "./test-support/production-sources.ts";
 import { stripComments } from "./test-support/strip-comments.ts";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
-const RUST = read("src/bridge/src/backend/control/launch_wire.rs");
+const RUST = read("src/backend/control/launch_render/wire.rs");
 const WIRE = read("src/launch-cli-wire.ts");
 const RUN = read("src/remote-launch-run.ts");
 
@@ -69,11 +69,11 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     // ⚠ `WireQuoting` **不在这里**，那不是漏：它是个无字段的单元枚举，
     // 没有「未知字段」这回事，挂 `deny_unknown_fields` 对它是句空话。
     "WireTmuxOuter",
-    // 〔LR2 · R95b〕探测结果的三态（`CliRenderRequest.ccm`）—— 加它那一拍下面那条计数当场红，登记在这里。
-    "WireCcmProbe",
+    // 〔MIG-2〕`WireCcmProbe`（`CliRenderRequest.ccm`，前端交来的探测三态）摘了：渲染住进那台后端，
+    //   「那台装没装 ccm」是后端自己的事实（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），不再由前端转述 ⇒ 八个。
   ];
 
-  test("Rust 侧九个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
+  test("Rust 侧八个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
     // 数量自检：将来加第九个类型时这条红，提醒把它加进上面的清单 ——
     // 只看**属性里**的，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
     //
@@ -145,8 +145,9 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   // ★ 接缝判据：**生产真的切过去了**。没有它，「把 renderCliViaBackend 换回 tryRenderCli」
   // 会让所有夹具/单测照常全绿 —— 那正是这一轮唯一实质的改动，也是最容易被悄悄回退的一处。
   test("生产渲染路径调的是后端，不是 TS 的 tryRenderCli", () => {
-    expect(RUN).toContain("await renderCliViaBackend(ctx, plan, probe)");
-    expect(RUN).toContain("commands.render_ccm_launch");
+    // 〔MIG-2〕渲染问那台后端（`launch-render.ts::renderCli` → 通道 `launch-render-cli`），探测结果不再由前端转交。
+    expect(RUN).toContain("await renderCliViaBackend(origin, ctx, plan)");
+    expect(RUN).toContain("return await renderCli(origin, req)");
     // 〔LR1 · U8c-3〕TS 的 `tryRenderCli` 已删；这一格留着挡「在本文件里再手写一个」。
     // 全仓那一格见下面那组。
     expect(/[^a-zA-Z]tryRenderCli\s*\(/.test(RUN)).toBe(false);
@@ -166,7 +167,8 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
  * 那张表是人写的，多一份不登记它也看不见 —— 两条都只是「照抄回来」会有东西说话）。
  */
 describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
-  const NAME = /\btryRenderCli\b|launch-render-cli/;
+  // 〔MIG-2〕路径形要求 `./` 前缀：通道那一问的 op 名也叫 `launch-render-cli`（`src/launch-render.ts`），它不是那份文件。
+  const NAME = /\btryRenderCli\b|["']\.{1,2}\/(?:[\w.-]+\/)*launch-render-cli(?:\.ts)?["']/;
   const hits = (files: { file: string; text: string }[]) =>
     files.filter((f) => NAME.test(stripComments(f.text, "ts"))).map((f) => f.file);
 
@@ -176,6 +178,7 @@ describe("〔LR1〕TS 那份 `ccm …` 调用行渲染器不许回来", () => {
         { file: "a.ts", text: 'import type { X } from "./launch-render-cli";\n' },
         { file: "b.ts", text: "// tryRenderCli 只在注释里\nconst x = 1;\n" },
         { file: "c.ts", text: "const r = tryRenderCli(plan, ctx, probe);\n" },
+        { file: "d.ts", text: 'await chan.call(o, "launch-render-cli", body, budget);\n' },
       ]),
     ).toEqual(["a.ts", "c.ts"]);
   });

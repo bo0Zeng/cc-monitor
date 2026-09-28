@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   翻译（`chan-fake.ts::tmuxControlShim`）：那两发 `chan_call` 照旧按旧名字交给 `invokeMock`，下面的断言一个字不用改。
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", async () => {
-  const { tmuxControlShim } = await import("./test-support/chan-fake");
-  return { invoke: tmuxControlShim(invokeMock, "tmux_send_keys") };
+  const { tmuxControlShim, launchRenderShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "tmux_send_keys") };
 });
 vi.mock("../src/remote-launch-run", () => ({
   runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
@@ -58,7 +58,6 @@ function baseOpts(over: Partial<RestartWithAccountOpts> = {}): RestartWithAccoun
     compactFirst: false,
     confirm: () => true,
     awaitCompact: async () => true,
-    awaitExit: async () => true, // 注入 → 不触发 10s 真延时兜底
     ...over,
   };
 }
@@ -104,29 +103,13 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     expect(resumeTmux).not.toHaveBeenCalled();
   });
 
-  it("happy（不 compact）→ 优雅退出(Esc→/exit) → kill → resume(注入 configDir) → 记 lastAccount，不发 /compact", async () => {
+  it("happy（不 compact）→ 〔V154〕直接 kill（不发 Esc / /exit、不等它退）→ resume(注入 configDir) → 记 lastAccount", async () => {
     await restartWithAccount(baseOpts());
-    // ④a 优雅退出：Esc 不带回车、/exit 带回车。
-    expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
-      origin: "devbox",
-      target: "cc-s1abcdef",
-      keys: "Escape",
-      enter: false,
-    });
-    expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
-      origin: "devbox",
-      target: "cc-s1abcdef",
-      keys: "/exit",
-      enter: true,
-    });
-    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: "devbox", target: "cc-s1abcdef" });
+    // 〔V154〕编排发出的控制调用恰好只有 kill 一发：再敲回 `Escape` / `/exit`（或任何按键）这里就红。
+    const control = invokeMock.mock.calls.filter((c) => c[0] === "tmux_send_keys" || c[0] === "kill_remote_tmux");
+    expect(control).toEqual([["kill_remote_tmux", { origin: "devbox", target: "cc-s1abcdef" }]]);
     expect(resumeTmux).toHaveBeenCalledWith("devbox", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(recordLast).toHaveBeenCalledWith("s1", "z");
-    // 未勾选 compact → 绝不发 /compact（Esc/exit 是优雅退出，不是 compact）。
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "tmux_send_keys",
-      expect.objectContaining({ keys: "/compact" }),
-    );
   });
 
   it("③ compactFirst → 先 send /compact → 等完成 → kill → resume", async () => {
@@ -166,32 +149,6 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
     await restartWithAccount(baseOpts());
     expect(resumeTmux).not.toHaveBeenCalled();
     expect(recordLast).not.toHaveBeenCalled();
-  });
-
-  it("④a 优雅退出：awaitExit 命中(true) → 不等满超时，续 kill + resume", async () => {
-    const awaitExit = vi.fn().mockResolvedValue(true);
-    await restartWithAccount(baseOpts({ awaitExit }));
-    expect(awaitExit).toHaveBeenCalled();
-    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
-    expect(resumeTmux).toHaveBeenCalled();
-    expect(recordLast).toHaveBeenCalledWith("s1", "z");
-  });
-
-  it("④b 优雅退出超时(awaitExit=false) → 不阻断，降级 kill + resume（§5.2 ④）", async () => {
-    const awaitExit = vi.fn().mockResolvedValue(false);
-    await restartWithAccount(baseOpts({ awaitExit }));
-    expect(awaitExit).toHaveBeenCalled();
-    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
-    expect(resumeTmux).toHaveBeenCalled();
-  });
-
-  it("④a 优雅退出 send-keys 抛错 → 不中止，仍降级 kill + resume（§5.2）", async () => {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "tmux_send_keys" ? Promise.reject(new Error("sendkeys boom")) : Promise.resolve(undefined),
-    );
-    await restartWithAccount(baseOpts());
-    expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", expect.anything());
-    expect(resumeTmux).toHaveBeenCalled();
   });
 });
 
@@ -252,15 +209,9 @@ describe("A3 本机换号重启（origin = <local>）", () => {
   const payloadOf = (cmd: string): Record<string, unknown> | undefined =>
     invokeMock.mock.calls.find((c) => c[0] === cmd)?.[1] as Record<string, unknown> | undefined;
 
-  it("happy：Esc→/exit→kill 都带 `<local>`，resume 走本机那一跳、交的是**用户点的那个号**（名字 ＋ 目录）", async () => {
+  it("happy：kill 带 `<local>`，resume 走本机那一跳、交的是**用户点的那个号**（名字 ＋ 目录）", async () => {
     const ok = await restartWithAccount(baseOpts({ origin: LOCAL, tmuxName: "proj-cc", launcher: "" }));
     expect(ok).toBe(true);
-    expect(invokeMock).toHaveBeenCalledWith("tmux_send_keys", {
-      origin: LOCAL,
-      target: "proj-cc",
-      keys: "/exit",
-      enter: true,
-    });
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: LOCAL, target: "proj-cc" });
     expect(resumeTmux).not.toHaveBeenCalled();
     expect(payloadOf("resume_history_session")).toEqual({

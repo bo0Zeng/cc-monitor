@@ -100,7 +100,7 @@ impl Refusal {
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
             // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
             // （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
-            // （`history.rs::render_local_ccm`，整个函数挂在 `cfg(not(windows))` 下）。
+            // （〔MIG-2〕今天是 `local.rs::render_ccm`，只在非 Windows 那一支走到）。
             // 〔LR1 · U8c-3〕原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
             // 〔CP2b〕进文案表那一拍按 CP1 裁词（改·§2.1）改成说「Windows 本机」，
             // `src/launch-cli-golden.ts` 里「本地 transport」那条用例的期望同拍改。
@@ -217,7 +217,7 @@ pub enum CliAccount<'a> {
     ///
     /// # ⚠ 它今天只有**本机**那条路在用，远端不许照抄
     ///
-    /// 唯一构造点是 `history.rs::render_local_ccm_with`（整段 `#[cfg(not(windows))]`）。
+    /// 唯一构造点是 `local.rs::render_ccm_with`（〔MIG-2〕只在非 Windows 那一支走到）。
     /// [`super::launch_wire::WireAccount`] **刻意没有对应变体** —— 远端是 ssh 过去，
     /// **那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字）⇒
     /// 「远端的继承怎么表达」是 `K-R90`，不是本变体。

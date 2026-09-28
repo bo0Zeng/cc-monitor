@@ -79,19 +79,25 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `inbound_client_tests.rs` → `launch.rs`）守的「发出去的字段 / mode 名 == 后端解析器认的」改由跨语言金样 \
          `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
     ),
+    // 〔MIG-3a〕`mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
     (
         "monitor→backend",
-        "tests/bridge/mcp_sync_tests.rs",
-        "src/backend/inbound.rs",
-        "〔AS1〕MCP 推 / 拉：monitor 发的命令名、发的四格与读的两格必须就是后端登记表里声明的那几个 \
-         —— 读它才能两向对拍（本侧手抄一份就成了两侧同源的恒等）",
+        "tests/bridge/config_surface_tests.rs",
+        "src/backend/assets/mcp_edit.rs",
+        "〔MIG-3a〕足迹里项目 MCP 的落点：注册表声明的文件名必须就是那台后端写口的落点常量 `MCP_JSON` \
+         —— 写进了后端之后，落点只在那一处（本侧抄一份就成了两侧同源的恒等）",
     ),
     (
         "monitor→backend",
-        "tests/bridge/mcp_sync_tests.rs",
-        "src/backend/mcp_sync.rs",
-        "〔AS1〕「判定只住后端」的零命中判据：monitor 这一侧不许出现后端那几个闭集的线上名 —— \
-         闭集的人群必须从后端现抠（本侧抄一份，后端加一态这条就静默失效）",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/skill_flow.rs",
+        "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/mcp_edit.rs",
+        "〔MIG-3a〕`project-mcp` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
     ),
     (
         "monitor→backend",
@@ -100,13 +106,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "〔RM1a〕「足迹」远端那一栏：monitor 发的命令名、读的那几格必须就是后端登记表里声明的那几个 \
          —— 读它才能对拍（本侧手抄一份就成了两侧同源的恒等）",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/remote_relay_tests.rs",
-        "src/backend/inbound.rs",
-        "〔RM1a〕中转按机器：monitor 发的两个命令名、解析的那几个字段必须就是后端登记表里声明的那几个 \
-         —— 读它才能拿**后端声明的**字段造样本喂解析器（本侧手抄一份就成了两侧同源的恒等）",
-    ),
+    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
@@ -152,6 +152,17 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
+    // 〔MIG-2 · `99 §2.1 ⑬`〕载荷内核搬进后端：原先 `tests/bridge/backend/control/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
+    //   与 `tests/bridge/history_tests.rs → ccm/argv.rs · ccm/plan.rs`（本机接回那一句真读得懂）三条边成了后端 crate 内部的读，摘了；
+    //   接回那一句的牙换成 `launch_render/launch_cli_parity_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
+    (
+        "backend→monitor",
+        "tests/backend/control/launch_render/payload_tests.rs",
+        "src/bridge/src/launch.rs",
+        "〔MIG-2〕「谁给 agent 进程定 env」那张人群闭表（`the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`）\
+         跨两半：串级那三处住后端（载荷内核 · 本机起会话 · `ccm` 容器路），进程级那一处（开窗那一跳的 `.env(k, v)`）留在 monitor。\
+         多一个决定点就多一个能各自答错「这次走不走中转」的地方 —— 只有同时数两半才验得了。",
+    ),
     (
         "monitor→backend",
         "tests/bridge/ssh_source_emits_parity.rs",
@@ -169,15 +180,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/bridge/backend/control/payload_tests.rs",
-        "src/backend/control/identity_tag.rs",
-        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增，**由步 2 那一路点名留下**〕         **启动期令牌那个环境变量名的双写点** ——          `the_launch_token_env_var_has_the_same_name_on_both_halves`。         写侧是 monitor 的载荷渲染器（`payload::render_env_ops` 里那句 `export …=`），         读侧是后端的 `identity_tag::RBIND_TOKEN_ENV`（从 `/proc/<pid>/environ` 取它）。         读侧那段头注逐字留话：**失效方向极其安静** —— 两侧漂开 ⇒ 读侧恒 `None`，         而 `None` 在那个查询里是**合法值**（「这条会话没有令牌」）⇒          **不会有任何东西报错**，↗ 只是永远降级回标题路。         （同一个坑 `K-P5f` 在**拉起身份那个变量**上栽过一次 —— 那个名字刻意不在这里复写：`launcher_identity_registry` 有一条**计数**判据要求它在 `src/bridge/src` 生产段里**恰好 1 处**，散文里提一句就会把它顶红；本轮实打撞上过，如实记下。）         ⇒ 只有同时读两侧才验得了。         ⚠ 如实写它怎么避开「两侧同源恒真」：读侧是**现抠源码**、         写侧是**跑一遍生产渲染器看真产物**，再加一条手写字面量的锚。",
-    ),
-    (
-        "monitor→backend",
         "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
         "src/backend/lib.rs",
-        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。         而「monitor 拼进命令行的那几个字面量」住 `ssh_source::connect_and_exec`、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push_str` 的那几个串），         不是真起一个老后端看它会不会退出。",
+        "★★〔`设计/80 §8.7` 步 3 · 09-23 新增〕**monitor 发的每一条流模式 flag，         后端都必须认得并剥离** —— `the_stream_flags_monitor_sends_are_all_strippable`。         失效方向是本仓栽过的 §26：老后端把**不认识**的 `--flag` 当成一次性查询、         处理完就退出 ⇒ 无 hello ⇒ monitor 重连 ⇒ **死循环**。         〔DEL〕远端只剩常驻一形之后，「monitor 发的那几个字面量」住 `remote_resident::attach_line`（attach 行，远端 `listen::attach_flags` 认不得就整条拒）、         「后端认得哪几个」住 `backend::STREAM_FLAGS` —— 两处各写一份，         只有同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**（从生产函数体里抠 `push` 的那几个串），         不是真起一个老后端看它会不会退出。",
     ),
     (
         "monitor→backend",
@@ -226,18 +231,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          🔴 **本条填的是一个先前空着的格**：`K-R85` 09-12 实测本表 17 条里 \
          `grep -c search` = **0** —— 两侧各写一份逐字相同的搜索口径，而**没有任何判据在对拍**。\
          「今天没漂」不是保障，本条治的就是「没人拦着它漂」。",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/history_tests.rs",
-        "src/backend/control/ccm/argv.rs",
-        "★★〔`K-R106` 09-13 新增〕**「本机后端产的那一句 attach，后端那份 `ccm` 真读得懂」** ——          `history::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`          的第 ③ 段。monitor 这一侧产的是一串 argv（`ccm attach <名>`），         而「它是不是真的被读成 attach、那个位置参数是不是真的落进 `attach_name`」         只有后端这一侧的解析器说得出 —— 那是一条**关于两侧同形**的性质，         只能同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**，不是真跑一次 `ccm`（真跑归 e2e `ccm-print-parity`）。",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/history_tests.rs",
-        "src/backend/control/ccm/plan.rs",
-        "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读后端源码才验得了。",
     ),
     // 〔C4b · 第四波 4B〕这里原有四条边（`session_outline_tests.rs` / `session_find_tests.rs` 各两条：
     //   大纲清单与会话内查找的**线上词**、monitor 造的 **argv** 两侧同形）。monitor 那一侧的读者（核头尾、造 argv）

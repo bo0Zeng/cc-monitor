@@ -159,13 +159,10 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                             "它产出的就是一段 rc 片段（`cc-acct-iso` 的 `cmd_shellinit` "
                             "只 `printf`、一个字节都不写盘）")),
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
-    ("mcp.write", (B3, "K34", "「包括安装 skill / MCP 等等」")),
-    ("mcp.remove", (B3, "K34", "同上，撤那一侧")),
-    # 〔AS1 · 第四波 4B〕MCP 推 / 拉（`设计/96` 的 B · V111/V112）：把另一台那份 `.mcp.json` 里勾的条目装到这台 ——
-    #   与 `mcp.write` 同一件事（写的是同一份文件、经同一份规划），只是条目来自另一台机器。
-    ("mcp.sync", (B3, "K34+V111+V112", "「装 MCP」的跨机那一形：条目原样从另一台拷来，写之前看差异、不同的要点了才盖")),
-    # 〔AS2 · 第四波 4B · V113〕skill「装到这台」：资产目录里别的机器有的 skill，用户点了才装到这台 `<skill 根>/<名>/`。
-    ("skill.install", (B3, "K34+V112+V113", "「装 skill」：文件原样从来源那台拷来，写之前看差异、不同的要点了才盖（装要你点）")),
+    # 〔MIG-3a · `99 §2.1 ⑬`〕`mcp.write` / `mcp.remove` / `mcp.sync` 三项摘了：D 组 MCP 的计算与写进了那台后端
+    #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
+    #   （归档表留一个不存在的 id 会让 `R3b` 恒红）。「装 MCP」那一件的装口住 `tool_registry` 的 `project-mcp` 那一行（后端写口）。
+    # 〔MIG-3a〕`skill.install` 摘了（理由同上：装 / 卸进了被写那台后端，不再是 Tauri 命令）。装口住 `tool_registry` 的 `skill-install` 那一行。
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
     ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
@@ -190,9 +187,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
     ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
-    # 〔AS2 · 第四波 4B · V113〕资产目录同步：只记各台有哪些 skill / MCP、在后端之间自动对上（写的是后端自己的目录文件）；
-    #   **不往任何机器装东西**（「装到这台」要用户点，走 ③ 那几条的路）⇒ 不是装口。
-    ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
+    # 〔MIG-3a〕`assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
     #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
@@ -214,15 +209,13 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("history.read-session", (NA, "—", "会话历史")),
     ("hooks.diagnose", (NA, "—",
                         "**只诊断**钩子，不装它（`TouchEffect::GenerateOnly`：产品自己不动手）")),
-    ("launch.render-attach", (NA, "—", "渲染一条命令串")),
-    ("launch.render-cli", (NA, "—", "渲染一条命令串")),
-    ("launch.render-payload", (NA, "—", "渲染一份载荷")),
+    # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
+    # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
     # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
     # （`src/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
     # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
-    ("mcp.list-project-dirs", (NA, "—", "列项目目录 —— 读")),
-    ("mcp.read", (NA, "—", "读 MCP 配置")),
+    # 〔MIG-3a〕`mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
     ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
@@ -331,7 +324,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "ccm_user_path_remove",
         "ccm_user_path_status",
         "local_ccm_entry_status",
-        "probe_ccm_cli",
+        # 〔MIG-2〕`probe_ccm_cli` 退役：远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），
+        #   本机那一格仍是 `local_ccm_entry_status`。本条红时逐字「别改表去凑」—— 核过了，是命令真删了，改表是跟上真相。
     ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条（〔AL1〕从前是一条 `write_account_aliases`），那几条归 S4。"
@@ -386,18 +380,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   因为它描述的那个现实变了。
         "cc_bus_install_state",
         "deploy_local_cc_bus",
-        # 〔AS1 · 第四波 4B〕MCP 推 / 拉（能力 `mcp.sync`，归档同 `mcp.write` 在 ③）：写的是同一份 `.mcp.json`、
-        #   经同一份规划（`mcp.rs::plan_project_mcp`）⇒ 与下面那两条同一件。
-        "mcp_sync_apply",
-        "mcp_sync_preview",
-        # 〔AS2 · 第四波 4B〕skill「装到这台」（能力 `skill.install`，③）：写的是这台 `<skill 根>/<名>/`，与 cc-bus 那一格同一件（装 skill）。
-        "skill_install_apply",
-        "skill_install_preview",
-        # 〔SU1 · 第四波 4C · V116〕skill 卸（同一能力 `skill.install`，③）：删的是同一个 `<skill 根>/<名>/` 里装时写进去的那几个 ⇒ 同一件（装 / 卸 skill）。
-        #   前端落点仍只在 `src/settings/mcp-section.ts::assetInstallApi`（`FRONTEND_PIN['S5']` 不动）。
-        "skill_uninstall_apply",
-        "remove_project_mcp_server",
-        "write_project_mcp_server",
+        # 〔MIG-3a〕MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
+        # 〔MIG-3a〕skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
         "write_skill_file",
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
        "〔步 12·C 收尾 09-20〕③ 这一处**现打是 5 条命令**（`§3-3` 写下时是 7 条，"
@@ -428,8 +412,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
-    ("S2", (("src/ccm-probe.ts",
-             "src/settings/machine-aliases.ts"),
+    ("S2", (("src/settings/machine-aliases.ts",),
+            "〔MIG-2〕**2 → 1**：`src/ccm-probe.ts` 随 `probe_ccm_cli` 删了（远端探测住进那台后端）。"
             "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/settings/cc_integration.ts` 并进了 "
             "`src/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
             "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
@@ -455,9 +439,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
     ("S5", (("src/settings/cc-bus-section.ts",
-             "src/settings/mcp-section.ts",
              "src/views/inbox-view.ts"),
-            "量于 09-15 · 同上",
+            "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
+            "改经通道问那台后端，不再调 S5 的 Tauri 命令",
             "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S5']`")),
 ])
@@ -528,9 +512,9 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "而那正是 ① 该在的地方。⚠ 从前那句「目标：空」讲不通：R63 要的是「收成一处」"
             "不是「取消入口」，降到空等于用户再也没有地方部署远端后端，与 `K27`"
             "（部署是产品的一部分，由客户端做）直接冲突。")),
-    ("S2", (("src/settings/machine-card.ts", "src/ccm-probe.ts"),
+    ("S2", (("src/settings/machine-card.ts",),
             "「终端集成」那一块（`cc_integration_*`）与本机 ccm 入口查询并进组件栏的"
-            "**本机页那一份**；`src/ccm-probe.ts` 留着，它不是入口（见 `FRONTEND_NON_ENTRY`）。"
+            "**本机页那一份**。〔MIG-2〕`src/ccm-probe.ts` 删了（它原是非入口，见 `FRONTEND_NON_ENTRY` 那条墓碑）。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
             "`cc_integration_install` 归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
             "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
@@ -552,11 +536,8 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
 # 🔴 每一条的理由都要**自己站得住**（不是「不这么划 3 就闭合不了」）——
 #    `KR131D1` 逐字警告过「别为了让 3 闭合去硬凑分组」。
 FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
-    ("src/ccm-probe.ts",
-     "它是 `probe_ccm_cli` 的**按 origin 的 5 分钟 TTL 缓存**，消费者是 `remote-launch-run.ts` "
-     "的 `renderLaunchCommand`（决定这次走 CLI 渲染器还是兜底渲染器）。**用户界面上没有这一处**，"
-     "它也不装任何东西。把它搬进设置里的某个分节等于让底层渲染链去 import 一个 UI 模块。"
-     "⇒ 它会**永远**留在 `§S5d` 的落点名单里，而永远不该被算成一处安装面入口。"),
+    # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
+    #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
     ("src/views/inbox-view.ts",
      "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
      "**装不了 skill**：`skill_host::resolve_editable` 第一刀就是 "
@@ -601,6 +582,15 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
     "profile_installer.rs::uninstall_from_profile":
         "同上，摘那一侧",
     # 〔TL1 · 4C〕全景小程序进 `tool_registry::TOOLS`（`id: "panorama"`）时它的装口登记进对拍表。
+    # 〔MIG-3a · `99 §2.1 ⑬`〕`project-mcp` 的装 / 卸口进了那台后端：帧命令 `mcp-server-put` / `-remove` 的本体。
+    "assets/mcp_edit.rs::answer_put":
+        "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
+    "assets/mcp_edit.rs::answer_remove":
+        "同上，撤那一侧",
+    "assets/skill_flow.rs::answer_install":
+        "〔MIG-3a〕`skill-install` 的装口：那台后端的帧命令 `skill-install-apply` 本体，本来就不是 Tauri 命令",
+    "assets/skill_flow.rs::answer_uninstall":
+        "同上，卸那一侧（`skill-uninstall-apply`）",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
         "本来就不是 Tauri 命令：没有用户按钮，触发点是 `panorama_call.rs` 在那台后端答「没装 / 太旧」时调它"

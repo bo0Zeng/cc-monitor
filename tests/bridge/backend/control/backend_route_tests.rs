@@ -49,7 +49,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
         },
         CallError::Remote {
             code: "invalid_args".into(),
-            message: "未知 mode `send-keys-raw`".into(),
+            message: "未知 mode `attach-only`".into(),
         },
     ];
     for e in &no_fallback {
@@ -62,26 +62,6 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
     }
     // 「没有通道」那一档也必须是可回落的。
     assert!(matches!(no_channel("h1"), Routed::NoChannel(_)));
-}
-
-/// ⚠ **老后端不认新 mode 时回的是 `invalid_args`，那**不是**「可回落」。**
-///
-/// 这条单独写出来是因为它反直觉：F04c 选「新 mode 名」的理由正是
-/// 「老后端会明确报错而不是静默做错」，很容易顺手把它归成 `NoChannel` 去回落 SSH。
-/// 但 `invalid_args` 是 **backend 说过话了** —— 它可能是「mode 不认」，
-/// 也可能是「名字含 `:`」这种真该拒的形状问题，**在这一层分不开**。
-/// ⇒ 一律不回落；要给「老后端」开回落，得靠 `accepts()`/`Unsupported` 那条**命令级**
-/// 能力协商，而不是猜错误码。
-#[test]
-fn an_old_backend_rejecting_the_new_mode_is_not_a_reason_to_fall_back() {
-    let e = CallError::Remote {
-        code: "invalid_args".into(),
-        message: "未知 mode `send-keys-raw` —— 只有 create-or-attach / send-into".into(),
-    };
-    match route_call_error(&e, plain) {
-        Routed::Refused(msg) => assert!(msg.contains("invalid_args")),
-        other => panic!("`invalid_args` 被判成了 {other:?} —— 它是后端说的话，不许回落"),
-    }
 }
 
 /// `backend/control/` 里每个**走后端的发送端**的判定。
@@ -187,22 +167,15 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   没有第二条路可回落（那份文件只在那台机器上），长连接不在时明说「没有控制通道」；
     //   **照样走分流器**，理由与 `backend_policy.rs` 那条逐字相同。
     ("apikey_remote.rs", Verdict::UsesRouter),
-    // ★ 〔RM1a · 第四波〕中转按机器：远端那一臂问 / 交那台机器的后端（`relay-status` / `relay-ensure`），
-    //   都经 `remote_relay.rs::call` 这一口。与上一条**分开两个文件**是刻意的（「账号就账号, 中转就中转」），
-    //   理由与形状逐字同上一条。
-    ("remote_relay.rs", Verdict::UsesRouter),
+    // 〔DEL〕`remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
     // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
     //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
     ("footprint_remote.rs", Verdict::UsesRouter),
-    // ★ 〔AS1 · 第四波 4B〕MCP 推 / 拉：请**要被写的那一台**的后端判（`mcp-sync-plan`），经 `mcp_sync.rs::BackendJudge::plan`
-    //   这一口；读 / 写那两跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由逐字同上几条。
-    ("mcp_sync.rs", Verdict::UsesRouter),
+    // 〔MIG-3a〕`mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
     // ★ 〔AS2 · 第四波 4B〕资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
     ("asset_sync.rs", Verdict::UsesRouter),
-    // ★ 〔AS2〕skill「装到这台」：来源那台 `skill-read` · 被写那台 `skill-install-plan`，经 `skill_install.rs::BackendAsk::ask`
-    //   这一口；写那一跳走 `user_files.rs::BackendDoor`（已登记）。形状与理由同 `mcp_sync.rs` 那一条。
-    ("skill_install.rs", Verdict::UsesRouter),
+    // 〔MIG-3a〕skill「装到这台」那一行（原住 `skill_install.rs`）摘了：装 / 卸的编排进了被写那台后端，界面经通道直问。
     // ★ 〔RW1 · 第四波 · 2026-09-24〕**第十一个发送端** —— 用户文件的读改写 ＋ 删历史会话
     //   （`user_files.rs::BackendDoor`：`files-home` / `files-peek` / `files-put` / `files-rename` /
     //   `files-chmod` / `files-delete-session`）。用户裁「只允许后端的文件管理部分写文件」也管本机
