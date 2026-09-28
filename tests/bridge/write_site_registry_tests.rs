@@ -85,10 +85,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
      "〔RM1c · 第四波〕把 `embedded-backends/cc-monitor-panorama-<arch>`（只装代码全景引擎的独立小程序，\
           两个 musl arch）复制进 `OUT_DIR`，供 `panorama_bytes.rs` 的 `include_bytes!` 内嵌。\
           同上一行：写的是 cargo 自己的构建目录，不碰用户环境、不是安装动作"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `skill_host.rs::write_skill_file` 一行（项目里的
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
-    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。三道围栏（`resolve_editable`）仍在 monitor，决定能不能碰。
+    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。〔MIG-3a〕三道围栏也进了那台后端（`skill_host.rs::editable_target`）。
     // ── 🔴 〔RW1 · 第四波 · 2026-09-24〕这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
@@ -528,7 +528,7 @@ const MOVED_OUT: &[&str] = &[
     "profile_installer.rs",
     "fenced_block.rs",
     // 〔MIG-3a〕`mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
-    "skill_host.rs",
+    // 〔MIG-3a〕`skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
     "cc_bus_deploy.rs",
     "history.rs",
     "remote_history.rs",

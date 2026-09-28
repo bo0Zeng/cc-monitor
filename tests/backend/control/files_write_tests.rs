@@ -97,55 +97,7 @@ fn the_session_file_predicate_answers_both_ways() {
     }
 }
 
-/// 🔴🔴 **两个 crate 里那两份判定的函数体，逐字节相同。**
-///
-/// 两棵树之间没有共享落点（`src/backend` 刻意不在 monitor 那个 workspace 里），
-/// 而 `设计/60 §8.8` 记着上一次「把围栏搬成共享 crate」当天就被撤回。
-/// ⇒ 统一只能靠「两份**逐字**副本 ＋ 一条相等断言」。本条是后端这一侧那一份；
-/// 桥那一侧还有一份同形的（`tests/bridge/claude_data_fence_tests.rs`），
-/// 两侧各自跑得起来 —— 只跑一棵树的人也逃不掉。
-///
-/// ⚠ 它钉的是**函数体**，不钉函数名（两侧刻意不同名：同名会让桥那条
-/// 「`pub fn is_protected_claude_data_path` 全仓恰好一次」的断言红，而那条断言是对的）。
-#[test]
-fn the_two_copies_of_the_session_fence_are_byte_identical() {
-    fn body(src: &str, sig: &str) -> String {
-        let at = src
-            .find(sig)
-            .unwrap_or_else(|| panic!("语料里找不到 `{sig}` —— 抽取坏了，本条此刻在空转"));
-        let open = src[at..].find('{').expect("找不到函数体开头") + at;
-        let close = src[open..].find("\n}\n").expect("找不到函数体结尾") + open;
-        src[open + 1..close + 1].to_string()
-    }
-    let root = crate::guard_support::repo_root();
-    let mine = std::fs::read_to_string(root.join("src/backend/agents/claudecode/paths.rs"))
-        .expect("读后端那一份");
-    let theirs = std::fs::read_to_string(root.join("src/bridge/src/claude_data_fence.rs"))
-        .expect("读桥那一份");
-    // 针**运行时拼**：写成字面量的话本文件自己就成了第三处住址。
-    let a = body(&mine, &format!("pub fn is_session_record_{}(", "file"));
-    let b = body(
-        &theirs,
-        &format!("pub fn is_protected_claude_{}_path(", "data"),
-    );
-    // 反空真：抽出来的必须是真代码。
-    assert!(
-        a.len() > 400 && a.contains("rfind"),
-        "后端那一份抽出来只有 {} 字节 —— 抽取坏了",
-        a.len()
-    );
-    assert_eq!(
-        a, b,
-        "🔴 **两份会话围栏分叉了。**\n\
-         这两份函数体必须逐字节相同 —— 它们是**同一个判定**，\n\
-         两份存在的唯一理由是两个 crate 之间没有共享落点（`src/backend` 刻意不在\n\
-         monitor 那个 workspace 里，`设计/60 §8.8` 记着搬成共享 crate 被撤回过）。\n\
-         ⇒ 处置：改了一侧就把同一段字节抄到另一侧。\n\
-         ★ 分叉的代价不是重复代码，是**两份会给出不同答案**：同一次「往 `~/.claude` 里写」\n\
-         在后端那条路与桥那条路上结果不同，而界面上看不出这个区别\n\
-         （`设计/60 §8.7` 逐字记着这个后果，这一刀治的就是它）。"
-    );
-}
+// 〔MIG-3a〕「两份会话围栏逐字节相同」那一条退役：桥那一份（`claude_data_fence.rs`〔散文墓碑〕）随它最后一个用户进了后端，全仓只剩 `paths.rs` 这一份。
 
 // ── 围栏①（词法）──────────────────────────────────────────────────────
 

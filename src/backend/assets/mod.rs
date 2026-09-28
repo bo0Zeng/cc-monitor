@@ -5,3 +5,4 @@ pub(crate) mod door;
 pub(crate) mod mcp_edit;
 pub(crate) mod mcp_sync_flow;
 pub(crate) mod skill_flow;
+pub(crate) mod skill_inbox;

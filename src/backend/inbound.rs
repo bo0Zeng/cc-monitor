@@ -196,6 +196,10 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
+    // 〔MIG-3a〕skill 接入面（收件箱）三条：列 · 读 · 写（声明与围栏住适配层，读写经文件管理面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "skill-host-list",
+    "skill-host-read",
+    "skill-host-write",
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
@@ -2534,6 +2538,51 @@ pub const REGISTRY: &[CommandSpec] = &[
             )
             .map(Some)
             .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕skill 接入面（收件箱）：`assets/skill_inbox.rs`，声明与围栏在 `agents/claudecode/skill_host.rs`，读写经 [`LocalFiles`]。
+    CommandSpec {
+        name: "skill-host-list",
+        doc_anchor: Some("#### `skill-host-list`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "cwd",
+            "editable",
+            "id",
+            "instances",
+            "label",
+            "missing_reason",
+            "skills",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_inbox::answer_list(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-host-read",
+        doc_anchor: Some("#### `skill-host-read`"),
+        codes: &["bad_args", "refused"],
+        fields: &["cwd", "path", "skillId", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_inbox::answer_read(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-host-write",
+        doc_anchor: Some("#### `skill-host-write`"),
+        codes: &["bad_args", "refused", "stale"],
+        fields: &["content", "cwd", "expected", "path", "skillId"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_inbox::answer_write(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。

@@ -44,28 +44,11 @@
  */
 import { invoke, type Channel } from "@tauri-apps/api/core";
 
-/**
- * devbench F03：一个接入的 skill 的当前状态。
- *
- * ⚠ **本类型是手写的**（不是 ts-rs 生成）—— 照 `launch-cli-wire.ts` 的先例。
- * ⇒ 字段名与 Rust 侧 `skill_host::SkillView`（serde 默认 snake_case）**必须手动同步**，
- * 由 Rust 侧的 `the_ts_view_type_matches_this_struct` 钉住：那条判据读本文件的源码，
- * 逐个字段对拍，漏一个就红。
- */
+// 〔MIG-3a〕`SkillView` 搬进 `src/skill-inbox-reads.ts`（收件箱三问改走通道、后端出成品）。
 // 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 与 `ApikeyRoutingView` 两个类型搬进 `src/apikey-reads.ts`（那两问改走通道、后端出成品，
 //   形状由跨语言金样 `tests/__fixtures__/apikey.golden.json` 两侧对拍）；本文件那条 `import type … from "../accounts"`（B-decouple §6
 //   必须拆 4 点名的「闭合类型环的那条边」）随 `apikey_routing_for` 一起走了。
 
-export interface SkillView {
-  id: string;
-  label: string;
-  /** `null` = 在场；否则是带身份的缺席原因（哪个 skill 的哪条前提没满足）。 */
-  missing_reason: string | null;
-  /** 实例名（planned-build 的工作区名…）。 */
-  instances: string[];
-  /** 可编辑文件的绝对路径（后端算好的，UI 直接拿去请求读/写）。 */
-  editable: string[];
-}
 // U8c-2c-2：手写 wire 镜像（不是 ts-rs 生成的）——与 Rust 的一致性由 launch-cli-wire.vitest.ts 钉。
 import type {
   CliRenderRequest,
@@ -220,41 +203,9 @@ export const commands = {
   set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
     invoke<RestartHint>("set_diagnostics_config", args),
 
-  /**
-   * devbench F03：列出接入的 skill 及其状态。
-   *
-   * `missingReason` 非 null 时是**带身份的**缺席原因（哪个 skill 的哪条前提没满足）——
-   * UI 要原样显示它，不许退化成「不可用」（定框 C6）。
-   */
-  // 〔RW1 · 第四波 09-24〕三条都吃 `origin`（本机 = `"<local>"`）：远端项目的收件箱也能编辑，
-  //   读写都经那台机器的后端（本机同一条路）。
-  list_skills: (args: { origin: Origin; cwd: string }) =>
-    invoke<SkillView[]>("list_skills", args),
-
-  /** devbench F03：读一个 skill 的可编辑文件（读也过写面围栏，免得变成任意文件读取口）。 */
-  read_skill_file: (args: { origin: Origin; cwd: string; skillId: string; path: string }) =>
-    invoke<string>("read_skill_file", args),
-
-  /**
-   * devbench F03：写一个 skill 的可编辑文件。
-   *
-   * 后端三道围栏（路径 canonicalize 后做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在）
-   * + 〔RW1〕经那台机器后端的文件管理那一面写（回读逐字节比对与回滚住后端）。**前端不做安全判断** ——
-   * 判定的真相源只有 `skill_host::resolve_editable` / `remote_editable_rel`。
-   * `expected` = 打开时读到的那一份（CAS：盘上那份在这之后被改过 ⇒ 一个字节不写）。
-   */
   // 〔HX2 · 第四波 4D〕墓碑：这里从前是 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` `KS10`：从界面配一把 key）。
   //   写 key 改走通道 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），交那台机器的后端；`KH2C1` 那一条照旧成立 ——
   //   前端交 `configDir`，账号 id 由后端按全仓唯一那份规则（`acct_core::apikey_account_id_of_dir`）推。
-
-  write_skill_file: (args: {
-    origin: Origin;
-    cwd: string;
-    skillId: string;
-    path: string;
-    content: string;
-    expected: string;
-  }) => invoke<void>("write_skill_file", args),
 
   /**
    * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。

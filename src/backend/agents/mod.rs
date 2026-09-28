@@ -242,6 +242,11 @@ pub(crate) struct AssetFace {
     pub(crate) scan: fn() -> Sightings,
     /// 这一家 skill 的根（「装到这台」读 / 写 skill 的落点从这里来；与扫描同一个家）。
     pub(crate) skills_root: fn() -> Option<PathBuf>,
+    /// 〔MIG-3a〕接进来的 skill 在一个项目里的样子（收件箱那一面的列表）。
+    pub(crate) skill_views: fn(cwd: &Path) -> Vec<serde_json::Value>,
+    /// 〔MIG-3a〕能不能碰那一份可编辑文件 ⇒ `(项目根, 相对段)`（声明集合 ＋ 数据文件的纵深围栏）。
+    pub(crate) skill_editable:
+        fn(skill_id: &str, cwd: &Path, requested: &Path) -> Result<(PathBuf, String), String>,
 }
 
 /// 〔AS2〕一家适配层看到的原始资产事实。**还没有摘要**（通用层 `asset_catalog.rs` 算）。
@@ -269,6 +274,11 @@ pub(crate) fn skills_root() -> Option<PathBuf> {
     REGISTRY
         .iter()
         .find_map(|a| a.assets.and_then(|f| (f.skills_root)()))
+}
+
+/// 〔MIG-3a〕收件箱那一面：注册表里第一家有资产面的那一家（同 [`skills_root`]）。
+pub(crate) fn skill_asset_face() -> Option<AssetFace> {
+    REGISTRY.iter().find_map(|a| a.assets)
 }
 
 /// **这个后端认得哪几个 agent**〔`S5`〕。加一个 agent = 加一行（+ 上面加一行 `mod`）。

@@ -164,9 +164,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
     ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
-    ("skill.inbox", (B3, "K34",
-                     "写侧（`write_skill_file`）是往用户项目里装东西；读侧两条由 "
-                     "`CMD_OVERRIDE` 划出去 —— 同一个能力 id 里读写两性质")),
+    # 〔MIG-3a〕`skill.inbox` 摘了：收件箱那一面进了那台后端（`skill-host-*`），不再是 Tauri 命令。
     # ─────────────────────────── 非装面 ───────────────────────────
     # 下面每一条都是「它不是装 / 卸 / 查装态的动作」。理由一律给**它到底在干什么**，
     # 不写「与安装无关」这种同义反复。
@@ -242,8 +240,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
 
 # 同一个能力 id 里读写两性质时，按命令名覆盖。**key 必须在 `LEDGER` 里**（R3 的第三向）。
 CMD_OVERRIDE = {
-    "list_skills": (NA, "K34", "列 skill —— 只读，不是装"),
-    "read_skill_file": (NA, "K34", "读那个收件箱文件 —— 只读"),
+    # 〔MIG-3a〕`list_skills` / `read_skill_file` 两条摘了（随 `skill.inbox` 进后端）。
 }
 
 # 写盘落点（`write_site_registry::WRITE_SITES`）里**带 tool id 的那几行** ＋ `§0b` 另外点名的
@@ -378,7 +375,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "deploy_local_cc_bus",
         # 〔MIG-3a〕MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # 〔MIG-3a〕skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
-        "write_skill_file",
+        # 〔MIG-3a〕`write_skill_file` 摘了：收件箱那一面进了那台后端。
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
        "〔步 12·C 收尾 09-20〕③ 这一处**现打是 5 条命令**（`§3-3` 写下时是 7 条，"
        "那两条远端双份今天已合进本机同名那两条）；"
@@ -434,8 +431,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`src/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
-    ("S5", (("src/settings/cc-bus-section.ts",
-             "src/views/inbox-view.ts"),
+    ("S5", (("src/settings/cc-bus-section.ts",),
+            "〔MIG-3a · 09-28〕**2 → 1**：`src/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",
             "S5 那一拍改这一行。**目标不在这一栏** —— 住 "

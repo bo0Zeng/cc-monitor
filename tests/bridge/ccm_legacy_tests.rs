@@ -155,9 +155,6 @@ impl crate::user_files::Door for StaleDoor {
     async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
         self.inner.stat_kind(path).await
     }
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
-        self.inner.list_dir(path).await
-    }
 }
 
 /// L3：两个触发点各恰一处（部署按钮 · 那台长连接握手完成）＋ 足迹那一行在册（读 `TOOLS`，路径 == [`LEGACY_REL`]）。

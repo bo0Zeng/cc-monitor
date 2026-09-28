@@ -1912,6 +1912,8 @@ mod tests {
             ("agents/claudecode/paths.rs", "is_session_record_path"),
             ("agents/claudecode/paths.rs", "session_file_for_delete_in"),
             ("control/files_write.rs", "fenced_session_file"),
+            // 〔MIG-3a〕F03b 收件箱编辑的纵深（不是文件管理器）：从 monitor 那一族搬进来之后借这一份判定。
+            ("agents/claudecode/skill_host.rs", "editable_target"),
         ]
         .iter()
         .map(|(a, b)| (a.to_string(), b.to_string()))

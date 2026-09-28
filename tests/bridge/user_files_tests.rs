@@ -33,9 +33,6 @@ pub(crate) struct DiskDoor {
     pub deleted: RefCell<Vec<(String, String)>>,
     /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
     pub peeked: RefCell<usize>,
-    /// `list_dir` 的答案，由判据**事先摆好**（替身不去遍历盘上的目录 ——
-    /// `scanning_guard_registry` 不许测试段裸遍历目录）。键是目录的绝对路径。
-    pub listings: RefCell<std::collections::BTreeMap<String, Vec<(String, bool)>>>,
 }
 
 impl DiskDoor {
@@ -47,7 +44,6 @@ impl DiskDoor {
             deleted_sids: RefCell::new(Vec::new()),
             deleted: RefCell::new(Vec::new()),
             peeked: RefCell::new(0),
-            listings: RefCell::new(std::collections::BTreeMap::new()),
         }
     }
 
@@ -184,14 +180,6 @@ impl Door for DiskDoor {
                 "file".to_string()
             }
         }))
-    }
-
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
-        self.listings
-            .borrow()
-            .get(path)
-            .cloned()
-            .ok_or_else(|| format!("替身：没给 {path} 摆目录列表"))
     }
 }
 
