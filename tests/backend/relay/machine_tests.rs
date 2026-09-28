@@ -71,7 +71,7 @@ fn our_real_relay_with_the_fixture_key_is_ours() {
     let relay = std::sync::Arc::new(super::super::server::Relay::new(
         std::sync::Arc::new(NoRows),
         super::super::door::Key::for_tests(),
-        super::super::tee::TeeSink::new(Box::new(std::io::sink())),
+        super::super::tee::TeeSink::to_port(std::sync::Arc::new(NoTap)),
         std::time::Duration::from_secs(10),
         std::time::Duration::from_secs(10),
     ));
@@ -114,6 +114,14 @@ fn a_port_held_by_something_else_is_not_ours() {
     assert!(!ours(free_port(), &get));
     let _ = std::fs::remove_dir_all(&home);
     let _ = std::fs::remove_dir_all(&empty);
+}
+
+/// 什么都不收的 tap 口（本族判据量的不是 tee）。
+struct NoTap;
+impl super::super::TapPort for NoTap {
+    fn offer(&self, _ev: super::super::TapEvent) -> bool {
+        false
+    }
 }
 
 /// 一行都没有的上游选择（探针只打「不是路由」那一形，不需要表）。

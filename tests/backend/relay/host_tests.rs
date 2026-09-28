@@ -255,7 +255,7 @@ impl Drop for Child {
     }
 }
 
-/// H3：生产接线 ⇒ 真在听、真转发；转发之后子进程 **stdout 上零 tee 行**（`__meta__` / `"event"` 一行都没有），
+/// H3：生产接线 ⇒ 真在听、真转发；转发之后子进程 **stdout 上零 tee 输出**（`tap` 帧 / 旧 NDJSON 事件行一行都没有 —— tee 只交 tap 口），
 /// 而 stdout 的采集面是活的（libtest 自己那句 `running 1 test` 在上面 —— 非空对照）。
 #[test]
 fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() {
@@ -338,7 +338,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     );
     let tee: Vec<&str> = stdout
         .lines()
-        .filter(|l| l.contains("__meta__") || l.contains("\"event\""))
+        .filter(|l| l.contains("\"kind\":\"tap\"") || l.contains("\"event\""))
         .collect();
     assert!(
         tee.is_empty(),

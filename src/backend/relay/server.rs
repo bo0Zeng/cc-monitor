@@ -85,7 +85,7 @@ const BODY_CAP: usize = 64 * 1024 * 1024;
 /// 它与 `BODY_CAP` **不同族**：那一条防的是「拿外部给的**一个数**去分配」（攻击方一个字节
 /// 不用发），这一条防的是「按**真实收到的字节**无界增长」（上游发一条永不换行的 `data:` 行 /
 /// 永不结束的块长度行）。超了**丢弃+带身份报告**：丢掉那一截并计数，
-/// 由 tee 流里的 `__dropped__` 行报出去 —— **tee 少一段，下游的字节一个不少**。
+/// 由 tee 在 tap 上占一个号不发报出去（接收侧看得见缺口）—— **tee 少一段，下游的字节一个不少**。
 const TEE_DECODE_CAP: usize = 8 * 1024 * 1024;
 /// 每次从上游读多少 —— **上限**，不是「要凑满这么多」。
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
@@ -713,15 +713,13 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     let mut view = BodyView::for_response(&headers);
     let mut splitter = SseSplitter::default();
-    // ★ 三个标签收成一个 `StreamId`（`20 §4`）—— 中转这一侧**没有业务名**，
-    //   写到线上的仍然是 `agent`/`account`/`key` 三个字段（那是线契约，见 `tee::open`）。
+    // ★ 路由键与流标签收成一个 `StreamId`（`20 §4`）—— 中转这一侧**没有业务名**；tee 只抄流标签（① 不问账号，`20 §11` I2）。
     //   〔V141〕流标签取自请求自己带的头（会话 id 归 agent），不是路径段。
     let id = StreamId {
-        key: &r.key,
         stream: stream_label(&head, &relay.stream_headers),
     };
     // 〔TAP〕`open` 发一个这一响应自己的游标（位置号 `n` 从 0 起），`event` / `note_dropped_bytes` / `close` 都拿它。
-    let mut at = relay.tee.open(id);
+    let mut at = relay.tee.open();
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
     // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
