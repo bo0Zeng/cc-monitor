@@ -348,12 +348,6 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
 /// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
     (
-        "ssh_source.rs",
-        "connect_and_exec",
-        1,
-        "后端长连接流是订阅：`05 §3.3.2`「`Budget` 只盖建流；流建起来之后没有总期限」；死链靠 keepalive ＋ EOF",
-    ),
-    (
         "dial_host.rs",
         "forward",
         1,
@@ -363,7 +357,7 @@ const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
         "remote_resident.rs",
         "attach",
         1,
-        "〔HOST〕接上远端常驻后端之后那条流是订阅（同 `connect_and_exec`）；握手那几行仍在一次性总时限里",
+        "〔HOST · DEL〕远端后端长连接流（远端只剩常驻这一形）是订阅：`05 §3.3.2`「`Budget` 只盖建流；流建起来之后没有总期限」；握手那几行仍在一次性总时限里；死链靠 keepalive ＋ EOF",
     ),
     (
         "dial_host.rs",

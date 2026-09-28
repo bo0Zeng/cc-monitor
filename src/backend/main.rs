@@ -151,10 +151,7 @@ async fn main() {
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **backend 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
-            // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
-            // K-H2a：多传一个 `agent_home` —— 这个进程的上游选择要从 `<home>/claudecode-frontend/` 下
-            // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
-            Some("--relay") => accounts::upstream::run_relay(&agent_home, &args),
+            // 〔DEL〕`--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形，V107 · V139）。
             // 〔HOST · V139〕远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // V139：远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
             Some("--resident-ensure") => control::resident::ensure(&agent_home, &args[1..]),
@@ -203,8 +200,8 @@ async fn main() {
         read_face::note_backend_log(p.clone());
     }
 
-    // 〔RL1 · V107〕**中转 ＋ 上游选择住本机常驻后端这个进程**：宿主交了端口才开
-    //   （monitor 起本机后端时交；远端经 SSH exec 起的流模式没人交 ⇒ 不开，远端中转另有住处）。
+    // 〔RL1 · V107 · V139〕**中转 ＋ 上游选择住常驻后端这个进程**：宿主交了端口才开
+    //   （monitor 起本机后端时交；远端由 `--resident-ensure` 起常驻子进程时交；测试连接探针那一趟没人交 ⇒ 不开）。
     //   放在选载体之前：两条载体（stdio / 常驻监听口）一样要。起不来只出声、不拖垮后端
     //   —— 理由与形状住 `relay::listen::host` 的头注。中转线程随本进程生、随本进程死。
     tracing::info!("{}", accounts::upstream::host_relay(&agent_home));

@@ -6,8 +6,8 @@
  *
  * # 本文件只做排版与手势（`设计/01 §1.1`）
  *
- * 差异四态、可疑项、「写哪几条」都由**要被写的那一台**的后端判（`mcp-sync-plan`），经 monitor 两条命令
- * （`mcp_sync_preview` / `mcp_sync_apply`）到这里。本文件只：把行画出来 · 收勾选 · 把看差异时拿到的两份原文原样送回去。
+ * 差异四态、可疑项、「写哪几条」都由**要被写的那一台**的后端判（`mcp-sync-plan`），读与写也在那台
+ * （〔MIG-3a〕`src/mcp-sync-reads.ts` 经通道问，从前的 monitor 两条命令删了）。本文件只：把行画出来 · 收勾选 · 把看差异时拿到的两份原文原样送回去。
  * 「对面不同的那一条要不要盖」这一问由勾选框问（默认不勾）；勾了 ⇒ 这一条进 `overwrite`。后端那一侧再核一遍：
  * 勾了 `take` 却没进 `overwrite` 的 `differs` ⇒ 整趟拒 —— 界面漏问也漏不过去。
  *
@@ -16,9 +16,7 @@
 import type { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
-import type { McpSyncPreview } from "../generated/McpSyncPreview";
-import type { McpSyncRow } from "../generated/McpSyncRow";
-import type { McpSyncSuspect } from "../generated/McpSyncSuspect";
+import type { McpSyncPreview, McpSyncRow, McpSyncSuspect, mcpSyncApply, mcpSyncPreview } from "../mcp-sync-reads";
 
 export type Direction = "push" | "pull";
 
@@ -145,9 +143,9 @@ export interface McpSyncApi {
   /** 已配置的远端（只读配置，不连机器）。 */
   machines: typeof commands.list_remote_mcp_origins;
   /** 那台机器用过的项目目录（自动补全）。 */
-  dirs: typeof commands.list_mcp_project_dirs;
-  preview: typeof commands.mcp_sync_preview;
-  apply: typeof commands.mcp_sync_apply;
+  dirs: (a: { origin: Origin }) => Promise<string[]>;
+  preview: typeof mcpSyncPreview;
+  apply: typeof mcpSyncApply;
 }
 
 /** 看差异那一刻定下的一切（写的时候原样用，不再读界面上的输入框）。 */

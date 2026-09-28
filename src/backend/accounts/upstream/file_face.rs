@@ -19,11 +19,11 @@
 //! monitor 所在那台：monitor 自己（`src/bridge/src/creds_store.rs`，本路一个字节没动）。
 //! 其余每台：那台的后端，就是本模块。monitor **从不**把 `apikey-key-set` 发给本机那条连接。
 //!
-//! # 路径：与 `--relay` 那一臂**同一个出处**
+//! # 路径：与中转里的上游选择**同一个出处**
 //!
-//! 中转进程里的上游选择按 [`super::creds::resolve_path`] 找那份文件，家目录是 `main.rs` 的 `agent_home`。
-//! 本模块用**同一个函数、同一个家目录出处**（[`machine_path`]）。远端那台的中转由后端起
-//! （`relay-ensure`），环境从后端继承 ⇒ 写的这一份与读的那一份是同一个路径 —— 构造上的事，
+//! 中转里的上游选择按 [`super::creds::resolve_path`] 找那份文件，家目录是 `main.rs` 的 `agent_home`。
+//! 本模块用**同一个函数、同一个家目录出处**（[`machine_path`]）。中转住常驻后端进程里（本机远端同形），
+//! 两边读的是同一个进程环境 ⇒ 写的这一份与读的那一份是同一个路径 —— 构造上的事，
 //! 不靠一个跨层传递的环境变量（中转那一层因此不必认识凭据文件的任何名字）。
 //!
 //! # 明文走哪、不走哪
@@ -49,7 +49,7 @@ use std::path::{Path, PathBuf};
 /// 本族的应答：`data` 或 `(code, message)`（形状同 `read_face::Answer`）。
 pub(crate) type FileFaceAnswer = Result<Value, (&'static str, String)>;
 
-/// 这台机器上那份文件在哪 —— **与 `--relay` 那一臂同一个出处**（见模块头注）。
+/// 这台机器上那份文件在哪 —— **与中转里的上游选择同一个出处**（见模块头注）。
 ///
 /// ⚠ 家目录借 `observe::history_query::agent_home` 那一句：它是 lib 这一侧**唯一**那处「解析本机 home」
 /// （与 `main.rs::resolve_agent_home` 逐字同一个适配层函数，`agent_locality_guard` 两处都登记着）。

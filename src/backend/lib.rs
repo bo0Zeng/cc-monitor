@@ -27,6 +27,7 @@ pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专�
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
 pub mod asset_catalog; // 〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，第四层；一个用户文件都不写）
 pub mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）
+pub mod assets; // 〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
 #[cfg(test)]
 #[path = "../../tests/backend/build_id_guard.rs"]
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
@@ -618,7 +619,19 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4v-resume-running-elsewhere**（2026-09-27，FIX 续合并那一拍）：行为 —— ccm resume 时那个会话在跑但不在 ccm 起的 tmux 里 ⇒ 拒并说 pid
 /// （判活与 watcher 起步初扫同一份，由 `main` 注入）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4v-resume-running-elsewhere";
+///
+/// ★★★ **p4w-no-fallback**（2026-09-27，DEL 合并那一拍）：子命令 −3 `--relay` · `--relay-ensure` · `--relay-status`（帧命令 −2）· 远端只剩常驻（流模式回落删，
+/// 非 unix 远端明说不支持）· 中转只住常驻后端进程内 · tee 只剩 tap 口（NDJSON 落点删）。
+///
+/// ★★★ **p4x-relay-state-in-process**（2026-09-27，DEL 续合并那一拍）：子命令 −2（`--apikey-routing` · `--launch-endpoint` 只留帧面）·
+/// 「我们的中转在不在」读常驻后端进程内的监听状态（差分 HTTP 探针删）· 非 unix 远端归「永久不支持」、流收工不再按退避重连。
+///
+/// ★★★ **p4y-no-raw-keys**（2026-09-27，RST 续合并那一拍）：协议 —— 后端 `launch` 的 `send-keys-raw` mode 删（V154 之后零生产调用者，V41）；
+/// `launch` 只剩 `create-or-attach` / `send-into` 两个 mode。子命令没变，照 p1v 先例不加历史行。
+///
+/// ★★★ **p4z-assets-in-backend**（2026-09-27，MIG-3a 前半合并那一拍）：子命令 ＋7（MCP 增删 · MCP 同步三问 · skill 装卸），后端新模块 `assets/`；
+/// `assets-sync` 多认只给 `origin` 的调用（查握手登记的可达表）。MCP 编辑 / 同步、skill 装卸的判定与写都在被写那台。
+pub const BUILD_ID: &str = "p4z-assets-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -742,14 +755,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-key-set",
     "--apikey-read",
-    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`inbound::REGISTRY` 的 `apikey-routing` / `launch-endpoint`）自动派生的 CLI 面。
-    // 只读（读一份凭据文件 ＋ 回环上探一次中转），入参从 stdin 读。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
-    "--apikey-routing",
-    "--launch-endpoint",
-    // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
-    // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
-    "--relay-ensure",
-    "--relay-status",
+    // 〔DEL 续〕`--apikey-routing` / `--launch-endpoint` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有中转，答「不在」是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    // 〔DEL〕`--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
@@ -762,6 +769,14 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔SH1 · V137〕帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--mcp-read",
     "--mcp-sync-plan",
+    // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--mcp-server-put",
+    "--mcp-server-remove",
+    "--mcp-sync-source",
+    "--mcp-sync-preview",
+    "--mcp-sync-apply",
+    "--skill-install-apply",
+    "--skill-uninstall-apply",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--assets-catalog",
@@ -888,9 +903,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
-    // K-H1：起 HTTP 中转（常驻，不是一次性查询 —— 它住在这张表里是因为
-    // `is_query_mode` 那道闸门读的是本表；不登记就会被当成未知 flag 静默进流模式）。
-    "--relay",
+    // 〔DEL〕`--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 〔HOST · V139〕远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
     "--resident-ensure",

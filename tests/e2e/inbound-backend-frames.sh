@@ -190,14 +190,14 @@ if ! command -v tmux >/dev/null 2>&1; then
   bad "没有 tmux —— launch 段无法验证（本套件依赖真 tmux，不接受跳过）"
 else
   # ⚠ **名字必须是本工具的命名形状**（`<X>-cc`）—— 与下面 `INBOUND_SEND_INTO_LINE` 那段是同一条理由。
-  #   F03 给后端的 `send-into` / `send-keys-raw` 都装上了 §34 Gate 2（`gate.rs::admit`）：
+  #   F03 给后端的 `send-into` 装上了 §34 Gate 2（`gate.rs::admit`）：
   #   `e2e-launch-<pid>`（旧名）**既不是本工具的命名形状、事实键 `@ccm_sid` 也没设** ⇒ `wrong_owner`。
   #   ⚠ 那**不是缺陷，是这道门的正确行为**：旧夹具能过门，靠的是「建会话时顺手写了裸 `@ccm_sid`」，
   #   而那条路 09-03（`2a58237`，`K-P2` C 第五拍）已经拆掉了（建会话只写**意图**键，见下面两格）。
   #   ⇒ 换成**生产真会产生**的形状（`launch-requests.ts` 产的是 `<sid8>-cc`），下面那几条才走得到
-  #   它们真正要验的那条路（键入 / 幂等 / 不附回车），而不是全部停在身份门上。
+  #   它们真正要验的那条路（键入 / 幂等），而不是全部停在身份门上。
   # ⚠ 「非本工具会话必须被 Gate 2 拒」那一档**不在本套件**：`tests/e2e/backend-gate2-acceptance.sh`
-  #   逐行跑整张判定表，外加 `send-keys-raw` 与「只设了 `@ccm_sid_expect` 仍拒」两条。这里不重复。
+  #   逐行跑整张判定表，外加「只设了 `@ccm_sid_expect` 仍拒」一条。这里不重复。
   SESS="e2e-launch-$$-cc"
   MARK="$WORK/launched.marker"
   # 载荷：写一个 marker 文件。它比「看进程名」可靠得多 —— 能证明**这一行真的被执行了**。
@@ -317,44 +317,6 @@ else
     fi
   else
     bad "编码器产的 send-into 行没有应答"
-  fi
-
-  # ★★ F04c：`send-keys-raw` **不附尾 Enter** —— 真 tmux 上的两步证明
-  #
-  # 这是本件唯一能在真 tmux 上直接看见的性质，也是它存在的全部理由：
-  # 生产上走这条路的是「优雅退出发 `Escape` 打断当前回合」，多一个回车就变成
-  # **提交用户输入框里排队的文本**。
-  #
-  # 步骤一：发一条会 touch 文件的命令、**不带回车** ⇒ 文件**不该**出现（它还在命令行上排队）。
-  # 步骤二：单独发一个 `Enter` 键（tmux 的 send-keys 会把它当键名解析）⇒ 排队那行才执行。
-  # 两步一起才说明「没附回车」——只做步骤一的话，「命令写错了」也会让文件不出现。
-  RAWMARK="$WORK/rawmark"
-  send "{\"id\":\"e2e-raw-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-keys-raw\",\"name\":\"$SESS\",\"payload\":\"touch '$RAWMARK'\"}}"
-  if wait_for '"id":"e2e-raw-1"'; then
-    R="$(grep -F '"id":"e2e-raw-1"' "$OUT" | head -1)"
-    if printf '%s' "$R" | grep -qF '"ok":true' && printf '%s' "$R" | grep -qF '"typed":true'; then
-      ok "send-keys-raw 被真后端接受"
-    else
-      bad "send-keys-raw 被拒了：$R"
-    fi
-  else
-    bad "send-keys-raw 没有应答"
-  fi
-  sleep 0.5
-  if [ -f "$RAWMARK" ]; then
-    bad "**send-keys-raw 附了回车** —— 那一行被直接执行了。生产上这就是把 Escape 变成提交"
-  else
-    ok "send-keys-raw 没有附回车（那一行还在命令行上排队，没执行）"
-  fi
-  # 步骤二：补一个 Enter 键 ⇒ 排队那行才跑起来（同时证明步骤一真的把内容打进去了）
-  send "{\"id\":\"e2e-raw-2\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-keys-raw\",\"name\":\"$SESS\",\"payload\":\"Enter\"}}"
-  wait_for '"id":"e2e-raw-2"' || bad "补 Enter 那条没有应答"
-  got_raw=0
-  for _ in $(seq 1 60); do [ -f "$RAWMARK" ] && { got_raw=1; break; }; sleep 0.05; done
-  if [ "$got_raw" = 1 ]; then
-    ok "补一个 Enter 键之后排队那行才执行（证明步骤一真的打进去了）"
-  else
-    bad "补了 Enter 也没执行 —— 步骤一多半根本没打进去，上面那条「没附回车」是空的"
   fi
 
   # attach 不归后端（平面 ③）

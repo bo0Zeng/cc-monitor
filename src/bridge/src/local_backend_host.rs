@@ -1714,14 +1714,14 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 // monitor 不再单独起 / 收中转（本机固定两个进程）」⇒ 那一族整个删掉：
 // - 起：后端流模式进程被交了端口就在本进程里起（`src/backend/relay/listen.rs::host`）；
 // - 收：随常驻后端按「退出行为」留或退（`设计/01 §3.3b`），monitor 一行都不管；
-// - 在不在：由本机常驻后端自己答（`launch-endpoint` 成品里的 `listening`，与远端 `relay-status` 同一个判准）；
+// - 在不在：由本机常驻后端自己答（`launch-endpoint` 成品里的 `listening`，与远端同一个判准）；
 //   〔US1〕monitor 这一侧先前那个「回环上连一次」的探针（`relay_running`〔散文墓碑〕）随上游选择整块进后端删了。
 
 /// 〔RL1〕起本机后端时交给它的那份**环境**：中转端口 ＋ 凭据文件路径。**两条载体交的是同一份**
 /// （常驻那条 `start_detached` 的 `extra_env` · 被监护那条 `local_backend::start_or_extract` 的 `envs`）。
 ///
 /// ★ 端口**显式交**：注入侧（`payload::RELAY_PORT`）与后端里 bind 的是同一个值；后端那一侧**没有缺省值**
-///   （交了认不出的串就不开中转），它的 `DEFAULT_PORT` 只属于独立 `--relay` 那一形。
+///   （交了认不出的串就不开中转）。
 /// ★★ 凭据路径也显式交（`D1 阻-3` 那条理由原样）：不交的话，后端里的上游选择走它自己那条
 ///   `resolve_path` → `resolve_home()`，而那一条认 `CLAUDE_CONFIG_DIR`；monitor 认的那份（它的数据目录下，
 ///   `creds_store::resolve_path`）**不跟随**它 ⇒ 两侧认两份文件，症状是「界面上配好了，上游选择说没配」。
@@ -1749,7 +1749,7 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
 }
 
 // 〔US1 · 第四波 4D〕`relay_running` / `relay_listening_at`〔散文墓碑〕退役：本机中转在不在由本机常驻后端自己答
-//   （`launch-endpoint` · `apikey-routing` 的成品里那一格，判准是 RK1 的差分探针 —— 「口上有人 ≠ 我们的中转」那条诚实边界随之收掉）。
+//   （`launch-endpoint` · `apikey-routing` 的成品里那一格，读后端进程内的监听状态 —— 「口上有人 ≠ 我们的中转」那条诚实边界随之收掉）。
 
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」

@@ -6,7 +6,7 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 
 # ★★ **本 crate 存在的理由是「一个安全性质只许有一个实现」**〔`K-H2a` 裁三，PM 08-27〕。
 #
-# 读 key 的上游选择（挂在 `--relay` 进程上）住 `cc-monitor-backend`（`src/backend/`），它**不依赖 `src/bridge` 整体**，
+# 读 key 的上游选择（挂在常驻后端进程里的中转上）住 `cc-monitor-backend`（`src/backend/`），它**不依赖 `src/bridge` 整体**，
 # 只经 path 依赖吃 `src/bridge/crates/` 下的共享 crate。所以 key 这件事有三种落点，前两种都是病：
 #   · 只放 `src/bridge` ⇒ 后端的上游选择拿不到，`KS9②`（不开前端也能配）做不成；
 #   · 两个 crate 各写一份 ⇒ **一个安全性质两个实现**，什么时候漂开没有任何东西会说。

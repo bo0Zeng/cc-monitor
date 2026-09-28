@@ -1,10 +1,10 @@
 /**
  * F87（#50+#51）：MCP 管理（集成组内一节）。**SS-14 读写分界**：
- * - **读**：跨 scope 展示（用户 / local / 项目），后端 `read_mcp_servers` 宽容读三处。**用户/local scope 只读**。
- * - **写**：**只**项目 scope——增/改/删该项目 `<dir>/.mcp.json`，后端 `write_project_mcp_server`/`remove_project_mcp_server`
- *   硬编码只碰 `.mcp.json`（绝不写 `~/.claude.json`/`settings.json`）。
+ * - **读**：跨 scope 展示（用户 / local / 项目），那台后端 `mcp-read` 宽容读三处。**用户/local scope 只读**。
+ * - **写**：**只**项目 scope——增/改/删该项目 `<dir>/.mcp.json`，那台后端 `mcp-server-put` / `mcp-server-remove`
+ *   硬编码只碰 `.mcp.json`（绝不写 `~/.claude.json`/`settings.json`）。〔MIG-3a〕三问都经 `src/mcp-reads.ts` 走通道。
  *
- * 设置窗独立于主窗口、拿不到活跃会话 cwd → 用项目目录输入框（datalist 从 `list_mcp_project_dirs` 自动补全「用过的项目」）。
+ * 设置窗独立于主窗口、拿不到活跃会话 cwd → 用项目目录输入框（datalist 从 `mcp-read` 的 `dirs` 自动补全「用过的项目」）。
  * 纯函数（groupByScope / serverSummary / parseServerConfig）零 import，node 可测。
  */
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
@@ -14,6 +14,8 @@ import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast";
 import { McpSyncPanel } from "./mcp-sync";
+import { mcpSyncApply, mcpSyncPreview } from "../mcp-sync-reads";
+import { skillInstallApply, skillInstallPreview, skillUninstallApply } from "../skill-install-reads";
 import type { AssetInstallApi } from "./assets-section";
 
 export type McpScope = "user" | "local" | "project";
@@ -33,7 +35,8 @@ export type McpScope = "user" | "local" | "project";
 //
 // `McpScope` 保留：它是 TS 侧的**域细化**，`groupByScope` 的返回类型用它是对的
 // （分组结果确实只有三档）。运行时**逐字节不变**。
-import type { McpServerEntry } from "../generated/McpServerEntry";
+// 〔MIG-3a〕线上形状由 `src/mcp-reads.ts` 按形状收（`scope` 收成三值闭集，多一种 ⇒ 两端契约对不上）。
+import { type McpServerEntry, putMcpServer, readMcp, removeMcpServer } from "../mcp-reads";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
@@ -112,14 +115,19 @@ const SCOPE_LABEL = (): Record<McpScope, string> => ({
  */
 export function assetInstallApi(): AssetInstallApi {
   return {
-    dirs: (a) => commands.list_mcp_project_dirs(a),
-    mcpPreview: (a) => commands.mcp_sync_preview(a),
-    mcpApply: (a) => commands.mcp_sync_apply(a),
-    skillPreview: (a) => commands.skill_install_preview(a),
-    skillApply: (a) => commands.skill_install_apply(a),
+    dirs: (a) => mcpDirs(a),
+    mcpPreview: (a) => mcpSyncPreview(a),
+    mcpApply: (a) => mcpSyncApply(a),
+    skillPreview: (a) => skillInstallPreview(a),
+    skillApply: (a) => skillInstallApply(a),
     // 〔SU1 · 第四波 4C · V116〕卸：同一件（③ 装 / 卸 skill）的前端落点仍只在本文件。
-    skillUninstall: (a) => commands.skill_uninstall_apply(a),
+    skillUninstall: (a) => skillUninstallApply(a),
   };
+}
+
+/** 那台机器上用过的项目目录（`mcp-read` 的 `dirs`；datalist 与推 / 拉面板共用）。 */
+export async function mcpDirs(a: { origin: Origin }): Promise<string[]> {
+  return (await readMcp(a.origin, null)).dirs;
 }
 
 export class McpSection {
@@ -152,9 +160,9 @@ export class McpSection {
     // 四条命令从这里递进去（本分节是「装 MCP」那一件在前端的落点，面板自己不另立一份）。
     {
       machines: () => commands.list_remote_mcp_origins(),
-      dirs: (a) => commands.list_mcp_project_dirs(a),
-      preview: (a) => commands.mcp_sync_preview(a),
-      apply: (a) => commands.mcp_sync_apply(a),
+      dirs: (a) => mcpDirs(a),
+      preview: (a) => mcpSyncPreview(a),
+      apply: (a) => mcpSyncApply(a),
     },
   );
 
@@ -303,7 +311,7 @@ export class McpSection {
     // 远端那条早就有这个守卫（`if (this.origin !== origin) return;`），本机那条**漏了**。
     const want = this.origin;
     try {
-      const dirs = await commands.list_mcp_project_dirs({ origin: LOCAL_ORIGIN });
+      const dirs = await mcpDirs({ origin: LOCAL_ORIGIN });
       if (this.origin !== want) return; // 期间切走
       this.renderDirCandidates(dirs);
     } catch {
@@ -384,8 +392,8 @@ export class McpSection {
   private async loadRemoteProjectCandidates(origin: string): Promise<void> {
     let dirs: string[] | null = null;
     try {
-      // 〔步 12·C〕与本机那条是**同一条命令**了（`list_mcp_project_dirs`）。
-      dirs = await commands.list_mcp_project_dirs({ origin });
+      // 〔步 12·C〕与本机那条是**同一问**（那台后端 `mcp-read` 的 `dirs`）。
+      dirs = await mcpDirs({ origin });
     } catch {
       // ★ `null` 与 `[]` 是**两件事**〔E 阶段补审〕：原来这里 catch 之后 `dirs` 仍是 `[]`，
       // 于是读失败会显示「这台机器还没有用过的项目目录」—— 一句与真实原因无关的话。
@@ -407,11 +415,12 @@ export class McpSection {
     loading.textContent = copyText("mcp.remoteProject.reading", { machine: origin, dir });
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
+    let problems: string[] = [];
     try {
-      entries = await commands.read_remote_project_mcp({
-        origin,
-        projectDir: dir,
-      });
+      // 远端项目那一格只画 project 段（user 段由不填目录那一形画）。
+      const got = await readMcp(origin, dir);
+      entries = got.entries.filter((e) => e.scope === "project");
+      problems = got.problems;
     } catch (e) {
       if (this.origin !== origin || this.currentDir() !== dir) return;
       this.listBox.replaceChildren();
@@ -433,6 +442,7 @@ export class McpSection {
     }
     if (this.origin !== origin || this.currentDir() !== dir) return; // 切走/改目录 → 丢弃
     this.renderList(entries, dir, true);
+    this.noteProblems(problems);
     const head = document.createElement("div");
     head.className = "mcp-remote-head";
     const note = document.createElement("span");
@@ -452,10 +462,9 @@ export class McpSection {
     loading.textContent = copyText("mcp.local.reading");
     this.listBox.replaceChildren(loading);
     let entries: McpServerEntry[];
+    let problems: string[];
     try {
-      entries = await commands.read_mcp_servers({
-        projectDir: dir || null,
-      });
+      ({ entries, problems } = await readMcp(LOCAL_ORIGIN, dir || null));
     } catch (e) {
       loading.remove();
       if (this.origin !== startOrigin) return; // 期间已切走 → 静默丢弃
@@ -465,6 +474,7 @@ export class McpSection {
     // 成功那一支不用撤：`renderList` 自己会整格重画（`replaceChildren`）。
     if (this.origin !== startOrigin) return; // 期间已切走 → 丢弃这次结果，不盖当前选中
     this.renderList(entries, dir, false);
+    this.noteProblems(problems);
   }
 
   /** F87b③：跨机只读读远端 user scope（机器全局 MCP）。切走的旧结果由 origin 守卫丢弃。
@@ -477,10 +487,9 @@ export class McpSection {
     loading.textContent = copyText("mcp.remote.reading", { machine: origin });
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
+    let problems: string[];
     try {
-      entries = await commands.read_remote_mcp_servers({
-        origin,
-      });
+      ({ entries, problems } = await readMcp(origin, null));
     } catch (e) {
       if (this.origin !== origin) return; // 期间已切走 → 丢弃
       this.renderRemoteError(origin, String(e));
@@ -488,12 +497,23 @@ export class McpSection {
     }
     if (this.origin !== origin) return; // 期间已切走 → 丢弃这次结果
     this.renderList(entries, "", true);
+    this.noteProblems(problems);
     this.listBox.prepend(this.buildRemoteHeader(origin)); // 头：仅 user scope 说明 + 重新读取
     if (entries.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
       empty.textContent = copyText("mcp.remote.empty", { machine: origin });
       this.listBox.appendChild(empty);
+    }
+  }
+
+  /** 〔MIG-3a〕那台后端读不出来的那几份（当空段读的）说出来，不与「没有」同形。 */
+  private noteProblems(problems: string[]): void {
+    for (const what of problems) {
+      const hint = document.createElement("div");
+      hint.className = "settings-hint";
+      hint.textContent = copyText("mcp.read.problem", { what });
+      this.listBox.appendChild(hint);
     }
   }
 
@@ -735,12 +755,7 @@ export class McpSection {
       // 〔步 12·C 收尾〕**两侧同一条命令**（`write_remote_mcp_server` 已退役）：
       // 走哪一侧由 `origin` 说，不再由命令名说。
       // 🔴 本机是 `LOCAL_ORIGIN`（`"<local>"`）**不是 `null`**。〔C4a〕本分节内部也是这个表示，原样过线。
-      await commands.write_project_mcp_server({
-        origin: startOrigin,
-        projectDir: dir,
-        name,
-        server,
-      });
+      await putMcpServer(startOrigin, dir, name, server);
     } catch (e) {
       if (this.origin === startOrigin)
         showActionFailureToast(copyText("mcp.write.failed"), String(e));
@@ -761,11 +776,7 @@ export class McpSection {
       return;
     try {
       // 〔步 12·C 收尾〕同 `writeEntry`：两侧一条命令，本机逐字送 `LOCAL_ORIGIN`。
-      await commands.remove_project_mcp_server({
-        origin: startOrigin,
-        projectDir: dir,
-        name,
-      });
+      await removeMcpServer(startOrigin, dir, name);
     } catch (e) {
       if (this.origin === startOrigin)
         showActionFailureToast(copyText("mcp.remove.failed"), String(e));
