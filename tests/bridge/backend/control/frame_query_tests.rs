@@ -403,7 +403,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
 /// 要来这里表态）；少一处 = 那一处用法没了，这一行馊了。
 // 〔STOP〕原先唯一一行（`kill`：`local_backend_host.rs` 起系统的 `kill` 进程发 SIGTERM）随那条路一起删了 ——
 //   本机「停」改走一次性 `--resident-stop`，monitor 生产段里 `kill` 这个拼写一处都不剩 ⇒ 表空着（两向相等照旧成立）。
-const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[];
+const SAME_SPELLING_NOT_A_SEND: &[(&str, usize, &str)] = &[(
+    "resync",
+    1,
+    "〔RESYNC〕`inbound_client::RESYNC_OP`：认出 `resync` 的应答、把它交回的那台当下能力事实换进 `Offer` —— 不发任何东西",
+)];
 
 /// 〔C4c · 第四波 4B〕**monitor 自己**（不是替界面转）也要问的帧命令 —— `(帧命令, 生产段里几处, 为什么)`。
 ///

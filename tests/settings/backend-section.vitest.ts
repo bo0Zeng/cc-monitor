@@ -110,6 +110,8 @@ vi.mock("../../src/remote-config", () => ({
 }));
 
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: () => {} }));
+// 〔RESYNC ㉟①〕「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
+vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
 import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopSaid, stopWarning } from "../../src/settings/backend-section";
 import type { SessionAccount } from "../../src/accounts";

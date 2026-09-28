@@ -87,9 +87,9 @@ pub struct ElemKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Applied {
     Done,
-    /// `SetIn`：一个都认不出（路径不在 / 不是数组 / 没有满足的元素）。
+    /// `SetIn`：一个都认不出（路径不在 / 不是数组 / 没有满足的元素）⇒ 整批拒（[`ConfigWriteError::NoSuchElement`]）。
     NoMatch,
-    /// `SetIn`：认出不止一个 ⇒ 不猜是哪个。
+    /// `SetIn`：认出不止一个 ⇒ 不猜是哪个（同上，整批拒）。
     Ambiguous,
     /// `SetIn` 带 `ifEmpty`：那一格已有值。
     Kept,
@@ -115,6 +115,11 @@ pub(crate) enum ConfigWriteError {
     },
     /// 补丁本身不成形（空路径 —— 那就是「整份替换」换了个名字）⇒ 整批拒，盘上一个字节不动。
     BadEdit(String),
+    /// 〔FIX · `99 §2 ㊶`〕`setin` 认不出那一个元素（`ambiguous` = 认出了不止一个）⇒ **整批拒**，盘上一个字节不动
+    /// （设置页按格改一台，而那台在盘上已被改名 / 删掉：不许一半落盘、一半静默丢掉）。
+    NoSuchElement {
+        ambiguous: bool,
+    },
     Io(String),
 }
 
@@ -125,6 +130,9 @@ impl std::fmt::Display for ConfigWriteError {
                 "rsConfig.write.unreadable",
                 &[("path", &path.display().to_string()), ("e", detail)],
             )),
+            ConfigWriteError::NoSuchElement { .. } => {
+                f.write_str(&copy_text("rsConfig.write.elementGone", &[]))
+            }
             ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
         }
     }
@@ -192,6 +200,14 @@ pub(crate) fn patch_config_at(
 
     // ④ 逐条应用。
     let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(&mut root, e)).collect();
+    if let Some(miss) = applied
+        .iter()
+        .find(|a| matches!(a, Applied::NoMatch | Applied::Ambiguous))
+    {
+        return Err(ConfigWriteError::NoSuchElement {
+            ambiguous: *miss == Applied::Ambiguous,
+        });
+    }
     if !applied.contains(&Applied::Done) {
         return Ok(applied);
     }

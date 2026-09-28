@@ -118,7 +118,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_env_scrub_tests.rs",
     "tests/bridge/lib_nudge_skip_tests.rs",
     "tests/bridge/lib_remote_config_tests.rs",
-    "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_facts_tests.rs",
@@ -247,6 +246,7 @@ const UNIT: &[&str] = &[
     "tests/views/session-viewer-skeleton.vitest.ts",
     "tests/views/user-input-panel.vitest.ts",
     "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
+    "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -353,7 +353,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/drift_ledger_tests.rs",
     // 〔CF2 · 第四波 4B〕单元层 → 扫描层：多了一条「分档那一套在两棵生产段零命中」（`repo_root()` 扫 `src/`）。
     "tests/bridge/event_replay_tests.rs",
-    "tests/bridge/e2e_gate_registry_tests.rs",
     "tests/bridge/exec_site_registry_tests.rs",
     "tests/bridge/frame_tally_tests.rs", // 〔W5-VIS〕丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
     "tests/bridge/swallow_registry_tests.rs", // 〔W5-VIS〕业务路径零裸吞：人群从四棵生产源码树派生 == 登记表
@@ -516,10 +515,13 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     "tests/bridge/shell_dialect_tests.rs",
+    "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
+    "tests/bridge/e2e_gate_registry_tests.rs",
     "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
     "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
     "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记

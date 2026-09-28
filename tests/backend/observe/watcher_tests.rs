@@ -3260,6 +3260,10 @@ fn vis2_s3_the_watch_loop_goes_through_the_home_ears_exactly_once() {
         body[resync_arm..].contains("arm_ears("),
         "「重新对齐」那一臂没有重挂耳朵"
     );
+    assert!(
+        body[resync_arm..].contains("resync_sessions("),
+        "「重新对齐」那一臂没走 `resync_sessions`（对表 ＋ 补读）"
+    );
     let arm_fn = prod.find("fn arm_ears(").expect("`arm_ears` 不在了");
     assert_eq!(
         count(&prod[arm_fn..arm_fn + 400], "ears.arm(debouncer)"),
@@ -4086,12 +4090,26 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         k
     };
     assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
+    // 四格计数 ＋ 两格能力事实（与 hello 同形：`[{command, code}]` · `[op]`）。
+    for k in ["added", "removed", "retagged", "watchers"] {
+        assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
+    }
+    let facts = got["unavailable"]
+        .as_array()
+        .expect("`unavailable` 不是数组");
     assert!(
-        got.as_object()
-            .unwrap()
-            .values()
-            .all(|v| v.as_u64().is_some()),
-        "成品里有一格不是计数：{got}"
+        facts
+            .iter()
+            .all(|e| e["command"].is_string() && e["code"].is_string()),
+        "`unavailable` 的项不是 {{command, code}}：{got}"
+    );
+    let ops = got["uncancellable"]
+        .as_array()
+        .expect("`uncancellable` 不是数组");
+    assert_eq!(
+        ops.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>(),
+        crate::inbound::uncancellable(),
+        "`uncancellable` 不是命令表派生的那一份"
     );
     for bad in [
         serde_json::json!({"sid": 5}),
@@ -4103,4 +4121,106 @@ fn resync_face_reply_matches_the_cross_language_golden() {
             "{bad}"
         );
     }
+}
+
+/// 〔RESYNC · 主会话 09-27 裁 · `设计/15 §4.1b`「每个 tab『重新读取』（从游标补读 jsonl）」〕文件事件丢了一拍（这里干脆不发）：
+/// `resync{sid}` 那一趟从游标把漏的那一行补出来，别的会话不碰。
+#[test]
+fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
+    let dir = std::env::temp_dir().join(format!("ccm-resync-catchup-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (script, _label) = fake_tmux_world(&dir.join("tmux"));
+    let _iso = crate::control::identity_tag::door::isolate_with(&script);
+    let sessions = dir.join("sessions");
+    let proj = dir.join("projects").join("p");
+    std::fs::create_dir_all(&proj).unwrap();
+    let mut a = claude_in_pane(&sessions, "%1", "sid-a", "idle");
+    let mut b = claude_in_pane(&sessions, "%2", "sid-b", "idle");
+    for sid in ["sid-a", "sid-b"] {
+        std::fs::write(proj.join(format!("{sid}.jsonl")), "{\"n\":0}\n").unwrap();
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"), false, false);
+    for k in [&a, &b] {
+        process_session_added(
+            &sessions.join(format!("{}.json", k.id())),
+            &mut state,
+            &mut sink,
+        );
+    }
+    while rx.try_recv().is_ok() {}
+    for sid in ["sid-a", "sid-b"] {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(proj.join(format!("{sid}.jsonl")))
+            .unwrap();
+        writeln!(f, "{{\"n\":1}}").unwrap();
+    }
+    resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a"));
+    let mut lines: Vec<(String, String)> = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        if let Frame::Line {
+            session_id, raw, ..
+        } = f
+        {
+            lines.push((session_id, raw));
+        }
+    }
+    for k in [&mut a, &mut b] {
+        let _ = k.kill();
+        let _ = k.wait();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(lines, vec![("sid-a".to_string(), "{\"n\":1}".to_string())]);
+}
+
+/// 〔FIX · V138 订正〕`ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·
+/// add-time 冒名判定）。家目录放在非 ASCII 路径下（纪律 25：主树住 `~/文档/…`）。
+#[cfg(target_os = "linux")]
+#[test]
+fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
+    let home = std::env::temp_dir().join(format!("ccm-fix-文档-{}", std::process::id()));
+    let sessions = crate::agents::claudecode::paths::sessions_root(&home);
+    std::fs::create_dir_all(&sessions).expect("建目录");
+    let me = std::process::id();
+    let ticks = crate::platform::proc::proc_starttime(me).expect("读得到自己的 starttime");
+    let write = |pid: u32, body: serde_json::Value| {
+        std::fs::write(sessions.join(format!("{pid}.json")), body.to_string()).expect("写 pidfile")
+    };
+    write(
+        me,
+        serde_json::json!({"sessionId": "live-1", "procStart": ticks.to_string(), "kind": "interactive"}),
+    );
+    // 死进程（pid 上限之外，必不在）· 后台任务 · 冒名（procStart 对不上且 cmdline 不像 agent）。
+    write(4_194_300, serde_json::json!({"sessionId": "dead-1"}));
+    let bg = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("起 sleep");
+    write(
+        bg.id(),
+        serde_json::json!({"sessionId": "bg-1", "kind": "bg"}),
+    );
+    let mut imp = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("起 sleep");
+    write(
+        imp.id(),
+        serde_json::json!({"sessionId": "imp-1", "procStart": "1"}),
+    );
+    let got = running_sessions(&home);
+    let mut bg = bg;
+    let _ = bg.kill();
+    let _ = imp.kill();
+    let _ = bg.wait();
+    let _ = imp.wait();
+    std::fs::remove_dir_all(&home).ok();
+    assert_eq!(got, vec![("live-1".to_string(), me)]);
+    // 接线：`ccm` 入口注入的就是这一份扫描（恰一处）。
+    let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
+    guard_core::find_pinned(&main, "observe::watcher::running_sessions(&home)")
+        .unwrap_or_else(|e| panic!("`main.rs` 注入的不是观测层那一份扫描：{e}"));
 }

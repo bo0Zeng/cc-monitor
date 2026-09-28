@@ -322,10 +322,14 @@ function pushCostSample(ring: RenderCostSample[], s: RenderCostSample): void {
   costRingNext = (costRingNext + 1) % RENDER_COST_RING_CAP;
 }
 
-/** 记录字节数。⚠ 调用点必须在**总时刻取完之后**，否则它自己的 O(len) 会进读数。 */
+/**
+ * 记录字节数（口径 = 原始 jsonl 行：monitor 解析时多填的 `userText` 成品不算，〔RENDER2 · J10〕）。
+ * ⚠ 调用点必须在**总时刻取完之后**，否则它自己的 O(len) 会进读数。
+ */
 function recordBytes(message: JsonlRecord): number {
   try {
-    return new TextEncoder().encode(JSON.stringify(message)).length;
+    const raw = message.type === "user" ? { ...message, userText: undefined } : message;
+    return new TextEncoder().encode(JSON.stringify(raw)).length;
   } catch {
     // 循环引用之类 —— 不让仪表把渲染搞崩，记 0 让它落进最小桶并在报表里显形
     return 0;

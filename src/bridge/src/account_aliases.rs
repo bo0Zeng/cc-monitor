@@ -326,6 +326,10 @@ pub fn check_alias(a: &Alias, shell: Shell) -> Result<(), String> {
         }
         d.arg_is_passable(w)?;
     }
+    // 〔V153〕`new`（起新会话）是 ccm 自己的位置词，只许是右边第一个词。
+    let right = right
+        .strip_prefix(&["new".to_string()][..])
+        .unwrap_or(right);
     let mut it = right.iter();
     while let Some(w) = it.next() {
         if w.chars().any(char::is_control) {

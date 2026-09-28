@@ -1153,10 +1153,11 @@ pub fn spawn(
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
     let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let poke = WatcherPoke(events_tx.clone());
+    // 〔RESYNC〕登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
+    let me = live_enter(events_tx.clone());
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            let me = live_enter(events_tx.clone());
             watch_loop(
                 agent_home,
                 tx,
@@ -1172,7 +1173,9 @@ pub fn spawn(
     (rx, poke)
 }
 
-/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份）。`resync` 是整机的：每一份都对齐。
+/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份 / stdio 那一份）—— **唯一的名单**：
+/// SIGUSR1（[`poke_all`]）与 `resync` 都按它找人。`spawn` 登记、`watch_loop` 返回即摘
+/// ⇒ 不会去 poke 一个已经退掉的 watcher（`K-P1`：那不报错，它只是再也不响应 tmux hook）。
 static LIVE: std::sync::Mutex<Vec<(u64, std::sync::mpsc::Sender<WatchEvent>)>> =
     std::sync::Mutex::new(Vec::new());
 
@@ -1189,6 +1192,13 @@ fn live_leave(id: u64) {
     LIVE.lock()
         .unwrap_or_else(|e| e.into_inner())
         .retain(|(k, _)| *k != id);
+}
+
+/// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下（语义同 [`WatcherPoke::poke`]）。
+pub fn poke_all() {
+    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let _ = w.send(WatchEvent::Poke);
+    }
 }
 
 /// 〔RESYNC · `设计/15 §4.1b`〕**手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
@@ -1271,7 +1281,7 @@ fn watch_loop(
     // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
     // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
     let projects = crate::agents::claudecode::paths::projects_root(&agent_home);
-    let sessions = crate::agents::claudecode::paths::sessions_root(&agent_home);
+    let sessions = pidfile_dir(&agent_home);
     // 〔SR1a〕账号 manifest（`设计/05 §13.6 ③`「账号清单变了」一帧）。
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
@@ -1557,7 +1567,7 @@ fn watch_loop(
                     );
                     sink.send(Frame::AccountsChanged);
                 }
-                let got = reconcile_sessions(&sessions, &mut state, &mut sink, only.as_deref());
+                let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx);
                 let _ = done.send(got);
             }
@@ -2280,8 +2290,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 的真作者（F20 身份证据对它们正确地放行），但不是交互会话、不该成 tab。
     // 保守规则（与本地 session_map 一字一致）：kind 字段存在且非 "interactive"
     // 才排除；旧 CC 不写该字段 → 放行。
-    if let Some(kind) = parse_kind(&bytes) {
-        if kind != "interactive" && !state.with_bg {
+    if let Some(kind) = non_interactive_kind(&bytes) {
+        if !state.with_bg {
             // 审计 S1：若该 key 此前以 interactive 身份被 track（原地翻 kind /
             // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
             // 2s 窗口，并补齐"同进程翻 kind"这条本地有、远端缺的清理。
@@ -2352,26 +2362,18 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // this pidfile while alive, so its start must not be later than the file's
     // mtime; and its cmdline must look like claude. Missing data degrades to
     // allow (same philosophy as the local procStart-absent fallback).
-    let current_ticks = proc_starttime(pid);
-    match add_time_verdict(
-        parse_procstart_ticks(&bytes),
-        current_ticks,
-        start_epoch_from_ticks(current_ticks),
-        file_mtime_epoch(path),
-        proc_cmdline(pid).as_deref(),
-    ) {
-        AddTimeVerdict::Imposter(reason) => {
+    // #34: the poll baseline. Reuse the very ticks the verdict just examined —
+    // no second /proc read, so no verdict-to-baseline TOCTOU window.
+    let start = match add_time_check(pid, &bytes, path) {
+        Ok(ticks) => ticks,
+        Err(reason) => {
             tracing::warn!(
                 "stale sessions json ignored ({reason}): {} pid {pid} is not the claude that wrote it",
                 path.display()
             );
             return false;
         }
-        AddTimeVerdict::Alive => {}
-    }
-    // #34: the poll baseline. Reuse the very ticks the verdict just examined —
-    // no second /proc read, so no verdict-to-baseline TOCTOU window.
-    let start = current_ticks;
+    };
     // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
     let key_for_watch = key.clone();
     state.sessions.insert(
@@ -2507,6 +2509,27 @@ pub(crate) struct Reconciled {
     pub(crate) added: usize,
     pub(crate) removed: usize,
     pub(crate) retagged: usize,
+}
+
+/// 〔RESYNC〕「重新对齐」那一趟的会话部分：对表（与起步同一个 [`reconcile_sessions`]）＋ 每个在跟的会话从游标补读
+/// （tab「重新读取」：`only` = 那一个 sid；与退休前那一次补读同一个 [`catch_up_session`]，写端活着 ⇒ 不收尾残行）。
+fn resync_sessions(
+    sessions: &Path,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    only: Option<&str>,
+) -> Reconciled {
+    let got = reconcile_sessions(sessions, state, sink, only);
+    let sids: Vec<String> = state
+        .active_sids
+        .iter()
+        .filter(|s| only.is_none_or(|o| o == s.as_str()))
+        .cloned()
+        .collect();
+    for sid in sids {
+        catch_up_session(&sid, false, state, sink);
+    }
+    got
 }
 
 /// **pidfile 目录对后端的表**：起步初扫与 `resync` 是这同一个函数（`设计/15 §4.1b`「与初探同一个函数」）。
@@ -2742,6 +2765,55 @@ fn add_time_verdict(
         }
     }
     AddTimeVerdict::Alive
+}
+
+/// 〔F20〕add-time 冒名判定的那一趟 /proc 读：活着且是写它的那个 claude ⇒ `Ok(当前 starttime ticks)`（调用方拿它当 #34 基线），
+/// 否则 `Err(原因)`。起步初扫 / 对齐（`process_session_added`）与一次性扫描（[`running_sessions`]）同这一条。
+fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'static str> {
+    let current_ticks = proc_starttime(pid);
+    match add_time_verdict(
+        parse_procstart_ticks(bytes),
+        current_ticks,
+        start_epoch_from_ticks(current_ticks),
+        file_mtime_epoch(path),
+        proc_cmdline(pid).as_deref(),
+    ) {
+        AddTimeVerdict::Imposter(reason) => Err(reason),
+        AddTimeVerdict::Alive => Ok(current_ticks),
+    }
+}
+
+/// pidfile 目录（流模式的耳朵与一次性扫描同一处问适配层）。
+fn pidfile_dir(agent_home: &Path) -> PathBuf {
+    crate::agents::claudecode::paths::sessions_root(agent_home)
+}
+
+/// 〔Batch6-F21〕`kind` 在且不是 `interactive` ⇒ `Some(kind)`（后台任务，不是交互会话）；缺字段（旧 CC）⇒ `None` 放行。
+fn non_interactive_kind(bytes: &[u8]) -> Option<String> {
+    parse_kind(bytes).filter(|k| k != "interactive")
+}
+
+/// 〔FIX · V138 订正〕**一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
+/// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
+pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
+    let dir = pidfile_dir(agent_home);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| is_session_json(p))
+        .filter_map(|p| {
+            let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
+            let bytes = std::fs::read(&p).ok()?;
+            let sid = parse_session_id(&bytes)?;
+            (pid_alive(pid)
+                && non_interactive_kind(&bytes).is_none()
+                && add_time_check(pid, &bytes, &p).is_ok())
+            .then_some((sid, pid))
+        })
+        .collect()
 }
 
 /// Parse the pidfile's `kind` field ("interactive" / "bg" …，Batch6-F21)。

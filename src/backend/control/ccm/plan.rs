@@ -68,15 +68,18 @@ pub(crate) struct Env {
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
     /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
     pub(crate) account_env: String,
-    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：入口① `[argv0]` · 入口② `[argv0, "ccm"]`。
-    /// 取法住 [`super::self_invocation`]。〔MC1 · 2026-09-24〕从前还有第三档「设了 `CCM_SELF`
-    /// 就用那个值」—— 那个环境变量删了（`设计/01 §6.7b`：它只为远端 shim 存在，而 CC1 之后
-    /// 入口② 自己就带得上那个词）。
+    /// 「怎么叫我」（内层载荷要用它把自己再叫一次）：`[argv0]`（〔09-27〕分流不看 argv0，
+    /// 入口② `[argv0, "ccm"]`〔散文墓碑〕）。取法住 [`super::self_invocation`]。
+    /// 〔MC1 · 2026-09-24〕从前还有一档「设了 `CCM_SELF` 就用那个值」—— 那个环境变量删了
+    /// （`设计/01 §6.7b`：它只为远端 shim 存在）。
     pub(crate) self_argv: Vec<String>,
     /// `CCM_NO_PRETRUST=1`。
     pub(crate) no_pretrust: bool,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
     pub(crate) bus_scripts: Option<String>,
+    /// 〔FIX · V138 订正〕问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
+    /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
+    pub(crate) running_sessions: Option<super::RunningScan>,
 }
 
 impl Env {
@@ -127,15 +130,16 @@ impl Env {
             inherited_config_dir: None,
             account_env: String::new(),
             // 🔴 内层载荷要用**「我是被当作什么叫的」**那一段：这个进程**自己被怎么叫的**
-            //   （入口① `[argv0]` · 入口② `[argv0, "ccm"]`，CC1 的 `self_invocation`）。
+            //   （`[argv0]`，CC1 的 `self_invocation`；〔09-27〕入口②删了，分流不看名字）。
             // 〔MC1 · 2026-09-24〕这里从前先看环境变量 `CCM_SELF`、没设才落到 argv。
             //   它存在的唯一理由是远端 shim：shim `exec <后端> ccm "$@"` 之后 `argv[0]` 是真身路径，
             //   而当时这一段只取 `argv[0]`、丢了 `ccm` 那个词 ⇒ 要 shim 把 `$0` 塞进环境变量补回来。
-            //   CC1 之后入口② 自己就带得上那个词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
+            //   CC1 之后不再丢词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
             //   （`设计/01 §6.7b` 逐字「`CCM_SELF` 这个环境变量随之删掉」）。
             self_argv: super::self_invocation(&std::env::args().collect::<Vec<_>>()),
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
+            running_sessions: None,
             home,
         }
     }
@@ -174,6 +178,7 @@ impl Env {
             self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
+            running_sessions: None,
             home,
         }
     }
@@ -874,6 +879,26 @@ pub(crate) fn build(
     //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
     if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
         return Err(refuse(&env.account_env, &config_dir));
+    }
+    // 〔FIX · V138 订正〕在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
+    //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入）。
+    if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), env.running_sessions) {
+        let dir = if !config_dir.is_empty() {
+            Some(config_dir.as_str())
+        } else if o.use_base {
+            None
+        } else {
+            env.inherited_config_dir.as_deref()
+        };
+        if let Some((_, pid)) = scan(dir.map(std::path::Path::new))
+            .into_iter()
+            .find(|(s, _)| s == sid)
+        {
+            return Err(Die(copy_text(
+                "bePlan.build.runningElsewhere",
+                &[("sid", sid), ("pid", &pid.to_string())],
+            )));
+        }
     }
     let launcher = if o.launcher.is_empty() {
         super::default_launcher(&o.agent).to_string()

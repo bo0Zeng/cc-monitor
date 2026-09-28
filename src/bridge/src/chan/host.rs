@@ -246,7 +246,7 @@ impl Backends for InboundBackends {
 
     /// 〔NET2〕那台的能力事实 = 它那条长连接握手时交出的那一份（`inbound_client` 登记表里，一个家）。
     fn offer(&self, origin: &Origin) -> Option<super::wire::Offer> {
-        inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer().clone())
+        inbound_client::client_for(origin.as_wire_str()).map(|c| c.offer())
     }
 }
 
