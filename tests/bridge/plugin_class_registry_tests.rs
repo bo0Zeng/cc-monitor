@@ -656,7 +656,8 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
     );
 
     // 轴二那一格：它是**受管工具**，不是三档中的任何一档。
-    let tools = rust_production("src/bridge/src/tool_registry.rs", 10_000);
+    // 〔MIG-3b 续〕受管工具表随「一处后端」进了后端（`src/backend/footprint/registry.rs`）。
+    let tools = rust_production("src/backend/footprint/registry.rs", 10_000);
     let key = format!("id{} \"ccm\"", ':');
     guard_core::find_pinned(&tools, &key).unwrap_or_else(|e| {
         panic!(

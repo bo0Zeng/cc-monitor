@@ -70,7 +70,7 @@ describe("`70 §1.3 E`（步 4）：点击侧 pending —— 按住期间不许�
     for (let i = 0; i < 4; i++) rescan.click();
     await tick();
     expect(
-      ipc.calls.filter((c) => c === "config_surface_report").length,
+      ipc.calls.filter((c) => c === "footprint_client_facts").length,
       "按住期间又发出去了第二趟 —— 那正是补审 A1 记的那个「双起」窗口",
     ).toBe(1);
   });
@@ -91,7 +91,7 @@ describe("`70 §1.3 E`（步 4）：点击侧 pending —— 按住期间不许�
     expect(rescan.textContent, "文字要还原，不能永远停在「扫描中…」").toBe("重新扫描");
     rescan.click();
     await tick();
-    expect(ipc.calls.filter((c) => c === "config_surface_report").length).toBe(2);
+    expect(ipc.calls.filter((c) => c === "footprint_client_facts").length).toBe(2);
   });
 
   it("失败也要放开（`finally`）—— 失败就永远按住比没有 pending 更糟", async () => {

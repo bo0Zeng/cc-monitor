@@ -1,5 +1,5 @@
 //! 〔MIG-3a〕别名块那一半的判据随 `assets/aliases/block.rs` 进了后端（`tests/backend/assets/aliases/block_tests.rs`）；
-//! 这里只剩**用户级 PATH** 那一格（本机后端的引导，`ccm_user_path_*`）与共享片段对 `tool_registry` 落点的那一条。
+//! 这里只剩**用户级 PATH** 那一格（本机后端的引导，`ccm_user_path_*`）与共享片段对后端落点（`relay_route_core::BACKEND_LANDING_REL`）的那一条。
 use super::*;
 
 use std::path::PathBuf;
@@ -28,7 +28,7 @@ fn tmpdir(tag: &str) -> TmpDir {
 ///
 /// # 为什么单独一条：上一条只证「这两处一致」，这一条证「它们对得上现实」
 ///
-/// 上一条比的是**我们生成的那段命令**与 `tool_registry` 的申报 —— **两边同时改错**
+/// 上一条比的是**我们生成的那段命令**与后端落点那个常量（〔MIG-3b 续〕从前是足迹申报表）—— **两边同时改错**
 /// 照样全绿。真落点住在**第三处**：`local_backend_host.rs` 里算 `extract_dir` 的那一行，
 /// 它就是 `install_local_ccm_entry` 的 `dir` 实参。⇒ 这一条去读**那一行源码**。
 ///
@@ -41,11 +41,11 @@ fn tmpdir(tag: &str) -> TmpDir {
 ///
 /// # 死值验（`KR132D2` 刀④）
 ///
-/// 把 `tool_registry` 里 `ccm` 本机载体的落点改成别的目录 ⇒ 本条红
+/// 把 `relay_route_core::BACKEND_LANDING_REL` 的目录改成别的 ⇒ 本条红
 /// （而上一条**不红** —— 它是自洽的）。
 #[test]
 fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
-    let dir = crate::tool_registry::local_ccm_bin_dir_rel().expect("申报的 bin 目录");
+    let dir = ccm_bin_dir_rel().expect("后端落点的目录");
     // `.cc-monitor/bin` ⇒ `.join(".cc-monitor").join("bin")` —— 真落点那一行的形状。
     let want: String = dir
         .split('/')
@@ -77,8 +77,8 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
             prod.contains(&want),
             "`{name}` 的生产段里找不到 `{want}` —— 也就是说\
                  「PATH 上写的那个目录」与「盘上真放 ccm 的那个目录」已经分家了。\n\
-                 PATH 那一侧现算自 `tool_registry` 申报的 `{dir}`；\
-                 要么那张表改错了，要么真落点搬了家而这一侧没跟。\n\
+                 PATH 那一侧现算自后端落点那个常量的 `{dir}`；\
+                 要么那个常量改错了，要么真落点搬了家而这一侧没跟。\n\
                  ⚠ 指错目录与根本没补 PATH，在用户终端上是**同一个结果**（命令找不到）。"
         );
     }
@@ -351,19 +351,15 @@ fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
 ///
 /// 要求住址：`设计/01 §6.7b`「落点 `~/.cc-monitor/bin/ccm` —— 本机与远端同一个」「清掉旧的 `~/.local/bin/ccm`」· V41（不为旧状态留兼容）。
 /// 〔E2〕从前这一行把 `~/.local/bin` 也加进来（「更早的版本放在那儿，不删、照旧能用」）—— 旧入口今天部署时认出来就删（GP1），
-/// `ccm` 就是后端本身、只住 `~/.cc-monitor/bin` ⇒ 那一格退役。两边落点相等由 `tool_registry` 现算钉住。
+/// `ccm` 就是后端本身、只住 `~/.cc-monitor/bin` ⇒ 那一格退役。两边落点同一个常量（共享 crate）；足迹申报表那两条与它相等由后端判据钉住。
 ///
 /// 量真实输出：真 `source` 一趟问 `$PATH`，**加进来的目录集合 == {落点}**（两向）；source 两趟 PATH 不变（幂等）。
 /// ⚠ 它跑在 `cfg(unix)` 下（要 `bash`）；这份 snippet 本来就只装进 POSIX rc。证不了「干净 Linux 机上真敲得到 `ccm`」（要一台干净机）。
 #[cfg(unix)]
 #[test]
 fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
-    let local = crate::tool_registry::local_ccm_bin_dir_rel().expect("本机申报的 bin 目录");
-    let remote = crate::tool_registry::remote_ccm_bin_dir_rel().expect("远端申报的 bin 目录");
-    assert_eq!(
-        local, remote,
-        "两边的 ccm 落点又分开了 —— `设计/01 §6.7b` 要的是两边同形"
-    );
+    // 〔MIG-3b 续〕本机远端同一个落点（`relay_route_core::BACKEND_LANDING_REL`）；足迹申报表那两条与它相等由后端判据对拍。
+    let local = ccm_bin_dir_rel().expect("后端落点的目录");
     let td = tmpdir("aliassnip");
     let home = td.0.join("h");
     std::fs::create_dir_all(&home).expect("造假家目录");

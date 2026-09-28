@@ -105,39 +105,21 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         1,
         "Claude Code 适配器自己那一处路径。退役归 F10 本体。",
     ),
+    // 〔MIG-3b 续 · 主会话 09-28 裁①〕`src/config_surface.rs`〔散文墓碑〕那一行（3 处）随判定进后端摘了（`src/backend/footprint/rows.rs`，那一半不在本表人群里）。
     (
-        "src/config_surface.rs",
+        "src/footprint_client.rs",
         "reader",
-        3, // 〔MIG-3b〕2 → 3：`claude_config_dir`（`CLAUDE_CONFIG_DIR` 不是目录 ⇒ `~/.claude`）从 `hooks_diag.rs` 挪进来，读点随规则搬家、不是新读点
-        "T02 配置面审计视图（只读、不轮询）。退役归 F10 本体。\
-             〔CP2b · 第四波 09-25〕**3 → 2**：项目级作用域那句展示文案（`<项目目录>/.claude/settings.json …`）\
-             搬进文案表（`rsConfigSurface.scope.projectPath`）。读点没少，**不算退役**。",
+        1,
+        "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）的事实：交一次 monitor 自己的 agent 家（`paths::resolve_claude_dir` 那一处答），\
+         再 stat 后端交来的绝对路径 —— 不认识任何工具名。退役归 F10 本体。",
     ),
     // 〔MIG-3b〕`src/hooks_diag.rs` 那一行摘了：钩子诊断进了后端（`hooks-diag`），monitor 不再读 settings。
     // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
     //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
     //    只剩 7 条 cc-spawn 判据，那张清单随 `shared/ccm` 一起删了 ⇒ 那个变量名不再出现。
     //    **账跟着删**（登记表腐烂比没有登记更糟）。
-    (
-        "src/tool_registry.rs",
-        "non-read",
-        8,
-        "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。\
-             ⚠ **08-10（devbench F06）4 → 5**：新增的 `NOT_MANAGED` 反向登记表里，\
-             `planned-build` 那条理由写着它装在 `<claude_dir>/skills/planned-build/`。\
-             仍是**文案**（说明它为什么不由 cc-monitor 装），零文件读取。\
-             ⚠ **09-11（`K-R60`）5 → 7**：两条新的**申报路径字面量** —— \
-             `~/.claude/skills/cc-bus`（cc-bus 的 `installable` 从假申报改对之后，\
-             『装得了就必须申报装到哪』当场要它）与 `~/.claude/projects/`\
-             （Claude Code 自己写的会话记录，app 装不了、只读）。\
-             两条都仍是**登记表里的申报字面量**，本文件零文件读取 —— \
-             真去 stat 它们的是 `config_surface`（已在本表里单列，仍是 3 处）。\
-             ⚠ **〔AS2 · 第四波 4B〕7 → 9**：`skill-install` 那一条的两个申报字面量 —— \
-             落点 `.claude/skills` 与足迹路径 `~/.claude/skills`（资产目录里「装到这台」的 skill 写在那下面）。\
-             仍是登记表里的申报字面量，本文件零文件读取。\
-             ⚠ **〔CP2b · 4C〕9 → 8**：cc-acct-iso 账号库那条 `note` 里提到 `CLAUDE_CONFIG_DIR` 的那句话\
-             搬进了文案表（`rsToolRegistry.tools.acctIsoVaultNote`），源码里只剩取文口。",
-    ),
+    // 〔MIG-3b 续〕`src/tool_registry.rs`〔散文墓碑〕那一行（8 处申报字面量）随申报表进后端摘了（`src/backend/footprint/registry.rs` ＋ 落在 Claude 布局里的那一半
+    //   `src/backend/agents/claudecode/footprint.rs`，都不在本表人群里）。
     // 〔MIG-3a〕`src/skill_host.rs` 那一行摘了：收件箱那一面整份进了后端适配层（`agents/claudecode/skill_host.rs`）。
 
 ];
@@ -239,11 +221,11 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "Codex 那一族的用量读面；与 claude 面平行，由 usage-core 的口径判据管",
     ),
     (
-        "config_surface.rs",
-        // 〔C5 · TAIL〕本机事实改问本机后端，monitor 只剩 `HostScope::Client` 那一族自己查（`with_monitor_probe`）。
-        "with_monitor_probe",
-        "配置面清单的根",
-        "只读诊断页；落点由本模块的 claude 棘轮数着",
+        "footprint_client.rs",
+        // 〔MIG-3b 续〕足迹判定进了后端，monitor 只答它自己那台那几行的事实（`with_monitor_probe`〔散文墓碑〕删了）。
+        "footprint_client_facts",
+        "足迹里 monitor 自己那几行的根（`home` 那一格）",
+        "只读诊断页；只 stat 后端交来的路径，落点由本模块的 claude 棘轮数着",
     ),
     // 〔OSA · 主会话 09-28 裁〕`data_paths.rs` 探 `$PROFILE` 候选目录那一行摘了：界面经通道问本机后端（`$PROFILE` 在哪只有后端方言答）。
     // 〔MIG-3b〕钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。

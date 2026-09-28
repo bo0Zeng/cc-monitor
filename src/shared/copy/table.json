@@ -9372,14 +9372,14 @@
       "zh": "扫描失败：{e}",
       "args": ["e"]
     },
-    "configSurface.refresh.wrongMachine": {
+    "configSurface.backend.tooOld": {
       "kind": "error",
-      "zh": "后端答的不是本机这一份",
+      "zh": "这台的后端太旧，还不认足迹这一问（重启 cc-monitor 换上新的后端；远端那台重新部署后端）",
       "args": []
     },
     "configSurface.refresh.badShape": {
       "kind": "error",
-      "zh": "后端返回的形状不对（rows / settings_scopes 不是数组）",
+      "zh": "后端返回的足迹形状不对，两端版本对不上",
       "args": []
     },
     "configSurface.refresh.scanningMachine": {
@@ -12357,11 +12357,6 @@
       "zh": "接入那一格带了要运行的内容（env / args / launcher）。它不起任何 agent 进程，这几项会被丢掉；请求格式不对，拒绝。",
       "args": []
     },
-    "rsConfigSurface.local.noHome": {
-      "kind": "error",
-      "zh": "取不到 HOME",
-      "args": []
-    },
     "rsConfigSurface.scope.projectNote": {
       "kind": "body",
       "zh": "优先级最高",
@@ -13767,75 +13762,20 @@
       "zh": "它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令",
       "args": []
     },
-    "rsFootprintRemote.call.internal": {
+    "rsFootprintClient.env.noHome": {
       "kind": "error",
-      "zh": "查这台机器的足迹时出了内部错误，没有拿到结果",
+      "zh": "找不到 monitor 这台的家目录。HOME 与 USERPROFILE 都没有，本机那一栏的足迹查不了",
       "args": []
     },
-    "rsFootprintRemote.call.noData": {
+    "rsFootprintClient.stat.tooMany": {
       "kind": "error",
-      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
-      "args": ["host"]
+      "zh": "一次要 monitor 查 {n} 条路径，超过上限 {max} 条，两端版本对不上",
+      "args": ["n", "max"]
     },
-    "rsFootprintRemote.call.failed": {
+    "beFootprint.env.noHome": {
       "kind": "error",
-      "zh": "[{host}] 查足迹失败：{message}",
-      "args": ["host", "message"]
-    },
-    "rsFootprintRemote.call.tooOld": {
-      "kind": "error",
-      "zh": "[{host}] 的后端太旧，还不认这条命令。远端的足迹要后端答，重装那台机器的后端就有了",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.hooksNotObject": {
-      "kind": "error",
-      "zh": "hooks 不是对象",
+      "zh": "这台后端进程没有家目录。HOME 与 USERPROFILE 都没有，这台的足迹查不了",
       "args": []
-    },
-    "rsFootprintRemote.wire.entryNotString": {
-      "kind": "error",
-      "zh": "entries 里有一项不是字符串",
-      "args": []
-    },
-    "rsFootprintRemote.wire.kindOther": {
-      "kind": "error",
-      "zh": "kind 是 {other}",
-      "args": ["other"]
-    },
-    "rsFootprintRemote.wire.kindMissing": {
-      "kind": "error",
-      "zh": "kind 缺了",
-      "args": []
-    },
-    "rsFootprintRemote.wire.statNotObject": {
-      "kind": "error",
-      "zh": "stat 不是对象",
-      "args": []
-    },
-    "rsFootprintRemote.wire.badShape": {
-      "kind": "body",
-      "zh": "[{host}] 的后端回的内容不对：{what}。两端版本对不上",
-      "args": ["host", "what"]
-    },
-    "rsFootprintRemote.wire.noAgentHomeIsDir": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有「家目录是不是目录」。两端版本对不上",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.noAgentHome": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有家目录这一项，两端版本对不上",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.noHome": {
-      "kind": "error",
-      "zh": "[{host}] 那台后端进程没有 HOME（也没有 USERPROFILE），解不了 ~/…，这台的足迹查不了",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.noEnv": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有 env 这一项，两端版本对不上",
-      "args": ["host"]
     },
     "rsCcmProbe.card.noVersion": {
       "kind": "body",

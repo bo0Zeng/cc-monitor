@@ -152,7 +152,8 @@ const APP_PAGE_IPC_ON_REOPEN = [
 const FOOTPRINT_IPC = ["drift_ledger_report"] as const;
 
 /** 登记表 ④：点进某台机器的子页才该出现的那一发（步 14a 之后「足迹」住那儿）。 */
-const MACHINE_PAGE_IPC = ["config_surface_report", ...FOOTPRINT_IPC] as const;
+// 〔MIG-3b 续〕足迹本机那一栏第一拍问 monitor 自己那几行的环境（`footprint_client_facts`；成品经通道问本机后端）。
+const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
 
 /** 〔ST2 · 步 15〕「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 const LOGS_PAGE_IPC = ["get_diagnostics_config", "get_log_file_info"] as const;

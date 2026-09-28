@@ -31,6 +31,8 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
+// 〔MIG-3b 续〕「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
+pub(crate) mod footprint;
 pub(crate) mod liveness;
 pub(crate) mod mcp;
 pub mod paths;

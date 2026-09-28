@@ -174,7 +174,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.self", (NA, "—", "窗口动作")),
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
-    ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
+    # 〔墓碑 · MIG-3b 续〕`audit.config-surface` 随它唯一那条命令（`config_surface_report`）进后端（`footprint-report`，界面经通道直问）而退役；
+    #   剩 monitor 自己那台那几行的事实，能力 id 换成下面那一条（理由同上面几条墓碑）。
+    ("audit.monitor-own", (NA, "—", "〔MIG-3b 续〕足迹里 monitor 自己那台那几行的**事实**（只 stat，报告安装面，不改它）")),
     # 〔MIG-3a〕`assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
@@ -689,7 +691,9 @@ def parse_tools(src: str):
     形状：`id: "x",` 之后最近的一条 `installable: <bool>,` 与 `uninstallable: <bool>,`。
     只在 `pub const TOOLS` 那一段里找 ⇒ `UNMANAGED_ENV` 的 `id:` 不会混进来。
     """
-    seg = const_block(src, "pub const TOOLS: &[ToolSpec] = &[")
+    # 〔MIG-3b 续〕两份 `TOOLS`：本表（`footprint/registry.rs`）＋ 落在 Claude 布局里的那一半（`agents/claudecode/footprint.rs`）。
+    seg = "\n".join(const_block(src, h) for h in ("pub const TOOLS: &[ToolSpec] = &[",
+                                                   "pub(crate) const TOOLS: &[ToolSpec] = &[") if h in src)
     out = []
     for m in re.finditer(r'\n        id: "([^"]+)",', seg):
         tail = seg[m.end():]
@@ -703,7 +707,8 @@ def parse_tools(src: str):
 
 def parse_unmanaged(src: str):
     """`UNMANAGED_ENV` 的 `(id, who)`。"""
-    seg = const_block(src, "pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[")
+    seg = "\n".join(const_block(src, h) for h in ("pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[",
+                                                   "pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[") if h in src)
     out = []
     for m in re.finditer(r'\n        id: "([^"]+)",', seg):
         tail = seg[m.end():]
@@ -1258,6 +1263,16 @@ def main() -> int:
     # ⚠ **拼不到任何一份就抛**，不许回落成空串 —— 那会让每一格零命中地绿。
     def corpus(stem: str) -> str:
         parts = []
+        # 〔MIG-3b 续〕足迹申报表随「一处后端」进了后端：本表 ＋ Claude 布局那一半 ＋ 随表搬来的判据。
+        if stem == "tool_registry":
+            # 适配层那一份放前头：本表末尾是测试段，`§S1` 按第一个顶格测试属性切「测试段」，放后头会被整份划进测试段。
+            for rel in ("src/backend/agents/claudecode/footprint.rs", "src/backend/footprint/registry.rs"):
+                parts.append(slurp(os.path.join(root, rel)))
+            fdir = os.path.join(root, "tests", "backend", "footprint")
+            for fn in sorted(os.listdir(fdir)):
+                if fn.startswith("registry") and fn.endswith(".rs"):
+                    parts.append(slurp(os.path.join(fdir, fn)))
+            return "\n".join(parts)
         prod = os.path.join(src_dir, f"{stem}.rs")
         if os.path.exists(prod):
             parts.append(slurp(prod))

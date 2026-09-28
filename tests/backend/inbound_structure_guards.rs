@@ -222,7 +222,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "launch-endpoint"
                 // 〔DEL〕`relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
-                | "footprint-probe"
+                | "footprint-report"
                 // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
@@ -395,7 +395,7 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-read",
         "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
-        "footprint-probe",
+        "footprint-report",
         // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。

@@ -60,10 +60,22 @@ mod tests {
             format!("cc-bus{}inbox", "/"),
             format!("lastread{}", "-"),
         ];
+        // 〔MIG-3b 续 · 要主会话拍板〕足迹申报表随「一处后端」（主会话 09-28 裁①）进了后端：cc-bus 那一行申报「这个目录会因为你在
+        //   cc-monitor 里点了一下而被 cc-bus 的命令写」（`IndirectWrite`）。它只 stat 那个目录、数一层名字，一个数据文件都不读 ——
+        //   是**告知**，不是绕到 cc-bus 背后读数据。在 monitor 那一半时这一格本来就在（它不在本判据射程里）。
+        const DECLARED_NOT_READ: &[(&str, &str)] = &[("agents/claudecode/footprint.rs", ".cc-bus")];
         let mut hits: Vec<String> = Vec::new();
         for (name, raw) in &files {
             let prod = crate::guard_support::production_code(raw);
             for n in &needles {
+                if DECLARED_NOT_READ.iter().any(|(f, k)| f == name && k == n) {
+                    assert_eq!(
+                        prod.matches(n.as_str()).count(),
+                        1,
+                        "{name} 里 `{n}` 不再恰好是足迹申报那一处 —— 多出来的那处是在读 cc-bus 的数据"
+                    );
+                    continue;
+                }
                 if prod.contains(n.as_str()) {
                     hits.push(format!("{name} 里有 `{n}`"));
                 }

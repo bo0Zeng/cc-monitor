@@ -148,16 +148,28 @@ fn gp1_both_triggers_are_wired_once_and_the_footprint_lists_the_legacy_file() {
         1,
         "长连接握手那一处没扫（或扫了不止一次）"
     );
-    let want = format!("~/{LEGACY_REL}");
-    let rows: Vec<_> = crate::tool_registry::TOOLS
-        .iter()
-        .flat_map(|t| t.touches())
-        .filter(|f| f.path == want)
-        .collect();
-    assert_eq!(rows.len(), 1, "足迹里 `{want}` 那一行不是恰好一行");
+    // 〔MIG-3b 续〕足迹申报表进了后端（`src/backend/footprint/registry.rs`）⇒ 读它的源码：
+    //   `path: "~/<LEGACY_REL>"` 恰好一处，它那一格（`TouchedFile { … }`）的 host 是远端、effect 是「旧版放的、认出才删」。
+    let table =
+        guard_core::production_code(include_str!("../../src/backend/footprint/registry.rs"));
+    let want = format!("path: \"~/{LEGACY_REL}\",");
     assert_eq!(
-        rows[0].effect,
-        crate::tool_registry::TouchEffect::RetiredLegacy
+        table.matches(&want).count(),
+        1,
+        "足迹里 `{want}` 那一行不是恰好一行"
     );
-    assert_eq!(rows[0].host, crate::tool_registry::HostScope::Remote);
+    let at = table.find(&want).unwrap();
+    let from = table[..at]
+        .rfind("TouchedFile {")
+        .expect("那一格不在 `TouchedFile` 里");
+    let cell = &table[from + "TouchedFile {".len()..];
+    let cell = &cell[..cell
+        .find("TouchedFile {")
+        .unwrap_or(cell.len())
+        .min(cell.find("],").unwrap_or(cell.len()))];
+    assert!(
+        cell.contains("effect: TouchEffect::RetiredLegacy"),
+        "{cell}"
+    );
+    assert!(cell.contains("host: HostScope::Remote"), "{cell}");
 }
