@@ -312,3 +312,35 @@ describe("〔S5 · V41〕remote 段认不出", () => {
     }
   });
 });
+
+// 〔FIX · `设计/99 §2 ㊶` 第一问〕守的要求（逐字）：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
+describe("〔FIX · ㊶〕设置页改一台 ⇒ 按格 setin，不整台盖", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("★ 加载之后后端刚固化了指纹、设置页改了别的格 ⇒ 指纹留着、只动那几格；改名先写 label；那台没了 ⇒ 整批拒", async () => {
+    const pinned = { ...A, hostKeyFingerprint: "SHA256:pinned" };
+    vi.mocked(loadConfig).mockResolvedValue({
+      theme: "dark",
+      remote: { enabled: true, hosts: [pinned, B, C] },
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    // 表单加载时 A 还没有指纹（`was`），用户改了 user 与 label。
+    await patchRemoteConfig({
+      enabled: true,
+      upsert: [{ key: "alpha", was: A, value: { ...A, user: "new", label: "alpha2" } }],
+    });
+    const edits = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string; field?: string }[];
+    expect(edits.map((e) => (e.op === "setin" ? e.field : e.op))).toEqual(["set", "label", "user"]);
+    const hosts = (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: RemoteConfig }).remote.hosts;
+    expect(hosts[0]).toEqual({ ...pinned, user: "new", label: "alpha2" });
+    expect(hosts.slice(1)).toEqual([B, C]);
+    // 空 label 的那台改 host：先把 label 写成表单值（origin 与整台写那一形相同），host 排最后。
+    const c = { ...C, label: C.host };
+    await patchRemoteConfig({ upsert: [{ key: C.host, was: c, value: { ...c, host: "10.0.0.9" } }] });
+    const e2 = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { field?: string }[];
+    expect(e2.map((e) => e.field)).toEqual(["label", "host"]);
+    // 盘上那台已被改名 / 删掉 ⇒ 整批拒（不再「找不到就当新增」）。
+    await expect(
+      patchRemoteConfig({ upsert: [{ key: "gone", was: { ...B, label: "gone" }, value: { ...B, label: "gone", user: "x" } }] }),
+    ).rejects.toThrow();
+  });
+});

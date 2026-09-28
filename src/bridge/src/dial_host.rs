@@ -486,7 +486,7 @@ pub(crate) fn pin_host_key_at(
     host: &str,
     fp: &str,
 ) -> Result<PinWrite, String> {
-    use crate::config::{Applied, ConfigEdit, ElemKey};
+    use crate::config::{Applied, ConfigEdit, ConfigWriteError, ElemKey};
     let key = |fields: &[&str], equals: &str| ElemKey {
         fields: fields.iter().map(|f| f.to_string()).collect(),
         equals: equals.to_string(),
@@ -498,13 +498,16 @@ pub(crate) fn pin_host_key_at(
         value: serde_json::Value::String(fp.to_string()),
         if_empty: true,
     };
-    let applied = crate::config::patch_config_at(path, &[edit]).map_err(|e| e.to_string())?;
-    Ok(match applied.first() {
-        Some(Applied::Done) => PinWrite::Written,
-        Some(Applied::Kept) => PinWrite::AlreadySet,
-        Some(Applied::Ambiguous) => PinWrite::Ambiguous,
-        Some(Applied::NoMatch) | None => PinWrite::NotFound,
-    })
+    match crate::config::patch_config_at(path, &[edit]) {
+        Ok(applied) => Ok(match applied.first() {
+            Some(Applied::Done) => PinWrite::Written,
+            Some(Applied::Kept) => PinWrite::AlreadySet,
+            _ => PinWrite::NotFound,
+        }),
+        Err(ConfigWriteError::NoSuchElement { ambiguous: true }) => Ok(PinWrite::Ambiguous),
+        Err(ConfigWriteError::NoSuchElement { ambiguous: false }) => Ok(PinWrite::NotFound),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// 〔VIS2 · 默认转严格〕这一趟交给后端的指纹：`cfg` 里有就用；没有 ⇒ 盘上同一台（origin 与 host 都相同）的。
