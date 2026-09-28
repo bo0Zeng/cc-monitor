@@ -2319,8 +2319,8 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 |---|---|---|
 | `snippet` | ← | 起一次本机 `cc-acct-iso shellinit`（经插件通用调用口：argv 直传不过 shell、`timeout` 前缀给子进程期限、环境白名单），退出码 0 时它的 stdout **原样** |
 
-BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常量）。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
-**错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run`。
+〔MIG-3a〕BEGIN/END 围栏**在本命令里校验**（`# ===== BEGIN cc-acct-iso =====` / `# ===== END cc-acct-iso =====` 两条都在才交出去；从前归 monitor）。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
+**错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run` · `fence_incomplete`（有 BEGIN 没 END，多半被截断 —— 别贴）· `no_fence`（输出里没有 BEGIN）。
 〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-shellinit`（片段吐 stdout、失败 exit 2 ＋ stderr 信封）；同上一节，改上帧面，CLI 面自动派生同名。
 
 #### `acct-iso-cmd`：一个 `cc-acct-iso` 步骤在终端里要跑的那一行（〔DUP2 · 第四波 4D〕2026-09-26，**只出一行、不起进程不碰盘**）
@@ -2518,6 +2518,67 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 错误码同 `mcp-server-put`。⚠ **CLI 面也有它**（`--mcp-server-remove`）。
 
+#### `mcp-sync-hub-preview`：MCP 推 / 拉看差异，本机后端当枢纽（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"g1","cmd":"mcp-sync-hub-preview","args":{"from":null,"fromDir":"/home/u/p","to":"aya","toDir":"/home/u/q"}}
+← {"kind":"reply","id":"g1","ok":true,"data":{"sourcePath":"…","targetPath":"…","sourceText":"…","targetText":null,"rows":[…]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `to` | → | 来源那台 · 被写那台：可达表的键（`remote-reach` 登记的那台的名字），**`null` = 这台自己** |
+| `fromDir` · `toDir` | → | 两台上各自的项目目录 |
+| ← | ← | 被写那台 `mcp-sync-preview` 的成品原样 |
+
+只问本机这一台（`设计/01 §3.5`「不是经前端中继」，主会话 09-28 裁）：本机后端向 `from` 取原文（`mcp-sync-source`）、交 `to` 判（`mcp-sync-preview`）；
+远端那一跳走池里那条 SSH 上的 capture（那台 CLI 面的同名子命令，参数一行进 stdin）。错误码：`bad_args` · `refused`（远端那一跳的原话）· `stale` · `unreachable`（可达表里没有那台）· `io_failed`。⚠ **CLI 面也有它**（`--mcp-sync-hub-preview`）。
+
+#### `mcp-sync-hub-apply`：MCP 推 / 拉写入，本机后端当枢纽（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"g2","cmd":"mcp-sync-hub-apply","args":{"from":null,"fromDir":"/home/u/p","to":"aya","toDir":"/home/u/q","expectSource":"…","target":null,"take":["a"],"overwrite":[]}}
+← {"kind":"reply","id":"g2","ok":true,"data":{"path":"…","written":true,"names":["a"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `fromDir` · `to` · `toDir` | → | 同 `mcp-sync-hub-preview` |
+| `expectSource` | → | 看差异时那份来源原文：枢纽向 `from` 再取一次，不同 ⇒ `stale`、一个字节不写 |
+| `target` · `take` · `overwrite` | → | 交被写那台 `mcp-sync-apply`（`target` 是它的 CAS 期望） |
+
+写的内容由枢纽自己取（不收界面递来的原文）。错误码同上。⚠ **CLI 面也有它**（`--mcp-sync-hub-apply`）。
+
+#### `skill-install-hub-preview`：skill 装到这台看差异，本机后端当枢纽（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"g3","cmd":"skill-install-hub-preview","args":{"from":"aya","to":null,"name":"demo"}}
+← {"kind":"reply","id":"g3","ok":true,"data":{"dir":"…","rows":[…],"target":[…],"source":[…]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `to` · `name` | → | 来源那台 · 被写那台（同上，`null` = 这台）· skill 名 |
+| `dir` · `rows` · `target` | ← | 被写那台 `skill-install-plan` 的那几格 |
+| `source` | ← | 来源那台 `skill-read` 读出的那几份（界面照它显示、写时当期望送回） |
+
+来源与目标同一台 ⇒ `refused`。错误码同上。⚠ **CLI 面也有它**（`--skill-install-hub-preview`）。
+
+#### `skill-install-hub-apply`：skill 装到这台写入，本机后端当枢纽（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"g4","cmd":"skill-install-hub-apply","args":{"from":"aya","to":null,"name":"demo","expectSource":[…],"target":[…],"take":["SKILL.md"],"overwrite":[]}}
+← {"kind":"reply","id":"g4","ok":true,"data":{"dir":"…","written":["SKILL.md"],"chmodFailed":[],"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `from` · `to` · `name` | → | 同 `skill-install-hub-preview` |
+| `expectSource` | → | 看差异时那几份（`path` · `text` · `exec`）：枢纽向 `from` 再读一次，不同 ⇒ `stale`、一个字节不写 |
+| `target` · `take` · `overwrite` | → | 交被写那台 `skill-install-apply`（判 · 写 · 记同一台） |
+
+错误码同上。⚠ **CLI 面也有它**（`--skill-install-hub-apply`）。
+
 #### `mcp-sync-source`：推 / 拉的来源那份原文（MIG-3a，09-27，**只读**）
 
 ```text
@@ -2608,6 +2669,173 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 | `dirFailed` | ← | 收空目录没成时那一句 |
 
 错误码：`bad_args` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found`（记录里没有这一条）· `stale`（看过之后被改过 / 已经不在 —— 停在那一个，说清前面删了哪几个）。⚠ **CLI 面也有它**。
+
+#### `aliases-render`：清单 → 代码（MIG-3a，09-28，**纯**）
+
+```text
+→ {"id":"a1","cmd":"aliases-render","args":{"aliases":[{"name":"zcc","args":["--","--account","z"]}],"shell":"posix"}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"fileText":"…","lines":["zcc() { ccm \"$@\" -- --account z; }"],"problems":[],"collisions":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `aliases` | → | 清单：每条 `{name, args}`（`args` 是原样的 ccm argv） |
+| `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒，主会话 09-27 裁） |
+| `fileText` · `lines` | ← | 整份文件 · 每条合格别名的写法 |
+| `problems` | ← | 不合格的那几条 `{name, message}`（非空时 `aliases-install` 一个字节都不写） |
+| `collisions` | ← | 撞名提示（自带别名块 · **这台** `PATH` 上的同名程序 · PowerShell 内建别名；只出声、不拦） |
+
+一个字节都不写。规则 · 方言住 `assets/aliases/`（`mod.rs` · `dialect.rs`）。错误码：`bad_args` · `refused`（这台不说那种方言）。⚠ **CLI 面也有它**（`--aliases-render`）。
+
+#### `aliases-read`：读回清单 ＋ 启动文件候选（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"a2","cmd":"aliases-read","args":{"shell":"posix","rcPath":null}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","exists":true,"aliases":[…],"unparsed":[],"rcCandidates":[…],"otherRc":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `shell` | → | 同 `aliases-render` |
+| `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
+| `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台上那份别名文件的路径 · 在不在 · 读回的清单 · 认不出的行（原文带原因） |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}` |
+| `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
+
+读经本进程文件管理面（`files-home` · `files-peek` · `files-stat`）。已握手的终端数不在这里（住 monitor 进程里）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-read`）。
+
+#### `aliases-install`：写别名文件（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"a3","cmd":"aliases-install","args":{"aliases":[…],"rcPath":"/home/u/.bashrc","shell":"posix"}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true,"notes":["…"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `aliases` · `shell` | → | 同 `aliases-render`（有一条不合格 ⇒ 整批不写、`refused`） |
+| `rcPath` | → | 选了哪份启动文件：**只查**它接没接上，不往里写（`71 §6.1`） |
+| `aliasPath` · `wroteAliasFile` · `notes` | ← | 写到哪 · 真写了没有（内容一致就一个字节不写）· 给人看的补充说明 |
+
+写经本进程 `files-put`（逐级补目录、不备份：那是 cc-monitor 自己的文件）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-install`）。
+
+#### `aliases-block-render`：别名块预览（MIG-3a，09-28，**纯**）
+
+```text
+→ {"id":"a4","cmd":"aliases-block-render","args":{"rcPath":"~/.bashrc","withCc":false}}
+← {"kind":"reply","id":"a4","ok":true,"data":{"text":"# === cc-monitor remote ccm BEGIN ===\n…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `rcPath` | → | 目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell） |
+| `withCc` | → | 要不要连 `cc` 函数一起装（只对 PowerShell 有意义） |
+| `text` | ← | 往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`） |
+
+错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-render`）。
+
+#### `aliases-block-install`：别名块装进人选的那份启动文件（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"a5","cmd":"aliases-block-install","args":{"rcPath":"~/.bashrc","withCc":false}}
+← {"kind":"reply","id":"a5","ok":true,"data":{}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `rcPath` | → | 人选的那份启动文件（过围栏；方言由扩展名定，再过方言那一道闸） |
+| `withCc` | → | 同 `aliases-block-render` |
+
+幂等、整块替换，块外一个字节不动；围栏损坏（有 BEGIN 没 END）⇒ 中止。写经本进程 `files-put`（带备份、逐级补目录）。
+错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-install`）。
+
+#### `aliases-block-remove`：别名块卸掉（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"a6","cmd":"aliases-block-remove","args":{"rcPath":"~/.bashrc"}}
+← {"kind":"reply","id":"a6","ok":true,"data":{}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `rcPath` | → | 同 `aliases-block-install` |
+
+整块删，块外一个字节不动；没有块 ⇒ 原样；围栏损坏 ⇒ 中止。写经本进程 `files-put`（带备份）。
+错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-remove`）。
+
+#### `cc-bus-install-state`：这台装的 cc-bus 是哪一版（MIG-3a 子步 3，09-28，**只读**）
+
+```text
+→ {"id":"c1","cmd":"cc-bus-install-state"}
+← {"kind":"reply","id":"c1","ok":true,"data":{"state":"drifted","differing":1,"missing":0}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `state` | ← | `not_installed` · `up_to_date` · `drifted`（三态刻意不合并） |
+| `differing` · `missing` | ← | 只 `drifted` 有：与这台二进制带着的那一份逐文件比，内容不同几个 · 缺几个（清单外的文件不算） |
+
+错误码：`refused`（这台后端不认得带 skill 的 agent）。⚠ **CLI 面也有它**（`--cc-bus-install-state`）。
+
+#### `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台（MIG-3a 子步 3，09-28，**写用户文件**）
+
+```text
+→ {"id":"c2","cmd":"cc-bus-install"}
+← {"kind":"reply","id":"c2","ok":true,"data":{"dest":"/home/u/.claude/skills/cc-bus","written":28,"unchanged":0,"backup":null,"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dest` | ← | 落点（`<skills 根>/cc-bus`，过独立 realpath 围栏） |
+| `written` · `unchanged` | ← | 写了几个 · 全一致时跳过的个数（全一致 ⇒ 一个字节不写、不备份、不记） |
+| `backup` | ← | 覆盖前整个目录改名成的那一份（`cc-bus.bak-<秒>`，`null` = 之前没装过） |
+| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句（这一趟装的卸不掉）；装卸账复用 `skill-install-record` 那一份 |
+
+写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户显式点「装」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
+
+#### `skill-host-list`：这台一个项目里接进来的 skill（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"h1","cmd":"skill-host-list","args":{"cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"h1","ok":true,"data":{"skills":[{"id":"planned-build","label":"计划","missing_reason":null,"instances":["w1"],"editable":["/home/u/proj/.claude/planned-build/INBOX.txt"]}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cwd` | → | 这台上的项目目录 |
+| `skills` | ← | 每个声明一行（声明住 `agents/claudecode/skill_host.rs::SKILLS`）：`id` · `label` · `missing_reason`（`null` = 在场，否则带身份的缺席原因）· `instances`（产物根下带标记文件的实例目录）· `editable`（人要改的那几个文件的绝对路径，按声明算） |
+
+只做存在性探测（`exists` / 列目录），不调用任何 skill。错误码：`bad_args` · `refused`（这台后端不认得带 skill 的 agent）。⚠ **CLI 面也有它**（`--skill-host-list`）。
+
+#### `skill-host-read`：读收件箱那一份（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"h2","cmd":"skill-host-read","args":{"cwd":"/home/u/proj","skillId":"planned-build","path":"/home/u/proj/.claude/planned-build/INBOX.txt"}}
+← {"kind":"reply","id":"h2","ok":true,"data":{"text":"…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cwd` · `skillId` · `path` | → | 项目目录 · 哪个 skill · 那份文件（解到底之后必须恰是那个 skill 声明的可编辑文件之一、文件必须已存在、不是 Claude 的会话记录 —— 三道围栏住 `skill_host.rs::editable_target`） |
+| `text` | ← | 原文（经本进程文件管理面 `files-peek` 读） |
+
+错误码：`bad_args` · `refused`（过不了围栏 / 读不出）。⚠ **CLI 面也有它**（`--skill-host-read`）。
+
+#### `skill-host-write`：写收件箱那一份（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"h3","cmd":"skill-host-write","args":{"cwd":"/home/u/proj","skillId":"planned-build","path":"…/INBOX.txt","content":"…","expected":"…"}}
+← {"kind":"reply","id":"h3","ok":true,"data":{"path":"/home/u/proj/.claude/planned-build/INBOX.txt"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cwd` · `skillId` · `path` | → | 同 `skill-host-read`（同三道围栏） |
+| `content` | → | 新全文 |
+| `expected` | → | 打开时读到的那一份（CAS）：盘上那份在这之后被改过（多半是 agent 处置了几条）⇒ `stale`，一个字节不写 |
+| `path` | ← | 写到了哪 |
+
+写经本进程文件管理面 `files-put`（不备份、不建父目录）。错误码：`bad_args` · `refused` · `stale`。⚠ **CLI 面也有它**（`--skill-host-write`）。
 
 #### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
 
@@ -3077,7 +3305,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
-**MIG-3a 追加七条（09-27）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` —— D 组 MCP 与 skill 那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+**MIG-3a 追加二十二条（09-27 · 09-28）**：`--cc-bus-install` · `--cc-bus-install-state`（cc-bus 装到这台）· `--mcp-sync-hub-preview` · `--mcp-sync-hub-apply` · `--skill-install-hub-preview` · `--skill-install-hub-apply`（两台之间那几件的枢纽）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
@@ -3624,7 +3852,7 @@ monitor 的 notify 在 **await 文件落地那一瞬**就 EnumWindows 找 marker
 v2.21 实测：**每个新 shell 的首次 `cc` 固定烧满超时**。
 
 两侧各修了一半，缺一不可：
-- **PS 侧**（`src/bridge/scripts/cc.ps1.tpl`）反转顺序 ⇒ 首次即中。
+- **PS 侧**（`src/shared/cc.ps1.tpl`）反转顺序 ⇒ 首次即中。
 - **monitor 侧**（`bind.rs`）加 ≤600ms 重试 ⇒ 兜住**旧模板**用户和慢标题传播。
   旧模板不会自动更新，这条重试是它们唯一的活路。
 

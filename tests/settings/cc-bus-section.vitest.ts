@@ -33,6 +33,12 @@ vi.mock("@tauri-apps/api/core", async () => {
 // 「测试侧不许再手抄纯函数」—— 那要一条新的扫描面（人群是 `.vitest.` 文件本身），
 // 不在本轮写区，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
 // 〔FE1〕`fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。
+// 〔MIG-3a · 子步 3〕cc-bus 装 / 三态改经通道问本机后端（`src/cc-bus-install-reads.ts`）：替身把两问按旧名字交给 `mockInvoke`
+//   （`cc_bus_install_state` / `deploy_local_cc_bus`），本文件判的 DOM 行为（构造不远端往返 · 警告要显示）一字不变。
+vi.mock("../../src/cc-bus-install-reads", () => ({
+  readCcBusInstallState: () => mockInvoke("cc_bus_install_state"),
+  installCcBus: () => mockInvoke("deploy_local_cc_bus"),
+}));
 vi.mock("../../src/account-reads", async () => ({
   ...(await vi.importActual<typeof import("../../src/account-reads")>("../../src/account-reads")),
   fetchAccounts: vi.fn(),
@@ -106,13 +112,10 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
       if (cmd === "list_remote_mcp_origins") return ["aya"];
       if (cmd === "cc_bus_install_state") return { state: "not_installed" };
       if (cmd === "deploy_local_cc_bus")
-        return {
-          dest: "/h/.claude/skills/cc-bus",
-          written: 17,
-          unchanged: 0,
-          backup: null,
-          warning: "本机 ccm 缺能力 [\"tmux-base\"] ⇒ 装出去的 cc-spawn 会以「ccm 版本太旧」退出。",
-        };
+        return { dest: "/h/.claude/skills/cc-bus", written: 17, unchanged: 0, backup: null, recordFailed: null };
+      // 〔MIG-3a · 子步 3〕警告改由 monitor 那道本机 `ccm` 预检答（装在本机后端）。
+      if (cmd === "cc_bus_ccm_precheck")
+        return "本机 ccm 缺能力 [\"tmux-base\"] ⇒ 装出去的 cc-spawn 会以「ccm 版本太旧」退出。";
       throw new Error(`不该调用 ${cmd}`);
     });
     const s = new CcBusSection();
@@ -130,8 +133,8 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["aya"];
       if (cmd === "cc_bus_install_state") return { state: "not_installed" };
-      if (cmd === "deploy_local_cc_bus")
-        return { dest: "/h/x", written: 17, unchanged: 0, backup: null, warning: null };
+      if (cmd === "deploy_local_cc_bus") return { dest: "/h/x", written: 17, unchanged: 0, backup: null, recordFailed: null };
+      if (cmd === "cc_bus_ccm_precheck") return null;
       throw new Error(`不该调用 ${cmd}`);
     });
     const s = new CcBusSection();

@@ -85,10 +85,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
      "〔RM1c · 第四波〕把 `embedded-backends/cc-monitor-panorama-<arch>`（只装代码全景引擎的独立小程序，\
           两个 musl arch）复制进 `OUT_DIR`，供 `panorama_bytes.rs` 的 `include_bytes!` 内嵌。\
           同上一行：写的是 cargo 自己的构建目录，不碰用户环境、不是安装动作"),
-    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有 `skill_host.rs::write_skill_file` 一行（项目里的
+    // ── 〔RW1 · 第四波 · 2026-09-24〕这里原来有收件箱写（`write_skill_file`〔散文墓碑〕）一行（项目里的
     //    `.claude/planned-build/INBOX.txt`，本进程 `fs::write` ＋ `verified_write` 回读回滚）。用户裁「远端（和本机，
     //    同一条路）的 `INBOX.txt` 能编辑、经那台机器后端的文件管理那一面写」⇒ 读写都改经后端（`files-peek` /
-    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。三道围栏（`resolve_editable`）仍在 monitor，决定能不能碰。
+    //    `files-put`，带 CAS 期望），本进程一个字节不落 ⇒ 摘行。〔MIG-3a〕三道围栏也进了那台后端（`skill_host.rs::editable_target`）。
     // ── 🔴 〔RW1 · 第四波 · 2026-09-24〕这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。用户裁「只允许后端的文件管理部分写文件」**也管本机** ⇒ 那几件改经本机后端
@@ -367,7 +367,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
     // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
-    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`cc_bus_deploy.rs::deploy_into`）
+    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`deploy_into`〔散文墓碑〕，〔MIG-3a〕装 cc-bus 今天在本机后端）
     //   随「用户文件改经后端写」走了，剩本机那条 `ccm` 入口（写的是我们自己的目录）。
     // 〔E2 · V28〕1 → 0：本机 `ccm` 不再是「装的一份副本」，就是后端本身（`extract_embedded_to`，`None` 那一档：monitor 自己的部署物）。
     //   ⇒ 这张表今天没有安装动作；循环空转由上面「每条都在 `SITE_CLASS` 里」那两向相等兜着。
@@ -513,22 +513,23 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
     }
     // 正控：多一处没分类的落点 ⇒ 这把尺子真的数得出来。
     let mut poisoned = sites.clone();
-    poisoned.push(("account_aliases.rs", "write_alias_file"));
+    // 〔MIG-3a〕靶子换成后端那一份（别名文件那一写随别名进了那台后端）——只拿它当「一处没分类的落点」的样本。
+    poisoned.push(("mod.rs", "write_alias_file"));
     let (u, _) = class_mismatch(&poisoned, SITE_CLASS);
     assert_eq!(
         u,
-        vec!["account_aliases.rs::write_alias_file".to_string()],
+        vec!["mod.rs::write_alias_file".to_string()],
         "正控没过 —— 本条空转"
     );
 }
 
 /// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
 const MOVED_OUT: &[&str] = &[
-    "account_aliases.rs",
+    // 〔MIG-3a · 主会话 09-27 裁〕`account_aliases.rs` · `fenced_block.rs` 整份搬进了那台后端（`assets/aliases/`）⇒ 出名单；
+    //   `profile_installer.rs` 只剩用户级 PATH 那一格，留在名单里。
     "profile_installer.rs",
-    "fenced_block.rs",
     // 〔MIG-3a〕`mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
-    "skill_host.rs",
+    // 〔MIG-3a〕`skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
     "cc_bus_deploy.rs",
     "history.rs",
     "remote_history.rs",
@@ -609,13 +610,13 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         offenders.join("\n")
     );
     // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
-    let raw = std::fs::read_to_string(root.join("account_aliases.rs")).expect("读");
+    let raw = std::fs::read_to_string(root.join("profile_installer.rs")).expect("读");
     let poisoned = format!(
         "{}\nfn sneaky(p: &std::path::Path) {{ let _ = std::fs::write(p, b\"x\"); }}\n",
         guard_core::production_code(&raw)
     );
     assert_eq!(
-        moved_out_hits("account_aliases.rs", &poisoned).len(),
+        moved_out_hits("profile_installer.rs", &poisoned).len(),
         1,
         "正控没过 —— 针或剥法坏了，本条空转"
     );

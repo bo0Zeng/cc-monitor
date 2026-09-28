@@ -41,10 +41,16 @@ import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
-import type { Alias } from "../generated/Alias";
-import type { AliasRender } from "../generated/AliasRender";
-import type { StartupFile } from "../generated/StartupFile";
-import type { Shell } from "../generated/Shell";
+// 〔MIG-3a〕别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边（从前是 monitor 生成的类型）。
+import type { Alias, AliasRender, StartupFile, Shell } from "../alias-reads";
+import {
+  installAliasBlock,
+  installAliases,
+  readAliases,
+  removeAliasBlock,
+  renderAliasBlock,
+  renderAliases,
+} from "../alias-reads";
 import type { Origin } from "../generated/Origin";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { makeInfoIcon } from "./info-icon";
@@ -421,11 +427,10 @@ export function buildAliasManager(opts: {
   // ── 渲染结果（第①跳）────────────────────────────────────────────────────
   const problemsBox = el("div", "settings-hint machine-aliases-problems");
   wrap.appendChild(problemsBox);
-  // 〔AL2〕远端撞名只核自带别名块（monitor 的 PATH 不是那台的 PATH，`W5-ALIAS.md §2.2`）—— 说一句，不为它加帧命令。
-  if (!local) wrap.appendChild(el("div", "settings-hint", copyText("machineAliases.remote.pathUnchecked")));
+  // 〔MIG-3a〕撞名那一格由那台后端查它自己的 `PATH`（规则住在那台上）⇒ 〔AL2〕「远端只核自带别名块」那句说明退役。
   let rendered: AliasRender | null = null;
   const paste = buildPasteBlock({
-    text: () => rendered?.code ?? "",
+    text: () => rendered?.fileText ?? "",
     target: copy.pasteTarget,
     mergeNote: copyText("machineAliases.paste.mergeNote"),
     activation: copy.pasteActivation,
@@ -492,7 +497,7 @@ export function buildAliasManager(opts: {
   const rcButtons = el("div", "settings-cc-profile-buttons");
   const installBtn = button(copyText("machineAliases.rc.install"), "", () =>
     void runRc("install", (path) =>
-      commands.aliases_block_install({ origin: opts.origin(), rcPath: path, withCc: withCc.checked }),
+      installAliasBlock(opts.origin(), path, withCc.checked),
     ),
   );
   installBtn.title = copy.blockInstallTitle;
@@ -502,7 +507,7 @@ export function buildAliasManager(opts: {
   // 〔AL2〕远端卡那一颗按 V134 叫「卸载 ccm」；本机那颗要不要随之改名还待用户（主会话现场），不在这里裁。
   uninstallBtn.textContent = local ? copyText("machineAliases.rc.uninstall") : copyText("machineCard.aliases.uninstall");
   uninstallBtn.addEventListener("click", () =>
-    void runRc("remove", (path) => commands.aliases_block_remove({ origin: opts.origin(), rcPath: path })),
+    void runRc("remove", (path) => removeAliasBlock(opts.origin(), path)),
   );
   uninstallBtn.title = copyText("machineAliases.rc.uninstallHint");
   const previewBtn = button(copyText("machineAliases.rc.preview"), "", () => void onPreview());
@@ -632,7 +637,7 @@ export function buildAliasManager(opts: {
   const changed = async (): Promise<void> => {
     renderList();
     try {
-      rendered = await commands.aliases_render({ origin: opts.origin(), aliases: list, shell });
+      rendered = await renderAliases(opts.origin(), list, shell);
     } catch (e) {
       rendered = null;
       problemsBox.textContent = copyText("machineAliases.changed.failed", { e: String(e) });
@@ -698,13 +703,24 @@ export function buildAliasManager(opts: {
   };
 
   /**
+   * 〔MIG-3a〕握手终端数住 monitor 进程里（不是那台盘上的事实）⇒ 另问 monitor；只有本机 PowerShell 那一格显示它。
+   */
+  const refreshBound = (): void => {
+    if (!psExtras || !local) return;
+    void commands.bound_terminal_count().then(
+      (n) => psExtras?.setBound(n),
+      () => undefined,
+    );
+  };
+
+  /**
    * 读回口：盘上那份就是清单的起点；认不出的行原样说出来 —— 写回去之前人得知道它们会没。
    * 〔AL1d〕同一次读回带回启动文件候选（各带别名块的现状）与握手终端数 ⇒ 别名块那一格不再另问。
    * `keepList`：只刷新盘上的现状，不动人正在编辑的清单（装 / 卸别名块之后、「重新读一遍」）。
    */
   const readBack = async (keepList: boolean): Promise<void> => {
     try {
-      const got = await commands.aliases_read({ origin: opts.origin(), shell, rcPath: otherRc });
+      const got = await readAliases(opts.origin(), shell, otherRc);
       if (!keepList) list = got.aliases;
       const head = got.exists
         ? copyText("machineAliases.readBack.count", { path: got.aliasPath, n: got.aliases.length })
@@ -713,7 +729,7 @@ export function buildAliasManager(opts: {
       status.textContent = [head, ...bad].join("\n");
       cands = got.rcCandidates;
       fillRcOptions(cands);
-      psExtras?.setBound(got.boundTerminals);
+      refreshBound();
     } catch (e) {
       status.textContent = copyText("machineAliases.readBack.failed", { e: String(e) });
     }
@@ -741,12 +757,7 @@ export function buildAliasManager(opts: {
   const onWrite = async (): Promise<void> => {
     writeBtn.disabled = true;
     try {
-      const r = await commands.aliases_install({
-        origin: opts.origin(),
-        aliases: list,
-        rcPath: rcSel.value || null,
-        shell,
-      });
+      const r = await installAliases(opts.origin(), list, rcSel.value || null, shell);
       result.textContent = [r.wroteAliasFile ? copyText("machineAliases.write.done", { path: r.aliasPath }) : "", ...r.notes]
         .filter(Boolean)
         .join("\n");
@@ -763,11 +774,11 @@ export function buildAliasManager(opts: {
     if (!raw) return;
     otherErr.textContent = "";
     try {
-      const got = await commands.aliases_read({ origin: opts.origin(), shell, rcPath: raw });
+      const got = await readAliases(opts.origin(), shell, raw);
       otherRc = raw;
       cands = got.rcCandidates;
       fillRcOptions(cands);
-      psExtras?.setBound(got.boundTerminals);
+      refreshBound();
       if (got.otherRc) rcSel.value = got.otherRc;
     } catch (e) {
       otherErr.textContent = copyText("machineAliases.other.failed", { e: String(e) });
@@ -851,7 +862,7 @@ export function buildAliasManager(opts: {
     const path = rcSel.value;
     if (!path) return;
     try {
-      const code = await commands.aliases_block_render({ origin: opts.origin(), rcPath: path, withCc: withCc.checked });
+      const code = await renderAliasBlock(opts.origin(), path, withCc.checked);
       showPreviewModal(copyText("machineAliases.preview.title", { path }), code);
     } catch (e) {
       showActionFailureToast(copyText("machineAliases.preview.failed"), String(e));

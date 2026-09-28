@@ -140,26 +140,14 @@ impl crate::user_files::Door for StaleDoor {
             .put(root, rel, content, expect, backup, parents)
             .await
     }
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
-        self.inner.rename(root, from, to).await
-    }
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.inner.delete(root, rel, expect).await
-    }
-    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
-        self.inner.delete_empty_dir(root, rel).await
     }
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
         self.inner.chmod(root, rel, mode).await
     }
     async fn delete_session(&self, sid: &str) -> Result<String, String> {
         self.inner.delete_session(sid).await
-    }
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
-        self.inner.stat_kind(path).await
-    }
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
-        self.inner.list_dir(path).await
     }
 }
 

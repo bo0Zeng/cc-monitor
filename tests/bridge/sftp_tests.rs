@@ -1291,15 +1291,16 @@ fn a_bad_readback_removes_the_upload_it_just_made() {
 #[test]
 fn the_alias_block_truth_no_longer_lives_in_sftp() {
     let sftp = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
+    // 〔MIG-3a · 主会话 09-27 裁〕别名块的真相再搬一次：进了那台后端（`src/backend/assets/aliases/block.rs`）。
     let alias_home =
-        guard_core::production_code(include_str!("../../src/bridge/src/profile_installer.rs"));
+        guard_core::production_code(include_str!("../../src/backend/assets/aliases/block.rs"));
     let defs = [
         "pub(crate) const CCM_PROFILE_BEGIN: &str",
         "pub(crate) const CCM_PROFILE_END: &str",
         "pub(crate) const CCM_WRAPPER_SNIPPET: &str",
         "pub(crate) fn builtin_alias_names(",
-        "pub fn merge_profile_block(",
-        "pub fn strip_profile_block(",
+        "pub(crate) fn merge_profile_block(",
+        "pub(crate) fn strip_profile_block(",
         // 〔AL2 · 第四波 4D〕远端装 / 卸那两条命令删了（并进 `aliases_block_*`），名单 8 → 6。
     ];
     let stayed: Vec<&str> = defs.iter().copied().filter(|d| sftp.contains(d)).collect();
@@ -1309,7 +1310,7 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
     );
     for d in defs {
         guard_core::find_pinned(&alias_home, d).unwrap_or_else(|e| {
-            panic!("正控：`profile_installer.rs` 里量不出 `{d}`（{e}）—— 这把尺子是瞎的")
+            panic!("正控：`assets/aliases/block.rs` 里量不出 `{d}`（{e}）—— 这把尺子是瞎的")
         });
     }
 }

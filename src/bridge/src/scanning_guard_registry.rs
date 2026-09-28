@@ -282,7 +282,7 @@
 //! `git show <sha>:<本文件>` 逐份取得出上限，两侧逐字同值。
 //! ★ 关键在于走的是**真 `git` 二进制**，不是自己去解 object ——
 //! `5i` 那次栽的正是「自己解 object，解不动打包过的」。packfile 那条路归 git 自己。
-//! 本仓已有先例在门禁里跑 git：`skill_host::git_common_dir`（`rev-parse`）·
+//! 本仓已有先例在门禁里跑 git：`dial_home_registry_tests.rs::git_read`（`log`）·
 //! `doc_claim_registry`（`ls-files`）。
 //!
 //! ⚠ 反过来那条也记着：`ssh_source` 头注逐字写过「**为什么不在测试里跑 `git show`**

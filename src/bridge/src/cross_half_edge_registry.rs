@@ -90,6 +90,24 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/cc_bus_install.rs",
+        "〔MIG-3a · 子步 3〕`cc-bus` 那一行的装口：申报的「可装」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/aliases/block.rs",
+        "〔MIG-3a · 主会话 09-27 裁〕`ccm` 那一行的装 / 卸口（别名块）：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/sftp_tests.rs",
+        "src/backend/assets/aliases/block.rs",
+        "〔MIG-3a〕「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
         "src/backend/assets/skill_flow.rs",
         "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
     ),
@@ -303,6 +321,15 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
     ),
     // ── backend → monitor（2 条 · 〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列）：backend 的判据去读 monitor ──
+    // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
+    //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。
+    (
+        "backend→monitor",
+        "tests/backend/accounts/iso_tests.rs",
+        "src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso",
+        "〔MIG-3a〕rc 片段的围栏校验进了后端：围栏常量必须与 vendored `cc-acct-iso` 真打印的那两行逐字一致 \
+         —— 跨语言双写点，只能编译期读那份 vendored 脚本对拍（从前这条边住 monitor 的 `acct_iso_deploy_tests.rs`）",
+    ),
     (
         "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。

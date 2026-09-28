@@ -99,7 +99,7 @@ pub fn is_downloadable(r: &Row) -> bool {
 ///
 /// ⚠ **它不碰盘** —— 不判存在、不判可写、不建目录。
 /// 那几件各自是一次 IO，而本函数要在没有任何盘的机器上判得动
-/// （同 `claude_data_fence` 那条纪律）。存在性那一问住 [`Ask::Overwrite`] 那一步。
+/// （同从前那道 Claude 数据判定的纪律）。存在性那一问住 [`Ask::Overwrite`] 那一步。
 pub fn plan_dest(typed: &str, src_name: &str) -> Result<String, String> {
     let t = typed.trim();
     if t.is_empty() {

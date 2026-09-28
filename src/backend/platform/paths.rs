@@ -84,3 +84,64 @@ pub(crate) fn device_of(p: &Path) -> Option<u64> {
 pub(crate) fn device_of(_p: &Path) -> Option<u64> {
     None
 }
+
+/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕这台机器的**「文档」目录**（Windows 上 OneDrive 会把它挪走 ⇒ 问系统 `SHGetKnownFolderPath`）。
+/// 从前是 monitor 进程问（`dirs::document_dir`）；别名方言进了后端之后，`$PROFILE` 在哪由**那台后端**问它自己的系统。
+/// 非 Windows ⇒ `None`（那里没有 `$PROFILE` 要找，调用方退回 `home/Documents`，不编一个答案）。
+#[cfg(windows)]
+pub(crate) fn documents_dir() -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt as _;
+    #[repr(C)]
+    struct Guid {
+        d1: u32,
+        d2: u16,
+        d3: u16,
+        d4: [u8; 8],
+    }
+    /// `FOLDERID_Documents` = `{FDD39AD0-238F-46AF-ADB4-6C85480369C7}`。
+    const FOLDERID_DOCUMENTS: Guid = Guid {
+        d1: 0xFDD3_9AD0,
+        d2: 0x238F,
+        d3: 0x46AF,
+        d4: [0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7],
+    };
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SHGetKnownFolderPath(
+            rfid: *const Guid,
+            flags: u32,
+            token: *mut core::ffi::c_void,
+            path: *mut *mut u16,
+        ) -> i32;
+    }
+    #[link(name = "ole32")]
+    extern "system" {
+        fn CoTaskMemFree(pv: *mut core::ffi::c_void);
+    }
+    let mut p: *mut u16 = std::ptr::null_mut();
+    // SAFETY: 出参是一个指针槽；成功时系统分配、我们按约定用 `CoTaskMemFree` 还回去（失败时也可能分配，同样还）。
+    let hr = unsafe { SHGetKnownFolderPath(&FOLDERID_DOCUMENTS, 0, std::ptr::null_mut(), &mut p) };
+    let out = if hr >= 0 && !p.is_null() {
+        // SAFETY: 成功时 `p` 指向一个以 0 结尾的 UTF-16 串。
+        let len = (0..).take_while(|&i| unsafe { *p.add(i) } != 0).count();
+        let wide = unsafe { std::slice::from_raw_parts(p, len) };
+        Some(PathBuf::from(std::ffi::OsString::from_wide(wide)))
+    } else {
+        None
+    };
+    if !p.is_null() {
+        // SAFETY: `p` 由 `SHGetKnownFolderPath` 分配。
+        unsafe { CoTaskMemFree(p.cast()) };
+    }
+    out
+}
+
+#[cfg(not(windows))]
+pub(crate) fn documents_dir() -> Option<PathBuf> {
+    None
+}
+
+/// 〔MIG-3a〕这台的文件系统**有没有可执行位**（unix 有；Windows 没有 —— 那边写口的改权限如实回失败，调用方据此不发）。
+pub(crate) fn has_exec_bits() -> bool {
+    cfg!(unix)
+}

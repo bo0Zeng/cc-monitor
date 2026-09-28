@@ -66,13 +66,12 @@ const toast = vi.fn();
 const pushed: unknown[] = [];
 const popped: unknown[] = [];
 
-vi.mock("../../src/ipc/commands", () => ({
-  commands: {
-    list_skills: (a: { origin: string; cwd: string }) => listSkills(a),
-    read_skill_file: (a: { origin: string; cwd: string; skillId: string; path: string }) =>
-      readSkillFile(a),
-    write_skill_file: (a: WriteArgs) => writeSkillFile(a),
-  },
+// 〔MIG-3a〕三问改走通道（`src/skill-inbox-reads.ts`，线上形状由它的解码器钉）；这里量的是视图本身 ⇒ 替掉那一层、按旧形参录音。
+vi.mock("../../src/skill-inbox-reads", () => ({
+  listSkills: (origin: string, cwd: string) => listSkills({ origin, cwd }),
+  readSkillFile: (origin: string, cwd: string, skillId: string, path: string) => readSkillFile({ origin, cwd, skillId, path }),
+  writeSkillFile: (origin: string, cwd: string, skillId: string, path: string, content: string, expected: string) =>
+    writeSkillFile({ origin, cwd, skillId, path, content, expected }),
 }));
 vi.mock("../../src/error-toast", () => ({
   showActionFailureToast: (...a: unknown[]) => toast(...a),
@@ -84,7 +83,7 @@ vi.mock("../../src/keybindings/registry", () => ({
   },
 }));
 
-import type { SkillView } from "../../src/ipc/commands";
+import type { SkillView } from "../../src/skill-inbox-reads";
 import { InboxView } from "../../src/views/inbox-view";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
