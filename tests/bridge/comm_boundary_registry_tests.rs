@@ -2506,13 +2506,14 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MIG-3a〕基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
     // 〔MIG-3a〕基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
     // 〔MIG-3a〕基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
+    // 〔MIG-3a · 09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
     // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
     //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 67usize),
+            ("chan.call", 68usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

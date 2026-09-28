@@ -225,6 +225,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "skill-install-apply"
                 | "skill-host-list"
                 | "cc-bus-install"
+                // 〔MIG-3a · 09-28 裁 2〕acct-iso 装：经本进程文件管理面建链接 ＋ 抄配置样例（同步文件 I/O）；建链接那条同写面一档。
+                | "acct-iso-install"
+                | "files-link"
                 | "cc-bus-install-state"
                 | "aliases-render"
                 | "aliases-read"
@@ -401,6 +404,8 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
+        "acct-iso-install",
+        "files-link",
         "cc-bus-install-state",
         "aliases-render",
         "aliases-read",

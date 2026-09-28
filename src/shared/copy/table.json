@@ -13126,23 +13126,8 @@
     },
     "rsAcctIsoDeploy.deploy.done": {
       "kind": "body",
-      "zh": "已部署 cc-acct-iso（{version}）到 {dest}（{reason}）。{pathHint}",
-      "args": ["version", "dest", "reason", "pathHint"]
-    },
-    "rsAcctIsoDeploy.deploy.linkedNotOnPath": {
-      "kind": "body",
-      "zh": "已软链到 ~/.local/bin，但它可能不在你终端的 PATH。在终端里执行 export PATH=\"$HOME/.local/bin:$PATH\"。",
-      "args": []
-    },
-    "rsAcctIsoDeploy.deploy.linked": {
-      "kind": "body",
-      "zh": "已软链到 ~/.local/bin，命令可用。",
-      "args": []
-    },
-    "rsAcctIsoDeploy.deploy.installFailed": {
-      "kind": "error",
-      "zh": "脚本已上传到 {dest}，但 install（建软链）未成功完成——未标记为已装，可重试。远端输出：\n{output}",
-      "args": ["dest", "output"]
+      "zh": "已部署 cc-acct-iso（{version}）到 {dest}（{reason}）。",
+      "args": ["version", "dest", "reason"]
     },
     "rsAcctIsoDeploy.deploy.upToDate": {
       "kind": "body",
@@ -13163,16 +13148,6 @@
       "kind": "error",
       "zh": "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-acct-iso）",
       "args": []
-    },
-    "rsAcctIsoDeploy.exec.timeout": {
-      "kind": "error",
-      "zh": "远端命令超时（超过 {secs} 秒）",
-      "args": ["secs"]
-    },
-    "rsAcctIsoDeploy.exec.readFailed": {
-      "kind": "error",
-      "zh": "读远端输出失败：{e}",
-      "args": ["e"]
     },
     "rsAssetSync.call.emptyReply": {
       "kind": "error",
@@ -19169,6 +19144,46 @@
       "kind": "error",
       "zh": "读不懂本机后端回的 cc-bus 安装结果，两端版本对不上。",
       "args": []
+    },
+    "beAcctIsoInstall.dir.outside": {
+      "kind": "error",
+      "zh": "{dir} 不在 ~/.cc-monitor/bin/ 底下，不从这里装 cc-acct-iso",
+      "args": ["dir"]
+    },
+    "beAcctIsoInstall.main.missing": {
+      "kind": "error",
+      "zh": "主脚本不在：{path}。先把 cc-acct-iso 推上去再装",
+      "args": ["path"]
+    },
+    "beAcctIsoInstall.config.noSample": {
+      "kind": "error",
+      "zh": "{dir} 里没有随包的示例配置，建不了 ~/.cc-acct-iso/config",
+      "args": ["dir"]
+    },
+    "beAcctIsoInstall.record.failed": {
+      "kind": "error",
+      "zh": "装好了，但没记进装记录：{e}（这一趟装的卸不掉）",
+      "args": ["e"]
+    },
+    "accounts.needsDeploy.linked": {
+      "kind": "body",
+      "zh": "已链到 {link}。",
+      "args": ["link"]
+    },
+    "accounts.needsDeploy.linkKept": {
+      "kind": "body",
+      "zh": "{link} 那儿已经有东西，没动它。",
+      "args": ["link"]
+    },
+    "accounts.needsDeploy.configWritten": {
+      "kind": "body",
+      "zh": "已按样例建好 {config}。",
+      "args": ["config"]
+    },
+    "accounts.needsDeploy.configKept": {
+      "kind": "body",
+      "zh": "{config} 已在，没覆盖。",
+      "args": ["config"]
     }
   }
 }

@@ -361,12 +361,33 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
                 .to_string();
             let files = files_arg(args)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
-            let root = match skills_root {
-                Some(r) => r.to_path_buf(),
-                None => crate::agents::skills_root()
-                    .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?,
+            // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕`at: "home"`（闭集，只此一个值）：装的东西落在家目录底下（acct-iso 的
+            //   `~/.local/bin` 链接与 `~/.cc-acct-iso/config`）⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
+            //   `files` 的路径相对它。同一份账、同一个形（主会话：不另立第二份账）。
+            let dir = match args.get("at").and_then(Value::as_str) {
+                None => {
+                    let root = match skills_root {
+                        Some(r) => r.to_path_buf(),
+                        None => crate::agents::skills_root()
+                            .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?,
+                    };
+                    root.join(&name).display().to_string()
+                }
+                Some("home") => path
+                    .parent()
+                    .and_then(Path::parent)
+                    .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
+                    .display()
+                    .to_string(),
+                Some(other) => {
+                    return Err((
+                        "bad_args",
+                        crate::common::contract::malformed(&format!(
+                            "`at` must be absent or \"home\", got {other:?}"
+                        )),
+                    ))
+                }
             };
-            let dir = root.join(&name).display().to_string();
             let changed = add(&mut ledger, &dir, &name, files);
             let left = ledger.installs.get(&dir).map_or(0, |i| i.files.len());
             (dir, name, changed, left)

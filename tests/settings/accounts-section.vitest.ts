@@ -265,6 +265,33 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
     expectNoReadyChrome(el);
   });
 
+  // 〔MIG-3a · 09-28 裁 2〕部署分两步：monitor 推字节（`deploy_remote_acct_iso`）→ 那台后端落进用户目录（`acct-iso-install`）。
+  //   钉：落进用户目录那一步问的是**那一台**、恰好一次、`dir` 就是推字节的那个落点；它的成品进了给人看的那句话。
+  it("F5：点部署 → 推字节之后问那台后端 acct-iso-install 恰好一次（同一落点）", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      if (cmd === "acct_iso_status") return Promise.resolve({ installed: false });
+      if (cmd === "deploy_remote_acct_iso") return Promise.resolve("已推");
+      if (isChanCall(cmd as string, args, "acct-iso-install"))
+        return Promise.resolve(chanReply({ link: "/h/.local/bin/cc-acct-iso", linked: true, config: "/h/.cc-acct-iso/config", configWritten: false, recordFailed: null }));
+      return Promise.resolve(undefined);
+    });
+    const el = await mount();
+    const btn = el.querySelector<HTMLButtonElement>(".accounts-needs-deploy button");
+    expect(btn).not.toBeNull();
+    btn!.click();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    const calls = invokeMock.mock.calls as Array<[string, unknown]>;
+    const pushed = calls.filter(([c]) => c === "deploy_remote_acct_iso");
+    const landed = calls.filter(([c, a]) => isChanCall(c, a, "acct-iso-install")).map(([, a]) => a as ChanCallArgs);
+    expect(pushed).toHaveLength(1);
+    expect(landed.map((a) => [a.origin, chanArgsJson(a)])).toEqual([["aya", { dir: (pushed[0][1] as { destDir: string }).destDir }]]);
+    const said = vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[1])).join("\n");
+    expect(said).toContain("已推");
+    expect(said).toContain(copyText("accounts.needsDeploy.linked", { link: "/h/.local/bin/cc-acct-iso" }));
+    expect(said).toContain(copyText("accounts.needsDeploy.configKept", { config: "/h/.cc-acct-iso/config" }));
+  });
+
   it("F5：探测 cc-acct-iso 失败 → 不堵死用户，回退 init 向导", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
     invokeMock.mockRejectedValue(new Error("ssh down")); // check 抛错

@@ -63,7 +63,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/acct_iso_deploy_tests.rs", // 〔MIG-3a〕SCAN → UNIT：扫源码的那几条随 acct-iso 两问进后端删了，只剩纯函数与围栏在 I/O 之前那一条
     "tests/bridge/crates/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
-    "tests/config-lost-update.vitest.ts",  // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
+    "tests/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
     "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
     "tests/account-color.vitest.ts",
@@ -584,11 +584,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
-    "tests/backend/mcp_sync_tests.rs",               // 〔AS1〕
+    "tests/backend/mcp_sync_tests.rs",                // 〔AS1〕
     "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
     "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
     "tests/backend/assets/cc_bus_install_tests.rs", // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
+    "tests/backend/assets/acct_iso_install_tests.rs", // 〔MIG-3a · 09-28 裁 2〕cc-acct-iso 落进用户目录（临时 home 上真建链接 ＋ 真抄配置 ＋ 真记账）
     "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
     "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
     "tests/backend/assets/skill_inbox_tests.rs", // 〔MIG-3a〕收件箱读写进了那台后端（临时目录 ＋ 比对写 CAS）

@@ -84,12 +84,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
         "★ 这是原语**自己的定义**，不是调用点",
     ),
     // 〔SH1 · V136〕`cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
-    (
-        "acct_iso_deploy.rs",
-        "exec_collect",
-        Origin::PassThrough,
-        "`cmd: &str` 入参；来历在调用方",
-    ),
+    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
 ];
 
 fn src_root() -> PathBuf {
@@ -204,7 +199,8 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
         // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。
         // 〔DEL〕4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
-        found.len() >= 3,
+        // 〔MIG-3a · 09-28 裁 2〕3 → 2：部署 cc-acct-iso 那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`（`exec_collect` 那一处不在了）。
+        found.len() >= 2,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
@@ -354,8 +350,8 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "部署后端之前扫落点那一份的身份戳（判「是不是这一版」、要不要换）—— 被判的正是那台的后端本身"),
     ("pubkey.rs", "push_public_key", StillShell::Bootstrap,
      "把公钥推进那台 `authorized_keys`：只剩**那台后端还不在**那一形（密钥登录建立之前）；〔SH1〕后端在 ⇒ 已改经 `files-put` ＋ `files-chmod`（`pubkey.rs::push_via_backend`）"),
-    ("acct_iso_deploy.rs", "exec_collect", StillShell::Deploy,
-     "〔LOC1a〕只剩部署那两步（跑 `cc-acct-iso-install.sh` · 核 `~/.local/bin` 看得见它）；装没装 / 片段两问已改问那台后端（`acct-iso-status` / `acct-iso-shellinit`）"),
+    // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
+    //   （链接走写面 `files-link`，装卸账记 skill 装记录）；字节照走部署那一条（SFTP 经本机后端）。
     // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。
     // 〔SH1〕`hooks_diag.rs` 那一行摘了：换成那台后端的 `files-peek` ＋ `footprint-probe`（解锁条件兑现）。
     // 〔E2 · `96 §7.2.2`〕`probe_ccm_cli`〔散文墓碑〕 那一行摘了：`ccm` 就是那台后端本身（V28），「会哪些」改问那台后端 `ccm-probe`
