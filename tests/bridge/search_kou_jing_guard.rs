@@ -124,7 +124,7 @@ fn the_search_kou_jing_has_exactly_one_home() {
     let mut record_rule_used: Vec<&str> = Vec::new();
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
         let mut prod = guard_core::production_code(&raw);
-        if path.ends_with("messages.rs") {
+        if path.file_name() == Some(std::ffi::OsStr::new("messages.rs")) {
             for name in RECORD_RULE {
                 if prod.contains(name) {
                     record_rule_used.push(name);
