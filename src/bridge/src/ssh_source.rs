@@ -175,6 +175,23 @@ fn forget_verified_build(origin: &str) {
     }
 }
 
+/// 〔DEL 续〕一轮连接结束之后怎么办。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum AfterRound {
+    /// 按退避再连。
+    RetryIn(Duration),
+    /// 那台永久不支持（非 unix）⇒ 不再自动重连，这条流收工（带那句话）。
+    Stop(String),
+}
+
+/// 纯函数：这一轮记下了「永久不支持」⇒ 停；否则按当前退避再连（主会话裁：非 unix 不按退避空转）。
+pub(crate) fn after_round(unsupported: Option<String>, backoff: Duration) -> AfterRound {
+    match unsupported {
+        Some(why) => AfterRound::Stop(why),
+        None => AfterRound::RetryIn(backoff),
+    }
+}
+
 /// 纯函数：把当前退避翻倍并封顶到 [`RECONNECT_MAX`]。run() 的重连循环在"仍未连上"时调用。
 fn next_backoff(cur: Duration) -> Duration {
     (cur * 2).min(RECONNECT_MAX)
@@ -2558,6 +2575,8 @@ pub async fn run(
     let mut hello_confirmed: Option<Vec<String>> = None;
     // 〔TL2 · GP1 问 3〕上一轮断连时这台的可重连会话 —— 下一轮连上、tmux 快照到了之后重新裁一次（跨轮留着，不进全局表）。
     let mut pending_idle: Vec<String> = Vec::new();
+    // 〔DEL 续 · 主会话裁〕这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
+    let mut unsupported: Option<String> = None;
     loop {
         connected.store(false, Ordering::Release);
         // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
@@ -2578,6 +2597,7 @@ pub async fn run(
             &mut announced,
             &mut hello_confirmed,
             &mut pending_idle,
+            &mut unsupported,
         )
         .await;
         // 〔CF2〕这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点，`05 §4.5.2`）。
@@ -2634,8 +2654,23 @@ pub async fn run(
         if should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed()) {
             backoff = RECONNECT_MIN; // 本次真站住过 → 下次立即快速重连
         }
-        tracing::info!("ssh_source reconnecting in {:?}", backoff);
-        tokio::time::sleep(backoff).await;
+        let wait = match after_round(unsupported.take(), backoff) {
+            AfterRound::RetryIn(d) => d,
+            AfterRound::Stop(why) => {
+                // 〔DEL 续〕出声（界面 toast），然后这条流就此收工；机器页「起」会重起一条、再试一次。
+                let payload = crate::bridge::RemoteHealthPayload {
+                    origin: cfg.origin_label(),
+                    kind: "unsupported".to_string(),
+                    message: why.clone(),
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    tracing::warn!("ssh_source remote-health (unsupported) emit failed: {e}");
+                }
+                return Err(why);
+            }
+        };
+        tracing::info!("ssh_source reconnecting in {:?}", wait);
+        tokio::time::sleep(wait).await;
         if !connected.load(Ordering::Acquire) {
             backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长
         }
@@ -3196,6 +3231,7 @@ async fn stream_loop(
     announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
     hello_confirmed: &mut Option<Vec<String>>,
     pending_idle: &mut Vec<String>,
+    unsupported: &mut Option<String>,
 ) -> Result<(), String> {
     // 〔TL2 · GP1 问 3〕这一轮：tmux 快照到过没有 / 那一帧可不可信 / 清单是不是压着没报。
     let mut tmux_seen = false;
@@ -3285,6 +3321,11 @@ async fn stream_loop(
     let stream = match crate::remote_resident::attach(cfg, flags).await {
         Ok(s) => s,
         Err(e) => {
+            // 〔DEL 续〕非 unix ⇒ 记进这台的连接状态（`run` 据此停下，不再按退避重连）。
+            if let crate::remote_resident::AttachErr::Unsupported(why) = &e {
+                *unsupported = Some(why.clone());
+            }
+            let e = e.said();
             if skip_preflight {
                 tracing::warn!(
                     "ssh_source [{host_label}] 跳过预检后起流失败，抹掉自证记忆，下一轮重新预检: {e}"
