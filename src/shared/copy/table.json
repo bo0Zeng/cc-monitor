@@ -13179,16 +13179,6 @@
       "zh": "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-acct-iso）",
       "args": []
     },
-    "rsAcctIsoDeploy.shellinit.missing": {
-      "kind": "error",
-      "zh": "远端没能产出 rc 片段，输出里没有 {begin}。常见原因：cc-acct-iso 未安装，先在「维护」里部署；或该远端还没跑过 cc-acct-iso init。",
-      "args": ["begin"]
-    },
-    "rsAcctIsoDeploy.shellinit.truncated": {
-      "kind": "error",
-      "zh": "远端产出的 rc 片段不完整：有 {begin} 但没有 {end}，输出可能被截断了。别贴，半截片段会让登录 shell 报错。请重试。",
-      "args": ["begin", "end"]
-    },
     "rsAcctIsoDeploy.exec.timeout": {
       "kind": "error",
       "zh": "远端命令超时（超过 {secs} 秒）",
@@ -13198,26 +13188,6 @@
       "kind": "error",
       "zh": "读远端输出失败：{e}",
       "args": ["e"]
-    },
-    "rsAcctIsoDeploy.status.cannotAsk": {
-      "kind": "error",
-      "zh": "查不出{who}装没装 cc-acct-iso：{e}",
-      "args": ["who", "e"]
-    },
-    "rsAcctIsoDeploy.status.noInstalled": {
-      "kind": "error",
-      "zh": "{who}的后端答的状态缺了「装没装」那一格。多半是两边版本不一样",
-      "args": ["who"]
-    },
-    "rsAcctIsoDeploy.shellinit.failed": {
-      "kind": "error",
-      "zh": "{who}没能产出 rc 片段：{message}",
-      "args": ["who", "message"]
-    },
-    "rsAcctIsoDeploy.shellinit.noSnippet": {
-      "kind": "error",
-      "zh": "{who}的后端答的应答里缺了片段。多半是两边版本不一样",
-      "args": ["who"]
     },
     "rsAssetSync.call.emptyReply": {
       "kind": "error",
@@ -15350,16 +15320,6 @@
       "kind": "error",
       "zh": "远端 [{label}] 没配置或没启用",
       "args": ["label"]
-    },
-    "rsLocalAccounts.shellinit.noFence": {
-      "kind": "error",
-      "zh": "本机没能产出 rc 片段（输出里没有 {begin}）。常见原因：这台机器还没跑过 cc-acct-iso init。",
-      "args": ["begin"]
-    },
-    "rsLocalAccounts.shellinit.incomplete": {
-      "kind": "error",
-      "zh": "本机产出的 rc 片段不完整（有 {begin} 但没有 {end}），可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。",
-      "args": ["begin", "end"]
     },
     "rsFrameQuery.lines.inconsistent": {
       "kind": "error",
@@ -19168,6 +19128,21 @@
     "beSkillFlow.stopped.listSep": {
       "kind": "body",
       "zh": "、",
+      "args": []
+    },
+    "beAcctIso.shellinit.noFence": {
+      "kind": "error",
+      "zh": "这台机器没能产出 rc 片段（输出里没有 {begin}）。常见原因：cc-acct-iso 还没装，或这台还没跑过 cc-acct-iso init。",
+      "args": ["begin"]
+    },
+    "beAcctIso.shellinit.truncated": {
+      "kind": "error",
+      "zh": "这台机器产出的 rc 片段不完整（有 {begin} 但没有 {end}），可能被截断了。别贴：半截片段会让登录 shell 报错。请重试。",
+      "args": ["begin", "end"]
+    },
+    "acctIsoReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 cc-acct-iso 状态 / 片段，两端版本对不上。",
       "args": []
     }
   }

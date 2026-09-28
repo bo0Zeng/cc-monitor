@@ -2310,7 +2310,15 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "acct-iso-shellinit",
         doc_anchor: Some("#### `acct-iso-shellinit`"),
-        codes: &["not_installed", "not_run", "timed_out", "tool_failed"],
+        // 〔MIG-3a〕`fence_incomplete` / `no_fence`：围栏校验进了这一侧（`accounts/iso.rs::fenced`）。
+        codes: &[
+            "fence_incomplete",
+            "no_fence",
+            "not_installed",
+            "not_run",
+            "timed_out",
+            "tool_failed",
+        ],
         fields: &["snippet"],
         takes_input: false,
         run: Run::Blocking(|_r| {

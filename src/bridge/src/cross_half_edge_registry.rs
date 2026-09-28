@@ -312,6 +312,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── backend → monitor（2 条 · 〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列）：backend 的判据去读 monitor ──
     (
         "backend→monitor",
+        "tests/backend/accounts/iso_tests.rs",
+        "src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso",
+        "〔MIG-3a〕rc 片段的围栏校验进了后端：围栏常量必须与 vendored `cc-acct-iso` 真打印的那两行逐字一致 \
+         —— 跨语言双写点，只能编译期读那份 vendored 脚本对拍（从前这条边住 monitor 的 `acct_iso_deploy_tests.rs`）",
+    ),
+    (
+        "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
         "tests/backend/control/gate_tests.rs",
         "src/bridge/src/backend/control/fixtures/gate2-golden.tsv",

@@ -2215,8 +2215,8 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 |---|---|---|
 | `snippet` | ← | 起一次本机 `cc-acct-iso shellinit`（经插件通用调用口：argv 直传不过 shell、`timeout` 前缀给子进程期限、环境白名单），退出码 0 时它的 stdout **原样** |
 
-BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常量）。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
-**错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run`。
+〔MIG-3a〕BEGIN/END 围栏**在本命令里校验**（`# ===== BEGIN cc-acct-iso =====` / `# ===== END cc-acct-iso =====` 两条都在才交出去；从前归 monitor）。被起的那一条只读（`cmd_shellinit` 全是 `printf`）。
+**错误码**：`not_installed` · `timed_out` · `tool_failed` · `not_run` · `fence_incomplete`（有 BEGIN 没 END，多半被截断 —— 别贴）· `no_fence`（输出里没有 BEGIN）。
 〔LOC1a〕此前是 argv 形一次性子命令 `--acct-iso-shellinit`（片段吐 stdout、失败 exit 2 ＋ stderr 信封）；同上一节，改上帧面，CLI 面自动派生同名。
 
 #### `acct-iso-cmd`：一个 `cc-acct-iso` 步骤在终端里要跑的那一行（〔DUP2 · 第四波 4D〕2026-09-26，**只出一行、不起进程不碰盘**）
