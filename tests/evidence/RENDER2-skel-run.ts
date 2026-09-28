@@ -10,7 +10,7 @@ import { build } from "vite";
 import { createRequire } from "node:module";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -47,7 +47,7 @@ async function run(): Promise<void> {
   const { chromium } = req("playwright") as { chromium: { launch(): Promise<Browser> } };
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: "zh-CN", timezoneId: "America/Los_Angeles" });
-  await page.goto(`file://${resolve(work, "probe.html")}`);
+  await page.goto(pathToFileURL(resolve(work, "probe.html")).href); // 仓可能住非 ASCII 路径（`~/文档/`）⇒ 走编码过的 URL
   await page.waitForFunction(() => (window as unknown as { __DONE?: boolean }).__DONE === true, null, { timeout: 60_000 });
   const raw = await page.evaluate(() => (window as unknown as { __RESULT: string }).__RESULT);
   await browser.close();

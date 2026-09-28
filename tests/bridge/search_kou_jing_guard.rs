@@ -113,10 +113,25 @@ fn the_search_kou_jing_has_exactly_one_home() {
     //   要求住址：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」·
     //   `90 §4 F`「搜索收口到 search-core ＋ 后端」。本机搜索今天经通道问本机后端（`src/views/history-search.ts`）。
     //   正控：同一个识别器在后端那一份上认得出调用（否则零命中是空真）。
+    //   〔RENDER2 · J10 乙（主会话 09-27 裁）〕唯一的例外：`messages.rs` 解析 user 记录时调注入噪声那一条规则给前端出成品 ——
+    //   只许那一个文件、只许这两个名字（两向：用到的名字集合 == 放行集合）。
+    const RECORD_RULE: &[&str] = &[
+        "search_core::user_text(",
+        "search_core::extract_text_blocks(",
+    ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut stray: Vec<String> = Vec::new();
+    let mut record_rule_used: Vec<&str> = Vec::new();
     for (path, raw) in guard_core::scan_tree!(&root, &["rs"]) {
-        let prod = guard_core::production_code(&raw);
+        let mut prod = guard_core::production_code(&raw);
+        if path.file_name() == Some(std::ffi::OsStr::new("messages.rs")) {
+            for name in RECORD_RULE {
+                if prod.contains(name) {
+                    record_rule_used.push(name);
+                }
+                prod = prod.replace(name, "");
+            }
+        }
         let calls = prod.contains("search_core::");
         let defs: Vec<&str> = HELPERS
             .iter()
@@ -134,6 +149,11 @@ fn the_search_kou_jing_has_exactly_one_home() {
         stray.is_empty(),
         "monitor 生产树里又有人在搜会话了：{stray:?}\n\
          本机搜索只许经通道问本机后端 —— 在 monitor 里再建一份就是 LOC1b 删掉的那个第二读者。"
+    );
+    assert_eq!(
+        record_rule_used,
+        RECORD_RULE.to_vec(),
+        "`messages.rs` 不再经 search-core 给 user 记录出成品（或放行表多了一项没人用）"
     );
     let backend =
         guard_core::production_code(include_str!("../../src/backend/observe/search_query.rs"));

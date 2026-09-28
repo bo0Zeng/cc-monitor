@@ -39,6 +39,7 @@
  * 解析，且会被提升到文件顶）· 只有一边用的 DOM 查询助手。搬「其实不一样的东西」
  * 会逼出一个参数越加越多的壳，那是另一种漂。
  */
+import { withUserText } from "./user-text";
 import { expect, vi } from "vitest";
 import { withSessionReads } from "./chan-fake";
 
@@ -136,7 +137,8 @@ export interface RigPayload {
 
 /** 裸一行：`message` 由调用方整块给（要造 assistant / 畸形记录时用）。 */
 export function line(seq: number, message: Record<string, unknown>): RigPayload {
-  return { session_id: "s1", cwd: null, path: "/p/s1.jsonl", seq, message };
+  // 〔RENDER2 · J10〕user 记录带上 monitor 填的那一格成品（夹具不含注入噪声，见 `user-text.ts`）
+  return { session_id: "s1", cwd: null, path: "/p/s1.jsonl", seq, message: withUserText(message) };
 }
 
 /**
