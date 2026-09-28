@@ -345,11 +345,7 @@ fn lifecycle_replay(
         outs.into_iter()
             .filter(|o| o.origin() == origin)
             .flat_map(|o| o.frames())
-            .filter(|f| match (only, f.session_id()) {
-                (None, _) => true,
-                (Some(want), Some(sid)) => want == sid,
-                (Some(_), None) => false,
-            })
+            .filter(|f| f.reaches(only))
             .map(|f| body_of(&f))
             .collect()
     };
@@ -831,9 +827,12 @@ impl EventReplay {
         if frames.is_empty() {
             return;
         }
-        let bodies: Vec<(Option<String>, Body)> = frames
-            .iter()
-            .map(|f| (f.session_id().map(str::to_string), body_of(f)))
+        let bodies: Vec<(SessionStreamFrame, Body)> = frames
+            .into_iter()
+            .map(|f| {
+                let b = body_of(&f);
+                (f, b)
+            })
             .collect();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
@@ -848,11 +847,7 @@ impl EventReplay {
             {
                 let mine: Vec<Body> = bodies
                     .iter()
-                    .filter(|(sid, _)| match (&sub.only, sid) {
-                        (None, _) => true,
-                        (Some(want), Some(sid)) => want == sid,
-                        (Some(_), None) => false,
-                    })
+                    .filter(|(f, _)| f.reaches(sub.only.as_deref()))
                     .map(|(_, b)| b.clone())
                     .collect();
                 let items = plan_lifecycle(sub, &mine);

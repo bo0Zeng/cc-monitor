@@ -1023,7 +1023,9 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         }),
         F::Idle(b::SessionIdlePayload { session_id: sid() }),
         F::Ended(b::SessionEndedPayload { session_id: sid() }),
-        F::Unseen(b::SessionUnseenPayload { session_id: sid() }),
+        F::Unseen(b::SessionUnseenPayload {
+            origin: crate::origin::Origin::local(),
+        }),
         F::Listed(b::OriginSessionsListedPayload {
             origin: crate::origin::Origin::local(),
         }),
@@ -1045,4 +1047,23 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
         serde_json::json!({ "credit": credit, "exempt": exempt }),
         golden
     );
+}
+
+/// 〔MIG-1 续〕只跟一个会话的订阅（`session-lines/<sid>`）收**机器级**「说不清」（它跟的那一条所在的那台看不见了），
+/// 不收「清单报完了」这种整台的簿记；说别的会话的格照旧不收。
+#[test]
+fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
+    use crate::bridge::{self as b, SessionStreamFrame as F};
+    let unseen = F::Unseen(b::SessionUnseenPayload {
+        origin: crate::origin::Origin::local(),
+    });
+    let listed = F::Listed(b::OriginSessionsListedPayload {
+        origin: crate::origin::Origin::local(),
+    });
+    let other = F::Ended(b::SessionEndedPayload {
+        session_id: "other".into(),
+    });
+    assert!(unseen.reaches(Some("mine")) && unseen.reaches(None));
+    assert!(!listed.reaches(Some("mine")) && listed.reaches(None));
+    assert!(!other.reaches(Some("mine")) && other.reaches(Some("other")));
 }

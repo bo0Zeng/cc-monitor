@@ -163,10 +163,8 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
       onSessionStarted: (s) => {
         if (s === sid) tabs.reviveTab(s);
       },
-      // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。
-      onSessionUnseen: (s) => {
-        if (s === sid) tabs.markUnseen(s);
-      },
+      // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。〔MIG-1 续〕机器级：落这台上的那一条。
+      onOriginUnseen: (o) => tabs.markOriginUnseen(o),
       onBatchStart: () => tabs.onBatchStart(),
       onBatchEnd: () => tabs.onBatchEnd(),
       onStreamGap: (o) => tabs.onStreamGap(o),

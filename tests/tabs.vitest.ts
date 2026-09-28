@@ -5109,7 +5109,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
 
 /**
  * 〔GP1 · 第四波〕**远端断连 ⇒ 说不清，不是已结束**（`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」·
- * `调研/第四波记录/GP1.md §1`）。`session-unseen` → `TabManager.markUnseen`，TabManager 真走。
+ * `调研/第四波记录/GP1.md §1`）。会话流 `unseen` 格（〔MIG-1 续〕机器级）→ `TabManager.markOriginUnseen`，TabManager 真走。
  */
 describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   let tm: TabManager;
@@ -5128,9 +5128,10 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u1", "/x", "p", 0, "pi"); // 活
     tm.ensureTab("u2", "/x", "p", 0, "pi");
     tm.markTmuxIdle("u2"); // 可重连
-    tm.markUnseen("u1");
-    tm.markUnseen("u2");
+    tm.ensureTab("o1", "/x", "p", 0, "mu"); // 别的机器上的活会话
+    tm.markOriginUnseen("pi"); // 〔MIG-1 续〕机器级一格
     expect([tabOf("u1").state, tabOf("u2").state]).toEqual([UNSEEN, UNSEEN]);
+    expect(tabOf("o1").state, "别的机器不受牵连").toEqual(LIVE);
     // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
     expect(titles().split("说不清").length - 1).toBe(2);
     expect(titles()).not.toContain("已结束");
@@ -5140,8 +5141,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u4", "/x", "p", 0, "pi");
     tm.archiveTab("u4");
     tm.markRecord("u4", false);
-    tm.markUnseen("u3");
-    tm.markUnseen("u4");
+    tm.markOriginUnseen("pi");
     expect([tabOf("u3").state, tabOf("u4").state]).toEqual([ENDED, GONE]);
     expect(titles()).toContain("已结束");
   });
@@ -5149,8 +5149,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的 ⇒ 已结束", () => {
     tm.ensureTab("r1", "/x", "p", 0, "pi");
     tm.ensureTab("r2", "/x", "p", 0, "pi");
-    tm.markUnseen("r1");
-    tm.markUnseen("r2");
+    tm.markOriginUnseen("pi");
     expect([tabOf("r1").state, tabOf("r2").state]).toEqual([UNSEEN, UNSEEN]);
     tm.createSkeletonTab("r1", "/x", "pi"); // 重连后后端初扫重宣告 r1
     tm.markOriginSeen("pi"); // `sessions_replayed` ⇒ 报完了，没有 r2
@@ -5160,7 +5159,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 那台从「报完了」里摘掉：之后才复活的固定 tab 落说不清，不再直接落已结束", async () => {
     tm.markOriginSeen("pi");
     tm.ensureTab("s1", "/x", "p", 0, "pi");
-    tm.markUnseen("s1");
+    tm.markOriginUnseen("pi");
     let disk: Record<string, unknown> = {
       tabBar: { pinned: [{ sid: "s2", origin: "pi", title: "S", jsonlPath: "/p/s2.jsonl" }] },
     };
@@ -5184,8 +5183,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("k2", "/x", "p", 0, "pi");
     tm.markTmuxIdle("k1");
     tm.markTmuxIdle("k2");
-    tm.markUnseen("k1");
-    tm.markUnseen("k2");
+    tm.markOriginUnseen("pi");
     expect([tabOf("k1").state, tabOf("k2").state]).toEqual([UNSEEN, UNSEEN]);
     // emitter 那一笔：k1 的 tmux 还在 ⇒ session-idle；k2 不在 ⇒ session-ended；**然后**才是 origin-sessions-listed。
     tm.markTmuxIdle("k1");
@@ -5197,15 +5195,15 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     // 次序承重的反面（正控）：若先报完清单再宣告 idle ⇒ 已结束收 idle 不动 —— 这正是 monitor 那一侧要保序的理由。
     tm.ensureTab("k3", "/x", "p", 0, "pi2");
     tm.markTmuxIdle("k3");
-    tm.markUnseen("k3");
+    tm.markOriginUnseen("pi2");
     tm.markOriginSeen("pi2");
     tm.markTmuxIdle("k3");
     expect(tabOf("k3").state, "次序反了就回不来 —— 若这格变了，monitor 侧的保序就不再承重，回来重看").toEqual(ENDED);
   });
 
-  it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
-    tm.markUnseen("nobody");
-    expect(home(tm).store.tabs.has("nobody")).toBe(false);
+  it("★ 那台一个 tab 都没有时收到 unseen ⇒ 什么都不建", () => {
+    tm.markOriginUnseen("nowhere");
+    expect(home(tm).store.tabs.size).toBe(0);
   });
 });
 
@@ -5311,8 +5309,8 @@ describe("〔U4b〕main.ts 接线", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
     expect([
-      n("src/main.ts", "onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId)"),
-      n("src/entry-viewer.ts", "if (s === sid) tabs.markUnseen(s);"),
+      n("src/main.ts", "onOriginUnseen: (origin) => tabs.markOriginUnseen(origin)"),
+      n("src/entry-viewer.ts", "onOriginUnseen: (o) => tabs.markOriginUnseen(o)"),
     ]).toEqual([1, 1]);
   });
 });

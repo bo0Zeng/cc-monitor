@@ -936,20 +936,23 @@ export class TabManager {
   }
 
   /**
-   * 〔GP1 · 第四波〕这条会话所在的那台机器**看不见了**（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）。
+   * 〔GP1 · 第四波〕这台机器**看不见了**（会话流 `unseen` 格：到它的连接断了 / F5 时它还没报完清单）。
+   * 〔MIG-1 续 · 主会话裁〕**机器级**：一格说一台，这台上的 tab 逐个过 `nextState` 的 `unseen`。
    *
-   * 活的 / 可重连的 ⇒ 说不清（`nextState` 的 `unseen`）；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
+   * 活的 / 可重连的 ⇒ 说不清；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
    * 之后才复活出来的固定 tab 不再直接落已结束，要等那台重连、再报一次（`markOriginSeen`）。
-   * 重连之后：还活着的由重宣告（`remote-session-added` → `ensureTab` 的 `remote-line`）翻回活，其余由
-   * `origin-sessions-listed` 落已结束（`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
+   * 还活着的由紧跟着的重宣告（`live` 格 → `started` / `remote-line`）翻回活，可重连的由 `idle` 格落回，其余由 `listed` 落已结束
+   * （`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
    */
-  markUnseen(sessionId: string): void {
-    const tab = this.store.tabs.get(sessionId);
-    if (!tab) return;
-    this.store.seenOrigins.delete(tab.origin);
-    if (!this.applyState(tab, "unseen")) return;
-    this.refreshTabBar();
-    this.emitTabStateProbe(tab);
+  markOriginUnseen(origin: Origin): void {
+    this.store.seenOrigins.delete(origin);
+    let changed = false;
+    for (const tab of this.store.tabs.values()) {
+      if (tab.origin !== origin || !this.applyState(tab, "unseen")) continue;
+      changed = true;
+      this.emitTabStateProbe(tab);
+    }
+    if (changed) this.refreshTabBar();
   }
 
   /**

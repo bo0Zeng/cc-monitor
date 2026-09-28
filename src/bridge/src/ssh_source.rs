@@ -938,7 +938,7 @@ async fn fetch_snapshot(
             let again = crate::session_book::book()
                 .read()
                 .settle_again(origin.as_wire_str(), sid);
-            if let Some(out) = again {
+            for out in again {
                 replay.on_lifecycle(out.origin(), out.frames());
             }
         }

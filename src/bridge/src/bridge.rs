@@ -145,6 +145,16 @@ impl SessionStreamFrame {
         }
     }
 
+    /// 一条订阅（`only` = 只跟某一个会话的那一形）收不收这一格：说某个会话的 ⇒ 是它才收；说整台的 ⇒ 整台订阅都收，
+    /// 只跟一个会话的只收〔MIG-1 续〕机器级「说不清」（那台看不见了，它跟的那一条也说不清了）。
+    pub fn reaches(&self, only: Option<&str>) -> bool {
+        match (only, self.session_id()) {
+            (None, _) => true,
+            (Some(want), Some(sid)) => want == sid,
+            (Some(_), None) => matches!(self, SessionStreamFrame::Unseen(_)),
+        }
+    }
+
     /// 这一格说的是哪个会话（`session-lines/<sid>` 那一形据此分流）；说的是整台 / 全局的 ⇒ `None`。
     pub fn session_id(&self) -> Option<&str> {
         match self {
@@ -155,8 +165,8 @@ impl SessionStreamFrame {
             SessionStreamFrame::Container(p) => Some(&p.session_id),
             SessionStreamFrame::Idle(p) => Some(&p.session_id),
             SessionStreamFrame::Ended(p) => Some(&p.session_id),
-            SessionStreamFrame::Unseen(p) => Some(&p.session_id),
             SessionStreamFrame::Batch(_)
+            | SessionStreamFrame::Unseen(_)
             | SessionStreamFrame::Listed(_)
             | SessionStreamFrame::SnapshotInflight(_) => None,
         }
@@ -211,11 +221,13 @@ pub struct SessionIdlePayload {
 }
 
 /// 〔GP1 · 第四波〕「说不清」的 payload（〔MIG-1〕会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+/// 〔MIG-1 续 · 主会话裁〕**机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
+/// （原先逐会话发一格 `session_id`）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SessionUnseenPayload {
-    pub session_id: String,
+    pub origin: crate::origin::Origin,
 }
 
 /// 〔MIG-1〕活会话的成品（会话流里的 [`SessionStreamFrame::Live`]；本机远端同一形，`origin` 说哪台）。

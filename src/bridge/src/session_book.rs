@@ -135,7 +135,8 @@ pub enum Out {
     Listed {
         origin: String,
     },
-    /// 那台看不见了：当时还活的 / 可重连的那几条（排好序）。
+    /// 那台看不见了（〔MIG-1 续 · 主会话裁〕**机器级**：线上只一格 `unseen {origin}`，前端按机器落说不清）。
+    /// `sids` = 这一刻落说不清的那几条（排好序），只给 monitor 自己的旁路账用（本机那两份缓存），不上线。
     Unseen {
         origin: String,
         sids: Vec<String>,
@@ -259,16 +260,17 @@ impl Book {
             }
         }
         let mut unseen: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut settled = Vec::new();
         for (sid, origin) in buffered {
             let b = self.origins.get(origin);
             match b.and_then(|b| b.sessions.get(sid)) {
                 Some(Product::Live(_)) | Some(Product::Left(Fate::Reconnectable)) => {}
-                Some(Product::Left(Fate::Ended)) => r.after.push(Out::Left {
+                Some(Product::Left(Fate::Ended)) => settled.push(Out::Left {
                     origin: origin.clone(),
                     sid: sid.clone(),
                     fate: Fate::Ended,
                 }),
-                None if b.is_some_and(|b| b.listed) => r.after.push(Out::Left {
+                None if b.is_some_and(|b| b.listed) => settled.push(Out::Left {
                     origin: origin.clone(),
                     sid: sid.clone(),
                     fate: Fate::Ended,
@@ -276,9 +278,14 @@ impl Book {
                 None => unseen.entry(origin.clone()).or_default().push(sid.clone()),
             }
         }
+        // 〔MIG-1 续〕机器级「说不清」排在终局最前：它把那台上活的 / 可重连的一并落说不清（前端按机器落），
+        //   紧跟着把那台说过的活会话再宣告一次 ⇒ 真活着的翻回活；可重连的就在下面、照常落回可重连。
+        let mut front = Vec::new();
         for (origin, sids) in unseen {
-            r.after.push(Out::Unseen { origin, sids });
+            front.extend(self.unseen_block(&origin, sids));
         }
+        r.after.splice(0..0, front);
+        r.after.extend(settled);
         for o in origins {
             if self.origins[o].listed {
                 r.after.push(Out::Listed { origin: o.clone() });
@@ -349,14 +356,9 @@ impl Out {
             Out::Listed { origin } => vec![F::Listed(b::OriginSessionsListedPayload {
                 origin: crate::origin::Origin(origin.clone()),
             })],
-            Out::Unseen { sids, .. } => sids
-                .iter()
-                .map(|s| {
-                    F::Unseen(b::SessionUnseenPayload {
-                        session_id: s.clone(),
-                    })
-                })
-                .collect(),
+            Out::Unseen { origin, .. } => vec![F::Unseen(b::SessionUnseenPayload {
+                origin: crate::origin::Origin(origin.clone()),
+            })],
         }
     }
 }
@@ -364,19 +366,50 @@ impl Out {
 impl Book {
     /// 〔MIG-1〕旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
     /// 原样再说一次它现在是什么（原先这里恒补「已结束」，那是 monitor 自己在裁）。活着 ⇒ 不说；这条连接上没说过 ⇒ 说不清。
-    pub fn settle_again(&self, origin: &str, sid: &str) -> Option<Out> {
-        match self.origins.get(origin).and_then(|b| b.sessions.get(sid)) {
-            Some(Product::Live(_)) => None,
-            Some(Product::Left(fate)) => Some(Out::Left {
+    /// 〔MIG-1 续〕没说过它、而那台已报完清单 ⇒ 不在清单里 = 已结束；还没报完 ⇒ 机器级说不清（见 [`Self::unseen_block`]）。
+    pub fn settle_again(&self, origin: &str, sid: &str) -> Vec<Out> {
+        let b = self.origins.get(origin);
+        match b.and_then(|b| b.sessions.get(sid)) {
+            Some(Product::Live(_)) => Vec::new(),
+            Some(Product::Left(fate)) => vec![Out::Left {
                 origin: origin.to_string(),
                 sid: sid.to_string(),
                 fate: *fate,
-            }),
-            None => Some(Out::Unseen {
+            }],
+            None if b.is_some_and(|b| b.listed) => vec![Out::Left {
                 origin: origin.to_string(),
-                sids: vec![sid.to_string()],
-            }),
+                sid: sid.to_string(),
+                fate: Fate::Ended,
+            }],
+            None => self.unseen_block(origin, vec![sid.to_string()]),
         }
+    }
+
+    /// 〔MIG-1 续〕连接还在、却说不清某几条（那台还没报完清单）时的那一段：机器级 `unseen` ＋ 那台说过的活会话 / 可重连的再说一次
+    /// （前端按机器落说不清会把它们一并落下，紧跟着翻回来）。
+    fn unseen_block(&self, origin: &str, sids: Vec<String>) -> Vec<Out> {
+        let mut v = vec![Out::Unseen {
+            origin: origin.to_string(),
+            sids,
+        }];
+        if let Some(b) = self.origins.get(origin) {
+            for (sid, p) in &b.sessions {
+                match p {
+                    Product::Live(m) => v.push(Out::Live {
+                        origin: origin.to_string(),
+                        sid: sid.clone(),
+                        meta: m.clone(),
+                    }),
+                    Product::Left(Fate::Reconnectable) => v.push(Out::Left {
+                        origin: origin.to_string(),
+                        sid: sid.clone(),
+                        fate: Fate::Reconnectable,
+                    }),
+                    Product::Left(Fate::Ended) => {}
+                }
+            }
+        }
+        v
     }
 }
 

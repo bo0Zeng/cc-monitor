@@ -117,13 +117,52 @@ fn the_f5_plan_puts_skeletons_first_and_judges_bufferless_nothing() {
     assert_eq!(
         said(&r.after),
         vec![
+            // 〔MIG-1 续〕有行、这条连接上没说过、那台没报完（`mu`）/ 根本没连上（`zz`）⇒ **机器级**说不清，排在终局最前；
+            //   紧跟着那台说过的活会话再宣告一次（前端按机器落说不清会把它一并落下，这一格翻回来）。
+            r#"unseen mu ["n"]"#,
+            "live mu/m",
+            r#"unseen zz ["far"]"#,
             "left pi/r Reconnectable",
             "left pi/e Ended",
-            // 有行、这条连接上没说过：那台报完了清单 ⇒ 已结束；没报完（`mu`）/ 根本没连上（`zz`）⇒ 说不清。
+            // 那台报完了清单 ⇒ 不在清单里 = 已结束。
             "left pi/gone Ended",
-            r#"unseen mu ["n"]"#,
-            r#"unseen zz ["far"]"#,
             "listed pi",
         ]
     );
+}
+
+/// 〔MIG-1 续 · 主会话裁：「说不清」是**那台**的〕线上一格机器级 `unseen {origin}`（不再逐会话一格）；旁路快照被撤时
+/// 没说过的那一条：那台报完了清单 ⇒ 已结束，没报完 ⇒ 机器级说不清 ＋ 那台说过的活 / 可重连的再说一次（前端按机器落，紧跟着翻回来）。
+#[test]
+fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    b.step(left("pi", "r", Fate::Reconnectable));
+    let lost = b.step(In::LinkLost {
+        origin: "pi".into(),
+    });
+    let frames: Vec<String> = lost
+        .iter()
+        .flat_map(|o| o.frames())
+        .map(|f| serde_json::to_string(&f).unwrap())
+        .collect();
+    assert_eq!(frames, vec![r#"{"unseen":{"origin":"pi"}}"#.to_string()]);
+
+    b.step(live("pi", "a"));
+    let said = |v: Vec<Out>| -> Vec<String> {
+        v.iter()
+            .map(|o| match o {
+                Out::Live { sid, .. } => format!("live {sid}"),
+                Out::Left { sid, fate, .. } => format!("left {sid} {fate:?}"),
+                Out::Unseen { origin, .. } => format!("unseen {origin}"),
+                other => format!("{other:?}"),
+            })
+            .collect()
+    };
+    assert_eq!(said(b.settle_again("pi", "q")), vec!["unseen pi", "live a"]);
+    b.step(In::Listed {
+        origin: "pi".into(),
+    });
+    assert_eq!(said(b.settle_again("pi", "q")), vec!["left q Ended"]);
+    assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
