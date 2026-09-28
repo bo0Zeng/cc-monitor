@@ -112,10 +112,11 @@ export interface EventHandlers {
    */
   onSessionFileNotice?: (sessionId: string, change: string) => void;
   /**
-   * 〔GP1 · 第四波〕这条会话所在的那台机器看不见了（`session-unseen`：连接断了 / F5 时那台还没报完清单）⇒ 说不清。
-   * 进 queue：与行 / `remote-added` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
+   * 〔GP1 · 第四波〕那台机器看不见了（会话流 `unseen` 格：连接断了 / F5 时那台还没报完清单）⇒ 那台上活的 · 可重连的落说不清。
+   * 〔MIG-1 续 · 主会话裁〕**机器级**：一格说一台（原先逐会话一格）。后端紧跟着把那台还活着的再宣告一次 ⇒ 真活着的翻回活。
+   * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    */
-  onSessionUnseen?: (sessionId: string) => void;
+  onOriginUnseen?: (origin: string) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -224,8 +225,8 @@ type QueueItem =
   // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
   | { kind: "listed"; origin: string }
-  // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onSessionUnseen）。
-  | { kind: "unseen"; sessionId: string }
+  // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
+  | { kind: "unseen"; origin: string }
   // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
 
@@ -517,7 +518,7 @@ export async function bindEvents(
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "unseen") {
-        handlers.onSessionUnseen?.(item.sessionId);
+        handlers.onOriginUnseen?.(item.origin);
       } else if (item.kind === "file-notice") {
         handlers.onSessionFileNotice?.(item.sessionId, item.change);
       } else if (item.kind === "gap") {
@@ -645,7 +646,7 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "ended" in f) {
           queue.push({ kind: "ended", sessionId: f.ended.session_id });
         } else if (f !== null && typeof f === "object" && "unseen" in f) {
-          queue.push({ kind: "unseen", sessionId: f.unseen.session_id });
+          queue.push({ kind: "unseen", origin: f.unseen.origin });
         } else if (f !== null && typeof f === "object" && "listed" in f) {
           queue.push({ kind: "listed", origin: f.listed.origin });
         } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {

@@ -141,10 +141,10 @@ describe("events.ts 的突发哨兵（audit-0805 F17：这 135 条语句此前 0
   });
 });
 
-// 〔GP1 · 第四波〕「说不清」（〔MIG-1〕会话流里的 `{"unseen": …}` 那一格）进 queue、交给 `onSessionUnseen`，
+// 〔GP1 · 第四波〕「说不清」（〔MIG-1〕会话流里的 `{"unseen": …}` 那一格，〔MIG-1 续〕机器级）进 queue、交给 `onOriginUnseen`，
 // 且与会话流里的行**保序**（断连那一刻之前的行先落）。要求住址：`设计/30 §3.5.7a` · `调研/第四波记录/GP1.md §1`。
 // 入口脚本（`main.ts`）那一跳由 `tabs.vitest.ts`「〔GP1〕session-unseen 接线」数调用点；本条管 events.ts 这一跳。
-describe("〔GP1〕session-unseen 进 queue、交给 onSessionUnseen", () => {
+describe("〔GP1〕unseen 格进 queue、交给 onOriginUnseen", () => {
   beforeEach(() => {
     subs.clear();
     streamFake.reset();
@@ -161,14 +161,14 @@ describe("〔GP1〕session-unseen 进 queue、交给 onSessionUnseen", () => {
     await bindEvents({
       onLine: (e: { seq: number }) => order.push(`line-${e.seq}`),
       onSessionEnded: vi.fn(),
-      onSessionUnseen: (sid: string) => order.push(`unseen-${sid}`),
+      onOriginUnseen: (origin: string) => order.push(`unseen-${origin}`),
       onBatchStart: vi.fn(),
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
     expect(subs.has("session-unseen"), "〔MIG-1〕不再有裸事件 `session-unseen`（并进了会话流）").toBe(false);
     streamFake.lines([line(1)]);
-    streamFake.lifecycle([{ unseen: { session_id: "s" } }]);
+    streamFake.lifecycle([{ unseen: { origin: "pi" } }]);
     await vi.runAllTimersAsync();
-    expect(order).toEqual(["line-1", "unseen-s"]);
+    expect(order).toEqual(["line-1", "unseen-pi"]);
   });
 });

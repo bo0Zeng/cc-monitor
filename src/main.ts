@@ -723,8 +723,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onRecordFileReread(sessionId, change); // 〔RENDER2〕从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
       recordFile.onSessionFileNotice(sessionId, change);
     },
-    // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
-    onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId),
+    // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。〔MIG-1 续〕机器级一格。
+    onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
