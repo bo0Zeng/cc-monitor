@@ -70,7 +70,7 @@ import { stripComments } from "./test-support/strip-comments.ts";
  */
 const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:diff", "tests/cards/diff.test.ts", 17],
-  ["test:branching", "tests/branching.test.ts", 23],
+  ["test:branching", "tests/branching.test.ts", 24], // 〔RENDER2〕+1 J10：isInterrupt 只读成品
   ["test:api-error", "tests/cards/api-error.test.ts", 5],
   ["test:bash", "tests/cards/bash.test.ts", 20],
   ["test:remote-health", "tests/remote-health.test.ts", 5],

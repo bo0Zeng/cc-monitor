@@ -49,6 +49,9 @@ import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
 let rig: ViewerRigHandles;
 
+/** 〔RENDER2 · J10〕ESC 中断标记那一条：monitor 按 `search-core::user_text` 判出来的成品（夹具显式写，前端不判）。 */
+const INTERRUPT = { clean: "", interrupt: true };
+
 /**
  * 挂一份会话。`outline` = 后端这一刻说清单里有哪几条（缺省：`lines` 里 user 行的 uuid **按给的顺序**，
  * 摘要取正文 —— 这只是夹具的省事写法，**不是**判定：要排掉谁的用例一律显式传）。
@@ -190,14 +193,13 @@ describe("KR45D1 点一下跳过去", () => {
     expect(rowsOf(v)[0].dataset.unjumpable).toBeUndefined();
   });
 
-  // ★ 活体夹具，钉的是后端 `observe/user_inputs.rs` 头注里**自陈的那条不等价**：
-  //   渲染那边还会剥一层 `stripInternalNoise`，`[Request interrupted by user]`
-  //   会被整条剥空 ⇒ 不建卡 ⇒ 清单里这一条落不到卡上。
+  // ★ 活体夹具：清单里有、渲染不建卡的一条（〔RENDER2 · J10〕后端清单今天已按同一条规则排掉剥空的项，
+  //   这一形只剩「清单与渲染之间别的原因」—— 夹具用替身清单造出它）。
   //   `KR45D3` / `§0c` 的红线是「**不许静默产出那一形**」——这里断的就是「它没静默」。
   it("跳不过去的那一条不许静默：标出来（这条不等价是自陈的，这里给它一个活体）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]"),
+      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
     ]);
     // 先证明夹具真的落在那一形上：清单有它，DOM 没有它的卡
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["u1", "u2"]);
@@ -220,7 +222,7 @@ describe("KR45D1 点一下跳过去", () => {
   it("查看器这一侧：跳空是**永久**的（全渲染完照样不建卡）⇒ 转移的真住址不在这里", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]"),
+      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
     ]);
     // 先证明「没有任何未渲染的段留着」——否则下面那句「永久」是空真
     const status = v.element.querySelector(".history-status")!.textContent ?? "";
@@ -264,7 +266,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
   it("面板与清单行都不带内联 style（含「跳不过去」那一行 —— 变灰也不许退回内联）", async () => {
     const v = await mount([
       userLine(1, "u1", "第一句"),
-      userLine(2, "u2", "[Request interrupted by user]"),
+      userLine(2, "u2", "[Request interrupted by user]", { userText: INTERRUPT }),
     ]);
     expect(panelOf(v).getAttribute("style")).toBeNull();
     expect(rowsOf(v).map((r) => r.getAttribute("style"))).toEqual([null, null]);

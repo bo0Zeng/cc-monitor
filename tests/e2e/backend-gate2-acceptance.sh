@@ -68,36 +68,39 @@ pass=0; fail=0; skip=0; waived=0
 #   要求 CI 地板 == 判定表行数 + 表外固定场景数 − 登记条数，**低了高了各红一件不同的事**。
 #   ⇒ 你在这里加一条，那条判据会当场告诉你地板该改成几；**别绕过它去改数**。
 #
-# 🔴🔴 **第二条登记（`meta_dollar`，`CI-J3` 09-09）与它带来的一格诚实边界：豁免是「环境相关」的。**
-#
-#   `meta_colon` 那条在**今天所有** tmux 上都成立（`:`→`_` 至今未变，本机 3.6 实测）。
-#   `meta_dollar` 那条**不是** —— 它只在 **tmux ≤3.4** 上成立（机制与出处写在它自己的理由里）。
-#   ⇒ 那台 runner 哪天升到 ≥3.5，这一格会**真的建出会话、真的跑、真的过**：
-#     `PASS` 从 34 变 35、`WAIVED` 从 2 变 1，而**没有任何东西会红**
-#     （地板判法是 `at-least`，只挡缩水；`gate.rs` 那条算的 `reachable` 仍按「登记了 2 条」= 34）。
-#     ⇒ **一条已经不需要的豁免会静悄悄留着。**
-#
-#   ⚠ **为什么这里不装「豁免没被用到就红」**（想过，是错的）：开发机今天就是 **3.6**，
-#     那条判据会让本套件**在更新的 tmux 上恒红** —— 用「你的 tmux 太新了」去挡人，
-#     比这条豁免多留一天坏得多。而「**所有**环境都不再需要它了吗」这一问，
-#     **单次运行在原理上答不出来**（它只看得见自己这一台）。⇒ 如实登记，不假装治了。
-#
-#   ⇒ 今天的处置是三条，都不靠人的记忆：
-#     ① 本轮跑在哪个 tmux 上、用掉了几条豁免，**收尾那行打出来**（见文件末尾）；
-#     ② 真要删这条豁免时**不用记得改地板**：删掉这条臂 ⇒ 登记数 2→1 ⇒ `reachable` 34→35
-#        ⇒ `gate.rs` 的 `floor >= reachable` **当场红**，诊断直接说该棘到几；
-#     ③ 「PASS 涨了而地板没跟」这个一般形态**不是本件新开的洞**，它有主：`K-G8`/`K-G3` 的
-#        `exact` 判法（今天只在 `tests/scripts/gate.sh` 那 4 条上生效，CI 这 23 条仍是 `at-least`，
-#        理由逐字在 `.github/workflows/ci.yml` 那段 `K-G8` 里：谁在跑那把尺子，谁才配换判法）。
-#     **解锁条件一句话**：CI 的 runner 上 `tmux -V` ≥ 3.5 之后，删掉 `meta_dollar` 这条臂，
-#     让 ② 那条判据把地板逼到 35。
+# 〔墓碑〕第二条登记 `meta_dollar`（`CI-J3` 09-09）〔散文墓碑〕：它是「环境相关」的豁免（只在 tmux ≤3.4 上成立），
+#   在更新的 tmux 上静悄悄用不到、PASS 数随机器变。〔E2 尾 09-27〕换成下面的**版本门**（`min_tmux_for`）。
 waiver_reason() {
   case "$1" in
     meta_colon) echo "tmux 会把名字里的 ':' 换成 '_'（本机 3.6 实测 cc-a:b → cc-a_b）⇒ 这一轨造不出真会话；判定由 monitor/backend 两条纯函数轨覆盖（同一张 TSV）" ;;
-    meta_dollar) echo "tmux <=3.4 会在会话名的 \$ 前插一个反斜杠（session_check_name 过 utf8_stravis；3.4 的 utf8.c 那条 \$ 规则**不看任何 flag**：\$ 后面跟字母 / _ / { 就插）⇒ cc-a\$x 存进 server 的真名是「cc-a 反斜杠 \$x」，'=cc-a\$x:' 当然找不到 ⇒ 这一轨在 <=3.4 上造不出真会话。上游 692ce59bcef5（2024-05-24）给它加了 VIS_DQ 门、首次随 3.5 出货；CI 的 ubuntu-24.04 装的是 3.4（runner 日志逐字 tmux 3.4-1ubuntu0.1），开发机 3.6 ⇒ 本地物理上看不见这个病。判定由 monitor/backend 两条纯函数轨覆盖（同一张 TSV）" ;;
     *) echo "" ;;
   esac
 }
+
+# ★★ **版本门：这一格要的 tmux 最低版本**〔E2 尾 09-27，取代 `CI-J3` 那条 `meta_dollar` 登记豁免〕。
+#
+# `meta_dollar`（`cc-a$x`）只在 tmux **≤3.4** 上造不出真会话：3.4 的 `session_check_name` 过 `utf8_stravis`，
+#   那条 `$` 规则**不看任何 flag**（`$` 后跟字母 / `_` / `{` 就插一个反斜杠）⇒ 存进 server 的真名是「cc-a 反斜杠 $x」、
+#   `=cc-a$x:` 找不到。上游 `692ce59bcef5`（2024-05-24）给它加了 `VIS_DQ` 门、首次随 **3.5** 出货
+#   （CI 的 ubuntu-24.04 装的是 3.4：runner 日志逐字 `tmux 3.4-1ubuntu0.1`；开发机 3.6）。
+# 从前它是一条**登记豁免**（与 `meta_colon` 同一支）⇒ 在 3.6 上真跑真过、在 3.4 上豁免，**PASS 数随机器变**，
+#   本机门禁按 exact 钉 35 就等于把开发机的 tmux 烤进了判据（3.4 上恒红）。⇒ 改成**按版本显式分支**：
+#   · 版本够（≥ 门槛）⇒ 照常跑；建不出来就是**未登记的 skip** ⇒ 整套 RC=1（不许悄悄跳过）；
+#   · 版本不够 ⇒ 这一格记 **SKIP** 并说原因 —— **但先真建一次**：建得出来 ⇒ 版本门过时 ⇒ **FAIL**
+#     （SKIP 只许出现在「版本真的不够」时，不是「版本号比门槛小」时）。
+#   ⇒ 两向：`PASS + SKIP` 恒等于总格数（门禁按这个和判 exact，与 tmux 版本无关），`SKIP` 只在版本不够时非零。
+# ⚠ 每一条 = 一行 `<case_id>) echo "<最低版本> <原因>" ;;`；`gate.rs` 那条地板判据现数这里的条数。
+min_tmux_for() {
+  case "$1" in
+    meta_dollar) echo "3.5 tmux<=3.4 把会话名里的 \$ 存成反斜杠\$（utf8_stravis 无 VIS_DQ 门），=cc-a\$x: 找不到；3.5 起修了（上游 692ce59bcef5）" ;;
+    *) echo "" ;;
+  esac
+}
+TMUX_VER="$("$TMUX_BIN" -V 2>/dev/null | awk '{print $2}')"
+TMUX_VER="${TMUX_VER#next-}"; TMUX_VER="${TMUX_VER%%[!0-9.]*}"
+[ -n "$TMUX_VER" ] || { echo "读不出 tmux 版本（$("$TMUX_BIN" -V 2>&1)）—— 版本门判不了，不猜"; exit 1; }
+tmux_at_least() { [ "$(printf '%s\n%s\n' "$1" "$TMUX_VER" | sort -V | head -1)" = "$1" ]; }
+skip_ver=0
 
 ok()   { printf '  PASS %s\n' "$1"; pass=$((pass+1)); }
 bad()  { printf '  FAIL %s\n' "$1"; fail=$((fail+1)); }
@@ -115,7 +118,7 @@ skipped() {
 
 mkdir -p "$WORK/claude/projects"
 mkfifo "$IN"
-CLAUDE_CONFIG_DIR="$WORK/claude" "$BACKEND" --tail-only <"$IN" >"$OUT" 2>"$ERR" &
+CLAUDE_CONFIG_DIR="$WORK/claude" "$BACKEND" -- --tail-only <"$IN" >"$OUT" 2>"$ERR" &
 BACKEND_PID=$!
 exec 3>"$IN"   # 持住写端，否则第一个写者退出即 EOF，入方向当场寿终
 
@@ -139,18 +142,34 @@ while IFS=$'\t' read -r id name sid expect; do
   case "$id" in ''|\#*) continue ;; esac
   n=$((n+1))
 
-  # `:` / `=` 是 tmux 目标语法：`parse_request` 在门**之前**就 invalid_args。
+  # `:` 是 tmux 目标语法的分隔符：`parse_request` 在门**之前**就 invalid_args（`kill::admit_existing_name`）。
+  # 〔E2 尾 09-27〕`=` **不再**在这里：DUP3 §5 ⑦（`6721c0f9`）把送键的 Gate 1 并进已有会话名那一份，
+  #   `=` 按设计放行（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ `=cc-a` 走到 Gate 2、按「不是本工具的会话」拒成
+  #   `wrong_owner`。这里原来照旧期望 `invalid_args` ⇒ 本格从那天起本机恒红，是判据过时、不是行为回归。
   # ⚠ 这一档**不 skip、照样验** —— 「更早的一道门也把它挡住了」是要真的量出来的，
   #    写进 skip 消息里就成了一句没人验证的断言（本仓记过这类账）。
   EARLY_SHAPE=no
-  case "$name" in *:*|*=*) EARLY_SHAPE=yes ;; esac
+  case "$name" in *:*) EARLY_SHAPE=yes ;; esac
 
   "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true
   sleep 0.2
   # `--` 让 `-cc` 这种以短横开头的名字不被 tmux 的 getopt 当成选项。
+  created=yes
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null \
     || "$TMUX_BIN" new-session -d -s -- "$name" 2>/dev/null \
-    || { skipped "$id：tmux 建不出这个名字的会话（$name）"; continue; }
+    || created=no
+  # 版本门（见 `min_tmux_for` 头注）：版本不够 ⇒ 先看它是不是真的造不出来，再决定 SKIP 还是 FAIL。
+  need="$(min_tmux_for "$id")"
+  if [ -n "$need" ] && ! tmux_at_least "${need%% *}"; then
+    if [ "$created" = yes ] && "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null; then
+      bad "$id：版本门说 tmux $TMUX_VER < ${need%% *} 造不出「$name」，可它造出来了 —— 版本门过时（改 min_tmux_for）"
+    else
+      printf '  SKIP %s：本机 tmux %s < %s —— %s\n' "$id" "$TMUX_VER" "${need%% *}" "${need#* }"
+      skip_ver=$((skip_ver+1))
+    fi
+    continue
+  fi
+  [ "$created" = yes ] || { skipped "$id：tmux 建不出这个名字的会话（$name）"; continue; }
   # ★ audit-0805 F20：**建完要验它真的以那个名字存在**。
   #
   # 起因：CI 上 `meta_dollar`（`cc-a$x`）报的是后端的 `no_such_session`，而不是本例期望的
@@ -298,15 +317,9 @@ if wait_for '"id":"e2e-g3-bad"'; then
 else bad "kill 形状门：5s 内无应答"; fi
 
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip WAIVED=$waived ====="
-# ⚠ **豁免是环境相关的，把环境打出来**〔`CI-J3` 09-09，见 `waiver_reason` 头上那段〕。
-#   `meta_dollar` 那条只在 tmux ≤3.4 上会走到；换一台 ≥3.5 的机器它会真的过 ⇒
-#   `WAIVED` 少一条、`PASS` 多一格，而**地板判法是 at-least，不会因此红**。
-#   ⇒ 这一行是那件事**唯一**会出声的地方：用掉的条数少于登记条数时，说明这台机器
-#   已经不需要那几条了 —— 删掉 `waiver_reason` 里对应的臂，`gate.rs` 那条判据会把地板逼上去。
-#   ⚠ 刻意**不在这里**判「用掉 < 登记 ⇒ 红」：开发机今天是 3.6，那会让本套件在更新的
-#     tmux 上恒红；而「所有环境都不再需要它了吗」单次运行原理上答不出来。
-echo "（本轮 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)；用掉登记豁免 $waived 条）"
+echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$((skip_ver + skip)) WAIVED=$waived ====="
+# 本轮跑在哪个 tmux 上、用掉几条豁免、版本门跳过几条，收尾打出来（换机器时 PASS/SKIP 怎么分的，一眼看得出）。
+echo "（本轮 tmux：$("$TMUX_BIN" -V 2>/dev/null || echo 未知)；用掉登记豁免 $waived 条；版本不够跳过 $skip_ver 条）"
 # ⚠ **这里刻意不写数字地板。** 定框 §4：「e2e 各套通过数（CI 两处 + 本地脚本），
 #   **同一个数不许两侧各写一份**」—— 本套件初版在这里硬写了 `-ge 28`，而 CI 的
 #   `assert-pass-floor.sh backend-gate2 28` 已经有同一个数。那正是账本记着的那个病

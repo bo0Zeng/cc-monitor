@@ -372,6 +372,7 @@ fn smoke() {
         );
         let out = Command::new(BIN)
             .env("CLAUDE_CONFIG_DIR", &home)
+            .arg("--") // 〔V151 · 09-27〕调后端一律带打头的 `--`（分流不看 argv0）
             .args(args)
             .stdin(Stdio::null())
             .output()
@@ -449,6 +450,7 @@ fn measure(label: &str, home: &Path, args: &[std::ffi::OsString], reps: usize) -
     }
     let out = Command::new(BIN)
         .env("CLAUDE_CONFIG_DIR", home)
+        .arg("--")
         .args(args)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -482,6 +484,7 @@ fn measure_piped(label: &str, home: &Path, args: &[std::ffi::OsString], reps: us
         let t0 = Instant::now();
         let out = Command::new(BIN)
             .env("CLAUDE_CONFIG_DIR", home)
+            .arg("--")
             .args(args)
             .stdin(Stdio::null())
             .stderr(Stdio::null())
@@ -518,6 +521,7 @@ fn spawn_timed(home: &Path, args: &[std::ffi::OsString]) -> (f64, i32) {
     let t0 = Instant::now();
     let st = Command::new(BIN)
         .env("CLAUDE_CONFIG_DIR", home)
+        .arg("--")
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

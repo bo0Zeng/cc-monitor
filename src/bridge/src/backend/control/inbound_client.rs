@@ -201,6 +201,9 @@ fn offer_of(frame: &InboundFrame) -> Offer {
     }
 }
 
+/// 〔RESYNC · V149〕「重新对齐」那条帧命令：它的应答顺带交回那台当下的能力事实（见 [`InboundClient::take_fresh_facts`]）。
+pub const RESYNC_OP: &str = "resync";
+
 /// **停在手里的写半边** —— 身上没有任何写方法。
 ///
 /// 唯一出口是 [`ParkedWriter::into_client`]，而它要一个 [`BackendHello`]。
@@ -320,7 +323,7 @@ where
             // 长连接上那是不可接受的，所以关不关由调用方用 `CloseWrite` 明说。
         });
         Arc::new(InboundClient {
-            offer: hello.offer,
+            offer: std::sync::RwLock::new(hello.offer),
             nonce: connection_nonce(),
             seq: AtomicU64::new(0),
             writes: tx,
@@ -331,7 +334,8 @@ where
 
 /// 一条连接上的入方向客户端。
 pub struct InboundClient {
-    offer: Offer,
+    /// 〔RESYNC〕握手那一刻的能力事实；`resync` 的应答会把它换成那台当下的（[`RESYNC_OP`]）。
+    offer: std::sync::RwLock<Offer>,
     /// 本连接的号段前缀。**每连接一套** —— 重连后的 `id` 与上一条连接不撞。
     nonce: String,
     seq: AtomicU64,
@@ -348,12 +352,31 @@ struct Waiter {
 impl InboundClient {
     /// backend 声明接受这条命令吗。答案只住 [`Offer::admits`]（〔NET2〕能力协商的家）。
     pub fn accepts(&self, cmd: &str) -> bool {
-        self.offer.admits(cmd)
+        self.offer_now().admits(cmd)
     }
 
     /// 〔NET2〕那台机器的能力事实（拷贝一份给 webview / 外部前端）。
-    pub fn offer(&self) -> &Offer {
-        &self.offer
+    pub fn offer(&self) -> Offer {
+        self.offer_now().clone()
+    }
+
+    fn offer_now(&self) -> std::sync::RwLockReadGuard<'_, Offer> {
+        self.offer.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 〔RESYNC〕`resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有这两格（旧后端）⇒ 不动。
+    fn take_fresh_facts(&self, data: Option<&Value>) {
+        let Some(obj) = data.and_then(Value::as_object) else {
+            return;
+        };
+        if !obj.contains_key("unavailable") && !obj.contains_key("uncancellable") {
+            return;
+        }
+        let (unavailable, uncancellable) = Offer::facts_of(obj);
+        self.offer
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .refresh_facts(unavailable, uncancellable);
     }
 
     /// 本连接内唯一的请求 `id`。
@@ -429,14 +452,14 @@ impl InboundClient {
         if !self.accepts(cmd) {
             return Err(CallError::Unsupported {
                 cmd: cmd.to_string(),
-                offered: self.offer.ops().to_vec(),
+                offered: self.offer_now().ops().to_vec(),
             });
         }
         // 〔NET2 · 主会话 09-27 裁〕那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
-        if let Some(code) = self.offer.unavailable(cmd) {
+        if let Some(code) = self.offer_now().unavailable(cmd).map(str::to_string) {
             return Err(CallError::Unavailable {
                 cmd: cmd.to_string(),
-                code: code.to_string(),
+                code,
             });
         }
         let id = self.next_id();
@@ -472,7 +495,12 @@ impl InboundClient {
             abandon.id = None;
         }
         match outcome {
-            Ok(Ok(Outcome::Reply { ok: true, data, .. })) => Ok(data),
+            Ok(Ok(Outcome::Reply { ok: true, data, .. })) => {
+                if cmd == RESYNC_OP {
+                    self.take_fresh_facts(data.as_ref());
+                }
+                Ok(data)
+            }
             Ok(Ok(Outcome::Reply { code, message, .. })) => Err(CallError::Remote {
                 code: code.unwrap_or_else(|| "unspecified".to_string()),
                 message: message.unwrap_or_default(),
@@ -483,7 +511,7 @@ impl InboundClient {
             // 超时：`abandon` 还拿着 id ⇒ 它在本函数返回时补发那条 `cancel`（与「被丢」同一处，不发两次）。
             Err(_elapsed) => Err(CallError::Timeout {
                 after: timeout,
-                withdraw: self.offer.withdraw(cmd),
+                withdraw: self.offer_now().withdraw(cmd),
             }),
         }
     }
@@ -644,7 +672,8 @@ impl InboundClient {
     /// **登记不上就不发**：登记表满时硬发出去，那条应答回来一定落进 unknown-id 的 warn，
     /// 而那正是登记它想避免的噪声 —— 在表已经满、日志最该干净的时候刷。
     fn fire_and_forget_cancel(&self, target: &str, cmd: &str) {
-        match self.offer.withdraw(cmd) {
+        let w = self.offer_now().withdraw(cmd);
+        match w {
             Withdraw::Asked => {}
             // 〔NET2 · `05 §3.3.3`〕对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
             Withdraw::NotOffered => {

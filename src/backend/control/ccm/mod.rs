@@ -12,11 +12,10 @@
 //!
 //! # 怎么进到这里
 //!
-//! 两条，**都只经 [`intercept`] 这一处**：
-//! ① `argv[0]` 的 basename 是 `ccm`（别名 / 软链 / 改名拷贝指过来；`src/shared/ccm-aliases.sh`
-//!    里 `cc` / `cct` 那几个别名调的就是它）；
-//! ② 显式子命令 `cc-monitor-backend ccm <argv…>`（给「二进制没改名」的场合，
-//!    也给判据一个不依赖文件名的入口）。
+//! **只经 [`route`] 这一处**，而且〔主会话 09-27 裁〕**只看 argv、不看 `argv[0]`**：
+//! 打头是 `--` 且紧跟一个后端词 ⇒ 后端（流 / 子命令）；其余一律是 ccm 这一趟
+//! （没有 `--` ⇒ 整行交给 claude）。落点叫 `ccm` 还是开发树里的 `cc-monitor-backend`
+//! 走的是同一条规则。旧的「basename 是 `ccm`」与「`<bin> ccm …` 子命令词」两条入口〔散文墓碑〕。
 //!
 //! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
 //! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔backend 的**冻结线上契约**，
@@ -221,6 +220,14 @@ pub(crate) fn needs_bus_id(agent: &str) -> bool {
     agent == "codex"
 }
 
+/// 〔FIX · V138 订正〕入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
+pub type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
+
+/// 这个 agent 的会话有 pidfile 可判活吗（注入的那份扫描只认这一家的布局）。
+pub(crate) fn has_pidfiles(agent: &str) -> bool {
+    agent == "claude"
+}
+
 /// 这个 agent 有身份面（`@ccm_sid`）吗。
 pub(crate) fn has_identity(agent: &str) -> bool {
     agent == "claude"
@@ -236,9 +243,8 @@ pub(crate) fn own_source() -> &'static str {
     include_str!("mod.rs")
 }
 
-/// 显式子命令形（`cc-monitor-backend ccm …`）的那个词。
-///
-/// ⚠ 刻意**不是** `--ccm`：那样它会长得像一条 wire 子命令，而它不是。
+/// 这个二进制在终端里的名字（`~/.cc-monitor/bin/ccm`）。预览语境里「叫的是 `ccm`」就是它（`plan::Env::for_preview`）。
+/// 〔主会话 09-27 裁〕分流**不看**名字：它只剩「名字」这一个意思，不再是入口②（`cc-monitor-backend ccm …`〔散文墓碑〕）的子命令词。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
 
 /// 〔V151〕这一趟交给谁：ccm（壳）还是后端 —— **唯一的分流口**（`main.rs` 只认它）。
@@ -255,74 +261,44 @@ pub(crate) fn is_backend_word(w: &str) -> bool {
     crate::SUBCOMMANDS.contains(&w) || crate::STREAM_FLAGS.contains(&w)
 }
 
-/// 〔V151 · 用户 09-27〕分流：
-/// ① 打头的 `--` 紧跟后端词 ⇒ 后端（名字是不是 `ccm` 都一样：`ccm -- --stream` 与开发树 `cc-monitor-backend -- --stream` 同形）；
-///    第一个 `--` 就是分隔 ⇒ 后端子命令自己的参数里再出现 `--` 也不会被误切。
-/// ② 名字是 `ccm`（`~/.cc-monitor/bin/ccm`，它就是后端本身）⇒ 其余一律当 ccm（切 claude / ccm 两半归 `argv::parse`）。
-/// ③ 名字不是 `ccm`：首词 `ccm` ⇒ ccm（入口②）；打头的 `--` 去掉；其余原样当后端（开发树直接跑的那一形）。
+/// 〔V151 · 主会话 09-27 裁「路由不看 argv0」〕分流**只看 argv**，与二进制叫什么名字无关（`~/.cc-monitor/bin/ccm` 与开发树的
+/// `cc-monitor-backend` 同一条规则）：打头的 `--` 紧跟后端词（一次性子命令 / 流模式旗标）⇒ 后端（argv = `--` 之后那一串；
+/// 第一个 `--` 就是分隔，后端子命令自己的参数里再出现 `--` 也不会被误切）；其余一律当 ccm（`argv::parse` 切两半，没有 `--` 整行交 claude）。
+/// ⇒ 叫后端的每一处都带打头的 `--`；零参数是「起一个 claude」，不再是流模式。
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
 /// 从 argv 里**任意位置**剥掉，而 `ccm --tail-only` 里那个是要原样交给 agent 的。
-/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕），claude 自己的 `--fork-session` 会被抢进后端；V151 取消。〕
-pub fn route(argv0: &str, args: &[String]) -> Entry {
-    let base = argv0
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(argv0)
-        .trim_end_matches(".exe");
-    let first = args.first().map(String::as_str);
-    if first == Some(argv::flag::END) && args.get(1).is_some_and(|w| is_backend_word(w)) {
+/// 〔墓碑 —— E2 第一版按「名字是 `ccm` 时 `args[0]` ∈ 后端词」分流（`routes_to_backend`〔散文墓碑〕）；V151 那一版还按名字分两支
+/// （名字不是 `ccm` 时裸词进后端、首词 `ccm` 进 ccm）。今天都不在了。〕
+pub fn route(args: &[String]) -> Entry {
+    if args.first().map(String::as_str) == Some(argv::flag::END)
+        && args.get(1).is_some_and(|w| is_backend_word(w))
+    {
         return Entry::Backend(args[1..].to_vec());
     }
-    if base == SUBCOMMAND_WORD {
-        return Entry::Ccm(args.to_vec());
-    }
-    match first {
-        Some(SUBCOMMAND_WORD) => Entry::Ccm(args[1..].to_vec()),
-        Some(argv::flag::END) => Entry::Backend(args[1..].to_vec()),
-        _ => Entry::Backend(args.to_vec()),
-    }
+    Entry::Ccm(args.to_vec())
 }
 
 /// [`route`] 的 ccm 那一支（给只关心「是不是在当 ccm 用」的调用方）。
-pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
-    match route(argv0, args) {
+pub fn intercept(args: &[String]) -> Option<Vec<String>> {
+    match route(args) {
         Entry::Ccm(v) => Some(v),
         Entry::Backend(_) => None,
     }
 }
 
-/// 「我是被怎么叫进 `ccm` 模式的」—— 进程 argv 里**排在 ccm 参数前面**的那一段。
-///
-/// 入口① ⇒ `[argv0]`；入口② ⇒ `[argv0, "ccm"]`。容器路要在 pane 里**把自己再叫一次**，
-/// 叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
-///
-/// # 🔴 〔CC1 · BS1b 现打〕这一段从前只取 `argv0`，丢了入口② 的那个子命令词
-///
-/// ⇒ 经 `cc-monitor-backend ccm …` 起的会话，pane 里逐字是 `cc-monitor-backend --cwd …`
-/// ⇒ 被当后端直连口解析，当场「unknown argument: --cwd」，pane 退回空 bash，
-/// 而 cc-spawn 照报成功、还登记上了总线（假成功）。
-///
-/// ⚠ **判「走的是哪个入口」只有 [`intercept`] 一处** —— 本函数不另判一次，只取
-/// 「`intercept` 吃掉了 argv 的哪一段」：`argv` 总长减去它交出去的参数个数。
-/// 往后 `intercept` 多认一种入口，这里**一个字不用改**就跟着对。
+/// 「我是被怎么叫进 `ccm` 模式的」—— 容器路要在 pane 里**把自己再叫一次**，叫法就是这一段 ＋ 内层参数（`plan::build` 那条 `inner`）。
+/// 〔主会话 09-27 裁〕只剩一个入口（分流不看名字）⇒ 恒是 `[argv0]`。
+/// 〔墓碑 —— CC1 那一版要从 argv 里取「入口吃掉的那一段」，因为入口②（`<bin> ccm …`）多一个子命令词。〕
 pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
-    let Some((argv0, rest)) = argv.split_first() else {
-        return Vec::new();
-    };
-    let consumed = match intercept(argv0, rest) {
-        Some(args) => argv.len() - args.len(),
-        // 不在 ccm 模式（只有单测会这么问）⇒ 只剩 argv0 可说。
-        None => 1,
-    };
-    argv[..consumed].to_vec()
+    argv.first().cloned().into_iter().collect()
 }
 
 /// 一次性模式的入口。返回**退出码**。
 ///
 /// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来。
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], running: RunningScan) -> i32 {
     let parsed = match argv::parse(args) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),
@@ -338,7 +314,7 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Parsed::Early(Early::Probe) => {
-            // `self=` 答的是「怎么叫我」—— 入口② 下那是两个词，一起报（只报 argv0 就是同一个缺陷的另一张脸）。
+            // `self=` 答的是「怎么叫我」—— 按 `self_invocation` 原样报（整段 join，不私自只取 argv0）。
             let me = env
                 .self_argv
                 .iter()
@@ -349,6 +325,9 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Parsed::Opts(o) => {
+            let mut env = env;
+            env.running_sessions =
+                (o.resumes.is_some() && has_pidfiles(&o.agent)).then_some(running);
             let plan = match plan_of(&o, env, true) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),

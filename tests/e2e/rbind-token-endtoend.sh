@@ -111,7 +111,7 @@ probe() {
   mkdir -p "$F/projects/p" "$F/sessions"
   spawn "$label" "$2"
   local ticks; ticks=$(awk '{print $22}' "/proc/$VPID/stat")
-  CLAUDE_CONFIG_DIR="$F" timeout 20 "$D" --with-rbind-token < /dev/null > "$OUT" 2> "$W/$label.err" &
+  CLAUDE_CONFIG_DIR="$F" timeout 20 "$D" -- --with-rbind-token < /dev/null > "$OUT" 2> "$W/$label.err" &
   local dpid=$!
   sleep 2.5
   printf '{"pid":%d,"sessionId":"sid-%s","cwd":"/tmp","kind":"interactive","procStart":"%s"}\n' \

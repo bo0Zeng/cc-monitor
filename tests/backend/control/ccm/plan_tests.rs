@@ -966,7 +966,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
 #[test]
 fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registering() {
     let mut e = env();
-    e.self_argv = vec!["/opt/cc-monitor-backend".into(), "ccm".into()];
+    e.self_argv = vec!["/opt/cc-monitor-backend".into()];
     e.anthropic_base_url = Some("https://relay.example/v1".into());
     e.bus_scripts = Some("/opt/bus".into());
     for (args, has_passthru) in [
@@ -988,8 +988,9 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
         let want = format!("{} '--ccm-print'", c.payload);
         assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
         assert!(
-            c.self_check
-                .starts_with("export ANTHROPIC_BASE_URL='https://relay.example/v1'; '/opt/cc-monitor-backend' 'ccm' "),
+            c.self_check.starts_with(
+                "export ANTHROPIC_BASE_URL='https://relay.example/v1'; '/opt/cc-monitor-backend' "
+            ),
             "自检没带同一段 export 前缀 / 同一个入口：{}",
             c.self_check
         );
@@ -1554,4 +1555,61 @@ fn fix_a_resume_of_a_session_already_running_in_tmux_rejoins_it() {
         "if [ -n \"${TMUX:-}\" ]; then tmux switch-client -t '=work:'; else tmux attach -t '=work:'; fi"
     );
     assert_eq!(render(&rejoin(true)), "echo 'ccm-session=work'");
+}
+
+// 〔FIX · V138 订正〕在跑但不在 ccm 认得的 tmux 会话里 ⇒ 不另起，明说。
+thread_local! {
+    static SCANNED: std::cell::RefCell<Vec<Option<String>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+fn fake_scan(dir: Option<&std::path::Path>) -> Vec<(String, u32)> {
+    SCANNED.with(|s| s.borrow_mut().push(dir.map(|d| d.display().to_string())));
+    vec![("sid-1".into(), 4242)]
+}
+
+/// ★ 注入的扫描说 `sid-1` 在跑（pid 4242）、快照里没它 ⇒ 拒并说出 pid；tmux 里认得出 ⇒ 仍是接上；扫描问的是这一趟那个账号的目录。
+#[test]
+fn fix_a_resume_of_a_session_running_outside_tmux_is_refused_and_says_where() {
+    let t = AccountTable::default();
+    let mut e = env();
+    e.running_sessions = Some(fake_scan);
+    let a: Vec<String> = ["--resume", "sid-1"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o) = parse(&a).expect("解析") else {
+        panic!()
+    };
+    let Die(said) =
+        build(&o, &e, &t, Some(&snapshot_rows(&[("other", "")]))).expect_err("在跑还另起了");
+    assert!(said.contains("4242") && said.contains("sid-1"), "{said}");
+    // 快照里认得出 ⇒ 接上（tmux 那一格在前）。
+    assert!(matches!(
+        build(&o, &e, &t, Some(&snapshot_rows(&[("work", "sid-1")]))),
+        Ok(Plan::Rejoin { .. })
+    ));
+    // 别的 sid ⇒ 照旧起。
+    let b: Vec<String> = ["--resume", "sid-2"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o2) = parse(&b).expect("解析") else {
+        panic!()
+    };
+    assert!(build(&o2, &e, &t, None).is_ok());
+    // 问的目录：继承来的账号目录；`--base` ⇒ 默认家目录（None）。
+    SCANNED.with(|s| s.borrow_mut().clear());
+    e.inherited_config_dir = Some("/h/.claude-accts/b".into());
+    let _ = build(&o, &e, &t, None);
+    let c: Vec<String> = ["--resume", "sid-1", "--base"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let Parsed::Opts(o3) = parse(&c).expect("解析") else {
+        panic!()
+    };
+    let _ = build(&o3, &e, &t, None);
+    assert_eq!(
+        SCANNED.with(|s| s.borrow().clone()),
+        vec![Some("/h/.claude-accts/b".to_string()), None]
+    );
 }

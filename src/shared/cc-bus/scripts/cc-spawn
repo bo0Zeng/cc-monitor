@@ -68,14 +68,9 @@ if [ -z "$CCM_BIN" ]; then
     exit 2; }
 fi
 
-# **怎么把它当 `ccm` 叫**:后端认两条入口,都只经 `control::ccm::intercept` ——
-#   ① `argv[0]` 的 basename 是 `ccm`(别名/软链指过来);② `cc-monitor-backend ccm <argv…>`。
-# 找到的那份 basename 不是 `ccm` 时走②。**这不是两套实现**,是同一处解析的两条入口。
+# **怎么把它当 `ccm` 叫**:〔主会话 09-27 裁〕后端分流只看 argv、不看文件名 ⇒ 找到的那份叫什么都一样,
+#   照 `ccm [交给 claude 的…] -- [ccm 自己的…]` 叫它就行(从前名字不是 `ccm` 时要多垫一个 `ccm` 子命令词,那一形不在了)。
 ccm_prefix=("$CCM_BIN")
-case "$(basename "$CCM_BIN")" in
-  ccm|ccm.exe) ;;
-  *) ccm_prefix+=(ccm) ;;
-esac
 
 # **能力协商**(B02 审计重要-7):cc-spawn 硬依赖 `--detach` 等四项,而用户盘上 PATH 前面
 # 完全可能还躺着一份**旧的 bash `ccm` 副本**(`~/.local/bin/ccm`,实测那份就没有 --detach)。
