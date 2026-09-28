@@ -791,7 +791,7 @@ fn snapshot_line_countable(line: &str) -> bool {
 /// 与那条子命令印出的两段**逐字节相同**（后端扫的是同一个函数），行号映射（[`tail_seq`]）一个字没动。
 ///
 /// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
-/// session-ended**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
+/// ended 格**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
 /// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
 ///
 /// 完整性校验（审计 D-I2）：到达的可计行数必须**恰好等于** `total`。
@@ -975,11 +975,11 @@ async fn fetch_snapshot(
     Ok(FetchOutcome::Done(arrived))
 }
 
-/// 〔CF1〕快照中途被撤时要不要补一个 `session-ended`：**远端补、本机不补。**
+/// 〔CF1〕快照中途被撤时要不要补一个 `ended` 格：**远端补、本机不补。**
 ///
 /// 补偿治的是「已 flush 的那一块把刚归档的 tab 见行复活」—— 而**只有远端的行会复活 tab**
 /// （前端 `tabs.ts` 只有 `remote-line` 那一格；本机 tab 的活与死只由 PID 探活那一路翻）。
-/// 本机再补一个 `session-ended`，没有要治的病，反倒会把本机那边刚判成「可重连」的会话压成「已结束」。
+/// 本机再补一个 `ended` 格，没有要治的病，反倒会把本机那边刚判成「可重连」的会话压成「已结束」。
 pub(crate) fn compensates_on_cancel(origin: &crate::origin::Origin) -> bool {
     !origin.is_local()
 }
@@ -2115,7 +2115,7 @@ const BATCH_MAX_AGE_MS: u64 = 200;
 /// 攒批出口（Batch5-F17）：〔CF1〕远端流、本机流、旁路快照三路的行**都**从这里出去
 /// （`batch_to_payloads` → `on_line_batch_awaited`），用 **awaited 变体**——大批的块序列发完才返回，保证行
 /// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
-/// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
+/// ended 格 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
 /// backend 帧流形成天然背压。
 async fn flush_lines(
     replay: &Arc<EventReplay>,

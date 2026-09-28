@@ -17,7 +17,7 @@
  * | `session-idle` 事件 → `onSessionIdle` | **本文件**（此前是 0 条） |
  * | `onSessionIdle` → `markTmuxIdle` 的接线（`main.ts:703`） | 仍无（要真机 DOM，记为诚实边界） |
  *
- * ⚠ 中间那段此前**一条判据都没有**：`grep '"session-idle"' src/*.vitest.ts` 零命中。
+ * ⚠ 中间那段此前**一条判据都没有**：`grep '"idle 格"' src/*.vitest.ts` 零命中。
  * 也就是说「后端喊了、前端听没听见」这件事，本仓一直没人验 —— 而 `#60` 问的正是它。
  *
  * # 保序也要钉

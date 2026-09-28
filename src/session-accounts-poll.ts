@@ -39,7 +39,7 @@
  *    问一次不再是「一次完整的 TCP+SSH+鉴权」（此前每台每小时 480 次握手）。
  * 2. 「会话 ↔ 账号」只在**会话起停**时变（后端读的是 `sessions/<PID>.json` ＋ 那个进程的环境，
  *    进程活着时环境不变）—— 而会话起停**本来就有帧**（`session_added` / `session_removed`），
- *    monitor 早就把它们转成 `remote-session-added` / `session-ended` 两个事件。
+ *    monitor 早就把它们转成 远端 `live` 格 / `ended` 格 两个事件。
  *
  * ⇒ 刷新改由事件驱动（{@link createEventRefresher}）：长连接握手完成（〔DL1〕经通道订的 `accounts-changed` 流里那一格 `seen`，
  * 强制刷账号清单；原先是裸事件 `remote-backend-ready`，见 {@link accountsChangedItems}）· 会话起停 · 本 UI 切号。**零定时器**。
@@ -153,7 +153,7 @@ export async function collectAccountRows(
  *
  * - **零定时器**：只在 {@link EventRefresher.request} 时跑。
  * - **不叠加**：在飞时再来的请求合并成**一次**补跑（跑完立刻再跑一轮，拿到最新）；
- *   启动时一批 `remote-session-added` 涌进来只会多跑一轮，不会摞 N 轮。
+ *   启动时一批 远端 `live` 格 涌进来只会多跑一轮，不会摞 N 轮。
  * - `force` 在合并时取「或」：任何一次要求 force，补跑那一轮就 force。
  * - `run` 抛错由这里接住（E4：有身份地失败，计进 `failures`），不留 unhandled rejection，
  *   也不把「在飞」焊死。
