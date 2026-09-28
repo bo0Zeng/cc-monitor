@@ -83,6 +83,9 @@ describe("`70 §1.3 E`（步 4）：点击侧 pending —— 按住期间不许�
     )!;
     rescan.click();
     await tick();
+    // 〔MIG-3b 续〕本机那一栏两拍（monitor 事实 → 本机后端），两拍各放开一次。
+    ipc.gate?.();
+    await tick();
     ipc.gate?.();
     await tick();
     await tick();

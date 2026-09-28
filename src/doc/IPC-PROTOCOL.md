@@ -1871,20 +1871,18 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 
 ```text
 → {"id":"f1","cmd":"footprint-report","args":{}}
-← {"kind":"reply","id":"f1","ok":true,"data":{"report":{"rows":[…],"settings_scopes":[…],"claude_config_dir":"/home/u/.claude","home":"/home/u"},"clientAsks":[]}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"rows":[…],"settings_scopes":[…],"claude_config_dir":"/home/u/.claude","home":"/home/u"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `client` | → | 可选。**本机那一栏**才带：monitor 自己那台的事实 `{env: {home, agentHome, path?}, stat?: {<绝对路径>: {kind, size, entries?} \| null}}`（`HostScope::Client` 那一族照旧由 monitor 答事实，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
-| `report` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home`。带了 `client` 而没带 `client.stat` ⇒ `null` |
-| `clientAsks` | ← | `HostScope::Client` 那一族要 monitor stat 的绝对路径（本机那一栏第一趟拿它去问 monitor，第二趟带着 `client.stat` 再问）。远端那一栏恒 `[]` |
+| `client` | → | 可选。**本机那一栏**才带：monitor 自己进程独有的几条事实 `{home, agentHome, path?}`（`HostScope::Client` 那一族按它们解；本机后端与 monitor 同一台、同一用户 ⇒ stat 仍由这台做，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
+| `data` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home` |
 
 - 目录最多列 4096 个名字（超了 ⇒ 列不动，**不截断**）· 查 cc-bus 钩子字样的文件最多 1 MiB，**文件内容一个字节都不回**。
-- 第二趟答的少于这一趟要问的 ⇒ `bad_args`（没问过的一条不许当「不在」画成「缺」）。
 - 环境是这个**后端进程**的（`HOME`，没有再退 `USERPROFILE`；`PATH`）—— 用户交互 shell 的 rc 改过的环境这里看不见。
 
-**错误码**：`bad_args`（`client` 形状不对 / 相对路径 / 第二趟答少了）· `too_large`（`client.stat` 超过 1024 条）· `failed`（这台后端进程没有家目录）。
+**错误码**：`bad_args`（`client` 形状不对 / 相对路径）· `failed`（这台后端进程没有家目录）。
 ⚠ **CLI 面也有它**（`--footprint-report`），入参从 stdin 读。
 
 #### `ccm-print`：一条别名实际会执行什么（W5-ALIAS · 第五波先行，2026-09-25，**只读**）

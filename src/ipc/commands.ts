@@ -292,12 +292,11 @@ export const commands = {
   // 〔MIG-3b〕删会话那条退役：删会话经通道直说那台后端 `files-delete-session`（`src/session-writes.ts::deleteSession`）。
 
   /**
-   * 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）的**事实**（`footprint_client.rs`）：
-   * `stat: null` ⇒ 只回环境；给了 ⇒ 逐条 stat。成品由那台后端出（`src/settings/footprint-reads.ts` 经通道问 `footprint-report`），
-   * 这一条只交事实、形状原样转给后端 ⇒ **桶②**。〔`config_surface_report`〔散文墓碑〕随判定进后端删了。〕
+   * 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）要的、只有 monitor 知道的事实（`footprint_client.rs`）：
+   * 它自己进程的 `{home, agentHome, path}`。成品由本机后端出（`src/settings/footprint-reads.ts` 经通道问 `footprint-report`，把这一份原样带过去），
+   * 本侧不认识它的形状 ⇒ **桶②**。〔`config_surface_report`〔散文墓碑〕随判定进后端删了。〕
    */
-  footprint_client_facts: (args: { stat: string[] | null }) =>
-    invoke<{ env: Record<string, unknown>; stat: Record<string, unknown> }>("footprint_client_facts", args),
+  footprint_client_facts: () => invoke<Record<string, unknown>>("footprint_client_facts"),
 
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。

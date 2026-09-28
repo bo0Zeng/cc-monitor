@@ -141,6 +141,7 @@ const UNIT: &[&str] = &[
     // 〔MIG-3b 续〕足迹申报表的两份判据随表搬进后端（原 `tests/bridge/tool_registry_{environment,not_managed}_tests.rs`）。
     "tests/backend/footprint/registry_environment_tests.rs",
     "tests/backend/footprint/registry_not_managed_tests.rs",
+    "tests/bridge/footprint_client_tests.rs", // 〔MIG-3b 续〕monitor 自己进程那几条事实（纯函数；两拍之后它不再 stat）
     "tests/cards/api-error.test.ts",
     "tests/cards/bash-collapse.vitest.ts",
     "tests/cards/bash.test.ts",
@@ -595,7 +596,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/scale_f2.rs",
     "tests/backend/files/size_tests.rs", // 〔W5-FILES〕算目录大小（临时目录真走一棵树）
     "tests/backend/footprint/face_tests.rs", // 〔MIG-3b 续〕`footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
-    "tests/bridge/footprint_client_tests.rs", // 〔MIG-3b 续〕monitor 自己那几行的事实（真 stat 临时目录）
     // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",

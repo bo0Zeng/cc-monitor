@@ -1467,9 +1467,7 @@ fn this_module_only_reads() {
         face_use,
         [
             "use copy_core::copy_text;",
-            "use serde_json::{json, Map, Value};",
-            "use std::cell::RefCell;",
-            "use std::collections::{BTreeMap, BTreeSet};",
+            "use serde_json::{json, Value};",
             "use std::path::{Path, PathBuf};",
             "use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};"
         ],
