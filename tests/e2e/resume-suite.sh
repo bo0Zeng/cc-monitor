@@ -179,7 +179,7 @@ CMD4="$(drv into-existing "$SID4" "$S4" "$FAKE" -)"
 echo "   cmd: $CMD4"
 echo "$CMD4" | grep -q "unset CLAUDE_CONFIG_DIR;" && ok "B4 基座命令前置 unset CLAUDE_CONFIG_DIR(清空 shell 残留旧号,#75 复用变体逃生口)" || bad "B4 基座命令缺 unset CLAUDE_CONFIG_DIR"
 # #75 主因:不带 pin 时的跟随解析——lastAccount 无 → 当前工作账号 current(真源 resolveFollowAccount)。
-STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true}]}'
+STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 FOL="$(drv follow - work "$STATE_B4")"
 [ "$FOL" = "work" ] && ok "B4 无 pin → resolveFollowAccount 落当前工作账号 work(#75:不再散落基座错目录)" || bad "B4 follow 解析=$FOL(期望 work)"
 fire_resume "$CMD4"

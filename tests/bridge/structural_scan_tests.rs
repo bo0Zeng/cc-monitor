@@ -4695,6 +4695,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/control/ccm/mod.rs", 3), // 〔V151〕抢词表 `routes_to_backend` 删了，原地一块；〔09-27〕入口②（`<bin> ccm …`）删了，头注与 `SUBCOMMAND_WORD` 各一块
         ("src/backend/control/ccm/plan.rs", 1), // 〔09-27〕`self_argv` 的入口②那一形删了，原地一块
         ("tests/e2e/backend-cc-bus.sh", 1),    // 〔09-27〕[17] 前的入口②说明删了，原地一块
+        ("tests/e2e/backend-gate2-acceptance.sh", 1), // 〔E2 尾 09-27〕`meta_dollar` 那条登记豁免换成版本门，原地一块
         ("tests/backend/control/ccm_tests.rs", 1), // 〔V151〕那条路由判据并进 claude_flags_tests，原地一块
         // 〔FIX · `99 §2 ㊷`〕人读表解析器删了，一处点它旧名的散文挂墓碑。
         ("tests/backend/plugin_walk_fixture.rs", 1),
