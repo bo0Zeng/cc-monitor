@@ -1786,13 +1786,24 @@ fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses() {
         .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))
         .collect();
     assert_eq!(forbidden, vec![':'], "kill 形状门不再拒 `:` —— 字符集来源变了，回来重裁");
-    for c in &forbidden {
-        let name = format!("cc{c}1");
-        let got = render_tmux_outer(&TmuxOuter::Attach { target: TmuxTarget::Raw(&name) }, None);
-        assert!(got.is_err(), "放行集放过了禁字 `{c}`（{name:?} ⇒ {got:?}）—— 建得出来、主路杀不掉");
+    // 量的是**建**那一格（`Create`：名字从这里进 tmux，建出来就得杀得掉；`Attach` 接的是已在的会话，tmux 自己不让 `:` 进名字）。
+    // 两支都量：`Raw` 另有一道「能不能不加引号」的字符白名单，只量它会让名字规则那一道（`Quoted` 唯一的一道）隐身。
+    fn raw(n: &str) -> TmuxTarget<'_> {
+        TmuxTarget::Raw(n)
     }
-    assert!(
-        render_tmux_outer(&TmuxOuter::Attach { target: TmuxTarget::Raw("cc-1") }, None).is_ok(),
-        "合法名字 `cc-1` 也渲不出来 —— 上面那一圈「拒了」说明不了任何事"
-    );
+    fn quoted(n: &str) -> TmuxTarget<'_> {
+        TmuxTarget::Quoted(n)
+    }
+    let arms: [(&str, fn(&str) -> TmuxTarget<'_>); 2] = [("Raw", raw), ("Quoted", quoted)];
+    for (arm, mk) in arms {
+        for c in &forbidden {
+            let name = format!("cc{c}1");
+            let got = render_tmux_outer(&TmuxOuter::Create { target: mk(&name), cwd: None, ccm_sid: None }, Some("claude"));
+            assert!(got.is_err(), "{arm}：放行集放过了禁字 `{c}`（{name:?} ⇒ {got:?}）—— 建得出来、主路杀不掉");
+        }
+        assert!(
+            render_tmux_outer(&TmuxOuter::Create { target: mk("cc-1"), cwd: None, ccm_sid: None }, Some("claude")).is_ok(),
+            "{arm}：合法名字 `cc-1` 也渲不出来 —— 上面那一圈「拒了」说明不了任何事"
+        );
+    }
 }
