@@ -64,7 +64,7 @@
 /// F47 / F03b 防误伤守卫：该路径是否 Claude 数据源文件（jsonl / pidfile）。
 ///
 /// 写命令拒碰这些——往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器
-/// （`§1` 例外 3 的 `remote_history::delete_remote_history_session`，带二次确认），
+/// （`§1` 例外 3 的 `remote_history::delete_remote_history_session`，带二次确认），〔散文墓碑〕
 /// 不走文件面板。**结构判定**（与从前那道 `is_safe_remote_jsonl`〔散文墓碑〕同风格，batch20 起
 /// 不靠 `.claude` 字面，闭 `CLAUDE_CONFIG_DIR` 缺口）。
 pub fn is_protected_claude_data_path(path: &str) -> bool {

@@ -2490,7 +2490,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 42usize), // 〔MIG-3b〕+1：钩子诊断 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）
+            ("chan.call", 44usize), // 〔MIG-3b〕子步 4：+2（`session-writes.ts` 的删会话 · 分叉）// 〔MIG-3b〕+1：钩子诊断 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

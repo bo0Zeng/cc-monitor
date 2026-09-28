@@ -37,31 +37,13 @@ pub(crate) fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> 
 //   整族搬进了本机常驻后端（`src/backend/history_join.rs`：判定一字不改、判据跟着搬 —— `tests/backend/history_join_tests.rs`）。
 //   主会话 09-25 裁「join 只一个家」：注解归本机后端，它经 `remote_ask` 问远端那台、并上注解、出成品；界面经 `chan.call`
 //   （`src/history-reads.ts`，逐台 fan-out 也搬到那里）。这里只剩读一整份远端会话与删一份远端会话两件。
-//   〔LOC1b · 4D〕读那一件也走了（见下）⇒ 只剩删一份远端会话。
+//   〔LOC1b · 4D〕读那一件也走了（见下）⇒ 只剩删一份远端会话（〔MIG-3b〕它也走了，见下）。
 
 // 〔LOC1b · 第四波 4D〕`stream_read_remote_session`〔散文墓碑〕删了：它是 `history·rs::stream_read_session_jsonl` 的远端那一支，
 //   两支合成一条（本机也经那台后端的 `history-read` 分页取原文、同一个 `SessionPager` 解析）。
 
-/// 删除一个远端历史会话的 jsonl（issue 未拆，F11）—— [`crate::history::delete_history_session`] 的远端那一支。
-///
-/// 🔴 **〔RW1 · 第四波 · 2026-09-24〕F11 按用户裁「按推荐改」：经那台远端的后端删**
-/// （`files-delete-session`，只收 sid；落点由远端后端按 sid 在它自己的记录树里找）。
-/// 从前那一道 SFTP 直删 ＋ 双重路径守卫（`sftp::remove_remote_file`〔散文墓碑〕）整条走了；
-/// 「删 A 的文件、清 B 的注解」那个口由 [`crate::history::delete_via_backend`] 的一致性闸在两侧同时防。
-pub(crate) async fn delete_remote_history_session(
-    host: &str,
-    session_id: String,
-    jsonl_path: String,
-) -> Result<(), String> {
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(host.to_string()));
-    crate::history::delete_via_backend(&door, &session_id, &jsonl_path).await
-}
-
-/// 远端 POSIX 路径取文件名 stem（去目录、去 `.jsonl`）。非 jsonl / 无文件名 → None。
-pub(crate) fn jsonl_stem(path: &str) -> Option<String> {
-    let name = path.rsplit('/').next()?;
-    name.strip_suffix(".jsonl").map(str::to_string)
-}
+// 〔MIG-3b〕删一份远端会话那一件也走了（连同取文件名 stem 的那个小函数）：
+//   界面经通道直说那台后端 `files-delete-session`（`src/session-writes.ts`），本模块只剩「按名字取远端配置」一件。
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/remote_history_tests.rs"]

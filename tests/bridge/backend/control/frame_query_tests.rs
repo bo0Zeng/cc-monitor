@@ -230,6 +230,17 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔MIG-3b · `设计/05 §9` 第 12 条〕删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
+    (
+        "files-delete-session",
+        "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
+         monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
+    ),
+    (
+        "session-fork",
+        "后端出成品 `{sessionId, jsonlPath}`（`fork_write.rs`，sid / uuid 在入口过 `session_id_ok`）；前端 `src/session-writes.ts::forkSession` 问、\
+         `decodeFork` 按恰好的键集合收（金样 `session-fork.golden.json`），monitor 这一侧零发送点",
+    ),
     // 〔MIG-3b · `设计/95 §6`〕钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",
@@ -699,7 +710,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // `设计/01 §5 D11`「后端是给定的、不留退路」。RT1 F2 读数：旧那条 `run_query` 只认 exe 旁边那一份文件、
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
-// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /
+// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /〔散文墓碑〕
 //    `local_accounts_tests`：假后端那一侧真收到了帧命令）；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
@@ -1107,12 +1118,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "问那台 `cc-acct-iso shellinit` 的片段（`acct-iso-shellinit`，一问）：`ACCT_ISO_BUDGET`",
     ),
     // 〔SH1〕本机那一条 `local_acct_iso_shellinit`〔散文墓碑〕 那一行摘了：本机远端合成 `acct_iso_shellinit`，期限由 `snippet_on` 那一处造（已在表里）。
-    (
-        "remote_branch.rs",
-        "fork_on",
-        1,
-        "在那台分叉一条会话（`session-fork`，一问）：`FORK_BUDGET`",
-    ),
+    // 〔MIG-3b〕在那台分叉一条会话那一行摘了：monitor 不再发（界面经通道直说 `session-fork`，期限在界面那一手造）。
     (
         "session_skeleton.rs",
         "read_session_lines",

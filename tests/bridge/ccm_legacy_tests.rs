@@ -152,9 +152,6 @@ impl crate::user_files::Door for StaleDoor {
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
         self.inner.chmod(root, rel, mode).await
     }
-    async fn delete_session(&self, sid: &str) -> Result<String, String> {
-        self.inner.delete_session(sid).await
-    }
     async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
         self.inner.stat_kind(path).await
     }

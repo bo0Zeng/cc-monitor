@@ -14611,10 +14611,10 @@
       "zh": "{what} 长度非法（1..=64）",
       "args": ["what"]
     },
-    "rsRemoteBranch.fork.badProduct": {
+    "sessionWrites.fork.badProduct": {
       "kind": "error",
-      "zh": "{who}的后端说分叉成功了，但结果认不出来（{e}）。多半是两边版本不一样，先别重试，刷新会话列表看看有没有多出来的那一条",
-      "args": ["who", "e"]
+      "zh": "那台后端说分叉成功了，但结果认不出来（{e}）。多半是两边版本不一样，先别重试，刷新会话列表看看有没有多出来的那一条",
+      "args": ["e"]
     },
     "historyActions.menu.delete": {
       "kind": "action",
@@ -15574,11 +15574,6 @@
       "zh": "拒绝 resume：自定义命令 {launcher} 含不允许的字符 {c}。只许字母、数字、空格、-_./ 和开头的 ~/",
       "args": ["launcher", "c"]
     },
-    "rsHistory.delete.notSessionFile": {
-      "kind": "body",
-      "zh": "不是会话记录文件",
-      "args": []
-    },
     "rsHistory.session.badPath": {
       "kind": "error",
       "zh": "会话路径不对：{path}",
@@ -15588,11 +15583,6 @@
       "kind": "body",
       "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
       "args": ["max", "read", "lines"]
-    },
-    "rsHistory.delete.idMismatch": {
-      "kind": "error",
-      "zh": "没有删除：会话 ID（{sessionId}）与那份文件的名字（{fileName}）对不上。一个字节都没动",
-      "args": ["sessionId", "fileName"]
     },
     "rsRemoteHistory.cfg.missing": {
       "kind": "error",
