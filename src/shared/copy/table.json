@@ -3781,6 +3781,11 @@
       "zh": "渲染完整内容 ({kb} KB)",
       "args": ["kb"]
     },
+    "cards.markdown.showRest": {
+      "kind": "action",
+      "zh": "显示全部（还有 {kb} KB）",
+      "args": ["kb"]
+    },
     "cards.text.showAll": {
       "kind": "action",
       "zh": "显示完整内容 ({kb} KB)",
