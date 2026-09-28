@@ -19292,7 +19292,7 @@
     },
     "tabMenu.reread.hint": {
       "kind": "body",
-      "zh": "从这个会话上次读到的地方接着读，补上没显示出来的内容",
+      "zh": "从上次读到的地方接着读，补上没显示的内容",
       "args": []
     },
     "tabSessionActions.reread.failed": {
