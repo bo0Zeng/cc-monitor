@@ -147,6 +147,21 @@ if [ -z "$CMD" ]; then
 fi
 ok "拿到生产渲染器的串：$CMD"
 
+# 〔MIG-1 续四〕**自足**：串以 `ccm` 这个名字打头，按名字解析就要看登录 shell 的 PATH —— profile 会把 `~/.local/bin` 排到最前，
+#   那里可能躺着一份与本树无关的旧 `ccm`（主线上本套件 5 红就是撞上了它：旧 shim 不认 `--cwd` / `--ccm-tmux`）。
+#   ⇒ 把打头那个词换成本树这一份的**绝对路径**（软链 `$BIN/ccm` → 本树刚编出来的后端二进制）。容器里键入的内层命令
+#   取的是外层的 `argv[0]`（`plan.rs`），于是内层也是这一份；送法照旧是生产那一形（`bash -lic <串>`）。**不碰用户家目录里的任何文件**。
+case "$CMD" in
+  "ccm "*) CMD="'$BIN/ccm' ${CMD#ccm }" ;;
+  *) echo "  ABORT 串不是以 \`ccm \` 打头 —— 没法钉成本树这一份：$CMD"; exit 2 ;;
+esac
+# 前置断言（fail-closed）：打头那一份解析到的就是本树的后端二进制。
+if [ "$(readlink -f "$BIN/ccm")" != "$(readlink -f "$CCM_NATIVE")" ]; then
+  echo "  ABORT $BIN/ccm 解析到 '$(readlink -f "$BIN/ccm")'，不是本树这一份 $CCM_NATIVE"
+  exit 2
+fi
+ok "前置：串打头的 ccm 钉成本树这一份（$BIN/ccm → $CCM_NATIVE），不经 PATH 解析"
+
 case "$CMD" in
   *"--ccm-tmux=$TMUXNAME"*) ok "串里带 --ccm-tmux=$TMUXNAME（会话容器；用户 09-26 改名）" ;;
   *) bad "串里没有 --ccm-tmux=$TMUXNAME —— 本件的正题没落地：$CMD" ;;

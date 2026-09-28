@@ -1,7 +1,7 @@
 //! 设计/99 §2.1 ⑬「会话 / tmux 账本（会话表 · tmux 快照 · 容器判定 · 可重连判定）进那台后端；monitor 只收成品帧」· `设计/30 §3.5.6`（可恢复性由容器定）。
 //!
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决（从 monitor 搬来的那几条性质，本机远端同一份）：
-//! 摘除按 cause ＋ 快照 · 两种收割 · 没进过 tmux 的不收割 · 不可观测不收割 · 第一份快照推出可重连 · 清单压到快照之后。
+//! 摘除按 cause ＋ 快照 · 两种收割 · 没进过 tmux 的不收割 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
 use crate::wire::{Frame, RemovalCause, SessionFate};
 
@@ -165,6 +165,7 @@ fn an_unobservable_snapshot_reaps_nothing_and_releases_the_held_list() {
 #[test]
 fn the_first_observable_snapshot_announces_reconnectables_before_the_list() {
     // 新连接从 tmux 自己推出可重连（挂着 `@ccm_sid`、却不在活会话里的），**先于**清单（替掉 monitor「重连后重新裁」那一套）。
+    // 〔MIG-1 续四〕之后的快照照样推：后来才出现的 `later` 也报一次；已报过的 `old` 不重报。
     let (passed, out) = run(vec![
         added("live"),
         listed(),
@@ -174,8 +175,32 @@ fn the_first_observable_snapshot_announces_reconnectables_before_the_list() {
     assert_eq!(passed, vec![true, false, true, true]);
     assert_eq!(
         out,
-        vec![("old".to_string(), Some(R)), ("*".to_string(), None)],
-        "只推导一次：之后才出现的 `later` 不算"
+        vec![
+            ("old".to_string(), Some(R)),
+            ("*".to_string(), None),
+            ("later".to_string(), Some(R))
+        ],
+    );
+}
+
+#[test]
+fn a_tagged_session_on_a_server_that_started_after_the_backend_is_announced() {
+    // 〔MIG-1 续四 · `tests/e2e/backend-tmux-late-server.sh` 那一格〕后端先起：第一份快照是「零会话」（可观测）；
+    //   tmux server 后起、上面挂着 `@ccm_sid` 的会话 ⇒ 可重连（只报一次；它关了 ⇒ 已结束）。
+    let (_, out) = run(vec![
+        listed(),
+        tmux(&[]),
+        tmux(&[("late", "sid-late")]),
+        tmux(&[("late", "sid-late")]),
+        tmux(&[]),
+    ]);
+    assert_eq!(
+        out,
+        vec![
+            ("*".to_string(), None),
+            ("sid-late".to_string(), Some(R)),
+            ("sid-late".to_string(), Some(E))
+        ]
     );
 }
 

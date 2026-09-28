@@ -14,7 +14,7 @@
 //! |---|---|
 //! | `session_added` | 记为活（从可重连里摘掉：又活了） |
 //! | `session_removed` | `superseded` ⇒ 已结束（旧 sid 的 tmux 那一格已改挂新 sid，查快照必错）；`gone` ⇒ 最新快照里 `@ccm_sid` 还挂着它 ⇒ 可重连，否则已结束 |
-//! | tmux 观测（可观测的） | 收割：会话名消失（确证关了）⇒ 当场已结束；活的 / 可重连的、曾挂在 tmux 里、连续 [`RETIRE_MISS_THRESHOLD`] 份不见 ⇒ 已结束（带外杀掉 tmux，#60-A）。**第一份**还顺手宣告「挂着 `@ccm_sid`、却不在活会话里」的为可重连 |
+//! | tmux 观测（可观测的） | 收割：会话名消失（确证关了）⇒ 当场已结束；活的 / 可重连的、曾挂在 tmux 里、连续 [`RETIRE_MISS_THRESHOLD`] 份不见 ⇒ 已结束（带外杀掉 tmux，#60-A）。每一份还宣告「挂着 `@ccm_sid`、却不在活会话里、没报过」的为可重连（〔MIG-1 续四〕原先只第一份） |
 //! | `sessions_replayed` | 第一份 tmux 快照到之前**压住**，到了（不论可不可观测）先放上一格的宣告、再放它 ⇒ 客户端收到「清单报完了」时可重连的也已报过 |
 //!
 //! 不可观测的快照（没装 tmux · 观测失败）不收割、不推导；摘除时照它裁（它说的是「这一刻一个 `@ccm_sid` 都看不见」）。
@@ -40,8 +40,6 @@ pub(crate) struct SessionLedger {
     miss: BTreeMap<String, u32>,
     /// 见过至少一份 tmux 观测（可观测与否都算）。
     tmux_seen: bool,
-    /// 推导过一次可重连（第一份可观测的快照）。
-    derived: bool,
     /// `sessions_replayed` 被压着没发。
     held_listed: bool,
     /// 上一份快照的观测种类（只为日志只记变化）。
@@ -179,14 +177,13 @@ impl SessionLedger {
                 self.miss.remove(&sid);
                 out.push(state(&sid, SessionFate::Ended));
             }
-            // ③ 第一份可观测的快照：挂着 `@ccm_sid`、却不在活会话里的 ⇒ 可重连（新连接从 tmux 自己推出来）。
-            if !self.derived {
-                self.derived = true;
-                for sid in reported {
-                    if !self.live.contains(sid) && self.reconnectable.insert(sid.to_string()) {
-                        self.ever_bound.insert(sid.to_string());
-                        out.push(state(sid, SessionFate::Reconnectable));
-                    }
+            // ③ 每一份可观测的快照：挂着 `@ccm_sid`、却不在活会话里、还没报过可重连的 ⇒ 可重连（从 tmux 自己推出来）。
+            //   〔MIG-1 续四 · `backend-tmux-late-server` 那一格〕原先只在**第一份**推：后端先起、tmux server 后起时第一份是
+            //   「零会话」，之后那台 server 上挂着标签的会话就再也没人报 ⇒ 灰灯永不出现（#60 同形，换了一层）。
+            for sid in reported {
+                if !self.live.contains(sid) && self.reconnectable.insert(sid.to_string()) {
+                    self.ever_bound.insert(sid.to_string());
+                    out.push(state(sid, SessionFate::Reconnectable));
                 }
             }
         }
