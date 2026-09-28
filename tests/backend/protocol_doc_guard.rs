@@ -1251,8 +1251,8 @@ mod tests {
                 include_str!("../../src/backend/agents/codex/parse.rs"),
             ),
             (
-                "observe/turn_detect.rs",
-                include_str!("../../src/backend/observe/turn_detect.rs"),
+                "agents/claudecode/turn.rs",
+                include_str!("../../src/backend/agents/claudecode/turn.rs"),
             ),
         ];
 

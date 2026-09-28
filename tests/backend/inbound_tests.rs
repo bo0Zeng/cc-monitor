@@ -448,6 +448,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "forward-start",
         "forward-stop",
         "forward-list",
+        "drift-report", // 〔MOD〕漂移账：纯内存一把锁
         "remote-probe",
     ] {
         assert!(
@@ -543,7 +544,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-lines",  // 〔CF2〕
         "history-record", // 〔U4b〕
         "history-search",
-        "history-subagents",
+        "history-subagent", // 〔MOD〕
+        "history-page",     // 〔MOD〕
         "history-tail",
         "accounts-list",
         "accounts-sessions",
@@ -648,6 +650,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "forward-start",
         "forward-stop",
         "forward-list",
+        "drift-report", // 〔MOD〕漂移账：纯内存一把锁
         "remote-probe",
         "cancel",
         "link-open",
@@ -700,7 +703,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
-        "history-subagents",
+        "history-subagent", // 〔MOD〕
+        "history-page",     // 〔MOD〕
         "history-tail",
         "accounts-list",
         "accounts-sessions",

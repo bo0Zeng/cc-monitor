@@ -293,6 +293,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "bus-state",
         // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
         "files-home",
+        "drift-report", // 〔MOD〕这台后端的漂移账（纯读、不收输入）
         "exit-policy-read",
         // 〔E2〕`ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",

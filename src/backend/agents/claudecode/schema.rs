@@ -1,4 +1,6 @@
-//! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema。
+//! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema —— **这些类型就是界面收到的记录的线上形状**
+//! （ts-rs 从这里导出 `src/generated/`）。〔MOD · `设计/90 §3` 判据 3〕它从 monitor 的 `messages.rs` 搬进来：
+//! 记录解释只住后端，monitor 只把成品原样转交（`15 §5.3 C7`）。
 //!
 //! `JsonlRecord` enum 按 `type` 字段反序列化（user / assistant / system / summary /
 //! ai-title / attachment / permission-mode / last-prompt / file-history-snapshot 等）。
@@ -6,11 +8,11 @@
 //! 避免 Claude Code 写法变动导致整行解析失败。
 //!
 //! **F63（issue #49）起看不懂的记录不静默丢**（INVARIANT § 18.1）：未知 `type` 落到
-//! `#[serde(other)] Unknown`（仅 serde 内部落点），但 **`Unknown` 绝不出 `parser::parse_line`**
+//! `#[serde(other)] Unknown`（仅 serde 内部落点），但 **`Unknown` 绝不出 `parse::parse_line`**
 //! ——它连同「已知 type 解析失败但仍是合法 JSON」的行一起被抢救成 `Unrecognized`
 //! （留原文 + uuid/parentUuid/timestamp），进链防孤儿化误折叠。详见 `Unrecognized` 变体注释。
 //!
-//! 这些类型在前端 `cards/index.ts` 有对应的 TS 镜像（ApiMessage / ContentBlock 等）。
+//! 前端 `cards/index.ts` 读的是这里导出的生成物（`ContentBlock` 那一层解释模型在前端）。
 
 use serde::{Deserialize, Serialize};
 
@@ -95,7 +97,7 @@ pub enum JsonlRecord {
         #[serde(rename = "forkedFrom", default)]
         forked_from: Option<ForkedFrom>,
         /// 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `search_core::user_text`，
-        /// 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parser::parse_line` · `codex_record`）。
+        /// 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parse::parse_line` · `agents/codex/record.rs`）。
         #[serde(rename = "userText", skip_deserializing, default)]
         user_text: UserText,
     },
@@ -234,7 +236,7 @@ pub enum JsonlRecord {
 
     /// F63 (issue #49)：**看不懂的记录 —— 留原文 + 留链上的身份**。
     ///
-    /// 由 `parser::parse_line` 构造，**绝不从真实 jsonl 反序列化得来**（故 type 名带
+    /// 由 `parse::parse_line` 构造，**绝不从真实 jsonl 反序列化得来**（故 type 名带
     /// `cc-monitor-` 前缀防撞未来的真类型）。两条来源：
     /// 1. 未知 `type` —— serde 落到下面的 `Unknown`，`parse_line` 抢救成本变体
     /// 2. 已知 `type` 但字段解析失败（`from_str` 返回 Err）且原文仍是合法 JSON
@@ -376,6 +378,14 @@ impl JsonlRecord {
     /// - `Unknown` = **不认识**，曾经从这里被静默丢弃（实测 8,774 条 / 5.6%）。
     ///   F63 起它不再出 `parse_line`（被抢救成 `Unrecognized`），此处 false 只是
     ///   兜底——真走到说明 `parse_line` 的后处理漏了，属 bug。
+    /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（〔MOD〕原 monitor `lib.rs::extract_cwd`）。
+    pub fn cwd(&self) -> Option<&str> {
+        match self {
+            Self::User { cwd, .. } => cwd.as_deref(),
+            _ => None,
+        }
+    }
+
     pub fn is_displayable(&self) -> bool {
         matches!(
             self,
@@ -394,5 +404,5 @@ impl JsonlRecord {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/messages_tests.rs"]
+#[path = "../../../../tests/backend/agents/claudecode/schema_tests.rs"]
 mod tests;

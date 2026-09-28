@@ -269,6 +269,49 @@ pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
     }
 }
 
+/// 〔MOD · 原 monitor `subagent.rs::choose_subagent` · `pick_closest`〕从 [`list_subagents_into`] 的候选行里挑**一个**：
+/// `description` 精确串等筛，再按首行时间戳与 `tool_use_timestamp` 差距最小挑。**纯函数，不碰文件系统**。
+///
+/// 挑的规则只有这一份（`C1`）：原先它住 monitor、后端只列不挑；「找」与「挑」一起进了后端之后，界面只问一次。
+/// 缺时间戳那一档：拿不到（`None`）或 `tool_use_timestamp` 自己解析不出 ⇒ 排序键取 `i64::MAX`；稳定排序 ⇒
+/// 全缺时保持列出来的次序、取第一条，部分缺时有时间戳的排在前面。**不报错**。
+pub(crate) fn pick_subagent(
+    listing: &[&str],
+    description: &str,
+    tool_use_timestamp: &str,
+) -> Option<std::path::PathBuf> {
+    use crate::observe::search_query::parse_iso8601_ms;
+    let mut metas: Vec<(std::path::PathBuf, Option<String>)> = Vec::new();
+    for line in listing {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+            continue;
+        };
+        if v.get("description").and_then(|d| d.as_str()) != Some(description) {
+            continue;
+        }
+        let Some(path) = v.get("path").and_then(|p| p.as_str()) else {
+            continue;
+        };
+        // 时间戳拿不到就是 `None` —— `null` 与**根本没这个键**落到同一档。
+        let ts = v
+            .get("timestamp")
+            .and_then(|t| t.as_str())
+            .map(str::to_string);
+        metas.push((std::path::PathBuf::from(path), ts));
+    }
+    if metas.len() <= 1 {
+        return metas.pop().map(|(p, _)| p);
+    }
+    let target = parse_iso8601_ms(tool_use_timestamp);
+    metas.sort_by_key(
+        |(_, ts)| match (target, ts.as_deref().and_then(parse_iso8601_ms)) {
+            (Some(t), Some(f)) => (f - t).abs(),
+            _ => i64::MAX,
+        },
+    );
+    metas.into_iter().next().map(|(p, _)| p)
+}
+
 /// [`list_subagents`] 的本体，出口是参数（帧面 `history-subagents` 与 CLI 同一个函数）。
 /// 错误是 `(code, message)`，CLI 那层把它原样印成 stderr 那一行 JSON（字节与改前相同）。
 pub(crate) fn list_subagents_into(
@@ -1427,7 +1470,7 @@ pub(crate) fn agent_home() -> std::path::PathBuf {
 /// 秤 7 的第一版变体就是这么写错的，**靠穷举才逮出来**（全部 1/2/3 字节共
 /// 16 843 008 个 ＋ 300 万随机串，分歧 0；证据 `tests/evidence/S7-blank-line-equivalence.rs`）——
 /// **单测没逮住，因为没有那个样本。**
-fn line_counts(line: &[u8]) -> bool {
+pub(crate) fn line_counts(line: &[u8]) -> bool {
     // 快路：有 ASCII 非空白 ⇒ 必非空，不必解码
     if line
         .iter()

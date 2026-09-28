@@ -1,7 +1,7 @@
 //! U3（2026-08-01）：**观测面** —— 读，不改变世界。
 //!
 //! §1.1 第二条解耦线的一半。判据不是「模块名里有没有 query」，是**它会不会改变世界**：
-//! 流式 watcher、四类一次性查询、以及供它们用的纯解析核（`turn_detect`）。
+//! 流式 watcher、四类一次性查询、以及供它们用的读正文核（`record_page`；轮次判词随记录解释进了 `agents/claudecode/turn.rs`）。
 //!
 //! ⚠ **本层今天仍是 Claude 专属的**（`S1` 的判据红着这份清单）：`watcher`/`accounts_query`/
 //! `history_query` 都直接认识 Claude 的目录布局与文件格式。Codex 那半 `S2` 已经搬去
@@ -37,6 +37,6 @@ pub(crate) mod plugins_query;
 pub(crate) mod tasks_query;
 pub(crate) mod tmux_list; // 〔MIG-1 续 · ⑬〕`tmux-list` 出成品（解析从 monitor `parse_tmux_ls`〔散文墓碑〕 搬来）
                           // 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
-pub(crate) mod turn_detect;
+pub(crate) mod record_page; // 〔MOD〕按路径读正文出成品（切行 · 编号 · 挑哪一家解释）
 pub(crate) mod user_inputs;
 pub mod watcher;

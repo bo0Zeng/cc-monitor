@@ -139,7 +139,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   正交、不受 §26）——aterm 门控消费。现声明 line/session_added/session_status/session_removed/
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
 /// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
-///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `turn_detect` 对拍 aterm TurnDetector）；
+///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍 aterm TurnDetector）；
 ///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
@@ -775,6 +775,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--capture-pane",
     // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
+    // 〔MOD〕这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--drift-report",
     // 〔MIG-3b 续〕全景写（帧面 `panorama-edit` 的 CLI 面，自动派生）。
     "--panorama-edit",
     // 〔MIG-3b 续〕公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
@@ -931,6 +933,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-lines",
+    // 〔MOD〕`history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-page",
     "--history-projects",
     "--history-read",
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
@@ -938,7 +942,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-record",
     "--history-search",
     "--history-sessions",
-    "--history-subagents",
+    // 〔MOD〕`history-subagents`（只列候选）换成 `history-subagent`（出成品）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-subagent",
     "--history-tail",
     "--history-user-inputs",
     // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。

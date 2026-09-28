@@ -44,6 +44,12 @@ pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 /// 要转义（引号、反斜杠）—— 留一半余量。
 pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
 
+/// 〔MOD〕「整份读进查看器」那一件读到多少字节就明拒（原 monitor `history.rs::MAX_SESSION_BYTES`，F06）。
+///
+/// ⚠〔audit-0805 F06〕实测本机最大会话 **270,103,105 字节**，已经越过这条线 ⇒ 上限会被真实数据打到，
+/// 打到之后不能是静默：`history-page` 带 `whole` 时读过它就回 `too_large`，那句话说清读到了哪。
+pub(crate) const WHOLE_SESSION_MAX_BYTES: u64 = 256 * 1024 * 1024;
+
 /// 按行那六条整份输出的上限（同上，留一半余量）。
 pub(crate) const LINES_CAP_BYTES: usize = 32 << 20;
 
@@ -106,9 +112,52 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         }
         // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两臂搬走了：它们从此出成品（并注解 ＋ 判活 ＋ 远端那一跳），
         //   住 `history_join.rs`（历史跨机 join 的唯一的家）；这里只剩按行 / 按页的换壳。
-        "history-subagents" => {
+        // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品：列候选 ＋ 挑（description 精确串等 ＋ 时间戳最近）＋ 读 ＋ 解析都在这台后端，
+        //   界面经通道直接问（原先 monitor `subagent.rs` 列了再挑、再读、再解析）。挑的规则只此一份（`history_query::pick_subagent`）。
+        "history-subagent" => {
             let parent = str_arg(args, "parent")?;
-            lines(|out| history_query::list_subagents_into(home, parent, out))
+            let description = str_arg(args, "description")?;
+            let timestamp = str_arg(args, "timestamp")?;
+            let mut listing = CappedBuf::default();
+            let listed = history_query::list_subagents_into(home, parent, &mut listing);
+            if listing.over {
+                return Err(too_large(listing.seen));
+            }
+            listed?;
+            let text = String::from_utf8_lossy(&listing.buf);
+            let rows: Vec<&str> = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect();
+            let Some(picked) = history_query::pick_subagent(&rows, description, timestamp) else {
+                return Err((
+                    "not_found",
+                    copy_text(
+                        "rsSubagent.load.notFound",
+                        &[("description", &format!("{description:?}"))],
+                    ),
+                ));
+            };
+            let picked_str = picked.to_string_lossy().into_owned();
+            let (target, face) = record_face(home, &picked_str)?;
+            let bytes =
+                std::fs::read(&target).map_err(|e| ("failed", format!("read failed: {e}")))?;
+            let records = crate::observe::record_page::all_records(&face, &bytes);
+            let v = json!({
+                "path": picked_str,
+                "agent_id": picked.file_stem().and_then(|s| s.to_str()).and_then(|s| s.strip_prefix("agent-")).unwrap_or(""),
+                "records": records,
+            });
+            capped(v)
+        }
+        // 〔MOD〕这台后端的漂移账（看不懂的记录类型）出成品：`{faces: [...]}`（各家的面并在一起，注册序）。
+        "drift-report" => {
+            let faces: Vec<Value> = crate::agents::drift_reports()
+                .into_iter()
+                .flat_map(|r| r["faces"].as_array().cloned().unwrap_or_default())
+                .collect();
+            Ok(json!({ "faces": faces }))
         }
         "history-search" => {
             let query = str_arg(args, "query")?;
@@ -163,10 +212,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             };
             accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
         }
+        // 〔MOD〕按字节分页读，出**行摘要**（monitor 旁路快照那一页）：`{rows: [{end, hash, message?, cwd?}], next, eof}`，
+        //   每个可计行一条（`observe/record_page.rs::rows_of`）。原先回 `text`、由 monitor 切行解析。
         "history-read" => {
             let path = str_arg(args, "path")?;
             let offset = u64_arg(args, "offset")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
+            let (_, face) = record_face(home, path)?;
             let page = history_query::read_page(
                 home,
                 path,
@@ -176,16 +228,58 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 LINE_CAP_BYTES,
             )?;
             Ok(json!({
-                "text": String::from_utf8_lossy(&page.bytes),
+                "rows": crate::observe::record_page::rows_of(&face, offset, &page.bytes),
                 "next": page.next,
                 "eof": page.eof,
             }))
         }
+        // 〔MOD · `05 §14.3` C 组〕按字节分页读，出**记录行**（界面直接问：查看器整份读 · 骨架按偏移取一段）：
+        //   `{lines, next, nextSeq, eof}`；`seq` ＝ `offset` 那一行的行号（缺 ＝ 0）、`nextSeq` 原样交回下一问。
+        //   `whole` ＝ 这是「整份读进查看器」那一件：读过 [`WHOLE_SESSION_MAX_BYTES`] 就明拒（不许静默截断，F06）。
+        "history-page" => {
+            let path = str_arg(args, "path")?;
+            let offset = u64_arg(args, "offset")?.unwrap_or(0);
+            let until = u64_arg(args, "until")?;
+            let seq = u64_arg(args, "seq")?.unwrap_or(0);
+            let whole = args.get("whole").and_then(Value::as_bool).unwrap_or(false);
+            let (target, face) = record_face(home, path)?;
+            let page = history_query::read_page(
+                home,
+                path,
+                offset,
+                until,
+                READ_PAGE_BYTES,
+                LINE_CAP_BYTES,
+            )?;
+            if whole && page.next > WHOLE_SESSION_MAX_BYTES {
+                return Err((
+                    "too_large",
+                    copy_text(
+                        "rsHistory.session.truncated",
+                        &[
+                            ("max", &WHOLE_SESSION_MAX_BYTES.to_string()),
+                            ("read", &page.next.to_string()),
+                            ("lines", &seq.to_string()),
+                        ],
+                    ),
+                ));
+            }
+            let (lines, next_seq) =
+                crate::observe::record_page::record_lines_of_page(&face, &target, seq, &page.bytes);
+            Ok(json!({
+                "lines": lines,
+                "next": page.next,
+                "nextSeq": next_seq,
+                "eof": page.eof,
+            }))
+        }
         // 〔CF2 · 第四波 4B〕按**行号**取回（不依赖骨架索引的那条取回路，`history_query::read_lines` 头注）。
+        // 〔MOD〕出**记录行**（原先回可计行原文、由 monitor 解析）：`{from, next, eof, lines}`。
         "history-lines" => {
             let path = str_arg(args, "path")?;
             let from = u64_arg(args, "from")?.unwrap_or(0);
             let until = u64_arg(args, "until")?;
+            let (target, face) = record_face(home, path)?;
             let page = history_query::read_lines(
                 home,
                 path,
@@ -194,11 +288,17 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 READ_PAGE_BYTES,
                 LINE_CAP_BYTES,
             )?;
+            let (lines, _) = crate::observe::record_page::record_lines(
+                &face,
+                &target,
+                page.from,
+                page.lines.iter().map(|l| l.as_bytes()),
+            );
             Ok(json!({
                 "from": page.from,
                 "next": page.next,
                 "eof": page.eof,
-                "lines": page.lines,
+                "lines": lines,
             }))
         }
         // 〔SR1a · 2026-09-24〕`frame_query::STILL_DIALED` 缩到只剩真该拨号的那两条：骨架索引与大纲清单
@@ -322,6 +422,29 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
             crate::common::contract::malformed(&format!("this face has no command `{other}`")),
         )),
     }
+}
+
+/// 〔MOD〕过围栏 ⇒ 这份记录是哪一家的（注册表按它落在谁的根下认），解释交那一家。
+fn record_face(
+    home: &std::path::Path,
+    path: &str,
+) -> Result<(std::path::PathBuf, crate::agents::RecordFace), (&'static str, String)> {
+    let target =
+        crate::observe::history_query::session_path_at(home, path).map_err(|e| ("refused", e))?;
+    let face = crate::agents::record_face_of(&target).ok_or((
+        "failed",
+        crate::common::contract::malformed("no adapter reads this record"),
+    ))?;
+    Ok((target, face))
+}
+
+/// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
+fn capped(v: Value) -> Answer {
+    let size = v.to_string().len();
+    if size > LINES_CAP_BYTES {
+        return Err(too_large(size));
+    }
+    Ok(v)
 }
 
 /// 跑一个「往 `out` 里逐行写」的查询，收成 `{"lines": [...]}`。

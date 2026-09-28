@@ -1,48 +1,39 @@
 use super::*;
 
-/// 〔ST3〕本文件的解析都记在这台探针机器名下（名字本文件专属，别的测试不会用它）。
-fn here() -> crate::origin::Origin {
-    crate::origin::Origin("st3-parser-probe".into())
-}
-
-/// 在 `origin` 名下找一条记账（全局账本，只找「我这条」）。
+/// 在这台后端的漂移账里找一条记账（全局账本，只找「我这条」）。
 fn ledger_entry(
-    origin: &crate::origin::Origin,
-    face: crate::drift_ledger::DriftFace,
+    face: super::super::drift::DriftFace,
     key: &str,
-) -> Option<crate::drift_ledger::DriftEntry> {
-    crate::drift_ledger::snapshot(origin)
+) -> Option<super::super::drift::DriftEntry> {
+    super::super::drift::snapshot()
         .into_iter()
         .find(|f| f.face == face)
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key))
 }
 
-/// ★ **接缝**：`parse_line` 真的把未知 type 记进了漂移账本 —— 〔ST3〕**记在调用方说的那台名下**。
+/// ★ **接缝**：`parse_line` 真的把未知 type 记进了漂移账本。
 ///
 /// 本区第 10 条纪律：`drift_ledger` 有自己的测试、`parse_line` 有自己的测试，
 /// **两者之间的接缝没有判据的话，把 `record(...)` 那一行删掉 CI 一片绿**。
 ///
 /// ⚠ **写成「容忍污染」的形状**：账本是进程内全局的，任何跑过 `parse_line` 的测试
-/// 都会往里写（`history`/`search`/`lib` 的批处理测试都会）。第一版断言
-/// `entries[0].key == …`（位置敏感），实测 6 次全量跑红 4 次。
-/// 这里只断言「**我这两条键在，且计数 ≥1**」，不碰表的整体形状。
-/// 〔ST3〕另一向：**本机名下没有它**（键是本测试专属的，本机那一本里出现只可能是记错了台）。
+/// 都会往里写。只断言「**我这两条键在，且计数 ≥1**」，不碰表的整体形状。
 #[test]
 fn parse_line_feeds_the_drift_ledger() {
-    use crate::drift_ledger::DriftFace;
+    use super::super::drift::DriftFace;
     // 本测试专属的 type 名：别的测试不会产出它，故不受污染影响。
     let unknown = r#"{"type":"u-cc1-seam-probe","agentId":"a1"}"#;
-    let r = parse_line(&here(), unknown).expect("合法 JSON 不该 Err");
+    let r = parse_line(unknown).expect("合法 JSON 不该 Err");
     assert!(
         matches!(r, Some(JsonlRecord::Unrecognized { .. })),
         "抢救行为变了 —— 本条只该记账，不该改行为"
     );
     // 已知 type 但字段坏（`user` 缺 uuid/timestamp）
     let broken = r#"{"type":"user","message":{"role":"user","content":"x"}}"#;
-    let _ = parse_line(&here(), broken);
+    let _ = parse_line(broken);
 
-    let a = ledger_entry(&here(), DriftFace::UnknownRecordType, "u-cc1-seam-probe")
-        .expect("未知 type 没有记在调用方说的那台名下");
+    let a = ledger_entry(DriftFace::UnknownRecordType, "u-cc1-seam-probe")
+        .expect("未知 type 没有记进漂移账");
     assert!(a.count >= 1);
     assert!(
         a.first_sample
@@ -51,87 +42,23 @@ fn parse_line_feeds_the_drift_ledger() {
         "样例没留住原文"
     );
     assert!(
-        ledger_entry(&here(), DriftFace::KnownTypeParseFailed, "user").is_some(),
+        ledger_entry(DriftFace::KnownTypeParseFailed, "user").is_some(),
         "已知类型解析失败没有被记账（应当按 type 分组，好回答「是哪个类型变了」）"
     );
-    assert!(
-        ledger_entry(
-            &crate::origin::Origin::local(),
-            DriftFace::UnknownRecordType,
-            "u-cc1-seam-probe"
-        )
-        .is_none(),
-        "〔ST3〕探针机器的行记进了本机那一本 —— 账没按机器分"
-    );
 }
-
-/// 〔ST3〕`parse_for_kind` 的 Claude 那一臂把 `origin` 一路交给 `parse_line`（不是自己编一个本机）。
-#[test]
-fn parse_for_kind_records_under_the_callers_origin() {
-    use crate::drift_ledger::DriftFace;
-    let devbox = crate::origin::Origin("st3-kind-probe".into());
-    let line = r#"{"type":"st3-kind-seam-probe"}"#;
-    let _ = parse_for_kind(AgentKind::ClaudeCode, &devbox, line);
-    assert!(
-        ledger_entry(&devbox, DriftFace::UnknownRecordType, "st3-kind-seam-probe").is_some(),
-        "Claude 那一臂没记在调用方说的那台名下"
-    );
-    assert!(
-        ledger_entry(
-            &crate::origin::Origin::local(),
-            DriftFace::UnknownRecordType,
-            "st3-kind-seam-probe"
-        )
-        .is_none(),
-        "Claude 那一臂把远端的行记成了本机的"
-    );
-}
-use crate::adapter::AgentKind;
 
 #[test]
 fn empty_line_returns_none() {
-    assert!(parse_line(&here(), "").unwrap().is_none());
-    assert!(parse_line(&here(), "   ").unwrap().is_none());
-    assert!(parse_line(&here(), "\n").unwrap().is_none());
-}
-
-/// Phase 2 F1a：parse_for_kind 派发。Claude=parse_line（不变）；Codex=映射进 JsonlRecord
-/// （message→Assistant、event→Unrecognized 保 raw）；空行两 kind 都 Ok(None)。
-#[test]
-fn parse_for_kind_dispatches_claude_and_codex() {
-    // Claude：走 parse_line，assistant 行 → Assistant（与直调 parse_line 一致）。
-    let claude = r#"{"type":"assistant","uuid":"a","timestamp":"t","message":{"role":"assistant","content":[]}}"#;
-    assert!(matches!(
-        parse_for_kind(AgentKind::ClaudeCode, &here(), claude).unwrap(),
-        Some(JsonlRecord::Assistant { .. })
-    ));
-    // Codex：response_item.message → Assistant（经 to_jsonl_record）。
-    let codex_msg = r#"{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}"#;
-    assert!(matches!(
-        parse_for_kind(AgentKind::Codex, &here(), codex_msg).unwrap(),
-        Some(JsonlRecord::Assistant { .. })
-    ));
-    // Codex：event_msg → Unrecognized（保 raw，turn-end/用量 per-kind 从中读）。
-    let codex_evt =
-        r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
-    assert!(matches!(
-        parse_for_kind(AgentKind::Codex, &here(), codex_evt).unwrap(),
-        Some(JsonlRecord::Unrecognized { .. })
-    ));
-    // 空行：两 kind 都 Ok(None)。
-    assert!(parse_for_kind(AgentKind::Codex, &here(), "  ")
-        .unwrap()
-        .is_none());
-    assert!(parse_for_kind(AgentKind::ClaudeCode, &here(), "")
-        .unwrap()
-        .is_none());
+    assert!(parse_line("").unwrap().is_none());
+    assert!(parse_line("   ").unwrap().is_none());
+    assert!(parse_line("\n").unwrap().is_none());
 }
 
 #[test]
 fn bom_only_line_returns_none() {
     // 纯 BOM 行：trim 后空
-    assert!(parse_line(&here(), "\u{feff}").unwrap().is_none());
-    assert!(parse_line(&here(), "\u{feff}   \n").unwrap().is_none());
+    assert!(parse_line("\u{feff}").unwrap().is_none());
+    assert!(parse_line("\u{feff}   \n").unwrap().is_none());
 }
 
 #[test]
@@ -140,9 +67,7 @@ fn bom_prefix_does_not_corrupt_type() {
     // cc 集成"装上没用"7 个版本。parse_line 必须先剥 BOM 再 from_str。
     let bom_user =
         "\u{feff}{\"type\":\"custom-title\",\"customTitle\":\"hi\",\"sessionId\":\"s1\"}";
-    let r = parse_line(&here(), bom_user)
-        .unwrap()
-        .expect("应该解析成功");
+    let r = parse_line(bom_user).unwrap().expect("应该解析成功");
     assert!(
         matches!(r, JsonlRecord::CustomTitle { .. }),
         "BOM 后类型识别失败：{r:?}"
@@ -153,8 +78,8 @@ fn bom_prefix_does_not_corrupt_type() {
 fn malformed_json_returns_err() {
     // 半截 JSON / 非法语法 → Err，不 panic（caller 决定容错策略）。
     // F63 后仍 Err：连合法 JSON 都不是 = 没身份可救。
-    assert!(parse_line(&here(), "{ not json").is_err());
-    assert!(parse_line(&here(), "{\"type\":\"user\",").is_err());
+    assert!(parse_line("{ not json").is_err());
+    assert!(parse_line("{\"type\":\"user\",").is_err());
 }
 
 // === F63 (issue #49)：看不懂的记录 —— 留原文 + 留链上的身份 ===
@@ -164,7 +89,7 @@ fn malformed_json_returns_err() {
 ///  断言的正是"Unknown 不应 emit"——那就是静默丢弃 8,774 条的那扇门。）
 #[test]
 fn unknown_type_is_salvaged_never_leaves_as_unknown() {
-    let r = parse_line(&here(), r#"{"type":"some-future-record-type","foo":42}"#)
+    let r = parse_line(r#"{"type":"some-future-record-type","foo":42}"#)
         .unwrap()
         .expect("合法 JSON 必须留下");
     assert!(
@@ -199,7 +124,7 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
 /// 但一旦出现，丢掉它 = 它的 children 全成孤儿 root → 整棵误折叠。
 #[test]
 fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
-    let r = parse_line(&here(),
+    let r = parse_line(
         r#"{"type":"brand-new-2027","uuid":"u9","parentUuid":"u8","timestamp":"t9","payload":{"a":1}}"#,
     )
     .unwrap()
@@ -230,7 +155,6 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
 fn known_type_parse_failure_is_salvaged_with_identity() {
     // type=user 但缺必填 uuid 之外的东西：这里给 message 一个错形状
     let r = parse_line(
-        &here(),
         r#"{"type":"user","uuid":"u1","parentUuid":"u0","timestamp":"t1","message":42}"#,
     )
     .unwrap()
@@ -287,7 +211,7 @@ fn zero_information_loss_over_mixed_fixture() {
     ];
     let (mut kept, mut skipped, mut errored) = (0, 0, 0);
     for (line, expect) in &fixture {
-        match parse_line(&here(), line) {
+        match parse_line(line) {
             Ok(Some(r)) => {
                 kept += 1;
                 assert!(
@@ -369,7 +293,7 @@ fn f63_real_data_ledger() {
                     continue;
                 }
                 total += 1;
-                match parse_line(&here(), line) {
+                match parse_line(line) {
                     Ok(Some(JsonlRecord::Unknown)) => leaked += 1,
                     Ok(Some(JsonlRecord::Unrecognized { original_type, .. })) => {
                         *salvaged

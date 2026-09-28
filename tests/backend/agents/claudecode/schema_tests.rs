@@ -287,8 +287,8 @@ fn attachment_preserves_uuid_chain_and_is_displayable() {
 #[test]
 fn unknown_type_does_not_panic_and_not_displayable() {
     // 注意：`parse` = 裸 `serde_json::from_str`，测的是 **serde 层**（Unknown 是
-    // serde 落点，此层它确实非 displayable）。**生产走 `parser::parse_line`**，
-    // 那里 Unknown 会被抢救成 `Unrecognized`（F63）—— 见 parser.rs 的护栏测试。
+    // serde 落点，此层它确实非 displayable）。**生产走 `parse::parse_line`**，
+    // 那里 Unknown 会被抢救成 `Unrecognized`（F63）—— 见 parse.rs 的护栏测试。
     let r = parse(r#"{"type":"future-unknown-type","x":1}"#);
     assert!(matches!(r, JsonlRecord::Unknown));
     assert!(!r.is_displayable());
@@ -383,7 +383,6 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
             JsonlRecord::Unknown => "unknown",
         }
     }
-    let here = crate::origin::Origin("w5r-r10-probe".into());
     let lines = [
         r#"{"type":"user","uuid":"u1","timestamp":"t","message":{"role":"user","content":"q"}}"#,
         r#"{"type":"assistant","uuid":"a1","timestamp":"t","message":{"role":"assistant","content":[]}}"#,
@@ -400,7 +399,7 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
     ];
     let mut got = std::collections::BTreeMap::new();
     for l in lines {
-        let r = crate::parser::parse_line(&here, l).unwrap().unwrap();
+        let r = super::super::parse::parse_line(l).unwrap().unwrap();
         got.insert(class_of(&r), r.is_displayable());
     }
     let want: std::collections::BTreeMap<&str, bool> = [
@@ -426,7 +425,6 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
 /// `search-core::user_text` 填进记录」。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
 #[test]
 fn a_parsed_user_record_carries_the_one_noise_rule_product() {
-    let origin = crate::origin::Origin::local();
     let cases = [
         (
             r#"{"type":"user","uuid":"a","timestamp":"t","message":{"role":"user","content":"<system-reminder>x</system-reminder>真话"}}"#,
@@ -440,7 +438,7 @@ fn a_parsed_user_record_carries_the_one_noise_rule_product() {
         ),
     ];
     for (line, clean, interrupt) in cases {
-        let rec = crate::parser::parse_line(&origin, line).unwrap().unwrap();
+        let rec = super::super::parse::parse_line(line).unwrap().unwrap();
         let v = serde_json::to_value(&rec).unwrap();
         assert_eq!(
             v["userText"],
@@ -448,8 +446,7 @@ fn a_parsed_user_record_carries_the_one_noise_rule_product() {
             "{line}"
         );
     }
-    let asst = crate::parser::parse_line(
-        &origin,
+    let asst = super::super::parse::parse_line(
         r#"{"type":"assistant","uuid":"c","timestamp":"t","message":{"role":"assistant","content":"hi"}}"#,
     )
     .unwrap()
@@ -464,15 +461,14 @@ fn a_parsed_user_record_carries_the_one_noise_rule_product() {
 /// （正文抽出来 trim）。这里用真规则把那份语料里的每条 user 记录过一遍：成品必须恰好就是那样（否则助手在替规则说假话）。
 #[test]
 fn the_ts_fixture_user_records_carry_no_injected_noise() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let origin = crate::origin::Origin::local();
+    let root = crate::guard_support::repo_root();
     let mut users = 0;
     for rel in ["tests/__fixtures__/scale2-height-records.jsonl"] {
         let text = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
             let Ok(Some(JsonlRecord::User {
                 message, user_text, ..
-            })) = crate::parser::parse_line(&origin, line)
+            })) = super::super::parse::parse_line(line)
             else {
                 continue;
             };

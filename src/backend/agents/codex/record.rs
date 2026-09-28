@@ -1,21 +1,18 @@
-//! Phase 2 · F2a：Codex rollout 记录的**防御式分类器**（keystone 第一块）。
+//! Phase 2 · F2a：Codex rollout 记录的**防御式分类器** ＋ 映射进渲染模型（`JsonlRecord`）。
 //!
-//! Codex 格式**未文档、每几个 minor 版 churn**（openai/codex 源码 + web 交叉证，见
-//! `code-picture/codex-vs-claude-事实对照_2026-07-18.md`）→ **不建 rigid typed enum**（每字段漂移即崩），
-//! 在 `serde_json::Value` 上**宽容抽取**（同 backend `usage_query`/`turn_detect` 套路）：逐行不崩、
-//! 每 record/field 当 optional、**alias 归一 `turn_*`↔`task_*`**（EventMsg 被改名，`task_*` 是 v1 别名）、
+//! 〔MOD · `设计/90 §3` 判据 3〕从 monitor 的 `codex_record.rs` 搬进后端：记录解释只住后端，界面只收成品。
+//! 信封助手（解包 · 子型 · alias 归一 · 那几个字段）只用 [`super::parse`] 那一份 —— 搬进来之前两侧各写一份、
+//! 靠注释「同语义」对齐，今天同一个模块里没有理由再留第二份。
+//!
+//! Codex 格式**未文档、每几个 minor 版 churn**（openai/codex 源码 + web 交叉证）→ **不建 rigid typed enum**（每字段漂移即崩），
+//! 在 `serde_json::Value` 上**宽容抽取**：逐行不崩、每 record/field 当 optional、**alias 归一 `turn_*`↔`task_*`**、
 //! 未知 type → `Other`（前向兼容不崩）。
 //!
 //! 记录信封（本机实测 codex-cli 0.144.6）：`{"timestamp","type","payload":{...}}`。顶层 `type` ∈
 //! session_meta/turn_context/world_state/response_item/event_msg；后两者的 `payload.type` 再细分。
-//!
-//! **本 slice 只落分类 + 关键字段 accessor**（turn-end/usage/UI 各 feature 消费它）。中立 CanonicalRecord
-//! 统一 vs per-kind adapter 方法的取舍，留到接 consumer 时定（见 `features/02-canonical-record.md`）。
 
-// F1a 起 `to_jsonl_record`（→ classify → 助手）经 `parser::parse_for_kind` 被 history 读路调用 = 已接线。
-// 仅 `turn_id`/`token_usage_last`（F3 turn-end / F5 用量 accessor）尚未接 consumer → 各自 targeted staged。
-
-use crate::messages::{ApiMessage, JsonlRecord};
+use super::parse::{normalize_event, payload_type, unwrap_envelope};
+use crate::agents::claudecode::schema::{ApiMessage, JsonlRecord};
 use serde_json::{json, Value};
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
@@ -50,28 +47,6 @@ pub enum CodexRecordKind {
     Other,
 }
 
-/// 解包信封 `{type, payload}` → `(顶层 type, payload)`。缺 type / payload 非对象 → `None`。
-pub fn unwrap_envelope(v: &Value) -> Option<(&str, &Value)> {
-    let top = v.get("type")?.as_str()?;
-    let payload = v.get("payload").filter(|p| p.is_object())?;
-    Some((top, payload))
-}
-
-/// payload 的 `type` 子判别（response_item/event_msg 用）。
-fn payload_type(payload: &Value) -> Option<&str> {
-    payload.get("type").and_then(Value::as_str)
-}
-
-/// alias 归一：`turn_started`→`task_started`、`turn_complete`→`task_complete`（EventMsg v1 别名兼容，
-/// 新旧版本都吃）。其它原样。
-fn normalize_event(t: &str) -> &str {
-    match t {
-        "turn_started" => "task_started",
-        "turn_complete" => "task_complete",
-        other => other,
-    }
-}
-
 /// 防御分类：unwrap 信封 → 顶层 type（+ 必要时 payload.type，alias 归一）→ [`CodexRecordKind`]。
 /// 任何缺失/未知 → `Other`/`OtherEvent`（不崩、前向兼容）。
 pub fn classify(v: &Value) -> CodexRecordKind {
@@ -103,25 +78,12 @@ pub fn classify(v: &Value) -> CodexRecordKind {
     }
 }
 
-/// event_msg 的 `payload.turn_id`（TurnStarted/Complete/Aborted 用；F3 turn-end uuid=此）。
-#[allow(dead_code)] // F3(turn-end) consumer 接线前 staged
-pub fn turn_id(v: &Value) -> Option<&str> {
-    unwrap_envelope(v)?.1.get("turn_id").and_then(Value::as_str)
-}
-
 /// token_count 的 `payload.info.last_token_usage`（本轮增量用量；F5 抽字段）。原样返回 Value。
 /// **实测 total_token_usage 严格单调、final == Σlast**——故 F5 按 (model,天) 累加各事件 last 增量，
 /// 与 Claude 逐 request 归桶一致（取 final total 会丢跨天/跨模型粒度）。
+#[allow(dead_code)] // staged：用量那一轴随 `设计/50` 删了，复活点就是这里（codex 专项）。
 pub fn token_usage_last(v: &Value) -> Option<&Value> {
     unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")
-}
-
-/// turn_context 的 `payload.model`（F5 用量按模型归桶；一会话可多 turn_context/换模型）。非 turn_context → None。
-pub fn turn_context_model(v: &Value) -> Option<&str> {
-    if classify(v) != CodexRecordKind::TurnContext {
-        return None;
-    }
-    unwrap_envelope(v)?.1.get("model").and_then(Value::as_str)
 }
 
 // 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做
@@ -200,16 +162,6 @@ pub(crate) fn is_injected_context(text: &str) -> bool {
     .any(|m| t.starts_with(m))
 }
 
-/// session_meta 的 `payload.cwd`（F1a list：Codex 无 cwd-项目目录 → 用它内存分组成「项目」）。
-/// 非 session_meta / 缺 → None。
-#[allow(dead_code)] // F1a-3（list 枚举）consumer 接线前 staged
-pub fn session_meta_cwd(v: &Value) -> Option<&str> {
-    if classify(v) != CodexRecordKind::SessionMeta {
-        return None;
-    }
-    unwrap_envelope(v)?.1.get("cwd").and_then(Value::as_str)
-}
-
 /// session_meta 的 `payload.timestamp`（会话起始，F1a list 的 lastActivity 兜底）。非 session_meta → None。
 #[allow(dead_code)] // F1a-3（list 枚举）consumer 接线前 staged
 pub fn session_meta_timestamp(v: &Value) -> Option<&str> {
@@ -224,6 +176,22 @@ pub fn session_meta_timestamp(v: &Value) -> Option<&str> {
 
 // ─── F2b-2：Codex 记录 → 现有 `JsonlRecord`（第三条路组装。口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
+/// 〔MOD〕一行 rollout 原文 ⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
+/// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。
+pub(crate) fn parsed_line(raw: &str) -> Result<Option<crate::agents::ParsedLine>, String> {
+    let trimmed = raw.trim_start_matches('\u{feff}').trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let v: Value = serde_json::from_str(trimmed).map_err(|e| e.to_string())?;
+    let rec = to_jsonl_record(&v, trimmed);
+    Ok(Some(crate::agents::ParsedLine {
+        displayable: rec.is_displayable(),
+        cwd: rec.cwd().map(str::to_string),
+        message: serde_json::to_value(&rec).map_err(|e| e.to_string())?,
+    }))
+}
+
 /// Codex rollout 记录（已解析 `v` + 原始行 `raw`）→ 现有 `JsonlRecord`（复用渲染模型）。
 /// - message/reasoning/tool → User/Assistant + content（`[{type,text/…}]` Value，喂现有 `renderMessage`）。
 /// - event_msg/token_count/session_meta/turn_context/world_state/未知 → `Unrecognized`（保 `raw`；
@@ -233,7 +201,7 @@ pub fn session_meta_timestamp(v: &Value) -> Option<&str> {
 /// 时给 `""`（Codex 无 parentUuid 链、`parent_uuid=None`；F7 渲染按文件序+timestamp、不套 Claude 链）。
 pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
     use CodexRecordKind as K;
-    let ts = envelope_ts(v);
+    let ts = super::parse::envelope_ts(v).map(String::from);
     let id = payload_id(v);
     match classify(v) {
         K::Message => {
@@ -283,11 +251,6 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
         // 事件/元记录 → Unrecognized（保 raw；turn-end/用量 per-kind 从 raw 读）。
         _ => unrecognized(v, ts, raw),
     }
-}
-
-/// 信封顶层 `timestamp`（所有记录种类；F5 用量按事件 timestamp 归天、F2b 渲染排序）。缺 → None。
-pub fn envelope_ts(v: &Value) -> Option<String> {
-    v.get("timestamp").and_then(Value::as_str).map(String::from)
 }
 
 /// `payload.id`（记录 uuid；user/developer/tool_output 常无 → ""）。
@@ -380,5 +343,5 @@ fn unrecognized(v: &Value, ts: Option<String>, raw: &str) -> JsonlRecord {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/codex_record_tests.rs"]
+#[path = "../../../../tests/backend/agents/codex/record_tests.rs"]
 mod tests;

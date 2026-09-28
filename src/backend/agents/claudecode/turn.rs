@@ -38,6 +38,14 @@ pub fn turn_end_uuid(v: &Value) -> Option<&str> {
     }
 }
 
+/// 一行原文 ⇒ 它若是 turn-end 边沿，那条记录的 uuid（注册表 `RecordFace.turn_end` 那一格；watcher 每行问一次）。
+/// 畸形 ⇒ `None`（不影响那一行的 `line` 帧）。
+pub(crate) fn turn_end_uuid_of(raw: &str) -> Option<String> {
+    serde_json::from_str::<Value>(raw)
+        .ok()
+        .and_then(|v| turn_end_uuid(&v).map(str::to_string))
+}
+
 fn is_assistant(v: &Value) -> bool {
     v.get("type").and_then(Value::as_str) == Some("assistant")
 }
@@ -64,5 +72,5 @@ fn is_sidechain(v: &Value) -> bool {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/observe/turn_detect_tests.rs"]
+#[path = "../../../../tests/backend/agents/claudecode/turn_tests.rs"]
 mod tests;

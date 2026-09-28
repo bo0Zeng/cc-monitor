@@ -290,12 +290,17 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
     },
-    /// One raw JSONL line tailed from a session file.
+    /// One JSONL line tailed from a session file —— 〔MOD · `设计/90 §3` 判据 3〕带的是**成品**，不是原文：
+    /// 这一行在渲染模型里是什么（`message`，缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，
+    /// monitor 只原样转交（原先这一格是 `raw`、由 monitor 解析）。
     Line {
         session_id: String,
         path: String,
         seq: u64,
-        raw: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
         /// backend-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
         /// 语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
         /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
@@ -459,7 +464,7 @@ pub enum Frame {
         cause: RemovalCause,
     },
     /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
-    /// 不 dedup**——每见一条 turn-end 记录（`end_turn && !isApiError && !isSidechain`，见 `turn_detect`）
+    /// 不 dedup**——每见一条 turn-end 记录（`end_turn && !isApiError && !isSidechain`，见 `agents/claudecode/turn.rs`）
     /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
     /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
     /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
@@ -693,7 +698,7 @@ impl Frame {
         match self {
             // 内容帧：行确实还在远端 jsonl 里，重开会话/重读就补上。
             Frame::Line { .. } => true,
-            // 派生自某一行 jsonl（`turn_detect` 只看那条记录）⇒ 与 `Line` 同命。
+            // 派生自某一行 jsonl（轮次判词只看那条记录）⇒ 与 `Line` 同命。
             Frame::TurnEnd { .. } => true,
 
             // ↓ 以下都是「丢了别处没有」或「拿不准」，一律按不可恢复算。
