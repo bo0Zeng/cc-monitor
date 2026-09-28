@@ -333,17 +333,8 @@ const BATCH_END_GRACE_MS = 300;
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
-  /**
-   * issue #10：独立 viewer 窗口用 `true` —— 改用 `getCurrentWebviewWindow().listen`
-   * （注册成 `WebviewWindow{label}` 监听）而非模块级 `listen`（注册成 `Any` 监听）。
-   *
-   * 为什么必须：后端 `replay_session_to_window` 用 `emit_to(本窗口)` **定向**发历史
-   * （不广播，否则污染主窗口 timeline）。Tauri 2 事件按 target-kind 匹配：定向发射
-   * 命不中 `Any` 监听，所以模块 `listen` 收不到 → viewer 空白。带标签监听才接得到
-   * 定向事件；而广播 `Any`（live jsonl-line）是通配，带标签监听照样收得到。
-   * 主窗口只收广播（`Any`），保持模块 `listen` 即可，不传此项。
-   */
-  windowScoped?: boolean;
+  // 〔MIG-1 收尾 · V41〕`windowScoped`（issue #10：viewer 按窗口作用域 `listen`）删了：本函数里已没有 Tauri 监听，
+  //   定向投递今天只剩会话流的交格，由 `src/ipc/chan.ts` 那一处按窗口作用域听（条 22.2）。
   /**
    * 〔CF2 · 第四波 4B〕要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
    * 会话内容**只**从这里来（原来的 `jsonl-line` / `jsonl-batch` 两个事件已退役）。在其余监听都注册完之后订，
@@ -381,7 +372,7 @@ export async function bindEvents(
   opts: BindEventsOptions = {},
 ): Promise<void> {
   // 〔合并 MIG-1 × 主线 eebf51de〕本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
-  //   改走 `session-tasks`）⇒ 按窗口作用域监听的那个包装（`sub`）与「等监听注册完」那一格一起没了；`windowScoped` 今天在本函数里不再被读。
+  //   改走 `session-tasks`）⇒ 按窗口作用域监听的那个包装（`sub`）与「等监听注册完」那一格一起没了。
 
   const queue = new DrainQueue<QueueItem>();
   let scheduled = false;
