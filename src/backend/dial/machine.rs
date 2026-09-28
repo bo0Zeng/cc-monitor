@@ -9,8 +9,12 @@
 //! - 跳板：`jump` 指另一台的名字 ⇒ 那一台的配置由界面一并交来；指自己 ⇒ 环（拒）；交不来 ⇒ 拒（fail-closed，不回落直连）；v1 单跳。
 //!
 //! 只放路径，不放私钥本体（凭据面 `K11`）。ssh-agent 套接字不交 ⇒ 用本进程自己的（`DialRequest::agent_sock` 缺席那一格）。
-//! ⚠ 竞速顺序不再按「上次赢的那条」排（那份记忆住 monitor，这里没有）：所有地址本来就**同时**起拨（`dial/mod.rs` 头注），
-//!   顺序只决定同时完成时谁先被看到。
+//! 竞速顺序：交了 `prefer`（monitor 记的「上次赢的那条」，结构化的 `{host, port}`）且它仍在这台的地址里 ⇒ 排首，其余保序；
+//!   所有地址本来就**同时**起拨（`dial/mod.rs` 头注），顺序只决定同时完成时谁先被看到。
+//!
+//! 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕**线上交来的每一份拨号都经 [`resolve`] 进来**（monitor 起流 / 一次性查询 / 隧道 ·
+//! 可达表里存的那份 · 传输台的 `dial` · 测试连接 · 端口转发）：界面只交那台原样的配置，地址解析与组请求只在这里。
+//! monitor 那份 `parse_address_line` / `dial_host::request` 的组法删了。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -138,6 +142,7 @@ pub(crate) fn request(
     machine: &Machine,
     saved: Option<&Machine>,
     jump: Option<&Machine>,
+    prefer: Option<&(String, u16)>,
     use_: &str,
     extra: Value,
 ) -> Result<Value, (&'static str, String)> {
@@ -147,8 +152,13 @@ pub(crate) fn request(
             .filter(|s| s.host == machine.host)
             .and_then(|s| s.fingerprint.clone())
     });
-    let endpoints: Vec<Value> = machine
-        .endpoints()
+    let mut order = machine.endpoints();
+    // 上次赢的那条排首（它仍在这台的地址里才算；配置改过就失效）。
+    if let Some(i) = prefer.and_then(|p| order.iter().position(|e| e == p)) {
+        let won = order.remove(i);
+        order.insert(0, won);
+    }
+    let endpoints: Vec<Value> = order
         .into_iter()
         .map(|(host, port)| json!({ "host": host, "port": port }))
         .collect();
@@ -178,6 +188,42 @@ pub(crate) fn request(
         obj.extend(more);
     }
     Ok(req)
+}
+
+/// 线上交来的一份拨号 ⇒ 拨号请求：`{machine, saved?, jump?, prefer?: {host, port}, use?, …}`，其余格（`command` · `capture` ·
+/// `forward` · `tunnel_port` · `stages` · `probe` · `agent_sock`）原样进请求。`use` 缺席 ⇒ `stream`。
+pub(crate) fn resolve(v: &Value) -> Result<crate::dial::DialRequest, (&'static str, String)> {
+    let bad = |d: &str| ("invalid_args", crate::common::contract::malformed(d));
+    let obj = v.as_object().ok_or_else(|| bad("dial is not an object"))?;
+    let (machine, saved, jump) = from_args(v)?;
+    let prefer = match obj.get("prefer") {
+        None | Some(Value::Null) => None,
+        Some(p) => Some((
+            p.get("host")
+                .and_then(Value::as_str)
+                .ok_or_else(|| bad("`prefer` without `host`"))?
+                .to_string(),
+            p.get("port")
+                .and_then(Value::as_u64)
+                .and_then(|n| u16::try_from(n).ok())
+                .ok_or_else(|| bad("`prefer` without a port number"))?,
+        )),
+    };
+    let use_ = obj.get("use").and_then(Value::as_str).unwrap_or("stream");
+    let mut extra = obj.clone();
+    for k in ["machine", "saved", "jump", "prefer", "use"] {
+        extra.remove(k);
+    }
+    let req = request(
+        &machine,
+        saved.as_ref(),
+        jump.as_ref(),
+        prefer.as_ref(),
+        use_,
+        Value::Object(extra),
+    )?;
+    <crate::dial::DialRequest as serde::Deserialize>::deserialize(&req)
+        .map_err(|e| bad(&format!("dial request unreadable: {e}")))
 }
 
 /// 帧命令入参里那三格（`machine` · `saved?` · `jump?`）一次读齐。

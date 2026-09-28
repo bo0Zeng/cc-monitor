@@ -87,6 +87,7 @@ mod remote_write_registry; // devbench F10c：远端写面登记（接三张表�
                            // 〔LOC1b · 第四波 4D〕`mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
                            // 〔MIG-1 · `99 §2.1 ⑬`〕会话起停的成品缓存（后端裁、monitor 只转交 ＋ F5 重放）。替掉 `session_map` 本机活会话表〔散文墓碑〕
                            //   与 `session_facts` 容器账〔散文墓碑〕：两本账的裁决与记账都搬进了那台后端（`observe/session_ledger.rs`）。
+mod probe_relay; // 〔MIG-1 收尾〕本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod session_book;
 mod session_tap; // 〔TAP · V124〕本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
                  // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
@@ -785,6 +786,10 @@ pub fn run() {
             {
                 let replay = replay.clone();
                 crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
+            }
+            {
+                let replay = replay.clone();
+                crate::probe_relay::install_sink(move |ticket, cell| replay.on_probe(&ticket, cell));
             }
             // 〔VIS2 · `设计/15 §3.4 ①`〕host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
             {

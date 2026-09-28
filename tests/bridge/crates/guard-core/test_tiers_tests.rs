@@ -58,8 +58,8 @@ use std::path::{Path, PathBuf};
 const UNIT: &[&str] = &[
     "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
-    "tests/backend/dial_probe_tests.rs",   // 〔MIG-1 续〕测试连接三步的结局（链路替身）
-    "tests/remote-probe.vitest.ts",        // 〔MIG-1 续〕测试连接的读口（请求体 · 严格收）
+    "tests/backend/dial_probe_tests.rs", // 〔MIG-1 续〕测试连接三步的结局（链路替身）
+    // 〔MIG-1 收尾〕`tests/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
     "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
@@ -259,6 +259,7 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    "tests/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
     "tests/bridge/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
     "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
     "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）

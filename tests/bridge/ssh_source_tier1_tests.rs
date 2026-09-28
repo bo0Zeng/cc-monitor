@@ -194,106 +194,15 @@ fn next_backoff_doubles_then_caps() {
     );
 }
 
-// === F45：地址解析 + endpoints ===
+// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
+//   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
+//   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
 fn ep(host: &str, port: u16) -> Endpoint {
     Endpoint {
         host: host.into(),
         port,
     }
-}
-
-#[test]
-fn parse_address_line_four_forms() {
-    assert_eq!(parse_address_line("pi.local", 22), Some(ep("pi.local", 22)));
-    assert_eq!(
-        parse_address_line("10.0.0.2:2222", 22),
-        Some(ep("10.0.0.2", 2222))
-    );
-    // [IPv6]:port 与 [IPv6]
-    assert_eq!(
-        parse_address_line("[fe80::1]:2200", 22),
-        Some(ep("fe80::1", 2200))
-    );
-    assert_eq!(parse_address_line("[::1]", 22), Some(ep("::1", 22)));
-    // 裸 IPv6（trap #7：>1 冒号不误当 host:port）
-    assert_eq!(parse_address_line("::1", 22), Some(ep("::1", 22)));
-    assert_eq!(parse_address_line("fe80::1", 22), Some(ep("fe80::1", 22)));
-}
-
-#[test]
-fn parse_address_line_rejects_garbage() {
-    assert_eq!(parse_address_line("", 22), None);
-    assert_eq!(parse_address_line("   ", 22), None);
-    assert_eq!(parse_address_line("h:notaport", 22), None);
-    assert_eq!(parse_address_line(":2222", 22), None); // 无 host
-    assert_eq!(parse_address_line("[", 22), None); // 未闭合方括号
-    assert_eq!(parse_address_line("[]:22", 22), None); // 空 host
-    assert_eq!(parse_address_line("[fe80::1]:bad", 22), None); // 端口非法
-}
-
-#[test]
-fn endpoints_host_first_dedup_preserve_order() {
-    let cfg = RemoteConfig {
-        host: "pi.local".into(),
-        label: "pi".into(),
-        port: 22,
-        user: "pi".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: vec![
-            "10.0.0.2".into(),
-            "pi.local".into(),    // 与 host 重复 → 去重
-            "10.0.0.2:22".into(), // 与上面同 (host,port) → 去重
-            "pub.example.com:2222".into(),
-            "".into(), // 空行跳过
-        ],
-        jump: None,
-    };
-    assert_eq!(
-        cfg.endpoints(),
-        vec![
-            ep("pi.local", 22),
-            ep("10.0.0.2", 22),
-            ep("pub.example.com", 2222),
-        ]
-    );
-}
-
-#[test]
-fn endpoints_empty_addresses_is_just_host() {
-    let cfg = RemoteConfig {
-        host: "h".into(),
-        label: String::new(),
-        port: 2200,
-        user: "u".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses: vec![],
-        jump: None,
-    };
-    assert_eq!(cfg.endpoints(), vec![ep("h", 2200)]);
-}
-
-// === F45：winner_order（last-good 排首）===
-
-#[test]
-fn winner_order_puts_last_good_first() {
-    let eps = vec![ep("a", 22), ep("b", 22), ep("c", 22)];
-    // last-good = b → b 排首，其余保序
-    assert_eq!(
-        winner_order(eps.clone(), Some(&ep("b", 22))),
-        vec![ep("b", 22), ep("a", 22), ep("c", 22)]
-    );
-    // last-good = 已移除的 endpoint → 无视，原序
-    assert_eq!(
-        winner_order(eps.clone(), Some(&ep("gone", 22))),
-        eps.clone()
-    );
-    // 无 last-good → 原序
-    assert_eq!(winner_order(eps.clone(), None), eps);
-    // last-good 已在首位 → 幂等
-    assert_eq!(winner_order(eps.clone(), Some(&ep("a", 22))), eps);
 }
 
 // === F45：winner_address（喂 remote-launch 的拨号地址）===
@@ -321,13 +230,13 @@ fn winner_address_falls_back_to_host_when_no_last_good() {
 fn winner_address_uses_last_good_then_invalidates_on_config_change() {
     // 用独立 origin 避免与其它测试共享的 last-good store 串味。
     let cfg = cfg_with("wa-lg", "h.example", 22, vec!["10.0.0.9".into()]);
-    record_last_good("wa-lg", &ep("10.0.0.9", 22));
+    record_last_good(&cfg, &ep("10.0.0.9", 22));
     assert_eq!(
         winner_address(&cfg),
         ep("10.0.0.9", 22),
         "已连过 → last-good 胜者"
     );
-    // 配置改掉备用地址 → 旧 last-good 不在 endpoints 里 → 回退 host。
+    // 配置改掉备用地址 → 记下 last-good 那一刻的地址配置对不上了 → 回退 host（〔MIG-1 收尾〕不再在界面进程里解析地址来判）。
     let cfg2 = cfg_with("wa-lg", "h.example", 22, vec![]);
     assert_eq!(
         winner_address(&cfg2),

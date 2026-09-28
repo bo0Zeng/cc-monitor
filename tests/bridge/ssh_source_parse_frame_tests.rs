@@ -354,6 +354,26 @@ fn a_retired_tmux_frame_from_an_old_backend_is_an_unknown_kind() {
     );
 }
 
+/// 〔MIG-1 收尾〕测试连接的进度帧：票 ＋ 那一格原样（对象的 JSON 文本，monitor 不解释）；那一格不是对象 / 缺票 ⇒ 坏帧。
+#[test]
+fn a_probe_frame_carries_its_ticket_and_the_cell_verbatim() {
+    assert_eq!(
+        parse_frame(r#"{"kind":"probe","ticket":"t-1","cell":{"reached":"ssh"}}"#),
+        Some(InboundFrame::Probe {
+            ticket: "t-1".into(),
+            cell: r#"{"reached":"ssh"}"#.into(),
+        })
+    );
+    assert_eq!(
+        parse_frame(r#"{"kind":"probe","ticket":"t-1","cell":"ssh"}"#),
+        None
+    );
+    assert_eq!(
+        parse_frame(r#"{"kind":"probe","cell":{"reached":"ssh"}}"#),
+        None
+    );
+}
+
 /// 未知 kind（协议向前演进新增的帧类型）→ None，调用方 warn+skip，绝不 panic。
 #[test]
 fn unknown_kind_returns_none() {

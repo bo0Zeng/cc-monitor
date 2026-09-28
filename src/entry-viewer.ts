@@ -137,8 +137,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   const seen = new Set<number>();
   let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
   // **必须 await**：会话流订阅登记好再往下走。
-  // **windowScoped:true**：〔合并 MIG-1 × 主线 eebf51de〕起停事件已并进会话流，`bindEvents` 里不再有 Tauri 监听 ⇒ 这一项今天在那里不被读
-  //   （条 22.2 的 TS 半照旧钉着它；删不删交主会话裁）。会话流的格由通道按窗口定向交（`chan.ts`）。
+  // 会话流的格由通道按窗口定向交（`chan.ts`）。〔MIG-1 收尾 · V41〕原先那一项按窗口作用域监听的选项随 `bindEvents` 里最后的 Tauri 监听一起删了。
   await bindEvents(
     {
       onLine: (e) => {
@@ -169,7 +168,7 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
       onBatchEnd: () => tabs.onBatchEnd(),
       onStreamGap: (o) => tabs.onStreamGap(o),
     },
-    { windowScoped: true, streams: [{ origin, kind: `session-lines/${sid}` }] },
+    { streams: [{ origin, kind: `session-lines/${sid}` }] },
   );
 
   bindErrorToast();

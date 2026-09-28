@@ -1488,6 +1488,8 @@ pub(crate) fn absorb_local_frame(
             total,
             end,
         } => crate::sftp_pool::deliver(&id, got, total, end),
+        // 〔MIG-1 收尾〕测试连接在本机常驻后端里跑：进度格原样交中继（`probe_relay::deliver`，从不阻塞），进界面订的 `probe-progress/<票>`。
+        InboundFrame::Probe { ticket, cell } => crate::probe_relay::deliver(&ticket, cell),
         // 〔TAP · V124〕中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
         InboundFrame::Tap(t) => {
             crate::session_tap::deliver(crate::backend::control::inbound_client::LOCAL_ORIGIN, t)

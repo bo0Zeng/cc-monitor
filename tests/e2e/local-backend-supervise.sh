@@ -29,7 +29,7 @@
 # `every_test_that_starts_the_real_backend_demands_a_private_tmux` 守着（按「二进制哪来的」派生，
 # 不看属性，两个文件一起扫）。
 #
-# ⚠ 那两条 + `the_local_tmux_frames_really_land_in_the_ledger` 都由 `cfg(embedded_backends)` 门着，
+# ⚠ 那两条 + `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（〔MIG-1〕已删，见下面 `EMB_TESTS`）都由 `cfg(embedded_backends)` 门着，
 #   而 `embedded-backends/` 是 gitignore 的 ⇒ **干净 clone 与 CI 上它们不编译进来**，
 #   本脚本那时跑到的仍是原来那几条。**别把「本脚本绿了」读成「那三条验过了」** ——
 #   下面 `RAN` 那个自检印的是真实跑成的条数，以它为准。
@@ -189,11 +189,13 @@ fi
 #   `build.rs` 没重跑 —— `touch src/bridge/build.rs`，见 `local_backend_host_tests.rs` 那段复跑纪律）；只跑了一部分 ⇒ 也 FAIL。
 EMB_TESTS=(
   backend::control::local_backend::tests::the_local_backend_host_really_registers_an_inbound_client
-  backend::control::local_backend::tests::the_local_tmux_frames_really_land_in_the_ledger
   local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
 )
-# 那三条合起来打的断言标记数（09-27 在铺了落点的树上现打：26 − 15）。
-EMB_MARKS=11
+# 〔MIG-1 · `99 §2.1 ⑬`〕三条 → 两条：`the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕删了 —— 它钉的是「本机 tmux 快照帧真落进
+#   monitor 那本 tmux 原文账」，而那本账随会话 / tmux 账本进后端删了、快照帧随 V41 删了（后端那本账的真 tmux 实测是
+#   `graylight-backend-frames.sh`）。它打 2 条标记 ⇒ 11 → 9。
+# 那两条合起来打的断言标记数（09-28 在铺了落点的非 ASCII 路径树上现打：24 − 15）。
+EMB_MARKS=9
 skip=0
 emb_ran=0
 for t in "${EMB_TESTS[@]}"; do grep -qF "test $t " "$OUT" && emb_ran=$((emb_ran + 1)); done

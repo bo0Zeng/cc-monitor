@@ -230,61 +230,15 @@ pub struct RemoteConfig {
     pub jump: Option<String>,
 }
 
-/// Batch14-F45：单个连接目标（host + port）。竞发把 [`RemoteConfig::endpoints`] 的每项
-/// 并发拨号，首个握手成功者胜。
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Batch14-F45：单个连接目标（host + port）。〔MIG-1 收尾〕今天只剩一个用处：后端 ack 里结构化的胜者（`winner`）。
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub struct Endpoint {
     pub host: String,
     pub port: u16,
 }
 
-/// 解析一行地址 → [`Endpoint`]。支持四形态（与 android-terminal `parseAddressLine` 同语义）：
-/// - `host`               → default_port
-/// - `host:port`          → 显式端口
-/// - `[IPv6]:port`        → 方括号 IPv6 + 端口
-/// - `[IPv6]` / 裸 `IPv6` → default_port（裸 IPv6 靠「>1 个冒号」判定，不误当 host:port）
-///
-/// 空白/空串 → None；端口非法 → None（拒绝而非静默默认，防配置笔误）。
-pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
-    let s = line.trim();
-    if s.is_empty() {
-        return None;
-    }
-    // 方括号形态：[v6] 或 [v6]:port
-    if let Some(rest) = s.strip_prefix('[') {
-        let (host, after) = rest.split_once(']')?;
-        if host.is_empty() {
-            return None;
-        }
-        let port = match after {
-            "" => default_port,
-            p => p.strip_prefix(':')?.parse().ok()?,
-        };
-        return Some(Endpoint {
-            host: host.to_string(),
-            port,
-        });
-    }
-    // 裸 IPv6（>1 个冒号且无方括号）→ 整体是 host，无端口。
-    if s.matches(':').count() > 1 {
-        return Some(Endpoint {
-            host: s.to_string(),
-            port: default_port,
-        });
-    }
-    // host:port 或 host
-    match s.split_once(':') {
-        Some((host, port)) if !host.is_empty() => Some(Endpoint {
-            host: host.to_string(),
-            port: port.parse().ok()?,
-        }),
-        Some(_) => None, // ":port" 无 host
-        None => Some(Endpoint {
-            host: s.to_string(),
-            port: default_port,
-        }),
-    }
-}
+// 〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕解析一行地址（`host` · `host:port` · `[v6]:port` · 裸 v6 四形态）那个函数
+//   `parse_address_line`〔散文墓碑〕删了：地址解析与组拨号请求只在本机常驻后端 `src/backend/dial/machine.rs`（起流时把这台原样的配置交过去）。
 
 impl RemoteConfig {
     /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
@@ -298,27 +252,7 @@ impl RemoteConfig {
         }
     }
 
-    /// Batch14-F45：所有连接目标，`host` 排首，`addresses` 依次追加，按 (host,port) 去重
-    /// 保序。竞发按此顺序（配合 last-good 重排）拨号。空 addresses → `[host]`（老行为）。
-    pub fn endpoints(&self) -> Vec<Endpoint> {
-        let mut out: Vec<Endpoint> = Vec::new();
-        let mut seen: std::collections::HashSet<Endpoint> = std::collections::HashSet::new();
-        let mut push = |ep: Endpoint| {
-            if seen.insert(ep.clone()) {
-                out.push(ep);
-            }
-        };
-        push(Endpoint {
-            host: self.host.clone(),
-            port: self.port,
-        });
-        for line in &self.addresses {
-            if let Some(ep) = parse_address_line(line, self.port) {
-                push(ep);
-            }
-        }
-        out
-    }
+    // 〔MIG-1 收尾〕「所有连接目标」（`host` 排首 · `addresses` 追加 · 去重保序）那一格搬进后端 `dial/machine.rs::Machine::endpoints`。
 }
 
 fn default_ssh_port() -> u16 {
@@ -335,61 +269,46 @@ where
     Ok(opt.filter(|s| !s.is_empty()))
 }
 
-/// F45：per-origin「上次成功地址」——竞发时排首（下次大概率同一条路最快），赢家更新。
+/// F45：per-origin「上次成功地址」——下次当 `prefer` 交给后端排首（下次大概率同一条路最快），赢家更新。
 /// 进程内软状态,丢了只是少一次优化,不影响正确性。
-fn last_good_store() -> &'static Mutex<std::collections::HashMap<String, Endpoint>> {
-    static STORE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Endpoint>>> =
-        std::sync::OnceLock::new();
+/// 〔MIG-1 收尾〕记的是后端 ack 里结构化的 `winner`，连同**记下那一刻这台的地址配置**（`host` · `port` · `addresses`）——
+///   配置改过就失效（原先靠在界面进程里重新解析地址来判「它还在不在配置里」，那份解析搬进了后端）。
+fn last_good_store() -> &'static Mutex<std::collections::HashMap<String, (AddrConfig, Endpoint)>> {
+    static STORE: std::sync::OnceLock<
+        Mutex<std::collections::HashMap<String, (AddrConfig, Endpoint)>>,
+    > = std::sync::OnceLock::new();
     STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
-pub(crate) fn last_good_for(origin: &str) -> Option<Endpoint> {
-    last_good_store().lock().ok()?.get(origin).cloned()
+/// 一台的地址配置（原样，不解析）：last-good 只在它没变时才算数。
+type AddrConfig = (String, u16, Vec<String>);
+
+fn addr_config(cfg: &RemoteConfig) -> AddrConfig {
+    (cfg.host.clone(), cfg.port, cfg.addresses.clone())
 }
 
-pub(crate) fn record_last_good(origin: &str, ep: &Endpoint) {
+pub(crate) fn last_good_for(cfg: &RemoteConfig) -> Option<Endpoint> {
+    let g = last_good_store().lock().ok()?;
+    let (seen, ep) = g.get(&cfg.origin_label())?;
+    (seen == &addr_config(cfg)).then(|| ep.clone())
+}
+
+pub(crate) fn record_last_good(cfg: &RemoteConfig, ep: &Endpoint) {
     if let Ok(mut m) = last_good_store().lock() {
-        m.insert(origin.to_string(), ep.clone());
+        m.insert(cfg.origin_label(), (addr_config(cfg), ep.clone()));
     }
 }
 
 /// F45：当前应向该 origin 拨号的首选地址（PowerShell resume/attach 命令用它，而非盲取
-/// `cfg.host`）。已连过 → last-good 胜者;否则 → endpoints 首个（= `host`）。永不 None
-/// （endpoints 至少含 host）。
+/// `cfg.host`）。已连过、且地址配置没改 → last-good 胜者；否则 → `host:port`。
 pub fn winner_address(cfg: &RemoteConfig) -> Endpoint {
-    let origin = cfg.origin_label();
-    if let Some(lg) = last_good_for(&origin) {
-        // last-good 仍在当前配置里才用（配置改过则失效）。
-        if cfg.endpoints().iter().any(|e| e == &lg) {
-            return lg;
-        }
-    }
-    cfg.endpoints().into_iter().next().unwrap_or(Endpoint {
+    last_good_for(cfg).unwrap_or(Endpoint {
         host: cfg.host.clone(),
         port: cfg.port,
     })
 }
 
-/// F45：竞发拨号顺序 = last-good 排首（若它仍在 endpoints 里），其余保序。纯函数,可测。
-pub(crate) fn winner_order(
-    endpoints: Vec<Endpoint>,
-    last_good: Option<&Endpoint>,
-) -> Vec<Endpoint> {
-    let Some(lg) = last_good else {
-        return endpoints;
-    };
-    if !endpoints.iter().any(|e| e == lg) {
-        return endpoints; // last-good 已从配置移除 → 无视
-    }
-    let mut out = Vec::with_capacity(endpoints.len());
-    out.push(lg.clone());
-    for e in endpoints {
-        if &e != lg {
-            out.push(e);
-        }
-    }
-    out
-}
+// 〔MIG-1 收尾〕竞发拨号顺序（last-good 排首、其余保序）那个纯函数 `winner_order` 搬进后端 `dial/machine.rs::request`（`prefer`）。
 
 /// 连接远端、鉴权、开 session channel、exec [`BACKEND_CMD`]，
 /// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即后端的 stdout 数据。
@@ -1362,6 +1281,9 @@ pub enum InboundFrame {
     /// 〔TAP · V124〕中转抄出来的一个 SSE 事件 / 一个响应的收尾（后端 `wire::Frame::Tap`）。只有**本机后端**那条流上会有
     /// （中转住本机常驻后端），交 `session_tap::deliver`。`data` / `end` 都缺、或 `end` 认不出 ⇒ 整帧 `None`（坏帧）。
     Tap(crate::session_tap::Tap),
+    /// 〔MIG-1 收尾〕测试连接那一趟的一格进度 / 结局（后端 `wire::Frame::Probe`）。只有**本机后端**那条流上会有
+    /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
+    Probe { ticket: String, cell: String },
 }
 
 /// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
@@ -1667,6 +1589,13 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
 
+        // 〔MIG-1 收尾〕测试连接的一格进度：票 ＋ 原样那一格（必须是对象；内容由界面严格收）。
+        "probe" => {
+            let ticket = obj.get("ticket")?.as_str()?.to_string();
+            let cell = obj.get("cell").filter(|c| c.is_object())?.to_string();
+            Some(InboundFrame::Probe { ticket, cell })
+        }
+
         // 〔TAP · V124〕中转抄出来的 SSE 事件。`data` 与 `end` 恰有一个：先认 `data`（原样，一个串），没有就必须是认得的 `end`。
         "tap" => {
             let stream = obj.get("stream")?.as_str()?.to_string();
@@ -1718,6 +1647,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "link_data",
     "link_end",
     "overflow",
+    "probe",
     "reply",
     "session_added",
     "session_file_gone",
@@ -3134,6 +3064,12 @@ async fn stream_loop(
             Some(InboundFrame::Transfer { id, .. }) => {
                 tracing::warn!(
                     "ssh_source [{host_label}] 远端后端发来了传输帧（id={id}）—— 传输台在本机后端，丢掉"
+                );
+            }
+            // 〔MIG-1 收尾〕测试连接的进度帧同理：测试连接在**本机**后端里跑，远端后端发来 ⇒ 协议对不上，照实说、丢掉。
+            Some(InboundFrame::Probe { ticket, .. }) => {
+                tracing::warn!(
+                    "ssh_source [{host_label}] 远端后端发来了测试连接的进度帧（ticket={ticket}）—— 测试连接在本机后端，丢掉"
                 );
             }
             // 〔HOST · V139〕远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端

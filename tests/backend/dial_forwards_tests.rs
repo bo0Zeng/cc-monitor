@@ -8,7 +8,7 @@ fn table_with(origin: &str) -> remote_ask::Table {
     let t: remote_ask::Table = Mutex::new(BTreeMap::new());
     remote_ask::register(
         &t,
-        &json!({"origin": origin, "dial": {"host": "10.0.0.2", "port": 22, "user": "u", "key_path": "/k", "use": "capture"}}),
+        &json!({"origin": origin, "dial": {"machine": {"host": "10.0.0.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}}),
     )
     .unwrap();
     t
@@ -86,7 +86,7 @@ async fn an_unknown_machine_is_not_dialled_and_a_known_one_gets_a_forward_reques
     assert_eq!(list_with(&ledger)["forwards"], json!([]));
 
     let req = forward_request(
-        &json!({"host": "10.0.0.2", "port": 22, "user": "u", "key_path": "/k", "use": "capture"}),
+        &json!({"machine": {"host": "10.0.0.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"}),
         &parse_spec(&args("dev", 15432, "db.internal", 5432)).unwrap(),
     )
     .unwrap();

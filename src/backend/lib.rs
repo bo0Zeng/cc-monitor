@@ -646,7 +646,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
 /// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（aterm 不读）。
-pub const BUILD_ID: &str = "p5e-session-ledger-in-backend";
+///
+/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
+/// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
+pub const BUILD_ID: &str = "p5f-dial-resolve-one-home";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -831,8 +834,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",
-    // 〔MIG-1 续 · ⑬〕测试连接（`remote-probe`）自动派生的 CLI 面：一次性进程里照样拨得了一次（入参从 stdin 读）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--remote-probe",
+    // 〔MIG-1 收尾〕测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
     // 〔C4d · 第四波 4B〕历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
     // ⚠ 一次性进程多半没被交 `CCM_HISTORY_METADATA` ⇒ 明拒（不猜路径）。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--history-annotate",
@@ -1818,6 +1820,9 @@ pub const EMITS: &[&str] = &[
     // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
     // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
     "transfer",
+    // 〔MIG-1 收尾〕测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
+    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "probe",
     // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",

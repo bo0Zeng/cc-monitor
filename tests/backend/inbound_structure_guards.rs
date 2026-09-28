@@ -284,10 +284,12 @@ fn every_registered_command_declares_its_run_kind() {
                 | "transfer-download"
                 | "transfer-start"
                 | "transfer-stop"
+                // 〔MIG-1 收尾〕测试连接：进度格走本连接的应答通道（不丢、与应答同序）⇒ 要拿到应答通道，只能是硬臂。
+                | "remote-probe"
         );
         assert_eq!(
             is_builtin, expected_builtin,
-            "`{}` 的 Builtin 档位不对 —— 只有 `cancel`、链路四条与传输四条该是硬臂",
+            "`{}` 的 Builtin 档位不对 —— 只有 `cancel`、链路四条、传输四条与测试连接该是硬臂",
             spec.name
         );
     }

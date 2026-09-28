@@ -4437,6 +4437,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_control_probe_writes_nothing_to_an_old_backend",
             1,
         ), // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑
+        (
+            "tests/bridge/ssh_source_dial_move_judge.rs",
+            "the_request_keys_are_the_ones_the_proxy_reads",
+            1,
+        ), // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑
     ];
 
     let corpus = dead_name_corpus();
@@ -4758,7 +4763,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   解析两处那条，随拨号搬家删掉）。〔SR1b 子步 3〕+1：只剩 SFTP 还要 russh 的那条判据改名成零命中。
         // 〔SR1b 子步 3〕`inproc_dial.rs` 那一行摘了：**那份文件整份删了**（SFTP 进本机常驻后端，界面进程零 SSH），
         //   它那块墓碑（端口转发用的 russh 句柄别名）随被守的那件事整轴退役。
-        ("tests/bridge/ssh_source_dial_move_judge.rs", 4),
+        ("tests/bridge/ssh_source_dial_move_judge.rs", 5), // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 4 → 5
         // 〔SR1a · 2026-09-24〕`--dial` 删了那一拍：守它的判据改名留的墓碑 · C2 那份读数脚本头上
         //   那句「界面侧判据随之改名」（它点名的判据 SR1a 改了名，脚本本身只对 C2 那一版有效）。
         ("tests/backend/main_argv_table_guard.rs", 1),
@@ -4810,7 +4815,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔LOC1b · 第四波 4D〕只为本机读盘服务的适配器门面零调用方、删了：原处一块 ＋ 两处点旧名的散文 ＋ 判据头注一块。
         ("src/bridge/src/adapter.rs", 3),
         ("tests/bridge/adapter_tests.rs", 1),
-        ("src/bridge/src/local_origin_registry.rs", 9), // 〔合并 MIG-3b × 主线 76b31e7c〕主线 8 ＋ MIG-3b +1（删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑） // 〔SH1〕+1：MCP 远端那两行还掉处点的旧名 // 〔SH1〕+1：包装层那一格点的 `cfg_of` 随驾驶舱 shell 读删了 // 〔C4e 批 3b〕+1：P4a 变异 M5 那一格点的发消息命令迁到界面 // 〔C4e 批 2〕+2：`K-R56` 还掉的那一条（送键命令）今天整个迁到界面，两处点它 // 〔C4c〕+1：分诊债表里账号面那一行还掉了 // 〔MIG-2〕7 → 8
+        ("src/bridge/src/local_origin_registry.rs", 10), // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 9 → 10 // 〔合并 MIG-3b × 主线 76b31e7c〕主线 8 ＋ MIG-3b +1（删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑） // 〔SH1〕+1：MCP 远端那两行还掉处点的旧名 // 〔SH1〕+1：包装层那一格点的 `cfg_of` 随驾驶舱 shell 读删了 // 〔C4e 批 3b〕+1：P4a 变异 M5 那一格点的发消息命令迁到界面 // 〔C4e 批 2〕+2：`K-R56` 还掉的那一条（送键命令）今天整个迁到界面，两处点它 // 〔C4c〕+1：分诊债表里账号面那一行还掉了 // 〔MIG-2〕7 → 8
         ("src/bridge/src/spawn_managed.rs", 6), // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 4 → 6 // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/bridge/src/structural_scan.rs", 1),
         ("src/doc/ARCHITECTURE.md", 3), // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 2 → 3 // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
@@ -4940,7 +4945,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔NT2 · V25〕+1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
         ("src/backend/accounts/upstream/mod.rs", 4),
         ("src/backend/relay/mod.rs", 1),
-        ("src/bridge/src/ssh_source.rs", 21), // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/ssh_source.rs", 22), // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 21 → 22 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/subagent.rs", 2), // 〔LOC1a〕+1：exec 本机后端那条路删了 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("src/bridge/src/tool_registry.rs", 10), // 〔E2 · 子步 4〕6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 〔E2〕5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/exec_site_registry_tests.rs", 5), // 〔合并 MIG-3b × 主线 76b31e7c〕跑出来 5（两路各给远端 `ccm` 探针那两句挂了墓碑，合并取主线那两句；另两处是 MIG-3b 点旧名处） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 〔MIG-2〕1 → 3
@@ -5066,6 +5071,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/dial_probe_tests.rs", 1), // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑
         // 〔MIG-2〕基数 → 增量 +1 行：`apikey_remote`整删，「形状照它」那句挂墓碑。
         ("src/bridge/src/footprint_remote.rs", 1),
+        ("tests/e2e/local-backend-supervise.sh", 2), // 〔MIG-1 收尾〕e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
+        ("tests/scripts/gate.sh", 2), // 〔MIG-1 收尾〕e2e 起真后端那条删掉的判据名挂墓碑（gate · local-backend 套件）
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。
