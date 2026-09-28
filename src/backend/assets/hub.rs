@@ -24,8 +24,8 @@
 //!
 //! # 诚实边界
 //!
-//! 远端那一跳失败时，那台 CLI 面信封里的 `code` 在 capture 那一层没保住（`remote_ask::pull_over` 只交原话）⇒ 枢纽回
-//! `refused` ＋ 那台的原话（含被写那台的 `stale` 那句）。本机那一跳的码原样保留。界面对这几件只显示原话，不按码分流。
+//! 远端那一跳失败时码随原话一起交回（`remote_ask::Said`，〔主会话 09-28 裁〕别压成一个）：被写那台答 `stale` 就是 `stale`；
+//! 读不出码的（拨号失败 · 链路断了 · 那台太旧）回 `unreachable` ＋ 原话。本机那一跳的码原样保留。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -87,9 +87,15 @@ async fn ask_one(
                     crate::remote_ask::unreachable_message(m),
                 ));
             }
+            // 〔主会话 09-28 裁〕码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
             crate::remote_ask::ask_json(m, cmd, &args, table, remote)
                 .await
-                .map_err(|said| ("refused".to_string(), said))
+                .map_err(|s| {
+                    (
+                        s.code.unwrap_or_else(|| "unreachable".to_string()),
+                        s.message,
+                    )
+                })
         }
     }
 }
