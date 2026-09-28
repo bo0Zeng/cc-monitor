@@ -10,10 +10,12 @@ import { vi } from "vitest";
 export type Edit =
   | { op: "set"; path: string[]; value: unknown }
   | { op: "remove"; path: string[] }
-  | { op: "setin"; path: string[]; where: { fields: string[]; equals: string }[]; field: string; value: unknown; ifEmpty: boolean };
+  | { op: "setin"; path: string[]; where: { fields: string[]; equals: string }[]; field: string; value: unknown; ifEmpty: boolean }
+  | { op: "insertin"; path: string[]; where: { fields: string[]; equals: string }[]; value: unknown }
+  | { op: "removein"; path: string[]; where: { fields: string[]; equals: string }[] };
 
 export class ConfigRefused extends Error {
-  constructor(readonly kind: "bad_edit" | "unreadable" | "element_gone") {
+  constructor(readonly kind: "bad_edit" | "unreadable" | "element_gone" | "element_exists") {
     super(`config patch refused: ${kind}`);
   }
 }
@@ -21,6 +23,7 @@ export class ConfigRefused extends Error {
 /** 把一批补丁应用到盘上原文，回新原文。拒 ⇒ 抛 [`ConfigRefused`]（调用方的原文不变）。 */
 export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
   if (edits.some((e) => e.path.length === 0)) throw new ConfigRefused("bad_edit");
+  if (edits.some((e) => "where" in e && e.where.length === 0)) throw new ConfigRefused("bad_edit");
   let root: unknown;
   try {
     root = JSON.parse(text);
@@ -29,7 +32,38 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
   }
   if (!root || typeof root !== "object" || Array.isArray(root)) throw new ConfigRefused("unreadable");
   const obj = root as Record<string, unknown>;
+  const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
+  const keyOf = (o: Record<string, unknown>, fields: string[]) =>
+    fields.map((f) => o[f]).find((v): v is string => typeof v === "string" && v !== "");
+  const matches = (x: unknown, where: { fields: string[]; equals: string }[]) =>
+    isObj(x) && where.every((w) => keyOf(x, w.fields) === w.equals);
+  let exists = false;
   for (const e of edits) {
+    if (e.op === "insertin") {
+      // 〔FIX2 续 · ㊶〕同 Rust `InsertIn`：路上缺的段补成 `{}`、数组缺就建；已有满足 where 的 ⇒ 整批拒（element_exists）。
+      let cur = obj;
+      for (const seg of e.path.slice(0, -1)) {
+        if (!isObj(cur[seg])) cur[seg] = {};
+        cur = cur[seg] as Record<string, unknown>;
+      }
+      const last = e.path[e.path.length - 1]!;
+      if (cur[last] === undefined) cur[last] = [];
+      const arr = cur[last];
+      if (!Array.isArray(arr)) throw new ConfigRefused("element_gone");
+      if (arr.some((x) => matches(x, e.where))) exists = true;
+      else arr.push(JSON.parse(JSON.stringify(e.value)));
+      continue;
+    }
+    if (e.op === "removein") {
+      // 〔FIX2 续 · ㊶〕同 Rust `RemoveIn`：认恰好一个才删，否则整批拒（element_gone）。
+      let cur: unknown = obj;
+      for (const seg of e.path) cur = isObj(cur) ? cur[seg] : undefined;
+      if (!Array.isArray(cur)) throw new ConfigRefused("element_gone");
+      const hits = cur.flatMap((x, i) => (matches(x, e.where) ? [i] : []));
+      if (hits.length !== 1) throw new ConfigRefused("element_gone");
+      cur.splice(hits[0]!, 1);
+      continue;
+    }
     if (e.op === "setin") {
       // 〔FIX · ㊶〕同 Rust `apply_edit` 的 `SetIn`：认恰好一个元素（每条 where：fields 按序第一个非空字符串 == equals），只改一格。
       let cur: unknown = obj;
@@ -66,6 +100,8 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
     if (e.op === "set") cur[last] = JSON.parse(JSON.stringify(e.value));
     else delete cur[last];
   }
+  // 同 Rust：认不出（上面当场抛）先于「已存在」判。
+  if (exists) throw new ConfigRefused("element_exists");
   return JSON.stringify(obj);
 }
 

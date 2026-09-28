@@ -1,5 +1,5 @@
 /**
- * S1：远端配置的**局部合并**（`applyRemoteHostsPatch`）。
+ * S1：远端配置的**局部合并**（〔FIX2 续〕今天全按键认元素：`remoteHostsEdits`）。
  *
  * 为什么这几条值得写：整表覆盖今天之所以不出事，是因为 `RemoteSection.collect()`
  * 恰好映射了**全部**卡片 —— **正确性来自 UI 的巧合，不是来自构造**。S2 把机器拆成
@@ -18,7 +18,6 @@ import { fakeCfg } from "./config-patch-fake";
 const saveConfig = fakeCfg.saved;
 import { srcDirOf } from "./test-support/repo-root";
 import {
-  applyRemoteHostsPatch,
   hostKey,
   patchRemoteConfig,
   pickResumeCommand,
@@ -47,7 +46,6 @@ const A = mk({ label: "alpha", host: "10.0.0.1", user: "ua", jump: "gw" });
 const B = mk({ label: "beta", host: "10.0.0.2", user: "ub", jump: "gw2" });
 const C = mk({ label: "", host: "10.0.0.3", user: "uc" }); // label 空 ⇒ key = host
 
-const base: RemoteConfig = { enabled: true, hosts: [A, B, C] };
 
 describe("hostKey", () => {
   it("label 非空取 label，否则取 host（与 findHostByOrigin 同口径）", () => {
@@ -58,166 +56,57 @@ describe("hostKey", () => {
   });
 });
 
-describe("applyRemoteHostsPatch", () => {
-  it("★ 只提交一台时，其余机器**逐字段原样**留下", () => {
-    const out = applyRemoteHostsPatch(base, {
-      upsert: [{ key: "beta", value: { ...B, user: "changed" } }],
-    });
-    expect(out.hosts).toHaveLength(3);
-    // 深比较，**不是只比长度** —— 只比长度的话「改坏了某台的字段」也能蒙混过关。
-    expect(out.hosts[0]).toEqual(A);
-    expect(out.hosts[2]).toEqual(C);
-    expect(out.hosts[1]?.user).toBe("changed");
-    // 顺带钉住：没被 patch 的那两条连**对象引用**都没换（证明真的没碰）。
-    expect(out.hosts[0]).toBe(A);
-    expect(out.hosts[2]).toBe(C);
-  });
-
-  it("★ 改 label（= 换 origin）是**改那一条**，不是新增 + 留孤儿", () => {
-    const renamed = { ...A, label: "alpha-renamed" };
-    const out = applyRemoteHostsPatch(base, {
-      upsert: [{ key: "alpha", value: renamed }],
-    });
-    expect(out.hosts).toHaveLength(3);
-    expect(out.hosts.map(hostKey)).toEqual(["alpha-renamed", "beta", "10.0.0.3"]);
-    // 位置也保住（改名不该把机器甩到列表末尾）
-    expect(out.hosts[0]).toEqual(renamed);
-  });
-
-  it("remove 按 origin 删，且只删点名的那台", () => {
-    const out = applyRemoteHostsPatch(base, { remove: ["beta"] });
-    expect(out.hosts.map(hostKey)).toEqual(["alpha", "10.0.0.3"]);
-    expect(out.hosts[0]).toBe(A);
-  });
-
-  it("key=null ⇒ 追加新机器", () => {
-    const d = mk({ label: "delta", host: "10.0.0.4" });
-    const out = applyRemoteHostsPatch(base, { upsert: [{ key: null, value: d }] });
-    expect(out.hosts.map(hostKey)).toEqual(["alpha", "beta", "10.0.0.3", "delta"]);
-  });
-
-  it("key 在盘上找不到 ⇒ 按新增处理（比静默丢弃安全）", () => {
-    // 场景：这台在别处被删了/改名了，而本编辑器手上还是旧 key。
-    // 丢弃的话用户这次编辑就白做了且**毫无提示**；追加至少东西还在。
-    const ghost = mk({ label: "ghost", host: "10.0.0.9" });
-    const out = applyRemoteHostsPatch(base, {
-      upsert: [{ key: "已经不存在的-key", value: ghost }],
-    });
-    expect(out.hosts).toHaveLength(4);
-    expect(hostKey(out.hosts[3]!)).toBe("ghost");
-  });
-
-  it("先 remove 后 upsert：删掉 A 同时新增一台也叫 A ⇒ 是替换，不是删掉新的那个", () => {
-    const newA = mk({ label: "alpha", host: "192.168.1.1", user: "brand-new" });
-    const out = applyRemoteHostsPatch(base, {
-      remove: ["alpha"],
-      upsert: [{ key: null, value: newA }],
-    });
-    expect(out.hosts).toHaveLength(3);
-    const alpha = out.hosts.find((h) => hostKey(h) === "alpha");
-    expect(alpha?.user).toBe("brand-new");
-  });
-
-  it("★ 两台 origin 相同：两条 upsert 各改各的，不互相踩", () => {
-    // origin 重复本身是无效配置（整个系统拿 origin 当机器身份，见 BACKLOG E44），
-    // 但无效配置不该表现为「静默吞掉用户的编辑」。没有「已消费下标」那一步的话，
-    // 第二条 upsert 会再次命中第一条已被替换过的位置 ⇒ 第一条编辑凭空消失。
-    const d1 = mk({ label: "dup", host: "1.1.1.1", user: "one" });
-    const d2 = mk({ label: "dup", host: "2.2.2.2", user: "two" });
-    const out = applyRemoteHostsPatch(
-      { enabled: true, hosts: [d1, d2] },
-      {
-        upsert: [
-          { key: "dup", value: { ...d1, user: "one-edited" } },
-          { key: "dup", value: { ...d2, user: "two-edited" } },
-        ],
-      },
-    );
-    expect(out.hosts).toHaveLength(2);
-    expect(out.hosts.map((h) => h.user)).toEqual(["one-edited", "two-edited"]);
-  });
-
-  it("enabled 缺省 = 不动；给了就改", () => {
-    expect(applyRemoteHostsPatch(base, {}).enabled).toBe(true);
-    expect(applyRemoteHostsPatch(base, { enabled: false }).enabled).toBe(false);
-    expect(
-      applyRemoteHostsPatch(
-        { enabled: false, hosts: [] },
-        { enabled: true },
-      )
-        .enabled,
-    ).toBe(true);
-  });
-
-  it("空 patch 不改变任何东西（幂等基线）", () => {
-    const out = applyRemoteHostsPatch(base, {});
-    expect(out).toEqual(base);
-  });
-
-  it("不就地改入参（调用方手上那份 original 还要用来算下一次 diff）", () => {
-    const snapshot = JSON.parse(JSON.stringify(base));
-    applyRemoteHostsPatch(base, {
-      remove: ["beta"],
-      upsert: [{ key: "alpha", value: { ...A, user: "x" } }],
-    });
-    expect(base).toEqual(snapshot);
-  });
-});
-
-describe("S1 patchRemoteConfig（走完整 read → 合并 → 序列化 → 落盘）", () => {
+// 〔FIX2 续 · `设计/99 §2 ㊶`〕设置页增删机器也按键认元素：「固化那一写与设置页同写 `remote.hosts` 有毫秒级丢更新窗口」。
+//   假盘与 Rust 写口跑同一份金样（`config-patch-fake.vitest.ts`）⇒ 这里看到的盘上终态就是 Rust 会落的那份。
+describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整段写 remote", () => {
   beforeEach(() => vi.resetAllMocks());
-
-  it("★ 只 upsert 一台：其余机器与 config.json 里的**无关顶层键**都原样留下", () => {
-    // 纯函数那几条钉的是合并逻辑；这一条钉的是**穿过序列化那一层之后**也没丢东西
-    //（`serializeHost` 按字段清单挑字段，漏一个就是静默丢失——这个 bug 类已经咬过两次）。
+  const pinnedB = { ...B, hostKeyFingerprint: "SHA256:pinned" }; // 加载之后后端刚固化的
+  const disk = (hosts: RemoteHostConfig[]) =>
     vi.mocked(loadConfig).mockResolvedValue({
-      // 无关顶层键：`remote` 的写只交 `remote` 这一条补丁（〔CFG1〕），「不动其他字段」这里钉住。
       theme: "dark",
-      someOtherSection: { a: 1 },
-      remote: { enabled: true, hosts: [A, B, C] },
+      remote: { enabled: true, hosts },
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+  const lastEdits = () => vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
+  const lastHosts = () => (vi.mocked(saveConfig).mock.calls.at(-1)![0] as { remote: RemoteConfig }).remote.hosts;
 
-    return patchRemoteConfig({
-      upsert: [{ key: "beta", value: { ...B, user: "changed" } }],
-    }).then(() => {
-      expect(saveConfig).toHaveBeenCalledTimes(1);
-      const written = vi.mocked(saveConfig).mock.calls[0]![0] as Record<
-        string,
-        unknown
-      >;
-      expect(written.theme).toBe("dark");
-      expect(written.someOtherSection).toEqual({ a: 1 });
-      const remote = written.remote as RemoteConfig;
-      expect(remote.hosts).toHaveLength(3);
-      // 深比较：A / C 的**每个字段**都还在（不是只比条数）。
-      expect(remote.hosts[0]).toEqual(A);
-      // C 的 label 原本是空串，read-modify-write 之后被固化成 host —— **既有行为**，
-      // 不是本功能引入的：`coerceHost` 读的时候就把空 label 回退成 host
-      //（注释自陈是为了与 Rust `origin_label` 一致），写回去自然带着它。
-      // origin 两种形态都算出同一个值（`label.trim() || host`）⇒ 功能等价；
-      // 但盘上确实会多出一个用户没填过的 label，这里把这个事实钉住而不是假装没有。
-      expect(remote.hosts[2]).toEqual({ ...C, label: C.host });
-      expect(remote.hosts[1]?.user).toBe("changed");
-      // 被改的那台其余字段也不能丢（`jump: "gw2"` 是 B 独有的非默认值）。
-      // 〔`K-R59` 09-11：这里原来用的是 `daemonless: true`，那个字段整格退役了 ——
-      //  换一个仍然「非默认、只有 B 有」的字段，本条钉的性质一字不变。〕
-      expect(remote.hosts[1]?.jump).toBe("gw2");
-    });
+  it("★ 增一台 ⇒ 恰好一条 insertin 追加到末尾（字段全带）；别的机器连刚固化的指纹一格不动", async () => {
+    disk([A, pinnedB, C]);
+    const d = mk({ label: "delta", host: "10.0.0.4" });
+    await patchRemoteConfig({ upsert: [{ key: null, value: d }] });
+    expect(lastEdits().map((e) => e.op)).toEqual(["insertin"]);
+    expect(lastHosts()).toEqual([A, pinnedB, C, d]);
   });
 
-  it("落盘的每台机器都带齐 RemoteHostConfig 的全部字段（序列化不丢字段）", () => {
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, hosts: [A] },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-    return patchRemoteConfig({}).then(() => {
-      const written = vi.mocked(saveConfig).mock.calls[0]![0] as Record<
-        string,
-        unknown
-      >;
-      const h = (written.remote as RemoteConfig).hosts[0]!;
-      // 键集合与类型逐一对齐——用 A 自己的键当期望，A 是按 RemoteHostConfig 造的。
-      expect(Object.keys(h).sort()).toEqual(Object.keys(A).sort());
-    });
+  it("★ 删一台 ⇒ 恰好一条 removein；别的机器连刚固化的指纹一格不动", async () => {
+    disk([A, pinnedB, C]);
+    await patchRemoteConfig({ remove: ["alpha"] });
+    expect(lastEdits().map((e) => e.op)).toEqual(["removein"]);
+    expect(lastHosts()).toEqual([pinnedB, C]);
+  });
+
+  it("删掉 A、同时新增一台也叫 A ⇒ 先删后插，是替换", async () => {
+    disk([A, pinnedB]);
+    const newA = mk({ label: "alpha", host: "192.168.1.1", user: "brand-new" });
+    await patchRemoteConfig({ remove: ["alpha"], upsert: [{ key: null, value: newA }] });
+    expect(lastEdits().map((e) => e.op)).toEqual(["removein", "insertin"]);
+    expect(lastHosts()).toEqual([pinnedB, newA]);
+  });
+
+  it("★ 增的那个 origin 盘上已有 / 删的那台盘上没了 / 那个 origin 不止一台 ⇒ 整批拒，盘上不动", async () => {
+    disk([A, pinnedB]);
+    await expect(patchRemoteConfig({ upsert: [{ key: null, value: { ...B, user: "x" } }] })).rejects.toThrow();
+    await expect(patchRemoteConfig({ enabled: false, remove: ["gone"] })).rejects.toThrow();
+    const dup = mk({ label: "dup", host: "1.1.1.1" });
+    disk([dup, { ...dup, host: "2.2.2.2" }]);
+    await expect(patchRemoteConfig({ upsert: [{ key: "dup", value: { ...dup, user: "x" } }] })).rejects.toThrow();
+    expect(saveConfig).not.toHaveBeenCalled();
+  });
+
+  it("没动任何东西 ⇒ 一条补丁都不交", async () => {
+    disk([A]);
+    await patchRemoteConfig({ upsert: [{ key: "alpha", was: A, value: A }] });
+    await patchRemoteConfig({});
+    expect(fakeCfg.patches).not.toHaveBeenCalled();
   });
 });
 
@@ -251,15 +140,13 @@ describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () 
 });
 
 describe("S1：整表覆盖那条路必须**不可达**", () => {
-  it("整表序列化那一格（`remoteEdit`）不得被 export", () => {
-    // 这是 S1 的核心安全性质：局部合并再对，只要还有一个导出的整表覆盖入口，
-    // S2 拆页时随手一调就会静默删机器。不导出 ⇒ 类型层面不可达，不靠人记着别用。
-    const src = readFileSync(resolve(srcDirOf(__dirname), "remote-config.ts"), "utf8");
-    // 反向自检：函数确实还在这个文件里（不是因为改名了才"没导出"）。
-    // 〔CFG1〕从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写）；今天只出那一条 `set ["remote"]` 补丁。 〔散文墓碑〕
-    expect(src).toContain("function remoteEdit(");
-    expect(src).not.toMatch(/export\s+(async\s+)?function\s+remoteEdit\b/);
-    expect(src).not.toMatch(/export\s*\{[^}]*\bremoteEdit\b/);
+  it("〔FIX2 续 · ㊶〕整段写 `remote` 的补丁在 remote-config.ts 里零处（增删改全按键认元素）", () => {
+    // 〔CFG1〕从前叫 `writeRemoteConfig`（读整份 → 换 `remote` → 整份写），后来只出一条 `set ["remote"]` 补丁。 〔散文墓碑〕
+    const whole = /setAt\(\s*\[\s*"remote"\s*\]\s*,|patchConfigFrom\(/;
+    expect(whole.test('setAt(["remote"], {})'), "正控：认得出整段写那一形").toBe(true);
+    expect(whole.test('setAt(["remote", "enabled"], true)'), "反控：写 enabled 那一格不是整段").toBe(false);
+    const src = readFileSync(resolve(srcDirOf(__dirname), "remote-config.ts"), "utf8").replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, "");
+    expect(src).not.toMatch(whole);
   });
 
   it("〔CFG1〕读盘失败 ⇒ `patchRemoteConfig` 抛、一个字节不写（从前读失败回空表，再把空表写回去 ⇒ 机器全没）", async () => {

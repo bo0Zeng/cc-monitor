@@ -220,7 +220,7 @@ fn the_golden_cases_hold() {
     let cases = golden["cases"].as_array().unwrap();
     assert_eq!(
         cases.len(),
-        12,
+        16, // 〔FIX2 续〕12 → 16：insertin / removein 各两条
         "金样条数变了 —— 两边（这里与 vitest 那边）一起改"
     );
     for (i, c) in cases.iter().enumerate() {
@@ -237,6 +237,7 @@ fn the_golden_cases_hold() {
                 let got_kind = match err {
                     ConfigWriteError::BadEdit(_) => "bad_edit",
                     ConfigWriteError::NoSuchElement { .. } => "element_gone",
+                    ConfigWriteError::ElementExists => "element_exists",
                     ConfigWriteError::Unreadable { .. } => "unreadable",
                     ConfigWriteError::Io(_) => "io",
                 };

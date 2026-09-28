@@ -71,6 +71,21 @@ pub enum ConfigEdit {
         #[serde(default)]
         if_empty: bool,
     },
+    /// 〔FIX2 续 · `99 §2 ㊶`〕**按键插一个元素**（设置页新增一台机器）：`path` 指到的数组里已有满足 `where` 的元素 ⇒ 不动、整批拒
+    /// （[`ConfigWriteError::ElementExists`]）；否则追加到末尾。路上缺的段与数组本身照 `set` 的口径补出来（第一台机器）。
+    #[serde(rename = "insertin", rename_all = "camelCase")]
+    InsertIn {
+        path: Vec<String>,
+        r#where: Vec<ElemKey>,
+        #[cfg_attr(test, ts(type = "unknown"))]
+        value: Value,
+    },
+    /// 〔FIX2 续 · `99 §2 ㊶`〕**按键删一个元素**（设置页删一台机器）：认出恰好一个才删；认不出 / 认出多个 ⇒ 整批拒（同 `setin`）。
+    #[serde(rename = "removein", rename_all = "camelCase")]
+    RemoveIn {
+        path: Vec<String>,
+        r#where: Vec<ElemKey>,
+    },
 }
 
 /// [`ConfigEdit::SetIn`] 认元素的一条：元素里 `fields` 按序取**第一个非空字符串**，它 == `equals`
@@ -93,6 +108,8 @@ pub(crate) enum Applied {
     Ambiguous,
     /// `SetIn` 带 `ifEmpty`：那一格已有值。
     Kept,
+    /// `InsertIn`：已有满足 `where` 的元素 ⇒ 整批拒（[`ConfigWriteError::ElementExists`]）。
+    Exists,
 }
 
 impl ConfigEdit {
@@ -100,7 +117,19 @@ impl ConfigEdit {
         match self {
             ConfigEdit::Set { path, .. }
             | ConfigEdit::Remove { path }
-            | ConfigEdit::SetIn { path, .. } => path,
+            | ConfigEdit::SetIn { path, .. }
+            | ConfigEdit::InsertIn { path, .. }
+            | ConfigEdit::RemoveIn { path, .. } => path,
+        }
+    }
+
+    /// 按键认元素的那几种的 `where`（`None` = 不认元素）。空 `where` 会认中每个对象 ⇒ 在 ① 就拒。
+    fn elem_where(&self) -> Option<&[ElemKey]> {
+        match self {
+            ConfigEdit::SetIn { r#where, .. }
+            | ConfigEdit::InsertIn { r#where, .. }
+            | ConfigEdit::RemoveIn { r#where, .. } => Some(r#where),
+            ConfigEdit::Set { .. } | ConfigEdit::Remove { .. } => None,
         }
     }
 }
@@ -120,6 +149,8 @@ pub(crate) enum ConfigWriteError {
     NoSuchElement {
         ambiguous: bool,
     },
+    /// 〔FIX2 续〕`insertin` 要插的那个键盘上已经有了 ⇒ **整批拒**，盘上一个字节不动（不静默变成改那一台）。
+    ElementExists,
     Io(String),
 }
 
@@ -132,6 +163,9 @@ impl std::fmt::Display for ConfigWriteError {
             )),
             ConfigWriteError::NoSuchElement { .. } => {
                 f.write_str(&copy_text("rsConfig.write.elementGone", &[]))
+            }
+            ConfigWriteError::ElementExists => {
+                f.write_str(&copy_text("rsConfig.write.elementExists", &[]))
             }
             ConfigWriteError::BadEdit(m) | ConfigWriteError::Io(m) => f.write_str(m),
         }
@@ -159,6 +193,14 @@ pub(crate) fn patch_config_at(
     if let Some(bad) = edits.iter().find(|e| e.path().is_empty()) {
         return Err(ConfigWriteError::BadEdit(format!(
             "config patch refused: empty path ({bad:?})"
+        )));
+    }
+    if let Some(bad) = edits
+        .iter()
+        .find(|e| e.elem_where().is_some_and(<[ElemKey]>::is_empty))
+    {
+        return Err(ConfigWriteError::BadEdit(format!(
+            "config patch refused: empty `where` ({bad:?})"
         )));
     }
     if edits.is_empty() {
@@ -208,6 +250,9 @@ pub(crate) fn patch_config_at(
             ambiguous: *miss == Applied::Ambiguous,
         });
     }
+    if applied.contains(&Applied::Exists) {
+        return Err(ConfigWriteError::ElementExists);
+    }
     if !applied.contains(&Applied::Done) {
         return Ok(applied);
     }
@@ -234,10 +279,64 @@ fn elem_key<'a>(elem: &'a Map<String, Value>, fields: &[String]) -> Option<&'a s
     })
 }
 
+/// `where` 每一条都对得上。
+fn elem_matches(o: &Map<String, Value>, r#where: &[ElemKey]) -> bool {
+    r#where
+        .iter()
+        .all(|k| elem_key(o, &k.fields) == Some(k.equals.as_str()))
+}
+
 fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
     let (last, parents) = edit.path().split_last().expect("空路径在 ① 已拒");
     let mut cur = root;
     match edit {
+        ConfigEdit::InsertIn { r#where, value, .. } => {
+            for seg in parents {
+                let slot = cur.entry(seg.clone()).or_insert(Value::Null);
+                if !slot.is_object() {
+                    *slot = Value::Object(Map::new());
+                }
+                cur = slot.as_object_mut().expect("上一行保证是对象");
+            }
+            let slot = cur.entry(last.clone()).or_insert(Value::Array(Vec::new()));
+            let Some(arr) = slot.as_array_mut() else {
+                return Applied::NoMatch;
+            };
+            if arr
+                .iter()
+                .filter_map(Value::as_object)
+                .any(|o| elem_matches(o, r#where))
+            {
+                return Applied::Exists;
+            }
+            arr.push(value.clone());
+            Applied::Done
+        }
+        ConfigEdit::RemoveIn { r#where, .. } => {
+            for seg in parents {
+                match cur.get_mut(seg).and_then(Value::as_object_mut) {
+                    Some(next) => cur = next,
+                    None => return Applied::NoMatch,
+                }
+            }
+            let Some(arr) = cur.get_mut(last).and_then(Value::as_array_mut) else {
+                return Applied::NoMatch;
+            };
+            let hits: Vec<usize> = arr
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| v.as_object().is_some_and(|o| elem_matches(o, r#where)))
+                .map(|(i, _)| i)
+                .collect();
+            match hits.as_slice() {
+                [i] => {
+                    arr.remove(*i);
+                    Applied::Done
+                }
+                [] => Applied::NoMatch,
+                _ => Applied::Ambiguous,
+            }
+        }
         ConfigEdit::SetIn {
             r#where,
             field,
@@ -254,11 +353,10 @@ fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
             let Some(arr) = cur.get_mut(last).and_then(Value::as_array_mut) else {
                 return Applied::NoMatch;
             };
-            let mut hits = arr.iter_mut().filter_map(Value::as_object_mut).filter(|o| {
-                r#where
-                    .iter()
-                    .all(|k| elem_key(o, &k.fields) == Some(k.equals.as_str()))
-            });
+            let mut hits = arr
+                .iter_mut()
+                .filter_map(Value::as_object_mut)
+                .filter(|o| elem_matches(o, r#where));
             let elem = match (hits.next(), hits.next()) {
                 (Some(e), None) => e,
                 (None, _) => return Applied::NoMatch,
