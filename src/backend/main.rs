@@ -95,7 +95,13 @@ async fn main() {
     let backend_args: Vec<String> = {
         let rest: Vec<String> = std::env::args().skip(1).collect();
         match control::ccm::route(&rest) {
-            control::ccm::Entry::Ccm(ccm_args) => std::process::exit(control::ccm::run(&ccm_args)),
+            // 〔FIX · V138 订正〕resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
+            control::ccm::Entry::Ccm(ccm_args) => {
+                std::process::exit(control::ccm::run(&ccm_args, |dir| {
+                    let home = agent_home(dir, false);
+                    observe::watcher::running_sessions(&home)
+                }))
+            }
             control::ccm::Entry::Backend(a) => a,
         }
     };
@@ -835,7 +841,13 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// 而它原本是能正常起来、等 inotify 等到第一个会话的。
 /// ⇒ 真正会变的是**别处**：`main` 里 `homes:` 那一行（见上）。归 `S6`/`L2` 的接口那轮再看。
 fn resolve_agent_home() -> PathBuf {
-    agents::claudecode::paths::resolve_home()
+    agent_home(None, true)
+}
+
+/// 本机 agent 家目录：给了账号配置目录就是它；没给 ⇒ `from_env` 时照进程环境，否则默认家目录
+/// （〔FIX · V138 订正〕`ccm --base` resume 时问的那一处）。问适配层只此一处。
+fn agent_home(config_dir: Option<&std::path::Path>, from_env: bool) -> PathBuf {
+    agents::claudecode::paths::home_of(config_dir, from_env)
 }
 
 // 🪦〔HX1 · 4D〕这里原有 `shutdown_signal`（等一次 SIGTERM / SIGINT，别处 Ctrl-C）—— 下沉到 `platform/signal.rs::shutdown_listener`〔散文墓碑〕：

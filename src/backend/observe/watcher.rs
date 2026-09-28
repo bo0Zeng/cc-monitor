@@ -1281,7 +1281,7 @@ fn watch_loop(
     // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
     // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
     let projects = crate::agents::claudecode::paths::projects_root(&agent_home);
-    let sessions = crate::agents::claudecode::paths::sessions_root(&agent_home);
+    let sessions = pidfile_dir(&agent_home);
     // 〔SR1a〕账号 manifest（`设计/05 §13.6 ③`「账号清单变了」一帧）。
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
@@ -2290,8 +2290,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 的真作者（F20 身份证据对它们正确地放行），但不是交互会话、不该成 tab。
     // 保守规则（与本地 session_map 一字一致）：kind 字段存在且非 "interactive"
     // 才排除；旧 CC 不写该字段 → 放行。
-    if let Some(kind) = parse_kind(&bytes) {
-        if kind != "interactive" && !state.with_bg {
+    if let Some(kind) = non_interactive_kind(&bytes) {
+        if !state.with_bg {
             // 审计 S1：若该 key 此前以 interactive 身份被 track（原地翻 kind /
             // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
             // 2s 窗口，并补齐"同进程翻 kind"这条本地有、远端缺的清理。
@@ -2362,26 +2362,18 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // this pidfile while alive, so its start must not be later than the file's
     // mtime; and its cmdline must look like claude. Missing data degrades to
     // allow (same philosophy as the local procStart-absent fallback).
-    let current_ticks = proc_starttime(pid);
-    match add_time_verdict(
-        parse_procstart_ticks(&bytes),
-        current_ticks,
-        start_epoch_from_ticks(current_ticks),
-        file_mtime_epoch(path),
-        proc_cmdline(pid).as_deref(),
-    ) {
-        AddTimeVerdict::Imposter(reason) => {
+    // #34: the poll baseline. Reuse the very ticks the verdict just examined —
+    // no second /proc read, so no verdict-to-baseline TOCTOU window.
+    let start = match add_time_check(pid, &bytes, path) {
+        Ok(ticks) => ticks,
+        Err(reason) => {
             tracing::warn!(
                 "stale sessions json ignored ({reason}): {} pid {pid} is not the claude that wrote it",
                 path.display()
             );
             return false;
         }
-        AddTimeVerdict::Alive => {}
-    }
-    // #34: the poll baseline. Reuse the very ticks the verdict just examined —
-    // no second /proc read, so no verdict-to-baseline TOCTOU window.
-    let start = current_ticks;
+    };
     // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
     let key_for_watch = key.clone();
     state.sessions.insert(
@@ -2773,6 +2765,55 @@ fn add_time_verdict(
         }
     }
     AddTimeVerdict::Alive
+}
+
+/// 〔F20〕add-time 冒名判定的那一趟 /proc 读：活着且是写它的那个 claude ⇒ `Ok(当前 starttime ticks)`（调用方拿它当 #34 基线），
+/// 否则 `Err(原因)`。起步初扫 / 对齐（`process_session_added`）与一次性扫描（[`running_sessions`]）同这一条。
+fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'static str> {
+    let current_ticks = proc_starttime(pid);
+    match add_time_verdict(
+        parse_procstart_ticks(bytes),
+        current_ticks,
+        start_epoch_from_ticks(current_ticks),
+        file_mtime_epoch(path),
+        proc_cmdline(pid).as_deref(),
+    ) {
+        AddTimeVerdict::Imposter(reason) => Err(reason),
+        AddTimeVerdict::Alive => Ok(current_ticks),
+    }
+}
+
+/// pidfile 目录（流模式的耳朵与一次性扫描同一处问适配层）。
+fn pidfile_dir(agent_home: &Path) -> PathBuf {
+    crate::agents::claudecode::paths::sessions_root(agent_home)
+}
+
+/// 〔Batch6-F21〕`kind` 在且不是 `interactive` ⇒ `Some(kind)`（后台任务，不是交互会话）；缺字段（旧 CC）⇒ `None` 放行。
+fn non_interactive_kind(bytes: &[u8]) -> Option<String> {
+    parse_kind(bytes).filter(|k| k != "interactive")
+}
+
+/// 〔FIX · V138 订正〕**一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
+/// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
+pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
+    let dir = pidfile_dir(agent_home);
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| is_session_json(p))
+        .filter_map(|p| {
+            let pid = file_stem_str(&p)?.parse::<u32>().ok()?;
+            let bytes = std::fs::read(&p).ok()?;
+            let sid = parse_session_id(&bytes)?;
+            (pid_alive(pid)
+                && non_interactive_kind(&bytes).is_none()
+                && add_time_check(pid, &bytes, &p).is_ok())
+            .then_some((sid, pid))
+        })
+        .collect()
 }
 
 /// Parse the pidfile's `kind` field ("interactive" / "bg" …，Batch6-F21)。

@@ -220,7 +220,7 @@ fn the_golden_cases_hold() {
     let cases = golden["cases"].as_array().unwrap();
     assert_eq!(
         cases.len(),
-        9,
+        12,
         "金样条数变了 —— 两边（这里与 vitest 那边）一起改"
     );
     for (i, c) in cases.iter().enumerate() {
@@ -236,6 +236,7 @@ fn the_golden_cases_hold() {
                 let err = got.expect_err(name);
                 let got_kind = match err {
                     ConfigWriteError::BadEdit(_) => "bad_edit",
+                    ConfigWriteError::NoSuchElement { .. } => "element_gone",
                     ConfigWriteError::Unreadable { .. } => "unreadable",
                     ConfigWriteError::Io(_) => "io",
                 };
@@ -442,7 +443,19 @@ fn set_in_changes_one_field_of_exactly_one_element_and_nothing_else() {
             Applied::NoMatch,
         ),
     ] {
-        assert_eq!(patch_config_at(&file, &[edit]).unwrap(), vec![outcome]);
+        // 认不出 / 认出多个 ⇒ 整批拒（`NoSuchElement`）；CAS 没过 ⇒ `Kept`。
+        let got = match patch_config_at(&file, &[edit]) {
+            Ok(v) => v,
+            Err(ConfigWriteError::NoSuchElement { ambiguous }) => {
+                vec![if ambiguous {
+                    Applied::Ambiguous
+                } else {
+                    Applied::NoMatch
+                }]
+            }
+            Err(e) => panic!("{e}"),
+        };
+        assert_eq!(got, vec![outcome]);
         assert_eq!(
             std::fs::read(&file).unwrap(),
             before,

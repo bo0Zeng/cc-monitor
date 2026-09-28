@@ -64,9 +64,14 @@ const HOME_DIR_NAME: &str = ".claude";
 ///
 /// `S3` 从 `main.rs::resolve_claude_dir` 原样搬来（逻辑一字未改）。
 pub fn resolve_home() -> PathBuf {
-    if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV) {
-        return PathBuf::from(dir);
+    match std::env::var_os(CONFIG_DIR_ENV) {
+        Some(dir) => PathBuf::from(dir),
+        None => default_home(),
     }
+}
+
+/// 不看 `CLAUDE_CONFIG_DIR` 的那一格：`$HOME/.claude`（同 [`resolve_home`] 的退路）—— `ccm --base` 与「没选账号」时的家目录。
+pub fn default_home() -> PathBuf {
     if let Some(home) = std::env::var_os("HOME") {
         return PathBuf::from(home).join(HOME_DIR_NAME);
     }
@@ -75,6 +80,15 @@ pub fn resolve_home() -> PathBuf {
         return PathBuf::from(profile).join(HOME_DIR_NAME);
     }
     PathBuf::from(HOME_DIR_NAME)
+}
+
+/// 给了账号配置目录 ⇒ 就是它；没给 ⇒ `from_env` 时 [`resolve_home`]（看 `CLAUDE_CONFIG_DIR`），否则 [`default_home`]。
+pub fn home_of(config_dir: Option<&Path>, from_env: bool) -> PathBuf {
+    match (config_dir, from_env) {
+        (Some(d), _) => d.to_path_buf(),
+        (None, true) => resolve_home(),
+        (None, false) => default_home(),
+    }
 }
 
 /// `<home>/projects` —— 会话记录树的根。

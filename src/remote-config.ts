@@ -1,7 +1,7 @@
 // F12：远端配置**数据层**（从 settings/remote-section.ts 抽出，治分层倒挂——数据层原住在 1801 行
 // UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
 // config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
-import { loadConfig, patchConfigFrom, setAt, type ConfigEdit } from "./config";
+import { loadConfig, patchConfig, patchConfigFrom, setAt, type ConfigEdit } from "./config";
 import { copyText } from "./copy-table";
 
 /**
@@ -293,7 +293,7 @@ export interface RemoteHostsPatch {
    * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
    * key 在盘上找不到（被别处删了/改了）**也按新增处理** —— 比静默丢弃安全。
    */
-  upsert?: { key: string | null; value: RemoteHostConfig }[];
+  upsert?: { key: string | null; value: RemoteHostConfig; was?: RemoteHostConfig }[];
   /** 要删除的机器，按 origin。 */
   remove?: string[];
 }
@@ -349,5 +349,53 @@ export function applyRemoteHostsPatch(
 export async function patchRemoteConfig(
   patch: RemoteHostsPatch,
 ): Promise<void> {
+  // 〔FIX · `设计/99 §2 ㊶` 第一问〕只改已在盘上的机器（每条都带着加载时那份 `was`）、不增不删 ⇒ 按格改：
+  //   每台只交表单里动过的那几格（`setin`，Rust 写口锁内按 origin 认那一台）⇒ 刚自动固化进去的指纹、别的窗口改的格都不会被整台盖掉；
+  //   那台在盘上已被改名 / 删掉 ⇒ 整批拒、说出来（不再「找不到就当新增」）。有增删的那一趟仍走整段（机器表的结构变了）。
+  const ups = patch.upsert ?? [];
+  const cellsOnly = ups.length > 0 && (patch.remove ?? []).length === 0 && ups.every((u) => u.key !== null && u.was !== undefined);
+  if (cellsOnly) {
+    const edits: ConfigEdit[] = [];
+    if (patch.enabled !== undefined) edits.push(setAt(["remote", "enabled"], patch.enabled));
+    for (const u of ups) edits.push(...hostCellEdits(u.key!, u.was!, u.value));
+    if (edits.length > 0) await patchConfig(edits);
+    return;
+  }
   await patchConfigFrom((cfg) => [remoteEdit(applyRemoteHostsPatch(remoteConfigOf(cfg), patch))]);
+}
+
+/** 盘上一台机器的认法：`label` 非空取它、否则 `host`（Rust 写口 `ElemKey` 的口径，同 `lib.rs::parse_host_obj`）。 */
+function hostWhere(key: string): { fields: string[]; equals: string }[] {
+  return [{ fields: ["label", "host"], equals: key }];
+}
+
+/**
+ * 〔FIX · ㊶〕一台已在盘上的机器（加载时 origin = `key`、加载时的样子 `was`）改成 `now`：只出动过的那几格，每格一条 `setin`。**纯函数。**
+ *
+ * 认它的键就是 origin，改 `label` / `host` 会换掉它 ⇒ 顺序：两者动了任一 ⇒ 先按旧 origin 把 `label` 写成表单值（盘上空 `label`
+ * 读进来时被补成了 `host`，照写才与整台写那一形同一个 origin）；其余格随后按新 origin 认（`label` 空 ⇒ 仍是旧 `host`），`host` 排最后。
+ */
+export function hostCellEdits(key: string, was: RemoteHostConfig, now: RemoteHostConfig): ConfigEdit[] {
+  const a = serializeHost(was);
+  const b = serializeHost(now);
+  const moved = (f: (typeof REMOTE_HOST_FIELDS)[number]) => JSON.stringify(a[f]) !== JSON.stringify(b[f]);
+  const cell = (k: string, field: string): ConfigEdit => ({
+    op: "setin",
+    path: ["remote", "hosts"],
+    where: hostWhere(k),
+    field,
+    value: b[field],
+    ifEmpty: false,
+  });
+  const out: ConfigEdit[] = [];
+  let k = key;
+  if (moved("label") || moved("host")) {
+    out.push(cell(key, "label"));
+    k = now.label !== "" ? now.label : was.host;
+  }
+  for (const f of REMOTE_HOST_FIELDS) {
+    if (f !== "label" && f !== "host" && moved(f)) out.push(cell(k, f));
+  }
+  if (moved("host")) out.push(cell(k, "host"));
+  return out;
 }

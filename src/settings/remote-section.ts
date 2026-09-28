@@ -44,6 +44,7 @@ import {
   readRemoteConfig,
   patchRemoteConfig,
   hostKey,
+  findHostByOrigin,
   type RemoteHostConfig,
   type RemoteConfig,
 } from "../remote-config";
@@ -1180,11 +1181,16 @@ export class RemoteSection {
         return m;
       };
       const liveCount = countBy(this.cards.map((c) => c.persistedKey));
+      // 〔FIX · ㊶〕每张已在盘上的卡带上加载时那份（origin 在加载时恰好一台的才带）⇒ 数据层按格改、只交动过的格。
+      const loadedCount = countBy(this.loadedKeys);
+      const wasOf = (k: string | null): RemoteHostConfig | undefined =>
+        k !== null && loadedCount.get(k) === 1 ? findHostByOrigin(this.original.hosts, k) ?? undefined : undefined;
       await patchRemoteConfig({
         enabled: next.enabled,
         upsert: this.cards.map((c) => ({
           key: c.persistedKey,
           value: c.collect(),
+          was: wasOf(c.persistedKey),
         })),
         remove: [...countBy(this.loadedKeys)]
           .filter(([k, n]) => n > (liveCount.get(k) ?? 0))

@@ -13980,6 +13980,11 @@
       "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
       "args": ["path", "e"]
     },
+    "rsConfig.write.elementGone": {
+      "kind": "error",
+      "zh": "这台机器在配置文件里已被改名或删掉，这次没有保存。关掉设置重新打开，再改一次。",
+      "args": []
+    },
     "rsConfig.write.notAnObject": {
       "kind": "error",
       "zh": "最外层不是一个对象",
@@ -16755,6 +16760,11 @@
       "kind": "error",
       "zh": "{what} 的值 {value} 不能拼进命令。工作目录要绝对路径、不含 .. 段；哪一格都不能有换行或 NUL",
       "args": ["what", "value"]
+    },
+    "bePlan.build.runningElsewhere": {
+      "kind": "error",
+      "zh": "这个会话正在别处运行（pid {pid}，不在 ccm 起的 tmux 会话里），没有另起一份：{sid}",
+      "args": ["sid", "pid"]
     },
     "bePlan.build.attachDetach": {
       "kind": "error",
