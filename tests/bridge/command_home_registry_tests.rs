@@ -40,14 +40,13 @@ impl Own {
     }
 }
 
-/// 哪一路负责迁走它。`Unassigned` ＝ C 段没有一路点它的名，交主会话排。
+/// 哪一路负责迁走它（闭集：不许有没主的行）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Lane {
     Mig1,
     Mig2,
     Mig3a,
     Mig3b,
-    Unassigned,
 }
 
 /// 「monitor 自己的事」：命令 · 哪一类 · 理由。
@@ -317,49 +316,49 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3b,
         "分叉是 monitor 里的组合",
     ),
-    // C 段没有一路点名的：交主会话排。
+    // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     (
         "load_subagent",
-        Lane::Unassigned,
+        Lane::Mig2,
         "子 agent 读仍经 monitor 转（`05 §14.3` C 组）",
     ),
     (
         "read_session_range",
-        Lane::Unassigned,
+        Lane::Mig2,
         "骨架区间读仍经 monitor 转",
     ),
     (
         "read_session_lines",
-        Lane::Unassigned,
+        Lane::Mig2,
         "骨架行读仍经 monitor 转",
     ),
     (
         "probe_ccm_cli",
-        Lane::Unassigned,
+        Lane::Mig3b,
         "monitor 只在转一条 `ccm-probe`",
     ),
     (
         "push_public_key",
-        Lane::Unassigned,
+        Lane::Mig3b,
         "`authorized_keys` 那串在 monitor 拼、经拨号面写",
     ),
     (
         "start_forward",
-        Lane::Unassigned,
+        Lane::Mig1,
         "端口转发经本机后端拨号面，账在 monitor",
     ),
-    ("stop_forward", Lane::Unassigned, "端口转发的账在 monitor"),
-    ("list_forwards", Lane::Unassigned, "端口转发的账在 monitor"),
+    ("stop_forward", Lane::Mig1, "端口转发的账在 monitor"),
+    ("list_forwards", Lane::Mig1, "端口转发的账在 monitor"),
     (
         "panorama_call",
-        Lane::Unassigned,
+        Lane::Mig3b,
         "全景一问经 monitor 转、装引擎字节由 monitor 放",
     ),
-    ("panorama_edit", Lane::Unassigned, "全景一问经 monitor 转"),
-    ("panorama_cancel", Lane::Unassigned, "全景撤单经 monitor 转"),
+    ("panorama_edit", Lane::Mig3b, "全景一问经 monitor 转"),
+    ("panorama_cancel", Lane::Mig3b, "全景撤单经 monitor 转"),
     (
         "open_file_window",
-        Lane::Unassigned,
+        Lane::Mig3a,
         "开窗前先列一屏那一问在 monitor（文件窗口独立前端之后由它自己问，`99 §2.1 ⑰`）",
     ),
 ];
