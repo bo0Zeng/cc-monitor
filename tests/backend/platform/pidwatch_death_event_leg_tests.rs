@@ -118,18 +118,13 @@ fn the_non_linux_arm_is_wired_into_the_source() {
 /// ★ 那句话必须真的**说出「没有」**，不是一句读不出结论的散文。
 #[test]
 fn the_caveat_says_out_loud_that_there_is_no_self_healing() {
-    // 承重词**运行时拼** —— 写成整串会让本条命中本文件自己的散文。
-    // 〔CP2c〕句子进了文案表、照 CP1 裁词去掉内部推理（「这条腿」「pidfd」「如实降级」—— `91 §2.2`）；
-    //   要它说出口的两个「没有」照旧：没人发现它退出了 · 不会自己重启。
-    let no_one_notices = format!("没人{}", "发现");
-    let no_restart = format!("不会自动{}", "重启");
-    for needle in [no_one_notices.as_str(), no_restart.as_str()] {
-        assert!(
-            NO_DEATH_EVENTS_HERE.contains(needle),
-            "那句话里没有 `{needle}` —— `KP3D` 买的是「说出口」，\
-                 一句读不出「没有」的散文等于没说"
-        );
-    }
+    // 〔CP2c〕句子进了文案表、照 CP1 裁词去掉内部推理（「这条腿」「pidfd」「如实降级」—— `91 §2.2`）。
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文：说的是「没人发现 · 不会自动重启」那一条，说法由文案表管。
+    assert_eq!(
+        NO_DEATH_EVENTS_HERE.as_str(),
+        copy_core::copy_text("bePidwatch.noDeathEventsHere.say", &[]),
+        "`KP3D` 买的是「说出口」：那句话不再取「没有自愈」那一条了"
+    );
     // 反向：不许在这句话里承诺自愈。
     for forbidden in ["会自动重起", "会自己再起来"] {
         assert!(

@@ -489,33 +489,38 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
         }
     }
     // 〔CP2b · CP1 裁「改·§2.4」〕说法换了（去掉 ** 与「另一条路」，不点命令名与声明的能力），三态一格没动。
-    let suffix = "。无法确认远端有没有执行，请刷新会话列表后再决定。";
+    // 〔FIX2 · 99 §2.1 ㉛②〕那句话按文案键断言、不抄原文：三态（NoChannel / Refused）与取的是哪一条仍逐格钉死。
+    let t = |k: &str| copy_text(k, &[]);
+    let unsure = |s: String| copy_text("rsBackendRoute.route.unsure", &[("s", &s)]);
     let table: Vec<(CallError, Routed)> = vec![
         (
             CallError::Unsupported {
                 cmd: "kill".into(),
                 offered: vec!["ping".into(), "cancel".into()],
             },
-            Routed::NoChannel("远端后端版本旧，不支持这个操作".into()),
+            Routed::NoChannel(t("rsBackendRoute.layer.unsupported")),
         ),
         (
             CallError::TooManyPending,
-            Routed::NoChannel("同时在等的命令已达上限，这一条没排上".into()),
+            Routed::NoChannel(t("rsBackendRoute.layer.tooMany")),
         ),
         (
             CallError::Disconnected,
-            Routed::Refused(format!("与后端的连接已断开{suffix}")),
+            Routed::Refused(unsure(t("rsInboundClient.error.closed"))),
         ),
         (
             CallError::Timeout {
                 after: Duration::from_millis(1500),
                 withdraw: crate::chan::wire::Withdraw::Asked,
             },
-            Routed::Refused(format!("等回答超时（1500 毫秒）{suffix}")),
+            Routed::Refused(unsure(copy_text(
+                "rsInboundClient.error.timeout",
+                &[("after", "1500")],
+            ))),
         ),
         (
             CallError::Cancelled,
-            Routed::Refused(format!("命令已被取消{suffix}")),
+            Routed::Refused(unsure(t("rsInboundClient.error.cancelled"))),
         ),
         (
             CallError::Remote {
@@ -529,7 +534,10 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
                 cmd: "kill".into(),
                 code: "no_tmux".into(),
             },
-            Routed::Refused("no_tmux/这台机器做不到这件事（no_tmux），没有发出去".into()),
+            Routed::Refused(format!(
+                "no_tmux/{}",
+                copy_text("rsInboundClient.error.unavailable", &[("code", "no_tmux")])
+            )),
         ),
     ];
     assert_eq!(table.len(), 7, "收拢表的行数与穷尽见证的变体数对不上");

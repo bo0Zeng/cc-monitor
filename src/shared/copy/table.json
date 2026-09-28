@@ -13980,6 +13980,11 @@
       "zh": "{path} 读不懂（{e}），这次的设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
       "args": ["path", "e"]
     },
+    "rsConfig.write.elementExists": {
+      "kind": "error",
+      "zh": "配置文件里已经有一台同名的机器，这次没有保存。关掉设置重新打开，再改一次。",
+      "args": []
+    },
     "rsConfig.write.elementGone": {
       "kind": "error",
       "zh": "这台机器在配置文件里已被改名或删掉，这次没有保存。关掉设置重新打开，再改一次。",
@@ -15866,7 +15871,7 @@
     },
     "accounts.badge.apikeyRelayedHint": {
       "kind": "body",
-      "zh": "已配置：本机会话的 ANTHROPIC_BASE_URL 指向本机中转。后端按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
+      "zh": "已配置：本机会话经本机中转发送请求。后端按凭据文件里这一行换上 key；key 本身对不对，要到 claude 那边才知道。",
       "args": []
     },
     "accounts.badge.apikeyRelayed": {
@@ -16348,7 +16353,7 @@
     },
     "rsLocalBackendHost.start.refusedNotice": {
       "kind": "error",
-      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。下一步：结束那个进程再重开 cc-monitor，它的进程号记在 {pidPath}。",
+      "zh": "本机后端没有启动：端口 {port} 上已有的后端接不上（{why}）。结束那个进程再重开 cc-monitor 就行，它的进程号记在 {pidPath}。",
       "args": ["port", "why", "pidPath"]
     },
     "rsLocalBackendHost.start.noToken": {
@@ -16478,7 +16483,7 @@
     },
     "rsLocalBackendHost.token.empty": {
       "kind": "error",
-      "zh": "{path} 在盘上，但内容是空的，本机后端起不来也接不上。下一步：删掉这个文件再起一次（rm {path}）；还在跑的旧后端删了之后也接不上，一并停掉它",
+      "zh": "{path} 在盘上，但内容是空的，本机后端起不来也接不上。删掉这个文件再起一次（rm {path}）；还在跑的旧后端删了之后也接不上，一并停掉它",
       "args": ["path"]
     },
     "rsLocalBackendHost.fs.readFailed": {

@@ -5,6 +5,7 @@
  * 拿当前账号顶替会静默地用错身份跑一条对话，而界面上看不出任何异样。
  */
 import { describe, it, expect } from "vitest";
+import { copyText } from "../src/copy-table";
 // 判据取自**真正的消费者**，不在测试里重抄它的正则。
 import { planResumeTmux } from "../src/launch-requests";
 import {
@@ -114,8 +115,10 @@ describe("describeSlot", () => {
 
     const dead = inferForkLaunch({ sourceIsLive: false, sourceCwd: "/p" });
     const t = describeSlot("account", dead);
-    expect(t).toContain("需要你选一次");
-    expect(t).toContain("查不到它当时用的账号"); // 说清为什么答不出（〔CP2b〕CP1 裁：不说 pidfile，说后果）
+    // 说清为什么答不出（〔CP2b〕CP1 裁：不说 pidfile，说后果）。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文。
+    expect(t).toBe(
+      copyText("forkLaunch.slot.ask", { label: copyText("forkLaunch.slot.account"), why: copyText("forkLaunch.exited.account") }),
+    );
   });
 });
 
