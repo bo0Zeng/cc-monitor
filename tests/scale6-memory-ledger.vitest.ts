@@ -78,7 +78,6 @@ vi.mock("../src/remote-launch-run", () => ({
 }));
 vi.mock("../src/account-restart", () => ({
   restartWithAccount: vi.fn().mockResolvedValue(undefined),
-  DEFAULT_EXIT_WAIT_MS: 10_000,
 }));
 vi.mock("../src/fork-flow", () => ({
   runForkFlow: vi.fn().mockResolvedValue(undefined),

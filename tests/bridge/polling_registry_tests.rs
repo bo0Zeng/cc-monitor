@@ -21,25 +21,8 @@ const REGISTERED: &[(&str, &str, &str)] = &[
         "1s 重绘一次网格。**不取数** —— 只把已有状态（相对时间等）重画；\
              取数走事件（`events.ts` 的帧）。这一类是后端那条护栏头注说的「正当周期行为」。",
     ),
-    (
-        // 〔U2 · 第三波〕住址从 `src/tabs.ts` 换到这里：会话动作（连同 `awaitExitFor` 这条 1s 轮询）
-        //   整块搬进了 `tab-session-actions.ts`，节拍、上限、退出条件一个字没变。
-        "src/tab-session-actions.ts",
-        "data-poll",
-        "`awaitExitFor`：等 claude 退出时每 1s 拉一次 `list_remote_tmux`（有 timeout 上限）。\
-             ⚠⚠ **F02 订正：原文那句「事件源已经存在」是错的。** 它等的**不是会话消失**，\
-             是 `claudeExited` —— 「目标 sid 不再被精确命中」，也就是**前台命令从 claude 变回 shell**\
-             （会话还在）。而后端只装三条 hook：`session-created` / `session-closed` / \
-             `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`，逐个数过）——\
-             **「pane 里的命令变了」一条都不覆盖**，而 P5 之后后端零定时器 ⇒ \
-             那种情形下帧**可能永不刷新**。改等帧会永远等到超时再降级 kill。\
-             ⇒ 这 1s 轮询**正在补 hook 覆盖不到的那一块**，今天**不能退役**。\
-             **退役归**「先造一个『pane 前台命令变化』的事件源」这件事本身 —— \
-             tmux 没有这种 hook，能想到的路只有轮询 `capture-pane` 或让 claude 自己上报；\
-             **今天无人认领，如实登记为未排期**（不写一个假的 owner 让它看起来有人管）。\
-             ⚠ 这一处是普查**新发现**的：它用递归 `setTimeout` 而不是 `setInterval`，\
-             此前任何地方都没登记过。",
-    ),
+    // 〔RST · V154〕`tab-session-actions.ts` 那条 data-poll（`awaitExitFor`：等 claude 退出的 1s 轮询）退役：
+    //   换号重启不再键入 `/exit` 等它自己退，直接 kill ⇒ 没有要等的事，行删。
     (
         // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
         //    那个 bash 脚本删了，容器路那段 shell **由这份 Rust 渲出来**（`render_container`
@@ -421,10 +404,10 @@ fn every_data_poll_names_its_event_source_and_owner() {
             assert!(why.contains("退役归"), "{f} 记成 data-poll 却没说谁退役它");
         }
     }
-    // 〔`C1` · 09-24〕地板 `>= 3` 换成相等：今天 data-poll 恰好 **2** 条（`tab-session-actions.ts`〔U2 前住 `tabs.ts`〕的 `awaitExitFor` ·
-    //   `cc-busd`）。**少的那条**是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
+    // 〔`C1` · 09-24〕地板 `>= 3` 换成相等：今天 data-poll 恰好 **1** 条（`cc-busd`；〔RST · V154〕`tab-session-actions.ts` 的
+    //   `awaitExitFor` 那条随换号重启直接 kill 退役，2 → 1）。`C1` 那一拍少的是 `session-accounts-poll.ts` 的 10s 账号轮询（改事件驱动，见 `REGISTERED`）。
     //   地板在「少了一条」这个方向上判不出是退役还是抽取坏了 —— 相等判得出，而且逼人写清是哪一条。
-    assert_eq!(polls, 2, "data-poll 条数变了（今天 2：tab-session-actions.ts · cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
+    assert_eq!(polls, 1, "data-poll 条数变了（今天 1：cc-busd）—— 多了请登记事件源与退役去处，少了请写清退役的是哪条");
 }
 
 /// **全部调度调用点的分类账**：`(相对仓根的路径, API, 处数, 这几处是什么)`。
@@ -485,7 +468,8 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     // 〔U2 · 拆 `tabs.ts` 子步 4〕右键菜单控件搬进 `tab-context-menu.ts` ⇒ 原 ⑤ ⑥ ⑦ 三处跟着走（下一行）：11 = 8 ＋ 3，一处没多一处没少。
     ("src/tab-context-menu.ts", "setTimeout", 3, "① ② hover 菜单的 150ms 开 / 250ms 关延时（二级 flyout；`closeTabContextMenu` 统一清）③ 0ms 下一拍挂右键菜单关闭监听。都是一次性 UI 延时，不取数。"),
     // 〔U2 · 拆 `tabs.ts` 子步 5〕会话动作搬进 `tab-session-actions.ts` ⇒ 原 ② ③ ④ ⑧ ⑨ 五处跟着走（下一行）：8 = 3 ＋ 5。
-    ("src/tab-session-actions.ts", "setTimeout", 5, "② ③ 两处 `timeoutMs` 上限（`awaitCompactFor` 的 `finish(false)` / `awaitExitFor` 的 `stop(false)`）④ ★ `pollTimer = setTimeout(() => void tick(), pollMs)` —— **真 data-poll**（`awaitExitFor`），见 `REGISTERED` 那条 ⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。除 ④ 外都不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
+    // 〔RST · V154〕5 → 3：`awaitExitFor` 的 ③ `stop(false)` 上限与 ④ 1s 轮询随它一起删了（换号重启直接 kill，不再等退出）。
+    ("src/tab-session-actions.ts", "setTimeout", 3, "② `awaitCompactFor` 的 `timeoutMs` 上限（`finish(false)`）⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。都是一次性，不是周期取数。编号沿用 `tabs.ts` 那一行拆开之前的原号。"),
     ("src/views/grid-monitor.ts", "setInterval", 1, "1s 重绘 —— 〔UP1〕按格差量（没变的一拍零 DOM 写），不再整表重建。**ui-clock，不取数**，见 `REGISTERED` 那条。"),
     ("src/views/history.ts", "requestAnimationFrame", 1, "展开/收起项目后合并重画一次列表，`rafPending` 标志防重入。一次性。"),
     ("src/views/history.ts", "setTimeout", 2, "〔LOC1b · 第四波 4D〕3 → 2：原先的 ① `waitForIndexThenSearch`（等本机索引就绪的 1 秒等待，F14 第四刀）随本机内存索引删了 —— 本机搜索改问本机后端，没有「索引中」。② 0ms 下一拍挂条目右键菜单的关闭监听。③ ★ **F07 下半新增**：搜索框输入去抖（250ms，每次输入前 `clearTimeout`）—— **一次性延时不是周期唤醒**，加它正是为了**减少**下游那三个放大器被触发的次数。"),

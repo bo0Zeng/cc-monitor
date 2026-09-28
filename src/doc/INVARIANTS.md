@@ -872,9 +872,10 @@ tmux 会话名/主机名/路径当持久主键，否则本约当场崩）；`@cc
 `kill-session -t 'si*'` glob 命中。本仓**必然踩**：`pickFreshTmuxName` 刻意造 `cc-<sid8>-2/-3`，
 终端 `cct` 造 `<dir>_cc-2/-3`。
 
-**造成过的真实损坏**：`restartWithAccount` 第④步向上一次快照的会话名发 `Escape`+`/exit`。目标已自然结束时
-前缀命中兄弟 `cc-<sid8>-2` → **把 `/exit` 敲进另一个还活着的 claude**，④c 的 kill 再销毁它，输出为空 →
+**造成过的真实损坏**：`restartWithAccount` 第④步向上一次快照的会话名下手。目标已自然结束时
+裸目标前缀命中兄弟 `cc-<sid8>-2` → kill 销毁的是另一个还活着的 claude，rc=0 →
 判定成功 → 继续 resume + 写 pin。**净结果：无关会话被静默销毁 + pin 写错，而 UI 报告「已重启」。**
+（当年那一步先往会话里键入 `/exit`，同一个坑把它敲进了兄弟会话；换号重启已不再键入 `/exit`（V154），直接 kill。）
 
 **为什么是 `=<名>:` 而不是 `=<名>`（尾冒号不能省）**：`=` 前缀只在 target-**session** 解析路径上被识别。
 `send-keys` / `capture-pane` 收的是 target-**pane**，`set-option` / `show-options` 走 pane 解析后上溯——

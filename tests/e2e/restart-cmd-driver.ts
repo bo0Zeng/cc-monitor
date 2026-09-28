@@ -15,7 +15,7 @@
 // 今天这条 e2e 的真实天花板是：**Linux 上不开终端窗口 ⇒ 走复制回退**，命令级可验、GUI 级不可验。
 //
 // 用法:
-//   restart <origin> <sid> <cwd> <tmuxName> <account> <launcher> <compactFirst> <confirm> <awaitCompact> <awaitExit>
+//   restart <origin> <sid> <cwd> <tmuxName> <account> <launcher> <compactFirst> <confirm> <awaitCompact>
 //        驱动真编排;布尔用 1/0。序列写进 $CCM_SEQ_LOG(shim 落),本进程 stdout 打印:
 //          RESULT <true|false>          （restartWithAccount 返回值）
 //          CONFIGDIR <dir|none>         （真 accountConfigDir 解析目标账号目录）
@@ -57,7 +57,6 @@ try {
         compactFirst: bool(a[6]),
         confirm: () => bool(a[7]),
         awaitCompact: async () => bool(a[8]),
-        awaitExit: async () => bool(a[9]),
       });
       const dir = accountConfigDir(stateFromEnv() as never, a[4]);
       process.stdout.write(`RESULT ${ok}\n`);
