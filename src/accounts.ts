@@ -562,7 +562,7 @@ export const LOCAL_ACCOUNTS_COPY = {
    * 空态的下一步。
    *
    * ⚠ 逐字写着「先在终端里做」是因为**它今天真的只能在终端里做**：
-   * 定框 `N4` 现打 —— monitor 的安装口只有 `deploy_remote_acct_iso` 一个（〔SH1〕查装没装 /
+   * 定框 `N4` 现打 —— monitor 的安装口只有 `deploy_remote_acct_iso`〔散文墓碑〕 一个（〔SH1〕查装没装 /
    * 取片段那两条今天带 origin、本机远端都问），本机那一侧的安装口**不存在**。写「点这里装」会是一句假话。
    */
   get emptyNext(): string {

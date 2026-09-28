@@ -2865,7 +2865,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 | `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句；装卸账记在 skill 装记录那一份（`name = "acct-iso"`，按家目录记，这一趟写了的都记） |
 
 字节**随后端二进制走**（同 `cc-bus-install`：部署载荷只一种走法），单一事实源 `src/shared/cc-acct-iso/`；
-从前是 monitor 的 `deploy_remote_acct_iso` 把它内嵌的那份经 SFTP 推过来（更早还经 ssh 跑 `cc-acct-iso-install.sh`）。
+从前是 monitor 的 `deploy_remote_acct_iso`〔散文墓碑〕 把它内嵌的那份经 SFTP 推过来（更早还经 ssh 跑 `cc-acct-iso-install.sh`）。
 落盘全经本进程文件管理面：字节 `files-put`（CAS：读到哪份就对哪份写）· 可执行位 `files-chmod` · 链接 `files-link` · 目录 `files-mkdir`。
 不改 rc、不动账号 / 凭据。只由用户显式点「部署」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--acct-iso-install`，**不读 stdin**）。
 

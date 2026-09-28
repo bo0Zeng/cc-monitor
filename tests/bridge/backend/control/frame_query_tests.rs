@@ -865,7 +865,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
 // ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /〔散文墓碑〕
-//    `acct_iso_deploy_tests` 的部署那一步：假后端那一侧真收到了帧命令）；
+//    `acct_iso_deploy_tests`〔散文墓碑〕 的部署那一步：假后端那一侧真收到了帧命令）；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
 // ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}

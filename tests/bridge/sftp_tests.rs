@@ -593,7 +593,7 @@ fn upload_verify_passes_on_exact_bytes() {
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
-/// 范围只覆盖 `deploy_remote_backend` 函数体（〔MIG-3a · 09-28 预裁〕另一个 `deploy_remote_acct_iso` 退役了）
+/// 范围只覆盖 `deploy_remote_backend` 函数体（〔MIG-3a · 09-28 预裁〕另一个 `deploy_remote_acct_iso`〔散文墓碑〕 退役了）
 /// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
 /// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
 /// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
@@ -617,7 +617,7 @@ fn deploy_paths_use_verified_upload_for_content() {
             ),
             "deploy_remote_backend",
         ),
-        // 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso` 那一格随命令删了：cc-acct-iso 的字节随后端二进制走（后端 `files-put` 逐份 CAS 写）。
+        // 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 那一格随命令删了：cc-acct-iso 的字节随后端二进制走（后端 `files-put` 逐份 CAS 写）。
     ];
     let mut verified_total = 0usize;
     for (b, what) in checks {
