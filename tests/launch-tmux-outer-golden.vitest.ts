@@ -18,7 +18,7 @@ import { TMUX_OUTER_CASES, renderTmuxOuterFixture } from "./test-support/launch-
 const FIXTURE_PATH = resolve(
   __dirname,
   "..",
-  "src/bridge/src/backend/control/fixtures/tmux-outer-golden.json",
+  "src/backend/control/launch_render/fixtures/tmux-outer-golden.json",
 );
 
 describe("外层 tmux 命令黄金串夹具（`设计/90 §4 E` 跨语言对拍的 TS 半边）", () => {

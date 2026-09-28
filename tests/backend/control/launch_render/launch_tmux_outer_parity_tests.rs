@@ -1,5 +1,5 @@
 use super::*;
-use crate::backend::control::payload::{render_tmux_outer, TmuxOuter, TmuxTarget};
+use crate::control::launch_render::payload::{render_tmux_outer, TmuxOuter, TmuxTarget};
 
 fn fixture() -> Fixture {
     serde_json::from_str(FIXTURE).expect("夹具不是合法 JSON —— 重跑 npm run gen:payload-golden")
@@ -53,7 +53,7 @@ fn rust_tmux_outer_rendering_matches_the_typescript_golden_byte_for_byte() {
         let name = c.name.clone();
         let want = c.cmd.clone();
         // ★ 跑**生产命令本体**（`render_launch_payload`），不是自己重搭一个 spec。
-        let got = match crate::backend::control::launch_wire::render_launch_payload(c.req) {
+        let got = match crate::control::launch_render::wire::render_launch_payload(c.req) {
             Ok(p) => p,
             Err(e) => format!("<Err: {e}>"),
         };
@@ -252,12 +252,12 @@ fn the_two_layers_of_cwd_cannot_both_be_sent() {
         f.cases.iter().all(|c| c.req.cwd.is_none()),
         "夹具里出现了顶层 cwd 非空的用例 —— 生产构造口的契约变了"
     );
-    let mut req: crate::backend::control::launch_wire::PayloadRenderRequest = serde_json::from_str(
+    let mut req: crate::control::launch_render::wire::PayloadRenderRequest = serde_json::from_str(
         r#"{"env":[],"cwd":"/w","launcher":"claude","args":[],"nestedEnv":["X"],"wrap":[],
                 "outer":{"mode":"send-into","name":"cc-1","quoting":"raw"}}"#,
     )
     .expect("手搭的 req 解析不了");
-    let got = crate::backend::control::launch_wire::render_launch_payload(req);
+    let got = crate::control::launch_render::wire::render_launch_payload(req);
     assert!(
         got.is_err() && got.as_ref().unwrap_err().starts_with("REFUSE:"),
         "两层 cwd 同时送没有被拒：{got:?}"
@@ -269,7 +269,7 @@ fn the_two_layers_of_cwd_cannot_both_be_sent() {
     )
     .expect("手搭的 req 解析不了");
     assert!(
-        crate::backend::control::launch_wire::render_launch_payload(req).is_ok(),
+        crate::control::launch_render::wire::render_launch_payload(req).is_ok(),
         "去掉顶层 cwd 之后仍然渲不出来 —— 上面那条红的不是它该报的那件事"
     );
 }
@@ -289,7 +289,7 @@ fn the_wire_refuses_an_attach_request_that_still_carries_a_payload() {
     const CLEAN: &str = r#"{"env":[],"cwd":null,"launcher":"","args":[],"nestedEnv":["X"],"wrap":[],
             "outer":{"mode":"attach","name":"cc-1","quoting":"raw"}}"#;
     let parse = |json: &str| {
-        serde_json::from_str::<crate::backend::control::launch_wire::PayloadRenderRequest>(json)
+        serde_json::from_str::<crate::control::launch_render::wire::PayloadRenderRequest>(json)
             .expect("手搭的 req 解析不了")
     };
     let dirty = [
@@ -313,7 +313,7 @@ fn the_wire_refuses_an_attach_request_that_still_carries_a_payload() {
             CLEAN,
             "`{field}` 那一处没替上 —— 这一轮在空转"
         );
-        match crate::backend::control::launch_wire::render_launch_payload(parse(json)) {
+        match crate::control::launch_render::wire::render_launch_payload(parse(json)) {
             Ok(cmd) => panic!(
                 "attach 请求带着 `{field}` 却渲出来了：{cmd:?}\n\
                  —— 那几个字段被静默丢掉了，而调用方以为它起了一个会话。"
@@ -324,7 +324,7 @@ fn the_wire_refuses_an_attach_request_that_still_carries_a_payload() {
     // ★ 正控：同一条请求**不带**那几个字段时必须渲得出来
     //   （否则上面那三次「拒了」在整条路坏掉时也成立）。
     assert_eq!(
-        crate::backend::control::launch_wire::render_launch_payload(parse(CLEAN))
+        crate::control::launch_render::wire::render_launch_payload(parse(CLEAN))
             .expect("干净的 attach 请求渲不出来"),
         "tmux attach -t =cc-1:"
     );
@@ -336,13 +336,13 @@ fn the_wire_refuses_an_attach_request_that_still_carries_a_payload() {
 /// 这条从**同一个命令**走一趟没有 `outer` 的请求，钉住那条兼容不是靠「大概没事」。
 #[test]
 fn a_request_without_outer_still_renders_the_plain_payload() {
-    let req: crate::backend::control::launch_wire::PayloadRenderRequest = serde_json::from_str(
+    let req: crate::control::launch_render::wire::PayloadRenderRequest = serde_json::from_str(
         r#"{"env":[{"kind":"unset-config-dir"}],"cwd":"/w","launcher":"claude","args":[],
             "nestedEnv":["X"],"wrap":[]}"#,
     )
     .expect("没有 outer 的请求解析不了 —— serde(default) 掉了");
     assert_eq!(
-        crate::backend::control::launch_wire::render_launch_payload(req).expect("老形态渲不出来"),
+        crate::control::launch_render::wire::render_launch_payload(req).expect("老形态渲不出来"),
         "unset CLAUDE_CONFIG_DIR; cd '/w' && claude"
     );
 }
@@ -366,9 +366,9 @@ fn a_request_without_outer_still_renders_the_plain_payload() {
 fn emit_launch_render_for_e2e() {
     let raw = std::env::var("CCM_E2E_RENDER_REQ")
         .expect("缺 CCM_E2E_RENDER_REQ —— 本出口只给 tests/e2e/launch-render-driver.ts 用");
-    let req: crate::backend::control::launch_wire::PayloadRenderRequest =
+    let req: crate::control::launch_render::wire::PayloadRenderRequest =
         serde_json::from_str(&raw).unwrap_or_else(|e| panic!("请求解析不了（{e}）：{raw}"));
-    match crate::backend::control::launch_wire::render_launch_payload(req) {
+    match crate::control::launch_render::wire::render_launch_payload(req) {
         Ok(cmd) => {
             assert!(
                 !cmd.contains('\n'),

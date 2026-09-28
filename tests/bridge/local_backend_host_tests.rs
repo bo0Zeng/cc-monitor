@@ -107,7 +107,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
     let get = |k: &str| envs.iter().find(|(kk, _)| kk == k).map(|(_, v)| v.clone());
     assert_eq!(
         get("CCM_RELAY_PORT"),
-        Some(crate::backend::control::payload::RELAY_PORT.to_string()),
+        Some(relay_route_core::PORT.to_string()),
         "端口不是注入侧那个常量 —— 注入侧拼的 URL 会指向一个没人听的口"
     );
     assert_eq!(

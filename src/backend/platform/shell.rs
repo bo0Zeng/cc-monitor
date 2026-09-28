@@ -42,6 +42,10 @@ pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
     }
 }
 
+/// 〔MIG-2〕这台机器上「开一个终端窗口跑一串命令」那一串是哪种语言：Windows 是 PowerShell，别处是 POSIX shell
+/// （本机起会话的渲染按它挑写法，`control/launch_render/local.rs`）。
+pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
+
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/shell_tests.rs"]
 mod tests;

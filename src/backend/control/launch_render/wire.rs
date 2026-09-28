@@ -1,33 +1,14 @@
-//! U8c-2c-2：**生产切换** —— `ccm 调用行`改由 Rust 渲染。
+//! 〔MIG-2〕**线上形状 → 渲染器**：`launch-render-cli`（`ccm …` 调用行）与 `launch-render-payload`（裸载荷 / 外层 tmux 三格）
+//! 两条帧命令的入参与映射（原 monitor `launch_wire.rs` 两条 Tauri 命令，搬进后端后形状只少了 `ccm` 那一格）。
 //!
-//! # 只切 CLI 那一支，为什么
-//!
-//! `remote-launch-run.ts::renderLaunchCommand` 有两支：
-//! `tryRenderCli`（装了 ccm 时走，产 `ccm …`；〔LR1 · U8c-3〕TS 那份已删）与 `renderFallback`（没装时走，产裸载荷）。
-//!
-//! - **CLI 那支是真在跑的那支**（U8c-2b-0 摸底：装了 ccm 就直接 return，兜底根本不执行）；
-//! - **兜底那支当时切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
-//!   而 `src/doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」。
-//!   〔LR2〕后来切了（步 22b·B：外层三格进 `payload.rs::render_tmux_outer`），TS 那一族（兜底渲染器 ＋ 座）也删了；
-//!   本段以下是那次切换当时的记录。
-//!   🔴 **那三问今天不是当年那三问了**（`K-R105` 09-13 第四次复裁）：第三问
-//!   （daemonless 的远端要不要能起会话）**已随定框 `K35` / `K-R59` 退役**，
-//!   第一问的答案也在 `K-P2 D3`（09-03）之后变过一次。**三问的今天版只有一个家**：
-//!   `src/doc/INVARIANTS.md §33b` 那张表，由 `doc_claim_registry` 逐问与现场对拍
-//!   —— 别在这里复述它们，复述就会漂（这一行原来就复述着一份，已撤）。
-//!
-//! ⇒ 本件切 CLI 支，兜底支原样留在 TS。**两支的判据都还在**（各自的黄金串夹具）。
-//!
-//! # 返回值为什么是 tagged 而不是 `Result`
-//!
-//! 「渲染不出来」**不是错误**，是**诚实降级**（§33）—— 调用方要拿着 `reason` 去走兜底。
-//! 用 `Result` 的 `Err` 表达它，会和「IPC 真的失败了」混成一件事，
-//! 而那两件事在前端要走**不同的分支**。
+//! `ccm …` 调用行渲不出来**不是错误**，是诚实降级（§33）：回 `ok:false` ＋ 理由，调用方换载荷那条；
+//! 载荷那条渲不出来是拒（带 `REFUSE:` 标，`mod.rs::refused` 转成码）。
+//! 🪦〔MIG-2〕原先这里有两段沿革（U8c-2c-2 只切 CLI 支 · 返回值为什么 tagged）—— 结论仍成立，考据删了。
 
 use super::ccm_invocation::{
-    render_ccm_invocation, Action, CliAccount, CliSpec, Container, Refusal,
+    render_ccm_invocation, Action, CliAccount, CliSpec, Container,
 };
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -57,17 +38,8 @@ pub struct CliRenderRequest {
     /// POSIX 本机那条路住在 Rust 里（`history.rs::render_local_ccm`），
     /// 不必绕一圈 IPC 问自己。⇒ 这是**路由事实**，不是禁令。
     pub is_ssh: bool,
-    /// 远端 `ccm` 探测的结果 —— **三态**，与前端 `ccm-probe.ts::CcmProbeResult` 一一对应。
-    ///
-    /// # 〔LR2 · R95b〕原来这里是 `caps: Option<Vec<String>>`，两态
-    ///
-    /// 前端那一侧从 `K-R53` 起就是三态（`installed` / `not-installed` / `unknown`，`unknown`
-    /// 连缓存都不进），而线上只有 `Some` / `None` ⇒ `unknown` 一过线就被压成「没装」⇒ 回
-    /// `Refusal::NotInstalled` ⇒ **一次 ssh 抖动，用户被告知「那台机器没装」**（`设计/80 §9.4`〔R95b〕：
-    /// 「缺的是线，不是措辞」；`K-R95` 登记、LR1 报剩余）。
-    /// ⇒ 线上加第三态：`unknown` 带着探测那一跳的错误原话过线，这边回 `Refusal::ProbeUnknown`
-    /// —— 那句「没探到，不等于没装」在 Rust 里重新出生、由 Rust 判据管（LR1 删 TS 渲染器时留的话）。
-    pub ccm: WireCcmProbe,
+    // 〔MIG-2〕原先这里是 `ccm`（界面探了那台 `ccm-probe` 再带过来，三态，R95b）。渲染进了那台后端 ⇒ 能力问它自己
+    //   （[`render_ccm_launch`] 里 `ccm_launcher_with`，与 `--ccm-probe` 同一份），这一格删了。
     pub action: WireAction,
     pub container: WireContainer,
     pub cwd: Option<String>,
@@ -77,17 +49,6 @@ pub struct CliRenderRequest {
     /// 已 sanitize 的 launcher（sanitize 仍在 TS，见 `super::payload` 头注）。
     pub launcher: String,
     pub default_launcher: String,
-}
-
-/// 〔LR2 · R95b〕探测结果的三态（上面 `CliRenderRequest::ccm` 那一格）。
-/// 线上形状按 `state` 判别：`{state:"installed",caps:[…]}` · `{state:"not-installed"}` ·
-/// `{state:"unknown",error:"…"}` —— 与 `ccm-probe.ts::CcmProbeResult` 的 `state` 同名同值。
-#[derive(Debug, Deserialize)]
-#[serde(tag = "state", rename_all = "kebab-case", deny_unknown_fields)]
-pub enum WireCcmProbe {
-    Installed { caps: Vec<String> },
-    NotInstalled,
-    Unknown { error: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,21 +98,21 @@ pub struct CliRenderResponse {
     pub reason: Option<String>,
 }
 
-#[tauri::command]
 pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
-    // 〔LR2 · R95b〕三态一对一映射；「没探出来」**先于一切**回它自己的理由，不压成「没装」
-    //   （与 `render_ccm_invocation` 里 `NotInstalled` 排第一同一个位置）。
-    let (caps, installed): (BTreeSet<String>, bool) = match &req.ccm {
-        WireCcmProbe::Installed { caps } => (caps.iter().cloned().collect(), true),
-        WireCcmProbe::NotInstalled => (BTreeSet::new(), false),
-        WireCcmProbe::Unknown { error } => {
-            return CliRenderResponse {
-                ok: false,
-                cmd: None,
-                reason: Some(Refusal::ProbeUnknown(error.clone()).reason()),
-            }
-        }
-    };
+    // 〔MIG-2〕`ccm` 就是这台后端本身（V28）⇒ 装着、能力是它自己的（`--ccm-probe` 那一行同一份）。
+    let caps: BTreeSet<String> = crate::ccm_launcher_with(crate::TMUX_PLATFORM)
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    render_ccm_launch_with(req, &caps, true)
+}
+
+/// 同上，能力集与「装没装」由调用方给（夹具对拍用固定的一份，不随这台后端的平台变）。
+pub(crate) fn render_ccm_launch_with(
+    req: CliRenderRequest,
+    caps: &BTreeSet<String>,
+    installed: bool,
+) -> CliRenderResponse {
     let action = match &req.action {
         WireAction::New => Action::New,
         WireAction::Resume { sid } => Action::Resume { sid },
@@ -199,7 +160,7 @@ pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
         args: &[],
         ccm_path: "ccm",
     };
-    match render_ccm_invocation(&spec, &caps, installed) {
+    match render_ccm_invocation(&spec, caps, installed) {
         Ok(cmd) => CliRenderResponse {
             ok: true,
             cmd: Some(cmd),
@@ -379,7 +340,6 @@ fn wire_outer(o: &WireTmuxOuter) -> super::payload::TmuxOuter<'_> {
     }
 }
 
-#[tauri::command]
 pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String> {
     let outer = req.outer.as_ref().map(wire_outer);
     // `attach` 先走，因为它**根本不渲染载荷** —— 与 TS `renderFallback` 的分支序同形
@@ -463,12 +423,12 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
 }
 
 #[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs"]
+#[path = "../../../../tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs"]
 mod f07_main_path_tests;
 
 // ────────────────────────────────────────────────────────────────────────────
 // `K-R95`：**前端不再自己写一份「要跑什么」** —— 生成物 ＋ 它的判据。
 // ────────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/launch_wire_k_r95_launch_render_facts.rs"]
+#[path = "../../../../tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs"]
 mod k_r95_launch_render_facts;

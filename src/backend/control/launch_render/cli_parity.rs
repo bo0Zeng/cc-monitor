@@ -28,7 +28,7 @@ const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 ///
 /// 🔴 〔LR1〕16 → 20：`ccm-print-parity` 那四个场景搬进来当用例（那套 e2e 从本夹具按名取行，
 /// 取代它原先现场跑的 TS 渲染器）。原 16 例一例没少。
-const EXPECT_CASES: usize = 21; // 〔LR2 · R95b〕20 → 21：+「没探出来（不等于没装）」那条 refusal
+const EXPECT_CASES: usize = 20; // 〔LR2 · R95b〕20 → 21：+「没探出来」；〔MIG-2〕21 → 20：那一态产不出来了（能力问那台后端自己）
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -47,13 +47,15 @@ struct Fixture {
 #[serde(deny_unknown_fields)]
 struct Case {
     name: String,
+    /// 〔MIG-2〕那台 `ccm` 的能力（`null` = 没装）：不上线（生产上问那台后端自己），对拍这一侧拿它喂 `render_ccm_launch_with`。
+    caps: Option<Vec<String>>,
     /// ★ **生产 wire 类型** —— 由 TS 的 `buildCliRenderRequest`（`renderCliViaBackend` 用的
     /// 同一个）构造、落盘。用它而不是自己再镜像一份，是本轮复盘的核心修复：
     /// 判据体系审计实测，此前 `render_ccm_launch` 这个命令**本体零调用零判据**，
     /// 5 个 wire 映射变异（`send_into` 恒 false / 具名账号降成 base / 丢 cwd / 丢 model /
     /// 清空 nested_env）**全部存活**；wire 字段改名（`send_into`→`sendInto`）也全绿 ——
     /// 而那在生产里表现为**每次 tmux 拉起都静默回退 TS 兜底**。
-    req: crate::backend::control::launch_wire::CliRenderRequest,
+    req: super::wire::CliRenderRequest,
     ok: bool,
     out: String,
 }
@@ -64,5 +66,5 @@ struct Case {
 // 净效果：少四个类型、少一份 match，而且对拍从「我重搭一个 spec」升级成「跑生产命令」。
 
 #[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/launch_cli_parity_tests.rs"]
+#[path = "../../../../tests/backend/control/launch_render/launch_cli_parity_tests.rs"]
 mod tests;

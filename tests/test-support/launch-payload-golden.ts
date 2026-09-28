@@ -2,7 +2,7 @@
  * U8c-1：**载荷（`container:"none"`）的入库夹具** —— 用例表与落盘函数。
  *
  * ```text
- *   本文件（用例表 ＋ 手写期望）──生成──▶  src/bridge/src/backend/control/fixtures/payload-golden.json
+ *   本文件（用例表 ＋ 手写期望）──生成──▶  src/backend/control/launch_render/fixtures/payload-golden.json
  *          ▲                                              │
  *          │ launch-payload-golden.vitest.ts               │ launch_payload_parity.rs
  *          │ 断言「入库的 == 现场落盘的」                    ▼ 断言「Rust 生产命令渲染 == 入库的」

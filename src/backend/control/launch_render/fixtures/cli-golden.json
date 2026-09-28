@@ -4,26 +4,23 @@
   "cases": [
     {
       "name": "new + base",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -44,26 +41,23 @@
     },
     {
       "name": "new + 具名账号",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -85,26 +79,23 @@
     },
     {
       "name": "resume + tmux + 具名账号",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "resume",
           "sid": "abc-123"
@@ -129,26 +120,23 @@
     },
     {
       "name": "resume + cwd + model",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "resume",
           "sid": "s1"
@@ -170,26 +158,23 @@
     },
     {
       "name": "identity（--ccm-sid）",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -210,26 +195,23 @@
     },
     {
       "name": "自定义 launcher",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -250,26 +232,23 @@
     },
     {
       "name": "launcher 等于默认 ⇒ 不吐 --launcher",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -290,26 +269,23 @@
     },
     {
       "name": "attach（分支在维度循环之前 return）",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "attach",
           "name": "cc-foo"
@@ -333,26 +309,23 @@
     },
     {
       "name": "需要 quote 的 cwd",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -373,11 +346,9 @@
     },
     {
       "name": "未装 ccm",
+      "caps": null,
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "not-installed"
-        },
         "action": {
           "kind": "new"
         },
@@ -397,53 +368,24 @@
       "out": "远端还没装后端"
     },
     {
-      "name": "没探出来（不等于没装）",
-      "req": {
-        "isSsh": true,
-        "ccm": {
-          "state": "unknown",
-          "error": "ssh: connection timed out"
-        },
-        "action": {
-          "kind": "new"
-        },
-        "container": {
-          "kind": "none"
-        },
-        "cwd": null,
-        "account": {
-          "kind": "base"
-        },
-        "ccmSid": null,
-        "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude"
-      },
-      "ok": false,
-      "out": "这次没探到远端的后端，不等于没装：ssh: connection timed out"
-    },
-    {
       "name": "本地 transport",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": false,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -464,25 +406,22 @@
     },
     {
       "name": "缺静态能力 tmux",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -503,26 +442,23 @@
     },
     {
       "name": "#76 防线：send-into 无 CLI 等价语法",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -545,26 +481,23 @@
     },
     {
       "name": "§35 安全网：只有 configDir 没有名字 ⇒ 说不出 --account",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -586,25 +519,22 @@
     },
     {
       "name": "已触发的 model 维度要的能力缺失",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -625,25 +555,22 @@
     },
     {
       "name": "已触发的 account 维度要的能力缺失",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -664,26 +591,23 @@
     },
     {
       "name": "print-parity:resumeTmuxWithIdentity",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "resume",
           "sid": "p1"
@@ -707,26 +631,23 @@
     },
     {
       "name": "print-parity:newTmuxCustomLauncher",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "new"
         },
@@ -749,26 +670,23 @@
     },
     {
       "name": "print-parity:attach",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "attach",
           "name": "cc-p1"
@@ -792,26 +710,23 @@
     },
     {
       "name": "print-parity:resumeTmuxWithModel",
+      "caps": [
+        "new",
+        "resume",
+        "attach",
+        "tmux",
+        "account",
+        "model",
+        "cwd",
+        "agent",
+        "launcher",
+        "ccm-sid",
+        "print",
+        "detach",
+        "tmux-size"
+      ],
       "req": {
         "isSsh": true,
-        "ccm": {
-          "state": "installed",
-          "caps": [
-            "new",
-            "resume",
-            "attach",
-            "tmux",
-            "account",
-            "model",
-            "cwd",
-            "agent",
-            "launcher",
-            "ccm-sid",
-            "print",
-            "detach",
-            "tmux-size"
-          ]
-        },
         "action": {
           "kind": "resume",
           "sid": "p1"

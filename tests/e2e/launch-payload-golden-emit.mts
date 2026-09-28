@@ -6,12 +6,12 @@ import { renderGoldenFixture } from "../test-support/launch-payload-golden.ts";
 import { renderCliGoldenFixture } from "../../src/launch-cli-golden.ts";
 import { renderTmuxOuterFixture } from "../test-support/launch-tmux-outer-golden.ts";
 
-const OUT = new URL("../../src/bridge/src/backend/control/fixtures/payload-golden.json", import.meta.url);
+const OUT = new URL("../../src/backend/control/launch_render/fixtures/payload-golden.json", import.meta.url);
 writeFileSync(OUT, renderGoldenFixture());
-const OUT_CLI = new URL("../../src/bridge/src/backend/control/fixtures/cli-golden.json", import.meta.url);
+const OUT_CLI = new URL("../../src/backend/control/launch_render/fixtures/cli-golden.json", import.meta.url);
 writeFileSync(OUT_CLI, renderCliGoldenFixture());
 // `设计/90 §4 E`：外层 tmux 那三格的金标准，与上面两份同一条生成链、同一个 npm 脚本。
-const OUT_OUTER = new URL("../../src/bridge/src/backend/control/fixtures/tmux-outer-golden.json", import.meta.url);
+const OUT_OUTER = new URL("../../src/backend/control/launch_render/fixtures/tmux-outer-golden.json", import.meta.url);
 writeFileSync(OUT_OUTER, renderTmuxOuterFixture());
 console.log(`写入 ${fileURLToPath(OUT_OUTER)}`);
 console.log(`写入 ${fileURLToPath(OUT_CLI)}`);

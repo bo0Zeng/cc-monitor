@@ -598,18 +598,18 @@ fn us1_a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
 /// 两侧异源：写的是写口，读的是上游选择装表那一条 ＋ 决策表。只配了一个号 ⇒ 另一个号不许被顺带配上；不落 `default` 那一行。
 #[test]
 fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
-    use super::super::endpoint::{answer_launch_with, answer_routing_with};
+    use super::super::endpoint::{answer_routing_with, launch_relay_with};
     let dir = temp_dir("us1-same-source");
     let p = dir.join("apikey-credentials.json");
     let ask = |d: &str| json!({"agent":"claude-code","account":{"kind":"named","configDir":d},"key":"k-1","allSessions":false});
     // 非空对照排最前：还没写的时候，成品说「不注入」。
-    assert!(answer_launch_with(
+    assert!(launch_relay_with(
         &ask("/h/.claude-alt/acct-one"),
         &rows_at_with(&p, &|_| None),
         &|_| true
     )
-    .unwrap()["baseUrl"]
-        .is_null());
+    .unwrap()
+    .is_none());
     answer_set_at(
         &p,
         &json!({"configDir":"/h/.claude-alt/acct-one","key":"KEY-FOR-ONE"}),
@@ -617,13 +617,14 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     .expect("写");
     let rows = rows_at_with(&p, &|_| None);
     assert_eq!(
-        answer_launch_with(&ask("/h/.claude-alt/acct-one"), &rows, &|_| true).unwrap()["baseUrl"],
-        json!("http://127.0.0.1:8788/s/claude-code/acct-one"),
+        launch_relay_with(&ask("/h/.claude-alt/acct-one"), &rows, &|_| true).unwrap().as_deref(),
+        Some("http://127.0.0.1:8788/s/claude-code/acct-one"),
         "写口写下的那一行，起会话的成品没用上（表里：{rows:?}）"
     );
     assert!(
-        answer_launch_with(&ask("/h/.claude-alt/acct-two"), &rows, &|_| true).unwrap()["baseUrl"]
-            .is_null()
+        launch_relay_with(&ask("/h/.claude-alt/acct-two"), &rows, &|_| true)
+            .unwrap()
+            .is_none()
     );
     assert_eq!(
         answer_routing_with(&json!({"agent":"claude-code","configDirs":["/h/.claude-alt/acct-one","/h/.claude-alt/acct-two"]}), &rows, &|_| true).unwrap()["routed"],
