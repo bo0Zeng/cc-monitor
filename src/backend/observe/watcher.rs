@@ -313,7 +313,7 @@ pub const CHANNEL_CAPACITY: usize = 10_000;
 const DEBOUNCE_MS: u64 = 100;
 
 /// B2：`tmux ls -F` 格式串——**与 monitor `tmux::TMUX_LS_FMT` 逐字对齐**（真 TAB 分列，monitor
-/// `parse_tmux_ls` 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
+/// `parse_tmux_ls`〔散文墓碑〕 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
 const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
 /// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**
@@ -322,7 +322,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 
 // ★★ **K-R12 下一拍（09-04）：这两个口径的家搬到了 `crate::common::tmux_utf8`。**
 //
-// 上一拍这里各写了一份（`TMUX_UTF8_ENV` 与 `tmux_tab_underflow`），而 `control/gate.rs`
+// 上一拍这里各写了一份（`TMUX_UTF8_ENV` 与 `tmux_tab_underflow`〔散文墓碑〕），而 `control/gate.rs`
 // 也各写了一份，头注里逐字登记着「三份口径今天**靠人对齐**」——
 // 成因是 `layering_guard` 钉死 `control/` 不许引用 `observe/` ⇒ 共用的家只能是 `common/`，
 // 而它当时不在写区。本拍写区含 `common/` ⇒ 两份都归位，两层各自 `use` 同一个家。

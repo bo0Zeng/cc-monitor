@@ -105,7 +105,6 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
-import type { TmuxSession } from "../generated/TmuxSession";
 import type { HooksReport } from "../generated/HooksReport";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
@@ -386,17 +385,8 @@ export const commands = {
   // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
 
-  /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
-   *
-   *  两个消费者：① 铸名时当 `existing`（P3t-Y2b）② 杀会话的菜单按 `@ccm_sid` 认归属（P3 刀 2 UI）。
-   *
-   *  ⚠ `null` 是「**不知道**」（本机后端通道没起 / 还没推过帧），**不是**「一个都没有」。
-   *  拿 `null` 当空表：铸名那侧会不避让（issue #76），菜单那侧会说「没有会话」而其实有。
-   *
-   *  ⚠ **`command` 那一列可能陈旧**：它由 tmux hook 驱动刷新，而 hook 只有
-   *  `session-created/closed/renamed` 三条 —— pane 前台命令从 claude 变回 shell **不触发任何一条**。
-   *  ⇒ 依赖它判活的流程**不许**改读本机这条（〔V154〕当年那一条 `awaitExitFor` 已删）。 */
-  list_local_tmux: () => invoke<TmuxSession[] | null>("list_local_tmux"),
+  // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话那两条（本机 · 远端）的包装随命令退役删了：界面经通道直接问那台后端的 `tmux-list`
+  //   （成品，`src/tmux-reads.ts::listTmux`，本机远端同一形）。
 
   /** `K-R69`：**本机那条 `ccm` 入口现在是什么样** —— 我们放下去的那一份在哪、它自报什么身份、
    *  你 PATH 上那个 `ccm` 是不是它，以及给人读的那句话。`LocalCcmEntry` 是生成物 ⇒ **桶③**。
@@ -462,13 +452,6 @@ export const commands = {
     sessionId: string;
     jsonlPath: string;
   }) => invoke<void>("delete_history_session", args),
-
-  /**
-   * G6：列远端 tmux 会话。`null` = 那台机器上没装 tmux（前端据此隐藏 attach 类操作）。
-   * 返回值字段被真消费 ⇒ 生成物（桶③）。
-   */
-  list_remote_tmux: (args: { origin: string }) =>
-    invoke<TmuxSession[] | null>("list_remote_tmux", args),
 
   /**
    * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。

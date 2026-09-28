@@ -37,6 +37,16 @@ vi.mock("../../src/ipc/commands", () => ({
     },
   ),
 }));
+// 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话改问那台后端（`tmux-reads.ts` 经通道）⇒ 替身同一本账：记旧名、按旧名回（`Error` ⇒ reject）。
+//   解码器本身由 `tests/tmux-reads.vitest.ts` 对金样钉。
+vi.mock("../../src/tmux-reads", () => ({
+  listTmux: (origin: string) => {
+    const name = origin === "<local>" ? "list_local_tmux" : "list_remote_tmux";
+    ipcCalls.push(name);
+    const reply = ipcReplies.get(name);
+    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply ?? []);
+  },
+}));
 // 〔MIG-1 · `99 §2.1 ⑯`〕「从 ~/.ssh/config 导入」那三问改问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
 //   记名（帧命令名）、按名回（`Error` ⇒ reject）。解码器本身由 `tests/ssh-config-reads.vitest.ts` 对金样钉。
 vi.mock("../../src/ssh-config-reads", () => {

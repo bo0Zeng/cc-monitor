@@ -206,10 +206,12 @@ import {
   launchRenderShim,
   localLaunchCalls,
   sessionReadCalls,
+  tmuxReadOf,
   UNSUPPORTED,
   withAccountReads,
   withHistoryReads,
   withSessionReads,
+  withTmuxReads,
 } from "./test-support/chan-fake";
 import type { SessionFacts } from "../src/session-reads";
 import { restartWithAccount } from "../src/account-restart";
@@ -2774,19 +2776,17 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     [
       ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
     ] as HTMLButtonElement[];
-  const invokedCmds = (): string[] =>
-    (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
 
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
     invalidateAccountsCache();
     tm = makeTM();
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withAccountReads((cmd: string) => {
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads(withAccountReads((cmd: string) => {
       if (cmd === "list_local_accounts") return Promise.resolve(TWO_LOCAL);
       if (cmd === "list_local_tmux") return Promise.resolve([localSess()]);
       return Promise.resolve(undefined);
-    }));
+    })));
   });
 
   it("本机活会话 ≥2 可选账号 → 出现「Restart」，点了走 `<local>`；账号清单问的是本机后端", async () => {
@@ -2829,14 +2829,16 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(arg.tmuxName).toBe("proj-cc");
     expect(arg.accountName).toBe("b");
     expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
-    expect(invokedCmds()).toContain("list_local_tmux");
-    expect(invokedCmds()).not.toContain("list_remote_tmux");
+    // 〔MIG-1 续〕问名单是一发 `chan_call`（op `tmux-list`），`tmuxReadOf` 译回旧叫法：问的是本机那一台。
+    const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([c, a]) => tmuxReadOf(String(c), a)?.[0]);
+    expect(asked).toContain("list_local_tmux");
+    expect(asked).not.toContain("list_remote_tmux");
   });
 
   it("本机会话不在本工具 tmux 里 → 拒重启，提示**不指**本机不存在的那条补救路", async () => {
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
-    );
+    ));
     tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     await home(tm).actions.restartTabWithAccount("l1", "b", false);
     expect(restartSpy).not.toHaveBeenCalled();
@@ -2866,20 +2868,20 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
   it("cwd 回退命中（live.sid !== sid）→ 拒重启、不调编排器（防杀错会话/双进程）", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
     // 同 cwd 但无 @ccm_sid（sid:null）→ findClaudeTmux 走 cwd 回退 → live.sid=null !== target-sid
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.resolve([sess({ sid: null })]) : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
   });
 
   it("精确 @ccm_sid 命中 → 放行调编排器（带对的 tmuxName/account）", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([sess({ name: "cc-target01", sid: "target-sid" })])
         : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", true);
     expect(restartSpy).toHaveBeenCalledTimes(1);
     const arg = restartSpy.mock.calls[0][0];
@@ -2891,9 +2893,9 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
 
   it("会话不在任何 tmux → 拒重启、不调编排器", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
   });
@@ -2902,14 +2904,14 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
   // 不可逆，故**拒绝**而非"警告+继续"（与非破坏性的 resumeTabTmux 分级不同，见 F04 计划 §2 取舍④）。
   it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ 拒重启、不调编排器（防杀错留活）", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
             sess({ name: "cc-target01", sid: "target-sid" }),
             sess({ name: "cc-target02", path: "/other", sid: "target-sid" }),
           ])
         : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
     expect(showActionFailureToast).toHaveBeenCalledWith(
@@ -2926,9 +2928,9 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
     let resolveTmux!: (v: unknown) => void;
     const pending = new Promise((r) => (resolveTmux = r));
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux" ? pending : Promise.resolve(undefined),
-    );
+    ));
     const first = home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     const second = await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(second).toBe(false);
@@ -3190,8 +3192,9 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
 
   it("查到会话 → 返回列表，并把它写进缓存", async () => {
     const tm = makeTM();
-    const list = [{ name: "cc-a", ccmSid: "s1" }];
-    vi.mocked(invoke).mockResolvedValueOnce(list);
+    // 〔MIG-1 续〕那台后端 `tmux-list` 的成品（经通道一问）。
+    const list = [{ name: "cc-a", path: "/w", command: "claude", attached: false, windows: 1, sid: "s1" }];
+    vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: true, sessions: list }));
     const got = await home(tm).actions.fetchTmuxFresh("box1");
     expect(got).toEqual(list);
     expect(
@@ -3202,7 +3205,7 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
 
   it("★ NO_TMUX（null）是**确定答案**，照样写缓存", async () => {
     const tm = makeTM();
-    vi.mocked(invoke).mockResolvedValueOnce(null);
+    vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: false, sessions: [] }));
     const got = await home(tm).actions.fetchTmuxFresh("box1");
     expect(got).toBeNull();
     expect(

@@ -2733,12 +2733,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
     },
-    // 〔SH1〕列这台的 tmux 会话：`{installed, lines}`（原样 `tmux ls -F` 行，与流里推的那份同一个格式串）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    // 〔SH1〕列这台的 tmux 会话。〔MIG-1 续〕成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {
         name: "tmux-list",
         doc_anchor: Some("#### `tmux-list`"),
         codes: &["unobservable", "too_large"],
-        fields: &["installed", "lines"],
+        fields: &[
+            "attached",
+            "command",
+            "installed",
+            "name",
+            "path",
+            "sessions",
+            "sid",
+            "windows",
+        ],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)

@@ -429,6 +429,9 @@ export function withHistoryReads(
       failedHosts: [],
     };
   return async (cmd, args) => {
+    // 〔MIG-1 续〕列 tmux 会话那一发也在这里译回旧名字（本判据族大多经这一层，免逐条改）。
+    const tmux = tmuxReadOf(cmd, args);
+    if (tmux) return tmuxProduct(tmux[0], answer(tmux[0], tmux[1]));
     if (cmd === "list_remote_mcp_origins") {
       try {
         const r = ((await answer("list_remote_history_projects", {})) ??
@@ -728,6 +731,9 @@ export function launchRenderShim(
 ): (cmd: string, args?: unknown) => Promise<unknown> {
   return async (cmd, args) => {
     if (cmd !== "chan_call") return inner(cmd, args);
+    // 〔MIG-1 续〕列 tmux 会话那一发也在这里译回旧名字（起会话那几条判据都要问名单）。
+    const tmux = tmuxReadOf(cmd, args);
+    if (tmux) return tmuxProduct(tmux[0], inner(tmux[0], tmux[1]));
     const a = args as ChanCallArgs;
     const body = () => chanArgsJson(a) as Record<string, unknown>;
     switch (a.op) {
@@ -777,5 +783,52 @@ export function launchRenderShim(
       default:
         return inner(cmd, args);
     }
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话改走通道之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 它们从前是两条 Tauri 命令（本机 `list_local_tmux` · 远端 `list_remote_tmux`〔散文墓碑〕），判据按命令名答话、回 `TmuxSession[] | null`。
+// 今天是一发 `chan_call`（op = `tmux-list`，本机远端同一问）⇒ 本节把那一发译回旧名字交给判据手里的替身，再把旧回包译成后端成品：
+// - 列表 ⇒ `{installed: true, sessions}`（缺的字段按旧桩的意思补齐：`path` / `command` 空串 · `attached` 否 · `windows` 1 · `sid` null）；
+// - `null`：远端 = 那台没装 tmux ⇒ `{installed: false, sessions: []}`；本机 = 旧口径的「不知道」⇒ 通道那一层失败（新口径里「不知道」就是抛）；
+// - `undefined`（桩没答）⇒ 那台没有控制通道（不知道）；抛 ⇒ 那台后端拒（码 `unobservable`，原话带着 —— 「不知道」要说得出为什么）。
+/** 一发 `chan_call` 若是列 tmux 会话 ⇒ `[旧名字, 旧形参]`；否则 `null`。 */
+export function tmuxReadOf(cmd: string, args: unknown): [string, Record<string, unknown>] | null {
+  if (!isChanCall(cmd, args, "tmux-list")) return null;
+  return args.origin === "<local>" ? ["list_local_tmux", {}] : ["list_remote_tmux", { origin: args.origin }];
+}
+
+/** 旧回包 ⇒ `tmux-list` 成品（见本节头注）。 */
+async function tmuxProduct(name: string, got: Promise<unknown> | unknown): Promise<ArrayBuffer> {
+  let v: unknown;
+  try {
+    v = await got;
+  } catch (e) {
+    throw refusedReply("unobservable", wordsOf(e));
+  }
+  if (v === undefined || (v === null && name === "list_local_tmux")) throw NO_CHANNEL;
+  if (v === null) return chanReply({ installed: false, sessions: [] });
+  const rows = (v as Record<string, unknown>[]).map((r) => ({
+    name: r.name,
+    path: r.path ?? "",
+    command: r.command ?? "",
+    attached: r.attached ?? false,
+    windows: r.windows ?? 1,
+    sid: r.sid ?? null,
+  }));
+  return chanReply({ installed: true, sessions: rows });
+}
+
+/** 判据手里那个替身外面包一层：列 tmux 会话那一发译回旧名字（见本节头注）；别的原样交进去。 */
+export function withTmuxReads(
+  inner: (cmd: string, args?: unknown) => unknown,
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  return async (cmd, args) => {
+    const t = tmuxReadOf(cmd, args);
+    if (t) return tmuxProduct(t[0], inner(t[0], t[1]));
+    return inner(cmd, args);
   };
 }

@@ -57,18 +57,8 @@
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── monitor → backend：monitor 的判据去读后端的源码 ─────────────────
-    (
-        "monitor→backend",
-        "tests/bridge/backend/control/tmux_tests.rs",
-        "src/backend/observe/watcher.rs",
-        "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读后端的 \
-         `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
-         **路径藏在 `macro_rules! backend_watcher_src` 里** —— `include_str!` 只接字面量 token，\
-         用宏是为了「单一落点」（`tmux.rs` 自己写着这个理由，是个好做法）， \
-         而它恰好让这条边从本护栏的抽取器视野里消失了：抽取器只认 `(` 之后紧跟的 `\"`。 \
-         ⇒ **减少重复的好做法，可以顺手把一条边变隐形** —— 这不是谁写错了，\
-         是「护栏认字面量、代码认语义」这个落差的必然产物。抽取器已补上单臂宏展开。",
-    ),
+    // 〔MIG-1 续 · `99 §2.1 ⑬`〕`tmux_tests.rs → observe/watcher.rs` 那一条（`TMUX_LS_FMT` 双写点对拍，路径藏在 `backend_watcher_src`〔散文墓碑〕 宏里）
+    //   出列：列会话的解析整族搬进后端，格式串只剩后端一个家，那条对拍与那个宏随之删了。
     (
         "monitor→backend",
         "tests/bridge/backend/control/backend_kill_tests.rs",

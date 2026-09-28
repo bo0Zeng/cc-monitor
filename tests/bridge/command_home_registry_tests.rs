@@ -158,16 +158,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         "拨号探针的判读还在 `ssh_source.rs`",
     ),
     // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
-    (
-        "list_local_tmux",
-        Lane::Mig1,
-        "tmux 快照的解析还在 monitor（`parse_tmux_ls`）",
-    ),
-    (
-        "list_remote_tmux",
-        Lane::Mig1,
-        "tmux 名单的解析还在 monitor（`parse_tmux_ls`）",
-    ),
+    // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
     (
