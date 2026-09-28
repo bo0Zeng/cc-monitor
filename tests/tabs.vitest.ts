@@ -5304,7 +5304,7 @@ describe("〔U4b〕main.ts 接线", () => {
     expect([
       n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
-      n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
+      n("      tabs.markOriginSeen(origin);\n      startup?.onListed(origin);"), // 〔MIG-1 续〕同一格顺手交「启动时记住的那一格」
     ]).toEqual([0, 1, 1]);
   });
   // 〔GP1 · 第四波〕「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。

@@ -15166,6 +15166,16 @@
       "zh": "本机后端太旧，还不认测试连接这一问。重启 cc-monitor 换上新后端就有了",
       "args": []
     },
+    "startupActive.gone.title": {
+      "kind": "title",
+      "zh": "上次所在的会话这次没出现",
+      "args": []
+    },
+    "startupActive.gone.body": {
+      "kind": "body",
+      "zh": "每台机器都报完了活会话，里面没有 {sid}，这次留在当前这一格",
+      "args": ["sid"]
+    },
     "portForwardReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂本机后端回的转发清单，两端版本对不上",

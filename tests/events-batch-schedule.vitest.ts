@@ -481,8 +481,9 @@ describe("启动接线：记忆与骨架的先后", () => {
     ).toBe(true);
   });
 
+  // 〔MIG-1 续〕补切交给 `startup-active.ts`（它自己的真值表住 `tests/startup-active.vitest.ts`）：两处骨架入口各报一次「出现了」。
   it("本机与远端两处骨架入口都按 pending 补切上次所在 tab", () => {
-    at("if (pendingStartupActive === sessionId) {", 2);
+    at("startup?.onAppeared(sessionId);", 2);
   });
 });
 
