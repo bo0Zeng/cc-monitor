@@ -161,6 +161,52 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
     assert_eq!(body, SSE_BODY, "下游收到的 SSE 与上游发的逐字节不等");
 }
 
+/// 〔DEL 续 · 主会话裁〕「我们的中转在不在听」读的是**宿主自己那份监听状态**（`设计/20 §3.3`：中转住这个进程里）：
+/// 起成了 ⇒ 那个口答 `true`；口被别人占着（起不来）⇒ 那个口答 `false` —— 就算口上**确实有人在听**
+/// （正是从外面探会认错的那一形：连得上 ≠ 是我们的）。
+#[test]
+fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the_port() {
+    let up = fake_upstream();
+    let creds = creds_fixture("state");
+    let got = host(
+        &env_of(
+            Some("0"),
+            Some(format!("http://127.0.0.1:{}", up.port())),
+            &creds,
+        ),
+        std::path::Path::new("/nonexistent"),
+        &crate::accounts::upstream::Boot,
+        no_tap(),
+    );
+    let Hosted::Listening(addr) = got else {
+        panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
+    };
+    assert!(
+        our_relay_listening(addr.port()),
+        "起成了的那个口答了「不在」"
+    );
+    let squatter = TcpListener::bind("127.0.0.1:0").expect("占口");
+    let port = squatter.local_addr().expect("地址").port();
+    let failed = host(
+        &env_of(Some(&port.to_string()), None, &creds),
+        std::path::Path::new("/nonexistent"),
+        &crate::accounts::upstream::Boot,
+        no_tap(),
+    );
+    assert!(
+        matches!(failed, Hosted::Failed(_)),
+        "口被占 ⇒ 应是 Failed，得 {failed:?}"
+    );
+    assert!(
+        TcpStream::connect(("127.0.0.1", port)).is_ok(),
+        "正控：那个口上确实有人在听（下一条要的就是这一形）"
+    );
+    assert!(
+        !our_relay_listening(port),
+        "别人占着的口被答成了「我们的中转在听」"
+    );
+}
+
 /// H2：交了端口、那个口被占着 ⇒ `Failed`（点名那个口），**不退出进程**（本条能跑到断言就是证据）。
 #[test]
 fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {

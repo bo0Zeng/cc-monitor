@@ -714,7 +714,7 @@ mod tests {
         // 〔DEL〕`listen::run`（`--relay` 那一臂的中转入口）随独立中转进程一形删了。
         // 〔DEL〕`machine::answer_ensure` / `machine::answer_status`（帧面 `relay-*` 那两个处理器）随脱离 `--relay` 一族删了。
         (
-            "machine::our_relay_listening",
+            "listen::our_relay_listening",
             "〔US1〕上游选择出成品（`launch-endpoint` · `apikey-routing`）时问「这台机器上我们的中转在不在听」—— 差分探针，只收端口、只回布尔",
         ),
         (
