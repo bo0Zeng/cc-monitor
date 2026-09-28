@@ -338,7 +338,7 @@ pub(crate) fn answers_from_wire(host: &str, d: &Value) -> Result<Answers, String
     Ok(a)
 }
 
-/// 发送口（形状照 `apikey_remote::call`）。
+/// 发送口（形状照当年的 `apikey_remote::call`〔散文墓碑〕，〔MIG-2〕那一份随唯一调用方删了）。
 async fn call(host: &str, args: Value) -> Result<Value, String> {
     let Some(client) = inbound_client::client_for(host) else {
         return Err(said(no_channel(host)));

@@ -39,14 +39,9 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              ⇒ **不是欠账，是接口的边界条件**；登记它是为了「加第三家时这里必改」有人知道。\
              〔LOC1b · 第四波 4D〕**2 → 1**：`enabled_kinds()` 探 Codex 会话根那一处随它删了（本机不再按根找会话）",
     ),
-    (
-        "history.rs",
-        Face::Active,
-        3,
-        "resume flag / 默认启动器 / 中转注入的 agent id ⇒ **两处读面 + 一处写面**。\
-             ⚠ 写面那一处（`relay_prefix_for` 里的 `active().id()`）是 08-28 审计\
-             点名「写面没有分派」之后**又长出来的**，十天没有任何东西红过 —— 本条买的就是它",
-    ),
+    // 〔MIG-2 · `99 §2.1 ⑬`〕`history.rs` 的 `Active` 那一行（3 处：resume flag · 默认启动器 · 中转注入的 agent id）摘了 ——
+    //   本机起会话的计划与渲染搬进本机后端（`control/launch_render/local.rs`），agent 画像由界面按生成物交过去（`AgentFacts`）。
+    //   ⚠ 与前几笔同形：**不是「收进接口了」**，是整段搬去后端。
     // 〔LOC1b · 第四波 4D〕`history.rs` 的 `Facade` 那一行（1 → 0：本机冷读那一支取记录根 `records_dir_for` 的
     //   门面 `has_record_ext`）摘了 —— 本机冷读改经本机后端的 `history-read`，围栏归后端，桌面侧不再问「这个文件是不是会话记录」。〔散文墓碑〕
     //   ⚠ 与前几笔同形：**不是「收进接口了」**，是整段搬去后端。
@@ -125,7 +120,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// `search.rs` 门面 3 → 0 —— 本机全文搜索改问本机后端，monitor 内存索引删了。⚠ 同上几笔：不是「收进接口了」，是桌面侧不再做这件事。
 /// 🔴 〔LOC1b · 第四波 4D〕**14 → 13**：`lib.rs` 门面 2 → 1 —— 本机判活改由本机后端的帧来，monitor 不再拼 `sessions/` 目录。
 /// 🔴 〔LOC1b · 第四波 4D〕**13 → 8**：`adapter.rs` 门面实现体 5 → 1 · 字面量 2 → 1 —— 只为本机读盘服务的那几个门面零调用方、删了。
-const COUPLING_BASELINE: usize = 6; // 〔MIG-3b〕8 → 6：`adapter.rs` 的 `Active`（任务门面的实现体）· `lib.rs` 的 `Facade`（拼 tasks 目录）两处随监视进后端删了
+const COUPLING_BASELINE: usize = 3; // 〔合并 MIG-3b × MIG-2〕8 − 2 − 3 ⇒ 3（跑出来核过）：〔MIG-3b〕`adapter.rs` 的 `Active`（任务门面的实现体）· `lib.rs` 的 `Facade`（拼 tasks 目录）两处随监视进后端删了；〔MIG-2〕`history.rs` 的 `Active` 3 处随本机起会话搬进后端
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///

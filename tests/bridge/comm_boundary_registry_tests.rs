@@ -2500,11 +2500,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     // 〔MIG-3a〕基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
     //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
+    // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
+    //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 56usize), // 〔MIG-3b〕+1：`ccm-probe.ts::probeCcm` // 〔合并 MIG-3b × 主线 19671e6b〕主线 52 ＋ MIG-3b +3（钩子诊断 `hooks-diag` · `session-writes.ts` 的删会话 · 分叉）
+            ("chan.call", 59usize), // 〔合并 MIG-3b × 主线 76b31e7c〕主线 56（含 MIG-2 起会话那 4 条）＋ MIG-3b +3（钩子诊断 `hooks-diag` · `session-writes.ts` 的删会话 · 分叉）；MIG-3b 那条 `ccm-probe.ts::probeCcm` 随 MIG-2 删掉整个文件一起没了（跑出来核过）
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

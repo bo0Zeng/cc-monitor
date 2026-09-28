@@ -427,7 +427,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // 〔TL3 · §47〕cwd（`shell_quote_core::posix_free_path_ok`）· 透传参数（`free_text_ok`）进门判；剩下的见第四列。
     (
-        "src/bridge/src/backend/control/ccm_invocation.rs",
+        "src/backend/control/launch_render/ccm_invocation.rs",
         1,
         &[
             (
@@ -457,12 +457,12 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // 〔E2 · V28〕local_backend.rs 1 → 0：远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了 ⇒ 出列。
     (
-        "src/bridge/src/backend/control/payload.rs",
+        "src/backend/control/launch_render/payload.rs",
         // 〔E2 · V146〕11 → 12：中转前缀里「用户自己设了端点」那一句话（文案表里的常量句）也过唯一的 quote。
         12,
         &[
             (
-                "src/bridge/src/backend/control/payload.rs",
+                "src/backend/control/launch_render/payload.rs",
                 "config_dir_command_safe",
             ),
             (
@@ -473,7 +473,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "src/bridge/crates/relay-route-core/src/lib.rs",
                 "base_url_shape_ok",
             ), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
-            ("src/bridge/src/backend/control/payload.rs", "check"),
+            ("src/backend/control/launch_render/payload.rs", "check"),
             (
                 "src/bridge/crates/shell-quote-core/src/lib.rs",
                 "posix_free_path_ok",
@@ -519,7 +519,13 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    ("src/bridge/src/history.rs", 1, &[], "", "本侧铸的启动 id"),
+    (
+        "src/backend/control/launch_render/local.rs",
+        1,
+        &[],
+        "",
+        "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）",
+    ),
     (
         "src/bridge/src/launch.rs",
         1,

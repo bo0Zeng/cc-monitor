@@ -343,11 +343,15 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
         &["rs"],
         &["arch_doc_shape_guard_tests.rs"],
     ));
+    // 〔MIG-2〕`ccm …` 调用行渲染器搬进后端（`99 §2.1 ⑬`）：它那几处 §36 引用跟着搬，人群补上它的新家（只这一个目录，不是扩面）。
+    let render_dir = repo.join("src/backend/control/launch_render");
+    files_src.extend(guard_core::scan_tree_excluding(&render_dir, &["rs"], &[]));
     let mut blocks: Vec<(String, String)> = Vec::new(); // (文件, 块)
     for (path, src) in &files_src {
         let name = path
             .strip_prefix(&root)
             .or_else(|_| path.strip_prefix(repo.join("tests/bridge")))
+            .or_else(|_| path.strip_prefix(&repo))
             .unwrap_or(path)
             .to_string_lossy()
             .replace('\\', "/");
@@ -393,7 +397,7 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
     // 那张平价账本（上面头注逐字说它「整个住在测试段里」）这一轮搬进了 `tests/bridge/`。
     for expect in [
         "parity_ledger_tests.rs",
-        "backend/control/ccm_invocation.rs",
+        "src/backend/control/launch_render/ccm_invocation.rs",
     ] {
         assert!(
             files.contains(expect),

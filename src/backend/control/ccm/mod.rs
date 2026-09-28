@@ -68,7 +68,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，backend 套
 ///   `682 → 681 passed / 1 failed`，**只红这一条**；monitor 套同刀 `1381 → 1380 / 1`，
 ///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
-/// - `src/bridge/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
+/// - `src/backend/control/launch_render/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
 /// - `src/bridge/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
@@ -86,7 +86,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 /// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
 ///
 /// 🔴 **这件事我们早就做到了，只是一直没说**：`plan.rs` 的容器分支把它显式化进载荷内侧。
-/// 于是 monitor 那边 `history.rs::RELAY_KEEPS_THE_OLD_PATH` 按「探不到就不放行」照旧挡着，
+/// 于是本机起会话那边 `local.rs::RELAY_KEEPS_THE_OLD_PATH`（〔MIG-2〕原在 monitor） 按「探不到就不放行」照旧挡着，
 /// **挡的却是一件我们自己已经做到的事** —— 「实现与申报不一致，而守它的东西看不见那个字段」。
 /// 本 token 补的就是**申报**那一半；驱动它的判据是
 /// [`tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`]。

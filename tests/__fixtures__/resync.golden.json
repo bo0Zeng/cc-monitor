@@ -5,6 +5,7 @@
     "added": 0,
     "removed": 1,
     "retagged": 1,
+    "caught_up": 2,
     "watchers": 1,
     "unavailable": [{ "command": "kill", "code": "no_tmux" }],
     "uncancellable": ["launch"]

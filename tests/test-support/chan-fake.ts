@@ -699,3 +699,94 @@ export function ccBusControlShim(
     }
   };
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染四问改走通道之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 它们从前是 monitor 的 Tauri 命令（`render_launch_payload` · `render_ccm_launch` · `relay_endpoint_for_launch` ·
+// `resume_history_session` / `new_local_session` / `render_local_attach`〔散文墓碑〕），判据按命令名答话、按旧形参断言。
+// 今天是一发 `chan_call`（op = `launch-render-payload` · `launch-render-cli` · `launch-endpoint` · `launch-local`）⇒ 本节把那一发
+// 译回旧名字交给判据手里的 `invoke` 替身，再把旧回包译成后端的成品字节：
+// - 载荷：串 ⇒ `{cmd}`；抛出带 `REFUSE:` 的 ⇒ 对端拒（码 `refused`，标摘掉）；别的抛 ⇒ 那台没有控制通道（证明没发出去）。
+// - `ccm …` 调用行：`{ok, cmd, reason}` 原样；抛 ⇒ 没有控制通道。
+// - 中转地址：`string | null` ⇒ `{baseUrl}`；抛 ⇒ 对端拒（码 `relay_down`，原话）。
+// - 本机起会话：按 `action.kind` 译回三条旧命令之一（旧形参），回 `{cmd, launchId}`（新起那一格的 token = 替身回的串）；
+//   抛 ⇒ 对端拒（码 `refused`）。开窗那一跳（`open_local_terminal`）原样交给替身。
+/**
+ * 一发 `launch-local` 的请求体 ⇒ 它从前那三条 Tauri 命令（见本节头注）里的哪一条 ＋ 旧形参。
+ * ⚠ 译法逐格照 `src/launch-render.ts::planLocalLaunch` 发的键：`account` 缺席 ⇒ 旧形参里也缺席（三态不许压成两态）。
+ */
+function localLaunchOldArgs(b: Record<string, unknown>): [string, Record<string, unknown>] {
+  const action = b.action as { kind: string; sid?: string };
+  const account = "account" in b ? { account: b.account } : {};
+  if (action.kind === "attach") return ["render_local_attach", { tmuxName: b.tmuxName }];
+  if (action.kind === "new") return ["new_local_session", { cwd: b.cwd, launcher: b.launcher, ...account }];
+  return ["resume_history_session", { sessionId: action.sid, cwd: b.cwd, launcher: b.launcher, tmuxName: b.tmuxName, ...account }];
+}
+
+/** 判据手里那个 `invoke` 替身收到的全部调用里，本机起会话那几发（译回旧名字 ＋ 旧形参）。 */
+export function localLaunchCalls(calls: ReadonlyArray<readonly unknown[]>, which: string): Record<string, unknown>[] {
+  return calls
+    .filter(([cmd, args]) => isChanCall(String(cmd), args, "launch-local"))
+    .map(([, args]) => localLaunchOldArgs(chanArgsJson(args as ChanCallArgs) as Record<string, unknown>))
+    .filter(([name]) => name === which)
+    .map(([, a]) => a);
+}
+
+export function launchRenderShim(
+  inner: (cmd: string, args?: unknown) => unknown,
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  return async (cmd, args) => {
+    if (cmd !== "chan_call") return inner(cmd, args);
+    const a = args as ChanCallArgs;
+    const body = () => chanArgsJson(a) as Record<string, unknown>;
+    switch (a.op) {
+      case "launch-render-payload": {
+        let out: unknown;
+        try {
+          out = await inner("render_launch_payload", { req: body() });
+        } catch (e) {
+          const w = wordsOf(e);
+          if (w.startsWith("REFUSE:")) throw refusedReply("refused", w.slice("REFUSE:".length).trimStart());
+          throw NO_CHANNEL;
+        }
+        return chanReply({ cmd: out });
+      }
+      case "launch-render-cli": {
+        let out: unknown;
+        try {
+          out = await inner("render_ccm_launch", { req: body() });
+        } catch {
+          throw NO_CHANNEL;
+        }
+        return chanReply(out ?? { ok: false, cmd: null, reason: "桩没答" });
+      }
+      case "launch-endpoint": {
+        const b = body();
+        let url: unknown;
+        try {
+          url = await inner("relay_endpoint_for_launch", { origin: a.origin, account: b.account });
+        } catch (e) {
+          throw refusedReply("relay_down", wordsOf(e));
+        }
+        return chanReply({ baseUrl: url ?? null });
+      }
+      case "launch-local": {
+        const [name, old] = localLaunchOldArgs(body());
+        let out: unknown;
+        try {
+          out = await inner(name, old);
+        } catch (e) {
+          throw refusedReply("refused", wordsOf(e));
+        }
+        if (name === "render_local_attach") return chanReply({ cmd: out ?? "<backend-rendered-attach>", launchId: null });
+        if (name === "new_local_session")
+          return chanReply({ cmd: "<backend-rendered-local-line>", launchId: typeof out === "string" && out !== "" ? out : null });
+        return chanReply({ cmd: "<backend-rendered-local-line>", launchId: null });
+      }
+      default:
+        return inner(cmd, args);
+    }
+  };
+}

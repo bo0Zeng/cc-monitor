@@ -42,7 +42,7 @@ import type { AccountsState } from "../../src/accounts";
 import { invalidateAccountsCache } from "../../src/account-reads";
 import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../../src/launch-account";
 import { resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests } from "../../src/local-launch-backfill";
-import { historyCalls, isChanCall, linesReply, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
+import { historyCalls, isChanCall, launchRenderShim, linesReply, localLaunchCalls, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../test-support/ask-dialog-driver.ts";
 import { showActionFailureToast } from "../../src/error-toast";
@@ -73,7 +73,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     // 〔C4d〕改注解 / 上次账号那几问改走通道（问本机常驻后端）⇒ 经 chan-fake 译回旧名字再答。
-    invokeMock.mockImplementation(withHistoryReads(() => Promise.resolve({ starred: true, hidden: false, customTitle: null })));
+    invokeMock.mockImplementation(withHistoryReads(launchRenderShim(() => Promise.resolve({ starred: true, hidden: false, customTitle: null }))));
     runNewRemote.mockClear();
     document.body.replaceChildren();
   });
@@ -128,10 +128,10 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const row = buildRow(view, entry(), proj());
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
-    await Promise.resolve();
-    const call = invokeMock.mock.calls.find((c) => c[0] === "new_local_session");
+    await new Promise((r) => setTimeout(r, 0));
+    const call = localLaunchCalls(invokeMock.mock.calls, "new_local_session")[0];
     expect(call).toBeTruthy();
-    expect(call![1]).toMatchObject({ cwd: "/p", launcher: null });
+    expect(call).toMatchObject({ cwd: "/p", launcher: null });
   });
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -158,7 +158,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
       authKind: "subscription" as const,
       authReady: true,
     };
-    invokeMock.mockImplementation(withHistoryReads(withAccountReads((cmd: string, args: unknown) => {
+    invokeMock.mockImplementation(withHistoryReads(withAccountReads(launchRenderShim((cmd: string, args: unknown) => {
       // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
       //   〔C4a〕经通道问本机后端 `accounts-sessions`（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
@@ -183,7 +183,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         default:
           return Promise.resolve({});
       }
-    })));
+    }))));
 
     // ⚠ **快照要先喂热**：`primeLocalLaunchAccounts` 是**不等待**地踢出去的
     //   （多等一拍会撞那两条只放行一个微任务的 DOM 判据，见 `localLaunchAccountSync` 头注），
@@ -234,7 +234,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(runNewRemote).toHaveBeenCalledTimes(1);
     expect(runNewRemote.mock.calls[0][0]).toBe("hostA");
     expect(runNewRemote.mock.calls[0][1]).toBe("/p");
-    expect(invokeMock.mock.calls.some((c) => c[0] === "new_local_session")).toBe(false);
+    expect(localLaunchCalls(invokeMock.mock.calls, "new_local_session")).toEqual([]);
   });
 
   // F05 Phase D 审计：runNewSession 走 `withAccount(origin, null, ..., {follow:{}})`——恒跟随
@@ -399,7 +399,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     ).toEqual([]);
     // F76 承重不变式：删空的远端项目从 remoteCache 同步移除，否则 TTL 内重开会拼回幽灵
     const cache = (view as unknown as { remoteCache: { projects: unknown[] } }).remoteCache;
-    expect(cache.projects.length).toBe(0);
+    // 〔合并 MIG-3b × MIG-2〕删会话经通道（`session-writes.ts::deleteSession`）、替身又多包了一层起会话翻译 ⇒ 应答晚几拍到；等它落定再判。
+    await vi.waitFor(() => expect(cache.projects.length).toBe(0));
   });
 });
 
@@ -431,14 +432,14 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
 describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
   /** 那一发 `resume_history_session` 的载荷。 */
   function resumePayload(): Record<string, unknown> {
-    const call = invokeMock.mock.calls.find((c) => c[0] === "resume_history_session");
+    const call = localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
     expect(call, "一次 `resume_history_session` 都没发出去 —— 主路没走到，下面在空转").toBeTruthy();
-    return call![1] as Record<string, unknown>;
+    return call!;
   }
 
   /** 让 `list_local_tmux` 回一份本机 tmux 快照（`null` = 不知道）。 */
   function serveLocalTmux(names: string[] | null): void {
-    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
+    invokeMock.mockImplementation(withHistoryReads(launchRenderShim((cmd: string) => {
       if (cmd === "list_local_tmux") {
         return Promise.resolve(
           names === null
@@ -454,7 +455,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
         );
       }
       return Promise.resolve(undefined);
-    }));
+    })));
   }
 
   async function clickResume(): Promise<void> {
@@ -522,7 +523,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
       "不知道本机占了哪些名字时铸了一个 —— 那是把「不知道」当成了「空集」",
     ).toBeNull();
     // 反空真：这一趟主路**真的走到了**（否则上面那条是「什么都没发生」的空真）。
-    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(true);
+    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(true);
   });
 
   it("★ 远端那条路**不受影响**：不查本机 tmux、也不发本机 resume", async () => {
@@ -532,7 +533,7 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在新终端 resume")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(false);
+    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(false);
     expect(
       invokeMock.mock.calls.some((c) => c[0] === "list_local_tmux"),
       "远端 resume 去查了本机的 tmux 名 —— 那是拿本机的事实去铸远端的名字",

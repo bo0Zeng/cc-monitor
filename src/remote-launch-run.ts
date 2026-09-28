@@ -35,13 +35,14 @@ import { RBIND_TOKEN_ALPHABET, RBIND_TOKEN_LEN } from "./generated/judgment-rule
 // `tmux-outer-golden.json`）的左边照 LR1 的办法换成手写期望，`req` 仍由本文件的请求构造现产。
 // 「这一族不许回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。
 // 〔LR1 · U8c-3〕`ccm …` 调用行的 TS 渲染器（原 `launch-render-cli.ts`）已删 ——
-// 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → `render_ccm_launch`），
+// 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → 那台后端 `launch-render-cli`；〔MIG-2〕原 Tauri 命令 `render_ccm_launch` 退役），
 // 它最后只剩「产夹具的 `out`」一个用途，而那一格改成了手写期望。
 /** `renderCliViaBackend` 的结果：`ok:false` 带**降级理由**，不是错误（§33）。 */
 type CliRenderResult = { ok: true; cmd: string } | { ok: false; reason: string };
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
-import type { CcmProbeResult } from "./ccm-probe.ts";
-import { probeCcm } from "./ccm-probe";
+// 〔MIG-2 · `99 §2.1 ⑬`〕渲染与「这一发的中转地址」问那台后端（本机远端同一条 `chan.call(origin, …)`）。
+import { isRefusal, launchEndpoint, planLocalLaunch, renderCli, renderPayload } from "./launch-render";
+import { saidOfControl } from "./control-said";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { offerResyncRetry } from "./resync";
@@ -52,13 +53,8 @@ import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-re
 import type { LaunchContext, LaunchPlan } from "./launch-types";
 import { copyText } from "./copy-table";
 
-/** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
- *  Rust 那侧是 `backend::control::payload::REFUSE_TAG`，两处必须逐字一致。
- *  由 Rust 判据 `the_refuse_tag_is_the_same_string_on_both_sides` 钉住（改一侧会红）。
- *
- *  用途：区分「载荷渲染被拒」（坏输入，换条路渲染只会糊过去 ⇒ 不许回落）
- *  与「IPC/序列化异常」（通道问题，与载荷无关 ⇒ 可回落）。 */
-const REFUSE_TAG = "REFUSE:";
+// 〔MIG-2〕原先这里有 `REFUSE_TAG`（Rust 渲染器给业务拒绝打的串标，前端按它分「拒」与「IPC 异常」）：
+//   渲染搬进后端帧命令之后，拒绝走码（`refused`，`launch-render.ts::isRefusal`），串标这一侧删了。
 
 // ═══════ 🔴 `设计/80 §8.7` 步 3：**启动期令牌的铸币口** ═══════════════════════════
 //
@@ -141,7 +137,7 @@ function withMintedRbindToken(mods: LaunchModifiers): LaunchModifiers {
   return mods.rbindToken === undefined ? { ...mods, rbindToken: mintRbindToken() } : mods;
 }
 
-/** 〔RL1 · 第四波〕**这次拉起的中转地址**：问后端一次（`relay_endpoint_for_launch`），有就作为载荷里的一条
+/** 〔RL1 · 第四波〕**这次拉起的中转地址**：问那台后端一次（〔MIG-2〕`launch-endpoint` 出成品），有就作为载荷里的一条
  *  `export-relay-base-url` 补进去；`null` ⇒ plan 原样（照旧直连，逐字节不变）。
  *
  *  - 判断只在那台机器的后端一处（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`，`设计/20 §3.2`）
@@ -164,7 +160,7 @@ export async function withRelayEndpoint(
           ...(ctx.account.name ? { [ACCOUNT_WIRE.name]: ctx.account.name } : {}),
         }
       : { [ACCOUNT_WIRE.tag]: ACCOUNT_WIRE.base };
-  const url = await commands.relay_endpoint_for_launch({ origin, account });
+  const url = await launchEndpoint(origin, account);
   return url === null ? plan : { ...plan, env: [...plan.env, { kind: "export-relay-base-url", value: url }] };
 }
 
@@ -204,7 +200,6 @@ async function renderLaunchCommand(
     );
   }
   if (ctx.transport.kind === "ssh" && !payloadCarriesRbindToken) {
-    const probe = await probeCcm(origin);
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（R04① 之前 TS 渲染器对说不出的维度
     // 是静默跳过的，安全性全靠调用方记得先问一句「能不能渲」）。
@@ -222,7 +217,8 @@ async function renderLaunchCommand(
     //   不再是**换一种语言**。
     // ⚠ §33b 那三问的**今天版**只有一个家：`src/doc/INVARIANTS.md §33b` 那张表
     //（由 `doc_claim_registry` 逐问与现场对拍）。**别在这儿复述，复述就会漂。**
-    const r = await renderCliViaBackend(ctx, plan, probe);
+    // 〔MIG-2〕那台 `ccm` 会哪些由那台后端自己答（渲染就在它那里），不再先探一遍带过去。
+    const r = await renderCliViaBackend(origin, ctx, plan);
     if (r.ok) return r.cmd;
     // R04① 的第二条收益（Phase D 审计指出它此前"只活在测试里"，生产侧零消费者）：
     // 把**为什么**降级说出来。刻意用 `console.debug` 而非 toast/`console.warn`——
@@ -235,7 +231,7 @@ async function renderLaunchCommand(
   // （`backend::control::payload::render_payload`）。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {
-      return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
+      return await renderPayload(origin, buildLaunchRenderRequest(plan));
     } catch (e) {
       // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
       // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
@@ -266,7 +262,7 @@ async function renderLaunchCommand(
   // 没有 tmux 容器的串 —— 那时用户的会话根本不在 tmux 里，而两侧的闸一个都不响）。
   // 那一条由 `tests/remote-launch-run.vitest.ts` 的 `W22B` 组逐格钉着。
   try {
-    return await commands.render_launch_payload({ req: buildLaunchRenderRequest(plan) });
+    return await renderPayload(origin, buildLaunchRenderRequest(plan));
   } catch (e) {
     // 同上一格：带 `REFUSE:` 标的是坏输入（换条路渲染只会糊过去），不带标的是通道异常；
     // 两者在这一格的处置**相同** —— 因为这里已经没有第二条路了。
@@ -295,16 +291,13 @@ function launcherOrDefault(launcher: string): string {
  *  ⚠ IPC 本身失败（后端崩/参数被拒）与「渲染器说渲染不出来」是**两件事**：
  *  前者 catch 成一条带 `IPC` 字样的 reason，照样降级 —— 拉起功能永不因为渲染器选择而变砖。 */
 async function renderCliViaBackend(
+  origin: string,
   ctx: LaunchContext,
   plan: LaunchPlan,
-  probe: CcmProbeResult,
 ): Promise<CliRenderResult> {
-  const req = buildCliRenderRequest(ctx, plan, probe);
+  const req = buildCliRenderRequest(ctx, plan);
   try {
-    const res = await commands.render_ccm_launch({ req });
-    return res.ok && res.cmd !== null
-      ? { ok: true, cmd: res.cmd }
-      : { ok: false, reason: res.reason ?? copyText("remoteLaunchRun.renderCli.noReason") };
+    return await renderCli(origin, req);
   } catch (e) {
     return { ok: false, reason: copyText("remoteLaunchRun.renderCli.fallback", { e: String(e) }) };
   }
@@ -321,22 +314,9 @@ async function renderCliViaBackend(
  *  现在 `launch-cli-golden.ts` 用这同一个函数产夹具里的 `req`，Rust 侧拿**生产 wire 类型**
  *  反序列化它、跑**生产命令**、与用例表里手写的 `out` 逐字节比（〔LR1〕原先比的是 TS 渲染器的
  *  产物，它删了）⇒ 上面那三个变异各自会让 `req` 变形 ⇒ Rust 产出变 ⇒ 与 `out` 不一致 ⇒ 红。 */
-export function buildCliRenderRequest(
-  ctx: LaunchContext,
-  plan: LaunchPlan,
-  probe: CcmProbeResult,
-): CliRenderRequest {
+export function buildCliRenderRequest(ctx: LaunchContext, plan: LaunchPlan): CliRenderRequest {
   return {
     isSsh: plan.transport.kind === "ssh",
-    // 〔LR2 · R95b〕三态一对一过线（`ccm-probe.ts::CcmProbeResult` → `launch_wire.rs::WireCcmProbe`）。
-    // 原来这一格是 `caps: … | null`，`unknown` 与 `not-installed` 在线上同形 ⇒ Rust 那边只能说「没装」
-    // （`设计/80 §9.4`〔R95b〕）。现在 `unknown` 带着探测那一跳的原话过去，Rust 回「没探到，不等于没装」。
-    ccm:
-      probe.state === "installed"
-        ? { state: "installed", caps: [...probe.capabilities] }
-        : probe.state === "not-installed"
-          ? { state: "not-installed" }
-          : { state: "unknown", error: probe.error },
     action:
       plan.action.kind === "resume"
         ? { kind: "resume", sid: plan.action.sid }
@@ -632,9 +612,7 @@ export async function runRemoteResumeTmux(
 async function sendIntoViaBackend(origin: string, name: string, plan: LaunchPlan): Promise<SendIntoOutcome> {
   let payload: string;
   try {
-    payload = await commands.render_launch_payload({
-      req: buildPayloadRenderRequest(plan),
-    });
+    payload = await renderPayload(origin, buildPayloadRenderRequest(plan));
   } catch (e) {
     // ★★ P1：这里原来把**两件事**混成一件，注释是这么写的 ——
     //   「两者都在后端那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
@@ -653,8 +631,8 @@ async function sendIntoViaBackend(origin: string, name: string, plan: LaunchPlan
     //
     // ⚠ 诚实边界：这是**字符串约定不是类型**（全仓 70 个 tauri command 的错误都是 `String`，
     // 本件不在这里开第一个结构化的口 —— 那是 `U6`）。手写一个带同样前缀的普通错误串会被误判。
-    const raw = String(e);
-    if (raw.includes(REFUSE_TAG)) {
+    const raw = saidOfControl(e);
+    if (isRefusal(e)) {
       console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（同一道闸只会再拒一次）：${raw}`);
       return { verdict: "refused", reason: raw };
     }
@@ -827,7 +805,7 @@ export async function runLocalResumeIntoExistingTmux(
   //      ⇒ 这一行真的 reject 的时候，那是一条**该让人看见的**读数，不是该被糊过去的边角。
   let attachCmd: string;
   try {
-    attachCmd = await commands.render_local_attach({ tmuxName: name });
+    attachCmd = (await planLocalLaunch({ action: { kind: "attach" }, cwd: null, launcher: null, tmuxName: name })).cmd;
   } catch (err) {
     showActionFailureToast(
       copyText("remoteLaunchRun.inPlaceLocal.attachFailed"),

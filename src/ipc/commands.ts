@@ -66,12 +66,6 @@ export interface SkillView {
   /** 可编辑文件的绝对路径（后端算好的，UI 直接拿去请求读/写）。 */
   editable: string[];
 }
-// U8c-2c-2：手写 wire 镜像（不是 ts-rs 生成的）——与 Rust 的一致性由 launch-cli-wire.vitest.ts 钉。
-import type {
-  CliRenderRequest,
-  CliRenderResponse,
-  PayloadRenderRequest,
-} from "../launch-cli-wire.ts";
 
 import type { Alias } from "../generated/Alias";
 import type { AliasInstallReport } from "../generated/AliasInstallReport";
@@ -201,7 +195,7 @@ export const commands = {
   /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
   get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
 
-  // 〔MIG-3b〕远端 `ccm` 探测那条退役：界面经通道直问那台后端 `ccm-probe`（`src/ccm-probe.ts::probeCcm`）。
+  // 〔MIG-2〕`probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己，界面不再先探一遍。
 
   /**
    * 写配置：只交「改哪几条路径」（〔CFG1〕整份替换的 `save_config` 删了）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 〔散文墓碑〕
@@ -382,16 +376,11 @@ export const commands = {
   // 〔US1 · 第四波 4D〕`read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端
   //   `apikey-read` / `apikey-routing`（`src/apikey-reads.ts`）。
 
-  /**
-   * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
-   * apikey 号那台的中转不在 ⇒ reject（拒绝起会话，说得出是哪台）；中转只住那台的常驻后端里，不另起。
-   * 〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品），monitor 只转交、照成品执行；前端拿到地址原样放进载荷（`export-relay-base-url`）。
-   * 〔V141〕不带会话身份：地址不随会话变，中转从 claude 的请求头认会话。
-   */
-  relay_endpoint_for_launch: (args: {
-    origin: Origin;
-    account: { kind: "base" } | { kind: "named"; configDir: string; name?: string } | null;
-  }) => invoke<string | null>("relay_endpoint_for_launch", args),
+  // 〔MIG-2 · `99 §2.1 ⑬`〕「这次拉起写哪个中转地址」那一问退役成那台后端的成品（界面经通道直接问 `launch-endpoint`，
+  //   `src/launch-render.ts::launchEndpoint`）。monitor 这边只剩那个开关自己的值（下一条）。
+
+  /** 〔MIG-2〕全量注入开关：monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`=0` 才关）。monitor 自己的配置，界面带给那台后端。 */
+  relay_all_sessions_switch: () => invoke<boolean>("relay_all_sessions_switch"),
 
   // 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
   //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。
@@ -399,41 +388,11 @@ export const commands = {
   /** `ssh -G` 解析一个别名。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   resolve_ssh_host: (args: { alias: string }) => invoke<ResolvedHost>("resolve_ssh_host", args),
 
-  /** 在新终端 resume 一个历史会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  resume_history_session: (args: {
-    sessionId: string;
-    cwd: string;
-    launcher: string | null;
-    /**
-     * G3b-1 / Phase G：本机拉起用哪个账号。**三态，别退回两态**：
-     *
-     * - 参数缺席 = 调用方**没表态** ⇒ 一个字都不注入（既有调用点逐字节等价旧行为）
-     * - `{ kind: "base" }` = 用户**显式**选了账号 0 ⇒ 后端产出 `unset CLAUDE_CONFIG_DIR`
-     * - `{ kind: "named", configDir, name? }` = 具名账号 ⇒ `export CLAUDE_CONFIG_DIR='…'`
-     *
-     * **「账号 0」不等于「什么都不加」**：本地拉起故意加载 shell rc，而 rc 里很可能有
-     * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是它）⇒
-     * 什么都不加会静默落到别的账号上。远端那条路一直渲染成 `unset`，本地此前不是（Phase G 修）。
-     *
-     * 🔴 `K-R53`（09-11）：`named` 那一态**说得出名字就一起传**。后端那条 ccm 路只会
-     * `--account <名字>`（`shared/ccm:606`）⇒ 不传名字 = 那次拉起**结构上到不了后端那条路**，
-     * 必然落回第二实现（`history.rs::build_local_posix_command`，没有 tmux 容器）。
-     * 取值口只有一个：`launch-account.ts::localLaunchAccountSync`（名字与目录同源）。
-     * `name` 缺席是**合法的**（例：分叉时继承的是源会话的目录、没有名字）—— 那时后端诚实短路，
-     * **绝不从目录名反推**（推错 ⇒ `shared/ccm` 当场 `die`，一次能起的会话变成一条报错）。
-     */
-    account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
-    /**
-     * P3t（`C12`）：**POSIX 本机**把会话建进 tmux 时的会话名。
-     *
-     * 缺席 ⇒ 后端诚实降级回旧路（`cc --resume <sid>`，不进容器）。
-     * 传了也**只对 POSIX 本机生效** —— Windows 那一侧连读都不读（用户逐字：「windows不要tmux」）。
-     *
-     * ⚠ 只许传 `mintTmuxName` 铸出来的名字。它是全仓唯一带**撞名避让**的铸造口；
-     * 自己拼一个 `<sid8>-cc` 就是 F13 修掉的那个坑（另一处精心让出 `-2`，你直接撞上去）。
-     */
-    tmuxName?: string | null;
-  }) => invoke<void>("resume_history_session", args),
+  // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`
+  //   （`src/launch-render.ts::planLocalLaunch`），monitor 只剩开终端窗口（下一条）。
+
+  /** 〔MIG-2〕在本机开一个终端窗口跑 `cmd`（工作目录 `cwd`）：POSIX 上交用户自己的终端 / Windows 上 PowerShell。桶①。 */
+  open_local_terminal: (args: { cmd: string; cwd: string | null }) => invoke<void>("open_local_terminal", args),
 
   // 〔C4c · 第四波 4B〕「resume 之前问记录还在不在」那一条退役：界面经通道直接问后端 `history-record`
   //   （`src/session-reads.ts::probeSessionRecord`，成品 `{present, root}`）。
@@ -522,22 +481,7 @@ export const commands = {
   // PS2：本机装的是哪一版（**只读**）。三态刻意不合并 ——
   // 「没装」「已是最新」「装了但不是这一版」合并任意两个都会骗人。
   cc_bus_install_state: () => invoke<CcBusInstallState>("cc_bus_install_state"),
-  // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`backend::control::ccm_invocation`）。
-  // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
-  render_ccm_launch: (args: { req: CliRenderRequest }) =>
-    invoke<CliRenderResponse>("render_ccm_launch", args),
-  // U8a-2c-pre：兜底那支 `container:"none"` 的载荷也由 Rust 渲染（`backend::control::payload::render_payload`）。
-  // 非法输入（空 configDir / shell 元字符 / 会裂的 arg）⇒ Rust 侧 `Err` ⇒ 这里 reject。
-  render_launch_payload: (args: { req: PayloadRenderRequest }) =>
-    invoke<string>("render_launch_payload", args),
-  // 🔴 `K-R109`：**本机后端产「把终端接进那个会话」那一句**（`ccm attach <名>`）。
-  // `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。
-  // ⚠ 它**没有 `origin`**：本机后端就在这台机器上，问它要不必绕 ssh 那一跳
-  //（远端那一侧的同一件事由 `render_ccm_launch` 的 `action:"attach"` 产）。
-  // ⚠ 渲不出来 ⇒ Rust 侧 `Err` ⇒ 这里 reject。**调用方不许拿前端自己拼一条糊过去**：
-  // 那就是 §31 最终形态第①条逐字禁的「前端硬编码后端命令」。
-  render_local_attach: (args: { tmuxName: string }) =>
-    invoke<string>("render_local_attach", args),
+  // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染 · 本机接回那一句三条退役：那台后端的帧命令（`src/launch-render.ts`）。
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
@@ -648,29 +592,6 @@ export const commands = {
    */
   backend_stop: (args: { origin: string }) => invoke<StopAnswer>("backend_stop", args),
 
-  /**
-   * 在某目录起一个**全新**本机会话。
-   *
-   * `account`：`K-H2b` `D1 阻-1` 加的。**三态**，与 `resume_history_session` 同形：
-   * 缺席 = 调用方没表态（逐字节旧行为）· `base` = 用户显式选了账号 0 ·
-   * `named` = 具名账号。⚠ 它**不是**「从某条旧会话继承账号」（那是 fork 的语义）——
-   * 它是「用户此刻选中的当前账号」。没有它，这条主路上一个账号都说不出，
-   * 后果有两条：起会话落到 shell rc 那个默认号上（静默串号），
-   * 以及中转那一格**永远拼不出路由键**。
-   *
-   * # 🔴 返回值〔`K-P5h` `KP5HD1`〕：**这次拉起的身份 token**（不是 sid）
-   *
-   * Rust 侧从 `Result<(), String>` 改成 `Result<String, String>` ⇒ 这里从 `invoke<void>`
-   * 改成 `invoke<string>`。`K-P5 §3 三` 现打「5 处起会话方没有一处在起新会话时知道 sid」——
-   * 这个 token 就是为那件事存在的：拿它去 `local-launch-backfill.ts::sidOfLaunch` 反查，
-   * 起会话方才说得出「我刚起的那条是哪个会话」。
-   * ⚠ 它是**内部 nonce**：不许显示给用户，也不许当 sid 用。
-   */
-  new_local_session: (args: {
-    cwd: string;
-    launcher: string | null;
-    account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
-  }) => invoke<string>("new_local_session", args),
 
   /**
    * `24e` 第二刀（`设计/60 §4 戊` / `§5` 第三段）：在**原生窗口**（egui，同进程、次线程）

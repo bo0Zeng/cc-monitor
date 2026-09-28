@@ -67,7 +67,7 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   },
   // 〔LR1 · U8c-3〕这里原来还有 `cliFlags`（`--base` / `--account <名>` / 名字缺失 ⇒ `null`）与
   // `requiredCaps`（`["account"]`）两格 —— 它们唯一的读者是 TS 那份 `ccm …` 渲染器，随它删了。
-  // 同一件事今天只有一份：`src/bridge/src/backend/control/ccm_invocation.rs` 的 `account` 维度
+  // 同一件事今天只有一份：`src/backend/control/launch_render/ccm_invocation.rs` 的 `account` 维度
   // （三形与 attach 豁免由 `ccm_invocation_tests.rs` 钉，`--base` 的跨语言契约由
   // `tests/base-flag-contract-guard.vitest.ts` 钉在那一份上）。
 };

@@ -1257,7 +1257,7 @@ export class AccountsSection {
    *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
    *    那只影响状态那一行的措辞，而配 key 本身是这一格存在的理由。
    * ② **没有 `configDir` 的账号（账号 0）不给这一格**：起会话那一侧对它逐字回 `None`
-   *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
+   *    （`apikey_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。 〔散文墓碑〕
    * ③ 〔RM1a · 第四波〕这一页显的是 `this.origin` 那台机器的账号，读写那份文件的两条命令
    *    （〔US1〕读：经通道 `apikey-read`；〔HX2〕写：经通道 `apikey-key-set`）**按同一台机器**去
    *    （[`machineOrigin`]）—— 远端页读写的是那台机器上那一份，不再是本机的。

@@ -9,8 +9,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", async () => {
-  const { tmuxControlShim } = await import("./test-support/chan-fake");
-  return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
+  const { tmuxControlShim, launchRenderShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
@@ -27,11 +27,8 @@ import {
   // 〔RL1〕拉起之前问中转地址的那一口（attach 那一道闸直接量它）。
   withRelayEndpoint,
   // 🔴 `设计/80 §8.7` 步 3：全仓唯一的启动期令牌铸币口。
-  mintRbindToken,
-  // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
-  buildCliRenderRequest } from "../src/remote-launch-run";
+  mintRbindToken } from "../src/remote-launch-run";
 import { planAttach } from "../src/launch-requests";
-import { chanReply, isChanCall, UNSUPPORTED } from "./test-support/chan-fake";
 import { renderLaunchPayloadStub, STUB_REFUSE_TAG } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
@@ -64,7 +61,7 @@ const LOCAL_ATTACH_FROM_BACKEND = "<backend-rendered-attach-line>";
 const OUTER_FROM_BACKEND = "<backend-rendered-outer-line>";
 
 /**
- * F03：`renderLaunchCommand` 先给 `probeCcm` 打一发探测（〔MIG-3b〕经通道 `ccm-probe`，替身里按 `isChanCall` 认；「未装」＝ 对端不认这条），早于本测试组
+ * F03：`renderLaunchCommand` 先给 `probeCcm` 打一发 `invoke("probe_ccm_cli", …)`，早于本测试组
  * 原本唯一关心的 `launch_remote_terminal` 调用——不能再用 `mockResolvedValueOnce`/
  * `mockRejectedValueOnce` 排队（先到的是 probe 调用，会把队列里配给 launch_remote_terminal 的
  * once 值吃掉）。改按 cmd 路由：probe 恒答"未装"（强制走兜底渲染器，保持本文件断言的裸 shell
@@ -73,8 +70,8 @@ const OUTER_FROM_BACKEND = "<backend-rendered-outer-line>";
 function mockInvoke(launchTerminal: () => Promise<unknown>): void {
   invokeMock.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-    if (isChanCall(cmd, args, "ccm-probe")) {
-      return Promise.reject(UNSUPPORTED);
+    if (cmd === "probe_ccm_cli") {
+      return Promise.resolve({ installed: false, version: null, capabilities: [] });
     }
     // U8a-2c-pre：兜底那支的 `container:"none"` 载荷由 **Rust** 渲染
     //（`backend::control::payload::render_payload`）；🔴 **步 22b·B 起外层 tmux 那三格
@@ -134,10 +131,10 @@ describe("F41 runRemoteResume", () => {
   // ★ fail-closed：后端拒了就**不许**静默用 TS 版糊过去 —— 那等于把一次 fail-closed
   // 变成 fail-open（后端拒的正是非法 configDir / 会裂的 arg 那一类）。
   it("★ 后端拒绝渲染载荷 → 报错，绝不静默回退到 TS 渲染器", async () => {
-    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+    invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (isChanCall(cmd, args, "ccm-probe"))
-        return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") return Promise.reject("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR");
       return Promise.resolve(undefined);
     });
@@ -156,10 +153,10 @@ describe("F41 runRemoteResume", () => {
   // 路也会拒**。而回落那条正是 TS 兜底渲染器，它对同样输入未必拒 ⇒ 一次 Rust 侧的 fail-closed
   // 被那个 catch 变成 fail-open。分法 = Rust 侧 `payload::refuse()` 打的 `REFUSE:` 标。
   it("★ P1：载荷渲染被拒（带 REFUSE 标）→ refused，不回落到兜底渲染器", async () => {
-    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+    invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (isChanCall(cmd, args, "ccm-probe"))
-        return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // Rust 侧 `refuse()` 的产物形态：`REFUSE: <人读原因>`
       if (cmd === "render_launch_payload")
         return Promise.reject("REFUSE: 拒绝拼入命令：非法 CLAUDE_CONFIG_DIR \"/x;rm\"");
@@ -170,7 +167,8 @@ describe("F41 runRemoteResume", () => {
     expect(ok).toBe(false);
     // 用户必须看见（这次就地 resume 没做成），且 toast 带得上原因
     expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
-    expect(String(toastMock.mock.calls[0][1])).toContain("REFUSE:");
+    // 〔MIG-2〕载荷改问那台后端（`launch-render-payload`）：拒 = 对端回码 `refused`、原话原样（`REFUSE:` 标是旧 IPC 那一跳的分法，摘了）。
+    expect(String(toastMock.mock.calls[0][1])).toContain("拒绝拼入命令");
     // ★ 最要紧的一格：**没有**发起拉起 —— 也就是没有回落到兜底渲染器那条整串
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
@@ -325,10 +323,12 @@ describe("F41 runRemoteResume", () => {
   //   「monitor 那条命令根本没跑」）。键入改走通道之后，**能证明没发出去**的那一档是「那台没有控制通道」
   //   （`hop/NotSent`）；IPC 自己坏了那一种今天拿不准、不回落（`send-into-backend.vitest.ts` ② 那一条）。
   it("★ P1 对照：通道问题（能证明没发出去）→ 仍然回落，行为逐字不变", async () => {
-    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+    invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (isChanCall(cmd, args, "ccm-probe"))
-        return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      // 〔MIG-2〕载荷问那台后端：给一串（缺席 = 对端回了读不懂的东西，那是另一种失败，不是本条要量的「通道问题」）。
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
       // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
       if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
       return Promise.resolve(undefined);
@@ -398,7 +398,7 @@ describe("F41 runRemoteResume", () => {
     const seen: PayloadRenderRequest[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null);
-      if (isChanCall(cmd, args, "ccm-probe")) return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") {
         seen.push((args as { req: PayloadRenderRequest }).req);
         return Promise.reject(`${STUB_REFUSE_TAG} 会话 ID "--evil" 不合形状`);
@@ -597,32 +597,18 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     vi.clearAllMocks();
   });
 
-  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态（〔LR2 · R95b〕不再与「没装」同形）", () => {
-    // `ctx`/`plan` 由**生产构造口**产（`planAttach`），不手捏 —— 手捏的那份下一次改字段就馊。
-    const { ctx, plan } = planAttach("u1-cc");
-    const flaky = buildCliRenderRequest(ctx, plan, { state: "unknown", error: "ssh 抖了一下" });
-    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
-    const installed = buildCliRenderRequest(ctx, plan, {
-      state: "installed",
-      version: "9.9.9",
-      capabilities: new Set(["tmux"]),
-    });
-    // 〔LR2 · R95b〕这里原来钉的是 `K-R95` 那个缺口「今天还在」（`unknown` 与 `not-installed` 在线上同为 `caps: null`），
-    //   并写着「它们要是分开了，缺口就补上了，回来重判」。补上了：三态一对一过线，`unknown` 带着原话。
-    //   ⇒ 判 A 的前提（「后端拒」不只有「真没装」一种来历）今天由线上第三态直接说出来，不再靠两态同形推。
-    expect(flaky.ccm).toEqual({ state: "unknown", error: "ssh 抖了一下" });
-    expect(notInstalled.ccm).toEqual({ state: "not-installed" });
-    expect(installed.ccm).toEqual({ state: "installed", caps: ["tmux"] });
-    expect(flaky.ccm, "「没探出来」与「没装」在线上又同形了 —— R95b 回潮").not.toEqual(notInstalled.ccm);
-  });
-
+  // 〔MIG-2〕「★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态」删了（原名逐字，`K-R109-deathvalue.md` 按它记着，留档不动）：
+  //   渲染住进那台后端之后，「那台装没装 ccm」是后端在自己机器上现查的事实（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），
+  //   请求体里不再有前端转述的探测三态（`CliRenderRequest.ccm` 摘了，`deny_unknown_fields` 拒多送）⇒ 「探不到」那一态
+  //   不再过线。判 A 那条「后端拒不只一种来历」的前提随之由后端自己说（`launch_cli_parity_tests.rs`
+  //   `the_production_cli_render_asks_this_backend_for_its_own_capabilities`）。
   it("★★ 第二环：那一态走到生产入口上 ⇒ 落到**后端渲**的那一串，且请求带对的那一格 `outer`", async () => {
     const rendered: string[] = [];
     const reqs: PayloadRenderRequest[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       // 探测**出错** ⇒ `ccm-probe.ts` 回 `{state:"unknown"}`（它不进缓存，下次会重探）。
-      if (isChanCall(cmd, args, "ccm-probe")) return Promise.reject("ssh 抖了一下");
+      if (cmd === "probe_ccm_cli") return Promise.reject("ssh 抖了一下");
       // 后端照 wire 上那两态办事：拿不到能力集 ⇒ 诚实降级（**不是错误**）。
       if (cmd === "render_ccm_launch")
         return Promise.resolve({ ok: false, cmd: null, reason: "远端未装 ccm" });
@@ -708,8 +694,8 @@ describe("W22B 外层 tmux 三格的生产切换 —— 那道闸的判据", () 
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (isChanCall(cmd, args, "ccm-probe"))
-        return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_ccm_launch")
         return Promise.resolve({ ok: false, cmd: null, reason: "远端未装 ccm" });
       if (cmd === "render_launch_payload") {
@@ -829,16 +815,15 @@ describe("设计/80 §8 步 1：带启动期令牌 ⇒ 生产不走 ccm 调用�
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       cmds.push(cmd);
-      if (isChanCall(cmd, args, "ccm-probe"))
-        return Promise.resolve(chanReply({
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({
+          installed: true,
           version: "2",
-          agents: ["claude"],
-          build: "p0a-x",
           capabilities: [
             "new", "resume", "attach", "tmux", "account", "model", "cwd",
             "agent", "launcher", "ccm-sid", "print", "detach", "tmux-size",
           ],
-        }));
+        });
       if (cmd === "render_ccm_launch")
         return Promise.resolve({ ok: true, cmd: "<ccm-line-without-the-token>", reason: null });
       if (cmd === "render_launch_payload")
@@ -933,7 +918,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     const launched: string[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (isChanCall(cmd, args, "ccm-probe")) return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload")
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
       if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
@@ -1055,7 +1040,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
     const handed: (string | null | undefined)[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (isChanCall(cmd, args, "ccm-probe")) return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli") return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") {
         const req = (args as { req: PayloadRenderRequest }).req;
         const op = req.env.find((o) => o.kind === "export-rbind-token");
@@ -1176,8 +1161,8 @@ describe("RL1 中转地址进远端载荷", () => {
         asked.push(args);
         return relay(args);
       }
-      if (isChanCall(cmd, args, "ccm-probe"))
-        return Promise.reject(UNSUPPORTED);
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
       if (cmd === "render_launch_payload") {
         const req = (args as { req: PayloadRenderRequest }).req;
         reqs.push(req);

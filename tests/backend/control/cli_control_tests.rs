@@ -42,6 +42,12 @@ use super::*;
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // 〔MIG-2〕本机起会话：计划里要读本进程的中转状态（`launch_relay`），一次性进程里没有中转 ⇒ 同 `launch-endpoint` 只上流面。
+    (
+        "launch-local",
+        "它经 `accounts::upstream::endpoint::launch_relay` 读本进程的中转监听状态（中转住常驻后端进程里）；\
+         一次性进程里没有中转 ⇒ 「非它不可」的号会被误拒、「有它更好」的会被说成直连 —— 同 `launch-endpoint` 那一格（`STREAM_ONLY`）。",
+    ),
     (
         "cancel",
         "它取消的是**同一条连接上在飞的另一条命令**。一次性 exec 是「1 请求 1 响应 1 退出、\
