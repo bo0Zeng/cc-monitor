@@ -2521,7 +2521,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 ```text
 → {"id":"r1","cmd":"resync","args":{}}
-← {"kind":"reply","id":"r1","ok":true,"data":{"added":0,"removed":1,"retagged":1,"watchers":1,"unavailable":[],"uncancellable":["launch"]}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"added":0,"removed":1,"retagged":1,"caught_up":2,"watchers":1,"unavailable":[],"uncancellable":["launch"]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2529,6 +2529,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 | `sid` | → | 可选。给了 ⇒ 只对这一个会话（关卡 2「对齐后重试」：重验 ＋ 重打标签）；不给 ⇒ 整机。给了却不是非空字符串 ⇒ `bad_args` |
 | `added` / `removed` | ← | 这次补宣告 / 补移除的会话数（各份 watcher 取最大：看的是同一台机器） |
 | `retagged` | ← | 这次真写了几处 `@ccm_sid`（值一样的不写） |
+| `caught_up` | ← | 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加）。补出来的行照常经流到达（REREAD，V155） |
 | `watchers` | ← | 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）。只有帧面，没有 CLI 面 |
 | `unavailable` / `uncancellable` | ← | 这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`）。monitor 拿它换掉握手那一刻的 `Offer`（例：握手之后才装上 tmux） |
 
