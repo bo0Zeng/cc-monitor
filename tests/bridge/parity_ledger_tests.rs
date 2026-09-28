@@ -44,7 +44,11 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 它接替了 RM1a 那条只对远端的 `relay_ensure`（零调用方；能力 `relay.machine` 随之退役）。
     // 〔MIG-2 · `99 §2.1 ⑬`〕`relay_endpoint_for_launch`〔散文墓碑〕退役：界面经通道直问那台后端 `launch-endpoint`（成品，本机远端同一条路），
     //   monitor 只剩全量注入开关那一格的值（它是 monitor 自己的配置，对两侧一样）。
-    ("relay_all_sessions_switch", "relay.launch-endpoint", Side::Both),
+    (
+        "relay_all_sessions_switch",
+        "relay.launch-endpoint",
+        Side::Both,
+    ),
     // 〔AL1 · 2026-09-24〕`K-R49` 那条 `write_account_aliases`〔散文墓碑〕（`lines` ＋ `dryRun`）退役：
     // 它拆成下面两跳 ＋ 一个读回口，能力键 `alias.account-commands` 随之并进 `alias.manage`。
     // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），两跳 ＋ 读回口。

@@ -20,7 +20,10 @@ fn a_refusal_leaves_the_backend_as_the_refused_code() {
     let ok = serde_json::json!({
         "env": [], "cwd": "/w", "launcher": "claude", "args": [], "nestedEnv": [], "wrap": [],
     });
-    assert_eq!(answer_payload(&ok).unwrap(), serde_json::json!({"cmd": "cd '/w' && claude"}));
+    assert_eq!(
+        answer_payload(&ok).unwrap(),
+        serde_json::json!({"cmd": "cd '/w' && claude"})
+    );
 }
 
 /// `launch-render-cli` 的成品恰好三格；`launch-local` 的入参按形状收（缺必填 / 多一格 ⇒ `bad_args`）。
@@ -39,7 +42,11 @@ fn the_cli_product_and_the_local_request_have_their_registered_shapes() {
     assert_eq!(v["ok"], true, "{v}");
     let mut stale = req.clone();
     stale["ccm"] = serde_json::json!({"state": "installed", "caps": []});
-    assert_eq!(answer_cli(&stale).unwrap_err().0, "bad_args", "旧形状（带 `ccm`）该被拒，不静默吞");
+    assert_eq!(
+        answer_cli(&stale).unwrap_err().0,
+        "bad_args",
+        "旧形状（带 `ccm`）该被拒，不静默吞"
+    );
     for bad in [
         serde_json::json!({"action": {"kind": "new"}}),
         serde_json::json!({"action": {"kind": "new"}, "agent": {"id": "claude-code", "defaultLauncher": "claude", "resumeFlag": "--resume"}, "allSessions": true, "x": 1}),

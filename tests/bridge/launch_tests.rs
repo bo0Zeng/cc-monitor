@@ -942,11 +942,7 @@ fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
     //   放一把夹具钥匙，期望值是**展开之后**那条带钥匙的 URL（不碰用户真实的家目录）。
     let fixture_key = "5eed".repeat(16);
     std::fs::create_dir_all(dir.join(".cc-monitor")).expect("夹具 .cc-monitor");
-    std::fs::write(
-        dir.join(relay_route_core::KEY_FILE_REL),
-        &fixture_key,
-    )
-    .expect("夹具钥匙");
+    std::fs::write(dir.join(relay_route_core::KEY_FILE_REL), &fixture_key).expect("夹具钥匙");
     let expanded = url.replacen("8788/", &format!("8788/{fixture_key}/"), 1);
     let payload = format!(
         "HOME='{}'; {prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",

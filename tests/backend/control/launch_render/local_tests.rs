@@ -45,8 +45,19 @@ fn current_ccm() -> CcmSeen {
     CcmSeen {
         installed: true,
         caps: [
-            "new", "resume", "attach", "tmux", "account", "model", "cwd", "agent", "launcher",
-            "ccm-sid", "print", "detach", "tmux-size",
+            "new",
+            "resume",
+            "attach",
+            "tmux",
+            "account",
+            "model",
+            "cwd",
+            "agent",
+            "launcher",
+            "ccm-sid",
+            "print",
+            "detach",
+            "tmux-size",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -117,10 +128,16 @@ fn the_old_posix_path_prefers_the_wrapper_and_falls_back_byte_for_byte() {
         format!("if command -v cc >/dev/null 2>&1; then cc --resume {SID}; else claude --resume {SID}; fi")
     );
     let got = plan(&req(LocalAction::New), &posix(probe_panics)).unwrap();
-    assert_eq!(body(&got.cmd), "if command -v cc >/dev/null 2>&1; then cc; else claude; fi");
+    assert_eq!(
+        body(&got.cmd),
+        "if command -v cc >/dev/null 2>&1; then cc; else claude; fi"
+    );
     let mut r = req(resume());
     r.launcher = Some(" cct ".into());
-    assert_eq!(body(&plan(&r, &posix(probe_panics)).unwrap().cmd), format!("cct --resume {SID}"));
+    assert_eq!(
+        body(&plan(&r, &posix(probe_panics)).unwrap().cmd),
+        format!("cct --resume {SID}")
+    );
 }
 
 #[test]
@@ -135,13 +152,23 @@ fn the_powershell_path_is_byte_identical_and_never_grows_a_container() {
         "if (Get-Command cc -ErrorAction SilentlyContinue) { cc } else { claude }"
     );
     // 给了会话名也不进容器（C12「windows不要tmux」）：Windows 那一支连 ccm 都不探（探了就 panic）。
-    for account in [None, Some(LaunchAccount::Base), named("C:\\Users\\z\\.claude-accts\\z", Some("z"))] {
+    for account in [
+        None,
+        Some(LaunchAccount::Base),
+        named("C:\\Users\\z\\.claude-accts\\z", Some("z")),
+    ] {
         let mut r = req(resume());
         r.tmux_name = Some("s1-cc".into());
         r.account = account;
         let cmd = plan(&r, &ps()).unwrap().cmd;
-        assert!(!cmd.contains("--ccm-tmux") && !cmd.contains(" cct"), "Windows 那一支长出了容器：{cmd}");
-        assert!(cmd.starts_with(&format!("$env:{LAUNCH_ID_VAR}=")), "身份那一段不是 PowerShell 形：{cmd}");
+        assert!(
+            !cmd.contains("--ccm-tmux") && !cmd.contains(" cct"),
+            "Windows 那一支长出了容器：{cmd}"
+        );
+        assert!(
+            cmd.starts_with(&format!("$env:{LAUNCH_ID_VAR}=")),
+            "身份那一段不是 PowerShell 形：{cmd}"
+        );
     }
 }
 
@@ -150,15 +177,19 @@ fn the_powershell_path_is_byte_identical_and_never_grows_a_container() {
 #[test]
 fn the_account_prefix_is_three_states_on_both_shells() {
     let shapes = |facts: &Facts| -> Vec<String> {
-        [None, Some(LaunchAccount::Base), named("/home/u/.claude-accts/z", None)]
-            .into_iter()
-            .map(|a| {
-                let mut r = req(LocalAction::New);
-                r.launcher = Some("claude".into());
-                r.account = a;
-                body(&plan(&r, facts).unwrap().cmd).to_string()
-            })
-            .collect()
+        [
+            None,
+            Some(LaunchAccount::Base),
+            named("/home/u/.claude-accts/z", None),
+        ]
+        .into_iter()
+        .map(|a| {
+            let mut r = req(LocalAction::New);
+            r.launcher = Some("claude".into());
+            r.account = a;
+            body(&plan(&r, facts).unwrap().cmd).to_string()
+        })
+        .collect()
     };
     assert_eq!(
         shapes(&posix(probe_panics)),
@@ -184,24 +215,55 @@ fn the_account_prefix_is_three_states_on_both_shells() {
 
 #[test]
 fn every_injection_shape_is_refused_not_sanitized() {
-    for dir in ["", "rel/dir", "/", "/a/../b", "/a/..", "/a;rm", "/a$(id)", "/a`id`", "/a'b", "/a\nb", "/a\u{200b}b", "/a\u{3000}b"] {
+    for dir in [
+        "",
+        "rel/dir",
+        "/",
+        "/a/../b",
+        "/a/..",
+        "/a;rm",
+        "/a$(id)",
+        "/a`id`",
+        "/a'b",
+        "/a\nb",
+        "/a\u{200b}b",
+        "/a\u{3000}b",
+    ] {
         for facts in [posix(probe_panics), ps()] {
             let mut r = req(LocalAction::New);
             r.account = named(dir, None);
             let e = plan(&r, &facts).expect_err(&format!("{dir:?} 该拒"));
-            assert!(e.starts_with(payload::REFUSE_TAG), "{dir:?} 的拒绝没打标：{e}");
+            assert!(
+                e.starts_with(payload::REFUSE_TAG),
+                "{dir:?} 的拒绝没打标：{e}"
+            );
         }
     }
     for sid in ["", "a; rm -rf /", "a b", "a$(id)", "a/../b", "-x"] {
         let r = req(LocalAction::Resume { sid: sid.into() });
-        assert!(plan(&r, &posix(probe_panics)).is_err(), "非法 sid {sid:?} 没拒");
-        assert!(plan(&r, &ps()).is_err(), "非法 sid {sid:?} 在 PowerShell 那一支没拒");
+        assert!(
+            plan(&r, &posix(probe_panics)).is_err(),
+            "非法 sid {sid:?} 没拒"
+        );
+        assert!(
+            plan(&r, &ps()).is_err(),
+            "非法 sid {sid:?} 在 PowerShell 那一支没拒"
+        );
     }
-    for (bad, c) in [("cc; calc", ';'), ("cc|id", '|'), ("cc$(id)", '$'), ("cc`id`", '`'), ("cc&&x", '&')] {
+    for (bad, c) in [
+        ("cc; calc", ';'),
+        ("cc|id", '|'),
+        ("cc$(id)", '$'),
+        ("cc`id`", '`'),
+        ("cc&&x", '&'),
+    ] {
         let mut r = req(LocalAction::New);
         r.launcher = Some(bad.into());
         let e = plan(&r, &posix(probe_panics)).expect_err(bad);
-        assert!(e.contains(&format!("{c:?}")), "{bad:?}：那一句没说出是哪个字符：{e}");
+        assert!(
+            e.contains(&format!("{c:?}")),
+            "{bad:?}：那一句没说出是哪个字符：{e}"
+        );
     }
     for good in ["/usr/local/bin/claude", "~/bin/claude --x", "ccr code"] {
         let mut r = req(LocalAction::New);
@@ -220,27 +282,42 @@ fn a_named_session_goes_into_the_ccm_container_when_ccm_is_there() {
     let cmd = plan(&r, &posix(current_ccm)).unwrap().cmd;
     let b = body(&cmd);
     assert!(b.starts_with("ccm "), "没走 ccm 容器路：{cmd}");
-    for w in ["--ccm-tmux=s1-cc", &format!("--resume {SID}"), "--account z", &format!("--ccm-sid={SID}")] {
+    for w in [
+        "--ccm-tmux=s1-cc",
+        &format!("--resume {SID}"),
+        "--account z",
+        &format!("--ccm-sid={SID}"),
+    ] {
         assert!(b.contains(w), "容器路少了 {w}：{cmd}");
     }
     // 缺席的账号 ⇒ 继承，绝不写成 `--base`。
     r.account = None;
     let b = plan(&r, &posix(current_ccm)).unwrap().cmd;
-    assert!(!b.contains("--base") && !b.contains("--account"), "继承那一态被写成了显式账号：{b}");
+    assert!(
+        !b.contains("--base") && !b.contains("--account"),
+        "继承那一态被写成了显式账号：{b}"
+    );
 }
 
 #[test]
 fn the_container_path_steps_aside_to_the_old_path_with_a_reason() {
-    let old = format!("if command -v cc >/dev/null 2>&1; then cc --resume {SID}; else claude --resume {SID}; fi");
+    let old = format!(
+        "if command -v cc >/dev/null 2>&1; then cc --resume {SID}; else claude --resume {SID}; fi"
+    );
     // ① 说不出会话名 ⇒ 不去探（探了就 panic）、退旧路。
-    assert_eq!(body(&plan(&req(resume()), &posix(probe_panics)).unwrap().cmd), old);
+    assert_eq!(
+        body(&plan(&req(resume()), &posix(probe_panics)).unwrap().cmd),
+        old
+    );
     // ② 探到没装 ⇒ 退旧路。
     let mut r = req(resume());
     r.tmux_name = Some("s1-cc".into());
     assert_eq!(body(&plan(&r, &posix(no_ccm)).unwrap().cmd), old);
     // ③ 只说得出目录（§35）⇒ 退旧路，前缀照旧 export。
     r.account = named("/home/u/.claude-accts/z", None);
-    assert!(body(&plan(&r, &posix(current_ccm)).unwrap().cmd).starts_with("export CLAUDE_CONFIG_DIR="));
+    assert!(
+        body(&plan(&r, &posix(current_ccm)).unwrap().cmd).starts_with("export CLAUDE_CONFIG_DIR=")
+    );
     // ④ 这一发要经中转 ⇒ 容器路今天说不出那一格 ⇒ 不探、退旧路，中转前缀在最前。
     r.account = None;
     let f = Facts {
@@ -248,7 +325,10 @@ fn the_container_path_steps_aside_to_the_old_path_with_a_reason() {
         ..posix(probe_panics)
     };
     let cmd = plan(&r, &f).unwrap().cmd;
-    assert!(cmd.starts_with(&payload::relay_env_prefix_posix(URL)), "中转前缀不在最前：{cmd}");
+    assert!(
+        cmd.starts_with(&payload::relay_env_prefix_posix(URL)),
+        "中转前缀不在最前：{cmd}"
+    );
     assert_eq!(body(&cmd), old);
 }
 
@@ -265,7 +345,10 @@ fn attach_renders_only_the_join_line_and_mints_nothing() {
     assert!(plan(&nameless, &posix(probe_panics)).is_err());
     assert!(plan(&r, &posix(no_ccm)).is_err());
     let e = plan(&r, &ps()).unwrap_err();
-    assert!(e.contains(&copy_text("rsHistory.attach.windows", &[])), "{e}");
+    assert!(
+        e.contains(&copy_text("rsHistory.attach.windows", &[])),
+        "{e}"
+    );
 }
 
 // ─── 中转 · 身份 · 目录 ───
@@ -285,10 +368,18 @@ fn the_relay_is_asked_with_this_launch_and_its_refusal_stops_the_launch() {
     let asked = RELAY_ASKED.with(|a| a.borrow().clone());
     assert_eq!(
         asked,
-        [serde_json::json!({"agent":"claude-code","account":{"kind":"named","configDir":"/home/u/.claude-accts/acct-a","name":"a"},"allSessions":true})]
+        [
+            serde_json::json!({"agent":"claude-code","account":{"kind":"named","configDir":"/home/u/.claude-accts/acct-a","name":"a"},"allSessions":true})
+        ]
     );
-    let wf = Facts { relay: relay_url, ..ps() };
-    assert!(plan(&r, &wf).unwrap().cmd.starts_with(&payload::relay_env_prefix_ps(URL)));
+    let wf = Facts {
+        relay: relay_url,
+        ..ps()
+    };
+    assert!(plan(&r, &wf)
+        .unwrap()
+        .cmd
+        .starts_with(&payload::relay_env_prefix_ps(URL)));
     let down = Facts {
         relay: relay_down,
         ..posix(probe_panics)
@@ -299,14 +390,29 @@ fn the_relay_is_asked_with_this_launch_and_its_refusal_stops_the_launch() {
 #[test]
 fn the_identity_token_is_planted_and_handed_back() {
     let got = plan(&req(resume()), &posix(probe_panics)).unwrap();
-    assert_eq!(got.launch_id.as_deref(), Some(SID), "resume 的身份 token 就是那个 sid");
-    assert!(got.cmd.starts_with(&format!("export {LAUNCH_ID_VAR}='{SID}'; ")), "{}", got.cmd);
+    assert_eq!(
+        got.launch_id.as_deref(),
+        Some(SID),
+        "resume 的身份 token 就是那个 sid"
+    );
+    assert!(
+        got.cmd
+            .starts_with(&format!("export {LAUNCH_ID_VAR}='{SID}'; ")),
+        "{}",
+        got.cmd
+    );
     let a = plan(&req(LocalAction::New), &posix(probe_panics)).unwrap();
     let b = plan(&req(LocalAction::New), &posix(probe_panics)).unwrap();
     let tok = a.launch_id.clone().unwrap();
-    assert!(relay_route_core::segment_is_safe(&tok) && tok.len() == 36, "铸出来的不像 nonce：{tok}");
+    assert!(
+        relay_route_core::segment_is_safe(&tok) && tok.len() == 36,
+        "铸出来的不像 nonce：{tok}"
+    );
     assert_ne!(a.launch_id, b.launch_id, "两次新起铸出同一个 token");
-    assert!(a.cmd.contains(&format!("{LAUNCH_ID_VAR}='{tok}'")), "交回的 token 不是渲进命令的那一个");
+    assert!(
+        a.cmd.contains(&format!("{LAUNCH_ID_VAR}='{tok}'")),
+        "交回的 token 不是渲进命令的那一个"
+    );
 }
 
 #[test]
@@ -322,7 +428,10 @@ fn a_new_session_in_a_missing_directory_is_refused() {
     assert!(plan(&r, &f).is_ok(), "空 cwd 是「没给」，不该当成目录不在");
     let mut r = req(resume());
     r.cwd = Some("/no/such".into());
-    assert!(plan(&r, &f).is_ok(), "resume 不核目录（终端的工作目录由 monitor 给）");
+    assert!(
+        plan(&r, &f).is_ok(),
+        "resume 不核目录（终端的工作目录由 monitor 给）"
+    );
 }
 
 // ─── 接线 ───
@@ -331,8 +440,14 @@ fn a_new_session_in_a_missing_directory_is_refused() {
 #[test]
 fn the_production_facts_are_the_production_take_points() {
     let f = Facts::PRODUCTION;
-    assert_eq!(f.windows, crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL);
-    assert_eq!(f.probe_ccm as usize, probe_local_ccm as fn() -> CcmSeen as usize);
+    assert_eq!(
+        f.windows,
+        crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL
+    );
+    assert_eq!(
+        f.probe_ccm as usize,
+        probe_local_ccm as fn() -> CcmSeen as usize
+    );
     assert_eq!(
         f.relay as usize,
         crate::accounts::upstream::endpoint::launch_relay
@@ -352,7 +467,10 @@ fn nobody_reads_the_launch_facts_around_the_facts_table() {
         let def = prod.matches(&format!("fn {f}")).count();
         assert_eq!(n - def, 0, "`{f}` 在事实表之外被直接调了（{} 处）", n - def);
     }
-    assert!(prod.contains("probe_ccm: probe_local_ccm,"), "事实表里那一格不在了 —— 尺子瞎了");
+    assert!(
+        prod.contains("probe_ccm: probe_local_ccm,"),
+        "事实表里那一格不在了 —— 尺子瞎了"
+    );
 }
 
 /// 身份那一格的变量名两侧一个名字：写侧（本模块）· 读侧（`observe/accounts_query.rs` 从别人进程的环境里读）。
@@ -363,14 +481,25 @@ fn the_launch_id_var_is_one_name_on_both_halves() {
     let at = reader.find(key).expect("读侧那个常量不在了 —— 抽取坏了") + key.len();
     let name = &reader[at..at + reader[at..].find('"').unwrap()];
     assert_eq!(name, LAUNCH_ID_VAR);
-    assert_eq!(LAUNCH_ID_VAR, "CCM_LAUNCH_ID", "手写锚：两侧同时改名也逃不过");
+    assert_eq!(
+        LAUNCH_ID_VAR, "CCM_LAUNCH_ID",
+        "手写锚：两侧同时改名也逃不过"
+    );
 }
 
 #[test]
 fn the_probe_line_is_read_as_installed_with_capabilities() {
-    let seen = parse_probe("name=ccm\nversion=2\nself=/x\ncapabilities=new,tmux,attach\nagents=claude\nbuild=p\n");
+    let seen = parse_probe(
+        "name=ccm\nversion=2\nself=/x\ncapabilities=new,tmux,attach\nagents=claude\nbuild=p\n",
+    );
     assert!(seen.installed);
-    assert_eq!(seen.caps, ["attach", "new", "tmux"].iter().map(|s| s.to_string()).collect());
+    assert_eq!(
+        seen.caps,
+        ["attach", "new", "tmux"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    );
     assert_eq!(parse_probe("NO_CCM\n"), no_ccm());
     assert_eq!(parse_probe(""), no_ccm());
 }

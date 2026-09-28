@@ -204,7 +204,9 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
     // 〔MIG-2〕monitor 那棵树（本组判据搬进了后端测试段，那棵树改按仓根取；搬家同拍把手写递归换成共享遍历口，
     //   原先跳过 `launch_wire.rs` 那一格随它搬出这棵树而作废）。
     let mut scanned = 0usize;
-    for (p, raw) in guard_core::scan_tree_excluding(&repo_root().join("src/bridge/src"), &["rs"], &[]) {
+    for (p, raw) in
+        guard_core::scan_tree_excluding(&repo_root().join("src/bridge/src"), &["rs"], &[])
+    {
         scanned += 1;
         if guard_core::production_code(&raw).contains(mode.as_str()) {
             hits.push(p.file_name().unwrap().to_string_lossy().to_string());

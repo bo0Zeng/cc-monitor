@@ -130,7 +130,13 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
     let mut checked = 0;
     for c in f.cases.iter().filter(|c| c.ok) {
         let words = shell_words(&c.out);
-        assert_eq!(words.first().map(String::as_str), Some("ccm"), "「{}」不是一行 ccm：{}", c.name, c.out);
+        assert_eq!(
+            words.first().map(String::as_str),
+            Some("ccm"),
+            "「{}」不是一行 ccm：{}",
+            c.name,
+            c.out
+        );
         let parsed = crate::control::ccm::argv::parse(&words[1..]);
         assert!(
             parsed.is_ok(),
@@ -141,7 +147,10 @@ fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 13, "ok 用例条数不对 —— 上面那条在少数几行上成立不算数");
+    assert_eq!(
+        checked, 13,
+        "ok 用例条数不对 —— 上面那条在少数几行上成立不算数"
+    );
     assert_eq!(
         shell_words("ccm -- new --cwd '/home/用户/带 空格'"),
         ["ccm", "--", "new", "--cwd", "/home/用户/带 空格"],

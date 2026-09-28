@@ -41,7 +41,9 @@ pub(crate) struct LocalLaunchRequest {
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub(crate) enum LocalAction {
     New,
-    Resume { sid: String },
+    Resume {
+        sid: String,
+    },
     /// 接回一个已有的 tmux 会话（名字走 `tmuxName`）：不起 agent ⇒ 不要账号、中转、身份。
     Attach,
 }
@@ -115,7 +117,8 @@ static NO_TMUX_NAME: std::sync::LazyLock<String> =
 static OLD_PATH_CANNOT_ATTACH: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsHistory.launch.cannotAttach", &[]));
 /// 中转那一格（`ANTHROPIC_BASE_URL`）容器路还说不出 ⇒ 退旧路（只进日志，不对外）。
-const RELAY_KEEPS_THE_OLD_PATH: &str = "relay prefix present: the ccm container path cannot carry it yet";
+const RELAY_KEEPS_THE_OLD_PATH: &str =
+    "relay prefix present: the ccm container path cannot carry it yet";
 
 /// 整条计划。拒 ⇒ `Err(带 REFUSE: 标的一句)`。
 pub(crate) fn plan(req: &LocalLaunchRequest, facts: &Facts) -> Result<Planned, String> {
@@ -299,7 +302,9 @@ fn build_ps(req: &LocalLaunchRequest) -> Result<String, String> {
 fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, String> {
     match account {
         None => Ok(String::new()),
-        Some(LaunchAccount::Base) => payload::config_dir_prefix_posix(Some(&payload::Account::Base)),
+        Some(LaunchAccount::Base) => {
+            payload::config_dir_prefix_posix(Some(&payload::Account::Base))
+        }
         Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             if d.is_empty() {
@@ -355,7 +360,11 @@ fn validate_config_dir_ps(dir: &str) -> Result<(), String> {
 // ─── `ccm` 容器路（POSIX 本机）───
 
 /// 探 → 渲。说不出容器名先拒（不必先付一次 `bash -lic`；名字只从界面铸名口来）。
-fn render_ccm(req: &LocalLaunchRequest, agent: &AgentFacts, facts: &Facts) -> Result<String, String> {
+fn render_ccm(
+    req: &LocalLaunchRequest,
+    agent: &AgentFacts,
+    facts: &Facts,
+) -> Result<String, String> {
     if req.tmux_name.as_deref().is_none_or(str::is_empty) {
         return Err(NO_TMUX_NAME.to_string());
     }
@@ -364,7 +373,11 @@ fn render_ccm(req: &LocalLaunchRequest, agent: &AgentFacts, facts: &Facts) -> Re
 }
 
 /// 上一条的纯函数半 —— `ccm` 装没装、有哪些能力由调用方给。
-fn render_ccm_with(req: &LocalLaunchRequest, agent: &AgentFacts, seen: &CcmSeen) -> Result<String, String> {
+fn render_ccm_with(
+    req: &LocalLaunchRequest,
+    agent: &AgentFacts,
+    seen: &CcmSeen,
+) -> Result<String, String> {
     let Some(name) = req.tmux_name.as_deref().filter(|n| !n.is_empty()) else {
         return Err(NO_TMUX_NAME.to_string());
     };

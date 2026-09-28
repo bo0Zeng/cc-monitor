@@ -197,9 +197,7 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
         &|_| true,
     )
     .expect("成品");
-    let url = answer
-        .as_deref()
-        .expect("开关开、没行 ⇒ 该注入 `/t/`");
+    let url = answer.as_deref().expect("开关开、没行 ⇒ 该注入 `/t/`");
     let sample = url
         .strip_prefix(&format!("http://127.0.0.1:{}", relay_route_core::PORT))
         .expect("注入的不是回环那个口");

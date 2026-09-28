@@ -1734,10 +1734,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// 而那正是上面那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。
 pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     let [port_env, creds_env, meta_env] = HANDED_ENVS;
-    let mut envs = vec![(
-        port_env.into(),
-        relay_route_core::PORT.to_string(),
-    )];
+    let mut envs = vec![(port_env.into(), relay_route_core::PORT.to_string())];
     if let Some(p) = crate::creds_store::resolve_path() {
         envs.push((creds_env.into(), p.display().to_string()));
     }
