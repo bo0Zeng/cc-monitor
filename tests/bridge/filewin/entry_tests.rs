@@ -54,6 +54,19 @@ async fn without_a_channel_no_window_process_is_started() {
     );
 }
 
+/// 🔴〔MIG-3a · 09-28 裁 3〕**窗口进程列不出来的那句原话原样到 webview**；进程层的错才套「文件窗口没起来」。
+#[test]
+fn the_window_process_words_reach_the_webview_verbatim() {
+    let said = "那台说：没有这个目录 /srv/不在";
+    assert_eq!(unopened_said(Unopened::Said(said.into())), said);
+    let wrapped = unopened_said(Unopened::Process("退出码 1".into()));
+    assert_eq!(
+        wrapped,
+        copy_text("rsFilewinEntry.open.failed", &[("why", "退出码 1")])
+    );
+    assert_ne!(wrapped, "退出码 1", "进程层的错没套上「文件窗口没起来」");
+}
+
 /// 🔴 **这条命令真的在命令面上。**
 ///
 /// 判的是三样，少一样那条「用户点得开」的链就断在某一处：

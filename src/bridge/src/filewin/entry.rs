@@ -207,13 +207,18 @@ pub async fn open_file_window(
     let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req))
         .await
         .map_err(|e| copy_text("rsFilewinEntry.open.failed", &[("why", &e.to_string())]))?;
-    let (pid, n) = opened.map_err(|u| match u {
-        // 窗口进程列不出来时说的那句原话 —— 原样交出去（与上一版 monitor 自己列不出来时回的是同一句）。
-        Unopened::Said(said) => said,
-        Unopened::Process(why) => copy_text("rsFilewinEntry.open.failed", &[("why", &why)]),
-    })?;
+    let (pid, n) = opened.map_err(unopened_said)?;
     tracing::info!("文件窗口起在进程 {pid} 上（第一屏 {n} 行，它自己列的）");
     Ok(n)
+}
+
+/// 开窗没成 ⇒ 给 webview 的那一句。窗口进程列不出来时说的那句**原话原样**交出去（与上一版 monitor 自己列不出来时回的是同一句）；
+/// 进程这一层的错套上「文件窗口没起来」。
+fn unopened_said(u: Unopened) -> String {
+    match u {
+        Unopened::Said(said) => said,
+        Unopened::Process(why) => copy_text("rsFilewinEntry.open.failed", &[("why", &why)]),
+    }
 }
 
 // 〔MIG-3a · 09-28 裁 3〕`list_first_screen` · `ask_home` · `host_ask`〔散文墓碑〕与开窗前那两问的期限退役：
