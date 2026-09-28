@@ -102,7 +102,7 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
         return Ok(k);
     }
     // 〔HX2〕读 → 铸 → 写整段在那个目录的跨进程锁里（`platform/lock.rs`），锁里再读一次：
-    //   两个中转（本机常驻那一个 ＋ 一个 `--relay`）同时发现没钥匙，只有先拿到锁的那一个铸，后一个读回它那一把。
+    //   两个进程同时发现没钥匙时，只有先拿到锁的那一个铸，后一个读回它那一把。
     let dir = path.parent().ok_or_else(|| {
         copy_text(
             "beDoor.fs.noParent",

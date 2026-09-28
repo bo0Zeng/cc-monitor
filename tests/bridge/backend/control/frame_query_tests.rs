@@ -343,7 +343,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "launch",
-        "界面只说它的 `send-into` / `send-keys-raw` 两个 mode（送键 · 就地 resume；`create-or-attach` 归 ccm）；\
+        "界面只说它的 `send-into` 一个 mode（送键 · 就地 resume；`create-or-attach` 归 ccm；〔RST 续〕裸键 mode 已删）；\
          后端应答就是成品 `{session, created, typed}`。monitor 那两个发送端（`backend_send_keys.rs` / `backend_launch.rs`）\
          只在拒空目标 / 空载荷、把 `enter` 翻成 mode 名、核 `typed`、按三态说人话、给就地 resume 判「能不能回落」—— \
          那一份搬到 `src/tmux-control.ts::sendKeys` / `sendInto`（F14 那条规则住 `ipc/chan-caller.ts::provablyNotSent`，\

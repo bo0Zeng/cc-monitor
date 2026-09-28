@@ -394,9 +394,9 @@ export const commands = {
 
   /**
    * 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址（`null` = 不注入，照旧直连）。
-   * 远端那台**用到才起**它的中转；apikey 号的中转起不来 ⇒ reject（拒绝起会话，说得出是哪台）。
+   * apikey 号那台的中转不在 ⇒ reject（拒绝起会话，说得出是哪台）；中转只住那台的常驻后端里，不另起。
    * 〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品），monitor 只转交、照成品执行；前端拿到地址原样放进载荷（`export-relay-base-url`）。
-   * 它接替了 RM1a 那条零调用方的 `relay_ensure`。〔V141〕不带会话身份：地址不随会话变，中转从 claude 的请求头认会话。
+   * 〔V141〕不带会话身份：地址不随会话变，中转从 claude 的请求头认会话。
    */
   relay_endpoint_for_launch: (args: {
     origin: Origin;
@@ -457,7 +457,7 @@ export const commands = {
    *
    *  ⚠ **`command` 那一列可能陈旧**：它由 tmux hook 驱动刷新，而 hook 只有
    *  `session-created/closed/renamed` 三条 —— pane 前台命令从 claude 变回 shell **不触发任何一条**。
-   *  ⇒ 依赖它判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条。 */
+   *  ⇒ 依赖它判活的流程**不许**改读本机这条（〔V154〕当年那一条 `awaitExitFor` 已删）。 */
   list_local_tmux: () => invoke<TmuxSession[] | null>("list_local_tmux"),
 
   /** `K-R69`：**本机那条 `ccm` 入口现在是什么样** —— 我们放下去的那一份在哪、它自报什么身份、

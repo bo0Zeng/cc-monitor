@@ -26,7 +26,7 @@
 /// # 这条透镜（08-08「顺序」类声称）的结果一并记在这里
 ///
 /// 全仓生产段扫出 31 处「顺序」声称，逐个查过：`launch.rs` 三条（`SendInto` /
-/// `SendKeysRaw` / `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
+/// 裸键那一支〔RST 续：已删〕/ `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
 /// `cd` 位次（逐字节 golden 对拍抓过一次）· `sanitize` 先于 `wrap`（F54 已钉接线）·
 /// `fs.rs` 先看长度再读（F06）——**都已经有判据**。
 /// **只有这一条没有**：实测把两行对调，backend 294 条一条不红。
@@ -554,9 +554,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装一次表 ＋（要注入时）回环上探一次中转，同步阻塞。
         "apikey-routing",
         "launch-endpoint",
-        // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程。
-        "relay-ensure",
-        "relay-status",
+        // 〔DEL〕中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
         "footprint-probe",
         // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照。
@@ -675,8 +673,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "apikey-read",
         "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
-        "relay-ensure",
-        "relay-status",
         "footprint-probe",
         // 〔W5-ALIAS〕别名预览，阻塞档。
         "ccm-print",

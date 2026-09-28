@@ -2423,12 +2423,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔AR1〕`tests/backend/relay/nodelay_guard.rs` 那一行删了：文件随 `设计/15 §2.1` B3 退役整份删掉，
         //   它头注里点名的旧判据名跟着没了（不是改对了话，是那段话不在了）。
         ("src/backend/relay/server.rs", "handle_alloc_error", 1),
-        (
-            // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
-            "tests/backend/relay/server_tests.rs",
-            "the_relay_entry_reads_each_env_var_into_its_own_config_slot",
-            1,
-        ),
+        // 〔DEL〕`tests/backend/relay/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
         (
             // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
             "tests/backend/relay/upstream_tests.rs",
@@ -4509,7 +4504,7 @@ fn every_prose_tombstone_mark_is_registered() {
             // 〔LR2〕4 → 2：TS 兜底一族退役，两段带墓碑的头注（换人手续 · 前提触发器的旧头注）整段删了；
             //   留下的两处：`launch_via_backend` 那句 ＋ 本拍新贴的「本条原名 …」那句。
             "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
-            3, // 〔C4e 批 2〕+1：送键 mode 名的家从 monitor 搬到界面，点旧住址 · 〔LR2〕−2（见上）⇒ 4 +1 −2 = 3
+            2, // 〔RST 续 · V41〕3 → 2：裸键 mode `send-keys-raw` 删了，守「它只有一个家」那条判据整条退役，它头注里点旧住址那块墓碑随之删 // 〔C4e 批 2〕+1：送键 mode 名的家从 monitor 搬到界面，点旧住址 · 〔LR2〕−2（见上）⇒ 4 +1 −2 = 3
         ),
         ("tests/bridge/backend/control/tmux_tests.rs", 13), // 〔SH1〕+1：守跨 SSH `tmux ls` 那条判据退役 // 〔C4e 批 2〕+3：本机杀会话 / 送键不许回落那两条退役 ＋ Gate 1 那条的说明点旧命令名 // 〔C4e〕+6：抓屏迁到界面，`KR112D2` 两刀 ＋ 五档那条随 monitor 那一份退役，原处与 Gate 1 那条的说明里点旧名
         ("tests/bridge/backend_tests.rs", 1),

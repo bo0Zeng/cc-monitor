@@ -6,10 +6,10 @@
  *
  * | 词 | 指什么 |
  * |---|---|
- * | **中转** / `relay` | 中转：HTTP 那一层本身 —— 让流量经过它、拿到 SSE 流。`--relay` 这个进程、它的端口、往会话里注的那个回环地址、注入前缀、「中转在不在跑」都是这一层的事 |
+ * | **中转** / `relay` | 中转：HTTP 那一层本身 —— 让流量经过它、拿到 SSE 流。它的端口、往会话里注的那个回环地址、注入前缀、「中转在不在跑」都是这一层的事 |
  * | **账号** / `apikey` | 上游选择：apikey 表（凭据文件）· 按 (agent, 账号) 查行 · 换 key · 每 agent 的默认上游。**不许叫中转** |
  *
- * `--relay` 这**一个进程**同时承载两层（上游选择挂在中转上，依赖只许上游选择 → 中转）。
+ * 常驻后端这**一个进程**同时承载两层（上游选择挂在中转上，依赖只许上游选择 → 中转）。
  * 所以「中转进程」「中转起没起来」照旧叫中转；**它里面那张表、那把 key、那份凭据文件**不叫中转。
  *
  * # 判什么（两向）
@@ -322,7 +322,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
 
 /** 同一次现打里确认是**中转**的名字 —— 刻意不改。 */
 export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
-  { name: "--relay", re: /--relay(?![A-Za-z0-9_-])/, why: "中转进程的子命令；它承载两层，但进程本身是中转" },
+  // 〔DEL〕`--relay`（独立中转进程的子命令）与它的装配口 `run_relay` 两行摘了：那一形删了，中转只住常驻后端进程里。
   { name: "CCM_RELAY_PORT", re: ident("CCM_RELAY_PORT"), why: "中转监听的端口" },
   { name: "CCM_RELAY_ALL_SESSIONS", re: ident("CCM_RELAY_ALL_SESSIONS"), why: "全量注入开关：让订阅号的会话也过中转（`/t/`）" },
   { name: "RELAY_PORT", re: ident("RELAY_PORT"), why: "monitor 侧拼注入地址用的端口" },
@@ -339,9 +339,8 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   // 〔DUP1 · 4D〕「中转路由段字符闸」那一行（登记的是它 US1 之前的旧名）删了：那道闸今天叫 `relay_route_core::segment_is_safe`，
   //   旧名只剩 `history_tests.rs` ④ 那段注释还在点；那一格按 sid 规则收紧改写之后旧名全仓零处 ⇒ 本表那一行随之退役（不是改名漏网）。
   { name: "RELAY_KEEPS_THE_OLD_PATH", re: ident("RELAY_KEEPS_THE_OLD_PATH"), why: "中转前缀在场时本机拉起走旧路的理由句" },
-  { name: "run_relay", re: ident("run_relay"), why: "`--relay` 的装配口：跑中转 ＋ 把上游选择那只手递进去（住上游选择，依赖上游选择 → 中转）" },
   { name: "src/backend/relay/", re: lit("src/backend/relay/"), why: "中转的目录" },
-  { name: "\"source\":\"relay\"", re: lit('"source":"relay"'), why: "tee 流的线上字段值（中转抄出来的 SSE 行）" },
+  // 〔DEL〕`"source":"relay"`（NDJSON tee 行的线上字段值）那一行摘了：那个落点随独立 `--relay` 删了。
 ];
 
 /**

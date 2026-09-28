@@ -74,42 +74,35 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
         .expect("抠不到 STREAM_FLAG_EXPLICIT");
     let line = format!("{table} {explicit}");
 
-    // monitor 侧：从**生产函数体**里抠它真的 `push_str` 了哪几个串，
-    // 不手抄一份清单 —— 手抄的那种漏一条不会红。
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
-    let at = prod
-        .find("pub async fn connect_and_exec(")
-        .expect("生产段里没有 `connect_and_exec` —— 抽取器坏了，本条此刻无效");
-    let body = &prod[at..at + 2400];
+    // monitor 侧：从**生产函数体**里抠它真的 `push` 了哪几个串，不手抄一份清单 —— 手抄的那种漏一条不会红。
+    // 〔DEL〕远端只剩常驻一形 ⇒ 旗标只经 attach 行（`remote_resident::attach_line`）交给那台，
+    //   远端 `listen::attach_flags` 遇到不在 STREAM_FLAGS 里的词整条拒（不是静默忽略）。
+    let rr = guard_core::production_code(include_str!("../../src/bridge/src/remote_resident.rs"));
+    let at = rr
+        .find("pub(crate) fn attach_line(")
+        .expect("生产段里没有 `attach_line` —— 抽取器坏了，本条此刻无效");
+    let body = &rr[at..at + rr[at..].find("\n}\n").expect("attach_line 没收尾")];
     let mut sent: Vec<&str> = Vec::new();
-    for seg in body.split(r#"cmd.push_str(" "#).skip(1) {
+    for seg in body.split(r#"f.push(""#).skip(1) {
         if let Some(end) = seg.find('"') {
             sent.push(&seg[..end]);
         }
     }
-    assert!(
-        sent.len() >= 3,
-        "只抠出 {} 条 monitor 发的 flag（{sent:?}）—— 抽取坏了，本条此刻在空转",
-        sent.len()
-    );
     for f in &sent {
         assert!(
             line.contains(&format!("\"{f}\"")),
             "monitor 会发 `{f}`，而后端的 STREAM_FLAGS 里没有它 ⇒ \
-             老后端会把它当一次性查询、处理完就退出 ⇒ 无 hello ⇒ §26 重连死循环。\n\
+             远端 `attach_flags` 整条拒 ⇒ 接不上那台的常驻后端。\n\
              后端那一行现打：{line}"
         );
     }
-    // 〔E2 · V28〕流模式显式词：后端表里有它，远端流 ＋ 测试连接探针两发都带它（名字是 `ccm` 时零参数是起会话）。
+    // 〔E2 · V28〕流模式显式词：后端表里有它，测试连接探针那一发带它（名字是 `ccm` 时零参数是起会话）。
     let word = crate::backend::control::local_backend::STREAM_WORD;
     assert!(
         line.contains(&format!("\"{word}\"")),
         "后端 STREAM_FLAGS 不认 `{word}`：{line}"
     );
-    assert!(
-        body.contains("STREAM_WORD"),
-        "`connect_and_exec` 不带流模式显式词"
-    );
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
     let probe_at = prod
         .find("pub async fn test_remote_connection(")
         .expect("找不到测试连接那一发");
@@ -117,10 +110,11 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
         prod[probe_at..probe_at + 4000].contains("STREAM_WORD"),
         "测试连接探针不带流模式显式词"
     );
-    // 反向自检：那条清单里真的有我们这一刀加的那个（防「抠出来是空的也全绿」）。
-    assert!(
-        sent.contains(&"--with-rbind-token"),
-        "`connect_and_exec` 压根不发 `--with-rbind-token` —— 步 3 的接线断了：{sent:?}"
+    // 反向自检：抠出来的就是那三条（相等；防「抠出来是空的也全绿」）。
+    assert_eq!(
+        sent,
+        ["--with-bg", "--tail-only", "--with-rbind-token"],
+        "`attach_line` 发的旗标抠出来不是那三条 —— 抽取坏了或步 3 的接线断了"
     );
 }
 
@@ -345,7 +339,7 @@ fn unknown_capabilities_are_booked_under_that_remote() {
 }
 
 // ─── 〔CF1 · 第四波 09-24〕F5：本机后端的起参也是「monitor 发、后端剥」的那一族 ─────────────────
-// 与上面那条（远端 `connect_and_exec` 拼的旗标）同一个失效方向：后端不认的 `--flag` 会被当成一次性查询、
+// 与上面那条（远端 attach 行的旗标）同一族「monitor 发、后端认」；本机起参那一形后端不认的 `--flag` 会被当成一次性查询、
 // 跑完就退（§26）。本机那两条载体的起参是 `local_backend::LOCAL_STREAM_ARGS` 一份常量；住这里是因为
 // 「读后端 `lib.rs` 的源码」这条跨半边已经为本文件登记过了（`cross_half_edge_registry`），不另开一条。
 // 判据总表住 `local_lines_tests.rs` 头注（F1–F8）。

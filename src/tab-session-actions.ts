@@ -26,7 +26,7 @@ import { fetchAccounts } from "./account-reads";
 import { resolveAccount } from "./accounts";
 import { restartLocateFailureMessage } from "./account-restart";
 import { resumeLocalSession } from "./local-resume";
-import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
+import { restartWithAccount } from "./account-restart";
 import { showActionFailureToast } from "./error-toast";
 import {
   runRemoteResume,
@@ -52,7 +52,6 @@ import {
 import {
   findClaudeTmuxMatches,
   findIdleTmux,
-  claudeExited,
   type TmuxSession,
 } from "./tmux-sessions";
 import type { Tab } from "./tab-model";
@@ -510,48 +509,6 @@ export class TabSessionActions {
       });
   }
 
-  /**
-   * A5+ 优雅退出等待器：轮询该 origin 的 tmux 列表，`claudeExited` 报「目标 sid 前台不再是 claude」
-   * 即 resolve(true)；`timeoutMs`（默认 DEFAULT_EXIT_WAIT_MS=10s）到仍未退出 → resolve(false)（编排器
-   * 据此降级 kill）。list 失败当「未知」跳过本轮（不误判已退出）。注入 `restartWithAccount.awaitExit`。
-   */
-  private awaitExitFor(
-    origin: string,
-    cwd: string,
-    sid: string,
-    timeoutMs = DEFAULT_EXIT_WAIT_MS,
-    pollMs = 1000,
-  ): () => Promise<boolean> {
-    return () =>
-      new Promise<boolean>((resolve) => {
-        let stopped = false;
-        let pollTimer: ReturnType<typeof setTimeout> | undefined;
-        const stop = (v: boolean): void => {
-          if (stopped) return;
-          stopped = true;
-          clearTimeout(timer);
-          if (pollTimer) clearTimeout(pollTimer); // 清掉挂起的下一轮轮询，干净收尾
-          resolve(v);
-        };
-        const timer = setTimeout(() => stop(false), timeoutMs);
-        const tick = async (): Promise<void> => {
-          if (stopped) return;
-          // ★ F14：走唯一取数点 ⇒ **这一轮轮询顺带把缓存刷新了**。
-          // 此前这里是四处取数点里唯一不写缓存的一处，而它恰好是唯一会反复取数的。
-          const got = await this.fetchTmuxFresh(origin);
-          const ok = got !== undefined; // 查询失败 → 本轮跳过（不误判已退出）
-          const sessions = ok ? got : null;
-          if (stopped) return;
-          if (ok && claudeExited(sessions, sid, cwd)) {
-            stop(true);
-            return;
-          }
-          pollTimer = setTimeout(() => void tick(), pollMs);
-        };
-        void tick();
-      });
-  }
-
   /** A5：活跃会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
    *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。
    *  〔`A3` 第二波〕本机会话（`origin === null`）也走这一条，origin 取 `<local>`。 */
@@ -563,15 +520,14 @@ export class TabSessionActions {
   ): Promise<boolean> {
     const tab = this.host.tab(sid);
     if (!tab) return false;
-    // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 的
-    // awaitExit 看到新 claude 仍在 → 超时降级 kill → 把刚起来的新会话又杀了再 resume 一遍
-    // （还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
+    // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 再 kill
+    // → 把刚起来的新会话又杀了再 resume 一遍（还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
     // fetchAccounts/checkTrust）且无反馈，双击很自然 → 在唯一入口（右键菜单的 Restart flyout；
     // ⇄ 按钮/批量对齐已随 F09 删除）上游拦住。
     if (this.restartingSids.has(sid)) {
       // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，命中这条守卫时 UI 上至少有"⇄ 立刻置灰"这个
-      // 间接信号；现在右键菜单是唯一入口，点了却什么反应都没有（含最长 5 分钟的 compact 等待+
-      // 10 秒退出等待窗口），用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
+      // 间接信号；现在右键菜单是唯一入口，点了却什么反应都没有（含最长 5 分钟的 compact 等待），
+      // 用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
       // in-flight 防抖对用户完全不可见。
       showActionFailureToast(
         copyText("tabSessionActions.restart.busyTitle"),
@@ -650,8 +606,6 @@ export class TabSessionActions {
       confirm: confirmFn,
       // A5 step5：真检测器——onLine 见该 sid 的 compact 摘要行即 resolve，超时（5min）按 §5.2 续 kill。
       awaitCompact: this.awaitCompactFor(sid),
-      // A5+ 优雅退出：轮询 tmux 前台不再是 claude 即 resolve，10s 超时按 §5.2 ④ 降级 kill。
-      awaitExit: this.awaitExitFor(origin, cwd, sid),
     });
   }
 
