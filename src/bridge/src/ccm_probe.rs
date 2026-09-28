@@ -1,6 +1,8 @@
-//! F03（unify-launch）：探测远端是否已装 `ccm`（F02 统一启动 CLI）及其能力集，供前端
-//! `src/ccm-probe.ts` 决定走 CLI 渲染器还是兜底渲染器。一次性 headless SSH exec，照
-//! 当年 F60 抓屏那条（`capture_remote_pane`〔散文墓碑〕，〔C4e〕已迁到界面经通道问）的范式（通道 B，不干扰前台终端、不涉及后端）。
+//! F03（unify-launch）：探测 `ccm`（F02 统一启动 CLI）装没装及其能力集。
+//! 〔MIG-2 · `99 §2.1 ⑬`〕远端那一条（`probe_ccm_cli`，一次性 headless SSH exec，照当年 F60 抓屏那条
+//! `capture_remote_pane`〔散文墓碑〕的范式）与前端缓存 `src/ccm-probe.ts` 删了：
+//! 起会话的渲染住进那台后端，装没装由它在自己机器上现查（`src/backend/control/launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身（V28），能力是它自己的）。
+//! 本文件今天只剩**本机 PATH 上那个 `ccm`** 的探测（`local_ccm_entry_status` 那一族用）。
 
 use crate::copy_table::copy_text;
 use serde::Serialize;
@@ -88,13 +90,13 @@ const LOCAL_PROBE_TTL: std::time::Duration = std::time::Duration::from_secs(300)
 ///
 /// # 为什么本机这条是同步的，而远端那条是 async
 ///
-/// 调用方是 `history.rs::launch_local`（`resume_history_session` / `new_local_session`
+/// 调用方是 〔MIG-2〕原先是 `history.rs` 的本机拉起（`resume_history_session` / `new_local_session`〔散文墓碑〕
 /// 两个 `#[tauri::command]` 的同步调用链）。远端那条是 async 因为 ssh 本来就要 await；
 /// 本机没有那一跳，`bash -lic` 直接跑 —— 为了它把整条链改成 async 是纯粹的传染。
 ///
 /// # 为什么必须真跑一次，而不是渲染完让 shell 自己探
 ///
-/// 旧路（`build_local_posix_command`）用的是 shell 里的 `if command -v cc; then …; else …; fi`
+/// 旧路（`build_local_posix_command`）用的是 shell 里的 `if command -v cc; then …; else …; fi` 〔散文墓碑〕
 /// —— 那种探法只答得了「在不在」，答不了**能力集**。而渲染器要按 caps 决定
 /// 「这条修饰说不说得出来」（§35/§37）：把 caps 猜成「全都有」，遇到老 ccm 会渲染出一条
 /// 带未知 flag 的命令，而那时 `else` 分支**已经不在了**，没有回落可走 ⇒ 是个 fail-open。
@@ -268,24 +270,8 @@ fn probe_spawned(
     parse_probe_output(&String::from_utf8_lossy(&buf))
 }
 
-/// 探测远端 `ccm` 是否已装 + 能力集。`command -v` 找不到 → 走 `NO_CCM` 哨兵分支，不报错
-/// （未装是正常状态之一，不是异常）。
-/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕远端那台的 `ccm` 会哪些：**问那台后端自己**（帧命令 `ccm-probe`，与 `ccm --ccm-probe` 同一份），
-/// 不再进交互 shell 查 `PATH` —— `ccm` 就是那台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`）。
-/// 问不到（那台没连上 / 后端太旧不认这条）⇒ `Err`，界面按「不知道」走兜底渲染器（`src/ccm-probe.ts` 三态）。
-#[tauri::command]
-pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(origin));
-    let v = door
-        .ask("ccm-probe", serde_json::json!({}))
-        .await
-        .map_err(|r| copy_text("rsCcmProbe.probe.failed", &[("e", &r.said())]))?;
-    let text = v
-        .get("probe")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    Ok(parse_probe_output(text))
-}
+// 🪦〔MIG-2 · `99 §2.1 ⑬`〕这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
+//   `ccm …` 调用行的渲染进了那台后端，能力问它自己（`launch_render/wire.rs::render_ccm_launch`），这一跳删了。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R69` / `KR69D2`：**装了之后，产品说得出「你 PATH 上那个是旧的」**

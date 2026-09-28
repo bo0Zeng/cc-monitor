@@ -3068,7 +3068,7 @@ fn rendered_export(url: &str) -> String {
 /// `backend::control::payload::relay_env_prefix_posix` 的返回值 ——
 /// 两半之间的编译期边（`include_str!`）**必须登记进 `src/bridge/src/cross_half_edge_registry.rs`**，
 /// 而那个文件不在本件写区里。⇒ **两侧今天靠「同一个形状写了两遍」，没有判据对拍。**
-/// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`
+/// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 〔散文墓碑〕
 /// 与 `only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix` 钉着。
 /// **这一格如实登记为「没买到」，不许读成「对上了」。**
 #[cfg(unix)]

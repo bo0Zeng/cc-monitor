@@ -12,7 +12,7 @@
  * | 分叉之后起新会话（`fork-flow.ts` 的 `startLocal`） | 用户在小窗里点的（账号 0 / 具名） | 铸 |
  * | 本机换号重启的 resume 那一跳（`account-restart.ts`） | 用户在菜单里点的具名号 | 复用被 kill 让出来的旧名 |
  *
- * 四份各写一遍「校验 sid → 读行为设置 → 铸名 → `resume_history_session` → 记 pin」，
+ * 四份各写一遍「校验 sid → 读行为设置 → 铸名 → 起会话（〔MIG-2〕今天是本机后端 `launch-local` ＋ 开终端）→ 记 pin」，
  * 注释里记着四次「这里修了、那里漏了」（#75 · #76 · `D1 阻-1` · `D3 阻-2`）。
  *
  * # 失败怎么说
@@ -26,7 +26,8 @@
  * 取账号那一跳是**同步**读快照（`launch-account.ts::localLaunchAccountSync` 头注：两条 DOM 判据只放行一个微任务）；
  * 本函数的 `await` 只有「行为设置（调用方给了就不读）→ tmux 名单（给了名字就不问）→ 拉起」这几拍。
  */
-import { commands } from "./ipc/commands";
+// 〔MIG-2 · `99 §2.1 ⑬`〕计划与渲染问本机后端（`launch-local`），monitor 只开终端窗口（`open_local_terminal`）。
+import { launchLocal } from "./launch-render";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { explicitLocalAccountWire, localFollowPlan, primeLocalLaunchAccounts, recordLocalLaunchAccount, refuseUnavailableAccount, type LocalAccountWire } from "./launch-account";
 import { getBehavior } from "./behavior";
@@ -70,7 +71,7 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
   // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍）。只有跟随那一态读快照。
   if (req.account.kind === "follow") primeLocalLaunchAccounts();
   // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 `validateLocalLaunch`〔散文墓碑〕（sid 字符集）—— 那份删了：
-  // 本机拉起那条路上 Rust 自己判（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`），判不过回错、下面照常说出来。
+  // 本机拉起那条路上本机后端自己判（`launch_render/local.rs` → `shell_quote_core::session_id_ok`），判不过回错、下面照常说出来。
   // 🔴 〔FE1 · D-h〕跟随时，这条会话的 pin 那个号选不了 ⇒ **不起**：说清、给「用当前账号」的显式选择
   //   （点了就以**显式**选号再起一次，起成了记 pin —— 与远端 `withAccount` 显式那一支同语义）。
   //   先前这一形落成「缺席」⇒ 落 shell rc 里的默认号，不说一个字（E7 的本机那一形）。
@@ -104,7 +105,7 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
   }
   try {
     const launcher = req.launcher ?? (await getBehavior()).resumeCommandLocal;
-    // ★★ `K-R46`：名字要算出来传下去 —— 后端**故意**拒绝自己铸名（`history.rs` 的 `NO_TMUX_NAME`），
+    // ★★ `K-R46`：名字要算出来传下去 —— 后端**故意**拒绝自己铸名（本机后端 `launch_render/local.rs` 的 `NO_TMUX_NAME`），
     //    不传 ⇒ 后端如实走不进容器的旧路。名单不知道 ⇒ `null`（绝不退化成空集，#76）。
     const tmuxName = req.tmuxName ?? mintFromListing(req.cwd, await readTmuxListing(LOCAL_ORIGIN));
     const accountWire: LocalAccountWire | undefined =
@@ -113,13 +114,16 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
           ? plan.wire
           : undefined
         : explicitLocalAccountWire(req.account.configDir, req.account.name);
-    await commands.resume_history_session({
-      sessionId: req.sid,
-      cwd: req.cwd,
-      launcher: launcher.trim() === "" ? null : launcher,
-      tmuxName,
-      account: accountWire,
-    });
+    await launchLocal(
+      {
+        action: { kind: "resume", sid: req.sid },
+        cwd: req.cwd,
+        launcher: launcher.trim() === "" ? null : launcher,
+        tmuxName,
+        account: accountWire,
+      },
+      req.cwd,
+    );
     // `D3 阻-2`：本机这条路也往 pin 里写（跟随那一态；显式那一态由调用方按自己的语义记 ——
     //   换号重启只在 kill ＋ resume 全成之后才记，分叉是新会话、不记）。⚠ 不等待。
     if (plan?.kind === "named") recordLocalLaunchAccount(req.sid, plan.name);

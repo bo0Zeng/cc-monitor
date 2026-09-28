@@ -1,6 +1,6 @@
 /**
  * 〔U2 · 拆 `tabs.ts` ④〕**tab 栏视图**：每个 tab 一颗按钮（状态灯 · 标题 · 账号徽章 · 未读数 · 📌 ·
- * 📂 / ↗ / × 三个子动作）、按集合分的组容器、整刷（删 / 建 / 更新 / 排序）与帧末合批。
+ * 📂 / ↗ / × 三个子动作）、按集合分的组容器、整刷（删 / 建 / 更新 / 排序）与帧末合批、栏顶「重新读取」（V155）。
  *
  * 只画、只把用户手势转交出去：点按钮切 tab、按下起拖、右键开菜单、子动作按钮 —— 做事的都经
  * `TabBarViewHost` 交给宿主（路由 / 拖拽 / 菜单 / 会话动作），本文件不 import 它们。
@@ -69,6 +69,8 @@ export interface TabBarViewHost {
   takeSuppressedClick(sid: string): boolean;
   /** 右键：开这个 tab 的菜单。 */
   openMenu(e: MouseEvent, sid: string): void;
+  /** 〔REREAD · V155〕栏顶「重新读取」：有打开 tab 的每台对齐 ＋ 补读一次；做完才 resolve。 */
+  rereadAll(): Promise<void>;
 }
 
 export class TabBarView {
@@ -95,6 +97,12 @@ export class TabBarView {
    */
   private readonly sidOf = new WeakMap<Element, string>();
 
+  /**
+   * 〔REREAD · V155「重新读取对所有tab生效」〕栏顶常驻的一颗：永远是 `barEl` 的第一个子元素（整刷的散 tab 游标从它之后起）。
+   * 点击走下面那个委托的 click；在飞时 `disabled`，不重入。
+   */
+  private readonly rereadBtn: HTMLButtonElement;
+
   constructor(
     private readonly store: TabStore,
     private readonly prefs: TabBarPrefs,
@@ -111,6 +119,25 @@ export class TabBarView {
     barEl.addEventListener("click", (e) => this.onBarClick(e));
     barEl.addEventListener("mousedown", (e) => this.onBarMouseDown(e));
     barEl.addEventListener("contextmenu", (e) => this.onBarContextMenu(e));
+    this.rereadBtn = document.createElement("button");
+    this.rereadBtn.className = "tab-bar-reread";
+    this.rereadBtn.title = copyText("tabBar.reread.hint");
+    const icon = document.createElement("span");
+    icon.textContent = copyText("tabBar.reread.icon");
+    const text = document.createElement("span");
+    text.className = "tab-bar-reread-text";
+    text.textContent = copyText("tabBar.reread.label");
+    this.rereadBtn.append(icon, text);
+    barEl.prepend(this.rereadBtn);
+  }
+
+  private reread(): void {
+    const btn = this.rereadBtn;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    void this.host.rereadAll().finally(() => {
+      btn.disabled = false;
+    });
   }
 
   /** 这个事件落在哪颗 tab 按钮上、是不是落在它的某颗子按钮（📂 / ↗ / ×）上。不是 tab 按钮 ⇒ `null`。 */
@@ -126,6 +153,10 @@ export class TabBarView {
   }
 
   private onBarClick(e: MouseEvent): void {
+    if (e.target instanceof Node && this.rereadBtn.contains(e.target)) {
+      this.reread();
+      return;
+    }
     const hit = this.hitOf(e);
     if (!hit) return;
     const { sid, sub } = hit;
@@ -232,13 +263,14 @@ export class TabBarView {
     // `barEl` 的游标若从 `firstChild` 起，散 tab 会插到**组容器之前** ——
     // 而 `P7a3-Y2` 逐字写的是「未归组的照常**在后面**」。
     // 实现与自己的 DoD 措辞不符，是那种「读起来都对、跑起来是另一回事」的差错。
-    // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则回到 `firstChild` 语义）。
+    // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则是栏顶那颗「重新读取」）。
     // 〔UP1 · `设计/30 §3` P6〕「最后一个组容器」不再把 `barEl.children` 物化成数组去找。
     // 组容器只在建的那一刻 `appendChild` 到 `barEl` 末尾、之后从不挪（挪的只有 tab 按钮），
     // 删的时候同时出 `groupEls` ⇒ **`groupEls` 的插入序就是组容器在 DOM 里的顺序**，最后一个就是它。
-    let lastGroup: HTMLElement | null = null;
+    // 〔REREAD〕没有组时从栏顶那颗「重新读取」之后起，它恒在第一个。
+    let lastGroup: HTMLElement = this.rereadBtn;
     for (const g of this.groupEls.values()) lastGroup = g.wrap;
-    if (lastGroup) cursors.set(this.barEl, lastGroup);
+    cursors.set(this.barEl, lastGroup);
     for (const sid of this.store.orderedIds) {
       const tab = this.store.tabs.get(sid);
       if (!tab) continue;

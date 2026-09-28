@@ -230,6 +230,25 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染：原 monitor Tauri 命令（`render_ccm_launch` · `render_launch_payload` ·
+    //   `relay_endpoint_for_launch` · `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕）。
+    (
+        "launch-render-cli",
+        "`ccm …` 调用行：后端出成品 `{ok, cmd, reason}`（`control/launch_render/wire.rs`）；前端 `src/launch-render.ts::renderCli` 按形状收",
+    ),
+    (
+        "launch-render-payload",
+        "裸载荷 / 外层 tmux 三格：后端出成品 `{cmd}`，坏输入回码 `refused`；前端 `src/launch-render.ts::renderPayload`",
+    ),
+    (
+        "launch-endpoint",
+        "这一发的中转地址：后端出成品 `{baseUrl}`（「不在时拒还是直连」也判完）；前端 `src/launch-render.ts::launchEndpoint`，monitor 零发送点",
+    ),
+    (
+        "launch-local",
+        "本机起会话整条：本机后端出成品 `{cmd, launchId}`（`control/launch_render/local.rs`）；前端 `src/launch-render.ts::planLocalLaunch`，\
+         monitor 只剩开终端窗口（`open_local_terminal`）",
+    ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

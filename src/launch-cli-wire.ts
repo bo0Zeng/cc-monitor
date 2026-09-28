@@ -1,7 +1,8 @@
 /**
- * U8c-2c-2：`render_ccm_launch` 的上线形状（TS 侧）。
+ * U8c-2c-2：`ccm …` 调用行与载荷渲染的上线形状（TS 侧）。〔MIG-2〕两条都是那台后端的帧命令
+ * （`launch-render-cli` / `launch-render-payload`，经 `src/launch-render.ts` 问）。
  *
- * Rust 对侧是 `src/bridge/src/backend/control/launch_wire.rs` 的 `CliRenderRequest`/`CliRenderResponse`，
+ * Rust 对侧是 `src/backend/control/launch_render/wire.rs` 的 `CliRenderRequest`/`CliRenderResponse`，
  * 那边带 `deny_unknown_fields` —— **多送一个字段会被拒**，不静默吞。
  *
  * ⚠ 这是一份**手写镜像**（不是 ts-rs 生成的）。保证它与 Rust 一致的是
@@ -19,16 +20,9 @@ export type CliWireContainer =
 /** `name` 缺失 = 只有 configDir 没有名字 ⇒ 说不出 `--account` ⇒ §35 短路。 */
 export type CliWireAccount = { kind: "base" } | { kind: "account"; name: string | null };
 
-/** 〔LR2 · R95b〕远端 `ccm` 探测结果的**三态**（Rust 对侧 `launch_wire.rs::WireCcmProbe`，按 `state` 判别）。
- *  原来这一格是 `caps: string[] | null` 两态，「没探出来」一过线就被说成「没装」（`设计/80 §9.4`）。 */
-export type CliWireCcmProbe =
-  | { state: "installed"; caps: string[] }
-  | { state: "not-installed" }
-  | { state: "unknown"; error: string };
-
 export interface CliRenderRequest {
   isSsh: boolean;
-  ccm: CliWireCcmProbe;
+  // 〔MIG-2〕原先这里有 `ccm`（界面探了再带过去）：渲染进了那台后端，能力问它自己，这一格删了。
   action: CliWireAction;
   container: CliWireContainer;
   cwd: string | null;

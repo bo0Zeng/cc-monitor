@@ -769,6 +769,11 @@
       "zh": "找不到后端自己的程序文件：{e}",
       "args": ["e"]
     },
+    "beLaunchRender.token.noRandom": {
+      "kind": "error",
+      "zh": "取不到系统随机数，没有起会话。",
+      "args": []
+    },
     "beResident.token.noRandom": {
       "kind": "error",
       "zh": "取不到系统随机数，做不出常驻后端的钥匙。没有起。",
@@ -2475,6 +2480,11 @@
     "sessionFind.box.searchLabel": {
       "kind": "control",
       "zh": "搜索",
+      "args": []
+    },
+    "sessionViewer.find.noSession": {
+      "kind": "error",
+      "zh": "还没打开会话，没有可查的内容。",
       "args": []
     },
     "sessionViewer.build.unjumpable": {
@@ -4421,6 +4431,11 @@
       "kind": "error",
       "zh": "后端生成命令失败，改用本机的写法：{e}",
       "args": ["e"]
+    },
+    "launchRender.refused.onMachine": {
+      "kind": "error",
+      "zh": "{machine}：{said}",
+      "args": ["machine", "said"]
     },
     "remoteLaunchRun.renderCli.noReason": {
       "kind": "error",
@@ -13992,11 +14007,6 @@
       "zh": "还没装下来",
       "args": []
     },
-    "rsCcmProbe.probe.failed": {
-      "kind": "error",
-      "zh": "探测 ccm 失败：{e}",
-      "args": ["e"]
-    },
 
     "rsLib.activeSessions.notListed": {
       "kind": "error",
@@ -14567,11 +14577,6 @@
       "kind": "error",
       "zh": "远端还没装后端",
       "args": []
-    },
-    "rsCcmInvocation.refusal.probeUnknown": {
-      "kind": "error",
-      "zh": "这次没探到远端的后端，不等于没装：{e}",
-      "args": ["e"]
     },
     "history.entry.deleteHint": {
       "kind": "body",
@@ -15151,56 +15156,6 @@
       "zh": "目录不存在，起不了新会话：{cwd}",
       "args": ["cwd"]
     },
-    "rsHistory.endpoint.badShape": {
-      "kind": "body",
-      "zh": "{where}后端回的「这一发走哪」（{cmd}）不对：{what}。两端版本对不上",
-      "args": ["where", "cmd", "what"]
-    },
-    "rsHistory.endpoint.notObject": {
-      "kind": "error",
-      "zh": "不是一个对象",
-      "args": []
-    },
-    "rsHistory.endpoint.keys": {
-      "kind": "error",
-      "zh": "键是 {keys}",
-      "args": ["keys"]
-    },
-    "rsHistory.endpoint.notString": {
-      "kind": "error",
-      "zh": "{k} 不是字符串或 null",
-      "args": ["k"]
-    },
-    "rsHistory.endpoint.whenDown": {
-      "kind": "error",
-      "zh": "「中转不在时怎么办」那一格认不出",
-      "args": []
-    },
-    "rsHistory.endpoint.listening": {
-      "kind": "error",
-      "zh": "listening 不是布尔",
-      "args": []
-    },
-    "rsHistory.endpoint.pairing": {
-      "kind": "error",
-      "zh": "「注入的地址」与「中转不在时怎么办」该同有同无",
-      "args": []
-    },
-    "rsHistory.relay.notListening": {
-      "kind": "body",
-      "zh": "中转住在那台机器的后端里。多半是口被别的程序占着，原因在那台后端的日志里",
-      "args": []
-    },
-    "rsHistory.relay.here": {
-      "kind": "body",
-      "zh": "本机",
-      "args": []
-    },
-    "rsHistory.relay.unreachable": {
-      "kind": "error",
-      "zh": "起不了会话：问不到{where}后端这一发该走哪（{e}）。\n说不出这个号要不要经中转换上第三方 key，照旧起出去的话，一个 API 号会以一个像网络故障的失败收场。\n等那台机器的后端连上再试。",
-      "args": ["where", "e"]
-    },
     "rsHistory.relay.downRefused": {
       "kind": "error",
       "zh": "起不了会话：账号 {account} 在{where}的 API key 表里有一行，但{where}的中转没在听（{why}）。\n照旧起出去的话，claude 那边会报一个像网络故障的连接失败，而真正的原因在 cc-monitor 这一侧。\n先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
@@ -15224,11 +15179,6 @@
     "apikeyReads.backend.tooOld": {
       "kind": "error",
       "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
-      "args": []
-    },
-    "rsHistory.launch.attachNeedsTerminal": {
-      "kind": "error",
-      "zh": "接回已有会话要在你自己的终端里执行，这里不能直接起",
       "args": []
     },
     "rsHistory.launch.noSessionName": {
@@ -17192,6 +17142,16 @@
       "zh": "{field} 要一个对象或空",
       "args": ["field"]
     },
+    "beUpstreamEndpoint.relay.thisMachine": {
+      "kind": "body",
+      "zh": "这台机器",
+      "args": []
+    },
+    "beUpstreamEndpoint.relay.notListening": {
+      "kind": "body",
+      "zh": "这台后端里的中转没在听。多半是口被别的程序占着，原因在这台后端的日志里",
+      "args": []
+    },
     "beUpstreamTable.whyIdUnusable.say": {
       "kind": "error",
       "zh": "账号 id 用不进请求地址（只许字母、数字、- 和 _，最长 128 字节）",
@@ -18872,6 +18832,16 @@
       "zh": "和实际情况一致，没有要改的。",
       "args": []
     },
+    "resync.done.caughtUp": {
+      "kind": "body",
+      "zh": "补读了 {n} 条。",
+      "args": ["n"]
+    },
+    "resync.done.caughtNone": {
+      "kind": "body",
+      "zh": "没有漏的。",
+      "args": []
+    },
     "resync.done.nobody": {
       "kind": "body",
       "zh": "这台后端现在没有在看会话，没有可对齐的。",
@@ -18887,6 +18857,51 @@
       "zh": "对齐后重试没有成功",
       "args": []
     },
+    "tabBar.reread.label": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "tabBar.reread.icon": {
+      "kind": "body",
+      "zh": "⟳",
+      "args": []
+    },
+    "tabBar.reread.hint": {
+      "kind": "body",
+      "zh": "对所有打开的 tab 生效。每台机器对齐一次，在跟的会话都从上次读到的地方接着读",
+      "args": []
+    },
+    "resync.machines.title": {
+      "kind": "title",
+      "zh": "重新读取完成",
+      "args": []
+    },
+    "resync.machines.titlePartial": {
+      "kind": "error",
+      "zh": "重新读取：有机器没问到",
+      "args": []
+    },
+    "resync.machines.none": {
+      "kind": "body",
+      "zh": "没有打开的 tab，没有要读的。",
+      "args": []
+    },
+    "resync.machines.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "resync.machines.ok": {
+      "kind": "body",
+      "zh": "{machine}：{said}",
+      "args": ["machine", "said"]
+    },
+    "resync.machines.failed": {
+      "kind": "body",
+      "zh": "{machine}：没问到（{why}）",
+      "args": ["machine", "why"]
+    },
     "sessionState.pinGone.title": {
       "kind": "title",
       "zh": "固定的会话找不到记录了",
@@ -18896,21 +18911,6 @@
       "kind": "body",
       "zh": "这台上有 {n} 个固定的会话找不到记录：{names}。没有自动摘掉；点这条提示把它们从固定里摘掉。",
       "args": ["n", "names"]
-    },
-    "tabMenu.reread.label": {
-      "kind": "action",
-      "zh": "重新读取",
-      "args": []
-    },
-    "tabMenu.reread.hint": {
-      "kind": "body",
-      "zh": "从上次读到的地方接着读，补上没显示的内容",
-      "args": []
-    },
-    "tabSessionActions.reread.failed": {
-      "kind": "error",
-      "zh": "重新读取失败",
-      "args": []
     },
     "beMcpEdit.path.emptyDir": {
       "kind": "error",

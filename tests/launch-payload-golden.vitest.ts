@@ -17,12 +17,12 @@ import { renderCliGoldenFixture } from "../src/launch-cli-golden.ts";
 const FIXTURE_PATH = resolve(
   __dirname,
   "..",
-  "src/bridge/src/backend/control/fixtures/payload-golden.json",
+  "src/backend/control/launch_render/fixtures/payload-golden.json",
 );
 const CLI_FIXTURE_PATH = resolve(
   __dirname,
   "..",
-  "src/bridge/src/backend/control/fixtures/cli-golden.json",
+  "src/backend/control/launch_render/fixtures/cli-golden.json",
 );
 
 describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => {
