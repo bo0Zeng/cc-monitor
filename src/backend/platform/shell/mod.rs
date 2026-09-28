@@ -96,3 +96,7 @@ pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
 #[cfg(test)]
 #[path = "../../../../tests/backend/platform/shell_tests.rs"]
 mod tests;
+// 〔OSA · V156〕方言专属语法字面量只住本目录（两向）。
+#[cfg(test)]
+#[path = "../../../../tests/backend/platform/shell_home_guard.rs"]
+mod home_guard;
