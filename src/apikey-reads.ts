@@ -96,7 +96,7 @@ export function decodeApikeyRouting(v: unknown): ApikeyRoutingView {
 }
 
 /**
- * 两问的期限：10 秒 —— 与它们上一个住址（monitor `apikey_remote::BUDGET`）同值：盖的是「那台后端读一份凭据文件
+ * 两问的期限：10 秒 —— 与它们上一个住址（monitor `apikey_remote::BUDGET`〔散文墓碑〕）同值：盖的是「那台后端读一份凭据文件
  * （＋ 装一次表、在回环上探一次中转）＋ 回程」，不含握手（长连接早就连着）。
  */
 const APIKEY_BUDGET_MS = 10_000;

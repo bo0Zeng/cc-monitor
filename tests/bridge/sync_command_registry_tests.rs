@@ -6,7 +6,7 @@
 //!   一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）」；
 //!   「**实施口诀**：IPC 命令默认写 `pub async fn`，函数体包 `tokio::task::spawn_blocking(move || { ... }).await.map_err(...)?`」。
 //! - 出处：审计 F 🔴-2（`resume_history_session` · `new_local_session`〔散文墓碑〕两条同步命令里经
-//!   `relay_prefix_for_launch` `block_on` 等本机后端，最长 `apikey_remote::BUDGET` 10 s）。
+//!   `relay_prefix_for_launch` `block_on` 等本机后端，最长 `apikey_remote::BUDGET`〔散文墓碑〕 10 s）。
 //!
 //! # 判据（两向相等）
 //!

@@ -13599,21 +13599,6 @@
       "zh": "一台机器的名字；本机要写成 \"{local}\"",
       "args": ["local"]
     },
-    "rsApikeyRemote.call.internal": {
-      "kind": "error",
-      "zh": "读写第三方 API key 时出了内部错误，没有拿到结果",
-      "args": []
-    },
-    "rsApikeyRemote.call.noData": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
-      "args": ["host"]
-    },
-    "rsApikeyRemote.call.failed": {
-      "kind": "error",
-      "zh": "[{host}] 读写 API key 失败：{message}",
-      "args": ["host", "message"]
-    },
     "rsDataPaths.backup.note": {
       "kind": "body",
       "zh": "v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>",
@@ -14477,11 +14462,6 @@
       "kind": "body",
       "zh": "{rc} 已经接上了这份文件。",
       "args": ["rc"]
-    },
-    "rsApikeyRemote.call.tooOld": {
-      "kind": "error",
-      "zh": "[{host}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
-      "args": ["host"]
     },
     "rsAssetSync.reach.internal": {
       "kind": "error",

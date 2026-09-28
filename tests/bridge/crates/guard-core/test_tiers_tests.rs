@@ -63,7 +63,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/acct_iso_deploy_tests.rs", // 〔MIG-3a〕SCAN → UNIT：扫源码的那几条随 acct-iso 两问进后端删了，只剩纯函数与围栏在 I/O 之前那一条
     "tests/bridge/crates/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
-    "tests/bridge/apikey_remote_tests.rs", // 〔HX2〕写臂那几条（读源码对拍）退役，只剩发送口一条行为判据（SCAN → UNIT）
     "tests/config-lost-update.vitest.ts",  // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
     "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
