@@ -311,23 +311,10 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "overflow",
         ),
-        (
-            Frame::TmuxSessions {
-                raw: "s1\t/p\tclaude\t1\t2\tsid-a".into(),
-                observation: None,
-            },
-            "tmux_sessions",
-        ),
         // 〔audit-0805 08-06〕补上此前**测试段零构造**的三个变体。
         // `Reply` 的上线形另有 `inbound.rs` 钉着；`TmuxSessionClosed` / `Cancelled`
         // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
         // 不是后端序列化形态：改掉 kind 标签或字段名，两边都不会红。
-        (
-            Frame::TmuxSessionClosed {
-                name: "cc-1".into(),
-            },
-            "tmux_session_closed",
-        ),
         (
             Frame::Reply {
                 id: "r1".into(),
@@ -635,23 +622,7 @@ fn overflow_frame_serializes_with_dropped_count() {
     assert_eq!(v["dropped"], 42);
 }
 
-/// B2：TmuxSessions 帧带 tmux ls 原文——含**真 TAB**（列分隔）+ **换行**（多会话）→ 必须是**单行**
-/// wire（TAB/换行经 serde 转义、无裸换行），roundtrip 字节还原（monitor `parse_tmux_ls` 靠真 TAB 分列）。
-#[test]
-fn tmux_sessions_frame_ships_raw_as_one_line() {
-    let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tnode\t0\t1\t";
-    let line = to_line(&Frame::TmuxSessions {
-        raw: raw.into(),
-        observation: None,
-    })
-    .expect("serialize");
-    assert!(line.ends_with('\n'));
-    let body = line.strip_suffix('\n').unwrap();
-    assert!(!body.contains('\n'), "内嵌换行须被转义、无裸换行: {body:?}");
-    let v: Value = serde_json::from_str(body).expect("json");
-    assert_eq!(v["kind"], "tmux_sessions");
-    assert_eq!(v["raw"], raw); // TAB + 换行逐字还原
-}
+// 〔MIG-1 续 · V41〕`tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
 
 /// F66（#58③）wire 契约：hello 的 `capabilities`。
 /// ① 非空 → 序列化为数组（monitor 据此发 flag）。

@@ -123,11 +123,10 @@ fn parse_frame_kinds() -> BTreeSet<String> {
 
 /// 每一种帧一行手写线上 JSON（**不从实现生成**）。
 ///
-/// ⚠ 两种不在表里、理由各写清：
-/// - `turn_end`：`parse_frame` 对它回 `None`（本就不进任何吸收点）；
-/// - `tmux_sessions`：〔MIG-1〕monitor 认得、不消费（收割在后端会话账本里），与 `tmux_session_closed` 同一形；留在表外只因历史，喂它也是就地丢。
+/// ⚠ 一种不在表里、理由写清：`turn_end`：`parse_frame` 对它回 `None`（本就不进任何吸收点）。
+/// 〔MIG-1 续〕tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
 ///
-/// ⇒ 表的种类 ＋ 这两种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
+/// ⇒ 表的种类 ＋ 这一种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
 const FRAMES: &[(&str, &str)] = &[
     (
         "hello",
@@ -155,10 +154,6 @@ const FRAMES: &[(&str, &str)] = &[
         r#"{"kind":"session_state","sid":"s1","state":"ended"}"#,
     ),
     ("overflow", r#"{"kind":"overflow","dropped":3}"#),
-    (
-        "tmux_session_closed",
-        r#"{"kind":"tmux_session_closed","name":"cf1-x"}"#,
-    ),
     (
         "reply",
         r#"{"kind":"reply","id":"cf1-no-such-id","ok":true}"#,
@@ -198,10 +193,9 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 两种刻意不喂的 == parse_frame 的全部臂。
+    // 两向：表里的种类 ＋ 刻意不喂的那一种 == parse_frame 的全部臂。
     let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     fed.insert("turn_end".into());
-    fed.insert("tmux_sessions".into());
     let all = parse_frame_kinds();
     assert!(
         all.len() >= 10,

@@ -1768,11 +1768,8 @@ pub const EMITS: &[&str] = &[
     // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "session_state",
     "overflow",
-    "turn_end",      // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
-    "tmux_sessions", // B2：watch_loop 周期本地 tmux ls 发 TmuxSessions（登记=承诺真发，已接线）
-    // P5：与上一份快照差分算出的**正向死亡帧**。登记 = 承诺真发（已接线，见 watcher.rs
-    // 的 `diff_closed`）。monitor 收到即 retire、绕过 miss 计数；旧 monitor 忽略未知 kind。
-    "tmux_session_closed",
+    "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
+    // 〔MIG-1 续 · V41〕`tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
     // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
     // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。

@@ -341,24 +341,15 @@ fn parses_two_line_frames_with_all_fields() {
     }
 }
 
-// ---------- P5（zero-poll-liveness）：正向死亡帧的解析 ----------
-
+// 〔MIG-1 续 · V41〕tmux 观测两帧（`tmux_session_closed` · `tmux_sessions`）的解析判据随帧删了：老后端发来 ⇒ 落下面那条「未知 kind」。
 #[test]
-fn tmux_session_closed_parses() {
+fn a_retired_tmux_frame_from_an_old_backend_is_an_unknown_kind() {
     assert_eq!(
         parse_frame(r#"{"kind":"tmux_session_closed","name":"cc-abc123"}"#),
-        Some(InboundFrame::TmuxSessionClosed {
-            name: "cc-abc123".to_string()
-        })
+        None
     );
-}
-
-/// 缺 `name` / 非字符串 ⇒ 坏帧跳过（`None`），**不 panic**，与其余帧同一口径。
-#[test]
-fn tmux_session_closed_bad_payload_is_skipped() {
-    assert_eq!(parse_frame(r#"{"kind":"tmux_session_closed"}"#), None);
     assert_eq!(
-        parse_frame(r#"{"kind":"tmux_session_closed","name":42}"#),
+        parse_frame(r#"{"kind":"tmux_sessions","raw":"NO_TMUX"}"#),
         None
     );
 }
@@ -513,47 +504,6 @@ fn parses_overflow_and_rejects_bad_dropped() {
     assert_eq!(parse_frame(r#"{"kind":"overflow"}"#), None);
     // dropped 类型错（字符串）→ None
     assert_eq!(parse_frame(r#"{"kind":"overflow","dropped":"12"}"#), None);
-}
-
-/// B2：tmux_sessions 帧解析出 raw（tmux ls 原文，含转义 TAB）；缺/错 raw 当坏帧跳过（None）。
-#[test]
-fn parses_tmux_sessions_and_rejects_bad_raw() {
-    let frame =
-        parse_frame("{\"kind\":\"tmux_sessions\",\"raw\":\"s1\\t/p\\tclaude\\t1\\t2\\tsid-a\"}")
-            .expect("tmux_sessions parses");
-    assert_eq!(
-        frame,
-        InboundFrame::TmuxSessions {
-            raw: "s1\t/p\tclaude\t1\t2\tsid-a".to_string(),
-            // P1：旧后端无该字段 ⇒ None（**不是**坏帧）。
-            observation: None,
-        }
-    );
-    // NO_TMUX 哨兵也是合法 raw。
-    assert!(matches!(
-        parse_frame(r#"{"kind":"tmux_sessions","raw":"NO_TMUX"}"#),
-        Some(InboundFrame::TmuxSessions { .. })
-    ));
-    // 缺 raw / raw 非字符串 → None（坏帧跳过）。
-    assert_eq!(parse_frame(r#"{"kind":"tmux_sessions"}"#), None);
-    assert_eq!(parse_frame(r#"{"kind":"tmux_sessions","raw":5}"#), None);
-    // P1（additive 字段）：observation 存在则读出；**非字符串不是坏帧**、退化成 None
-    // （坏后端也只该让 monitor 退回保守判据，不该让整帧被丢）。
-    assert_eq!(
-        parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":"zero_sessions"}"#),
-        Some(InboundFrame::TmuxSessions {
-            raw: String::new(),
-            observation: Some("zero_sessions".to_string()),
-        })
-    );
-    assert_eq!(
-        parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":7}"#),
-        Some(InboundFrame::TmuxSessions {
-            raw: String::new(),
-            observation: None,
-        }),
-        "observation 类型错只该退化成 None，不该把整帧当坏帧丢掉"
-    );
 }
 
 /// 已知 kind 但必需字段缺失 / 类型错 → None（坏帧当 garbage 跳过，不 panic）。

@@ -622,7 +622,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 **修法**（比原记档设想的更细，因为 P0 实测把状态空间量清了）：
 1. **后端让 rc 透出**——`run_tmux_ls` 原先 `tmux ls … 2>/dev/null || true` 把 tmux 的 rc **吞掉**，五种观测压成"空串/有内容"两种；现改为 `exec tmux …`（rc 原样成为 `sh` 的 rc）+ 一个约定 rc 表示"PATH 里无 tmux"，折成四态 `Sessions / ZeroSessions / NoTmux / Unobservable`（`watcher.rs::classify_tmux_probe`）。
 2. **P0 实测订正了原记档的措辞**：原文说的「命令成功但零会话」在默认 `exit-empty on` 下**不出现**（server 随最后一个会话退出、rc=1）；但 `exit-empty off` 下**确实出现**且 **rc=0 + stdout 空**。两者对 retire 决策等价 ⇒ 合成一个 `ZeroSessions`（区别只对 P3 的复活监视有意义 ⇒ 将来加细分**不必改帧契约**）。
-3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔后端的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），曾由 `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 钉住（〔MIG-1〕monitor 这一侧的分类删了，取值集只剩后端一个家 `watcher.rs::tmux_frame_is_observable`）。
+3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔后端的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），曾由 `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 钉住（〔MIG-1〕monitor 这一侧的分类删了，取值集只剩后端一个家 `watcher.rs::tmux_view_is_observable`）。
 4. **monitor 把那条内联 if 提成纯函数** `tmux::classify_tmux_observation`〔散文墓碑〕（原判断住在需要真远端连接的 `async fn` 里、单测碰不到）。`ZeroSessions` ⇒ 返回**空集但有效**的 `Backend(∅)` ⇒ 照常进 `reconcile_step` 累计缺失；`NoTmux`/`Unobservable` 才跳过。
 
 **修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × **当时**的推帧节拍（P5 前那个 ticker，已删）≈ 16s**——**是有界化，不是即时化**。

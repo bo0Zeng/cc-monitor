@@ -406,8 +406,6 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（后端对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
 | `session_removed` | `sid`, `cause?` | 远端会话文件消失。**S0（additive）`cause`**：`"gone"`（真没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind）/ `"superseded"`（同一个 pidfile **原地换了 sid**，即 `/branch`、`/clear`）。`gone` 是默认值且**不序列化** ⇒ 缺字段 = `gone`，旧后端 × 新 monitor 行为一字不变。**monitor 收到 `superseded` 必须直接归档、不许再去查 tmux 快照**（那份快照对这个场景恒错——这正是「branch 之后原 tab 永久灰点」的成因）。字面量与 `ssh_source.rs` 的解析处由 `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住 |
 | `turn_end` | `session_id`, `uuid` | 一轮对话结束（monitor 用它对齐轮次边界） |
-| `tmux_session_closed` | `name` | **P5（zero-poll-liveness，additive）**：某个 tmux 会话**关闭了**——正向死亡帧。**刻意不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到（P0 实测会拿到空 ⇒ 把活会话判灰），后端这边是**差分算出来的名字**，sid 由 monitor 用最新快照反查 |
-| `tmux_sessions` | `raw`, `observation?` | **B2**：后端在远端本地跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**（或哨兵 `NO_TMUX`），替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。**送 raw、client 解析**（照 `line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`）。**P1（additive）`observation`**：`"zero_sessions"` / `"no_tmux"` / `"unobservable"`——**有会话时省略**，热路径字节与 P1 之前逐字节一致。没有它时 `raw` 的空串同时意味着「零会话」与「`tmux ls` 出错被 `\|\| true` 吞了」，两者不可分 |
 | `overflow` | `dropped: u64`, `lost?`, `lost_truncated?` | issue #32：后端发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行。<br>★ **`lost`（audit-0805 F03，additive）**：`[{kind, subject?}]` —— 那批丢帧里**不可恢复**的那些的身份。⚠ 下面 `#入方向` 那句「出方向丢一帧**可恢复**（行还在远端 jsonl 里）」**只对内容帧成立**：`line`/`turn_end`/`tmux_sessions` 丢了别处还有，而 `session_added`/`session_removed`/`tmux_session_closed`/`session_status` 是**一次差分的结果、别处不存在** —— 只知道「丢了 N 条」是没法重同步的。⇒ 本字段给那些帧带上 `kind` 与 `subject`（sid / tmux 会话名），客户端据此**精确重取那几个主体**。空集时**不序列化**（旧客户端看到的字节与从前一字不差）。<br>★ **`lost_truncated`（additive，bool）**：身份表**有界**（后端侧 `LOST_IDENTITY_CAP = 64`）。超出的那些**仍计入 `dropped`**，只是不再留身份并置本位 —— **不是静默截断**。置位 = 「这份清单不全，理性做法是整体重取快照」。为 `false` 时不序列化 |
 | `reply` | `id`, `ok`, `data?`, `code?`, `message?` | **U6b-1**：**入方向命令的应答**。它刻意**复用出方向的 `kind` tag 空间**（不另开一条流），所以它在本表里有一行 —— 而它的完整语义（信封、`id` 不透明性、超时后登记谁摘、逐命令的 `data` 形状与错误码）住在下面的「入方向」小节。⚠ **本行只是清册登记**，不重复那一节的内容（同一份契约不许两处各写一份）。⚠ 〔F06c 补〕它此前**只活在那一节的示例里、本表没有它的行** —— 仓外 aterm 的 KDoc 里那个错的帧数就是数本表数出来的 |
 | `cancelled` | `id` | **U6b-1**：某条入方向命令**被取消了**（`id` = 被取消的那条）。同 `reply`：复用 tag 空间、完整语义在「入方向」小节（含「不可取消」时为什么回 `reply{ok:false,code:"not_cancellable"}` 而不是本帧）。⚠ 〔F06c 补〕同上，此前本表无此行 |
@@ -3427,7 +3425,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 不许出现 agent 名字）；**`ResumeSpec` 的 `claudeDir` 字段名不受影响、原地冻结** ——
 它是与 aterm 冻结在 2026-07-18 的 stdin 契约的一部分。
 
-**要判断某个 tmux 会话是否真的存在**，用 `tmux_sessions` 帧（那是真 `tmux ls`）或自己在远端跑一次，
+**要判断某个 tmux 会话是否真的存在**，问那台后端的 `tmux-list`（那是真 `tmux ls`；〔MIG-1 续〕原来的 `tmux_sessions` 帧删了）或自己在远端跑一次，
 别拿 `sessionName` 当答案。
 
 ### 10.2 ~~代码全景本机后端的按需拉取~~ —— 🔴 **整节作废（条 67 · 2026-09-18）**
