@@ -858,6 +858,22 @@ fn dispatch(
         "link-close" => Disposition::Reply(links.close(&req.id, &req.args)),
         // 〔SR1b〕传输四条：要碰**本连接的票表**与应答通道（进度帧走应答通道）⇒ 同一档硬臂。
         //   开单 / 起跑 / 撤都是就地做完的记账（起跑那一下 `spawn` 两个任务，不 await）。
+        // 〔MIG-1 收尾〕测试连接：进度格走**本连接的应答通道**（不丢、与应答同序）⇒ 与传输四条同一档硬臂；
+        //   本体照旧是真异步、`cancel` 能在 await 点打断（交给通用的 spawn 那一路登记）。
+        "remote-probe" => {
+            let tx = replies.clone();
+            Disposition::Spawn(
+                req,
+                Box::new(move |r: Request| -> BoxFut {
+                    Box::pin(async move {
+                        crate::dial::probe::answer_probe(&r.args, &tx)
+                            .await
+                            .map(|()| None)
+                            .map_err(|(c, m)| (c.to_string(), m))
+                    })
+                }),
+            )
+        }
         "transfer-upload" | "transfer-download" | "transfer-start" | "transfer-stop" => {
             Disposition::Reply(crate::control::transfer::Desk::answer_wire(
                 xfers, &req.cmd, &req.id, &req.args,
@@ -1531,7 +1547,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔MIG-1 续 · `99 §2.1 ⑬` · 主会话裁「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
-    //   真异步（拨号 · 读 hello · 控制通道往返，两段等待各有上限），`cancel` 能在 await 点打断；短命探活、不进连接池。
+    //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
+    // 〔MIG-1 收尾〕进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
     CommandSpec {
         name: "remote-probe",
         doc_anchor: Some("#### `remote-probe`"),
@@ -1539,24 +1556,20 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &[
             "backendHello",
             "backendOk",
+            "end",
             "endpoint",
             "fingerprint",
             "jump",
             "machine",
             "message",
+            "reached",
             "saved",
             "sshOk",
-            "stages",
+            "stage",
+            "ticket",
         ],
         takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::probe::answer_probe(&r.args)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
+        run: Run::Builtin,
     },
     CommandSpec {
         name: "forward-stop",

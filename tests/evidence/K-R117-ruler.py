@@ -208,21 +208,21 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
-    ("port-forward", (NA, "—", "端口转发")),
+    # 〔墓碑 · MIG-1〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
     # 〔墓碑 · 第四波 4D US1〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
     #   （`src/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     # 〔墓碑 · 第四波 4D LOC1b〕`search.history` · `search.index` 随本机搜索改走 `<local>` 的 `history-search`（monitor 内存索引、三条搜索命令与「重新索引」按钮删）退役；理由同上面几条墓碑。
-    ("session.activity", (NA, "—", "会话")),
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
-    ("session.list-active", (NA, "—", "会话")),
+    # 〔墓碑 · MIG-1〕`session.activity` · `session.list-active` 随会话起停 / 状态并进会话流（`subscribe(origin, "session-lines")` 的成品格）退役：
+    #   `list_session_activity` / `list_active_sessions` 删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。
     # 〔墓碑 · 第四波 4D LOC1a〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
     ("ssh.host-config", (NA, "—", "ssh 主机配置 / 推公钥 —— 连得上那一层，不是装我们的东西")),
     ("subagent.load", (NA, "—", "读 subagent 定义")),
     ("terminal.focus", (NA, "—", "把终端提到前台")),
-    ("tmux.local-census", (NA, "—", "列 tmux 会话")),
-    ("tmux.manage", (NA, "—", "tmux 会话管理")),
+    # 〔墓碑 · MIG-1〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。连带 §S6 连锁里点它的那两处改成「这条能力回来才要求」（见那一段）。
     # 〔墓碑 2026-09-18〕`usage.aggregate` / `usage.per-account` 两条能力随用量 ②③ 两轴
     # 整轴退役（`设计/50`）⇒ 它们已不在 `LEDGER` 里。本表是**归档表**，留一个指向不存在
     # 的 id 会让 `R3b`（「表在腐烂」）恒红 ⇒ 整条摘掉，理由留在这里。
@@ -1486,16 +1486,23 @@ def main() -> int:
     lies = [c for c, v in verdicts if v == "LiesTodayOwedACorrection"]
     print(f"  人裁表 `FRAME_PLANE_VERDICTS` {len(verdicts)} 条，其中"
           f"「说假话·欠一次订正」**{len(lies)}** 条：{', '.join(lies)}")
-    print("  连锁四处，现打在不在：")
+    print("  连锁那几处，现打在不在：")
     chain = [
         ("EXPECTED_LOCAL_OR_BOTH",
          re.search(r"const EXPECTED_LOCAL_OR_BOTH: usize = (\d+);", led_src)),
         ("ORIGIN_TAKING_BOTH", re.search(r"const ORIGIN_TAKING_BOTH", led_src)),
-        ("tmux.manage 那条 ASYMMETRY_REASONS",
-         re.search(r'\("tmux\.manage", Asym::', led_src)),
-        ("the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
-         re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_backend_primitive", led_src)),
     ]
+    # 〔MIG-1 · 列 tmux 会话进后端〕`tmux.manage` 那条能力整个出了 `LEDGER`（Tauri 命令删了）⇒ 点它的两处（那条不对称散文 ·
+    #   钉那句散文的判据）随之删了。**不是放宽**：这条能力哪天回到 `LEDGER`，这两处照旧必须同在 —— 下面按现打的能力集合现判。
+    if "tmux.manage" in {c for _, c, _ in ledger}:
+        chain += [
+            ("tmux.manage 那条 ASYMMETRY_REASONS",
+             re.search(r'\("tmux\.manage", Asym::', led_src)),
+            ("the_tmux_manage_row_stops_waiting_for_a_backend_primitive",
+             re.search(r"fn the_tmux_manage_row_stops_waiting_for_a_backend_primitive", led_src)),
+        ]
+    else:
+        print("    · `tmux.manage` 不在 `LEDGER` 里（MIG-1 起列 tmux 会话走通道）⇒ 点它的那两处不再要求")
     for name, m in chain:
         if m is None:
             red("R7b", f"连锁那一处找不到了：{name}")

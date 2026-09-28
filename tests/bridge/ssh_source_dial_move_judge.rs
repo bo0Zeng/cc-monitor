@@ -390,7 +390,7 @@ fn a_comment_only_edit_does_not_move_the_verdict() {
 // 〔C2 09-24〕原来这里还有两条：请求行按蛇形键写（`the_request_line_is_written_with_snake_case_keys`）〔散文墓碑〕
 // 与代理二进制只从两处解析（`the_proxy_is_resolved_from_exactly_two_places_and_never_from_home`）〔散文墓碑〕。
 // 请求的造法与解析搬进了宿主 `dial_host`，前一条的性质由
-// `dial_host_tests::the_request_keys_are_the_ones_the_proxy_reads` 接住（而且改成与后端源码异源对拍）；
+// `dial_host_tests::the_request_keys_are_the_ones_the_proxy_reads`〔散文墓碑〕接住（而且改成与后端源码异源对拍；〔MIG-1 收尾〕今天是 `the_request_hands_over_the_machine_as_is`）；
 // 后一条的性质**改了**：`D11` 之后找不到代理要报而不是回落，开发树上要能找到，于是解析多了
 // 「本机后端自释放那一份」这一处（读 `~/.cc-monitor/bin`，登记在 `local_read_surface_registry`）。
 

@@ -355,6 +355,13 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "transfer",
         ),
+        (
+            Frame::Probe {
+                ticket: "t-1".into(),
+                cell: serde_json::json!({"reached": "ssh"}),
+            },
+            "probe",
+        ),
         (Frame::SessionsReplayed, "sessions_replayed"),
         // 〔MIG-1〕会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
         (

@@ -179,13 +179,7 @@ impl Table {
         }
         let req = match super::parse_request_value(dial) {
             Ok(r) => r,
-            Err(e) => {
-                return err(
-                    id,
-                    "invalid_args",
-                    &crate::common::contract::malformed(&format!("unreadable dial request: {e}")),
-                )
-            }
+            Err((code, m)) => return err(id, code, &m),
         };
         let window = match args.get("window").and_then(serde_json::Value::as_u64) {
             Some(w) if (LINK_CHUNK_BYTES as u64..=MAX_WINDOW).contains(&w) => w,

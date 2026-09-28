@@ -1094,3 +1094,37 @@ async fn the_session_tasks_stream_carries_the_sid_that_changed_and_nothing_else(
         .collect();
     assert_eq!(got, vec![(1, serde_json::json!({"sid": "s1"}))]);
 }
+
+/// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕`probe-progress/<票>` 流：本机后端推来一格 ⇒ 只有订了**那张票**的收、
+/// 体原样（monitor 不解释）；别的票 · 别台同名 · 空票都不收（空票那一形订不上：`no-such-stream`）。期望手写。
+#[tokio::test]
+async fn the_probe_progress_stream_carries_the_cell_to_the_one_ticket_only() {
+    let (r, rec) = hub();
+    let local = crate::origin::Origin::local();
+    let box_a = crate::origin::Origin("box-a".into());
+    r.subscribe("w", 1, &local, "probe-progress/t-1", None, 4);
+    r.subscribe("w", 2, &local, "probe-progress/t-2", None, 4);
+    r.subscribe("w", 3, &box_a, "probe-progress/t-1", None, 4);
+    rec.clear();
+    r.subscribe("w", 4, &local, "probe-progress/", None, 4);
+    let refused =
+        rec.0.lock().unwrap().iter().any(|(_, id, items)| {
+            *id == 4 && items.iter().any(|i| matches!(i, WItem::Closed { .. }))
+        });
+    assert!(refused, "空票那一形该当场说没有这条流");
+    rec.clear();
+    r.on_probe("t-1", r#"{"reached":"ssh"}"#.to_string());
+    let got: Vec<(u64, serde_json::Value)> = rec
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .flat_map(|(_, id, items)| {
+            items.iter().filter_map(move |i| match i {
+                WItem::Frame { body, .. } => Some((*id, serde_json::from_slice(&body.0).unwrap())),
+                _ => None,
+            })
+        })
+        .collect();
+    assert_eq!(got, vec![(1, serde_json::json!({"reached": "ssh"}))]);
+}
