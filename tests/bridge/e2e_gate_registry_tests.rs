@@ -572,3 +572,123 @@ fn strip_comments(src: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+/// 〔E2 尾 09-27〕`backend-wrapper.sh` 是夹具：**在仓里直接跑就拒**，一个字节都不交给后端。
+///
+/// 起因（09-27 实发）：分流不看 argv0 之后，没有打头 `--` 的调用就是「起 claude」⇒ 在仓里直接跑它
+/// 起了一次 PATH 上**真的** claude。合法的叫法只有台架那一形（`tier2-rig.sh` 拷进台架目录、旁边放
+/// `backend-path`，由 app 经 SSH 执行）—— SSH exec 不带 env，所以认的是那个文件。
+/// 两向：① 仓里那份直接跑 ⇒ 退 2、说清是夹具、替身后端一次都没被叫到、tap 一个字节没写；
+/// ② 正控：台架那一形 ⇒ 真转到替身（否则 ① 可以靠「这脚本什么都转不过去」绿）。
+/// PATH 只放它要的那几个工具、**不放 tmux** ⇒ 正控那一趟不在 `/tmp` 下建 tmux 垫片目录。
+#[cfg(unix)]
+#[test]
+fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = std::env::temp_dir().join(format!("ccm-wrapper-guard-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let bin = d.join("bin");
+    std::fs::create_dir_all(&bin).expect("建临时目录");
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for tool in [
+        "sh", "cat", "dirname", "date", "head", "stdbuf", "tee", "env",
+    ] {
+        let found = std::env::split_paths(&path)
+            .map(|p| p.join(tool))
+            .find(|p| p.is_file())
+            .unwrap_or_else(|| panic!("这台机器上没有 {tool}"));
+        std::os::unix::fs::symlink(found, bin.join(tool)).expect("链工具");
+    }
+    let reached = d.join("reached");
+    let stub = d.join("stub-backend");
+    std::fs::write(
+        &stub,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\n",
+            reached.display()
+        ),
+    )
+    .expect("写替身后端");
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let tap = d.join("tap");
+    let run = |script: &std::path::Path| {
+        std::process::Command::new(bin.join("sh"))
+            .arg(script)
+            .args(["--", "--ping"])
+            .env_clear()
+            .env("PATH", &bin)
+            .env("HOME", &d)
+            .env("CCM_E2E_BACKEND", &stub)
+            .env("CCM_E2E_FRAME_TAP", &tap)
+            .env("CCM_E2E_CLAUDE_DIR", d.join("claude"))
+            .output()
+            .expect("起 sh")
+    };
+    let wrapper = crate::guard_support::repo_root()
+        .join("tests")
+        .join("e2e")
+        .join("backend-wrapper.sh");
+
+    // ① 仓里那份直接跑。
+    let out = run(&wrapper);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "直接跑没被拒：{err}");
+    assert!(
+        err.contains("是夹具") && err.contains("tier-2 台架"),
+        "拒了但没说清是谁的夹具：{err}"
+    );
+    assert!(!reached.exists(), "拒之前已经把参数交给后端了");
+    assert!(
+        !d.join("tap.err").exists(),
+        "拒之前已经写了 tap（副作用在防呆前面）"
+    );
+
+    // ② 正控：台架那一形。
+    let rig = d.join("rig");
+    std::fs::create_dir_all(&rig).expect("建台架目录");
+    std::fs::copy(&wrapper, rig.join("backend-wrapper.sh")).expect("拷夹具");
+    std::fs::write(rig.join("backend-path"), stub.to_string_lossy().as_bytes())
+        .expect("写 backend-path");
+    let out = run(&rig.join("backend-wrapper.sh"));
+    assert!(
+        out.status.success(),
+        "台架那一形没转过去：{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&reached).ok().as_deref(),
+        Some("-- --ping\n"),
+        "台架那一形没把参数原样交给后端"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 〔E2 尾 09-27〕`tests/e2e/` 底下**一处模式杀都不许有**（`pkill` / `killall`，剥注释后）。
+///
+/// 模式杀没有「只杀我起的那些」这个概念：打到什么由命令行长相决定。本仓第三次栽在这上面是
+/// `local-backend-supervise.sh` 收尾的 `pkill -f "$BACKEND"` —— 它打死了**跑这套件的那条调用方 shell**，
+/// 而且替一条漏网的判据（`KPY2` 第一个宿主起的后端没人收）兜了一个月。收尸一律按自己起的 pid /
+/// 进程表里的事实（`/proc/<pid>/exe` ＋ 环境）认。上面 `the_harness_no_longer_teaches_a_bare_pattern_kill`
+/// 只钉一份文件；这一条钉整棵树。
+#[test]
+fn no_e2e_script_kills_by_pattern() {
+    let root = crate::guard_support::repo_root().join("tests").join("e2e");
+    let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["sh"]);
+    assert!(
+        files.len() >= 30,
+        "只扫到 {} 份 `tests/e2e/**/*.sh` —— 扫描坏了（建判据当天 40 份）",
+        files.len()
+    );
+    let bad: Vec<String> = files
+        .iter()
+        .filter(|(_, src)| {
+            let code = strip_comments(src);
+            guard_core::contains_word(&code, "pkill") || guard_core::contains_word(&code, "killall")
+        })
+        .map(|(p, _)| p.display().to_string())
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "这几份 e2e 的可执行段里有模式杀（`pkill` / `killall`）—— 改成按自己起的 pid 收：{bad:?}"
+    );
+}

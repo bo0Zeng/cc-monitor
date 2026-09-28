@@ -1153,10 +1153,11 @@ pub fn spawn(
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
     let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let poke = WatcherPoke(events_tx.clone());
+    // 〔RESYNC〕登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
+    let me = live_enter(events_tx.clone());
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            let me = live_enter(events_tx.clone());
             watch_loop(
                 agent_home,
                 tx,
@@ -1172,7 +1173,9 @@ pub fn spawn(
     (rx, poke)
 }
 
-/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份）。`resync` 是整机的：每一份都对齐。
+/// 〔RESYNC〕此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份 / stdio 那一份）—— **唯一的名单**：
+/// SIGUSR1（[`poke_all`]）与 `resync` 都按它找人。`spawn` 登记、`watch_loop` 返回即摘
+/// ⇒ 不会去 poke 一个已经退掉的 watcher（`K-P1`：那不报错，它只是再也不响应 tmux hook）。
 static LIVE: std::sync::Mutex<Vec<(u64, std::sync::mpsc::Sender<WatchEvent>)>> =
     std::sync::Mutex::new(Vec::new());
 
@@ -1189,6 +1192,13 @@ fn live_leave(id: u64) {
     LIVE.lock()
         .unwrap_or_else(|e| e.into_inner())
         .retain(|(k, _)| *k != id);
+}
+
+/// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」** —— 名单上每一份 watcher 都戳一下（语义同 [`WatcherPoke::poke`]）。
+pub fn poke_all() {
+    for (_, w) in LIVE.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        let _ = w.send(WatchEvent::Poke);
+    }
 }
 
 /// 〔RESYNC · `设计/15 §4.1b`〕**手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
@@ -1557,7 +1567,7 @@ fn watch_loop(
                     );
                     sink.send(Frame::AccountsChanged);
                 }
-                let got = reconcile_sessions(&sessions, &mut state, &mut sink, only.as_deref());
+                let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx);
                 let _ = done.send(got);
             }
@@ -2499,6 +2509,27 @@ pub(crate) struct Reconciled {
     pub(crate) added: usize,
     pub(crate) removed: usize,
     pub(crate) retagged: usize,
+}
+
+/// 〔RESYNC〕「重新对齐」那一趟的会话部分：对表（与起步同一个 [`reconcile_sessions`]）＋ 每个在跟的会话从游标补读
+/// （tab「重新读取」：`only` = 那一个 sid；与退休前那一次补读同一个 [`catch_up_session`]，写端活着 ⇒ 不收尾残行）。
+fn resync_sessions(
+    sessions: &Path,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+    only: Option<&str>,
+) -> Reconciled {
+    let got = reconcile_sessions(sessions, state, sink, only);
+    let sids: Vec<String> = state
+        .active_sids
+        .iter()
+        .filter(|s| only.is_none_or(|o| o == s.as_str()))
+        .cloned()
+        .collect();
+    for sid in sids {
+        catch_up_session(&sid, false, state, sink);
+    }
+    got
 }
 
 /// **pidfile 目录对后端的表**：起步初扫与 `resync` 是这同一个函数（`设计/15 §4.1b`「与初探同一个函数」）。

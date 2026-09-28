@@ -174,6 +174,8 @@ fn ps_builtin_aliases() -> &'static PsAliases {
 }
 
 /// `Get-Alias` 那一段的输出（每行 `名字<TAB>指向`）→ 表。名字按 PowerShell 的口径不分大小写（存小写）。
+// 生产调用方只在 `cfg(windows)` 的 `ask_get_alias` 里；非 Windows 构建只有判据用它（同 SH1 先例，不进 deadcode 那个数）。
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn parse_alias_listing(text: &str) -> std::collections::BTreeMap<String, String> {
     text.lines()
         .filter_map(|l| l.trim_end().split_once('\t'))

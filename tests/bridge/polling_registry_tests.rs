@@ -457,7 +457,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
           `backend_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
     ("src/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
     ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
-    ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),
+    ("src/events.ts", "setTimeout", 2, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。〔RENDER2〕原 ③（`makeYieldToMain` 的兜底）搬进 `yield-to-main.ts`（3 = 2 ＋ 1）。"),
     // 〔`C1` · 09-24〕`src/session-accounts-poll.ts` 的 `setInterval` ×1 这一行出去了（10s 账号轮询改事件驱动，理由见 `REGISTERED` 头上那段）。
     // 〔三入口拆分 · `设计/01 §1.2`〕原先 `main.ts` 一行 3 处；代码块「复制」那段全局代理
     //   （② ③ 两处）搬进了主窗与 viewer 窗共用的 `entry-render-common.ts`（viewer 窗不再加载
@@ -493,6 +493,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/views/panorama.ts", "setTimeout", 2, "① 250ms 搜索去抖。一次性（每次输入前 clear）。② 「复制给 agent」成功后 1.5s 把按钮字还原。一次性，只动按钮自己的字，不取数不重排。"),
     ("src/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
     ("src/views/session-viewer.ts", "setTimeout", 2, "① `setTimeout(r, 0)` 让出主线程 ② 2.2s 后移除搜索命中的闪烁 class。都是一次性。"),
+    ("src/yield-to-main.ts", "setTimeout", 1, "〔RENDER2〕`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),
 ];
 
 /// 数一个调度 API 在源码里的**调用**次数（散文里提到名字不算）。

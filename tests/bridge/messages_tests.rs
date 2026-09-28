@@ -421,3 +421,71 @@ fn displayable_classes_equal_the_table_with_a_reader_for_each() {
     .collect();
     assert_eq!(got, want);
 }
+
+/// 〔RENDER2 · J10 乙（主会话 09-27 裁）〕要求住址：`设计/10 §2.2b ⑤`「判定全仓一个住址」＋ 裁定原话「monitor 解析记录时调同一个
+/// `search-core::user_text` 填进记录」。经生产出口 `parse_line`：user 记录过线时带 `userText`（= 规则的输出），别的类型不带。
+#[test]
+fn a_parsed_user_record_carries_the_one_noise_rule_product() {
+    let origin = crate::origin::Origin::local();
+    let cases = [
+        (
+            r#"{"type":"user","uuid":"a","timestamp":"t","message":{"role":"user","content":"<system-reminder>x</system-reminder>真话"}}"#,
+            "真话",
+            false,
+        ),
+        (
+            r#"{"type":"user","uuid":"b","timestamp":"t","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#,
+            "",
+            true,
+        ),
+    ];
+    for (line, clean, interrupt) in cases {
+        let rec = crate::parser::parse_line(&origin, line).unwrap().unwrap();
+        let v = serde_json::to_value(&rec).unwrap();
+        assert_eq!(
+            v["userText"],
+            serde_json::json!({ "clean": clean, "interrupt": interrupt }),
+            "{line}"
+        );
+    }
+    let asst = crate::parser::parse_line(
+        &origin,
+        r#"{"type":"assistant","uuid":"c","timestamp":"t","message":{"role":"assistant","content":"hi"}}"#,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(serde_json::to_value(&asst)
+        .unwrap()
+        .get("userText")
+        .is_none());
+}
+
+/// 〔RENDER2 · J10〕TS 夹具助手 `tests/test-support/user-text.ts::withUserText` 只给「不含注入噪声」的 user 记录补成品
+/// （正文抽出来 trim）。这里用真规则把那份语料里的每条 user 记录过一遍：成品必须恰好就是那样（否则助手在替规则说假话）。
+#[test]
+fn the_ts_fixture_user_records_carry_no_injected_noise() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let origin = crate::origin::Origin::local();
+    let mut users = 0;
+    for rel in ["tests/__fixtures__/scale2-height-records.jsonl"] {
+        let text = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let Ok(Some(JsonlRecord::User {
+                message, user_text, ..
+            })) = crate::parser::parse_line(&origin, line)
+            else {
+                continue;
+            };
+            users += 1;
+            let plain = search_core::extract_text_blocks(&message.content)
+                .trim()
+                .to_string();
+            assert_eq!(
+                (user_text.clean.as_str(), user_text.interrupt),
+                (plain.as_str(), false),
+                "{rel}: {line}"
+            );
+        }
+    }
+    assert!(users > 0, "语料里一条 user 记录都没有 —— 本条空转");
+}

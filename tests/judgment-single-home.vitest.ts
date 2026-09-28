@@ -303,13 +303,15 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J10: {
     what: "用户消息里的 CLI 注入噪声",
     // 〔RENDER2〕规则合成一份住 `user_text`（`clean_user_text` 取它的 `clean`）；后端读者（搜索 · 历史摘要 · 大纲）都走它。
-    //   前端渲染那一份（`stripInternalNoise` · `branching.ts` 的前缀判断）要等「成品怎么到前端」主会话拍（RENDER2.md 报备）。
+    //   前端（主会话 09-27 裁乙）：monitor 解析 user 记录时调同一个 `user_text` 填 `userText`（`messages.rs::UserText::of`），
+    //   渲染 / compact 检测 / 分叉折叠只读成品；TS 那份 `stripInternalNoise` 与 `branching.ts` 的前缀判断删了。
     homes: ["search-core::user_text", "search-core::clean_user_text"],
-    status: "open",
+    status: "zero",
     defs: ["stripInternalNoise"],
-    needles: [{ text: 'startsWith("[Request interrupted by user")', count: 1, file: "src/branching.ts" }],
-    owner: "主会话拍（DUP1.md §4 ④）· 渲染管线那一片（W5-RENDER / STC）",
-    why: "两份规则不同（TS 多剥两句样板、少剥 stderr），用途也不同（渲染 vs 索引）",
+    needles: [
+      { text: 'startsWith("[Request interrupted by user")', count: 0, file: "src/branching.ts" },
+      { text: "Request interrupted by user", count: 0 },
+    ],
   },
   J11: {
     what: "文案表取文 ＋ 插值",

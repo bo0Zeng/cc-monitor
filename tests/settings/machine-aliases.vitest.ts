@@ -99,6 +99,14 @@ describe("表单 ↔ 一条别名（纯函数）", () => {
     expect(m.aliasToForm({ name: "x", args: ["--weird", "--", "--ccm-tmux"] }).passthru).toBe("--weird");
     expect(m.aliasToForm({ name: "x", args: ["--", "--ccm-tmux", "--odd"] }).passthru).toBe("--odd");
   });
+
+  it("〔V153〕-- 右边第一个 new（起新会话 = 缺省）表单读得回、不落进透传；别处的 new 照旧不丢", async () => {
+    const m = await import("../../src/settings/machine-aliases");
+    const f = m.aliasToForm({ name: "x", args: ["--", "new", "--ccm-tmux"] });
+    expect(f.passthru).toBe("");
+    expect(f.tmux).toBe("auto");
+    expect(m.aliasToForm({ name: "x", args: ["--", "--ccm-tmux", "new"] }).passthru).toBe("new");
+  });
 });
 
 // 〔AL1c · 第四波 4B〕两套合一（`设计/71 §7` W5）：从前 POSIX 一套、Windows 那一块（`cc_integration.ts`）

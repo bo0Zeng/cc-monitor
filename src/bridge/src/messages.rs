@@ -14,6 +14,41 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
+#[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct UserText {
+    /// 剥完、trim 过的真内容；空 = 整条都是注入噪声（不建卡）。
+    pub clean: String,
+    /// 整条恰是 ESC 中断标记（分叉折叠认它）。
+    pub interrupt: bool,
+}
+
+impl UserText {
+    /// 规则只有一份（`search_core::user_text`）；正文的抽法同全局搜索（`search_core::extract_text_blocks`）。
+    pub(crate) fn of(message: &ApiMessage) -> Self {
+        let v = search_core::user_text(&search_core::extract_text_blocks(&message.content));
+        Self {
+            clean: v.clean,
+            interrupt: v.interrupt,
+        }
+    }
+}
+
+impl JsonlRecord {
+    /// user 记录填上 [`UserText`]（别的类型原样）。
+    pub(crate) fn with_user_text(mut self) -> Self {
+        if let Self::User {
+            message, user_text, ..
+        } = &mut self
+        {
+            *user_text = UserText::of(message);
+        }
+        self
+    }
+}
+
 /// issue #12: jsonl 顶层 `forkedFrom` 字段 —— `/branch` 命令分叉出新 session 时
 /// 写入。`sessionId` 是 parent session 的 sessionId（**全前缀共享同一个**）；`messageUuid`
 /// 则是**该条记录自身的 uuid**（= 它在父会话里的原 uuid），逐条不同。
@@ -59,6 +94,10 @@ pub enum JsonlRecord {
         // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
         #[serde(rename = "forkedFrom", default)]
         forked_from: Option<ForkedFrom>,
+        /// 〔RENDER2 · J10〕剥完 CLI 注入噪声的正文与「是不是 ESC 中断标记」—— 规则只在 `search_core::user_text`，
+        /// 前端渲染 / 分叉折叠只读这个成品（不自己再判）。原文里没有这一格：解析完由 [`UserText::of`] 填（`parser::parse_line` · `codex_record`）。
+        #[serde(rename = "userText", skip_deserializing, default)]
+        user_text: UserText,
     },
     #[serde(rename = "assistant")]
     Assistant {

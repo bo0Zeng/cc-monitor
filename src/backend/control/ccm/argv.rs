@@ -45,8 +45,11 @@ pub(crate) mod flag {
     pub(crate) const CCM_VERSION: &str = "--ccm-version";
     pub(crate) const CCM_PROBE: &str = "--ccm-probe";
     pub(crate) const CCM_SID: &str = "--ccm-sid";
-    /// argv 终止符：其后全部透传给 agent（要把 claude 自己同名的旗标交过去时用）。
+    /// 〔V151〕分隔符：最后一个 `--` 左边交 agent、右边归 ccm。
     pub(crate) const END: &str = "--";
+    /// 〔V153 · 用户 09-27〕位置动作「起新会话」：ccm 自己的词，只许是 `--` 右边的第一个词（`ccm [claude 的] -- new [ccm 选项]`）。
+    /// 起新会话本来就是缺省，写出来是给想说清楚的人与渲染器用的；`ccm new`（没有 `--`）照 V151 整行交 claude。
+    pub(crate) const NEW: &str = "new";
 }
 
 /// 〔E2〕这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器（放在 `--` 右边喂它）。
@@ -236,6 +239,7 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             };
         }
         match key {
+            flag::NEW if i == 0 => {}
             flag::TMUX => {
                 o.use_tmux = true;
                 if let Some(v) = inline {
@@ -261,6 +265,8 @@ pub(crate) fn parse(args: &[String]) -> Result<Parsed, Die> {
             flag::CCM_PROBE => return Ok(Parsed::Early(Early::Probe)),
             flag::CCM_VERSION => return Ok(Parsed::Early(Early::Version)),
             flag::CCM_HELP => return Ok(Parsed::Early(Early::Help)),
+            // 〔V153〕`new` 只许打头 ⇒ 别处出现说清为什么，不落到「不是 ccm 的选项」那句。
+            flag::NEW => return die(copy_text("beArgv.parse.newNotFirst", &[])),
             // 〔V151〕右边认不得 ⇒ 报错。是后端子命令 / 流词（它们只能紧跟打头的 `--`）⇒ 说清为什么。
             _ if i == 0 && crate::control::ccm::is_backend_word(a) => {
                 return die(copy_text(
