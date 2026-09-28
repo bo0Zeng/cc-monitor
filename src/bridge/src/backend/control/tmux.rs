@@ -498,7 +498,7 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 
 // 〔C4e · 第四波 4C〕这里原来住着杀会话与送键两条 Tauri 命令 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕
 //   （F79 / A5；`K-R72` 起只剩后端一条路、三态分流）。两条迁到界面：`src/tmux-control.ts::killSession` /
-//   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into` · `send-keys-raw` 两个 mode 名的理由随之搬过去）。
+//   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into`；〔RST 续 · V41〕裸键 mode `send-keys-raw` 随 V154 无调用者删了）。
 //   **它们买到的东西一样没丢**：Gate 1 空目标仍被拒（〔DUP3〕由后端入口拒，界面那一份删了）· Gate 2 / 3 仍只在后端 `control/gate.rs` ·
 //   `Refused` 与 `NoChannel` 仍是两句话 · 仍然没有第二条路（界面那一侧结构上没有 SSH）。
 

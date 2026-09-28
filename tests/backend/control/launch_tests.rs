@@ -1,7 +1,7 @@
 //! # 要求住址：`INVARIANTS §42` → `src/doc/IPC-PROTOCOL.md §10` 的 `launch` 节（平面 ② 真建 tmux 会话的线上契约）
 //!
-//! 核原文：`launch` 节逐字「`send-into` / `send-keys-raw` 时不新建会话」·「`typed:true` 只有 `send-keys` 的退出码那么强」；
-//! 同节写明它刻意不做的三件（不 attach · 不过 shell · 不顺手建会话）、`created` / `typed` 结局表、`send-keys-raw` 不附 `Enter` —— 本族逐格判的就是那一节。
+//! 核原文：`launch` 节逐字「`send-into` 时不新建会话」·「`typed:true` 只有 `send-keys` 的退出码那么强」；
+//! 同节写明它刻意不做的三件（不 attach · 不过 shell · 不顺手建会话）、`created` / `typed` 结局表 —— 本族逐格判的就是那一节。
 //! 先过门再键入对 `INVARIANTS §34` Gate 2；精确目标形态对 `INVARIANTS §31a`。
 //! ⚠ `§42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族（射程待主会话确认，见 `JA1.md`）。〔JA1 点址 2026-09-24〕
 
@@ -485,103 +485,36 @@ fn the_three_success_shapes_are_distinguishable() {
     assert_ne!(idempotent, sent);
 }
 
-// ===== F04c：`send-keys-raw`（发裸键、不附 Enter）=====
+// ===== 〔RST 续 · V41〕裸键 mode `send-keys-raw` 删了（V154 之后无生产调用者）=====
 
-/// 新 mode 名解析得出来，而且**旧的两个没被顺手改掉**。
+/// mode 集合恰好是 `create-or-attach` / `send-into` 两个；删掉的 `send-keys-raw` 回 `invalid_args`，
+/// 错误文案列的是真集合（不再提那个名字）。
 #[test]
-fn the_new_mode_name_parses_and_the_old_ones_still_do() {
-    assert_eq!(Mode::parse("send-keys-raw"), Some(Mode::SendKeysRaw));
+fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
     assert_eq!(Mode::parse("send-into"), Some(Mode::SendInto));
     assert_eq!(Mode::parse("create-or-attach"), Some(Mode::CreateOrAttach));
-    // ★ **fail-closed 的那一半**：未知 mode 必须回 `None` ⇒ `invalid_args`。
-    // 这正是「为什么是新 mode 名而不是新字段」的全部理由 —— 旧后端会走到这里。
-    for unknown in ["send-keys", "attach-only", "SendKeysRaw", "", "send-into "] {
+    for unknown in [
+        "send-keys-raw",
+        "send-keys",
+        "attach-only",
+        "",
+        "send-into ",
+    ] {
         assert_eq!(Mode::parse(unknown), None, "{unknown:?} 不该被认出来");
     }
     let e = parse_request(&serde_json::json!({
-        "mode": "send-keys", "name": "x-cc", "payload": "Escape"
+        "mode": "send-keys-raw", "name": "x-cc", "payload": "Escape"
     }))
-    .expect_err("未知 mode 必须被拒");
+    .expect_err("删掉的 mode 必须被拒");
     assert_eq!(e.0, "invalid_args");
+    let listed =
+        e.1.split("expected")
+            .nth(1)
+            .unwrap_or_else(|| panic!("错误文案没列 mode 集合：{}", e.1));
     assert!(
-        e.1.contains("send-keys-raw"),
-        "错误文案没列出真正的 mode 集合，旧后端的使用者会不知道该升级什么：{}",
+        listed.contains("create-or-attach / send-into") && !listed.contains("send-keys-raw"),
+        "错误文案列的不是真正的 mode 集合：{}",
         e.1
-    );
-}
-
-/// ★★ **本件的核心性质：裸键分支绝不附 `Enter`。**
-///
-/// 附上了就把「打断当前回合」（`Escape`）变成「**提交用户输入框里排队的文本**」。
-/// 双向钉：裸键那条不许有 `Enter`，而 `send-into` 那条**必须**还有
-/// （否则是把两个语义合并成一个 —— 那才是这一整件要拆开的东西）。
-#[test]
-fn send_keys_raw_never_appends_enter() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    let arm = arm_of(&src, "Mode::SendKeysRaw =>");
-    assert!(
-        arm.contains("type_keys_raw(&handle"),
-        "裸键分支没走 `type_keys_raw`（或没对句柄下手）：{arm}"
-    );
-    // 抠出两个键入函数的函数体，逐个查 `Enter`。
-    let key = "\"Enter\"";
-    let raw_body = {
-        let at = src
-            .find("fn type_keys_raw(")
-            .expect("找不到 `type_keys_raw` —— 改名了就把本条一起改");
-        let rest = &src[at..];
-        &rest[..rest
-            .find(tail_brace().as_str())
-            .map(|k| k + 3)
-            .unwrap_or(rest.len())]
-    };
-    assert!(
-        !raw_body.contains(key),
-        "`type_keys_raw` 里出现了 {key} —— 那就不是裸键了。\n\
-             生产上唯一会走这条路的是「优雅退出发 `Escape` 打断当前回合」，\n\
-             多一个回车 = **提交用户输入框里排队的文本**（`tmux.rs` 头注逐字警告过）。"
-    );
-    let payload_body = {
-        let at = src.find("fn type_payload(").expect("找不到 `type_payload`");
-        let rest = &src[at..];
-        &rest[..rest
-            .find(tail_brace().as_str())
-            .map(|k| k + 3)
-            .unwrap_or(rest.len())]
-    };
-    assert!(
-        payload_body.contains(key),
-        "`type_payload` 不再附 {key} 了 —— 那两个 mode 的区别就消失了，\
-             而这一整件存在的理由就是把它们**分开**"
-    );
-}
-
-/// 裸键分支与 `send-into` **同一道门、同一个顺序**；且不许顺手建会话。
-#[test]
-fn the_send_keys_raw_arm_admits_before_it_types_and_never_creates() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    let arm = arm_of(&src, "Mode::SendKeysRaw =>");
-    let admit_at = arm
-        .find("gate::admit")
-        .expect("裸键分支不过 `gate::admit` —— 发裸键也是往别人的会话里打字");
-    let type_at = arm
-        .find("type_keys_raw")
-        .expect("分支里没有 `type_keys_raw`");
-    assert!(
-        admit_at < type_at,
-        "键入排在过门之前 —— 门就没意义了（同 `the_send_into_arm_admits_before_it_types`）"
-    );
-    let verb = format!("new-{}", "session");
-    assert!(!arm.contains(&verb), "裸键分支里出现了建会话");
-    // ⚠ Gate 3 **不许**出现：`send-keys` 不删除任何东西。
-    // monitor 侧 F04 Phase D 审计修过「给非破坏性动作加 Gate 3」那个错法。
-    assert!(
-        !arm.contains("admit_destructive"),
-        "裸键分支走了带 Gate 3 的门 —— 那会让「往一个多窗口会话里打字」被误拒"
     );
 }
 
@@ -622,7 +555,7 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
         .collect();
     assert_eq!(
         variants.len(),
-        3,
+        2,
         "`Mode` 变体数变了（实得 {variants:?}）—— **这不是让你改数字**：\n\
              新增一个 mode 至少要补三样 —— `Mode::parse` 的一支、`run()` 的一个分支、\n\
              以及一条**扫那个分支源码**的判据（既有那几条只认自己写死的分支名，\n\
@@ -650,7 +583,7 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
 ///
 /// # 它治的不是「没做探测」，是**替证据说大话**
 ///
-/// `type_payload` / `type_keys_raw` 的全部依据就是 `tmux(&["send-keys", …])?` ——
+/// `type_payload` 的全部依据就是 `tmux(&["send-keys", …])?` ——
 /// **退 0 就 `Ok`**。而 tmux 在 pane 处于 **copy-mode** 时照样退 0：键被键表吃掉，
 /// 载荷根本没进应用（`pane_in_mode` / `copy-mode` / `-X cancel` 在**生产函数体**里零命中 ——
 /// ⚠ 措辞 08-06 改准：原写「全仓零命中」，而这几个词今天在**本注释与下面那条判据的
@@ -676,7 +609,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
     let src = crate::guard_support::production_code(include_str!(
         "../../../src/backend/control/launch.rs"
     ));
-    for f in ["fn type_payload(", "fn type_keys_raw("] {
+    for f in ["fn type_payload("] {
         let at = src
             .find(f)
             .unwrap_or_else(|| panic!("找不到 `{f}` —— 改名了就把本条一起改"));
@@ -780,7 +713,7 @@ fn no_doc_claims_the_payload_really_landed() {
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 从这一拍起由界面经通道直接说
 /// （`src/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
 ///
-/// 四格各自异源：两个 mode 的请求样例（`send-into` · `send-keys-raw`）都过**生产**解析器 [`parse_request`]、
+/// 四格各自异源：`send-into` 的请求样例过**生产**解析器 [`parse_request`]、
 /// 且解出来是它自称的那个 mode · 成品 == 生产构造器 [`reply`] · 码集合 == 后端登记表 `inbound::REGISTRY` 那一块。
 /// ⚠ `REGISTRY` 那一块今天**没列 `wrong_owner`**，而 [`run`] 经 `gate::admit` 真会回它 —— 界面那张表单独接住了它；
 /// 登记表漏列这一格报给主会话（C4e 记录），本条照登记表比，不替它补。
@@ -795,13 +728,6 @@ fn the_launch_request_and_product_match_the_cross_language_golden() {
         into.mode,
         Mode::SendInto,
         "金样的 send-into 样例没被解成 send-into"
-    );
-    let raw =
-        parse_request(&l["requestRaw"]).expect("金样的 send-keys-raw 请求样例过不了生产解析器");
-    assert_eq!(
-        raw.mode,
-        Mode::SendKeysRaw,
-        "金样的 send-keys-raw 样例没被解成 send-keys-raw"
     );
     let r = &l["reply"];
     assert_eq!(
@@ -940,11 +866,6 @@ fn w5vis_s4_s5_the_create_arm_carries_tmux_reasons_and_is_not_blocked_by_seconda
     let e = run_with(&req, &|a| f.call(a)).unwrap_err();
     assert_eq!(e.0, "typed_unconfirmed");
     assert!(e.1.contains("can't find pane: %9"), "{}", e.1);
-    // 裸键那一支同形。
-    let f = FakeTmux::new(|_| said(false, "not a terminal"));
-    let e = type_keys_raw("$1", "Escape", &|a| f.call(a)).unwrap_err();
-    assert_eq!(e.0, "typed_unconfirmed");
-    assert!(e.1.contains("not a terminal"), "{}", e.1);
 }
 
 /// ★ S5 的话：做成了不说；没做成 ⇒ 说哪一步、tmux 说的、后果（四步逐格，两向）。起不来 tmux 那一形同样要说。

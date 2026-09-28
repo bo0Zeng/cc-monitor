@@ -224,7 +224,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 ### 2.3 控制面今天真的在 backend 了
 
 两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
-`tmux_send_keys` → `control/launch.rs` 的 `send-into` / `send-keys-raw`。
+`tmux_send_keys` → `control/launch.rs` 的 `send-into`（〔RST 续〕裸键 mode `send-keys-raw` 已删）。
 〔C4e · 第四波 4C〕再往前一步：那两条（连同抓屏、就地 resume）不再是 monitor 的 Tauri 命令 ——
 界面经通道直接说后端的 `kill` / `launch` / `capture-pane`（`src/tmux-control.ts`），monitor 那一跳只搬字节；
 「能不能回落」那条判定在界面那一侧同义一份（`src/ipc/chan-caller.ts::provablyNotSent`），

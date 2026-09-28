@@ -26,7 +26,7 @@
 /// # 这条透镜（08-08「顺序」类声称）的结果一并记在这里
 ///
 /// 全仓生产段扫出 31 处「顺序」声称，逐个查过：`launch.rs` 三条（`SendInto` /
-/// `SendKeysRaw` / `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
+/// 裸键那一支〔RST 续：已删〕/ `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
 /// `cd` 位次（逐字节 golden 对拍抓过一次）· `sanitize` 先于 `wrap`（F54 已钉接线）·
 /// `fs.rs` 先看长度再读（F06）——**都已经有判据**。
 /// **只有这一条没有**：实测把两行对调，backend 294 条一条不红。

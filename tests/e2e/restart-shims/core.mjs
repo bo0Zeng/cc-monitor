@@ -142,7 +142,7 @@ function chanCall(op, body) {
     case "accounts-sessions":
       return enc({ sessions: [] });
     case "launch": {
-      // 发按键：`send-into`（键入 ＋ 回车）/ `send-keys-raw`（裸键）。与后端同构：`=<名>:` 精确寻址（F01）。
+      // 发按键：`send-into`（键入 ＋ 回车；〔RST 续〕裸键 mode 已删）。与后端同构：`=<名>:` 精确寻址（F01）。
       const { mode, name, payload } = body;
       const label =
         payload === "/compact" ? "compact" : payload === "Escape" ? "escape" : payload === "/exit" ? "exit" : "sendkeys:" + payload;

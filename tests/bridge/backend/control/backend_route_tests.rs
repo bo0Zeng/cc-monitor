@@ -49,7 +49,7 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
         },
         CallError::Remote {
             code: "invalid_args".into(),
-            message: "未知 mode `send-keys-raw`".into(),
+            message: "未知 mode `attach-only`".into(),
         },
     ];
     for e in &no_fallback {
@@ -62,26 +62,6 @@ fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
     }
     // 「没有通道」那一档也必须是可回落的。
     assert!(matches!(no_channel("h1"), Routed::NoChannel(_)));
-}
-
-/// ⚠ **老后端不认新 mode 时回的是 `invalid_args`，那**不是**「可回落」。**
-///
-/// 这条单独写出来是因为它反直觉：F04c 选「新 mode 名」的理由正是
-/// 「老后端会明确报错而不是静默做错」，很容易顺手把它归成 `NoChannel` 去回落 SSH。
-/// 但 `invalid_args` 是 **backend 说过话了** —— 它可能是「mode 不认」，
-/// 也可能是「名字含 `:`」这种真该拒的形状问题，**在这一层分不开**。
-/// ⇒ 一律不回落；要给「老后端」开回落，得靠 `accepts()`/`Unsupported` 那条**命令级**
-/// 能力协商，而不是猜错误码。
-#[test]
-fn an_old_backend_rejecting_the_new_mode_is_not_a_reason_to_fall_back() {
-    let e = CallError::Remote {
-        code: "invalid_args".into(),
-        message: "未知 mode `send-keys-raw` —— 只有 create-or-attach / send-into".into(),
-    };
-    match route_call_error(&e, plain) {
-        Routed::Refused(msg) => assert!(msg.contains("invalid_args")),
-        other => panic!("`invalid_args` 被判成了 {other:?} —— 它是后端说的话，不许回落"),
-    }
 }
 
 /// `backend/control/` 里每个**走后端的发送端**的判定。
