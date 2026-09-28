@@ -5,7 +5,7 @@
  * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
 import { showActionFailureToast } from "../error-toast";
-import { readRemoteConfig } from "../remote-config";
+import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 
 // `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
 import { listForwards, startForward, stopForward, type ForwardStatus } from "../port-forward-reads";
@@ -36,6 +36,8 @@ class PortForwardPanel {
   private localInput!: HTMLInputElement;
   private rhostInput!: HTMLInputElement;
   private rportInput!: HTMLInputElement;
+  /** 打开时读到的那几台（起转发时一并交它的配置：那台的流没起来时本机后端按它自己拨）。 */
+  private hosts: RemoteHostConfig[] = [];
 
   constructor() {
     this.el = document.createElement("div");
@@ -100,6 +102,7 @@ class PortForwardPanel {
     this.originSel.innerHTML = "";
     try {
       const { hosts } = await readRemoteConfig();
+      this.hosts = hosts;
       for (const h of hosts) {
         const origin = h.label.trim() || h.host;
         const opt = document.createElement("option");
@@ -171,7 +174,11 @@ class PortForwardPanel {
       return;
     }
     try {
-      await startForward({ origin, localPort, remoteHost, remotePort });
+      // 〔MIG-1 续〕那台的配置（＋ 跳板那一台）一并交：它的流没起来时本机后端按配置自己拨，不拒。
+      const machine = this.hosts.find((h) => hostKey(h) === origin) ?? null;
+      const jumpName = machine?.jump.trim() ?? "";
+      const jump = jumpName ? (this.hosts.find((h) => hostKey(h) === jumpName) ?? null) : null;
+      await startForward({ origin, localPort, remoteHost, remotePort }, machine ? { machine, jump } : null);
       this.localInput.value = "";
       this.rportInput.value = "";
       await this.reload();

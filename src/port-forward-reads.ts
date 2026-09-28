@@ -14,6 +14,7 @@ import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { copyText } from "./copy-table";
+import type { RemoteHostConfig } from "./remote-config";
 
 /** 一条转发的状态（列表展示）。 */
 export interface ForwardStatus {
@@ -34,6 +35,15 @@ export interface ForwardSpec {
   localPort: number;
   remoteHost: string;
   remotePort: number;
+}
+
+/**
+ * 〔MIG-1 续 · 主会话裁：流没起的远端不许拒〕那台的配置（＋ 跳板那一台）：那台的流没握手过时，本机后端按它自己组请求去拨。
+ * 流握手过的那台用后端手里那一份，这两格不看。
+ */
+export interface ForwardMachine {
+  machine: RemoteHostConfig;
+  jump: RemoteHostConfig | null;
 }
 
 type Obj = Record<string, unknown>;
@@ -101,10 +111,10 @@ function said(e: unknown): Error {
 }
 
 /** 起一条转发，回它的号。口绑不上 / 连不上 ⇒ 抛那句原话。 */
-export async function startForward(spec: ForwardSpec): Promise<string> {
+export async function startForward(spec: ForwardSpec, via: ForwardMachine | null = null): Promise<string> {
   let reply: Uint8Array;
   try {
-    const body = jsonBody({ ...spec });
+    const body = jsonBody(via ? { ...spec, machine: via.machine, jump: via.jump } : { ...spec });
     const budget = budgetWithin(FORWARD_START_BUDGET_MS);
     reply = await chan.call(LOCAL_ORIGIN, "forward-start", body, budget);
   } catch (e) {

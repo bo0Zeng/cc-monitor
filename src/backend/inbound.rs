@@ -199,6 +199,8 @@ pub const COMMANDS: &[&str] = &[
     "plugins-marketplaces",
     // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
+    // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
+    "remote-probe",
     "remote-reach",
     "resolve",
     // 〔RESYNC · V149〕手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
@@ -1398,12 +1400,56 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "forward-start",
         doc_anchor: Some("#### `forward-start`"),
-        codes: &["invalid_args", "bad_spec", "unreachable", "full", "failed"],
-        fields: &["id", "localPort", "origin", "remoteHost", "remotePort"],
+        codes: &[
+            "invalid_args",
+            "bad_spec",
+            "unreachable",
+            "bad_jump",
+            "full",
+            "failed",
+        ],
+        fields: &[
+            "id",
+            "jump",
+            "localPort",
+            "machine",
+            "origin",
+            "remoteHost",
+            "remotePort",
+            "saved",
+        ],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
                 crate::dial::forwards::answer_start(&r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔MIG-1 续 · `99 §2.1 ⑬` · 主会话裁「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
+    //   真异步（拨号 · 读 hello · 控制通道往返，两段等待各有上限），`cancel` 能在 await 点打断；短命探活、不进连接池。
+    CommandSpec {
+        name: "remote-probe",
+        doc_anchor: Some("#### `remote-probe`"),
+        codes: &["invalid_args", "bad_jump", "failed"],
+        fields: &[
+            "backendHello",
+            "backendOk",
+            "endpoint",
+            "fingerprint",
+            "jump",
+            "machine",
+            "message",
+            "saved",
+            "sshOk",
+            "stages",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::probe::answer_probe(&r.args)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
