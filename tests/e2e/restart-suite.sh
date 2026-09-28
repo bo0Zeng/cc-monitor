@@ -44,6 +44,8 @@ GEN="$E2E/gen-idle-tmux.sh"
 DRV="$E2E/restart-cmd-driver.ts"
 
 WORK="$(mktemp -d /tmp/e2e-restart.XXXXXX)"
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 拷进 ASCII 的 $WORK 再当启动器。
+cp "$E2E/fake-claude" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 OLD="$WORK/acct-old"      # 旧账号 CLAUDE_CONFIG_DIR（account "bold"）
 NEW="$WORK/acct-new"      # 新账号 CLAUDE_CONFIG_DIR（account "znew"，换号目标）
 CWD_DIR="/tmp/e2e-remote"
