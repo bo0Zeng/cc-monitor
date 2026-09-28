@@ -295,6 +295,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "acct-iso-shellinit",
         // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
+        // 〔MIG-3b〕这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
+        "hooks-diag",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

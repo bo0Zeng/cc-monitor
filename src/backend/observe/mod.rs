@@ -20,6 +20,8 @@
 //! 条数由 `crate::layering_guard` 钉住 —— **多一个就红**，逼人回答「这条也该跨层吗」。
 
 pub mod accounts_query;
+// 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）。
+pub(crate) mod cc_bus_hooks;
 // 〔STC · `设计/90 §4` 阶段 C〕会话事实（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）的本体；帧面宿主在顶层 `read_face`。
 pub(crate) mod facts_query;
 // 〔TL3 · 审计 F 🔴-6〕读路径越界围栏的唯一住址（`设计/15 §4.2` · `§5.3 C5`）：`history_query` 与 `search_query` 都经它。

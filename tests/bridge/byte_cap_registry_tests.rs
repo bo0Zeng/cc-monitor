@@ -567,8 +567,16 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/bridge/src/sftp.rs",
         "MARKER_READ_MAX",
         64 * 1024,
-        "部署时读回的一份小文件（`.build_id` / `.vendor_id` 标记 · `ccm` 入口 shim；它们都是几十字节）",
+        "部署时读回的一份小文件（`.vendor_id` 标记；几十字节）。〔MIG-3b〕认落点上那份 `ccm` 入口 shim 那一读随部署判定进了后端（`ENTRY_READ_MAX`）",
         "拒收+回错",
+    ),
+    // 〔MIG-3b〕部署计划（本机常驻后端）认从前那份三行入口时读落点那一份的上限：先问大小、大了不读。
+    (
+        "src/backend/control/deploy_plan.rs",
+        "ENTRY_READ_MAX",
+        64 * 1024,
+        "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
+        "跳过+说清",
     ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
@@ -712,6 +720,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "MAX_HOOK_FILE_BYTES",
         1 << 20,
         "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
+        "降级+说清",
+    ),
+    // 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag`，只读）读那台自己的 settings 文件多大。
+    (
+        "src/backend/observe/cc_bus_hooks.rs",
+        "SETTINGS_CAP_BYTES",
+        1 << 20,
+        "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
         "降级+说清",
     ),
     // 〔AS2 · 第四波 4B〕资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。

@@ -25,7 +25,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     //   （拒 `..` ＋ 必须 `.jsonl`，不解析根）。⚠ 这一行的针只认 `claude_dir` 一族，**从没数到**那一支真正的读
     //   （`File::open`）—— 那个读者这一拍一起没了（B-decouple §2.2 点名的漏数）。
     // 〔RW1 · 第四波 09-24〕这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
-    //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`
+    //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`〔散文墓碑〕
     //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
     (
         "src/ssh_source.rs",
@@ -46,7 +46,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/lib.rs",
         "hub",
-        3,
+        2, // 〔MIG-3b〕3 → 2：tasks 目录那一处（喂 monitor 自己那条任务 notify）随监视进后端删了
         "启动时解析 `claude_dir` 并派生 sessions/tasks 等目录往下传 —— \
              **一处入口，不读内容**。切后端之后仍要在（得告诉后端读哪儿）⇒ **不属**退役范围。\
              〔CF1 · 第四波 09-24〕**7 → 6**：projects 那一处（喂 monitor 自己那套 jsonl watcher）随 watcher 删了 ——\
@@ -108,22 +108,12 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/config_surface.rs",
         "reader",
-        2,
+        3, // 〔MIG-3b〕2 → 3：`claude_config_dir`（`CLAUDE_CONFIG_DIR` 不是目录 ⇒ `~/.claude`）从 `hooks_diag.rs` 挪进来，读点随规则搬家、不是新读点
         "T02 配置面审计视图（只读、不轮询）。退役归 F10 本体。\
              〔CP2b · 第四波 09-25〕**3 → 2**：项目级作用域那句展示文案（`<项目目录>/.claude/settings.json …`）\
              搬进文案表（`rsConfigSurface.scope.projectPath`）。读点没少，**不算退役**。",
     ),
-    (
-        "src/hooks_diag.rs",
-        "reader",
-        2, // 〔SH1 · 4D〕4 → 2：远端那条拨号 shell 串（读 `~/.claude/settings.json` 的探测串 · 来源标签）改问那台后端，本机读盘那几行不动
-        "hooks 诊断读 settings。退役归 F10 本体。\
-             ⚠ 08-06 从 1 改到 7：原先只数到 `CLAUDE_CONFIG_DIR` 那一行，\
-             而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \
-             `home.join(\".claude\")` 兜底路径 · 远端探测串 · 来源标签）全在针外。\
-             〔CP2b · 第四波 09-25〕**7 → 4**：那三条失败诊断**文案**搬进文案表（`rsHooksDiag.diagnose.*`）；\
-             读盘那几行一个没少，**不算退役**。",
-    ),
+    // 〔MIG-3b〕`src/hooks_diag.rs` 那一行摘了：钩子诊断进了后端（`hooks-diag`），monitor 不再读 settings。
     // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
     //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
     //    只剩 7 条 cc-spawn 判据，那张清单随 `shared/ccm` 一起删了 ⇒ 那个变量名不再出现。
@@ -261,12 +251,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "PowerShell profile 的候选目录",
         "profile 安装面；路径围栏在 `profile_installer::fence_on`",
     ),
-    (
-        "hooks_diag.rs",
-        "diagnose_local_cc_bus_hooks",
-        "cc-bus 钩子的安装位置",
-        "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
-    ),
+    // 〔MIG-3b〕钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。
     // 〔AL2 · 第四波 4D〕这里原来有 `aliases_read`〔散文墓碑〕一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
     //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。
     // 〔RW1 · 第四波 09-24〕这里原来还有 `aliases_install`〔散文墓碑〕一行（它自己 `home_dir()`、再交本进程落盘）。
@@ -497,9 +482,10 @@ fn every_reader_names_its_retirement_owner() {
     }
     // 抽取器自检：一条 reader 都没认出来时上面全空转。
     // 〔SH1 · V137〕4 → **3**：`mcp.rs` 真退役（MCP 列表改问那台后端 `mcp-read`，monitor 零处读 `.claude.json`）。
+    // 〔MIG-3b〕3 → **2**：`hooks_diag.rs` 真退役（钩子诊断进后端 `hooks-diag`，monitor 零处读 `settings.json`）。
     assert_eq!(
-        readers, 3,
-        "`reader` 条数变了（**实测 3 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+        readers, 2,
+        "`reader` 条数变了（**实测 2 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\

@@ -14,10 +14,7 @@ use serde::Serialize;
 
 pub mod events {
     pub const SESSION_ENDED: &str = "session-ended";
-    /// v2.3.0 issue #11：tasks 目录监听到变更（含初次创建 / 文件改 / 删除）→
-    /// 后端重读 `<claude_dir>/tasks/<sid>/` 整目录后 emit 该 sid 的完整 task 列表。
-    /// 前端按 sid 路由到对应 Tab 的 tasks panel。
-    pub const TASKS_UPDATE: &str = "task-update";
+    // 〔MIG-3b · ㉓②〕`task-update` 事件退役：任务变更经通道 `subscribe(origin, "session-tasks")`（后端 `tasks_changed` 帧）。
     /// issue #23：会话红绿灯。session_map 检测到 sessions/<PID>.json 的官方 status
     /// 字段变化时 emit（变化才发——CLI 仅在状态转换时重写文件，天然稀疏）。
     /// 前端启动/F5 用 `list_session_activity` IPC 拉快照收敛（本事件不进 replay buffer）。
@@ -338,16 +335,4 @@ pub struct SessionActivityPayload {
     pub session_id: String,
     pub status: Option<String>,
     pub waiting_for: Option<String>,
-}
-
-/// v2.3.0 issue #11：单个 session 的最新 task 列表快照。
-/// 每次发都是**完整重发**（而非 diff），前端 panel 直接整体 re-render，
-/// 避免 diff 算法 + 防止漏掉删除事件。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct TasksUpdatePayload {
-    pub session_id: String,
-    pub tasks: Vec<crate::tasks::TaskEntry>,
 }

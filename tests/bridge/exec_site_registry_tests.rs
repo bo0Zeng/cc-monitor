@@ -37,7 +37,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // 〔SH1 · V136〕`cc_bus.rs / fetch_remote_cc_bus`（`CC_BUS_CAT_CMD`）出去了：驾驶舱读名册改走后端 `bus-state`。
     // 〔SH1〕`hooks_diag.rs / diagnose_remote_cc_bus_hooks` 出去了：事实改问那台后端（`footprint-probe` ＋ `files-peek`）。
     // 〔SH1 · V137〕`mcp.rs / fetch_remote_claude_json` 出去了：MCP 列表改问那台后端 `mcp-read`。
-    // 〔E2〕`ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。
+    // 〔E2〕`ccm_probe.rs / probe_ccm_cli` 出去了：远端 `ccm` 会哪些改问那台后端 `ccm-probe`（`CCM_PROBE_CMD` 只剩本机那一跳）。〔散文墓碑〕
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
@@ -202,7 +202,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     assert!(
         // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
         // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
-        // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。
+        // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
         // 〔DEL〕4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
         found.len() >= 3,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
@@ -349,9 +349,8 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     ("remote_resident.rs", "stop", StillShell::Bootstrap,
      "〔HOST〕停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
     ("byte_table.rs", "probe_key", StillShell::Bootstrap,
-     "部署后端之前问那台 `uname -s -m`，据此挑哪一份二进制去装（那时还没有后端可问）"),
-    ("sftp.rs", "remote_identity", StillShell::Bootstrap,
-     "部署后端之前扫落点那一份的身份戳（判「是不是这一版」、要不要换）—— 被判的正是那台的后端本身"),
+     "推全景小程序之前问那台 `uname -s -m`，据此挑哪一份字节去放（〔MIG-3b〕后端那条部署路的这一问进了本机常驻后端 `deploy-plan`；全景这一条随 `panorama_*` 三条待裁）"),
+    // 〔MIG-3b〕`sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
     ("pubkey.rs", "push_public_key", StillShell::Bootstrap,
      "把公钥推进那台 `authorized_keys`：只剩**那台后端还不在**那一形（密钥登录建立之前）；〔SH1〕后端在 ⇒ 已改经 `files-put` ＋ `files-chmod`（`pubkey.rs::push_via_backend`）"),
     ("acct_iso_deploy.rs", "exec_collect", StillShell::Deploy,

@@ -36,7 +36,7 @@ import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
 import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
-import type { BranchResult } from "../generated/BranchResult";
+import type { BranchResult } from "../session-writes";
 // 〔SE1〕大纲的清单问后端要（判定只住后端），实时 tab 用的是同一个类
 import { OutlineSource } from "./outline-source";
 // 〔MIG-2 · `99 §2.1 ㊱③`〕查找面板与实时 tab 同一块（SE2：搜索 ／ 大纲两个模式；大纲那一半就是 K-R45 那份清单界面）

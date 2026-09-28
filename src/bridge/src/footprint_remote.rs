@@ -186,7 +186,8 @@ fn run(
             Vantage::Remote
         },
     };
-    let cfg_dir = crate::hooks_diag::claude_config_dir(Some(&env.agent_home), &env.home, &is_dir);
+    let cfg_dir =
+        crate::config_surface::claude_config_dir(Some(&env.agent_home), &env.home, &is_dir);
     let mut rows = build_rows(&surface_env, client);
     let mut settings_scopes =
         build_settings_scopes(&env.home, Some(&env.agent_home), &is_dir, hooks, &fs);

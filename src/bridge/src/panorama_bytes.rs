@@ -9,8 +9,8 @@
 //! 〔墓碑 —— RM1c 那一版这里写着「推上去不在这里」：F08 部署路那时正被 SR1b 搬进本机常驻后端，
 //!  本模块零生产调用方。SR1b 已合（部署经 `dial_host::RemoteFs`）。〕
 //! 触发点在 `panorama_call.rs`：远端 `panorama` 回「没装 / 太旧」才推（V108「只传给开过远端全景的机器」），
-//! 不随后端部署顺手推。推法与 F08 部署后端同一条路：〔TL1 · 4C〕问那台是什么机器（`byte_table::probe_key`，与部署后端**同一处**
-//! `uname -s -m`）→ `byte_table::choose(Panorama, Remote, …)`（表 B 那一步：不承诺 / 这一版没带 ⇒ 写第一个字节之前就拒，
+//! 不随后端部署顺手推。推法与 F08 部署后端同一条路：〔TL1 · 4C〕问那台是什么机器（`byte_table::probe_key`；〔MIG-3b〕部署后端那一问进了本机常驻后端，
+//! 两处同一条命令串、同一份解读 `deploy_core::key_from_uname`）→ `byte_table::choose(Panorama, Remote, …)`（表 B 那一步：不承诺 / 这一版没带 ⇒ 写第一个字节之前就拒，
 //! 拒绝的话出自 `Refusal::say` 那一个口）→ 本机常驻后端那条 `files` 链路
 //! （写只许 `~/.cc-monitor/bin/` 与暂存区）→ 建目录 → 原子上传 ＋ 后端读回逐字节比对（`sftp::upload_verified`）。
 //! 落点 == 后端 `control/panorama.rs::fixed_candidates` 的第二个候选（判据读后端源码对拍）。

@@ -1333,7 +1333,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
 /// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
 ///
-/// 形状照 `sftp_tests.rs::both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker`
+/// 形状照 `sftp_tests.rs` 里当时那一格「两条后端部署路都读字节自报的身份」（〔MIG-3b〕判定进了本机常驻后端，那一格随之换成「只放字节」）
 /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
 /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
 /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，

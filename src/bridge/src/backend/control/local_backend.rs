@@ -986,7 +986,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 ///
 /// 从前释放成 `cc-monitor-backend-<build_id>`、再逐字节拷一份叫 `ccm`（V28「第二份拷贝」）；今天只有这一个文件，
 /// 本机常驻后端跑的就是它，终端里敲的 `ccm` 也是它。名字不带 build_id 之后「两个版本的 monitor 互相换掉对方」那一形
-/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（[`crate::sftp::identity_decision`]，与远端部署同一条），见 [`extract_embedded_to`]。
+/// 由换版规则挡：照 HX2 D-b「盘上的比我旧才换」（[`deploy_core::identity_decision`]，与远端部署同一条），见 [`extract_embedded_to`]。
 /// 名字的后缀由 `build.rs` 从 `TARGET` 算好（`CCM_TARGET_EXE_SUFFIX`，`K-R42`），本层不现算平台原语。
 
 /// 陈旧 `.partial` 的年龄阈值。
@@ -1057,8 +1057,8 @@ pub fn sweep_legacy_extracts(dir: &Path) -> usize {
         }
         let ours = std::fs::read(ent.path()).is_ok_and(|b| {
             matches!(
-                crate::sftp::identity_of_bytes(&b),
-                crate::sftp::RemoteIdentity::Stamp(_)
+                deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
+                deploy_core::RemoteIdentity::Stamp(_)
             )
         });
         if ours && std::fs::remove_file(ent.path()).is_ok() {
@@ -1073,7 +1073,7 @@ pub const LEGACY_EXTRACT_PREFIX: &str = "cc-monitor-backend-";
 
 /// P2z：**单 exe 自释放** ——〔E2〕把手上这份后端字节放到 `dir/ccm(.exe)`（它就是后端本身），返回落点。
 ///
-/// 换不换照 HX2 D-b（与远端部署同一条判定 [`crate::sftp::identity_decision`]，对照物是手上这份字节自报的 `build_id`）：
+/// 换不换照 HX2 D-b（与远端部署同一条判定 [`deploy_core::identity_decision`]，对照物是手上这份字节自报的 `build_id`）：
 /// 盘上缺 / 0 字节 ⇒ 放；同一版且逐字节相同 ⇒ 留；同一版字节不同（开发树重编）⇒ 换；盘上的更旧 ⇒ 换；
 /// 盘上的不比我旧 ⇒ 留、跑盘上那份；盘上那份不说自己是谁 / 身份不唯一 ⇒ `Err`（不覆盖，那句话说清出路）。
 /// 写法：`.<名>.<pid>.partial` → 置可执行位 → `rename` 上位；`rename` 不成（Windows 上旧的正在跑）⇒ 先把旧的改名挪开再上位。
@@ -1090,11 +1090,11 @@ pub fn extract_embedded_to(
     sweep_moved_aside(dir, &name);
     let disk = std::fs::read(&dest).ok();
     let id = match &disk {
-        None => crate::sftp::RemoteIdentity::Missing,
-        Some(b) => crate::sftp::identity_of_bytes(b),
+        None => deploy_core::RemoteIdentity::Missing,
+        Some(b) => deploy_core::identity_of_bytes(b, crate::sftp::STAMP_MARKS),
     };
     let machine = copy_text("rsLocalBackend.place.thisMachine", &[]);
-    match crate::sftp::identity_decision(&id, build_id, &machine, &dest.display().to_string())? {
+    match deploy_core::identity_decision(&id, build_id, &machine, &dest.display().to_string())? {
         crate::sftp::DeployAction::Skip if disk.as_deref() == Some(bytes) => return Ok(dest),
         crate::sftp::DeployAction::Keep { .. } => return Ok(dest),
         crate::sftp::DeployAction::Skip | crate::sftp::DeployAction::Deploy(_) => {}
@@ -1555,7 +1555,9 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionRemoved { .. }
         | InboundFrame::SessionStatus { .. }
         | InboundFrame::SessionsReplayed
-        | InboundFrame::SessionFileNotice { .. }) => return Some(f),
+        | InboundFrame::SessionFileNotice { .. }
+        // 〔MIG-3b · ㉓②〕任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
+        | InboundFrame::TasksChanged { .. }) => return Some(f),
         // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }
@@ -1900,8 +1902,8 @@ pub fn resolve_or_extract(
         let beside = resolve_beside_this_exe(target_triple);
         let from_beside: Option<(String, Vec<u8>)> = match &beside {
             Resolved::Found(p) => match std::fs::read(p) {
-                Ok(b) => match crate::sftp::identity_of_bytes(&b) {
-                    crate::sftp::RemoteIdentity::Stamp(id) => Some((id, b)),
+                Ok(b) => match deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS) {
+                    deploy_core::RemoteIdentity::Stamp(id) => Some((id, b)),
                     _ => {
                         break 'resolve Resolved::Missing {
                             reason: copy_text(

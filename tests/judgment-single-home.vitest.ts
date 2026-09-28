@@ -689,6 +689,30 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     upstream_is_loopback: "J9",
     usable: "J9",
   },
+  // 〔MIG-3b · 4d-lanes 子步 1〕部署决策（新立；本机常驻后端出计划 · monitor 放字节共用）。TS 侧零处判部署 ⇒ 全 NONE。
+  "deploy-core": {
+    LEGACY_BACKEND_REL: NONE,
+    LEGACY_BACKEND_WORD: NONE,
+    LINES: NONE,
+    UNAME_CMD: NONE,
+    build_order: NONE,
+    identity_decision: NONE,
+    identity_of_bytes: NONE,
+    interpret_stamp_scan: NONE,
+    interpret_target_probe: NONE,
+    is_newer: NONE,
+    is_ours: NONE,
+    judge: NONE,
+    key_from_uname: NONE,
+    key_of: NONE,
+    label: NONE,
+    landing_verdict: NONE,
+    legacy_verdict: NONE,
+    promised: NONE,
+    say: NONE,
+    stamp_scan_cmd: NONE,
+    this_machine: NONE,
+  },
 };
 
 /** 整 crate 排出人群的那一个，与现核它的依据。 */

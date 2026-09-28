@@ -142,7 +142,7 @@
       "word": "hook",
       "tier": "限用",
       "tally": { "re": "\\bhook\\b|钩子", "flags": "i" },
-      "inTable": 14,
+      "inTable": 15,
       "meaning": "Claude Code 自己的 hooks 配置（settings.json 里的 hooks 段）。",
       "context": "只在讲 Claude Code 的 hooks 配置时许说（中文「钩子」同义）。讲我们内部的回调、tmux-hook 之类不许说。",
       "source": "普查 R1 候选（K-T68 面④附）",

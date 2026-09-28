@@ -437,6 +437,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-hub-apply",
         "skill-install-hub-preview",
         "skill-install-hub-apply",
+        "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "panorama",
         "remote-reach",
         "history-projects",
@@ -549,6 +550,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
+        "hooks-diag",
         // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
         "resync",
         // 〔RM1f〕`panorama` 从这里挪走了：起进程改走 `invoke::run_abortable`（异步等子进程），
@@ -625,6 +628,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "mcp-sync-hub-apply",
         "skill-install-hub-preview",
         "skill-install-hub-apply",
+        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
+        "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",
         "cancel",
@@ -689,7 +694,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "resync", // 〔RESYNC〕
+        "hooks-diag", // 〔MIG-3b〕
+        "resync",     // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",

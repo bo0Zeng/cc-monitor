@@ -5577,6 +5577,11 @@
       "zh": "不是恰好 present / root 两格",
       "args": []
     },
+    "ccBusHooks.fetch.oldBackend": {
+      "kind": "error",
+      "zh": "这台机器上的后端版本旧，还做不了钩子诊断。重装后端之后就有。",
+      "args": []
+    },
     "sessionReads.inputs.oldBackend": {
       "kind": "error",
       "zh": "这台机器上的后端版本旧，还列不出大纲。重装后端之后就有。",
@@ -10265,6 +10270,21 @@
       "zh": "文件窗口的启动参数写不出来：{e}",
       "args": ["e"]
     },
+    "rsSftp.plan.badProduct": {
+      "kind": "error",
+      "zh": "部署计划认不出，没有装后端（两边版本对不上）：{v}",
+      "args": ["v"]
+    },
+    "rsSftp.plan.internal": {
+      "kind": "error",
+      "zh": "本机后端没交回部署计划，没有装后端。",
+      "args": []
+    },
+    "rsSftp.plan.notThisSlot": {
+      "kind": "error",
+      "zh": "部署计划要装 {machine} 那一份（{expected}），这一版 cc-monitor 带的字节对不上，没有装上去。",
+      "args": ["machine", "expected"]
+    },
     "rsSftp.uninstall.absent": {
       "kind": "body",
       "zh": "{path} 不在，可能已经卸载过了。",
@@ -12637,11 +12657,6 @@
       "zh": "读 {path} 失败：{e}",
       "args": ["path", "e"]
     },
-    "rsHooksDiag.local.noHome": {
-      "kind": "body",
-      "zh": "取不到 HOME",
-      "args": []
-    },
     "rsHooksDiag.snippet.bareMissing": {
       "kind": "body",
       "zh": "这两个命令不在 PATH 上，照这段贴会用不了。改选「$HOME 显式路径」，或把它们所在目录加进 PATH。",
@@ -12661,11 +12676,6 @@
       "kind": "body",
       "zh": "~/.claude/settings.json 不是合法 JSON —— 未改动它，请先自行修复",
       "args": []
-    },
-    "rsHooksDiag.remote.peekFailed": {
-      "kind": "error",
-      "zh": "读不到那台的 settings.json：{e}",
-      "args": ["e"]
     },
     "rsHooksDiag.diagnose.noSettings": {
       "kind": "body",
@@ -14288,10 +14298,10 @@
       "zh": "{what} 长度非法（1..=64）",
       "args": ["what"]
     },
-    "rsRemoteBranch.fork.badProduct": {
+    "sessionWrites.fork.badProduct": {
       "kind": "error",
-      "zh": "{who}的后端说分叉成功了，但结果认不出来（{e}）。多半是两边版本不一样，先别重试，刷新会话列表看看有没有多出来的那一条",
-      "args": ["who", "e"]
+      "zh": "那台后端说分叉成功了，但结果认不出来（{e}）。多半是两边版本不一样，先别重试，刷新会话列表看看有没有多出来的那一条",
+      "args": ["e"]
     },
     "historyActions.menu.delete": {
       "kind": "action",
@@ -15186,11 +15196,6 @@
       "zh": "拒绝 resume：自定义命令 {launcher} 含不允许的字符 {c}。只许字母、数字、空格、-_./ 和开头的 ~/",
       "args": ["launcher", "c"]
     },
-    "rsHistory.delete.notSessionFile": {
-      "kind": "body",
-      "zh": "不是会话记录文件",
-      "args": []
-    },
     "rsHistory.session.badPath": {
       "kind": "error",
       "zh": "会话路径不对：{path}",
@@ -15200,11 +15205,6 @@
       "kind": "body",
       "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
       "args": ["max", "read", "lines"]
-    },
-    "rsHistory.delete.idMismatch": {
-      "kind": "error",
-      "zh": "没有删除：会话 ID（{sessionId}）与那份文件的名字（{fileName}）对不上。一个字节都没动",
-      "args": ["sessionId", "fileName"]
     },
     "rsRemoteHistory.cfg.missing": {
       "kind": "error",

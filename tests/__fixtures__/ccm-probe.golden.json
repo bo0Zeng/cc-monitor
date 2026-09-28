@@ -1,0 +1,4 @@
+{
+  "_doc": "〔MIG-3b〕帧命令 ccm-probe 的线上形状（设计/96 §7.2.2 · 99 §2.1 ⑬）。后端 ccm_tests::the_probe_frame_answers_the_same_card_as_the_cli_flag 核 product 键集 == 真产出；界面 src/ccm-probe.ts::decodeCcmProbe 读同一份。值是结构占位。",
+  "product": { "agents": ["claude", "codex"], "build": "p0a-placeholder", "capabilities": ["tmux", "launcher"], "version": "6" }
+}
