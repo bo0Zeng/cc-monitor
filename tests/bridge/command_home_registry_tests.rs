@@ -185,7 +185,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     (
         "footprint_client_facts",
         Own::Footprint,
-        "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）的事实：环境三格 ＋ stat 交来的路径（判定在那台后端 `footprint-report`）",
+        "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 与判定在本机后端 `footprint-report`）",
     ),
     // 〔MIG-3b 续 · 主会话 09-28 裁〕那台后端回「没装 / 太旧」时界面请 monitor 放全景小程序的字节（判定「缺不缺」是那台后端答的码）。
     (

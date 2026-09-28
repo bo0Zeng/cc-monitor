@@ -254,7 +254,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       uninstallable: false,
       tier,
     });
-    // 〔MIG-3b 续〕足迹经通道问本机后端（`footprint-report`，两趟）；monitor 自己那几行的事实问 `footprint_client_facts`。
+    // 〔MIG-3b 续〕足迹经通道问本机后端（`footprint-report`，一问）；monitor 自己进程的那几条事实问 `footprint_client_facts`。
     const report = {
       rows: [
         row("AppInstalls", "甲", { kind: "present", detail: "文件，1 字节" }),
@@ -266,13 +266,12 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       claude_config_dir: "/h/.claude",
       home: "/h",
     };
-    ipc.replies.set("footprint_client_facts", { env: { home: "/h", agentHome: "/h/.claude", path: null }, stat: {} });
+    ipc.replies.set("footprint_client_facts", { home: "/h", agentHome: "/h/.claude", path: null });
     ipc.replies.set("chan_call", (a: unknown) => {
       const { op, payload } = a as { op: string; payload: number[] };
       if (op !== "footprint-report") return Promise.reject(new Error(`[录音机] ${op} 没有真后端`));
-      const body = JSON.parse(new TextDecoder().decode(Uint8Array.from(payload))) as { client?: { stat?: unknown } };
-      const reply = body.client && body.client.stat === undefined ? { report: null, clientAsks: [] } : { report, clientAsks: [] };
-      return Promise.resolve(new TextEncoder().encode(JSON.stringify(reply)).buffer);
+      void payload;
+      return Promise.resolve(new TextEncoder().encode(JSON.stringify(report)).buffer);
     });
     try {
       const p = new SettingsPanel({ windowMode: true });

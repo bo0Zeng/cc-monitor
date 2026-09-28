@@ -13767,11 +13767,6 @@
       "zh": "找不到 monitor 这台的家目录。HOME 与 USERPROFILE 都没有，本机那一栏的足迹查不了",
       "args": []
     },
-    "rsFootprintClient.stat.tooMany": {
-      "kind": "error",
-      "zh": "一次要 monitor 查 {n} 条路径，超过上限 {max} 条，两端版本对不上",
-      "args": ["n", "max"]
-    },
     "beFootprint.env.noHome": {
       "kind": "error",
       "zh": "这台后端进程没有家目录。HOME 与 USERPROFILE 都没有，这台的足迹查不了",

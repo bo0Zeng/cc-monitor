@@ -655,7 +655,9 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5h-footprint-panorama-in-backend**（2026-09-28，MIG-3b 续合并那一拍）：足迹申报与判定进后端 `footprint/`（Claude 布局那部分在 `agents/claudecode/footprint.rs`），`footprint-report` 替 `footprint-probe` ·
 /// `panorama-edit` 进后端（CAS 落盘）· `pubkey-push` / `authorized-keys-add` · `deploy-plan` 首连指纹交 monitor 固化 · `files` 链路 `stat` 删。
-pub const BUILD_ID: &str = "p5h-footprint-panorama-in-backend";
+///
+/// ★★★ **p5i-footprint-two-beats**（2026-09-28，MIG-3b 收口合并那一拍）：协议 —— `footprint-report` 入参 `{client?: {home, agentHome, path?}}`、应答即整份报告（`clientAsks` 删）；`HostScope::Client` 由本机后端按 monitor 交的环境自己 stat。子命令没变。
+pub const BUILD_ID: &str = "p5i-footprint-two-beats";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

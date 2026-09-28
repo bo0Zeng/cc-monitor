@@ -42,18 +42,14 @@ import { setCurrentMachine, __resetMachineContextForTests } from "../../src/sett
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { chanArgsJson, chanReply, isChanCall, UNSUPPORTED, type ChanCallArgs } from "../test-support/chan-fake";
 
-/** 〔MIG-3b 续〕monitor 那一半交的事实（本机那一栏四拍里的第 1 / 3 拍）。 */
-const CLIENT_FACTS = { env: { home: "/m", agentHome: "/m/.claude", path: null }, stat: {} };
+/** 〔MIG-3b 续〕monitor 自己进程独有的那几条事实（本机那一栏先问它一次）。 */
+const CLIENT_FACTS = { home: "/m", agentHome: "/m/.claude", path: null };
 
-/** 〔MIG-3b 续〕足迹经通道问那台后端：本机那一栏第一趟回「要 stat 哪些」、第二趟回报告；远端一趟回报告。 */
+/** 〔MIG-3b 续〕足迹经通道问那台后端，一问回整份报告。 */
 function footprintInvoke(rep: unknown): (cmd: string, args?: unknown) => Promise<unknown> {
   return async (cmd: string, args?: unknown) => {
     if (cmd === "footprint_client_facts") return CLIENT_FACTS;
-    if (isChanCall(cmd, args, "footprint-report")) {
-      const body = chanArgsJson(args as ChanCallArgs) as { client?: { stat?: unknown } };
-      if (body.client !== undefined && body.client.stat === undefined) return chanReply({ report: null, clientAsks: [] });
-      return chanReply({ report: rep, clientAsks: [] });
-    }
+    if (isChanCall(cmd, args, "footprint-report")) return chanReply(rep);
     throw new Error(`不该问 ${cmd}`);
   };
 }
@@ -395,7 +391,7 @@ describe("ConfigSurfaceSection", () => {
   });
 
   it("invoke resolve 成 undefined 不许炸（B03 的真 bug，第三处）", async () => {
-    serve(undefined);
+    serve(null); // 〔MIG-3b 续〕经通道之后「什么都没回」到了解码器手里就是 `null`
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
     // **必须断言是形状校验拦下的**，不能只断言"报了个失败"（T02 审计重要 4）。
@@ -534,30 +530,12 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足
       .filter((c) => isChanCall(String(c[0]), c[1], "footprint-report"))
       .map((c) => ({ origin: (c[1] as ChanCallArgs).origin, body: chanArgsJson(c[1] as ChanCallArgs) }));
 
-  it("★ 本机那一栏四拍（monitor 环境 → 后端要 stat 哪些 → monitor stat → 带着答案出报告），远端一拍、不问 monitor", async () => {
-    invokeMock.mockImplementation(async (cmd: string, args?: unknown) => {
-      if (cmd === "footprint_client_facts") {
-        const stat = (args as { stat: string[] | null }).stat;
-        return { env: CLIENT_FACTS.env, stat: stat === null ? {} : { [stat[0]]: null } };
-      }
-      const body = chanArgsJson(args as ChanCallArgs) as { client?: { stat?: unknown } };
-      if (body.client !== undefined && body.client.stat === undefined) return chanReply({ report: null, clientAsks: ["/m/x"] });
-      return chanReply({ report: report(), clientAsks: body.client ? ["/m/x"] : [] });
-    });
+  it("★ 本机那一栏恰好两拍（monitor 事实一次 ＋ 本机后端一次，事实原样带过去），远端一拍、不问 monitor", async () => {
+    serve(report());
     const local = await readFootprint(LOCAL_ORIGIN);
     expect(local.rows.length).toBe(1);
-    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual([
-      "footprint_client_facts",
-      "chan_call",
-      "footprint_client_facts",
-      "chan_call",
-    ]);
-    expect(invokeMock.mock.calls[0][1]).toEqual({ stat: null });
-    expect(invokeMock.mock.calls[2][1]).toEqual({ stat: ["/m/x"] });
-    expect(chanCalls()).toEqual([
-      { origin: LOCAL_ORIGIN, body: { client: { env: CLIENT_FACTS.env } } },
-      { origin: LOCAL_ORIGIN, body: { client: { env: CLIENT_FACTS.env, stat: { "/m/x": null } } } },
-    ]);
+    expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["footprint_client_facts", "chan_call"]);
+    expect(chanCalls()).toEqual([{ origin: LOCAL_ORIGIN, body: { client: CLIENT_FACTS } }]);
     invokeMock.mockClear();
     await readFootprint("devbox");
     expect(invokeMock.mock.calls.map((c) => c[0])).toEqual(["chan_call"]);
@@ -607,7 +585,7 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足
     await flush();
     expect(s.element.querySelectorAll(".config-surface-row").length).toBe(1);
     serve(report({ rows: [row(), row({ path_declared: "~/.bashrc" })] }));
-    firstRelease(CLIENT_FACTS); // 本机那份晚到
+    firstRelease(CLIENT_FACTS); // 本机那份晚到（第一拍放开之后第二拍照常走完）
     await flush();
     expect(
       s.element.querySelectorAll(".config-surface-row").length,

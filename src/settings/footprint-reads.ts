@@ -2,8 +2,8 @@
  * 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」**经通道问那台后端要成品**（帧命令 `footprint-report`，本体 `src/backend/footprint/`）。
  *
  * - 远端那一台：一问即得（住 monitor 那台的那一族不进人群）。
- * - 本机那一栏：`HostScope::Client` 那一族（monitor 自己那台的东西）的**事实**照旧由 monitor 答（`footprint_client_facts`），
- *   判定仍在后端 —— 本侧只排先后：monitor 环境 → 后端回要 stat 哪些 → monitor stat → 带着答案再问后端出报告。
+ * - 本机那一栏：`HostScope::Client` 那一族（monitor 自己那台的东西）要的、只有 monitor 知道的事实（它自己进程的家目录 · agent 家 · PATH）
+ *   先问 monitor 一次（`footprint_client_facts`），原样带给本机后端，一问出整份报告（同一台、同一用户，stat 在后端；〔主会话 09-28 裁〕两拍）。
  * - 形状严格收（多一格 / 少一格 / 类型不对 ⇒「两端契约对不上」，不猜）；线上形状由跨语言金样 `footprint-report.golden.json` 钉着。
  * 〔墓碑 —— 从前是 Tauri 命令 `config_surface_report`〔散文墓碑〕（判定住 monitor），类型是 ts-rs 生成物。〕
  */
@@ -115,22 +115,15 @@ function decodeScope(v: unknown): SettingsScope {
   };
 }
 
-/** `footprint-report` 的应答：`{report | null, clientAsks}`，严格收。 */
-export function decodeFootprint(v: unknown): { report: ConfigSurfaceReport | null; clientAsks: string[] } {
-  const o = obj(v, "clientAsks,report");
-  if (!Array.isArray(o.clientAsks)) bad();
-  const clientAsks = o.clientAsks.map(str);
-  if (o.report === null) return { report: null, clientAsks };
-  const r = obj(o.report, "claude_config_dir,home,rows,settings_scopes");
+/** `footprint-report` 的应答（整份报告），严格收。 */
+export function decodeFootprint(v: unknown): ConfigSurfaceReport {
+  const r = obj(v, "claude_config_dir,home,rows,settings_scopes");
   if (!Array.isArray(r.rows) || !Array.isArray(r.settings_scopes)) bad();
   return {
-    report: {
-      rows: r.rows.map(decodeRow),
-      settings_scopes: r.settings_scopes.map(decodeScope),
-      claude_config_dir: str(r.claude_config_dir),
-      home: str(r.home),
-    },
-    clientAsks,
+    rows: r.rows.map(decodeRow),
+    settings_scopes: r.settings_scopes.map(decodeScope),
+    claude_config_dir: str(r.claude_config_dir),
+    home: str(r.home),
   };
 }
 
@@ -140,7 +133,7 @@ const OLD_BACKEND = (): string => copyText("configSurface.backend.tooOld");
 /** 那台的后端答不了这一问（不认这条命令）—— 界面说「这台还答不了」，不当失败弹。 */
 export class FootprintUnanswered extends Error {}
 
-async function ask(origin: Origin, args: Record<string, unknown>): Promise<{ report: ConfigSurfaceReport | null; clientAsks: string[] }> {
+async function ask(origin: Origin, args: Record<string, unknown>): Promise<ConfigSurfaceReport> {
   const body = jsonBody(args);
   const budget = budgetWithin(FOOTPRINT_BUDGET_MS);
   let reply: Uint8Array;
@@ -153,11 +146,9 @@ async function ask(origin: Origin, args: Record<string, unknown>): Promise<{ rep
   return decodeFootprint(readJson(reply));
 }
 
-/** 按机器问足迹（本机那一栏四拍，远端一拍；见头注）。问不到 / 形状不对 ⇒ 抛一句人话。 */
+/** 按机器问足迹（本机那一栏：monitor 事实一次 ＋ 本机后端一次；远端一次；见头注）。问不到 / 形状不对 ⇒ 抛一句人话。 */
 export async function readFootprint(origin: Origin): Promise<ConfigSurfaceReport> {
-  if (!isLocalOrigin(origin)) return (await ask(origin, {})).report ?? bad();
-  const { env } = await commands.footprint_client_facts({ stat: null });
-  const first = await ask(LOCAL_ORIGIN, { client: { env } });
-  const facts = await commands.footprint_client_facts({ stat: first.clientAsks });
-  return (await ask(LOCAL_ORIGIN, { client: { env, stat: facts.stat } })).report ?? bad();
+  if (!isLocalOrigin(origin)) return ask(origin, {});
+  const client = await commands.footprint_client_facts();
+  return ask(LOCAL_ORIGIN, { client });
 }
