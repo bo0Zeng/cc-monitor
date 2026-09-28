@@ -1,4 +1,5 @@
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
+import { makeYieldToMain } from "./yield-to-main";
 import { commands } from "./ipc/commands";
 import { chan, type Item, type Sub } from "./ipc/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -279,31 +280,7 @@ const BATCH_SIZE = 40;
 const BATCH_MS = 8;
 const BATCH_MS_MAX = 50;
 
-/**
- * ★ 步 4（`设计/10 §2.4`）：**让开的方式换成不会被规范钳制的那一种。**
- *
- * 原来是 `setTimeout(drain, 0)` 重新排自己。HTML 规范对**嵌套超过 5 层**的 timer
- * 强制最小 4ms ⇒ 真实节奏是「干 8ms、被迫歇 4ms」，利用率只有 2/3；
- * 上万条记录光排队就要好几秒。`MessageChannel` 同为宏任务，规范**没有**给它这条钳制。
- *
- * ⚠ **必须带特性探测**（`§2.4` 逐字要求）。两个生产壳（WebView2 / WebKitGTK）都有它，
- * 但本模块也在 jsdom / node 里被跑，而且"两个壳都有"是**今天**的事实，不是一条不变量。
- * 探不到就退回 `setTimeout` —— 慢，但不会静默地一条都不排（那是重放整个停摆）。
- */
-function makeYieldToMain(run: () => void): () => void {
-  if (typeof MessageChannel === "function") {
-    try {
-      const ch = new MessageChannel();
-      ch.port1.onmessage = (): void => run();
-      return (): void => ch.port2.postMessage(null);
-    } catch {
-      // 建不出来（某些受限环境）⇒ 落到下面的降级，不抛。
-    }
-  }
-  return (): void => {
-    setTimeout(run, 0);
-  };
-}
+// ★ 步 4（`设计/10 §2.4`）让开的方式：`makeYieldToMain`（〔RENDER2〕搬进 `yield-to-main.ts`，与长回复分片渲染共用）。
 
 /**
  * ★ 步 4：**「干多久」从猜改成问。**

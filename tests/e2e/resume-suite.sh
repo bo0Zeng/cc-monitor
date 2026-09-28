@@ -34,7 +34,10 @@ _gc_sock_cleanup() { tmux_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-FAKE="$REPO/tests/e2e/fake-claude"
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 拷到 ASCII 的临时目录再当启动器。
+FAKE_DIR="$(mktemp -d /tmp/e2e-resume-fake.XXXXXX)"
+cp "$REPO/tests/e2e/fake-claude" "$FAKE_DIR/fake-claude" && chmod +x "$FAKE_DIR/fake-claude"
+FAKE="$FAKE_DIR/fake-claude"
 DRIVER="$REPO/tests/e2e/resume-cmd-driver.ts"
 GEN="$REPO/tests/e2e/gen-idle-tmux.sh"
 
@@ -59,6 +62,7 @@ cleanup() {
       [ -n "$p" ] && kill "$p" 2>/dev/null
     done
   done
+  rm -rf "$FAKE_DIR"
 }
 trap 'cleanup; _gc_sock_cleanup' EXIT
 
@@ -179,7 +183,7 @@ CMD4="$(drv into-existing "$SID4" "$S4" "$FAKE" -)"
 echo "   cmd: $CMD4"
 echo "$CMD4" | grep -q "unset CLAUDE_CONFIG_DIR;" && ok "B4 基座命令前置 unset CLAUDE_CONFIG_DIR(清空 shell 残留旧号,#75 复用变体逃生口)" || bad "B4 基座命令缺 unset CLAUDE_CONFIG_DIR"
 # #75 主因:不带 pin 时的跟随解析——lastAccount 无 → 当前工作账号 current(真源 resolveFollowAccount)。
-STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true}]}'
+STATE_B4='{"accounts":[{"name":"work","email":"","configDir":"'"$ACCT_A"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 FOL="$(drv follow - work "$STATE_B4")"
 [ "$FOL" = "work" ] && ok "B4 无 pin → resolveFollowAccount 落当前工作账号 work(#75:不再散落基座错目录)" || bad "B4 follow 解析=$FOL(期望 work)"
 fire_resume "$CMD4"

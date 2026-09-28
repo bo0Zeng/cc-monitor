@@ -40,6 +40,7 @@
  * - 折叠态：`<details>` 一律保持默认（关），与 `estimateStreamNodeHeight` 的
  *   `SUMMARY_H` 那一支对齐。
  */
+import { withUserText } from "./test-support/user-text";
 import {
   renderMessage,
   buildToolGroup,
@@ -124,6 +125,7 @@ function userText(text: string, timestamp: string, uuid: string): JsonlRecord {
     parentUuid: null,
     timestamp,
     message: { role: "user", content: text },
+    userText: { clean: text.trim(), interrupt: false },
   } as unknown as JsonlRecord;
 }
 
@@ -294,7 +296,7 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
     if (!line.trim()) continue;
     let rec: JsonlRecord;
     try {
-      rec = JSON.parse(line) as JsonlRecord;
+      rec = withUserText(JSON.parse(line) as JsonlRecord); // 〔RENDER2 · J10〕monitor 那一格成品
     } catch {
       continue;
     }

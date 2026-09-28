@@ -47,7 +47,7 @@ probe() {
   sleep 60 & local vpid=$!
   local ticks; ticks=$(awk '{print $22}' "/proc/$vpid/stat")
 
-  CLAUDE_CONFIG_DIR="$F" timeout 20 "$D" --with-bg < /dev/null > "$out" 2> "$W/$label.err" &
+  CLAUDE_CONFIG_DIR="$F" timeout 20 "$D" -- --with-bg < /dev/null > "$out" 2> "$W/$label.err" &
   local dpid=$!
   sleep 2.5
   case "$mode" in
@@ -97,7 +97,7 @@ _proj_recreate() {
   sleep 200 & local vpid=$!
   local ticks; ticks=$(awk '{print $22}' "/proc/$vpid/stat")
   local sid="projre-1111-2222-3333-444455556666"
-  CLAUDE_CONFIG_DIR="$F" timeout 35 "$D" --with-bg < /dev/null > "$out" 2>/dev/null &
+  CLAUDE_CONFIG_DIR="$F" timeout 35 "$D" -- --with-bg < /dev/null > "$out" 2>/dev/null &
   local dp=$!
   sleep 3
   printf '{"pid":%d,"sessionId":"%s","cwd":"/tmp","kind":"interactive","procStart":"%s"}\n' \

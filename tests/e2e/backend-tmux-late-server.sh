@@ -60,7 +60,7 @@ run_case() {
   fi
 
   # backend 起（late 模式下此刻该 socket 上零 server）
-  PATH="$bin:$PATH" CLAUDE_CONFIG_DIR="$F" timeout 30 "$D" --with-bg --tail-only \
+  PATH="$bin:$PATH" CLAUDE_CONFIG_DIR="$F" timeout 30 "$D" -- --with-bg --tail-only \
     < /dev/null > "$out" 2> "$W/$label.err" &
   local dp=$!
   sleep 3

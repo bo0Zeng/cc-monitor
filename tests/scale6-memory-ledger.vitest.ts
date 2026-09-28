@@ -410,6 +410,7 @@ describe("🔴 秤 6 乙：核对 `tabs.ts` 那句「一条记录的文本在前
         parentUuid: null,
         timestamp: "2026-09-18T12:00:00.000Z",
         message: { role: "user", content: LONG_TEXT },
+        userText: { clean: LONG_TEXT.trim(), interrupt: false }, // 〔RENDER2 · J10〕monitor 那一格成品
       } as unknown as JsonlRecord,
       ctx,
     );

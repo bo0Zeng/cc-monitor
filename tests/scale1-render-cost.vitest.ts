@@ -52,6 +52,7 @@
  * 读数：`tests/evidence/S1-render-cost.md`
  */
 import { describe, it, expect, beforeAll } from "vitest";
+import { withUserText } from "./test-support/user-text";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -223,7 +224,7 @@ function drivePass(lines: string[]): void {
   const sink: StreamSink = { timeline, onBranchRecord: () => {} };
   let seq = 0;
   for (const line of lines) {
-    const message = JSON.parse(line) as JsonlRecord;
+    const message = withUserText(JSON.parse(line) as JsonlRecord); // 〔RENDER2 · J10〕monitor 那一格成品
     const payload: JsonlLinePayload = {
       session_id: "scale1",
       cwd: null,

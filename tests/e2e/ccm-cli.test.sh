@@ -103,9 +103,15 @@ ck "〔V151〕-- 左边原样交给 claude，按原顺序" \
 ck "claude 自己的 --tmux / --agent 原样交出去（用户 09-26：ccm 的改名 --ccm-tmux / --ccm-agent）" \
    "$UNSET; cd '/p' && exec claude --tmux --agent x" \
    "$(ccm --tmux --agent x -- --cwd /p --ccm-print)"
-ck "〔V151〕首词 new 也原样交给 claude（没有 -- 的词一律交 claude；V145 那一格随 V151 取消，交件报备）" \
+ck "〔V153〕ccm new（-- 左边）照 V151 整个交给 claude，不开例外" \
    "$UNSET; cd '/p' && exec claude new" \
    "$(ccm new -- --cwd /p --ccm-print)"
+ck "〔V153〕new 是 ccm 自己的词：写在 -- 右边第一个 = 起新会话（与不写同）" \
+   "$UNSET; cd '/p' && exec claude -p x" \
+   "$(ccm -p x -- new --cwd /p --ccm-print)"
+ck "〔V153〕new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
+   "ccm: new 只能是 -- 右边第一个词（ccm [交给 claude 的…] -- new [ccm 的选项…]）" \
+   "$(ccm -- --cwd /p new --ccm-print 2>&1)"
 ck "--launcher 'ccr code' 拆成词（用户 09-26）" \
    "$UNSET; cd '/p' && exec ccr code -p x" \
    "$(ccm -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"

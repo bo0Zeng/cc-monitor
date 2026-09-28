@@ -10,7 +10,7 @@ import { build } from "vite";
 import { createRequire } from "node:module";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -37,10 +37,17 @@ async function run(): Promise<void> {
       '<link rel="stylesheet" href="./dist/style.css"></head><body><script src="./dist/probe.js"></script></body></html>',
   );
   const req = createRequire(resolve(root, ".scratch/pw/package.json"));
-  const { chromium } = req("playwright") as typeof import("playwright");
+  // playwright 装在 `.scratch/pw`（不进仓的依赖）⇒ 类型只写这一趟用到的那几个口，不 `import("playwright")`。
+  type Page = {
+    goto(url: string): Promise<unknown>;
+    waitForFunction(fn: () => boolean, arg: null, opts: { timeout: number }): Promise<unknown>;
+    evaluate<T>(fn: () => T): Promise<T>;
+  };
+  type Browser = { newPage(opts: Record<string, unknown>): Promise<Page>; close(): Promise<void> };
+  const { chromium } = req("playwright") as { chromium: { launch(): Promise<Browser> } };
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: "zh-CN", timezoneId: "America/Los_Angeles" });
-  await page.goto(`file://${resolve(work, "probe.html")}`);
+  await page.goto(pathToFileURL(resolve(work, "probe.html")).href); // 仓可能住非 ASCII 路径（`~/文档/`）⇒ 走编码过的 URL
   await page.waitForFunction(() => (window as unknown as { __DONE?: boolean }).__DONE === true, null, { timeout: 60_000 });
   const raw = await page.evaluate(() => (window as unknown as { __RESULT: string }).__RESULT);
   await browser.close();

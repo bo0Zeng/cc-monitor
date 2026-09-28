@@ -355,7 +355,9 @@ fn user_rec(
         is_meta,
         parent_uuid: None,
         forked_from: None,
+        user_text: Default::default(),
     }
+    .with_user_text()
 }
 
 /// 非消息记录 → `Unrecognized`（保 raw；`original_type`=`顶层/payload.type` 便于诊断/per-kind 读）。

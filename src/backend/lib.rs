@@ -609,7 +609,13 @@ pub const PROTO_VERSION: u32 = 1;
 /// `--resync`（V149 对齐：与起步初扫同一个 `reconcile_sessions`）。＋ 行为 / 协议：hello additive `uncancellable` · 身份标签在 pidfile 重写与 tmux 探测到达时对账 ·
 /// seq 跨截断换代（`session_file_reread` ＋ `SeqCounter::restart`）· `Gap.to_seq` 可缺 · A6 退休前补读 · 注入噪声规则一份（`search-core::user_text`）·
 /// 搜索索引起来就后台建、常驻 64 MiB 上界 · `--stdin-line` 扩到 argv 一族 · ack 带 `jump_fingerprints` · ccm resume 在跑就接上 · 全景 `--probe` 形状代号 · 凭据模板说明进文案表。
-pub const BUILD_ID: &str = "p4s-wave-b-train";
+///
+/// ★★★ **p4t-ccm-new-right**（2026-09-27，E2 续合并那一拍）：行为 —— V153 `new` 只能写在 `--` 右边第一个（`ccm new` 整行交 claude）·
+/// 路由不看 argv0（只有「打头 `--` ＋ 后端词」进后端，其余走 ccm；入口②「`<bin> ccm …`」删）。子命令没变，照 p1v 先例不加历史行。
+///
+/// ★★★ **p4u-resync-offer**（2026-09-27，RESYNC 续合并那一拍）：子命令 −1 `--resync`（CLI 面摘，只留帧面）· `resync` 应答带当下的
+/// `unavailable` / `uncancellable`（与 hello 同一个函数）· `resync{sid}` 顺手从游标补读 jsonl（tab「重新读取」）· SIGUSR1 按 `watcher::LIVE` 一张名单戳。
+pub const BUILD_ID: &str = "p4u-resync-offer";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -887,8 +893,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
-    // 〔RESYNC · V149〕帧面 `resync` 自动派生的 CLI 面（一次性进程里没有 watcher ⇒ `watchers: 0`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--resync",
+    // 〔RESYNC〕`--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
     // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
