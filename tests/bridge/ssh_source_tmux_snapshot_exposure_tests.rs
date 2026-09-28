@@ -4,7 +4,8 @@
 ///
 /// 这是一条「今天没有」型断言 —— 没人加出口它就一直绿，天然容易被读成仪式。
 /// 但真有人去开那个出口时（一份审计清单就会这么建议），诊断要立刻把
-/// 「**快照不刷新、`awaitExitFor` 用不了**」摆到他眼前，逼他先回答「消费者是谁」。
+/// 「**快照不刷新 pane 前台命令**」摆到他眼前，逼他先回答「消费者是谁」。
+/// 〔V154〕当年那个轮询方 `awaitExitFor` 已随「换号重启直接 kill」删了 ⇒ 今天出口更是没有消费者。
 ///
 /// ⚠ 如实记：它**挡不住**「有人加了出口且顺手把这条判据也改了」——那时只剩评审。
 #[test]
@@ -21,7 +22,7 @@ fn the_tmux_snapshot_stays_out_of_the_ipc_surface() {
         "`snapshot_tmux_by_origin` 被包成 Tauri 命令了。\n\
              \n\
              ⚠ **开这个出口之前先回答：消费者是谁？**\n\
-             最常见的动机是「让 `tabs.ts` 的 `awaitExitFor` 改读快照，省掉每 1s 一条 SSH」——\n\
+             当年最常见的动机是「让 `awaitExitFor`（〔V154〕已删）改读快照，省掉每 1s 一条 SSH」——\n\
              **那条路走不通**：backend 的 `TmuxProbeDue` 只在初探发一次，之后每一拍靠 tmux hook，\n\
              而 hook 只有 session-created/closed/renamed 三条。`awaitExitFor` 等的是\n\
              「pane 前台命令从 claude 变回 shell」——**那个变化一条 hook 都不覆盖** ⇒\n\
