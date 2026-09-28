@@ -95,18 +95,3 @@ export function isCwdFallbackMatch(
   const anySidKnown = sessions?.some((s) => s.sid != null);
   return !anySidKnown; // 无精确命中 + 无任一 sid → findClaudeTmux 会走 cwd 回退
 }
-
-/**
- * A5+ 优雅退出检测：目标 sid 的 claude 是否已**不在**（本工具）tmux 里精确命中——前台回到 shell
- * （CC 退出）或会话已没。判据与破坏性重启的守卫 `!live || live.sid !== sid` 完全一致：不再精确命中
- * = 已退出。**注**：`sessions == null`（list 失败）时也返回 true，故轮询方（`awaitExitFor`）**只在
- * list 成功时**调用它，list 失败当「未知」继续轮询、不误判成已退出。纯函数（node/jsdom 可测）。
- */
-export function claudeExited(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-  cwd: string,
-): boolean {
-  const live = findClaudeTmux(sessions, sid, cwd);
-  return !live || live.sid !== sid;
-}

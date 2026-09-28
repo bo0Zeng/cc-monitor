@@ -2,6 +2,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+// 〔MIG-3a〕MCP 读写改走通道：替身翻译层把那一发 `chan.call` 按旧名交给下面的 `invoke` 替身（`test-support/mcp-chan-shim.ts`）。
+vi.mock("../../src/ipc/chan", async () => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const { mcpChanShim } = await import("../test-support/mcp-chan-shim");
+  return { chan: { call: mcpChanShim((c, a) => (invoke as (c: string, a?: unknown) => Promise<unknown>)(c, a)) } };
+});
 
 // jsdom 无 scrollIntoView（McpSection.beginEdit 会调它，真 webview 有）→ 补空实现，免 uncaught。
 if (!("scrollIntoView" in Element.prototype)) {
@@ -32,11 +38,8 @@ describe("F87 groupByScope", () => {
       ent("project", "p1", {}),
       ent("user", "u1", {}),
       ent("project", "p2", {}),
-      // C04d 批 5b：**原来这里挂着 `@ts-expect-error`**——因为手写的 `McpServerEntry.scope`
-      // 被窄化成三值 union，而这条测试要构造的恰恰是**真实会从线上来的**未知 scope。
-      // 换成生成物（Rust 侧就是 `String`）后，这个构造本来就合法，抑制指令成了多余。
-      // ⇒ **类型说了实话，测试就不必撒谎。**
-      ent("weird", "w", {}),
+      // 〔MIG-3a〕线上多出来的 scope 由解码器当场拒（`mcp-reads.ts::decodeMcpRead`）；这里仍测分组本身忽略它。
+      ent("weird" as McpServerEntry["scope"], "w", {}),
     ]);
     expect(g.user.map((e) => e.name)).toEqual(["u1"]);
     expect(g.project.map((e) => e.name)).toEqual(["p1", "p2"]); // 保序
@@ -248,7 +251,9 @@ describe("P6b MCP 工作目录清单", () => {
     // ⚠ 这一条是**变异逼出来的**：只测「远端迟到」时，把本机那条守卫拿掉照样全绿
     //（本机 mock 立即 resolve，根本没有可切走的窗口）。
     // 而本机那条今天也是 `await`，共用 store 是别处也能改的 ⇒ 窗口真实存在。
-    let releaseLocal: (v: string[]) => void = () => {};
+    // 〔MIG-3a〕同一台的目录会被问两次（候选 ＋ 列表那一问都经 `mcp-read`）⇒ 挂住的每一次都要放。
+    const releaseLocals: ((v: string[]) => void)[] = [];
+    const releaseLocal = (v: string[]) => releaseLocals.forEach((r) => r(v));
     // 🔴 **〔步 12·C 2026-09-20〕本机与远端是**同一条命令**了，分它们的是 `origin`。**
     //    这份 mock 从前按**命令名**分本机/远端，今天按 `args.origin` 分 ——
     //    ⚠ 判的性质一个字没变（那条竞态守卫仍然承重），变的只是「怎么认出这一趟问的是谁」。
@@ -260,7 +265,7 @@ describe("P6b MCP 工作目录清单", () => {
       if (cmd === "list_mcp_project_dirs" && origin !== "<local>") return ["/remote/dir"];
       if (cmd === "list_mcp_project_dirs")
         return new Promise<string[]>((r) => {
-          releaseLocal = r;
+          releaseLocals.push(r);
         });
       return [];
     });
@@ -305,7 +310,9 @@ describe("P6b MCP 工作目录清单", () => {
     // `selectMachine` 的注释逐字：「本机/远端项目路径**不通用**，切机器清空」——
     // 它清了输入框，却没清候选。改之前那是不可见的 datalist；P6b 把它变成了
     // **可见且可点**的清单 ⇒ 切到 B 机后仍展示 A 机的路径，点一下就是拿 A 的路径去读 B。
-    let releaseRemote: (v: string[]) => void = () => {};
+    // 〔MIG-3a〕同一台的目录会被问两次（候选 ＋ 列表那一问都经 `mcp-read`）⇒ 挂住的每一次都要放。
+    const releaseRemotes: ((v: string[]) => void)[] = [];
+    const releaseRemote = (v: string[]) => releaseRemotes.forEach((r) => r(v));
     // 🔴 **〔步 12·C 2026-09-20〕本机与远端是**同一条命令**了，分它们的是 `origin`。**
     //    这份 mock 从前按**命令名**分本机/远端，今天按 `args.origin` 分 ——
     //    ⚠ 判的性质一个字没变（那条竞态守卫仍然承重），变的只是「怎么认出这一趟问的是谁」。
@@ -317,7 +324,7 @@ describe("P6b MCP 工作目录清单", () => {
       if (cmd === "list_mcp_project_dirs" && origin === "<local>") return ["/local/a", "/local/b"];
       if (cmd === "list_mcp_project_dirs")
         return new Promise<string[]>((r) => {
-          releaseRemote = r;
+          releaseRemotes.push(r);
         });
       return [];
     });
@@ -341,7 +348,9 @@ describe("P6b MCP 工作目录清单", () => {
     document.body.replaceChildren();
     // 让**远端**那次枚举挂住，好复现真实形状：那是一整趟 SSH（30s 超时），
     // 在这期间切机器是完全正常的操作。本机那条是本地读文件，测不出这个竞态。
-    let releaseRemote: (v: string[]) => void = () => {};
+    // 〔MIG-3a〕同一台的目录会被问两次（候选 ＋ 列表那一问都经 `mcp-read`）⇒ 挂住的每一次都要放。
+    const releaseRemotes: ((v: string[]) => void)[] = [];
+    const releaseRemote = (v: string[]) => releaseRemotes.forEach((r) => r(v));
     // 🔴 **〔步 12·C 2026-09-20〕本机与远端是**同一条命令**了，分它们的是 `origin`。**
     //    这份 mock 从前按**命令名**分本机/远端，今天按 `args.origin` 分 ——
     //    ⚠ 判的性质一个字没变（那条竞态守卫仍然承重），变的只是「怎么认出这一趟问的是谁」。
@@ -353,7 +362,7 @@ describe("P6b MCP 工作目录清单", () => {
       if (cmd === "list_mcp_project_dirs" && origin === "<local>") return ["/local/only"];
       if (cmd === "list_mcp_project_dirs")
         return new Promise<string[]>((r) => {
-          releaseRemote = r;
+          releaseRemotes.push(r);
         });
       return [];
     });

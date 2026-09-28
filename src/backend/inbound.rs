@@ -175,14 +175,20 @@ pub const COMMANDS: &[&str] = &[
     "link-open",
     // 〔SH1 · V137〕MCP 列表出成品（读法住适配层那一格 `agents::Adapter.mcp`）。
     "mcp-read",
+    // 〔MIG-3a〕项目 `.mcp.json` 增改 / 删（那台后端自己算、经自己的文件管理面写）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "mcp-server-put",
+    "mcp-server-remove",
+    // 〔MIG-3a〕MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "mcp-sync-apply",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
+    "mcp-sync-preview",
+    "mcp-sync-source",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
     "ping",
     "plugins-marketplaces",
-    "relay-ensure",
-    "relay-status",
+    // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     "remote-reach",
     "resolve",
@@ -190,6 +196,8 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
+    // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "skill-install-apply",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
@@ -197,6 +205,7 @@ pub const COMMANDS: &[&str] = &[
     // 〔SU1〕这台记着的、从别处装来的 skill · 卸的判定（都只读；删经 `files-delete` 带 `expect`）。
     "skill-installs",
     "skill-read",
+    "skill-uninstall-apply",
     "skill-uninstall-plan",
     // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`）：界面经 `chan.call(<local>, …)` 问本机常驻后端。
     "ssh-config-aliases",
@@ -211,6 +220,32 @@ pub const COMMANDS: &[&str] = &[
     "transfer-stop",
     "transfer-upload",
 ];
+
+/// 〔MIG-3a〕资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
+/// 住这里是因为 `readonly_guard` 第三层只许 `inbound.rs` 够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
+pub(crate) struct LocalFiles;
+
+impl crate::assets::door::Door for LocalFiles {
+    fn ask(
+        &self,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, (String, String)> {
+        let spec = REGISTRY
+            .iter()
+            .find(|s| s.name == cmd && s.name.starts_with("files-"))
+            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
+        let Run::Blocking(run) = spec.run else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
+        };
+        let req = Request {
+            id: "in-process".to_string(),
+            cmd: cmd.to_string(),
+            args,
+        };
+        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+    }
+}
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
@@ -1229,7 +1264,8 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
-    //   阻塞档：读一次凭据文件、装一次表；要注入时在回环上探一次中转（RK1 的差分探针，每发一次读期限）。
+    //   阻塞档：读一次凭据文件、装一次表；「中转在不在」读本进程的监听状态（中转住这里）。
+    //   〔DEL 续〕只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
     CommandSpec {
         name: "launch-endpoint",
         doc_anchor: Some("#### `launch-endpoint`"),
@@ -1254,34 +1290,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔RM1a · 第四波〕**中转**：这台机器上的 `--relay` 进程在不在 · 没有就起一个脱离的。
-    //   远端那台上的会话要走中转，那台上就得有一个；本机那一个由 monitor 监护，monitor 从不对本机发 `relay-ensure`。
-    //   ⚠ 只收端口，**一个凭据 / 账号的名字都不经过这两条**（「账号就账号, 中转就中转」）。
-    //   ⚠ 阻塞档：回环连一次 / 起一个进程，开跑之后打不断。
-    CommandSpec {
-        name: "relay-status",
-        doc_anchor: Some("#### `relay-status`"),
-        codes: &["bad_args", "not_ours"],
-        fields: &["listening", "port"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::relay::answer_status(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "relay-ensure",
-        doc_anchor: Some("#### `relay-ensure`"),
-        codes: &["bad_args", "not_ours", "spawn_failed", "unsupported"],
-        fields: &["listening", "pid", "port", "started"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::relay::answer_ensure(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    // 〔DEL〕这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
+    //   中转只住常驻后端进程里（本机远端同形，V139），那一族随回落一形删了。
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半：只交**路径事实**（环境 · stat · 有没有某几个字样），
     //   哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分，**只住 monitor 的 `config_surface`**。只读，阻塞档。
     CommandSpec {
@@ -1346,7 +1356,8 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "assets-sync",
         doc_anchor: Some("#### `assets-sync`"),
-        codes: &["bad_args", "io_failed"],
+        // 〔MIG-3a〕`unreachable`：只给 `origin`（界面直问）而可达表里还没有那一台。
+        codes: &["bad_args", "io_failed", "unreachable"],
         fields: &["dial", "origin", "reach", "self", "synced"],
         takes_input: true,
         run: Run::Async(|r| {
@@ -2349,6 +2360,178 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔MIG-3a · D 组〕项目 `.mcp.json` 增改 / 删：计算（`assets/mcp_edit.rs`）与写（本进程文件管理面 [`LocalFiles`]）在同一台。
+    CommandSpec {
+        name: "mcp-server-put",
+        doc_anchor: Some("#### `mcp-server-put`"),
+        codes: &["bad_args", "bad_path", "refused"],
+        fields: &["changed", "name", "path", "projectDir", "server"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_edit::answer_put(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "mcp-server-remove",
+        doc_anchor: Some("#### `mcp-server-remove`"),
+        codes: &["bad_args", "bad_path", "refused"],
+        fields: &["changed", "name", "path", "projectDir"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
+    CommandSpec {
+        name: "mcp-sync-source",
+        doc_anchor: Some("#### `mcp-sync-source`"),
+        codes: &["bad_args", "bad_path", "missing", "refused"],
+        fields: &["path", "projectDir", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_sync_flow::answer_source(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "mcp-sync-preview",
+        doc_anchor: Some("#### `mcp-sync-preview`"),
+        codes: &["bad_args", "bad_file", "bad_path", "refused"],
+        fields: &[
+            "field",
+            "kind",
+            "name",
+            "projectDir",
+            "rows",
+            "sameMachine",
+            "source",
+            "sourcePath",
+            "sourceText",
+            "state",
+            "suspects",
+            "target",
+            "targetPath",
+            "targetText",
+            "there",
+            "value",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_sync_flow::answer_preview(
+                &LocalFiles,
+                &crate::mcp_sync::Live::from_env(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "mcp-sync-apply",
+        doc_anchor: Some("#### `mcp-sync-apply`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "bad_path",
+            "needs_consent",
+            "refused",
+            "stale",
+        ],
+        fields: &[
+            "names",
+            "overwrite",
+            "path",
+            "projectDir",
+            "source",
+            "take",
+            "target",
+            "written",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::mcp_sync_flow::answer_apply(
+                &LocalFiles,
+                &crate::mcp_sync::Live::from_env(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
+    //   记（`skill_ledger::answer_record`，第四层写口只从这扇门递进去）同一台。
+    CommandSpec {
+        name: "skill-install-apply",
+        doc_anchor: Some("#### `skill-install-apply`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "io_failed",
+            "needs_consent",
+            "stale",
+        ],
+        fields: &[
+            "chmodFailed",
+            "dir",
+            "name",
+            "overwrite",
+            "recordFailed",
+            "source",
+            "take",
+            "target",
+            "written",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_flow::answer_install(
+                &LocalFiles,
+                &crate::mcp_sync::Live::from_env(),
+                None,
+                &crate::skill_ledger::answer_record,
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-uninstall-apply",
+        doc_anchor: Some("#### `skill-uninstall-apply`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "ledger_unreadable",
+            "needs_consent",
+            "not_found",
+            "stale",
+        ],
+        fields: &[
+            "confirm",
+            "deleted",
+            "dir",
+            "dirFailed",
+            "dirRemoved",
+            "recordFailed",
+            "seen",
+            "take",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_flow::answer_uninstall(
+                &LocalFiles,
+                None,
+                &crate::skill_ledger::answer_record,
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
     CommandSpec {
         name: "resync",
@@ -2493,7 +2676,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "launch",
         doc_anchor: Some("#### `launch`"),
-        // 〔TL2 · C4e 问 2〕+`wrong_owner`：`send-into` / `send-keys-raw` 过 `gate::admit`（§34 Gate 2），
+        // 〔TL2 · C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
         // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
         codes: &[
             "invalid_args",

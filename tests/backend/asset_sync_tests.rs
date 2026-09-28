@@ -307,16 +307,31 @@ async fn half_given_arguments_are_refused() {
         stdins: Mutex::new(vec![]),
     };
     let table = Table::default();
-    for bad in [
-        json!({"origin": ""}),
-        json!({"origin": "o"}),
-        json!({"dial": dial("x")}),
-    ] {
+    for bad in [json!({"origin": ""}), json!({"dial": dial("x")})] {
         let e = answer_with(&bad, local.fold(), &fakes, &table)
             .await
             .expect_err("收下了");
         assert_eq!(e.0, "bad_args", "{bad}");
     }
+    // 〔MIG-3a〕只给 `origin`（界面直问）而可达表里没有那一台 ⇒ 明说够不到，一次都不拨。
+    let e = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
+        .await
+        .expect_err("可达表里没有也收了");
+    assert_eq!(e.0, "unreachable");
+    assert!(fakes.seen.lock().unwrap().is_empty());
+    // 正控：握手那一刻登记过（`remote-reach`）⇒ 只给 `origin` 就对那一台做一趟。
+    crate::remote_ask::register(&table, &json!({"origin": "o", "dial": dial("x")})).unwrap();
+    let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
+        .await
+        .expect("登记过的也拒了");
+    // 跨语言金样（设计/05 §14.3「成品的两侧对拍」）：形状 == `assets-sync.golden.json`（id 与那一句错换成占位）；界面读同一份。
+    let g: Value =
+        serde_json::from_str(include_str!("../__fixtures__/assets-sync.golden.json")).unwrap();
+    let mut shape = ok.clone();
+    shape["self"] = json!("<SELF>");
+    shape["synced"][0]["error"] = json!("<ERR>");
+    assert_eq!(shape, g["reply"], "`assets-sync` 成品与金样不相等：{ok}");
+    fakes.seen.lock().unwrap().clear();
     assert!(fakes.seen.lock().unwrap().is_empty());
     let _ = std::fs::remove_dir_all(&d);
 }

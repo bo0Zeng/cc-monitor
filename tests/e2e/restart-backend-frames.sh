@@ -5,7 +5,7 @@
 #   make_live(旧号目录,fake-claude 活)         → backend_OLD: SessionAdded(sid)      = 旧号持有
 #                                                backend_NEW: 无 SessionAdded(sid)     = 新号尚无
 #   驱动**真源** restartWithAccount 换号到 znew(经 restart-cmd-driver + shims,真 kill + 真 resume):
-#     旧进程被 kill                             → backend_OLD: SessionRemoved(sid)     = 旧号失去（exit→kill 后端半场）
+#     旧进程被 kill                             → backend_OLD: SessionRemoved(sid)     = 旧号失去（kill 后端半场）
 #     新进程在**新号目录**resume 起来           → backend_NEW: SessionAdded(sid)       = 新号获得（resume 落新账号,后端半场）
 #   全程 tmux 只有一个 cc-<sid8>（复用,无 -N 孤儿）
 #
@@ -153,10 +153,10 @@ if grep -qE "\"kind\":\"session_added\".*$SID" "$NEW_FR" 2>/dev/null; then bad "
 echo "-- 驱动真源 restartWithAccount 换号 → znew（kill 旧进程 + resume 到新号目录）--"
 ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 OUT="$(CCM_ACCOUNTS_JSON="$ACCTS" CCM_SEQ_LOG="$WORK/seq.log" CCM_TOAST_LOG="$WORK/toast.log" \
-  npx tsx "$DRV" restart devbox "$SID" /tmp/e2e-remote "$S" znew "$FAKE" 0 1 1 1)"
+  npx tsx "$DRV" restart devbox "$SID" /tmp/e2e-remote "$S" znew "$FAKE" 0 1 1)"
 echo "   $(echo "$OUT" | paste -sd' ' -)  | seq: $(paste -sd' ' -<"$WORK/seq.log")"
 
-# ── 3. 旧号失去（SessionRemoved = exit→kill 后端半场）+ 新号获得（SessionAdded = resume 落新账号）──
+# ── 3. 旧号失去（SessionRemoved = kill 后端半场）+ 新号获得（SessionAdded = resume 落新账号）──
 SR_OLD="$(wait_line "$OLD_FR" "\"kind\":\"session_removed\".*$SID" 15)" \
   && ok "旧号后端见 SessionRemoved（旧进程被 kill,旧账号失去该会话）:$(printf '%.120s' "$SR_OLD")" \
   || bad "15s 内旧号后端未见 SessionRemoved($SID)"

@@ -76,7 +76,6 @@ import {
   findClaudeTmux,
   findIdleTmux,
   isCwdFallbackMatch,
-  claudeExited,
   type TmuxSession,
 } from "./tmux-sessions";
 // G6：tmux↔sid 判据搬进叶子模块 `tmux-sessions.ts`（`fork-flow.ts` 也要用，而它被本文件
@@ -86,7 +85,6 @@ export {
   findClaudeTmux,
   findIdleTmux,
   isCwdFallbackMatch,
-  claudeExited,
 };
 export type { TmuxSession };
 

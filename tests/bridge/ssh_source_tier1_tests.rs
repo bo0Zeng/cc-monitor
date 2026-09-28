@@ -163,6 +163,20 @@ fn a_backend_that_dies_right_after_hello_does_not_keep_resetting_the_backoff() {
     );
 }
 
+/// 〔DEL 续〕守的要求：主会话裁「非 unix 远端：那一类失败按『永久不支持』记在那台的连接状态里，**不再自动按退避重连**」。
+/// 记下了 ⇒ `Stop`（带那句话，任何退避值都一样）；没记 ⇒ 照当前退避再连。
+#[test]
+fn a_permanently_unsupported_remote_stops_instead_of_backing_off() {
+    for b in [RECONNECT_MIN, RECONNECT_MAX] {
+        assert_eq!(
+            after_round(Some("不是 Unix".into()), b),
+            AfterRound::Stop("不是 Unix".into()),
+            "非 unix 远端还在按退避 {b:?} 空转"
+        );
+        assert_eq!(after_round(None, b), AfterRound::RetryIn(b));
+    }
+}
+
 /// next_backoff：翻倍直到封顶 RECONNECT_MAX(30s)，封顶后饱和不再增长。
 #[test]
 fn next_backoff_doubles_then_caps() {

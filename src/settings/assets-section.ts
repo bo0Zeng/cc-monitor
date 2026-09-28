@@ -6,43 +6,47 @@
  *
  * # 本文件只做排版与手势（`设计/01 §1.1`）
  *
- * - **目录怎么对上**：这一块看得见时先让本机常驻后端对这台做一趟同步（`assets_sync`），再问**这台**的后端要目录
+ * - **目录怎么对上**：这一块看得见时先让本机常驻后端对这台做一趟同步（`assets-sync`，经 `assets-sync-reads.ts`），再问**这台**的后端要目录
  *   （帧命令 `assets-catalog`）。「这台缺什么」（`missing` / `differs` / `same`）是这台后端答的，这里只照着画。
- * - **装**：MCP 走 AS1 那条路原样（`mcp_sync_preview` / `mcp_sync_apply`，只看这一条、勾「盖掉」才盖）；
- *   skill 走 `skill_install_preview` / `skill_install_apply`（判定在要被写的那台后端）。
+ * - **装**：MCP 走 AS1 那条路原样（`mcp-sync-reads.ts` 的看差异 / 写，只看这一条、勾「盖掉」才盖）；
+ *   skill 走 `skill-install-reads.ts` 的看差异 / 写（判、写、记都在要被写的那台后端）。
  *   🔴 这四条「装」命令**由宿主递进来**（`mcp-section.ts::assetInstallApi`）：「装 MCP / skill」那一件的前端落点
  *   钉在一张名单上（`tests/evidence/K-R117-ruler.py` 的 `R9a`，只许缩），本文件不给它加一份新落点。
  * - **来源那台够不到**（没连上）⇒ 说清、不装：目录里不带原文（MCP 的密钥值更不带），装的那一下要从来源那台现读。
  *
  * 〔SU1 · 第四波 4C · V116〕**卸**：用户裁「要，只删装时写进去的文件」（装完改过的先问）。这一块末尾多一小节
  * 「从别的机器装来的 skill」：列这台后端记着的（帧命令 `skill-installs`），每条一颗「卸」→ 看（`skill-uninstall-plan`，
- * 逐文件的态与「要不要问」都是这台后端答的）→ 勾 → 卸（`skill_uninstall_apply`，同样由宿主递进来）。只删装时写的文件，〔FW1〕删完之后空了的目录（装时建的子目录 ＋ skill 目录自己）也收掉；里面还有别的就留着。
+ * 逐文件的态与「要不要问」都是这台后端答的）→ 勾 → 卸（`skill-uninstall-apply`，经 `skill-install-reads.ts`，同样由宿主递进来）。只删装时写的文件，〔FW1〕删完之后空了的目录（装时建的子目录 ＋ skill 目录自己）也收掉；里面还有别的就留着。
  *
  * 纯函数（`decodeCatalog` · `reachOf` · `skillDefaultTake` · `skillApplyArgs` · `hereText` · `skillSuspectText` ·
  * `decodeInstalls` · `decodeUninstallPlan` · `uninstallDefaultTake` · `uninstallApplyArgs`）零 DOM，node 可测。
  */
-import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { stateText, suspectText } from "./mcp-sync";
-import type { AssetsSynced } from "../generated/AssetsSynced";
-import type { McpSyncPreview } from "../generated/McpSyncPreview";
-import type { SkillInstallPreview } from "../generated/SkillInstallPreview";
-import type { SkillInstallRow } from "../generated/SkillInstallRow";
-import type { SkillInstallSuspect } from "../generated/SkillInstallSuspect";
+import { type AssetsSynced, syncAssets } from "../assets-sync-reads";
+import type { McpSyncPreview, mcpSyncApply, mcpSyncPreview } from "../mcp-sync-reads";
+import type {
+  SkillInstallPreview,
+  SkillInstallRow,
+  SkillInstallSuspect,
+  skillInstallApply,
+  skillInstallPreview,
+  skillUninstallApply,
+} from "../skill-install-reads";
 
 /** 「装」那几条命令（宿主递进来；见头注）。 */
 export interface AssetInstallApi {
-  dirs: typeof commands.list_mcp_project_dirs;
-  mcpPreview: typeof commands.mcp_sync_preview;
-  mcpApply: typeof commands.mcp_sync_apply;
-  skillPreview: typeof commands.skill_install_preview;
-  skillApply: typeof commands.skill_install_apply;
+  dirs: (a: { origin: Origin }) => Promise<string[]>;
+  mcpPreview: typeof mcpSyncPreview;
+  mcpApply: typeof mcpSyncApply;
+  skillPreview: typeof skillInstallPreview;
+  skillApply: typeof skillInstallApply;
   /** 〔SU1〕卸：删经那台后端 `files-delete`（带 `expect`），删掉的从装记录里摘掉。 */
-  skillUninstall: typeof commands.skill_uninstall_apply;
+  skillUninstall: typeof skillUninstallApply;
 }
 
 /** 目录里别处的一条来源。 */
@@ -265,7 +269,7 @@ export function uninstallApplyArgs(rows: readonly UninstallRow[], checked: Reado
   return { take: picked.map((r) => r.path), confirm: picked.filter((r) => r.ask).map((r) => r.path) };
 }
 
-/** 读目录的期限：同步那一趟另算（`assets_sync` 在 monitor 那侧有自己的预算）。 */
+/** 读目录的期限：同步那一趟另算（`assets-sync-reads.ts` 有自己的预算）。 */
 const CATALOG_BUDGET_MS = 30_000;
 
 function machineName(origin: Origin): string {
@@ -339,7 +343,7 @@ export class AssetsSection {
     this.body.textContent = copyText("assets.load.loading");
     let syncError: string | null = null;
     try {
-      this.synced = await commands.assets_sync({ origin });
+      this.synced = await syncAssets(origin);
     } catch (e) {
       // 同步没办成不挡「看这台的目录」：说一句，接着读（读到的是上一次对上时的样子）。
       syncError = e instanceof Error ? e.message : String(e);

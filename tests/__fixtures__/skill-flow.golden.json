@@ -1,0 +1,21 @@
+{
+  "说明": [
+    "〔MIG-3a〕skill 装 / 卸写那一半的跨语言金样：后端对临时目录现算 == reply；界面 `src/skill-install-reads.ts` 读同一份。",
+    "只采结构（占位文件名 / 占位正文）。`<ROOT>` 由测试换成临时 skill 根。"
+  ],
+  "name": "demo",
+  "source": [
+    { "path": "SKILL.md", "text": "---\ndescription: d\n---\n", "exec": false, "why": null },
+    { "path": "lib/a.txt", "text": "new a\n", "exec": false, "why": null }
+  ],
+  "before": { "lib/a.txt": "old a\n" },
+  "take": ["SKILL.md", "lib/a.txt"],
+  "overwrite": ["lib/a.txt"],
+  "installReply": { "dir": "<ROOT>/demo", "written": ["SKILL.md", "lib/a.txt"], "chmodFailed": [], "recordFailed": null },
+  "uninstallTake": ["SKILL.md"],
+  "uninstallReply": { "dir": "<ROOT>/demo", "deleted": ["SKILL.md"], "recordFailed": null, "dirRemoved": false, "dirFailed": null },
+  "codes": {
+    "skill-install-apply": ["bad_args", "bad_file", "io_failed", "needs_consent", "stale"],
+    "skill-uninstall-apply": ["bad_args", "io_failed", "ledger_unreadable", "needs_consent", "not_found", "stale"]
+  }
+}

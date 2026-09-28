@@ -2,10 +2,10 @@
 //!
 //! # 它断的是哪一个性质
 //!
-//! **界面进程里还有几处自己拨 SSH，以及 backend 长连接流的入口由谁拨。**
+//! **界面进程里还有几处自己拨 SSH，以及拿链路的原语由谁拨。**
 //!
 //! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那一拍已经证过后者会量错集合。
-//! ⇒ 判据落在两处：**入口函数的函数体**（`connect_and_exec` 只经拨号代理的宿主拿链路，零进程内回落）
+//! ⇒ 判据落在两处：**拿链路那个原语的函数体**（`connect_and_exec_cmd` 只经拨号代理的宿主拿链路，零进程内回落）
 //! ＋ **每一份文件里 `connect_session(` 的调用点**逐份登记（[`DIAL_SITES`]）。
 //!
 //! 〔墓碑 —— `K-P6b` 那一版的要点逐字：「它的 7 处生产调用点里本件只覆盖 1 处，而覆盖的方式是
@@ -128,7 +128,7 @@ fn body_of(code: &str, head: &str) -> String {
 
 /// 🔴 **甲半判据本体。纯函数** —— 语料由调用方给 ⇒ 阳性/阴性两个方向都切得动。
 ///
-/// 传进来的是 `connect_and_exec` 那个函数体。返回 `Err(说法)` = 判据红。
+/// 传进来的是拿链路那个原语的函数体。返回 `Err(说法)` = 判据红。
 fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
     if body.len() < BODY_FLOOR_BYTES {
         return Err(format!(
@@ -158,11 +158,11 @@ fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// ★ 甲半：**拿链路的原语只经拨号代理的宿主；backend 长连接流的入口只走这个原语；零回落。**
+/// ★ 甲半：**拿链路的原语只经拨号代理的宿主；零回落。**
 ///
-/// 〔C2 09-24〕判据的靶从「`connect_and_exec` 的函数体」挪到「`connect_and_exec_cmd` 的函数体」：
-/// 后者是十来处一次性查询与后端长连接流**共用**的那个原语，钉住它就钉住了全部；
-/// 入口 `connect_and_exec` 只许恰好一次调它、且不许自己拨。收全 exec 那个原语另钉一条（走 `dial_host::capture(`）。
+/// 〔C2 09-24〕判据的靶是 `connect_and_exec_cmd` 的函数体：十来处一次性查询共用的那个原语，钉住它就钉住了全部。
+/// 收全 exec 那个原语另钉一条（走 `dial_host::capture(`）。
+/// 〔DEL〕远端后端长连接流的入口今天是 `remote_resident::attach`（capture ＋ `dial_host::tunnel`），不再经本文件起流。
 #[test]
 fn the_backend_stream_entry_hands_the_dial_to_another_process() {
     let (_, prod) = corpus()
@@ -173,19 +173,6 @@ fn the_backend_stream_entry_hands_the_dial_to_another_process() {
     if let Err(e) = backend_stream_dial_verdict(&prim) {
         panic!("{e}");
     }
-    let entry = body_of(&prod, "pub async fn connect_and_exec(");
-    assert!(
-        entry.len() >= BODY_FLOOR_BYTES,
-        "切不出入口函数体 —— 本条在空转"
-    );
-    assert_eq!(
-        (
-            entry.matches("connect_and_exec_cmd(").count(),
-            entry.matches("connect_session(").count()
-        ),
-        (1, 0),
-        "backend 长连接流的入口没有恰好一次走拿链路的原语（或者自己拨了）"
-    );
     let capture = body_of(&prod, "pub async fn connect_and_exec_capture(");
     assert_eq!(
         (
@@ -272,7 +259,7 @@ fn every_registered_dial_site_says_what_it_is_and_when_it_could_go() {
 // 〔C2 09-24〕原来这里有一条 `every_registered_fallback_is_actually_decided_in_the_entry` 〔散文墓碑〕
 // （逐条回落在入口函数体里真的有一个判断在做它）—— 回落整张删了，它随之删。
 
-/// 🔴 **本件改动之前**的 `connect_and_exec` 函数体，**逐字冻结**。
+/// 🔴 **本件改动之前**的远端起流入口函数体，**逐字冻结**（那个入口〔DEL〕随远端流模式一形删了，冻结的是历史文本）。
 ///
 /// 出处：`git show f10581c:src/bridge/src/ssh_source.rs` 的 `:1304-1321`
 /// （分支尖 `f10581c` = 本件第二轮的最后一个提交，那时生产段一个字节都还没动）。
@@ -433,11 +420,11 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
     // ⚠ **不能拿 `fn connect_session(` 当锚点**：它今天在 **695** 行 —— 在第一个测试模块
     //    （909 行）**之前** ⇒ 便宜近似也留得住它 ⇒ 那样这条对照会被填成恒真的
     //    （`assert_stripper_keeps` 会为此当场红，而不是静默放过）。
-    //    本条真正会缩水的那一段是入口函数体：`pub async fn connect_and_exec(` 在 1236 行。
+    //    本条真正会缩水的那一段是原语的函数体（在第一个测试模块之后）。
     guard_core::assert_stripper_keeps(
         "ssh_source_dial_move_judge · ssh_source.rs",
         include_str!("../../src/bridge/src/ssh_source.rs"),
-        &["pub async fn connect_and_exec("],
+        &["pub async fn connect_and_exec_cmd("],
     );
     // ⚠ 本判据的语料是**四份**文件，这里只立了 `ssh_source.rs` 那一份的对照 ——
     //    另两份（`sftp.rs` / `port_forward.rs`；〔SR1b〕`inproc_dial.rs` 那份整份删了）的针在它们各自第一个测试模块**之前**，

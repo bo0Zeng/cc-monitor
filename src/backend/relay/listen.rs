@@ -21,13 +21,12 @@
 //! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
 //! |---|---|
 //! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
-//! | `DEFAULT_PORT` | `src/bridge/src/backend/control/payload.rs` 的散文逐字点着 `src/backend/relay/server.rs::DEFAULT_PORT`，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` **真的判得了那条住址**（现打：搬走之后它当场红，诊断逐字「符号还在，但**搬家了**」）。〔US1〕它的值今天是 `relay_route_core::PORT`（共享 crate，monitor 用同一个 const） |
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!
 //! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
 //! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
-use super::server::{self, Relay, DEFAULT_PORT, LOOPBACK};
+use super::server::{self, Relay, LOOPBACK};
 use super::{door, tee::TeeSink, Startup};
 use copy_core::copy_text;
 use std::net::{SocketAddr, TcpListener};
@@ -227,49 +226,8 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
     }
 }
 
-/// `--relay` 的**端口**那一格 —— 纯函数：不读环境、不起监听、不碰网络。
-///
-/// ★ 它为什么被抽出来（回修轮 08-25，D1 `重要-6`）：先前这一段整个长在 `run()` 里，
-/// 而 `run()` 尾巴上是**永不返回**的 `serve()` ⇒ 没有任何判据调得动它。
-/// 实测：把 `run()` 的函数体整个换成 `2`，384 条判据**全绿**（审计 `CG1`）——
-/// 端口与（当时还是进程级的）默认上游那两个环境变量的解析、两个默认值，**一样都没被量过**。
-///
-/// ⚠ 〔「中转层里没有账号」那一刀的前置〕它先前还顺手解析上游 —— 那是**上游选择的配置**
-/// （每 agent 一行的默认上游，`设计/20 §3.1`）。今天那一半归 [`Startup::check`]，
-/// 本函数只剩中转自己的那一格：端口（`C5`：端口是后端交给通信层的策略值）。
-pub(super) fn resolve_port(port_env: Option<&str>) -> u16 {
-    port_env
-        .and_then(|v| v.parse::<u16>().ok())
-        .unwrap_or(DEFAULT_PORT)
-}
-
-/// `run()` 剥掉「读环境变量」之后的那一半。
-///
-/// **起监听之前的处置全在这里** ⇒ 判据打得到「配置认不出就退 2」与
-/// 「端口起不来就退出并出声」（`:16-17` 头注承诺的那条）两条。
-/// 成功那一条尾巴上是永不返回的 `serve()` ⇒ 判据够不到，登记为 `判不了`。
-///
-/// ⚠ 「读一次凭据、装表、把该说的话说出去、接热重载」那一段**是上游选择的**，
-/// 本函数只经 `startup` 那两步够到它（[`Startup`] / [`Ready`]）—— 它**叫不出**上游选择的任何一个名字。
-pub(super) fn run_with(
-    port_env: Option<&str>,
-    get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
-    startup: &dyn Startup,
-) -> i32 {
-    let port = resolve_port(port_env);
-    let Ok((listener, relay)) = prepare(port, get, home, startup, TeeSink::to_stdout()) else {
-        return 2;
-    };
-    serve(listener, relay, Arc::default());
-    0
-}
-
-/// `--relay` 与流模式进程内（[`host`]）**共用的那一段**：上游选择认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。
-///
-/// 〔RL1〕从 [`run_with`] 里原样抽出来 —— 两条入口若各写一遍，那几句 `[relay]` 日志就是两份、
-/// 顺序（「起监听之后才印凭据路径」）也是两份，迟早漂。失败时**该说的那一句已经说了**，
-/// 调用方只决定「退 2」还是「不拖垮宿主」。
+/// 起中转那一段：上游选择认启动配置 → 绑回环 → 报地址 → 装表 → 造 `Relay`。失败时**该说的那一句已经说了**。
+/// 〔DEL〕先前与独立 `--relay` 那一形共用；那一形删了，只剩 [`host`] 一个调用方。
 fn prepare(
     port: u16,
     get: &dyn Fn(&str) -> Option<String>,
@@ -324,15 +282,13 @@ fn prepare(
     Ok((listener, Arc::new(relay)))
 }
 
-/// 〔RL1 · V107〕流模式后端里**进程内**起中转的结局。
+/// 〔RL1 · V107〕常驻后端里**进程内**起中转的结局。
 ///
-/// ⚠ 与 `--relay` 那一形（[`run_with`]）刻意不同的一格：那里中转就是整个进程，起不来就退 2；
-/// 这里中转只是常驻后端的一个面 ⇒ 起不来**出声、不拖垮后端**（持有全部 SSH 的那个进程
+/// 中转只是常驻后端的一个面 ⇒ 起不来**出声、不拖垮后端**（持有全部 SSH 的那个进程
 /// 不许因为「端口被占」或「上游配置认不出」而倒下）。
 #[derive(Debug)]
 pub(crate) enum Hosted {
-    /// 没被交端口 ⇒ 这个进程**不开**中转。远端经 SSH exec 起的流模式后端就是这一格
-    /// （远端中转是 `relay-ensure` 起的脱离 `--relay`，理由见 `machine.rs` 头注）。
+    /// 没被交端口 ⇒ 这个进程**不开**中转（测试连接探针 exec 的那一趟就是这一格）。
     NotAsked,
     /// 在听：回环 ＋ 这个地址。
     Listening(SocketAddr),
@@ -353,21 +309,41 @@ impl std::fmt::Display for Hosted {
     }
 }
 
-/// 〔RL1 · V107〕**在本进程里起中转**：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
+/// 〔DEL 续 · 主会话裁〕本进程里**绑上了、接受线程也起来了**的中转口。唯一写者是 [`host`]（生产里一个进程至多一个；
+/// 判据在同一个测试进程里各起各的口 ⇒ 按口记，互不干扰）。接受线程随进程生死、不中途退 ⇒ 记下就不摘。
+static HOSTED_PORTS: std::sync::Mutex<std::collections::BTreeSet<u16>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+fn note_listening(port: u16) {
+    HOSTED_PORTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(port);
+}
+
+/// 〔DEL 续 · 主会话裁〕**这个进程里我们的中转在不在听这个口** —— 读宿主自己那份监听状态，不从外面探自己
+/// （中转就住在这个进程里，V107 · V139；一个事实一个家）。读者：上游选择出的两份成品
+/// （`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。没起中转的进程（一次性 exec · 测试连接探针）恒答 `false`。
+pub(crate) fn our_relay_listening(port: u16) -> bool {
+    HOSTED_PORTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&port)
+}
+
+/// 〔RL1 · V107 · V139〕**在本进程里起中转**：交了端口（[`ENV_PORT`]）才起，接受循环跑在一条专属线程上。
 ///
 /// # 为什么是「交了端口才起」而不是「流模式一律起」
 ///
-/// 流模式后端有两类：本机常驻那一个（monitor 起它时交端口）与远端经 SSH exec 起的那一个
-/// （没人交）。后者**必须不起**：它随那条 SSH 一起退，而远端会话活在 tmux 里、比 SSH 长 ——
-/// 中转住在它里面，断一次线，已经注入了中转地址的远端会话就每一发都连不上。
+/// 起常驻后端的宿主交端口（本机 monitor · 远端 `--resident-ensure`）；测试连接探针 exec 的那一趟流模式没人交 ⇒ 不起
+/// （它读完 hello 就退，不该去抢那个口）。
 ///
-/// # 与 [`run_with`] 共用的与不共用的
+/// # 形状
 ///
-/// 共用：上游选择那两步（`check` → `into_destinations`）· [`listen`]（回环）· [`serve`] · 两个期限值。
-/// 不共用：① 端口**没有缺省值**（交了一个认不出的串 ⇒ `Failed`，不悄悄退回 `DEFAULT_PORT` ——
+/// ① 端口**没有缺省值**（交了一个认不出的串 ⇒ `Failed`，不悄悄退回一个默认值 ——
 /// 注入侧拼的是它交出来的那个数，两边对不上就是一个查不出来的连接失败）；
 /// ② tee 落宿主交下来的 tap 口（[`TeeSink::to_port`]，〔TAP · V124〕）：本进程的 stdout 在 stdio 载体上**就是 wire**
-/// （一行一帧），在脱离载体上是 null —— 哪一条都不是 NDJSON 行的落点；宿主把事件转成 `tap` 帧走它自己的有界通道；
+/// （一行一帧），在脱离载体上是 null；宿主把事件转成 `tap` 帧走它自己的有界通道；
 /// ③ 起不来不退出（见 [`Hosted`]）。
 pub(crate) fn host(
     get: &dyn Fn(&str) -> Option<String>,
@@ -399,51 +375,15 @@ pub(crate) fn host(
         .name("ccm-relay-accept".to_string())
         .spawn(move || serve(listener, relay, Arc::default()))
     {
-        Ok(_) => Hosted::Listening(addr),
+        Ok(_) => {
+            note_listening(addr.port());
+            Hosted::Listening(addr)
+        }
         Err(e) => {
             eprintln!("[relay] cannot spawn accept thread: {e}");
             Hosted::Failed(format!("起不来接受线程：{e}"))
         }
     }
-}
-
-/// `run()` 的**接线面**：哪个环境变量喂给哪个配置位。取值器与执行体都是**注入的**
-/// ⇒ 判据打得到这条接线本身，而**不必去改进程环境**（`std::env::set_var` 与并行跑的
-/// 别的判据是竞态 —— 那不是判据该有的形状）。
-///
-/// ★ 它为什么被抽出来（回修轮之四 08-25，D2 `重要-3(D2)`）：
-/// `重要-6` 那一轮把 `resolve_config`（纯函数）与 `run_with`（退 2 两条）抽了出来，
-/// **最外面那一层 `run()` 自己仍然零判据**。实测把那两行 `std::env::var(...)` **对调**，
-/// **389 条判据全绿**（D2 `D2RUN`），而真机后果是 `--relay` **整个起不来**：
-/// 端口读不懂 ⇒ 回默认 8788、上游解析失败 ⇒ 退 2。
-/// 判据见 `each_env_var_name_goes_into_its_own_config_slot`。
-pub(super) type RelayExec<'a> =
-    dyn Fn(Option<&str>, &dyn Fn(&str) -> Option<String>, &std::path::Path) -> i32 + 'a;
-
-pub(super) fn run_reading(
-    get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
-    exec: &RelayExec<'_>,
-) -> i32 {
-    let port = get(ENV_PORT);
-    // ⚠ `get` 原样往下传：凭据与每家上游那两条路的取值器**必须与端口是同一个**，
-    //   否则判据喂进去的环境和生产段读的环境是两套（那正是「量具的作用域对不上事实」）。
-    // ⚠ 〔条 60〕上游那个变量**不在这里读了**：它每家一个，名字住上游选择那张表，
-    //   本层只读自己的端口（`C5`：端口是后端交给通信层的策略值）。
-    exec(port.as_deref(), get, home)
-}
-
-/// `--relay` 的入口。配置面只有环境变量（backend 今天没有配置文件面）。
-///
-/// 本函数今天**只剩一件事**：把「真取值器」与 `run_with` 接上。接线本身（哪个变量
-/// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
-/// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
-pub(crate) fn run(home: &std::path::Path, _args: &[String], startup: &dyn Startup) -> i32 {
-    // ★ 上游选择那只手是**调用方递进来的**（`accounts::upstream::run_relay`，`--relay` 的装配口）——
-    //   本层**叫不出**它的名字。先前这里写死 `super::accounts::Boot`：上游选择搬出 `relay/` 那一拍删的。
-    run_reading(&|k| std::env::var(k).ok(), home, &|p, get, h| {
-        run_with(p, get, h, startup)
-    })
 }
 
 #[cfg(test)]
