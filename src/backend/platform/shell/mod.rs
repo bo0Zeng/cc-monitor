@@ -1,3 +1,14 @@
+//! 〔OSA · `设计/99 §1` V156：「生成alias这个东西是不是也应该后端搞? 这样就可以融入os适配层」〕
+//! **shell 方言知识只住这里**（后端 OS 适配层）：哪种方言 · 引号 · 定义函数 · 导出 / 清除环境 · 以某命令替换进程 ·
+//! rc 与 `$PROFILE` 在哪 · 落盘编码 · 内建别名探测 · 这台说哪几种。别名 · 起会话渲染 · 中转环境前缀 · `ccm` 计划都只调它。
+//!
+//! - [`dialect`]：别名那一族的方言（原 `assets/aliases/dialect.rs` 整份）
+//! - [`posix`] / [`powershell`]：起会话 · 中转 · `ccm` 计划 · 观测探针要的那几句写法
+//! - 本文件：把一串命令交给这台的 shell 那一跳（下面是它自己的来历）
+//!
+//! 判据 `tests/backend/platform/shell_home_guard.rs`：方言专属语法字面量在本目录之外零命中（两向）。
+//! 本层不往上依赖：通用层的东西（`ccm` 那个词 · `--` 分界 · 我们那块别名块的正文）作参数交进来。
+//!
 //! `K-R55`（2026-09-11）：**「把一条命令串交给 POSIX shell」这一族平台原语**。
 //!
 //! # 它从哪来
@@ -22,6 +33,10 @@
 //! 搬之后那两条路走的是 `None` 臂，**落点逐字相同** ——
 //! 变的只有一件事：先前那是「碰巧撞出来的」，现在是**写出来的**。
 
+pub(crate) mod dialect;
+
+
+
 /// 备一条 `sh -c <脚本>`。**非 unix 上回 `None`** —— 那里没有 `sh`。
 ///
 /// 只负责「备好这条命令」，不 `spawn`、不 `output` —— 送出去那一下归调用方，
@@ -45,7 +60,7 @@ pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
 /// 〔MIG-3a · `设计/99 §2.1 ⑬`〕备一条 `powershell.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
 /// **非 Windows 上回 `None`** —— 那里没有自带的 PowerShell（同 [`posix_shell`] 的反面，理由同）。
 ///
-/// 只给**固定脚本**用（今天唯一的调用方：别名方言问内建别名 `Get-Alias`，`assets/aliases/dialect.rs`）；
+/// 只给**固定脚本**用（今天唯一的调用方：别名方言问内建别名 `Get-Alias`，[`dialect`]）；
 /// `-NoProfile` 让结果不被用户 profile 左右，`-NonInteractive` 让它绝不等人回车。不 `spawn`，送出去那一下归调用方。
 pub(crate) fn powershell_readonly(script: &str) -> Option<std::process::Command> {
     if !speaks_powershell() {
@@ -79,5 +94,5 @@ pub(crate) fn speaks_powershell() -> bool {
 pub(crate) const LOCAL_TERMINAL_IS_POWERSHELL: bool = cfg!(windows);
 
 #[cfg(test)]
-#[path = "../../../tests/backend/platform/shell_tests.rs"]
+#[path = "../../../../tests/backend/platform/shell_tests.rs"]
 mod tests;

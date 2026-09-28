@@ -1,5 +1,8 @@
 //! 〔AL1c · 第四波 4B · 2026-09-24〕**shell 方言：`设计/71 §4.4` 那组平台接口，POSIX 与 PowerShell 各一份实现。**
 //!
+//! 〔OSA · `设计/99 §1` V156〕从 `assets/aliases/dialect.rs` 整份搬进后端 OS 适配层（`platform/shell/`）。本层不往上依赖：
+//! `ccm` 那个词与 `--` 分界由通用层作 [`Call`] 交进来，「我们自己那块别名块定义了哪些函数」由通用层交进那块的正文。
+//!
 //! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕从 monitor `shell_dialect.rs` 搬来：别名规则与方言住**那台机器的后端**，
 //! 「这台说不说 PowerShell」「`PATH` 上有没有同名程序」「文档目录在哪」从此都是**这台自己**的事实（不再是 monitor 那台的）。
 //!
@@ -73,6 +76,16 @@ impl Shell {
 /// 解析回来的一条：`(名字, 参数)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
 pub(crate) type Parsed = Result<(String, Vec<String>), String>;
 
+/// 〔OSA〕一条别名调的是谁、argv 里哪个词把两半分开（V151）。**通用层给**（`control::ccm` 那两个常量），方言只照着写与读：
+/// 适配层不往上依赖。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Call<'a> {
+    /// 被调的那个命令（`control::ccm::SUBCOMMAND_WORD`）。
+    pub(crate) word: &'a str,
+    /// 分两半的那个词（`control::ccm::argv::flag::END`）：左边交 claude，右边归 ccm。
+    pub(crate) end: &'a str,
+}
+
 /// 〔AL2 · 第四波 4D〕一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，`71 §4.4` 表第一行）。
 ///
 /// 方言**只给路径与列法**，一个字节的盘都不读：在不在、里面是什么由**那台机器的后端**答
@@ -133,10 +146,13 @@ pub(crate) trait ShellDialect: Sync {
     fn file_header(&self) -> String;
 
     /// 一条（通用层判过合格的）别名在这个 shell 里的写法：名字 ＋ 预置参数 ＋ 把调用时的参数原样接在后面。
-    fn render_alias(&self, name: &str, argv: &[String]) -> String;
+    fn render_alias(&self, call: Call, name: &str, argv: &[String]) -> String;
 
     /// 把我们那份文件的正文（BOM 已剥）读回成一条条。注释 / 空行跳过；认不出的原文带原因。
-    fn parse_file(&self, text: &str) -> Vec<Parsed>;
+    fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed>;
+
+    /// 〔OSA〕这一行（已去掉行首空白）声明了哪个函数（原住 `assets/aliases/block.rs` 的两份认法，逐字搬来）。
+    fn declared_function(&self, line: &str) -> Option<String>;
 
     /// 名字的合法字符集。
     fn name_is_valid(&self, name: &str) -> bool;
@@ -145,10 +161,11 @@ pub(crate) trait ShellDialect: Sync {
     fn same_name(&self, a: &str, b: &str) -> bool;
 
     /// 这个名字是不是已经被占了（**只出声、不拦**）。报出来的话里带住址。
+    /// 〔OSA〕`own_block` 是我们自己那块别名块的正文（通用层给：POSIX 是 `src/shared/ccm-aliases.sh`，PowerShell 是模板渲染出来的那一份）。
     ///
     /// 〔MIG-3a〕`PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
     /// （从前住 monitor 时远端只能不查，〔AL2〕那一格 `look_on_path`〔散文墓碑〕随之退役）。
-    fn name_taken(&self, name: &str) -> Option<String>;
+    fn name_taken(&self, name: &str, own_block: &str) -> Option<String>;
 
     /// 一个参数能不能**原样**到达 `ccm`（传参那一跳这个 shell 会不会改坏它）。
     fn arg_is_passable(&self, word: &str) -> Result<(), String>;
@@ -337,7 +354,7 @@ impl Posix {
 
     /// 生成文件里的一行 → 一条。认两种调用词：裸 `ccm`，以及从前那种 `"${CCM:-<路径>}"`
     /// （`K-R69` 的 `ccmInvocation`〔散文墓碑〕吐过，那一格随 TS 生成器退役）—— 读回之后一律按裸 `ccm` 重写。
-    fn parse_line(line: &str) -> Parsed {
+    fn parse_line(call: Call, line: &str) -> Parsed {
         let rest = line
             .strip_suffix(POSIX_FN_TAIL)
             .ok_or(&copy_text("rsShellDialect.posix.badTail", &[]))?;
@@ -356,32 +373,32 @@ impl Posix {
         };
         let mut words = Self::split_words(lead)?.into_iter();
         let head = words.next().unwrap_or_default();
-        let word = crate::control::ccm::SUBCOMMAND_WORD;
+        let word = call.word;
         if head != word && !head.starts_with("\"${CCM:-") {
             return Err(copy_text(
                 "rsShellDialect.posix.notCcm",
                 &[("word", &word.to_string())],
             ));
         }
-        Ok((name.to_string(), join_last_end(words.collect(), right)))
+        Ok((
+            name.to_string(),
+            join_last_end(call.end, words.collect(), right),
+        ))
     }
 }
 
 /// 〔V151〕别名那条 argv 按最后一个 `--` 切成两半（没有 ⇒ 右边 `None`）。两种方言渲染共用。
-fn split_last_end(argv: &[String]) -> (&[String], Option<&[String]>) {
-    match argv
-        .iter()
-        .rposition(|w| w == crate::control::ccm::argv::flag::END)
-    {
+fn split_last_end<'a>(end: &str, argv: &'a [String]) -> (&'a [String], Option<&'a [String]>) {
+    match argv.iter().rposition(|w| w == end) {
         Some(k) => (&argv[..k], Some(&argv[k + 1..])),
         None => (argv, None),
     }
 }
 
 /// [`split_last_end`] 的逆：两种方言读回共用。
-fn join_last_end(mut left: Vec<String>, right: Option<Vec<String>>) -> Vec<String> {
+fn join_last_end(end: &str, mut left: Vec<String>, right: Option<Vec<String>>) -> Vec<String> {
     if let Some(r) = right {
-        left.push(crate::control::ccm::argv::flag::END.into());
+        left.push(end.into());
         left.extend(r);
     }
     left
@@ -400,7 +417,7 @@ impl ShellDialect for Posix {
         POSIX_RC_CANDIDATES
             .iter()
             .map(|n| StartupCandidate {
-                path: crate::assets::door::join_under(home, n),
+                path: crate::platform::paths::join_under(home, n),
                 listed: Listed::IfFileExists,
             })
             .collect()
@@ -433,9 +450,9 @@ impl ShellDialect for Posix {
 
     /// `名字() { ccm <参数…> "$@"; }`。`"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：
     /// 调用时再给的参数接在后面、后者胜。
-    fn render_alias(&self, name: &str, argv: &[String]) -> String {
-        let word = crate::control::ccm::SUBCOMMAND_WORD;
-        let (left, right) = split_last_end(argv);
+    fn render_alias(&self, call: Call, name: &str, argv: &[String]) -> String {
+        let word = call.word;
+        let (left, right) = split_last_end(call.end, argv);
         let mut out = format!("{name}{POSIX_FN_HEAD}{word}");
         for w in left {
             out.push(' ');
@@ -453,12 +470,23 @@ impl ShellDialect for Posix {
         out
     }
 
-    fn parse_file(&self, text: &str) -> Vec<Parsed> {
+    fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed> {
         text.lines()
             .map(str::trim)
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(|l| Self::parse_line(l).map_err(|why| format!("{l}（{why}）")))
+            .map(|l| Self::parse_line(call, l).map_err(|why| format!("{l}（{why}）")))
             .collect()
+    }
+
+    /// `名字() {` ⇒ `Some("名字")`（原住 `assets/aliases/block.rs` 那两份认法，同一形）。
+    fn declared_function(&self, l: &str) -> Option<String> {
+        let (name, rest) = l.split_once("()")?;
+        if !rest.trim_start().starts_with('{') {
+            return None;
+        }
+        let name = name.trim();
+        (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            .then(|| name.to_string())
     }
 
     fn name_is_valid(&self, name: &str) -> bool {
@@ -471,11 +499,15 @@ impl ShellDialect for Posix {
 
     /// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
     /// ① `src/shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`）——**问的是那份文件本身**
-    ///    （`profile_installer::builtin_alias_names`），不在这里抄一份名字清单；
+    ///    （〔OSA〕通用层交进来的 `own_block`），不在这里抄一份名字清单；
     /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器（`/usr/bin/cc`），
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
-    fn name_taken(&self, name: &str) -> Option<String> {
-        if super::block::builtin_alias_names().contains(&name) {
+    fn name_taken(&self, name: &str, own_block: &str) -> Option<String> {
+        if own_block
+            .lines()
+            .filter_map(|l| self.declared_function(l))
+            .any(|n| n == name)
+        {
             return Some(copy_text(
                 "rsShellDialect.posix.nameTakenBuiltin",
                 &[("name", &name.to_string())],
@@ -530,6 +562,20 @@ const PS_TAIL: &str = " $RemainingArgs";
 /// 〔V151〕分隔 claude / ccm 两半的 `--`：写成单引号字面量（裸 `--` 是 PowerShell 自己的「参数到此为止」记号，会被它吃掉）。
 const PS_END: &str = " '--'";
 
+/// 〔OSA〕别名块里那个 `function cc`（原 `assets/aliases/block.rs::render_cc_code` 里拼的那一段，逐字搬来；
+/// 握手 `__ccm_bind` 不带守卫 —— 它与 `__ccm_bind` 同块装）。`word` 是通用层交进来的那个词（`KR135D2`：翻正的落点）。
+pub(crate) fn ps_wrapper_function(name: &str, word: &str) -> String {
+    format!(
+        "\nfunction {name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    __ccm_bind\n    & {word} $RemainingArgs\n}}\n"
+    )
+}
+
+/// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`（原住 `assets/aliases/block.rs`，别名块模板填数据目录那一格用）。
+/// ⚠ 与 [`PowerShell::word`] 不同：它只双写 ASCII `'`，不管弯引号 —— 两份各有来历，纯搬家不合并（`第四波记录/OSA.md`）。
+pub(crate) fn ps_single_quoted(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
 impl PowerShell {
     /// 一个参数：**每个都单引号**（引号字符双写）。
     ///
@@ -580,8 +626,8 @@ impl PowerShell {
     }
 
     /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（〔V151〕`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
-    fn parse_call(line: &str) -> Result<Vec<String>, String> {
-        let word = crate::control::ccm::SUBCOMMAND_WORD;
+    fn parse_call(call: Call, line: &str) -> Result<Vec<String>, String> {
+        let word = call.word;
         let head = format!("    & {word}");
         let bad = || copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())]);
         let body = line.strip_prefix(&head).ok_or_else(bad)?;
@@ -592,7 +638,7 @@ impl PowerShell {
             None => return Err(bad()),
             Some(r) => Some(Self::split_words(r)?),
         };
-        Ok(join_last_end(Self::split_words(lead)?, right))
+        Ok(join_last_end(call.end, Self::split_words(lead)?, right))
     }
 }
 
@@ -665,9 +711,9 @@ impl ShellDialect for PowerShell {
     }
 
     /// 与 `src/shared/cc.ps1.tpl` 里的 `function cc` 逐字同形（只多了预置参数，握手那一行带守卫）。
-    fn render_alias(&self, name: &str, argv: &[String]) -> String {
-        let word = crate::control::ccm::SUBCOMMAND_WORD;
-        let (left, right) = split_last_end(argv);
+    fn render_alias(&self, c: Call, name: &str, argv: &[String]) -> String {
+        let word = c.word;
+        let (left, right) = split_last_end(c.end, argv);
         let mut call = format!("    & {word}");
         for w in left {
             call.push(' ');
@@ -695,7 +741,7 @@ impl ShellDialect for PowerShell {
 
     /// 按块认：`function 名字 {` 起、`}` 止；块里只认 [`Self::render_alias`] 产出的那一形 ——
     /// 名字与参数取出来之后**原样再渲染一遍逐字比**，差一个字节就整块算认不出（不猜用户手改了什么）。
-    fn parse_file(&self, text: &str) -> Vec<Parsed> {
+    fn parse_file(&self, call: Call, text: &str) -> Vec<Parsed> {
         let mut out = Vec::new();
         let mut lines = text.lines();
         while let Some(raw) = lines.next() {
@@ -733,10 +779,10 @@ impl ShellDialect for PowerShell {
                 .iter()
                 .find(|b| b.trim_start().starts_with('&'))
                 .ok_or_else(|| copy_text("rsShellDialect.ps.noCcmCall", &[]))
-                .and_then(|call| Self::parse_call(call));
+                .and_then(|line| Self::parse_call(call, line));
             match got {
                 Ok(argv) => {
-                    let again = self.render_alias(name, &argv);
+                    let again = self.render_alias(call, name, &argv);
                     let seen = std::iter::once(raw.trim_end().to_string())
                         .chain(body.iter().map(|b| b.to_string()))
                         .chain(std::iter::once("}".to_string()))
@@ -761,6 +807,19 @@ impl ShellDialect for PowerShell {
         portable_name(name)
     }
 
+    /// `function 名字` / `function<TAB>名字` ⇒ 名字（`[A-Za-z0-9_-]` 那一段，可能为空）。原 `block.rs::find_conflicting_functions` 的 PowerShell 那一臂。
+    fn declared_function(&self, l: &str) -> Option<String> {
+        let rest = l
+            .strip_prefix("function ")
+            .or_else(|| l.strip_prefix("function\t"))?;
+        let rest = rest.trim_start();
+        // 函数名到第一个非 [A-Za-z0-9_-] 字符为止
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
+            .unwrap_or(rest.len());
+        Some(rest[..end].to_string())
+    }
+
     /// PowerShell 的函数名大小写不敏感：`Zcc` 与 `alphacc` 是同一个函数，后定义的盖掉先定义的。
     fn same_name(&self, a: &str, b: &str) -> bool {
         a.eq_ignore_ascii_case(b)
@@ -773,10 +832,9 @@ impl ShellDialect for PowerShell {
     /// ③ 〔FIX · `设计/71 §8` 第 8 条 · WIN2 #4 读数〕PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
     /// 撞上它们的别名定义了也敲不到。问这台：起一次 PowerShell 跑 `Get-Alias`、进程内缓存
     /// （[`ps_builtin_aliases`]），不编一份清单；问不到就说问不到。
-    fn name_taken(&self, name: &str) -> Option<String> {
-        // 只问模板里定义了哪几个函数 —— 与数据目录无关，喂一个占位目录。
-        let block = super::block::render_cc_code("cc", true, std::path::Path::new("/_"));
-        let ours = block.lines().any(|l| {
+    fn name_taken(&self, name: &str, own_block: &str) -> Option<String> {
+        // 〔OSA〕模板里定义了哪几个函数：通用层交进来渲染好的那一份（它喂一个占位数据目录 —— 与名字无关）。
+        let ours = own_block.lines().any(|l| {
             l.trim_start()
                 .strip_prefix("function ")
                 .and_then(|r| r.split_whitespace().next())
@@ -823,5 +881,5 @@ impl ShellDialect for PowerShell {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/assets/aliases/dialect_tests.rs"]
+#[path = "../../../../tests/backend/platform/shell/dialect_tests.rs"]
 mod tests;

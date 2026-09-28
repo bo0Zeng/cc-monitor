@@ -55,12 +55,18 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 pub(crate) mod block;
-pub(crate) mod dialect;
 pub(crate) mod fence;
 
 use crate::assets::door::{self, Door};
 use crate::control::ccm::argv::flag;
-use dialect::{Listed, Shell};
+// 〔OSA · V156〕方言住后端 OS 适配层（原住本目录）。
+use crate::platform::shell::dialect::{self, Listed, Shell};
+
+/// 〔OSA〕交给方言的那条调用形状：`ccm` 那个词与 `--` 分界住 `control::ccm`，适配层不往上够 ⇒ 由这里交下去。
+pub(crate) const CALL: dialect::Call<'static> = dialect::Call {
+    word: crate::control::ccm::SUBCOMMAND_WORD,
+    end: flag::END,
+};
 
 // 〔TL1 · 4C〕墓碑：这里从前有一对**写进用户 rc / `$PROFILE`** 的围栏常量（`# === cc-monitor aliases BEGIN v1 ===` 那一对），
 //   包着 [`install_in`] 代装的那一行 source。那一步退役（`71 §6.1`），这对围栏随之删 —— 盘上已有的那一块不读不删。
@@ -416,7 +422,7 @@ fn cwd_form_ok(v: &str, shell: Shell) -> bool {
 
 /// 一条（合格的）别名在这种 shell 里的写法（方言那一份的薄包装）。
 pub(crate) fn render_line(a: &Alias, shell: Shell) -> String {
-    shell.dialect().render_alias(&a.name, &a.args)
+    shell.dialect().render_alias(CALL, &a.name, &a.args)
 }
 
 /// ① **纯**：清单 → 代码。一个字节都不写、一个文件都不读（撞名检查读的是自带片段 / 模板与 `PATH`）。
@@ -487,7 +493,7 @@ pub(crate) fn read_via(
     let mut aliases = Vec::new();
     let mut unparsed = Vec::new();
     let dia = shell.dialect();
-    for got in dia.parse_file(dia.decode_from_disk(text.as_deref().unwrap_or(""))) {
+    for got in dia.parse_file(CALL, dia.decode_from_disk(text.as_deref().unwrap_or(""))) {
         match got {
             Ok((name, args)) => {
                 let a = Alias { name, args };
@@ -598,10 +604,10 @@ pub(crate) fn install_in(
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。怎么查由方言答（POSIX 查自带片段与 `PATH`；
 /// PowerShell 查终端集成模板与 `PATH` 上的 `.exe` / `.cmd` / …）。
 ///
-/// 〔MIG-3a〕`PATH` 那一格查的是**这台后端进程**的 `PATH`（`dialect.rs::on_path` 头注自认会漏报）—— 规则住在那台机器上，
+/// 〔MIG-3a〕`PATH` 那一格查的是**这台后端进程**的 `PATH`（`platform/shell/dialect.rs::on_path` 头注自认会漏报）—— 规则住在那台机器上，
 /// 查的就是那台（〔AL2〕住 monitor 时远端只能不查，那一格随之退役）。
 pub(crate) fn collision_note(name: &str, shell: Shell) -> Option<String> {
-    shell.dialect().name_taken(name)
+    shell.dialect().name_taken(name, &block::own_block(shell))
 }
 
 /// 候选启动文件的现状。列哪几份由方言答（POSIX 只列在的；PowerShell 的 `$PROFILE` 不在也列）——
