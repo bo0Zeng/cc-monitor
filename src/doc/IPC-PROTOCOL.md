@@ -2505,6 +2505,99 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 错误码：`bad_args` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found`（记录里没有这一条）· `stale`（看过之后被改过 / 已经不在 —— 停在那一个，说清前面删了哪几个）。⚠ **CLI 面也有它**。
 
+#### `aliases-render`：清单 → 代码（MIG-3a，09-28，**纯**）
+
+```text
+→ {"id":"a1","cmd":"aliases-render","args":{"aliases":[{"name":"zcc","args":["--","--account","z"]}],"shell":"posix"}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"fileText":"…","lines":["zcc() { ccm \"$@\" -- --account z; }"],"problems":[],"collisions":[]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `aliases` | → | 清单：每条 `{name, args}`（`args` 是原样的 ccm argv） |
+| `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒，主会话 09-27 裁） |
+| `fileText` · `lines` | ← | 整份文件 · 每条合格别名的写法 |
+| `problems` | ← | 不合格的那几条 `{name, message}`（非空时 `aliases-install` 一个字节都不写） |
+| `collisions` | ← | 撞名提示（自带别名块 · **这台** `PATH` 上的同名程序 · PowerShell 内建别名；只出声、不拦） |
+
+一个字节都不写。规则 · 方言住 `assets/aliases/`（`mod.rs` · `dialect.rs`）。错误码：`bad_args` · `refused`（这台不说那种方言）。⚠ **CLI 面也有它**（`--aliases-render`）。
+
+#### `aliases-read`：读回清单 ＋ 启动文件候选（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"a2","cmd":"aliases-read","args":{"shell":"posix","rcPath":null}}
+← {"kind":"reply","id":"a2","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","exists":true,"aliases":[…],"unparsed":[],"rcCandidates":[…],"otherRc":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `shell` | → | 同 `aliases-render` |
+| `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
+| `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台上那份别名文件的路径 · 在不在 · 读回的清单 · 认不出的行（原文带原因） |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}` |
+| `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
+
+读经本进程文件管理面（`files-home` · `files-peek` · `files-stat`）。已握手的终端数不在这里（住 monitor 进程里）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-read`）。
+
+#### `aliases-install`：写别名文件（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"a3","cmd":"aliases-install","args":{"aliases":[…],"rcPath":"/home/u/.bashrc","shell":"posix"}}
+← {"kind":"reply","id":"a3","ok":true,"data":{"aliasPath":"/home/u/.cc-monitor/aliases.sh","wroteAliasFile":true,"notes":["…"]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `aliases` · `shell` | → | 同 `aliases-render`（有一条不合格 ⇒ 整批不写、`refused`） |
+| `rcPath` | → | 选了哪份启动文件：**只查**它接没接上，不往里写（`71 §6.1`） |
+| `aliasPath` · `wroteAliasFile` · `notes` | ← | 写到哪 · 真写了没有（内容一致就一个字节不写）· 给人看的补充说明 |
+
+写经本进程 `files-put`（逐级补目录、不备份：那是 cc-monitor 自己的文件）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-install`）。
+
+#### `aliases-block-render`：别名块预览（MIG-3a，09-28，**纯**）
+
+```text
+→ {"id":"a4","cmd":"aliases-block-render","args":{"rcPath":"~/.bashrc","withCc":false}}
+← {"kind":"reply","id":"a4","ok":true,"data":{"text":"# === cc-monitor remote ccm BEGIN ===\n…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `rcPath` | → | 目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell） |
+| `withCc` | → | 要不要连 `cc` 函数一起装（只对 PowerShell 有意义） |
+| `text` | ← | 往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`） |
+
+错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-render`）。
+
+#### `aliases-block-install`：别名块装进人选的那份启动文件（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"a5","cmd":"aliases-block-install","args":{"rcPath":"~/.bashrc","withCc":false}}
+← {"kind":"reply","id":"a5","ok":true,"data":{}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `rcPath` | → | 人选的那份启动文件（过围栏；方言由扩展名定，再过方言那一道闸） |
+| `withCc` | → | 同 `aliases-block-render` |
+
+幂等、整块替换，块外一个字节不动；围栏损坏（有 BEGIN 没 END）⇒ 中止。写经本进程 `files-put`（带备份、逐级补目录）。
+错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-install`）。
+
+#### `aliases-block-remove`：别名块卸掉（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"a6","cmd":"aliases-block-remove","args":{"rcPath":"~/.bashrc"}}
+← {"kind":"reply","id":"a6","ok":true,"data":{}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `rcPath` | → | 同 `aliases-block-install` |
+
+整块删，块外一个字节不动；没有块 ⇒ 原样；围栏损坏 ⇒ 中止。写经本进程 `files-put`（带备份）。
+错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-remove`）。
+
 #### `skill-host-list`：这台一个项目里接进来的 skill（MIG-3a，09-28，**只读**）
 
 ```text
@@ -3016,7 +3109,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
-**MIG-3a 追加十条（09-27 · 09-28）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` —— D 组 MCP 与 skill 那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+**MIG-3a 追加十六条（09-27 · 09-28）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
@@ -3563,7 +3656,7 @@ monitor 的 notify 在 **await 文件落地那一瞬**就 EnumWindows 找 marker
 v2.21 实测：**每个新 shell 的首次 `cc` 固定烧满超时**。
 
 两侧各修了一半，缺一不可：
-- **PS 侧**（`src/bridge/scripts/cc.ps1.tpl`）反转顺序 ⇒ 首次即中。
+- **PS 侧**（`src/shared/cc.ps1.tpl`）反转顺序 ⇒ 首次即中。
 - **monitor 侧**（`bind.rs`）加 ≤600ms 重试 ⇒ 兜住**旧模板**用户和慢标题传播。
   旧模板不会自动更新，这条重试是它们唯一的活路。
 

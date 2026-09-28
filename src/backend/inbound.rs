@@ -90,6 +90,13 @@ pub const COMMANDS: &[&str] = &[
     "acct-iso-cmd",
     "acct-iso-shellinit",
     "acct-iso-status",
+    // 〔MIG-3a · 主会话 09-27 裁〕别名六条：规则 · 方言 · 围栏住这台（`assets/aliases/`），写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "aliases-block-install",
+    "aliases-block-remove",
+    "aliases-block-render",
+    "aliases-install",
+    "aliases-read",
+    "aliases-render",
     "apikey-key-set",
     "apikey-read",
     // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
@@ -2538,6 +2545,102 @@ pub const REGISTRY: &[CommandSpec] = &[
             )
             .map(Some)
             .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 主会话 09-27 裁〕别名六条：`assets/aliases/`（规则 · 方言 · 围栏），读写经 [`LocalFiles`]。
+    CommandSpec {
+        name: "aliases-render",
+        doc_anchor: Some("#### `aliases-render`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "aliases",
+            "collisions",
+            "fileText",
+            "lines",
+            "problems",
+            "shell",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_render(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-read",
+        doc_anchor: Some("#### `aliases-read`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "aliasPath",
+            "aliases",
+            "exists",
+            "otherRc",
+            "rcCandidates",
+            "rcPath",
+            "shell",
+            "unparsed",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_read(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-install",
+        doc_anchor: Some("#### `aliases-install`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "aliasPath",
+            "aliases",
+            "notes",
+            "rcPath",
+            "shell",
+            "wroteAliasFile",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_install(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-block-render",
+        doc_anchor: Some("#### `aliases-block-render`"),
+        codes: &["bad_args", "refused"],
+        fields: &["rcPath", "text", "withCc"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_block_render(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-block-install",
+        doc_anchor: Some("#### `aliases-block-install`"),
+        codes: &["bad_args", "refused"],
+        fields: &["rcPath", "withCc"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_block_install(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-block-remove",
+        doc_anchor: Some("#### `aliases-block-remove`"),
+        codes: &["bad_args", "refused"],
+        fields: &["rcPath"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_block_remove(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3a · D 组〕skill 接入面（收件箱）：`assets/skill_inbox.rs`，声明与围栏在 `agents/claudecode/skill_host.rs`，读写经 [`LocalFiles`]。

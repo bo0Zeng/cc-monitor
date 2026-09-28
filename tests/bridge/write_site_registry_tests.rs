@@ -513,20 +513,21 @@ fn every_monitor_write_site_lands_outside_the_users_files() {
     }
     // 正控：多一处没分类的落点 ⇒ 这把尺子真的数得出来。
     let mut poisoned = sites.clone();
-    poisoned.push(("account_aliases.rs", "write_alias_file"));
+    // 〔MIG-3a〕靶子换成后端那一份（别名文件那一写随别名进了那台后端）——只拿它当「一处没分类的落点」的样本。
+    poisoned.push(("mod.rs", "write_alias_file"));
     let (u, _) = class_mismatch(&poisoned, SITE_CLASS);
     assert_eq!(
         u,
-        vec!["account_aliases.rs::write_alias_file".to_string()],
+        vec!["mod.rs::write_alias_file".to_string()],
         "正控没过 —— 本条空转"
     );
 }
 
 /// ② 的人群：用户文件的写从这些文件里搬走了（`RW1` 的七个子步逐份交给后端）。
 const MOVED_OUT: &[&str] = &[
-    "account_aliases.rs",
+    // 〔MIG-3a · 主会话 09-27 裁〕`account_aliases.rs` · `fenced_block.rs` 整份搬进了那台后端（`assets/aliases/`）⇒ 出名单；
+    //   `profile_installer.rs` 只剩用户级 PATH 那一格，留在名单里。
     "profile_installer.rs",
-    "fenced_block.rs",
     // 〔MIG-3a〕`mcp.rs` 整份删了（MCP 读写进了那台后端）⇒ 出名单。
     // 〔MIG-3a〕`skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
     "cc_bus_deploy.rs",
@@ -609,13 +610,13 @@ fn the_files_that_used_to_write_users_files_write_nothing_now() {
         offenders.join("\n")
     );
     // 正控：往一份真源码的副本里塞一处直写，必须被数出来（不许在空人群上恒绿）。
-    let raw = std::fs::read_to_string(root.join("account_aliases.rs")).expect("读");
+    let raw = std::fs::read_to_string(root.join("profile_installer.rs")).expect("读");
     let poisoned = format!(
         "{}\nfn sneaky(p: &std::path::Path) {{ let _ = std::fs::write(p, b\"x\"); }}\n",
         guard_core::production_code(&raw)
     );
     assert_eq!(
-        moved_out_hits("account_aliases.rs", &poisoned).len(),
+        moved_out_hits("profile_installer.rs", &poisoned).len(),
         1,
         "正控没过 —— 针或剥法坏了，本条空转"
     );

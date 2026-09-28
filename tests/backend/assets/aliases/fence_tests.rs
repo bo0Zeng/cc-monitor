@@ -1,5 +1,130 @@
 use super::*;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// `KR62D3`：**同一件事今天有几套形状 —— 一条有住址的账**
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 「把 cc-monitor 的一块东西装进一份 shell 配置」这件事的**一个形状**。
+///
+/// # 为什么要有这张表（而不是把它写进某段注释里）
+///
+/// `K-R62 §0c` 现打到的那条：同一件事按宿主分了三套形状，判定那一半 `fenced_block`
+/// 已经收了（三套全走 [`find_pair`]），**装与卸那一半没收**。
+/// 那段话本来只活在件文件的正文里 —— 而 `K-R60` / `K-R61` 两件已经连着证明：
+/// **写在注释里而字段 / 判据看不见，等于没写**（一句真话摆错了格，和假话一样是假举证，`K29`）。
+///
+/// ⇒ `K-R62` **不收敛它们**（那是另一个量级，见件文件 `§0e`），只把它**登记成一条有住址的账**，
+/// 然后由 PM 裁收不收、什么时候收。这张表买到三件下面各有判据看着的东西：
+///   ① 每一行都指得出**代码住址**（`<文件>.rs::<符号>`），`structural_scan` 会去验它解析得到；
+///   ② 围栏标记**指**各自那个常量，不在这里抄字面量（抄一份就是第二个住址）；
+///   ③ 「判定已收 / 装卸未收」这句话是**数出来的**，不是形容出来的。
+pub(crate) struct FenceShape {
+    /// 稳定 id。
+    pub id: &'static str,
+    /// 哪台机器上的哪份文件。
+    pub host: &'static str,
+    /// 往里放什么。
+    pub what_goes_in: &'static str,
+    /// 这一套认哪一对围栏的 BEGIN。**指常量，不抄字面量。**
+    pub begin_marker: &'static str,
+    /// 装那一半住哪（`<文件>.rs::<符号>`）。
+    pub install_site: &'static str,
+    /// 卸那一半住哪；`None` = **今天没有卸口**（那本身就是一条账）。
+    pub uninstall_site: Option<&'static str>,
+    /// 配对判定走哪一份。三套今天是同一份 —— 这一格就是「已经收了哪一半」的读数。
+    pub pairing: &'static str,
+    /// 它与别的形状**差在哪**。
+    pub differs_in: &'static str,
+}
+
+/// 🔴 **那三套形状 + `K-R62` 新加的那一条，唯一一份账。**
+
+///
+/// ⚠ 它**不判对错**，只记「今天是什么样」。要不要收敛由 PM 裁。
+pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
+    FenceShape {
+        id: "remote-posix-block",
+        host: "远端 POSIX 的 ~/<用户选的那份 rc>",
+        what_goes_in: "整块别名 snippet（src/shared/ccm-aliases.sh）",
+        begin_marker: super::super::block::CCM_PROFILE_BEGIN,
+        // 〔AL2 · 第四波 4D〕远端那两条命令并进 `aliases_block_*`（带 `origin`）⇒ 装口与本机同一处。
+        install_site: "block.rs::install_to_profile",
+        uninstall_site: Some("block.rs::uninstall_from_profile"),
+        pairing: "fence.rs::find_pair",
+        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）",
+    },
+    FenceShape {
+        id: "local-windows-ps",
+        host: "本机 Windows 的 PowerShell profile",
+        what_goes_in: "整块 PowerShell 代码（src/shared/cc.ps1.tpl 渲染）",
+        begin_marker: super::super::block::BEGIN_MARKER,
+        install_site: "block.rs::install_to_profile",
+        uninstall_site: Some("block.rs::uninstall_from_profile"),
+        pairing: "fence.rs::find_pair",
+        differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
+                     而且它要保住 CRLF（fence.rs::detect_eol，`Layout::PowerShell` 那一臂）",
+    },
+    // 〔TL1 · 4C〕墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
+    //   唯一**没有卸口**的一套）。那一步退役了（`设计/71 §6.1`「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
+    //   选了 rc 只查不装）⇒ 这一套不再存在，账降一行；「装得进去卸不掉」那一格随之清零。盘上已有的那一块不读不删。
+    // ★★ 〔`K-R62` 09-11〕**本件新加的那条路，就是这一行。**
+    FenceShape {
+        id: "local-posix-block",
+        host: "本机 POSIX 的 ~/<用户选的那份 rc>",
+        what_goes_in: "整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（block.rs::CCM_WRAPPER_SNIPPET）",
+        // 与远端那一套**同一个常量**：本机与远端装进 rc 的是同一个东西（`K15` / `K36`）。
+        begin_marker: super::super::block::CCM_PROFILE_BEGIN,
+        // 🔴 **落盘那一跳与 `local-windows-ps` 是同一处** —— 这一行的 `install_site`
+        //    与它逐字相同，不是笔误：补这一格没有多出第四台安装器，多出来的只是
+        //    那一台安装器的第二种方言（分岔在 block.rs::plan_install）。
+        install_site: "block.rs::install_to_profile",
+        uninstall_site: Some("block.rs::uninstall_from_profile"),
+        pairing: "fence.rs::find_pair",
+        differs_in: "与 `remote-posix-block` **只差落盘那一跳**（本地原子替换 vs SFTP）：\
+                     内容、围栏、合块与剥块的实现全共用；与 `local-windows-ps` 只差**方言**\
+                     （分岔在 block.rs::plan_install / \
+                     block.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\
+                     ⇒ 补这一格没有把三套变成四套。判据 \
+                     block_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one",
+    },
+];
+
+/// 〔MIG-3a〕从 monitor 搬来时，住址抽取器（`structural_scan::symbol_addresses` / `fn_names_starting_with`）留在 monitor ——
+/// 这里是本族够用的两把小尺（`<文件>.rs::<符号>` 形态 · 生产段里 `fn <前缀>…` 的名字）。
+fn symbol_addresses(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for w in text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == ':'))
+    {
+        if let Some((file, sym)) = w.split_once(".rs::") {
+            let ok_file =
+                !file.is_empty() && file.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            let ok_sym = sym
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && sym.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if ok_file && ok_sym {
+                out.push(w.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn fn_names_starting_with(src: &str, prefixes: &[&str]) -> Vec<String> {
+    let code = guard_core::production_code(src);
+    code.split("fn ")
+        .skip(1)
+        .filter_map(|rest| {
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            prefixes.iter().any(|p| name.starts_with(p)).then_some(name)
+        })
+        .collect()
+}
+
 const B: &str = "# === cc-monitor BEGIN";
 const E: &str = "# === cc-monitor END";
 
@@ -66,11 +191,11 @@ fn first_begin_wins() {
 fn every_fence_shape_names_code_addresses() {
     // 反向自检：抽取器不是恒真的（散文里抠不出住址，真住址抠得出）。
     assert!(
-        crate::structural_scan::symbol_addresses("装在用户的配置里").is_empty(),
+        symbol_addresses("装在用户的配置里").is_empty(),
         "抽取器把散文当住址了 —— 本条此刻无效"
     );
     assert!(
-        !crate::structural_scan::symbol_addresses("fenced_block.rs::find_pair").is_empty(),
+        !symbol_addresses("fence.rs::find_pair").is_empty(),
         "抽取器连一个真住址都抠不出来 —— 先查抽取器，别改断言"
     );
     assert!(
@@ -90,7 +215,7 @@ fn every_fence_shape_names_code_addresses() {
         ] {
             let Some(addr) = addr else { continue };
             assert!(
-                !crate::structural_scan::symbol_addresses(addr).is_empty(),
+                !symbol_addresses(addr).is_empty(),
                 "`{}` 的 `{col}` 不是 `<文件>.rs::<符号>` 形态的住址，实得 {addr:?} —— \
                      一条没有住址的账，读的人无从核对，而它会安静地过期",
                 s.id
@@ -141,11 +266,8 @@ fn the_markers_are_shared_exactly_where_they_should_be() {
         }
     }
     // ③ 标记确实是那几个常量本身（指过去，不是抄一份长得一样的）。
-    assert_eq!(
-        remote.begin_marker,
-        crate::profile_installer::CCM_PROFILE_BEGIN
-    );
-    assert_eq!(windows.begin_marker, crate::profile_installer::BEGIN_MARKER);
+    assert_eq!(remote.begin_marker, super::super::block::CCM_PROFILE_BEGIN);
+    assert_eq!(windows.begin_marker, super::super::block::BEGIN_MARKER);
 }
 
 /// ★★ 「判定已经收了，装与卸还没收」这句话是**数出来的**。
@@ -160,7 +282,7 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
     pairings.dedup();
     assert_eq!(
         pairings,
-        vec!["fenced_block.rs::find_pair"],
+        vec!["fence.rs::find_pair"],
         "配对判定不再只有一份 —— 本模块存在的全部理由就是它只有一份"
     );
 
@@ -194,14 +316,13 @@ fn the_pairing_half_is_converged_and_the_install_half_is_not() {
 
 /// 每一份被 [`FENCE_SHAPES`] 点到名的源文件。覆盖由下面那条判据钉死。
 const SHAPE_FILES: &[(&str, &str)] = &[
-    ("sftp.rs", include_str!("../../src/bridge/src/sftp.rs")),
     (
-        "profile_installer.rs",
-        include_str!("../../src/bridge/src/profile_installer.rs"),
+        "block.rs",
+        include_str!("../../../../src/backend/assets/aliases/block.rs"),
     ),
     (
-        "fenced_block.rs",
-        include_str!("../../src/bridge/src/fenced_block.rs"),
+        "fence.rs",
+        include_str!("../../../../src/backend/assets/aliases/fence.rs"),
     ),
 ];
 
@@ -252,11 +373,8 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
     }
     // ② 反向自检：扫描器在真树上认得出一个真的卸载实现（零命中 ⇒ 下面全是空真）。
     assert!(
-        crate::structural_scan::fn_names_starting_with(
-            file_of("profile_installer.rs"),
-            &["uninstall"]
-        )
-        .contains(&"uninstall_from_profile".to_string()),
+        fn_names_starting_with(file_of("block.rs"), &["uninstall"])
+            .contains(&"uninstall_from_profile".to_string()),
         "扫描器在真树上零命中 —— 本条此刻无效，先查剥法别改断言"
     );
 
@@ -275,8 +393,7 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
             Some(addr) => {
                 let sym = addr.split("::").nth(1).unwrap_or_default();
                 assert!(
-                    crate::structural_scan::fn_names_starting_with(file_of(addr), &[sym])
-                        .contains(&sym.to_string()),
+                    fn_names_starting_with(file_of(addr), &[sym]).contains(&sym.to_string()),
                     "`{}` 申报卸口住 {addr:?}，而那份文件的生产段里没有这个 `fn`",
                     s.id
                 );
@@ -285,7 +402,7 @@ fn a_shape_that_declares_no_uninstall_really_has_none() {
             // ⚠ 动词表的分母如实写在这里：**登记过的就这四个**，不是穷举。
             None => {
                 let home = s.install_site;
-                let stray: Vec<String> = crate::structural_scan::fn_names_starting_with(
+                let stray: Vec<String> = fn_names_starting_with(
                     file_of(home),
                     &["uninstall", "remove", "strip", "purge"],
                 )
@@ -353,14 +470,14 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 /// 〔W5-ALIAS · 第五波先行〕正控换了：从前是本模块 `apply`〔散文墓碑〕里恰好一处 `verify_readback(`；那个序列删了
 /// （零调用方），「备份 · 原子替换 · 回读 · 回滚」今天只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
 /// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
-/// `profile_installer_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
+/// `block_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///
 /// 死值验：往 `account_aliases.rs` 的写别名文件那一跳里放回一行
 /// `verify_and_rollback(`（一个回滚写入器的调用形）⇒ 本条红在第一个断言。
 /// 〔TL1 · 4C〕原句点的是代装 rc 那一行的那一跳（`ensure_rc_source_line`〔散文墓碑〕），那一跳退役了。
 #[test]
 fn the_write_rule_has_exactly_one_home() {
-    let root = crate::guard_support::repo_root().join("src/bridge/src");
+    let root = crate::guard_support::repo_root().join("src/backend/assets/aliases");
     let read = |f: &str| {
         let raw = std::fs::read_to_string(root.join(f)).unwrap();
         let prod = guard_core::production_code(&raw);
@@ -374,7 +491,7 @@ fn the_write_rule_has_exactly_one_home() {
         "split_inclusive(",
     ];
     let mut hits: Vec<String> = Vec::new();
-    for f in ["account_aliases.rs", "profile_installer.rs"] {
+    for f in ["mod.rs", "block.rs"] {
         let prod = read(f);
         for n in needles {
             if prod.contains(n) {
@@ -384,10 +501,10 @@ fn the_write_rule_has_exactly_one_home() {
     }
     assert!(hits.is_empty(), "规则长出了第二个住址：{hits:?}");
     // 本模块只剩纯规划：一个异步落盘序列都不许长回来。
-    let home = read("fenced_block.rs");
+    let home = read("fence.rs");
     assert!(
-        !guard_core::contains_word(&home, "async"),
-        "`fenced_block.rs` 生产段里又有了异步函数 —— 落盘序列长回 monitor 了（它只住后端 `files-put`）"
+        !guard_core::contains_word(&home, "put(") && !guard_core::contains_word(&home, "door"),
+        "`fence.rs` 生产段里够到了写口 —— 落盘序列长到规划这一层了（它只住 `files-put`）"
     );
     // 正控：序列的那一个住址真的在（后端），而且恰好一处定义。
     let backend = guard_core::production_code(

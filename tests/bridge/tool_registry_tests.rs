@@ -1005,7 +1005,7 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/structural_scan.rs", Why::OldId, 1),
     ("src/tool_registry.rs", Why::OldId, 2),
     ("tests/bridge/config_surface_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
-    ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
+    // 〔MIG-3a〕`tests/bridge/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
         "tests/bridge/tool_registry_environment_tests.rs",
         Why::OldId,
@@ -1499,7 +1499,7 @@ struct ImplHome {
 
 /// `TOOLS` 每一条的两格申报，各自该去盘上哪儿对拍。
 ///
-/// `None` = **今天盘上根本没有这么一处**（形状抄 `fenced_block.rs::FENCE_SHAPES`
+/// `None` = **今天盘上根本没有这么一处**（形状抄 `fence_tests.rs::FENCE_SHAPES`
 /// 的 `uninstall_site`）。
 ///
 /// ⚠ **为什么缺口只能写 `None`，不能写一个「它将来会住哪」的地址**：一个不存在的
@@ -1516,7 +1516,8 @@ struct Claim {
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
     const SFTP: &str = include_str!("../../src/bridge/src/sftp.rs");
-    const PROFILE_INSTALLER: &str = include_str!("../../src/bridge/src/profile_installer.rs");
+    // 〔MIG-3a · 主会话 09-27 裁〕别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
+    const PROFILE_INSTALLER: &str = include_str!("../../src/backend/assets/aliases/block.rs");
     // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
     const MCP: &str = include_str!("../../src/backend/assets/mcp_edit.rs");
     const CC_BUS_DEPLOY: &str = include_str!("../../src/bridge/src/cc_bus_deploy.rs");
@@ -1531,22 +1532,23 @@ fn claims() -> Vec<Claim> {
         text: SFTP,
     };
     let profile = || ImplHome {
-        addr: "profile_installer.rs",
+        addr: "block.rs",
         text: PROFILE_INSTALLER,
     };
     // 两条 profile 系工具走的是**同一台安装器**（分岔在 `plan_install` / `plan_uninstall`，
-    // 落盘那一整套共用）—— 与 `fenced_block.rs::FENCE_SHAPES` 里那两行同源。
+    // 落盘那一整套共用）—— 与 `fence_tests.rs::FENCE_SHAPES` 里那两行同源。
     let profile_install = || {
         ImplSite {
-        addr: "profile_installer.rs::install_to_profile",
+        addr: "block.rs::install_to_profile",
         // 〔RW1 · 第四波 09-24〕签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
-        definition: "pub async fn install_to_profile(\n    door: &impl crate::user_files::Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
+        // 〔MIG-3a〕门就是那台后端本进程的 `files-*`（同步）。
+        definition: "pub(crate) fn install_to_profile(\n    d: &dyn Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
     }
     };
     let profile_uninstall = || {
         ImplSite {
-        addr: "profile_installer.rs::uninstall_from_profile",
-        definition: "pub async fn uninstall_from_profile(\n    door: &impl crate::user_files::Door,\n    path: &Path,\n) -> Result<(), String> {",
+        addr: "block.rs::uninstall_from_profile",
+        definition: "pub(crate) fn uninstall_from_profile(d: &dyn Door, path: &Path) -> Result<(), String> {",
     }
     };
     vec![

@@ -88,6 +88,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
+        "bound_terminal_count",
+        Own::Front,
+        "〔MIG-3a〕已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
+    ),
+    (
         "bring_remote_terminal_to_front",
         Own::Front,
         "拉前那条远端会话对应的本机终端窗口",
@@ -221,32 +226,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         "远端拉起那串（ssh 命令 · PowerShell 窗口载荷）还在 monitor 拼",
     ),
     // MIG-3a：资产与 D 组。
-    (
-        "aliases_render",
-        Lane::Mig3a,
-        "别名规则与方言在 monitor（`account_aliases` · `shell_dialect`）",
-    ),
-    ("aliases_read", Lane::Mig3a, "读回解析在 monitor"),
-    (
-        "aliases_install",
-        Lane::Mig3a,
-        "monitor 算好经 `BackendDoor` 交写",
-    ),
-    (
-        "aliases_block_render",
-        Lane::Mig3a,
-        "别名块规划在 monitor（`profile_installer`）",
-    ),
-    (
-        "aliases_block_install",
-        Lane::Mig3a,
-        "monitor 算好经 `BackendDoor` 交写",
-    ),
-    (
-        "aliases_block_remove",
-        Lane::Mig3a,
-        "monitor 算好经 `BackendDoor` 交写",
-    ),
+    // 〔MIG-3a〕别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
     (
         "deploy_remote_acct_iso",
         Lane::Mig3a,

@@ -1,5 +1,8 @@
 //! T04 第二步：**围栏块配对判定**——本机 profile 与远端 profile 共用同一条规则。
 //!
+//! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕从 monitor `fenced_block.rs` 搬来：别名块装 / 卸今天在那台后端里算、经它自己的
+//! 文件管理面写（[`super`]），配对与拼接这份纯规划跟着住这里；一个字节的规则没变。
+//!
 //! ## 为什么只抽这一条，而不是"统一部署器"
 //!
 //! T04 第二步原计划是"五套机制的装/升/卸真正走注册表"。**数下来那个抽象不该建**：
@@ -19,12 +22,12 @@
 //!
 //! 两侧对「有 BEGIN 但找不到配对的 END」（上次安装中断 / 用户手改坏）处置**不一致**：
 //!
-//! - 远端（`profile_installer::merge_profile_block`，〔W5-ALIAS〕从前住 `sftp.rs`）：**Err 中止**。这是 F10 审计 B1 专门加的——
+//! - 远端（`block::merge_profile_block`，〔W5-ALIAS〕从前住 `sftp.rs`，〔MIG-3a〕从 monitor 搬进后端）：**Err 中止**。这是 F10 审计 B1 专门加的——
 //!   原话「绝不用独立 `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，
 //!   也不破坏文件」。
 //! - 本机（`profile_installer::find_block_range`〔散文墓碑〕）：返回 `None` → 走**追加**分支。
 //!
-//! 本机那条的后果我实测过（`profile_installer` 里留着那条复现测试）：
+//! 本机那条的后果我实测过（`block_tests.rs` 里留着那条复现测试）：
 //!
 //! ```text
 //! 原始：  # my stuff / # === cc-monitor BEGIN v1 === / function cc { }        ← 损坏 + 用户代码
@@ -39,7 +42,7 @@
 //! 所以本模块取**两者中最强的那一档**（同 T01 对写后回读的做法：
 //! 四处实现里本机侧只比长度，统一到内容级比对）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 
 /// 找配对的围栏块，返回**行下标**区间（含两端）。
 ///
@@ -51,7 +54,7 @@ use crate::copy_table::copy_text;
 /// 且本机侧的 BEGIN 带版本后缀（`# === cc-monitor BEGIN v1 ===`）所以只能前缀匹配。
 ///
 /// **只找 BEGIN 之后的 END**——独立 `find` 会误配 BEGIN 前面的 END。
-pub fn find_pair(
+pub(crate) fn find_pair(
     text: &str,
     begin_marker: &str,
     end_marker: &str,
@@ -237,98 +240,13 @@ pub(crate) fn splice_out(
 
 // 〔W5-ALIAS · 第五波先行〕这里原来是落盘那一个序列：`apply`〔散文墓碑〕（读 → 计划 → 相同不写 → 备份 → 原子替换 →
 //   回读比对 → 回滚）＋ 它的四个原语 `Store`〔散文墓碑〕＋ 结局 `Applied`〔散文墓碑〕＋ 回滚措辞 `undo_note`〔散文墓碑〕。
-//   RW1 之后用户文件（rc / `$PROFILE` / 别名文件 / 别名块）一律经那台机器的后端写（`user_files::edit` → `files-put`，
+//   RW1 之后用户文件（rc / `$PROFILE` / 别名文件 / 别名块）一律经那台机器的后端写（〔MIG-3a〕今天是 `door::edit` → 本进程 `files-put`，
 //   序列住后端 `control/files_write.rs::put_text`），它只剩一个用户 —— 远端 `ccm` 入口那三行（部署物，不是用户文件）；
 //   那一处改走部署那一族的 `sftp::upload_verified` 之后零调用方 ⇒ 删。本模块只剩**纯规划**（配对 · 拼接 · 账）。
 
-// ═══════════════════════════════════════════════════════════════════════════
-// `KR62D3`：**同一件事今天有几套形状 —— 一条有住址的账**
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// 「把 cc-monitor 的一块东西装进一份 shell 配置」这件事的**一个形状**。
-///
-/// # 为什么要有这张表（而不是把它写进某段注释里）
-///
-/// `K-R62 §0c` 现打到的那条：同一件事按宿主分了三套形状，判定那一半 `fenced_block`
-/// 已经收了（三套全走 [`find_pair`]），**装与卸那一半没收**。
-/// 那段话本来只活在件文件的正文里 —— 而 `K-R60` / `K-R61` 两件已经连着证明：
-/// **写在注释里而字段 / 判据看不见，等于没写**（一句真话摆错了格，和假话一样是假举证，`K29`）。
-///
-/// ⇒ `K-R62` **不收敛它们**（那是另一个量级，见件文件 `§0e`），只把它**登记成一条有住址的账**，
-/// 然后由 PM 裁收不收、什么时候收。这张表买到三件下面各有判据看着的东西：
-///   ① 每一行都指得出**代码住址**（`<文件>.rs::<符号>`），`structural_scan` 会去验它解析得到；
-///   ② 围栏标记**指**各自那个常量，不在这里抄字面量（抄一份就是第二个住址）；
-///   ③ 「判定已收 / 装卸未收」这句话是**数出来的**，不是形容出来的。
-pub struct FenceShape {
-    /// 稳定 id。
-    pub id: &'static str,
-    /// 哪台机器上的哪份文件。
-    pub host: &'static str,
-    /// 往里放什么。
-    pub what_goes_in: &'static str,
-    /// 这一套认哪一对围栏的 BEGIN。**指常量，不抄字面量。**
-    pub begin_marker: &'static str,
-    /// 装那一半住哪（`<文件>.rs::<符号>`）。
-    pub install_site: &'static str,
-    /// 卸那一半住哪；`None` = **今天没有卸口**（那本身就是一条账）。
-    pub uninstall_site: Option<&'static str>,
-    /// 配对判定走哪一份。三套今天是同一份 —— 这一格就是「已经收了哪一半」的读数。
-    pub pairing: &'static str,
-    /// 它与别的形状**差在哪**。
-    pub differs_in: &'static str,
-}
-
-/// 🔴 **那三套形状 + `K-R62` 新加的那一条，唯一一份账。**
-///
-/// ⚠ 它**不判对错**，只记「今天是什么样」。要不要收敛由 PM 裁。
-pub const FENCE_SHAPES: &[FenceShape] = &[
-    FenceShape {
-        id: "remote-posix-block",
-        host: "远端 POSIX 的 ~/<用户选的那份 rc>",
-        what_goes_in: "整块别名 snippet（src/shared/ccm-aliases.sh）",
-        begin_marker: crate::profile_installer::CCM_PROFILE_BEGIN,
-        // 〔AL2 · 第四波 4D〕远端那两条命令并进 `aliases_block_*`（带 `origin`）⇒ 装口与本机同一处。
-        install_site: "profile_installer.rs::install_to_profile",
-        uninstall_site: Some("profile_installer.rs::uninstall_from_profile"),
-        pairing: "fenced_block.rs::find_pair",
-        differs_in: "与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）",
-    },
-    FenceShape {
-        id: "local-windows-ps",
-        host: "本机 Windows 的 PowerShell profile",
-        what_goes_in: "整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）",
-        begin_marker: crate::profile_installer::BEGIN_MARKER,
-        install_site: "profile_installer.rs::install_to_profile",
-        uninstall_site: Some("profile_installer.rs::uninstall_from_profile"),
-        pairing: "fenced_block.rs::find_pair",
-        differs_in: "内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\
-                     而且它要保住 CRLF（fenced_block.rs::detect_eol，`Layout::PowerShell` 那一臂）",
-    },
-    // 〔TL1 · 4C〕墓碑：这里从前还有一行 `local-posix-source-line`（本机 rc 里包着「一行 source」的那一对围栏，
-    //   唯一**没有卸口**的一套）。那一步退役了（`设计/71 §6.1`「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，
-    //   选了 rc 只查不装）⇒ 这一套不再存在，账降一行；「装得进去卸不掉」那一格随之清零。盘上已有的那一块不读不删。
-    // ★★ 〔`K-R62` 09-11〕**本件新加的那条路，就是这一行。**
-    FenceShape {
-        id: "local-posix-block",
-        host: "本机 POSIX 的 ~/<用户选的那份 rc>",
-        what_goes_in: "整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（profile_installer.rs::CCM_WRAPPER_SNIPPET）",
-        // 与远端那一套**同一个常量**：本机与远端装进 rc 的是同一个东西（`K15` / `K36`）。
-        begin_marker: crate::profile_installer::CCM_PROFILE_BEGIN,
-        // 🔴 **落盘那一跳与 `local-windows-ps` 是同一处** —— 这一行的 `install_site`
-        //    与它逐字相同，不是笔误：补这一格没有多出第四台安装器，多出来的只是
-        //    那一台安装器的第二种方言（分岔在 profile_installer.rs::plan_install）。
-        install_site: "profile_installer.rs::install_to_profile",
-        uninstall_site: Some("profile_installer.rs::uninstall_from_profile"),
-        pairing: "fenced_block.rs::find_pair",
-        differs_in: "与 `remote-posix-block` **只差落盘那一跳**（本地原子替换 vs SFTP）：\
-                     内容、围栏、合块与剥块的实现全共用；与 `local-windows-ps` 只差**方言**\
-                     （分岔在 profile_installer.rs::plan_install / \
-                     profile_installer.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\
-                     ⇒ 补这一格没有把三套变成四套。判据 \
-                     profile_installer_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one",
-    },
-];
+// 〔MIG-3a〕`KR62D3` 那张「同一件事今天有几套形状」的账（`FenceShape` / `FENCE_SHAPES`）只有判据读它 ⇒ 随搬家住进判据文件
+//   （`fence_tests.rs`；从前在 monitor 生产段里是一条死代码，占 `deadcode` 棘轮一格）。
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/fenced_block_tests.rs"]
+#[path = "../../../../tests/backend/assets/aliases/fence_tests.rs"]
 mod tests;

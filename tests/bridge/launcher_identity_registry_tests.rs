@@ -109,7 +109,7 @@ const REGISTERED: &[Launcher] = &[
                   **归 `K-R48` 的下一拍**（先裁「一次性模式在 tmux 内由谁打 `@ccm_sid`」，再接线）。",
     },
     Launcher {
-        label: "T2 · Windows 终端里的那一下（`profile_installer.rs` 生成的 `function cc`）",
+        label: "T2 · Windows 终端里的那一下（`assets/aliases/block.rs` 生成的 `function cc`）",
         ledger_cmds: &[],
         // 🔴 〔`KR135D2` 09-15〕**锚点跟着翻正了**：那一行从 `& claude $RemainingArgs`
         //    改成走 `ccm`（`K33`「所有命令只许有一处」＋ `K28`）。`K-R132` 上一轮现打
@@ -117,8 +117,10 @@ const REGISTERED: &[Launcher] = &[
         //    正是它当时要求的，不是绕过它。
         //    ⚠ 锚点钉的是**源码里那个 format 串**（`{word}` 现算自 `CCM_ENTRY_WORD`），
         //    不是渲染后的文本 —— 抄一份 `ccm` 进来就是那个词的第二个住址。
+        // 〔MIG-3a · 主会话 09-27 裁〕别名块进了那台后端：生成 `function cc` 的那一处住 `src/backend/assets/aliases/block.rs`
+        //   （`{word}` 现算自后端 `control::ccm::SUBCOMMAND_WORD`）。
         anchors: &[(
-            "src/bridge/src/profile_installer.rs",
+            "src/backend/assets/aliases/block.rs",
             "& {word} $RemainingArgs",
             1,
         )],
@@ -194,8 +196,9 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔MIG-3a〕地板 79 → 75：资产同步 ＋ skill 装卸三条命令退役（单行三元组人群真少了 4 行；现打 75）。
     // 〔MIG-3a〕地板 75 → 73：acct-iso 两问退役（现打 73）。
     // 〔MIG-3a〕地板 73 → 70：收件箱三条退役（现打 70）。
+    // 〔MIG-3a〕地板 70 → 65：别名六条退役 −6、`bound_terminal_count` ＋1（现打 65）。
     assert!(
-        rows.len() >= 70, // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
+        rows.len() >= 65, // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );

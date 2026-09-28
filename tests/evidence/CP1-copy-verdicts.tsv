@@ -66,15 +66,6 @@ src/backend/footprint.rs:125	不是一份普通文件	保留	[不对外] 同上�
 src/backend/footprint.rs:127	{} 字节，超过 {MAX_HOOK_FILE_BYTES}，没读	保留	[不对外] 同上
 src/backend/footprint.rs:131	读不到：{:?}	保留	[不对外] 同上
 src/backend/footprint.rs:138	读不动：{:?}	保留	[不对外] 同上
-src/bridge/src/fenced_block.rs:123	远端 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES：只被 #[cfg(test)] 判据读的登记表（pub const 但生产代码无读者）
-src/bridge/src/fenced_block.rs:124	整块别名 snippet（src/shared/ccm-aliases.sh）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:129	与本机那一套同一个装口，只差门的 origin（经那台远端后端 files-put 写）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:133	本机 Windows 的 PowerShell profile	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:134	整块 PowerShell 代码（scripts/cc.ps1.tpl 渲染）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:144	本机 POSIX 的 ~/<用户选的那份 rc>	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:440	整块别名 snippet —— **与 `remote-posix-block` 同一个常量**（profile_installer.rs::CCM_WRAPPER_SNIPPET）	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:167	与 `remote-posix-block` **只差落盘那一跳**（本地原子替换 vs SFTP）：\n                     内容、围栏、合块与剥块的实现全共用；与 `local-windows-ps` 只差**方言**\n                     （分岔在 profile_installer.rs::plan_install / \n                     profile_installer.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\n                     ⇒ 补这一格没有把三套变成四套。判据 \n                     profile_installer_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one	保留	[不对外] FENCE_SHAPES 登记表字段
-src/bridge/src/fenced_block.rs:475	内容是**现渲**的（命令名与要不要带 cc 函数由界面给），另两套写的是仓里那份文件本身；\n                     而且它要保住 CRLF（fenced_block.rs::detect_eol，`Layout::PowerShell` 那一臂）	保留	[不对外] FENCE_SHAPES 登记表字段
 src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
 src/bridge/src/filewin/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
@@ -131,7 +122,6 @@ src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外
 src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/panorama-engine/main.rs:368	读不出盘上那一份：{e}	保留	[可达存疑] 〔RM1d〕全景小程序算批注 / 文档关联的新内容时读现状失败（权限 / 编码 / 是个目录，不是「不存在」）⇒ failed 经后端回到全景页写入口的失败提示；{e} 是系统那句原话，给人判是哪一种；绝不当成不存在去覆盖
 src/panorama/api.ts:42	代码全景：这一问已取消	保留	[不对外] 〔RM1f〕`PanoramaCancelled` 的 `message`：视图按类型认它（`instanceof`），说的是自己那句「已取消建立索引」；这一句只进日志 / 开发者控制台
-src/bridge/src/profile_installer.rs:107	预览	保留	[不对外] 〔AL1d〕`render_block` 交给 `plan_install` 的 `what`（只进围栏损坏那一句报错，而对空文件渲染不会有围栏 ⇒ 到不了用户）
 src/bridge/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
 src/bridge/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
 src/backend/skill_install.rs:363	来源那台读不出原文	保留	[不对外] 〔AS2〕skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
