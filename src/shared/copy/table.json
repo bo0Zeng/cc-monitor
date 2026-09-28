@@ -6825,6 +6825,31 @@
       "zh": "连不上",
       "args": []
     },
+    "machineCard.test.stalled": {
+      "kind": "error",
+      "zh": "测试没等到结果（{said}），停在：{where}",
+      "args": ["said", "where"]
+    },
+    "machineCard.stall.start": {
+      "kind": "error",
+      "zh": "还没开始连（本机后端一步进度都没报）",
+      "args": []
+    },
+    "machineCard.stall.handshake": {
+      "kind": "error",
+      "zh": "连 SSH 这一步（最后一步：{step}）",
+      "args": ["step"]
+    },
+    "machineCard.stall.hello": {
+      "kind": "error",
+      "zh": "已连上这台机器，在等它的后端回话",
+      "args": []
+    },
+    "machineCard.stall.control": {
+      "kind": "error",
+      "zh": "后端已回话，在等它确认能起会话",
+      "args": []
+    },
     "machineCard.test.failed": {
       "kind": "error",
       "zh": "测试失败：{e}",
@@ -13364,16 +13389,6 @@
       "zh": "连接超时（{secs} 秒没有回应；地址 {addr}）",
       "args": ["secs", "addr"]
     },
-    "rsDialHost.jump.notFound": {
-      "kind": "error",
-      "zh": "跳板配置未找到：{jumpLabel}",
-      "args": ["jumpLabel"]
-    },
-    "rsDialHost.jump.loop": {
-      "kind": "error",
-      "zh": "跳板配置指向自己（环）",
-      "args": []
-    },
     "rsDialHost.local.absent": {
       "kind": "error",
       "zh": "本机后端不在，远端连不了。远端的 SSH 由本机后端来拨，等了 {ms} 毫秒还没连上本机后端。到设置 → 后端里看本机后端的状态",
@@ -16744,6 +16759,11 @@
     "beProbe.test.noControl": {
       "kind": "error",
       "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
+      "args": []
+    },
+    "beProbe.client.gone": {
+      "kind": "error",
+      "zh": "发起测试的那一侧已经走了（这条连接关了），测试停下",
       "args": []
     },
     "beProbe.test.ok": {

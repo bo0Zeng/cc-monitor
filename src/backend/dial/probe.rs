@@ -4,11 +4,13 @@
 //!
 //! 三步，每步的结论都进回包（部分成功照样回，不当错误）：
 //!
-//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：阶段行逐条收进 `stages`（与界面 `ConnectStage` 同形）；ack 不成 ⇒ `sshOk: false`；
+//! 1. 拨号 ＋ 鉴权 ＋ exec 那台的后端（流模式显式词）：阶段行逐条推成 `stage` 格（与界面 `ConnectStage` 同形）；ack 不成 ⇒ `sshOk: false`；
 //! 2. 读那台后端的首行：是 `hello` ⇒ `backendOk: true` ＋ 人读摘要；超时 / 关了 / 不是 hello ⇒ 「SSH 通了、后端没响应」；
 //! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
-//! ⚠ 阶段行不再逐条流到界面（原先经 Tauri `Channel` 边拨边推）：结局里一并交回，界面在结局到时一次画出来。
+//! 〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe {ticket, cell}`
+//! （`stage` 握手那几行 → `reached: ssh` → `reached: hello` → `reached: control`），结局是最后一格（`end`）；
+//! monitor 把它们交进界面订的 `probe-progress/<ticket>`。界面到点没等到结局时，最后收到的那一格就说得出停在哪一段。
 //! ⚠ **期限归发起方**（主会话裁 · DL1「值归发起方」）：本 crate 零定时器（`no_timer_guard` 按调用形态禁 `timeout(`），原先 monitor 那两段
 //!   等待（hello 8 s · ping 5 s）不在这里；界面那一问的预算按那个量级给（约 15 s，`src/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
 //!   往返毫秒数照旧报：量一次经过时间不是定时器（取的是墙钟 `SystemTime` 的差，不让任何东西自己醒来）。
@@ -18,20 +20,23 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncWriteExt, BufReader};
 
 use crate::remote_ask::{self, AbortOnDrop};
+use crate::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
 const LINE_CAP: u64 = 1024 * 1024;
 /// 探针发的那一问的 id（这条链路只有这一问）。
 const PING_ID: &str = "probe-ping";
 
-/// 结局（界面 `ConnTestResult` 的形状 ＋ `stages`）。
+/// 票的上限与字符集（界面给的是一个 UUID；本后端只当不透明的串回填，但它会进帧 ⇒ 有界、可打印）。
+const TICKET_MAX: usize = 64;
+
+/// 结局（界面 `ConnTestResult` 的形状）。
 fn outcome(
     ssh_ok: bool,
     fingerprint: Option<String>,
     endpoint: Option<String>,
     hello: Option<String>,
     message: String,
-    stages: Vec<Value>,
 ) -> Value {
     json!({
         "sshOk": ssh_ok,
@@ -40,44 +45,93 @@ fn outcome(
         "backendOk": hello.is_some(),
         "backendHello": hello,
         "message": message,
-        "stages": stages,
     })
 }
 
-/// `remote-probe` 的本体：`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身，拿改好的请求 · 上行读端 · 下行写端）。
+/// 进度格的出口：本连接的应答通道（不丢、与应答同序）。
+pub(crate) struct Cells<'a> {
+    ticket: String,
+    out: &'a tokio::sync::mpsc::Sender<Frame>,
+}
+
+impl Cells<'_> {
+    async fn push(&self, cell: Value) -> Result<(), (&'static str, String)> {
+        self.out
+            .send(Frame::Probe {
+                ticket: self.ticket.clone(),
+                cell,
+            })
+            .await
+            .map_err(|_| ("failed", copy_text("beProbe.client.gone", &[])))
+    }
+}
+
+/// 读票（`ticket`）：非空、有界、只许字母数字与 `-`。
+fn ticket_of(args: &Value) -> Result<String, (&'static str, String)> {
+    let t = args
+        .get("ticket")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if t.is_empty()
+        || t.len() > TICKET_MAX
+        || !t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err((
+            "invalid_args",
+            crate::common::contract::malformed("`ticket` must be 1..=64 chars of [A-Za-z0-9-]"),
+        ));
+    }
+    Ok(t.to_string())
+}
+
+/// `remote-probe` 的本体：`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身，拿改好的请求 · 上行读端 · 下行写端）；
+/// `out` 是进度格的出口（生产 = 本连接的应答通道）。结局推成最后一格（`end`），应答本身不带体。
 pub(crate) async fn probe_with<F, Fut>(
     args: &Value,
     serve: F,
+    out: &tokio::sync::mpsc::Sender<Frame>,
+) -> Result<(), (&'static str, String)>
+where
+    F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    let cells = Cells {
+        ticket: ticket_of(args)?,
+        out,
+    };
+    let end = run(args, serve, &cells).await?;
+    cells.push(json!({ "end": end })).await
+}
+
+async fn run<F, Fut>(
+    args: &Value,
+    serve: F,
+    cells: &Cells<'_>,
 ) -> Result<Value, (&'static str, String)>
 where
     F: FnOnce(crate::dial::DialRequest, tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
-    let (machine, saved, jump) = super::machine::from_args(args)?;
+    let (machine, _, _) = super::machine::from_args(args)?;
     let command = format!(
         "{} -- {}",
         relay_route_core::BACKEND_LANDING_SHELL,
         crate::STREAM_FLAG_EXPLICIT
     );
-    let req = super::machine::request(
-        &machine,
-        saved.as_ref(),
-        jump.as_ref(),
-        "stream",
-        json!({ "command": command, "stages": true, "probe": true }),
-    )?;
-    let req = crate::dial::parse_request_value(&req).map_err(|e| {
-        (
-            "invalid_args",
-            crate::common::contract::malformed(&format!("dial request unreadable: {e}")),
-        )
-    })?;
+    let req = crate::dial::parse_request_value(&json!({
+        "machine": args.get("machine"),
+        "saved": args.get("saved"),
+        "jump": args.get("jump"),
+        "use": "stream",
+        "command": command,
+        "stages": true,
+        "probe": true,
+    }))?;
     let (mut up_w, up_r) = tokio::io::duplex(64 * 1024);
     let (down_w, down_r) = tokio::io::duplex(256 * 1024);
     // 探完即丢 ⇒ 链路那一侧一起收（后端收掉那条链路；探针不进连接池 ⇒ 那条 SSH 连接随之关）。
     let _link = AbortOnDrop(tokio::spawn(serve(req, up_r, down_w)));
     let mut rd = BufReader::new(down_r);
-    let mut stages = Vec::new();
 
     // ① 阶段行 → ack。
     let ack = loop {
@@ -94,7 +148,6 @@ where
                     "beProbe.test.sshFailed",
                     &[("e", &copy_text("beProbe.link.droppedBeforeAck", &[]))],
                 ),
-                stages,
             ));
         };
         let v: Value = serde_json::from_str(&line).map_err(|e| {
@@ -104,7 +157,7 @@ where
             )
         })?;
         match v.get("stage") {
-            Some(st) => stages.push(st.clone()),
+            Some(st) => cells.push(json!({ "stage": st })).await?,
             None => break v,
         }
     };
@@ -122,7 +175,6 @@ where
             None,
             None,
             copy_text("beProbe.test.sshFailed", &[("e", &why)]),
-            stages,
         ));
     }
     let fingerprint = ack
@@ -134,6 +186,7 @@ where
         .and_then(Value::as_str)
         .map(str::to_string)
         .or_else(|| machine.endpoints().first().map(|(h, p)| format!("{h}:{p}")));
+    cells.push(json!({ "reached": "ssh" })).await?;
 
     // ② 首行 hello。
     let first = match remote_ask::capped_line(&mut rd, LINE_CAP).await {
@@ -145,7 +198,6 @@ where
                 endpoint,
                 None,
                 copy_text("beProbe.test.probeFailed", &[("e", &e)]),
-                stages,
             ))
         }
         Ok(Some(l)) => serde_json::from_str::<Value>(&l)
@@ -159,10 +211,10 @@ where
             endpoint,
             None,
             copy_text("beProbe.test.noHello", &[]),
-            stages,
         ));
     };
     let head = crate::wire::hello_summary(&hello);
+    cells.push(json!({ "reached": "hello" })).await?;
 
     // ③ 控制通道往返。
     let accepts_ping = hello
@@ -211,6 +263,9 @@ where
                 }
             },
         };
+        if answered.is_ok() {
+            cells.push(json!({ "reached": "control" })).await?;
+        }
         match answered {
             Ok(()) => (
                 format!(
@@ -232,16 +287,22 @@ where
         endpoint,
         Some(format!("{head} {control}")),
         message,
-        stages,
     ))
 }
 
-/// 生产的 `remote-probe`：真拨号。
-pub async fn answer_probe(args: &Value) -> Result<Value, (&'static str, String)> {
-    probe_with(args, |req, up_r, mut down_w| async move {
-        let stages = crate::dial::StageSink::new(true);
-        crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-    })
+/// 生产的 `remote-probe`：真拨号；进度格进本连接的应答通道。
+pub async fn answer_probe(
+    args: &Value,
+    replies: &tokio::sync::mpsc::Sender<Frame>,
+) -> Result<(), (&'static str, String)> {
+    probe_with(
+        args,
+        |req, up_r, mut down_w| async move {
+            let stages = crate::dial::StageSink::new(true);
+            crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+        },
+        replies,
+    )
     .await
 }
 

@@ -888,6 +888,10 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ("transfer-start", "同上"),
     ("transfer-stop", "同上"),
     ("transfer-upload", "同上"),
+    (
+        "remote-probe",
+        "〔MIG-1 收尾〕`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
+    ),
 ];
 
 /// 🔴 帧面：够得着 tmux 的命令 == 声明 `no_tmux` 的 ∪ 登记的「tmux 可选」。

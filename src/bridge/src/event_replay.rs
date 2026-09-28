@@ -95,6 +95,12 @@ pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 /// TS 那一侧的同一个串住 `src/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/events-tap.vitest.ts`）。
 pub const SESSION_TASKS_KIND: &str = "session-tasks";
 
+/// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
+/// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
+/// TS 那一侧的同一个串住 `src/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/remote-probe.vitest.ts`）。
+/// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
+pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
+
 /// 〔DL1〕`accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
@@ -162,6 +168,8 @@ enum SubKind {
     AccountsChanged,
     /// 〔MIG-3b · ㉓②〕`session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
     Tasks,
+    /// 〔MIG-1 收尾〕`probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
+    Probe,
 }
 
 impl Sub {
@@ -406,6 +414,8 @@ enum Stream {
     AccountsChanged,
     /// 〔MIG-3b〕`session-tasks`。
     Tasks,
+    /// 〔MIG-1 收尾〕`probe-progress/<票>`。
+    Probe(String),
 }
 
 /// 〔CF2〕`kind` ⇒ 哪一种流（〔TAP〕`session-tap` ⇒ [`Stream::Tap`]；〔DL1〕`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
@@ -421,6 +431,13 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     }
     if kind == SESSION_TASKS_KIND {
         return Ok(Stream::Tasks);
+    }
+    if let Some(ticket) = kind
+        .strip_prefix(PROBE_PROGRESS_KIND)
+        .and_then(|r| r.strip_prefix('/'))
+        .filter(|t| !t.is_empty())
+    {
+        return Ok(Stream::Probe(ticket.to_string()));
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
@@ -756,6 +773,7 @@ impl EventReplay {
             Ok(Stream::Tap) => (None, SubKind::Tap),
             Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
             Ok(Stream::Tasks) => (None, SubKind::Tasks),
+            Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -1037,6 +1055,36 @@ impl EventReplay {
                 .filter(|s| s.kind == SubKind::Tasks && s.origin == origin)
                 .map(|s| {
                     let items = plan_live(s, vec![Body(body.clone())]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔MIG-1 收尾〕本机后端里那一趟测试连接推来一格（`probe_relay::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
+    /// 交给订了 `<local>` 上 `probe-progress/<那张票>` 的订阅（credit 与 `Gap` 与 `accounts-changed` 同一套；界面给的窗口远大于一趟的格数）。
+    pub fn on_probe(&self, ticket: &str, cell: String) {
+        let body = Body(cell.into_bytes());
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| {
+                    s.kind == SubKind::Probe
+                        && s.origin == crate::origin::LOCAL
+                        && s.only.as_deref() == Some(ticket)
+                })
+                .map(|s| {
+                    let items = plan_live(s, vec![body.clone()]);
                     (s.label.clone(), s.id, items)
                 })
                 .filter(|(_, _, items)| !items.is_empty())

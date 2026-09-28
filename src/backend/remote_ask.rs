@@ -266,8 +266,7 @@ pub(crate) fn capture_request(
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::parse_request_value(&v)
-        .map_err(|e| crate::common::contract::malformed(&format!("dial request unreadable: {e}")))
+    crate::dial::parse_request_value(&v).map_err(|(_, m)| m)
 }
 
 impl Remote for DialRemote {

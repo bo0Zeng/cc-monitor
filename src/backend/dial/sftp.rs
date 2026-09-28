@@ -194,9 +194,7 @@ pub(crate) struct Dial(DialRequest);
 
 impl Dial {
     pub(crate) fn parse(v: &serde_json::Value) -> Result<Dial, String> {
-        super::parse_request_value(v).map(Dial).map_err(|e| {
-            crate::common::contract::malformed(&format!("unreadable dial request: {e}"))
-        })
+        super::parse_request_value(v).map(Dial).map_err(|(_, m)| m)
     }
 }
 

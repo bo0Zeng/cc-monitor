@@ -186,6 +186,11 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     // 〔MIG-3b · ㉓②〕某个会话的任务清单变了 —— 交回读循环（本机消费者交重放缓冲那张订阅表，与远端同一个口）。
     ("tasks_changed", r#"{"kind":"tasks_changed","sid":"s1"}"#),
+    // 〔MIG-1 收尾〕测试连接的进度格 —— 不是会话内容，就地交中继（`probe_relay`），不进内容通道。
+    (
+        "probe",
+        r#"{"kind":"probe","ticket":"no-such-ticket","cell":{"reached":"ssh"}}"#,
+    ),
     // 〔TAP · V124〕中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
         "tap",

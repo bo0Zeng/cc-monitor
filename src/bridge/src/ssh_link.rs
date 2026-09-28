@@ -72,9 +72,18 @@ pub struct Ack {
     /// 〔FIX · `设计/99 §2 ㊶`〕经跳板时跳板那一台报过的指纹（老后端 / 直连 ⇒ 空）。
     #[serde(default)]
     pub jump_fingerprints: std::collections::BTreeMap<String, String>,
-    /// 竞速胜出的地址（`host:port`）。
+    /// 竞速胜出的地址（`host:port`，给人看）。
     #[serde(default)]
     pub endpoint: Option<String>,
+    /// 〔MIG-1 收尾〕同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
+    #[serde(default)]
+    pub winner: Option<crate::ssh_source::Endpoint>,
+    /// 〔MIG-1 收尾〕这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
+    #[serde(default)]
+    pub strict: bool,
+    /// 〔MIG-1 收尾〕同上，跳板那一台。
+    #[serde(default)]
+    pub jump_strict: bool,
     #[serde(default)]
     pub v: u32,
     #[serde(default)]

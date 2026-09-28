@@ -32,7 +32,7 @@ import { isSelectable, currentWorkingAccount } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
-import { probeMachine, type ConnTestResult } from "../remote-probe";
+import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
 import type { ResolvedHost } from "../ssh-config-reads";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
@@ -118,6 +118,20 @@ function parsePort(raw: string): number {
  * 而**手写类型时 Rust 新增一个 variant 并不会让它红** —— 那条 `never` 会一直在守一个
  * TS 侧自己造的联合，不是 Rust 的真实形状。换成生成物它才真正对 Rust 的改动有牙。
  */
+/** 〔MIG-1 收尾〕测试连接到点没等到结局时「停在哪一段」的那句话（最后收到的那一格；握手中那一段带上最后一行阶段）。 */
+export function describeStop(stop: ProbeStop): string {
+  switch (stop.at) {
+    case "start":
+      return copyText("machineCard.stall.start");
+    case "handshake":
+      return copyText("machineCard.stall.handshake", { step: describeStage(stop.last).text });
+    case "hello":
+      return copyText("machineCard.stall.hello");
+    case "control":
+      return copyText("machineCard.stall.control");
+  }
+}
+
 export function describeStage(st: ConnectStage): {
   icon: string;
   text: string;
@@ -726,7 +740,7 @@ export class MachineCard {
     this.testButton.disabled = true;
     const prevLabel = this.testButton.textContent;
     this.testButton.textContent = copyText("machineCard.test.running");
-    // F46：连接分阶段事件泳道——测试开始即清空日志区。〔MIG-1 续〕阶段行随结局一并回来（本机后端拨、monitor 不再边拨边推），结局到时一次画。
+    // F46：连接分阶段事件泳道——测试开始即清空日志区。〔MIG-1 收尾〕本机后端边拨边推（进度流 `probe-progress/<票>`），收一行画一行。
     this.testResult.innerHTML = "";
     this.testResult.style.display = "block";
     const stageLog = document.createElement("div");
@@ -734,8 +748,7 @@ export class MachineCard {
     this.testResult.appendChild(stageLog);
     try {
       // 〔MIG-1 续 · ⑬〕表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
-      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts);
-      for (const st of res.stages) this.appendStageLine(stageLog, st);
+      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => this.appendStageLine(stageLog, st));
       this.renderTestResult(res, null, stageLog);
       // S3：记进账本 —— 列表行上那个「✓ 3 分钟前」就是这一次的结论。
       // 一次测试同时给出两格：`sshOk`（连得上吗）与 `backendOk`（backend 回 hello 了吗）。
@@ -750,7 +763,12 @@ export class MachineCard {
       }
     } catch (e) {
       console.warn("remote-probe failed:", e);
-      this.renderTestResult(null, copyText("machineCard.test.failed", { e: String(e) }), stageLog);
+      // 〔MIG-1 收尾〕到点没等到结局 ⇒ 说出停在哪一段（最后收到的那一格）。
+      const said =
+        e instanceof ProbeStalled
+          ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
+          : copyText("machineCard.test.failed", { e: String(e) });
+      this.renderTestResult(null, said, stageLog);
       this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable") });
     } finally {
       this.testButton.disabled = false;
