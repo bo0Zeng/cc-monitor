@@ -584,11 +584,6 @@
       "zh": "往会话 {target} 发送失败，内容可能没有进去。tmux 的原话：{said}",
       "args": ["target", "said"]
     },
-    "beLaunch.typeRaw.failed": {
-      "kind": "error",
-      "zh": "往会话 {target} 发送按键失败，按键可能没有进去。tmux 的原话：{said}",
-      "args": ["target", "said"]
-    },
     "beStderrFd.point.dupFailed": {
       "kind": "error",
       "zh": "错误输出改不到日志文件：{e}",

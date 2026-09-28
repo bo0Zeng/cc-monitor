@@ -2421,7 +2421,7 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "launch",
         doc_anchor: Some("#### `launch`"),
-        // 〔TL2 · C4e 问 2〕+`wrong_owner`：`send-into` / `send-keys-raw` 过 `gate::admit`（§34 Gate 2），
+        // 〔TL2 · C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
         // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
         codes: &[
             "invalid_args",
