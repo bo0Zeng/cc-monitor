@@ -157,6 +157,16 @@ const REGISTERED: &[(&str, &str)] = &[
          🔴 **不同拍圈进来就是变松**：那段代码在 `http1.rs` 里时受十一条管着，搬出来不盖标记就出了锁。\
          ⚠ 这枚标记**不买**「切得对 / 是 O(n)」—— 那由 `framer_tests.rs` 的次数与长度相等断言负责。",
     ),
+    // ── 〔DEL〕面 B 那一侧：tee 的 NDJSON 行落点删了之后，挡它的 `X4` 清空，同拍圈进来 ─────
+    (
+        "src/backend/relay/tee.rs",
+        "面 B 上「搬完抄一份」的那一半（`设计/05 §4.3` 归通信层那一列点名了它；`设计/20 §11` 挂载物 ①）：\
+         拆 SSE 的 `data:` 行、给每件占号、交给宿主的 tap 口。它不认识会话 / 账号 / agent（流标签是不透明串，\
+         路由那两段不进 tee —— `20 §11` I2「① 不问账号」）· 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限。\
+         先前挡它的 `X4`（NDJSON 行落点的 `try_send`：投不进就丢、不说）随独立 `--relay` 一起删了；\
+         tap 那一形「丢必须说」由位置号 `n` 原位兑现（`05 §3.3.4` 的 `Gap` 那一形，纯算术）。\
+         ⚠ 这枚标记**不买**「抄得全」—— 那由 `host_tests` 的逐件相等与缺口判据负责。",
+    ),
     // ── 〔面 A 第一个外部客户端，2026-09-24〕通道那三份：进来那天就是十一条全绿 ─────────
     //    用户裁「甲, 窗口变成独立前端」：文件窗口是独立进程，够不着后端 ⇒ 它是又一个前端，
     //    说的正是 `01 §2.2` 那两个动作。同目录另两份（`host.rs` 绑口造钥匙、`dial.rs` 拨号）
@@ -2486,11 +2496,15 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔SH1 · 4D〕37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
     // 〔GAP1 · `设计/15 §4.7 S1`〕39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
     // 〔RESYNC · V149〕基数 40 → 增量 +1 ⇒ 41：`resync.ts::resync`（`resync`，机器一行「重新对齐」与关卡 2「对齐后重试」共用这一处）；显式给期限（`RESYNC_BUDGET_MS`）。
+    // 〔MIG-3a〕基数 41 → 增量 +6 ⇒ 47：`mcp-reads.ts` 三处（`mcp-read` · `mcp-server-put` / `-remove`）＋ `mcp-sync-reads.ts` 三处（`mcp-sync-source` / `-preview` / `-apply`），
+    //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
+    // 〔MIG-3a〕基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
+    //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 44usize), // 〔MIG-3b〕子步 4：+2（`session-writes.ts` 的删会话 · 分叉）// 〔MIG-3b〕+1：钩子诊断 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）
+            ("chan.call", 55usize), // 〔合并 MIG-3b × 主线 19671e6b〕主线 52 ＋ MIG-3b +3（钩子诊断 `hooks-diag` · `session-writes.ts` 的删会话 · 分叉）
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
@@ -2541,20 +2555,13 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
 /// ⚠ **它不买「圈进来就对了」** —— `真相源/100 §二` 那一形（十一条全绿而语义上不该圈）
 /// 本条一个字都不说。归属判断永远是人做的，本表只保证那段理由不是假的。
 const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
-    (
-        "src/backend/relay/tee.rs",
-        &["X4"],
-        &[],
-        "两处 `try_send`（`X4`：丢弃只能经 `Item::Gap` 说出来）。\
-         🔴 **本拍它的 `C1` 掉出去了**：那 4 处 `agent`/`account` 是 tee 输出的 JSON 字段名、\
-         写在格式串里 ⇒ 新射程（公开面）看不见它们。那一格的代价逐字记在 \
-         `c1_no_business_concept_is_named_on_the_public_surface` 的头注里，**不在这里抄第二份**。",
-    ),
+    // 〔DEL〕`relay/tee.rs` 那一行摘了：挡它的 `X4`（NDJSON 行落点的 `try_send`）随独立 `--relay` 删了 ⇒ 圈进 `REGISTERED`。
     (
         "src/backend/relay/listen.rs",
-        &["C4", "C5", "X2"],
-        &["读环境"],
-        "自己 `TcpListener::bind` 端口（`C5`）、自己 `std::env::var` 读环境（`C4`）。\
+        &["C5", "X2"],
+        &[],
+        "自己 `TcpListener::bind` 端口（`C5`）。〔DEL〕先前还自己 `std::env::var` 读环境（`C4`，`--relay` 入口那一处）—— 那一形删了，\
+         进程内那一形的取值器是宿主递进来的。\
          按 `设计/05 §2.1` `C5` 括号里那条，端口与端口号本来就归后端 ⇒ \
          这一份**语义上就该在外面**，不是「等它变干净」。\
          🔴 **`X2` 是 `P16`（2026-09-22）新加的一条，而它是「变干净」的反面**：\
@@ -2910,8 +2917,11 @@ fn the_relay_files_left_outside_are_blocked_by_exactly_the_criteria_the_prose_na
     assert_left_outside(
         RELAY_LEFT_OUTSIDE,
         "`relay/` 今天还进不来的那几份（面 B）",
-        2,
+        // 〔DEL〕份数 2 → 1：`tee.rs` 圈进来了，只剩 `listen.rs`。
         1,
+        // 〔DEL〕`C4` 判词处数 1 → 0：`relay/listen.rs` 那一处读环境（`--relay` 入口）随那一形删了；
+        //   那一份仍被 `C5` / `X2` 咬 ⇒ 仍圈不进来（份数 2 不变）。
+        0,
     );
 }
 

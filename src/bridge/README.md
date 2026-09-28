@@ -114,22 +114,8 @@ src/bridge/
 |---|---|---|---|
 | `load_config` | — | `Value` | 启动时 / 设置面板打开时 |
 | `patch_config` | `{ edits: ConfigEdit[] }` | `()` | 前端各模块存设置时（只交改哪几条路径） |
-| `read_mcp_servers` (F87 #50) | `{ projectDir? }` | `McpServerEntry[]` | MCP 段打开：跨 scope 宽容读（用户 `~/.claude.json` / local / 项目 `.mcp.json`；缺/坏跳过） |
-| `list_mcp_project_dirs` (F87 #50) | — | `String[]` | MCP 段项目目录输入框 datalist（用过的项目自动补全） |
-| `write_project_mcp_server` (F87 #51) | `{ origin, projectDir, name, server }` | `()` | 增/改项目 `<dir>/.mcp.json` 的一个 server（**只写 .mcp.json**）。〔步 12·C 收尾 09-20〕**吃 `origin`，两侧一条**；本机逐字送 `"<local>"` |
-| `remove_project_mcp_server` (F87 #51) | `{ origin, projectDir, name }` | `()` | 从项目 `<dir>/.mcp.json` 删一个 server。〔步 12·C 收尾〕同上，**吃 `origin`，两侧一条** |
-| `read_remote_mcp_servers` (F87b #52) | `{ origin }` | `McpServerEntry[]` | 跨机**只读**远端 user scope（SSH-exec `cat ~/.claude.json`，机器全局 MCP） |
-| `read_remote_project_mcp` (F89a) | `{ origin, projectDir }` | `McpServerEntry[]` | 只读远端某项目 `.mcp.json`（SFTP） |
 | `list_remote_mcp_origins` (F87b) | `{}` | `String[]` | 远端机器选择器 |
-<!-- 〔步 12·C 09-20〕`list_remote_mcp_project_dirs`〔散文墓碑〕 **已退役** —— 并进了
-     `list_mcp_project_dirs`（见下面那张表），两侧算它的那份代码本来就只有一份
-     （`project_dirs_from`），差别只在那份 `~/.claude.json` 的字节从哪来。 -->
-<!-- 〔步 12·C 收尾 09-20〕`write_remote_mcp_server` / `remove_remote_mcp_server`
-     **已退役** —— 并进了上面那两条 `*_project_*`（同一个写面 `<dir>/.mcp.json`、
-     同一份纯核心 `upsert_mcp_server_value` / `remove_mcp_server_value`，
-     差别只在字节走 SFTP 还是走盘）。
-     ⚠ **它们作为函数还在**（`mcp.rs` 里的 `pub(crate) async fn`，是合并后那两条命令的
-     远端分支，路由表与欠账表都按这两个名字登记着）—— 别把「函数还在」读成「命令还在」。 -->
+<!-- 〔MIG-3a · 09-27〕MCP 读写六条与推 / 拉两条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。`list_remote_mcp_origins` 读的是 monitor 自己的配置，挪进 `config.rs`。 -->
 | `list_remote_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin, dir }` | `AccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经后端纯只读（`accounts.rs`，全 stateless）。〔C4a〕「某会话属哪个账号」那一条退役：前端经通道 `chan_call` 直接说帧命令 `accounts-sessions`（本机与远端同一条路） |
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |

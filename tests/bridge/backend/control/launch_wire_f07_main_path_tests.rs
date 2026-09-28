@@ -182,7 +182,7 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
 /// （「不许回来」今天住 `tests/launch-no-shell-in-ts.vitest.ts`）；依据二与删不删 TS 无关，一个字没动：
 ///
 /// - **Rust 生产段**（`src/bridge/src/**.rs`）**不许**发 `create-or-attach` —— monitor 侧 `launch` 那条
-///   `.call` 只发 `send-into` / `send-keys-raw`；
+///   `.call` 只发 `send-into`；
 /// - **`src/backend/control/ccm/`** **必须**发 —— `ccm` 容器路接在后端那条一次性口上（`K-P2` `D3`）。
 ///
 /// 两棵树口径相反不是疏漏，是两件不同的事（历次量法订正见 git 历史：`K-P2` 08-29 补第二棵树、
@@ -262,7 +262,7 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
     //   （生产主路调 TS 兜底 · 兜底问 TS 座要外层命令）与后来的「消费者表」。那几条前提先后没了
     //   （步 22b·B 生产切走 · LR2 把那一族删了），本条只剩下面这一件：「起会话那格」在两棵树上各自什么样。
     // ⚠ 而 **Rust 那棵树仍然必须是零** —— 〔C4e〕monitor 侧那条 `.call("launch")` 连同它的发送端迁到界面删了
-    //   （界面经 `src/tmux-control.ts` 只发 `send-into` / `send-keys-raw`，`tmux_backend_gate_guard` 那条「只经一处」钉着）。
+    //   （界面经 `src/tmux-control.ts` 只发 `send-into`，`tmux_backend_gate_guard` 那条「只经一处」钉着）。
     //   **两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
     assert!(
         hits.is_empty(),
@@ -281,52 +281,6 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
              ⇒ 真要退回来，请连同后端侧那条\n\
              `the_container_launch_goes_through_the_one_door_with_every_field_intact`\n\
              一起撤，并回 `K-P2` 说明为什么。"
-    );
-}
-
-/// ★ **F04c 补：`send-keys` 那两个 mode 只许从一个地方发出去。**
-///
-/// 上面那条不再数 `.call("launch")` 的处数了，于是「谁在发 launch」这件事少了一道账。
-/// 本条把它补回来，但量的是**对的东西**：走后端的 `send-keys` 语义
-/// （`send-into` / `send-keys-raw`）在生产段只许有**一个**产出点 —— 多一处就是「同一个决策两份实现」的起点，
-/// 而这个决策错了的后果是**把「打断当前回合」变成「提交用户排队的文本」**。
-///
-/// 〔C4e · 第四波 4C〕那个产出点从 monitor 的 `mode_for`（`backend_send_keys.rs`〔散文墓碑〕）搬到了界面
-/// `src/tmux-control.ts::sendKeys`（送键迁到界面，经通道直接说后端的 `launch`）⇒ 本条的 Rust 那一半翻成
-/// **零命中**（monitor 生产段一处都不许再有），「恰好一个家」那一半由
-/// `tmux_backend_gate_guard::tests::the_front_end_speaks_the_tmux_control_ops_only_through_one_module` 在 TS 那棵树上钉。
-#[test]
-fn the_send_keys_mode_names_have_exactly_one_production_home() {
-    let raw = format!("\"send-keys-{}\"", "raw");
-    let mut homes: Vec<String> = Vec::new();
-    let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
-    while let Some(d) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&d) else {
-            continue;
-        };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if p.extension().and_then(|x| x.to_str()) != Some("rs") {
-                continue;
-            }
-            if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
-                continue;
-            }
-            let src = guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
-            if src.contains(raw.as_str()) {
-                homes.push(p.file_name().unwrap().to_string_lossy().to_string());
-            }
-        }
-    }
-    assert!(
-        homes.is_empty(),
-        "`send-keys-raw` 这个 mode 名又出现在 monitor 生产段里了：{homes:?}\n\
-             〔C4e〕它今天只有一个家（界面 `src/tmux-control.ts::sendKeys`）—— monitor 里再长一处就是两份，\n\
-             而这个决策漂了的后果是把 `Escape`（打断当前回合）当成「键入并提交」。"
     );
 }
 

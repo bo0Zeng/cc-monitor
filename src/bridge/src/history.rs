@@ -1366,16 +1366,16 @@ pub(crate) fn inject_facts() -> InjectFactSources {
     PRODUCTION_INJECT_FACTS
 }
 
-/// 本机中转没在听时那句「为什么」（本机那一个住在本机常驻后端里，这里起不了第二个）。
-pub(crate) static LOCAL_RELAY_NOT_LISTENING: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsHistory.relay.localNotListening", &[]));
+/// 那台中转没在听时那句「为什么」（本机远端同一句：中转住那台的常驻后端里，这里不另起一个）。
+pub(crate) static RELAY_NOT_LISTENING: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| copy_text("rsHistory.relay.notListening", &[]));
 
 /// 〔RL1 · US1〕一次拉起的中转地址：`None` = 不注入（照旧直连）；`Err` = 该走却走不了（**拒绝起会话**，出声）。
 ///
 /// **本机与远端同一条路**：问那台机器的后端要成品（`launch-endpoint`），照成品执行 ——
 /// - 不注入 ⇒ `None`；注入且那台的中转在听 ⇒ 地址；
-/// - 注入但中转不在：远端 ⇒ **用到才起**（`remote_relay::listening_or_started`：`relay-status` → `relay-ensure` → 有界等）；
-///   本机 ⇒ 起不了第二个（它住在本机后端里）；仍不在 ⇒ 按成品的 `whenDown`：`refuse` ⇒ 拒并说清，`direct` ⇒ 照旧直连。
+/// - 注入但中转不在 ⇒ 不另起一个（〔DEL〕中转只住那台的常驻后端里，本机远端同形）⇒ 按成品的 `whenDown`：
+///   `refuse` ⇒ 拒并说清，`direct` ⇒ 照旧直连。
 /// - 问不到那台后端 ⇒ **拒绝起会话**并说清（D11「后端是给定的、不留退路」：说不出这个号要不要走 API key 那条路，
 ///   就不猜；照旧起出去，一个 API 号会以「与网络故障同形」的失败收场）。
 pub(crate) async fn relay_endpoint_on(
@@ -1405,15 +1405,9 @@ pub(crate) async fn relay_endpoint_on(
     if ep.listening {
         return Ok(Some(url));
     }
-    let why = match &remote {
-        Some(_) => match crate::remote_relay::listening_or_started(origin).await {
-            Ok(()) => return Ok(Some(url)),
-            Err(why) => why,
-        },
-        None => LOCAL_RELAY_NOT_LISTENING.to_string(),
-    };
+    let why = RELAY_NOT_LISTENING.as_str();
     match ep.when_down {
-        Some(WhenDown::Refuse) => Err(relay_down_refusal(&where_, ep.account.as_deref(), &why)),
+        Some(WhenDown::Refuse) => Err(relay_down_refusal(&where_, ep.account.as_deref(), why)),
         _ => {
             tracing::info!(
                 "{where_}中转不在（{why}）⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）"

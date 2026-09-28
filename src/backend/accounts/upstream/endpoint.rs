@@ -188,7 +188,7 @@ pub(crate) fn answer_launch_with(
 ///
 /// - `routed`：传进来的那些 configDir 里，这台表里**有对应行**的那几个（原样回，规则住 `acct-core`）。
 ///   ⚠ 它答「表里有这一行」，不答「那把 key 能不能用」。
-/// - `running`：这台机器上**我们的**中转在不在听（RK1 的差分探针，与 `launch-endpoint` 同一个判准）。
+/// - `running`：这个进程里**我们的**中转在不在听（读宿主自己的监听状态 `relay::our_relay_listening`，与 `launch-endpoint` 同一个判准）。
 pub(crate) fn answer_routing(args: &Value) -> EndpointAnswer {
     answer_routing_with(
         args,

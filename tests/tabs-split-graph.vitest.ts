@@ -381,7 +381,6 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         "findClaudeTmux",
         "findIdleTmux",
         "isCwdFallbackMatch",
-        "claudeExited",
         "TmuxSession",
       ].sort(),
     );

@@ -164,7 +164,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // 〔SR1b · 第四波 09-24〕12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
     // 〔C4c · 第四波 4B〕11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
     // 〔LOC1a · 第四波 4D〕10 → **9**：`remote_branch.rs` 的 `create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。〔散文墓碑〕
-    const TRIAGE_DEBT_TODAY: usize = 4; // 〔E2〕5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 〔SH1〕6 → 5：列 tmux 那一处还掉了 // 〔SH1〕9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
+    const TRIAGE_DEBT_TODAY: usize = 3; // 〔MIG-3a〕4 → 3：远端项目 `.mcp.json` 读那一处随 `mcp.rs` 删了（MCP 进了那台后端） // 〔E2〕5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 〔SH1〕6 → 5：列 tmux 那一处还掉了 // 〔SH1〕9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
     assert_eq!(
         TRIAGE_DEBT.len(),
         TRIAGE_DEBT_TODAY,

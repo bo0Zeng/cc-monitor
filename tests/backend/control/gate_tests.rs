@@ -598,12 +598,12 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     // ── 判定表**之外**的固定场景数：三个输入里唯一手工维护的那个 ────────────────
     //
     // 逐格数出来的：抽取器自检 1 · 目标不存在仍报 `no_such_session` 1 ·
-    // `send-keys-raw` 过同一道门 1 · 只设 `@ccm_sid_expect` 仍拒 1 ·
-    // Gate 3 五条 5 · kill 目标不存在 1 · kill 形状门 1 = **11**。
+    // 只设 `@ccm_sid_expect` 仍拒 1 · Gate 3 五条 5 · kill 目标不存在 1 · kill 形状门 1 = **10**
+    // 〔RST 续 · V41〕11 → 10：裸键那个 mode（`send-keys-raw`）删了，「它也过同一道门」那一格随之删。
     // ⇒ 总槽位 = 判定表行数 + 11（08-06 是 25 + 11 = 36，与本文件原来那个 `FLOOR_TODAY`
     //   以及 `tests/e2e/README.md:64` 的 08-13 台账「35 过」＋当时 1 条登记豁免，两份独立读数都对得上）。
     // ⚠ **加/删判定表之外的场景时同拍改这里**；加判定表用例**不用**动它（那一半是现数的）。
-    const FIXED_SLOTS: usize = 11;
+    const FIXED_SLOTS: usize = 10;
     let slots = rows + FIXED_SLOTS;
 
     // ── 输入 ③〔E2 尾 09-27〕：**版本门**条数，从套件自己的 `min_tmux_for()` 现数 ────────────

@@ -55,7 +55,7 @@ const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/tm
 >;
 const CAP = golden["capture-pane"];
 const KILL = golden.kill;
-const LAUNCH = golden.launch as GoldenOp & { requestRaw: Record<string, unknown> };
+const LAUNCH = golden.launch;
 
 // ⚠ 花括号不能省：`mockReset()` 返回 mock 本身，箭头函数直接返回它 ⇒ vitest 把它当成清理钩子在用例结束时再调一次。
 beforeEach(() => {
@@ -188,7 +188,7 @@ describe("〔C4e〕抓一屏：失败怎么说", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  结束会话（`kill`）· 发按键（`launch` 的两个 mode）· 就地 resume（`launch{send-into}` ＋ F14）
+//  结束会话（`kill`）· 发按键（`launch{send-into}`）· 就地 resume（`launch{send-into}` ＋ F14）
 // ════════════════════════════════════════════════════════════════════════════
 
 /** 三个动作各自「跑一趟、拿那一句」。 */
@@ -198,32 +198,24 @@ const ACTIONS: [string, (origin: string, target: string) => Promise<unknown>][] 
 ];
 
 describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
-  it("★★ 金样：解码器读得懂后端真出的成品；请求体就是金样那一份（两个 mode 各一份）", async () => {
+  it("★★ 金样：解码器读得懂后端真出的成品；请求体就是金样那一份", async () => {
     expect(() => decodeKilled("devbox", "demo-cc", KILL.reply)).not.toThrow();
     expect(() => decodeTyped("devbox", "demo-cc", LAUNCH.reply)).not.toThrow();
     answer({ ok: KILL.reply });
     await killSession("devbox", String(KILL.request.name));
     answer({ ok: LAUNCH.reply });
     await sendKeys("devbox", String(LAUNCH.request.name), String(LAUNCH.request.payload));
-    await sendKeys("devbox", String(LAUNCH.requestRaw.name), String(LAUNCH.requestRaw.payload), false);
     expect(sentCalls()).toEqual([
       ["devbox", "kill", KILL.request],
       ["devbox", "launch", LAUNCH.request],
-      ["devbox", "launch", LAUNCH.requestRaw],
     ]);
   });
 
-  it("★★ `Escape`（打断）走 `send-keys-raw`、`/exit` 走 `send-into` —— `enter` 落在 mode 名上，不是一个字段", async () => {
+  it("★★ 发按键只有 `send-into` 一形（键入 ＋ 回车；〔RST 续 · V41〕裸键 mode 已删）", async () => {
     answer({ ok: LAUNCH.reply });
-    await sendKeys("devbox", "demo-cc", "Escape", false);
-    await sendKeys("devbox", "demo-cc", "/exit", true);
     await sendKeys("devbox", "demo-cc", "/compact");
     const bodies = sentCalls().map(([, , b]) => b as Record<string, unknown>);
-    expect(bodies.map((b) => [b.mode, b.payload])).toEqual([
-      ["send-keys-raw", "Escape"],
-      ["send-into", "/exit"],
-      ["send-into", "/compact"],
-    ]);
+    expect(bodies.map((b) => [b.mode, b.payload])).toEqual([["send-into", "/compact"]]);
     for (const b of bodies) expect(Object.keys(b).sort(), "请求里多了一格（旧后端会静默忽略它）").toEqual(["mode", "name", "payload"]);
   });
 

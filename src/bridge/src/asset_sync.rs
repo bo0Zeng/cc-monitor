@@ -10,10 +10,10 @@
 //! 1. **连上那一刻**（[`on_remote_ready`]，`ssh_source.rs` 在远端那条流握手成功时调）：那台的后端认得资产目录
 //!    ⇒ 把「怎么够到那台」（拨号请求 ＋ 那台后端的路径）交给本机常驻后端 `assets-sync`，由**它**沿池里那条 SSH
 //!    拉 / 并 / 推（`src/backend/asset_sync.rs`）。后台跑，不挡收帧。
-//! 2. **界面看机器页前**（Tauri 命令 [`assets_sync`]）：同一条命令 —— 远端那一页交那台的拨号请求；本机那一页什么都不交
-//!    （本机后端对它可达表里每一台各做一趟）。
+//! 2. **界面看机器页前**：〔MIG-3a〕界面经通道直问本机后端 `assets-sync`（只报 `origin`，够到那台用握手时登记的那一行，
+//!    `src/assets-sync-reads.ts`）；这里那条 Tauri 命令〔散文墓碑〕删了。
 //!
-//! 拨号请求只有 monitor 造得出来（读配置是宿主的事，`dial_host.rs` 头注 `C4`）；**合并、推什么、扇不扇出，一条都不在这里**。
+//! 拨号请求今天仍由 monitor 造（读 ssh 配置那一半归 MIG-1 进本机后端，`99 §2.1 ⑯`）；**合并、推什么、扇不扇出，一条都不在这里**。
 //! 目录本身的读（`assets-catalog`）前端经通道直接问那台（`chan.call`），不经本模块。
 //!
 //! # 买不到
@@ -24,11 +24,9 @@
 use crate::copy_table::copy_text;
 use std::time::Duration;
 
-use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::backend::control::backend_route::{route_call_error, Routed};
-use crate::origin::{Origin, Route};
 
 /// 本机后端那条命令的名字（与 `src/backend/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
 pub(crate) const CMD: &str = "assets-sync";
@@ -39,101 +37,8 @@ pub(crate) const REMOTE_NEEDS: &str = "assets-catalog-merge";
 /// 一趟的上限：拉 ＋ 推（每台几条 exec）＋ 扇出到其余各台。给足余量同时防卡死（后端零定时器，期限归调用方）。
 const BUDGET: Duration = Duration::from_secs(180);
 
-/// 一趟对一台的结局（后端答的，原样转给界面）。
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct AssetsSyncRow {
-    pub origin: String,
-    /// 那台目录的 id（没拉成 ⇒ `null`）。
-    pub peer: Option<String>,
-    /// 本机目录因这一趟变了没有。
-    pub changed: bool,
-    /// 推过去几台快照。量纲是「机器台数」（后端可达表 ≤ 256 台，一台一份快照）⇒ 远在 2^53 之下，`number` 装得下。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub pushed: u64,
-    /// 哪里没办成（`null` = 全办成了）。
-    pub error: Option<String>,
-}
-
-/// 可达表的一行：origin ↔ 那台目录的 id。界面据它把目录里的机器 id 对回 origin（「装到这台」要从来源那台现读）。
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct AssetsReach {
-    pub origin: String,
-    pub machine: Option<String>,
-}
-
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct AssetsSynced {
-    /// 本机目录的 id（界面据它把目录里本机那一格对回 `<local>`）。本机后端没答出来 ⇒ `null`。
-    #[serde(rename = "self")]
-    pub self_id: Option<String>,
-    pub synced: Vec<AssetsSyncRow>,
-    pub reach: Vec<AssetsReach>,
-}
-
-/// 对面后端的应答认不出来时给人的那句话（多半是两边版本不一样）。**不猜默认值**。
-static UNREADABLE_REPLY: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| copy_text("rsAssetSync.reply.unreadable", &[]));
-
-/// 后端应答 → 线上形状。契约对不上 ⇒ 报错，不猜。
-pub(crate) fn parse_reply(v: &Value) -> Result<AssetsSynced, String> {
-    let broken = || UNREADABLE_REPLY.to_string();
-    let opt_str = |x: &Value, k: &str| -> Result<Option<String>, String> {
-        match x.get(k) {
-            Some(Value::Null) => Ok(None),
-            Some(Value::String(s)) => Ok(Some(s.clone())),
-            _ => Err(broken()),
-        }
-    };
-    let synced = v
-        .get("synced")
-        .and_then(Value::as_array)
-        .ok_or_else(broken)?
-        .iter()
-        .map(|r| {
-            Ok(AssetsSyncRow {
-                origin: r
-                    .get("origin")
-                    .and_then(Value::as_str)
-                    .ok_or_else(broken)?
-                    .to_string(),
-                peer: opt_str(r, "peer")?,
-                changed: r
-                    .get("changed")
-                    .and_then(Value::as_bool)
-                    .ok_or_else(broken)?,
-                pushed: r.get("pushed").and_then(Value::as_u64).ok_or_else(broken)?,
-                error: opt_str(r, "error")?,
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let reach = v
-        .get("reach")
-        .and_then(Value::as_array)
-        .ok_or_else(broken)?
-        .iter()
-        .map(|r| {
-            Ok(AssetsReach {
-                origin: r
-                    .get("origin")
-                    .and_then(Value::as_str)
-                    .ok_or_else(broken)?
-                    .to_string(),
-                machine: opt_str(r, "machine")?,
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    Ok(AssetsSynced {
-        self_id: opt_str(v, "self")?,
-        synced,
-        reach,
-    })
-}
+// 〔MIG-3a〕`AssetsSynced` 那三个形状与 `parse_reply`〔散文墓碑〕随 Tauri 命令 `assets_sync` 删了：界面经通道直问本机后端、
+//   按形状收（`src/assets-sync-reads.ts`）；这里只剩流握手那一刻交事实（`on_remote_ready`），应答原样记日志。
 
 /// 一台远端的入参：`origin` ＋ 拨号请求（`capture` 用法；后端会再钉一遍）。〔E2〕那台后端的路径不交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`。
 pub(crate) fn args_for(cfg: &crate::ssh_source::RemoteConfig) -> Result<Value, String> {
@@ -169,28 +74,12 @@ impl LocalBackend for ResidentBackend {
     }
 }
 
-/// 可测的那一半：哪台（`None` = 本机那一页）→ 入参 → 本机后端 → 解析。
+/// 可测的那一半：那一台（流握手那一刻）→ 入参 → 本机后端；应答原样交回（只记日志，monitor 不解释它）。
 pub(crate) async fn sync_with(
-    target: Option<&crate::ssh_source::RemoteConfig>,
+    target: &crate::ssh_source::RemoteConfig,
     local: &impl LocalBackend,
-) -> Result<AssetsSynced, String> {
-    let args = match target {
-        None => json!({}),
-        Some(cfg) => args_for(cfg)?,
-    };
-    parse_reply(&local.call(args).await?)
-}
-
-/// 界面看机器页前调：远端那一页 ⇒ 让本机后端对那一台做一趟；本机那一页 ⇒ 对它够得到的每一台各一趟。
-#[tauri::command]
-pub async fn assets_sync(origin: Origin) -> Result<AssetsSynced, String> {
-    match origin.route("assets_sync")? {
-        Route::Local => sync_with(None, &ResidentBackend).await,
-        Route::Remote(host) => {
-            let cfg = crate::remote_history::require_cfg_by_label(host)?;
-            sync_with(Some(&cfg), &ResidentBackend).await
-        }
-    }
+) -> Result<Value, String> {
+    local.call(args_for(target)?).await
 }
 
 /// 〔C4d · 第四波 4B〕本机后端**可达表登记**那条命令（与 `src/backend/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
@@ -245,8 +134,8 @@ pub(crate) fn on_remote_ready(cfg: &crate::ssh_source::RemoteConfig, remote_acce
     }
     let cfg = cfg.clone();
     tauri::async_runtime::spawn(async move {
-        match sync_with(Some(&cfg), &ResidentBackend).await {
-            Ok(r) => tracing::info!("资产目录：[{label}] 连上即同步 {:?}", r.synced),
+        match sync_with(&cfg, &ResidentBackend).await {
+            Ok(r) => tracing::info!("资产目录：[{label}] 连上即同步 {}", r["synced"]),
             Err(e) => tracing::warn!("资产目录：[{label}] 连上即同步没办成：{e}"),
         }
     });

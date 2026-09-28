@@ -214,8 +214,8 @@ fn local_and_remote_are_exactly_complementary() {
 //
 //    两处都出自「`origin` 归一的**最后两对**同义双份命令合成一条带 origin 的」那一刀 ——
 //    被合掉的那 2 条远端命令，签名从 `origin: String` 变成了 `host: &str`：
-//      · `mcp.rs::write_remote_mcp_server`
-//      · `mcp.rs::remove_remote_mcp_server`
+//      · `write_remote_mcp_server`〔散文墓碑〕（原住 `mcp.rs`，〔MIG-3a〕随 MCP 进后端删了）
+//      · `remove_remote_mcp_server`〔散文墓碑〕（同上）
 //
 //    改名的理由与上一拍那五处**逐字同形**：这两个函数今天拿到的是**已经分过本机**的
 //    机器名（分本机那一步住合并后那条命令里），继续叫 `origin` 是句假话
@@ -498,8 +498,9 @@ fn every_origin_taking_command_splits_local_through_route() {
         }
     }
     // 反向自检①：抽取器真的摘到了命令（塌成 0 的话下面那条相等是 `{} == {}`）。
+    // 〔MIG-3a〕地板 100 → 50：命令按设计逐批迁通道、人群在缩（今天 98）；这是抽取器反空真地板（塌了是个位数），不是计数棘轮。
     assert!(
-        total_cmds >= 100,
+        total_cmds >= 50,
         "只摘到 {total_cmds} 条 `#[tauri::command]` —— 抽取器坏了，本条在空转"
     );
     // 反向自检②：左边那个人群不许是空集 —— 步 12·C 落地之后它至少有 5 条。
