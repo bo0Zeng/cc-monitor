@@ -4,7 +4,7 @@
 //! `sessions_replayed`），本机远端同一形。monitor 这一侧只做三件事：
 //! ① 两条流（远端 `ssh_source::stream_loop` · 本机 `ssh_source::consume_local`）把成品交进来（[`feed`]）；
 //! ② 按原样转给前端（出口由 `lib.rs` 装：[`Out`] ⇒ 事件 ＋ 拉前那几样副作用）；
-//! ③ 留一份最新成品，给 F5 重放（[`Book::replay`]）与本机骨架清单（[`Book::local_listed`]）用。
+//! ③ 留一份最新成品，给 F5 / 开窗的重放用（[`Book::replay`]，就绪点在会话流里原位交）。
 //!
 //! 唯一一件 monitor 自己知道、后端不知道的事是**到那台的连接断了**（[`In::LinkLost`]）：那台的成品随之作废（整份摘掉），
 //! 当时还活的 / 可重连的交出去说「说不清」（`设计/30 §3.5.7a`：不许显示成已结束）。重连之后那台的新连接自己重报一遍。
@@ -122,6 +122,7 @@ pub enum Out {
         meta: LiveMeta,
     },
     Status {
+        origin: String,
         sid: String,
         status: Option<String>,
         waiting_for: Option<String>,
@@ -187,6 +188,7 @@ impl Book {
                     m.waiting_for = waiting_for.clone();
                 }
                 vec![Out::Status {
+                    origin,
                     sid,
                     status,
                     waiting_for,
@@ -229,45 +231,9 @@ impl Book {
         }
     }
 
-    /// 本机的活会话清单 —— 报完了才给（`None` = 还没报完；不交半截的，`设计/30 §3.5.7a`）。按 (cwd, sid) 排。
-    pub fn local_listed(&self) -> Option<Vec<(String, LiveMeta)>> {
-        let b = self.origins.get(crate::origin::LOCAL)?;
-        if !b.listed {
-            return None;
-        }
-        let mut v: Vec<(String, LiveMeta)> = b
-            .sessions
-            .iter()
-            .filter_map(|(s, p)| match p {
-                Product::Live(m) => Some((s.clone(), m.clone())),
-                Product::Left(_) => None,
-            })
-            .collect();
-        v.sort_by(|a, b| (&a.1.cwd, &a.0).cmp(&(&b.1.cwd, &b.0)));
-        Some(v)
-    }
-
-    /// 本机活会话的红绿灯（前端起步 / F5 拉一次做初始收敛）。
-    pub fn local_activity(&self) -> Vec<(String, Option<String>, Option<String>)> {
-        self.origins
-            .get(crate::origin::LOCAL)
-            .map(|b| {
-                b.sessions
-                    .iter()
-                    .filter_map(|(s, p)| match p {
-                        Product::Live(m) => {
-                            Some((s.clone(), m.status.clone(), m.waiting_for.clone()))
-                        }
-                        Product::Left(_) => None,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
     /// **F5 重放计划**（纯）：`buffered` = 重放缓冲里有行的 `(sid, 它所在的那台)`。
     ///
-    /// - `before`：活会话重宣告（本机骨架由 [`Self::local_listed`] 那一问建，出口对本机那几条只重发容器）；
+    /// - `before`：活会话重宣告（骨架 ＋ 初始灯 ＋ 容器，本机远端同一形）；
     /// - `after`：全部可重连的 · 有行却不活的（这条连接上说过已结束 ⇒ 已结束；没说过 ⇒ 那台报完了清单 ⇒ 已结束，没报完 ⇒ 说不清）·
     ///   报完了清单的那几台再说一次「报完了」（排在最后：前端处理它时活着的已经翻回活）。
     pub fn replay(&self, buffered: &[(String, String)]) -> Replay {
@@ -319,6 +285,98 @@ impl Book {
             }
         }
         r
+    }
+}
+
+impl Out {
+    /// 这件事说的是哪台机器。
+    pub fn origin(&self) -> &str {
+        match self {
+            Out::Live { origin, .. }
+            | Out::Status { origin, .. }
+            | Out::Left { origin, .. }
+            | Out::Listed { origin }
+            | Out::Unseen { origin, .. } => origin,
+        }
+    }
+
+    /// 〔MIG-1 · ⑬〕这件事 ⇒ 会话流里的几格（前端照原样收）。活会话 = `live` ＋ 初始灯 ＋ 容器（判不了的不发）。
+    pub fn frames(&self) -> Vec<crate::bridge::SessionStreamFrame> {
+        use crate::bridge::{self as b, SessionStreamFrame as F};
+        match self {
+            Out::Live { origin, sid, meta } => {
+                let mut v = vec![
+                    F::Live(b::SessionLivePayload {
+                        session_id: sid.clone(),
+                        origin: origin.clone(),
+                        kind: meta.kind.clone(),
+                        attachable: meta.attachable,
+                        cwd: meta.cwd.clone(),
+                        name: meta.name.clone(),
+                    }),
+                    F::Activity(b::SessionActivityPayload {
+                        session_id: sid.clone(),
+                        status: meta.status.clone(),
+                        waiting_for: meta.waiting_for.clone(),
+                    }),
+                ];
+                if let Some(c) = meta.container {
+                    v.push(F::Container(b::SessionContainerPayload {
+                        session_id: sid.clone(),
+                        container: c.as_wire().to_string(),
+                    }));
+                }
+                v
+            }
+            Out::Status {
+                sid,
+                status,
+                waiting_for,
+                ..
+            } => vec![F::Activity(b::SessionActivityPayload {
+                session_id: sid.clone(),
+                status: status.clone(),
+                waiting_for: waiting_for.clone(),
+            })],
+            Out::Left { sid, fate, .. } => vec![match fate {
+                Fate::Reconnectable => F::Idle(b::SessionIdlePayload {
+                    session_id: sid.clone(),
+                }),
+                Fate::Ended => F::Ended(b::SessionEndedPayload {
+                    session_id: sid.clone(),
+                }),
+            }],
+            Out::Listed { origin } => vec![F::Listed(b::OriginSessionsListedPayload {
+                origin: crate::origin::Origin(origin.clone()),
+            })],
+            Out::Unseen { sids, .. } => sids
+                .iter()
+                .map(|s| {
+                    F::Unseen(b::SessionUnseenPayload {
+                        session_id: s.clone(),
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
+impl Book {
+    /// 〔MIG-1〕旁路快照被取消（会话离开了 / 连接断了）时那条会话**此刻**的终局 —— 快照行可能已经把刚落定的 tab 翻活，
+    /// 原样再说一次它现在是什么（原先这里恒补「已结束」，那是 monitor 自己在裁）。活着 ⇒ 不说；这条连接上没说过 ⇒ 说不清。
+    pub fn settle_again(&self, origin: &str, sid: &str) -> Option<Out> {
+        match self.origins.get(origin).and_then(|b| b.sessions.get(sid)) {
+            Some(Product::Live(_)) => None,
+            Some(Product::Left(fate)) => Some(Out::Left {
+                origin: origin.to_string(),
+                sid: sid.to_string(),
+                fate: *fate,
+            }),
+            None => Some(Out::Unseen {
+                origin: origin.to_string(),
+                sids: vec![sid.to_string()],
+            }),
+        }
     }
 }
 

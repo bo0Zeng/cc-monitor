@@ -134,7 +134,6 @@ describe("C01 边界生成物", () => {
       // ⚠ 顺序按目录名排序，别按加入时间摆。
       // 〔LOC1b · 第四波 4D〕Hit / SearchIndexStatus / SearchResponse / SessionHits 四份随 `search.rs` 删了（形状手写进 `src/views/history-search.ts`，那边的解码器严格收）。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
-      "ActiveSessionPayload.ts", //   C04b
       // 〔AL1 · 2026-09-24〕`设计/71`：一类别名（名字 ＋ 一组 ccm 参数）· 渲染（纯）· 读回 · 写入。
       "Alias.ts",
       "AliasInstallReport.ts",
@@ -197,7 +196,6 @@ describe("C01 边界生成物", () => {
       // K-A1：TS 侧 `Account` 从此是它的别名（原先是一份手抄 interface + 一句
       // 「对齐 A2 的返回结构」的注释）。
       "RemoteHealthPayload.ts", //    C02
-      "RemoteSessionAddedPayload.ts", // C02
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       // 〔C4a · 第四波〕"SessionAccount.ts" / "SessionAccountsResult.ts" 走了：它们的 Rust 源（`accounts.rs` 那两个类型）
       //   随「会话 ↔ 账号」改走通道一起删了，逐行解释与它的类型只住 `src/accounts.ts`（`parseSessionAccountLines`）。
@@ -207,14 +205,15 @@ describe("C01 边界生成物", () => {
       "SessionFileNoticePayload.ts", // 〔FW1 · 第四波 4D〕会话内容流里「记录文件不见了 / 被改过已从头重读」那一格的体
       "SessionIdlePayload.ts", //     C02
       "SessionLinesPage.ts", //       〔CF2 · 第四波 4B〕按行号取回的那一段（`read_session_lines`）
+      "SessionLivePayload.ts", // 〔MIG-1〕会话流 `live` 那一格（本机远端同一形）
       // 〔C4c · 第四波 4B〕`SessionRecordProbe.ts`（〔U4b〕resume 之前问记录还在不在的答案）出列：那条命令退役、界面经通道
       //   直接问后端 `history-record`，形状改住 `src/session-reads.ts::RecordProbe`（手写，跨语言由后端判据钉）。
-      "SessionStartedPayload.ts", //  C02
       "SessionStreamFrame.ts", //     〔CF2 · 第四波 4B〕会话内容流里一格的体（`{"line": …}` / `{"batch": …}`）
       "SessionTapPayload.ts", // 〔TAP · V124〕中转抄出来的一个 SSE 事件（`session-tap`，活卡）
       "SessionUnseenPayload.ts", //   〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（`session-unseen`）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "Shell.ts", //                  〔AL1c · 4B〕别名三条命令的 shell 方言入参（`shell_dialect.rs`）
+      "SnapshotInflightPayload.ts", // 〔MIG-1〕会话流 `snapshot_inflight` 那一格
       // 〔F7c 收尾 09-24〕"SftpEntry.ts" 走了（它的 Rust 源随池子那条列目录命令一起删了）。
       "Snippet.ts", //                C04d 批3
       "StartupFile.ts", //            〔AL1d · 4B〕启动文件候选（别名文件那一行 ＋ 别名块共用一份，原 `AccountAliasRc.ts`）
@@ -601,7 +600,7 @@ describe("C01 边界生成物", () => {
  * 没有专属 payload struct（11 个 struct 里没有它）。写了就是假红。
  */
 describe("C02 事件名钉死", () => {
-  it("bridge.rs 的 10 个事件名常量，TS 侧字面量逐个对上", () => {
+  it("bridge.rs 的事件名常量（〔MIG-1〕今天 3 个），TS 侧字面量逐个对上", () => {
     const rust = rustCode(read("src/bridge/src/bridge.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
@@ -622,7 +621,10 @@ describe("C02 事件名钉死", () => {
     // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
     // 〔DL1 · 第五波〕13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `accounts-changed`
     //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），`设计/01 §2.2`「前端只有两个动作」。
-    expect(pairs.length, `期望恰好 12 个事件名常量，实得 ${pairs.length}`).toBe(12);
+    // 〔MIG-1 · `99 §2.1 ⑬`〕12 → 3：会话起停 / 状态那 9 个（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` / `-activity` ·
+    //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`bridge.rs::SessionStreamFrame`）；
+    //   剩 `frontend-ready` · `remote-health` · `task-update`。
+    expect(pairs.length, `期望恰好 3 个事件名常量，实得 ${pairs.length}`).toBe(3);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];

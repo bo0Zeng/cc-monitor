@@ -29,21 +29,15 @@ import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
 import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
-import type { SessionStartedPayload } from "./generated/SessionStartedPayload";
 import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
-import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
-import type { SessionContainerPayload } from "./generated/SessionContainerPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
-import type { OriginSessionsListedPayload } from "./generated/OriginSessionsListedPayload";
-import type { SessionUnseenPayload } from "./generated/SessionUnseenPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
   JsonlLinePayload,
   SessionEndedPayload,
   SessionIdlePayload,
-  SessionStartedPayload,
   TasksUpdatePayload,
   SessionActivityPayload,
 };
@@ -167,6 +161,22 @@ export interface EventHandlers {
  * 落后超过一整个窗口的实时行被句柄丢掉、原位报 `gap`（`onStreamGap` 按行号补）。
  */
 export const STREAM_WINDOW = 20_000;
+
+/**
+ * 〔MIG-1 · `设计/99 §2.1 ⑬` 登记的例外〕会话流里**不吃 credit、不丢**的那几种格（会话起停 / 状态的成品）。
+ * 收到它们不还 credit（monitor 那一侧交它们时本来就没扣）。Rust 那一侧同一张表是 `bridge.rs::SessionStreamFrame::takes_credit`，
+ * 两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
+ */
+export const CREDIT_EXEMPT_FRAMES = [
+  "live",
+  "activity",
+  "container",
+  "idle",
+  "ended",
+  "unseen",
+  "listed",
+  "snapshot_inflight",
+] as const;
 
 /**
  * 〔TAP · V124〕`session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
@@ -579,13 +589,6 @@ export async function bindEvents(
   // 收集所有 listen() 注册 promise，函数末尾 await —— 保证返回时监听已就绪。
   const registrations: Promise<unknown>[] = [];
 
-  // Batch9-F30：快照 inflight（不进 queue——纯 batch 调度信号，无顺序语义）。
-  // 归零时若 batch 模式在续期等待，下一次定时器触发即正常收尾。
-  registrations.push(
-    sub<{ count: number }>("snapshot-inflight", (ev) => {
-      snapshotInflight = ev.payload.count;
-    }),
-  );
 
   // 〔CF2 · 第四波 4B〕会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
   //   （本函数末尾按 `opts.streams` 订）。一格 = 一行（`{"line": …}`）或成批那一段的边界（`{"batch": …}`）。
@@ -616,6 +619,38 @@ export async function bindEvents(
             change: f.file_notice.change,
             grant: hold,
           });
+        } else if (f !== null && typeof f === "object" && "live" in f) {
+          // 〔MIG-1 · ⑬〕会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
+          const p = f.live;
+          if (isLocalOrigin(p.origin)) {
+            queue.push({ kind: "started", sessionId: p.session_id, cwd: p.cwd ?? null, sessionKind: p.kind ?? null, name: p.name ?? null });
+          } else {
+            queue.push({
+              kind: "remote-added",
+              sessionId: p.session_id,
+              origin: p.origin,
+              sessionKind: p.kind ?? null,
+              attachable: p.attachable ?? null,
+              cwd: p.cwd ?? null,
+              name: p.name ?? null,
+            });
+          }
+        } else if (f !== null && typeof f === "object" && "activity" in f) {
+          // issue #23：红绿灯稀疏，当场派（与原来那个事件一样不进 queue）。
+          handlers.onSessionActivity?.(f.activity);
+        } else if (f !== null && typeof f === "object" && "container" in f) {
+          queue.push({ kind: "container", sessionId: f.container.session_id, container: f.container.container });
+        } else if (f !== null && typeof f === "object" && "idle" in f) {
+          queue.push({ kind: "idle", sessionId: f.idle.session_id });
+        } else if (f !== null && typeof f === "object" && "ended" in f) {
+          queue.push({ kind: "ended", sessionId: f.ended.session_id });
+        } else if (f !== null && typeof f === "object" && "unseen" in f) {
+          queue.push({ kind: "unseen", sessionId: f.unseen.session_id });
+        } else if (f !== null && typeof f === "object" && "listed" in f) {
+          queue.push({ kind: "listed", origin: f.listed.origin });
+        } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {
+          // Batch9-F30：快照在途电平 —— 纯 batch 调度信号，不进 queue。
+          snapshotInflight = f.snapshot_inflight.count;
         } else if (f !== null && typeof f === "object" && "batch" in f) {
           if (f.batch === "start") {
             if (perf.firstJsonlBatch === undefined) {
@@ -659,87 +694,9 @@ export async function bindEvents(
     ensureScheduled();
   };
 
-  // session-ended 必须进 queue 与行事件同序处理（issue #20）：之前同步派发，会
-  // 抢在积压的 replay 行之前执行 —— 归档刚落实，后续 drain 的远端行就命中
-  // tabs.ts ensureTab 的远端 un-archive（archived + origin!==null 见行即复活），
-  // 重载对账补发的归档被原样吃掉 → 僵尸 live Tab。入队后前端处理顺序 = 后端
-  // emit 顺序（重放块全部在前、补发 ended 在后；实时 ended 也天然晚于该会话的行：
-  // backend 协议 removed 帧在行帧之后）。tabs.ts 的 pendingArchive 保留为防御层
-  //（§ 17a 双层防御：万一 ended 仍早于建 Tab 的行，建 Tab 时落实归档）。
-  registrations.push(
-    sub<SessionEndedPayload>("session-ended", (e) => {
-      queue.push({ kind: "ended", sessionId: e.payload.session_id });
-      ensureScheduled();
-    }),
-  );
-
-  // audit-fixes F03.2：session-idle 同进 queue，与 ended/行保序（灰灯落在会话末行之后、
-  // 复活 remote-added 之前）。emitter 对同一 sid 只发 idle 或 ended 之一，故二者不冲突。
-  registrations.push(
-    sub<SessionIdlePayload>("session-idle", (e) => {
-      queue.push({ kind: "idle", sessionId: e.payload.session_id });
-      ensureScheduled();
-    }),
-  );
-
-  // session-started 与 session-ended 同进 queue：保持「结束/复活」相对后端 emit 顺序，
-  // 避免 started 抢在仍排队的 ended 之前同步执行而错误复活（issue #20 同序原则的对称面）。
-  // 后端已用 is_session_active 门控，只在 PID 真活时发本事件 → 复活安全。
-  registrations.push(
-    sub<SessionStartedPayload>("session-started", (e) => {
-      queue.push({
-        kind: "started",
-        sessionId: e.payload.session_id,
-        cwd: e.payload.cwd ?? null,
-        sessionKind: e.payload.kind ?? null,
-        name: e.payload.name ?? null,
-      });
-      ensureScheduled();
-    }),
-  );
-
-  // Batch5-F18：远端会话宣告同进 queue——骨架建 Tab 与该会话的行/ended 保序。
-  registrations.push(
-    // C02：这里原先是**内联字面量类型**——最危险的一种手写形态（没有名字，
-    // 漂移时没有任何东西会红，人在 review 里也很难看见）。换成生成物。
-    sub<RemoteSessionAddedPayload>("remote-session-added", (e) => {
-      queue.push({
-        kind: "remote-added",
-        sessionId: e.payload.session_id,
-        origin: e.payload.origin,
-        sessionKind: e.payload.kind ?? null,
-        attachable: e.payload.attachable ?? null,
-        cwd: e.payload.cwd ?? null,
-        name: e.payload.name ?? null,
-      });
-      ensureScheduled();
-    }),
-  );
-
-  // 〔U4b · 第四波〕活会话的容器 ＋ 某台清单报完了：同进 queue（与宣告 / 行保序）。
-  registrations.push(
-    sub<SessionContainerPayload>("session-container", (e) => {
-      queue.push({
-        kind: "container",
-        sessionId: e.payload.session_id,
-        container: e.payload.container,
-      });
-      ensureScheduled();
-    }),
-  );
-  registrations.push(
-    sub<OriginSessionsListedPayload>("origin-sessions-listed", (e) => {
-      queue.push({ kind: "listed", origin: e.payload.origin });
-      ensureScheduled();
-    }),
-  );
-  // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清。同进 queue（与行 / 宣告 / 清单保序）。
-  registrations.push(
-    sub<SessionUnseenPayload>("session-unseen", (e) => {
-      queue.push({ kind: "unseen", sessionId: e.payload.session_id });
-      ensureScheduled();
-    }),
-  );
+  // 〔MIG-1 · `设计/99 §2.1 ⑬`〕会话起停 / 状态那 8 个 Tauri 事件（`session-ended` / `-idle` / `-started` / `-container` / `-unseen` /
+  //   `-activity` · `remote-session-added` · `origin-sessions-listed`，加上 `snapshot-inflight`）并进了会话流：上面 `onStreamItems` 里那几种格。
+  //   与行同一条流 ⇒ issue #20 那条「ended 必须与行同序」由构造保证，不再靠两条通道在 queue 里对齐。
 
   // v2.3.0 issue #11: task-update 同样稀疏，绕过 queue 直接派发
   registrations.push(
@@ -748,12 +705,6 @@ export async function bindEvents(
     }),
   );
 
-  // issue #23: session-activity 稀疏（CLI 仅在状态转换时写），同步派发
-  registrations.push(
-    sub<SessionActivityPayload>("session-activity", (e) => {
-      handlers.onSessionActivity?.(e.payload);
-    }),
-  );
 
   // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
   await Promise.all(registrations);

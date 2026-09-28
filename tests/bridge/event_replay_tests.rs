@@ -21,51 +21,7 @@ fn idx_of(p: &JsonlLinePayload) -> usize {
     last.trim_end_matches(".jsonl").parse().unwrap()
 }
 
-#[test]
-fn buffered_local_session_ids_dedups_and_skips_remote() {
-    let replay = EventReplay::new();
-    {
-        // 子模块可直接访问私有 inner。
-        let mut inner = replay.inner.lock();
-        inner.history.push_back(payload("s1", 0));
-        inner.history.push_back(payload("s1", 1)); // 同 sid 第二行 → 去重
-        inner.history.push_back(payload("s2", 0));
-        let mut remote = payload("r1", 0);
-        remote.origin = Some("nanopi".to_string()); // 远端 → 跳过
-        inner.history.push_back(remote);
-    }
-    let mut ids = replay.buffered_local_session_ids();
-    ids.sort();
-    assert_eq!(ids, vec!["s1".to_string(), "s2".to_string()]);
-}
-
-#[test]
-fn buffered_remote_sessions_dedups_skips_local_and_carries_the_origin() {
-    let replay = EventReplay::new();
-    {
-        let mut inner = replay.inner.lock();
-        inner.history.push_back(payload("s1", 0)); // 本地 → 跳过
-        let mut r1a = payload("r1", 0);
-        r1a.origin = Some("nanopi".to_string());
-        inner.history.push_back(r1a);
-        let mut r1b = payload("r1", 1); // 同 sid 第二行 → 去重
-        r1b.origin = Some("nanopi".to_string());
-        inner.history.push_back(r1b);
-        let mut r2 = payload("r2", 0);
-        r2.origin = Some("rk3576".to_string()); // 不同 host 也收
-        inner.history.push_back(r2);
-    }
-    let mut ids = replay.buffered_remote_sessions();
-    ids.sort();
-    // 〔GP1〕每个 sid 带着它那台机器（F5 对账据此分已结束 / 说不清）。
-    assert_eq!(
-        ids,
-        vec![
-            ("r1".to_string(), "nanopi".to_string()),
-            ("r2".to_string(), "rk3576".to_string())
-        ]
-    );
-}
+// 〔MIG-1〕`buffered_local_session_ids` / `buffered_remote_sessions`〔散文墓碑〕那两条随函数删了（F5 对账改在各条订阅自己的重放里）。
 
 // === Batch5-F19：build_priority_chunks ===
 
@@ -389,11 +345,27 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
             let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
             if let Some(l) = v.get("line") {
                 ("line", *seq, l["seq"].as_u64().unwrap())
-            } else {
-                match v["batch"].as_str().unwrap() {
+            } else if let Some(b) = v.get("batch") {
+                match b.as_str().unwrap() {
                     "start" => ("start", *seq, 0),
                     _ => ("end", *seq, 0),
                 }
+            } else {
+                // 〔MIG-1〕起停那几格：按键名认。
+                let k = [
+                    "live",
+                    "activity",
+                    "container",
+                    "idle",
+                    "ended",
+                    "unseen",
+                    "listed",
+                    "snapshot_inflight",
+                ]
+                .into_iter()
+                .find(|k| v.get(*k).is_some())
+                .expect("认不出的一格");
+                (k, *seq, 0)
             }
         }
         WItem::Gap { from_seq, to_seq } => ("gap", *from_seq, to_seq.unwrap_or(u64::MAX)),
@@ -404,10 +376,23 @@ fn what(i: &WItem) -> (&'static str, u64, u64) {
 }
 
 fn hub() -> (Arc<EventReplay>, Arc<Rec>) {
-    let r = Arc::new(EventReplay::new());
+    let (r, _) = hub_with_book();
+    (r.0, r.1)
+}
+
+/// 〔MIG-1〕带一本自己的成品缓存（不与并行的判据串味）。
+fn hub_with_book() -> (
+    (Arc<EventReplay>, Arc<Rec>),
+    &'static parking_lot::RwLock<crate::session_book::Book>,
+) {
+    let book: &'static parking_lot::RwLock<crate::session_book::Book> =
+        Box::leak(Box::new(parking_lot::RwLock::new(Default::default())));
+    let mut r = EventReplay::new();
+    r.book = book;
+    let r = Arc::new(r);
     let rec = Arc::new(Rec::default());
     r.attach_sink(rec.clone());
-    (r, rec)
+    ((r, rec), book)
 }
 
 fn local() -> crate::origin::Origin {
@@ -515,7 +500,9 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
             ("line", 3, 2),
             ("line", 4, 3),
             ("line", 5, 4),
-            ("end", 6, 0)
+            ("end", 6, 0),
+            // 〔MIG-1〕有行、成品缓存里没说过、那台没报完清单 ⇒ 终局是「说不清」（不吃 credit，排在行后）。
+            ("unseen", 7, 0)
         ]
     );
     // 过了就绪点：同一个 webview 再订一条（另一台机器的整台流）⇒ 当场交它的留存
@@ -527,14 +514,19 @@ async fn the_ready_point_replays_retained_lines_by_credit_and_waits_for_want() {
     r.origin_seen(&boxo, true);
     r.subscribe("main", 2, &boxo, "session-lines", None, 10);
     for _ in 0..200 {
-        if rec.all().iter().any(|i| what(i).0 == "end") {
+        if rec.all().iter().any(|i| what(i).0 == "unseen") {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert_eq!(
         rec.all().iter().map(what).collect::<Vec<_>>(),
-        vec![("start", 0, 0), ("line", 1, 0), ("end", 2, 0)]
+        vec![
+            ("start", 0, 0),
+            ("line", 1, 0),
+            ("end", 2, 0),
+            ("unseen", 3, 0)
+        ]
     );
 }
 
@@ -551,7 +543,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     r.on_line_batch_awaited(early).await;
     r.subscribe("viewer-b", 1, &local(), "session-lines/b", None, 100);
     for _ in 0..200 {
-        if rec.all().iter().any(|i| what(i).0 == "end") {
+        if rec.all().iter().any(|i| what(i).0 == "unseen") {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
@@ -562,7 +554,8 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
             ("start", 0, 0),
             ("line", 1, 0),
             ("line", 2, 1),
-            ("end", 3, 0)
+            ("end", 3, 0),
+            ("unseen", 4, 0) // 〔MIG-1〕只它那一个会话的终局
         ]
     );
     rec.clear();
@@ -572,7 +565,7 @@ async fn a_session_scoped_subscription_only_gets_its_own_session() {
     r.on_line_batch_awaited(mix).await;
     assert_eq!(
         rec.all().iter().map(what).collect::<Vec<_>>(),
-        vec![("line", 4, 2)]
+        vec![("line", 5, 2)] // 〔MIG-1〕位置 4 是上面那格终局
     );
 }
 
@@ -942,5 +935,114 @@ async fn a_line_lost_somewhere_is_said_in_place_as_an_open_gap() {
     assert!(
         subs.iter().all(|id| *id == 1),
         "别的机器的订阅收到了：{subs:?}"
+    );
+}
+
+/// ★ 设计/99 §2.1 ⑬「起停帧不吃 credit、不许丢（登记一条例外）」：一格 credit 都没有时，行照丢（原位 `Gap`），
+/// 起停那几格照交、照占位置；就绪点把起停按成品缓存原位重放 —— 骨架在留存行之前、终局在之后。
+#[tokio::test]
+async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_around_the_lines() {
+    use crate::session_book::{Fate, In, LiveMeta};
+    let ((r, rec), book) = hub_with_book();
+    r.origin_seen(&local(), true);
+    book.write().step(In::Live {
+        origin: "<local>".into(),
+        sid: "a".into(),
+        meta: LiveMeta::default(),
+    });
+    book.write().step(In::Left {
+        origin: "<local>".into(),
+        sid: "b".into(),
+        fate: Fate::Ended,
+    });
+    r.on_line_batch_awaited(lines("b", 0..2)).await; // 就绪点之前：只进留存
+    r.subscribe("w", 1, &local(), "session-lines", None, 10);
+    r.ready_point(None).await;
+    assert_eq!(
+        rec.all().iter().map(|i| what(i).0).collect::<Vec<_>>(),
+        vec!["live", "activity", "start", "line", "line", "end", "ended"],
+        "就绪点：骨架 → 留存行 → 终局"
+    );
+    rec.clear();
+    r.want("w", 1, 0);
+    // 把 credit 用光（10 − 2 行 ＝ 8）。
+    r.on_line_batch_awaited(lines("c", 0..8)).await;
+    rec.clear();
+    r.on_line_batch_awaited(lines("c", 8..9)).await; // 没 credit ⇒ 丢
+    assert!(rec.all().is_empty());
+    r.on_lifecycle(
+        "<local>",
+        vec![crate::bridge::SessionStreamFrame::Ended(
+            crate::bridge::SessionEndedPayload {
+                session_id: "c".into(),
+            },
+        )],
+    );
+    assert_eq!(
+        rec.all()
+            .iter()
+            .map(what)
+            .map(|(k, _, _)| k)
+            .collect::<Vec<_>>(),
+        vec!["gap", "ended"],
+        "没 credit 也照交起停（先原位说丢在哪）"
+    );
+}
+
+/// ★ 设计/99 §2.1 ⑬「起停帧不吃 credit、不许丢（登记一条例外）」—— 例外表就是 `SessionStreamFrame::takes_credit`：
+/// 每一种格造一个、读它上线的键名，按吃不吃 credit 分两摞 == 金样（TS 那一侧 `CREDIT_EXEMPT_FRAMES` 读同一份，异源）。
+#[test]
+fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
+    use crate::bridge::{self as b, SessionStreamFrame as F};
+    let sid = || "s".to_string();
+    let all = vec![
+        F::Line(payload("s", 0)),
+        F::Batch(b::BatchEdge::Start),
+        F::FileNotice(b::SessionFileNoticePayload {
+            session_id: sid(),
+            origin: "<local>".into(),
+            path: "/p".into(),
+            change: "gone".into(),
+        }),
+        F::Live(b::SessionLivePayload {
+            session_id: sid(),
+            origin: "<local>".into(),
+            kind: None,
+            attachable: None,
+            cwd: None,
+            name: None,
+        }),
+        F::Activity(b::SessionActivityPayload {
+            session_id: sid(),
+            status: None,
+            waiting_for: None,
+        }),
+        F::Container(b::SessionContainerPayload {
+            session_id: sid(),
+            container: "tmux".into(),
+        }),
+        F::Idle(b::SessionIdlePayload { session_id: sid() }),
+        F::Ended(b::SessionEndedPayload { session_id: sid() }),
+        F::Unseen(b::SessionUnseenPayload { session_id: sid() }),
+        F::Listed(b::OriginSessionsListedPayload {
+            origin: crate::origin::Origin::local(),
+        }),
+        F::SnapshotInflight(b::SnapshotInflightPayload { count: 1 }),
+    ];
+    let key = |f: &F| -> String {
+        let v = serde_json::to_value(f).unwrap();
+        v.as_object().unwrap().keys().next().unwrap().clone()
+    };
+    let mut credit: Vec<String> = all.iter().filter(|f| f.takes_credit()).map(key).collect();
+    let mut exempt: Vec<String> = all.iter().filter(|f| !f.takes_credit()).map(key).collect();
+    credit.sort();
+    exempt.sort();
+    let golden: serde_json::Value = serde_json::from_str(include_str!(
+        "../__fixtures__/session-stream-credit.golden.json"
+    ))
+    .unwrap();
+    assert_eq!(
+        serde_json::json!({ "credit": credit, "exempt": exempt }),
+        golden
     );
 }

@@ -2983,11 +2983,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔CF2〕F5 那份重放换成就绪点（`ready_point`）：头注表里 ＋ 新函数的文档里点旧名讲来历。
         ("src/bridge/src/event_replay.rs", "replay_and_mark_ready", 2),
         // 〔GP1 · 第四波〕F5 对账要按机器分已结束 / 说不清 ⇒ 远端 sid 清单连同 origin 一起交、改名；新函数文档点旧名讲来历。
-        (
-            "src/bridge/src/event_replay.rs",
-            "buffered_remote_session_ids",
-            1,
-        ),
+        // 〔MIG-1 · ⑬〕那一行退役：`buffered_*` 整族随 F5 对账并进会话簿（`lifecycle_replay`）删掉，讲来历的那段文档一起走。
         // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口（`write_key_at` · `check_base_url`）与
         //   「本机那一臂不发帧」那条判据退役；讲来历的散文与搬去后端的三条判据的出处各挂一块。
         (
@@ -4211,6 +4207,52 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "under_the_name_ccm_only_backend_first_words_reach_the_backend",
             1,
         ),
+        ("src/bridge/README.md", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/bridge/README.md", "list_session_activity", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/bridge/src/bridge.rs", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        (
+            "src/bridge/src/event_replay.rs",
+            "buffered_local_session_ids",
+            1,
+        ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        (
+            "src/bridge/src/event_replay.rs",
+            "buffered_remote_sessions",
+            1,
+        ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/bridge/src/lib.rs", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/bridge/src/lib.rs", "list_session_activity", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/doc/ARCHITECTURE.md", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/doc/IPC-PROTOCOL.md", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/doc/IPC-PROTOCOL.md", "list_session_activity", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/doc/STATE-MATRIX.md", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/doc/STATE-MATRIX.md", "list_session_activity", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/main.ts", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/main.ts", "list_session_activity", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/tab-session-state.ts", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/tab-store.ts", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("src/tabs.ts", "list_active_sessions", 1),      // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        (
+            "tests/bridge/event_replay_tests.rs",
+            "buffered_local_session_ids",
+            1,
+        ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        (
+            "tests/bridge/event_replay_tests.rs",
+            "buffered_remote_sessions",
+            1,
+        ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "list_active_sessions",
+            2,
+        ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "list_session_activity",
+            2,
+        ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
+        ("tests/tabs.vitest.ts", "list_active_sessions", 2), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
     ];
 
     let corpus = dead_name_corpus();
@@ -4462,7 +4504,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/settings/remote-section.vitest.ts", 1),
         // 〔CF2 · 第四波 4B〕重放缓冲分档取消：头注里旧的登记方法名 ＋ 读数那个旧字段名各一块；
         //   会话流收口成 `subscribe`：头注表里 ＋ `ready_point` 文档里点原来那个重放方法名各一块。
-        ("src/bridge/src/event_replay.rs", 6), // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块 〔DL1〕+1：头注点名退役的裸事件常量那一块
+        ("src/bridge/src/event_replay.rs", 7), // 〔MIG-1〕6 → 7：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // 〔GP1〕+1：远端 sid 清单改名（连同 origin 一起交）那一块 〔DL1〕+1：头注点名退役的裸事件常量那一块
         // 〔GP1 · 第四波〕本机凭据文件的写者换成本机常驻后端：monitor 那侧写口 · `platform_fs::make_private` ·
         //   「本机那一臂不发帧」判据退役，讲来历的散文逐处一块；搬去后端的三条判据的出处各一块。
         ("src/bridge/src/apikey_remote.rs", 8), // 〔HX2 · 4D〕3 → 8：头注重写（写 key 那一半删了，墓碑点四个旧名 ＋ 旧命令名；旧的三块墓碑并进头注照留）
@@ -4475,9 +4517,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/creds_store_tests.rs", 11), // 〔HX2 · 4D〕2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
-        ("src/bridge/src/bridge.rs", 1),
+        ("src/bridge/src/bridge.rs", 2), // 〔MIG-1〕1 → 2：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         ("src/entry-viewer.ts", 1),
-        ("src/doc/STATE-MATRIX.md", 1),
+        ("src/doc/STATE-MATRIX.md", 3), // 〔MIG-1〕1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。
         ("tests/bridge/lib_remote_config_tests.rs", 2), // 〔合并 JA1〕+1：JA1 点址那一行
         // 〔SR1b 子步 3 · 2026-09-24〕`inproc_dial.rs` 整份删了（界面进程零 SSH）⇒ 从界面侧搬来的旧函数名全仓只剩散文：
@@ -4560,7 +4602,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
         ("src/backend/wire.rs", 2), // 〔MIG-1〕1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
-        ("src/bridge/README.md", 11), // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着
+        ("src/bridge/README.md", 13), // 〔MIG-1〕11 → 13：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着
         ("src/bridge/build.rs", 1),
         ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
@@ -4591,11 +4633,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/parity_ledger.rs", 1), // 〔MIG-1〕新行：头注那段「名字带 remote 漏掉 10 条」的现打读数点了搬进后端的 `ssh -G` 命令
         ("src/bridge/src/spawn_managed.rs", 6), // 〔MIG-1〕5 → 6：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+1：`.output()` 那四处现打读数里 `ssh -G` 那一处搬进后端 // 〔LOC1a〕+2：一次性本机查询那一格删了，点旧名的散文挂墓碑
         ("src/bridge/src/structural_scan.rs", 1),
-        ("src/doc/ARCHITECTURE.md", 2), // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
+        ("src/doc/ARCHITECTURE.md", 3), // 〔MIG-1〕2 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
         ("src/doc/INVARIANTS.md", 18), // 〔MIG-1〕12 → 18：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔DUP1〕+2：U8c-1「变严的代价」那一节补一句「收口了，收法是删」·「本地路径借 IR 做校验」那一节记 `validateLocalLaunch` 删了 // 〔LOC1b〕+1：§6 探活双重校验那一格搬去后端，点 monitor 旧函数名那句挂一块 // 〔RW1〕+2：§1 例外 3 那道远端删会话守卫 · 例外 1 本机那道路径守卫（`validate_delete_target`）
         //   〔LR2〕+3：§33b 产出方表 `session-backend.ts` 那格 · 三问表 ③ 那格 · 「删掉座的代价也换人了」那段 —— 点着随 TS 兜底一族删掉 / 改写的判据
         //   ⇒ 6（基）＋1（LOC1b）＋3（LR2）= 10
-        ("src/doc/IPC-PROTOCOL.md", 6), // 〔MIG-1〕5 → 6：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
+        ("src/doc/IPC-PROTOCOL.md", 8), // 〔MIG-1〕6 → 8：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // 〔MIG-1〕5 → 6：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         // 〔AL1 · 2026-09-24〕+1：别名那一块搬走时留的墓碑（`buildAccountAliasBlock`）。
         ("src/settings/accounts-section.ts", 3),
         ("src/apikey-reads.ts", 1), // 〔HX2 · 4D〕写 key 改走通道：头注点旧命令名
@@ -4646,7 +4688,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   三个计数旁的增量注（`EXPECTED_LOCAL_OR_BOTH` · `LEDGER.len()` · 增量账）。
         ("src/bridge/src/asset_sync.rs", 2), // 〔MIG-3a〕+2：`AssetsSynced` 那几个形状 ＋ 界面那条 Tauri 命令随同步那一问走通道删了
         ("tests/bridge/asset_sync_tests.rs", 1), // 〔MIG-3a〕+1：「应答缺格就报错不猜」那一条挪到界面（`parse_reply` 删了）
-        ("tests/bridge/parity_ledger_tests.rs", 45), // 〔合并 MIG-1 × 主线 19671e6b〕主线 44 ＋ MIG-1 1（`LEDGER.len()` 尾注点删掉的三条导入命令）⇒ 45 // 〔MIG-3a〕+1：`assets_sync` 那一条理由随命令摘掉 // // 〔MIG-3a〕+1：理由表摘掉 MCP 三条处一块 // // 〔SH1〕+2：acct-iso 两对合一处点的旧名 // 〔合并 HX2 × 主线 290d8c33〕主线 39 ＋ HX2 +1（写 key 那条命令退役） // 〔合并 LOC1a × 主线 1c2c4c97〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 cf3277f4〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 28a5f652〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
+        ("tests/bridge/parity_ledger_tests.rs", 46), // 〔MIG-1〕45 → 46：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑 // 〔合并 MIG-1 × 主线 19671e6b〕主线 44 ＋ MIG-1 1（`LEDGER.len()` 尾注点删掉的三条导入命令）⇒ 45 // 〔MIG-3a〕+1：`assets_sync` 那一条理由随命令摘掉 // // 〔MIG-3a〕+1：理由表摘掉 MCP 三条处一块 // // 〔SH1〕+2：acct-iso 两对合一处点的旧名 // 〔合并 HX2 × 主线 290d8c33〕主线 39 ＋ HX2 +1（写 key 那条命令退役） // 〔合并 LOC1a × 主线 1c2c4c97〕主线 37 ＋ LOC1a +2（`get_session_tasks` 退役：LEDGER 那一行 ＋ 理由表那一行）// 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔合并 US1 × 主线〕主线 35 ＋ US1 +1 // 〔C4e 批 3b〕33 → 35（cc-bus 写面五条退役：LEDGER 那一块 ＋ `FRAME_PLANE_VERDICTS` 那三行） // 〔C4e 批 2〕28 → 33（杀会话 · 送键 · 就地 resume 三条命令退役：LEDGER 两处 ＋ `FRAME_PLANE_VERDICTS` 那一行 ＋ `tmux.manage` 那条理由第七次订正 ＋ `设计/50` 那一层点的送键命令） // 〔C4e〕23 → 28（抓屏那条命令退役：LEDGER 那一行 · `FRAME_PLANE_VERDICTS` 那一行 · 地板那段 · `tmux.manage` 那条理由里 `设计/50` 那一层点的发送端 ＋ 第七次订正） // 〔合并 C4d × 主线 cf3277f4〕主线 22 ＋ 本路 +1 ⇒ 23（〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 28a5f652〕主线 18 ＋ 本路 +4（`replay_keep_tail_only` / `replay_session_to_window` 各退役：LEDGER 那一行 ＋ Local/Both 账那一句）⇒ 22 // 〔合并 RM1f × 主线 60ace11b〕主线 17 ＋ 本路 1 ⇒ 18（PN1b 那行增量账里 `panorama_diagram_kinds` 随内嵌引擎退役，挂墓碑） // 〔C4c〕16 → 17（「退出行为」两条退役，`ORIGIN_TAKING_BOTH` 摘掉处一块） // 〔合并 C4c × 主线 6b375621〕12 ＋ 本路 2 ＋ AL1d 2 ⇒ 16 // 〔C4c〕12 → 14（信任预检 · 记录那一问两条命令退役，`ORIGIN_TAKING_BOTH` 那两条摘掉处各挂一块） // 〔AL1d〕12 → 14（「终端集成」退役的两行 LEDGER 注释挂墓碑） // 〔C4a · 第四波〕11 → 12（E79 那条本机会话账号命令退役，账本那一行挂墓碑） // 〔F7c 收尾 09-24〕10 → 11（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/plugin_class_registry_tests.rs", 3), // 〔RM1f〕2 → 3：`code-picture` 那一格对上之后，旧测试名挂墓碑
         ("src/panorama-engine/main.rs", 1), // 〔RM1f〕monitor 那份按文件列符号的旧函数名（随内嵌引擎删了）
         ("tests/bridge/panorama_seam_registry_tests.rs", 1), // 〔RM1f〕PN1b 那一行增量账里的旧命令名（随内嵌引擎退役）
@@ -4751,7 +4793,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/account-restart.vitest.ts", 1),
         ("tests/remote-launch-run.vitest.ts", 4), // 〔DUP1〕+1：非法 sid 那条改测「渲染侧拒」
         ("tests/send-into-backend.vitest.ts", 2),
-        ("tests/tabs.vitest.ts", 1),
+        ("tests/tabs.vitest.ts", 3), // 〔MIG-1〕1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         ("tests/views/pane-preview.vitest.ts", 1),
         ("tests/backend/history_join_tests.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("tests/bridge/history_title_coverage.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
@@ -4812,6 +4854,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/control/ccm_tests.rs", 1), // 〔V151〕那条路由判据并进 claude_flags_tests，原地一块
         // 〔FIX · `99 §2 ㊷`〕人读表解析器删了，一处点它旧名的散文挂墓碑。
         ("tests/backend/plugin_walk_fixture.rs", 1),
+        ("src/main.ts", 2), // 〔MIG-1〕新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
+        ("src/tab-session-state.ts", 1), // 〔MIG-1〕新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
+        ("src/tab-store.ts", 1), // 〔MIG-1〕新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
+        ("src/tabs.ts", 1), // 〔MIG-1〕新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
+        ("tests/bridge/event_replay_tests.rs", 1), // 〔MIG-1〕新贴：⑬ 会话生命周期并进会话流，退役的 list_active_sessions / list_session_activity / buffered_* 旧名挂墓碑
     ];
 
     /// **挂歪了 / 在谈这件机制本身**的那些行，逐份登记**行数**。

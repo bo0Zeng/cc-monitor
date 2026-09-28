@@ -88,7 +88,7 @@ export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recovera
  * - `activity`：带 status 的活动信号（后端只对活着的 claude 推）
  * - 〔U4b〕`container-tmux` / `container-none`：`session-container`（后端 `session_added.container`）
  * - 〔U4b〕`record-gone` / `record-present`：resume 一跳问那台后端（`history-record`）的答案
- * - 〔U4b〕`seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`）
+ * - 〔U4b〕`seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）
  * - 〔GP1〕`unseen`：那台机器看不见了（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）
  */
 export type StateEvent =

@@ -266,6 +266,7 @@ const SCAN: &[&str] = &[
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
     "tests/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
+    "tests/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",

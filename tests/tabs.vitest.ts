@@ -5252,17 +5252,18 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
   });
 });
 
-// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions` 之后标本机清单报完 ·
+// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions`〔散文墓碑〕 之后标本机清单报完 ·
 // 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
-  it("★ 本机清单报完 · 容器事件 · 远端清单报完，三处接线各恰一处", () => {
+  // 〔MIG-1 · ⑬〕本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
+  it("★ 容器 · 清单报完（本机远端同一格）各恰一处；本机不再另拉清单", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;
     expect([
-      n("tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)))"),
+      n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
       n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
-    ]).toEqual([1, 1, 1]);
+    ]).toEqual([0, 1, 1]);
   });
   // 〔GP1 · 第四波〕「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
   it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 恰一处", () => {

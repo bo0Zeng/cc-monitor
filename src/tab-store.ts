@@ -117,7 +117,7 @@ export class TabStore {
    */
   readonly pendingContainer = new Map<string, "tmux" | "none">();
   /**
-   * 〔U4b · 第四波 · 说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`）。
+   * 〔U4b · 第四波 · 说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）。
    * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
    */
   readonly seenOrigins = new Set<string>();

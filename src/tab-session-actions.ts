@@ -767,9 +767,3 @@ export function bringMonitorToFront(): void {
   });
 }
 
-/** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。 */
-export function listSessionActivity(): Promise<
-  { session_id: string; status: string | null; waiting_for: string | null }[]
-> {
-  return commands.list_session_activity();
-}

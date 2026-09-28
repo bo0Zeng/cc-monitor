@@ -74,11 +74,6 @@ fn products_pass_through_in_order_and_only_a_lost_link_is_the_monitors_own_word(
             r#"unseen pi ["a", "b"]"#,
         ]
     );
-    assert_eq!(b.local_listed(), None, "本机还没报完清单 ⇒ 不交半截的");
-    b.step(In::Listed {
-        origin: "<local>".into(),
-    });
-    assert_eq!(b.local_listed().map(|v| v.len()), Some(1));
 }
 
 #[test]

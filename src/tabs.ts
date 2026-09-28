@@ -68,7 +68,6 @@ import {
   bringTerminalToFront,
   e2eLog,
   forgetSession,
-  listSessionActivity,
 } from "./tab-session-actions";
 
 import {
@@ -914,7 +913,7 @@ export class TabManager {
   }
 
   /**
-   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`）。
+   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`〔散文墓碑〕）。
    *
    * 这台的「说不清」（固定复活、还没被报过）逐条落地：`liveSids` 里有 ⇒ 活（本机那条路给清单；远端的清单
    * 早已经由 `remote-session-added` 把 tab 建成活的了，不传）；没有 ⇒ 已结束（`设计/30 §3.5.7a`
@@ -1051,22 +1050,6 @@ export class TabManager {
   private agentsChanged(tab: Tab): void {
     if (this.store.activeId === tab.sessionId) {
       this.agentsPanel?.setSession(tab.sessionId, [...tab.agents.values()]);
-    }
-  }
-
-  /**
-   * issue #23：启动/F5 后拉一次红绿灯快照做初始收敛——session-activity 是稀疏
-   * 事件、不进 replay buffer，重载会丢（同 fetchSessionTasks 的双路收敛模式）。
-   * 失败静默（灯保持未知绿，不影响主功能）。
-   */
-  async syncActivitySnapshot(): Promise<void> {
-    try {
-      const list = await listSessionActivity();
-      for (const a of list) {
-        this.updateActivity(a.session_id, a.status, a.waiting_for);
-      }
-    } catch (e) {
-      console.warn("list_session_activity failed:", e);
     }
   }
 

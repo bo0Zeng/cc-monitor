@@ -146,16 +146,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig1,
         "拨号探针的判读还在 `ssh_source.rs`",
     ),
-    (
-        "list_session_activity",
-        Lane::Mig1,
-        "本机活会话表还在 monitor（`session_map::LocalTable`）",
-    ),
-    (
-        "list_active_sessions",
-        Lane::Mig1,
-        "本机活会话表还在 monitor（`session_map::LocalTable`）",
-    ),
+    // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
     (
         "list_local_tmux",
         Lane::Mig1,
