@@ -1909,7 +1909,7 @@ run_e2e backend-cc-bus        96
 #     它记 SKIP 并说原因（套件里的版本门 `min_tmux_for`；版本不够却建得出来 ⇒ FAIL「版本门过时」）⇒ 3.6 上 35+0、
 #     3.4 上 34+1，这一格两边都是 35。只钉 PASS 的话就是把开发机的 tmux 烤进了判据。
 run_e2e backend-gate2         35 exact-with-skip
-run_e2e local-backend         15
+run_e2e local-backend         26
 run_e2e restart-frames         5
 run_e2e restart               24
 

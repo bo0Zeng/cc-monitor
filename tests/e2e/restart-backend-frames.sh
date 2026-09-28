@@ -94,6 +94,9 @@ fi
 command -v tmux >/dev/null || { echo "无 tmux"; exit 1; }
 
 WORK="$(mktemp -d /tmp/e2e-restart-frames.XXXXXX)"
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 把 fake-claude 拷进
+# ASCII 的 $WORK 再当启动器，别让判据只在 ASCII 路径的工作树里绿。
+cp "$E2E/fake-claude" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 OLD="$WORK/acct-old"; NEW="$WORK/acct-new"
 OLD_FR="$WORK/old.frames.jsonl"; NEW_FR="$WORK/new.frames.jsonl"
 mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" /tmp/e2e-remote

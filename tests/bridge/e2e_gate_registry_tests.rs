@@ -634,7 +634,7 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert_eq!(out.status.code(), Some(2), "直接跑没被拒：{err}");
     assert!(
-        err.contains("是夹具") && err.contains("tier2-rig.sh"),
+        err.contains("是夹具") && err.contains("tier-2 台架"),
         "拒了但没说清是谁的夹具：{err}"
     );
     assert!(!reached.exists(), "拒之前已经把参数交给后端了");

@@ -477,7 +477,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     let spawn = || {
         local_backend::supervise_with_stdio(
             bin.clone(),
-            vec!["--tail-only".into()],
+            vec![local_backend::BACKEND_SEP.into(), local_backend::STREAM_WORD.into(), "--tail-only".into()],
             envs.clone(),
             local_backend::CrashLimits::default(),
             now(),
