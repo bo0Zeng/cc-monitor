@@ -532,7 +532,7 @@ fn notice(origin: String, kind: &'static str, message: String) {
 
 /// 成功拨号之后：判 → 固化 / 说出来。目标那一台一格；经跳板时跳板那一台另一格（〔FIX · `99 §2 ㊶` 第二问〕它是另一台机器，
 /// 按它自己在 `remote.hosts` 里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
-fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
+pub(crate) fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
     let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
     let Some(path) = crate::paths::resolve_config_path() else {
         return;
@@ -683,7 +683,7 @@ fn files_reply_cap() -> u64 {
 /// 一份 MB 级的后端二进制在慢链路上要好一会儿 —— 给宽，但有界。
 const FILES_PUT_DEADLINE: Duration = Duration::from_secs(600);
 
-/// 其余几问（`home` · `stat` · `read` · `remove` · `mkdirs`）等应答的上限：各是一两个 SFTP 往返。
+/// 其余几问（`home` · `read` · `remove` · `mkdirs`）等应答的上限：各是一两个 SFTP 往返。
 const FILES_ASK_DEADLINE: Duration = Duration::from_secs(60);
 
 /// 读回来的那一份与期望的比对结论（后端算的）：`None` = 读不回来；`Some((读回长度, 首个差异))`。
@@ -778,7 +778,7 @@ impl RemoteFs {
     }
 
     // 〔MIG-3b〕这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
-    //   monitor 这一侧零调用方 ⇒ 删了。链路那一侧的 `stat` 一问照旧在（`files` 链路协议没动）。
+    //   monitor 这一侧零调用方 ⇒ 删了；〔MIG-3b 续 · V41〕链路那一侧的 `stat` 一问随之也删了。
 
     // 〔MIG-3a · 09-28 预裁〕`read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（`acct_iso_deploy`，随字节进后端退役）⇒ 删了。
     //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。

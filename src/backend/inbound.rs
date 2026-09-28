@@ -1317,6 +1317,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "undecidable",
         ],
         fields: &[
+            "ack",
             "action",
             "arch",
             "expected",

@@ -45,7 +45,8 @@ type Fut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// 对面：在那台上跑一条一次性命令（收全三样）· 问那台落点上一个文件（SFTP）。生产 = [`DialFacing`]；判据用替身。
 pub trait Facing: Send + Sync {
-    fn exec(&self, command: String) -> Fut<'_, Result<crate::dial::Captured, String>>;
+    /// 收全三样 ＋ 那一趟拨号的 ack（`DialAck` 原样；逐地址指纹要交 monitor 固化）。
+    fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>>;
     /// `(metadata 的 size, 补问的 exists)` —— 与 [`deploy_core::interpret_target_probe`] 入参同形。
     fn stat<'a>(
         &'a self,
@@ -63,6 +64,9 @@ pub struct Plan {
     pub expected: String,
     pub action: DeployAction,
     pub legacy: LegacyVerdict,
+    /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟的 ack（本机后端里拨的号 —— 第一次连一台没钉过指纹的机器就在这一跳）：
+    /// 原样交回，monitor 按它固化指纹（`dial_host::settle_host_key`，与自己拨号那几条同一个判定）。
+    pub ack: Value,
 }
 
 /// 落点那一份是谁：先 stat（没有 / 0 字节就不必再问），在就扫它字节里的身份戳。
@@ -73,7 +77,7 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
         deploy_core::TargetBinary::Empty => RemoteIdentity::Empty,
         deploy_core::TargetBinary::Present | deploy_core::TargetBinary::Unknown => {
             match facing.exec(deploy_core::stamp_scan_cmd(word, MARKS)).await {
-                Ok(r) => {
+                Ok((r, _)) => {
                     deploy_core::interpret_stamp_scan(r.exit_status, &r.stdout, &r.stderr, MARKS)
                 }
                 Err(e) => RemoteIdentity::Unreadable(e),
@@ -89,7 +93,7 @@ pub async fn plan(
     machine: &str,
 ) -> Result<Plan, (&'static str, String)> {
     let said = |r: Refusal| ("refused", r.say(Product::Backend, machine));
-    let got = facing
+    let (got, ack) = facing
         .exec(deploy_core::UNAME_CMD.to_string())
         .await
         .map_err(|e| {
@@ -154,6 +158,7 @@ pub async fn plan(
         expected,
         action,
         legacy,
+        ack,
     })
 }
 
@@ -180,6 +185,7 @@ pub fn plan_json(p: &Plan) -> Value {
         "theirs": theirs,
         "legacy": legacy,
         "legacy_why": legacy_why,
+        "ack": p.ack,
     })
 }
 
@@ -230,7 +236,7 @@ impl DialFacing {
 }
 
 impl Facing for DialFacing {
-    fn exec(&self, command: String) -> Fut<'_, Result<crate::dial::Captured, String>> {
+    fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>> {
         Box::pin(crate::remote_ask::capture_full(&self.dial, command))
     }
 
