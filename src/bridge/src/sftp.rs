@@ -156,11 +156,15 @@ pub(crate) struct Plan {
     pub(crate) expected: String,
     pub(crate) action: DeployAction,
     pub(crate) legacy: deploy_core::LegacyVerdict,
+    /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
+    /// `dial_host::settle_host_key` 固化 —— 与 monitor 自己开链路那几条同一个判定，不另写。
+    pub(crate) ack: crate::ssh_link::Ack,
 }
 
 /// `deploy-plan` 的应答 → [`Plan`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
-    const KEYS: [&str; 9] = [
+    const KEYS: [&str; 10] = [
+        "ack",
         "action",
         "arch",
         "expected",
@@ -198,7 +202,13 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         (Some("unknown"), Some(e)) => deploy_core::LegacyVerdict::Unknown(e.to_string()),
         _ => return Err(bad()),
     };
+    let ack: crate::ssh_link::Ack = obj
+        .get("ack")
+        .cloned()
+        .and_then(|a| serde_json::from_value(a).ok())
+        .ok_or_else(bad)?;
     Ok(Plan {
+        ack,
         key,
         expected: text("expected")
             .filter(|s| !s.is_empty())
@@ -230,8 +240,9 @@ async fn ask_plan_for(
         .iter()
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))
         .collect();
+    let dial = crate::dial_host::transfer_dial(cfg)?;
     let args = serde_json::json!({
-        "dial": crate::dial_host::transfer_dial(cfg)?,
+        "dial": dial,
         "carried": carried,
         "machine": cfg.origin_label(),
     });
@@ -246,7 +257,10 @@ async fn ask_plan_for(
                     Routed::Done => copy_text("rsSftp.plan.internal", &[]),
                 },
             )?;
-    decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)
+    let plan = decode_plan(&data.ok_or_else(|| copy_text("rsSftp.plan.internal", &[]))?)?;
+    // 〔MIG-3b 续 · VIS2〕第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化。
+    crate::dial_host::settle_host_key(cfg, &dial, &plan.ack);
+    Ok(plan)
 }
 
 /// 〔MIG-3b〕照计划取字节：那一格这一版带着的那一份（`byte_table::pick`）。计划说的身份与字节自报的对不上 ⇒ 两侧漂了，不推。

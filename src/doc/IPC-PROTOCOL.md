@@ -2045,6 +2045,7 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 | `theirs` | ← | `keep` 时那台上那一份自报的身份，否则 `null` |
 | `legacy` | ← | 旧落点那一份：`absent`（不在）· `remove`（身份戳恰一个 ⇒ 删）· `keep`（别的 ⇒ 不动）· `unknown`（连问都没问成） |
 | `legacy_why` | ← | `unknown` 时的原话，否则 `null` |
+| `ack` | ← | 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定） |
 
 **错误码**：`bad_args`（`carried` / `machine` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）·
 `io_failed`（stat 落点那一问没问成）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 扫不动 —— 显式失败、不覆盖，出路是机器页「卸载后端」）。
@@ -3271,8 +3272,8 @@ capture{max_bytes,abort_marker,stdin} · forward{local_port,remote_host,remote_p
 〔W5-AUX〕`capture.stdin`（可缺）：exec 之后原样写进远端进程 stdin 的字节，**不关 stdin**（收的一侧用 CLI 面的 `--stdin-line`）。
 `probe` / `stages` 的链路**不进连接池**（测试连接要看的就是一次真拨号）。
 〔SR1b · 2026-09-24〕`use:"files"`：在池里那条连接上开 sftp 子系统（`dial/sftp.rs`），ack 之后**一问一答** ——
-上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `stat{path}` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
-上限 64 MiB）· `remove{path}` · `mkdirs{path}`。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
+上行每一行一个请求 `{"op":…}`，下行每一行一个应答；`op` ∈ `home` · `read{path,max}` · `put{path,size,mode,verify}`（该行之后紧跟 `size` 个原始字节，
+上限 64 MiB）· `remove{path}` · `mkdirs{path}`（〔MIG-3b 续 · V41〕`stat` 那一问删了：唯一的问者随部署判定进了本机后端）。失败那一形 `{"code","message"}`，`code` ∈ `fenced`（远端写围栏拒）· `io` · `too_big` · `bad_request` · `unknown_op`。
 🔴 **写只许两处**：远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（用户 V89；`INVARIANTS §41.6` 的 SR1b 订正）。读不受限。
 它服务自部署（F08 后端二进制 · cc-acct-iso）：〔MIG-3b〕后端二进制那一路的判定在本机常驻后端（`deploy-plan`），monitor 照计划经它放字节（`dial_host::RemoteFs`）；cc-acct-iso 那一路的判定仍在 monitor。
 `use:"subsystem"`（把原始 SFTP 字节交给客户端）**不开** ⇒ 回 `unsupported_use`：SFTP 协议住后端，客户端只有 `files` 与 `transfer-*` 两条路。

@@ -266,6 +266,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
     )
     .await;
     assert_eq!(v["data"], crate::wire::b64_encode(b"new"));
+    // 〔MIG-3b 续 · V41〕`stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
     let v = ask(
         &mut w,
         &mut r,
@@ -273,7 +274,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
         None,
     )
     .await;
-    assert!(v["meta"].is_null() && v["exists"] == false, "{v}");
+    assert_eq!(v["code"], "unknown_op", "{v}");
     let v = ask(
         &mut w,
         &mut r,
