@@ -88,7 +88,7 @@ pub const COMMANDS: &[&str] = &[
     // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问（本机那两条从 exec 一次性后端改走 `<local>` 长连接）。
     // 〔DUP2 · J4〕一个 cc-acct-iso 步骤在终端里要跑的那一行（预览 · 弹终端都问它；界面零拼 shell 串）。
     "acct-iso-cmd",
-    // 〔MIG-3a · 子步 3〕cc-acct-iso 落进用户目录（链接 ＋ 配置 ＋ 记账），经这台的文件管理面。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    // 〔MIG-3a · 子步 3 · 09-28 预裁〕cc-acct-iso 装到这台（随二进制带着的字节 ＋ 链接 ＋ 配置 ＋ 记账），经这台的文件管理面。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "acct-iso-install",
     "acct-iso-shellinit",
     "acct-iso-status",
@@ -2710,25 +2710,26 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔MIG-3a · 子步 3〕cc-acct-iso 落进用户目录：`assets/acct_iso_install.rs`；链接 / 配置经 [`LocalFiles`]，装记录写口由本门递进去。
+    // 〔MIG-3a · 子步 3 · 09-28 预裁〕cc-acct-iso 装到这台：`assets/acct_iso_install.rs`；字节 / 链接 / 配置经 [`LocalFiles`]，装记录写口由本门递进去。
     CommandSpec {
         name: "acct-iso-install",
         doc_anchor: Some("#### `acct-iso-install`"),
-        codes: &["bad_args", "refused"],
+        codes: &["bad_file", "refused"],
         fields: &[
             "config",
             "configWritten",
-            "dir",
+            "dest",
             "link",
             "linked",
             "recordFailed",
+            "version",
+            "written",
         ],
-        takes_input: true,
-        run: Run::Blocking(|r| {
+        takes_input: false,
+        run: Run::Blocking(|_| {
             crate::assets::acct_iso_install::answer_install(
                 &LocalFiles,
                 &crate::skill_ledger::answer_record,
-                &r.args,
             )
             .map(Some)
             .map_err(|(c, m)| (c.to_string(), m))

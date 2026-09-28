@@ -7625,16 +7625,6 @@
       "zh": "一键部署 cc-acct-iso",
       "args": []
     },
-    "accounts.needsDeploy.intro": {
-      "kind": "body",
-      "zh": "多账号靠 cc-acct-iso：每账号一个隔离配置目录、数据共享。点下面一键把它部署到远端 {dest}（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。",
-      "args": ["dest"]
-    },
-    "accounts.needsDeploy.noPath": {
-      "kind": "body",
-      "zh": "多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。这台远端缺后端路径或用户名，自动推不出部署目录。请先在「连接」组填好用户和后端路径，再回来一键部署。",
-      "args": []
-    },
     "accounts.needsDeploy.title": {
       "kind": "body",
       "zh": "该远端还没装多账号管线（cc-acct-iso）",
@@ -10415,16 +10405,6 @@
       "zh": "那一问没有答完",
       "args": []
     },
-    "rsSftp.deploy.versionMismatch": {
-      "kind": "body",
-      "zh": "版本不符（远端 {remote} ≠ 期望 {expected}）",
-      "args": ["remote", "expected"]
-    },
-    "rsSftp.deploy.missing": {
-      "kind": "body",
-      "zh": "远端还没装后端",
-      "args": []
-    },
     "rsSftp.upload.badKept": {
       "kind": "error",
       "zh": "{bad}传坏的这一份没删掉：{e}",
@@ -13138,31 +13118,6 @@
       "waive": {
         "C-T1": "cc-spawn 是 cc-bus 自带的命令名，照原名指路；正则把 -spawn 当成了实现词"
       }
-    },
-    "rsAcctIsoDeploy.deploy.done": {
-      "kind": "body",
-      "zh": "已部署 cc-acct-iso（{version}）到 {dest}（{reason}）。",
-      "args": ["version", "dest", "reason"]
-    },
-    "rsAcctIsoDeploy.deploy.upToDate": {
-      "kind": "body",
-      "zh": "远端已是最新 cc-acct-iso（{version}）：{dest}，无需重装。",
-      "args": ["version", "dest"]
-    },
-    "rsAcctIsoDeploy.deploy.unsafe": {
-      "kind": "error",
-      "zh": "部署目录不安全（须绝对、无 ..、非根、且含 cc-acct-iso 或 .cc-monitor）：{dest}",
-      "args": ["dest"]
-    },
-    "rsAcctIsoDeploy.deploy.tilde": {
-      "kind": "error",
-      "zh": "部署目录含 ~（SFTP 不展开 ~），请改用绝对路径",
-      "args": []
-    },
-    "rsAcctIsoDeploy.deploy.noDest": {
-      "kind": "error",
-      "zh": "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-acct-iso）",
-      "args": []
     },
     "rsAssetSync.call.emptyReply": {
       "kind": "error",
@@ -19185,21 +19140,6 @@
       "zh": "读不懂本机后端回的 cc-bus 安装结果，两端版本对不上。",
       "args": []
     },
-    "beAcctIsoInstall.dir.outside": {
-      "kind": "error",
-      "zh": "{dir} 不在 ~/.cc-monitor/bin/ 底下，不从这里装 cc-acct-iso",
-      "args": ["dir"]
-    },
-    "beAcctIsoInstall.main.missing": {
-      "kind": "error",
-      "zh": "主脚本不在：{path}。先把 cc-acct-iso 推上去再装",
-      "args": ["path"]
-    },
-    "beAcctIsoInstall.config.noSample": {
-      "kind": "error",
-      "zh": "{dir} 里没有随包的示例配置，建不了 ~/.cc-acct-iso/config",
-      "args": ["dir"]
-    },
     "beAcctIsoInstall.record.failed": {
       "kind": "error",
       "zh": "装好了，但没记进装记录：{e}（这一趟装的卸不掉）",
@@ -19249,6 +19189,26 @@
       "kind": "error",
       "zh": "文件窗口起不来（程序内部出错）：{e}",
       "args": ["e"]
+    },
+    "beAcctIsoInstall.embed.notUtf8": {
+      "kind": "error",
+      "zh": "这台后端带着的 cc-acct-iso 里 {rel} 不是文本，装不了（构建有误）",
+      "args": ["rel"]
+    },
+    "accounts.needsDeploy.intro": {
+      "kind": "body",
+      "zh": "多账号靠 cc-acct-iso：每账号一个隔离配置目录、数据共享。点下面一键把它装到这台远端的 ~/.cc-monitor/bin/cc-acct-iso（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。",
+      "args": []
+    },
+    "accounts.needsDeploy.landed": {
+      "kind": "body",
+      "zh": "已装 cc-acct-iso（{version}）到 {dest}，写了 {written} 份。",
+      "args": ["version", "dest", "written"]
+    },
+    "accounts.needsDeploy.current": {
+      "kind": "body",
+      "zh": "{dest} 已是这一版 cc-acct-iso（{version}），没重写。",
+      "args": ["version", "dest"]
     }
   }
 }
