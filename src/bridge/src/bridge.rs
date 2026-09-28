@@ -1,6 +1,6 @@
 //! 前后端契约的单一来源：Tauri 事件名常量 + emit payload schema。
 //!
-//! `events` 子模块定义所有 `emit` 事件名（session-ended / task-update …）；payload 结构体
+//! `events` 子模块定义所有 `emit` 事件名（task-update / remote-health …；〔MIG-1〕会话起停并进了会话流的格）；payload 结构体
 //! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
 //! 前端 `events.ts` 的 TS 接口须与此保持一致。
 //!
@@ -255,7 +255,7 @@ pub struct SessionLivePayload {
     pub name: Option<String>,
 }
 
-/// 〔U4b · 第四波〕`session-container` 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
+/// 〔U4b · 第四波〕`container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
 /// （判不了的不发这个事件）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -288,7 +288,7 @@ pub struct SessionTapPayload {
     pub end: Option<String>,
 }
 
-/// 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。
+/// 〔U4b · 第四波〕`listed` 格 的 payload：哪台机器的清单报完了。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]

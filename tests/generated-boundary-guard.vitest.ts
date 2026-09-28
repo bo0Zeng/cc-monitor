@@ -593,7 +593,7 @@ describe("C01 边界生成物", () => {
  * 范围该等于**性质**的范围。C01 时其余 118 个命令还没迁，全覆盖会假红；
  * 而事件半边这次一次迁完，性质本身就是全覆盖。
  *
- * **一条不能写的断言**：「每个事件名都有一个 payload 类型」——`snapshot-inflight`
+ * **一条不能写的断言**：「每个事件名都有一个 payload 类型」——`snapshot_inflight` 格
  * 没有专属 payload struct（11 个 struct 里没有它）。写了就是假红。
  */
 describe("C02 事件名钉死", () => {
@@ -611,7 +611,7 @@ describe("C02 事件名钉死", () => {
     // 〔C1 · 2026-09-24〕11 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）——某台远端长连接
     // 握手完成。前端 `main.ts` 订阅它，替掉那个 10 秒账号轮询（改事件驱动）。
     // 〔U4b · 第四波〕12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
-    // `ORIGIN_SESSIONS_LISTED`（"origin-sessions-listed"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
+    // `ORIGIN_SESSIONS_LISTED`（"listed 格"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
     // 〔TAP · V124〕不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`，`设计/05 §15`），不开裸 Tauri 事件（`01 §2.2`）。

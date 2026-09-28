@@ -52,8 +52,8 @@ export interface EventHandlers {
   onSessionEnded: (sessionId: string) => void;
   /**
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux）。后端 emitter
-   * 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle`（**不** emit session-ended，
-   * 故不归档）。与 session-ended 同进 queue：二者对同一 sid 互斥（emitter removed 臂择一），
+   * 收 backend removed 且 `@ccm_sid` present 时 emit `idle` 格（**不** emit ended 格，
+   * 故不归档）。与 ended 格 同进 queue：二者对同一 sid 互斥（emitter removed 臂择一），
    * 但需相对该会话的行/后续 remote-added 保序（idle 在行之后、复活 remote-added 之前）。
    * 前端 tabs.markTmuxIdle 置灰点。
    */
@@ -61,7 +61,7 @@ export interface EventHandlers {
   /**
    * 会话（重新）变活（SESSION_STARTED）。后端在 sessions/<PID>.json 新增**且 PID
    * 探活通过**时 emit —— resume 场景：崩溃→Tab 灰显→`/resume` 后回 live，无需 F5。
-   * 与 session-ended 同进 queue（保持「结束/复活」相对后端 emit 顺序，见下方 sub 注释）。
+   * 与 ended 格 同进 queue（保持「结束/复活」相对后端 emit 顺序，见下方 sub 注释）。
    * 前端复活已归档的本地 Tab（tabs.reviveTab）。
    */
   onSessionStarted?: (
@@ -82,12 +82,12 @@ export interface EventHandlers {
     },
   ) => void;
   /**
-   * 〔U4b · 第四波〕活会话住在什么容器里（`session-container`，本机与远端同一个事件）。
+   * 〔U4b · 第四波〕活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
    * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
    */
   onSessionContainer?: (sessionId: string, container: string) => void;
   /**
-   * 〔U4b · 第四波〕某台机器的活会话清单报完了（`origin-sessions-listed`）。进 queue：排在那台的
+   * 〔U4b · 第四波〕某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
    */
   onOriginSessionsListed?: (origin: string) => void;
@@ -140,7 +140,7 @@ export interface EventHandlers {
   onTasksUpdate?: (payload: TasksUpdatePayload) => void;
   /**
    * issue #23：会话红绿灯。后端仅在 sessions/<PID>.json 的官方 status 变化时
-   * emit（天然稀疏，同 session-ended 直接同步派发）。status: "busy"=运行中 /
+   * emit（天然稀疏，同 ended 格 直接同步派发）。status: "busy"=运行中 /
    * "idle"/"shell"=等输入 / "waiting"=等弹窗决定（waiting_for 细分原因）。
    */
   onSessionActivity?: (payload: SessionActivityPayload) => void;
@@ -389,7 +389,7 @@ export async function bindEvents(
 
   // batch-end 延迟状态机
   let inBatchMode = false;
-  // Batch9-F30：远端快照/回填在途计数（后端 snapshot-inflight 事件驱动）。
+  // Batch9-F30：远端快照/回填在途计数（后端 snapshot_inflight 格 事件驱动）。
   // >0 时 batch 结束定时器只续期不触发——慢链路回填 chunk 间隔 >300ms 不再
   // 提前退出 batch 模式（退出后旧历史以 live 形态插时间线中段，增量分支
   // 计算路径没被锤过——审计推演的唯一乱序风险点）。5min 上限防呆（后端

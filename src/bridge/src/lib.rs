@@ -1004,7 +1004,7 @@ pub fn run() {
             bring_terminal_to_front,
             // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
             bring_remote_terminal_to_front,
-            // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 session-activity 事件）
+            // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
             // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。

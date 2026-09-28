@@ -4,7 +4,7 @@
  * DOMContentLoaded 后按序：
  * 1. `loadTheme()` 从 config.json 应用 CSS 变量
  * 2. 实例化 TabManager / SettingsPanel / HistoryView / TasksPanel
- * 3. `bindEvents()` 订阅后端事件（jsonl-line / jsonl-batch / session-ended / task-update）
+ * 3. `bindEvents()` 订阅后端事件（jsonl-line / jsonl-batch / ended 格 / task-update）
  * 4. 装全局快捷键 dispatcher（keybindings/）+ 外链 click 代理（openUrl）+ ERROR toast
  * 5. `emit("frontend-ready")` 通知后端 replay 历史
  *
@@ -273,7 +273,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // ⇒ 刷新改由事件驱动，零定时器：
   //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 强制刷账号清单，
   //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 〔DL1〕经通道订的 `accounts-changed`；
-  //   · `remote-session-added` / `session-ended`：会话起停；
+  //   · 远端 `live` 格 / `ended` 格：会话起停；
   //   · 本 UI 切号：上面 `onDefaultChanged`。
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();

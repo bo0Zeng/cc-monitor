@@ -78,7 +78,7 @@ interface Harness {
   chunk: (chunkIndex: number, seqs: number[]) => void;
   /** 发一条逐行来的实时格。 */
   line: (seq: number) => void;
-  /** 后端的 snapshot-inflight 计数。 */
+  /** 后端的 snapshot_inflight 格 计数。 */
   inflight: (count: number) => void;
 }
 
@@ -445,7 +445,7 @@ describe("bindEvents 的接线", () => {
 // **挡不住**「`switchTo` 自己改了写回时机」——那半由 `tabs.vitest.ts` 那条单元判据看着。
 //
 // ⚠⚠ **锚点第一版就踩了自己刚立的元判据**：我拿 `createSkeletonTab(` 当「建骨架」的锚，
-// 而它在 `main.ts` 里有 **3 处**，最早两处是**事件处理器体内**的（`remote-session-added` 那批，
+// 而它在 `main.ts` 里有 **3 处**，最早两处是**事件处理器体内**的（远端 `live` 格 那批，
 // 注册在前、**执行在后**）⇒ 判据当场红，说「读记忆排到建骨架之后了」——**红对了位置、讲错了事**。
 // 这正是 08-08 那条元判据点名的两种坏法叠在一起：**比的是任意一处**（坏法②）+
 // **文本顺序 ≠ 执行顺序**（坏法③）。

@@ -452,7 +452,7 @@ describe("TabManager 生命周期", () => {
 
   it("★ 活动信号早于 Tab 建立：远端骨架 Tab 建出来时灯必须已经是对的", () => {
     // ⚠ **这条以前一个用例都没有**，而它是远端会话的**真实时序**：
-    // `remote-session-added` 与 `session-activity` 是两个**独立**的 Tauri 事件，
+    // 远端 `live` 格 与 `activity` 格 是两个**独立**的 Tauri 事件，
     // 谁先到没有保证。灯先到时它进 `pendingActivity`，只有 `ensureTab` 会落实它。
     //
     // 不测这条的后果**恰好是最坏的那种**：`activityLightClass(null)` 返回 `""`
@@ -5038,7 +5038,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     // 本机清单报完：p3 在清单里 ⇒ 活；p2 不在 ⇒ 已结束；远端那条不受本机清单影响。
     tm.markOriginSeen(LOCAL_ORIGIN, new Set(["p3"]));
     expect([tabOf("p1").state, tabOf("p2").state, tabOf("p3").state]).toEqual([UNSEEN, ENDED, LIVE]);
-    // 远端报完（`origin-sessions-listed`）：没被宣告过 ⇒ 已结束。正控：这时才出现「已结束」。
+    // 远端报完（`listed` 格）：没被宣告过 ⇒ 已结束。正控：这时才出现「已结束」。
     tm.markOriginSeen("pi");
     expect(tabOf("p1").state).toEqual(ENDED);
     expect(said()).toContain("已结束");
@@ -5188,7 +5188,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.markTmuxIdle("k2");
     tm.markOriginUnseen("pi");
     expect([tabOf("k1").state, tabOf("k2").state]).toEqual([UNSEEN, UNSEEN]);
-    // emitter 那一笔：k1 的 tmux 还在 ⇒ session-idle；k2 不在 ⇒ session-ended；**然后**才是 origin-sessions-listed。
+    // emitter 那一笔：k1 的 tmux 还在 ⇒ idle 格；k2 不在 ⇒ ended 格；**然后**才是 listed 格。
     tm.markTmuxIdle("k1");
     tm.archiveTab("k2");
     tm.markOriginSeen("pi");
