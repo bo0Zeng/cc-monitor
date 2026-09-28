@@ -10,7 +10,8 @@
  * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
- * - `stripInternalNoise` 剥 CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）。
+ * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：〔RENDER2 · J10〕规则只在 `search-core::user_text`，
+ *   monitor 解析时填进记录（`userText.clean`），这里只读成品。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
@@ -157,9 +158,9 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       if (rec.isMeta) return { kind: "skip" };
       const rawText = extractText(rec.message.content);
       if (rawText.trim()) {
-        // 先剥 Claude Code CLI 注入的 prompt 包装；剩余文本喂给下游识别 +
+        // CLI 注入的 prompt 包装已由 monitor 按那一条规则剥过（`userText.clean`，J10）；剩余文本喂给下游识别 +
         // 渲染。剥干净就 skip 整条。
-        const text = stripInternalNoise(rawText);
+        const text = rec.userText.clean;
         if (text.length === 0) {
           return { kind: "skip" };
         }
@@ -1074,48 +1075,11 @@ function extractExitCode(text: string): number | null {
 }
 
 /**
- * 剥掉 Claude Code CLI 注入到 user message 里的 prompt 包装：
- * - `<task-notification>...</task-notification>` 后台命令完成通知
- * - `<system-reminder>...</system-reminder>` 各种系统级提醒
- * - `<local-command-caveat>...</local-command-caveat>` 本地命令免责声明
- * - `<local-command-stdout>...</local-command-stdout>` 本地命令（如 /compact）的 stdout
- * - `Continue from where you left off.` / `No response requested.` 样板单行
- * - `[Request interrupted by user...]` 用户 ESC 中断 / 拒绝工具调用时 CLI
- *   注入的 user message。**不是真用户输入**——v2.4.2 issue #2 修
- *   "用户 ESC 中断时 monitor 误以为是真敲键自动拉前" 时新增。
- *
- * 返回剥过后的文本（trim 过）。空字符串表示整条都是 noise，调用方应 skip。
- * 非空时下游 (parseSlashCommand / buildUserCard) 用这份剥过的文本渲染，
- * 这样 `/compact` 后面跟的 stdout 不会拖累 slash 卡片识别。
+ * A5：判定一条 jsonl 记录是否是 `/compact` 后的续接摘要（user 记录、剥过注入噪声的正文以 compact 前缀开头）。
+ * 与卡片渲染同一套判定（`userText.clean` → isCompactSummary），供换号重启的 compact 完成检测复用（tabs.onLine）。
  */
-function stripInternalNoise(text: string): string {
-  return text
-    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
-    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
-    .replace(/^continue from where you left off\.?$/gim, "")
-    .replace(/^no response requested\.?$/gim, "")
-    // v2.4.2 issue #2: `[Request interrupted by user]`（ESC 中断 assistant 流式生成）
-    // 和 `[Request interrupted by user for tool use]`（拒绝工具调用）都不是真用户
-    // 输入。剥掉让整条 skip → 既不渲染奇怪的"用户中断"卡片，也不触发自动拉前。
-    //
-    // 注：不用 `gim`——`m` flag 让 `^...$` 锚到每一行，会误吞合法 user 消息中
-    // 偶然出现"以该模式开头的行"。CLI 实际把中断标记作为整条 user message 的唯一
-    // 文本写入；剥过其他 noise 后，整文本若 trim 完正好是该模式，就归零。
-    .replace(/^\[Request interrupted by user[^\]]*\]\s*$/, "")
-    .trim();
-}
-
-/**
- * A5：判定一条 jsonl 记录是否是 `/compact` 后的续接摘要（role:user + 剥内部噪后以 compact 前缀
- * 开头）。与卡片渲染同一套判定（extractText → stripInternalNoise → isCompactSummary），供换号重启
- * 的 compact 完成检测复用（tabs.onLine）。`message` = JsonlRecord（外层行记录，内含 `.message`）。
- */
-export function isCompactRecord(message: unknown): boolean {
-  const inner = (message as { message?: { role?: unknown; content?: unknown } } | null)?.message;
-  if (!inner || inner.role !== "user") return false;
-  return isCompactSummary(stripInternalNoise(extractText(inner.content)));
+export function isCompactRecord(rec: JsonlRecord): boolean {
+  return rec.type === "user" && isCompactSummary(rec.userText.clean);
 }
 
 /**
