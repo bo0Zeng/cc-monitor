@@ -376,6 +376,23 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got.map((h) => h.label)).toEqual(["a-renamed", "b"]);
   });
 
+  it("★ 〔FIX · `99 §2 ㊶`〕加载之后后端固化了指纹、再在页上改一格 ⇒ 盘上那份指纹不被整台盖掉", async () => {
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
+    // 加载之后，后端那一侧往盘上写了 a 的指纹（`setin` · ifEmpty）。
+    const disk = (await vi.mocked(loadConfig)()) as unknown as { remote: RemoteConfig };
+    disk.remote.hosts[0]!.hostKeyFingerprint = "SHA256:pinned";
+    vi.mocked(loadConfig).mockResolvedValue(disk as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    const first = sec.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
+    first.value = "a-renamed";
+    first.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    const got = writtenHosts();
+    expect(got.map((h) => [h.label, h.hostKeyFingerprint])).toEqual([
+      ["a-renamed", "SHA256:pinned"],
+      ["b", ""],
+    ]);
+  });
+
   // ── Phase G：页 id 从「每次现算」改成「创建时定死」——两条实测复现的缺陷 ──
   //
   // 这两条在修之前**各自都有绿测试**（改名一条、删除一条），只是从没人把它们串起来

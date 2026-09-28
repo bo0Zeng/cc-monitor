@@ -7,10 +7,13 @@
  */
 import { vi } from "vitest";
 
-export type Edit = { op: "set"; path: string[]; value: unknown } | { op: "remove"; path: string[] };
+export type Edit =
+  | { op: "set"; path: string[]; value: unknown }
+  | { op: "remove"; path: string[] }
+  | { op: "setin"; path: string[]; where: { fields: string[]; equals: string }[]; field: string; value: unknown; ifEmpty: boolean };
 
 export class ConfigRefused extends Error {
-  constructor(readonly kind: "bad_edit" | "unreadable") {
+  constructor(readonly kind: "bad_edit" | "unreadable" | "element_gone") {
     super(`config patch refused: ${kind}`);
   }
 }
@@ -27,6 +30,23 @@ export function applyConfigEdits(text: string, edits: readonly Edit[]): string {
   if (!root || typeof root !== "object" || Array.isArray(root)) throw new ConfigRefused("unreadable");
   const obj = root as Record<string, unknown>;
   for (const e of edits) {
+    if (e.op === "setin") {
+      // 〔FIX · ㊶〕同 Rust `apply_edit` 的 `SetIn`：认恰好一个元素（每条 where：fields 按序第一个非空字符串 == equals），只改一格。
+      let cur: unknown = obj;
+      for (const seg of e.path) cur = cur && typeof cur === "object" && !Array.isArray(cur) ? (cur as Record<string, unknown>)[seg] : undefined;
+      if (!Array.isArray(cur)) throw new ConfigRefused("element_gone");
+      const keyOf = (o: Record<string, unknown>, fields: string[]) =>
+        fields.map((f) => o[f]).find((v): v is string => typeof v === "string" && v !== "");
+      const hits = cur.filter(
+        (x): x is Record<string, unknown> =>
+          !!x && typeof x === "object" && !Array.isArray(x) && e.where.every((w) => keyOf(x as Record<string, unknown>, w.fields) === w.equals),
+      );
+      if (hits.length !== 1) throw new ConfigRefused("element_gone");
+      const v = hits[0]![e.field];
+      const taken = v !== undefined && v !== null && (typeof v !== "string" || v.trim() !== "");
+      if (!(e.ifEmpty && taken)) hits[0]![e.field] = JSON.parse(JSON.stringify(e.value));
+      continue;
+    }
     let cur = obj;
     const parents = e.path.slice(0, -1);
     const last = e.path[e.path.length - 1]!;
