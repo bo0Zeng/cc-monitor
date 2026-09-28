@@ -152,11 +152,13 @@ pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
 /// 〔RESYNC · 主会话 09-27 裁〕**只在流面上有意义**的命令。
 /// `resync` 对齐的是本进程里在跑的 watcher；一次性 exec 里一份都没有 ⇒ 只能答 `watchers: 0`，那是假话。
 /// 〔DEL 续〕`launch-endpoint` / `apikey-routing` 同理：「中转在不在」读的是本进程的监听状态，一次性进程里没有中转 ⇒ 恒答「不在」。
+/// 〔MIG-2〕`launch-local` 同理：它经 `launch_relay` 读本进程的中转状态，一次性进程里会把「非它不可」的号误拒。
 /// 〔MIG-1〕`forward-*` 同理：转发账住本进程（常驻那一个）；一次性进程开出来的转发随进程退出就没了、列出来恒空。
 pub(crate) const STREAM_ONLY: &[&str] = &[
     "resync",
     "launch-endpoint",
     "apikey-routing",
+    "launch-local",
     "forward-start",
     "forward-stop",
     "forward-list",

@@ -18,8 +18,8 @@
  * 而**没脱离**的那一支上它仍然是假的。⇒ 判据从「禁这几个词」翻成
  * 「**必须出现「无人监护」这一档，且它只在真脱离那一支出现**」。
  *
- * ★★ **本文件不许有自己的那几句文案** —— 它们的唯一一个家是 `../backend-policy.ts`
- * 的 `EXIT_*` 那几条，本文件只调 `describeExitBehavior`。
+ * ★★ **本文件不许有自己的那几句文案，也不判哪一档** —— 〔MIG-2 · `99 §2.1 ㊴`〕那一句由那台后端出成品
+ * （`exit-policy-read` 的 `said`，它知道自己是回环常驻还是被监护），本文件原样摆（原先的 `describeExitBehavior`〔散文墓碑〕删了）。
  *
  * # 〔B2 · 条 66〕那个勾的值**问后端要、交后端写**
  *
@@ -47,11 +47,7 @@ import { resync, resyncSaid } from "../resync";
 import { emit } from "@tauri-apps/api/event";
 import { RESYNC_DONE_EVENT } from "./events";
 import { makeInfoIcon } from "./info-icon";
-import {
-  LOCAL_ORIGIN,
-  describeExitBehavior,
-  type ExitPolicyState,
-} from "../backend-policy";
+import { LOCAL_ORIGIN } from "../backend-policy";
 import { copyText } from "../copy-table";
 import { formatBytes } from "../format";
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
@@ -89,10 +85,14 @@ export function stopWarning(rows: SessionAccount[] | null): string | null {
   return null;
 }
 
-/** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的两格。 */
+/** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */
+type ExitPolicyState = "chosen" | "absent" | "unreadable";
+
+/** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的三格（〔㊴〕`said` 是成品那一句）。 */
 interface ExitAnswer {
   policy: ExitPolicyState;
   killOnExit: boolean;
+  said: string;
 }
 
 /**
@@ -107,7 +107,9 @@ function readExitAnswer(raw: unknown): ExitAnswer | null {
   const policy =
     v.state === "chosen" || v.state === "absent" || v.state === "unreadable" ? v.state : null;
   if (policy === null || typeof v.killOnExit !== "boolean") return null;
-  return { policy, killOnExit: v.killOnExit };
+  // 〔㊴〕成品那一句缺了 / 空了 ⇒ 当问不到（不替后端补一句）。
+  if (typeof v.said !== "string" || v.said === "") return null;
+  return { policy, killOnExit: v.killOnExit, said: v.said };
 }
 
 /** 「退出行为」那两问的期限：10 秒 —— 与它们上一个住址（monitor `backend_policy::EXIT_POLICY_BUDGET`）同值。 */
@@ -288,7 +290,7 @@ export class BackendSection {
       hint.className = "settings-hint";
       // ★ 这一句**刻意不再承诺任何一种退出行为** —— 那句话今天是**按机器分档**的
       //   （同一台机上勾没勾、脱没脱离，四种组合各说各的），所以它住在每一行里，
-      //   由 `describeExitBehavior` 从唯一的那个家取。
+      //   由那台后端出成品（`exit-policy-read` 的 `said`）。
       //   ⚠ 原来这里那句「它仍会在 monitor 退出后很快自行退出」是**实测结论**，
       //   而 K-P1 之后它只对**没脱离**的那一支成立 —— 留在这里就成了一句半假的全称。
       hint.textContent = copyText("backend.ctor.intro");
@@ -517,8 +519,7 @@ export class BackendSection {
     exitCol.appendChild(exit);
 
     // ★★ `K-P3b KP3W4`：**读数**，另起一格（〔PB1〕成品由后端出，见 `paintHealth`）。
-    // ⚠ **不许接在退出那一句后面**：`describeExitBehavior` 的四张脸被
-    // `backend-section.vitest.ts` 用**等号**逐格钉着 —— 那两句话说的是两件事。
+    // ⚠ **不许接在退出那一句后面**：退出那一句是后端的成品 `said`，`backend-section.vitest.ts` 用**等号**钉着 —— 那两句话说的是两件事。
     const healthCol = col("health");
     const health = document.createElement("span");
     health.className = "backend-row-health";
@@ -531,36 +532,29 @@ export class BackendSection {
   /**
    * 重画一行的「退出时会发生什么」＋ 那个勾。
    *
-   * `detached` 的真相源是后端 `backend_status` 的那一格，而它记的是
-   * **起它的时候走没走脱离那条路**（不是拿 `channel`/`pid` 反推 —— 那是假信号）。
-   * 远端恒 `null` ⇒ 按「没脱离」算，那对远端是**对的**：断流之后那个进程随管道破裂退出。
+   * 〔MIG-2 · ㊴〕那一句是后端的成品 `said`（它知道自己是回环常驻还是被监护）；原先这里拿 monitor 的 `backend_status.detached`
+   * 拼（远端恒 `null` ⇒ 远端常驻也被说成「很快自行退出」），那一格不再参与。
    *
    * 〔B2〕`answer` 是**后端答的**那一份；`null` = 问不到 ⇒ 勾禁用、那一行不说话。
    * 〔S5 · V105 清账〕原来还有「不适用」一臂（折进前端那一档：勾、那一行、[起][停] 整个拿掉，E4）——
    * 那一档已放弃，这一臂随之删了。
    */
-  private paintExit(
-    origin: string,
-    detached: boolean,
-    answer: ExitAnswer | null,
-  ): void {
+  private paintExit(origin: string, answer: ExitAnswer | null): void {
     const cells = this.cellHosts.get(origin);
     const el = cells?.querySelector<HTMLElement>(".backend-row-exit");
     const label = cells?.querySelector<HTMLElement>(".backend-row-kill");
     const box = label?.querySelector<HTMLInputElement>("input");
     if (!el || !label || !box) return;
-    el.dataset.detached = String(detached);
     if (answer === null) {
       box.disabled = true;
       el.textContent = "";
       el.dataset.exit = "unasked";
       return;
     }
-    const said = describeExitBehavior({ ...answer, detached });
     el.dataset.exit = answer.policy;
     box.disabled = false;
     box.checked = answer.killOnExit;
-    el.textContent = said;
+    el.textContent = answer.said;
   }
 
   /**
@@ -724,9 +718,7 @@ export class BackendSection {
         console.warn(`[B2] ${origin} 的退出策略问不到：${String(e)}`);
         answer = null;
       }
-      // K-P1：`detached` 只认后端给的那一格。**缺席 / null ⇒ 按「没脱离」算**
-      // （旧后端没有这一格；远端天然没有）—— 保守方向：不脱离那句话是今天一直在说的那句。
-      this.paintExit(origin, st.detached === true, answer);
+      this.paintExit(origin, answer);
       // K-P3b：**同一份 JSON**，另一个元素。不新开一次查询，也不接在上面那一行后面。
       this.paintHealth(origin, st.health);
       return on;

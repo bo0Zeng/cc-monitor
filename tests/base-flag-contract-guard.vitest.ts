@@ -53,7 +53,7 @@ const ccm = `${ccmArgv}\n${ccmPlan}`;
 // （生产从 U8c-2c-2 起就走 Rust）；改读生产那一份的源码锚，与本文件读 `ccm/argv.rs` /
 // `plan.rs` 那几条同一做法。行为那一半由 `ccm_invocation_tests.rs::account_dimension_always_speaks_up_and_has_three_shapes` 管。
 /** monitor 侧 CLI 渲染器（生产那一份）。**只读，不改**。 */
-const MONITOR_CLI = readFileSync(resolve(ROOT, "src/bridge/src/backend/control/ccm_invocation.rs"), "utf8");
+const MONITOR_CLI = readFileSync(resolve(ROOT, "src/backend/control/launch_render/ccm_invocation.rs"), "utf8");
 /** 锚串在生产那一份里恰好出现一次（0 = 那一臂没了；≥2 = 有第二个家，本条会比到别处去）。 */
 const countIn = (hay: string, needle: string): number => hay.split(needle).length - 1;
 

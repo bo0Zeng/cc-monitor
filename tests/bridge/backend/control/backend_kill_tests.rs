@@ -62,14 +62,15 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
     //    下面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
     (
         // 〔`设计/90 §4 E` 2026-09-19 建 · 步 22b·B 接上生产 · LR2 起是外层三格唯一的家〕
-        "src/bridge/src/backend/control/payload.rs",
+        // 〔MIG-2〕载荷内核搬进后端（`99 §2.1 ⑬`），住址跟着换；把禁字喂进它那一段也跟着搬进后端测试段（见下 ③c）。
+        "src/backend/control/launch_render/payload.rs",
         CreationVerdict::ValidatesItselfByAllowlist,
         "〔DUP2 · J6〕界面那一道（TS 的两个会话名谓词）删了，名字的规则只有一份：`TmuxTarget::check` 对**新建**那一格\
              调 `src/bridge/crates/gate-core/src/lib.rs` 的 `new_tmux_name_issue`（拒 `* ? . : =` · 前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128），\
              对 attach / 送进已有会话调 `existing_tmux_name_issue`（拒绝集 ＋ 非空，V131 ②）；另对 `Raw` 那一支只放行 `[A-Za-z0-9_-]`\
              （裸拼的渲染前提，构造上产不出 `:` `=` `*` `?` `.` 与控制字符）；\
              `@ccm_sid` 另过 `shell_quote_core::session_id_ok`（它是**裸拼**的；〔DUP1〕原先那份 `ccm_sid_safe`〔散文墓碑〕收进共享那一条）。三条都由 \
-             `launch_tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
+             `launch_render::tmux_outer_parity::tests::the_rust_side_refuses_what_the_typescript_seat_would_have_concatenated` 钉住",
     ),
 ];
 
@@ -293,36 +294,21 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
         .collect();
     assert_eq!(
         allowlist_rows,
-        vec!["src/bridge/src/backend/control/payload.rs"],
+        vec!["src/backend/control/launch_render/payload.rs"],
         "\n放行集那一族的成员变了。本段是**按人群逐个手接**的（喂字符要拿到那个入口函数），\n         多一个成员就得在这里给它接上一段 —— 否则它会**静默地一条都不被喂**。"
     );
-    {
-        use crate::backend::control::payload::{render_tmux_outer, TmuxOuter, TmuxTarget};
-        for c in &forbidden {
-            let name = format!("cc{c}1");
-            let got = render_tmux_outer(
-                &TmuxOuter::Attach {
-                    target: TmuxTarget::Raw(&name),
-                },
-                None,
-            );
-            assert!(
-                got.is_err(),
-                "`payload.rs` 的放行集放过了禁字 `{c}`（名字 {name:?} 渲染成了 {got:?}）——\n                 backend 的 kill 形状门拒它，而这条创建路径能铸出它 ⇒ 建得出来、主路杀不掉。"
-            );
-        }
-        // ★ 正控：合法名字必须过（否则上面那一圈在渲染器坏掉时也全绿）。
-        assert!(
-            render_tmux_outer(
-                &TmuxOuter::Attach {
-                    target: TmuxTarget::Raw("cc-1")
-                },
-                None
-            )
-            .is_ok(),
-            "合法名字 `cc-1` 也渲不出来 —— 上面那一圈「拒了」说明不了任何事"
-        );
-    }
+    // 〔MIG-2〕那条放行集的入口（`render_tmux_outer`）搬进了后端 crate，monitor 够不着 ⇒ 「逐个禁字喂进去必须拒 ＋ 合法名字必须过」
+    //   那一段搬到它旁边：`tests/backend/control/launch_render/payload_tests.rs::the_tmux_outer_refuses_every_name_the_kill_gate_refuses`
+    //   （字符集同样从后端 `kill.rs` 的形状门现抠）。这里核它还在。
+    // 运行时读（不是编译期嵌入）：只核那段在不在，不值得一条跨半边的编译期边。
+    let backend_side = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("tests/backend/control/launch_render/payload_tests.rs"),
+    )
+    .expect("读不到后端那份 payload_tests.rs");
+    assert!(
+        backend_side.contains("fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses"),
+        "喂禁字那一段在后端测试段里不见了 —— 放行集那条创建路径从此没人喂"
+    );
 
     // ── ③b 🔴 **反方向**：每条校验器都得有一条创建路径指着它 ────────────
     //

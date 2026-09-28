@@ -968,8 +968,9 @@ pub fn run() {
             config::load_config,
             config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
-            // 〔RL1 · US1〕起会话那一发注入哪个中转地址：转交那台后端的成品（`launch-endpoint`）＋ 远端用到才起。
-            relay_endpoint_for_launch,
+            // 〔MIG-2 · `99 §2.1 ⑬`〕「起会话那一发注入哪个中转地址」那一问退役：界面经通道直接问那台后端 `launch-endpoint`（成品）；
+            //   monitor 只交它自己那个全量注入开关（monitor 进程环境，`20 §3.2`）。
+            relay_all_sessions_switch,
             // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
             // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
             aliases_render,
@@ -984,8 +985,7 @@ pub fn run() {
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
-            backend::control::launch_wire::render_ccm_launch,
-            backend::control::launch_wire::render_launch_payload,
+            // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             hooks_diag::diagnose_local_cc_bus_hooks,
             hooks_diag::diagnose_remote_cc_bus_hooks,
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
@@ -1043,15 +1043,10 @@ pub fn run() {
             acct_iso_deploy::acct_iso_shellinit,
             history::delete_history_session,
             history::create_branch_session,
-            history::resume_history_session,
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
-            history::new_local_session,
-            // 🔴 `K-R109`（09-13）：本机后端产「把终端接进那个会话」那一句（`ccm attach <名>`）。
-            //    `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。注册这一行与
-            //    `parity_ledger::LEDGER` 那一行、`src/ipc/commands.ts` 那个包装层
-            //    **是同一拍的事**：拆开任意一处，`commands.vitest.ts` 的 `C04a`
-            //    或 `parity_ledger` 的双向相等当场红（`K-R106` 实测过前一种）。
-            history::render_local_attach,
+            // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
+            //   monitor 只剩「开一个终端窗口跑这串」。
+            launch::open_local_terminal,
             // 〔C4c · 第四波 4B〕A2 那两条账号清单（远端 `list_remote_accounts` · 本机 `list_local_accounts`）与
             //   换号前的信任预检（`check_account_trust`）退役：前端经通道说 `accounts-list` / `accounts-trust`，后端出成品。
             // 〔C4a · 第四波〕「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
@@ -1070,7 +1065,7 @@ pub fn run() {
             pubkey::push_public_key,
             backend::control::tmux::list_remote_tmux,
             backend::control::tmux::list_local_tmux,
-            ccm_probe::probe_ccm_cli,
+            // 〔MIG-2〕`probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
             // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
@@ -1415,18 +1410,16 @@ impl SkipRuns {
 // 〔US1 · 第四波 4D〕`apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
 //   （`src/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
 
-/// 〔RL1 · 第四波〕**这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址**（`null` = 不注入）。
-///
-/// 前端拉起远端会话（与本机「就地 resume」那一格）之前问它一次，拿到地址就作为载荷里的一条
-/// `export-relay-base-url` 交给 `render_launch_payload`。〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品）；
-/// 这里只转交、照成品执行（`history::relay_endpoint_on` 头注）。〔DEL〕中转只住那台的常驻后端里，monitor 从不另起一个。
+/// 〔MIG-2 · `设计/20 §3.2`〕全量注入开关：monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`=0` 才关）。
+/// 它是 monitor 自己的配置（`99 §2.1 ⑬`「本机 monitor 配置」），界面问一次、随起会话那一问交给那台后端（`launch-endpoint` / `launch-local`）。
+/// 原先它挂在 `history.rs` 的注入事实缝上、由 monitor 自己问后端再判（`relay_endpoint_for_launch`〔散文墓碑〕），那一判进了后端。
 #[tauri::command]
-async fn relay_endpoint_for_launch(
-    origin: origin::Origin,
-    account: Option<history::LaunchAccount>,
-) -> Result<Option<String>, String> {
-    history::relay_endpoint_on(&origin, account.as_ref()).await
+fn relay_all_sessions_switch() -> bool {
+    std::env::var(RELAY_ALL_SESSIONS_ENV).map_or(true, |v| v != "0")
 }
+
+/// 那个开关的环境变量名（`20 §3.2`）。
+pub(crate) const RELAY_ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 
 // 〔HX2 · 第四波 4D〕墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 //   〔RM1a〕按 origin 交那台机器的后端；〔GP1〕本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`

@@ -18,7 +18,6 @@ import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
-import { invalidateCcmProbeCache } from "../ccm-probe";
 import { buildAliasManager } from "./machine-aliases"; // 〔AL2〕② 别名：远端卡与本机同一个组件（`origin` = 这台）
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
@@ -602,13 +601,13 @@ export class MachineCard {
           if (!st.available) throw new Error(st.error ?? "");
           return st.accounts.map((a) => a.name);
         },
-        // 机器列表那一格（`ccm`）照旧记装 / 卸的结论；装完清一次 ccm 探针缓存（别名块带 PATH 那一行）。
+        // 机器列表那一格（`ccm`）照旧记装 / 卸的结论。〔MIG-2〕原先装完还清一次界面的 ccm 探针缓存：渲染进了那台后端、
+        //   能力问它自己，界面不再缓存那一份（探针与缓存一起删了）。
         onBlockDone: (verb, error) => {
           if (verb === "install") {
             this.recordFacet("ccm", error
               ? { kind: "fail", detail: copyText("machineCard.status.installFailed") }
               : { kind: "ok", detail: copyText("machineCard.status.installed") });
-            invalidateCcmProbeCache(this.collect().label);
           } else if (!error) {
             this.recordFacet("ccm", { kind: "fail", detail: copyText("machineCard.status.uninstalled") });
           }
@@ -1037,8 +1036,7 @@ export class MachineCard {
       { facet: "backend", ok: copyText("machineCard.status.installed"), fail: copyText("machineCard.status.installFailed") },
       "comp",
     );
-    // F08：入口放好之后立即失效探测缓存 —— 免得要等最多 5 分钟 TTL 才切到 CLI 渲染器。
-    invalidateCcmProbeCache(cfg.label);
+    // 〔MIG-2〕原先这里清界面的 ccm 探针缓存；渲染进了那台后端、能力问它自己，那份缓存删了。
   }
 
   /** F08c：点「卸载后端」——删远端后端二进制（二次确认；〔DP1〕旁挂的版本标记退役了，不再删它）。 */

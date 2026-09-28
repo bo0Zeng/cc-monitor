@@ -16,7 +16,7 @@
 #
 # ## 字节从哪儿来（不重抄一份）
 #
-# 取自入库的逐字节金标准 `src/bridge/src/backend/control/fixtures/payload-golden.json`
+# 取自入库的逐字节金标准 `src/backend/control/launch_render/fixtures/payload-golden.json`
 # 里「五种 EnvOp 同时出现」那一条 —— 那份金标准由 `launch_payload_parity.rs` 钉着
 # **与生产 Rust 渲染器 `payload::render_payload` 逐字节相等**。
 # ⇒ 本脚本跑的就是生产会送去远端的那一串（只截到 env 前缀为止，见下）。
@@ -56,7 +56,7 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 #   此前只认后一半 ⇒ 门禁若在设了 `CARGO_TARGET_DIR` 的沙箱里跑，本套件会找不到它刚 build 的那一份。
 D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 (cd src/backend && cargo build)）"; exit 1; }
-GOLD="$REPO/src/bridge/src/backend/control/fixtures/payload-golden.json"
+GOLD="$REPO/src/backend/control/launch_render/fixtures/payload-golden.json"
 [ -f "$GOLD" ] || { echo "找不到载荷金标准：$GOLD"; exit 1; }
 
 W="$(mktemp -d /tmp/e2e-rbind-e2e.XXXXXX)"

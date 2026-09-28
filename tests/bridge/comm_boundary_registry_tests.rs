@@ -2497,11 +2497,14 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
     // 〔合并 MIG-1 × 主线 19671e6b〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
+    // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
+    //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
+    // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 58usize), // 〔MIG-1〕55 → 58：端口转发三问（`src/port-forward-reads.ts`）
+            ("chan.call", 62usize), // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 6 ⇒ 62
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

@@ -68,8 +68,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 describe("〔RESYNC〕手动对齐", () => {
   it("★ 金样：带 sid 的请求体 == 金样那份；整机不带 sid；成品按金样解", async () => {
     invokeMock.mockImplementation(async () => chanReply(golden.reply));
-    const { added, removed, retagged, watchers } = golden.reply as Record<string, number>;
-    expect(await resync("devbox", golden.request.sid)).toEqual({ added, removed, retagged, watchers });
+    const { added, removed, retagged, caught_up: caughtUp, watchers } = golden.reply as Record<string, number>;
+    expect(await resync("devbox", golden.request.sid)).toEqual({ added, removed, retagged, caughtUp, watchers });
     await resync("devbox");
     expect(sentCalls()).toEqual([
       ["devbox", "resync", golden.request],

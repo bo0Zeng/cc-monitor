@@ -272,11 +272,11 @@ pub fn rbind_token_marker(token: &str) -> Option<String> {
     rbind_token_shape_ok(token).then(|| format!("{RBIND_TOKEN_MARKER_PREFIX}{token}"))
 }
 
-// 〔DUP2 · `设计/01 §5` D1〕令牌形状**只有一份**：`backend::control::payload::rbind_token_shape_ok`（字母表 ＋ 长度两个常量也住那里）。
+// 〔DUP2 · `设计/01 §5` D1〕令牌形状**只有一份**：`shell_quote_core::rbind_token_ok`（〔MIG-2〕载荷内核搬进后端之后直接用共享 crate 那一份）。
 // 这里原来逐字抄了一份（连同一个私有的长度常量），头注自称「本 crate 里只许有这一份」—— 而载荷那边同时也有一份。
 // 今天是再导出：`crate::bind::rbind_token_shape_ok` 这个名字留着（`ssh_source::parse_frame` · `launch.rs` 的调用点一个不动），
 // 背后是同一个函数 ⇒ 「本地表的键」与「wire 上读回来的串」按构造同源（`设计/80 §8.7` 步 3 / 步 4 要的那件事）。
-pub(crate) use crate::backend::control::payload::rbind_token_shape_ok;
+pub(crate) use shell_quote_core::rbind_token_ok as rbind_token_shape_ok;
 
 /// 从一个 marker 里解出启动期令牌。**不是**这一种 marker ⇒ `None`（Era 2 的
 /// `ccm-bind-…` 走的就是这条，行为与从前一字不差）。

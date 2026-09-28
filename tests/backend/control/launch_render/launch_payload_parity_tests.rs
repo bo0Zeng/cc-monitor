@@ -49,7 +49,7 @@ fn rust_payload_rendering_matches_the_typescript_golden_byte_for_byte() {
         let name = c.name.clone();
         let want = c.payload.clone();
         // ★ 跑**生产命令本体**（`render_launch_payload`），不是自己重搭 `PayloadSpec`。
-        let got = match crate::backend::control::launch_wire::render_launch_payload(c.req) {
+        let got = match crate::control::launch_render::wire::render_launch_payload(c.req) {
             Ok(p) => p,
             Err(e) => format!("<Err: {e}>"),
         };
@@ -90,11 +90,8 @@ fn rust_payload_rendering_matches_the_typescript_golden_byte_for_byte() {
 fn fixture_nested_env_keys_match_the_rust_constant_as_a_set() {
     let mut from_fixture = fixture().nested_env_keys;
     from_fixture.sort();
-    let mut from_rust: Vec<String> = crate::adapter::active()
-        .nested_env_to_scrub()
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
+    // 〔MIG-2〕后端那一份（`control/ccm/mod.rs::nested_env`，ccm 起 agent 前清的同一张）。
+    let mut from_rust: Vec<String> = crate::control::ccm::nested_env("claude");
     from_rust.sort();
     assert_eq!(
         from_fixture, from_rust,

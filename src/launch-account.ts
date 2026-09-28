@@ -12,7 +12,7 @@
 import type { LaunchModifiers } from "./launch-types";
 // 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
 // **wire 键名从后端来**，前端不再自己写 `{ kind: "named", configDir, name }` 这三个字面量。
-// 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
+// 源：`src/backend/control/launch_render/wire.rs::export_bindings_launch_render_facts`
 // （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import { isLocalOrigin, LOCAL_ORIGIN } from "./ipc/origin";
@@ -165,7 +165,7 @@ export function localFollowPlan(sid: string): LocalFollowPlan {
  *
  * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）。本函数先前只回
  * `{kind:"named", configDir}` ⇒ Rust 那侧的 `LaunchAccount::Named` 手上**没有名字**
- * ⇒ `history.rs::render_local_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+ * ⇒ 〔MIG-2〕本机后端 `local.rs::render_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
  * ccm 容器**。而盘上四个本机拉起入口里有三个只说得出具名账号（`tabs.ts` 一处 +
  * `views/history.ts` 两处，人群由 `ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）
  * ⇒ 那三条**在类型上**就到不了后端那条路，100% 落第二实现。

@@ -128,23 +128,24 @@ fn the_wire_shape_carries_the_three_states() {
 
 /// 〔S5 · 第四波 · V105 清账〕线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
 ///
-/// - 一侧是**真跑出来的** JSON（三态各跑一遍 `wire`，取键的并集）；
+/// - 一侧是**真跑出来的** JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）；
 /// - 另一侧是 `inbound.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。
 ///
-/// 它防的是 `shell` 那一格的回潮：那一格恒为 `"standalone"`、唯一的读者是界面一条永远走不到的
-/// 「不适用」臂（「折进前端进程」那一档已放弃，`99 §1` V105）。任何一侧单独加回一格都红；
-/// 两侧一起加回 ⇒ 下面那条字面量对照红（它是第三个来源：本判据作者读 `01 §3.3b` 写下的四格）。
+/// 它防的是 `shell` 那一格的回潮（「折进前端进程」那一档已放弃，`99 §1` V105）。任何一侧单独加回一格都红；
+/// 两侧一起加回 ⇒ 下面那条字面量对照红（第三个来源：`01 §3.3b` 的四格 ＋ 〔MIG-2 · `99 §2.1 ㊴`〕成品 `said`）。
 #[test]
-fn the_wire_shape_is_exactly_the_four_registered_fields() {
+fn the_wire_shape_is_exactly_the_registered_fields() {
     let mut produced = std::collections::BTreeSet::new();
     for r in [
         Read::Chosen(true),
         Read::Absent,
         Read::Unreadable("x".into()),
     ] {
-        let v = wire(&r, Some(std::path::Path::new("/p")));
-        let obj = v.as_object().expect("wire 回的不是对象");
-        produced.extend(obj.keys().cloned());
+        for resident in [false, true] {
+            let v = wire_as(&r, Some(std::path::Path::new("/p")), resident);
+            let obj = v.as_object().expect("wire 回的不是对象");
+            produced.extend(obj.keys().cloned());
+        }
     }
     for name in ["exit-policy-read", "exit-policy-set"] {
         let spec = crate::inbound::REGISTRY
@@ -158,13 +159,83 @@ fn the_wire_shape_is_exactly_the_four_registered_fields() {
             "`{name}` 真跑出来的键与登记的 `fields` 对不上（两向）"
         );
     }
-    let want: std::collections::BTreeSet<String> = ["killOnExit", "path", "reason", "state"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let want: std::collections::BTreeSet<String> =
+        ["killOnExit", "path", "reason", "said", "state"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
     assert_eq!(
         produced, want,
-        "线上形状漂了 —— `shell` 回来了？（V105 之后壳只剩一种，这一格没有信息量）"
+        "线上形状漂了 —— `shell` 回来了？成品 `said` 丢了？"
+    );
+}
+
+/// 〔MIG-2 · `99 §2.1 ㊴` · `01 §3.3b ⑤`〕「这台退出时会发生什么」逐格相等（四种读数 × 常驻 / 被监护，外加读不出来的两格），
+/// 期望按键写（异源：本表是读 `§3.3b` 手写的规格，不是抄 `said` 的分支）。原先这张表在前端 `describeExitBehavior`，
+/// 判定挪进后端之后判据跟着挪。「无人监护」只许出现在「没勾 ＋ 常驻」那一格（K14）。
+#[test]
+fn the_said_line_is_exact_on_every_cell() {
+    let want = |state: &str, kill: bool, resident: bool| -> &'static str {
+        match (state, kill, resident) {
+            ("unreadable", _, _) => "backendPolicy.exit.unreadable",
+            (_, true, _) => "backendPolicy.exit.kills",
+            (_, false, true) => "backendPolicy.exit.unattended",
+            (_, false, false) => "backendPolicy.exit.selfDies",
+        }
+    };
+    let mut cells = 0;
+    for r in [
+        Read::Chosen(true),
+        Read::Chosen(false),
+        Read::Absent,
+        Read::Unreadable("x".into()),
+    ] {
+        for resident in [false, true] {
+            let v = wire_as(&r, None, resident);
+            let key = want(r.state(), r.kill_on_exit(), resident);
+            assert_eq!(
+                v["said"],
+                copy_text(key, &[]),
+                "（{}/{}/常驻={resident}）说的不是 `{key}` 那一句",
+                r.state(),
+                r.kill_on_exit()
+            );
+            cells += 1;
+        }
+    }
+    // 读不出来那一态另跑一遍「勾上」（套过缺省的值恒 false，得显式造一格）：读不出来不看勾。
+    for resident in [false, true] {
+        assert_eq!(
+            said(&Read::Unreadable("x".into()), resident),
+            copy_text("backendPolicy.exit.unreadable", &[])
+        );
+        cells += 1;
+    }
+    assert_eq!(cells, 10, "穷举的格数不对 —— 循环坏了");
+    let unattended = copy_text("backendPolicy.exit.unattended", &[]);
+    assert!(unattended.contains("无人监护"), "常驻那一句没说「无人监护」（K14 那一半）");
+    for key in [
+        "backendPolicy.exit.kills",
+        "backendPolicy.exit.selfDies",
+        "backendPolicy.exit.unreadable",
+    ] {
+        assert!(
+            !copy_text(key, &[]).contains("无人监护"),
+            "`{key}` 承诺了无人监护 —— 那一档它不会继续跑"
+        );
+    }
+}
+
+/// 〔MIG-2 · ㊴〕生产那一格真读载体：一次性（测试进程没有监听口环境）⇒ 被监护那一句。
+#[test]
+fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
+    assert!(
+        std::env::var(crate::listen::ENV_PORT).is_err(),
+        "测试进程里有监听口环境 —— 本格的前提不成立"
+    );
+    assert_eq!(
+        wire(&Read::Absent, None)["said"],
+        copy_text("backendPolicy.exit.selfDies", &[])
     );
 }
 
