@@ -871,10 +871,10 @@ pub const TOOLS: &[ToolSpec] = &[
         ],
     },
     // 〔AS2 · 第四波 4B · V113〕**skill「装到这台」**：资产目录里别的机器有的 skill，用户点了才装到这台 ——
-    //   文件原样从来源那台拷来（V112），写经这台后端 `files-put`（带 `expect`，`skill_install.rs`）。
+    //   文件原样从来源那台拷来（V112），〔MIG-3a〕判、写、记都在这台后端（`skill_flow.rs::answer_install`）。
     //   `96 §4`：每个写点都要在足迹里可见。落点由用户点的那一条决定（这台 skills 下以那个名字为名的目录）⇒ 占位符，不猜。
     //   〔SU1 · 第四波 4C · V116〕`uninstallable: true`：用户裁「要，只删装时写进去的文件」—— 装的时候那台后端记下写了哪几个
-    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_install.rs::skill_uninstall_apply` 只删记着的那几个（装完改过的先问）。
+    //   （第二条 touch：那台后端自己的装记录），卸口 `skill_flow.rs::answer_uninstall` 只删记着的那几个（装完改过的先问）。
     //   〔墓碑 —— AS2 那一版这里是 `uninstallable: false`（「没有卸掉装来的 skill 这条口，如实声明」）。〕
     ToolSpec {
         id: "skill-install",

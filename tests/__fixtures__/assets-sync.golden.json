@@ -1,0 +1,11 @@
+{
+  "说明": [
+    "〔MIG-3a〕`assets-sync` 的跨语言金样：后端（替身对面）现算 == reply 的形状；界面 `src/assets-sync-reads.ts::decodeAssetsSynced` 读同一份。",
+    "只采结构（占位 id）。"
+  ],
+  "reply": {
+    "self": "<SELF>",
+    "synced": [{ "origin": "o", "peer": null, "changed": false, "pushed": 0, "error": "<ERR>" }],
+    "reach": [{ "origin": "o", "machine": null }]
+  }
+}

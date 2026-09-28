@@ -162,8 +162,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔MIG-3a · `99 §2.1 ⑬`〕`mcp.write` / `mcp.remove` / `mcp.sync` 三项摘了：D 组 MCP 的计算与写进了那台后端
     #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
     #   （归档表留一个不存在的 id 会让 `R3b` 恒红）。「装 MCP」那一件的装口住 `tool_registry` 的 `project-mcp` 那一行（后端写口）。
-    # 〔AS2 · 第四波 4B · V113〕skill「装到这台」：资产目录里别的机器有的 skill，用户点了才装到这台 `<skill 根>/<名>/`。
-    ("skill.install", (B3, "K34+V112+V113", "「装 skill」：文件原样从来源那台拷来，写之前看差异、不同的要点了才盖（装要你点）")),
+    # 〔MIG-3a〕`skill.install` 摘了（理由同上：装 / 卸进了被写那台后端，不再是 Tauri 命令）。装口住 `tool_registry` 的 `skill-install` 那一行。
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
     ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
@@ -188,9 +187,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
     ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
-    # 〔AS2 · 第四波 4B · V113〕资产目录同步：只记各台有哪些 skill / MCP、在后端之间自动对上（写的是后端自己的目录文件）；
-    #   **不往任何机器装东西**（「装到这台」要用户点，走 ③ 那几条的路）⇒ 不是装口。
-    ("assets.catalog", (NA, "—", "资产目录（V113「目录自动同步，装要你点」）：只同步「有哪些、定义是什么」，不装")),
+    # 〔MIG-3a〕`assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
     #   （写面五条 C4e 已迁）、`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Tauri 命令退役 ⇒ 已不在 `LEDGER` 里；理由同上面几条墓碑。
@@ -384,12 +381,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "cc_bus_install_state",
         "deploy_local_cc_bus",
         # 〔MIG-3a〕MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
-        # 〔AS2 · 第四波 4B〕skill「装到这台」（能力 `skill.install`，③）：写的是这台 `<skill 根>/<名>/`，与 cc-bus 那一格同一件（装 skill）。
-        "skill_install_apply",
-        "skill_install_preview",
-        # 〔SU1 · 第四波 4C · V116〕skill 卸（同一能力 `skill.install`，③）：删的是同一个 `<skill 根>/<名>/` 里装时写进去的那几个 ⇒ 同一件（装 / 卸 skill）。
-        #   前端落点仍只在 `src/settings/mcp-section.ts::assetInstallApi`（`FRONTEND_PIN['S5']` 不动）。
-        "skill_uninstall_apply",
+        # 〔MIG-3a〕skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
         "write_skill_file",
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
        "〔步 12·C 收尾 09-20〕③ 这一处**现打是 5 条命令**（`§3-3` 写下时是 7 条，"
@@ -447,9 +439,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
     ("S5", (("src/settings/cc-bus-section.ts",
-             "src/settings/mcp-section.ts",
              "src/views/inbox-view.ts"),
-            "量于 09-15 · 同上",
+            "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
+            "改经通道问那台后端，不再调 S5 的 Tauri 命令",
             "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S5']`")),
 ])
@@ -598,6 +590,10 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
     "assets/mcp_edit.rs::answer_remove":
         "同上，撤那一侧",
+    "assets/skill_flow.rs::answer_install":
+        "〔MIG-3a〕`skill-install` 的装口：那台后端的帧命令 `skill-install-apply` 本体，本来就不是 Tauri 命令",
+    "assets/skill_flow.rs::answer_uninstall":
+        "同上，卸那一侧（`skill-uninstall-apply`）",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
         "本来就不是 Tauri 命令：没有用户按钮，触发点是 `panorama_call.rs` 在那台后端答「没装 / 太旧」时调它"

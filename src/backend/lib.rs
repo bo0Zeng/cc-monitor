@@ -772,6 +772,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--skill-install-apply",
+    "--skill-uninstall-apply",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
     "--assets-catalog",

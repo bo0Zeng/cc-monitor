@@ -15,6 +15,7 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast";
 import { McpSyncPanel } from "./mcp-sync";
 import { mcpSyncApply, mcpSyncPreview } from "../mcp-sync-reads";
+import { skillInstallApply, skillInstallPreview, skillUninstallApply } from "../skill-install-reads";
 import type { AssetInstallApi } from "./assets-section";
 
 export type McpScope = "user" | "local" | "project";
@@ -117,10 +118,10 @@ export function assetInstallApi(): AssetInstallApi {
     dirs: (a) => mcpDirs(a),
     mcpPreview: (a) => mcpSyncPreview(a),
     mcpApply: (a) => mcpSyncApply(a),
-    skillPreview: (a) => commands.skill_install_preview(a),
-    skillApply: (a) => commands.skill_install_apply(a),
+    skillPreview: (a) => skillInstallPreview(a),
+    skillApply: (a) => skillInstallApply(a),
     // 〔SU1 · 第四波 4C · V116〕卸：同一件（③ 装 / 卸 skill）的前端落点仍只在本文件。
-    skillUninstall: (a) => commands.skill_uninstall_apply(a),
+    skillUninstall: (a) => skillUninstallApply(a),
   };
 }
 

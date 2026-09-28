@@ -248,22 +248,6 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3a,
         "monitor 算好经 `BackendDoor` 交写",
     ),
-    ("assets_sync", Lane::Mig3a, "monitor 转交给本机后端"),
-    (
-        "skill_install_preview",
-        Lane::Mig3a,
-        "两台之间的编排在 monitor",
-    ),
-    (
-        "skill_install_apply",
-        Lane::Mig3a,
-        "逐文件 `files-put` 由 monitor 发",
-    ),
-    (
-        "skill_uninstall_apply",
-        Lane::Mig3a,
-        "逐文件 `files-delete` 由 monitor 发",
-    ),
     ("list_skills", Lane::Mig3a, "skill 接入面整形在 monitor"),
     ("read_skill_file", Lane::Mig3a, "可编辑文件的围栏在 monitor"),
     (

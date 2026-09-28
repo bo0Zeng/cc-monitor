@@ -196,6 +196,8 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
+    // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "skill-install-apply",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
@@ -203,6 +205,7 @@ pub const COMMANDS: &[&str] = &[
     // 〔SU1〕这台记着的、从别处装来的 skill · 卸的判定（都只读；删经 `files-delete` 带 `expect`）。
     "skill-installs",
     "skill-read",
+    "skill-uninstall-apply",
     "skill-uninstall-plan",
     "tasks-list",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
@@ -1349,7 +1352,8 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "assets-sync",
         doc_anchor: Some("#### `assets-sync`"),
-        codes: &["bad_args", "io_failed"],
+        // 〔MIG-3a〕`unreachable`：只给 `origin`（界面直问）而可达表里还没有那一台。
+        codes: &["bad_args", "io_failed", "unreachable"],
         fields: &["dial", "origin", "reach", "self", "synced"],
         takes_input: true,
         run: Run::Async(|r| {
@@ -2449,6 +2453,75 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::mcp_sync_flow::answer_apply(
                 &LocalFiles,
                 &crate::mcp_sync::Live::from_env(),
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
+    //   记（`skill_ledger::answer_record`，第四层写口只从这扇门递进去）同一台。
+    CommandSpec {
+        name: "skill-install-apply",
+        doc_anchor: Some("#### `skill-install-apply`"),
+        codes: &[
+            "bad_args",
+            "bad_file",
+            "io_failed",
+            "needs_consent",
+            "stale",
+        ],
+        fields: &[
+            "chmodFailed",
+            "dir",
+            "name",
+            "overwrite",
+            "recordFailed",
+            "source",
+            "take",
+            "target",
+            "written",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_flow::answer_install(
+                &LocalFiles,
+                &crate::mcp_sync::Live::from_env(),
+                None,
+                &crate::skill_ledger::answer_record,
+                &r.args,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-uninstall-apply",
+        doc_anchor: Some("#### `skill-uninstall-apply`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "ledger_unreadable",
+            "needs_consent",
+            "not_found",
+            "stale",
+        ],
+        fields: &[
+            "confirm",
+            "deleted",
+            "dir",
+            "dirFailed",
+            "dirRemoved",
+            "recordFailed",
+            "seen",
+            "take",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_flow::answer_uninstall(
+                &LocalFiles,
+                None,
+                &crate::skill_ledger::answer_record,
                 &r.args,
             )
             .map(Some)

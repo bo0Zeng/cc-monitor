@@ -90,6 +90,12 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/skill_flow.rs",
+        "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
         "src/backend/assets/mcp_edit.rs",
         "〔MIG-3a〕`project-mcp` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
     ),

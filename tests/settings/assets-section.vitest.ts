@@ -24,17 +24,17 @@ import { resolve } from "node:path";
 
 const calls = vi.hoisted(() => ({ invoke: [] as string[], chan: [] as string[] }));
 
-vi.mock("../../src/ipc/commands", () => ({
-  commands: {
-    assets_sync: async (a: { origin: string }) => {
-      calls.invoke.push(`assets_sync:${a.origin}`);
-      return { self: "LOCALID", synced: [], reach: [{ origin: "dev", machine: "DEVID" }] };
-    },
-  },
-}));
 vi.mock("../../src/ipc/chan", () => ({
   chan: {
-    call: async (origin: string, op: string) => {
+    call: async (origin: string, op: string, body: Uint8Array) => {
+      // 〔MIG-3a〕同步那一问改走通道（问本机后端 `assets-sync`，远端那一页只报 origin）：按旧名录进 `invoke` 那一列，断言不变。
+      if (op === "assets-sync") {
+        const a = JSON.parse(new TextDecoder().decode(body)) as { origin?: string };
+        calls.invoke.push(`assets_sync:${a.origin ?? "<local>"}`);
+        return new TextEncoder().encode(
+          JSON.stringify({ self: "LOCALID", synced: [], reach: [{ origin: "dev", machine: "DEVID" }] }),
+        );
+      }
       calls.chan.push(`${op}:${origin}`);
       if (op === "skill-installs") {
         return new TextEncoder().encode(JSON.stringify({ installs: [{ dir: "/h/.claude/skills/pulled", name: "pulled", files: 2 }] }));
@@ -93,7 +93,7 @@ import {
   uninstallDefaultTake,
   type UninstallRow,
 } from "../../src/settings/assets-section";
-import type { SkillInstallRow } from "../../src/generated/SkillInstallRow";
+import type { SkillInstallRow } from "../../src/skill-install-reads";
 
 const repo = resolve(__dirname, "../..");
 
