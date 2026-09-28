@@ -163,6 +163,9 @@ enum Outcome {
 /// 它真正的收尾靠的是整条 SSH channel 被 drop。
 enum WriteJob {
     Line(String),
+    /// 〔MIG-1 · 测试连接进本机后端〕生产里唯一的调用方（一次性探测 `probe_backend`）随测试连接删了 ⇒ 只编进测试档：
+    /// 两条起真后端的判据拿它演「宿主走了 / 关写端不带走后端」（C8）。生产里不再有关写半边这回事。
+    #[cfg(test)]
     CloseWrite,
 }
 
@@ -302,7 +305,8 @@ where
             while let Some(job) = rx.recv().await {
                 let line = match job {
                     WriteJob::Line(l) => l,
-                    // 只有明确要求时才关写半边 —— 见 `InboundClient::close_write`。
+                    // 只有明确要求时才关写半边 —— 见 `InboundClient::close_write`（只在测试档）。
+                    #[cfg(test)]
                     WriteJob::CloseWrite => {
                         let _ = w.shutdown().await;
                         break;
@@ -543,12 +547,13 @@ impl InboundClient {
 
     /// **显式关掉写半边** —— backend 的入方向 reader 见 EOF 后寿终。
     ///
-    /// 只有一次性探测该调（`ssh_source::probe_backend`：探完就不再发命令了）。
+    /// 〔MIG-1〕原先只有一次性探测调它（`ssh_source::probe_backend`，随测试连接进本机后端删了）⇒ 今天只编进测试档。
     /// 长连接上调它 = 之后**再也发不出任何命令**，而连接看起来一切正常。
     /// 之所以做成一条要主动发的指令而不是「writer task 结束时顺手做」，就是为了让这个
     /// 区别在调用点显形。
     ///
     /// **它不会让后端退出**（e2e 第 9 条实测钉住）—— 见 [`WriteJob`] 的说明。
+    #[cfg(test)]
     pub fn close_write(&self) {
         if self.writes.try_send(WriteJob::CloseWrite).is_err() {
             // 队列满 / 写任务已退。**说出来** —— 调用方会以为已经关了。

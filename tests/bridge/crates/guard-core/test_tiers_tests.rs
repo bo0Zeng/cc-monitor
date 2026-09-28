@@ -58,8 +58,8 @@ use std::path::{Path, PathBuf};
 const UNIT: &[&str] = &[
     "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
-    "tests/backend/dial_probe_tests.rs",   // 〔MIG-1 续〕测试连接三步的结局（链路替身）
-    "tests/remote-probe.vitest.ts",        // 〔MIG-1 续〕测试连接的读口（请求体 · 严格收）
+    "tests/backend/dial_probe_tests.rs", // 〔MIG-1 续〕测试连接三步的结局（链路替身）
+    "tests/remote-probe.vitest.ts",   // 〔MIG-1 续〕测试连接的读口（请求体 · 严格收）
     "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
