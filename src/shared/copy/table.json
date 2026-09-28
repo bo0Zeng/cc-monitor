@@ -18952,6 +18952,16 @@
       "zh": "和实际情况一致，没有要改的。",
       "args": []
     },
+    "resync.done.caughtUp": {
+      "kind": "body",
+      "zh": "补读了 {n} 条。",
+      "args": ["n"]
+    },
+    "resync.done.caughtNone": {
+      "kind": "body",
+      "zh": "没有漏的。",
+      "args": []
+    },
     "resync.done.nobody": {
       "kind": "body",
       "zh": "这台后端现在没有在看会话，没有可对齐的。",

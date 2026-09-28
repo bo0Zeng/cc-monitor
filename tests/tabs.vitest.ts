@@ -1488,7 +1488,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
         await gate;
         if (a.origin === "box") throw new Error("连不上");
         const u = new TextEncoder().encode(
-          JSON.stringify({ added: 0, removed: 0, retagged: 0, watchers: 1, unavailable: [], uncancellable: [] }),
+          JSON.stringify({ added: 0, removed: 0, retagged: 0, caught_up: a.origin === "gpd" ? 2 : 0, watchers: 1, unavailable: [], uncancellable: [] }),
         );
         return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
       }
@@ -1517,8 +1517,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(lines).toHaveLength(3);
     expect(lines).toEqual(
       expect.arrayContaining([
-        copyText("resync.machines.ok", { machine: copyText("resync.machines.local"), said: copyText("resync.done.same") }),
-        copyText("resync.machines.ok", { machine: "gpd", said: copyText("resync.done.same") }),
+        copyText("resync.machines.ok", { machine: copyText("resync.machines.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
+        copyText("resync.machines.ok", { machine: "gpd", said: copyText("resync.done.caughtUp", { n: 2 }) + copyText("resync.done.same") }),
         expect.stringMatching(/^box：没问到（.+）$/),
       ]),
     );
