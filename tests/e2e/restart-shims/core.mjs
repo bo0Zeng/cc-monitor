@@ -56,7 +56,7 @@ export async function invoke(cmd, args = {}) {
       const a = ["send-keys", "-t", `=${target}:`, keys];
       if (enter) a.push("Enter");
       const r = tmux(a);
-      // 会话不在（已被杀/漂移）→ tmux 报错 → 抛,由真源 ④a 的 try/catch 兜（降级 kill）。
+      // 会话不在（已被杀/漂移）→ tmux 报错 → 抛,由真源 ③ compact 的 try/catch 兜（不阻断）。
       if (r.status !== 0) throw new Error("tmux send-keys failed: " + String(r.stderr || "").trim());
       return undefined;
     }
@@ -150,7 +150,7 @@ function chanCall(op, body) {
       const a = ["send-keys", "-t", `=${name}:`, payload];
       if (mode === "send-into") a.push("Enter");
       const r = tmux(a);
-      // 会话不在（已被杀/漂移）⇒ 与后端同一个码，由真源的 try/catch 兜（降级 kill）。
+      // 会话不在（已被杀/漂移）⇒ 与后端同一个码，由真源 ③ compact 的 try/catch 兜（不阻断）。
       if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
       return enc({ session: name, created: false, typed: true });
     }
