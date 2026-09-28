@@ -14,3 +14,19 @@ export async function resolve(spec, ctx, next) {
   }
   return r;
 }
+
+// 〔E2 尾 09-27〕CSS 模块（`import s from "./x.module.css"`）node 自己载不了（`ERR_UNKNOWN_FILE_EXTENSION`），
+// 而真源图里有一个：`account-restart.ts` → `ask-dialog.ts` → `ask-dialog.module.css`（重构时加进来的，
+// 从那天起本驱动器一行都跑不起来，restart / restart-frames 两套在本机与 CI 同红）。
+// ⇒ 载成「类名映射到自身」的替身：命令级驱动器不渲染 DOM，类名是什么都不影响判的东西；
+//   vitest 那侧有自己的 CSS 模块处理，与这里无关。只认 `.module.css`，别的扩展照旧交给下一层（不吞错）。
+export async function load(url, ctx, next) {
+  if (url.endsWith(".module.css")) {
+    return {
+      format: "module",
+      source: "export default new Proxy({}, { get: (_, k) => String(k) });",
+      shortCircuit: true,
+    };
+  }
+  return next(url, ctx);
+}

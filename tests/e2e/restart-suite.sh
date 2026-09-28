@@ -50,7 +50,7 @@ CWD_DIR="/tmp/e2e-remote"
 mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" "$CWD_DIR"
 
 # 两账号 fixture（都可选:isolated + loggedIn + exists）。znew=换号目标、bold=旧号。
-ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"bold","email":"","configDir":"'"$OLD"'","isDefault":false,"mode":"isolated","exists":true,"loggedIn":true},{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true}]}'
+ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"bold","email":"","configDir":"'"$OLD"'","isDefault":false,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true},{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 export CCM_ACCOUNTS_JSON="$ACCTS"
 
 pass=0; fail=0
@@ -193,7 +193,10 @@ grep -qx "kill" "$WORK/b6.seq" && ok "B6 旧会话已真 kill（resume 前的破
 grep -qx "resume-fail" "$WORK/b6.seq" && ok "B6 resume 拉起失败（resume-fail 帧）" || bad "B6 未见 resume-fail"
 { grep -q "^record " "$WORK/b6.seq" && bad "B6 resume 没起来却**记账**（回归:钉错账号归属）"; } || ok "B6 未记账（没起来就不钉账号归属）"
 echo "$OUT6" | grep -q "^RESULT false$" && ok "B6 返回 false（不报成功）" || bad "B6 RESULT≠false"
-grep -q "新会话未能自动拉起" "$WORK/b6.toast" && ok "B6 toast「旧会话已结束，但新会话未能自动拉起」" || bad "B6 无 resume 失败 toast"
+# 〔E2 尾 09-27〕标题从文案表取（`accountRestart.relaunch.failedTitle`）：这里原来逐字写着一句旧文案，
+#   文案改写（09-25 B3a）之后本格恒红、而编排本身是对的 —— 判的是「那一句 toast 出来了」，不是某一版措辞。
+T6="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["entries"]["accountRestart.relaunch.failedTitle"]["zh"])' "$REPO/src/shared/copy/table.json")"
+[ -n "$T6" ] && grep -qxF "TOAST $T6" "$WORK/b6.toast" && ok "B6 toast「$T6」（resume 没起来如实说）" || bad "B6 无 resume 失败 toast（期望标题「$T6」）"
 
 echo "== 结果:$pass 过 / $fail 败 =="
 # G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。

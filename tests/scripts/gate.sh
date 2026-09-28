@@ -33,7 +33,7 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕32 格
+# │ 〔自述·格数〕36 格
 # │ 〔自述·点名〕worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
 # │   ccbus-twophase ·
 # │   platform · muslbuild ·
@@ -42,10 +42,13 @@
 # │   winchk · winchk-backend · winlink · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
 # │   ccm tests/e2e/ccm-contract-parity ·
-# │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend · ccm tests/e2e/backend-cc-bus
-# │ 〔自述·现物〕七套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
+# │   ccm tests/e2e/backend-rbind-token · ccm tests/e2e/rbind-token-endtoend · ccm tests/e2e/backend-cc-bus ·
+# │   ccm tests/e2e/backend-gate2 · ccm tests/e2e/local-backend · ccm tests/e2e/restart-frames · ccm tests/e2e/restart
+# │ 〔自述·现物〕十一套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
 # │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh` ·
-# │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh` · `tests/e2e/backend-cc-bus.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
+# │   `tests/e2e/backend-rbind-token.sh` · `tests/e2e/rbind-token-endtoend.sh` · `tests/e2e/backend-cc-bus.sh` ·
+# │   `tests/e2e/backend-gate2-acceptance.sh` · `tests/e2e/local-backend-supervise.sh` ·
+# │   `tests/e2e/restart-backend-frames.sh` · `tests/e2e/restart-suite.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
@@ -1709,19 +1712,20 @@ run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字�
 #   ⚠ **`exact` 是第三个参数、fail-closed**：拼错 ⇒ `exit 2`，**不回落 `at-least`**。
 #     回落等于把「拼错了」静默降级成旧行为 —— 那正是这道闸要治的那一族。
 run_e2e() {
-  local suite="$1"; local floor="$2"
+  # 第三个参数可选：`exact`（缺省）或 `exact-with-skip`（〔E2 尾 09-27〕按 PASS+SKIP 恒等判，给按环境显式分支的套件）。
+  local suite="$1"; local floor="$2"; local mode="${3:-exact}"
   # ⚠ 两个名字**刻意不同**：`GATE_ONLY` 里写套件短名（`ccm-cli`），而收据与
   #   `found_cells()` 认的**规范名**带前缀（`ccm tests/e2e/ccm-cli`）。
   #   规范名里有空格 ⇒ 它当不了空格分隔的 `GATE_ONLY` 记号，所以两侧各用一个，
   #   归一那一跳写在 `K-G4C-gate-receipt.py` 与 `K-R80` 的 `C5d`/`C8` 里（同一份取法）。
   gate_wants "$suite" || return 0
   local out rc n
-  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" exact 2>&1)"
+  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" "$mode" 2>&1)"
   rc=$?
   GATE_RAN+=("ccm tests/e2e/$suite")
   n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
   if [ "$rc" -ne 0 ]; then
-    fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 exact。\
+    fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 $mode。\
 诊断原文见上方本套件自己的输出）")
     # K-R22：原来这里是裸 `tail -20`。换成共用的 `gate_diag` 有两处不是排版：
     #   ① 套件自己的 `::error::` 诊断行**可能落在尾部 20 行之外**（`assert-pass-floor.sh`
@@ -1735,7 +1739,7 @@ run_e2e() {
     # **恰恰只能靠那段输出分开** —— 不印等于把这条判据自己那句话作废。
     gate_diag "tests/e2e/$suite" "$out"
   else
-    printf '  ok   %-14s %-22s PASS=%s（地板 %s，恒等）\n' "ccm e2e" "$suite" "$n" "$floor"
+    printf '  ok   %-14s %-22s PASS=%s（地板 %s，判法 %s）\n' "ccm e2e" "$suite" "$n" "$floor" "$mode"
   fi
 }
 
@@ -1773,13 +1777,13 @@ gate_selftest_e2e
 gate_e2e_wanted() {
   if [ -z "$GATE_ONLY" ]; then return 0; fi
   local suite
-  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend backend-cc-bus; do
+  for suite in ccm-print-parity ccm-rbind-title ccm-cli ccm-contract-parity backend-rbind-token rbind-token-endtoend backend-cc-bus backend-gate2 local-backend restart-frames restart; do
     case " $GATE_ONLY " in *" $suite "*) return 0 ;; esac
   done
   return 1
 }
 if gate_e2e_wanted; then
-printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（七套 e2e 的被测对象）"
+printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（下面那几套 e2e 的被测对象）"
 ( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
 else
 printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
@@ -1896,6 +1900,18 @@ run_e2e rbind-token-endtoend   9
 #   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
 #   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
 run_e2e backend-cc-bus        96
+# 〔E2 尾 · 09-27〕同一族的另外四套：只挂在 `ci.yml` 那条不通电的流水线上（本仓不推送），于是各红了几天没人看见 ——
+#   `backend-gate2` 的 `meta_equals` 判据过时（DUP3 §5 ⑦ 按设计放行 `=`，它仍期望 `invalid_args`）·
+#   `local-backend` 两趟过滤串重叠、常驻那族跑两遍（且第一个宿主起的后端没人收，靠收尾 `pkill -f` 兜着）·
+#   `restart-frames` / `restart` 的驱动器载不了 `.css`、shim 还在说已经退役的 Tauri 命令（真源早改走通道）。
+#   修完接进本机执行链。〔量于 2026-09-27，本工作树 `w4/e2`，本机 tmux 3.6〕35 · 15 · 5 · 24 PASS / 0 FAIL，约 100 秒。
+#   ★ `backend-gate2` 按 **PASS+SKIP** 恒等判（`exact-with-skip`）：`meta_dollar` 那一格要 tmux ≥3.5，版本不够的机器上
+#     它记 SKIP 并说原因（套件里的版本门 `min_tmux_for`；版本不够却建得出来 ⇒ FAIL「版本门过时」）⇒ 3.6 上 35+0、
+#     3.4 上 34+1，这一格两边都是 35。只钉 PASS 的话就是把开发机的 tmux 烤进了判据。
+run_e2e backend-gate2         35 exact-with-skip
+run_e2e local-backend         15
+run_e2e restart-frames         5
+run_e2e restart               24
 
 # ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。
 #   它量的那条池子命令与核心随浏览 / 复制离开 SFTP 一起退役（窗口的复制走后端 `files-copy`），
@@ -2124,7 +2140,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `rbind-token-endtoend`，见上面 `run_e2e` 那一段）—— 它们此前只被 shellcheck、不被执行。
   # 〔TAIL · 09-26〕**30 → 31**，加的是 `backend-cc-bus`（见上面 `run_e2e` 那一段）；
   #   **31 → 32**，加的是 `panorama-engine`（全景小程序自己的测试，见 `backend` 那一格下面）。
-  echo "GATE: OK —— 32 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus），可以出货"
+  echo "GATE: OK —— 36 格全绿（worktree-clean · hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · ccbus-twophase · platform · installface · fmt · fmt-backend · winchk · winchk-backend · winlink · muslbuild · cargo · comm-boundary · test-tiers · deadcode · generated · backend · panorama-engine · tsc · npm · ccm-print-parity · ccm-rbind-title · ccm-cli · ccm-contract-parity · backend-rbind-token · rbind-token-endtoend · backend-cc-bus · backend-gate2 · local-backend · restart-frames · restart），可以出货"
   gate_print_blind
   exit 0
 fi

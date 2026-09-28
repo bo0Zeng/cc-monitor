@@ -12,6 +12,7 @@
 //
 // 账号 fixture 经 CCM_ACCOUNTS_JSON（RawAccountsResult）喂给真源 fetchAccounts/accountConfigDir。
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { appendFileSync } from "node:fs";
 
 const SEQ = process.env.CCM_SEQ_LOG || "/tmp/e2e-restart-seq.log";
@@ -89,6 +90,24 @@ export async function invoke(cmd, args = {}) {
       seq("resume");
       return undefined;
     }
+    // 〔E2 尾 09-27〕账号三问与 tmux 两条控制（结束 · 发按键）今天走**通道**（`chan.call(origin, op, payload)` ⇒
+    //   包装层 `chan_call`，`src/ipc/chan.ts`），不再是各自的 Tauri 命令。旧的那几臂（`list_remote_accounts` ·
+    //   `kill_remote_tmux` · `tmux_send_keys` …）从那天起没有调用方，编排拿到 `undefined` 当场判「账号不可用」
+    //   ⇒ 本 shim 跟着改成**说通道**：去程是 JSON 字节、回程是 JSON 字节；「不行」按对端拒绝信封
+    //   `{err:"Refused", body:<{code,message} 的字节>}` 抛（`chan.ts::decodeFail` 认的那一形）。
+    case "chan_call":
+      return chanCall(args.op, JSON.parse(Buffer.from(args.payload || []).toString("utf8") || "{}"));
+    // 〔E2 尾 09-27〕resume 那一串今天由 **Rust 渲染器**出（`remote-launch-run.ts::renderLaunchCommand` ⇒
+    //   `commands.render_launch_payload`）。本 shim 从前返回 `undefined` ⇒ `launch_remote_terminal` 拿到空命令、
+    //   什么都没起。⇒ 交给**生产那一条**：`launch-render-emit.sh` → Rust `emit_launch_render_for_e2e`
+    //   → 生产 `launch_wire::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
+    case "render_launch_payload":
+      return renderViaProduction(args.req);
+    case "render_ccm_launch":
+      // `ccm …` 调用行那条路要先探远端 ccm；命令级驱动器没有远端 ⇒ 如实说渲不出，编排照生产逻辑降级到载荷那条。
+      return { ok: false, cmd: null, reason: "e2e shim：没有远端 ccm 可探" };
+    case "relay_endpoint_for_launch":
+      return null; // 不走中转（夹具的账号都是订阅号）
     case "update_history_metadata": {
       const acct = args && args.patch ? args.patch.lastAccount : undefined;
       seq("record account=" + String(acct));
@@ -98,4 +117,75 @@ export async function invoke(cmd, args = {}) {
       seq("invoke?:" + cmd);
       return undefined;
   }
+}
+
+const enc = (v) => new TextEncoder().encode(JSON.stringify(v)).buffer;
+function refused(code, message) {
+  // 与后端的拒绝信封同形 ⇒ 编排走的是真实的「对端拒了」那一支（`control-said.ts::settle`）。
+  throw { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code, message }))) };
+}
+
+function chanCall(op, body) {
+  switch (op) {
+    case "accounts-list": {
+      // 成品形状 = `accounts-decode.ts::decodeAccountsList` 逐键要求的那一份（夹具只给 accounts，meta 按「库已启用」补齐）。
+      const raw = JSON.parse(process.env.CCM_ACCOUNTS_JSON || '{"accounts":[]}');
+      return enc({
+        meta: { enabled: true, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: raw.accounts.length, error: null },
+        accounts: raw.accounts,
+        notice: null,
+      });
+    }
+    case "accounts-trust":
+      // trust 只警告不阻断（§5 ①）；e2e 里恒答「不知道」⇒ 走「未知」分支，不影响主流程。
+      return enc({ trusted: false, known: false });
+    case "accounts-sessions":
+      return enc({ sessions: [] });
+    case "launch": {
+      // 发按键：`send-into`（键入 ＋ 回车）/ `send-keys-raw`（裸键）。与后端同构：`=<名>:` 精确寻址（F01）。
+      const { mode, name, payload } = body;
+      const label =
+        payload === "/compact" ? "compact" : payload === "Escape" ? "escape" : payload === "/exit" ? "exit" : "sendkeys:" + payload;
+      seq(label);
+      const a = ["send-keys", "-t", `=${name}:`, payload];
+      if (mode === "send-into") a.push("Enter");
+      const r = tmux(a);
+      // 会话不在（已被杀/漂移）⇒ 与后端同一个码，由真源的 try/catch 兜（降级 kill）。
+      if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
+      return enc({ session: name, created: false, typed: true });
+    }
+    case "kill": {
+      const { name } = body;
+      seq("kill-attempt");
+      if (process.env.CCM_KILL_FAIL === "1") {
+        seq("kill-fail");
+        refused("kill_failed", "injected refusal (CCM_KILL_FAIL=1)");
+      }
+      const r = tmux(["kill-session", "-t", `=${name}:`]); // F01：同上，精确匹配
+      if (r.status !== 0) {
+        seq("kill-fail");
+        refused("no_such_session", String(r.stderr || "").trim());
+      }
+      seq("kill");
+      return enc({ session: name, killed: true });
+    }
+    default:
+      seq("chan?:" + op);
+      refused("unsupported_in_e2e_shim", "restart-shims/core.mjs 不认这条 op：" + op);
+  }
+}
+
+const EMIT = fileURLToPath(new URL("../launch-render-emit.sh", import.meta.url));
+function renderViaProduction(req) {
+  const r = spawnSync("bash", [EMIT], {
+    env: { ...process.env, CCM_E2E_RENDER_REQ: JSON.stringify(req) },
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const out = `${r.stdout ?? ""}`;
+  const ok = /LAUNCH_RENDER<<<(.*)>>>/.exec(out);
+  if (ok) return ok[1];
+  const err = /LAUNCH_RENDER_ERR<<<(.*)>>>/.exec(out);
+  // 拒了 ⇒ 照生产那样抛（`REFUSE:` 那句原样带出去）；取不到标记行 ⇒ 抛，**绝不回空串**（空串会被读成「渲出了空命令」）。
+  throw new Error(err ? err[1] : `取不到生产渲染器的输出（launch-render-emit.sh 退出码 ${String(r.status)}）：${out.slice(-800)}${String(r.stderr ?? "").slice(-800)}`);
 }
