@@ -83,21 +83,16 @@ pub(crate) trait Door {
         backup: bool,
         parents: bool,
     ) -> Result<Landed, Refused>;
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String>;
+    // 〔MIG-3a · 子步 3〕改名那一形（`rename`〔散文墓碑〕，唯一用户是 cc-bus 装前的整目录备份）随装 cc-bus 进后端删了。
     /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。今天唯一的用户：全景删批注侧车。
     /// 〔RM1e〕带 CAS：`expect` = 读到的那一份，盘上逐字节等于它才删；不等 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动。
     /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
-    /// 〔FW1 · 第四波 4D · 主会话裁 SU1 问 2〕**只删一个空目录**（同一条 `files-delete`，`expect: {"empty_dir": true}`）：
-    /// 不空 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动；不是目录 ⇒ 对端 `refused`。今天唯一的用户：卸 skill 收掉装时建的空目录。
-    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused>;
+    // 〔MIG-3a〕「只删一个空目录」那一形（〔FW1〕`delete_empty_dir`〔散文墓碑〕）随卸 skill 进后端删了：收空目录今天在那台后端里（`assets/skill_flow.rs`）。
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
     async fn delete_session(&self, sid: &str) -> Result<String, String>;
-    /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
-    /// ⚠ 「读不到」与「不存在」在这一问上分不开（权限不够也是 `None`）—— 只给「在不在场」那种展示用。
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String>;
-    /// 列一个目录（`files-ls`）：`(名字, 是不是目录)`。
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String>;
+    // 〔MIG-3a〕「一个路径在不在」那一形（`stat_kind`〔散文墓碑〕）的用户（别名读回 · cc-bus 装）都进了后端 ⇒ 删。
+    // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
 }
 
 /// 读改写一次最多重来几趟（`stale` 才重来：盘上那份在读与写之间被别人改了）。
@@ -151,45 +146,7 @@ pub(crate) async fn edit<D: Door>(
     ))
 }
 
-/// `abs` 在 `home` 底下的那一段（给 `root = home` 的那几处用：rc / profile）。
-///
-/// ⚠ 两边都是**字符串**：本机与远端同一种算法（远端路径在这台机器上没法 `canonicalize`）。
-/// 不在 home 底下 ⇒ 拒（与 `profile_installer::fence_lexical` 的「只能落在 home 之内」同一句承诺）。
-pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
-    let norm = |s: &str| s.replace('\\', "/");
-    let (h, a) = (norm(home), norm(abs));
-    let h = h.trim_end_matches('/');
-    let rest = a
-        .strip_prefix(h)
-        .and_then(|r| r.strip_prefix('/'))
-        .filter(|r| !r.is_empty())
-        .ok_or_else(|| {
-            copy_text(
-                "rsUserFiles.rel.outsideHome",
-                &[("abs", &abs.to_string()), ("home", &home.to_string())],
-            )
-        })?;
-    Ok(rest.to_string())
-}
-
-/// 〔AL2 · 第四波 4D〕[`rel_under`] 的反方向：`home` 底下的相对段 `rel`（`/` 分隔，交给后端的那一形）→ 那台机器上的绝对路径。
-///
-/// ⚠ 同样是**字符串**、本机与远端同一种算法：分隔符跟 `home` 自己的写法走（`home` 里有 `\` 而没有 `/` ⇒ `\`，否则 `/`）。
-/// 不用 `std::path::Path::join` —— 那是**本机**的分隔符：Windows 上的 monitor 拿它拼远端 `/home/user` 会得到
-/// `/home/user\.bashrc`；反过来 Windows 的 home 整串拼 `/` 分隔的 `rel` 又是 WIN1 F8 那一形（`C:\Users\user\.cc-monitor/aliases.ps1`）。
-pub(crate) fn join_under(home: &str, rel: &str) -> String {
-    let sep = if home.contains('\\') && !home.contains('/') {
-        '\\'
-    } else {
-        '/'
-    };
-    let mut out = home.trim_end_matches(['/', '\\']).to_string();
-    for seg in rel.split(['/', '\\']).filter(|s| !s.is_empty()) {
-        out.push(sep);
-        out.push_str(seg);
-    }
-    out
-}
+// 〔MIG-3a〕`rel_under` / `join_under`〔散文墓碑〕两个字符串拼法随别名那一族进了那台后端（`src/backend/assets/door.rs` 那一份），monitor 零调用方 ⇒ 删。
 
 /// 后端入方向一行的上限（`src/backend/inbound.rs::MAX_LINE_BYTES` 的本侧镜像；两个 crate 引不到对方 ⇒
 /// `byte_cap_registry` 读两侧源码钉相等）。读改写的写那一半把新内容与读到的那一份装进同一行请求。
@@ -293,8 +250,7 @@ fn path_text(v: &serde_json::Value) -> String {
 }
 
 impl BackendDoor {
-    /// 门上**唯一**那一问 `files-delete`（〔RM1e〕判据钉它恰好一处、每次都带 `expect`）：逐字节那一形与〔FW1〕空目录那一形
-    /// 都从这里出去，只是 `expect` 的样子不同（「我看到的是什么」）。
+    /// 门上**唯一**那一问 `files-delete`（〔RM1e〕判据钉它恰好一处、每次都带 `expect`：逐字节那一形）。
     async fn delete_expecting(
         &self,
         root: &str,
@@ -382,23 +338,8 @@ impl Door for BackendDoor {
         })
     }
 
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
-        self.ask(
-            "files-rename",
-            serde_json::json!({ "root": root, "from": from, "to": to }),
-        )
-        .await
-        .map(|_| ())
-        .map_err(Refused::said)
-    }
-
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.delete_expecting(root, rel, serde_json::json!(expect))
-            .await
-    }
-
-    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
-        self.delete_expecting(root, rel, serde_json::json!({ "empty_dir": true }))
             .await
     }
 
@@ -419,55 +360,7 @@ impl Door for BackendDoor {
             .map_err(Refused::said)?;
         Ok(path_text(v.get("path").unwrap_or(&serde_json::Value::Null)))
     }
-
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
-        match self
-            .ask("files-stat", serde_json::json!({ "path": path }))
-            .await
-        {
-            Ok(v) => Ok(Some(
-                v.get("kind")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-            )),
-            Err(Refused::Peer { code, .. }) if code == "unreadable" => Ok(None),
-            Err(e) => Err(e.said()),
-        }
-    }
-
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
-        let v = self
-            .ask(
-                "files-ls",
-                serde_json::json!({ "path": path, "limit": LIST_LIMIT }),
-            )
-            .await
-            .map_err(Refused::said)?;
-        let entries = v
-            .get("entries")
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| {
-                copy_text(
-                    "rsUserFiles.list.notArray",
-                    &[("machine", &(self.machine()).to_string())],
-                )
-            })?;
-        Ok(entries
-            .iter()
-            .map(|e| {
-                let p = path_text(e.get("path").unwrap_or(&serde_json::Value::Null));
-                let name = p.rsplit(['/', '\\']).next().unwrap_or("").to_string();
-                let is_dir = e.get("kind").and_then(serde_json::Value::as_str) == Some("dir");
-                (name, is_dir)
-            })
-            .filter(|(n, _)| !n.is_empty())
-            .collect())
-    }
 }
-
-/// [`Door::list_dir`] 一次最多要多少项（skill 的实例目录是几个到几十个，不是一个大目录）。
-const LIST_LIMIT: usize = 1000;
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/user_files_tests.rs"]

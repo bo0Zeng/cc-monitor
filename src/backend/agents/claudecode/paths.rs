@@ -161,8 +161,8 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 不再问它。后端里它今天**只有删历史会话那一条**在问（[`session_file_for_delete_in`] 与
 /// `files_write::fenced_session_file`：「要删的必须**是**一份会话记录」—— 方向与从前那道围栏相反）。
 /// 旧名 `is_protected_session_file` / `is_protected_session_path`〔散文墓碑〕：「protected」在后端从此是假的，名字改成它真在答的那一问。
-/// 它仍与桥那一侧 `claude_data_fence::is_protected_claude_data_path`（skill 收件箱编辑那道纵深，F03b，还在「保护」）
-/// **逐字节相同**：两边对「什么算一份会话记录」必须给同一个答案。下面几节是它当写侧围栏那一段的历史。
+/// 〔MIG-3a〕另一个问它的是 skill 收件箱编辑那道纵深（F03b，`skill_host.rs::editable_target`）：桥那一份逐字副本
+/// （`claude_data_fence`〔散文墓碑〕）随它最后一个用户搬进后端，全仓只剩这一份。下面几节是它当写侧围栏那一段的历史。
 ///
 /// 〔波 5 ㈢ · 2026-09-23 · 用户 2026-09-23 逐字裁「文件管理器该不该能改 `~/.claude`
 /// 里的东西. **可以.**」〕
@@ -171,7 +171,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 ///
 /// `设计/60 §8.7` 现打过一件事：同一次「往 `~/.claude/skills/` 里写」的操作，
 /// 在两条路上会得到**两种结果** —— 后端那条问 [`is_inside_tree`]（拒**整棵树**），
-/// 桥／SFTP 那条问 `claude_data_fence::is_protected_claude_data_path`
+/// 桥／SFTP 那条问桥那一份会话形状判定〔散文墓碑〕
 /// （只拒**那几份具体的会话文件**）。那一节自陈「丙（统一成同一个判定）才是真正的解，
 /// 但它是一道产品题不是工程题」。**用户 09-23 把那道产品题裁了**：往窄的那一档统一
 /// ⇒ skills / 配置 / 账号库**改得动**，正在跑的那场会话的记录**照旧改不动**。
@@ -183,8 +183,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 而新立一个共享 crate 会动门禁那句 `run_gate_sum cargo 9`（本刀写区之外），
 /// 并且 `设计/60 §8.8` 记着上一次「把围栏搬成共享 crate」当天就被撤回。
 /// ⇒ 处置：**函数体逐字节相同**，并由判据把这件事钉成相等断言 ——
-/// 两侧任何一处改动、另一处不跟，当场红。判据两棵树各一份：
-/// `tests/backend/agents_tests.rs` 与 `tests/bridge/claude_data_fence_tests.rs`。
+/// 两侧任何一处改动、另一处不跟，当场红。〔MIG-3a〕桥那一份删了，那条相等判据随之退役（全仓只剩这一份）。
 ///
 /// ⚠ **方向相反的那一道不在这儿，也不许合并**：从前是桥那一侧的 `is_safe_remote_jsonl`〔散文墓碑〕，
 /// 〔RW1 · 第四波 09-24〕今天是本文件的 [`session_file_for_delete_in`]，正题恰恰是
@@ -198,9 +197,8 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 ///   而那在写路径上会变成一次多余的 IO）。
 /// - **不认非会话的那些东西**：`settings.json` · `skills/**` · 账号库 · `.credentials.json`
 ///   —— 全部**放行**，那正是用户这一裁要买的东西。谁要收回这一格，那是下一道产品题。
-/// - 它管不着的那几类路径**与桥那一侧逐字同一张表**
-///   （`claude_data_fence_tests::THE_SHAPES_THIS_FENCE_DOES_NOT_COVER`）——
-///   本处刻意不抄第二份，抄了就是第二个会漂的住址。
+/// - 它管不着的那几类路径登记成一张读数表
+///   （〔MIG-3a〕今天住 `skill_host_tests.rs::every_uncovered_shape_is_still_uncovered_today`，桥那一份删了）。
 pub fn is_session_record_file(path: &str) -> bool {
     let p = path.replace('\\', "/");
     // batch20 审计修：**结构判定**，不靠 `/.claude/` 字面——Claude 数据文件结构为 `<任意>/projects/<proj>/<sid>.jsonl`

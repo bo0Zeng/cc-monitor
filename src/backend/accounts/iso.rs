@@ -20,7 +20,7 @@
 //!
 //! 片段的形态（默认号那行 `export` ＋ 每账号一个 `<名>cc()` ＋ 账号 0 的逃生口）是
 //! **`cc-acct-iso` 的知识**。在这里照抄一份就多一个跨语言双写点 —— 与远端那一侧
-//! `acct_iso_deploy.rs::acct_iso_shellinit` 头注那条理由逐字相同：单一来源留在 bash（〔SH1〕本机远端合一之前它叫 `remote_acct_iso_shellinit`〔散文墓碑〕）。
+//! 从前 monitor 那条远端命令头注那条理由逐字相同：单一来源留在 bash（〔SH1〕本机远端合一之前它叫 `remote_acct_iso_shellinit`〔散文墓碑〕）。
 //!
 //! # 起进程只走插件通用调用口（`plugin::discover::find` ＋ `plugin::invoke::run`）
 //!
@@ -36,8 +36,9 @@
 //!   与远端 `command -v` 同一个意思，但**非 unix 上它恒答「没有」**（那一格的理由住
 //!   `is_executable` 头注：Windows 上按扩展名判是另一份真实现，今天没有）。
 //!   `cc-acct-iso` 本来就是 bash 脚本，Windows 上没有它的装法 ⇒ 这个「没有」是真话。
-//! - 本层**不校验**片段的 BEGIN/END 围栏：围栏常量住 monitor 那一侧（有对拍 vendored 脚本的判据），
-//!   在这里再写一份就是第二个双写点。⇒ 原样吐出，校验归 monitor（`local_accounts.rs`）。
+//! - 〔MIG-3a · `99 §2.1 ⑬`〕片段的 BEGIN/END 围栏**在这里校验**（从前归 monitor，本机远端各一份话）：
+//!   围栏常量 [`SHELLINIT_FENCE_BEGIN`] / [`SHELLINIT_FENCE_END`] 住这里，由判据对拍 vendored 脚本；
+//!   半截片段（有 BEGIN 没 END）贴进 rc 会让登录 shell 报错 ⇒ 两条都要在才交出去（fail-closed）。
 
 use crate::plugin::invoke::Done;
 use crate::plugin::invoke::NotRun;
@@ -151,9 +152,38 @@ pub(crate) fn answer_wire_status() -> Result<serde_json::Value, (&'static str, S
     Ok(status_value(&locate()))
 }
 
-/// 〔LOC1a · 第四波 4D〕帧面 `acct-iso-shellinit → {snippet}`：片段原样（围栏校验仍归 monitor，理由见模块头注「诚实边界」）。
+/// `cc-acct-iso shellinit` 输出的围栏 —— 跨语言双写点，由判据读 vendored 脚本对拍。
+pub(crate) const SHELLINIT_FENCE_BEGIN: &str = "# ===== BEGIN cc-acct-iso =====";
+pub(crate) const SHELLINIT_FENCE_END: &str = "# ===== END cc-acct-iso =====";
+
+/// 〔MIG-3a〕片段的围栏齐不齐（纯）：两条都在 ⇒ 原样交出；有 BEGIN 没 END ⇒ `fence_incomplete`（多半被截断）；
+/// 连 BEGIN 都没有 ⇒ `no_fence`（没产出片段）。
+pub(crate) fn fenced(snippet: String) -> Result<String, (&'static str, String)> {
+    let (b, e) = (SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END);
+    match (snippet.contains(b), snippet.contains(e)) {
+        (true, true) => Ok(snippet),
+        (true, false) => Err((
+            "fence_incomplete",
+            copy_text(
+                "beAcctIso.shellinit.truncated",
+                &[("begin", &format!("{b:?}")), ("end", &format!("{e:?}"))],
+            ),
+        )),
+        (false, _) => Err((
+            "no_fence",
+            copy_text(
+                "beAcctIso.shellinit.noFence",
+                &[("begin", &format!("{b:?}"))],
+            ),
+        )),
+    }
+}
+
+/// 〔LOC1a · 第四波 4D〕帧面 `acct-iso-shellinit → {snippet}`；〔MIG-3a〕围栏校验过了才交（[`fenced`]）。
 pub(crate) fn answer_wire_shellinit() -> Result<serde_json::Value, (&'static str, String)> {
-    shellinit_now().map(|snippet| serde_json::json!({ "snippet": snippet }))
+    shellinit_now()
+        .and_then(fenced)
+        .map(|snippet| serde_json::json!({ "snippet": snippet }))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

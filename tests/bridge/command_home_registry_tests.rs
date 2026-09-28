@@ -40,14 +40,13 @@ impl Own {
     }
 }
 
-/// 哪一路负责迁走它。`Unassigned` ＝ C 段没有一路点它的名，交主会话排。
+/// 哪一路负责迁走它（闭集：不许有没主的行）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Lane {
     Mig1,
     Mig2,
     Mig3a,
     Mig3b,
-    Unassigned,
 }
 
 /// 「monitor 自己的事」：命令 · 哪一类 · 理由。
@@ -89,6 +88,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
+        "bound_terminal_count",
+        Own::Front,
+        "〔MIG-3a〕已跟 monitor 完成拉前握手的终端数（本进程 `BindRegistry`；从前夹在别名读回口里）",
+    ),
+    (
         "bring_remote_terminal_to_front",
         Own::Front,
         "拉前那条远端会话对应的本机终端窗口",
@@ -125,6 +129,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "本机 `~/.cc-monitor/bin` 在不在用户级 PATH（本机后端的引导）",
     ),
     ("ccm_user_path_add", Own::Lifecycle, "同上：加"),
+    (
+        "cc_bus_ccm_precheck",
+        Own::Lifecycle,
+        "〔MIG-3a〕装 cc-bus 之前问一次本机 `ccm` 够不够新（本机后端的引导那一族：探本机 ccm 入口）",
+    ),
     ("ccm_user_path_remove", Own::Lifecycle, "同上：撤"),
     (
         "chan_call",
@@ -205,64 +214,13 @@ const PENDING: &[(&str, Lane, &str)] = &[
          等 MIG-1 ⑯（`ssh -G` 与 `~/.ssh/config` 解读进本机后端）之后由本机后端渲（〔MIG-2〕报备：待主会话排）",
     ),
     // MIG-3a：资产与 D 组。
-    (
-        "aliases_render",
-        Lane::Mig3a,
-        "别名规则与方言在 monitor（`account_aliases` · `shell_dialect`）",
-    ),
-    ("aliases_read", Lane::Mig3a, "读回解析在 monitor"),
-    (
-        "aliases_install",
-        Lane::Mig3a,
-        "monitor 算好经 `BackendDoor` 交写",
-    ),
-    (
-        "aliases_block_render",
-        Lane::Mig3a,
-        "别名块规划在 monitor（`profile_installer`）",
-    ),
-    (
-        "aliases_block_install",
-        Lane::Mig3a,
-        "monitor 算好经 `BackendDoor` 交写",
-    ),
-    (
-        "aliases_block_remove",
-        Lane::Mig3a,
-        "monitor 算好经 `BackendDoor` 交写",
-    ),
-    ("list_skills", Lane::Mig3a, "skill 接入面整形在 monitor"),
-    ("read_skill_file", Lane::Mig3a, "可编辑文件的围栏在 monitor"),
-    (
-        "write_skill_file",
-        Lane::Mig3a,
-        "可编辑文件的围栏在 monitor",
-    ),
+    // 〔MIG-3a〕别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
     (
         "deploy_remote_acct_iso",
         Lane::Mig3a,
         "落进用户目录与软链由 monitor 经 SFTP 直写（⑯）",
     ),
-    (
-        "acct_iso_status",
-        Lane::Mig3a,
-        "monitor 只在转一条后端帧命令",
-    ),
-    (
-        "acct_iso_shellinit",
-        Lane::Mig3a,
-        "monitor 只在转一条后端帧命令",
-    ),
-    (
-        "deploy_local_cc_bus",
-        Lane::Mig3a,
-        "装哪几个文件的判定在 monitor",
-    ),
-    (
-        "cc_bus_install_state",
-        Lane::Mig3a,
-        "装的是哪一版由 monitor 读盘判",
-    ),
+    // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。
     (
         "deploy_remote_backend",
@@ -300,44 +258,40 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3b,
         "分叉是 monitor 里的组合",
     ),
-    // C 段没有一路点名的：交主会话排。
+    // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     (
         "load_subagent",
-        Lane::Unassigned,
+        Lane::Mig2,
         "子 agent 读仍经 monitor 转（`05 §14.3` C 组）",
     ),
     (
         "read_session_range",
-        Lane::Unassigned,
+        Lane::Mig2,
         "骨架区间读仍经 monitor 转",
     ),
-    (
-        "read_session_lines",
-        Lane::Unassigned,
-        "骨架行读仍经 monitor 转",
-    ),
+    ("read_session_lines", Lane::Mig2, "骨架行读仍经 monitor 转"),
     (
         "push_public_key",
-        Lane::Unassigned,
+        Lane::Mig3b,
         "`authorized_keys` 那串在 monitor 拼、经拨号面写",
     ),
     (
         "start_forward",
-        Lane::Unassigned,
+        Lane::Mig1,
         "端口转发经本机后端拨号面，账在 monitor",
     ),
-    ("stop_forward", Lane::Unassigned, "端口转发的账在 monitor"),
-    ("list_forwards", Lane::Unassigned, "端口转发的账在 monitor"),
+    ("stop_forward", Lane::Mig1, "端口转发的账在 monitor"),
+    ("list_forwards", Lane::Mig1, "端口转发的账在 monitor"),
     (
         "panorama_call",
-        Lane::Unassigned,
+        Lane::Mig3b,
         "全景一问经 monitor 转、装引擎字节由 monitor 放",
     ),
-    ("panorama_edit", Lane::Unassigned, "全景一问经 monitor 转"),
-    ("panorama_cancel", Lane::Unassigned, "全景撤单经 monitor 转"),
+    ("panorama_edit", Lane::Mig3b, "全景一问经 monitor 转"),
+    ("panorama_cancel", Lane::Mig3b, "全景撤单经 monitor 转"),
     (
         "open_file_window",
-        Lane::Unassigned,
+        Lane::Mig3a,
         "开窗前先列一屏那一问在 monitor（文件窗口独立前端之后由它自己问，`99 §2.1 ⑰`）",
     ),
 ];

@@ -80,22 +80,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              〔STOP 09-27：4 → 6〕多的两处在 `run_resident_stop`：问一次 `resolve_claude_dir()` 并把它交给一次性 `--resident-stop` 的\
              `CLAUDE_CONFIG_DIR` —— 同一个用途（让它算出同一个口、找到同一份 pid 记录），同样不读内容。",
     ),
-    (
-        "src/cc_bus_deploy.rs",
-        "write",
-        14,
-        "〔RW1 · 第四波 09-24〕**13 → 14**：部署改经本机后端写之后，`deploy_into` 收一个 `claude_dir` 参数并把它交给后端当根\
-             （多一处 `claude_dir` 引用）；本进程一个字节不写，写那一跳住后端 `files-put` / `files-rename` / `files-chmod`。\n\
-             `PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
-             `deploy_into`/`deploy_local_cc_bus` 取 dir 再往下写。\
-             ⚠ **不属读面** —— 它是**写**操作（本仓第一处往 `<claude_dir>` 写的，\
-             `U10b` 裁定后的第 7 条例外），恰好也要解析 dir 来定位落点，与 `history.rs` 那条 \
-             `write` 同类。⇒ 不归 F10 的退役范围。\
-             ⚠ 〔`PS2` 08-13〕9 → **13**：本文件又加了 `install_state_in` / `cc_bus_install_state`
-             （查「本机装的是哪一版」，**纯读**）。它们**是**读面，但读的是**本模块自己刚写下去的
-             那份**（`<claude_dir>/skills/cc-bus/`），与 F10 要退役的「读 claude 的会话数据」
-             不是一回事 —— 后端化之后这一格该跟着部署那条一起走，不单独退役。",
-    ),
+    // 〔MIG-3a · 子步 3〕`src/cc_bus_deploy.rs` 那一行（14 处 `claude_dir`）摘了：装与三态进了本机后端，monitor 那份只剩装前的 `ccm` 预检、不再碰 `claude_dir`。
     // 〔P8a 08-12〕新增的直读点 —— **老实登记，不绕棘轮**（棘轮要的是论证，不是禁令）。
     // 〔RM1b · 第四波〕那一条（`src/plugins.rs`，`reader`，5 处）**真退役**，退役条件原文逐字兑现：
     //   「backend 侧补一条 `--list-marketplaces`……那条一落地，本机改走后端、远端那半……也一起补平
@@ -163,33 +148,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              ⚠ **〔CP2b · 4C〕9 → 8**：cc-acct-iso 账号库那条 `note` 里提到 `CLAUDE_CONFIG_DIR` 的那句话\
              搬进了文案表（`rsToolRegistry.tools.acctIsoVaultNote`），源码里只剩取文口。",
     ),
-    (
-        "src/skill_host.rs",
-        "non-read",
-        7,
-        "〔RW1 · 第四波 09-24〕**5 → 7**：远端版 `remote_views` 里一处 `claude_dir` 局部变量 ＋ 它的一次使用\
-             （远端配置根按 `<后端的 home>/.claude` 算，问的是**那台机器的后端**，本机零读）。\n\
-             ★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
-             不是「记上账」那么简单，值得写清楚：\n\
-             五处命中（**F03 从 3 涨到 5**：新增 IPC 层的 `views()` 里一处\
-             `paths::resolve_claude_dir()` 调用 + 一处 `claude_dir` 局部变量）：\
-             `discover()` 的参数名与它内部的 `claude_dir.join(\"skills\")`、\
-             声明表里的 `root: \".claude/planned-build\"`，以及 IPC 那两处。\
-             ⚠ **仍然零文件内容读取 Claude 数据** —— `discover` 只 `Path::exists()`，\
-             `instances` 只 `read_dir` 列目录项，`read_skill_file` 读的是\
-             **计划目录里的 `INBOX.txt`**（用户自己项目的文件，不是 Claude 的 jsonl）。\
-             ⇒ 归 `non-read`，不属 F10 的退役范围。\n\
-             ⚠⚠ **本表的针把两种 `.claude` 混在一起了，这里必须点破**：一种是\
-             `~/.claude`（**Claude 的数据目录**，projects/sessions 住那儿，F10 要退役的是它）；\
-             另一种是 `<cwd>/.claude`（**项目自己的配置目录**，planned-build 的计划就住那儿）。\
-             本模块碰的是**后者**，与 Claude 的数据源无关。针只认字面 `.claude` ⇒ 两者同样命中，\
-             靠这一列的分类来分开。**这不是针的缺陷**（放宽命中面是对的），是分类该干的活。\n\
-             ★ **它逮到的真缺陷**：本模块初版写的是 `home.join(\".claude/skills\")` ——\
-             **写死了 `~/.claude`**。而本仓有多账号隔离（`cc-acct-iso`：每账号一个\
-             `CLAUDE_CONFIG_DIR`，`skills`/`memory` symlink 回共享库）⇒ **切号之后那条路径会指错**。\
-             本表报「多一处未登记」时我才去读它，才发现该用 `paths::resolve_claude_dir()`。\
-             ⇒ 已改成 `claude_dir` 入参。**这条判据的价值不止于账本完整性。**",
-    ),
+    // 〔MIG-3a〕`src/skill_host.rs` 那一行摘了：收件箱那一面整份进了后端适配层（`agents/claudecode/skill_host.rs`）。
+
 ];
 
 fn root() -> &'static Path {
@@ -307,9 +267,10 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "cc-bus 钩子的安装位置",
         "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
     ),
-    // 〔AL2 · 第四波 4D〕这里原来有 `lib.rs::aliases_read` 一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
+    // 〔AL2 · 第四波 4D〕这里原来有 `aliases_read`〔散文墓碑〕一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
     //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。
-    // 〔RW1 · 第四波 09-24〕这里原来还有 `lib.rs::aliases_install` 一行（它自己 `home_dir()`、再交本进程落盘）。
+    // 〔RW1 · 第四波 09-24〕这里原来还有 `aliases_install`〔散文墓碑〕一行（它自己 `home_dir()`、再交本进程落盘）。
+    // 〔MIG-3a〕别名那一族整个进了那台后端（`aliases-*`）。
     //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
         "ccm_probe.rs",
@@ -374,7 +335,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "它不是「伸手拿东西」，是给那个窗口一个开始浏览的地方 —— \
              之后列哪个目录**由用户走到哪决定**，而列目录那一条是 \
              `filewin::source::list_local`（只读 `read_dir` ＋ `metadata`，不落盘）。\
-             ⚠ 与 profile 围栏（`profile_installer.rs::fence_on`）**不是同一类**：\
+             ⚠ 与 profile 围栏（〔MIG-3a〕今天是后端 `block.rs::fence`）**不是同一类**：\
              那一条拿 home 划界（围栏），这一条只是起点，**它不围任何东西** —— \
              也就是说「用户能在这个窗口里浏览到 home 之外」是设计如此，不是漏了围栏。\
              写侧归 `filewin::transfer`（〔F7c 09-24〕上传经通道：monitor 的传输台只写远端暂存区，\

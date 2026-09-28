@@ -637,7 +637,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5b-launch-in-backend**（2026-09-28，MIG-2 合并那一拍）：子命令 ＋2、帧命令 ＋3 —— 起会话渲染核心进后端 `control/launch_render/`
 /// （`launch-render-cli` · `launch-render-payload` · `launch-local`）；`launch-endpoint` 答 `{baseUrl}` 或拒 `relay_down`；㊴ `exit-policy-read` / `-set` 出成品 `said`。
-pub const BUILD_ID: &str = "p5b-launch-in-backend";
+///
+/// ★★★ **p5c-aliases-hub-in-backend**（2026-09-28，MIG-3a 后半合并那一拍）：别名整族进 `assets/aliases/`（方言按这台机器自己判）·
+/// skill 接入面与 SKILLS 表进 `agents/claudecode/` · MCP 推拉 / skill 装改本机后端当枢纽（`assets/hub.rs`，写前再核来源）· cc-bus 由后端装、装卸账复用 skill 装记录。
+pub const BUILD_ID: &str = "p5c-aliases-hub-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -785,7 +788,22 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--cc-bus-install",
+    "--cc-bus-install-state",
+    "--mcp-sync-hub-preview",
+    "--mcp-sync-hub-apply",
+    "--skill-install-hub-preview",
+    "--skill-install-hub-apply",
     "--skill-install-apply",
+    "--skill-host-list",
+    "--aliases-render",
+    "--aliases-read",
+    "--aliases-install",
+    "--aliases-block-render",
+    "--aliases-block-install",
+    "--aliases-block-remove",
+    "--skill-host-read",
+    "--skill-host-write",
     "--skill-uninstall-apply",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
@@ -1815,6 +1833,13 @@ pub const STREAM_FLAGS: &[&str] = &[
 /// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
+
+/// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
+/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 〔MIG-3a〕住这里而不住 `cli_control`，是为了让
+/// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
+pub fn cli_flag(name: &str) -> String {
+    format!("--{name}")
+}
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[

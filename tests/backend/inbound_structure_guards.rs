@@ -223,6 +223,17 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-sync-plan"
                 // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
                 | "skill-install-apply"
+                | "skill-host-list"
+                | "cc-bus-install"
+                | "cc-bus-install-state"
+                | "aliases-render"
+                | "aliases-read"
+                | "aliases-install"
+                | "aliases-block-render"
+                | "aliases-block-install"
+                | "aliases-block-remove"
+                | "skill-host-read"
+                | "skill-host-write"
                 | "skill-uninstall-apply"
                 | "mcp-server-put"
                 | "mcp-server-remove"
@@ -293,6 +304,11 @@ fn every_registered_command_declares_its_run_kind() {
         "ccm-probe",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
+        // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
+        "mcp-sync-hub-preview",
+        "mcp-sync-hub-apply",
+        "skill-install-hub-preview",
+        "skill-install-hub-apply",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
         "remote-reach",
         "bus-list",
@@ -383,6 +399,17 @@ fn every_registered_command_declares_its_run_kind() {
         "launch-render-payload",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-apply",
+        "skill-host-list",
+        "cc-bus-install",
+        "cc-bus-install-state",
+        "aliases-render",
+        "aliases-read",
+        "aliases-install",
+        "aliases-block-render",
+        "aliases-block-install",
+        "aliases-block-remove",
+        "skill-host-read",
+        "skill-host-write",
         "skill-uninstall-apply",
         "mcp-server-put",
         "mcp-server-remove",

@@ -34,7 +34,7 @@
 //! ② **不只是「有后端可切」，是已经切过两次**：`local_read_surface_registry` 的棘轮史逐字
 //!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
 //!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走本机后端的 `--session-accounts`）
-//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`check_local_acct_iso`〔散文墓碑〕（〔SH1〕今天并进 `acct_iso_deploy.rs::acct_iso_status`）
+//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`check_local_acct_iso`〔散文墓碑〕（〔SH1〕并进带 origin 的那一条，〔MIG-3a〕今天是那台后端的帧命令 `acct-iso-status`，`iso.rs::answer_wire_status`）
 //!    （一个 `#[tauri::command]`）直接调 `backend::observe::local_query::run_query(…, ["--acct-iso-status"])`。
 //!    〔C4a · 第四波：这里原先点的是 E79 那条本机会话账号查询 —— 它调的其实是 `--session-accounts`，
 //!     且已随「本机与远端同一条路」改走通道退役；换成真调 `--list-accounts` 的那一条，论点不变。〕

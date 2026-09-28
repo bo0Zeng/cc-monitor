@@ -279,31 +279,22 @@ fn detect_profile_backup_dirs() -> Vec<DataPathInfo> {
     out
 }
 
-/// 〔AL1d · 第四波 4B〕`$PROFILE` 在哪**只问一处**：`shell_dialect.rs` 的 PowerShell 那一臂（`startup_files`），
-/// 这里取它那几份的父目录（去重）。从前这里自己写着一张表（`home/Documents/{WindowsPowerShell,PowerShell}`
-/// ＋ `$OneDrive/Documents/…`），是全仓第五份认法（`调研/第四波记录/AL1d.md §1.3`）。
-/// 「文档目录被 OneDrive 挪走」那一格由那边问系统（`dirs::document_dir()`）答。
-/// ⚠ 读法换了带来的一格差别（如实写）：从前 `$OneDrive/Documents` 与 `home/Documents` **两处都探**，
-///   今天只探系统说的那一处 —— 文档目录**改过位置之前**留在旧位置的备份，这一页不再列出。
+/// 〔AL1d · 第四波 4B〕`$PROFILE` 在哪**只问一处**：别名方言的 PowerShell 那一臂（`startup_candidates`）。
+/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕那一臂随别名规则进了后端（`src/backend/assets/aliases/dialect.rs`）；本页是 monitor 自己的
+/// 「数据」区（⑬ `MONITOR_OWN`，不碰后端），这里**只留两个目录名**、探备份用 ——
+/// 判据 `dialect_tests.rs::the_profile_location_has_exactly_one_home` 把这一处登记成第二个读者（只有目录名、没有文件名），待主会话认。
+/// 「文档目录被 OneDrive 挪走」那一格照旧问系统（`dirs::document_dir()`）。
 fn candidate_profile_dirs() -> Vec<PathBuf> {
     let Some(home) = dirs::home_dir() else {
         return Vec::new();
     };
-    let mut out: Vec<PathBuf> = Vec::new();
-    // 〔AL2 · 第四波 4D〕方言那一口改名 `startup_candidates`、只给路径与列法（不读盘）：PS 7 那两份的目录不在时也给 ——
-    //   下面 `has_backup_in_dir` 读不了一个不在的目录 ⇒ 探不到备份 ⇒ 这一页上一样不出现（行为不变）。
-    for c in crate::shell_dialect::Shell::PowerShell
-        .dialect()
-        .startup_candidates(&home.display().to_string())
-    {
-        let f = Path::new(&c.path);
-        if let Some(d) = f.parent() {
-            if !out.iter().any(|x| x == d) {
-                out.push(d.to_path_buf());
-            }
-        }
-    }
-    out
+    let docs = dirs::document_dir()
+        .filter(|d| d.starts_with(&home))
+        .unwrap_or_else(|| home.join("Documents"));
+    ["WindowsPowerShell", "PowerShell"]
+        .into_iter()
+        .map(|d| docs.join(d))
+        .collect()
 }
 
 fn has_backup_in_dir(dir: &Path) -> bool {

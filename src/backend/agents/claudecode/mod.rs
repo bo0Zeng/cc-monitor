@@ -36,6 +36,8 @@ pub(crate) mod mcp;
 pub mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
+// 〔MIG-3a〕skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
+pub(crate) mod skill_host;
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
 ///
@@ -78,4 +80,6 @@ pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     scan: assets::scan,
     skills_root: assets::skills_root,
+    skill_views: skill_host::views,
+    skill_editable: skill_host::editable_target,
 };

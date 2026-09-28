@@ -428,17 +428,24 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "mcp-server-remove",
         "新帧命令：删一条，同上",
     ),
+    // 〔MIG-3a · `01 §3.5` · 主会话 09-28 裁〕`mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
+    //   界面只问本机那两条枢纽命令，枢纽向来源那台取、向被写那台写（内层三条只经枢纽）。
+    // 〔MIG-3a · 子步 3〕cc-bus 装到本机：monitor 那两条 Tauri 命令（`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕）删了。
     (
-        "mcp-sync-source",
-        "新帧命令：推 / 拉的来源那份原文 `{path, text}`（界面原样递给要被写的那一台）",
+        "cc-bus-install",
+        "新帧命令：本机后端把内嵌的 cc-bus 装进 skills 根（幂等 · 覆盖前整目录备份 · 记进 skill 装记录）",
     ),
     (
-        "mcp-sync-preview",
-        "新帧命令：被写那台读自己那份、判差异与可疑项（判定原样是 `mcp-sync-plan`），成品带两份原文 ＋ 逐行两边的值",
+        "cc-bus-install-state",
+        "新帧命令：本机后端答装的是哪一版（三态，只读）",
     ),
     (
-        "mcp-sync-apply",
-        "新帧命令：被写那台把勾的那几条原样合进去（CAS 期望 = 看差异时那份，`stale` 就停）",
+        "mcp-sync-hub-preview",
+        "新帧命令：MCP 推 / 拉看差异，只问本机一次（本机常驻后端当枢纽，`assets/hub.rs`）",
+    ),
+    (
+        "mcp-sync-hub-apply",
+        "新帧命令：MCP 推 / 拉写入，只问本机一次（枢纽向来源那台再取一次核对，被写那台判 CAS、`stale` 就停）",
     ),
     // 〔MIG-3a〕D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
     (
@@ -447,16 +454,57 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `assets-sync-reads.ts::decodeAssetsSynced` 按形状收",
     ),
     (
-        "skill-read",
-        "来源那台的 skill 原文：从前 monitor 转、今天界面直问，原样递给被写那台（`skill-install-reads.ts`）",
+        "aliases-block-install",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
     ),
     (
-        "skill-install-plan",
-        "被写那台看差异（逐文件四态 ＋ 可疑项 ＋ 这台那几份原文）：从前 monitor 转、今天界面直问",
+        "aliases-block-remove",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
     ),
     (
-        "skill-install-apply",
-        "新帧命令：被写那台判 · 写 · 记同一台（`assets/skill_flow.rs`），`stale` 就停并说清前面写了哪几个",
+        "aliases-block-render",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-install",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-read",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-render",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "skill-host-list",
+        "〔MIG-3a〕新帧命令：收件箱那一面（声明 ＋ 三道围栏住后端适配层 `skill_host.rs`），monitor 那三条 Tauri 命令删了",
+    ),
+    (
+        "skill-host-read",
+        "〔MIG-3a〕新帧命令：读那份可编辑文件（过围栏、经文件管理面）",
+    ),
+    (
+        "skill-host-write",
+        "〔MIG-3a〕新帧命令：写那份可编辑文件（过围栏、CAS = 打开时那一份）",
+    ),
+    (
+        "acct-iso-status",
+        "〔MIG-3a〕这台装没装 `cc-acct-iso`：后端从来就出成品，monitor 那条命令只在判读 ＋ 转 —— 判读退役，界面 `acct-iso-reads.ts` 按形状收",
+    ),
+    (
+        "acct-iso-shellinit",
+        "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
+    ),
+    // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
+    (
+        "skill-install-hub-preview",
+        "新帧命令：skill 装到这台看差异，只问本机一次（枢纽向来源那台读、交被写那台判）",
+    ),
+    (
+        "skill-install-hub-apply",
+        "新帧命令：skill 装到这台写入，只问本机一次（枢纽向来源那台再读一次核对，被写那台判 · 写 · 记）",
     ),
     (
         "skill-uninstall-apply",
@@ -763,7 +811,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
 // ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /
-//    `local_accounts_tests`：假后端那一侧真收到了帧命令）；
+//    `acct_iso_deploy_tests` 的部署那一步：假后端那一侧真收到了帧命令）；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
 // ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}
@@ -1157,19 +1205,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "历史浏览器读一整份会话（分页；〔LOC1b〕本机远端同一条）：大小事先不知道 ⇒ 按字节上限给 `read_budget(MAX_SESSION_BYTES)`",
     ),
     // 〔合并 DL1 × 主线 06b5dc08〕LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
-    (
-        "acct_iso_deploy.rs",
-        "status_on",
-        1,
-        "问那台装没装 `cc-acct-iso`（`acct-iso-status`，一问）：`ACCT_ISO_BUDGET`",
-    ),
-    (
-        "acct_iso_deploy.rs",
-        "snippet_on",
-        1,
-        "问那台 `cc-acct-iso shellinit` 的片段（`acct-iso-shellinit`，一问）：`ACCT_ISO_BUDGET`",
-    ),
-    // 〔SH1〕本机那一条 `local_acct_iso_shellinit`〔散文墓碑〕 那一行摘了：本机远端合成 `acct_iso_shellinit`，期限由 `snippet_on` 那一处造（已在表里）。
+    // 〔MIG-3a〕acct-iso 两问那两个发起点摘了：界面经通道直问（`src/acct-iso-reads.ts`），期限在那边造。
     (
         "remote_branch.rs",
         "fork_on",

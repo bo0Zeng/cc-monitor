@@ -36,17 +36,7 @@ const SITES: &[(&str, &str, usize, &str, &str)] = &[
              🔴 〔RM1f 从 2 处涨到 3 处，重判一次 —— 结论不变〕第三处是 `place_local_panorama`（本机代码全景小程序），\
              落点同是 `~/.cc-monitor/bin/`，我们自己放、本机后端自己起 ⇒ 没有要保留的 ACL，`rename` 正合适。",
     ),
-    (
-        "cc_bus_deploy.rs",
-        "rename",
-        1,
-        "**用户文件**（`<claude_dir>/skills/cc-bus`，覆盖前把它整个改名成 `cc-bus.bak-<ts>` 留底）",
-        "`PS1` 的可撤销那一格（`U10b` 第 7 条例外的四个配套之一）。\
-             用**改名**不是拷贝：改名原子、且不会在中途留下半份备份。\
-             §4 的 `ReplaceFileW` 要求限定在**覆盖用户文件**（要保 ACL/ADS）——\
-             这里是把整个目录**挪开**（dst 是个新名字、必不存在），不覆盖任何东西 ⇒ `rename` 正合适。\
-             ⚠ 失败就**整条中止**（错误里逐字写着「没动原目录」），绝不带着半个备份继续写。",
-    ),
+    // 〔MIG-3a · 子步 3〕`cc_bus_deploy.rs [rename]` 那一行摘了：覆盖前整目录改名留底随装 cc-bus 进了本机后端（`assets/cc_bus_install.rs`，经 `files-rename`）。
     (
         "config.rs",
         "MoveFileExW",
