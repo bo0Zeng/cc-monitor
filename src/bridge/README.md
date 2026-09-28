@@ -141,8 +141,8 @@ src/bridge/
 | 〔LOC1b · 第四波 4D〕历史全文搜索那三条命令（搜索 · 查索引状态 · 重建索引，issue #6）删了 | — | — | 本机搜索也经通道问本机后端 `history-search`（与远端同一条路，界面 `src/views/history-search.ts`）；monitor 进程内那份索引一起没了 |
 | `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ / `Ctrl+\`` 跳焦 |
 | `bring_remote_terminal_to_front` (issue #18) | `{ sessionId }` | `()` | 远端 Tab ↗（按 ccm-rbind 标题缓存的 HWND 拉本地 ssh 窗口；未绑定则现扫一次兜底） |
-| `list_session_activity` (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
-| `list_active_sessions` (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
+| `list_session_activity`〔散文墓碑〕 (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
+| `list_active_sessions`〔散文墓碑〕 (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |
 | `aliases_read` (〔AL1d〕并进了原「终端集成」的状态 / 扫一份) | `{ origin, shell, rcPath? }` | `AliasListing` | 展开「别名」：清单 ＋ 启动文件候选（各带别名块现状）＋ 握手终端数 |
 | `aliases_block_render` | `{ origin, rcPath, withCc }` | `string` | [预览别名块] 按钮（方言按那份文件的扩展名定） |

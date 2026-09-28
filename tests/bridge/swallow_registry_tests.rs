@@ -192,7 +192,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/src/lib.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
     ("src/bridge/src/lib.rs", "let _ = ShowWindow(h, SW_SHOW);", 1, Why::WindowBestEffort, ""),
     ("src/bridge/src/lib.rs", "let _ = local_cache.record(sid, pid, bind_registry);", 1, Why::NotAnError, "`None` = 这个会话不是经 cc 起的 / 还没握手完（常态）；绑上了 `record` 自己记日志"),
-    // 〔MIG-1〕F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）并进 `emit_session_out`，发不出去一律记 warn（不再裸吞）。
+    // 〔MIG-1〕F5 重放那两处裸 `let _ = handle.emit(…)`（容器 · 可重连）〔MIG-1 · ⑬〕随起停事件并进会话流删了（就绪点在流里原位交成品）。
     ("src/bridge/src/lib.rs", "let _ = w.set_focus();", 2, Why::WindowBestEffort, ""),
     ("src/bridge/src/lib.rs", "let _ = w.show();", 2, Why::WindowBestEffort, ""),
     ("src/bridge/src/lib.rs", "let _ = w.unminimize();", 2, Why::WindowBestEffort, ""),

@@ -12,7 +12,7 @@
 
 | State 类型 | 注册位置 | 创建位置 | Arc 所有权 |
 |---|---|---|---|
-| ~~`Arc<session_map::SessionMap>`~~ 〔LOC1b · 4D〕已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions` / `list_session_activity` |
+| ~~`Arc<session_map::SessionMap>`~~ 〔LOC1b · 4D〕已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
 | `Arc<event_replay::EventReplay>` | `lib.rs::setup()` `app.manage(replay.clone())` | `EventReplay::new()` | 共享：setup 局部 + frontend-ready listener + jsonl async pump + State |
 | `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-changes-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-changes-emitter` 线程 + State |
@@ -28,8 +28,7 @@
 
 ### `Arc<SessionMap>`
 - 〔C4d · 第四波 4B〕历史清单那两条（本机项目 · 展开一个项目）退役：清单与判活搬进本机常驻后端（`history-projects` / `history-sessions`），不再接 `State`。
-- `lib.rs::list_session_activity(map: State<'_, Arc<SessionMap>>)` (issue #23：红绿灯启动快照)
-- `lib.rs::list_active_sessions(map: State<'_, Arc<SessionMap>>)` (Batch5-F18：启动骨架 Tab 清单，sid+cwd 按 (cwd,sid) 排序)
+- 〔MIG-1 · ⑬〕红绿灯启动快照与启动骨架清单那两条命令〔已删〕：本机骨架与初始灯是会话流里的 `live` / `activity` 成品（就绪点按 `session_book.rs::Book` 重放）。
 
 ### `Arc<EventReplay>`
 - `lib.rs::forget_session(session_id, replay: State<'_, Arc<EventReplay>>)`
@@ -73,7 +72,7 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 
 | Arc | 还在哪持有 |
 |---|---|
-| 〔LOC1b〕本机活会话表 `session_map::local()`（进程级，**非 State**） | (1) 本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`，**唯一写者**） (2) `session-changes-emitter` 线程（读元信息） (3) `frontend-ready` listen 闭包（issue #19：按本机活会话表 ＋「报完了清单」那本账对账，与远端同一条 `split_stale`） (4) `list_active_sessions` / `list_session_activity` |
+| 〔MIG-1〕会话成品缓存 `session_book::book()`（进程级，**非 State**；替掉 LOC1b 那张本机活会话表） | (1) 两条流（`ssh_source::stream_loop` · `consume_local`）经 `session_book::feed` 交成品（**唯一写口**） (2) `session-book-emitter` 线程（转交会话流 ＋ 拉前绑定） (3) 就绪点 / 开窗重放（`event_replay.rs::lifecycle_replay`） |
 | `remote_active`（`HashSet<String>`，**非 State / 不 manage**，无 IPC 消费者） | (1) `remote-session-emitter` 线程（**唯一写者**，backend added/removed + 断连 flush，issue #20，INVARIANTS § 24） (2) `frontend-ready` listen 闭包（对账读） |
 | `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-changes-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
 | `sid_hwnd_cache` | (1) `session-changes-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |

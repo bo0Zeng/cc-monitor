@@ -690,20 +690,20 @@ async fn snapshot_dispatcher(
         let host_label = host_label.clone();
         // incr 在 spawn 之前（审计 D：上一 task 归零与下一 task 起跑之间的
         // 瞬时 0 窗口会让 300ms 定时器恰好放行 batch）
-        snapshot_inflight_change(&app, 1);
+        snapshot_inflight_change(&replay, 1);
         tauri::async_runtime::spawn(async move {
             let _permit = permit;
-            struct InflightGuard(tauri::AppHandle);
+            struct InflightGuard(Arc<EventReplay>);
             impl Drop for InflightGuard {
                 fn drop(&mut self) {
                     snapshot_inflight_change(&self.0, -1);
                 }
             }
-            let _inflight = InflightGuard(app.clone());
+            let _inflight = InflightGuard(replay.clone());
             let sid_short: String = item.sid.chars().take(8).collect();
             let mut last_err = String::new();
             for attempt in 1..=2 {
-                match fetch_snapshot(&q, &item, &host_label, &replay, &app).await {
+                match fetch_snapshot(&q, &item, &host_label, &replay).await {
                     Ok(FetchOutcome::Done(lines)) => {
                         tracing::info!(
                             "snapshot [{host_label}] {sid_short}: {lines} 行历史就位（attempt {attempt}）"
@@ -754,34 +754,21 @@ async fn snapshot_dispatcher(
 /// 非零、batch 被压满 5min 防呆）。低频（每快照 2 次），锁开销可忽略。
 static SNAPSHOT_INFLIGHT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
 
-fn snapshot_inflight_change(app: &tauri::AppHandle, delta: isize) {
-    let mut n = SNAPSHOT_INFLIGHT.lock().unwrap();
+fn snapshot_inflight_change(replay: &EventReplay, delta: isize) {
+    let mut n = SNAPSHOT_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner());
     *n = if delta > 0 {
         *n + 1
     } else {
         n.saturating_sub(1)
     };
-    let count = *n;
-    // 持锁 emit：保证事件到达序 == 计数变化序（emit 是入队非阻塞，临界区极短）
-    if let Err(e) = app.emit(
-        crate::bridge::events::SNAPSHOT_INFLIGHT,
-        &serde_json::json!({ "count": count }),
-    ) {
-        tracing::warn!("snapshot-inflight emit failed: {e}");
-    }
+    // 持锁交：保证到达序 == 计数变化序（〔MIG-1〕会话流里的一格，不吃 credit、不丢）。
+    replay.on_snapshot_inflight(*n as u32);
     drop(n);
 }
 
-/// F5 电平同步（审计 D）：inflight 是变化沿事件，重载后前端初值 0——回填在途
-/// 时 F5 会退回纯 300ms 启发式。frontend-ready（reannounce）时补发当前电平。
-pub fn emit_snapshot_inflight_level(app: &tauri::AppHandle) {
-    let count = *SNAPSHOT_INFLIGHT.lock().unwrap();
-    if let Err(e) = app.emit(
-        crate::bridge::events::SNAPSHOT_INFLIGHT,
-        &serde_json::json!({ "count": count }),
-    ) {
-        tracing::warn!("snapshot-inflight level emit failed: {e}");
-    }
+/// F5 电平同步（审计 D）：inflight 是变化沿，重载后前端初值 0 ⇒ 〔MIG-1〕就绪点在重放最前面补一格当前电平（`event_replay::lifecycle_replay`）。
+pub fn snapshot_inflight_level() -> u32 {
+    *SNAPSHOT_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner()) as u32
 }
 
 /// fetch 的三态结果：完成（行数）/ 被取消（不重试）。错误走 Err。
@@ -814,7 +801,6 @@ async fn fetch_snapshot(
     item: &SnapshotItem,
     host_label: &str,
     replay: &Arc<EventReplay>,
-    app: &tauri::AppHandle,
 ) -> Result<FetchOutcome, String> {
     use crate::backend::control::frame_query;
     let sid = &item.sid;
@@ -946,13 +932,14 @@ async fn fetch_snapshot(
         }
     }
     if cancelled || q.is_cancelled(sid) {
-        // 补偿归档（见 doc comment）；丢弃未 flush 的 chunk。〔CF1〕只对远端补（[`compensates_on_cancel`]）。
+        // 补偿（见 doc comment）；丢弃未 flush 的 chunk。〔CF1〕只对远端补（[`compensates_on_cancel`]）。
+        // 〔MIG-1〕补的是那条会话**此刻**的终局（成品缓存里后端说过的 · 连接断了 ⇒ 说不清），不再由 monitor 恒判「已结束」。
         if compensates_on_cancel(&origin) {
-            let payload = crate::bridge::SessionEndedPayload {
-                session_id: sid.to_string(),
-            };
-            if let Err(e) = app.emit(crate::bridge::events::SESSION_ENDED, payload) {
-                tracing::warn!("snapshot 补偿归档 emit failed: {e}");
+            let again = crate::session_book::book()
+                .read()
+                .settle_again(origin.as_wire_str(), sid);
+            if let Some(out) = again {
+                replay.on_lifecycle(out.origin(), out.frames());
             }
         }
         return Ok(FetchOutcome::Cancelled);

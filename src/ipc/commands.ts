@@ -79,7 +79,6 @@ import type { AliasListing } from "../generated/AliasListing";
 import type { AliasRender } from "../generated/AliasRender";
 import type { Shell } from "../generated/Shell";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
-import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { BranchResult } from "../generated/BranchResult";
 // 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**
@@ -121,7 +120,6 @@ import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PushResult } from "../generated/PushResult";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
-import type { SessionActivityPayload } from "../generated/SessionActivityPayload";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 
 /**
@@ -620,11 +618,6 @@ export const commands = {
   // 〔C4b · 第四波 4B〕大纲清单与会话内查找那两条（`list_user_inputs` / `find_in_session`〔散文墓碑〕）退役：
   //   经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 
-  /**
-   * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * **线上是 snake_case**（`ActiveSessionPayload` 没有 `rename_all`），C04b 已论证过。
-   */
-  list_active_sessions: () => invoke<ActiveSessionPayload[]>("list_active_sessions"),
 
 
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
@@ -772,8 +765,6 @@ export const commands = {
   // 〔C4c · 第四波 4B〕账号清单两条（远端 / 本机）与换号前的信任预检退役：前端经通道直接说帧命令
   //   `accounts-list` / `accounts-trust`（`src/account-reads.ts::fetchAccounts` / `checkTrust`），后端出成品。
 
-  /** issue #23：红绿灯快照（启动 / F5 后拉一次做初始收敛）。**桶③**（生成物）。 */
-  list_session_activity: () => invoke<SessionActivityPayload[]>("list_session_activity"),
 
   /**
    * 〔C4a · 子步 3〕**通道在 Tauri IPC 这一跳上的那条命令**（`chan/webview.rs`）。

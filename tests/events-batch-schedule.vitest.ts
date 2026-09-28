@@ -94,16 +94,15 @@ async function bind(): Promise<Harness> {
     onBatchStart,
     onBatchEnd,
   } as never, { streams: [{ origin: "<local>", kind: "session-lines" }] });
-  // 抽取器自检：会话流与 snapshot-inflight 少订一条，下面全是零命中地绿。
+  // 抽取器自检：会话流少订一条，下面全是零命中地绿。〔MIG-1〕snapshot-inflight 并进会话流（`{"snapshot_inflight": …}` 那一格）。
   expect(streamFake.subscriptions.length, "没订到会话流 —— 本文件会零命中地绿").toBe(1);
-  expect(subs.get("snapshot-inflight"), "没订到 `snapshot-inflight` —— 本文件会零命中地绿").toBeTruthy();
   return {
     onBatchStart,
     onBatchEnd,
     onLine,
     chunk: (chunkIndex, seqs) => streamFake.chunk(chunkIndex === 0, seqs.map(payload)),
     line: (seq) => streamFake.lines([payload(seq)]),
-    inflight: (count) => subs.get("snapshot-inflight")!({ payload: { count } }),
+    inflight: (count) => streamFake.lifecycle([{ snapshot_inflight: { count } }]),
   };
 }
 
@@ -471,43 +470,19 @@ describe("启动接线：记忆与骨架的先后", () => {
     return code.indexOf(needle);
   };
 
-  it("读 last-active 记忆排在启动骨架批之前", () => {
+  // 〔MIG-1 · ⑬〕本机骨架也挪进就绪点（会话流里的 `live` 成品）：「启动骨架批」这个锚没了，换成「就绪点」`frontend-ready`；
+  //   抑制写回那一对随之删了（它罩的那批骨架不在这里建了）⇒ 那条判据换成「两处骨架入口都按 pending 补切」。
+  it("读 last-active 记忆排在就绪点（骨架从那里才来）之前", () => {
     const read = at("safeGet(LS_KEYS.lastActiveSid)", 1);
-    const skeleton = at("commands.list_active_sessions()", 1);
+    const ready = at('void emit("frontend-ready"', 1);
     expect(
-      read < skeleton,
-      "读记忆排到建骨架之后了。\n" +
-        "★ 后果 main.ts 自己写着：第一个骨架的自动切换会经 switchTo 写回 localStorage，\n" +
-        "  读晚了就把用户记忆覆写成清单首个 sid ⇒ **F19「恢复上次活跃 tab」在最常见的\n" +
-        "  场景（本地有会话）下整体失效**，而 tsc / vitest 全绿。",
+      read < ready,
+      "读记忆排到就绪点之后了 —— 骨架一到就可能经 switchTo 写回，记忆会被覆写成先到的那个 sid。",
     ).toBe(true);
   });
 
-  it("骨架期抑制写回：`persistLastActive=false` 在前、恢复 `=true` 在后", () => {
-    // ⚠ **别让计数自检抢在真故事前面**〔08-08 变异实测〕：第一版写成 `at(…, 2)`，
-    // 于是「把骨架期那句抑制删掉」这一刀红在「锚点漂了，先修锚点」上 ——
-    // **红对了，但会把人引去查抽取器**，而真事是「抑制没了」。本会话第 N 次同形。
-    // ⇒ 计数放宽成范围自检（只挡「一处都找不到」这种抽取器塌掉），
-    // 先后与存在性由下面两条各自讲自己的故事。
-    const offAll = code.split("tabs.persistLastActive = false").length - 1;
-    expect(
-      offAll,
-      `\`tabs.persistLastActive = false\` 一处都找不到（08-08 实测 2 处：骨架期 + viewer 窗口）——
-` +
-        "抽取器塌了，或者**抑制写回这件事整个不存在了**。先看 main.ts 再谈顺序。",
-    ).toBeGreaterThanOrEqual(1);
-    const off = code.indexOf("tabs.persistLastActive = false");
-    const skeleton = at("commands.list_active_sessions()", 1);
-    const on = at("tabs.persistLastActive = true", 1);
-    expect(
-      off < skeleton,
-      "骨架期的抑制写回不在建骨架之前了（被挪走或删掉）。\n" +
-        "★ 那是 main.ts 说的「双保险」那一半：骨架期的自动切换会经 switchTo 把记忆\n" +
-        "  写成清单首个 sid —— 读记忆那半即使还在前面，也会被这一路覆写掉。",
-    ).toBe(true);
-    expect(
-      skeleton < on,
-      "恢复 `persistLastActive = true` 排到了建骨架之前 —— 抑制窗口空了，等于没抑制。",
-    ).toBe(true);
+  it("本机与远端两处骨架入口都按 pending 补切上次所在 tab", () => {
+    at("if (pendingStartupActive === sessionId) {", 2);
   });
 });
+

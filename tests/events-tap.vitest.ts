@@ -48,9 +48,9 @@ describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
     );
     expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-tap"]]);
     expect(chanStreamModule.chan.subscribe.mock.calls[0]?.[3]).toBe(TAP_WINDOW);
-    // 没有叫 session-tap 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    // 没有叫 session-tap 的裸事件监听（零命中，正控：task-update 那一个在；〔MIG-1〕session-ended 并进了会话流）。
     expect(subs.has("session-tap")).toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    expect(subs.has("task-update")).toBe(true);
 
     const rec = streamFake.subscriptions[0]!;
     rec.sink([
@@ -98,9 +98,9 @@ describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
       ACCOUNTS_CHANGED_WINDOW,
       ACCOUNTS_CHANGED_WINDOW,
     ]);
-    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：task-update 那一个在）。
     expect(subs.has(["remote", "backend", "ready"].join("-"))).toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    expect(subs.has("task-update")).toBe(true);
 
     const a = streamFake.subscriptions[1]!;
     a.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);

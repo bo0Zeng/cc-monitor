@@ -740,6 +740,13 @@ window.addEventListener("DOMContentLoaded", async () => {
       //       在这里起一个新的周期唤醒就是开倒车（`polling_registry` 那两张表在管这件事）。
       //    ⚠ 不 `await`：回填是补记账，失败也不该影响建 tab 这条主路（它自己吞异常）。
       void resolvePendingLocalLaunches();
+      // 〔MIG-1〕本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
+      if (pendingStartupActive === sessionId) {
+        pendingStartupActive = null;
+        if (Date.now() < startupActiveDeadline) {
+          tabs.switchTo(sessionId, "auto");
+        }
+      }
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
@@ -796,45 +803,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   // issue #32 (SS-F)：远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
   bindRemoteHealthToast();
 
-  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——第一个骨架的自动切换会
-  // 经 switchTo 写回 localStorage，读晚了就把用户记忆覆写成清单首个 sid（F19
-  // 主路径在"本地有会话"的常见场景下整体失效）。骨架期同时抑制写回双保险。
+  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——骨架（〔MIG-1〕本机远端一样，都是会话流里的 `live` 成品，
+  //   在下面 `frontend-ready` 的就绪点才到）一建出来就可能经 switchTo 写回 localStorage，读晚了就把记忆覆写掉。
+  // 启动 active = 上次所在 tab：此刻还没有骨架 ⇒ 挂 pending，等它的 `live` 到达时补切（本机 `onSessionStarted` ·
+  //   远端 `onRemoteSessionAdded` 两处同一段；应用一次即清，30 s 之后不再抢焦点）。
+  //   〔从前本机骨架先经 `list_active_sessions`〔散文墓碑〕在这里建好、建时抑制写回（`persistLastActive = false … true`）；
+  //    骨架挪到就绪点之后那一对抑制没有要罩住的东西了，删了。〕
   const lastActive = safeGet(LS_KEYS.lastActiveSid);
-  tabs.persistLastActive = false;
-
-  // Batch5-F18：frontend-ready 之前先拉本地活跃清单建全部骨架 Tab——用户在
-  // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
-  // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
-  try {
-    const active = await commands.list_active_sessions();
-    for (const s of active) {
-      tabs.createSkeletonTab(
-        s.session_id,
-        s.cwd || null,
-        LOCAL_ORIGIN,
-        s.kind ?? null,
-        s.name ?? null,
-      );
-    }
-    // 〔U4b · 说不清〕这就是本机的活会话清单 ⇒ 本机的固定 tab 从说不清落地：
-    //   清单里有 ⇒ 活，没有 ⇒ 已结束。拉失败（下面 catch）⇒ 不标，照旧说不清 —— 说不清就说说不清。
-    //   〔LOC1b · 4D〕清单由本机后端的帧喂（本机后端还没报完 ⇒ 这一问明拒、落 catch）；报完的那一刻本机 emitter
-    //   另发 `origin-sessions-listed`（与远端同一个事件，上面 `onOriginSessionsListed` 那一格收）。
-    tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)));
-  } catch (e) {
-    console.warn("[skeleton] list_active_sessions failed:", e);
-  }
-
-  // Batch5-F19：启动 active = 上次所在 tab（localStorage 记忆）。本地骨架里有
-  // 就立即切；是远端会话则挂 pending，等它的 remote-session-added 宣告到达时
-  // 补切（应用一次即清，之后不再抢焦点）。选择完成后恢复写回。
-  if (lastActive && tabs.hasTab(lastActive)) {
-    tabs.switchTo(lastActive, "auto");
-    pendingStartupActive = null;
-  } else {
-    pendingStartupActive = lastActive;
-  }
-  tabs.persistLastActive = true;
+  pendingStartupActive = lastActive && tabs.hasTab(lastActive) ? null : lastActive;
+  if (lastActive && tabs.hasTab(lastActive)) tabs.switchTo(lastActive, "auto");
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来。payload 带上次所在 tab
   // （Batch5-F19）：后端 replay 按 session 分组、该 tab 的内容块先发。
@@ -849,9 +826,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const frontendReady: FrontendReadyPayload = { prioritySid: lastActive };
   void emit("frontend-ready", frontendReady);
 
-  // issue #23: 红绿灯初始快照（session-activity 事件不进 replay buffer，F5 会丢；
-  // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
-  void tabs.syncActivitySnapshot();
+  // 〔MIG-1〕红绿灯的初始值随 `live` 成品一起在就绪点交（`activity` 那一格），不再另拉快照（`list_session_activity`〔散文墓碑〕）。
 
   // 注：maximize / 全屏后内容错位的修复在 Rust 侧（src/bridge/src/lib.rs on_window_event：
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。

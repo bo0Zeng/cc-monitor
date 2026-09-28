@@ -292,122 +292,6 @@ pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
     rbind_token.is_none()
 }
 
-/// 〔MIG-1 · `99 §2.1 ⑬`〕一件会话成品 ⇒ 前端事件（**只转交，不裁决**：可重连 / 已结束是那台后端裁的）。
-/// `replaying` = F5 重放那一趟：本机的活会话只重发容器（本机骨架由 `list_active_sessions` 那一问建，灯由 `list_session_activity`）。
-pub(crate) fn emit_session_out(
-    handle: &tauri::AppHandle,
-    out: &session_book::Out,
-    replaying: bool,
-) {
-    use session_book::{Fate, Out};
-    let say = |event: &str, r: tauri::Result<()>| {
-        if let Err(e) = r {
-            tracing::warn!("emit {event} failed: {e}");
-        }
-    };
-    match out {
-        Out::Live { origin, sid, meta } => {
-            let local = origin == crate::origin::LOCAL;
-            if !(local && replaying) {
-                if local {
-                    let payload = bridge::SessionStartedPayload {
-                        session_id: sid.clone(),
-                        cwd: meta.cwd.clone(),
-                        kind: meta.kind.clone(),
-                        name: meta.name.clone(),
-                    };
-                    say(
-                        bridge::events::SESSION_STARTED,
-                        handle.emit(bridge::events::SESSION_STARTED, &payload),
-                    );
-                } else {
-                    let payload = bridge::RemoteSessionAddedPayload {
-                        session_id: sid.clone(),
-                        origin: origin.clone(),
-                        kind: meta.kind.clone(),
-                        attachable: meta.attachable,
-                        cwd: meta.cwd.clone(),
-                        name: meta.name.clone(),
-                    };
-                    say(
-                        bridge::events::REMOTE_SESSION_ADDED,
-                        handle.emit(bridge::events::REMOTE_SESSION_ADDED, &payload),
-                    );
-                }
-                let act = bridge::SessionActivityPayload {
-                    session_id: sid.clone(),
-                    status: meta.status.clone(),
-                    waiting_for: meta.waiting_for.clone(),
-                };
-                say(
-                    bridge::events::SESSION_ACTIVITY,
-                    handle.emit(bridge::events::SESSION_ACTIVITY, &act),
-                );
-            }
-            // 〔U4b · G3〕容器排在宣告之后：前端先建 tab、再落容器（早到的也有暂存兜着）。判不了的不发。
-            if let Some(c) = meta.container {
-                let payload = bridge::SessionContainerPayload {
-                    session_id: sid.clone(),
-                    container: c.as_wire().to_string(),
-                };
-                say(
-                    bridge::events::SESSION_CONTAINER,
-                    handle.emit(bridge::events::SESSION_CONTAINER, &payload),
-                );
-            }
-        }
-        Out::Status {
-            sid,
-            status,
-            waiting_for,
-        } => {
-            let act = bridge::SessionActivityPayload {
-                session_id: sid.clone(),
-                status: status.clone(),
-                waiting_for: waiting_for.clone(),
-            };
-            say(
-                bridge::events::SESSION_ACTIVITY,
-                handle.emit(bridge::events::SESSION_ACTIVITY, &act),
-            );
-        }
-        Out::Left { sid, fate, .. } => match fate {
-            Fate::Reconnectable => {
-                let payload = bridge::SessionIdlePayload {
-                    session_id: sid.clone(),
-                };
-                say(
-                    bridge::events::SESSION_IDLE,
-                    handle.emit(bridge::events::SESSION_IDLE, &payload),
-                );
-            }
-            Fate::Ended => {
-                let payload = bridge::SessionEndedPayload {
-                    session_id: sid.clone(),
-                };
-                say(
-                    bridge::events::SESSION_ENDED,
-                    handle.emit(bridge::events::SESSION_ENDED, &payload),
-                );
-            }
-        },
-        Out::Listed { origin } => {
-            let payload = bridge::OriginSessionsListedPayload {
-                origin: crate::origin::Origin(origin.clone()),
-            };
-            say(
-                bridge::events::ORIGIN_SESSIONS_LISTED,
-                handle.emit(bridge::events::ORIGIN_SESSIONS_LISTED, &payload),
-            );
-        }
-        Out::Unseen { sids, .. } => {
-            for sid in sids {
-                emit_session_unseen(handle, sid);
-            }
-        }
-    }
-}
-
 /// 〔MIG-1〕会话成品到达时 monitor **自己的事**（拉前终端的绑定）—— 不是裁决，是这台界面进程要记的窗口账。
 ///
 /// - 本机活会话：按 pid 找父 PowerShell 绑窗口（Windows 本机 ↗；老后端不带 pid 就不绑）；
@@ -463,19 +347,6 @@ fn session_side_effects(
             }
         }
         Out::Unseen { .. } | Out::Status { .. } | Out::Listed { .. } => {}
-    }
-}
-
-/// 〔GP1 · 第四波〕发一条「说不清」（`session-unseen`）。〔MIG-1〕两处用它：到那台的连接断了（`session_book::Out::Unseen`）·
-/// F5 对账里「那台还没报完清单」那一摞。**它从不与 `SESSION_ENDED` 同发**（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）。
-fn emit_session_unseen(handle: &tauri::AppHandle, sid: &str) {
-    let payload = bridge::SessionUnseenPayload {
-        session_id: sid.to_string(),
-    };
-    if let Err(e) = handle.emit(bridge::events::SESSION_UNSEEN, &payload) {
-        tracing::warn!("emit session-unseen failed: {e}");
-    } else {
-        tracing::info!("session unseen（那台机器看不见了）: {sid}");
     }
 }
 
@@ -938,10 +809,11 @@ pub fn run() {
                     }
                 });
             }
-            // 〔MIG-1 · `99 §2.1 ⑬`〕会话成品的**唯一**出口线程（本机远端同一个）：只转交 ＋ monitor 自己那几样副作用（拉前绑定），
-            //   不裁决（可重连 / 已结束由那台后端裁）。原先这里是本机 / 远端两个 emitter，各自查 tmux 原文账裁 `classify_removed`。
+            // 〔MIG-1 · `99 §2.1 ⑬`〕会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
+            //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+            //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
             {
-                let handle = app.handle().clone();
+                let replay = replay.clone();
                 let bind_for_emitter = bind_registry.clone();
                 let cache_for_emitter = sid_hwnd_cache.clone();
                 let remote_cache_for_emitter = remote_hwnd_cache.clone();
@@ -955,7 +827,7 @@ pub fn run() {
                                 &bind_for_emitter,
                                 &remote_cache_for_emitter,
                             );
-                            emit_session_out(&handle, &out, false);
+                            replay.on_lifecycle(out.origin(), out.frames());
                         }
                     });
                 if let Err(e) = spawned {
@@ -1041,7 +913,6 @@ pub fn run() {
             // 本机内容改走后端的帧之后与远端同形：没到的行 ready 之后照样实时发、按 seq 落位，不需要等。
             {
                 let replay = replay.clone();
-                let handle = app.handle().clone();
                 let t0_capture = t0;
                 app.listen(bridge::events::FRONTEND_READY, move |event| {
                     // Batch5-F19：payload 携带用户上次所在 tab（localStorage 记忆），
@@ -1053,42 +924,16 @@ pub fn run() {
                             .ok()
                             .and_then(|p| p.priority_sid);
                     let replay = replay.clone();
-                    let handle = handle.clone();
                     let listen_recv_at = t0_capture.elapsed().as_millis();
                     tauri::async_runtime::spawn(async move {
                         tracing::info!(
                             "[perf] T+{}ms frontend-ready received, starting replay",
                             listen_recv_at
                         );
-                        // 〔MIG-1 · `99 §2.1 ⑬`〕重放计划从成品缓存来（`session_book::Book::replay`，纯函数）：
-                        //   ① 活会话重宣告（骨架 ＋ 初始灯 ＋ 容器；事件不进 replay buffer）—— 先于行（Batch9-F28 · Batch5 I-1）；
-                        //   ② 留存行按 credit 交（就绪点）；③ 终局：可重连的 · 有行却不活的（这条连接上说过已结束 / 那台报完了清单 ⇒ 已结束，
-                        //   没报完 ⇒ 说不清，`设计/30 §3.5.7a`）· 报完了清单的那几台再说一次 —— 晚于行（issue #19 / #20：否则远端行把刚归档的 tab 翻活）。
-                        //   〔从前这一段从三本 monitor 账里拼（`reannounce_all`〔散文墓碑〕· 容器账 · idle 账 ＋ `split_stale`〔散文墓碑〕）。〕
-                        ssh_source::emit_snapshot_inflight_level(&handle);
-                        let plan = {
-                            let buffered: Vec<(String, String)> = replay
-                                .buffered_local_session_ids()
-                                .into_iter()
-                                .map(|sid| (sid, crate::origin::LOCAL.to_string()))
-                                .chain(replay.buffered_remote_sessions())
-                                .collect();
-                            session_book::book().read().replay(&buffered)
-                        };
-                        for out in &plan.before {
-                            emit_session_out(&handle, out, true);
-                        }
-                        // 〔CF2 · 第四波 4B〕重放不再是广播事件：主界面在发 `frontend-ready` 之前已经订好了各台机器的
-                        //   会话流（`chan.subscribe`），这里是它们的**就绪点** —— 按 credit 交完留存才往下走对账。
+                        // 〔CF2 · MIG-1〕就绪点：主界面在发 `frontend-ready` 之前已经订好了各台机器的会话流（`chan.subscribe`），
+                        //   这里按 credit 交完留存；起停的成品（骨架在行前、终局在行后，`session_book::Book::replay`）在同一条流里原位交，
+                        //   不吃 credit。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
                         replay.ready_point(priority_sid.as_deref()).await;
-                        for out in &plan.after {
-                            emit_session_out(&handle, out, true);
-                        }
-                        tracing::info!(
-                            "replay 对账：重宣告 {} 件、终局 {} 件（成品缓存）",
-                            plan.before.len(),
-                            plan.after.len()
-                        );
                     });
                 });
             }
@@ -1161,8 +1006,6 @@ pub fn run() {
             // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
             bring_remote_terminal_to_front,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 session-activity 事件）
-            list_session_activity,
-            list_active_sessions,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
             // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。
@@ -1929,48 +1772,8 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
     win.set_focus().map_err(|e| format!("set_focus: {e}"))
 }
 
-/// issue #23：当前全部本地活跃会话的红绿灯快照。前端启动/F5 后调一次做初始收敛
-/// （session-activity 是稀疏事件、不进 replay buffer，刷新会丢——同任务快照那一问（`tasks-list`）
-/// 的「快照 + 事件增量」双路收敛模式）。纯内存读。〔LOC1b〕读本机活会话表（本机后端帧喂的）。
-#[tauri::command]
-fn list_session_activity() -> Vec<bridge::SessionActivityPayload> {
-    session_book::book()
-        .read()
-        .local_activity()
-        .into_iter()
-        .map(
-            |(session_id, status, waiting_for)| bridge::SessionActivityPayload {
-                session_id,
-                status,
-                waiting_for,
-            },
-        )
-        .collect()
-}
-
-/// Batch5-F18：本地活跃会话清单（sid + cwd）——前端启动时（frontend-ready 之前）
-/// 调一次，先建全部骨架 Tab。纯内存读。
-///
-/// 〔LOC1b · 第四波 4D〕读本机活会话表；**本机后端还没报完清单时明说**（`Err`），不交一份半截的清单 ——
-/// 前端拿这份清单把固定复活的本机 tab 从「说不清」落成「活 / 已结束」（`TabManager.markOriginSeen`），
-/// 半截的会把还没宣告到的活会话说成已结束（`设计/30 §3.5.7a`）。那种时候前端照旧说不清，
-/// 等本机后端报完 ⇒ 本机 emitter 发 `origin-sessions-listed`（与远端同一个事件）再落。
-#[tauri::command]
-fn list_active_sessions() -> Result<Vec<bridge::ActiveSessionPayload>, String> {
-    let listed = session_book::book().read().local_listed();
-    let Some(active) = listed else {
-        return Err(copy_text("rsLib.activeSessions.notListed", &[]));
-    };
-    Ok(active
-        .into_iter()
-        .map(|(session_id, m)| bridge::ActiveSessionPayload {
-            session_id,
-            cwd: m.cwd.unwrap_or_default(),
-            kind: m.kind,
-            name: m.name,
-        })
-        .collect())
-}
+// 〔MIG-1 · ⑬〕`list_session_activity`〔散文墓碑〕· `list_active_sessions`〔散文墓碑〕两条命令退役：本机活会话的骨架与初始灯
+//   是会话流里的 `live` / `activity` 成品（就绪点按成品缓存重放），与远端同一条路。
 
 /// v1.7：拉对应终端窗口。
 ///
