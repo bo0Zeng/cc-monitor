@@ -57,7 +57,9 @@ use tokio::io::AsyncWriteExt;
 mod connect;
 pub(crate) mod forwards; // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账（起 · 停 · 列三条帧命令）
 pub mod link;
+pub(crate) mod machine; // 〔MIG-1 续〕一台机器的配置 → 拨号请求（后端持有全部 SSH）
 mod pool;
+pub(crate) mod probe; // 〔MIG-1 续〕测试连接（`remote-probe`）
 pub(crate) mod sftp;
 pub(crate) mod ssh_config;
 pub(crate) mod uses;

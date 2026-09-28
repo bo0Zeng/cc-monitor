@@ -713,21 +713,7 @@ pub(crate) async fn capture(
     })
 }
 
-/// **测试连接那一趟**：短命探活，阶段行逐条交给 `on_stage`，exec `cmd` 之后把链路交回（探后端 hello 用）。
-/// 失败回 `(说法, 看到过的指纹)`。
-pub(crate) async fn probe(
-    cfg: &RemoteConfig,
-    cmd: &str,
-    on_stage: &mut (dyn FnMut(ConnectStage) + Send),
-) -> Result<(DialStream, Ack), (String, Option<String>)> {
-    let req = request(
-        cfg,
-        "stream",
-        serde_json::json!({ "command": cmd, "stages": true, "probe": true }),
-    )
-    .map_err(|e| (e, None))?;
-    open(cfg, &req, "stream", on_stage).await
-}
+// 〔MIG-1 续 · ⑬〕测试连接那一趟（短命探活、阶段行逐条交回）退役：拨号请求改由本机后端按界面交来的配置组（`dial/probe.rs`）。
 
 // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一形（`ForwardLink` · `forward`）退役：转发账连同开链路一起住本机常驻后端
 //   （`src/backend/dial/forwards.rs`，查的是后端自己的可达表），界面经 `chan.call(<local>, "forward-*")` 直接问。

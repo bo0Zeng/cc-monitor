@@ -2671,13 +2671,28 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过、本机后端才知道怎么够到它） |
+| `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求） |
+| `machine` / `saved?` / `jump?` | → | 〔MIG-1 续〕那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`dial/machine.rs`，同 `remote-probe`），不拒 |
 | `localPort` / `remoteHost` / `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
 | `id` | ← | 这条转发的号（`fwd-<n>`，本进程内单调） |
 
-先过围栏（端口 0 / 远端 host 空白 ⇒ `bad_spec`，在任何查表 / 拨号之前），再查可达表，再在池里那条 SSH 上开 `use: forward` 链路、**等 ack**：口绑好了、连上了才回成功（才进账）。
-错误码：`invalid_args`（缺格 / 类型不对）· `bad_spec` · `unreachable`（可达表里没有那台）· `full`（账上已满 64 条）· `failed`（ack 说不成，原话带在 message 里）。
+先过围栏（端口 0 / 远端 host 空白 ⇒ `bad_spec`，在任何查表 / 拨号之前），再查可达表（没有 ⇒ 按 `machine` 组），再在池里那条 SSH 上开 `use: forward` 链路、**等 ack**：口绑好了、连上了才回成功（才进账）。
+错误码：`invalid_args`（缺格 / 类型不对）· `bad_spec` · `unreachable`（可达表里没有那台、也没交 `machine`）· `bad_jump`（跳板没交来 / 指自己）· `full`（账上已满 64 条）· `failed`（ack 说不成，原话带在 message 里）。
 只有帧面（`cli_control::STREAM_ONLY`）：账住常驻那一个进程，一次性进程开出来的转发随进程退出就没了。
+
+#### `remote-probe`：测试连接（MIG-1 续，09-28）
+
+`99 §2.1 ⑬` 主会话裁「后端持有全部 SSH」：界面把设置页表单里那台（**可能还没保存**的）配置交过来，本机后端组拨号请求（`dial/machine.rs`：
+地址四形态 · 指纹只继承同一个 host 的 · 跳板查无 / 环都拒）、**拨一次**（短命探活，不进连接池）、回结局。monitor 的 `test_remote_connection` 退役。
+
+```text
+→ {"id":"p1","cmd":"remote-probe","args":{"machine":{"host":"10.0.0.2","label":"aya","port":22,"user":"u","keyPath":"","hostKeyFingerprint":"","addresses":[],"jump":""},"saved":null,"jump":null}}
+← {"kind":"reply","id":"p1","ok":true,"data":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"v=1 build=… control=ok(12ms)","message":"SSH 与后端均正常。","stages":[{"kind":"dialing","endpoint":"10.0.0.2:22"},…]}}
+```
+
+三步：拨号 ＋ 鉴权 ＋ exec 那台后端（流模式）→ 读首行 hello（上限 8 s）→ 那台认 `ping` ⇒ 同一条流上往返一次（上限 5 s）。每步结论都进回包（部分成功照样回）：
+`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）；`stages` = 拨号阶段行（与界面 `ConnectStage` 同形），**结局里一并交回**（原先经 Tauri `Channel` 边拨边推）。
+错误码：`invalid_args`（缺 `machine` / 缺 host · user / 端口不对）· `bad_jump` · `failed`（链路那一侧回话读不懂）。
 
 #### `forward-stop`：停一条转发（MIG-1，09-28）
 
@@ -3159,6 +3174,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
 **MIG-1 追加三条（09-27）**：`--ssh-config-aliases` · `--ssh-config-import`（不读 stdin）· `--ssh-config-resolve`（读 stdin：`{alias}`）—— 见上面各自那一小节。同上，与帧面同一个 `run`。
+**MIG-1 续追加一条（09-28）**：`--remote-probe`（读 stdin：`{machine, saved?, jump?}`）—— 测试连接，一次性进程里照样拨得了一次（短命探活，不进连接池）。`forward-*` 三条只有帧面（转发账住常驻那一个进程）。
 
 〔RESYNC · 09-27〕`resync` **没有 CLI 面**（`cli_control::STREAM_ONLY`）：它对齐的是进程里在跑的 watcher，一次性进程里一份都没有。
 

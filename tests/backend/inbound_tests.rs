@@ -440,6 +440,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "forward-start",
         "forward-stop",
         "forward-list",
+        "remote-probe",
     ] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
@@ -615,6 +616,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "forward-start",
         "forward-stop",
         "forward-list",
+        "remote-probe",
         "cancel",
         "link-open",
         "link-data",

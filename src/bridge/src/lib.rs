@@ -1089,7 +1089,6 @@ pub fn run() {
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
             data_paths::get_data_paths,
             // issue #15 Tier 1: SSH 连接 UX —— 测试连接 + 指纹固化。〔MIG-1〕`~/.ssh/config` 导入那三条搬进后端（`ssh-config-*`）。
-            ssh_source::test_remote_connection,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

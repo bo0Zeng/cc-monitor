@@ -303,6 +303,8 @@ fn every_registered_command_declares_its_run_kind() {
         "forward-start",
         "forward-stop",
         "forward-list",
+        // 〔MIG-1 续〕测试连接：真异步（拨号 · 读 hello · 往返），在 await 点可取消。
+        "remote-probe",
         "bus-list",
         "bus-send",
         "bus-broadcast",

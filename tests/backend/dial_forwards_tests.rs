@@ -210,3 +210,31 @@ async fn a_link_that_ends_on_its_own_reads_as_error() {
     }
     assert_eq!(list_with(&ledger)["forwards"][0]["state"], json!("error"));
 }
+
+/// 〔MIG-1 续 · 主会话裁：流没起的远端不许拒〕可达表里没有那台、界面一并交来了它的配置 ⇒ 按配置自己组请求去拨（`dial/machine.rs`），
+/// 交给链路那一侧的是 `use: forward` ＋ 这条规格 ＋ 配置里的那台；配置也没交 ⇒ 才是 `unreachable`。
+#[tokio::test]
+async fn a_machine_that_never_streamed_is_dialled_from_its_config() {
+    let empty: remote_ask::Table = Mutex::new(BTreeMap::new());
+    let ledger = Ledger::new();
+    let seen = Arc::new(Mutex::new(None::<(String, u16, crate::dial::Use)>));
+    let s = Arc::clone(&seen);
+    let mut a = args("dev", 15434, "localhost", 5432);
+    a["machine"] = json!({"host": "10.9.9.9", "label": "dev", "port": 2201, "user": "u"});
+    start_with(&a, &empty, &ledger, move |req, _up, mut down| {
+        *s.lock().unwrap() = Some((req.host.clone(), req.port, req.use_));
+        async move {
+            let _ = down
+                .write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"forward\"]}\n")
+                .await;
+            std::future::pending::<()>().await;
+        }
+    })
+    .await
+    .expect("流没起的那台照样开得起转发");
+    assert_eq!(
+        seen.lock().unwrap().clone(),
+        Some(("10.9.9.9".to_string(), 2201, crate::dial::Use::Forward))
+    );
+    assert_eq!(list_with(&ledger)["forwards"][0]["origin"], "dev");
+}

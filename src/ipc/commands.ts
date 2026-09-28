@@ -90,8 +90,6 @@ import type { BranchResult } from "../generated/BranchResult";
 //   判据 `tests/ipc/commands.vitest.ts` 末尾「TS 侧 origin 去 null」那一节，全 TS ＋ 生成物）；
 //   〔C4b〕生成物 `RemoteHealthPayload.origin` 那最后一处也改成了 `string`（那一节的 `PENDING` 从此为空）。
 import type { Origin } from "../generated/Origin";
-import type { ConnectStage } from "../generated/ConnectStage";
-import type { ConnTestResult } from "../generated/ConnTestResult";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
@@ -319,16 +317,8 @@ export const commands = {
   // 〔MIG-1 · `设计/99 §2.1 ⑬`〕端口转发三条（起 · 停 · 列）的包装随命令退役删了：转发账住本机常驻后端，
   //   界面经通道直接说帧命令 `forward-start` / `forward-stop` / `forward-list`（`src/port-forward-reads.ts`）。
 
-  /**
-   * 测一条远端配置：连 SSH → 读指纹 → exec backend → 等 hello。
-   *
-   * **`onStage` 是 `Channel<ConnectStage>`**（第二个进包装层的 Channel 参数）。
-   * `ConnectStage` 本轮一并生成——TS 侧 `describeStage` 里有 `const _never: never = st`
-   * 穷尽性兜底，而**手写类型时 Rust 加一个 variant 并不会让它红**；
-   * 换成生成物后那条 `never` 检查才真正对 Rust 的改动有牙。
-   */
-  test_remote_connection: (args: { cfg: unknown; onStage: Channel<ConnectStage> }) =>
-    invoke<ConnTestResult>("test_remote_connection", args),
+  // 〔MIG-1 续 · `设计/99 §2.1 ⑬`〕测试连接的包装（带 `Channel<ConnectStage>` 阶段泳道那一条）随命令退役删了：
+  //   界面把那台配置交给本机后端（帧命令 `remote-probe`，`src/remote-probe.ts`），阶段行随结局一并回来。
 
   /**
    * 流式读会话 jsonl。Rust 返回 `Result<u32, String>`（条数）。

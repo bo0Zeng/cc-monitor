@@ -15201,6 +15201,16 @@
       "zh": "那台机器的后端太旧，还不认列 tmux 会话这一问。重装那台机器的后端就有了",
       "args": []
     },
+    "remoteProbe.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的测试结果，两端版本对不上",
+      "args": []
+    },
+    "remoteProbe.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不认测试连接这一问。重启 cc-monitor 换上新后端就有了",
+      "args": []
+    },
     "portForwardReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂本机后端回的转发清单，两端版本对不上",
@@ -16835,6 +16845,61 @@
       "kind": "error",
       "zh": "连接读不下去了：{e}",
       "args": ["e"]
+    },
+    "beMachine.jump.loop": {
+      "kind": "error",
+      "zh": "跳板配置指向自己（环）",
+      "args": []
+    },
+    "beMachine.jump.notFound": {
+      "kind": "error",
+      "zh": "跳板配置未找到：{jumpLabel}",
+      "args": ["jumpLabel"]
+    },
+    "beProbe.test.sshFailed": {
+      "kind": "error",
+      "zh": "SSH 连接/鉴权失败：{e}",
+      "args": ["e"]
+    },
+    "beProbe.test.probeFailed": {
+      "kind": "error",
+      "zh": "SSH 连上了，但后端探测失败：{e}",
+      "args": ["e"]
+    },
+    "beProbe.test.noHello": {
+      "kind": "error",
+      "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
+      "args": []
+    },
+    "beProbe.test.controlDown": {
+      "kind": "error",
+      "zh": "后端连上了，但不能在远端起会话",
+      "args": []
+    },
+    "beProbe.test.noControl": {
+      "kind": "error",
+      "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
+      "args": []
+    },
+    "beProbe.test.ok": {
+      "kind": "error",
+      "zh": "SSH 与后端均正常。",
+      "args": []
+    },
+    "beProbe.control.unsupported": {
+      "kind": "error",
+      "zh": "control=unsupported：后端太旧，不能在远端起会话",
+      "args": []
+    },
+    "beProbe.link.droppedBeforeAck": {
+      "kind": "error",
+      "zh": "链路还没说成不成就断了",
+      "args": []
+    },
+    "beProbe.link.closed": {
+      "kind": "error",
+      "zh": "那台后端的输出断了",
+      "args": []
     },
     "beForwards.spec.localPort": {
       "kind": "error",

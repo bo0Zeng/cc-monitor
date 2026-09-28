@@ -935,6 +935,40 @@ impl Default for SeqCounter {
     }
 }
 
+/// 读一份 hello 帧成人读摘要（`v=.. build=.. arch=.. home=.. caps=.. cmds=..`）。
+/// `home`：`homes` 里第一项，缺 ⇒ 那个冻结字段（`S4` 的消费侧口径；通用层不认 agent 名字，只拿值）。
+/// 〔MIG-1 续〕住 hello 的家：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时用（原 monitor 那一份人读摘要）。
+pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
+    use serde_json::Value;
+    let s = |k: &str| h.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
+    let home = h
+        .get("homes")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|e| e.get("path").and_then(Value::as_str))
+        .map(str::to_string)
+        .unwrap_or_else(|| s("claude_dir"));
+    let list = |k: &str| -> Vec<String> {
+        h.get(k)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    format!(
+        "v={} build={} arch={} home={home} caps={:?} cmds={:?}",
+        h.get("v").and_then(Value::as_u64).unwrap_or(0),
+        s("build_id"),
+        s("host_arch"),
+        list("capabilities"),
+        list("commands"),
+    )
+}
+
 #[cfg(test)]
 #[path = "../../tests/backend/wire_tests.rs"]
 mod tests;
