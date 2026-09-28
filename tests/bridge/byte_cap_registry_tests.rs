@@ -709,7 +709,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`acct-iso-cmd` 交来的凭据快照路径的字节数（新建账号表单产出的远小于它）",
         "拒收+回错",
     ),
-    // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那三个数 ＋ monitor 答它自己那几行事实的两个数。
+    // 〔RM1a → MIG-3b 续〕「足迹」由那台后端出成品（`footprint-report`，只读）那两个数（〔主会话 09-28 裁〕两拍之后 monitor 不再 stat，它那两个数与收 `client.stat` 那一个随之删）。
     (
         "src/backend/footprint/mod.rs",
         "MAX_ENTRIES",
@@ -723,27 +723,6 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         1 << 20,
         "`footprint-report` 查钩子字样时读的那份 settings 文件多大",
         "跳过+说清",
-    ),
-    (
-        "src/backend/footprint/mod.rs",
-        "MAX_CLIENT_PATHS",
-        1024,
-        "`footprint-report` 收 monitor 交来的 `client.stat` 最多几条",
-        "拒收+回错",
-    ),
-    (
-        "src/bridge/src/footprint_client.rs",
-        "MAX_ENTRIES",
-        4096,
-        "`footprint_client_facts` 列 monitor 这台一个目录最多几个名字（超了 ⇒ 不带 `entries`＝列不动，不截断）",
-        "跳过+说清",
-    ),
-    (
-        "src/bridge/src/footprint_client.rs",
-        "MAX_PATHS",
-        1024,
-        "`footprint_client_facts` 一趟最多 stat 几条（同后端收的上限）",
-        "拒收+回错",
     ),
     // 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag`，只读）读那台自己的 settings 文件多大。
     (

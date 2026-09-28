@@ -41,7 +41,7 @@ mod config;
 // 〔MIG-3b 续 · 主会话 09-28 裁①〕`mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
 //   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
 mod data_paths;
-mod footprint_client; // 〔MIG-3b 续〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）的事实：只 stat 交来的路径
+mod footprint_client; // 〔MIG-3b 续〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）只有 monitor 知道的事实：它自己进程的家目录 · agent 家 · PATH（stat 在本机后端）
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;

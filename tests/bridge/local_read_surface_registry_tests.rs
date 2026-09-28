@@ -225,7 +225,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         // 〔MIG-3b 续〕足迹判定进了后端，monitor 只答它自己那台那几行的事实（`with_monitor_probe`〔散文墓碑〕删了）。
         "footprint_client_facts",
         "足迹里 monitor 自己那几行的根（`home` 那一格）",
-        "只读诊断页；只 stat 后端交来的路径，落点由本模块的 claude 棘轮数着",
+        "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
     ),
     // 〔OSA · 主会话 09-28 裁〕`data_paths.rs` 探 `$PROFILE` 候选目录那一行摘了：界面经通道问本机后端（`$PROFILE` 在哪只有后端方言答）。
     // 〔MIG-3b〕钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。
