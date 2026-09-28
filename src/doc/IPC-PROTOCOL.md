@@ -2455,7 +2455,7 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 
 ```text
 → {"id":"r1","cmd":"resync","args":{}}
-← {"kind":"reply","id":"r1","ok":true,"data":{"added":0,"removed":1,"retagged":1,"watchers":1}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"added":0,"removed":1,"retagged":1,"watchers":1,"unavailable":[],"uncancellable":["launch"]}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2464,6 +2464,7 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 | `added` / `removed` | ← | 这次补宣告 / 补移除的会话数（各份 watcher 取最大：看的是同一台机器） |
 | `retagged` | ← | 这次真写了几处 `@ccm_sid`（值一样的不写） |
 | `watchers` | ← | 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）。只有帧面，没有 CLI 面 |
+| `unavailable` / `uncancellable` | ← | 这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`）。monitor 拿它换掉握手那一刻的 `Offer`（例：握手之后才装上 tmux） |
 
 整机那一趟与起步初探是**同一套**（`设计/15 §4.1b`）：耳朵重挂 · 账号清单（发一帧 `accounts_changed`）· pidfile 目录对后端的表（多的补 `session_added`，少的补 `session_removed`，在跟的顺手对账标签）· 重探 tmux。只对差异发帧；不另发 `sessions_replayed`。
 错误码：`bad_args`。
