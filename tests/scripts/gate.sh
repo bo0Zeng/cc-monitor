@@ -1395,7 +1395,7 @@ run_gate_sum cargo 14 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&
 # ⇒ **它跟着「铺没铺」走，不跟着 git 走**。挂 `#[cfg(embedded_backends)]` 的那一族全是
 # 「本地后端真的能起来吗」：`sftp::embedded_backend_binaries_present_and_valid` ·
 # `local_backend_host::the_local_backend_host_can_be_stopped_and_started_again` ·
-# `local_backend::the_local_tmux_frames_really_land_in_the_ledger` ·
+# `local_backend::the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（〔MIG-1〕随 monitor 那本 tmux 原文账删了） ·
 # `local_backend::the_local_backend_host_really_registers_an_inbound_client`。
 #
 # 病灶逐字（`ROADMAP.md` 风险行 `5t`，PM 08-25 实测撞上、08-29 复打）：
@@ -1611,6 +1611,9 @@ deadcode_t0=$(date +%s)
 #    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 19。
 # 🔴 **2026-09-28（合并 MIG-3b × 主线 81f92f6a）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了，〔MIG-3b 子步 2〕）；
 #    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 81f92f6a 现打 19，逐条对过只差这一条）。
+# 🔴 **2026-09-28（合 MIG-1 × 主线 p5e）：主树现打 19 → 回 18，现打，逐条记**：多的那一条是 `inbound_client·rs::InboundClient::close_write` ——
+#    它唯一的生产调用方（测试连接那次一次性探测）随测试连接进本机后端删了，只剩两条起真后端的判据还用它 ⇒ 连同 `WriteJob::CloseWrite`
+#    改成只编进测试档（`#[cfg(test)]`），生产段不再有关写半边这回事。没有抬这个数。
 run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 18，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
          bash -c 'pin=18; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
@@ -1920,7 +1923,10 @@ run_e2e backend-cc-bus        96
 run_e2e backend-gate2         34 exact-with-skip
 #   ★ 〔DEL 续〕`local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
 #     没铺 `src/bridge/embedded-backends/` 的树上它们记 SKIP 并说原因（套件里那一段；落点齐了却不跑 ⇒ FAIL）⇒ 铺了 26+0、没铺 15+11。
-run_e2e local-backend         26 exact-with-skip
+#   〔MIG-1 · `99 §2.1 ⑬`〕26 → 24：起真后端的那三条少了一条 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕（它钉的 monitor 本机
+#     tmux 原文账随账本进后端删了，快照帧随 V41 删了；后端那本账由 `graylight-backend-frames.sh` 真 tmux 实测），它打 2 条标记 ⇒
+#     铺了 24+0、没铺 15+9。量于 2026-09-28 铺了落点的非 ASCII 路径工作树。
+run_e2e local-backend         24 exact-with-skip
 # 〔MIG-2 合后〕`restart-frames` 5 → 6：加一格「kill→resume→记账 znew、没有 shim 不认的问」（换号成功后记 pin 那一步此前没被测到）；量于主树同形的非 ASCII 路径。
 run_e2e restart-frames         6
 run_e2e restart               24
