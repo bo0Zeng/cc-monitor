@@ -8,6 +8,7 @@ use super::super::listen::{
     listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
+use super::super::{TapBody, TapEvent, TapPort};
 use crate::accounts::upstream::creds;
 use crate::accounts::upstream::{self as accounts, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
@@ -617,37 +618,62 @@ fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly
 }
 
 /// ★★ **tee 的收集面必须「能等」**〔回修轮之五 08-25，`阻-2(D3)` 的连带〕：
-/// 今天 tee 的写落在**另一条线程**上（那正是 `阻-2` 的修法）⇒ 下游的响应读完了，
-/// tee 那几行**未必**已经落进这个 `Vec`。判据读完就断言 = 在读一个还没写完的缓冲区，
-/// 而「tee 是空的」与「还没写完」在断言里**长得一模一样** ⇒ 那是一条会随机说谎的判据。
-/// ⇒ 每写一行往通道投一条；判据用 `TeeTap::wait_lines` 等够行数，**等不到当红**。
+/// 下游的响应读完了，tee 那几件**未必**已经交到（收尾那一件在转发收工之后才交）。
+/// 判据读完就断言 = 在读一个还没收齐的缓冲区，而「tee 是空的」与「还没收齐」
+/// 在断言里**长得一模一样** ⇒ 那是一条会随机说谎的判据。
+/// ⇒ 每收一件往通道投一条；判据用 `TeeTap::wait_events` 等够件数，**等不到当红**。
+/// 〔DEL〕tee 只剩 tap 口那一形：收集面是测试侧的一个 [`TapPort`]（生产里是 `crate::tap` 的 hub）。
 struct TeeTap {
-    buf: Arc<std::sync::Mutex<Vec<u8>>>,
+    got: Arc<std::sync::Mutex<Vec<TapEvent>>>,
     rx: mpsc::Receiver<()>,
 }
 
+/// 测试侧的 tap 口：每件都收下（立刻答「收了」，契约同生产那一个：不阻塞）。
+struct CollectingTap {
+    got: Arc<std::sync::Mutex<Vec<TapEvent>>>,
+    tick: std::sync::Mutex<mpsc::Sender<()>>,
+}
+
+impl TapPort for CollectingTap {
+    fn offer(&self, ev: TapEvent) -> bool {
+        self.got.lock().expect("lock").push(ev);
+        let _ = self.tick.lock().expect("lock").send(());
+        true
+    }
+}
+
 impl TeeTap {
-    /// 等写线程写够 `n` 行；等不到就 panic（不许把「还没写完」读成「tee 是空的」）。
-    fn wait_lines(&self, n: usize) {
+    /// 等 tap 收够 `n` 件；等不到就 panic（不许把「还没收齐」读成「tee 是空的」）。
+    fn wait_events(&self, n: usize) {
         for i in 0..n {
             self.rx
                 .recv_timeout(std::time::Duration::from_secs(4))
-                .unwrap_or_else(|e| panic!("等 tee 的第 {} 行没等到：{e}", i + 1));
+                .unwrap_or_else(|e| panic!("等 tap 的第 {} 件没等到：{e}", i + 1));
         }
     }
 
-    fn text(&self) -> String {
-        String::from_utf8(self.buf.lock().expect("lock").clone()).expect("utf8")
+    fn events(&self) -> Vec<TapEvent> {
+        self.got.lock().expect("lock").clone()
     }
 
-    /// tee 里的**事件行**（不含 meta 行、不含 `__dropped__` 行）。
-    fn event_lines(&self) -> Vec<String> {
-        self.text()
-            .lines()
-            .filter(|l| l.contains("\"event\""))
-            .map(str::to_string)
+    /// 带事件原文的那几件（不含收尾那一件）。
+    fn data(&self) -> Vec<TapEvent> {
+        self.events()
+            .into_iter()
+            .filter(|e| matches!(e.body, TapBody::Data(_)))
             .collect()
     }
+}
+
+/// 一个什么都不收的 tap 口（本族判据量的不是 tee）。
+fn no_tap() -> TeeSink {
+    struct Nothing;
+    impl TapPort for Nothing {
+        fn offer(&self, _ev: TapEvent) -> bool {
+            false
+        }
+    }
+    TeeSink::to_port(Arc::new(Nothing))
 }
 
 /// 起一个中转，返回 `(地址, Relay 句柄, tee 收集器)`。
@@ -668,43 +694,23 @@ fn nowhere_home() -> std::path::PathBuf {
 }
 
 fn spawn_relay(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap) {
-    spawn_relay_with_sink(up, None)
-}
-
-/// 同上，但可以塞一个**自己造的** tee 落点（`阻-2` 那条判据要一个**会阻塞**的落点）。
-fn spawn_relay_with_sink(
-    up: SocketAddr,
-    custom: Option<Box<dyn Write + Send>>,
-) -> (SocketAddr, Arc<Relay>, TeeTap) {
-    let (addr, relay, tee, _inflight) = spawn_relay_counted(up, custom);
+    let (addr, relay, tee, _inflight) = spawn_relay_counted(up);
     (addr, relay, tee)
 }
 
 /// 同上，另交回监听面那份在途计数（〔NET2〕它住宿主 `listen.rs`，不在 `Relay` 身上）。
-fn spawn_relay_counted(
-    up: SocketAddr,
-    custom: Option<Box<dyn Write + Send>>,
-) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<AtomicUsize>) {
-    let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
+fn spawn_relay_counted(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap, Arc<AtomicUsize>) {
+    let got = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (tick, rx) = mpsc::channel();
-    struct Shared(Arc<std::sync::Mutex<Vec<u8>>>, mpsc::Sender<()>);
-    impl Write for Shared {
-        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("lock").extend_from_slice(b);
-            let _ = self.1.send(());
-            Ok(b.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let w: Box<dyn Write + Send> =
-        custom.unwrap_or_else(|| Box::new(Shared(Arc::clone(&buf), tick)));
+    let port = Arc::new(CollectingTap {
+        got: Arc::clone(&got),
+        tick: std::sync::Mutex::new(tick),
+    });
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
         door::Key::for_tests(),
-        TeeSink::new(w),
+        TeeSink::to_port(port),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
@@ -714,7 +720,7 @@ fn spawn_relay_counted(
     let inflight = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&inflight);
     std::thread::spawn(move || serve(listener, r2, counted));
-    (addr, relay, TeeTap { buf, rx }, inflight)
+    (addr, relay, TeeTap { got, rx }, inflight)
 }
 
 fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
@@ -796,27 +802,25 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     }
 
     assert_eq!(relay.served(), 2, "两个键必须由同一个中转实例服务");
-    // 两发响应，每发 1 行 meta + `UPSTREAM_EVENTS` 行事件 ⇒ 等够这么多行再读缓冲区。
-    tee.wait_lines(2 * (1 + UPSTREAM_EVENTS));
-    let text = tee.text();
-    // ★ 只认**事件行**，不认 meta 行。
-    //
-    // 这一条是变异台逼出来的：第一版按「行里出现这个键」认，而每个响应开头那行
-    // `__meta__` 本来就带真键 ⇒ 把**事件**的落点写死成一个键，两边照样各自有行、全绿。
-    // 那正是「断言从『落在哪个键上』滑成『有没有到达』」那个瞎法，只是滑在 tee 这一侧。
-    let events = tee.event_lines();
-    let a: Vec<&String> = events.iter().filter(|l| l.contains("sid-AAA")).collect();
-    let b: Vec<&String> = events.iter().filter(|l| l.contains("sid-BBB")).collect();
-    assert!(!a.is_empty(), "A 键必须有自己的**事件**行：{events:?}");
-    assert!(!b.is_empty(), "B 键必须有自己的**事件**行：{events:?}");
+    // 两发响应，每发 `UPSTREAM_EVENTS` 件事件 ＋ 1 件收尾 ⇒ 等够这么多件再读。
+    tee.wait_events(2 * (UPSTREAM_EVENTS + 1));
+    // ★ 只认**带事件原文**的那几件，按流标签分（〔V141〕标签取自请求头）。
+    let events = tee.data();
+    let a: Vec<&TapEvent> = events.iter().filter(|e| e.stream == "sid-AAA").collect();
+    let b: Vec<&TapEvent> = events.iter().filter(|e| e.stream == "sid-BBB").collect();
+    assert!(!a.is_empty(), "A 键必须有自己的**事件**：{events:?}");
+    assert!(!b.is_empty(), "B 键必须有自己的**事件**：{events:?}");
     assert_eq!(
         a.len() + b.len(),
         events.len(),
-        "每条事件行必须恰好属于一个键，不许有第三种落点：{events:?}"
+        "每件事件必须恰好属于一个流标签，不许有第三种落点：{events:?}"
     );
-    for l in &a {
-        assert!(!l.contains("sid-BBB"), "两个键的 tee 行不许交叉：{l}");
-    }
+    assert!(
+        a.iter().all(|e| e.resp == a[0].resp)
+            && b.iter().all(|e| e.resp == b[0].resp)
+            && a[0].resp != b[0].resp,
+        "两个键的事件不许交叉（各自一个响应序号）：{events:?}"
+    );
 
     // ★★ `阻-4(D3)`：`DoD-3㈠` acceptor 逐字那半句 ——
     //    「其后每行可解析且 **`event` 数 == 假上游发出的事件数**」。
@@ -843,16 +847,19 @@ fn routes_two_keys_through_one_process_and_strips_the_prefix() {
     assert_eq!(
         events.len() as u64,
         up_events,
-        "tee 的事件行数必须等于上游发出的事件数（上游 {up_events} · tee {}）——\
-             少一条就是 tee 漏抄了，而下游的字节可以一个不少：{events:?}",
+        "tee 的事件件数必须等于上游发出的事件数（上游 {up_events} · tee {}）——\
+             少一件就是 tee 漏抄了，而下游的字节可以一个不少：{events:?}",
         events.len()
     );
-    // ⚠ 顺带钉住「丢是可见的」：本条这一趟不该有任何 `__dropped__` 行。
-    //    队列 1024 行、这里一共 8 行 ⇒ 出现它就是别的地方坏了。
-    assert!(
-        !text.contains("__dropped__"),
-        "这一趟不该丢任何行：{text:?}"
-    );
+    // ⚠ 顺带钉住「丢是可见的」：本条这一趟不该有任何缺口 —— 每个响应的收尾那一件说的总号数 == 它的事件件数。
+    for end in tee
+        .events()
+        .iter()
+        .filter(|e| matches!(e.body, TapBody::End { .. }))
+    {
+        let k = events.iter().filter(|e| e.resp == end.resp).count() as u64;
+        assert_eq!(end.n, k, "这一趟不该有缺口：{end:?} 而事件 {k} 件");
+    }
     // ★ `阻-2`：请求体必须**逐字节**到得了上游。
     //
     // 这一格先前**零判据**：把 `read_exact_body(&mut down_r, n)?` 换成 `Vec::new()`
@@ -1135,7 +1142,8 @@ fn too_many_interim_responses_are_refused_with_504() {
 }
 
 /// ★ `TEE_DECODE_CAP` 那条**接线**〔铁律 15 自查补的：两个上限各自有单元判据，
-/// 而「`handle` 有没有把丢掉的字节接到 tee 的 `__dropped__` 上」**先前零判据**〕。
+/// 而「`handle` 有没有把丢掉的字节接到 tee 上」**先前零判据**〕。〔DEL〕今天 tee 只剩 tap 那一形：
+/// 丢掉的那一截是**占一个号不发**，看得见的是收尾那一件的总号数比交出的事件多。
 ///
 /// 把 `relay.tee.note_dropped_bytes(view.take_dropped() + splitter.take_dropped());`
 /// 整行换成一个 `let _ = …`，那两条单元判据**照样绿**，而真机后果是 tee 少了一大段
@@ -1196,110 +1204,26 @@ fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_eve
         "下游只拿到 {} 字节，上游至少发了 {PAYLOAD} —— 转发那一路被 tee 的丢连累了",
         got.len()
     );
-    // 正题：tee 流上必须有一行 `__dropped__` 把丢掉的字节说出来。
+    // 正题：丢掉的那一截在 tap 上**原位看得见** —— 收尾那一件说的总号数 > 实际交出的事件件数。
+    let is_end = |e: &TapEvent| matches!(e.body, TapBody::End { .. });
     assert!(
-        wait_until(|| tee.text().contains("__dropped__")),
-        "超解码上限丢掉的字节必须在 tee 流上报出来，tee 现在是：{:?}",
-        tee.text()
+        wait_until(|| tee.events().iter().any(is_end)),
+        "这个响应在 tap 上没有收尾那一件（缺口无处可见），tap 现在是：{:?}",
+        tee.events()
     );
-    let text = tee.text();
-    let note = text
-        .lines()
-        .find(|l| l.contains("__dropped__"))
-        .expect("那一行");
-    let v: serde_json::Value = serde_json::from_str(note)
-        .unwrap_or_else(|e| panic!("`__dropped__` 行必须可解析（DoD-3㈠）：{note:?} ⇒ {e}"));
-    let bytes = v["__dropped__"]["bytes"].as_u64().expect("bytes 是个数");
+    let evs = tee.events();
+    let end = evs.iter().find(|e| is_end(e)).expect("刚等到");
+    let delivered = evs.iter().filter(|e| !is_end(e)).count() as u64;
     assert!(
-        bytes > 0,
-        "非空对照：报出来的丢字节数必须 > 0（这一趟丢的是解码缓冲那一路）：{note}"
+        end.n > delivered,
+        "超解码上限丢掉的那一截必须在 tap 上留下缺口（总号数 {} · 交出 {delivered}）：{evs:?}",
+        end.n
     );
 }
 
-/// ★★ `阻-2(D3)`：**一个卡住的 tee 消费者不许拖停转发**（同连接 + 跨连接两半都要）。
-///
-/// # 先前是什么形状
-///
-/// `write_line` 在**持锁**状态下做阻塞写，而那把锁跨连接共享、`event()` 又是在 `pump` 的
-/// `on_chunk` 里**同步**调的 ⇒ 一个慢消费者把**每一条**连接一起拖停。
-/// D3 实测逐字：`tee 不卡时 B 耗时 1 ms · tee 卡 3000ms 时 B 耗时 2701 ms`
-/// （住址 `audits/K-H1-D3.md#2.2`；我自己重打的读数见件文件 §8.20.3）。
-///
-/// # 这条判据的量法与阈值是怎么定的
-///
-/// tee 的落点在**第一次写**上睡 3000ms。断言两条连接**各自**在 1500ms 内走完。
-/// - 3000 / 1500 这个倍数就是这一格的地基：阈值要明显小于卡住的时长，
-///   否则「没拖停」与「拖停了但没超阈值」分不开。
-/// - 失败信息把**实测毫秒数**印出来（本仓纪律：时序类断言必须印出实测值）。
-/// - ⚠ 它**不**证明 tee 的行最终写出去了 —— 那是别的判据的活（`routes_two_keys…` 在对账）。
-#[test]
-fn a_wedged_tee_consumer_stalls_neither_its_own_connection_nor_another() {
-    /// 第一次写睡 3 秒的落点。**只睡第一次**：其后正常写。
-    struct WedgedSink(std::sync::Arc<AtomicU64>);
-    impl Write for WedgedSink {
-        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-            if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
-                std::thread::sleep(std::time::Duration::from_millis(3000));
-            }
-            Ok(b.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let writes = std::sync::Arc::new(AtomicU64::new(0));
-    let up = spawn_fake_upstream(None);
-    let (relay_addr, _relay, _tee) = spawn_relay_with_sink(
-        up.addr,
-        Some(Box::new(WedgedSink(std::sync::Arc::clone(&writes)))),
-    );
-
-    let mut ms = Vec::new();
-    for key in ["sid-AAA", "sid-BBB"] {
-        let t0 = std::time::Instant::now();
-        let mut c = send_request(
-            relay_addr,
-            "/s/agentA/acctA/v1/messages",
-            &format!("x-claude-code-session-id: {key}\r\n"),
-        );
-        let mut got = Vec::new();
-        c.read_to_end(&mut got).expect("read");
-        let el = t0.elapsed().as_millis() as u64;
-        assert!(
-            String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
-            "这一趟得真走完一条转发，否则下面量的是半条连接：{:?}",
-            String::from_utf8_lossy(&got)
-        );
-        ms.push(el);
-    }
-    // 非空对照：那个落点**真的被写过**（否则「没卡住」可能只是 tee 整条路没走）。
-    //
-    // ⚠⚠ **它必须 `wait_until`，不许瞬时读**〔`K-R24` 读出来的机制，09-04〕：
-    // tee 是**队列 + 写线程**，而上面两发是从**这条测试线程**上量完就往下走的
-    // ⇒ 瞬时读会落在「转发已经走完、写线程还没写第一笔」那个窗口里，
-    // 读到 0 ⇒ 间歇性红，报文逐字是「卡住的那个落点一次都没被写过」。
-    // 同模块上面几条对同类前提（`inflight` 那几格）用的就是 `wait_until`，这里照抄。
-    // ⚠ 它**不改本条量的东西**：`ms[0]`/`ms[1]` 在这一句**之前**就量完了，
-    //   而 `wait_until` 的 4s 上限与那两条 1500ms 阈值量的是**两件事**。
-    assert!(
-        wait_until(|| writes.load(Ordering::SeqCst) >= 1),
-        "非空对照：卡住的那个落点一次都没被写过 ⇒ 本条量的不是 tee 这条路"
-    );
-    println!(
-        "[阻-2] tee 卡 3000ms 时：A 耗时 {} ms · B 耗时 {} ms",
-        ms[0], ms[1]
-    );
-    assert!(
-        ms[0] < 1500,
-        "**同一条**连接被自己的 tee 拖停了：A 耗时 {} ms（tee 卡 3000ms）",
-        ms[0]
-    );
-    assert!(
-        ms[1] < 1500,
-        "**另一条**连接被别人的 tee 拖停了（跨连接）：B 耗时 {} ms（tee 卡 3000ms）",
-        ms[1]
-    );
-}
+// 〔DEL〕这里原是「一个卡住的 tee 消费者不许拖停转发」：那一形的落点是阻塞写的 NDJSON 行，随独立 `--relay` 删了。
+//   tap 口的契约是「立刻答收没收」（`TapPort::offer`），跟不上时号照占、转发一个字节不受影响由
+//   `host_tests::a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwarded_bytes` 钉着。
 
 /// ★ `阻-3(D3)` 的**做得到的那一半**：在途连接数有上界，且**拒绝是出声的**。
 ///
@@ -1319,7 +1243,7 @@ fn a_wedged_tee_consumer_stalls_neither_its_own_connection_nor_another() {
 #[test]
 fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
     let up = spawn_fake_upstream(None);
-    let (relay_addr, _relay, _tee, inflight) = spawn_relay_counted(up.addr, None);
+    let (relay_addr, _relay, _tee, inflight) = spawn_relay_counted(up.addr);
 
     // ㈠ 半开一条：只发半个请求头，**永不**发结尾空行、不关连接。
     let mut half = TcpStream::connect(relay_addr).expect("connect");
@@ -1831,7 +1755,7 @@ fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
     let relay = Arc::new(Relay::new(
         dest_of(table),
         door::Key::for_tests(),
-        TeeSink::new(Box::new(std::io::sink())),
+        no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
@@ -2637,18 +2561,14 @@ fn the_auth_header_is_forwarded_but_never_teed() {
         seen[0].ends_with("auth=true"),
         "auth 头必须被转发：{seen:?}"
     );
-    tee.wait_lines(1 + UPSTREAM_EVENTS);
-    let text = tee.text();
-    // ★ 活体条件要按**事件行**数，不是按「tee 非空」。
-    //
-    // 这一条也是变异台逼出来的（与上面路由那条同族）：每个响应开头那行 `__meta__`
-    // 本来就会写出去 ⇒ 把 tee 的**事件**那一路整个掏空，「tee 非空」照样成立，
-    // 本断言就退化成**空真**（闸死了 `[] == []` 也成立）。7u 那一趟实测到了这个形状。
+    tee.wait_events(UPSTREAM_EVENTS + 1);
+    // ★ 活体条件要按**事件**件数，不是按「tee 非空」（收尾那一件总会交 ⇒ 把事件那一路掏空，「非空」照样成立）。
     //
     // ⚠ 订正一格〔回修轮之五 08-25，`阻-4(D3)`〕：先前这里是 `events >= 1` ——
     // 那只挡得住「**一条都不抄**」，挡不住「每批少抄若干条」（D3 `MU5` 实测 392 全绿）。
     // 今天按**上游自己数的事件数**对账，分母同 `routes_two_keys…` 那条。
-    let events = tee.event_lines();
+    let events = tee.data();
+    let text = format!("{:?}", tee.events());
     let up_events = up.events();
     assert_eq!(
         up_events, UPSTREAM_EVENTS as u64,
@@ -2657,7 +2577,7 @@ fn the_auth_header_is_forwarded_but_never_teed() {
     assert_eq!(
         events.len() as u64,
         up_events,
-        "tee 的事件行数必须等于上游发出的事件数：{events:?}"
+        "tee 的事件件数必须等于上游发出的事件数：{events:?}"
     );
     assert!(!text.contains(SENTINEL), "哨兵串泄漏进了 tee");
     assert!(!text.contains("Authorization"), "tee 里不该有任何头名");
@@ -2747,7 +2667,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         door::Key::for_tests(),
-        TeeSink::new(Box::new(std::io::sink())),
+        no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     );
@@ -2844,7 +2764,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let relay = Relay::new(
         dest_of(two_accounts_no_key(&base)),
         door::Key::for_tests(),
-        TeeSink::new(Box::new(std::io::sink())),
+        no_tap(),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     );
@@ -3658,7 +3578,7 @@ fn spawn_relay_with_upstream_deadline(
     let relay = Arc::new(Relay::new(
         dest_of(two_accounts_no_key(&base)),
         door::Key::for_tests(),
-        TeeSink::new(Box::new(std::io::sink())),
+        no_tap(),
         DOWNSTREAM_DEADLINE,
         upstream_deadline,
     ));

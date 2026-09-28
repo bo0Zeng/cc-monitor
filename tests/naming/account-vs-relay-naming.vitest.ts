@@ -340,7 +340,7 @@ export const RELAY_NAMES: { name: string; re: RegExp; why: string }[] = [
   //   旧名只剩 `history_tests.rs` ④ 那段注释还在点；那一格按 sid 规则收紧改写之后旧名全仓零处 ⇒ 本表那一行随之退役（不是改名漏网）。
   { name: "RELAY_KEEPS_THE_OLD_PATH", re: ident("RELAY_KEEPS_THE_OLD_PATH"), why: "中转前缀在场时本机拉起走旧路的理由句" },
   { name: "src/backend/relay/", re: lit("src/backend/relay/"), why: "中转的目录" },
-  { name: "\"source\":\"relay\"", re: lit('"source":"relay"'), why: "tee 流的线上字段值（中转抄出来的 SSE 行）" },
+  // 〔DEL〕`"source":"relay"`（NDJSON tee 行的线上字段值）那一行摘了：那个落点随独立 `--relay` 删了。
 ];
 
 /**
