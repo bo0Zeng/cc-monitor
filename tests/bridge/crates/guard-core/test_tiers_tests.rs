@@ -337,6 +337,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/ccm_cli_contract_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
     "tests/bridge/claude_data_fence_tests.rs",
+    "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
     "tests/bridge/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
