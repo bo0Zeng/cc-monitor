@@ -21,14 +21,16 @@ export interface Resynced {
   added: number;
   removed: number;
   retagged: number;
+  /** 〔REREAD · V155〕在跟的会话这趟从游标补读出几行（补出来的行照常经流到达）。 */
+  caughtUp: number;
   watchers: number;
 }
 
-const COUNTS = ["added", "removed", "retagged", "watchers"] as const;
+const COUNTS = ["added", "removed", "retagged", "caught_up", "watchers"] as const;
 /** 那台当下的能力事实：monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面只核形状、不读。 */
 const FACTS = ["unavailable", "uncancellable"] as const;
 
-/** 成品恰好是四个非负整数 ＋ 两格数组 ⇒ 收；否则抛（两边版本对不上）。 */
+/** 成品恰好是五个非负整数 ＋ 两格数组 ⇒ 收；否则抛（两边版本对不上）。 */
 export function decodeResynced(origin: Origin, v: unknown): Resynced {
   if (
     !isObj(v) ||
@@ -36,9 +38,15 @@ export function decodeResynced(origin: Origin, v: unknown): Resynced {
     !COUNTS.every((k) => Number.isInteger(v[k]) && (v[k] as number) >= 0) ||
     !FACTS.every((k) => Array.isArray(v[k]))
   ) {
-    throw unreadable(origin, "resync", "is not exactly {added, removed, retagged, watchers, unavailable, uncancellable}");
+    throw unreadable(origin, "resync", "is not exactly {added, removed, retagged, caught_up, watchers, unavailable, uncancellable}");
   }
-  return { added: v.added as number, removed: v.removed as number, retagged: v.retagged as number, watchers: v.watchers as number };
+  return {
+    added: v.added as number,
+    removed: v.removed as number,
+    retagged: v.retagged as number,
+    caughtUp: v.caught_up as number,
+    watchers: v.watchers as number,
+  };
 }
 
 const refusals: Refusals = {
@@ -54,11 +62,15 @@ export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
   return decodeResynced(origin, v);
 }
 
-/** 对齐的结果 ⇒ 一句话。 */
+/** 对齐的结果 ⇒ 一句话：对齐差异 ＋ 〔REREAD · V155〕补读了几条（0 ⇒「没有漏的」）。 */
 export function resyncSaid(r: Resynced): string {
   if (r.watchers === 0) return copyText("resync.done.nobody");
-  if (r.added + r.removed + r.retagged === 0) return copyText("resync.done.same");
-  return copyText("resync.done.diff", { added: r.added, removed: r.removed, retagged: r.retagged });
+  const diff =
+    r.added + r.removed + r.retagged === 0
+      ? copyText("resync.done.same")
+      : copyText("resync.done.diff", { added: r.added, removed: r.removed, retagged: r.retagged });
+  const caught = r.caughtUp === 0 ? copyText("resync.done.caughtNone") : copyText("resync.done.caughtUp", { n: r.caughtUp });
+  return `${caught}${diff}`;
 }
 
 /** 〔REREAD · V155〕一台的结果：对上了（差异），或没问到（原因）。 */

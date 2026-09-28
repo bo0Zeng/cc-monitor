@@ -2535,6 +2535,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         codes: &["bad_args"],
         fields: &[
             "added",
+            "caught_up",
             "removed",
             "retagged",
             "sid",
