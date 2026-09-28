@@ -74,6 +74,30 @@
       "before": "[1,2]",
       "edits": [{ "op": "set", "path": ["a"], "value": 9 }],
       "refused": "unreadable"
+    },
+    {
+      "name": "〔FIX · ㊶〕setin：认出恰好一台、只改它那一格，别的机器与别的键不动",
+      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
+      "edits": [
+        { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "a.lan" }], "field": "user", "value": "v", "ifEmpty": false },
+        { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "beta" }], "field": "user", "value": "w", "ifEmpty": false }
+      ],
+      "after": {"remote": {"enabled": true, "hosts": [{"label": "", "host": "a.lan", "user": "v"}, {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned", "user": "w"}]}, "theme": {"x": 1}}
+    },
+    {
+      "name": "〔FIX · ㊶〕setin 带 ifEmpty：那一格已有值 ⇒ 不动（CAS）",
+      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
+      "edits": [{ "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "beta" }], "field": "hostKeyFingerprint", "value": "SHA256:new", "ifEmpty": true }],
+      "after": {"remote": {"enabled": true, "hosts": [{"label": "", "host": "a.lan", "user": "u"}, {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned"}]}, "theme": {"x": 1}}
+    },
+    {
+      "name": "〔FIX · ㊶〕setin 认不出那一台 ⇒ 整批拒，同批别的补丁也不落",
+      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
+      "edits": [
+        { "op": "set", "path": ["theme", "x"], "value": 2 },
+        { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "gone" }], "field": "user", "value": "z", "ifEmpty": false }
+      ],
+      "refused": "element_gone"
     }
   ]
 }

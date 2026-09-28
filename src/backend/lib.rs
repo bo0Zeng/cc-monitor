@@ -615,7 +615,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4u-resync-offer**（2026-09-27，RESYNC 续合并那一拍）：子命令 −1 `--resync`（CLI 面摘，只留帧面）· `resync` 应答带当下的
 /// `unavailable` / `uncancellable`（与 hello 同一个函数）· `resync{sid}` 顺手从游标补读 jsonl（tab「重新读取」）· SIGUSR1 按 `watcher::LIVE` 一张名单戳。
-pub const BUILD_ID: &str = "p4u-resync-offer";
+///
+/// ★★★ **p4v-resume-running-elsewhere**（2026-09-27，FIX 续合并那一拍）：行为 —— ccm resume 时那个会话在跑但不在 ccm 起的 tmux 里 ⇒ 拒并说 pid
+/// （判活与 watcher 起步初扫同一份，由 `main` 注入）。子命令没变，照 p1v 先例不加历史行。
+pub const BUILD_ID: &str = "p4v-resume-running-elsewhere";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
