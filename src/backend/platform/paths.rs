@@ -140,3 +140,8 @@ pub(crate) fn documents_dir() -> Option<PathBuf> {
 pub(crate) fn documents_dir() -> Option<PathBuf> {
     None
 }
+
+/// 〔MIG-3a〕这台的文件系统**有没有可执行位**（unix 有；Windows 没有 —— 那边写口的改权限如实回失败，调用方据此不发）。
+pub(crate) fn has_exec_bits() -> bool {
+    cfg!(unix)
+}

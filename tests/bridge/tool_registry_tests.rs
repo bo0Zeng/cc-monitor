@@ -1520,7 +1520,8 @@ fn claims() -> Vec<Claim> {
     const PROFILE_INSTALLER: &str = include_str!("../../src/backend/assets/aliases/block.rs");
     // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
     const MCP: &str = include_str!("../../src/backend/assets/mcp_edit.rs");
-    const CC_BUS_DEPLOY: &str = include_str!("../../src/bridge/src/cc_bus_deploy.rs");
+    // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（资产的装不算部署）：装口住 `src/backend/assets/cc_bus_install.rs`。
+    const CC_BUS_DEPLOY: &str = include_str!("../../src/backend/assets/cc_bus_install.rs");
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
     const SKILL_INSTALL: &str = include_str!("../../src/backend/assets/skill_flow.rs");
@@ -1563,12 +1564,12 @@ fn claims() -> Vec<Claim> {
         Claim {
             tool: "cc-bus",
             home: Some(ImplHome {
-                addr: "cc_bus_deploy.rs",
+                addr: "cc_bus_install.rs",
                 text: CC_BUS_DEPLOY,
             }),
             install: Some(ImplSite {
-                addr: "cc_bus_deploy.rs::deploy_local_cc_bus",
-                definition: "pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {",
+                addr: "cc_bus_install.rs::answer_install",
+                definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
             }),
             uninstall: None,
         },

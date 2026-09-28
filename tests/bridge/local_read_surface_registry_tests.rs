@@ -96,22 +96,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              〔CP2b · 第四波 09-25〕**5 → 3**：少的两处是两句拒收报错里写着的 `CLAUDE_CONFIG_DIR` 字样，\
              随全量抽表搬进文案表（`rsPayload.*`）；拼载荷的那三处没动。口径没变。",
     ),
-    (
-        "src/cc_bus_deploy.rs",
-        "write",
-        14,
-        "〔RW1 · 第四波 09-24〕**13 → 14**：部署改经本机后端写之后，`deploy_into` 收一个 `claude_dir` 参数并把它交给后端当根\
-             （多一处 `claude_dir` 引用）；本进程一个字节不写，写那一跳住后端 `files-put` / `files-rename` / `files-chmod`。\n\
-             `PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
-             `deploy_into`/`deploy_local_cc_bus` 取 dir 再往下写。\
-             ⚠ **不属读面** —— 它是**写**操作（本仓第一处往 `<claude_dir>` 写的，\
-             `U10b` 裁定后的第 7 条例外），恰好也要解析 dir 来定位落点，与 `history.rs` 那条 \
-             `write` 同类。⇒ 不归 F10 的退役范围。\
-             ⚠ 〔`PS2` 08-13〕9 → **13**：本文件又加了 `install_state_in` / `cc_bus_install_state`
-             （查「本机装的是哪一版」，**纯读**）。它们**是**读面，但读的是**本模块自己刚写下去的
-             那份**（`<claude_dir>/skills/cc-bus/`），与 F10 要退役的「读 claude 的会话数据」
-             不是一回事 —— 后端化之后这一格该跟着部署那条一起走，不单独退役。",
-    ),
+    // 〔MIG-3a · 子步 3〕`src/cc_bus_deploy.rs` 那一行（14 处 `claude_dir`）摘了：装与三态进了本机后端，monitor 那份只剩装前的 `ccm` 预检、不再碰 `claude_dir`。
     // 〔P8a 08-12〕新增的直读点 —— **老实登记，不绕棘轮**（棘轮要的是论证，不是禁令）。
     // 〔RM1b · 第四波〕那一条（`src/plugins.rs`，`reader`，5 处）**真退役**，退役条件原文逐字兑现：
     //   「backend 侧补一条 `--list-marketplaces`……那条一落地，本机改走后端、远端那半……也一起补平

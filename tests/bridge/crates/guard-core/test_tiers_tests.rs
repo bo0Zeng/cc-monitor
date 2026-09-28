@@ -57,6 +57,7 @@ use std::path::{Path, PathBuf};
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
+    "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
     "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
     "tests/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
     "tests/bridge/acct_iso_deploy_tests.rs", // 〔MIG-3a〕SCAN → UNIT：扫源码的那几条随 acct-iso 两问进后端删了，只剩纯函数与围栏在 I/O 之前那一条
@@ -342,6 +343,7 @@ const SCAN: &[&str] = &[
     "tests/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
     "tests/backend/assets/aliases/dialect_tests.rs", // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
     "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
+    "tests/bridge/backend/control/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
     "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/bridge/config_surface_tests.rs",
@@ -584,6 +586,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
     "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
+    "tests/backend/assets/cc_bus_install_tests.rs", // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
     "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
     "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
     "tests/backend/assets/skill_inbox_tests.rs", // 〔MIG-3a〕收件箱读写进了那台后端（临时目录 ＋ 比对写 CAS）
@@ -618,7 +621,6 @@ const INTEGRATION: &[&str] = &[
     // 〔MIG-3a〕`tests/bridge/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     "tests/bridge/adapter_tests.rs",
     "tests/bridge/auto_launch_tests.rs",
-    "tests/bridge/backend/control/cc_bus_deploy_tests.rs",
     "tests/bridge/backend/control/launch_wire_k_r95_launch_render_facts.rs",
     "tests/bridge/backend/control/local_backend_tests.rs",
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`

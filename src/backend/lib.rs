@@ -775,6 +775,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--cc-bus-install",
+    "--cc-bus-install-state",
     "--mcp-sync-hub-preview",
     "--mcp-sync-hub-apply",
     "--skill-install-hub-preview",

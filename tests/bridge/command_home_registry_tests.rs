@@ -129,6 +129,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "本机 `~/.cc-monitor/bin` 在不在用户级 PATH（本机后端的引导）",
     ),
     ("ccm_user_path_add", Own::Lifecycle, "同上：加"),
+    (
+        "cc_bus_ccm_precheck",
+        Own::Lifecycle,
+        "〔MIG-3a〕装 cc-bus 之前问一次本机 `ccm` 够不够新（本机后端的引导那一族：探本机 ccm 入口）",
+    ),
     ("ccm_user_path_remove", Own::Lifecycle, "同上：撤"),
     (
         "chan_call",
@@ -232,16 +237,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3a,
         "落进用户目录与软链由 monitor 经 SFTP 直写（⑯）",
     ),
-    (
-        "deploy_local_cc_bus",
-        Lane::Mig3a,
-        "装哪几个文件的判定在 monitor",
-    ),
-    (
-        "cc_bus_install_state",
-        Lane::Mig3a,
-        "装的是哪一版由 monitor 读盘判",
-    ),
+    // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。
     (
         "deploy_remote_backend",

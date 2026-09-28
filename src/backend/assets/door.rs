@@ -141,6 +141,16 @@ pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<()
     .map_err(refused)
 }
 
+/// 改名（同一个根底下，`files-rename`）。
+pub(crate) fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
+    d.ask(
+        "files-rename",
+        json!({ "root": root, "from": from, "to": to }),
+    )
+    .map(|_| ())
+    .map_err(|e| refused(e).said())
+}
+
 pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<(), String> {
     d.ask(
         "files-chmod",

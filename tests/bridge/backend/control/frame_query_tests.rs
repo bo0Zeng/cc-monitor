@@ -411,6 +411,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     // 〔MIG-3a · `01 §3.5` · 主会话 09-28 裁〕`mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
     //   界面只问本机那两条枢纽命令，枢纽向来源那台取、向被写那台写（内层三条只经枢纽）。
+    // 〔MIG-3a · 子步 3〕cc-bus 装到本机：monitor 那两条 Tauri 命令（`deploy_local_cc_bus` / `cc_bus_install_state`〔散文墓碑〕）删了。
+    (
+        "cc-bus-install",
+        "新帧命令：本机后端把内嵌的 cc-bus 装进 skills 根（幂等 · 覆盖前整目录备份 · 记进 skill 装记录）",
+    ),
+    (
+        "cc-bus-install-state",
+        "新帧命令：本机后端答装的是哪一版（三态，只读）",
+    ),
     (
         "mcp-sync-hub-preview",
         "新帧命令：MCP 推 / 拉看差异，只问本机一次（本机常驻后端当枢纽，`assets/hub.rs`）",

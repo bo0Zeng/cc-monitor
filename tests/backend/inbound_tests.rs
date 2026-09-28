@@ -587,6 +587,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
         "skill-install-apply",
         "skill-host-list",
+        "cc-bus-install",
+        "cc-bus-install-state",
         "aliases-render",
         "aliases-read",
         "aliases-install",
@@ -718,6 +720,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
         "skill-install-apply",
         "skill-host-list",
+        "cc-bus-install",
+        "cc-bus-install-state",
         "aliases-render",
         "aliases-read",
         "aliases-install",

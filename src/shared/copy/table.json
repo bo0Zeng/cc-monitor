@@ -19149,6 +19149,46 @@
       "kind": "error",
       "zh": "来源那份在看差异之后变了，一个字节都没写。重新看一次差异再装。",
       "args": []
+    },
+    "beCcBusInstall.fence.noParent": {
+      "kind": "error",
+      "zh": "{skills} 没有上一层目录，装不了",
+      "args": ["skills"]
+    },
+    "beCcBusInstall.fence.resolveFailed": {
+      "kind": "error",
+      "zh": "解析 {path} 失败：{e}",
+      "args": ["path", "e"]
+    },
+    "beCcBusInstall.fence.escapes": {
+      "kind": "error",
+      "zh": "拒绝：{real} 解到底落在 {top} 之外（软链？）。只放行 skills 底下的 cc-bus",
+      "args": ["real", "top"]
+    },
+    "beCcBusInstall.root.unknown": {
+      "kind": "error",
+      "zh": "这台后端不认得带 skill 的 agent，不知道往哪装 cc-bus",
+      "args": []
+    },
+    "beCcBusInstall.backup.failed": {
+      "kind": "error",
+      "zh": "备份 {dest} → {bak} 没成：{e}（原目录没动）",
+      "args": ["dest", "bak", "e"]
+    },
+    "beCcBusInstall.embed.notUtf8": {
+      "kind": "error",
+      "zh": "内嵌的 {rel} 不是 UTF-8，装不了（写口只收文本）",
+      "args": ["rel"]
+    },
+    "beCcBusInstall.record.failed": {
+      "kind": "error",
+      "zh": "装好了，但没记进装记录：{e}（这一趟装的卸不掉）",
+      "args": ["e"]
+    },
+    "ccBusInstallReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的 cc-bus 安装结果，两端版本对不上。",
+      "args": []
     }
   }
 }
