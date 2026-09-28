@@ -3334,12 +3334,36 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/acct-iso-reads.ts", "deploy_remote_acct_iso", 1),
         ("src/doc/IPC-PROTOCOL.md", "deploy_remote_acct_iso", 1),
         ("src/ipc/commands.ts", "deploy_remote_acct_iso", 1),
-        ("tests/bridge/backend/control/frame_query_tests.rs", "acct_iso_deploy_tests", 1),
-        ("tests/bridge/command_home_registry_tests.rs", "deploy_remote_acct_iso", 1),
-        ("tests/bridge/launcher_identity_registry_tests.rs", "deploy_remote_acct_iso", 1),
-        ("tests/bridge/parity_ledger_tests.rs", "deploy_remote_acct_iso", 6),
-        ("src/backend/assets/acct_iso_install.rs", "deploy_remote_acct_iso", 1),
-        ("src/settings/accounts-section.ts", "deploy_remote_acct_iso", 1),
+        (
+            "tests/bridge/backend/control/frame_query_tests.rs",
+            "acct_iso_deploy_tests",
+            1,
+        ),
+        (
+            "tests/bridge/command_home_registry_tests.rs",
+            "deploy_remote_acct_iso",
+            1,
+        ),
+        (
+            "tests/bridge/launcher_identity_registry_tests.rs",
+            "deploy_remote_acct_iso",
+            1,
+        ),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "deploy_remote_acct_iso",
+            6,
+        ),
+        (
+            "src/backend/assets/acct_iso_install.rs",
+            "deploy_remote_acct_iso",
+            1,
+        ),
+        (
+            "src/settings/accounts-section.ts",
+            "deploy_remote_acct_iso",
+            1,
+        ),
         ("tests/ipc/commands.vitest.ts", "deploy_remote_acct_iso", 3),
         ("tests/bridge/sftp_tests.rs", "deploy_remote_acct_iso", 2),
         (
