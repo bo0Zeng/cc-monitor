@@ -17,9 +17,10 @@
 
 use super::*;
 
-/// 从一行 JSON 文本读一份请求（与生产 `parse_request_value` 同一份反序列化）。
+/// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的是一台机器的原样配置，
+/// 〔MIG-1 收尾〕经 `machine::resolve` 组成这一形之后走的也是这一份）。
 fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error> {
-    parse_request_value(&serde_json::from_str(raw.trim())?)
+    serde_json::from_str(raw.trim())
 }
 
 /// 真正把字节交给 SSH 状态机的入口。**这三条就是判据的锚点。**
@@ -310,6 +311,12 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .into(),
             endpoint: Some("h:22".into()),
+            winner: Some(Endpoint {
+                host: "h".into(),
+                port: 22,
+            }),
+            strict: true,
+            jump_strict: false,
             v: ACK_V,
             uses: USES,
         },
@@ -325,6 +332,12 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
     assert_eq!(
         v["fingerprints"],
         serde_json::json!({"a:22": "SHA256:x", "b:22": "SHA256:y"})
+    );
+    // 〔MIG-1 收尾〕结构化的胜者与「这一趟是否严格校验」（界面据它记 last-good、判要不要自动固化，不再自己解析地址 / 重推指纹规则）。
+    assert_eq!(v["winner"], serde_json::json!({"host": "h", "port": 22}));
+    assert_eq!(
+        (v["strict"].as_bool(), v["jump_strict"].as_bool()),
+        (Some(true), Some(false))
     );
     // 〔FIX · `99 §2 ㊶`〕跳板那一台自己那一格（additive）。
     assert_eq!(

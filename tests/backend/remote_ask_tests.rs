@@ -112,7 +112,7 @@ impl Remote for Recorder {
 fn reach_args(origin: &str, host: &str) -> Value {
     json!({
         "origin": origin,
-        "dial": {"host": host, "port": 22, "user": "u", "key_path": "/k"},
+        "dial": {"machine": {"host": host, "port": 22, "user": "u", "keyPath": "/k"}},
     })
 }
 
@@ -204,7 +204,7 @@ fn both_doors_register_through_the_one_writer() {
     answer_reach_with(&reach_args("dev", "h2"), &a).unwrap();
     let row = lock(&a).get("dev").cloned().unwrap();
     assert_eq!(row.peer.as_deref(), Some("p"));
-    assert_eq!(row.dial["host"], "h2");
+    assert_eq!(row.dial["machine"]["host"], "h2");
     // 半给的入参拒，表不动。
     for bad in [
         json!({}),
@@ -296,7 +296,7 @@ impl Drop for Sentinel {
 async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
     // ① 永不答：内层攥着哨兵、永远等上行（上行那根管子外层一个字节都不写）。
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let outer = pull_over(move |mut up_r, down_w| async move {
+    let outer = pull_over_coded(move |mut up_r, down_w| async move {
         let _slot = Sentinel(Some(tx));
         let _keep = down_w; // 下行不关：外层就一直等 ack（远端不答的那一形）
         let mut b = [0u8; 1];
@@ -313,7 +313,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
 
     // ② 另一向：正常答完 ⇒ 结果照常，那一格同样放掉。
     let (tx2, rx2) = tokio::sync::oneshot::channel::<()>();
-    let got = pull_over(move |_up_r, mut down_w| async move {
+    let got = pull_over_coded(move |_up_r, mut down_w| async move {
         let _slot = Sentinel(Some(tx2));
         let ack = "{\"ok\":true}\n";
         let res = "{\"stdout\":\"答\",\"stderr\":\"\",\"exit_status\":0}\n";
@@ -321,7 +321,8 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
         let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, res.as_bytes()).await;
         std::future::pending::<()>().await;
     })
-    .await;
+    .await
+    .map_err(|s| s.message);
     assert_eq!(got, Ok("答".to_string()));
     tokio::time::timeout(std::time::Duration::from_secs(10), rx2)
         .await
@@ -357,7 +358,7 @@ async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（读数见 `W5-AUX.md §7`，不进门禁）。
 #[test]
 fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
-    let dial = json!({"host": "h", "port": 22, "user": "u", "key_path": "/k"});
+    let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});
     let with =
         crate::remote_ask::capture_request(&dial, "'/b' '--x'".into(), Some("{\"a\":1}\n".into()))
             .expect("拼得出请求");
@@ -380,4 +381,30 @@ fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
         None,
         "没给 stdin 却写了"
     );
+}
+
+/// ★ 〔MIG-3a · 主会话 09-28 裁〕远端那一跳没成时**码随原话一起交回**：那台 CLI 信封 `{code, message}` 的码原样进 [`Said`]，
+/// 不压成一个；信封读不出来（不是 JSON）⇒ 码缺席、原话照交。
+#[tokio::test]
+async fn a_failed_remote_command_keeps_its_envelope_code() {
+    let run = |stderr: &'static str| {
+        pull_over_coded(move |_up_r, mut down_w| async move {
+            let ack = "{\"ok\":true}\n";
+            let res = format!(
+                "{}\n",
+                json!({ "stdout": "", "stderr": stderr, "exit_status": 2 })
+            );
+            let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, ack.as_bytes()).await;
+            let _ = tokio::io::AsyncWriteExt::write_all(&mut down_w, res.as_bytes()).await;
+            std::future::pending::<()>().await;
+        })
+    };
+    let e = run("{\"code\":\"stale\",\"message\":\"盘上那份变了\"}")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code.as_deref(), Some("stale"));
+    assert!(e.message.contains("盘上那份变了"), "{e:?}");
+    let e = run("bash: boom").await.unwrap_err();
+    assert_eq!(e.code, None);
+    assert!(e.message.contains("boom"), "{e:?}");
 }

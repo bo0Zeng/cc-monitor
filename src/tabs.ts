@@ -16,7 +16,7 @@
  */
 import { isCompactRecord } from "./cards";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
-import type { BranchResult } from "./generated/BranchResult";
+import type { BranchResult } from "./session-writes";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
@@ -68,7 +68,6 @@ import {
   bringTerminalToFront,
   e2eLog,
   forgetSession,
-  listSessionActivity,
 } from "./tab-session-actions";
 
 import {
@@ -583,7 +582,7 @@ export class TabManager {
       // audit-fixes F03.2（D 审计修）：远端**可重连**的 tab 又收到后端重宣告 / jsonl 行 = claude
       // 复活（backend 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
       // 推行）。这是「可重连 → 活」的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
-      // 故复活行/重宣告严格晚于 idle）。不能只靠 session-activity：那是非 queue 同步派发、且
+      // 故复活行/重宣告严格晚于 idle）。不能只靠 activity 格：那是非 queue 同步派发、且
       // null-activity 的后端（远端 v1 无 status 字段）下永远不来 → 活跃流式会话永久卡在可重连。
       //
       // 〔U4〕上面两件事原先是两段（`status` 翻 live · `tmuxIdle` 清 false），因为两个轴挤在两个字段里；
@@ -637,7 +636,7 @@ export class TabManager {
     const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline } =
       this.view.mountTabDom(sessionId);
 
-    // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
+    // v2.3.0 issue #11: 异步 fetch 初始 task 快照。〔MIG-3b〕`session-tasks` 流那一路（`refreshTasks`）并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
     void fetchSessionTasks(sessionId, origin).then((tasks) => {
       this.store.tasksBySid.set(sessionId, tasks);
@@ -837,7 +836,7 @@ export class TabManager {
 
   /**
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → **可重连**（死 ＋ 容器还在）。
-   * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
+   * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `idle` 格 驱动（**不**
    * 归档、不 forget）。Tab 未建（F5 重放乱序）则暂存待 ensureTab 落实。已结束的 Tab 不回到可重连
    * （真 tmux 没了才裁已结束，已结束优先）。无变化不重绘。离开可重连四处：
    * ensureTab（**主**：远端 tab 又收后端重宣告/行 = 复活，queue 内保序）/ updateActivity
@@ -899,7 +898,7 @@ export class TabManager {
   }
 
   /**
-   * 〔U4b · 第四波 · G3〕后端报来这条活会话的容器（`session-container`：`"tmux"` / `"none"`）。
+   * 〔U4b · 第四波 · G3〕后端报来这条活会话的容器（`container` 格：`"tmux"` / `"none"`）。
    * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实；不认识的取值当没报（丢掉）。
    * 只落在活着的会话上（`nextState`）：死了的那一格由死的那一刻的裁决说了算。
    */
@@ -915,10 +914,10 @@ export class TabManager {
   }
 
   /**
-   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`）。
+   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`〔散文墓碑〕）。
    *
    * 这台的「说不清」（固定复活、还没被报过）逐条落地：`liveSids` 里有 ⇒ 活（本机那条路给清单；远端的清单
-   * 早已经由 `remote-session-added` 把 tab 建成活的了，不传）；没有 ⇒ 已结束（`设计/30 §3.5.7a`
+   * 早已经由 远端 `live` 格 把 tab 建成活的了，不传）；没有 ⇒ 已结束（`设计/30 §3.5.7a`
    * 「A 看得见却没报这条」）。记下这台已报完 ⇒ 之后才复活出来的固定 tab 直接落已结束。
    */
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
@@ -937,20 +936,23 @@ export class TabManager {
   }
 
   /**
-   * 〔GP1 · 第四波〕这条会话所在的那台机器**看不见了**（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）。
+   * 〔GP1 · 第四波〕这台机器**看不见了**（会话流 `unseen` 格：到它的连接断了 / F5 时它还没报完清单）。
+   * 〔MIG-1 续 · 主会话裁〕**机器级**：一格说一台，这台上的 tab 逐个过 `nextState` 的 `unseen`。
    *
-   * 活的 / 可重连的 ⇒ 说不清（`nextState` 的 `unseen`）；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
+   * 活的 / 可重连的 ⇒ 说不清；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
    * 之后才复活出来的固定 tab 不再直接落已结束，要等那台重连、再报一次（`markOriginSeen`）。
-   * 重连之后：还活着的由重宣告（`remote-session-added` → `ensureTab` 的 `remote-line`）翻回活，其余由
-   * `origin-sessions-listed` 落已结束（`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
+   * 还活着的由紧跟着的重宣告（`live` 格 → `started` / `remote-line`）翻回活，可重连的由 `idle` 格落回，其余由 `listed` 落已结束
+   * （`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
    */
-  markUnseen(sessionId: string): void {
-    const tab = this.store.tabs.get(sessionId);
-    if (!tab) return;
-    this.store.seenOrigins.delete(tab.origin);
-    if (!this.applyState(tab, "unseen")) return;
-    this.refreshTabBar();
-    this.emitTabStateProbe(tab);
+  markOriginUnseen(origin: Origin): void {
+    this.store.seenOrigins.delete(origin);
+    let changed = false;
+    for (const tab of this.store.tabs.values()) {
+      if (tab.origin !== origin || !this.applyState(tab, "unseen")) continue;
+      changed = true;
+      this.emitTabStateProbe(tab);
+    }
+    if (changed) this.refreshTabBar();
   }
 
   /**
@@ -984,7 +986,7 @@ export class TabManager {
   }
 
   /**
-   * issue #23：红绿灯状态更新（session-activity 事件 / 启动快照两路汇入）。
+   * issue #23：红绿灯状态更新（activity 格 事件 / 启动快照两路汇入）。
    * status=null（旧版 CC 无字段）视为未知 → 清空回绿点现状。Tab 还没建则暂存
    * （pendingActivity，ensureTab 落实）。无变化不重绘。
    */
@@ -1065,22 +1067,6 @@ export class TabManager {
   }
 
   /**
-   * issue #23：启动/F5 后拉一次红绿灯快照做初始收敛——session-activity 是稀疏
-   * 事件、不进 replay buffer，重载会丢（同 fetchSessionTasks 的双路收敛模式）。
-   * 失败静默（灯保持未知绿，不影响主功能）。
-   */
-  async syncActivitySnapshot(): Promise<void> {
-    try {
-      const list = await listSessionActivity();
-      for (const a of list) {
-        this.updateActivity(a.session_id, a.status, a.waiting_for);
-      }
-    } catch (e) {
-      console.warn("list_session_activity failed:", e);
-    }
-  }
-
-  /**
    * 关闭 Tab：销毁 stream DOM、从 Map 中移除、通知后端 forget 历史、必要时切到相邻 Tab。
    * 仅允许关闭**已结束**（只能 resume）的 Tab，避免误关运行中的会话（`tab-session-state.ts::isResumeOnly`；
    * 可重连的不在其中 —— 与改两轴之前逐条相同）。
@@ -1157,12 +1143,25 @@ export class TabManager {
   }
 
   /**
-   * issue #11: 后端 `task-update` 事件路由——总是更新内存 map（即使 Tab 还没建），
+   * issue #11: 任务快照落账（〔MIG-3b〕来源是 {@link refreshTasks} 重问回来的成品）——总是更新内存 map（即使 Tab 还没建），
    * 只有 sid 是当前 active 时才推全局 panel 重渲染。
    *
    * 不需要 "Tab 不存在就丢弃"——task 文件先于 jsonl 出现是合法时序，
    * 之后 ensureTab 时会从 tasksBySid 拿数据；fetchSessionTasks 拿到的也是同样数据。
    */
+  /**
+   * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕那台机器说这几个会话的任务变了（`all` ⇒ 那台的每个 tab 都重问：期间可能漏了）⇒ 重问 `tasks-list`、交 {@link updateTasks}。
+   * 只问手里有 tab 的会话（没有 tab 的变更，建 tab 那一刻本来就会问一次）。
+   */
+  refreshTasks(origin: Tab["origin"], sids: readonly string[], all: boolean): void {
+    const want = new Set(sids);
+    for (const t of this.store.tabs.values()) {
+      if (t.origin !== origin || (!all && !want.has(t.sessionId))) continue;
+      const sid = t.sessionId;
+      void fetchSessionTasks(sid, origin).then((tasks) => this.updateTasks(sid, tasks));
+    }
+  }
+
   updateTasks(sessionId: string, tasks: TaskEntry[]): void {
     this.store.tasksBySid.set(sessionId, tasks);
     if (this.store.activeId === sessionId) {

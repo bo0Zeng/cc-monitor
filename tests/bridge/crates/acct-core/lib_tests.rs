@@ -47,7 +47,7 @@ fn the_union_keeps_everything_both_sides_already_had() {
 /// 常量共享之后那半**结构上不可能不成立**（只有一个定义处），已随之删掉。
 #[test]
 fn the_credential_filename_matches_the_cc_acct_iso_declaration() {
-    let lib_sh = include_str!("../../../../src/bridge/vendor/cc-acct-iso/scripts/lib.sh");
+    let lib_sh = include_str!("../../../../src/shared/cc-acct-iso/scripts/lib.sh");
     assert!(
         lib_sh.len() > 1000,
         "只读到 {} 字节的 lib.sh —— include_str! 没读到，本断言在空转",

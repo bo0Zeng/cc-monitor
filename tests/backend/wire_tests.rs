@@ -311,23 +311,10 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "overflow",
         ),
-        (
-            Frame::TmuxSessions {
-                raw: "s1\t/p\tclaude\t1\t2\tsid-a".into(),
-                observation: None,
-            },
-            "tmux_sessions",
-        ),
         // 〔audit-0805 08-06〕补上此前**测试段零构造**的三个变体。
         // `Reply` 的上线形另有 `inbound.rs` 钉着；`TmuxSessionClosed` / `Cancelled`
         // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
         // 不是后端序列化形态：改掉 kind 标签或字段名，两边都不会红。
-        (
-            Frame::TmuxSessionClosed {
-                name: "cc-1".into(),
-            },
-            "tmux_session_closed",
-        ),
         (
             Frame::Reply {
                 id: "r1".into(),
@@ -341,6 +328,8 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
         (Frame::Cancelled { id: "r1".into() }, "cancelled"),
         // 〔SR1a〕账号清单变了（无载荷；逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
         (Frame::AccountsChanged, "accounts_changed"),
+        // 〔MIG-3b · ㉓②〕某个会话的任务清单变了（只带 sid；逐字节形状由 `link_frames_have_exactly_these_bytes` 钉）。
+        (Frame::TasksChanged { sid: "s1".into() }, "tasks_changed"),
         // 〔SR1a〕链路两帧（逐字节形状另由 `link_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::LinkData {
@@ -366,7 +355,22 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             },
             "transfer",
         ),
+        (
+            Frame::Probe {
+                ticket: "t-1".into(),
+                cell: serde_json::json!({"reached": "ssh"}),
+            },
+            "probe",
+        ),
         (Frame::SessionsReplayed, "sessions_replayed"),
+        // 〔MIG-1〕会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
+        (
+            Frame::SessionState {
+                sid: "s".into(),
+                state: crate::wire::SessionFate::Ended,
+            },
+            "session_state",
+        ),
         // 〔TAP〕中转抄出来的 SSE 事件（逐字节形状另由 `tap_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::Tap {
@@ -467,6 +471,10 @@ fn link_frames_have_exactly_these_bytes() {
             "{\"kind\":\"link_end\",\"link\":\"m1.0-3\",\"error\":\"读链路下行失败\"}\n",
         ),
         (Frame::AccountsChanged, "{\"kind\":\"accounts_changed\"}\n"),
+        (
+            Frame::TasksChanged { sid: "s1".into() },
+            "{\"kind\":\"tasks_changed\",\"sid\":\"s1\"}\n",
+        ),
     ];
     for (f, want) in cases {
         assert_eq!(to_line(&f).unwrap(), want);
@@ -627,23 +635,7 @@ fn overflow_frame_serializes_with_dropped_count() {
     assert_eq!(v["dropped"], 42);
 }
 
-/// B2：TmuxSessions 帧带 tmux ls 原文——含**真 TAB**（列分隔）+ **换行**（多会话）→ 必须是**单行**
-/// wire（TAB/换行经 serde 转义、无裸换行），roundtrip 字节还原（monitor `parse_tmux_ls` 靠真 TAB 分列）。
-#[test]
-fn tmux_sessions_frame_ships_raw_as_one_line() {
-    let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tnode\t0\t1\t";
-    let line = to_line(&Frame::TmuxSessions {
-        raw: raw.into(),
-        observation: None,
-    })
-    .expect("serialize");
-    assert!(line.ends_with('\n'));
-    let body = line.strip_suffix('\n').unwrap();
-    assert!(!body.contains('\n'), "内嵌换行须被转义、无裸换行: {body:?}");
-    let v: Value = serde_json::from_str(body).expect("json");
-    assert_eq!(v["kind"], "tmux_sessions");
-    assert_eq!(v["raw"], raw); // TAB + 换行逐字还原
-}
+// 〔MIG-1 续 · V41〕`tmux_sessions` 帧单行转义那条随帧删了（tmux 原文只在进程内喂会话账本）。
 
 /// F66（#58③）wire 契约：hello 的 `capabilities`。
 /// ① 非空 → 序列化为数组（monitor 据此发 flag）。
@@ -1234,6 +1226,26 @@ fn session_added_container_is_additive_with_two_literals() {
         frame(Some(crate::wire::SessionContainer::None)),
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"none\"}\n"
     );
+}
+
+/// 〔MIG-1 · `99 §2.1 ⑬`〕`session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
+/// monitor `ssh_source::parse_frame` 照这两个字面量认它。
+#[test]
+fn mig1_session_state_has_exactly_these_bytes() {
+    use crate::wire::SessionFate;
+    for (state, word) in [
+        (SessionFate::Reconnectable, "reconnectable"),
+        (SessionFate::Ended, "ended"),
+    ] {
+        assert_eq!(
+            to_line(&Frame::SessionState {
+                sid: "abc".into(),
+                state
+            })
+            .unwrap(),
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\"}}\n")
+        );
+    }
 }
 
 /// 〔U4b · 第四波〕`sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。

@@ -28,7 +28,7 @@
 //! 期限靠 `timeout(1)` 前缀交给子进程（本层零计时器）、环境是白名单（`HOME` / `PATH` 在内，
 //! `cc-acct-iso` 读 `~/.cc-acct-iso/config` 与 manifest 要它们）。
 //! 被起的那一条 `cc-acct-iso shellinit` **只读**：`cmd_shellinit` 全是 `printf`，
-//! 不写任何文件（vendored 那份逐行可查，`src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso`）。
+//! 不写任何文件（vendored 那份逐行可查，`src/shared/cc-acct-iso/scripts/cc-acct-iso`）。
 //!
 //! # 诚实边界
 //!

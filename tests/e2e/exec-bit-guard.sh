@@ -55,9 +55,9 @@ ALLOWLIST=(
 # 顺带说明**为什么改模式不算违反镜子铁律**：`.vendor_id` 是**内容** sha256（VENDOR.md §8），
 # 恢复可执行位不动内容、指纹不变；丢可执行位本身是 vendor 那一步的失手，补回去是**向上游看齐**。
 VENDOR_ALLOWLIST=(
-  src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso
-  src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh
-  src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh
+  src/shared/cc-acct-iso/scripts/cc-acct-iso
+  src/shared/cc-acct-iso/scripts/cc-acct-iso-install.sh
+  src/shared/cc-acct-iso/scripts/test/run-tests.sh
 )
 
 fail=0

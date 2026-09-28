@@ -176,7 +176,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   `inbound::COMMANDS` 从零条长到 5 条（`cancel`/`ping`/`resolve` 08-02、`kill` 08-04），
 ///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
 ///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
-///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 判**版本那一维**的唯一判据是 build_id 字符串
+///   ⚠ 后果不是纸面的：部署判定（当年住 monitor 的 `sftp.rs`，今天住 `deploy-core` 的 `identity_decision`）判**版本那一维**的唯一判据是 build_id 字符串
 ///   （〔K-W4 09-04〕backend 部署路另看「落点文件在不在」；〔DP1 09-25〕今天读那份字节自报的身份戳；stale 但文件在时仍只凭 build_id），
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 backend **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
@@ -522,7 +522,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// （与 `rbind_token` 同闸，只有 `--with-rbind-token` 才带）· 按路径读会话的围栏也认 Codex 的记录根（根由适配层给）·
 /// 本机冷读 / 搜索 / 判活从此都问本机后端（monitor 侧删内存索引、`session_map` 的 notify / `/proc` / 2 s 心跳）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25，第四波 4D HX2 合并那一拍）：行为 / 协议 —— 部署只升不降（`sftp.rs::build_order`，不比这一版旧就 `Keep`）·
+/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25，第四波 4D HX2 合并那一拍）：行为 / 协议 —— 部署只升不降（`sftp.rs` 的 `build_order`〔MIG-3b 起住共享 crate `deploy-core`〕，不比这一版旧就 `Keep`）·
 /// `put_atomic` 临时件 / 备份件唯一名 · tmux hook 按实例占段 `[50,100)` 一格、起时摘死槽 · 后端自有状态写口跨进程锁（`platform/lock.rs::hold`）·
 /// hello 多 additive `host_env`（回显宿主交来的端口 / 凭据路径 / 注解路径，token 永不回显）· `apikey-key-set` 入参 `account` → `configDir`（**不兼容**，旧远端连上即判旧重装）。
 /// 子命令没变，照 p1v 先例不加历史行。
@@ -640,7 +640,19 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5c-aliases-hub-in-backend**（2026-09-28，MIG-3a 后半合并那一拍）：别名整族进 `assets/aliases/`（方言按这台机器自己判）·
 /// skill 接入面与 SKILLS 表进 `agents/claudecode/` · MCP 推拉 / skill 装改本机后端当枢纽（`assets/hub.rs`，写前再核来源）· cc-bus 由后端装、装卸账复用 skill 装记录。
-pub const BUILD_ID: &str = "p5c-aliases-hub-in-backend";
+///
+/// ★★★ **p5d-deploy-plan-in-backend**（2026-09-28，MIG-3b 合并那一拍）：新帧命令 `hooks-diag` · `deploy-plan`（纯判定在共享 crate `deploy-core`）·
+/// 任务推送走 `session-tasks` 流（`tasks_changed{sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
+///
+/// ★★★ **p5e-session-ledger-in-backend**（2026-09-28，MIG-1 合并那一拍）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
+/// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（aterm 不读）。
+///
+/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
+/// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
+///
+/// ★★★ **p5g-acct-iso-in-backend**（2026-09-28，MIG-3a 续合并那一拍）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·
+/// 枢纽远端那一跳按原码回（`stale` / `refused` …）· 文件窗口首屏由窗口进程自己问、回一行。
+pub const BUILD_ID: &str = "p5g-acct-iso-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -754,6 +766,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
     "--capture-pane",
+    // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
+    "--deploy-plan",
     // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
@@ -788,7 +802,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--acct-iso-install",
     "--cc-bus-install",
+    "--files-link",
     "--cc-bus-install-state",
     "--mcp-sync-hub-preview",
     "--mcp-sync-hub-apply",
@@ -823,6 +839,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔C4d · 第四波 4B〕可达表登记（`inbound::REGISTRY` 的 `remote-reach`）派生的 CLI 面，入参从 stdin 读。
     // ⚠ 一次性进程的可达表随进程退出就空 —— 真正的用法是常驻后端的帧面。加这一行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--remote-reach",
+    // 〔MIG-1 收尾〕测试连接（`remote-probe`）那一行 CLI 面摘了：进度格改走本连接的应答通道（硬臂，只在帧面，理由见 `cli_control_tests::NOT_ON_CLI`）。
     // 〔C4d · 第四波 4B〕历史注解那三条（`inbound::REGISTRY` 的 `history-annotate` / `-forget` / `-last-accounts`）派生的 CLI 面。
     // ⚠ 一次性进程多半没被交 `CCM_HISTORY_METADATA` ⇒ 明拒（不猜路径）。加这三行会逼出一次 `BUILD_ID` bump，本路**不 bump**。
     "--history-annotate",
@@ -912,6 +929,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-subagents",
     "--history-tail",
     "--history-user-inputs",
+    // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--hooks-diag",
     "--kill",
     "--launch",
     "--list-accounts",
@@ -940,6 +959,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔RESYNC〕`--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--ssh-config-aliases",
+    "--ssh-config-import",
+    "--ssh-config-resolve",
     // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
@@ -1778,14 +1801,16 @@ pub const EMITS: &[&str] = &[
     "session_added",
     "session_status",
     "session_removed",
+    // 〔MIG-1 · `99 §2.1 ⑬`〕会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
+    // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "session_state",
     "overflow",
-    "turn_end",      // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
-    "tmux_sessions", // B2：watch_loop 周期本地 tmux ls 发 TmuxSessions（登记=承诺真发，已接线）
-    // P5：与上一份快照差分算出的**正向死亡帧**。登记 = 承诺真发（已接线，见 watcher.rs
-    // 的 `diff_closed`）。monitor 收到即 retire、绕过 miss 计数；旧 monitor 忽略未知 kind。
-    "tmux_session_closed",
+    "turn_end", // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
+    // 〔MIG-1 续 · V41〕`tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
     // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
+    // 〔MIG-3b · `99 §2.1 ㉓②`〕某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
+    "tasks_changed",
     // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
     "sessions_replayed",
@@ -1800,6 +1825,9 @@ pub const EMITS: &[&str] = &[
     // 〔SR1b〕一趟传输的进度与终局（`control/transfer.rs` 的转发任务真发，登记 = 承诺真发）。
     // 只在客户端 `transfer-start` 之后才出现；旧客户端不认 ⇒ 忽略（additive）。
     "transfer",
+    // 〔MIG-1 收尾〕测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
+    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "probe",
     // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",

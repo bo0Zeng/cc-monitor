@@ -91,7 +91,7 @@ const LOCAL_PAGE_IPC = [
   "chan_call", // 插件（〔C4b〕经通道说 `plugins-marketplaces`，包装层那一条 `chan_call`）
   // 〔AS2〕资产目录：先让本机后端对这台做一趟同步（〔MIG-3a〕同步那一问也走通道 `assets-sync` 问 `<local>`），再经通道问 `assets-catalog` —— 都是 `chan_call`，同上一行。
   "list_remote_mcp_origins", // cc-bus 钩子：认得哪些远端
-  "diagnose_local_cc_bus_hooks", // cc-bus 钩子：本机诊断
+  // 〔MIG-3b〕cc-bus 钩子本机诊断改走通道（`hooks-diag` 发给 `<local>`，包装层那一条 `chan_call`，与插件那一条同名，按集合比不另起一行）。
 ] as const;
 
 /**
@@ -133,7 +133,7 @@ const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "chan_call", // 〔AS2〕资产目录：经通道问 devbox 的目录（与插件那一发同名，带重数比）
   "chan_call", // 〔SU1〕资产目录：再经通道问 devbox 记着的「从别处装来的 skill」（`skill-installs`）
   "list_remote_mcp_origins",
-  "diagnose_local_cc_bus_hooks",
+  "chan_call", // 〔MIG-3b〕cc-bus 钩子：本机诊断（经通道说 `hooks-diag`）
 ];
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

@@ -42,6 +42,12 @@ use super::*;
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // 〔MIG-1 收尾〕测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
+    (
+        "remote-probe",
+        "它的进度格（握手那几行 · 走完的那几段 · 结局）是往**发起它的那条流连接**的应答通道推的帧；一次性进程「1 请求 1 响应 1 退出」\
+         没有那条通道，结局也在进度流里而不在应答里 ⇒ 开 CLI 口只会回一个空应答。测一台：设置页的「测试连接」（经常驻后端的帧面）。",
+    ),
     // 〔MIG-2〕本机起会话：计划里要读本进程的中转状态（`launch_relay`），一次性进程里没有中转 ⇒ 同 `launch-endpoint` 只上流面。
     (
         "launch-local",
@@ -112,6 +118,18 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     (
         "resync",
         "〔RESYNC · 主会话 09-27 裁〕它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话（`cli_control::STREAM_ONLY`）。",
+    ),
+    (
+        "forward-start",
+        "〔MIG-1〕转发账住常驻那一个进程（`cli_control::STREAM_ONLY`）：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
+    ),
+    (
+        "forward-stop",
+        "〔MIG-1〕同 `forward-start`：一次性进程里的账恒空，只会回 `not_found`。",
+    ),
+    (
+        "forward-list",
+        "〔MIG-1〕同 `forward-start`：一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
     ),
     (
         "transfer-stop",
@@ -268,6 +286,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔MIG-3a · 子步 3〕cc-bus 装到这台 / 查三态：落点由这台自己算（skills 根），不收任何参数。
         "cc-bus-install",
         "cc-bus-install-state",
+        // 〔MIG-3a · 09-28 预裁〕cc-acct-iso 装到这台：字节随二进制带着、落点由这台按自己的家目录算，不收参数。
+        "acct-iso-install",
         "accounts-sessions",
         "bus-list",
         "bus-state",
@@ -295,6 +315,13 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "acct-iso-shellinit",
         // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
+        // 〔MIG-1〕列转发：无入参（问的就是本进程那张账）。
+        "forward-list",
+        // 〔MIG-1〕这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。
+        "ssh-config-aliases",
+        "ssh-config-import",
+        // 〔MIG-3b〕这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
+        "hooks-diag",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

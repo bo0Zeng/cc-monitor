@@ -60,14 +60,20 @@
 //!
 //! ```text
 //! open_file_window（monitor 进程）
-//!   ├─ ① 先真的列一趟目录（列不出来就别开窗 —— 那条纪律一个字没动，住 `super::entry`）
-//!   ├─ ② resolve_window_bin()      ← 环境变量 CCM_FILEWIN_BIN，或 exe 旁那份
-//!   ├─ ③ 起进程的唯一出口          ← `crate::spawn_managed` 那个五参数形态
+//!   ├─ ① resolve_window_bin()      ← 环境变量 CCM_FILEWIN_BIN，或 exe 旁那份
+//!   ├─ ② 起进程的唯一出口          ← `crate::spawn_managed` 那个五参数形态
 //!   │                                  （Hidden · Detached · Inherit，逐格理由住 [`spawn_window`]）
-//!   ├─ ④ 把种子写进它的 stdin 再关掉    ← 一屏行 + 源 + cwd + reveal
+//!   ├─ ③ 把种子写进它的 stdin 再关掉    ← 源 + cwd（缺 = 问那台 home）+ reveal + 交接件
+//!   ├─ ④ 读它 stdout 上的**一行**      ← 子进程拨回通道、问 home、列第一屏之后说「列到 N 行」或「列不出来：原话」
+//!   │                                  （列不出来 ⇒ 它不开窗就退，父进程带着原话回错 —— 那条纪律一个字没动）
 //!   ├─ ⑤ 等一个很短的预算，看它是不是**当场就退了**（shell::early_failure，同一条轮询）
-//!   └─ ⑥ 把句柄交给一条收尸线程        ← Detached 不改父子关系 ⇒ 不 wait 就留僵尸
+//!   └─ ⑥ 把句柄交给一条收尸线程        ← Detached 不改父子关系 ⇒ 不 wait 就留僵尸；stdout 由它读到 EOF
 //! ```
+//!
+//! 🔴〔MIG-3a · 主会话 09-28 裁 3〕**第一屏挪进了窗口进程。** 上一版 ① 之前还有一步「monitor 先经宿主注入的句柄
+//! 问那台后端 `files-home` / `files-ls`，列出来的那一屏放进种子」—— 那是 monitor 替窗口问后端（`99 §2.1 ⑬` 待迁那一行）。
+//! 今天窗口进程拨回通道之后自己问（[`first_screen`]，与窗口里之后每一次列目录同一条 `source::ask`），
+//! 再在 stdout 上说**一行**（[`Ready`]）；monitor 这一侧只起进程、读那一行。
 //!
 //! ## 🔴 为什么种子走 stdin 而**不是**环境变量或 argv
 //!
@@ -140,15 +146,15 @@ pub const BIN_ENV: &str = "CCM_FILEWIN_BIN";
 ///
 /// 🔴 字段与 `super::shell::FileWindow::seeded` ＋ `set_reveal` 的入参**一一对应**，
 /// 刻意不多不少：多一个字段就是一处「窗口那侧能有、而开窗这条路给不了」的缝。
+/// 〔MIG-3a · 09-28 裁 3〕例外恰好两格、都由窗口进程自己补：`rows`（那一屏，[`first_screen`] 列）与
+/// `cwd` 缺席时的 home（[`first_screen`] 问）。
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OpenRequest {
     /// 这个窗口看哪台机器。
     pub source: Source,
-    /// 开在哪个目录。
-    pub cwd: String,
-    /// **已经列好的那一屏** —— 入口那条命令为了能出声已经列过一趟了，别打第二次往返。
-    /// 🔴〔补齐五项〕是 `Listed`（带链接与时间两格）而不是 `Row` —— 否则第一屏画不出那两列。
-    pub rows: Vec<Listed>,
+    /// 开在哪个目录；`None` = 问那台机器的 home（`files-home`，窗口进程自己问）。
+    /// 〔MIG-3a · 09-28 裁 3〕「已经列好的那一屏」（`rows`）这一格删了：第一屏由窗口进程自己列（[`first_screen`]）。
+    pub cwd: Option<String>,
     /// 开窗就高亮这一行（`None` = 不高亮）。
     pub reveal: Option<String>,
     /// 🔴〔F2〕窗口进程拿它拨回 monitor 那个通道口（`chan::dial::dial`）。
@@ -288,10 +294,12 @@ pub fn spawn_window(req: &OpenRequest) -> Result<crate::spawn_managed::ManagedCh
     use crate::spawn_managed::{ConsolePolicy, Lifetime, StderrSink};
     let bin = resolve_window_bin()?;
     let seed = encode_request(req)?;
-    // ⚠ **argv 上一个字都没有**（理由住头注 §三）；唯一要接的是 stdin 那一根。
-    //   stdout 刻意**不接**：接成管子而没人读的那一刻，对面一写满就卡死。
+    // ⚠ **argv 上一个字都没有**（理由住头注 §三）；接 stdin（种子）与 stdout（就绪那一行）两根。
+    //   〔MIG-3a · 09-28 裁 3〕stdout 上一版刻意**不接**（接成管子而没人读，对面一写满就卡死）；今天有人读：
+    //   [`open_in_new_process`] 读那一行，之后 [`reap_later`] 把它读到 EOF ⇒ 永远有人读。
     let mut cmd = std::process::Command::new(&bin);
     cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
     let mut child = crate::spawn_managed::spawn_managed_cmd(
         &mut cmd,
         ConsolePolicy::Hidden,
@@ -323,17 +331,34 @@ fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Res
         .map_err(|e| copy_text("rsFilewinProc.seed.sendFailed", &[("e", &e.to_string())]))
 }
 
-/// **开一个窗口** —— 生产那条路的入口。回那个进程的 pid。
+/// 开窗没成的两种（〔MIG-3a · 09-28 裁 3〕分开：前一种是**窗口进程列不出来时说的原话**，入口原样交出去；
+/// 后一种是进程这一层的事 —— 起不来 · 当场退了 · 一句话都没说 —— 入口给它套上「文件窗口没起来」）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unopened {
+    /// 窗口进程说的「列不出来」那一行（home 问不到 / 目录列不出来 / 拨不回通道 / 种子读不动）。
+    Said(String),
+    /// 进程这一层没成。
+    Process(String),
+}
+
+/// **开一个窗口** —— 生产那条路的入口。回 `(那个进程的 pid, 第一屏列到的行数)`。
 ///
 /// 🔴 `D11`（用户 2026-09-22 裁决，横切纪律）：**这里一条退路都没有。**
 /// 起不了独立进程就是错，照实报，不许「退回同进程开一个」——
 /// 那条路今天已知会在第二趟必然失败（winit 一个进程只许一个事件循环）。
 ///
+/// # 〔MIG-3a · 09-28 裁 3〕先读就绪那一行
+///
+/// 窗口进程列第一屏（[`first_screen`]）之后在 stdout 上说一行（[`Ready`]）：
+/// 列不出来 ⇒ 它**不开窗**就退，这里带着那句原话回 [`Unopened::Said`]；一句话都没说就 EOF ⇒ 进程这一层的错。
+/// ⚠ 这一读是**阻塞**的，上界由窗口进程自己那几段期限定（拨回 [`DIAL_BUDGET`] ＋ 两问各 [`FIRST_SCREEN_BUDGET`]）
+/// ⇒ 入口把整件放在 `spawn_blocking` 上（不占 async worker）。
+///
 /// # 早失败那一跳买到 / 买不到什么
 ///
 /// 走的是 `super::shell::early_failure` **同一条轮询**（全仓这一族只许有一处，
 /// 登记在 `rust_timer_registry` 里）。它分得开的是**「当场就退了」**与**「还在跑」**：
-/// - 「起不来」那一形（二进制不对 · 没有图形会话 · 种子解不出）在毫秒级就退；
+/// - 「起不来」那一形（二进制不对 · 没有图形会话）在说完就绪之后毫秒级就退；
 /// - 「起来了」那一形要占着那个进程直到用户关窗 ⇒ 预算内必然「还在跑」。
 ///
 /// ⚠ **买不到「窗口真的出现在屏幕上」**，也买不到「慢失败」（起了循环之后才炸的
@@ -341,10 +366,51 @@ fn write_seed(child: &mut crate::spawn_managed::ManagedChild, seed: &str) -> Res
 ///
 /// # Errors
 ///
-/// [`spawn_window`] 的任何一档 · 那个进程在开窗预算内就退了（带上它的退出码）。
-pub fn open_in_new_process(req: &OpenRequest) -> Result<u32, String> {
-    let mut child = spawn_window(req)?;
+/// [`spawn_window`] 的任何一档 · 窗口进程说列不出来 · 一句话没说就退了 · 说了就绪却在开窗预算内就退了。
+pub fn open_in_new_process(req: &OpenRequest) -> Result<(u32, usize), Unopened> {
+    let mut child = spawn_window(req).map_err(Unopened::Process)?;
     let pid = child.id();
+    let Some(out) = child.stdout.take() else {
+        if let Err(e) = child.kill() {
+            tracing::warn!(
+                "收不掉那个窗口进程（{e}）—— 它说的话对不上约定，可能还会开出一个没人认的窗口"
+            );
+        }
+        reap_later(child, None);
+        return Err(Unopened::Process(copy_text(
+            "rsFilewinProc.spawn.noStdout",
+            &[],
+        )));
+    };
+    let mut out = std::io::BufReader::new(out);
+    let n = match read_ready(&mut out) {
+        Ok(Some(Ready::Listed(n))) => n,
+        Ok(Some(Ready::Failed(said))) => {
+            reap_later(child, Some(out));
+            return Err(Unopened::Said(said));
+        }
+        Ok(None) => {
+            let st = child.wait_for_status();
+            let why = match st {
+                Ok(st) => copy_text("rsFilewinProc.open.exited", &[("st", &st.to_string())]),
+                Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
+            };
+            return Err(Unopened::Process(copy_text(
+                "rsFilewinProc.open.seeStderr",
+                &[("why", &why)],
+            )));
+        }
+        Err(garbled) => {
+            // 说了一句不是约定形状的话 ⇒ 两端契约漂了；它接下来会不会开窗说不准 ⇒ 收掉它，不留一个没人认的窗口。
+            if let Err(e) = child.kill() {
+                tracing::warn!(
+                    "收不掉那个窗口进程（{e}）—— 它说的话对不上约定，可能还会开出一个没人认的窗口"
+                );
+            }
+            reap_later(child, Some(out));
+            return Err(Unopened::Process(garbled));
+        }
+    };
     if super::shell::early_failure(
         || matches!(child.try_wait(), Ok(Some(_)) | Err(_)),
         super::shell::EARLY_FAILURE_BUDGET,
@@ -354,13 +420,30 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<u32, String> {
             Ok(None) => copy_text("rsFilewinProc.open.failed", &[]),
             Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
         };
-        return Err(copy_text(
+        reap_later(child, Some(out));
+        return Err(Unopened::Process(copy_text(
             "rsFilewinProc.open.seeStderr",
             &[("why", &why.to_string())],
-        ));
+        )));
     }
-    reap_later(child);
-    Ok(pid)
+    reap_later(child, Some(out));
+    Ok((pid, n))
+}
+
+/// 读窗口进程 stdout 上的**第一行**。`Ok(None)` = 一句没说就 EOF（它退了）；`Err` = 说了但不是约定形状。
+///
+/// # Errors
+///
+/// 读失败 · 那一行解不出 [`Ready`]。
+pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String> {
+    let mut line = String::new();
+    let n = r
+        .read_line(&mut line)
+        .map_err(|e| copy_text("rsFilewinProc.ready.readFailed", &[("e", &e.to_string())]))?;
+    if n == 0 {
+        return Ok(None);
+    }
+    decode_ready(&line).map(Some)
 }
 
 /// 收尸：`Lifetime::Detached` **不改变父子关系** ⇒ 不 `wait` 就留僵尸。
@@ -372,8 +455,19 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<u32, String> {
 /// ⚠ 它**不持有窗口的任何东西**：窗口的寿命归那个进程自己，这条线程只负责
 /// 在它死后把内核里那条记录收掉。monitor 先退出的话，那个进程被 init 接管、由 init 收 ——
 /// 那一格不归我们（同 `local_backend_host` 的脱离那条逐字）。
-fn reap_later(child: crate::spawn_managed::ManagedChild) {
+///
+/// 〔MIG-3a · 09-28 裁 3〕它也把那根 stdout 读到 EOF（`out`）：就绪那一行之后窗口进程不该再往 stdout 写，
+/// 但万一有（某个库自己往 stdout 打），没人读的管子写满就会卡住那个窗口 —— 读掉扔了，零代价。
+fn reap_later(
+    child: crate::spawn_managed::ManagedChild,
+    out: Option<std::io::BufReader<std::process::ChildStdout>>,
+) {
     std::thread::spawn(move || {
+        if let Some(mut out) = out {
+            if let Err(e) = std::io::copy(&mut out, &mut std::io::sink()) {
+                tracing::debug!("窗口进程的 stdout 读到一半断了（{e}）—— 只影响排空，不影响收尸");
+            }
+        }
         if let Err(e) = child.wait_for_status() {
             tracing::warn!("收不掉那个窗口进程（{e}）—— 内核里会留一条僵尸记录");
         }
@@ -407,16 +501,106 @@ pub async fn dial_back(h: &crate::chan::host::Handoff) -> Result<super::source::
 /// 拨回 monitor 那个通道口（回环）的期限。回环上连一次 ＋ 一来一回的认证，给得很宽。
 pub const DIAL_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// 开窗前那两问（home · 第一屏）各自的往返上限（调用方给的期限；〔MIG-3a · 09-28 裁 3〕随那两问从 `entry.rs` 搬来）。
+pub const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// 窗口进程在 stdout 上说的**那一行**（〔MIG-3a · 09-28 裁 3〕）：第一屏列到几行，或列不出来的原话。
+/// 线上形 `{"listed":N}` / `{"failed":"…"}`，一行一个 JSON。
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Ready {
+    /// 列出来了（行数）—— 它接着就开窗。
+    Listed(usize),
+    /// 列不出来（原话）—— 它不开窗就退。
+    Failed(String),
+}
+
+/// [`Ready`] → 那一行（带换行）。**纯函数**。
+pub fn encode_ready(r: &Ready) -> String {
+    // `Ready` 只有一个整数或一个字符串，序列化不会失败；万一失败也得是一行、而且说清。
+    let mut s = serde_json::to_string(r).unwrap_or_else(|e| {
+        format!(
+            "{{\"failed\":{}}}",
+            serde_json::Value::String(e.to_string())
+        )
+    });
+    s.push('\n');
+    s
+}
+
+/// 那一行 → [`Ready`]。**纯函数**；解不出来就是错（不猜）。
+///
+/// # Errors
+///
+/// 不是约定的那两种形状。
+pub fn decode_ready(line: &str) -> Result<Ready, String> {
+    serde_json::from_str(line.trim())
+        .map_err(|e| copy_text("rsFilewinProc.ready.unreadable", &[("e", &e.to_string())]))
+}
+
+/// 〔MIG-3a · 09-28 裁 3〕**开窗前那一屏，窗口进程自己问**：`cwd` 缺席 ⇒ 先问那台 `files-home`；再列那个目录。
+/// 回 `(起点, 那一屏)`。与窗口里之后每一次列目录同一条路（[`super::source::list_dir`] → [`super::source::ask`]）。
+///
+/// # Errors
+///
+/// home 问不到 / 解不出起点 · 目录列不出来 —— 带那一跳的原话（[`super::source::said`] 翻过的）。
+pub async fn first_screen(
+    line: &super::source::Line,
+    source: &Source,
+    cwd: Option<String>,
+) -> Result<(String, Vec<Listed>), String> {
+    let cwd = match cwd {
+        Some(d) => d,
+        None => {
+            let d = super::source::ask(
+                line,
+                &source.origin(),
+                super::source::CMD_HOME,
+                &serde_json::json!({}),
+                FIRST_SCREEN_BUDGET,
+            )
+            .await?;
+            super::source::home_from_reply(&d)?
+        }
+    };
+    let (rows, _truncated) =
+        super::source::list_dir(line, source, &cwd, super::source::SortBy::default()).await?;
+    Ok((cwd, rows))
+}
+
+/// 在 stdout 上说那一行。父进程已经不在了（管子断了）⇒ 只在 stderr 上记一句，不当成窗口的错。
+fn say(r: &Ready) {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    if let Err(e) = out
+        .write_all(encode_ready(r).as_bytes())
+        .and_then(|()| out.flush())
+    {
+        eprintln!("就绪那一行没送出去（{e}）");
+    }
+}
+
+/// 说「列不出来」并回那个退出码（窗口不开）。
+fn refuse(said: String, code: i32) -> i32 {
+    eprintln!("{said}");
+    say(&Ready::Failed(said));
+    code
+}
+
 /// 种子解不出来时的退出码。
 pub const EXIT_BAD_SEED: i32 = 2;
 /// 窗口没立起来时的退出码。
 pub const EXIT_WINDOW_FAILED: i32 = 1;
+/// 〔MIG-3a · 09-28 裁 3〕第一屏列不出来（home 问不到 / 目录列不出来）时的退出码 —— 窗口没开。
+pub const EXIT_NOT_LISTED: i32 = 3;
 
 /// **窗口进程的躯体。** `[[bin]]` 那个入口只有一行，调的就是它。
 ///
-/// 回值 = 进程退出码。三档刻意分开（`D7`：失败要显式、归因要准确）：
+/// 回值 = 进程退出码。四档刻意分开（`D7`：失败要显式、归因要准确）：
 /// `0` 窗口开过又关了 · [`EXIT_WINDOW_FAILED`] 窗口立不起来 ·
-/// [`EXIT_BAD_SEED`] 种子读不动（那是 monitor 与它之间的契约漂了，不是显示问题）。
+/// [`EXIT_BAD_SEED`] 种子读不动（那是 monitor 与它之间的契约漂了，不是显示问题）·
+/// [`EXIT_NOT_LISTED`] 第一屏列不出来（窗口没开）。
+/// 〔MIG-3a · 09-28 裁 3〕开窗之前的每一种失败都**也**在 stdout 上说一行 [`Ready::Failed`]（父进程据此带原话回错）。
 ///
 /// ⚠ **它把原因印在 stderr 上**，而那根 stderr 是继承来的（见 [`spawn_window`]）
 /// ⇒ 从终端里起的 monitor 上看得见。装机那份 GUI app 没有 stderr 控制台
@@ -425,15 +609,14 @@ pub const EXIT_WINDOW_FAILED: i32 = 1;
 pub fn child_main() -> i32 {
     let mut raw = String::new();
     if let Err(e) = std::io::Read::read_to_string(&mut std::io::stdin(), &mut raw) {
-        eprintln!("读不到开窗种子：{e}");
-        return EXIT_BAD_SEED;
+        return refuse(
+            copy_text("rsFilewinProc.seed.readFailed", &[("e", &e.to_string())]),
+            EXIT_BAD_SEED,
+        );
     }
     let req = match decode_request(&raw) {
         Ok(r) => r,
-        Err(e) => {
-            eprintln!("{e}");
-            return EXIT_BAD_SEED;
-        }
+        Err(e) => return refuse(e, EXIT_BAD_SEED),
     };
     // 🔴 这个进程里要有一个 tokio 运行时 —— 窗口那一侧的每一次列目录 / 传输 / 搜索
     //    都是 `h.spawn(async …)`。**不给它就等于开一个什么都做不了的窗口**
@@ -445,25 +628,31 @@ pub fn child_main() -> i32 {
     {
         Ok(rt) => rt,
         Err(e) => {
-            eprintln!("起不了 tokio 运行时：{e}");
-            return EXIT_WINDOW_FAILED;
+            return refuse(
+                copy_text("rsFilewinProc.child.noRuntime", &[("e", &e.to_string())]),
+                EXIT_WINDOW_FAILED,
+            )
         }
     };
     // 🔴〔F2 · 2026-09-24〕**先拨通道，拨不通就别开窗**（`D11`：没有退路 ——
     //    不许「连不上就退回 SFTP 自己列」）。
     let line = match rt.block_on(dial_back(&req.handoff)) {
         Ok(c) => c,
-        Err(e) => {
-            eprintln!("{e}");
-            return EXIT_WINDOW_FAILED;
-        }
+        Err(e) => return refuse(e, EXIT_WINDOW_FAILED),
     };
+    // 🔴〔MIG-3a · 09-28 裁 3〕**列不出来就别开窗**（那条纪律从 monitor 那一侧搬到这里，一个字没动）：
+    //    先列第一屏，说一行给父进程；列不出来 ⇒ 说原话、退，窗口一个都不开。
+    let (cwd, rows) = match rt.block_on(first_screen(&line, &req.source, req.cwd.clone())) {
+        Ok(first) => first,
+        Err(e) => return refuse(e, EXIT_NOT_LISTED),
+    };
+    say(&Ready::Listed(rows.len()));
     let h = super::shell::open_detached_seeded(
         req.source,
-        req.cwd,
+        cwd,
         Some(rt.handle().clone()),
         Some(line),
-        req.rows,
+        rows,
         req.reveal,
         req.bookmarks,
         req.machines,

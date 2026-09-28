@@ -16,21 +16,7 @@ import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody } from "../ipc/chan-caller";
 import type { Origin } from "../ipc/origin";
 
-/**
- * F5：从远端用户名推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
- * 约定与后端同根：`<那台 home>/.cc-monitor/bin/cc-acct-iso`（root 的 home 是 `/root`）。user 缺 / 非法 → null。
- * 〔E2 · V28〕从前先从「后端路径」那一格取根；那一格删了（后端落点恒是 `~/.cc-monitor/bin/ccm`），只剩按用户名推。
- *
- * 〔SR1b · 2026-09-24〕`…/.cc-monitor/cc-acct-iso` → `…/.cc-monitor/bin/cc-acct-iso`：SFTP 住本机常驻后端之后，
- * 远端写只许落 `~/.cc-monitor/bin/` 与暂存区两处（用户 V89）；cc-acct-iso 是部署物，落部署那一根。
- */
-const ACCT_ISO_UNDER = ".cc-monitor/bin/cc-acct-iso";
-
-export function deriveAcctIsoDir(user?: string): string | null {
-  const u = (user ?? "").trim();
-  if (!u || !/^[A-Za-z0-9._-]+$/.test(u)) return null;
-  return `${u === "root" ? "/root" : `/home/${u}`}/${ACCT_ISO_UNDER}`;
-}
+// 〔MIG-3a · 主会话 09-28 预裁〕`deriveAcctIsoDir`〔散文墓碑〕（按用户名猜那台的部署目录）删了：落点由那台后端按自己的家目录算（`acct-iso-install`）。
 
 export type NameCheck = { ok: true } | { ok: false; reason: string };
 

@@ -1108,41 +1108,24 @@ fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
     );
 }
 
-/// **`raw` 载荷与 P1 之前逐字节一致**——旧 monitor 行为零变化的那条保证。
-/// 有会话时 `observation` 必须**省略**（热路径不加字节）。
+/// 四态观测 → 会话账本读的那两格（〔MIG-1 续〕原 `tmux_sessions` 帧载荷，那一帧不再上线）：有会话 ⇒ 原文、不带取值；
+/// P3 那两个细分（`ServerEmpty` / `NoServer`）**必须落同一个取值**（对收割完全等价）；没装 tmux / 观测无效各有自己的取值，
+/// 账本据此「不知道」绝不当成「都没了」。
 #[test]
-fn observation_frame_keeps_raw_payload_backward_compatible() {
-    match observation_to_frame(TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tx".into())) {
-        Frame::TmuxSessions { raw, observation } => {
-            assert_eq!(raw, "s1\t/p\tclaude\t1\t1\tx");
-            assert_eq!(observation, None, "有会话时必须省略，否则热路径白涨字节");
-        }
-        f => panic!("期望 TmuxSessions，实得 {f:?}"),
-    }
-    // 无 tmux：保留 NO_TMUX 哨兵（旧 monitor 那道门认它）
-    match observation_to_frame(TmuxObservation::NoTmux) {
-        Frame::TmuxSessions { raw, observation } => {
-            assert_eq!(raw.trim(), "NO_TMUX");
-            assert_eq!(observation.as_deref(), Some(OBS_NO_TMUX));
-        }
-        f => panic!("期望 TmuxSessions，实得 {f:?}"),
-    }
-    // 零会话 / 观测无效：raw 都是空串（旧 monitor 一律保守跳过 = 今天的行为），
-    // 区别只在 observation ⇒ 只有新 monitor 分得开。
-    // P3：`ServerEmpty` 与 `NoServer` 两个细分**必须映射到同一个 wire 取值**
-    // ——这就是"P3 加细分不改帧契约"那条承诺的机器化。
+fn observation_parts_keep_the_four_states_apart_for_the_ledger() {
+    assert_eq!(
+        observation_parts(TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tx".into())),
+        ("s1\t/p\tclaude\t1\t1\tx".to_string(), None)
+    );
     for (obs, token) in [
         (TmuxObservation::ServerEmpty, OBS_ZERO_SESSIONS),
         (TmuxObservation::NoServer, OBS_ZERO_SESSIONS),
+        (TmuxObservation::NoTmux, OBS_NO_TMUX),
         (TmuxObservation::Unobservable, OBS_UNOBSERVABLE),
     ] {
-        match observation_to_frame(obs) {
-            Frame::TmuxSessions { raw, observation } => {
-                assert_eq!(raw, "", "旧 monitor 必须看到与今天相同的空 raw");
-                assert_eq!(observation.as_deref(), Some(token));
-            }
-            f => panic!("期望 TmuxSessions，实得 {f:?}"),
-        }
+        let (raw, o) = observation_parts(obs);
+        assert_eq!((raw.as_str(), o), ("", Some(token)));
+        assert_eq!(tmux_view_is_observable(&raw, o), token == OBS_ZERO_SESSIONS);
     }
 }
 
@@ -4238,4 +4221,95 @@ fn fix_the_one_shot_scan_sees_exactly_the_live_interactive_sessions() {
     let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
     guard_core::find_pinned(&main, "observe::watcher::running_sessions(&home)")
         .unwrap_or_else(|e| panic!("`main.rs` 注入的不是观测层那一份扫描：{e}"));
+}
+
+/// 〔MIG-3b · 要求住址 `设计/99 §2.1 ㉓②`「`session.tasks` 推送改 `chan.subscribe(origin, …)`，监视进后端，monitor 那份 notify 删」〕
+/// 任务目录里的动静 ⇒ 按会话 sid 去重（第一段）；根目录自己 · 别处的路径不算。
+#[test]
+fn tasks_touched_names_each_session_once_per_batch() {
+    let t = std::path::Path::new("/h/.claude/tasks");
+    let paths = [
+        t.join("s1").join("1.json"),
+        t.join("s1").join(".lock"),
+        t.join("s2"),
+        t.to_path_buf(),
+        std::path::PathBuf::from("/h/.claude/projects/p/s3.jsonl"),
+    ];
+    assert_eq!(
+        tasks_touched(paths.iter().map(|p| p.as_path()), t),
+        vec!["s1".to_string(), "s2".to_string()]
+    );
+    assert!(tasks_touched(std::iter::empty(), t).is_empty());
+}
+
+/// 〔MIG-3b · ㉓②〕真 inotify：`tasks/` 起步不在、后来才建 ⇒ `agent_home` 那道耳朵把它挂上；之后往某会话目录写一份任务 ⇒
+/// 那一批里认得出那个 sid（`tasks_touched` 与 `watch_loop` 同一个函数）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_task_written_after_start_is_heard_for_its_session() {
+    let root = std::env::temp_dir().join(format!("ccm-mig3b-tasks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let home = root.join("claude-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let projects = crate::agents::claudecode::paths::projects_root(&home);
+    let sessions = crate::agents::claudecode::paths::sessions_root(&home);
+    let tasks = crate::observe::tasks_query::tasks_root(&home);
+    let (etx, erx) = std::sync::mpsc::channel::<WatchEvent>();
+    let mut debouncer = new_debouncer(Duration::from_millis(DEBOUNCE_MS), DebouncerSink(etx))
+        .expect("debouncer 起不来");
+    let mut ears = HomeEars::new(&home, &projects, &sessions);
+    ears.arm(&mut debouncer);
+    assert!(!ears.tasks_watched, "夹具坏了：tasks/ 一开始就在");
+    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(64);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(projects.clone(), false, false);
+    std::fs::create_dir_all(&tasks).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while !ears.tasks_watched && std::time::Instant::now() < deadline {
+        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+            for ev in evs {
+                ears.on_path(&mut debouncer, &ev.path, &mut state, &mut sink);
+            }
+        }
+    }
+    std::fs::create_dir_all(tasks.join("sid-t1")).unwrap();
+    std::fs::write(tasks.join("sid-t1").join("1.json"), b"{}").unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let mut heard: Vec<String> = Vec::new();
+    while heard.is_empty() && std::time::Instant::now() < deadline {
+        if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
+            heard = tasks_touched(evs.iter().map(|ev| ev.path.as_path()), &ears.tasks);
+        }
+    }
+    let watched = ears.tasks_watched;
+    drop(debouncer);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(watched, "`tasks/` 后建出来之后没挂上");
+    assert_eq!(
+        heard,
+        vec!["sid-t1".to_string()],
+        "写进会话任务目录的那一份没被听见 / 没认出 sid"
+    );
+}
+
+/// 〔MIG-3b · ㉓②〕接线：`Notify` 那一臂里恰好一处问 `tasks_touched`、逐个发 `Frame::TasksChanged`，排在逐条处理事件的 `for` 之前。
+#[test]
+fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/watcher.rs"
+    ));
+    let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
+        .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
+    let emit = prod[ask..]
+        .find("sink.send(Frame::TasksChanged { sid });")
+        .map(|k| ask + k)
+        .expect("问完之后没有发 tasks_changed");
+    let per_event = prod[ask..]
+        .find("for ev in events {")
+        .map(|k| ask + k)
+        .expect("问完之后没有逐条处理事件的 for");
+    assert!(
+        ask < emit && emit < per_event,
+        "问与发要排在逐条处理之前（逐条那一段里有 continue）"
+    );
 }

@@ -214,7 +214,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         "或者交回来的 token 是空的（`new_local_session` 还在回 `void`）",
     ).toBe(1);
 
-    // ② 会话出现之后（生产上由 `main.ts` 的 `session-started` 事件触发这一跳），
+    // ② 会话出现之后（生产上由 `main.ts` 的 本机 `live` 格 事件触发这一跳），
     //    sid 被反查出来、pin 落到**那一条**上。
     await resolvePendingLocalLaunches();
     const pin = historyCalls(invokeMock.mock.calls, "update_history_metadata");
@@ -298,16 +298,17 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     // delete 是最后一个 .history-action-danger
     row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
     await Promise.resolve();
-    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session"), "还没答就删了").toBe(false);
+    expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0, "还没答就删了").toBe(false);
     await answerAskDialog(true);
-    const call = invokeMock.mock.calls.find((c) => c[0] === "delete_history_session");
+    const call = historyCalls(invokeMock.mock.calls, "delete_history_session")[0];
     expect(call).toBeTruthy();
     // 🔴 〔步 12·C 09-20〕`origin` 是**新加的必填项**，而且本机要逐字送 `"<local>"`。
     //    ⚠ `toMatchObject` 是**子集**匹配 ⇒ 光靠它，调用点漏送 origin 这一条照样绿。
     //      所以下面那格单独把 origin 断死（这一条正是本仓治过的「子集匹配假绿」那一形）。
-    expect(call![1]).toMatchObject({ sessionId: "s1", jsonlPath: "/p/s1.jsonl" });
+    // 〔MIG-3b〕经通道直说那台后端 `files-delete-session`：只交 sid（落点由后端按 sid 找），路径不过线。
+    expect(call!).toMatchObject({ sessionId: "s1" });
     expect(
-      (call![1] as { origin?: unknown }).origin,
+      (call! as { origin?: unknown }).origin,
       "本机删除没送 `<local>` —— Rust 侧 `Origin::route` 会拒（`null`/缺省都不是本机）",
     ).toBe("<local>");
   });
@@ -318,7 +319,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
     await Promise.resolve();
     await answerAskDialog(false);
-    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session")).toBe(false);
+    expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0).toBe(false);
   });
 
   // 〔FW1 · 第四波 4D · 主会话裁 D-e〕删会话前看活不活：活着（条目说活 / tab 栏里活）⇒ 多问一句；说不清（`isLive: null`）⇒ 也多问；
@@ -339,7 +340,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         await answerAskDialog(ok);
       }
       expect(noAskDialog(), "答完了还挂着一个对话框（问的比预期多）").toBe(true);
-      const deleted = invokeMock.mock.calls.some((c) => c[0] === "delete_history_session");
+      const deleted = historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0;
       return { asked, deleted };
     };
     const live = copyText("sessionState.deleteLive.confirm", { label: "T" });
@@ -364,7 +365,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(inner.isOpen).toBe(true); // 视图没被误关
   });
 
-  // 🔴 〔步 12·C 09-20〕标题里的命令名跟上：`delete_remote_history_session` 已退役，
+  // 🔴 〔步 12·C 09-20〕标题里的命令名跟上：`delete_remote_history_session` 已退役，〔散文墓碑〕
   //    远端删除走的是**同一条** `delete_history_session`，只是 `origin` 是那台机器。
   it("删除远端项目最后一个会话 → delete_history_session(origin=hostA) + remoteCache 同步移除（F76 护栏）", async () => {
     const view = new HistoryView();
@@ -379,12 +380,12 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     await Promise.resolve();
     // 远端删除走 SFTP 命令 + 二次确认（两次都得答「确定」才删）
     await answerAskDialog(true);
-    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_history_session"), "只答了一次就删了").toBe(false);
+    expect(historyCalls(invokeMock.mock.calls, "delete_history_session").length > 0, "只答了一次就删了").toBe(false);
     await answerAskDialog(true);
     // 🔴 判的是「**带着那台机器的 origin** 调了那条命令」——只判命令名不够：
     //    合并之后本机与远端**同名**，光判名字的话「远端删除误走了本机那条路」不会红。
-    const remoteCall = invokeMock.mock.calls.find(
-      (c) => c[0] === "delete_history_session" && (c[1] as { origin?: unknown })?.origin === "hostA",
+    const remoteCall = historyCalls(invokeMock.mock.calls, "delete_history_session").find(
+      (c) => c.origin === "hostA",
     );
     expect(
       remoteCall,
@@ -393,14 +394,13 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     ).toBeTruthy();
     // 反向：这一趟**不许**同时冒出一条本机的删除。
     expect(
-      invokeMock.mock.calls.filter(
-        (c) => c[0] === "delete_history_session" && (c[1] as { origin?: unknown })?.origin === "<local>",
-      ),
+      historyCalls(invokeMock.mock.calls, "delete_history_session").filter((c) => c.origin === "<local>"),
       "远端删除顺手也发了一条本机删除",
     ).toEqual([]);
     // F76 承重不变式：删空的远端项目从 remoteCache 同步移除，否则 TTL 内重开会拼回幽灵
     const cache = (view as unknown as { remoteCache: { projects: unknown[] } }).remoteCache;
-    expect(cache.projects.length).toBe(0);
+    // 〔合并 MIG-3b × MIG-2〕删会话经通道（`session-writes.ts::deleteSession`）、替身又多包了一层起会话翻译 ⇒ 应答晚几拍到；等它落定再判。
+    await vi.waitFor(() => expect(cache.projects.length).toBe(0));
   });
 });
 

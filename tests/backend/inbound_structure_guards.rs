@@ -204,6 +204,12 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-read"
                 // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
+                // 〔MIG-1〕`~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
+                | "ssh-config-aliases"
+                | "ssh-config-import"
+                | "ssh-config-resolve"
+                // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O）。
+                | "hooks-diag"
                 // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
                 | "resync"
                 // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
@@ -225,6 +231,9 @@ fn every_registered_command_declares_its_run_kind() {
                 | "skill-install-apply"
                 | "skill-host-list"
                 | "cc-bus-install"
+                // 〔MIG-3a · 09-28 裁 2〕acct-iso 装：经本进程文件管理面建链接 ＋ 抄配置样例（同步文件 I/O）；建链接那条同写面一档。
+                | "acct-iso-install"
+                | "files-link"
                 | "cc-bus-install-state"
                 | "aliases-render"
                 | "aliases-read"
@@ -278,10 +287,12 @@ fn every_registered_command_declares_its_run_kind() {
                 | "transfer-download"
                 | "transfer-start"
                 | "transfer-stop"
+                // 〔MIG-1 收尾〕测试连接：进度格走本连接的应答通道（不丢、与应答同序）⇒ 要拿到应答通道，只能是硬臂。
+                | "remote-probe"
         );
         assert_eq!(
             is_builtin, expected_builtin,
-            "`{}` 的 Builtin 档位不对 —— 只有 `cancel`、链路四条与传输四条该是硬臂",
+            "`{}` 的 Builtin 档位不对 —— 只有 `cancel`、链路四条、传输四条与测试连接该是硬臂",
             spec.name
         );
     }
@@ -309,8 +320,16 @@ fn every_registered_command_declares_its_run_kind() {
         "mcp-sync-hub-apply",
         "skill-install-hub-preview",
         "skill-install-hub-apply",
+        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
+        "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
         "remote-reach",
+        // 〔MIG-1〕端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。
+        "forward-start",
+        "forward-stop",
+        "forward-list",
+        // 〔MIG-1 续〕测试连接：真异步（拨号 · 读 hello · 往返），在 await 点可取消。
+        "remote-probe",
         "bus-list",
         "bus-send",
         "bus-broadcast",
@@ -365,7 +384,8 @@ fn every_registered_command_declares_its_run_kind() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "resync", // 〔RESYNC〕
+        "hooks-diag", // 〔MIG-3b〕
+        "resync",     // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",
@@ -393,6 +413,10 @@ fn every_registered_command_declares_its_run_kind() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
+        // 〔MIG-1〕`~/.ssh/config` 三条（阻塞档，理由在上面 `expected_blocking`）。
+        "ssh-config-aliases",
+        "ssh-config-import",
+        "ssh-config-resolve",
         // 〔MIG-2〕起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
         "launch-local",
         "launch-render-cli",
@@ -401,6 +425,8 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-install-apply",
         "skill-host-list",
         "cc-bus-install",
+        "acct-iso-install",
+        "files-link",
         "cc-bus-install-state",
         "aliases-render",
         "aliases-read",

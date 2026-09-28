@@ -64,8 +64,7 @@ export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
 
 // C04d 批 5c：五个类型换成生成物（源 `ssh_source.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移。
-import type { ImportGroup } from "../generated/ImportGroup";
-import type { ImportMember } from "../generated/ImportMember";
+import { importSshHosts, listSshHostAliases, resolveSshHost, type ImportGroup, type ImportMember } from "../ssh-config-reads";
 
 // E80（2026-08-01）：`describeStage` 与 `ConnectStage` 的再导出**搬去 `machine-card.ts`**。
 //
@@ -676,12 +675,10 @@ export class RemoteSection {
     let aliases: string[] = [];
     let unreadable: string | null = null;
     try {
-      // 同 `mcp-section` 那处：**别只防 reject**，`invoke` 也可能 resolve 成 `undefined`
-      // → 下面 `aliases.length` 抛（T07 审计④）。
-      const got = await commands.list_ssh_host_aliases();
-      if (Array.isArray(got)) aliases = got;
+      // 〔MIG-1 · `99 §2.1 ⑯`〕问本机常驻后端（`ssh-config-aliases`，按形状严格收）。
+      aliases = await listSshHostAliases();
     } catch (e) {
-      console.warn("list_ssh_host_aliases failed:", e);
+      console.warn("ssh-config-aliases failed:", e);
       // 〔W5-UI · 设计/70 §7 #4〕读失败与「真没有别名」原先同形（都是空下拉 ＋ 「未找到」）⇒ 分开说。
       unreadable = String(e);
     }
@@ -866,31 +863,29 @@ export class RemoteSection {
     //   `insertAdjacentElement("afterend")` 是空操作 ⇒ 这块提示从来没进过 DOM（「未找到」「读不了」都没人看得见）。
   }
 
-  /** 选了别名 → resolve_ssh_host → 新增一台机器并填好 → 保存。 */
+  /** 选了别名 → `ssh-config-resolve` → 新增一台机器并填好 → 保存。 */
   private async onImportAlias(): Promise<void> {
     const alias = this.importSelect.value;
     if (!alias) return;
     try {
-      const resolved = await commands.resolve_ssh_host({
-        alias,
-      });
+      const resolved = await resolveSshHost(alias);
       const card = this.appendCard({ ...HOST_DEFAULTS });
       card.applyResolved(resolved, alias);
       await this.save();
       this.showBanner(copyText("remote.import.done", { alias }));
     } catch (e) {
-      console.warn("resolve_ssh_host failed:", e);
+      console.warn("ssh-config-resolve failed:", e);
       this.showBanner(copyText("remote.import.failed", { alias, e: String(e) }));
     } finally {
       this.importSelect.value = "";
     }
   }
 
-  /** F57：批量导入——import_ssh_hosts（智能聚合）→ 预览弹框（可拆分/勾选）→ 建卡。 */
+  /** F57：批量导入——`ssh-config-import`（后端智能聚合）→ 预览弹框（可拆分/勾选）→ 建卡。 */
   private async onBatchImport(): Promise<void> {
     let groups: ImportGroup[];
     try {
-      groups = await commands.import_ssh_hosts();
+      groups = await importSshHosts();
     } catch (e) {
       this.showBanner(copyText("remote.batch.failed", { e: String(e) }));
       return;

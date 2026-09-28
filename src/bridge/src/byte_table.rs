@@ -28,48 +28,18 @@
 //!
 //! # 不在本文件的
 //!
+//! - 〔MIG-3b〕表 A / 表 B 本身（键 · 产线 · 承诺 · 拒绝五形与它们的话 · `uname` 的解读）：共享 crate `deploy-core`
+//!   （本机常驻后端出部署计划要同一份）；本文件再导出那几个名字，自己只留**槽**与取字节口。
 //! - 字节落到哪（条 62 一个常量，与来源无关）；推上去怎么推（`sftp.rs` 部署 · `panorama_bytes::push_to`）。
-//! - 那台机器上已有的那一份是谁（`sftp.rs` 读它字节里的身份戳，`96 §7.2`）。
+//! - 那台机器上已有的那一份是谁（〔MIG-3b〕本机常驻后端出计划时读它字节里的身份戳，`96 §7.2`）。
 
-use crate::copy_table::copy_text;
-
-/// 表 A 的 OS 轴。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum Os {
-    Linux,
-    Windows,
-    Mac,
-}
-
-/// 表 A 的 arch 轴。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum Arch {
-    X86_64,
-    Aarch64,
-}
-
-/// 表 A 的键。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct Key {
-    pub(crate) os: Os,
-    pub(crate) arch: Arch,
-}
-
-/// 要哪一类字节。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Product {
-    /// 后端本体（带身份戳）。
-    Backend,
-    /// 只装代码全景引擎的小程序（没有身份戳，按 `--probe` 的能力表认代）。
-    Panorama,
-}
-
-/// 表 B 的 origin 轴：目标机器是不是自己。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Route {
-    Local,
-    Remote,
-}
+// 〔MIG-3b〕表 A / 表 B 本身（键 · 产线 · 承诺 · 拒绝那五形与它们的话 · `uname` 的解读）搬进了共享的 `deploy-core`：
+//   本机常驻后端出部署计划（`deploy-plan`）要同一份判定。本文件留下的是**槽**（这一版带着哪几份字节）与取字节口。
+#[cfg(test)]
+pub(crate) use deploy_core::key_of;
+pub(crate) use deploy_core::{
+    key_from_uname, promised, Arch, Key, Os, Product, Refusal, Route, LINES, UNAME_CMD,
+};
 
 /// 表里取到的一份字节。
 #[derive(Debug, Clone, Copy)]
@@ -77,260 +47,6 @@ pub(crate) struct Picked {
     pub(crate) bytes: &'static [u8],
     /// 后端：`build.rs` 从**这份字节**里扫出的身份戳（`K-R70`）。全景小程序没有戳 ⇒ `None`。
     pub(crate) build_id: Option<&'static str>,
-}
-
-/// 为什么不给字节 —— **拒绝点在写第一个字节之前**（`96 §7.1.4b`）。五形互不合并：下一步各不相同。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Refusal {
-    /// 答得出是什么机器，但表 A 里那一格没有产线（或根本不在 6 行里）。
-    UnsupportedMachine { os: String, arch: String },
-    /// 问不出 OS。
-    OsUnknown { why: String },
-    /// 问不出 arch。
-    ArchUnknown { why: String },
-    /// 那一格有产线，但这个 origin 今天不承诺那种机器（表 B；例：远端 Windows · 〔V132〕本机 (Linux, aarch64)）。
-    /// 带着 `route`：同一形对「推到远端」与「本机自己」要说两句话（远端那句「只在本机用得上」对本机是假话，`D7`）。
-    NotPromisedHere {
-        os: String,
-        arch: String,
-        route: Route,
-    },
-    /// 那一格有产线、也承诺，但**这一版产物没带**那份字节（开发构建 / 没铺字节）。
-    /// `96 §7.1.4b` 的四个 key 里没有它 —— 并进前四个就把「换一版产物」说成了「不支持这台机器」（`D7`）。
-    NotCarried { os: String, arch: String },
-}
-
-impl Refusal {
-    /// 对用户说的那一句（`machine` = 机器名，本机说「本机」）。**Rust 侧唯一的出口**；
-    /// 每一形的 key 都是字面量（`copy-table.vitest.ts` 按调用形状读它们，与文案表两向相等）。
-    ///
-    /// 〔TL1 · 4C〕多收一个 `product`：全景推字节也走 [`choose`] 之后，同一种拒绝对两件产物要说两句话
-    /// （后端那几句里「它的会话不会自动接上」之类的后果，换成全景就是假话）⇒ 各一组 key（`deploy.refused.*` · `panorama.refused.*`）。
-    pub(crate) fn say(&self, product: Product, machine: &str) -> String {
-        match (product, self) {
-            (Product::Backend, Refusal::UnsupportedMachine { os, arch }) => copy_text(
-                "deploy.refused.unsupportedMachine",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Backend, Refusal::OsUnknown { why }) => copy_text(
-                "deploy.refused.osUnknown",
-                &[("machine", machine), ("why", why)],
-            ),
-            (Product::Backend, Refusal::ArchUnknown { why }) => copy_text(
-                "deploy.refused.archUnknown",
-                &[("machine", machine), ("why", why)],
-            ),
-            (
-                Product::Backend,
-                Refusal::NotPromisedHere {
-                    os,
-                    route: Route::Remote,
-                    ..
-                },
-            ) => copy_text(
-                "deploy.refused.notPromisedHere",
-                &[("machine", machine), ("os", os)],
-            ),
-            (
-                Product::Backend,
-                Refusal::NotPromisedHere {
-                    os,
-                    arch,
-                    route: Route::Local,
-                },
-            ) => copy_text(
-                "deploy.refused.notPromisedLocal",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Backend, Refusal::NotCarried { os, arch }) => copy_text(
-                "deploy.refused.notCarried",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Panorama, Refusal::UnsupportedMachine { os, arch }) => copy_text(
-                "panorama.refused.unsupportedMachine",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Panorama, Refusal::OsUnknown { why }) => copy_text(
-                "panorama.refused.osUnknown",
-                &[("machine", machine), ("why", why)],
-            ),
-            (Product::Panorama, Refusal::ArchUnknown { why }) => copy_text(
-                "panorama.refused.archUnknown",
-                &[("machine", machine), ("why", why)],
-            ),
-            (
-                Product::Panorama,
-                Refusal::NotPromisedHere {
-                    os,
-                    route: Route::Remote,
-                    ..
-                },
-            ) => copy_text(
-                "panorama.refused.notPromisedHere",
-                &[("machine", machine), ("os", os)],
-            ),
-            (
-                Product::Panorama,
-                Refusal::NotPromisedHere {
-                    os,
-                    arch,
-                    route: Route::Local,
-                },
-            ) => copy_text(
-                "panorama.refused.notPromisedLocal",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-            (Product::Panorama, Refusal::NotCarried { os, arch }) => copy_text(
-                "panorama.refused.notCarried",
-                &[("machine", machine), ("os", os), ("arch", arch)],
-            ),
-        }
-    }
-}
-
-impl Os {
-    fn label(self) -> &'static str {
-        match self {
-            Os::Linux => "Linux",
-            Os::Windows => "Windows",
-            Os::Mac => "macOS",
-        }
-    }
-}
-
-impl Arch {
-    fn label(self) -> &'static str {
-        match self {
-            Arch::X86_64 => "x86_64",
-            Arch::Aarch64 => "arm64",
-        }
-    }
-}
-
-/// 那台机器答的 OS 名 → 表 A 的 OS 轴。认两种来源：远端 `uname -s` 的回话；本机 `std::env::consts::OS`。
-fn os_of(s: &str) -> Option<Os> {
-    let upper = s.to_ascii_uppercase();
-    match upper.as_str() {
-        "LINUX" => Some(Os::Linux),
-        "DARWIN" | "MACOS" => Some(Os::Mac),
-        "WINDOWS" | "WINDOWS_NT" => Some(Os::Windows),
-        // Windows 上的 POSIX 层（Git Bash / MSYS2 / Cygwin）的 `uname -s` 形如 `MINGW64_NT-10.0-19045`。
-        _ if ["MINGW", "MSYS", "CYGWIN"]
-            .iter()
-            .any(|p| upper.starts_with(p)) =>
-        {
-            Some(Os::Windows)
-        }
-        _ => None,
-    }
-}
-
-/// 那台机器答的 arch 名 → 表 A 的 arch 轴（`uname -m` 与 `consts::ARCH` 的常见写法）。
-fn arch_of(s: &str) -> Option<Arch> {
-    match s {
-        "x86_64" | "amd64" | "AMD64" => Some(Arch::X86_64),
-        "aarch64" | "arm64" | "ARM64" => Some(Arch::Aarch64),
-        _ => None,
-    }
-}
-
-/// 两个答话 → 表 A 的键。**纯函数**。
-///
-/// 空 ⇒ 问不出（`os_unknown` / `arch_unknown`）；答得出但不是 3 × 2 里的值 ⇒ `unsupported_machine`
-/// （原样带出它答的那两个词）。**问不出 OS 不许当成 Linux**（`96 §7.1.4` 第 4 条）。
-pub(crate) fn key_of(os: &str, arch: &str) -> Result<Key, Refusal> {
-    let (os, arch) = (os.trim(), arch.trim());
-    if os.is_empty() {
-        return Err(Refusal::OsUnknown {
-            why: copy_text("rsByteTable.key.noAnswer", &[]),
-        });
-    }
-    if arch.is_empty() {
-        return Err(Refusal::ArchUnknown {
-            why: copy_text("rsByteTable.key.noAnswer", &[]),
-        });
-    }
-    match (os_of(os), arch_of(arch)) {
-        (Some(os), Some(arch)) => Ok(Key { os, arch }),
-        (o, a) => Err(Refusal::UnsupportedMachine {
-            os: o.map_or_else(|| os.to_string(), |o| o.label().to_string()),
-            arch: a.map_or_else(|| arch.to_string(), |a| a.label().to_string()),
-        }),
-    }
-}
-
-impl Key {
-    /// 说给人听的那一格（「Linux / x86_64」）。
-    pub(crate) fn label(self) -> String {
-        format!("{} / {}", self.os.label(), self.arch.label())
-    }
-
-    /// 本机：目标机器恰好是自己（`consts` 在编译期就是这一份产物的 `TARGET`）。
-    pub(crate) fn this_machine() -> Result<Key, Refusal> {
-        key_of(std::env::consts::OS, std::env::consts::ARCH)
-    }
-}
-
-/// 表 A 里「有产线」的格子（`release.yml` 真编得出字节的那几格；判据对着 `release.yml` 读）。
-pub(crate) const LINES: &[(Product, Key)] = &[
-    (
-        Product::Backend,
-        Key {
-            os: Os::Windows,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Backend,
-        Key {
-            os: Os::Linux,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Backend,
-        Key {
-            os: Os::Linux,
-            arch: Arch::Aarch64,
-        },
-    ),
-    (
-        Product::Panorama,
-        Key {
-            os: Os::Windows,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Panorama,
-        Key {
-            os: Os::Linux,
-            arch: Arch::X86_64,
-        },
-    ),
-    (
-        Product::Panorama,
-        Key {
-            os: Os::Linux,
-            arch: Arch::Aarch64,
-        },
-    ),
-];
-
-/// 表 B：这个 origin 今天承诺哪几种机器（`01 §6.7a`：本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
-///
-/// 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
-/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
-/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
-/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
-/// 由 `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
-pub(crate) fn promised(route: Route, key: Key) -> bool {
-    matches!(
-        (route, key.os, key.arch),
-        (Route::Local, Os::Windows, Arch::X86_64)
-            | (Route::Local, Os::Linux, Arch::X86_64)
-            | (Route::Remote, Os::Linux, _)
-    )
 }
 
 // ═══ 槽：本文件是全仓唯一 `include_bytes!` 可执行字节的地方 ═══════════════════════════
@@ -457,75 +173,27 @@ pub(crate) fn pick(product: Product, key: Key) -> Option<Picked> {
     }
 }
 
-/// 拒绝点（在向目标机器写第一个字节之前）：键 → 产线 → 承诺 → 这一版带没带。五形各在一步上，不合并。
+/// 拒绝点（在向目标机器写第一个字节之前）：键 → 产线 → 承诺（`deploy_core::judge`）→ 这一版带没带（本文件）。五形各在一步上，不合并。
 pub(crate) fn choose(
     product: Product,
     route: Route,
     key: Result<Key, Refusal>,
 ) -> Result<Picked, Refusal> {
-    let key = key?;
-    let (os, arch) = (key.os.label().to_string(), key.arch.label().to_string());
-    if !LINES.contains(&(product, key)) {
-        return Err(Refusal::UnsupportedMachine { os, arch });
-    }
-    if !promised(route, key) {
-        return Err(Refusal::NotPromisedHere { os, arch, route });
-    }
-    pick(product, key).ok_or(Refusal::NotCarried { os, arch })
+    let key = deploy_core::judge(product, route, key)?;
+    pick(product, key).ok_or(Refusal::NotCarried {
+        os: key.os.label().to_string(),
+        arch: key.arch.label().to_string(),
+    })
 }
 
-/// 问那台机器的 (OS, arch) 那条命令（一次性 exec，`exec_site_registry` 登记）。
-const UNAME_CMD: &str = "uname -s -m";
-
-/// `uname -s -m` 的收全结果 → 键。**纯函数**。
-///
-/// 退出码非 0 / 空 ⇒ 问不出 OS（Windows 默认 shell 没有 `uname` 就是这一形，那句 stderr 原样带回）；
-/// 只答一段 ⇒ 问不出 arch；多于两段 ⇒ 问不出 OS（认不出哪段是什么）。
-pub(crate) fn key_from_uname(
-    exit: Option<u32>,
-    stdout: &str,
-    stderr: &str,
-) -> Result<Key, Refusal> {
-    if exit != Some(0) {
-        let said = stderr.trim();
-        return Err(Refusal::OsUnknown {
-            why: if said.is_empty() {
-                copy_text("rsByteTable.key.noAnswer", &[])
-            } else if not_utf8(said) {
-                copy_text("rsByteTable.key.notUtf8", &[])
-            } else {
-                copy_text("rsByteTable.key.said", &[("said", &said.to_string())])
-            },
-        });
-    }
-    let parts: Vec<&str> = stdout.split_whitespace().collect();
-    match parts.as_slice() {
-        [] => key_of("", ""),
-        [os] => key_of(os, ""),
-        [os, arch] => key_of(os, arch),
-        _ if not_utf8(stdout) => Err(Refusal::OsUnknown {
-            why: copy_text("rsByteTable.key.notUtf8", &[]),
-        }),
-        _ => Err(Refusal::OsUnknown {
-            why: copy_text(
-                "rsByteTable.key.unreadable",
-                &[("reply", &(stdout.trim()).to_string())],
-            ),
-        }),
-    }
-}
-
-/// 〔WIN1 · RT1 F4〕那台机器的回话**不是 UTF-8** ⇒ 说 `rsByteTable.key.notUtf8` 那半句（接在「查了什么：问过它，」后面），
-/// 不照抄原文。
-///
-/// 真 Win11 现打（`第四波记录/RT1.md §1.2` 第 3 跳）：Windows 默认 shell 是 PowerShell，它按控制台代码页
-/// （中文系统是 GBK）报「无法将 uname 项识别为 cmdlet…」；回话在后端那一跳按 UTF-8 **有损**解
-/// （`dial/uses.rs`，认不出的字节成了 U+FFFD）⇒ 原样照抄进界面就是一串乱码。
-/// ⇒ 不照抄、也不猜代码页（GBK / Shift-JIS / 1252 都有可能，猜错了一样是乱码），只说「不是 UTF-8」
-/// 与它多半是什么。拒绝本身不变（`96 §7.1.4` 第 4 条：问不出 OS ＝ 拒绝）。
-/// 回话里有 U+FFFD ⇒ 那几个字节在后端按 UTF-8 解时就没解出来（有损解留下的记号）。
-fn not_utf8(s: &str) -> bool {
-    s.contains('\u{FFFD}')
+/// 〔MIG-3b〕这一版为远端带着哪几格后端字节、各自自报的身份 —— 交给本机常驻后端出部署计划的那一份事实
+/// （「这一版带没带」只有放字节的一侧知道）。只列表 A 有产线、表 B 对远端承诺、且真带着的格。
+pub(crate) fn carried_backends() -> Vec<(Key, &'static str)> {
+    LINES
+        .iter()
+        .filter(|(p, k)| *p == Product::Backend && promised(Route::Remote, *k))
+        .filter_map(|(_, k)| Some((*k, pick(Product::Backend, *k)?.build_id?)))
+        .collect()
 }
 
 /// 问远端那台的键。链路本身没通 ⇒ `Err`（普通失败：连都连不上，后面的流也起不来）；问得出答案 ⇒ `Ok(键或拒绝)`。

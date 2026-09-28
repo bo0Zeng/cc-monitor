@@ -85,7 +85,7 @@ pub(crate) const UTF8_CLIENT_ENV: (&str, &str) = ("LC_ALL", "C.UTF-8");
 ///
 /// 实测：**合法内容只会把段数推高，永远不会推低** —— 会话名里的真 TAB 被 tmux 转义成
 /// 字面 `\t` 两个字符（那行段数不变），而 `pane_current_path` 里的真 TAB 会多切一段。
-/// ⇒ `< N` **零误报**；`!= N` 会误伤（monitor 的 `parse_tmux_ls` 今天仍在犯，那一条另立件）。
+/// ⇒ `< N` **零误报**；`!= N` 会误伤（monitor 的 `parse_tmux_ls`〔散文墓碑〕 今天仍在犯，那一条另立件）。
 ///
 /// # 为什么下溢是**完备**检测器
 ///

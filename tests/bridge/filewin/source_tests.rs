@@ -87,7 +87,10 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 // 窗口进程不再经 SFTP 列目录（没有退路，`D11`）⇒ 那个映射函数连同这条判据一起走了；
 // 「后端送的每一格落到行上哪一格」由下面那张逐格表（`files.ls` 的声明现读）接着管。
 
-/// 🔴 **整棵 `filewin/` 上「列一个远端目录」恰好两处，全是问后端 `files-ls`；池子那条列目录命令零处。**
+/// 🔴 **整棵 `filewin/` 上「列一个远端目录」恰好一处，是问后端 `files-ls`；池子那条列目录命令零处。**
+///
+/// 〔MIG-3a · 主会话 09-28 裁 3〕两处 → 一处：`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役，
+/// 第一屏由窗口进程自己列（`proc::first_screen` → `source::list_dir`，落在 `source.rs` 那一处上）。下面「恰好两处」那段是历史。
 ///
 /// 〔F2 · 2026-09-24〕上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
 /// 整棵树恰好一处（`source.rs`）」。窗口改成只经通道说 `call` 之后，那条路整条摘了 ⇒ 判据翻面：
@@ -146,11 +149,9 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
     asking.sort();
     assert_eq!(
         asking,
-        vec![
-            ("entry.rs".to_string(), true),
-            ("source.rs".to_string(), true)
-        ],
-        "问后端列目录的地方不再是「`entry.rs` 与 `source.rs` 各一处」"
+        // 〔MIG-3a · 主会话 09-28 裁 3〕`entry.rs` 那一处（monitor 开窗前替窗口列第一屏）退役：第一屏由窗口进程经 `source::list_dir` 列。
+        vec![("source.rs".to_string(), true)],
+        "问后端列目录的地方不再是「`source.rs` 一处」"
     );
     // 反向自检：这把尺子认得出池子那条命令（否则上面那条零命中恒真）。
     let fake = format!("fn x() {{ {pool_ls} }}");
@@ -211,9 +212,9 @@ fn a_missing_dir_is_an_error_not_an_empty_list() {
 // 🔴〔第七刀 2026-09-21〕远端 home 那一跳 ——〔F7a · 第三波 09-24〕问的是后端 `files-home`
 // ════════════════════════════════════════════════════════════════════════
 //
-// 问 home 那一趟要一个起着的后端（`entry.rs` 的 `ask_home`）⇒ 它自己**没有逻辑**，
-// 有逻辑的两段抽成了 `home_from_reply`（解字节）与 `start_dir_from_home`（能不能当起点），
-// 判据全落在它们身上。失败路径那一半（问不到就别开窗）住 `entry_tests` 那条。
+// 问 home 那一趟要一个起着的后端（〔09-28 裁 3〕窗口进程的 `proc::first_screen`）⇒ 有逻辑的两段抽成了
+// `home_from_reply`（解字节）与 `start_dir_from_home`（能不能当起点），判据全落在它们身上。
+// 失败路径那一半（问不到就别开窗、带原话）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`。
 // ⚠ 第七刀那一版问的是 SFTP 的 `realpath(".")`；「服务端」「对面」这些字眼说的都是那台机器。
 
 /// 〔F7a〕后端那条应答 → 起点：字符串 · `b16`（合法 UTF-8 的）两形都收；

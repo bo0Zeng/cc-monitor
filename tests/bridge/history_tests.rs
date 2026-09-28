@@ -104,73 +104,10 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //   - 「迁移前」旧读者读注解夹具 == 金样（`c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕，子步 4 那一拍对过）
 //     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
 
-/// 〔RW1〕替身门（临时目录，不碰真实 home）。
-fn uf_door(tag: &str) -> (PathBuf, crate::user_files::tests::DiskDoor) {
-    let home = crate::user_files::tests::temp_home(tag);
-    let door = crate::user_files::tests::DiskDoor::new(&home);
-    (home, door)
-}
-
-#[test]
-fn deleting_a_session_hands_the_backend_only_the_sid() {
-    let (home, door) = uf_door("del-sid");
-    let sid = format!("rw1-del-{}", std::process::id());
-    futures::executor::block_on(delete_via_backend(
-        &door,
-        &sid,
-        &format!("/any/projects/-p/{sid}.jsonl"),
-    ))
-    .expect("sid 与文件名对得上 ⇒ 交给后端");
-    assert_eq!(door.deleted_sids.borrow().as_slice(), &[sid.clone()]);
-    // Windows 路径分隔符也认得出 stem。
-    futures::executor::block_on(delete_via_backend(
-        &door,
-        &sid,
-        &format!("C:\\u\\.claude\\projects\\-p\\{sid}.jsonl"),
-    ))
-    .expect("反斜杠路径");
-    std::fs::remove_dir_all(&home).ok();
-}
-
-#[test]
-fn a_sid_that_does_not_match_the_file_name_deletes_nothing() {
-    // 🔴 从前远端那一支「不信前端的 sid、自己从路径算」防的是「删 A 的文件、清 B 的注解」。
-    //    今天后端只收 sid ⇒ 这一闸在两侧同时防：对不上就一个请求都不发。
-    let (home, door) = uf_door("del-mismatch");
-    for path in ["/p/projects/-x/other.jsonl", "/p/projects/-x/s1.txt", ""] {
-        let e = futures::executor::block_on(delete_via_backend(&door, "s1", path))
-            .expect_err("对不上该拒");
-        assert!(e.contains("对不上"), "{path}：{e}");
-    }
-    assert!(
-        door.deleted_sids.borrow().is_empty(),
-        "对不上还是交给后端删了：{:?}",
-        door.deleted_sids.borrow()
-    );
-    std::fs::remove_dir_all(&home).ok();
-}
-
-/// 独立临时 projects 目录（惯例同 utils.rs / watcher.rs 测试）。
-fn temp_projects(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir()
-        .join(format!("ccm-hist-del-{}-{}", tag, std::process::id()))
-        .join("projects");
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-// === F62：create_branch_session 守卫 + 原生分支格式 ===
-
-#[test]
-fn branch_result_camel_case_contract() {
-    let r = BranchResult {
-        session_id: "new-sid".into(),
-        jsonl_path: "/p/new-sid.jsonl".into(),
-    };
-    let j = serde_json::to_string(&r).unwrap();
-    assert!(j.contains("\"sessionId\""), "缺 sessionId: {j}");
-    assert!(j.contains("\"jsonlPath\""), "缺 jsonlPath: {j}");
-}
+// 〔MIG-3b〕删会话那道 stem 一致性闸的两条判据（只交 sid · 对不上一个请求都不发）与
+//   分叉结果形状那一条（驼峰键）随 monitor 那两条命令删了：界面经通道直说那台后端（`src/session-writes.ts`），
+//   分叉成品由金样 `tests/__fixtures__/session-fork.golden.json` 钉（`tests/session-writes.vitest.ts` 读同一份）；
+//   stem 闸是恒真的（会话行的 `sessionId` 由后端按文件名 stem 出），后端删之前自己判「落点恰是 `<sid>.jsonl`」。
 
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机分叉那份实现的四条 IO 判据（`O_EXCL` 不覆盖 · 软链逃逸按 sid 找不到 ·
 // 源零改动 ＋ 新文件原生格式 · 以及它们共用的最小会话夹具）。本机分叉改成 exec 本机后端 `--fork-session` 之后，
@@ -227,12 +164,10 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     //    `--fork-session` 之后，「按 sid 找那份」只剩后端那一处在问 —— monitor 这一侧再出现一处，
     //    就是有人又在本进程里做分叉了（那正是用户裁掉的那一形：monitor 不直接写用户文件）。
     let mine = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
-    let mine_remote =
-        guard_core::production_code(include_str!("../../src/bridge/src/remote_branch.rs"));
+    // 〔MIG-3b〕monitor 分叉那一侧的模块删了（界面经通道直说 `session-fork`），人群只剩 `history.rs` 与后端。
     let theirs = r88_backend_production("src/backend/control/fork_write.rs");
     for (who, src, want) in [
         ("monitor `history.rs`", &mine, 0usize),
-        ("monitor `remote_branch.rs`", &mine_remote, 0),
         ("后端 `fork_write.rs`", &theirs, 1),
     ] {
         let n = src.matches(CALL).count();
@@ -243,16 +178,8 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
                  后端那一侧 ≠ 1 ⇒ 不走共享那份了，或一条路上问了两遍。"
         );
     }
-    // 〔LOC1a〕两侧的分叉交给那台后端的**同一条帧命令**、只有一处发送点（本机 `<local>` 与远端同一个 `fork_on`）。
-    assert_eq!(
-        mine_remote.matches("\"session-fork\"").count(),
-        1,
-        "本机与远端那两支都该经同一处发 `session-fork`（`remote_branch.rs::fork_on`）"
-    );
-    assert!(
-        !mine_remote.contains("connect_and_exec_capture(") && !mine_remote.contains("run_query("),
-        "monitor 的分叉又自己 exec 了（拨号 capture / 一次性本机后端两条路 LOC1a 都删了）"
-    );
+    // 〔MIG-3b〕「只有一处发送点」那一格挪到界面：前端 `chan.call` 的 `session-fork` 只在 `src/session-writes.ts`
+    //   （`frame_query_tests::the_channeled_ops_are_sent_only_through_the_channel` 数 monitor 零字面量）。
 
     // ③ 两条分叉路径上**一处目录枚举都没有** —— 「自己又找了一遍」的形状。
     //
@@ -267,28 +194,15 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
             .map(|l| l.trim().to_string())
             .collect()
     };
-    let local_path = format!(
-        "{}\n{}",
-        // 〔步 12·C 09-20〕`pub fn` → `pub async fn`：合并之后这条命令要 `.await`
-        // 远端那一支。**只是签名字面量跟上，人群一个字没动** —— 切出来的仍是同一个函数。
-        r88_fn_body(&mine, "pub async fn create_branch_session("),
-        // 〔RW1〕本机那一支搬进了 `remote_branch.rs`（exec 本机后端），人群跟着搬。
-        r88_fn_body(
-            &mine_remote,
-            "pub(crate) async fn create_local_branch_session("
-        )
-    );
+    // 〔MIG-3b〕monitor 那一侧没有分叉那条路了（界面直说后端），人群只剩后端那一份。
     // 反向自检：尺子够得着 —— 把针塞进一份副本，量具必须数得出来。
-    let poisoned = format!("{local_path}\n  let _ = std::fs::read{}dir(root);\n", "_");
+    let poisoned = format!("{theirs}\n  let _ = std::fs::read{}dir(root);\n", "_");
     assert_eq!(
         scan(&poisoned).len(),
         1,
         "阳性对照没过 —— 量具此刻无效，下面那条断言是空真"
     );
-    for (who, src) in [
-        ("monitor 的分叉那条路", local_path.as_str()),
-        ("后端 `fork_write.rs`", theirs.as_str()),
-    ] {
+    for (who, src) in [("后端 `fork_write.rs`", theirs.as_str())] {
         let hits = scan(src);
         assert!(
             hits.is_empty(),
@@ -300,96 +214,12 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     }
 }
 
-/// 从生产段里切出一个函数（含它的签名与函数体）—— 供上面那条按函数切人群。
-///
-/// 收尾认的是**列 0 的右大括号**（`rustfmt` 保证顶层 item 这么收）。
-/// 自检两条：切得到 · 切出来的东西有分量（塌成半截时下面的断言会空真）。
-fn r88_fn_body<'a>(src: &'a str, sig: &str) -> &'a str {
-    let at = src
-        .find(sig)
-        .unwrap_or_else(|| panic!("切不到 `{sig}` —— 先修尺子，别改断言"));
-    let rest = &src[at..];
-    let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
-    let body = &rest[..end];
-    assert!(
-        body.len() > 120,
-        "`{sig}` 只切出 {} 字节 —— 切法坏了",
-        body.len()
-    );
-    body
-}
-
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是 `KR88D2` 的 monitor 那一侧（查不到的 sid ⇒ 报错，不静默挑第一个）。
 // monitor 进程里不再有分叉的实现，那条性质只住后端（`fork_write·rs::an_unknown_session_id_is_refused_not_silently_substituted`）。
 
-/// ★ `KR88D2`：**两侧的入参形状一致 —— 都收 sid，都不收路径。**
-///
-/// 🔴 **〔步 12·C 09-20〕本条的人群从「两条命令」变成「一条命令 ＋ 它的远端那一支」。**
-///
-/// 判的性质**一个字没放松**，改的只是人群的住址：`create_remote_branch_session`
-/// 不再是 `#[tauri::command]`，它是合并后那条命令的远端分支。
-/// ⚠ **为什么不干脆只判那一条命令**：那会让本条的牙掉一半 ——
-/// `K-R88` 收的是「**同一件事两个入参形状**」，而「两个形状」今天仍然存在
-/// （一个在 Tauri 命令上、一个在它调的那个函数上）。少判一侧，
-/// 远端那一支哪天退回收路径，本条一声不响。
-///
-/// ⚠ **入参类型两侧今天不同**（命令那条收 `String`、内部那支收 `&str`）——
-/// 那是所有权，不是形状。所以判的是**参数名**（`source_session_id`），不是类型。
-#[test]
-fn both_branch_commands_take_a_session_id_not_a_path() {
-    let local = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
-    let remote = guard_core::production_code(include_str!("../../src/bridge/src/remote_branch.rs"));
-    for (who, src, sig) in [
-        (
-            "本机（合并后那条命令）",
-            &local,
-            "pub async fn create_branch_session(",
-        ),
-        (
-            "远端（那条命令的远端分支）",
-            &remote,
-            "pub(crate) async fn create_remote_branch_session(",
-        ),
-    ] {
-        // 🔴 **收尾括号必须从签名**之后**找起。**〔步 12·C 09-20 实打踩到〕
-        //    原来是 `src[at..].find(')')` —— 而 `pub(crate) async fn …(` 这个签名
-        //    **自己就含一个 `)`**（`pub(crate)` 那个），于是切出来的区间起点大于终点，
-        //    当场 panic 在一条与本条要判的东西毫无关系的地方。
-        let at = src
-            .find(sig)
-            .unwrap_or_else(|| panic!("{who}的签名找不到（`{sig}`）—— 先修尺子"));
-        let after = at + sig.len();
-        let close = src[after..].find(')').expect("签名没有收尾括号");
-        let params = &src[after..after + close];
-        assert!(
-            params.contains("source_session_id:"),
-            "{who}的入参里没有 sid：{params:?}"
-        );
-        assert!(
-            !params.contains("path"),
-            "{who}又收路径了：{params:?}\n\
-                 ⇒ `K-R88` 收的就是「同一件事两个入参形状」，\n\
-                 而多一个可被构造的路径入参就多一条路径穿越面。"
-        );
-    }
-    // 🔴 **〔步 12·C〕本条新增的那一半：`origin` 只许住在命令那一侧。**
-    //    合并之后「哪台机器」是命令的参数；远端那一支拿到的是**已经分过本机**的机器名。
-    //    要是有人把 `Origin` 往内部那支里塞，本机那条路就会第二次去分本机 ——
-    //    而两处分本机正是 `local_origin_registry` 整篇在治的那一形。
-    let remote_sig_at = remote
-        .find("pub(crate) async fn create_remote_branch_session(")
-        .expect("切不到远端那一支");
-    let remote_after = remote_sig_at + "pub(crate) async fn create_remote_branch_session(".len();
-    let remote_close = remote[remote_after..]
-        .find(')')
-        .expect("远端那一支的签名没有收尾括号");
-    let remote_params = &remote[remote_after..remote_after + remote_close];
-    assert!(
-        !remote_params.contains("Origin"),
-        "远端那一支收了 `Origin` —— 它拿到的应当是**已经分过本机**的机器名（`host: &str`）。\n\
-             收 `Origin` 就意味着它要自己再分一次本机，而那正是「同一个判断有两个住址」。"
-    );
-}
+// 〔MIG-3b〕`KR88D2`「两侧入参都收 sid、都不收路径」那一条随
+//   monitor 那两条分叉命令一起退役：今天只有一处发出分叉（界面 `session-writes.ts::forkSession`，请求体恰好 `{sid, uuid}`，
+//   由金样 `session-fork.golden.json` 的 `request` 钉），后端入口只认这两格。
 
 // P3 归并：iso_parse_* 测试已搬到 utils::tests（函数本身搬到 utils）。
 

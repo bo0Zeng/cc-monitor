@@ -110,8 +110,9 @@ pub struct Row {
 /// # 过进程边界的是它，不是 [`Row`]
 ///
 /// 上一版这里登记着一条代价：交给窗口进程的**第一屏**走 `Vec<Row>`，于是那一屏
-/// 没有链接与时间两格。那份文件（`proc.rs`）后来进了写区 ⇒ `proc::OpenRequest::rows`
-/// 换成了 `Vec<Listed>`，那条代价没了；`proc_tests` 的种子对拍里两格都在，丢一格就红。
+/// 没有链接与时间两格。那份文件（`proc.rs`）后来进了写区 ⇒ 种子里那一屏
+/// 换成了 `Vec<Listed>`，那条代价没了。〔MIG-3a · 09-28 裁 3〕那一屏今天不过进程边界了（窗口进程自己列，`proc::first_screen`），
+/// 链接与时间两格直接从 [`row_from_ls_entry`] 来。
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Listed {
     /// 那五格。
@@ -599,7 +600,7 @@ pub fn list_local(dir: &Path) -> Result<Vec<Listed>, String> {
 ///
 /// # 🔴 抽成纯函数的理由
 ///
-/// 问 home 那一趟（`entry.rs` 的 `ask_home`）要一个起着的后端才跑得起来
+/// 问 home 那一趟（〔09-28 裁 3〕窗口进程的 `proc::first_screen`）要一个起着的后端才跑得起来
 /// ⇒ 那条路上**有逻辑的一段**就是这里（连同 [`home_from_reply`] 的解字节），抽出来它就有判据了。
 ///
 /// 〔F7a · 第三波 2026-09-24〕改过名（旧名带着 SFTP 那一问的字眼）：第七刀那一版问的是
@@ -644,7 +645,7 @@ pub const CMD_HOME: &str = "files-home";
 /// 🔴〔F7a · 第三波 2026-09-24〕**这一问从 SFTP 换到了后端。** 上一版这里是一个
 /// async 函数（monitor 为「`.` 是哪儿」单拨一条 SFTP，走池子那条 `realpath` 命令），
 /// 它是 monitor 那一侧**最后一处**碰 SFTP 的地方；
-/// 现在问的是后端 `files-home`，经通道宿主的同一个句柄（`entry.rs` 的 `ask_home`）。
+/// 现在问的是后端 `files-home`（〔MIG-3a · 09-28 裁 3〕窗口进程经通道问，`proc::first_screen`）。
 ///
 /// 两道：① `path` 解成字节 —— **不是合法 UTF-8 就拒**（窗口的路径是字符串，有损解码之后
 /// 寻址不到那个目录，开出来的是别处）；② 能不能当起点，交 [`start_dir_from_home`]。

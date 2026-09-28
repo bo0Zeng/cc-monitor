@@ -55,7 +55,7 @@ fn table_with(origin: &str) -> Table {
     let t: Table = Mutex::new(BTreeMap::new());
     register(
         &t,
-        &json!({ "origin": origin, "dial": {"host": "h", "port": 22, "user": "u", "key_path": "/k"} }),
+        &json!({ "origin": origin, "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}} }),
     )
     .unwrap();
     t
@@ -211,4 +211,50 @@ async fn skill_preview_and_apply_go_through_the_hub() {
     .await
     .expect_err("同一台也看差异了");
     assert_eq!(same, "refused");
+}
+
+/// 远端答「按码说」：被写那台 CLI 信封答 `stale` ⇒ 枢纽回的也是 `stale`（〔主会话 09-28 裁〕别压成 `refused`）。
+struct CodedRemote;
+impl Remote for CodedRemote {
+    fn run<'a>(
+        &'a self,
+        _dial: &'a Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        Box::pin(async { Err("不该走到这里".to_string()) })
+    }
+    fn run_coded<'a>(
+        &'a self,
+        _dial: &'a Value,
+        _command: String,
+        _stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::remote_ask::Said>> + Send + 'a>> {
+        Box::pin(async {
+            Err(crate::remote_ask::Said {
+                code: Some("stale".to_string()),
+                message: "盘上那份在看差异之后被改过".to_string(),
+            })
+        })
+    }
+}
+
+#[tokio::test]
+async fn the_hub_passes_the_remote_code_through() {
+    let (_h, dyn_h) = here(&[(
+        "mcp-sync-source",
+        json!({ "path": "/a/.mcp.json", "text": "S" }),
+    )]);
+    let t = table_with("devbox");
+    let (code, said) = mcp_apply(
+        &dyn_h,
+        &json!({ "from": null, "fromDir": "/a", "to": "devbox", "toDir": "/b",
+                 "expectSource": "S", "target": null, "take": ["x"], "overwrite": [] }),
+        &t,
+        &CodedRemote,
+    )
+    .await
+    .expect_err("被写那台答了 stale");
+    assert_eq!(code, "stale", "{said}");
+    assert!(said.contains("被改过"));
 }

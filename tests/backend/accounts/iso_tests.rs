@@ -259,7 +259,7 @@ fn the_shellinit_fence_is_checked_here_and_matches_the_vendored_script() {
     assert!(said.contains("别贴"), "{said}");
     assert_eq!(fenced(String::new()).unwrap_err().0, "no_fence");
     assert_eq!(fenced(e.to_string()).unwrap_err().0, "no_fence");
-    let script = include_str!("../../../src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso");
+    let script = include_str!("../../../src/shared/cc-acct-iso/scripts/cc-acct-iso");
     assert!(script.len() > 1000, "vendored 脚本没读进来");
     for fence in [b, e] {
         assert!(

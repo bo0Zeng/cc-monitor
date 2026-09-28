@@ -230,6 +230,42 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`ssh_source.rs` 里那三条，〔散文墓碑〕）搬进后端。
+    (
+        "ssh-config-aliases",
+        "别名清单：后端 `dial/ssh_config.rs` 读 `~/.ssh/config` 出成品 `{aliases}`；前端 `src/ssh-config-reads.ts` 按形状收，monitor 零 `.ssh` 读面",
+    ),
+    (
+        "ssh-config-import",
+        "批量导入预览：逐个 `ssh -G` ＋ 聚合都在后端（`dial/ssh_config.rs::aggregate_ssh_hosts`），成品 `{groups}`；前端按形状收",
+    ),
+    (
+        "ssh-config-resolve",
+        "一个别名的有效连接参数：`ssh -G` 由后端起（`dial/ssh_config.rs::resolve`），monitor 从此不起 `ssh`（`00 §1.1`「monitor 零 SSH」）",
+    ),
+    // 〔MIG-1 续 · `99 §2.1 ⑬`〕测试连接：monitor 那条 Tauri 命令与它手里那份探针退役，本机后端组请求、拨一次、回结局。
+    (
+        "remote-probe",
+        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/remote-probe.ts` 按恰好的键集合收",
+    ),
+    // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话：monitor 那两条 Tauri 命令（本机 · 远端）与它们那份解析退役，那台后端出成品。
+    (
+        "tmux-list",
+        "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/tmux-reads.ts` 按恰好的键集合收",
+    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
+    (
+        "forward-list",
+        "列转发：后端 `dial/forwards.rs::list_with` 出成品 `{forwards}`；前端 `src/port-forward-reads.ts` 按恰好的键集合收",
+    ),
+    (
+        "forward-start",
+        "起一条转发：后端查自己的可达表、开 `use: forward` 链路、等 ack 才进账（`dial/forwards.rs::start_with`）；monitor 零转发账",
+    ),
+    (
+        "forward-stop",
+        "停一条转发：后端从账上摘掉 ⇒ 链路被收、本地口放掉（`dial/forwards.rs::stop_with`）",
+    ),
     // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染：原 monitor Tauri 命令（`render_ccm_launch` · `render_launch_payload` ·
     //   `relay_endpoint_for_launch` · `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕）。
     (
@@ -248,6 +284,23 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "launch-local",
         "本机起会话整条：本机后端出成品 `{cmd, launchId}`（`control/launch_render/local.rs`）；前端 `src/launch-render.ts::planLocalLaunch`，\
          monitor 只剩开终端窗口（`open_local_terminal`）",
+    ),
+    // 〔MIG-3b · `设计/05 §9` 第 12 条〕删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
+    (
+        "files-delete-session",
+        "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
+         monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
+    ),
+    (
+        "session-fork",
+        "后端出成品 `{sessionId, jsonlPath}`（`fork_write.rs`，sid / uuid 在入口过 `session_id_ok`）；前端 `src/session-writes.ts::forkSession` 问、\
+         `decodeFork` 按恰好的键集合收（金样 `session-fork.golden.json`），monitor 这一侧零发送点",
+    ),
+    // 〔MIG-3b · `设计/95 §6`〕钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
+    (
+        "hooks-diag",
+        "后端出成品 `{diagnosis, snippet_home, snippet_bare, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat）；\
+         前端 `src/settings/cc-bus-hooks-section.ts::fetchHooksReport` 问、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
@@ -399,7 +452,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "tasks-list",
         "后端出成品 `{tasks}`（字段语义挪进后端 `tasks_query.rs::task_entry`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
-         ⚠ monitor 自己**另有**一处问它（本机任务 watcher，见 [`ASKED_BY_MONITOR_ITSELF`]）—— 那是推送，不是替界面转",
+         〔MIG-3b〕推送那一路也不经 monitor 问了：后端 `tasks_changed` 帧 ⇒ 通道 `session-tasks`，界面收到自己重问",
     ),
     // 〔SH1 · V136〕驾驶舱读面两条：后端转调 cc-bus 新加的机器可读读命令、出成品，界面 `cc-bus-control.ts` 按形状收；
     //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。
@@ -497,6 +550,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "acct-iso-shellinit",
         "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
     ),
+    (
+        "acct-iso-install",
+        "〔MIG-3a · 09-28 裁 2〕新帧命令：cc-acct-iso 落进用户目录（链接走写面 `files-link` ＋ 配置样例 ＋ 记 skill 装记录）；\
+         从前是部署命令经 ssh 跑安装脚本",
+    ),
     // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     (
         "skill-install-hub-preview",
@@ -545,12 +603,8 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
          应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
     // 〔MIG-3a〕`skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
-    (
-        "tasks-list",
-        1,
-        "〔LOC1a〕本机任务 watcher（`tasks.rs::fetch_session_tasks`）：notify 报「哪个 sid 变了」之后经 `<local>` 问成品、推 `task-update` \
-         —— 推送那一路是 monitor 自己的事（`05 §14.3`「推送那一路」待定：是否换 `subscribe` 不在本件），它不解释字段",
-    ),
+    // 〔MIG-3b · `99 §2.1 ㉓②`〕`tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`tasks_changed` 帧 ⇒ 通道 `session-tasks`），
+    //   monitor 零处再问它。
 ];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。
@@ -810,8 +864,8 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // `设计/01 §5 D11`「后端是给定的、不留退路」。RT1 F2 读数：旧那条 `run_query` 只认 exe 旁边那一份文件、
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
-// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /
-//    `acct_iso_deploy_tests` 的部署那一步：假后端那一侧真收到了帧命令）；
+// ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /〔散文墓碑〕
+//    `acct_iso_deploy_tests`〔散文墓碑〕 的部署那一步：假后端那一侧真收到了帧命令）；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
 // ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}
@@ -1179,12 +1233,7 @@ fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
 /// D5 登记表：**造期限的那一手**（`Deadline::within(` 的调用点，按「所在函数」记）。每行写理由。
 /// 多一处 = 又长出一个发起点（进表、写这件事是什么、值给多少）；少一处 = 那件事不再有期限了（或者搬了家没改表）。
 const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
-    (
-        "tasks.rs",
-        "fetch_session_tasks",
-        1,
-        "问一个会话的任务（`tasks-list`，一问；〔LOC1a〕回成品、值住调用方 `TASKS_BUDGET`）",
-    ),
+    // 〔MIG-3b〕`tasks.rs` 那一行摘了：monitor 那份任务 notify 删了，不再问 `tasks-list`。
     (
         "subagent.rs",
         "query",
@@ -1206,12 +1255,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     ),
     // 〔合并 DL1 × 主线 06b5dc08〕LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // 〔MIG-3a〕acct-iso 两问那两个发起点摘了：界面经通道直问（`src/acct-iso-reads.ts`），期限在那边造。
-    (
-        "remote_branch.rs",
-        "fork_on",
-        1,
-        "在那台分叉一条会话（`session-fork`，一问）：`FORK_BUDGET`",
-    ),
+    // 〔MIG-3b〕在那台分叉一条会话那一行摘了：monitor 不再发（界面经通道直说 `session-fork`，期限在界面那一手造）。
     (
         "session_skeleton.rs",
         "read_session_lines",
@@ -1219,21 +1263,9 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "按行号取一段（一次 invoke 一问）：前端交「那一件还剩多少」（`left_ms`），过进程边界在这里换回绝对时刻 —— \
          造那一件期限的一手在前端（`tab-stream-view.ts` 的往上翻 / 丢格之后往后补）",
     ),
-    // 〔SH1 · V136〕远端钩子诊断：三趟（取环境 · 读 settings.json · 逐条 stat）共用一个总时限。
-    (
-        "hooks_diag.rs",
-        "diagnose_remote_cc_bus_hooks",
-        1,
-        "远端 cc-bus 钩子诊断问那台后端的三趟（`footprint-probe` ×2 ＋ `files-peek`）共用 `REMOTE_DIAG_BUDGET`（30 s）",
-    ),
+    // 〔MIG-3b〕远端钩子诊断那一行摘了：monitor 不再问（界面经通道直问 `hooks-diag`，期限在界面那一手造）。
     // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/mcp-reads.ts`），期限在那边造。
-    // 〔SH1〕列远端 tmux 会话问那台后端（`tmux-list`，一问）。
-    (
-        "backend/control/tmux.rs",
-        "list_remote_tmux",
-        1,
-        "列那台 tmux 会话（`tmux-list`，一问；值 `TMUX_LIST_BUDGET` 15 s —— 后端那一趟 `tmux ls` 自带 5 s 上界）",
-    ),
+    // 〔SH1〕列远端 tmux 会话那一行（monitor 问那台后端 `tmux-list`）〔MIG-1 续〕摘了：界面经通道直问（`src/tmux-reads.ts`），期限在那边造。
 ];
 
 /// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。

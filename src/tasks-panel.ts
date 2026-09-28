@@ -4,11 +4,10 @@
  * 数据源：那台机器的后端 `tasks-list`（〔RM1b · 第四波〕本机与远端同一条路，按 `origin` 问）。
  * 〔LOC1a · 第四波 4D · C4e 批 4〕Tab 创建时**经通道直接问**（`chan.call(origin, "tasks-list")`），后端出成品 `{tasks}`，
  * 这里按形状严格收（{@link decodeTasks}；字段语义只住后端 `observe/tasks_query.rs::task_entry`）。
- * 本机另有 monitor 的 watcher 推 `task-update`（它也读同一份成品，不解释字段）。
- *
- * 〔RM1b〕**远端没有推送**（后端出方向加帧要动 `wire.rs`，第四波不在本件）。远端 tab 的新鲜度靠
- * 「**被切到的那一刻 / 任务面板被展开的那一刻**」现问一次 —— 零定时器，不轮询。
- * ⚠ 买不到：盯着一个远端 tab 不动时，任务的变化不会自己出现（切走再切回、或点开面板就有）。
+ * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕**变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `tasks_changed{sid}` 帧；
+ * monitor 交进通道 `subscribe(origin, "session-tasks")`（{@link SESSION_TASKS_KIND}），界面收到那个 sid 就重问一次
+ * （{@link tasksChangedItems} 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
+ * 「被切到的那一刻 / 面板被展开的那一刻」现问一次那条照旧（兜住订阅建立之前那一窗）。
  * sid → origin 由 {@link fetchSessionTasks} 记下（Tab 创建时那一次就带着 origin）。
  *
  * UI 形态（v2.3 调整后）：
@@ -36,13 +35,24 @@ import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 
-// C02：改成从生成物 re-export（源：`src/bridge/src/tasks.rs` 的 `TaskEntry`）。
-// 保持 `export` 名字不变 ⇒ 别的模块的 import 一行都不用改。
-import type { TaskEntry } from "./generated/TaskEntry";
 import { copyText } from "./copy-table";
-// 本文件内部也用 `TaskEntry`（4 处），所以 import + re-export 都要有
-// ——与 events.ts 同一个坑，只写 `export type { … } from` 不会带进本地作用域。
-export type { TaskEntry };
+
+/**
+ * `tasks-list` 成品里的一个任务（线上形状：跨语言金样 `tests/__fixtures__/tasks-list.golden.json` 钉住，{@link decodeTasks} 严格收）。
+ * 〔MIG-3b〕原来是 monitor `tasks.rs::TaskEntry` 的生成物；那份文件随任务 notify 进后端删了，形状手写在这里。
+ */
+export type TaskEntry = {
+  id: string;
+  subject: string;
+  description?: string;
+  activeForm?: string;
+  status: string;
+  blocks: string[];
+  blockedBy: string[];
+};
+
+// 〔MIG-3b · ㉓②〕`session-tasks` 那条流的串与读格函数住叶子模块 `src/tasks-stream.ts`（`events.ts` 也要它，避免 import 成环）。
+export { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 
 function loadCollapsed(): boolean {
   const v = safeGet(LS_KEYS.tasksPanelCollapsed);

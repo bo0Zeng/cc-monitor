@@ -6,7 +6,7 @@
 //
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
-import { readAcctIsoSnippet, readAcctIsoStatus } from "../acct-iso-reads";
+import { installAcctIso, readAcctIsoSnippet, readAcctIsoStatus, type AcctIsoInstalled } from "../acct-iso-reads";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
@@ -36,7 +36,6 @@ import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import {
   askAcctIsoCmd,
   validateAcctName,
-  deriveAcctIsoDir,
   type AcctIsoStep,
 } from "./acct-deploy";
 import { askConfirm } from "../ask-dialog";
@@ -827,8 +826,7 @@ export class AccountsSection {
         const status = await readAcctIsoStatus(this.origin);
         this.noteInstalled(status.installed);
         if (!status.installed) {
-          const dest = deriveAcctIsoDir(host.user);
-          this.renderNeedsDeploy(host, dest);
+          this.renderNeedsDeploy();
           return;
         }
       } catch (e) {
@@ -839,8 +837,12 @@ export class AccountsSection {
     this.renderNotEnabled(manifestPath, reason);
   }
 
-  /** F5：远端没装 cc-acct-iso → 一键部署（vendored 内嵌 → sftp 推 → 装软链，不碰 rc）。 */
-  private renderNeedsDeploy(host: RemoteHostConfig, dest: string | null): void {
+  /**
+   * F5：远端没装 cc-acct-iso → 一键装（那台后端自己带着那份字节、落点它自己算、链接 ＋ 配置 ＋ 记账，不碰 rc）。
+   * 〔MIG-3a · 主会话 09-28 预裁〕从前是 monitor 推字节（`deploy_remote_acct_iso`〔散文墓碑〕，落点由这里按用户名推）再问那台落进用户目录；
+   * 今天只问那台一次 `acct-iso-install`。
+   */
+  private renderNeedsDeploy(): void {
     const box = document.createElement("div");
     box.className = "accounts-needs-deploy";
 
@@ -849,21 +851,9 @@ export class AccountsSection {
     h.textContent = copyText("accounts.needsDeploy.title");
     box.appendChild(h);
 
-    // dest 推不出（user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
-    if (!dest) {
-      const p = document.createElement("div");
-      p.className = "accounts-ne-desc";
-      p.textContent =
-        copyText("accounts.needsDeploy.noPath");
-      box.appendChild(p);
-      this.body.appendChild(box);
-      return;
-    }
-
     const p = document.createElement("div");
     p.className = "accounts-ne-desc";
-    p.textContent =
-      copyText("accounts.needsDeploy.intro", { dest });
+    p.textContent = copyText("accounts.needsDeploy.intro");
     box.appendChild(p);
 
     const btn = mkBtn(copyText("accounts.needsDeploy.deploy"));
@@ -871,8 +861,9 @@ export class AccountsSection {
       btn.disabled = true;
       const prev = btn.textContent;
       btn.textContent = copyText("accounts.needsDeploy.deploying");
-      void commands
-        .deploy_remote_acct_iso({ cfg: host, destDir: dest })
+      // 〔MIG-3a · 09-28 预裁〕一步：问那台后端 `acct-iso-install`（字节它自己带着；幂等：一致的不写、已在的不动）。
+      void installAcctIso(this.origin)
+        .then(installedLine)
         .then(
           (msg) => {
             showActionFailureToast(copyText("accounts.needsDeploy.done"), msg, {
@@ -1583,4 +1574,21 @@ function mkBtn(text: string): HTMLButtonElement {
   b.type = "button";
   b.textContent = text;
   return b;
+}
+
+/** 〔MIG-3a · 09-28 裁 2〕`acct-iso-install` 的成品 ⇒ 给人读的一两句（已在的不动，如实说）。 */
+function installedLine(r: AcctIsoInstalled): string {
+  const parts = [
+    r.written > 0
+      ? copyText("accounts.needsDeploy.landed", { version: r.version, dest: r.dest, written: String(r.written) })
+      : copyText("accounts.needsDeploy.current", { version: r.version, dest: r.dest }),
+    r.linked
+      ? copyText("accounts.needsDeploy.linked", { link: r.link })
+      : copyText("accounts.needsDeploy.linkKept", { link: r.link }),
+    r.configWritten
+      ? copyText("accounts.needsDeploy.configWritten", { config: r.config })
+      : copyText("accounts.needsDeploy.configKept", { config: r.config }),
+  ];
+  if (r.recordFailed) parts.push(r.recordFailed);
+  return parts.join("");
 }

@@ -136,9 +136,8 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   // 留存与实时行可能重叠 → 按 per-file seq 去重。
   const seen = new Set<number>();
   let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
-  // **必须 await**：起停事件的监听注册完、会话流订阅登记好再往下走。
-  // **windowScoped:true**：起停事件照旧按窗口作用域监听（详 BindEventsOptions.windowScoped）；
-  // 会话流的格由通道按窗口定向交（`chan.ts`）。
+  // **必须 await**：会话流订阅登记好再往下走。
+  // 会话流的格由通道按窗口定向交（`chan.ts`）。〔MIG-1 收尾 · V41〕原先那一项按窗口作用域监听的选项随 `bindEvents` 里最后的 Tauri 监听一起删了。
   await bindEvents(
     {
       onLine: (e) => {
@@ -163,15 +162,13 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
       onSessionStarted: (s) => {
         if (s === sid) tabs.reviveTab(s);
       },
-      // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。
-      onSessionUnseen: (s) => {
-        if (s === sid) tabs.markUnseen(s);
-      },
+      // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（与主窗一致，免视图窗停在陈旧的「活」）。〔MIG-1 续〕机器级：落这台上的那一条。
+      onOriginUnseen: (o) => tabs.markOriginUnseen(o),
       onBatchStart: () => tabs.onBatchStart(),
       onBatchEnd: () => tabs.onBatchEnd(),
       onStreamGap: (o) => tabs.onStreamGap(o),
     },
-    { windowScoped: true, streams: [{ origin, kind: `session-lines/${sid}` }] },
+    { streams: [{ origin, kind: `session-lines/${sid}` }] },
   );
 
   bindErrorToast();

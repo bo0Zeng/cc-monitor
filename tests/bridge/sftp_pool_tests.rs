@@ -175,11 +175,11 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
         "后端的 home 没原样转给传输台"
     );
     assert_eq!(
-        req["args"]["dial"]["host"], "example.invalid",
+        req["args"]["dial"]["machine"]["host"], "example.invalid",
         "拨号请求不是那台远端的"
     );
     assert_eq!(
-        req["args"]["dial"]["key_path"], "/k",
+        req["args"]["dial"]["machine"]["keyPath"], "/k",
         "拨号请求只该带私钥路径（且要带）"
     );
 

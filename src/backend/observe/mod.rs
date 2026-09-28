@@ -20,6 +20,8 @@
 //! 条数由 `crate::layering_guard` 钉住 —— **多一个就红**，逼人回答「这条也该跨层吗」。
 
 pub mod accounts_query;
+// 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）。
+pub(crate) mod cc_bus_hooks;
 // 〔STC · `设计/90 §4` 阶段 C〕会话事实（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）的本体；帧面宿主在顶层 `read_face`。
 pub(crate) mod facts_query;
 // 〔TL3 · 审计 F 🔴-6〕读路径越界围栏的唯一住址（`设计/15 §4.2` · `§5.3 C5`）：`history_query` 与 `search_query` 都经它。
@@ -27,11 +29,14 @@ pub(crate) mod fence;
 pub(crate) mod fs;
 pub mod history_query;
 pub mod search_query;
+// 〔MIG-1 · `99 §2.1 ⑬`〕会话账本：可重连 / 已结束由这台后端裁、发成品帧（挂在 watcher 发帧的出口上）。
+pub(crate) mod session_ledger;
 // 〔RM1b · 第四波〕插件市场只读枚举（`plugins-marketplaces` 帧命令的本体；从 monitor `plugins.rs` 原样搬来）。
 pub(crate) mod plugins_query;
 // 〔RM1b · 第四波〕会话的任务列表（`tasks-list` 帧命令的本体；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod tasks_query;
-// 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
+pub(crate) mod tmux_list; // 〔MIG-1 续 · ⑬〕`tmux-list` 出成品（解析从 monitor `parse_tmux_ls`〔散文墓碑〕 搬来）
+                          // 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
 pub(crate) mod turn_detect;
 pub(crate) mod user_inputs;
 pub mod watcher;
