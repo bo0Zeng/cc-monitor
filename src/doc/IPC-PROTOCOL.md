@@ -2555,6 +2555,44 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 `label`（单成员组 = 完整别名，多成员 = 基名）· `host` / `port` / `user` / `keyPath`（组首）· `addresses`（其余地址，端口不同则 `host:port`）·
 `jump`（组内首个非空 proxyjump）· `members`（`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原）。
 
+#### `forward-start`：起一条本地端口转发（MIG-1，09-28，F58 `-L`）
+
+`99 §2.1 ⑬`：转发账住本机常驻后端（`dial/forwards.rs`），界面问 `<local>`；monitor 那三条 Tauri 命令退役。
+
+```text
+→ {"id":"f1","cmd":"forward-start","args":{"origin":"dev","localPort":15432,"remoteHost":"localhost","remotePort":5432}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"id":"fwd-1"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过、本机后端才知道怎么够到它） |
+| `localPort` / `remoteHost` / `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
+| `id` | ← | 这条转发的号（`fwd-<n>`，本进程内单调） |
+
+先过围栏（端口 0 / 远端 host 空白 ⇒ `bad_spec`，在任何查表 / 拨号之前），再查可达表，再在池里那条 SSH 上开 `use: forward` 链路、**等 ack**：口绑好了、连上了才回成功（才进账）。
+错误码：`invalid_args`（缺格 / 类型不对）· `bad_spec` · `unreachable`（可达表里没有那台）· `full`（账上已满 64 条）· `failed`（ack 说不成，原话带在 message 里）。
+只有帧面（`cli_control::STREAM_ONLY`）：账住常驻那一个进程，一次性进程开出来的转发随进程退出就没了。
+
+#### `forward-stop`：停一条转发（MIG-1，09-28）
+
+```text
+→ {"id":"f2","cmd":"forward-stop","args":{"id":"fwd-1"}}
+← {"kind":"reply","id":"f2","ok":true,"data":{"id":"fwd-1"}}
+```
+
+从账上摘掉 ⇒ 那条链路被收 ⇒ 放掉本地口、收掉在飞隧道（到那台的 SSH 连接是共用的，不断）。错误码：`invalid_args`（缺 `id`）· `not_found`。只有帧面。
+
+#### `forward-list`：列转发（MIG-1，09-28）
+
+```text
+→ {"id":"f3","cmd":"forward-list","args":{}}
+← {"kind":"reply","id":"f3","ok":true,"data":{"forwards":[{"id":"fwd-1","origin":"dev","localPort":15432,"remoteHost":"localhost","remotePort":5432,"state":"running","connCount":3}]}}
+```
+
+**入参：无**。`state`：`running`（链路还在）/ `error`（链路自己收工了：远端断开 · 本地口 accept 失败；留在账上等用户停）。
+`connCount`：累计接进的连接数（链路那一侧每接一条报一行，照抄）。账是本进程一张：界面重开之后列得出上次开的；后端重启 ⇒ 空。只有帧面。
+
 #### `resync`：手动对齐（RESYNC，09-27，V149）
 
 ```text

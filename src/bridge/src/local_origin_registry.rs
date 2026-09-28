@@ -110,9 +110,8 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
     //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
     //   **表只许变短，这一次它真的短了。**
-    // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
-    //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
-    ("dial_host.rs", "forward"),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一行（宿主起转发那个函数）还掉了：转发账进了本机常驻后端，查的是后端自己的可达表，
+    //   monitor 不再查远端配置。本机那条路仍没有端口转发（可达表里没有 `<local>` ⇒ 回 `unreachable`，明说）。
     // 〔LOC1a · 第四波 4D〕`remote_branch.rs::create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，
     //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
     ("remote_history.rs", "require_cfg_by_label"),

@@ -320,13 +320,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Unassigned,
         "`authorized_keys` 那串在 monitor 拼、经拨号面写",
     ),
-    (
-        "start_forward",
-        Lane::Unassigned,
-        "端口转发经本机后端拨号面，账在 monitor",
-    ),
-    ("stop_forward", Lane::Unassigned, "端口转发的账在 monitor"),
-    ("list_forwards", Lane::Unassigned, "端口转发的账在 monitor"),
+    // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
     (
         "panorama_call",
         Lane::Unassigned,

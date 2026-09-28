@@ -13344,11 +13344,6 @@
       "zh": "{e}（原文 {line}）",
       "args": ["e", "line"]
     },
-    "rsSshLink.parse.noAccepted": {
-      "kind": "error",
-      "zh": "转发计数行没有 accepted（原文 {line}）",
-      "args": ["line"]
-    },
     "rsSshLink.dial.noReason": {
       "kind": "error",
       "zh": "本机后端没说原因",
@@ -13418,16 +13413,6 @@
       "kind": "error",
       "zh": "本机后端没答出远端的起始目录：{v}",
       "args": ["v"]
-    },
-    "rsDialHost.forward.connectFailed": {
-      "kind": "error",
-      "zh": "连接 {machine} 失败：{e}",
-      "args": ["machine", "e"]
-    },
-    "rsDialHost.forward.noConfig": {
-      "kind": "error",
-      "zh": "未找到远端配置：{machine}",
-      "args": ["machine"]
     },
     "rsDialHost.open.timeout": {
       "kind": "error",
@@ -13623,26 +13608,6 @@
       "kind": "error",
       "zh": "通道口绑不上回环：{e}",
       "args": ["e"]
-    },
-    "rsPortForward.stop.notFound": {
-      "kind": "error",
-      "zh": "未找到转发：{id}",
-      "args": ["id"]
-    },
-    "rsPortForward.spec.remotePort": {
-      "kind": "error",
-      "zh": "远端端口必须 > 0",
-      "args": []
-    },
-    "rsPortForward.spec.remoteHost": {
-      "kind": "error",
-      "zh": "远端 host 不能为空",
-      "args": []
-    },
-    "rsPortForward.spec.localPort": {
-      "kind": "error",
-      "zh": "本地端口必须 > 0",
-      "args": []
     },
     "rsOrigin.route.blank": {
       "kind": "error",
@@ -15281,6 +15246,16 @@
       "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
       "args": []
     },
+    "portForwardReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的转发清单，两端版本对不上",
+      "args": []
+    },
+    "portForwardReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不认端口转发这一问。重启 cc-monitor 换上新后端就有了",
+      "args": []
+    },
     "sshConfigReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂本机后端回的 ssh 配置，两端版本对不上",
@@ -16910,6 +16885,41 @@
       "kind": "error",
       "zh": "连接读不下去了：{e}",
       "args": ["e"]
+    },
+    "beForwards.spec.localPort": {
+      "kind": "error",
+      "zh": "本地端口必须 > 0",
+      "args": []
+    },
+    "beForwards.spec.remoteHost": {
+      "kind": "error",
+      "zh": "远端 host 不能为空",
+      "args": []
+    },
+    "beForwards.spec.remotePort": {
+      "kind": "error",
+      "zh": "远端端口必须 > 0",
+      "args": []
+    },
+    "beForwards.start.full": {
+      "kind": "error",
+      "zh": "已经开着 {max} 条转发了，先停掉几条再开",
+      "args": ["max"]
+    },
+    "beForwards.start.failed": {
+      "kind": "error",
+      "zh": "到 {machine} 的转发没开起来：{why}",
+      "args": ["machine", "why"]
+    },
+    "beForwards.start.noAck": {
+      "kind": "error",
+      "zh": "链路还没说成不成就断了",
+      "args": []
+    },
+    "beForwards.stop.notFound": {
+      "kind": "error",
+      "zh": "未找到转发：{id}",
+      "args": ["id"]
     },
     "beRemoteAsk.unreachableMessage.say": {
       "kind": "error",

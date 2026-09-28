@@ -145,6 +145,10 @@ pub const COMMANDS: &[&str] = &[
     "files-stat",
     "files-write-text",
     "footprint-probe",
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账住本机常驻后端（`dial/forwards.rs`）：界面经 `chan.call(<local>, …)` 起 · 停 · 列。
+    "forward-list",
+    "forward-start",
+    "forward-stop",
     // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
     "history-annotate",
     // 〔STC · `设计/90 §4` 阶段 C〕会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
@@ -1304,6 +1308,57 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::footprint::answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
+    //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
+    //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。
+    CommandSpec {
+        name: "forward-start",
+        doc_anchor: Some("#### `forward-start`"),
+        codes: &["invalid_args", "bad_spec", "unreachable", "full", "failed"],
+        fields: &["id", "localPort", "origin", "remoteHost", "remotePort"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::forwards::answer_start(&r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    CommandSpec {
+        name: "forward-stop",
+        doc_anchor: Some("#### `forward-stop`"),
+        codes: &["invalid_args", "not_found"],
+        fields: &["id"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::forwards::answer_stop(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    CommandSpec {
+        name: "forward-list",
+        doc_anchor: Some("#### `forward-list`"),
+        codes: &[],
+        fields: &[
+            "connCount",
+            "forwards",
+            "id",
+            "localPort",
+            "origin",
+            "remoteHost",
+            "remotePort",
+            "state",
+        ],
+        takes_input: false,
+        run: Run::Async(|_r| {
+            Box::pin(async move { Ok(Some(crate::dial::forwards::answer_list())) })
         }),
     },
     // 〔AS1 · 第四波 4B〕**MCP 资产同步的判定**（`设计/96` 的 B，用户 09-24 V111 · V112）：两份原文进、

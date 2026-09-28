@@ -135,7 +135,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // 🔴 〔SH1 · 4D〕地板 15 → **13**：驾驶舱读名册 / 读收件箱那两处（`read_cc_bus_state` · `cfg_of`，〔散文墓碑〕）随 shell 读删了。
     // 〔SH1〕13 → 12：钩子诊断远端那一处不再查远端配置（改问那台后端）；12 → 10：MCP 远端两处同理。
     assert!(
-        sites >= 9, // 〔SH1〕10 → 9：列 tmux 那一处改问那台后端
+        sites >= 8, // 〔SH1〕10 → 9：列 tmux 那一处改问那台后端 · 〔MIG-1〕9 → 8：端口转发那一处（宿主起转发那个函数）随转发账进本机后端删了
         "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
              `K-R104` 09-13 现打 19，`K-R112` 09-13 现打 17，SR1b 09-24 现打 16，LOC1a 09-25 现打 15，SH1 09-26 现打 13）"
     );
@@ -164,7 +164,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
     // 〔SR1b · 第四波 09-24〕12 → **11**：`inproc_dial.rs` 里的 `connect_via_jump`〔散文墓碑〕（只服务 SFTP 的跳板查配置）随那份文件整份删了。
     // 〔C4c · 第四波 4B〕11 → **10**：账号面那一处查远端配置（`cfg_for`，原住 `accounts.rs`）随那两条命令改走通道删了〔散文墓碑〕。
     // 〔LOC1a · 第四波 4D〕10 → **9**：`remote_branch.rs::create_remote_branch_session` 不再查远端配置（分叉走帧命令 `session-fork`）。
-    const TRIAGE_DEBT_TODAY: usize = 3; // 〔MIG-3a〕4 → 3：远端项目 `.mcp.json` 读那一处随 `mcp.rs` 删了（MCP 进了那台后端） // 〔E2〕5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 〔SH1〕6 → 5：列 tmux 那一处还掉了 // 〔SH1〕9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
+    const TRIAGE_DEBT_TODAY: usize = 2; // 〔MIG-1〕3 → 2：端口转发那一处随转发账进本机常驻后端删了（后端查自己的可达表） // 〔MIG-3a〕4 → 3：远端项目 `.mcp.json` 读那一处随 `mcp.rs` 删了（MCP 进了那台后端） // 〔E2〕5 → 4：远端 `ccm` 探针那一处还掉了（改经那台后端的门问 `ccm-probe`） // 〔SH1〕6 → 5：列 tmux 那一处还掉了 // 〔SH1〕9 → 8：钩子诊断远端那一处还掉了（改问那台后端）；8 → 6：MCP 远端两处同理
     assert_eq!(
         TRIAGE_DEBT.len(),
         TRIAGE_DEBT_TODAY,

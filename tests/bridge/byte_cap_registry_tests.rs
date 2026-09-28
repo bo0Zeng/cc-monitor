@@ -776,6 +776,21 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。
+    (
+        "src/backend/dial/forwards.rs",
+        "ACK_CAP",
+        64 * 1024,
+        "起一条端口转发时链路那一侧回的 ack 那一行（同 `remote_ask` 读 ack 的上限）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/dial/forwards.rs",
+        "COUNT_CAP",
+        4 * 1024,
+        "端口转发链路每接进一条连接报的那一行计数（`{\"accepted\":n}`）",
+        "降级+说清",
+    ),
     // 〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
     //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
     (

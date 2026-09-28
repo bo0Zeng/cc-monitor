@@ -113,7 +113,6 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { TmuxSession } from "../generated/TmuxSession";
-import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
@@ -326,13 +325,8 @@ export const commands = {
   //   sftp_cancel_transfer · sftp_chmod · sftp_delete · sftp_download · sftp_list_dir · sftp_mkdir ·
   //   sftp_read_text_for_edit · sftp_realpath · sftp_rename · sftp_stat · sftp_upload · sftp_write_text。
 
-  /** 起一条端口转发。Rust 返回 `Result<String, String>`（转发 id）⇒ 原始类型。 */
-  start_forward: (args: {
-    spec: { origin: string; localPort: number; remoteHost: string; remotePort: number };
-  }) => invoke<string>("start_forward", args),
-
-  /** 停一条端口转发。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  stop_forward: (args: { id: string }) => invoke<void>("stop_forward", args),
+  // 〔MIG-1 · `设计/99 §2.1 ⑬`〕端口转发三条（起 · 停 · 列）的包装随命令退役删了：转发账住本机常驻后端，
+  //   界面经通道直接说帧命令 `forward-start` / `forward-stop` / `forward-list`（`src/port-forward-reads.ts`）。
 
   /**
    * 测一条远端配置：连 SSH → 读指纹 → exec backend → 等 hello。
@@ -619,9 +613,6 @@ export const commands = {
   //   经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 
 
-
-  /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),
 
   /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
   list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),

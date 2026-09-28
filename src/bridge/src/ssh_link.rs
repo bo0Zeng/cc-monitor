@@ -224,31 +224,6 @@ pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Ca
     })
 }
 
-/// `forward` 用法：下一条「接进了第 n 条连接」。管子关了 ⇒ `None`（转发收工了）。
-pub async fn accepted<R: AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<Option<u64>, LinkError> {
-    let Some(line) = read_line_capped(r, cap).await? else {
-        return Ok(None);
-    };
-    let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
-        LinkError::Garbled(copy_text(
-            "rsSshLink.parse.withLine",
-            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-        ))
-    })?;
-    v.get("accepted")
-        .and_then(serde_json::Value::as_u64)
-        .map(Some)
-        .ok_or_else(|| {
-            LinkError::Garbled(copy_text(
-                "rsSshLink.parse.noAccepted",
-                &[("line", &format!("{:?}", line))],
-            ))
-        })
-}
-
 /// 〔SR1b〕`files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。
 pub async fn reply_line<R: AsyncBufRead + Unpin>(
     r: &mut R,

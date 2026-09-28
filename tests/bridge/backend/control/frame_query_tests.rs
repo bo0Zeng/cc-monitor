@@ -243,6 +243,19 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "ssh-config-resolve",
         "一个别名的有效连接参数：`ssh -G` 由后端起（`dial/ssh_config.rs::resolve`），monitor 从此不起 `ssh`（`00 §1.1`「monitor 零 SSH」）",
     ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
+    (
+        "forward-list",
+        "列转发：后端 `dial/forwards.rs::list_with` 出成品 `{forwards}`；前端 `src/port-forward-reads.ts` 按恰好的键集合收",
+    ),
+    (
+        "forward-start",
+        "起一条转发：后端查自己的可达表、开 `use: forward` 链路、等 ack 才进账（`dial/forwards.rs::start_with`）；monitor 零转发账",
+    ),
+    (
+        "forward-stop",
+        "停一条转发：后端从账上摘掉 ⇒ 链路被收、本地口放掉（`dial/forwards.rs::stop_with`）",
+    ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

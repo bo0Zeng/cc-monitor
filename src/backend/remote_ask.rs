@@ -196,7 +196,7 @@ pub async fn ask_with(
 pub struct DialRemote;
 
 /// 读一行（带上限；超了是错，不截断）。
-async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
+pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
     r: &mut R,
     cap: u64,
 ) -> Result<Option<String>, String> {
