@@ -123,7 +123,6 @@ export class TabBarView {
     this.rereadBtn.className = "tab-bar-reread";
     this.rereadBtn.title = copyText("tabBar.reread.hint");
     const icon = document.createElement("span");
-    icon.className = "tab-bar-reread-icon";
     icon.textContent = copyText("tabBar.reread.icon");
     const text = document.createElement("span");
     text.className = "tab-bar-reread-text";
