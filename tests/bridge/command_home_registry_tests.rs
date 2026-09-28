@@ -87,6 +87,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("open_session_in_new_window", Own::Window, "开窗"),
     ("open_settings_window", Own::Window, "开窗"),
+    (
+        "open_file_window",
+        Own::Window,
+        "〔MIG-3a · 09-28 裁 3〕起文件窗口进程、读它那一行就绪 / 原话（第一屏由窗口进程经通道自己列；本侧只拿交接件）",
+    ),
     ("bring_monitor_to_front", Own::Window, "拉前 monitor 自己"),
     ("bring_terminal_to_front", Own::Front, "拉前本机终端窗口"),
     (
@@ -192,11 +197,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     ),
     // MIG-3a：资产与 D 组。
     // 〔MIG-3a〕别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
-    (
-        "deploy_remote_acct_iso",
-        Lane::Mig3a,
-        "落进用户目录与软链由 monitor 经 SFTP 直写（⑯）",
-    ),
+    // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 已迁：字节随后端二进制走（部署载荷只一种走法），装 · 链接 · 配置 · 记账
+    //   全在那台后端（`acct-iso-install`），界面只问它一次 ⇒ 从本表删（命令本身也删了）。
     // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
     //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
@@ -231,11 +233,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
     ),
     ("panorama_edit", Lane::Mig3b, "全景一问经 monitor 转"),
     ("panorama_cancel", Lane::Mig3b, "全景撤单经 monitor 转"),
-    (
-        "open_file_window",
-        Lane::Mig3a,
-        "开窗前先列一屏那一问在 monitor（文件窗口独立前端之后由它自己问，`99 §2.1 ⑰`）",
-    ),
+    // 〔MIG-3a · 主会话 09-28 裁 3〕`open_file_window` 已迁：开窗前那一屏（`files-home` / `files-ls`）进了窗口进程自己问，
+    //   monitor 只起进程、读它那一行（`filewin/proc.rs::first_screen` · `Ready`）⇒ 从本表删，进 `MONITOR_OWN`（开窗）。
 ];
 
 // ---------------------------------------------------------------- 读 `generate_handler!`

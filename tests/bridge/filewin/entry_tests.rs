@@ -1,7 +1,7 @@
 //! # 要求住址：`设计/60 §2.3`（开窗前那一屏：列不出来就报错、不开窗）＋ `设计/60 §2.5`（入口与三种落点）
 //!
 //! 核原文：`设计/60 §2.3` 逐字「开窗前那一屏：monitor 侧经宿主注入的同一个句柄问 `files-home`（不给落点时）与 `files-ls`；
-//! 列不出来就带原文报错」；`设计/60 §2.5` 逐字「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
+//! 列不出来就带原文报错」（〔MIG-3a · 主会话 09-28 裁 3〕「谁去问」改成窗口进程自己，`60 §2.3` 那句待设计侧改写）；`设计/60 §2.5` 逐字「三种落点与 `filewin/entry.rs::plan_target` 三支一一对应」·
 //! 「判据：入口人群两向相等、`open_file_window` 在包装层外恰好一处」—— 本族判的正是先问后开、三支落点、命令真接到前端。
 
 use super::*;
@@ -19,86 +19,52 @@ fn synth_cfg() -> RemoteConfig {
     }
 }
 
-/// 空路径 ⇒ **去问远端 home**；问不到就报错，**而且一个窗口都不开**。
+// 〔MIG-3a · 主会话 09-28 裁 3〕上一版这里两条行为判据判的是 monitor 这一侧先问 home / 先列一屏：
+//   `an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot`〔散文墓碑〕
+//   `a_directory_we_cannot_list_is_an_error_not_a_blank_window`〔散文墓碑〕
+//   那两问进了窗口进程，性质（没给目录才问 home · 列不出来带原话、不开窗）搬到
+//   `proc_tests::the_first_screen_asks_home_only_when_told_nothing`（真通道口 ＋ 替身后端）与
+//   `proc_tests::the_window_process_lists_first_and_the_parent_carries_its_words`（替身窗口进程说那一行）。
+
+/// 🔴 **通道口没起来 ⇒ 一个窗口进程都不起**（`D11`：窗口只有这一条路够后端），而且话不是空的。
 ///
-/// # 🔴〔第七刀 2026-09-21〕这一条改过措辞，性质没松
-///
-/// 上一版它叫〔散文墓碑〕`an_empty_path_is_refused_without_opening_a_window`，断的是
-/// 报错里含「路径是空的」。**那钉的是机制，不是性质** —— 真性质是
-/// 「**说不出要看哪儿就别开一个空窗**」，而「空路径一律回错」只是当时唯一可选的实现
-/// （见 `entry.rs` 那一节：在入口里猜一个默认值 vs 去问那个说得上话的）。
-///
-/// ⇒ 现在空路径的意思是「开在远端 home」，而本条断的换成**更强**的一件：
-/// 报错里要出现 `realpath` ——**那证明我们真的去问了**。
-/// 只断「报错非空」的话，一个把空路径原样丢下去列的实现也能全绿。
-///
-/// 🔴 「一个窗口都不开」照旧是这条的第二半，也是更要紧的那一半：
-/// 早退的实现很容易先 `spawn` 了线程再检查参数，那样用户会看到一个空窗 ＋ 一条报错。
-///
-/// ⚠ 本条走的是**失败路径**（`host` 是 `.invalid`，DNS 保留域 ⇒ 解析就失败了，
-/// 一个 TCP 包都没出去）。「问得到 home 时它真的开在那儿」本机买不到 —— 要真远端。
+/// 判据进程里 `chan::host::start` 没调过 ⇒ 交接件拿不到。⚠ 本条买的是入口这一格的早退，
+/// 不是「列不出来」那一形（那一形住 `proc_tests`）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_empty_path_asks_the_remote_for_home_and_opens_nothing_when_it_cannot() {
+async fn without_a_channel_no_window_process_is_started() {
     let before = crate::filewin::shell::open_requested();
-    let e = open_file_window(synth_cfg(), "   ".into(), None)
-        .await
-        .expect_err("问不到 home 竟然过了");
-    // 🔴〔订正 2026-09-21〕这里原先断的是「报错里含 `realpath`」，**那买不到**：
-    //    `.invalid` 上失败发生在**连接**阶段，`canonicalize` 一次都没跑到
-    //    ⇒ `sftp_realpath` 那句 `realpath 失败:` 不会出现，而问 home 与列目录
-    //      在这台机器上回的是**同一句**池错误（现打逐字「所有地址连接失败: …」）。
-    //    ⇒ 「是哪一跳失败的」在失败路径上**文本分不开**。如实降级成断得住的两件，
-    //      「真的去问了」那一件交给下面那条源码代理。
-    assert!(
-        !e.trim().is_empty(),
-        "报错是空串 —— webview 那侧会弹一个没有内容的失败提示"
-    );
-    // 🔴〔F7a · 第三波 09-24〕**「真的去问了」这一件又断得住了**：问的是后端，
-    //    判据进程里没有那台机器的控制通道 ⇒ 那一跳就地失败，而失败那句话带着**命令名**
-    //    （`source::said` 逐字「`files-home` 没走通…」）⇒ 是哪一跳失败的，文本分得开了。
-    // 〔CP2b · CP1 裁「改·§2.1」〕对外那句不再带内部命令名（`files-home`）⇒ 改认「没走通」那一族：
-    //   它只在真发出去问了、那一跳失败时才说；本地就拒（路径是空的）说的是别的话。
-    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言：认 `hopFault` 那一条的固定开头（取自表，不抄原文）。
-    let hop_head = copy_text("rsFilewinSource.said.hopFault", &[]);
-    let hop_head = &hop_head[..hop_head.find('{').unwrap_or(hop_head.len())];
-    assert!(
-        !hop_head.is_empty() && e.contains(hop_head),
-        "空路径的报错不是「问了、那一跳没走通」—— 那就不是在问 home（原文：{e}）"
-    );
+    for (path, reveal) in [
+        ("   ", None),
+        ("/srv/whatever", None),
+        ("", Some("/a/b.txt")),
+    ] {
+        let e = open_file_window(synth_cfg(), path.into(), reveal.map(str::to_string))
+            .await
+            .expect_err("没有通道口竟然开了窗");
+        assert_eq!(
+            e,
+            copy_text("rsFilewinEntry.open.noHost", &[]),
+            "早退的话不对：{e}"
+        );
+    }
     assert_eq!(
         crate::filewin::shell::open_requested(),
         before,
-        "说不出要看哪儿，却已经请求开窗了 —— 那就是个空窗"
+        "没有通道口却请求开窗了"
     );
 }
 
-/// 🔴 **列不出来就别开窗** —— 而且要把下层那句原文带回去。
-///
-/// 〔F2 · 2026-09-24〕列那一趟改成问后端之后，判据进程里**通道口没起来**
-/// （`chan::host::start` 只在 app 起来时调）⇒ 它在「够不着后端」那一步就回错 ——
-/// 同一个性质（列不出来就别开窗）的另一个失败点，一个包都不出去。
-/// ⚠ 「后端说列不出来 ⇒ 不开窗」那一形要一个起着的通道口，本条不买；
-/// 那句话本身的翻译与窗口里那一次同一个函数（`source::said`），由 `source_tests` 那几条判。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_directory_we_cannot_list_is_an_error_not_a_blank_window() {
-    let before = crate::filewin::shell::open_requested();
-    let e = open_file_window(synth_cfg(), "/srv/whatever".into(), None)
-        .await
-        .expect_err("连不上的远端竟然列出了目录");
-    assert!(
-        !e.trim().is_empty(),
-        "报错是空串 —— webview 那侧会弹一个没有内容的失败提示"
-    );
-    // 〔F7a〕阴性对照：给了路径 ⇒ **不问 home**（问了就是多一趟往返，而且它会先失败、盖掉真原因）。
-    assert!(
-        !e.contains(crate::filewin::source::CMD_HOME),
-        "给了路径却去问了 home：{e}"
-    );
+/// 🔴〔MIG-3a · 09-28 裁 3〕**窗口进程列不出来的那句原话原样到 webview**；进程层的错才套「文件窗口没起来」。
+#[test]
+fn the_window_process_words_reach_the_webview_verbatim() {
+    let said = "那台说：没有这个目录 /srv/不在";
+    assert_eq!(unopened_said(Unopened::Said(said.into())), said);
+    let wrapped = unopened_said(Unopened::Process("退出码 1".into()));
     assert_eq!(
-        crate::filewin::shell::open_requested(),
-        before,
-        "目录列不出来却还是开了窗 —— 那就是个空窗，用户不知道发生了什么"
+        wrapped,
+        copy_text("rsFilewinEntry.open.failed", &[("why", "退出码 1")])
     );
+    assert_ne!(wrapped, "退出码 1", "进程层的错没套上「文件窗口没起来」");
 }
 
 /// 🔴 **这条命令真的在命令面上。**
@@ -200,52 +166,54 @@ fn some_ui_file_other_than_the_wrapper_actually_calls_it() {
     );
 }
 
-/// 🔴 **空路径那一支真的走 `ask_home`（问后端 `files-home`），而且排在列目录前面。**
+/// 🔴 **空路径那一支真的去问 home，而且排在列目录前面；monitor 这一侧一问都不问。**
 ///
-/// # 为什么要这条源码代理
+/// 〔MIG-3a · 主会话 09-28 裁 3〕射程从 `entry.rs` 换到 `proc.rs::first_screen`：那两问进了窗口进程。
+/// 行为那一半（没给目录才问 · 问的顺序）住 `proc_tests::the_first_screen_asks_home_only_when_told_nothing`；
+/// 本条钉结构：① `first_screen` 里 home 那一问排在列目录前面、用的是 `files-home` 那个常量；
+/// ② `entry.rs` 生产段里**没有**问后端的写法（宿主句柄 · 两问的命令常量）—— 那正是 `99 §2.1 ⑬` 待迁那一行删掉的理由。
 ///
-/// 上面那条行为判据**买不到**「是哪一跳失败的」：在 `.invalid` 这台合成远端上，
-/// 问 home 与列目录回的是同一句池错误（连接阶段就失败了）⇒ 文本分不开。
-/// 而「问得到 home 时它真的开在那儿」要真远端，本机永远量不到。
-///
-/// ⇒ 剩下能确定地钉住的是**结构**：那一跳在不在、在不在前面。
-/// 同族先例：`transfer_tests::the_real_adapters_speak_only_through_the_channel`
-/// （那条头注逐字「判源码是代理」）。
-///
-/// ⚠ **它买不到那一跳是对的**，只买到它在。别读宽。
+/// ⚠ **它买不到那一跳是对的**，只买到它在、在前面、monitor 这一侧不在。别读宽。
 #[test]
 fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
-    let prod =
-        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
-    assert_eq!(
-        prod.matches("ask_home(&").count(),
-        1,
-        "`entry.rs` 生产段里 `ask_home(&` 不是恰好一处 —— \
-         少了就是空路径又被原样丢下去，多了就是这件事长出了第二个住址"
-    );
-    let at_home = prod
-        .find("ask_home(&")
-        .expect("上一比已经保证它在，这里拿不到位置说明抽取器坏了");
-    // 〔F2 · 2026-09-24〕列那一趟从池子（SFTP）换成了问后端（`list_first_screen`）。
-    let at_list = prod
-        .find("list_first_screen(")
-        .expect("`list_first_screen(` 不在生产段里 —— 那条「先列一趟再开窗」的纪律没了");
+    let proc = guard_core::production_code(include_str!("../../../src/bridge/src/filewin/proc.rs"));
+    let at_fn = guard_core::find_pinned(&proc, "pub async fn first_screen(")
+        .expect("`first_screen` 不在 proc.rs 生产段里");
+    let body = &proc[at_fn..];
+    let body = &body[..body.find("\n}\n").expect("`first_screen` 的花括号没收口")];
+    let at_home = body
+        .find("super::source::CMD_HOME")
+        .expect("`first_screen` 里没有问 home 那一问（`files-home` 那个常量）");
+    let at_list = body
+        .find("super::source::list_dir(")
+        .expect("`first_screen` 里没有列目录那一下");
     assert!(
         at_home < at_list,
         "问 home 那一跳排在列目录后面 —— 那就是先拿空路径去列了一趟"
     );
-    // 反空真：这把尺子认得出「不在」。
-    assert!(!prod.contains("ask_home_that_does_not_exist"));
-    // 〔F7a · 第三波 09-24〕那一跳问的是后端：`entry.rs` 生产段里一处 SFTP 都不许有
-    //   （monitor 这一侧开窗此前唯一碰 SFTP 的就是问 home 那一下）。针拼出来，免得命中本文件。
+    let entry =
+        guard_core::production_code(include_str!("../../../src/bridge/src/filewin/entry.rs"));
+    assert!(
+        guard_core::find_pinned(&entry, "pub async fn open_file_window").is_ok(),
+        "剥生产段把入口剥没了 —— 下面几条零命中此刻恒真"
+    );
+    for needle in [
+        "InboundBackends",
+        "CMD_HOME",
+        "CMD_LS",
+        "list_dir(",
+        "source::ask(",
+    ] {
+        assert!(
+            !entry.contains(needle),
+            "`entry.rs` 生产段里又出现了 `{needle}` —— monitor 这一侧又替窗口问后端了"
+        );
+    }
+    // 〔F7a · 第三波 09-24〕一处 SFTP 都不许有。针拼出来，免得命中本文件。
     let pool = format!("sftp_{}::", "pool");
     assert!(
-        !prod.contains(pool.as_str()),
-        "`entry.rs` 又够到了 SFTP 那个池子 —— 开窗前那两问都该走后端"
-    );
-    assert!(
-        prod.contains("CMD_HOME"),
-        "问 home 那一跳没用 `files-home` 那个常量"
+        !entry.contains(pool.as_str()) && !proc.contains(pool.as_str()),
+        "开窗那条路又够到了 SFTP 那个池子"
     );
 }
 

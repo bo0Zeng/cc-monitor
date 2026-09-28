@@ -18,7 +18,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
-mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
+// 〔MIG-3a · 主会话 09-28 预裁〕`acct_iso_deploy`〔散文墓碑〕删了：cc-acct-iso 的字节随后端二进制走（`src/backend/assets/acct_iso_install.rs`），界面问那台 `acct-iso-install`。
 mod adapter;
 mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；〔MIG-3a〕看机器页那一问界面直问）
 mod auto_launch;
@@ -1025,7 +1025,6 @@ pub fn run() {
             // 〔MC1〕部署那一条同时放 `ccm` 入口 —— 「部署后端」只有一个动作。
             sftp::deploy_remote_backend,
             sftp::uninstall_remote_backend,
-            acct_iso_deploy::deploy_remote_acct_iso,
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
             // 〔MIG-3a〕`acct_iso_status` / `acct_iso_shellinit` 退役：界面经通道直问那台后端（`acct-iso-status` / `acct-iso-shellinit`，后端出成品）。
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。

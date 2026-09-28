@@ -1526,6 +1526,26 @@ SFTP 缩成只做传输之后（`设计/60 §13`），上传**只写** `~/.cc-mo
 - ⚠ 不设解压字节上限（只有条目数上限）；修改时间 · 属主 · 扩展属性 · setuid / setgid / 粘滞位都不还原。真远端那一维没有读数（本机文件系统上跑过）。
 - **CLI 面同样有它**（`--files-extract`，载荷走 stdin），理由与写面其余几条相同。
 
+#### `files-link`：建一条符号链接（MIG-3a · 主会话 09-28 裁 2，**写用户文件**）
+
+写面闭集里 FILES2 那个「建链接」动词（`control/files_extract.rs::land_link`，复制目录与解压共用）的帧面入口 —— 只补这一个入口，不另起原语。
+第一个用者：`acct-iso-install` 把 `~/.local/bin/cc-acct-iso` 链到部署落点。
+
+```
+→ {"id":"l1","cmd":"files-link","args":{"root":"/home/u","rel":".local/bin/cc-acct-iso","target":"/home/u/.cc-monitor/bin/cc-acct-iso/scripts/cc-acct-iso"}}
+← {"id":"l1","ok":true,"data":{"path":"/home/u/.local/bin/cc-acct-iso"}}
+```
+
+| 字段 | 方向 | 说明 |
+|---|---|---|
+| `root` · `rel` | → | 链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{"b16": …}`） |
+| `target` | → | 链接的目标文本，**原样**写进去（不解、不判，同 `cp -P`） |
+| `path` | ← | 建出来的那条链接（父目录解完 symlink 的） |
+
+- 那儿已经有东西（含一条链接）⇒ 系统拒（`io_failed`），一个字节不动；**不先删再建**。
+- 非 unix ⇒ `refused`（没有这个动词）。错误码：`bad_args` · `bad_path` · `io_failed` · `refused`。
+- **CLI 面同样有它**（`--files-link`，载荷走 stdin），理由与写面其余几条相同。
+
 #### `files-peek`：读改写的**读那一半**（RW1 · 第四波，2026-09-24）
 
 用户裁「只允许后端的文件管理部分写文件」**只管用户的文件、本机也管** ⇒ monitor 进程不再直接写用户文件
@@ -2163,6 +2183,7 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 |---|---|---|
 | `op` | → | `add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉） |
 | `name` | → | `add`：skill 的目录名。**目录由这台后端按 `skill 根 / name` 自己算**，不收调用方给的路径 |
+| `at` | → | `add` 可缺席：缺 ⇒ 目录按 skill 根算；`"home"` ⇒ 目录 = 记录所在那个家目录（〔MIG-3a · 09-28 裁 2〕`acct-iso-install` 用：它落的是 `~/.local/bin` · `~/.cc-acct-iso`，不在 skill 根下）；其余值 ⇒ `bad_args` |
 | `files` | → | `add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个。同一目录再装一次：新路径加进来、已记的换新摘要、`created` 取第一次的 |
 | `dir` | ↔ | `drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录 |
 | `paths` | → | `drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉 |
@@ -2828,6 +2849,26 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户显式点「装」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
 
+#### `acct-iso-install`：把这台二进制带着的 cc-acct-iso 装到这台（MIG-3a · 主会话 09-28 裁 2 · 09-28 预裁，**写用户文件**）
+
+```text
+→ {"id":"a1","cmd":"acct-iso-install"}
+← {"kind":"reply","id":"a1","ok":true,"data":{"dest":"/home/u/.cc-monitor/bin/cc-acct-iso","version":"e24bfd164014351a","written":6,"link":"/home/u/.local/bin/cc-acct-iso","linked":true,"config":"/home/u/.cc-acct-iso/config","configWritten":true,"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dest` · `version` | ← | 字节落在哪（这台按自己的家目录算：`~/.cc-monitor/bin/cc-acct-iso`，不收调用方给的路径）· 带着的那一份的内容指纹（`.vendor_id`，也写成落点里的标记） |
+| `written` | ← | 这一趟写了几份字节（逐份比，盘上已是这一份就不写 ⇒ 再装一次是 `0`） |
+| `link` · `linked` | ← | `~/.local/bin/cc-acct-iso` · 这一趟建了没有（那儿已有任何东西 ⇒ 不动它、`false`） |
+| `config` · `configWritten` | ← | `~/.cc-acct-iso/config` · 这一趟从随包 `examples/config` 抄了没有（已有不覆盖；抄了 ⇒ 目录 `0700`） |
+| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句；装卸账记在 skill 装记录那一份（`name = "acct-iso"`，按家目录记，这一趟写了的都记） |
+
+字节**随后端二进制走**（同 `cc-bus-install`：部署载荷只一种走法），单一事实源 `src/shared/cc-acct-iso/`；
+从前是 monitor 的 `deploy_remote_acct_iso`〔散文墓碑〕 把它内嵌的那份经 SFTP 推过来（更早还经 ssh 跑 `cc-acct-iso-install.sh`）。
+落盘全经本进程文件管理面：字节 `files-put`（CAS：读到哪份就对哪份写）· 可执行位 `files-chmod` · 链接 `files-link` · 目录 `files-mkdir`。
+不改 rc、不动账号 / 凭据。只由用户显式点「部署」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--acct-iso-install`，**不读 stdin**）。
+
 #### `skill-host-list`：这台一个项目里接进来的 skill（MIG-3a，09-28，**只读**）
 
 ```text
@@ -3463,6 +3504,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
 **MIG-3a 追加二十二条（09-27 · 09-28）**：`--cc-bus-install` · `--cc-bus-install-state`（cc-bus 装到这台）· `--mcp-sync-hub-preview` · `--mcp-sync-hub-apply` · `--skill-install-hub-preview` · `--skill-install-hub-apply`（两台之间那几件的枢纽）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+
+**MIG-3a 追加两条（09-28 · 主会话裁 2）**：`--acct-iso-install`（cc-acct-iso 装到这台，**不读 stdin**）· `--files-link`（写面「建链接」的入口，**读 stdin**）—— 见上面各自那一小节。与帧面同一个 `run`。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 

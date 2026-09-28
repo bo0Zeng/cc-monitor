@@ -9,10 +9,15 @@
 //! 开窗失败（没有图形会话 / DISPLAY 不对）与远端连不上，在 webview 那侧
 //! 长得跟成功一模一样 —— 用户点了按钮，什么都没发生，也没有任何一句话。
 //!
-//! ⇒ 本命令**先真的把那个目录列出来**（远端走 [`super::source::list_remote`]，
-//! 也就是共用那条池），列不出来就**带着原文报错返回**，webview 那侧照旧弹它的失败提示；
-//! 列出来了才开窗，而且把**那一屏直接交给窗口**（[`super::shell::open_detached_seeded`]）
+//! ⇒ 本命令**先等那个目录真的列出来**，列不出来就**带着原文报错返回**，webview 那侧照旧弹它的失败提示；
+//! 列出来了才开窗，而且那一屏**直接交给窗口**（[`super::shell::open_detached_seeded`]）
 //! ⇒ 窗口一出来就是有内容的，也不会对同一个目录连打两次往返。
+//!
+//! 🔴〔MIG-3a · 主会话 09-28 裁 3〕**谁去列换了：从 monitor 换成窗口进程自己。** 上一版这里由 monitor 经宿主注入的句柄
+//! 问那台后端 `files-home` / `files-ls`（`host_ask` · `ask_home` · `list_first_screen`〔散文墓碑〕），列好的一屏放进种子 ——
+//! 那是 monitor 替窗口问后端（`99 §2.1 ⑬` 待迁那一行）。今天窗口进程拨回通道后自己问（`proc::first_screen`），
+//! 在 stdout 上说一行「列到 N 行」或「列不出来：原话」；本命令只起进程、等那一行（[`super::proc::open_in_new_process`]）。
+//! 「列不出来就不开窗、带原话」一个字没变，变的是它在哪个进程里成立。
 //!
 //! ⚠ **它买不到「窗口真的出现在屏幕上」**。那一格要一个图形会话，本机
 //! `XDG_SESSION_TYPE=tty`（`真相源/99 §一`）⇒ 本机永远量不到。
@@ -21,9 +26,8 @@
 //!
 //! 🔴〔第十三刀 2026-09-23〕**开窗 ＝ 起一个独立进程。** 上一版这一节的①逐字写着
 //! 「走 [`super::source::list_remote`]，也就是**共用那条池**」。
-//! 〔TL3 · 审计 F 🔴-3 订正〕今天两侧都不走池：开窗前那一屏由 monitor 经宿主注入的通道句柄问那台后端
-//! `files-home` / `files-ls`（「列不出来就别开窗」一个字没变），窗口进程之后的每一次列目录也是经通道 `call`
-//! 那台后端（`设计/60 §2.3`），一行 SFTP 都不碰（`60 §2.2`）。代价与买到的东西逐条住 [`super::proc`] 头注 §二 / §四。
+//! 〔TL3 · 审计 F 🔴-3 订正〕今天两侧都不走池；〔MIG-3a · 09-28 裁 3〕开窗前那一屏也由窗口进程经通道 `call` 那台后端
+//! `files-home` / `files-ls`（「列不出来就别开窗」一个字没变），与它之后的每一次列目录同一条路，一行 SFTP 都不碰（`60 §2.2`）。代价与买到的东西逐条住 [`super::proc`] 头注 §二 / §四。
 //!
 //! # 二、为什么回一个行数，而不是 `()`
 //!
@@ -42,7 +46,7 @@
 //! ⇒ `parity_ledger` 那一行照旧签 `Side::Remote`，而它**从「签实况」变成了「签全部」**：
 //! 本机那一侧没有另一条可达路径等着被记上来了。
 //!
-//! 🔴〔第七刀补记〕`path` 传空串现在是**合法调用**，意思是「开在远端 home」——
+//! 🔴〔第七刀补记〕`path` 传空串现在是**合法调用**，意思是「开在远端 home」（〔09-28 裁 3〕由窗口进程去问）——
 //! 于是顶栏那颗按钮接过来时**不必先自己解一趟路径**（那正是老面板今天在做的事）。
 //! 逐条理由住 [`open_file_window`] 的 `# 🔴〔第七刀〕` 那一节。
 //!
@@ -53,7 +57,7 @@
 use crate::copy_table::copy_text;
 use crate::ssh_source::RemoteConfig;
 
-use super::proc::{open_in_new_process, OpenRequest};
+use super::proc::{open_in_new_process, OpenRequest, Unopened};
 use super::source::Source;
 
 /// 这一趟要落在哪儿。
@@ -63,8 +67,8 @@ pub enum Target {
     Dir(String),
     /// 进 `dir` 并高亮 `name` 那一行（老面板 `revealPath`，F54）。
     Reveal { dir: String, name: String },
-    /// 都没说 ⇒ 问那台机器上的后端 `files-home`（第七刀立的这一支；〔F7a〕从 SFTP 换成了后端）。
-    /// **只有这一支要多一趟 IO。**
+    /// 都没说 ⇒ 问那台机器上的后端 `files-home`（第七刀立的这一支；〔F7a〕从 SFTP 换成了后端；
+    /// 〔MIG-3a · 09-28 裁 3〕由窗口进程自己问：种子里 `cwd` 缺席）。**只有这一支要多一趟 IO。**
     Home,
 }
 
@@ -128,12 +132,12 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// 归谁解释是 `sftp_realpath` 的事，在这里猜一个默认值就是把两处的规矩写成两份）」。
 ///
 /// **那条理由是对的，而它现在被满足了，不是被推翻了** —— 我们没有在这里猜一个默认值，
-/// 我们去问了那个唯一权威（[`ask_home`] → 那台机器上的后端 `files-home`）。
+/// 我们去问了那个唯一权威（那台机器上的后端 `files-home`；〔09-28 裁 3〕窗口进程的 `proc::first_screen` 问）。
 /// 「在这里猜」与「去问那个说得上话的」是两件事，上一版只有前者可选，所以它选了回错。
 ///
 /// 🔴〔F7a · 第三波 2026-09-24〕**问的对象换了：从 SFTP 换成后端。** 第七刀那一版问的是
-/// SFTP 的 `realpath(".")`（monitor 为这一问单拨一条 SFTP）；现在经通道宿主的同一个句柄
-/// 问后端 `files-home`，与下面列第一屏那一趟**同一条路**。⇒ monitor 这一侧开窗一个 SFTP 都不拨了。
+/// SFTP 的 `realpath(".")`（monitor 为这一问单拨一条 SFTP）；现在问后端 `files-home`，
+/// 与列第一屏那一趟**同一条路**（〔09-28 裁 3〕都在窗口进程里）。⇒ monitor 这一侧开窗一个 SFTP 都不拨了。
 ///
 /// ## 为什么必须有这一格
 ///
@@ -150,7 +154,7 @@ pub fn plan_target(path: &str, reveal_file: Option<&str>) -> Result<Target, Stri
 /// # Errors
 ///
 /// - `path` 是空的、且远端 home 问不出来 ⇒ 带着原文回错，不开窗。
-/// - 目录列不出来（连不上 / 没权限 / 不是目录）⇒ 把 `sftp_pool` 那边的原文带回去。
+/// - 目录列不出来（连不上 / 没权限 / 不是目录）⇒ 把窗口进程说的那句原文带回去。
 /// 〔FILES2 · V152〕「复制到另一台」下拉里的机器：本机（`<local>`）＋ 已配的远端（`origin_label`，与通道寻址同一个名字）。
 /// 来自已有的配置读口，不新建数据源。
 fn machine_names() -> Vec<String> {
@@ -173,100 +177,52 @@ pub async fn open_file_window(
     // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
     let bookmarks = crate::paths::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
-    let (path, reveal) = match plan_target(&path, reveal_file.as_deref())? {
-        Target::Dir(d) => (d, None),
-        Target::Reveal { dir, name } => (dir, Some(name)),
-        // 只有这一支要 IO ⇒ 它留在 async 这一侧。〔F7a〕问的是后端，不是 SFTP。
-        Target::Home => (ask_home(&source).await?, None),
+    //    〔MIG-3a · 09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
+    let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {
+        Target::Dir(d) => (Some(d), None),
+        Target::Reveal { dir, name } => (Some(dir), Some(name)),
+        Target::Home => (None, None),
     };
     // 🔴〔F2 · 2026-09-24〕通道没起来 ⇒ 开不了窗（`D11`：窗口只有这一条路够后端）。
     let handoff =
         crate::chan::host::handoff().ok_or_else(|| copy_text("rsFilewinEntry.open.noHost", &[]))?;
-    // ① 先真的列一趟 —— 〔F2〕问那台机器上的后端，**与窗口里那一次走同一条路**：
-    //    通道宿主注入给路由器的那个句柄（`chan::host::InboundBackends`）。列不出来就别开窗。
-    let rows = list_first_screen(&source, &path).await?;
-    let n = rows.len();
-    // ② 🔴〔第十三刀 2026-09-23〕**拿着这一屏起一个独立进程。**
+    let req = OpenRequest {
+        source,
+        cwd,
+        reveal,
+        handoff,
+        bookmarks,
+        machines: machine_names(),
+    };
+    // 🔴〔第十三刀 2026-09-23〕**起一个独立进程**；〔MIG-3a · 09-28 裁 3〕它先列第一屏、说一行，再开窗。
     //
     //    逐条理由住 `proc` 头注（用户「窗口生命周期就是销毁」那条裁决 ＋
     //    「winit 一个进程只许一个事件循环」那条现打事实 ⇒ 同进程形态下
     //    「关掉就销毁」与「还能再打开」不可同时成立）。
     //
-    //    ⚠ 这里**不等窗口关闭**，理由一个字没变：那会把这条 Tauri 命令挂在一个
-    //      窗口的寿命上。变的是它在等什么 —— 从「那条线程」变成「那个进程」。
+    //    ⚠ 这里**不等窗口关闭**：那会把这条 Tauri 命令挂在一个窗口的寿命上。等的只是就绪那一行
+    //      （阻塞读 ⇒ 放在 `spawn_blocking` 上，不占 async worker）。
     //    🔴 `D11`：一条退路都没有。起不了独立进程就是错，照实报（`proc` 里那几档
     //      各自带着自己的原因），**不许**退回同进程开一个。
-    let pid = open_in_new_process(&OpenRequest {
-        source,
-        cwd: path,
-        rows,
-        reveal,
-        handoff,
-        bookmarks,
-        machines: machine_names(),
-    })
-    .map_err(|why| copy_text("rsFilewinEntry.open.failed", &[("why", &why.to_string())]))?;
-    tracing::info!("文件窗口起在进程 {pid} 上（{n} 行已经交给它了）");
+    let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req))
+        .await
+        .map_err(|e| copy_text("rsFilewinEntry.open.failed", &[("why", &e.to_string())]))?;
+    let (pid, n) = opened.map_err(unopened_said)?;
+    tracing::info!("文件窗口起在进程 {pid} 上（第一屏 {n} 行，它自己列的）");
     Ok(n)
 }
 
-/// 开窗之前那一屏 —— 问后端 `files-ls`，经通道宿主的生产句柄（monitor 进程里）。
-///
-/// 🔴 **为什么不是自己拨一次通道**：这一段就住在 monitor 进程里，路由器身后那个句柄
-/// （`InboundBackends`）就在手边；绕一圈回环口只多一跳、零收益。它与窗口里那一次
-/// **落在同一个句柄上**（`inbound_client` → 那台机器的后端），不是两条路。
-/// ⚠ 失败那句话走 [`super::source::said`] —— 与窗口里那一次**同一个翻译**。
-async fn list_first_screen(
-    source: &Source,
-    dir: &str,
-) -> Result<Vec<super::source::Listed>, String> {
-    let args = serde_json::json!({ "path": dir, "limit": super::source::LS_LIMIT });
-    let d = host_ask(source, super::source::CMD_LS, &args).await?;
-    super::source::rows_from_ls_data(&d, super::source::SortBy::default()).map(|(rows, _)| rows)
+/// 开窗没成 ⇒ 给 webview 的那一句。窗口进程列不出来时说的那句**原话原样**交出去（与上一版 monitor 自己列不出来时回的是同一句）；
+/// 进程这一层的错套上「文件窗口没起来」。
+fn unopened_said(u: Unopened) -> String {
+    match u {
+        Unopened::Said(said) => said,
+        Unopened::Process(why) => copy_text("rsFilewinEntry.open.failed", &[("why", &why)]),
+    }
 }
 
-/// 〔F7a · 第三波 2026-09-24〕开窗前「那台机器的 home 在哪」—— 问后端 `files-home`。
-///
-/// 与 [`list_first_screen`] **同一条路**（[`host_ask`]）；有逻辑的那一段（解字节 ＋ 判能不能当起点）
-/// 住 [`super::source::home_from_reply`]，本函数自己没有逻辑。
-async fn ask_home(source: &Source) -> Result<String, String> {
-    let d = host_ask(source, super::source::CMD_HOME, &serde_json::json!({})).await?;
-    super::source::home_from_reply(&d)
-}
-
-/// monitor 这一侧问后端的**唯一一处**：经通道宿主注入给路由器的那个生产句柄。
-///
-/// 🔴 **为什么不是自己拨一次通道**：这一段就住在 monitor 进程里，路由器身后那个句柄
-/// （`InboundBackends`）就在手边；绕一圈回环口只多一跳、零收益。
-/// ⚠ 失败那句话走 [`super::source::said`] —— 与窗口里那一次**同一个翻译**（话里带着命令名，
-/// 于是「是问 home 那一跳还是列目录那一跳没走通」在报错上分得开）。
-async fn host_ask(
-    source: &Source,
-    cmd: &str,
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    use crate::chan::router::Backends as _;
-    use crate::chan::wire::{Body, CancelToken, Op};
-    let payload = Body(
-        serde_json::to_vec(args)
-            .map_err(|e| copy_text("rsFilewinEntry.ask.badArgs", &[("e", &e.to_string())]))?,
-    );
-    let body = crate::chan::host::InboundBackends
-        .call(
-            source.origin(),
-            Op(cmd.to_string()),
-            payload,
-            FIRST_SCREEN_BUDGET,
-            CancelToken::new(),
-        )
-        .await
-        .map_err(|e| super::source::said(cmd, &e))?;
-    serde_json::from_slice(&body.0)
-        .map_err(|e| copy_text("rsFilewinEntry.ask.unreadable", &[("e", &e.to_string())]))
-}
-
-/// 开窗前那两问（home · 第一屏）各自的往返上限（调用方给的期限）。
-const FIRST_SCREEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
+// 〔MIG-3a · 09-28 裁 3〕`list_first_screen` · `ask_home` · `host_ask`〔散文墓碑〕与开窗前那两问的期限退役：
+//   monitor 这一侧不再替窗口问后端；那两问进了窗口进程（`proc::first_screen`，期限 `proc::FIRST_SCREEN_BUDGET`）。
 
 #[cfg(test)]
 #[path = "../../../../tests/bridge/filewin/entry_tests.rs"]

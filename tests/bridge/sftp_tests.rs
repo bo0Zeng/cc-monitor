@@ -402,29 +402,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     );
 }
 
-#[test]
-fn deploy_decision_truth_table() {
-    // 无标记 → 部署
-    assert!(matches!(
-        deploy_decision(None, "p1b-overflow"),
-        DeployAction::Deploy(_)
-    ));
-    // 版本不符 → 部署
-    assert!(matches!(
-        deploy_decision(Some("p1a-history"), "p1b-overflow"),
-        DeployAction::Deploy(_)
-    ));
-    // 一致（含尾随空白）→ 跳过
-    assert_eq!(
-        deploy_decision(Some("p1b-overflow"), "p1b-overflow"),
-        DeployAction::Skip
-    );
-    assert_eq!(
-        deploy_decision(Some("p1b-overflow\n"), "p1b-overflow"),
-        DeployAction::Skip,
-        "标记文件可能带尾随换行，trim 后比对"
-    );
-}
+// 〔MIG-3a · 09-28 预裁〕`deploy_decision_truth_table`〔散文墓碑〕随 `deploy_decision` 删了（旁挂标记那条路整条退役）。
 
 // ═══ 〔MIG-3b · 4d-lanes 子步 1〕部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
 //
@@ -556,32 +534,7 @@ fn remote_parent_and_marker() {
     // 〔DP1〕旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
 }
 
-/// **T04 审计⑤**：抽出来的谓词要对两个消费者都成立，且**标记词是必需条件**
-/// ——那是防误删的关键（把"这是 cc-monitor 管的目录"变成路径本身的性质）。
-#[test]
-fn safe_managed_path_requires_a_marker() {
-    // 四条通用条件
-    for bad in ["", "  ", "relative/x", "/a/../b/cc-monitor", "/"] {
-        assert!(
-            !is_safe_remote_managed_path(bad, &["cc-monitor"]),
-            "{bad:?} 不该通过"
-        );
-    }
-    // **没有标记词一律不通过**——哪怕是个完全正常的绝对路径
-    assert!(!is_safe_remote_managed_path(
-        "/home/u/.local/bin/x",
-        &["cc-monitor"]
-    ));
-    assert!(is_safe_remote_managed_path(
-        "/home/u/.cc-monitor/d",
-        &["cc-monitor"]
-    ));
-    // 多标记词：任一命中即可（acct-iso 就是两个）
-    let m = &["cc-acct-iso", ".cc-monitor"];
-    assert!(is_safe_remote_managed_path("/opt/cc-acct-iso", m));
-    assert!(is_safe_remote_managed_path("/home/u/.cc-monitor/ai", m));
-    assert!(!is_safe_remote_managed_path("/opt/other", m));
-}
+// 〔MIG-3a · 09-28 预裁〕`safe_managed_path_requires_a_marker`〔散文墓碑〕随谓词删了（第 2 个消费者 `acct_iso_deploy` 退役，只剩零个）。
 
 // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
 
@@ -640,7 +593,7 @@ fn upload_verify_passes_on_exact_bytes() {
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
-/// 范围只覆盖 `deploy_remote_backend` 与 `deploy_remote_acct_iso` 两个函数体
+/// 范围只覆盖 `deploy_remote_backend` 函数体（〔MIG-3a · 09-28 预裁〕另一个 `deploy_remote_acct_iso`〔散文墓碑〕 退役了）
 /// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
 /// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
 /// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
@@ -664,13 +617,7 @@ fn deploy_paths_use_verified_upload_for_content() {
             ),
             "deploy_remote_backend",
         ),
-        (
-            body(
-                include_str!("../../src/bridge/src/acct_iso_deploy.rs"),
-                "pub async fn deploy_remote_acct_iso(",
-            ),
-            "deploy_remote_acct_iso",
-        ),
+        // 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 那一格随命令删了：cc-acct-iso 的字节随后端二进制走（后端 `files-put` 逐份 CAS 写）。
     ];
     let mut verified_total = 0usize;
     for (b, what) in checks {
@@ -696,10 +643,10 @@ fn deploy_paths_use_verified_upload_for_content() {
             );
         }
     }
-    // 计数自检：2 处后端二进制 + 6 个 acct-iso 脚本
+    // 计数自检：按钮那条路体内 1 处后端二进制（〔MIG-3a · 09-28 预裁〕acct-iso 那 6 份随命令退役：7 → 1）。
     assert_eq!(
-        verified_total, 7,
-        "期望 1(backend 体内) + 6(acct-iso)，实得 {verified_total}"
+        verified_total, 1,
+        "期望 1(backend 体内)，实得 {verified_total}"
     );
 }
 

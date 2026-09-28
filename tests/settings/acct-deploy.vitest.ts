@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
-import { validateAcctName, askAcctIsoCmd, deriveAcctIsoDir, type AcctIsoStep } from "../../src/settings/acct-deploy";
+import { validateAcctName, askAcctIsoCmd, type AcctIsoStep } from "../../src/settings/acct-deploy";
 import { ControlError } from "../../src/control-said";
 import {
   acctIsoCmdCase,
@@ -108,16 +108,4 @@ describe("〔DUP2 · J4〕askAcctIsoCmd：命令问那台后端", () => {
   });
 });
 
-describe("deriveAcctIsoDir (F5 部署目录推导；〔SR1b〕落 .cc-monitor/bin 底下；〔E2〕只按用户名推)", () => {
-  it("按用户名推 <home>/.cc-monitor/bin/cc-acct-iso（root 的 home 是 /root）", () => {
-    expect(deriveAcctIsoDir("user")).toBe("/home/user/.cc-monitor/bin/cc-acct-iso");
-    expect(deriveAcctIsoDir("a_b-c.1")).toBe("/home/a_b-c.1/.cc-monitor/bin/cc-acct-iso");
-    expect(deriveAcctIsoDir("root")).toBe("/root/.cc-monitor/bin/cc-acct-iso");
-  });
-  it("user 缺 / 非法 → null", () => {
-    expect(deriveAcctIsoDir("")).toBeNull();
-    expect(deriveAcctIsoDir(undefined)).toBeNull();
-    expect(deriveAcctIsoDir("bad user")).toBeNull(); // 空格非法
-    expect(deriveAcctIsoDir("a;rm")).toBeNull(); // 元字符非法
-  });
-});
+// 〔MIG-3a · 主会话 09-28 预裁〕`deriveAcctIsoDir`〔散文墓碑〕那一组随函数删了：落点由那台后端自己算（`acct-iso-install`）。

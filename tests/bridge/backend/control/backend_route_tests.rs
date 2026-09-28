@@ -126,9 +126,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⇒ 两份新发现的 `.call(` 都**不做回落决策、也碰不到 inbound**，牙与纯路由器那一档同一套：
     // · `source.rs` —— 窗口进程里说 `Comms::call` 的唯一一处（`filewin/source.rs::ask`）。
     ("source.rs", Verdict::PureRouterNoFallbackDecision),
-    // · `entry.rs` —— monitor 那一侧开窗前那一屏，调的是通道宿主注入给路由器的**同一个**句柄
-    //   （`chan::host::InboundBackends`），不自己碰 inbound。
-    ("entry.rs", Verdict::PureRouterNoFallbackDecision),
+    // · 〔MIG-3a · 主会话 09-28 裁 3〕`entry.rs` 那一行删了：monitor 开窗前替窗口列第一屏那一问进了窗口进程
+    //   （`filewin/proc.rs::first_screen` → 上面 `source.rs` 那一处），`entry.rs` 生产段里一个 `.call(` 都没有了。
     // ★ 〔面 A 通道，2026-09-24〕**不是发送端，是纯路由器**（`chan/router.rs`）。
     //   发现阶段看见它，是因为它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄的
     //   `call`，不是 `inbound_client` 的；它生产段里的 `CallError::` 也是通道自己的
@@ -138,7 +137,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("router.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔C4a · 第四波 · 2026-09-24〕**主界面那一跳的宿主**（`chan/webview.rs`）。发现阶段看见它，是因为
     //   它生产段里有 `.call(` —— 那是**注入的** `Backends` 句柄（生产注入 `chan::host::InboundBackends`，
-    //   与 `entry.rs` 同一个），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
+    //   从前与 `entry.rs` 同一个〔09-28 裁 3 起它不再问〕），期限与撤单交给路由器那一份 `settle`。它不碰 inbound、不做回落判断，
     //   牙与纯路由器那一档同一套。
     ("webview.rs", Verdict::PureRouterNoFallbackDecision),
     // ★ 〔面 A 通道，2026-09-24〕**第八个发送端** —— 通道的生产句柄（`chan/host.rs`），

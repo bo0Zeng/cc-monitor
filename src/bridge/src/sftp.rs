@@ -81,7 +81,7 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
 ///
 /// ## 为什么这个函数此前不存在（T04 审计①）
 ///
-/// `deploy_remote_backend` 与 `deploy_remote_acct_iso` 的**全部**上传
+/// `deploy_remote_backend` 的**全部**上传（〔MIG-3a · 09-28〕另一条 cc-acct-iso 那条随字节进后端退役）
 /// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
 /// install.sh）——写完**直接写版本标记**，中间没有任何读回。
 ///
@@ -116,23 +116,7 @@ pub(crate) async fn upload_verified(
     })
 }
 
-/// 版本标记那一类小文件：读回来的字节；读不出 ⇒ `None`（标记不在，下一步就是部署）。
-pub(crate) async fn read_marker(fs: &RemoteFs, path: &str) -> Result<Option<Vec<u8>>, String> {
-    Ok(fs.read(path, MARKER_READ_MAX).await?.0)
-}
-
-/// 写版本标记：**不读回**（它是「校验通过」的凭证，只在内容那一份读回对了之后才写；它自己坏了下次重部署就是了）。
-pub(crate) async fn put_marker(
-    fs: &RemoteFs,
-    path: &str,
-    bytes: &[u8],
-    mode: u32,
-) -> Result<(), String> {
-    fs.put(path, bytes, mode, false).await.map(|_| ())
-}
-
-/// 标记 / 入口这类小文件一次最多读多少（它们都是几十字节；超了是那台机器上的东西不对）。
-const MARKER_READ_MAX: u64 = 64 * 1024;
+// 〔MIG-3a · 09-28 预裁〕`read_marker` · `put_marker`〔散文墓碑〕与标记读上限随 `acct_iso_deploy` 删了（按目录取标记那条路的唯一消费者）。
 
 /// 远端那台要的那一份后端（〔DP1〕字节从 `byte_table` 按那台的 (OS, arch) 取，`include_bytes!` 不在本文件）。
 pub struct BackendBinary {
@@ -160,25 +144,8 @@ pub(crate) const STAMP_MARKS: deploy_core::Marks<'static> = deploy_core::Marks {
 /// 〔MIG-3b〕部署决策住 `deploy-core`（本机常驻后端出计划用它）；本 crate 里还要它的几处从这里拿同一份名字。
 pub use deploy_core::DeployAction;
 
-/// 比对远端版本标记与期望 build_id，决定是否（重）部署。
-///
-/// ⚠ **这个函数只回答「版本对不对」一件事**，入参是一份旁挂的版本标记。
-/// 〔DP1 · 第四波〕backend 那条路**不走它**：后端的身份读那份字节自己里的身份戳（`deploy_core::identity_decision`，
-/// `设计/96 §7.2.1`，〔MIG-3b〕由本机常驻后端判），旁挂标记在那条路上退役了。本函数只留给 `acct_iso_deploy` 那条按目录取标记的路 ——
-/// 那里是一批脚本（没有身份戳可读），标记与内容同一次上传，且落点是目录不是单个文件。
-pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployAction {
-    match remote_build_id {
-        None => DeployAction::Deploy(copy_text("rsSftp.deploy.missing", &[])),
-        Some(r) if r.trim() != expected => DeployAction::Deploy(copy_text(
-            "rsSftp.deploy.versionMismatch",
-            &[
-                ("remote", &(r.trim()).to_string()),
-                ("expected", &expected.to_string()),
-            ],
-        )),
-        Some(_) => DeployAction::Skip,
-    }
-}
+// 〔MIG-3a · 09-28 预裁〕`deploy_decision`〔散文墓碑〕（比旁挂版本标记）删了：它只留给 `acct_iso_deploy` 那条按目录取标记的路，那条路整条退役
+//   （字节随后端二进制走、逐份比内容，`src/backend/assets/acct_iso_install.rs`）。后端那条路的判定住 `deploy_core::identity_decision`。
 
 /// 〔MIG-3b · 4d-lanes 子步 1〕**本机常驻后端出的部署计划**（帧命令 `deploy-plan`，线上形状 `tests/__fixtures__/deploy-plan.golden.json`）。
 /// 该不该换 · 换成哪一格 · 落点那一份是谁 · 旧落点那份删不删 —— 全是后端判的；本模块只照它放字节。
@@ -470,21 +437,7 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
 // 卸载删落点那个文件（〔E2〕固定落点 `~/.cc-monitor/bin/ccm`，没有外来路径要守）。
 // ============================================================================
 
-/// 远端受管路径的安全谓词。**T04 审计⑤：两个消费者、5 个条件里 4 个逐字相同，
-/// 只差"必须含哪个标记词"** —— 正好达到我为 `fenced_block::find_pair` 立的 ≥2 门槛，
-/// 所以按同一把尺子抽出来（`acct_iso_deploy::is_safe_remote_acct_iso_dir` 是第 2 个消费者）。
-///
-/// 判据：非空 · 绝对路径 · 不含 `..` · 不是根 · 含 `markers` 里任一标记词。
-/// 最后一条是**防误删的关键**：它把"这是 cc-monitor 管的目录"变成路径本身的性质，
-/// 而不是靠调用方记得。
-pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool {
-    let p = path.trim();
-    !p.is_empty()
-        && p.starts_with('/')
-        && !p.contains("..")
-        && p != "/"
-        && markers.iter().any(|m| p.contains(m))
-}
+// 〔MIG-3a · 09-28 预裁〕`is_safe_remote_managed_path`〔散文墓碑〕删了：第 2 个消费者（`acct_iso_deploy` 的落点围栏）随那条命令退役，只剩零个。
 
 /// 手动安装 / 更新远端后端（机器页 ①「部署后端」按钮）。逻辑同自动部署 [`ensure_backend_deployed`]，
 /// 但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况（探测不到 arch / 无该 arch 内嵌）显式报错。

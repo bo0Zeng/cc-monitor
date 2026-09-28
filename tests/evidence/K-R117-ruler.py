@@ -137,7 +137,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   ② 两侧跟上了吗 —— `sftp.rs:743/796` ＋ `ipc/commands.ts:739/959` 都跟上了 ✅
     #   ⇒ 是「有人改了命令名」那一种，**改表是跟上真相，不是凑绿**。
     ("backend.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
-    ("acct-iso.deploy", (B1, "R75〔用@09-14「account进后端」〕", "已裁：account 进后端 ⇒ 落 ①")),
+    # 〔MIG-3a · 09-28 预裁〕`acct-iso.deploy` 摘了：字节随后端二进制走，界面经通道问那台 `acct-iso-install`，不再是 Tauri 命令（R75「account 进后端」兑现）。
     # 〔MIG-3a〕`acct-iso.check` 摘了：装没装那一问界面直问那台后端 `acct-iso-status`，不再是 Tauri 命令。
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
     # 〔AL1 · 2026-09-24〕`alias.account-commands` → `alias.manage`：那条能力 id 随
@@ -324,7 +324,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
         # 〔MIG-3a〕`acct_iso_status` 摘了（装没装那一问进了后端出成品、界面直问）。
-        "deploy_remote_acct_iso",
+        # 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso` 摘了（字节随后端二进制走，界面经通道问 `acct-iso-install`）⇒ 本组今天零条。
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
@@ -407,8 +407,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
             "`cc_integration_status`，不是调用点（见 `§S5d` 第二档）")),
-    ("S3", (("src/settings/accounts-section.ts",),
-            "量于 09-15 · 同上",
+    ("S3", ((),
+            "〔MIG-3a · 09-28 预裁〕**1 → 0**：`src/settings/accounts-section.ts` 那一处（`deploy_remote_acct_iso`）改经通道问那台后端 `acct-iso-install`，"
+            "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
             "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
@@ -571,6 +572,9 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
     "assets/mcp_edit.rs::answer_remove":
         "同上，撤那一侧",
+    # 〔MIG-3a · 09-28 预裁〕cc-acct-iso 装进了那台后端：帧命令 `acct-iso-install` 的本体（字节随后端二进制走）。
+    "acct_iso_install.rs::answer_install":
+        "〔MIG-3a · 09-28 预裁〕`cc-acct-iso` 的装口：那台后端的帧命令 `acct-iso-install` 本体，本来就不是 Tauri 命令",
     # 〔MIG-3a · 子步 3〕cc-bus 装到本机进了本机后端：帧命令 `cc-bus-install` 的本体。
     "cc_bus_install.rs::answer_install":
         "〔MIG-3a〕`cc-bus` 的装口：本机后端的帧命令 `cc-bus-install` 本体（资产的装不算部署），本来就不是 Tauri 命令",
@@ -588,7 +592,7 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
 # ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
 #   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
 # 〔主会话 09-25 · LOC1b 合并那一拍〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
-WRAPPER_KEY_FLOOR = 50
+WRAPPER_KEY_FLOOR = 40  # 〔MIG-3a · 09-28 预裁〕50 → 40：包装层按设计在缩（现打 49），地板只防形状塌
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 解析器（全部只读文本；每个都有地板断言）
@@ -1284,9 +1288,10 @@ def main() -> int:
     #   （Tauri 命令逐批迁到通道 `chan.call`，05 §14.3），LOC1b 合并后 `LEDGER` 现打 99 撞了 100。地板只防「解析器塌了」——
     #   塌了读数是个位数，50 照样逮得住；它不是计数棘轮（计数由 parity_ledger / commands.vitest 两向钉着）。
     #   `WRITE_SITES` 同理 20 → 10（monitor 写点随 LOC1b / HX2 等收进后端而减，现打 19）。
+    # 〔MIG-3a · 09-28 预裁〕`LEDGER` / `#[tauri::command]` 两格 50 → 40：同一理由（人群按设计在缩，现打 49；地板只防解析器塌）。
     floors = [("TOOLS", len(tools), 5), ("UNMANAGED_ENV", len(unmanaged), 5),
-              ("LEDGER", len(ledger), 50), ("WRITE_SITES", len(sites), 10),
-              ("claims()", len(claims), 5), ("#[tauri::command]", len(cmd_addr), 50)]
+              ("LEDGER", len(ledger), 40), ("WRITE_SITES", len(sites), 10),
+              ("claims()", len(claims), 5), ("#[tauri::command]", len(cmd_addr), 40)]
     print(head("§S0 地板（反向自检 —— 这几个数塌了，下面每一条都会空真地绿）"))
     for name, got, floor in floors:
         print(f"  {name:<20s} 现打 {got:4d}  地板 {floor}")

@@ -642,14 +642,25 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
 // ══════════════════════════════════════════════════════════════════════════
 
 /// 本模块的线上命令（与 `inbound::REGISTRY`、`IPC-PROTOCOL.md §10` 三处对拍，同 `files_write::MANAGE_COMMANDS`）。
-pub const EXTRACT_COMMANDS: &[ManageCommand] = &[ManageCommand {
-    name: "files-extract",
-    purpose: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
+pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
+    ManageCommand {
+        name: "files-extract",
+        purpose: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
            every entry is path-checked first; see IPC-PROTOCOL `files-extract`",
-    args: &["fresh", "rel", "root"],
-    fields: &["bytes", "dirs", "files", "links", "path"],
-    codes: &["bad_args", "bad_path", "exists", "io_failed", "refused", "unsupported"],
-}];
+        args: &["fresh", "rel", "root"],
+        fields: &["bytes", "dirs", "files", "links", "path"],
+        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused", "unsupported"],
+    },
+    // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕[`land_link`] 的帧面入口（资产装 acct-iso 的 `~/.local/bin` 链接走它）。
+    ManageCommand {
+        name: "files-link",
+        purpose: "create one symbolic link at root/rel whose target text is `target` verbatim (like `cp -P`); \
+           the link path is resolved under root; an existing entry there is refused; see IPC-PROTOCOL `files-link`",
+        args: &["rel", "root", "target"],
+        fields: &["path"],
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+    },
+];
 
 /// 本面声明的线上命令名。
 pub fn extract_command_names() -> Vec<&'static str> {
@@ -738,10 +749,22 @@ fn answer_extract(args: &serde_json::Value) -> Answer {
     }))
 }
 
+/// `files-link {root, rel, target}` → `{path}`。
+fn answer_link(args: &serde_json::Value) -> Answer {
+    let root = path_arg(args, "root")?;
+    let rel = path_arg(args, "rel")?;
+    let target = path_arg(args, "target")?;
+    let at = land_link(&root, &rel, &target).map_err(|e| (e.code(), e.message().to_string()))?;
+    Ok(serde_json::json!({
+        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&at)),
+    }))
+}
+
 /// 线上入口（只从 `inbound.rs` 那一扇门来）。
 pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
         "files-extract" => answer_extract(args),
+        "files-link" => answer_link(args),
         other => Err((
             "bad_args",
             copy_text("beFilesExtract.args.unknownCmd", &[("cmd", other)]),

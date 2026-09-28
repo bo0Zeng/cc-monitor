@@ -88,6 +88,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔LOC1a · 第四波 4D〕这台机器的 `cc-acct-iso` 两问（本机那两条从 exec 一次性后端改走 `<local>` 长连接）。
     // 〔DUP2 · J4〕一个 cc-acct-iso 步骤在终端里要跑的那一行（预览 · 弹终端都问它；界面零拼 shell 串）。
     "acct-iso-cmd",
+    // 〔MIG-3a · 子步 3 · 09-28 预裁〕cc-acct-iso 装到这台（随二进制带着的字节 ＋ 链接 ＋ 配置 ＋ 记账），经这台的文件管理面。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "acct-iso-install",
     "acct-iso-shellinit",
     "acct-iso-status",
     // 〔MIG-3a · 主会话 09-27 裁〕别名六条：规则 · 方言 · 围栏住这台（`assets/aliases/`），写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
@@ -143,6 +145,8 @@ pub const COMMANDS: &[&str] = &[
     "files-home",
     "files-index-rebuild",
     "files-index-status",
+    // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕建链接的帧面入口（写面闭集里 FILES2 那个动词 `files_extract::land_link`，不另起原语）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "files-link",
     "files-ls",
     "files-mkdir",
     "files-peek",
@@ -1807,6 +1811,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_large",
         ],
         fields: &[
+            "at",
             "changed",
             "dir",
             "files",
@@ -1974,6 +1979,20 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &[
             "bytes", "dirs", "files", "fresh", "links", "path", "rel", "root",
         ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::files_extract::answer_wire(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 子步 3〕建一条链接（`files_extract.rs::land_link` 那一个动词，FILES2 已在写面闭集里）：链接那条路径过根底下的解析，
+    //   目标文本原样（同 `cp -P`）。阻塞档（一次 `symlink`）。
+    CommandSpec {
+        name: "files-link",
+        doc_anchor: Some("#### `files-link`"),
+        codes: &["bad_args", "bad_path", "io_failed", "refused"],
+        fields: &["path", "rel", "root", "target"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::files_extract::answer_wire(&r.cmd, &r.args)
@@ -2689,6 +2708,31 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 子步 3 · 09-28 预裁〕cc-acct-iso 装到这台：`assets/acct_iso_install.rs`；字节 / 链接 / 配置经 [`LocalFiles`]，装记录写口由本门递进去。
+    CommandSpec {
+        name: "acct-iso-install",
+        doc_anchor: Some("#### `acct-iso-install`"),
+        codes: &["bad_file", "refused"],
+        fields: &[
+            "config",
+            "configWritten",
+            "dest",
+            "link",
+            "linked",
+            "recordFailed",
+            "version",
+            "written",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|_| {
+            crate::assets::acct_iso_install::answer_install(
+                &LocalFiles,
+                &crate::skill_ledger::answer_record,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3a · 子步 3〕cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。

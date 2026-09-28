@@ -339,9 +339,7 @@ export const commands = {
   cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染 · 本机接回那一句三条退役：那台后端的帧命令（`src/launch-render.ts`）。
 
-  /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
-  deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
-    invoke<string>("deploy_remote_acct_iso", args),
+  // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 退役：cc-acct-iso 的字节随后端二进制走，界面经通道问那台 `acct-iso-install`（`src/acct-iso-reads.ts`）。
 
   // 〔MIG-3b〕cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
