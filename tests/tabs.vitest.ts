@@ -1464,27 +1464,64 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   //    留着它等于让用户点一个必失败的 kill。
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
   // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
-  // 〔RESYNC · V149 · `设计/15 §4.1b`「每个 tab『重新读取』」〕右键那一项 ⇒ 问**那台**的后端 `resync{sid}`（只对这一个会话）。
-  it("〔RESYNC〕tab 右键「重新读取」⇒ 问那台后端 resync，只带这个 sid", async () => {
-    const asked: [string, string, unknown][] = [];
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
+  // 〔REREAD · V155「改. 重新读取对所有tab生效」·「右键菜单那一项删（一个入口）」〕右键菜单里零处「重新读取」；
+  // 正控：同一张菜单开出来了（有「在新窗口打开」），栏顶那颗在。
+  it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
+    rightClick("k1abcdef");
+    const labels = [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map((b) => b.textContent);
+    expect(labels).toContain(copyText("tabMenu.open.openInWindow"));
+    expect(labels.filter((l) => l?.includes("重新读取"))).toEqual([]);
+    expect(document.body.querySelector(".tab-bar-reread")?.textContent).toContain("重新读取");
+  });
+
+  // 〔REREAD · V155〕栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
+  // 各台并行（全部发出去之后才有一台回来）；在飞时再按不重入；做完按台说一句，没问到的说原因。
+  it("〔REREAD〕栏顶「重新读取」⇒ 每台恰好一次整机 resync，并行、在飞不重入、按台汇总", async () => {
+    const asked: [string, unknown][] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.mocked(invoke).mockImplementation(withHistoryReads(async (cmd: string, args?: unknown) => {
       const a = args as { origin?: string; op?: string; payload?: number[] } | undefined;
       if (cmd === "chan_call" && a?.op === "resync") {
-        asked.push([a.origin ?? "", a.op, JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? [])))]);
+        asked.push([a.origin ?? "", JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? [])))]);
+        await gate;
+        if (a.origin === "box") throw new Error("连不上");
         const u = new TextEncoder().encode(
           JSON.stringify({ added: 0, removed: 0, retagged: 0, watchers: 1, unavailable: [], uncancellable: [] }),
         );
-        return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+        return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
       }
-      return Promise.resolve(undefined);
+      return undefined;
     }));
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
-    rightClick("k1abcdef");
-    const items = [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])];
-    (items as HTMLButtonElement[]).find((b) => b.textContent === "重新读取")!.click();
+    tm.ensureTab("k2abcdef", "/home/u/q", "/p/k2.jsonl", 0, LOCAL_ORIGIN);
+    tm.ensureTab("g1abcdef", "/home/g", "/p/g1.jsonl", 0, "gpd");
+    tm.ensureTab("b1abcdef", "/home/b", "/p/b1.jsonl", 0, "box");
+    tm.archiveTab("b1abcdef"); // 已结束的也在栏上 ⇒ 那台也算
+    const btn = document.body.querySelector<HTMLButtonElement>(".tab-bar-reread")!;
+    expect(btn.parentElement!.firstElementChild).toBe(btn); // 没有组时散 tab 排在它之后，它恒在栏顶
+    btn.click();
     await flush();
+    btn.click(); // 在飞：不重入
     await flush();
-    expect(asked).toEqual([[LOCAL_ORIGIN, "resync", { sid: "k1abcdef" }]]);
+    expect(btn.disabled).toBe(true);
+    expect(asked.map(([o]) => o).sort()).toEqual([LOCAL_ORIGIN, "box", "gpd"].sort());
+    expect(asked.every(([, p]) => JSON.stringify(p) === "{}")).toBe(true);
+    release();
+    for (let i = 0; i < 5; i++) await flush();
+    expect(btn.disabled).toBe(false);
+    const last = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
+    expect(last[0]).toBe(copyText("resync.machines.titlePartial"));
+    const lines = last[1].split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        copyText("resync.machines.ok", { machine: copyText("resync.machines.local"), said: copyText("resync.done.same") }),
+        copyText("resync.machines.ok", { machine: "gpd", said: copyText("resync.done.same") }),
+        expect.stringMatching(/^box：没问到（.+）$/),
+      ]),
+    );
   });
 
   it("P3 刀2-UI 本机 tab 右键：backend 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {

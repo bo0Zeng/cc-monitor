@@ -74,7 +74,7 @@
   display: none;
   position: absolute;
   left: 100%;
-  top: -4px;
+  top: 0;
   margin-left: 2px;
 }
 
@@ -148,6 +148,7 @@
     justify-content: center;
     padding: 0 4px;
   }
+  body:not(.viewer-mode) .tab-bar-reread .tab-bar-reread-text,
   body:not(.viewer-mode) .tab .tab-title,
   body:not(.viewer-mode) .tab .tab-badge,
   body:not(.viewer-mode) .tab .tab-cwd,
@@ -223,6 +224,37 @@
   height: 15px;
 }
 /* stylelint-enable property-no-vendor-prefix */
+
+/* 〔REREAD · V155〕栏顶常驻「重新读取」：恒为 #tab-bar 第一个子元素，滚动时贴顶。 */
+.tab-bar-reread {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  height: 26px;
+  margin: 0 6px 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab-bar-reread:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+
+.tab-bar-reread:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
 
 .tab {
   display: flex;
