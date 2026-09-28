@@ -37,6 +37,7 @@ vi.mock("../../src/ipc/commands", () => ({
 }));
 import { loadConfig } from "../../src/config";
 import { fakeCfg } from "../config-patch-fake";
+import { copyText } from "../../src/copy-table";
 const saveConfig = fakeCfg.saved;
 import {
   shouldShowResetFingerprint,
@@ -468,17 +469,21 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(code).not.toMatch(/\$\{MACHINE_PAGE_PREFIX\}\$\{card\./);
   });
 
-  it("★ 两台机器名相同时删掉一台：真的少一台（不是静默无效）", async () => {
-    // 删除基准若按**集合**算，这里会得出 remove=[]（另一张卡还占着同一个 key）
-    // ⇒ 删除静默失效。老的整表覆盖写法没这个问题，所以这是必须挡住的回归。
+  it("★ 两台机器名相同时删掉一台：不静默无效 —— 按键认不出是哪台 ⇒ 整批拒、说出来，盘上不动", async () => {
+    // 删除基准若按**集合**算，这里会得出 remove=[]（另一张卡还占着同一个 key）⇒ 删除静默失效，必须挡住。
+    // 〔FIX2 · ㊶〕增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说保存失败。
     const sec = await mount([mkH("dup", "1.1.1.1"), mkH("dup", "2.2.2.2")]);
+    vi.mocked(saveConfig).mockClear();
     sec.element
       .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
       .click();
     await new Promise((r) => setTimeout(r, 0));
-    const got = writtenHosts();
-    expect(got).toHaveLength(1);
-    expect(got[0]?.host).toBe("2.2.2.2");
+    const sent = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
+    expect(sent.map((e) => e.op)).toContain("removein");
+    expect(saveConfig).not.toHaveBeenCalled();
+    expect(sec.element.querySelector(".settings-banner-show")?.textContent ?? "").toContain(
+      copyText("remote.save.failed", { e: "" }).trim(),
+    );
   });
 
   it("config.json 里的无关顶层键不受影响", async () => {

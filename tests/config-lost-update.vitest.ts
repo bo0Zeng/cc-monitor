@@ -98,7 +98,7 @@ const EXPECTED: Record<string, unknown> = {
   claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
   accounts: { defaultName: "a1", modelByAccount: { a1: "opus" } },
-  remote: { enabled: true, hosts: [] },
+  remote: { enabled: true }, // 〔FIX2 续 · ㊶〕只写 enabled 那一格，不再整段写出一个空 hosts
 };
 
 /** 一个 realm 的全部写者（一份模块实例）。 */
@@ -171,7 +171,7 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
         "set keybindings",
         "set accounts.defaultName",
         "set accounts.modelByAccount.a1",
-        "set remote",
+        "set remote.enabled",
       ].sort(),
     );
   });

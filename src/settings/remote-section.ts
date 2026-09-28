@@ -1239,7 +1239,7 @@ export class RemoteSection {
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
 // F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /
 // `resolveRemoteConfigByOrigin` / 写入口已移入 `src/remote-config.ts`（数据层）。
-// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（〔CFG1〕今天连函数都没了，只剩不导出的 `remoteEdit` 出那一条补丁）。 〔散文墓碑〕
+// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出（〔CFG1〕今天连函数都没了；〔FIX2 续〕增删改全按键认元素）。 〔散文墓碑〕
 // `sameHost` / `sameRemote`（下方）是 UI dirty-check，留本文件。
 
 function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {

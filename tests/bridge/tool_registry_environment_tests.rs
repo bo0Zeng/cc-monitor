@@ -250,8 +250,9 @@ fn the_tier_for_owed_installers_is_countable_and_not_empty() {
         );
         // 「有名字、看得见」：档名本身必须说清是**欠的实现**，不是「不该我们装」。
         assert!(
-            // 〔CP2b〕「装口」是内部说法（CP1 裁：内部词），档名改说「安装功能」；两半照旧都得在。
-            e.tier.label().contains("该自带") && e.tier.label().contains("还没有安装功能"),
+            // 〔CP2b〕「装口」是内部说法（CP1 裁：内部词），档名改说「安装功能」。
+            // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言：档名取的是「该自带、还没有安装功能」那一条，说法由文案表管。
+            e.tier.label() == copy_text("rsToolRegistry.envTier.appShipsNoInstallerYet", &[]),
             "这一档的档名读不出「该我们装、而今天还没有装口」两半，实得 {:?} —— \
                  用户会把它读成「不该我们装」",
             e.tier.label()

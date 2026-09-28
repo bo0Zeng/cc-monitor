@@ -2914,7 +2914,7 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
     assert!(
         body_line.contains("next_step"),
         "通知正文里没有 `next_step`：{}\n\
-             ★ 上面 ④ 逐字钉过的那句话（含「下一步」、含 `pid_path(&dir, port)`）\n\
+             ★ 上面 ④ 逐字钉过的那句话（含 `pid_path(&dir, port)`）\n\
              **一个字都没进到用户眼前** —— 用户看到的是一个标题写着「本机后端没起来」、\n\
              正文**空白**的通知，而那句他照着做就能解决问题的话躺在日志里。\n\
              ⇒ 「有一个出口」与「那句话进了出口」是两件事，中间隔着一个参数。",

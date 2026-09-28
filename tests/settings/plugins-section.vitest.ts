@@ -37,6 +37,7 @@ import type { MarketplaceEntry } from "../../src/settings/plugins-section";
 
 import { REPO_ROOT, srcDirOf } from "../test-support/repo-root";
 import { copyTableTextsIn } from "../test-support/copy-refs.ts";
+import { copyText } from "../../src/copy-table";
 function entry(over: Partial<MarketplaceEntry> = {}): MarketplaceEntry {
   return {
     id: "mk",
@@ -80,9 +81,9 @@ describe("P8a-Y2：null 不是 0", () => {
 
   it("后端漏了理由时**说破**，不假装读到了", () => {
     const t = declaredPluginsText(entry({ declared_plugins: null, declared_error: null }));
-    expect(t).toContain("读不到");
     // 〔CP2b · CP1 裁「改·§2.2」〕原先说「那是个 bug」（把我们的缺陷判断说给用户）→ 说「原因未知」。
-    expect(t).toContain("原因未知");
+    // 〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文：「读不到」那一条，理由那一格是「原因未知」那一条。
+    expect(t).toBe(copyText("plugins.declared.unreadable", { why: copyText("plugins.declared.noReason") }));
   });
 });
 

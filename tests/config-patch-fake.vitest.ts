@@ -13,7 +13,7 @@ interface Case {
   before: string;
   edits: Edit[];
   after?: unknown;
-  refused?: "bad_edit" | "unreadable" | "element_gone";
+  refused?: "bad_edit" | "unreadable" | "element_gone" | "element_exists";
 }
 const GOLDEN = JSON.parse(readFileSync("tests/__fixtures__/config-patch.golden.json", "utf8")) as {
   cases: Case[];
@@ -21,7 +21,7 @@ const GOLDEN = JSON.parse(readFileSync("tests/__fixtures__/config-patch.golden.j
 
 describe("CFG1 · 假盘补丁语义 == 金样", () => {
   it("金样不是空的（空集上的相等恒真）", () => {
-    expect(GOLDEN.cases.length).toBe(12);
+    expect(GOLDEN.cases.length).toBe(16); // 〔FIX2 续〕12 → 16：insertin / removein 各两条
   });
   for (const c of GOLDEN.cases) {
     it(c.name, () => {
