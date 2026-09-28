@@ -103,7 +103,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔C4c · 第四波 4B〕账号面那一行（`cfg_for`，原住 `accounts.rs`）〔散文墓碑〕**还掉了**：它只服务远端账号清单与信任预检两条 Tauri 命令，
     //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
     // 〔E2〕`ccm_probe.rs::probe_ccm_cli` 那一行还掉了：它不再查远端配置（改经那台后端的门问 `ccm-probe`，`<local>` 也是一个 origin）。
-    // 〔SH1〕`hooks_diag.rs::diagnose_remote_cc_bus_hooks` 那一行还掉了：它不再查远端配置（事实经 `frame_query::call(origin, …)` 问那台后端）。
+    // 〔SH1〕远端钩子诊断那一行还掉了：它不再查远端配置（〔MIG-3b〕今天整件是那台后端的帧命令 `hooks-diag`）。
     ("launch.rs", "build_remote_ssh_ps_command"),
     // 〔SH1 · V137〕`mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
     ("mcp.rs", "read_remote_project_mcp"),

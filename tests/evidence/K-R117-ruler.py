@@ -212,8 +212,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("history.branch", (NA, "—", "会话历史")),
     ("history.delete", (NA, "—", "会话历史")),
     ("history.read-session", (NA, "—", "会话历史")),
-    ("hooks.diagnose", (NA, "—",
-                        "**只诊断**钩子，不装它（`TouchEffect::GenerateOnly`：产品自己不动手）")),
+    # 〔墓碑 · MIG-3b〕`hooks.diagnose` 随钩子诊断本机远端合成帧命令 `hooks-diag`（界面经通道直问那台后端）退役：
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("launch.render-attach", (NA, "—", "渲染一条命令串")),
     ("launch.render-cli", (NA, "—", "渲染一条命令串")),
     ("launch.render-payload", (NA, "—", "渲染一份载荷")),

@@ -722,6 +722,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
         "降级+说清",
     ),
+    // 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag`，只读）读那台自己的 settings 文件多大。
+    (
+        "src/backend/observe/cc_bus_hooks.rs",
+        "SETTINGS_CAP_BYTES",
+        1 << 20,
+        "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
+        "降级+说清",
+    ),
     // 〔AS2 · 第四波 4B〕资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/assets.rs",

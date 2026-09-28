@@ -56,9 +56,9 @@ mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profi
                   //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
-mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
-                // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
-                // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+// 〔MIG-3b〕`hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
+// U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
+// 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写 ——〔GP1〕写两台同一条路：交那台机器的后端（本机 ＝ 本机常驻后端）
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
@@ -1398,8 +1398,6 @@ pub fn run() {
             drift_ledger::drift_ledger_report,
             backend::control::launch_wire::render_ccm_launch,
             backend::control::launch_wire::render_launch_payload,
-            hooks_diag::diagnose_local_cc_bus_hooks,
-            hooks_diag::diagnose_remote_cc_bus_hooks,
             mcp::read_mcp_servers,
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,

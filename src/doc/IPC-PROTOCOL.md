@@ -2469,6 +2469,26 @@ BEGIN/END 围栏由 monitor 那侧校验（本命令不再写第二份围栏常�
 整机那一趟与起步初探是**同一套**（`设计/15 §4.1b`）：耳朵重挂 · 账号清单（发一帧 `accounts_changed`）· pidfile 目录对后端的表（多的补 `session_added`，少的补 `session_removed`，在跟的顺手对账标签）· 重探 tmux。只对差异发帧；不另发 `sessions_replayed`。
 错误码：`bad_args`。
 
+#### `hooks-diag`：cc-bus 钩子诊断（MIG-3b，09-27；**不读 stdin**）
+
+```text
+→ {"id":"h1","cmd":"hooks-diag","args":{}}
+← {"kind":"reply","id":"h1","ok":true,"data":{"diagnosis":{"session_start":{"kind":"installed-via-path","command":"cc-register"},"stop":{"kind":"not-installed"},"note":""},"snippet_home":{"text":"…","warning":null},"snippet_bare":{"text":"…","warning":null},"source":"/home/u/.claude/settings.json"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `diagnosis` | ← | `session_start`（→ `cc-register`）· `stop`（→ `cc-bus-stop-hook`）各一态 ＋ `note`（读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串） |
+| `session_start` / `stop` / `note` | ← | 见上一行 |
+| `kind` | ← | 一态：`not-installed` · `installed-via-path` · `installed-at-path` · `path-missing` · `unknown`；除第一态都带 `command`，两种显式路径态另带 `path` |
+| `command` / `path` | ← | 钩子原文（去首尾空白）· 它点名的路径（原样，`$HOME` 未展开） |
+| `snippet_home` / `snippet_bare` | ← | 两种待贴片段（`$HOME/.local/bin/…` 显式路径 · 裸命令）：`text` ＋ `warning`（形态与这台实况**确定**冲突才有，否则 `null`） |
+| `text` / `warning` | ← | 见上一行 |
+| `source` | ← | 读的是哪份文件：这台后端的 agent 配置根下的 `settings.json` |
+
+本体 `observe/cc_bus_hooks.rs`：读这台自己的 `settings.json`（只读）、按这台的 `HOME` 展开 `$HOME/…` 就地 stat、按这台的 `PATH`（本平台分隔符）反查裸命令。本机远端同一条（monitor `diagnose_local_cc_bus_hooks` / `diagnose_remote_cc_bus_hooks` 两条 Tauri 命令删了，`设计/95 §6`）；界面按形状严格收，线上形状由跨语言金样 `tests/__fixtures__/hooks-diag.golden.json` 钉住。
+错误码：`failed`（序列化失败）· `too_large`。
+
 #### `tasks-list`：一个会话的任务列表
 
 ```text
@@ -2907,6 +2927,8 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
+
+**MIG-3b 追加一条（09-27）**：`--hooks-diag` —— cc-bus 钩子诊断（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 
 〔RESYNC · 09-27〕`resync` **没有 CLI 面**（`cli_control::STREAM_ONLY`）：它对齐的是进程里在跑的 watcher，一次性进程里一份都没有。
 

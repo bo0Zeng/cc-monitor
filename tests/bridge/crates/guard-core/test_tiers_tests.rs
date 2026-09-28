@@ -374,7 +374,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/guard_support_tests.rs",
     "tests/bridge/history_title_coverage.rs",
-    "tests/bridge/hooks_diag_tests.rs",
     "tests/bridge/launcher_identity_registry_tests.rs",
     "tests/bridge/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
     "tests/bridge/lib_mod_decl_hygiene_tests.rs",
@@ -522,6 +521,7 @@ const SCAN: &[&str] = &[
 const INTEGRATION: &[&str] = &[
     // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
     "tests/bridge/e2e_gate_registry_tests.rs",
+    "tests/backend/observe/cc_bus_hooks_tests.rs", // 〔MIG-3b〕钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
     "tests/backend/control/tmux_hook_tests.rs", // 〔HX2〕读真 `/proc` 的那一条进来之后判别器判集成（SCAN → INTEGRATION）
     "tests/backend/platform/lock_tests.rs",     // 〔HX2〕目录锁：真目录、真线程
     "tests/backend/own_dir_tests.rs", // 〔HX1 续〕O1–O3 自家目录一律 0700、建目录调用点两向登记

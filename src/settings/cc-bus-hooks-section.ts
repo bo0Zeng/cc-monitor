@@ -13,20 +13,96 @@
 // 然后建议用户去修一个没坏的东西。所以这里必须把
 // 「显式路径且存在（没问题）」与「显式路径但不存在（真问题）」**分开渲染**。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
+import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { commands } from "../ipc/commands";
+import { chan } from "../ipc/chan";
+import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
-
-// C04d 批 3：四个类型全部换成生成物（源 `hooks_diag.rs`）。手写版与生成物**逐字等价**
-// ——这一处零漂移，价值是防将来漂。`HookState` 是
-// `#[serde(tag = "kind", rename_all = "kebab-case")]` 的内部标记枚举 → 判别联合。
-import type { HooksDiagnosis } from "../generated/HooksDiagnosis";
-import type { HooksReport } from "../generated/HooksReport";
-import type { HookState } from "../generated/HookState";
-import type { Snippet } from "../generated/Snippet";
 import { copyText } from "../copy-table";
 
-export type { HooksDiagnosis, HooksReport, HookState, Snippet };
+// 〔MIG-3b · `设计/95 §6`〕诊断由**那台机器的后端**出成品（帧命令 `hooks-diag`，`src/backend/observe/cc_bus_hooks.rs`），
+// 本机远端同一条 `chan.call(origin, …)`；monitor 那两条 Tauri 命令与判定本体删了。下面四个类型是成品的线上形状，
+// 由跨语言金样 `tests/__fixtures__/hooks-diag.golden.json` 钉住（后端产出 == 金样 · {@link decodeHooksReport} 读同一份）。
+// `HookState` 是 `#[serde(tag = "kind", rename_all = "kebab-case")]` 的内部标记枚举 → 判别联合。
+export type HookState =
+  | { kind: "not-installed" }
+  | { kind: "installed-via-path"; command: string }
+  | { kind: "installed-at-path"; command: string; path: string }
+  | { kind: "path-missing"; command: string; path: string }
+  | { kind: "unknown"; command: string };
+export type HooksDiagnosis = { session_start: HookState; stop: HookState; note: string };
+export type Snippet = { text: string; warning: string | null };
+export type HooksReport = {
+  diagnosis: HooksDiagnosis;
+  snippet_home: Snippet;
+  snippet_bare: Snippet;
+  source: string;
+};
+
+/** 读一份 `settings.json` ＋ 几次 stat ＋ 回程。 */
+const HOOKS_DIAG_BUDGET_MS = 30_000;
+
+/**
+ * `hooks-diag` 的成品 → {@link HooksReport}。**按形状严格收，不解释**：多一格 / 缺一格 / 类型不对 ⇒ 抛（两端契约对不上）。
+ * 态的取值集只收已知五种：后端将来加第六态 ⇒ 这里抛「对不上」（不猜成哪一态）。
+ */
+export function decodeHooksReport(v: unknown): HooksReport {
+  const bad = (what: string): never => {
+    throw new Error(`hooks-diag reply shape mismatch: ${what}`);
+  };
+  const obj = (x: unknown, what: string, keys: string[]): Record<string, unknown> => {
+    if (x === null || typeof x !== "object" || Array.isArray(x)) return bad(`${what} is not an object`);
+    const o = x as Record<string, unknown>;
+    if (Object.keys(o).sort().join(",") !== [...keys].sort().join(",")) return bad(`${what} has keys ${Object.keys(o).sort().join(",")}`);
+    return o;
+  };
+  const str = (x: unknown, what: string): string => (typeof x === "string" ? x : bad(`${what} is not a string`));
+  const state = (x: unknown, what: string): HookState => {
+    const kind = (x as { kind?: unknown } | null)?.kind;
+    switch (kind) {
+      case "not-installed":
+        obj(x, what, ["kind"]);
+        return { kind };
+      case "installed-via-path":
+      case "unknown": {
+        const o = obj(x, what, ["kind", "command"]);
+        return { kind, command: str(o.command, `${what}.command`) };
+      }
+      case "installed-at-path":
+      case "path-missing": {
+        const o = obj(x, what, ["kind", "command", "path"]);
+        return { kind, command: str(o.command, `${what}.command`), path: str(o.path, `${what}.path`) };
+      }
+      default:
+        return bad(`${what}.kind is ${JSON.stringify(kind)}`);
+    }
+  };
+  const snippet = (x: unknown, what: string): Snippet => {
+    const o = obj(x, what, ["text", "warning"]);
+    if (o.warning !== null && typeof o.warning !== "string") return bad(`${what}.warning`);
+    return { text: str(o.text, `${what}.text`), warning: o.warning as string | null };
+  };
+  const top = obj(v, "reply", ["diagnosis", "snippet_home", "snippet_bare", "source"]);
+  const d = obj(top.diagnosis, "diagnosis", ["session_start", "stop", "note"]);
+  return {
+    diagnosis: {
+      session_start: state(d.session_start, "session_start"),
+      stop: state(d.stop, "stop"),
+      note: str(d.note, "note"),
+    },
+    snippet_home: snippet(top.snippet_home, "snippet_home"),
+    snippet_bare: snippet(top.snippet_bare, "snippet_bare"),
+    source: str(top.source, "source"),
+  };
+}
+
+/** 问 `origin` 那台后端要一份诊断成品（本机逐字 `LOCAL_ORIGIN`）。 */
+export async function fetchHooksReport(origin: Origin): Promise<HooksReport> {
+  const budget = budgetWithin(HOOKS_DIAG_BUDGET_MS);
+  const body = jsonBody({});
+  const reply = await chan.call(origin, "hooks-diag", body, budget);
+  return decodeHooksReport(readJson(reply));
+}
 
 /** 一态 → 展示文案 + 三档语气。**`path-missing` 绝不能说成"已装"**；
  *  `unknown` 要中性（既不说已装也不说未装）。 */
@@ -99,7 +175,7 @@ export class CcBusHooksSection {
    */
   loadNow(): void {
     void this.loadOrigins();
-    // 本机诊断是纯本地读文件（无 SSH、无远端往返），代价可忽略 → 直接读。
+    // 本机诊断问本机后端（本机回环一问，无 SSH），代价可忽略 → 直接读。
     // 远端那份要 SSH，**只在用户点「检查远端」时才发**（同 cc-bus 驾驶舱的纪律）。
     void this.checkLocal();
   }
@@ -203,7 +279,7 @@ export class CcBusHooksSection {
     box.appendChild(this.formSel);
 
     // T03：输出面 + 复制按钮 + 三句话改走统一组件。**形态选择器留在这里**
-    // （它是这一处独有的），生成仍在 Rust 侧。
+    // （它是这一处独有的），生成在那台后端（`hooks-diag` 的成品）。
     // **警示由本 section 自己渲染**（T03 审计：它只有一个消费者，不该占共享组件的槽；
     // 而且审计实测——删掉这条接线时 56 项全绿，我却在 commit 里声称"有测试钉住它上屏"）。
     this.warnBox = document.createElement("div");
@@ -264,12 +340,12 @@ export class CcBusHooksSection {
 
   private async checkLocal(): Promise<void> {
     try {
-      const rep = await commands.diagnose_local_cc_bus_hooks();
+      const rep = await fetchHooksReport(LOCAL_ORIGIN);
       this.lastReport = rep;
       this.renderDiag(this.localBox, rep);
       this.renderSnippet();
     } catch (e) {
-      this.localBox.textContent = copyText("ccBusHooks.local.failed", { e: String(e) });
+      this.localBox.textContent = copyText("ccBusHooks.local.failed", { e: saidOf(e, copyText("ccBusHooks.fetch.oldBackend")) });
     }
   }
 
@@ -279,10 +355,10 @@ export class CcBusHooksSection {
     btn.disabled = true;
     this.remoteBox.textContent = copyText("ccBusHooks.checkRemote.checking");
     try {
-      const rep = await commands.diagnose_remote_cc_bus_hooks({ origin });
+      const rep = await fetchHooksReport(origin);
       this.renderDiag(this.remoteBox, rep, true);
     } catch (e) {
-      this.remoteBox.textContent = copyText("ccBusHooks.remote.failed", { e: String(e) });
+      this.remoteBox.textContent = copyText("ccBusHooks.remote.failed", { e: saidOf(e, copyText("ccBusHooks.fetch.oldBackend")) });
     } finally {
       btn.disabled = false;
     }
@@ -349,7 +425,7 @@ export class CcBusHooksSection {
   private renderSnippet(): void {
     if (!this.lastReport) return;
     this.paste.refresh();
-    // 形态与盘上实况冲突时，Rust 侧会给出 warning——**必须上屏**，
+    // 形态与盘上实况冲突时，后端会给出 warning——**必须上屏**，
     // 否则那条后端判据等于白做（B04 登记项的全部价值挂在这一步）。
     const w = this.currentSnippet()?.warning ?? null;
     this.warnBox.hidden = w === null;

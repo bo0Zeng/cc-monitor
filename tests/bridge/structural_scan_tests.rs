@@ -762,11 +762,7 @@ fn every_comment_stripping_transformer_is_registered() {
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
         ),
         // 〔SH1 · V136〕`cc_bus_tests` 那份本地剥法那一行摘了：用它的零命中守卫随驾驶舱 shell 读一起退役（收口了，不是搬家）。
-        (
-            // 〔搬树 2026-09-18 · `16 §6.2` C 类〕随测试段搬去 `tests/bridge/`。
-            "hooks_diag_tests.rs::non_test_code",
-            "本文件自用的本地剥法。⚠ 与共享原语重复，登记为待收口",
-        ),
+        // 〔MIG-3b〕钩子诊断那份本地剥法那一行摘了：它的判据随模块进后端退役（后端 `readonly_guard` 管只读，收口了，不是搬家）。
         (
             // 〔AL1c · 第四波 4B〕两种方言的读回口（同名两份 `impl`，按文件名去重成一行）。
             "shell_dialect.rs::parse_file",
@@ -2661,6 +2657,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔MIG-3b〕钩子诊断进后端，monitor 那份只读模块与它的「绝不写盘」判据一起删了；导入禁令那几段讲共同前提时点它的原名。
+        (
+            "tests/bridge/write_site_registry_tests.rs",
+            "this_module_never_writes",
+            2,
+        ),
         // 〔LR2〕U8c-3「前提触发器」改写成只管 `create-or-attach` 两棵树、改了名；两处散文点它的原名讲沿革。
         (
             "src/doc/INVARIANTS.md",
@@ -4415,7 +4417,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RW1 · 第四波 09-24〕项目 `.mcp.json` 的本机写原语删了（改经后端写）。
         ("src/bridge/src/mcp.rs", 5), // 〔SH1〕2 → 5：MCP 读面改问后端（头注三候选 · 两个读者退役 · 远端项目目录旧名三处） // 〔SH1〕+2：MCP 读面改问后端（头注那一处 ＋ 远端项目目录旧名那一处） // 〔SR1b〕+1：远端 `.mcp.json` 读那一半改经远端后端 `files-peek`，旧的 SFTP 读取函数留墓碑
         // 〔RW1 · 第四波 09-24〕写点表摘掉那三行时留的一块。
-        ("tests/bridge/write_site_registry_tests.rs", 3), // 〔E2 · 子步 4〕2 → 3：副本那一行登记删了，原地一块 //, // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
+        ("tests/bridge/write_site_registry_tests.rs", 5), // 〔MIG-3b〕3 → 5：点 `hooks_diag::this_module_never_writes`（模块进后端删了）的两句各一块 // 〔E2 · 子步 4〕2 → 3：副本那一行登记删了，原地一块 //, // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         // 〔RW1 · 第四波 09-24〕「盘上有字节却读到空」那一道从 monitor 的 `LocalFile::read` 搬到后端 `hollow_read`
         //   （住址并进 FW5 那一行，〔合并〕两边各 +1）。
         // 〔RW1 · 第四波 09-24〕Windows ACL 那条判据从 monitor 搬去后端：两头各一块墓碑。
@@ -4470,7 +4472,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/filewin/fonts.rs", 2), // 〔F9c 第四波 09-24〕0 → 2（探针来路里那两句「存不回去」的函数名随只读一档删了）
         ("src/bridge/src/history.rs", 20), // 〔DUP1〕+1：configDir 校验头注原先「照抄 TS 侧 `isValidConfigDir`」那句（TS 那份删了） // 〔合并 LOC1a〕主线 18 ＋ LOC1a +1（分叉 exec 那一趟的结果解释删了）// 〔合并 US1 × 主线〕主线 15 ＋ US1 +3 // 〔C4e 批 2〕+1：本机 kill 那句点的旧发送端 // 〔C4c〕+1：记录那一问的 Tauri 命令与答案形状退役，原处留一块 // 〔RW1〕+1：本机删会话那道路径守卫整段搬去后端 // 〔RW1〕+3：本机分叉的实现（`branch_impl` / `write_branch_file` / `read_jsonl_values`）交给后端 ·〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑 ·〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("src/bridge/src/launch.rs", 1),
-        ("src/bridge/src/lib.rs", 16), // 〔STOP〕+1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：〔合并 HX2 × 主线 06b5dc08〕基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：〔LOC1b〕+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 〔合并 LOC1b × 主线 66f2b6bf〕主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：〔HX2 · 4D〕±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
+        ("src/bridge/src/lib.rs", 17), // 〔MIG-3b〕+1：`mod hooks_diag;` 那一行换成一块墓碑（钩子诊断进后端 `hooks-diag`）。 〔STOP〕+1：`mod stop_grace;` 那一行换成一块墓碑（「请它收尾 → 等 → 强杀」搬进一次性 `--resident-stop`）。 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕主线 13 ＋ 本路 +2（`verified_write` 模块删了那一行：`verified_write` · `fenced_block::apply` 各一）⇒ 15。主线原注：〔合并 HX2 × 主线 06b5dc08〕基数 10 ＋ LOC1b +3 ＋ HX2 ±0 ⇒ 13。LOC1b 原注：〔LOC1b〕+2：本机判活那一段（`SessionMap::load_with_changes` 起步 · `app.manage(session_map)`）删了，原处各挂一块 // 〔合并 LOC1b × 主线 66f2b6bf〕主线 10 ＋ LOC1b +1（`mod search;` 那一行挂一块，本机内存索引删了） // 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4） ｜ HX2 原注：〔HX2 · 4D〕±0：`write_apikey_credentials_key` 整条删，原处换一块墓碑（点旧命令名 ＋ `KH2C1` 那条旧判据名）// 〔US1〕+1 // 〔GP1〕+1：`write_apikey_credentials_key` 头注里「整段论证见」那个旧写口 // 〔合并 C4d × 主线 cf3277f4〕主线 7 ＋ 本路 +1 ⇒ 8（〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑） // 〔合并 CF2 × 主线 60ace11b〕主线 6 ＋ 本路 +1（独立窗口的定向重放命令退役那一段）// 〔AL1d〕+2（「终端集成」五条命令退役：注册表旁一句 ＋ 原住址一句；合并主线 d07c6d14 按两边增量相加 4 + 2） // 〔F7c 收尾 09-24〕1 → 2（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔SR1b 子步 3〕+1：`sftp_move_ledger` 退役 · 〔C4b〕+1：`plugins` 模块删了，那一行挂一块（合并按两边增量相加 ⇒ 4）
         ("src/bridge/src/local_backend_host.rs", 4), // 〔TL3 · 🔴-3〕+1：中转「在不在」那一行原先点着已删的回环探针，改成今天由后端答、旧名留一块 // 〔US1〕+1：`relay_running` 一族退役那一块 // 〔HX1〕+1：`fresh_token` 头注里「不需要密码学随机数」那一段整段删，原处留一块（合并按两边增量相加：1 ＋ 1 ＋ 1）
         // 〔LOC1b · 第四波 4D〕monitor 自己那份本机判活整份删了（本机活会话表改由本机后端的帧喂），头注点旧实现的几个名字各挂一块。
         ("src/bridge/src/session_map.rs", 4),
@@ -4511,7 +4513,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/backend/control/tmux_tests.rs", 13), // 〔SH1〕+1：守跨 SSH `tmux ls` 那条判据退役 // 〔C4e 批 2〕+3：本机杀会话 / 送键不许回落那两条退役 ＋ Gate 1 那条的说明点旧命令名 // 〔C4e〕+6：抓屏迁到界面，`KR112D2` 两刀 ＋ 五档那条随 monitor 那一份退役，原处与 Gate 1 那条的说明里点旧名
         ("tests/bridge/backend_tests.rs", 1),
         ("tests/bridge/byte_cap_registry_tests.rs", 9), // 〔SH1〕+1：远端 `.claude.json` 那条上限删了；+1：钩子诊断读远端 settings.json 的上限删了；+2：驾驶舱读面那两个上限（名册 · 收件箱）随 shell 读删了 // 〔合并 LOC1b〕+1：F10b 那段病史点的远端读会话函数删了 // 〔C4e 批 3b〕+1：`K-R112` 地板那段点的查在线命令迁到界面 // 〔C4e〕+1：`K-R112` 地板那段点的抓屏命令迁到界面 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
-        ("src/bridge/src/hooks_diag.rs", 1), // 〔SH1〕新贴：远端诊断那条拨号 shell 改问那台后端，原处留墓碑
+        // 〔MIG-3b〕`hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
+        ("src/bridge/src/config_surface.rs", 1), // 〔MIG-3b〕新贴：`claude_config_dir` · `resolves_on_path` 从 `hooks_diag.rs` 挪来，点旧住址
         ("tests/bridge/acct_iso_deploy_tests.rs", 1), // 〔SH1〕新贴：远端 shellinit 旧名
         ("tests/bridge/capability_registry_tests.rs", 1),
         ("tests/bridge/ccm_cli_contract_tests.rs", 1),

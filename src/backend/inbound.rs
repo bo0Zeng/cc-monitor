@@ -164,6 +164,8 @@ pub const COMMANDS: &[&str] = &[
     "history-subagents",
     "history-tail",
     "history-user-inputs",
+    // 〔MIG-3b〕cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "hooks-diag",
     "kill",
     "launch",
     // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
@@ -2372,6 +2374,32 @@ pub const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `tmux-list`"),
         codes: &["unobservable", "too_large"],
         fields: &["installed", "lines"],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3b · `设计/95 §6`〕cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
+    CommandSpec {
+        name: "hooks-diag",
+        doc_anchor: Some("#### `hooks-diag`"),
+        codes: &["failed", "too_large"],
+        fields: &[
+            "command",
+            "diagnosis",
+            "kind",
+            "note",
+            "path",
+            "session_start",
+            "snippet_bare",
+            "snippet_home",
+            "source",
+            "stop",
+            "text",
+            "warning",
+        ],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)
