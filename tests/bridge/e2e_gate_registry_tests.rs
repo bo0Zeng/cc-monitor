@@ -590,7 +590,9 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
     let bin = d.join("bin");
     std::fs::create_dir_all(&bin).expect("建临时目录");
     let path = std::env::var_os("PATH").unwrap_or_default();
-    for tool in ["sh", "cat", "dirname", "date", "head", "stdbuf", "tee", "env"] {
+    for tool in [
+        "sh", "cat", "dirname", "date", "head", "stdbuf", "tee", "env",
+    ] {
         let found = std::env::split_paths(&path)
             .map(|p| p.join(tool))
             .find(|p| p.is_file())
@@ -601,7 +603,10 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
     let stub = d.join("stub-backend");
     std::fs::write(
         &stub,
-        format!("#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\n", reached.display()),
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\n",
+            reached.display()
+        ),
     )
     .expect("写替身后端");
     std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -642,7 +647,8 @@ fn the_backend_wrapper_fixture_refuses_to_run_outside_a_rig() {
     let rig = d.join("rig");
     std::fs::create_dir_all(&rig).expect("建台架目录");
     std::fs::copy(&wrapper, rig.join("backend-wrapper.sh")).expect("拷夹具");
-    std::fs::write(rig.join("backend-path"), stub.to_string_lossy().as_bytes()).expect("写 backend-path");
+    std::fs::write(rig.join("backend-path"), stub.to_string_lossy().as_bytes())
+        .expect("写 backend-path");
     let out = run(&rig.join("backend-wrapper.sh"));
     assert!(
         out.status.success(),
