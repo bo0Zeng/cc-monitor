@@ -17414,16 +17414,6 @@
       "zh": "上游地址认不出，中转没有起来",
       "args": []
     },
-    "beMachine.start.spawnFailed": {
-      "kind": "error",
-      "zh": "起不来 {program}：{e}",
-      "args": ["program", "e"]
-    },
-    "beMachine.answerEnsure.noSelf": {
-      "kind": "error",
-      "zh": "找不到后端程序自己：{e}",
-      "args": ["e"]
-    },
     "beRelayUpstream.normalizePrefix.doubleSlash": {
       "kind": "error",
       "zh": "base_url 的路径前缀以 // 开头，那在请求里会被读成另一个主机名",
@@ -17729,16 +17719,6 @@
       "kind": "error",
       "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
       "args": ["e"]
-    },
-    "beMachine.occupant.noKeyFile": {
-      "kind": "error",
-      "zh": "{port} 口上有别的程序在听。这台机器上也没有中转钥匙，多半是升级前起的旧中转。请在那台机器上结束占着这个口的进程再试。",
-      "args": ["port"]
-    },
-    "beMachine.occupant.notOurs": {
-      "kind": "error",
-      "zh": "{port} 口上有别的程序在听，不是这台机器上的中转。多半是升级前起的旧中转，请在那台机器上结束占着这个口的进程再试。",
-      "args": ["port"]
     },
     "tmuxMint.unknown.notAsked": {
       "kind": "error",
