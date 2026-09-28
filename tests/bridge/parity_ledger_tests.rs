@@ -290,7 +290,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("chan_stop", "comm.face-a.subscribe", Side::Both),
     // 〔C4c · 第四波 4B〕能力 `accounts.trust` 那一行（`check_account_trust`，A3 起 `Both`）退役：信任预检上了帧面
     //   （`accounts-trust`），前端经通道直接问、本机与远端同一条路 ⇒ 同上，住到了帧面上。
-    // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`（`acct-iso.deploy`，Remote）退役：字节随后端二进制走，界面经通道问那台
+    // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕（`acct-iso.deploy`，Remote）退役：字节随后端二进制走，界面经通道问那台
     //   `acct-iso-install`（本机与远端同一条路）；通道上的问法不是 Tauri 命令、不进本表。`ASYMMETRY_REASONS` 那一行一并摘了。
     // 〔SH1 · `00 §2.5 ①`〕`acct-iso.check` / `acct-iso.shellinit` 各自那对（本机 `check_local_acct_iso` · `local_acct_iso_shellinit`〔散文墓碑〕 ·
     //   远端 `check_remote_acct_iso` · `remote_acct_iso_shellinit`〔散文墓碑〕）合成一条带 origin 的（底下本来就是同一个 `status_on` / `snippet_on`）。
@@ -489,7 +489,7 @@ fn every_tauri_command_is_declared_in_the_ledger() {
     // 反向自检：一条都没解析出来 = 解析器坏了，而不是代码没问题。
     // 〔合并 LOC1b × 主线 290d8c33〕地板 100 → 99：今天现打 99 条（LOC1b 删搜索三条 · LOC1a 删任务快照一条）。
     // 〔主会话 09-25 · 合并 HX2〕99 → 50：命令按设计逐批迁通道、人群在缩（今天 98）；这是解析器反空真地板（塌了是个位数），不是计数棘轮 —— 计数由下面的相等断言钉着。
-    // 〔MIG-3a · 09-28 预裁〕50 → 45：同一理由（反空真地板，今天 49；`deploy_remote_acct_iso` 迁走一条）。
+    // 〔MIG-3a · 09-28 预裁〕50 → 45：同一理由（反空真地板，今天 49；`deploy_remote_acct_iso`〔散文墓碑〕 迁走一条）。
     assert!(
         registered.len() >= 45,
         "只从 generate_handler! 解析出 {} 条命令，多半是解析器坏了",
@@ -1230,7 +1230,7 @@ fn the_remote_side_column_is_signed_off() {
         // 〔MIG-2〕81 → 76：载荷 / 调用行渲染 · 中转地址 · 本机新起 / resume / 接回 · 远端 ccm 探测七条删了、开窗 · 中转开关两条新增。
         // 〔合并 MIG-3a × 主线 ad308378〕基数 81 ＋ MIG-3a −11 ＋ MIG-2 −5 ⇒ 65。
         // 〔合并 MIG-1 × 主线 19671e6b〕81 − MIG-1 3（`~/.ssh/config` 导入那三条 `#[tauri::command]` 删了）⇒ 78。
-        derived.len() >= 49, // 〔MIG-3a · 09-28 预裁〕50 − 1（`deploy_remote_acct_iso` 删了）// 〔合并 MIG-1 × 主线 eebf51de〕主线 61 ＋ MIG-1 −11 ⇒ 50 // 〔MIG-1 续〕66 − 1（测试连接）// 〔MIG-1 续〕68 − 2（列 tmux 两条）// 〔合并 MIG-1 × 主线 862be034〕主线 76 ＋ MIG-1 −8 ⇒ 68 // 〔MIG-1 · ⑬〕76 − 3（端口转发三条 Remote 命令删了） // 〔MIG-1 · ⑬〕78 − 2（两条 Both 命令删了）// 〔合并 SH1 × AL2〕94 − AL2 2（远端装 / 卸别名块两条删了）⇒ 92 // 〔SH1〕96 → 94：acct-iso 两对合一（4 → 2）
+        derived.len() >= 49, // 〔MIG-3a · 09-28 预裁〕50 − 1（`deploy_remote_acct_iso`〔散文墓碑〕 删了）// 〔合并 MIG-1 × 主线 eebf51de〕主线 61 ＋ MIG-1 −11 ⇒ 50 // 〔MIG-1 续〕66 − 1（测试连接）// 〔MIG-1 续〕68 − 2（列 tmux 两条）// 〔合并 MIG-1 × 主线 862be034〕主线 76 ＋ MIG-1 −8 ⇒ 68 // 〔MIG-1 · ⑬〕76 − 3（端口转发三条 Remote 命令删了） // 〔MIG-1 · ⑬〕78 − 2（两条 Both 命令删了）// 〔合并 SH1 × AL2〕94 − AL2 2（远端装 / 卸别名块两条删了）⇒ 92 // 〔SH1〕96 → 94：acct-iso 两对合一（4 → 2）
         "派生器只认出 {} 条命令的派发跳（`LEDGER` 现打 {} 行）—— **扫描面塌了**，\n\
              不是「命令变少了」。先修 `command_dispatch_class`，别信下面任何一条绿。",
         derived.len(),
@@ -1268,7 +1268,7 @@ fn the_remote_side_column_is_signed_off() {
     // 🔴 **〔MIG-1 · ⑬〕地板 17 → 14。** 端口转发三条 `Side::Remote` 退役（转发账进本机常驻后端，界面经通道直问），人群真少了 3 个，现打 14。
     // 🔴 **〔合并 MIG-1 × 主线 862be034〕地板 → 11。** 主线 17 ＋ MIG-1 −6。
     assert!(
-        remote_rows.len() >= 7, // 〔MIG-3a · 09-28 预裁〕8 → 7：`deploy_remote_acct_iso` 出表 // 〔合并 MIG-1 × 主线 eebf51de〕主线 16 ＋ MIG-1 −8 ⇒ 8 // 〔MIG-1 续〕10 → 9：`test_remote_connection` 出表 // 〔MIG-1 续〕11 → 10：`list_remote_tmux` 出表 // 〔合并 MIG-1 × 主线 862be034〕主线 17 ＋ MIG-1 −6 ⇒ 11
+        remote_rows.len() >= 7, // 〔MIG-3a · 09-28 预裁〕8 → 7：`deploy_remote_acct_iso`〔散文墓碑〕 出表 // 〔合并 MIG-1 × 主线 eebf51de〕主线 16 ＋ MIG-1 −8 ⇒ 8 // 〔MIG-1 续〕10 → 9：`test_remote_connection` 出表 // 〔MIG-1 续〕11 → 10：`list_remote_tmux` 出表 // 〔合并 MIG-1 × 主线 862be034〕主线 17 ＋ MIG-1 −6 ⇒ 11
         "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
         remote_rows.len()
     );
