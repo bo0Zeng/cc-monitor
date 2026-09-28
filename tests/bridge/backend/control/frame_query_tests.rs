@@ -230,6 +230,12 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔MIG-3b · `99 §2.1 ⑬`〕这台 `ccm` 会哪些：那台后端出成品，界面直接问。
+    (
+        "ccm-probe",
+        "后端出成品 `{version, capabilities, agents, build}`（`control/ccm/mod.rs::answer_probe`，与 `--ccm-probe` 名片同一组常量）；\
+         前端 `src/ccm-probe.ts::probeCcm` 问、`decodeCcmProbe` 按恰好的键集合收（金样 `ccm-probe.golden.json`），monitor 这一侧零发送点",
+    ),
     // 〔MIG-3b · `设计/05 §9` 第 12 条〕删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
     (
         "files-delete-session",

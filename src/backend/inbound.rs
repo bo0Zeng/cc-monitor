@@ -1202,7 +1202,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "ccm-probe",
         doc_anchor: Some("#### `ccm-probe`"),
         codes: &[],
-        fields: &["probe"],
+        fields: &["agents", "build", "capabilities", "version"],
         takes_input: false,
         run: Run::Async(|_r| {
             Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })

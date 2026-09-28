@@ -1780,16 +1780,19 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 #### `ccm-probe`：这台的 `ccm` 会哪些（E2 · 第四波，2026-09-27，**只读**）
 
 `ccm` 就是这台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`，V28）⇒「这台 `ccm` 会哪些」问它自己，不再进交互 shell 查 `PATH`（`设计/96 §7.2.2`）。
-回的就是 `ccm --ccm-probe` 那几行原文（同一个函数），monitor 用解析那几行的同一个函数读。纯函数：不起进程、不碰盘。
+〔MIG-3b〕回的是**成品**（与 `ccm --ccm-probe` 那张名片同一组常量）：界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。纯函数：不起进程、不碰盘。
 
 ```text
 → {"id":"q1","cmd":"ccm-probe","args":{}}
-← {"kind":"reply","id":"q1","ok":true,"data":{"probe":"name=ccm\nversion=6\nself=…\ncapabilities=…\nagents=claude,codex\nbuild=…\n"}}
+← {"kind":"reply","id":"q1","ok":true,"data":{"version":"6","capabilities":["…"],"agents":["claude","codex"],"build":"p…"}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `probe` | ← | `ccm --ccm-probe` 那几行（首行逐字 `name=ccm`；`self=` 是这个进程的真身） |
+| `version` | ← | CLI 契约版本（`CCM_VERSION`） |
+| `capabilities` | ← | 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份） |
+| `agents` | ← | 认得的 agent 种类 |
+| `build` | ← | 这一份的 `BUILD_ID` |
 
 **错误码**：无。⚠ **没有 CLI 面**：`--ccm-probe` 这个词归 ccm 的诊断口（V138，写成 `ccm -- --ccm-probe`），同 `ccm-print`。
 

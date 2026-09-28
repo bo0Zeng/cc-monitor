@@ -70,7 +70,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
 
 /// 探「本机交互 shell 的 `PATH` 上那个 `ccm`」的命令（交给 `bash -lic`）。
 ///
-/// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（[`probe_ccm_cli`]）。
+/// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（〔MIG-3b〕今天界面经通道直问，`src/ccm-probe.ts`）。
 /// 本机仍问它：`KR69D2`「你 PATH 上那个是不是我们这一份」答的正是交互 shell 的 `PATH`。
 const CCM_PROBE_CMD: &str =
     "command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe || printf 'NO_CCM\\n'";
@@ -268,24 +268,8 @@ fn probe_spawned(
     parse_probe_output(&String::from_utf8_lossy(&buf))
 }
 
-/// 探测远端 `ccm` 是否已装 + 能力集。`command -v` 找不到 → 走 `NO_CCM` 哨兵分支，不报错
-/// （未装是正常状态之一，不是异常）。
-/// 〔E2 · `96 §7.2.2` · W5-ALIAS §3.6〕远端那台的 `ccm` 会哪些：**问那台后端自己**（帧命令 `ccm-probe`，与 `ccm --ccm-probe` 同一份），
-/// 不再进交互 shell 查 `PATH` —— `ccm` 就是那台后端本身、恒在 `~/.cc-monitor/bin/ccm`（`设计/01 §6.7b`）。
-/// 问不到（那台没连上 / 后端太旧不认这条）⇒ `Err`，界面按「不知道」走兜底渲染器（`src/ccm-probe.ts` 三态）。
-#[tauri::command]
-pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(origin));
-    let v = door
-        .ask("ccm-probe", serde_json::json!({}))
-        .await
-        .map_err(|r| copy_text("rsCcmProbe.probe.failed", &[("e", &r.said())]))?;
-    let text = v
-        .get("probe")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    Ok(parse_probe_output(text))
-}
+// 〔MIG-3b · `99 §2.1 ⑬`〕远端那台 `ccm` 会哪些那一条 Tauri 命令删了：它只在转一条 `ccm-probe`、再解析原文 ——
+//   今天那台后端直接出成品 `{version, capabilities, agents, build}`，界面经通道直问（`src/ccm-probe.ts`）。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R69` / `KR69D2`：**装了之后，产品说得出「你 PATH 上那个是旧的」**

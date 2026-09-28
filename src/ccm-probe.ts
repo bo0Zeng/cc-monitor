@@ -39,7 +39,9 @@
  *（区别于 configDir 能不能拼进命令这类必须 fail-closed 的安全校验 —— 那一道住 `payload.rs::config_dir_command_safe`）。
  * 本次改的是**值**，不是处置 —— 别把这段读成「出错就不降级了」。
  */
-import { commands } from "./ipc/commands";
+import { chan, ChanError } from "./ipc/chan";
+import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
+import type { Origin } from "./ipc/origin";
 
 /**
  * 一次探测的结果。**三态判别联合**，理由见本文件头注。
@@ -53,11 +55,27 @@ export type CcmProbeResult =
   | { state: "not-installed" }
   | { state: "unknown"; error: string };
 
-// C04d 批 2：**线上形状**改用生成物。本文件另有一个同名的 TS 侧领域类型
-// `CcmProbeResult`（`capabilities: Set<string>`）——那是解释后的模型，留手写
-// （同 C04c 对 `ContentBlock` 的判据：线上的换生成物，领域的不拖过边界）。
-// 故这里用 `as RawCcmProbeResult` 别名，避免与领域类型撞名。
-import type { CcmProbeResult as RawCcmProbeResult } from "./generated/CcmProbeResult";
+// 〔MIG-3b · `99 §2.1 ⑬`〕线上形状是那台后端 `ccm-probe` 的成品（monitor 那一跳 · 那份原文解析删了），
+// 由金样 `tests/__fixtures__/ccm-probe.golden.json` 钉住（后端测试核键集 · {@link decodeCcmProbe} 读同一份）。
+
+/** 一问的期限：纯函数应答 ＋ 回程。 */
+const CCM_PROBE_BUDGET_MS = 30_000;
+
+/** `ccm-probe` 的成品 → 「装了」那一态。按形状严格收：多一格 / 缺一格 / 类型不对 ⇒ 抛（两端契约对不上 ⇒ 调用方落「不知道」）。 */
+export function decodeCcmProbe(v: unknown): CcmProbeResult {
+  const bad = (what: string): never => {
+    throw new Error(`ccm-probe reply shape mismatch: ${what}`);
+  };
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return bad("not an object");
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o).sort().join(",");
+  if (keys !== "agents,build,capabilities,version") return bad(`keys ${keys}`);
+  const strs = (x: unknown): x is string[] => Array.isArray(x) && x.every((s) => typeof s === "string");
+  if (typeof o.version !== "string" || typeof o.build !== "string" || !strs(o.capabilities) || !strs(o.agents)) {
+    return bad("a field has the wrong type");
+  }
+  return { state: "installed", version: o.version, capabilities: new Set(o.capabilities) };
+}
 
 const CCM_PROBE_TTL_MS = 5 * 60_000;
 const NOT_INSTALLED: CcmProbeResult = { state: "not-installed" };
@@ -69,10 +87,16 @@ export async function probeCcm(origin: string, force = false): Promise<CcmProbeR
   if (!force && cached && now - cached.at < CCM_PROBE_TTL_MS) return cached.value;
   let value: CcmProbeResult;
   try {
-    const raw: RawCcmProbeResult = await commands.probe_ccm_cli({ origin });
-    value = raw.installed
-      ? { state: "installed", version: raw.version, capabilities: new Set(raw.capabilities) }
-      : NOT_INSTALLED;
+    // 〔MIG-3b〕`ccm` 就是那台后端本身：问得到就是装了（「没装」那一格只剩对端说「不认这条」—— 那是老后端，按「不知道」走）。
+    const budget = budgetWithin(CCM_PROBE_BUDGET_MS);
+    const body = jsonBody({});
+    try {
+      value = decodeCcmProbe(readJson(await chan.call(origin as Origin, "ccm-probe", body, budget)));
+    } catch (e) {
+      // 对端事前就说「不认这条」⇒ 那台的 `ccm`（就是那台后端）早于名片这一问 —— 这是一个**真答案**：CLI 渲染器用不上。
+      if (e instanceof ChanError && e.error.layer === "peer" && e.error.why === "unsupported") value = NOT_INSTALLED;
+      else throw e;
+    }
   } catch (e) {
     // 探测失败（ssh 抖动/远端不可达等）⇒ **「不知道」**。
     // 渲染那一侧照旧降级到兜底渲染器（见头注），但这个值**不说「没装」**，

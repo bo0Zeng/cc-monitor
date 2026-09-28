@@ -325,7 +325,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "ccm_user_path_remove",
         "ccm_user_path_status",
         "local_ccm_entry_status",
-        "probe_ccm_cli",
+        # 〔MIG-3b · `99 §2.1 ⑬`〕远端 `ccm` 探针那条 Tauri 命令**不存在了**（界面经通道直问那台后端 `ccm-probe`）：
+        #   `R8a` 红时核过，是「命令没了」那一种，人群跟着现实走、摘一行。
     ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条（〔AL1〕从前是一条 `write_account_aliases`），那几条归 S4。"
@@ -412,8 +413,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
-    ("S2", (("src/ccm-probe.ts",
-             "src/settings/machine-aliases.ts"),
+    ("S2", (("src/settings/machine-aliases.ts",),
+            "〔MIG-3b · 09-28〕**2 → 1**：`src/ccm-probe.ts` 改经通道直问那台后端 `ccm-probe`，不再调 S2 的 Tauri 命令。"
             "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/settings/cc_integration.ts` 并进了 "
             "`src/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
             "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
