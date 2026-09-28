@@ -657,7 +657,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// `panorama-edit` 进后端（CAS 落盘）· `pubkey-push` / `authorized-keys-add` · `deploy-plan` 首连指纹交 monitor 固化 · `files` 链路 `stat` 删。
 ///
 /// ★★★ **p5i-footprint-two-beats**（2026-09-28，MIG-3b 收口合并那一拍）：协议 —— `footprint-report` 入参 `{client?: {home, agentHome, path?}}`、应答即整份报告（`clientAsks` 删）；`HostScope::Client` 由本机后端按 monitor 交的环境自己 stat。子命令没变。
-pub const BUILD_ID: &str = "p5i-footprint-two-beats";
+///
+/// ★★★ **p5j-late-server-reconnectable**（2026-09-28，MIG-1 续四合并那一拍）：行为 —— 会话账本每一份可观测 tmux 快照都推「没报过的」可重连（后端先起、tmux server 后起不再漏报）。子命令没变。
+pub const BUILD_ID: &str = "p5j-late-server-reconnectable";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
