@@ -80,7 +80,7 @@ const LANDING_IPC = ["load_config", "backend_machines", "backend_status"] as con
  * 逐块登记（改哪一块的读口，这张表跟着改一行，而不是整体换个数）：
  */
 const LOCAL_PAGE_IPC = [
-  "config_surface_report", // 足迹（步 14a）
+  "footprint_client_facts", // 足迹（步 14a）：〔MIG-3b 续〕本机那一栏第一拍问 monitor 自己那几行的环境（录音机下它失败就停在这一拍）
   "drift_ledger_report", // 〔ST2〕未识别的数据（原顶层「改动足迹」那一块）；〔ST3〕按这台去问
   "load_config", // 账号：先读远端清单（落地页也读它 —— 这里量的是「新增」那一段）
   // 〔C4c · 第四波 4B〕账号（本机那一支）改走通道：`chan_call`（`accounts-list` 发给 `<local>`）—— 本表按集合比，
@@ -111,7 +111,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
   "chan_call", // 〔AS2〕资产目录：先对 devbox 做一趟同步（〔MIG-3a〕经通道问本机后端 `assets-sync`，只报 origin）
   "chan_call", // 〔AS2〕资产目录：经通道问 devbox 的目录（与插件那一发同名，带重数比）
   "chan_call", // 〔SU1〕资产目录：再经通道问 devbox 记着的「从别处装来的 skill」（`skill-installs`，目录读没读成都问）
-  "config_surface_report",
+  "chan_call", // 足迹：〔MIG-3b 续〕按 devbox 经通道问 `footprint-report`
   // 〔ST3〕「未识别的数据」按机器分：切到 devbox 由它自己的订阅重读，按 devbox 去问，恰好一发。
   "drift_ledger_report",
 ];
@@ -122,7 +122,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
  *   〔RM1b · 第四波〕「插件」那块不再是本机专属：它问的是**当前那台**（这里就是 devbox），同样恰好一次。
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
-  "config_surface_report", // 足迹：〔ST2〕按 devbox 去问
+  "chan_call", // 足迹：〔ST2 · MIG-3b 续〕按 devbox 经通道问 `footprint-report`
   "drift_ledger_report", // 未识别的数据：〔ST3〕按 devbox 去问
   "load_config", // 账号：读远端清单
   "chan_call", // 账号：devbox 那一台（〔C4c〕经通道说 `accounts-list`）

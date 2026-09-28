@@ -6,7 +6,7 @@
 //   被 mock 的只有读那几条封装（status / node / listAnnotations …）与 `invoke` 本身。
 // 判法：① 远端会话打开全景 ⇒ `status` 恰问那台机器的那个路径；
 //       ② 远端仓的节点详情：写入口集合 == 本机仓的（两向，同一套步骤并排跑）；
-//       ③ 点远端仓的「添加批注」/「批准」⇒ 发出去的恰是 `panorama_edit`，origin 是那台机器、仓是那台上的路径。
+//       ③ 点远端仓的「添加批注」/「批准」⇒ 发出去的恰是通道上的 `panorama-edit`，origin 是那台机器、仓是那台上的路径（〔MIG-3b 续〕界面直问那台后端）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Annotation, NodeView } from "../../src/panorama/types";
 
@@ -21,6 +21,7 @@ vi.mock("../../src/panorama/api", async (importOriginal) => {
 });
 
 import { invoke } from "@tauri-apps/api/core";
+import { chanArgsJson, chanReply, isChanCall, type ChanCallArgs } from "../test-support/chan-fake";
 import * as api from "../../src/panorama/api";
 import { PanoramaView } from "../../src/views/panorama";
 import { LOCAL_ORIGIN, type Origin } from "../../src/ipc/origin";
@@ -40,11 +41,15 @@ const clickButton = (v: PanoramaView, text: string): void => {
   expect(b, `没有「${text}」按钮`).toBeTruthy();
   (b as HTMLButtonElement).click();
 };
+/** 〔MIG-3b 续〕通道上的 `panorama-edit` 那几发：`{origin, repo, op, args}`（origin 取通道那一格，其余取请求体）。 */
 const edits = (): { cmd: string; args: Record<string, unknown> }[] =>
   vi
     .mocked(invoke)
-    .mock.calls.filter((c) => c[0] === "panorama_edit")
-    .map((c) => ({ cmd: c[0] as string, args: c[1] as Record<string, unknown> }));
+    .mock.calls.filter((c) => isChanCall(String(c[0]), c[1], "panorama-edit"))
+    .map((c) => {
+      const a = c[1] as unknown as ChanCallArgs;
+      return { cmd: "panorama-edit", args: { origin: a.origin, ...(chanArgsJson(a) as Record<string, unknown>) } };
+    });
 const nodeView = (): NodeView =>
   ({
     symbol: { id: "src/lib.rs#f", name: "f", file: "src/lib.rs", kind: "Function", lang: "Rust", start_line: 1, end_line: 3 },
@@ -76,7 +81,7 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     vi.mocked(api.diagramKinds).mockResolvedValue([]);
     vi.mocked(api.listAnnotations).mockResolvedValue(queue);
     vi.mocked(api.node).mockResolvedValue(nodeView());
-    vi.mocked(invoke).mockResolvedValue("a2");
+    vi.mocked(invoke).mockImplementation((async (cmd: string) => (cmd === "chan_call" ? chanReply("a2") : null)) as never);
   });
 
   it("M0 自证：视图与只读判定是真的，被 mock 的只有后端封装", () => {
@@ -116,7 +121,7 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     expect(remote).toEqual(local);
   });
 
-  it("M3 点远端仓的写入口 ⇒ 发的恰是 panorama_edit，origin / 仓是那台机器上的", async () => {
+  it("M3 点远端仓的写入口 ⇒ 发的恰是通道上的 panorama-edit，origin / 仓是那台机器上的", async () => {
     const v = await openAt("box1", "/srv/proj");
     probe(v).renderNodeDetail(nodeView());
     (probe(v).sidebarEl.querySelector("textarea") as HTMLTextAreaElement).value = "新批注";
@@ -133,21 +138,23 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     expect(edits()[0].args.args).toEqual({ file: "src/lib.rs", symbol: "f", body: "新批注", author: "me" });
   });
 
-  it("M4〔RM1f〕远端仓建索引：转圈旁有「取消」；点它 ⇒ 用那一问的同一张票发 panorama_cancel，界面说「已取消」", async () => {
-    // `index` 这一问挂着不回来，直到 `panorama_cancel` 发出去才以「已取消」收尾（模拟后端撤单）。
-    let settle: ((v: unknown) => void) | null = null;
+  /** 〔MIG-3b 续〕建索引那一问挂着不回来；撤单那一条恰带着它的编号。 */
+  function hangIndex(): void {
     vi.mocked(invoke).mockImplementation(((cmd: string) => {
-      if (cmd === "panorama_call") {
-        return new Promise((_, reject) => {
-          settle = reject;
-        });
-      }
-      if (cmd === "panorama_cancel") {
-        settle?.("已取消（后端那一趟已经停下）");
-        return Promise.resolve(true);
-      }
+      if (cmd === "chan_call") return new Promise(() => {});
+      if (cmd === "chan_cancel") return Promise.resolve(true);
       return Promise.resolve(null);
     }) as never);
+  }
+  const askedAndCancelled = (): { asked: ChanCallArgs & { callId: string | null }; body: { op: string }; cancelled: { id: string } | undefined } => {
+    const calls = vi.mocked(invoke).mock.calls;
+    const asked = calls.find((c) => isChanCall(String(c[0]), c[1], "panorama"))?.[1] as unknown as ChanCallArgs & { callId: string | null };
+    const cancelled = calls.find((c) => c[0] === "chan_cancel")?.[1] as { id: string } | undefined;
+    return { asked, body: chanArgsJson(asked) as { op: string }, cancelled };
+  };
+
+  it("M4〔RM1f · MIG-3b 续〕远端仓建索引：转圈旁有「取消」；点它 ⇒ 撤单过通道那一跳（同一问的编号发 chan_cancel），界面说「已取消」", async () => {
+    hangIndex();
     const v = await openAt("box1", "/srv/proj");
     const root = probe(v).root;
     const gate = [...root.querySelectorAll("button")].find((b) => b.textContent?.startsWith("建立索引"));
@@ -159,31 +166,17 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     (cancel as HTMLButtonElement).click();
     await flush();
     await flush();
-    const calls = vi.mocked(invoke).mock.calls;
-    const asked = calls.find((c) => c[0] === "panorama_call")?.[1] as { op: string; ticket: string };
-    const cancelled = calls.find((c) => c[0] === "panorama_cancel")?.[1] as { ticket: string };
-    expect(asked.op).toBe("index");
-    expect(asked.ticket, "建索引那一问没带票").toMatch(/^pano-/);
-    expect(cancelled?.ticket, "撤的不是那一问的票").toBe(asked.ticket);
+    const { asked, body, cancelled } = askedAndCancelled();
+    expect([asked.origin, body.op]).toEqual(["box1", "index"]);
+    expect(typeof asked.callId, "建索引那一问没带编号").toBe("string");
+    expect(cancelled?.id, "撤的不是那一问").toBe(asked.callId);
     expect(root.textContent).toContain("已取消建立索引");
     const toast = await import("../../src/error-toast");
     expect(vi.mocked(toast.showActionFailureToast), "撤单被当成失败弹了").not.toHaveBeenCalled();
   });
 
-  it("M5〔RM1f〕本机仓建索引与远端同形：转圈旁也有「取消」，点它发的是同一张票的 panorama_cancel", async () => {
-    let settle: ((v: unknown) => void) | null = null;
-    vi.mocked(invoke).mockImplementation(((cmd: string) => {
-      if (cmd === "panorama_call") {
-        return new Promise((_, reject) => {
-          settle = reject;
-        });
-      }
-      if (cmd === "panorama_cancel") {
-        settle?.("已取消（后端那一趟已经停下）");
-        return Promise.resolve(true);
-      }
-      return Promise.resolve(null);
-    }) as never);
+  it("M5〔RM1f · MIG-3b 续〕本机仓建索引与远端同形：转圈旁也有「取消」，点它撤的是同一问", async () => {
+    hangIndex();
     const v = await openAt(LOCAL_ORIGIN, "/home/me/proj");
     const root = probe(v).root;
     const gate = [...root.querySelectorAll("button")].find((b) => b.textContent?.startsWith("建立索引"));
@@ -195,11 +188,9 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     (cancel as HTMLButtonElement).click();
     await flush();
     await flush();
-    const calls = vi.mocked(invoke).mock.calls;
-    const asked = calls.find((c) => c[0] === "panorama_call")?.[1] as { origin: string; op: string; ticket: string };
-    const cancelled = calls.find((c) => c[0] === "panorama_cancel")?.[1] as { ticket: string };
-    expect([asked.origin, asked.op]).toEqual([LOCAL_ORIGIN, "index"]);
-    expect(cancelled?.ticket).toBe(asked.ticket);
+    const { asked, body, cancelled } = askedAndCancelled();
+    expect([asked.origin, body.op]).toEqual([LOCAL_ORIGIN, "index"]);
+    expect(cancelled?.id).toBe(asked.callId);
     expect(root.textContent).toContain("已取消建立索引");
   });
 });

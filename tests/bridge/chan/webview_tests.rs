@@ -16,7 +16,7 @@ use super::super::wire::{
     Body, CallError, CancelToken, Cursor, HopFault, HopId, Item, Kind, Op, Origin, OursFault,
     PeerFault, Reach,
 };
-use super::{call_via, fail};
+use super::{call_via, cancel_inflight, fail};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use std::sync::Mutex;
@@ -87,6 +87,7 @@ async fn payload_origin_and_op_reach_the_backend_verbatim() {
         "echo".into(),
         payload.clone(),
         Duration::from_secs(5),
+        None,
     )
     .await
     .expect("回声句柄不该失败");
@@ -108,6 +109,7 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
         "hang".into(),
         Vec::new(),
         Duration::from_millis(80),
+        None,
     )
     .await
     .expect_err("永不回答的句柄必须在 left 内被截断");
@@ -141,6 +143,7 @@ async fn backend_errors_pass_through_unchanged() {
         "refuse".into(),
         Vec::new(),
         Duration::from_secs(5),
+        None,
     )
     .await
     .expect_err("说「不行」的句柄");
@@ -159,6 +162,7 @@ async fn backend_errors_pass_through_unchanged() {
         "other".into(),
         Vec::new(),
         Duration::from_secs(5),
+        None,
     )
     .await
     .expect_err("没有通道");
@@ -400,5 +404,76 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
         golden["rows"],
         "Rust 那条「能不能回落」的收拢与金样对不上 —— TS 那侧（`provablyNotSent`）按金样判，两份会各说各的。\n\
          真改了规则就重打金样，并同拍改 `src/ipc/chan-caller.ts::provablyNotSent`"
+    );
+}
+
+/// 🔴〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕**撤单过得了 webview 这一跳**：带编号的一问在飞时 `chan_cancel(编号)`
+/// ⇒ 那一问当场以 `Ours{Cancelled}` 收场，**交给句柄的撤单手柄也被拨下**（生产句柄据此丢掉调用 ⇒ 补发 `cancel` 给后端）；
+/// 有了结局之后再撤 ⇒ 回「不在飞」（在飞表摘干净了）；撤单先于那一问到 ⇒ 那一问一个字节都不发。
+#[tokio::test]
+async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
+    let fake = Fake::default();
+    let id = "mig3b-cancel-probe".to_string();
+    let call = call_via(
+        &fake,
+        Origin("devbox".into()),
+        "hang".to_string(),
+        Vec::new(),
+        Duration::from_secs(30),
+        Some(id.clone()),
+    );
+    let cancel = async {
+        // 等句柄真的收到了那一问（登记在它之前），再撤。
+        while fake.seen.lock().unwrap().is_empty() {
+            tokio::task::yield_now().await;
+        }
+        assert!(cancel_inflight(&id), "在飞的那一问撤不到 —— 在飞表没登记它");
+    };
+    let (got, ()) =
+        tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(call, cancel) })
+            .await
+            .expect("撤了 5 秒还没收场 —— 撤单没过这一跳");
+    assert!(
+        matches!(
+            got,
+            Err(CallError::Ours {
+                why: OursFault::Cancelled,
+                ..
+            })
+        ),
+        "{got:?}"
+    );
+    assert!(
+        fake.seen.lock().unwrap()[0].3.is_cancelled(),
+        "交给句柄的撤单手柄没拨下 —— 后端那一侧不会知道"
+    );
+    assert!(!cancel_inflight(&id), "有了结局之后在飞表里还挂着它");
+
+    // 撤单先到、那一问后到（两条 IPC 不保序）⇒ 那一问登记时当场撤，一个字节都不交给句柄。
+    let early = "mig3b-cancel-early".to_string();
+    assert!(!cancel_inflight(&early), "还没发的那一问不在飞");
+    let fake = Fake::default();
+    let got = call_via(
+        &fake,
+        Origin("devbox".into()),
+        "hang".to_string(),
+        Vec::new(),
+        Duration::from_secs(30),
+        Some(early),
+    )
+    .await;
+    assert!(
+        matches!(
+            got,
+            Err(CallError::Ours {
+                why: OursFault::Cancelled,
+                ..
+            })
+        ),
+        "{got:?}"
+    );
+    assert!(
+        fake.seen.lock().unwrap().is_empty(),
+        "先到的撤单没拦住那一问"
     );
 }

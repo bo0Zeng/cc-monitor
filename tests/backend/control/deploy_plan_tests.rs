@@ -4,6 +4,7 @@
 //! 这里钉的是**编排**：先问机器、再判表、再问落点、再问旧落点，每一步的失败落在哪一格码上。
 
 use super::*;
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -21,6 +22,17 @@ fn said(exit: u32, stdout: &str) -> Result<crate::dial::Captured, String> {
         stdout: stdout.to_string(),
         stderr: String::new(),
         exit_status: Some(exit),
+    })
+}
+
+/// 替身的 ack：第 `nth` 趟报的逐地址指纹（形状同后端 `DialAck` 那几格）。
+fn fake_ack(nth: usize) -> Value {
+    serde_json::json!({
+        "ok": true,
+        "fingerprints": { "10.0.0.2:22": format!("SHA256:trip{nth}") },
+        "jump_fingerprints": {},
+        "strict": false,
+        "jump_strict": false,
     })
 }
 
@@ -68,13 +80,16 @@ impl Fake {
 }
 
 impl Facing for Fake {
-    fn exec(&self, command: String) -> Fut<'_, Result<crate::dial::Captured, String>> {
+    fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>> {
         self.asked.lock().unwrap().push(command.clone());
+        // 每一趟的 ack 带上它是第几趟（判据据此认「计划里交回的是问 `uname` 那一趟的」）。
+        let nth = self.asked.lock().unwrap().len();
         let got = self
             .exec
             .get(&command)
             .cloned()
-            .unwrap_or_else(|| Err(format!("替身没登记这条命令：{command}")));
+            .unwrap_or_else(|| Err(format!("替身没登记这条命令：{command}")))
+            .map(|c| (c, fake_ack(nth)));
         Box::pin(async move { got })
     }
 
@@ -242,6 +257,7 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
             why: "w".into(),
         },
         legacy: LegacyVerdict::Unknown("e".into()),
+        ack: fake_ack(1),
     };
     let got = plan_json(&p);
     assert_eq!(keys(&got), keys(&golden["product"]));
@@ -306,4 +322,14 @@ fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
         o >= prev.unwrap(),
         "现在的 BUILD_ID {now:?} 比历史表最后一行还低"
     );
+}
+
+/// 🔴〔MIG-3b 续 · VIS2〕本机后端里拨的号，逐地址指纹要交回 monitor 固化：计划里原样带着**问 `uname` 那一趟**的 ack
+/// （那一趟就是第一次连上的那一趟；后面几趟走池里同一条连接）。帧面那一格也带着它。
+#[tokio::test]
+async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
+    let f = Fake::linux(Some("p9a-mine"));
+    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
+    assert_eq!(plan_json(&p)["ack"], fake_ack(1));
 }

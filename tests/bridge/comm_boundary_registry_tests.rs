@@ -2511,7 +2511,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 80usize), // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
+            ("chan.call", 84usize), // 〔MIG-3b 续〕+1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// 〔MIG-3b 续〕+2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // 〔MIG-3b 续〕+1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
             ("chan.subscribe", 2usize), // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]
@@ -2654,20 +2654,8 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
          两样都跟着传输本体走了。〕今天只剩 `X2`：它给本机后端那几条**就地记账**命令的应答定了一个期限值（`CALL_BUDGET`）—— \
          期限值归宿主（`05 §3.3.2`），而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",
     ),
-    (
-        "src/bridge/src/pubkey.rs",
-        &["C4"],
-        &["读文本"],
-        "🔴 **整份文件只被这一条咬**，所以它最容易被读成「清掉就进来了」——\
-         而 `真相源/100 §一` 第 5 行逐字裁的是「**不圈**：它是**凭据面**，\
-         `§2.1` 逐字『key 什么的这些应该要归后端管』⇒ 归步 4」。\
-         ⇒ 它的正解是**搬去后端**，不是等它变干净。\
-         ⚠ 而这一个判词底下的两处命中里**只有一处是读盘** —— 另一处是从交到手里的那条 SSH 流里读，\
-         正是 `C5` 要它干的事（同上，头注 ④）。**别拿这一行的处数当「伸手拿了几次东西」。**\
-         〔C2 · 2026-09-24 复核：结论不变，**不收**。它拨号那一处已经经拨号代理（`connect_and_exec_cmd` → 宿主），\
-         剩下的是「读本机 `.pub` ＋ 拼一条往远端 `authorized_keys` 追加的命令」—— 那是**凭据业务**，不是传输；\
-         把读 `.pub` 挪到别处只为让它登记进来，就是改住址骗判据。〕",
-    ),
+    // 〔MIG-3b 续 · ⑬〕`pubkey.rs` 那一行摘了：它「正解是搬去后端」—— 公钥推送整件进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`：
+    //   读本机 `.pub` · 组请求 · 那台后端在就经它写 / 不在就一次 exec），monitor 那份文件删了。
 ];
 
 /// 拿十一条判据的识别器扫一份文本，返回**咬它的那些编号**。
@@ -2956,7 +2944,9 @@ fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the
     //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
     // 〔MIG-1 · `99 §2.1 ⑯`〕`C4` 判词处数 2 → **1**：少的是 `ssh_source.rs` 的「读文本」（读 `~/.ssh/config`）——
     //   「从 ssh config 导入」搬进后端 `dial/ssh_config.rs`。份数仍是 4。
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 1);
+    // 〔MIG-3b 续〕4 → 3：`pubkey.rs` 随公钥推送进本机后端删了。
+    // 〔MIG-3b 续〕判词处数 1 → 0：那一处读盘就是 `pubkey.rs` 读本机 `.pub`（它搬进了本机后端）。
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那三份候选", 3, 0);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

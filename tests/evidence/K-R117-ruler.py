@@ -174,7 +174,9 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("app.window.self", (NA, "—", "窗口动作")),
     ("app.window.session", (NA, "—", "窗口动作")),
     ("app.window.settings", (NA, "—", "窗口动作")),
-    ("audit.config-surface", (NA, "—", "配置面审计页的**读**侧（它报告安装面，不改它）")),
+    # 〔墓碑 · MIG-3b 续〕`audit.config-surface` 随它唯一那条命令（`config_surface_report`）进后端（`footprint-report`，界面经通道直问）而退役；
+    #   剩 monitor 自己那台那几行的事实，能力 id 换成下面那一条（理由同上面几条墓碑）。
+    ("audit.monitor-own", (NA, "—", "〔MIG-3b 续〕足迹里 monitor 自己那台那几行的**事实**（只 stat，报告安装面，不改它）")),
     # 〔MIG-3a〕`assets.catalog` 摘了：同步那一问界面直问本机后端 `assets-sync`，不再是 Tauri 命令。
     ("audit.drift-ledger", (NA, "—", "漂移账本的读侧")),
     # 〔墓碑 · 第四波 4D SH1〕`cc-bus.cockpit` 随驾驶舱读面（名册 · 收件箱）改由界面经通道直问后端 `bus-state` / `bus-inbox`
@@ -205,7 +207,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # 〔MIG-3a〕`mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
     ("panorama.code-graph", (NA, "—", "代码全景（sidecar 的**用**，不是装它）")),
-    ("panorama.annotate", (NA, "—", "〔RM1c〕代码全景的批注 / 文档关联那几条写 —— 用户在图上做的标注，不是产品往用户环境里装东西")),
+    # 〔墓碑 · MIG-3b 续〕`panorama.annotate` 随它唯一那条命令（`panorama_edit`）进了那台后端（`panorama-edit`，界面经通道直问）而退役：
+    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
     # 〔墓碑 · 第四波 C4b〕`plugins.marketplaces` 随 `list_plugin_marketplaces` 改走通道（前端 `chan.call` 直接问后端 `plugins-marketplaces`）
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     # 〔墓碑 · MIG-1〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
@@ -218,7 +221,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   `list_session_activity` / `list_active_sessions` 删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。
     # 〔墓碑 · 第四波 4D LOC1a〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
-    ("ssh.host-config", (NA, "—", "ssh 主机配置 / 推公钥 —— 连得上那一层，不是装我们的东西")),
+    # 〔墓碑 · MIG-3b 续〕`ssh.host-config` 随它最后一条命令（公钥推送）进了本机后端（`pubkey-push`，界面经通道问）而退役：
+    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
     ("subagent.load", (NA, "—", "读 subagent 定义")),
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     # 〔墓碑 · MIG-1〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
@@ -584,8 +588,8 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "同上，卸那一侧（`skill-uninstall-apply`）",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
-        "本来就不是 Tauri 命令：没有用户按钮，触发点是 `panorama_call.rs` 在那台后端答「没装 / 太旧」时调它"
-        "（V108「只传给开过远端全景的机器」）",
+        "它自己不是 Tauri 命令：没有用户按钮，〔MIG-3b 续〕界面（`src/panorama/api.ts::askOrPlace`）听到那台后端答「没装 / 太旧」时"
+        "请 monitor 的 `panorama_place` 放字节，那一条调它（V108「只传给开过远端全景的机器」）",
 }
 
 # `src/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
@@ -687,7 +691,9 @@ def parse_tools(src: str):
     形状：`id: "x",` 之后最近的一条 `installable: <bool>,` 与 `uninstallable: <bool>,`。
     只在 `pub const TOOLS` 那一段里找 ⇒ `UNMANAGED_ENV` 的 `id:` 不会混进来。
     """
-    seg = const_block(src, "pub const TOOLS: &[ToolSpec] = &[")
+    # 〔MIG-3b 续〕两份 `TOOLS`：本表（`footprint/registry.rs`）＋ 落在 Claude 布局里的那一半（`agents/claudecode/footprint.rs`）。
+    seg = "\n".join(const_block(src, h) for h in ("pub const TOOLS: &[ToolSpec] = &[",
+                                                   "pub(crate) const TOOLS: &[ToolSpec] = &[") if h in src)
     out = []
     for m in re.finditer(r'\n        id: "([^"]+)",', seg):
         tail = seg[m.end():]
@@ -701,7 +707,8 @@ def parse_tools(src: str):
 
 def parse_unmanaged(src: str):
     """`UNMANAGED_ENV` 的 `(id, who)`。"""
-    seg = const_block(src, "pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[")
+    seg = "\n".join(const_block(src, h) for h in ("pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[",
+                                                   "pub(crate) const UNMANAGED_ENV: &[UnmanagedEnv] = &[") if h in src)
     out = []
     for m in re.finditer(r'\n        id: "([^"]+)",', seg):
         tail = seg[m.end():]
@@ -1256,6 +1263,16 @@ def main() -> int:
     # ⚠ **拼不到任何一份就抛**，不许回落成空串 —— 那会让每一格零命中地绿。
     def corpus(stem: str) -> str:
         parts = []
+        # 〔MIG-3b 续〕足迹申报表随「一处后端」进了后端：本表 ＋ Claude 布局那一半 ＋ 随表搬来的判据。
+        if stem == "tool_registry":
+            # 适配层那一份放前头：本表末尾是测试段，`§S1` 按第一个顶格测试属性切「测试段」，放后头会被整份划进测试段。
+            for rel in ("src/backend/agents/claudecode/footprint.rs", "src/backend/footprint/registry.rs"):
+                parts.append(slurp(os.path.join(root, rel)))
+            fdir = os.path.join(root, "tests", "backend", "footprint")
+            for fn in sorted(os.listdir(fdir)):
+                if fn.startswith("registry") and fn.endswith(".rs"):
+                    parts.append(slurp(os.path.join(fdir, fn)))
+            return "\n".join(parts)
         prod = os.path.join(src_dir, f"{stem}.rs")
         if os.path.exists(prod):
             parts.append(slurp(prod))

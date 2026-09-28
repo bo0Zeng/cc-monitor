@@ -85,6 +85,8 @@ pub(crate) mod launch;
 // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染（从 monitor 搬来）：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
 pub(crate) mod panorama;
+// 〔MIG-3b 续〕全景写批注 / 文档关联：问这台的小程序要计划、经这台文件管理面落盘（帧命令 `panorama-edit`）。
+pub(crate) mod panorama_edit;
 pub mod resident;
 pub mod resolve_query;
 pub mod tmux_hook;

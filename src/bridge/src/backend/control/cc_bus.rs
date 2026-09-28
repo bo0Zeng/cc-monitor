@@ -30,7 +30,7 @@ pub(crate) fn machine_label(origin: &str) -> String {
 
 /// 「这台的后端太旧」讲成人话 —— **能力协商的结论**，纯函数。
 ///
-/// 〔C4e · 第四波 4C〕cc-bus 写面迁到界面之后它不再服务 cc-bus 自己，但别的几处发送端（`panorama_call` · `user_files`）
+/// 〔C4e · 第四波 4C〕cc-bus 写面迁到界面之后它不再服务 cc-bus 自己，但别的几处发送端（`user_files`；〔MIG-3b 续〕全景那一处随界面直问删了）
 /// 仍借它说「那台后端太旧」—— 留在原住址，不为挪而挪。〔MIG-3a〕MCP 推拉与 skill 装那两处随 D 组进后端走了。
 ///
 /// # 🔴 它为什么必须与超时 / 断连长得不一样〔`KR98D2`〕

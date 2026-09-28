@@ -1,4 +1,21 @@
-use super::{NOT_MANAGED, TOOLS};
+use super::NOT_MANAGED;
+
+/// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
+    std::sync::LazyLock::new(|| {
+        crate::footprint::registry::tools()
+            .into_iter()
+            .cloned()
+            .collect()
+    });
+#[allow(dead_code)]
+static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::footprint::registry::UnmanagedEnv>> =
+    std::sync::LazyLock::new(|| {
+        crate::footprint::registry::unmanaged()
+            .into_iter()
+            .cloned()
+            .collect()
+    });
 
 /// ★ **反向表不许变成许愿池：每条都要论证「为什么不属这张表的语义」。**
 ///

@@ -108,6 +108,8 @@ pub const COMMANDS: &[&str] = &[
     "assets-catalog-merge",
     // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
     "assets-sync",
+    // 〔MIG-3b 续〕公钥写进这台的 `authorized_keys`（被写那台答；本机后端的 `pubkey-push` 经可达表问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "authorized-keys-add",
     // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端自己的 stderr 诊断文件（尾部，只读）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "backend-log",
     "bus-broadcast",
@@ -160,7 +162,8 @@ pub const COMMANDS: &[&str] = &[
     "files-stage-chunk",
     "files-stat",
     "files-write-text",
-    "footprint-probe",
+    // 〔MIG-3b 续〕「足迹」出成品（替掉只交事实的 `footprint-probe`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "footprint-report",
     // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账住本机常驻后端（`dial/forwards.rs`）：界面经 `chan.call(<local>, …)` 起 · 停 · 列。
     "forward-list",
     "forward-start",
@@ -216,8 +219,12 @@ pub const COMMANDS: &[&str] = &[
     "mcp-sync-source",
     // 〔RM1c · 第四波〕代码全景（V108 选 B）：后端经插件口起独立小程序，只说查询语义。
     "panorama",
+    // 〔MIG-3b 续〕全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "panorama-edit",
     "ping",
     "plugins-marketplaces",
+    // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
+    "pubkey-push",
     // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
@@ -261,6 +268,7 @@ pub const COMMANDS: &[&str] = &[
 
 /// 〔MIG-3a〕资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
 /// 住这里是因为 `readonly_guard` 第三层只许 `inbound.rs` 够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
+#[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
 impl crate::assets::door::Door for LocalFiles {
@@ -1317,6 +1325,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "undecidable",
         ],
         fields: &[
+            "ack",
             "action",
             "arch",
             "expected",
@@ -1341,6 +1350,48 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔MIG-3b 续〕**公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
+    //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
+    CommandSpec {
+        name: "pubkey-push",
+        doc_anchor: Some("#### `pubkey-push`"),
+        codes: &["invalid_args", "bad_jump", "refused", "failed"],
+        fields: &[
+            "jump",
+            "machine",
+            "outcome",
+            "pubKeyPath",
+            "pubPath",
+            "saved",
+            "via",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::pubkey::answer_push(
+                    &r.args,
+                    &crate::assets::pubkey::Wire,
+                    &crate::assets::pubkey::read_local_pub,
+                )
+                .await
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔MIG-3b 续〕**公钥写进这台的 `authorized_keys`**（被写那台答）：算经 `assets/pubkey.rs`，写经 [`LocalFiles`]（CAS ＋ 建父目录 ＋ 700 / 600）。
+    CommandSpec {
+        name: "authorized-keys-add",
+        doc_anchor: Some("#### `authorized-keys-add`"),
+        codes: &["bad_args", "refused", "io_failed"],
+        fields: &["key", "outcome"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::pubkey::answer_add(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {
@@ -1502,13 +1553,14 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     // 〔DEL〕这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形，V139），那一族随回落一形删了。
-    // 〔RM1a · 第四波〕「足迹」的这台机器那一半：只交**路径事实**（环境 · stat · 有没有某几个字样），
-    //   哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分，**只住 monitor 的 `config_surface`**。只读，阻塞档。
+    // 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
+    //   本机那一栏 `client` 带 monitor 自己那台的事实（`HostScope::Client` 那一族）。只读，阻塞档。
+    //   〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor。〕
     CommandSpec {
-        name: "footprint-probe",
-        doc_anchor: Some("#### `footprint-probe`"),
-        codes: &["bad_args", "too_large"],
-        fields: &["env", "hooks", "notices", "stat"],
+        name: "footprint-report",
+        doc_anchor: Some("#### `footprint-report`"),
+        codes: &["bad_args", "too_large", "failed"],
+        fields: &["client", "clientAsks", "report"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)
@@ -3303,6 +3355,31 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
+        }),
+    },
+    // 〔MIG-3b 续 · RM1d〕**全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
+    //   文档关联那两种再刷一次索引。「算」那一步的码原样交回（`not_installed` / `unsupported` ⇒ 界面放字节再问一次）。本体 `control/panorama_edit.rs`。
+    CommandSpec {
+        name: "panorama-edit",
+        doc_anchor: Some("#### `panorama-edit`"),
+        codes: &[
+            "bad_args",
+            "not_installed",
+            "unsupported",
+            "timed_out",
+            "too_large",
+            "failed",
+            "stale",
+            "refused",
+        ],
+        fields: &["args", "op", "repo"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::panorama_edit::answer(LocalFiles, &r.args)
+                    .await
+                    .map(Some)
+            })
         }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，

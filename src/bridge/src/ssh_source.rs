@@ -915,14 +915,8 @@ pub(crate) fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
     }
 }
 
-/// exec 任意命令行、拿回它的 stdout 字节流（issue #16：一次性命令各自独立连接、互不影响）。
-pub async fn connect_and_exec_cmd(
-    cfg: &RemoteConfig,
-    cmd: &str,
-) -> Result<crate::dial_host::DialStream, String> {
-    // 〔C2 → SR1a〕拨号在本机常驻后端里；这里拿到的是它开的一条链路（读端 = 远端命令的 stdout）。
-    crate::dial_host::open_stream(cfg, cmd).await
-}
+// 〔MIG-3b 续 · V41〕`connect_and_exec_cmd`〔散文墓碑〕（exec 一条命令、拿回 stdout 字节流）删了：最后一个调用方（公钥推送）进了本机后端 ⇒
+//   monitor 不再开 `stream` 用法的链路；一次性远端命令只剩 [`connect_and_exec_capture`]（收全、有上限、带退出码）。
 
 /// 一次远端 exec 的**完整**结果：stdout、stderr、退出码。
 ///

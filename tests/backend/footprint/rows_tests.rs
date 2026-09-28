@@ -8,16 +8,27 @@
 //! ⚠ host / destination 那几条钉的是 `tool_registry` 今天的申报自洽，挂在本节「位置徽章要真实」底下，偏弱。〔JA1 点址 2026-09-24〕
 
 use super::*;
-use crate::structural_scan::ScanReport;
+use guard_core::ScanReport;
+
+/// 〔MIG-3b 续〕受管工具 / 手写环境项的**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 判据按全集判，与搬家前同一个人群。
+static TOOLS: std::sync::LazyLock<Vec<crate::footprint::registry::ToolSpec>> =
+    std::sync::LazyLock::new(|| {
+        crate::footprint::registry::tools()
+            .into_iter()
+            .cloned()
+            .collect()
+    });
+#[allow(dead_code)]
+static UNMANAGED_ENV: std::sync::LazyLock<Vec<crate::footprint::registry::UnmanagedEnv>> =
+    std::sync::LazyLock::new(|| {
+        crate::footprint::registry::unmanaged()
+            .into_iter()
+            .cloned()
+            .collect()
+    });
 
 fn home() -> PathBuf {
     PathBuf::from("/h")
-}
-fn no_dir(_: &Path) -> bool {
-    false
-}
-fn yes_dir(_: &Path) -> bool {
-    true
 }
 
 /// 一个什么都没有的文件系统。
@@ -34,8 +45,7 @@ fn empty_probe<'a>() -> FsProbe<'a> {
 fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) -> SurfaceEnv<'a> {
     SurfaceEnv {
         home,
-        cfg_dir_env: None,
-        is_dir: &no_dir,
+        agent_home: Box::leak(Box::new(home.join(".claude"))),
         fs,
         path_env,
         vantage: Vantage::Monitor,
@@ -52,45 +62,37 @@ fn resolves_local_home_paths() {
         &ToolDestination::LocalHomeRelative("x"),
         HostScope::Client,
         &home(),
-        None,
-        &no_dir,
+        &home().join(".claude"),
     )
     .unwrap();
     assert_eq!(r, PathResolution::Local(PathBuf::from("/h/.local/bin/ccm")));
 }
 
-/// `~/.claude/…` **必须**走 `CLAUDE_CONFIG_DIR` 那条规则，而且只解释一次。
+/// `~/.claude/…` 以调用方交来的 agent 家为基准（那条 `CLAUDE_CONFIG_DIR` 规则只在算 agent 家那一处解释一次，
+/// `agents/claudecode/paths.rs`）；别的 `~/…` 照旧以家目录为基准。
+/// 〔MIG-3b 续〕monitor 旧规则「`CLAUDE_CONFIG_DIR` 不是目录就退 `~/.claude`」那一半随判定进后端没了（同 `hooks-diag` 那一次）。
 #[test]
-fn claude_paths_honor_config_dir_and_fall_back() {
+fn claude_paths_are_based_on_the_agent_home() {
     let acct = PathBuf::from("/h/.claude-alt/z");
-    let with = resolve_touched_path(
-        Vantage::Monitor,
-        "~/.claude/settings.json",
-        &ToolDestination::LocalHomeRelative("x"),
-        HostScope::Client,
-        &home(),
-        Some(&acct),
-        &yes_dir,
-    )
-    .unwrap();
+    let at = |declared: &str| {
+        resolve_touched_path(
+            Vantage::Monitor,
+            declared,
+            &ToolDestination::LocalHomeRelative("x"),
+            HostScope::Client,
+            &home(),
+            &acct,
+        )
+        .unwrap()
+    };
     assert_eq!(
-        with,
+        at("~/.claude/settings.json"),
         PathResolution::Local(PathBuf::from("/h/.claude-alt/z/settings.json"))
     );
-    // 环境变量指向的不是目录 → 回落 `~/.claude`（与 hooks_diag 同一条规则）
-    let without = resolve_touched_path(
-        Vantage::Monitor,
-        "~/.claude/settings.json",
-        &ToolDestination::LocalHomeRelative("x"),
-        HostScope::Client,
-        &home(),
-        Some(&acct),
-        &no_dir,
-    )
-    .unwrap();
     assert_eq!(
-        without,
-        PathResolution::Local(PathBuf::from("/h/.claude/settings.json"))
+        at("~/.claude-alt/y"),
+        PathResolution::Local(PathBuf::from("/h/.claude-alt/y")),
+        "只有 `.claude/` 那一段才换基准，名字里带 `.claude` 前缀的别的目录不换"
     );
 }
 
@@ -102,8 +104,7 @@ fn resolves_one_level_glob() {
         &ToolDestination::LocalHomeRelative("x"),
         HostScope::Client,
         &home(),
-        None,
-        &no_dir,
+        &home().join(".claude"),
     )
     .unwrap();
     assert_eq!(
@@ -125,8 +126,7 @@ fn remote_project_and_profile_are_not_local() {
             &ToolDestination::RemoteHomeRelative("x"),
             HostScope::Remote,
             &home(),
-            None,
-            &no_dir
+            &home().join(".claude")
         )
         .unwrap(),
         PathResolution::Remote("~/.local/bin/ccm-backend".into())
@@ -138,8 +138,7 @@ fn remote_project_and_profile_are_not_local() {
             &ToolDestination::ProjectRelative("x"),
             HostScope::ProjectDir,
             &home(),
-            None,
-            &no_dir
+            &home().join(".claude")
         )
         .unwrap(),
         PathResolution::NeedsProjectDir(".mcp.json".into())
@@ -151,8 +150,7 @@ fn remote_project_and_profile_are_not_local() {
             &ToolDestination::UserShellProfile,
             HostScope::Client,
             &home(),
-            None,
-            &no_dir
+            &home().join(".claude")
         )
         .unwrap(),
         PathResolution::WindowsProfile
@@ -185,8 +183,7 @@ fn declaration_inconsistency_is_an_error_not_a_guess() {
                 &dest,
                 HostScope::Client,
                 &home(),
-                None,
-                &no_dir
+                &home().join(".claude")
             )
             .is_err(),
             "{declared:?} 配 {dest:?} 应判不自洽"
@@ -308,7 +305,7 @@ fn every_declared_path_resolves() -> ScanReport {
         checked: 0,
         violations: Vec::new(),
     };
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         for (c, f) in t.carrier_touches() {
             r.checked += 1;
             if let Err(e) = resolve_touched_path(
@@ -317,8 +314,7 @@ fn every_declared_path_resolves() -> ScanReport {
                 &c.destination,
                 f.host,
                 &home(),
-                None,
-                &no_dir,
+                &home().join(".claude"),
             ) {
                 r.violations.push(format!("{}/{:?}：{e}", t.id, f.path));
             }
@@ -355,8 +351,7 @@ fn prose_paths_are_rejected() {
             &dest,
             HostScope::Client,
             &home(),
-            None,
-            &no_dir,
+            &home().join(".claude"),
         );
         // **必须直接 Err。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
         // 于是 `~/.local/bin/cc-*（12 条软链）` 溜了过去——它成功解析成
@@ -421,8 +416,7 @@ fn either_never_absent_with(probe: &FsProbe) {
                 &c.destination,
                 f.host,
                 &home(),
-                None,
-                &no_dir,
+                &home().join(".claude"),
             )
             .unwrap()
         })
@@ -491,8 +485,7 @@ fn either_host_keeps_the_glob_count() {
         &carrier.destination,
         glob.host,
         &home(),
-        None,
-        &no_dir,
+        &home().join(".claude"),
     )
     .unwrap();
     match observe(&r, &f) {
@@ -512,7 +505,7 @@ fn either_host_keeps_the_glob_count() {
 #[test]
 fn remote_host_never_resolves_to_a_local_path() {
     let mut checked = 0;
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         for (c, f) in t.carrier_touches() {
             let r = resolve_touched_path(
                 Vantage::Monitor,
@@ -520,8 +513,7 @@ fn remote_host_never_resolves_to_a_local_path() {
                 &c.destination,
                 f.host,
                 &home(),
-                None,
-                &no_dir,
+                &home().join(".claude"),
             )
             .unwrap();
             let local = matches!(
@@ -669,7 +661,7 @@ fn every_host_declaration_is_pinned() {
 fn host_is_not_a_function_of_destination() {
     use std::collections::HashMap;
     let mut by_dest: HashMap<String, std::collections::HashSet<HostScope>> = HashMap::new();
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         // 🔴 〔`K-R81`〕`destination` 现在住在**载体**上 ⇒ 这条性质也按载体走。
         //    那不是顺手改写：它买到的东西比先前**多一格** —— 先前一个工具只有一个
         //    destination，`ccm` 那两条落点被同一个 key 盖住；今天两个载体各自入表。
@@ -791,8 +783,7 @@ fn host_projection_preserves_the_richer_resolution() {
         &c.destination,
         f.host,
         &home(),
-        None,
-        &no_dir,
+        &home().join(".claude"),
     )
     .unwrap();
     match r {
@@ -800,7 +791,7 @@ fn host_projection_preserves_the_richer_resolution() {
             // 〔CP2b〕话进了文案表：投影交出的就是那一格的原话。
             assert_eq!(
                 what,
-                crate::copy_table::copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[]),
+                copy_core::copy_text("rsToolRegistry.tools.acctIsoDestWhat", &[]),
                 "实得 {what}"
             );
         }
@@ -828,8 +819,7 @@ fn destination_checks_still_run_under_every_host() {
                 &ToolDestination::LocalHomeRelative("x"),
                 host,
                 &home(),
-                None,
-                &no_dir,
+                &home().join(".claude"),
             );
             assert!(
                 e.is_err(),
@@ -856,7 +846,7 @@ fn destination_checks_still_run_under_every_host() {
 ///
 /// 「申报 ↔ 现实」这条性质在 `tool_registry` 的两个 `bool`（`installable` / `uninstallable`）
 /// 上已经收成**一条覆盖全表**的判据了
-/// （`tool_registry_tests.rs::every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+/// （`registry_tests.rs::every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
 /// ：对拍表与 `TOOLS` 的 id 集合逐字相等，多一条少一条都红）。
 /// **本条守的是同一族的第三格 `destination`，而它逐个工具手写、只钉了 `TOOLS` 里的两条**
 /// （`ccm` 与 `project-mcp`；这个「两条」是下面那段代码自己数得出来的，不写死在这里）。
@@ -868,10 +858,10 @@ fn destination_checks_still_run_under_every_host() {
 /// 不靠人记得。
 #[test]
 fn declared_destinations_are_pinned_to_the_real_writers() {
-    use crate::structural_scan::pin_definition;
+    use guard_core::pin_definition;
 
     // ① ccm：`sftp.rs` 里那个常量就是真落点
-    let sftp = include_str!("../../src/bridge/src/sftp.rs");
+    let sftp = include_str!("../../../src/bridge/src/sftp.rs");
     // 〔E2 · V28〕落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         sftp,
@@ -881,7 +871,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     )
     .unwrap();
     pin_definition(
-        include_str!("../../src/bridge/crates/relay-route-core/src/lib.rs"),
+        include_str!("../../../src/bridge/crates/relay-route-core/src/lib.rs"),
         r#"pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";"#,
         "pub const BACKEND_LANDING_REL",
         "后端落点",
@@ -912,7 +902,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     );
 
     // ② 项目 MCP：〔MIG-3a〕写进了那台后端（`assets/mcp_edit.rs`），落点常量就是这个文件名
-    let mcp = include_str!("../../src/backend/assets/mcp_edit.rs");
+    let mcp = include_str!("../../../src/backend/assets/mcp_edit.rs");
     assert_eq!(
         mcp.matches(r#"pub(crate) const MCP_JSON: &str = ".mcp.json";"#)
             .count(),
@@ -945,7 +935,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
 #[test]
 fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
     let mut n = 0;
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         // 🔴 〔`K-R81`〕按**载体**判：占位符要出现在**它自己那个载体**的 touches 里，
         //    不是「这个工具的某一条 touch 里」—— 后者在多载体下会**静默配错对**。
         for c in t.carriers {
@@ -984,7 +974,7 @@ fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
 /// **死值验**：往闭集里加一项而不动这个视图（或把建表退回 `TOOLS.iter()`）⇒ 本条红。
 #[test]
 fn the_view_population_is_exactly_the_closed_set() {
-    use crate::tool_registry::environment;
+    use crate::footprint::registry::environment;
     use std::collections::BTreeSet;
     let h = home();
     let fs = empty_probe();
@@ -1041,7 +1031,7 @@ fn machine_with<'a>(
 /// 那正说明 ② 与 ③ 是分开的两格）。
 #[test]
 fn the_prompt_tier_really_looks_before_it_speaks() {
-    use crate::tool_registry::{environment, EnvTier};
+    use crate::footprint::registry::{environment, EnvTier};
     let h = home();
     // `git` 装着、`tmux` 没装 —— 两条都在「你自己装」那一档里。
     let meta = machine_with(&["git"], &[]);
@@ -1132,7 +1122,7 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
     let (_, blind) = observe_unmanaged(
         "tmux",
         EnvProbe::CannotProbe {
-            why: crate::tool_registry::Text(|| {
+            why: crate::footprint::registry::Text(|| {
                 "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」".to_string()
             }),
         },
@@ -1162,7 +1152,7 @@ fn the_same_name_under_three_probes_gives_three_different_cells() {
 /// 「不由 cc-monitor 提供」（也就是与「你自己装」那一支同文）⇒ 本条红。
 #[test]
 fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
-    use crate::tool_registry::{environment, EnvTier};
+    use crate::footprint::registry::{environment, EnvTier};
     use std::collections::BTreeSet;
     let h = home();
     let fs = empty_probe();
@@ -1229,8 +1219,8 @@ fn rows_cover_every_touched_file_and_use_all_spec_fields() {
     let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")), None);
     // 〔`K-R60`〕人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
     //   + 手写那一半每项一行。**两半都现算**，不写死一个数〔`13b`〕。
-    let expected: usize = TOOLS.iter().map(|t| t.touches().count()).sum::<usize>()
-        + crate::tool_registry::UNMANAGED_ENV.len();
+    let expected: usize =
+        TOOLS.iter().map(|t| t.touches().count()).sum::<usize>() + UNMANAGED_ENV.len();
     assert_eq!(
         rows.len(),
         expected,
@@ -1327,7 +1317,7 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
     };
     // 〔RM1a〕第四个参数是「有没有钩子字样」（〔C5〕生产两臂都交后端判；这里按同一张字样表现判）。
     let has = |p: &Path| read(p).map(|s| HOOK_PROGRAMS.iter().any(|n| s.contains(n)));
-    let s = build_settings_scopes(&home(), None, &no_dir, &has, &f);
+    let s = build_settings_scopes(&home().join(".claude"), &has, &f);
     assert_eq!(s.len(), 3);
     // E67①：**按「路径分量」比，不按斜杠比**。原来写的是
     // `s[0].path.ends_with("/.claude/settings.json")`，在 Windows 上恒假 ——
@@ -1355,7 +1345,7 @@ fn settings_scopes_include_local_and_admit_project_is_unchecked() {
 /// 读不到文件时 `has_cc_bus_hooks` 必须是 `None`（**不猜 false**）。
 #[test]
 fn unreadable_settings_does_not_claim_absence_of_hooks() {
-    let s = build_settings_scopes(&home(), None, &no_dir, &|_| None, &empty_probe());
+    let s = build_settings_scopes(&home().join(".claude"), &|_| None, &empty_probe());
     assert_eq!(s[0].has_cc_bus_hooks, None);
     assert_eq!(s[1].has_cc_bus_hooks, None);
 }
@@ -1378,7 +1368,7 @@ fn unreadable_settings_does_not_claim_absence_of_hooks() {
 fn the_path_resolution_dispatch_has_no_catch_all_arm() {
     // 与隔壁 `this_module_only_reads` 用同一种剥法（按首个 cfg-test 切），
     // 免得同一文件里出现第二套口径。
-    let src = include_str!("../../src/bridge/src/config_surface.rs");
+    let src = include_str!("../../../src/backend/footprint/rows.rs");
     let prod = src
         .split(concat!("#[cfg", "(test)]"))
         .next()
@@ -1429,102 +1419,74 @@ fn the_path_resolution_dispatch_has_no_catch_all_arm() {
     );
 }
 
+/// 〔MIG-3b 续〕搬进后端之后：判定（`rows.rs`）**零** `fs::`；这台自己 stat 的那几下住 face（`footprint/mod.rs`），恰好是只读那几样。
+/// 「把写交给别人」那一半（原先问 monitor 的 `write_site_registry`）由后端全树的 `readonly_guard` 接住（人群是本 crate 全部 `.rs`）。
 #[test]
 fn this_module_only_reads() {
-    let src = include_str!("../../src/bridge/src/config_surface.rs");
-    let code = src.split(concat!("#[cfg", "(test)]")).next().unwrap_or(src);
-    // 剥掉注释与文档：注释里出现 `fs::write` 这个词不该判红（本会话踩过：
-    // 把注释当代码，一条守卫数出 3 处而实际只有 1 处）
-    let stripped: String = code
-        .lines()
-        .filter(|l| {
-            let t = l.trim_start();
-            !t.starts_with("//")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    // 反向自检：剥完还得看得见真代码，否则守卫在空转
-    assert!(
-        stripped.contains("pub fn resolve_touched_path"),
-        "剥过头了，守卫在空转"
-    );
-    // **扫任意前缀的 `fs::`，不只 `std::fs::`**（T02 审计重要 2 实测可绕）：
-    // 注入 `use std::fs;` + `fs::write(...)` 后旧守卫 17/17 全绿，因为它只找字面
-    // `std::fs::` 前缀、而 `write` 也不在那 4 个禁用词里。同类绕法还有
-    // `tokio::fs::write`、`std::os::unix::fs::symlink`。
-    let mut uses: Vec<String> = Vec::new();
-    for (i, _) in stripped.match_indices("fs::") {
-        let rest = &stripped[i + "fs::".len()..];
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
+    // 剥掉注释与测试段：注释里出现 `fs::write` 这个词不该判红。
+    let fs_uses = |src: &str| -> (Vec<String>, Vec<String>) {
+        let stripped = guard_core::production_code(src);
+        let mut uses: Vec<String> = stripped
+            .match_indices("fs::")
+            .map(|(i, _)| {
+                stripped[i + "fs::".len()..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .filter(|n| !n.is_empty())
             .collect();
-        if !name.is_empty() {
-            uses.push(name);
-        }
-    }
-
-    // ★★ **「把写交给别人」也算写**〔audit-0805 08-07〕。
-    //
-    // 上面扫的是 `fs::` 前缀 —— 那只认「自己写」。08-07 实测：本模块加一句
-    // `crate::utils::atomic_write_json(p, v)`，**全仓 982 条判据一条不红**，
-    // 而本条的名字逐字写着「只读 / 不写」。与 F44（`tokio::io::copy` 绕过写流判据）
-    // 同一族：**动作类判据锚在「这个动作长什么样」上，就漏掉别的做法**。
-    //
-    // 「谁在写」不在这里各写一张清单（那是下一个漂移源），而是问唯一那张表：
-    // `write_site_registry::WRITE_SITES`。它自己由默认拒绝的人群守着。
-    let delegated = crate::write_site_registry::writers::called_by(&stripped, "config_surface.rs");
-    assert!(
-        delegated.is_empty(),
-        "本模块调了已登记的**写者**：{delegated:?}\n\
-             ⚠ 前缀扫描看不见这种写法 —— 写发生在被调方，本文件里一个 `fs::` 都不出现。\n\
-             真要写盘：先想清楚本模块「只读」这条性质还成不成立，\n\
-             再把落点登记进 `write_site_registry::WRITE_SITES`。"
-    );
-    // 自检：那张表非空，否则上面一句是空转。
-    assert!(
-        !crate::write_site_registry::writers::names().is_empty(),
-        "`WRITE_SITES` 是空的 —— 上面那条在空转"
-    );
-    // 允许集合就这两个，全部只读（〔C5〕`read_to_string` 随本机 settings 改问本机后端走了）。
-    // 相等不是地板：一处都没扫到 = 守卫失效了，而不是代码变干净了。
-    let mut got = uses.clone();
-    got.sort();
+        uses.sort();
+        // **钉死 `use` 列表**（要件 4）：`use tokio::fs as fs;` 之类能把白名单整体架空。
+        let use_lines = stripped
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("use "))
+            .map(str::to_string)
+            .collect();
+        (uses, use_lines)
+    };
+    let (rows_fs, rows_use) = fs_uses(include_str!("../../../src/backend/footprint/rows.rs"));
+    let (face_fs, face_use) = fs_uses(include_str!("../../../src/backend/footprint/mod.rs"));
+    assert!(rows_fs.is_empty(), "判定那一层碰了 fs：{rows_fs:?}");
     assert_eq!(
-        got,
-        ["metadata", "read_dir"],
-        "本模块的 fs:: 用法变了（只准只读的 metadata / read_dir 各一处）"
+        face_fs,
+        ["metadata", "metadata", "read_dir", "read_to_string"],
+        "face 的 fs:: 用法变了（只准只读的 stat / 列目录 / 读钩子字样）"
     );
-    // **钉死 `use` 列表**（要件 4：逃生口的定义必须逐字钉住）。不钉的话
-    // `use tokio::fs as fs;` 之类能把上面的白名单整体架空。
-    let uses_lines: Vec<&str> = stripped
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| l.starts_with("use "))
-        .collect();
     assert_eq!(
-        uses_lines,
-        vec![
-            // 〔CP2b〕文案表的取文口：只读编译期内嵌的那张表，不碰 fs。
-            "use crate::copy_table::copy_text;",
-            "use crate::tool_registry::{",
-            "use std::path::{Path, PathBuf};",
+        rows_use,
+        [
+            "use super::registry::{",
+            "use copy_core::copy_text;",
+            "use std::path::{Path, PathBuf};"
         ],
-        "本模块的 use 列表被改了——它是上面那条 fs:: 白名单的前提，改了要重新论证"
+        "判定那一层的 use 列表被改了——它是上面那条「零 fs::」的前提"
     );
-    // ★〔audit-0805 08-06 复核〕**上面那条「use 列表钉死」已实测验过**：
-    // 往本模块插 `use std::fs::{self as _f, write};` ⇒ 当场红，诊断逐字
-    // 「本模块的 use 列表被改了——它是上面那条 fs:: 白名单的前提」。
-    // ⚠ 为什么专门来验：同一天在后端侧实测到**同一个改写绕过了那边的 fs:: 白名单**
-    //（`readonly_guard`，六条判据全绿），原因就是那边**没有**钉 use 列表这一手。
-    // ⇒ 本模块用对了 T01 要件 4（逃生口的定义要逐字钉住），而它是被后端那次反衬出来的。
-    // 且明确不许出现这些（即便将来换成别的前缀写法，上面的白名单也已经兜住 std::fs::）
-    for bad in [
-        "OpenOptions",
-        "create_dir",
-        "remove_file",
-        "set_permissions",
+    assert_eq!(
+        face_use,
+        [
+            "use copy_core::copy_text;",
+            "use serde_json::{json, Map, Value};",
+            "use std::cell::RefCell;",
+            "use std::collections::{BTreeMap, BTreeSet};",
+            "use std::path::{Path, PathBuf};",
+            "use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};"
+        ],
+        "face 的 use 列表被改了——它是上面那条 fs:: 白名单的前提"
+    );
+    for src in [
+        include_str!("../../../src/backend/footprint/rows.rs"),
+        include_str!("../../../src/backend/footprint/mod.rs"),
     ] {
-        assert!(!stripped.contains(bad), "本模块不得出现 {bad}——这一页只读");
+        let stripped = guard_core::production_code(src);
+        for bad in [
+            "OpenOptions",
+            "create_dir",
+            "remove_file",
+            "set_permissions",
+        ] {
+            assert!(!stripped.contains(bad), "足迹不得出现 {bad}——这一页只读");
+        }
     }
 }

@@ -69,17 +69,15 @@ import type { Origin } from "../generated/Origin";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
-import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
-// 〔RM1f〕panorama 一族今天只剩 `panorama_call` / `panorama_edit` / `panorama_cancel` 三条，返回 `unknown`，
+// 〔RM1f〕panorama 一族〔MIG-3b 续〕今天走通道（`panorama` / `panorama-edit`），返回 `unknown`，
 // 由 `src/panorama/api.ts` 按 op 收窄成 `src/panorama/types.ts` 的手写类型（那 10 个住 vendored
 // `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
-import type { PushResult } from "../generated/PushResult";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
@@ -186,34 +184,17 @@ export const commands = {
   /** 〔MIG-3a〕这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`，从前夹在别名读回口里）。 */
   bound_terminal_count: () => invoke<number>("bound_terminal_count"),
 
+  // 〔MIG-3b 续 · 主会话 09-28 裁〕全景三条（问 · 写 · 撤）退役：界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳。
   /**
-   * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
-   * `result` 的形状随 `op` 而定（与本机那几条逐字同形）⇒ 这里是 `unknown`，由 `panorama/api.ts` 按 op 收窄。
+   * 那台缺小程序 / 装的太旧（后端回 `not_installed` / `unsupported`）⇒ monitor **放字节**：远端推到 `~/.cc-monitor/bin/`、本机放到同一处
+   * （`panorama_bytes.rs::panorama_place`；每台一把锁，排队的那一问等到前一个放完就不再放）。成功 **桶①**。
    */
-  panorama_call: (args: {
-    origin: Origin;
-    op: string;
-    repo: string | null;
-    args: unknown;
-    /** 〔RM1f〕给了 ⇒ 这一问能被 `panorama_cancel` 撤掉（每一问一张新票）。 */
-    ticket?: string | null;
-  }) => invoke<unknown>("panorama_call", args),
-
-  /** 〔RM1f〕撤掉一问在飞的全景（「取消建索引」）。回那张票此刻在不在飞。 */
-  panorama_cancel: (args: { ticket: string }) => invoke<boolean>("panorama_cancel", args),
-
-  /**
-   * 〔RM1d · 第四波〕批注 / 文档关联的**写**（V110「引擎只算、文件管理来写」）：问那台机器要编辑计划、
-   * 经那台机器后端的文件管理落盘（本机远端同一条）。`op` ∈ `add_annotation` · `propose_annotation` ·
-   * `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`；回的值随 op 而定。
-   */
-  panorama_edit: (args: { origin: Origin; repo: string; op: string; args: unknown }) =>
-    invoke<unknown>("panorama_edit", args),
+  panorama_place: (args: { origin: Origin }) => invoke<null>("panorama_place", args),
 
   // 〔RM1f · V108 后半句〕本机那十七条进程内全景命令的包装随内嵌引擎退役删了（panorama_callees · panorama_callers ·
   //   panorama_diagram · panorama_diagram_kinds · panorama_docs_for · panorama_drift · panorama_impact · panorama_index ·
   //   panorama_list_annotations · panorama_node · panorama_overview · panorama_reindex · panorama_search · panorama_status ·
-  //   panorama_subgraph · panorama_symbols_in_file · panorama_touching）：本机远端同一条 `panorama_call`。
+  //   panorama_subgraph · panorama_symbols_in_file · panorama_touching）：本机远端同一条（〔MIG-3b 续〕今天是通道上的 `panorama`）。
 
   // 〔第四波 S4〕`sftp_copy`（远端内部复制，步 23b）的包装随那条命令退役删了：窗口的复制走后端 `files-copy`。
 
@@ -249,16 +230,7 @@ export const commands = {
 
   // 〔SH1 · V136〕`read_cc_bus_inbox` / `read_cc_bus_state` 两条退役：驾驶舱读面经通道直接问后端（`src/cc-bus-control.ts`）。
 
-  /**
-   * 把本机公钥推到远端 `authorized_keys`。返回值字段被真消费 ⇒ 生成物（桶③）。
-   *
-   * **这条是我漏掉又补回来的**：我用 `grep -P` 逐文件列调用点时，
-   * 它写成**跨行**形式（`invoke<…>(\n  "push_public_key",`）而 grep 是**按行**匹配的
-   * ⇒ 漏计一处。守卫里的 JS 正则跨行、一直数对（`toBe(112)` 含它）。
-   * **临时 grep 比守卫弱，别拿它当账本。**
-   */
-  push_public_key: (args: { cfg: unknown; pubKeyPath: string | null }) =>
-    invoke<PushResult>("push_public_key", args),
+  // 〔MIG-3b 续 · ⑬〕把本机公钥推到远端那一条退役：界面经通道问本机后端 `pubkey-push`（`src/pubkey-push.ts`），读 `.pub` · 组请求 · 写都在后端。
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   // 〔US1 · 第四波 4D〕`read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端
@@ -320,12 +292,12 @@ export const commands = {
   // 〔MIG-3b〕删会话那条退役：删会话经通道直说那台后端 `files-delete-session`（`src/session-writes.ts::deleteSession`）。
 
   /**
-   * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * 〔RM1a · 第四波〕**收 `origin`**：本机照旧在 monitor 进程里扫；远端问那台机器的后端要路径事实
-   * （`footprint-probe`），判定走同一份 `build_rows`。远端那一栏的界面归 ST2 接。
+   * 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）的**事实**（`footprint_client.rs`）：
+   * `stat: null` ⇒ 只回环境；给了 ⇒ 逐条 stat。成品由那台后端出（`src/settings/footprint-reads.ts` 经通道问 `footprint-report`），
+   * 这一条只交事实、形状原样转给后端 ⇒ **桶②**。〔`config_surface_report`〔散文墓碑〕随判定进后端删了。〕
    */
-  config_surface_report: (args: { origin: Origin }) =>
-    invoke<ConfigSurfaceReport>("config_surface_report", args),
+  footprint_client_facts: (args: { stat: string[] | null }) =>
+    invoke<{ env: Record<string, unknown>; stat: Record<string, unknown> }>("footprint_client_facts", args),
 
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
@@ -518,8 +490,14 @@ export const commands = {
    * （期限换算、本地撤单、三层错误解码都住那里）。载荷去程是字节数组、回程是原样字节（`ArrayBuffer`）。
    * **桶②**：回的是不透明字节，本表不认识它的形状。
    */
-  chan_call: (args: { origin: Origin; op: string; payload: number[]; leftMs: number }) =>
+  chan_call: (args: { origin: Origin; op: string; payload: number[]; leftMs: number; callId: string | null }) =>
     invoke<ArrayBuffer>("chan_call", args),
+
+  /**
+   * 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕撤掉 webview 这一跳上带编号的那一问（`chan/webview.rs::chan_cancel`）。
+   * 调用方同样**不直接用它**：`chan.call` 在 `Budget.cancel` 拨下时自己发。回那一问此刻在不在飞。**桶①**。
+   */
+  chan_cancel: (args: { id: string }) => invoke<boolean>("chan_cancel", args),
 
   /**
    * 〔NET2〕那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码）·

@@ -39,7 +39,7 @@ pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux se
 pub mod dial; // K-P6b / C2 / 〔SR1a〕：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod feature_face; // 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
-pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe`（只读路径事实，判定住 monitor）
+pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 pub mod fork_face; // 〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
@@ -652,7 +652,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5g-acct-iso-in-backend**（2026-09-28，MIG-3a 续合并那一拍）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·
 /// 枢纽远端那一跳按原码回（`stale` / `refused` …）· 文件窗口首屏由窗口进程自己问、回一行。
-pub const BUILD_ID: &str = "p5g-acct-iso-in-backend";
+///
+/// ★★★ **p5h-footprint-panorama-in-backend**（2026-09-28，MIG-3b 续合并那一拍）：足迹申报与判定进后端 `footprint/`（Claude 布局那部分在 `agents/claudecode/footprint.rs`），`footprint-report` 替 `footprint-probe` ·
+/// `panorama-edit` 进后端（CAS 落盘）· `pubkey-push` / `authorized-keys-add` · `deploy-plan` 首连指纹交 monitor 固化 · `files` 链路 `stat` 删。
+pub const BUILD_ID: &str = "p5h-footprint-panorama-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -768,6 +771,11 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--capture-pane",
     // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
+    // 〔MIG-3b 续〕全景写（帧面 `panorama-edit` 的 CLI 面，自动派生）。
+    "--panorama-edit",
+    // 〔MIG-3b 续〕公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
+    "--authorized-keys-add",
+    "--pubkey-push",
     // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
@@ -784,8 +792,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   `launch-local` 不上 CLI 面（`STREAM_ONLY`：要读本进程的中转状态，同 `launch-endpoint`）。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--launch-render-cli",
     "--launch-render-payload",
-    // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
-    "--footprint-probe",
+    // 〔MIG-3b 续〕「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
+    "--footprint-report",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
     // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`inbound::REGISTRY` 的 `acct-iso-cmd`）派生的 CLI 面。纯函数，入参从 stdin 读。

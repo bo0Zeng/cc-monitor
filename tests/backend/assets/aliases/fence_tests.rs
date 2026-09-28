@@ -333,7 +333,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// `uninstall_site` 先前只有 `Some` 那半边被守：形状（`every_fence_shape_names_code_addresses`）
 /// ＋ 全仓那条符号地址判据（改名 / 删了会红）。
 /// **`None` 那半边一条判据都没有** —— 「今天没有卸口」这句话，盘上真长出一个卸口
-/// 也不会有人回来改它。那正是 `tool_registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
+/// 也不会有人回来改它。那正是 `registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
 /// （`sftp.rs::uninstall_remote_backend` 是设置面板上的按钮，而字段写着卸不掉）。
 ///
 /// # 🔴 本条同时是 `K-R63 §0c-2` 要的那个**射程读数**
@@ -348,7 +348,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// 而那一行的申报（`None`）与现实（`account_aliases.rs` 生产段里
 /// 一个 `fn uninstall… / remove… / strip… / purge…` 都没有）**是一致的** ——
 /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
-/// （「装得进去就必须卸得掉」，即 `tool_registry_tests.rs::fenced_block_implies_uninstallable`
+/// （「装得进去就必须卸得掉」，即 `registry_tests.rs::fenced_block_implies_uninstallable`
 /// 在这张账上的对应物），而那一条今天立起来就是一道**永远红**的闸
 /// （补卸口是 `§0d` 明写本件不做的事）—— 立不立由 PM 裁，本条不替它裁。
 #[test]

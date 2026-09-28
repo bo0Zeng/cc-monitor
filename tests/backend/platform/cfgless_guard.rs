@@ -647,6 +647,13 @@ mod tests {
              不是一个会在别的平台上答错的值。",
         ),
         (
+            "footprint/registry.rs",
+            "named: \"bash\"",
+            "合法线外",
+            "〔MIG-3b 续〕足迹环境清单那一项（登录 shell）：一个**申报的名字**，本页按它去 `PATH` 上查在不在（`EnvProbe::OnPath`），\
+             查不到就如实说「缺 / 查不动」—— 不起它、不假设它在，在任何平台上都不是一个会答错的值。",
+        ),
+        (
             "agents/fake/mod.rs",
             "cmdline(\"/usr/bin/vim\")",
             "合法线外",

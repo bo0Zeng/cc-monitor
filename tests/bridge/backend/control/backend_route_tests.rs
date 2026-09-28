@@ -163,9 +163,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 〔MIG-2〕`apikey_remote.rs`〔散文墓碑〕那一行摘了：那一口（上游选择的帧面发送口）最后只剩起会话问 `launch-endpoint` 一个调用方，
     //   起会话搬进后端之后零调用方、整个模块删了（界面经通道直问）。
     // 〔DEL〕`remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
-    // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
-    //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
-    ("footprint_remote.rs", Verdict::UsesRouter),
+    // 〔MIG-3b 续〕「足迹」那一行（`footprint_remote.rs`〔散文墓碑〕）摘了：成品由那台后端出，界面经通道直问 `footprint-report`。
     // 〔MIG-3a〕`mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
     // ★ 〔AS2 · 第四波 4B〕资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。
@@ -178,11 +176,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
     //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
     ("user_files.rs", Verdict::UsesRouter),
-    // 〔RM1e · 第四波 4B〕**代码全景那一问**（`panorama_call.rs::ask_once`，帧命令 `panorama`）：
-    //   远端回「没装 / 太旧」（`not_installed` / `unsupported`）要**按码**推字节再问一次，而 `frame_query::call`
-    //   把码压进了一句话 ⇒ 自己发、码从分流器递回的 `(code, message)` 里认（与 `user_files.rs` 同一形），
-    //   不自己 match 错误枚举。它**没有第二条路可回落**（推字节不是回落：推完问的还是同一条命令）。
-    ("panorama_call.rs", Verdict::UsesRouter),
+    // 〔MIG-3b 续〕代码全景那一问的发送端（`panorama_call.rs`〔散文墓碑〕）删了：界面经通道直问那台后端，按码放字节那一步在界面（`src/panorama/api.ts::askOrPlace`）。
     // ★ 〔SR1b · 第四波〕传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。

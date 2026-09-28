@@ -1,6 +1,23 @@
 use super::*;
-use crate::structural_scan::ScanReport;
+use guard_core::ScanReport;
 use std::collections::HashSet;
+
+/// 〔MIG-3b 续〕受管工具**全集**（本表 ＋ 注册表里各家足迹面带来的那一半）—— 下面的判据按全集判，与搬家前同一个人群。
+static TOOLS: std::sync::LazyLock<Vec<ToolSpec>> =
+    std::sync::LazyLock::new(|| tools().into_iter().cloned().collect());
+
+/// 申报表的两份源码：本表（`footprint/registry.rs`）＋ 这一家的那一半（`agents/claudecode/footprint.rs`）。
+const REGISTRY_SRC: &str = include_str!("../../../src/backend/footprint/registry.rs");
+const AGENT_SRC: &str = include_str!("../../../src/backend/agents/claudecode/footprint.rs");
+
+/// 两份各剥各的再接起来（本表末尾有测试段，接起来再剥会把后一份整个切掉）。
+fn tools_code() -> String {
+    format!(
+        "{}\n{}",
+        production_code(REGISTRY_SRC),
+        production_code(AGENT_SRC)
+    )
+}
 
 // ===== 从源码枚举结构（要件 1），而不是硬编码现有字段 =====
 //
@@ -103,18 +120,23 @@ fn declared_fields(code: &str) -> Vec<(String, String)> {
 
 /// `TOOLS` 里每一个 `ToolSpec { … }` 字面量的**体**文本。
 fn literals_of<'a>(code: &'a str, type_name: &str) -> Vec<&'a str> {
-    let (a, b) = matched_span(code, "pub const TOOLS: &[ToolSpec] = &[", 0)
-        .expect("取不到 TOOLS 常量体——扫描器失效了");
-    let body = &code[a..b];
+    // 〔MIG-3b 续〕`TOOLS` 常量有两份（本表 ＋ 这一家的那一半），逐份取体。
     let mut out = Vec::new();
-    let mut off = 0usize;
-    // 配对之后从**本块结束处**继续找：找 `ToolSpec {` 时嵌套的 `TouchedFile` 块
-    // 不会被重复计入；找 `TouchedFile {` 时则是逐个取那些嵌套块本身。
-    let opener = format!("{type_name} {{");
-    while let Some((s, e)) = matched_span(body, &opener, off) {
-        out.push(&body[s..e]);
-        off = e;
+    let mut from = 0usize;
+    let head = "const TOOLS: &[ToolSpec] = &[";
+    while let Some((a, b)) = matched_span(code, head, from) {
+        let body = &code[a..b];
+        let mut off = 0usize;
+        // 配对之后从**本块结束处**继续找：找 `ToolSpec {` 时嵌套的 `TouchedFile` 块
+        // 不会被重复计入；找 `TouchedFile {` 时则是逐个取那些嵌套块本身。
+        let opener = format!("{type_name} {{");
+        while let Some((s, e)) = matched_span(body, &opener, off) {
+            out.push(&body[s..e]);
+            off = e;
+        }
+        from = b;
     }
+    assert!(!out.is_empty(), "取不到 TOOLS 常量体——扫描器失效了");
     out
 }
 
@@ -235,7 +257,7 @@ fn declarative_only(code: &str) -> ScanReport {
 
 #[test]
 fn parser_actually_sees_the_real_source() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     assert!(code.contains("pub struct ToolSpec {"), "剥过头了");
     assert!(!code.contains("fn production_code"), "测试段没剥掉");
     let names: Vec<String> = declared_fields(&code).into_iter().map(|(n, _)| n).collect();
@@ -285,7 +307,7 @@ fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
 /// 靠的都是"数真实消费者"。
 #[test]
 fn every_declared_field_has_at_least_two_instantiations() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     field_discipline(&code)
         .require(5, "ToolSpec 字段纪律")
         .unwrap();
@@ -304,7 +326,7 @@ fn every_declared_field_has_at_least_two_instantiations() {
 /// 真正一条门禁都没有的是 `path` / `effect` 和**将来新增的字段**。现在这条补上了。
 #[test]
 fn touched_file_fields_follow_the_same_discipline() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     field_discipline_of(&code, "TouchedFile", "TouchedFile")
         .require(3, "TouchedFile 字段纪律")
         .unwrap();
@@ -313,7 +335,7 @@ fn touched_file_fields_follow_the_same_discipline() {
 /// 用审计那条**下移一层**的手法验证上一条：给 `TouchedFile` 塞一个单实例化字段必须红。
 #[test]
 fn the_scan_catches_a_single_use_field_on_touched_file_too() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     let lit_count = code.matches("            TouchedFile {").count()
         + code.matches("        touches: &[TouchedFile {").count();
     assert!(lit_count >= 6, "字面量锚点数不对：{lit_count}");
@@ -350,7 +372,7 @@ fn the_scan_catches_a_single_use_field_on_touched_file_too() {
 /// 字段 `needs_elevation`。上一版硬编码断言对此**21 项全绿**。
 #[test]
 fn the_scan_catches_the_audits_own_single_use_field() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     let mutated = code
         .replace(
             "    pub carriers: &'static [Carrier],",
@@ -399,7 +421,7 @@ fn the_scan_catches_the_audits_own_single_use_field() {
 /// ——否则这条扫描只对"新增"敏感，对"退化"是瞎的。
 #[test]
 fn the_scan_also_catches_a_field_degraded_to_neutral() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     let mutated = code.replace("        installable: true,", "        installable: false,");
     // 自检必须带 8 空格前缀：不带的话 `uninstallable: false` 也会被数进去
     // （第一版就是这么错的，实得 9 而非 6，测试当场红在这一行——**先确认变异落位**再判色）
@@ -422,7 +444,7 @@ fn the_scan_also_catches_a_field_degraded_to_neutral() {
 /// 现在守的是**结构性质**：字段类型必须是 const-可构造的声明式数据。
 #[test]
 fn tool_spec_is_declarative_data_not_behavior() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     declarative_only(&code)
         .require(5, "ToolSpec 只收声明式数据")
         .unwrap();
@@ -456,7 +478,7 @@ fn a_renamed_probe_mechanism_is_still_caught() {
 fn ids_are_unique_and_stable() {
     let ids: HashSet<_> = TOOLS.iter().map(|t| t.id).collect();
     assert_eq!(ids.len(), TOOLS.len(), "id 必须唯一（T02 会拿它当键）");
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         assert!(!t.id.is_empty() && !t.display_name.get().is_empty());
         // id 用于持久化/UI dataset，限制字符集免得以后踩 B03 那种 `--help` 的坑
         assert!(
@@ -543,7 +565,7 @@ fn declarations_match_reality_not_intent() {
 /// 于 7/17 与 7/26 建的，cc-monitor 侧**一行创建代码都没有**。
 #[test]
 fn owned_file_implies_installable() {
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         if t.touches().any(|f| f.effect == TouchEffect::OwnedFile) {
             assert!(
                 t.installable,
@@ -591,8 +613,9 @@ fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
     //      而它在这一格上**第一次真的成立**（`§4.2` 订正说的是「全仓不成立」，不是「一处都不成立」）。
     //   ② 反向钉一句「针在本文件里恰好一处」：哪天有人把那段头注搬回测试段，
     //      本条当场红 —— 也就是「自指回来了」这件事从此有人看着。
-    let target = include_str!("../../src/bridge/src/tool_registry.rs");
-    let me = include_str!("tool_registry_tests.rs");
+    // 〔MIG-3b 续〕cc-bus 那一条随 Claude 布局那一半搬进了适配层（`agents/claudecode/footprint.rs`）。
+    let target = AGENT_SRC;
+    let me = include_str!("registry_tests.rs");
     for must in ["开第 7 条豁免", "绝不碰"] {
         assert_eq!(
             me.matches(must).count(),
@@ -643,7 +666,7 @@ fn landing_sites_of(t: &ToolSpec) -> Vec<String> {
 
 #[test]
 fn installable_tools_declare_where_they_land() {
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         if !t.installable {
             continue;
         }
@@ -847,7 +870,7 @@ fn the_two_ccm_carriers_do_not_share_one_false_source() {
 /// （`references/testing.md` 硬规则 11：钉「今天恰好如此」的判据要写清去哪儿重裁）。
 #[test]
 fn carriers_do_not_mix_ours_and_not_ours() {
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         let n = t
             .carriers
             .iter()
@@ -898,7 +921,7 @@ fn carriers_do_not_mix_ours_and_not_ours() {
 #[test]
 fn every_carrier_says_which_one_it_is() {
     let mut n_multi = 0;
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         let mut seen: HashSet<String> = HashSet::new();
         for c in t.carriers {
             assert!(
@@ -1002,16 +1025,18 @@ const SITES: &[(&str, Why, usize)] = &[
     //   · `Why::Wording`（0 行）—— **这一档清零了**。界面串与散文里那句「远端 ＋ 旧词」
     //     两侧同拍改成了「远端后端」，一处不剩。
     // 〔MIG-3a〕`src/skill_host.rs` / `tests/bridge/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
-    ("src/structural_scan.rs", Why::OldId, 1),
-    ("src/tool_registry.rs", Why::OldId, 2),
-    ("tests/bridge/config_surface_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
+    // 〔MIG-3b 续〕`src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
+    ("crates/guard-core/src/lib.rs", Why::OldId, 1),
+    // 〔MIG-3b 续〕下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
+    ("src/backend/footprint/registry.rs", Why::OldId, 2),
+    ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
     // 〔MIG-3a〕`tests/bridge/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
-        "tests/bridge/tool_registry_environment_tests.rs",
+        "tests/backend/footprint/registry_environment_tests.rs",
         Why::OldId,
         1,
     ),
-    ("tests/bridge/tool_registry_tests.rs", Why::OldId, 3),
+    ("tests/backend/footprint/registry_tests.rs", Why::OldId, 3),
 ];
 
 /// 三档各自的处数。**针全部运行期拼**〔同 `scanning_guard_registry` 头注里
@@ -1056,27 +1081,33 @@ fn count_of(text: &str, w: Why) -> usize {
 /// 「换个名字的同一份剥法仍然是第二份剥法」，**本函数第一版就是那样，当场被它逮到**。
 /// 顺序也照它的纪律：**先剥整份，再切块**（`strip_comment_lines` 头注的 `K-R25` 那一段）。
 fn tools_literal_data() -> String {
-    let me = guard_core::strip_comment_lines(include_str!("../../src/bridge/src/tool_registry.rs"));
-    let opener = "pub const TOOLS: &[ToolSpec] = &[";
-    let at = me.find(opener).expect("取不到 TOOLS 常量 —— 扫描器失效了");
-    let start = at + opener.len();
-    let mut depth = 1i32;
-    let mut end = start;
-    for (i, c) in me[start..].char_indices() {
-        match c {
-            '[' => depth += 1,
-            ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    end = start + i;
-                    break;
+    // 〔MIG-3b 续〕两份 `TOOLS`（本表 ＋ 这一家的那一半）各取体，接起来。
+    let mut bodies = String::new();
+    for src in [REGISTRY_SRC, AGENT_SRC] {
+        let me = guard_core::strip_comment_lines(src);
+        let opener = "const TOOLS: &[ToolSpec] = &[";
+        let at = me.find(opener).expect("取不到 TOOLS 常量 —— 扫描器失效了");
+        let start = at + opener.len();
+        let mut depth = 1i32;
+        let mut end = start;
+        for (i, c) in me[start..].char_indices() {
+            match c {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + i;
+                        break;
+                    }
                 }
+                _ => {}
             }
-            _ => {}
         }
+        assert!(end > start, "配对没找到收尾的 `]`");
+        bodies.push_str(&me[start..end]);
+        bodies.push('\n');
     }
-    assert!(end > start, "配对没找到收尾的 `]`");
-    let body = &me[start..end];
+    let body = bodies.as_str();
     // 〔CP2b · 4C〕表里给人看的那几格进了文案表（`Text(|| copy_text("key", &[]))`）⇒ 「数据」＝
     // 源码体 ＋ 它引用的那几条表项的原文。只看源码体的话，措辞那一档（`Why::Wording`）
     // 从此永远数到 0 —— 字搬了家，尺子得跟着去新家量。
@@ -1092,7 +1123,7 @@ fn tools_literal_data() -> String {
         };
         let key = &tail[..tail.find('"').expect("取文口的 key 没收尾")];
         out.push('\n');
-        out.push_str(&crate::copy_table::copy_text(key, &[]));
+        out.push_str(&copy_core::copy_text(key, &[]));
         rest = tail;
     }
     out
@@ -1182,9 +1213,11 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 #[test]
 fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::collections::BTreeMap;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // 〔MIG-3b 续〕本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
+    let bridge = crate::guard_support::repo_root().join("src").join("bridge");
+    let manifest = bridge.as_path();
     let src_root = manifest.join("src");
     let crates_root = manifest.join("crates");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
@@ -1193,14 +1226,33 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     //    测试段整个住 `<repo>/tests/bridge`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
-        &crate::guard_support::tests_root().join("bridge"),
+        &crate::guard_support::repo_root()
+            .join("tests")
+            .join("bridge"),
         &["rs"]
     ));
-    // 把自己那一份加回来（上面头注那一段说的就是这里）。
-    files.push((
-        manifest.join("src").join("tool_registry.rs"),
-        include_str!("../../src/bridge/src/tool_registry.rs").to_string(),
-    ));
+    // 闭集的家与随它搬进后端的三份判据（〔MIG-3b 续〕它们不在上面三棵根里了，逐份加回来）。
+    let root = crate::guard_support::repo_root();
+    for (rel, text) in [
+        (
+            "src/backend/footprint/registry.rs",
+            include_str!("../../../src/backend/footprint/registry.rs"),
+        ),
+        (
+            "tests/backend/footprint/registry_tests.rs",
+            include_str!("registry_tests.rs"),
+        ),
+        (
+            "tests/backend/footprint/registry_environment_tests.rs",
+            include_str!("registry_environment_tests.rs"),
+        ),
+        (
+            "tests/backend/footprint/rows_tests.rs",
+            include_str!("rows_tests.rs"),
+        ),
+    ] {
+        files.push((root.join(rel), text.to_string()));
+    }
     // 地板：尺子真的够得着一棵树（空集会让下面三向全部空真）。
     assert!(
         files.len() > 100,
@@ -1309,7 +1361,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
 /// 字段纪律只扫上面两层，审计那条手法**再下移一层仍然有效**。
 #[test]
 fn carrier_fields_follow_the_same_discipline() {
-    let code = production_code(include_str!("../../src/bridge/src/tool_registry.rs"));
+    let code = tools_code();
     field_discipline_of(&code, "Carrier", "Carrier")
         .require(4, "Carrier 字段纪律")
         .unwrap();
@@ -1325,7 +1377,7 @@ fn carrier_fields_follow_the_same_discipline() {
 /// 而 `ccm` 那个词的唯一住址是 `local_backend::CCM_ENTRY_WORD`。
 /// 末段允许带一个尾 `*`（本机那条要盖住 Windows 上的 `.exe`，见它自己的 note）。
 fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
-    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+    let word = monitor_ccm_word();
     TOOLS
         .iter()
         .flat_map(|t| t.touches())
@@ -1335,6 +1387,23 @@ fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
         })
         .map(|f| (f.path, f.host))
         .collect()
+}
+
+/// 〔MIG-3b 续〕monitor 那一侧 `ccm` 这个词（`local_backend.rs::CCM_ENTRY_WORD`）：申报表进了后端，
+/// 这个词仍住 monitor（本机那份由 monitor 释放）⇒ 读 monitor 的源码现抠（跨半边的边登记在 `cross_half_edge_registry.rs`）。
+fn monitor_ccm_word() -> &'static str {
+    const SRC: &str = include_str!("../../../src/bridge/src/backend/control/local_backend.rs");
+    let head = "pub const CCM_ENTRY_WORD: &str = \"";
+    let at = guard_core::find_pinned(SRC, head)
+        .expect("monitor 那一侧的 `CCM_ENTRY_WORD` 改了写法")
+        + head.len();
+    &SRC[at..at + SRC[at..].find('"').expect("没收尾")]
+}
+
+/// monitor 真放下去的本机 `ccm` 文件名（`local_backend.rs::local_ccm_entry_name`：词 ＋ 这一份产物的可执行后缀；
+/// 判据与被测同一台构建，后缀取本进程的）。
+fn monitor_ccm_entry_name() -> String {
+    format!("{}{}", monitor_ccm_word(), std::env::consts::EXE_SUFFIX)
 }
 
 /// `KR69D1` 正面：**本机侧有落点，远端侧也有，而且它们不是同一条。**
@@ -1415,7 +1484,7 @@ fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
 /// 那正是本模块头注禁的「对能用的安装报假警报」。
 #[test]
 fn the_declared_local_ccm_path_really_matches_the_name_we_install() {
-    let name = crate::backend::control::local_backend::local_ccm_entry_name();
+    let name = monitor_ccm_entry_name();
     let declared: Vec<&str> = ccm_landing_sites()
         .into_iter()
         .filter(|(_, h)| matches!(h, HostScope::Client | HostScope::Either))
@@ -1443,7 +1512,7 @@ fn the_declared_local_ccm_path_really_matches_the_name_we_install() {
 /// 有围栏的块必须可卸载——否则用户没法干净地退出。
 #[test]
 fn fenced_block_implies_uninstallable() {
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         if t.touches().any(|f| f.effect == TouchEffect::FencedBlock) {
             assert!(
                 t.uninstallable,
@@ -1482,7 +1551,7 @@ fn fenced_block_implies_uninstallable() {
 /// 两格互相校验（下面那条性质会断言符号名与签名里那个 `fn` 名逐字相等）：
 /// 只留住址是一句没人核的话；只留签名，改了名没人读得出它指哪儿。
 /// 而 `addr` 这一格**同时**被全仓那条符号地址判据盯着
-/// （`structural_scan.rs::symbol_addresses` 抽、全仓解析）—— 实现改名 / 删掉，那一条先红。
+/// （guard-core 的 `lib.rs::symbol_addresses` 抽、全仓解析）—— 实现改名 / 删掉，那一条先红。
 struct ImplSite {
     addr: &'static str,
     definition: &'static str,
@@ -1515,20 +1584,20 @@ struct Claim {
 
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
-    const SFTP: &str = include_str!("../../src/bridge/src/sftp.rs");
+    const SFTP: &str = include_str!("../../../src/bridge/src/sftp.rs");
     // 〔MIG-3a · 主会话 09-27 裁〕别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
-    const PROFILE_INSTALLER: &str = include_str!("../../src/backend/assets/aliases/block.rs");
+    const PROFILE_INSTALLER: &str = include_str!("../../../src/backend/assets/aliases/block.rs");
     // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
-    const MCP: &str = include_str!("../../src/backend/assets/mcp_edit.rs");
+    const MCP: &str = include_str!("../../../src/backend/assets/mcp_edit.rs");
     // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（资产的装不算部署）：装口住 `src/backend/assets/cc_bus_install.rs`。
-    const CC_BUS_DEPLOY: &str = include_str!("../../src/backend/assets/cc_bus_install.rs");
+    const CC_BUS_DEPLOY: &str = include_str!("../../../src/backend/assets/cc_bus_install.rs");
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
-    const SKILL_INSTALL: &str = include_str!("../../src/backend/assets/skill_flow.rs");
+    const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
     // 〔MIG-3a · 主会话 09-28 预裁〕cc-acct-iso 的装进了那台后端（字节随后端二进制走）：装口住 `src/backend/assets/acct_iso_install.rs`。
-    const ACCT_ISO_INSTALL: &str = include_str!("../../src/backend/assets/acct_iso_install.rs");
+    const ACCT_ISO_INSTALL: &str = include_str!("../../../src/backend/assets/acct_iso_install.rs");
     // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
-    const PANORAMA_BYTES: &str = include_str!("../../src/bridge/src/panorama_bytes.rs");
+    const PANORAMA_BYTES: &str = include_str!("../../../src/bridge/src/panorama_bytes.rs");
     let sftp = || ImplHome {
         addr: "sftp.rs",
         text: SFTP,
@@ -1694,7 +1763,7 @@ fn fn_name_of(definition: &str) -> &str {
 /// ★★ `KR63D1` ＋ `KR63D2`：**`TOOLS` 每一条的两格申报，都必须与盘上真有没有那个实现一致。**
 ///
 /// 左边现读字段值（`installable` / `uninstallable`），右边用
-/// `structural_scan.rs::pin_definition` 去钉那个装 / 卸实现的**逐字签名**
+/// guard-core 的 `lib.rs::pin_definition` 去钉那个装 / 卸实现的**逐字签名**
 /// （它同时守住「只被定义一次」：追加一个同名定义也会红）。两边 `assert_eq!`。
 ///
 /// **两个方向都判**：
@@ -1714,7 +1783,7 @@ fn fn_name_of(definition: &str) -> &str {
 /// 下面那一支会 `panic!` 点名，**不会静默放过**。
 #[test]
 fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are() {
-    use crate::structural_scan::pin_definition;
+    use guard_core::pin_definition;
 
     let claims = claims();
 
@@ -1734,8 +1803,8 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     assert!(pin_definition("fn a() {}\n", "fn a() {}", "fn a", "自检").is_ok());
     // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
     assert!(
-        crate::structural_scan::fn_names_starting_with(
-            include_str!("../../src/bridge/src/sftp.rs"),
+        guard_core::fn_names_starting_with(
+            include_str!("../../../src/bridge/src/sftp.rs"),
             &["uninstall"]
         )
         .contains(&"uninstall_remote_backend".to_string()),
@@ -1751,7 +1820,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
         .collect();
 
     let mut checked = 0usize;
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         let c = claims.iter().find(|c| c.tool == t.id).expect("① 已经钉过");
 
         // ③ 「有没有家」不由填表的人说了算，由 `destination` 那个变体说了算。
@@ -1806,7 +1875,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
                             );
                         }
                         let stray: Vec<String> =
-                            crate::structural_scan::fn_names_starting_with(home.text, verbs)
+                            guard_core::fn_names_starting_with(home.text, verbs)
                                 .into_iter()
                                 .filter(|n| !claimed.contains(n.as_str()))
                                 .collect();
@@ -1861,14 +1930,14 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
     // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕嵌的是**本文件** —— 被反向自检点名的那条
     // `fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
     // 这一轮跟着测试段搬进了本文件。
-    let me = include_str!("tool_registry_tests.rs");
+    let me = include_str!("registry_tests.rs");
     // 反向自检：那条判据真的叫这个名字（改了名而没改这里 ⇒ 本条先红）。
     assert_eq!(
         me.matches(&format!("fn {NAME}(")).count(),
         1,
         "本文件里找不到（或不止一个）`{NAME}` —— 它改名了，本条此刻在空转"
     );
-    for t in TOOLS {
+    for t in TOOLS.iter() {
         let snake = t.id.replace('-', "_");
         assert!(
             !NAME.contains(t.id) && !NAME.contains(&snake),
@@ -1877,4 +1946,120 @@ fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
             t.id
         );
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 〔MIG-3b 续〕从 `footprint/registry.rs` 搬来的两个现算口（生产上已无调用方）＋ 它们今天对拍的那一个
+// ═══════════════════════════════════════════════════════════════════════
+
+/// 🔴 `K-R132`：本机那条 `ccm` 入口**所在的目录**（home 相对，`/` 分隔，不带末尾斜杠）。
+///
+/// # 它**不是**一个新的字面量〔`13b`：闭集只许有一个住址〕
+///
+/// 它从 [`TOOLS`] 里 `ccm` 那条**本机载体**的落点**现算**
+/// （`LocalHomeRelative(".cc-monitor/bin/ccm*")` ⇒ `".cc-monitor/bin"`）。
+/// 本函数体内一个 `.cc-monitor` 都没有 —— 改了上面那张表，这里跟着变。
+///
+/// # 为什么要有它：**PATH 上要写的那个目录，必须与我们真放下去的那个是同一个**
+///
+/// `K-R129` 在真机上证实的缺陷是「装上了、能跑、用户敲不到」——
+/// `ccm.exe` 真在 `%USERPROFILE%\.cc-monitor\bin\`，而那个目录不在 PATH 上。
+/// 补 PATH 的那一步（`profile_installer::render_cc_code`）**不许自己写一个目录字面量**：
+/// 写了，它与真落点就是两个住址，哪天落点搬家，PATH 会指着一个空目录，
+/// 而「指着空目录」与「根本没补」在终端上一模一样。
+///
+/// # 取不到就是 `None`，**不兜默认值**
+///
+/// 兜一个默认值 = 上面那张表被改坏了也看不出来，而那正是本函数要买的东西。
+/// 调用方拿到 `None` 时**不发明一个目录**：`profile_installer` 那两条用户级 PATH 命令
+/// 会原样往上传 `None`（**一条命令都不吐**），界面那一格显示「拿不到落点」
+/// 而不是一个编出来的目录 —— **指错目录与根本没补，在用户终端上是同一个结果**。
+///
+/// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
+/// 不是「盘上那份**真的**在哪」。两者对不对得上由
+/// `profile_installer` 那条跨文件判据钉住（它去读真正调
+/// `extract_embedded_to` 的那一行源码；〔E2〕从前是逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）。
+fn local_ccm_bin_dir_rel() -> Option<&'static str> {
+    let mut found: Option<&'static str> = None;
+    for spec in TOOLS.iter() {
+        // ⚠ `"ccm"` 这里是**这张表自己的键**（上面那条 `ToolSpec { id: "ccm", … }`），
+        //    **不是** `local_backend::CCM_ENTRY_WORD` 那个命令名的第二个住址。
+        //    两者今天字面相同是巧合 —— 拿命令名来查表，是把「注册表的键」与
+        //    「终端里敲的那个词」当成同一件事，那正是本工作区最贵的那个病
+        //    （一个值装了两件事）。
+        if spec.id != "ccm" {
+            continue;
+        }
+        for carrier in spec.carriers {
+            if let ToolDestination::LocalHomeRelative(p) = carrier.destination {
+                // 末段是文件名（可能带 glob，见那一条的 `path` 注释）⇒ 砍掉它。
+                let (dir, _last) = p.rsplit_once('/')?;
+                if found.is_some() {
+                    // 同一个工具声明了两条本机落点 ⇒ 「那个目录」这个问题没有唯一答案，
+                    // 而**猜一个**正是这一格不许做的事。
+                    return None;
+                }
+                found = Some(dir);
+            }
+        }
+    }
+    found
+}
+
+/// 🔴 `KR135D3`：**远端那条 `ccm` 落点的目录**（`$HOME` 相对，末段文件名已砍掉）。
+///
+/// 与 [`local_ccm_bin_dir_rel`] 是**同一个问题的另一边**，所以形状逐字照它：
+/// 从这张表现算，不写死目录字面量（`13b`：闭集只许有一个住址）。
+///
+/// # 为什么本机那个不够用，非要把远端这个也取出来
+///
+/// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**（本机 rc 与远端 rc 合的是
+/// 逐字同一份文本），而两边的落点**不是同一个目录** ⇒ 那一行里两个目录都得在。
+/// 判据要判「两个都在」，就得两个都能从这张表问出来 ——
+/// 在判据里手抄一个 `.local/bin` 就是第二个住址，而那正是本病的成因。
+///
+/// 两条同名落点 ⇒ 回 `None`（「那个目录」没有唯一答案时**不许猜一个**，同本机那条）。
+// 🔴 〔`K-R135` 09-15〕**它今天的使用者只有判据，所以住在判据档里，而不是挂一个
+// `#[allow(dead_code)]` 把警告压掉。** 两者的差别是**下一个人读得出什么**：
+// `allow` 说的是「有人用，只是编译器看不见」，而这一档说的是「**今天只有判据用它**」——
+// 后者才是实话。⚠ 它不是可有可无的：判据要证「那一行把**两边申报的**目录都放上了 PATH」，
+// 而在判据里手抄一个 `.local/bin` 就是那个落点的第二个住址 —— 正是本病的成因。
+// ⇒ 哪天生产侧真要问「远端那个目录是哪个」，把这一行 `#[cfg(test)]` 摘掉即可。
+fn remote_ccm_bin_dir_rel() -> Option<&'static str> {
+    let mut found: Option<&'static str> = None;
+    for spec in TOOLS.iter() {
+        // 同 `local_ccm_bin_dir_rel`：`"ccm"` 是**这张表自己的键**，
+        // 不是 `local_backend::CCM_ENTRY_WORD` 那个命令名的第二个住址。
+        if spec.id != "ccm" {
+            continue;
+        }
+        for carrier in spec.carriers {
+            if let ToolDestination::RemoteHomeRelative(p) = carrier.destination {
+                let (dir, _last) = p.rsplit_once('/')?;
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(dir);
+            }
+        }
+    }
+    found
+}
+
+/// ★〔MIG-3b 续〕本表申报的 `ccm` 两个载体（本机 · 远端）落点所在的目录 == 共享 crate 里后端的落点那一个目录
+/// （`relay_route_core::BACKEND_LANDING_REL`，本机远端同一个，V28；monitor 补 PATH 那一步取的就是它）。
+#[test]
+fn the_declared_ccm_bin_dirs_are_the_shared_landing_dir() {
+    let landing = relay_route_core::BACKEND_LANDING_REL;
+    let want = landing.rsplit_once('/').expect("落点没有目录那一段").0;
+    assert_eq!(
+        local_ccm_bin_dir_rel(),
+        Some(want),
+        "本机那一份申报的目录不是后端落点那一个"
+    );
+    assert_eq!(
+        remote_ccm_bin_dir_rel(),
+        Some(want),
+        "远端那一份申报的目录不是后端落点那一个"
+    );
 }

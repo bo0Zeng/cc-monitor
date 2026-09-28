@@ -9372,14 +9372,14 @@
       "zh": "扫描失败：{e}",
       "args": ["e"]
     },
-    "configSurface.refresh.wrongMachine": {
+    "configSurface.backend.tooOld": {
       "kind": "error",
-      "zh": "后端答的不是本机这一份",
+      "zh": "这台的后端太旧，还不认足迹这一问（重启 cc-monitor 换上新的后端；远端那台重新部署后端）",
       "args": []
     },
     "configSurface.refresh.badShape": {
       "kind": "error",
-      "zh": "后端返回的形状不对（rows / settings_scopes 不是数组）",
+      "zh": "后端返回的足迹形状不对，两端版本对不上",
       "args": []
     },
     "configSurface.refresh.scanningMachine": {
@@ -10170,10 +10170,30 @@
       "zh": "那台机器的后端还不认「退出行为」这一问。重装那台机器的后端就有了。",
       "args": []
     },
-    "rsPubkey.pushPublicKey.readResultFailed": {
+    "pubkeyPush.backend.tooOld": {
       "kind": "error",
-      "zh": "读推送结果失败：{e}",
-      "args": ["e"]
+      "zh": "本机后端太旧，不认「推送公钥」这一问（重启 cc-monitor 换上新的后端）。",
+      "args": []
+    },
+    "pubkeyPush.reply.badShape": {
+      "kind": "error",
+      "zh": "本机后端回的推送结果认不出（两边版本对不上）。",
+      "args": []
+    },
+    "bePubkey.add.noOutcome": {
+      "kind": "error",
+      "zh": "{machine} 的后端没说公钥加没加上。",
+      "args": ["machine"]
+    },
+    "bePubkey.exec.failed": {
+      "kind": "error",
+      "zh": "往那台的 authorized_keys 追加公钥没成：{said}",
+      "args": ["said"]
+    },
+    "bePubkey.read.tooBig": {
+      "kind": "error",
+      "zh": "文件太大，不像一份公钥",
+      "args": []
     },
     "rsPubkey.pushPublicKey.readFailed": {
       "kind": "error",
@@ -12337,11 +12357,6 @@
       "zh": "接入那一格带了要运行的内容（env / args / launcher）。它不起任何 agent 进程，这几项会被丢掉；请求格式不对，拒绝。",
       "args": []
     },
-    "rsConfigSurface.local.noHome": {
-      "kind": "error",
-      "zh": "取不到 HOME",
-      "args": []
-    },
     "rsConfigSurface.scope.projectNote": {
       "kind": "body",
       "zh": "优先级最高",
@@ -13159,11 +13174,6 @@
       "zh": "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。先在设置里把这台机器的后端起起来再点一次",
       "args": ["who", "why"]
     },
-    "rsUserFiles.edit.gaveUp": {
-      "kind": "error",
-      "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
-      "args": ["last", "attempts"]
-    },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",
       "zh": "置可执行位失败：{e}",
@@ -13667,6 +13677,16 @@
       "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
       "args": ["jumpUser"]
     },
+    "panoramaApi.backend.tooOld": {
+      "kind": "error",
+      "zh": "这台的后端太旧，不认代码全景这一问（重启 cc-monitor 换上新的后端）。",
+      "args": []
+    },
+    "panoramaApi.reply.noResult": {
+      "kind": "error",
+      "zh": "代码全景的应答里没有结果，两端版本对不上",
+      "args": []
+    },
     "rsPanoramaCall.edit.notRefreshed": {
       "kind": "error",
       "zh": "文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）。点「刷新」重建一次就能看到",
@@ -13692,41 +13712,6 @@
       "zh": "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。",
       "args": []
     },
-    "rsPanoramaCall.call.failed": {
-      "kind": "error",
-      "zh": "{who} 的代码全景没答上来（{code}）：{message}",
-      "args": ["who", "code", "message"]
-    },
-    "rsPanoramaCall.call.emptyReply": {
-      "kind": "error",
-      "zh": "{who} 的代码全景回了一条空应答，两端版本对不上",
-      "args": ["who"]
-    },
-    "rsPanoramaCall.call.noResult": {
-      "kind": "error",
-      "zh": "{who} 的代码全景应答里没有结果，两端版本对不上",
-      "args": ["who"]
-    },
-    "rsPanoramaCall.call.unavailable": {
-      "kind": "error",
-      "zh": "代码全景在这台上用不了",
-      "args": []
-    },
-    "rsPanoramaCall.call.internal": {
-      "kind": "error",
-      "zh": "代码全景这一问出了内部错误，没有拿到结果",
-      "args": []
-    },
-    "rsPanoramaCall.ticket.busy": {
-      "kind": "error",
-      "zh": "代码全景：取消票 {ticket} 还有一问没答完，这一问没有发出去。界面应当每一问一张新票",
-      "args": ["ticket"]
-    },
-    "rsPanoramaCall.cancel.done": {
-      "kind": "body",
-      "zh": "已取消（后端那一趟已经停下）",
-      "args": []
-    },
     "rsPanoramaCall.edit.gaveUp": {
       "kind": "error",
       "zh": "{last}\n连着 {attempts} 趟都是算完之后盘上那份又变了，先停下。过一会儿再点一次。",
@@ -13737,12 +13722,12 @@
       "zh": "代码全景组件交回的编辑计划形状不对（{e}），两端版本对不上：{raw}",
       "args": ["e", "raw"]
     },
-    "rsPanoramaCall.push.stillSays": {
+    "panoramaApi.place.stillSays": {
       "kind": "error",
       "zh": "已经把这一版的代码全景组件推过去了，那台机器仍然说：{said}",
       "args": ["said"]
     },
-    "rsPanoramaCall.push.failed": {
+    "panoramaApi.place.failed": {
       "kind": "error",
       "zh": "{said}\n—— 试着把代码全景组件推到那台机器上，没成：{e}",
       "args": ["said", "e"]
@@ -13777,75 +13762,20 @@
       "zh": "它的回答不是 UTF-8 编码，多半是 Windows 的 PowerShell 或 cmd 在说没有 uname 这个命令",
       "args": []
     },
-    "rsFootprintRemote.call.internal": {
+    "rsFootprintClient.env.noHome": {
       "kind": "error",
-      "zh": "查这台机器的足迹时出了内部错误，没有拿到结果",
+      "zh": "找不到 monitor 这台的家目录。HOME 与 USERPROFILE 都没有，本机那一栏的足迹查不了",
       "args": []
     },
-    "rsFootprintRemote.call.noData": {
+    "rsFootprintClient.stat.tooMany": {
       "kind": "error",
-      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
-      "args": ["host"]
+      "zh": "一次要 monitor 查 {n} 条路径，超过上限 {max} 条，两端版本对不上",
+      "args": ["n", "max"]
     },
-    "rsFootprintRemote.call.failed": {
+    "beFootprint.env.noHome": {
       "kind": "error",
-      "zh": "[{host}] 查足迹失败：{message}",
-      "args": ["host", "message"]
-    },
-    "rsFootprintRemote.call.tooOld": {
-      "kind": "error",
-      "zh": "[{host}] 的后端太旧，还不认这条命令。远端的足迹要后端答，重装那台机器的后端就有了",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.hooksNotObject": {
-      "kind": "error",
-      "zh": "hooks 不是对象",
+      "zh": "这台后端进程没有家目录。HOME 与 USERPROFILE 都没有，这台的足迹查不了",
       "args": []
-    },
-    "rsFootprintRemote.wire.entryNotString": {
-      "kind": "error",
-      "zh": "entries 里有一项不是字符串",
-      "args": []
-    },
-    "rsFootprintRemote.wire.kindOther": {
-      "kind": "error",
-      "zh": "kind 是 {other}",
-      "args": ["other"]
-    },
-    "rsFootprintRemote.wire.kindMissing": {
-      "kind": "error",
-      "zh": "kind 缺了",
-      "args": []
-    },
-    "rsFootprintRemote.wire.statNotObject": {
-      "kind": "error",
-      "zh": "stat 不是对象",
-      "args": []
-    },
-    "rsFootprintRemote.wire.badShape": {
-      "kind": "body",
-      "zh": "[{host}] 的后端回的内容不对：{what}。两端版本对不上",
-      "args": ["host", "what"]
-    },
-    "rsFootprintRemote.wire.noAgentHomeIsDir": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有「家目录是不是目录」。两端版本对不上",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.noAgentHome": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有家目录这一项，两端版本对不上",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.noHome": {
-      "kind": "error",
-      "zh": "[{host}] 那台后端进程没有 HOME（也没有 USERPROFILE），解不了 ~/…，这台的足迹查不了",
-      "args": ["host"]
-    },
-    "rsFootprintRemote.wire.noEnv": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有 env 这一项，两端版本对不上",
-      "args": ["host"]
     },
     "rsCcmProbe.card.noVersion": {
       "kind": "body",

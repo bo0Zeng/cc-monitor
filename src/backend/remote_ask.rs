@@ -362,29 +362,44 @@ where
 
 /// 〔MIG-3b〕**原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
 /// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
+///
+/// 〔MIG-3b 续〕连同那一趟的 **ack**（`DialAck` 原样那一行）一起交回：拨号在本机后端里发生，逐地址指纹要交 monitor 固化
+/// （`VIS2` 那一条，`dial_host::settle_host_key`），不另写一份判定。
 pub(crate) async fn capture_full(
     dial: &Value,
     command: String,
-) -> Result<crate::dial::Captured, String> {
+) -> Result<(crate::dial::Captured, Value), String> {
     let req = capture_request(dial, command, None)?;
-    let got = pull_raw(move |up_r, mut down_w| async move {
+    let (ack, got) = pull_acked(move |up_r, mut down_w| async move {
         let stages = crate::dial::StageSink::new(false);
         crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
     })
     .await?;
     let text = |k: &str| got.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-    Ok(crate::dial::Captured {
-        stdout: text("stdout"),
-        stderr: text("stderr"),
-        exit_status: got
-            .get("exit_status")
-            .and_then(Value::as_u64)
-            .and_then(|n| u32::try_from(n).ok()),
-    })
+    Ok((
+        crate::dial::Captured {
+            stdout: text("stdout"),
+            stderr: text("stderr"),
+            exit_status: got
+                .get("exit_status")
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
+        },
+        ack,
+    ))
 }
 
 /// 读 ack 与结果那一行，交回结果那一行（解过的 JSON）。
 async fn pull_raw<F, Fut>(serve: F) -> Result<Value, String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    pull_acked(serve).await.map(|(_, got)| got)
+}
+
+/// 同 [`pull_raw`]，另把 ack 那一行（解过的 JSON）一起交回。
+async fn pull_acked<F, Fut>(serve: F) -> Result<(Value, Value), String>
 where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
@@ -416,8 +431,9 @@ where
     let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
         .await?
         .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
-    serde_json::from_str(&got)
-        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))
+    let got = serde_json::from_str(&got)
+        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+    Ok((ack, got))
 }
 
 /// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。

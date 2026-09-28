@@ -38,9 +38,10 @@ mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那�
 pub mod chan;
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
-mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
+// 〔MIG-3b 续 · 主会话 09-28 裁①〕`mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
+//   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
 mod data_paths;
-mod footprint_remote; // 〔RM1a〕「足迹」的远端那一栏：问那台后端要路径事实（footprint-probe），判定走同一份 build_rows
+mod footprint_client; // 〔MIG-3b 续〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）的事实：只 stat 交来的路径
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;
@@ -71,7 +72,8 @@ mod messages;
 // 〔STOP〕`stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
 // 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
 mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序：推上去 · 本机放一份（〔DP1〕字节本身从 `byte_table` 取）
-mod panorama_call; // 〔RM1c · 第四波〕代码全景经那台机器的后端走（V108 选 B）：`panorama_call(origin, op, repo, args)`
+                    // 〔MIG-3b 续 · 主会话 09-28 裁〕`panorama_call`〔散文墓碑〕（全景问 · 写 · 撤经 monitor 那一跳转）整份删了：界面经通道直问那台后端 `panorama` / `panorama-edit`，
+                    //   撤单过通道那一跳；放字节那一半（`panorama_place`）住 `panorama_bytes.rs`。
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
 mod paths;
@@ -79,7 +81,7 @@ mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给�
                  // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
                  //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
 mod profile_installer;
-mod pubkey;
+// 〔MIG-3b 续 · ⑬〕`pubkey`〔散文墓碑〕（F50 公钥推送）进了本机后端：帧命令 `pubkey-push`（`src/backend/assets/pubkey.rs`），界面经通道直问。
 // 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
 mod remote_history;
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
@@ -215,7 +217,6 @@ mod snapshot_resume;
 // 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
                              // 〔MIG-1〕`tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
-mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
 mod utils;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
@@ -973,7 +974,8 @@ pub fn run() {
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令〔SH1 · V136〕退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
-            config_surface::config_surface_report,
+            // 〔MIG-3b 续〕足迹成品由那台后端出（界面经通道问 `footprint-report`）；这里只答 monitor 自己那台那几行的事实。
+            footprint_client::footprint_client_facts,
             drift_ledger::drift_ledger_report,
             // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
@@ -1046,21 +1048,21 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            pubkey::push_public_key,
+            // 〔MIG-3b 续〕`push_public_key`〔散文墓碑〕退役：界面经通道问本机后端 `pubkey-push`。
             // 〔MIG-2〕`probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
-            // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
+            // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条（〔MIG-3b 续〕今天是通道上的 `panorama`）。
             // 〔MIG-3a · `99 §2.1 ⑬`〕skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
             // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
             cc_bus_deploy::cc_bus_ccm_precheck,
-            panorama_call::panorama_call,
-            panorama_call::panorama_edit,
-            // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。
-            panorama_call::panorama_cancel,
+            // 〔MIG-3b 续〕全景问 · 写 · 撤三条退役（界面经通道直问那台后端）；那台没装 / 太旧时 monitor 放字节这一条留下。
+            panorama_bytes::panorama_place,
             // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
+            // 〔MIG-3b 续 · 主会话 09-28 裁「撤单不许回退」〕撤单过 webview 那一跳（带编号撤那一问）。
+            chan::webview::chan_cancel,
             // 〔CF2 · 第四波 4B〕会话内容经通道的 `subscribe`（本地撤单 · credit）。
             chan::webview::chan_offer,
             chan::webview::chan_subscribe,

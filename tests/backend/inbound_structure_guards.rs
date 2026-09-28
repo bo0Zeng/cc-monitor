@@ -222,7 +222,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "launch-endpoint"
                 // 〔DEL〕`relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
-                | "footprint-probe"
+                | "footprint-report"
                 // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
                 // 〔AS1 · 第四波 4B〕MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
@@ -233,6 +233,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "cc-bus-install"
                 // 〔MIG-3a · 09-28 裁 2〕acct-iso 装：经本进程文件管理面建链接 ＋ 抄配置样例（同步文件 I/O）；建链接那条同写面一档。
                 | "acct-iso-install"
+                // 〔MIG-3b 续〕公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
+                | "authorized-keys-add"
                 | "files-link"
                 | "cc-bus-install-state"
                 | "aliases-render"
@@ -318,6 +320,8 @@ fn every_registered_command_declares_its_run_kind() {
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
+        "pubkey-push",   // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
@@ -391,7 +395,7 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-read",
         "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
-        "footprint-probe",
+        "footprint-report",
         // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条（阻塞档，理由在上面 `expected_blocking`）。
@@ -426,6 +430,7 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-host-list",
         "cc-bus-install",
         "acct-iso-install",
+        "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
         "aliases-render",
