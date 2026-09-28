@@ -39,7 +39,7 @@ fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
     for anchor in [
         "fn parse_frame",
         "async fn stream_loop",
-        "async fn probe_backend",
+        // 〔MIG-1 续〕`probe_backend`〔散文墓碑〕 那一锚随测试连接搬进本机后端删了。
     ] {
         assert!(
             good.contains(anchor),
@@ -152,8 +152,9 @@ fn ssh_source_never_splits_a_stream_itself() {
         violations: Vec::new(),
     }
     .require(
-        2,
-        "本文件应有两处双工切分（stream_loop 的长连接 + probe_backend 的一次性探测）",
+        1,
+        // 〔MIG-1 续〕2 → 1：一次性探测那一处随测试连接搬进本机后端。
+        "本文件应有一处双工切分（stream_loop 的长连接）",
     )
     .expect("split_and_park 用量");
 }

@@ -2504,7 +2504,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 63usize), // 〔MIG-1 续〕62 → 63：列 tmux 会话一问（`src/tmux-reads.ts`） // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 6 ⇒ 62
+            ("chan.call", 64usize), // 〔MIG-1 续〕63 → 64：测试连接一问（`src/remote-probe.ts`） // 〔MIG-1 续〕62 → 63：列 tmux 会话一问（`src/tmux-reads.ts`） // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 6 ⇒ 62
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

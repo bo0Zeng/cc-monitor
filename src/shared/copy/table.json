@@ -14173,51 +14173,6 @@
       "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
       "args": ["machine"]
     },
-    "rsSshSource.control.unsupported": {
-      "kind": "body",
-      "zh": "control=unsupported：后端太旧，不能在远端起会话",
-      "args": []
-    },
-    "rsSshSource.hello.notHello": {
-      "kind": "body",
-      "zh": "后端的第一条回应认不出：{other}",
-      "args": ["other"]
-    },
-    "rsSshSource.probe.readFailed": {
-      "kind": "error",
-      "zh": "读后端输出出错：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.test.probeFailed": {
-      "kind": "error",
-      "zh": "SSH 连上了，但后端探测失败：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.test.noHello": {
-      "kind": "body",
-      "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
-      "args": []
-    },
-    "rsSshSource.test.controlDown": {
-      "kind": "body",
-      "zh": "后端连上了，但不能在远端起会话",
-      "args": []
-    },
-    "rsSshSource.test.noControl": {
-      "kind": "body",
-      "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
-      "args": []
-    },
-    "rsSshSource.test.ok": {
-      "kind": "body",
-      "zh": "SSH 与后端均正常。",
-      "args": []
-    },
-    "rsSshSource.test.sshFailed": {
-      "kind": "error",
-      "zh": "SSH 连接/鉴权失败：{e}",
-      "args": ["e"]
-    },
     "beSshConfig.host.sshGExit": {
       "kind": "error",
       "zh": "ssh -G {alias} 退出非 0：{detail}",

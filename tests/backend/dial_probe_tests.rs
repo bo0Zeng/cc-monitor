@@ -71,20 +71,36 @@ async fn a_hello_that_answers_ping_is_all_green() {
         hello.starts_with("v=1 build=b1 arch=x86_64 home=/h/.claude"),
         "{hello}"
     );
-    assert!(hello.ends_with("control=ok"), "{hello}");
+    assert!(
+        hello.contains("control=ok(") && hello.ends_with("ms)"),
+        "{hello}"
+    );
 }
 
 #[tokio::test]
 async fn an_old_backend_without_commands_says_too_old() {
-    let r = probe_with(&args(), |_req, _up, mut down| async move {
+    // 〔从 monitor `the_control_probe_writes_nothing_to_an_old_backend`〔散文墓碑〕 搬来〕旧后端（没声明命令）：一个字节都不发给它。
+    let (tx, rx) = tokio::sync::oneshot::channel::<tokio::io::DuplexStream>();
+    let r = probe_with(&args(), |_req, up, mut down| async move {
         let _ = down
             .write_all(
                 b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n{\"kind\":\"hello\",\"v\":1}\n",
             )
             .await;
+        // 上行读端交给判据自己读（本任务随探针返回被收，读端不能跟着它没了）；下行随本任务收尾关掉
+        // ⇒ 探针若错发了 ping 也等不住（读到 EOF、落「不能起会话」），不会挂住判据。
+        let _ = tx.send(up);
     })
     .await
     .unwrap();
+    let mut up = rx.await.unwrap();
+    let mut got = Vec::new();
+    let _ = tokio::io::AsyncReadExt::read_to_end(&mut up, &mut got).await;
+    assert!(
+        got.is_empty(),
+        "对旧后端发了字节：{:?}",
+        String::from_utf8_lossy(&got)
+    );
     assert_eq!(r["backendOk"], true);
     assert_eq!(r["message"], copy_text("beProbe.test.noControl", &[]));
 }

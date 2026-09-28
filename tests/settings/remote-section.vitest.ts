@@ -37,6 +37,16 @@ vi.mock("../../src/ipc/commands", () => ({
     },
   ),
 }));
+// 〔MIG-1 续 · `99 §2.1 ⑬`〕测试连接改问本机后端（`remote-probe.ts` 经通道）⇒ 替身同一本账：记帧命令名、按名回（缺的格补成结局的空形）。
+//   解码器本身由 `tests/remote-probe.vitest.ts` 钉。
+vi.mock("../../src/remote-probe", () => ({
+  probeMachine: () => {
+    ipcCalls.push("remote-probe");
+    const reply = ipcReplies.get("remote-probe");
+    if (reply instanceof Error) return Promise.reject(reply);
+    return Promise.resolve({ message: "", stages: [], ...(reply as object) });
+  },
+}));
 // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话改问那台后端（`tmux-reads.ts` 经通道）⇒ 替身同一本账：记旧名、按旧名回（`Error` ⇒ reject）。
 //   解码器本身由 `tests/tmux-reads.vitest.ts` 对金样钉。
 vi.mock("../../src/tmux-reads", () => ({
@@ -1006,7 +1016,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // SSH 都没通，backend 是「不知道」。记成 fail 等于替用户断言「远端没装后端」，
     // 而事实可能只是网络不通 —— 那条结论会一直挂在列表行上误导人。
     localStorage.clear();
-    ipcReplies.set("test_remote_connection", {
+    ipcReplies.set("remote-probe", {
       sshOk: false,
       backendOk: false,
       fingerprint: null,
@@ -1018,7 +1028,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const testBtn = btns.find((b) => b.textContent?.includes("测试连接"))!;
     testBtn.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(ipcCalls).toContain("test_remote_connection");
+    expect(ipcCalls).toContain("remote-probe");
     const st = readStatus("a");
     expect(st.connection?.kind).toBe("fail");
     expect(st.backend).toBeUndefined();
@@ -1072,7 +1082,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   it("SSH 通了才给后端下结论（反向对照：别是恒不记）", async () => {
     localStorage.clear();
-    ipcReplies.set("test_remote_connection", {
+    ipcReplies.set("remote-probe", {
       sshOk: true,
       backendOk: true,
       fingerprint: null,
@@ -1082,7 +1092,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
     btns.find((b) => b.textContent?.includes("测试连接"))!.click();
-    await new Promise((r) => setTimeout(r, 0));
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); // 〔MIG-1 续〕先读一次已保存的机器、再问本机后端
     const st = readStatus("a");
     expect(st.connection?.kind).toBe("ok");
     expect(st.backend?.kind).toBe("ok");

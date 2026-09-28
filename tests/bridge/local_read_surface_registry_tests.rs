@@ -30,7 +30,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/ssh_source.rs",
         "remote",
-        9,
+        7, // 〔MIG-1 续〕9 → 7：测试连接那一份 hello 人读摘要（`claude_home_from_hello` 的一处调用 ＋ 解构出的 `claude_dir`）随测试连接搬进本机后端删了
         "★ **说的全是远端主机的 claude 目录**：backend `hello` 帧的 `claude_dir` 字段。\
              **根本不是本机读面** ⇒ 不属 F10。\
              〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \
