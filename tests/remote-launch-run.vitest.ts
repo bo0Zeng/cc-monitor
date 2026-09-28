@@ -9,8 +9,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   交给 `invokeMock`，旧回包（`{typed, mayFallBack, reason}`）译成通道那一跳的结局。
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", async () => {
-  const { tmuxControlShim } = await import("./test-support/chan-fake");
-  return { invoke: tmuxControlShim(invokeMock, "backend_send_into") };
+  const { tmuxControlShim, launchRenderShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
@@ -27,9 +27,7 @@ import {
   // 〔RL1〕拉起之前问中转地址的那一口（attach 那一道闸直接量它）。
   withRelayEndpoint,
   // 🔴 `设计/80 §8.7` 步 3：全仓唯一的启动期令牌铸币口。
-  mintRbindToken,
-  // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
-  buildCliRenderRequest } from "../src/remote-launch-run";
+  mintRbindToken } from "../src/remote-launch-run";
 import { planAttach } from "../src/launch-requests";
 import { renderLaunchPayloadStub, STUB_REFUSE_TAG } from "./test-support/launch-render-ipc-stub.ts";
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
@@ -169,7 +167,8 @@ describe("F41 runRemoteResume", () => {
     expect(ok).toBe(false);
     // 用户必须看见（这次就地 resume 没做成），且 toast 带得上原因
     expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
-    expect(String(toastMock.mock.calls[0][1])).toContain("REFUSE:");
+    // 〔MIG-2〕载荷改问那台后端（`launch-render-payload`）：拒 = 对端回码 `refused`、原话原样（`REFUSE:` 标是旧 IPC 那一跳的分法，摘了）。
+    expect(String(toastMock.mock.calls[0][1])).toContain("拒绝拼入命令");
     // ★ 最要紧的一格：**没有**发起拉起 —— 也就是没有回落到兜底渲染器那条整串
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
@@ -328,6 +327,8 @@ describe("F41 runRemoteResume", () => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      // 〔MIG-2〕载荷问那台后端：给一串（缺席 = 对端回了读不懂的东西，那是另一种失败，不是本条要量的「通道问题」）。
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
       // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
       if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
       return Promise.resolve(undefined);
@@ -596,25 +597,11 @@ describe("KR109D3 探不到那一态今天真走得到 —— 判 A 的机检形
     vi.clearAllMocks();
   });
 
-  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态（〔LR2 · R95b〕不再与「没装」同形）", () => {
-    // `ctx`/`plan` 由**生产构造口**产（`planAttach`），不手捏 —— 手捏的那份下一次改字段就馊。
-    const { ctx, plan } = planAttach("u1-cc");
-    const flaky = buildCliRenderRequest(ctx, plan, { state: "unknown", error: "ssh 抖了一下" });
-    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
-    const installed = buildCliRenderRequest(ctx, plan, {
-      state: "installed",
-      version: "9.9.9",
-      capabilities: new Set(["tmux"]),
-    });
-    // 〔LR2 · R95b〕这里原来钉的是 `K-R95` 那个缺口「今天还在」（`unknown` 与 `not-installed` 在线上同为 `caps: null`），
-    //   并写着「它们要是分开了，缺口就补上了，回来重判」。补上了：三态一对一过线，`unknown` 带着原话。
-    //   ⇒ 判 A 的前提（「后端拒」不只有「真没装」一种来历）今天由线上第三态直接说出来，不再靠两态同形推。
-    expect(flaky.ccm).toEqual({ state: "unknown", error: "ssh 抖了一下" });
-    expect(notInstalled.ccm).toEqual({ state: "not-installed" });
-    expect(installed.ccm).toEqual({ state: "installed", caps: ["tmux"] });
-    expect(flaky.ccm, "「没探出来」与「没装」在线上又同形了 —— R95b 回潮").not.toEqual(notInstalled.ccm);
-  });
-
+  // 〔MIG-2〕「★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上是它自己那一态」删了（原名逐字，`K-R109-deathvalue.md` 按它记着，留档不动）：
+  //   渲染住进那台后端之后，「那台装没装 ccm」是后端在自己机器上现查的事实（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），
+  //   请求体里不再有前端转述的探测三态（`CliRenderRequest.ccm` 摘了，`deny_unknown_fields` 拒多送）⇒ 「探不到」那一态
+  //   不再过线。判 A 那条「后端拒不只一种来历」的前提随之由后端自己说（`launch_cli_parity_tests.rs`
+  //   `the_production_cli_render_asks_this_backend_for_its_own_capabilities`）。
   it("★★ 第二环：那一态走到生产入口上 ⇒ 落到**后端渲**的那一串，且请求带对的那一格 `outer`", async () => {
     const rendered: string[] = [];
     const reqs: PayloadRenderRequest[] = [];

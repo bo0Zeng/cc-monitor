@@ -91,9 +91,9 @@ const UNIT: &[&str] = &[
     // 〔C4d〕`tests/bridge/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
     "tests/bridge/adapter/claude_code_tests.rs",
     "tests/bridge/adapter/codex_tests.rs",
-    "tests/bridge/backend/control/launch_cli_parity_tests.rs",
-    "tests/bridge/backend/control/launch_payload_parity_tests.rs",
-    "tests/bridge/backend/control/launch_tmux_outer_parity_tests.rs",
+    "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
+    "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
+    "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/bridge/chan/transfer_stream_tests.rs",
     "tests/bridge/codex_record_tests.rs",
     "tests/bridge/crates/branch-core/lib_tests.rs",
@@ -140,7 +140,6 @@ const UNIT: &[&str] = &[
     "tests/cards/file-input.vitest.ts",
     "tests/cards/interactive.vitest.ts",
     "tests/cards/json-prefix.vitest.ts", // 〔W5-RENDER R2〕firstLineOf / jsonPrefix 与原式对拍（纯函数）
-    "tests/ccm-probe.vitest.ts",
     "tests/config-fields.vitest.ts",
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
@@ -247,6 +246,8 @@ const UNIT: &[&str] = &[
     "tests/views/user-input-panel.vitest.ts",
     "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
     "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
+    // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
+    "tests/backend/control/launch_render/answers_tests.rs",
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -323,11 +324,11 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/backend_control_tests.rs",
     "tests/bridge/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/bridge/backend/control/backend_route_tests.rs",
-    "tests/bridge/backend/control/ccm_invocation_tests.rs",
+    "tests/backend/control/launch_render/ccm_invocation_tests.rs",
     "tests/bridge/backend/control/frame_query_tests.rs",
     "tests/bridge/backend/control/gate2_parity_tests.rs",
     "tests/bridge/backend/control/inbound_client_tests.rs",
-    "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+    "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
     "tests/bridge/backend/control/tmux_tests.rs",
     "tests/bridge/backend_policy_tests.rs",
     "tests/bridge/backend_tests.rs",
@@ -337,6 +338,9 @@ const SCAN: &[&str] = &[
     "tests/bridge/ccm_cli_contract_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
     "tests/bridge/claude_data_fence_tests.rs",
+    "tests/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
+    "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
+    "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/bridge/config_surface_tests.rs",
     "tests/bridge/copy_table_tests.rs",
     "tests/bridge/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
@@ -398,7 +402,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
     "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
-    "tests/bridge/remote_relay_tests.rs",
     "tests/bridge/remote_write_registry_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
     "tests/bridge/search_kou_jing_guard.rs",
@@ -516,6 +519,8 @@ const SCAN: &[&str] = &[
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     "tests/bridge/shell_dialect_tests.rs",
     "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
+    // 〔MIG-2〕基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
+    "tests/backend/control/launch_render/local_tests.rs",
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
@@ -574,7 +579,10 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
-    "tests/backend/mcp_sync_tests.rs", // 〔AS1〕
+    "tests/backend/mcp_sync_tests.rs",             // 〔AS1〕
+    "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
+    "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
+    "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
     "tests/backend/observe/accounts_query_tests.rs",
     "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
@@ -595,7 +603,6 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
     "tests/backend/relay/door_tests.rs",
     "tests/backend/relay/host_tests.rs",
-    "tests/backend/relay/machine_tests.rs",
     "tests/backend/relay/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
@@ -607,11 +614,11 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/adapter_tests.rs",
     "tests/bridge/auto_launch_tests.rs",
     "tests/bridge/backend/control/cc_bus_deploy_tests.rs",
-    "tests/bridge/backend/control/launch_wire_k_r95_launch_render_facts.rs",
+    "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/bridge/backend/control/local_backend_tests.rs",
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
     // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
-    "tests/bridge/backend/control/payload_tests.rs",
+    "tests/backend/control/launch_render/payload_tests.rs",
     // 〔DUP1〕标识符放行判定的生成物（写 `src/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
     "tests/bridge/backend/control/payload_judgment_rules.rs",
     "tests/bridge/backend_layering.rs",
@@ -639,9 +646,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/local_backend_host_tests.rs",
     "tests/bridge/local_lines_tests.rs",
     "tests/bridge/logging_tests.rs",
-    "tests/bridge/mcp_sync_tests.rs",      // 〔AS1〕
-    "tests/bridge/skill_install_tests.rs", // 〔AS2〕
-    "tests/bridge/mcp_tests.rs",
+    // 〔AS2〕
     // 〔RM1f〕SCAN → 集成：本机那一份小程序的放法（临时目录真写 · 逐字节相等零写 · 字节变了重写）
     "tests/bridge/panorama_bytes_tests.rs",
     "tests/bridge/panorama_call_tests.rs",
@@ -810,11 +815,6 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
     ),
     (
-        "tests/backend/relay/machine_tests.rs",
-        "machine_child_entry",
-        Trigger::Filter { by: "tests/backend/relay/machine_tests.rs", needle: "relay::machine::tests::machine_child_entry" },
-    ),
-    (
         "tests/backend/relay/server_tests.rs",
         "relay_child_process_entry_point",
         Trigger::Filter { by: "tests/backend/relay/server_tests.rs", needle: "relay::server::tests::relay_child_process_entry_point" },
@@ -882,12 +882,12 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
     (
         // 〔LR2〕生产命令 `render_launch_payload` 给 e2e 的数据出口（`resume-suite` · `resume-backend-frames` ·
         //   `tmux-target-acceptance` 三套经这个驱动取「app 真正会跑的那一串」）。
-        "tests/bridge/backend/control/launch_tmux_outer_parity_tests.rs",
+        "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
         "emit_launch_render_for_e2e",
         Trigger::Filter { by: "tests/e2e/launch-render-emit.sh", needle: "emit_launch_render_for_e2e" },
     ),
     (
-        "tests/bridge/history_tests.rs",
+        "tests/backend/control/launch_render/local_tests.rs",
         "emit_local_launch_command_for_e2e",
         Trigger::Filter { by: "tests/e2e/p3t-local-tmux.sh", needle: "emit_local_launch_command_for_e2e" },
     ),

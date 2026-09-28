@@ -35,13 +35,14 @@ import { RBIND_TOKEN_ALPHABET, RBIND_TOKEN_LEN } from "./generated/judgment-rule
 // `tmux-outer-golden.json`）的左边照 LR1 的办法换成手写期望，`req` 仍由本文件的请求构造现产。
 // 「这一族不许回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。
 // 〔LR1 · U8c-3〕`ccm …` 调用行的 TS 渲染器（原 `launch-render-cli.ts`）已删 ——
-// 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → `render_ccm_launch`），
+// 生产从 U8c-2c-2 起就只走 Rust（`renderCliViaBackend` → 那台后端 `launch-render-cli`；〔MIG-2〕原 Tauri 命令 `render_ccm_launch` 退役），
 // 它最后只剩「产夹具的 `out`」一个用途，而那一格改成了手写期望。
 /** `renderCliViaBackend` 的结果：`ok:false` 带**降级理由**，不是错误（§33）。 */
 type CliRenderResult = { ok: true; cmd: string } | { ok: false; reason: string };
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 // 〔MIG-2 · `99 §2.1 ⑬`〕渲染与「这一发的中转地址」问那台后端（本机远端同一条 `chan.call(origin, …)`）。
 import { isRefusal, launchEndpoint, planLocalLaunch, renderCli, renderPayload } from "./launch-render";
+import { saidOfControl } from "./control-said";
 import { showActionFailureToast } from "./error-toast";
 import { sendInto, type SendIntoOutcome } from "./tmux-control";
 import { offerResyncRetry } from "./resync";
@@ -630,7 +631,7 @@ async function sendIntoViaBackend(origin: string, name: string, plan: LaunchPlan
     //
     // ⚠ 诚实边界：这是**字符串约定不是类型**（全仓 70 个 tauri command 的错误都是 `String`，
     // 本件不在这里开第一个结构化的口 —— 那是 `U6`）。手写一个带同样前缀的普通错误串会被误判。
-    const raw = e instanceof Error ? e.message : String(e);
+    const raw = saidOfControl(e);
     if (isRefusal(e)) {
       console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（同一道闸只会再拒一次）：${raw}`);
       return { verdict: "refused", reason: raw };

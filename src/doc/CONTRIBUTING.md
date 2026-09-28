@@ -302,8 +302,8 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 > |---|---|---|
 > | `kill` | 后端 RPC（F04b；〔C4e〕界面经通道直接说） | `src/tmux-control.ts::killSession`（门在后端 `src/backend/control/gate.rs`）；**盘上没有第二条路** |
 > | `send-keys` | 后端 RPC（F04c；〔C4e〕界面经通道直接说） | `src/tmux-control.ts::sendKeys`（两个 mode 名的理由在它头注里）；同上 |
-> | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src/bridge/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
-> | `attach` / `new-session`（**远端兜底**） | 🔴 **后端渲染器**〔步 22b·B 2026-09-20，`设计/90 §4 E` 收官〕 | `src/bridge/src/backend/control/payload.rs::render_tmux_outer`（外层三格）＋ `render_payload`（内层载荷），同一条 tauri 命令 `render_launch_payload`（`outer` 缺席 = `container:"none"`，带 `outer` = tmux 那三格）。**改完必须改用例表的手写期望并重生成入库夹具**：`npm run gen:payload-golden`。〔LR2 2026-09-25〕TS 那份（`session-backend.ts` ＋ `launch-render-fallback.ts`）已删，这是唯一一份 |
+> | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | 〔MIG-2〕本机后端 `local.rs::plan` 的接回那一格（帧命令 `launch-local`，原 Tauri 命令 `render_local_attach`）⇒ `ccm -- --attach <名>`；前端 `runLocalResumeIntoExistingTmux` 问它要 |
+> | `attach` / `new-session`（**远端兜底**） | 🔴 **后端渲染器**〔步 22b·B 2026-09-20，`设计/90 §4 E` 收官〕 | `src/backend/control/launch_render/payload.rs::render_tmux_outer`（外层三格）＋ `render_payload`（内层载荷），同一条帧命令 `launch-render-payload`（〔MIG-2〕原 tauri 命令 `render_launch_payload` 退役，界面经通道问那台后端）（`outer` 缺席 = `container:"none"`，带 `outer` = tmux 那三格）。**改完必须改用例表的手写期望并重生成入库夹具**：`npm run gen:payload-golden`。〔LR2 2026-09-25〕TS 那份（`session-backend.ts` ＋ `launch-render-fallback.ts`）已删，这是唯一一份 |
 >
 > 🔴🔴 **订正三（步 22b·B 2026-09-20）：下面那四条「步骤」整段过期了，别照着做。**
 > 它们写的是「改命令语法 → 只改 `src/session-backend.ts`」，而那条路
@@ -312,7 +312,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 >
 > **今天要改「在远端起/接会话」的命令，按这四步：**
 >
-> 1. **改命令语法** → `src/bridge/src/backend/control/payload.rs`
+> 1. **改命令语法** → `src/backend/control/launch_render/payload.rs`（〔MIG-2〕搬进后端）
 >    （`render_tmux_outer` 外层三格 · `render_payload` 内层载荷）。
 >    ⚠ **不许单开模块**：`设计/00 §2.5 ④` 要的是「5 个渲染实现 → 2 个」，
 >    单开一个就让盘上从 5 变 6，方向是反的（`the_launch_renderers_on_disk_are_exactly_these` 钉着）。

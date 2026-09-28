@@ -64,7 +64,8 @@ const PENDING: &[&str] = &[
     //      `utils.rs`                        → `tests/bridge/utils_tests.rs`
     "tests/bridge/atomic_replace_registry_tests.rs",
     "tests/bridge/backend/control/backend_kill_tests.rs",
-    "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+    // 〔MIG-2〕`launch_wire_f07_main_path_tests.rs` 这一行删了 —— 随载荷内核搬进后端测试段，同拍把手写递归换成 `scan_tree_excluding`
+    //   （真迁完了）⇒ 存量少一条，上限同拍往下拧一格。
     "tests/bridge/backend_layering.rs",
     // 〔LOC1a · 第四波 4D〕`tests/bridge/backend/observe/local_query_tests.rs` 这一行删了 —— 那份判据文件随被测的
     //   `local_query.rs` 一起删（本机那几问改走 `<local>` 长连接）⇒ 存量少一条，上限同拍往下拧一格。
@@ -121,7 +122,7 @@ const PENDING: &[&str] = &[
 /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
 // 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
 // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-const PENDING_CEILING: usize = 26; // 〔LOC1a〕`local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · 〔RM1f〕`tests/bridge/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格 · `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
+const PENDING_CEILING: usize = 25; // 〔MIG-2〕f07 那份真迁完 ⇒ 26 → 25 · 〔LOC1a〕`local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · 〔RM1f〕`tests/bridge/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格 · `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///

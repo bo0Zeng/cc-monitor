@@ -230,13 +230,12 @@ fn resident_now() -> bool {
 /// 顺序承重：读不出来先说读不出来（不看套过缺省的 `killOnExit`）· 勾上 ⇒ 会结束 · 没勾 ⇒ 看是不是常驻。
 /// 「无人监护」只许出现在常驻那一档（K14）。
 fn said(r: &Read, resident: bool) -> String {
-    let key = match r {
-        Read::Unreadable(_) => "backendPolicy.exit.unreadable",
-        _ if r.kill_on_exit() => "backendPolicy.exit.kills",
-        _ if resident => "backendPolicy.exit.unattended",
-        _ => "backendPolicy.exit.selfDies",
-    };
-    copy_text(key, &[])
+    match r {
+        Read::Unreadable(_) => copy_text("backendPolicy.exit.unreadable", &[]),
+        _ if r.kill_on_exit() => copy_text("backendPolicy.exit.kills", &[]),
+        _ if resident => copy_text("backendPolicy.exit.unattended", &[]),
+        _ => copy_text("backendPolicy.exit.selfDies", &[]),
+    }
 }
 
 /// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。〔㊴〕`said` 是成品，界面原样摆。

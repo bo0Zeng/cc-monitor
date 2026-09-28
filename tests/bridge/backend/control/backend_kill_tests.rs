@@ -300,7 +300,11 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     // 〔MIG-2〕那条放行集的入口（`render_tmux_outer`）搬进了后端 crate，monitor 够不着 ⇒ 「逐个禁字喂进去必须拒 ＋ 合法名字必须过」
     //   那一段搬到它旁边：`tests/backend/control/launch_render/payload_tests.rs::the_tmux_outer_refuses_every_name_the_kill_gate_refuses`
     //   （字符集同样从后端 `kill.rs` 的形状门现抠）。这里核它还在。
-    let backend_side = include_str!("../../../backend/control/launch_render/payload_tests.rs");
+    // 运行时读（不是编译期嵌入）：只核那段在不在，不值得一条跨半边的编译期边。
+    let backend_side = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("tests/backend/control/launch_render/payload_tests.rs"),
+    )
+    .expect("读不到后端那份 payload_tests.rs");
     assert!(
         backend_side.contains("fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses"),
         "喂禁字那一段在后端测试段里不见了 —— 放行集那条创建路径从此没人喂"

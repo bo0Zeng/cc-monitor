@@ -689,8 +689,9 @@ fn each_registered_status_still_matches_reality() {
     for (item, how) in STATUS_CELLS {
         let (delivered, why) = match *how {
             "payload-kernel-exists" => (
-                prod("src/bridge/src/backend/control/payload.rs").contains("fn render_payload"),
-                "载荷内核在 `backend/control/payload.rs`",
+                // 〔MIG-2〕内核搬进后端（`99 §2.1 ⑬`），量法跟着换住址。
+                prod("src/backend/control/launch_render/payload.rs").contains("fn render_payload"),
+                "载荷内核在后端 `control/launch_render/payload.rs`",
             ),
             // ⚠ **F12 订正**：第一版左支读的是 `src/bridge/src/shell_quote.rs` —— **那个文件不存在**
             // ⇒ 左支恒 false，整条判据只靠右支撑着（`/full-audit` 逮到的）。
@@ -709,15 +710,18 @@ fn each_registered_status_still_matches_reality() {
                 "Rust 侧的 POSIX quote 收在共享 crate（另有 `quote_singleton_guard` 单点守卫）",
             ),
             "ccm-invocation-kernel-exists" => (
-                prod("src/bridge/src/backend/control/ccm_invocation.rs")
+                prod("src/backend/control/launch_render/ccm_invocation.rs")
                     .contains("fn render_ccm_invocation"),
-                "ccm 调用行内核在 `backend/control/ccm_invocation.rs`",
+                "ccm 调用行内核在后端 `control/launch_render/ccm_invocation.rs`",
             ),
             "production-ts-calls-the-rust-renderers" => (
-                read("src/remote-launch-run.ts").contains("commands.render_ccm_launch(")
-                    && read("src/remote-launch-run.ts")
-                        .contains("commands.render_launch_payload("),
-                "生产 TS 主路在调那两条 Rust 渲染命令",
+                // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/launch-render.ts` 问。
+                read("src/launch-render.ts").contains("chan.call(origin, \"launch-render-cli\"")
+                    && read("src/launch-render.ts")
+                        .contains("chan.call(origin, \"launch-render-payload\"")
+                    && read("src/remote-launch-run.ts").contains("renderCli(")
+                    && read("src/remote-launch-run.ts").contains("renderPayload("),
+                "生产 TS 主路在问那台后端的两条渲染帧命令",
             ),
             // 「待做」那一格：**反向**量法 —— TS 渲染器还在，就说明确实还没删。
             "ts-renderer-still-there" => (
@@ -908,6 +912,11 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
     /// 例外表：**每条都写清「为什么它解析不到却是对的」**。
     /// 下面有一条自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
     const EXCEPTIONS: &[(&str, &str)] = &[
+        (
+            "render_local_attach",
+            "〔MIG-2 · `99 §2.1 ⑬`〕历史句：原 monitor Tauri 命令（本机接回那一句），搬成本机后端 `launch-local` 的接回那一格。\
+             `INVARIANTS §33b` ② 那一格的沿革与 `CONTRIBUTING` 那张表逐字点着它，那是「attach 归谁产」怎么一步步落地的线索",
+        ),
         (
             "setup",
             "tauri 的 `.setup(move |app| …)` 钩子闭包 —— 是真东西，但不是一处声明",
@@ -1222,10 +1231,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             ".claude/planned-build/account-isolation/DESIGN-account-switching.md",
             "同上：计划仓里的设计稿，不在本仓",
         ),
-        (
-            "/.mcp.json",
-            "指的是**用户项目目录**下的 `.mcp.json`（MCP 项目配置），不是本仓文件",
-        ),
+        // 〔MIG-3a〕`/.mcp.json` 那一行摘了：INVARIANTS 那两处改写之后 `doc/` 里没人再这样写。
     ];
     const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
 

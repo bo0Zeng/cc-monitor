@@ -360,7 +360,7 @@ fn a_request_without_outer_still_renders_the_plain_payload() {
 /// （e2e 有「该拒」的用例，拒绝本身就是读数，所以不 panic）。
 /// **请求缺失 / 解析不了 ⇒ panic**：那是 e2e 那一侧坏了，吐空串会被读成「渲出了空命令」。
 ///
-/// 跑法：`cargo test --lib emit_launch_render_for_e2e -- --ignored --nocapture`（`src/bridge` 下）。
+/// 跑法：`cargo test --lib emit_launch_render_for_e2e -- --ignored --nocapture`（`src/backend` 下）。
 #[test]
 #[ignore]
 fn emit_launch_render_for_e2e() {

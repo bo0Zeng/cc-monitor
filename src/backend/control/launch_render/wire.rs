@@ -35,7 +35,7 @@ pub struct CliRenderRequest {
     ///
     /// 那么**本条上线路今天为什么仍然只见 `is_ssh: true`**？不是因为 §36 禁了（它只绑 Windows），
     /// 是因为**前端只在 `transport.kind === "ssh"` 时才调这条 IPC** ——
-    /// POSIX 本机那条路住在 Rust 里（`history.rs::render_local_ccm`），
+    /// POSIX 本机那条路住在 Rust 里（〔MIG-2〕`local.rs::render_ccm`），
     /// 不必绕一圈 IPC 问自己。⇒ 这是**路由事实**，不是禁令。
     pub is_ssh: bool,
     // 〔MIG-2〕原先这里是 `ccm`（界面探了那台 `ccm-probe` 再带过来，三态，R95b）。渲染进了那台后端 ⇒ 能力问它自己
@@ -137,7 +137,7 @@ pub(crate) fn render_ccm_launch_with(
         //
         // 本条 IPC **只有远端会走**：前端的闸是 `ctx.transport.kind === "ssh"`
         //（`remote-launch-run.ts::renderLaunchCommand`），POSIX 本机那条路住在 Rust 里
-        //（`history.rs::render_local_ccm` 直接调渲染器），**不必绕一圈 IPC 问自己**。
+        //（〔MIG-2〕`local.rs::render_ccm` 直接调渲染器），**不必绕一圈 IPC 问自己**。
         // ⇒ 这里没有「本机是什么平台」这个问题要答。
         //
         // Y1 原本在这里读一个进程内全局量（`host_facts::local_is_posix()`），**那是错的**：

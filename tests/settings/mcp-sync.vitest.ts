@@ -22,16 +22,18 @@ import {
   applyArgs,
   defaultTake,
   McpSyncPanel,
+  type McpSyncApi,
   stateText,
   suspectText,
 } from "../../src/settings/mcp-sync";
-import type { McpSyncRow } from "../../src/generated/McpSyncRow";
-import type { McpSyncPreview } from "../../src/generated/McpSyncPreview";
+import type { McpSyncPreview, McpSyncRow } from "../../src/mcp-sync-reads";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { commands } from "../../src/ipc/commands";
 import { REPO_ROOT } from "../test-support/repo-root";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
+/** 〔MIG-3a〕注入口的录音：按旧名交给 `invoke` 替身（面板本身的量法不变）。 */
+const rec = (cmd: string, a: unknown) => (invoke as (c: string, a: unknown) => Promise<unknown>)(cmd, a);
 
 /** 后端 `pub(crate) const <名>: &[&str] = &[…];` 里的线上名（现抠）。 */
 function backendClosedSet(name: string): string[] {
@@ -158,9 +160,11 @@ describe("〔AS1〕面板：看差异 → 勾 → 写", () => {
   ) {
     const panel = new McpSyncPanel(() => here, onWrote, {
       machines: () => commands.list_remote_mcp_origins(),
-      dirs: (a) => commands.list_mcp_project_dirs(a),
-      preview: (a) => commands.mcp_sync_preview(a),
-      apply: (a) => commands.mcp_sync_apply(a),
+      // 〔MIG-3a〕三问改走通道（`src/mcp-sync-reads.ts`，线上形状由 `tests/mcp-reads.vitest.ts` 对金样钉）；
+      //   这里量的是面板本身 ⇒ 注入口按旧名录音（面板交出去的参数形状不变）。
+      dirs: (a) => rec("list_mcp_project_dirs", a) as Promise<string[]>,
+      preview: (a) => rec("mcp_sync_preview", a) as Promise<McpSyncPreview>,
+      apply: (a) => rec("mcp_sync_apply", a) as ReturnType<McpSyncApi["apply"]>,
     });
     document.body.replaceChildren(panel.element);
     panel.reset();

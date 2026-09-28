@@ -5,7 +5,7 @@
 //! `20 §7` 给步 1–3 的「行为变化」那一栏逐字写着 **零**。而既有那几十条判据量的是
 //! **性质**（「auth 头被换掉了」「块数对得上」「404 不发上游」），**没有一条量的是
 //! 「发出去的那串字节逐字节还是那一串」**。两者差得很远：把 `Connection: close`
-//! 挪到别的位置、把 `Host:` 少写一个空格、把 tee 行的字段换个序 —— 上面那些判据
+//! 挪到别的位置、把 `Host:` 少写一个空格、把 tee 帧的字段换个序 —— 上面那些判据
 //! **全绿**，而下游/上游收到的字节已经不是同一串了。
 //!
 //! ⇒ 本文件把**三条线上的字节**钉成手写字面量：
@@ -14,7 +14,7 @@
 //! |---|---|
 //! | 上游那一跳 | 中转**发给上游**的请求头逐字节 ＋ 请求体逐字节 |
 //! | 下游那一跳 | 中转**回给客户端**的全部字节（响应头 ＋ 逐块透传的体） |
-//! | tee 那一路 | tee 落点上的 NDJSON **整行**逐字节 |
+//! | tee 那一路 | tee 交出的每一件、写成线上那一形 `tap` 帧（`tap::to_frame`）之后**整行**逐字节 |
 //!
 //! # 期望值是**手写字面量**，不是拿被测代码算的
 //!
@@ -37,7 +37,7 @@
 
 use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use super::server::Relay;
-use super::tee::TeeSink;
+use super::tee::{TapEvent, TapPort, TeeSink};
 use super::upstream::Base;
 use crate::accounts::upstream::table::RoutingTable;
 use crate::accounts::upstream::Accounts;
@@ -88,7 +88,8 @@ struct Golden {
     upstream_head: Option<&'static str>,
     /// 中转**回给下游**的全部字节。
     downstream: &'static str,
-    /// tee 落点上的全部字节（`""` = 这一格 tee 上一行都不该有）。
+    /// tee 交出的全部 `tap` 帧（一件一行；`""` = 这一格 tee 一件都不该交）。
+    /// 〔DEL〕先前这一栏是 NDJSON 行（独立 `--relay` 的 stdout 那一形），那一形删了；今天钉的是会上 wire 的那一形。
     tee: &'static str,
 }
 
@@ -100,7 +101,7 @@ const GOLDEN_CASES: usize = 6;
 /// 其中**真的把字节送到上游**的格数。垫住 `upstream_head: None` 那几格的空真。
 const GOLDEN_CASES_REACHING_UPSTREAM: usize = 3;
 
-/// 六格金标准。**每一串都是手写的**。〔V141〕路径里没有会话段；这几发客户端不带会话标识头 ⇒ tee 的 `key` 是空串。
+/// 六格金标准。**每一串都是手写的**。〔V141〕路径里没有会话段；这几发客户端不带会话标识头 ⇒ tap 帧的 `stream` 是空串。
 const GOLDEN: &[Golden] = &[
     // ① 代入模式 ＋ 表里那一行有 key ⇒ 下游那份 auth 头被**整条丢掉**，换成这一行自己的。
     Golden {
@@ -126,9 +127,9 @@ const GOLDEN: &[Golden] = &[
             "0\r\n\r\n",
         ),
         tee: concat!(
-            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"","seq":0}}"#,
+            r#"{"kind":"tap","stream":"","resp":0,"n":0,"data":"{\"n\":1}"}"#,
             "\n",
-            r#"{"agent":"agentA","account":"acctA","key":"","event":"{\"n\":1}"}"#,
+            r#"{"kind":"tap","stream":"","resp":0,"n":1,"end":"done"}"#,
             "\n",
         ),
     },
@@ -157,9 +158,9 @@ const GOLDEN: &[Golden] = &[
             "0\r\n\r\n",
         ),
         tee: concat!(
-            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctB","key":"","seq":0}}"#,
+            r#"{"kind":"tap","stream":"","resp":0,"n":0,"data":"{\"n\":1}"}"#,
             "\n",
-            r#"{"agent":"agentA","account":"acctB","key":"","event":"{\"n\":1}"}"#,
+            r#"{"kind":"tap","stream":"","resp":0,"n":1,"end":"done"}"#,
             "\n",
         ),
     },
@@ -216,9 +217,9 @@ const GOLDEN: &[Golden] = &[
             "0\r\n\r\n",
         ),
         tee: concat!(
-            r#"{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"agentA","account":"acctA","key":"","seq":0}}"#,
+            r#"{"kind":"tap","stream":"","resp":0,"n":0,"data":"{\"n\":1}"}"#,
             "\n",
-            r#"{"agent":"agentA","account":"acctA","key":"","event":"{\"n\":1}"}"#,
+            r#"{"kind":"tap","stream":"","resp":0,"n":1,"end":"done"}"#,
             "\n",
         ),
     },
@@ -300,10 +301,24 @@ fn spawn_stub() -> Stub {
     }
 }
 
-/// tee 的落点：攒字节，并且每写一行敲一次钟（判据靠它等，不靠睡）。
+/// tee 的落点：一个测试侧的 tap 口 —— 每收一件就写成线上那一形 `tap` 帧（一行）攒起来，并敲一次钟（判据靠它等，不靠睡）。
 struct TeeTap {
     buf: Arc<Mutex<Vec<u8>>>,
     rx: mpsc::Receiver<()>,
+}
+
+struct FramingTap(Arc<Mutex<Vec<u8>>>, Mutex<mpsc::Sender<()>>);
+impl TapPort for FramingTap {
+    fn offer(&self, ev: TapEvent) -> bool {
+        let mut line = serde_json::to_string(&crate::tap::to_frame(ev)).expect("tap 帧");
+        line.push('\n');
+        self.0
+            .lock()
+            .expect("lock")
+            .extend_from_slice(line.as_bytes());
+        let _ = self.1.lock().expect("lock").send(());
+        true
+    }
 }
 
 impl TeeTap {
@@ -311,7 +326,7 @@ impl TeeTap {
         for i in 0..n {
             self.rx
                 .recv_timeout(std::time::Duration::from_secs(4))
-                .unwrap_or_else(|e| panic!("等 tee 的第 {} 行没等到：{e}", i + 1));
+                .unwrap_or_else(|e| panic!("等 tee 的第 {} 件没等到：{e}", i + 1));
         }
     }
 
@@ -332,17 +347,6 @@ const GOLDEN_AGENT: &str = "agentA";
 fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let buf = Arc::new(Mutex::new(Vec::new()));
     let (tick, rx) = mpsc::channel();
-    struct Sink(Arc<Mutex<Vec<u8>>>, mpsc::Sender<()>);
-    impl Write for Sink {
-        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("lock").extend_from_slice(b);
-            let _ = self.1.send(());
-            Ok(b.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
     let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
     // ⚠ 走的是**生产段那条真实的装表路** `RoutingTable::build`，不是另造一个同构的表。
     let table = RoutingTable::build(
@@ -371,7 +375,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
             crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
         super::door::Key::for_tests(),
-        TeeSink::new(Box::new(Sink(Arc::clone(&buf), tick))),
+        TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),
         DOWNSTREAM_DEADLINE,
         UPSTREAM_DEADLINE,
     ));
@@ -409,7 +413,7 @@ fn the_bytes_on_all_three_wires_match_the_golden_table_verbatim() {
     let mut reached_upstream = 0usize;
 
     for g in GOLDEN {
-        // 每一格**各起一套**：tee 的 `seq` 从 0 开始、上游那本账也干净 ⇒ 期望值写得死。
+        // 每一格**各起一套**：tee 的 `resp` 从 0 开始、上游那本账也干净 ⇒ 期望值写得死。
         let stub = spawn_stub();
         let (relay, tee) = spawn_relay(stub.addr);
         let port = stub.addr.port();
@@ -424,7 +428,7 @@ fn the_bytes_on_all_three_wires_match_the_golden_table_verbatim() {
 
         match g.upstream_head {
             Some(want) => {
-                // tee 那两行是**另一条线程**写的 ⇒ 先等它写够，再读，不许拿「还没写完」当「空」。
+                // tee 那两件（事件 ＋ 收尾）在转发收工时才交齐 ⇒ 先等它交够，再读，不许拿「还没交齐」当「空」。
                 tee.wait_lines(2);
                 let heads = stub.heads.lock().expect("lock").clone();
                 assert_eq!(heads.len(), 1, "【{}】上游必须**恰好**收到一发", g.target);

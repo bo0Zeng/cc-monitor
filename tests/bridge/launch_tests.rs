@@ -774,8 +774,15 @@ fn wait_for(path: &std::path::Path) -> bool {
 /// 本件的中转前缀 —— 由**生产那一处**渲染器产出，判据不自己抄一份字面量。
 #[cfg(not(windows))]
 fn relay_probe_prefix(url: &str) -> String {
-    // 〔MIG-2〕载荷内核搬进后端，monitor 够不着；这里用它的固定形状（`launch_render/payload.rs::relay_env_prefix_posix` 的钥匙段读文件那一形）。
-    format!("export ANTHROPIC_BASE_URL={}; ", shell_quote_core::posix_quote(url))
+    // 〔MIG-2〕载荷内核搬进后端，monitor 够不着；这里照它的形状手写一份（钥匙段读 `$HOME` 下那个文件的命令替换，
+    //   `launch_render/payload.rs::relay_env_prefix_posix`）—— 本条验的是开窗那一跳把整串原样交给了进程，不是前缀怎么渲。
+    let (origin, path) = url.split_at(url.find("/s/").expect("夹具 URL 带 /s/"));
+    format!(
+        "export ANTHROPIC_BASE_URL={}\"$(cat \"$HOME/{}\")\"{}; ",
+        shell_quote_core::posix_quote(&format!("{origin}/")),
+        relay_route_core::KEY_FILE_REL,
+        shell_quote_core::posix_quote(path)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────

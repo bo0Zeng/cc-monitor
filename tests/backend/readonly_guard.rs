@@ -277,6 +277,12 @@ mod tests {
         ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
         (
+            "assets",
+            "〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
+             它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `inbound.rs::LocalFiles` 递进来的\
+             本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`",
+        ),
+        (
             "mcp_sync",
             "〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
              它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\
@@ -832,7 +838,7 @@ mod tests {
         ),
         (
             "relay/listen.rs",
-            "〔RK1〕中转起监听那一处（`prepare`，本机常驻后端进程内那一形与 `--relay` 那一形共用）：**绑上口之后、说「在听」之前** \
+            "〔RK1〕中转起监听那一处（`prepare`，常驻后端进程内起中转；〔DEL〕`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
         ),
         (
@@ -2664,18 +2670,7 @@ mod spawn_registry {
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
-        (
-            "relay/machine.rs",
-            "<非字面量>",
-            "〔RM1a · 第四波〕远端那台机器上的中转由那台的后端起：**本后端这个二进制自己**\
-             （`current_exe`）带 `--relay`，stdio 全接空、自成一个进程组（`platform::detach`）。\
-             被起的那个进程就是 `--relay` 那一臂 —— 它自己的写面由本护栏照样管（同一个二进制、同一份生产段），\
-             **不是**后端进程自身写用户既有数据。程序名走变量（`current_exe`）⇒ 抽取器记成 `<非字面量>`。\
-             只从帧面 `relay-ensure` 一条进来，monitor 从不对本机发它（本机那一个由 monitor 监护）。",
-            "缩性质",
-            "远端的中转改由别的东西起（比如常驻后端自己带着它）的那天摘掉。\
-             ⚠ 在那之前**不许**往这一处起法底下加第二种用途 —— 它起的永远是本二进制的 `--relay`。",
-        ),
+        // 〔DEL〕`relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里（V139），那一处起法随之删。
         (
             "control/resident.rs",
             "<非字面量>",
@@ -2799,7 +2794,8 @@ mod spawn_registry {
         // 〔SH1 · D-g〕**12 → 13**：`control/kill.rs` 多一处只读的 `tmux list-panes`（杀之前记下 pane 根进程 pid，杀成之后按它认 cc-bus 名册）。
         //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
         // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
-        const SPAWN_SITES_TODAY: usize = 14;
+        // 〔DEL〕**14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
+        const SPAWN_SITES_TODAY: usize = 13;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

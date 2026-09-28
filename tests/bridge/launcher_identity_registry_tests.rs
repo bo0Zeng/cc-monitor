@@ -45,7 +45,7 @@ const REGISTERED: &[Launcher] = &[
         ledger_cmds: &["open_local_terminal"],
         anchors: &[("src/backend/control/launch_render/local.rs", "let prefix = identity_prefix(&token, facts.windows);", 1)],
         plants: true,
-        why: "★ **本拍落的就是这一处**：`history.rs::launch_local` 在拼装那一行把 \
+        why: "★ **本拍落的就是这一处**：〔MIG-2〕本机后端 `local.rs::plan` 在拼装那一行把 \
                   `launch_identity` 算出来的那句前缀拼进真正交出去的那一串，token 由 \
                   `payload::route_key_for_session` 铸（**共用那一份，不是第二份**）。\
                   行为判据见 `PLANTED_JUDGE`。\
@@ -192,8 +192,10 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔LOC1a · 第四波 4D〕地板 93 → 92：`get_session_tasks` 退役（单行三元组人群真少了 1 行；现打 92）。
     // 〔合并 LOC1b × 主线 290d8c33〕主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
     // 〔SH1 · 4D〕地板 88 → 86：驾驶舱读面两条命令退役（单行三元组人群真少了 2 行）。
+    // 〔MIG-3a〕地板 86 → 79：MCP 读写六条 ＋ 推拉两条命令退役（单行三元组人群真少了 7 行；现打 79）。
+    // 〔MIG-3a〕地板 79 → 75：资产同步 ＋ skill 装卸三条命令退役（单行三元组人群真少了 4 行；现打 75）。
     assert!(
-        rows.len() >= 86, // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
+        rows.len() >= 72, // 〔MIG-2〕75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );

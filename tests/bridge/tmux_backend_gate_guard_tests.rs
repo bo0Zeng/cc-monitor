@@ -396,7 +396,7 @@ fn the_backend_now_has_gate3() {
 //   · 主路走后端 ＋ 回潮闸 ⇒ 下面第一条：monitor 生产段里**一处**杀会话的 shell 串都没有（界面那一侧结构上没有 SSH）；
 //   · 界面只经一处说这几条 ⇒ 下面第二条；
 //   · 三态不许压成两态（「门拒绝」与「通道不在」两句话不同）⇒ `tests/tmux-control.vitest.ts`（身份门那一句 ≠ 通道不在那一句）；
-//   · `enter` 真传过去 ⇒ `tests/tmux-control.vitest.ts`（`Escape` 走 `send-keys-raw`、`/exit` 走 `send-into`，逐字比请求体）。
+//   · 〔RST 续 · V41〕`enter` 那一格随裸键 mode `send-keys-raw` 删了（V154 之后无调用者；送键只剩 `send-into`）。
 //   后端那两道门（身份 · 窗口）还在路上 —— 上面两条反向锚点不动，界面从此**只**靠它们。
 
 /// monitor 生产段（剥 `#[cfg(test)]` 与注释行）里的全部 `.rs`，拼成一份语料。
@@ -443,12 +443,11 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
 }
 
 /// ★★〔C4e · 第四波 4C〕**界面说这几条控制类帧命令只经一处**：`capture-pane` / `kill` / `launch` 的 `chan.call`
-/// 只住 `src/tmux-control.ts`，`send-keys-raw`（「打断当前回合」那个 mode 名）也只住那里。
+/// 只住 `src/tmux-control.ts`。
 ///
 /// 守的要求：`设计/05 §14.3`「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
 /// 按形状收、`killed` / `typed` 不为真不当成功、就地 resume 能不能回落（F14），这几件只写在那一份里；
-/// 别处直接 `chan.call(…, "kill", …)` 就是绕过它们的第二条路。`send-keys-raw` 那一格守的是 F04c：
-/// `enter` 落在两个 mode 名上、不是一个字段（旧后端静默忽略字段 ⇒ 「打断」变「提交」）。
+/// 别处直接 `chan.call(…, "kill", …)` 就是绕过它们的第二条路。
 /// 两向相等：出现这几个字面量的文件集合 == `{src/tmux-control.ts}`；正控：那一份里各自恰好几处。
 #[test]
 fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
@@ -459,7 +458,6 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
         "chan.call(origin, \"capture-pane\"",
         "chan.call(origin, \"kill\"",
         "chan.call(origin, \"launch\"",
-        "\"send-keys-raw\"",
     ];
     let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
     for (p, text) in guard_core::scan_tree_excluding(&root.join("src"), &["ts"], &[]) {
@@ -488,11 +486,10 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             "`{n}` 出现在 `src/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
         );
     }
-    // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2 · 「打断」那个 mode 名 1。
+    // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2（〔RST 续〕「打断」那个 mode 名 1 → 删）。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
         vec![
-            ("\"send-keys-raw\"", 1),
             ("chan.call(origin, \"capture-pane\"", 1),
             ("chan.call(origin, \"kill\"", 1),
             ("chan.call(origin, \"launch\"", 2),

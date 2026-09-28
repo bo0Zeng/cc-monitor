@@ -229,8 +229,8 @@ impl ChunkedView {
     /// 严重度差一档，但同样是「外部输入决定内存上界」⇒ 一起收口。
     ///
     /// 超了怎么办：**丢掉攒着的那截并计数**（`dropped`），解码就此收工（`done = true`）——
-    /// tee 少一段，**下游的字节一个不少**。计数由 `server.rs::handle` 取走并写进 tee 流的
-    /// `__dropped__` 行 ⇒ **不是静默丢**。
+    /// tee 少一段，**下游的字节一个不少**。计数由 `server.rs::handle` 取走交给 tee
+    /// （在 tap 上占一个号不发）⇒ **不是静默丢**。
     fn feed(&mut self, raw: &[u8], cap: usize) -> Vec<u8> {
         self.framer.push(raw);
         let pending = self.framer.pending();

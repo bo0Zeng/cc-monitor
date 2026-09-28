@@ -55,7 +55,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - **Isolation + sharing**: manage multiple Claude Code accounts on one remote — each with its own `CLAUDE_CONFIG_DIR`/`.credentials.json` (both run at once, no mutual kick), while skills/memory/history/settings/plugins are shared live (symlinked to one shared library)
 - **Settings "Accounts" group**: lists the remote's accounts (name/email/logged-in), the current one carries a chip/badge
 - **Per-session account for launch / Resume**: choose which account's config-dir a session starts with (remote-first)
-- **Graceful exit on account switch**: switching account restarts the session — request a graceful exit first (`Escape` to interrupt the turn → `/exit` → bounded wait → fallback kill), then relaunch with the new account's config-dir
+- **Restart on account switch**: switching account restarts the session — the old session is killed directly (no `/exit` and wait first), then relaunched with the new account's config-dir
 - **In-app account deploy wizard**: a settings wizard steps through the `cc-acct-iso` isolate/sync pipeline (read-only status via the backend; credential/login/sync moves go through a real terminal window), with a "login terminal" button per account
 - **Note**: multi-account read-only queries need the remote backend at its latest build (auto-redeployed on connect, or reinstall per-machine in settings)
 

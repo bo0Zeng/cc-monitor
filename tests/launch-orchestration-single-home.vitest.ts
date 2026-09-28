@@ -14,10 +14,10 @@
  * | # | 性质 | 形状 |
  * |---|---|---|
  * | K1 | 铸名只有一个家 | 生产段调 `mintSessionTmuxName(` 的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
- * | K2 | 本机 resume 编排只有一个家 | 生产段调 `resume_history_session(` 的文件集合 == `{local-resume.ts}`（两向） |
+ * | K2 | 本机 resume 编排只有一个家 | 生产段以 resume 动作问本机后端起会话（`launchLocal(` / `planLocalLaunch(` ＋ `kind: "resume"`）的文件集合 == `{local-resume.ts}`（两向） |
  * | K3 | 列不出 ⇒ 不铸名 | `readTmuxListing` 三态逐格 == 手写表；`mintFreshTmuxName` 在 unknown 上回 `ok:false`；本机 resume 在 unknown 上交 `tmuxName: null` |
  *
- * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次 `resume_history_session` ＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
+ * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次本机 resume（`launch-local`）＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
  *
  * K4 另守一处住址：主会话 4D 裁 D-h（「选不了原账号时 resume ⇒ 照 `01 §6.2` / D4：不静默换号，拒并说清、给「用当前账号」的显式选择」）
  * ＋ `设计/01 §6.2`「「哪个账号」非有不可 —— 缺了 resume 会静默落到默认号，撞 `D4`」。远端那一半（`withAccount`）住 `accounts.vitest.ts`「〔FE1 · D-h〕」那几条。
@@ -29,7 +29,7 @@
  * # 同波别的路长出新成员时会怎么红
  *
  * K1 / K2 的人群是**生产段全集**（`test-support/production-sources.ts`），不是登记表：
- * 别的路新写一处 `mintSessionTmuxName(` / `resume_history_session(` / `list_*_tmux(` ⇒ 集合多一个 ⇒ 红，
+ * 别的路新写一处 `mintSessionTmuxName(` / 以 resume 动作的 `launchLocal(` / `list_*_tmux(` ⇒ 集合多一个 ⇒ 红，
  * 报文点名那个文件。它该不该存在，回来看它是不是本该走这两个家。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -41,6 +41,7 @@ vi.mock("../src/behavior", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { launchRenderShim, localLaunchCalls } from "./test-support/chan-fake";
 import { productionTsFiles } from "./test-support/production-sources.ts";
 import { stripComments } from "./test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
@@ -84,9 +85,11 @@ describe("K1 · 铸名只有一个家", () => {
 });
 
 describe("K2 · 本机 resume 编排只有一个家", () => {
-  it("★ 生产段调 `resume_history_session(` 的文件 == {local-resume.ts}（包装层除外）", () => {
+  // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端（`launch-local`，`src/launch-render.ts` 是那一问的唯一出口）⇒
+  //   人群从「调 Tauri 命令 `resume_history_session(`」换成「以 resume 动作调那个出口」。
+  it("★ 生产段以 resume 动作调 `launchLocal(` / `planLocalLaunch(` 的文件 == {local-resume.ts}", () => {
     expect(
-      filesMatching(/\bresume_history_session\s*\(/, ["src/ipc/commands.ts"]),
+      filesMatching(/\b(?:launchLocal|planLocalLaunch)\s*\(\s*\{\s*action:\s*\{\s*kind:\s*"resume"/),
       "有别的地方自己拼了一遍本机 resume。编排（校验 sid → 铸名 → 账号 → 起 → 记 pin）只许住 `src/local-resume.ts`。",
     ).toEqual(["src/local-resume.ts"]);
   });
@@ -99,10 +102,10 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
   });
 
   const reply = (local: unknown, remote: unknown): void => {
-    invokeMock.mockImplementation((cmd: string) => {
+    invokeMock.mockImplementation(launchRenderShim((cmd: string) => {
       const r = cmd === "list_local_tmux" ? local : cmd === "list_remote_tmux" ? remote : undefined;
       return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
-    });
+    }));
   };
   const S = (name: string) => ({ name, path: "/p", command: "claude", attached: false, windows: 1, sid: null });
 
@@ -141,7 +144,7 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
 
   it("★ 本机 resume：名单不知道 ⇒ 交 `tmuxName: null`（后端如实不进容器）；正控：知道 ⇒ 交铸出来的名字", async () => {
     const sent = (): Record<string, unknown> =>
-      invokeMock.mock.calls.find((c) => c[0] === "resume_history_session")![1] as Record<string, unknown>;
+      localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
     reply(null, undefined);
     expect(
       await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } }),
@@ -158,17 +161,17 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
   // 〔DUP1 · `设计/90 §3` 判据 2〕这条原来断「sid 不合法 ⇒ 一次 IPC 都不发」（前端那道 `validateLocalLaunch`〔散文墓碑〕判的）。
   // 今天前端不判 sid：照发给本机后端，后端（`history.rs` 本机决策 → `shell_quote_core::session_id_ok`）拒 ⇒ 出声、回 false。
   it("本机 resume：sid 不合法 ⇒ 前端不判、照发，后端拒 ⇒ 出声、回 false", async () => {
-    invokeMock.mockImplementation((cmd: string) =>
+    invokeMock.mockImplementation(launchRenderShim((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([])
         : cmd === "resume_history_session"
           ? Promise.reject('refuse resume: invalid session_id "a b"')
           : Promise.resolve(undefined),
-    );
+    ));
     expect(
       await resumeLocalSession({ sid: "a b", cwd: "/p", account: { kind: "explicit", configDir: null, name: null } }),
     ).toBe(false);
-    expect(invokeMock.mock.calls.map((c) => c[0])).toContain("resume_history_session");
+    expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session")).toHaveLength(1);
     expect(vi.mocked(showActionFailureToast)).toHaveBeenCalledTimes(1);
   });
 });
@@ -196,11 +199,11 @@ describe("K4 · D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清
       defaultName,
     }) as unknown as AccountsState;
   const resumes = (): Array<Record<string, unknown>> =>
-    invokeMock.mock.calls.filter((c) => c[0] === "resume_history_session").map((c) => c[1] as Record<string, unknown>);
+    localLaunchCalls(invokeMock.mock.calls, "resume_history_session");
 
   beforeEach(() => {
     invokeMock.mockReset();
-    invokeMock.mockImplementation((cmd: string) => Promise.resolve(cmd === "list_local_tmux" ? [] : undefined));
+    invokeMock.mockImplementation(launchRenderShim((cmd: string) => Promise.resolve(cmd === "list_local_tmux" ? [] : undefined)));
     vi.mocked(showActionFailureToast).mockReset();
     __resetLocalLaunchSnapshotForTests();
   });
