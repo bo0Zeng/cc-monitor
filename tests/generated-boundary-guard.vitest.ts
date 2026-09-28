@@ -244,6 +244,7 @@ describe("C01 边界生成物", () => {
       "TmuxSession.ts",
       // 〔第四波 S4〕"TransferProgress.ts" 走了（它的 Rust 源随池子最后那条命令一起删了）。
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
+      "UserText.ts", //               〔RENDER2 · J10〕monitor 按 search-core::user_text 给 user 记录填的成品
       // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src/bridge/src/adapter.rs` 的
       // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
       // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、

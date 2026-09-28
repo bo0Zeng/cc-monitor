@@ -10,10 +10,12 @@
  * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
  *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
  *   api-error 子卡委派给 cards/ 同级模块。
- * - `stripInternalNoise` 剥 CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）。
+ * - CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）：〔RENDER2 · J10〕规则只在 `search-core::user_text`，
+ *   monitor 解析时填进记录（`userText.clean`），这里只读成品。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
+import { makeYieldToMain } from "../yield-to-main";
 import { renderMarkdown, renderPlainText } from "../render";
 import { AGENT_PROFILE } from "../agent-profile";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
@@ -157,9 +159,9 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       if (rec.isMeta) return { kind: "skip" };
       const rawText = extractText(rec.message.content);
       if (rawText.trim()) {
-        // 先剥 Claude Code CLI 注入的 prompt 包装；剩余文本喂给下游识别 +
+        // CLI 注入的 prompt 包装已由 monitor 按那一条规则剥过（`userText.clean`，J10）；剩余文本喂给下游识别 +
         // 渲染。剥干净就 skip 整条。
-        const text = stripInternalNoise(rawText);
+        const text = rec.userText.clean;
         if (text.length === 0) {
           return { kind: "skip" };
         }
@@ -400,12 +402,8 @@ function renderBlock(
   ctx: RenderContext,
 ): HTMLElement | null {
   switch (block.type) {
-    case "text": {
-      const div = document.createElement("div");
-      div.className = "block-text";
-      div.innerHTML = renderMarkdown(block.text, { lazy: ctx.lazy });
-      return div;
-    }
+    case "text":
+      return buildTextBlock(block.text, ctx.lazy);
     case "thinking": {
       return makeCollapsible(
         "block-thinking",
@@ -876,6 +874,112 @@ function buildResultBody(
 
 /** 大 output 阈值（字节估算）—— 超过先只渲染前 N 行 */
 const LARGE_TEXT_BYTES = 200_000;
+
+/**
+ * 〔RENDER2 · `17 §0` 文本布局补审查出的性能缺陷〕回复正文超过它 ⇒ 建卡时只渲染前一截、下面一颗「显示全部」。
+ * marked 同步排整段正文，617 KB 一条 ≈ 8 s 卡住主线程（`调研/第四波记录/W5-RENDER.md` R8 读数）；
+ * 20 000 字 ≈ 真机正文窗口 p99 的十几倍（p99 1 594 字），常态回复碰不到它。点了之后余下的按同样大小分片、一片一跳地渲染。
+ */
+export const LONG_REPLY_HEAD_CHARS = 20_000;
+
+/**
+ * 把 markdown 切成若干片，每片不超过 `max` 字（单个块超长就单独一片）：只在**围栏代码块之外的空行**上切，
+ * 代码块不会被劈开。跨空行的列表 / 表格被切开时，后一片的编号从头起 —— 截断显示的代价，认。
+ */
+export function markdownPieces(md: string, max: number): string[] {
+  const out: string[] = [];
+  let cur: string[] = [];
+  let curLen = 0;
+  let inCode = false;
+  let block: string[] = [];
+  const add = (text: string): void => {
+    if (curLen > 0 && curLen + text.length + 1 > max) {
+      out.push(cur.join("\n"));
+      cur = [];
+      curLen = 0;
+    }
+    cur.push(text);
+    curLen += text.length + 1;
+  };
+  const flushBlock = (): void => {
+    if (block.length === 0) return;
+    const text = block.join("\n");
+    if (text.length <= max) add(text);
+    else for (const part of splitOversizeBlock(block, max)) add(part);
+    block = [];
+  };
+  for (const line of md.split("\n")) {
+    if (/^\s*(\x60{3}|~{3})/.test(line)) inCode = !inCode;
+    block.push(line);
+    if (!inCode && line.trim() === "") flushBlock();
+  }
+  flushBlock();
+  if (cur.length > 0) out.push(cur.join("\n"));
+  return out;
+}
+
+/**
+ * 一个比 `max` 还长的块按行切（一行比 `max` 还长就按字硬切）；是围栏代码块的，每一截各自补上开 / 合围栏，渲染出来仍是代码块。
+ */
+function splitOversizeBlock(lines: string[], max: number): string[] {
+  const fence = /^\s*(\x60{3,}|~{3,})/.exec(lines[0] ?? "")?.[1] ?? null;
+  const body = fence ? lines.slice(1, lines.length - (/^\s*(\x60{3}|~{3})/.test(lines[lines.length - 1] ?? "") ? 1 : 0)) : lines;
+  const open = fence ? `${lines[0]}\n` : "";
+  const close = fence ? `\n${fence}` : "";
+  const room = Math.max(1, max - open.length - close.length);
+  const parts: string[] = [];
+  let cur = "";
+  const push = (): void => {
+    if (cur) parts.push(open + cur + close);
+    cur = "";
+  };
+  for (const line of body) {
+    for (let at = 0; at < Math.max(1, line.length); at += room) {
+      const seg = line.slice(at, at + room);
+      if (cur && cur.length + 1 + seg.length > room) push();
+      cur = cur ? `${cur}\n${seg}` : seg;
+    }
+  }
+  push();
+  return parts;
+}
+
+/** 一个回复正文块：不长就整段渲染；长了只渲染第一片 ＋「显示全部」（点了余下的一片一跳地补，不卡输入）。 */
+function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "block-text";
+  if (text.length <= LONG_REPLY_HEAD_CHARS) {
+    div.innerHTML = renderMarkdown(text, { lazy });
+    return div;
+  }
+  const pieces = markdownPieces(text, LONG_REPLY_HEAD_CHARS);
+  const head = document.createElement("div");
+  head.innerHTML = renderMarkdown(pieces[0], { lazy });
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "block-body-show-full";
+  const restChars = text.length - pieces[0].length;
+  more.textContent = copyText("cards.markdown.showRest", { kb: (restChars / 1024).toFixed(0) });
+  more.addEventListener(
+    "click",
+    () => {
+      more.disabled = true;
+      let i = 1;
+      const step = makeYieldToMain(() => {
+        const piece = document.createElement("div");
+        piece.innerHTML = renderMarkdown(pieces[i]);
+        more.before(piece);
+        i++;
+        if (i < pieces.length) step();
+        else more.remove();
+      });
+      step();
+    },
+    { once: true },
+  );
+  div.append(head, more);
+  return div;
+}
 const LARGE_TEXT_HEAD_LINES = 800;
 
 function buildTextBody(text: string): HTMLElement {
@@ -1074,48 +1178,11 @@ function extractExitCode(text: string): number | null {
 }
 
 /**
- * 剥掉 Claude Code CLI 注入到 user message 里的 prompt 包装：
- * - `<task-notification>...</task-notification>` 后台命令完成通知
- * - `<system-reminder>...</system-reminder>` 各种系统级提醒
- * - `<local-command-caveat>...</local-command-caveat>` 本地命令免责声明
- * - `<local-command-stdout>...</local-command-stdout>` 本地命令（如 /compact）的 stdout
- * - `Continue from where you left off.` / `No response requested.` 样板单行
- * - `[Request interrupted by user...]` 用户 ESC 中断 / 拒绝工具调用时 CLI
- *   注入的 user message。**不是真用户输入**——v2.4.2 issue #2 修
- *   "用户 ESC 中断时 monitor 误以为是真敲键自动拉前" 时新增。
- *
- * 返回剥过后的文本（trim 过）。空字符串表示整条都是 noise，调用方应 skip。
- * 非空时下游 (parseSlashCommand / buildUserCard) 用这份剥过的文本渲染，
- * 这样 `/compact` 后面跟的 stdout 不会拖累 slash 卡片识别。
+ * A5：判定一条 jsonl 记录是否是 `/compact` 后的续接摘要（user 记录、剥过注入噪声的正文以 compact 前缀开头）。
+ * 与卡片渲染同一套判定（`userText.clean` → isCompactSummary），供换号重启的 compact 完成检测复用（tabs.onLine）。
  */
-function stripInternalNoise(text: string): string {
-  return text
-    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
-    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
-    .replace(/^continue from where you left off\.?$/gim, "")
-    .replace(/^no response requested\.?$/gim, "")
-    // v2.4.2 issue #2: `[Request interrupted by user]`（ESC 中断 assistant 流式生成）
-    // 和 `[Request interrupted by user for tool use]`（拒绝工具调用）都不是真用户
-    // 输入。剥掉让整条 skip → 既不渲染奇怪的"用户中断"卡片，也不触发自动拉前。
-    //
-    // 注：不用 `gim`——`m` flag 让 `^...$` 锚到每一行，会误吞合法 user 消息中
-    // 偶然出现"以该模式开头的行"。CLI 实际把中断标记作为整条 user message 的唯一
-    // 文本写入；剥过其他 noise 后，整文本若 trim 完正好是该模式，就归零。
-    .replace(/^\[Request interrupted by user[^\]]*\]\s*$/, "")
-    .trim();
-}
-
-/**
- * A5：判定一条 jsonl 记录是否是 `/compact` 后的续接摘要（role:user + 剥内部噪后以 compact 前缀
- * 开头）。与卡片渲染同一套判定（extractText → stripInternalNoise → isCompactSummary），供换号重启
- * 的 compact 完成检测复用（tabs.onLine）。`message` = JsonlRecord（外层行记录，内含 `.message`）。
- */
-export function isCompactRecord(message: unknown): boolean {
-  const inner = (message as { message?: { role?: unknown; content?: unknown } } | null)?.message;
-  if (!inner || inner.role !== "user") return false;
-  return isCompactSummary(stripInternalNoise(extractText(inner.content)));
+export function isCompactRecord(rec: JsonlRecord): boolean {
+  return rec.type === "user" && isCompactSummary(rec.userText.clean);
 }
 
 /**
