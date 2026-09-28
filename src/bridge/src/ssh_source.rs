@@ -1827,7 +1827,7 @@ fn route_inbound_frame(
 /// D 审计做了三次变异，三次 `cargo test` **全绿**：
 /// - MU13：hello 臂里不 `into_client`/不 `register`（写半边永不解冻）
 /// - MU12：`reply` 臂里不 `route_reply`（应答收到就扔）
-/// - MU14：`probe_control_channel` 直接返回 `"control=ok(0ms)"`，一个字节都不发
+/// - MU14：`probe_control_channel`〔散文墓碑〕 直接返回 `"control=ok(0ms)"`，一个字节都不发
 ///
 /// 也就是「把发送端接上」这件事本身删掉之后 CI 一片绿 —— `inbound_client` 的单测走的是
 /// 自造客户端，e2e 走的是真后端二进制，**两者之间的接缝没有任何判据**。

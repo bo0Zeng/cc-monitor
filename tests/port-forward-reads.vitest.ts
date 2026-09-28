@@ -65,6 +65,17 @@ describe("请求", () => {
       { op: "forward-list", origin: LOCAL_ORIGIN, body: {} },
     ]);
   });
+  it("〔MIG-1 续〕带上那台的配置 ⇒ 请求体里多 `machine` / `jump`（流没起的那台由本机后端按它自己拨）", async () => {
+    let body: unknown = null;
+    invokeMock.mockImplementation((cmd: string, args: ChanCallArgs) => {
+      if (cmd !== "chan_call") return Promise.resolve(undefined);
+      body = chanArgsJson(args);
+      return Promise.resolve(chanReply({ id: "fwd-2" }));
+    });
+    const machine = { label: "dev", host: "10.9.9.9", port: 22, user: "u", keyPath: "", hostKeyFingerprint: "", addresses: [], jump: "", resumeCommand: "" };
+    await startForward({ origin: "dev", localPort: 1, remoteHost: "h", remotePort: 2 }, { machine, jump: null });
+    expect(body).toEqual({ origin: "dev", localPort: 1, remoteHost: "h", remotePort: 2, machine, jump: null });
+  });
   it("本机后端不在 ⇒ 抛（不是空清单）", async () => {
     invokeMock.mockRejectedValue(NO_CHANNEL);
     await expect(listForwards()).rejects.toThrow();

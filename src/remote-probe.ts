@@ -72,10 +72,10 @@ export function decodeProbe(v: unknown): ConnTestResult {
 }
 
 /**
- * 期限：握手（可能过跳板）＋ 那台后端的首行 ＋ 一次往返。后端零定时器 —— 那台一声不吭时由探活连接的空闲上限（30 s）拆掉，
- * 最坏两段各吃满一次 ⇒ 给 75 s，盖住那两段 ＋ 回程。
+ * 期限（主会话裁：值归发起方，DL1）：原来 monitor 那两段等待（hello 8 s ＋ ping 5 s）的量级 ⇒ 15 s；后端零定时器，到点由宿主那侧撤单。
+ * 代价如实记：到点撤单时界面只知道「没等到结局」，分不出卡在握手还是卡在那台后端（原先分段超时分得出）。
  */
-const PROBE_BUDGET_MS = 75_000;
+const PROBE_BUDGET_MS = 15_000;
 
 /** 本机后端比这一问老（不认这条命令）时的那句话。 */
 const OLD_BACKEND = copyText("remoteProbe.backend.tooOld");

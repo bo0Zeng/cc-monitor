@@ -152,11 +152,7 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
 const PENDING: &[(&str, Lane, &str)] = &[
     // MIG-1：会话 / tmux 账本 ＋ ssh 配置解读进后端。
     // 〔MIG-1〕`~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
-    (
-        "test_remote_connection",
-        Lane::Mig1,
-        "拨号探针的判读还在 `ssh_source.rs`",
-    ),
+    // 〔MIG-1 续〕测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局（主会话裁）。
     // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
     // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·

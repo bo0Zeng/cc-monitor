@@ -9,10 +9,9 @@
 //! 3. 那台声明认 `ping` ⇒ 同一条流上发一次、等应答（控制通道往返）；不认 ⇒ 「后端太旧」；不回 ⇒ 「后端连上了、不能起会话」。
 //!
 //! ⚠ 阶段行不再逐条流到界面（原先经 Tauri `Channel` 边拨边推）：结局里一并交回，界面在结局到时一次画出来。
-//! ⚠ **本 crate 零定时器**（`no_timer_guard` 按调用形态禁 `timeout(`）⇒ 原先 monitor 那两段等待（hello 8 s · ping 5 s）**不搬进来**：
-//!   那台后端一声不吭时，是这条探活连接自己的空闲上限（`dial/connect.rs::PROBE_INACTIVITY`，登记过的那一格）把它拆掉 ⇒ 这边读到 EOF
-//!   ⇒ 「没响应」/「不能起会话」；整趟的期限由调用方（界面那一问的预算）管，到点 `cancel` 打断。代价：沉默的后端要等满那个空闲上限才出结论。
-//!   往返也不再计毫秒（`Instant::now` 同在禁表上）。
+//! ⚠ **期限归发起方**（主会话裁 · DL1「值归发起方」）：本 crate 零定时器（`no_timer_guard` 按调用形态禁 `timeout(`），原先 monitor 那两段
+//!   等待（hello 8 s · ping 5 s）不在这里；界面那一问的预算按那个量级给（约 15 s，`src/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
+//!   往返毫秒数照旧报：量一次经过时间不是定时器（取的是墙钟 `SystemTime` 的差，不让任何东西自己醒来）。
 
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -176,6 +175,8 @@ where
             copy_text("beProbe.test.noControl", &[]),
         )
     } else {
+        // 量一次往返经过的墙钟（不是节拍：只读两次钟、算个差）。
+        let t0 = std::time::SystemTime::now();
         let asked = up_w
             .write_all(
                 format!(
@@ -211,7 +212,13 @@ where
             },
         };
         match answered {
-            Ok(()) => ("control=ok".to_string(), copy_text("beProbe.test.ok", &[])),
+            Ok(()) => (
+                format!(
+                    "control=ok({}ms)",
+                    t0.elapsed().map(|d| d.as_millis()).unwrap_or(0)
+                ),
+                copy_text("beProbe.test.ok", &[]),
+            ),
             Err(e) => (
                 format!("control=failed({e})"),
                 copy_text("beProbe.test.controlDown", &[]),
