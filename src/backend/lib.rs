@@ -768,6 +768,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--capture-pane",
     // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
+    // 〔MIG-3b 续〕公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
+    "--authorized-keys-add",
+    "--pubkey-push",
     // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。

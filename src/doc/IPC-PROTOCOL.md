@@ -2020,6 +2020,47 @@ monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~
 ⚠ **CLI 面也有它**（`--assets-sync`，入参从 stdin 读；按派生规则「非内建即上 CLI」），但一次性进程没有常驻那一个的连接池与可达表：
 它自己新拨一条 SSH、只对给的那一台做一趟，扇出恒为零台 —— 真正的用法是常驻后端的帧面。
 
+#### `pubkey-push`：把本机公钥推进那台的 `authorized_keys`（MIG-3b 续，09-28；本机常驻后端答）
+
+F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。入参同 `remote-probe`（`machine` · `saved?` · `jump?`，拨号请求在 `dial/machine.rs` 组）＋ `pubKeyPath?`：
+读本机那份 `.pub`（给了就读它，否则私钥同名 `.pub`）→ 校验（恰一行非空 · 无控制字符 · 已知类型前缀 ＋ base64 主体）→
+那台此刻在可达表里（长连接握过手）⇒ 问**那台后端** `authorized-keys-add {key}`；不在（密钥登录建立之前 · 后端还没装）⇒ 沿池里那条 SSH **一次** exec
+（`printf '%s\n'` 不用 echo · `grep -qxF` 整行去重 · 目录 700 / 文件 600 · 末字节不是换行先补一个），只写这一件。按此刻状态分支，不是失败退回（`D11`）。
+
+```text
+→ {"id":"k1","cmd":"pubkey-push","args":{"machine":{"host":"10.0.0.2","label":"dev","user":"u","keyPath":"/home/me/.ssh/id_ed25519"},"saved":null,"jump":null,"pubKeyPath":null}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"outcome":"added","pubPath":"/home/me/.ssh/id_ed25519.pub","via":"exec"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `machine` / `saved` / `jump` | → | 同 `remote-probe` |
+| `pubKeyPath` | → | 本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件） |
+| `outcome` | ← | `added`（新加的）· `already`（本就有整行相等的一行，没写） |
+| `pubPath` | ← | 实际推的是哪一份（给人看） |
+| `via` | ← | 走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec） |
+
+**错误码**：`invalid_args` · `bad_jump`（同 `remote-probe`）· `refused`（找不到 / 读不了 / 不像公钥）· `failed`（那台没加上：原话）。
+⚠ **CLI 面也有它**（`--pubkey-push`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：一次性进程没有常驻那一个的可达表 ⇒ 只走 exec 那一条。
+
+#### `authorized-keys-add`：把一行公钥并进这台的 `authorized_keys`（MIG-3b 续，09-28；被写那台答）
+
+`{key}` → 校验同上 → 读改写 `~/.ssh/authorized_keys`（经这台自己的文件管理面：CAS ＋ 建父目录；整行相等已有 ⇒ 不写）→ `.ssh` 700 · `authorized_keys` 600。
+本机常驻后端的 `pubkey-push` 经 `remote_ask`（可达表里那台的 CLI 面）问它。
+
+```text
+→ {"id":"a1","cmd":"authorized-keys-add","args":{"key":"ssh-ed25519 AAAA… me@host"}}
+← {"kind":"reply","id":"a1","ok":true,"data":{"outcome":"already"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `key` | → | 一行公钥（本条自己也校验一遍） |
+| `outcome` | ← | `added` · `already` |
+
+**错误码**：`bad_args` · `refused`（不像公钥）· `io_failed`（读 / 写 / chmod 没成：原话）。
+本机后端问那台走的正是它的 CLI 面（`--authorized-keys-add`，入参从 stdin 读一行 JSON）。
+
 #### `deploy-plan`：那台的后端要不要换、换成哪一格（MIG-3b，09-28；**只读**那台）
 
 「部署决策进后端、monitor 只放字节」（`4d-lanes` MIG-3b 第 1 条）。只有**本机常驻后端**有意义（沿池里那条 SSH 问那台，同 `assets-sync`）。

@@ -33,6 +33,7 @@ import { fetchAccounts } from "../account-reads";
 import { withAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
 import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
+import { pushPublicKey } from "../pubkey-push";
 import type { ResolvedHost } from "../ssh-config-reads";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
@@ -814,7 +815,8 @@ export class MachineCard {
       pubKeyPath = picked;
     }
     await this.runRemoteAction(btn, copyText("machineCard.pushKey.pushing"), async () => {
-      const r = await commands.push_public_key({ cfg, pubKeyPath });
+      // 〔MIG-3b 续 · ⑬〕表单里这一台 ＋ 已保存的那几台交给本机后端：它读 `.pub`、组请求、经那台后端写或一次 exec。
+      const r = await pushPublicKey(cfg, (await readRemoteConfig()).hosts, pubKeyPath);
       return r.outcome === "added"
         ? copyText("machineCard.pushKey.added", { path: r.pubPath })
         : copyText("machineCard.pushKey.already", { path: r.pubPath });

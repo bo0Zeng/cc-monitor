@@ -61,6 +61,7 @@ const UNIT: &[&str] = &[
     "tests/backend/dial_probe_tests.rs", // 〔MIG-1 续〕测试连接三步的结局（链路替身）
     // 〔MIG-1 收尾〕`tests/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
     "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
+    "tests/pubkey-push.vitest.ts",    // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
     "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
@@ -674,7 +675,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/panorama_call_tests.rs",
     // 〔RM1f〕`tests/bridge/panorama_tests.rs` 删了（monitor 的内嵌引擎连同它的判据一起删了）。
     "tests/bridge/profile_installer_tests.rs",
-    "tests/bridge/pubkey_tests.rs",
+    "tests/backend/assets/pubkey_tests.rs", // 〔MIG-3b 续〕原 `tests/bridge/pubkey_tests.rs` 随实现搬来（真 `sh` 上跑那一串 · 临时目录当家）
     "tests/bridge/scanning_guard_registry_tests.rs",
     // 〔LOC1b · 4D〕`search_tests.rs` 随 monitor 内存索引删了；`session_map_linux_liveness.rs` 随本机判活删了；`session_map_tests.rs` 挪进 SCAN（判据里多了读源码的那两条）。
     "tests/bridge/sftp_tests.rs",

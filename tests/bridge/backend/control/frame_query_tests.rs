@@ -302,6 +302,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{diagnosis, snippet_home, snippet_bare, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat）；\
          前端 `src/settings/cc-bus-hooks-section.ts::fetchHooksReport` 问、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
+    // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
+    (
+        "pubkey-push",
+        "后端出成品 `{outcome, pubPath, via}`（`assets/pubkey.rs`）；前端 `src/pubkey-push.ts::pushPublicKey` 问、`decodePush` 按恰好的键集合收\
+         （金样 `pubkey-push.golden.json`），monitor 这一侧零发送点（那条 Tauri 命令与它的两条路删了）",
+    ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

@@ -89,7 +89,7 @@ pub(crate) trait Door {
     /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
     // 〔MIG-3a〕「只删一个空目录」那一形（〔FW1〕`delete_empty_dir`〔散文墓碑〕）随卸 skill 进后端删了：收空目录今天在那台后端里（`assets/skill_flow.rs`）。
-    async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
+    // 〔MIG-3b 续〕改权限那一形（`chmod`，唯一用户是公钥推送）随推送进本机后端删了。
     // 〔MIG-3b〕`delete_session` 那一问走了：删会话由界面经通道直说那台后端（`src/session-writes.ts`），门不再转交。
     // 〔MIG-3a〕「一个路径在不在」那一形（`stat_kind`〔散文墓碑〕）的用户（别名读回 · cc-bus 装）都进了后端 ⇒ 删。
     // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
@@ -98,53 +98,8 @@ pub(crate) trait Door {
 /// 读改写一次最多重来几趟（`stale` 才重来：盘上那份在读与写之间被别人改了）。
 pub(crate) const EDIT_ATTEMPTS: usize = 3;
 
-/// 一次 [`edit`] 的结局。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Edited {
-    /// 规划说「没事可做」，或算出来与盘上逐字相同 ⇒ 一个字节没写。
-    Unchanged,
-    Written(Landed),
-}
-
-/// 🔴 **读 → 算 → 交**（写的规则不在这里，在后端）。
-///
-/// `plan` 拿到读到的全文（`None` = 不存在），回 `Some(新全文)` 或 `None`（没事可做）。
-/// 后端回 `stale` ⇒ 重读重算，最多 [`EDIT_ATTEMPTS`] 趟；`plan` 因此是 `FnMut`（每趟对新读到的那一份再算一遍）。
-pub(crate) async fn edit<D: Door>(
-    door: &D,
-    root: &str,
-    rel: &str,
-    backup: bool,
-    parents: bool,
-    mut plan: impl FnMut(Option<&str>) -> Result<Option<String>, String>,
-) -> Result<Edited, String> {
-    let mut last = String::new();
-    for _ in 0..EDIT_ATTEMPTS {
-        let got = door.peek(root, rel).await?;
-        let Some(next) = plan(got.text.as_deref())? else {
-            return Ok(Edited::Unchanged);
-        };
-        if got.text.as_deref() == Some(next.as_str()) {
-            return Ok(Edited::Unchanged);
-        }
-        match door
-            .put(root, rel, &next, got.text.as_deref(), backup, parents)
-            .await
-        {
-            Ok(landed) if landed.changed => return Ok(Edited::Written(landed)),
-            Ok(_) => return Ok(Edited::Unchanged),
-            Err(Refused::Stale(s)) => last = s,
-            Err(e @ (Refused::Other(_) | Refused::Peer { .. })) => return Err(e.said()),
-        }
-    }
-    Err(copy_text(
-        "rsUserFiles.edit.gaveUp",
-        &[
-            ("last", &last.to_string()),
-            ("attempts", &EDIT_ATTEMPTS.to_string()),
-        ],
-    ))
-}
+// 〔MIG-3b 续〕读 → 算 → 交那一环（`edit`〔散文墓碑〕 与它的结局 `Edited`〔散文墓碑〕、重来趟数）删了：最后一个用户（公钥推送）进了本机后端，
+//   那一环在后端还有一份（`src/backend/assets/door.rs` 的 `edit`，本机后端代管资产与 `authorized-keys-add` 都走它）。
 
 // 〔MIG-3a〕`rel_under` / `join_under`〔散文墓碑〕两个字符串拼法随别名那一族进了那台后端（`src/backend/assets/door.rs` 那一份），monitor 零调用方 ⇒ 删。
 
@@ -341,16 +296,6 @@ impl Door for BackendDoor {
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.delete_expecting(root, rel, serde_json::json!(expect))
             .await
-    }
-
-    async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
-        self.ask(
-            "files-chmod",
-            serde_json::json!({ "root": root, "rel": rel, "mode": mode }),
-        )
-        .await
-        .map(|_| ())
-        .map_err(Refused::said)
     }
 }
 

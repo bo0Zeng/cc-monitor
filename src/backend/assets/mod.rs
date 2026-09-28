@@ -8,5 +8,7 @@ pub(crate) mod door;
 pub(crate) mod hub;
 pub(crate) mod mcp_edit;
 pub(crate) mod mcp_sync_flow;
+// 〔MIG-3b 续〕公钥推进那台的 `authorized_keys`（`pubkey-push` 本机那一跳 · `authorized-keys-add` 被写那台）。
+pub(crate) mod pubkey;
 pub(crate) mod skill_flow;
 pub(crate) mod skill_inbox;

@@ -142,20 +142,6 @@ impl Door for DiskDoor {
         std::fs::remove_file(&p)
             .map_err(|e| Refused::Other(format!("替身：删 {} 失败：{e}", p.display())))
     }
-
-    async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(Self::at(root, rel), std::fs::Permissions::from_mode(mode))
-                .map_err(|e| e.to_string())
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = (root, rel, mode);
-            Ok(())
-        }
-    }
 }
 
 /// 本族共用的临时 home。
@@ -166,103 +152,8 @@ pub(crate) fn temp_home(tag: &str) -> PathBuf {
     p
 }
 
-#[test]
-fn edit_hands_the_backend_exactly_what_it_read_as_the_expectation() {
-    let h = temp_home("exp");
-    let root = h.display().to_string();
-    std::fs::write(h.join("rc"), "a\n").expect("铺");
-    let door = DiskDoor::new(&h);
-    let got = futures::executor::block_on(edit(&door, &root, "rc", true, false, |t| {
-        Ok(Some(format!("{}b\n", t.unwrap_or(""))))
-    }))
-    .expect("写");
-    assert!(matches!(got, Edited::Written(_)));
-    assert_eq!(
-        door.puts.borrow().as_slice(),
-        &[PutCall {
-            rel: "rc".to_string(),
-            content: "a\nb\n".to_string(),
-            expect: Some("a\n".to_string()),
-            backup: true,
-            parents: false,
-        }],
-        "交给后端的期望必须是**读到的那一份**"
-    );
-    std::fs::remove_dir_all(&h).ok();
-}
-
-#[test]
-fn a_missing_file_is_handed_over_as_an_absent_expectation_not_an_empty_one() {
-    let h = temp_home("absent");
-    let root = h.display().to_string();
-    let door = DiskDoor::new(&h);
-    futures::executor::block_on(edit(&door, &root, "new", false, false, |t| {
-        assert_eq!(t, None, "不存在该交 `None`，不是空串");
-        Ok(Some("x".to_string()))
-    }))
-    .expect("建");
-    assert_eq!(
-        door.puts.borrow()[0].expect,
-        None,
-        "不存在 ⇒ `expect: null`"
-    );
-    std::fs::remove_dir_all(&h).ok();
-}
-
-#[test]
-fn stale_means_read_again_and_plan_again_and_it_gives_up_after_the_cap() {
-    let h = temp_home("stale");
-    let root = h.display().to_string();
-    std::fs::write(h.join("rc"), "a\n").expect("铺");
-    let door = DiskDoor::new(&h);
-    // 第一趟被插了一条外部改动 ⇒ stale ⇒ 重读（读到的是 "z\n"）重算。
-    door.interfere.borrow_mut().push("z\n".to_string());
-    futures::executor::block_on(edit(&door, &root, "rc", false, false, |t| {
-        Ok(Some(format!("{}b\n", t.unwrap_or(""))))
-    }))
-    .expect("第二趟该成");
-    assert_eq!(
-        std::fs::read_to_string(h.join("rc")).expect("rc"),
-        "z\nb\n",
-        "没按重读的那一份重算"
-    );
-    // 每一趟都被插 ⇒ 到上限就停，盘上是最后那条外部改动，不是我们算的。
-    *door.interfere.borrow_mut() = (0..EDIT_ATTEMPTS).map(|i| format!("q{i}\n")).collect();
-    let e = futures::executor::block_on(edit(&door, &root, "rc", false, false, |t| {
-        Ok(Some(format!("{}b\n", t.unwrap_or(""))))
-    }))
-    .expect_err("每趟都 stale 该停下");
-    assert!(e.contains(&EDIT_ATTEMPTS.to_string()), "{e}");
-    assert_eq!(
-        std::fs::read_to_string(h.join("rc")).expect("rc"),
-        "q0\n",
-        "盘上该是最后那条外部改动"
-    );
-    std::fs::remove_dir_all(&h).ok();
-}
-
-#[test]
-fn nothing_to_do_and_same_content_both_hand_over_nothing() {
-    let h = temp_home("noop");
-    let root = h.display().to_string();
-    std::fs::write(h.join("rc"), "a\n").expect("铺");
-    let door = DiskDoor::new(&h);
-    for plan in [None, Some("a\n".to_string())] {
-        let got =
-            futures::executor::block_on(edit(
-                &door,
-                &root,
-                "rc",
-                true,
-                false,
-                |_| Ok(plan.clone()),
-            ))
-            .expect("不写");
-        assert_eq!(got, Edited::Unchanged);
-    }
-    assert!(door.puts.borrow().is_empty(), "没事可做却交了一次写");
-    std::fs::remove_dir_all(&h).ok();
-}
+// 〔MIG-3b 续〕读 → 算 → 交那一环的四条判据（交出去的期望是读到的那一份 · 不存在交 `None` · `stale` 重读重算到上限 · 没事可做不写）
+//   随 monitor 那一环删了：同一环在后端那一份（`src/backend/assets/door.rs` 的 `edit`）由后端资产那几族的判据驱动。
 
 // 〔MIG-3a〕`rel_under` 那条判据随函数搬进了后端（`tests/backend/assets/aliases/aliases_tests.rs`）。
 
@@ -312,7 +203,8 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     let sent = door_commands();
     let (write_face, read_family) = backend_declared();
     assert!(
-        sent.len() >= 5 && write_face.len() >= 8 && read_family.len() >= 5,
+        // 〔MIG-3b 续〕门 5 → 4：`files-chmod` 随公钥推送进本机后端出列。
+        sent.len() >= 4 && write_face.len() >= 8 && read_family.len() >= 5,
         "人群塌了（门 {} 条 · 写面 {} 条 · 读族 {} 条）—— 抽取器坏了，本条空转",
         sent.len(),
         write_face.len(),
@@ -348,7 +240,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     assert_eq!(
         sent_writes,
         [
-            "files-chmod",
+            // 〔MIG-3b 续〕`files-chmod` 出列：唯一用它的公钥推送进了本机后端。
             "files-delete",
             "files-peek",
             "files-put",
