@@ -2067,31 +2067,8 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                         .collect()
                 })
                 .unwrap_or_default();
-            // 〔NET2〕能力事实的另两格（additive，同上口径：坏项逐项丢，不丢整帧）。
-            let unavailable = obj
-                .get("unavailable")
-                .and_then(|c| c.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| {
-                            let o = x.as_object()?;
-                            Some((
-                                o.get("command")?.as_str()?.to_string(),
-                                o.get("code")?.as_str()?.to_string(),
-                            ))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let uncancellable = obj
-                .get("uncancellable")
-                .and_then(|c| c.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
+            // 〔NET2〕能力事实的另两格（additive，同上口径：坏项逐项丢，不丢整帧）。〔RESYNC〕读法住 `Offer::facts_of`（`resync` 应答同形）。
+            let (unavailable, uncancellable) = crate::chan::wire::Offer::facts_of(obj);
             Some(InboundFrame::Hello {
                 v,
                 build_id,

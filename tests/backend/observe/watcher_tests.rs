@@ -4086,12 +4086,26 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         k
     };
     assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
+    // 四格计数 ＋ 两格能力事实（与 hello 同形：`[{command, code}]` · `[op]`）。
+    for k in ["added", "removed", "retagged", "watchers"] {
+        assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
+    }
+    let facts = got["unavailable"]
+        .as_array()
+        .expect("`unavailable` 不是数组");
     assert!(
-        got.as_object()
-            .unwrap()
-            .values()
-            .all(|v| v.as_u64().is_some()),
-        "成品里有一格不是计数：{got}"
+        facts
+            .iter()
+            .all(|e| e["command"].is_string() && e["code"].is_string()),
+        "`unavailable` 的项不是 {{command, code}}：{got}"
+    );
+    let ops = got["uncancellable"]
+        .as_array()
+        .expect("`uncancellable` 不是数组");
+    assert_eq!(
+        ops.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>(),
+        crate::inbound::uncancellable(),
+        "`uncancellable` 不是命令表派生的那一份"
     );
     for bad in [
         serde_json::json!({"sid": 5}),

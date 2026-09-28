@@ -428,6 +428,45 @@ impl Offer {
             Withdraw::NotOffered
         }
     }
+
+    /// 〔RESYNC〕JSON 对象里 `unavailable`（`[{command, code}]`）/ `uncancellable`（`[op]`）两格 —— hello 与 `resync` 应答同形，
+    /// 读法只此一份。缺格 ⇒ 空（没把握）；坏项逐项丢，不丢整份。
+    pub fn facts_of(
+        obj: &serde_json::Map<String, serde_json::Value>,
+    ) -> (Vec<(String, String)>, Vec<String>) {
+        let items = |k: &str| {
+            obj.get(k)
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default()
+        };
+        let unavailable = items("unavailable")
+            .iter()
+            .filter_map(|x| {
+                let o = x.as_object()?;
+                Some((
+                    o.get("command")?.as_str()?.to_string(),
+                    o.get("code")?.as_str()?.to_string(),
+                ))
+            })
+            .collect();
+        let uncancellable = items("uncancellable")
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_string))
+            .collect();
+        (unavailable, uncancellable)
+    }
+
+    /// 〔RESYNC · 主会话 09-27 裁〕「重新对齐」时那台交回的**当下**能力事实换掉握手那一刻的（例：握手后才装上 tmux）。
+    /// 接哪些 op 不变（还是同一个二进制、同一条连接）。
+    pub fn refresh_facts(
+        &mut self,
+        unavailable: Vec<(String, String)>,
+        uncancellable: Vec<String>,
+    ) {
+        self.unavailable = unavailable;
+        self.uncancellable = uncancellable;
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
