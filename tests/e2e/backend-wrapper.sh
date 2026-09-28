@@ -18,12 +18,12 @@
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
 # 🔴 〔E2 尾 09-27〕**防呆：直接跑就拒。** 本脚本是夹具（loopback 远端的后端包装器），合法的叫法只有一种：
-#   `tests/e2e/tier2-rig.sh` 把它**拷进台架目录、旁边放一个 `backend-path`**，再由 app 经 SSH 当远端后端执行。
+#   tier-2 台架把它**拷进台架目录、旁边放一个 `backend-path`**，再由 app 经 SSH 当远端后端执行。
 #   认的是那个文件，不是环境变量 —— SSH exec 不带 env（下面 `backend-path` 那段同一个理由）。
 #   不拒的后果现打过：分流不看 argv0 之后，没有打头 `--` 的调用就是「起 claude」⇒ 在仓里直接跑它
 #   会起一次 PATH 上**真的** claude。拒在一切副作用之前（tap 文件、自愈换二进制都在后面）。
 if [ ! -f "$E2E_DIR/backend-path" ]; then
-  echo "backend-wrapper.sh 是夹具：由 tests/e2e/tier2-rig.sh 布进台架目录（旁边带 backend-path）后经 app 调用，不直接跑。" >&2
+  echo "backend-wrapper.sh 是夹具：由 tier-2 台架布进台架目录（旁边带 backend-path）后经 app 调用，不直接跑（跑法见 tests/e2e/README.md「全链套件怎么跑」）。" >&2
   echo "  直接跑会把参数原样交给真后端，没有打头的 -- 时就起真 claude —— 拒绝（$E2E_DIR 下没有 backend-path）。" >&2
   exit 2
 fi
