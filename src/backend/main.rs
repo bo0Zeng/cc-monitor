@@ -382,12 +382,8 @@ async fn run_over_stdio(
     // 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
     // P5：留一份给停机用（下面 select 结束后要显式通知 reader）。
     let poke_for_shutdown = poke.clone();
-    // `K-P1`：处理器认的是一个**槽**而不是句柄（另一条载体上 watcher 会换人）。
-    // 这条路上槽里永远只装这一个 —— 形状统一，实现只有一份。
-    let slot: PokeSlot = std::sync::Arc::new(std::sync::Mutex::new(
-        std::collections::BTreeMap::from([(0, poke)]),
-    ));
-    let poke_task = spawn_sigusr1_task(slot);
+    // `K-P1`：处理器认的不是句柄，是 watcher 的名单（`observe::watcher::poke_all`；另一条载体上 watcher 会换人）。
+    let poke_task = spawn_sigusr1_task();
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
     // 〔HX1〕收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
@@ -421,17 +417,6 @@ async fn run_over_stdio(
     inbound::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
 }
 
-/// SIGUSR1 处理器要 poke 的那个 watcher 住的**槽**。
-///
-/// ★ **为什么是槽而不是句柄**〔`K-P1`〕：常驻那条载体上 watcher 会**换人** ——
-/// 每接上一个客户端换一份新的（理由见 [`serve_listening`]），而处理器活得比任何一个 watcher 都长。
-/// 拿句柄的话，第二个客户端连上之后 SIGUSR1 会去 poke 一个**已经退掉的** watcher：
-/// 那不会报错，它只是**再也不响应 tmux hook 了** —— 又一个「假信号不报错，它只是一直说是」。
-/// 〔HOST〕多客户：每条连接一份 watcher ⇒ 槽里按连接号放（0 = 空转那一份 / stdio 那一份），信号来了全 poke。
-type PokeSlot = std::sync::Arc<
-    std::sync::Mutex<std::collections::BTreeMap<u64, observe::watcher::WatcherPoke>>,
->;
-
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
 ///
 /// ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
@@ -442,7 +427,11 @@ type PokeSlot = std::sync::Arc<
 /// 文件系统写归零，且会话名根本不经 shell ⇒ 那条引号/注入面直接消失。
 /// 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
 #[cfg(unix)]
-fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
+///
+/// ★ **戳的是名单，不是句柄**〔`K-P1`〕：常驻那条载体上 watcher 会**换人**（每接上一个客户端换一份新的，
+/// 理由见 [`serve_listening`]），而处理器活得比任何一个 watcher 都长。〔RESYNC〕名单只有一个家：
+/// `observe::watcher` 的在跑名单（`spawn` 登记、退出即摘；`resync` 也按它找人）。
+fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         use tokio::signal::unix::{signal, SignalKind};
         let mut sigusr1 = match signal(SignalKind::user_defined1()) {
@@ -474,17 +463,13 @@ fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
         };
         tracing::info!("SIGUSR1 处理器已就位（tmux hook 通路的后端侧）");
         while sigusr1.recv().await.is_some() {
-            // 锁毒化不该让 tmux 通路整条哑掉 ⇒ `into_inner` 取回内容再用。
-            for p in slot.lock().unwrap_or_else(|e| e.into_inner()).values() {
-                p.poke();
-            }
+            observe::watcher::poke_all();
         }
     })
 }
 
 #[cfg(not(unix))]
-fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
-    let _ = slot;
+fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
     tokio::spawn(async {})
 }
 
@@ -609,8 +594,6 @@ async fn serve_listening(
     defaults: (bool, bool, bool),
     self_record: bool,
 ) {
-    use std::sync::Arc;
-
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -644,21 +627,11 @@ async fn serve_listening(
     }
 
     let (with_bg, tail_only, with_rbind_token) = defaults;
-    let poke_slot: PokeSlot = Arc::new(std::sync::Mutex::new(Default::default()));
-    let _poke_task = spawn_sigusr1_task(Arc::clone(&poke_slot));
-    // 槽里按连接号放（0 = 空转那一份）。
-    let set_slot = |id: u64, p: Option<observe::watcher::WatcherPoke>| {
-        let mut g = poke_slot.lock().unwrap_or_else(|e| e.into_inner());
-        match p {
-            Some(p) => g.insert(id, p),
-            None => g.remove(&id),
-        };
-    };
+    let _poke_task = spawn_sigusr1_task();
 
     let (mut idle_rx, mut idle_poke) = {
         let (rx, poke) =
             observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
-        set_slot(0, Some(poke.clone()));
         (Some(rx), Some(poke))
     };
 
@@ -692,13 +665,11 @@ async fn serve_listening(
                         p.shutdown();
                     }
                     idle_rx = None;
-                    set_slot(0, None);
                 }
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
                 let (bg, tail, rbind) = flags.unwrap_or(defaults);
                 let (rx, poke) = observe::watcher::spawn(agent_home.clone(), bg, tail, rbind);
-                set_slot(id, Some(poke.clone()));
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -730,7 +701,6 @@ async fn serve_listening(
             }
             // ③ 一条流结束 ⇒ 计数减一；归零才回到空转（或按退出行为退）。
             Some(id) = done_rx.recv() => {
-                set_slot(id, None);
                 let left = clients.leave(id);
                 if left > 0 {
                     tracing::info!("一条流结束 ⇒ 还连着 {left} 条");
@@ -753,7 +723,6 @@ async fn serve_listening(
                 }
                 tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
                 let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only, with_rbind_token);
-                set_slot(0, Some(poke.clone()));
                 idle_rx = Some(rx);
                 idle_poke = Some(poke);
             }
@@ -765,7 +734,6 @@ async fn serve_listening(
                     tracing::warn!("空转期的 watcher 自己结束了 ⇒ 这台机的 @ccm_sid 打标停了");
                     idle_rx = None;
                     idle_poke = None;
-                    set_slot(0, None);
                 }
             }
         }

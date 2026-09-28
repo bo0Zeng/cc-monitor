@@ -226,7 +226,8 @@ export class AccountsSection {
     refresh.className = "accounts-refresh";
     refresh.textContent = copyText("accounts.ctor.refresh");
     refresh.addEventListener("click", () => {
-      if (isRemoteOrigin(this.origin)) invalidateAccountsCache(this.origin);
+      // 〔RESYNC · 主会话 09-27 裁〕本机远端都清（与账号 chip 同一条：缓存的键就是 origin，本机也一样）。
+      invalidateAccountsCache(this.origin);
       void this.reload(true);
     });
     bar.appendChild(refresh);
