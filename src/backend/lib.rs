@@ -1741,6 +1741,9 @@ pub const EMITS: &[&str] = &[
     "session_added",
     "session_status",
     "session_removed",
+    // 〔MIG-1 · `99 §2.1 ⑬`〕会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
+    // 旧 monitor / 仓外 aterm 不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "session_state",
     "overflow",
     "turn_end",      // backend-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     "tmux_sessions", // B2：watch_loop 周期本地 tmux ls 发 TmuxSessions（登记=承诺真发，已接线）

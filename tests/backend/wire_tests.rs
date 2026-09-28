@@ -367,6 +367,14 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
             "transfer",
         ),
         (Frame::SessionsReplayed, "sessions_replayed"),
+        // 〔MIG-1〕会话账本的成品（逐字节形状另由 `mig1_session_state_has_exactly_these_bytes` 钉）。
+        (
+            Frame::SessionState {
+                sid: "s".into(),
+                state: crate::wire::SessionFate::Ended,
+            },
+            "session_state",
+        ),
         // 〔TAP〕中转抄出来的 SSE 事件（逐字节形状另由 `tap_frames_have_exactly_these_bytes` 钉）。
         (
             Frame::Tap {
@@ -1234,6 +1242,26 @@ fn session_added_container_is_additive_with_two_literals() {
         frame(Some(crate::wire::SessionContainer::None)),
         "{\"kind\":\"session_added\",\"sid\":\"s\",\"container\":\"none\"}\n"
     );
+}
+
+/// 〔MIG-1 · `99 §2.1 ⑬`〕`session_state` 的**逐字节**金标准：两个取值、字段顺序 `sid` 在前。
+/// monitor `ssh_source::parse_frame` 照这两个字面量认它。
+#[test]
+fn mig1_session_state_has_exactly_these_bytes() {
+    use crate::wire::SessionFate;
+    for (state, word) in [
+        (SessionFate::Reconnectable, "reconnectable"),
+        (SessionFate::Ended, "ended"),
+    ] {
+        assert_eq!(
+            to_line(&Frame::SessionState {
+                sid: "abc".into(),
+                state
+            })
+            .unwrap(),
+            format!("{{\"kind\":\"session_state\",\"sid\":\"abc\",\"state\":\"{word}\"}}\n")
+        );
+    }
 }
 
 /// 〔U4b · 第四波〕`sessions_replayed` 的**逐字节**金标准：无载荷，只有 kind。

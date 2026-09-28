@@ -75,6 +75,7 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/codex/resume_tests.rs",
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
+    "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
     "tests/backend/observe/turn_detect_tests.rs",
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
@@ -120,16 +121,14 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_remote_config_tests.rs",
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
-    "tests/bridge/session_facts_tests.rs",
+    "tests/bridge/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
     "tests/bridge/ssh_link_tests.rs",
     "tests/bridge/ssh_source_batcher_tests.rs",
-    "tests/bridge/ssh_source_reannounce_tests.rs",
     "tests/bridge/ssh_source_seam_tests.rs",
     "tests/bridge/ssh_source_snapshot_tail_tests.rs",
     "tests/bridge/ssh_source_snapshot_tests.rs",
-    "tests/bridge/tmux_reconcile_tests.rs",
     "tests/bridge/tool_registry_environment_tests.rs",
     "tests/bridge/tool_registry_not_managed_tests.rs",
     "tests/cards/api-error.test.ts",
@@ -398,7 +397,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
     "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
-    "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_relay_tests.rs",
     "tests/bridge/remote_write_registry_tests.rs",
@@ -417,17 +415,14 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_coldstart_preflight_guard.rs",
     "tests/bridge/ssh_source_dial_move_judge.rs",
     "tests/bridge/ssh_source_emits_parity.rs",
-    "tests/bridge/ssh_source_f032_idle_tests.rs",
     "tests/bridge/ssh_source_frame_dispatch_shape.rs",
     "tests/bridge/ssh_source_parse_frame_tests.rs",
     "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
     "tests/bridge/ssh_source_tier1_tests.rs",
-    "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
     "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/bridge/tasks_tests.rs",
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
-    "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
     "tests/bridge/tool_registry_tests.rs",
     "tests/bridge/write_site_registry_spawn_sites.rs",
     "tests/bridge/write_site_registry_tests.rs",

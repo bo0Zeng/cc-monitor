@@ -161,12 +161,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/lib.rs",
         "backend 的启动契约（身份清单 / hello）两侧同形",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/ssh_source_f032_idle_tests.rs",
-        "src/backend/wire.rs",
-        "wire 帧的形状两侧同形",
-    ),
+    // 〔MIG-1〕`ssh_source_f032_idle_tests.rs → src/backend/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
+    //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
         "tests/bridge/backend/control/payload_tests.rs",

@@ -344,7 +344,7 @@ use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 // ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
 //
 // **双写点**：与 monitor `src/bridge/src/backend/control/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
-// `observation_tokens_double_write_point_stays_in_sync` 测试钉住（`include_str!` 读本文件 +
+// `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 测试钉住（`include_str!` 读本文件 +
 // 锚定 const 定义行）。**改本处必须同步 monitor**，同 `TMUX_LS_FMT` 的纪律。
 /// backend 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
 const OBS_ZERO_SESSIONS: &str = "zero_sessions";
@@ -1012,7 +1012,7 @@ fn session_names(raw: &str) -> std::collections::BTreeSet<String> {
 /// 段数下溢的行**整行丢掉** —— 与 [`session_names`] 的旁邻 `classify_tmux_probe` 同一条
 /// 处置（`K-R12 J1`：通道被改写就不当好数据）。这里再挡一次是因为本函数也被
 /// 「raw 从别处来」的路径调得到，不许假设上游已经筛过。
-fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
+pub(crate) fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
     raw.lines()
         .filter_map(|line| {
             let cols: Vec<&str> = line.split('\t').collect();
@@ -1085,6 +1085,16 @@ fn diff_closed_into(
     };
     *prev = Some(now);
     closed
+}
+
+/// 〔MIG-1〕一帧 `tmux_sessions`（[`observation_to_frame`] 的产物）**能不能拿来收割**：有会话 · 确证零会话 ⇒ 能；
+/// 没装 tmux · 观测无效 ⇒ 不能（「不知道」绝不当成「都没了」）。与 [`observation_to_frame`] 读同一组 `OBS_*`，一个家。
+pub(crate) fn tmux_frame_is_observable(raw: &str, observation: Option<&str>) -> bool {
+    match observation {
+        Some(OBS_NO_TMUX) | Some(OBS_UNOBSERVABLE) => false,
+        Some(OBS_ZERO_SESSIONS) if raw.trim().is_empty() => true,
+        _ => !session_rows(raw).is_empty(),
+    }
 }
 
 fn observation_to_frame(obs: TmuxObservation) -> Frame {
@@ -1292,7 +1302,7 @@ fn watch_loop(
     // All frames go out through a FrameSink: a bounded-channel sender that counts
     // frames dropped on a full channel and emits a single `Overflow` signal once
     // the channel drains enough to accept it (#32). Never blocks this reader.
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::with_ledger(tx);
 
     // P2：**唯一**的事件 channel（账本第 1 行最终形态）。notify / pidfd / tmux 全走它。
     //
@@ -2869,6 +2879,10 @@ struct FrameSink {
     lost: Vec<LostFrame>,
     /// 身份表触顶过（超出 [`LOST_IDENTITY_CAP`] 的那些只计数、不留身份）。
     lost_truncated: bool,
+    /// 〔MIG-1 · `99 §2.1 ⑬`〕这条流的会话账本（`observe::session_ledger`）：每一帧发出去之前过它，
+    /// 它补发可重连 / 已结束的成品帧、压住 `sessions_replayed` 直到第一份 tmux 快照。生产由 [`watch_loop`] 装上；
+    /// 夹具走 [`FrameSink::new`] 不装（它们钉的是 watcher 自己发的帧）。
+    ledger: Option<crate::observe::session_ledger::SessionLedger>,
 }
 
 /// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
@@ -2889,6 +2903,29 @@ impl FrameSink {
             dropped: 0,
             lost: Vec::new(),
             lost_truncated: false,
+            ledger: None,
+        }
+    }
+
+    /// 〔MIG-1〕生产那一份：带会话账本。
+    fn with_ledger(tx: mpsc::Sender<Frame>) -> Self {
+        FrameSink {
+            ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
+            ..FrameSink::new(tx)
+        }
+    }
+
+    /// 发一帧：先过会话账本（有的话）—— 它决定这一帧自己发不发、紧跟着补发哪几帧。
+    fn send(&mut self, frame: Frame) {
+        let (pass, extra) = match self.ledger.as_mut() {
+            Some(l) => l.on_frame(&frame),
+            None => (true, Vec::new()),
+        };
+        if pass {
+            self.push(frame);
+        }
+        for f in extra {
+            self.push(f);
         }
     }
 
@@ -2899,7 +2936,7 @@ impl FrameSink {
     /// frame it receives. If the channel is still full, we keep owing the count
     /// (it only ever grows until a send succeeds); a closed channel is a quiet
     /// shutdown (the loop checks `is_closed`).
-    fn send(&mut self, frame: Frame) {
+    fn push(&mut self, frame: Frame) {
         if self.dropped > 0 {
             match self.tx.try_send(Frame::Overflow {
                 dropped: self.dropped,

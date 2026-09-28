@@ -14,7 +14,7 @@ use std::collections::HashMap;
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
 /// `src/bridge/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
-/// `removal_cause_wire_literal_stays_in_sync` 钉住（同 `TMUX_LS_FMT` 的纪律）。
+/// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RemovalCause {
@@ -52,6 +52,19 @@ pub enum SessionContainer {
     Tmux,
     /// 环境读得到、没有 `TMUX_PANE` ⇒ 不在任何 tmux 里。
     None,
+}
+
+/// 〔MIG-1 · `设计/99 §2.1 ⑬` · `01 §1.1`〕[`Frame::SessionState`] 的 `state`：**一条会话离开「活」之后是什么** ——
+/// 那台机器的后端自己裁（`observe::session_ledger`：摘除原因 ＋ 它自己那份 tmux 快照），客户端只收成品、不再猜。
+///
+/// 线上两个字面量 `"reconnectable"` / `"ended"` 与 monitor `ssh_source::parse_frame` 逐字一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionFate {
+    /// claude 退了、它的 tmux 会话还在（`@ccm_sid` 仍挂着它）⇒ 接得回去。
+    Reconnectable,
+    /// 进程没了、容器也没了（或被顶替了）⇒ 只能 resume。
+    Ended,
 }
 
 /// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F03〕。
@@ -417,6 +430,12 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
     },
+    /// 〔MIG-1 · `设计/99 §2.1 ⑬`〕**会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
+    ///
+    /// 由 `observe::session_ledger` 在它看着发出去的 `session_removed` / `tmux_sessions` 之后补发（同一个 sink、同一条线程，
+    /// 紧跟在引起它的那一帧之后）；新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的也各发一帧可重连
+    /// （在 `sessions_replayed` 之前）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    SessionState { sid: String, state: SessionFate },
     /// A session file went away.
     SessionRemoved {
         sid: String,
@@ -706,6 +725,8 @@ impl Frame {
             Frame::SessionAdded { .. } => false,
             Frame::SessionRemoved { .. } => false,
             Frame::TmuxSessionClosed { .. } => false,
+            // 〔MIG-1〕账本的成品：一次裁决的结果，别处没有 ⇒ 不可恢复。
+            Frame::SessionState { .. } => false,
             // 状态变迁；没有「下一次必然重发」的保证 ⇒ 保守。
             Frame::SessionStatus { .. } => false,
             // 握手帧丢了这条连接就没有身份了。
@@ -747,6 +768,7 @@ impl Frame {
             Frame::SessionAdded { sid, .. } => ("session_added", Some(sid.clone())),
             Frame::SessionStatus { sid, .. } => ("session_status", Some(sid.clone())),
             Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
+            Frame::SessionState { sid, .. } => ("session_state", Some(sid.clone())),
             Frame::TurnEnd { session_id, .. } => ("turn_end", Some(session_id.clone())),
             Frame::TmuxSessionClosed { name, .. } => ("tmux_session_closed", Some(name.clone())),
             Frame::TmuxSessions { .. } => ("tmux_sessions", None),

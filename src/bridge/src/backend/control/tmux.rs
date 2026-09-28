@@ -204,163 +204,30 @@ pub(crate) fn decode_tmux_list(v: &serde_json::Value) -> Option<(bool, Vec<Strin
     Some((installed, lines))
 }
 
-/// P3-刀2-UI：**本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形。
+/// P3-刀2-UI：**本机今天有哪些 tmux 会话** —— 〔MIG-1〕与远端同一条路：问本机常驻后端 `tmux-list`（[`list_remote_tmux`] 那一问，`<local>`）。
 ///
-/// # 为什么不是 `list_remote_tmux` 加一条本机分支
+/// 两个消费者：① 铸名（`mintTmuxName` 要一个 `existing` 集合，issue #76）② 杀会话的菜单（认出哪个 tmux 跑着本 tab 的 sid，
+/// 必须有 `@ccm_sid`，`INVARIANTS §30`）。〔从前读 monitor 自己存的那份 `tmux ls` 原文（`ssh_source::tmux_raw_for`〔散文墓碑〕）；
+///  那本账随会话账本搬进后端删了 —— 本机现问一趟，与远端同一个口径。〕
 ///
-/// 那条今天对 `<local>` 会去 `load_remote_config_by_label("<local>")`，报
-/// **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错（同 P3 刀 2 在 `backend_kill`
-/// 那里治过的形态）。但**不能**简单地给它加一条读快照的本机分支：
-/// `tabs.ts::awaitExitFor` 等的是「**pane 前台命令**从 claude 变回 shell」，
-/// 而那个变化**不触发任何 tmux hook** ⇒ 快照在那个场景下永不刷新
-/// ⇒ 本机会退化成「每次都等到 10s 超时再降级 kill」（`ssh_source::tmux_raw_registry` 头注
-/// 逐字记着这条，devbench F08 已裁「刻意不开 IPC 出口」）。
-///
-/// # 那为什么本条可以开
-///
-/// **因为它问的是另一个问题。** 那条裁定的论据是「快照对 *pane 前台命令变化* 不刷新」；
-/// 本条要的是**会话名的集合**，而快照的刷新正由 tmux hook 驱动，
-/// `HOOK_EVENTS` 逐字是 `["session-created", "session-closed", "session-renamed"]`
-/// —— **恰好就是改变名字集合的那三件事**。
-/// ⇒ 对「哪些名字被占了」，这份快照不是陈旧的，是**权威的**。
-/// 由 `the_name_set_question_is_exactly_what_the_hooks_cover` 钉住这条推理的前提。
-///
-/// # 为什么必须有它
-///
-/// 两个消费者，问的是同一件事的两半：
-/// ① **铸名**（P3t-Y2b）：`mintTmuxName` 要一个 `existing` 集合。远端从 `list_remote_tmux` 拿；
-///    本机没有 SSH 那条路，不给读口就只能「不避让」= issue #76。
-/// ② **杀会话的菜单**（P3 刀 2 的 UI 半）：要认出「哪个 tmux 跑着本 tab 的 sid」。
-///    这一格**必须有 `@ccm_sid`，光有名字不行** —— 按 `<sid8>-cc` 前缀去猜，
-///    与 `INVARIANTS §30` 逐字禁的「按目录回退猜」是同一类错（都是拿命名巧合当身份）。
-///
-/// ★★ **它从「只回名字」放宽到「回整条会话」是 P3 刀 2 的 scope-changed**，理由如上 ②。
-/// 放宽**没有**碰 devbench F08 锁住的那扇门 —— 那条锁的是「拿这份快照替换 `awaitExitFor`
-/// 那个 1s 轮询」，而 `awaitExitFor` 等的是 **pane 前台命令**变化（无 hook ⇒ 快照对它永不刷新）。
-/// 本条的两个消费者都不问那个：①问名字集合、②问 `@ccm_sid` 归属，
-/// 而这两样都由 `session-created/closed/renamed` 三条 hook 覆盖。
-///
-/// ⚠ **诚实边界**：返回值里的 `command` 那一列**可能是陈旧的**（它正是无 hook 的那一列）。
-/// 后果是菜单上「杀死会话」与「kill 空 tmux」的**文案**可能选错一个，kill 本身照样打得中。
-/// ⇒ 依赖 `command` 判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条，
-/// 它今天由 `tabs.ts` 的 `origin === null` 闸挡着（A7 前不支持本地重启）。
-///
-/// 拿不到快照（本机后端通道没起 / 还没推过帧）⇒ 回 `None`，**不是空表**：
+/// 回值保持本机那三档：列表 = 知道（没装 tmux ⇒ 空表：一个名字都没占）· `None` = **不知道**（本机后端不在 / 回话脏）——
 /// 空表会让调用方以为「一个会话都没有」，那是把「不知道」当成「知道没有」。
 #[tauri::command]
-pub fn list_local_tmux() -> Option<Vec<TmuxSession>> {
-    let raw = ssh_source::tmux_raw_for(crate::backend::control::inbound_client::LOCAL_ORIGIN)?;
-    Some(parse_tmux_ls(&raw))
-}
-
-// ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
-//
-// **第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX` 哨兵）。monitor 与后端分属两个
-// 独立 crate、不能共享类型，所以这三个字符串两侧各写一份，由
-// `observation_tokens_double_write_point_stays_in_sync` 测试逐字节钉住（同 `TMUX_LS_FMT`
-// 那条守卫的做法：`include_str!` backend 源 + 锚定 const 定义行，改任一侧忘同步即红）。
-//
-// **为什么用字符串而不是布尔**：P3 会加「server 已死」vs「server 活着但零会话」的细分
-// （两者对 retire 决策等价、只对复活监视有意义）。字符串枚举加一个取值是 additive；
-// 布尔字段加第二个就得改帧形状。
-/// backend 确证零会话（`tmux ls` rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
-const OBS_ZERO_SESSIONS: &str = "zero_sessions";
-/// 远端没装 tmux（`command -v tmux` 失败）——与既有 `NO_TMUX` 哨兵同义，显式化。
-const OBS_NO_TMUX: &str = "no_tmux";
-/// 观测无效（`tmux ls` 以非 0/1 退出、或 exec 本身失败）⇒ 必须跳过，**绝不当零会话**。
-const OBS_UNOBSERVABLE: &str = "unobservable";
-
-/// P1（zero-poll-liveness）：一帧 `TmuxSessions` 的**观测分类**结果。
-///
-/// 存在的理由：这个判断原先是 `ssh_source::stream_loop` 里那条
-/// `if raw.trim() != "NO_TMUX" { … if !backend.is_empty() { … } }` 内联 if——
-/// 它把**五种语义完全不同的观测压成两条路**，而且住在一个需要真远端连接的
-/// `async fn` 里、单测碰不到。提成纯函数后生产与测试走同一条路径。
-/// P8c：`Skip` 的原因。**机器可读**（进日志后要能被 grep/统计），不是给人读的句子。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SkipReason {
-    /// 远端没装 tmux（旧后端的 `NO_TMUX` 哨兵，或新后端的 `no_tmux`）。
-    NoTmux,
-    /// backend **自报**这一轮观测失败（`unobservable`）—— 那正是 `#82` 想知道频率的那一格。
-    Unobservable,
-    /// 旧后端的空串歧义：零会话与「`|| true` 吞掉的错」同形 ⇒ 保守跳过。
-    /// **新后端走不到这里**（它零会话报 `zero_sessions`、出错报 `unobservable`）。
-    LegacyAmbiguousEmpty,
-}
-
-impl SkipReason {
-    /// 进日志用的稳定标识。
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            SkipReason::NoTmux => "no_tmux",
-            SkipReason::Unobservable => "unobservable",
-            SkipReason::LegacyAmbiguousEmpty => "legacy_ambiguous_empty",
+pub async fn list_local_tmux() -> Option<Vec<TmuxSession>> {
+    match list_remote_tmux(crate::backend::control::inbound_client::LOCAL_ORIGIN.to_string()).await
+    {
+        Ok(Some(v)) => Some(v),
+        Ok(None) => Some(Vec::new()),
+        Err(e) => {
+            tracing::warn!("本机 tmux 会话问不到（{e}）⇒ 当「不知道」");
+            None
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TmuxObservation {
-    /// 有效观测：某后端自报正在跑的 sid 集。
-    ///
-    /// **可能为空集**——空集 = backend **确证**该主机零会话（不是"观测失败"）。
-    /// 空集照常进对账、照常累计缺失，**这正是 P1 修掉的那个 bug**：
-    /// 原先空 backend 一律保守跳过 ⇒ 当被杀的是该 origin 最后一个 tmux 会话时
-    /// （server 随之退出、`tmux ls` 回空）⇒ 对账整段跳过 ⇒ idle 灰灯**卡到断连才清**。
-    Backend(std::collections::HashSet<String>),
-    /// 观测无效 ⇒ 本轮跳过、**不累计缺失**（否则 ssh 抖动会批量误灰）。
-    ///
-    /// ★★ **P8c（`U3` 08-11 的裁定）：它带上「为什么」。**
-    ///
-    /// 原来三种完全不同的原因（远端没装 tmux / backend 自报观测失败 / 旧后端的空串歧义）
-    /// 被压成同一个无载荷的 `Skip` ⇒ **这一维在日志里根本不可见**。
-    /// `U3` 的读数逐字记着这件事的后果：
-    /// 「`Unobservable` 计数 = 0，而**那个 0 是瞎的** —— 日志根本不记这一维 ⇒ 分母不存在。
-    /// 『0 次』与『记不下来』在这份数据里长得一模一样，而后者才是事实」。
-    ///
-    /// ⇒ 裁定是「**先补一行可观测性，让这个数变得可测**，再拿真实使用量去裁 `#82`」。
-    /// 载荷就是那一行的原料。取值是**稳定的机器可读串**（不是给人读的措辞）。
-    Skip(SkipReason),
-}
-
-/// P1：把一帧 `TmuxSessions` 分类。`observation` = backend 的显式分类字段
-/// （P1 起的 additive wire 字段；旧后端为 `None`）。
-///
-/// **判据只用 rc + stdout 空否**（backend 侧已折成 `observation`），**绝不看 stderr 文本**——
-/// P0 实测 stderr 有两种措辞（`no server running on …` / `error connecting to … `），
-/// 且拿英文消息当判据本身就是错的。
-///
-/// 未知的 `observation` 取值 → **落回 raw 判据**（向前兼容：未来后端加新分类时，
-/// 老 monitor 退化成今天的保守行为，不会误灰）。
-pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) -> TmuxObservation {
-    // NO_TMUX 哨兵（旧后端唯一能表达的"后端不存在"）：远端没装 tmux ⇒ 无从对账。
-    if raw.trim() == "NO_TMUX" {
-        return TmuxObservation::Skip(SkipReason::NoTmux);
-    }
-    // P1：backend 的显式分类优先。**未知取值刻意不在此匹配** ⇒ 落回下方 raw 判据（向前兼容）。
-    match observation {
-        // ★ 两者压成一个 `Skip` 是对的（都不该累计缺失），但**原因必须分开记** ——
-        // `#82` 要知道的正是 `unobservable` 的频率，把它和「远端没装 tmux」混在一起就问不出来。
-        Some(OBS_NO_TMUX) => return TmuxObservation::Skip(SkipReason::NoTmux),
-        Some(OBS_UNOBSERVABLE) => return TmuxObservation::Skip(SkipReason::Unobservable),
-        // 只在 raw 确实为空时认这条——帧内部自相矛盾（说零会话却带着会话行）时以
-        // **数据**为准、落回 raw 判据，不凭一个字符串把明明在跑的会话判死。
-        Some(OBS_ZERO_SESSIONS) if raw.trim().is_empty() => {
-            return TmuxObservation::Backend(std::collections::HashSet::new());
-        }
-        _ => {}
-    }
-    let backend: std::collections::HashSet<String> = parse_tmux_ls(raw)
-        .iter()
-        .filter_map(|s| s.sid.clone())
-        .collect();
-    // 旧后端的空串语义不可分（零会话 / `|| true` 吞掉的错，两者同形）⇒ 保守跳过。
-    // **新后端走不到这里**：它零会话时带 `zero_sessions`、出错时带 `unobservable`。
-    if backend.is_empty() {
-        return TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty);
-    }
-    TmuxObservation::Backend(backend)
-}
+// 〔MIG-1 · `99 §2.1 ⑬`〕这里原来住着 `TmuxSessions.observation` 在 monitor 这一侧的分类（`classify_tmux_observation`〔散文墓碑〕·
+//   `SkipReason` · `OBS_*` 三个双写点字面量）—— 喂 monitor 那两份收割器的。收割搬进后端会话账本之后零调用方，删了；
+//   「这一份观测能不能拿来收割」只剩后端一个家（`src/backend/observe/watcher.rs::tmux_frame_is_observable`）。
 
 // 〔C4e · 第四波 4C〕这里原来住着抓屏那一族在 monitor 侧的解释：帧命令名常量 `CAPTURE_PANE`、
 //   五个拒绝码的人话 `describe_capture_refusal`〔散文墓碑〕（再往前是 `K-R112` 删掉的 `classify_capture_output`〔散文墓碑〕）。
