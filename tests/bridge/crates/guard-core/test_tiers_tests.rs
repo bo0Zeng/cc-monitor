@@ -526,6 +526,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
     // 〔MIG-2〕基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
     "tests/backend/control/launch_render/local_tests.rs",
+    // 〔OSA · V156〕基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
+    "tests/backend/platform/shell_home_guard.rs",
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
