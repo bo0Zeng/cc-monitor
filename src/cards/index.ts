@@ -15,6 +15,7 @@
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
+import { makeYieldToMain } from "../yield-to-main";
 import { renderMarkdown, renderPlainText } from "../render";
 import { AGENT_PROFILE } from "../agent-profile";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
@@ -401,12 +402,8 @@ function renderBlock(
   ctx: RenderContext,
 ): HTMLElement | null {
   switch (block.type) {
-    case "text": {
-      const div = document.createElement("div");
-      div.className = "block-text";
-      div.innerHTML = renderMarkdown(block.text, { lazy: ctx.lazy });
-      return div;
-    }
+    case "text":
+      return buildTextBlock(block.text, ctx.lazy);
     case "thinking": {
       return makeCollapsible(
         "block-thinking",
@@ -877,6 +874,112 @@ function buildResultBody(
 
 /** 大 output 阈值（字节估算）—— 超过先只渲染前 N 行 */
 const LARGE_TEXT_BYTES = 200_000;
+
+/**
+ * 〔RENDER2 · `17 §0` 文本布局补审查出的性能缺陷〕回复正文超过它 ⇒ 建卡时只渲染前一截、下面一颗「显示全部」。
+ * marked 同步排整段正文，617 KB 一条 ≈ 8 s 卡住主线程（`调研/第四波记录/W5-RENDER.md` R8 读数）；
+ * 20 000 字 ≈ 真机正文窗口 p99 的十几倍（p99 1 594 字），常态回复碰不到它。点了之后余下的按同样大小分片、一片一跳地渲染。
+ */
+export const LONG_REPLY_HEAD_CHARS = 20_000;
+
+/**
+ * 把 markdown 切成若干片，每片不超过 `max` 字（单个块超长就单独一片）：只在**围栏代码块之外的空行**上切，
+ * 代码块不会被劈开。跨空行的列表 / 表格被切开时，后一片的编号从头起 —— 截断显示的代价，认。
+ */
+export function markdownPieces(md: string, max: number): string[] {
+  const out: string[] = [];
+  let cur: string[] = [];
+  let curLen = 0;
+  let inCode = false;
+  let block: string[] = [];
+  const add = (text: string): void => {
+    if (curLen > 0 && curLen + text.length + 1 > max) {
+      out.push(cur.join("\n"));
+      cur = [];
+      curLen = 0;
+    }
+    cur.push(text);
+    curLen += text.length + 1;
+  };
+  const flushBlock = (): void => {
+    if (block.length === 0) return;
+    const text = block.join("\n");
+    if (text.length <= max) add(text);
+    else for (const part of splitOversizeBlock(block, max)) add(part);
+    block = [];
+  };
+  for (const line of md.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) inCode = !inCode;
+    block.push(line);
+    if (!inCode && line.trim() === "") flushBlock();
+  }
+  flushBlock();
+  if (cur.length > 0) out.push(cur.join("\n"));
+  return out;
+}
+
+/**
+ * 一个比 `max` 还长的块按行切（一行比 `max` 还长就按字硬切）；是围栏代码块的，每一截各自补上开 / 合围栏，渲染出来仍是代码块。
+ */
+function splitOversizeBlock(lines: string[], max: number): string[] {
+  const fence = /^\s*(```+|~~~+)/.exec(lines[0] ?? "")?.[1] ?? null;
+  const body = fence ? lines.slice(1, lines.length - (/^\s*(```|~~~)/.test(lines[lines.length - 1] ?? "") ? 1 : 0)) : lines;
+  const open = fence ? `${lines[0]}\n` : "";
+  const close = fence ? `\n${fence}` : "";
+  const room = Math.max(1, max - open.length - close.length);
+  const parts: string[] = [];
+  let cur = "";
+  const push = (): void => {
+    if (cur) parts.push(open + cur + close);
+    cur = "";
+  };
+  for (const line of body) {
+    for (let at = 0; at < Math.max(1, line.length); at += room) {
+      const seg = line.slice(at, at + room);
+      if (cur && cur.length + 1 + seg.length > room) push();
+      cur = cur ? `${cur}\n${seg}` : seg;
+    }
+  }
+  push();
+  return parts;
+}
+
+/** 一个回复正文块：不长就整段渲染；长了只渲染第一片 ＋「显示全部」（点了余下的一片一跳地补，不卡输入）。 */
+function buildTextBlock(text: string, lazy: boolean | undefined): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "block-text";
+  if (text.length <= LONG_REPLY_HEAD_CHARS) {
+    div.innerHTML = renderMarkdown(text, { lazy });
+    return div;
+  }
+  const pieces = markdownPieces(text, LONG_REPLY_HEAD_CHARS);
+  const head = document.createElement("div");
+  head.innerHTML = renderMarkdown(pieces[0], { lazy });
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "block-body-show-full";
+  const restChars = text.length - pieces[0].length;
+  more.textContent = copyText("cards.markdown.showRest", { kb: (restChars / 1024).toFixed(0) });
+  more.addEventListener(
+    "click",
+    () => {
+      more.disabled = true;
+      let i = 1;
+      const step = makeYieldToMain(() => {
+        const piece = document.createElement("div");
+        piece.innerHTML = renderMarkdown(pieces[i]);
+        more.before(piece);
+        i++;
+        if (i < pieces.length) step();
+        else more.remove();
+      });
+      step();
+    },
+    { once: true },
+  );
+  div.append(head, more);
+  return div;
+}
 const LARGE_TEXT_HEAD_LINES = 800;
 
 function buildTextBody(text: string): HTMLElement {

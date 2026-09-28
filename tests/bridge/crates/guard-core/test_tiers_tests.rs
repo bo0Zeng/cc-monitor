@@ -118,7 +118,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_env_scrub_tests.rs",
     "tests/bridge/lib_nudge_skip_tests.rs",
     "tests/bridge/lib_remote_config_tests.rs",
-    "tests/bridge/messages_tests.rs",
     "tests/bridge/port_forward_tests.rs",
     "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_facts_tests.rs",
@@ -247,6 +246,7 @@ const UNIT: &[&str] = &[
     "tests/views/session-viewer-skeleton.vitest.ts",
     "tests/views/user-input-panel.vitest.ts",
     "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
+    "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -515,6 +515,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     "tests/bridge/shell_dialect_tests.rs",
+    "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
