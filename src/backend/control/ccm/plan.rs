@@ -77,6 +77,9 @@ pub(crate) struct Env {
     pub(crate) no_pretrust: bool,
     /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
     pub(crate) bus_scripts: Option<String>,
+    /// 〔FIX · V138 订正〕问「此刻哪些会话在跑」的那一次扫描（观测层的，由入口注入 —— control 不引用 observe）。
+    /// 入参 = 这一趟要用的账号配置目录（`None` = agent 自己的默认家目录）。`None` = 这一趟不问（预览 / 不是 resume）。
+    pub(crate) running_sessions: Option<super::RunningScan>,
 }
 
 impl Env {
@@ -136,6 +139,7 @@ impl Env {
             self_argv: super::self_invocation(&std::env::args().collect::<Vec<_>>()),
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
+            running_sessions: None,
             home,
         }
     }
@@ -174,6 +178,7 @@ impl Env {
             self_argv: vec![super::SUBCOMMAND_WORD.to_string()],
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
+            running_sessions: None,
             home,
         }
     }
@@ -874,6 +879,26 @@ pub(crate) fn build(
     //   今天整份搬进共享 crate（`acct_core::config_dir_ok`，全仓唯一一份），这里直接用。空串 = 账号 0 / 继承，不注入、不判。
     if !config_dir.is_empty() && !acct_core::config_dir_ok(&config_dir) {
         return Err(refuse(&env.account_env, &config_dir));
+    }
+    // 〔FIX · V138 订正〕在跑、却不在 ccm 认得的 tmux 会话里（上面那一格没接上）⇒ 接不上，也不另起第二份：明说。
+    //   判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入）。
+    if let (Some(sid), Some(scan)) = (o.resumes.as_deref(), env.running_sessions) {
+        let dir = if !config_dir.is_empty() {
+            Some(config_dir.as_str())
+        } else if o.use_base {
+            None
+        } else {
+            env.inherited_config_dir.as_deref()
+        };
+        if let Some((_, pid)) = scan(dir.map(std::path::Path::new))
+            .into_iter()
+            .find(|(s, _)| s == sid)
+        {
+            return Err(Die(copy_text(
+                "bePlan.build.runningElsewhere",
+                &[("sid", sid), ("pid", &pid.to_string())],
+            )));
+        }
     }
     let launcher = if o.launcher.is_empty() {
         super::default_launcher(&o.agent).to_string()

@@ -305,7 +305,7 @@ mod tests {
         (
             "main.rs",
             1,
-            "解析本机 home（`resolve_agent_home` 里唯一那句）",
+            "解析本机 home（`agent_home` 里唯一那句；〔FIX · V138 订正〕`ccm` resume 注入的扫描也经它）",
         ),
         (
             "observe/accounts_query.rs",
@@ -331,7 +331,7 @@ mod tests {
         (
             "observe/watcher.rs",
             4,
-            "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定",
+            "会话记录根 + pidfile 目录（〔FIX · V138 订正〕流模式耳朵与一次性扫描同经 `pidfile_dir`）+ 判活 cmdline + 会话文件判定",
         ),
     ];
 

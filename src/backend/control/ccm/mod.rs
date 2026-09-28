@@ -220,6 +220,14 @@ pub(crate) fn needs_bus_id(agent: &str) -> bool {
     agent == "codex"
 }
 
+/// 〔FIX · V138 订正〕入口注入的「此刻在跑的会话」扫描：入参 = 账号配置目录（`None` = agent 默认家目录），出 `(sid, pid)`。
+pub type RunningScan = fn(Option<&std::path::Path>) -> Vec<(String, u32)>;
+
+/// 这个 agent 的会话有 pidfile 可判活吗（注入的那份扫描只认这一家的布局）。
+pub(crate) fn has_pidfiles(agent: &str) -> bool {
+    agent == "claude"
+}
+
 /// 这个 agent 有身份面（`@ccm_sid`）吗。
 pub(crate) fn has_identity(agent: &str) -> bool {
     agent == "claude"
@@ -290,7 +298,7 @@ pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
 ///
 /// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来。
-pub fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String], running: RunningScan) -> i32 {
     let parsed = match argv::parse(args) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),
@@ -317,6 +325,9 @@ pub fn run(args: &[String]) -> i32 {
             0
         }
         Parsed::Opts(o) => {
+            let mut env = env;
+            env.running_sessions =
+                (o.resumes.is_some() && has_pidfiles(&o.agent)).then_some(running);
             let plan = match plan_of(&o, env, true) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),

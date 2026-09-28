@@ -1281,7 +1281,7 @@ fn watch_loop(
     // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
     // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
     let projects = crate::agents::claudecode::paths::projects_root(&agent_home);
-    let sessions = crate::agents::claudecode::paths::sessions_root(&agent_home);
+    let sessions = pidfile_dir(&agent_home);
     // 〔SR1a〕账号 manifest（`设计/05 §13.6 ③`「账号清单变了」一帧）。
     let accounts_manifest = crate::observe::accounts_query::default_manifest_path();
 
@@ -2783,6 +2783,11 @@ fn add_time_check(pid: u32, bytes: &[u8], path: &Path) -> Result<Option<u64>, &'
     }
 }
 
+/// pidfile 目录（流模式的耳朵与一次性扫描同一处问适配层）。
+fn pidfile_dir(agent_home: &Path) -> PathBuf {
+    crate::agents::claudecode::paths::sessions_root(agent_home)
+}
+
 /// 〔Batch6-F21〕`kind` 在且不是 `interactive` ⇒ `Some(kind)`（后台任务，不是交互会话）；缺字段（旧 CC）⇒ `None` 放行。
 fn non_interactive_kind(bytes: &[u8]) -> Option<String> {
     parse_kind(bytes).filter(|k| k != "interactive")
@@ -2791,7 +2796,7 @@ fn non_interactive_kind(bytes: &[u8]) -> Option<String> {
 /// 〔FIX · V138 订正〕**一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
 /// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
 pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
-    let dir = crate::agents::claudecode::paths::sessions_root(agent_home);
+    let dir = pidfile_dir(agent_home);
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };
