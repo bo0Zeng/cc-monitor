@@ -148,45 +148,7 @@ pub(crate) async fn edit<D: Door>(
     ))
 }
 
-/// `abs` 在 `home` 底下的那一段（给 `root = home` 的那几处用：rc / profile）。
-///
-/// ⚠ 两边都是**字符串**：本机与远端同一种算法（远端路径在这台机器上没法 `canonicalize`）。
-/// 不在 home 底下 ⇒ 拒（与 `profile_installer::fence_lexical` 的「只能落在 home 之内」同一句承诺）。
-pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
-    let norm = |s: &str| s.replace('\\', "/");
-    let (h, a) = (norm(home), norm(abs));
-    let h = h.trim_end_matches('/');
-    let rest = a
-        .strip_prefix(h)
-        .and_then(|r| r.strip_prefix('/'))
-        .filter(|r| !r.is_empty())
-        .ok_or_else(|| {
-            copy_text(
-                "rsUserFiles.rel.outsideHome",
-                &[("abs", &abs.to_string()), ("home", &home.to_string())],
-            )
-        })?;
-    Ok(rest.to_string())
-}
-
-/// 〔AL2 · 第四波 4D〕[`rel_under`] 的反方向：`home` 底下的相对段 `rel`（`/` 分隔，交给后端的那一形）→ 那台机器上的绝对路径。
-///
-/// ⚠ 同样是**字符串**、本机与远端同一种算法：分隔符跟 `home` 自己的写法走（`home` 里有 `\` 而没有 `/` ⇒ `\`，否则 `/`）。
-/// 不用 `std::path::Path::join` —— 那是**本机**的分隔符：Windows 上的 monitor 拿它拼远端 `/home/user` 会得到
-/// `/home/user\.bashrc`；反过来 Windows 的 home 整串拼 `/` 分隔的 `rel` 又是 WIN1 F8 那一形（`C:\Users\user\.cc-monitor/aliases.ps1`）。
-pub(crate) fn join_under(home: &str, rel: &str) -> String {
-    let sep = if home.contains('\\') && !home.contains('/') {
-        '\\'
-    } else {
-        '/'
-    };
-    let mut out = home.trim_end_matches(['/', '\\']).to_string();
-    for seg in rel.split(['/', '\\']).filter(|s| !s.is_empty()) {
-        out.push(sep);
-        out.push_str(seg);
-    }
-    out
-}
+// 〔MIG-3a〕`rel_under` / `join_under`〔散文墓碑〕两个字符串拼法随别名那一族进了那台后端（`src/backend/assets/door.rs` 那一份），monitor 零调用方 ⇒ 删。
 
 /// 后端入方向一行的上限（`src/backend/inbound.rs::MAX_LINE_BYTES` 的本侧镜像；两个 crate 引不到对方 ⇒
 /// `byte_cap_registry` 读两侧源码钉相等）。读改写的写那一半把新内容与读到的那一份装进同一行请求。

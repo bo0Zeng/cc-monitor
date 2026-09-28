@@ -259,7 +259,7 @@ pub const RBIND_TOKEN_MARKER_PREFIX: &str = "ccm-rbind-token-";
 ///
 /// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕**有两个写入方、一个读方**，三处必须同一个名字：
 /// 读方 = [`BindRegistry::spawn`] 监听的目录；写入方 ① = PowerShell profile 里的 `__ccm_bind`
-/// （`scripts/cc.ps1.tpl`，它在用户机器上自己拼 `ps-await`，改不动已装的那份 ⇒ 本常量**不许改值**）；
+/// （`src/shared/cc.ps1.tpl`，它在用户机器上自己拼 `ps-await`，改不动已装的那份 ⇒ 本常量**不许改值**）；
 /// 写入方 ② = `launch.rs` 在拉起窗口时注入的那段令牌握手前奏（取的就是本常量）。
 pub const AWAIT_SUBDIR: &str = "ps-await";
 

@@ -338,6 +338,9 @@ const SCAN: &[&str] = &[
     "tests/bridge/ccm_cli_contract_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
     "tests/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
+    "tests/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
+    "tests/backend/assets/aliases/dialect_tests.rs", // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
+    "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
     "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/bridge/config_surface_tests.rs",
@@ -359,7 +362,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/exec_site_registry_tests.rs",
     "tests/bridge/frame_tally_tests.rs", // 〔W5-VIS〕丢帧账：账本行为 ＋ 三条读帧循环的接线（剥过的生产文本）
     "tests/bridge/swallow_registry_tests.rs", // 〔W5-VIS〕业务路径零裸吞：人群从四棵生产源码树派生 == 登记表
-    "tests/bridge/fenced_block_tests.rs",
+    // 〔MIG-3a〕`tests/bridge/fenced_block_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     "tests/bridge/filewin/bigfile_tests.rs",
     "tests/bridge/filewin/boundary_tests.rs",
     "tests/bridge/filewin/copy_tests.rs",
@@ -516,7 +519,7 @@ const SCAN: &[&str] = &[
     "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
-    "tests/bridge/shell_dialect_tests.rs",
+    // 〔MIG-3a〕`tests/bridge/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
 ];
 
@@ -576,10 +579,12 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",
     "tests/backend/main_fourth_face_tests.rs",
-    "tests/backend/mcp_sync_tests.rs",             // 〔AS1〕
+    "tests/backend/mcp_sync_tests.rs",               // 〔AS1〕
     "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
     "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
+    "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
+    "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
     "tests/backend/assets/skill_inbox_tests.rs", // 〔MIG-3a〕收件箱读写进了那台后端（临时目录 ＋ 比对写 CAS）
     "tests/backend/agents/claudecode/skill_host_tests.rs", // 〔MIG-3a〕skill 接入声明落适配层（临时目录 ＋ symlink 围栏）
     "tests/backend/observe/accounts_query_tests.rs",
@@ -609,7 +614,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/skill_ledger_tests.rs",
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/wire_tests.rs",
-    "tests/bridge/account_aliases_tests.rs",
+    // 〔MIG-3a〕`tests/bridge/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     "tests/bridge/adapter_tests.rs",
     "tests/bridge/auto_launch_tests.rs",
     "tests/bridge/backend/control/cc_bus_deploy_tests.rs",

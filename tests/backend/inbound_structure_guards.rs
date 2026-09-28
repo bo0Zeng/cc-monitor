@@ -224,6 +224,12 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
                 | "skill-install-apply"
                 | "skill-host-list"
+                | "aliases-render"
+                | "aliases-read"
+                | "aliases-install"
+                | "aliases-block-render"
+                | "aliases-block-install"
+                | "aliases-block-remove"
                 | "skill-host-read"
                 | "skill-host-write"
                 | "skill-uninstall-apply"
@@ -381,6 +387,12 @@ fn every_registered_command_declares_its_run_kind() {
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-apply",
         "skill-host-list",
+        "aliases-render",
+        "aliases-read",
+        "aliases-install",
+        "aliases-block-render",
+        "aliases-block-install",
+        "aliases-block-remove",
         "skill-host-read",
         "skill-host-write",
         "skill-uninstall-apply",

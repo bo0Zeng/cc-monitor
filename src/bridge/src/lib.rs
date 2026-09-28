@@ -18,7 +18,6 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
-mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；〔MIG-3a〕看机器页那一问界面直问）
@@ -45,14 +44,13 @@ mod footprint_remote; // 〔RM1a〕「足迹」的远端那一栏：问那台后
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;
-mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
-                  // 🔴〔步 24e · 2026-09-20〕原生文件管理窗口（`设计/60 §4 戊`）。进程形态＝**同进程**、
-                  // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-                  // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
-                  // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-                  //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（〔F7c 收尾〕34 → 36，逐条住 gate.sh 那一格上方）。
-                  //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
-                  //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
+// 🔴〔步 24e · 2026-09-20〕原生文件管理窗口（`设计/60 §4 戊`）。进程形态＝**同进程**、
+// egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+// （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+// ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
+//   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（〔F7c 收尾〕34 → 36，逐条住 gate.sh 那一格上方）。
+//   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
+//   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
@@ -91,10 +89,9 @@ mod remote_write_registry; // devbench F10c：远端写面登记（接三张表�
 mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
 mod session_map;
 mod session_tap; // 〔TAP · V124〕本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
-mod shell_dialect; // AL1c（第四波 4B）：`设计/71 §4.4` 那组 shell 方言接口 —— POSIX 与 PowerShell 各一份实现，通用层零 shell 文本
-                   // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
-                   // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
-                   // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
+                 // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
+                 // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
+                 // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
 mod spawn_managed;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
@@ -1376,15 +1373,9 @@ pub fn run() {
             // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
             // 〔RL1 · US1〕起会话那一发注入哪个中转地址：转交那台后端的成品（`launch-endpoint`）＋ 远端用到才起。
             relay_endpoint_for_launch,
-            // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
-            // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
-            aliases_render,
-            aliases_read,
-            aliases_install,
-            // 〔AL1d〕别名块（`cc` / `cct` · `__ccm_bind`）与清单同一族命令面（`AL1d.md §2.1`）。
-            aliases_block_render,
-            aliases_block_install,
-            aliases_block_remove,
+            // 〔MIG-3a · 主会话 09-27 裁〕别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
+            //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
+            bound_terminal_count,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令〔SH1 · V136〕退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
@@ -1844,101 +1835,14 @@ async fn relay_endpoint_for_launch(
 //   账号 id 由后端推（`acct_core::apikey_account_id_of_dir`）。monitor 里从此没有明文 key 的具名绑定。
 //   `KH2C1` 前端那一侧的机检（它的旧名 `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕）照旧在 `accounts-section.vitest.ts`。
 
-// 〔AL2 · 第四波 4D〕别名一族六条都收 `origin`（`设计/71 §6` 那张图逐字 `call(origin, …)` · `01 §6.8`）：本机远端同一条命令，
-//   事实经那台后端（`user_files::BackendDoor{origin}`），规则与方言在 monitor 只一份；`dialect_promised` 挡表 B 没承诺的方言。
+// 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕别名一族六条（`aliases_render` / `_read` / `_install` / `aliases_block_*`〔散文墓碑〕）退役：
+//   规则 · 方言 · 围栏住那台机器的后端（`src/backend/assets/aliases/`），界面经 `chan.call(origin, "aliases-*")` 直问（`src/alias-reads.ts`）。
 
-/// 〔AL1〕第①跳：**纯** —— 清单 → 代码，一个字节都不写（`71 §6`）；`shell` 必给，不替人猜。
-/// 〔AL2〕`origin` 只决定撞名那一格查不查 `PATH`（远端不查）。
+/// 〔MIG-3a〕这台（monitor 所在那台）**已经跟 monitor 完成拉前握手的终端数**（PowerShell 别名块里 `__ccm_bind` 的产物）。
+/// 从前夹在 `aliases_read` 的成品里（`bound_terminals`）；它住本进程的 `BindRegistry`、不是那台后端盘上的事实 ⇒ 单独一问（⑬「拉前」）。
 #[tauri::command]
-fn aliases_render(
-    origin: crate::origin::Origin,
-    aliases: Vec<account_aliases::Alias>,
-    shell: shell_dialect::Shell,
-) -> Result<account_aliases::AliasRender, String> {
-    origin.route("aliases_render")?;
-    account_aliases::dialect_promised(&origin, shell)?;
-    Ok(account_aliases::render(&aliases, shell, &origin))
-}
-
-/// 〔AL1〕读回口：那台机器上那份别名文件 ＋ 启动文件候选（各带别名块的现状）＋ 握手终端数（`BindRegistry`，只本机有，远端恒 0）。
-/// 〔AL2〕事实全问那台后端（`files-home` / `files-peek` / `files-stat`）；`rc_path` = 人另指的一份（过围栏后并进候选）。
-#[tauri::command]
-async fn aliases_read(
-    origin: crate::origin::Origin,
-    shell: shell_dialect::Shell,
-    rc_path: Option<String>,
-    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<account_aliases::AliasListing, String> {
-    origin.route("aliases_read")?;
-    account_aliases::dialect_promised(&origin, shell)?;
-    let bound = if origin.is_local() {
-        u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX)
-    } else {
-        0
-    };
-    let door = user_files::BackendDoor::new(origin.clone());
-    account_aliases::read_via(&door, &origin, shell, rc_path.as_deref(), bound).await
-}
-
-/// 〔AL1〕第②跳：**唯一的副作用**，收清单不收代码（写的就是第①跳预览的那一份）；落盘经那台后端 `files-put`。
-/// 〔TL1〕`rc_path` 只查接没接上，不往里写（`71 §6.1`）。
-#[tauri::command]
-async fn aliases_install(
-    origin: crate::origin::Origin,
-    aliases: Vec<account_aliases::Alias>,
-    rc_path: Option<String>,
-    shell: shell_dialect::Shell,
-) -> Result<account_aliases::AliasInstallReport, String> {
-    origin.route("aliases_install")?;
-    account_aliases::dialect_promised(&origin, shell)?;
-    let door = user_files::BackendDoor::new(origin.clone());
-    account_aliases::install_in(&door, &origin, &aliases, rc_path.as_deref(), shell).await
-}
-
-/// 〔AL1d〕**别名块**第①跳：纯（「装进一份空文件会写成什么」），与装那一跳同一个 `plan_install`；方言由目标文件扩展名定。
-/// 〔AL2〕`origin` 只用来过 `dialect_promised`（远端 `.ps1` ⇒ 拒）。
-#[tauri::command]
-fn aliases_block_render(
-    origin: crate::origin::Origin,
-    rc_path: String,
-    with_cc: bool,
-) -> Result<String, String> {
-    origin.route("aliases_block_render")?;
-    let shell = shell_dialect::Shell::of_target(std::path::Path::new(&rc_path));
-    account_aliases::dialect_promised(&origin, shell)?;
-    profile_installer::render_block(shell, with_cc)
-}
-
-/// 〔AL1d〕**别名块**第②跳：装进人选的那份启动文件（幂等，整块替换）；home 问那台后端、围栏按 `origin` 分两层。
-#[tauri::command]
-async fn aliases_block_install(
-    origin: crate::origin::Origin,
-    rc_path: String,
-    with_cc: bool,
-) -> Result<(), String> {
-    origin.route("aliases_block_install")?;
-    let door = user_files::BackendDoor::new(origin.clone());
-    let home = user_files::Door::home(&door).await?;
-    let p = profile_installer::fence_on(&origin, &home, &rc_path)?;
-    let at = std::path::Path::new(&p);
-    account_aliases::dialect_promised(&origin, shell_dialect::Shell::of_target(at))?;
-    profile_installer::install_to_profile(&door, at, profile_installer::CC_FUNCTION_NAME, with_cc)
-        .await
-}
-
-/// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经那台后端写。
-#[tauri::command]
-async fn aliases_block_remove(
-    origin: crate::origin::Origin,
-    rc_path: String,
-) -> Result<(), String> {
-    origin.route("aliases_block_remove")?;
-    let door = user_files::BackendDoor::new(origin.clone());
-    let home = user_files::Door::home(&door).await?;
-    let p = profile_installer::fence_on(&origin, &home, &rc_path)?;
-    let at = std::path::Path::new(&p);
-    account_aliases::dialect_promised(&origin, shell_dialect::Shell::of_target(at))?;
-    profile_installer::uninstall_from_profile(&door, at).await
+fn bound_terminal_count(bind_state: tauri::State<'_, Arc<bind::BindRegistry>>) -> u32 {
+    u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX)
 }
 
 #[tauri::command]
@@ -2265,9 +2169,8 @@ async fn bring_remote_terminal_to_front(
 // === v1.7：PowerShell profile cc 集成 IPC ===
 //
 // 〔AL1d · 第四波 4B〕这里原来是「终端集成」那五条命令（`cc_integration_*`〔散文墓碑〕：状态 · 扫一份 · 预览 · 装 · 卸）
-// 与它们的三个出参类型。它们办的是**别名块**（两种方言都办：`profile_installer::plan_install` 按扩展名分），
-// 装进的是别名文件那一行同一批启动文件 ⇒ 并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`）：
-// 状态 ＋ 扫一份 → `aliases_read`（候选各带块的现状）· 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`。
+// 与它们的三个出参类型。它们办的是**别名块**，并进了别名同一族命令面（`调研/第四波记录/AL1d.md §2.1`）；
+// 〔MIG-3a〕那一族今天住那台机器的后端（`assets/aliases/`，帧命令 `aliases-*`）。
 // 「v1.7.0-1.7.1 装错位置」那一段遗留扫描随之删了 —— 每份候选都带块的现状，块装在哪几份照实说。
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时

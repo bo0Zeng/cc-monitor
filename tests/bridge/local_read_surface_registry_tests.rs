@@ -298,9 +298,10 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "cc-bus 钩子的安装位置",
         "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
     ),
-    // 〔AL2 · 第四波 4D〕这里原来有 `lib.rs::aliases_read` 一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
+    // 〔AL2 · 第四波 4D〕这里原来有 `aliases_read`〔散文墓碑〕一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
     //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。
-    // 〔RW1 · 第四波 09-24〕这里原来还有 `lib.rs::aliases_install` 一行（它自己 `home_dir()`、再交本进程落盘）。
+    // 〔RW1 · 第四波 09-24〕这里原来还有 `aliases_install`〔散文墓碑〕一行（它自己 `home_dir()`、再交本进程落盘）。
+    // 〔MIG-3a〕别名那一族整个进了那台后端（`aliases-*`）。
     //   写改走本机后端之后，home 由后端答（`user_files::Door::home`），这一条不再伸手进用户 home ⇒ 摘行。
     (
         "ccm_probe.rs",
@@ -365,7 +366,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "它不是「伸手拿东西」，是给那个窗口一个开始浏览的地方 —— \
              之后列哪个目录**由用户走到哪决定**，而列目录那一条是 \
              `filewin::source::list_local`（只读 `read_dir` ＋ `metadata`，不落盘）。\
-             ⚠ 与 profile 围栏（`profile_installer.rs::fence_on`）**不是同一类**：\
+             ⚠ 与 profile 围栏（〔MIG-3a〕今天是后端 `block.rs::fence`）**不是同一类**：\
              那一条拿 home 划界（围栏），这一条只是起点，**它不围任何东西** —— \
              也就是说「用户能在这个窗口里浏览到 home 之外」是设计如此，不是漏了围栏。\
              写侧归 `filewin::transfer`（〔F7c 09-24〕上传经通道：monitor 的传输台只写远端暂存区，\

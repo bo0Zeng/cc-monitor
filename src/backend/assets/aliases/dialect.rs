@@ -1,5 +1,8 @@
 //! 〔AL1c · 第四波 4B · 2026-09-24〕**shell 方言：`设计/71 §4.4` 那组平台接口，POSIX 与 PowerShell 各一份实现。**
 //!
+//! 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕从 monitor `shell_dialect.rs` 搬来：别名规则与方言住**那台机器的后端**，
+//! 「这台说不说 PowerShell」「`PATH` 上有没有同名程序」「文档目录在哪」从此都是**这台自己**的事实（不再是 monitor 那台的）。
+//!
 //! # 判准（`71 §4.1` · 条 33）
 //!
 //! ```text
@@ -26,10 +29,10 @@
 //! # 🔴 PowerShell 那一臂的诚实边界
 //!
 //! 本机没有 `pwsh` / `powershell`，Win11 虚拟机不许碰（`99 §2 ⑤` 未拍）⇒ PowerShell 文本在这里**一次都没被
-//! PowerShell 解析过**。它买到的只有：函数体逐字照 `scripts/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
+//! PowerShell 解析过**。它买到的只有：函数体逐字照 `src/shared/cc.ps1.tpl` 里那个 `cc` 的形状（`K-R132` 真机上
 //! 那一形 `parse-errors=0`）· 黄金串 · 与 POSIX 臂同契约的对拍（同一份清单两边渲染再各自读回，得回同一份清单）。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
 /// 「这是哪种 shell 的方言」—— **唯一一个**回答这一问的枚举。
@@ -37,10 +40,8 @@ use std::path::{Path, PathBuf};
 /// 〔AL1c〕它取代了 `profile_installer` 里那个只给别名块用的方言枚举（那一族的旧名见本仓 `git log`）：
 /// 别名文件、别名块、source 那一行，三件事问的是同一个问题，不许有两个枚举各答一半。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "lowercase")]
-pub enum Shell {
+pub(crate) enum Shell {
     /// POSIX sh（bash / zsh 都 source 得了；fish 不行）。
     Posix,
     /// PowerShell（5.1 与 7 同一种写法）。
@@ -53,7 +54,7 @@ impl Shell {
     ///
     /// ⚠ 为什么按扩展名而不是按 `cfg!(windows)`：**跑在哪台机器上**与**这份文件是什么**是两件事。
     /// 用户可以指任意一份 home 内的文件，而 PowerShell 的 profile 恒是 `.ps1`（`$PROFILE` 的四种取值全是）。
-    pub fn of_target(path: &Path) -> Shell {
+    pub(crate) fn of_target(path: &Path) -> Shell {
         match path.extension().and_then(|e| e.to_str()) {
             Some(ext) if ext.eq_ignore_ascii_case("ps1") => Shell::PowerShell,
             _ => Shell::Posix,
@@ -61,7 +62,7 @@ impl Shell {
     }
 
     /// 这种方言的那份实现。
-    pub fn dialect(self) -> &'static dyn ShellDialect {
+    pub(crate) fn dialect(self) -> &'static dyn ShellDialect {
         match self {
             Shell::Posix => &Posix,
             Shell::PowerShell => &PowerShell,
@@ -70,7 +71,7 @@ impl Shell {
 }
 
 /// 解析回来的一条：`(名字, 参数)`，或者一行认不出的原文 ＋ 原因（**不静默丢**）。
-pub type Parsed = Result<(String, Vec<String>), String>;
+pub(crate) type Parsed = Result<(String, Vec<String>), String>;
 
 /// 〔AL2 · 第四波 4D〕一份启动文件候选：**路径 ＋ 盘上不在时列不列**（「列不列不存在的」是方言的读法，`71 §4.4` 表第一行）。
 ///
@@ -78,7 +79,7 @@ pub type Parsed = Result<(String, Vec<String>), String>;
 /// （`account_aliases::rc_candidates_via` 经 `user_files::Door` 问 `files-peek` / `files-stat`）——
 /// 从前这里自己 `is_file()` / `is_dir()`，量的是 monitor 这台的盘，拿去说远端是错的（`第四波记录/W5-ALIAS.md §2.2`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StartupCandidate {
+pub(crate) struct StartupCandidate {
     /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
     pub path: String,
     pub listed: Listed,
@@ -86,7 +87,7 @@ pub struct StartupCandidate {
 
 /// 一份候选**不在盘上时**列不列。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Listed {
+pub(crate) enum Listed {
     /// 不在就不列（POSIX 那四份：只列真有的）。
     IfFileExists,
     /// 不在也列（`$PROFILE` 常常要装的时候才建）。
@@ -97,7 +98,7 @@ pub enum Listed {
 
 /// 🔴 **`71 §4.4` 那组接口。** 每个方法都只回答「这个 shell 里怎么写 / 怎么读 / 文件在哪」；
 /// 任何「合不合格」的判断都不许写进实现里（那是通用层的，两边一模一样）。
-pub trait ShellDialect: Sync {
+pub(crate) trait ShellDialect: Sync {
     // 〔TL1 · 4C〕墓碑：这里从前有一格「围栏块的排版」—— 唯一的读者是代装 rc 那一行的那一跳（退役，`71 §6.1`）。
     //   别名块那一侧的排版按目标文件扩展名走 `profile_installer` 那一份，不经这里。
 
@@ -145,9 +146,9 @@ pub trait ShellDialect: Sync {
 
     /// 这个名字是不是已经被占了（**只出声、不拦**）。报出来的话里带住址。
     ///
-    /// 〔AL2〕`look_on_path`：要不要查 `PATH` 上的同名程序。查的是 **monitor 这个进程**的 `PATH` ⇒ 只有那台机器就是
-    /// monitor 所在这台时才说得了（调用方按 `origin` 给）；远端给 `false`，只查自带别名块（`第四波记录/W5-ALIAS.md §2.2`）。
-    fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String>;
+    /// 〔MIG-3a〕`PATH` 那一格查的是**这台后端进程**的 `PATH` —— 规则住在那台机器的后端里，查的就是那台自己
+    /// （从前住 monitor 时远端只能不查，〔AL2〕那一格 `look_on_path`〔散文墓碑〕随之退役）。
+    fn name_taken(&self, name: &str) -> Option<String>;
 
     /// 一个参数能不能**原样**到达 `ccm`（传参那一跳这个 shell 会不会改坏它）。
     fn arg_is_passable(&self, word: &str) -> Result<(), String>;
@@ -157,25 +158,23 @@ pub trait ShellDialect: Sync {
 const UTF8_BOM: &str = "\u{feff}";
 
 /// 读进来的那一份：把 BOM 剥掉再交给任何**判内容**的东西（两种方言都剥 —— 读的一侧宽，写的一侧严）。
-pub fn strip_bom(s: &str) -> &str {
+pub(crate) fn strip_bom(s: &str) -> &str {
     s.strip_prefix(UTF8_BOM).unwrap_or(s)
 }
 
 /// `PATH` 上有没有一个叫这个名字的程序（带上这些扩展名之一；空串 = 不带扩展名）。
 ///
-/// ⚠ **诚实边界**：查的是 monitor 这个进程的 `PATH`，不是用户登录 shell 的 `PATH` ⇒ 会漏报，不会误报成「有」。
+/// ⚠ **诚实边界**：查的是这台后端进程的 `PATH`，不是用户登录 shell 的 `PATH` ⇒ 会漏报，不会误报成「有」。
 /// PowerShell 内建别名：小写名字 → 它指向的命令。问不到 ⇒ `Err(原因)`。
 pub(crate) type PsAliases = Result<std::collections::BTreeMap<String, String>, String>;
 
-/// 本机那一份（起一次、进程内缓存；非 Windows 上没有 PowerShell 要问 ⇒ 空表）。
+/// 这台那一份（起一次、进程内缓存；这台没有 PowerShell ⇒ 说问不到，不当成「没撞」）。
 fn ps_builtin_aliases() -> &'static PsAliases {
     static ONE: std::sync::OnceLock<PsAliases> = std::sync::OnceLock::new();
     ONE.get_or_init(ask_get_alias)
 }
 
 /// `Get-Alias` 那一段的输出（每行 `名字<TAB>指向`）→ 表。名字按 PowerShell 的口径不分大小写（存小写）。
-// 生产调用方只在 `cfg(windows)` 的 `ask_get_alias` 里；非 Windows 构建只有判据用它（同 SH1 先例，不进 deadcode 那个数）。
-#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn parse_alias_listing(text: &str) -> std::collections::BTreeMap<String, String> {
     text.lines()
         .filter_map(|l| l.trim_end().split_once('\t'))
@@ -200,27 +199,19 @@ pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<Stri
     }
 }
 
-/// 起一次 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`：只读、不吃任何用户输入。
-/// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。
-#[cfg(windows)]
+/// `Get-Alias` 那一段：只读、不吃任何用户输入。
+const GET_ALIAS_SCRIPT: &str = "Get-Alias | ForEach-Object { $_.Name + [char]9 + $_.Definition }";
+
+/// 起一次 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
+/// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。这台没有 PowerShell ⇒ `Err`（说问不到）。
 fn ask_get_alias() -> PsAliases {
-    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
-    let mut cmd = std::process::Command::new("powershell.exe");
-    cmd.args([
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "Get-Alias | ForEach-Object { $_.Name + [char]9 + $_.Definition }",
-    ])
-    .stdout(std::process::Stdio::piped());
-    let out = spawn_managed_cmd(
-        &mut cmd,
-        ConsolePolicy::Hidden,
-        Lifetime::JobKillOnClose,
-        StderrSink::Captured,
-    )
-    .and_then(|c| c.wait_with_output())
-    .map_err(|e| e.to_string())?;
+    let mut cmd = crate::platform::shell::powershell_readonly(GET_ALIAS_SCRIPT)
+        .ok_or_else(|| copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
+    let out = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| e.to_string())?;
     if !out.status.success() {
         let why = format!(
             "exit {:?}: {}",
@@ -231,11 +222,6 @@ fn ask_get_alias() -> PsAliases {
         return Err(why);
     }
     Ok(parse_alias_listing(&String::from_utf8_lossy(&out.stdout)))
-}
-
-#[cfg(not(windows))]
-fn ask_get_alias() -> PsAliases {
-    Ok(std::collections::BTreeMap::new())
 }
 
 fn on_path(name: &str, exts: &[&str]) -> Option<PathBuf> {
@@ -269,7 +255,7 @@ fn portable_name(name: &str) -> bool {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// POSIX sh 那一份实现。
-pub struct Posix;
+pub(crate) struct Posix;
 
 /// POSIX 那一侧「source 那一行加进哪份」的候选（**只列真实存在的那几份**）。
 ///
@@ -370,7 +356,7 @@ impl Posix {
         };
         let mut words = Self::split_words(lead)?.into_iter();
         let head = words.next().unwrap_or_default();
-        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        let word = crate::control::ccm::SUBCOMMAND_WORD;
         if head != word && !head.starts_with("\"${CCM:-") {
             return Err(copy_text(
                 "rsShellDialect.posix.notCcm",
@@ -383,7 +369,10 @@ impl Posix {
 
 /// 〔V151〕别名那条 argv 按最后一个 `--` 切成两半（没有 ⇒ 右边 `None`）。两种方言渲染共用。
 fn split_last_end(argv: &[String]) -> (&[String], Option<&[String]>) {
-    match argv.iter().rposition(|w| w == "--") {
+    match argv
+        .iter()
+        .rposition(|w| w == crate::control::ccm::argv::flag::END)
+    {
         Some(k) => (&argv[..k], Some(&argv[k + 1..])),
         None => (argv, None),
     }
@@ -392,7 +381,7 @@ fn split_last_end(argv: &[String]) -> (&[String], Option<&[String]>) {
 /// [`split_last_end`] 的逆：两种方言读回共用。
 fn join_last_end(mut left: Vec<String>, right: Option<Vec<String>>) -> Vec<String> {
     if let Some(r) = right {
-        left.push("--".into());
+        left.push(crate::control::ccm::argv::flag::END.into());
         left.extend(r);
     }
     left
@@ -411,7 +400,7 @@ impl ShellDialect for Posix {
         POSIX_RC_CANDIDATES
             .iter()
             .map(|n| StartupCandidate {
-                path: crate::user_files::join_under(home, n),
+                path: crate::assets::door::join_under(home, n),
                 listed: Listed::IfFileExists,
             })
             .collect()
@@ -445,7 +434,7 @@ impl ShellDialect for Posix {
     /// `名字() { ccm <参数…> "$@"; }`。`"$@"` 必须在最后 —— 那就是「参数附加器」的全部含义：
     /// 调用时再给的参数接在后面、后者胜。
     fn render_alias(&self, name: &str, argv: &[String]) -> String {
-        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        let word = crate::control::ccm::SUBCOMMAND_WORD;
         let (left, right) = split_last_end(argv);
         let mut out = format!("{name}{POSIX_FN_HEAD}{word}");
         for w in left {
@@ -485,15 +474,12 @@ impl ShellDialect for Posix {
     ///    （`profile_installer::builtin_alias_names`），不在这里抄一份名字清单；
     /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器（`/usr/bin/cc`），
     ///    而自带那份别名只检查「有没有同名**函数**」、不检查程序。
-    fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String> {
-        if crate::profile_installer::builtin_alias_names().contains(&name) {
+    fn name_taken(&self, name: &str) -> Option<String> {
+        if super::block::builtin_alias_names().contains(&name) {
             return Some(copy_text(
                 "rsShellDialect.posix.nameTakenBuiltin",
                 &[("name", &name.to_string())],
             ));
-        }
-        if !look_on_path {
-            return None;
         }
         on_path(name, &[""]).map(|cand| {
             copy_text(
@@ -517,7 +503,7 @@ impl ShellDialect for Posix {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// PowerShell 那一份实现（5.1 与 7 同一种写法）。
-pub struct PowerShell;
+pub(crate) struct PowerShell;
 
 /// PowerShell 那份别名文件在 home 下的相对路径（交给后端的 `rel` 用 `/`；PowerShell 两种分隔符都认）。
 const PS_ALIAS_FILE_REL: &str = ".cc-monitor/aliases.ps1";
@@ -526,7 +512,7 @@ const PS_ALIAS_FILE_REL: &str = ".cc-monitor/aliases.ps1";
 /// （它的词法器逐字如此）⇒ 值里出现任何一个都得双写，否则串在那里就断了。
 const PS_QUOTES: &[char] = &['\'', '\u{2018}', '\u{2019}', '\u{201a}', '\u{201b}'];
 
-/// 函数体里那几行固定的（与 `scripts/cc.ps1.tpl` 里的 `cc` 逐字同形：那一形在 `K-R132` 真机上 `parse-errors=0`）。
+/// 函数体里那几行固定的（与 `src/shared/cc.ps1.tpl` 里的 `cc` 逐字同形：那一形在 `K-R132` 真机上 `parse-errors=0`）。
 const PS_PARAM_OPEN: &str = "    [CmdletBinding()] param(";
 const PS_PARAM_ARG: &str =
     "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs";
@@ -566,9 +552,7 @@ impl PowerShell {
         let mut out = Vec::new();
         let mut it = s.chars().peekable();
         loop {
-            while it.peek() == Some(&' ') {
-                it.next();
-            }
+            while it.next_if_eq(&' ').is_some() {}
             let Some(open) = it.next() else { break };
             if !PS_QUOTES.contains(&open) {
                 return Err(copy_text("rsShellDialect.ps.notQuoted", &[]));
@@ -578,8 +562,7 @@ impl PowerShell {
                 match it.next() {
                     None => return Err(copy_text("rsShellDialect.quote.unbalanced", &[])),
                     Some(c) if PS_QUOTES.contains(&c) => {
-                        if it.peek() == Some(&c) {
-                            it.next();
+                        if it.next_if_eq(&c).is_some() {
                             cur.push(c);
                         } else {
                             break;
@@ -588,7 +571,7 @@ impl PowerShell {
                     Some(c) => cur.push(c),
                 }
             }
-            if !matches!(it.peek(), None | Some(' ')) {
+            if it.clone().next().is_some_and(|x| x != ' ') {
                 return Err(copy_text("rsShellDialect.ps.missingSpace", &[]));
             }
             out.push(cur);
@@ -598,7 +581,7 @@ impl PowerShell {
 
     /// `& ccm '…' $RemainingArgs['--' '…']` → 参数（〔V151〕`$RemainingArgs` 是分界：左边交 claude，右边 `'--'` 之后归 ccm）。
     fn parse_call(line: &str) -> Result<Vec<String>, String> {
-        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        let word = crate::control::ccm::SUBCOMMAND_WORD;
         let head = format!("    & {word}");
         let bad = || copy_text("rsShellDialect.ps.badCall", &[("word", &word.to_string())]);
         let body = line.strip_prefix(&head).ok_or_else(bad)?;
@@ -629,18 +612,17 @@ impl ShellDialect for PowerShell {
     /// 🔴 〔AL1d · 第四波 4B〕**全仓只有这里答「`$PROFILE` 在哪」**（`调研/第四波记录/AL1d.md §2.3`）：
     /// 从前另有四处认法（终端集成的两份发现表、TS 自己换文件名推 AllHosts、数据页探备份目录那张表），
     /// 其中一份还把 `profile.ps1` 判成「装错了的遗留」而这里把它列成合法候选 —— 同一个事实三种说法。
-    /// 判据 `shell_dialect_tests.rs::the_profile_location_has_exactly_one_home` 数着这几个文件名 / 目录名只在这里出现。
+    /// 判据 `dialect_tests.rs::the_profile_location_has_exactly_one_home` 数着这几个文件名 / 目录名只在这里出现。
     ///
     /// 「文档」目录优先问系统（OneDrive 会把它挪走），问到的不在这个 home 底下时退回 `home/Documents`
     /// （判据拿临时目录当 home，结构上碰不到真实家目录）。
     ///
     /// 〔AL2 · 第四波 4D〕PS 7 那两份「目录在才列」从前在这里 `is_dir()`，今天交给调用方问那台后端（[`Listed::IfDirExists`]）。
-    /// ⚠ **诚实边界**：「文档目录在哪」仍是 monitor 这个进程问系统（`dirs::document_dir()`），不是问后端 ——
-    /// 这一臂今天只有本机（远端 × PowerShell 在命令口显式拒，`account_aliases::dialect_promised` · `01 §6.7b` 表 B），
-    /// 本机 = monitor 所在那台；路径按本机的写法拼（`Path::join`）也是这个缘故。
+    /// 〔MIG-3a〕「文档目录在哪」是这台后端问自己的系统（`platform::paths::documents_dir`）—— 这一臂只在说 PowerShell 的
+    /// 那台上走得到（不在 Windows 的后端在命令口显式拒，[`super::dialect_here`] · 主会话 09-27 裁），路径按这台的写法拼（`Path::join`）。
     fn startup_candidates(&self, home: &str) -> Vec<StartupCandidate> {
         let home = Path::new(home);
-        let docs = dirs::document_dir()
+        let docs = crate::platform::paths::documents_dir()
             .filter(|d| d.starts_with(home))
             .unwrap_or_else(|| home.join("Documents"));
         let mut out = Vec::new();
@@ -682,9 +664,9 @@ impl ShellDialect for PowerShell {
         copy_text("rsShellDialect.ps.header", &[])
     }
 
-    /// 与 `scripts/cc.ps1.tpl` 里的 `function cc` 逐字同形（只多了预置参数，握手那一行带守卫）。
+    /// 与 `src/shared/cc.ps1.tpl` 里的 `function cc` 逐字同形（只多了预置参数，握手那一行带守卫）。
     fn render_alias(&self, name: &str, argv: &[String]) -> String {
-        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        let word = crate::control::ccm::SUBCOMMAND_WORD;
         let (left, right) = split_last_end(argv);
         let mut call = format!("    & {word}");
         for w in left {
@@ -784,17 +766,16 @@ impl ShellDialect for PowerShell {
         a.eq_ignore_ascii_case(b)
     }
 
-    /// ① 终端集成块（`scripts/cc.ps1.tpl`）里定义的函数（`__ccm_bind` ＋ 装了 wrapper 时的 `cc`）——
+    /// ① 终端集成块（`src/shared/cc.ps1.tpl`）里定义的函数（`__ccm_bind` ＋ 装了 wrapper 时的 `cc`）——
     ///    问的是那份模板本身（`profile_installer::render_cc_code` 渲染出来的那一份），不抄名单；
     /// ② `PATH` 上的同名程序（按 PowerShell 认的那几种扩展名）。函数的优先级高于外部程序 ⇒ 你这条会赢。
     ///
     /// ③ 〔FIX · `设计/71 §8` 第 8 条 · WIN2 #4 读数〕PowerShell 的**内建别名**（`ls` / `cd` / `cat` …）优先级**高于**函数 ——
-    /// 撞上它们的别名定义了也敲不到。只在本机（`look_on_path`）问：起一次 PowerShell 跑 `Get-Alias`、进程内缓存
+    /// 撞上它们的别名定义了也敲不到。问这台：起一次 PowerShell 跑 `Get-Alias`、进程内缓存
     /// （[`ps_builtin_aliases`]），不编一份清单；问不到就说问不到。
-    fn name_taken(&self, name: &str, look_on_path: bool) -> Option<String> {
+    fn name_taken(&self, name: &str) -> Option<String> {
         // 只问模板里定义了哪几个函数 —— 与数据目录无关，喂一个占位目录。
-        let block =
-            crate::profile_installer::render_cc_code("cc", true, std::path::Path::new("/_"));
+        let block = super::block::render_cc_code("cc", true, std::path::Path::new("/_"));
         let ours = block.lines().any(|l| {
             l.trim_start()
                 .strip_prefix("function ")
@@ -807,11 +788,11 @@ impl ShellDialect for PowerShell {
                 &[("name", &name.to_string())],
             ));
         }
-        if !look_on_path {
-            return None;
-        }
-        if let Some(note) = builtin_alias_note(name, ps_builtin_aliases()) {
-            return Some(note);
+        // 〔MIG-3a〕这台不说 PowerShell ⇒ 没有内建别名可撞（这一臂在命令口已被 `dialect_here` 拒，判据直调方言时走到这里）。
+        if crate::platform::shell::speaks_powershell() {
+            if let Some(note) = builtin_alias_note(name, ps_builtin_aliases()) {
+                return Some(note);
+            }
         }
         on_path(name, &["exe", "cmd", "bat", "ps1", "com"]).map(|cand| {
             copy_text(
@@ -842,5 +823,5 @@ impl ShellDialect for PowerShell {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/shell_dialect_tests.rs"]
+#[path = "../../../../tests/backend/assets/aliases/dialect_tests.rs"]
 mod tests;

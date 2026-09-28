@@ -6044,11 +6044,6 @@
       "zh": "✗ {path}：还没有别名块（{blockWhat}）",
       "args": ["path", "blockWhat"]
     },
-    "machineAliases.remote.pathUnchecked": {
-      "kind": "body",
-      "zh": "撞名只核了自带别名块里的名字；那台机器 PATH 上的同名程序没查。",
-      "args": []
-    },
     "machineAliases.rcStatus.unreadable": {
       "kind": "error",
       "zh": "⚠ {path}：这台机器的后端读不了它（{why}）",
@@ -12702,11 +12697,6 @@
       "zh": "读不了 {path}：{e}",
       "args": ["path", "e"]
     },
-    "rsAccountAliases.dialect.notPromised": {
-      "kind": "error",
-      "zh": "{machine} 上不写 {shell} 写法的别名：远端机器今天只支持 Linux（bash / zsh 的写法）",
-      "args": ["machine", "shell"]
-    },
     "rsAccountAliases.render.duplicate": {
       "kind": "body",
       "zh": "同一个名字出现了两次 —— 后一条会盖掉前一条",
@@ -13208,11 +13198,6 @@
       "kind": "error",
       "zh": "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。先在设置里把这台机器的后端起起来再点一次",
       "args": ["who", "why"]
-    },
-    "rsUserFiles.rel.outsideHome": {
-      "kind": "error",
-      "zh": "{abs} 不在 home（{home}）底下 —— 只改 home 里的文件",
-      "args": ["abs", "home"]
     },
     "rsUserFiles.edit.gaveUp": {
       "kind": "error",
@@ -19133,6 +19118,26 @@
     "skillInboxReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂那台后端回的收件箱内容，两端版本对不上。",
+      "args": []
+    },
+    "rsAccountAliases.dialect.notHere": {
+      "kind": "error",
+      "zh": "这台机器（{machine}）不是 Windows，不写 PowerShell 写法的别名：这里只写 POSIX（bash / zsh）的写法",
+      "args": ["machine"]
+    },
+    "rsShellDialect.ps.noPowerShellHere": {
+      "kind": "error",
+      "zh": "这台机器上没有 PowerShell，问不了它的内建别名",
+      "args": []
+    },
+    "aliasReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的别名内容，两端版本对不上。",
+      "args": []
+    },
+    "rsProfileInstaller.preview.what": {
+      "kind": "body",
+      "zh": "预览",
       "args": []
     }
   }

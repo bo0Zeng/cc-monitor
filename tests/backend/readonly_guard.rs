@@ -2672,6 +2672,17 @@ mod spawn_registry {
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
+        (
+            "platform/shell.rs",
+            "powershell.exe",
+            "〔MIG-3a · `设计/99 §2.1 ⑬`〕别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
+             `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到（`71 §8` 第 8 条）。从 monitor `shell_dialect.rs` 搬来：\
+             规则进了那台后端，问的是**那台自己**的 PowerShell。**只读**，只在说 PowerShell 的那台（Windows）上起，\
+             进程内缓存一次。唯一调用方 `assets/aliases/dialect.rs::ask_get_alias`。",
+            "缩性质",
+            "有别的办法读到那台 PowerShell 的内建别名表（不起进程）的那天摘掉。\
+             ⚠ 在那之前**不许**往这一处口底下加第二种用途（它是只读的固定脚本口）。",
+        ),
         // 〔DEL〕`relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里（V139），那一处起法随之删。
         (
             "control/resident.rs",
@@ -2797,7 +2808,8 @@ mod spawn_registry {
         //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
         // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
         // 〔DEL〕**14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
-        const SPAWN_SITES_TODAY: usize = 13;
+        // 〔MIG-3a〕**13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
+        const SPAWN_SITES_TODAY: usize = 14;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

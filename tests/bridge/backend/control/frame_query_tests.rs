@@ -428,6 +428,30 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `assets-sync-reads.ts::decodeAssetsSynced` 按形状收",
     ),
     (
+        "aliases-block-install",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-block-remove",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-block-render",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-install",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-read",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
+        "aliases-render",
+        "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
+    ),
+    (
         "skill-host-list",
         "〔MIG-3a〕新帧命令：收件箱那一面（声明 ＋ 三道围栏住后端适配层 `skill_host.rs`），monitor 那三条 Tauri 命令删了",
     ),

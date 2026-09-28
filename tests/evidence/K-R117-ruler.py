@@ -145,16 +145,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   逐字写着「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
     #   归处不变（②）：第①跳 `aliases_render` 就是「生成那段让用户自己填」；第②跳写的是 monitor
     #   自己那份别名文件 ＋ 用户**自己选**的 rc 里一行 source，与从前那条同性质。
-    ("alias.manage", (B2, "K33+K34+设计/71",
-                      "「有需要动用户 alias 的就生成命令让用户自己填」：渲染（纯）→ 手贴或写入；"
-                      "先例 `accounts-section.ts::renderRcSnippet`")),
-    # 〔DP1 · 第四波〕别名块那三格（从 ① 挪来，旧名 `ccm.install` / `ccm.uninstall` / `ccm.install-ui`）：
-    #   `设计/71 §5`「② 别名：清单编辑 → 预览（纯）→ 写入 / 复制待贴」—— 别名块就是写入那一跳的一种落法，不是装后端。
-    ("alias.block-install", (B2, "K33+K34+设计/71 §5",
-                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（`aliases_block_install`，带 origin，"
-                             "本机远端同一条）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
-    ("alias.block-remove", (B2, "K33+K34+设计/71 §5", "同上，卸那一侧")),
-    ("alias.block-preview", (B2, "K33+K34+设计/71 §5", "装别名块之前的预览（纯渲染，不写盘）")),
+    # 〔MIG-3a · 主会话 09-27 裁〕`alias.manage` · `alias.block-install` / `-remove` / `-preview` 四项摘了：别名规则 · 方言 · 围栏
+    #   进了那台后端（帧命令 `aliases-*`），界面经通道直问，不再是 Tauri 命令（同 `skill.inbox` 那一次）。
     # 〔MIG-3a〕`acct-iso.shellinit` 摘了：rc 片段那一问界面直问那台后端（围栏在那边校验），不再是 Tauri 命令。
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
     # 〔MIG-3a · `99 §2.1 ⑬`〕`mcp.write` / `mcp.remove` / `mcp.sync` 三项摘了：D 组 MCP 的计算与写进了那台后端
@@ -311,9 +303,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
         #   〔DP1〕能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
         #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
-        "aliases_block_install",
-        "aliases_block_remove",
-        "aliases_block_render",
+        # 〔MIG-3a〕`aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
         # 〔AL1d〕`cc_integration_install` / `_preview` / `_scan_path` / `_status` / `_uninstall` 五条退役：
         #   装 / 卸 / 预览接给上面三条；状态与扫一份并进 `aliases_read`（它归 S4，能力 `alias.manage`）。
         "ccm_user_path_add",
@@ -346,9 +336,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S4", ("②生成 rc 片段", (
         # 〔AL1 · 2026-09-24〕`write_account_aliases` 退役、拆成两跳 ＋ 读回口（`设计/71 §12.6`）。
         # 本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（本路），改表是跟上真相。
-        "aliases_install",
-        "aliases_read",
-        "aliases_render",
+        # 〔MIG-3a · 主会话 09-27 裁〕`aliases_install` / `_read` / `_render` 三条摘了（别名进了那台后端，`aliases-*`）⇒ 本组今天零条。
         # 〔MIG-3a〕`acct_iso_shellinit` 摘了（rc 片段那一问进了后端出成品、界面直问）。
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。
@@ -425,8 +413,9 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
             "（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条**注释里的提名**"
             "算成了落点，见 `§S5d` 第二档 —— 那一半仍然成立）")),
-    ("S4", (("src/settings/machine-aliases.ts",),
-            "〔MIG-3a · 09-28〕**2 → 1**：`src/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
+    ("S4", ((),
+            "〔MIG-3a · 09-28 · 主会话 09-27 裁〕**1 → 0**：`src/settings/machine-aliases.ts` 那几处（`aliases_*`）改经通道问那台后端，"
+            "S4 这一组没有 Tauri 命令了。〔MIG-3a · 09-28〕**2 → 1**：`src/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
             "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
             "`src/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
@@ -572,11 +561,12 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 #
 # key = "文件::函数"（与 `claims()` 印出来的住址同形）。
 CLAIMS_NON_COMMAND_SYMBOLS = {
-    "profile_installer.rs::install_to_profile":
-        "② 那一族的**落盘实现**，本来就不是 Tauri 命令（它住 `WRITE_SITES`，"
-        "归档在 `SITE_ARCHIVE`）—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
-    "profile_installer.rs::uninstall_from_profile":
-        "同上，摘那一侧",
+    # 〔MIG-3a · 主会话 09-27 裁〕别名块的落盘实现随别名进了那台后端（`src/backend/assets/aliases/block.rs`）。
+    "block.rs::install_to_profile":
+        "② 那一族的**落盘实现**，本来就不是 Tauri 命令（那台后端帧命令 `aliases-block-install` 的本体）"
+        "—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
+    "block.rs::uninstall_from_profile":
+        "同上，摘那一侧（`aliases-block-remove`）",
     # 〔TL1 · 4C〕全景小程序进 `tool_registry::TOOLS`（`id: "panorama"`）时它的装口登记进对拍表。
     # 〔MIG-3a · `99 §2.1 ⑬`〕`project-mcp` 的装 / 卸口进了那台后端：帧命令 `mcp-server-put` / `-remove` 的本体。
     "assets/mcp_edit.rs::answer_put":

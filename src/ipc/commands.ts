@@ -56,11 +56,6 @@ import type {
   PayloadRenderRequest,
 } from "../launch-cli-wire.ts";
 
-import type { Alias } from "../generated/Alias";
-import type { AliasInstallReport } from "../generated/AliasInstallReport";
-import type { AliasListing } from "../generated/AliasListing";
-import type { AliasRender } from "../generated/AliasRender";
-import type { Shell } from "../generated/Shell";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { BranchResult } from "../generated/BranchResult";
@@ -207,43 +202,9 @@ export const commands = {
   //   写 key 改走通道 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），交那台机器的后端；`KH2C1` 那一条照旧成立 ——
   //   前端交 `configDir`，账号 id 由后端按全仓唯一那份规则（`acct_core::apikey_account_id_of_dir`）推。
 
-  /**
-   * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
-   * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
-   */
-  // 〔AL1c〕`shell` 必给：同一份清单渲染 / 读 / 写成哪种 shell 的方言（`71 §4.4`），不留缺省（缺了就是替人猜）。
-  // 〔AL2 · 第四波 4D〕六条都带 `origin`（本机远端同一条命令，`设计/71 §6`）；远端那两条装 / 卸别名块并进 `aliases_block_*`。
-  aliases_render: (args: { origin: Origin; aliases: Alias[]; shell: Shell }) =>
-    invoke<AliasRender>("aliases_render", args),
-
-  /**
-   * 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。
-   * 〔AL1d〕启动文件候选各带别名块的现状 ＋ 完成拉前握手的终端数；`rcPath` = 人另指的一份（过围栏后并进候选）。
-   */
-  aliases_read: (args: { origin: Origin; shell: Shell; rcPath?: string | null }) =>
-    invoke<AliasListing>("aliases_read", args),
-
-  /**
-   * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
-   * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
-   */
-  aliases_install: (args: { origin: Origin; aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
-    invoke<AliasInstallReport>("aliases_install", args),
-
-  /**
-   * 〔AL1d · 第四波 4B〕**别名块**（`cc` / `cct` · `__ccm_bind`）第①跳：纯 —— 块 → 代码（装进一份空文件会写成什么）。
-   * 两种方言都答，方言由 `rcPath` 那份文件的扩展名定（后端判，与装那一跳同一个判法）；`withCc` 只对 PowerShell 有意义。
-   */
-  aliases_block_render: (args: { origin: Origin; rcPath: string; withCc: boolean }) =>
-    invoke<string>("aliases_block_render", args),
-
-  /** 〔AL1d〕别名块装进人选的那份启动文件（方言按那份文件的扩展名定）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  aliases_block_install: (args: { origin: Origin; rcPath: string; withCc: boolean }) =>
-    invoke<void>("aliases_block_install", args),
-
-  /** 〔AL1d〕别名块卸掉（整块删，块外一个字节不动）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  aliases_block_remove: (args: { origin: Origin; rcPath: string }) =>
-    invoke<void>("aliases_block_remove", args),
+  // 〔MIG-3a · 主会话 09-27 裁〕别名六条（`aliases_*`〔散文墓碑〕）退役：规则 · 方言 · 围栏进了那台后端，界面经通道直问（`src/alias-reads.ts`）。
+  /** 〔MIG-3a〕这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`，从前夹在别名读回口里）。 */
+  bound_terminal_count: () => invoke<number>("bound_terminal_count"),
 
   /**
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。

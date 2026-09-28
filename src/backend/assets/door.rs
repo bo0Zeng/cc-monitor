@@ -39,12 +39,6 @@ impl Refused {
             Refused::Stale(s) | Refused::Peer { said: s, .. } => s,
         }
     }
-    pub(crate) fn code(&self) -> &str {
-        match self {
-            Refused::Stale(_) => "stale",
-            Refused::Peer { code, .. } => code,
-        }
-    }
 }
 
 /// 这台后端的文件管理面：一条 `files-*` 帧命令 → 它的应答。生产 = `inbound.rs::LocalFiles`；判据用临时目录上的同一份。
@@ -193,7 +187,17 @@ pub(crate) fn edit(
 ) -> Result<Edited, String> {
     let mut last = String::new();
     for _ in 0..EDIT_ATTEMPTS {
-        let got = peek(d, root, rel)?;
+        let got = match peek(d, root, rel) {
+            Ok(p) => p,
+            // 〔MIG-3a〕`files-peek` 先解父目录：父目录还不在时它报错 —— 而那一形就是「这份文件不在」。
+            //   要逐级补目录（`parents`）的那一种写，这时按「不存在」算（`$PROFILE` 所在目录常常要装的时候才建）；
+            //   父目录在、却读不了 ⇒ 原话交出去。
+            Err(_) if parents && parent_absent(d, root, rel)? => Peeked {
+                path: join_under(root, rel),
+                text: None,
+            },
+            Err(said) => return Err(said),
+        };
         let Some(next) = plan(got.text.as_deref())? else {
             return Ok(Edited::Unchanged);
         };
@@ -211,6 +215,16 @@ pub(crate) fn edit(
         "beAssets.door.editGaveUp",
         &[("last", &last), ("attempts", &EDIT_ATTEMPTS.to_string())],
     ))
+}
+
+/// `root/rel` 的父目录是不是确定不在（`files-stat` 答「读不到」）。
+fn parent_absent(d: &dyn Door, root: &str, rel: &str) -> Result<bool, String> {
+    let rel = rel.replace('\\', "/");
+    let parent = match rel.rsplit_once('/') {
+        Some((p, _)) => join_under(root, p),
+        None => root.to_string(),
+    };
+    Ok(stat_kind(d, &parent)?.is_none())
 }
 
 /// `abs` 在 `home` 底下的那一段（字符串算法，分隔符两种都认）。不在 home 底下 ⇒ 拒。
@@ -238,12 +252,4 @@ pub(crate) fn join_under(home: &str, rel: &str) -> String {
         out.push_str(seg);
     }
     out
-}
-
-/// 把写面的拒绝翻成本域应答的 `(码, 话)`。
-pub(crate) fn wire_refusal(e: Refused) -> (&'static str, String) {
-    match e.code() {
-        "stale" => ("stale", e.said()),
-        _ => ("refused", e.said()),
-    }
 }

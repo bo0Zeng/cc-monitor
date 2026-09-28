@@ -289,18 +289,7 @@ fn nothing_to_do_and_same_content_both_hand_over_nothing() {
     std::fs::remove_dir_all(&h).ok();
 }
 
-#[test]
-fn rel_under_keeps_writes_inside_home_on_both_path_styles() {
-    assert_eq!(rel_under("/home/u", "/home/u/.bashrc").unwrap(), ".bashrc");
-    assert_eq!(rel_under("/home/u/", "/home/u/a/b").unwrap(), "a/b");
-    assert_eq!(
-        rel_under(r"C:\Users\u", r"C:\Users\u\Documents\PowerShell\p.ps1").unwrap(),
-        "Documents/PowerShell/p.ps1"
-    );
-    for bad in ["/home/uu/.bashrc", "/etc/passwd", "/home/u", "/home/u/"] {
-        assert!(rel_under("/home/u", bad).is_err(), "{bad} 竟然过了");
-    }
-}
+// 〔MIG-3a〕`rel_under` 那条判据随函数搬进了后端（`tests/backend/assets/aliases/aliases_tests.rs`）。
 
 // ── J2：门发出去的命令 == 后端登记的写面 ∪ 读面里真用到的那几条（两侧异源：一侧 monitor 源码，一侧后端源码）──
 
