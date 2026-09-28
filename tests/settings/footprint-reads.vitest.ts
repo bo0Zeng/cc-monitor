@@ -10,26 +10,25 @@ import { decodeFootprint } from "../../src/settings/footprint-reads";
 
 const golden = JSON.parse(
   readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../__fixtures__/footprint-report.golden.json"), "utf8"),
-) as { report: { rows: Record<string, unknown>[] }; clientAsks: string[] };
+) as { rows: Record<string, unknown>[] };
 
 describe("〔MIG-3b 续〕足迹成品的跨语言金样", () => {
-  it("★ 金样逐格收下来 == 原文；本机第一趟（report: null）也收得下", () => {
-    expect(golden.report.rows.length).toBeGreaterThan(10);
+  it("★ 金样逐格收下来 == 原文", () => {
+    expect(golden.rows.length).toBeGreaterThan(10);
     expect(decodeFootprint(golden)).toEqual(golden);
-    expect(decodeFootprint({ report: null, clientAsks: ["/m/x"] })).toEqual({ report: null, clientAsks: ["/m/x"] });
   });
 
   it("★ 多一格 / 少一格 / 档不在闭集 / 状态种类不认 ⇒ 抛，不猜", () => {
     const clone = (): typeof golden => JSON.parse(JSON.stringify(golden)) as typeof golden;
     const extra = clone();
-    extra.report.rows[0].surplus = 1;
+    extra.rows[0].surplus = 1;
     const missing = clone();
-    delete missing.report.rows[0].note;
+    delete missing.rows[0].note;
     const tier = clone();
-    tier.report.rows[0].tier = "AppAssumesPresent";
+    tier.rows[0].tier = "AppAssumesPresent";
     const state = clone();
-    state.report.rows[0].state = { kind: "maybe" };
-    for (const bad of [extra, missing, tier, state, { report: null }, { ...golden, origin: "<local>" }]) {
+    state.rows[0].state = { kind: "maybe" };
+    for (const bad of [extra, missing, tier, state, null, { ...golden, origin: "<local>" }]) {
       expect(() => decodeFootprint(bad)).toThrow(/形状不对/);
     }
   });

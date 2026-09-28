@@ -2,8 +2,8 @@
 //!
 //! 核原文：同一裁逐字「用户 09-27「一处后端」压过 `96 §4`「tool_registry 只住 monitor」」；`设计/70 §6.1` 红线「查不了的显示成
 //! 「未确定 ＋ 为什么」，绝不显示成「缺失」」·「远端也有真栏」。本族在临时目录上真 stat 真读，判帧面 `footprint-report` 的
-//! 两种问法：远端那一栏一问即得（住 monitor 那台的那一族不进人群）· 本机那一栏两趟（那一族的事实 monitor 答，判定在这里）。
-//! 〔MIG-3b 续〕原 `footprint-probe` 那几条（只交事实）与 monitor `footprint_remote_tests.rs` 两趟问法那几条随实现合到这里。
+//! 两种问法，各一问：远端那一栏（住 monitor 那台的那一族不进人群）· 本机那一栏（monitor 只交它自己进程的几条事实，〔主会话 09-28 裁〕四拍收成两拍）。
+//! 〔MIG-3b 续〕原 `footprint-probe` 那几条（只交事实）随实现合到这里。
 //!
 //! # 买不到的
 //!
@@ -26,7 +26,7 @@ fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String>
 }
 
 fn rows_of(reply: &Value) -> Vec<Value> {
-    serde_json::from_value(reply["report"]["rows"].clone()).expect("report.rows")
+    serde_json::from_value(reply["rows"].clone()).expect("rows")
 }
 
 fn key(r: &Value) -> (String, String) {
@@ -89,11 +89,6 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
         &json!({}),
     )
     .unwrap();
-    assert_eq!(
-        got["clientAsks"],
-        json!([]),
-        "远端那一栏不该问 monitor 任何事"
-    );
     let rows = rows_of(&got);
     assert_eq!(
         rows.iter().map(key).collect::<Vec<_>>(),
@@ -113,16 +108,10 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
         "undetermined",
         "「本机或远端」那一行在这台上没找到，被说成了「缺」"
     );
+    assert_eq!(got["claude_config_dir"], agent.display().to_string());
+    assert_eq!(got["settings_scopes"][0]["has_cc_bus_hooks"], true);
     assert_eq!(
-        got["report"]["claude_config_dir"],
-        agent.display().to_string()
-    );
-    assert_eq!(
-        got["report"]["settings_scopes"][0]["has_cc_bus_hooks"],
-        true
-    );
-    assert_eq!(
-        got["report"]["settings_scopes"][1]["has_cc_bus_hooks"],
+        got["settings_scopes"][1]["has_cc_bus_hooks"],
         Value::Null,
         "不在的那一份 ⇒ 不猜"
     );
@@ -137,44 +126,32 @@ fn the_remote_column_really_probes_this_machine_and_drops_the_monitor_rows() {
     let _ = std::fs::remove_dir_all(&h);
 }
 
-/// ★ 本机那一栏两趟：第一趟只回 monitor 那一族要 stat 的路径（全在 monitor 交来的家目录 / PATH 底下，这台自己的一条都不在里面），
-/// 报告 `null`；第二趟带着答案 ⇒ 整份报告，人群 == monitor 那台视角（含 `本机` 那一族），那一族按 monitor 的家目录解、按 monitor 的答案判。
+/// ★ 本机那一栏一问：monitor 只交它自己进程的那几条（家目录 · agent 家 · PATH），人群 == monitor 那台视角（含 `本机` 那一族），
+/// 那一族按 **monitor 交来的**家目录解、由这台 stat（同一台、同一用户）—— 放在那个家目录下的文件答「在」，这台自己的家目录不掺进来。
 #[test]
-fn the_local_column_asks_the_monitor_only_for_its_own_rows() {
+fn the_local_column_resolves_the_monitor_rows_under_the_monitor_facts() {
     let h = temp_dir("local");
     let agent = h.join(".claude");
-    let client_env = json!({ "home": "/m/home", "agentHome": "/m/home/.claude", "path": "/m/bin" });
-    let get = env_of(vec![("HOME", h.display().to_string())]);
-    let first = answer_with(&get, &agent, &json!({ "client": { "env": client_env } })).unwrap();
-    assert_eq!(first["report"], Value::Null, "第一趟不该出报告");
-    let asks: Vec<String> = serde_json::from_value(first["clientAsks"].clone()).unwrap();
-    assert!(!asks.is_empty(), "第一趟一条都没问 —— 下面是空真");
-    assert!(
-        asks.iter()
-            .all(|p| p.starts_with("/m/home") || p.starts_with("/m/bin")),
-        "问 monitor 的路径里混进了别的：{asks:?}"
-    );
-    let stat: Map<String, Value> = asks
-        .iter()
-        .map(|p| (p.clone(), json!({ "kind": "file", "size": 1 })))
-        .collect();
-    let second = answer_with(
-        &get,
+    let m = temp_dir("local-monitor");
+    std::fs::create_dir_all(m.join(".cc-monitor/bin")).unwrap();
+    std::fs::write(m.join(".cc-monitor/bin/cc-monitor-panorama"), "x").unwrap();
+    let client = json!({ "home": m.display().to_string(), "agentHome": m.join(".claude").display().to_string(), "path": "/m/bin" });
+    let got = answer_with(
+        &env_of(vec![("HOME", h.display().to_string())]),
         &agent,
-        &json!({ "client": { "env": client_env, "stat": stat } }),
+        &json!({ "client": client }),
     )
     .unwrap();
-    assert_eq!(second["clientAsks"], first["clientAsks"], "两趟问的不一样");
-    let rows = rows_of(&second);
+    let rows = rows_of(&got);
     assert_eq!(
         rows.iter().map(key).collect::<Vec<_>>(),
         monitor_vantage_population(&h, true),
         "本机那一栏的人群不等于 monitor 那台视角"
     );
-    let client = host_label(HostScope::Client);
+    let client_label = host_label(HostScope::Client);
     let own: Vec<&Value> = rows
         .iter()
-        .filter(|r| r["host_label"] == client.as_str() && r["path_resolved"].is_string())
+        .filter(|r| r["host_label"] == client_label.as_str() && r["path_resolved"].is_string())
         .collect();
     assert!(
         !own.is_empty(),
@@ -187,43 +164,17 @@ fn the_local_column_asks_the_monitor_only_for_its_own_rows() {
             "按这台的家目录解了 monitor 那一族：{r}"
         );
     }
-    assert!(
-        own.iter().any(|r| r["state"]["kind"] == "present"),
-        "monitor 答了「在」，那一族却没有一行是「在」"
+    assert_eq!(
+        kind_of(
+            &rows,
+            &client_label,
+            "~/.cc-monitor/bin/cc-monitor-panorama"
+        ),
+        "present",
+        "monitor 家目录下那一份没被这台 stat 到"
     );
     let _ = std::fs::remove_dir_all(&h);
-}
-
-/// ★ 第二趟答的比它这一趟要问的少 ⇒ 拒（`bad_args`），**不许**把没答的那一条当「不在」画成「缺」。
-#[test]
-fn a_second_pass_that_answers_less_than_asked_is_refused() {
-    let h = temp_dir("less");
-    let agent = h.join(".claude");
-    let client_env = json!({ "home": "/m/home", "agentHome": "/m/home/.claude", "path": "/m/bin" });
-    let get = env_of(vec![("HOME", h.display().to_string())]);
-    let first = answer_with(&get, &agent, &json!({ "client": { "env": client_env } })).unwrap();
-    let asks: Vec<String> = serde_json::from_value(first["clientAsks"].clone()).unwrap();
-    let stat: Map<String, Value> = asks
-        .iter()
-        .skip(1)
-        .map(|p| (p.clone(), Value::Null))
-        .collect();
-    let (code, e) = answer_with(
-        &get,
-        &agent,
-        &json!({ "client": { "env": client_env, "stat": stat } }),
-    )
-    .unwrap_err();
-    assert_eq!(code, "bad_args", "{e}");
-    // 对照：一条不少（答的全是「不在」）⇒ 出报告。
-    let all: Map<String, Value> = asks.iter().map(|p| (p.clone(), Value::Null)).collect();
-    let ok = answer_with(
-        &get,
-        &agent,
-        &json!({ "client": { "env": client_env, "stat": all } }),
-    );
-    assert!(ok.is_ok(), "{ok:?}");
-    let _ = std::fs::remove_dir_all(&h);
+    let _ = std::fs::remove_dir_all(&m);
 }
 
 #[test]
@@ -259,34 +210,14 @@ fn hooks_answer_yes_no_or_unknown() {
 fn bad_arguments_are_refused() {
     let d = temp_dir("args");
     let get = env_of(vec![("HOME", d.display().to_string())]);
-    let env = json!({ "home": "/m", "agentHome": "/m/.claude" });
-    let many: Map<String, Value> = (0..=MAX_CLIENT_PATHS)
-        .map(|i| (format!("/p{i}"), Value::Null))
-        .collect();
     let cases = [
-        (json!({ "client": {} }), "bad_args"),
-        (
-            json!({ "client": { "env": { "home": "rel", "agentHome": "/m/.claude" } } }),
-            "bad_args",
-        ),
-        (json!({ "client": { "env": { "home": "/m" } } }), "bad_args"),
-        (json!({ "client": { "env": env, "stat": [] } }), "bad_args"),
-        (
-            json!({ "client": { "env": env, "stat": { "/a": { "kind": "pipe" } } } }),
-            "bad_args",
-        ),
-        (
-            json!({ "client": { "env": env, "stat": { "/a": { "kind": "dir", "entries": [3] } } } }),
-            "bad_args",
-        ),
-        (
-            json!({ "client": { "env": env, "stat": many } }),
-            "too_large",
-        ),
+        json!({ "client": [] }),
+        json!({ "client": { "home": "rel", "agentHome": "/m/.claude" } }),
+        json!({ "client": { "home": "/m" } }),
     ];
-    for (args, code) in cases {
+    for args in cases {
         let err = answer_with(&get, &d, &args).expect_err("坏入参还成功了");
-        assert_eq!(err.0, code, "{args} 应当是 {code}，实得 {err:?}");
+        assert_eq!(err.0, "bad_args", "{args} 应当是 bad_args，实得 {err:?}");
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -301,7 +232,7 @@ fn home_falls_back_to_userprofile_and_is_required() {
     )
     .unwrap();
     assert_eq!(
-        got["report"]["home"],
+        got["home"],
         d.display().to_string(),
         "HOME 缺 ⇒ 退 USERPROFILE"
     );

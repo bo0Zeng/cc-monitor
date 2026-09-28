@@ -1554,13 +1554,13 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 〔DEL〕这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形，V139），那一族随回落一形删了。
     // 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
-    //   本机那一栏 `client` 带 monitor 自己那台的事实（`HostScope::Client` 那一族）。只读，阻塞档。
+    //   本机那一栏 `client` 带 monitor 自己进程独有的几条事实（家目录 · agent 家 · PATH），`HostScope::Client` 那一族按它们解、这台 stat。只读，阻塞档。
     //   〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor。〕
     CommandSpec {
         name: "footprint-report",
         doc_anchor: Some("#### `footprint-report`"),
-        codes: &["bad_args", "too_large", "failed"],
-        fields: &["client", "clientAsks", "report"],
+        codes: &["bad_args", "failed"],
+        fields: &["client"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)
