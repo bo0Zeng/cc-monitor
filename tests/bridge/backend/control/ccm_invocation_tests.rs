@@ -706,18 +706,21 @@ fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
     let mut s = base_spec();
     s.args = &["-p", "两个 词"];
     // 〔V151〕交给 claude 的在 `--` 左边、ccm 的在右边。
-    assert_eq!(render(&s).as_deref(), Ok("ccm -p '两个 词' -- --base"));
+    // 〔V153〕起新会话吐 ccm 自己的词 `new`，恒为 `--` 右边第一个。
+    assert_eq!(render(&s).as_deref(), Ok("ccm -p '两个 词' -- new --base"));
     let mut s = base_spec();
     s.args = &[];
-    assert_eq!(render(&s).as_deref(), Ok("ccm -- --base"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm -- new --base"));
+    // 以下要「没有 ccm 部分」⇒ 用 resume（它不吐 ccm 的词）。
+    s.action = Action::Resume { sid: "s1" };
     // claude 自己的 `--` ＋ 没有 ccm 部分 ⇒ 末尾补一个空的 `--`（按最后一个 `--` 切）。
     s.account = CliAccount::Inherit;
     s.args = &["-p", "--", "-x"];
-    assert_eq!(render(&s).as_deref(), Ok("ccm -p -- -x --"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm --resume s1 -p -- -x --"));
     s.args = &["-p"];
     assert_eq!(
         render(&s).as_deref(),
-        Ok("ccm -p"),
+        Ok("ccm --resume s1 -p"),
         "没有 ccm 部分、也没有 claude 自己的 `--` ⇒ 一个 `--` 都不吐"
     );
 }
@@ -726,11 +729,11 @@ fn args_go_after_a_bare_double_dash_and_are_quoted_one_by_one() {
 fn launcher_is_only_named_when_it_differs_from_the_default() {
     let mut s = base_spec();
     s.launcher = "claude";
-    assert_eq!(render(&s).as_deref(), Ok("ccm -- --base"));
+    assert_eq!(render(&s).as_deref(), Ok("ccm -- new --base"));
     s.launcher = "claude-dev";
     assert_eq!(
         render(&s).as_deref(),
-        Ok("ccm -- --base --launcher claude-dev")
+        Ok("ccm -- new --base --launcher claude-dev")
     );
 }
 

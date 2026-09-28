@@ -1298,3 +1298,22 @@ fn a_dialect_the_machine_is_not_promised_to_speak_is_refused_out_loud() {
     let e = dialect_promised(&remote(), Shell::PowerShell).expect_err("远端 × PowerShell 该拒");
     assert!(e.contains("aya") && e.contains("PowerShell"), "{e}");
 }
+
+/// 〔V153〕`new` 是 ccm 自己的位置词：别名里只许是 `--` 右边第一个词；写在左边就是交给 claude 的一个词（照放）。
+#[test]
+fn new_is_accepted_only_as_the_first_word_right_of_the_end() {
+    let raw = |args: &[&str]| Alias {
+        name: "n".into(),
+        args: args.iter().map(|s| s.to_string()).collect(),
+    };
+    assert_eq!(check_alias(&raw(&["-p", "--", "new", "--base"]), P), Ok(()));
+    assert_eq!(
+        check_alias(&raw(&["new"]), P),
+        Ok(()),
+        "左边的 new 是 claude 的"
+    );
+    assert!(
+        check_alias(&raw(&["--", "--base", "new"]), P).is_err(),
+        "new 不在右边第一个却放行了"
+    );
+}

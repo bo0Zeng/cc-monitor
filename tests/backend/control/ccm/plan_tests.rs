@@ -966,7 +966,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
 #[test]
 fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registering() {
     let mut e = env();
-    e.self_argv = vec!["/opt/cc-monitor-backend".into(), "ccm".into()];
+    e.self_argv = vec!["/opt/cc-monitor-backend".into()];
     e.anthropic_base_url = Some("https://relay.example/v1".into());
     e.bus_scripts = Some("/opt/bus".into());
     for (args, has_passthru) in [
@@ -988,8 +988,9 @@ fn the_self_check_is_the_payload_itself_plus_print_and_it_runs_before_registerin
         let want = format!("{} '--ccm-print'", c.payload);
         assert_eq!(c.self_check, want, "自检与载荷不是同一条命令");
         assert!(
-            c.self_check
-                .starts_with("export ANTHROPIC_BASE_URL='https://relay.example/v1'; '/opt/cc-monitor-backend' 'ccm' "),
+            c.self_check.starts_with(
+                "export ANTHROPIC_BASE_URL='https://relay.example/v1'; '/opt/cc-monitor-backend' "
+            ),
             "自检没带同一段 export 前缀 / 同一个入口：{}",
             c.self_check
         );

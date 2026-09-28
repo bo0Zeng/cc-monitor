@@ -605,15 +605,65 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     // ⚠ **加/删判定表之外的场景时同拍改这里**；加判定表用例**不用**动它（那一半是现数的）。
     const FIXED_SLOTS: usize = 11;
     let slots = rows + FIXED_SLOTS;
-    let reachable = slots.checked_sub(waivers).unwrap_or_else(|| {
+
+    // ── 输入 ③〔E2 尾 09-27〕：**版本门**条数，从套件自己的 `min_tmux_for()` 现数 ────────────
+    //
+    // 版本门那一格在 tmux 够新的机器上真跑（进 PASS）、不够新的机器上记 SKIP ⇒ PASS 数随机器变：
+    // CI 那一行判的是 PASS 的 **at-least** ⇒ 按最坏的机器（每一条版本门都跳过）算；
+    // 本机门禁判的是 **PASS+SKIP 恒等**（`exact-with-skip`）⇒ 与版本无关，恒等于总槽位 − 登记豁免。
+    let v_at = guard_core::find_pinned(&sh, "min_tmux_for() {")
+        .unwrap_or_else(|e| panic!("e2e 脚本里的 `min_tmux_for()` 定义钉不住：{e}"));
+    let v_rel = sh[v_at..]
+        .find("esac")
+        .expect("`min_tmux_for` 里找不到 `esac` —— 函数形状变了");
+    let vbody = &sh[v_at..v_at + v_rel];
+    guard_core::pin_line(vbody, "*) echo \"\" ;;")
+        .unwrap_or_else(|e| panic!("`min_tmux_for` 的兜底分支不再是整行 `*) echo \"\" ;;`：{e}"));
+    let version_gates = vbody
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.contains(") echo ") && !l.starts_with("*)"))
+        .count();
+
+    let total = slots.checked_sub(waivers).unwrap_or_else(|| {
         panic!("登记了 {waivers} 条豁免，比总槽位 {slots} 还多 —— 两个数里必有一个是假的")
     });
+    let reachable = total.checked_sub(version_gates).unwrap_or_else(|| {
+        panic!("版本门 {version_gates} 条比可达总数 {total} 还多 —— 抽取器坏了")
+    });
+
+    // 本机门禁那一行：`run_e2e backend-gate2 <总数> exact-with-skip`，总数必须恰好 == 总槽位 − 登记豁免。
+    let gate = std::fs::read_to_string(root.join("tests/scripts/gate.sh")).expect("gate.sh 读不到");
+    let g_line = gate
+        .lines()
+        .filter(|l| l.trim_start().starts_with("run_e2e backend-gate2 "))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        g_line.len(),
+        1,
+        "gate.sh 里 `run_e2e backend-gate2 …` 不是恰好一行：{g_line:?}"
+    );
+    let g_words: Vec<&str> = g_line[0].split_whitespace().collect();
+    assert_eq!(
+        g_words.get(3).copied(),
+        Some("exact-with-skip"),
+        "本机门禁那一行不是按 PASS+SKIP 判（`exact-with-skip`）—— 只钉 PASS 就是把开发机的 tmux 版本烤进判据：{}",
+        g_line[0]
+    );
+    let g_total: usize = g_words
+        .get(2)
+        .and_then(|t| t.parse().ok())
+        .expect("本机门禁那一行的总数解析不出来");
+    assert_eq!(
+        g_total, total,
+        "本机门禁 `backend-gate2` 钉的总数 {g_total} ≠ 总槽位 {slots} − 登记豁免 {waivers} = {total}"
+    );
 
     // ★ 低了：**一个字没松的那一侧**。
     assert!(
         floor >= reachable,
         "`backend-gate2` 的地板 {floor} 低于它够得到的 {reachable}\n\
-             （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条）。\n\
+             （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条；版本门 {version_gates} 条按最坏机器计）。\n\
              ★ **低下去，就有一格可以被静默地不验了** —— 那正是 `assert-pass-floor.sh` 头注写的\n\
              失效模式：不是变红，是**静默缩水**。\n\
              ⇒ 真要降，唯一的合法路径是**登记一条带书面理由的豁免**（`waiver_reason()`），\n\
@@ -623,7 +673,7 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     assert!(
         floor <= reachable,
         "`backend-gate2` 的地板 {floor} **高于它够得到的 {reachable}**\n\
-             （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条）。\n\
+             （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条；版本门 {version_gates} 条按最坏机器计）。\n\
              🔴 **一条够不到的地板不是判据，是路障**：它不会以「地板红」的形式被看见，\n\
              只会以「排在它后面的每一步整片 skipped」的形式被看见 —— 08-06 到 09-09 就是这么过的。\n\
              ⇒ 两条出路：① 真加了判据 ⇒ 把地板棘到实得（**先跑再棘**）；\n\

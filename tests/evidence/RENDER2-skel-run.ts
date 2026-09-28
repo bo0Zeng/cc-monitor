@@ -37,7 +37,14 @@ async function run(): Promise<void> {
       '<link rel="stylesheet" href="./dist/style.css"></head><body><script src="./dist/probe.js"></script></body></html>',
   );
   const req = createRequire(resolve(root, ".scratch/pw/package.json"));
-  const { chromium } = req("playwright") as typeof import("playwright");
+  // playwright 装在 `.scratch/pw`（不进仓的依赖）⇒ 类型只写这一趟用到的那几个口，不 `import("playwright")`。
+  type Page = {
+    goto(url: string): Promise<unknown>;
+    waitForFunction(fn: () => boolean, arg: null, opts: { timeout: number }): Promise<unknown>;
+    evaluate<T>(fn: () => T): Promise<T>;
+  };
+  type Browser = { newPage(opts: Record<string, unknown>): Promise<Page>; close(): Promise<void> };
+  const { chromium } = req("playwright") as { chromium: { launch(): Promise<Browser> } };
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: "zh-CN", timezoneId: "America/Los_Angeles" });
   await page.goto(`file://${resolve(work, "probe.html")}`);

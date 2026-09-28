@@ -259,3 +259,22 @@ fn an_account_name_is_judged_before_it_goes_anywhere() {
         assert!(err(&[&arg]).contains("用不了"), "坏账号名 {bad:?} 放行了");
     }
 }
+
+/// 〔V153 · 用户 09-27〕要求住址：`99 §1` V153「`new` 是 ccm 自己的词，写在 `--` 右边 —— `ccm [claude 的] -- new [ccm 选项]`；
+/// `ccm new` 照 V151 整行交 claude，不开例外」。直接喂 V151 原文（不经本文件的换排列）。
+#[test]
+fn new_is_ccms_word_only_as_the_first_word_right_of_the_end() {
+    let raw = |a: &[&str]| super::parse(&v(a));
+    assert!(
+        matches!(raw(&["-p", "x", "--", "new", "--ccm-tmux"]), Ok(Parsed::Opts(o)) if o.passthru == v(&["-p", "x"]) && o.use_tmux),
+        "`-- new …` 没被当成 ccm 的起新会话"
+    );
+    assert!(
+        matches!(raw(&["new"]), Ok(Parsed::Opts(o)) if o.passthru == v(&["new"])),
+        "`ccm new` 该整行交 claude"
+    );
+    assert!(
+        matches!(raw(&["--", "--ccm-tmux", "new"]), Err(super::Die(m)) if m.contains("new 只能是 -- 右边第一个词")),
+        "`new` 不在右边第一个却被认了 / 没说清为什么"
+    );
+}

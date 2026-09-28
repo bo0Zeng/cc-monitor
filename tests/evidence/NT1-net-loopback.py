@@ -194,7 +194,7 @@ class Backend:
     def __init__(self, bin_path, home):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "TMUX_TMPDIR": home, "RUST_LOG": "info"}
         self.log = open(os.path.join(home, "backend.log"), "w")
-        self.p = subprocess.Popen([bin_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, env=env)
+        self.p = subprocess.Popen([bin_path, "--", "--stream"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, env=env)
         self.hello = json.loads(self.p.stdout.readline())
         self.cv = threading.Condition()
         self.replies, self.data, self.ends, self.xfer, self.arrivals = {}, {}, {}, {}, {}

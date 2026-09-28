@@ -51,6 +51,22 @@ BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
 WORK="$(mktemp -d /tmp/e2e-lb.XXXXXX)"
 CLAUDE_DIR="$WORK/claude"; mkdir -p "$CLAUDE_DIR/projects"
 
+# 〔E2 尾 09-27〕**本套件自己的后端**：二进制是 `$BACKEND`、环境里带着本套件的 `$WORK`
+#   （Rust 那侧起的每一个都继承 `CCM_E2E_WORK` / 沙箱 `HOME`，两样都在 `$WORK` 底下）。
+#   认的是进程表里的事实（`/proc/<pid>/exe` ＋ `environ`），不是命令行长相 ——
+#   从前收尾是 `pkill -f "$BACKEND"`：模式杀，连带命令行里含这条路径的**调用方 shell**（09-27 实发：
+#   跑本套件的那条循环被它打死）与同一个二进制上别的套件的后端。
+ours_backends() {
+  local p exe real
+  real="$(readlink -f -- "$BACKEND")"
+  for p in /proc/[0-9]*; do
+    exe="$(readlink -- "$p/exe" 2>/dev/null)" || continue
+    [ "$exe" = "$real" ] || continue
+    tr '\0' '\n' < "$p/environ" 2>/dev/null | grep -qF "=$WORK" || continue
+    echo "${p#/proc/}"
+  done
+}
+
 cleanup() {
   set +e
   # 收掉可能残留的被监护进程（测试自己会 stop()，这里是兜底）
@@ -60,7 +76,8 @@ cleanup() {
   #    它下一次装 tmux hook（watcher 换人时会重装）沿 PATH 找不到 shim ⇒ **落到真 tmux 上**
   #    ⇒ 用户真实 server 的 `[50]` 槽位被盖成它的 pid。本轮真发生过一次。
   #    ⇒ 先收进程、等它真的走了，再删 shim。
-  pkill -f "$BACKEND" 2>/dev/null
+  # shellcheck disable=SC2046
+  kill $(ours_backends) 2>/dev/null
   # 给它一拍走完（`pkill` 只是把信号发出去）。**不是定时器**：一次性的收尾等待。
   sleep 1
   # C7i 红线〔08-11 事故后〕：**socket 用 `-S` 显式给死**，不靠 `unset TMUX` + `TMUX_TMPDIR`。
@@ -91,6 +108,10 @@ OUT="$WORK/rust.log"
 #    ⇒ 一行只登记得到一个过滤串。写成一行的话，**改掉 `local_backend_host` 那族的测试名不会有任何东西红**，
 #    而 `cargo test` 跑零条测试**退出码是 0** —— 两边都绿，测试其实再没执行过。
 #    ⇒ 一族一趟，每趟自己那一行都带着自己的过滤串。
+# ⚠⚠ 〔E2 尾 09-27〕**第一趟的过滤串是 `local_backend::`（带 `::`），不是 `local_backend`**：libtest 按子串认，
+#    `local_backend` 同时命中 `local_backend_host::…` ⇒ 常驻那族被跑了**两遍**，第一遍接上的后端还活着，
+#    第二遍的「第一个宿主」当场报「已经在跑」（主线本来就红的那一格）。带 `::` 只命中监护那一族。
+#    （`shared_crate_registry` 的抽取器截到 `:` 为止，登记到的仍是 `local_backend`，与原来同一个串。）
 # ⚠ `--test-threads=1` 是**承重的**：`local_backend_host` 那两条要 `set_var("HOME")`，
 #    那是进程级的事实，并发跑会互相踩。
 : > "$OUT"
@@ -101,7 +122,7 @@ RC=0
   CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" \
   CCM_E2E_CLAUDE_DIR="$CLAUDE_DIR" \
   CCM_E2E_WORK="$WORK" \
-  cargo test --lib -- --ignored --nocapture --test-threads=1 local_backend
+  cargo test --lib -- --ignored --nocapture --test-threads=1 local_backend::
 ) >>"$OUT" 2>&1 || RC=$?
 (
   cd "$REPO/src/bridge" && \
@@ -160,6 +181,13 @@ fi
 if [ "$MARKS" -lt "$RAN" ]; then
   bad "标记数 $MARKS < 跑成的测试数 $RAN —— 有测试提前退出、断言没走完"
 fi
+
+# 〔E2 尾 09-27〕Rust 那侧自己收尸（`E2eSandbox` 的 `Drop` 按句柄收）；跑完还活着的就是**漏网**的 ——
+#   从前靠收尾那句模式杀兜着，漏了也看不见（两趟过滤串重叠那次，第一趟接上的后端就是这样留到第二趟、
+#   让它当场报「已经在跑」）。收尾照样会收掉它们，但先记一条红。
+LEFT="$(ours_backends | tr '\n' ' ')"
+if [ -n "${LEFT// /}" ]; then bad "Rust 侧跑完还有本套件起的后端活着（pid $LEFT）—— 有一条判据没收尸"
+else ok "Rust 侧跑完没有漏网的后端（进程表里按 exe ＋ \$WORK 认）"; fi
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
