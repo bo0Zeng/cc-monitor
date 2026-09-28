@@ -1624,12 +1624,13 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 | `killOnExit` | ↔ | 生效值。`chosen` 时是选的那个；另两态是缺省 `false`（不结束）。`exit-policy-set` 的入参也是它 |
 | `reason` | ← | 只在 `unreadable` 时有：为什么读不出来。其余为 `null` |
 | `path` | ← | 那份文件的绝对路径（家目录解析不出来时 `null`） |
+| `said` | ← | 〔MIG-2 · `99 §2.1 ㊴`〕成品：「这台退出时会发生什么」那一句（四档：读不出来 · 会结束 · 常驻继续跑、无人监护 · 被监护随 monitor 退）。后端按自己是不是回环常驻判（与选载体同一个 `listen::mode_from`）；界面原样摆，不再判 |
 
 #### `exit-policy-read`：现读一次（**不读 stdin**）
 
 ```text
 → {"id":"x1","cmd":"exit-policy-read"}
-← {"kind":"reply","id":"x1","ok":true,"data":{"state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+← {"kind":"reply","id":"x1","ok":true,"data":{"state":"absent","killOnExit":false,"reason":null,"path":"/home/u/.cc-monitor/backend.json","said":"monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的"}}
 ```
 
 **没有错误码**：读不出来是一个**状态**，照样 `ok:true` 回 `state:"unreadable"` ＋ `reason`。
@@ -1639,7 +1640,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ```text
 → {"id":"x2","cmd":"exit-policy-set","args":{"killOnExit":true}}
-← {"kind":"reply","id":"x2","ok":true,"data":{"state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json"}}
+← {"kind":"reply","id":"x2","ok":true,"data":{"state":"chosen","killOnExit":true,"reason":null,"path":"/home/u/.cc-monitor/backend.json","said":"monitor 退出时会结束它"}}
 ```
 
 回的是**写完之后再读一遍**的那一份（盘上的事实，不是「我以为写进去了」）。

@@ -96,7 +96,7 @@ vi.mock("../../src/ipc/commands", () => ({
           return Promise.reject({ err: "Refused", body: refusal });
         }
         // 〔B2〕后端写完**读回**的那一份：这里就让「盘上」变成写进去的值，后续每一次现问都读到它。
-        exitAnswer = { state: "chosen", killOnExit: kill, reason: null, path: "x" };
+        exitAnswer = { state: "chosen", killOnExit: kill, reason: null, path: "x", said: kill ? EXIT_KILLS : EXIT_SELF_DIES };
         return bytes(exitAnswer);
       }
       return Promise.reject(new Error(`判据没料到的通道问法：${a.op}`));
@@ -119,14 +119,15 @@ import { srcDirOf } from "../test-support/repo-root";
 import COPY_TABLE from "../../src/shared/copy/table.json";
 // 〔PB1〕「健康」那一格的成品金样：Rust 侧由生产的 `health_face` 现产、逐格相等（`backend_policy_tests.rs`），这里读同一份。
 import HEALTH_GOLDEN from "../__fixtures__/backend-health.golden.json";
-import {
-  EXIT_KILLS,
-  EXIT_SELF_DIES,
-  EXIT_UNATTENDED,
-  EXIT_UNREADABLE,
-  LOCAL_ORIGIN,
-  describeExitBehavior,
-} from "../../src/backend-policy";
+import { LOCAL_ORIGIN } from "../../src/backend-policy";
+
+// 〔MIG-2 · `99 §2.1 ㊴`〕那四句由后端出成品（`exit-policy-read` 的 `said`，判定与十格穷举住 `exit_policy_tests.rs`）；
+//   这里只取表里的原文当桩里后端回的那一句，判界面原样摆、不再判。
+const tableZhOf = (key: string): string => (COPY_TABLE.entries as Record<string, { zh: string }>)[key]!.zh;
+const EXIT_KILLS = tableZhOf("backendPolicy.exit.kills");
+const EXIT_SELF_DIES = tableZhOf("backendPolicy.exit.selfDies");
+const EXIT_UNATTENDED = tableZhOf("backendPolicy.exit.unattended");
+const EXIT_UNREADABLE = tableZhOf("backendPolicy.exit.unreadable");
 
 type GoldenFace = { state: string; summary: string; why: string | null; detail: string | null };
 /** 金样里那几形的成品，按名字取（名字就是金样里的 `name`）。 */
@@ -162,54 +163,13 @@ beforeEach(() => {
   calls.length = 0;
   failNextSet = null;
   stopAnswer = { stopped: "graceful", pid: 42 };
-  exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x" };
+  exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", said: EXIT_SELF_DIES };
   // 〔PB1〕`backend_status` 今天恒带 `health` 成品（远端那一格恒是「无记录」）；缺它的那一形单列一格判。
   status = { channel: true, pid: 42, health: FACE["无记录"] };
   statusQueue = [];
 });
 
 describe("P2s backend 开关区", () => {
-  it("★★ 三档逐格钉死：「无人监护」必须出现，且**只在真脱离那一支**出现（KPY4①）", () => {
-    // ── 四种输入组合，一格一格比。**不是「包含」而是「等于」** ——
-    //    「包含」会放过「在正确那句后面又加了一句错的」。
-    const on = (killOnExit: boolean, detached: boolean) =>
-      describeExitBehavior({ policy: "chosen", killOnExit, detached });
-    expect(on(true, false)).toBe(EXIT_KILLS);
-    expect(on(false, false)).toBe(EXIT_SELF_DIES);
-    expect(on(false, true)).toBe(EXIT_UNATTENDED);
-    // ★ 勾上那一档**不看 `detached`** —— 两条起法都会被收：
-    //   被监护的由 monitor 退出臂 `stop()`；脱离的〔B2〕由后端自己在最后一个客户走的那一刻现读、退出。
-    //   ⚠ 这一格曾经是第四句「已经脱离了 ⇒ 这个勾管不到它」，那是**那个缺口的产物**；
-    //   缺口补上之后它就成了假话。**这条断言就是那次订正的活体证据。**
-    expect(on(true, true)).toBe(EXIT_KILLS);
-    // 〔B2〕「没人选过」（文件不在）说的就是缺省那两句 —— 它**不是**「读不出来」。
-    expect(
-      describeExitBehavior({ policy: "absent", killOnExit: false, detached: false }),
-    ).toBe(EXIT_SELF_DIES);
-
-    // ── ★ 「无人监护」只许出现在**真脱离且没勾**那一支。
-    for (const [name, text] of [
-      ["EXIT_KILLS", EXIT_KILLS],
-      ["EXIT_SELF_DIES", EXIT_SELF_DIES],
-    ] as const) {
-      expect(
-        text.includes("无人监护"),
-        `${name} 里出现了「无人监护」—— 那一档**没有脱离**，backend 会在 monitor 退出后很快自行退出。\n` +
-          "把它说成「无人监护地继续跑」是一句做不到的承诺，正是 P2s-Y5 当初立禁令要防的东西。",
-      ).toBe(false);
-      for (const w of ["继续跑", "后台常驻", "继续运行", "一直跑", "保持运行"]) {
-        expect(text.includes(w), `${name} 里出现了「${w}」—— 同上，那一档它不会继续跑`).toBe(false);
-      }
-    }
-    // ── ★★ 而真脱离那一支**必须**说出来（K14：这是本裁定的一半，不许只做常驻不做这句话）。
-    expect(
-      EXIT_UNATTENDED.includes("无人监护"),
-      "真脱离那一档没说「无人监护」——`DECISIONS` `K14` 逐字：" +
-        "「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，不许只做常驻不做这句话」。",
-    ).toBe(true);
-    expect(EXIT_UNATTENDED.includes("继续跑")).toBe(true);
-  });
-
   it("★★ 人群扩到两个文件：那四句只许有**一个家**（KPY4②）", () => {
     const files = readPopulation();
     // 抽取器自检：读不到就下面全空转。
@@ -248,12 +208,9 @@ describe("P2s backend 开关区", () => {
           "★ 那几句的唯一一个家是文案表（table.json）。抄进别处 = 下一次只改一处。",
       ).toEqual([TABLE_REL]);
     }
-    // 反过来：这一区必须**真的在用**那个家，而不是自己拼一份。
+    // 反过来：这一区摆的是**后端的成品**（〔㊴〕`said`），不是自己拼一份。
     const section = files.find((f) => f.name === "backend-section.ts")!.src;
-    expect(
-      section.includes("describeExitBehavior"),
-      "`backend-section.ts` 不再调 `describeExitBehavior` —— 那它的文案是从哪来的？",
-    ).toBe(true);
+    expect(visibleOf(section).includes("answer.said"), "`backend-section.ts` 不摆后端的 `said` —— 那它的文案是从哪来的？").toBe(true);
   });
 
   it("★★ 反向锚点：这两个文件里今天必须真的有「无人监护」（KPY4③）", () => {
@@ -287,31 +244,27 @@ describe("P2s backend 开关区", () => {
     expect(s.element.querySelector(".backend-row-state")?.textContent).toContain("已连上");
   });
 
-  it("★ 那一行说的话跟着后端的 `detached` 走 —— 脱离了就说「无人监护」", async () => {
-    status = { channel: true, pid: 42, detached: true };
+  it("★ 〔MIG-2 · ㊴〕那一行原样摆后端的 `said`：常驻那台说「无人监护」，与 monitor 的 `detached` 无关", async () => {
+    status = { channel: true, pid: 42, detached: false };
+    exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", said: EXIT_UNATTENDED };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
     const exit = s.element.querySelector<HTMLElement>(".backend-row-exit");
     expect(exit?.textContent).toBe(EXIT_UNATTENDED);
-    expect(exit?.dataset.detached).toBe("true");
   });
 
-  it("★★ 后端**没给** `detached`（旧后端 / 远端恒 null）⇒ 按「没脱离」算，说今天那句", async () => {
-    // ⚠ 这一格是**负例**，而它是这条判据的重量所在：
-    //   只有正例的话，把 `st.detached === true` 换成一个恒真表达式也照样绿 ——
-    //   那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形（假信号不报错，它只是一直说是）。
-    status = { channel: true, pid: 42 };
-    const s = new BackendSection({ headless: true });
-    await flush();
-    await flush();
-    const exit = s.element.querySelector<HTMLElement>(".backend-row-exit");
-    expect(exit?.textContent).toBe(EXIT_SELF_DIES);
-    expect(exit?.dataset.detached).toBe("false");
-    expect(
-      exit?.textContent?.includes("无人监护"),
-      "后端没说它脱离了，界面却替它说了「无人监护」—— 那是一句没有依据的话",
-    ).toBe(false);
+  it("★★ 〔㊴〕后端**没给** `said`（旧后端）/ 给了空串 ⇒ 当问不到：勾禁用、那一行不替它说话", async () => {
+    for (const said of [undefined, ""]) {
+      exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", ...(said === undefined ? {} : { said }) };
+      const s = new BackendSection({ headless: true });
+      await flush();
+      await flush();
+      const exit = s.element.querySelector<HTMLElement>(".backend-row-exit")!;
+      expect(exit.textContent, `said=${String(said)} 时界面替后端说了一句`).toBe("");
+      expect(exit.dataset.exit).toBe("unasked");
+      expect(s.element.querySelector<HTMLInputElement>(".backend-row-kill input")!.disabled).toBe(true);
+    }
   });
 
   it("★ 机器清单问后端要，不自己算（A5：前端自己拼会与 Rust 的 origin 分叉四处）", async () => {
@@ -356,6 +309,7 @@ describe("P2s backend 开关区", () => {
     // 〔PB1〕桩里那一格就是后端 `backend_status` 的 `health` 成品（金样「崩过」那一形）。
     const health = FACE["崩过"];
     status = { channel: true, pid: 42, detached: true, health };
+    exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", said: EXIT_UNATTENDED };
     const s = new BackendSection({ headless: true });
     await flush();
     await flush();
@@ -369,9 +323,7 @@ describe("P2s backend 开关区", () => {
     expect(
       row.querySelector<HTMLElement>(".backend-row-exit")?.textContent,
       "退出那一行被改了 —— 读数是**另一句话**，接上去就把那四根等号一起拽红了",
-    ).toBe(
-      describeExitBehavior({ policy: "absent", killOnExit: false, detached: true }),
-    );
+    ).toBe(EXIT_UNATTENDED);
   });
 
   it("★★ 〔PB1 · P5〕`health` 缺席 / 形状不对 ⇒ 只在那一格说「格式不对」，不替后端编一档，状态格照画", async () => {
@@ -421,58 +373,13 @@ describe("P2s backend 开关区", () => {
     await flush();
     expect(box.checked, "存失败了勾还留在新位置 —— 界面在骗人").toBe(false);
   });
-  it("★★ 〔B2 · E3〕「读不出来」是第四句，它不是「选了默认」—— 而且它不看 `killOnExit`", () => {
-    for (const detached of [false, true]) {
-      for (const killOnExit of [false, true]) {
-        expect(
-          describeExitBehavior({
-            policy: "unreadable",
-            killOnExit,
-            detached,
-          }),
-          "读不出来那一档说成了别的 —— `§3.3b ⑤`：「读不出来」与「用户选了默认」不是一回事，不许合并成一句",
-        ).toBe(EXIT_UNREADABLE);
-      }
-    }
-    expect(EXIT_UNREADABLE.includes("这不等于有人这么选过")).toBe(true);
-    expect(
-      EXIT_UNREADABLE.includes("无人监护"),
-      "读不出来那一句承诺了常驻 —— 它不知道那台机器会怎样",
-    ).toBe(false);
-    const four = [EXIT_KILLS, EXIT_UNATTENDED, EXIT_SELF_DIES, EXIT_UNREADABLE];
-    expect(
-      new Set(four).size,
-      "那四句里有两句一模一样 —— 两个状态被说成了一句",
-    ).toBe(4);
-  });
-
-  it("★★ 〔S5 · V105 清账〕十二格逐格穷举：每一格都是那四句之一（「不适用」那一支已删）", () => {
-    // 原来这里是判据 E4：折进前端那一档回「不适用」。那一档已放弃（`99 §1` V105），
-    // 那一支与这条判据同拍删掉。留下的是它的反向那一半 —— 任何一格都得落在四句里，
-    // 不许有第五种答案（`null` / 空串 / 别的句子）。
-    const four = [EXIT_KILLS, EXIT_UNATTENDED, EXIT_SELF_DIES, EXIT_UNREADABLE];
-    let cells = 0;
-    for (const policy of ["chosen", "absent", "unreadable"] as const) {
-      for (const killOnExit of [false, true]) {
-        for (const detached of [false, true]) {
-          const said = describeExitBehavior({ policy, killOnExit, detached });
-          cells++;
-          expect(
-            four.includes(said),
-            `（${policy}/${killOnExit}/${detached}）说了一句四句之外的话：${String(said)}`,
-          ).toBe(true);
-        }
-      }
-    }
-    expect(cells, "穷举的格数不对 —— 循环坏了").toBe(12);
-  });
-
   it("★★ 〔B2〕勾的值**问后端要**：盘上选过 true ⇒ 勾上、说「会结束它」", async () => {
     exitAnswer = {
       state: "chosen",
       killOnExit: true,
       reason: null,
       path: "x",
+      said: EXIT_KILLS,
     };
     const s = new BackendSection({ headless: true });
     await flush();
@@ -501,6 +408,7 @@ describe("P2s backend 开关区", () => {
       killOnExit: false,
       reason: "不是 JSON",
       path: "x",
+      said: EXIT_UNREADABLE,
     };
     let s = new BackendSection({ headless: true });
     await flush();
