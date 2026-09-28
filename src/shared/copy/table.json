@@ -14511,35 +14511,25 @@
       "zh": "SSH 连接/鉴权失败：{e}",
       "args": ["e"]
     },
-    "rsSshSource.host.sshGExit": {
+    "beSshConfig.host.sshGExit": {
       "kind": "error",
       "zh": "ssh -G {alias} 退出非 0：{detail}",
       "args": ["alias", "detail"]
     },
-    "rsSshSource.host.sshGFailed": {
+    "beSshConfig.host.sshGFailed": {
       "kind": "error",
       "zh": "运行 ssh -G 失败（OpenSSH 客户端装了吗？）：{e}",
       "args": ["e"]
     },
-    "rsSshSource.host.sshGNotRun": {
-      "kind": "error",
-      "zh": "ssh -G 没能运行：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.host.dashAlias": {
+    "beSshConfig.host.dashAlias": {
       "kind": "error",
       "zh": "host 别名不能以 '-' 开头",
       "args": []
     },
-    "rsSshSource.host.badAlias": {
+    "beSshConfig.host.badAlias": {
       "kind": "error",
       "zh": "非法的 host 别名（含不安全字符）：{alias}",
       "args": ["alias"]
-    },
-    "rsSshSource.aliases.readFailed": {
-      "kind": "error",
-      "zh": "读取 ~/.ssh/config 失败：{e}",
-      "args": ["e"]
     },
     "rsSshSource.health.degraded": {
       "kind": "body",
@@ -15547,6 +15537,16 @@
     "apikeyReads.backend.tooOld": {
       "kind": "error",
       "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "sshConfigReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的 ssh 配置，两端版本对不上",
+      "args": []
+    },
+    "sshConfigReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不认读 ssh 配置这一问。重启 cc-monitor 换上新后端就有了",
       "args": []
     },
     "rsHistory.launch.attachNeedsTerminal": {

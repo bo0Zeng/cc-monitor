@@ -116,11 +116,9 @@ import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { TmuxSession } from "../generated/TmuxSession";
 import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
-import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PushResult } from "../generated/PushResult";
-import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { AssetsSynced } from "../generated/AssetsSynced";
 import type { McpServerEntry } from "../generated/McpServerEntry";
@@ -430,9 +428,6 @@ export const commands = {
   // 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
   //   `session-lines/<sid>`（`chan.subscribe`），留存由那条订阅当场交。
 
-  /** `ssh -G` 解析一个别名。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  resolve_ssh_host: (args: { alias: string }) => invoke<ResolvedHost>("resolve_ssh_host", args),
-
   /** 在新终端 resume 一个历史会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   resume_history_session: (args: {
     sessionId: string;
@@ -666,9 +661,6 @@ export const commands = {
    */
   list_active_sessions: () => invoke<ActiveSessionPayload[]>("list_active_sessions"),
 
-  /** `~/.ssh/config` 里的 host 别名清单（不展开 Include、不解析 Match）。 */
-  list_ssh_host_aliases: () => invoke<string[]>("list_ssh_host_aliases"),
-
   /**
    * 有 `.mcp.json` 的项目目录候选（`~/.claude.json` 的 `projects` 键）。
    *
@@ -678,9 +670,6 @@ export const commands = {
    */
   list_mcp_project_dirs: (args: { origin: Origin }) =>
     invoke<string[]>("list_mcp_project_dirs", args),
-
-  /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
 
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),

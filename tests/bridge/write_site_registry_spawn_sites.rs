@@ -119,10 +119,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
     // 〔LOC1a · 第四波 4D〕`local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
     //   monitor 不再起一次性本机后端（`设计/05 §14.6`）。
-    ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
-     "解析 ssh_config 的别名 —— 只读一次配置，不建连接
-          ★ 三条策略为什么是这三格：先前是裸 `.output()`：Windows 上 `ssh.exe` 是控制台子系统，每解析一次别名闪一个黑框。`Captured`：stderr 进「退出非 0」那句话。",
-     "Hidden · JobKillOnClose · Captured"),
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
     // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
     ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
      "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\

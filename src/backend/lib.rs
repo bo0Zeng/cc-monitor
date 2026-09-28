@@ -899,6 +899,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔RESYNC〕`--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--ssh-config-aliases",
+    "--ssh-config-import",
+    "--ssh-config-resolve",
     // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump（本路不 bump）。

@@ -230,6 +230,19 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`ssh_source.rs` 里那三条，〔散文墓碑〕）搬进后端。
+    (
+        "ssh-config-aliases",
+        "别名清单：后端 `dial/ssh_config.rs` 读 `~/.ssh/config` 出成品 `{aliases}`；前端 `src/ssh-config-reads.ts` 按形状收，monitor 零 `.ssh` 读面",
+    ),
+    (
+        "ssh-config-import",
+        "批量导入预览：逐个 `ssh -G` ＋ 聚合都在后端（`dial/ssh_config.rs::aggregate_ssh_hosts`），成品 `{groups}`；前端按形状收",
+    ),
+    (
+        "ssh-config-resolve",
+        "一个别名的有效连接参数：`ssh -G` 由后端起（`dial/ssh_config.rs::resolve`），monitor 从此不起 `ssh`（`00 §1.1`「monitor 零 SSH」）",
+    ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

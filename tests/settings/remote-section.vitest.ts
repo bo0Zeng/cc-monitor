@@ -35,6 +35,21 @@ vi.mock("../../src/ipc/commands", () => ({
     },
   ),
 }));
+// 〔MIG-1 · `99 §2.1 ⑯`〕「从 ~/.ssh/config 导入」那三问改问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
+//   记名（帧命令名）、按名回（`Error` ⇒ reject）。解码器本身由 `tests/ssh-config-reads.vitest.ts` 对金样钉。
+vi.mock("../../src/ssh-config-reads", () => {
+  // 没设的回那一问成品的空形（真模块只回解码过的值，不会回 `undefined`）。
+  const ask = (op: string, empty: unknown) => () => {
+    ipcCalls.push(op);
+    const reply = ipcReplies.has(op) ? ipcReplies.get(op) : empty;
+    return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
+  };
+  return {
+    listSshHostAliases: ask("ssh-config-aliases", []),
+    resolveSshHost: ask("ssh-config-resolve", undefined),
+    importSshHosts: ask("ssh-config-import", []),
+  };
+});
 import { loadConfig } from "../../src/config";
 import { fakeCfg } from "../config-patch-fake";
 import { copyText } from "../../src/copy-table";
@@ -502,20 +517,20 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 从 section 自己的 DOM 里取（不是私有字段）：那块提示原先根本没挂进 DOM —— 取字段会假绿。
     const hint = (sec: RemoteSection): string =>
       [...sec.element.querySelectorAll<HTMLElement>(".settings-hint")].map((e) => e.textContent ?? "").join("|");
-    ipcReplies.set("list_ssh_host_aliases", new Error("perm-denied-sshcfg"));
+    ipcReplies.set("ssh-config-aliases", new Error("perm-denied-sshcfg"));
     try {
       const bad = await mount([mkH("a", "1.1.1.1")]);
       await new Promise((r) => setTimeout(r, 0));
       expect(hint(bad)).toContain("读不了 ~/.ssh/config");
       expect(hint(bad)).toContain("perm-denied-sshcfg");
       expect(hint(bad)).not.toContain("未在 ~/.ssh/config 找到");
-      ipcReplies.set("list_ssh_host_aliases", []);
+      ipcReplies.set("ssh-config-aliases", []);
       const none = await mount([mkH("a", "1.1.1.1")]);
       await new Promise((r) => setTimeout(r, 0));
       expect(hint(none)).toContain("未在 ~/.ssh/config 找到");
       expect(hint(none)).not.toContain("读不了");
     } finally {
-      ipcReplies.delete("list_ssh_host_aliases");
+      ipcReplies.delete("ssh-config-aliases");
     }
   });
 
@@ -523,7 +538,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 主计划 §1-2 的红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
     // 但它是同一件事的另一种说法：一次 UI 动作扇出 N 次 ssh 往返，用户没要求过。
     //
-    // 判据**不是**「零调用」—— 实测渲染时确实有一次 `list_ssh_host_aliases`
+    // 判据**不是**「零调用」—— 实测渲染时确实有一次 `ssh-config-aliases`（〔MIG-1〕问本机后端）
     //（读本机 `~/.ssh/config` 填「导入」下拉），那既不是状态探测、也不走 ssh、
     // 更不随机器数增长。红线禁的是**逐机器探测**，所以判据就写成那样：
     // **同一份调用清单，1 台和 3 台必须逐字相同。**

@@ -58,6 +58,7 @@ mod connect;
 pub mod link;
 mod pool;
 pub(crate) mod sftp;
+pub(crate) mod ssh_config;
 pub(crate) mod uses;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；

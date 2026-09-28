@@ -2486,11 +2486,12 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔SH1 · 4D〕37 → 39：`cc-bus-control.ts::readState` / `readInbox`（`bus-state` / `bus-inbox`，驾驶舱读面从 monitor 那两条 Tauri 命令改走通道）；显式给期限（`READ_BUDGET_MS`）。
     // 〔GAP1 · `设计/15 §4.7 S1`〕39 → 40：`settings/backend-section.ts::askBackendLog`（`backend-log`，那台后端的诊断文件尾部）；显式给期限。
     // 〔RESYNC · V149〕基数 40 → 增量 +1 ⇒ 41：`resync.ts::resync`（`resync`，机器一行「重新对齐」与关卡 2「对齐后重试」共用这一处）；显式给期限（`RESYNC_BUDGET_MS`）。
+    // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 41usize),
+            ("chan.call", 44usize),
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
@@ -2609,15 +2610,15 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     (
         "src/bridge/src/ssh_source.rs",
-        &["C1", "C4", "C5", "X2"],
-        &["读文本"],
+        &["C1", "X2"],
+        &[],
         "〔C2 · 2026-09-24，`设计/05 §13`〕**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
          界面侧读应答的那一段是新的通信层成员 `ssh_link.rs`，起代理的是宿主 `dial_host.rs`。\
-         今天咬它的四条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
-         （远端数据源本来就是业务）· `C4` 读 `~/.ssh/config`（「从 ssh config 导入」这个功能）· \
-         `C5` 起 `ssh -G`（同一个功能）· `X2` 重连退避与快照重试的期限值。\
+         今天咬它的两条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
+         （远端数据源本来就是业务）· `X2` 重连退避与快照重试的期限值。\
          ⇒ **这一份不是「还差一点就进来」，是「本来就不该进来」**：登记它等于把业务家圈进通信层。\
-         〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。〕",
+         〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。\
+          〔MIG-1〕`C4`「读文本」（读 `~/.ssh/config`）与 `C5`（起 `ssh -G`）随「从 ssh config 导入」搬进后端 `dial/ssh_config.rs` 一起离开。〕",
     ),
     (
         "src/bridge/src/sftp.rs",
@@ -2937,7 +2938,9 @@ fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the
     //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
     // 〔SR1b · 2026-09-24〕`C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
     //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 2);
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`C4` 判词处数 2 → **1**：少的是 `ssh_source.rs` 的「读文本」（读 `~/.ssh/config`）——
+    //   「从 ssh config 导入」搬进后端 `dial/ssh_config.rs`。份数仍是 4。
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

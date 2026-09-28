@@ -396,18 +396,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              写侧归 `filewin::transfer`（〔F7c 09-24〕上传经通道：monitor 的传输台只写远端暂存区，\
              落进用户目录那一下是后端 `files-commit-upload`，先过围栏）",
     ),
-    (
-        "ssh_source.rs",
-        "list_ssh_host_aliases",
-        "`~/.ssh/config`",
-        "第 85 件的 `.ssh` 读面表：恰好一处 + 只吐别名",
-    ),
-    (
-        "ssh_source.rs",
-        "expand_tilde",
-        "`~` 展开（不落到具体目录）",
-        "纯路径变换，调用方各自受自己那张表管",
-    ),
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 那两行出表：读 ssh config 与 `~` 展开随导入搬进后端（`dial/ssh_config.rs`）。
 ];
 
 /// ★ 正题：**每一处 `home_dir()` 都要在表里，且表里不留死行**。

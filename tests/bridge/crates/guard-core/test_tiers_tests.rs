@@ -266,6 +266,7 @@ const SCAN: &[&str] = &[
     "tests/account-chip.vitest.ts",
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
+    "tests/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
@@ -284,6 +285,7 @@ const SCAN: &[&str] = &[
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
+    "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",

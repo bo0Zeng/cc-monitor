@@ -204,6 +204,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-read"
                 // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
+                // 〔MIG-1〕`~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
+                | "ssh-config-aliases"
+                | "ssh-config-import"
+                | "ssh-config-resolve"
                 // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
                 | "resync"
                 // 〔RM1f〕`panorama` 不在这里了：起进程改成异步等（`plugin::invoke::run_abortable`），
@@ -371,6 +375,10 @@ fn every_registered_command_declares_its_run_kind() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
+        // 〔MIG-1〕`~/.ssh/config` 三条（阻塞档，理由在上面 `expected_blocking`）。
+        "ssh-config-aliases",
+        "ssh-config-import",
+        "ssh-config-resolve",
         // 〔SR1b〕传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",
