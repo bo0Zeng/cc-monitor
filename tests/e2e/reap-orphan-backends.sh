@@ -32,14 +32,8 @@
 # 那种今天靠 gate 丁 的**计数**拦（多于一个就 ABORT），不靠本刀。
 # 别把本刀读成「跑完就一定干净」。
 #
-# ## 〔RL1 · V107〕`--relay` 进程**只列不收**
-#
-# 先前盘上最常见的孤儿是**中转**（`真相源/70 §7c`「孤儿总是中转」）：monitor 另起的 `--relay`
-# 子进程 stdin 是 null，宿主一走它不知道，`PPID == 1` 地活下去。中转并进本机常驻后端之后，
-# **本机**再没有独立的 `--relay` 进程 —— 那一族孤儿随之消失。
-# 盘上仍会看到的 `--relay` 只剩一种：**远端** `relay-ensure` 起的那一个，它**刻意脱离**
-#（`PPID == 1` 是设计，不是残留：远端会话活在 tmux 里、比那条 SSH 长，中转要陪它们活）。
-# ⇒ 本刀认出 argv 里的 `--relay`、**只列不收**（这台机器若也被别人当远端用，收掉它就断了别人的会话）。
+# 〔RL1 · V107 · DEL〕先前盘上最常见的孤儿是**中转**（`真相源/70 §7c`「孤儿总是中转」）：独立的中转进程。
+# 中转并进常驻后端之后（本机 V107 · 远端 V139）独立中转进程一形删了，本刀里「认出它、只列不收」那一支随之删。
 #
 # ## 默认干跑
 #
@@ -103,9 +97,6 @@ for pat in "${PATTERNS[@]}"; do
     env_dir=""
     [ -r "/proc/$pid/environ" ] && \
       env_dir="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
-    case " $args " in
-      *" --relay "*) echo "  中转  pid=$pid ppid=$ppid  —— 远端 relay-ensure 起的脱离中转，脱离是设计，**不动它**"; continue ;;
-    esac
     if [ -n "$FIXTURE" ] && [ "$env_dir" = "$FIXTURE" ]; then
       # 身份对上了 —— **与父进程活不活无关**。台架的残留正是这一族。
       fixture_hits+=("$pid")

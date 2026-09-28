@@ -1669,7 +1669,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
   「本机后端写的那份就是这个 monitor 用的那份」由**连接本身**保证：常驻载体接上之前 hello 的 `host_env` 已与 monitor 要交的
   `CCM_APIKEY_CREDENTIALS` 两向比过（`local_backend_host.rs::hello_verdict`），被监护的 stdio 载体是 monitor 按同一份环境起的。
   〔GP1 那一版：monitor 发之前先问一次 `apikey-read` 核 `path`；RM1a 那一版：「monitor **从不**把 `apikey-key-set` 发给本机那条连接」。〕
-- **路径**与那台机器上 `--relay` 进程的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
+- **路径**与那台机器上中转里的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
 - 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
 - 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
 
@@ -2898,15 +2898,16 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 **W5-FILES 追加一条（第五波，2026-09-25）**：`--files-size` —— 同族第九条（算目录大小，逐条见上面 `files-size` 那一小节）。
 与帧面走**同一个 `run`**，读 stdin（那段 JSON 就是它的 `args`）。只读。
 
-**`K-H1` 追加一条**：`--relay` —— 起 **HTTP 中转**（搬字节那半）。它与上面每一条都不同族：
-不是一次性查询，而是一个**常驻**进程，起来就不返回。
+**`K-H1` 那一条：HTTP 中转**（搬字节那半）。〔DEL〕独立进程那一形（子命令 `--relay`）删了：
+中转只住常驻后端进程里（本机 V107 · 远端 V139），下面说的是它。
 
-- **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
-- 〔RL1 · V107〕**进程内那一形**：流模式（`--tail-only` 等，stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
-  ⇒ 在本进程里起同一个中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
-  随进程生死（常驻后端按「退出行为」留或退，中转一起）。与上面独立那一形的差别只有三格：**端口没有缺省值**（认不出 ⇒ 不开）·
-  **tee 丢弃**（stdout 是 wire）· **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（远端经 SSH exec 起的流模式后端就是这一格）。
-  凭据文件路径同样由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。
+- **只监听 `127.0.0.1`**，不对外暴露；端口由宿主以 `CCM_RELAY_PORT` 交（值是 `relay_route_core::PORT`，`8788`），**没有缺省值**（认不出 ⇒ 不开）。
+- 〔RL1 · V107 · V139〕流模式（stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
+  ⇒ 在本进程里起中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
+  随进程生死（常驻后端按「退出行为」留或退，中转一起）。**tee 落 tap 口**（`tap` 帧；stdout 是 wire）·
+  **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（测试连接探针那一趟流模式就是这一格）。
+  宿主：本机 monitor 起后端时交；远端 `--resident-ensure` 起常驻子进程时交同一个值。
+  凭据文件路径由 `CCM_APIKEY_CREDENTIALS` 交（monitor 起本机后端时交，与它自己写的那份同一个路径）。
 - 默认上游**每个 agent 一行**〔条 59 / 条 60，2026-09-24 订正；先前这里写的是一个**进程级**的上游默认
   （`https://api.anthropic.com`，由一个进程级环境变量盖）—— 已整删〕。它是**上游选择**的表，不是中转的配置：
   今天只登记了 `claude-code`（默认 `https://api.anthropic.com`，`CCM_AGENT_UPSTREAM_CLAUDE_CODE` 只盖这一家；
@@ -3017,7 +3018,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 - ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受后端零定时器护栏所限，
   理由与代价见 `src/backend/relay/mod.rs` 头注。
 
-**`K-P6b` 追加一条**：`--dial` —— 起 **SSH 拨号代理**（候选 E 的字节代理）。它与 `--relay` 同族：
+**`K-P6b` 追加一条**：`--dial` —— 起 **SSH 拨号代理**（候选 E 的字节代理）。它与当时的 `--relay` 同族：
 不是一次性查询，而是一个**常驻**进程，起来就搬字节直到某一头断开。
 
 🔴 **先写死它买到了多少，别读大**：它搬走的是 **后端那条长连接流**的那一跳 SSH 握手 ——

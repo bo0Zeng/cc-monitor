@@ -5,8 +5,7 @@ use super::*;
 //    —— 那时 `server.rs` 自己引着它们。上游选择搬走之后中转不再认识那两个模块，
 //    判据要用就得自己写明白：**判据的人群从哪来，要看得见**。
 use super::super::listen::{
-    listen, resolve_port, run_reading, run_with, serve, RelayExec, DOWNSTREAM_DEADLINE,
-    INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
+    listen, serve, DOWNSTREAM_DEADLINE, INFLIGHT_CONNECTIONS, UPSTREAM_DEADLINE,
 };
 use super::super::upstream;
 use crate::accounts::upstream::creds;
@@ -740,8 +739,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     //   · **走得到 `serve()` 的判据 = 6 条**（不是 3 条）。量具：`grep -n 'spawn_relay(' relay/`
     //     去掉定义行与注释行 ⇒ **5** 处，逐条点名 —— `routes_two_keys…` ·
     //     `an_unroutable_path…` · `every_chunk_…` · `the_auth_header…` ·
-    //     `the_relay_port_is_not_reachable…`；再加经 `run_with` 的
-    //     `the_relay_entry_exits_with_two_when_it_cannot_start`（自带线程 + 5s `recv_timeout`）。
+    //     `the_relay_port_is_not_reachable…`；再加当时一条经 `--relay` 入口的（自带线程 + 5s `recv_timeout`；〔DEL〕随那一形删了）。
     //     **本函数覆盖其中 4 条**（前四条都调它），第 5 条不调本函数、自带 `connect_timeout`。
     //
     //   · **测试段客户端 socket 的创建点 = 4 处**（量具 `grep -n 'TcpStream::connect' relay/`
@@ -1406,37 +1404,48 @@ const CHILD_MARK: &str = "CCM_RELAY_TEST_CHILD";
 /// ⇒ 永远等不到那句 `listening on` ⇒ 下面 `spawn_relay_child` 当场 panic。
 const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_point";
 
-/// ★ 子进程入口：把**测试二进制自己**当中转进程重新拉起来。
+/// ★ 子进程入口：把**测试二进制自己**当一个起了中转的常驻后端重新拉起来。
 ///
 /// # 它不是判据，是一个入口 —— 所以标了 `#[ignore]`
 ///
 /// 标 `#[ignore]` 是刻意的：它在正常那一趟里**一条断言都不跑**，
 /// 算成 `passed` 就是往门禁里塞一条恒绿的仪式。⇒ 让它算 `ignored`。
 ///
-/// # 它走的是**真入口** `run()`
+/// # 它走的是**生产接线**
 ///
-/// 顺带把两格长期登记为「判不了」的东西变成**量得到**的（登记住址件文件 §8.18.3 / §8.18.9）：
-/// ①「`run()` 真的去读了那两个环境变量」—— 今天子进程只拿到环境变量，没有别的入口；
-/// ②「`run_with` 成功那一条路上 `TeeSink::to_stdout()` 那根接线」—— 子进程的 **stdout 就是 tee**，
-///   判据在上面读得到真的事件行。
+/// 〔DEL〕独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
+/// （`accounts::upstream::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
+/// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::tap::hub().attach()`），
+/// 每件逐字写成**线上那一形 `tap` 帧**（`tap::to_frame`）落 stdout —— 判据读到的就是会上 wire 的那几帧。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RELAY_TEST_CHILD 拉起时才当中转跑"]
 fn relay_child_process_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    // `run()` 自己去读 `CCM_RELAY_PORT` / `CCM_AGENT_UPSTREAM_CLAUDE_CODE`。成功那条路永不返回。
+    let mut rx = crate::tap::hub().attach();
+    std::thread::spawn(move || {
+        use std::io::Write;
+        while let Some(ev) = rx.blocking_recv() {
+            let line = serde_json::to_string(&crate::tap::to_frame(ev)).expect("tap 帧");
+            let mut o = std::io::stdout().lock();
+            let _ = writeln!(o, "{line}");
+            let _ = o.flush();
+        }
+    });
     // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
     //   而凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    // ⚠ 〔上游选择搬出 `relay/` 那一拍〕走的是 `main.rs` 的 `--relay` 那一臂**真调的那一个**
-    //   （`accounts::upstream::run_relay` = 中转的 `run` ＋ 上游选择那只手），不是中转的 `run` 本身 ——
-    //   后者今天要调用方递一个 `Startup` 进来，判据自己递就不是生产段那条接线了。
-    std::process::exit(crate::accounts::upstream::run_relay(
-        &crate::agents::claudecode::paths::resolve_home(),
-        &[],
-    ));
+    let said =
+        crate::accounts::upstream::host_relay(&crate::agents::claudecode::paths::resolve_home());
+    eprintln!("[relay-child] {said}");
+    loop {
+        std::thread::park();
+    }
 }
+
+/// 子进程 stdout 上一帧**带事件原文**的 `tap` 帧（线上形：`{"kind":"tap",…,"data":…}`）的标记。
+const TAP_DATA: &str = "\"data\":";
 
 /// 一个跑在**真子进程**里的中转，连同它 stdout / stderr 的全量收集面。
 struct RelayChild {
@@ -1603,8 +1612,8 @@ fn spawn_relay_child_at(
 ///
 /// # 采集面 = 子进程的 **stderr 全量 + stdout 全量**
 ///
-/// stdout 那一半不是搭头：子进程的 stdout **就是 tee**（`run_with` 里那唯一一处
-/// `TeeSink::to_stdout()`）⇒ 这一条同时覆盖了 `DoD-3㈡` 的两半，
+/// stdout 那一半不是搭头：子进程的 stdout **就是 tee**（生产接线的 tap 口，逐帧写成线上那一形）
+/// ⇒ 这一条同时覆盖了 `DoD-3㈡` 的两半，
 /// 而且是在**真的那根接线**上量的，不是在测试自己造的 `Vec<u8>` sink 上。
 ///
 /// # 三条非空对照（缺一条这里就可能是空真）
@@ -1640,7 +1649,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
     );
     // 非空对照③：stdout（= tee）上真的出现了事件行 —— 等它到，等不到当红。
     assert!(
-        wait_until(|| relay.out().contains("\"event\"")),
+        wait_until(|| relay.out().contains(TAP_DATA)),
         "非空对照：子进程 stdout（tee 的真落点）上一条事件行都没有 —— \
              采集面是死的，下面那条「零出现」就是空真。stdout 现在是：{:?}",
         relay.out()
@@ -1691,7 +1700,7 @@ fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_
 /// # 四个出口，逐个说它怎么量的
 ///
 /// ㈠ **标准输出**：子进程 stdout（tee 的真落点）全量收集面。
-/// ㈡ **回给前端的每一帧**：tee 的 NDJSON 行（在 stdout 里）**加上**回给下游客户端的原始字节。
+/// ㈡ **回给前端的每一帧**：tee 的 `tap` 帧（在 stdout 里）**加上**回给下游客户端的原始字节。
 /// ㈢ **错误消息**：子进程 stderr 全量收集面 **加上** 两条真实错误响应的响应体
 ///    （404 路由不认 · 400 请求体长度读不懂）。
 ///    ⚠ `KS3` 逐字「**这一条不许只测正常流程**」，所以这两发是必须的。
@@ -1767,7 +1776,7 @@ fn the_substituted_key_never_shows_up_in_any_of_the_four_exits() {
 
     // ── 非空对照 B：两条采集面都是活的 ──────────────────────────────
     assert!(
-        wait_until(|| relay.out().contains("\"event\"")),
+        wait_until(|| relay.out().contains(TAP_DATA)),
         "非空对照：子进程 stdout 上一条事件行都没有 —— 采集面是死的，\
              下面那条「零出现」就是空真。stdout 现在是：{:?}",
         relay.out()
@@ -2123,7 +2132,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
 
     // ── 非空对照：两条采集面都是活的 ───────────────────────────
     assert!(
-        wait_until(|| relay.out().contains("\"event\"")),
+        wait_until(|| relay.out().contains(TAP_DATA)),
         "非空对照：子进程 stdout 上一条事件行都没有 —— 采集面是死的，\
              下面那几条「零出现」就是空真。stdout 现在是：{:?}",
         relay.out()
@@ -2138,10 +2147,15 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         err.contains("credentials: configured"),
         "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{err:?}"
     );
-    // 非空对照：tee 行里带着**账号**那一格（路由键三段都落到了 tee 上）。
+    // 〔DEL〕tee 只剩 `tap` 帧那一形：它**不带**账号那一格（`设计/20 §11` I2「① 不问账号」）。
+    //   非空对照改成「两发都抄到了」（第二个响应的序号在），账号 id 零出现。
     assert!(
-        out.contains("\"account\":\"acct-a\"") || out.contains("\"account\": \"acct-a\""),
-        "tee 行里没有账号那一格：{out:?}"
+        out.contains("\"resp\":1"),
+        "tap 上没有第二个响应 —— 两发没都抄到：{out:?}"
+    );
+    assert!(
+        !out.contains("acct-a"),
+        "tap 帧里出现了账号 id（① 不问账号）：{out:?}"
     );
 
     // ── ★★ ② 两把 key，四个出口，一个字节都不许有 ─────────────
@@ -2376,8 +2390,8 @@ fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
 /// ㈠ **只有一个中转进程**：子进程 stderr 里 `listening on` **恰好 1 行**
 ///    （一个端口只可能有一个监听者，本 crate 不用 `SO_REUSEPORT`）。
 /// ㈡ **两个键都从这一个进程走**：两发都到了上游，且路径都被剥了前缀。
-/// ㈢ ★ **两发共享同一份进程内状态**：tee 的两行 `__meta__` 的 `seq` 是 **0 和 1**。
-///    `seq` 是 `TeeSink` 的实例字段，而 `TeeSink` 住在 `Relay` 里、由 `serve()` 跨连接
+/// ㈢ ★ **两发共享同一份进程内状态**：两发各自的 `tap` 收尾帧，`resp` 是 **0 和 1**。
+///    那个序号是 `TeeSink` 的实例字段，而 `TeeSink` 住在 `Relay` 里、由 `serve()` 跨连接
 ///    `Arc::clone` —— 谁要是改成「每连接一个新 `Relay`」，这里就会看到两个 `0`。
 ///    ⇒ 这一格才是**有牙**的那一格（死值验见件文件 §8.20.5）。
 ///
@@ -2410,22 +2424,31 @@ fn one_relay_process_serves_both_keys_and_shares_its_tee_sequence() {
         assert_eq!(line, "POST /v1/messages?beta=true HTTP/1.1 auth=false");
     }
 
-    // ㈢ 等两行 meta 都到 stdout（那是真的 `TeeSink::to_stdout()` 那根接线）。
+    // ㈢ 等两发各自的收尾帧都到 stdout（线上那一形 `tap` 帧，生产接线的 tap 口）。
+    let ends_of = |out: &str| -> Vec<(u64, String)> {
+        let mut v: Vec<(u64, String)> = out
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|f| f["kind"] == "tap" && f.get("end").is_some())
+            .map(|f| {
+                (
+                    f["resp"].as_u64().expect("resp 是数"),
+                    f["stream"].as_str().expect("stream 是串").to_string(),
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    };
     assert!(
-        wait_until(|| relay.out().matches("\"__meta__\"").count() >= 2),
-        "两发响应必须在 tee 上各留一行 meta，stdout 现在是：{:?}",
+        wait_until(|| ends_of(&relay.out()).len() >= 2),
+        "两发响应必须在 tap 上各留一帧收尾，stdout 现在是：{:?}",
         relay.out()
     );
-    let out = relay.out();
-    let metas: Vec<&str> = out.lines().filter(|l| l.contains("\"__meta__\"")).collect();
-    assert_eq!(metas.len(), 2, "meta 行必须恰好两行：{metas:?}");
-    assert!(
-        metas[0].contains("\"seq\":0") && metas[1].contains("\"seq\":1"),
-        "两发必须共享**同一个进程里的同一份** tee 序号（该是 0 和 1）：{metas:?}"
-    );
-    assert!(
-        metas[0].contains("sid-AAA") && metas[1].contains("sid-BBB"),
-        "两行 meta 要各自带自己的键：{metas:?}"
+    assert_eq!(
+        ends_of(&relay.out()),
+        vec![(0, "sid-AAA".to_string()), (1, "sid-BBB".to_string())],
+        "两发必须共享**同一个进程里的同一份**响应序号（该是 0 和 1），各带自己的流标签"
     );
 
     // ㈠ 只有**一个**中转进程在听。
@@ -3039,94 +3062,13 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
     );
 }
 
-/// ★ `重要-6` 之一：`--relay` 的**配置面**。期望值全是**手写字面量** ——
-/// 拿被测的那两个常量去算期望值，本判据就自证、恒绿。
-///
-/// ⚠ **改名**〔回修轮之四 08-25，承接 D2 §7㈢〕：旧名
-/// `the_relay_entry_resolves_its_defaults_and_lets_**env**_override_them`
-/// 里的「**env**」是假的 —— 它调的是**纯函数** `resolve_config` 的**参数**，
-/// **一个环境变量都没读过**。今天的名字只说它证得了的那一半：默认值 + **入参**盖得住。
-/// 「哪个环境变量喂给哪个配置位」由 `each_env_var_name_goes_into_its_own_config_slot` 守。
+// 〔DEL〕这里原是 `--relay` 入口那三条（端口的缺省与覆盖 · 环境变量名 → 配置位的接线 · 起不来就退 2）：
+//   `--relay` 一形删了，那三样代码随之删；进程内那一形的对应格住 `host_tests`（交了认不出的端口 ⇒ 拒而不缺省 ·
+//   端口被占 ⇒ 出声不倒 · 上游配置认不出 ⇒ 绑口之前就失败）。原 ㈢ 那一格（上游选择问的是哪个旋钮）留在下面。
+
+/// 上游选择问的上游旋钮**就是**那一个名字（期望值是手写字面量；被测的是 `Upstreams::from_env` 真的去问了它）。
 #[test]
-fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
-    // ⚠ 〔「中转层里没有账号」的前置〕本条先前还量**上游**那一格（默认值 · 旋钮盖得住 ·
-    //   路径前缀不丢 · 认不出回 `None`）。那是**上游选择的配置**，今天由上游选择自己解析 ——
-    //   四格原样搬去了 `table_tests::each_agents_env_knob_overrides_only_that_agents_default`
-    //   （手写字面量期望、带前缀与不带的非空对照都在那边）。本条只剩中转自己的端口。
-    assert_eq!(resolve_port(None), 8788, "默认端口");
-    assert_eq!(
-        resolve_port(Some("19999")),
-        19999,
-        "CCM_RELAY_PORT 必须盖得住默认"
-    );
-    // 端口读不懂 ⇒ **回默认**，不是 0、也不是崩。
-    for bad in ["not-a-port", "70000", "-1", ""] {
-        assert_eq!(
-            resolve_port(Some(bad)),
-            8788,
-            "读不懂的端口 {bad:?} 必须回默认"
-        );
-    }
-}
-
-/// ★★ `重要-3(D2)`：`run()` 那一层的**接线** —— 哪个环境变量喂给哪个配置位。
-///
-/// D2 实测：把 `run()` 里那两行 `std::env::var(...)` **对调** ⇒ **389 条判据全绿**
-/// （`D2RUN`），而真机后果是 `--relay` 整个起不来。今天那条接线住 `run_reading`，
-/// 取值器与执行体都注入 ⇒ 本条打得到它，**且不碰进程环境**。
-///
-/// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / 上游选择那张表里的旋钮名去算。
-///
-/// ⚠⚠ **名字只说它证得了的那一半**〔铁律 15 自查，本轮我自己写的第一版就犯了同一种病〕：
-/// 我第一版把它叫 `the_relay_entry_reads_each_env_var_into_its_own_config_slot`
-/// —— 「**reads env**」是假的，取值器是**注入的**，本条一个真环境变量都没读过。
-/// 那正是 D2 `重要-3(D2)` 逮 `the_relay_entry_resolves_…_and_lets_env_override_them`
-/// 的**同一种病**，而它长在了治它的代码里。⇒ 改成今天这个名字：它证的是
-/// **变量名 → 配置位**这条接线，**不是**「真的去读了环境」。
-/// 「`run()` 真的读了那两个环境变量」今天**判不了**，登记住址件文件 §8.18.9。
-#[test]
-fn each_env_var_name_goes_into_its_own_config_slot() {
-    // ⚠ 〔条 60〕执行体的第 2 个位今天是**取值器本身**，不是「上游那个变量的值」：
-    //   上游旋钮每家一个、名字住上游选择那张表，中转只把取值器原样递过去。
-    //   ⇒ 本条量两件事：① 端口位读的是 `CCM_RELAY_PORT`；② 递下去的取值器**就是**入口收到的
-    //   那一个（拿它问上游那个变量名，答回来的是**入口那个取值器**的答案）。
-    let seen: std::sync::Mutex<Vec<(Option<String>, Option<String>)>> =
-        std::sync::Mutex::new(Vec::new());
-    let exec: &RelayExec<'_> = &|p, get, _home| {
-        seen.lock()
-            .expect("lock")
-            .push((p.map(str::to_string), get("CCM_AGENT_UPSTREAM_CLAUDE_CODE")));
-        7
-    };
-
-    // ㈠ 取值器把**变量名原样**当值返回 ⇒ 接线一旦对调，下面这句当场对不上。
-    let echo: &dyn Fn(&str) -> Option<String> = &|k| Some(k.to_string());
-    assert_eq!(
-        run_reading(echo, &nowhere_home(), exec),
-        7,
-        "入口必须把执行体的退出码原样带回"
-    );
-    assert_eq!(
-        seen.lock().expect("lock").clone(),
-        vec![(
-            Some("CCM_RELAY_PORT".to_string()),
-            Some("CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string())
-        )],
-        "第 1 个配置位必须读 CCM_RELAY_PORT；递下去的取值器必须是入口收到的那一个"
-    );
-
-    // ㈡ 两个变量都没设 ⇒ 两个位都是 None，不是把变量名当默认值塞进去。
-    seen.lock().expect("lock").clear();
-    let none: &dyn Fn(&str) -> Option<String> = &|_| None;
-    assert_eq!(run_reading(none, &nowhere_home(), exec), 7);
-    assert_eq!(
-        seen.lock().expect("lock").clone(),
-        vec![(None, None)],
-        "没设环境变量时两个配置位都该是 None"
-    );
-
-    // ㈢ 上游那个变量名**每家一个**，而读它的是上游选择：拿上游选择那张表问一遍，它问的正是那个名字。
-    //    （期望值仍是手写字面量；被测的是 `Upstreams::from_env` 真的去问了它。）
+fn the_upstream_selection_asks_exactly_its_registered_upstream_knob() {
     let asked: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
     let _ = accounts::Upstreams::from_env(&|k| {
         asked.lock().expect("lock").push(k.to_string());
@@ -3137,66 +3079,6 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
         vec!["CCM_AGENT_UPSTREAM_CLAUDE_CODE".to_string()],
         "上游选择该问的上游旋钮（今天只登记了 claude-code 一家）不是这一个"
     );
-}
-
-/// 把 `run_with` 扔进一条线程 + 读期限。
-///
-/// ⚠⚠ **这是硬保险，不是装饰**：`run_with` 成功那一条路尾巴上是**永不返回**的 `serve()`。
-/// 任何让它走到那儿的改动都会让整个测试台**挂住** —— 而挂住是 **CRASH，不是红**
-///（判定行直接掉成 0，读起来像「没有新红」）。
-/// **实测过**：变异 `R3`（让 `resolve_config` 不再认 `port_env`）会去绑一个**空闲**端口、
-/// 进 `serve()`，那一趟 `^test result:` 条数 = **0**，`cargo` 印的是
-/// `has been running for over 60 seconds`。⇒ 这里把「挂住」换成「5 秒后红」。
-fn relay_entry_exit_code_within_5s(port_env: Option<String>, upstream_env: Option<String>) -> i32 {
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        let get = move |k: &str| match upstream_env.as_deref() {
-            Some(v) if k == "CCM_AGENT_UPSTREAM_CLAUDE_CODE" => Some(v.to_string()),
-            _ => None,
-        };
-        let _ = tx.send(run_with(
-            port_env.as_deref(),
-            &get,
-            &nowhere_home(),
-            &accounts::Boot,
-        ));
-    });
-    rx.recv_timeout(std::time::Duration::from_secs(5))
-        .expect("`--relay` 入口必须**返回** —— 超时说明它没退出，而是进了 serve()")
-}
-
-/// ★ `重要-6` 之二：**起不来就退出并出声**（`server.rs::DEFAULT_PORT` 头注承诺的处置）。
-///
-/// ⚠ 本条全程**只碰回环**：不打任何 API、不起任何 claude、不绑非回环地址。
-/// 成功那一条路（真起监听 + `serve()` + `TeeSink::to_stdout()` 接线）**判不了**，见件文件登记。
-#[test]
-fn the_relay_entry_exits_with_two_when_it_cannot_start() {
-    // ㈠ 基址不认识 —— 连监听都不起。
-    assert_eq!(
-        relay_entry_exit_code_within_5s(None, Some("not-a-url".to_string())),
-        2,
-        "基址不认识必须退 2"
-    );
-    // ㈡ 端口被占。**非空对照**：这个端口刚刚被 `listen(0)` 绑成功过
-    //    ⇒ 「绑不上」不是因为端口本来就不可用。
-    let squatter = listen(0).expect("先自己占住一个回环端口");
-    let port = squatter.local_addr().expect("addr").port();
-    // ★ 先断「端口真被 env 盖住了」，**再**去调入口 —— 不然入口会去绑**别的**端口，
-    //   绑得上就进 serve() 永不返回。这一条把那一形挡在门外，报错也更准。
-    assert_eq!(
-        resolve_port(Some(&port.to_string())),
-        port,
-        "端口必须被 env 盖住，否则下一步绑的是别的端口"
-    );
-    assert_eq!(
-        relay_entry_exit_code_within_5s(
-            Some(port.to_string()),
-            Some("http://127.0.0.1:1".to_string())
-        ),
-        2,
-        "端口起不来必须退 2（被占的端口 {port}）"
-    );
-    drop(squatter);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -4212,7 +4094,7 @@ fn rk1_browser_and_rebinding_requests_are_refused_but_the_cli_shape_passes() {
     );
 }
 
-/// ④ 泄露判据：**真子进程**（`--relay` 那一臂，tee 落 stdout）从**空家目录**起、自己铸一把钥匙；
+/// ④ 泄露判据：**真子进程**（生产接线 `host_relay`，tap 帧落 stdout）从**空家目录**起、自己铸一把钥匙；
 ///    判据事后从钥匙文件读到那把值，带着它（与一把错的）打几发，然后逐面全文搜那个值 ——
 ///    子进程 stdout（tee）· stderr（日志）· `/proc/<pid>/cmdline` · `/proc/<pid>/environ` · 上游收到的全部字节：**零命中**。
 ///    正控：钥匙文件里恰好 1 次；判据自己发出去的那一发请求里恰好 1 次；各采集面都是活的。
@@ -4295,6 +4177,8 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
         std::thread::sleep(std::time::Duration::from_millis(50));
         waited += 1;
     }
+    // tap 帧也是异步写出来的：等它到（它是本条 stdout 的活性正控）。
+    let _ = wait_until(|| relay.out().contains(TAP_DATA));
     let pid = relay.child.id();
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).expect("读 cmdline");
     let environ = std::fs::read(format!("/proc/{pid}/environ")).expect("读 environ");
@@ -4313,8 +4197,8 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
         "stderr 采集面是死的：{err:?}"
     );
     assert!(
-        out.contains("__meta__"),
-        "stdout（tee 落点）采集面是死的：{out:?}"
+        out.contains(TAP_DATA),
+        "stdout（tap 帧落点）采集面是死的：{out:?}"
     );
     assert!(
         String::from_utf8_lossy(&cmdline).contains("relay_child_process_entry_point"),

@@ -53,9 +53,9 @@ use std::sync::Arc;
 //   —— 这一句由 `table_guard::the_relay_has_no_default_upstream_to_fall_back_to`
 //   的**两向相等断言**钉着（中转零处 ＋ 上游选择恰好登记那几处），不是一条散文。
 
-// ══ 下面这两个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
+// ══ 下面这个常量的**职责在 `listen.rs`**（监听面），代码留在这里 ══════════════
 //    〔NET2〕原先是三个：在途上界 `INFLIGHT_CONNECTIONS` 与在途计数已挪去 `listen.rs`（`设计/20 §4` · `§10` 第 7 条）。
-//    理由**不是**职责，是两处**写区外的散文住址**逐字点着 `…/relay/server.rs::<常量名>`，
+//    理由**不是**职责，是一处**写区外的散文住址**逐字点着 `…/relay/server.rs::<常量名>`（〔DEL〕`DEFAULT_PORT` 随 `--relay` 删了），
 //    而 `structural_scan::every_symbol_address_in_the_sources_still_resolves` 真的判得了
 //    那种住址（现打：搬去 `listen.rs` 之后它当场红，诊断逐字「符号还在，但**搬家了**」）。
 //    逐条登记在 `listen.rs` 的头注里。⇒ `listen.rs` `use` 它们。
@@ -63,12 +63,6 @@ use std::sync::Arc;
 /// 只听回环。**这是一个字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
 /// （`DoD-4` 那条 acceptor 的第一个瞎法就是这个）。行为那半由 `DoD-4㈡` 兜底。
 pub(super) const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
-
-/// 默认端口。形状抄 `control/cc_bus.rs` 的 `timeout_secs()`：**写死一个默认 + 环境变量能盖**。
-/// 端口被占怎么办本仓零先例 ⇒ 本刀的处置是**起不来就退出并出声**，不自己换端口。
-/// 〔US1 · 4D〕值只住共享 crate `relay_route_core::PORT`（monitor 起本机后端交的 `CCM_RELAY_PORT` 是同一个 const）——
-/// 先前这里与 monitor `payload::RELAY_PORT` 是同一个数的两处写法、零对拍。
-pub(super) const DEFAULT_PORT: u16 = relay_route_core::PORT;
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;

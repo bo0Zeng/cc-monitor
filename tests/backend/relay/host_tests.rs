@@ -348,7 +348,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
 
 /// `main.rs` 那一处：生产段里 `accounts::upstream::host_relay(` **恰好一处**，
 /// 排在一次性分派（`is_query_mode`）之后、选载体（`listen::mode_from`）之前 ——
-/// 前者保证一次性子命令（含 `--relay`）不会多开一个中转，后者保证两条载体都有它。
+/// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
 fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carrier_choice() {
     let raw = std::fs::read_to_string(crate::guard_support::src_root().join("main.rs"))
