@@ -409,17 +409,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "mcp-server-remove",
         "新帧命令：删一条，同上",
     ),
+    // 〔MIG-3a · `01 §3.5` · 主会话 09-28 裁〕`mcp-sync-source` / `-preview` / `-apply` 三条界面不再直问（那是经前端中继）：
+    //   界面只问本机那两条枢纽命令，枢纽向来源那台取、向被写那台写（内层三条只经枢纽）。
     (
-        "mcp-sync-source",
-        "新帧命令：推 / 拉的来源那份原文 `{path, text}`（界面原样递给要被写的那一台）",
+        "mcp-sync-hub-preview",
+        "新帧命令：MCP 推 / 拉看差异，只问本机一次（本机常驻后端当枢纽，`assets/hub.rs`）",
     ),
     (
-        "mcp-sync-preview",
-        "新帧命令：被写那台读自己那份、判差异与可疑项（判定原样是 `mcp-sync-plan`），成品带两份原文 ＋ 逐行两边的值",
-    ),
-    (
-        "mcp-sync-apply",
-        "新帧命令：被写那台把勾的那几条原样合进去（CAS 期望 = 看差异时那份，`stale` 就停）",
+        "mcp-sync-hub-apply",
+        "新帧命令：MCP 推 / 拉写入，只问本机一次（枢纽向来源那台再取一次核对，被写那台判 CAS、`stale` 就停）",
     ),
     // 〔MIG-3a〕D 组 skill 装 / 卸与资产目录同步：monitor 那四条 Tauri 命令（`skill_install_*` · `skill_uninstall_apply` · `assets_sync`〔散文墓碑〕）删了。
     (
@@ -471,17 +469,14 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "acct-iso-shellinit",
         "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
     ),
+    // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     (
-        "skill-read",
-        "来源那台的 skill 原文：从前 monitor 转、今天界面直问，原样递给被写那台（`skill-install-reads.ts`）",
+        "skill-install-hub-preview",
+        "新帧命令：skill 装到这台看差异，只问本机一次（枢纽向来源那台读、交被写那台判）",
     ),
     (
-        "skill-install-plan",
-        "被写那台看差异（逐文件四态 ＋ 可疑项 ＋ 这台那几份原文）：从前 monitor 转、今天界面直问",
-    ),
-    (
-        "skill-install-apply",
-        "新帧命令：被写那台判 · 写 · 记同一台（`assets/skill_flow.rs`），`stale` 就停并说清前面写了哪几个",
+        "skill-install-hub-apply",
+        "新帧命令：skill 装到这台写入，只问本机一次（枢纽向来源那台再读一次核对，被写那台判 · 写 · 记）",
     ),
     (
         "skill-uninstall-apply",

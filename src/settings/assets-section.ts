@@ -485,6 +485,8 @@ export class AssetsSection {
       button(copyText("assets.apply.action", { machine: toName }), async () => {
         try {
           const done = await this.apiOf().mcpApply({
+            from,
+            fromDir,
             to,
             toDir,
             sourceText: p.sourceText,
@@ -607,7 +609,7 @@ export class AssetsSection {
       button(copyText("assets.apply.action", { machine: toName }), async () => {
         const { take, overwrite } = skillApplyArgs(p.rows, checked);
         try {
-          const done = await this.apiOf().skillApply({ to, name, source: p.source, target: p.target, take, overwrite });
+          const done = await this.apiOf().skillApply({ from, to, name, source: p.source, target: p.target, take, overwrite });
           result.textContent = copyText("assets.apply.skillDone", { dir: done.dir, n: String(done.written.length) });
           if (done.chmodFailed.length > 0) {
             result.textContent += " " + copyText("assets.apply.chmodFailed", { paths: done.chmodFailed.join(copyText("assets.skill.listSep")) });

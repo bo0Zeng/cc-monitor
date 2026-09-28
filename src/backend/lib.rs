@@ -775,6 +775,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--mcp-sync-hub-preview",
+    "--mcp-sync-hub-apply",
+    "--skill-install-hub-preview",
+    "--skill-install-hub-apply",
     "--skill-install-apply",
     "--skill-host-list",
     "--aliases-render",
@@ -1814,6 +1818,13 @@ pub const STREAM_FLAGS: &[&str] = &[
 /// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
+
+/// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
+/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 〔MIG-3a〕住这里而不住 `cli_control`，是为了让
+/// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
+pub fn cli_flag(name: &str) -> String {
+    format!("--{name}")
+}
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[

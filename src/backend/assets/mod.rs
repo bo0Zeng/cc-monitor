@@ -3,6 +3,7 @@
 
 pub(crate) mod aliases;
 pub(crate) mod door;
+pub(crate) mod hub;
 pub(crate) mod mcp_edit;
 pub(crate) mod mcp_sync_flow;
 pub(crate) mod skill_flow;

@@ -187,6 +187,9 @@ pub const COMMANDS: &[&str] = &[
     "mcp-server-remove",
     // 〔MIG-3a〕MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "mcp-sync-apply",
+    // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（本机常驻后端向来源那台取、向被写那台写；`assets/hub.rs`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "mcp-sync-hub-apply",
+    "mcp-sync-hub-preview",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
     "mcp-sync-preview",
@@ -209,6 +212,8 @@ pub const COMMANDS: &[&str] = &[
     "skill-host-write",
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
+    "skill-install-hub-apply",
+    "skill-install-hub-preview",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
@@ -252,6 +257,46 @@ impl crate::assets::door::Door for LocalFiles {
         };
         run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
     }
+}
+
+/// 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽问**这台自己**的那一跳：本进程那几条内层命令本身（阻塞档，原样调它们的 `run`）。
+/// 限 [`HUB_INNER`] 那几条 —— 枢纽不是一扇通到任意命令的门。
+pub(crate) struct LocalFrames;
+
+/// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）。
+pub(crate) const HUB_INNER: &[&str] = &[
+    "mcp-sync-source",
+    "mcp-sync-preview",
+    "mcp-sync-apply",
+    "skill-read",
+    "skill-install-plan",
+    "skill-install-apply",
+];
+
+impl crate::assets::hub::Here for LocalFrames {
+    fn ask(
+        &self,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, (String, String)> {
+        let spec = REGISTRY
+            .iter()
+            .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))
+            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
+        let Run::Blocking(run) = spec.run else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
+        };
+        let req = Request {
+            id: "in-process".to_string(),
+            cmd: cmd.to_string(),
+            args,
+        };
+        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+    }
+}
+
+fn hub_here() -> std::sync::Arc<dyn crate::assets::hub::Here> {
+    std::sync::Arc::new(LocalFrames)
 }
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -2398,6 +2443,100 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 主会话 09-28 裁 · `01 §3.5`〕两台之间那几件的枢纽：界面只问本机一次，本机后端向来源那台取、向被写那台写（`assets/hub.rs`）。
+    CommandSpec {
+        name: "mcp-sync-hub-preview",
+        doc_anchor: Some("#### `mcp-sync-hub-preview`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &["from", "fromDir", "to", "toDir"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::mcp_preview(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    CommandSpec {
+        name: "mcp-sync-hub-apply",
+        doc_anchor: Some("#### `mcp-sync-hub-apply`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &[
+            "expectSource",
+            "from",
+            "fromDir",
+            "overwrite",
+            "take",
+            "target",
+            "to",
+            "toDir",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::mcp_apply(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    CommandSpec {
+        name: "skill-install-hub-preview",
+        doc_anchor: Some("#### `skill-install-hub-preview`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &["dir", "from", "name", "rows", "source", "target", "to"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::skill_preview(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    CommandSpec {
+        name: "skill-install-hub-apply",
+        doc_anchor: Some("#### `skill-install-hub-apply`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &[
+            "expectSource",
+            "from",
+            "name",
+            "overwrite",
+            "take",
+            "target",
+            "to",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::skill_apply(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
         }),
     },
     // 〔MIG-3a · D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。

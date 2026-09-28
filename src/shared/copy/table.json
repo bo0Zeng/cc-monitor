@@ -19070,11 +19070,6 @@
       "zh": "删「{at}」时停下了：{why}。{done}。",
       "args": ["at", "why", "done"]
     },
-    "skillInstallReads.preview.sameMachine": {
-      "kind": "error",
-      "zh": "来源与要装的是同一台 —— 换一台机器",
-      "args": []
-    },
     "skillInstallReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂那台后端回的 skill 差异 / 装卸结果，两端版本对不上。这一趟什么都没写。",
@@ -19138,6 +19133,21 @@
     "rsProfileInstaller.preview.what": {
       "kind": "body",
       "zh": "预览",
+      "args": []
+    },
+    "beAssetsHub.skill.sameMachine": {
+      "kind": "error",
+      "zh": "来源与目标是同一台机器 —— 没有可装的",
+      "args": []
+    },
+    "beRemoteAsk.json.unreadable": {
+      "kind": "error",
+      "zh": "{machine} 回的成品读不懂（{e}）。那台的后端多半太旧，重装它就好。",
+      "args": ["machine", "e"]
+    },
+    "beAssetsHub.source.changed": {
+      "kind": "error",
+      "zh": "来源那份在看差异之后变了，一个字节都没写。重新看一次差异再装。",
       "args": []
     }
   }
