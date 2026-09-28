@@ -695,7 +695,7 @@ for suite, anchor in [
     # 〔TAIL 09-26〕后端的 cc-bus 基础命令（真跑 cc-bus 脚本 ＋ 隔离 tmux socket）—— 此前只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-cc-bus", "run_e2e backend-cc-bus        96"),
     # 〔E2 尾 09-27〕同样只挂在不通电的 `ci.yml` 上、各红了几天没人看见的那四套（gate2 · 本机后端监护 · 换号两套）。
-    ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         35 exact-with-skip"),
+    ("ccm tests/e2e/backend-gate2", "run_e2e backend-gate2         34 exact-with-skip"),
     ("ccm tests/e2e/local-backend", "run_e2e local-backend         26 exact-with-skip"),
     ("ccm tests/e2e/restart-frames", "run_e2e restart-frames         5"),
     ("ccm tests/e2e/restart", "run_e2e restart               24"),

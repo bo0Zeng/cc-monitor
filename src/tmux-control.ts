@@ -1,6 +1,6 @@
 /**
  * 〔C4e · 第四波 4C · `设计/05 §8` 步 5〕**界面直接说的 tmux 控制类帧命令** —— 抓一屏（`capture-pane`）·
- * 结束会话（`kill`）· 往会话里发按键 / 就地恢复（`launch` 的 `send-into` / `send-keys-raw` 两个 mode）。
+ * 结束会话（`kill`）· 往会话里发按键 / 就地恢复（`launch` 的 `send-into` mode）。
  *
  * # 它顶掉了什么
  *
@@ -28,12 +28,6 @@
  *    跨语言金样 `tests/__fixtures__/reach-collapse.golden.json` 钉着两份）。那条整串**没有 §34 的门**：
  *    把一次「被门拒绝」或「后端已键入但应答超时」回落过去，就是用一条无门的路重做一遍
  *    （后者会把载荷第二次键入一个已经在跑 claude 的 pane ⇒ 被当成 prompt 提交，**不可撤销**）。
- *
- * # 送键为什么是两个 mode 名，不是一个 `enter` 字段
- *
- * 后端的 `parse_request` 不拒认不出的键 ⇒ 旧后端会**静默忽略**一个 `enter` 字段、照样附回车 ⇒
- * 把「打断当前回合」（`Escape`）变成「提交输入框里排队的文本」。新 mode 名 `send-keys-raw` 在旧后端上
- * 回 `invalid_args` —— 天然 fail-closed（F04c 的理由，随发送端从 monitor 搬到这里）。
  *
  * # 期限（`X6`：调用点显式给）
  *
@@ -213,13 +207,11 @@ export function decodeTyped(origin: Origin, target: string, v: unknown): void {
 }
 
 /**
- * 往 `origin` 上已存在的 tmux 会话 `target` 里发按键。`enter` 真 ⇒ mode `send-into`（键入 ＋ 回车：`/compact` · `/exit`）；
- * 假 ⇒ mode `send-keys-raw`（裸键、不附回车：打断当前回合的 `Escape`）。**只发按键、不杀不建。**
+ * 往 `origin` 上已存在的 tmux 会话 `target` 里键入 `keys` ＋ 回车（mode `send-into`，如 `/compact`）。**只发按键、不杀不建。**
  * 失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
-export async function sendKeys(origin: Origin, target: string, keys: string, enter = true): Promise<void> {
-  const mode = enter ? "send-into" : "send-keys-raw";
-  const payload = jsonBody({ mode, name: target, payload: keys });
+export async function sendKeys(origin: Origin, target: string, keys: string): Promise<void> {
+  const payload = jsonBody({ mode: "send-into", name: target, payload: keys });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "launch", chan.call(origin, "launch", payload, budget), keysRefusals(target));
   decodeTyped(origin, target, v);

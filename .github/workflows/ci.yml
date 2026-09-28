@@ -890,8 +890,8 @@ jobs:
           for pair in "tmux-target 26" "ccm-cli 48" "ccm-print-parity 12" \
                       "cc-spawn-uplift 72" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 33" \
-                      "ccm-contract-parity 45" "backend-gate2 34" "local-backend 14" \
+                      "ccm-rbind-title 8" "backend-fork 10" "inbound-frames 30" \
+                      "ccm-contract-parity 45" "backend-gate2 33" "local-backend 14" \
                       "backend-sessions-rewatch 5" "backend-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "backend-cc-bus 50" "p3t-local-tmux 10"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -1167,7 +1167,8 @@ jobs:
       #    ⚠ 不棘的话，新加的那两格明天能被删掉而 CI 照样绿 —— `assert-pass-floor.sh` 头注
       #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
       - name: 入方向后端帧（U8a-2a）
-        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 33
+        # 〔RST 续 · V41〕33 → 30：裸键 mode `send-keys-raw` 删了，「被接受 · 没附回车 · 补 Enter 才执行」三格随之删。
+        run: bash tests/e2e/assert-pass-floor.sh inbound-frames 30
 
       # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
       # `src/bridge/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
@@ -1208,8 +1209,9 @@ jobs:
       #    〔E2 尾 09-27〕`meta_dollar` 不再是登记豁免，换成套件里的**版本门**（`min_tmux_for`）：tmux <3.5 记 SKIP 并说原因、
       #      建得出来就 FAIL「版本门过时」。本行仍按 PASS 的 at-least 判 ⇒ 按最坏的机器（3.4：34 PASS + 1 SKIP）算 34；
       #      本机门禁按 PASS+SKIP 恒等判 35（`exact-with-skip`）。两个数都由 `the_gate2_floor_still_makes_a_skip_hurt` 现算。
+      #    〔RST 续 · V41〕34 / 35 → 33 / 34：裸键 mode `send-keys-raw` 删了，「它也过同一道 Gate 2」那一格随之删。
       - name: Gate 2 backend 真机验收（F03）
-        run: bash tests/e2e/assert-pass-floor.sh backend-gate2 34
+        run: bash tests/e2e/assert-pass-floor.sh backend-gate2 33
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺本机后端诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
