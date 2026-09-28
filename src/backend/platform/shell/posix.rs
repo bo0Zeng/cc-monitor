@@ -108,13 +108,23 @@ pub(crate) fn assigned_value(text: &str, var: &str) -> Option<String> {
     found
 }
 
+/// 一个词：家目录底下 `rel` 那条路径（`"$HOME/<rel>"`，双引号里只展开 `$HOME`）。
+pub(crate) fn home_path_word(rel: &str) -> String {
+    format!("\"$HOME/{rel}\"")
+}
+
+/// `$HOME/x` / `${HOME}/x` / `~/x` ⇒ `Some("x")`（家目录底下那一截）；别的形 ⇒ `None`（不猜）。
+pub(crate) fn home_relative(raw: &str) -> Option<&str> {
+    ["$HOME/", "${HOME}/", "~/"]
+        .into_iter()
+        .find_map(|pat| raw.strip_prefix(pat))
+}
+
 /// 把 `$HOME/x` / `${HOME}/x` / `~/x` 前缀展开成 `home` 底下的路径。仅支持前缀形式 —— 更花哨的 shell 写法一律不猜。
 /// （原 `observe/accounts_query.rs::expand_home_prefix` 有家目录那一臂。）
 pub(crate) fn expand_home(raw: &str, home: &str) -> String {
-    for pat in ["$HOME/", "${HOME}/", "~/"] {
-        if let Some(rest) = raw.strip_prefix(pat) {
-            return format!("{}/{}", home.trim_end_matches('/'), rest);
-        }
+    if let Some(rest) = home_relative(raw) {
+        return format!("{}/{}", home.trim_end_matches('/'), rest);
     }
     match raw {
         "$HOME" | "${HOME}" | "~" => home.to_string(),

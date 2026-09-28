@@ -11,6 +11,7 @@
 //!
 //! 只读：不写 `settings.json`（用户 2026-07-28 定调，与 `cc-bus-install.sh` 同一条约定），只生成待贴文本。
 
+use crate::platform::shell::posix;
 use copy_core::copy_text;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -221,12 +222,19 @@ pub(crate) fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> Hook
 /// 待贴 JSON 片段（`home` = `$HOME/.local/bin/…` 显式路径形态；否则裸命令）；形态与实况**确定**冲突才带警示。
 pub(crate) fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
     let (reg, stop) = if home {
+        // 〔OSA · V156〕`"$HOME/…"` 那个词的写法住 `platform::shell::posix`。
         (
-            "\"$HOME/.local/bin/cc-register\" >/dev/null 2>&1 || true",
-            "\"$HOME/.local/bin/cc-bus-stop-hook\"",
+            format!(
+                "{} >/dev/null 2>&1 || true",
+                posix::home_path_word(".local/bin/cc-register")
+            ),
+            posix::home_path_word(".local/bin/cc-bus-stop-hook"),
         )
     } else {
-        ("cc-register >/dev/null 2>&1 || true", "cc-bus-stop-hook")
+        (
+            "cc-register >/dev/null 2>&1 || true".to_string(),
+            "cc-bus-stop-hook".to_string(),
+        )
     };
     let text = format!(
         "{{\n  \"hooks\": {{\n    \"SessionStart\": [ {{ \"hooks\": [ {{ \"type\": \"command\",\n      \"command\": \"{}\" }} ] }} ],\n    \"Stop\": [ {{ \"hooks\": [ {{ \"type\": \"command\",\n      \"command\": \"{}\" }} ] }} ]\n  }}\n}}",
@@ -263,11 +271,8 @@ pub(crate) fn resolves_on_path(
 
 /// `$HOME/…` · `${HOME}/…` · `~/…` 按这台家目录展开；其余原样（B04-3：花括号那一形也要认）。
 fn expand(s: &str, home: Option<&Path>) -> PathBuf {
-    let rest = s
-        .strip_prefix("$HOME/")
-        .or_else(|| s.strip_prefix("${HOME}/"))
-        .or_else(|| s.strip_prefix("~/"));
-    match (rest, home) {
+    // 〔OSA · V156〕哪几种写法算「家目录底下」住 `platform::shell::posix`。
+    match (posix::home_relative(s), home) {
         (Some(r), Some(h)) => h.join(r),
         _ => PathBuf::from(s),
     }
@@ -302,10 +307,10 @@ pub(crate) fn answer_at(
     };
     let exists = |s: &str| expand(s, home).exists();
     let probe = SnippetProbe {
-        home_path_exists: home.map(|_| {
+        home_path_exists: home.map(|h| {
             PROGRAMS
                 .iter()
-                .all(|p| exists(&format!("$HOME/.local/bin/{p}")))
+                .all(|p| h.join(format!(".local/bin/{p}")).exists())
         }),
         // 任一取不到就整体说「不知道」。
         on_path: PROGRAMS
