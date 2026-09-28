@@ -481,7 +481,7 @@ export const commands = {
    *
    *  ⚠ **`command` 那一列可能陈旧**：它由 tmux hook 驱动刷新，而 hook 只有
    *  `session-created/closed/renamed` 三条 —— pane 前台命令从 claude 变回 shell **不触发任何一条**。
-   *  ⇒ 依赖它判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条。 */
+   *  ⇒ 依赖它判活的流程**不许**改读本机这条（〔V154〕当年那一条 `awaitExitFor` 已删）。 */
   list_local_tmux: () => invoke<TmuxSession[] | null>("list_local_tmux"),
 
   /** `K-R69`：**本机那条 `ccm` 入口现在是什么样** —— 我们放下去的那一份在哪、它自报什么身份、

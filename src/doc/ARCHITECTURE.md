@@ -396,7 +396,7 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 **前端族**（`src/account-*.ts` + `settings/acct-deploy.ts`）：`account-chip.ts` 徽章 + 切号菜单（mismatch/align 状态）；`account-commands.ts`(A4) 「按会话选账号起/Resume」的 `withAccount`（账号解析 + `lastAccount` 记账）；`account-restart.ts`(A5) 「换号对齐当前会话」的**破坏性**重启编排。
 
-**A4 `withAccount` 与 A5 restart 为何分离**（架构审计裁定，防重新纠结）：语义天然不兼容——① 〔FE1 · D-h 09-25 订正〕不可选账号时两者今天都**不起、说清原因**：withAccount 另给一个可点的显式选择（用当前账号 / 都选不了时「不指定账号」），restart 直接**中止**（破坏性重启绝不退化用默认号）；原先 withAccount「降级默认起」那一形已删（`01 §6.2` · D4）；② withAccount run 后**无条件**记 lastAccount、restart **仅 kill+resume 全成后**才记。硬合需给 withAccount 加三个开关、复杂度净增。二者已共用同一批原语（`account-reads.ts::fetchAccounts` · `accountConfigDir` · `recordLastAccount`；FE1 把 `accounts.ts` 按域拆开之后各住其所），无逻辑漂移。**失败语义**严格照 DESIGN §5.2：换号重启先请求优雅退出（`Escape` 打断当前轮 → `/exit` → 有界等待 → 兜底 kill）；compact 失败/超时**不阻断**、kill 失败**必须中止**（绝不续 resume，否则新旧两进程抢同一会话）。
+**A4 `withAccount` 与 A5 restart 为何分离**（架构审计裁定，防重新纠结）：语义天然不兼容——① 〔FE1 · D-h 09-25 订正〕不可选账号时两者今天都**不起、说清原因**：withAccount 另给一个可点的显式选择（用当前账号 / 都选不了时「不指定账号」），restart 直接**中止**（破坏性重启绝不退化用默认号）；原先 withAccount「降级默认起」那一形已删（`01 §6.2` · D4）；② withAccount run 后**无条件**记 lastAccount、restart **仅 kill+resume 全成后**才记。硬合需给 withAccount 加三个开关、复杂度净增。二者已共用同一批原语（`account-reads.ts::fetchAccounts` · `accountConfigDir` · `recordLastAccount`；FE1 把 `accounts.ts` 按域拆开之后各住其所），无逻辑漂移。**失败语义**严格照 DESIGN §5.2：换号重启直接结束旧会话（〔V154〕不再先键入 `/exit` 等它退）；compact 失败/超时**不阻断**、kill 失败**必须中止**（绝不续 resume，否则新旧两进程抢同一会话）。
 
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。

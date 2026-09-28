@@ -4982,26 +4982,6 @@
       "zh": "重启已中止",
       "args": []
     },
-    "accountRestart.exit.failed": {
-      "kind": "error",
-      "zh": "{e}。改为强制结束旧会话。",
-      "args": ["e"]
-    },
-    "accountRestart.exit.failedTitle": {
-      "kind": "error",
-      "zh": "没能让会话自己退出",
-      "args": []
-    },
-    "accountRestart.exit.timeout": {
-      "kind": "error",
-      "zh": "等会话自己退出超时了，改为强制结束。当前回合已中断。",
-      "args": []
-    },
-    "accountRestart.exit.timeoutTitle": {
-      "kind": "error",
-      "zh": "会话没有自己退出",
-      "args": []
-    },
     "accountRestart.compact.skipped": {
       "kind": "error",
       "zh": "{e}。跳过压缩，继续换号重启。",
