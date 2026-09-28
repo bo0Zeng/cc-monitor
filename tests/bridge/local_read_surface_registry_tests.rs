@@ -53,7 +53,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/lib.rs",
         "hub",
-        3,
+        2, // 〔MIG-3b〕3 → 2：tasks 目录那一处（喂 monitor 自己那条任务 notify）随监视进后端删了
         "启动时解析 `claude_dir` 并派生 sessions/tasks 等目录往下传 —— \
              **一处入口，不读内容**。切后端之后仍要在（得告诉后端读哪儿）⇒ **不属**退役范围。\
              〔CF1 · 第四波 09-24〕**7 → 6**：projects 那一处（喂 monitor 自己那套 jsonl watcher）随 watcher 删了 ——\

@@ -1555,7 +1555,9 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionRemoved { .. }
         | InboundFrame::SessionStatus { .. }
         | InboundFrame::SessionsReplayed
-        | InboundFrame::SessionFileNotice { .. }) => return Some(f),
+        | InboundFrame::SessionFileNotice { .. }
+        // 〔MIG-3b · ㉓②〕任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
+        | InboundFrame::TasksChanged { .. }) => return Some(f),
         // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }

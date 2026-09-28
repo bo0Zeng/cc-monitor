@@ -27,7 +27,7 @@ vi.mock("../src/ipc/chan", () => ({
 
 import { TasksPanel, fetchSessionTasks, originOfSession } from "../src/tasks-panel";
 import { LOCAL_ORIGIN } from "../src/backend-policy";
-import type { TaskEntry } from "../src/generated/TaskEntry";
+import type { TaskEntry } from "../src/tasks-panel";
 
 function task(id: string, status = "pending"): TaskEntry {
   return { id, subject: `s${id}`, status, blocks: [], blockedBy: [] };

@@ -14057,11 +14057,6 @@
       "zh": "还没装下来",
       "args": []
     },
-    "rsCcmProbe.probe.failed": {
-      "kind": "error",
-      "zh": "探测 ccm 失败：{e}",
-      "args": ["e"]
-    },
 
     "rsLib.activeSessions.notListed": {
       "kind": "error",

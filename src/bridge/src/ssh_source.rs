@@ -1904,6 +1904,8 @@ pub enum InboundFrame {
     Cancelled { id: String },
     /// 〔SR1a · `设计/05 §13.6 ③`〕那台机器上的账号清单变了（后端 `wire::Frame::AccountsChanged`，无载荷）。
     AccountsChanged,
+    /// 〔MIG-3b · `99 §2.1 ㉓②`〕那台机器上某个会话的任务清单变了（后端 `wire::Frame::TasksChanged`，只带 sid）。
+    TasksChanged { sid: String },
     /// 〔SR1a〕一条链路的下行字节（后端 `wire::Frame::LinkData`；`data` 在解帧这一步就解开了 base64）。
     /// 只有**本机后端**那条流上会有（monitor 只在那条流上开链路），交 `link_mux`。
     LinkData { link: String, data: Vec<u8> },
@@ -2209,6 +2211,10 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 
         // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了。
         "accounts_changed" => Some(InboundFrame::AccountsChanged),
+        // 〔MIG-3b · ㉓②〕某个会话的任务清单变了（sid 缺 / 不是串 ⇒ 坏帧）。
+        "tasks_changed" => Some(InboundFrame::TasksChanged {
+            sid: obj.get("sid")?.as_str()?.to_string(),
+        }),
 
         // 〔SR1a〕链路两帧。`data` 解不开 ⇒ 整帧 `None`（坏帧，调用方 warn）—— 不交一段猜出来的字节。
         "link_data" => {
@@ -2286,6 +2292,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 #[cfg(test)]
 const KNOWN_FRAME_KINDS: &[&str] = &[
     "accounts_changed",
+    "tasks_changed",
     "cancelled",
     "hello",
     "line",
@@ -2960,6 +2967,8 @@ pub(crate) enum LocalStep {
     },
     /// 冲掉残批，再进 [`LineIntake::removed`]。
     Remove { sid: String },
+    /// 〔MIG-3b · ㉓②〕本机某个会话的任务清单变了 ⇒ 交重放缓冲那张订阅表（与远端同一个 `tasks_changed`）。
+    Tasks { sid: String },
     /// 〔FW1〕进 [`LineIntake::notice`]（冲掉残批、交一格出声）。
     Notice {
         sid: String,
@@ -3120,6 +3129,8 @@ pub(crate) fn local_step(
                 LocalStep::Notice { sid, path, change }
             }
         }
+        // 〔MIG-3b · ㉓②〕任务清单变了：与 bg 藏不藏无关（任务面板按 sid 取，藏起来的会话本来就没有 tab）。
+        LocalItem::Frame(InboundFrame::TasksChanged { sid }) => LocalStep::Tasks { sid },
         LocalItem::Frame(_) => LocalStep::Skip,
     }
 }
@@ -3204,6 +3215,9 @@ pub(crate) async fn consume_local(
                     intake.removed(&sid);
                 }
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
+                LocalStep::Tasks { sid } => {
+                    replay.tasks_changed(&crate::origin::Origin(label.clone()), &sid)
+                }
                 LocalStep::Skip => {}
                 LocalStep::Lost => intake.lost().await,
                 LocalStep::StreamEnded => {
@@ -3975,6 +3989,10 @@ async fn stream_loop(
             // 〔DL1〕经通道 `subscribe`：订了这台 `accounts-changed` 的订阅收一格 `Frame`（原先是一个裸 Tauri 事件）。
             Some(InboundFrame::AccountsChanged) => {
                 replay.accounts_changed(&crate::origin::Origin(host_label.clone()));
+            }
+            // 〔MIG-3b · `99 §2.1 ㉓②`〕某个会话的任务清单变了 ⇒ 订了这台 `session-tasks` 的订阅收一格 `{sid}`。
+            Some(InboundFrame::TasksChanged { sid }) => {
+                replay.tasks_changed(&crate::origin::Origin(host_label.clone()), &sid);
             }
             // 〔FW1 · 第四波 4D · D-d〕那台一条活会话的记录文件不见了 / 被改过已从头重读 ⇒ 残批先冲、再交那个会话的内容流一格。
             Some(InboundFrame::SessionFileNotice { sid, path, change }) => {
