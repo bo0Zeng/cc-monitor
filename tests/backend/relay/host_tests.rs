@@ -255,7 +255,7 @@ impl Drop for Child {
     }
 }
 
-/// H3：生产接线 ⇒ 真在听、真转发；转发之后子进程 **stdout 上零 tee 行**（`__meta__` / `"event"` 一行都没有），
+/// H3：生产接线 ⇒ 真在听、真转发；转发之后子进程 **stdout 上零 tee 输出**（`tap` 帧 / 旧 NDJSON 事件行一行都没有 —— tee 只交 tap 口），
 /// 而 stdout 的采集面是活的（libtest 自己那句 `running 1 test` 在上面 —— 非空对照）。
 #[test]
 fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() {
@@ -338,7 +338,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     );
     let tee: Vec<&str> = stdout
         .lines()
-        .filter(|l| l.contains("__meta__") || l.contains("\"event\""))
+        .filter(|l| l.contains("\"kind\":\"tap\"") || l.contains("\"event\""))
         .collect();
     assert!(
         tee.is_empty(),
@@ -348,7 +348,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
 
 /// `main.rs` 那一处：生产段里 `accounts::upstream::host_relay(` **恰好一处**，
 /// 排在一次性分派（`is_query_mode`）之后、选载体（`listen::mode_from`）之前 ——
-/// 前者保证一次性子命令（含 `--relay`）不会多开一个中转，后者保证两条载体都有它。
+/// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
 fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carrier_choice() {
     let raw = std::fs::read_to_string(crate::guard_support::src_root().join("main.rs"))

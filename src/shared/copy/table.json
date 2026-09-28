@@ -699,6 +699,11 @@
       "zh": "那台机器上的后端太旧，不认常驻那条命令。",
       "args": []
     },
+    "rsRemoteResident.ensure.unsupported": {
+      "kind": "error",
+      "zh": "接不上：那台机器不是 Unix。远端只支持 Unix 机器，后端要在那里常驻。那台说：{why}",
+      "args": ["why"]
+    },
     "rsRemoteResident.ensure.answerUnreadable": {
       "kind": "error",
       "zh": "那台机器起常驻后端的回答读不懂：{e}",
@@ -13877,51 +13882,6 @@
       "zh": "[{host}] 读写 API key 失败：{message}",
       "args": ["host", "message"]
     },
-    "rsRemoteRelay.call.internal": {
-      "kind": "error",
-      "zh": "问中转时出了内部错误，没有拿到结果",
-      "args": []
-    },
-    "rsRemoteRelay.call.noData": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有数据，两端版本对不上",
-      "args": ["host"]
-    },
-    "rsRemoteRelay.call.failed": {
-      "kind": "error",
-      "zh": "[{host}] 问中转失败：{message}",
-      "args": ["host", "message"]
-    },
-    "rsRemoteRelay.call.tooOld": {
-      "kind": "error",
-      "zh": "[{host}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
-      "args": ["host"]
-    },
-    "rsRemoteRelay.wire.noField": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有 {k} 这一项，两端版本对不上",
-      "args": ["host", "k"]
-    },
-    "rsRemoteRelay.wire.noListening": {
-      "kind": "error",
-      "zh": "[{host}] 的后端应答里没有 listening 这一项，两端版本对不上",
-      "args": ["host"]
-    },
-    "rsRemoteRelay.relay.neverListened": {
-      "kind": "body",
-      "zh": "那台的后端起了中转，但等了一会儿还没在那个口上听",
-      "args": []
-    },
-    "rsRemoteRelay.relay.notStarted": {
-      "kind": "body",
-      "zh": "那台的后端没有起中转（口上没人在听，它也没起进程）",
-      "args": []
-    },
-    "rsRemoteRelay.local.ownRelay": {
-      "kind": "body",
-      "zh": "本机的中转住在本机后端进程里，不在这里另起一个。它随本机后端起，按「退出行为」留或退",
-      "args": []
-    },
     "rsDataPaths.backup.note": {
       "kind": "body",
       "zh": "v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>",
@@ -15509,9 +15469,9 @@
       "zh": "「注入的地址」与「中转不在时怎么办」该同有同无",
       "args": []
     },
-    "rsHistory.relay.localNotListening": {
+    "rsHistory.relay.notListening": {
       "kind": "body",
-      "zh": "本机后端里的中转没在听。多半是口被别的程序占着，原因在本机后端的日志里",
+      "zh": "中转住在那台机器的后端里。多半是口被别的程序占着，原因在那台后端的日志里",
       "args": []
     },
     "rsHistory.relay.here": {
@@ -17454,16 +17414,6 @@
       "zh": "上游地址认不出，中转没有起来",
       "args": []
     },
-    "beMachine.start.spawnFailed": {
-      "kind": "error",
-      "zh": "起不来 {program}：{e}",
-      "args": ["program", "e"]
-    },
-    "beMachine.answerEnsure.noSelf": {
-      "kind": "error",
-      "zh": "找不到后端程序自己：{e}",
-      "args": ["e"]
-    },
     "beRelayUpstream.normalizePrefix.doubleSlash": {
       "kind": "error",
       "zh": "base_url 的路径前缀以 // 开头，那在请求里会被读成另一个主机名",
@@ -17769,16 +17719,6 @@
       "kind": "error",
       "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
       "args": ["e"]
-    },
-    "beMachine.occupant.noKeyFile": {
-      "kind": "error",
-      "zh": "{port} 口上有别的程序在听。这台机器上也没有中转钥匙，多半是升级前起的旧中转。请在那台机器上结束占着这个口的进程再试。",
-      "args": ["port"]
-    },
-    "beMachine.occupant.notOurs": {
-      "kind": "error",
-      "zh": "{port} 口上有别的程序在听，不是这台机器上的中转。多半是升级前起的旧中转，请在那台机器上结束占着这个口的进程再试。",
-      "args": ["port"]
     },
     "tmuxMint.unknown.notAsked": {
       "kind": "error",
