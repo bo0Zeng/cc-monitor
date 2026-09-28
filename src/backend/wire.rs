@@ -14,7 +14,7 @@ use std::collections::HashMap;
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
 /// `src/bridge/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
-/// `removal_cause_wire_literal_stays_in_sync` 钉住（同 `TMUX_LS_FMT` 的纪律）。
+/// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RemovalCause {
@@ -54,10 +54,23 @@ pub enum SessionContainer {
     None,
 }
 
+/// 〔MIG-1 · `设计/99 §2.1 ⑬` · `01 §1.1`〕[`Frame::SessionState`] 的 `state`：**一条会话离开「活」之后是什么** ——
+/// 那台机器的后端自己裁（`observe::session_ledger`：摘除原因 ＋ 它自己那份 tmux 快照），客户端只收成品、不再猜。
+///
+/// 线上两个字面量 `"reconnectable"` / `"ended"` 与 monitor `ssh_source::parse_frame` 逐字一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionFate {
+    /// claude 退了、它的 tmux 会话还在（`@ccm_sid` 仍挂着它）⇒ 接得回去。
+    Reconnectable,
+    /// 进程没了、容器也没了（或被顶替了）⇒ 只能 resume。
+    Ended,
+}
+
 /// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F03〕。
 ///
 /// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
-/// 重开会话就补上）；对**状态增量帧**（`session_added`/`session_removed`/`tmux_session_closed`）
+/// 重开会话就补上）；对**状态增量帧**（`session_added`/`session_removed`/`session_state`）
 /// 就不行 —— 它是一次差分的结果，**别处不存在**，客户端只知道「丢了 N 条」是没法重同步的。
 /// ⇒ 本结构给那些帧带上身份，让客户端能精确地重新问那几个主体。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -417,6 +430,12 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         liveness_confidence: Option<String>,
     },
+    /// 〔MIG-1 · `设计/99 §2.1 ⑬`〕**会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
+    ///
+    /// 由 `observe::session_ledger` 在它看着发出去的 `session_removed` / `tmux_sessions` 之后补发（同一个 sink、同一条线程，
+    /// 紧跟在引起它的那一帧之后）；新连接第一份可观测的 tmux 快照里「挂着 `@ccm_sid`、却不在活会话里」的也各发一帧可重连
+    /// （在 `sessions_replayed` 之前）。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    SessionState { sid: String, state: SessionFate },
     /// A session file went away.
     SessionRemoved {
         sid: String,
@@ -447,47 +466,9 @@ pub enum Frame {
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
     /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
     TurnEnd { session_id: String, uuid: String },
-    /// B2（tmux 对账改后端推送）：backend 在**远端本地**跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**
-    /// （或哨兵 `NO_TMUX`），周期性推给 monitor——替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。
-    /// **送 raw、client 解析**（照 `Line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`，零解析重复）。
-    /// **monitor 专属**：aterm DaemonTransport 未知 kind 跳过。旧 monitor 忽略未知 kind（additive）。
-    /// **P5（zero-poll-liveness，additive、不 bump `PROTO_VERSION`）**：某个 tmux 会话
-    /// **关闭了**——正向死亡帧。
-    ///
-    /// **它补的是什么**：`TmuxSessions` 是「当前还剩哪些」的快照，monitor 靠**连续两次
-    /// 没看见**（`RETIRE_MISS_THRESHOLD >= 2`）才敢 retire —— 那道门是为了容忍观测抖动，
-    /// 但也意味着「多个会话里关掉一个」至少要等两个节拍。本帧是后端与上一份快照
-    /// 差分出来的**确定结论**，monitor 收到即可直接 retire，**绕过 miss 计数**。
-    ///
-    /// **快照路径与 miss 计数原样保留**（重同步 / 旧后端降级都靠它）⇒ 同一 sid 可能
-    /// 两条路都到，retire 必须幂等（`SidTrack.retired` 本就是幂等设计）。
-    ///
-    /// **旧 monitor 忽略本帧**：未知 kind 走 `warn` 后跳过（`ssh_source.rs` 那条已有测试
-    /// `unknown_kind_returns_none` 钉住）⇒ 行为退回今天的「靠快照 + miss 计数」，不崩。
-    TmuxSessionClosed {
-        /// 会话名（`tmux ls` 第一列）。**不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到
-        /// （P0 实测会拿到空 ⇒ 把活会话判灰），而后端这边是**差分算出来的名字**，
-        /// sid 由 monitor 用最新快照反查 —— 那份映射它本来就有。
-        name: String,
-    },
-    TmuxSessions {
-        raw: String,
-        /// P1（zero-poll-liveness，**additive、不 bump `PROTO_VERSION`**）：本次观测的**分类**
-        /// ——`"zero_sessions"`（确证零会话）/ `"no_tmux"` / `"unobservable"`（观测失败）。
-        ///
-        /// **有会话时省略**（`skip_serializing_if`）⇒ 热路径字节与 P1 之前**逐字节一致**。
-        ///
-        /// **为什么需要它**：P1 之前 `raw` 的空串同时意味着「零会话」和「`tmux ls` 出错被
-        /// `|| true` 吞了」，两者不可分 ⇒ monitor 只能一律保守跳过 ⇒ 当被杀的是该 origin
-        /// 最后一个 tmux 会话时（server 随之退出、`tmux ls` 回空）对账整段跳过 ⇒ idle 灰灯
-        /// **卡到断连 flush 才清**（`src/doc/INVARIANTS.md` §24bis 预先登记的残留 bug）。
-        ///
-        /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
-        /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
-        /// `src/bridge/src/backend/control/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        observation: Option<String>,
-    },
+    // 〔MIG-1 续 · V41 · `99 §2.1 ⑬`〕这里原是 `TmuxSessions`（B2 · P1：`tmux ls` 原文 ＋ 观测取值）与 `TmuxSessionClosed`（P5：差分出的
+    //   正向死亡）两帧。会话账本进后端之后，客户端只收成品（`SessionState`），这两份原料再没有线上读者（monitor 已不消费；
+    //   仓外 aterm 的 `DaemonTransport.parseFrame` 从来按未知 kind 跳过）⇒ 删。快照只喂 `observe::session_ledger`。
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live
@@ -703,15 +684,14 @@ impl Frame {
             Frame::Line { .. } => true,
             // 派生自某一行 jsonl（`turn_detect` 只看那条记录）⇒ 与 `Line` 同命。
             Frame::TurnEnd { .. } => true,
-            // 整份快照，下一次 tmux 探测会重发一份完整的 ⇒ 丢一份不损失信息。
-            Frame::TmuxSessions { .. } => true,
 
             // ↓ 以下都是「丢了别处没有」或「拿不准」，一律按不可恢复算。
             //
             // 一次差分的结果，别处不存在 —— 这三个正是 B-3 的正题。
             Frame::SessionAdded { .. } => false,
             Frame::SessionRemoved { .. } => false,
-            Frame::TmuxSessionClosed { .. } => false,
+            // 〔MIG-1〕账本的成品：一次裁决的结果，别处没有 ⇒ 不可恢复。
+            Frame::SessionState { .. } => false,
             // 状态变迁；没有「下一次必然重发」的保证 ⇒ 保守。
             Frame::SessionStatus { .. } => false,
             // 握手帧丢了这条连接就没有身份了。
@@ -755,9 +735,8 @@ impl Frame {
             Frame::SessionAdded { sid, .. } => ("session_added", Some(sid.clone())),
             Frame::SessionStatus { sid, .. } => ("session_status", Some(sid.clone())),
             Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
+            Frame::SessionState { sid, .. } => ("session_state", Some(sid.clone())),
             Frame::TurnEnd { session_id, .. } => ("turn_end", Some(session_id.clone())),
-            Frame::TmuxSessionClosed { name, .. } => ("tmux_session_closed", Some(name.clone())),
-            Frame::TmuxSessions { .. } => ("tmux_sessions", None),
             Frame::Overflow { .. } => ("overflow", None),
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
@@ -963,6 +942,40 @@ impl Default for SeqCounter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 读一份 hello 帧成人读摘要（`v=.. build=.. arch=.. home=.. caps=.. cmds=..`）。
+/// `home`：`homes` 里第一项，缺 ⇒ 那个冻结字段（`S4` 的消费侧口径；通用层不认 agent 名字，只拿值）。
+/// 〔MIG-1 续〕住 hello 的家：测试连接（`dial/probe.rs`）读**那台**后端的 hello 时用（原 monitor 那一份人读摘要）。
+pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
+    use serde_json::Value;
+    let s = |k: &str| h.get(k).and_then(Value::as_str).unwrap_or("?").to_string();
+    let home = h
+        .get("homes")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(|e| e.get("path").and_then(Value::as_str))
+        .map(str::to_string)
+        .unwrap_or_else(|| s("claude_dir"));
+    let list = |k: &str| -> Vec<String> {
+        h.get(k)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    format!(
+        "v={} build={} arch={} home={home} caps={:?} cmds={:?}",
+        h.get("v").and_then(Value::as_u64).unwrap_or(0),
+        s("build_id"),
+        s("host_arch"),
+        list("capabilities"),
+        list("commands"),
+    )
 }
 
 #[cfg(test)]

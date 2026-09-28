@@ -442,6 +442,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "remote-reach",
         "history-projects",
         "history-sessions",
+        // 〔MIG-1〕端口转发：起 = 真异步（拨号 / 等 ack），停 / 列 = 纯内存一把锁 ⇒ 都在普通 spawn 上。
+        "forward-start",
+        "forward-stop",
+        "forward-list",
+        "remote-probe",
     ] {
         assert!(
             matches!(d(c), Disposition::Spawn(..)),
@@ -632,6 +637,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",
+        // 〔MIG-1〕端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。
+        "forward-start",
+        "forward-stop",
+        "forward-list",
+        "remote-probe",
         "cancel",
         "link-open",
         "link-data",
@@ -694,8 +704,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "hooks-diag", // 〔MIG-3b〕
-        "resync",     // 〔RESYNC〕
+        "ssh-config-aliases", // 〔MIG-1〕读一份文件
+        "ssh-config-import",  // 〔MIG-1〕逐个起 `ssh -G`
+        "ssh-config-resolve", // 〔MIG-1〕起一次 `ssh -G`
+        "hooks-diag",         // 〔MIG-3b〕
+        "resync",             // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",

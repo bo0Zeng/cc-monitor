@@ -2461,6 +2461,14 @@ mod spawn_registry {
     /// 归**被起的那个程序**。这不是巧合，是这张表存在的理由。
     pub(super) const ALLOWED: &[(&str, &str, &str, &str, &str)] = &[
         (
+            "dial/ssh_config.rs",
+            "ssh",
+            "〔MIG-1 · `设计/99 §2.1 ⑯`〕`ssh -G <别名>`：OpenSSH 客户端**只解析** `~/.ssh/config` 打出有效参数、不建连接、不写任何文件。\
+             别名先过 allowlist、`-` 开头另挡，argv 直传不过 shell。从 monitor 搬来（解读与拨号同一个家）。",
+            "缩性质",
+            "自己解析 ssh_config（Include / Match / 通配 / 默认值）的那天 —— 今天交给 `ssh -G` 是因为它最准。",
+        ),
+        (
             "control/ccm/mod.rs",
             "sh",
             "`K-R48`：一次性 `ccm` 模式把**一条已经渲好的命令串**交给 POSIX shell 并 `exec` 掉自己\
@@ -2809,7 +2817,10 @@ mod spawn_registry {
         // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
         // 〔DEL〕**14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
         // 〔MIG-3a〕**13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
-        const SPAWN_SITES_TODAY: usize = 14;
+        // 〔MIG-1 · `99 §2.1 ⑯`〕＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
+        // 〔合并 MIG-1 × 主线 19671e6b〕基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
+        // 〔合并 MIG-1 × 主线 eebf51de〕主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
+        const SPAWN_SITES_TODAY: usize = 15;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

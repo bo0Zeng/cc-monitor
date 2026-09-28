@@ -114,10 +114,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
     // 〔LOC1a · 第四波 4D〕`local_query` 模块的 `run_query`〔散文墓碑〕那一行删了：本机那几问改走 `<local>` 长连接，
     //   monitor 不再起一次性本机后端（`设计/05 §14.6`）。
-    ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
-     "解析 ssh_config 的别名 —— 只读一次配置，不建连接
-          ★ 三条策略为什么是这三格：先前是裸 `.output()`：Windows 上 `ssh.exe` 是控制台子系统，每解析一次别名闪一个黑框。`Captured`：stderr 进「退出非 0」那句话。",
-     "Hidden · JobKillOnClose · Captured"),
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh -G` 那一行出表：解析 ssh config 搬进后端（`dial/ssh_config.rs::resolve`），monitor 不再起 `ssh`。
     // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
     ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
      "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
@@ -355,8 +352,9 @@ fn the_three_policies_each_site_declares_match_the_code() {
     // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
     //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。
     // 〔SH1 · 4D〕地板 13 → 12：驾驶舱本机 shell 读那一个落点随读面改走后端删了。
+    // 〔合并 MIG-1 × 主线 eebf51de〕地板 12 → 11：两边各自删掉的落点相加（现打 11；两边合并前各自现打都 ≥ 12）。
     assert!(
-        checked >= 12,
+        checked >= 11,
         "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个，\
          〔第十三刀 09-23〕加了文件管理窗口那个独立进程之后 15 个，〔LOC1a 09-25〕删一次性本机查询之后 13 个。本条此刻在空转"
     );

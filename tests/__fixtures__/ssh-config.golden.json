@@ -1,0 +1,62 @@
+{
+  "ssh-config-aliases": {
+    "aliases": [
+      "aya-lan",
+      "aya-wan",
+      "pi"
+    ]
+  },
+  "ssh-config-resolve": {
+    "host": "10.0.0.2",
+    "port": 2222,
+    "user": "zbl",
+    "keyPath": null,
+    "proxyJump": "bastion"
+  },
+  "ssh-config-import": {
+    "groups": [
+      {
+        "label": "aya",
+        "host": "10.0.0.2",
+        "port": 2222,
+        "user": "zbl",
+        "keyPath": null,
+        "addresses": [
+          "aya.example.com:22"
+        ],
+        "jump": "bastion",
+        "members": [
+          {
+            "alias": "aya-lan",
+            "host": "10.0.0.2",
+            "port": 2222,
+            "proxyJump": "bastion"
+          },
+          {
+            "alias": "aya-wan",
+            "host": "aya.example.com",
+            "port": 22,
+            "proxyJump": null
+          }
+        ]
+      },
+      {
+        "label": "pi",
+        "host": "pi.local",
+        "port": 22,
+        "user": "pi",
+        "keyPath": null,
+        "addresses": [],
+        "jump": null,
+        "members": [
+          {
+            "alias": "pi",
+            "host": "pi.local",
+            "port": 22,
+            "proxyJump": null
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -63,7 +63,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// 应答通道容量。**刻意与出方向的 `CHANNEL_CAPACITY`（10_000）分开**。
 ///
 /// 出方向丢一条**内容帧**是可恢复的（行还在远端 jsonl 里）；⚠ **这句话此前写成「丢一帧可恢复」，
-/// 那是假的** —— `session_added`/`session_removed`/`tmux_session_closed` 是一次差分的结果、
+/// 那是假的** —— `session_added`/`session_removed`/`session_state` 是一次差分 / 裁决的结果、
 /// 别处不存在（audit-0805 B-3）。那半今天靠 `Overflow.lost` 带身份让客户端重同步；
 /// **丢一条应答会让客户端永远等下去**。两者混在同一个通道里，实时行的洪峰会把应答挤掉。
 /// 所以给应答一条独立的小通道，writer 两边都收。
@@ -157,6 +157,10 @@ pub const COMMANDS: &[&str] = &[
     "files-stat",
     "files-write-text",
     "footprint-probe",
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账住本机常驻后端（`dial/forwards.rs`）：界面经 `chan.call(<local>, …)` 起 · 停 · 列。
+    "forward-list",
+    "forward-start",
+    "forward-stop",
     // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）的读写者换成本机常驻后端（第四层；文件原地不动）。
     "history-annotate",
     // 〔STC · `设计/90 §4` 阶段 C〕会话事实出成品（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）。
@@ -212,6 +216,8 @@ pub const COMMANDS: &[&str] = &[
     "plugins-marketplaces",
     // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
+    // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
+    "remote-probe",
     "remote-reach",
     "resolve",
     // 〔RESYNC · V149〕手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
@@ -235,6 +241,10 @@ pub const COMMANDS: &[&str] = &[
     "skill-read",
     "skill-uninstall-apply",
     "skill-uninstall-plan",
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`）：界面经 `chan.call(<local>, …)` 问本机常驻后端。
+    "ssh-config-aliases",
+    "ssh-config-import",
+    "ssh-config-resolve",
     "tasks-list",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
@@ -1484,6 +1494,101 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::footprint::answer(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
+    //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
+    //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。
+    CommandSpec {
+        name: "forward-start",
+        doc_anchor: Some("#### `forward-start`"),
+        codes: &[
+            "invalid_args",
+            "bad_spec",
+            "unreachable",
+            "bad_jump",
+            "full",
+            "failed",
+        ],
+        fields: &[
+            "id",
+            "jump",
+            "localPort",
+            "machine",
+            "origin",
+            "remoteHost",
+            "remotePort",
+            "saved",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::forwards::answer_start(&r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔MIG-1 续 · `99 §2.1 ⑬` · 主会话裁「后端持有全部 SSH」〕测试连接（monitor 那条 Tauri 命令 `test_remote_connection` 退役）：
+    //   真异步（拨号 · 读 hello · 控制通道往返，两段等待各有上限），`cancel` 能在 await 点打断；短命探活、不进连接池。
+    CommandSpec {
+        name: "remote-probe",
+        doc_anchor: Some("#### `remote-probe`"),
+        codes: &["invalid_args", "bad_jump", "failed"],
+        fields: &[
+            "backendHello",
+            "backendOk",
+            "endpoint",
+            "fingerprint",
+            "jump",
+            "machine",
+            "message",
+            "saved",
+            "sshOk",
+            "stages",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::probe::answer_probe(&r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    CommandSpec {
+        name: "forward-stop",
+        doc_anchor: Some("#### `forward-stop`"),
+        codes: &["invalid_args", "not_found"],
+        fields: &["id"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::forwards::answer_stop(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    CommandSpec {
+        name: "forward-list",
+        doc_anchor: Some("#### `forward-list`"),
+        codes: &[],
+        fields: &[
+            "connCount",
+            "forwards",
+            "id",
+            "localPort",
+            "origin",
+            "remoteHost",
+            "remotePort",
+            "state",
+        ],
+        takes_input: false,
+        run: Run::Async(|_r| {
+            Box::pin(async move { Ok(Some(crate::dial::forwards::answer_list())) })
         }),
     },
     // 〔AS1 · 第四波 4B〕**MCP 资产同步的判定**（`设计/96` 的 B，用户 09-24 V111 · V112）：两份原文进、
@@ -3005,12 +3110,63 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔SH1〕列这台的 tmux 会话：`{installed, lines}`（原样 `tmux ls -F` 行，与流里推的那份同一个格式串）。阻塞档（起一次 `sh` ＋ `tmux`）。
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `ssh_source.rs` 原样搬来）。
+    //   阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
+    CommandSpec {
+        name: "ssh-config-aliases",
+        doc_anchor: Some("#### `ssh-config-aliases`"),
+        codes: &[],
+        fields: &["aliases"],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_aliases()))),
+    },
+    CommandSpec {
+        name: "ssh-config-resolve",
+        doc_anchor: Some("#### `ssh-config-resolve`"),
+        codes: &["invalid_args", "bad_alias", "failed"],
+        fields: &["alias", "host", "keyPath", "port", "proxyJump", "user"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::dial::ssh_config::answer_resolve(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "ssh-config-import",
+        doc_anchor: Some("#### `ssh-config-import`"),
+        codes: &[],
+        fields: &[
+            "addresses",
+            "alias",
+            "groups",
+            "host",
+            "jump",
+            "keyPath",
+            "label",
+            "members",
+            "port",
+            "proxyJump",
+            "user",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
+    },
+    // 〔SH1〕列这台的 tmux 会话。〔MIG-1 续〕成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {
         name: "tmux-list",
         doc_anchor: Some("#### `tmux-list`"),
         codes: &["unobservable", "too_large"],
-        fields: &["installed", "lines"],
+        fields: &[
+            "attached",
+            "command",
+            "installed",
+            "name",
+            "path",
+            "sessions",
+            "sid",
+            "windows",
+        ],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::feature_face::answer(&r.cmd, &r.args)

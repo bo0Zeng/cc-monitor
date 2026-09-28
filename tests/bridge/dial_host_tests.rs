@@ -134,8 +134,7 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
     for entry in [
         "pub(crate) async fn open_stream(",
         "pub(crate) async fn capture(",
-        "pub(crate) async fn probe(",
-        "pub(crate) async fn forward(",
+        // 〔MIG-1 续〕`probe(` 那一格随测试连接搬进本机后端删了。
     ] {
         let at = prod
             .find(entry)
@@ -263,25 +262,7 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         (ex.stdout.as_str(), ex.stderr.as_str(), ex.exit_status),
         ("o\n", "e\n", Some(5))
     );
-    // ③ 测试连接那一趟：阶段按序、ack 带指纹与胜出地址
-    let mut kinds: Vec<String> = Vec::new();
-    let (_link, ack) = probe(&cfg, "true", &mut |s| {
-        kinds.push(
-            serde_json::to_value(&s).unwrap()["kind"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-        )
-    })
-    .await
-    .expect("探活失败");
-    assert_eq!(kinds, ["dialing", "hostKey", "won", "auth", "established"]);
-    assert!(ack
-        .fingerprint
-        .as_deref()
-        .is_some_and(|f| f.starts_with("SHA256:")));
-    assert_eq!(ack.endpoint, Some(format!("{}:{}", cfg.host, cfg.port)));
-    drop(_link);
+    // 〔MIG-1 续〕③ 测试连接那一趟（阶段按序、ack 带指纹与胜出地址）随那一跳搬进本机后端（`dial/probe.rs`）删了。
     let _ = child.kill();
     let _ = child.wait();
     println!("SR1A-LOOPBACK-MONITOR ok");
@@ -347,12 +328,6 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
 
 /// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
-    (
-        "dial_host.rs",
-        "forward",
-        1,
-        "端口转发：用户开着就一直在，关了（丢 `ForwardLink`）就收",
-    ),
     (
         "remote_resident.rs",
         "attach",

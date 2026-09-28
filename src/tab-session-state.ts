@@ -4,7 +4,7 @@
  * | 轴 | 取值 | 谁说 |
  * |---|---|---|
  * | 活性 | 活 / 死 | 会话所在的那台机器（后端 pidfile ＋ 探活） |
- * | 可恢复性 | 能接回去（容器还在）/ 只能 resume / 连记录都没了 | 活着时由容器类型定（后端 `session_added.container`）；死的那一刻由 monitor 裁（`session-idle` / `session-ended`）；记录在不在由 resume 一跳问那台后端 |
+ * | 可恢复性 | 能接回去（容器还在）/ 只能 resume / 连记录都没了 | 活着时由容器类型定（后端 `session_added.container`）；死的那一刻由 monitor 裁（`idle` 格 / `ended` 格）；记录在不在由 resume 一跳问那台后端 |
  *
  * 「死了」与「能不能接回去」是两件事，不许挤在一个词里。改之前它们挤在 `Tab.status` ＋ `Tab.tmuxIdle`
  * 两个字段里：可重连的会话在活性那一格被记成 `live`（claude 进程其实已经没了）。
@@ -81,15 +81,15 @@ export const UNSEEN: SessionState = Object.freeze({ liveness: "unseen", recovera
 
 /**
  * 改变状态的事件（都是后端给的事实，前端不自己推）：
- * - `ended`：`session-ended`（monitor 裁 Archive：容器没了 / 被 `/branch` 顶替）
- * - `idle`：`session-idle`（monitor 裁 Idle：claude 没了，`@ccm_sid` 还在 tmux 里）
- * - `started`：本机 `session-started`（pidfile 新增且探活通过）/ 本机清单里有它
+ * - `ended`：`ended` 格（monitor 裁 Archive：容器没了 / 被 `/branch` 顶替）
+ * - `idle`：`idle` 格（monitor 裁 Idle：claude 没了，`@ccm_sid` 还在 tmux 里）
+ * - `started`：本机 `live` 格（pidfile 新增且探活通过）/ 本机清单里有它
  * - `remote-line`：远端又见到这条会话的行 / 重宣告（后端只对活 pidfile 推行）
  * - `activity`：带 status 的活动信号（后端只对活着的 claude 推）
- * - 〔U4b〕`container-tmux` / `container-none`：`session-container`（后端 `session_added.container`）
+ * - 〔U4b〕`container-tmux` / `container-none`：`container` 格（后端 `session_added.container`）
  * - 〔U4b〕`record-gone` / `record-present`：resume 一跳问那台后端（`history-record`）的答案
- * - 〔U4b〕`seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`）
- * - 〔GP1〕`unseen`：那台机器看不见了（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）
+ * - 〔U4b〕`seen-absent`：那台机器的活会话清单报完了、里面没有它（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）
+ * - 〔GP1〕`unseen`：那台机器看不见了（`unseen` 格：到它的连接断了 / F5 时它还没报完清单）
  */
 export type StateEvent =
   | "ended"
@@ -113,7 +113,7 @@ export type StateEvent =
  * - 已结束收到 `activity` 不变 —— 心跳清掉死会话后磁盘上残留的 pidfile 被重扫会推陈旧活动。
  * - 记录没了收到 `ended` 不变 —— 它本来就死了，而「记录不在」这件事 `ended` 推翻不了。
  * - 复活成活（`started` / `remote-line`）时容器一格回到 `null`：那是一个新进程，旧的容器类型不沿用，
- *   等它自己的 `session-container`。
+ *   等它自己的 `container` 格。
  * - 容器事实只落在活着的会话上：死了的那一格由死的那一刻的裁决说了算。
  * - 〔GP1〕`unseen` 只改「还有终端可去」的两态（活 · 可重连）：机器看不见了，它们此刻是死是活都说不清；
  *   已结束 / 记录没了不动 —— 它们的死是那台机器看得见时亲口说的，看不见了推翻不了（`设计/30 §3.5.7a`）。

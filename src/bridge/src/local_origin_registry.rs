@@ -110,9 +110,8 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
     //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
     //   **表只许变短，这一次它真的短了。**
-    // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
-    //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
-    ("dial_host.rs", "forward"),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一行（宿主起转发那个函数）还掉了：转发账进了本机常驻后端，查的是后端自己的可达表，
+    //   monitor 不再查远端配置。本机那条路仍没有端口转发（可达表里没有 `<local>` ⇒ 回 `unreachable`，明说）。
     // 〔LOC1a · 第四波 4D〕`remote_branch.rs` 的 `create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，〔散文墓碑〕
     //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
     ("remote_history.rs", "require_cfg_by_label"),
@@ -120,7 +119,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
-    // 〔SH1〕`backend/control/tmux.rs::list_remote_tmux` 那一行还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
+    // 〔SH1〕`backend/control/tmux.rs` 里列会话那一行（〔MIG-1 续〕那条命令已整条搬走）还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
     // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。

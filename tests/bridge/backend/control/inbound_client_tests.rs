@@ -296,7 +296,7 @@ fn the_hello_witness_can_only_come_from_a_hello_frame() {
 ///
 /// 没有这条，那套 e2e 只证明了「backend 认得我手写的那串 JSON」，
 /// 证明不了「monitor 真发出去的那串 JSON」—— 两者一旦漂开，e2e 会**继续全绿**
-/// 而生产里一条命令都发不出去。同 `removal_cause_wire_literal_stays_in_sync` 的思路。
+/// 而生产里一条命令都发不出去。同 `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 的思路。
 #[test]
 fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
     const SUITE: &str = include_str!("../../../e2e/inbound-backend-frames.sh");

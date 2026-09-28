@@ -100,7 +100,7 @@ pub enum Lifetime {
 /// 今天真实存在的是**四**格：还有「不接管，跟着界面进程的 stderr 走」
 /// （`dial_host.rs::open` 逐字写着为什么）与「接出来当返回值读」
 /// （四处 `.output()`：`local_query` · `profile_installer` · `launch::ssh_client_available` ·
-/// `ssh_source::resolve_ssh_host`）。
+/// `ssh_source::resolve_ssh_host`〔散文墓碑〕）。
 ///
 /// ⇒ 少这两格的话，那六处要么被迫改行为（拿现有两格之一硬套），要么绕开这个出口 ——
 /// **而后者正是本模块在关的那扇门**。两格换六处绕行，不划算。
@@ -164,7 +164,7 @@ impl Drop for LifetimeGuard {
         if let Some(h) = self.0.take() {
             // 关掉 Job 的最后一个句柄 = 连同 Job 里**所有**进程一起收掉
             // （`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）。这就是本件要买的那一下。
-            // 形状照 `session_map::is_process_alive`：一个 `unsafe` 块，句柄显式关。
+            // 形状照 `session_map::is_process_alive`〔散文墓碑〕：一个 `unsafe` 块，句柄显式关。
             unsafe {
                 let _ = windows::Win32::Foundation::CloseHandle(h);
             }

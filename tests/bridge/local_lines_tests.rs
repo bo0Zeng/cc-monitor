@@ -123,12 +123,10 @@ fn parse_frame_kinds() -> BTreeSet<String> {
 
 /// 每一种帧一行手写线上 JSON（**不从实现生成**）。
 ///
-/// ⚠ 两种不在表里、理由各写清：
-/// - `turn_end`：`parse_frame` 对它回 `None`（本就不进任何吸收点）；
-/// - `tmux_sessions`：它的吸收是写**进程级**的 tmux 原文账本（`<local>` 那一格），这里喂它会跟
-///   `local_backend_tests` 里钉那一跳的判据抢同一格全局状态；它的吸收由那条判据管。
+/// ⚠ 一种不在表里、理由写清：`turn_end`：`parse_frame` 对它回 `None`（本就不进任何吸收点）。
+/// 〔MIG-1 续〕tmux 观测那两种帧删了（后端不再发，monitor 不再认）。
 ///
-/// ⇒ 表的种类 ＋ 这两种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
+/// ⇒ 表的种类 ＋ 这一种 == `parse_frame` 的全部臂（两向），新长一种帧就红：先答它是不是内容。
 const FRAMES: &[(&str, &str)] = &[
     (
         "hello",
@@ -150,11 +148,12 @@ const FRAMES: &[(&str, &str)] = &[
         "session_removed",
         r#"{"kind":"session_removed","sid":"s1"}"#,
     ),
-    ("overflow", r#"{"kind":"overflow","dropped":3}"#),
+    // 〔MIG-1〕后端会话账本的成品（去向）—— 进内容通道（去向必须排在那个会话的行之后）。
     (
-        "tmux_session_closed",
-        r#"{"kind":"tmux_session_closed","name":"cf1-x"}"#,
+        "session_state",
+        r#"{"kind":"session_state","sid":"s1","state":"ended"}"#,
     ),
+    ("overflow", r#"{"kind":"overflow","dropped":3}"#),
     (
         "reply",
         r#"{"kind":"reply","id":"cf1-no-such-id","ok":true}"#,
@@ -196,10 +195,9 @@ const FRAMES: &[(&str, &str)] = &[
 
 #[test]
 fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
-    // 两向：表里的种类 ＋ 两种刻意不喂的 == parse_frame 的全部臂。
+    // 两向：表里的种类 ＋ 刻意不喂的那一种 == parse_frame 的全部臂。
     let mut fed: BTreeSet<String> = FRAMES.iter().map(|(k, _)| k.to_string()).collect();
     fed.insert("turn_end".into());
-    fed.insert("tmux_sessions".into());
     let all = parse_frame_kinds();
     assert!(
         all.len() >= 10,
@@ -222,6 +220,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                 (&"line", InboundFrame::Line { .. })
                     | (&"session_added", InboundFrame::SessionAdded { .. })
                     | (&"session_removed", InboundFrame::SessionRemoved { .. })
+                    | (&"session_state", InboundFrame::SessionState { .. })
                     | (&"session_status", InboundFrame::SessionStatus { .. })
                     | (&"sessions_replayed", InboundFrame::SessionsReplayed)
                     | (&"tasks_changed", InboundFrame::TasksChanged { .. })
@@ -240,6 +239,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
             "line",
             "session_added",
             "session_removed",
+            "session_state",
             "session_status",
             "sessions_replayed",
             // 〔FW1〕记录文件的出声（同一条内容通道，与行同序）。
@@ -330,12 +330,21 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         }
     );
     assert_eq!(local_step(frame(LINE_A), false, &mut h), line_a);
-    // 退场：撤它，藏起来的集合里也忘掉 —— 同 sid 以交互身份回来就照常显示。
+    // 退场：撤它；〔MIG-1〕藏起来的集合要留到它的去向（`session_state`）那一帧才忘 —— 去向也照「藏」滤掉。
     assert_eq!(
         local_step(frame(REM_B), false, &mut h),
         LocalStep::Remove { sid: "b".into() }
     );
-    assert!(h.is_empty(), "退场之后 bg 集合里还留着它：{h:?}");
+    assert!(h.contains("b"), "摘除那一帧就忘了藏 ⇒ 紧跟的去向会漏出去");
+    assert_eq!(
+        local_step(
+            frame(r#"{"kind":"session_state","sid":"b","state":"ended"}"#),
+            false,
+            &mut h
+        ),
+        LocalStep::Skip
+    );
+    assert!(h.is_empty(), "去向之后 bg 集合里还留着它：{h:?}");
     assert_eq!(local_step(frame(LINE_B), false, &mut h), line_b);
 
     // ③ 流结束：集合清空（下一条流会重新宣告）。
@@ -686,79 +695,89 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     println!("CF1-LOCAL-LINES ok");
 }
 
-// ─── L1〔LOC1b · 第四波 4D〕本机起停帧 ⇒ 本机活会话表 ──────────────────────────────────
+// ─── L1〔LOC1b · MIG-1〕本机起停帧 ⇒ 交 `session_book` 的成品 ──────────────────────────────────
 //
 // 要求住址：`INVARIANTS §40` 逐字「我的目的就是把本地当成不走 ssh 的远端」· `设计/01 §1.1` 逐字「一切判定都在后端」。
 
 #[test]
-fn the_local_lifecycle_core_matches_the_hand_written_table() {
-    use crate::session_map::{Lifecycle, LiveEntry, RemovalCause};
-    use crate::ssh_source::local_lifecycle;
-    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","name":"n","status":"busy","pid":42}"#;
+fn the_local_product_core_matches_the_hand_written_table() {
+    use crate::session_book::{Fate, In, LiveMeta};
+    use crate::ssh_source::local_product;
+    const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","cwd":"/w","name":"n","status":"busy","pid":42,"container":"tmux"}"#;
     const ADD_B_BG: &str = r#"{"kind":"session_added","sid":"b","session_kind":"bg"}"#;
     const STATUS_A: &str = r#"{"kind":"session_status","sid":"a","status":"idle"}"#;
     const STATUS_B: &str = r#"{"kind":"session_status","sid":"b","status":"idle"}"#;
-    const REM_A: &str = r#"{"kind":"session_removed","sid":"a","cause":"superseded"}"#;
-    const REM_B: &str = r#"{"kind":"session_removed","sid":"b"}"#;
+    const LEFT_A: &str = r#"{"kind":"session_state","sid":"a","state":"reconnectable"}"#;
+    const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended"}"#;
+    const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
     const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
     const LINE: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0,"raw":"{}"}"#;
+    let local = || "<local>".to_string();
 
     let none = HashSet::new();
     assert_eq!(
-        local_lifecycle(&frame(ADD_A), true, &none, &[]),
-        Some(Lifecycle::Added {
+        local_product(&frame(ADD_A), true, &none),
+        Some(In::Live {
+            origin: local(),
             sid: "a".into(),
-            entry: LiveEntry {
-                cwd: Some("/w".into()),
+            meta: LiveMeta {
                 kind: Some("interactive".into()),
+                cwd: Some("/w".into()),
                 name: Some("n".into()),
                 status: Some("busy".into()),
-                waiting_for: None,
+                container: Some(crate::session_book::Container::Tmux),
                 pid: Some(42),
+                ..Default::default()
             }
         })
     );
     assert_eq!(
-        local_lifecycle(&frame(STATUS_A), true, &none, &[]),
-        Some(Lifecycle::Status {
+        local_product(&frame(STATUS_A), true, &none),
+        Some(In::Status {
+            origin: local(),
             sid: "a".into(),
             status: Some("idle".into()),
             waiting_for: None
         })
     );
     assert_eq!(
-        local_lifecycle(&frame(REM_A), true, &none, &[]),
-        Some(Lifecycle::Removed {
+        local_product(&frame(LEFT_A), true, &none),
+        Some(In::Left {
+            origin: local(),
             sid: "a".into(),
-            cause: RemovalCause::Superseded
-        })
+            fate: Fate::Reconnectable
+        }),
+        "去向原样交（后端裁的）"
     );
     assert_eq!(
-        local_lifecycle(&frame(LISTED), true, &none, &[]),
-        Some(Lifecycle::Listed)
-    );
-    assert_eq!(
-        local_lifecycle(&frame(LINE), true, &none, &[]),
+        local_product(&frame(REM_A), true, &none),
         None,
-        "内容行不是起停事实"
+        "摘除本身只是内容流的边界"
     );
     assert_eq!(
-        local_lifecycle(&LocalItem::StreamEnded, true, &none, &["c".to_string()]),
-        Some(Lifecycle::StreamEnded {
-            idle: vec!["c".into()]
-        })
+        local_product(&frame(LISTED), true, &none),
+        Some(In::Listed { origin: local() })
     );
-    // 不显示 bg：bg 的宣告不进；已藏起来的 sid 的灯与摘除也不进（同 `local_step` 的藏法）。
-    assert_eq!(local_lifecycle(&frame(ADD_B_BG), false, &none, &[]), None);
+    assert_eq!(
+        local_product(&frame(LINE), true, &none),
+        None,
+        "内容行不是起停成品"
+    );
+    assert_eq!(
+        local_product(&LocalItem::StreamEnded, true, &none),
+        Some(In::LinkLost { origin: local() })
+    );
+    // 不显示 bg：bg 的宣告不进；已藏起来的 sid 的灯与去向也不进（同 `local_step` 的藏法）。
+    assert_eq!(local_product(&frame(ADD_B_BG), false, &none), None);
     assert!(
-        local_lifecycle(&frame(ADD_B_BG), true, &none, &[]).is_some(),
+        local_product(&frame(ADD_B_BG), true, &none).is_some(),
         "正控：显示 bg 时它进"
     );
     let hidden: HashSet<String> = ["b".to_string()].into_iter().collect();
-    assert_eq!(local_lifecycle(&frame(STATUS_B), false, &hidden, &[]), None);
-    assert_eq!(local_lifecycle(&frame(REM_B), false, &hidden, &[]), None);
+    assert_eq!(local_product(&frame(STATUS_B), false, &hidden), None);
+    assert_eq!(local_product(&frame(LEFT_B), false, &hidden), None);
     assert!(
-        local_lifecycle(&frame(REM_B), false, &none, &[]).is_some(),
+        local_product(&frame(LEFT_B), false, &none).is_some(),
         "正控：没藏的照进"
     );
 }

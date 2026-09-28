@@ -1,18 +1,14 @@
 /**
  * F58：本地端口转发(-L)管理台。overlay 面板(照 SFTP panel 范式,body-level fixed)——
- * 列当前转发 + 加转发表单(选主机/本地端口/远端 host:port)+ 启停 + 刷新。消费后端
- * start_forward/stop_forward/list_forwards;转发经 cc-monitor 已有 SSH 连接隧道(复用连接大脑)。
+ * 列当前转发 + 加转发表单(选主机/本地端口/远端 host:port)+ 启停 + 刷新。
+ * 〔MIG-1 · `设计/99 §2.1 ⑬`〕转发账住本机常驻后端：起 / 停 / 列经通道直接问它（`../port-forward-reads.ts`），
+ * 转发走本机后端池里到那台的 SSH 连接（复用连接大脑）。
  */
-import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
-import { readRemoteConfig } from "../remote-config";
+import { hostKey, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 
-/** 后端 ForwardStatus（camelCase）。 */
-// C04d 批 3：改用生成物（源 `port_forward.rs`）。手写版与它**逐字等价**
-// ——本批次这一处零漂移，价值是防将来漂，不是抓到了 bug。
-// `connCount` 走 C03 大整数策略：Rust 是 `u64`，按**累计连接数**量纲算
-// 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
-import type { ForwardStatus } from "../generated/ForwardStatus";
+// `connCount`：累计连接数，按**累计连接数**量纲算 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
+import { listForwards, startForward, stopForward, type ForwardStatus } from "../port-forward-reads";
 import { copyText } from "../copy-table";
 
 function mkBtn(label: string, onClick: () => void): HTMLButtonElement {
@@ -40,6 +36,8 @@ class PortForwardPanel {
   private localInput!: HTMLInputElement;
   private rhostInput!: HTMLInputElement;
   private rportInput!: HTMLInputElement;
+  /** 打开时读到的那几台（起转发时一并交它的配置：那台的流没起来时本机后端按它自己拨）。 */
+  private hosts: RemoteHostConfig[] = [];
 
   constructor() {
     this.el = document.createElement("div");
@@ -104,6 +102,7 @@ class PortForwardPanel {
     this.originSel.innerHTML = "";
     try {
       const { hosts } = await readRemoteConfig();
+      this.hosts = hosts;
       for (const h of hosts) {
         const origin = h.label.trim() || h.host;
         const opt = document.createElement("option");
@@ -124,7 +123,7 @@ class PortForwardPanel {
   private async reload(): Promise<void> {
     let forwards: ForwardStatus[] = [];
     try {
-      forwards = await commands.list_forwards();
+      forwards = await listForwards();
     } catch (e) {
       showActionFailureToast(copyText("portForward.reload.listFailed"), String(e));
     }
@@ -175,7 +174,11 @@ class PortForwardPanel {
       return;
     }
     try {
-      await commands.start_forward({ spec: { origin, localPort, remoteHost, remotePort } });
+      // 〔MIG-1 续〕那台的配置（＋ 跳板那一台）一并交：它的流没起来时本机后端按配置自己拨，不拒。
+      const machine = this.hosts.find((h) => hostKey(h) === origin) ?? null;
+      const jumpName = machine?.jump.trim() ?? "";
+      const jump = jumpName ? (this.hosts.find((h) => hostKey(h) === jumpName) ?? null) : null;
+      await startForward({ origin, localPort, remoteHost, remotePort }, machine ? { machine, jump } : null);
       this.localInput.value = "";
       this.rportInput.value = "";
       await this.reload();
@@ -186,7 +189,7 @@ class PortForwardPanel {
 
   private async onStop(id: string): Promise<void> {
     try {
-      await commands.stop_forward({ id });
+      await stopForward(id);
       await this.reload();
     } catch (e) {
       showActionFailureToast(copyText("portForward.onStop.failed"), String(e));

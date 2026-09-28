@@ -48,9 +48,10 @@ describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
     );
     expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-tap"]]);
     expect(chanStreamModule.chan.subscribe.mock.calls[0]?.[3]).toBe(TAP_WINDOW);
-    // 没有叫 session-tap 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    // 没有叫 session-tap 的裸事件监听（零命中，正控：task-update 那一个在；〔MIG-1〕session-ended 并进了会话流）。
     expect(subs.has("session-tap")).toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    expect(subs.size).toBe(0);
 
     const rec = streamFake.subscriptions[0]!;
     rec.sink([
@@ -98,9 +99,10 @@ describe("〔DL1〕accounts-changed 走 subscribe（不是裸事件）", () => {
       ACCOUNTS_CHANGED_WINDOW,
       ACCOUNTS_CHANGED_WINDOW,
     ]);
-    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：session-ended 那一个在）。
+    // 没有叫 remote-backend-ready 的裸事件监听（零命中，正控：task-update 那一个在）。
     expect(subs.has(["remote", "backend", "ready"].join("-"))).toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    expect(subs.size).toBe(0);
 
     const a = streamFake.subscriptions[1]!;
     a.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);
@@ -142,7 +144,8 @@ describe("〔MIG-3b〕session-tasks 走 subscribe（不是裸事件 task-update�
     expect(SESSION_TASKS_KIND).toBe("session-tasks");
     expect(chanStreamModule.chan.subscribe.mock.calls.map((c) => c[3])).toEqual([SESSION_TASKS_WINDOW, SESSION_TASKS_WINDOW]);
     expect(subs.has(["task", "update"].join("-")), "裸事件 task-update 又长回来了").toBe(false);
-    expect(subs.has("session-ended")).toBe(true);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
+    expect(subs.size).toBe(0);
 
     const a = streamFake.subscriptions[1]!;
     a.sink([{ t: "unseen", at: { idx: 1, tag: "read" }, why: "Dropped" }]);

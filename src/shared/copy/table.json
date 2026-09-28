@@ -12242,11 +12242,6 @@
       "zh": "非法 tmux 目标（空）：{target}",
       "args": ["target"]
     },
-    "rsTmux.list.unparsable": {
-      "kind": "error",
-      "zh": "CCM_TMUX_UNPARSABLE 认不出远端 tmux 的会话列表：有一行只切出 {split} 段，少于 {fields} 段。远端 tmux 的输出被改写过（客户端不是 UTF-8 时，TAB 和非 ASCII 字符会变成 _）。这一趟的会话列表整份作废，不当成远端零会话。原样：{bad}",
-      "args": ["split", "fields", "bad"]
-    },
     "rsBackendControl.handle.missing": {
       "kind": "error",
       "zh": "没有这台机器的记录：{origin}（启动时没登记过？）",
@@ -12636,11 +12631,6 @@
       "kind": "error",
       "zh": "登记的路径里有不能解析的字符 {bad}（{declared}）。说明请写在备注里，路径栏只放路径。",
       "args": ["bad", "declared"]
-    },
-    "rsTmux.list.shape": {
-      "kind": "error",
-      "zh": "{who}的 tmux 会话列表形状对不上 —— 两边版本不一样，先别重试",
-      "args": ["who"]
     },
     "beTmuxList.query.unobservable": {
       "kind": "error",
@@ -13299,11 +13289,6 @@
       "zh": "{e}（原文 {line}）",
       "args": ["e", "line"]
     },
-    "rsSshLink.parse.noAccepted": {
-      "kind": "error",
-      "zh": "转发计数行没有 accepted（原文 {line}）",
-      "args": ["line"]
-    },
     "rsSshLink.dial.noReason": {
       "kind": "error",
       "zh": "本机后端没说原因",
@@ -13373,16 +13358,6 @@
       "kind": "error",
       "zh": "本机后端没答出远端的起始目录：{v}",
       "args": ["v"]
-    },
-    "rsDialHost.forward.connectFailed": {
-      "kind": "error",
-      "zh": "连接 {machine} 失败：{e}",
-      "args": ["machine", "e"]
-    },
-    "rsDialHost.forward.noConfig": {
-      "kind": "error",
-      "zh": "未找到远端配置：{machine}",
-      "args": ["machine"]
     },
     "rsDialHost.open.timeout": {
       "kind": "error",
@@ -13578,26 +13553,6 @@
       "kind": "error",
       "zh": "通道口绑不上回环：{e}",
       "args": ["e"]
-    },
-    "rsPortForward.stop.notFound": {
-      "kind": "error",
-      "zh": "未找到转发：{id}",
-      "args": ["id"]
-    },
-    "rsPortForward.spec.remotePort": {
-      "kind": "error",
-      "zh": "远端端口必须 > 0",
-      "args": []
-    },
-    "rsPortForward.spec.remoteHost": {
-      "kind": "error",
-      "zh": "远端 host 不能为空",
-      "args": []
-    },
-    "rsPortForward.spec.localPort": {
-      "kind": "error",
-      "zh": "本地端口必须 > 0",
-      "args": []
     },
     "rsOrigin.route.blank": {
       "kind": "error",
@@ -14003,11 +13958,6 @@
       "args": []
     },
 
-    "rsLib.activeSessions.notListed": {
-      "kind": "error",
-      "zh": "本机后端还没报完活会话清单",
-      "args": []
-    },
     "rsLib.log.none": {
       "kind": "error",
       "zh": "没有 log 文件（log 文件未启用或还没产生）",
@@ -14148,80 +14098,25 @@
       "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
       "args": ["machine"]
     },
-    "rsSshSource.control.unsupported": {
-      "kind": "body",
-      "zh": "control=unsupported：后端太旧，不能在远端起会话",
-      "args": []
-    },
-    "rsSshSource.hello.notHello": {
-      "kind": "body",
-      "zh": "后端的第一条回应认不出：{other}",
-      "args": ["other"]
-    },
-    "rsSshSource.probe.readFailed": {
-      "kind": "error",
-      "zh": "读后端输出出错：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.test.probeFailed": {
-      "kind": "error",
-      "zh": "SSH 连上了，但后端探测失败：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.test.noHello": {
-      "kind": "body",
-      "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
-      "args": []
-    },
-    "rsSshSource.test.controlDown": {
-      "kind": "body",
-      "zh": "后端连上了，但不能在远端起会话",
-      "args": []
-    },
-    "rsSshSource.test.noControl": {
-      "kind": "body",
-      "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
-      "args": []
-    },
-    "rsSshSource.test.ok": {
-      "kind": "body",
-      "zh": "SSH 与后端均正常。",
-      "args": []
-    },
-    "rsSshSource.test.sshFailed": {
-      "kind": "error",
-      "zh": "SSH 连接/鉴权失败：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.host.sshGExit": {
+    "beSshConfig.host.sshGExit": {
       "kind": "error",
       "zh": "ssh -G {alias} 退出非 0：{detail}",
       "args": ["alias", "detail"]
     },
-    "rsSshSource.host.sshGFailed": {
+    "beSshConfig.host.sshGFailed": {
       "kind": "error",
       "zh": "运行 ssh -G 失败（OpenSSH 客户端装了吗？）：{e}",
       "args": ["e"]
     },
-    "rsSshSource.host.sshGNotRun": {
-      "kind": "error",
-      "zh": "ssh -G 没能运行：{e}",
-      "args": ["e"]
-    },
-    "rsSshSource.host.dashAlias": {
+    "beSshConfig.host.dashAlias": {
       "kind": "error",
       "zh": "host 别名不能以 '-' 开头",
       "args": []
     },
-    "rsSshSource.host.badAlias": {
+    "beSshConfig.host.badAlias": {
       "kind": "error",
       "zh": "非法的 host 别名（含不安全字符）：{alias}",
       "args": ["alias"]
-    },
-    "rsSshSource.aliases.readFailed": {
-      "kind": "error",
-      "zh": "读取 ~/.ssh/config 失败：{e}",
-      "args": ["e"]
     },
     "rsSshSource.health.degraded": {
       "kind": "body",
@@ -15169,6 +15064,56 @@
     "apikeyReads.backend.tooOld": {
       "kind": "error",
       "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "tmuxReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的 tmux 会话清单，两端版本对不上",
+      "args": []
+    },
+    "tmuxReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不认列 tmux 会话这一问。重装那台机器的后端就有了",
+      "args": []
+    },
+    "remoteProbe.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的测试结果，两端版本对不上",
+      "args": []
+    },
+    "remoteProbe.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不认测试连接这一问。重启 cc-monitor 换上新后端就有了",
+      "args": []
+    },
+    "startupActive.gone.title": {
+      "kind": "title",
+      "zh": "上次所在的会话这次没出现",
+      "args": []
+    },
+    "startupActive.gone.body": {
+      "kind": "body",
+      "zh": "每台机器都报完了活会话，里面没有 {sid}，这次留在当前这一格",
+      "args": ["sid"]
+    },
+    "portForwardReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的转发清单，两端版本对不上",
+      "args": []
+    },
+    "portForwardReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不认端口转发这一问。重启 cc-monitor 换上新后端就有了",
+      "args": []
+    },
+    "sshConfigReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的 ssh 配置，两端版本对不上",
+      "args": []
+    },
+    "sshConfigReads.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不认读 ssh 配置这一问。重启 cc-monitor 换上新后端就有了",
       "args": []
     },
     "rsHistory.launch.noSessionName": {
@@ -16766,6 +16711,96 @@
       "zh": "连接读不下去了：{e}",
       "args": ["e"]
     },
+    "beMachine.jump.loop": {
+      "kind": "error",
+      "zh": "跳板配置指向自己（环）",
+      "args": []
+    },
+    "beMachine.jump.notFound": {
+      "kind": "error",
+      "zh": "跳板配置未找到：{jumpLabel}",
+      "args": ["jumpLabel"]
+    },
+    "beProbe.test.sshFailed": {
+      "kind": "error",
+      "zh": "SSH 连接/鉴权失败：{e}",
+      "args": ["e"]
+    },
+    "beProbe.test.probeFailed": {
+      "kind": "error",
+      "zh": "SSH 连上了，但后端探测失败：{e}",
+      "args": ["e"]
+    },
+    "beProbe.test.noHello": {
+      "kind": "error",
+      "zh": "SSH 连上了，但后端没响应（可能没装或没启动）",
+      "args": []
+    },
+    "beProbe.test.controlDown": {
+      "kind": "error",
+      "zh": "后端连上了，但不能在远端起会话",
+      "args": []
+    },
+    "beProbe.test.noControl": {
+      "kind": "error",
+      "zh": "后端版本过旧，不能在远端起会话。请在设置里重装这台机器的后端",
+      "args": []
+    },
+    "beProbe.test.ok": {
+      "kind": "error",
+      "zh": "SSH 与后端均正常。",
+      "args": []
+    },
+    "beProbe.control.unsupported": {
+      "kind": "error",
+      "zh": "control=unsupported：后端太旧，不能在远端起会话",
+      "args": []
+    },
+    "beProbe.link.droppedBeforeAck": {
+      "kind": "error",
+      "zh": "链路还没说成不成就断了",
+      "args": []
+    },
+    "beProbe.link.closed": {
+      "kind": "error",
+      "zh": "那台后端的输出断了",
+      "args": []
+    },
+    "beForwards.spec.localPort": {
+      "kind": "error",
+      "zh": "本地端口必须 > 0",
+      "args": []
+    },
+    "beForwards.spec.remoteHost": {
+      "kind": "error",
+      "zh": "远端 host 不能为空",
+      "args": []
+    },
+    "beForwards.spec.remotePort": {
+      "kind": "error",
+      "zh": "远端端口必须 > 0",
+      "args": []
+    },
+    "beForwards.start.full": {
+      "kind": "error",
+      "zh": "已经开着 {max} 条转发了，先停掉几条再开",
+      "args": ["max"]
+    },
+    "beForwards.start.failed": {
+      "kind": "error",
+      "zh": "到 {machine} 的转发没开起来：{why}",
+      "args": ["machine", "why"]
+    },
+    "beForwards.start.noAck": {
+      "kind": "error",
+      "zh": "链路还没说成不成就断了",
+      "args": []
+    },
+    "beForwards.stop.notFound": {
+      "kind": "error",
+      "zh": "未找到转发：{id}",
+      "args": ["id"]
+    },
     "beRemoteAsk.unreachableMessage.say": {
       "kind": "error",
       "zh": "本机后端还不知道怎么连到 [{machine}]。那台还没连上，或本机后端刚重启过，下次连上就好了。",
@@ -17315,11 +17350,6 @@
     "tmuxMint.unknown.notAsked": {
       "kind": "error",
       "zh": "没问到那台机器上已有哪些 tmux 会话",
-      "args": []
-    },
-    "tmuxMint.unknown.localNotYet": {
-      "kind": "error",
-      "zh": "本机后端还没报过这台机器上已有哪些 tmux 会话",
       "args": []
     },
     "tmuxMint.refused.title": {

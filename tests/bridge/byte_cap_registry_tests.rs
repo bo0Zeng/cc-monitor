@@ -792,6 +792,29 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
     ),
+    // 〔MIG-1 续 · ⑬〕测试连接进本机后端：探活链路上的每一行（阶段行 · ack · 那台后端的 hello · 应答）。
+    (
+        "src/backend/dial/probe.rs",
+        "LINE_CAP",
+        1024 * 1024,
+        "测试连接那条探活链路上的一行（阶段行 · ack · 那台后端的首行 hello · ping 应答；hello 是后端出方向单行，同量级）",
+        "拒收+回错",
+    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。
+    (
+        "src/backend/dial/forwards.rs",
+        "ACK_CAP",
+        64 * 1024,
+        "起一条端口转发时链路那一侧回的 ack 那一行（同 `remote_ask` 读 ack 的上限）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/dial/forwards.rs",
+        "COUNT_CAP",
+        4 * 1024,
+        "端口转发链路每接进一条连接报的那一行计数（`{\"accepted\":n}`）",
+        "降级+说清",
+    ),
     // 〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
     //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
     (
@@ -1857,8 +1880,9 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         }
     }
     assert!(
-        arms >= 3,
-        "只找到 {arms} 处超限处置臂（08-10 实测 3：主帧读 / 握手 / 应答泵）—— \
+        // 〔MIG-1 续〕3 → 1：握手（`probe_backend`〔散文墓碑〕）与应答泵那两臂随测试连接搬进本机后端删了，只剩主帧读那一臂。
+        arms >= 1,
+        "只找到 {arms} 处超限处置臂（〔MIG-1 续〕今天应为 1：主帧读）—— \
              抽取器坏了，本条此刻是空转的"
     );
     assert!(
