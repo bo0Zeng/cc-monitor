@@ -353,6 +353,14 @@ export class HistoryView {
     return this.isOpen;
   }
 
+  /** 〔MIG-2 · `99 §2.1 ㊱③`〕Ctrl+F：历史页开着、且正在看一份会话 ⇒ 查看器的查找面板打开到「搜索」、回 `true`；
+   *  否则回 `false`（交给实时 tab 那一块 —— 历史页盖在上面时打开底下那块，用户看不见）。 */
+  openFind(): boolean {
+    if (!this.isOpen || !this.viewer) return false;
+    this.viewer.openFind();
+    return true;
+  }
+
   /** Esc 优先级：F96 右键菜单 > 查看器 > 整个历史视图。main.ts / overlay dispatcher 调本方法。
    *  ★ 菜单优先必须在这里判——菜单挂 document 冒泡相 keydown，而 overlay dispatcher 挂 window
    *  捕获相（恒先触发），单靠菜单自己的监听拦不住「Esc 关菜单」，会误关整个历史视图。 */

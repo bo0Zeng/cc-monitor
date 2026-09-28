@@ -2482,6 +2482,11 @@
       "zh": "搜索",
       "args": []
     },
+    "sessionViewer.find.noSession": {
+      "kind": "error",
+      "zh": "还没打开会话，没有可查的内容。",
+      "args": []
+    },
     "sessionViewer.build.unjumpable": {
       "kind": "body",
       "zh": "这一条显示出来是空的，跳不过去，已停在会话末尾。",
