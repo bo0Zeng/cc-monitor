@@ -1,0 +1,95 @@
+/**
+ * 设计/05 §14.3：「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」。
+ *
+ * 〔MIG-3a · 主会话 09-27 裁〕别名六问（`aliases-*`）改走通道：解码器读后端测试对拍过的同一份金样（`aliases.golden.json`）；
+ * 请求问对那台、说对那条、参数原样。
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { invoke } from "@tauri-apps/api/core";
+import {
+  decodeAliasInstallReport,
+  decodeAliasListing,
+  decodeAliasRender,
+  installAliasBlock,
+  installAliases,
+  readAliases,
+  removeAliasBlock,
+  renderAliasBlock,
+  renderAliases,
+} from "../src/alias-reads";
+import { REPO_ROOT } from "./test-support/repo-root";
+import { chanArgsJson, chanReply, type ChanCallArgs } from "./test-support/chan-fake";
+
+const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
+const G = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/aliases.golden.json"), "utf8")) as Record<
+  string,
+  Record<string, unknown>
+>;
+
+beforeEach(() => {
+  invokeMock.mockReset();
+});
+
+describe("金样：后端出的成品，TS 读得懂", () => {
+  it("aliases-render · aliases-install · aliases-read", () => {
+    expect(decodeAliasRender(G.renderReply).problems.map((p) => p.name)).toEqual(["bad name"]);
+    expect(decodeAliasInstallReport(G.installReply).wroteAliasFile).toBe(true);
+    const l = decodeAliasListing(G.readReply);
+    expect(l.aliases).toEqual([{ name: "zcc", args: ["--", "--account", "z"] }]);
+    expect(l.rcCandidates.map((c) => c.block.present)).toEqual([false]);
+  });
+});
+
+describe("严格收", () => {
+  it("多一格 / 缺一格 / 类型不对 ⇒ 抛（每一层都查）", () => {
+    const r = G.readReply as Record<string, unknown>;
+    expect(() => decodeAliasListing({ ...r, boundTerminals: 2 })).toThrow(/两端版本对不上/);
+    const { otherRc: _o, ...short } = r;
+    expect(() => decodeAliasListing(short)).toThrow(/两端版本对不上/);
+    const cands = r.rcCandidates as Record<string, unknown>[];
+    const c0 = cands[0] as Record<string, unknown>;
+    expect(() => decodeAliasListing({ ...r, rcCandidates: [{ ...c0, block: { ...(c0.block as object), extra: 1 } }] })).toThrow(
+      /两端版本对不上/,
+    );
+    expect(() => decodeAliasRender({ ...G.renderReply, collisions: [1] })).toThrow(/两端版本对不上/);
+    expect(() => decodeAliasInstallReport({ ...G.installReply, wroteAliasFile: "yes" })).toThrow(/两端版本对不上/);
+  });
+  it("块那三口：预览只收 `{text}`；装 / 卸只收 `{}`", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply({ text: "x", more: 1 }));
+    await expect(renderAliasBlock("aya", "~/.bashrc", false)).rejects.toThrow(/两端版本对不上/);
+    invokeMock.mockResolvedValueOnce(chanReply({ ok: true }));
+    await expect(removeAliasBlock("aya", "~/.bashrc")).rejects.toThrow(/两端版本对不上/);
+  });
+});
+
+describe("请求：问对那台、说对那条、参数原样", () => {
+  it("六问各一发", async () => {
+    const a = [{ name: "zcc", args: ["--account", "z"] }];
+    invokeMock.mockResolvedValueOnce(chanReply(G.renderReply));
+    await renderAliases("aya", a, "posix");
+    invokeMock.mockResolvedValueOnce(chanReply(G.readReply));
+    await readAliases("<local>", "powershell", null);
+    invokeMock.mockResolvedValueOnce(chanReply(G.installReply));
+    await installAliases("aya", a, "~/.zshrc", "posix");
+    invokeMock.mockResolvedValueOnce(chanReply({ text: "c" }));
+    expect(await renderAliasBlock("aya", "~/.bashrc", true)).toBe("c");
+    invokeMock.mockResolvedValueOnce(chanReply({}));
+    await installAliasBlock("aya", "~/.bashrc", false);
+    invokeMock.mockResolvedValueOnce(chanReply({}));
+    await removeAliasBlock("aya", "~/.bashrc");
+    const calls = invokeMock.mock.calls.map((c) => c[1] as ChanCallArgs);
+    expect(calls.map((x) => [x.origin, x.op, chanArgsJson(x)])).toEqual([
+      ["aya", "aliases-render", { aliases: a, shell: "posix" }],
+      ["<local>", "aliases-read", { shell: "powershell", rcPath: null }],
+      ["aya", "aliases-install", { aliases: a, rcPath: "~/.zshrc", shell: "posix" }],
+      ["aya", "aliases-block-render", { rcPath: "~/.bashrc", withCc: true }],
+      ["aya", "aliases-block-install", { rcPath: "~/.bashrc", withCc: false }],
+      ["aya", "aliases-block-remove", { rcPath: "~/.bashrc" }],
+    ]);
+  });
+});

@@ -2495,6 +2495,12 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     // 〔MIG-3a〕基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
     //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
+    // 〔合并 MIG-3a × 主线 ad308378〕基数 52 ＋ MIG-3a +11 ＋ MIG-2 +4 ⇒ 67。
+    // 〔MIG-3a · 子步 3〕基数 61 → 增量 +2 ⇒ 63：`cc-bus-install-reads.ts` 两处（`cc-bus-install` / `-state`）。
+    // 〔MIG-3a · 主会话 09-28 裁〕基数 63 → 增量 −2 ⇒ 61：MCP 推拉 3 → 2、skill 装 3 → 2（经前端中继那一形改成只问本机枢纽一次）。
+    // 〔MIG-3a〕基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
+    // 〔MIG-3a〕基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
+    // 〔MIG-3a〕基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
     // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
     // 〔合并 MIG-1 × 主线 19671e6b〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
     // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
@@ -2504,7 +2510,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 64usize), // 〔MIG-1 续〕63 → 64：测试连接一问（`src/remote-probe.ts`） // 〔MIG-1 续〕62 → 63：列 tmux 会话一问（`src/tmux-reads.ts`） // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 6 ⇒ 62
+            ("chan.call", 78usize), // 〔合并 MIG-1 × 主线 eebf51de〕主线 70 ＋ MIG-1 本路 +8（ssh 配置 3 · 端口转发 3 · 列 tmux 1 · 测试连接 1）⇒ 78
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]
@@ -2628,9 +2634,9 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     ),
     (
         "src/bridge/src/sftp.rs",
+        &["X2"],
         &[],
-        &[],
-        "〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，今天一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
+        "〔MIG-3b · 4d-lanes 子步 1〕**今天咬 `X2` 一条**：部署判定进了本机常驻后端（`deploy-plan`），本文件问它要计划那一问         定了一个期限值（`PLAN_BUDGET`）—— 期限值归宿主（`05 §3.3.2`），而它就是宿主那一侧的调用方（形状同下一行 `sftp_pool.rs`），         照实登记、不圈。         〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，后来一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
          （连同它的结构守卫〔散文墓碑〕）改经远端后端删一起走了（`设计/05 §8.1.3` 说的「要清掉那个词得连它一起搬」，\
          搬的是用户裁的 RW1）。🔴 **而它仍然不圈**，这是一次归属判断、不是判据没跑：\
          本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）（〔W5-ALIAS〕远端 rc 别名块的**规划**\

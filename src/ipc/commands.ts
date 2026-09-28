@@ -44,37 +44,13 @@
  */
 import { invoke, type Channel } from "@tauri-apps/api/core";
 
-/**
- * devbench F03：一个接入的 skill 的当前状态。
- *
- * ⚠ **本类型是手写的**（不是 ts-rs 生成）—— 照 `launch-cli-wire.ts` 的先例。
- * ⇒ 字段名与 Rust 侧 `skill_host::SkillView`（serde 默认 snake_case）**必须手动同步**，
- * 由 Rust 侧的 `the_ts_view_type_matches_this_struct` 钉住：那条判据读本文件的源码，
- * 逐个字段对拍，漏一个就红。
- */
+// 〔MIG-3a〕`SkillView` 搬进 `src/skill-inbox-reads.ts`（收件箱三问改走通道、后端出成品）。
 // 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 与 `ApikeyRoutingView` 两个类型搬进 `src/apikey-reads.ts`（那两问改走通道、后端出成品，
 //   形状由跨语言金样 `tests/__fixtures__/apikey.golden.json` 两侧对拍）；本文件那条 `import type … from "../accounts"`（B-decouple §6
 //   必须拆 4 点名的「闭合类型环的那条边」）随 `apikey_routing_for` 一起走了。
 
-export interface SkillView {
-  id: string;
-  label: string;
-  /** `null` = 在场；否则是带身份的缺席原因（哪个 skill 的哪条前提没满足）。 */
-  missing_reason: string | null;
-  /** 实例名（planned-build 的工作区名…）。 */
-  instances: string[];
-  /** 可编辑文件的绝对路径（后端算好的，UI 直接拿去请求读/写）。 */
-  editable: string[];
-}
 
-import type { Alias } from "../generated/Alias";
-import type { AliasInstallReport } from "../generated/AliasInstallReport";
-import type { AliasListing } from "../generated/AliasListing";
-import type { AliasRender } from "../generated/AliasRender";
-import type { Shell } from "../generated/Shell";
-import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
-import type { BranchResult } from "../generated/BranchResult";
 // 〔步 12·C〕合并后的命令一律收 `origin`。**`Origin` 是生成物**
 // ⇒ 这里不许手写 `string | null`：手写的那一份与 Rust 的 `origin::Origin` 之间没有任何东西钉着。
 //
@@ -95,15 +71,12 @@ import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
-import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
-import type { CcBusInstallState } from "../generated/CcBusInstallState";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // 〔RM1f〕panorama 一族今天只剩 `panorama_call` / `panorama_edit` / `panorama_cancel` 三条，返回 `unknown`，
 // 由 `src/panorama/api.ts` 按 op 收窄成 `src/panorama/types.ts` 的手写类型（那 10 个住 vendored
 // `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
-import type { HooksReport } from "../generated/HooksReport";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { PushResult } from "../generated/PushResult";
@@ -205,79 +178,13 @@ export const commands = {
   set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
     invoke<RestartHint>("set_diagnostics_config", args),
 
-  /**
-   * devbench F03：列出接入的 skill 及其状态。
-   *
-   * `missingReason` 非 null 时是**带身份的**缺席原因（哪个 skill 的哪条前提没满足）——
-   * UI 要原样显示它，不许退化成「不可用」（定框 C6）。
-   */
-  // 〔RW1 · 第四波 09-24〕三条都吃 `origin`（本机 = `"<local>"`）：远端项目的收件箱也能编辑，
-  //   读写都经那台机器的后端（本机同一条路）。
-  list_skills: (args: { origin: Origin; cwd: string }) =>
-    invoke<SkillView[]>("list_skills", args),
-
-  /** devbench F03：读一个 skill 的可编辑文件（读也过写面围栏，免得变成任意文件读取口）。 */
-  read_skill_file: (args: { origin: Origin; cwd: string; skillId: string; path: string }) =>
-    invoke<string>("read_skill_file", args),
-
-  /**
-   * devbench F03：写一个 skill 的可编辑文件。
-   *
-   * 后端三道围栏（路径 canonicalize 后做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在）
-   * + 〔RW1〕经那台机器后端的文件管理那一面写（回读逐字节比对与回滚住后端）。**前端不做安全判断** ——
-   * 判定的真相源只有 `skill_host::resolve_editable` / `remote_editable_rel`。
-   * `expected` = 打开时读到的那一份（CAS：盘上那份在这之后被改过 ⇒ 一个字节不写）。
-   */
   // 〔HX2 · 第四波 4D〕墓碑：这里从前是 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` `KS10`：从界面配一把 key）。
   //   写 key 改走通道 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），交那台机器的后端；`KH2C1` 那一条照旧成立 ——
   //   前端交 `configDir`，账号 id 由后端按全仓唯一那份规则（`acct_core::apikey_account_id_of_dir`）推。
 
-  write_skill_file: (args: {
-    origin: Origin;
-    cwd: string;
-    skillId: string;
-    path: string;
-    content: string;
-    expected: string;
-  }) => invoke<void>("write_skill_file", args),
-
-  /**
-   * 〔AL1 · 2026-09-24〕`设计/71 §12.6` 第①跳：**纯** —— 清单 → 代码（＋ 每条的问题 ＋ 撞名提示）。
-   * 预览与「复制去手贴」都只调这一条，后端一个字节都不写。
-   */
-  // 〔AL1c〕`shell` 必给：同一份清单渲染 / 读 / 写成哪种 shell 的方言（`71 §4.4`），不留缺省（缺了就是替人猜）。
-  // 〔AL2 · 第四波 4D〕六条都带 `origin`（本机远端同一条命令，`设计/71 §6`）；远端那两条装 / 卸别名块并进 `aliases_block_*`。
-  aliases_render: (args: { origin: Origin; aliases: Alias[]; shell: Shell }) =>
-    invoke<AliasRender>("aliases_render", args),
-
-  /**
-   * 〔AL1〕读回口：这台机器上那份别名文件今天有哪几条（认不出的行原文带原因列出来，不静默丢）。
-   * 〔AL1d〕启动文件候选各带别名块的现状 ＋ 完成拉前握手的终端数；`rcPath` = 人另指的一份（过围栏后并进候选）。
-   */
-  aliases_read: (args: { origin: Origin; shell: Shell; rcPath?: string | null }) =>
-    invoke<AliasListing>("aliases_read", args),
-
-  /**
-   * 〔AL1〕第②跳：**唯一的副作用**。收的是清单，后端用第①跳同一个渲染落盘 ⇒ 写的就是预览的那一份。
-   * ⚠ `rcPath` 可选且没有默认值：用户的 shell 配置是哪一份只能由界面上的人选。
-   */
-  aliases_install: (args: { origin: Origin; aliases: Alias[]; rcPath?: string | null; shell: Shell }) =>
-    invoke<AliasInstallReport>("aliases_install", args),
-
-  /**
-   * 〔AL1d · 第四波 4B〕**别名块**（`cc` / `cct` · `__ccm_bind`）第①跳：纯 —— 块 → 代码（装进一份空文件会写成什么）。
-   * 两种方言都答，方言由 `rcPath` 那份文件的扩展名定（后端判，与装那一跳同一个判法）；`withCc` 只对 PowerShell 有意义。
-   */
-  aliases_block_render: (args: { origin: Origin; rcPath: string; withCc: boolean }) =>
-    invoke<string>("aliases_block_render", args),
-
-  /** 〔AL1d〕别名块装进人选的那份启动文件（方言按那份文件的扩展名定）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  aliases_block_install: (args: { origin: Origin; rcPath: string; withCc: boolean }) =>
-    invoke<void>("aliases_block_install", args),
-
-  /** 〔AL1d〕别名块卸掉（整块删，块外一个字节不动）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  aliases_block_remove: (args: { origin: Origin; rcPath: string }) =>
-    invoke<void>("aliases_block_remove", args),
+  // 〔MIG-3a · 主会话 09-27 裁〕别名六条（`aliases_*`〔散文墓碑〕）退役：规则 · 方言 · 围栏进了那台后端，界面经通道直问（`src/alias-reads.ts`）。
+  /** 〔MIG-3a〕这台已跟 monitor 完成拉前握手的终端数（住 monitor 进程里的 `BindRegistry`，从前夹在别名读回口里）。 */
+  bound_terminal_count: () => invoke<number>("bound_terminal_count"),
 
   /**
    * 〔RM1c · 第四波〕代码全景**经那台机器的后端**走（V108 选 B）：发帧命令 `panorama`，拿回 `result`。
@@ -395,16 +302,6 @@ export const commands = {
   launch_remote_terminal: (args: { origin: string; remoteCmd: string; rbindToken?: string | null }) =>
     invoke<void>("launch_remote_terminal", args),
 
-  /**
-   * 远端有没有装 `cc-acct-iso` + 命中路径 + 内嵌 vendor 指纹。
-   *
-   * **本批次抓到的漂移**：TS 侧原来写 `invoke<{ installed: boolean }>` —— 只认 1/3 个字段，
-   * 把 `path` 与 `vendor_id` 藏掉了。而 Rust 那两个字段的注释明写「附带回传，
-   * 避免以后要它时再加一趟往返」⇒ **是手写镜像把后端的好意抹掉了**。
-   */
-  // 〔SH1 · `设计/00 §2.5 ①`〕`acct-iso.check` 本机 / 远端两条合成这一条（带 `origin`；本机是 `"<local>"`）。
-  acct_iso_status: (args: { origin: Origin }) => invoke<AcctIsoStatus>("acct_iso_status", args),
-
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),
 
@@ -415,33 +312,12 @@ export const commands = {
   /** 部署远端后端（〔MC1〕连同 `ccm` 入口，一次）。 */
   deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
 
-  /**
-   * 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。
-   *
-   * 〔`K-R88` 09-13〕入参从 `sourceJsonlPath` 收成 `sourceSessionId` ——
-   * 与下面远端那条**形状一致**，两侧后端走的也是同一份「按 sid 找那份文件」。
-   */
-  create_branch_session: (args: {
-    origin: Origin;
-    sourceSessionId: string;
-    messageUuid: string;
-  }) => invoke<BranchResult>("create_branch_session", args),
+  // 〔MIG-3b〕分叉那条退役：分叉经通道直说那台后端 `session-fork`（`src/session-writes.ts::forkSession`）。
 
   // 〔C4a · 子步 3〕E79 那条本机版「某会话跑在哪个账号下」退役：
   //   本机与远端同一条路 —— `account-reads.ts::fetchSessionAccounts` 经通道 `chan.call(origin, "accounts-sessions", …)`。
 
-  /**
-   * 删历史会话。**桶①**。
-   *
-   * 🔴 **〔步 12·C〕`delete_remote_history_session` 已退役，两条收成这一条。**
-   * 〔RW1 · 第四波〕两侧都经那台机器的后端删（`files-delete-session`，只收 sid）；
-   * `jsonlPath` 是一致性闸的另一半：`sessionId` 必须恰是那份文件名的 stem。
-   */
-  delete_history_session: (args: {
-    origin: Origin;
-    sessionId: string;
-    jsonlPath: string;
-  }) => invoke<void>("delete_history_session", args),
+  // 〔MIG-3b〕删会话那条退役：删会话经通道直说那台后端 `files-delete-session`（`src/session-writes.ts::deleteSession`）。
 
   /**
    * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -457,28 +333,17 @@ export const commands = {
     invoke<DriftLedgerReport>("drift_ledger_report", args),
   // 〔C4b · 第四波 4B〕P8a 的 marketplace 面（`list_plugin_marketplaces`〔散文墓碑〕）退役：经通道直接说帧命令
   //   `plugins-marketplaces`，后端出成品（`src/settings/plugins-section.ts::fetchSurvey`）。
-  // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
-  // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
-  // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
-  deploy_local_cc_bus: () => invoke<CcBusDeployReport>("deploy_local_cc_bus"),
-  // PS2：本机装的是哪一版（**只读**）。三态刻意不合并 ——
-  // 「没装」「已是最新」「装了但不是这一版」合并任意两个都会骗人。
-  cc_bus_install_state: () => invoke<CcBusInstallState>("cc_bus_install_state"),
+  // 〔MIG-3a · 子步 3〕PS1 / PS2 那两条（`deploy_local_cc_bus`〔散文墓碑〕· `cc_bus_install_state`〔散文墓碑〕）退役：
+  //   cc-bus 装到本机是后端代管的资产，判 · 写 · 记在本机后端（`cc-bus-install` / `-state`，`src/cc-bus-install-reads.ts`）。
+  /** 〔MIG-3a〕装出来的 `cc-spawn` 在这台跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。 */
+  cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染 · 本机接回那一句三条退役：那台后端的帧命令（`src/launch-render.ts`）。
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
     invoke<string>("deploy_remote_acct_iso", args),
-  /** Z05：抓那台 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。
-   *  〔SH1 · `设计/00 §2.5 ①`〕本机 / 远端两条合成这一条（带 `origin`）。 */
-  acct_iso_shellinit: (args: { origin: Origin }) => invoke<string>("acct_iso_shellinit", args),
 
-  /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
-
-  /** 远端 cc-bus 钩子诊断。同上。 */
-  diagnose_remote_cc_bus_hooks: (args: { origin: string }) =>
-    invoke<HooksReport>("diagnose_remote_cc_bus_hooks", args),
+  // 〔MIG-3b〕cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
   /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
   load_subagent: (args: {

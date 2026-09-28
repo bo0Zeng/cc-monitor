@@ -18,7 +18,6 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
-mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上那一刻把「怎么够到那台」交给本机常驻后端 `assets-sync`（零判定；〔MIG-3a〕看机器页那一问界面直问）
@@ -37,7 +36,6 @@ mod bridge;
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那一份：认出是我们放的就删（`设计/01 §6.7b` 迁移 ② ③）
 pub mod chan;
-mod claude_data_fence; // 步 H2：Claude 自己的数据不许我们写 —— `INVARIANTS §1` 的 F47/F03b 两段澄清共用的那一个判定（用户 09-21 裁「拆」）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
@@ -46,20 +44,19 @@ mod footprint_remote; // 〔RM1a〕「足迹」的远端那一栏：问那台后
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;
-mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
-                  // 🔴〔步 24e · 2026-09-20〕原生文件管理窗口（`设计/60 §4 戊`）。进程形态＝**同进程**、
-                  // egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
-                  // （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
-                  // ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
-                  //   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（〔F7c 收尾〕34 → 36，逐条住 gate.sh 那一格上方）。
-                  //   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
-                  //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
+// 🔴〔步 24e · 2026-09-20〕原生文件管理窗口（`设计/60 §4 戊`）。进程形态＝**同进程**、
+// egui 事件循环住次线程；住址为什么是 monitor 的一个模块而不是新 crate——两条理由
+// （同进程要链进这个二进制 · 门禁 `cargo` 格把包数恒等钉在 9）逐条写在它的头注里。
+// ⚠ **`pub` 是刻意的**：本 crate 的 `mod` 全是私有的，而私有模块里没人调的 `pub fn`
+//   会被 `dead_code` 记一笔 —— 门禁 `deadcode` 那一格把 `never used` **恒等钉在 36**（〔F7c 收尾〕34 → 36，逐条住 gate.sh 那一格上方）。
+//   这棵树今天的消费者只有它自己的判据（窗口还没接到界面上），`pub` 让它在
+//   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
-mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
-                // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
-                // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
-mod apikey_remote; // 〔RM1a〕那份文件**按机器**读写 ——〔GP1〕写两台同一条路：交那台机器的后端（本机 ＝ 本机常驻后端）
+// 〔MIG-3b〕`hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
+// U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
+// 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+// 〔MIG-2〕`apikey_remote`〔散文墓碑〕删了：它最后只剩发送口，唯一的调用方（起会话那一侧问 `launch-endpoint`）随本机起会话搬进后端。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
 mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
@@ -67,7 +64,6 @@ mod creds_store; // 第三方 API key 那份文件在本机的「它在哪」（
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod launch;
-mod local_accounts; // L3a 起：本机账号域 —— 今天只剩 `acct-iso` 两问的本机对侧（〔C4d〕本机清单的参照实现删了）
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
@@ -84,7 +80,7 @@ mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给�
                  //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
 mod profile_installer;
 mod pubkey;
-mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
+// 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
 mod remote_history;
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
@@ -93,17 +89,15 @@ mod remote_write_registry; // devbench F10c：远端写面登记（接三张表�
                            //   与 `session_facts` 容器账〔散文墓碑〕：两本账的裁决与记账都搬进了那台后端（`observe/session_ledger.rs`）。
 mod session_book;
 mod session_tap; // 〔TAP · V124〕本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
-mod shell_dialect; // AL1c（第四波 4B）：`设计/71 §4.4` 那组 shell 方言接口 —— POSIX 与 PowerShell 各一份实现，通用层零 shell 文本
-                   // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
-                   // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
-                   // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
+                 // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
+                 // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
+                 // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
 mod spawn_managed;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
-mod skill_host;
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
                 // 〔W5-ALIAS · 第五波先行〕`verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
                 //   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
@@ -217,7 +211,7 @@ mod session_skeleton;
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
-mod tasks;
+// 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
                              // 〔MIG-1〕`tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
@@ -749,9 +743,7 @@ pub fn run() {
             tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
             // 〔LOC1b · 第四波 4D〕这里原来还算 `sessions_dir`（`<claude_dir>/sessions`，喂 monitor 自己那份判活）——
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
-            // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
-            let tasks_dir =
-                adapter::tasks_dir(&claude_dir).unwrap_or_else(|| claude_dir.join("tasks"));
+            // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
@@ -898,9 +890,8 @@ pub fn run() {
             // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
             // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
-            // v2.3.0 issue #11：监听 task 文件变更，per-session 重读后 emit 给前端。
-            // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
-            tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
+            // 〔MIG-3b · `99 §2.1 ㉓②`〕任务变更的监视进了后端（`tasks_changed` 帧 ⇒ 通道 `subscribe(origin, "session-tasks")`），
+            //   monitor 这边那条 notify 线程与 `task-update` 事件删了；本机远端同形。
 
             // 〔LOC1b · 第四波 4D〕这里原来起「历史全文搜索索引」那条后台线程（延迟 1.5 s 扫 projects/**/*.jsonl 建内存索引）。
             //   本机搜索改问本机后端（与远端同一条 `history-search`），这条线程与那份索引一起删了。
@@ -971,23 +962,15 @@ pub fn run() {
             // 〔MIG-2 · `99 §2.1 ⑬`〕「起会话那一发注入哪个中转地址」那一问退役：界面经通道直接问那台后端 `launch-endpoint`（成品）；
             //   monitor 只交它自己那个全量注入开关（monitor 进程环境，`20 §3.2`）。
             relay_all_sessions_switch,
-            // 〔AL1 · 2026-09-24〕`设计/71`：别名只有一类（名字 ＋ 一组 ccm 参数），命令面两跳 ——
-            // 渲染是纯的（预览 / 复制都只调它），写入是唯一的副作用；外加一个读回口。
-            aliases_render,
-            aliases_read,
-            aliases_install,
-            // 〔AL1d〕别名块（`cc` / `cct` · `__ccm_bind`）与清单同一族命令面（`AL1d.md §2.1`）。
-            aliases_block_render,
-            aliases_block_install,
-            aliases_block_remove,
+            // 〔MIG-3a · 主会话 09-27 裁〕别名六条（`aliases_*`〔散文墓碑〕）进了那台机器的后端（`assets/aliases/`），界面经通道直问 `aliases-*`。
+            //   留下的只有「这台已握手的终端数」—— 它住本进程的 `BindRegistry`，不是那台盘上的事实。
+            bound_terminal_count,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令〔SH1 · V136〕退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
             // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
-            hooks_diag::diagnose_local_cc_bus_hooks,
-            hooks_diag::diagnose_remote_cc_bus_hooks,
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
@@ -1039,10 +1022,7 @@ pub fn run() {
             sftp::uninstall_remote_backend,
             acct_iso_deploy::deploy_remote_acct_iso,
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
-            acct_iso_deploy::acct_iso_status,
-            acct_iso_deploy::acct_iso_shellinit,
-            history::delete_history_session,
-            history::create_branch_session,
+            // 〔MIG-3a〕`acct_iso_status` / `acct_iso_shellinit` 退役：界面经通道直问那台后端（`acct-iso-status` / `acct-iso-shellinit`，后端出成品）。
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
             //   monitor 只剩「开一个终端窗口跑这串」。
@@ -1067,13 +1047,10 @@ pub fn run() {
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
             // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
-            // devbench F03：skill 接入面（列出 / 读 / 写那个「人手写的注入文件」）。
-            // ⚠ 写走 `skill_host::resolve_editable` 的三道围栏 + `verified_write` 读回比对。
-            skill_host::list_skills,
-            skill_host::read_skill_file,
-            skill_host::write_skill_file,
-            cc_bus_deploy::deploy_local_cc_bus,
-            cc_bus_deploy::cc_bus_install_state,
+            // 〔MIG-3a · `99 §2.1 ⑬`〕skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
+            //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
+            // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
+            cc_bus_deploy::cc_bus_ccm_precheck,
             panorama_call::panorama_call,
             panorama_call::panorama_edit,
             // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。
@@ -1424,101 +1401,14 @@ pub(crate) const RELAY_ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 //   账号 id 由后端推（`acct_core::apikey_account_id_of_dir`）。monitor 里从此没有明文 key 的具名绑定。
 //   `KH2C1` 前端那一侧的机检（它的旧名 `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕）照旧在 `accounts-section.vitest.ts`。
 
-// 〔AL2 · 第四波 4D〕别名一族六条都收 `origin`（`设计/71 §6` 那张图逐字 `call(origin, …)` · `01 §6.8`）：本机远端同一条命令，
-//   事实经那台后端（`user_files::BackendDoor{origin}`），规则与方言在 monitor 只一份；`dialect_promised` 挡表 B 没承诺的方言。
+// 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕别名一族六条（`aliases_render` / `_read` / `_install` / `aliases_block_*`〔散文墓碑〕）退役：
+//   规则 · 方言 · 围栏住那台机器的后端（`src/backend/assets/aliases/`），界面经 `chan.call(origin, "aliases-*")` 直问（`src/alias-reads.ts`）。
 
-/// 〔AL1〕第①跳：**纯** —— 清单 → 代码，一个字节都不写（`71 §6`）；`shell` 必给，不替人猜。
-/// 〔AL2〕`origin` 只决定撞名那一格查不查 `PATH`（远端不查）。
+/// 〔MIG-3a〕这台（monitor 所在那台）**已经跟 monitor 完成拉前握手的终端数**（PowerShell 别名块里 `__ccm_bind` 的产物）。
+/// 从前夹在 `aliases_read` 的成品里（`bound_terminals`）；它住本进程的 `BindRegistry`、不是那台后端盘上的事实 ⇒ 单独一问（⑬「拉前」）。
 #[tauri::command]
-fn aliases_render(
-    origin: crate::origin::Origin,
-    aliases: Vec<account_aliases::Alias>,
-    shell: shell_dialect::Shell,
-) -> Result<account_aliases::AliasRender, String> {
-    origin.route("aliases_render")?;
-    account_aliases::dialect_promised(&origin, shell)?;
-    Ok(account_aliases::render(&aliases, shell, &origin))
-}
-
-/// 〔AL1〕读回口：那台机器上那份别名文件 ＋ 启动文件候选（各带别名块的现状）＋ 握手终端数（`BindRegistry`，只本机有，远端恒 0）。
-/// 〔AL2〕事实全问那台后端（`files-home` / `files-peek` / `files-stat`）；`rc_path` = 人另指的一份（过围栏后并进候选）。
-#[tauri::command]
-async fn aliases_read(
-    origin: crate::origin::Origin,
-    shell: shell_dialect::Shell,
-    rc_path: Option<String>,
-    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
-) -> Result<account_aliases::AliasListing, String> {
-    origin.route("aliases_read")?;
-    account_aliases::dialect_promised(&origin, shell)?;
-    let bound = if origin.is_local() {
-        u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX)
-    } else {
-        0
-    };
-    let door = user_files::BackendDoor::new(origin.clone());
-    account_aliases::read_via(&door, &origin, shell, rc_path.as_deref(), bound).await
-}
-
-/// 〔AL1〕第②跳：**唯一的副作用**，收清单不收代码（写的就是第①跳预览的那一份）；落盘经那台后端 `files-put`。
-/// 〔TL1〕`rc_path` 只查接没接上，不往里写（`71 §6.1`）。
-#[tauri::command]
-async fn aliases_install(
-    origin: crate::origin::Origin,
-    aliases: Vec<account_aliases::Alias>,
-    rc_path: Option<String>,
-    shell: shell_dialect::Shell,
-) -> Result<account_aliases::AliasInstallReport, String> {
-    origin.route("aliases_install")?;
-    account_aliases::dialect_promised(&origin, shell)?;
-    let door = user_files::BackendDoor::new(origin.clone());
-    account_aliases::install_in(&door, &origin, &aliases, rc_path.as_deref(), shell).await
-}
-
-/// 〔AL1d〕**别名块**第①跳：纯（「装进一份空文件会写成什么」），与装那一跳同一个 `plan_install`；方言由目标文件扩展名定。
-/// 〔AL2〕`origin` 只用来过 `dialect_promised`（远端 `.ps1` ⇒ 拒）。
-#[tauri::command]
-fn aliases_block_render(
-    origin: crate::origin::Origin,
-    rc_path: String,
-    with_cc: bool,
-) -> Result<String, String> {
-    origin.route("aliases_block_render")?;
-    let shell = shell_dialect::Shell::of_target(std::path::Path::new(&rc_path));
-    account_aliases::dialect_promised(&origin, shell)?;
-    profile_installer::render_block(shell, with_cc)
-}
-
-/// 〔AL1d〕**别名块**第②跳：装进人选的那份启动文件（幂等，整块替换）；home 问那台后端、围栏按 `origin` 分两层。
-#[tauri::command]
-async fn aliases_block_install(
-    origin: crate::origin::Origin,
-    rc_path: String,
-    with_cc: bool,
-) -> Result<(), String> {
-    origin.route("aliases_block_install")?;
-    let door = user_files::BackendDoor::new(origin.clone());
-    let home = user_files::Door::home(&door).await?;
-    let p = profile_installer::fence_on(&origin, &home, &rc_path)?;
-    let at = std::path::Path::new(&p);
-    account_aliases::dialect_promised(&origin, shell_dialect::Shell::of_target(at))?;
-    profile_installer::install_to_profile(&door, at, profile_installer::CC_FUNCTION_NAME, with_cc)
-        .await
-}
-
-/// 〔AL1d〕**别名块**卸掉（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。经那台后端写。
-#[tauri::command]
-async fn aliases_block_remove(
-    origin: crate::origin::Origin,
-    rc_path: String,
-) -> Result<(), String> {
-    origin.route("aliases_block_remove")?;
-    let door = user_files::BackendDoor::new(origin.clone());
-    let home = user_files::Door::home(&door).await?;
-    let p = profile_installer::fence_on(&origin, &home, &rc_path)?;
-    let at = std::path::Path::new(&p);
-    account_aliases::dialect_promised(&origin, shell_dialect::Shell::of_target(at))?;
-    profile_installer::uninstall_from_profile(&door, at).await
+fn bound_terminal_count(bind_state: tauri::State<'_, Arc<bind::BindRegistry>>) -> u32 {
+    u32::try_from(bind_state.registration_count()).unwrap_or(u32::MAX)
 }
 
 #[tauri::command]
@@ -1809,9 +1699,8 @@ async fn bring_remote_terminal_to_front(
 // === v1.7：PowerShell profile cc 集成 IPC ===
 //
 // 〔AL1d · 第四波 4B〕这里原来是「终端集成」那五条命令（`cc_integration_*`〔散文墓碑〕：状态 · 扫一份 · 预览 · 装 · 卸）
-// 与它们的三个出参类型。它们办的是**别名块**（两种方言都办：`profile_installer::plan_install` 按扩展名分），
-// 装进的是别名文件那一行同一批启动文件 ⇒ 并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`）：
-// 状态 ＋ 扫一份 → `aliases_read`（候选各带块的现状）· 预览 → `aliases_block_render` · 装 / 卸 → `aliases_block_install` / `aliases_block_remove`。
+// 与它们的三个出参类型。它们办的是**别名块**，并进了别名同一族命令面（`调研/第四波记录/AL1d.md §2.1`）；
+// 〔MIG-3a〕那一族今天住那台机器的后端（`assets/aliases/`，帧命令 `aliases-*`）。
 // 「v1.7.0-1.7.1 装错位置」那一段遗留扫描随之删了 —— 每份候选都带块的现状，块装在哪几份照实说。
 
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时

@@ -161,11 +161,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   没有第二条路可回落（值只在那台机器上），长连接不在时明说「没有控制通道」；**照样走分流器**，
     //   理由与 `frame_query.rs` 那条逐字相同。
     ("backend_policy.rs", Verdict::UsesRouter),
-    // ★ 〔RM1a · 第四波〕上游选择那份凭据文件**按机器**读写：远端那一臂问 / 交那台机器的后端
-    //   （`apikey-read` / `apikey-key-set`），都经 `apikey_remote.rs::call` 这一口。
-    //   没有第二条路可回落（那份文件只在那台机器上），长连接不在时明说「没有控制通道」；
-    //   **照样走分流器**，理由与 `backend_policy.rs` 那条逐字相同。
-    ("apikey_remote.rs", Verdict::UsesRouter),
+    // 〔MIG-2〕`apikey_remote.rs`〔散文墓碑〕那一行摘了：那一口（上游选择的帧面发送口）最后只剩起会话问 `launch-endpoint` 一个调用方，
+    //   起会话搬进后端之后零调用方、整个模块删了（界面经通道直问）。
     // 〔DEL〕`remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
     // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
     //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
@@ -191,6 +188,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
     ("sftp_pool.rs", Verdict::UsesRouter),
+    // ★ 〔MIG-3b · 4d-lanes 子步 1〕部署计划：把「怎么够到那台 ＋ 这一版带着哪几格」交给**本机**后端 `deploy-plan`，
+    //   经 `sftp.rs::ask_plan_for` 这一口；判定住后端，没有第二条路可回落（判定不回到 monitor）。形状与 `asset_sync.rs` 那一行同。
+    ("sftp.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

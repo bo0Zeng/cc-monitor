@@ -80,6 +80,24 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/cc_bus_install.rs",
+        "〔MIG-3a · 子步 3〕`cc-bus` 那一行的装口：申报的「可装」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
+        "src/backend/assets/aliases/block.rs",
+        "〔MIG-3a · 主会话 09-27 裁〕`ccm` 那一行的装 / 卸口（别名块）：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/sftp_tests.rs",
+        "src/backend/assets/aliases/block.rs",
+        "〔MIG-3a〕「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/tool_registry_tests.rs",
         "src/backend/assets/skill_flow.rs",
         "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
     ),
@@ -196,16 +214,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/sftp_tests.rs",
-        "tests/backend/build_id_guard.rs",
-        "〔HX2 · 第四波 4D · 主会话 D-b〕**部署只升不降要 `BUILD_ID` 可比序**：`sftp::build_order` 住 monitor，\
-         而出过的每一个 `BUILD_ID` 只在后端那张 `SUBCOMMAND_HISTORY` 历史表里（每次加子命令追加一行）。\
-         `hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 读它：每一行都解得出序、按表序严格爬升 ——\
-         下一次 bump 写出一个解不出序的形状，部署出去就永远不会被判「更新」而换上（两边各自绿、线上静默）。\
-         只能同时读序键实现（monitor）与历史表（后端测试树）才验得了。",
-    ),
+    // 〔MIG-3b〕`tests/bridge/sftp_tests.rs` → `tests/backend/build_id_guard.rs` 那一行摘了：序键随部署判定搬进共享的 `deploy-core`，
+    //   读历史表的那一格（`hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs`）挪到后端 `deploy_plan_tests.rs` ——
+    //   序键实现（后端依赖的共享 crate）与历史表同在后端那一半，这条边不再跨。
     (
         "monitor→backend",
         "tests/bridge/search_kou_jing_guard.rs",
@@ -289,6 +300,15 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
     ),
     // ── backend → monitor（2 条 · 〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列）：backend 的判据去读 monitor ──
+    // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
+    //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。
+    (
+        "backend→monitor",
+        "tests/backend/accounts/iso_tests.rs",
+        "src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso",
+        "〔MIG-3a〕rc 片段的围栏校验进了后端：围栏常量必须与 vendored `cc-acct-iso` 真打印的那两行逐字一致 \
+         —— 跨语言双写点，只能编译期读那份 vendored 脚本对拍（从前这条边住 monitor 的 `acct_iso_deploy_tests.rs`）",
+    ),
     (
         "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。

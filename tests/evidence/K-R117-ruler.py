@@ -138,26 +138,16 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   ⇒ 是「有人改了命令名」那一种，**改表是跟上真相，不是凑绿**。
     ("backend.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
     ("acct-iso.deploy", (B1, "R75〔用@09-14「account进后端」〕", "已裁：account 进后端 ⇒ 落 ①")),
-    ("acct-iso.check", (B1, "R75", "同上，查装态那一半")),
+    # 〔MIG-3a〕`acct-iso.check` 摘了：装没装那一问界面直问那台后端 `acct-iso-status`，不再是 Tauri 命令。
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
     # 〔AL1 · 2026-09-24〕`alias.account-commands` → `alias.manage`：那条能力 id 随
     #   `write_account_aliases` 退役（`设计/71`：别名只有一类、两跳 ＋ 读回口）。本条红的时候
     #   逐字写着「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
     #   归处不变（②）：第①跳 `aliases_render` 就是「生成那段让用户自己填」；第②跳写的是 monitor
     #   自己那份别名文件 ＋ 用户**自己选**的 rc 里一行 source，与从前那条同性质。
-    ("alias.manage", (B2, "K33+K34+设计/71",
-                      "「有需要动用户 alias 的就生成命令让用户自己填」：渲染（纯）→ 手贴或写入；"
-                      "先例 `accounts-section.ts::renderRcSnippet`")),
-    # 〔DP1 · 第四波〕别名块那三格（从 ① 挪来，旧名 `ccm.install` / `ccm.uninstall` / `ccm.install-ui`）：
-    #   `设计/71 §5`「② 别名：清单编辑 → 预览（纯）→ 写入 / 复制待贴」—— 别名块就是写入那一跳的一种落法，不是装后端。
-    ("alias.block-install", (B2, "K33+K34+设计/71 §5",
-                             "往用户选的 rc / `$PROFILE` 里装 cc-monitor 那一段别名块（`aliases_block_install`，带 origin，"
-                             "本机远端同一条）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
-    ("alias.block-remove", (B2, "K33+K34+设计/71 §5", "同上，卸那一侧")),
-    ("alias.block-preview", (B2, "K33+K34+设计/71 §5", "装别名块之前的预览（纯渲染，不写盘）")),
-    ("acct-iso.shellinit", (B2, "K33",
-                            "它产出的就是一段 rc 片段（`cc-acct-iso` 的 `cmd_shellinit` "
-                            "只 `printf`、一个字节都不写盘）")),
+    # 〔MIG-3a · 主会话 09-27 裁〕`alias.manage` · `alias.block-install` / `-remove` / `-preview` 四项摘了：别名规则 · 方言 · 围栏
+    #   进了那台后端（帧命令 `aliases-*`），界面经通道直问，不再是 Tauri 命令（同 `skill.inbox` 那一次）。
+    # 〔MIG-3a〕`acct-iso.shellinit` 摘了：rc 片段那一问界面直问那台后端（围栏在那边校验），不再是 Tauri 命令。
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
     # 〔MIG-3a · `99 §2.1 ⑬`〕`mcp.write` / `mcp.remove` / `mcp.sync` 三项摘了：D 组 MCP 的计算与写进了那台后端
     #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
@@ -165,10 +155,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔MIG-3a〕`skill.install` 摘了（理由同上：装 / 卸进了被写那台后端，不再是 Tauri 命令）。装口住 `tool_registry` 的 `skill-install` 那一行。
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
-    ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
-    ("skill.inbox", (B3, "K34",
-                     "写侧（`write_skill_file`）是往用户项目里装东西；读侧两条由 "
-                     "`CMD_OVERRIDE` 划出去 —— 同一个能力 id 里读写两性质")),
+    # 〔MIG-3a · 子步 3〕`cc-bus.install-state` 摘了：三态进了本机后端（`cc-bus-install-state`），不再是 Tauri 命令。
+    # 〔MIG-3a〕`skill.inbox` 摘了：收件箱那一面进了那台后端（`skill-host-*`），不再是 Tauri 命令。
     # ─────────────────────────── 非装面 ───────────────────────────
     # 下面每一条都是「它不是装 / 卸 / 查装态的动作」。理由一律给**它到底在干什么**，
     # 不写「与安装无关」这种同义反复。
@@ -204,11 +192,11 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("comm.face-a.subscribe", (NA, "—",
                                "〔CF2〕通信层面 A 在 Tauri IPC 那一跳的订阅（`chan_subscribe` / `chan_want` / `chan_stop`）—— 只搬不透明的流格，"
                                "装什么、查什么装态都不是它的事")),
-    ("history.branch", (NA, "—", "会话历史")),
-    ("history.delete", (NA, "—", "会话历史")),
+    # 〔墓碑 · MIG-3b〕`history.branch` · `history.delete` 随分叉 / 删会话改由界面经通道直说那台后端（`session-fork` · `files-delete-session`）退役；
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，理由同上面几条墓碑。
     ("history.read-session", (NA, "—", "会话历史")),
-    ("hooks.diagnose", (NA, "—",
-                        "**只诊断**钩子，不装它（`TouchEffect::GenerateOnly`：产品自己不动手）")),
+    # 〔墓碑 · MIG-3b〕`hooks.diagnose` 随钩子诊断本机远端合成帧命令 `hooks-diag`（界面经通道直问那台后端）退役：
+    #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
     # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
     # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
@@ -243,8 +231,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
 
 # 同一个能力 id 里读写两性质时，按命令名覆盖。**key 必须在 `LEDGER` 里**（R3 的第三向）。
 CMD_OVERRIDE = {
-    "list_skills": (NA, "K34", "列 skill —— 只读，不是装"),
-    "read_skill_file": (NA, "K34", "读那个收件箱文件 —— 只读"),
+    # 〔MIG-3a〕`list_skills` / `read_skill_file` 两条摘了（随 `skill.inbox` 进后端）。
 }
 
 # 写盘落点（`write_site_registry::WRITE_SITES`）里**带 tool id 的那几行** ＋ `§0b` 另外点名的
@@ -315,9 +302,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 〔AL1d · 第四波 4B〕别名块那三条并进 `aliases_*` 同一族命令面（`调研/第四波记录/AL1d.md §2.1`），
         #   〔DP1〕能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
         #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（就是本路），改表是跟上真相。
-        "aliases_block_install",
-        "aliases_block_remove",
-        "aliases_block_render",
+        # 〔MIG-3a〕`aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
         # 〔AL1d〕`cc_integration_install` / `_preview` / `_scan_path` / `_status` / `_uninstall` 五条退役：
         #   装 / 卸 / 预览接给上面三条；状态与扫一份并进 `aliases_read`（它归 S4，能力 `alias.manage`）。
         "ccm_user_path_add",
@@ -338,8 +323,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
-        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条「装没装」合成一条带 origin 的 `acct_iso_status`（同一件，改名不改归属）。
-        "acct_iso_status",
+        # 〔MIG-3a〕`acct_iso_status` 摘了（装没装那一问进了后端出成品、界面直问）。
         "deploy_remote_acct_iso",
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
@@ -352,11 +336,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
     ("S4", ("②生成 rc 片段", (
         # 〔AL1 · 2026-09-24〕`write_account_aliases` 退役、拆成两跳 ＋ 读回口（`设计/71 §12.6`）。
         # 本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种（本路），改表是跟上真相。
-        "aliases_install",
-        "aliases_read",
-        "aliases_render",
-        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条 shellinit 合成一条带 origin 的 `acct_iso_shellinit`（改名不改归属）。
-        "acct_iso_shellinit",
+        # 〔MIG-3a · 主会话 09-27 裁〕`aliases_install` / `_read` / `_render` 三条摘了（别名进了那台后端，`aliases-*`）⇒ 本组今天零条。
+        # 〔MIG-3a〕`acct_iso_shellinit` 摘了（rc 片段那一问进了后端出成品、界面直问）。
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
@@ -378,11 +359,12 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   一个字节没动 —— 它照样在两个方向上有牙（表指了盘上没有的命令 ⇒ 红；
         #   盘上多一条谁都没认领的命令 ⇒ 红）。动的只是这张**人的判断表**里的成员，
         #   因为它描述的那个现实变了。
-        "cc_bus_install_state",
-        "deploy_local_cc_bus",
+        # 〔MIG-3a · 子步 3〕`cc_bus_install_state` / `deploy_local_cc_bus` 摘了：装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）；
+        #   留下装前那道本机 `ccm` 预检（归 `cc-bus.deploy`，调用点仍在 `cc-bus-section.ts`）。
+        "cc_bus_ccm_precheck",
         # 〔MIG-3a〕MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # 〔MIG-3a〕skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
-        "write_skill_file",
+        # 〔MIG-3a〕`write_skill_file` 摘了：收件箱那一面进了那台后端。
     ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。"
        "〔步 12·C 收尾 09-20〕③ 这一处**现打是 5 条命令**（`§3-3` 写下时是 7 条，"
        "那两条远端双份今天已合进本机同名那两条）；"
@@ -432,14 +414,15 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
             "（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条**注释里的提名**"
             "算成了落点，见 `§S5d` 第二档 —— 那一半仍然成立）")),
-    ("S4", (("src/settings/accounts-section.ts",
-             "src/settings/machine-aliases.ts"),
+    ("S4", ((),
+            "〔MIG-3a · 09-28 · 主会话 09-27 裁〕**1 → 0**：`src/settings/machine-aliases.ts` 那几处（`aliases_*`）改经通道问那台后端，"
+            "S4 这一组没有 Tauri 命令了。〔MIG-3a · 09-28〕**2 → 1**：`src/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
             "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
             "`src/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
-    ("S5", (("src/settings/cc-bus-section.ts",
-             "src/views/inbox-view.ts"),
+    ("S5", (("src/settings/cc-bus-section.ts",),
+            "〔MIG-3a · 09-28〕**2 → 1**：`src/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",
             "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
@@ -576,17 +559,21 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 #
 # key = "文件::函数"（与 `claims()` 印出来的住址同形）。
 CLAIMS_NON_COMMAND_SYMBOLS = {
-    "profile_installer.rs::install_to_profile":
-        "② 那一族的**落盘实现**，本来就不是 Tauri 命令（它住 `WRITE_SITES`，"
-        "归档在 `SITE_ARCHIVE`）—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
-    "profile_installer.rs::uninstall_from_profile":
-        "同上，摘那一侧",
+    # 〔MIG-3a · 主会话 09-27 裁〕别名块的落盘实现随别名进了那台后端（`src/backend/assets/aliases/block.rs`）。
+    "block.rs::install_to_profile":
+        "② 那一族的**落盘实现**，本来就不是 Tauri 命令（那台后端帧命令 `aliases-block-install` 的本体）"
+        "—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
+    "block.rs::uninstall_from_profile":
+        "同上，摘那一侧（`aliases-block-remove`）",
     # 〔TL1 · 4C〕全景小程序进 `tool_registry::TOOLS`（`id: "panorama"`）时它的装口登记进对拍表。
     # 〔MIG-3a · `99 §2.1 ⑬`〕`project-mcp` 的装 / 卸口进了那台后端：帧命令 `mcp-server-put` / `-remove` 的本体。
     "assets/mcp_edit.rs::answer_put":
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
     "assets/mcp_edit.rs::answer_remove":
         "同上，撤那一侧",
+    # 〔MIG-3a · 子步 3〕cc-bus 装到本机进了本机后端：帧命令 `cc-bus-install` 的本体。
+    "cc_bus_install.rs::answer_install":
+        "〔MIG-3a〕`cc-bus` 的装口：本机后端的帧命令 `cc-bus-install` 本体（资产的装不算部署），本来就不是 Tauri 命令",
     "assets/skill_flow.rs::answer_install":
         "〔MIG-3a〕`skill-install` 的装口：那台后端的帧命令 `skill-install-apply` 本体，本来就不是 Tauri 命令",
     "assets/skill_flow.rs::answer_uninstall":

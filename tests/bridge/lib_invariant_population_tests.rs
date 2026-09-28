@@ -541,8 +541,9 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
     ),
     // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
+    // 〔MIG-3b〕那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。
     (
-        "src/bridge/src/sftp.rs",
+        "src/bridge/crates/deploy-core/src/lib.rs",
         1,
         &[],
         "",
@@ -550,10 +551,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
     ),
     // 〔TL3 · §47〕订正：词本身**是判了的** —— 渲染只经 `account_aliases::render`，它先过 `check_alias`（拒控制字符 · `arg_is_passable` · 旗表闭集），
     //   不过的那一条进 `problems`、不渲。那道拒绝集收的是全部控制字符（比主会话 09-26 裁的 NUL / CR / LF 宽一点，既有、没放松）。
+    // 〔MIG-3a〕别名那一族进了那台后端（`assets/aliases/`），这一行跟着换住址，判法一字没变。
     (
-        "src/bridge/src/shell_dialect.rs",
+        "src/backend/assets/aliases/dialect.rs",
         1,
-        &[("src/bridge/src/account_aliases.rs", "check_alias")],
+        &[("src/backend/assets/aliases/mod.rs", "check_alias")],
         "",
         "我们那份别名文件的路径",
     ),

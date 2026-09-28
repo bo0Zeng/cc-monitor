@@ -244,6 +244,7 @@ dependencies = [
  "codex-token-core",
  "copy-core",
  "creds-core",
+ "deploy-core",
  "flate2",
  "gate-core",
  "guard-core",
@@ -523,6 +524,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "deploy-core"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "shell-quote-core",
 ]
 
 [[package]]

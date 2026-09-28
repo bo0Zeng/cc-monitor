@@ -190,6 +190,31 @@ pub async fn ask_with(
     remote.run(&r.dial, line, stdin).await
 }
 
+/// 〔MIG-3a · `设计/01 §3.5` · 主会话 09-28 裁〕问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
+/// 参数（JSON 对象）一行写进它的 stdin，交回它 stdout 那一行 JSON（成品本身）。两台之间那几件的枢纽（`assets/hub.rs`）用它；
+/// 命令行里只有落点与两个旗标（同 `assets-sync` 推那一趟），载荷走 stdin（远端登录 shell 是什么都同读）。
+pub async fn ask_json(
+    machine: &str,
+    cmd: &str,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<Value, String> {
+    let r = lock(table)
+        .get(machine)
+        .cloned()
+        .ok_or_else(|| unreachable_message(machine))?;
+    let flag = crate::cli_flag(cmd);
+    let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
+    let out = remote.run(&r.dial, line, Some(format!("{args}\n"))).await?;
+    serde_json::from_str(out.trim()).map_err(|e| {
+        copy_text(
+            "beRemoteAsk.json.unreadable",
+            &[("machine", machine), ("e", &e.to_string())],
+        )
+    })
+}
+
 // ───────────────────────── 生产那一个对面：经 dial 的 capture ─────────────────────────
 
 /// 经本机常驻后端池里那条 SSH 连接跑 capture（`dial::uses::run`，与 monitor 开的链路同一条路，零新连接）。
@@ -283,6 +308,39 @@ where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
+    let got = pull_raw(serve).await?;
+    settle_pulled(&got)
+}
+
+/// 〔MIG-3b〕**原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
+/// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
+pub(crate) async fn capture_full(
+    dial: &Value,
+    command: String,
+) -> Result<crate::dial::Captured, String> {
+    let req = capture_request(dial, command, None)?;
+    let got = pull_raw(move |up_r, mut down_w| async move {
+        let stages = crate::dial::StageSink::new(false);
+        crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+    })
+    .await?;
+    let text = |k: &str| got.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    Ok(crate::dial::Captured {
+        stdout: text("stdout"),
+        stderr: text("stderr"),
+        exit_status: got
+            .get("exit_status")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
+    })
+}
+
+/// 读 ack 与结果那一行，交回结果那一行（解过的 JSON）。
+async fn pull_raw<F, Fut>(serve: F) -> Result<Value, String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
     // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
     let (_up_w, up_r) = tokio::io::duplex(1024);
     let (down_w, down_r) = tokio::io::duplex(64 * 1024);
@@ -310,8 +368,12 @@ where
     let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
         .await?
         .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
-    let got: Value = serde_json::from_str(&got)
-        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+    serde_json::from_str(&got)
+        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))
+}
+
+/// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
+fn settle_pulled(got: &Value) -> Result<String, String> {
     let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
     if stdout.contains(HELLO_MARKER) {
         return Err(copy_text("beRemoteAsk.run.tooOld", &[]));

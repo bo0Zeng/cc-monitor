@@ -35,7 +35,7 @@
 - `chan/webview.rs::chan_subscribe(webview, origin, kind, from, want, id, replay: State<'_, Arc<EventReplay>>)` · `chan_want` · `chan_stop`（〔CF2 · 第四波 4B〕会话内容经通道 `subscribe`：主窗口每台机器一条 `session-lines`，独立窗口一条 `session-lines/<sid>`；原来的定向重放命令〔散文墓碑〕退役）
 
 ### `Arc<BindRegistry>`
-- `lib.rs::aliases_read(origin, shell, rc_path, bind_state: State<'_, Arc<BindRegistry>>)`（〔AL1d〕别名读回口带回握手终端数，〔AL2〕只本机有、远端给 0；接替了原「终端集成」的状态命令）
+- `lib.rs::bound_terminal_count(bind_state: State<'_, Arc<BindRegistry>>)`（〔MIG-3a〕握手终端数单独一问；从前夹在别名读回口里 —— 别名那一族进了那台后端，`aliases-read`）
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`
@@ -59,7 +59,7 @@
 - `subagent::load_subagent`
 - `aliases_block_render / aliases_block_install / aliases_block_remove`（〔AL2〕`origin` ＋ `rc_path`；装 / 卸经那台后端写）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）
-- `history::stream_read_session_jsonl / delete_history_session / create_branch_session / update_history_metadata / resume_history_session`（v2.6 删了非流式 `read_session_jsonl`；F62 `create_branch_session` 用 `paths::resolve_claude_dir`，无 State）
+- `history::stream_read_session_jsonl / update_history_metadata / resume_history_session`（v2.6 删了非流式 `read_session_jsonl`；〔MIG-3b〕删会话 · F62 分叉两条改由界面经通道直说那台后端，monitor 这一侧已无命令）
 - `tasks::get_session_tasks` (v2.3 issue #11)：用 `paths::resolve_claude_dir().join("tasks")`，session_id 参数直接拼路径；watcher 线程独立 spawn 不通过 State 共享
 - `data_paths::get_data_paths` (v2.3 issue #3 A)：用 `paths::resolve_monitor_data_dir()` + `AppHandle.path().app_local_data_dir()` 推断 WebView2 路径；纯 stat 不持有状态
 - `bring_monitor_to_front` (v2.4 issue #2)：通过 `AppHandle.get_webview_window("main")` 直接拿主窗口；三层 Win32 hack 拉前（详 ARCHITECTURE.md § 5「bring_monitor_to_front 三层 hack」；其中 HWND 跨 windows crate 版本互操作详 INVARIANTS § 19）；无外部 State

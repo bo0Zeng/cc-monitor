@@ -27,16 +27,8 @@ impl Face {
 ///
 /// ⚠ `adapter.rs` 自己那几行**也在表里** —— 见模块头注「本条比后端侧那条少一个洞」。
 const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
-    (
-        "adapter.rs",
-        Face::Active,
-        1,
-        "接口自己那 1 个**门面**的实现体（`tasks_dir`）—— 替调用者把 kind 写死。\
-             ⚠ 它**不是**适配层的实现，是给通用层用的门面，退役方式与通用层那几处一样是「把 kind 穿进来」。\
-             〔CF1 · 第四波 09-24〕**6 → 5**：「这个路径要不要跳过」那一个门面随它唯一的读者（monitor 自己那套 jsonl watcher）删了。\
-             〔LOC1b · 第四波 4D〕**5 → 1**：`records_dir` / `liveness_dir` / `has_record_ext` / `session_id_from_path` 四个门面零调用方\
-             （冷读 · 判活 · 搜索都改问本机后端），删了",
-    ),
+    // 〔MIG-3b · `99 §2.1 ㉓②`〕`adapter.rs` 的 `Active` 那一行（1 处：「任务追踪目录」那个门面的实现体）摘了：
+    //   它唯一的调用方（monitor 自己那条任务 notify）随监视进后端删了，门面零调用方、一起删。
     // 〔CF1 · 第四波 09-24〕`adapter.rs` 的 `Facade` 那一行（1 处：「是不是顶层会话记录文件」把两个门面再合成一个）摘了 ——
     //   它与它合成的那个跳过段门面，唯一的调用方都是 monitor 自己那套 jsonl watcher，随它一起删了。
     (
@@ -51,7 +43,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     //   本机起会话的计划与渲染搬进本机后端（`control/launch_render/local.rs`），agent 画像由界面按生成物交过去（`AgentFacts`）。
     //   ⚠ 与前几笔同形：**不是「收进接口了」**，是整段搬去后端。
     // 〔LOC1b · 第四波 4D〕`history.rs` 的 `Facade` 那一行（1 → 0：本机冷读那一支取记录根 `records_dir_for` 的
-    //   门面 `has_record_ext`）摘了 —— 本机冷读改经本机后端的 `history-read`，围栏归后端，桌面侧不再问「这个文件是不是会话记录」。
+    //   门面 `has_record_ext`）摘了 —— 本机冷读改经本机后端的 `history-read`，围栏归后端，桌面侧不再问「这个文件是不是会话记录」。〔散文墓碑〕
     //   ⚠ 与前几笔同形：**不是「收进接口了」**，是整段搬去后端。
     // 〔C4d · 第四波 4B〕`history.rs` 的 `KindLiteral` 那一行（2 处：Codex 枚举里写死 `AgentKind::Codex` 取数据根 ＋ 取 layout）摘了 ——
     //   Codex 合成历史搬进后端的适配层（`src/backend/agents/codex/history.rs`，经注册表 `Adapter.history` 那一格给通用层）。
@@ -61,15 +53,8 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
         2,
         "起会话面：resume 前清洗嵌套 env（`nested_env_to_scrub`）+ setup 里取数据根",
     ),
-    (
-        "lib.rs",
-        Face::Facade,
-        1,
-        "setup 里一次性拼出 liveness / tasks 两个目录 ⇒ 整条发现链的起点在这里定死。\
-             〔CF1 · 第四波 09-24〕**3 → 2**：records 那一处随本机 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。\
-             ⚠ 与 RM1b / RW1 同形：**不是「收进接口了」**，是桌面侧不再问这件事。\
-             〔LOC1b · 第四波 4D〕**2 → 1**：liveness 那一处（`sessions/` 目录，喂 monitor 自己那份判活）随本机判活改由本机后端的帧来删了",
-    ),
+    // 〔MIG-3b · ㉓②〕`lib.rs` 的 `Facade` 那一行（1 处：setup 里拼 tasks 目录喂 monitor 自己那条任务 notify）摘了 ——
+    //   任务变更的监视进了后端（`tasks_changed` 帧），桌面侧不再问任务目录住哪。
     // 〔LOC1b · 第四波 4D〕`search.rs` 的 `Facade` 那一行（3 处：记录根 ＋ 记录判定 ＋ 从路径取 sid）摘了 ——
     //   本机全文搜索改问本机后端，monitor 那份内存索引整个删了。主会话 09-25 裁（按 `00 §2.5 ①` · `90 §4 F`），
     //   那一行自己写的退役条件（「backend 侧也有索引」）**没有兑现**：本机从此每次现扫（读数 `第四波记录/LOC1b.md §3`）。
@@ -135,7 +120,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// `search.rs` 门面 3 → 0 —— 本机全文搜索改问本机后端，monitor 内存索引删了。⚠ 同上几笔：不是「收进接口了」，是桌面侧不再做这件事。
 /// 🔴 〔LOC1b · 第四波 4D〕**14 → 13**：`lib.rs` 门面 2 → 1 —— 本机判活改由本机后端的帧来，monitor 不再拼 `sessions/` 目录。
 /// 🔴 〔LOC1b · 第四波 4D〕**13 → 8**：`adapter.rs` 门面实现体 5 → 1 · 字面量 2 → 1 —— 只为本机读盘服务的那几个门面零调用方、删了。
-const COUPLING_BASELINE: usize = 5; // 〔MIG-2〕8 → 5：`history.rs` 的 `Active` 3 处随本机起会话搬进后端
+const COUPLING_BASELINE: usize = 3; // 〔合并 MIG-3b × MIG-2〕8 − 2 − 3 ⇒ 3（跑出来核过）：〔MIG-3b〕`adapter.rs` 的 `Active`（任务门面的实现体）· `lib.rs` 的 `Facade`（拼 tasks 目录）两处随监视进后端删了；〔MIG-2〕`history.rs` 的 `Active` 3 处随本机起会话搬进后端
 
 /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
 ///
@@ -149,7 +134,7 @@ const COUPLING_BASELINE: usize = 5; // 〔MIG-2〕8 → 5：`history.rs` 的 `Ac
 /// ⚠ 门面也可以自己不调 `active()`、而是调另外的门面（CF1 之前有过一个：「是不是顶层会话记录文件」）—— 单独一行说明，
 /// 那条判据按「调 `active()` **或** 调另一个已登记门面」放行它。
 const KIND_ERASING_FACADES: &[(&str, &str)] = &[
-    ("tasks_dir", "任务追踪目录（`<root>/tasks`）"),
+    // 〔MIG-3b〕「任务追踪目录」那个门面删了（唯一调用方——monitor 那条任务 notify——随监视进后端删了）⇒ 本表空了。
     // 〔CF1 · 第四波 09-24〕「这个路径要不要跳过」与「上面两个的合成」那两个门面随 monitor 的 jsonl watcher 一起删了。
     // 〔LOC1b · 第四波 4D〕会话记录目录 · 活性 pidfile 目录 · 「是不是会话记录」· 从路径取 sid 四个门面删了（零调用方：
     //   冷读 · 判活 · 搜索都改问本机后端）。
@@ -384,12 +369,8 @@ fn every_registered_facade_really_erases_the_kind() {
         .map(|(_, s)| s.clone())
         .expect("`adapter.rs` 不在扫描面里");
     // 〔LOC1b · 第四波 4D〕地板 5 → 1：四个门面零调用方删了（冷读 · 判活 · 搜索都改问本机后端），表里只剩 `tasks_dir`。
-    assert!(
-        KIND_ERASING_FACADES.len() >= 1,
-        "门面表只剩 {} 条 —— 少于立表时的规模，表被削了还是门面真的退役了？\
-             真退役了就同轮把 `AGENT_COUPLING_SITES` 的 `Facade` 行一起改",
-        KIND_ERASING_FACADES.len()
-    );
+    // 〔MIG-3b〕地板 1 → 0（整条删了）：最后那个门面（任务追踪目录）零调用方删了 —— 门面真的退役了，`AGENT_COUPLING_SITES` 的 `Facade` 行同轮摘；
+    //   「表是不是被削了」那一问今天由 `the_detectors_catch_synthetic_violations` 里「表是空的」那一格接住。
     for (name, what) in KIND_ERASING_FACADES {
         assert!(
             what.trim().len() >= 6,
@@ -490,10 +471,16 @@ fn the_detectors_catch_synthetic_violations() {
         assert_eq!(face_of(&def), None, "定义行被数成了调用点：{def:?}");
     }
     // ── 门面：正向认得出，而 per-kind 兄弟**不许**被打中（那是好方向）──
+    // 〔MIG-3b〕门面表空了（最后那个「任务追踪目录」零调用方删了）⇒ 门面这张脸整张退役：那一句旧调用不再被认成门面。
+    //   表里哪天再长出一个门面，这一格要换回「正向认得出」的正控。
+    assert!(
+        KIND_ERASING_FACADES.is_empty(),
+        "门面表又长出来了 —— 把这一格换回「门面针认得出真调用」的正控"
+    );
     assert_eq!(
         face_of("    let tasks_dir = crate::adapter::tasks_dir(&claude_dir);"),
-        Some(Face::Facade),
-        "门面针认不出真调用 —— 它此刻是空转的"
+        None,
+        "门面表是空的，门面针却还打中了东西 —— 针不是从表里来的"
     );
     for good in [
         "    let root = crate::adapter::records_dir_for(kind, &dr);",

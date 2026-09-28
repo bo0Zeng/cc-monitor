@@ -522,7 +522,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// （与 `rbind_token` 同闸，只有 `--with-rbind-token` 才带）· 按路径读会话的围栏也认 Codex 的记录根（根由适配层给）·
 /// 本机冷读 / 搜索 / 判活从此都问本机后端（monitor 侧删内存索引、`session_map` 的 notify / `/proc` / 2 s 心跳）。子命令没变，照 p1v 先例不加历史行。
 ///
-/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25，第四波 4D HX2 合并那一拍）：行为 / 协议 —— 部署只升不降（`sftp.rs::build_order`，不比这一版旧就 `Keep`）·
+/// ★★★ **p3v-monotonic-deploy-hostenv**（2026-09-25，第四波 4D HX2 合并那一拍）：行为 / 协议 —— 部署只升不降（`sftp.rs` 的 `build_order`〔MIG-3b 起住共享 crate `deploy-core`〕，不比这一版旧就 `Keep`）·
 /// `put_atomic` 临时件 / 备份件唯一名 · tmux hook 按实例占段 `[50,100)` 一格、起时摘死槽 · 后端自有状态写口跨进程锁（`platform/lock.rs::hold`）·
 /// hello 多 additive `host_env`（回显宿主交来的端口 / 凭据路径 / 注解路径，token 永不回显）· `apikey-key-set` 入参 `account` → `configDir`（**不兼容**，旧远端连上即判旧重装）。
 /// 子命令没变，照 p1v 先例不加历史行。
@@ -637,7 +637,13 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5b-launch-in-backend**（2026-09-28，MIG-2 合并那一拍）：子命令 ＋2、帧命令 ＋3 —— 起会话渲染核心进后端 `control/launch_render/`
 /// （`launch-render-cli` · `launch-render-payload` · `launch-local`）；`launch-endpoint` 答 `{baseUrl}` 或拒 `relay_down`；㊴ `exit-policy-read` / `-set` 出成品 `said`。
-pub const BUILD_ID: &str = "p5b-launch-in-backend";
+///
+/// ★★★ **p5c-aliases-hub-in-backend**（2026-09-28，MIG-3a 后半合并那一拍）：别名整族进 `assets/aliases/`（方言按这台机器自己判）·
+/// skill 接入面与 SKILLS 表进 `agents/claudecode/` · MCP 推拉 / skill 装改本机后端当枢纽（`assets/hub.rs`，写前再核来源）· cc-bus 由后端装、装卸账复用 skill 装记录。
+///
+/// ★★★ **p5d-deploy-plan-in-backend**（2026-09-28，MIG-3b 合并那一拍）：新帧命令 `hooks-diag` · `deploy-plan`（纯判定在共享 crate `deploy-core`）·
+/// 任务推送走 `session-tasks` 流（`tasks_changed{sid}`）· 删会话 / 分叉界面直接经通道说后端（`files-delete-session` · `session-fork`）。
+pub const BUILD_ID: &str = "p5d-deploy-plan-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -751,6 +757,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
     "--capture-pane",
+    // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
+    "--deploy-plan",
     // 〔B2 · 条 66〕「退出行为」那个值的两条命令（`inbound::REGISTRY` 的 `exit-policy-*`）自动派生的 CLI 面。
     // 登记理由与上面那几族逐字相同 —— `is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // ⚠ 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
@@ -785,7 +793,22 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--cc-bus-install",
+    "--cc-bus-install-state",
+    "--mcp-sync-hub-preview",
+    "--mcp-sync-hub-apply",
+    "--skill-install-hub-preview",
+    "--skill-install-hub-apply",
     "--skill-install-apply",
+    "--skill-host-list",
+    "--aliases-render",
+    "--aliases-read",
+    "--aliases-install",
+    "--aliases-block-render",
+    "--aliases-block-install",
+    "--aliases-block-remove",
+    "--skill-host-read",
+    "--skill-host-write",
     "--skill-uninstall-apply",
     // 〔AS2 · 第四波 4B〕资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
     // 加这两行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 本路**不 bump**，合并那一拍统一做。
@@ -896,6 +919,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-subagents",
     "--history-tail",
     "--history-user-inputs",
+    // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--hooks-diag",
     "--kill",
     "--launch",
     "--list-accounts",
@@ -1774,6 +1799,8 @@ pub const EMITS: &[&str] = &[
     // 〔MIG-1 续 · V41〕`tmux_sessions` / `tmux_session_closed` 两格删了：tmux 快照只喂这台的会话账本、不上线（`wire.rs` 那一处墓碑）。
     // 〔SR1a · `设计/05 §13.6 ③`〕账号清单变了（watcher 盯 manifest 所在目录，登记 = 承诺真发，已接线）。
     "accounts_changed",
+    // 〔MIG-3b · `99 §2.1 ㉓②`〕某个会话的任务清单变了（watcher 盯 `<agent 家>/tasks/`，登记 = 承诺真发，已接线）。
+    "tasks_changed",
     // 〔U4b · 第四波〕活会话清单报完了（watch_loop Phase 1 走完那一刻发一次，登记 = 承诺真发，已接线）。
     // 固定复活的 tab 靠它分「说不清」与「已结束」（`设计/30 §3.5.7a`）。
     "sessions_replayed",
@@ -1821,6 +1848,13 @@ pub const STREAM_FLAGS: &[&str] = &[
 /// 住这里（argv 三分表旁边）而不住 `cli_control`：它是 [`SUBCOMMAND_OPTIONS`] 的一员；发它的一方（`asset_sync`）
 /// 只该认得这个字面量，不该因此在引用图上连到 CLI 面的分派口（`target_parity_guard` 那条「够不够得着 tmux」按文件级引用图走）。
 pub const STDIN_LINE_FLAG: &str = "--stdin-line";
+
+/// 帧命令名 → 它的 CLI 子命令（`launch` → `--launch`）。**唯一一处拼法**：本进程的 CLI 面（`control/cli_control.rs::flag_of`）
+/// 与问远端那台 CLI 面的那一跳（`remote_ask::ask_json`）都经它 —— 〔MIG-3a〕住这里而不住 `cli_control`，是为了让
+/// `remote_ask` 不必引 `control/`（引了，按文件画的引用图就把问远端的几条命令连到 tmux 上）。
+pub fn cli_flag(name: &str) -> String {
+    format!("--{name}")
+}
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[

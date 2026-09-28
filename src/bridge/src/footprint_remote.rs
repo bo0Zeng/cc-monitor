@@ -186,7 +186,8 @@ fn run(
             Vantage::Remote
         },
     };
-    let cfg_dir = crate::hooks_diag::claude_config_dir(Some(&env.agent_home), &env.home, &is_dir);
+    let cfg_dir =
+        crate::config_surface::claude_config_dir(Some(&env.agent_home), &env.home, &is_dir);
     let mut rows = build_rows(&surface_env, client);
     let mut settings_scopes =
         build_settings_scopes(&env.home, Some(&env.agent_home), &is_dir, hooks, &fs);
@@ -337,7 +338,7 @@ pub(crate) fn answers_from_wire(host: &str, d: &Value) -> Result<Answers, String
     Ok(a)
 }
 
-/// 发送口（形状照 `apikey_remote::call`）。
+/// 发送口（形状照当年的 `apikey_remote::call`〔散文墓碑〕，〔MIG-2〕那一份随唯一调用方删了）。
 async fn call(host: &str, args: Value) -> Result<Value, String> {
     let Some(client) = inbound_client::client_for(host) else {
         return Err(said(no_channel(host)));

@@ -1,4 +1,4 @@
-//! 〔RM1b · 第四波〕**功能侧只读查询的帧面宿主** —— 任务列表 · 插件市场。
+//! 〔RM1b · 第四波〕**功能侧只读查询的帧面宿主** —— 任务列表 · 插件市场（〔MIG-3b〕＋ cc-bus 钩子诊断）。
 //!
 //! # 它补的是哪一格
 //!
@@ -78,6 +78,18 @@ fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answer {
         }
         // 〔SH1〕列这台的 tmux 会话：同 watcher 那一趟 `tmux ls`。〔MIG-1 续 · ⑬〕出成品（`observe/tmux_list.rs`，解析从 monitor 搬来）。
         "tmux-list" => capped(crate::observe::tmux_list::answer()?),
+        // 〔MIG-3b〕cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。
+        "hooks-diag" => {
+            let v = serde_json::to_value(crate::observe::cc_bus_hooks::answer()).map_err(|e| {
+                (
+                    "failed",
+                    crate::common::contract::malformed(&format!(
+                        "serializing the report failed: {e}"
+                    )),
+                )
+            })?;
+            capped(v)
+        }
         // 〔SH1 · V137〕MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，注册表里第一家认得 MCP 的），这里只换壳。
         "mcp-read" => {
             let dir = match args.get("projectDir") {

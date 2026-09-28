@@ -1912,6 +1912,8 @@ mod tests {
             ("agents/claudecode/paths.rs", "is_session_record_path"),
             ("agents/claudecode/paths.rs", "session_file_for_delete_in"),
             ("control/files_write.rs", "fenced_session_file"),
+            // 〔MIG-3a〕F03b 收件箱编辑的纵深（不是文件管理器）：从 monitor 那一族搬进来之后借这一份判定。
+            ("agents/claudecode/skill_host.rs", "editable_target"),
         ]
         .iter()
         .map(|(a, b)| (a.to_string(), b.to_string()))
@@ -2678,6 +2680,17 @@ mod spawn_registry {
              ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
+        (
+            "platform/shell.rs",
+            "powershell.exe",
+            "〔MIG-3a · `设计/99 §2.1 ⑬`〕别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
+             `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到（`71 §8` 第 8 条）。从 monitor `shell_dialect.rs` 搬来：\
+             规则进了那台后端，问的是**那台自己**的 PowerShell。**只读**，只在说 PowerShell 的那台（Windows）上起，\
+             进程内缓存一次。唯一调用方 `assets/aliases/dialect.rs::ask_get_alias`。",
+            "缩性质",
+            "有别的办法读到那台 PowerShell 的内建别名表（不起进程）的那天摘掉。\
+             ⚠ 在那之前**不许**往这一处口底下加第二种用途（它是只读的固定脚本口）。",
+        ),
         // 〔DEL〕`relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里（V139），那一处起法随之删。
         (
             "control/resident.rs",
@@ -2803,9 +2816,11 @@ mod spawn_registry {
         //    键 `(control/kill.rs, tmux)` 不变，那条 `ALLOWED` 的理由同拍补了这一处。
         // 〔HOST · V139〕**13 → 14**：`control/resident.rs` 那一处（远端那台上起一个脱离的常驻后端，`--resident-ensure`）。
         // 〔DEL〕**14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
+        // 〔MIG-3a〕**13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
         // 〔MIG-1 · `99 §2.1 ⑯`〕＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
         // 〔合并 MIG-1 × 主线 19671e6b〕基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
-        const SPAWN_SITES_TODAY: usize = 14;
+        // 〔合并 MIG-1 × 主线 eebf51de〕主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
+        const SPAWN_SITES_TODAY: usize = 15;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -4536,6 +4551,13 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
+        ),
+        (
+            // 〔MIG-3b〕部署决策的唯一一份（表 A / 表 B · 身份戳 · 只升不降），`control/deploy_plan.rs` 用它出计划。
+            "deploy-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "部署决策（纯判定：键 · 表 · 身份戳的解读 · 新旧）；仓内 crate、只依赖 copy-core / shell-quote-core，现打 0 处写面、0 处 I/O",
         ),
     ];
 

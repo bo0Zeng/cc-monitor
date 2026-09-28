@@ -1380,12 +1380,13 @@ run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --ta
 run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）只有绿/红两态。射程 = `-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）**真链接**一趟；⚠ 只链不跑（起不起得来要真机）· `-gnu` 不是 `-msvc` · release 那一档不链 · test 档不链（那一半归 `winchk` 的 `check`）' \
          bash -c 'cd src/bridge && cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu 2>&1 && echo "winlink: 1 passed"'
 
-# 13 个包 = `monitor` + 12 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
+# 14 个包 = `monitor` + 13 个共享 crate（〔TL1〕`vendor/code-picture-core` 早已不是成员 —— monitor 不再依赖它 —— 不用再 `--exclude`）。
 # 〔CP2c〕9 → 10：加了 `copy-core`（对外文案表的 Rust 取文口）。
 # 〔US1 · 4D〕〔合并 US1 × 主线〕10 → 11：新共享 crate `relay-route-core`（中转门牌：端口 · 钥匙路径 · 路由语法，`设计/20 §5` 目标）。
 # 〔DUP2 · 4D〕11 → 12：新共享 crate `agent-tools-core`（agent 工具词表：哪些工具名算「展开 = 子会话」，monitor 渲染与后端会话事实共用，J19）。
 # 〔DUP3 · 4D〕12 → 13（本路增量 ＋1）：新共享 crate `upstream-url-core`（上游 base URL 能不能用，J9）。
-run_gate_sum cargo 13 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&1'
+# 〔MIG-3b · 4D〕13 → 14（本路增量 ＋1）：新共享 crate `deploy-core`（部署决策：本机常驻后端出计划、monitor 放字节共用）。
+run_gate_sum cargo 14 bash -c 'cd src/bridge && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-backends/` 铺没铺。
 #
@@ -1602,8 +1603,16 @@ deadcode_t0=$(date +%s)
 #    「value assigned to `overflowed` is never read」—— 那个函数随读面改问后端整个删了。同拍新长的三条零生产调用项
 #    （monitor `tmux.rs::TMUX_LS_FMT` 双写点 · `spawn_managed` 的 async 出口两项）各带 `cfg_attr(not(test), allow(dead_code))` 与理由，不进这个数。
 # 🔴 **2026-09-26（合并 PB1 × SH1）：23 − 2（PB1）− 1（SH1）= 20**。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 20，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=20; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-28（MIG-2 · 起会话进后端）：本路 −0**：起会话搬进后端之后 `apikey_remote.rs` 的发送口（`BUDGET` · `call` · `said`）零调用方，
+#    按 V41 整个模块删了（没有抬这个数）。现打本工作树 = 21，多的那一条是 `user_files.rs::delete_empty_dir`，归 MIG-3a（它合后回 20）。
+# 🔴 **2026-09-28（第四波 MIG-3a × MIG-2 合并）：MIG-2 那 −0（`apikey_remote` 整删）＋ MIG-3a 21 → 20 → 19，现打，逐条记**：① −1 `user_files·rs::BackendDoor::delete_empty_dir`（卸 skill 进后端后零生产调用方，连同测试侧假门删，回到 20）；
+#    ② −1 `fenced_block·rs::FENCE_SHAPES`（那张形状账只有判据读，随别名块进后端时住进判据文件 `tests/backend/assets/aliases/fence_tests.rs`）。
+#    同拍另有 `user_files·rs::list_dir` / `LIST_LIMIT`（收件箱进后端）· `rel_under` / `join_under`（别名进后端）四项零调用方，**当拍删了**，不进这个数。
+#    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 19。
+# 🔴 **2026-09-28（合并 MIG-3b × 主线 81f92f6a）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了，〔MIG-3b 子步 2〕）；
+#    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 81f92f6a 现打 19，逐条对过只差这一条）。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 18，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=18; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
@@ -1912,7 +1921,8 @@ run_e2e backend-gate2         34 exact-with-skip
 #   ★ 〔DEL 续〕`local-backend` 同形按 **PASS+SKIP** 恒等判：三条起真后端的判据由 `cfg(embedded_backends)` 门着，
 #     没铺 `src/bridge/embedded-backends/` 的树上它们记 SKIP 并说原因（套件里那一段；落点齐了却不跑 ⇒ FAIL）⇒ 铺了 26+0、没铺 15+11。
 run_e2e local-backend         26 exact-with-skip
-run_e2e restart-frames         5
+# 〔MIG-2 合后〕`restart-frames` 5 → 6：加一格「kill→resume→记账 znew、没有 shim 不认的问」（换号成功后记 pin 那一步此前没被测到）；量于主树同形的非 ASCII 路径。
+run_e2e restart-frames         6
 run_e2e restart               24
 
 # ── 〔第四波 S4〕这里原先是第 26 格 `f3-copy`（秤 F3 两向：零流量复制的包计数对拍，三方对拍 ＋ 两向锚点）。

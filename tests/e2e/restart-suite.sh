@@ -97,7 +97,7 @@ make_live() {  # <sid> <dir>
 
 # SEQ 里只保留主序列步（compact/escape/exit/kill/resume），空格连成一行。pipefail 安全。
 # 〔V154〕escape / exit 仍收进来：换号重启直接 kill，它俩再出现在序列里 ⇒ 下面的相等判据当场红。
-seq_core() { { grep -E '^(compact|escape|exit|kill|resume)$' "$1" 2>/dev/null || true; } | paste -sd' ' -; }
+seq_core() { { grep -E '^(compact|escape|exit|kill|resume|record account=.*)$' "$1" 2>/dev/null || true; } | paste -sd' ' -; }
 # 等某账号目录 argv.log 出现该 sid 的 --resume 行,回显之。超时非零。
 wait_argv() {  # <dir> <sid> <timeout-s>
   local dir="$1" sid="$2" to="$3" i hit
@@ -129,7 +129,7 @@ OUT1="$(drive_restart "$SID1" "$S1" znew 1 1 "$WORK/b1.seq" "$WORK/b1.toast")"
 echo "   driver: $(echo "$OUT1" | paste -sd' ' -)"
 CORE1="$(seq_core "$WORK/b1.seq")"
 echo "   seq(core): [$CORE1]"
-[ "$CORE1" = "compact kill resume" ] && ok "B1 序列 = compact→kill→resume（真编排发出的有序命令）" || bad "B1 序列=[$CORE1]（期望 compact kill resume）"
+[ "$CORE1" = "compact kill resume record account=znew" ] && ok "B1 序列 = compact→kill→resume→记账 znew（真编排发出的有序命令；kill ＋ resume 全成才记）" || bad "B1 序列=[$CORE1]（期望 compact kill resume record account=znew）"
 echo "$OUT1" | grep -q "^RESULT true$" && ok "B1 restartWithAccount 返回 true（真拉起）" || bad "B1 RESULT≠true"
 echo "$OUT1" | grep -q "^CONFIGDIR $NEW$" && ok "B1 真 accountConfigDir 解析 znew → $NEW（非旧号 $OLD）" || bad "B1 CONFIGDIR≠新账号目录"
 if AL="$(wait_argv "$NEW" "$SID1" 12)"; then
@@ -145,7 +145,7 @@ make_live "$SID2" "$OLD" >/dev/null
 OUT2="$(drive_restart "$SID2" "$S2" znew 0 1 "$WORK/b2.seq" "$WORK/b2.toast")"
 CORE2="$(seq_core "$WORK/b2.seq")"
 echo "   seq(core): [$CORE2]"
-[ "$CORE2" = "kill resume" ] && ok "B2 序列 = kill→resume（〔V154〕直接杀，不发 Esc / /exit）" || bad "B2 序列=[$CORE2]（期望 kill resume）"
+[ "$CORE2" = "kill resume record account=znew" ] && ok "B2 序列 = kill→resume→记账 znew（〔V154〕直接杀，不发 Esc / /exit）" || bad "B2 序列=[$CORE2]（期望 kill resume record account=znew）"
 { grep -qx "compact" "$WORK/b2.seq" 2>/dev/null && bad "B2 不该发 /compact 却发了"; } || ok "B2 全程未发 /compact（未勾选 compact）"
 echo "$OUT2" | grep -q "^RESULT true$" && ok "B2 返回 true" || bad "B2 RESULT≠true"
 wait_argv "$NEW" "$SID2" 12 >/dev/null && ok "B2 resume argv 落新账号目录" || bad "B2 无 resume argv"
@@ -182,7 +182,7 @@ echo "   seq: $(paste -sd' ' -<"$WORK/b5.seq")"
 CORE5="$(seq_core "$WORK/b5.seq")"
 grep -qx "kill-fail" "$WORK/b5.seq" && ok "B5 kill 失败已发生（kill-fail 帧）" || bad "B5 未见 kill-fail"
 { echo "$CORE5" | grep -qw "resume" && bad "B5 kill 失败后**仍 resume**（回归:防新旧双进程失守）"; } || ok "B5 kill 失败后**未 resume**（序列止于 kill 前:[$CORE5]）"
-{ grep -q "^record " "$WORK/b5.seq" && bad "B5 kill 失败仍记账"; } || ok "B5 未记账（update_history_metadata 未发）"
+{ grep -q "^record " "$WORK/b5.seq" && bad "B5 kill 失败仍记账"; } || ok "B5 未记账（history-annotate 未发）"
 echo "$OUT5" | grep -q "^RESULT false$" && ok "B5 返回 false" || bad "B5 RESULT≠false"
 grep -q "重启已中止" "$WORK/b5.toast" && ok "B5 toast「重启已中止」" || bad "B5 无中止 toast"
 

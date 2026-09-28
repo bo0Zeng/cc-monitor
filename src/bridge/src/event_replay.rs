@@ -91,6 +91,10 @@ pub const SESSION_TAP_KIND: &str = "session-tap";
 /// TS 那一侧的同一个串住 `src/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
 pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 
+/// 〔MIG-3b · `99 §2.1 ㉓②`〕本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
+/// TS 那一侧的同一个串住 `src/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/events-tap.vitest.ts`）。
+pub const SESSION_TASKS_KIND: &str = "session-tasks";
+
 /// 〔DL1〕`accounts-changed` 流里那一格 `Frame` 的体（不透明于通道；前端只认「来了一格」，体给日志看）。
 const ACCOUNTS_CHANGED_BODY: &[u8] = br#"{"accounts_changed":true}"#;
 
@@ -156,6 +160,8 @@ enum SubKind {
     Tap,
     /// 〔DL1〕`accounts-changed`：只收看得见 / 看不见与「那台账号清单变了」那一格，没有留存。
     AccountsChanged,
+    /// 〔MIG-3b · ㉓②〕`session-tasks`：只收看得见 / 看不见与「那台某个会话的任务清单变了」那几格，没有留存。
+    Tasks,
 }
 
 impl Sub {
@@ -398,6 +404,8 @@ enum Stream {
     Tap,
     /// 〔DL1〕`accounts-changed`。
     AccountsChanged,
+    /// 〔MIG-3b〕`session-tasks`。
+    Tasks,
 }
 
 /// 〔CF2〕`kind` ⇒ 哪一种流（〔TAP〕`session-tap` ⇒ [`Stream::Tap`]；〔DL1〕`accounts-changed` ⇒ [`Stream::AccountsChanged`]）。认不出 ⇒ `Err`。
@@ -410,6 +418,9 @@ fn parse_kind(kind: &str) -> Result<Stream, ()> {
     }
     if kind == ACCOUNTS_CHANGED_KIND {
         return Ok(Stream::AccountsChanged);
+    }
+    if kind == SESSION_TASKS_KIND {
+        return Ok(Stream::Tasks);
     }
     match kind
         .strip_prefix(SESSION_LINES_KIND)
@@ -744,6 +755,7 @@ impl EventReplay {
             Ok(Stream::Lines(o)) => (o, SubKind::Lines),
             Ok(Stream::Tap) => (None, SubKind::Tap),
             Ok(Stream::AccountsChanged) => (None, SubKind::AccountsChanged),
+            Ok(Stream::Tasks) => (None, SubKind::Tasks),
             Err(()) => {
                 let item = refused("no-such-stream", format!("没有叫 `{kind}` 的流"));
                 sink.deliver(label, id, vec![item]);
@@ -998,6 +1010,33 @@ impl EventReplay {
                 .filter(|s| s.kind == SubKind::AccountsChanged && s.origin == origin)
                 .map(|s| {
                     let items = plan_live(s, vec![Body(ACCOUNTS_CHANGED_BODY.to_vec())]);
+                    (s.label.clone(), s.id, items)
+                })
+                .filter(|(_, _, items)| !items.is_empty())
+                .collect();
+            (sink, plans)
+        };
+        for (label, id, items) in plans {
+            sink.deliver(&label, id, items);
+        }
+    }
+
+    /// 〔MIG-3b · `99 §2.1 ㉓②`〕那台机器的后端说「这个会话的任务清单变了」（`tasks_changed` 帧；本机那条流同一个口）⇒
+    /// 订了那台 `session-tasks` 的每条订阅收一格 `{"sid": …}`（credit 与 `Gap` 与 `accounts-changed` 同一套）。界面收到就重问 `tasks-list`。
+    pub fn tasks_changed(&self, origin: &crate::origin::Origin, sid: &str) {
+        let origin = origin.as_wire_str();
+        let body = serde_json::json!({ "sid": sid }).to_string().into_bytes();
+        let (sink, plans) = {
+            let mut inner = self.inner.lock();
+            let Some(sink) = inner.sink.clone() else {
+                return;
+            };
+            let plans: Vec<(String, u64, Vec<Item>)> = inner
+                .subs
+                .iter_mut()
+                .filter(|s| s.kind == SubKind::Tasks && s.origin == origin)
+                .map(|s| {
+                    let items = plan_live(s, vec![Body(body.clone())]);
                     (s.label.clone(), s.id, items)
                 })
                 .filter(|(_, _, items)| !items.is_empty())

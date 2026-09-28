@@ -16,7 +16,7 @@
  */
 import { isCompactRecord } from "./cards";
 import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
-import type { BranchResult } from "./generated/BranchResult";
+import type { BranchResult } from "./session-writes";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
 import { detectAccountMismatch, type SessionAccount } from "./accounts";
@@ -636,7 +636,7 @@ export class TabManager {
     const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline } =
       this.view.mountTabDom(sessionId);
 
-    // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
+    // v2.3.0 issue #11: 异步 fetch 初始 task 快照。〔MIG-3b〕`session-tasks` 流那一路（`refreshTasks`）并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
     void fetchSessionTasks(sessionId, origin).then((tasks) => {
       this.store.tasksBySid.set(sessionId, tasks);
@@ -1143,12 +1143,25 @@ export class TabManager {
   }
 
   /**
-   * issue #11: 后端 `task-update` 事件路由——总是更新内存 map（即使 Tab 还没建），
+   * issue #11: 任务快照落账（〔MIG-3b〕来源是 {@link refreshTasks} 重问回来的成品）——总是更新内存 map（即使 Tab 还没建），
    * 只有 sid 是当前 active 时才推全局 panel 重渲染。
    *
    * 不需要 "Tab 不存在就丢弃"——task 文件先于 jsonl 出现是合法时序，
    * 之后 ensureTab 时会从 tasksBySid 拿数据；fetchSessionTasks 拿到的也是同样数据。
    */
+  /**
+   * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕那台机器说这几个会话的任务变了（`all` ⇒ 那台的每个 tab 都重问：期间可能漏了）⇒ 重问 `tasks-list`、交 {@link updateTasks}。
+   * 只问手里有 tab 的会话（没有 tab 的变更，建 tab 那一刻本来就会问一次）。
+   */
+  refreshTasks(origin: Tab["origin"], sids: readonly string[], all: boolean): void {
+    const want = new Set(sids);
+    for (const t of this.store.tabs.values()) {
+      if (t.origin !== origin || (!all && !want.has(t.sessionId))) continue;
+      const sid = t.sessionId;
+      void fetchSessionTasks(sid, origin).then((tasks) => this.updateTasks(sid, tasks));
+    }
+  }
+
   updateTasks(sessionId: string, tasks: TaskEntry[]): void {
     this.store.tasksBySid.set(sessionId, tasks);
     if (this.store.activeId === sessionId) {
