@@ -1001,12 +1001,11 @@ const SITES: &[(&str, Why, usize)] = &[
     //     而不是**某个动作**（「迁移落地」）——后者遇到「动作被取消」就会指空。
     //   · `Why::Wording`（0 行）—— **这一档清零了**。界面串与散文里那句「远端 ＋ 旧词」
     //     两侧同拍改成了「远端后端」，一处不剩。
-    ("src/skill_host.rs", Why::OldId, 1),
+    // 〔MIG-3a〕`src/skill_host.rs` / `tests/bridge/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
     ("src/structural_scan.rs", Why::OldId, 1),
     ("src/tool_registry.rs", Why::OldId, 2),
     ("tests/bridge/config_surface_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
     ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
-    ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
     (
         "tests/bridge/tool_registry_environment_tests.rs",
         Why::OldId,

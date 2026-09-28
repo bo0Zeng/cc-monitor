@@ -37,7 +37,6 @@ mod bridge;
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那一份：认出是我们放的就删（`设计/01 §6.7b` 迁移 ② ③）
 pub mod chan;
-mod claude_data_fence; // 步 H2：Claude 自己的数据不许我们写 —— `INVARIANTS §1` 的 F47/F03b 两段澄清共用的那一个判定（用户 09-21 裁「拆」）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
@@ -102,7 +101,6 @@ mod spawn_managed;
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
 // 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
-mod skill_host;
 mod user_files; // RW1（第四波）：monitor 够用户文件的唯一开口 —— 读·算·交给那台机器的后端，自己一个字节不落盘
                 // 〔W5-ALIAS · 第五波先行〕`verified_write`〔散文墓碑〕模块删了：它的判定只剩 `fenced_block::apply`〔散文墓碑〕一个调用方，
                 //   那个序列删了之后零调用方；用户文件的回读比对只住后端 `files_write.rs::put_text`，部署物按字节比住 `sftp::verify_readback`。
@@ -1483,11 +1481,8 @@ pub fn run() {
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
             // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
-            // devbench F03：skill 接入面（列出 / 读 / 写那个「人手写的注入文件」）。
-            // ⚠ 写走 `skill_host::resolve_editable` 的三道围栏 + `verified_write` 读回比对。
-            skill_host::list_skills,
-            skill_host::read_skill_file,
-            skill_host::write_skill_file,
+            // 〔MIG-3a · `99 §2.1 ⑬`〕skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
+            //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
             cc_bus_deploy::deploy_local_cc_bus,
             cc_bus_deploy::cc_bus_install_state,
             panorama_call::panorama_call,

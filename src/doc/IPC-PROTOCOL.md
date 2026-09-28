@@ -2505,6 +2505,50 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 错误码：`bad_args` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found`（记录里没有这一条）· `stale`（看过之后被改过 / 已经不在 —— 停在那一个，说清前面删了哪几个）。⚠ **CLI 面也有它**。
 
+#### `skill-host-list`：这台一个项目里接进来的 skill（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"h1","cmd":"skill-host-list","args":{"cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"h1","ok":true,"data":{"skills":[{"id":"planned-build","label":"计划","missing_reason":null,"instances":["w1"],"editable":["/home/u/proj/.claude/planned-build/INBOX.txt"]}]}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cwd` | → | 这台上的项目目录 |
+| `skills` | ← | 每个声明一行（声明住 `agents/claudecode/skill_host.rs::SKILLS`）：`id` · `label` · `missing_reason`（`null` = 在场，否则带身份的缺席原因）· `instances`（产物根下带标记文件的实例目录）· `editable`（人要改的那几个文件的绝对路径，按声明算） |
+
+只做存在性探测（`exists` / 列目录），不调用任何 skill。错误码：`bad_args` · `refused`（这台后端不认得带 skill 的 agent）。⚠ **CLI 面也有它**（`--skill-host-list`）。
+
+#### `skill-host-read`：读收件箱那一份（MIG-3a，09-28，**只读**）
+
+```text
+→ {"id":"h2","cmd":"skill-host-read","args":{"cwd":"/home/u/proj","skillId":"planned-build","path":"/home/u/proj/.claude/planned-build/INBOX.txt"}}
+← {"kind":"reply","id":"h2","ok":true,"data":{"text":"…"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cwd` · `skillId` · `path` | → | 项目目录 · 哪个 skill · 那份文件（解到底之后必须恰是那个 skill 声明的可编辑文件之一、文件必须已存在、不是 Claude 的会话记录 —— 三道围栏住 `skill_host.rs::editable_target`） |
+| `text` | ← | 原文（经本进程文件管理面 `files-peek` 读） |
+
+错误码：`bad_args` · `refused`（过不了围栏 / 读不出）。⚠ **CLI 面也有它**（`--skill-host-read`）。
+
+#### `skill-host-write`：写收件箱那一份（MIG-3a，09-28，**写用户文件**）
+
+```text
+→ {"id":"h3","cmd":"skill-host-write","args":{"cwd":"/home/u/proj","skillId":"planned-build","path":"…/INBOX.txt","content":"…","expected":"…"}}
+← {"kind":"reply","id":"h3","ok":true,"data":{"path":"/home/u/proj/.claude/planned-build/INBOX.txt"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `cwd` · `skillId` · `path` | → | 同 `skill-host-read`（同三道围栏） |
+| `content` | → | 新全文 |
+| `expected` | → | 打开时读到的那一份（CAS）：盘上那份在这之后被改过（多半是 agent 处置了几条）⇒ `stale`，一个字节不写 |
+| `path` | ← | 写到了哪 |
+
+写经本进程文件管理面 `files-put`（不备份、不建父目录）。错误码：`bad_args` · `refused` · `stale`。⚠ **CLI 面也有它**（`--skill-host-write`）。
+
 #### `tmux-list`：这台机器的 tmux 会话（SH1，09-26，**只读**）
 
 ```text
@@ -2972,7 +3016,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
-**MIG-3a 追加七条（09-27）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` —— D 组 MCP 与 skill 那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+**MIG-3a 追加十条（09-27 · 09-28）**：`--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` —— D 组 MCP 与 skill 那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 

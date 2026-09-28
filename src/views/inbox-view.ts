@@ -21,10 +21,9 @@
  *
  * # 安全判断**不在这里**
  *
- * 前端不做任何路径判断。写面围栏的真相源只有一处：Rust 侧 `skill_host::resolve_editable`
+ * 前端不做任何路径判断。写面围栏的真相源只有一处：〔MIG-3a〕那台后端的 `skill_host.rs::editable_target`
  * 的三道（路径 `canonicalize` **之后**做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在）；
- * 〔RW1〕远端是 `skill_host::remote_editable_rel`（逐字集合判定），读写都经那台机器的后端
- * （回读逐字节比对 · 回滚住后端），写带打开时读到的那一份当 CAS 期望。
+ * 读写都经那台机器后端的文件管理面（经通道 `src/skill-inbox-reads.ts`），写带打开时读到的那一份当 CAS 期望。
  * ⇒ 本文件只负责**把后端算好的路径原样送回去**。
  *
  * ⚠ `missingReason` 非 null 时**原样显示**（定框 C6）：它是带身份的缺席原因
@@ -32,7 +31,7 @@
  *
  * 全 textContent，无 innerHTML（同 `command-bar.ts` 那条纪律）。
  */
-import { commands, type SkillView } from "../ipc/commands";
+import { listSkills, readSkillFile, type SkillView, writeSkillFile } from "../skill-inbox-reads";
 import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { LOCAL_ORIGIN, type Origin } from "../ipc/origin";
@@ -97,7 +96,7 @@ export class InboxView implements OverlayHandle {
 
     let skills: SkillView[];
     try {
-      skills = await commands.list_skills({ origin: this.origin, cwd: this.cwd });
+      skills = await listSkills(this.origin, this.cwd);
     } catch (e) {
       this.statusEl.textContent = copyText("inboxView.reload.listFailed", { e: String(e) });
       return;
@@ -120,12 +119,7 @@ export class InboxView implements OverlayHandle {
     const path = editable.editable[0];
     this.pathEl.textContent = path;
     try {
-      this.loaded = await commands.read_skill_file({
-        origin: this.origin,
-        cwd: this.cwd,
-        skillId: editable.id,
-        path,
-      });
+      this.loaded = await readSkillFile(this.origin, this.cwd, editable.id, path);
       this.textarea.value = this.loaded;
     } catch (e) {
       this.statusEl.textContent += copyText("inboxView.reload.readFailed", { e: String(e) });
@@ -142,14 +136,7 @@ export class InboxView implements OverlayHandle {
     this.saveBtn.disabled = true;
     const content = this.textarea.value;
     try {
-      await commands.write_skill_file({
-        origin: this.origin,
-        cwd: this.cwd,
-        skillId,
-        path,
-        content,
-        expected: this.loaded,
-      });
+      await writeSkillFile(this.origin, this.cwd, skillId, path, content, this.loaded);
       this.loaded = content;
       this.statusEl.textContent = copyText("inboxView.save.saved");
     } catch (e) {

@@ -1386,7 +1386,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "git",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
-        site: "skill_host_tests.rs::git_common_dir",
+        site: "dial_home_registry_tests.rs::git_read",
     },
     UnmanagedEnv {
         id: "ssh",

@@ -247,13 +247,6 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3a,
         "monitor 算好经 `BackendDoor` 交写",
     ),
-    ("list_skills", Lane::Mig3a, "skill 接入面整形在 monitor"),
-    ("read_skill_file", Lane::Mig3a, "可编辑文件的围栏在 monitor"),
-    (
-        "write_skill_file",
-        Lane::Mig3a,
-        "可编辑文件的围栏在 monitor",
-    ),
     (
         "deploy_remote_acct_iso",
         Lane::Mig3a,

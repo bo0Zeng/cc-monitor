@@ -12993,11 +12993,6 @@
       "zh": "计划",
       "args": []
     },
-    "rsSkillHost.skills.plannedBuildNotSupported": {
-      "kind": "body",
-      "zh": "planned-build 暂不支持在这里安装",
-      "args": []
-    },
     "rsSkillHost.skills.ccBusLabel": {
       "kind": "action",
       "zh": "总线",
@@ -13028,16 +13023,6 @@
       "zh": "解析项目目录失败：{cwd} — {e}",
       "args": ["cwd", "e"]
     },
-    "rsSkillHost.remote.protectedData": {
-      "kind": "error",
-      "zh": "拒绝写入：{requested} 是 Claude Code 的数据文件，cc-monitor 不写它。",
-      "args": ["requested"]
-    },
-    "rsSkillHost.remote.notInSet": {
-      "kind": "error",
-      "zh": "拒绝写入：{requested} 不在 {id} 的可编辑集合里（声明的是 {editable}，相对 {root}）",
-      "args": ["requested", "id", "editable", "root"]
-    },
     "rsSkillHost.editable.protectedData": {
       "kind": "error",
       "zh": "拒绝写入：{real} 是 Claude Code 的数据文件，cc-monitor 不写它。",
@@ -13057,11 +13042,6 @@
       "kind": "body",
       "zh": "{skill} 的前提没满足：找不到 {expected}",
       "args": ["skill", "expected"]
-    },
-    "rsSkillHost.describe.present": {
-      "kind": "body",
-      "zh": "在场",
-      "args": []
     },
     "rsCcBusDeploy.win.ok": {
       "kind": "body",
@@ -13203,11 +13183,6 @@
       "kind": "error",
       "zh": "本机后端：{message}",
       "args": ["message"]
-    },
-    "rsUserFiles.list.notArray": {
-      "kind": "error",
-      "zh": "{machine} 的后端答的目录列表不是一个数组",
-      "args": ["machine"]
     },
     "rsUserFiles.home.unknown": {
       "kind": "error",
@@ -19143,6 +19118,21 @@
     "acctIsoReads.reply.badShape": {
       "kind": "error",
       "zh": "读不懂那台后端回的 cc-acct-iso 状态 / 片段，两端版本对不上。",
+      "args": []
+    },
+    "beSkillInbox.face.none": {
+      "kind": "error",
+      "zh": "这台后端不认得任何带 skill 的 agent，收件箱这一面没有着落。",
+      "args": []
+    },
+    "beSkillInbox.door.here": {
+      "kind": "body",
+      "zh": "这台机器",
+      "args": []
+    },
+    "skillInboxReads.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端回的收件箱内容，两端版本对不上。",
       "args": []
     }
   }

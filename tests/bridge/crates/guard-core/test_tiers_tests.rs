@@ -57,6 +57,7 @@ use std::path::{Path, PathBuf};
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
     "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
+    "tests/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
     "tests/bridge/acct_iso_deploy_tests.rs", // 〔MIG-3a〕SCAN → UNIT：扫源码的那几条随 acct-iso 两问进后端删了，只剩纯函数与围栏在 I/O 之前那一条
     "tests/bridge/crates/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
@@ -336,7 +337,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/byte_table_tests.rs",
     "tests/bridge/ccm_cli_contract_tests.rs",
     "tests/bridge/chan/webview_tests.rs",
-    "tests/bridge/claude_data_fence_tests.rs",
     "tests/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
     "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
@@ -580,6 +580,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/assets/mcp_edit_tests.rs", // 〔MIG-3a〕MCP 写进了那台后端（临时目录 ＋ 跨语言金样 mcp-edit.golden.json）
     "tests/backend/assets/mcp_sync_flow_tests.rs", // 〔MIG-3a〕MCP 推拉进了被写那台后端（临时目录 ＋ 金样 mcp-sync-flow.golden.json）
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
+    "tests/backend/assets/skill_inbox_tests.rs", // 〔MIG-3a〕收件箱读写进了那台后端（临时目录 ＋ 比对写 CAS）
+    "tests/backend/agents/claudecode/skill_host_tests.rs", // 〔MIG-3a〕skill 接入声明落适配层（临时目录 ＋ symlink 围栏）
     "tests/backend/observe/accounts_query_tests.rs",
     "tests/backend/observe/fence_tests.rs", // 〔TL3〕读路径围栏一个家（扫 observe 全树）＋ 放行 / 拒绝行为（临时目录 · symlink）
     "tests/backend/observe/history_query_f07_tests.rs",
@@ -655,7 +657,7 @@ const INTEGRATION: &[&str] = &[
     "tests/bridge/sftp_tests.rs",
     "tests/bridge/shared_crate_registry_tests.rs",
     // 〔AL2 · 第四波 4D〕`shell_dialect_tests.rs` 挪进 SCAN：候选那一条不再建临时目录（方言只给路径与列法、不读盘）。
-    "tests/bridge/skill_host_tests.rs",
+    // 〔MIG-3a〕`skill_host_tests.rs` · `claude_data_fence_tests.rs` 随 skill 接入面进后端删了（判据搬去 tests/backend/agents/claudecode/skill_host_tests.rs）。
     "tests/bridge/structural_scan_tests.rs",
     "tests/bridge/subagent_tests.rs",
     "tests/bridge/user_files_tests.rs",

@@ -94,8 +94,7 @@ pub(crate) trait Door {
     /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
     /// ⚠ 「读不到」与「不存在」在这一问上分不开（权限不够也是 `None`）—— 只给「在不在场」那种展示用。
     async fn stat_kind(&self, path: &str) -> Result<Option<String>, String>;
-    /// 列一个目录（`files-ls`）：`(名字, 是不是目录)`。
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String>;
+    // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
 }
 
 /// 读改写一次最多重来几趟（`stale` 才重来：盘上那份在读与写之间被别人改了）。
@@ -427,39 +426,7 @@ impl Door for BackendDoor {
             Err(e) => Err(e.said()),
         }
     }
-
-    async fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
-        let v = self
-            .ask(
-                "files-ls",
-                serde_json::json!({ "path": path, "limit": LIST_LIMIT }),
-            )
-            .await
-            .map_err(Refused::said)?;
-        let entries = v
-            .get("entries")
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| {
-                copy_text(
-                    "rsUserFiles.list.notArray",
-                    &[("machine", &(self.machine()).to_string())],
-                )
-            })?;
-        Ok(entries
-            .iter()
-            .map(|e| {
-                let p = path_text(e.get("path").unwrap_or(&serde_json::Value::Null));
-                let name = p.rsplit(['/', '\\']).next().unwrap_or("").to_string();
-                let is_dir = e.get("kind").and_then(serde_json::Value::as_str) == Some("dir");
-                (name, is_dir)
-            })
-            .filter(|(n, _)| !n.is_empty())
-            .collect())
-    }
 }
-
-/// [`Door::list_dir`] 一次最多要多少项（skill 的实例目录是几个到几十个，不是一个大目录）。
-const LIST_LIMIT: usize = 1000;
 
 #[cfg(test)]
 #[path = "../../../tests/bridge/user_files_tests.rs"]
