@@ -302,7 +302,8 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     //   （字符集同样从后端 `kill.rs` 的形状门现抠）。这里核它还在。
     // 运行时读（不是编译期嵌入）：只核那段在不在，不值得一条跨半边的编译期边。
     let backend_side = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("tests/backend/control/launch_render/payload_tests.rs"),
+        crate::guard_support::repo_root()
+            .join("tests/backend/control/launch_render/payload_tests.rs"),
     )
     .expect("读不到后端那份 payload_tests.rs");
     assert!(

@@ -5,9 +5,7 @@
 //! 载荷那条渲不出来是拒（带 `REFUSE:` 标，`mod.rs::refused` 转成码）。
 //! 🪦〔MIG-2〕原先这里有两段沿革（U8c-2c-2 只切 CLI 支 · 返回值为什么 tagged）—— 结论仍成立，考据删了。
 
-use super::ccm_invocation::{
-    render_ccm_invocation, Action, CliAccount, CliSpec, Container,
-};
+use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

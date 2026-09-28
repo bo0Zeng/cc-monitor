@@ -519,7 +519,13 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "",
     ),
-    ("src/backend/control/launch_render/local.rs", 1, &[], "", "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）"),
+    (
+        "src/backend/control/launch_render/local.rs",
+        1,
+        &[],
+        "",
+        "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）",
+    ),
     (
         "src/bridge/src/launch.rs",
         1,

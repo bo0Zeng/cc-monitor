@@ -213,7 +213,10 @@ fn the_said_line_is_exact_on_every_cell() {
     }
     assert_eq!(cells, 10, "穷举的格数不对 —— 循环坏了");
     let unattended = copy_text("backendPolicy.exit.unattended", &[]);
-    assert!(unattended.contains("无人监护"), "常驻那一句没说「无人监护」（K14 那一半）");
+    assert!(
+        unattended.contains("无人监护"),
+        "常驻那一句没说「无人监护」（K14 那一半）"
+    );
     for key in [
         "backendPolicy.exit.kills",
         "backendPolicy.exit.selfDies",
