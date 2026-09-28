@@ -46,7 +46,7 @@ import { chanArgsJson, chanReply, refusedReply, type ChanCallArgs } from "./test
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const golden = JSON.parse(readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/resync.golden.json"), "utf8")) as {
   request: { sid: string };
-  reply: Record<string, number>;
+  reply: Record<string, unknown>;
 };
 
 beforeEach(() => {
@@ -68,7 +68,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 describe("〔RESYNC〕手动对齐", () => {
   it("★ 金样：带 sid 的请求体 == 金样那份；整机不带 sid；成品按金样解", async () => {
     invokeMock.mockImplementation(async () => chanReply(golden.reply));
-    expect(await resync("devbox", golden.request.sid)).toEqual(golden.reply);
+    const { added, removed, retagged, watchers } = golden.reply as Record<string, number>;
+    expect(await resync("devbox", golden.request.sid)).toEqual({ added, removed, retagged, watchers });
     await resync("devbox");
     expect(sentCalls()).toEqual([
       ["devbox", "resync", golden.request],

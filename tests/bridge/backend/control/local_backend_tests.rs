@@ -814,7 +814,11 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
 
     let h = supervise_with_stdio(
         bin,
-        vec!["--tail-only".into()],
+        vec![
+            super::BACKEND_SEP.into(),
+            super::STREAM_WORD.into(),
+            "--tail-only".into(),
+        ],
         vec![
             ("HOME".into(), home.display().to_string()),
             ("CLAUDE_CONFIG_DIR".into(), cfg_dir.display().to_string()),
@@ -1090,7 +1094,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     {
         use std::io::BufRead;
         let mut probe = std::process::Command::new(&bin)
-            .arg("--tail-only")
+            .args([super::BACKEND_SEP, super::STREAM_WORD, "--tail-only"])
             .envs(envs.iter().map(|(k, v)| (k.clone(), v.clone())))
             .env_remove("TMUX") // 同上：不许继承「测试进程恰好在哪个 tmux 里」
             .stdin(std::process::Stdio::piped())
@@ -1121,7 +1125,11 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
 
     let h = supervise_with_stdio(
         bin,
-        vec!["--tail-only".into()],
+        vec![
+            super::BACKEND_SEP.into(),
+            super::STREAM_WORD.into(),
+            "--tail-only".into(),
+        ],
         envs,
         CrashLimits::default(),
         Arc::new(|| {
@@ -1299,11 +1307,9 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
 ///
 /// # 它买的是什么
 ///
-/// 本机那条靠**文件名**进 `intercept` 的入口①（`argv[0]` 的 basename），
-/// 远端那条靠 shim 里的**子命令词**进入口②（`<bin> ccm …`）。
-/// 两处要是各写一个字面量，改一个漏一个的后果是**静默的**：
-/// 本机那份改了名字之后，它就不再被后端认成 `ccm`，而是当普通流模式起来 ——
-/// 用户敲下去看到的是一个不动的进程，没有任何一条判据会红。
+/// 本机那条落点的**文件名**、远端那条落点的**文件名**。〔09-27〕分流已不看名字，
+/// 但用户敲的是这个词 ⇒ 两处要是各写一个字面量，改一个漏一个的后果是**静默的**：
+/// 一边落成别的名字，用户在那台机器上敲 `ccm` 就找不到它，没有任何一条判据会红。
 /// ⇒ 闭集只许有一个住址（`13b`），那个住址是 [`CCM_ENTRY_WORD`]。
 #[test]
 fn both_ccm_entries_spell_the_word_from_the_same_place() {
@@ -2610,7 +2616,11 @@ fn e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed() {
     let ev = events.clone();
     let h = supervise(
         PathBuf::from(&bin),
-        vec!["--tail-only".into()],
+        vec![
+            super::BACKEND_SEP.into(),
+            super::STREAM_WORD.into(),
+            "--tail-only".into(),
+        ],
         vec![
             // `C7i`：给后端一条**前面挂着 shim** 的 PATH —— 它 shell out 的 tmux
             // 会被强插 `-L`。比传 `TMUX_TMPDIR` 硬：`$TMUX` 压不过显式选择器。

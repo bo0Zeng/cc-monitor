@@ -1086,3 +1086,39 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
         assert_eq!(got, cancels, "{cmd}");
     }
 }
+
+/// 〔RESYNC · 主会话 09-27 裁〕**握手之后才装上 tmux 的机器，靠「重新对齐」认出来**：hello 说 `kill` 做不到 ⇒ 事前拒；
+/// `resync` 的应答交回那台当下的能力事实（`unavailable` 空了）⇒ 换进 `Offer`，之后 `kill` 照发。
+#[tokio::test]
+async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
+    let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{"command":"kill","code":"no_tmux"}]}"#;
+    let frame = crate::ssh_source::parse_frame(line).expect("是 hello");
+    let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
+    let (mine, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(mine).into_client(hello);
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let before = client.offer().unavailable("kill").map(str::to_string);
+
+    let c = client.clone();
+    let caller =
+        tokio::spawn(async move { c.call(RESYNC_OP, Value::Null, Duration::from_secs(5)).await });
+    let sent = next_line(&mut peer).await;
+    let id = serde_json::from_str::<Value>(sent.trim_end()).expect("JSON")["id"]
+        .as_str()
+        .expect("id")
+        .to_string();
+    let data = serde_json::json!({"added":0,"removed":0,"retagged":0,"watchers":1,"unavailable":[],"uncancellable":["resync"]});
+    assert!(client.route_reply(&id, true, None, None, Some(data)));
+    caller.await.expect("task").expect("resync 答了");
+
+    let after = client.offer();
+    assert_eq!(
+        (
+            before.as_deref(),
+            after.unavailable("kill"),
+            after.withdraw("resync")
+        ),
+        (Some("no_tmux"), None, Withdraw::NotOffered),
+        "`resync` 交回的当下事实没有换进 Offer"
+    );
+}
