@@ -140,8 +140,9 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
         }
     }
     assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
-    let only_deployer: std::collections::BTreeSet<String> =
-        verbs.iter().map(|v| format!("{deployer} ({v})")).collect();
+    // 〔MIG-3a · 子步 3〕部署器那份字节表随装 cc-bus 进了本机后端（`src/backend/assets/cc_bus_install.rs`）⇒ 豁免过期、人群清零。
+    let _ = deployer;
+    let only_deployer: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     assert_eq!(
         who, only_deployer,
         "monitor 生产段里提到 cc-bus 写面脚本名的文件 ≠ {{部署器 × 四个名字}} —— 多出来的那个就是在 monitor 里长回的一条\

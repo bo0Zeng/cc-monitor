@@ -300,7 +300,9 @@ export type HistoryRead =
   | "stream_history_sessions_in_project"
   | "update_history_metadata"
   | "list_last_accounts"
-  | "history_forget";
+  | "history_forget"
+  // 〔MIG-3b〕删会话改走通道（`files-delete-session`，发给那一台）；判据里仍叫旧命令名，形参是 `{origin, sessionId}`。
+  | "delete_history_session";
 
 /** 一发 `invoke` 若是历史那几问之一 ⇒ `[哪一问, 旧形参的形状]`；否则 `null`。 */
 export function historyReadOf(
@@ -336,6 +338,10 @@ export function historyReadOf(
     case "history-forget": {
       const body = chanArgsJson(a) as Record<string, unknown>;
       return ["history_forget", { sessionId: body.sid }];
+    }
+    case "files-delete-session": {
+      const body = chanArgsJson(a) as Record<string, unknown>;
+      return ["delete_history_session", { origin: a.origin, sessionId: body.sid }];
     }
   }
   return null;
@@ -463,6 +469,7 @@ export function withHistoryReads(
         "history-annotate",
         "history-last-accounts",
         "history-forget",
+        "files-delete-session",
       ].includes(a.op)
         ? (chanArgsJson(a) as Record<string, unknown>)
         : null;
@@ -520,6 +527,10 @@ export function withHistoryReads(
       if (body && a.op === "history-forget") {
         await settled(answer("history_forget", { sessionId: body.sid }));
         return chanReply({ removed: true });
+      }
+      if (body && a.op === "files-delete-session") {
+        await answer("delete_history_session", { origin: a.origin, sessionId: body.sid });
+        return chanReply({ path: `<替身>/${String(body.sid)}.jsonl` });
       }
     }
     return answer(cmd, (args ?? {}) as Record<string, unknown>);

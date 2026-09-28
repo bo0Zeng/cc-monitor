@@ -112,10 +112,42 @@ pub enum Vantage {
     Remote,
 }
 
+/// Claude Code 真正在用的配置目录：`CLAUDE_CONFIG_DIR` 存在**且确实是个目录** ⇒ 它；否则 `~/.claude`。
+/// 〔MIG-3b〕钩子诊断进了后端（`hooks-diag`），monitor 这边只剩足迹这一个消费者 ⇒ 从 `hooks_diag.rs`〔散文墓碑〕挪来；随足迹进后端时一起走。
+pub fn claude_config_dir(
+    cfg_dir_env: Option<&Path>,
+    home: &Path,
+    is_dir: &dyn Fn(&Path) -> bool,
+) -> PathBuf {
+    match cfg_dir_env {
+        Some(d) if is_dir(d) => d.to_path_buf(),
+        _ => home.join(".claude"),
+    }
+}
+
+/// 按 `$PATH` 逐目录反查一个裸命令在不在（`exists` 注入）。切分走 `std::env::split_paths`（T03 阻塞 1：
+/// 写死 `':'` 在 Windows 上把盘符切碎、给出确定的否定答案）；`path_env` 取不到 / 空 ⇒ `None`（不猜）。
+/// 〔MIG-3b〕同上，从 `hooks_diag.rs` 挪来。
+pub fn resolves_on_path(
+    prog: &str,
+    path_env: Option<&str>,
+    exists: &dyn Fn(&str) -> bool,
+) -> Option<bool> {
+    let pe = path_env?;
+    if pe.trim().is_empty() {
+        return None;
+    }
+    Some(std::env::split_paths(pe).any(|d| {
+        let d = d.to_string_lossy();
+        let d = d.trim_end_matches(['/', '\\']);
+        !d.is_empty() && exists(&format!("{d}/{prog}"))
+    }))
+}
+
 /// 把申报路径解析成本机可查的形态。
 ///
 /// **「本机还是远端」从 `dest` 推导，不新增字段**（`TouchedFile` 的文档写了理由）。
-/// `~/.claude/...` 走 [`crate::hooks_diag::claude_config_dir`]——那条 `CLAUDE_CONFIG_DIR`
+/// `~/.claude/...` 走 [`claude_config_dir`]——那条 `CLAUDE_CONFIG_DIR`
 /// 规则只准解释一次。
 ///
 /// 〔RM1a〕第一个参数是视角（[`Vantage`]）：本机视角与先前逐字同一个行为，判据一律显式写 `Vantage::Monitor`。
@@ -284,10 +316,7 @@ fn resolve_local_home(
     })?;
     // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
     let (base, rel) = match rest.strip_prefix(".claude/") {
-        Some(r) => (
-            crate::hooks_diag::claude_config_dir(cfg_dir_env, home, is_dir),
-            r.to_string(),
-        ),
+        Some(r) => (claude_config_dir(cfg_dir_env, home, is_dir), r.to_string()),
         None => (home.to_path_buf(), rest.to_string()),
     };
     let rel = rel.trim_end_matches('/');
@@ -633,7 +662,7 @@ pub struct SurfaceEnv<'a> {
     ///
     /// 🔴 **`None` = 取不到，不是「空的」** —— 那时 [`EnvProbe::OnPath`] 那一族一律
     /// 「查不动」（`Undetermined`），**绝不说成「不存在」**。
-    /// 这条纪律不是新写的：`hooks_diag::resolves_on_path` 的头注记着它在生产平台上
+    /// 这条纪律不是新写的：[`resolves_on_path`] 的头注记着它在生产平台上
     /// 曾经「既没取到、又给了一个确定的否定答案」。
     pub path_env: Option<&'a str>,
     /// 〔RM1a〕从哪台机器上看（见 [`Vantage`]）。探针与上面几样必须是**同一台**的。
@@ -717,11 +746,11 @@ fn observe_unmanaged(
     env: &SurfaceEnv,
 ) -> (Option<String>, SurfaceState) {
     match probe {
-        // `PATH` 上的裸命令。**复用 `hooks_diag::resolves_on_path`，不新写一个 `which`** ——
+        // `PATH` 上的裸命令。**复用 [`resolves_on_path`]，不新写一个 `which`** ——
         // 它已经把「切分必须走 `split_paths`」与「取不到 PATH 就不猜」两条填好了。
         EnvProbe::OnPath => {
             let exists = |p: &str| (env.fs.meta)(Path::new(p)).is_some();
-            match crate::hooks_diag::resolves_on_path(named, env.path_env, &exists) {
+            match resolves_on_path(named, env.path_env, &exists) {
                 // 🔴 **查不动**：`PATH` 读不到。绝不说成「不存在」——
                 // 那会对一台装得好好的机器报假警报（本模块头注那条硬纪律）。
                 None => (
@@ -833,7 +862,7 @@ pub struct SettingsScope {
 /// 甚至一句 `"description": "装 cc-register 用"` 都会命中。
 ///
 /// 所以本模块**只回答「文件里有没有这个字样」**，绝不声称"装上了"；
-/// 准确判定是 `hooks_diag::diagnose_event` 的事（它按 `hooks.<事件>.command` 走）。
+/// 准确判定是那台后端 `hooks-diag` 的事（`src/backend/observe/cc_bus_hooks.rs::diagnose_event`，按 `hooks.<事件>.command` 走）。
 /// 两页对同一文件给出不同话是**设计如此**：一页说"有字样"，一页说"装没装"。
 /// 真机核实过当前两页不矛盾（`~/.claude/settings.json` 里 2 处命中都在
 /// `hooks.*.command` 里），但假阳性面是真实的，措辞必须先把这一点讲明。
@@ -867,7 +896,7 @@ pub fn build_settings_scopes(
     has_hooks: &dyn Fn(&Path) -> Option<bool>,
     fs: &FsProbe,
 ) -> Vec<SettingsScope> {
-    let cfg = crate::hooks_diag::claude_config_dir(cfg_dir_env, home, is_dir);
+    let cfg = claude_config_dir(cfg_dir_env, home, is_dir);
     vec![
         scope_row(
             &copy_text("rsConfigSurface.scope.user", &[]),

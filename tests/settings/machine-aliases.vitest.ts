@@ -1,10 +1,10 @@
 // 〔AL1 · 2026-09-24〕机器页 ②「别名」（`设计/71` · `设计/70 §3.3`）。
 //
 // 这里钉的是**界面那一半**：清单从读回口开始 · 表单 ↔ 参数 · 两跳各在什么时候发 · 默认不动用户配置 ·
-// 构造零 I/O。shell 文本长什么样、真 bash 执行下来对不对，归后端 `tests/bridge/account_aliases_tests.rs`
+// 构造零 I/O。shell 文本长什么样、真 bash 执行下来对不对，归后端 `tests/backend/assets/aliases/aliases_tests.rs`
 // —— 本文件一个字节的 shell 文本都不断言（前端也一个字节都不拼）。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Alias } from "../../src/generated/Alias";
+import type { Alias } from "../../src/alias-reads";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 8; i += 1) await Promise.resolve();
@@ -173,13 +173,10 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
         },
       },
     }));
-    vi.doMock("../../src/ipc/commands", () => ({
-      commands: {
-        local_ccm_entry_status: () => {
-          seen.push({ cmd: "local_ccm_entry_status" });
-          return Promise.resolve({ message: "" });
-        },
-        aliases_read: (a: { shell: Plat; rcPath?: string | null }) => {
+    // 〔MIG-3a〕别名六问走通道（`src/alias-reads.ts`）：替身按旧命令名记账（`aliases_*`），判据的集合相等照旧成立。
+    vi.doMock("../../src/alias-reads", () => ({
+        readAliases: (origin: string, shell: Plat, rcPath: string | null) => {
+          const a = { origin, shell, rcPath };
           seen.push({ cmd: "aliases_read", args: a });
           if (a.rcPath === "/etc/x") return Promise.reject("refuse profile path: 只能落在 home 之内");
           const other = a.rcPath ? `/h/${a.rcPath.replace(/^~\//, "")}` : null;
@@ -197,20 +194,21 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
               cand("/h/rc-b", { exists: false, present: blockAt.has("/h/rc-b") }),
               ...(other ? [cand(other, { present: blockAt.has(other) })] : []),
             ],
-            boundTerminals: 2,
             otherRc: other,
           });
         },
-        aliases_render: (a: { aliases: Alias[]; shell: Plat }) => {
+        renderAliases: (origin: string, aliases: Alias[], shell: Plat) => {
+          const a = { origin, aliases, shell };
           seen.push({ cmd: "aliases_render", args: a });
           return Promise.resolve({
-            code: a.aliases.map((x) => `#${x.name}`).join("\n"),
+            fileText: a.aliases.map((x) => `#${x.name}`).join("\n"),
             lines: [],
             problems,
             collisions: [],
           });
         },
-        aliases_install: (a: { aliases: Alias[]; rcPath: string | null; shell: Plat }) => {
+        installAliases: (origin: string, aliases: Alias[], rcPath: string | null, shell: Plat) => {
+          const a = { origin, aliases, rcPath, shell };
           seen.push({ cmd: "aliases_install", args: a });
           disk = a.aliases;
           return Promise.resolve({
@@ -219,20 +217,34 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
             notes: ["新开一个终端就能用"],
           });
         },
-        aliases_block_install: (a: { rcPath: string; withCc: boolean }) => {
+        installAliasBlock: (origin: string, rcPath: string, withCc: boolean) => {
+          const a = { origin, rcPath, withCc };
           seen.push({ cmd: "aliases_block_install", args: a });
           blockAt.add(a.rcPath);
           oldAt.delete(a.rcPath);
           return Promise.resolve();
         },
-        aliases_block_remove: (a: { rcPath: string }) => {
+        removeAliasBlock: (origin: string, rcPath: string) => {
+          const a = { origin, rcPath };
           seen.push({ cmd: "aliases_block_remove", args: a });
           blockAt.delete(a.rcPath);
           return Promise.resolve();
         },
-        aliases_block_render: (a: { rcPath: string; withCc: boolean }) => {
+        renderAliasBlock: (origin: string, rcPath: string, withCc: boolean) => {
+          const a = { origin, rcPath, withCc };
           seen.push({ cmd: "aliases_block_render", args: a });
           return Promise.resolve(`# 块 → ${a.rcPath}`);
+        },
+    }));
+    vi.doMock("../../src/ipc/commands", () => ({
+      commands: {
+        local_ccm_entry_status: () => {
+          seen.push({ cmd: "local_ccm_entry_status" });
+          return Promise.resolve({ message: "" });
+        },
+        bound_terminal_count: () => {
+          seen.push({ cmd: "bound_terminal_count" });
+          return Promise.resolve(2);
         },
         cc_get_auto_launch: () => {
           seen.push({ cmd: "cc_get_auto_launch" });
@@ -294,7 +306,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
    */
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
-    powershell: ["aliases_read", "aliases_render", "cc_get_auto_launch", "ccm_user_path_status"],
+    // 〔MIG-3a〕握手终端数从读回口的成品里拆出来、另问 monitor（`bound_terminal_count`）⇒ PowerShell 那一侧首开多这一发。
+    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status"],
   };
 
   it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多", async () => {
@@ -672,7 +685,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     expect(done).toEqual(["install:ok", "remove:ok"]);
     expect(el.querySelector(".ccm-user-path-block")).toBeNull();
     expect([...el.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("打开这份文件");
-    expect(el.textContent).toContain("那台机器 PATH 上的同名程序没查");
+    // 〔MIG-3a〕撞名由那台后端查它自己的 `PATH` ⇒ 〔AL2〕「远端 PATH 没查」那句说明退役。
+    expect(el.textContent).not.toContain("PATH 上的同名程序没查");
   });
 });
 

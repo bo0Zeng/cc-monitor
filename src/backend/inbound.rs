@@ -90,6 +90,13 @@ pub const COMMANDS: &[&str] = &[
     "acct-iso-cmd",
     "acct-iso-shellinit",
     "acct-iso-status",
+    // 〔MIG-3a · 主会话 09-27 裁〕别名六条：规则 · 方言 · 围栏住这台（`assets/aliases/`），写经 [`LocalFiles`]。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "aliases-block-install",
+    "aliases-block-remove",
+    "aliases-block-render",
+    "aliases-install",
+    "aliases-read",
+    "aliases-render",
     "apikey-key-set",
     "apikey-read",
     // 〔US1 · 第四波 4D〕界面「这几个号在这台的表里有没有行 · 这台的中转在不在」（成品，界面经 `chan.call` 直接问）。
@@ -111,10 +118,15 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    // 〔MIG-3a · 子步 3 · 主会话 09-27 裁 ⑯〕cc-bus 装到这台（资产的装不算部署：判 · 写 · 记都在这台，装卸账复用 skill 装记录）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "cc-bus-install",
+    "cc-bus-install-state",
     // 〔W5-ALIAS · 第五波先行〕别名预览：一条别名的预置参数 → `ccm --print` 那一行（`设计/71 §2.3`）。
     "ccm-print",
     // 〔E2 · `96 §7.2.2`〕这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
     "ccm-probe",
+    // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "deploy-plan",
     "exit-policy-read",
     "exit-policy-set",
     "files-browse",
@@ -168,6 +180,8 @@ pub const COMMANDS: &[&str] = &[
     "history-subagents",
     "history-tail",
     "history-user-inputs",
+    // 〔MIG-3b〕cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "hooks-diag",
     "kill",
     "launch",
     // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
@@ -189,6 +203,9 @@ pub const COMMANDS: &[&str] = &[
     "mcp-server-remove",
     // 〔MIG-3a〕MCP 推 / 拉的 I/O 那一半：来源那台交原文 · 要被写那台自己读、判、写。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "mcp-sync-apply",
+    // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（本机常驻后端向来源那台取、向被写那台写；`assets/hub.rs`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "mcp-sync-hub-apply",
+    "mcp-sync-hub-preview",
     // 〔AS1 · 第四波 4B〕MCP 资产同步的判定（只读；写经文件管理那一面 `files-put`）。
     "mcp-sync-plan",
     "mcp-sync-preview",
@@ -207,8 +224,14 @@ pub const COMMANDS: &[&str] = &[
     "resync",
     // 〔LOC1a · 第四波 4D〕分叉（`fork_write`，本 crate 唯一的 `O_EXCL` 新建写口）：本机远端同一条长连接。
     "session-fork",
+    // 〔MIG-3a〕skill 接入面（收件箱）三条：列 · 读 · 写（声明与围栏住适配层，读写经文件管理面）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "skill-host-list",
+    "skill-host-read",
+    "skill-host-write",
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台（判 · 写 · 记同一台）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "skill-install-apply",
+    "skill-install-hub-apply",
+    "skill-install-hub-preview",
     // 〔AS2〕skill「装到这台」：来源那台读 · 要被写的那一台判（都只读；写经 `files-put`）。
     "skill-install-plan",
     // 〔SU1 · 第四波 4C · V116〕skill 装记录（第四层）：装完记下写了哪几个 · 卸掉的摘掉。
@@ -256,6 +279,46 @@ impl crate::assets::door::Door for LocalFiles {
         };
         run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
     }
+}
+
+/// 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽问**这台自己**的那一跳：本进程那几条内层命令本身（阻塞档，原样调它们的 `run`）。
+/// 限 [`HUB_INNER`] 那几条 —— 枢纽不是一扇通到任意命令的门。
+pub(crate) struct LocalFrames;
+
+/// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）。
+pub(crate) const HUB_INNER: &[&str] = &[
+    "mcp-sync-source",
+    "mcp-sync-preview",
+    "mcp-sync-apply",
+    "skill-read",
+    "skill-install-plan",
+    "skill-install-apply",
+];
+
+impl crate::assets::hub::Here for LocalFrames {
+    fn ask(
+        &self,
+        cmd: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, (String, String)> {
+        let spec = REGISTRY
+            .iter()
+            .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))
+            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
+        let Run::Blocking(run) = spec.run else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
+        };
+        let req = Request {
+            id: "in-process".to_string(),
+            cmd: cmd.to_string(),
+            args,
+        };
+        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+    }
+}
+
+fn hub_here() -> std::sync::Arc<dyn crate::assets::hub::Here> {
+    std::sync::Arc::new(LocalFrames)
 }
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -1215,10 +1278,49 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "ccm-probe",
         doc_anchor: Some("#### `ccm-probe`"),
         codes: &[],
-        fields: &["probe"],
+        fields: &["agents", "build", "capabilities", "version"],
         takes_input: false,
         run: Run::Async(|_r| {
             Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
+        }),
+    },
+    // 〔MIG-3b · 4d-lanes 子步 1〕**部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
+    //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
+    CommandSpec {
+        name: "deploy-plan",
+        doc_anchor: Some("#### `deploy-plan`"),
+        codes: &[
+            "bad_args",
+            "io_failed",
+            "refused",
+            "unreachable",
+            "undecidable",
+        ],
+        fields: &[
+            "action",
+            "arch",
+            "expected",
+            "label",
+            "legacy",
+            "legacy_why",
+            "os",
+            "theirs",
+            "why",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let facing = crate::control::deploy_plan::DialFacing::new(
+                    r.args
+                        .get("dial")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                crate::control::deploy_plan::answer(&r.args, &facing)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {
@@ -2497,7 +2599,15 @@ pub const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "acct-iso-shellinit",
         doc_anchor: Some("#### `acct-iso-shellinit`"),
-        codes: &["not_installed", "not_run", "timed_out", "tool_failed"],
+        // 〔MIG-3a〕`fence_incomplete` / `no_fence`：围栏校验进了这一侧（`accounts/iso.rs::fenced`）。
+        codes: &[
+            "fence_incomplete",
+            "no_fence",
+            "not_installed",
+            "not_run",
+            "timed_out",
+            "tool_failed",
+        ],
         fields: &["snippet"],
         takes_input: false,
         run: Run::Blocking(|_r| {
@@ -2566,6 +2676,128 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 子步 3〕cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
+    CommandSpec {
+        name: "cc-bus-install-state",
+        doc_anchor: Some("#### `cc-bus-install-state`"),
+        codes: &["refused"],
+        fields: &["differing", "missing", "state"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::assets::cc_bus_install::answer_state()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "cc-bus-install",
+        doc_anchor: Some("#### `cc-bus-install`"),
+        codes: &["bad_file", "refused"],
+        fields: &["backup", "dest", "recordFailed", "unchanged", "written"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::assets::cc_bus_install::answer_install(
+                &LocalFiles,
+                &crate::skill_ledger::answer_record,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 主会话 09-28 裁 · `01 §3.5`〕两台之间那几件的枢纽：界面只问本机一次，本机后端向来源那台取、向被写那台写（`assets/hub.rs`）。
+    CommandSpec {
+        name: "mcp-sync-hub-preview",
+        doc_anchor: Some("#### `mcp-sync-hub-preview`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &["from", "fromDir", "to", "toDir"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::mcp_preview(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    CommandSpec {
+        name: "mcp-sync-hub-apply",
+        doc_anchor: Some("#### `mcp-sync-hub-apply`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &[
+            "expectSource",
+            "from",
+            "fromDir",
+            "overwrite",
+            "take",
+            "target",
+            "to",
+            "toDir",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::mcp_apply(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    CommandSpec {
+        name: "skill-install-hub-preview",
+        doc_anchor: Some("#### `skill-install-hub-preview`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &["dir", "from", "name", "rows", "source", "target", "to"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::skill_preview(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
+        }),
+    },
+    CommandSpec {
+        name: "skill-install-hub-apply",
+        doc_anchor: Some("#### `skill-install-hub-apply`"),
+        codes: &["bad_args", "refused", "stale", "unreachable", "io_failed"],
+        fields: &[
+            "expectSource",
+            "from",
+            "name",
+            "overwrite",
+            "take",
+            "target",
+            "to",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::hub::skill_apply(
+                    &hub_here(),
+                    &r.args,
+                    &crate::remote_ask::REACH,
+                    &crate::remote_ask::DialRemote,
+                )
+                .await
+                .map(Some)
+            })
         }),
     },
     // 〔MIG-3a · D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
@@ -2715,6 +2947,147 @@ pub const REGISTRY: &[CommandSpec] = &[
             .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔MIG-3a · 主会话 09-27 裁〕别名六条：`assets/aliases/`（规则 · 方言 · 围栏），读写经 [`LocalFiles`]。
+    CommandSpec {
+        name: "aliases-render",
+        doc_anchor: Some("#### `aliases-render`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "aliases",
+            "collisions",
+            "fileText",
+            "lines",
+            "problems",
+            "shell",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_render(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-read",
+        doc_anchor: Some("#### `aliases-read`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "aliasPath",
+            "aliases",
+            "exists",
+            "otherRc",
+            "rcCandidates",
+            "rcPath",
+            "shell",
+            "unparsed",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_read(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-install",
+        doc_anchor: Some("#### `aliases-install`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "aliasPath",
+            "aliases",
+            "notes",
+            "rcPath",
+            "shell",
+            "wroteAliasFile",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_install(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-block-render",
+        doc_anchor: Some("#### `aliases-block-render`"),
+        codes: &["bad_args", "refused"],
+        fields: &["rcPath", "text", "withCc"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_block_render(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-block-install",
+        doc_anchor: Some("#### `aliases-block-install`"),
+        codes: &["bad_args", "refused"],
+        fields: &["rcPath", "withCc"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_block_install(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "aliases-block-remove",
+        doc_anchor: Some("#### `aliases-block-remove`"),
+        codes: &["bad_args", "refused"],
+        fields: &["rcPath"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_block_remove(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · D 组〕skill 接入面（收件箱）：`assets/skill_inbox.rs`，声明与围栏在 `agents/claudecode/skill_host.rs`，读写经 [`LocalFiles`]。
+    CommandSpec {
+        name: "skill-host-list",
+        doc_anchor: Some("#### `skill-host-list`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "cwd",
+            "editable",
+            "id",
+            "instances",
+            "label",
+            "missing_reason",
+            "skills",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_inbox::answer_list(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-host-read",
+        doc_anchor: Some("#### `skill-host-read`"),
+        codes: &["bad_args", "refused"],
+        fields: &["cwd", "path", "skillId", "text"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_inbox::answer_read(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "skill-host-write",
+        doc_anchor: Some("#### `skill-host-write`"),
+        codes: &["bad_args", "refused", "stale"],
+        fields: &["content", "cwd", "expected", "path", "skillId"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::skill_inbox::answer_write(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
     // 〔RESYNC · V149 · `设计/15 §4.1b`〕手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
     CommandSpec {
         name: "resync",
@@ -2793,6 +3166,32 @@ pub const REGISTRY: &[CommandSpec] = &[
             "sessions",
             "sid",
             "windows",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|r| {
+            crate::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3b · `设计/95 §6`〕cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
+    CommandSpec {
+        name: "hooks-diag",
+        doc_anchor: Some("#### `hooks-diag`"),
+        codes: &["failed", "too_large"],
+        fields: &[
+            "command",
+            "diagnosis",
+            "kind",
+            "note",
+            "path",
+            "session_start",
+            "snippet_bare",
+            "snippet_home",
+            "source",
+            "stop",
+            "text",
+            "warning",
         ],
         takes_input: false,
         run: Run::Blocking(|r| {

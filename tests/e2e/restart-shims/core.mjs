@@ -97,22 +97,10 @@ export async function invoke(cmd, args = {}) {
     //   `{err:"Refused", body:<{code,message} 的字节>}` 抛（`chan.ts::decodeFail` 认的那一形）。
     case "chan_call":
       return chanCall(args.op, JSON.parse(Buffer.from(args.payload || []).toString("utf8") || "{}"));
-    // 〔E2 尾 09-27〕resume 那一串今天由 **Rust 渲染器**出（`remote-launch-run.ts::renderLaunchCommand` ⇒
-    //   `commands.render_launch_payload`）。本 shim 从前返回 `undefined` ⇒ `launch_remote_terminal` 拿到空命令、
-    //   什么都没起。⇒ 交给**生产那一条**：`launch-render-emit.sh` → Rust `emit_launch_render_for_e2e`
-    //   → 生产 `launch_wire::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
-    case "render_launch_payload":
-      return renderViaProduction(args.req);
-    case "render_ccm_launch":
-      // `ccm …` 调用行那条路要先探远端 ccm；命令级驱动器没有远端 ⇒ 如实说渲不出，编排照生产逻辑降级到载荷那条。
-      return { ok: false, cmd: null, reason: "e2e shim：没有远端 ccm 可探" };
-    case "relay_endpoint_for_launch":
-      return null; // 不走中转（夹具的账号都是订阅号）
-    case "update_history_metadata": {
-      const acct = args && args.patch ? args.patch.lastAccount : undefined;
-      seq("record account=" + String(acct));
-      return undefined;
-    }
+    // 〔MIG-2〕起会话的渲染 / 中转地址改走通道（`launch-render-*` · `launch-endpoint`，见 `chanCall`）；
+    //   这里只剩「全部会话走中转」那个开关（monitor 自己的一格：夹具不走中转）。
+    case "relay_all_sessions_switch":
+      return false;
     default:
       seq("invoke?:" + cmd);
       return undefined;
@@ -154,6 +142,41 @@ function chanCall(op, body) {
       if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
       return enc({ session: name, created: false, typed: true });
     }
+    // 〔MIG-2〕resume 那一串由那台后端出（`src/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
+    //   ⇒ 交给**生产那一条**：`launch-render-emit.sh` → 后端 `emit_launch_render_for_e2e` → 生产
+    //   `control/launch_render/wire.rs::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
+    //   拒了 ⇒ 与后端 `launch_render::answer_payload` 同一个码 `refused`，原话带出去。
+    case "launch-render-payload": {
+      let cmd;
+      try {
+        cmd = renderViaProduction(body);
+      } catch (e) {
+        refused("refused", String(e && e.message ? e.message : e).replace(/^REFUSE:\s*/, ""));
+      }
+      return enc({ cmd });
+    }
+    case "launch-render-cli":
+      // `ccm …` 调用行由那台后端渲（它自己就是 ccm）；命令级驱动器那一端没有后端可执行 ⇒ 如实说渲不出
+      //（成品形状 `{ok, cmd, reason}` 里的降级那一形），编排照生产逻辑降级到载荷那条。
+      return enc({ ok: false, cmd: null, reason: "e2e shim：那一端没有后端（ccm）可渲" });
+    case "history-annotate": {
+      // 换号成功后记账（`account-restart.ts`：kill ＋ resume 全成才记 pin）—— 〔C4d〕问本机常驻后端 `history-annotate`。
+      //   记进序列（`record account=<名>`），回成品 `{entry}`（`history-reads.ts::decodeEntry` 逐键要的那一份）。
+      const patch = body.patch || {};
+      if ("lastAccount" in patch) seq("record account=" + String(patch.lastAccount));
+      return enc({
+        entry: {
+          starred: Boolean(patch.starred),
+          customTitle: patch.customTitle ?? null,
+          hidden: Boolean(patch.hidden),
+          updatedAt: 0,
+          lastAccount: patch.lastAccount ?? null,
+        },
+      });
+    }
+    case "launch-endpoint":
+      // 成品 `{baseUrl}`：`null` = 不注入（夹具的账号都是订阅号，不走中转）。
+      return enc({ baseUrl: null });
     case "kill": {
       const { name } = body;
       seq("kill-attempt");

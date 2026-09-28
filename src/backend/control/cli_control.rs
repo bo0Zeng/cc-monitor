@@ -166,7 +166,7 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
 pub(crate) fn flag_of(name: &str) -> String {
-    format!("--{name}")
+    crate::cli_flag(name)
 }
 
 /// CLI 子命令 → 它在 `REGISTRY` 上的那条登记。

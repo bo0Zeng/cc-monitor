@@ -12,7 +12,7 @@
 //! 开工时两个看起来现成的判据都实测**不成立**：
 //!
 //! - **名字带 `remote`**：27 条。漏掉 10 条真远端命令（`cc_bus_*`、`tmux_send_keys`、
-//!   `probe_ccm_cli`、`check_account_trust`、`resolve_ssh_host`〔散文墓碑〕）。
+//!   `probe_ccm_cli`、`check_account_trust`、`resolve_ssh_host`）。〔散文墓碑〕
 //! - **吃 `origin` / host 参数**：25 条。漏掉 12 条——它们吃的是 `RemoteConfig` 结构体，
 //!   或者干脆不吃参数（「枚举所有已配置远端」那一族）。
 //!

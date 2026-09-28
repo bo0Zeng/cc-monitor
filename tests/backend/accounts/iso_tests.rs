@@ -246,3 +246,25 @@ fn the_acct_iso_cmd_answers_match_the_cross_language_golden() {
     }
     assert_eq!(wrong, Vec::<String>::new(), "后端的答与金样对不上");
 }
+
+/// 〔MIG-3a · `99 §2.1 ⑬`〕围栏校验进了后端：两条都在才交出去（fail-closed）；有 BEGIN 没 END ⇒ `fence_incomplete`
+/// （话里劝别贴）；连 BEGIN 都没有 ⇒ `no_fence`。围栏常量与 vendored `cc-acct-iso` 真打印的那两行逐字一致（跨语言双写点）。
+#[test]
+fn the_shellinit_fence_is_checked_here_and_matches_the_vendored_script() {
+    let (b, e) = (SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END);
+    let whole = format!("{b}\nzcc() {{ :; }}\n{e}\n");
+    assert_eq!(fenced(whole.clone()), Ok(whole));
+    let (code, said) = fenced(format!("{b}\nzcc() {{ :; }}\n")).unwrap_err();
+    assert_eq!(code, "fence_incomplete");
+    assert!(said.contains("别贴"), "{said}");
+    assert_eq!(fenced(String::new()).unwrap_err().0, "no_fence");
+    assert_eq!(fenced(e.to_string()).unwrap_err().0, "no_fence");
+    let script = include_str!("../../../src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso");
+    assert!(script.len() > 1000, "vendored 脚本没读进来");
+    for fence in [b, e] {
+        assert!(
+            script.contains(&format!("printf '{fence}\\n'")),
+            "双写点漂移：vendored cc-acct-iso 里找不到打印 {fence:?} 的那行"
+        );
+    }
+}

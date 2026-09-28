@@ -36,7 +36,7 @@ fn save_and_load_roundtrip() {
 /// ★〔TL1 · 4C · 拍板 ④〕**`auto-launch.json` 的线上名，两种语言两向相等。**
 ///
 /// 要求住址：`INVARIANTS §2.1` 那一行逐字「`enabled`=真相；`monitor_exe_path`=派生」—— 写它的是 monitor（Rust，
-/// `auto_launch.rs::save`），读它的是 PowerShell 别名块里的 `__ccm_bind`（`scripts/cc.ps1.tpl`，monitor 没在跑时据它拉起 monitor）。
+/// `auto_launch.rs::save`），读它的是 PowerShell 别名块里的 `__ccm_bind`（`src/shared/cc.ps1.tpl`，monitor 没在跑时据它拉起 monitor）。
 /// 两边各自改名，今天**哪一边都不会红**（`TL1.md` 件 1 的读数：字段改线上名那一刀两族都放过）——而读的那一侧读不到就是
 /// 「开关开着却永远不自启」，没有任何报错。
 ///
@@ -48,7 +48,7 @@ fn save_and_load_roundtrip() {
 /// 而 PowerShell 里那就是读不到 ⇒ 永不自启）—— 那是 PowerShell 脚本自己的对不上，不是跨语言的线上名。
 #[test]
 fn the_wire_names_are_the_same_in_the_powershell_reader_and_the_rust_writer() {
-    const TPL: &str = include_str!("../../src/bridge/scripts/cc.ps1.tpl");
+    const TPL: &str = include_str!("../../src/shared/cc.ps1.tpl");
     let var = "$alCfg.";
     let mut read: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut rest = TPL;

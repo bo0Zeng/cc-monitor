@@ -911,3 +911,19 @@ fn the_session_file_frames_are_known_and_an_unknown_why_is_dropped() {
         assert_eq!(parse_frame(bad), None, "{bad}");
     }
 }
+
+/// 〔MIG-3b · `99 §2.1 ㉓②`〕`tasks_changed`：认得出（带 sid；缺 sid ⇒ 坏帧），流循环那一臂交 `replay.tasks_changed`（恰好一处）。
+#[test]
+fn tasks_changed_is_recognised_and_reaches_the_frontend_stream() {
+    assert_eq!(
+        parse_frame(r#"{"kind":"tasks_changed","sid":"s1"}"#),
+        Some(InboundFrame::TasksChanged { sid: "s1".into() })
+    );
+    assert_eq!(parse_frame(r#"{"kind":"tasks_changed"}"#), None);
+    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
+    assert_eq!(
+        prod.matches("replay.tasks_changed(").count(),
+        2,
+        "远端流循环那一臂 ＋ 本机消费者那一臂，各一处交 `replay.tasks_changed`"
+    );
+}

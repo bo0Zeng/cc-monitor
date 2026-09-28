@@ -11,7 +11,6 @@ fn codex_layout_locked() {
     let l = a.layout();
     // 〔LOC1b · 4D〕子目录名 / 扩展名两格随 monitor 读本机盘那几份实现删了（目录布局归后端 `agents/codex/`）。
     assert_eq!(l.sid_strategy, SidStrategy::CodexRollout);
-    assert_eq!(l.tasks_subdir, None);
 }
 
 /// `for_kind` 派发到 Codex；`active()` 仍是 Claude（零回归）。

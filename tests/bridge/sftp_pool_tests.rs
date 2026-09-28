@@ -330,8 +330,14 @@ async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
     let _g = crate::backend::control::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     let session = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
+    // 〔MIG-3a〕夹具那条路径是会话记录的形状（`projects/<proj>/<sid>.jsonl`）：那道判定今天只住后端
+    //   （`agents/claudecode/paths.rs::is_session_record_file`），这里按形状现核，不借 monitor 的第二份。
+    let tail: Vec<&str> = session
+        .rsplit_once("/projects/")
+        .map(|(_, t)| t.split('/').collect())
+        .unwrap_or_default();
     assert!(
-        crate::claude_data_fence::is_protected_claude_data_path(session),
+        tail.len() == 2 && tail[1].ends_with(".jsonl"),
         "夹具那条路径不是会话记录的形状 —— 本条此刻在量别的东西"
     );
     transfer_call(

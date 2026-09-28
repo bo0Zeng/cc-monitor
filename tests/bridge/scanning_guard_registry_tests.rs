@@ -81,7 +81,9 @@ const PENDING: &[&str] = &[
     // 〔RM1f〕`tests/bridge/panorama_tests.rs` 这一行删了：那份文件随 monitor 的内嵌引擎（`panorama.rs`（已删））一起删了 ⇒ 上限跟着 −1。
     "tests/bridge/parser_tests.rs",
     "tests/bridge/polling_registry_tests.rs",
-    "tests/bridge/profile_installer_tests.rs",
+    // 〔MIG-3a〕`tests/bridge/profile_installer_tests.rs` → `tests/backend/assets/aliases/block_tests.rs`（别名块那一半的判据随代码进了后端，
+    //   裸遍历那几处跟着走；monitor 留下的那份不再遍历）⇒ 换住址，条数不变。
+    "tests/backend/assets/aliases/block_tests.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
     "tests/bridge/session_name_registry_tests.rs",
@@ -928,7 +930,7 @@ fn pending_count_in(src: &str) -> Option<usize> {
 
 /// 跑一条**只读**的 git，回它的 stdout。
 ///
-/// 🔴 **两种「问不到」分开报**，它们在类型上不是一回事（照 `skill_host::git_common_dir`
+/// 🔴 **两种「问不到」分开报**，它们在类型上不是一回事（照 `dial_home_registry_tests.rs::git_read`
 /// 那条逐字记着的实测）：机器上没有 `git` 时 [`std::process::Command`] 给的是
 /// `io::Error(NotFound)`，**不是**一个非零退出码。
 ///

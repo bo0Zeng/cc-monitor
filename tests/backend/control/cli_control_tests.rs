@@ -277,6 +277,9 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 〔C4c · 第四波 4B〕`accounts-list` **出了这张表**：它从此收一格 `agent`（这次起会话的是哪一家，
     /// 并 apikey 表要看它）⇒ 要输入。
     const NO_INPUT_TODAY: &[&str] = &[
+        // 〔MIG-3a · 子步 3〕cc-bus 装到这台 / 查三态：落点由这台自己算（skills 根），不收任何参数。
+        "cc-bus-install",
+        "cc-bus-install-state",
         "accounts-sessions",
         "bus-list",
         "bus-state",
@@ -309,6 +312,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 〔MIG-1〕这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。
         "ssh-config-aliases",
         "ssh-config-import",
+        // 〔MIG-3b〕这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
+        "hooks-diag",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

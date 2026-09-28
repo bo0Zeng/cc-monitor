@@ -44,7 +44,7 @@
 //! 配置面申报」，并要求「每一项都必须能被现有五套工具中的**至少两套**实例化」。
 //!
 //! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说 `cc-acct-iso` 的探测是
-//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔SH1〕今天 `acct_iso_deploy.rs::acct_iso_status`，问那台后端）实际跑的是远端
+//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔MIG-3a〕今天是那台后端的帧命令 `acct-iso-status`，`iso.rs::answer_wire_status`）实际跑的是远端
 //! `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 再解析 stdout，
 //! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。`.vendor_id` 指纹比对
 //! 发生在**部署决策**那一步（`deploy_decision` 读远端 marker 文件），不是探测。
@@ -230,8 +230,7 @@ pub enum ToolDestination {
 /// T04 第一步。它不是"为模型而模型"——不加它，`config_surface` 在**生产平台上会说假话**：
 /// `cc-bus` 的 `destination` 是 `LocalHomeRelative`，三条 touches 于是被当**本机路径**去 stat。
 /// 但 cc-monitor 的生产平台是 Windows（`ci.yml`/`release.yml` 打包 job 都是 `windows-latest`），
-/// 而 cc-bus 跑在 **Claude Code 所在的那台**——`hooks_diag` 为此有**两条** IPC
-/// （`diagnose_local_cc_bus_hooks` / `diagnose_remote_cc_bus_hooks`），
+/// 而 cc-bus 跑在 **Claude Code 所在的那台**——钩子诊断为此按 origin 问那台后端（〔MIG-3b〕帧命令 `hooks-diag`），
 /// `cc_bus::read_cc_bus_state(origin)` 读 `~/.cc-bus/` 更是**按 origin 远端 exec** 的。
 /// 于是 Windows 用户打开「配置面审计」会看到那三行写着**「不存在」**，
 /// 而同一个 app 的驾驶舱正从远端把 inbox 读得好好的。
@@ -518,7 +517,7 @@ pub const TOOLS: &[ToolSpec] = &[
                         effect: TouchEffect::RetiredLegacy,
                     },
                     // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
-                    //   （`sftp.rs::sweep_legacy_backend`）。
+                    //   （〔MIG-3b〕本机常驻后端出计划时判，`sftp.rs::apply_legacy` 照计划删）。
                     TouchedFile {
                         path: "~/.cc-monitor/bin/cc-monitor-backend",
                         note: Some(Text(|| {
@@ -697,7 +696,7 @@ pub const TOOLS: &[ToolSpec] = &[
                     // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
                     // `list_remote_accounts(origin)` 与「某会话属哪个账号」那一条（〔C4a〕今天经通道 `accounts-sessions`），走 ssh exec。
                     // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
-                    // （这台机器上就是 `~/.claude-alt/z`），`hooks_diag::claude_config_dir` 与
+                    // （这台机器上就是 `~/.claude-alt/z`），`config_surface::claude_config_dir` 与
                     // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
                     // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
                     // `<用户家目录>/.claude-alt/<账号>`，而这一行写着「位置：远端」。
@@ -1327,7 +1326,7 @@ pub struct UnmanagedEnv {
 /// **不许再造一套**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvProbe {
-    /// `PATH` 上的一个裸命令 —— 走 `hooks_diag.rs::resolves_on_path`。
+    /// `PATH` 上的一个裸命令 —— 走 `config_surface.rs::resolves_on_path`。
     ///
     /// **用已有那一把，不新写一个 `which`**：它已经把两条坑填了 ——
     /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
@@ -1386,7 +1385,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "git",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.gitWhy", &[])),
-        site: "skill_host_tests.rs::git_common_dir",
+        site: "dial_home_registry_tests.rs::git_read",
     },
     UnmanagedEnv {
         id: "ssh",
@@ -1453,7 +1452,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "~/.local/bin/cc-acct-iso",
         host: HostScope::Client,
         why: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalWhy", &[])),
-        site: "acct_iso_deploy.rs::acct_iso_status",
+        site: "iso.rs::answer_wire_status",
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //

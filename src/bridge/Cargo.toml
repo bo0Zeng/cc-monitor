@@ -26,6 +26,8 @@ members = [
     "crates/agent-tools-core",
     # 〔DUP3 · J9〕上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
     "crates/upstream-url-core",
+    # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
+    "crates/deploy-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -140,6 +142,8 @@ creds-core = { path = "crates/creds-core" }
 shell-quote-core = { path = "crates/shell-quote-core" }
 # 〔US1 · 4D〕中转门牌（端口 · 钥匙文件路径 · 路由语法）的唯一住址，与后端同一份（`设计/20 §5` 目标）。
 relay-route-core = { path = "crates/relay-route-core" }
+# 〔MIG-3b〕部署决策的唯一一份：本机常驻后端出计划（`deploy-plan`）用它判，monitor 照计划取字节、本机那一份的身份 · 远端 hello 的新旧 · 全景的表 A/B 也用它。
+deploy-core = { path = "crates/deploy-core" }
 # F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
 # monitor 与后端共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
 gate-core = { path = "crates/gate-core" }

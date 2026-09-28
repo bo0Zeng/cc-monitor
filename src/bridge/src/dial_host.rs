@@ -828,20 +828,8 @@ impl RemoteFs {
         Ok(v)
     }
 
-    /// 那个文件在不在 / 多大：`(metadata 的 size, 补问的 exists)` —— 与 `sftp::interpret_target_probe` 入参同形。
-    pub(crate) async fn stat(
-        &self,
-        path: &str,
-    ) -> Result<(Option<Option<u64>>, Option<bool>), String> {
-        let v = self
-            .ask(serde_json::json!({"op": "stat", "path": path}), None)
-            .await?;
-        let meta = v
-            .get("meta")
-            .filter(|m| !m.is_null())
-            .map(|m| m.get("size").and_then(serde_json::Value::as_u64));
-        Ok((meta, v.get("exists").and_then(serde_json::Value::as_bool)))
-    }
+    // 〔MIG-3b〕这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
+    //   monitor 这一侧零调用方 ⇒ 删了。链路那一侧的 `stat` 一问照旧在（`files` 链路协议没动）。
 
     /// 整份读回来：`(字节, 读不出时补问的 exists, 读到空时补问的 size)`。
     pub(crate) async fn read(

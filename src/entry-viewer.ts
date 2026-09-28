@@ -136,9 +136,9 @@ async function bootstrapViewer(sid: string, origin: Origin): Promise<void> {
   // 留存与实时行可能重叠 → 按 per-file seq 去重。
   const seen = new Set<number>();
   let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
-  // **必须 await**：起停事件的监听注册完、会话流订阅登记好再往下走。
-  // **windowScoped:true**：起停事件照旧按窗口作用域监听（详 BindEventsOptions.windowScoped）；
-  // 会话流的格由通道按窗口定向交（`chan.ts`）。
+  // **必须 await**：会话流订阅登记好再往下走。
+  // **windowScoped:true**：〔合并 MIG-1 × 主线 eebf51de〕起停事件已并进会话流，`bindEvents` 里不再有 Tauri 监听 ⇒ 这一项今天在那里不被读
+  //   （条 22.2 的 TS 半照旧钉着它；删不删交主会话裁）。会话流的格由通道按窗口定向交（`chan.ts`）。
   await bindEvents(
     {
       onLine: (e) => {

@@ -1,4 +1,3 @@
-import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { makeYieldToMain } from "./yield-to-main";
 import { commands } from "./ipc/commands";
 import { chan, type Item, type Sub } from "./ipc/chan";
@@ -6,6 +5,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { showActionFailureToast } from "./error-toast";
 import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
+import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -29,7 +29,6 @@ import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
 import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
-import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
@@ -38,7 +37,6 @@ export type {
   JsonlLinePayload,
   SessionEndedPayload,
   SessionIdlePayload,
-  TasksUpdatePayload,
   SessionActivityPayload,
 };
 
@@ -133,11 +131,10 @@ export interface EventHandlers {
    */
   onBatchEnd?: () => void;
   /**
-   * v2.3.0 issue #11: 后端 task watcher 监听到 <claude_dir>/tasks/<sid>/ 变更，
-   * 重读整目录后 emit。前端按 sid 路由到对应 Tab 的 tasksPanel。
-   * 不进 queue —— task 事件稀疏（人类敲命令级），直接同步派发。
+   * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕那台机器上这几个会话的任务清单变了（`sids`），或者期间可能漏了（`all`：那台又接上 / 丢了几格）⇒
+   * 调用方重问 `tasks-list`。来自通道 `subscribe(origin, "session-tasks")`（`tasks-panel.ts::tasksChangedItems` 读格）。
    */
-  onTasksUpdate?: (payload: TasksUpdatePayload) => void;
+  onTasksChanged?: (origin: Origin, sids: readonly string[], all: boolean) => void;
   /**
    * issue #23：会话红绿灯。后端仅在 sessions/<PID>.json 的官方 status 变化时
    * emit（天然稀疏，同 ended 格 直接同步派发）。status: "busy"=运行中 /
@@ -363,6 +360,11 @@ export interface BindEventsOptions {
    * 与会话行 · tap 同一条帧路、同一处 `chan.subscribe`；窗口是 `ACCOUNTS_CHANGED_WINDOW`。
    */
   accounts?: ReadonlyArray<Origin>;
+  /**
+   * 〔MIG-3b · ㉓②〕要订 `session-tasks` 的机器（那台后端说某个会话的任务清单变了 ⇒ {@link EventHandlers.onTasksChanged}）。
+   * 与会话行 · tap · 账号同一处 `chan.subscribe`；窗口是 `SESSION_TASKS_WINDOW`。
+   */
+  tasks?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -378,11 +380,8 @@ export async function bindEvents(
   handlers: EventHandlers,
   opts: BindEventsOptions = {},
 ): Promise<void> {
-  // windowScoped 时用窗口作用域监听（详 BindEventsOptions.windowScoped）。
-  // 用泛型 wrapper 而非 .bind —— .bind 会丢失 listen 的泛型，破坏 sub<T> 调用点类型。
-  const wv = opts.windowScoped ? getCurrentWebviewWindow() : null;
-  const sub = <T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> =>
-    wv ? wv.listen<T>(event, handler) : listen<T>(event, handler);
+  // 〔合并 MIG-1 × 主线 eebf51de〕本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
+  //   改走 `session-tasks`）⇒ 按窗口作用域监听的那个包装（`sub`）与「等监听注册完」那一格一起没了；`windowScoped` 今天在本函数里不再被读。
 
   const queue = new DrainQueue<QueueItem>();
   let scheduled = false;
@@ -587,8 +586,6 @@ export async function bindEvents(
     setTimeout(drain, 0);
   };
 
-  // 收集所有 listen() 注册 promise，函数末尾 await —— 保证返回时监听已就绪。
-  const registrations: Promise<unknown>[] = [];
 
 
   // 〔CF2 · 第四波 4B〕会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
@@ -699,16 +696,9 @@ export async function bindEvents(
   //   `-activity` · `remote-session-added` · `origin-sessions-listed`，加上 `snapshot-inflight`）并进了会话流：上面 `onStreamItems` 里那几种格。
   //   与行同一条流 ⇒ issue #20 那条「ended 必须与行同序」由构造保证，不再靠两条通道在 queue 里对齐。
 
-  // v2.3.0 issue #11: task-update 同样稀疏，绕过 queue 直接派发
-  registrations.push(
-    sub<TasksUpdatePayload>("task-update", (e) => {
-      handlers.onTasksUpdate?.(e.payload);
-    }),
-  );
+  // 〔MIG-3b · ㉓②〕`task-update` 事件退役：任务变更经通道 `session-tasks`（见下面 `plan` 里那一种流）。
 
 
-  // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
-  await Promise.all(registrations);
 
   // 〔TAP · V124〕`session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
   //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
@@ -755,6 +745,20 @@ export async function bindEvents(
     if (changed) handlers.onAccountsChanged?.();
   };
 
+  // 〔MIG-3b · ㉓②〕`session-tasks`：一批格 ⇒ 哪几个会话要重问（`tasksChangedItems` 答）；`frame` 占的 credit 当场还（订阅返回之前到的欠着）。
+  const onTasksItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    const { sids, all, frames } = tasksChangedItems(items);
+    if (frames > 0) {
+      if (hold.sub) {
+        hold.sub.want(frames + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += frames;
+      }
+    }
+    if (all || sids.length > 0) handlers.onTasksChanged?.(origin, sids, all);
+  };
+
   // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
   // 〔TAP〕`session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
@@ -767,6 +771,12 @@ export async function bindEvents(
       kind: ACCOUNTS_CHANGED_KIND,
       window: ACCOUNTS_CHANGED_WINDOW,
       feed: onAccountsItems,
+    })),
+    ...(opts.tasks ?? []).map((origin) => ({
+      origin,
+      kind: SESSION_TASKS_KIND,
+      window: SESSION_TASKS_WINDOW,
+      feed: onTasksItems,
     })),
   ];
   await Promise.all(

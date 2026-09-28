@@ -97,12 +97,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
           ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
      "Hidden · JobKillOnClose · Captured"),
-    // 〔FIX · `设计/71 §8` 第 8 条 · WIN2 #4 读数〕别名撞名那一格问 PowerShell 自带的内建别名：只读、固定脚本、不吃用户输入，
-    //   进程内只起一次（`OnceLock`），只在本机 Windows 上起。
-    ("shell_dialect.rs", "ask_get_alias", "`powershell.exe -NoProfile -NonInteractive -Command <固定的 Get-Alias 那一段>`",
-     "内建别名（`ls` / `cd` …）优先级高于函数、撞上了定义了也敲不到；哪几条是内建的只有 PowerShell 自己答得准（PS 5.1 与 7 不同），\
-          抄一份清单就是第二个家。`-NoProfile`：问的是自带那一份。",
-     "Hidden · JobKillOnClose · Captured"),
+    // 〔MIG-3a〕`dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell.rs::powershell_readonly`，后端 `readonly_guard::spawn_registry` 登记）。
     ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
      "只探测「本机有没有 ssh」，不带用户参数
           ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",
@@ -357,8 +352,9 @@ fn the_three_policies_each_site_declares_match_the_code() {
     // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问
     //   改走 `<local>` 长连接删了 ⇒ 人群恰好少一个（15 → 13 的另一个见失败读数，人群按现打为准）。
     // 〔SH1 · 4D〕地板 13 → 12：驾驶舱本机 shell 读那一个落点随读面改走后端删了。
+    // 〔合并 MIG-1 × 主线 eebf51de〕地板 12 → 11：两边各自删掉的落点相加（现打 11；两边合并前各自现打都 ≥ 12）。
     assert!(
-        checked >= 12,
+        checked >= 11,
         "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个，\
          〔第十三刀 09-23〕加了文件管理窗口那个独立进程之后 15 个，〔LOC1a 09-25〕删一次性本机查询之后 13 个。本条此刻在空转"
     );

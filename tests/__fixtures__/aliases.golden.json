@@ -1,0 +1,102 @@
+{
+  "说明": [
+    "〔MIG-3a〕别名六问的跨语言金样：后端对临时 home 现算 == reply；界面 `src/alias-reads.ts` 的解码器读同一份。",
+    "只采结构（占位名字 / 占位参数）。`<HOME>` 由测试换成临时 home。"
+  ],
+  "aliases": [
+    {
+      "name": "alphacc",
+      "args": [
+        "--",
+        "--account",
+        "z"
+      ]
+    },
+    {
+      "name": "bad name",
+      "args": []
+    }
+  ],
+  "rc": "# mine\n",
+  "renderReply": {
+    "fileText": "# === cc-monitor aliases BEGIN v2 ===\n# 这份文件由 cc-monitor 设置里「别名」那一块整份重写，别手改 —— 下一次写入会原样覆盖。\n# 每一行是一条别名：名字 ＋ 一组 ccm 参数，调用时再给的参数接在后面。\n# 写法是 POSIX sh 函数，bash / zsh 都 source 得了；fish 不行。\nzcc() { ccm \"$@\" -- --account z; }\n# === cc-monitor aliases END ===\n",
+    "collisions": [],
+    "lines": [
+      "alphacc() { ccm \"$@\" -- --account z; }"
+    ],
+    "problems": [
+      {
+        "message": "名字只能用字母、数字、下划线，而且不能以数字开头",
+        "name": "bad name"
+      }
+    ]
+  },
+  "installReply": {
+    "aliasPath": "<HOME>/.cc-monitor/aliases.sh",
+    "notes": [
+      "<HOME>/.bashrc 还没接上这份文件：在下面给它装上别名块就接上了。不想装别名块的话，自己把这一行加进去：if [ -r \"<HOME>/.cc-monitor/aliases.sh\" ]; then . \"<HOME>/.cc-monitor/aliases.sh\"; fi",
+      "新开一个终端就能用；当前终端要先执行一次 . <HOME>/.cc-monitor/aliases.sh"
+    ],
+    "wroteAliasFile": true
+  },
+  "readReply": {
+    "aliasPath": "<HOME>/.cc-monitor/aliases.sh",
+    "aliases": [
+      {
+        "args": [
+          "--",
+          "--account",
+          "z"
+        ],
+        "name": "alphacc"
+      }
+    ],
+    "exists": true,
+    "otherRc": null,
+    "rcCandidates": [
+      {
+        "block": {
+          "conflictingFunctions": [],
+          "manualCleanupHint": "",
+          "outdated": false,
+          "present": false,
+          "version": null
+        },
+        "exists": true,
+        "path": "<HOME>/.bashrc",
+        "sourced": false,
+        "unreadable": null
+      }
+    ],
+    "unparsed": []
+  },
+  "blockRenderKeys": [
+    "text"
+  ],
+  "codes": {
+    "aliases-block-install": [
+      "bad_args",
+      "refused"
+    ],
+    "aliases-block-remove": [
+      "bad_args",
+      "refused"
+    ],
+    "aliases-block-render": [
+      "bad_args",
+      "refused"
+    ],
+    "aliases-install": [
+      "bad_args",
+      "refused"
+    ],
+    "aliases-read": [
+      "bad_args",
+      "refused"
+    ],
+    "aliases-render": [
+      "bad_args",
+      "refused"
+    ]
+  }
+}

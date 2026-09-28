@@ -516,6 +516,12 @@ pub enum Frame {
     /// 一批文件事件里 manifest 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
     AccountsChanged,
 
+    /// 〔MIG-3b · `设计/99 §2.1 ㉓②`〕**这台机器上某个会话的任务清单变了**（`<agent 家>/tasks/<sid>/` 里有动静）。
+    ///
+    /// 只带 sid：客户端收到就重问一次 `tasks-list`（清单的唯一出口仍是那条查询，同 `accounts_changed`）。
+    /// 一批文件事件里同一个 sid 动了几次都只发一帧。旧 monitor / 仓外 aterm 不认这个 kind ⇒ 忽略（additive）。
+    TasksChanged { sid: String },
+
     /// 〔U4b · 第四波〕**这台机器的活会话清单报完了**：`observe::watcher::watch_loop` 的 Phase 1
     /// （同步扫 `sessions/`、对每个活 pidfile 发一帧 `session_added`）走完那一刻发**一次**。
     ///
@@ -699,6 +705,8 @@ impl Frame {
             Frame::Cancelled { .. } => false,
             // 〔SR1a〕一次状态变化的通知，没有「下一次必然重发」⇒ 保守（丢了客户端就一直拿着旧清单）。
             Frame::AccountsChanged => false,
+            // 〔MIG-3b〕同上一行：一次变化的通知，丢了那个会话的任务面板就停在旧的（带身份 subject = sid，客户端可重问）。
+            Frame::TasksChanged { .. } => false,
             // 〔U4b〕一次性的标记，没有「下一次必然重发」⇒ 丢了客户端就一直停在「说不清」
             //   （保守的那一侧：不会把一条说不清的会话说成已结束）。按不可恢复报身份，客户端才知道要重连。
             Frame::SessionsReplayed => false,
@@ -733,6 +741,7 @@ impl Frame {
             Frame::Reply { id, .. } => ("reply", Some(id.clone())),
             Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
             Frame::AccountsChanged => ("accounts_changed", None),
+            Frame::TasksChanged { sid } => ("tasks_changed", Some(sid.clone())),
             Frame::SessionsReplayed => ("sessions_replayed", None),
             Frame::SessionFileGone { session_id, .. } => {
                 ("session_file_gone", Some(session_id.clone()))

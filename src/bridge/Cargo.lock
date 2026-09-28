@@ -1129,6 +1129,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "deploy-core"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "shell-quote-core",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3151,6 +3159,7 @@ dependencies = [
  "codex-token-core",
  "copy-core",
  "creds-core",
+ "deploy-core",
  "dirs 5.0.1",
  "eframe",
  "egui",

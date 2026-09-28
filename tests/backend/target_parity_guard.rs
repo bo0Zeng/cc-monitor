@@ -810,6 +810,36 @@ fn handler_files(
 
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
+    (
+        "aliases-block-install",
+        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
+    ),
+    (
+        "aliases-block-remove",
+        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
+    ),
+    (
+        "aliases-block-render",
+        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
+    ),
+    (
+        "aliases-install",
+        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
+    ),
+    (
+        "aliases-read",
+        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
+    ),
+    (
+        "aliases-render",
+        "〔MIG-3a〕别名那一族（`assets/aliases/`）只从 `control/ccm/mod.rs` 取 `SUBCOMMAND_WORD` 那一个词（命令名 `ccm`）——\
+         按文件画的引用图因此连到了 tmux；本族不问 tmux、不起 tmux（tmux 那几格是能力闸，按方言判，`Caps::of`）",
+    ),
     ("bus-broadcast", "同 `bus-list`：挑在线的那一步读 `live`，问不到 tmux 就当「不知道谁在线」如实回，不回 `no_tmux`"),
     ("bus-kill", "同 `bus-list`（转调 `cc-kill`；tmux 只用来挂 `live`）"),
     ("bus-list", "`control/cc_bus.rs::agents_via_cc_list` 经 `gate::list_sessions().ok()` 挂「还活着吗」那一栏 —— 问不到回 `live: null`（「不假装知道」），命令本身照做；它的能力是转调 cc-bus，不是 tmux"),
@@ -830,6 +860,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
     ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
     ("resync", "〔RESYNC · V149〕打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
+    ("hooks-diag", "〔MIG-3b〕同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
     ("tmux-list", "〔SH1〕`watcher::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
     ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("plugins-marketplaces", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),

@@ -298,7 +298,7 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
 
 // 〔FN1 · 第四波 4C · 2026-09-25 · 用户 V119〕这里原来是「正题三」两条：用户选路径的远端写必须过 Claude 数据防误伤围栏
 //   （写死的写入口人群，函数体里必须有那道拒绝）· 两个路径参数的写入口两个参数各自过一次（死值验 `M7` 逼出来的那条）。
-//   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 那道拒绝（`claude_data_fence` 里的拒绝那一半）连同它最后一个调用方
+//   用户「文件管理器全部都可以改. 不需要任何围栏」⇒ 那道拒绝（`claude_data_fence` 里的拒绝那一半）连同它最后一个调用方〔散文墓碑〕
 //   （`sftp_pool::transfer_call` 开下载单那一判）删了；两条的人群在那之前已经是「一条」与「零条」，今天都是零 ⇒ 靶子不在，一起退役。
 //   ⚠ 退役的是**围栏的存在性**这一维；池子里再长出命令（写或读）仍由下面那条两分判据与 `sftp_family_registry_tests` 逼它归档。
 
@@ -308,11 +308,11 @@ fn fn_body_end(lines: &[&str], start: usize) -> usize {
 ///
 /// 〔audit-0805 V7-2〕当初点名的十个名字里有五个是**IPC 包装**
 /// （`sftp_write_text` / `sftp_upload` / `deploy_remote_backend` /
-/// `write_remote_mcp_server` / `delete_remote_history_session`）——
+/// `write_remote_mcp_server` / `delete_remote_history_session`）——〔散文墓碑〕
 /// 它们自己**不调写原语**，所以按能力边界派生的人群里**一个都没有**。
 ///
 /// ⚠ 〔步 12·C 收尾 09-20〕上面那句话是 audit-0805 当时的**现打**，留着不改；
-/// 但今天它里面的 `write_remote_mcp_server` 与 `delete_remote_history_session`
+/// 但今天它里面的 `write_remote_mcp_server` 与 `delete_remote_history_session`〔散文墓碑〕
 /// **已经不是 IPC 命令**了（`origin` 归一把它们并进了本机同族那条）。
 /// 它们仍留在下面那张路由表里，而且**必须留** —— 本表这一条判的是
 /// 「**按得到的那一层 ↔ 真正写盘的那一层**」这条边，而合并之后那条边是
@@ -482,7 +482,7 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
     //   上传 / 下载经通道开单、订阅进度（`设计/60 §13`），复制那一腿的取消随复制走后端一起删了。
     //   ⇒ 窗口接的池子**命令**从此是 0；剩下这一行是那道围栏判定的旧住址（一条函数，不是命令）。
     // 〔第四波 S4〕剩下那一行（围栏判定的旧住址 `sftp_pool::` 那一份转出）也走了：窗口改指围栏本家
-    //   `claude_data_fence`，池子里那行转出一起删了 ⇒ **窗口那棵树碰池子的地方从此是零**。
+    //   `claude_data_fence`，池子里那行转出一起删了 ⇒ **窗口那棵树碰池子的地方从此是零**。〔散文墓碑〕
     //   表留着、今天是空的：窗口哪天又回头用池子，它得来这里登记（下面那条相等当场红）。
     const SITES: &[(&str, &str, &str)] = &[];
     /// 「它是什么」那一栏的**封闭集合**。多出第四种就得回来论证。
@@ -563,7 +563,7 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         used.len(),
         // 〔F7c · 合主线 ＋ 收尾 09-24〕5 → 1：`sftp_download` · `sftp_upload` · `TRANSFER_LANE_CAP`（经通道）·
         //   `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；剩那道围栏判定的旧住址。
-        // 〔第四波 S4〕1 → 0：那道围栏判定改指本家 `claude_data_fence`。
+        // 〔第四波 S4〕1 → 0：那道围栏判定改指本家 `claude_data_fence`。〔散文墓碑〕
         0,
         "抠到 {} 处 `sftp_pool::…` 引用 —— 与现打的条数不等：抽取器坏了，或接线变了（实得 {used:?}）",
         used.len()
