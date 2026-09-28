@@ -29,7 +29,9 @@ const READ = golden("mcp-read");
 const EDIT = golden("mcp-edit");
 const SYNC = golden("mcp-sync-flow");
 
-beforeEach(() => invokeMock.mockReset());
+beforeEach(() => {
+  invokeMock.mockReset();
+});
 
 describe("金样：后端出的成品，TS 读得懂", () => {
   it("mcp-read · mcp-server-put / -remove · 推拉三问", () => {

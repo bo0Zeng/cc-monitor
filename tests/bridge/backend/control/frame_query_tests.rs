@@ -428,6 +428,14 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          `assets-sync-reads.ts::decodeAssetsSynced` 按形状收",
     ),
     (
+        "acct-iso-status",
+        "〔MIG-3a〕这台装没装 `cc-acct-iso`：后端从来就出成品，monitor 那条命令只在判读 ＋ 转 —— 判读退役，界面 `acct-iso-reads.ts` 按形状收",
+    ),
+    (
+        "acct-iso-shellinit",
+        "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
+    ),
+    (
         "skill-read",
         "来源那台的 skill 原文：从前 monitor 转、今天界面直问，原样递给被写那台（`skill-install-reads.ts`）",
     ),
@@ -1138,19 +1146,7 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "历史浏览器读一整份会话（分页；〔LOC1b〕本机远端同一条）：大小事先不知道 ⇒ 按字节上限给 `read_budget(MAX_SESSION_BYTES)`",
     ),
     // 〔合并 DL1 × 主线 06b5dc08〕LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
-    (
-        "acct_iso_deploy.rs",
-        "status_on",
-        1,
-        "问那台装没装 `cc-acct-iso`（`acct-iso-status`，一问）：`ACCT_ISO_BUDGET`",
-    ),
-    (
-        "acct_iso_deploy.rs",
-        "snippet_on",
-        1,
-        "问那台 `cc-acct-iso shellinit` 的片段（`acct-iso-shellinit`，一问）：`ACCT_ISO_BUDGET`",
-    ),
-    // 〔SH1〕本机那一条 `local_acct_iso_shellinit`〔散文墓碑〕 那一行摘了：本机远端合成 `acct_iso_shellinit`，期限由 `snippet_on` 那一处造（已在表里）。
+    // 〔MIG-3a〕acct-iso 两问那两个发起点摘了：界面经通道直问（`src/acct-iso-reads.ts`），期限在那边造。
     (
         "remote_branch.rs",
         "fork_on",

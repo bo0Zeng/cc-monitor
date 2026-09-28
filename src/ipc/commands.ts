@@ -78,7 +78,6 @@ import type { AliasInstallReport } from "../generated/AliasInstallReport";
 import type { AliasListing } from "../generated/AliasListing";
 import type { AliasRender } from "../generated/AliasRender";
 import type { Shell } from "../generated/Shell";
-import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { BranchResult } from "../generated/BranchResult";
@@ -471,16 +470,6 @@ export const commands = {
   launch_remote_terminal: (args: { origin: string; remoteCmd: string; rbindToken?: string | null }) =>
     invoke<void>("launch_remote_terminal", args),
 
-  /**
-   * 远端有没有装 `cc-acct-iso` + 命中路径 + 内嵌 vendor 指纹。
-   *
-   * **本批次抓到的漂移**：TS 侧原来写 `invoke<{ installed: boolean }>` —— 只认 1/3 个字段，
-   * 把 `path` 与 `vendor_id` 藏掉了。而 Rust 那两个字段的注释明写「附带回传，
-   * 避免以后要它时再加一趟往返」⇒ **是手写镜像把后端的好意抹掉了**。
-   */
-  // 〔SH1 · `设计/00 §2.5 ①`〕`acct-iso.check` 本机 / 远端两条合成这一条（带 `origin`；本机是 `"<local>"`）。
-  acct_iso_status: (args: { origin: Origin }) => invoke<AcctIsoStatus>("acct_iso_status", args),
-
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),
 
@@ -567,9 +556,6 @@ export const commands = {
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
     invoke<string>("deploy_remote_acct_iso", args),
-  /** Z05：抓那台 `cc-acct-iso shellinit` 的输出（只读）。返回带 BEGIN/END 围栏的 rc 片段。
-   *  〔SH1 · `设计/00 §2.5 ①`〕本机 / 远端两条合成这一条（带 `origin`）。 */
-  acct_iso_shellinit: (args: { origin: Origin }) => invoke<string>("acct_iso_shellinit", args),
 
   /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),

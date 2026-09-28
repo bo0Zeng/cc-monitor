@@ -67,7 +67,6 @@ mod creds_store; // 第三方 API key 那份文件在本机的「它在哪」（
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod launch;
-mod local_accounts; // L3a 起：本机账号域 —— 今天只剩 `acct-iso` 两问的本机对侧（〔C4d〕本机清单的参照实现删了）
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
@@ -1450,8 +1449,7 @@ pub fn run() {
             sftp::uninstall_remote_backend,
             acct_iso_deploy::deploy_remote_acct_iso,
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
-            acct_iso_deploy::acct_iso_status,
-            acct_iso_deploy::acct_iso_shellinit,
+            // 〔MIG-3a〕`acct_iso_status` / `acct_iso_shellinit` 退役：界面经通道直问那台后端（`acct-iso-status` / `acct-iso-shellinit`，后端出成品）。
             history::delete_history_session,
             history::create_branch_session,
             history::resume_history_session,

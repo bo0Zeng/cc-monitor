@@ -260,16 +260,6 @@ const PENDING: &[(&str, Lane, &str)] = &[
         "落进用户目录与软链由 monitor 经 SFTP 直写（⑯）",
     ),
     (
-        "acct_iso_status",
-        Lane::Mig3a,
-        "monitor 只在转一条后端帧命令",
-    ),
-    (
-        "acct_iso_shellinit",
-        Lane::Mig3a,
-        "monitor 只在转一条后端帧命令",
-    ),
-    (
         "deploy_local_cc_bus",
         Lane::Mig3a,
         "装哪几个文件的判定在 monitor",
@@ -327,11 +317,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig2,
         "骨架区间读仍经 monitor 转",
     ),
-    (
-        "read_session_lines",
-        Lane::Mig2,
-        "骨架行读仍经 monitor 转",
-    ),
+    ("read_session_lines", Lane::Mig2, "骨架行读仍经 monitor 转"),
     (
         "probe_ccm_cli",
         Lane::Mig3b,

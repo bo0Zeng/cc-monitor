@@ -27,7 +27,9 @@ const golden = (n: string) =>
 const SYNC = golden("assets-sync");
 const SKILL = golden("skill-flow");
 
-beforeEach(() => invokeMock.mockReset());
+beforeEach(() => {
+  invokeMock.mockReset();
+});
 
 describe("金样：后端出的成品，TS 读得懂", () => {
   it("assets-sync · skill-install-apply · skill-uninstall-apply", () => {

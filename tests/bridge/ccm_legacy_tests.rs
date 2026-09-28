@@ -146,9 +146,6 @@ impl crate::user_files::Door for StaleDoor {
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.inner.delete(root, rel, expect).await
     }
-    async fn delete_empty_dir(&self, root: &str, rel: &str) -> Result<(), Refused> {
-        self.inner.delete_empty_dir(root, rel).await
-    }
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
         self.inner.chmod(root, rel, mode).await
     }

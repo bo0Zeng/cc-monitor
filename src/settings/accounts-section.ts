@@ -6,6 +6,7 @@
 //
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
+import { readAcctIsoSnippet, readAcctIsoStatus } from "../acct-iso-reads";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
@@ -556,7 +557,7 @@ export class AccountsSection {
 
   /**
    * 〔第三波 S3 · A3 接线〕本机空态的「下一步」：先问本机后端**这台机器装没装 cc-acct-iso**
-   * （`acct_iso_status`，origin `<local>` → `--acct-iso-status`），再说下一步 —— 三个结局各说各的：
+   * （〔MIG-3a〕经通道问本机后端 `acct-iso-status`），再说下一步 —— 三个结局各说各的：
    *
    * | 问到的 | 这一格说什么 | 「下一步」那一行 |
    * |---|---|---|
@@ -570,7 +571,7 @@ export class AccountsSection {
     const iso = AccountsSection.line(box, "accounts-hint accounts-local-iso", "");
     let installed: boolean | null = null;
     try {
-      const st = await commands.acct_iso_status({ origin: BACKEND_LOCAL_ORIGIN });
+      const st = await readAcctIsoStatus(BACKEND_LOCAL_ORIGIN);
       if (typeof st?.installed !== "boolean") throw new Error(String(st));
       installed = st.installed;
       this.noteInstalled(st.installed);
@@ -589,12 +590,11 @@ export class AccountsSection {
   }
 
   /**
-   * 〔第三波 S3 · A3 接线〕本机的 rc 片段：`acct_iso_shellinit`（origin `<local>`）→ 待贴块。
+   * 〔第三波 S3 · A3 接线〕本机的 rc 片段：〔MIG-3a〕经通道问本机后端 `acct-iso-shellinit` → 待贴块。
    *
    * 与远端那颗「生成 rc 片段…」（[`renderRcSnippet`]）同一个形状、同一条纪律：
    * **只读、不代写**（`paste-block.ts` 模块头：本组件没有任何写入路径）。
-   * 围栏已在 Rust 侧校验过一次（`local_accounts.rs::local_fence`，与远端共用
-   * `shellinit_fence_state`）；这里再校验一次，理由同远端那条：「能显示」与「能贴」是两件事。
+   * 围栏已由那台后端校验过一次（〔MIG-3a〕`acct-iso-shellinit` 自己校验）；这里再校验一次，理由同远端那条：「能显示」与「能贴」是两件事。
    *
    * ⚠ 文案全走 `copyText`（`accountsLocal.rc.*`）：本机那一支上不许出现「远端」，
    * 远端那段话（「这台远端的 ~/.bashrc」「在远端跑一次」）不能照抄过来。
@@ -611,7 +611,7 @@ export class AccountsSection {
         btn.disabled = true;
         out.innerHTML = "";
         try {
-          const snippet = await commands.acct_iso_shellinit({ origin: BACKEND_LOCAL_ORIGIN });
+          const snippet = await readAcctIsoSnippet(BACKEND_LOCAL_ORIGIN);
           out.appendChild(
             buildPasteBlock({
               text: () => snippet,
@@ -824,7 +824,7 @@ export class AccountsSection {
     if (host) {
       try {
         // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
-        const status = await commands.acct_iso_status({ origin: this.origin });
+        const status = await readAcctIsoStatus(this.origin);
         this.noteInstalled(status.installed);
         if (!status.installed) {
           const dest = deriveAcctIsoDir(host.user);
@@ -833,7 +833,7 @@ export class AccountsSection {
         }
       } catch (e) {
         this.noteInstalled(null);
-        console.warn("acct_iso_status failed, fall through to wizard:", e);
+        console.warn("acct-iso-status failed, fall through to wizard:", e);
       }
     }
     this.renderNotEnabled(manifestPath, reason);
@@ -1371,7 +1371,7 @@ export class AccountsSection {
     btn.textContent = copyText("accounts.rc.fetching");
     box.innerHTML = "";
     try {
-      const snippet = await commands.acct_iso_shellinit({ origin: this.origin });
+      const snippet = await readAcctIsoSnippet(this.origin);
       box.appendChild(
         buildPasteBlock({
           text: () => snippet,

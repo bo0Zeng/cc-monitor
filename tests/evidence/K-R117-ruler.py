@@ -138,7 +138,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   ⇒ 是「有人改了命令名」那一种，**改表是跟上真相，不是凑绿**。
     ("backend.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
     ("acct-iso.deploy", (B1, "R75〔用@09-14「account进后端」〕", "已裁：account 进后端 ⇒ 落 ①")),
-    ("acct-iso.check", (B1, "R75", "同上，查装态那一半")),
+    # 〔MIG-3a〕`acct-iso.check` 摘了：装没装那一问界面直问那台后端 `acct-iso-status`，不再是 Tauri 命令。
     # ──────────────────── ② 生成 rc 片段让用户自己填 ────────────────────
     # 〔AL1 · 2026-09-24〕`alias.account-commands` → `alias.manage`：那条能力 id 随
     #   `write_account_aliases` 退役（`设计/71`：别名只有一类、两跳 ＋ 读回口）。本条红的时候
@@ -155,9 +155,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                              "本机远端同一条）—— 写入那一跳，与 `alias.manage` 分两格只为各归各的平价（`AL1d.md §2.2`）")),
     ("alias.block-remove", (B2, "K33+K34+设计/71 §5", "同上，卸那一侧")),
     ("alias.block-preview", (B2, "K33+K34+设计/71 §5", "装别名块之前的预览（纯渲染，不写盘）")),
-    ("acct-iso.shellinit", (B2, "K33",
-                            "它产出的就是一段 rc 片段（`cc-acct-iso` 的 `cmd_shellinit` "
-                            "只 `printf`、一个字节都不写盘）")),
+    # 〔MIG-3a〕`acct-iso.shellinit` 摘了：rc 片段那一问界面直问那台后端（围栏在那边校验），不再是 Tauri 命令。
     # ─────────────────────── ③ 装 MCP / skill 等 ───────────────────────
     # 〔MIG-3a · `99 §2.1 ⑬`〕`mcp.write` / `mcp.remove` / `mcp.sync` 三项摘了：D 组 MCP 的计算与写进了那台后端
     #   （帧命令 `mcp-server-put` / `-remove` · `mcp-sync-*`，界面经通道直问）⇒ 它们不再是 Tauri 命令、不在 `LEDGER` 里
@@ -338,8 +336,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
-        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条「装没装」合成一条带 origin 的 `acct_iso_status`（同一件，改名不改归属）。
-        "acct_iso_status",
+        # 〔MIG-3a〕`acct_iso_status` 摘了（装没装那一问进了后端出成品、界面直问）。
         "deploy_remote_acct_iso",
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
@@ -355,8 +352,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "aliases_install",
         "aliases_read",
         "aliases_render",
-        # 〔SH1 · `00 §2.5 ①`〕本机 / 远端两条 shellinit 合成一条带 origin 的 `acct_iso_shellinit`（改名不改归属）。
-        "acct_iso_shellinit",
+        # 〔MIG-3a〕`acct_iso_shellinit` 摘了（rc 片段那一问进了后端出成品、界面直问）。
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。
         # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
@@ -432,8 +428,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
             "（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条**注释里的提名**"
             "算成了落点，见 `§S5d` 第二档 —— 那一半仍然成立）")),
-    ("S4", (("src/settings/accounts-section.ts",
-             "src/settings/machine-aliases.ts"),
+    ("S4", (("src/settings/machine-aliases.ts",),
+            "〔MIG-3a · 09-28〕**2 → 1**：`src/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
             "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
             "`src/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
