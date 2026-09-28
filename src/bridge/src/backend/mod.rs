@@ -166,16 +166,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          那个「半径太大」的前提当场消失 ⇒ 真挪了，那张表随之整张删掉（它空了）。",
     ),
     (
-        "control/ccm_invocation.rs",
-        "control",
-        "ctx → `ccm …` 调用行（维度注册表 + 诚实降级）。P4b 从共享 crate 搬回归属地",
-    ),
-    (
-        "control/payload.rs",
-        "control",
-        "`env 前缀 → cd → argv → wrap` 载荷编译器。P4b 从共享 crate 搬回归属地",
-    ),
-    (
         "control/frame_query.rs",
         "control",
         "〔`C1` · 2026-09-24〕**只读查询走已有长连接的发送端**（`history-*` / `accounts-*` 八条帧命令）。\
@@ -200,11 +190,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          往 tmux server 装全局 hook 且没有开关（F05 摸底 §2.5）",
     ),
     (
-        "control/launch_wire.rs",
-        "control",
-        "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",
-    ),
-    (
         "control/agent_profile_parity.rs",
         "control",
         "F06：agent 适配表（`fixtures/agent-profile-golden.tsv`）的跨语言对拍 —— \
@@ -216,22 +201,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "control",
         "F03：§34 Gate 2 判定表（`fixtures/gate2-golden.tsv`）在 monitor 这一侧的独立对拍。\
          同一张表另有两个读者：backend 的 `control/gate.rs` 与 `tests/e2e/backend-gate2-acceptance.sh`",
-    ),
-    (
-        "control/launch_cli_parity.rs",
-        "control",
-        "上面那条 ccm 调用行与 TS 黄金串的跨语言逐字节对拍",
-    ),
-    (
-        "control/launch_payload_parity.rs",
-        "control",
-        "上面那条裸载荷与 TS 黄金串的跨语言逐字节对拍",
-    ),
-    (
-        "control/launch_tmux_outer_parity.rs",
-        "control",
-        "`设计/90 §4 E`：**外层 tmux 那三格**（`new-session` / `send-keys` / `attach`）\
-         与 TS 黄金串的跨语言逐字节对拍。与上面那条的分工：那条管**内层载荷**，这条管**外层容器**",
     ),
 ];
 

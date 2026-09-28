@@ -343,11 +343,11 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
 ///
 /// # 🔴 双写点，且**共享不了常量** —— 界在这里说清楚
 ///
-/// monitor 侧的家是 `src/bridge/src/history.rs::LAUNCH_ID_VAR`，而
+/// 写侧的家是 `src/backend/control/launch_render/local.rs::LAUNCH_ID_VAR`（〔MIG-2〕原在 monitor），而
 /// `src/backend` 是**另一个 crate、另一份 `Cargo.lock`**（`src/bridge/Cargo.toml`
 /// 的 workspace members 里逐字没有它）⇒ 两侧不可能 `use` 同一个 `const`。
 /// 与 `CREDENTIALS_NAME` 那个双写点（Rust ↔ bash）同形，处置也照它：
-/// **由测试对拍**（[`tests::the_launch_id_env_var_matches_the_monitor_side_home`]，
+/// **由测试对拍**（[`tests::the_launch_id_env_var_matches_the_monitor_side_home`]， 〔散文墓碑〕
 /// `include_str!` 直接读 monitor 那份源码）。**改这里必须改那边，反之亦然。**
 ///
 /// # ⚠ 它**不住** `agents/claudecode/paths.rs`，这不是疏忽

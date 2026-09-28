@@ -228,7 +228,7 @@ export interface LaunchContext {
  * 〔LR1 · U8c-3〕这里原来还有两个可选成员 `cliFlags`（「这个维度在 `ccm …` 调用行里怎么说，
  * `null` = 说不出 ⇒ 整条降级」）与 `requiredCaps`（R04②：能力要求下放到维度）。
  * 两者唯一的读者是 TS 那份 `ccm …` 渲染器，随它删了；同一件事今天只有一份：
- * `src/bridge/src/backend/control/ccm_invocation.rs` 的维度表（`cli_flags` / `caps`，
+ * `src/backend/control/launch_render/ccm_invocation.rs` 的维度表（`cli_flags` / `caps`，
  * R04② 的「只向已触发的维度收集能力」原样在那边）。
  */
 export interface LaunchDimension {

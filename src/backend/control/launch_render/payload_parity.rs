@@ -38,7 +38,7 @@ const FIXTURE: &str = include_str!("fixtures/payload-golden.json");
 /// 夹具本身有 `include_str!` 保护（删了就编译失败），但阻止「夹具变陈旧」的唯一机制是那个
 /// vitest 文件 —— 把它改名成 `.spec.ts` 就同时从 vitest 的 glob 和 `npm test` 里消失，
 /// 之后两种语言可以**永远静默分家**。改名/删除 ⇒ 这里编译失败。
-const TS_HALF: &str = include_str!("../../../../../tests/launch-payload-golden.vitest.ts");
+const TS_HALF: &str = include_str!("../../../../tests/launch-payload-golden.vitest.ts");
 
 /// 用例数。夹具被清空/截断时，逐条循环会「零命中零失败」地绿 —— 这条挡的正是那个。
 ///
@@ -70,7 +70,7 @@ struct Case {
     /// ★ **生产 wire 类型**（由 TS 的 `buildPayloadRenderRequest` 构造）。
     /// 同 `launch_cli_parity`：跑生产命令而不是自己重搭 spec —— 复盘实测，
     /// 此前 `render_launch_payload` 本体零调用零判据，「清空 `nested_env`」那个变异全绿。
-    req: crate::backend::control::launch_wire::PayloadRenderRequest,
+    req: crate::control::launch_render::wire::PayloadRenderRequest,
     /// 下面这几个是**夹具的可读性字段**（人看 diff 用），Rust 侧不消费；
     /// `deny_unknown_fields` 要求声明，故留。
     #[allow(dead_code)]
@@ -118,5 +118,5 @@ struct FixtureWrap {
 }
 
 #[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/launch_payload_parity_tests.rs"]
+#[path = "../../../../tests/backend/control/launch_render/launch_payload_parity_tests.rs"]
 mod tests;

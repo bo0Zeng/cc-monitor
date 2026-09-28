@@ -1,15 +1,10 @@
 //! `backend/control/` —— **写/控制面**（§1.1 的能力线在 monitor 侧的对侧）。
 //!
-//! 今天住在这里的是「起一个会话」那条路的 monitor 半边：
-//! 前端发结构化请求 → wire 适配 → 渲染出一条要在**用户自己的终端里** exec 的命令串。
+//! 今天住在这里的是 monitor 这一侧控制面的发送端与宿主那几份（后端开关 · 流通道客户端 · 本机后端的起停）。
 //!
-//! # 为什么渲染 shell 串是这一侧的事，而不是后端的
-//!
-//! §1.3 把最终 exec 钉在**用户自己的终端进程**里（pid 必须等于 pidfile 名、tty/Ctrl-C
-//! 必须落在 agent 上）；而 U8a-2b 把后端的执行面定成 **argv 直传、不过 shell**
-//! （`src/backend/control/launch.rs` 头注逐字写着「这条路根本不过 shell」）。
-//! ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。** 这不是权宜之计，
-//! 也不是「将来还要搬去后端」—— 是它本来的归属地（P4a 摸底把这条理由换硬了）。
+//! 🪦〔MIG-2 · `99 §2.1 ⑬`〕原先这里还住着「起一个会话」的渲染内核，理由写的是「渲染 shell 串永远属于开终端的那一侧」——
+//! ⑬ 裁定起会话的渲染不是 monitor 自己的事：串由那台后端渲成品（`src/backend/control/launch_render/`），
+//! monitor 只做「开一个终端窗口跑这串」（后端依旧不 exec 它，§1.3 那条不变）。
 
 // 〔C4e · 第四波 4C〕这里原来还有四份：`backend_kill` / `backend_launch` / `backend_send_keys`（杀会话 · 就地 resume ·
 //   送键三个发送端）与 `command_args`（它们共用的参数构造器）。四条 Tauri 命令迁到界面（`src/tmux-control.ts`
@@ -38,7 +33,6 @@ pub mod backend_control;
 // cc-bus 的**起 / 杀 / 发**
 //    全是控制面的活（它的命令面逐条登记在 `plugin_class_registry`）。
 pub mod cc_bus;
-pub mod ccm_invocation;
 pub mod tmux;
 // 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的。那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`，已随本拍整张删除）
 //    当年逐字登记着它：「backend 流通道的 wire 客户端 …… **它不在 backend/ 下是历史位置，
@@ -49,21 +43,18 @@ pub mod tmux;
 pub mod inbound_client;
 // 〔C1 · 09-24〕只读查询走已有长连接的发送端（history-* / accounts-* 八条帧命令）。
 pub(crate) mod frame_query;
-pub mod launch_wire;
+// 〔MIG-2 · `99 §2.1 ⑬`〕`launch_wire` · `payload` · `ccm_invocation` 三份（起会话的渲染内核）与它们的三份对拍搬进了后端
+//   `control/launch_render/`：渲染的是那台机器要跑的那一串，判定归那台后端，界面经通道问。
 pub mod local_backend;
-pub mod payload;
 
 #[cfg(test)]
 mod agent_profile_parity;
 #[cfg(test)]
 mod gate2_parity;
+// 〔DUP1〕标识符放行判定的生成物（`src/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）：只读共享 crate 的常量。
 #[cfg(test)]
-mod launch_cli_parity;
-#[cfg(test)]
-mod launch_payload_parity;
-// `设计/90 §4 E`：外层 tmux 那三格的跨语言逐字节对拍（内层那半是上面 `launch_payload_parity`）。
-#[cfg(test)]
-mod launch_tmux_outer_parity;
+#[path = "../../../../../tests/bridge/backend/control/payload_judgment_rules.rs"]
+mod judgment_rules;
 // 〔C4e · 第四波 4C〕「创建路径不许铸出主路杀不掉的名字」与它的发现口径（`creation_detect`）原本挂在杀会话的发送端
 //   `backend_kill.rs` 下面；发送端随杀会话迁到界面删了，**判据不跟着走** —— 它守的是「谁在建 tmux 会话 ↔ 后端 kill 的
 //   形状门」，与 monitor 里有没有发送端无关。⇒ 文件原地不动，改挂在这一层（测试段）。

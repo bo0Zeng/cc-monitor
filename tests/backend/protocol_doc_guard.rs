@@ -189,12 +189,20 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 /// （**每个认得的旗标都要在 `ccm::USAGE` 里说得出**），
 /// 由下面 `every_terminal_surface_file_is_covered_by_its_own_guard` 钉住它真的存在。
 /// 只登记不接住 = 把一片扫描面静默挖空，那正是本文件头注里 D 审计一击即破的那一族。
-const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[(
-    "control/ccm/argv.rs",
-    "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
-     （由 `control::ccm::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
-     它们是终端命令面、不是 wire 协议面。",
-)];
+const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[
+    (
+        "control/ccm/argv.rs",
+        "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
+         （由 `control::ccm::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
+         它们是终端命令面、不是 wire 协议面。",
+    ),
+    // 〔MIG-2〕`ccm …` 调用行的渲染器（从 monitor 搬进后端）：它**写**那套终端旗标给用户的 shell 跑，不是后端分派的 argv。
+    (
+        "control/launch_render/ccm_invocation.rs",
+        "`ccm …` 调用行的渲染器：它写的是用户终端里那一行 `ccm` 的旗标（终端命令面），不是后端自己分派的 wire 子命令；\
+         接盘判据 `launch_cli_parity_tests::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`（渲出的每一行都过 `argv::parse`）。",
+    ),
+];
 
 /// 🔴 **子进程旗标** —— 后端**发给它转调的那个子进程**的 `--旗标`，不是后端自己分派的 argv。〔BS1b 09-24〕
 ///
@@ -1012,9 +1020,16 @@ mod tests {
              （本条只认 include 路径的**收尾文件名**，所以搬树改相对前缀不会让它假红；\n\
              它真红就是那条 include 没了或读了别的文件。）"
         );
+        // 〔MIG-2〕渲染器那一格的接盘判据：渲出的每一行都过 `argv::parse`。
+        let render_side = include_str!("control/launch_render/launch_cli_parity_tests.rs");
+        assert!(
+            render_side.contains("fn every_rendered_ccm_line_is_accepted_by_the_ccm_argv")
+                && render_side.contains("argv::parse("),
+            "渲染器那一格的接盘判据不在了 —— `ccm_invocation.rs` 的旗标从此没人管"
+        );
         for (f, why) in TERMINAL_SURFACE_FILES {
             assert!(
-                f.starts_with("control/ccm/"),
+                f.starts_with("control/ccm/") || *f == "control/launch_render/ccm_invocation.rs",
                 "`{f}` 不在 `control/ccm/` 下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
             );
             assert!(

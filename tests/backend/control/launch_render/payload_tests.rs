@@ -1,33 +1,6 @@
-/// P1：**`REFUSE_TAG` 是跨语言双写点，两侧必须逐字一致**。
-///
-/// 照仓里现成的形状写（`launch_tests.rs::the_posix_marker_is_the_one_the_frontend_matches_on`）——
-/// `include_str!` 读前端那份，把字面量抠出来对拍。改一边不改另一边 ⇒ 红。
-///
-/// 为什么非钉不可：前端靠这个标区分「载荷渲染被拒」（不许回落）与「IPC 异常」（可回落）。
-/// 标不一致 ⇒ 业务拒绝被当成通道异常 ⇒ **回落到兜底渲染器**，
-/// 而它对同样输入未必拒 ⇒ 一次 fail-closed 悄悄变回 fail-open，**且没有任何东西会报错**。
-#[test]
-fn the_refuse_tag_is_the_same_string_on_both_sides() {
-    const RUNNER: &str = include_str!("../../../../src/remote-launch-run.ts");
-    let key = "const REFUSE_TAG = \"";
-    let at = RUNNER
-        .find(key)
-        .expect("前端找不到 REFUSE_TAG —— 抽取坏了，本断言在空转");
-    let rest = &RUNNER[at + key.len()..];
-    let front = &rest[..rest.find('"').expect("字面量没收尾")];
-    assert!(
-        front.chars().count() >= 4,
-        "抽到的标太短（{front:?}）—— 抽取坏了"
-    );
-    assert_eq!(
-        front,
-        super::REFUSE_TAG,
-        "\n前端按 {front:?} 认业务拒绝，而后端打的是 {:?} —— 两侧漂了。\n\
-             后果不是报错，是**静默回落**：业务拒绝被当成 IPC 异常 ⇒ 走兜底渲染器 ⇒ \n\
-             一次 fail-closed 变回 fail-open。两边必须一起改。",
-        super::REFUSE_TAG
-    );
-}
+// 🪦〔MIG-2〕这里原有 `the_refuse_tag_is_the_same_string_on_both_sides`（前端按 `REFUSE:` 串标分流，两侧逐字对拍）： 〔散文墓碑〕
+//   渲染搬进后端帧命令之后，拒绝走码 `refused`（`launch_render/mod.rs::refused` 摘标转码），前端那一份串标删了，
+//   「拒 ⇒ 码 `refused`」由 `launch_render/answers_tests.rs::a_refusal_leaves_the_backend_as_the_refused_code` 钉。
 
 /// P1-Y2：**渲染路径上的业务拒绝，一条都不许裸写** —— 必须经 [`refuse`] 打标。
 ///
@@ -50,7 +23,7 @@ fn the_refuse_tag_is_the_same_string_on_both_sides() {
 #[test]
 fn every_business_rejection_is_tagged() {
     let src = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/payload.rs"
+        "../../../../src/backend/control/launch_render/payload.rs"
     ));
     // 人群自检 —— **不数定义行**〔D 阶段补审 08-11 订正〕。
     //
@@ -220,7 +193,8 @@ fn the_launcher_is_refused_when_it_carries_injection_chars() {
 fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     // 运行时拼：写成字面量的话，本条自己的诊断文案也会被数进去（F58 记过两次）。
     let frag = format!("cd {}{} && ", "{}", "");
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    // 〔MIG-2〕人群 = 两棵 Rust 生产树（monitor ＋ 后端）：载荷内核搬进了后端，「在此打开终端」那一处留在 monitor。
+    let root = crate::guard_support::repo_root();
     let mut sites: Vec<String> = Vec::new();
     // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**这里不再有任何自摘，也不需要补回**。
     //
@@ -234,8 +208,10 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     // ⚠ 走 `scan_tree_excluding(.., &[])` 而不是 `scan_tree!`：**明写「一份都不排除」**。
     // `scan_tree!` 在这里已经是空转的（`file!()` 给的折返路径后缀比不命中），
     // 而一个空转的自摘和一个真在工作的自摘**长得一模一样** —— 那正是条 73 禁的那一形。
-    let files: Vec<(std::path::PathBuf, String)> =
-        guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    let files: Vec<(std::path::PathBuf, String)> = ["src/bridge/src", "src/backend"]
+        .iter()
+        .flat_map(|t| guard_core::scan_tree_excluding(&root.join(t), &["rs"], &[]))
+        .collect();
     assert!(
         files.iter().any(|(p, _)| p.ends_with("payload.rs")),
         "人群里没有 `payload.rs` —— 唯一那处拼装就住在它里面，本条此刻在空转"
@@ -271,9 +247,16 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
         1,
         "「在此打开终端」那一处不再恰好一处：{sites:?}"
     );
+    // 〔MIG-2〕两棵树并成一个人群之后，后端 `ccm` 容器路自己拼载荷那一处（`control/ccm/plan.rs`）第一次被数到 ——
+    //   一直都在、原先不在本条人群里；与载荷内核是同一件事的两个家，如实登记成已知的第二处（报备，收它要改 `ccm` 容器路）。
+    let ccm: Vec<&String> = sites
+        .iter()
+        .filter(|l| l.starts_with("plan.rs: "))
+        .collect();
+    assert_eq!(ccm.len(), 1, "`ccm` 容器路那一处不再恰好一处：{sites:?}");
     let sites: Vec<String> = sites
         .iter()
-        .filter(|l| !l.starts_with("shell.rs: "))
+        .filter(|l| !l.starts_with("shell.rs: ") && !l.starts_with("plan.rs: "))
         .cloned()
         .collect();
     assert_eq!(
@@ -713,12 +696,12 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
 /// 多一处能拼这条 URL 的地方，就多一处可以各自答错**同一个问题**，
 /// 而答错的症状是「一个查不出来的 404」（`KL7` 第 1 条）。
 ///
-/// ⚠ 人群是**本文件的生产段**（`include_str!("../../../../src/bridge/src/backend/control/payload.rs")` 再 `guard_core::production_code`
+/// ⚠ 人群是**本文件的生产段**（`include_str!("../../../../src/backend/control/launch_render/payload.rs")` 再 `guard_core::production_code`
 /// 剥掉 `#[cfg(test)]`）—— **不是本 crate、更不是全仓**。分母写在这里，别把它读宽。
 /// 全仓那一格的读数与量法住 `relay_env_prefix_posix` 的头注（它是读数，不是断言）。
 #[test]
 fn only_one_place_in_this_file_exports_the_relay_base_url() {
-    let src = include_str!("../../../../src/bridge/src/backend/control/payload.rs");
+    let src = include_str!("../../../../src/backend/control/launch_render/payload.rs");
     let prod = guard_core::production_code(src);
     // 抽取器自检：剥完还得看得见东西，且**确实剥掉了**测试段那些字面量。
     assert!(
@@ -739,130 +722,27 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
     );
 }
 
-/// ★★★ 〔US1 · 第四波 4D〕E4 ＋ E9：**monitor 生产树里零上游选择、零路由语法、零门牌字面量**。
-///
-/// 守的要求：B-decouple §2.1 必须拆 1（`APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM` · 路由前缀 · 段闸 · 端口两边各一份）·
-/// `设计/05 §14.3`「业务解释只有一个家」· `设计/20 §5` 目标「端口 · 路由渲染 · 段的字符闸收进共享 crate，一份实现两侧 use」。
-///
-/// 人群：`src/bridge/src/**/*.rs` 生产段（剥注释与测试段）× 下面两张表，**零命中**；
-/// 正控（异源，证明尺子不瞎）：同一把尺子在后端上游选择 / 共享 crate 的生产段上**各数得到**每一样（逐名点住址）。
-/// 端口与钥匙路径那两样还要求后端生产段零字面量（它们只许 `use` 共享 crate）。
-#[test]
-fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let read =
-        |rel: &str| guard_core::production_code(&std::fs::read_to_string(root.join(rel)).unwrap());
-    // (名字, 它今天的家)
-    let words: [(&str, &str); 8] = [
-        (
-            "APIKEY_TABLE_AGENT",
-            "../backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
-        ),
-        (
-            "AGENTS_WITH_DEFAULT_UPSTREAM",
-            "../backend/agents/mod.rs::default_upstreams",
-        ),
-        (
-            "apikey_endpoint_for",
-            "../backend/accounts/upstream/endpoint.rs::decide_launch",
-        ),
-        (
-            "relay_endpoint_for",
-            "../backend/accounts/upstream/endpoint.rs::decide_launch",
-        ),
-        (
-            "RelayAsk",
-            "../backend/accounts/upstream/endpoint.rs::decide_launch",
-        ),
-        (
-            "apikey_rows",
-            "../backend/accounts/upstream/file_face.rs::rows_at",
-        ),
-        (
-            "read_accounts",
-            "../backend/accounts/upstream/file_face.rs::read_at",
-        ),
-        (
-            "apikey_routed_subset",
-            "../backend/accounts/upstream/endpoint.rs::answer_routing_with",
-        ),
-    ];
-    let literals: [(&str, &str); 4] = [
-        ("\"/s/\"", "crates/relay-route-core/src/lib.rs"),
-        ("\"/t/\"", "crates/relay-route-core/src/lib.rs"),
-        ("8788", "crates/relay-route-core/src/lib.rs"),
-        (
-            "\".cc-monitor/relay-key\"",
-            "crates/relay-route-core/src/lib.rs",
-        ),
-    ];
-    let mut hits = Vec::new();
-    for (at, src) in guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]) {
-        let prod = guard_core::production_code(&src);
-        for (w, _) in words {
-            if guard_core::contains_word(&prod, w) {
-                hits.push(format!("{} · `{w}`", at.display()));
-            }
-        }
-        for (l, _) in literals {
-            if prod.contains(l) {
-                hits.push(format!("{} · {l}", at.display()));
-            }
-        }
-    }
-    assert!(
-        hits.is_empty(),
-        "monitor 生产树里又长出了上游选择 / 路由语法 / 门牌字面量：\n  {}",
-        hits.join("\n  ")
-    );
-    // 正控：家里数得到（名字那一张：家文件里那个「今天的名字」在；字面量那一张：共享 crate 里在）。
-    for (w, home) in words {
-        let (file, sym) = home.split_once("::").unwrap();
-        assert!(
-            guard_core::contains_word(&read(file), sym),
-            "`{w}` 的家 {home} 里数不到 `{sym}` —— 尺子或住址坏了"
-        );
-    }
-    for (l, home) in literals {
-        assert!(
-            read(home).contains(l),
-            "共享 crate 里数不到 {l} —— 尺子是瞎的"
-        );
-    }
-    // 后端那一半：端口与钥匙路径只许 `use` 共享 crate（零字面量）。
-    let mut backend_hits = Vec::new();
-    for (at, src) in guard_core::scan_tree_excluding(&root.join("../backend"), &["rs"], &[]) {
-        let prod = guard_core::production_code(&src);
-        for l in ["8788", "\".cc-monitor/relay-key\""] {
-            if prod.contains(l) {
-                backend_hits.push(format!("{} · {l}", at.display()));
-            }
-        }
-    }
-    assert!(
-        backend_hits.is_empty(),
-        "后端生产树里还有门牌字面量（该 use relay_route_core）：{backend_hits:?}"
-    );
-}
+// 〔MIG-2〕`us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
+//   没跟着载荷内核搬：留在 monitor 测试段（`tests/bridge/backend/control/payload_judgment_rules.rs`）。
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
 #[test]
 fn the_key_segment_is_the_sid_when_resuming_and_a_nonce_when_starting_fresh() {
     // resume：逐字用那条会话的 sid。
     assert_eq!(
-        route_key_for_session(Some("0198f0d2-1111-4222-8333-444455556666")),
+        route_key_for_session(Some("0198f0d2-1111-4222-8333-444455556666")).unwrap(),
         "0198f0d2-1111-4222-8333-444455556666"
     );
     // 新开：铸一个 nonce —— 它必须过得了路由段白名单，否则整条 URL 拼不出来。
-    let a = route_key_for_session(None);
-    let b = route_key_for_session(None);
+    let a = route_key_for_session(None).unwrap();
+    let b = route_key_for_session(None).unwrap();
     assert!(
         relay_route_core::segment_is_safe(&a),
         "铸出来的 nonce 当不了路由段：{a:?}"
     );
     assert_ne!(a, b, "两次铸出同一个值 —— 那不是 nonce");
     // sid 当不了路由段时也回落到 nonce（不为一段惰性的标签把起会话整个拒掉）。
-    let c = route_key_for_session(Some("has/slash"));
+    let c = route_key_for_session(Some("has/slash")).unwrap();
     assert!(relay_route_core::segment_is_safe(&c));
     assert_ne!(c, "has/slash");
 }
@@ -1068,12 +948,12 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 ///
 /// **左集 = 拼在 `ccm` 外面 `export` 的变量**，09-02 现打 **2 个**
 /// （`ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`）。枚举法**按函数体切，不按文件切**：
-/// 1. `history.rs` 生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
+/// 1. 〔MIG-2〕`launch_render/local.rs`（原 monitor `history.rs`）生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
 ///    拆成的段，今天**恰好 3 段**：前两段是前缀、末段 `&base` 是命令体；
-/// 2. 两段前缀各自的**渲染器函数体**（`relay_env_prefix_posix` · `launch_identity_env_prefix`），
+/// 2. 两段前缀各自的**渲染器函数体**（`relay_env_prefix_posix` · `identity_prefix`），
 ///    体里 `export ` 各**恰好 1 处**；
 /// 3. 变量名**从生产代码现取**：中转那截从体里读出来再拿**真跑一遍**的产出对拍，
-///    身份那截把体里 `{LAUNCH_ID_VAR}` 用生产常量 [`crate::history::LAUNCH_ID_VAR`] 解析开。
+///    身份那截把体里 `{LAUNCH_ID_VAR}` 用生产常量 [`crate::control::launch_render::local::LAUNCH_ID_VAR`] 解析开。
 ///    ⇒ **一个字面量都没写死**，那边改名本条自动跟着走。
 ///
 /// ⚠ **`K-P5d` 的量具第一版按整份 `payload.rs` 切**，把 `render_env_ops` 混进来数成 4。
@@ -1102,7 +982,7 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 ///
 /// - **Windows 那条腿不在人群里**：`ccm` 容器路只有 POSIX 这一支（`C12`「windows不要tmux」），
 ///   `$env:` 那一形本条只数处数、不进集合。
-/// - **`&base` 内部**（`render_local_ccm` / `build_local_posix_command` 渲的那一截）不在人群里：
+/// - **`&base` 内部**（`render_local_ccm` / `build_local_posix_command` 渲的那一截）不在人群里： 〔散文墓碑〕
 ///   它拼在 `ccm` 的**里面**，不过这个边界。
 /// - **`launch.rs` 的 `.env(k, v)`**（开窗那一跳，进程级）不在人群里：它不是一句 `export`。
 /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux，归真机 e2e。
@@ -1127,17 +1007,20 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 #[test]
 fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let ccm = container_path_source();
-    let hist = guard_core::production_code(include_str!("../../../../src/bridge/src/history.rs"));
+    let hist = guard_core::production_code(include_str!(
+        "../../../../src/backend/control/launch_render/local.rs"
+    ));
     let pay = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/payload.rs"
+        "../../../../src/backend/control/launch_render/payload.rs"
     ));
     // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
     // 门槛现打（09-02，剥完的字节数）：`history.rs` ≈ 48.7k（原文 213k）· `payload.rs` ≈ 8.2k（原文 88k）
     // —— 门槛按现打值往下留一档，不贴着写。
     // 〔C4d · 第四波 4B〕`history.rs` 那一格 30k → 20k：历史清单与注解那一族搬进本机常驻后端，剥完现打 29,494 字节
     //   （起会话那几段一字未动 —— 本条要读的 export 都在那几段里）；按现打值往下留一档。
+    // 〔MIG-2〕本机起会话那一整条搬进后端 `launch_render/local.rs`（左集那一句拼装跟着搬），门槛按它现打往下留一档。
     assert!(
-        hist.len() > 20_000 && pay.len() > 5_000,
+        hist.len() > 5_000 && pay.len() > 5_000,
         "剥完只剩 history={} payload={} 字节 —— 剥法坏了，本条会零命中地绿",
         hist.len(),
         pay.len()
@@ -1151,7 +1034,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let segs: Vec<&str> = rhs.split('+').map(str::trim).collect();
     assert_eq!(
         segs,
-        vec!["relay", "&identity.prefix", "&base"],
+        vec!["relay", "&prefix", "&base"],
         "\n★★ 本机拉起拼出来的那一串**段数或段名变了**（实得 {segs:?}）。\n\
              ⇒ 如果新那一段也 `export` 了变量，它必须**同一拍**在 `shared/ccm` 的容器路里\n\
              加一条对应的转发（形状抄 `R08`/`K-H2b`/`K-P5c` 那三条），否则走 tmux 的会话\n\
@@ -1160,11 +1043,10 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     );
     // 那两段前缀各自是谁渲的 —— 整条链**逐环钉住**（改名当场红）。
     for anchor in [
-        // 〔TL3 · 🔴-2〕前缀先 `await` 好再交给同步那一截（`launch_local` 的 `relay` 参数），链上这一环换了形。
-        "let relay = relay_prefix_for_launch(&action, account.as_ref()).await?;",
-        "let identity = launch_identity(action);",
-        "relay_env_prefix_posix(u)",
-        "let prefix = launch_identity_env_prefix(&token,",
+        // 〔MIG-2〕链跟着搬进 `launch_render/local.rs::plan`。
+        "let relay = relay_prefix(req, facts)?;",
+        "let prefix = identity_prefix(&token, facts.windows);",
+        "payload::relay_env_prefix_posix(&u)",
     ] {
         guard_core::find_pinned(&hist, anchor).unwrap_or_else(|e| {
             panic!("`{anchor}` 不是恰好一处 —— 前缀那条链换了形状，本条的左集就取歪了：{e}")
@@ -1173,7 +1055,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 
     // ── ② 左集：**按函数体切**，变量名从生产代码现取 ─────────────────────────
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
-    let body_id = fn_body(&hist, "fn launch_identity_env_prefix(");
+    let body_id = fn_body(&hist, "fn identity_prefix(");
     assert_eq!(
         body_relay.matches("export ").count(),
         1,
@@ -1191,7 +1073,10 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
         "身份那个渲染器的 Windows 那一形不再是恰好 1 处 —— 形状变了先回来读头注。实得体：{body_id}"
     );
     // 身份那截：把体里那个**生产常量**的插值解析开。解析不开 ⇒ `exported_var_names` 会 panic。
-    let id_chunk = body_id.replace("{LAUNCH_ID_VAR}", crate::history::LAUNCH_ID_VAR);
+    let id_chunk = body_id.replace(
+        "{LAUNCH_ID_VAR}",
+        crate::control::launch_render::local::LAUNCH_ID_VAR,
+    );
     assert_ne!(
         id_chunk, body_id,
         "身份渲染器的体里不再用 `LAUNCH_ID_VAR` 那个常量了 —— \
@@ -1283,13 +1168,17 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 #[test]
 fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     let ccm = container_path_source();
-    let hist = guard_core::production_code(include_str!("../../../../src/bridge/src/history.rs"));
+    let hist = guard_core::production_code(include_str!(
+        "../../../../src/backend/control/launch_render/local.rs"
+    ));
     let pay = guard_core::production_code(include_str!(
-        "../../../../src/bridge/src/backend/control/payload.rs"
+        "../../../../src/backend/control/launch_render/payload.rs"
     ));
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
-    let body_id = fn_body(&hist, "fn launch_identity_env_prefix(")
-        .replace("{LAUNCH_ID_VAR}", crate::history::LAUNCH_ID_VAR);
+    let body_id = fn_body(&hist, "fn identity_prefix(").replace(
+        "{LAUNCH_ID_VAR}",
+        crate::control::launch_render::local::LAUNCH_ID_VAR,
+    );
     let left = exported_var_names(&[body_relay, body_id]);
     let right = forwarded_by_container_path(&ccm);
     // 非空对照：干净树上差集是空的 —— 证明下面两格的红不是「本来就红」。
@@ -1305,7 +1194,7 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     //    从前抠的是 bash 那行 `payload="export CCM_LAUNCH_ID=$(sq "$CCM_LAUNCH_ID"); $payload"`；
     //    今天抠的是 Rust 那行 `payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));`。
     //    造的仍是**同一个坑的复发形**（`R08` · `K-H2b` · `K-P5c` 三次同坑）。
-    let var = crate::history::LAUNCH_ID_VAR;
+    let var = crate::control::launch_render::local::LAUNCH_ID_VAR;
     let line = format!("payload = format!(\"export {var}={{}}; {{payload}}\", sq(v));");
     assert_eq!(
         ccm.matches(line.as_str()).count(),
@@ -1401,15 +1290,16 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     let sites = [
         Site {
             what: "A · payload.rs（POSIX 串级）",
-            src: include_str!("../../../../src/bridge/src/backend/control/payload.rs"),
+            src: include_str!("../../../../src/backend/control/launch_render/payload.rs"),
             needle: "export ANTHROPIC_BASE_URL=",
             want: 1,
             wired: None,
         },
         Site {
-            what: "B · history.rs（Windows 串级）",
-            src: include_str!("../../../../src/bridge/src/history.rs"),
-            needle: "$env:CLAUDE_CONFIG_DIR",
+            // 〔MIG-2〕本机起会话搬进后端 `launch_render/local.rs`；账号载体名改从适配层取（`payload::account_env`），针跟着换。
+            what: "B · launch_render/local.rs（Windows 串级）",
+            src: include_str!("../../../../src/backend/control/launch_render/local.rs"),
+            needle: "\"$env:{}",
             want: 2,
             wired: None,
         },
@@ -1496,9 +1386,9 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
             .unwrap_or(0)
     ));
     let key = format!(
-        "{:032x}{:032x}",
-        uuid::Uuid::new_v4().as_u128(),
-        uuid::Uuid::new_v4().as_u128()
+        "{}{}",
+        route_key_for_session(None).unwrap().replace('-', ""),
+        route_key_for_session(None).unwrap().replace('-', "")
     );
     let url = relay_route_core::base_url(
         RELAY_PORT,
@@ -1560,264 +1450,12 @@ fn the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_hom
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★★★ `D6 阻-4` 的**人群闸**：谁绕开 `history::InjectFactSources` / `history::LaunchSink`
-/// 那两条缝，直接去调那几个取值口 / 那两个送法 ⇒ **当场红**。
-///
-/// # 它为什么必须是一道闸，而不是一句头注
-///
-/// 上一拍（08-28）买那条缝时，`InjectFactSources` 的头注里逐字写着
-/// 「这两个取值口的**生产消费方恰好 2**」，并把那句话当成了闸。
-/// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、绕开缝直接调
-/// 那两个取值口（当年是读凭据文件与连回环口那两个〔US1 起换成「问那台后端」一个〕）
-/// ⇒ **`1227 passed; 0 failed`、`GATE: OK`、四个数与干净树逐字相同。**
-/// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
-/// ★ PM `§8 裁四` 的定性：**治一个「今天数出来的 N」的过程中，长出了一个新的。**
-///
-/// # 它钉的是**零调用点**（不是「今天有几个消费方」）
-///
-/// 走缝的写法里，那几个函数只以**函数指针**出现（〔US1〕`endpoint: ask_launch_endpoint,`）——
-/// **没有括号**。⇒ 只要断言「调用形在全树生产段里恰好只剩它们自己的定义行」，
-/// 这道闸就与「今天有几个消费方」**完全脱钩**：明天多十个消费方，只要都走缝，本条不动；
-/// 谁不走缝，第一次调用就把那个数顶上去。
-/// 裸标识符那一半（恰好 2 = 定义 + 缝里那一处）挡的是另一形：**把函数指针复制到第二个地方**。
-///
-/// # ⚠ 分母与它抓不到什么（如实写）
-///
-/// - 人群 = `src/bridge/src` **整棵树**的 `.rs`（`guard_core::scan_tree!` 目录扫描，
-///   **不是手写名单**），逐份剥成生产段。
-/// - ⚠ 〔`P4` 2026-09-21〕**这一条先前登记了一个并不存在的缺口**：原文是
-///   「`scan_tree!` **按构造摘除调用者自己那份** ⇒ 本文件（`payload.rs`）不在人群里…
-///   真要在这里绕缝，本条看不见」。那一刀**在这一处不生效**（判据由 `#[path]`
-///   挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中），而且判据已经搬到 `tests/bridge/`
-///   ⇒ `payload.rs` 走普通遍历**本来就在人群里**，这个缺口今天**没有**。
-///   （本条**不住 `history.rs`** 那条理由也随之只剩一半：住在那里的话，判据会写在
-///   `history.rs` 自己的 `#[cfg(test)]` 段里 —— 那种**不经 `#[path]`** 的测试模块
-///   `file!()` 会命中，缝自己那一份真会被摘出人群。⇒ 结论照旧，成因要说准。）
-/// - 它只看 Rust 侧。别的 crate（backend）够不着这几个符号（单向依赖）。
-/// - `let f = crate::history::ask_launch_endpoint; f(…)` 这一形由裸标识符那一半接住（会变成 3）。
-#[test]
-fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let files = guard_core::scan_tree!(&root, &["rs"]);
-    // 抽取器自检：树扫得到东西（否则下面整条是空真）。
-    assert!(
-        files.len() > 30,
-        "只扫到 {} 份 `.rs` —— 取法坏了，本条会零命中地绿",
-        files.len()
-    );
+// 🪦〔MIG-2〕这里原有 `D6 阻-4` 那道人群闸（谁绕开 monitor `history.rs` 的取值口缝直接调 ⇒ 红）：那两条缝随本机起会话一起搬进后端，
+//   换成纯函数 ＋ 事实表（`launch_render/local.rs::Facts`），同一道闸住 `local_tests.rs::nobody_reads_the_launch_facts_around_the_facts_table`。
 
-    /// 裸标识符计数：标识符的前缀子串（`foo_at` 里的 `foo`）不算。
-    fn bare(hay: &str, ident: &str) -> usize {
-        hay.match_indices(ident)
-            .filter(|(i, _)| {
-                let after = hay[i + ident.len()..].chars().next();
-                !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
-            })
-            .count()
-    }
-
-    let mut prod_total = 0usize;
-    // (裸标识符, 调用形恰好几处, 裸标识符恰好几处)
-    //
-    // ⚠ **这两格仍然是计数制，别顺手统一成下面那种住址制**〔ccbus-win 09-10〕：
-    //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `ask_launch_endpoint`（问那台后端）。计数对它们仍然是对的答案。
-    let mut counts = [
-        // 〔US1 · 4D〕「问那台后端要成品」：定义 1 处（`history.rs`）+ 缝里 `endpoint: ask_launch_endpoint,` 1 处。
-        //   （先前这里是 `apikey_rows`〔散文墓碑〕读文件 · `relay_running`〔散文墓碑〕连回环口两格 —— 两样事实搬进了那台后端。）
-        ("ask_launch_endpoint", 1usize, 2usize, 0usize, 0usize),
-        // 〔`设计/20 §7` 步 4〕定义 1 处（`history.rs`）+ 缝里 `all_sessions: relay_all_sessions_switch,` 1 处。
-        ("relay_all_sessions_switch", 1, 2, 0, 0),
-    ];
-
-    // ═══ `platform_is_windows`：从**数个数**改成**点名住址**〔ccbus-win 09-10〕 ═══
-    //
-    // # 为什么这一格必须换制
-    //
-    // 这个取值口今天同时是两样东西，而这两句在**第一个非中转消费者出现之前**都为真：
-    // · 它自己的头注说「**只有这一处**说得出这句话」⇒ 生产段问平台都该走它；
-    // · 本条原来的计数说「恰好 1 处」⇒ 除了缝，谁都不许调。
-    // `cc_bus::resolve_bash` 就是那第一个：它要问「这台机是不是 Windows」，
-    // 好在 Windows 上按绝对路径定位 `bash`（裸名会被 `System32` 里的 WSL 存根抢走）。
-    // ⇒ 一个数在回答两个从今天起答案不同的问题。这正是本条原文写的出路 ②
-    //   「**重新裁定**并在这里说清为什么这一处可以不走」。
-    //
-    // ⚠ **走缝是错的出路**：`InjectFactSources` 是「起会话注入」那几件事的取值口，
-    //   它要问的只是平台（〔US1〕缝里今天是「问那台后端」那一格）。
-    //
-    // # 换制之后它比原来强在哪（**有读数，不是设想**）
-    //
-    // 另一条路是「把那个 1 改成 2」放行。它有一个**互相抵消**的失效形态。
-    // 09-10 拿真树现打过（按本条同一套剥法离线模拟，两个方案喂同一刀）：
-    //
-    // | 树 | 住址制 | 「把数字改成 2」 |
-    // |---|---|---|
-    // | 干净 | 绿 | 绿 |
-    // | 刀①：`mcp.rs` 里加一处绕缝调用 | **红**（点名 `mcp.rs`） | 红（调用形 3/期望 2） |
-    // | 刀③：加那一处绕缝 **＋** 把 `cc_bus` 那处正当调用删掉 | **红**（两条都点名） | **绿** ← 抵消 |
-    //
-    // ⇒ 刀③ 那一格就是「一个数装两件事」最后的落点：总数没变，判据一声不吭。
-    // 住址制两边都逮：没登记的住址 ⇒ 红；登记了却零命中 ⇒ 也红。
-    const PLATFORM: &str = "platform_is_windows";
-    /// `(相对路径, 这个文件里的调用形处数, 凭什么这一处可以不走缝)`。
-    /// **默认拒绝**：人群从源码派生，没登记的住址当场红。
-    const PLATFORM_TAKE_SITES: &[(&str, usize, &str)] = &[
-        ("history.rs", 1, "取值口**自己的定义行** —— 它不是调用点"),
-        // 〔SH1 · V136〕`cc_bus.rs` 那一行（`resolve_bash`〔散文墓碑〕的平台那一格）随驾驶舱 shell 读一起删了。
-    ];
-    // 抽取器自检：登记 0 处等于给自己开后门（那一行永远命中不了、也永远不会红）。
-    for (site, want, _) in PLATFORM_TAKE_SITES {
-        assert!(
-            *want >= 1,
-            "住址 {site} 登记了 0 处 —— 那是个后门，不是登记"
-        );
-    }
-    let mut platform_sites: Vec<(String, usize)> = Vec::new();
-    let mut platform_bare = 0usize;
-    // 送法那一半：人群是**除 `launch.rs` 以外**的全树 —— 送法自己在那个文件里当然要被调。
-    let mut sink_calls: Vec<String> = Vec::new();
-
-    for (path, raw) in &files {
-        let prod = guard_core::production_code(raw);
-        prod_total += prod.len();
-        // ⚠ 草堆这一侧**在这里就归一了分隔符**；针那一侧在下面的 `ends_with` 里
-        //   也归一 —— **两侧都归一才作数**（本仓刚在 Windows 上栽过一次「只归一了
-        //   草堆没归一针」：`guard-core` 的 `scan_tree!` 自排除曾是静默 no-op）。
-        let rel = path.to_string_lossy().replace('\\', "/");
-        for c in counts.iter_mut() {
-            c.3 += prod.matches(&format!("{}(", c.0)).count();
-            c.4 += bare(&prod, c.0);
-        }
-        let n = prod.matches(&format!("{PLATFORM}(")).count();
-        if n > 0 {
-            platform_sites.push((rel.clone(), n));
-        }
-        platform_bare += bare(&prod, PLATFORM);
-        if !rel.ends_with("/launch.rs") {
-            for sink in ["launch_local_posix", "launch_powershell_window"] {
-                let n = prod.matches(&format!("{sink}(")).count();
-                if n > 0 {
-                    sink_calls.push(format!("{rel}: `{sink}(` × {n}"));
-                }
-            }
-        }
-    }
-    assert!(
-        prod_total > 200_000,
-        "全树剥完只剩 {prod_total} 字节 —— 剥法坏了，本条是空真"
-    );
-
-    for (ident, want_calls, want_bare, got_calls, got_bare) in counts {
-        assert_eq!(
-            got_calls, want_calls,
-            "\n★★ `{ident}(` 在 `src/bridge/src` 的生产段里有 {got_calls} 处（期望 {want_calls} 处 = \
-                 它自己的定义行）。\n\
-                 ⇒ 有人**绕开 `history::InjectFactSources` 那条缝**直接调了这个取值口。\n\
-                 那正是 `D6` 刀 `E5` 的形状：绕缝的那一处 ① 没有判据数得出来\n\
-                 ② 它「问没问 / 用没用答案」也没有任何判据。\n\
-                 ⇒ 合法出路只有两条：**改成走缝**（`history::inject_facts()`），\n\
-                 或**重新裁定**并在这里说清为什么这一处可以不走。"
-        );
-        assert_eq!(
-            got_bare, want_bare,
-            "\n★ 裸标识符 `{ident}` 在生产段里有 {got_bare} 处（期望 {want_bare} 处 = \
-                 定义 1 + `PRODUCTION_INJECT_FACTS` 里 1）。\n\
-                 ⇒ 有人把这个取值口的**函数指针**复制到了第二个地方 —— \
-                 那条缝就不再是唯一的入口了。"
-        );
-    }
-    // ═══ `platform_is_windows` 的两半：住址（调用形）+ 指针副本（裸标识符） ═══
-    let platform_calls: usize = platform_sites.iter().map(|(_, n)| *n).sum();
-    assert!(
-        platform_bare >= platform_calls,
-        "抽取器坏了：裸标识符 {platform_bare} 处 < 调用形 {platform_calls} 处 —— \
-             每一处调用形都必然也是一处裸标识符，反过来不成立"
-    );
-    // 「裸标识符 − 调用形」= **函数指针被复制到了几个地方**。今天只准有缝里那一处。
-    // ⚠ 这样写而不是钉一个裸标识符总数：总数会跟着「合法调用点多了一个」一起动，
-    //   于是又变回「一个数装两件事」——正是本格换制要治的那个病。
-    let copies = platform_bare - platform_calls;
-    assert_eq!(
-        copies, 1,
-        "\n★ `{PLATFORM}` 的**函数指针**在生产段里被复制到了 {copies} 个地方\
-             （期望 1 = `PRODUCTION_INJECT_FACTS` 里那一处）。\n\
-             ⇒ 多了：那条缝就不再是唯一入口；少了：缝上那一格不再由它答。"
-    );
-
-    let mut unregistered: Vec<String> = Vec::new();
-    let mut hit = vec![0usize; PLATFORM_TAKE_SITES.len()];
-    for (rel, n) in &platform_sites {
-        // 针这一侧也归一（见上面那段注释）。用 `/` 起头，免得 `bus.rs` 命中 `cc_bus.rs`。
-        let at = PLATFORM_TAKE_SITES
-            .iter()
-            .position(|(site, _, _)| rel.ends_with(&format!("/{}", site.replace('\\', "/"))));
-        match at {
-            Some(i) => hit[i] += n,
-            None => unregistered.push(format!("  {rel} × {n}")),
-        }
-    }
-    assert!(
-        unregistered.is_empty(),
-        "\n★★ 这些地方调了 `{PLATFORM}(` 却**没有登记住址**：\n{}\n\n\
-             ⇒ 有人绕开 `history::InjectFactSources` 那条缝直接问了平台，而 ① 没有判据数得出来\n\
-             ② 它「问没问 / 用没用答案」也没有任何判据。\n\
-             合法出路两条：**改成走缝**（`history::inject_facts()`），\n\
-             或**登记进 `PLATFORM_TAKE_SITES` 并写清为什么这一处可以不走**。",
-        unregistered.join("\n")
-    );
-    for (i, (site, want, why)) in PLATFORM_TAKE_SITES.iter().enumerate() {
-        assert_eq!(
-            hit[i], *want,
-            "\n★ 住址 `{site}` 登记了 {want} 处 `{PLATFORM}(`，实得 {} 处。\n\
-                 · 实得 0 ⇒ 那处正当调用被删/改名了，**登记要跟着退**\n\
-                 （登记了却零命中的行会让「有人删掉一处正当调用」悄悄溜过去）。\n\
-                 · 实得更多 ⇒ 同一个文件里多了一处，逐处过一遍再改数。\n\
-                 这一处当初凭什么可以不走缝：{why}",
-            hit[i]
-        );
-    }
-
-    assert!(
-        sink_calls.is_empty(),
-        "\n★★ `launch.rs` 之外还有人直接调那两个送法：{sink_calls:?}\n\
-             ⇒ 本机拉起最后交出去的那一串**绕开了 `history::LaunchSink` 那条缝**，\n\
-             而 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`\n\
-             量的正是那条缝上的字符串 ⇒ 绕过去的那条路，前缀拼没拼上没有任何判据看得见。"
-    );
-}
-
-// ── P28：给这条源码扫描型守卫立**负对照** ──
-//
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 被扫的 `src/bridge/src/history.rs` 今天 2907 行，第一个 `#[cfg(test)]` 在 **1558** 行
-// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 1557 行，
-// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
-//
-// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
-// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
-
-/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
-#[test]
-fn the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan() {
-    // 🔴 **这条判据的针表被 `assert_stripper_keeps` 砍掉过一半，读数如实留在这里。**
-    //
-    // 第一版填了本文件真正用的两个针：`let relay = relay_prefix_for_launch(…)`（1829）
-    // 与 `fn launch_identity_env_prefix(`（2308）。前者**当场被判成「对照失去意义」**。
-    // 原因是本文件抬头那个 1558 并**不是**便宜近似的切点：
-    // 便宜近似切的是**逐字**的 `\n#[cfg(test)]`，而 `history.rs` 的 1558 行写的是
-    // `#[cfg(all(test, not(windows)))]` —— **匹配不上**（那正是 `guard-core` 头注记的
-    // 「坑 1 的变种」）。它真正的切点在**第一个逐字列 0 `#[cfg(test)]`＝2196 行**
-    // ⇒ 1829 那个针在便宜近似下**照样留得住**，拿它当对照是恒真的。
-    // ⇒ 只留 2308 那个（现打：`good` 有它、`cheap` 没有）。
-    //
-    // ⚠ 本文件已有一条**字节数地板**（`hist.len() > 30_000`）。它在这个方向上**不够**：
-    //    `history.rs` 剥到 2195 行还有 123_670 字节（现打）⇒ 地板照样绿，而 2308 那个针没了。
-    //    这正是「地板挡不住静默缩水」那一族。
-    guard_core::assert_stripper_keeps(
-        "payload_tests · history.rs",
-        include_str!("../../../../src/bridge/src/history.rs"),
-        &["fn launch_identity_env_prefix("],
-    );
-}
+// 🪦〔MIG-2〕这里原有 `the_shared_stripper_keeps_the_relay_seam_this_guard_must_scan`（P28 负对照：monitor `history.rs` 中段有 〔散文墓碑〕
+//   `#[cfg(all(test, …))]`，便宜近似会把要扫的那一段砍掉）。被扫的那一段搬进后端 `launch_render/local.rs`，那份文件的测试段只在文件尾 ⇒
+//   便宜近似与共享剥法在它上面同答，这条对照失去意义，删了（共享剥法本身的判据在 `guard-core`）。
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 🔴 `设计/80 §8.7` 步 3：**启动期令牌那个变量名的双写点** —— 写侧 × 读侧焊死
@@ -1983,7 +1621,7 @@ fn a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold() {
 /// 要求住址：`INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 #[test]
 fn a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload() {
-    use crate::backend::control::launch_wire::{render_launch_payload, PayloadRenderRequest};
+    use crate::control::launch_render::wire::{render_launch_payload, PayloadRenderRequest};
     let req = |args: &[&str],
                resume_sid: Option<&str>,
                ccm_sid: Option<&str>|
@@ -2126,7 +1764,7 @@ fn a_base_url_the_user_already_set_is_left_alone_and_said_out_loud() {
         let out = c.output().expect("起 sh");
         String::from_utf8(out.stdout).expect("utf-8")
     };
-    let say = crate::copy_table::copy_text("rsPayload.relay.userBaseUrl", &[]);
+    let say = copy_core::copy_text("rsPayload.relay.userBaseUrl", &[]);
     assert_eq!(
         run(Some("https://my.proxy.example/v1")),
         format!("{say}\n[https://my.proxy.example/v1]"),
@@ -2148,4 +1786,59 @@ fn a_base_url_the_user_already_set_is_left_alone_and_said_out_loud() {
             && ps.contains("} else { $env:ANTHROPIC_BASE_URL="),
         "PowerShell 那一形没先看用户设没设：{ps}"
     );
+}
+
+/// 设计/01 §6.2（杀会话走后端同一道形状门）：〔MIG-2〕原 monitor `backend_kill_tests.rs` ③c —— 外层 tmux 三格这条**创建路径**
+/// 的放行集，逐个喂后端 kill 形状门拒的字符必须拒、合法名字必须过（建得出来就得杀得掉）。字符集从 `control/kill.rs` 现抠。
+#[test]
+fn the_tmux_outer_refuses_every_name_the_kill_gate_refuses() {
+    let kill_prod =
+        guard_core::production_code(include_str!("../../../../src/backend/control/kill.rs"));
+    let forbidden: Vec<char> = [':']
+        .into_iter()
+        .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))
+        .collect();
+    assert_eq!(
+        forbidden,
+        vec![':'],
+        "kill 形状门不再拒 `:` —— 字符集来源变了，回来重裁"
+    );
+    // 量的是**建**那一格（`Create`：名字从这里进 tmux，建出来就得杀得掉；`Attach` 接的是已在的会话，tmux 自己不让 `:` 进名字）。
+    // 两支都量：`Raw` 另有一道「能不能不加引号」的字符白名单，只量它会让名字规则那一道（`Quoted` 唯一的一道）隐身。
+    fn raw(n: &str) -> TmuxTarget<'_> {
+        TmuxTarget::Raw(n)
+    }
+    fn quoted(n: &str) -> TmuxTarget<'_> {
+        TmuxTarget::Quoted(n)
+    }
+    let arms: [(&str, fn(&str) -> TmuxTarget<'_>); 2] = [("Raw", raw), ("Quoted", quoted)];
+    for (arm, mk) in arms {
+        for c in &forbidden {
+            let name = format!("cc{c}1");
+            let got = render_tmux_outer(
+                &TmuxOuter::Create {
+                    target: mk(&name),
+                    cwd: None,
+                    ccm_sid: None,
+                },
+                Some("claude"),
+            );
+            assert!(
+                got.is_err(),
+                "{arm}：放行集放过了禁字 `{c}`（{name:?} ⇒ {got:?}）—— 建得出来、主路杀不掉"
+            );
+        }
+        assert!(
+            render_tmux_outer(
+                &TmuxOuter::Create {
+                    target: mk("cc-1"),
+                    cwd: None,
+                    ccm_sid: None
+                },
+                Some("claude")
+            )
+            .is_ok(),
+            "{arm}：合法名字 `cc-1` 也渲不出来 —— 上面那一圈「拒了」说明不了任何事"
+        );
+    }
 }

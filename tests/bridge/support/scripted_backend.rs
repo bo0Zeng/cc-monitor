@@ -2,7 +2,7 @@
 //!
 //! 要求住址：`设计/05 §14.6`「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」—— 判「真走了长连接」
 //! 要数**假后端那一侧**收到的帧命令（异源：不是被测函数自己说的）。
-//! 形状照 `history_tests.rs::relay_endpoint_rig`（同一个 `park → into_client` 造法、同一个 `absorb_local_frame` 收回程）。
+//! 形状照 `history_tests.rs` 里原先的 `relay_endpoint_rig`（同一个 `park → into_client` 造法、同一个 `absorb_local_frame` 收回程）。 〔散文墓碑〕
 //!
 //! 用法：`#[path = "support/scripted_backend.rs"] mod scripted;`（路径相对引用它的那个测试文件所在目录）。
 //! ⚠ 在 `<local>` 上登记前先拿 `inbound_client::local_origin_test_lock()`（登记表是进程内全局的）。

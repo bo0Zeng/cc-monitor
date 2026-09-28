@@ -180,7 +180,7 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
     );
 }
 
-/// ★★★ 〔US1 · 4D〕**上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream::endpoint::answer_launch_with`，
+/// ★★★ 〔US1 · 4D〕**上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream::endpoint::launch_relay_with`，
 /// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、各段各落各位；再交给**生产段那张决策表**
 /// （`accounts::upstream::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
 ///
@@ -190,16 +190,14 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
 /// 买不到的那一截（claude 拿到这个变量之后怎么走）同今天（`C7`）。
 #[test]
 fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
-    let answer = crate::accounts::upstream::endpoint::answer_launch_with(
+    let answer = crate::accounts::upstream::endpoint::launch_relay_with(
         &serde_json::json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a"},
             "allSessions":true}),
         &[],
         &|_| true,
     )
     .expect("成品");
-    let url = answer["baseUrl"]
-        .as_str()
-        .expect("开关开、没行 ⇒ 该注入 `/t/`");
+    let url = answer.as_deref().expect("开关开、没行 ⇒ 该注入 `/t/`");
     let sample = url
         .strip_prefix(&format!("http://127.0.0.1:{}", relay_route_core::PORT))
         .expect("注入的不是回环那个口");

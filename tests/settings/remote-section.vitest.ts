@@ -7,8 +7,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../../src/config", async (orig) => (await import("../config-patch-fake")).mockedConfigModule(orig));
 // S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
 // 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
-const { ipcCalls, ipcReplies } = vi.hoisted(() => ({
+const { ipcCalls, chanOps, ipcReplies } = vi.hoisted(() => ({
   ipcCalls: [] as string[],
+  /** 〔MIG-2〕经 `commands.chan_call` 发出去的那几问的 op（按发出顺序）。 */
+  chanOps: [] as string[],
   /** 按命令名设定返回值；没设的一律 resolve(undefined)。 */
   ipcReplies: new Map<string, unknown>(),
 }));
@@ -27,7 +29,7 @@ vi.mock("../../src/ipc/commands", () => ({
     {
       get: (_t, name: string) => (...args: unknown[]) => {
         ipcCalls.push(name);
-        void args;
+        if (name === "chan_call") chanOps.push(String((args[0] as { op?: unknown } | undefined)?.op));
         const reply = ipcReplies.get(name);
         // 〔FE1〕回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
         return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
@@ -1004,8 +1006,12 @@ describe("S1 RemoteSection：保存走局部合并", () => {
    * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。
    * 正控：名单问到了（零会话 = 空表）⇒ 照常往下走到渲染那一跳。
    */
+  // 〔MIG-2〕起会话那几问（中转地址 `launch-endpoint` → 渲染 `launch-render-*`）改问那台后端（`src/launch-render.ts`），
+  //   不再是 `commands.*` 包装 ⇒ 看通道：问到了其中第一问就算「往下走到了」（本桩不答，后面几问不会发）。
+  const renderAsked = (): boolean => chanOps.some((op) => /^launch-(?:endpoint|render-)/.test(op));
   const openLauncherAndStart = async (listing: unknown): Promise<void> => {
     ipcCalls.length = 0;
+    chanOps.length = 0;
     ipcReplies.set("list_remote_tmux", listing);
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
@@ -1021,7 +1027,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     document.body.innerHTML = "";
     await openLauncherAndStart(new Error("ssh 抖动"));
     expect(ipcCalls).toContain("list_remote_tmux");
-    expect(ipcCalls, "名单没问到还往下起了").not.toContain("render_launch_payload");
+    expect(renderAsked(), "名单没问到还往下起了").toBe(false);
     expect(ipcCalls).not.toContain("launch_remote_terminal");
     const toast = document.body.textContent ?? "";
     expect(toast).toContain("没有起会话");
@@ -1033,7 +1039,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("正控：名单问到了（零会话 = 空表）⇒ 往下走到渲染那一跳", async () => {
     document.body.innerHTML = "";
     await openLauncherAndStart([]);
-    expect(ipcCalls).toContain("render_launch_payload");
+    expect(renderAsked()).toBe(true);
     expect(document.body.textContent ?? "").not.toContain("没有起会话");
     ipcReplies.clear();
     document.body.innerHTML = "";
