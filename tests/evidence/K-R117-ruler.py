@@ -588,8 +588,8 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "同上，卸那一侧（`skill-uninstall-apply`）",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
-        "本来就不是 Tauri 命令：没有用户按钮，触发点是 `panorama_call.rs` 在那台后端答「没装 / 太旧」时调它"
-        "（V108「只传给开过远端全景的机器」）",
+        "它自己不是 Tauri 命令：没有用户按钮，〔MIG-3b 续〕界面（`src/panorama/api.ts::askOrPlace`）听到那台后端答「没装 / 太旧」时"
+        "请 monitor 的 `panorama_place` 放字节，那一条调它（V108「只传给开过远端全景的机器」）",
 }
 
 # `src/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
