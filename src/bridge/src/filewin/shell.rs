@@ -606,10 +606,10 @@ impl FileWindow {
         rows: impl IntoIterator<Item = impl Into<Listed>>,
     ) -> Self {
         let listing = Listing::default();
-        // 🔴〔补齐五项〕进程边界那一屏走的是 `Vec<Listed>`（`proc::OpenRequest::rows`）
-        //    ⇒ 链接与时间两格**过得了这条边界**，第一屏就有。入参收 `Into<Listed>` 是为了
+        // 🔴〔补齐五项〕第一屏走的是 `Vec<Listed>`（〔09-28 裁 3〕窗口进程自己列的，`proc::first_screen`）
+        //    ⇒ 链接与时间两格第一屏就有。入参收 `Into<Listed>` 是为了
         //    判据夹具照旧能喂 `Vec<Row>`（那一形 ＝ `Listed::plain`，两格都「没送」）。
-        // ⚠ **这一屏刻意不再排一次**：入口那条命令列的时候已经按缺省那一档排过
+        // ⚠ **这一屏刻意不再排一次**：第一屏列的时候（〔09-28 裁 3〕窗口进程的 `proc::first_screen` → `source::list_dir`）已经按缺省那一档排过
         //   （`source::rows_from_ls_data`），再排一遍是恒等。
         //   在这儿插一次 `sort_rows` 试过一趟，读数如实记：
         //   `shell_tests::a_write_click_from_the_list_reaches_the_right_row` 当场红 ——

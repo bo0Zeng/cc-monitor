@@ -550,6 +550,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "acct-iso-shellinit",
         "〔MIG-3a〕rc 片段：围栏校验从 monitor 挪进后端（`accounts/iso.rs::fenced`），monitor 那条命令与本机远端两份话删了",
     ),
+    (
+        "acct-iso-install",
+        "〔MIG-3a · 09-28 裁 2〕新帧命令：cc-acct-iso 落进用户目录（链接走写面 `files-link` ＋ 配置样例 ＋ 记 skill 装记录）；\
+         从前是部署命令经 ssh 跑安装脚本",
+    ),
     // 〔MIG-3a · 主会话 09-28 裁〕`skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     (
         "skill-install-hub-preview",
@@ -860,7 +865,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // 不认自释放之后正在跑的那一份 ⇒ Windows 上本机那几问一直「后端不在」。
 // 三格，异源各在一处：
 // ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`（行为判据在 `subagent_tests` / `remote_branch_tests` /〔散文墓碑〕
-//    `acct_iso_deploy_tests` 的部署那一步：假后端那一侧真收到了帧命令）；
+//    `acct_iso_deploy_tests`〔散文墓碑〕 的部署那一步：假后端那一侧真收到了帧命令）；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
 // ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}

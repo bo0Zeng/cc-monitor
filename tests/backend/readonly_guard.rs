@@ -2642,7 +2642,7 @@ mod spawn_registry {
              ★★ **〔`A3` 第二波 09-24〕第三个使用者到了，逐条记在这里** —— 上游选择 \
              `accounts/iso.rs`经这一处口起**本机 `cc-acct-iso shellinit`**（`--acct-iso-shellinit`）。\
              写面：**只读** —— `cmd_shellinit` 全是 `printf`，不写任何文件（vendored 那份 \
-             `src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
+             `src/shared/cc-acct-iso/scripts/cc-acct-iso` 逐行可查）；它读 manifest 与 \
              `~/.cc-acct-iso/config`，要 `HOME` / `PATH`（都在继承白名单里）。\
              ⚠ 同样**加这一条不会红**（键仍是 `<非字面量>`；下面那条「恰好四条」只数 \
              `control/cc_bus.rs`）—— 是人回来读了这一段才写下的。\

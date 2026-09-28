@@ -2501,6 +2501,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MIG-3a〕基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
     // 〔MIG-3a〕基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
     // 〔MIG-3a〕基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
+    // 〔MIG-3a · 09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
     // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
     // 〔合并 MIG-1 × 主线 19671e6b〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
     // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
@@ -2510,7 +2511,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 78usize), // 〔合并 MIG-1 × 主线 eebf51de〕主线 70 ＋ MIG-1 本路 +8（ssh 配置 3 · 端口转发 3 · 列 tmux 1 · 测试连接 1）⇒ 78
+            ("chan.call", 79usize), // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
             ("chan.subscribe", 2usize), // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]

@@ -1525,7 +1525,8 @@ fn claims() -> Vec<Claim> {
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
     const SKILL_INSTALL: &str = include_str!("../../src/backend/assets/skill_flow.rs");
-    const ACCT_ISO_DEPLOY: &str = include_str!("../../src/bridge/src/acct_iso_deploy.rs");
+    // 〔MIG-3a · 主会话 09-28 预裁〕cc-acct-iso 的装进了那台后端（字节随后端二进制走）：装口住 `src/backend/assets/acct_iso_install.rs`。
+    const ACCT_ISO_INSTALL: &str = include_str!("../../src/backend/assets/acct_iso_install.rs");
     // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
     const PANORAMA_BYTES: &str = include_str!("../../src/bridge/src/panorama_bytes.rs");
     let sftp = || ImplHome {
@@ -1576,12 +1577,12 @@ fn claims() -> Vec<Claim> {
         Claim {
             tool: "cc-acct-iso",
             home: Some(ImplHome {
-                addr: "acct_iso_deploy.rs",
-                text: ACCT_ISO_DEPLOY,
+                addr: "acct_iso_install.rs",
+                text: ACCT_ISO_INSTALL,
             }),
             install: Some(ImplSite {
-                addr: "acct_iso_deploy.rs::deploy_remote_acct_iso",
-                definition: "pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Result<String, String> {",
+                addr: "acct_iso_install.rs::answer_install",
+                definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
             }),
             uninstall: None,
         },

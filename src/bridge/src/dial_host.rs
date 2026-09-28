@@ -780,28 +780,8 @@ impl RemoteFs {
     // 〔MIG-3b〕这里原先是 `stat` 那一问（落点那个文件在不在 / 多大）：落点那一份是谁改由本机常驻后端出计划时自己问（`deploy-plan`），
     //   monitor 这一侧零调用方 ⇒ 删了。链路那一侧的 `stat` 一问照旧在（`files` 链路协议没动）。
 
-    /// 整份读回来：`(字节, 读不出时补问的 exists, 读到空时补问的 size)`。
-    pub(crate) async fn read(
-        &self,
-        path: &str,
-        max: u64,
-    ) -> Result<(Option<Vec<u8>>, Option<bool>, Option<u64>), String> {
-        let v = self
-            .ask(
-                serde_json::json!({"op": "read", "path": path, "max": max}),
-                None,
-            )
-            .await?;
-        let data = match v.get("data").and_then(serde_json::Value::as_str) {
-            Some(t) => Some(crate::link_mux::b64_decode(t)?),
-            None => None,
-        };
-        Ok((
-            data,
-            v.get("exists").and_then(serde_json::Value::as_bool),
-            v.get("size").and_then(serde_json::Value::as_u64),
-        ))
-    }
+    // 〔MIG-3a · 09-28 预裁〕`read` 那一问（整份读回一个小文件）零调用方了：唯一的读者是按目录取版本标记那条路（`acct_iso_deploy`，随字节进后端退役）⇒ 删了。
+    //   链路那一侧的 `read` 一问照旧在（`files` 链路协议没动）。
 
     /// 原子上传（EXCL 临时件 → 旧的改名 `.bak` → 上位 → 删 `.bak`；**绝不 setstat**）。`verify` ⇒ 后端读回比对，回结论。
     pub(crate) async fn put(

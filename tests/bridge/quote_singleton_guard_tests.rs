@@ -162,10 +162,6 @@ fn every_monitor_entry_point_agrees_byte_for_byte() {
             core,
             "launch::posix_quote 与内核不一致：{s:?}"
         );
-        assert_eq!(
-            crate::acct_iso_deploy::sq(s),
-            core,
-            "acct_iso_deploy::sq 与内核不一致：{s:?}"
-        );
+        // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy::sq` 那一行摘了：它唯一的调用方（跑安装脚本那一句）随「落进用户目录进那台后端」退役。
     }
 }

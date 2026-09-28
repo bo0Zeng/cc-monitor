@@ -1095,9 +1095,10 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
 
 // 〔E2 · V28〕`remote_shim_sets_no_environment_of_its_own`〔散文墓碑〕 删了：远端 shim 本身删了（落点就是后端字节），没有 shim 可判。
 
-/// P2z-Y3：**本机那条路不许自己写版本比较** —— 复用 `sftp::deploy_decision`（纯函数）。
+/// P2z-Y3：**本机那条路不许自己写版本比较** —— 版本比对只有一个家（〔MIG-3a · 09-28〕当年是 `sftp.rs` 的比标记函数，
+/// 那一族退役后是 `deploy-core` 的 `identity_decision`，纯函数）。
 ///
-/// 它会失效的地方（如实写）：`deploy_decision` 只回答「要不要装」，
+/// 它会失效的地方（如实写）：那个判定只回答「要不要装」，
 /// **不回答「装完对不对」**。本条只挡「另写一套比较逻辑」，不是完整校验。
 #[test]
 fn the_local_path_does_not_hand_roll_version_comparison() {
@@ -1109,7 +1110,7 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
     assert!(
         !src.contains(&bad),
         "生产段出现了手写的 build_id 比较（`{bad}`）。\n\
-             版本比对只有一个真相源：`sftp::deploy_decision`（纯函数，可单测）。\n\
+             版本比对只有一个真相源：`deploy-core` 的 `identity_decision`（纯函数，可单测）。\n\
              另写一套 ⇒ 两处判「要不要装」的逻辑迟早分叉，而分叉的后果是无限重装。"
     );
 }

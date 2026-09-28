@@ -176,7 +176,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   `inbound::COMMANDS` 从零条长到 5 条（`cancel`/`ping`/`resolve` 08-02、`kill` 08-04），
 ///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
 ///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
-///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 判**版本那一维**的唯一判据是 build_id 字符串
+///   ⚠ 后果不是纸面的：部署判定（当年住 monitor 的 `sftp.rs`，今天住 `deploy-core` 的 `identity_decision`）判**版本那一维**的唯一判据是 build_id 字符串
 ///   （〔K-W4 09-04〕backend 部署路另看「落点文件在不在」；〔DP1 09-25〕今天读那份字节自报的身份戳；stale 但文件在时仍只凭 build_id），
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 backend **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
@@ -649,7 +649,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5f-dial-resolve-one-home**（2026-09-28，MIG-1 收尾合并那一拍）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
 /// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
-pub const BUILD_ID: &str = "p5f-dial-resolve-one-home";
+///
+/// ★★★ **p5g-acct-iso-in-backend**（2026-09-28，MIG-3a 续合并那一拍）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·
+/// 枢纽远端那一跳按原码回（`stale` / `refused` …）· 文件窗口首屏由窗口进程自己问、回一行。
+pub const BUILD_ID: &str = "p5g-acct-iso-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -799,7 +802,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
+    "--acct-iso-install",
     "--cc-bus-install",
+    "--files-link",
     "--cc-bus-install-state",
     "--mcp-sync-hub-preview",
     "--mcp-sync-hub-apply",
