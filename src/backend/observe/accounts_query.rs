@@ -143,19 +143,11 @@ fn home_dir() -> Option<PathBuf> {
 
 /// 把 `$HOME/x` / `~/x` 前缀展开成绝对路径。仅支持前缀形式——更花哨的 shell 写法
 /// 一律不猜（backend 不跑 shell），让用户走 `--accts-dir` 显式覆盖。
+/// 〔OSA · V156〕认法住 `platform::shell::posix::expand_home`。
 fn expand_home_prefix(raw: &str, home: Option<&Path>) -> String {
-    let home = match home {
-        Some(h) => h.to_string_lossy().into_owned(),
-        None => return raw.to_string(),
-    };
-    for pat in ["$HOME/", "${HOME}/", "~/"] {
-        if let Some(rest) = raw.strip_prefix(pat) {
-            return format!("{}/{}", home.trim_end_matches('/'), rest);
-        }
-    }
-    match raw {
-        "$HOME" | "${HOME}" | "~" => home,
-        _ => raw.to_string(),
+    match home {
+        Some(h) => crate::platform::shell::posix::expand_home(raw, &h.to_string_lossy()),
+        None => raw.to_string(),
     }
 }
 
@@ -163,51 +155,8 @@ fn expand_home_prefix(raw: &str, home: Option<&Path>) -> String {
 /// **正则式纯文本解析，绝不 source**（那是 shell 文件，backend 不跑 shell）。
 /// 取最后一次有效赋值（后写覆盖先写，与 shell 语义一致）；跳过注释行。
 fn parse_accts_dir_from_config(text: &str) -> Option<String> {
-    let mut found = None;
-    for line in text.lines() {
-        let mut l = line.trim_start();
-        if l.starts_with('#') {
-            continue;
-        }
-        // cc-acct-iso 那个 config 是被真正 `. source` 的（lib.sh），所以 `export ACCTS_DIR=…`
-        // / `declare -x ACCTS_DIR=…` 都是合法写法，且 export 是极常见习惯。逐个剥掉可选前缀，
-        // 否则纯文本解析会漏认 → 回落默认路径 → 账号功能在该主机"静默判失效"。
-        for pfx in [
-            "export ",
-            "declare -x ",
-            "declare ",
-            "typeset -x ",
-            "typeset ",
-        ] {
-            if let Some(rest) = l.strip_prefix(pfx) {
-                l = rest.trim_start();
-                break;
-            }
-        }
-        let Some(rest) = l.strip_prefix("ACCTS_DIR") else {
-            continue;
-        };
-        // `=` 必须紧跟变量名（shell 赋值语义：`ACCTS_DIR =/x` 是命令不是赋值；
-        // `ACCTS_DIRX=…` 是别的变量）。不 trim `=` 前的空白，正好把这两种都排除。
-        let Some(val) = rest.strip_prefix('=') else {
-            continue;
-        };
-        let val = val.trim();
-        // 去掉行尾注释（仅未被引号包裹时）
-        let val = if val.starts_with('"') {
-            val.strip_prefix('"').and_then(|v| v.split('"').next())
-        } else if val.starts_with('\'') {
-            val.strip_prefix('\'').and_then(|v| v.split('\'').next())
-        } else {
-            Some(val.split('#').next().unwrap_or("").trim())
-        };
-        if let Some(v) = val {
-            if !v.is_empty() {
-                found = Some(v.to_string());
-            }
-        }
-    }
-    found
+    // 〔OSA · V156〕sh 赋值怎么认（`export` / `declare -x` 前缀 · 引号 · 行尾注释）住 `platform::shell::posix::assigned_value`。
+    crate::platform::shell::posix::assigned_value(text, "ACCTS_DIR")
 }
 
 /// 账号库目录：`--accts-dir <p>` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR` > `$HOME/.claude-alt`。

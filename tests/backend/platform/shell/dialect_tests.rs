@@ -1,10 +1,18 @@
-//! 〔AL1c · 第四波 4B〕`shell_dialect.rs`（〔MIG-3a〕今天是后端 `assets/aliases/dialect.rs`）的判据：`设计/71 §4.4` 那组接口在两种方言上逐项的**读法**。
+//! 〔AL1c · 第四波 4B〕`shell_dialect.rs`（〔MIG-3a〕后端 `assets/aliases/dialect.rs`；〔OSA · V156〕今天是 `platform/shell/dialect.rs`）的判据：`设计/71 §4.4` 那组接口在两种方言上逐项的**读法**。
 //!
 //! 规则（合不合格）不在这里判 —— 那一份住 `account_aliases`，判据在 `account_aliases_tests.rs`。
 //! 🔴 PowerShell 那一臂**一次都没被 PowerShell 解析过**（本机无 `pwsh`，Win11 虚拟机不许碰）：
 //! 这里只能钉黄金串与「与 POSIX 臂同契约」的对拍。
 
 use super::*;
+
+/// 〔OSA〕通用层交给方言的那条调用形状（`ccm` · `--`）。
+const C: Call = crate::assets::aliases::CALL;
+
+/// 〔OSA〕通用层交给方言的「我们自己那块别名块」正文。
+fn own(sh: Shell) -> String {
+    crate::assets::aliases::block::own_block(sh)
+}
 
 fn sv(xs: &[&str]) -> Vec<String> {
     xs.iter().map(|s| s.to_string()).collect()
@@ -35,7 +43,7 @@ fn sample() -> Vec<(&'static str, Vec<String>)> {
 fn posix_golden() {
     let got: Vec<String> = sample()
         .iter()
-        .map(|(n, a)| Posix.render_alias(n, a))
+        .map(|(n, a)| Posix.render_alias(C, n, a))
         .collect();
     assert_eq!(
         got,
@@ -60,7 +68,7 @@ fn posix_golden() {
 fn powershell_golden() {
     let got: Vec<String> = sample()
         .iter()
-        .map(|(n, a)| PowerShell.render_alias(n, a))
+        .map(|(n, a)| PowerShell.render_alias(C, n, a))
         .collect();
     let body = |call: &str, name: &str| {
         format!(
@@ -91,7 +99,7 @@ fn powershell_golden() {
         r"if (Test-Path -LiteralPath 'C:\Users\u\.cc-monitor/aliases.ps1') { . 'C:\Users\u\.cc-monitor/aliases.ps1' }"
     );
     // 与自带 `cc` 同形这一句**不是**抄来的：从那份模板现渲染一个 `cc`，逐行比骨架。
-    let cc = super::super::block::render_cc_code("cc", true, std::path::Path::new("/_"));
+    let cc = crate::assets::aliases::block::render_cc_code("cc", true, std::path::Path::new("/_"));
     for fixed in [
         "    [CmdletBinding()] param(",
         "        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs",
@@ -115,10 +123,10 @@ fn both_dialects_read_back_exactly_what_they_wrote() {
     for (sh, d) in [Shell::Posix, Shell::PowerShell].map(|x| (x, x.dialect())) {
         let text: String = sample()
             .iter()
-            .map(|(n, a)| d.render_alias(n, a) + "\n")
+            .map(|(n, a)| d.render_alias(C, n, a) + "\n")
             .collect();
         let back: Vec<(String, Vec<String>)> = d
-            .parse_file(&text)
+            .parse_file(C, &text)
             .into_iter()
             .map(|r| r.unwrap_or_else(|e| panic!("{:?} 读不回自己写的：{e}", sh)))
             .collect();
@@ -134,13 +142,13 @@ fn both_dialects_read_back_exactly_what_they_wrote() {
 /// 块外的非注释行、没收尾的函数也都说出来，不静默丢。
 #[test]
 fn powershell_reader_names_what_it_cannot_take() {
-    let good = PowerShell.render_alias("alphacc", &sv(&["--account", "z"]));
+    let good = PowerShell.render_alias(C, "alphacc", &sv(&["--account", "z"]));
     let edited = good.replace("__ccm_bind }", "__ccm_bind; Write-Host hi }");
     let text = format!(
         "\u{feff}# 注释\nSet-Alias x ls\n{good}\n{}\nfunction open {{\n",
         edited.replace("alphacc", "zcd")
     );
-    let got = PowerShell.parse_file(PowerShell.decode_from_disk(&text));
+    let got = PowerShell.parse_file(C, PowerShell.decode_from_disk(&text));
     assert_eq!(got.len(), 4, "{got:?}");
     assert_eq!(got[1], Ok(("alphacc".to_string(), sv(&["--account", "z"]))));
     assert!(
@@ -276,15 +284,17 @@ fn startup_files_follow_each_shells_own_convention() {
 fn powershell_knows_the_names_its_own_block_defines() {
     for n in ["__ccm_bind", "CC"] {
         let note = PowerShell
-            .name_taken(n)
+            .name_taken(n, &own(Shell::PowerShell))
             .unwrap_or_else(|| panic!("`{n}` 在终端集成模板里就有，却一声不吭"));
         assert!(note.contains("终端集成块"), "{note}");
     }
     assert!(PowerShell
-        .name_taken("zzz_no_such_command_anywhere")
+        .name_taken("zzz_no_such_command_anywhere", &own(Shell::PowerShell))
         .is_none());
     // 〔AL2〕不查 `PATH`（远端）时，模板里的名字照样认得出 —— 那一格不是本机才答得了的事实。
-    assert!(PowerShell.name_taken("__ccm_bind").is_some());
+    assert!(PowerShell
+        .name_taken("__ccm_bind", &own(Shell::PowerShell))
+        .is_some());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -344,12 +354,10 @@ fn the_profile_location_has_exactly_one_home() {
     // 表名 `SITES`：`scanning_guard_registry::TABLE_DECLS` 那条纪律（扫描面 ＋ 常量表型判据的表名闭集）。
     const SITES: &[(&str, usize, usize)] = &[
         // (住址, 记号在 `profile_needles()` 里的下标, 处数)
-        ("src/backend/assets/aliases/dialect.rs", 0, 1),
-        ("src/backend/assets/aliases/dialect.rs", 1, 1),
-        ("src/backend/assets/aliases/dialect.rs", 2, 1),
-        // 〔MIG-3a〕方言进了后端；monitor 的「数据」区（⑬ monitor 自己的事、不碰后端）探 `$PROFILE` 备份只留两个**目录名**
-        //   （没有文件名）—— 第二个读者，待主会话认（`第四波记录/MIG-3a.md`）。
-        ("src/bridge/src/data_paths.rs", 2, 1),
+        ("src/backend/platform/shell/dialect.rs", 0, 1),
+        ("src/backend/platform/shell/dialect.rs", 1, 1),
+        ("src/backend/platform/shell/dialect.rs", 2, 1),
+        // 〔OSA · 主会话 09-28 裁〕monitor「数据」区探 `$PROFILE` 备份那第二个读者删了：界面经通道问本机后端。
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root = root.canonicalize().expect("仓根");

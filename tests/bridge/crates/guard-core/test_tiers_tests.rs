@@ -255,6 +255,8 @@ const UNIT: &[&str] = &[
     "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
+    // 〔OSA〕基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
+    "tests/settings/profile-backups.vitest.ts",
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -352,7 +354,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/chan/webview_tests.rs",
     "tests/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
     "tests/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
-    "tests/backend/assets/aliases/dialect_tests.rs", // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
+    "tests/backend/platform/shell/dialect_tests.rs", // 〔OSA · V156〕随方言搬进 `platform/shell/` // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
     "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
     "tests/bridge/backend/control/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
     "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
@@ -533,6 +535,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
     // 〔MIG-2〕基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
     "tests/backend/control/launch_render/local_tests.rs",
+    // 〔OSA · V156〕基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
+    "tests/backend/platform/shell_home_guard.rs",
 ];
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。

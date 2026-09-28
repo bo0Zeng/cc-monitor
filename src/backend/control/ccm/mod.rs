@@ -171,7 +171,14 @@ pub(crate) const TERMINAL_BIND_TITLE_FORMAT: &str = "#{?@ccm_sid,ccm-rbind-#{@cc
 /// 〔SH1 · `INVARIANTS §49` · V121〕`#S` 是**会话名**，用户起的会话名可以是中文 ⇒ 读它的那个 tmux 客户端必须是
 /// UTF-8 客户端（非 UTF-8 客户端下非 ASCII 被改写成 `_`，codex 的 cc-bus 身份就错了，且退出码仍是 0）。
 /// 这是拼进 pane 里跑的命令串 ⇒ 按 `common/tmux_utf8.rs` 那张表用**旗**（`-u`，排在子命令之前）。
-pub(crate) const BUS_ID_RECIPE: &str = "if [ -n \"${TMUX:-}\" ]; then _ccm_bus=\"$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && export CC_BUS_ID=\"$_ccm_bus\"; unset _ccm_bus; fi;";
+/// 〔OSA · V156〕`export` / `unset` 的写法住 `platform::shell::posix`（原是一条 `const`，产出逐字节不变）。
+pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "if [ -n \"${{TMUX:-}}\" ]; then _ccm_bus=\"$(tmux -u display-message -p \"#S\" 2>/dev/null)\"; [ -n \"$_ccm_bus\" ] && {}{}fi;",
+        crate::platform::shell::posix::export("CC_BUS_ID", "\"$_ccm_bus\""),
+        crate::platform::shell::posix::unset(&["_ccm_bus"]),
+    )
+});
 
 /// `--help` 的正文。**每个认得的旗标都要在这里有一行** ——
 /// 由 `protocol_doc_guard` 那条受管例外的配套判据机检。

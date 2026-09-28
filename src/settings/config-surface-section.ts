@@ -45,6 +45,7 @@ import { isLocalOrigin, isRemoteOrigin, type Origin } from "../ipc/origin";
 import { holdSkeletonHeight, makeSkeleton } from "./skeleton";
 import { withPending } from "./pending";
 import { copyText } from "../copy-table";
+import { findProfileBackupDirs } from "./profile-backups";
 
 /**
  * 一态 → 它在「还差什么」那套口径里算哪一种缺口。`present` 不是缺口 ⇒ `null`。
@@ -493,16 +494,16 @@ export class ConfigSurfaceSection {
   }
 
   /**
-   * 〔ST2〕`$PROFILE` 备份那一格。数据来自同一条 `get_data_paths`（`data_paths.rs` 是逐个落盘位置的唯一权威枚举点）。
+   * 〔ST2〕`$PROFILE` 备份那一格。〔OSA · 主会话 09-28 裁〕经通道直接问本机后端（`profile-backups.ts`：`$PROFILE` 在哪只有后端方言答），
+   * 不再从 `get_data_paths` 带（那一条仍是 monitor 自己落盘位置的唯一权威枚举点）。
    * 读不到 ⇒ 说读不到（不许拿「没有备份」糊过去 —— 那是替用户下一个没做过的结论）；
    * 一个备份都没有 ⇒ 整块不出现。
    */
   private async loadBackups(): Promise<void> {
     this.backups.replaceChildren();
-    let dirs: { path: string }[];
+    let dirs: string[];
     try {
-      const d = await commands.get_data_paths();
-      dirs = Array.isArray(d?.profileBackupDirs) ? d.profileBackupDirs : [];
+      dirs = await findProfileBackupDirs();
     } catch (e) {
       const why = document.createElement("div");
       why.className = "settings-hint";
@@ -520,7 +521,7 @@ export class ConfigSurfaceSection {
     const list = document.createElement("ul");
     for (const d of dirs) {
       const li = document.createElement("li");
-      li.textContent = d.path;
+      li.textContent = d;
       list.appendChild(li);
     }
     this.backups.append(title, note, list);

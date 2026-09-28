@@ -2660,7 +2660,7 @@ mod spawn_registry {
              `control/cc_bus.rs` 今天经它转调**恰好四条**，加第五条会红。",
         ),
         (
-            "platform/shell.rs",
+            "platform/shell/mod.rs", // 〔OSA · V156〕`platform/shell.rs` 成了目录模块
             "sh",
             "`K-R55`（09-11）：**全 crate 唯一一处把命令串交给 POSIX shell 的适配层口**。\
              今天经它送出去的是 `observe/watcher.rs` 那两跳（`command -v tmux && tmux ls` \
@@ -2681,12 +2681,12 @@ mod spawn_registry {
              要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
         (
-            "platform/shell.rs",
+            "platform/shell/mod.rs", // 〔OSA · V156〕`platform/shell.rs` 成了目录模块
             "powershell.exe",
             "〔MIG-3a · `设计/99 §2.1 ⑬`〕别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
              `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到（`71 §8` 第 8 条）。从 monitor `shell_dialect.rs` 搬来：\
              规则进了那台后端，问的是**那台自己**的 PowerShell。**只读**，只在说 PowerShell 的那台（Windows）上起，\
-             进程内缓存一次。唯一调用方 `assets/aliases/dialect.rs::ask_get_alias`。",
+             进程内缓存一次。唯一调用方 `platform/shell/dialect.rs::ask_get_alias`（〔OSA〕方言住适配层）。",
             "缩性质",
             "有别的办法读到那台 PowerShell 的内建别名表（不起进程）的那天摘掉。\
              ⚠ 在那之前**不许**往这一处口底下加第二种用途（它是只读的固定脚本口）。",
@@ -2879,7 +2879,7 @@ mod spawn_registry {
         //    `platform/shell.rs` —— 起 shell 那一跳搬进适配层（`K33` 裁定二）。
         //    ⚠ 换的是**住址**，不是判据：核的仍是「登记的那一条在生产段里真的找得到」。
         let shell = crate::guard_support::production_code(include_str!(
-            "../../src/backend/platform/shell.rs"
+            "../../src/backend/platform/shell/mod.rs"
         ));
         assert!(
             hook.contains("Command::new(\"tmux\")"),

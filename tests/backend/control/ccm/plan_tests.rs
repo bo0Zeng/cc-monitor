@@ -88,7 +88,7 @@ fn the_shape_of_one_launch_command_line() {
     // codex：换启动器 + **不清** claude 的嵌套标记 + cc-bus 身份配方
     assert_eq!(
         printed(&["--cwd", "/p", "--ccm-agent", "codex"]),
-        format!("{} cd '/p' && exec codex", super::super::BUS_ID_RECIPE)
+        format!("{} cd '/p' && exec codex", *super::super::BUS_ID_RECIPE)
     );
     // 透传参数含特殊字符 ⇒ 正确 quote
     assert_eq!(
@@ -781,7 +781,7 @@ fn whether_we_are_inside_tmux_never_reaches_the_print_side() {
     );
     // 而且两边都**说出了**那段配方（`§33a` 铁律 1：exec 路会设的 env，print 必须说）。
     assert!(
-        render(&po).contains(super::super::BUS_ID_RECIPE),
+        render(&po).contains(super::super::BUS_ID_RECIPE.as_str()),
         "`--print` 没说出 cc-bus 那段配方 —— 那正是 `§33a` 开张时抓到的第一例"
     );
 }

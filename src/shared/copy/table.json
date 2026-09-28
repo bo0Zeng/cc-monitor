@@ -13499,16 +13499,6 @@
       "zh": "一台机器的名字；本机要写成 \"{local}\"",
       "args": ["local"]
     },
-    "rsDataPaths.backup.note": {
-      "kind": "body",
-      "zh": "v1.7.10+ 装 cc 集成时自动备份到 <profile>.ccm-backup-<时间戳>",
-      "args": []
-    },
-    "rsDataPaths.backup.title": {
-      "kind": "body",
-      "zh": "PowerShell profile 备份目录",
-      "args": []
-    },
     "rsDataPaths.webview.dataDir": {
       "kind": "body",
       "zh": "WebView2 cache / localStorage / IndexedDB / cookies。由 WebView2 Runtime 管理。",
