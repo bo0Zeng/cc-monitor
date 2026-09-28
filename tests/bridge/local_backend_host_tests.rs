@@ -145,7 +145,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
 ///
 /// 本机中转住进常驻后端之后，monitor 这一半再没有任何理由在 argv 里写 `--relay`；
 /// 有一处 = 有人又在 monitor 里另起了第三个进程（`真相源/70` 那个孤儿的来路）。
-/// 正控：同一把尺子喂一段**合成的**起法（形状照后端 `relay/machine.rs` 远端 `relay-ensure` 那一处）数得到它 ⇒ 尺子不瞎。
+/// 正控：同一把尺子喂一段**合成的**起法（形状照先前后端起脱离中转那一处，〔DEL〕已随 `--relay` 一形删了）数得到它 ⇒ 尺子不瞎。
 /// ⚠ 刻意不 `include_str!` 后端那份文件：那会多一条跨半边的编译期边（`cross_half_edge_registry`），为一条正控不值。
 #[test]
 fn the_monitor_half_starts_no_relay_process() {
