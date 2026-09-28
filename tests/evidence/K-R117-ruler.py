@@ -155,7 +155,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔MIG-3a〕`skill.install` 摘了（理由同上：装 / 卸进了被写那台后端，不再是 Tauri 命令）。装口住 `tool_registry` 的 `skill-install` 那一行。
     ("cc-bus.deploy", (B3, "K34",
                        "落点是 `<claude_dir>/skills/cc-bus/` ⇒ 属「装 skill」，不属「装后端」")),
-    ("cc-bus.install-state", (B3, "K34", "同上，查装态那一半")),
+    # 〔MIG-3a · 子步 3〕`cc-bus.install-state` 摘了：三态进了本机后端（`cc-bus-install-state`），不再是 Tauri 命令。
     # 〔MIG-3a〕`skill.inbox` 摘了：收件箱那一面进了那台后端（`skill-host-*`），不再是 Tauri 命令。
     # ─────────────────────────── 非装面 ───────────────────────────
     # 下面每一条都是「它不是装 / 卸 / 查装态的动作」。理由一律给**它到底在干什么**，
@@ -359,8 +359,9 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   一个字节没动 —— 它照样在两个方向上有牙（表指了盘上没有的命令 ⇒ 红；
         #   盘上多一条谁都没认领的命令 ⇒ 红）。动的只是这张**人的判断表**里的成员，
         #   因为它描述的那个现实变了。
-        "cc_bus_install_state",
-        "deploy_local_cc_bus",
+        # 〔MIG-3a · 子步 3〕`cc_bus_install_state` / `deploy_local_cc_bus` 摘了：装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）；
+        #   留下装前那道本机 `ccm` 预检（归 `cc-bus.deploy`，调用点仍在 `cc-bus-section.ts`）。
+        "cc_bus_ccm_precheck",
         # 〔MIG-3a〕MCP 推 / 拉两条与单条写 / 删两条摘了：进了那台后端（界面经通道直问），不再是 Tauri 命令。
         # 〔MIG-3a〕skill 装 / 卸三条摘了：进了被写那台后端（界面经通道直问），不再是 Tauri 命令。
         # 〔MIG-3a〕`write_skill_file` 摘了：收件箱那一面进了那台后端。
@@ -573,6 +574,9 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
     "assets/mcp_edit.rs::answer_remove":
         "同上，撤那一侧",
+    # 〔MIG-3a · 子步 3〕cc-bus 装到本机进了本机后端：帧命令 `cc-bus-install` 的本体。
+    "cc_bus_install.rs::answer_install":
+        "〔MIG-3a〕`cc-bus` 的装口：本机后端的帧命令 `cc-bus-install` 本体（资产的装不算部署），本来就不是 Tauri 命令",
     "assets/skill_flow.rs::answer_install":
         "〔MIG-3a〕`skill-install` 的装口：那台后端的帧命令 `skill-install-apply` 本体，本来就不是 Tauri 命令",
     "assets/skill_flow.rs::answer_uninstall":

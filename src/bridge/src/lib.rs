@@ -1474,8 +1474,8 @@ pub fn run() {
             // 〔RM1f〕Batch15-P1 那一族本机全景命令（per-repo Engine 池）删了：本机远端同一条 `panorama_call`（见下）。
             // 〔MIG-3a · `99 §2.1 ⑬`〕skill 接入面三条（收件箱的列 / 读 / 写）退役：界面经通道直问那台后端
             //   （`skill-host-list` / `-read` / `-write`，声明与围栏住后端 `agents/claudecode/skill_host.rs`）。
-            cc_bus_deploy::deploy_local_cc_bus,
-            cc_bus_deploy::cc_bus_install_state,
+            // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态进了本机后端（`cc-bus-install` / `-state`）；留下装前那道本机 `ccm` 预检。
+            cc_bus_deploy::cc_bus_ccm_precheck,
             panorama_call::panorama_call,
             panorama_call::panorama_edit,
             // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。

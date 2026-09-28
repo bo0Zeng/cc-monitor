@@ -140,9 +140,6 @@ impl crate::user_files::Door for StaleDoor {
             .put(root, rel, content, expect, backup, parents)
             .await
     }
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
-        self.inner.rename(root, from, to).await
-    }
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.inner.delete(root, rel, expect).await
     }
@@ -151,9 +148,6 @@ impl crate::user_files::Door for StaleDoor {
     }
     async fn delete_session(&self, sid: &str) -> Result<String, String> {
         self.inner.delete_session(sid).await
-    }
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
-        self.inner.stat_kind(path).await
     }
 }
 

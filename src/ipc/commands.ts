@@ -82,8 +82,6 @@ import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
-import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
-import type { CcBusInstallState } from "../generated/CcBusInstallState";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // 〔RM1f〕panorama 一族今天只剩 `panorama_call` / `panorama_edit` / `panorama_cancel` 三条，返回 `unknown`，
 // 由 `src/panorama/api.ts` 按 op 收窄成 `src/panorama/types.ts` 的手写类型（那 10 个住 vendored
@@ -441,13 +439,10 @@ export const commands = {
     invoke<DriftLedgerReport>("drift_ledger_report", args),
   // 〔C4b · 第四波 4B〕P8a 的 marketplace 面（`list_plugin_marketplaces`〔散文墓碑〕）退役：经通道直接说帧命令
   //   `plugins-marketplaces`，后端出成品（`src/settings/plugins-section.ts::fetchSurvey`）。
-  // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
-  // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
-  // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
-  deploy_local_cc_bus: () => invoke<CcBusDeployReport>("deploy_local_cc_bus"),
-  // PS2：本机装的是哪一版（**只读**）。三态刻意不合并 ——
-  // 「没装」「已是最新」「装了但不是这一版」合并任意两个都会骗人。
-  cc_bus_install_state: () => invoke<CcBusInstallState>("cc_bus_install_state"),
+  // 〔MIG-3a · 子步 3〕PS1 / PS2 那两条（`deploy_local_cc_bus`〔散文墓碑〕· `cc_bus_install_state`〔散文墓碑〕）退役：
+  //   cc-bus 装到本机是后端代管的资产，判 · 写 · 记在本机后端（`cc-bus-install` / `-state`，`src/cc-bus-install-reads.ts`）。
+  /** 〔MIG-3a〕装出来的 `cc-spawn` 在这台跑不跑得起来：本机 `ccm` 够不够新（monitor 探本机 ccm；`null` = 够新）。 */
+  cc_bus_ccm_precheck: () => invoke<string | null>("cc_bus_ccm_precheck"),
   // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`backend::control::ccm_invocation`）。
   // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
   render_ccm_launch: (args: { req: CliRenderRequest }) =>

@@ -83,7 +83,7 @@ pub(crate) trait Door {
         backup: bool,
         parents: bool,
     ) -> Result<Landed, Refused>;
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String>;
+    // 〔MIG-3a · 子步 3〕改名那一形（`rename`〔散文墓碑〕，唯一用户是 cc-bus 装前的整目录备份）随装 cc-bus 进后端删了。
     /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。今天唯一的用户：全景删批注侧车。
     /// 〔RM1e〕带 CAS：`expect` = 读到的那一份，盘上逐字节等于它才删；不等 / 已经不在 ⇒ [`Refused::Stale`]，一个字节不动。
     /// 〔墓碑 —— RM1d 那一版这里写着「没有 CAS（后端这条命令不收 `expect`），调用方先 `peek` 核一遍」。〕
@@ -91,9 +91,7 @@ pub(crate) trait Door {
     // 〔MIG-3a〕「只删一个空目录」那一形（〔FW1〕`delete_empty_dir`〔散文墓碑〕）随卸 skill 进后端删了：收空目录今天在那台后端里（`assets/skill_flow.rs`）。
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String>;
     async fn delete_session(&self, sid: &str) -> Result<String, String>;
-    /// 一个路径**在不在**（`files-stat`）：在 ⇒ `Some(kind)`；对端答「读不到」⇒ `None`。
-    /// ⚠ 「读不到」与「不存在」在这一问上分不开（权限不够也是 `None`）—— 只给「在不在场」那种展示用。
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String>;
+    // 〔MIG-3a〕「一个路径在不在」那一形（`stat_kind`〔散文墓碑〕）的用户（别名读回 · cc-bus 装）都进了后端 ⇒ 删。
     // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
 }
 
@@ -340,16 +338,6 @@ impl Door for BackendDoor {
         })
     }
 
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
-        self.ask(
-            "files-rename",
-            serde_json::json!({ "root": root, "from": from, "to": to }),
-        )
-        .await
-        .map(|_| ())
-        .map_err(Refused::said)
-    }
-
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         self.delete_expecting(root, rel, serde_json::json!(expect))
             .await
@@ -371,22 +359,6 @@ impl Door for BackendDoor {
             .await
             .map_err(Refused::said)?;
         Ok(path_text(v.get("path").unwrap_or(&serde_json::Value::Null)))
-    }
-
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
-        match self
-            .ask("files-stat", serde_json::json!({ "path": path }))
-            .await
-        {
-            Ok(v) => Ok(Some(
-                v.get("kind")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-            )),
-            Err(Refused::Peer { code, .. }) if code == "unreadable" => Ok(None),
-            Err(e) => Err(e.said()),
-        }
     }
 }
 

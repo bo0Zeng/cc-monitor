@@ -129,14 +129,6 @@ impl Door for DiskDoor {
         })
     }
 
-    async fn rename(&self, root: &str, from: &str, to: &str) -> Result<(), String> {
-        let (a, b) = (Self::at(root, from), Self::at(root, to));
-        if b.exists() {
-            return Err(format!("替身：{} 已经在了", b.display()));
-        }
-        std::fs::rename(&a, &b).map_err(|e| e.to_string())
-    }
-
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
         let p = Self::at(root, rel);
         self.deleted
@@ -170,16 +162,6 @@ impl Door for DiskDoor {
     async fn delete_session(&self, sid: &str) -> Result<String, String> {
         self.deleted_sids.borrow_mut().push(sid.to_string());
         Ok(format!("<替身>/{sid}.jsonl"))
-    }
-
-    async fn stat_kind(&self, path: &str) -> Result<Option<String>, String> {
-        Ok(std::fs::metadata(path).ok().map(|m| {
-            if m.is_dir() {
-                "dir".to_string()
-            } else {
-                "file".to_string()
-            }
-        }))
     }
 }
 
@@ -377,7 +359,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
             "files-delete-session",
             "files-peek",
             "files-put",
-            "files-rename"
+            // 〔MIG-3a · 子步 3〕`files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。
         ]
         .into_iter()
         .collect(),

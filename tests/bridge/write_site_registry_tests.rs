@@ -367,7 +367,7 @@ fn every_write_site_is_declared_and_installers_name_a_real_tool() {
     }
     // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
     // 〔RW1 · 第四波 09-24〕5 → 1（地板改成相等）：`ccm` 的三行（远端入口那一份落点原语与
-    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`cc_bus_deploy.rs::deploy_into`）
+    //   `profile_installer.rs` 两个原语）· `project-mcp` 的一行 · `cc-bus` 的一行（`deploy_into`〔散文墓碑〕，〔MIG-3a〕装 cc-bus 今天在本机后端）
     //   随「用户文件改经后端写」走了，剩本机那条 `ccm` 入口（写的是我们自己的目录）。
     // 〔E2 · V28〕1 → 0：本机 `ccm` 不再是「装的一份副本」，就是后端本身（`extract_embedded_to`，`None` 那一档：monitor 自己的部署物）。
     //   ⇒ 这张表今天没有安装动作；循环空转由上面「每条都在 `SITE_CLASS` 里」那两向相等兜着。

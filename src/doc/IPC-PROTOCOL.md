@@ -2659,6 +2659,36 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 整块删，块外一个字节不动；没有块 ⇒ 原样；围栏损坏 ⇒ 中止。写经本进程 `files-put`（带备份）。
 错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-remove`）。
 
+#### `cc-bus-install-state`：这台装的 cc-bus 是哪一版（MIG-3a 子步 3，09-28，**只读**）
+
+```text
+→ {"id":"c1","cmd":"cc-bus-install-state"}
+← {"kind":"reply","id":"c1","ok":true,"data":{"state":"drifted","differing":1,"missing":0}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `state` | ← | `not_installed` · `up_to_date` · `drifted`（三态刻意不合并） |
+| `differing` · `missing` | ← | 只 `drifted` 有：与这台二进制带着的那一份逐文件比，内容不同几个 · 缺几个（清单外的文件不算） |
+
+错误码：`refused`（这台后端不认得带 skill 的 agent）。⚠ **CLI 面也有它**（`--cc-bus-install-state`）。
+
+#### `cc-bus-install`：把这台二进制带着的 cc-bus 装到这台（MIG-3a 子步 3，09-28，**写用户文件**）
+
+```text
+→ {"id":"c2","cmd":"cc-bus-install"}
+← {"kind":"reply","id":"c2","ok":true,"data":{"dest":"/home/u/.claude/skills/cc-bus","written":28,"unchanged":0,"backup":null,"recordFailed":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `dest` | ← | 落点（`<skills 根>/cc-bus`，过独立 realpath 围栏） |
+| `written` · `unchanged` | ← | 写了几个 · 全一致时跳过的个数（全一致 ⇒ 一个字节不写、不备份、不记） |
+| `backup` | ← | 覆盖前整个目录改名成的那一份（`cc-bus.bak-<秒>`，`null` = 之前没装过） |
+| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句（这一趟装的卸不掉）；装卸账复用 `skill-install-record` 那一份 |
+
+写经本进程文件管理面（`files-rename` / `files-put` / `files-chmod`）。只由用户显式点「装」触发（`INVARIANTS` 第 7 条例外）。错误码：`bad_file` · `refused`。⚠ **CLI 面也有它**（`--cc-bus-install`）。
+
 #### `skill-host-list`：这台一个项目里接进来的 skill（MIG-3a，09-28，**只读**）
 
 ```text
@@ -3170,7 +3200,7 @@ stdin **只读到第一个换行**就动手，不等 EOF（上限与超限的拒
 
 **SH1 追加一条（09-26）**：`--mcp-read` —— 这台机器的 MCP 列表成品（见上面它自己那一小节）。同上，与帧面同一个 `run`；**读 stdin**（`{projectDir?}`）。
 
-**MIG-3a 追加二十条（09-27 · 09-28）**：`--mcp-sync-hub-preview` · `--mcp-sync-hub-apply` · `--skill-install-hub-preview` · `--skill-install-hub-apply`（两台之间那几件的枢纽）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
+**MIG-3a 追加二十二条（09-27 · 09-28）**：`--cc-bus-install` · `--cc-bus-install-state`（cc-bus 装到这台）· `--mcp-sync-hub-preview` · `--mcp-sync-hub-apply` · `--skill-install-hub-preview` · `--skill-install-hub-apply`（两台之间那几件的枢纽）· `--mcp-server-put` · `--mcp-server-remove` · `--mcp-sync-source` · `--mcp-sync-preview` · `--mcp-sync-apply` · `--skill-install-apply` · `--skill-uninstall-apply` · `--skill-host-list` · `--skill-host-read` · `--skill-host-write` · `--aliases-render` · `--aliases-read` · `--aliases-install` · `--aliases-block-render` · `--aliases-block-install` · `--aliases-block-remove` —— D 组 MCP · skill · 别名那几件收进这台后端（见各自那一小节）。与帧面同一个 `run`；**读 stdin**。
 
 **SH1 追加一条（09-26）**：`--tmux-list` —— 这台机器的 tmux 会话（见上面它自己那一小节）。同上，与帧面同一个 `run`；**不读 stdin**。
 

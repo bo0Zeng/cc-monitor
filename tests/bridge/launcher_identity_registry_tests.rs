@@ -198,7 +198,7 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔MIG-3a〕地板 73 → 70：收件箱三条退役（现打 70）。
     // 〔MIG-3a〕地板 70 → 65：别名六条退役 −6、`bound_terminal_count` ＋1（现打 65）。
     assert!(
-        rows.len() >= 65, // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
+        rows.len() >= 64, // 〔MIG-3a · 子步 3〕65 → 64：cc-bus 装 / 三态两条退役、装前预检一条进 // 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );

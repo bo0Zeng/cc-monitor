@@ -2,6 +2,7 @@
 //! 写经这台后端自己的文件管理面（[`door`]）。从前「monitor 算好、后端写」的 D 组（`05 §14.3`）按用户 09-27「一处后端」收进来。
 
 pub(crate) mod aliases;
+pub(crate) mod cc_bus_install;
 pub(crate) mod door;
 pub(crate) mod hub;
 pub(crate) mod mcp_edit;

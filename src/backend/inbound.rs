@@ -118,6 +118,9 @@ pub const COMMANDS: &[&str] = &[
     "bus-state",
     "cancel",
     "capture-pane",
+    // 〔MIG-3a · 子步 3 · 主会话 09-27 裁 ⑯〕cc-bus 装到这台（资产的装不算部署：判 · 写 · 记都在这台，装卸账复用 skill 装记录）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "cc-bus-install",
+    "cc-bus-install-state",
     // 〔W5-ALIAS · 第五波先行〕别名预览：一条别名的预置参数 → `ccm --print` 那一行（`设计/71 §2.3`）。
     "ccm-print",
     // 〔E2 · `96 §7.2.2`〕这台的 `ccm` 会哪些（与 `ccm --ccm-probe` 同一份）：monitor 远端那一跳改问这里，不再进交互 shell 查 `PATH`。
@@ -2443,6 +2446,34 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-3a · 子步 3〕cc-bus 装到这台：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
+    CommandSpec {
+        name: "cc-bus-install-state",
+        doc_anchor: Some("#### `cc-bus-install-state`"),
+        codes: &["refused"],
+        fields: &["differing", "missing", "state"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::assets::cc_bus_install::answer_state()
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "cc-bus-install",
+        doc_anchor: Some("#### `cc-bus-install`"),
+        codes: &["bad_file", "refused"],
+        fields: &["backup", "dest", "recordFailed", "unchanged", "written"],
+        takes_input: false,
+        run: Run::Blocking(|_r| {
+            crate::assets::cc_bus_install::answer_install(
+                &LocalFiles,
+                &crate::skill_ledger::answer_record,
+            )
+            .map(Some)
+            .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     // 〔MIG-3a · 主会话 09-28 裁 · `01 §3.5`〕两台之间那几件的枢纽：界面只问本机一次，本机后端向来源那台取、向被写那台写（`assets/hub.rs`）。
