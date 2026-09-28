@@ -189,6 +189,7 @@ mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须�
 #[cfg(test)]
 mod needle_anchor_registry; // audit-0805 F24：匹配单位不许比事实小（F23 的兄弟族）
 #[cfg(test)]
+mod command_home_registry; // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表：monitor 自己的事 / 待迁（整体 cfg(test)）
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
                    // EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
                    // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
