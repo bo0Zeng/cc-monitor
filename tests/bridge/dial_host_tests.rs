@@ -135,7 +135,6 @@ fn the_host_never_dials_in_process_and_spawns_nothing() {
         "pub(crate) async fn open_stream(",
         "pub(crate) async fn capture(",
         "pub(crate) async fn probe(",
-        "pub(crate) async fn forward(",
     ] {
         let at = prod
             .find(entry)
@@ -347,12 +346,6 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
 
 /// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
-    (
-        "dial_host.rs",
-        "forward",
-        1,
-        "端口转发：用户开着就一直在，关了（丢 `ForwardLink`）就收",
-    ),
     (
         "remote_resident.rs",
         "attach",

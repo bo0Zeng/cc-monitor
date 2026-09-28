@@ -208,19 +208,14 @@ const REGISTERED: &[(&str, &str)] = &[
     //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
     (
         "src/bridge/src/ssh_link.rs",
-        "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果、转发计数 —— \
+        "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果 —— \
          `05 §2` 四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `ssh_source.rs` 里；\
          C2 把 SSH 的全部活搬进后端的拨号代理之后，界面侧与 SSH 有关的**传输**就只剩这一件。\
          起代理进程、读配置、定期限都在宿主 `dial_host.rs`（不是成员，做的正是 `C4`/`C5`/`X2` 不许成员做的事）。\
          ⚠ 它**不买**「代理拨得对」—— 那归后端 `dial_tests` 与读数脚本 `C2-dial-loopback.py`。",
     ),
-    (
-        "src/bridge/src/port_forward.rs",
-        "面 A 的**端口转发**：纯字节搬运（本机回环口 ↔ 远端口），它不知道会话/账号/agent。\
-         C2 之后绑口与 direct-tcpip 在拨号代理里（`use: forward`）、查配置与起进程在宿主 `dial_host.rs::forward`，\
-         本文件只剩三个命令面 ＋ 一张转发账（拿着链路的那个任务 · 累计连接数）。\
-         ⚠ 它**不买**「转发真的通」—— 那归读数脚本那一项（真 sshd ＋ 真 HTTP）。",
-    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕`port_forward.rs` 那一行随文件删了（不是摘标记）：三条命令与转发账进了本机常驻后端
+    //   （`src/backend/dial/forwards.rs`），界面经通道直问 —— 界面 crate 里再没有端口转发这一面。
 ];
 
 /// 通信层**对前端的入口符号** —— `(符号名, 说明)`。`C3` 与 `X6` 的人群从这儿派生。
@@ -2506,7 +2501,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 55usize),
+            ("chan.call", 58usize), // 〔MIG-1〕55 → 58：端口转发三问（`src/port-forward-reads.ts`）
             ("chan.subscribe", 1usize),
             ("subscribe", 1usize)
         ]

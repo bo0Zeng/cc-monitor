@@ -82,7 +82,6 @@ mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
                  // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
                  //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
-mod port_forward;
 mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
@@ -1086,9 +1085,6 @@ pub fn run() {
             panorama_call::panorama_edit,
             // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。
             panorama_call::panorama_cancel,
-            port_forward::start_forward,
-            port_forward::stop_forward,
-            port_forward::list_forwards,
             // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
             // 〔CF2 · 第四波 4B〕会话内容经通道的 `subscribe`（本地撤单 · credit）。

@@ -119,7 +119,7 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_env_scrub_tests.rs",
     "tests/bridge/lib_nudge_skip_tests.rs",
     "tests/bridge/lib_remote_config_tests.rs",
-    "tests/bridge/port_forward_tests.rs",
+    // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
     "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
@@ -266,6 +266,7 @@ const SCAN: &[&str] = &[
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
     "tests/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
+    "tests/port-forward-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
     "tests/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
@@ -285,6 +286,7 @@ const SCAN: &[&str] = &[
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
+    "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
     "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
