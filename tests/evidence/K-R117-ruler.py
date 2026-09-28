@@ -218,7 +218,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   `list_session_activity` / `list_active_sessions` 删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。
     # 〔墓碑 · 第四波 4D LOC1a〕`session.tasks` 随任务快照改由界面经通道直问后端 `tasks-list`（成品 `{tasks}`，跨语言金样 `tasks-list.golden.json`）、`get_session_tasks` 包装退役；理由同上面几条墓碑。
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
-    ("ssh.host-config", (NA, "—", "ssh 主机配置 / 推公钥 —— 连得上那一层，不是装我们的东西")),
+    # 〔墓碑 · MIG-3b 续〕`ssh.host-config` 随它最后一条命令（公钥推送）进了本机后端（`pubkey-push`，界面经通道问）而退役：
+    #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
     ("subagent.load", (NA, "—", "读 subagent 定义")),
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     # 〔墓碑 · MIG-1〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：

@@ -79,7 +79,7 @@ mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给�
                  // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
                  //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
 mod profile_installer;
-mod pubkey;
+// 〔MIG-3b 续 · ⑬〕`pubkey`〔散文墓碑〕（F50 公钥推送）进了本机后端：帧命令 `pubkey-push`（`src/backend/assets/pubkey.rs`），界面经通道直问。
 // 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
 mod remote_history;
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
@@ -1046,7 +1046,7 @@ pub fn run() {
             //    ⚠ 界面上点得到它的地方是旧 SFTP 面板的表头 —— 那块面板按 `§6.6 C`
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
-            pubkey::push_public_key,
+            // 〔MIG-3b 续〕`push_public_key`〔散文墓碑〕退役：界面经通道问本机后端 `pubkey-push`。
             // 〔MIG-2〕`probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,

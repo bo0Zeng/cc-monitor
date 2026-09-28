@@ -41,12 +41,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // 〔DP1 · 第四波〕`sftp.rs` 里只问 `uname -m` 的那一处走了：部署前问机器改问 `uname -s -m`（`byte_table::probe_key`），
     //   走的是 `connect_and_exec_capture`（收全、有上限、带退出码）⇒ 不在本表人群（本表只数 `connect_and_exec_cmd(`）。
     // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
-    (
-        "pubkey.rs",
-        "push_public_key",
-        Origin::Builder("build_authorized_keys_cmd"),
-        "公钥经 shell_quote",
-    ),
+    // 〔MIG-3b 续 · ⑬〕公钥推送那一行出去了：读 `.pub` · 组请求 · 一次 exec 都进了本机后端（`pubkey-push`，`src/backend/assets/pubkey.rs`）。
     // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
     //    `cc_bus.rs / check_cc_bus_agent_online`（`Builder("build_online_cmd")`）与
     //    `tmux.rs / capture_remote_pane`（`Builder("build_capture_pane_cmd")`）。
@@ -55,8 +50,8 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    ⇒ 它们不再是「远端执行点」，两个构造器也随之整块删。
     //    留着它们，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住 ——
     //    而且这一次连 `Builder` 那一支的机检也会红（构造器函数不存在了）。
-    //    ⚠ **`Builder` 这一类今天只剩 1 个样本**（`pubkey.rs`）：下面那条常驻自检
-    //    要求四类各 ≥1，它就是那一支唯一的活样本。真收敛到 0 的那天要连自检一起改。
+    //    ⚠ **`Builder` 这一类〔MIG-3b 续〕今天零个样本**（最后那个公钥推送进了本机后端）：下面那条常驻自检
+    //    只查 `PassThrough` 那一支还有活样本；`Builder` 收敛到 0 那天自检已一起改（归零一类 ⇒ 断言它恒零）。
     // ⚠ `K-R72`（09-12）：`kill_remote_tmux` / `tmux_send_keys` **从本表出去了** ——
     //    它们那两条一次性 SSH 回落删了，今天只走后端通道 ⇒ 不再是「远端执行点」。
     //    这一改是**结构性强制的随动**：上面那条反向锚点（「申报了一处已经不存在的执行点」）
@@ -77,12 +72,8 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     // 〔DEL〕`ssh_source.rs` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
     // 〔SH1〕`tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
-    (
-        "ssh_source.rs",
-        "connect_and_exec_cmd",
-        Origin::PassThrough,
-        "★ 这是原语**自己的定义**，不是调用点",
-    ),
+    // 〔MIG-3b 续 · V41〕`ssh_source.rs` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
+    //   ⇒ 本表空了，下面那条判据改成「零处」（带正控）。
     // 〔SH1 · V136〕`cc_bus.rs / exec_read` 出去了：读收件箱改走后端 `bus-inbox`。
     // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs / exec_collect` 出去了：跑安装脚本 · 核 PATH 两步换成那台后端的 `acct-iso-install`。
 ];
@@ -200,14 +191,20 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
         // 〔DEL〕4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。
         // 〔MIG-3a · 09-28 裁 2〕3 → 2：部署 cc-acct-iso 那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`（`exec_collect` 那一处不在了）。
-        found.len() >= 2,
-        "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
+        // 〔MIG-3b 续〕2 → 0：公钥推送进了本机后端（`pubkey-push`），原语随之删了（V41）⇒ **零处**：monitor 不再开一次性 exec 字节流。
+        found.is_empty(),
+        "〔MIG-3b 续〕该是零处，却找到 {} 处 `connect_and_exec_cmd(`（原语已删；08-07 实测 16；\
              **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处；\
              **`C1` 09-24 现打 12** —— 读会话与快照那两处改走长连接之后各少一处；\
              **`DP1` 09-25 现打 11** —— 部署前问机器那一处改走 `connect_and_exec_capture`；\
              **`C4d` 09-25 合并后现打 10** —— 逐次拨号那条路删了）\
-             —— 抽取器坏了，本条此刻无效",
+             —— 有人把一次性 exec 字节流的原语加回来了",
         found.len()
+    );
+    // 正控：同一个抽取形状在合成语料上数得出（零处不是因为尺子瞎了）。
+    assert!(
+        command_arg("    let s = connect_and_exec_cmd(&cfg, &cmd).await?;") == "cmd",
+        "实参抽取器认不出 `connect_and_exec_cmd(` 了 —— 零处可能是尺子瞎了"
     );
 
     let missing: Vec<String> = found
@@ -297,15 +294,17 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     // ⚠ 本仓已连着六次栽在「新分支平时没人走」上，所以四类各要一个活样本。
     // 〔E2〕`Const` 那一类收敛到零（最后一条 `probe_ccm_cli`〔散文墓碑〕 改问那台后端 `ccm-probe`）⇒ 那一支没有人群、自检只对余下三类。
     // 〔DEL〕`Quoted` 那一类也收敛到零（最后一条 `ssh_source.rs` 起远端流模式那一处随那一形删了）⇒ 同上。
+    // 〔MIG-3b 续〕`Builder` 那一类也收敛到零（最后一条 `pubkey.rs` 的公钥推送进了本机后端 `pubkey-push`）⇒ 同上。
     assert_eq!(
-        (per_class[0], per_class[2]),
-        (0, 0),
-        "`Const` / `Quoted` 那一类又长出了样本 —— 回来把它放回自检"
+        per_class,
+        [0, 0, 0, 0],
+        "四类里又长出了样本 —— 回来把它放回自检"
     );
     for (i, name) in ["Const", "Builder", "Quoted", "PassThrough"]
         .iter()
         .enumerate()
-        .filter(|(i, _)| *i == 1 || *i == 3)
+        .filter(|_| false)
+    // 〔MIG-3b 续〕四类都收敛到零（原语删了）⇒ 没有哪一类还该有活样本
     {
         assert!(
             per_class[i] >= 1,
@@ -347,8 +346,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     ("byte_table.rs", "probe_key", StillShell::Bootstrap,
      "推全景小程序之前问那台 `uname -s -m`，据此挑哪一份字节去放（〔MIG-3b〕后端那条部署路的这一问进了本机常驻后端 `deploy-plan`；全景这一条随 `panorama_*` 三条待裁）"),
     // 〔MIG-3b〕`sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
-    ("pubkey.rs", "push_public_key", StillShell::Bootstrap,
-     "把公钥推进那台 `authorized_keys`：只剩**那台后端还不在**那一形（密钥登录建立之前）；〔SH1〕后端在 ⇒ 已改经 `files-put` ＋ `files-chmod`（`pubkey.rs::push_via_backend`）"),
+    // 〔MIG-3b 续〕公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
     // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
     //   （链接走写面 `files-link`，装卸账记 skill 装记录）；字节照走部署那一条（SFTP 经本机后端）。
     // 〔SH1 · V137〕`mcp.rs` 那一行摘了：`agents::Adapter` 长了一格 MCP 读，后端 `mcp-read` 出成品（V137 选的那一条）。

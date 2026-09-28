@@ -79,7 +79,6 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { SessionLinesPage } from "../generated/SessionLinesPage";
-import type { PushResult } from "../generated/PushResult";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
@@ -249,16 +248,7 @@ export const commands = {
 
   // 〔SH1 · V136〕`read_cc_bus_inbox` / `read_cc_bus_state` 两条退役：驾驶舱读面经通道直接问后端（`src/cc-bus-control.ts`）。
 
-  /**
-   * 把本机公钥推到远端 `authorized_keys`。返回值字段被真消费 ⇒ 生成物（桶③）。
-   *
-   * **这条是我漏掉又补回来的**：我用 `grep -P` 逐文件列调用点时，
-   * 它写成**跨行**形式（`invoke<…>(\n  "push_public_key",`）而 grep 是**按行**匹配的
-   * ⇒ 漏计一处。守卫里的 JS 正则跨行、一直数对（`toBe(112)` 含它）。
-   * **临时 grep 比守卫弱，别拿它当账本。**
-   */
-  push_public_key: (args: { cfg: unknown; pubKeyPath: string | null }) =>
-    invoke<PushResult>("push_public_key", args),
+  // 〔MIG-3b 续 · ⑬〕把本机公钥推到远端那一条退役：界面经通道问本机后端 `pubkey-push`（`src/pubkey-push.ts`），读 `.pub` · 组请求 · 写都在后端。
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   // 〔US1 · 第四波 4D〕`read_apikey_credentials_status` / `apikey_routing_for` 退役：界面经通道直接问那台后端

@@ -612,15 +612,7 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
     }
 }
 
-/// **一条 exec 的字节流**：远端跑 `cmd`，读端是它的 stdout、写端是它的 stdin。
-/// 后端长连接流与十来处一次性查询都从这里拿链路。
-pub(crate) async fn open_stream(cfg: &RemoteConfig, cmd: &str) -> Result<DialStream, String> {
-    let req = request(cfg, "stream", serde_json::json!({ "command": cmd }))?;
-    open(cfg, &req, "stream", &mut |_| {})
-        .await
-        .map(|(s, _)| s)
-        .map_err(|(e, _)| e)
-}
+// 〔MIG-3b 续 · V41〕`open_stream`〔散文墓碑〕（`use:"stream"` 的一条 exec 字节流）删了：唯一的问者 `ssh_source` 那个一次性 exec 原语随公钥推送进本机后端一起走了。
 
 /// 〔HOST · V139〕**一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
 /// direct-tcpip 到远端 `127.0.0.1:port`）。出生带一次性总时限；接成流之后由调用方摘（`remote_resident::attach`）。

@@ -160,10 +160,17 @@ fn the_backend_stream_entry_hands_the_dial_to_another_process() {
         .into_iter()
         .find(|(n, _)| *n == "ssh_source.rs")
         .expect("语料里没有 ssh_source.rs");
-    let prim = body_of(&prod, "pub async fn connect_and_exec_cmd(");
-    if let Err(e) = backend_stream_dial_verdict(&prim) {
-        panic!("{e}");
-    }
+    // 〔MIG-3b 续 · V41〕流那一个原语（`connect_and_exec_cmd`）随最后一个调用方（公钥推送）进本机后端删了 ⇒
+    //   本条的靶只剩收全那一个；「界面进程零拨号」照旧钉：整份生产段里零处自己拨、零处开流用法的链路。
+    assert_eq!(
+        (
+            prod.matches("pub async fn connect_and_exec_cmd(").count(),
+            prod.matches("dial_host::open_stream(").count(),
+            prod.matches("connect_session(").count(),
+        ),
+        (0, 0, 0),
+        "流那一个原语 / 开流链路 / 进程内拨号回来了"
+    );
     let capture = body_of(&prod, "pub async fn connect_and_exec_capture(");
     assert_eq!(
         (
@@ -371,12 +378,12 @@ fn an_empty_body_makes_the_judge_red_by_itself() {
 /// 照红 ⇒ 刀太粗（它其实在钉「这段文本一个字都不许动」，而不是钉那个性质）。
 #[test]
 fn a_comment_only_edit_does_not_move_the_verdict() {
-    let (_, prod) = corpus()
-        .into_iter()
-        .find(|(n, _)| *n == "ssh_source.rs")
-        .expect("语料里没有 ssh_source.rs");
-    let body = body_of(&prod, "pub async fn connect_and_exec_cmd(");
-    backend_stream_dial_verdict(&body).expect("真身就该是绿的");
+    // 〔MIG-3b 续〕真身删了（流那一个原语随公钥推送进本机后端）⇒ 喂它删之前那一版的形状（合成，逐字抄当时的函数体）。
+    let body = "pub async fn connect_and_exec_cmd(\n    cfg: &RemoteConfig,\n    cmd: &str,\n) -> Result<crate::dial_host::DialStream, String> {\n    \
+                // 〔C2 → SR1a〕拨号在本机常驻后端里；这里拿到的是它开的一条链路（读端 = 远端命令的 stdout）。\n\
+                \x20   crate::dial_host::open_stream(cfg, cmd).await\n}\n"
+        .to_string();
+    backend_stream_dial_verdict(&body).expect("删之前那一版就该是绿的");
     let edited = body.replace(
         "    crate::dial_host::open_stream(cfg, cmd).await",
         "    // 这一行是本判据现加的注释，只为证明它不按文本相等判\n\
@@ -416,7 +423,8 @@ fn the_shared_stripper_keeps_the_entry_body_this_guard_must_scan() {
     guard_core::assert_stripper_keeps(
         "ssh_source_dial_move_judge · ssh_source.rs",
         include_str!("../../src/bridge/src/ssh_source.rs"),
-        &["pub async fn connect_and_exec_cmd("],
+        // 〔MIG-3b 续〕锚点换成收全那一个原语（流那一个删了）；它同样在第一个测试模块之后。
+        &["pub async fn connect_and_exec_capture("],
     );
     // ⚠ 本判据的语料是**四份**文件，这里只立了 `ssh_source.rs` 那一份的对照 ——
     //    另两份（`sftp.rs` / `port_forward.rs`；〔SR1b〕`inproc_dial.rs` 那份整份删了）的针在它们各自第一个测试模块**之前**，

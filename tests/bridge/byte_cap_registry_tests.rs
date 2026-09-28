@@ -564,6 +564,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔SR1b 09-24〕部署读版本标记 / 入口 shim 那一问的上限（经本机后端 `files` 链路的 `read`，`max` 就是它）。
     // 〔MIG-3a · 09-28 预裁〕`sftp.rs` 读版本标记那一读的上限那一行删了：那一读随 cc-acct-iso 的部署命令退役。
+    // 〔MIG-3b 续〕公钥推送（本机常驻后端）读本机那份 `.pub` 的上限：先问大小，超了就不读、原话拒。
+    (
+        "src/backend/assets/pubkey.rs",
+        "PUB_READ_MAX",
+        64 * 1024,
+        "本机那份 `.pub`（公钥一行几百字节；超了就不是公钥）",
+        "拒收+回错",
+    ),
     // 〔MIG-3b〕部署计划（本机常驻后端）认从前那份三行入口时读落点那一份的上限：先问大小、大了不读。
     (
         "src/backend/control/deploy_plan.rs",
@@ -1560,11 +1568,7 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
     // 〔DP1 · 第四波〕`sftp.rs` 那一条（远端 `uname -m` 架构探针，`.read_line` 无上限地读一行）走了：
     //   问那台是什么机器改成 `byte_table::probe_key`，走 `connect_and_exec_capture`（stdout / stderr 各有上限、带退出码），
     //   不再是一处无上限的流读 ⇒ 按上面几条同一个理由摘掉。
-    (
-        "src/bridge/src/pubkey.rs",
-        "远端读公钥的 stdout",
-        "同上一条。**退役归 F10d**。",
-    ),
+    // 〔MIG-3b 续〕`pubkey.rs` 那一条（远端追加公钥那一趟的 stdout）走了：推送进了本机后端，走 `capture_full`（有上限、带退出码）。
     (
         "src/bridge/src/backend/control/tmux.rs",
         "远端 `tmux ls` / `capture-pane` 等四处的 stdout",
@@ -1799,7 +1803,7 @@ fn every_uncapped_stream_read_has_an_owner() {
     //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
     // 〔SH1 · 4D〕地板 11 → **10**：钩子诊断远端那处 `read_to_end`（一次性 SSH 的 stdout）随改问那台后端不存在了；→ **9**：MCP 远端那处同理。
     assert!(
-        population >= 6, // 〔MIG-3a · 09-28 裁 2〕7 → 6：部署 cc-acct-iso 那处 `read_to_end`（安装脚本的 stdout）随改问那台后端不存在了 // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 〔E2〕8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
+        population >= 5, // 〔MIG-3b 续〕6 → 5：公钥推送那处 `read_to_string`（远端那一趟的 stdout）随进本机后端没了 // 〔MIG-3a · 09-28 裁 2〕7 → 6：部署 cc-acct-iso 那处 `read_to_end`（安装脚本的 stdout）随改问那台后端不存在了 // 〔SH1〕9 → 8：列 tmux 那处 `read_to_end` 随改问后端不存在了 // 〔E2〕8 → 7：远端 `ccm` 探针那处 `read_to_end` 随改问那台后端 `ccm-probe` 不存在了
         "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
              `K-R112` 09-13 现打 11，SH1 09-26 现打 10）—— 抽取器坏了，本条此刻是空转的"
     );

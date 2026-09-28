@@ -17,7 +17,7 @@
 //!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
 //!   〔RW1 · 第四波 09-24〕**落盘已不在本模块**：经那台后端读改写（`user_files`）；规划那一半
 //!   （`merge_profile_block` / `strip_profile_block`）〔W5-ALIAS〕住 `profile_installer`。
-//! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
+//! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`〔MIG-3b 续〕今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
 //!
 //! 原子写（EXCL 临时件 → 旧目标先**改名成 `.bak`**（不是删）→ 上位 → 清 `.bak`）与它的来历住后端
 //! `dial/sftp.rs::put_atomic`（F89a 审计后加固 · DN-7 订正「删旧」那句 · setstat 截断事故）。

@@ -220,11 +220,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         "骨架区间读仍经 monitor 转",
     ),
     ("read_session_lines", Lane::Mig2, "骨架行读仍经 monitor 转"),
-    (
-        "push_public_key",
-        Lane::Mig3b,
-        "`authorized_keys` 那串在 monitor 拼、经拨号面写",
-    ),
+    // 〔MIG-3b 续〕公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
     (
         "panorama_call",

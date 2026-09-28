@@ -108,6 +108,8 @@ pub const COMMANDS: &[&str] = &[
     "assets-catalog-merge",
     // 〔AS2〕本机常驻后端沿池里那条 SSH 拉 / 并 / 推远端的目录（事件触发：连上 · 看机器页）。
     "assets-sync",
+    // 〔MIG-3b 续〕公钥写进这台的 `authorized_keys`（被写那台答；本机后端的 `pubkey-push` 经可达表问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "authorized-keys-add",
     // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端自己的 stderr 诊断文件（尾部，只读）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "backend-log",
     "bus-broadcast",
@@ -218,6 +220,8 @@ pub const COMMANDS: &[&str] = &[
     "panorama",
     "ping",
     "plugins-marketplaces",
+    // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
+    "pubkey-push",
     // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
     // 〔C4d · 第四波 4B〕本机后端的可达表：monitor 在每台远端流握手那一刻交「怎么够到那台」（只登记）。
     // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
@@ -1342,6 +1346,48 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
+        }),
+    },
+    // 〔MIG-3b 续〕**公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
+    //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
+    CommandSpec {
+        name: "pubkey-push",
+        doc_anchor: Some("#### `pubkey-push`"),
+        codes: &["invalid_args", "bad_jump", "refused", "failed"],
+        fields: &[
+            "jump",
+            "machine",
+            "outcome",
+            "pubKeyPath",
+            "pubPath",
+            "saved",
+            "via",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::assets::pubkey::answer_push(
+                    &r.args,
+                    &crate::assets::pubkey::Wire,
+                    &crate::assets::pubkey::read_local_pub,
+                )
+                .await
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔MIG-3b 续〕**公钥写进这台的 `authorized_keys`**（被写那台答）：算经 `assets/pubkey.rs`，写经 [`LocalFiles`]（CAS ＋ 建父目录 ＋ 700 / 600）。
+    CommandSpec {
+        name: "authorized-keys-add",
+        doc_anchor: Some("#### `authorized-keys-add`"),
+        codes: &["bad_args", "refused", "io_failed"],
+        fields: &["key", "outcome"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::pubkey::answer_add(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
     CommandSpec {

@@ -40,7 +40,7 @@
    〔RW1 · 第四波 2026-09-24〕**落盘不在 monitor 进程**：本机与远端都经那台机器的后端（`user_files::edit` → `files-peek` / `files-put`），
    monitor 只算新内容（`fenced_block::splice_in/out`）；备份 · 替换 · 回读 · 回滚那一份规则住后端（见 §4）。**注（batch20 审计修）**：F10 **含远端 `~/.bashrc` 写**（原 `sftp.rs` 头「非远端」措辞已订正）。
 5. **MCP 项目配置写（F87 本机 / F89a 远端；〔MIG-3a · 09-27〕**那台后端自己算、自己写**：帧命令 `mcp-server-put` / `mcp-server-remove`（`mcp_edit.rs::answer_put` / `answer_remove`，经本进程文件管理面 `files-peek` / `files-put`），本机远端同一条路）**：用户**显式**点「添加/更新」或「删除」（删带二次确认）后，写**项目** `.mcp.json`（落点 = 那台上的绝对项目目录 ＋ `.mcp.json`，`mcp_edit.rs::project_root` 守：绝对、不含 `..`；坏 JSON 拒覆盖、不留备份）。**SS-14**：写面**只** `.mcp.json`，**绝不**写 `~/.claude.json`/settings.json。`.mcp.json` 是**用户项目配置**（决定项目用哪些 MCP server），**非** Claude 会话数据（jsonl/pidfile）——与本约正交（同 F47 SFTP 面板性质），非驱动运行中会话。
-6. **公钥推送（F50，`pubkey::push_public_key`）**：用户显式点推送后，经 SSH-exec 把本地公钥**追加**到远端 `~/.ssh/authorized_keys`（`build_authorized_keys_cmd`：key 经 `shell_quote` 防注入、`grep -qxF` 幂等去重、只 append 不删）——用户自己的免密配置、非 Claude 数据。
+6. **公钥推送（F50，〔MIG-3b 续〕本机常驻后端帧命令 `pubkey-push`，`src/backend/assets/pubkey.rs`）**：用户显式点推送后，把本地公钥**追加**到远端 `~/.ssh/authorized_keys` —— 那台后端在 ⇒ 经它的文件管理面（`authorized-keys-add`，CAS）；不在 ⇒ 一次 SSH-exec（`posix::add_line_once`：key 经唯一的 quote 防注入、`grep -qxF` 幂等去重、只 append 不删）——用户自己的免密配置、非 Claude 数据。
    〔RW1 · 第四波 2026-09-24 · 主会话裁〕它写的是**用户文件**，但它是「建立 SSH 信任」那一跳，**按构造发生在那台机器的后端可达之前**
    ⇒ 与 F08（部署后端）同档，**留在 SSH**，不走后端写面。这是「用户文件只经后端写」唯一登记在案的 monitor 侧远端例外。
 

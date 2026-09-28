@@ -535,8 +535,11 @@ fn the_plan_ack_is_pinned_by_the_same_judgement_as_every_other_dial() {
     );
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
     let body = dp1_body(&prod, "async fn ask_plan_for(");
-    guard_core::find_pinned(&body, "crate::dial_host::settle_host_key(cfg, &dial, &plan.ack)")
-        .unwrap_or_else(|e| panic!("问计划那一口没把 ack 交给固化判定（{e}）：\n{body}"));
+    guard_core::find_pinned(
+        &body,
+        "crate::dial_host::settle_host_key(cfg, &dial, &plan.ack)",
+    )
+    .unwrap_or_else(|e| panic!("问计划那一口没把 ack 交给固化判定（{e}）：\n{body}"));
 }
 
 // 〔RW1 · 第四波 09-24〕这里原来是远端删会话那道结构守卫的单元判据；守卫随 SFTP 直删一起走了，

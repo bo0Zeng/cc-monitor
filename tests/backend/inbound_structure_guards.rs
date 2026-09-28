@@ -233,6 +233,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "cc-bus-install"
                 // 〔MIG-3a · 09-28 裁 2〕acct-iso 装：经本进程文件管理面建链接 ＋ 抄配置样例（同步文件 I/O）；建链接那条同写面一档。
                 | "acct-iso-install"
+                // 〔MIG-3b 续〕公钥并进这台的 `authorized_keys`：同步文件 I/O（经本进程文件管理面）。
+                | "authorized-keys-add"
                 | "files-link"
                 | "cc-bus-install-state"
                 | "aliases-render"
@@ -318,6 +320,7 @@ fn every_registered_command_declares_its_run_kind() {
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
+        "pubkey-push", // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
@@ -426,6 +429,7 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-host-list",
         "cc-bus-install",
         "acct-iso-install",
+        "authorized-keys-add", // 〔MIG-3b 续〕同步文件 I/O（经本进程文件管理面）
         "files-link",
         "cc-bus-install-state",
         "aliases-render",

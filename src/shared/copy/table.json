@@ -10170,10 +10170,30 @@
       "zh": "那台机器的后端还不认「退出行为」这一问。重装那台机器的后端就有了。",
       "args": []
     },
-    "rsPubkey.pushPublicKey.readResultFailed": {
+    "pubkeyPush.backend.tooOld": {
       "kind": "error",
-      "zh": "读推送结果失败：{e}",
-      "args": ["e"]
+      "zh": "本机后端太旧，不认「推送公钥」这一问（重启 cc-monitor 换上新的后端）。",
+      "args": []
+    },
+    "pubkeyPush.reply.badShape": {
+      "kind": "error",
+      "zh": "本机后端回的推送结果认不出（两边版本对不上）。",
+      "args": []
+    },
+    "bePubkey.add.noOutcome": {
+      "kind": "error",
+      "zh": "{machine} 的后端没说公钥加没加上。",
+      "args": ["machine"]
+    },
+    "bePubkey.exec.failed": {
+      "kind": "error",
+      "zh": "往那台的 authorized_keys 追加公钥没成：{said}",
+      "args": ["said"]
+    },
+    "bePubkey.read.tooBig": {
+      "kind": "error",
+      "zh": "文件太大，不像一份公钥",
+      "args": []
     },
     "rsPubkey.pushPublicKey.readFailed": {
       "kind": "error",
@@ -13158,11 +13178,6 @@
       "kind": "error",
       "zh": "{who} 的后端没连上，这一步要经它来写（{why}）—— 一个字节都没动。先在设置里把这台机器的后端起起来再点一次",
       "args": ["who", "why"]
-    },
-    "rsUserFiles.edit.gaveUp": {
-      "kind": "error",
-      "zh": "{last}\n连着 {attempts} 趟都是读完之后盘上那份又变了，先停下。过一会儿再点一次。",
-      "args": ["last", "attempts"]
     },
     "rsPlatformFs.chmod.failed": {
       "kind": "error",

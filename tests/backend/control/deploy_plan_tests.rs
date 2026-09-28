@@ -4,8 +4,8 @@
 //! 这里钉的是**编排**：先问机器、再判表、再问落点、再问旧落点，每一步的失败落在哪一格码上。
 
 use super::*;
-use std::collections::BTreeMap;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 /// 替身：`exec` 按命令原文查表；`stat` / `read` 按路径查表。没登记的 ⇒ 链路错。
