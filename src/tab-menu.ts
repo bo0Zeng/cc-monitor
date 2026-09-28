@@ -146,14 +146,7 @@ export class TabMenu {
         onClick: () => this.host.leaveGroup(sid),
       });
     }
-    // 〔RESYNC · V149 · `设计/15 §4.1b`〕每个 tab 的「重新读取」：那台后端从游标补读这个会话（`resync{sid}`，与关卡 2「对齐后重试」同一个口）。
-    if (t) {
-      items.push({
-        label: copyText("tabMenu.reread.label"),
-        title: copyText("tabMenu.reread.hint"),
-        onClick: () => void this.actions.rereadTab(sid),
-      });
-    }
+    // 〔REREAD · V155〕「重新读取」不在这里：挪成 tab 栏上常驻的一颗（`tab-bar-view.ts`），一按对所有打开的 tab 生效。
     // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
     // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
     if (t && isLocalOrigin(t.origin) && t.touchedFiles.size > 0) {

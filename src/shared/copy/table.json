@@ -18967,6 +18967,51 @@
       "zh": "对齐后重试没有成功",
       "args": []
     },
+    "tabBar.reread.label": {
+      "kind": "action",
+      "zh": "重新读取",
+      "args": []
+    },
+    "tabBar.reread.icon": {
+      "kind": "body",
+      "zh": "⟳",
+      "args": []
+    },
+    "tabBar.reread.hint": {
+      "kind": "body",
+      "zh": "对所有打开的 tab 生效。每台机器对齐一次，在跟的会话都从上次读到的地方接着读",
+      "args": []
+    },
+    "resync.machines.title": {
+      "kind": "title",
+      "zh": "重新读取完成",
+      "args": []
+    },
+    "resync.machines.titlePartial": {
+      "kind": "error",
+      "zh": "重新读取：有机器没问到",
+      "args": []
+    },
+    "resync.machines.none": {
+      "kind": "body",
+      "zh": "没有打开的 tab，没有要读的。",
+      "args": []
+    },
+    "resync.machines.local": {
+      "kind": "body",
+      "zh": "本机",
+      "args": []
+    },
+    "resync.machines.ok": {
+      "kind": "body",
+      "zh": "{machine}：{said}",
+      "args": ["machine", "said"]
+    },
+    "resync.machines.failed": {
+      "kind": "body",
+      "zh": "{machine}：没问到（{why}）",
+      "args": ["machine", "why"]
+    },
     "sessionState.pinGone.title": {
       "kind": "title",
       "zh": "固定的会话找不到记录了",
@@ -18976,21 +19021,6 @@
       "kind": "body",
       "zh": "这台上有 {n} 个固定的会话找不到记录：{names}。没有自动摘掉；点这条提示把它们从固定里摘掉。",
       "args": ["n", "names"]
-    },
-    "tabMenu.reread.label": {
-      "kind": "action",
-      "zh": "重新读取",
-      "args": []
-    },
-    "tabMenu.reread.hint": {
-      "kind": "body",
-      "zh": "从上次读到的地方接着读，补上没显示的内容",
-      "args": []
-    },
-    "tabSessionActions.reread.failed": {
-      "kind": "error",
-      "zh": "重新读取失败",
-      "args": []
     },
     "beMcpEdit.path.emptyDir": {
       "kind": "error",

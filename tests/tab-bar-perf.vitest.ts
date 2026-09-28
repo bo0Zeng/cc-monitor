@@ -91,6 +91,7 @@ function rig(n: number, grouped = 0): Rig {
     beginDrag: vi.fn(),
     takeSuppressedClick: vi.fn().mockReturnValue(false),
     openMenu: vi.fn(),
+    rereadAll: vi.fn().mockResolvedValue(undefined),
   };
   const bar = document.createElement("div");
   bar.id = "tab-bar";
@@ -250,7 +251,9 @@ describe("P6：整刷不把 `barEl.children` 物化成数组", () => {
     r.store.tabs.get("s2")!.group = "c2";
     r.view.refresh();
     const kids = [...r.bar.children];
-    expect(kids.map((e) => (e.classList.contains("tab-group") ? "G" : "t")).join("")).toBe("GGttt");
+    // 〔REREAD · V155〕栏顶那颗「重新读取」恒在第一个（R）。
+    const kind = (e: Element): string => (e.classList.contains("tab-bar-reread") ? "R" : e.classList.contains("tab-group") ? "G" : "t");
+    expect(kids.map(kind).join("")).toBe("RGGttt");
   });
 });
 
