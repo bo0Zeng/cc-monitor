@@ -45,8 +45,8 @@ use copy_core::copy_text;
 use serde::Serialize;
 use std::path::Path;
 
-use super::dialect::Shell;
 use crate::assets::door::{self, Door};
+use crate::platform::shell::dialect::{self, Shell};
 
 /// ⚠ `K-R62` 起是 `pub(crate)`：`fenced_block::FENCE_SHAPES` 那张账要**指**这一对，
 /// 而不是抄一份字面量过去（抄一份就是第二个住址）。
@@ -310,7 +310,7 @@ pub(crate) fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
         let l = line.trim_start();
         let (kind, name) = if l.starts_with('#') {
             (LegacyRcKind::Comment, None)
-        } else if let Some(n) = function_name_of(l) {
+        } else if let Some(n) = Shell::Posix.dialect().declared_function(l) {
             (LegacyRcKind::Function, Some(n))
         } else {
             (LegacyRcKind::Other, None)
@@ -325,16 +325,8 @@ pub(crate) fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
     out
 }
 
-/// `名字() {` ⇒ `Some("名字")`。形状与 [`builtin_alias_names`] 认的那一形逐字相同。
-fn function_name_of(l: &str) -> Option<String> {
-    let (name, rest) = l.split_once("()")?;
-    if !rest.trim_start().starts_with('{') {
-        return None;
-    }
-    let name = name.trim();
-    (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-        .then(|| name.to_string())
-}
+// 〔OSA〕这里原来有 POSIX「`名字() {` ⇒ 名字」那一份认法 —— 定义函数的写法归方言，搬进
+//   （`platform/shell/dialect.rs` 的 `ShellDialect::declared_function`），[`builtin_alias_names`] 与本扫描共用那一份。
 
 /// 🔴 `KR62D2` 的产物：**一段让用户自己动手的提示。** 没有要清的就是空串。
 ///
@@ -551,7 +543,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 /// 点安装却报行号（那正是 T04 审计③ 治过的那一形）；② BOM 会被当成用户内容
 /// 原样写回文件中间。（这里**两种方言都剥**：它是「读」这一侧，宽进。）
 fn strip_bom(s: &str) -> &str {
-    super::dialect::strip_bom(s)
+    dialect::strip_bom(s)
 }
 
 /// 落盘的那一份：PowerShell 方言加 BOM，POSIX rc **一个字节都不加**（实现住方言那一格）。
@@ -615,12 +607,9 @@ pub(crate) fn render_cc_code(
 ) -> String {
     let safe_name = sanitize_command_name(command_name);
     let cc_block = if include_cc_function {
-        // 🔴 `KR135D2`：**这一行就是翻正的落点。** `{word}` 现算自 `CCM_ENTRY_WORD`
-        // （`13b`：那个词的唯一住址），不写第二份字面量。
-        let word = crate::control::ccm::SUBCOMMAND_WORD;
-        format!(
-            "\nfunction {safe_name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    __ccm_bind\n    & {word} $RemainingArgs\n}}\n"
-        )
+        // 🔴 `KR135D2`：**翻正的落点**在方言那一份（`platform/shell/dialect.rs::ps_wrapper_function`）；
+        // 那个词现算自 `SUBCOMMAND_WORD`（`13b`：那个词的唯一住址），不写第二份字面量。
+        dialect::ps_wrapper_function(&safe_name, crate::control::ccm::SUBCOMMAND_WORD)
     } else {
         String::new()
     };
@@ -630,14 +619,11 @@ pub(crate) fn render_cc_code(
         .replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
         .replace(
             "{{MONITOR_DATA_DIR}}",
-            &ps_single_quoted(&monitor_data_dir.to_string_lossy()),
+            &dialect::ps_single_quoted(&monitor_data_dir.to_string_lossy()),
         )
 }
 
-/// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`（同 `launch.rs` 填 `{{AWAIT_DIR}}` 那一格的写法）。
-fn ps_single_quoted(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
-}
+// 〔OSA〕这里原来有 `ps_single_quoted`（PowerShell 单引号字面量）—— 方言的写法，搬进 `platform/shell/dialect.rs`。
 
 /// idempotent 安装：把 cc function 块写到 profile，已有 ccm 块则原地替换。
 /// 用户在 BEGIN/END 块外的内容完全不动。
@@ -740,26 +726,8 @@ fn find_conflicting_functions(flavor: Shell, content: &str, command_name: &str) 
         // 〔`K-R62`〕**两种方言的函数写法不同**：PowerShell 是 `function cc {`，
         // POSIX sh 是 `cc() {`。此前只认前一形 ⇒ 在 rc 上恒空，
         // 而「恒空」与「真的没冲突」在界面上一模一样。
-        if flavor == Shell::Posix {
-            if let Some(name) = function_name_of(l) {
-                if name.eq_ignore_ascii_case(&safe) {
-                    hits.push(safe.clone());
-                    break;
-                }
-            }
-            continue;
-        }
-        // 简化匹配：以 "function" 开头 + 空白 + 同名（后跟空白/{/(）
-        if let Some(rest) = l
-            .strip_prefix("function ")
-            .or_else(|| l.strip_prefix("function\t"))
-        {
-            let rest = rest.trim_start();
-            // 取 function 后面的标识符
-            let end = rest
-                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
-                .unwrap_or(rest.len());
-            let name = &rest[..end];
+        // 〔OSA〕两种写法的认法住方言（`ShellDialect::declared_function`）。
+        if let Some(name) = flavor.dialect().declared_function(l) {
             if name.eq_ignore_ascii_case(&safe) {
                 hits.push(safe.clone());
                 break;
@@ -878,22 +846,24 @@ pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../../shared/ccm-a
 /// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
 /// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
 /// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
-pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
+pub(crate) fn builtin_alias_names() -> Vec<String> {
+    // 〔OSA〕认法住方言（`ShellDialect::declared_function`，POSIX 那一臂）。
+    let mut v: Vec<String> = CCM_WRAPPER_SNIPPET
         .lines()
-        .filter_map(|l| {
-            let (name, rest) = l.split_once("()")?;
-            if !rest.trim_start().starts_with('{') {
-                return None;
-            }
-            let name = name.trim();
-            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
-                .then_some(name)
-        })
+        .filter_map(|l| Shell::Posix.dialect().declared_function(l))
         .collect();
     v.sort_unstable();
     v.dedup();
     v
+}
+
+/// 〔OSA〕我们自己那块别名块的正文 —— 撞名那一问交给方言认函数用（`ShellDialect::name_taken`）：
+/// POSIX 是 [`CCM_WRAPPER_SNIPPET`] 本身；PowerShell 是模板渲染出来的那一份（与数据目录无关 —— 喂一个占位目录）。
+pub(crate) fn own_block(shell: Shell) -> String {
+    match shell {
+        Shell::Posix => CCM_WRAPPER_SNIPPET.to_string(),
+        Shell::PowerShell => render_cc_code(CC_FUNCTION_NAME, true, Path::new("/_")),
+    }
 }
 
 /// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。

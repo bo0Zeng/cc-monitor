@@ -441,14 +441,18 @@ enum TmuxObservation {
 /// 这是**诚实降级**（承接 **C7**）：在没有 `timeout` 的系统上行为与从前一字不差，
 /// 而不是假装有上界。⚠ 代价要说清：那些系统上 I-2 **仍然存在**。
 fn tmux_probe_script() -> String {
-    format!(
-        "if command -v tmux >/dev/null 2>&1; then \
-           if command -v timeout >/dev/null 2>&1; then \
-             exec timeout -s KILL {TMUX_PROBE_TIMEOUT_SECS} tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null; \
-           else \
-             exec tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null; \
-           fi; \
-         else exit {TMUX_PROBE_NO_TMUX_RC}; fi"
+    // 〔OSA · V156〕`command -v` 分支与 `exec` 的写法住 `platform::shell::posix`（产出逐字节不变）。
+    use crate::platform::shell::posix;
+    posix::if_command(
+        "tmux",
+        &posix::if_command(
+            "timeout",
+            &posix::exec(&[format!(
+                "timeout -s KILL {TMUX_PROBE_TIMEOUT_SECS} tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null"
+            )]),
+            &posix::exec(&[format!("tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null")]),
+        ),
+        &format!("exit {TMUX_PROBE_NO_TMUX_RC}"),
     )
 }
 
@@ -571,9 +575,16 @@ struct TmuxProbe {
 /// 与 `run_tmux_ls` 同一套 `sh -c` + `command -v` 门控；rc≠0（没有 server）⇒ 全 None。
 fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // 一行两列（TAB 分隔），避免两次 subprocess。
-    let script = "if command -v tmux >/dev/null 2>&1; then exec tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null; else exit 97; fi";
+    // 〔OSA · V156〕写法住 `platform::shell::posix`（产出逐字节不变）。
+    let script = crate::platform::shell::posix::if_command(
+        "tmux",
+        &crate::platform::shell::posix::exec(&[
+            "tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null",
+        ]),
+        "exit 97",
+    );
     // 🔴 `K-R55`（09-11）：同上，起 shell 这一跳住适配层。
-    let Some(mut cmd) = crate::platform::shell::posix_shell(script) else {
+    let Some(mut cmd) = crate::platform::shell::posix_shell(&script) else {
         tracing::warn!("本平台没有 POSIX shell ⇒ 问不出 tmux server 的 pid 与 socket 路径");
         return (None, None);
     };

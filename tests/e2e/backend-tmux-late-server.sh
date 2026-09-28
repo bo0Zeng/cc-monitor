@@ -20,7 +20,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="${CCM_E2E_BACKEND_BIN:-$REPO/.build/backend/debug/cc-monitor-backend}"
+D="${CCM_E2E_BACKEND_BIN:-${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend}"  # 〔OSA〕同 backend-rbind-token：认 `CARGO_TARGET_DIR`（门禁与工作树都把 target 放在仓外）
 [ -x "$D" ] || { echo "需要后端二进制：$D（先 cargo build -p cc-monitor-backend）"; exit 1; }
 command -v tmux >/dev/null 2>&1 || { echo "需要 tmux"; exit 1; }
 REALTMUX="$(command -v tmux)"

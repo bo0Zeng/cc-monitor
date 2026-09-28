@@ -66,18 +66,8 @@ fn probe_dir_never_returns_size() {
     assert_eq!(info.kind, "dir");
 }
 
-#[test]
-fn has_backup_in_dir_detects_ccm_backup_files() {
-    let d = TestDir::new("backup-detect");
-    // 没 backup
-    assert!(!has_backup_in_dir(d.path()));
-    // 加一个普通文件
-    fs::write(d.path().join("profile.ps1"), "").unwrap();
-    assert!(!has_backup_in_dir(d.path()));
-    // 加 backup
-    fs::write(d.path().join("profile.ps1.ccm-backup-12345"), "").unwrap();
-    assert!(has_backup_in_dir(d.path()));
-}
+// 〔OSA · 主会话 09-28 裁〕这里原来有「目录里认得出 `.ccm-backup-`」那一条 —— 那一格随 `$PROFILE` 备份搬到界面问本机后端
+//   （`tests/settings/profile-backups.vitest.ts`）。
 
 // ── 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕────────────────────────
 

@@ -402,7 +402,7 @@ fn a_name_that_is_already_taken_gets_a_note() {
 #[test]
 fn cch_is_gone_and_the_name_is_free_for_the_user() {
     assert!(
-        !block::builtin_alias_names().contains(&"cch"),
+        !block::builtin_alias_names().iter().any(|n| n == "cch"),
         "`cch` 还定义在 src/shared/ccm-aliases.sh 里 —— 用户逐字说的是「这个不要。删掉。」"
     );
     if let Some(note) = collision_note("cch", P) {
@@ -756,7 +756,8 @@ fn the_generic_layer_holds_no_shell_text() {
         Vec::<String>::new(),
         "通用层长出了某种 shell 的文本 —— 写法 / 读法归 `shell_dialect.rs` 那一族（`71 §4.4`）"
     );
-    let dialect = include_str!("../../../../src/backend/assets/aliases/dialect.rs");
+    // 〔OSA · V156〕方言住后端 OS 适配层。
+    let dialect = include_str!("../../../../src/backend/platform/shell/dialect.rs");
     let hits = shell_syntax_hits(dialect);
     for must in ["$@", "RemainingArgs", "Test-Path"] {
         assert!(
@@ -1111,7 +1112,7 @@ fn a_name_on_this_machines_path_is_reported() {
         .collisions
         .is_empty());
     for t in block::builtin_alias_names() {
-        assert!(collision_note(t, P).is_some(), "自带别名块的 `{t}` 该报");
+        assert!(collision_note(&t, P).is_some(), "自带别名块的 `{t}` 该报");
     }
 }
 

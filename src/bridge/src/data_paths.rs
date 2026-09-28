@@ -13,7 +13,6 @@
 //! - cc 集成短期 IPC 目录（ps-await / ps-registry）
 //! - 滚动 log 目录 + 当前 log 文件
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
-//! - PowerShell profile 最近备份目录（如果装过 cc 集成）
 
 use crate::copy_table::copy_text;
 use serde::Serialize;
@@ -119,8 +118,8 @@ pub struct DataPathsResponse {
     pub entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
-    /// PowerShell profile 备份目录（最多列前 3 个，去重）
-    pub profile_backup_dirs: Vec<DataPathInfo>,
+    // 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
+    //   界面经通道直接问本机后端（`src/settings/profile-backups.ts`），本命令不再带它。
 }
 
 /// 日志目录那一行的名字。〔ST2 · `70 §11.3.2`〕设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
@@ -136,13 +135,11 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     let entries = monitor_entries(&monitor_data_dir);
 
     let webview_user_data_dir = detect_webview_data_dir(handle);
-    let profile_backup_dirs = detect_profile_backup_dirs();
 
     DataPathsResponse {
         monitor_data_dir: monitor_data_dir.display().to_string(),
         entries,
         webview_user_data_dir,
-        profile_backup_dirs,
     }
 }
 
@@ -251,64 +248,8 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
     ))
 }
 
-/// 扫 PowerShell profile 的备份目录（profile_installer 写入 `<profile>.ccm-backup-<ms>`）。
-///
-/// monitor 不持久化备份位置——这里只在 `$PROFILE` 的候选目录里探一遍。
-fn detect_profile_backup_dirs() -> Vec<DataPathInfo> {
-    let candidates = candidate_profile_dirs();
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    for dir in candidates {
-        let key = dir.to_string_lossy().to_lowercase();
-        if !seen.insert(key) {
-            continue;
-        }
-        if has_backup_in_dir(&dir) {
-            out.push(probe_dir(
-                dir,
-                &copy_text("rsDataPaths.backup.title", &[]),
-                &copy_text("rsDataPaths.backup.note", &[]),
-                // 你原来那份 profile 的唯一副本 ⇒ 删了就回不去了。
-                DataClass::Truth,
-            ));
-        }
-        if out.len() >= 3 {
-            break;
-        }
-    }
-    out
-}
-
-/// 〔AL1d · 第四波 4B〕`$PROFILE` 在哪**只问一处**：别名方言的 PowerShell 那一臂（`startup_candidates`）。
-/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕那一臂随别名规则进了后端（`src/backend/assets/aliases/dialect.rs`）；本页是 monitor 自己的
-/// 「数据」区（⑬ `MONITOR_OWN`，不碰后端），这里**只留两个目录名**、探备份用 ——
-/// 判据 `dialect_tests.rs::the_profile_location_has_exactly_one_home` 把这一处登记成第二个读者（只有目录名、没有文件名），待主会话认。
-/// 「文档目录被 OneDrive 挪走」那一格照旧问系统（`dirs::document_dir()`）。
-fn candidate_profile_dirs() -> Vec<PathBuf> {
-    let Some(home) = dirs::home_dir() else {
-        return Vec::new();
-    };
-    let docs = dirs::document_dir()
-        .filter(|d| d.starts_with(&home))
-        .unwrap_or_else(|| home.join("Documents"));
-    ["WindowsPowerShell", "PowerShell"]
-        .into_iter()
-        .map(|d| docs.join(d))
-        .collect()
-}
-
-fn has_backup_in_dir(dir: &Path) -> bool {
-    let Ok(it) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    for entry in it.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.contains(".ccm-backup-") {
-            return true;
-        }
-    }
-    false
-}
+// 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一族（探 `$PROFILE` 两个目录名 · 目录里有没有 `.ccm-backup-`）——
+//   `$PROFILE` 位置的第二个读者；搬到界面经通道问本机后端（`src/settings/profile-backups.ts`）。
 
 /// IPC：前端设置面板「数据」区打开时调一次。
 ///

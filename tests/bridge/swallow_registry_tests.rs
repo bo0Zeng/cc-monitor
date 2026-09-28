@@ -156,10 +156,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     // 〔E2〕1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
-    ("src/backend/control/launch_render/payload.rs", "let _ = write!(out, \"export ANTHROPIC_MODEL={}; \", shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
-    ("src/backend/control/launch_render/payload.rs", "let _ = write!(out, \"export CCM_RBIND_TOKEN={}; \", shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
-    ("src/backend/control/launch_render/payload.rs", "let _ = write!(out, \"export {}={}; \", account_env(), shell_quote_core::posix_quote(value));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
-    ("src/backend/control/launch_render/payload.rs", "let _ = write!(out, \"unset {}; \", keys.join(\" \"));", 1, Why::InfallibleWrite, "`out` 是 `String`"),
+    // 〔OSA · V156〕`launch_render/payload.rs::render_env_ops` 那四行 `let _ = write!(out, "export …")` 摘了：
+    //   `export` / `unset` 的写法搬进 `platform::shell::posix`，那里返回 `String`，调用处 `push_str`，不再有吞。
     ("src/bridge/src/bind.rs", "let _ = CloseHandle(handle);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/bridge/src/bind.rs", "let _ = CloseHandle(snap);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/bridge/src/bind.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", 1, Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),

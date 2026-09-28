@@ -16,6 +16,7 @@ use super::argv::{flag, parse_size, CwdSpec, Die, Opts};
 use copy_core::copy_text;
 // `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
 use crate::common::session_snapshot::TakenNames;
+use crate::platform::shell::posix;
 use shell_quote_core::posix_quote as sq;
 
 /// 〔US1 · RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
@@ -27,12 +28,9 @@ use shell_quote_core::posix_quote as sq;
 /// `'<钥匙之前>'"$(cat "$HOME/<钥匙文件>")"'<钥匙之后>'`，在新 pane 里现读；认不出（用户自己的端点）⇒ 原样。
 fn base_url_word(v: &str) -> String {
     match relay_route_core::split_keyed_base_url(v) {
-        Some((head, tail)) => format!(
-            "{}\"$(cat \"$HOME/{}\")\"{}",
-            sq(head),
-            relay_route_core::KEY_FILE_REL,
-            sq(tail)
-        ),
+        Some((head, tail)) => {
+            posix::home_file_between(&sq(head), relay_route_core::KEY_FILE_REL, &sq(tail))
+        }
         None => sq(v),
     }
 }
@@ -978,14 +976,17 @@ pub(crate) fn build(
                 .as_deref()
                 .filter(|v| !v.is_empty())
             {
-                payload = format!("export {}={}; {payload}", env.account_env, sq(v));
+                payload = format!("{}{payload}", posix::export(&env.account_env, &sq(v)));
             }
         }
         if let Some(v) = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!("export ANTHROPIC_BASE_URL={}; {payload}", base_url_word(v));
+            payload = format!(
+                "{}{payload}",
+                posix::export("ANTHROPIC_BASE_URL", &base_url_word(v))
+            );
         }
         if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
-            payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));
+            payload = format!("{}{payload}", posix::export("CCM_LAUNCH_ID", &sq(v)));
         }
         // 自检**共用载荷那一段 export 前缀**（它要在 pane 那份环境里跑）：上面只往前面加，
         // ⇒ 前缀 = 载荷去掉末尾那段裸命令。
@@ -1204,27 +1205,24 @@ fn render_direct(d: &Direct) -> String {
         line.push_str(&format!("{}; ", d.ccm_env));
     }
     if d.bus_id_recipe {
-        line.push_str(super::BUS_ID_RECIPE);
+        line.push_str(&super::BUS_ID_RECIPE);
         line.push(' ');
     }
     let cfg_env = &d.account_env;
     if !d.config_dir.is_empty() {
-        line.push_str(&format!("export {cfg_env}={}; ", sq(&d.config_dir)));
+        line.push_str(&posix::export(cfg_env, &sq(&d.config_dir)));
     }
     if d.unset_config_dir {
-        line.push_str(&format!("unset {cfg_env}; "));
+        line.push_str(&posix::unset(&[cfg_env]));
     }
     if !d.nested.is_empty() {
-        line.push_str(&format!("unset {}; ", d.nested.join(" ")));
+        line.push_str(&posix::unset(&d.nested));
     }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
     }
-    let exec = std::iter::once("exec".to_string())
-        .chain(d.argv.iter().map(|a| qarg(a)))
-        .collect::<Vec<_>>()
-        .join(" ");
-    line.push_str(&exec);
+    let words: Vec<String> = d.argv.iter().map(|a| qarg(a)).collect();
+    line.push_str(&posix::exec(&words));
     line
 }
 

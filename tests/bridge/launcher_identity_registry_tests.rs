@@ -111,7 +111,7 @@ const REGISTERED: &[Launcher] = &[
                   **归 `K-R48` 的下一拍**（先裁「一次性模式在 tmux 内由谁打 `@ccm_sid`」，再接线）。",
     },
     Launcher {
-        label: "T2 · Windows 终端里的那一下（`assets/aliases/block.rs` 生成的 `function cc`）",
+        label: "T2 · Windows 终端里的那一下（`platform/shell/dialect.rs` 写的 `function cc`，别名块经 `assets/aliases/block.rs` 装）",
         ledger_cmds: &[],
         // 🔴 〔`KR135D2` 09-15〕**锚点跟着翻正了**：那一行从 `& claude $RemainingArgs`
         //    改成走 `ccm`（`K33`「所有命令只许有一处」＋ `K28`）。`K-R132` 上一轮现打
@@ -121,8 +121,10 @@ const REGISTERED: &[Launcher] = &[
         //    不是渲染后的文本 —— 抄一份 `ccm` 进来就是那个词的第二个住址。
         // 〔MIG-3a · 主会话 09-27 裁〕别名块进了那台后端：生成 `function cc` 的那一处住 `src/backend/assets/aliases/block.rs`
         //   （`{word}` 现算自后端 `control::ccm::SUBCOMMAND_WORD`）。
+        // 〔OSA · V156〕PowerShell 那个 `function cc` 的写法搬进后端 OS 适配层（`platform/shell/dialect.rs::ps_wrapper_function`），
+        //   `{word}` 仍由通用层交进来（`control::ccm::SUBCOMMAND_WORD`）。
         anchors: &[(
-            "src/backend/assets/aliases/block.rs",
+            "src/backend/platform/shell/dialect.rs",
             "& {word} $RemainingArgs",
             1,
         )],
@@ -381,8 +383,10 @@ fn the_identity_token_has_exactly_one_mint_and_one_env_var_name() {
     let probes: [(&str, usize, &str); 2] = [
         (
             "\"CCM_LAUNCH_ID\"",
-            4,
-            "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路转发那两处（读继承的 · 往里转）",
+            // 〔OSA · V156〕4 → 5：容器路「往里转」那一处从格式串 `"export CCM_LAUNCH_ID={}; …"` 换成 `posix::export("CCM_LAUNCH_ID", …)`
+            //   （`export` 的写法搬进 `platform::shell::posix`），同一处、变量名成了独立字面量 —— 家没多。
+            5,
+            "写侧 `launch_render/local.rs::LAUNCH_ID_VAR` 1 ＋ 读侧 `observe/accounts_query.rs::LAUNCH_ID_ENV` 1 ＋ `ccm/plan.rs` 容器路三处（读继承的 · 判继承值 · 往里转）",
         ),
         (
             "route_key_for_session(",

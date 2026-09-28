@@ -266,17 +266,5 @@ pub(crate) fn rel_under(home: &str, abs: &str) -> Result<String, String> {
         .ok_or_else(|| copy_text("beAssets.door.outsideHome", &[("abs", abs), ("home", home)]))
 }
 
-/// [`rel_under`] 的反方向：分隔符跟 `home` 自己的写法走（`home` 里只有 `\` ⇒ `\`，否则 `/`）。
-pub(crate) fn join_under(home: &str, rel: &str) -> String {
-    let sep = if home.contains('\\') && !home.contains('/') {
-        '\\'
-    } else {
-        '/'
-    };
-    let mut out = home.trim_end_matches(['/', '\\']).to_string();
-    for seg in rel.split(['/', '\\']).filter(|s| !s.is_empty()) {
-        out.push(sep);
-        out.push_str(seg);
-    }
-    out
-}
+/// [`rel_under`] 的反方向。〔OSA〕住址下沉到 `platform::paths`（别名方言列 rc 候选也要它，适配层不往上依赖）。
+pub(crate) use crate::platform::paths::join_under;

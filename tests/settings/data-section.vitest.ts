@@ -103,12 +103,10 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       item("history-metadata.json", "/h/.claude/claudecode-frontend/history-metadata.json"),
     ];
     const webview = item("EBWebView", "/h/AppData/EBWebView");
-    const backup = item("profile 备份", "/h/Documents/PowerShell/.ccm-backup-1");
     paths.value = {
       monitorDataDir: "/h/.claude/claudecode-frontend",
       entries,
       webviewUserDataDir: webview,
-      profileBackupDirs: [backup],
     };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
@@ -119,7 +117,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
     );
     // 〔ST2 · 步 15〕「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
     expect(shown).toEqual([...entries, webview].map((e) => e.path));
-    expect(shown, "备份目录还在「数据位置」里 —— 两个顶层页讲同一件事").not.toContain(backup.path);
+    // 〔OSA · 主会话 09-28 裁〕`get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
     expect(buttons.filter((t) => /删|清/.test(t))).toEqual([]);
@@ -146,7 +144,7 @@ describe("〔ST2 · 用户 09-24 裁〕数据位置「真相 / 缓存」那一�
       mk("sid-hwnd-cache.json", "cache"),
       mk("logs/", "cache"),
     ];
-    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null, profileBackupDirs: [] };
+    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
     sec.loadNow();
@@ -197,7 +195,6 @@ describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」�
       monitorDataDir: "/h",
       entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL)],
       webviewUserDataDir: null,
-      profileBackupDirs: [],
     };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);

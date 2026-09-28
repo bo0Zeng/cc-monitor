@@ -439,7 +439,7 @@ fn direct_of(args: &[&str], tmux: Option<&str>) -> plan::Direct {
 /// 本条就是为了让那一刻响，而不是让它安静。
 #[test]
 fn the_bus_id_recipe_is_wholly_guarded_by_tmux_so_skipping_the_shell_is_exact() {
-    let r = BUS_ID_RECIPE;
+    let r: &str = &BUS_ID_RECIPE;
     assert!(
         r.starts_with("if [ -n \"${TMUX:-}\" ]; then "),
         "配方不再以 `$TMUX` 守卫开头 ⇒ `needs_shell` 跳过 shell 的那条等价不成立了：{r:?}"
@@ -907,8 +907,9 @@ fn the_bus_id_recipe_reads_the_session_name_through_a_utf8_client() {
     }
     let name = "u8甲乙";
     let script = format!(
-        "{BUS_ID_RECIPE} printf '%s' \"$CC_BUS_ID\" > '{d}/id'; \
+        "{recipe} printf '%s' \"$CC_BUS_ID\" > '{d}/id'; \
          printf '%s' \"$(tmux display-message -p '#S')\" > '{d}/raw'; touch '{d}/done'; exec sleep 30",
+        recipe = BUS_ID_RECIPE.as_str(),
         d = dir.display()
     );
     let path = format!(

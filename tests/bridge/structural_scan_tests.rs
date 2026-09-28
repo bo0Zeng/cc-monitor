@@ -765,7 +765,7 @@ fn every_comment_stripping_transformer_is_registered() {
         // 〔MIG-3b〕钩子诊断那份本地剥法那一行摘了：它的判据随模块进后端退役（后端 `readonly_guard` 管只读，收口了，不是搬家）。
         (
             // 〔AL1c · 第四波 4B〕两种方言的读回口（同名两份 `impl`，按文件名去重成一行）。
-            // 〔MIG-3a〕随方言进了那台后端（`src/backend/assets/aliases/dialect.rs`）。
+            // 〔MIG-3a〕随方言进了那台后端（〔OSA〕今天住 `src/backend/platform/shell/dialect.rs`）。
             "dialect.rs::parse_file",
             "**别的注释语法，而且语料是我们自己生成的那份别名文件**：POSIX sh 与 PowerShell 的注释都是 `#`，\
                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS）。只跳**整行** `#`（生成文件的头注），\
@@ -2760,7 +2760,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_alias_capabilities_speak_through_one_command_family",
             1,
         ),
-        ("src/backend/assets/aliases/dialect.rs", "look_on_path", 1),
+        ("src/backend/platform/shell/dialect.rs", "look_on_path", 1), // 〔OSA · V156〕方言随住址搬进 `platform/shell/`
         (
             "src/backend/agents/claudecode/paths.rs",
             "claude_data_fence",
@@ -4840,7 +4840,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 延后 I/O 登记表里退役的 `write_account_aliases`，各一块。
         // 〔AL1c · 4B〕2 → 1、`shell_dialect.rs` 0 → 1：`ccmInvocation` 那一句随 POSIX 读回（`parse_line`）搬进方言模块，墓碑跟着搬，总数不变。
         ("src/backend/assets/aliases/mod.rs", 1), // 〔AL1〕+1：`ccmInvocation` 那一句（〔AL1c〕搬走了，剩 `buildAliasLine` 那一块）
-        ("src/backend/assets/aliases/dialect.rs", 2), // 〔MIG-3a〕搬进后端 +1：`look_on_path` 那一格随规则住进那台后端退役 //
+        ("src/backend/platform/shell/dialect.rs", 2), // 〔OSA · V156〕住址 `assets/aliases/` → `platform/shell/`，块数不变 // 〔MIG-3a〕搬进后端 +1：`look_on_path` 那一格随规则住进那台后端退役 //
         ("tests/backend/assets/aliases/aliases_tests.rs", 1),
         ("tests/generated-boundary-guard.vitest.ts", 3), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
