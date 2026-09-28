@@ -10,7 +10,7 @@
 //! # 「Hello 之前不许写」做成不可表示（对称于后端的 `wire::HelloFlushed`）
 //!
 //! ```text
-//! connect_and_exec → ChannelStream
+//! remote_resident::attach（远端）/ 本机宿主那条流 → 双工流
 //!         └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
 //!                     │                            ▲ 身上没有任何写方法
 //!                     │                            └── .into_client(hello: BackendHello)
