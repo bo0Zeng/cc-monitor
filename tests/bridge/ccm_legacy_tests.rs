@@ -146,9 +146,6 @@ impl crate::user_files::Door for StaleDoor {
     async fn chmod(&self, root: &str, rel: &str, mode: u32) -> Result<(), String> {
         self.inner.chmod(root, rel, mode).await
     }
-    async fn delete_session(&self, sid: &str) -> Result<String, String> {
-        self.inner.delete_session(sid).await
-    }
 }
 
 /// L3：两个触发点各恰一处（部署按钮 · 那台长连接握手完成）＋ 足迹那一行在册（读 `TOOLS`，路径 == [`LEGACY_REL`]）。

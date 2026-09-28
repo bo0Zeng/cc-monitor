@@ -2,6 +2,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { componentSources } from "../test-support/component-sources";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔MIG-3b〕诊断改走通道（`chan.call(origin, "hooks-diag")`，那台后端出成品）。替身把那一发交给同一个 `invoke` 替身
+//   （本机记成 `hooks-diag@local`、远端记成 `hooks-diag@remote` 带 `{origin}`），答的对象原样编成应答体 ——
+//   下面各条因此数得到**真发出去**的那一发；期限必给（没给就抛）。
+vi.mock("../../src/ipc/chan", async (importOriginal) => {
+  const core = await import("@tauri-apps/api/core");
+  return {
+    ...(await importOriginal<typeof import("../../src/ipc/chan")>()),
+    chan: {
+      call: async (origin: string, op: string, _body: Uint8Array, budget: { until: number }) => {
+        if (typeof budget?.until !== "number") throw new Error("没给期限");
+        if (op !== "hooks-diag") throw new Error(`不认的操作 ${op}`);
+        const got = origin === "<local>"
+          ? await core.invoke("hooks-diag@local")
+          : await core.invoke("hooks-diag@remote", { origin });
+        return new TextEncoder().encode(JSON.stringify(got));
+      },
+    },
+  };
+});
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { CcBusHooksSection, describeState } from "../../src/settings/cc-bus-hooks-section";
@@ -75,7 +94,7 @@ describe("B04 四态不得被误渲染", () => {
   it("渲染时 ok/bad 的 class 与 dataset 必须与状态一致", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep(
           {
             kind: "installed-at-path",
@@ -108,7 +127,7 @@ describe("B04 只读与文案", () => {
   it("本机诊断直接读（纯本地），远端**必须**点了才发", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(`不该自动调 ${cmd}`);
     });
@@ -116,8 +135,8 @@ describe("B04 只读与文案", () => {
     document.body.appendChild(s.element);
     await flush();
     const called = mockInvoke.mock.calls.map((c) => c[0]);
-    expect(called).toContain("diagnose_local_cc_bus_hooks");
-    expect(called).not.toContain("diagnose_remote_cc_bus_hooks");
+    expect(called).toContain("hooks-diag@local");
+    expect(called).not.toContain("hooks-diag@remote");
     expect(
       s.element.querySelector(".cc-bus-hooks-remote")?.textContent,
     ).toContain("尚未检查");
@@ -126,9 +145,9 @@ describe("B04 只读与文案", () => {
   it("点「检查远端」才发，且带上选中的 origin", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
-      if (cmd === "diagnose_remote_cc_bus_hooks")
+      if (cmd === "hooks-diag@remote")
         return rep(
           { kind: "installed-via-path", command: "cc-register" },
           { kind: "not-installed" },
@@ -144,7 +163,7 @@ describe("B04 只读与文案", () => {
     ).click();
     await flush();
     const calls = mockInvoke.mock.calls.filter(
-      (c) => c[0] === "diagnose_remote_cc_bus_hooks",
+      (c) => c[0] === "hooks-diag@remote",
     );
     expect(calls).toHaveLength(1);
     expect(calls[0][1]).toEqual({ origin: "devbox" });
@@ -153,7 +172,7 @@ describe("B04 只读与文案", () => {
   it("待贴片段默认给 $HOME 形态，可切裸命令", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -175,7 +194,7 @@ describe("B04 只读与文案", () => {
   it("note 非空必须展示（读取失败的原因不能吞掉）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return [];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep(
           { kind: "not-installed" },
           { kind: "not-installed" },
@@ -227,7 +246,7 @@ describe("B04 对自己的 IPC 返回值也要防御", () => {
   it("list_remote_mcp_origins resolve 成 undefined 时不得抛（曾真的抛过）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return undefined; // 不是 reject，是返回了怪东西
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -250,7 +269,7 @@ describe("B04 对自己的 IPC 返回值也要防御", () => {
   it("返回非数组（对象）同样不得抛", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return { oops: 1 };
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -334,13 +353,10 @@ describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
     // 反向自检：**真扫到了东西**。空集必须是失败而不是「通过」——
     // 迁移把调用形态换掉时，这一格正是会静默变空的地方。
     expect(found.size, "一条命令都没扫到——扫描器与当前调用形态脱节了").toBeGreaterThan(0);
-    expect(found).toEqual(
-      new Set([
-        "list_remote_mcp_origins",
-        "diagnose_local_cc_bus_hooks",
-        "diagnose_remote_cc_bus_hooks",
-      ]),
-    );
+    // 〔MIG-3b〕诊断两条退役：只剩列远端那一条只读命令；诊断经通道问，操作名恰是 `hooks-diag`（只读帧命令）。
+    expect(found).toEqual(new Set(["list_remote_mcp_origins"]));
+    const ops = [...code.matchAll(/chan\.call\([^,]+,\s*"([a-z-]+)"/g)].map((m) => m[1]);
+    expect(new Set(ops)).toEqual(new Set(["hooks-diag"]));
   });
 });
 
@@ -365,7 +381,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
   it("home 形态带 warning → .cc-bus-hooks-form-warning 非 hidden 且文案上屏", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return [];
-      if (cmd === "diagnose_local_cc_bus_hooks") return repWithWarning();
+      if (cmd === "hooks-diag@local") return repWithWarning();
       throw new Error(cmd);
     });
     const s = loaded(new CcBusHooksSection());
@@ -381,7 +397,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
   it("切到 bare 形态（那份 warning 为 null）→ 警示隐藏", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return [];
-      if (cmd === "diagnose_local_cc_bus_hooks") return repWithWarning();
+      if (cmd === "hooks-diag@local") return repWithWarning();
       throw new Error(cmd);
     });
     const s = loaded(new CcBusHooksSection());
@@ -400,13 +416,13 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
 
   it("远端那份 warning 也必须上屏（此前远端算了 Snippet 却到不了屏幕）", async () => {
     const remote = rep({ kind: "not-installed" }, { kind: "not-installed" });
-    remote.source = "[devbox] ~/.claude/settings.json";
+    remote.source = "/home/u/.claude/settings.json";
     remote.snippet_home = { ...remote.snippet_home, warning: "远端那边找不到" };
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
-      if (cmd === "diagnose_remote_cc_bus_hooks") return remote;
+      if (cmd === "hooks-diag@remote") return remote;
       throw new Error(cmd);
     });
     setCurrentMachine("devbox"); // E59：页上下文
@@ -427,7 +443,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
   it("待贴片段的标题要说清它基于哪一端（否则用户以为是远端盘面）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return [];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -440,7 +456,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
   it("两份都没 warning → 一开始就隐藏（不许留一个空框占位）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return [];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -476,7 +492,7 @@ describe("E59：origin 只来自页上下文", () => {
   it("★★ 没有页上下文（本机页 / 未选定）→「检查远端」不可点，而不是默默挑一台", () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox", "nano"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -492,9 +508,9 @@ describe("E59：origin 只来自页上下文", () => {
   it("★ 跟着页上下文走：store 切到 nano，显示与诊断目标都跟着变", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["devbox", "nano"];
-      if (cmd === "diagnose_local_cc_bus_hooks")
+      if (cmd === "hooks-diag@local")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
-      if (cmd === "diagnose_remote_cc_bus_hooks")
+      if (cmd === "hooks-diag@remote")
         return rep({ kind: "not-installed" }, { kind: "not-installed" });
       throw new Error(cmd);
     });
@@ -508,7 +524,7 @@ describe("E59：origin 只来自页上下文", () => {
     expect(s.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
     s.element.querySelector<HTMLButtonElement>(".cc-bus-hooks-check-remote")!.click();
     await flush();
-    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "diagnose_remote_cc_bus_hooks");
+    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "hooks-diag@remote");
     expect(calls.at(-1)?.[1]).toEqual({ origin: "nano" });
   });
 });
@@ -519,3 +535,25 @@ function loaded<T extends { loadNow(): void }>(s: T): T {
   s.loadNow();
   return s;
 }
+
+// 〔MIG-3b〕成品两侧对拍：后端产出 == 金样（`tests/backend/observe/cc_bus_hooks_tests.rs`），本解码器读同一份。
+import { decodeHooksReport } from "../../src/settings/cc-bus-hooks-section";
+import golden from "../__fixtures__/hooks-diag.golden.json";
+
+describe("MIG-3b `hooks-diag` 成品按形状严格收", () => {
+  it("金样原样收下；多一格 / 缺一格 / 认不出的态 ⇒ 抛「对不上」", () => {
+    expect(decodeHooksReport(golden)).toEqual(golden);
+    type Obj = Record<string, unknown>;
+    const at = (o: Obj, k: string): Obj => o[k] as Obj;
+    const bad = (mut: (g: Obj) => void) => {
+      const g = JSON.parse(JSON.stringify(golden)) as Obj;
+      mut(g);
+      return () => decodeHooksReport(g);
+    };
+    expect(bad((g) => (g.extra = 1))).toThrow(/shape mismatch/);
+    expect(bad((g) => delete g.source)).toThrow(/shape mismatch/);
+    expect(bad((g) => (at(g, "diagnosis").stop = { kind: "sixth-state" }))).toThrow(/shape mismatch/);
+    expect(bad((g) => (at(at(g, "diagnosis"), "session_start").path = 1))).toThrow(/shape mismatch/);
+    expect(bad((g) => (at(g, "snippet_bare").warning = 0))).toThrow(/shape mismatch/);
+  });
+});

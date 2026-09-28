@@ -249,7 +249,7 @@ pub async fn ask_json(
 pub struct DialRemote;
 
 /// 读一行（带上限；超了是错，不截断）。
-async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
+pub(crate) async fn capped_line<R: tokio::io::AsyncBufRead + Unpin>(
     r: &mut R,
     cap: u64,
 ) -> Result<Option<String>, String> {
@@ -294,8 +294,7 @@ pub(crate) fn capture_request(
     );
     obj.insert("stages".into(), json!(false));
     obj.insert("probe".into(), json!(false));
-    crate::dial::parse_request_value(&v)
-        .map_err(|e| crate::common::contract::malformed(&format!("dial request unreadable: {e}")))
+    crate::dial::parse_request_value(&v).map_err(|(_, m)| m)
 }
 
 impl Remote for DialRemote {
@@ -354,10 +353,42 @@ where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    let plain = |message: String| Said {
+    let got = pull_raw(serve).await.map_err(|message| Said {
         code: None,
         message,
-    };
+    })?;
+    settle_pulled(&got)
+}
+
+/// 〔MIG-3b〕**原样收全**一条一次性命令（退出码 · stdout · stderr 三样都交回，不替调用方判退出码）：部署计划那两问
+/// （`uname` · 扫身份戳）要的正是这三样 —— `grep` 退出 1 是「一个都没有」，不是失败。拨号请求同 [`capture_request`]。
+pub(crate) async fn capture_full(
+    dial: &Value,
+    command: String,
+) -> Result<crate::dial::Captured, String> {
+    let req = capture_request(dial, command, None)?;
+    let got = pull_raw(move |up_r, mut down_w| async move {
+        let stages = crate::dial::StageSink::new(false);
+        crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+    })
+    .await?;
+    let text = |k: &str| got.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    Ok(crate::dial::Captured {
+        stdout: text("stdout"),
+        stderr: text("stderr"),
+        exit_status: got
+            .get("exit_status")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
+    })
+}
+
+/// 读 ack 与结果那一行，交回结果那一行（解过的 JSON）。
+async fn pull_raw<F, Fut>(serve: F) -> Result<Value, String>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
     // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
     let (_up_w, up_r) = tokio::io::duplex(1024);
     let (down_w, down_r) = tokio::io::duplex(64 * 1024);
@@ -365,16 +396,12 @@ where
     let _task = AbortOnDrop(tokio::spawn(serve(up_r, down_w)));
     let mut rd = BufReader::new(down_r);
     let ack = capped_line(&mut rd, 64 * 1024)
-        .await
-        .map_err(plain)?
-        .ok_or_else(|| plain(copy_text("beRemoteAsk.run.droppedBeforeReady", &[])))?;
-    let ack: Value = serde_json::from_str(&ack).map_err(|e| {
-        plain(crate::common::contract::malformed(&format!(
-            "unreadable ack: {e}"
-        )))
-    })?;
+        .await?
+        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeReady", &[]))?;
+    let ack: Value = serde_json::from_str(&ack)
+        .map_err(|e| crate::common::contract::malformed(&format!("unreadable ack: {e}")))?;
     if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-        return Err(plain(copy_text(
+        return Err(copy_text(
             "beRemoteAsk.run.unreachable",
             &[(
                 "why",
@@ -384,18 +411,22 @@ where
                     .unwrap_or(&copy_text("beRemoteAsk.run.noReason", &[])))
                 .to_string(),
             )],
-        )));
+        ));
     }
     let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
-        .await
-        .map_err(plain)?
-        .ok_or_else(|| plain(copy_text("beRemoteAsk.run.droppedBeforeResult", &[])))?;
-    let got: Value = serde_json::from_str(&got).map_err(|e| {
-        plain(copy_text(
-            "beRemoteAsk.run.resultUnreadable",
-            &[("e", &e.to_string())],
-        ))
-    })?;
+        .await?
+        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
+    serde_json::from_str(&got)
+        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))
+}
+
+/// 一次性子命令的结果那一行 → 它的 stdout（老后端 · 非 0 退出 · 超上限各是一句错）。
+/// 〔MIG-3a · 09-28 裁 4〕非 0 退出时把那台 CLI 信封里的码一起交回（[`Said`]）。
+fn settle_pulled(got: &Value) -> Result<String, Said> {
+    let plain = |message: String| Said {
+        code: None,
+        message,
+    };
     let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
     if stdout.contains(HELLO_MARKER) {
         return Err(plain(copy_text("beRemoteAsk.run.tooOld", &[])));

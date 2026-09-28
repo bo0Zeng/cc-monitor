@@ -57,18 +57,8 @@
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── monitor → backend：monitor 的判据去读后端的源码 ─────────────────
-    (
-        "monitor→backend",
-        "tests/bridge/backend/control/tmux_tests.rs",
-        "src/backend/observe/watcher.rs",
-        "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读后端的 \
-         `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
-         **路径藏在 `macro_rules! backend_watcher_src` 里** —— `include_str!` 只接字面量 token，\
-         用宏是为了「单一落点」（`tmux.rs` 自己写着这个理由，是个好做法）， \
-         而它恰好让这条边从本护栏的抽取器视野里消失了：抽取器只认 `(` 之后紧跟的 `\"`。 \
-         ⇒ **减少重复的好做法，可以顺手把一条边变隐形** —— 这不是谁写错了，\
-         是「护栏认字面量、代码认语义」这个落差的必然产物。抽取器已补上单臂宏展开。",
-    ),
+    // 〔MIG-1 续 · `99 §2.1 ⑬`〕`tmux_tests.rs → observe/watcher.rs` 那一条（`TMUX_LS_FMT` 双写点对拍，路径藏在 `backend_watcher_src`〔散文墓碑〕 宏里）
+    //   出列：列会话的解析整族搬进后端，格式串只剩后端一个家，那条对拍与那个宏随之删了。
     (
         "monitor→backend",
         "tests/bridge/backend/control/backend_kill_tests.rs",
@@ -190,12 +180,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/lib.rs",
         "backend 的启动契约（身份清单 / hello）两侧同形",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/ssh_source_f032_idle_tests.rs",
-        "src/backend/wire.rs",
-        "wire 帧的形状两侧同形",
-    ),
+    // 〔MIG-1〕`ssh_source_f032_idle_tests.rs → src/backend/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
+    //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
         "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
@@ -228,16 +214,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/sftp_tests.rs",
-        "tests/backend/build_id_guard.rs",
-        "〔HX2 · 第四波 4D · 主会话 D-b〕**部署只升不降要 `BUILD_ID` 可比序**：`sftp::build_order` 住 monitor，\
-         而出过的每一个 `BUILD_ID` 只在后端那张 `SUBCOMMAND_HISTORY` 历史表里（每次加子命令追加一行）。\
-         `hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 读它：每一行都解得出序、按表序严格爬升 ——\
-         下一次 bump 写出一个解不出序的形状，部署出去就永远不会被判「更新」而换上（两边各自绿、线上静默）。\
-         只能同时读序键实现（monitor）与历史表（后端测试树）才验得了。",
-    ),
+    // 〔MIG-3b〕`tests/bridge/sftp_tests.rs` → `tests/backend/build_id_guard.rs` 那一行摘了：序键随部署判定搬进共享的 `deploy-core`，
+    //   读历史表的那一格（`hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs`）挪到后端 `deploy_plan_tests.rs` ——
+    //   序键实现（后端依赖的共享 crate）与历史表同在后端那一半，这条边不再跨。
     (
         "monitor→backend",
         "tests/bridge/search_kou_jing_guard.rs",
@@ -259,11 +238,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/bridge/dial_host_tests.rs",
         "src/backend/dial/mod.rs",
-        "★〔C2 · `设计/05 §13` 09-24 新增〕**拨号请求的键两侧同形** —— \
-         `dial_host::tests::the_request_keys_are_the_ones_the_proxy_reads`。写侧是 monitor 的 \
-         `dial_host::request`（`serde_json::json!` 拼的蛇形键），读侧是后端 `dial::DialRequest` 的字段。\
-         失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，代理照样读得动、那一项悄悄变成缺省 \
-         （竞速只剩一个地址 · 跳板被当成直连 · 用法退回长流），两侧各自的判据全绿。",
+        "★〔C2 · `设计/05 §13` 09-24 新增 · 〔MIG-1 收尾〕改判〕**本侧写的可选格后端真读** —— \
+         `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request` \
+         （这台原样的配置 ＋ `command` / `agent_sock` 等可选格），可选格的读侧是后端 `dial::DialRequest` 的字段。\
+         失效方向**很安静**：serde 默认忽略未知字段 ⇒ 本侧写错一个键名，后端照样读得动、那一项悄悄变成缺省，两侧各自的判据全绿。",
+    ),
+    (
+        "monitor→backend",
+        "tests/bridge/dial_host_tests.rs",
+        "src/backend/dial/machine.rs",
+        "★〔MIG-1 收尾 · 主会话裁「一个判定一个家」〕**这台原样的配置交过去的那几格两侧同形** —— \
+         `dial_host::tests::the_request_hands_over_the_machine_as_is`。写侧是 monitor 的 `dial_host::request`（`machine` · `saved` · \
+         `jump` · `prefer` · `use`），读侧是后端 `dial/machine.rs::resolve`（组拨号请求只在那里）。失效方向同上一行：写错一格名， \
+         后端读成缺席（`saved` 缺 ⇒ 固化之后的重连照旧 TOFU · `prefer` 缺 ⇒ 上次赢的那条不排首），两侧各自的判据全绿。",
     ),
     (
         "monitor→backend",

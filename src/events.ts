@@ -1,4 +1,3 @@
-import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { makeYieldToMain } from "./yield-to-main";
 import { commands } from "./ipc/commands";
 import { chan, type Item, type Sub } from "./ipc/chan";
@@ -6,6 +5,7 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { showActionFailureToast } from "./error-toast";
 import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } from "./session-accounts-poll";
+import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -29,22 +29,14 @@ import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
 import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
-import type { SessionStartedPayload } from "./generated/SessionStartedPayload";
-import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
-import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
-import type { SessionContainerPayload } from "./generated/SessionContainerPayload";
 import type { SessionTapPayload } from "./generated/SessionTapPayload";
-import type { OriginSessionsListedPayload } from "./generated/OriginSessionsListedPayload";
-import type { SessionUnseenPayload } from "./generated/SessionUnseenPayload";
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
   JsonlLinePayload,
   SessionEndedPayload,
   SessionIdlePayload,
-  SessionStartedPayload,
-  TasksUpdatePayload,
   SessionActivityPayload,
 };
 
@@ -58,8 +50,8 @@ export interface EventHandlers {
   onSessionEnded: (sessionId: string) => void;
   /**
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux）。后端 emitter
-   * 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle`（**不** emit session-ended，
-   * 故不归档）。与 session-ended 同进 queue：二者对同一 sid 互斥（emitter removed 臂择一），
+   * 收 backend removed 且 `@ccm_sid` present 时 emit `idle` 格（**不** emit ended 格，
+   * 故不归档）。与 ended 格 同进 queue：二者对同一 sid 互斥（emitter removed 臂择一），
    * 但需相对该会话的行/后续 remote-added 保序（idle 在行之后、复活 remote-added 之前）。
    * 前端 tabs.markTmuxIdle 置灰点。
    */
@@ -67,7 +59,7 @@ export interface EventHandlers {
   /**
    * 会话（重新）变活（SESSION_STARTED）。后端在 sessions/<PID>.json 新增**且 PID
    * 探活通过**时 emit —— resume 场景：崩溃→Tab 灰显→`/resume` 后回 live，无需 F5。
-   * 与 session-ended 同进 queue（保持「结束/复活」相对后端 emit 顺序，见下方 sub 注释）。
+   * 与 ended 格 同进 queue（保持「结束/复活」相对后端 emit 顺序，见下方 sub 注释）。
    * 前端复活已归档的本地 Tab（tabs.reviveTab）。
    */
   onSessionStarted?: (
@@ -88,12 +80,12 @@ export interface EventHandlers {
     },
   ) => void;
   /**
-   * 〔U4b · 第四波〕活会话住在什么容器里（`session-container`，本机与远端同一个事件）。
+   * 〔U4b · 第四波〕活会话住在什么容器里（`container` 格，本机与远端同一个事件）。
    * 进 queue：与 `remote-added` / 行保序（先建 tab、再落容器；早到的由 TabManager 暂存）。
    */
   onSessionContainer?: (sessionId: string, container: string) => void;
   /**
-   * 〔U4b · 第四波〕某台机器的活会话清单报完了（`origin-sessions-listed`）。进 queue：排在那台的
+   * 〔U4b · 第四波〕某台机器的活会话清单报完了（`listed` 格）。进 queue：排在那台的
    * `remote-added` 之后 ⇒ 处理它时，那台此刻全部的活会话都已宣告过（`设计/30 §3.5.7a`）。
    */
   onOriginSessionsListed?: (origin: string) => void;
@@ -118,10 +110,11 @@ export interface EventHandlers {
    */
   onSessionFileNotice?: (sessionId: string, change: string) => void;
   /**
-   * 〔GP1 · 第四波〕这条会话所在的那台机器看不见了（`session-unseen`：连接断了 / F5 时那台还没报完清单）⇒ 说不清。
-   * 进 queue：与行 / `remote-added` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
+   * 〔GP1 · 第四波〕那台机器看不见了（会话流 `unseen` 格：连接断了 / F5 时那台还没报完清单）⇒ 那台上活的 · 可重连的落说不清。
+   * 〔MIG-1 续 · 主会话裁〕**机器级**：一格说一台（原先逐会话一格）。后端紧跟着把那台还活着的再宣告一次 ⇒ 真活着的翻回活。
+   * 进 queue：与行 / `live` / `listed` 保序（断连那一刻之前的行先落，重连之后的重宣告与清单后到）。
    */
-  onSessionUnseen?: (sessionId: string) => void;
+  onOriginUnseen?: (origin: string) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -138,14 +131,13 @@ export interface EventHandlers {
    */
   onBatchEnd?: () => void;
   /**
-   * v2.3.0 issue #11: 后端 task watcher 监听到 <claude_dir>/tasks/<sid>/ 变更，
-   * 重读整目录后 emit。前端按 sid 路由到对应 Tab 的 tasksPanel。
-   * 不进 queue —— task 事件稀疏（人类敲命令级），直接同步派发。
+   * 〔MIG-3b · `设计/99 §2.1 ㉓②`〕那台机器上这几个会话的任务清单变了（`sids`），或者期间可能漏了（`all`：那台又接上 / 丢了几格）⇒
+   * 调用方重问 `tasks-list`。来自通道 `subscribe(origin, "session-tasks")`（`tasks-panel.ts::tasksChangedItems` 读格）。
    */
-  onTasksUpdate?: (payload: TasksUpdatePayload) => void;
+  onTasksChanged?: (origin: Origin, sids: readonly string[], all: boolean) => void;
   /**
    * issue #23：会话红绿灯。后端仅在 sessions/<PID>.json 的官方 status 变化时
-   * emit（天然稀疏，同 session-ended 直接同步派发）。status: "busy"=运行中 /
+   * emit（天然稀疏，同 ended 格 直接同步派发）。status: "busy"=运行中 /
    * "idle"/"shell"=等输入 / "waiting"=等弹窗决定（waiting_for 细分原因）。
    */
   onSessionActivity?: (payload: SessionActivityPayload) => void;
@@ -167,6 +159,22 @@ export interface EventHandlers {
  * 落后超过一整个窗口的实时行被句柄丢掉、原位报 `gap`（`onStreamGap` 按行号补）。
  */
 export const STREAM_WINDOW = 20_000;
+
+/**
+ * 〔MIG-1 · `设计/99 §2.1 ⑬` 登记的例外〕会话流里**不吃 credit、不丢**的那几种格（会话起停 / 状态的成品）。
+ * 收到它们不还 credit（monitor 那一侧交它们时本来就没扣）。Rust 那一侧同一张表是 `bridge.rs::SessionStreamFrame::takes_credit`，
+ * 两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
+ */
+export const CREDIT_EXEMPT_FRAMES = [
+  "live",
+  "activity",
+  "container",
+  "idle",
+  "ended",
+  "unseen",
+  "listed",
+  "snapshot_inflight",
+] as const;
 
 /**
  * 〔TAP · V124〕`session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
@@ -214,8 +222,8 @@ type QueueItem =
   // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
   | { kind: "listed"; origin: string }
-  // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onSessionUnseen）。
-  | { kind: "unseen"; sessionId: string }
+  // 〔GP1 · 第四波〕那台机器看不见了 —— 同一 queue 保序（见 EventHandlers.onOriginUnseen）。
+  | { kind: "unseen"; origin: string }
   // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过已从头重读 —— 流里的一格，与行同序（见 EventHandlers.onSessionFileNotice）。
   | { kind: "file-notice"; sessionId: string; change: string; grant?: StreamHold };
 
@@ -325,17 +333,8 @@ const BATCH_END_GRACE_MS = 300;
 
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
-  /**
-   * issue #10：独立 viewer 窗口用 `true` —— 改用 `getCurrentWebviewWindow().listen`
-   * （注册成 `WebviewWindow{label}` 监听）而非模块级 `listen`（注册成 `Any` 监听）。
-   *
-   * 为什么必须：后端 `replay_session_to_window` 用 `emit_to(本窗口)` **定向**发历史
-   * （不广播，否则污染主窗口 timeline）。Tauri 2 事件按 target-kind 匹配：定向发射
-   * 命不中 `Any` 监听，所以模块 `listen` 收不到 → viewer 空白。带标签监听才接得到
-   * 定向事件；而广播 `Any`（live jsonl-line）是通配，带标签监听照样收得到。
-   * 主窗口只收广播（`Any`），保持模块 `listen` 即可，不传此项。
-   */
-  windowScoped?: boolean;
+  // 〔MIG-1 收尾 · V41〕`windowScoped`（issue #10：viewer 按窗口作用域 `listen`）删了：本函数里已没有 Tauri 监听，
+  //   定向投递今天只剩会话流的交格，由 `src/ipc/chan.ts` 那一处按窗口作用域听（条 22.2）。
   /**
    * 〔CF2 · 第四波 4B〕要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
    * 会话内容**只**从这里来（原来的 `jsonl-line` / `jsonl-batch` 两个事件已退役）。在其余监听都注册完之后订，
@@ -352,6 +351,11 @@ export interface BindEventsOptions {
    * 与会话行 · tap 同一条帧路、同一处 `chan.subscribe`；窗口是 `ACCOUNTS_CHANGED_WINDOW`。
    */
   accounts?: ReadonlyArray<Origin>;
+  /**
+   * 〔MIG-3b · ㉓②〕要订 `session-tasks` 的机器（那台后端说某个会话的任务清单变了 ⇒ {@link EventHandlers.onTasksChanged}）。
+   * 与会话行 · tap · 账号同一处 `chan.subscribe`；窗口是 `SESSION_TASKS_WINDOW`。
+   */
+  tasks?: ReadonlyArray<Origin>;
 }
 
 /**
@@ -367,18 +371,15 @@ export async function bindEvents(
   handlers: EventHandlers,
   opts: BindEventsOptions = {},
 ): Promise<void> {
-  // windowScoped 时用窗口作用域监听（详 BindEventsOptions.windowScoped）。
-  // 用泛型 wrapper 而非 .bind —— .bind 会丢失 listen 的泛型，破坏 sub<T> 调用点类型。
-  const wv = opts.windowScoped ? getCurrentWebviewWindow() : null;
-  const sub = <T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> =>
-    wv ? wv.listen<T>(event, handler) : listen<T>(event, handler);
+  // 〔合并 MIG-1 × 主线 eebf51de〕本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
+  //   改走 `session-tasks`）⇒ 按窗口作用域监听的那个包装（`sub`）与「等监听注册完」那一格一起没了。
 
   const queue = new DrainQueue<QueueItem>();
   let scheduled = false;
 
   // batch-end 延迟状态机
   let inBatchMode = false;
-  // Batch9-F30：远端快照/回填在途计数（后端 snapshot-inflight 事件驱动）。
+  // Batch9-F30：远端快照/回填在途计数（后端 snapshot_inflight 格 事件驱动）。
   // >0 时 batch 结束定时器只续期不触发——慢链路回填 chunk 间隔 >300ms 不再
   // 提前退出 batch 模式（退出后旧历史以 live 形态插时间线中段，增量分支
   // 计算路径没被锤过——审计推演的唯一乱序风险点）。5min 上限防呆（后端
@@ -507,7 +508,7 @@ export async function bindEvents(
       } else if (item.kind === "listed") {
         handlers.onOriginSessionsListed?.(item.origin);
       } else if (item.kind === "unseen") {
-        handlers.onSessionUnseen?.(item.sessionId);
+        handlers.onOriginUnseen?.(item.origin);
       } else if (item.kind === "file-notice") {
         handlers.onSessionFileNotice?.(item.sessionId, item.change);
       } else if (item.kind === "gap") {
@@ -576,16 +577,7 @@ export async function bindEvents(
     setTimeout(drain, 0);
   };
 
-  // 收集所有 listen() 注册 promise，函数末尾 await —— 保证返回时监听已就绪。
-  const registrations: Promise<unknown>[] = [];
 
-  // Batch9-F30：快照 inflight（不进 queue——纯 batch 调度信号，无顺序语义）。
-  // 归零时若 batch 模式在续期等待，下一次定时器触发即正常收尾。
-  registrations.push(
-    sub<{ count: number }>("snapshot-inflight", (ev) => {
-      snapshotInflight = ev.payload.count;
-    }),
-  );
 
   // 〔CF2 · 第四波 4B〕会话内容**不再是** `jsonl-line` / `jsonl-batch` 两个事件：走通道的 `subscribe`
   //   （本函数末尾按 `opts.streams` 订）。一格 = 一行（`{"line": …}`）或成批那一段的边界（`{"batch": …}`）。
@@ -616,6 +608,38 @@ export async function bindEvents(
             change: f.file_notice.change,
             grant: hold,
           });
+        } else if (f !== null && typeof f === "object" && "live" in f) {
+          // 〔MIG-1 · ⑬〕会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
+          const p = f.live;
+          if (isLocalOrigin(p.origin)) {
+            queue.push({ kind: "started", sessionId: p.session_id, cwd: p.cwd ?? null, sessionKind: p.kind ?? null, name: p.name ?? null });
+          } else {
+            queue.push({
+              kind: "remote-added",
+              sessionId: p.session_id,
+              origin: p.origin,
+              sessionKind: p.kind ?? null,
+              attachable: p.attachable ?? null,
+              cwd: p.cwd ?? null,
+              name: p.name ?? null,
+            });
+          }
+        } else if (f !== null && typeof f === "object" && "activity" in f) {
+          // issue #23：红绿灯稀疏，当场派（与原来那个事件一样不进 queue）。
+          handlers.onSessionActivity?.(f.activity);
+        } else if (f !== null && typeof f === "object" && "container" in f) {
+          queue.push({ kind: "container", sessionId: f.container.session_id, container: f.container.container });
+        } else if (f !== null && typeof f === "object" && "idle" in f) {
+          queue.push({ kind: "idle", sessionId: f.idle.session_id });
+        } else if (f !== null && typeof f === "object" && "ended" in f) {
+          queue.push({ kind: "ended", sessionId: f.ended.session_id });
+        } else if (f !== null && typeof f === "object" && "unseen" in f) {
+          queue.push({ kind: "unseen", origin: f.unseen.origin });
+        } else if (f !== null && typeof f === "object" && "listed" in f) {
+          queue.push({ kind: "listed", origin: f.listed.origin });
+        } else if (f !== null && typeof f === "object" && "snapshot_inflight" in f) {
+          // Batch9-F30：快照在途电平 —— 纯 batch 调度信号，不进 queue。
+          snapshotInflight = f.snapshot_inflight.count;
         } else if (f !== null && typeof f === "object" && "batch" in f) {
           if (f.batch === "start") {
             if (perf.firstJsonlBatch === undefined) {
@@ -659,104 +683,13 @@ export async function bindEvents(
     ensureScheduled();
   };
 
-  // session-ended 必须进 queue 与行事件同序处理（issue #20）：之前同步派发，会
-  // 抢在积压的 replay 行之前执行 —— 归档刚落实，后续 drain 的远端行就命中
-  // tabs.ts ensureTab 的远端 un-archive（archived + origin!==null 见行即复活），
-  // 重载对账补发的归档被原样吃掉 → 僵尸 live Tab。入队后前端处理顺序 = 后端
-  // emit 顺序（重放块全部在前、补发 ended 在后；实时 ended 也天然晚于该会话的行：
-  // backend 协议 removed 帧在行帧之后）。tabs.ts 的 pendingArchive 保留为防御层
-  //（§ 17a 双层防御：万一 ended 仍早于建 Tab 的行，建 Tab 时落实归档）。
-  registrations.push(
-    sub<SessionEndedPayload>("session-ended", (e) => {
-      queue.push({ kind: "ended", sessionId: e.payload.session_id });
-      ensureScheduled();
-    }),
-  );
+  // 〔MIG-1 · `设计/99 §2.1 ⑬`〕会话起停 / 状态那 8 个 Tauri 事件（`session-ended` / `-idle` / `-started` / `-container` / `-unseen` /
+  //   `-activity` · `remote-session-added` · `origin-sessions-listed`，加上 `snapshot-inflight`）并进了会话流：上面 `onStreamItems` 里那几种格。
+  //   与行同一条流 ⇒ issue #20 那条「ended 必须与行同序」由构造保证，不再靠两条通道在 queue 里对齐。
 
-  // audit-fixes F03.2：session-idle 同进 queue，与 ended/行保序（灰灯落在会话末行之后、
-  // 复活 remote-added 之前）。emitter 对同一 sid 只发 idle 或 ended 之一，故二者不冲突。
-  registrations.push(
-    sub<SessionIdlePayload>("session-idle", (e) => {
-      queue.push({ kind: "idle", sessionId: e.payload.session_id });
-      ensureScheduled();
-    }),
-  );
+  // 〔MIG-3b · ㉓②〕`task-update` 事件退役：任务变更经通道 `session-tasks`（见下面 `plan` 里那一种流）。
 
-  // session-started 与 session-ended 同进 queue：保持「结束/复活」相对后端 emit 顺序，
-  // 避免 started 抢在仍排队的 ended 之前同步执行而错误复活（issue #20 同序原则的对称面）。
-  // 后端已用 is_session_active 门控，只在 PID 真活时发本事件 → 复活安全。
-  registrations.push(
-    sub<SessionStartedPayload>("session-started", (e) => {
-      queue.push({
-        kind: "started",
-        sessionId: e.payload.session_id,
-        cwd: e.payload.cwd ?? null,
-        sessionKind: e.payload.kind ?? null,
-        name: e.payload.name ?? null,
-      });
-      ensureScheduled();
-    }),
-  );
 
-  // Batch5-F18：远端会话宣告同进 queue——骨架建 Tab 与该会话的行/ended 保序。
-  registrations.push(
-    // C02：这里原先是**内联字面量类型**——最危险的一种手写形态（没有名字，
-    // 漂移时没有任何东西会红，人在 review 里也很难看见）。换成生成物。
-    sub<RemoteSessionAddedPayload>("remote-session-added", (e) => {
-      queue.push({
-        kind: "remote-added",
-        sessionId: e.payload.session_id,
-        origin: e.payload.origin,
-        sessionKind: e.payload.kind ?? null,
-        attachable: e.payload.attachable ?? null,
-        cwd: e.payload.cwd ?? null,
-        name: e.payload.name ?? null,
-      });
-      ensureScheduled();
-    }),
-  );
-
-  // 〔U4b · 第四波〕活会话的容器 ＋ 某台清单报完了：同进 queue（与宣告 / 行保序）。
-  registrations.push(
-    sub<SessionContainerPayload>("session-container", (e) => {
-      queue.push({
-        kind: "container",
-        sessionId: e.payload.session_id,
-        container: e.payload.container,
-      });
-      ensureScheduled();
-    }),
-  );
-  registrations.push(
-    sub<OriginSessionsListedPayload>("origin-sessions-listed", (e) => {
-      queue.push({ kind: "listed", origin: e.payload.origin });
-      ensureScheduled();
-    }),
-  );
-  // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清。同进 queue（与行 / 宣告 / 清单保序）。
-  registrations.push(
-    sub<SessionUnseenPayload>("session-unseen", (e) => {
-      queue.push({ kind: "unseen", sessionId: e.payload.session_id });
-      ensureScheduled();
-    }),
-  );
-
-  // v2.3.0 issue #11: task-update 同样稀疏，绕过 queue 直接派发
-  registrations.push(
-    sub<TasksUpdatePayload>("task-update", (e) => {
-      handlers.onTasksUpdate?.(e.payload);
-    }),
-  );
-
-  // issue #23: session-activity 稀疏（CLI 仅在状态转换时写），同步派发
-  registrations.push(
-    sub<SessionActivityPayload>("session-activity", (e) => {
-      handlers.onSessionActivity?.(e.payload);
-    }),
-  );
-
-  // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
-  await Promise.all(registrations);
 
   // 〔TAP · V124〕`session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
   //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
@@ -803,6 +736,20 @@ export async function bindEvents(
     if (changed) handlers.onAccountsChanged?.();
   };
 
+  // 〔MIG-3b · ㉓②〕`session-tasks`：一批格 ⇒ 哪几个会话要重问（`tasksChangedItems` 答）；`frame` 占的 credit 当场还（订阅返回之前到的欠着）。
+  const onTasksItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+    const { sids, all, frames } = tasksChangedItems(items);
+    if (frames > 0) {
+      if (hold.sub) {
+        hold.sub.want(frames + hold.owed);
+        hold.owed = 0;
+      } else {
+        hold.owed += frames;
+      }
+    }
+    if (all || sids.length > 0) handlers.onTasksChanged?.(origin, sids, all);
+  };
+
   // 〔CF2 · 第四波 4B〕会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
   // 〔TAP〕`session-tap` 与会话行走**同一处** `chan.subscribe`（前端对通信层入口的调用点各恰好一处，`X6`）：
@@ -815,6 +762,12 @@ export async function bindEvents(
       kind: ACCOUNTS_CHANGED_KIND,
       window: ACCOUNTS_CHANGED_WINDOW,
       feed: onAccountsItems,
+    })),
+    ...(opts.tasks ?? []).map((origin) => ({
+      origin,
+      kind: SESSION_TASKS_KIND,
+      window: SESSION_TASKS_WINDOW,
+      feed: onTasksItems,
     })),
   ];
   await Promise.all(

@@ -1,0 +1,10 @@
+{
+  "installed": {
+    "installed": true,
+    "sessions": [
+      { "name": "proj-cc", "path": "/home/u/proj", "command": "claude", "attached": true, "windows": 2, "sid": "sid-1" },
+      { "name": "web", "path": "/srv", "command": "zsh", "attached": false, "windows": 1, "sid": null }
+    ]
+  },
+  "notInstalled": { "installed": false, "sessions": [] }
+}

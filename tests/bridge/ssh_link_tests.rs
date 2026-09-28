@@ -153,13 +153,3 @@ async fn silence_garbage_and_an_endless_line_are_three_different_errors() {
         Err(LinkError::TooOld { .. })
     ));
 }
-
-/// 转发计数：真读数两行 ＋ 管子关了 ⇒ `None`。
-#[tokio::test]
-async fn forward_counts_read_until_the_pipe_closes() {
-    let out = "{\"accepted\":1}\n{\"accepted\":2}\n";
-    let mut r = tokio::io::BufReader::new(out.as_bytes());
-    assert_eq!(accepted(&mut r, CAP).await, Ok(Some(1)));
-    assert_eq!(accepted(&mut r, CAP).await, Ok(Some(2)));
-    assert_eq!(accepted(&mut r, CAP).await, Ok(None));
-}

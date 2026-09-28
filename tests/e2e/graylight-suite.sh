@@ -7,8 +7,8 @@
 #   - 本机可读 monitor 日志(fe_perf/[e2e] 行是断言数据源)。
 # 序列(跨进程整链,单测碰不到):
 #   建 fixture(fake-claude 活 + @ccm_sid) → app 经 backend SessionAdded 建 live 远端 tab
-#   → kill fake-claude(留 tmux shell) → backend SessionRemoved + TmuxSessions 仍带 @ccm_sid
-#     → emitter 判 Idle → SESSION_IDLE → tabs.markTmuxIdle → `[e2e] tab-state … liveness=dead recoverability=attachable`(可重连)
+#   → kill fake-claude(留 tmux shell) → backend SessionRemoved + SessionState(reconnectable)（〔MIG-1 续〕后端会话账本裁）
+#     → 会话流 `idle` 格 → tabs.markTmuxIdle → `[e2e] tab-state … liveness=dead recoverability=attachable`(可重连)
 #   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰,§24bis) → @ccm_sid 消失
 #     → 收割/对账 retire → SESSION_ENDED → tabs.archiveTab → `[e2e] tab-state … liveness=dead recoverability=resumable`(已结束)
 # 〔U4〕探针行的两个键就是两个轴(原先是 `status=live tmuxIdle=1` / `status=archived`)。「进可重连之前是活的」
@@ -72,8 +72,8 @@ DISPLAY="${E2E_DISPLAY:-:80}"; export DISPLAY
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 LOG="${E2E_LOG:-$(ls -t "$HOME"/.claude/work/logs/monitor.*.log 2>/dev/null | head -1)}"
 CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-remote-claude}"
-GRAY_WAIT="${E2E_GRAY_WAIT:-30}"    # 灰:backend 判活轮询(2s)+ TmuxSessions 帧(≤8s)+ emitter
-ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 TmuxSessions 帧 + 对账去抖
+GRAY_WAIT="${E2E_GRAY_WAIT:-30}"    # 灰:backend 判活 + 会话账本成品帧 + 会话流
+ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 hook → 重探 → 会话账本裁已结束
 
 [ -f "$LOG" ] || { echo "monitor 日志不存在:$LOG(dev 实例在跑吗?)"; exit 1; }
 
@@ -300,11 +300,10 @@ done
   && ok "live 前置:fake-claude pidfile 落地 pid=$FAKE_PID(app 经 backend SessionAdded 建 live tab)" \
   || bad "10s 内 fake-claude 未落 pidfile 到隔离目录(fixture 失败)"
 
-# **必须等 app 收到一帧含 @ccm_sid=sid 的 TmuxSessions**(backend 每 8s 才发一次)再杀 claude,
-# 否则 SessionRemoved 到达时 app 的 tmux 账本还没这条 → emitter classify_removed 找不到 @ccm_sid
-# → 判 Archive(直接归档)而非 Idle(灰),灰灯永不出现(首跑实测踩中)。留足 > 一个 8s 发帧周期。
+# 〔MIG-1 续〕裁决在后端会话账本：它要先见过一份挂着 @ccm_sid=sid 的 tmux 快照（起步初探即有）再杀 claude，
+# 否则 SessionRemoved 那一刻账本判不出「还挂着」→ 裁已结束而非可重连。留一段余量（原来等的是 app 收到 TmuxSessions 帧，那一帧已删）。
 TMUX_SETTLE="${E2E_TMUX_SETTLE:-14}"
-echo "-- 等 ${TMUX_SETTLE}s 让 app 收到含 @ccm_sid 的 TmuxSessions 帧(backend 8s 发一次)--"
+echo "-- 等 ${TMUX_SETTLE}s 让后端会话账本见过含 @ccm_sid 的 tmux 快照 --"
 sleep "$TMUX_SETTLE"
 
 # ── GRAY:kill fake-claude(留 tmux)→ 可重连 tab-state(liveness=dead recoverability=attachable)────

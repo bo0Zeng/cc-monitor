@@ -92,10 +92,10 @@ export class TabStore {
    */
   readonly tasksBySid = new Map<string, TaskEntry[]>();
   /**
-   * issue #19：归档信号（session-ended）可能早于 replay 把该 sid 的 Tab 建出来。
+   * issue #19：归档信号（ended 格）可能早于 replay 把该 sid 的 Tab 建出来。
    * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
    *
-   * issue #20 后 session-ended 已改进 events.ts 的 queue 与行同序处理（否则补发
+   * issue #20 后 ended 格 已改进 events.ts 的 queue 与行同序处理（否则补发
    * 归档会被后续 drain 的远端行 un-archive 吃掉），正常路径下 ended 不会再早于
    * 行到达——本集合降级为防御层（§ 17a 双层防御），保留兜“ended 先于该 sid 任何
    * 行”的异常序。
@@ -109,15 +109,15 @@ export class TabStore {
   readonly pendingTmuxIdle = new Set<string>();
   /**
    * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
-   * session-activity 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
+   * activity 格 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
    */
   /**
-   * 〔U4b · 第四波 · G3〕容器事实（`session-container`）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
+   * 〔U4b · 第四波 · G3〕容器事实（`container` 格）早于 Tab 建出时暂存。ensureTab 建 Tab 时落实
    * （建出来就是活的；早到的死亡信号优先 —— 那时容器一格由死的那一刻的裁决说了算）。
    */
   readonly pendingContainer = new Map<string, "tmux" | "none">();
   /**
-   * 〔U4b · 第四波 · 说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`）。
+   * 〔U4b · 第四波 · 说不清〕已经把活会话清单报完了的机器（`origin-sessions-listed` / 本机 `list_active_sessions`〔散文墓碑〕）。
    * 固定复活时据它分：报完了 ⇒ 已结束（它不在清单里，不然 tab 早就被建成活的了）；没报完 ⇒ 说不清。
    */
   readonly seenOrigins = new Set<string>();

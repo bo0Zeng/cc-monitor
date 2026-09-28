@@ -567,8 +567,16 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/bridge/src/sftp.rs",
         "MARKER_READ_MAX",
         64 * 1024,
-        "部署时读回的一份小文件（`.build_id` / `.vendor_id` 标记 · `ccm` 入口 shim；它们都是几十字节）",
+        "部署时读回的一份小文件（`.vendor_id` 标记；几十字节）。〔MIG-3b〕认落点上那份 `ccm` 入口 shim 那一读随部署判定进了后端（`ENTRY_READ_MAX`）",
         "拒收+回错",
+    ),
+    // 〔MIG-3b〕部署计划（本机常驻后端）认从前那份三行入口时读落点那一份的上限：先问大小、大了不读。
+    (
+        "src/backend/control/deploy_plan.rs",
+        "ENTRY_READ_MAX",
+        64 * 1024,
+        "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
+        "跳过+说清",
     ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
@@ -714,6 +722,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "`footprint-probe` 查钩子字样时读的那份 settings 文件多大",
         "降级+说清",
     ),
+    // 〔MIG-3b〕cc-bus 钩子诊断（`hooks-diag`，只读）读那台自己的 settings 文件多大。
+    (
+        "src/backend/observe/cc_bus_hooks.rs",
+        "SETTINGS_CAP_BYTES",
+        1 << 20,
+        "`hooks-diag` 读那台 agent 配置根下的 `settings.json` 多大",
+        "降级+说清",
+    ),
     // 〔AS2 · 第四波 4B〕资产目录那六个数（`agents/claudecode/assets.rs` · `asset_catalog.rs` · `asset_sync.rs`）。
     (
         "src/backend/agents/claudecode/assets.rs",
@@ -775,6 +791,29 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         16 * 1024 * 1024,
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
         "拒收+回错",
+    ),
+    // 〔MIG-1 续 · ⑬〕测试连接进本机后端：探活链路上的每一行（阶段行 · ack · 那台后端的 hello · 应答）。
+    (
+        "src/backend/dial/probe.rs",
+        "LINE_CAP",
+        1024 * 1024,
+        "测试连接那条探活链路上的一行（阶段行 · ack · 那台后端的首行 hello · ping 应答；hello 是后端出方向单行，同量级）",
+        "拒收+回错",
+    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发账进本机常驻后端：读链路那一侧的 ack 与计数行。
+    (
+        "src/backend/dial/forwards.rs",
+        "ACK_CAP",
+        64 * 1024,
+        "起一条端口转发时链路那一侧回的 ack 那一行（同 `remote_ask` 读 ack 的上限）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/dial/forwards.rs",
+        "COUNT_CAP",
+        4 * 1024,
+        "端口转发链路每接进一条连接报的那一行计数（`{\"accepted\":n}`）",
+        "降级+说清",
     ),
     // 〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的 stderr 诊断文件：满了换份，旧的留一份，再早的丢 ——
     //   丢要带身份：新那份第一行写「上一份挪去了哪、再早的那一份丢了」（`stderr_log::roll_note`）。
@@ -1837,8 +1876,9 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         }
     }
     assert!(
-        arms >= 3,
-        "只找到 {arms} 处超限处置臂（08-10 实测 3：主帧读 / 握手 / 应答泵）—— \
+        // 〔MIG-1 续〕3 → 1：握手（`probe_backend`〔散文墓碑〕）与应答泵那两臂随测试连接搬进本机后端删了，只剩主帧读那一臂。
+        arms >= 1,
+        "只找到 {arms} 处超限处置臂（〔MIG-1 续〕今天应为 1：主帧读）—— \
              抽取器坏了，本条此刻是空转的"
     );
     assert!(

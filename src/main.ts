@@ -4,7 +4,7 @@
  * DOMContentLoaded 后按序：
  * 1. `loadTheme()` 从 config.json 应用 CSS 变量
  * 2. 实例化 TabManager / SettingsPanel / HistoryView / TasksPanel
- * 3. `bindEvents()` 订阅后端事件（jsonl-line / jsonl-batch / session-ended / task-update）
+ * 3. `bindEvents()` 订阅通道那几条流：会话行（〔MIG-1〕含起停那几格）· tap · 账号 · 任务
  * 4. 装全局快捷键 dispatcher（keybindings/）+ 外链 click 代理（openUrl）+ ERROR toast
  * 5. `emit("frontend-ready")` 通知后端 replay 历史
  *
@@ -17,6 +17,7 @@ import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
@@ -165,11 +166,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   empty.innerHTML = copyText("main.empty.noSessions");
   streamRoot.appendChild(empty);
 
-  // Batch5-F19：上次所在 tab 是远端会话时，等它的 remote-session-added 到达再切
-  // （应用一次即清）。带 30s 启动窗口期限（审计 R2）：SSH 慢连/重连可达分钟级，
-  // 用户此时早已在工作，迟到的宣告不该抢焦点。
-  let pendingStartupActive: string | null = null;
-  const startupActiveDeadline = Date.now() + 30_000;
+  // Batch5-F19：启动时记住的那一格（上次所在的 tab）—— 〔MIG-1 续 · 主会话裁〕只在那个会话出现时恢复、就绪前不许被覆盖、
+  //   没等到就明说（`src/startup-active.ts`）。原先的 30 s 启动窗口（迟到的宣告静默不切、窗口内记忆早被别的 tab 写掉）换成按事件判。
+  let startup: StartupActive | null = null;
 
   const tabs = new TabManager(
     tabBar,
@@ -274,7 +273,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // ⇒ 刷新改由事件驱动，零定时器：
   //   · 某台的长连接握手完成（启动 / 重连）或那台账号清单变了 ⇒ 强制刷账号清单，
   //     账号 chip 也在这一刻重取（在那之前问只会拿到「没有控制通道」）—— 〔DL1〕经通道订的 `accounts-changed`；
-  //   · `remote-session-added` / `session-ended`：会话起停；
+  //   · 远端 `live` 格 / `ended` 格：会话起停；
   //   · 本 UI 切号：上面 `onDefaultChanged`。
   const accountsRefresher = createEventRefresher(refreshSessionAccounts);
   accountsRefresher.request();
@@ -284,12 +283,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     accountsRefresher.request(true);
     void accountChip.refresh(true);
   };
-  void listen("remote-session-added", () => accountsRefresher.request());
-  void listen("session-ended", () => accountsRefresher.request());
+  // 〔MIG-1 续〕会话起停那一格（原先听裸事件 `remote-session-added`〔散文墓碑〕/ `session-ended`〔散文墓碑〕，那两个事件已并进会话流）：
+  //   下面 `bindEvents` 的 `onRemoteSessionAdded` / `onSessionEnded` 里各请一次。
 
-  // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
+  // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的宣告不再补切抢焦点（用户的选择优先，记下此刻所在那一格）
   tabs.onManualSwitch = () => {
-    pendingStartupActive = null;
+    startup?.onManualSwitch();
   };
   // F88b：当前 tab 那一格变了 → 刷新 HUD context% chip（〔STC〕后端的会话事实到了 / switchTo 切会话 / 要不到 ⇒ chip 说原因）。
   // 〔GAP1 · `设计/01 §1.5`〕订阅 store（原先是两个点对点回调）。
@@ -707,12 +706,18 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onLine(e);
       recordFile.afterLine(e.session_id); // 〔FW1 · D-d〕又来了一行 ⇒ 「记录文件不见了」那一句收掉
     },
-    onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
+    onSessionEnded: (sessionId) => {
+      tabs.archiveTab(sessionId);
+      accountsRefresher.request(); // 〔MIG-1 续〕会话结束了（原先听裸事件）
+    },
     // audit-fixes F03.2：远端 claude 退但 tmux 会话仍在 → 灰灯（idle-tmux 第三态，非归档）。
     onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
     // 〔U4b · 第四波〕活会话的容器（G3）· 某台机器的活会话清单报完了（说不清 → 已结束）。
     onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container),
-    onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin),
+    onOriginSessionsListed: (origin) => {
+      tabs.markOriginSeen(origin);
+      startup?.onListed(origin); // 〔MIG-1 续〕每台都报完了、记住的那一格还没出现 ⇒ 明说
+    },
     // 〔TAP · V124〕中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
     onSessionTap: (e) => tabs.onSessionTap(e),
     onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
@@ -723,8 +728,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onRecordFileReread(sessionId, change); // 〔RENDER2〕从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
       recordFile.onSessionFileNotice(sessionId, change);
     },
-    // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 说不清（不是已结束）。
-    onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId),
+    // 〔GP1 · 第四波〕那台机器看不见了 ⇒ 那台上活的 · 可重连的说不清（不是已结束）。〔MIG-1 续〕机器级一格。
+    onOriginUnseen: (origin) => tabs.markOriginUnseen(origin),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
@@ -743,6 +748,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       //       在这里起一个新的周期唤醒就是开倒车（`polling_registry` 那两张表在管这件事）。
       //    ⚠ 不 `await`：回填是补记账，失败也不该影响建 tab 这条主路（它自己吞异常）。
       void resolvePendingLocalLaunches();
+      // 〔MIG-1〕本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
+      startup?.onAppeared(sessionId);
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
@@ -756,7 +763,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.onBatchEnd();
     },
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
-    onTasksUpdate: (e) => tabs.updateTasks(e.sessionId, e.tasks),
+    // 〔MIG-3b · ㉓②〕那台后端说这几个会话的任务变了（或期间可能漏了）⇒ 重问 `tasks-list`。
+    onTasksChanged: (origin, sids, all) => tabs.refreshTasks(origin, sids, all),
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
@@ -771,14 +779,10 @@ window.addEventListener("DOMContentLoaded", async () => {
         meta.name,
         meta.attachable, // E73
       );
-      // Batch5-F19：上次所在 tab 是远端会话时在此补切（应用一次即清；超过
-      // 30s 启动窗口则放弃——迟到宣告不抢焦点，replay 优先级不受影响）
-      if (pendingStartupActive === sessionId) {
-        pendingStartupActive = null;
-        if (Date.now() < startupActiveDeadline) {
-          tabs.switchTo(sessionId, "auto");
-        }
-      }
+      // Batch5-F19：上次所在 tab 是远端会话时在此补切（应用一次即清）。
+      startup?.onAppeared(sessionId);
+      accountsRefresher.request(); // 〔MIG-1 续〕会话起了（原先听裸事件）
+
     },
     // 〔CF2〕那台机器的会话流丢了几格 ⇒ 那台的每个 tab 按行号补（`TabManager.onStreamGap`）。
     onStreamGap: (origin) => tabs.onStreamGap(origin),
@@ -788,6 +792,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     taps: machines,
     // 〔DL1〕每台一条 `accounts-changed`（替掉裸事件 `remote-backend-ready`）。
     accounts: machines,
+    // 〔MIG-3b · ㉓②〕每台一条 `session-tasks`（替掉本机那个裸事件 `task-update`；远端第一次有推送）。
+    tasks: machines,
   });
   // 〔DL1 · `设计/01 §2.2`〕账号那一格经通道订（每台一条 `accounts-changed`，上面 `bindEvents` 的 `accounts`）。
   //   订阅登记之前那一窗里连上的不会有 `seen`（句柄只在状态变时说）⇒ `bindEvents` 返回（订阅都登记好了）之后补刷一次 ——
@@ -799,45 +805,27 @@ window.addEventListener("DOMContentLoaded", async () => {
   // issue #32 (SS-F)：远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
   bindRemoteHealthToast();
 
-  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——第一个骨架的自动切换会
-  // 经 switchTo 写回 localStorage，读晚了就把用户记忆覆写成清单首个 sid（F19
-  // 主路径在"本地有会话"的常见场景下整体失效）。骨架期同时抑制写回双保险。
+  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——骨架（〔MIG-1〕本机远端一样，都是会话流里的 `live` 成品，
+  //   在下面 `frontend-ready` 的就绪点才到）一建出来就可能经 switchTo 写回 localStorage，读晚了就把记忆覆写掉。
+  // 启动 active = 上次所在 tab：此刻还没有骨架 ⇒ 挂 pending，等它的 `live` 到达时补切（本机 `onSessionStarted` ·
+  //   远端 `onRemoteSessionAdded` 两处同一段；应用一次即清，30 s 之后不再抢焦点）。
+  //   〔从前本机骨架先经 `list_active_sessions`〔散文墓碑〕在这里建好、建时抑制写回（`persistLastActive = false … true`）；
+  //    骨架挪到就绪点之后那一对抑制没有要罩住的东西了，删了。〕
   const lastActive = safeGet(LS_KEYS.lastActiveSid);
-  tabs.persistLastActive = false;
-
-  // Batch5-F18：frontend-ready 之前先拉本地活跃清单建全部骨架 Tab——用户在
-  // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
-  // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
-  try {
-    const active = await commands.list_active_sessions();
-    for (const s of active) {
-      tabs.createSkeletonTab(
-        s.session_id,
-        s.cwd || null,
-        LOCAL_ORIGIN,
-        s.kind ?? null,
-        s.name ?? null,
-      );
-    }
-    // 〔U4b · 说不清〕这就是本机的活会话清单 ⇒ 本机的固定 tab 从说不清落地：
-    //   清单里有 ⇒ 活，没有 ⇒ 已结束。拉失败（下面 catch）⇒ 不标，照旧说不清 —— 说不清就说说不清。
-    //   〔LOC1b · 4D〕清单由本机后端的帧喂（本机后端还没报完 ⇒ 这一问明拒、落 catch）；报完的那一刻本机 emitter
-    //   另发 `origin-sessions-listed`（与远端同一个事件，上面 `onOriginSessionsListed` 那一格收）。
-    tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)));
-  } catch (e) {
-    console.warn("[skeleton] list_active_sessions failed:", e);
-  }
-
-  // Batch5-F19：启动 active = 上次所在 tab（localStorage 记忆）。本地骨架里有
-  // 就立即切；是远端会话则挂 pending，等它的 remote-session-added 宣告到达时
-  // 补切（应用一次即清，之后不再抢焦点）。选择完成后恢复写回。
-  if (lastActive && tabs.hasTab(lastActive)) {
-    tabs.switchTo(lastActive, "auto");
-    pendingStartupActive = null;
-  } else {
-    pendingStartupActive = lastActive;
-  }
-  tabs.persistLastActive = true;
+  startup = new StartupActive(lastActive, !!lastActive && tabs.hasTab(lastActive), machines, {
+    switchTo: (sid) => tabs.switchTo(sid, "auto"),
+    holdMemory: (hold) => {
+      tabs.persistLastActive = !hold;
+    },
+    rememberCurrent: () => {
+      const cur = tabs.activeSessionId();
+      if (cur) safeSet(LS_KEYS.lastActiveSid, cur);
+    },
+    sayGone: (sid) =>
+      showActionFailureToast(copyText("startupActive.gone.title"), copyText("startupActive.gone.body", { sid: sid.slice(0, 8) }), {
+        level: "info",
+      }),
+  });
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来。payload 带上次所在 tab
   // （Batch5-F19）：后端 replay 按 session 分组、该 tab 的内容块先发。
@@ -852,9 +840,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const frontendReady: FrontendReadyPayload = { prioritySid: lastActive };
   void emit("frontend-ready", frontendReady);
 
-  // issue #23: 红绿灯初始快照（session-activity 事件不进 replay buffer，F5 会丢；
-  // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
-  void tabs.syncActivitySnapshot();
+  // 〔MIG-1〕红绿灯的初始值随 `live` 成品一起在就绪点交（`activity` 那一格），不再另拉快照（`list_session_activity`〔散文墓碑〕）。
 
   // 注：maximize / 全屏后内容错位的修复在 Rust 侧（src/bridge/src/lib.rs on_window_event：
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。

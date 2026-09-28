@@ -53,9 +53,9 @@ mod event_replay;
 //   rlib 的公开面上可达 ⇒ 不往那个 34 上加数。**等窗口真被界面调起来，这里可以收回私有。**
 pub mod filewin;
 mod history;
-mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
-                // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
-                // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+// 〔MIG-3b〕`hooks_diag`〔散文墓碑〕（cc-bus 钩子诊断）进了后端：帧命令 `hooks-diag`（`src/backend/observe/cc_bus_hooks.rs`），界面经通道直问那台。
+// U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
+// 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 // 〔MIG-2〕`apikey_remote`〔散文墓碑〕删了：它最后只剩发送口，唯一的调用方（起会话那一侧问 `launch-endpoint`）随本机起会话搬进后端。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
@@ -78,16 +78,17 @@ mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
                  // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
                  //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
-mod port_forward;
 mod profile_installer;
 mod pubkey;
-mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
+// 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
 mod remote_history;
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
                            // 〔LOC1b · 第四波 4D〕`mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
-mod session_facts; // 〔U4b〕两条后端流交来、要送前端的会话事实（容器 · 本机可重连落已结束）的一个口
-mod session_map;
+                           // 〔MIG-1 · `99 §2.1 ⑬`〕会话起停的成品缓存（后端裁、monitor 只转交 ＋ F5 重放）。替掉 `session_map` 本机活会话表〔散文墓碑〕
+                           //   与 `session_facts` 容器账〔散文墓碑〕：两本账的裁决与记账都搬进了那台后端（`observe/session_ledger.rs`）。
+mod probe_relay; // 〔MIG-1 收尾〕本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
+mod session_book;
 mod session_tap; // 〔TAP · V124〕本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
                  // `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
                  // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
@@ -211,9 +212,9 @@ mod session_skeleton;
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
-mod tasks;
+// 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
-mod tmux_reconcile;
+                             // 〔MIG-1〕`tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
 mod utils;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
@@ -285,16 +286,61 @@ pub(crate) fn wants_title_prescan(rbind_token: Option<&str>) -> bool {
     rbind_token.is_none()
 }
 
-/// 〔GP1 · 第四波〕发一条「说不清」（`session-unseen`）。三处用它：两个 emitter 的 `Unseen` 臂 · F5 对账里
-/// 「那台还没报完清单」那一摞。**它从不与 `SESSION_ENDED` 同发**（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）。
-fn emit_session_unseen(handle: &tauri::AppHandle, sid: &str) {
-    let payload = bridge::SessionUnseenPayload {
-        session_id: sid.to_string(),
-    };
-    if let Err(e) = handle.emit(bridge::events::SESSION_UNSEEN, &payload) {
-        tracing::warn!("emit session-unseen failed: {e}");
-    } else {
-        tracing::info!("session unseen（那台机器看不见了）: {sid}");
+/// 〔MIG-1〕会话成品到达时 monitor **自己的事**（拉前终端的绑定）—— 不是裁决，是这台界面进程要记的窗口账。
+///
+/// - 本机活会话：按 pid 找父 PowerShell 绑窗口（Windows 本机 ↗；老后端不带 pid 就不绑）；
+/// - 远端活会话：没令牌的起一条标题预扫线程（`wants_title_prescan`）；
+/// - 离开：本机一律忘（旧 sid 连 attach 都接不上）；远端只在已结束时忘（可重连 / 说不清：本地那个 ssh 窗口可能还开着）。
+fn session_side_effects(
+    out: &session_book::Out,
+    local_cache: &Arc<bind::SidHwndCache>,
+    bind_registry: &bind::BindRegistry,
+    remote_cache: &Arc<bind::RemoteHwndCache>,
+) {
+    use session_book::{Fate, Out};
+    let local = |o: &str| o == crate::origin::LOCAL;
+    match out {
+        Out::Live { origin, sid, meta } if local(origin) => {
+            if let Some(pid) = meta.pid {
+                let _ = local_cache.record(sid, pid, bind_registry);
+            }
+        }
+        Out::Live { sid, .. } => {
+            // 〔U2〕带启动令牌的会话不预扫标题（理由见 `wants_title_prescan`）；令牌账本先于这条成品记好（`ssh_source` 收宣告时先 `note`）。
+            let token = bind::remote_rbind_tokens().token_of(sid);
+            if !wants_title_prescan(token.as_deref()) {
+                return;
+            }
+            let cache = remote_cache.clone();
+            let sid = sid.clone();
+            let spawn_res = std::thread::Builder::new()
+                .name("remote-bind-scan".into())
+                .spawn(move || {
+                    // 每 ~0.6s 扫一次、最多 ~9s，命中即停（wrapper 每 0.3s 重刷标题，覆盖 claude 自己设标题的那一瞬）。
+                    for _ in 0u32..15 {
+                        std::thread::sleep(std::time::Duration::from_millis(600));
+                        if cache.try_bind(&sid) {
+                            tracing::info!("remote bind: sid={sid} → hwnd bound");
+                            break;
+                        }
+                    }
+                });
+            if let Err(e) = spawn_res {
+                tracing::warn!(
+                    "failed to spawn remote-bind-scan thread: {e}; 远端 Tab ↗ 拉前将不可用"
+                );
+            }
+        }
+        Out::Left { origin, sid, .. } if local(origin) => local_cache.apply_local_removal(sid),
+        Out::Left { sid, fate, .. } => {
+            remote_cache.apply_remote_disposition(sid, *fate == Fate::Ended)
+        }
+        Out::Unseen { origin, sids } if local(origin) => {
+            for sid in sids {
+                local_cache.apply_local_removal(sid);
+            }
+        }
+        Out::Unseen { .. } | Out::Status { .. } | Out::Listed { .. } => {}
     }
 }
 
@@ -698,9 +744,7 @@ pub fn run() {
             tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
             // 〔LOC1b · 第四波 4D〕这里原来还算 `sessions_dir`（`<claude_dir>/sessions`，喂 monitor 自己那份判活）——
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
-            // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
-            let tasks_dir =
-                adapter::tasks_dir(&claude_dir).unwrap_or_else(|| claude_dir.join("tasks"));
+            // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
             // monitor 自己的数据目录：~/.claude/work
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
@@ -726,24 +770,26 @@ pub fn run() {
             // IPC 取 State<Arc<RemoteHwndCache>>（INVARIANT § 8：必须 manage，见下方）。
             let remote_hwnd_cache = bind::RemoteHwndCache::new();
 
-            // 〔LOC1b · 第四波 4D〕本机活会话表由本机后端那条流的起停帧喂（`ssh_source::consume_local` ⇒ `session_map::feed`），
-            //   这里只装它的出口：一条有序通道，下面那个本机 emitter 收。原先这里起 monitor 自己的判活
-            //   （`SessionMap::load_with_changes`〔散文墓碑〕：notify 盯 pidfile ＋ `/proc` ＋ 2 s 心跳）。
-            let (local_lifecycle_tx, session_changes) = std::sync::mpsc::channel::<session_map::Out>();
-            session_map::install_sink(local_lifecycle_tx);
+            // 〔MIG-1 · `99 §2.1 ⑬`〕会话起停的成品（后端裁：活 / 状态灯 / 可重连 / 已结束 / 清单报完了）由两条流交 `session_book`，
+            //   这里装它的出口：一条有序通道，下面那**一个** emitter 收（本机远端同一个）。
+            //   〔LOC1b 之前这里起 monitor 自己的判活（`SessionMap::load_with_changes`〔散文墓碑〕）；MIG-1 之前是两个 emitter 各自裁。〕
+            let (book_tx, book_rx) = std::sync::mpsc::channel::<session_book::Out>();
+            session_book::install_sink(book_tx);
 
             // 〔CF1 · 2026-09-24〕本机会话内容**不再**由 monitor 自己 watch：它是本机后端的 `line` 帧，
             // 经 `local_lines` → `ssh_source::consume_local` → 与远端同一个 `LineIntake`（`设计/00 §2.5 ②`）。
             // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
             // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
-            // 〔U4b · 第四波〕`session_facts` 的出口：两条后端流交来的会话事实在这里落地（见那个模块的头注）。
-            //   装在两个 emitter 之前 —— 装之前交来的容器事实只记账，`frontend-ready` 对账会整份重发。
             // 〔TAP · V124〕`session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
             //   订了 `session-tap` 的那几条订阅按 credit 收（`设计/05 §15`：一条帧路 ＋ `subscribe`，不开裸事件）。
             {
                 let replay = replay.clone();
                 crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
+            }
+            {
+                let replay = replay.clone();
+                crate::probe_relay::install_sink(move |ticket, cell| replay.on_probe(&ticket, cell));
             }
             // 〔VIS2 · `设计/15 §3.4 ①`〕host key 自动固化 / 各地址不一 ⇒ 经既有的 `remote-health` 告知（机器页据此刷新）。
             {
@@ -759,181 +805,34 @@ pub fn run() {
                     }
                 });
             }
+            // 〔MIG-1 · `99 §2.1 ⑬`〕会话成品的**唯一**出口线程（本机远端同一个）：monitor 自己那几样副作用（拉前绑定）＋
+            //   原样交会话流（`EventReplay::on_lifecycle`：`subscribe(origin, "session-lines")` 里的格，不吃 credit、不丢）。
+            //   不裁决（可重连 / 已结束由那台后端裁）；原先这里是本机 / 远端两个 emitter，各自裁、发 9 个 Tauri 事件。
             {
-                let handle = app.handle().clone();
-                crate::session_facts::install_sink(move |fact| match fact {
-                    crate::session_facts::Fact::Container { sid, container } => {
-                        if let Err(e) = handle.emit(
-                            bridge::events::SESSION_CONTAINER,
-                            &bridge::SessionContainerPayload {
-                                session_id: sid,
-                                container: container.as_wire().to_string(),
-                            },
-                        ) {
-                            tracing::warn!("emit session-container failed: {e}");
-                        }
-                    }
-                    // 本机收割：这条可重连的会话，它的 tmux 会话没了 ⇒ 已结束（与本机 removed 臂的 Archive 同形）。
-                    // 只对**仍在** idle 账本里的 sid 落地：收割算完到这里之间它可能已经复活（`added` 臂清过）。
-                    crate::session_facts::Fact::LocalIdleGone { sid } => {
-                        let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-                        if !ssh_source::snapshot_idle_for_origin(origin).contains(&sid) {
-                            return;
-                        }
-                        ssh_source::clear_idle(&sid);
-                        if let Err(e) = handle.emit(
-                            bridge::events::SESSION_ENDED,
-                            &bridge::SessionEndedPayload {
-                                session_id: sid.clone(),
-                            },
-                        ) {
-                            tracing::warn!("emit session-ended（本机收割）failed: {e}");
-                        } else {
-                            tracing::info!("session ended（本机 tmux 也没了）: {sid}");
-                        }
-                    }
-                });
-            }
-
-            // session 集合变化 emitter（本地）—— 〔LOC1b〕收本机活会话表的出口（`session_map::Out`），与远端 emitter 同一套裁决：
-            //   - added：按 pid 绑窗口（Windows 本机 ↗）· 清 idle · 发 session-started（前端复活 / 建骨架）
-            //   - removed：按 cause 裁「可重连 / 已结束 / 说不清」（`ssh_source::classify_removed`）
-            //   - listed：本机的活会话清单报完了 ⇒ 发 `origin-sessions-listed`（与远端同一个事件；排在它之前那些宣告之后）
-            {
-                let handle = app.handle().clone();
+                let replay = replay.clone();
                 let bind_for_emitter = bind_registry.clone();
                 let cache_for_emitter = sid_hwnd_cache.clone();
+                let remote_cache_for_emitter = remote_hwnd_cache.clone();
                 let spawned = std::thread::Builder::new()
-                    .name("session-changes-emitter".into())
+                    .name("session-book-emitter".into())
                     .spawn(move || {
-                        while let Ok(out) = session_changes.recv() {
-                            let change = match out {
-                                session_map::Out::Change(c) => c,
-                                session_map::Out::Listed => {
-                                    tracing::info!("sessions-replayed: [本机] 活会话清单报完了 → 已 emit 给前端");
-                                    if let Err(e) = handle.emit(
-                                        bridge::events::ORIGIN_SESSIONS_LISTED,
-                                        &bridge::OriginSessionsListedPayload {
-                                            origin: crate::origin::Origin::local(),
-                                        },
-                                    ) {
-                                        tracing::warn!("origin-sessions-listed（本机）emit failed: {e}");
-                                    }
-                                    continue;
-                                }
-                            };
-                            for sid in &change.added {
-                                tracing::info!("session added: {sid}");
-                                let info = session_map::local().read().lookup(sid);
-                                // 尝试绑定 sid → hwnd（通过 claude_pid 的 parent PS；pid 由本机后端的宣告带来，老后端不带就不绑）
-                                if let Some(pid) = info.as_ref().and_then(|i| i.pid) {
-                                    let _ = cache_for_emitter.record(sid, pid, &bind_for_emitter);
-                                }
-                                // 〔U4b · G2〕本机也有可重连了 ⇒ 会话（重新）变活时清掉它的 idle 标记（远端那一臂同一条）。
-                                ssh_source::clear_idle(sid);
-                                // 会话（重新）变活 → 通知前端复活已归档的本地 Tab / 无 Tab 时建骨架（Batch7-F24：bg 会话要 kind/name）。
-                                // 〔LOC1b〕「活」由本机后端说（宣告前它已核过进程与 `procStart`）；这里只挡「宣告之后、发之前它又被摘了」那一缝。
-                                if let Some(info) = info {
-                                    let payload = bridge::SessionStartedPayload {
-                                        session_id: sid.clone(),
-                                        cwd: info.cwd.clone(),
-                                        kind: info.kind.clone(),
-                                        name: info.name.clone(),
-                                    };
-                                    if let Err(e) =
-                                        handle.emit(bridge::events::SESSION_STARTED, &payload)
-                                    {
-                                        tracing::warn!("emit session-started failed: {e}");
-                                    } else {
-                                        tracing::info!("session started (revive): {sid}");
-                                    }
-                                }
-                            }
-                            // 〔U4b · 第四波 · G2〕**本机也按容器在不在分「可重连 / 已结束」**，与远端同一条判定
-                            //（`ssh_source::classify_removed`；`INVARIANTS §40`：本机 ＝ 不走 ssh 的远端）。
-                            // 此前这里写着「本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有）」、无条件
-                            // 发 `session-ended` ⇒ 本机 claude 退了而 tmux 会话还在时，tab 说「已结束」（`U4.md §0.1` G2）。
-                            // 查的**只是本机那一格**原文（`find_local_tmux_origin_for_sid`，不跨 origin 猜）；
-                            // `/branch` 那一形（`Superseded`）照旧恒归档 —— 本地 diff 早就判得出它（P3 刀 0），
-                            // 〔LOC1b〕`Superseded` 今天由本机后端在 `session_removed.cause` 里说（monitor 自己那份 diff 随本机判活删了）。
-                            // 「可重连 → 已结束」的产出者是本机收割器（`local_backend::absorb_local_frame` 的两个 tmux 臂，
-                            // 结论经 `session_facts` 回到下面 setup 装的那个出口）。
-                            // 绑定照旧两种 cause 都忘（`SidHwndCache::apply_local_removal` 头注；本机 ↗ 只在 Windows 上有，
-                            // 而 Windows 没有 tmux ⇒ 本机永远走不到 `Idle`，那条头注的行为这一拍不动）。
-                            for removed in change.removed {
-                                cache_for_emitter.apply_local_removal(&removed);
-                                crate::session_facts::forget(&removed.sid);
-                                let tmux_origin = ssh_source::find_local_tmux_origin_for_sid(&removed.sid);
-                                let disposition =
-                                    ssh_source::classify_removed(tmux_origin, removed.cause);
-                                let sid = removed.sid;
-                                match disposition {
-                                    ssh_source::RemovedDisposition::Idle { origin } => {
-                                        ssh_source::mark_idle(&origin, &sid);
-                                        let payload = bridge::SessionIdlePayload {
-                                            session_id: sid.clone(),
-                                        };
-                                        if let Err(e) =
-                                            handle.emit(bridge::events::SESSION_IDLE, &payload)
-                                        {
-                                            tracing::warn!("emit session-idle failed: {e}");
-                                        } else {
-                                            tracing::info!("session idle-tmux（本机）: {sid}");
-                                        }
-                                    }
-                                    ssh_source::RemovedDisposition::Archive => {
-                                        ssh_source::clear_idle(&sid);
-                                        let payload = bridge::SessionEndedPayload {
-                                            session_id: sid.clone(),
-                                        };
-                                        if let Err(e) =
-                                            handle.emit(bridge::events::SESSION_ENDED, &payload)
-                                        {
-                                            tracing::warn!("emit session-ended failed: {e}");
-                                        } else {
-                                            tracing::info!("session ended: {sid}");
-                                        }
-                                    }
-                                    // 〔GP1〕同一个裁决、同一个出口。〔LOC1b〕本机这条流从此真产 `Unseen`：本机流断 ⇒ 活会话 ∪ 可重连一律说不清
-                                    //   （`session_map::LocalTable::step` 的流断那一臂，与远端断连 flush 同一个 `disconnect_removals`）。
-                                    ssh_source::RemovedDisposition::Unseen => {
-                                        ssh_source::clear_idle(&sid);
-                                        emit_session_unseen(&handle, &sid);
-                                    }
-                                }
-                            }
-                            // issue #23：红绿灯——本机后端的 `session_status` 帧与宣告里的初始值（〔LOC1b〕从前是 monitor 重扫 pidfile 比出来的），
-                            // 透传给前端改灯色。
-                            for act in change.status_changed {
-                                let payload = bridge::SessionActivityPayload {
-                                    session_id: act.session_id,
-                                    status: act.status,
-                                    waiting_for: act.waiting_for,
-                                };
-                                if let Err(e) =
-                                    handle.emit(bridge::events::SESSION_ACTIVITY, &payload)
-                                {
-                                    tracing::warn!("emit session-activity failed: {e}");
-                                }
-                            }
+                        while let Ok(out) = book_rx.recv() {
+                            session_side_effects(
+                                &out,
+                                &cache_for_emitter,
+                                &bind_for_emitter,
+                                &remote_cache_for_emitter,
+                            );
+                            replay.on_lifecycle(out.origin(), out.frames());
                         }
                     });
                 if let Err(e) = spawned {
                     tracing::error!(
-                        "failed to spawn session-changes-emitter thread: {e}; \
-                         session 增减事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
+                        "failed to spawn session-book-emitter thread: {e}; \
+                         会话起停事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
                     );
                 }
             }
-
-            // issue #20：远端当前活跃 sid 集 —— session_map 的远端对应物，专供
-            // frontend-ready 重放后对账（远端 sid 不在 session_map，#19 的本地对账
-            // 覆盖不到）。唯一写者是下面的 remote-session-emitter（backend 的
-            // added/removed 与断连 flush 走同一 remote_tx 通道，集合恒等于"前端当前
-            // 应视为 live 的远端 sid"）。无远端配置时恒空，对账自然 no-op。
-            // 违反此约束见 src/doc/INVARIANTS.md § 24。
-            let remote_active: Arc<parking_lot::Mutex<std::collections::HashSet<String>>> =
-                Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
 
             // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
             // `remote.enabled = true` 且配置完整 → 在本机那条流之外**额外**起一条
@@ -946,194 +845,8 @@ pub fn run() {
                     remote_cfgs.len()
                 );
 
-                // 远端独立 session 通道：ssh_source::run 持 sender；这里起一条**专用**的
-                // 精简 emitter drain 它。
-                //   - added（Feature ②）：远端 Tab 由 line 帧经 ensureTab 创建。但要扫本地窗口找
-                //     `ccm-rbind-<sid>` 标题绑定 hwnd，供 ↗ 拉前。wrapper 设标题经 ssh
-                //     透传到本地 WT 有延迟（OSC 序列要等远端 shell 起来 + 透传），故
-                //     +1500/3000/4500/6000ms 重试扫描，首次绑定成功即停。
-                //   - removed：emit session-ended（远端 Tab 归档）+ forget 远端绑定。
-                let (remote_tx, remote_rx) =
-                    std::sync::mpsc::channel::<session_map::SessionChange>();
-                {
-                    let handle = app.handle().clone();
-                    let remote_cache_for_emitter = remote_hwnd_cache.clone();
-                    let remote_active_for_emitter = remote_active.clone();
-                    let spawned = std::thread::Builder::new()
-                        .name("remote-session-emitter".into())
-                        .spawn(move || {
-                            while let Ok(change) = remote_rx.recv() {
-                                // issue #20：先维护远端活跃集（再做 emit/扫描等副作用）。
-                                // 断连 flush 的 removed 也从这里清掉 → 断线期间集合为空，
-                                // 与前端"全部已归档"的视图一致。
-                                {
-                                    let mut active = remote_active_for_emitter.lock();
-                                    for sid in &change.added {
-                                        active.insert(sid.clone());
-                                    }
-                                    for removed in &change.removed {
-                                        active.remove(&removed.sid);
-                                    }
-                                }
-                                // added 先处理：每个新 sid 起一条**独立** std::thread
-                                // 做带 sleep 的重试扫描。
-                                //
-                                // 为何用 std::thread 而非 tauri::async_runtime::spawn：扫描
-                                // 本体是同步 Win32（find_window_by_marker_substr，
-                                // INVARIANT § 10 要求 Win32 同步调用不能压在 IPC/async
-                                // 派发线程上），无任何 .await；用专用 std::thread + sleep
-                                // 最简单且与 async runtime 是否就绪完全解耦（本块身处 std::thread
-                                // 里，调 async_runtime::spawn 虽也可行但平添对全局 runtime 的
-                                // 隐性依赖，无收益）。线程扫完即退，不长驻。
-                                for sid in change.added {
-                                    // audit-fixes F03.2：会话（重新）变活 → 清 idle 灰灯标记（resume/新会话）。
-                                    ssh_source::clear_idle(&sid);
-                                    // 〔U2〕带启动令牌的会话不预扫标题（理由见 `wants_title_prescan`）。
-                                    // 令牌账本先于这条 `added` 记好（`ssh_source` 收 `SessionAdded` 时先 `note` 再发）。
-                                    let token = bind::remote_rbind_tokens().token_of(&sid);
-                                    if !wants_title_prescan(token.as_deref()) {
-                                        continue;
-                                    }
-                                    let cache = remote_cache_for_emitter.clone();
-                                    let spawn_res = std::thread::Builder::new()
-                                        .name("remote-bind-scan".into())
-                                        .spawn(move || {
-                                            // 每 ~0.6s 扫一次、最多 ~9s，命中即停。比固定 4 次更稳健：
-                                            // claude 启动时也会设标题（实测 ~once），wrapper 每 0.3s
-                                            // 重刷整个 ~9s 窗口；多次扫描覆盖该窗口，大幅降低"恰好每次
-                                            // 扫描都撞上 claude 标题而漏绑"的概率（EnumWindows 廉价，命中即停）。
-                                            for _ in 0u32..15 {
-                                                std::thread::sleep(
-                                                    std::time::Duration::from_millis(600),
-                                                );
-                                                if cache.try_bind(&sid) {
-                                                    tracing::info!(
-                                                        "remote bind: sid={sid} → hwnd bound"
-                                                    );
-                                                    break;
-                                                }
-                                            }
-                                        });
-                                    if let Err(e) = spawn_res {
-                                        tracing::warn!(
-                                            "failed to spawn remote-bind-scan thread: {e}; 远端 Tab ↗ 拉前将不可用"
-                                        );
-                                    }
-                                }
-                                for removed in change.removed {
-                                    let sid = removed.sid;
-                                    // 〔U4b〕容器是那个进程的事实 ⇒ 它离开活跃集就忘掉（不跨进程沿用）。
-                                    crate::session_facts::forget(&sid);
-                                    // audit-fixes F03.2（灰灯三态分流）：backend-removed（claude 进程没了，权威）
-                                    // 到达时，看该 sid 的 `@ccm_sid` 是否仍出现在某 origin 的 TmuxSessions 帧里：
-                                    //   - Some(origin)=tmux 会话尚在（空 shell）→ **idle-tmux 灰灯**：mark_idle +
-                                    //     emit SESSION_IDLE + **不 forget 绑定**（登录 shell 的 ssh 窗仍活、↗ 拉前有效）。
-                                    //   - None=tmux 也没了 → **archived**（原逻辑）：clear_idle + forget + SESSION_ENDED。
-                                    // 判据 command-agnostic（见 ssh_source::tmux_origin_for_sid）：帧的新鲜度**由 hook 决定**
-                                    // （P5 删 ticker 后后端零定时器）——hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新**。退出
-                                    // 瞬间 command 列可能仍是 claude，故用 backend-removed 判"claude 死"、@ccm_sid
-                                    // present 判"tmux 在"。**§24**：removed sid 已在上方从 remote_active 移出，idle 天然
-                                    // 在集合外；idle 只写独立 REMOTE_IDLE（唯一写者=本 emitter），**不新增 remote_active 写点**。
-                                    //
-                                    // ★ S0：上面那段「查 @ccm_sid 还在不在」**只对 `Gone` 成立**。
-                                    // `Superseded`（同 pidfile 原地换 sid，即 /branch）时旧 sid 的
-                                    // tmux 格子确实还在、但已经改挂新 sid ⇒ 查快照必然误判成灰点，
-                                    // 且那份快照在 P5 删掉 ticker 后没有任何事件路径会刷新它
-                                    // ⇒ 永久灰点、按旧 sid 也 attach 不上（用户实测「杀不掉」）。
-                                    // 故 cause 先于快照裁决，见 `classify_removed` 的文档注释。
-                                    //
-                                    // ★ P0（#60）：**这条 `info!` 只回答一个问题 —— 这条 removed 到没到这段。**
-                                    // 病史：`control-parity` 前身 `issue-triage` 的 T7 把 #60 的现象 1
-                                    // （带外杀掉后 tab 不变灰）全链级稳定复现 2/2，而 claude 死的那一刻
-                                    // 日志里**四条归宿日志一条都没有**（`remote session idle-tmux` /
-                                    // `remote session ended` / 两条 emit 失败的 warn）⇒ 只能推断
-                                    // `classify_removed` 没跑到，但**分不清是帧没到、还是到了却在更上游被丢**。
-                                    //
-                                    // ⚠ **它不回答「帧为什么没到」** —— 只把搜索面从「整条链」砍成
-                                    // 「上游 or 分类」两半。别把它当成 #60 的根因定位。
-                                    //
-                                    // ⚠ 两个入参**先绑定再打印再移交**，不是为了打日志多调一次
-                                    // `find_tmux_origin_for_sid`（那会是行为改动：它读的是共享快照）。
-                                    // `RemovalCause` 是 `Copy`，`tmux_origin` 打印时只借用。
-                                    let tmux_origin = ssh_source::find_tmux_origin_for_sid(&sid);
-                                    tracing::info!(
-                                        "remote removed 到达: sid={sid} cause={:?} tmux_origin={:?}",
-                                        removed.cause,
-                                        tmux_origin
-                                    );
-                                    let disposition =
-                                        ssh_source::classify_removed(tmux_origin, removed.cause);
-                                    remote_cache_for_emitter
-                                        .apply_remote_disposition(&sid, &disposition);
-                                    match disposition {
-                                        ssh_source::RemovedDisposition::Idle { origin } => {
-                                            ssh_source::mark_idle(&origin, &sid);
-                                            let payload = bridge::SessionIdlePayload {
-                                                session_id: sid.clone(),
-                                            };
-                                            if let Err(e) =
-                                                handle.emit(bridge::events::SESSION_IDLE, &payload)
-                                            {
-                                                tracing::warn!("emit remote session-idle failed: {e}");
-                                            } else {
-                                                tracing::info!("remote session idle-tmux: {sid}");
-                                            }
-                                        }
-                                        ssh_source::RemovedDisposition::Archive => {
-                                            ssh_source::clear_idle(&sid);
-                                            let payload = bridge::SessionEndedPayload {
-                                                session_id: sid.clone(),
-                                            };
-                                            if let Err(e) =
-                                                handle.emit(bridge::events::SESSION_ENDED, &payload)
-                                            {
-                                                tracing::warn!("emit remote session-ended failed: {e}");
-                                            } else {
-                                                tracing::info!("remote session ended: {sid}");
-                                            }
-                                        }
-                                        // 〔GP1 · 第四波〕断连 flush：那台机器看不见了 ⇒ 说不清（不是已结束）。
-                                        //   idle 账本同步清（那台的 tmux 状态断连时已忘）；绑定不忘（`apply_remote_disposition`）。
-                                        ssh_source::RemovedDisposition::Unseen => {
-                                            ssh_source::clear_idle(&sid);
-                                            emit_session_unseen(&handle, &sid);
-                                        }
-                                    }
-                                }
-                                // Batch9-F27：远端红绿灯——backend session_status 帧/
-                                // 宣告初始值经 status_changed 透传（与本地 emitter
-                                // 同形状，前端 sid-keyed 零改动）。
-                                for act in change.status_changed {
-                                    let payload = bridge::SessionActivityPayload {
-                                        session_id: act.session_id,
-                                        status: act.status,
-                                        waiting_for: act.waiting_for,
-                                    };
-                                    if let Err(e) =
-                                        handle.emit(bridge::events::SESSION_ACTIVITY, &payload)
-                                    {
-                                        tracing::warn!("emit remote session-activity failed: {e}");
-                                    }
-                                }
-                                // 〔TL2 · GP1 问 3〕重连那一笔：上面已按这一轮的 tmux 快照把断连前可重连的那几条重新裁过
-                                //（还在 ⇒ `session-idle` ⇒ 前端 说不清 → 可重连），**然后**才替那台报「清单报完了」——
-                                // 同一条线程 ⇒ 前端先收到 idle、再收到 listed；反过来的话，仍说不清的会被 listed 先落成已结束。
-                                if let Some(origin) = change.then_listed {
-                                    ssh_source::note_listed(&origin);
-                                    ssh_source::emit_origin_listed(&handle, &origin);
-                                }
-                            }
-                        });
-                    if let Err(e) = spawned {
-                        tracing::error!(
-                            "failed to spawn remote-session-emitter thread: {e}; 远端 Tab 不会自动归档"
-                        );
-                    }
-                }
-
                 // 每台远端各起一条 ssh_source::run（多机 #30），〔CF1〕与本机那条流同一个内容收口
-                // （`ssh_source::LineIntake` → flush_lines）；session 变化共享 remote_tx → 上面那
-                // 唯一的 remote-session-emitter（session 变化 host 无关，按 sid 维护）。
+                // （`ssh_source::LineIntake` → flush_lines）；〔MIG-1〕会话成品交 `session_book` → 上面那唯一的出口线程。
                 // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 backend
                 // hello 时置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速
                 // 重连，否则指数退避）。远端**不**门控 frontend-ready（实时流，无"初始扫完成"概念；
@@ -1153,19 +866,17 @@ pub fn run() {
                     let origin = cfg.origin_label();
                     let replay_for_ssh = replay.clone();
                     let app_for_ssh = app.handle().clone();
-                    let tx_for_ssh = remote_tx.clone();
                     let spawn_one = move || {
                         let cfg = cfg.clone();
                         let replay = replay_for_ssh.clone();
                         let app = app_for_ssh.clone();
-                        let tx = tx_for_ssh.clone();
                         tauri::async_runtime::spawn(async move {
                             let label = cfg.origin_label();
                             // `connected` 每条流各一份：重起的那条不许继承上一条的健康状态，
                             // 否则「上次连上过 ⇒ 立即快速重连」这个判断会拿着旧账做决定。
                             let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
                             if let Err(e) =
-                                ssh_source::run(cfg, replay, app, tx, connected).await
+                                ssh_source::run(cfg, replay, app, connected).await
                             {
                                 // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
                                 tracing::error!("ssh_source::run [{label}] exited: {e}");
@@ -1175,9 +886,8 @@ pub fn run() {
                     let first = spawn_one();
                     backend::control::backend_control::register_remote(origin, Box::new(spawn_one), first);
                 }
-                // audit-fixes F03.2：tmux 存活对账**从 8s poller 改为收帧驱动**（甲-evented，零轮询）——
-                // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（backend **事件驱动**推帧即算），
-                // 复用 `tmux_reconcile::reconcile_step`。故此处不再 spawn poller（`run_tmux_reconcile_poller` 已删）。
+                // 〔MIG-1〕tmux 存活对账（收割）搬进了那台后端的会话账本（`src/backend/observe/session_ledger.rs`）：
+                //   monitor 这一侧零 poller、零收割器。
             }
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
@@ -1185,9 +895,8 @@ pub fn run() {
             // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
             // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
-            // v2.3.0 issue #11：监听 task 文件变更，per-session 重读后 emit 给前端。
-            // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
-            tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
+            // 〔MIG-3b · `99 §2.1 ㉓②`〕任务变更的监视进了后端（`tasks_changed` 帧 ⇒ 通道 `subscribe(origin, "session-tasks")`），
+            //   monitor 这边那条 notify 线程与 `task-update` 事件删了；本机远端同形。
 
             // 〔LOC1b · 第四波 4D〕这里原来起「历史全文搜索索引」那条后台线程（延迟 1.5 s 扫 projects/**/*.jsonl 建内存索引）。
             //   本机搜索改问本机后端（与远端同一条 `history-search`），这条线程与那份索引一起删了。
@@ -1199,8 +908,6 @@ pub fn run() {
             // 本机内容改走后端的帧之后与远端同形：没到的行 ready 之后照样实时发、按 seq 落位，不需要等。
             {
                 let replay = replay.clone();
-                let handle = app.handle().clone();
-                let remote_active = remote_active.clone();
                 let t0_capture = t0;
                 app.listen(bridge::events::FRONTEND_READY, move |event| {
                     // Batch5-F19：payload 携带用户上次所在 tab（localStorage 记忆），
@@ -1212,130 +919,16 @@ pub fn run() {
                             .ok()
                             .and_then(|p| p.priority_sid);
                     let replay = replay.clone();
-                    let handle = handle.clone();
-                    let remote_active = remote_active.clone();
                     let listen_recv_at = t0_capture.elapsed().as_millis();
                     tauri::async_runtime::spawn(async move {
                         tracing::info!(
                             "[perf] T+{}ms frontend-ready received, starting replay",
                             listen_recv_at
                         );
-                        // Batch9-F28：replay 之前先重发全部已宣告远端会话（骨架+
-                        // 初始灯）——remote-session-added 不进 replay buffer，F5 后
-                        // 无行骨架/bg ⚙ 元数据/远端 lastActive 焦点全靠这次重发
-                        // （Batch5 I-1 缺口）。宣告先于行的契约由这里的顺序保证。
-                        ssh_source::reannounce_all(&handle);
-                        // 〔U4b · G3〕容器账本整份重发（事件不进 replay buffer；同 `reannounce_all` 的理由）。
-                        for (sid, c) in crate::session_facts::containers_snapshot() {
-                            let _ = handle.emit(
-                                bridge::events::SESSION_CONTAINER,
-                                &bridge::SessionContainerPayload {
-                                    session_id: sid,
-                                    container: c.as_wire().to_string(),
-                                },
-                            );
-                        }
-                        // 〔CF2 · 第四波 4B〕重放不再是广播事件：主界面在发 `frontend-ready` 之前已经订好了各台机器的
-                        //   会话流（`chan.subscribe`），这里是它们的**就绪点** —— 按 credit 交完留存才往下走对账。
+                        // 〔CF2 · MIG-1〕就绪点：主界面在发 `frontend-ready` 之前已经订好了各台机器的会话流（`chan.subscribe`），
+                        //   这里按 credit 交完留存；起停的成品（骨架在行前、终局在行后，`session_book::Book::replay`）在同一条流里原位交，
+                        //   不吃 credit。〔从前这一段在就绪点前后各发一轮 Tauri 事件：重宣告 · 容器 · 可重连 · 对账补发已结束 / 说不清 · 清单。〕
                         replay.ready_point(priority_sid.as_deref()).await;
-
-                        // issue #19：前端是纯事件增量模型——Tab 见行即建 live，只有一次性的
-                        // session-ended 能归档。F5/HMR 重载后 replay 把 buffer 里**已结束**
-                        // 会话的行也重放成 live Tab，而归档信号不在 buffer、不会重发 → 僵尸
-                        // live Tab（还因 closeTab 门控 archived 而关不掉）。这里按当前活跃集
-                        // 对账：对已不活跃的**本地** sid 补发 session-ended，复用前端
-                        // archiveTab（幂等）。本段仅本地：session_map 只认本地，远端 sid
-                        // 不在其中（远端对账见紧随其后的 issue #20 块）。
-                        // 〔U4b · G2〕本机也有可重连了 ⇒ 本机的 stale 集同样排除 idle sid（远端那一段的同一条理由：
-                        //   不排除就会补发 ended、F5 后可重连塌成已结束）。idle 账本本来就按 origin 存全部机器。
-                        let idle_all: std::collections::HashSet<String> =
-                            ssh_source::snapshot_idle_by_origin()
-                                .into_values()
-                                .flatten()
-                                .collect();
-                        // 〔LOC1b · 第四波 4D〕本机的「活跃集」是本机活会话表（本机后端帧喂的），且与远端一样按「那台报完清单没有」分：
-                        //   报完了 ⇒ 已结束；没报完（本机流断着 / 还在初扫）⇒ 说不清 —— 从前本机无条件按 monitor 自己的判活补 ended。
-                        let listed = ssh_source::listed_origins();
-                        let (stale, local_unseen): (Vec<String>, Vec<String>) = {
-                            let table = session_map::local().read();
-                            let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-                            ssh_source::split_stale(
-                                replay
-                                    .buffered_local_session_ids()
-                                    .into_iter()
-                                    .filter(|sid| !table.is_active(sid) && !idle_all.contains(sid))
-                                    .map(|sid| (sid, local.to_string())),
-                                &listed,
-                            )
-                        };
-                        // issue #20：#19 的远端版。远端 sid 不在 session_map，活跃集由
-                        // remote-session-emitter 维护（backend added/removed + 断连 flush
-                        // 同一通道）。断连窗口期 F5 会把其实还活着的远端会话一并归档——
-                        // 重连后后端重发 session-added + 重放行，前端 un-archive
-                        // （tabs.ts ensureTab，仅远端）复活，自愈闭环。
-                        //
-                        // ⚠ 配套前提：前端把 session-ended 与行事件**同序**处理（events.ts
-                        // 的 queue，#20 一并改）。否则这里补发的 ended 会抢在积压重放行
-                        // 之前执行，归档随即被后续远端行 un-archive 翻回 live，补发等于无效。
-                        // audit-fixes F03.2：idle-tmux sid 不在 remote_active（变 idle 时已移出），若不排除
-                        // 会被当"死"补 SESSION_ENDED、F5 后灰灯塌成 archived。故排除 idle sid + 下面重发 SESSION_IDLE。
-                        //（`idle_all` 〔U4b〕挪到了本机 stale 那一段之前，两段共用。）
-                        // 〔GP1 · 第四波〕按 sid 所在的那台分：那台此刻**报完了**清单 ⇒ 已结束（原样）；**没报完**
-                        //   （断着 / 还在初扫）⇒ 说不清 —— 改之前这里对断着的那台也补 ended，正是 `设计/30 §3.5.7a`
-                        //   禁的那一形（`Unseen` 被显示成已结束）。
-                        let (remote_stale, remote_unseen): (Vec<String>, Vec<String>) = {
-                            let active = remote_active.lock();
-                            ssh_source::split_stale(
-                                replay.buffered_remote_sessions().into_iter().filter(|(sid, _)| {
-                                    !active.contains(sid) && !idle_all.contains(sid)
-                                }),
-                                &listed,
-                            )
-                        };
-                        // F03.2：F5 后把 idle sid 的灰灯盖回（行重放会把其 tab 建成 live，这次重发再变灰）。
-                        for sid in &idle_all {
-                            let _ = handle.emit(
-                                bridge::events::SESSION_IDLE,
-                                &bridge::SessionIdlePayload {
-                                    session_id: sid.clone(),
-                                },
-                            );
-                        }
-                        for sid in stale.iter().chain(remote_stale.iter()) {
-                            if let Err(e) = handle.emit(
-                                bridge::events::SESSION_ENDED,
-                                &bridge::SessionEndedPayload {
-                                    session_id: sid.clone(),
-                                },
-                            ) {
-                                tracing::warn!(
-                                    "reconcile emit session-ended failed for {sid}: {e}"
-                                );
-                            }
-                        }
-                        if !stale.is_empty() || !remote_stale.is_empty() {
-                            tracing::info!(
-                                "replay 对账：补发 session-ended 归档已结束 Tab（本地 {} 个 + 远端 {} 个）",
-                                stale.len(),
-                                remote_stale.len()
-                            );
-                        }
-                        for sid in local_unseen.iter().chain(remote_unseen.iter()) {
-                            emit_session_unseen(&handle, sid);
-                        }
-                        // 〔GP1〕报完了清单的那几台重发一次 `origin-sessions-listed`：F5 之后前端那一格随页面清空了，
-                        //   不重发的话固定复活的 tab 停在说不清，直到那台下一次重连（U4b 留下的缺口）。
-                        //   排在重宣告 ＋ 行 ＋ 上面两摞之后 ⇒ 前端处理它时，活着的已经被翻回活。
-                        for origin in listed {
-                            if let Err(e) = handle.emit(
-                                bridge::events::ORIGIN_SESSIONS_LISTED,
-                                &bridge::OriginSessionsListedPayload {
-                                    origin: crate::origin::Origin(origin),
-                                },
-                            ) {
-                                tracing::warn!("reconcile emit origin-sessions-listed failed: {e}");
-                            }
-                        }
                     });
                 });
             }
@@ -1383,8 +976,6 @@ pub fn run() {
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
             // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
-            hooks_diag::diagnose_local_cc_bus_hooks,
-            hooks_diag::diagnose_remote_cc_bus_hooks,
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
             //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
@@ -1401,9 +992,7 @@ pub fn run() {
             bring_terminal_to_front,
             // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
             bring_remote_terminal_to_front,
-            // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 session-activity 事件）
-            list_session_activity,
-            list_active_sessions,
+            // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 activity 格 事件）
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
             // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。
@@ -1439,8 +1028,6 @@ pub fn run() {
             acct_iso_deploy::deploy_remote_acct_iso,
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
             // 〔MIG-3a〕`acct_iso_status` / `acct_iso_shellinit` 退役：界面经通道直问那台后端（`acct-iso-status` / `acct-iso-shellinit`，后端出成品）。
-            history::delete_history_session,
-            history::create_branch_session,
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
             //   monitor 只剩「开一个终端窗口跑这串」。
@@ -1461,8 +1048,6 @@ pub fn run() {
             //    要退役，而在这个窗口真能替代它之前删掉旧的等于把功能拿走 ⇒ 这一刀不删。
             filewin::entry::open_file_window,
             pubkey::push_public_key,
-            backend::control::tmux::list_remote_tmux,
-            backend::control::tmux::list_local_tmux,
             // 〔MIG-2〕`probe_ccm_cli` 退役：渲染进了那台后端，能力问它自己。
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
@@ -1475,9 +1060,6 @@ pub fn run() {
             panorama_call::panorama_edit,
             // 〔RM1f〕撤掉一问在飞的全景（建索引可以取消了）。
             panorama_call::panorama_cancel,
-            port_forward::start_forward,
-            port_forward::stop_forward,
-            port_forward::list_forwards,
             // 〔C4a · 第四波〕**主界面说 `call` 的那一跳**（`设计/05 §3.3`）：webview ⇒ 通道 ⇒ 注入的后端句柄。
             chan::webview::chan_call,
             // 〔CF2 · 第四波 4B〕会话内容经通道的 `subscribe`（本地撤单 · credit）。
@@ -1488,11 +1070,7 @@ pub fn run() {
             // issue #6: 历史全文搜索那三条命令（本机索引）〔LOC1b〕删了：本机远端都经通道说 `history-search`。
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
             data_paths::get_data_paths,
-            // issue #15 Tier 1: SSH 连接 UX —— ~/.ssh/config 导入 + 测试连接 + 指纹固化
-            ssh_source::list_ssh_host_aliases,
-            ssh_source::resolve_ssh_host,
-            ssh_source::import_ssh_hosts,
-            ssh_source::test_remote_connection,
+            // issue #15 Tier 1: SSH 连接 UX —— 测试连接 + 指纹固化。〔MIG-1〕`~/.ssh/config` 导入那三条搬进后端（`ssh-config-*`）。
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -1844,6 +1422,8 @@ fn forget_session(
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), String> {
     replay.forget(&session_id);
+    // 〔MIG-1〕它的会话成品也忘掉（F5 不再重放一个用户关掉了的已结束 tab）。
+    session_book::book().write().forget(&session_id);
     Ok(())
 }
 
@@ -2073,46 +1653,8 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
     win.set_focus().map_err(|e| format!("set_focus: {e}"))
 }
 
-/// issue #23：当前全部本地活跃会话的红绿灯快照。前端启动/F5 后调一次做初始收敛
-/// （session-activity 是稀疏事件、不进 replay buffer，刷新会丢——同任务快照那一问（`tasks-list`）
-/// 的「快照 + 事件增量」双路收敛模式）。纯内存读。〔LOC1b〕读本机活会话表（本机后端帧喂的）。
-#[tauri::command]
-fn list_session_activity() -> Vec<bridge::SessionActivityPayload> {
-    session_map::local()
-        .read()
-        .snapshot_activity()
-        .into_iter()
-        .map(|a| bridge::SessionActivityPayload {
-            session_id: a.session_id,
-            status: a.status,
-            waiting_for: a.waiting_for,
-        })
-        .collect()
-}
-
-/// Batch5-F18：本地活跃会话清单（sid + cwd）——前端启动时（frontend-ready 之前）
-/// 调一次，先建全部骨架 Tab。纯内存读。
-///
-/// 〔LOC1b · 第四波 4D〕读本机活会话表；**本机后端还没报完清单时明说**（`Err`），不交一份半截的清单 ——
-/// 前端拿这份清单把固定复活的本机 tab 从「说不清」落成「活 / 已结束」（`TabManager.markOriginSeen`），
-/// 半截的会把还没宣告到的活会话说成已结束（`设计/30 §3.5.7a`）。那种时候前端照旧说不清，
-/// 等本机后端报完 ⇒ 本机 emitter 发 `origin-sessions-listed`（与远端同一个事件）再落。
-#[tauri::command]
-fn list_active_sessions() -> Result<Vec<bridge::ActiveSessionPayload>, String> {
-    let listed = session_map::local().read().listed_active();
-    let Some(active) = listed else {
-        return Err(copy_text("rsLib.activeSessions.notListed", &[]));
-    };
-    Ok(active
-        .into_iter()
-        .map(|e| bridge::ActiveSessionPayload {
-            session_id: e.session_id,
-            cwd: e.cwd,
-            kind: e.kind,
-            name: e.name,
-        })
-        .collect())
-}
+// 〔MIG-1 · ⑬〕`list_session_activity`〔散文墓碑〕· `list_active_sessions`〔散文墓碑〕两条命令退役：本机活会话的骨架与初始灯
+//   是会话流里的 `live` / `activity` 成品（就绪点按成品缓存重放），与远端同一条路。
 
 /// v1.7：拉对应终端窗口。
 ///

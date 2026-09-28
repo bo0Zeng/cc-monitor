@@ -55,7 +55,7 @@ fn table_with(origin: &str) -> Table {
     let t: Table = Mutex::new(BTreeMap::new());
     register(
         &t,
-        &json!({ "origin": origin, "dial": {"host": "h", "port": 22, "user": "u", "key_path": "/k"} }),
+        &json!({ "origin": origin, "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}} }),
     )
     .unwrap();
     t

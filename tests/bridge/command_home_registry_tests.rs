@@ -32,18 +32,20 @@ enum Own {
     Lifecycle,
     /// 通信层面 A 客户端本身（`05 §14.2`）。
     Channel,
+    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（`4d-lanes` C 段共同目标「monitor 只放字节」）。
+    Place,
 }
 
 impl Own {
     fn may_touch(self) -> bool {
-        matches!(self, Own::Lifecycle | Own::Channel)
+        matches!(self, Own::Lifecycle | Own::Channel | Own::Place)
     }
 }
 
 /// 哪一路负责迁走它（闭集：不许有没主的行）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Lane {
-    Mig1,
+    // 〔MIG-1 续〕`Mig1` 那一路欠的行还清了（最后一行 `test_remote_connection` 随测试连接进本机后端删了），变体随之删掉。
     Mig2,
     Mig3a,
     Mig3b,
@@ -160,51 +162,26 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Config,
         "全量注入开关 = monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（monitor 自己的配置，界面带给那台后端）",
     ),
+    // 〔MIG-3b · 4d-lanes 子步 1〕放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
+    (
+        "deploy_remote_backend",
+        Own::Place,
+        "照本机后端 `deploy-plan` 的计划放 monitor 带着的那一格后端字节（经 `files` 链路），并照计划删旧落点那一份",
+    ),
+    (
+        "uninstall_remote_backend",
+        Own::Place,
+        "删落点那一份后端字节（固定落点，没有判定；经 `files` 链路）",
+    ),
 ];
 
 /// 「待迁」：命令 · 哪一路 · 卡在哪。
 const PENDING: &[(&str, Lane, &str)] = &[
     // MIG-1：会话 / tmux 账本 ＋ ssh 配置解读进后端。
-    (
-        "list_ssh_host_aliases",
-        Lane::Mig1,
-        "`~/.ssh/config` 还由 monitor 读（⑯）",
-    ),
-    (
-        "resolve_ssh_host",
-        Lane::Mig1,
-        "`ssh -G` 还由 monitor 跑（⑯）",
-    ),
-    (
-        "import_ssh_hosts",
-        Lane::Mig1,
-        "`ssh -G` 还由 monitor 跑（⑯）",
-    ),
-    (
-        "test_remote_connection",
-        Lane::Mig1,
-        "拨号探针的判读还在 `ssh_source.rs`",
-    ),
-    (
-        "list_session_activity",
-        Lane::Mig1,
-        "本机活会话表还在 monitor（`session_map::LocalTable`）",
-    ),
-    (
-        "list_active_sessions",
-        Lane::Mig1,
-        "本机活会话表还在 monitor（`session_map::LocalTable`）",
-    ),
-    (
-        "list_local_tmux",
-        Lane::Mig1,
-        "tmux 快照的解析还在 monitor（`parse_tmux_ls`）",
-    ),
-    (
-        "list_remote_tmux",
-        Lane::Mig1,
-        "tmux 名单的解析还在 monitor（`parse_tmux_ls`）",
-    ),
+    // 〔MIG-1〕`~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
+    // 〔MIG-1 续〕测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局（主会话裁）。
+    // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
+    // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
     (
@@ -227,43 +204,14 @@ const PENDING: &[(&str, Lane, &str)] = &[
          剩字节那一推：vendored 脚本住 monitor 二进制（`include_bytes!`），经本机后端 SFTP 推 —— 字节是否随 cc-bus 那样进后端二进制待主会话裁",
     ),
     // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
-    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。
-    (
-        "deploy_remote_backend",
-        Lane::Mig3b,
-        "该不该换 / 换成什么的判定在 `sftp.rs`",
-    ),
-    (
-        "uninstall_remote_backend",
-        Lane::Mig3b,
-        "卸的判定在 `sftp.rs`",
-    ),
-    (
-        "diagnose_local_cc_bus_hooks",
-        Lane::Mig3b,
-        "钩子诊断本机远端两份",
-    ),
-    (
-        "diagnose_remote_cc_bus_hooks",
-        Lane::Mig3b,
-        "钩子诊断本机远端两份",
-    ),
+    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
+    //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
     (
         "config_surface_report",
         Lane::Mig3b,
         "足迹成品在 monitor 拼",
     ),
     ("drift_ledger_report", Lane::Mig3b, "足迹成品在 monitor 拼"),
-    (
-        "delete_history_session",
-        Lane::Mig3b,
-        "删会话是 monitor 里的组合",
-    ),
-    (
-        "create_branch_session",
-        Lane::Mig3b,
-        "分叉是 monitor 里的组合",
-    ),
     // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     (
         "load_subagent",
@@ -281,13 +229,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3b,
         "`authorized_keys` 那串在 monitor 拼、经拨号面写",
     ),
-    (
-        "start_forward",
-        Lane::Mig1,
-        "端口转发经本机后端拨号面，账在 monitor",
-    ),
-    ("stop_forward", Lane::Mig1, "端口转发的账在 monitor"),
-    ("list_forwards", Lane::Mig1, "端口转发的账在 monitor"),
+    // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
     (
         "panorama_call",
         Lane::Mig3b,

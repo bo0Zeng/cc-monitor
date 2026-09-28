@@ -239,3 +239,48 @@ fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// 〔MIG-3b · 要求住址 `INVARIANTS §47` ①「分叉的 sid / 消息 uuid」〕界面经通道直说、不再判 ⇒ 帧面入口先过放行判定
+/// （共享那一份 `session_id_ok`，从 monitor 分叉那一侧的白名单判据搬来）：坏值 `bad_args`、源一个字节不动；
+/// 真实形状的 id 放得过（正控，防判定焊成恒拒）。
+#[test]
+fn the_fork_ids_are_whitelisted_at_the_frame_face() {
+    let root = tmp("wireids");
+    seed(&root, "srcsid");
+    let src = root.join("projects").join("proj").join("srcsid.jsonl");
+    let before = std::fs::read(&src).unwrap();
+    let long = "a".repeat(65);
+    for bad in [
+        "../etc/passwd",
+        "a b",
+        "a;rm -rf /",
+        "a'b",
+        "a/b",
+        "-srcsid",
+        long.as_str(),
+    ] {
+        for args in [
+            serde_json::json!({"sid": bad, "uuid": "u2"}),
+            serde_json::json!({"sid": "srcsid", "uuid": bad}),
+        ] {
+            let (code, msg) = answer_wire_at(&root, &args).expect_err("该拒");
+            assert_eq!(code, "bad_args", "{args} ⇒ {msg}");
+            assert!(msg.contains("非法"), "{args} ⇒ {msg}");
+        }
+    }
+    assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
+    let ok = answer_wire_at(&root, &serde_json::json!({"sid": "srcsid", "uuid": "u2"}))
+        .expect("真实形状的 id 放得过");
+    assert!(ok["sessionId"].as_str().is_some_and(|s| s.len() <= 64));
+    assert!(
+        answer_wire_at(
+            &root,
+            &serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)})
+        )
+        .map_err(|(c, _)| c)
+        .err()
+            != Some("bad_args"),
+        "64 位是上界本身，不该被形状判定拒"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}

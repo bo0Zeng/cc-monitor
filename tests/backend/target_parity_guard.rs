@@ -860,6 +860,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     // 〔合并 SH1 × W5-AUX 时本判据当场点出〕
     ("bus-inbox", "同 `bus-list` 那个文件（`control/cc_bus.rs` 经 gate 挂 `live`）；读收件箱本身转调 `cc-log`，不用 tmux"),
     ("resync", "〔RESYNC · V149〕打标经 `identity_tag::tag`：不在 tmux / tmux 起不来 ⇒ 那个会话不打（结局说进日志），对齐照做、照回差异；它的能力是对表，不是 tmux"),
+    ("hooks-diag", "〔MIG-3b〕同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；读 settings ＋ stat 本身不碰 tmux"),
     ("tmux-list", "〔SH1〕`watcher::list_for_query` 问不到 tmux ⇒ 回 `installed: false` ＋ 空行（如实说没装），命令照答，不回 `no_tmux`"),
     ("mcp-read", "与 `tmux-list` 同一个宿主 `feature_face::answer`（引用图按文件算，因此连带）；读 MCP 本身不碰 tmux"),
     ("plugins-marketplaces", "同 `mcp-read`：只因与 `tmux-list` 同住 `feature_face.rs` 被连带；本身不碰 tmux"),
@@ -887,6 +888,10 @@ const NO_HANDLER_PATH: &[(&str, &str)] = &[
     ("transfer-start", "同上"),
     ("transfer-stop", "同上"),
     ("transfer-upload", "同上"),
+    (
+        "remote-probe",
+        "〔MIG-1 收尾〕`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
+    ),
 ];
 
 /// 🔴 帧面：够得着 tmux 的命令 == 声明 `no_tmux` 的 ∪ 登记的「tmux 可选」。

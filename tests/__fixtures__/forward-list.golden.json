@@ -1,0 +1,13 @@
+{
+  "forwards": [
+    {
+      "id": "fwd-1",
+      "origin": "dev",
+      "localPort": 15432,
+      "remoteHost": "localhost",
+      "remotePort": 5432,
+      "state": "running",
+      "connCount": 2
+    }
+  ]
+}

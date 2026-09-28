@@ -117,7 +117,7 @@ fn a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk() {
         "入场自检：绑定本来就不在盘上 —— 落盘那一半此刻是空转"
     );
 
-    cache.apply_local_removal(&crate::session_map::RemovedSid::gone(sid));
+    cache.apply_local_removal(sid);
 
     assert!(
         cache.lookup(sid).is_none(),
@@ -139,9 +139,7 @@ fn a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk() {
 /// `apply_local_removal` 里加一个 `match cause`，这一条就红。
 ///
 /// ⚠ 它**不**覆盖上游那一步（「同 pid + 同 procStart 换 sid 该判 `Superseded`」）——
-/// 那一格〔LOC1b〕今天由本机后端说（`session_removed.cause`），monitor 这边钉的是「原样交出去」
-/// （`ssh_source_f032_idle_tests` 的 ③ 与 `local_lines_tests` 的 L1），
-/// 是另一条边。两条缺一不可，别把其中一条读成两条。
+/// 那一格由本机后端说（`session_removed.cause` ⇒ 〔MIG-1〕后端会话账本裁成 `session_state`），是另一条边。
 #[test]
 fn a_local_session_that_was_superseded_gets_forgotten_too() {
     let sid = "s-beta";
@@ -155,10 +153,8 @@ fn a_local_session_that_was_superseded_gets_forgotten_too() {
         "入场自检：绑定本来就不在盘上 —— 落盘那一半此刻是空转"
     );
 
-    cache.apply_local_removal(&crate::session_map::RemovedSid {
-        sid: sid.to_string(),
-        cause: crate::session_map::RemovalCause::Superseded,
-    });
+    // 〔MIG-1〕去向由后端裁好（`session_state`），本机这一格不看去向：同一个入口、同一个结果。
+    cache.apply_local_removal(sid);
 
     assert!(
         cache.lookup(sid).is_none(),
@@ -186,7 +182,7 @@ fn a_remote_session_classified_as_archive_gets_forgotten() {
         "入场自检：绑定本来就不在 —— 夹具没建起来，下面那句是空转"
     );
 
-    cache.apply_remote_disposition(sid, &crate::ssh_source::RemovedDisposition::Archive);
+    cache.apply_remote_disposition(sid, true);
 
     assert!(
         cache.lookup(sid).is_none(),
@@ -218,12 +214,7 @@ fn a_remote_session_that_only_went_idle_keeps_its_binding() {
         "入场自检：绑定本来就不在 —— 夹具没建起来，下面那句是空转"
     );
 
-    cache.apply_remote_disposition(
-        sid,
-        &crate::ssh_source::RemovedDisposition::Idle {
-            origin: "one-host".to_string(),
-        },
-    );
+    cache.apply_remote_disposition(sid, false);
 
     assert!(
         cache.lookup(sid).is_some(),
@@ -858,13 +849,8 @@ fn archiving_a_remote_session_takes_its_token_out_of_the_book_but_idling_does_no
     let (a, i) = ("t4-archive-only-sid", "t4-idle-only-sid");
     remote_rbind_tokens().note(a, Some(T3_TOK));
     remote_rbind_tokens().note(i, Some(T3_TOK));
-    cache.apply_remote_disposition(a, &crate::ssh_source::RemovedDisposition::Archive);
-    cache.apply_remote_disposition(
-        i,
-        &crate::ssh_source::RemovedDisposition::Idle {
-            origin: "devbox".into(),
-        },
-    );
+    cache.apply_remote_disposition(a, true);
+    cache.apply_remote_disposition(i, false);
     assert_eq!(
         remote_rbind_tokens().token_of(a),
         None,

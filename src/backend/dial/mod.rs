@@ -55,9 +55,13 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 mod connect;
+pub(crate) mod forwards; // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账（起 · 停 · 列三条帧命令）
 pub mod link;
+pub(crate) mod machine; // 〔MIG-1 续〕一台机器的配置 → 拨号请求（后端持有全部 SSH）
 mod pool;
+pub(crate) mod probe; // 〔MIG-1 续〕测试连接（`remote-probe`）
 pub(crate) mod sftp;
+pub(crate) mod ssh_config;
 pub(crate) mod uses;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；
@@ -70,7 +74,7 @@ pub const ACK_V: u32 = 2;
 pub const USES: &[&str] = &["stream", "capture", "forward", "files", "tunnel"];
 
 /// 一个拨号地址。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct Endpoint {
     pub host: String,
     pub port: u16,
@@ -147,7 +151,7 @@ pub struct DialRequest {
     /// 要 exec 的命令行（`stream` / `capture`；界面已 `shell_quote` 过；`forward` 不用它）。
     #[serde(default)]
     pub command: String,
-    /// 竞速的地址顺序（界面已按 last-good 排好）。空 = 只有 `host:port`。
+    /// 竞速的地址顺序（`machine.rs::resolve` 按 `prefer` 排好）。空 = 只有 `host:port`。
     #[serde(default)]
     pub endpoints: Vec<Endpoint>,
     /// 经这台跳板（fail-closed：它连不上就报错，不回落直连）。
@@ -206,8 +210,15 @@ pub struct DialAck {
     /// 〔FIX · `设计/99 §2 ㊶` 第二问〕经跳板时**跳板那一台**报过的指纹（地址 → 指纹）：它是另一台机器，界面按它自己那一格固化
     /// （同 `fingerprints` 的判定）。直连 / 失败 ⇒ 空。additive。
     pub jump_fingerprints: std::collections::BTreeMap<String, String>,
-    /// 竞速胜出的地址（`host:port`）—— 界面记 last-good、测试连接展示「你正连着哪条路」。
+    /// 竞速胜出的地址（`host:port`）—— 测试连接展示「你正连着哪条路」。
     pub endpoint: Option<String>,
+    /// 〔MIG-1 收尾〕同一条胜者，结构化（`{host, port}`）—— 界面记 last-good、下一趟当 `prefer` 交回来、起终端时拼 ssh 命令用它；
+    /// 界面因此不必再解析 `host:port`（地址解析只在 `machine.rs`）。失败 ⇒ `None`。additive。
+    pub winner: Option<Endpoint>,
+    /// 〔MIG-1 收尾〕这一趟请求里目标那台**带了**期望指纹（严格校验）—— 界面判「要不要自动固化」用它，不再自己重推一遍指纹继承规则。
+    pub strict: bool,
+    /// 〔MIG-1 收尾〕同上，跳板那一台（直连 ⇒ `false`）。
+    pub jump_strict: bool,
     /// 协议版本（[`ACK_V`]）。
     pub v: u32,
     /// 本代理认得的用法（[`USES`]）。
@@ -223,6 +234,9 @@ impl DialAck {
             fingerprints: Default::default(),
             jump_fingerprints: Default::default(),
             endpoint: None,
+            winner: None,
+            strict: false,
+            jump_strict: false,
             v: ACK_V,
             uses: USES,
         }
@@ -295,8 +309,11 @@ impl StageSink {
 
 /// 〔SR1a〕解析 `link-open` 的 `dial` 字段（C2 那一版从环境变量读同一份 JSON）。
 /// **抽出来是为了判据够得着它** —— 判据不该去开一条真链路才能验「蛇形键读得动」。
-pub(crate) fn parse_request_value(v: &serde_json::Value) -> Result<DialRequest, serde_json::Error> {
-    DialRequest::deserialize(v)
+/// 〔MIG-1 收尾〕线上交来的那份拨号（一台机器原样的配置）⇒ 拨号请求 —— 组法只在 [`machine::resolve`]。
+pub(crate) fn parse_request_value(
+    v: &serde_json::Value,
+) -> Result<DialRequest, (&'static str, String)> {
+    machine::resolve(v)
 }
 
 /// 写一行 JSON 并 flush。**必须 flush** —— 界面在有界读行上等着它。
