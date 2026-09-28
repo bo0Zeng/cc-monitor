@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 /// 多一处 ⇒ 下面那条红（防「F10 还没做而直读点增长」）；
 /// 少一处 ⇒ **也红**（退役了要把棘轮往下拧）。
 const REGISTERED: &[(&str, &str, usize, &str)] = &[
+    // 〔MIG-2 · `99 §2.1 ⑬`〕`src/history.rs`（2）与 `src/backend/control/payload.rs`（3）两行摘了：两处都是「把 `CLAUDE_CONFIG_DIR`
+    //   拼进启动命令串」（`payload`，不属读面），随起会话的计划与渲染搬进本机后端（`control/launch_render/`，账号载体名改从适配层取）。
     // 〔F10b 末批〕`history.rs` **按角色分条** —— 逐函数量过，那些命中不是一类活。
     // ★ 分条的理由：登记表原本按「文件 × 单一类别」记账，而这个文件承载多种角色 ⇒
     // 「读面迁完」时那条登记不会消失、`readers` 也不会降，账就成了假的。
@@ -25,15 +27,6 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 〔RW1 · 第四波 09-24〕这里原来有 `src/history.rs` 的 `write` 一行（写操作恰好也读 dir 来定位文件：
     //   `delete_history_session` · `create_branch_session`，4 处）。两件都改经后端（删会话 `files-delete-session`
     //   只收 sid · 本机分叉 exec 本机后端 `--fork-session`），本进程不再解析 dir 来定位要写的那一份 ⇒ 4 → 0，摘行。
-    (
-        "src/history.rs",
-        "payload",
-        2,
-        "把 `CLAUDE_CONFIG_DIR` 拼进**启动命令串**：`config_dir_prefix_ps`(1102/1111)。\
-             〔CP2b · 4C〕`validate_config_dir_posix` / `validate_config_dir_ps` 那三行是拒绝的话里提到这个变量名，\
-             话搬进了文案表（`rsHistory.configDir.invalid`），源码里只剩取文口 ⇒ 5 → 2。\
-             ⚠ **不属读面**，随 F06/F07 走。",
-    ),
     (
         "src/ssh_source.rs",
         "remote",
@@ -86,15 +79,6 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。\
              〔STOP 09-27：4 → 6〕多的两处在 `run_resident_stop`：问一次 `resolve_claude_dir()` 并把它交给一次性 `--resident-stop` 的\
              `CLAUDE_CONFIG_DIR` —— 同一个用途（让它算出同一个口、找到同一份 pid 记录），同样不读内容。",
-    ),
-    (
-        "src/backend/control/payload.rs",
-        "payload",
-        3,
-        "只把 `CLAUDE_CONFIG_DIR` 拼进要给别人执行的载荷（`env` 前缀那一段）。\
-             **不读任何文件** ⇒ **不属**读面。它随 F06/F07 走。\
-             〔CP2b · 第四波 09-25〕**5 → 3**：少的两处是两句拒收报错里写着的 `CLAUDE_CONFIG_DIR` 字样，\
-             随全量抽表搬进文案表（`rsPayload.*`）；拼载荷的那三处没动。口径没变。",
     ),
     (
         "src/cc_bus_deploy.rs",

@@ -168,6 +168,11 @@ pub const COMMANDS: &[&str] = &[
     "launch",
     // 〔US1 · 第四波 4D〕「这个号这一发走哪、注入什么」（上游选择出成品，`设计/20 §3.2` 那张表搬进后端）。
     "launch-endpoint",
+    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染进了那台后端（原 monitor `history.rs` / `launch_wire.rs`）：
+    //   本机起会话一整条 · `ccm …` 调用行 · 裸载荷 / 外层 tmux 三格。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "launch-local",
+    "launch-render-cli",
+    "launch-render-payload",
     // 〔SR1a〕链路四条（`dial/link.rs`）：本机常驻后端替 monitor 持有并复用到各远端的 SSH 连接。
     "link-close",
     "link-credit",
@@ -1210,7 +1215,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "exit-policy-read",
         doc_anchor: Some("#### `exit-policy-read`"),
         codes: &[],
-        fields: &["killOnExit", "path", "reason", "state"],
+        fields: &["killOnExit", "path", "reason", "said", "state"],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
     },
@@ -1218,7 +1223,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "exit-policy-set",
         doc_anchor: Some("#### `exit-policy-set`"),
         codes: &["bad_args", "io_failed"],
-        fields: &["killOnExit", "path", "reason", "state"],
+        fields: &["killOnExit", "path", "reason", "said", "state"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::exit_policy::answer_set(&r.args)
@@ -1262,16 +1267,93 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
     //   阻塞档：读一次凭据文件、装一次表；「中转在不在」读本进程的监听状态（中转住这里）。
     //   〔DEL 续〕只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
+    // 〔MIG-2〕成品只剩 `baseUrl`：「中转不在时拒还是直连」也在这里判完（非它不可 ⇒ `relay_down`）。
     CommandSpec {
         name: "launch-endpoint",
         doc_anchor: Some("#### `launch-endpoint`"),
-        codes: &["bad_args"],
-        fields: &["account", "baseUrl", "listening", "whenDown"],
+        codes: &["bad_args", "relay_down"],
+        fields: &["account", "agent", "allSessions", "baseUrl"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::accounts::upstream::endpoint::answer_launch(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MIG-2 · `99 §2.1 ⑬`〕起会话的计划与渲染（`control/launch_render/`）。
+    //   `launch-local`：本机起会话整条（阻塞档：探一次 `ccm`、读一次凭据表、探一次中转）；
+    //   两条渲染是纯函数（不碰盘、不起进程）。
+    CommandSpec {
+        name: "launch-local",
+        doc_anchor: Some("#### `launch-local`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "account",
+            "action",
+            "agent",
+            "allSessions",
+            "cmd",
+            "cwd",
+            "launchId",
+            "launcher",
+            "tmuxName",
+        ],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::launch_render::answer_local(&r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    CommandSpec {
+        name: "launch-render-cli",
+        doc_anchor: Some("#### `launch-render-cli`"),
+        codes: &["bad_args"],
+        fields: &[
+            "account",
+            "action",
+            "ccmSid",
+            "cmd",
+            "container",
+            "cwd",
+            "defaultLauncher",
+            "isSsh",
+            "launcher",
+            "model",
+            "ok",
+            "reason",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::launch_render::answer_cli(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    CommandSpec {
+        name: "launch-render-payload",
+        doc_anchor: Some("#### `launch-render-payload`"),
+        codes: &["bad_args", "refused"],
+        fields: &[
+            "args",
+            "cmd",
+            "cwd",
+            "env",
+            "launcher",
+            "nestedEnv",
+            "outer",
+            "resumeSid",
+            "wrap",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::launch_render::answer_payload(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {

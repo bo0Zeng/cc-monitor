@@ -1,5 +1,5 @@
 /**
- * `ccm …` 调用行的入库夹具（`backend/control/fixtures/cli-golden.json`）的用例表与落盘函数。
+ * `ccm …` 调用行的入库夹具（`src/backend/control/launch_render/fixtures/cli-golden.json`）的用例表与落盘函数。
  *
  * # 〔LR1 · U8c-3〕它从「TS 渲染器的金串」换成了「生产请求 ＋ 手写期望」
  *
@@ -30,7 +30,6 @@
 import { buildLaunchPlan } from "./launch-plan.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchContext } from "./launch-types.ts";
-import type { CcmProbeResult } from "./ccm-probe.ts";
 import { buildCliRenderRequest } from "./remote-launch-run.ts";
 
 /** 能力齐全的探测结果（`ccm --ccm-probe` 今天真实吐出的那一串）。 */
@@ -41,8 +40,8 @@ const ALL_CAPS = [
 
 export interface CliGoldenCase {
   name: string;
-  /** 探测结果：`null` = 未装；`{ unknown }` = 没探出来（〔LR2 · R95b〕线上第三态，带探测那一跳的原话）。 */
-  caps: string[] | null | { unknown: string };
+  /** 那台 `ccm` 的能力：`null` = 未装。〔MIG-2〕不上线（渲染进了那台后端、能力问它自己），只当对拍那一侧的输入落进夹具。 */
+  caps: string[] | null;
   ctx: LaunchContext;
   /** 期望：渲得出（`true`，`out` 是命令）还是诚实降级（`false`，`out` 是降级理由）。 */
   ok: boolean;
@@ -90,9 +89,6 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     ok: true, out: "ccm -- new --base --cwd '/home/用户/带 空格'" },
   // ---- refusal 类（§33：表达不了就必须放弃） ----
   { name: "未装 ccm", caps: null, ctx: base(), ok: false, out: "远端还没装后端" },
-  // 〔LR2 · R95b〕`设计/80 §9.4`：「没探出来」不许被说成「没装」—— 线上第三态，Rust 回 `Refusal::ProbeUnknown`。
-  { name: "没探出来（不等于没装）", caps: { unknown: "ssh: connection timed out" }, ctx: base(), ok: false,
-    out: "这次没探到远端的后端，不等于没装：ssh: connection timed out" },
   { name: "本地 transport", caps: ALL_CAPS, ctx: base({ transport: { kind: "local" } }),
     ok: false, out: "Windows 本机不用 ccm 命令起会话" },
   { name: "缺静态能力 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base(),
@@ -129,14 +125,6 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
     }), ok: true, out: "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --base --cwd /tmp" },
 ];
 
-function probeOf(caps: CliGoldenCase["caps"]): CcmProbeResult {
-  // `K-R53`：`caps === null` 在这份夹具里逐字是「**未装**」；〔LR2 · R95b〕「没探出来」有了自己的输入形
-  // （`{ unknown }`），线上也有了自己的一态 —— 两者从此各走各的，不再同形。
-  if (caps === null) return { state: "not-installed" };
-  if (!Array.isArray(caps)) return { state: "unknown", error: caps.unknown };
-  return { state: "installed", version: "2", capabilities: new Set(caps) };
-}
-
 export function renderCliGoldenFixture(): string {
   return `${JSON.stringify(
     {
@@ -148,7 +136,8 @@ export function renderCliGoldenFixture(): string {
         // Rust 侧拿**生产 wire 类型**反序列化它、跑**生产命令**，再与 `out` 比 ——
         // 于是「字段名对不对 / `deny_unknown_fields` 在不在 / 映射臂对不对 / 请求构造漏没漏字段」
         // 四件事一次覆盖，而且是**行为对拍不是文本对拍**。
-        req: buildCliRenderRequest(c.ctx, buildLaunchPlan(c.ctx), probeOf(c.caps)),
+        caps: c.caps,
+        req: buildCliRenderRequest(c.ctx, buildLaunchPlan(c.ctx)),
         ok: c.ok,
         out: c.out,
       })),

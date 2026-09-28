@@ -1,6 +1,6 @@
 //! 〔RM1a · 第四波〕上游选择那份凭据文件**按机器**读写 —— monitor 侧留下的那一个发送口。
 //!
-//! 〔HX2 · 第四波 4D〕今天这里只剩 [`call`]：起会话那一侧问那台机器的后端 `launch-endpoint`（`history::ask_launch_endpoint`）走它。
+//! 〔HX2 · 第四波 4D〕今天这里只剩 [`call`]：起会话那一侧问那台机器的后端 `launch-endpoint`（`history::ask_launch_endpoint`）走它。 〔散文墓碑〕
 //! 〔墓碑 —— 从前这里还有写 key 那一半（`write_key_on`〔散文墓碑〕· `send_key`〔散文墓碑〕· `local_file`〔散文墓碑〕· `path_from_wire`〔散文墓碑〕，
 //!  Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕的分派）：〔RM1a〕按 origin 交那台机器的后端，〔GP1〕本机那一臂先问 `apikey-read`
 //!  核「本机后端写的那份 == 这个 monitor 用的那份」。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict` 比 hello 的
@@ -20,7 +20,7 @@ use serde_json::Value;
 const BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 发送口（形状照 `backend_policy::exit_policy_call`）：没通道 / 旧后端不认 / 调用失败，各说各的话。
-/// 〔US1〕起会话那一侧问 `launch-endpoint` 也走这一个（`history::ask_launch_endpoint`）—— 同一族（上游选择的帧面），不另写一份。
+/// 〔US1〕起会话那一侧问 `launch-endpoint` 也走这一个（`history::ask_launch_endpoint`）—— 同一族（上游选择的帧面），不另写一份。 〔散文墓碑〕
 pub(crate) async fn call(host: &str, cmd: &str, args: Value) -> Result<Value, String> {
     let Some(client) = inbound_client::client_for(host) else {
         return Err(said(no_channel(host)));

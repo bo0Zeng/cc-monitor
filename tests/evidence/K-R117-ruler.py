@@ -209,9 +209,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("history.read-session", (NA, "—", "会话历史")),
     ("hooks.diagnose", (NA, "—",
                         "**只诊断**钩子，不装它（`TouchEffect::GenerateOnly`：产品自己不动手）")),
-    ("launch.render-attach", (NA, "—", "渲染一条命令串")),
-    ("launch.render-cli", (NA, "—", "渲染一条命令串")),
-    ("launch.render-payload", (NA, "—", "渲染一份载荷")),
+    # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
+    # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
     # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
     # （`src/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
     # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
@@ -325,7 +324,8 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "ccm_user_path_remove",
         "ccm_user_path_status",
         "local_ccm_entry_status",
-        "probe_ccm_cli",
+        # 〔MIG-2〕`probe_ccm_cli` 退役：远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`：`ccm` 就是那台后端本身，能力是它自己的），
+        #   本机那一格仍是 `local_ccm_entry_status`。本条红时逐字「别改表去凑」—— 核过了，是命令真删了，改表是跟上真相。
     ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条（〔AL1〕从前是一条 `write_account_aliases`），那几条归 S4。"
@@ -412,8 +412,8 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
-    ("S2", (("src/ccm-probe.ts",
-             "src/settings/machine-aliases.ts"),
+    ("S2", (("src/settings/machine-aliases.ts",),
+            "〔MIG-2〕**2 → 1**：`src/ccm-probe.ts` 随 `probe_ccm_cli` 删了（远端探测住进那台后端）。"
             "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/settings/cc_integration.ts` 并进了 "
             "`src/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
             "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
@@ -512,9 +512,9 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "而那正是 ① 该在的地方。⚠ 从前那句「目标：空」讲不通：R63 要的是「收成一处」"
             "不是「取消入口」，降到空等于用户再也没有地方部署远端后端，与 `K27`"
             "（部署是产品的一部分，由客户端做）直接冲突。")),
-    ("S2", (("src/settings/machine-card.ts", "src/ccm-probe.ts"),
+    ("S2", (("src/settings/machine-card.ts",),
             "「终端集成」那一块（`cc_integration_*`）与本机 ccm 入口查询并进组件栏的"
-            "**本机页那一份**；`src/ccm-probe.ts` 留着，它不是入口（见 `FRONTEND_NON_ENTRY`）。"
+            "**本机页那一份**。〔MIG-2〕`src/ccm-probe.ts` 删了（它原是非入口，见 `FRONTEND_NON_ENTRY` 那条墓碑）。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
             "`cc_integration_install` 归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
             "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
@@ -536,11 +536,8 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
 # 🔴 每一条的理由都要**自己站得住**（不是「不这么划 3 就闭合不了」）——
 #    `KR131D1` 逐字警告过「别为了让 3 闭合去硬凑分组」。
 FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
-    ("src/ccm-probe.ts",
-     "它是 `probe_ccm_cli` 的**按 origin 的 5 分钟 TTL 缓存**，消费者是 `remote-launch-run.ts` "
-     "的 `renderLaunchCommand`（决定这次走 CLI 渲染器还是兜底渲染器）。**用户界面上没有这一处**，"
-     "它也不装任何东西。把它搬进设置里的某个分节等于让底层渲染链去 import 一个 UI 模块。"
-     "⇒ 它会**永远**留在 `§S5d` 的落点名单里，而永远不该被算成一处安装面入口。"),
+    # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
+    #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
     ("src/views/inbox-view.ts",
      "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
      "**装不了 skill**：`skill_host::resolve_editable` 第一刀就是 "

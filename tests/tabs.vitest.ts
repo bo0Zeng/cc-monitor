@@ -203,6 +203,8 @@ import {
   historyCalls,
   isChanCall,
   killCallsOf,
+  launchRenderShim,
+  localLaunchCalls,
   sessionReadCalls,
   UNSUPPORTED,
   withAccountReads,
@@ -267,6 +269,8 @@ interface TMHomes {
   actions: TabSessionActions;
 }
 const home = (tm: TabManager): TMHomes => tm as unknown as TMHomes;
+/** 本机 resume 那几发（`launch-local` 通道请求译回旧形参，`chan-fake.ts::localLaunchCalls`）。 */
+const resumed = (): Record<string, unknown>[] => localLaunchCalls(vi.mocked(invoke).mock.calls, "resume_history_session");
 
 /**
  * 〔GRP1 · `设计/99 §1` V140〕摆一份分组：组表只有 `{id, name}`，组员 = `Tab.group`（tab 自己的属性）。
@@ -1089,7 +1093,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     await home(tm).actions.resumeTab("r1");
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
     expect(runRemoteResume).toHaveBeenCalledWith("devbox", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
-    expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+    expect(resumed()).toEqual([]);
   });
 
   // 〔FE1 · D-h〕先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
@@ -1146,9 +1150,10 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
     tm.ensureTab("l1", "/home/u/p", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1");
+    vi.mocked(invoke).mockImplementation(withHistoryReads(launchRenderShim(() => Promise.resolve(undefined))));
     await home(tm).actions.resumeTab("l1");
     expect(runRemoteResume).not.toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledWith("resume_history_session", {
+    expect(resumed()).toContainEqual({
       sessionId: "l1",
       cwd: "/home/u/p",
       launcher: null,
@@ -1163,7 +1168,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   // 上面那条只证「不知道的时候不铸」。**光有它，整个 Y2b 被回退掉也不会红**
   //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
   it("P3t-Y2b 本地 resume：拿到本机 tmux 名单 → 铸一个不撞的名字传给后端", async () => {
-    (invoke as unknown as Mock).mockImplementation(withHistoryReads(async (cmd: string) => {
+    (invoke as unknown as Mock).mockImplementation(withHistoryReads(launchRenderShim(async (cmd: string) => {
       // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`。它已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
       if (cmd === "list_local_tmux")
         return [
@@ -1171,11 +1176,11 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
           { name: "unrelated", path: "/p", command: "bash", attached: false, windows: 1, sid: null },
         ];
       return undefined;
-    }));
+    })));
     tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1abcdef");
     await home(tm).actions.resumeTab("l1abcdef");
-    expect(invoke).toHaveBeenCalledWith("resume_history_session", {
+    expect(resumed()).toContainEqual({
       sessionId: "l1abcdef",
       cwd: "/home/u/p",
       launcher: null,
@@ -4973,7 +4978,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     localStorage.clear();
     disk = {};
     probe = { present: true, root: "/h/.claude/projects" };
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
         // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
@@ -4983,7 +4988,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       if (cmd === "probe_session_record")
         return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
       return Promise.resolve(undefined);
-    })));
+    }))));
     tm = makeTM();
   });
 
@@ -5050,7 +5055,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     tm.archiveTab("g1");
     probe = { present: false, root: "/h/.claude/projects" };
     await home(tm).actions.resumeTab("g1");
-    expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+    expect(resumed()).toEqual([]);
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "没法 resume：记录已不在",
       "本机 的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。",
@@ -5060,7 +5065,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     probe = { present: true, root: "/h/.claude/projects" };
     await home(tm).actions.resumeTab("g1");
     expect(tabOf("g1").state).toEqual(ENDED);
-    expect(invoke).toHaveBeenCalledWith("resume_history_session", expect.objectContaining({ sessionId: "g1" }));
+    expect(resumed()).toContainEqual(expect.objectContaining({ sessionId: "g1" }));
   });
 
   it("★ G1：远端两条路（直连 · tmux 全新）同样先问；问不到 ⇒ 当不知道、照今天的路走（不当「不在」）", async () => {
@@ -5261,10 +5266,10 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
   });
 
   it("★ 本机：带的是本机起会话那一格解析出的账号目录（`localLaunchConfigDirSync`）", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string) => {
       if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-alt/acct-b/projects" });
       return Promise.resolve(undefined);
-    })));
+    }))));
     __setLocalLaunchSnapshotForTests(
       {
         origin: LOCAL_ORIGIN,
@@ -5284,8 +5289,7 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
     await home(tm).actions.resumeTab("k2");
     expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-alt/acct-b"]);
     // 同一个值也交给了起会话那一格（`resume_history_session` 的 `account.configDir`）。
-    const launched = vi.mocked(invoke).mock.calls.find((c) => c[0] === "resume_history_session");
-    expect(launched?.[1]).toMatchObject({ account: { configDir: "/h/.claude-alt/acct-b" } });
+    expect(resumed()[0]).toMatchObject({ account: { configDir: "/h/.claude-alt/acct-b" } });
   });
 });
 

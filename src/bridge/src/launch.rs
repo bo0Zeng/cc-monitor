@@ -1,7 +1,7 @@
 //! Batch14-F41：远端终端拉起。
 //!
 //! 两块：
-//! 1. [`launch_powershell_window`] —— 从 `history.rs::resume_impl` 抽出的通用「新终端窗口
+//! 1. [`launch_powershell_window`] —— 从 `history.rs` 的 `resume_impl`〔散文墓碑〕 抽出的通用「新终端窗口
 //!    跑一条 PowerShell 命令」机械（wt.exe Plan A → CREATE_NEW_CONSOLE Plan B，
 //!    `-NoExit -EncodedCommand`、**不带 `-NoProfile`**）。本地 resume 与远端族
 //!    （F41 resume / F51 attach / F52 tmux / F53 launcher）共用此单一入口。
@@ -260,12 +260,12 @@ fn which_exists(cmd: &str) -> bool {
 ///   ★ 同一条推理本仓在别处写对过：`src/doc/IPC-PROTOCOL.md` 逐字
 ///   「决定性的事实是 `stdin` 不接键盘（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉」。
 ///   ★★ **P3t（2026-08-11）已经改了一半，本段随之更新。**
-///   `history.rs::launch_local` 现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
+///   〔MIG-2〕本机起会话的计划（今天在本机后端 `local.rs::plan`）现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
 ///   `--tmux` ⇒ ccm 走容器分支、会话留在 tmux 里有真 tty，本函数只负责把它拉起来。
 ///   上面那句「产出的是一个无 tty、无 tmux 的进程」现在只描述**回落那条路**
-///   （渲染器拒了才走的 `build_local_posix_command`），由
-///   `the_local_resume_payload_has_no_session_container_today` 继续钉；
-///   正面事实由 `the_rendered_local_command_really_carries_the_container` 钉。
+///   （渲染器拒了才走的 `build_local_posix_command`），由 〔散文墓碑〕
+///   `the_local_resume_payload_has_no_session_container_today` 继续钉； 〔散文墓碑〕
+///   正面事实由 `the_rendered_local_command_really_carries_the_container` 钉。 〔散文墓碑〕
 ///   ⚠ **今天生产上还到不了正面那条**：会话名要由前端 `mintTmuxName` 传下来（P3t-Y2b），
 ///   而本机的「已占用名字」集合还不存在（ROADMAP `U11`）⇒ 名字恒为 `None` ⇒ 恒走回落。
 ///   功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）红线内**没实测**，是推的。
@@ -586,10 +586,10 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// - 同一条腿上的 [`crate::utils::powershell_encoded_command`] **没有 `cfg`、在 Linux 上真编译**
 ///   ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
 ///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
-/// - `history.rs::PRODUCTION_LAUNCH_SINK` 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
+/// - 〔MIG-2〕原 `history.rs` 的 `PRODUCTION_LAUNCH_SINK`〔散文墓碑〕（今天是 `launch.rs::open_local_terminal`） 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
 ///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
 ///   读数一致：**`1244 passed; 1 failed`**，红的是
-///   `payload_tests.rs::nobody_reaches_the_relay_take_points_without_going_through_the_seam`。
+///   `payload_tests.rs` 的 `nobody_reaches_the_relay_take_points_without_going_through_the_seam`〔散文墓碑〕。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
@@ -694,7 +694,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 /// 它暗示「v2 会支持」，而实际上这件事**没排期、而且方向是反的**（U8b 订正）。
 ///
 /// ⚠ **这不代表 POSIX 上「远端拉起」这件事就该只复制命令** —— 那是另一个缺口：
-/// 本机 resume 有 OS 分派（`history.rs::launch_local`），远端**没有**（`launch_remote_terminal`
+/// 本机 resume 有 OS 分派（〔MIG-2〕今天在本机后端 `local.rs::plan`），远端**没有**（`launch_remote_terminal`
 /// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走后端的 `launch`，
 /// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
 #[cfg(not(windows))]
@@ -800,6 +800,22 @@ pub async fn launch_remote_terminal(
         launch_powershell_window(&ps_command, None)?;
         tracing::info!("launch: remote terminal via ssh origin={origin}");
         Ok(())
+    })
+    .await
+    .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
+}
+
+/// 〔MIG-2 · `99 §2.1 ⑬`〕**在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。
+/// 那一串由本机后端出成品（帧命令 `launch-local`：计划 · 账号前缀 · 中转前缀 · 身份 token 全在那里），这里不判、不拼。
+/// POSIX：交用户的终端出口（[`launch_local_posix`]）；Windows：PowerShell 窗口（[`launch_powershell_window`]）。阻塞那一截不占 IPC 线程。
+#[tauri::command]
+pub async fn open_local_terminal(cmd: String, cwd: Option<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        #[cfg(not(windows))]
+        let out = launch_local_posix(&cmd, cwd.as_deref());
+        #[cfg(windows)]
+        let out = launch_powershell_window(&cmd, cwd.as_deref());
+        out
     })
     .await
     .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?

@@ -334,3 +334,109 @@ fn the_upstream_url_golden_agrees_with_the_one_rule() {
     }
     assert_eq!(wrong, Vec::<String>::new(), "Rust 那一份与共用金样对不上");
 }
+
+/// ★★★ 〔US1 · 第四波 4D〕E4 ＋ E9：**monitor 生产树里零上游选择、零路由语法、零门牌字面量**。
+///
+/// 守的要求：B-decouple §2.1 必须拆 1（`APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM` · 路由前缀 · 段闸 · 端口两边各一份）·
+/// `设计/05 §14.3`「业务解释只有一个家」· `设计/20 §5` 目标「端口 · 路由渲染 · 段的字符闸收进共享 crate，一份实现两侧 use」。
+///
+/// 人群：`src/bridge/src/**/*.rs` 生产段（剥注释与测试段）× 下面两张表，**零命中**；
+/// 正控（异源，证明尺子不瞎）：同一把尺子在后端上游选择 / 共享 crate 的生产段上**各数得到**每一样（逐名点住址）。
+/// 端口与钥匙路径那两样还要求后端生产段零字面量（它们只许 `use` 共享 crate）。
+#[test]
+fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read =
+        |rel: &str| guard_core::production_code(&std::fs::read_to_string(root.join(rel)).unwrap());
+    // (名字, 它今天的家)
+    let words: [(&str, &str); 8] = [
+        (
+            "APIKEY_TABLE_AGENT",
+            "../backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
+        ),
+        (
+            "AGENTS_WITH_DEFAULT_UPSTREAM",
+            "../backend/agents/mod.rs::default_upstreams",
+        ),
+        (
+            "apikey_endpoint_for",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "relay_endpoint_for",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "RelayAsk",
+            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+        ),
+        (
+            "apikey_rows",
+            "../backend/accounts/upstream/file_face.rs::rows_at",
+        ),
+        (
+            "read_accounts",
+            "../backend/accounts/upstream/file_face.rs::read_at",
+        ),
+        (
+            "apikey_routed_subset",
+            "../backend/accounts/upstream/endpoint.rs::answer_routing_with",
+        ),
+    ];
+    let literals: [(&str, &str); 4] = [
+        ("\"/s/\"", "crates/relay-route-core/src/lib.rs"),
+        ("\"/t/\"", "crates/relay-route-core/src/lib.rs"),
+        ("8788", "crates/relay-route-core/src/lib.rs"),
+        (
+            "\".cc-monitor/relay-key\"",
+            "crates/relay-route-core/src/lib.rs",
+        ),
+    ];
+    let mut hits = Vec::new();
+    for (at, src) in guard_core::scan_tree_excluding(&root.join("src"), &["rs"], &[]) {
+        let prod = guard_core::production_code(&src);
+        for (w, _) in words {
+            if guard_core::contains_word(&prod, w) {
+                hits.push(format!("{} · `{w}`", at.display()));
+            }
+        }
+        for (l, _) in literals {
+            if prod.contains(l) {
+                hits.push(format!("{} · {l}", at.display()));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "monitor 生产树里又长出了上游选择 / 路由语法 / 门牌字面量：\n  {}",
+        hits.join("\n  ")
+    );
+    // 正控：家里数得到（名字那一张：家文件里那个「今天的名字」在；字面量那一张：共享 crate 里在）。
+    for (w, home) in words {
+        let (file, sym) = home.split_once("::").unwrap();
+        assert!(
+            guard_core::contains_word(&read(file), sym),
+            "`{w}` 的家 {home} 里数不到 `{sym}` —— 尺子或住址坏了"
+        );
+    }
+    for (l, home) in literals {
+        assert!(
+            read(home).contains(l),
+            "共享 crate 里数不到 {l} —— 尺子是瞎的"
+        );
+    }
+    // 后端那一半：端口与钥匙路径只许 `use` 共享 crate（零字面量）。
+    let mut backend_hits = Vec::new();
+    for (at, src) in guard_core::scan_tree_excluding(&root.join("../backend"), &["rs"], &[]) {
+        let prod = guard_core::production_code(&src);
+        for l in ["8788", "\".cc-monitor/relay-key\""] {
+            if prod.contains(l) {
+                backend_hits.push(format!("{} · {l}", at.display()));
+            }
+        }
+    }
+    assert!(
+        backend_hits.is_empty(),
+        "后端生产树里还有门牌字面量（该 use relay_route_core）：{backend_hits:?}"
+    );
+}

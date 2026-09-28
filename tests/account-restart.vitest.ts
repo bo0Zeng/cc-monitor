@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   翻译（`chan-fake.ts::tmuxControlShim`）：那两发 `chan_call` 照旧按旧名字交给 `invokeMock`，下面的断言一个字不用改。
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", async () => {
-  const { tmuxControlShim } = await import("./test-support/chan-fake");
-  return { invoke: tmuxControlShim(invokeMock, "tmux_send_keys") };
+  const { tmuxControlShim, launchRenderShim } = await import("./test-support/chan-fake");
+  return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "tmux_send_keys") };
 });
 vi.mock("../src/remote-launch-run", () => ({
   runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
