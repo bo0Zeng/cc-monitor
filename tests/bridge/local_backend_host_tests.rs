@@ -1333,7 +1333,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
 /// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
 ///
-/// 形状照 `sftp_tests.rs::both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker`
+/// 形状照 `sftp_tests.rs` 里当时那一格「两条后端部署路都读字节自报的身份」（〔MIG-3b〕判定进了本机常驻后端，那一格随之换成「只放字节」）
 /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
 /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
 /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，
@@ -1763,7 +1763,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    ⇒ 直接写字面量会让本条把自己变成那张登记表上的两处「解析不出路径的 include」。
 ///    〔08-31 实打：第一版就是这么红的，`left: [("src/bridge/src/local_backend_host.rs", 2), …]`。〕
 /// 4. **它证不了 shim 真的挡住了。** 它只证「要了、缺了就炸、写在串首、而且只写了一次」。
-///    「真的落在私有 server 上」那一格由 `the_local_tmux_frames_really_land_in_the_ledger`
+///    「真的落在私有 server 上」那一格由 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕
 ///    的**跑前跑后比对**买（那条自己是 `#[ignore]`）。
 ///
 ///    ⚠⚠ **归因订正〔`D2` 复审 09-01，阻塞 1〕—— 本段原来的归因是错的，不是不完整。**
@@ -1855,7 +1855,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    但订正之后写下的仍是一句**新的全称**，只是把数从 1 改成了 2。）
 ///
 ///    ⇒ 一句话：**㈡㈢ 买的是「这几行写对了」，不是「这个值真的到了后端手里」。**
-///    后一格今天由 `the_local_tmux_frames_really_land_in_the_ledger` 的**跑前跑后比对**买
+///    后一格今天由 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕 的**跑前跑后比对**买
 ///    （见第 4 条），而那条自己是 `#[ignore]`。
 ///
 /// 7. 🔴🔴 **③ 的形状钉到此为止 —— 这是本件的停机条件**〔PM 09-01 裁二，收 `D3`〕。
@@ -1993,7 +1993,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    错在把它读成了「所有剥法都分不开」。
 ///
 ///    **`M-c7-D` 那把刀 09-04 在本工作树上重打，两个读数都留下**（`K-R9` `D3`，
-///    语料 = `local_backend_tests.rs::the_local_tmux_frames_really_land_in_the_ledger`）：
+///    语料 = 本机 tmux 帧进账本那条真后端实测 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕，〔MIG-1〕已随那本账删）：
 ///    · 旧剥法：monitor `1275 passed / 0 failed` —— **静默假绿，逐字复现**；
 ///    · 新剥法：`every_test_that_starts_the_real_backend_demands_a_private_tmux` **红**，
 ///      报文逐字点名「走的腿：两条腿都没走（连第二道锁 ② 都没有）」。
@@ -2179,7 +2179,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
              rustc 眼里就是条普通跨行块注释）⇒ 这一块掉进剥法的兜底、一个字都不剥\
              ⇒ 「以 `let ` 打头就静默通过」那一格**原样回来**，而那一版的看门判据**还是绿的**。\
              实测于 `4eb271f`：本条判「合规」，全量 monitor `1278 passed; 0 failed`。\n      \
-             〔`K-R9` `D3` 两个读数：同一把刀（`local_backend_tests.rs::the_local_tmux_frames_really_land_in_the_ledger`）\
+             〔`K-R9` `D3` 两个读数：同一把刀（那条真后端实测 `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕，〔MIG-1〕已删）\
              旧剥法 monitor `1275 passed / 0 failed`；新剥法本条当场红。\
              ⚠ 那个 1275 量于上一拍的旧基点，**别当今天的分母**（今天 monitor 那个包是 1287 条）。〕\n      \
              ★★★ **09-04 `K-R25`：上面那一格关上了 —— 关它的是「把两把尺子的单位对齐」。**\
@@ -2609,7 +2609,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
         "local_backend_host_tests.rs::the_local_backend_host_can_be_stopped_and_started_again",
         "local_backend_host_tests.rs::e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one",
         "local_backend_host_tests.rs::e2e_a_detached_backend_that_dies_leaves_no_zombie",
-        "backend/control/local_backend_tests.rs::the_local_tmux_frames_really_land_in_the_ledger",
+        // 〔MIG-1〕`local_backend_tests.rs` 里起真后端验本机 tmux 帧进 monitor 账本的那条随那本账删了。
         "backend/control/local_backend_tests.rs::the_local_backend_host_really_registers_an_inbound_client",
         "backend/control/local_backend_tests.rs::e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed",
     ] {
@@ -2625,7 +2625,7 @@ fn every_test_that_starts_the_real_backend_demands_a_private_tmux() {
     //    〔`D1` 回修 08-31，阻塞 4〕上面那条第三道锁的判据只落在**这条腿**上；
     //    全员都走「委托」的话它一圈都不转，而「零违例」会读起来像「都合规」。
     //    地板取 3（今天实打 4：`the_local_backend_host_can_be_stopped_and_started_again` ·
-    //    `the_local_tmux_frames_really_land_in_the_ledger` ·
+    //    `the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕 ·
     //    `the_local_backend_host_really_registers_an_inbound_client` ·
     //    `e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed`），
     //    留一格给「某一条改走委托」，掉到 2 就该回来改本条。

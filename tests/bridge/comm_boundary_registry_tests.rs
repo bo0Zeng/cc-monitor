@@ -208,19 +208,14 @@ const REGISTERED: &[(&str, &str)] = &[
     //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
     (
         "src/bridge/src/ssh_link.rs",
-        "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果、转发计数 —— \
+        "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果 —— \
          `05 §2` 四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `ssh_source.rs` 里；\
          C2 把 SSH 的全部活搬进后端的拨号代理之后，界面侧与 SSH 有关的**传输**就只剩这一件。\
          起代理进程、读配置、定期限都在宿主 `dial_host.rs`（不是成员，做的正是 `C4`/`C5`/`X2` 不许成员做的事）。\
          ⚠ 它**不买**「代理拨得对」—— 那归后端 `dial_tests` 与读数脚本 `C2-dial-loopback.py`。",
     ),
-    (
-        "src/bridge/src/port_forward.rs",
-        "面 A 的**端口转发**：纯字节搬运（本机回环口 ↔ 远端口），它不知道会话/账号/agent。\
-         C2 之后绑口与 direct-tcpip 在拨号代理里（`use: forward`）、查配置与起进程在宿主 `dial_host.rs::forward`，\
-         本文件只剩三个命令面 ＋ 一张转发账（拿着链路的那个任务 · 累计连接数）。\
-         ⚠ 它**不买**「转发真的通」—— 那归读数脚本那一项（真 sshd ＋ 真 HTTP）。",
-    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕`port_forward.rs` 那一行随文件删了（不是摘标记）：三条命令与转发账进了本机常驻后端
+    //   （`src/backend/dial/forwards.rs`），界面经通道直问 —— 界面 crate 里再没有端口转发这一面。
 ];
 
 /// 通信层**对前端的入口符号** —— `(符号名, 说明)`。`C3` 与 `X6` 的人群从这儿派生。
@@ -2507,14 +2502,17 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MIG-3a〕基数 54 → 增量 +3 ⇒ 57：`skill-inbox-reads.ts` 三处（`skill-host-list` / `-read` / `-write`）；显式给期限（`INBOX_BUDGET_MS`）。
     // 〔MIG-3a〕基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
     // 〔MIG-3a · 09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
+    // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
+    // 〔合并 MIG-1 × 主线 19671e6b〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
     // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
     //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
+    // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 68usize),
-            ("chan.subscribe", 1usize),
+            ("chan.call", 79usize), // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
+            ("chan.subscribe", 2usize), // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]
         .into_iter()
@@ -2625,21 +2623,21 @@ const RELAY_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
 const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
     (
         "src/bridge/src/ssh_source.rs",
-        &["C1", "C4", "C5", "X2"],
-        &["读文本"],
+        &["C1", "X2"],
+        &[],
         "〔C2 · 2026-09-24，`设计/05 §13`〕**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
          界面侧读应答的那一段是新的通信层成员 `ssh_link.rs`，起代理的是宿主 `dial_host.rs`。\
-         今天咬它的四条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
-         （远端数据源本来就是业务）· `C4` 读 `~/.ssh/config`（「从 ssh config 导入」这个功能）· \
-         `C5` 起 `ssh -G`（同一个功能）· `X2` 重连退避与快照重试的期限值。\
+         今天咬它的两条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
+         （远端数据源本来就是业务）· `X2` 重连退避与快照重试的期限值。\
          ⇒ **这一份不是「还差一点就进来」，是「本来就不该进来」**：登记它等于把业务家圈进通信层。\
-         〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。〕",
+         〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。\
+          〔MIG-1〕`C4`「读文本」（读 `~/.ssh/config`）与 `C5`（起 `ssh -G`）随「从 ssh config 导入」搬进后端 `dial/ssh_config.rs` 一起离开。〕",
     ),
     (
         "src/bridge/src/sftp.rs",
+        &["X2"],
         &[],
-        &[],
-        "〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，今天一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
+        "〔MIG-3b · 4d-lanes 子步 1〕**今天咬 `X2` 一条**：部署判定进了本机常驻后端（`deploy-plan`），本文件问它要计划那一问         定了一个期限值（`PLAN_BUDGET`）—— 期限值归宿主（`05 §3.3.2`），而它就是宿主那一侧的调用方（形状同下一行 `sftp_pool.rs`），         照实登记、不圈。         〔RW1 · 第四波 09-24〕**原来只差 `C1` 一条，后来一条都不咬了** —— 咬它的那个词随 F11 那条 SFTP 直删\
          （连同它的结构守卫〔散文墓碑〕）改经远端后端删一起走了（`设计/05 §8.1.3` 说的「要清掉那个词得连它一起搬」，\
          搬的是用户裁的 RW1）。🔴 **而它仍然不圈**，这是一次归属判断、不是判据没跑：\
          本文件今天剩下的是 F08 的**部署**（后端二进制 · 入口 shim · 卸载）（〔W5-ALIAS〕远端 rc 别名块的**规划**\
@@ -2956,7 +2954,9 @@ fn the_transport_candidates_left_outside_are_blocked_by_exactly_the_criteria_the
     //   拨号代理二进制的解析（`CCM_DIAL_PROXY`）随拨号搬去了宿主 `dial_host.rs`（不是成员，那一处本来就归它）。
     // 〔SR1b · 2026-09-24〕`C4` 判词处数 4 → **2**：少的是 `sftp_pool.rs` 的「开文件」「以选项开」——
     //   用户那次传输的本地那一头随传输台搬进了本机常驻后端（`control/transfer.rs`）。份数仍是 4（它还是候选，只剩 `X2`）。
-    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 2);
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`C4` 判词处数 2 → **1**：少的是 `ssh_source.rs` 的「读文本」（读 `~/.ssh/config`）——
+    //   「从 ssh config 导入」搬进后端 `dial/ssh_config.rs`。份数仍是 4。
+    assert_left_outside(TRANSPORT_LEFT_OUTSIDE, "面 A 的传输面那四份候选", 4, 1);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

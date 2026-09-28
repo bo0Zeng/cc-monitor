@@ -1,0 +1,23 @@
+{
+  "diagnosis": {
+    "session_start": {
+      "kind": "installed-at-path",
+      "command": "\"$HOME/.local/bin/cc-register\" >/dev/null 2>&1 || true",
+      "path": "$HOME/.local/bin/cc-register"
+    },
+    "stop": {
+      "kind": "unknown",
+      "command": "sh -c cc-bus-stop-hook"
+    },
+    "note": ""
+  },
+  "snippet_home": {
+    "text": "{\n  \"hooks\": {\n    \"SessionStart\": [ { \"hooks\": [ { \"type\": \"command\",\n      \"command\": \"\\\"$HOME/.local/bin/cc-register\\\" >/dev/null 2>&1 || true\" } ] } ],\n    \"Stop\": [ { \"hooks\": [ { \"type\": \"command\",\n      \"command\": \"\\\"$HOME/.local/bin/cc-bus-stop-hook\\\"\" } ] } ]\n  }\n}",
+    "warning": null
+  },
+  "snippet_bare": {
+    "text": "{\n  \"hooks\": {\n    \"SessionStart\": [ { \"hooks\": [ { \"type\": \"command\",\n      \"command\": \"cc-register >/dev/null 2>&1 || true\" } ] } ],\n    \"Stop\": [ { \"hooks\": [ { \"type\": \"command\",\n      \"command\": \"cc-bus-stop-hook\" } ] } ]\n  }\n}",
+    "warning": "这两个命令不在 PATH 上，照这段贴会用不了。改选「$HOME 显式路径」，或把它们所在目录加进 PATH。"
+  },
+  "source": "/HOME/.claude/settings.json"
+}

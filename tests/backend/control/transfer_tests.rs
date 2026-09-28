@@ -504,7 +504,7 @@ fn a_download_onto_a_session_file_is_let_through() {
 // ═══ 票表与帧 ══════════════════════════════════════════════════════════════════════════
 
 fn dial() -> serde_json::Value {
-    serde_json::json!({"host":"h","port":22,"user":"u","key_path":null,"host_key_fingerprint":null})
+    serde_json::json!({"machine": {"host":"h","port":22,"user":"u"}})
 }
 
 fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
@@ -590,7 +590,7 @@ async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk()
     let tmp = Tmp::dir("start");
     let local = tmp.file("h.bin", b"x");
     // 端口 1：本机上一定连不上（拒绝连接，立刻失败，不等期限）。
-    let d = serde_json::json!({"host":"127.0.0.1","port":1,"user":"u","key_path":"/nonexistent","host_key_fingerprint":null});
+    let d = serde_json::json!({"machine": {"host":"127.0.0.1","port":1,"user":"u","keyPath":"/nonexistent"}});
     let (_, _, data) =
         reply_of(&desk.upload("r1", &serde_json::json!({"dial": d, "local_path": local})));
     let tid = data.unwrap()["id"].as_str().unwrap().to_string();

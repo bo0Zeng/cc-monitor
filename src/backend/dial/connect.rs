@@ -37,6 +37,8 @@ pub(crate) struct Linked {
     /// 〔FIX · `99 §2 ㊶`〕经跳板时跳板那一趟报过的「地址 → 指纹」（另一格；直连 ⇒ 空）。
     pub(crate) jump_fingerprints: BTreeMap<String, String>,
     pub(crate) endpoint: String,
+    /// 〔MIG-1 收尾〕同一条胜者，结构化（ack 的 `winner`）。
+    pub(crate) winner: Endpoint,
     /// 经跳板时跳板那条连接：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
     pub(crate) _jump: Option<client::Handle<Checker>>,
     /// 〔SR1b〕这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
@@ -577,6 +579,7 @@ pub(crate) async fn establish(
         fingerprints,
         jump_fingerprints,
         endpoint: label(&winner),
+        winner,
         _jump: jump,
         budget: super::pool::Budget::new(),
         held: Mutex::new(Vec::new()),

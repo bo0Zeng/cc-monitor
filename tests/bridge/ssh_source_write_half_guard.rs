@@ -3,7 +3,7 @@
 //! # 🔴 它服务哪条要求：**这里没有条**〔`P20` 第二刀 2026-09-22 核过原文〕
 //!
 //! `INVARIANTS.md` 里没有任何一条讲这件事。最近邻是 `§24bis` 那句「**单写者已机器化**」，
-//! 而它点的是 `ssh_source.rs::f032_idle_tests::remote_idle_single_writer_guard`
+//! 而它点的是 idle 账单写者那条判据 `remote_idle_single_writer_guard`〔散文墓碑〕（〔MIG-1〕随那本账删了）
 //! —— **同一个文件里的另一条判据、另一个对象**（那条守的是 `REMOTE_IDLE` 的写者，
 //! 本族守的是 TCP 的写半）。**缺条也是一种住址**；缺口登记在 `设计/99 §4.11.2`，
 //! 升格与否要用户拍（`§4.11.7 ⑥`）。
@@ -39,7 +39,7 @@ fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
     for anchor in [
         "fn parse_frame",
         "async fn stream_loop",
-        "async fn probe_backend",
+        // 〔MIG-1 续〕`probe_backend`〔散文墓碑〕 那一锚随测试连接搬进本机后端删了。
     ] {
         assert!(
             good.contains(anchor),
@@ -152,8 +152,9 @@ fn ssh_source_never_splits_a_stream_itself() {
         violations: Vec::new(),
     }
     .require(
-        2,
-        "本文件应有两处双工切分（stream_loop 的长连接 + probe_backend 的一次性探测）",
+        1,
+        // 〔MIG-1 续〕2 → 1：一次性探测那一处随测试连接搬进本机后端。
+        "本文件应有一处双工切分（stream_loop 的长连接）",
     )
     .expect("split_and_park 用量");
 }

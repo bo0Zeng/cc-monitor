@@ -27,10 +27,14 @@ import { resolve, join } from "node:path";
 import { srcDirOf } from "./test-support/repo-root";
 const SRC = resolve(srcDirOf(__dirname));
 
-/** 两种写法都要认：直接 `invoke("list_remote_tmux")` 与经 `commands.` 包装。 */
+/**
+ * 取数的写法：〔MIG-1 续〕那两条 Tauri 命令退役，今天唯一的取法是读口 `tmux-reads.ts::listTmux(`（经通道问那台后端 `tmux-list`）。
+ * 旧的两形（裸 `invoke("list_remote_tmux")`〔散文墓碑〕 · 经 `commands.` 包装）一并留着认 —— 哪天长回来也数得到。
+ */
 const PATTERNS = [
-  /invoke<[^>]*>\(\s*"list_remote_tmux"/g,
-  /commands\.list_remote_tmux\(/g,
+  /\blistTmux\(/g,
+  /invoke<[^>]*>\(\s*"list_(?:local|remote)_tmux"/g,
+  /commands\.list_(?:local|remote)_tmux\(/g,
 ];
 
 /**
@@ -40,8 +44,8 @@ const PATTERNS = [
  */
 const EXEMPT: ReadonlyArray<readonly [file: string, why: string]> = [
   [
-    "ipc/commands.ts",
-    "IPC 包装本体 —— 它就是那个 `invoke`，不是调用方。缓存策略不该住在包装层" +
+    "tmux-reads.ts",
+    "读口本体（〔MIG-1 续〕原来这一格是 IPC 包装本体 `ipc/commands.ts`）—— 它就是那一问，不是调用方。缓存策略不该住在读口" +
       "（住进去等于让每个调用方都被动吃 8s 陈旧数据，包括 attach/kill 这些对新鲜度最敏感的）。",
   ],
   [
@@ -78,7 +82,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** 剥掉整行注释 —— 本文件自己的头注里就写着 `list_remote_tmux`。 */
+/** 剥掉整行注释 —— 本文件自己的头注里就写着那几个取数的名字。 */
 function stripLineComments(src: string): string {
   return src
     .split("\n")
@@ -105,12 +109,12 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
     const sites = fetchSites();
     const total = sites.reduce((a, s) => a + s.count, 0);
     // 抽取器自检：扫不到东西时下面的对拍会两边都空、静默变绿。
-    // 〔FE1〕地板 `≥ 4` 换成相等：包装层 1 ＋ `tab-session-actions.ts::fetchTmuxFresh` 1 ＋
+    // 〔FE1〕地板 `≥ 4` 换成相等：包装层 1（〔MIG-1 续〕今天是读口 `listTmux` 的定义那一处）＋ `tab-session-actions.ts::fetchTmuxFresh` 1 ＋
     //   `tmux-name-mint.ts::readTmuxListing` 1 = 3（少掉的是 fork-flow · machine-card · remote-launch-run 三份副本）。
     //   抽取器坏了会少、有人新长一处会多，两个方向都红。
     expect(
       total,
-      `全仓扫到 ${total} 个 list_remote_tmux 取数点（现打应为 3）—— 抽取器坏了，或新长了一处`,
+      `全仓扫到 ${total} 个 tmux 名单取数点（现打应为 3）—— 抽取器坏了，或新长了一处`,
     ).toBe(3);
 
     const exemptFiles = new Set(EXEMPT.map(([f]) => f.split("::")[0]));
@@ -119,7 +123,7 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
     );
     expect(
       unregistered.map((s) => `${s.file}（${s.count} 处）`),
-      "有 list_remote_tmux 取数点没登记。**这张表不是豁免清单** —— " +
+      "有 tmux 名单取数点没登记。**这张表不是豁免清单** —— " +
         "先问它能不能走 `TabManager.fetchTmuxFresh`（取数与写缓存是同一件事）；" +
         "真够不到就在 EXEMPT 里写清为什么",
     ).toEqual([]);
@@ -152,7 +156,7 @@ describe("tmux 会话列表的取数点（audit-0805 F14 第五刀，E3）", () 
     for (const [file, why] of EXEMPT) {
       expect(why.length, `${file} 的例外理由太短，像是占位`).toBeGreaterThan(30);
       expect(
-        /够不到|包装本体|另一个模块|模块级/.test(why),
+        /够不到|包装本体|读口本体|另一个模块|模块级/.test(why),
         `${file} 的例外理由没说清它为什么走不了唯一取数点：「${why}」`,
       ).toBe(true);
     }

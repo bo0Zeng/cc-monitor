@@ -96,7 +96,7 @@ struct CommandPlan {
     capabilities: Capabilities,
     /// **纯从 sid 派生，不是探测结果**（见结构体头注）——
     /// 拿它去 attach 一个「并不存在」的 tmux 会话是现实风险。要判断会话是否真的存在，
-    /// 用 `tmux_sessions` 帧（那是真 `tmux ls`）。
+    /// 问 `tmux-list`（那是真 `tmux ls`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     session_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

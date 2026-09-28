@@ -16,10 +16,9 @@
 
 import { AGENT_PROFILE } from "./agent-profile";
 
-// G6：类型改用**生成物**。这里原本手抄了一份 Rust `TmuxSession` 的 interface，
-// 两份各写各的、漂了也没人知道；Rust 侧已加 ts-rs 导出，改成 re-export 生成物。
-export type { TmuxSession } from "./generated/TmuxSession";
-import type { TmuxSession } from "./generated/TmuxSession";
+// 〔MIG-1 续〕类型住读口 `tmux-reads.ts`（那台后端的成品形状，跨语言金样钉着；原先是 monitor `tmux.rs` 的 ts-rs 生成物）。
+export type { TmuxSession } from "./tmux-reads";
+import type { TmuxSession } from "./tmux-reads";
 /** F51：tmux 前台命令是否算 claude 会话。真机 tmux 多报 `claude`(调研 03 §2c 实测),
  * 但视启动路径也可能报解释器 `node`(claude 是 Node CLI)——两者都认,叠加 cwd 精确匹配
  * 收窄误配(D-正确性 Sug2:只认 claude 会在报 node 的环境静默失效)。 */

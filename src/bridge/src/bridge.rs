@@ -1,6 +1,6 @@
 //! 前后端契约的单一来源：Tauri 事件名常量 + emit payload schema。
 //!
-//! `events` 子模块定义所有 `emit` 事件名（session-ended / task-update …）；payload 结构体
+//! `events` 子模块定义所有 `emit` 事件名（task-update / remote-health …；〔MIG-1〕会话起停并进了会话流的格）；payload 结构体
 //! （如 `JsonlLinePayload`，携带 per-file 单调 `seq`，前端 RecordTimeline 据此排序）也在本文件。
 //! 前端 `events.ts` 的 TS 接口须与此保持一致。
 //!
@@ -13,33 +13,10 @@
 use serde::Serialize;
 
 pub mod events {
-    pub const SESSION_ENDED: &str = "session-ended";
-    /// v2.3.0 issue #11：tasks 目录监听到变更（含初次创建 / 文件改 / 删除）→
-    /// 后端重读 `<claude_dir>/tasks/<sid>/` 整目录后 emit 该 sid 的完整 task 列表。
-    /// 前端按 sid 路由到对应 Tab 的 tasks panel。
-    pub const TASKS_UPDATE: &str = "task-update";
-    /// issue #23：会话红绿灯。session_map 检测到 sessions/<PID>.json 的官方 status
-    /// 字段变化时 emit（变化才发——CLI 仅在状态转换时重写文件，天然稀疏）。
-    /// 前端启动/F5 用 `list_session_activity` IPC 拉快照收敛（本事件不进 replay buffer）。
-    pub const SESSION_ACTIVITY: &str = "session-activity";
-    /// 会话（重新）变活：本机后端宣告了它（`session_added`，宣告前后端已核过进程与 `procStart`）时 emit
-    /// （〔LOC1b · 4D〕从前是 monitor 自己重扫 pidfile ＋ 探活；今天 lib.rs 本机 emitter 只挡「宣告之后它又被摘了」那一缝）。
-    /// session-ended 的对称补全 —— 「结束有信号、复活也有信号」。
-    /// 前端复活对应的**已归档本地 Tab**（resume 场景：崩溃→灰显→`/resume` 后免 F5 回 live）。
-    /// liveness 门必不可少：崩溃残留的旧 PID.json 被后续文件事件重扫也会进 `added`
-    /// （心跳已从 by_id 删过它），但 PID 已死、不发本事件，避免误复活刚归档的死会话 Tab。
-    /// 不进 replay buffer（同 session-activity）——F5 靠 list_session_activity 快照收敛。
-    pub const SESSION_STARTED: &str = "session-started";
-    /// audit-fixes F03.2：远端 claude 退出但 tmux 会话尚在（idle-tmux 第三态）→ 前端渲**灰灯**、
-    /// **不归档**。**由 remote-session-emitter emit**〔U4b · 第四波：本机 `session-changes-emitter` 也 emit —— 本机那一臂同样走 `classify_removed`，只查 `<local>` 那一格〕（emitter 收 backend-removed 时，若 sid 的
-    /// `@ccm_sid` 仍出现在某 origin 的 `TmuxSessions` 帧里→判 idle）。不进 replay buffer（同
-    /// session-activity/started）——F5 由 emitter 对账重发。idle 是 `remote_active` **之外**的态。
-    pub const SESSION_IDLE: &str = "session-idle";
-    /// 远端会话宣告（Batch5-F18）：backend session_added 帧透传，前端建骨架 Tab。
-    /// 不进 replay buffer——F5 只重载 webview（SSH 连接不重建、backend 不重发），
-    /// 兜底是该会话的行仍在 buffer：重放行经 ensureTab 照建 Tab。已宣告但零行
-    /// 的远端会话 F5 后骨架消失属可接受边角（首行到达即重建）。
-    pub const REMOTE_SESSION_ADDED: &str = "remote-session-added";
+    // 〔MIG-1 · `设计/99 §2.1 ⑬`〕会话起停 / 状态那 9 个事件（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` /
+    //   `-activity` · `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进了会话流 `subscribe(origin, "session-lines")`：
+    //   流里的一格（[`super::SessionStreamFrame`] 的起停那几种），不吃 credit、不丢（[`super::SessionStreamFrame::takes_credit`]）。
+    // 〔MIG-3b · ㉓②〕`task-update` 事件退役：任务变更经通道 `subscribe(origin, "session-tasks")`（后端 `tasks_changed` 帧）。
     /// **方向相反的那一个**（前端 emit、Rust `app.listen` 收）：前端注册完 listener 后
     /// 通知后端开始 replay 历史，payload 见 [`FrontendReadyPayload`]。
     ///
@@ -53,32 +30,9 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
-    /// Batch9-F30：远端快照 inflight 计数变化（{count}）。前端 events.ts 据此
-    /// 让 batch mode 事件驱动（回填在途不提前退出），替代纯 300ms 静默启发式。
-    /// 不进 replay buffer。
-    pub const SNAPSHOT_INFLIGHT: &str = "snapshot-inflight";
     // 〔DL1 · 第五波〕「某台远端的长连接握手完成、能问话了」那个事件（`remote-backend-ready`）退役：
     //   前端经通道 `subscribe(origin, "accounts-changed")` 收同一件事（`Seen` ＝ 能问了 · `Frame` ＝ 那台账号清单变了），
     //   句柄是 `event_replay`（头注那张 kind 表）。`设计/01 §2.2`「前端只有两个动作」。
-    /// 〔U4b · 第四波〕**这条活会话住在什么容器里**（`{session_id, container: "tmux" | "none"}`）。
-    ///
-    /// 来源是后端 `session_added.container`（打标那一次探测的结局）。本机那条流与远端流**同一个口**
-    /// （`session_facts::note_container`）、同一个事件 —— `INVARIANTS §40`：本机 ＝ 不走 ssh 的远端。
-    /// 判不了的不发（前端那一格保持「没报」）。不进 replay buffer：F5 由 `frontend-ready` 对账重发账本。
-    pub const SESSION_CONTAINER: &str = "session-container";
-    /// 〔U4b · 第四波〕**某台机器的活会话清单报完了**（`{origin}`）：后端 `sessions_replayed` 帧到达。
-    ///
-    /// 与那台的 `remote-session-added` 同一条线程、同序发出 ⇒ 前端收到它时，那台此刻全部的活会话都已经
-    /// 宣告过了。前端据此把这台「固定、却没被报过」的 tab 从**说不清**落到**已结束**（`设计/30 §3.5.7a`）。
-    /// 本机不走它：本机的清单是 `list_active_sessions`（前端起步就拉）。
-    pub const ORIGIN_SESSIONS_LISTED: &str = "origin-sessions-listed";
-    /// 〔GP1 · 第四波〕**这条会话所在的那台机器看不见了 —— 说不清**（`{session_id}`）。
-    ///
-    /// 两个来处：① 到那台的连接断了（`ssh_source::run` 的断连 flush 一律 `RemovalCause::Unseen`，
-    /// emitter 裁 `RemovedDisposition::Unseen` 发它）；② F5 对账时那台还没报完清单（断着 / 还在初扫）。
-    /// 前端据此把活的 / 可重连的 tab 落「说不清」（`设计/30 §3.5.7a`：`Unseen` 不许被显示成已结束）；
-    /// 重连之后那台的重宣告把活着的翻回活、`origin-sessions-listed` 把其余的落已结束。不进 replay buffer。
-    pub const SESSION_UNSEEN: &str = "session-unseen";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -147,6 +101,81 @@ pub enum SessionStreamFrame {
     /// `session_file_reread`）。与行同一条流、同序（行先冲出去再交它）⇒ 前端落到那个 tab 上说一句话。
     /// ⚠ 不进留存：F5 之后那句话没了（已知缺口，主会话 09-25 认）。
     FileNotice(SessionFileNoticePayload),
+    /// 〔MIG-1 · `设计/99 §2.1 ⑬`〕**会话起停 / 状态的成品**（那台后端裁、`session_book` 原样转）—— 与行同一条流、同一个顺序
+    /// （行与起停的先后就是流的先后，`05 §15.3` 那条「ended 抢在行前面 ⇒ 僵尸」由构造排除）。
+    /// ⚠ 这几种**不吃 credit、不许丢**（[`Self::takes_credit`]；登记的唯一例外）：丢一格起停别处补不回来。
+    /// 活会话（本机远端同一形；`origin` 说哪台）。
+    Live(SessionLivePayload),
+    /// 红绿灯。
+    Activity(SessionActivityPayload),
+    /// 活会话住在什么容器里。
+    Container(SessionContainerPayload),
+    /// 可重连（claude 退了、tmux 会话还在）。
+    Idle(SessionIdlePayload),
+    /// 已结束。
+    Ended(SessionEndedPayload),
+    /// 说不清（那台看不见了 / F5 时那台还没报完清单）。
+    Unseen(SessionUnseenPayload),
+    /// 那台的活会话清单报完了。
+    Listed(OriginSessionsListedPayload),
+    /// 旁路快照在途几份（全局电平；批模式据此不提前收尾）。
+    SnapshotInflight(SnapshotInflightPayload),
+}
+
+impl SessionStreamFrame {
+    /// 〔MIG-1 · ⑬ 登记的例外〕这一格吃不吃 credit：行与批边界 · 记录文件出声吃（可丢、丢了按行号补）；
+    /// 起停那几种**不吃、不丢**（丢了别处补不回来）。穷尽 `match`：新长一种格编译期就要表态。
+    /// TS 那一侧同一张表住 `src/events.ts::CREDIT_EXEMPT_FRAMES`，两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
+    pub fn takes_credit(&self) -> bool {
+        match self {
+            SessionStreamFrame::Line(_)
+            | SessionStreamFrame::Batch(_)
+            | SessionStreamFrame::FileNotice(_) => true,
+            SessionStreamFrame::Live(_)
+            | SessionStreamFrame::Activity(_)
+            | SessionStreamFrame::Container(_)
+            | SessionStreamFrame::Idle(_)
+            | SessionStreamFrame::Ended(_)
+            | SessionStreamFrame::Unseen(_)
+            | SessionStreamFrame::Listed(_)
+            | SessionStreamFrame::SnapshotInflight(_) => false,
+        }
+    }
+
+    /// 一条订阅（`only` = 只跟某一个会话的那一形）收不收这一格：说某个会话的 ⇒ 是它才收；说整台的 ⇒ 整台订阅都收，
+    /// 只跟一个会话的只收〔MIG-1 续〕机器级「说不清」（那台看不见了，它跟的那一条也说不清了）。
+    pub fn reaches(&self, only: Option<&str>) -> bool {
+        match (only, self.session_id()) {
+            (None, _) => true,
+            (Some(want), Some(sid)) => want == sid,
+            (Some(_), None) => matches!(self, SessionStreamFrame::Unseen(_)),
+        }
+    }
+
+    /// 这一格说的是哪个会话（`session-lines/<sid>` 那一形据此分流）；说的是整台 / 全局的 ⇒ `None`。
+    pub fn session_id(&self) -> Option<&str> {
+        match self {
+            SessionStreamFrame::Line(p) => Some(&p.session_id),
+            SessionStreamFrame::FileNotice(p) => Some(&p.session_id),
+            SessionStreamFrame::Live(p) => Some(&p.session_id),
+            SessionStreamFrame::Activity(p) => Some(&p.session_id),
+            SessionStreamFrame::Container(p) => Some(&p.session_id),
+            SessionStreamFrame::Idle(p) => Some(&p.session_id),
+            SessionStreamFrame::Ended(p) => Some(&p.session_id),
+            SessionStreamFrame::Batch(_)
+            | SessionStreamFrame::Unseen(_)
+            | SessionStreamFrame::Listed(_)
+            | SessionStreamFrame::SnapshotInflight(_) => None,
+        }
+    }
+}
+
+/// 〔MIG-1〕[`SessionStreamFrame::SnapshotInflight`] 的体。
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+pub struct SnapshotInflightPayload {
+    pub count: u32,
 }
 
 /// 〔FW1〕[`SessionStreamFrame::FileNotice`] 的体。
@@ -179,7 +208,7 @@ pub struct SessionEndedPayload {
     pub session_id: String,
 }
 
-/// audit-fixes F03.2：idle-tmux 灰灯事件（SESSION_IDLE）payload。独立命名（非复用
+/// audit-fixes F03.2：可重连（idle-tmux 灰灯）的 payload（〔MIG-1〕会话流 `idle` 那一格）。独立命名（非复用
 /// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -188,43 +217,24 @@ pub struct SessionIdlePayload {
     pub session_id: String,
 }
 
-/// 〔GP1 · 第四波〕「说不清」事件（SESSION_UNSEEN）payload。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+/// 〔GP1 · 第四波〕「说不清」的 payload（〔MIG-1〕会话流 `unseen` 那一格）。独立命名，理由同 [`SessionIdlePayload`]：unseen ≠ ended。
+/// 〔MIG-1 续 · 主会话裁〕**机器级**：说的是「那台看不见了 / 那台还没报完清单」，前端对那台上活的 · 可重连的 tab 一并落说不清
+/// （原先逐会话发一格 `session_id`）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SessionUnseenPayload {
-    pub session_id: String,
+    pub origin: crate::origin::Origin,
 }
 
-/// 会话（重新）变活的 payload（SESSION_STARTED）。前端：已有 Tab → 复活；无 Tab →
-/// 建骨架（Batch7-F24 修复：本地**运行中途**新出现的 bg 会话此前只能等首行经
-/// ensureTab 建成无标注普通 tab——与远端 remote-session-added 对称补上元信息通道）。
+/// 〔MIG-1〕活会话的成品（会话流里的 [`SessionStreamFrame::Live`]；本机远端同一形，`origin` 说哪台）。
+/// 前端：本机 ⇒ 复活已有 tab / 建骨架（原 `session-started`）；远端 ⇒ 建骨架（原 `remote-session-added`）。先于该会话的行。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct SessionStartedPayload {
+pub struct SessionLivePayload {
     pub session_id: String,
-    /// Batch7-F24：pidfile 元信息（lookup 不到时 None——纯 revive 场景照旧）。
-    pub cwd: Option<String>,
-    pub kind: Option<String>,
-    pub name: Option<String>,
-}
-
-/// 远端会话宣告 payload（REMOTE_SESSION_ADDED，Batch5-F18）。backend 的
-/// session_added 帧透传前端——ssh_source 在 dispatch Added 时同步 emit，
-/// **先于该会话的任何内容行**，前端据此建骨架 Tab 不等首行。
-///
-/// 已知跨通道竞序边角（Batch5 G 验收留档）：本事件由 ssh_source task 直发，
-/// 而 SessionRemoved/断连归档经 session_changes 通道 + emitter 线程 emit——
-/// 重连时旧连接的归档若晚于新连接的 Added 到达，骨架会被 archived；有行的
-/// 会话靠 ensureTab 远端见行复活自愈，**零行 idle 会话会卡 archived 到下一行
-/// 到达**。低频、可自愈补救（F5 对账），暂不为此引入统一 lifecycle 通道。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-pub struct RemoteSessionAddedPayload {
-    pub session_id: String,
-    /// 机器标签（`[label]` Tab 前缀）。
+    /// 哪台机器（本机 `<local>`；远端是 `[label]` Tab 前缀）。
     pub origin: String,
     /// Batch7-F24：pidfile 元信息透传（p1e backend 起有值；旧 backend → None）。
     /// kind = "interactive"/"bg"（bg → ⚙ 标识；〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
@@ -242,7 +252,7 @@ pub struct RemoteSessionAddedPayload {
     pub name: Option<String>,
 }
 
-/// 〔U4b · 第四波〕`session-container` 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
+/// 〔U4b · 第四波〕`container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`
 /// （判不了的不发这个事件）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -275,7 +285,7 @@ pub struct SessionTapPayload {
     pub end: Option<String>,
 }
 
-/// 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。
+/// 〔U4b · 第四波〕`listed` 格 的 payload：哪台机器的清单报完了。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -295,23 +305,8 @@ pub struct FrontendReadyPayload {
     pub priority_sid: Option<String>,
 }
 
-/// `list_active_sessions` IPC 返回项（Batch5-F18）：本地活跃会话清单（含 cwd），
-/// 供前端启动时先建全部骨架 Tab。远端不走此 IPC——连接晚于前端启动，走
-/// [`RemoteSessionAddedPayload`] 事件。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-// **刻意不加 `#[serde(rename_all = "camelCase")]`**：本 struct 在线上就是 snake_case
-// （`main.ts` 读的是 `s.session_id`），生成物必须忠实于**线上契约**而不是风格偏好。
-// 顺手统一成 camelCase 是行为改动 —— 本工作区每个 commit 的硬判据是「行为逐字节不变」。
-// 这个不一致**正是生成它的理由**：手写镜像可以静默漂成 camelCase，生成物不会。
-pub struct ActiveSessionPayload {
-    pub session_id: String,
-    pub cwd: String,
-    /// Batch7-F24：kind/name（bg → ⚙ 标识；name 作 bg 标题。〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。
-    pub kind: Option<String>,
-    pub name: Option<String>,
-}
+// 〔MIG-1〕`list_active_sessions` 的返回项 `ActiveSessionPayload`〔散文墓碑〕删了：本机骨架从会话流里的 `live` 成品来
+//   （F5 就绪点按成品缓存重放），那条命令随之退役。
 
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
 /// （〔C4b · 第四波〕从 `Option<String>` 改成 `String`：五个发射点全在 `ssh_source.rs`、全都带着那台的 label，
@@ -338,16 +333,4 @@ pub struct SessionActivityPayload {
     pub session_id: String,
     pub status: Option<String>,
     pub waiting_for: Option<String>,
-}
-
-/// v2.3.0 issue #11：单个 session 的最新 task 列表快照。
-/// 每次发都是**完整重发**（而非 diff），前端 panel 直接整体 re-render，
-/// 避免 diff 算法 + 防止漏掉删除事件。
-#[derive(Debug, Serialize, Clone)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct TasksUpdatePayload {
-    pub session_id: String,
-    pub tasks: Vec<crate::tasks::TaskEntry>,
 }

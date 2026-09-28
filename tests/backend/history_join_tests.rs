@@ -220,7 +220,7 @@ impl Remote for Far {
 
 fn reach(table: &ReachTable) {
     crate::remote_ask::answer_reach_with(
-        &json!({"origin": "dev", "dial": {"host": "h", "port": 22, "user": "u", "key_path": "/k"}}),
+        &json!({"origin": "dev", "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}}),
         table,
     )
     .unwrap();

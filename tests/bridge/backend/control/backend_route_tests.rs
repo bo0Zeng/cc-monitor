@@ -91,10 +91,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
     //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
-    // ★ 08-08 扩面当场逮出来的**第四个真实发送端**（此前整个在扫描面之外）。
-    // 它发的是 `probe_backend` 里那条 `ping`：只把成败渲染成 `control=ok(..ms)` /
-    // `control=failed(..)` 的诊断串，**不做任何回落决策** ⇒ 没有「该不该回落」这个问题。
-    ("ssh_source.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 〔MIG-1 续〕`ssh_source.rs` 那一行（08-08 扩面逮出的第四个发送端：`probe_backend`〔散文墓碑〕 里那条 `ping`，只渲染诊断串、不做回落决策）
+    //   摘了：测试连接搬进本机后端（`dial/probe.rs`），monitor 这一侧不再发那一问。
+
     // 〔C4e · 第四波 4C〕**`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
     //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
@@ -188,6 +187,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。
     ("sftp_pool.rs", Verdict::UsesRouter),
+    // ★ 〔MIG-3b · 4d-lanes 子步 1〕部署计划：把「怎么够到那台 ＋ 这一版带着哪几格」交给**本机**后端 `deploy-plan`，
+    //   经 `sftp.rs::ask_plan_for` 这一口；判定住后端，没有第二条路可回落（判定不回到 monitor）。形状与 `asset_sync.rs` 那一行同。
+    ("sftp.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。
@@ -225,6 +227,8 @@ enum Verdict {
     /// ⚠ 与上面那一档**刻意分开**：`ExemptPendingF14` 说的是「本该走分流器、
     /// 但今天还差一步」，这一档说的是「**根本没有回落这回事**」。
     /// 合成一档会让「欠着」与「不适用」长得一样。
+    /// 〔MIG-1 续〕今天没有住户（唯一那个 `ssh_source.rs` 的探测随测试连接搬进本机后端）；档位留着，下一个探测型发送端来了照样得表态。
+    #[allow(dead_code)]
     ProbeOnlyNoFallbackDecision,
     /// **纯路由器**：它的 `.call(` 调的是**别人注入的句柄**，自己够不着任何后端发送端，
     /// 因此既没有「该不该回落」这个问题，也没有资格去分流。

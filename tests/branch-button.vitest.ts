@@ -12,19 +12,19 @@ const { created } = vi.hoisted(() => ({
 }));
 // 🔴 **〔步 12·C 2026-09-20〕这里原先 mock 的是**两条**命令，今天只有一条。**
 //
-// 这份 mock 本身就是一条判据：`create_remote_branch_session` **已经不在这里了** ——
+// 这份 mock 本身就是一条判据：`create_remote_branch_session` **已经不在这里了** ——〔散文墓碑〕
 // 生产代码要是还去调它，vitest 会抛 `is not a function`，当场红。
 // ⇒ 「旧命令名直接退役、不留别名」这条纪律在前端这一侧**有东西在守**。
 //
 // `which` 记的从前是「调了哪条命令」，今天记的是「送过去的 origin 是什么」 ——
 // 那正是这次合并搬家的东西：**分叉点从命令名搬到了参数**。
-vi.mock("../src/ipc/commands", () => ({
-  commands: {
-    create_branch_session: (a: unknown) => {
-      created.which.push(String((a as { origin?: unknown }).origin));
-      created.args.push(a);
-      return Promise.resolve({ sessionId: "new-sid-1234", jsonlPath: "/p/new.jsonl" });
-    },
+// 〔MIG-3b〕分叉改由界面经通道直说那台后端（`session-writes.ts::forkSession`，monitor 那条分叉命令退役）。
+//   替身记下的仍是「送了哪台 · 哪个 sid · 哪条消息」（同一个形状，下面各条断言不改），它就是真发出去的那一发。
+vi.mock("../src/session-writes", () => ({
+  forkSession: (origin: string, sid: string, uuid: string) => {
+    created.which.push(String(origin));
+    created.args.push({ origin, sourceSessionId: sid, messageUuid: uuid });
+    return Promise.resolve({ sessionId: "new-sid-1234", jsonlPath: "/p/new.jsonl" });
   },
 }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
@@ -191,7 +191,7 @@ describe("步 12·C：本机 / 远端走**同一条** IPC，分叉点在 `origin
 
   /**
    * ★★ 远端那条**绝不能**把路径发过去：backend 刻意只收 sid（少一个可被构造的路径入参
-   * = 少一条路径穿越面，见 `remote_branch.rs` 头注）。而且那个路径是**本机视角**的，
+   * = 少一条路径穿越面，见 `branch_core::find_session_file` 头注）。而且那个路径是**本机视角**的，
    * 发过去在远端根本不成立。
    */
   it("★★ 有 origin → 原样送那台的机器名，带的是 **sid**，且一个路径字段都没有", async () => {

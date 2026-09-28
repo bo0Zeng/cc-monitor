@@ -103,7 +103,7 @@ impl Remote for FakeRemotes {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
-            let host = dial["host"].as_str().unwrap().to_string();
+            let host = dial["machine"]["host"].as_str().unwrap().to_string();
             self.seen
                 .lock()
                 .unwrap()
@@ -132,7 +132,7 @@ impl Remote for FakeRemotes {
 }
 
 fn dial(host: &str) -> Value {
-    json!({ "host": host, "port": 22, "user": "u" })
+    json!({ "machine": { "host": host, "port": 22, "user": "u" } })
 }
 
 fn sync_args(host: &str) -> Value {

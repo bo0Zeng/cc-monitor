@@ -112,7 +112,7 @@ impl Remote for Recorder {
 fn reach_args(origin: &str, host: &str) -> Value {
     json!({
         "origin": origin,
-        "dial": {"host": host, "port": 22, "user": "u", "key_path": "/k"},
+        "dial": {"machine": {"host": host, "port": 22, "user": "u", "keyPath": "/k"}},
     })
 }
 
@@ -204,7 +204,7 @@ fn both_doors_register_through_the_one_writer() {
     answer_reach_with(&reach_args("dev", "h2"), &a).unwrap();
     let row = lock(&a).get("dev").cloned().unwrap();
     assert_eq!(row.peer.as_deref(), Some("p"));
-    assert_eq!(row.dial["host"], "h2");
+    assert_eq!(row.dial["machine"]["host"], "h2");
     // 半给的入参拒，表不动。
     for bad in [
         json!({}),
@@ -358,7 +358,7 @@ async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
 /// ⚠ 买不到：「写进远端进程 stdin」那一跳要真 sshd（读数见 `W5-AUX.md §7`，不进门禁）。
 #[test]
 fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
-    let dial = json!({"host": "h", "port": 22, "user": "u", "key_path": "/k"});
+    let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});
     let with =
         crate::remote_ask::capture_request(&dial, "'/b' '--x'".into(), Some("{\"a\":1}\n".into()))
             .expect("拼得出请求");

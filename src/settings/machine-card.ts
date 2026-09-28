@@ -12,7 +12,6 @@
  * 2. `parts()` —— 交出「连接 / 组件」两块，详情页据此分栏（S4b-3b-2）；〔ST2〕外加「工具」栏那一块（别名）。
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
-import { Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -20,7 +19,7 @@ import { homeDir, join } from "@tauri-apps/api/path";
 import { openFileWindow } from "../file-window";
 import { buildAliasManager } from "./machine-aliases"; // 〔AL2〕② 别名：远端卡与本机同一个组件（`origin` = 这台）
 import { recordFacet, type MachineFacet } from "./machine-status";
-import { hostKey, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
+import { hostKey, readRemoteConfig, resolveRemoteConfigByOrigin, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
@@ -33,8 +32,8 @@ import { isSelectable, currentWorkingAccount } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount } from "../launch-account";
 import { runRemoteLauncher } from "../remote-launch-run";
-import type { ConnTestResult } from "../generated/ConnTestResult";
-import type { ResolvedHost } from "../generated/ResolvedHost";
+import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
+import type { ResolvedHost } from "../ssh-config-reads";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
 
@@ -119,6 +118,20 @@ function parsePort(raw: string): number {
  * 而**手写类型时 Rust 新增一个 variant 并不会让它红** —— 那条 `never` 会一直在守一个
  * TS 侧自己造的联合，不是 Rust 的真实形状。换成生成物它才真正对 Rust 的改动有牙。
  */
+/** 〔MIG-1 收尾〕测试连接到点没等到结局时「停在哪一段」的那句话（最后收到的那一格；握手中那一段带上最后一行阶段）。 */
+export function describeStop(stop: ProbeStop): string {
+  switch (stop.at) {
+    case "start":
+      return copyText("machineCard.stall.start");
+    case "handshake":
+      return copyText("machineCard.stall.handshake", { step: describeStage(stop.last).text });
+    case "hello":
+      return copyText("machineCard.stall.hello");
+    case "control":
+      return copyText("machineCard.stall.control");
+  }
+}
+
 export function describeStage(st: ConnectStage): {
   icon: string;
   text: string;
@@ -717,7 +730,7 @@ export class MachineCard {
       ?.remove();
   }
 
-  /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
+  /** 点「测试连接」：组本卡片 → 本机后端 `remote-probe`（〔MIG-1 续〕原 Tauri 命令 `test_remote_connection`）→ 渲染结果。 */
   private async onTestConnection(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
@@ -727,19 +740,15 @@ export class MachineCard {
     this.testButton.disabled = true;
     const prevLabel = this.testButton.textContent;
     this.testButton.textContent = copyText("machineCard.test.running");
-    // F46：连接分阶段事件泳道——测试开始即清空日志区、随 Channel 事件实时追加。
+    // F46：连接分阶段事件泳道——测试开始即清空日志区。〔MIG-1 收尾〕本机后端边拨边推（进度流 `probe-progress/<票>`），收一行画一行。
     this.testResult.innerHTML = "";
     this.testResult.style.display = "block";
     const stageLog = document.createElement("div");
     stageLog.className = "remote-stage-log";
     this.testResult.appendChild(stageLog);
-    const onStage = new Channel<ConnectStage>();
-    onStage.onmessage = (st) => this.appendStageLine(stageLog, st);
     try {
-      const res = await commands.test_remote_connection({
-        cfg,
-        onStage,
-      });
+      // 〔MIG-1 续 · ⑬〕表单里这一台（可能没保存）＋ 已保存的那几台（同名那一份的指纹 · 跳板）交给本机后端，它组请求、拨一次。
+      const res = await probeMachine(cfg, (await readRemoteConfig()).hosts, (st) => this.appendStageLine(stageLog, st));
       this.renderTestResult(res, null, stageLog);
       // S3：记进账本 —— 列表行上那个「✓ 3 分钟前」就是这一次的结论。
       // 一次测试同时给出两格：`sshOk`（连得上吗）与 `backendOk`（backend 回 hello 了吗）。
@@ -753,8 +762,13 @@ export class MachineCard {
         });
       }
     } catch (e) {
-      console.warn("test_remote_connection failed:", e);
-      this.renderTestResult(null, copyText("machineCard.test.failed", { e: String(e) }), stageLog);
+      console.warn("remote-probe failed:", e);
+      // 〔MIG-1 收尾〕到点没等到结局 ⇒ 说出停在哪一段（最后收到的那一格）。
+      const said =
+        e instanceof ProbeStalled
+          ? copyText("machineCard.test.stalled", { said: e.message, where: describeStop(e.stop) })
+          : copyText("machineCard.test.failed", { e: String(e) });
+      this.renderTestResult(null, said, stageLog);
       this.recordFacet("connection", { kind: "fail", detail: copyText("machineCard.test.unreachable") });
     } finally {
       this.testButton.disabled = false;

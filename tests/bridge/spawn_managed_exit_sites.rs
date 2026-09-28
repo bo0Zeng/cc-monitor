@@ -153,14 +153,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     ),
     // 〔MIG-3a〕别名撞名问 PowerShell 内建别名那一行（`ask_get_alias`）随方言进了那台后端 —— 后端那一处起进程由它自己的 `readonly_guard::spawn_registry` 登记。
     // 〔SR1a · 2026-09-24〕拨号代理宿主那一行**摘了**：它不再起 `--dial` 子进程（拨号挪进本机常驻后端，经流上的链路做）。
-    (
-        "ssh_source.rs",
-        "resolve_ssh_host",
-        "spawn_managed_cmd",
-        "`ssh -G <别名>`，别名过了 `is_safe_alias` 才进 argv；stdout piped 因为要解析它。\
-         整跳还得包在 `spawn_blocking` 里（同步阻塞调用不许卡 tokio 线程）——\
-         这几样都在出口的射程之外。",
-    ),
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh -G` 那一行出表（解析 ssh config 搬进后端）。
     // 〔SH1 · V136〕monitor 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕出表：驾驶舱读面改走后端，monitor 不再起 `bash`。
     (
         "backend/control/local_backend.rs",

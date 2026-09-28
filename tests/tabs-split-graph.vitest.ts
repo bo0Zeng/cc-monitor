@@ -237,6 +237,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/session-reads.ts", // 〔C4c〕resume 之前问记录还在不在（经通道问 `history-record`）
     "src/tmux-control.ts", // 〔C4e〕杀会话经通道直接说后端的 `kill`（原 Tauri 命令 `kill_remote_tmux` 退役）
     "src/tmux-name-mint.ts", // 〔FE1〕tmux 全新 resume 的铸名只经这一个家（名单没问到 ⇒ 不起、说清）
+    "src/tmux-reads.ts", // 〔MIG-1 续〕tmux 名单那唯一的取数点经通道问那台后端 `tmux-list`（原 Tauri 命令 `list_*_tmux` 退役）
     "src/tmux-sessions.ts",
   ],
 };

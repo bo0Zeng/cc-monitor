@@ -72,13 +72,13 @@ describe("K1 · 铸名只有一个家", () => {
   });
 
   it("★ 问 tmux 名单的生产文件 == 手写集合（两向）", () => {
-    // 手写期望，不从实现生成。每一格为什么在（包装层 `ipc/commands.ts` 是 `list_local_tmux: () =>` 这种签名，不带 `(` 直调，不在人群里）：
+    // 手写期望，不从实现生成。每一格为什么在（〔MIG-1 续〕取法换成读口 `listTmux(`；读口的定义处 `tmux-reads.ts` 除外）：
     // - `tmux-name-mint.ts`：铸名的家（本机 ＋ 远端）。
     // - `tab-session-actions.ts`：`fetchTmuxFresh`，TabManager 唯一取数点（attach / kill / 就地 resume 要**活的**那一份；
     //   它取回来的答案经 `listingFromFetch` 交给铸名的家，不自己铸）。
     const want = ["src/tab-session-actions.ts", "src/tmux-name-mint.ts"];
     expect(
-      filesMatching(/\blist_(?:local|remote)_tmux\s*\(/),
+      filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/, ["src/tmux-reads.ts"]),
       "问 tmux 名单的地方变了。新长的那一处是不是本该走 `tmux-name-mint.ts::readTmuxListing`？",
     ).toEqual(want);
   });
@@ -136,10 +136,9 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     expect(await mintFreshTmuxName("aya", "/home/u/proj")).toEqual({ ok: true, name: "proj-cc-2" });
   });
 
-  it("listingFromFetch：undefined（调用方那一问抛了）⇒ unknown；远端 null ⇒ known 空表；本机 null ⇒ unknown", () => {
-    expect(listingFromFetch("aya", undefined).kind).toBe("unknown");
-    expect(listingFromFetch("aya", null)).toEqual({ kind: "known", sessions: [] });
-    expect(listingFromFetch(LOCAL_ORIGIN, null).kind).toBe("unknown");
+  it("listingFromFetch：undefined（调用方那一问抛了）⇒ unknown；null（那台没装 tmux，〔MIG-1 续〕本机远端同义）⇒ known 空表", () => {
+    expect(listingFromFetch(undefined).kind).toBe("unknown");
+    expect(listingFromFetch(null)).toEqual({ kind: "known", sessions: [] });
   });
 
   it("★ 本机 resume：名单不知道 ⇒ 交 `tmuxName: null`（后端如实不进容器）；正控：知道 ⇒ 交铸出来的名字", async () => {

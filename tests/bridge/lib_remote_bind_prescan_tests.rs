@@ -3,8 +3,8 @@
 //! 两格：
 //! 1. **判定本身**（纯函数 `wants_title_prescan`）：有令牌 ⇒ 不扫；没令牌 ⇒ 照旧扫。
 //! 2. **接线**：`lib.rs` 里那条线程的起点前面，真的是拿**令牌账本**里这个 sid 的令牌去问的这一句。
-//!    ⚠ 这一格是**文本**判据 —— 那段代码住在 `run()` 的 setup 闭包里（一条 `std::thread` 里的
-//!    `for sid in change.added`），单测起不来 Tauri 应用、也造不出那条通道。它只买「门还在线程起点前、
+//!    ⚠ 这一格是**文本**判据 —— 〔MIG-1〕那段代码住在 `lib.rs::session_side_effects`（会话成品出口线程调它），
+//!    单测起不来 Tauri 应用、也造不出那条通道。它只买「门还在线程起点前、
 //!    问的是令牌账本」，买不到「真机上少起了一条线程」。
 //!
 //! 买不到：带令牌且在 tmux 里的会话从此没有预扫出来的标题绑定 —— 令牌那扇窗关了之后第一次点 ↗
@@ -33,7 +33,7 @@ fn the_prescan_thread_start_is_gated_by_the_token_book() {
     // 门：问的是令牌账本里**这个 sid** 的令牌，问完不想扫就跳过本轮。
     let ask_at = guard_core::find_pinned(
         prod,
-        "let token = bind::remote_rbind_tokens().token_of(&sid);",
+        "let token = bind::remote_rbind_tokens().token_of(sid);",
     )
     .expect("向令牌账本问这个 sid 的那一句应恰好一处");
     let gate_at = guard_core::find_pinned(prod, "if !wants_title_prescan(token.as_deref()) {")
@@ -50,7 +50,7 @@ fn the_prescan_thread_start_is_gated_by_the_token_book() {
     );
     let between = &prod[gate_at..spawn_at];
     assert!(
-        guard_core::contains_word(between, "continue"),
-        "门后面没有 `continue` —— 不想扫也照样起线程"
+        guard_core::contains_word(between, "return"),
+        "门后面没有 `return` —— 不想扫也照样起线程"
     );
 }

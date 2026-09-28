@@ -22,7 +22,7 @@
  * | **22.4** 精简模式 CSS 不塌 grid 行 | ✅ **已有人守** —— `tests/app-grid-claims.vitest.ts`，`viewer` 模式的隐式行数钉在 0 | **不在这里复制**（`D1`） |
  * | **22.5** 关窗要 `core:window:allow-close` | ✅ **已有人守** —— `tests/bridge/capability_registry_tests.rs::every_webview_permission_is_registered` 那条 `stale` 断言（`ALLOWED` 里登记过的权限必须还在 `capabilities/default.json` 里）。⚠ 那份文件的头注**逐字说 `§22` 那处讲的是「要加权限，不是不许加」** —— 它当时判的是「本条服务哪条要求」，而它顺带兑现的正是 `§22` 第 5 项 | **不在这里复制**（`D1`；且 `.rs` 不在本轮写区，只能登记） |
  * | **22.3/22.6** listen 先注册再 emit · 独立窗自调 `dispatcher.start()` | 🔴 **没人守** | ⇒ 本文件 ⑥ |
- * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | ✅ **Rust 那半已有人守**〔S5 · 第四波〕—— `tests/bridge/lib_window_lifecycle_tests.rs::every_window_building_command_is_async`（建窗点集合两向相等 ＋ 每处 `async fn` ＋ 紧挨 `#[tauri::command]`）· `…::every_emit_to_targets_a_webview_window_not_a_bare_label`（`emit_to` 调用点两向相等 ＋ 目标由 `EventTarget::webview_window(` 绑定）。TS 那半（`windowScoped: true`）在 ⑥ 里钉了 | **不在这里复制**（`D1`） |
+ * | **22.1/22.2** 开窗 IPC 必须 `async` · 定向事件 target-kind 对齐 | ✅ **Rust 那半已有人守**〔S5 · 第四波〕—— `tests/bridge/lib_window_lifecycle_tests.rs::every_window_building_command_is_async`（建窗点集合两向相等 ＋ 每处 `async fn` ＋ 紧挨 `#[tauri::command]`）· `…::every_emit_to_targets_a_webview_window_not_a_bare_label`（`emit_to` 调用点两向相等 ＋ 目标由 `EventTarget::webview_window(` 绑定）。TS 那半（viewer 传 `windowScoped: true`）〔MIG-1 收尾 · V41〕随那个选项删了：`bindEvents` 里已没有 Tauri 监听，定向投递只剩 `src/ipc/chan.ts` 那一处按窗口作用域听 | **不在这里复制**（`D1`） |
  *
  * ⇒ **`105` 那句「所以它们没人守」要改成「五条里有两条半今天真有人守，只是那些判据的
  * 散文里没点出它服务哪条条」。** 后半句才是 `105` 量到的东西（它量的是**指向**）。
@@ -411,28 +411,18 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     expect(bind, "`bootstrapViewer` 里找不到 `await bindEvents(` —— 要么改名了，要么 `await` 被摘了").toBeGreaterThan(-1);
     expect(/streams:\s*\[/.test(body.slice(bind)), "`bootstrapViewer` 的 `bindEvents` 没带 `streams` —— 独立窗口收不到会话内容").toBe(true);
     expect(body.includes("replay_session_to_window"), "退役的定向重放命令又回来了").toBe(false);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`events.ts` 那一半换判法：`bindEvents` 里最后几条 Tauri 监听两边各自退役（MIG-1 会话起停并进会话流 · MIG-3b `task-update`），
+    //   「先注册完 listen 再订」没有可排的序了 ⇒ 判「那里一条异步注册的 `listen` 都没有」—— 谁长回来一条，这里先红，逼人把「等注册完」那一格补回来。
     const ev = codeOf("src/events.ts");
-    const registered = ev.indexOf("await Promise.all(registrations)");
-    const subscribed = ev.indexOf("chan.subscribe(");
-    expect(registered, "`events.ts` 里找不到 `await Promise.all(registrations)`").toBeGreaterThan(-1);
-    expect(subscribed, "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
+    expect(ev.indexOf("chan.subscribe("), "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
     expect(
-      registered < subscribed,
+      /\blisten\s*(<[^>]*>)?\s*\(|@tauri-apps\/api\/event/.test(ev),
       "条 22.3：`listen()` 是**异步注册**，注册完成前 emit 的事件会**静默丢**（实测症状：viewer 白屏只剩状态栏）。\n" +
-        "⇒ 起停事件的监听必须 `await` 注册完，才订会话流（订阅一登记，句柄就可能开始交格）。",
-    ).toBe(true);
+        "⇒ `bindEvents` 里若再有 Tauri 监听，必须 `await` 注册完才订会话流（订阅一登记，句柄就可能开始交格）。",
+    ).toBe(false);
   });
 
-  it("★ 22.2（TS 那半）：viewer 的 `bindEvents` 必须带 `windowScoped: true`", () => {
-    expect(
-      /windowScoped:\s*true/.test(VIEWER ?? ""),
-      "条 22.2：定向投递（Rust `emit_to(EventTarget::webview_window(label))`）必须配前端\n" +
-        "`getCurrentWebviewWindow().listen`，也就是 `bindEvents({ windowScoped: true })`。\n" +
-        "模块级 `listen` 是 `Any` 监听，**命不中**定向发射 ⇒ 事件静默丢弃。\n" +
-        "⚠ 这一条只钉 TS 那半；Rust 侧 `emit_to` 的 target-kind 由\n" +
-        "`tests/bridge/lib_window_lifecycle_tests.rs::every_emit_to_targets_a_webview_window_not_a_bare_label` 钉。",
-    ).toBe(true);
-  });
+  // 〔MIG-1 收尾 · V41〕「22.2（TS 那半）：viewer 的 `bindEvents` 必须带 `windowScoped: true`」那一条随那个选项删了（主会话裁）。
 
   it("★ 22.6：settings 窗必须自调 `dispatcher.applyOverrides` ＋ `dispatcher.start()`，各恰一处", () => {
     const body = SETTINGS ?? "";

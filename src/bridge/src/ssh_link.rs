@@ -72,9 +72,18 @@ pub struct Ack {
     /// 〔FIX · `设计/99 §2 ㊶`〕经跳板时跳板那一台报过的指纹（老后端 / 直连 ⇒ 空）。
     #[serde(default)]
     pub jump_fingerprints: std::collections::BTreeMap<String, String>,
-    /// 竞速胜出的地址（`host:port`）。
+    /// 竞速胜出的地址（`host:port`，给人看）。
     #[serde(default)]
     pub endpoint: Option<String>,
+    /// 〔MIG-1 收尾〕同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
+    #[serde(default)]
+    pub winner: Option<crate::ssh_source::Endpoint>,
+    /// 〔MIG-1 收尾〕这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
+    #[serde(default)]
+    pub strict: bool,
+    /// 〔MIG-1 收尾〕同上，跳板那一台。
+    #[serde(default)]
+    pub jump_strict: bool,
     #[serde(default)]
     pub v: u32,
     #[serde(default)]
@@ -222,31 +231,6 @@ pub async fn captured<R: AsyncBufRead + Unpin>(r: &mut R, cap: u64) -> Result<Ca
             &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
         ))
     })
-}
-
-/// `forward` 用法：下一条「接进了第 n 条连接」。管子关了 ⇒ `None`（转发收工了）。
-pub async fn accepted<R: AsyncBufRead + Unpin>(
-    r: &mut R,
-    cap: u64,
-) -> Result<Option<u64>, LinkError> {
-    let Some(line) = read_line_capped(r, cap).await? else {
-        return Ok(None);
-    };
-    let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
-        LinkError::Garbled(copy_text(
-            "rsSshLink.parse.withLine",
-            &[("e", &e.to_string()), ("line", &format!("{:?}", line))],
-        ))
-    })?;
-    v.get("accepted")
-        .and_then(serde_json::Value::as_u64)
-        .map(Some)
-        .ok_or_else(|| {
-            LinkError::Garbled(copy_text(
-                "rsSshLink.parse.noAccepted",
-                &[("line", &format!("{:?}", line))],
-            ))
-        })
 }
 
 /// 〔SR1b〕`files` 用法：ack 之后一问一答，这里读**一行应答**（JSON 对象）。管子关了 ⇒ [`LinkError::Silent`]。

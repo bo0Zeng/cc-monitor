@@ -150,7 +150,7 @@ pub(crate) fn hello_decision(line: &str, expected: &str, replaced: bool) -> Hell
         return HelloDecision::NotOurs(copy_text("rsRemoteResident.hello.notOurs", &[]));
     }
     let theirs = v["build_id"].as_str().unwrap_or_default();
-    if !replaced && crate::sftp::is_newer(expected, theirs) {
+    if !replaced && deploy_core::is_newer(expected, theirs) {
         HelloDecision::Replace
     } else {
         HelloDecision::Attach

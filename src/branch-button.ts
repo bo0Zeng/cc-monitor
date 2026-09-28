@@ -29,11 +29,10 @@
  * 按钮的呈现自动跟着变，不需要任何刷新管线；③ 样式那半可以纯 CSS 后代选择器搞定。
  */
 
-import { commands } from "./ipc/commands";
+import { forkSession, type BranchResult } from "./session-writes";
 // 〔C4a〕本机 = `LOCAL_ORIGIN`（`"<local>"`，Rust 侧 `origin.rs::LOCAL`，跨语言对拍）。
 import type { Origin } from "./ipc/origin";
 import { showActionFailureToast } from "./error-toast";
-import type { BranchResult } from "./generated/BranchResult";
 import { copyText } from "./copy-table";
 
 /** off-main 的卡片被 `BranchFolder` 包进这个容器里。判据的唯一锚点。 */
@@ -107,11 +106,8 @@ export function attachBranchButton(
         // ⚠ **本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `undefined`、不是 `null`** ——
         //   `INVARIANTS §40` 逐字「本地 ＝ 不走 ssh 的远端」，它是一个**具名**的 origin。
         //   〔C4a〕`opts.origin` 本来就是这个表示，原样过线。
-        const res = await commands.create_branch_session({
-          origin: opts.origin,
-          sourceSessionId: opts.sourceSessionId,
-          messageUuid: opts.uuid,
-        });
+        //   〔MIG-3b〕今天界面经通道直说那台后端 `session-fork`（`session-writes.ts::forkSession`），monitor 那条转交删了。
+        const res = await forkSession(opts.origin, opts.sourceSessionId, opts.uuid);
         btn.textContent = copyText("branchButton.attachBranchButton.done");
         window.setTimeout(() => (btn.textContent = copyText("branchButton.attachBranchButton.icon")), 2000);
         opts.onForked(res);

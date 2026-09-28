@@ -64,12 +64,9 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
     "request",
     "〔C2 09-24〕它查的是**跳板那一台**（`cfg.jump` 那个标签），而入参 `cfg` 已经是一台远端的配置 —— \
      本机没有「经跳板连本机」这一形（本机那条路不拨 SSH），`<local>` 结构上走不到这里：\
-     调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。",
-), (
-    "dial_host.rs",
-    "effective_fingerprint",
-    "〔VIS2 09-26〕只被 `request` 调（同上一行）：入参 `cfg` 已是一台远端的配置，这里现读的是**同一台**盘上那份的 \
-     host key 指纹（固化后下一次拨号就严格）；本机那条路不拨 SSH、没有 host key，`<local>` 结构上走不到这里。",
+     调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。\
+     〔MIG-1 收尾〕另一处是**同一台**盘上那份（当 `saved` 交给后端，固化之后下一次拨号就严格；原住 `effective_fingerprint`〔散文墓碑〕，\
+     指纹继承规则随组请求搬进后端 `dial/machine.rs`）—— 同一条理由：本机那条路不拨 SSH、没有 host key。",
 ), (
     "backend/control/backend_control.rs",
     "stop_remote_resident",
@@ -103,24 +100,23 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔C4c · 第四波 4B〕账号面那一行（`cfg_for`，原住 `accounts.rs`）〔散文墓碑〕**还掉了**：它只服务远端账号清单与信任预检两条 Tauri 命令，
     //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
     // 〔E2〕`probe_ccm_cli`〔散文墓碑〕 那一行还掉了：它不再查远端配置（改经那台后端的门问 `ccm-probe`，`<local>` 也是一个 origin）。
-    // 〔SH1〕`hooks_diag.rs::diagnose_remote_cc_bus_hooks` 那一行还掉了：它不再查远端配置（事实经 `frame_query::call(origin, …)` 问那台后端）。
+    // 〔SH1〕远端钩子诊断那一行还掉了：它不再查远端配置（〔MIG-3b〕今天整件是那台后端的帧命令 `hooks-diag`）。
     ("launch.rs", "build_remote_ssh_ps_command"),
     // 〔SH1 · V137〕`mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
     // 〔MIG-3a〕`mcp.rs` 那最后一行（远端项目 `.mcp.json` 读）随文件删了：MCP 读写进了那台后端，界面经通道直问、不查远端配置。
     // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）
     //   从这里还掉了：它们不再去查远端配置，改经那台机器的后端写（门开在 origin 上，`<local>` 与远端同一条路）。
     //   **表只许变短，这一次它真的短了。**
-    // 〔C2 09-24〕住址 `port_forward.rs::start_forward` → `dial_host.rs::forward`：查配置搬进了宿主
-    //   （端口转发那一份进了通信层，读配置是宿主的事）。欠的那笔债一格没变 —— 本机那条路今天仍没有端口转发。
-    ("dial_host.rs", "forward"),
-    // 〔LOC1a · 第四波 4D〕`remote_branch.rs::create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，
+    // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一行（宿主起转发那个函数）还掉了：转发账进了本机常驻后端，查的是后端自己的可达表，
+    //   monitor 不再查远端配置。本机那条路仍没有端口转发（可达表里没有 `<local>` ⇒ 回 `unreachable`，明说）。
+    // 〔LOC1a · 第四波 4D〕`remote_branch.rs` 的 `create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，〔散文墓碑〕
     //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
     ("remote_history.rs", "require_cfg_by_label"),
     // 〔SR1b · 09-24〕`inproc_dial.rs` 那一行（跳板那一跳查配置，只服务 SFTP）**还掉了**：界面进程零 SSH，
     //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
     //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
-    // 〔SH1〕`backend/control/tmux.rs::list_remote_tmux` 那一行还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
+    // 〔SH1〕`backend/control/tmux.rs` 里列会话那一行（〔MIG-1 续〕那条命令已整条搬走）还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
     // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。

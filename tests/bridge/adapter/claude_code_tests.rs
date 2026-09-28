@@ -12,6 +12,5 @@ fn claude_layout_locked() {
     assert_eq!(a.id(), "claude-code");
     let l = a.layout();
     // 〔LOC1b · 4D〕子目录名 / 活性目录 / 扩展名三格随 monitor 读本机盘那几份实现删了（目录布局归后端 `agents/claudecode/`）。
-    assert_eq!(l.tasks_subdir, Some("tasks"));
     assert_eq!(l.sid_strategy, SidStrategy::Stem);
 }
