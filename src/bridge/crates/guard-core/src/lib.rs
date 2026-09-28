@@ -1985,6 +1985,185 @@ pub fn pin_line(hay: &str, line: &str) -> Result<usize, String> {
     }
 }
 
+// ═══ 〔MIG-3b 续〕从 monitor `structural_scan.rs` 搬来（足迹的申报表与它的判据进了后端，两侧用同一把）═══
+
+/// 一次扫描的结果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScanReport {
+    /// 实际检查过的出现次数。
+    pub checked: usize,
+    /// 违反性质的出现（每条带可读描述）。
+    pub violations: Vec<String>,
+}
+
+impl ScanReport {
+    /// 断言这次扫描通过。**`min_checked` 不是可选的**——它就是要件 3。
+    ///
+    /// 扫到的数量少于 `min_checked` 时同样失败，措辞明确指向"扫描器可能失效了"
+    /// 而不是"被测代码有问题"：这两种失败的排查方向完全不同，混在一起会浪费很多时间。
+    pub fn require(&self, min_checked: usize, what: &str) -> Result<(), String> {
+        // **`min_checked = 0` 等于把要件 3 静默关掉**（T01 审计 I3）：`checked < 0` 恒假。
+        // 文档写「`min_checked` 不是可选的」，但类型上它是——所以这里把它变成硬失败。
+        if min_checked == 0 {
+            return Err(format!(
+                "{what}：min_checked 不得为 0——那等于关掉计数自检（要件 3），\
+                 而扫描器失效时正是靠它报警"
+            ));
+        }
+        if !self.violations.is_empty() {
+            return Err(format!(
+                "{what}：{} 处违反（共检查 {} 处）\n  - {}",
+                self.violations.len(),
+                self.checked,
+                self.violations.join("\n  - ")
+            ));
+        }
+        if self.checked < min_checked {
+            return Err(format!(
+                "{what}：只扫到 {} 处（期望至少 {min_checked} 处）——**扫描器可能失效了**，\
+                 而不是被测代码变干净了。先查扫描器的枚举逻辑，别急着调低阈值。",
+                self.checked
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 钉死一个逃生口的定义（要件 4）。
+///
+/// 凡是 [`scan_after_marker`] 的 `allow` 放行的间接变量，它的定义必须逐字出现在文本里。
+/// 不钉的话，`$t` 这类变量可以被改成裸值——**扫描照样全绿，而防线已经没了**。
+pub fn pin_definition(
+    text: &str,
+    definition: &str,
+    assign_prefix: &str,
+    what: &str,
+) -> Result<(), String> {
+    // **只 `contains` 是不够的**（T01 审计 S3，已独立复现）：在钉死的定义之后再追加一行
+    // `t="$tmux_name"`，`contains` 仍然通过、扫描仍然全绿，而 `$t` 运行期已经是裸值了。
+    // 所以除了「逐字存在」，还要断言**该变量在非注释行只被赋值一次**。
+    if !text.contains(definition) {
+        return Err(format!(
+            "{what} 的定义必须逐字是 `{definition}`——它是被放行的间接目标的唯一来源，\
+             改了它就能绕过整个结构性扫描"
+        ));
+    }
+    let assigns = text
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .filter(|l| l.trim_start().starts_with(assign_prefix))
+        .count();
+    if assigns != 1 {
+        return Err(format!(
+            "{what} 在非注释行被赋值 {assigns} 次（应为 1 次）——多次赋值时后一次生效，\
+             钉死第一处等于没钉：`{assign_prefix}…` 可以被改成裸值而扫描照样全绿"
+        ));
+    }
+    Ok(())
+}
+
+/// 一处**符号地址**：`(引用点行号, 被引文件基名, 符号名, 是不是前缀形)`。
+pub type SymbolAddress = (usize, String, String, bool);
+
+pub fn is_path_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '/' || c == '-'
+}
+
+/// 往前收一个 ASCII 路径 —— 遇到中文（多字节）自然停在字符边界上。
+///
+/// 抄 `doc_claim_registry.rs` 那条同族判据的收法：本仓的地址几乎都嵌在中文散文里。
+pub fn path_before(line: &str, at: usize) -> &str {
+    let b = line.as_bytes();
+    let mut s = at;
+    while s > 0 && is_path_char(b[s - 1] as char) {
+        s -= 1;
+    }
+    &line[s..at]
+}
+
+/// 枚举 `text` 里每一处 `文件.rs::符号`。
+///
+/// **前缀形**（第四个返回值 `true`）：抽出来的符号名以 `_` 收尾。本仓真实出现两形，
+/// 都不是腐坏，而是写法：
+///   · 通配（`build_local_` 后面跟着 `*_command`）；
+///   · 行折（`emit_backend_` 与它的后半截被 `///` 换行拆开）。
+/// ⇒ 这一档降级成「那个文件里有**某个**以它打头的声明」，**不许**当成找不到就报红。
+pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let b = line.as_bytes();
+        let mut from = 0usize;
+        while let Some(k) = line[from..].find(".rs::") {
+            let at = from + k;
+            let base = {
+                let p = path_before(line, at);
+                let full = format!("{p}.rs");
+                full.rsplit('/').next().unwrap_or_default().to_string()
+            };
+            let mut e = at + 5;
+            while e < b.len() && {
+                let c = b[e] as char;
+                c.is_ascii_alphanumeric() || c == '_'
+            } {
+                e += 1;
+            }
+            let sym = line[at + 5..e].to_string();
+            if !sym.is_empty() && base != ".rs" {
+                let prefix = sym.ends_with('_');
+                out.push((i + 1, base, sym, prefix));
+            }
+            from = at + 5;
+        }
+    }
+    out
+}
+
+/// 枚举 `text` 的**生产段**里所有以 `verbs` 任一动词打头的 `fn` 名（去重、有序）。
+///
+/// # 它服务的是哪一族判据〔`K-R63` 09-11〕
+///
+/// 一族「**声明缺口**」：某张表上写着「这一格今天盘上没有实现」（`None` / `false`），
+/// 而那句话**没有任何东西核**。本仓的活体是（〔MIG-3b 续〕今天住后端的）`registry.rs::TOOLS` 的 `remote-daemon`：
+/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_backend` 是设置面板上
+/// 那个「卸载后端」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
+///
+/// ⇒ 处方：申报「没有」的那一格，**去它家里扫一眼有没有一个没人认领的同族实现**。
+///
+/// # 🔴 射程写死，别读大一格
+///
+/// 它按**名字**认，一个字的语义都不读：
+///   · 动词表由调用方给，**不是穷举** —— 叫别的名字的实现它一个都看不见；
+///   · 它只说「那份文件的生产段里有一个这么打头的 `fn`」，
+///     **说不出**那个 `fn` 是不是真在做那件事（反过来也一样）。
+/// ⇒ 它买到的是「那句『没有』有人在核」，**不是**「那句『没有』一定是真的」。
+///
+/// 剥法走**共享原语** `guard_core::production_code`（剥注释 + 剥测试段）——
+/// 本文件那条 `every_comment_stripping_transformer_is_registered` 逐字要求
+/// 「先问共享原语为什么不够」，这里够。
+pub fn fn_names_starting_with(text: &str, verbs: &[&str]) -> Vec<String> {
+    let prod = production_code(text);
+    let mut out = Vec::new();
+    for line in prod.lines() {
+        let mut it = line.split_whitespace().peekable();
+        while let Some(tok) = it.next() {
+            if tok != "fn" {
+                continue;
+            }
+            let Some(next) = it.peek() else { continue };
+            let name: String = next
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && verbs.iter().any(|v| name.starts_with(v)) {
+                out.push(name);
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/crates/guard-core/lib_tests.rs"]
 mod tests;

@@ -34,6 +34,8 @@ enum Own {
     Channel,
     /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（`4d-lanes` C 段共同目标「monitor 只放字节」）。
     Place,
+    /// 〔MIG-3b 续〕足迹里 monitor 自己那台那几行的**事实**（`05 §14.3` E 组；判定在后端）。
+    Footprint,
 }
 
 impl Own {
@@ -48,7 +50,9 @@ enum Lane {
     // 〔MIG-1 续〕`Mig1` 那一路欠的行还清了（最后一行 `test_remote_connection` 随测试连接进本机后端删了），变体随之删掉。
     Mig2,
     Mig3a,
-    Mig3b,
+    // 〔MIG-3b 续〕`Mig3b` 那一路欠的行还清了（足迹 · 全景 · 公钥三件迁走、漂移账改派 MOD），变体随之删掉。
+    /// 〔主会话 09-28 裁①〕记录抽取那一路（`parser.rs` 的渲染路进 `agents/claudecode/`）。
+    Mod,
 }
 
 /// 「monitor 自己的事」：命令 · 哪一类 · 理由。
@@ -178,6 +182,11 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         Own::Place,
         "删落点那一份后端字节（固定落点，没有判定；经 `files` 链路）",
     ),
+    (
+        "footprint_client_facts",
+        Own::Footprint,
+        "〔MIG-3b 续〕足迹里 monitor 自己那台那几行（`HostScope::Client`）的事实：环境三格 ＋ stat 交来的路径（判定在那台后端 `footprint-report`）",
+    ),
     // 〔MIG-3b 续 · 主会话 09-28 裁〕那台后端回「没装 / 太旧」时界面请 monitor 放全景小程序的字节（判定「缺不缺」是那台后端答的码）。
     (
         "panorama_place",
@@ -213,12 +222,15 @@ const PENDING: &[(&str, Lane, &str)] = &[
     // 〔MIG-3a · 子步 3〕`deploy_local_cc_bus` / `cc_bus_install_state` 已迁：cc-bus 装 · 三态 · 记账进了本机后端（`cc-bus-install` / `-state`）。
     // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
     //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
+    // 〔MIG-3b 续 · 主会话 09-28 裁①〕`config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
+    //   monitor 只答它自己那台那几行的事实（`footprint_client_facts`，进「monitor 自己的事」）。
+    // 〔主会话 09-28 裁①〕漂移账那一条改派 MOD：两路进料（未知记录类型 · 已知类型解析失败）来自 `parser.rs` 的渲染路，
+    //   那是「Claude 记录抽取进 `agents/claudecode/`」那一件；`UnknownBackendToken` 天生是 monitor 观测到的；`UnknownSessionKind` 跟 MIG-1。
     (
-        "config_surface_report",
-        Lane::Mig3b,
-        "足迹成品在 monitor 拼",
+        "drift_ledger_report",
+        Lane::Mod,
+        "漂移账的进料来自 monitor `parser.rs` 的渲染路（Claude 记录抽取进 `agents/claudecode/` 那一件）",
     ),
-    ("drift_ledger_report", Lane::Mig3b, "足迹成品在 monitor 拼"),
     // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     (
         "load_subagent",

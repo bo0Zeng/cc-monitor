@@ -70,55 +70,65 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `tests/__fixtures__/tmux-control.golden.json` 钉（后端侧让请求样例过生产解析器，界面侧逐字断言发的就是那一份）",
     ),
     // 〔MIG-3a〕`mcp_sync_tests.rs` 那两条边随 monitor 那份推拉编排一起删了（编排进了被写那台后端）。
+    // 〔MIG-3b 续 · 主会话 09-28 裁①〕足迹的申报表与判据进了后端 ⇒ 原先 `tool_registry_tests.rs` → 后端 `assets/*`（五条装 / 卸口对拍）·
+    //   `config_surface_tests.rs` → `assets/mcp_edit.rs` · `footprint_remote_tests.rs` → `inbound.rs` 那七条成了后端 crate 内部的读，摘了；
+    //   反过来长出几条 backend→monitor（申报表去钉 monitor 那一侧真放字节的口，见下）与 monitor→backend（monitor 的判据读申报表）。
     (
-        "monitor→backend",
-        "tests/bridge/config_surface_tests.rs",
-        "src/backend/assets/mcp_edit.rs",
-        "〔MIG-3a〕足迹里项目 MCP 的落点：注册表声明的文件名必须就是那台后端写口的落点常量 `MCP_JSON` \
-         —— 写进了后端之后，落点只在那一处（本侧抄一份就成了两侧同源的恒等）",
+        "backend→monitor",
+        "tests/backend/footprint/registry_tests.rs",
+        "src/bridge/src/sftp.rs",
+        "〔MIG-3b 续〕申报表 `backend` / `ccm` 那几行的装 / 卸口在 monitor 放字节那一侧（部署远端后端 · 卸载）：申报的「可装 / 可卸」\
+         必须与那两个真有的口逐字签名一致（`KR63D1`，搬家前是 monitor→backend 读 `assets/*` 的那一族，方向跟着申报表翻过来）",
+    ),
+    (
+        "backend→monitor",
+        "tests/backend/footprint/registry_tests.rs",
+        "src/bridge/src/panorama_bytes.rs",
+        "〔MIG-3b 续〕申报表 `panorama` 那一行的装口（monitor 放全景小程序字节 `push_to`）：同上一条，逐字签名一致",
+    ),
+    (
+        "backend→monitor",
+        "tests/backend/footprint/registry_tests.rs",
+        "src/bridge/src/backend/control/local_backend.rs",
+        "〔MIG-3b 续〕申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
+         词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",
+    ),
+    (
+        "backend→monitor",
+        "tests/backend/footprint/rows_tests.rs",
+        "src/bridge/src/sftp.rs",
+        "〔MIG-3b 续〕足迹里远端落点那几行必须钉在 monitor 真写的那一处（`declared_destinations_are_pinned_to_the_real_writers`），随判据从 monitor 搬来",
+    ),
+    (
+        "backend→monitor",
+        "tests/backend/footprint/rows_tests.rs",
+        "src/bridge/crates/relay-route-core/src/lib.rs",
+        "〔MIG-3b 续〕同上一条：远端落点那个常量住共享 crate（`BACKEND_LANDING_REL`），判据随搬来",
     ),
     (
         "monitor→backend",
-        "tests/bridge/tool_registry_tests.rs",
-        "src/backend/assets/cc_bus_install.rs",
-        "〔MIG-3a · 子步 3〕`cc-bus` 那一行的装口：申报的「可装」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+        "tests/bridge/ccm_legacy_tests.rs",
+        "src/backend/footprint/registry.rs",
+        "〔MIG-3b 续〕旧入口清理（`ccm_legacy`，monitor 放字节那一侧）认的那个落点，足迹里恰有一行、且是「远端 · 旧版放的认出才删」 \
+         —— 申报表进了后端，读它的源码才对得上（本侧抄一份就成了两侧同源的恒等）",
     ),
     (
         "monitor→backend",
-        "tests/bridge/tool_registry_tests.rs",
-        "src/backend/assets/acct_iso_install.rs",
-        "〔MIG-3a · 主会话 09-28 预裁〕`cc-acct-iso` 那一行的装口（字节随后端二进制走，装口住那台后端）：申报的「可装」必须与它真有的写口逐字签名一致（`KR63D1`）",
+        "tests/bridge/write_site_registry_tests.rs",
+        "src/backend/footprint/registry.rs",
+        "〔MIG-3b 续〕写点表里申报成「安装动作」的每一格，点名的工具 id 必须真在足迹申报表里（本表那一半）",
     ),
     (
         "monitor→backend",
-        "tests/bridge/tool_registry_tests.rs",
-        "src/backend/assets/aliases/block.rs",
-        "〔MIG-3a · 主会话 09-27 裁〕`ccm` 那一行的装 / 卸口（别名块）：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
+        "tests/bridge/write_site_registry_tests.rs",
+        "src/backend/agents/claudecode/footprint.rs",
+        "〔MIG-3b 续〕同上一条，申报表落在 Claude 布局里的那一半（适配层）",
     ),
     (
         "monitor→backend",
         "tests/bridge/sftp_tests.rs",
         "src/backend/assets/aliases/block.rs",
         "〔MIG-3a〕「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/tool_registry_tests.rs",
-        "src/backend/assets/skill_flow.rs",
-        "〔MIG-3a〕`skill-install` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/tool_registry_tests.rs",
-        "src/backend/assets/mcp_edit.rs",
-        "〔MIG-3a〕`project-mcp` 那一行的装 / 卸口：申报的「可装 / 可卸」必须与那台后端真有的写口逐字签名一致（`KR63D1`）",
-    ),
-    (
-        "monitor→backend",
-        "tests/bridge/footprint_remote_tests.rs",
-        "src/backend/inbound.rs",
-        "〔RM1a〕「足迹」远端那一栏：monitor 发的命令名、读的那几格必须就是后端登记表里声明的那几个 \
-         —— 读它才能对拍（本侧手抄一份就成了两侧同源的恒等）",
     ),
     // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役

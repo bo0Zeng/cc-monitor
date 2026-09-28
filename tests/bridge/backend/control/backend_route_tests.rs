@@ -163,9 +163,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 〔MIG-2〕`apikey_remote.rs`〔散文墓碑〕那一行摘了：那一口（上游选择的帧面发送口）最后只剩起会话问 `launch-endpoint` 一个调用方，
     //   起会话搬进后端之后零调用方、整个模块删了（界面经通道直问）。
     // 〔DEL〕`remote_relay.rs` 那一行摘了：远端「用到才起」的脱离中转一族删了（中转只住那台的常驻后端里）。
-    // ★ 〔RM1a · 第四波〕「足迹」的远端那一栏：问那台机器的后端要路径事实（`footprint-probe`），
-    //   经 `footprint_remote.rs::call` 这一口；形状与理由逐字同上两条。
-    ("footprint_remote.rs", Verdict::UsesRouter),
+    // 〔MIG-3b 续〕「足迹」那一行（`footprint_remote.rs`〔散文墓碑〕）摘了：成品由那台后端出，界面经通道直问 `footprint-report`。
     // 〔MIG-3a〕`mcp_sync.rs`〔散文墓碑〕那一行摘了：MCP 推 / 拉的编排进了被写那台后端，界面经通道直问。
     // ★ 〔AS2 · 第四波 4B〕资产目录同步：把「怎么够到那台」交给**本机**后端 `assets-sync`，经
     //   `asset_sync.rs::ResidentBackend::call` 这一口；失败经共用分流器翻成人话。形状与理由同上几条。

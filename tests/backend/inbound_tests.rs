@@ -571,7 +571,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "launch-endpoint",
         // 〔DEL〕中转那两条（`relay-ensure` / `relay-status`）随脱离 `--relay` 一族删了。
         // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件。
-        "footprint-probe",
+        "footprint-report",
         // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照。
         "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条：扫盘 ＋ 原子写目录文件。
@@ -725,7 +725,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "launch-local",
         "launch-render-cli",
         "launch-render-payload",
-        "footprint-probe",
+        "footprint-report",
         // 〔W5-ALIAS〕别名预览，阻塞档。
         "ccm-print",
         // 〔AS2 · 第四波 4B〕资产目录两条，阻塞档。

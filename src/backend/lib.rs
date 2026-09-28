@@ -39,7 +39,7 @@ pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux se
 pub mod dial; // K-P6b / C2 / 〔SR1a〕：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
 pub mod feature_face; // 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
-pub mod footprint; // 〔RM1a · 第四波〕「足迹」的这台机器那一半：帧面 `footprint-probe`（只读路径事实，判定住 monitor）
+pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 pub mod fork_face; // 〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
@@ -789,8 +789,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   `launch-local` 不上 CLI 面（`STREAM_ONLY`：要读本进程的中转状态，同 `launch-endpoint`）。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--launch-render-cli",
     "--launch-render-payload",
-    // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
-    "--footprint-probe",
+    // 〔MIG-3b 续〕「足迹」出成品（`inbound::REGISTRY` 的 `footprint-report`，替掉 `--footprint-probe`）派生的 CLI 面。只读。
+    "--footprint-report",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump，本路不 bump。
     // 〔DUP2 · J4〕cc-acct-iso 步骤那一行（`inbound::REGISTRY` 的 `acct-iso-cmd`）派生的 CLI 面。纯函数，入参从 stdin 读。

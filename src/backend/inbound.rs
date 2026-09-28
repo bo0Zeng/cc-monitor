@@ -162,7 +162,8 @@ pub const COMMANDS: &[&str] = &[
     "files-stage-chunk",
     "files-stat",
     "files-write-text",
-    "footprint-probe",
+    // 〔MIG-3b 续〕「足迹」出成品（替掉只交事实的 `footprint-probe`）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "footprint-report",
     // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账住本机常驻后端（`dial/forwards.rs`）：界面经 `chan.call(<local>, …)` 起 · 停 · 列。
     "forward-list",
     "forward-start",
@@ -1552,13 +1553,14 @@ pub const REGISTRY: &[CommandSpec] = &[
     },
     // 〔DEL〕这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形，V139），那一族随回落一形删了。
-    // 〔RM1a · 第四波〕「足迹」的这台机器那一半：只交**路径事实**（环境 · stat · 有没有某几个字样），
-    //   哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分，**只住 monitor 的 `config_surface`**。只读，阻塞档。
+    // 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
+    //   本机那一栏 `client` 带 monitor 自己那台的事实（`HostScope::Client` 那一族）。只读，阻塞档。
+    //   〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor。〕
     CommandSpec {
-        name: "footprint-probe",
-        doc_anchor: Some("#### `footprint-probe`"),
-        codes: &["bad_args", "too_large"],
-        fields: &["env", "hooks", "notices", "stat"],
+        name: "footprint-report",
+        doc_anchor: Some("#### `footprint-report`"),
+        codes: &["bad_args", "too_large", "failed"],
+        fields: &["client", "clientAsks", "report"],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::answer(&r.args)

@@ -138,8 +138,9 @@ const UNIT: &[&str] = &[
     "tests/bridge/ssh_source_seam_tests.rs",
     "tests/bridge/ssh_source_snapshot_tail_tests.rs",
     "tests/bridge/ssh_source_snapshot_tests.rs",
-    "tests/bridge/tool_registry_environment_tests.rs",
-    "tests/bridge/tool_registry_not_managed_tests.rs",
+    // 〔MIG-3b 续〕足迹申报表的两份判据随表搬进后端（原 `tests/bridge/tool_registry_{environment,not_managed}_tests.rs`）。
+    "tests/backend/footprint/registry_environment_tests.rs",
+    "tests/backend/footprint/registry_not_managed_tests.rs",
     "tests/cards/api-error.test.ts",
     "tests/cards/bash-collapse.vitest.ts",
     "tests/cards/bash.test.ts",
@@ -360,7 +361,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
     "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/bridge/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
-    "tests/bridge/config_surface_tests.rs",
+    "tests/backend/footprint/rows_tests.rs", // 〔MIG-3b 续〕原 `tests/bridge/config_surface_tests.rs` 随判定搬进后端
     "tests/bridge/copy_table_tests.rs",
     "tests/bridge/creds_store_tests.rs", // 〔US1〕读侧那几条（读真文件）搬去后端 ⇒ 只剩源码扫描（INTEGRATION → SCAN）
     "tests/bridge/crates/acct-core/lib_tests.rs",
@@ -392,7 +393,8 @@ const SCAN: &[&str] = &[
     "tests/bridge/filewin/select_tests.rs",
     "tests/bridge/filewin/transfer_tests.rs",
     "tests/bridge/fixture_guard_tests.rs",
-    "tests/bridge/footprint_remote_tests.rs",
+    // 〔MIG-3b 续〕`tests/bridge/footprint_remote_tests.rs` 删了：两趟问法随实现进后端 face（`tests/backend/footprint/face_tests.rs`）。
+    "tests/settings/footprint-reads.vitest.ts", // 〔MIG-3b 续〕足迹成品的跨语言金样（TS 那一侧读同一份）
     "tests/bridge/frame_cadence_guard_tests.rs",
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/guard_support_tests.rs",
@@ -442,7 +444,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_write_half_guard.rs",
     "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
-    "tests/bridge/tool_registry_tests.rs",
+    "tests/backend/footprint/registry_tests.rs", // 〔MIG-3b 续〕原 `tests/bridge/tool_registry_tests.rs` 随申报表搬进后端
     "tests/bridge/write_site_registry_spawn_sites.rs",
     "tests/bridge/write_site_registry_tests.rs",
     "tests/config-unknown-keys.vitest.ts",
@@ -592,7 +594,8 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/raw_tests.rs",
     "tests/backend/files/scale_f2.rs",
     "tests/backend/files/size_tests.rs", // 〔W5-FILES〕算目录大小（临时目录真走一棵树）
-    "tests/backend/footprint_tests.rs",
+    "tests/backend/footprint/face_tests.rs", // 〔MIG-3b 续〕`footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
+    "tests/bridge/footprint_client_tests.rs", // 〔MIG-3b 续〕monitor 自己那几行的事实（真 stat 临时目录）
     // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
     "tests/backend/inbound_tests.rs",
     "tests/backend/layering_guard.rs",

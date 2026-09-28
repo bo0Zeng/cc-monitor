@@ -69,7 +69,6 @@ import type { Origin } from "../generated/Origin";
 // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigEdit } from "../generated/ConfigEdit";
-import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // 〔RM1f〕panorama 一族〔MIG-3b 续〕今天走通道（`panorama` / `panorama-edit`），返回 `unknown`，
@@ -293,12 +292,12 @@ export const commands = {
   // 〔MIG-3b〕删会话那条退役：删会话经通道直说那台后端 `files-delete-session`（`src/session-writes.ts::deleteSession`）。
 
   /**
-   * 一次「足迹」（原「配置面审计」）：只读、一次性，不新增轮询。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * 〔RM1a · 第四波〕**收 `origin`**：本机照旧在 monitor 进程里扫；远端问那台机器的后端要路径事实
-   * （`footprint-probe`），判定走同一份 `build_rows`。远端那一栏的界面归 ST2 接。
+   * 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）的**事实**（`footprint_client.rs`）：
+   * `stat: null` ⇒ 只回环境；给了 ⇒ 逐条 stat。成品由那台后端出（`src/settings/footprint-reads.ts` 经通道问 `footprint-report`），
+   * 这一条只交事实、形状原样转给后端 ⇒ **桶②**。〔`config_surface_report`〔散文墓碑〕随判定进后端删了。〕
    */
-  config_surface_report: (args: { origin: Origin }) =>
-    invoke<ConfigSurfaceReport>("config_surface_report", args),
+  footprint_client_facts: (args: { stat: string[] | null }) =>
+    invoke<{ env: Record<string, unknown>; stat: Record<string, unknown> }>("footprint_client_facts", args),
 
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。

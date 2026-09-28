@@ -38,9 +38,10 @@ mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那�
 pub mod chan;
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
-mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
+// 〔MIG-3b 续 · 主会话 09-28 裁①〕`mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
+//   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
 mod data_paths;
-mod footprint_remote; // 〔RM1a〕「足迹」的远端那一栏：问那台后端要路径事实（footprint-probe），判定走同一份 build_rows
+mod footprint_client; // 〔MIG-3b 续〕「足迹」里 monitor 自己那台那几行（`HostScope::Client`）的事实：只 stat 交来的路径
                       // U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
 mod drift_ledger;
 mod event_replay;
@@ -216,7 +217,6 @@ mod snapshot_resume;
 // 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
 mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
                              // 〔MIG-1〕`tmux_reconcile`（tmux 存活对账的纯决策）〔散文墓碑〕搬进后端会话账本（`src/backend/observe/session_ledger.rs`）。
-mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
 mod utils;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
 
@@ -974,7 +974,8 @@ pub fn run() {
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令〔SH1 · V136〕退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
-            config_surface::config_surface_report,
+            // 〔MIG-3b 续〕足迹成品由那台后端出（界面经通道问 `footprint-report`）；这里只答 monitor 自己那台那几行的事实。
+            footprint_client::footprint_client_facts,
             drift_ledger::drift_ledger_report,
             // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端

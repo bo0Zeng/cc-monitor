@@ -1863,26 +1863,29 @@ monitor **从不**对本机那条连接发 `relay-ensure`（本机那一个就�
 ⚠ **CLI 面也有它们**（`--relay-status` / `--relay-ensure`），入参从 stdin 读。
 〔DEL〕这里原是帧面 `relay-status` / `relay-ensure`（远端那台上起一个脱离的 `--relay`）：中转只住常驻后端进程里（本机远端同形，V139），那一族随远端回落一形删了。
 
-#### `footprint-probe`：「足迹」的这台机器那一半（RM1a · 第四波，2026-09-24，**只读**）
+#### `footprint-report`：「足迹」由这台后端出整份成品（〔MIG-3b 续〕2026-09-28，**只读**）
 
-设置里「足迹」那一块（cc-monitor 在这台机器上碰过哪些文件）的远端那一半：**判定只住 monitor**
-（`config_surface::build_rows`：哪一行属于哪个工具、存在 / 缺失 / 查不动怎么分），后端只交**路径事实**。
-monitor 问两趟：先空问一趟拿环境（它要用那台的家目录解 `~/…`），再把解出来的路径一次问完。
+设置里「足迹」那一块（cc-monitor 在这台机器上碰过哪些文件、app 要的东西齐不齐）：申报表与判定（哪一行属于哪个工具、
+存在 / 缺失 / 查不动怎么分）都在后端（`footprint/`，Claude 布局那一半在 `agents/claudecode/footprint.rs`），这台 stat 这台自己的盘。
+〔墓碑 —— RM1a 那一版是 `footprint-probe`：后端只交路径事实，判定住 monitor，monitor 问两趟。〕
 
 ```text
-→ {"id":"f1","cmd":"footprint-probe","args":{"stat":["/home/u/.local/bin/ccm"],"hooks":{"paths":["/home/u/.claude/settings.json"],"needles":["cc-register"]}}}
-← {"kind":"reply","id":"f1","ok":true,"data":{"env":{"home":"/home/u","path":"/usr/bin:/bin","agentHome":"/home/u/.claude","agentHomeIsDir":true},"stat":{"/home/u/.local/bin/ccm":{"kind":"file","size":1234}},"hooks":{"/home/u/.claude/settings.json":true}}}
+→ {"id":"f1","cmd":"footprint-report","args":{}}
+← {"kind":"reply","id":"f1","ok":true,"data":{"report":{"rows":[…],"settings_scopes":[…],"claude_config_dir":"/home/u/.claude","home":"/home/u"},"clientAsks":[]}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `stat` | ↔ | 入：一组**绝对**路径（最多 256 条）。出：逐条 `{kind:"file",size}` / `{kind:"dir",size:0,entries:[一层文件名]}` / `null`（不在或读不动）。目录名字超过 4096 个 / 列不动 ⇒ `entries:null` ＋ `notice`（**不截断**） |
-| `hooks` | ↔ | 入：`{paths, needles}`（一组绝对路径 · 最多 16 个非空字样）。出：逐条文件**有没有**任何一个字样（`true`/`false`），读不动 / 超过 1 MiB / 不是文件 ⇒ `null`。**文件内容一个字节都不回** |
-| `notices` | ← | `hooks` 里答 `null` 的那几条各自为什么（不在 / 太大 / 读不动）。`stat` 里列不动的目录那一格自带 `notice` |
-| `env` | ← | 这个**后端进程**看到的 `home`（`HOME`，没有再退 `USERPROFILE`）· `path`（`PATH`）· `agentHome`（agent 的家目录，同帧面其余几条的出处）· `agentHomeIsDir`。⚠ 用户交互 shell 的 rc 改过的环境这里看不见 |
+| `client` | → | 可选。**本机那一栏**才带：monitor 自己那台的事实 `{env: {home, agentHome, path?}, stat?: {<绝对路径>: {kind, size, entries?} \| null}}`（`HostScope::Client` 那一族照旧由 monitor 答事实，`05 §14.3` E 组）。不带 ⇒ 远端那一栏：住 monitor 那台的那一族不进人群 |
+| `report` | ← | 整份报告：`rows`（每行 `tool_id` · `tool_name` · `tier` · `source_label` · `path_declared` · `path_resolved` · `note` · `host_label` · `effect_label` · `state{kind: present\|absent\|undetermined, detail?\|why?}` · `installable` · `uninstallable`）· `settings_scopes` · `claude_config_dir` · `home`。带了 `client` 而没带 `client.stat` ⇒ `null` |
+| `clientAsks` | ← | `HostScope::Client` 那一族要 monitor stat 的绝对路径（本机那一栏第一趟拿它去问 monitor，第二趟带着 `client.stat` 再问）。远端那一栏恒 `[]` |
 
-**错误码**：`bad_args`（不是数组 / 相对路径 / 给了路径没给字样）· `too_large`（超过条数上限）。
-⚠ **CLI 面也有它**（`--footprint-probe`），入参从 stdin 读。
+- 目录最多列 4096 个名字（超了 ⇒ 列不动，**不截断**）· 查 cc-bus 钩子字样的文件最多 1 MiB，**文件内容一个字节都不回**。
+- 第二趟答的少于这一趟要问的 ⇒ `bad_args`（没问过的一条不许当「不在」画成「缺」）。
+- 环境是这个**后端进程**的（`HOME`，没有再退 `USERPROFILE`；`PATH`）—— 用户交互 shell 的 rc 改过的环境这里看不见。
+
+**错误码**：`bad_args`（`client` 形状不对 / 相对路径 / 第二趟答少了）· `too_large`（`client.stat` 超过 1024 条）· `failed`（这台后端进程没有家目录）。
+⚠ **CLI 面也有它**（`--footprint-report`），入参从 stdin 读。
 
 #### `ccm-print`：一条别名实际会执行什么（W5-ALIAS · 第五波先行，2026-09-25，**只读**）
 

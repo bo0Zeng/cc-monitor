@@ -2511,7 +2511,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 83usize), // 〔MIG-3b 续〕+2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // 〔MIG-3b 续〕+1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
+            ("chan.call", 84usize), // 〔MIG-3b 续〕+1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// 〔MIG-3b 续〕+2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // 〔MIG-3b 续〕+1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
             ("chan.subscribe", 2usize), // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]
