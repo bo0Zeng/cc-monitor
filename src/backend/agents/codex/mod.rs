@@ -23,6 +23,8 @@
 // 〔C4d · 第四波 4B〕历史清单那一面（会话枚举 ＋ 首条真用户话）：本机的 Codex 合成项目 / 会话从 monitor 搬进后端。
 pub(crate) mod history;
 pub(crate) mod parse;
+// 〔MOD〕记录分类 ＋ 映射进渲染模型（从 monitor `codex_record.rs` 搬来）。
+pub(crate) mod record;
 pub(crate) mod resume;
 
 /// 〔C4d〕这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
@@ -30,6 +32,13 @@ pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFac
     sessions: history::sessions,
     excerpt: history::first_user_excerpt,
     root: history::records_root,
+};
+/// 〔MOD〕记录解释面（注册表 `Adapter.records` 那一格）。轮次边沿与漂移账这一家今天不报（`parse::codex_turn_end_uuid` 仍 staged）。
+pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace {
+    parse: record::parsed_line,
+    sid: parse::codex_sid_from_path,
+    turn_end: None,
+    drift: None,
 };
 // 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
 // `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是

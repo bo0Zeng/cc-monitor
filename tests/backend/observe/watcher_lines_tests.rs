@@ -26,12 +26,16 @@ fn rig(
     (dir, path, state, FrameSink::new(tx), rx)
 }
 
-/// 这一趟收到的行帧：`(seq, raw)`。
-fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(u64, String)> {
+/// 这一趟收到的行帧：`(seq, byte_offset)`。〔MOD〕帧上不再带原文（带的是成品；这里的假行没有读者 ⇒ 不带成品），
+/// 哪一行由行号与它的末端字节认。
+fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(u64, u64)> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Line { seq, raw, .. } = f {
-            out.push((seq, raw));
+        if let Frame::Line {
+            seq, byte_offset, ..
+        } = f
+        {
+            out.push((seq, byte_offset));
         }
     }
     out
@@ -45,13 +49,9 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     let (dir, path, mut state, mut sink, mut rx) = rig("a6-whole");
     std::fs::write(&path, b"{\"n\":0}\n{\"n\":1}").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(
-        lines(&mut rx),
-        vec![(0, r#"{"n":0}"#.to_string())],
-        "活着时残行不许发"
-    );
+    assert_eq!(lines(&mut rx), vec![(0, 8)], "活着时残行不许发");
     retire_sid_if_unreferenced(SID, RemovalCause::Gone, &mut state, &mut sink);
-    assert_eq!(lines(&mut rx), vec![(1, r#"{"n":1}"#.to_string())]);
+    assert_eq!(lines(&mut rx), vec![(1, 15)]);
     std::fs::remove_dir_all(&dir).ok();
 
     // 乙：半条 JSON，写端死 ⇒ 零行。
@@ -60,7 +60,7 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     process_jsonl(&path, &mut state, &mut sink);
     let _ = lines(&mut rx);
     retire_sid_if_unreferenced(SID, RemovalCause::Gone, &mut state, &mut sink);
-    assert_eq!(lines(&mut rx), Vec::<(u64, String)>::new(), "半行永不误发");
+    assert_eq!(lines(&mut rx), Vec::<(u64, u64)>::new(), "半行永不误发");
     std::fs::remove_dir_all(&dir).ok();
 
     // 丙：死前最后一行的文件事件还没到（pidfd 先醒）⇒ 退休时补读到它，号接着走。
@@ -70,7 +70,7 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     let _ = lines(&mut rx);
     std::fs::write(&path, b"{\"n\":0}\n{\"n\":1}\n").unwrap();
     retire_sid_if_unreferenced(SID, RemovalCause::Gone, &mut state, &mut sink);
-    assert_eq!(lines(&mut rx), vec![(1, r#"{"n":1}"#.to_string())]);
+    assert_eq!(lines(&mut rx), vec![(1, 16)]);
     std::fs::remove_dir_all(&dir).ok();
 }
 

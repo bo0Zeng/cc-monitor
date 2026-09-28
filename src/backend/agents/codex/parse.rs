@@ -1,9 +1,8 @@
 //! Codex rollout 记录的后端侧解析（per-kind · 2D）。
 //!
-//! **backend↔monitor 不共享代码**（deliberate）：本模块在 `serde_json::Value` 上**独立重镜像** monitor
-//! `codex_record.rs` 的防御抽取，与 aterm 的 CodexRecordParser/CodexTurnEndDetector **golden-parity**
-//! （同 `turn_detect` 套路；〔AR1〕原先并列的 `usage_query` 已随 `设计/50` 删了）。Codex 格式未文档、每几 minor churn → 宽容抽取、逐行不崩、
-//! 未知/缺失安全默认、alias 归一 `turn_*`↔`task_*`。
+//! 〔MOD〕monitor 那份 `codex_record.rs` 搬进来之后（[`super::record`]：分类 ＋ 映射进渲染模型），信封助手只剩本模块这一份，
+//! 两边都用它。与 aterm 的 CodexRecordParser/CodexTurnEndDetector **golden-parity**（同 Claude 那一家 `turn.rs` 套路）。
+//! Codex 格式未文档、每几 minor churn → 宽容抽取、逐行不崩、未知/缺失安全默认、alias 归一 `turn_*`↔`task_*`。
 //!
 //! 记录信封（本机实测 codex-cli 0.144.6）：`{"timestamp","type","payload":{...}}`。顶层 `type` ∈
 //! session_meta/turn_context/world_state/response_item/event_msg；后两者 `payload.type` 再细分。
@@ -21,7 +20,6 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// 解包信封 `{type, payload}` → `(顶层 type, payload)`。缺 type / payload 非对象 → `None`。
-/// 与 monitor `codex_record::unwrap_envelope` 同语义。
 pub fn unwrap_envelope(v: &Value) -> Option<(&str, &Value)> {
     let top = v.get("type")?.as_str()?;
     let payload = v.get("payload").filter(|p| p.is_object())?;
@@ -29,14 +27,13 @@ pub fn unwrap_envelope(v: &Value) -> Option<(&str, &Value)> {
 }
 
 /// payload 的 `type` 子判别（response_item/event_msg 用）。
-fn payload_type(payload: &Value) -> Option<&str> {
+pub(crate) fn payload_type(payload: &Value) -> Option<&str> {
     payload.get("type").and_then(Value::as_str)
 }
 
 /// alias 归一：`turn_started`→`task_started`、`turn_complete`→`task_complete`（EventMsg v1 别名，新旧
-/// 版本都吃）。其它原样。与 monitor `codex_record::normalize_event` 同。
-#[allow(dead_code)] // staged：仅 turn-end（is_codex_turn_end）用；consumer DG1/DG3 接线后摘。
-fn normalize_event(t: &str) -> &str {
+/// 版本都吃）。其它原样。
+pub(crate) fn normalize_event(t: &str) -> &str {
     match t {
         "turn_started" => "task_started",
         "turn_complete" => "task_complete",
@@ -51,7 +48,7 @@ pub fn envelope_ts(v: &Value) -> Option<&str> {
 
 /// event_msg 的 `payload.turn_id`（turn-end/started/aborted 用）。缺 → None。
 #[allow(dead_code)] // staged：turn-end consumer（DG1/DG3）接线后摘。
-fn turn_id(v: &Value) -> Option<&str> {
+pub(crate) fn turn_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("turn_id").and_then(Value::as_str)
 }
 

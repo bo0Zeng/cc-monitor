@@ -188,7 +188,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-lines" // 〔CF2〕按行号取回：从文件头数，同档
                 | "history-record" // 〔U4b〕记录还在不在：一次目录枚举，同档
                 | "history-search"
-                | "history-subagents"
+                | "history-subagent" // 〔MOD〕列 ＋ 挑 ＋ 读一份子 agent 记录，同档
+                | "history-page" // 〔MOD〕按字节分页出记录行，同档
                 | "history-tail"
                 | "accounts-list"
                 | "accounts-sessions"
@@ -332,6 +333,7 @@ fn every_registered_command_declares_its_run_kind() {
         "forward-start",
         "forward-stop",
         "forward-list",
+        "drift-report", // 〔MOD〕漂移账：纯内存一把锁
         // 〔MIG-1 续〕测试连接：真异步（拨号 · 读 hello · 往返），在 await 点可取消。
         "remote-probe",
         "bus-list",
@@ -377,7 +379,8 @@ fn every_registered_command_declares_its_run_kind() {
         "history-record", // 〔U4b〕
         "history-search",
         "history-sessions",
-        "history-subagents",
+        "history-subagent", // 〔MOD〕
+        "history-page",     // 〔MOD〕
         "history-tail",
         "accounts-list",
         "accounts-sessions",

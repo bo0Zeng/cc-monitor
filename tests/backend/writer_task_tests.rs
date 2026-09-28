@@ -19,7 +19,8 @@ fn line(seq: u64) -> Frame {
         session_id: "sid-w".into(),
         path: "/p.jsonl".into(),
         seq,
-        raw: format!("{{\"i\":{seq}}}"),
+        message: Some(serde_json::json!({ "i": seq })),
+        cwd: None,
         byte_offset: 0,
     }
 }

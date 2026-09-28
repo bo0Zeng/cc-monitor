@@ -256,7 +256,8 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
                 session_id: "s".into(),
                 path: "/p".into(),
                 seq: 0,
-                raw: "{}".into(),
+                message: None,
+                cwd: None,
                 byte_offset: 0,
             },
             "line",
@@ -729,7 +730,8 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
         session_id: "sid".into(),
         path: "/some/path.jsonl".into(),
         seq: 42,
-        raw: raw.to_string(),
+        message: Some(serde_json::json!({ "text": raw })),
+        cwd: None,
         byte_offset: 99,
     };
 
@@ -737,7 +739,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     assert!(line.ends_with('\n'));
 
     // Minus the single trailing terminator, there must be NO bare newline:
-    // the embedded newline in `raw` is escaped by serde_json as "\n".
+    // the embedded newline in the record is escaped by serde_json as "\n".
     let body = &line[..line.len() - 1];
     assert!(
         !body.contains('\n'),
@@ -747,7 +749,7 @@ fn line_with_quotes_backslashes_and_newline_roundtrips() {
     // Parses back and the raw field is recovered byte-for-byte.
     let v: Value = serde_json::from_str(body).expect("parse");
     assert_eq!(v["kind"], "line");
-    assert_eq!(v["raw"], raw);
+    assert_eq!(v["message"]["text"], raw);
     assert_eq!(v["seq"], 42);
 }
 
@@ -831,8 +833,8 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
     #[rustfmt::skip]
     let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None },
+        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, records: None },
+        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, records: None },
     ];
     let discovered = crate::agents::visible_among(synth);
     assert_eq!(

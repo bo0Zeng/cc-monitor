@@ -131,6 +131,8 @@ pub const COMMANDS: &[&str] = &[
     "ccm-probe",
     // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-plan",
+    // 〔MOD〕这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "drift-report",
     "exit-policy-read",
     "exit-policy-set",
     "files-browse",
@@ -178,13 +180,16 @@ pub const COMMANDS: &[&str] = &[
     "history-last-accounts",
     // 〔CF2 · 第四波 4B〕按行号取回一段（不依赖骨架索引，`history_query::read_lines`）。
     "history-lines",
+    // 〔MOD · `05 §14.3` C 组〕按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段；界面直接问）。
+    "history-page",
     "history-projects",
     "history-read",
     // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
     "history-record",
     "history-search",
     "history-sessions",
-    "history-subagents",
+    // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品（列 ＋ 挑 ＋ 读 ＋ 解析）；替掉只列候选的 `history-subagents`。
+    "history-subagent",
     "history-tail",
     "history-user-inputs",
     // 〔MIG-3b〕cc-bus 钩子诊断成品（本机远端一条；monitor 那两条 Tauri 命令删了）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
@@ -1556,6 +1561,21 @@ pub const REGISTRY: &[CommandSpec] = &[
     // 〔MIG-3b 续 · 主会话 09-28 裁①〕「足迹」由这台后端出整份成品（申报表 ＋ 判定都在 `footprint/`）；
     //   本机那一栏 `client` 带 monitor 自己进程独有的几条事实（家目录 · agent 家 · PATH），`HostScope::Client` 那一族按它们解、这台 stat。只读，阻塞档。
     //   〔墓碑 —— RM1a 那一版这里是 `footprint-probe`：只交路径事实，判定住 monitor。〕
+    // 〔MOD〕漂移账出成品（`read_face.rs` 那一臂 ＋ 注册表 `RecordFace.drift`）。纯内存读一把锁，不进阻塞档（同 `forward-list`）。
+    CommandSpec {
+        name: "drift-report",
+        doc_anchor: Some("#### `drift-report`"),
+        codes: &["bad_args"],
+        fields: &["faces"],
+        takes_input: false,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::read_face::answer(&r.cmd, &r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
     CommandSpec {
         name: "footprint-report",
         doc_anchor: Some("#### `footprint-report`"),
@@ -2438,17 +2458,27 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔MOD〕子 agent 那一份出成品（`read_face.rs` 那一臂 ＋ `history_query::pick_subagent`）。同族同档、同一个只读宿主。
     CommandSpec {
-        name: "history-subagents",
-        doc_anchor: Some("#### `history-subagents`"),
+        name: "history-subagent",
+        doc_anchor: Some("#### `history-subagent`"),
         codes: &[
             "bad_args",
             "bad_parent",
+            "failed",
+            "not_found",
             "path_refused",
+            "refused",
             "too_large",
-            "write_failed",
         ],
-        fields: &["lines", "parent"],
+        fields: &[
+            "agent_id",
+            "description",
+            "parent",
+            "path",
+            "records",
+            "timestamp",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)
@@ -2488,7 +2518,28 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "history-read",
         doc_anchor: Some("#### `history-read`"),
         codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &["eof", "next", "offset", "path", "text", "until"],
+        fields: &["eof", "next", "offset", "path", "rows", "until"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::read_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔MOD〕按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/record_page.rs`）。同族同档、同一个只读宿主。
+    CommandSpec {
+        name: "history-page",
+        doc_anchor: Some("#### `history-page`"),
+        codes: &[
+            "bad_args",
+            "failed",
+            "oversized_line",
+            "refused",
+            "too_large",
+        ],
+        fields: &[
+            "eof", "lines", "next", "nextSeq", "offset", "path", "seq", "until", "whole",
+        ],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::read_face::answer(&r.cmd, &r.args)

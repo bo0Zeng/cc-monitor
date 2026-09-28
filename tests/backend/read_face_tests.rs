@@ -30,7 +30,10 @@ const FAMILY: &[&str] = &[
     // 〔U4b · 第四波〕记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
     "history-record",
     "history-search",
-    "history-subagents",
+    // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品 · 按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
+    "history-subagent",
+    "history-page",
+    "drift-report",
     "history-tail",
     // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端的 stderr 诊断文件尾部（异源是题面 GAP1 第 2 件「经那台后端的只读面」，不是 `inbound.rs`）。
     "backend-log",
@@ -828,12 +831,14 @@ fn lines_by_number_share_the_seq_space_with_tail_and_index() {
         Some(n),
         "history-index 的行数"
     );
+    // 〔MOD〕`history-lines` 出的是**记录行**（只装进界面的那些；这份结构占位语料一条都不进）⇒ 条数不再等于行数，
+    //   行号空间由 `next`（数的是可计行）钉。
+    assert_eq!(lines["lines"].as_array().map(Vec::len), Some(0));
     assert_eq!(
-        lines["lines"].as_array().map(|r| r.len() as u64),
+        lines["next"].as_u64(),
         Some(n),
-        "history-lines 的条数"
+        "history-lines 的 next（可计行数）"
     );
-    assert_eq!(lines["next"].as_u64(), Some(n));
     assert_eq!(lines["eof"].as_bool(), Some(true));
     let outside = home.join("outside.jsonl");
     std::fs::write(&outside, "{}\n").unwrap();

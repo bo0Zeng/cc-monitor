@@ -379,6 +379,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         mcp: Some(MCP),
         home: home_fn,
         footprint: None,
+        records: None,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
     if discovered.len() != 1 {
