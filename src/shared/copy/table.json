@@ -16756,6 +16756,11 @@
       "zh": "{what} 的值 {value} 不能拼进命令。工作目录要绝对路径、不含 .. 段；哪一格都不能有换行或 NUL",
       "args": ["what", "value"]
     },
+    "bePlan.build.runningElsewhere": {
+      "kind": "error",
+      "zh": "这个会话正在别处运行（pid {pid}，不在 ccm 起的 tmux 会话里），没有另起一份：{sid}",
+      "args": ["sid", "pid"]
+    },
     "bePlan.build.attachDetach": {
       "kind": "error",
       "zh": "attach 与 --detach 不能一起用（attach 就是接进去）",
