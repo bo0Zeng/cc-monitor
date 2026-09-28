@@ -293,6 +293,8 @@ fn every_registered_command_declares_its_run_kind() {
         "ccm-probe",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
+        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
+        "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
         "remote-reach",
         "bus-list",

@@ -535,8 +535,9 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
     ),
     // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
+    // 〔MIG-3b〕那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。
     (
-        "src/bridge/src/sftp.rs",
+        "src/bridge/crates/deploy-core/src/lib.rs",
         1,
         &[],
         "",

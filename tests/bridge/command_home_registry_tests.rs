@@ -32,11 +32,13 @@ enum Own {
     Lifecycle,
     /// 通信层面 A 客户端本身（`05 §14.2`）。
     Channel,
+    /// 放字节：照那台后端判好的计划往那台放 / 删 monitor 带着的字节（`4d-lanes` C 段共同目标「monitor 只放字节」）。
+    Place,
 }
 
 impl Own {
     fn may_touch(self) -> bool {
-        matches!(self, Own::Lifecycle | Own::Channel)
+        matches!(self, Own::Lifecycle | Own::Channel | Own::Place)
     }
 }
 
@@ -135,6 +137,17 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("chan_subscribe", Own::Channel, "通信层面 A：`subscribe`"),
     ("chan_want", Own::Channel, "通信层面 A：credit"),
     ("chan_stop", Own::Channel, "通信层面 A：撤订"),
+    // 〔MIG-3b · 4d-lanes 子步 1〕放字节：判定（该不该换 · 换成哪一格 · 落点那一份是谁）住本机常驻后端 `deploy-plan`。
+    (
+        "deploy_remote_backend",
+        Own::Place,
+        "照本机后端 `deploy-plan` 的计划放 monitor 带着的那一格后端字节（经 `files` 链路），并照计划删旧落点那一份",
+    ),
+    (
+        "uninstall_remote_backend",
+        Own::Place,
+        "删落点那一份后端字节（固定落点，没有判定；经 `files` 链路）",
+    ),
 ];
 
 /// 「待迁」：命令 · 哪一路 · 卡在哪。
@@ -280,17 +293,8 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3a,
         "装的是哪一版由 monitor 读盘判",
     ),
-    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了。
-    (
-        "deploy_remote_backend",
-        Lane::Mig3b,
-        "该不该换 / 换成什么的判定在 `sftp.rs`",
-    ),
-    (
-        "uninstall_remote_backend",
-        Lane::Mig3b,
-        "卸的判定在 `sftp.rs`",
-    ),
+    // MIG-3b：部署决策 · 诊断 · 足迹 · 删会话 / 分叉。〔MIG-3b〕钩子诊断两条 · 删会话 · 分叉已迁（界面经通道直说那台后端），行删了；
+    //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
     (
         "config_surface_report",
         Lane::Mig3b,

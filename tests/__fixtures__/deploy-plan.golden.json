@@ -1,0 +1,14 @@
+{
+  "_doc": "〔MIG-3b〕帧命令 deploy-plan 的线上形状（4d-lanes MIG-3b 第 1 条：部署决策进后端、monitor 只放字节）。后端 deploy_plan_tests::the_plan_frame_has_exactly_the_golden_keys 核键集 == 真产出；monitor sftp.rs 的 decode_plan 读同一份（sftp_tests::the_plan_decoder_reads_the_golden）。值是结构占位。",
+  "product": {
+    "action": "keep",
+    "arch": "x86_64",
+    "expected": "p0a-placeholder",
+    "label": "Linux / x86_64",
+    "legacy": "unknown",
+    "legacy_why": "placeholder",
+    "os": "Linux",
+    "theirs": "p0b-placeholder",
+    "why": "placeholder"
+  }
+}

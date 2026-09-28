@@ -567,8 +567,16 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/bridge/src/sftp.rs",
         "MARKER_READ_MAX",
         64 * 1024,
-        "部署时读回的一份小文件（`.build_id` / `.vendor_id` 标记 · `ccm` 入口 shim；它们都是几十字节）",
+        "部署时读回的一份小文件（`.vendor_id` 标记；几十字节）。〔MIG-3b〕认落点上那份 `ccm` 入口 shim 那一读随部署判定进了后端（`ENTRY_READ_MAX`）",
         "拒收+回错",
+    ),
+    // 〔MIG-3b〕部署计划（本机常驻后端）认从前那份三行入口时读落点那一份的上限：先问大小、大了不读。
+    (
+        "src/backend/control/deploy_plan.rs",
+        "ENTRY_READ_MAX",
+        64 * 1024,
+        "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
+        "跳过+说清",
     ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (

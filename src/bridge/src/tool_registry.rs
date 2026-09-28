@@ -517,7 +517,7 @@ pub const TOOLS: &[ToolSpec] = &[
                         effect: TouchEffect::RetiredLegacy,
                     },
                     // 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节：部署时 ＋ 每次连上各扫一次，身份戳认得出才删
-                    //   （`sftp.rs::sweep_legacy_backend`）。
+                    //   （〔MIG-3b〕本机常驻后端出计划时判，`sftp.rs::apply_legacy` 照计划删）。
                     TouchedFile {
                         path: "~/.cc-monitor/bin/cc-monitor-backend",
                         note: Some(Text(|| {
