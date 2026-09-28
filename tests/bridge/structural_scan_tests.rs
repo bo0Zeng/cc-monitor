@@ -2423,12 +2423,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔AR1〕`tests/backend/relay/nodelay_guard.rs` 那一行删了：文件随 `设计/15 §2.1` B3 退役整份删掉，
         //   它头注里点名的旧判据名跟着没了（不是改对了话，是那段话不在了）。
         ("src/backend/relay/server.rs", "handle_alloc_error", 1),
-        (
-            // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
-            "tests/backend/relay/server_tests.rs",
-            "the_relay_entry_reads_each_env_var_into_its_own_config_slot",
-            1,
-        ),
+        // 〔DEL〕`tests/backend/relay/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
         (
             // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
             "tests/backend/relay/upstream_tests.rs",

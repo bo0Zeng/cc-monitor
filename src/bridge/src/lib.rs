@@ -89,7 +89,6 @@ mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
-mod remote_relay; // 〔RM1a〕中转按机器：本机由 monitor 监护，远端问 / 交那台机器的后端
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
                            // 〔LOC1b · 第四波 4D〕`mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
@@ -1851,9 +1850,7 @@ impl SkipRuns {
 ///
 /// 前端拉起远端会话（与本机「就地 resume」那一格）之前问它一次，拿到地址就作为载荷里的一条
 /// `export-relay-base-url` 交给 `render_launch_payload`。〔US1〕判断在那台机器的后端（`launch-endpoint` 出成品）；
-/// 这里只转交、照成品执行，远端那一臂**用到才起**那台的中转（`history::relay_endpoint_on` 头注）。
-/// ⚠ 它接替了 RM1a 那条 `relay_ensure(origin)`（零调用方）：「让那台有一个中转」今天只在「要注入」时才发生，
-/// 不再单独暴露给界面。
+/// 这里只转交、照成品执行（`history::relay_endpoint_on` 头注）。〔DEL〕中转只住那台的常驻后端里，monitor 从不另起一个。
 #[tauri::command]
 async fn relay_endpoint_for_launch(
     origin: origin::Origin,

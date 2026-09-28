@@ -618,7 +618,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p4v-resume-running-elsewhere**（2026-09-27，FIX 续合并那一拍）：行为 —— ccm resume 时那个会话在跑但不在 ccm 起的 tmux 里 ⇒ 拒并说 pid
 /// （判活与 watcher 起步初扫同一份，由 `main` 注入）。子命令没变，照 p1v 先例不加历史行。
-pub const BUILD_ID: &str = "p4v-resume-running-elsewhere";
+///
+/// ★★★ **p4w-no-fallback**（2026-09-27，DEL 合并那一拍）：子命令 −3 `--relay` · `--relay-ensure` · `--relay-status`（帧命令 −2）· 远端只剩常驻（流模式回落删，
+/// 非 unix 远端明说不支持）· 中转只住常驻后端进程内 · tee 只剩 tap 口（NDJSON 落点删）。
+pub const BUILD_ID: &str = "p4w-no-fallback";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -746,10 +749,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 只读（读一份凭据文件 ＋ 回环上探一次中转），入参从 stdin 读。加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
     "--apikey-routing",
     "--launch-endpoint",
-    // 〔RM1a · 第四波〕中转那两条（`inbound::REGISTRY` 的 `relay-*`）自动派生的 CLI 面。
-    // 入参只有端口，从 stdin 读。同上：加这两行会逼出一次 `BUILD_ID` bump，本路不 bump。
-    "--relay-ensure",
-    "--relay-status",
+    // 〔DEL〕`--relay-ensure` / `--relay-status` 随帧面那两条删了。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 〔RM1a · 第四波〕「足迹」的这台机器那一半（`inbound::REGISTRY` 的 `footprint-probe`）派生的 CLI 面。只读。
     "--footprint-probe",
     // 〔E2〕帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口（V138），二进制叫 `ccm` 时
@@ -888,9 +888,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
-    // K-H1：起 HTTP 中转（常驻，不是一次性查询 —— 它住在这张表里是因为
-    // `is_query_mode` 那道闸门读的是本表；不登记就会被当成未知 flag 静默进流模式）。
-    "--relay",
+    // 〔DEL〕`--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     // 〔HOST · V139〕远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，本路不 bump。
     "--resident-ensure",

@@ -202,7 +202,7 @@ fn the_link_arms_are_actually_wired_into_the_dispatch() {
          留着一半就是 `is_query_mode` 认它、却没有臂接它（v3.4.0 `--account-trust-zero` 那一形）"
     );
     // 正控：同一把尺子在别的子命令上量得到（不是「这把尺子什么都量不到」）。
-    let other = format!("{}{}", "\"--", "relay\"");
+    let other = format!("{}{}", "\"--", "resident-ensure\"");
     assert!(
         root_prod.matches(other.as_str()).count() >= 1,
         "正控 `{other}` 一处都没量到 —— 本条在空转"
