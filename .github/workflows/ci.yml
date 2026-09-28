@@ -1205,6 +1205,9 @@ jobs:
       #      🔴 这条豁免**是环境相关的**：runner 升到 ≥3.5 之后它会真的过（PASS 35 / WAIVED 1），
       #      而 `at-least` 不会因此红 —— 那一格如实登记在 `tests/e2e/backend-gate2-acceptance.sh`
       #      的 `waiver_reason` 头注里（含为什么不装成红、以及解锁条件）。**没治，但写清楚了。**
+      #    〔E2 尾 09-27〕`meta_dollar` 不再是登记豁免，换成套件里的**版本门**（`min_tmux_for`）：tmux <3.5 记 SKIP 并说原因、
+      #      建得出来就 FAIL「版本门过时」。本行仍按 PASS 的 at-least 判 ⇒ 按最坏的机器（3.4：34 PASS + 1 SKIP）算 34；
+      #      本机门禁按 PASS+SKIP 恒等判 35（`exact-with-skip`）。两个数都由 `the_gate2_floor_still_makes_a_skip_hurt` 现算。
       - name: Gate 2 backend 真机验收（F03）
         run: bash tests/e2e/assert-pass-floor.sh backend-gate2 34
 

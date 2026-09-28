@@ -3429,7 +3429,10 @@ impl E2eSandbox {
     /// 记下一个出现在 `DETACHED` 里的 pid（0 = 不知道，不记）。
     fn remember(&self, pid: u32) {
         if pid != 0 {
-            self.seen.lock().unwrap_or_else(|e| e.into_inner()).push(pid);
+            self.seen
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(pid);
         }
     }
 

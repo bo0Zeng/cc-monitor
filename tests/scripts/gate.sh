@@ -1712,19 +1712,20 @@ run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字�
 #   ⚠ **`exact` 是第三个参数、fail-closed**：拼错 ⇒ `exit 2`，**不回落 `at-least`**。
 #     回落等于把「拼错了」静默降级成旧行为 —— 那正是这道闸要治的那一族。
 run_e2e() {
-  local suite="$1"; local floor="$2"
+  # 第三个参数可选：`exact`（缺省）或 `exact-with-skip`（〔E2 尾 09-27〕按 PASS+SKIP 恒等判，给按环境显式分支的套件）。
+  local suite="$1"; local floor="$2"; local mode="${3:-exact}"
   # ⚠ 两个名字**刻意不同**：`GATE_ONLY` 里写套件短名（`ccm-cli`），而收据与
   #   `found_cells()` 认的**规范名**带前缀（`ccm tests/e2e/ccm-cli`）。
   #   规范名里有空格 ⇒ 它当不了空格分隔的 `GATE_ONLY` 记号，所以两侧各用一个，
   #   归一那一跳写在 `K-G4C-gate-receipt.py` 与 `K-R80` 的 `C5d`/`C8` 里（同一份取法）。
   gate_wants "$suite" || return 0
   local out rc n
-  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" exact 2>&1)"
+  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" "$mode" 2>&1)"
   rc=$?
   GATE_RAN+=("ccm tests/e2e/$suite")
   n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
   if [ "$rc" -ne 0 ]; then
-    fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 exact。\
+    fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 $mode。\
 诊断原文见上方本套件自己的输出）")
     # K-R22：原来这里是裸 `tail -20`。换成共用的 `gate_diag` 有两处不是排版：
     #   ① 套件自己的 `::error::` 诊断行**可能落在尾部 20 行之外**（`assert-pass-floor.sh`
@@ -1738,7 +1739,7 @@ run_e2e() {
     # **恰恰只能靠那段输出分开** —— 不印等于把这条判据自己那句话作废。
     gate_diag "tests/e2e/$suite" "$out"
   else
-    printf '  ok   %-14s %-22s PASS=%s（地板 %s，恒等）\n' "ccm e2e" "$suite" "$n" "$floor"
+    printf '  ok   %-14s %-22s PASS=%s（地板 %s，判法 %s）\n' "ccm e2e" "$suite" "$n" "$floor" "$mode"
   fi
 }
 
@@ -1904,9 +1905,10 @@ run_e2e backend-cc-bus        96
 #   `local-backend` 两趟过滤串重叠、常驻那族跑两遍（且第一个宿主起的后端没人收，靠收尾 `pkill -f` 兜着）·
 #   `restart-frames` / `restart` 的驱动器载不了 `.css`、shim 还在说已经退役的 Tauri 命令（真源早改走通道）。
 #   修完接进本机执行链。〔量于 2026-09-27，本工作树 `w4/e2`，本机 tmux 3.6〕35 · 15 · 5 · 24 PASS / 0 FAIL，约 100 秒。
-#   ⚠ `backend-gate2` 的 35 **随 tmux 版本变**：≤3.4 上 `meta_dollar` 走登记豁免 ⇒ 34（`ci.yml` 那一行 `at-least 34` 的来历）；
-#     本机门禁按 exact 判 ⇒ 换到 tmux ≤3.4 的机器上这一格会红，红了说的就是这件事。
-run_e2e backend-gate2         35
+#   ★ `backend-gate2` 按 **PASS+SKIP** 恒等判（`exact-with-skip`）：`meta_dollar` 那一格要 tmux ≥3.5，版本不够的机器上
+#     它记 SKIP 并说原因（套件里的版本门 `min_tmux_for`；版本不够却建得出来 ⇒ FAIL「版本门过时」）⇒ 3.6 上 35+0、
+#     3.4 上 34+1，这一格两边都是 35。只钉 PASS 的话就是把开发机的 tmux 烤进了判据。
+run_e2e backend-gate2         35 exact-with-skip
 run_e2e local-backend         15
 run_e2e restart-frames         5
 run_e2e restart               24
