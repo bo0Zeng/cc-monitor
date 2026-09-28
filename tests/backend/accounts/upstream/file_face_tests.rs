@@ -616,7 +616,9 @@ fn us1_what_the_write_side_wrote_is_exactly_the_row_the_launch_answer_uses() {
     .expect("写");
     let rows = rows_at_with(&p, &|_| None);
     assert_eq!(
-        launch_relay_with(&ask("/h/.claude-alt/acct-one"), &rows, &|_| true).unwrap().as_deref(),
+        launch_relay_with(&ask("/h/.claude-alt/acct-one"), &rows, &|_| true)
+            .unwrap()
+            .as_deref(),
         Some("http://127.0.0.1:8788/s/claude-code/acct-one"),
         "写口写下的那一行，起会话的成品没用上（表里：{rows:?}）"
     );

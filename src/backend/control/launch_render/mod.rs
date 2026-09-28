@@ -27,8 +27,12 @@ type Answer = Result<Value, (&'static str, String)>;
 
 /// 入参按线上形状严格收（`deny_unknown_fields`）；收不下是契约错。
 fn decode<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, (&'static str, String)> {
-    serde_json::from_value(args.clone())
-        .map_err(|e| ("bad_args", crate::common::contract::malformed(&e.to_string())))
+    serde_json::from_value(args.clone()).map_err(|e| {
+        (
+            "bad_args",
+            crate::common::contract::malformed(&e.to_string()),
+        )
+    })
 }
 
 /// 渲染路上的 `Err` 全带 [`payload::REFUSE_TAG`]（`every_business_rejection_is_tagged` 钉着）⇒ 码 `refused`，
