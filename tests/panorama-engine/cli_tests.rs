@@ -585,7 +585,10 @@ fn the_probe_speaks_the_plugin_dialect() {
     let mut table: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
     table.sort();
     assert_eq!(caps, table);
-    let shape = lines.iter().find_map(|l| l.strip_prefix("shape=")).expect("没有形状行");
+    let shape = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("shape="))
+        .expect("没有形状行");
     assert_eq!(shape, shape_code());
 }
 
@@ -664,7 +667,11 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
         let e = &planned["edit"];
         let p = r.join(e["rel"].as_str().expect("计划里有落点"));
         let now = std::fs::read_to_string(&p).ok();
-        assert_eq!(now.as_deref(), e["before"].as_str(), "计划的 before 与盘上不符：{planned}");
+        assert_eq!(
+            now.as_deref(),
+            e["before"].as_str(),
+            "计划的 before 与盘上不符：{planned}"
+        );
         if e["parents"] == json!(true) {
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         }
@@ -701,13 +708,24 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
     .unwrap();
     apply(&prop);
     let pid = prop["value"].as_str().expect("提议回了 id").to_string();
-    assert_eq!(queue_status(&pid), json!("Proposed"), "审批队列里读不到这条提议，或状态不是数据里的 Proposed");
-    assert!(!agent_sees(&pid), "🔴 CP5：还没审的提议 agent 已经看得见了 —— agent 会读到自己的话并当成人的指示");
+    assert_eq!(
+        queue_status(&pid),
+        json!("Proposed"),
+        "审批队列里读不到这条提议，或状态不是数据里的 Proposed"
+    );
+    assert!(
+        !agent_sees(&pid),
+        "🔴 CP5：还没审的提议 agent 已经看得见了 —— agent 会读到自己的话并当成人的指示"
+    );
 
     // ② 人批准 ⇒ 同一个 `node` 查询看得见了（反空真：「看不见」不是那一格恒空）。
     let appr = call("plan_approve_annotation", r, s, json!({"id": pid})).unwrap();
     apply(&appr);
-    assert_eq!(queue_status(&pid), json!("Active"), "批准之后状态没变成 Active");
+    assert_eq!(
+        queue_status(&pid),
+        json!("Active"),
+        "批准之后状态没变成 Active"
+    );
     assert!(agent_sees(&pid), "批准之后 agent 仍看不见 —— 要么状态机坏了，要么 `node` 那一格恒空（那上面「看不见」就证明不了任何事）");
 
     // ③ 人直接写的 ⇒ 当场 Active、当场看得见（两条路都走一遍，不只靠批准那一条）。

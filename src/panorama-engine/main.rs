@@ -189,7 +189,9 @@ pub fn parse_argv(argv: &[String]) -> Result<Parsed, Fail> {
 /// vendored 副本的 pin（`VENDOR.md` 里 `vendored commit:` 后那对反引号里的值）。
 fn vendor_pin() -> &'static str {
     const MD: &str = include_str!("../bridge/vendor/code-picture-core/VENDOR.md");
-    let at = MD.find("vendored commit:`").expect("VENDOR.md 没有 vendored commit 那一行");
+    let at = MD
+        .find("vendored commit:`")
+        .expect("VENDOR.md 没有 vendored commit 那一行");
     let rest = &MD[at + "vendored commit:`".len()..];
     &rest[..rest.find('`').expect("pin 没收尾")]
 }
@@ -197,7 +199,10 @@ fn vendor_pin() -> &'static str {
 /// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕**形状代号**：op 表（名 ＋ 档）＋ vendored pin 的摘要（FNV-1a 64）。
 /// 能力表相同、某个 op 的应答形状变了（re-vendor）时它会变 ⇒ 后端按它判旧、回 `unsupported`、monitor 重放字节。
 pub fn shape_code() -> String {
-    let ops: Vec<String> = OPS.iter().map(|(n, need)| format!("{n}:{need:?}")).collect();
+    let ops: Vec<String> = OPS
+        .iter()
+        .map(|(n, need)| format!("{n}:{need:?}"))
+        .collect();
     let canon = format!("ops={};vendor={}", ops.join(","), vendor_pin());
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in canon.bytes() {

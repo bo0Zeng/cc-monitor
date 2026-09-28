@@ -98,6 +98,39 @@
         { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "gone" }], "field": "user", "value": "z", "ifEmpty": false }
       ],
       "refused": "element_gone"
+    },
+    {
+      "name": "〔FIX2 续 · ㊶〕insertin 追加一台；路上缺的段补出来，别的键不动",
+      "before": "{\"theme\":{\"x\":1}}",
+      "edits": [
+        {"op": "insertin", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "gamma"}], "value": {"label": "gamma", "host": "c.lan", "user": "g"}}
+      ],
+      "after": {"theme": {"x": 1}, "remote": {"hosts": [{"label": "gamma", "host": "c.lan", "user": "g"}]}}
+    },
+    {
+      "name": "〔FIX2 续 · ㊶〕insertin 那个键已有 ⇒ 整批拒，同批别的补丁也不落",
+      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
+      "edits": [
+        {"op": "set", "path": ["remote", "enabled"], "value": false},
+        {"op": "insertin", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "beta"}], "value": {"label": "beta", "host": "x.lan"}}
+      ],
+      "refused": "element_exists"
+    },
+    {
+      "name": "〔FIX2 续 · ㊶〕removein 删恰好那一台；另一台刚固化的指纹原样留着",
+      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
+      "edits": [
+        {"op": "removein", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "a.lan"}]}
+      ],
+      "after": {"remote": {"enabled": true, "hosts": [{"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned"}]}}
+    },
+    {
+      "name": "〔FIX2 续 · ㊶〕removein 认不出那一台 ⇒ 整批拒",
+      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
+      "edits": [
+        {"op": "removein", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "gone"}]}
+      ],
+      "refused": "element_gone"
     }
   ]
 }

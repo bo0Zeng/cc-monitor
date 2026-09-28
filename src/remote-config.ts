@@ -1,7 +1,7 @@
 // F12：远端配置**数据层**（从 settings/remote-section.ts 抽出，治分层倒挂——数据层原住在 1801 行
 // UI 模块里、被 tabs/account-chip/cards/main/port-forward 等非 UI 模块依赖）。本模块**纯数据**：
 // config.json `remote` 段的类型 + 读写 CRUD + 反查/筛选纯函数，无 DOM、无 UI 依赖。行为与抽出前逐字节等价。
-import { loadConfig, patchConfig, patchConfigFrom, setAt, type ConfigEdit } from "./config";
+import { loadConfig, patchConfig, setAt, type ConfigEdit } from "./config";
 import { copyText } from "./copy-table";
 
 /**
@@ -231,24 +231,6 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
   return out;
 }
 
-/**
- * RemoteConfig → config.json 顶层 `remote` 键的那一条补丁（只动这一个键）。
- * 写成 `{ enabled, hosts: [...] }`（认不出的那一段整个换掉）；key 是 camelCase，与 Rust
- * `lib.rs::load_remote_configs` 读的键严格一致。
- *
- * ★ S1 起这是**数据层内部的「序列化」单一出口**，`remote` 键的盘上形状只有
- * 这里知道。**刻意不 export**：它是整表覆盖语义，一旦调用方手上只有部分机器
- *（S2 把机器拆成一页一台之后就是这样）就会把其余的静默删光。
- * 不导出 = 这条footgun 在**类型层面不可达**，不靠「记得别用它」这种纪律。
- * 对外只有 [`patchRemoteConfig`]（局部合并，安全性质来自构造）。
- */
-function remoteEdit(next: RemoteConfig): ConfigEdit {
-  return setAt(["remote"], {
-    enabled: next.enabled,
-    hosts: next.hosts.map(serializeHost),
-  });
-}
-
 /** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
 /**
  * S4b-3（主计划 §5-1）：某台机器该用哪条 resume 启动命令。**纯函数。**
@@ -284,14 +266,14 @@ export function hostKey(h: RemoteHostConfig): string {
 }
 
 /**
- * S1：一次**局部**修改。没被提到的机器，`applyRemoteHostsPatch` 根本不碰。
+ * S1：一次**局部**修改。没被提到的机器根本不碰（补丁里没有它）。
  */
 export interface RemoteHostsPatch {
   /** 全局开关。缺省 = 不动。 */
   enabled?: boolean;
   /**
    * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
-   * key 在盘上找不到（被别处删了/改了）**也按新增处理** —— 比静默丢弃安全。
+   * key 在盘上找不到（被别处删了/改了）⇒ 整批拒、说出来（〔FIX · ㊶〕不再「找不到就当新增」）。
    */
   upsert?: { key: string | null; value: RemoteHostConfig; was?: RemoteHostConfig }[];
   /** 要删除的机器，按 origin。 */
@@ -299,69 +281,41 @@ export interface RemoteHostsPatch {
 }
 
 /**
- * S1 **纯函数**（可单测，不碰文件系统）：把 patch 应用到一份现有配置上。
- *
- * ★ 安全性质来自**构造**，不是来自调用方守纪律：patch 里没提到的 host，这里根本不读
- * 也不写，原对象引用直接留在结果里。S2 把机器卡片拆成一页一台之后，那一页只提交自己
- * 那几台，其余机器天然安全 —— 而在整表覆盖的老实现下，同样的调用会把它们**静默删光**。
- *
- * 顺序语义：先 `remove` 后 `upsert`。这样「删掉 A、同时新增一台也叫 A」是**替换**，
- * 不是「新增后被删」。
- */
-export function applyRemoteHostsPatch(
-  cur: RemoteConfig,
-  patch: RemoteHostsPatch,
-): RemoteConfig {
-  const removeSet = new Set(patch.remove ?? []);
-  const hosts = cur.hosts.filter((h) => !removeSet.has(hostKey(h)));
-
-  // 匹配过的下标不再复用。**没有这一步，两台 origin 相同的机器会互相踩**：
-  // 第二条 upsert 会再次命中第一条已经被替换过的位置，前一条编辑凭空消失。
-  // （origin 重复本身是无效配置——整个系统都拿 origin 当机器身份——但
-  // 「无效配置」不该变成「静默吞掉用户的编辑」。见 BACKLOG E44。）
-  const used = new Set<number>();
-  for (const { key, value } of patch.upsert ?? []) {
-    const idx =
-      key === null
-        ? -1
-        : hosts.findIndex((h, i) => !used.has(i) && hostKey(h) === key);
-    if (idx >= 0) {
-      hosts[idx] = value;
-      used.add(idx);
-    } else {
-      hosts.push(value);
-    }
-  }
-
-  return {
-    enabled: patch.enabled ?? cur.enabled,
-    hosts,
-  };
-}
-
-/**
- * S1：[`applyRemoteHostsPatch`] 的 IO 包装 —— read-modify-write。
- * UI 侧唯一的写入口。
- *
- * 〔CFG1〕读与写在本窗口的配置写队列里连着做（`config.ts::patchConfigFrom`），且**读失败就抛**：
- * 从前这里走 `readRemoteConfig`（读失败回空表），读失败那一次会把空表写回去 ⇒ 所有机器没了。
+ * S1：UI 侧写远端配置的唯一入口。〔FIX2 续〕补丁全按键认元素（[`remoteHostsEdits`]），不读、不整段写 ——
+ * 认元素在 Rust 写口锁内现读现判（`config.rs::patch_config_at`）。
  */
 export async function patchRemoteConfig(
   patch: RemoteHostsPatch,
 ): Promise<void> {
-  // 〔FIX · `设计/99 §2 ㊶` 第一问〕只改已在盘上的机器（每条都带着加载时那份 `was`）、不增不删 ⇒ 按格改：
-  //   每台只交表单里动过的那几格（`setin`，Rust 写口锁内按 origin 认那一台）⇒ 刚自动固化进去的指纹、别的窗口改的格都不会被整台盖掉；
-  //   那台在盘上已被改名 / 删掉 ⇒ 整批拒、说出来（不再「找不到就当新增」）。有增删的那一趟仍走整段（机器表的结构变了）。
-  const ups = patch.upsert ?? [];
-  const cellsOnly = ups.length > 0 && (patch.remove ?? []).length === 0 && ups.every((u) => u.key !== null && u.was !== undefined);
-  if (cellsOnly) {
-    const edits: ConfigEdit[] = [];
-    if (patch.enabled !== undefined) edits.push(setAt(["remote", "enabled"], patch.enabled));
-    for (const u of ups) edits.push(...hostCellEdits(u.key!, u.was!, u.value));
-    if (edits.length > 0) await patchConfig(edits);
-    return;
+  const edits = remoteHostsEdits(patch);
+  if (edits.length > 0) await patchConfig(edits);
+}
+
+/**
+ * 〔FIX · ㊶ · FIX2 续〕一次局部修改 ⇒ 交给唯一写口的补丁：**全部按键认元素，没有整段写 `remote`**。**纯函数。**
+ *
+ * - 删（`remove`）⇒ 每台一条 `removein`：盘上认不出 / 认出多台 ⇒ 整批拒；
+ * - 改（`key` ＋ 加载时那份 `was`）⇒ 动过的格各一条 `setin`（[`hostCellEdits`]）；
+ * - 增（`key = null`）⇒ 一条 `insertin`：那个 origin 盘上已有 ⇒ 整批拒；
+ * - `key` 在、`was` 缺（加载时那个 origin 不止一台）⇒ 按那个 origin 删了再插 —— 认出多台 ⇒ `removein` 整批拒，不猜是哪台。
+ *
+ * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；刚自动固化的指纹、别的窗口改的格都不会被盖掉。
+ */
+export function remoteHostsEdits(patch: RemoteHostsPatch): ConfigEdit[] {
+  const hosts = ["remote", "hosts"];
+  const edits: ConfigEdit[] = [];
+  if (patch.enabled !== undefined) edits.push(setAt(["remote", "enabled"], patch.enabled));
+  for (const k of patch.remove ?? []) edits.push({ op: "removein", path: hosts, where: hostWhere(k) });
+  const inserts: ConfigEdit[] = [];
+  for (const u of patch.upsert ?? []) {
+    if (u.key !== null && u.was !== undefined) {
+      edits.push(...hostCellEdits(u.key, u.was, u.value));
+      continue;
+    }
+    if (u.key !== null) edits.push({ op: "removein", path: hosts, where: hostWhere(u.key) });
+    inserts.push({ op: "insertin", path: hosts, where: hostWhere(hostKey(u.value)), value: serializeHost(u.value) });
   }
-  await patchConfigFrom((cfg) => [remoteEdit(applyRemoteHostsPatch(remoteConfigOf(cfg), patch))]);
+  return [...edits, ...inserts];
 }
 
 /** 盘上一台机器的认法：`label` 非空取它、否则 `host`（Rust 写口 `ElemKey` 的口径，同 `lib.rs::parse_host_obj`）。 */

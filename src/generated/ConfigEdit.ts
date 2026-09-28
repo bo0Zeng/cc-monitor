@@ -11,4 +11,4 @@ import type { ElemKey } from "./ElemKey";
  * 为什么不是 JSON Merge Patch（RFC 7396）：那个对子对象递归合并、`null` 表示删除；而 `keybindings` /
  * `theme` / `remote` 要的是**整键替换**，`keybindings` 的值里还有合法的 `null`。路径形状让写者明说替换到哪一层。
  */
-export type ConfigEdit = { "op": "set", path: Array<string>, value: unknown, } | { "op": "remove", path: Array<string>, } | { "op": "setin", path: Array<string>, where: Array<ElemKey>, field: string, value: unknown, ifEmpty: boolean, };
+export type ConfigEdit = { "op": "set", path: Array<string>, value: unknown, } | { "op": "remove", path: Array<string>, } | { "op": "setin", path: Array<string>, where: Array<ElemKey>, field: string, value: unknown, ifEmpty: boolean, } | { "op": "insertin", path: Array<string>, where: Array<ElemKey>, value: unknown, } | { "op": "removein", path: Array<string>, where: Array<ElemKey>, };
