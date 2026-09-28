@@ -100,13 +100,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "〔RM1a〕「足迹」远端那一栏：monitor 发的命令名、读的那几格必须就是后端登记表里声明的那几个 \
          —— 读它才能对拍（本侧手抄一份就成了两侧同源的恒等）",
     ),
-    (
-        "monitor→backend",
-        "tests/bridge/remote_relay_tests.rs",
-        "src/backend/inbound.rs",
-        "〔RM1a〕中转按机器：monitor 发的两个命令名、解析的那几个字段必须就是后端登记表里声明的那几个 \
-         —— 读它才能拿**后端声明的**字段造样本喂解析器（本侧手抄一份就成了两侧同源的恒等）",
-    ),
+    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
     // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (

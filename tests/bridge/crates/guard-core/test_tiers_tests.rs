@@ -398,7 +398,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
     "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
-    "tests/bridge/remote_relay_tests.rs",
     "tests/bridge/remote_write_registry_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
     "tests/bridge/search_kou_jing_guard.rs",
