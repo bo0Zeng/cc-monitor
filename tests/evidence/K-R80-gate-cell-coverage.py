@@ -703,6 +703,8 @@ for suite, anchor in [
     # 〔MIG-1 续四〕#60 那一族的两套（迟到的 tmux server · sessions 重挂），同样只挂在不通电的 `ci.yml` 上。
     ("ccm tests/e2e/backend-tmux-late-server", "run_e2e backend-tmux-late-server 2"),
     ("ccm tests/e2e/backend-sessions-rewatch", "run_e2e backend-sessions-rewatch 5"),
+    # 〔MIG-1 续五〕本机拉起真建出 tmux 会话（`P3t-Y5`），同样只挂在不通电的 `ci.yml` 上。
+    ("ccm tests/e2e/p3t-local-tmux", "run_e2e p3t-local-tmux        11"),
 ]:
     cell(
         suite,
@@ -1410,7 +1412,7 @@ for _s in ("backend-rbind-token", "rbind-token-endtoend"):
            "⇒ 云端这一格零覆盖。本格只把它接进**本机**执行链，不替那件待拍板的事拍板")
 for _s in ("ccm-print-parity", "ccm-rbind-title", "ccm-cli", "ccm-contract-parity", "backend-cc-bus",
            "backend-gate2", "local-backend", "restart-frames", "restart",
-           "backend-tmux-late-server", "backend-sessions-rewatch"):
+           "backend-tmux-late-server", "backend-sessions-rewatch", "p3t-local-tmux"):
     invoke("ccm tests/e2e/" + _s, ELSEWHERE,
            "云端有一条同套件的 `assert-pass-floor.sh` 调用行。"
            "⚠ 那几条调用行**在 GitHub runner 上一趟都没跑过**（本仓不推送）—— "
