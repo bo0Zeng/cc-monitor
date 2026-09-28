@@ -58,7 +58,7 @@ import {
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
 import { killSession, saidOfControl } from "./tmux-control";
-import { isIdentityRefusal, offerResyncRetry } from "./resync";
+import { isIdentityRefusal, offerResyncRetry, resync } from "./resync";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -209,6 +209,17 @@ export class TabSessionActions {
       }),
     );
     return false;
+  }
+
+  /** 〔RESYNC · V149〕tab「重新读取」：只对这个会话对齐 ＋ 从游标补读（`resync{sid}`）。补出来的行照常经流到达。 */
+  async rereadTab(sid: string): Promise<void> {
+    const tab = this.host.tab(sid);
+    if (!tab) return;
+    try {
+      await resync(tab.origin, sid);
+    } catch (e) {
+      showActionFailureToast(copyText("tabSessionActions.reread.failed"), saidOfControl(e));
+    }
   }
 
   /**
