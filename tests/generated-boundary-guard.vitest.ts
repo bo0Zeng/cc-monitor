@@ -257,7 +257,9 @@ describe("C01 边界生成物", () => {
     expect(info).not.toContain("size_bytes");
     expect(resp).toContain("monitorDataDir");
     expect(resp).toContain("webviewUserDataDir");
-    expect(resp).toContain("profileBackupDirs");
+    // 〔OSA · 主会话 09-28 裁〕`profileBackupDirs` 那一格随 `$PROFILE` 备份改问本机后端摘了 ⇒ 生成物里不该再有它（蛇形那一形同理）。
+    expect(resp).not.toContain("profileBackupDirs");
+    expect(resp).not.toContain("profile_backup_dirs");
     expect(resp).not.toContain("monitor_data_dir");
   });
 

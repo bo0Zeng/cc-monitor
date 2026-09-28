@@ -357,9 +357,7 @@ fn the_profile_location_has_exactly_one_home() {
         ("src/backend/platform/shell/dialect.rs", 0, 1),
         ("src/backend/platform/shell/dialect.rs", 1, 1),
         ("src/backend/platform/shell/dialect.rs", 2, 1),
-        // 〔MIG-3a〕方言进了后端；monitor 的「数据」区（⑬ monitor 自己的事、不碰后端）探 `$PROFILE` 备份只留两个**目录名**
-        //   （没有文件名）—— 第二个读者，待主会话认（`第四波记录/MIG-3a.md`）。
-        ("src/bridge/src/data_paths.rs", 2, 1),
+        // 〔OSA · 主会话 09-28 裁〕monitor「数据」区探 `$PROFILE` 备份那第二个读者删了：界面经通道问本机后端。
     ];
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root = root.canonicalize().expect("仓根");

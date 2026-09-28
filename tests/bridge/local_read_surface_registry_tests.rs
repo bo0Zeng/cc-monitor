@@ -245,12 +245,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "配置面清单的根",
         "只读诊断页；落点由本模块的 claude 棘轮数着",
     ),
-    (
-        "data_paths.rs",
-        "candidate_profile_dirs",
-        "PowerShell profile 的候选目录",
-        "profile 安装面；路径围栏在 `profile_installer::fence_on`",
-    ),
+    // 〔OSA · 主会话 09-28 裁〕`data_paths.rs` 探 `$PROFILE` 候选目录那一行摘了：界面经通道问本机后端（`$PROFILE` 在哪只有后端方言答）。
     // 〔MIG-3b〕钩子诊断那一行摘了：本机那份读盘进了本机后端（`hooks-diag`），monitor 不再伸手进用户 home。
     // 〔AL2 · 第四波 4D〕这里原来有 `aliases_read`〔散文墓碑〕一行（它自己 `home_dir()` 再直读）。读回口改问那台后端
     //   （`files-home` / `files-peek`，本机远端同一条），这一条不再伸手进用户 home ⇒ 摘行。

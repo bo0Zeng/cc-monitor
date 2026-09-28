@@ -568,6 +568,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "skill-uninstall-apply",
         "新帧命令：被卸那台判 · 删 · 摘记录 · 收空目录同一台，`stale` 就停并说清前面删了哪几个",
     ),
+    // 〔OSA · 主会话 09-28 裁〕基数 → 增量 +1：数据位置页 `$PROFILE` 备份那一格（`src/settings/profile-backups.ts`）问本机后端那几个目录里
+    //   有没有 `.ccm-backup-`（候选由 `aliases-read` 答）；monitor 那份探法删了。文件窗口自己也列目录（见 `ASKED_BY_MONITOR_ITSELF`）。
+    (
+        "files-ls",
+        "列一个目录：后端 `files/mod.rs::answer_ls` 出 `{entries, truncated}`；主界面只在 `$PROFILE` 备份那一格用它认备份名，\
+         判读（「名字里有 `.ccm-backup-`」）住 `profile-backups.ts`",
+    ),
 ];
 
 /// 〔C4e · 第四波 4C〕monitor 生产段里**拼写与某条已迁帧命令相同、却不是发送点**的字面量 —— `(拼写, 处数, 为什么)`。
@@ -605,6 +612,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
     // 〔MIG-3a〕`skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // 〔MIG-3b · `99 §2.1 ㉓②`〕`tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`tasks_changed` 帧 ⇒ 通道 `session-tasks`），
     //   monitor 零处再问它。
+    // 〔OSA〕基数 → 增量 +1：文件窗口（monitor 包里的第二个 `[[bin]]`，独立前端）列目录走它自己的那一问（`filewin/source.rs::CMD_LS`）。
+    (
+        "files-ls",
+        1,
+        "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
+    ),
 ];
 
 /// 后端 `inbound.rs` 生产段里登记的全部帧命令名（异源：从后端源码数，不读本文件的表）。

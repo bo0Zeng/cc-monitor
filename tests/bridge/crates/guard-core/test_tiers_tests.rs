@@ -255,6 +255,8 @@ const UNIT: &[&str] = &[
     "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
+    // 〔OSA〕基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
+    "tests/settings/profile-backups.vitest.ts",
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。

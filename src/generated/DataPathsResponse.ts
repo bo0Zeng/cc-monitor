@@ -9,8 +9,4 @@ entries: Array<DataPathInfo>,
 /**
  * WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
  */
-webviewUserDataDir: DataPathInfo | null, 
-/**
- * PowerShell profile 备份目录（最多列前 3 个，去重）
- */
-profileBackupDirs: Array<DataPathInfo>, };
+webviewUserDataDir: DataPathInfo | null, };

@@ -11,6 +11,12 @@ const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...a: unknown[]) => invokeMock(...a),
 }));
+// 〔OSA · 主会话 09-28 裁〕`$PROFILE` 备份那一格经通道问本机后端（`profile-backups.ts`，它自己的判据在 `profile-backups.vitest.ts`）；
+//   本文件只管这一格怎么上屏 ⇒ 替身交它的答案。
+const backupsMock = vi.fn((): Promise<string[]> => Promise.resolve([]));
+vi.mock("../../src/settings/profile-backups", () => ({
+  findProfileBackupDirs: () => backupsMock(),
+}));
 const toastMock = vi.fn();
 vi.mock("../../src/error-toast", () => ({
   showActionFailureToast: (...a: unknown[]) => toastMock(...a),
@@ -455,21 +461,21 @@ describe("ConfigSurfaceSection", () => {
     invokeMock.mockResolvedValue(report());
     const s = new ConfigSurfaceSection();
     await s.refresh();
-    // 〔ST2〕读面两条：配置面那一条 ＋ 「PowerShell profile 备份」那一格借的 `get_data_paths`（也是只读）。
+    // 〔ST2〕读面：配置面那一条（〔OSA〕「PowerShell profile 备份」那一格改问本机后端，不再借 `get_data_paths`）。
     const names = new Set(invokeMock.mock.calls.map((c) => c[0]));
-    expect([...names].sort()).toEqual(["config_surface_report", "get_data_paths"]);
+    expect([...names].sort()).toEqual(["config_surface_report"]);
   });
 });
 
 describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬进本机「足迹」", () => {
-  const answer = (dirs: unknown) => (cmd: string) =>
-    cmd === "get_data_paths"
-      ? Promise.resolve({ monitorDataDir: "/h", entries: [], webviewUserDataDir: null, profileBackupDirs: dirs })
-      : Promise.resolve(report());
+  const answer = (dirs: string[]) => () => {
+    backupsMock.mockResolvedValueOnce(dirs);
+    return Promise.resolve(report());
+  };
 
   it("★ 有备份 ⇒ 这一格出现，每一个备份目录的路径都以纯文本上屏", async () => {
     invokeMock.mockImplementation(
-      answer([{ path: "/h/Documents/PowerShell" }, { path: "/h/Documents/WindowsPowerShell" }]),
+      answer(["/h/Documents/PowerShell", "/h/Documents/WindowsPowerShell"]),
     );
     const s = new ConfigSurfaceSection();
     await s.refresh();
@@ -489,9 +495,8 @@ describe("〔ST2 · `70 §10.2` · 步 15〕「PowerShell profile 备份」搬�
   });
 
   it("★★ 读不到 ⇒ 说读不到，不拿「没有备份」糊过去；上面那张表不受影响", async () => {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "get_data_paths" ? Promise.reject(new Error("盘坏了")) : Promise.resolve(report()),
-    );
+    invokeMock.mockImplementation(() => Promise.resolve(report()));
+    backupsMock.mockRejectedValueOnce(new Error("盘坏了"));
     const s = new ConfigSurfaceSection();
     await s.refresh();
     const box = s.element.querySelector<HTMLElement>("[data-profile-backups]")!;
@@ -573,7 +578,7 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」〕足迹按机器�
     let releaseLocal!: (v: unknown) => void;
     invokeMock.mockImplementation((cmd: string, args?: { origin?: string }) => {
       void args;
-      if (cmd !== "config_surface_report") return Promise.resolve({ profileBackupDirs: [] });
+      if (cmd !== "config_surface_report") return Promise.resolve({});
       return new Promise((r) => {
         releaseLocal = r;
       });
