@@ -247,6 +247,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "history-annotate"
                 | "history-forget"
                 | "history-last-accounts"
+                // 〔MIG-2〕本机起会话：探一次 `ccm`（起 `bash -lic`）＋ 读一次凭据表 ＋ 探一次中转。
+                | "launch-local"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -387,6 +389,10 @@ fn every_registered_command_declares_its_run_kind() {
         "ssh-config-aliases",
         "ssh-config-import",
         "ssh-config-resolve",
+        // 〔MIG-2〕起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
+        "launch-local",
+        "launch-render-cli",
+        "launch-render-payload",
         // 〔MIG-3a〕MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条（阻塞档，理由在上面 `expected_blocking`）。
         "skill-install-apply",
         "skill-uninstall-apply",

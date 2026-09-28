@@ -1277,44 +1277,8 @@ fn production_text() -> String {
     prod
 }
 
-/// ★★ **双写点对拍**：身份变量名两侧必须逐字一致。
-///
-/// monitor 侧的家是 `src/bridge/src/history.rs::LAUNCH_ID_VAR`，而这里是
-/// [`LAUNCH_ID_ENV`] —— 两个 crate、两份 `Cargo.lock`，**共享不了常量**
-/// （同 `CREDENTIALS_NAME` 那个 Rust ↔ bash 的双写点，处置照它：由测试钉住）。
-///
-/// # 🔴 为什么**运行时读**对面那份源码，而不是编译期把它拉进来
-///
-/// 本 crate 已有的跨树先例（`control/launch.rs` 钉 `TMUX_LS_FMT` 那个双写点）走的是
-/// 编译期那条。**本条刻意不走**：编译期那一形是「两半之间的编译期边」，
-/// 由 `src/bridge/src/cross_half_edge_registry.rs` 的登记表逐条数着（多一条 ⇒ 红），
-/// 而**那张表不在本拍写区**。实打过：第一版用编译期那条，那条判据当场红
-/// （`实得 18，登记 16`）。⇒ 改成运行时读，代价与补偿如实写：
-/// - **代价**：文件不在 / 路径挪了时，编译期那条编不过（响亮），运行时这条只有本条红；
-/// - **补偿**：`expect` + 字节数地板 —— 读不到就 panic，**不许静默成 0 字节地绿**。
-///
-/// ⚠ 它买不到什么：只买「**那个字面量两边一样**」。写侧真的把它 `export` 出去了没有，
-/// 是 monitor 那边 `the_launcher_plants_the_session_identity_into_the_process_environment`
-/// 五格的活，本条不重复买。
-#[test]
-fn the_launch_id_env_var_matches_the_monitor_side_home() {
-    let monitor_history_path = crate::guard_support::repo_root().join("src/bridge/src/history.rs");
-    let monitor_history = std::fs::read_to_string(&monitor_history_path)
-        .unwrap_or_else(|e| panic!("读不到 {monitor_history_path:?}：{e}"));
-    assert!(
-        monitor_history.len() > 50_000,
-        "只读到 {} 字节的 monitor `history.rs` —— 没读到真文件，本条在空转",
-        monitor_history.len()
-    );
-    let expected = format!("LAUNCH_ID_VAR: &str = \"{LAUNCH_ID_ENV}\"");
-    assert!(
-        monitor_history.contains(&expected),
-        "\n★★ 身份变量名双写点漂移：monitor 侧 `history.rs` 里找不到 {expected:?}。\n\
-             写侧（`history.rs::LAUNCH_ID_VAR`）与读侧（本文件的 `LAUNCH_ID_ENV`）\n\
-             必须是同一个字面串 —— 漂开的症状是**读侧恒 `null`**，\n\
-             而 `null` 在本查询里是合法值（「不作数」）⇒ **不会有任何东西报错**。"
-    );
-}
+// 🪦〔MIG-2〕这里原有 `the_launch_id_env_var_matches_the_monitor_side_home`（读 monitor `history.rs` 的写侧常量）：写侧随本机起会话 〔散文墓碑〕
+//   搬进本 crate（`control/launch_render/local.rs::LAUNCH_ID_VAR`），两侧对拍改住 `local_tests.rs::the_launch_id_var_is_one_name_on_both_halves`。
 
 /// ★★ **本文件读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
 ///

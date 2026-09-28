@@ -235,7 +235,7 @@ fn powershell_encoded_command_is_shell_safe() {
 /// `launch::launch_powershell_window` 带 `#[cfg(windows)]`，门禁跑在 Linux ⇒ 不进编译单元）。
 #[test]
 fn the_relay_prefix_survives_the_powershell_encoding_byte_for_byte() {
-    // 形状照 `payload::relay_env_prefix_ps` 的产物 + `local_launch_choice` 的探测形。
+    // 形状照 `payload::relay_env_prefix_ps` 的产物 + `local_launch_choice` 的探测形。 〔散文墓碑〕
     let with_relay = "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/k-0123456789abcdef'; if (Get-Command cc) { cc } else { claude }";
     // 独立算出的期望值（UTF-16LE → 标准 base64）。
     assert_eq!(

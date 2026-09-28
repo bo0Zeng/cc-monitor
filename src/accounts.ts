@@ -237,7 +237,7 @@ export type ApikeyEndpointState =
  * 把上面那份读数落到**一个账号**上。
  *
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
- * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。
+ * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `apikey_account_id` 的三态同形）。 〔散文墓碑〕
  */
 export function localApikeyEndpointStateFor(
   a: Account,

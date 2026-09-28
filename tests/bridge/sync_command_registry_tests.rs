@@ -5,7 +5,7 @@
 //! - `src/doc/INVARIANTS.md §10`，逐字：「Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。
 //!   一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）」；
 //!   「**实施口诀**：IPC 命令默认写 `pub async fn`，函数体包 `tokio::task::spawn_blocking(move || { ... }).await.map_err(...)?`」。
-//! - 出处：审计 F 🔴-2（`history.rs::resume_history_session` · `new_local_session` 两条同步命令里经
+//! - 出处：审计 F 🔴-2（`resume_history_session` · `new_local_session`〔散文墓碑〕两条同步命令里经
 //!   `relay_prefix_for_launch` `block_on` 等本机后端，最长 `apikey_remote::BUDGET` 10 s）。
 //!
 //! # 判据（两向相等）
@@ -33,7 +33,7 @@
 //!
 //! # 买不到（逐条）
 //!
-//! - **间接调用**：经函数指针 / 闭包值 / trait 对象的那一跳看不见（例：`history.rs::relay_endpoint_on`
+//! - **间接调用**：经函数指针 / 闭包值 / trait 对象的那一跳看不见（例：`relay_endpoint_on`〔散文墓碑〕
 //!   里 `(facts.endpoint)(…)` 那一跳）；同名歧义的调用不连。
 //! - **针只认两样**。`§10` 同样点名的「同步命令里起进程（`Command::spawn` / `output` / `wait`）· 读写文件」
 //!   **不在射程**：TL3 现打（名字级闭包原型）今天这一类还有 `list_local_tmux`（`tmux ls`）·
@@ -484,19 +484,19 @@ fn no_sync_command_waits_on_the_outside_except_the_registered_deviations() {
          盘上有、例外表里没有（或针集合不同）：{extra:#?}\n\
          例外表里有、盘上已经没有（或针集合不同）：{stale:#?}\n\n\
          ⇒ 前一种：那条命令会在 IPC 派发线程上等（`block_on` / 同步连口），期间别的 IPC 全排队 ——\n\
-            改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `history.rs::launch_local_asking_backend`），\n\
+            改 `pub async fn` ＋ 同步那一截包 `spawn_blocking`（`§10` 实施口诀；先例 `launch.rs::open_local_terminal`），\n\
             别往例外表里加一行了事（加一行 = 偏离设计，要主会话裁）。\n\
          ⇒ 后一种：修好了 ⇒ 从 `PENDING` 删掉那一行；只是换了针所在的 fn ⇒ 按实数改并写清为什么。"
     );
 }
 
-/// 正控（真仓）：本机起会话那两条命令被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。
+/// 正控（真仓）：本机起会话那一条（〔MIG-2〕今天是开终端窗口 `open_local_terminal`）与起后端那一条被认成 **async** 命令 —— 扫描器看得见属性，也读得出 `async` 那一格。
 #[test]
 fn the_two_local_launch_commands_are_seen_as_async_commands() {
     let a = analyze(&this_crate());
     for cmd in [
-        "history.rs::resume_history_session",
-        "history.rs::new_local_session",
+        // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端，monitor 那一跳只剩开终端窗口（阻塞那一截进 `spawn_blocking`）。
+        "launch.rs::open_local_terminal",
         "backend/control/backend_control.rs::backend_start",
     ] {
         assert!(

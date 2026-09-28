@@ -1212,7 +1212,7 @@ pub fn poke_all() {
 }
 
 /// 〔RESYNC · `设计/15 §4.1b`〕**手动对齐**：每一份在跑的 watcher 都做一次与起步同一套的对齐，等它们都做完。
-/// 回（差异，几份 watcher 答了）。增删取各份最大（每份看的是同一台机器），标签写入相加（只有第一份真写）。
+/// 回（差异，几份 watcher 答了）。增删取各份最大（每份看的是同一台机器），标签写入相加（只有第一份真写），补读行数相加（各份交的是各自的帧）。
 /// 中途退掉的那份丢了 `done` ⇒ 这里不会挂住。
 pub(crate) fn resync(only: Option<&str>) -> (Reconciled, usize) {
     let (tx, rx) = std::sync::mpsc::channel::<Reconciled>();
@@ -1236,6 +1236,7 @@ pub(crate) fn resync(only: Option<&str>) -> (Reconciled, usize) {
             added: acc.added.max(r.added),
             removed: acc.removed.max(r.removed),
             retagged: acc.retagged + r.retagged,
+            caught_up: acc.caught_up + r.caught_up,
         }
     });
     (sum, n)
@@ -2043,15 +2044,15 @@ fn forget_cursor(state: &mut ReaderState, key: &Path) {
     state.tails.remove(key);
 }
 
-/// Read a JSONL file incrementally and send a [`Frame::Line`] per new line.
-fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
+/// Read a JSONL file incrementally and send a [`Frame::Line`] per new line. 回交出去几行（〔REREAD〕补读计数用）。
+fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> usize {
     let Some(session_id) = file_stem_str(path) else {
-        return;
+        return 0;
     };
     // Active-session filter: only stream sessions whose PID is alive.
     // Historical jsonl is never pulled.
     if !state.active_sids.contains(&session_id) {
-        return;
+        return 0;
     }
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
@@ -2071,9 +2072,9 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
                         path: path_str,
                     });
                 }
-                return;
+                return 0;
             }
-            Look::Unreadable => return,
+            Look::Unreadable => return 0,
             Look::Read {
                 chunk,
                 chunk_start,
@@ -2111,9 +2112,11 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
             why,
         });
     }
+    let n = lines.len();
     for line in lines {
         send_line(&session_id, &path_str, line, sink);
     }
+    n
 }
 
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
@@ -2148,19 +2151,27 @@ fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameS
 /// 这一行**不推进游标、不占计数器**：同一文件日后被续写时，残行与新字节拼成的那一行仍是这个号（冷读的行号空间里它也是
 /// 这个号），前端按 seq 去重吸收；冷读（`history_query::line_counts` 口径）不数这截残行 —— 会话已死、没人再写，差的只是它自己。
 /// 退休之前先补读还有一层用处：pidfd 比 debounce 快，死前最后几行的文件事件可能在退休之后才到、被判活过滤挡掉。
-fn catch_up_session(sid: &str, writer_dead: bool, state: &mut ReaderState, sink: &mut FrameSink) {
+/// 回补读出几行（〔REREAD · V155〕`resync` 应答的 `caught_up`；不数收尾残行 —— `resync` 那一路写端活着、不收尾）。
+fn catch_up_session(
+    sid: &str,
+    writer_dead: bool,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) -> usize {
     let mine: Vec<PathBuf> = state
         .offsets
         .keys()
         .filter(|k| file_stem_str(k).as_deref() == Some(sid) && !is_subagent_path(k))
         .cloned()
         .collect();
+    let mut n = 0;
     for path in mine {
-        process_jsonl(&path, state, sink);
+        n += process_jsonl(&path, state, sink);
         if writer_dead {
             flush_final_line(&path, sid, state, sink);
         }
     }
+    n
 }
 
 /// [`catch_up_session`] 的收尾那一半：`[consumed, EOF)` 是一整个 JSON 对象 ⇒ 交出去（号 = 计数器现值，不推进）。
@@ -2519,6 +2530,8 @@ pub(crate) struct Reconciled {
     pub(crate) added: usize,
     pub(crate) removed: usize,
     pub(crate) retagged: usize,
+    /// 〔REREAD · V155〕这一趟从游标补读出几行（[`catch_up_session`] 的合计）。
+    pub(crate) caught_up: usize,
 }
 
 /// 〔RESYNC〕「重新对齐」那一趟的会话部分：对表（与起步同一个 [`reconcile_sessions`]）＋ 每个在跟的会话从游标补读
@@ -2529,7 +2542,7 @@ fn resync_sessions(
     sink: &mut FrameSink,
     only: Option<&str>,
 ) -> Reconciled {
-    let got = reconcile_sessions(sessions, state, sink, only);
+    let mut got = reconcile_sessions(sessions, state, sink, only);
     let sids: Vec<String> = state
         .active_sids
         .iter()
@@ -2537,7 +2550,7 @@ fn resync_sessions(
         .cloned()
         .collect();
     for sid in sids {
-        catch_up_session(&sid, false, state, sink);
+        got.caught_up += catch_up_session(&sid, false, state, sink);
     }
     got
 }
@@ -2584,6 +2597,7 @@ fn reconcile_sessions(
         added: after.difference(&before).count(),
         removed: before.difference(after).count(),
         retagged,
+        caught_up: 0,
     }
 }
 

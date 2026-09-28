@@ -1734,7 +1734,7 @@ pub(crate) fn relay_host_envs() -> Vec<(String, String)> {
     let [port_env, creds_env, meta_env] = HANDED_ENVS;
     let mut envs = vec![(
         port_env.into(),
-        crate::backend::control::payload::RELAY_PORT.to_string(),
+        relay_route_core::PORT.to_string(),
     )];
     if let Some(p) = crate::creds_store::resolve_path() {
         envs.push((creds_env.into(), p.display().to_string()));

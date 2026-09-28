@@ -4012,7 +4012,8 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
             Reconciled {
                 added: 0,
                 removed: 0,
-                retagged: 1
+                retagged: 1,
+                caught_up: 0
             },
             Vec::<String>::new(),
             "sid-c"
@@ -4026,7 +4027,8 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
             Reconciled {
                 added: 1,
                 removed: 2,
-                retagged: 2
+                retagged: 2,
+                caught_up: 0
             },
             vec![
                 "added sid-d".to_string(),
@@ -4051,6 +4053,7 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
                     added: 1,
                     removed: n,
                     retagged: 2,
+                    caught_up: 3,
                 });
             }
         }
@@ -4070,7 +4073,8 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
             Reconciled {
                 added: 1,
                 removed: 1,
-                retagged: 2
+                retagged: 2,
+                caught_up: 3
             },
             1
         )
@@ -4090,8 +4094,8 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         k
     };
     assert_eq!(keys(&got), keys(&golden["reply"]), "成品的键与金样不一致");
-    // 四格计数 ＋ 两格能力事实（与 hello 同形：`[{command, code}]` · `[op]`）。
-    for k in ["added", "removed", "retagged", "watchers"] {
+    // 五格计数 ＋ 两格能力事实（与 hello 同形：`[{command, code}]` · `[op]`）。
+    for k in ["added", "removed", "retagged", "caught_up", "watchers"] {
         assert!(got[k].as_u64().is_some(), "`{k}` 不是计数：{got}");
     }
     let facts = got["unavailable"]
@@ -4125,6 +4129,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
 
 /// 〔RESYNC · 主会话 09-27 裁 · `设计/15 §4.1b`「每个 tab『重新读取』（从游标补读 jsonl）」〕文件事件丢了一拍（这里干脆不发）：
 /// `resync{sid}` 那一趟从游标把漏的那一行补出来，别的会话不碰。
+/// 〔REREAD · V155〕应答的 `caught_up` == 这一趟补读出的行数：单 sid 那趟 1；随后整机那趟 a 又漏 1 行、b 漏 2 行 ⇒ 3（各会话相加）。
 #[test]
 fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
     let dir = std::env::temp_dir().join(format!("ccm-resync-catchup-{}", std::process::id()));
@@ -4158,7 +4163,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
             .unwrap();
         writeln!(f, "{{\"n\":1}}").unwrap();
     }
-    resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a"));
+    let one = resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a")).caught_up;
     let mut lines: Vec<(String, String)> = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::Line {
@@ -4168,12 +4173,22 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
             lines.push((session_id, raw));
         }
     }
+    for (sid, n) in [("sid-a", 2), ("sid-b", 2)] {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(proj.join(format!("{sid}.jsonl")))
+            .unwrap();
+        writeln!(f, "{{\"n\":{n}}}").unwrap();
+    }
+    let all = resync_sessions(&sessions, &mut state, &mut sink, None).caught_up;
     for k in [&mut a, &mut b] {
         let _ = k.kill();
         let _ = k.wait();
     }
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(lines, vec![("sid-a".to_string(), "{\"n\":1}".to_string())]);
+    assert_eq!((one, all), (1, 3), "补读行数（单 sid · 整机）不对");
 }
 
 /// 〔FIX · V138 订正〕`ccm` resume 要问「此刻哪些会话在跑」：一次性扫描与起步初扫同一条判活（pid 在 · 不是后台任务 ·

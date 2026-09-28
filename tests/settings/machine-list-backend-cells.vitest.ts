@@ -42,7 +42,10 @@ vi.mock("../../src/ipc/commands", () => ({
           case "chan_call": {
             // 〔MIG-1〕「导入」下拉那一问（`ssh-config-aliases`）也经这一跳：回空清单。
             const op = (args as { op?: string } | undefined)?.op;
-            const body = op === "ssh-config-aliases" ? { aliases: [] } : { state: "absent", killOnExit: false };
+            const body =
+              op === "ssh-config-aliases"
+                ? { aliases: [] }
+                : { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
             const u = new TextEncoder().encode(JSON.stringify(body));
             return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
           }

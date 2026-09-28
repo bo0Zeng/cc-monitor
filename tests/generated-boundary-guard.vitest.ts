@@ -236,7 +236,7 @@ describe("C01 边界生成物", () => {
       // 前端不手抄规则（`设计/90 §3` 判据 2）。排在这里是默认排序：小写 `j` 在 `a` 之后、`l` 之前。
       "judgment-rules.ts",
       // 🔴 `K-R95`（09-12）：**第二份值表**，源是
-      // `src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
+      // `src/backend/control/launch_render/wire.rs::export_bindings_launch_render_facts`〔MIG-2 搬进后端〕。
       // 三格：`ccm` 调用行每次无条件要求的能力集 · 八句降级理由的措辞 ·
       // 本机拉起载荷里「哪个号」那一格的 wire 键名。三格此前都在前端各写一份
       //（定框 `K28`：前端不许自己发明对外行为）。
@@ -249,7 +249,7 @@ describe("C01 边界生成物", () => {
     const GENERATED_BY = [
       TS_RS_HEADER,
       "src/bridge/src/adapter.rs",
-      "src/bridge/src/backend/control/launch_wire.rs",
+      "src/backend/control/launch_render/wire.rs", // 〔MIG-2〕`launch-render-facts.ts` 的生成器随渲染搬进后端
       "src/bridge/src/backend/control/payload.rs", // 〔DUP1〕`judgment-rules.ts`
     ];
     for (const f of files) {

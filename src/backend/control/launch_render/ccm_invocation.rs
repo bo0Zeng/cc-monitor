@@ -30,17 +30,14 @@
 //! ⚠ **ok 与 refusal 两类都要覆盖** —— 只比 ok 的话，「该降级却渲染出来了」抓不到，
 //! 而那正是 §33 铁律要防的形态。
 
-use crate::copy_table::copy_text;
+use copy_core::copy_text;
 use std::collections::BTreeSet;
 
 /// 渲染不出 ccm 调用行时的**理由**。它是一等返回值，不是 `None`（见模块头注）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
     NotInstalled,
-    /// 〔LR2 · R95b〕**没探出来**（探测那一跳出错：ssh 抖动 / 远端不可达），`String` 是那一跳的原话。
-    /// 与 `NotInstalled` 是两件事：不知道 ≠ 知道没有（`设计/80 §9.4`，`K-R53` 那条在线上的延续）。
-    /// 只由 `launch_wire::render_ccm_launch` 按线上第三态产（本机那条路永远知道装没装）。
-    ProbeUnknown(String),
+    // 〔MIG-2〕原先这里有 `ProbeUnknown`（界面带来的「没探出来」那一态）：渲染进了那台后端、能力问它自己，那一态产不出来了，删。
     NotSsh,
     MissingCap(String),
     /// #76 防线：`send-into`（idle-tmux 就地复用）**没有 CLI 等价语法**。
@@ -99,15 +96,11 @@ impl Refusal {
     pub fn reason(&self) -> String {
         match self {
             Refusal::NotInstalled => copy_text("rsCcmInvocation.refusal.notInstalled", &[]),
-            Refusal::ProbeUnknown(e) => copy_text(
-                "rsCcmInvocation.refusal.probeUnknown",
-                &[("e", &e.to_string())],
-            ),
             // ⚠ **P3t 之后这句话比事实宽**（登记在案的诚实边界，不是没看见）：
             // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
             // 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
             // （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
-            // （`history.rs::render_local_ccm`，整个函数挂在 `cfg(not(windows))` 下）。
+            // （〔MIG-2〕今天是 `local.rs::render_ccm`，只在非 Windows 那一支走到）。
             // 〔LR1 · U8c-3〕原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
             // 〔CP2b〕进文案表那一拍按 CP1 裁词（改·§2.1）改成说「Windows 本机」，
             // `src/launch-cli-golden.ts` 里「本地 transport」那条用例的期望同拍改。
@@ -224,7 +217,7 @@ pub enum CliAccount<'a> {
     ///
     /// # ⚠ 它今天只有**本机**那条路在用，远端不许照抄
     ///
-    /// 唯一构造点是 `history.rs::render_local_ccm_with`（整段 `#[cfg(not(windows))]`）。
+    /// 唯一构造点是 `local.rs::render_ccm_with`（〔MIG-2〕只在非 Windows 那一支走到）。
     /// [`super::launch_wire::WireAccount`] **刻意没有对应变体** —— 远端是 ssh 过去，
     /// **那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字）⇒
     /// 「远端的继承怎么表达」是 `K-R90`，不是本变体。
@@ -597,5 +590,5 @@ fn join_v151(mut claude: Vec<String>, ours: Vec<String>) -> String {
 // **不许遍历被测常量自己** —— 那是恒真的。R5 存活的原因正是这个形状：把 `"cwd"` 从
 // `CLI_REQUIRED_CAPS` 删掉，任何「遍历该常量逐项抽掉」的循环也就不再测 `"cwd"`，照样全绿。
 #[cfg(test)]
-#[path = "../../../../../tests/bridge/backend/control/ccm_invocation_tests.rs"]
+#[path = "../../../../tests/backend/control/launch_render/ccm_invocation_tests.rs"]
 mod tests;

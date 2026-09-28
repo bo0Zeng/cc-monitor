@@ -203,6 +203,8 @@ import {
   historyCalls,
   isChanCall,
   killCallsOf,
+  launchRenderShim,
+  localLaunchCalls,
   sessionReadCalls,
   UNSUPPORTED,
   withAccountReads,
@@ -267,6 +269,8 @@ interface TMHomes {
   actions: TabSessionActions;
 }
 const home = (tm: TabManager): TMHomes => tm as unknown as TMHomes;
+/** 本机 resume 那几发（`launch-local` 通道请求译回旧形参，`chan-fake.ts::localLaunchCalls`）。 */
+const resumed = (): Record<string, unknown>[] => localLaunchCalls(vi.mocked(invoke).mock.calls, "resume_history_session");
 
 /**
  * 〔GRP1 · `设计/99 §1` V140〕摆一份分组：组表只有 `{id, name}`，组员 = `Tab.group`（tab 自己的属性）。
@@ -1089,7 +1093,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     await home(tm).actions.resumeTab("r1");
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", { configDir: undefined, accountName: undefined, modelOverride: undefined });
-    expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+    expect(resumed()).toEqual([]);
   });
 
   // 〔FE1 · D-h〕先前这一条钉的是「退化默认 ＋ 提示」—— 提示完**按基座起**（提示说的「改用上次的账号 / 当前账号」与做的还不一致）。
@@ -1146,9 +1150,10 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
     tm.ensureTab("l1", "/home/u/p", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1");
+    vi.mocked(invoke).mockImplementation(withHistoryReads(launchRenderShim(() => Promise.resolve(undefined))));
     await home(tm).actions.resumeTab("l1");
     expect(runRemoteResume).not.toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledWith("resume_history_session", {
+    expect(resumed()).toContainEqual({
       sessionId: "l1",
       cwd: "/home/u/p",
       launcher: null,
@@ -1163,7 +1168,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   // 上面那条只证「不知道的时候不铸」。**光有它，整个 Y2b 被回退掉也不会红**
   //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
   it("P3t-Y2b 本地 resume：拿到本机 tmux 名单 → 铸一个不撞的名字传给后端", async () => {
-    (invoke as unknown as Mock).mockImplementation(withHistoryReads(async (cmd: string) => {
+    (invoke as unknown as Mock).mockImplementation(withHistoryReads(launchRenderShim(async (cmd: string) => {
       // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`。它已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
       if (cmd === "list_local_tmux")
         return [
@@ -1171,11 +1176,11 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
           { name: "unrelated", path: "/p", command: "bash", attached: false, windows: 1, sid: null },
         ];
       return undefined;
-    }));
+    })));
     tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, LOCAL_ORIGIN);
     tm.archiveTab("l1abcdef");
     await home(tm).actions.resumeTab("l1abcdef");
-    expect(invoke).toHaveBeenCalledWith("resume_history_session", {
+    expect(resumed()).toContainEqual({
       sessionId: "l1abcdef",
       cwd: "/home/u/p",
       launcher: null,
@@ -1464,27 +1469,64 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   //    留着它等于让用户点一个必失败的 kill。
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
   // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
-  // 〔RESYNC · V149 · `设计/15 §4.1b`「每个 tab『重新读取』」〕右键那一项 ⇒ 问**那台**的后端 `resync{sid}`（只对这一个会话）。
-  it("〔RESYNC〕tab 右键「重新读取」⇒ 问那台后端 resync，只带这个 sid", async () => {
-    const asked: [string, string, unknown][] = [];
-    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
-      const a = args as { origin?: string; op?: string; payload?: number[] } | undefined;
-      if (cmd === "chan_call" && a?.op === "resync") {
-        asked.push([a.origin ?? "", a.op, JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? [])))]);
-        const u = new TextEncoder().encode(
-          JSON.stringify({ added: 0, removed: 0, retagged: 0, watchers: 1, unavailable: [], uncancellable: [] }),
-        );
-        return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
-      }
-      return Promise.resolve(undefined);
-    }));
+  // 〔REREAD · V155「改. 重新读取对所有tab生效」·「右键菜单那一项删（一个入口）」〕右键菜单里零处「重新读取」；
+  // 正控：同一张菜单开出来了（有「在新窗口打开」），栏顶那颗在。
+  it("〔REREAD〕tab 右键菜单里没有「重新读取」，它在栏顶", () => {
     tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
     rightClick("k1abcdef");
-    const items = [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])];
-    (items as HTMLButtonElement[]).find((b) => b.textContent === "重新读取")!.click();
+    const labels = [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map((b) => b.textContent);
+    expect(labels).toContain(copyText("tabMenu.open.openInWindow"));
+    expect(labels.filter((l) => l?.includes("重新读取"))).toEqual([]);
+    expect(document.body.querySelector(".tab-bar-reread")?.textContent).toContain("重新读取");
+  });
+
+  // 〔REREAD · V155〕栏顶一按 ⇒ 有打开 tab 的每台**恰好一次**整机 `resync`（不带 sid），台数 == 机器数（两向：多一台少一台都红）；
+  // 各台并行（全部发出去之后才有一台回来）；在飞时再按不重入；做完按台说一句，没问到的说原因。
+  it("〔REREAD〕栏顶「重新读取」⇒ 每台恰好一次整机 resync，并行、在飞不重入、按台汇总", async () => {
+    const asked: [string, unknown][] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.mocked(invoke).mockImplementation(withHistoryReads(async (cmd: string, args?: unknown) => {
+      const a = args as { origin?: string; op?: string; payload?: number[] } | undefined;
+      if (cmd === "chan_call" && a?.op === "resync") {
+        asked.push([a.origin ?? "", JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? [])))]);
+        await gate;
+        if (a.origin === "box") throw new Error("连不上");
+        const u = new TextEncoder().encode(
+          JSON.stringify({ added: 0, removed: 0, retagged: 0, caught_up: a.origin === "gpd" ? 2 : 0, watchers: 1, unavailable: [], uncancellable: [] }),
+        );
+        return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
+      }
+      return undefined;
+    }));
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
+    tm.ensureTab("k2abcdef", "/home/u/q", "/p/k2.jsonl", 0, LOCAL_ORIGIN);
+    tm.ensureTab("g1abcdef", "/home/g", "/p/g1.jsonl", 0, "gpd");
+    tm.ensureTab("b1abcdef", "/home/b", "/p/b1.jsonl", 0, "box");
+    tm.archiveTab("b1abcdef"); // 已结束的也在栏上 ⇒ 那台也算
+    const btn = document.body.querySelector<HTMLButtonElement>(".tab-bar-reread")!;
+    expect(btn.parentElement!.firstElementChild).toBe(btn); // 没有组时散 tab 排在它之后，它恒在栏顶
+    btn.click();
     await flush();
+    btn.click(); // 在飞：不重入
     await flush();
-    expect(asked).toEqual([[LOCAL_ORIGIN, "resync", { sid: "k1abcdef" }]]);
+    expect(btn.disabled).toBe(true);
+    expect(asked.map(([o]) => o).sort()).toEqual([LOCAL_ORIGIN, "box", "gpd"].sort());
+    expect(asked.every(([, p]) => JSON.stringify(p) === "{}")).toBe(true);
+    release();
+    for (let i = 0; i < 5; i++) await flush();
+    expect(btn.disabled).toBe(false);
+    const last = vi.mocked(showActionFailureToast).mock.calls.at(-1)!;
+    expect(last[0]).toBe(copyText("resync.machines.titlePartial"));
+    const lines = last[1].split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        copyText("resync.machines.ok", { machine: copyText("resync.machines.local"), said: copyText("resync.done.caughtNone") + copyText("resync.done.same") }),
+        copyText("resync.machines.ok", { machine: "gpd", said: copyText("resync.done.caughtUp", { n: 2 }) + copyText("resync.done.same") }),
+        expect.stringMatching(/^box：没问到（.+）$/),
+      ]),
+    );
   });
 
   it("P3 刀2-UI 本机 tab 右键：backend 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {
@@ -4936,7 +4978,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     localStorage.clear();
     disk = {};
     probe = { present: true, root: "/h/.claude/projects" };
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string, args?: unknown) => {
       if (cmd === "load_config") return Promise.resolve(JSON.parse(JSON.stringify(disk)));
       if (cmd === "patch_config") {
         // 〔CFG1〕写只交补丁；按与 Rust 写口同一份金样的语义应用（`tests/config-patch-fake.ts`）。
@@ -4946,7 +4988,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
       if (cmd === "probe_session_record")
         return probe ? Promise.resolve(probe) : Promise.reject(new Error("没有控制通道"));
       return Promise.resolve(undefined);
-    })));
+    }))));
     tm = makeTM();
   });
 
@@ -5013,7 +5055,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     tm.archiveTab("g1");
     probe = { present: false, root: "/h/.claude/projects" };
     await home(tm).actions.resumeTab("g1");
-    expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+    expect(resumed()).toEqual([]);
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "没法 resume：记录已不在",
       "本机 的 /h/.claude/projects 里找不到会话 g1 的记录，resume 接不上它，所以没有打开终端。",
@@ -5023,7 +5065,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     probe = { present: true, root: "/h/.claude/projects" };
     await home(tm).actions.resumeTab("g1");
     expect(tabOf("g1").state).toEqual(ENDED);
-    expect(invoke).toHaveBeenCalledWith("resume_history_session", expect.objectContaining({ sessionId: "g1" }));
+    expect(resumed()).toContainEqual(expect.objectContaining({ sessionId: "g1" }));
   });
 
   it("★ G1：远端两条路（直连 · tmux 全新）同样先问；问不到 ⇒ 当不知道、照今天的路走（不当「不在」）", async () => {
@@ -5224,10 +5266,10 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
   });
 
   it("★ 本机：带的是本机起会话那一格解析出的账号目录（`localLaunchConfigDirSync`）", async () => {
-    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string) => {
+    vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(launchRenderShim((cmd: string) => {
       if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/acct-b/projects" });
       return Promise.resolve(undefined);
-    })));
+    }))));
     __setLocalLaunchSnapshotForTests(
       {
         origin: LOCAL_ORIGIN,
@@ -5247,8 +5289,7 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
     await home(tm).actions.resumeTab("k2");
     expect(probes().map((p) => p.configDir)).toEqual(["/h/.claude-accts/acct-b"]);
     // 同一个值也交给了起会话那一格（`resume_history_session` 的 `account.configDir`）。
-    const launched = vi.mocked(invoke).mock.calls.find((c) => c[0] === "resume_history_session");
-    expect(launched?.[1]).toMatchObject({ account: { configDir: "/h/.claude-accts/acct-b" } });
+    expect(resumed()[0]).toMatchObject({ account: { configDir: "/h/.claude-accts/acct-b" } });
   });
 });
 

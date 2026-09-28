@@ -11,9 +11,6 @@
     "running": true
   },
   "launch-endpoint": {
-    "account": "work",
-    "baseUrl": "http://127.0.0.1:8788/s/claude-code/work",
-    "listening": false,
-    "whenDown": "refuse"
+    "baseUrl": "http://127.0.0.1:8788/s/claude-code/work"
   }
 }

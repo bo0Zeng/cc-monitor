@@ -54,7 +54,7 @@ pub const DEFAULT_KILL_ON_EXIT: bool = false;
 // 〔S5 · 第四波 · V105 清账〕这里原来有 `pub const SHELL: &str = "standalone"`，
 //   随线上 `shell` 那一格一起删了：「折进前端进程」那一档已放弃（`99 §1` V105），壳只剩独立进程，
 //   这一格恒为同一个值、唯一的读者是界面那条永远走不到的「不适用」臂（E4，同拍删）。
-//   线上形状由 `tests::the_wire_shape_is_exactly_the_four_registered_fields` 按键集相等钉住。
+//   线上形状由 `tests::the_wire_shape_is_exactly_the_registered_fields` 按键集相等钉住（〔MIG-2 · ㊴〕四格 ＋ 成品 `said`）。
 
 /// 现读一次的结果。**三态，不许合并**（`§3.3b ⑤`：「读不出来」与「用户选了默认」不是一回事）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,13 +217,39 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
     result
 }
 
-/// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。
+/// 〔MIG-2 · `99 §2.1 ㊴`〕这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，
+/// 不另记一份（记了就是第二个真相源，也撞 E2「不缓存」）。一次性 CLI 面没有这些环境 ⇒ 按被监护说（保守那一句）。
+fn resident_now() -> bool {
+    matches!(
+        crate::listen::mode_from(&|k| std::env::var(k).ok()),
+        Ok(crate::listen::Mode::Listen { .. } | crate::listen::Mode::ListenTokenFile { .. })
+    )
+}
+
+/// 〔MIG-2 · ㊴〕「这台退出时会发生什么」—— 一句话四档，判定只在这里（`01 §3.3b ⑤` · `70 §2.3`）。
+/// 顺序承重：读不出来先说读不出来（不看套过缺省的 `killOnExit`）· 勾上 ⇒ 会结束 · 没勾 ⇒ 看是不是常驻。
+/// 「无人监护」只许出现在常驻那一档（K14）。
+fn said(r: &Read, resident: bool) -> String {
+    match r {
+        Read::Unreadable(_) => copy_text("backendPolicy.exit.unreadable", &[]),
+        _ if r.kill_on_exit() => copy_text("backendPolicy.exit.kills", &[]),
+        _ if resident => copy_text("backendPolicy.exit.unattended", &[]),
+        _ => copy_text("backendPolicy.exit.selfDies", &[]),
+    }
+}
+
+/// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。〔㊴〕`said` 是成品，界面原样摆。
 fn wire(r: &Read, path: Option<&Path>) -> serde_json::Value {
+    wire_as(r, path, resident_now())
+}
+
+fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> serde_json::Value {
     serde_json::json!({
         "state": r.state(),
         "killOnExit": r.kill_on_exit(),
         "reason": match r { Read::Unreadable(why) => Some(why.clone()), _ => None },
         "path": path.map(|p| p.display().to_string()),
+        "said": said(r, resident),
     })
 }
 

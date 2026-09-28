@@ -137,21 +137,28 @@ pub(crate) fn decide_launch(
     }
 }
 
-/// `launch-endpoint`：入参 `{agent, account?, allSessions}` → `{baseUrl, listening, whenDown, account}`。
+/// `launch-endpoint`：入参 `{agent, account?, allSessions}` → 成品 `{baseUrl}`（`null` = 不注入）。
+/// 〔MIG-2 · `99 §2.1 ⑬`〕「中转不在时拒还是直连」也在这里判完（原先 monitor 的 `relay_endpoint_on`〔散文墓碑〕 拿四格再判一遍）：
+/// 非它不可（API 号代入）而没在听 ⇒ 码 `relay_down` ＋ 一句；有它更好（`/t/` 直通）而没在听 ⇒ 这一发直连（`01 §6.5`）。
 pub(crate) fn answer_launch(args: &Value) -> EndpointAnswer {
-    answer_launch_with(
+    launch_relay(args).map(|u| json!({ "baseUrl": u }))
+}
+
+/// [`answer_launch`] 的成品本身（本机起会话 `control/launch_render/local.rs` 进程内直接问它，不绕帧）。
+pub(crate) fn launch_relay(args: &Value) -> Result<Option<String>, (&'static str, String)> {
+    launch_relay_with(
         args,
         &super::file_face::rows_at(&super::file_face::machine_path()),
         &crate::relay::our_relay_listening,
     )
 }
 
-/// [`answer_launch`] 的本体：人群与「中转在不在」注入（判据喂夹具，不碰真家目录、不连真口）。
-pub(crate) fn answer_launch_with(
+/// [`launch_relay`] 的本体：人群与「中转在不在」注入（判据喂夹具，不碰真家目录、不连真口）。
+pub(crate) fn launch_relay_with(
     args: &Value,
     routed: &[String],
     listening: &dyn Fn(u16) -> bool,
-) -> EndpointAnswer {
+) -> Result<Option<String>, (&'static str, String)> {
     let agent = str_arg(args, "agent")?;
     let all_sessions = args.get("allSessions").and_then(Value::as_bool).ok_or((
         "bad_args",
@@ -161,27 +168,34 @@ pub(crate) fn answer_launch_with(
         ),
     ))?;
     let account = account_arg(args)?;
-    // 「这一家登记了默认上游没有」与中转装表同一个出处（`Upstreams::from_env` ← 适配层那一格，NT2 · V25）：
-    //   旋钮认不出那一刻中转也起不来 ⇒ 当「没登记」（`/t/` 不注入；`/s/` 那一格不看它）。
     let registered = super::Upstreams::from_env(&|k| std::env::var(k).ok())
         .is_some_and(|u| u.of(agent).is_some());
-    Ok(
-        match decide_launch(agent, &account, all_sessions, routed, registered) {
-            Endpoint::None => json!({
-                "baseUrl": null, "listening": false, "whenDown": null, "account": null,
-            }),
-            Endpoint::Inject {
-                url,
-                when_down,
-                account,
-            } => json!({
-                "baseUrl": url,
-                "listening": listening(PORT),
-                "whenDown": match when_down { WhenDown::Refuse => "refuse", WhenDown::Direct => "direct" },
-                "account": account,
-            }),
-        },
-    )
+    match decide_launch(agent, &account, all_sessions, routed, registered) {
+        Endpoint::None => Ok(None),
+        Endpoint::Inject { url, .. } if listening(PORT) => Ok(Some(url)),
+        Endpoint::Inject {
+            when_down: WhenDown::Refuse,
+            account,
+            ..
+        } => Err((
+            "relay_down",
+            copy_text(
+                "rsHistory.relay.downRefused",
+                &[
+                    ("account", &format!("{account:?}")),
+                    ("where", &copy_text("beUpstreamEndpoint.relay.thisMachine", &[])),
+                    ("why", &copy_text("beUpstreamEndpoint.relay.notListening", &[])),
+                ],
+            ),
+        )),
+        Endpoint::Inject {
+            when_down: WhenDown::Direct,
+            ..
+        } => {
+            tracing::info!("中转没在听 ⇒ 这一发照旧直连（`/t/` 那一格是「有它更好」）");
+            Ok(None)
+        }
+    }
 }
 
 /// `apikey-routing`：入参 `{agent, configDirs}` → `{routed, running}`（界面账号页那两格事实）。
