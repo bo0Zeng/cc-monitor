@@ -96,6 +96,10 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "〔E2 · V138〕派生名 `--ccm-print` 是 ccm 自己的诊断口；二进制叫 `ccm` 时后端按 `SUBCOMMANDS` 分流，占了它就把 `ccm --ccm-print` 抢进后端。",
     ),
     (
+        "resync",
+        "〔RESYNC · 主会话 09-27 裁〕它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话（`cli_control::STREAM_ONLY`）。",
+    ),
+    (
         "transfer-stop",
         "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
     ),

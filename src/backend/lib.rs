@@ -890,8 +890,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-ensure",
     "--resident-stop",
     "--resolve",
-    // 〔RESYNC · V149〕帧面 `resync` 自动派生的 CLI 面（一次性进程里没有 watcher ⇒ `watchers: 0`）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
-    "--resync",
+    // 〔RESYNC〕`--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
     "--search",
     "--session-accounts",
     // 〔RM1b · 第四波〕`tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
