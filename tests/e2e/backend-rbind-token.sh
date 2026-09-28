@@ -93,7 +93,7 @@ probe() {
   local flags=()
   [ "$mode" = asked ] && flags=(--with-rbind-token)
 
-  CLAUDE_CONFIG_DIR="$F" timeout 20 "$D" "${flags[@]}" < /dev/null > "$OUT" 2> "$W/$label.err" &
+  CLAUDE_CONFIG_DIR="$F" timeout 20 "$D" -- --stream "${flags[@]}" < /dev/null > "$OUT" 2> "$W/$label.err" &
   local dpid=$!
   sleep 2.5
   # procStart 逐位相等 ⇒ F20 的主证据放行（与「是不是真 claude」无关，cmdline 不参与）。

@@ -94,6 +94,9 @@ fi
 command -v tmux >/dev/null || { echo "无 tmux"; exit 1; }
 
 WORK="$(mktemp -d /tmp/e2e-restart-frames.XXXXXX)"
+# 启动器路径要过 §47 的字符闸（只许 ASCII 那一族）；仓可能住在非 ASCII 目录（如 `~/文档/`）⇒ 把 fake-claude 拷进
+# ASCII 的 $WORK 再当启动器，别让判据只在 ASCII 路径的工作树里绿。
+cp "$E2E/fake-claude" "$WORK/fake-claude" && chmod +x "$WORK/fake-claude" && FAKE="$WORK/fake-claude"
 OLD="$WORK/acct-old"; NEW="$WORK/acct-new"
 OLD_FR="$WORK/old.frames.jsonl"; NEW_FR="$WORK/new.frames.jsonl"
 mkdir -p "$OLD/sessions" "$OLD/projects" "$NEW/sessions" "$NEW/projects" /tmp/e2e-remote
@@ -136,8 +139,8 @@ echo "old(acct bold)=$OLD  new(acct znew)=$NEW"
 tmux new-session -d -s "$KEEP" "exec sh"
 
 # 两个 backend:分别监视旧号 / 新号目录。
-CLAUDE_CONFIG_DIR="$OLD" "$BACKEND" >"$OLD_FR" 2>"$WORK/old.err" & DP_OLD=$!
-CLAUDE_CONFIG_DIR="$NEW" "$BACKEND" >"$NEW_FR" 2>"$WORK/new.err" & DP_NEW=$!
+CLAUDE_CONFIG_DIR="$OLD" "$BACKEND" -- --stream >"$OLD_FR" 2>"$WORK/old.err" & DP_OLD=$!
+CLAUDE_CONFIG_DIR="$NEW" "$BACKEND" -- --stream >"$NEW_FR" 2>"$WORK/new.err" & DP_NEW=$!
 
 # ── 1. 旧号持有:make_live 在旧号目录 → backend_OLD SessionAdded；backend_NEW 无 ──────────────────
 CLAUDE_CONFIG_DIR="$OLD" CCM_E2E_FAKE_CLAUDE="$FAKE" bash "$E2E/gen-idle-tmux.sh" "$SID" >/dev/null
@@ -148,7 +151,7 @@ if grep -qE "\"kind\":\"session_added\".*$SID" "$NEW_FR" 2>/dev/null; then bad "
 
 # ── 2. 驱动真源换号重启到 znew（新号目录）:真 kill 旧、真 resume 到新号 ────────────────────────
 echo "-- 驱动真源 restartWithAccount 换号 → znew（kill 旧进程 + resume 到新号目录）--"
-ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true}]}'
+ACCTS='{"available":true,"error":null,"meta":null,"accounts":[{"name":"znew","email":"","configDir":"'"$NEW"'","isDefault":true,"mode":"isolated","exists":true,"loggedIn":true,"authKind":"subscription","authReady":true}]}'
 OUT="$(CCM_ACCOUNTS_JSON="$ACCTS" CCM_SEQ_LOG="$WORK/seq.log" CCM_TOAST_LOG="$WORK/toast.log" \
   npx tsx "$DRV" restart aya "$SID" /tmp/e2e-remote "$S" znew "$FAKE" 0 1 1 1)"
 echo "   $(echo "$OUT" | paste -sd' ' -)  | seq: $(paste -sd' ' -<"$WORK/seq.log")"

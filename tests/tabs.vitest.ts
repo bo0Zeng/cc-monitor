@@ -1466,6 +1466,29 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   //    留着它等于让用户点一个必失败的 kill。
   // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
   // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
+  // 〔RESYNC · V149 · `设计/15 §4.1b`「每个 tab『重新读取』」〕右键那一项 ⇒ 问**那台**的后端 `resync{sid}`（只对这一个会话）。
+  it("〔RESYNC〕tab 右键「重新读取」⇒ 问那台后端 resync，只带这个 sid", async () => {
+    const asked: [string, string, unknown][] = [];
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string, args?: unknown) => {
+      const a = args as { origin?: string; op?: string; payload?: number[] } | undefined;
+      if (cmd === "chan_call" && a?.op === "resync") {
+        asked.push([a.origin ?? "", a.op, JSON.parse(new TextDecoder().decode(Uint8Array.from(a.payload ?? [])))]);
+        const u = new TextEncoder().encode(
+          JSON.stringify({ added: 0, removed: 0, retagged: 0, watchers: 1, unavailable: [], uncancellable: [] }),
+        );
+        return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+      }
+      return Promise.resolve(undefined);
+    }));
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, LOCAL_ORIGIN);
+    rightClick("k1abcdef");
+    const items = [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    (items as HTMLButtonElement[]).find((b) => b.textContent === "重新读取")!.click();
+    await flush();
+    await flush();
+    expect(asked).toEqual([[LOCAL_ORIGIN, "resync", { sid: "k1abcdef" }]]);
+  });
+
   it("P3 刀2-UI 本机 tab 右键：backend 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),

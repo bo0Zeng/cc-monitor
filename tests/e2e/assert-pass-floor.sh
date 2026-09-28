@@ -52,20 +52,23 @@
 # （对比 G-B：vendored `run-tests.sh` 的地板写在脚本自己里，那是因为 SS-10 不许改副本，
 #  这里没有那个约束，所以按「改动可见性」选调用处。）
 #
-# 用法：bash tests/e2e/assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact]
+# 用法：bash tests/e2e/assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact|exact-with-skip]
+# 〔E2 尾 09-27〕`exact-with-skip`：判的数是同一行「合计」里的 **PASS + SKIP**（恒等）。给那种**按环境显式分支**的套件用
+#   （`backend-gate2`：tmux 版本不够的那一格记 SKIP 并说原因）—— PASS 数随机器变，而「总格数」不许变。
+#   套件自己负责「SKIP 只在环境真不够时出现」；那一行没有 `SKIP=<n>` ⇒ 判失败（不当 0）。
 #   例：bash tests/e2e/assert-pass-floor.sh tmux-target 26           → 跑 `npm run test:tmux-target`
 #       bash tests/e2e/assert-pass-floor.sh ccm-cli 242 exact        → 同上，但实得 ≠ 地板就红
 set -uo pipefail
 
-SUITE="${1:?用法: assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact]}"
+SUITE="${1:?用法: assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact|exact-with-skip]}"
 FLOOR="${2:?缺地板值}"
 MODE="${3:-at-least}"
 
 case "$FLOOR" in ''|*[!0-9]*) echo "地板必须是非负整数，实得：$FLOOR" >&2; exit 2 ;; esac
 # fail-closed：拼错的模式名**不许**回落成 `at-least` —— 那是把「拼错了」静默降级成旧行为。
 case "$MODE" in
-  at-least|exact) ;;
-  *) echo "第三个参数只认 at-least（默认，只挡缩水）或 exact（恒等）。实得：$MODE" >&2; exit 2 ;;
+  at-least|exact|exact-with-skip) ;;
+  *) echo "第三个参数只认 at-least（默认，只挡缩水）、exact（恒等）或 exact-with-skip（PASS+SKIP 恒等）。实得：$MODE" >&2; exit 2 ;;
 esac
 
 OUT_FILE="$(mktemp)"
@@ -86,6 +89,15 @@ fi
 
 # 只认收尾那行的格式：`===== 合计 PASS=<n> FAIL=<m> =====`（8 套逐字一致）。
 n="$(grep -oE '合计 PASS=[0-9]+' "$OUT_FILE" | grep -oE '[0-9]+' | tail -1 || true)"
+if [ "$MODE" = exact-with-skip ] && [ -n "$n" ]; then
+  k="$(grep -E '合计 PASS=[0-9]+' "$OUT_FILE" | tail -1 | grep -oE 'SKIP=[0-9]+' | grep -oE '[0-9]+' || true)"
+  if [ -z "$k" ]; then
+    echo "::error::$SUITE 按 exact-with-skip 判，可「合计」那一行没有 SKIP=<n> —— 判不了，不当 0。"
+    exit 1
+  fi
+  echo "[assert-pass-floor] $SUITE: PASS=$n SKIP=$k ⇒ 按 PASS+SKIP=$((n + k)) 判"
+  n=$((n + k))
+fi
 if [ -z "$n" ]; then
   echo "::error::$SUITE 的输出里找不到「合计 PASS=<n>」——套件被改得不打印了，或没跑到收尾。地板无从校验 ⇒ 判失败。"
   exit 1
@@ -99,7 +111,7 @@ fi
 # ★★ `exact` 那一侧（`K-G8` 09-03）。**上面那条 `-lt` 一个字没动** ——
 #    这里是**加了一条**，不是**换掉一条**：两侧红的是两件不同的事，诊断也必须是两段不同的话。
 #    （`K-G8 §4` 死值验第 2 条逐字要求「确认原来那条还在」。）
-if [ "$MODE" = exact ] && [ "$n" -gt "$FLOOR" ]; then
+if [ "$MODE" != at-least ] && [ "$n" -gt "$FLOOR" ]; then
   echo "::error::$SUITE 断言数涨了而地板没跟：实得 $n > 地板 $FLOOR（本套按 exact 判，实得 ≠ 地板就红）。"
   echo "::error::⇒ 两条出路，按优先级："
   echo "::error::  ① **这 $((n - FLOOR)) 条是真买到的东西** ⇒ 把地板棘到 $n，并在 commit 里写清「这几条盖住了什么」——"
@@ -110,4 +122,8 @@ if [ "$MODE" = exact ] && [ "$n" -gt "$FLOOR" ]; then
   exit 1
 fi
 
-echo "[assert-pass-floor] $SUITE: PASS=$n（地板 $FLOOR，判法 $MODE）"
+if [ "$MODE" = exact-with-skip ]; then
+  echo "[assert-pass-floor] $SUITE: PASS+SKIP=$n（地板 $FLOOR，判法 $MODE）"
+else
+  echo "[assert-pass-floor] $SUITE: PASS=$n（地板 $FLOOR，判法 $MODE）"
+fi

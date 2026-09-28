@@ -39,7 +39,13 @@ fn fake_program(dir: &Path, first_line: &str, caps: &str, body: &str) -> PathBuf
 
 /// 同 [`fake_program`]，`--probe` 的形状那一行由调用方给（空串 = 老一代，没有这一行）。
 #[cfg(unix)]
-fn fake_program_shaped(dir: &Path, first_line: &str, caps: &str, shape_line: &str, body: &str) -> PathBuf {
+fn fake_program_shaped(
+    dir: &Path,
+    first_line: &str,
+    caps: &str,
+    shape_line: &str,
+    body: &str,
+) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let f = dir.join(PLUGIN_NAME);
     std::fs::write(
@@ -240,7 +246,10 @@ fn an_old_generation_with_every_op_is_still_unsupported() {
             "name=cc-monitor-panorama",
             "status",
             shape_line,
-            &format!("touch '{}'; printf '{{\"ok\":true,\"data\":1}}\\n'", ran.display()),
+            &format!(
+                "touch '{}'; printf '{{\"ok\":true,\"data\":1}}\\n'",
+                ran.display()
+            ),
         );
         let (c, _) = answer_now(&[bin], &dir.join("s"), &json!({"op": "status"})).unwrap_err();
         assert_eq!(c, "unsupported", "{tag}：旧一代没被判旧");
