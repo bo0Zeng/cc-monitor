@@ -1602,8 +1602,13 @@ deadcode_t0=$(date +%s)
 #    「value assigned to `overflowed` is never read」—— 那个函数随读面改问后端整个删了。同拍新长的三条零生产调用项
 #    （monitor `tmux.rs::TMUX_LS_FMT` 双写点 · `spawn_managed` 的 async 出口两项）各带 `cfg_attr(not(test), allow(dead_code))` 与理由，不进这个数。
 # 🔴 **2026-09-26（合并 PB1 × SH1）：23 − 2（PB1）− 1（SH1）= 20**。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 20，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=20; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-28（MIG-2 · 起会话进后端）：20 → 23，现打，逐条记**：多的三条都在 `apikey_remote.rs` ——
+#    `constant BUDGET` · `function call` · `function said`。它们唯一的生产调用方是 `history::ask_launch_endpoint`（问那台后端 `launch-endpoint`），
+#    那一段随本机起会话整条搬进后端删了（界面经通道直接问）⇒ 整个模块零调用方。没顺手删：模块挂在 `cross_half_edge_registry` ·
+#    `structural_scan` 墓碑 · `test_tiers` · `sync_command_registry` 等几张表上，删它是单独一刀，已报备。
+#    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 24 —— 另一条 `user_files.rs::delete_empty_dir` 归 MIG-3a，不算进本路这一笔。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 23，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=23; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
