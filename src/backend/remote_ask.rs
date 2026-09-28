@@ -55,6 +55,31 @@ pub trait Remote: Send + Sync {
         command: String,
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+
+    /// 〔MIG-3a · 主会话 09-28 裁〕同 [`Self::run`]，失败时**连那台 CLI 信封里的码一起交回**（[`Said`]）——
+    /// 枢纽要把被写那台的 `stale` / `refused` / … 原码转给界面，不许压成一个。缺省实现：码缺席（替身不必各写一份）。
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            self.run(dial, command, stdin)
+                .await
+                .map_err(|message| Said {
+                    code: None,
+                    message,
+                })
+        })
+    }
+}
+
+/// 远端那一跳没成时的一句话 ＋ 那台 CLI 信封里的码（信封读得出来才有；拨号 / 链路坏了没有码）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Said {
+    pub code: Option<String>,
+    pub message: String,
 }
 
 /// 可达表的一行。
@@ -199,19 +224,22 @@ pub async fn ask_json(
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<Value, String> {
-    let r = lock(table)
-        .get(machine)
-        .cloned()
-        .ok_or_else(|| unreachable_message(machine))?;
+) -> Result<Value, Said> {
+    let r = lock(table).get(machine).cloned().ok_or_else(|| Said {
+        code: Some("unreachable".to_string()),
+        message: unreachable_message(machine),
+    })?;
     let flag = crate::cli_flag(cmd);
     let line = command_line(&[&flag, crate::STDIN_LINE_FLAG]);
-    let out = remote.run(&r.dial, line, Some(format!("{args}\n"))).await?;
-    serde_json::from_str(out.trim()).map_err(|e| {
-        copy_text(
+    let out = remote
+        .run_coded(&r.dial, line, Some(format!("{args}\n")))
+        .await?;
+    serde_json::from_str(out.trim()).map_err(|e| Said {
+        code: None,
+        message: copy_text(
             "beRemoteAsk.json.unreadable",
             &[("machine", machine), ("e", &e.to_string())],
-        )
+        ),
     })
 }
 
@@ -278,8 +306,24 @@ impl Remote for DialRemote {
         stdin: Option<String>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
         Box::pin(async move {
-            let req = capture_request(dial, command, stdin)?;
-            pull_over(move |up_r, mut down_w| async move {
+            self.run_coded(dial, command, stdin)
+                .await
+                .map_err(|s| s.message)
+        })
+    }
+
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        Box::pin(async move {
+            let req = capture_request(dial, command, stdin).map_err(|message| Said {
+                code: None,
+                message,
+            })?;
+            pull_over_coded(move |up_r, mut down_w| async move {
                 let stages = crate::dial::StageSink::new(false);
                 crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
             })
@@ -308,6 +352,19 @@ where
     F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
+    pull_over_coded(serve).await.map_err(|s| s.message)
+}
+
+/// [`pull_over`] 的本体：失败时带上那台 CLI 信封里的码（`{code, message}` 读得出来才有）。
+pub(crate) async fn pull_over_coded<F, Fut>(serve: F) -> Result<String, Said>
+where
+    F: FnOnce(tokio::io::DuplexStream, tokio::io::DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let plain = |message: String| Said {
+        code: None,
+        message,
+    };
     // 上行那根管子我们一个字节都不写（capture 不读上行）；留着不关，直到拿到结果。
     let (_up_w, up_r) = tokio::io::duplex(1024);
     let (down_w, down_r) = tokio::io::duplex(64 * 1024);
@@ -315,12 +372,16 @@ where
     let _task = AbortOnDrop(tokio::spawn(serve(up_r, down_w)));
     let mut rd = BufReader::new(down_r);
     let ack = capped_line(&mut rd, 64 * 1024)
-        .await?
-        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeReady", &[]))?;
-    let ack: Value = serde_json::from_str(&ack)
-        .map_err(|e| crate::common::contract::malformed(&format!("unreadable ack: {e}")))?;
+        .await
+        .map_err(plain)?
+        .ok_or_else(|| plain(copy_text("beRemoteAsk.run.droppedBeforeReady", &[])))?;
+    let ack: Value = serde_json::from_str(&ack).map_err(|e| {
+        plain(crate::common::contract::malformed(&format!(
+            "unreadable ack: {e}"
+        )))
+    })?;
     if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-        return Err(copy_text(
+        return Err(plain(copy_text(
             "beRemoteAsk.run.unreachable",
             &[(
                 "why",
@@ -330,33 +391,42 @@ where
                     .unwrap_or(&copy_text("beRemoteAsk.run.noReason", &[])))
                 .to_string(),
             )],
-        ));
+        )));
     }
     let got = capped_line(&mut rd, (PULL_MAX_BYTES as u64) * 8)
-        .await?
-        .ok_or_else(|| copy_text("beRemoteAsk.run.droppedBeforeResult", &[]))?;
-    let got: Value = serde_json::from_str(&got)
-        .map_err(|e| copy_text("beRemoteAsk.run.resultUnreadable", &[("e", &e.to_string())]))?;
+        .await
+        .map_err(plain)?
+        .ok_or_else(|| plain(copy_text("beRemoteAsk.run.droppedBeforeResult", &[])))?;
+    let got: Value = serde_json::from_str(&got).map_err(|e| {
+        plain(copy_text(
+            "beRemoteAsk.run.resultUnreadable",
+            &[("e", &e.to_string())],
+        ))
+    })?;
     let stdout = got.get("stdout").and_then(Value::as_str).unwrap_or("");
     if stdout.contains(HELLO_MARKER) {
-        return Err(copy_text("beRemoteAsk.run.tooOld", &[]));
+        return Err(plain(copy_text("beRemoteAsk.run.tooOld", &[])));
     }
     if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
         let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-        let said = serde_json::from_str::<Value>(stderr.trim())
-            .ok()
+        let envelope = serde_json::from_str::<Value>(stderr.trim()).ok();
+        let said = envelope
+            .as_ref()
             .and_then(|e| e.get("message").and_then(Value::as_str).map(str::to_string))
             .unwrap_or_else(|| stderr.trim().to_string());
-        return Err(copy_text(
-            "beRemoteAsk.run.failed",
-            &[("said", &said.to_string())],
-        ));
+        let code = envelope
+            .as_ref()
+            .and_then(|e| e.get("code").and_then(Value::as_str).map(str::to_string));
+        return Err(Said {
+            code,
+            message: copy_text("beRemoteAsk.run.failed", &[("said", &said.to_string())]),
+        });
     }
     if stdout.len() >= PULL_MAX_BYTES {
-        return Err(copy_text(
+        return Err(plain(copy_text(
             "beRemoteAsk.run.tooLarge",
             &[("max", &PULL_MAX_BYTES.to_string())],
-        ));
+        )));
     }
     Ok(stdout.to_string())
 }
