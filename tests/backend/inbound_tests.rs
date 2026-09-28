@@ -432,6 +432,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "acct-iso-cmd",
         "ccm-probe", // 〔E2〕纯函数，普通 spawn
         "assets-sync",
+        "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
         "panorama",
         "remote-reach",
         "history-projects",
@@ -607,6 +608,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 〔E2〕`ccm-probe`：纯函数，普通 spawn。
         "ccm-probe",
         "assets-sync",
+        // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
+        "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",
         "cancel",

@@ -4812,7 +4812,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/account-prefs.ts", 1),
         // 〔E2 · V28〕`backendPath` · 远端三行入口 · 逐字节副本退役，点旧名的散文挂墓碑。
         ("src/bridge/src/acct_iso_deploy.rs", 1),
-        ("src/bridge/src/ccm_legacy.rs", 2),
+        ("src/bridge/src/ccm_legacy.rs", 1), // 〔MIG-3b〕2 → 1：三行 shim 那个记号随 `is_ours` 搬进共享的 `deploy-core`，点生成器旧名那一块跟着走（下一行）
+        ("src/bridge/crates/deploy-core/src/lib.rs", 1),
         ("tests/bridge/ccm_legacy_tests.rs", 1),
         ("tests/bridge/lib_invariant_population_tests.rs", 2),
         ("tests/bridge/ssh_source_tier1_tests.rs", 1),

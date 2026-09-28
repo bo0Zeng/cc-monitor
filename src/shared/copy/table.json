@@ -10260,6 +10260,21 @@
       "zh": "文件窗口的启动参数写不出来：{e}",
       "args": ["e"]
     },
+    "rsSftp.plan.badProduct": {
+      "kind": "error",
+      "zh": "部署计划认不出，没有装后端（两边版本对不上）：{v}",
+      "args": ["v"]
+    },
+    "rsSftp.plan.internal": {
+      "kind": "error",
+      "zh": "本机后端没交回部署计划，没有装后端。",
+      "args": []
+    },
+    "rsSftp.plan.notThisSlot": {
+      "kind": "error",
+      "zh": "部署计划要装 {machine} 那一份（{expected}），这一版 cc-monitor 带的字节对不上，没有装上去。",
+      "args": ["machine", "expected"]
+    },
     "rsSftp.uninstall.absent": {
       "kind": "body",
       "zh": "{path} 不在，可能已经卸载过了。",

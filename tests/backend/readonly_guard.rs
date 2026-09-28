@@ -4527,6 +4527,13 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "上游 base URL 的形状 ＋ 明文只许回环（纯字符串判定）；仓内 crate、零依赖，现打 0 处写面、0 处 I/O",
         ),
+        (
+            // 〔MIG-3b〕部署决策的唯一一份（表 A / 表 B · 身份戳 · 只升不降），`control/deploy_plan.rs` 用它出计划。
+            "deploy-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "部署决策（纯判定：键 · 表 · 身份戳的解读 · 新旧）；仓内 crate、只依赖 copy-core / shell-quote-core，现打 0 处写面、0 处 I/O",
+        ),
     ];
 
     /// 清单的**依赖段**逐条：`(段名, crate 名, 那一行原文)`。

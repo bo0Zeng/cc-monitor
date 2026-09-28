@@ -426,349 +426,118 @@ fn deploy_decision_truth_table() {
     );
 }
 
-// ═══ 〔DP1 · 第四波〕远端判身份认字节（`设计/96 §7.2`）═══════════════════════════════
+// ═══ 〔MIG-3b · 4d-lanes 子步 1〕部署决策进本机常驻后端，本模块只放字节 ═══════════════════════
 //
-// 要求住址：`设计/96 §7.2.1`，逐字：「**读它字节里那段身份戳，不跑它**」；`§7.2.4`：「读不出来时的显式失败 —— 四态，不许合并」；
-// `§7.2.3`：「部署决策的对照物只能是后者」（手上那份字节自报的，不是源码常量）。
-// 〔墓碑 —— 这里原来是 K-W4 `§0c` 那几格：旁挂版本标记（目录级）与「落点那个文件在不在」两个事实合起来判的真值表。
-//  旁挂标记在后端那条路上退役了（它是标签不是指纹），那几格随判定函数一起换成下面这几格。〕
+// 要求住址：`4d-lanes.md` MIG-3b 第 1 条「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+// 〔墓碑 —— 这里原来是两条部署路「读字节自报的身份、不读旁挂标记」与取样壳「真走纯解释函数」两格源码判据，
+//  以及身份判定那几格纯函数判据：判定整个搬去了 `deploy-core`（纯判据跟着搬，期望一字未改）与后端 `control/deploy_plan.rs`。〕
 
-/// I1：六形逐形（期望取自 `96 §7.2.4` 那张表 ＋ 0 字节那一格按「没装」）。
+/// 🔴 两条部署路（自动 · 按钮）各**恰好一次**问本机常驻后端要计划、照计划取字节；本文件生产段里**零处**再做判定
+/// （问那台 `uname` · 查表 A/B · 扫身份戳 · 判新旧 · 判落点 · 认旧入口），也零处碰旁挂标记。带正控。
 #[test]
-fn identity_decision_answers_each_state_without_merging_them() {
-    const EXPECT: &str = "p9b-sample";
-    let d = |id: RemoteIdentity| identity_decision(&id, EXPECT, "aya", "/h/.cc-monitor/bin/ccm");
-    assert!(
-        matches!(d(RemoteIdentity::Missing), Ok(DeployAction::Deploy(_))),
-        "没装 ⇒ 装"
-    );
-    assert!(
-        matches!(d(RemoteIdentity::Empty), Ok(DeployAction::Deploy(_))),
-        "0 字节 ⇒ 装"
-    );
-    assert_eq!(
-        d(RemoteIdentity::Stamp(EXPECT.into())),
-        Ok(DeployAction::Skip),
-        "同一版 ⇒ 复用"
-    );
-    let Ok(DeployAction::Deploy(why)) = d(RemoteIdentity::Stamp("p8z-older".into())) else {
-        panic!("更旧的一版 ⇒ 该换");
-    };
-    assert!(
-        why.contains("p8z-older") && why.contains(EXPECT),
-        "换的理由没说清两边各是哪一版：{why}"
-    );
-    // 三种「判不清它是谁」：显式失败，而且三句话互不相同（下一步不同：一个没身份、一个身份不唯一、一个判不了）。
-    let no = d(RemoteIdentity::NoStamp).unwrap_err();
-    let many = d(RemoteIdentity::Ambiguous(vec!["a1".into(), "b2".into()])).unwrap_err();
-    let cant = d(RemoteIdentity::Unreadable("Permission denied".into())).unwrap_err();
-    for e in [&no, &many, &cant] {
-        assert!(
-            e.contains("aya") && e.contains("/h/.cc-monitor/bin/ccm"),
-            "没说哪台哪个文件：{e}"
-        );
-    }
-    assert!(no.contains("不说自己是哪一版"), "{no}");
-    assert!(many.contains("a1") && many.contains("b2"), "{many}");
-    assert!(
-        cant.contains("判不了") && cant.contains("Permission denied"),
-        "{cant}"
-    );
-    assert!(no != many && many != cant && no != cant);
-    // 出路是一个真存在的动作（机器页「卸载后端」），不是一句空话。
-    assert!(no.contains("卸载后端") && many.contains("卸载后端"));
-}
-
-/// I2：扫描的回话 → 身份。退出码 0 / 1 / 其它 · 重复戳去重 · 两个不同戳 · 空身份不收。
-#[test]
-fn the_stamp_scan_answer_maps_to_exactly_one_identity_state() {
-    let (o, c) = (env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE"));
-    let line = |id: &str| format!("{o}{id}{c}\n");
-    assert_eq!(
-        interpret_stamp_scan(Some(0), &line("p9-sample"), ""),
-        RemoteIdentity::Stamp("p9-sample".into())
-    );
-    // 同一个戳在字节里出现两次（`grep -o` 逐处吐）⇒ 仍是一个身份。
-    assert_eq!(
-        interpret_stamp_scan(
-            Some(0),
-            &format!("{}{}", line("p9-sample"), line("p9-sample")),
-            ""
-        ),
-        RemoteIdentity::Stamp("p9-sample".into())
-    );
-    assert_eq!(
-        interpret_stamp_scan(Some(0), &format!("{}{}", line("b2"), line("a1")), ""),
-        RemoteIdentity::Ambiguous(vec!["a1".into(), "b2".into()])
-    );
-    assert_eq!(
-        interpret_stamp_scan(Some(0), &line(""), ""),
-        RemoteIdentity::NoStamp
-    );
-    assert_eq!(
-        interpret_stamp_scan(Some(1), "", ""),
-        RemoteIdentity::NoStamp
-    );
-    assert!(matches!(
-        interpret_stamp_scan(Some(2), "", "grep: /x: Permission denied"),
-        RemoteIdentity::Unreadable(w) if w.contains("Permission denied")
-    ));
-    // 没送退出码（链路被掐）≠ 0：不许读成「扫到了」或「没有」。
-    assert!(matches!(
-        interpret_stamp_scan(None, &line("p9-sample"), ""),
-        RemoteIdentity::Unreadable(_)
-    ));
-}
-
-/// I2b：那条命令只读、界标不写字面量、路径过引号、身份至少一个字符（与 `build.rs::bytes_build_id` 同一条纪律）。
-#[test]
-fn the_stamp_scan_command_is_read_only_and_quoted() {
-    // 〔E2〕落点是固定常量、以 shell 写法交进来（`"$HOME"` 在那台上展开），不再是要 quote 的外来路径。
-    let cmd = stamp_scan_cmd(crate::ssh_source::BACKEND_CMD);
-    assert!(cmd.starts_with("LC_ALL=C grep -aoE "), "{cmd}");
-    assert!(
-        cmd.ends_with("-- \"$HOME\"/.cc-monitor/bin/ccm"),
-        "落点那一格不对：{cmd}"
-    );
-    assert!(
-        cmd.contains("[[:alnum:]_.-]+"),
-        "身份那一段不是「至少一个字符」：{cmd}"
-    );
-    for m in [env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE")] {
-        assert!(cmd.contains(m), "界标没进命令：{m} / {cmd}");
-    }
-    // 只读：引号之外没有任何会写的东西（界标里的 `>>` 在引号里，是正则的一部分）。
-    let unquoted: String = cmd.split('\'').step_by(2).collect();
-    assert!(unquoted.contains("grep"), "拆引号拆歪了：{unquoted}");
-    for w in [">", "rm ", "mv ", "tee", "chmod", "sed -i", ";", "|", "&"] {
-        assert!(!unquoted.contains(w), "扫描命令里有写：{w} / {cmd}");
-    }
-}
-
-/// I3：两条后端部署路都读那份字节自报的身份；旁挂标记在这两条路上零命中（带正控）。
-#[test]
-fn both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker() {
+fn the_deploy_paths_only_place_bytes_the_backend_decides() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
-    let marker_forms = |code: &str| -> Vec<&'static str> {
+    let decisions = |code: &str| -> Vec<&'static str> {
         [
-            "/.build_id",
-            "read_marker(",
-            "put_marker(",
-            "deploy_decision(",
+            "probe_key(",
+            "choose(",
+            "key_from_uname(",
+            "judge(",
+            "stamp_scan_cmd(",
+            "interpret_stamp_scan(",
+            "interpret_target_probe(",
+            "identity_decision(",
+            "landing_verdict(",
+            "legacy_verdict(",
+            "is_newer(",
+            "is_ours(",
+            "connect_and_exec_capture(",
         ]
         .into_iter()
         .filter(|f| code.contains(f))
         .collect()
     };
+    assert_eq!(
+        decisions(&prod),
+        Vec::<&str>::new(),
+        "sftp.rs 又自己判起了部署 —— 判定住本机常驻后端（`deploy-plan`）"
+    );
     for sig in [
         "pub async fn ensure_backend_deployed(",
         "pub async fn deploy_remote_backend(",
-        "pub async fn uninstall_remote_backend(",
     ] {
         let code = dp1_body(&prod, sig);
-        assert_eq!(
-            marker_forms(&code),
-            Vec::<&str>::new(),
-            "{sig} 又碰起了旁挂标记：\n{code}"
-        );
-        if !sig.contains("uninstall") {
-            // 〔E2〕两条路都经 `landing_decision`（它里面问身份、按身份判；读落点字节只为认旧入口，不是旁挂标记）。
-            guard_core::find_pinned(&code, "landing_decision(")
-                .unwrap_or_else(|e| panic!("{sig}：不是恰好一处问落点那份是谁（{e}）"));
-        }
-    }
-    let landing = dp1_body(&prod, "async fn landing_decision(");
-    guard_core::find_pinned(&landing, "remote_identity(")
-        .unwrap_or_else(|e| panic!("落点判定：不是恰好一处问那台上那份是谁（{e}）"));
-    guard_core::find_pinned(&landing, "identity_decision(")
-        .unwrap_or_else(|e| panic!("落点判定：不是恰好一处按身份判（{e}）"));
-    guard_core::find_pinned(&landing, "read_marker(fs, LANDING_REL)")
-        .unwrap_or_else(|e| panic!("落点判定读的不是落点那份字节（{e}）"));
-    // 正控：四种标记写法都认得出来。
-    assert_eq!(
-        marker_forms("read_marker(x) put_marker(y) deploy_decision(z) \"{dir}/.build_id\""),
-        vec![
+        guard_core::find_pinned(&code, "ask_plan(")
+            .unwrap_or_else(|e| panic!("{sig}：不是恰好一处问后端要计划（{e}）"));
+        guard_core::find_pinned(&code, "planned_binary(&plan)")
+            .unwrap_or_else(|e| panic!("{sig}：不是恰好一处照计划取字节（{e}）"));
+        for marker in [
             "/.build_id",
             "read_marker(",
             "put_marker(",
-            "deploy_decision("
-        ]
-    );
-}
-
-// ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
-// 上面那几格买的是「判定那一半」与「两条路真的去问了」；取样这一半（`metadata` /
-// `try_exists` 的答案怎么变成 `TargetBinary`）09-06 之前一条判据都没有：
-// 把 `probe_target_binary` 的体换成恒答 `Present`，全量 cargo **0 红**（沙箱实测）。
-// 下面五格逐格钉一条规则，第六格是反向自检（证明它们不是恒真）。
-
-/// 映射规则①：`metadata` 说它在、且**有字节** ⇒ `Present`。
-#[test]
-fn probe_metadata_with_bytes_maps_to_present() {
-    assert_eq!(
-        interpret_target_probe(Some(Some(2_300_000)), None),
-        TargetBinary::Present
-    );
-    assert_eq!(
-        interpret_target_probe(Some(Some(1)), None),
-        TargetBinary::Present,
-        "1 字节也是「有字节」—— 只有恰好 0 才是 Empty 那一格"
-    );
-}
-
-/// 映射规则②：`metadata` 说它在、size **恰好 0** ⇒ `Empty`，不是 `Present`。
-/// 0 字节不是假想形态：`upload_atomic` 那条「绝不 set_metadata」注释记的就是
-/// 真机 e2e 把后端截成 0 字节、不可 exec 的那次事故，而 `try_exists` 会把它算成「在」。
-#[test]
-fn probe_metadata_saying_zero_bytes_maps_to_empty() {
-    assert_eq!(
-        interpret_target_probe(Some(Some(0)), None),
-        TargetBinary::Empty
-    );
-    assert_ne!(
-        interpret_target_probe(Some(Some(0)), None),
-        interpret_target_probe(Some(Some(1)), None),
-        "0 字节与有字节判成了同一格 ⇒ 身份那一步的 0 字节那一格（〔DP1〕按没装装）永远走不到"
-    );
-}
-
-/// 映射规则③（本件的承重格）：`metadata` 成功而**服务器不给 size**（`Some(None)`）
-/// ⇒ 仍是 `Present`。
-/// `TargetBinary` 与取样壳的头注逐字：「服务器不给 size（size=None）≠ 0 字节」——
-/// 把「没说」读成「空」，等于对着一台好机器每次连接都重传 2.3MB。
-#[test]
-fn probe_a_server_that_gives_no_size_is_not_the_empty_cell() {
-    assert_eq!(
-        interpret_target_probe(Some(None), None),
-        TargetBinary::Present
-    );
-    assert_ne!(
-        interpret_target_probe(Some(None), None),
-        TargetBinary::Empty,
-        "「服务器没给 size」被读成了「0 字节」"
-    );
-}
-
-/// 映射规则④：`metadata` 失败、补问 `try_exists` **明确答不在** ⇒ `Missing`。
-#[test]
-fn probe_stat_failed_and_try_exists_says_no_maps_to_missing() {
-    assert_eq!(
-        interpret_target_probe(None, Some(false)),
-        TargetBinary::Missing
-    );
-}
-
-/// 映射规则⑤：`metadata` 失败、`try_exists` **也答不出来** ⇒ `Unknown`。
-/// 不许滑成 `Missing`（一次 stat 失败换一次全量重传，版本门控就废了），
-/// 也不许滑成 `Present`（那正是本枚举要治的那个静默）。
-#[test]
-fn probe_stat_failed_and_try_exists_cannot_answer_maps_to_unknown() {
-    assert_eq!(interpret_target_probe(None, None), TargetBinary::Unknown);
-    assert_ne!(
-        interpret_target_probe(None, None),
-        interpret_target_probe(None, Some(false)),
-        "「问不出来」与「明确不在」判成了同一格 —— 这两者正是要分开的那两件事"
-    );
-}
-
-/// **反向自检**：上面五格每一条都可能是恒真的（函数恒答那一张脸，断言照样绿）。
-/// 这一格喂**全部六种输入**，钉的是「每一格只由它自己那条规则命中」——
-/// 任何一臂被改到别的状态，下面必有一行不等。
-#[test]
-fn probe_no_cell_answers_in_place_of_another() {
-    let table: [(Option<Option<u64>>, Option<bool>, TargetBinary, &str); 6] = [
-        (Some(Some(9)), None, TargetBinary::Present, "有字节"),
-        (Some(Some(0)), None, TargetBinary::Empty, "恰好 0 字节"),
-        (Some(None), None, TargetBinary::Present, "服务器不给 size"),
-        (
-            None,
-            Some(false),
-            TargetBinary::Missing,
-            "stat 失败 + try_exists 说不在",
-        ),
-        (
-            None,
-            Some(true),
-            TargetBinary::Present,
-            "stat 失败 + try_exists 说在",
-        ),
-        (
-            None,
-            None,
-            TargetBinary::Unknown,
-            "stat 失败 + try_exists 也答不出",
-        ),
-    ];
-    for (size, exists, want, what) in table {
-        assert_eq!(interpret_target_probe(size, exists), want, "{what}");
+            "deploy_decision(",
+        ] {
+            assert!(!code.contains(marker), "{sig} 又碰起了旁挂标记：{marker}");
+        }
     }
-    // 四个状态一个不少地被这张表喂到 —— 少一行就等于那一格没人看。
-    for want in [
-        TargetBinary::Present,
-        TargetBinary::Missing,
-        TargetBinary::Empty,
-        TargetBinary::Unknown,
+    // 正控：每一种判定写法都认得出来。
+    assert_eq!(
+        decisions("probe_key( choose( key_from_uname( judge( stamp_scan_cmd( interpret_stamp_scan( interpret_target_probe( identity_decision( landing_verdict( legacy_verdict( is_newer( is_ours( connect_and_exec_capture(").len(),
+        13
+    );
+}
+
+/// 计划的解码器读后端那一侧同一份金样（`tests/__fixtures__/deploy-plan.golden.json`，后端 `deploy_plan_tests` 核键集 == 真产出）；
+/// 严格收：少一格 · 多一格 · 认不出的动作 / 旧落点结论都是错（两侧漂了当场说出来）。
+#[test]
+fn the_plan_decoder_reads_the_golden() {
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../__fixtures__/deploy-plan.golden.json")).unwrap();
+    let product = &golden["product"];
+    let p = decode_plan(product).expect("金样解不开");
+    assert_eq!(p.key.label(), "Linux / x86_64");
+    assert_eq!(p.expected, "p0a-placeholder");
+    assert!(
+        matches!(&p.action, DeployAction::Keep { theirs, .. } if theirs == "p0b-placeholder"),
+        "{:?}",
+        p.action
+    );
+    assert_eq!(
+        p.legacy,
+        deploy_core::LegacyVerdict::Unknown("placeholder".into())
+    );
+    let with = |k: &str, v: serde_json::Value| {
+        let mut x = product.clone();
+        x[k] = v;
+        x
+    };
+    let mut missing = product.clone();
+    missing.as_object_mut().unwrap().remove("why");
+    let mut extra = product.clone();
+    extra["surprise"] = serde_json::json!(1);
+    for bad in [
+        missing,
+        extra,
+        with("action", serde_json::json!("overwrite")),
+        with("action", serde_json::json!("skip")),
+        with("legacy", serde_json::json!("remove")),
+        with("os", serde_json::json!("Plan9")),
+        with("expected", serde_json::json!("")),
     ] {
-        assert!(
-            table.iter().any(|(_, _, w, _)| *w == want),
-            "{want:?} 这一格没有输入喂给它"
-        );
+        assert!(decode_plan(&bad).is_err(), "该拒却收了：{bad}");
     }
-    // 恒答任何一张脸都会被这三对逮住（不是「函数存在」那种空真）。
-    assert_ne!(
-        interpret_target_probe(Some(Some(0)), None),
-        interpret_target_probe(Some(Some(9)), None)
-    );
-    assert_ne!(
-        interpret_target_probe(Some(None), None),
-        interpret_target_probe(Some(Some(0)), None)
-    );
-    assert_ne!(
-        interpret_target_probe(None, Some(false)),
-        interpret_target_probe(None, None)
-    );
-}
-
-/// **防空转**（K-W4b）：上面六格全在纯函数上，取样壳只要不接到它就是死代码，
-/// 而六格照样绿 —— 那正是 09-06 之前那个洞（`probe_target_binary` 体恒答 `Present`
-/// ⇒ 全量 cargo 0 红）。这一格钉的是取样壳**真的走**那个纯解释函数、
-/// 并且**没有**把状态直接写死在 async 体里。
-///
-/// 形状照抄同文件的 `both_backend_deploy_paths_read_the_identity_from_the_bytes_not_from_a_marker`
-/// （含它那种反向自检）。
-///
-/// ⚠ 射程：它看的是**源码文本**，不是运行期。挡得住「体被换成常量 / 纯函数没接上」，
-/// 挡不住「调了纯函数但把返回值扔了」——那一形由上面六格与类型系统一起管。
-#[test]
-fn the_probe_shell_really_goes_through_the_pure_interpreter() {
-    fn body<'a>(src: &'a str, sig: &str) -> &'a str {
-        let i = src
-            .find(sig)
-            .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-        let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
-        &src[i..j]
-    }
-    const SIG: &str = "async fn probe_target_binary(";
-    let src = include_str!("../../src/bridge/src/sftp.rs");
-    let code = body(src, SIG)
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    // 反向自检：**真取到体了**。取不到（空串）时下面那条 `!contains` 会恒真地全绿，
-    // 这一格就从守卫变成假绿源 ⇒ 先用一条正向断言把空串挡在外面。
-    assert!(
-        code.contains(SIG) && code.contains("fs.stat("),
-        "取到的不是 probe_target_binary 的体（拿到 {} 字节）",
-        code.len()
-    );
-    assert!(
-        code.contains("interpret_target_probe("),
-        "取样壳没走那个纯解释函数 —— 四态映射的那几格全成了死代码，掏空它一条都不会红"
-    );
-    assert!(
-        !code.contains("TargetBinary::"),
-        "取样壳里直接写死了状态 —— 映射规则又回到了不可测的 async 体里"
+    let skip = with("action", serde_json::json!("skip"));
+    let skip = {
+        let mut x = skip;
+        x["theirs"] = serde_json::Value::Null;
+        x["legacy"] = serde_json::json!("absent");
+        x["legacy_why"] = serde_json::Value::Null;
+        x
+    };
+    let p = decode_plan(&skip).expect("skip ＋ absent 那一形解不开");
+    assert_eq!(
+        (p.action, p.legacy),
+        (DeployAction::Skip, deploy_core::LegacyVerdict::Absent)
     );
 }
 
@@ -965,23 +734,6 @@ fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
     assert_eq!(LANDING_REL, ".cc-monitor/bin/ccm");
 }
 
-/// 〔E2〕已部署的机器上落点是旧的三行入口（无身份戳）：认得出 ⇒ 换成后端本体；认不出的无戳文件照旧显式失败（纯判定那一半）。
-#[test]
-fn an_old_three_line_entry_at_the_landing_is_recognised_as_ours() {
-    let old = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
-    assert!(crate::ccm_legacy::is_ours(old), "旧入口没认出来");
-    assert!(
-        !crate::ccm_legacy::is_ours("#!/bin/sh\necho mine\n"),
-        "用户自己的脚本被当成了我们的"
-    );
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
-    let body = dp1_body(&prod, "async fn landing_decision(");
-    guard_core::find_pinned(&body, "crate::ccm_legacy::is_ours(")
-        .unwrap_or_else(|e| panic!("落点判定不认旧入口（{e}）"));
-    guard_core::find_pinned(&body, "matches!(id, RemoteIdentity::NoStamp)")
-        .unwrap_or_else(|e| panic!("认旧入口不是只在「无戳」那一格（{e}）"));
-}
-
 /// 〔SR1b · 2026-09-24〕**界面那一侧对着真后端 ＋ 真 sshd**：部署那几问经 `RemoteFs`（`files` 链路）、
 /// 传输经中继（`sftp_pool::transfer_call` / `watch_ticket`），全程界面进程零 SSH。
 ///
@@ -1027,7 +779,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         addresses: vec![],
         jump: None,
     };
-    // ① 部署那几问（判定函数原样，执行经后端）
+    // ① 部署那几问（〔MIG-3b〕判定在本机常驻后端：`deploy-plan` 沿同一条 SSH 问那台；放字节经 `files` 链路）
     let fs = RemoteFs::open(&cfg).await.expect("开不了 files 链路");
     assert_eq!(fs.home(), rhome, "起始目录不是 sshd 给的那个");
     // 〔DP1〕身份读那份字节自己的戳（那台 sshd 上真跑一次只读扫描），不读旁挂标记。
@@ -1039,12 +791,16 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     );
     let mut bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
     bytes.splice(1_000_000..1_000_000, stamp.bytes());
-    let decide =
-        |id: RemoteIdentity| identity_decision(&id, "sr1b-id", "sr1b-loopback", &backend_path);
+    // 〔MIG-3b〕这一版「带着」的那一格就是台架那台（本机 sshd）的键，自报 `sr1b-id`（与送去的字节同一个戳）。
+    let mine = [(
+        deploy_core::Key::this_machine().expect("台架那台的键认不出"),
+        "sr1b-id",
+    )];
+    let decide = || async { ask_plan_for(&cfg, &mine).await.map(|p| p.action) };
     // 〔DP1〕读数脚本 ② 在这个落点上留下了一份 3 MB 的随机字节（没有身份戳）⇒ 那台 sshd 上真扫一次：
     //   显式失败、一个字节都不写（盘上那份原样）；出路是机器页「卸载后端」—— 这里就用那颗按钮的真命令删掉它。
     let leftover = std::fs::read(&backend_path).expect("读数脚本 ② 留下的那份不在 —— 台架变了");
-    let d_pre = landing_decision(&cfg, &fs, "sr1b-id").await;
+    let d_pre = decide().await;
     assert!(
         matches!(&d_pre, Err(e) if e.contains("不说自己是哪一版")),
         "无戳的旧文件 ⇒ 该显式失败：{d_pre:?}"
@@ -1058,11 +814,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .await
         .expect("卸载（出路）");
     assert!(msg.starts_with("已删除 ~/.cc-monitor/bin/ccm"), "{msg}");
-    let d0 = decide(
-        remote_identity(&cfg, &fs, LANDING_REL, crate::ssh_source::BACKEND_CMD)
-            .await
-            .unwrap(),
-    );
+    let d0 = decide().await;
     assert!(
         matches!(d0, Ok(DeployAction::Deploy(_))),
         "落点缺 ⇒ 该部署：{d0:?}"
@@ -1071,33 +823,25 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     upload_verified(&fs, LANDING_REL, &bytes, 0o700)
         .await
         .expect("上传 ＋ 读回");
-    let id1 = remote_identity(&cfg, &fs, LANDING_REL, crate::ssh_source::BACKEND_CMD)
-        .await
-        .unwrap();
     assert_eq!(
-        id1,
-        RemoteIdentity::Stamp("sr1b-id".into()),
-        "那台上那份的戳没被扫出来"
+        decide().await,
+        Ok(DeployAction::Skip),
+        "装完 ⇒ 该跳过（那台上那份的戳没被扫出来就不会是这一格）"
     );
-    assert_eq!(decide(id1), Ok(DeployAction::Skip), "装完 ⇒ 该跳过");
     assert_eq!(
         std::fs::read(&backend_path).unwrap(),
         bytes,
         "盘上那份不是送去的字节"
     );
     std::fs::write(&backend_path, b"").unwrap();
-    let d2 = decide(
-        remote_identity(&cfg, &fs, LANDING_REL, crate::ssh_source::BACKEND_CMD)
-            .await
-            .unwrap(),
-    );
+    let d2 = decide().await;
     assert!(
         matches!(d2, Ok(DeployAction::Deploy(_))),
         "截成 0 字节 ⇒ 该重部署：{d2:?}"
     );
     // 落点上是一份不说自己是谁的东西 ⇒ 显式失败、不覆盖（判定层不写；盘上那份原样）。
     std::fs::write(&backend_path, b"#!/bin/sh\necho not ours\n").unwrap();
-    let d3 = landing_decision(&cfg, &fs, "sr1b-id").await;
+    let d3 = decide().await;
     assert!(
         matches!(&d3, Err(e) if e.contains("不说自己是哪一版")),
         "无戳的文件 ⇒ 该显式失败：{d3:?}"
@@ -1108,7 +852,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/x/cc-monitor-backend' ccm \"$@\"\n",
     )
     .unwrap();
-    let d4 = landing_decision(&cfg, &fs, "sr1b-id").await;
+    let d4 = decide().await;
     assert!(
         matches!(d4, Ok(DeployAction::Deploy(_))),
         "旧入口 ⇒ 该换成后端本体：{d4:?}"
@@ -1252,10 +996,7 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一条 `kind: \"deploy\"`（{e}）：\n{arm}"));
     guard_core::find_pinned(arm, "app.emit(crate::bridge::events::REMOTE_HEALTH")
         .unwrap_or_else(|e| panic!("Err 那一支没有恰好一次发到远端健康通道（{e}）：\n{arm}"));
-    assert!(
-        arm.contains("e.say(&host_label)"),
-        "发出去的不是那句话本身：\n{arm}"
-    );
+    assert!(arm.contains("e.say()"), "发出去的不是那句话本身：\n{arm}");
     assert!(
         arm.contains("None"),
         "Err 那一支不再「不阻断、按没确认处理」：\n{arm}"
@@ -1319,105 +1060,6 @@ fn the_alias_block_truth_no_longer_lives_in_sftp() {
 // 要求住址：主会话 4D 裁 D-b 逐字「多个 monitor 连同一远端：部署只在「我的比盘上的新」时才换（BUILD_ID 可比序）」；
 // 它改写 `设计/01 §6.7a` 规矩 2「对就复用，不对就换」与 `96 §7.2.4`「恰一个戳 ≠ ⇒ 换」那一格（设计篇由主会话收口时改）。
 // 审计 `E-compat.md` §E3（两个不同版本的 monitor 连同一台远端，互相重部署）。
-
-/// B1a：序键手写表 —— 合法形 · 多位代号 · 缺字母 · 大写 · 缺名 · 缺前缀。
-#[test]
-fn hx2_build_order_reads_generation_and_letter_and_refuses_other_shapes() {
-    let cases: &[(&str, Option<(u32, u8)>)] = &[
-        ("p1a-history", Some((1, b'a'))),
-        ("p3m-ssh-zlib", Some((3, b'm'))),
-        ("p2z-relay-in-resident", Some((2, b'z'))),
-        ("p12c-x", Some((12, b'c'))),
-        ("p3-x", None),
-        ("p3M-x", None),
-        ("p3m", None),
-        ("p3m-", None),
-        ("3m-x", None),
-        ("sr1b-id", None),
-        ("", None),
-    ];
-    for (id, want) in cases {
-        assert_eq!(build_order(id), *want, "{id:?}");
-    }
-    assert!(is_newer("p3n-a", "p3m-b") && is_newer("p4a-a", "p3z-b"));
-    assert!(!is_newer("p3m-a", "p3m-b"), "同序不同名 ⇒ 不算新");
-    assert!(
-        !is_newer("p3m-a", "p3n-b") && !is_newer("p3n-a", "junk") && !is_newer("junk", "p1a-x")
-    );
-}
-
-/// 🔴 B1b：**出过的每一个 `BUILD_ID` 都有序、历史表按表序严格爬升、现在这个不低于最后一行**（读后端源码，异源）。
-/// 下一次 bump 写出一个解不出序的形状（或比历史低）⇒ 当场红 —— 那一版部署出去就永远不会被判「更新」而换上。
-#[test]
-fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
-    let guard = include_str!("../../tests/backend/build_id_guard.rs");
-    let start = guard
-        .find("const SUBCOMMAND_HISTORY")
-        .expect("历史表不在了 —— 本条的对照物没了");
-    let end = start + guard[start..].find("\n    ];").expect("历史表没有收尾");
-    let ids: Vec<&str> = guard[start..end]
-        .lines()
-        .map(str::trim)
-        .filter_map(|l| l.strip_prefix('"')?.split('"').next())
-        .filter(|s| s.starts_with('p') && !s.contains('\n') && !s.starts_with("--"))
-        .collect();
-    assert!(
-        ids.len() >= 30,
-        "历史表只抠出 {} 个 id —— 抠法坏了：{ids:?}",
-        ids.len()
-    );
-    let mut prev: Option<(u32, u8)> = None;
-    for id in &ids {
-        let o = build_order(id).unwrap_or_else(|| panic!("历史表里的 {id:?} 解不出序"));
-        if let Some(p) = prev {
-            assert!(o > p, "历史表没有按表序严格爬升：{id:?} 不高于上一行");
-        }
-        prev = Some(o);
-    }
-    let now = env!("BACKEND_BUILD_ID");
-    let o = build_order(now).unwrap_or_else(|| {
-        panic!("现在的 BUILD_ID {now:?} 解不出序 —— 照 `p<代号><小写字母>-<名>` 起名（D-b：部署按这个序只升不降）")
-    });
-    assert!(
-        o >= prev.unwrap(),
-        "现在的 BUILD_ID {now:?} 比历史表最后一行还低"
-    );
-}
-
-/// 🔴 B2：`identity_decision` 的「另一版」那一格按新旧拆开（期望手写）：旧 ⇒ 换；新 · 同序不同名 · 解不出 ⇒ 不动。
-#[test]
-fn hx2_a_different_build_is_replaced_only_when_it_is_older() {
-    const MINE: &str = "p3n-mine";
-    let d = |s: &str| {
-        identity_decision(
-            &RemoteIdentity::Stamp(s.into()),
-            MINE,
-            "aya",
-            "/h/.cc-monitor/bin/ccm",
-        )
-    };
-    assert!(
-        matches!(d("p3m-older"), Ok(DeployAction::Deploy(_))),
-        "旧 ⇒ 换"
-    );
-    assert!(
-        matches!(d("p2z-older"), Ok(DeployAction::Deploy(_))),
-        "旧一代 ⇒ 换"
-    );
-    assert_eq!(d(MINE), Ok(DeployAction::Skip), "同一版 ⇒ 复用");
-    for theirs in ["p3o-newer", "p4a-newer", "p3n-sibling", "hand-built"] {
-        match d(theirs) {
-            Ok(DeployAction::Keep { theirs: t, why }) => {
-                assert_eq!(t, theirs, "Keep 回的不是那台上的身份");
-                assert!(
-                    why.contains(theirs) && why.contains(MINE) && why.contains("aya"),
-                    "{why}"
-                );
-            }
-            other => panic!("{theirs:?} 不比 {MINE} 旧 ⇒ 该不动它，却是 {other:?}"),
-        }
-    }
-}
 
 /// 🔴 B2b：自动部署那条路遇到「不动」⇒ 回**那台上的**身份（源码切臂：`Keep` 臂交出 `Some(theirs)`，末尾只在没有时才回这一版 id）。
 #[test]

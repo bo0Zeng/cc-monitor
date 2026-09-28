@@ -2502,11 +2502,11 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
-        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`sftp::identity_decision`）：
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`deploy_core::identity_decision`）：
         //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
         //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
         VersionVerdict::StaleBuild { reported }
-            if crate::sftp::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
+            if deploy_core::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
         {
             Some(copy_text(
                 "rsSshSource.version.remoteOlder",
@@ -3284,7 +3284,7 @@ async fn stream_loop(
             Err(e) => {
                 // 〔DP1 · 第四波〕**不阻断**（手动部署的后端照样能连），但那句话要到界面上 ——
                 //   从前这里只 `warn!`、拒绝那几形更是 `debug!` ＋ `Ok(None)`，用户看到的是「什么都没发生」（`设计/96 §7.1.4`）。
-                let msg = e.say(&host_label);
+                let msg = e.say();
                 tracing::warn!(
                     "ssh_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {msg}"
                 );

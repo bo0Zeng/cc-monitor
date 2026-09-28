@@ -146,7 +146,6 @@ const UNIT: &[&str] = &[
     "tests/e2e-probe.vitest.ts",
     "tests/error-toast.vitest.ts",
     "tests/events-burst.vitest.ts",
-    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe（不是裸事件）
     "tests/events-yield.vitest.ts",
     "tests/file-window.vitest.ts",
     "tests/fork-ask.vitest.ts",
@@ -247,6 +246,7 @@ const UNIT: &[&str] = &[
     "tests/views/session-viewer-skeleton.vitest.ts",
     "tests/views/user-input-panel.vitest.ts",
     "tests/bridge/crates/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
+    "tests/bridge/crates/deploy-core/lib_tests.rs", // 〔MIG-3b〕新共享 crate `deploy-core` 的判定（纯函数）
     "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
 ];
 
@@ -424,7 +424,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
     "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
-    "tests/bridge/tasks_tests.rs",
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
     "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
     "tests/bridge/tool_registry_tests.rs",
@@ -512,6 +511,8 @@ const SCAN: &[&str] = &[
     "tests/views/live-user-inputs.vitest.ts",
     "tests/views/session-viewer-user-inputs.vitest.ts",
     "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
+    "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
     "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。

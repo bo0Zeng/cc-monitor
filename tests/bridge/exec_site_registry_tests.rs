@@ -349,9 +349,8 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
     ("remote_resident.rs", "stop", StillShell::Bootstrap,
      "〔HOST〕停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
     ("byte_table.rs", "probe_key", StillShell::Bootstrap,
-     "部署后端之前问那台 `uname -s -m`，据此挑哪一份二进制去装（那时还没有后端可问）"),
-    ("sftp.rs", "remote_identity", StillShell::Bootstrap,
-     "部署后端之前扫落点那一份的身份戳（判「是不是这一版」、要不要换）—— 被判的正是那台的后端本身"),
+     "推全景小程序之前问那台 `uname -s -m`，据此挑哪一份字节去放（〔MIG-3b〕后端那条部署路的这一问进了本机常驻后端 `deploy-plan`；全景这一条随 `panorama_*` 三条待裁）"),
+    // 〔MIG-3b〕`sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
     ("pubkey.rs", "push_public_key", StillShell::Bootstrap,
      "把公钥推进那台 `authorized_keys`：只剩**那台后端还不在**那一形（密钥登录建立之前）；〔SH1〕后端在 ⇒ 已改经 `files-put` ＋ `files-chmod`（`pubkey.rs::push_via_backend`）"),
     ("acct_iso_deploy.rs", "exec_collect", StillShell::Deploy,
