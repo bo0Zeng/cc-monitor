@@ -35,7 +35,7 @@
 //! 与默认配置等价的功能面（压缩 + RSA key 支持）。
 
 // S5 起本模块从 setup() 调用（remote.enabled=true 时）。run() / parse_frame /
-// InboundFrame 都是活代码；connect_and_exec 的 ClientHandler 等仍是骨架但已被 run 串起。
+// InboundFrame 都是活代码。
 // 个别仅 S6+ 才读的字段（RemoteConfig 反序列化派生）保留 dead_code 容忍。
 
 use crate::copy_table::copy_text;
@@ -113,7 +113,7 @@ fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
 /// |---|---|---|
 /// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch；〔DP1〕今天问 `uname -s -m`） | `byte_table::probe_key` |
 /// | ② | SFTP 连接（读远端 `.build_id` marker） | `sftp::connect_sftp` |
-/// | ③ | exec backend 起流 | `connect_and_exec` |
+/// | ③ | 接那台的常驻后端（`--resident-ensure` 一次 capture ＋ 隧道） | `remote_resident::attach` |
 ///
 /// ①② 同属 `ensure_backend_deployed`。**即使远端已经是当前 build、什么都不用部署，
 /// 每次重连也照付这两条**（各含一次 TCP + 握手 + 指纹校验 + auth）。
@@ -172,6 +172,23 @@ fn forget_verified_build(origin: &str) {
         if let Some(m) = g.as_mut() {
             m.remove(origin);
         }
+    }
+}
+
+/// 〔DEL 续〕一轮连接结束之后怎么办。
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum AfterRound {
+    /// 按退避再连。
+    RetryIn(Duration),
+    /// 那台永久不支持（非 unix）⇒ 不再自动重连，这条流收工（带那句话）。
+    Stop(String),
+}
+
+/// 纯函数：这一轮记下了「永久不支持」⇒ 停；否则按当前退避再连（主会话裁：非 unix 不按退避空转）。
+pub(crate) fn after_round(unsupported: Option<String>, backoff: Duration) -> AfterRound {
+    match unsupported {
+        Some(why) => AfterRound::Stop(why),
+        None => AfterRound::RetryIn(backoff),
     }
 }
 
@@ -480,7 +497,7 @@ mod coldstart_perf_guard;
 #[path = "../../../tests/bridge/ssh_source_stream_flag_gate_tests.rs"]
 mod stream_flag_gate_tests;
 
-// ═══════════ 〔C2 · `设计/05 §13`〕拨号归后端：backend 那条长连接流也只经拨号代理 ═══════════
+// ═══════════ 〔C2 · `设计/05 §13`〕拨号归后端：接远端后端的每一跳都只经拨号代理 ═══════════
 //
 // 〔墓碑 —— `K-P6b` 那一段原话的要点逐字：「买到的是：**`backend 那条长连接流` 的那一跳 SSH 握手，
 //  可以不发生在界面进程里**」「**界面进程仍然自己拨号 —— 7 处里搬走的是 1 处**」「回落有两条……
@@ -495,50 +512,6 @@ mod stream_flag_gate_tests;
 /// 〔E2 · V28 · `设计/01 §6.7b`〕远端后端在 shell 里的写法：恒是那台的 `~/.cc-monitor/bin/ccm`（后端二进制本身），
 /// 可填的 `backendPath` 删了。常量一份住 `relay_route_core`（后端往远端拼命令也读它）。
 pub(crate) const BACKEND_CMD: &str = relay_route_core::BACKEND_LANDING_SHELL;
-
-pub async fn connect_and_exec(
-    cfg: &RemoteConfig,
-    with_bg: bool,
-    tail_only: bool,
-    with_rbind_token: bool,
-) -> Result<crate::dial_host::DialStream, String> {
-    // backend 是长连接：代理那一侧 inactivity_timeout=None、keepalive 30s，靠 keepalive + EOF 检死链。
-    // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
-    // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
-    // （历史由本侧旁路快照拉取），实时通道流量趋零。
-    // 〔E2 · V28〕流模式显式词打头：落点那个文件就叫 `ccm`，零参数是「起会话」。
-    // 〔V151〕`ccm -- --stream …`：打头的 `--` 让那台的 `ccm` 当后端用。
-    let mut cmd = format!(
-        "{} {} {}",
-        BACKEND_CMD,
-        crate::backend::control::local_backend::BACKEND_SEP,
-        crate::backend::control::local_backend::STREAM_WORD
-    );
-    if with_bg {
-        cmd.push_str(" --with-bg");
-    }
-    if tail_only {
-        cmd.push_str(" --tail-only");
-    }
-    // 🔴 `设计/80 §8.7` 步 3：**索要启动期令牌。**
-    //
-    // 这条 flag 的字面量是**跨进程双写点** —— 另一侧是后端的
-    // `lib.rs::STREAM_FLAGS`（它必须认得并**剥离**这条 flag，否则会当成一次性查询、
-    // 处理完就退出 ⇒ 无 hello ⇒ §26 那条重连死循环）。
-    // 「声明了那条能力 ⟹ 会剥离对应 flag」是后端那侧的自证纪律，
-    // 而「monitor 发的这一串与后端认的那一串逐字相同」由
-    // `ssh_source_stream_flag_gate_tests.rs::the_stream_flags_monitor_sends_are_all_strippable`
-    // 从**后端源文件**现抠着钉住（改任一侧会红）。
-    if with_rbind_token {
-        cmd.push_str(" --with-rbind-token");
-    }
-    // 〔C2〕`connect_and_exec_cmd` 从此只经拨号代理拿链路（它的函数体由 `dial_move_judge` 钉着）——
-    // 所以这一行**不再是**「进程内回落」，它就是唯一那条路。
-    // 〔NT2 · A4〕链路出生带一次性总时限；长连接流是订阅（`设计/05 §3.3.2`：`subscribe` 的期限只盖建流），摘掉它。
-    connect_and_exec_cmd(cfg, &cmd)
-        .await
-        .map(crate::dial_host::DialStream::lives_long)
-}
 
 // 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**〔09-12〕：
 // `dial_home_registry`（另一份文件）那条递减棘轮拿 `DIAL_SITES` 里 `moved == false` 的
@@ -645,9 +618,10 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 /// - backend 的 `TmuxProbeDue` **只在 `initial_tmux_probe` 发一次**（一次性初探）；
 ///   之后每一拍由 `Poke` 驱动，而 `Poke` 来自 tmux hook，**hook 只有 3 条**：
 ///   `session-created` / `session-closed` / `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`）。
-/// - 而 `tabs.ts` 的 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
+/// - 而当年唯一的轮询方 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
 ///   会话还在，只是里面的命令换了。**那个变化不触发任何一条 hook** ⇒ 这份快照在那个场景下
 ///   **永不刷新** ⇒ 改读它 = 每次都等到 10s 超时再降级 kill，**功能退化**。
+///   〔V154〕那条轮询已随「换号重启直接 kill」删了；「快照不刷新 pane 前台命令」这条事实照旧成立。
 ///
 /// ⇒ 今天开出口**没有消费者**：另两个真实调用点（`fork-flow.ts` · `settings/machine-card.ts`）
 /// 是**一次性查询**、不是轮询，走 SSH 没问题。开一个没人用的出口是装饰。
@@ -1570,9 +1544,7 @@ pub(crate) fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
     }
 }
 
-/// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
-/// `<后端落点> --list-projects` 等一次性命令，与流式后端同一连接建立逻辑、
-/// 各自独立连接互不影响）。
+/// exec 任意命令行、拿回它的 stdout 字节流（issue #16：一次性命令各自独立连接、互不影响）。
 pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
     cmd: &str,
@@ -2604,6 +2576,8 @@ pub async fn run(
     let mut hello_confirmed: Option<Vec<String>> = None;
     // 〔TL2 · GP1 问 3〕上一轮断连时这台的可重连会话 —— 下一轮连上、tmux 快照到了之后重新裁一次（跨轮留着，不进全局表）。
     let mut pending_idle: Vec<String> = Vec::new();
+    // 〔DEL 续 · 主会话裁〕这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
+    let mut unsupported: Option<String> = None;
     loop {
         connected.store(false, Ordering::Release);
         // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
@@ -2624,6 +2598,7 @@ pub async fn run(
             &mut announced,
             &mut hello_confirmed,
             &mut pending_idle,
+            &mut unsupported,
         )
         .await;
         // 〔CF2〕这条连接没了 ⇒ 订了这台会话流的那些订阅原位收一格 `Unseen`（不是终点，`05 §4.5.2`）。
@@ -2680,8 +2655,23 @@ pub async fn run(
         if should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed()) {
             backoff = RECONNECT_MIN; // 本次真站住过 → 下次立即快速重连
         }
-        tracing::info!("ssh_source reconnecting in {:?}", backoff);
-        tokio::time::sleep(backoff).await;
+        let wait = match after_round(unsupported.take(), backoff) {
+            AfterRound::RetryIn(d) => d,
+            AfterRound::Stop(why) => {
+                // 〔DEL 续〕出声（界面 toast），然后这条流就此收工；机器页「起」会重起一条、再试一次。
+                let payload = crate::bridge::RemoteHealthPayload {
+                    origin: cfg.origin_label(),
+                    kind: "unsupported".to_string(),
+                    message: why.clone(),
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    tracing::warn!("ssh_source remote-health (unsupported) emit failed: {e}");
+                }
+                return Err(why);
+            }
+        };
+        tracing::info!("ssh_source reconnecting in {:?}", wait);
+        tokio::time::sleep(wait).await;
         if !connected.load(Ordering::Acquire) {
             backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长
         }
@@ -3242,6 +3232,7 @@ async fn stream_loop(
     announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
     hello_confirmed: &mut Option<Vec<String>>,
     pending_idle: &mut Vec<String>,
+    unsupported: &mut Option<String>,
 ) -> Result<(), String> {
     // 〔TL2 · GP1 问 3〕这一轮：tmux 快照到过没有 / 那一帧可不可信 / 清单是不是压着没报。
     let mut tmux_seen = false;
@@ -3325,23 +3316,17 @@ async fn stream_loop(
     // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台后端被删/被换旧的机器会
     // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
     // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
-    // 〔HOST · V139〕先接那台的**常驻后端**（没有就起一个；与本机同形）；那台起不了常驻（非 unix / 太旧）才回落流模式。
+    // 〔HOST · V139 · DEL〕接那台的**常驻后端**（没有就起一个；与本机同形）。这是远端唯一的一形：
+    //   起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
     let flags = (with_bg, tail_only, with_rbind_token);
-    let attached = match crate::remote_resident::attach(cfg, flags).await {
-        Ok(s) => Ok(s),
-        Err(crate::remote_resident::AttachErr::Unsupported(why)) => {
-            tracing::warn!(
-                "ssh_source [{host_label}] 那台起不了常驻后端（{why}）⇒ 回落流模式（随 SSH 生死）"
-            );
-            connect_and_exec(cfg, with_bg, tail_only, with_rbind_token)
-                .await
-                .map(crate::remote_resident::Replayed::plain)
-        }
-        Err(crate::remote_resident::AttachErr::Failed(e)) => Err(e),
-    };
-    let stream = match attached {
+    let stream = match crate::remote_resident::attach(cfg, flags).await {
         Ok(s) => s,
         Err(e) => {
+            // 〔DEL 续〕非 unix ⇒ 记进这台的连接状态（`run` 据此停下，不再按退避重连）。
+            if let crate::remote_resident::AttachErr::Unsupported(why) = &e {
+                *unsupported = Some(why.clone());
+            }
+            let e = e.said();
             if skip_preflight {
                 tracing::warn!(
                     "ssh_source [{host_label}] 跳过预检后起流失败，抹掉自证记忆，下一轮重新预检: {e}"

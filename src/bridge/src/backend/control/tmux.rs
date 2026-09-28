@@ -211,7 +211,7 @@ pub(crate) fn decode_tmux_list(v: &serde_json::Value) -> Option<(bool, Vec<Strin
 /// 那条今天对 `<local>` 会去 `load_remote_config_by_label("<local>")`，报
 /// **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错（同 P3 刀 2 在 `backend_kill`
 /// 那里治过的形态）。但**不能**简单地给它加一条读快照的本机分支：
-/// `tabs.ts::awaitExitFor` 等的是「**pane 前台命令**从 claude 变回 shell」，
+/// 当年换号重启的 `awaitExitFor`（〔V154〕已删）等的是「**pane 前台命令**从 claude 变回 shell」，
 /// 而那个变化**不触发任何 tmux hook** ⇒ 快照在那个场景下永不刷新
 /// ⇒ 本机会退化成「每次都等到 10s 超时再降级 kill」（`ssh_source::tmux_raw_registry` 头注
 /// 逐字记着这条，devbench F08 已裁「刻意不开 IPC 出口」）。
@@ -236,14 +236,14 @@ pub(crate) fn decode_tmux_list(v: &serde_json::Value) -> Option<(bool, Vec<Strin
 ///
 /// ★★ **它从「只回名字」放宽到「回整条会话」是 P3 刀 2 的 scope-changed**，理由如上 ②。
 /// 放宽**没有**碰 devbench F08 锁住的那扇门 —— 那条锁的是「拿这份快照替换 `awaitExitFor`
-/// 那个 1s 轮询」，而 `awaitExitFor` 等的是 **pane 前台命令**变化（无 hook ⇒ 快照对它永不刷新）。
+/// 那个 1s 轮询」（〔V154〕那条轮询已删），而 `awaitExitFor` 等的是 **pane 前台命令**变化（无 hook ⇒ 快照对它永不刷新）。
 /// 本条的两个消费者都不问那个：①问名字集合、②问 `@ccm_sid` 归属，
 /// 而这两样都由 `session-created/closed/renamed` 三条 hook 覆盖。
 ///
 /// ⚠ **诚实边界**：返回值里的 `command` 那一列**可能是陈旧的**（它正是无 hook 的那一列）。
 /// 后果是菜单上「杀死会话」与「kill 空 tmux」的**文案**可能选错一个，kill 本身照样打得中。
-/// ⇒ 依赖 `command` 判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条，
-/// 它今天由 `tabs.ts` 的 `origin === null` 闸挡着（A7 前不支持本地重启）。
+/// ⇒ 依赖 `command` 判活的流程**不许**改读本机这条（〔V154〕当年那一条 —— 换号重启的
+/// `awaitExitFor` —— 已随「直接 kill」删了，今天没有这种流程）。
 ///
 /// 拿不到快照（本机后端通道没起 / 还没推过帧）⇒ 回 `None`，**不是空表**：
 /// 空表会让调用方以为「一个会话都没有」，那是把「不知道」当成「知道没有」。
@@ -498,7 +498,7 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 
 // 〔C4e · 第四波 4C〕这里原来住着杀会话与送键两条 Tauri 命令 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕
 //   （F79 / A5；`K-R72` 起只剩后端一条路、三态分流）。两条迁到界面：`src/tmux-control.ts::killSession` /
-//   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into` · `send-keys-raw` 两个 mode 名的理由随之搬过去）。
+//   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into`；〔RST 续 · V41〕裸键 mode `send-keys-raw` 随 V154 无调用者删了）。
 //   **它们买到的东西一样没丢**：Gate 1 空目标仍被拒（〔DUP3〕由后端入口拒，界面那一份删了）· Gate 2 / 3 仍只在后端 `control/gate.rs` ·
 //   `Refused` 与 `NoChannel` 仍是两句话 · 仍然没有第二条路（界面那一侧结构上没有 SSH）。
 

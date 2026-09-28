@@ -649,7 +649,7 @@ const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
     (
         "relay_endpoint_for_launch",
         "〔RL1 · 第四波〕这次拉起的中转地址按**那台机器**的事实答：本机两件事走起会话那一侧那条缝，\
-             远端问那台的上游选择（`apikey-read`）与中转（`relay-status` / 用到才 `relay-ensure`）。命令体对 origin 不做远端假设 —— \
+             远端问那台后端的成品（`launch-endpoint`，中转在不在也是它答）。命令体对 origin 不做远端假设 —— \
              分派住 `history::relay_endpoint_on`，判断只在 `payload::relay_endpoint_for` 一处。",
     ),
     (

@@ -20,7 +20,7 @@
 //! 留一张空表等于给「往里加一行」留了一个看起来合法的口子。
 //! ⇒ 今天谁让中转认识上游选择一样东西、或往 `relay/` 下放回一份上游选择文件，本条当场红，
 //!   而改法只有一条：**把那件事交给上游选择**（请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，
-//!   进程装配在 `accounts::upstream::run_relay`）。
+//!   进程装配在 `accounts::upstream::host_relay`）。
 //!
 //! # 买不到什么（照实写）
 //!
@@ -72,7 +72,7 @@ pub(super) mod tests {
     /// |---|---|
     /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答（`设计/20 §2`）|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
-    /// | `run` | `--relay` 进程的装配（`accounts::upstream::run_relay` 把 `Boot` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
+    /// | `host` | 常驻后端进程内起中转的装配（`accounts::upstream::host_relay` 把 `Boot` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
     /// | `Base` | 一行的上游是什么 —— 中转的**传输原语**，上游选择解析它、焊进行里、原样交回 |
     /// | `segment_is_safe` | 「这个账号 id 当得了路由段吗」与中转切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
     ///
@@ -88,11 +88,11 @@ pub(super) mod tests {
         "Ready",
         "RouteKey",
         "Startup",
-        // 〔RL1 · V107〕常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去（与 `run` 同形）。
+        // 〔RL1 · V107〕常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Boot` 递进去。
         "host",
         // 〔US1 · 4D〕出成品时问「这台机器上我们的中转在不在听」（`launch-endpoint` 的 `listening` · `apikey-routing` 的 `running`）。
         "our_relay_listening",
-        "run",
+        // 〔DEL〕`run`（`--relay` 进程的中转入口）随那一形删了。
         "segment_is_safe",
     ];
 
@@ -449,7 +449,7 @@ pub(super) mod tests {
             named.is_empty(),
             "🔴 中转层（`relay/` 的生产段）点名了上游选择：\n  {}\n\
              **别加例外** —— 把那件事交给上游选择：请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，\
-             进程装配在 `accounts::upstream::run_relay`。",
+             进程装配在 `accounts::upstream::host_relay`。",
             named.join("\n  ")
         );
 

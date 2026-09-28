@@ -51,21 +51,10 @@ export interface RestartWithAccountOpts {
   confirm?: ConfirmFn;
   /** 等 compact 完成：resolve(true)=检测到完成 / resolve(false)=超时放弃。省略 → 有界延时兜底。 */
   awaitCompact?: () => Promise<boolean>;
-  /**
-   * A5+ 优雅退出：等旧 CC 真正退出。resolve(true)=检测到已退出（前台不再是 claude）/
-   * resolve(false)=超时放弃。省略 → 有界延时兜底（等满 `DEFAULT_EXIT_WAIT_MS`）。
-   */
-  awaitExit?: () => Promise<boolean>;
 }
 
 /** compact 兜底等待上限（无注入检测器时）。超时按 §5.2 不阻断、继续重启。 */
 export const DEFAULT_COMPACT_WAIT_MS = 90_000;
-
-/** A5+ 优雅退出等待上限（DESIGN §5 ④「等 M 秒，默认 10s」）。超时 → 降级 kill。 */
-export const DEFAULT_EXIT_WAIT_MS = 10_000;
-
-/** Esc 打断当前回合后、键入 `/exit` 前的间隔（让打断先生效）。 */
-const EXIT_INTERRUPT_GAP_MS = 300;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -138,45 +127,8 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     }
   }
 
-  // ④ 结束旧进程（DESIGN §5 ④ / §5.2 ④）。分优雅退出 + 兜底 kill 两段：
-  //   ④a 优雅退出（best-effort，让 CC flush jsonl / 释放锁再走）：先 Esc 打断当前回合（**不带尾
-  //      Enter**——否则可能误提交输入框里的队列文本），短暂间隔后键入 `/exit`（文档化的干净退出）。
-  //      send-keys 发不出去**不中止**——落到 ④c 的 kill 兜底。
-  //   ④b 有界等 CC 真的退出（awaitExit：轮询该 tmux 前台是否不再是 claude）；超时 → §5.2 ④ 降级 kill。
-  //   ④c 结束旧会话（`tmux-control.ts::killSession`）：**清场**（会话跑的是交互 shell，CC 退出后 shell 仍占着会话名，会让 ⑤ 的
-  //      `new-session -d ... 2>/dev/null && send-keys` 短路成只 attach 到没有 claude 的旧 shell）+ 优雅
-  //      退出超时时的**兜底 SIGKILL**。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④ 语义不变）。
-  try {
-    // ⚠ **F12 修一条 F04c 引入的回归**：`Escape` 走后端的新 mode `send-keys-raw`，
-    // 旧版本后端不认它 ⇒ `invalid_args` ⇒ 按 `backend_route` 的规则判 `Refused`（**不回落**）
-    // ⇒ 这里 throw。而它与下面的 `/exit` 原本共用一个 `try` ⇒ **`/exit` 整段被跳过**，
-    // 直接落到 ④c 强杀 —— CC 没机会 flush jsonl / 释放锁。
-    // 那与 ④a 逐字写着的「send-keys 发不出去**不中止**」直接矛盾：**代码与它自己声明的意图不符**
-    // （Phase G 的 `/full-audit` 逮到的）。⇒ `Escape` 是 best-effort，它失败**不许**影响 `/exit`。
-    try {
-      await sendKeys(origin, tmuxName, "Escape", false);
-    } catch (e) {
-      console.debug(`[F12] Escape（打断当前回合）发不出去，继续走 /exit：${saidOfControl(e)}`);
-    }
-    await delay(EXIT_INTERRUPT_GAP_MS);
-    await sendKeys(origin, tmuxName, "/exit", true);
-    const exited = opts.awaitExit
-      ? await opts.awaitExit()
-      : await delay(DEFAULT_EXIT_WAIT_MS).then(() => false);
-    if (!exited) {
-      showActionFailureToast(
-        copyText("accountRestart.exit.timeoutTitle"),
-        copyText("accountRestart.exit.timeout"),
-        { level: "info", durationMs: 6000 },
-      );
-    }
-  } catch (e) {
-    // send-keys 发不出去（会话已没了 / tmux 异常等）——不中止，交给 ④c kill 收场。
-    showActionFailureToast(copyText("accountRestart.exit.failedTitle"), copyText("accountRestart.exit.failed", { e: saidOfControl(e) }), {
-      level: "info",
-      durationMs: 5000,
-    });
-  }
+  // ④ 结束旧会话（`tmux-control.ts::killSession`，关卡 2 在那台后端）。〔V154〕不再先发 `Escape` ＋ `/exit` 等它自己退：
+  //   直接杀。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④）。
   try {
     await killSession(origin, tmuxName);
   } catch (e) {

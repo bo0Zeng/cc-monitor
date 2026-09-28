@@ -214,9 +214,7 @@ fn every_registered_command_declares_its_run_kind() {
                 // 〔US1 · 第四波 4D〕上游选择出的两份成品：读一份凭据文件 ＋ 装表 ＋ 回环上探一次中转（每发有读期限），同步阻塞。
                 | "apikey-routing"
                 | "launch-endpoint"
-                // 〔RM1a · 第四波〕中转那两条：回环连一次 / 起一个进程，同步阻塞。
-                | "relay-ensure"
-                | "relay-status"
+                // 〔DEL〕`relay-ensure` / `relay-status` 两条随脱离 `--relay` 一族删了。
                 // 〔RM1a · 第四波〕足迹那一条：一批 stat / 读几份小文件，同步文件 I/O。
                 | "footprint-probe"
                 // 〔W5-ALIAS〕别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
@@ -353,8 +351,6 @@ fn every_registered_command_declares_its_run_kind() {
         "apikey-read",
         "apikey-routing",  // 〔US1〕
         "launch-endpoint", // 〔US1〕
-        "relay-ensure",
-        "relay-status",
         "footprint-probe",
         // 〔W5-ALIAS〕别名预览（阻塞档，理由在上面 `expected_blocking`）。
         "ccm-print",

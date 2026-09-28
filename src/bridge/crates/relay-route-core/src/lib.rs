@@ -50,7 +50,7 @@ pub const BACKEND_LANDING_SHELL: &str = "\"$HOME\"/.cc-monitor/bin/ccm";
 pub const LISTEN_TOKEN_FILE_REL: &str = ".cc-monitor/listen-token";
 
 /// 中转在回环上听的那个口。**本机**：monitor 起常驻后端时以 `CCM_RELAY_PORT` 交给它（它在进程里起中转）；
-/// **远端**：`relay-status` / `relay-ensure` 的 `port` 入参。独立 `--relay` 没被交端口时也用它。
+/// **远端**：`--resident-ensure` 起那台的常驻后端时交同一个值（本机远端同形）。
 pub const PORT: u16 = 8788;
 
 /// 中转钥匙文件相对家目录的路径（`INVARIANTS §48.1a`）：**中转所在那台机器**上 `0600`，中转绑上口之后自己读回或铸。
