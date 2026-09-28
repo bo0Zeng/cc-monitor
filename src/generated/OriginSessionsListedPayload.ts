@@ -2,7 +2,7 @@
 import type { Origin } from "./Origin";
 
 /**
- * 〔U4b · 第四波〕`origin-sessions-listed` 的 payload：哪台机器的清单报完了。
+ * 〔U4b · 第四波〕`listed` 格 的 payload：哪台机器的清单报完了。
  */
 export type OriginSessionsListedPayload = { 
 /**

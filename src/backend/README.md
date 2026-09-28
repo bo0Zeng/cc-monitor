@@ -117,13 +117,14 @@ U2 把 11/12 个错集中到一个文件，**U4a 清零并接进 CI**（见上�
 `hello`（首帧握手，带 `v`/`build_id`/`host_arch`/`claude_dir`/`capabilities`）、`line`（tail 到的一行原始 jsonl）、
 `session_added`（新会话文件出现）、`session_status`（红绿灯状态变化，F27）、
 `session_removed`（会话消失；**S0 起带 `cause`**：`gone` = 真没了 / `superseded` = 同一 pidfile 原地换 sid，即 `/branch`、`/clear`）、
-`turn_end`（一轮对话结束）、`tmux_session_closed`（P5：某个 tmux 会话关闭的正向死亡帧，只带 `name`）、
-`tmux_sessions`（B2：`tmux ls` 原始 stdout，P1 起可带 `classification`）、
+`turn_end`（一轮对话结束）、`session_state`（〔MIG-1〕会话账本的成品：可重连 / 已结束）、
 `overflow`（拥塞丢帧哨兵，#32）。字段细节以 `../doc/IPC-PROTOCOL.md` §10 为准。
 
 > **2026-07-31 Phase G 更正**：这里此前写「共 6 个」，漏了 `turn_end` / `tmux_session_closed` /
 > `tmux_sessions` 三个，`session_removed` 也没跟上 S0 加的 `cause`；而下游那句
 > 「字段细节以 IPC-PROTOCOL.md 为准」指向的那份**同样漏了这三个**。两处已一并补齐。
+> 〔MIG-1 续 · V41〕后来 tmux 那两帧删了：tmux 快照只喂后端自己的会话账本（`observe/session_ledger.rs`），线上只发成品 `session_state`。
+> 上面那句「共 N 个」只列了常用的那几种，全表以 IPC-PROTOCOL §10 为准。
 
 一次性历史查询（带参数 exec，干完即退、不进流式协议）：`--list-projects` / `--list-sessions <dir>` /
 `--read-session[-tail] <path>` / `--search` / `--usage` / `--resolve` /

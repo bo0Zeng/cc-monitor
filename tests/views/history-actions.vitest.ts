@@ -214,7 +214,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
         "或者交回来的 token 是空的（`new_local_session` 还在回 `void`）",
     ).toBe(1);
 
-    // ② 会话出现之后（生产上由 `main.ts` 的 `session-started` 事件触发这一跳），
+    // ② 会话出现之后（生产上由 `main.ts` 的 本机 `live` 格 事件触发这一跳），
     //    sid 被反查出来、pin 落到**那一条**上。
     await resolvePendingLocalLaunches();
     const pin = historyCalls(invokeMock.mock.calls, "update_history_metadata");

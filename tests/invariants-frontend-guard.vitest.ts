@@ -411,16 +411,15 @@ describe("P21 ⑥ 条 22：独立窗口契约里 TS 这一侧的三项", () => {
     expect(bind, "`bootstrapViewer` 里找不到 `await bindEvents(` —— 要么改名了，要么 `await` 被摘了").toBeGreaterThan(-1);
     expect(/streams:\s*\[/.test(body.slice(bind)), "`bootstrapViewer` 的 `bindEvents` 没带 `streams` —— 独立窗口收不到会话内容").toBe(true);
     expect(body.includes("replay_session_to_window"), "退役的定向重放命令又回来了").toBe(false);
+    // 〔合并 MIG-1 × 主线 eebf51de〕`events.ts` 那一半换判法：`bindEvents` 里最后几条 Tauri 监听两边各自退役（MIG-1 会话起停并进会话流 · MIG-3b `task-update`），
+    //   「先注册完 listen 再订」没有可排的序了 ⇒ 判「那里一条异步注册的 `listen` 都没有」—— 谁长回来一条，这里先红，逼人把「等注册完」那一格补回来。
     const ev = codeOf("src/events.ts");
-    const registered = ev.indexOf("await Promise.all(registrations)");
-    const subscribed = ev.indexOf("chan.subscribe(");
-    expect(registered, "`events.ts` 里找不到 `await Promise.all(registrations)`").toBeGreaterThan(-1);
-    expect(subscribed, "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
+    expect(ev.indexOf("chan.subscribe("), "`events.ts` 里找不到 `chan.subscribe(`").toBeGreaterThan(-1);
     expect(
-      registered < subscribed,
+      /\blisten\s*(<[^>]*>)?\s*\(|@tauri-apps\/api\/event/.test(ev),
       "条 22.3：`listen()` 是**异步注册**，注册完成前 emit 的事件会**静默丢**（实测症状：viewer 白屏只剩状态栏）。\n" +
-        "⇒ 起停事件的监听必须 `await` 注册完，才订会话流（订阅一登记，句柄就可能开始交格）。",
-    ).toBe(true);
+        "⇒ `bindEvents` 里若再有 Tauri 监听，必须 `await` 注册完才订会话流（订阅一登记，句柄就可能开始交格）。",
+    ).toBe(false);
   });
 
   it("★ 22.2（TS 那半）：viewer 的 `bindEvents` 必须带 `windowScoped: true`", () => {

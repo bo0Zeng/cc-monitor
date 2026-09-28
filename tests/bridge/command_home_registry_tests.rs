@@ -45,7 +45,7 @@ impl Own {
 /// 哪一路负责迁走它（闭集：不许有没主的行）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Lane {
-    Mig1,
+    // 〔MIG-1 续〕`Mig1` 那一路欠的行还清了（最后一行 `test_remote_connection` 随测试连接进本机后端删了），变体随之删掉。
     Mig2,
     Mig3a,
     Mig3b,
@@ -173,46 +173,10 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
 /// 「待迁」：命令 · 哪一路 · 卡在哪。
 const PENDING: &[(&str, Lane, &str)] = &[
     // MIG-1：会话 / tmux 账本 ＋ ssh 配置解读进后端。
-    (
-        "list_ssh_host_aliases",
-        Lane::Mig1,
-        "`~/.ssh/config` 还由 monitor 读（⑯）",
-    ),
-    (
-        "resolve_ssh_host",
-        Lane::Mig1,
-        "`ssh -G` 还由 monitor 跑（⑯）",
-    ),
-    (
-        "import_ssh_hosts",
-        Lane::Mig1,
-        "`ssh -G` 还由 monitor 跑（⑯）",
-    ),
-    (
-        "test_remote_connection",
-        Lane::Mig1,
-        "拨号探针的判读还在 `ssh_source.rs`",
-    ),
-    (
-        "list_session_activity",
-        Lane::Mig1,
-        "本机活会话表还在 monitor（`session_map::LocalTable`）",
-    ),
-    (
-        "list_active_sessions",
-        Lane::Mig1,
-        "本机活会话表还在 monitor（`session_map::LocalTable`）",
-    ),
-    (
-        "list_local_tmux",
-        Lane::Mig1,
-        "tmux 快照的解析还在 monitor（`parse_tmux_ls`）",
-    ),
-    (
-        "list_remote_tmux",
-        Lane::Mig1,
-        "tmux 名单的解析还在 monitor（`parse_tmux_ls`）",
-    ),
+    // 〔MIG-1〕`~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
+    // 〔MIG-1 续〕测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局（主会话裁）。
+    // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
+    // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
     (
@@ -259,13 +223,7 @@ const PENDING: &[(&str, Lane, &str)] = &[
         Lane::Mig3b,
         "`authorized_keys` 那串在 monitor 拼、经拨号面写",
     ),
-    (
-        "start_forward",
-        Lane::Mig1,
-        "端口转发经本机后端拨号面，账在 monitor",
-    ),
-    ("stop_forward", Lane::Mig1, "端口转发的账在 monitor"),
-    ("list_forwards", Lane::Mig1, "端口转发的账在 monitor"),
+    // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
     (
         "panorama_call",
         Lane::Mig3b,

@@ -68,7 +68,6 @@ import {
   bringTerminalToFront,
   e2eLog,
   forgetSession,
-  listSessionActivity,
 } from "./tab-session-actions";
 
 import {
@@ -583,7 +582,7 @@ export class TabManager {
       // audit-fixes F03.2（D 审计修）：远端**可重连**的 tab 又收到后端重宣告 / jsonl 行 = claude
       // 复活（backend 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
       // 推行）。这是「可重连 → 活」的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
-      // 故复活行/重宣告严格晚于 idle）。不能只靠 session-activity：那是非 queue 同步派发、且
+      // 故复活行/重宣告严格晚于 idle）。不能只靠 activity 格：那是非 queue 同步派发、且
       // null-activity 的后端（远端 v1 无 status 字段）下永远不来 → 活跃流式会话永久卡在可重连。
       //
       // 〔U4〕上面两件事原先是两段（`status` 翻 live · `tmuxIdle` 清 false），因为两个轴挤在两个字段里；
@@ -837,7 +836,7 @@ export class TabManager {
 
   /**
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → **可重连**（死 ＋ 容器还在）。
-   * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
+   * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `idle` 格 驱动（**不**
    * 归档、不 forget）。Tab 未建（F5 重放乱序）则暂存待 ensureTab 落实。已结束的 Tab 不回到可重连
    * （真 tmux 没了才裁已结束，已结束优先）。无变化不重绘。离开可重连四处：
    * ensureTab（**主**：远端 tab 又收后端重宣告/行 = 复活，queue 内保序）/ updateActivity
@@ -899,7 +898,7 @@ export class TabManager {
   }
 
   /**
-   * 〔U4b · 第四波 · G3〕后端报来这条活会话的容器（`session-container`：`"tmux"` / `"none"`）。
+   * 〔U4b · 第四波 · G3〕后端报来这条活会话的容器（`container` 格：`"tmux"` / `"none"`）。
    * Tab 还没建 ⇒ 暂存（同 `pendingActivity`），建 Tab 时落实；不认识的取值当没报（丢掉）。
    * 只落在活着的会话上（`nextState`）：死了的那一格由死的那一刻的裁决说了算。
    */
@@ -915,10 +914,10 @@ export class TabManager {
   }
 
   /**
-   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`）。
+   * 〔U4b · 第四波 · 说不清〕这台机器的活会话清单报完了（远端 `origin-sessions-listed`；本机 `list_active_sessions`〔散文墓碑〕）。
    *
    * 这台的「说不清」（固定复活、还没被报过）逐条落地：`liveSids` 里有 ⇒ 活（本机那条路给清单；远端的清单
-   * 早已经由 `remote-session-added` 把 tab 建成活的了，不传）；没有 ⇒ 已结束（`设计/30 §3.5.7a`
+   * 早已经由 远端 `live` 格 把 tab 建成活的了，不传）；没有 ⇒ 已结束（`设计/30 §3.5.7a`
    * 「A 看得见却没报这条」）。记下这台已报完 ⇒ 之后才复活出来的固定 tab 直接落已结束。
    */
   markOriginSeen(origin: Origin, liveSids?: ReadonlySet<string>): void {
@@ -937,20 +936,23 @@ export class TabManager {
   }
 
   /**
-   * 〔GP1 · 第四波〕这条会话所在的那台机器**看不见了**（`session-unseen`：到它的连接断了 / F5 时它还没报完清单）。
+   * 〔GP1 · 第四波〕这台机器**看不见了**（会话流 `unseen` 格：到它的连接断了 / F5 时它还没报完清单）。
+   * 〔MIG-1 续 · 主会话裁〕**机器级**：一格说一台，这台上的 tab 逐个过 `nextState` 的 `unseen`。
    *
-   * 活的 / 可重连的 ⇒ 说不清（`nextState` 的 `unseen`）；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
+   * 活的 / 可重连的 ⇒ 说不清；已结束 / 记录没了不动。那台机器从「报完了清单」里摘掉 ——
    * 之后才复活出来的固定 tab 不再直接落已结束，要等那台重连、再报一次（`markOriginSeen`）。
-   * 重连之后：还活着的由重宣告（`remote-session-added` → `ensureTab` 的 `remote-line`）翻回活，其余由
-   * `origin-sessions-listed` 落已结束（`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
+   * 还活着的由紧跟着的重宣告（`live` 格 → `started` / `remote-line`）翻回活，可重连的由 `idle` 格落回，其余由 `listed` 落已结束
+   * （`设计/30 §3.5.7a`）。Tab 还没建 ⇒ 什么都不做（它建出来时由行 / 宣告定）。
    */
-  markUnseen(sessionId: string): void {
-    const tab = this.store.tabs.get(sessionId);
-    if (!tab) return;
-    this.store.seenOrigins.delete(tab.origin);
-    if (!this.applyState(tab, "unseen")) return;
-    this.refreshTabBar();
-    this.emitTabStateProbe(tab);
+  markOriginUnseen(origin: Origin): void {
+    this.store.seenOrigins.delete(origin);
+    let changed = false;
+    for (const tab of this.store.tabs.values()) {
+      if (tab.origin !== origin || !this.applyState(tab, "unseen")) continue;
+      changed = true;
+      this.emitTabStateProbe(tab);
+    }
+    if (changed) this.refreshTabBar();
   }
 
   /**
@@ -984,7 +986,7 @@ export class TabManager {
   }
 
   /**
-   * issue #23：红绿灯状态更新（session-activity 事件 / 启动快照两路汇入）。
+   * issue #23：红绿灯状态更新（activity 格 事件 / 启动快照两路汇入）。
    * status=null（旧版 CC 无字段）视为未知 → 清空回绿点现状。Tab 还没建则暂存
    * （pendingActivity，ensureTab 落实）。无变化不重绘。
    */
@@ -1061,22 +1063,6 @@ export class TabManager {
   private agentsChanged(tab: Tab): void {
     if (this.store.activeId === tab.sessionId) {
       this.agentsPanel?.setSession(tab.sessionId, [...tab.agents.values()]);
-    }
-  }
-
-  /**
-   * issue #23：启动/F5 后拉一次红绿灯快照做初始收敛——session-activity 是稀疏
-   * 事件、不进 replay buffer，重载会丢（同 fetchSessionTasks 的双路收敛模式）。
-   * 失败静默（灯保持未知绿，不影响主功能）。
-   */
-  async syncActivitySnapshot(): Promise<void> {
-    try {
-      const list = await listSessionActivity();
-      for (const a of list) {
-        this.updateActivity(a.session_id, a.status, a.waiting_for);
-      }
-    } catch (e) {
-      console.warn("list_session_activity failed:", e);
     }
   }
 

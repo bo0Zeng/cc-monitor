@@ -114,6 +114,18 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "〔RESYNC · 主会话 09-27 裁〕它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话（`cli_control::STREAM_ONLY`）。",
     ),
     (
+        "forward-start",
+        "〔MIG-1〕转发账住常驻那一个进程（`cli_control::STREAM_ONLY`）：一次性进程开出来的转发随进程退出就没了 —— 口放掉、账也没了，回的 `id` 是个死号。",
+    ),
+    (
+        "forward-stop",
+        "〔MIG-1〕同 `forward-start`：一次性进程里的账恒空，只会回 `not_found`。",
+    ),
+    (
+        "forward-list",
+        "〔MIG-1〕同 `forward-start`：一次性进程里的账恒空，只能答 `forwards: []` —— 那是假话。",
+    ),
+    (
         "transfer-stop",
         "它撤的是**同一条连接上**在册的一趟传输；一次性进程里没有在册的票，只会回一条什么也没撤的 `ok`。",
     ),
@@ -295,6 +307,11 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "acct-iso-shellinit",
         // 〔SH1〕列这台的 tmux 会话：无入参（问的就是「这台」）。
         "tmux-list",
+        // 〔MIG-1〕列转发：无入参（问的就是本进程那张账）。
+        "forward-list",
+        // 〔MIG-1〕这台 `~/.ssh/config` 的别名清单 · 批量导入预览：无入参（`ssh-config-resolve` 要 `alias`，收输入）。
+        "ssh-config-aliases",
+        "ssh-config-import",
         // 〔MIG-3b〕这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
     ];

@@ -55,9 +55,13 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 mod connect;
+pub(crate) mod forwards; // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发的账（起 · 停 · 列三条帧命令）
 pub mod link;
+pub(crate) mod machine; // 〔MIG-1 续〕一台机器的配置 → 拨号请求（后端持有全部 SSH）
 mod pool;
+pub(crate) mod probe; // 〔MIG-1 续〕测试连接（`remote-probe`）
 pub(crate) mod sftp;
+pub(crate) mod ssh_config;
 pub(crate) mod uses;
 
 /// ack 里的协议版本。**v1** = 只有长流、只有一个地址、只会私钥文件（`K-P6b` 那一版）；

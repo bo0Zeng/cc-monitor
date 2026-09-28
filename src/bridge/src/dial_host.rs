@@ -713,77 +713,10 @@ pub(crate) async fn capture(
     })
 }
 
-/// **测试连接那一趟**：短命探活，阶段行逐条交给 `on_stage`，exec `cmd` 之后把链路交回（探后端 hello 用）。
-/// 失败回 `(说法, 看到过的指纹)`。
-pub(crate) async fn probe(
-    cfg: &RemoteConfig,
-    cmd: &str,
-    on_stage: &mut (dyn FnMut(ConnectStage) + Send),
-) -> Result<(DialStream, Ack), (String, Option<String>)> {
-    let req = request(
-        cfg,
-        "stream",
-        serde_json::json!({ "command": cmd, "stages": true, "probe": true }),
-    )
-    .map_err(|e| (e, None))?;
-    open(cfg, &req, "stream", on_stage).await
-}
+// 〔MIG-1 续 · ⑬〕测试连接那一趟（短命探活、阶段行逐条交回）退役：拨号请求改由本机后端按界面交来的配置组（`dial/probe.rs`）。
 
-/// 一条**端口转发**：本机后端那一侧绑好了本机回环口（`127.0.0.1:local_port`），每接进一条连接开一条隧道。
-/// 丢掉它 = 关链路 = 本地口释放、隧道全断（那条 SSH 连接不跟着断，别的链路可能还在用）。
-pub struct ForwardLink {
-    link: DialStream,
-}
-
-impl ForwardLink {
-    /// 等下一条「接进了第 n 条连接」。`None` = 链路收尾了（远端断了 / 后端那侧收工了）。
-    pub(crate) async fn next_accepted(&mut self) -> Result<Option<u64>, String> {
-        ssh_link::accepted(&mut self.link.r, ack_line_cap())
-            .await
-            .map_err(|e| e.to_string())
-    }
-}
-
-/// 起一条端口转发（F58）。收的是**机器标签**：查那台的配置是宿主的事（`C4`），
-/// 调用方（`port_forward.rs`，通信层成员）手里只有一个地址。
-pub(crate) async fn forward(
-    origin: &crate::origin::Origin,
-    local_port: u16,
-    remote_host: &str,
-    remote_port: u16,
-) -> Result<ForwardLink, String> {
-    let origin = origin.as_wire_str();
-    let cfg = crate::load_remote_config_by_label(origin).ok_or_else(|| {
-        copy_text(
-            "rsDialHost.forward.noConfig",
-            &[("machine", &origin.to_string())],
-        )
-    })?;
-    let cfg = &cfg;
-    let req = request(
-        cfg,
-        "forward",
-        serde_json::json!({
-            "forward": {
-                "local_port": local_port,
-                "remote_host": remote_host,
-                "remote_port": remote_port,
-            }
-        }),
-    )?;
-    let (link, _) = open(cfg, &req, "forward", &mut |_| {})
-        .await
-        .map_err(|(e, _)| {
-            copy_text(
-                "rsDialHost.forward.connectFailed",
-                &[("machine", &origin.to_string()), ("e", &e.to_string())],
-            )
-        })?;
-    // 〔NT2〕长活：用户开着就一直在，关了（丢 `ForwardLink`）就收。
-    Ok(ForwardLink {
-        link: link.lives_long(),
-    })
-}
+// 〔MIG-1 · `99 §2.1 ⑬`〕端口转发那一形（`ForwardLink` · `forward`）退役：转发账连同开链路一起住本机常驻后端
+//   （`src/backend/dial/forwards.rs`，查的是后端自己的可达表），界面经 `chan.call(<local>, "forward-*")` 直接问。
 
 // ═══ 〔SR1b · 2026-09-24〕部署那条路：受限的远端文件一问一答（链路 `use:"files"`）═══════════════════
 //

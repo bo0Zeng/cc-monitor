@@ -140,7 +140,7 @@ export function rememberLocalLaunch(
  * | 做法 | 为什么不是它 / 为什么是它 |
  * |---|---|
  * | 起一个定时器隔 N 秒重试 | 🔴 **本项目有一条已交付的性质是「判活不靠定时轮询（内核一有事就通知）」**（`polling_registry` / `rust_timer_registry` 两张表在管），在这里开一个新的周期唤醒就是开倒车 |
- * | ★ **搭已有的那条事件**：会话集合变了才问 | backend 侧 `sessions/<PID>.json` 的变化本来就会一路走到前端的 `session-started` 事件（`lib.rs` 那个 `session-changes-emitter`）——**一条新会话出生正是它响的时刻**，而这正是我们要等的那件事 |
+ * | ★ **搭已有的那条事件**：会话集合变了才问 | backend 侧 `sessions/<PID>.json` 的变化本来就会一路走到前端的 本机 `live` 格 事件（`lib.rs` 那个 `session-changes-emitter`）——**一条新会话出生正是它响的时刻**，而这正是我们要等的那件事 |
  *
  * ⇒ **本函数不排任何定时器**，它的调用方是 `main.ts` 里 `onSessionStarted` 那一跳。
  * 「等多久 / 问几次 / 问不到怎么办」三格分别由 [`PENDING_LAUNCH_TTL_MS`] ·

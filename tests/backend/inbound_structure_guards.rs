@@ -204,6 +204,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-read"
                 // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
+                // 〔MIG-1〕`~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
+                | "ssh-config-aliases"
+                | "ssh-config-import"
+                | "ssh-config-resolve"
                 // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O）。
                 | "hooks-diag"
                 // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
@@ -315,6 +319,12 @@ fn every_registered_command_declares_its_run_kind() {
         "deploy-plan",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
         "remote-reach",
+        // 〔MIG-1〕端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。
+        "forward-start",
+        "forward-stop",
+        "forward-list",
+        // 〔MIG-1 续〕测试连接：真异步（拨号 · 读 hello · 往返），在 await 点可取消。
+        "remote-probe",
         "bus-list",
         "bus-send",
         "bus-broadcast",
@@ -398,6 +408,10 @@ fn every_registered_command_declares_its_run_kind() {
         "files-delete-session",
         // 〔AS1 · 第四波 4B〕MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
+        // 〔MIG-1〕`~/.ssh/config` 三条（阻塞档，理由在上面 `expected_blocking`）。
+        "ssh-config-aliases",
+        "ssh-config-import",
+        "ssh-config-resolve",
         // 〔MIG-2〕起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
         "launch-local",
         "launch-render-cli",

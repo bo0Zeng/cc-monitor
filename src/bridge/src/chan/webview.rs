@@ -42,7 +42,7 @@
 //! ```
 //!
 //! - **传输选 Tauri 事件，不选 `tauri::ipc::Channel`**（`调研/第四波记录/CF2.md §3.2`）：前端那一条 queue 的顺序
-//!   （行 · `session-ended` · 宣告 …）靠「同一个 webview 上按 emit 先后执行」；`Channel` 的大消息走「先存、再让 JS
+//!   （行 · `ended` 格 · 宣告 …）靠「同一个 webview 上按 emit 先后执行」；`Channel` 的大消息走「先存、再让 JS
 //!   `fetch` 回来」，会被之后 `eval` 出去的起停事件超车（Tauri 2.11.6 `ipc/channel.rs`）。
 //! - **编号由 webview 那一侧给**（每页从 1 起）：格可能先于 `chan_subscribe` 的应答到达，
 //!   编号先登记在 TS 那侧才不丢。同一个 `(webview, 编号)` 再订一次 ⇒ 旧的那条作废（页面重载）。

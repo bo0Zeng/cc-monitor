@@ -206,10 +206,12 @@ import {
   launchRenderShim,
   localLaunchCalls,
   sessionReadCalls,
+  tmuxReadOf,
   UNSUPPORTED,
   withAccountReads,
   withHistoryReads,
   withSessionReads,
+  withTmuxReads,
 } from "./test-support/chan-fake";
 import type { SessionFacts } from "../src/session-reads";
 import { restartWithAccount } from "../src/account-restart";
@@ -450,7 +452,7 @@ describe("TabManager 生命周期", () => {
 
   it("★ 活动信号早于 Tab 建立：远端骨架 Tab 建出来时灯必须已经是对的", () => {
     // ⚠ **这条以前一个用例都没有**，而它是远端会话的**真实时序**：
-    // `remote-session-added` 与 `session-activity` 是两个**独立**的 Tauri 事件，
+    // 远端 `live` 格 与 `activity` 格 是两个**独立**的 Tauri 事件，
     // 谁先到没有保证。灯先到时它进 `pendingActivity`，只有 `ensureTab` 会落实它。
     //
     // 不测这条的后果**恰好是最坏的那种**：`activityLightClass(null)` 返回 `""`
@@ -2774,19 +2776,17 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     [
       ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
     ] as HTMLButtonElement[];
-  const invokedCmds = (): string[] =>
-    (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
 
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
     invalidateAccountsCache();
     tm = makeTM();
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withAccountReads((cmd: string) => {
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads(withAccountReads((cmd: string) => {
       if (cmd === "list_local_accounts") return Promise.resolve(TWO_LOCAL);
       if (cmd === "list_local_tmux") return Promise.resolve([localSess()]);
       return Promise.resolve(undefined);
-    }));
+    })));
   });
 
   it("本机活会话 ≥2 可选账号 → 出现「Restart」，点了走 `<local>`；账号清单问的是本机后端", async () => {
@@ -2829,14 +2829,16 @@ describe("A3 本机换号重启：菜单与入口都认本机 tab", () => {
     expect(arg.tmuxName).toBe("proj-cc");
     expect(arg.accountName).toBe("b");
     expect(arg.launcher).toBe(""); // getBehavior 的 mock：resumeCommandLocal = ""（远端那条是 "cct"）
-    expect(invokedCmds()).toContain("list_local_tmux");
-    expect(invokedCmds()).not.toContain("list_remote_tmux");
+    // 〔MIG-1 续〕问名单是一发 `chan_call`（op `tmux-list`），`tmuxReadOf` 译回旧叫法：问的是本机那一台。
+    const asked = (invoke as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([c, a]) => tmuxReadOf(String(c), a)?.[0]);
+    expect(asked).toContain("list_local_tmux");
+    expect(asked).not.toContain("list_remote_tmux");
   });
 
   it("本机会话不在本工具 tmux 里 → 拒重启，提示**不指**本机不存在的那条补救路", async () => {
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_local_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
-    );
+    ));
     tm.ensureTab("l1", "/w", "/p/l1.jsonl", 0, LOCAL_ORIGIN);
     await home(tm).actions.restartTabWithAccount("l1", "b", false);
     expect(restartSpy).not.toHaveBeenCalled();
@@ -2866,20 +2868,20 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
   it("cwd 回退命中（live.sid !== sid）→ 拒重启、不调编排器（防杀错会话/双进程）", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
     // 同 cwd 但无 @ccm_sid（sid:null）→ findClaudeTmux 走 cwd 回退 → live.sid=null !== target-sid
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.resolve([sess({ sid: null })]) : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
   });
 
   it("精确 @ccm_sid 命中 → 放行调编排器（带对的 tmuxName/account）", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([sess({ name: "cc-target01", sid: "target-sid" })])
         : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", true);
     expect(restartSpy).toHaveBeenCalledTimes(1);
     const arg = restartSpy.mock.calls[0][0];
@@ -2891,9 +2893,9 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
 
   it("会话不在任何 tmux → 拒重启、不调编排器", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
   });
@@ -2902,14 +2904,14 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
   // 不可逆，故**拒绝**而非"警告+继续"（与非破坏性的 resumeTabTmux 分级不同，见 F04 计划 §2 取舍④）。
   it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ 拒重启、不调编排器（防杀错留活）", async () => {
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
             sess({ name: "cc-target01", sid: "target-sid" }),
             sess({ name: "cc-target02", path: "/other", sid: "target-sid" }),
           ])
         : Promise.resolve(undefined),
-    );
+    ));
     await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
     expect(showActionFailureToast).toHaveBeenCalledWith(
@@ -2926,9 +2928,9 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
     let resolveTmux!: (v: unknown) => void;
     const pending = new Promise((r) => (resolveTmux = r));
     tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "devbox");
-    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation(withTmuxReads((cmd: string) =>
       cmd === "list_remote_tmux" ? pending : Promise.resolve(undefined),
-    );
+    ));
     const first = home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     const second = await home(tm).actions.restartTabWithAccount("target-sid", "z", false);
     expect(second).toBe(false);
@@ -3190,8 +3192,9 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
 
   it("查到会话 → 返回列表，并把它写进缓存", async () => {
     const tm = makeTM();
-    const list = [{ name: "cc-a", ccmSid: "s1" }];
-    vi.mocked(invoke).mockResolvedValueOnce(list);
+    // 〔MIG-1 续〕那台后端 `tmux-list` 的成品（经通道一问）。
+    const list = [{ name: "cc-a", path: "/w", command: "claude", attached: false, windows: 1, sid: "s1" }];
+    vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: true, sessions: list }));
     const got = await home(tm).actions.fetchTmuxFresh("box1");
     expect(got).toEqual(list);
     expect(
@@ -3202,7 +3205,7 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
 
   it("★ NO_TMUX（null）是**确定答案**，照样写缓存", async () => {
     const tm = makeTM();
-    vi.mocked(invoke).mockResolvedValueOnce(null);
+    vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: false, sessions: [] }));
     const got = await home(tm).actions.fetchTmuxFresh("box1");
     expect(got).toBeNull();
     expect(
@@ -5035,7 +5038,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     // 本机清单报完：p3 在清单里 ⇒ 活；p2 不在 ⇒ 已结束；远端那条不受本机清单影响。
     tm.markOriginSeen(LOCAL_ORIGIN, new Set(["p3"]));
     expect([tabOf("p1").state, tabOf("p2").state, tabOf("p3").state]).toEqual([UNSEEN, ENDED, LIVE]);
-    // 远端报完（`origin-sessions-listed`）：没被宣告过 ⇒ 已结束。正控：这时才出现「已结束」。
+    // 远端报完（`listed` 格）：没被宣告过 ⇒ 已结束。正控：这时才出现「已结束」。
     tm.markOriginSeen("pi");
     expect(tabOf("p1").state).toEqual(ENDED);
     expect(said()).toContain("已结束");
@@ -5109,7 +5112,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
 
 /**
  * 〔GP1 · 第四波〕**远端断连 ⇒ 说不清，不是已结束**（`设计/30 §3.5.7a`「`Unseen` 不许被显示成已结束」·
- * `调研/第四波记录/GP1.md §1`）。`session-unseen` → `TabManager.markUnseen`，TabManager 真走。
+ * `调研/第四波记录/GP1.md §1`）。会话流 `unseen` 格（〔MIG-1 续〕机器级）→ `TabManager.markOriginUnseen`，TabManager 真走。
  */
 describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   let tm: TabManager;
@@ -5128,9 +5131,10 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u1", "/x", "p", 0, "pi"); // 活
     tm.ensureTab("u2", "/x", "p", 0, "pi");
     tm.markTmuxIdle("u2"); // 可重连
-    tm.markUnseen("u1");
-    tm.markUnseen("u2");
+    tm.ensureTab("o1", "/x", "p", 0, "mu"); // 别的机器上的活会话
+    tm.markOriginUnseen("pi"); // 〔MIG-1 续〕机器级一格
     expect([tabOf("u1").state, tabOf("u2").state]).toEqual([UNSEEN, UNSEEN]);
+    expect(tabOf("o1").state, "别的机器不受牵连").toEqual(LIVE);
     // 两颗的提示句都说「说不清」、零处「已结束」（改之前断连那一刻这里是两句「这个会话已结束」）。
     expect(titles().split("说不清").length - 1).toBe(2);
     expect(titles()).not.toContain("已结束");
@@ -5140,8 +5144,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("u4", "/x", "p", 0, "pi");
     tm.archiveTab("u4");
     tm.markRecord("u4", false);
-    tm.markUnseen("u3");
-    tm.markUnseen("u4");
+    tm.markOriginUnseen("pi");
     expect([tabOf("u3").state, tabOf("u4").state]).toEqual([ENDED, GONE]);
     expect(titles()).toContain("已结束");
   });
@@ -5149,8 +5152,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 重连之后：重宣告的翻回活；那台报完清单、没有它的 ⇒ 已结束", () => {
     tm.ensureTab("r1", "/x", "p", 0, "pi");
     tm.ensureTab("r2", "/x", "p", 0, "pi");
-    tm.markUnseen("r1");
-    tm.markUnseen("r2");
+    tm.markOriginUnseen("pi");
     expect([tabOf("r1").state, tabOf("r2").state]).toEqual([UNSEEN, UNSEEN]);
     tm.createSkeletonTab("r1", "/x", "pi"); // 重连后后端初扫重宣告 r1
     tm.markOriginSeen("pi"); // `sessions_replayed` ⇒ 报完了，没有 r2
@@ -5160,7 +5162,7 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
   it("★ 那台从「报完了」里摘掉：之后才复活的固定 tab 落说不清，不再直接落已结束", async () => {
     tm.markOriginSeen("pi");
     tm.ensureTab("s1", "/x", "p", 0, "pi");
-    tm.markUnseen("s1");
+    tm.markOriginUnseen("pi");
     let disk: Record<string, unknown> = {
       tabBar: { pinned: [{ sid: "s2", origin: "pi", title: "S", jsonlPath: "/p/s2.jsonl" }] },
     };
@@ -5184,10 +5186,9 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     tm.ensureTab("k2", "/x", "p", 0, "pi");
     tm.markTmuxIdle("k1");
     tm.markTmuxIdle("k2");
-    tm.markUnseen("k1");
-    tm.markUnseen("k2");
+    tm.markOriginUnseen("pi");
     expect([tabOf("k1").state, tabOf("k2").state]).toEqual([UNSEEN, UNSEEN]);
-    // emitter 那一笔：k1 的 tmux 还在 ⇒ session-idle；k2 不在 ⇒ session-ended；**然后**才是 origin-sessions-listed。
+    // emitter 那一笔：k1 的 tmux 还在 ⇒ idle 格；k2 不在 ⇒ ended 格；**然后**才是 listed 格。
     tm.markTmuxIdle("k1");
     tm.archiveTab("k2");
     tm.markOriginSeen("pi");
@@ -5197,15 +5198,15 @@ describe("〔GP1〕那台机器看不见了 —— TabManager 真走", () => {
     // 次序承重的反面（正控）：若先报完清单再宣告 idle ⇒ 已结束收 idle 不动 —— 这正是 monitor 那一侧要保序的理由。
     tm.ensureTab("k3", "/x", "p", 0, "pi2");
     tm.markTmuxIdle("k3");
-    tm.markUnseen("k3");
+    tm.markOriginUnseen("pi2");
     tm.markOriginSeen("pi2");
     tm.markTmuxIdle("k3");
     expect(tabOf("k3").state, "次序反了就回不来 —— 若这格变了，monitor 侧的保序就不再承重，回来重看").toEqual(ENDED);
   });
 
-  it("★ 还没建的 tab 收到 unseen ⇒ 什么都不建", () => {
-    tm.markUnseen("nobody");
-    expect(home(tm).store.tabs.has("nobody")).toBe(false);
+  it("★ 那台一个 tab 都没有时收到 unseen ⇒ 什么都不建", () => {
+    tm.markOriginUnseen("nowhere");
+    expect(home(tm).store.tabs.size).toBe(0);
   });
 });
 
@@ -5293,25 +5294,26 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
   });
 });
 
-// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions` 之后标本机清单报完 ·
+// 〔U4b · 第四波〕**接线判据**：`main.ts` 起步那几行（`list_active_sessions`〔散文墓碑〕 之后标本机清单报完 ·
 // 两个新事件交给 TabManager）没有 DOM 判据够得着（整个 `main.ts` 是入口脚本）⇒ 读源码数调用点，两向恰好一处。
 describe("〔U4b〕main.ts 接线", () => {
-  it("★ 本机清单报完 · 容器事件 · 远端清单报完，三处接线各恰一处", () => {
+  // 〔MIG-1 · ⑬〕本机的「清单报完了」不再另走 `list_active_sessions`〔散文墓碑〕 那一格：与远端同一格（会话流里的 `listed`）⇒ 本机那条接线零处。
+  it("★ 容器 · 清单报完（本机远端同一格）各恰一处；本机不再另拉清单", () => {
     const main = readFileSync(resolve(REPO_ROOT, "src/main.ts"), "utf8");
     const n = (needle: string): number => main.split(needle).length - 1;
     expect([
-      n("tabs.markOriginSeen(LOCAL_ORIGIN, new Set(active.map((s) => s.session_id)))"),
+      n("tabs.markOriginSeen(LOCAL_ORIGIN,"),
       n("onSessionContainer: (sessionId, container) => tabs.noteContainer(sessionId, container)"),
-      n("onOriginSessionsListed: (origin) => tabs.markOriginSeen(origin)"),
-    ]).toEqual([1, 1, 1]);
+      n("      tabs.markOriginSeen(origin);\n      startup?.onListed(origin);"), // 〔MIG-1 续〕同一格顺手交「启动时记住的那一格」
+    ]).toEqual([0, 1, 1]);
   });
   // 〔GP1 · 第四波〕「那台机器看不见了」两个窗口各接一处（主窗 ＋ 独立会话窗；入口脚本没有 DOM 判据够得着）。
   it("★〔GP1〕session-unseen 接线：main.ts 恰一处 · entry-viewer.ts 恰一处", () => {
     const n = (file: string, needle: string): number =>
       readFileSync(resolve(REPO_ROOT, file), "utf8").split(needle).length - 1;
     expect([
-      n("src/main.ts", "onSessionUnseen: (sessionId) => tabs.markUnseen(sessionId)"),
-      n("src/entry-viewer.ts", "if (s === sid) tabs.markUnseen(s);"),
+      n("src/main.ts", "onOriginUnseen: (origin) => tabs.markOriginUnseen(origin)"),
+      n("src/entry-viewer.ts", "onOriginUnseen: (o) => tabs.markOriginUnseen(o)"),
     ]).toEqual([1, 1]);
   });
 });

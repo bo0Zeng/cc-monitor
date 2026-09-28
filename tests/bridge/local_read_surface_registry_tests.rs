@@ -30,7 +30,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/ssh_source.rs",
         "remote",
-        9,
+        7, // 〔MIG-1 续〕9 → 7：测试连接那一份 hello 人读摘要（`claude_home_from_hello` 的一处调用 ＋ 解构出的 `claude_dir`）随测试连接搬进本机后端删了
         "★ **说的全是远端主机的 claude 目录**：backend `hello` 帧的 `claude_dir` 字段。\
              **根本不是本机读面** ⇒ 不属 F10。\
              〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \
@@ -326,18 +326,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
              写侧归 `filewin::transfer`（〔F7c 09-24〕上传经通道：monitor 的传输台只写远端暂存区，\
              落进用户目录那一下是后端 `files-commit-upload`，先过围栏）",
     ),
-    (
-        "ssh_source.rs",
-        "list_ssh_host_aliases",
-        "`~/.ssh/config`",
-        "第 85 件的 `.ssh` 读面表：恰好一处 + 只吐别名",
-    ),
-    (
-        "ssh_source.rs",
-        "expand_tilde",
-        "`~` 展开（不落到具体目录）",
-        "纯路径变换，调用方各自受自己那张表管",
-    ),
+    // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 那两行出表：读 ssh config 与 `~` 展开随导入搬进后端（`dial/ssh_config.rs`）。
 ];
 
 /// ★ 正题：**每一处 `home_dir()` 都要在表里，且表里不留死行**。
@@ -596,11 +585,11 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     // **F05b 已落地、本机后端真的起起来了**（真机实测日志逐字为
     // `本机后端: Started { pid: 6072, attempt: 1 }`），所以 F10 的正题现在能做 ——
     // 把那些 `reader` 直读点切到后端，然后把那条棘轮往下拧。
-    // ⚠ **F01b 留的那条死限已由 P3 刀 0 解除**（原文：「本地 sid 一进 `tmux_raw_registry`，
+    // ⚠ **F01b 留的那条死限已由 P3 刀 0 解除**（原文：「本地 sid 一进 `tmux_raw_registry`〔散文墓碑〕，
     // `/branch` 的灰点 bug 会回来」）。当时成立，是因为本地那条 diff **只产 `Gone`**；
     // P3 刀 0 让它按 `pid + procStart` 判出 `Superseded`（要正面证据，缺 `procStart` 退回 `Gone`）
     // ⇒ 进表之后 `/branch` 会走 `(Some(origin), Superseded)` = 归档，不再是灰点。
-    // 〔LOC1b · 4D〕判出它的今天是本机后端（`session_removed.cause`），monitor 这边钉「原样交出去」（`ssh_source_f032_idle_tests` ③）。
+    // 〔LOC1b · 4D · MIG-1〕判出它的今天是本机后端（`session_removed.cause` ⇒ 会话账本裁成 `session_state`），monitor 只转交成品。
     // ★ 留着这段而不是删掉：**限制解除的理由本身是要交代的** ——
     // 否则下一个人只看到限制没了，不知道换了什么在保证它。
 }

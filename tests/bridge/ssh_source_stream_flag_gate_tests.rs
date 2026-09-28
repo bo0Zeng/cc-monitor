@@ -96,19 +96,13 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
              后端那一行现打：{line}"
         );
     }
-    // 〔E2 · V28〕流模式显式词：后端表里有它，测试连接探针那一发带它（名字是 `ccm` 时零参数是起会话）。
+    // 〔E2 · V28〕流模式显式词：后端表里有它（名字是 `ccm` 时零参数是起会话）。
+    // 〔MIG-1 续〕「测试连接探针那一发带它」那一格随探针搬进本机后端：那一发今天住后端 `dial/probe.rs`，
+    //   由它自己拼（`crate::STREAM_FLAG_EXPLICIT`，与本表同一个常量），不再经 monitor。
     let word = crate::backend::control::local_backend::STREAM_WORD;
     assert!(
         line.contains(&format!("\"{word}\"")),
         "后端 STREAM_FLAGS 不认 `{word}`：{line}"
-    );
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
-    let probe_at = prod
-        .find("pub async fn test_remote_connection(")
-        .expect("找不到测试连接那一发");
-    assert!(
-        prod[probe_at..probe_at + 4000].contains("STREAM_WORD"),
-        "测试连接探针不带流模式显式词"
     );
     // 反向自检：抠出来的就是那三条（相等；防「抠出来是空的也全绿」）。
     assert_eq!(

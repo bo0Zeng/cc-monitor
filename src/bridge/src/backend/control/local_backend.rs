@@ -1433,7 +1433,7 @@ pub(crate) const BACKEND_SEP: &str = "--";
 /// 与 `P5L` 把终端出口做成入参是同一手：**把够得到的那半做成可测，别拿够不到的当借口**。
 ///
 /// ⚠ **射程如实登记**：本函数可测的是「**收到帧之后**账本里有」。
-/// 「backend **真的会发**这个帧」仍归后端侧 `EMITS "tmux_sessions"` 的登记
+/// 「backend **真的会发**这个帧」仍归后端侧 `EMITS` 的登记
 /// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
 /// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
 ///
@@ -1457,64 +1457,10 @@ pub(crate) fn absorb_local_frame(
 ) -> Option<crate::ssh_source::InboundFrame> {
     use crate::ssh_source::InboundFrame;
     match frame {
-        // P3 刀 1：**本机的 tmux 帧也要收**。backend 的 `watch_loop` 周期跑本机 `tmux ls`
-        // 并推 `TmuxSessions` 帧。P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
-        // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
-        //
-        // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
-        // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
-        // 把「永远消不掉的灰点」那个 bug 请回来。
-        //
-        // 〔U4b · 第四波 · G2〕本机也有「可重连」了（`lib.rs` 本机那一臂改走 `classify_removed`）⇒
-        //   「可重连 → 已结束」要有产出者，与远端 `stream_loop` 的收帧收割器同一个判定（`reconcile_step`）。
-        //   结论交 `session_facts::retire_local_idle`（写 idle 账本只许在 `lib.rs`）。
-        InboundFrame::TmuxSessions { raw, observation } => {
-            let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-            let idle = crate::ssh_source::snapshot_idle_for_origin(origin);
-            let retire = {
-                let mut st = local_reaper_state()
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                local_idle_retirements(&mut st, &raw, observation.as_deref(), &idle)
-            };
-            crate::ssh_source::record_tmux_raw(
-                crate::backend::control::inbound_client::LOCAL_ORIGIN,
-                raw,
-            );
-            let n_retire = retire.len();
-            if n_retire > 0 {
-                tracing::info!("tmux-reconcile(本机): retire {n_retire} 条可重连会话（本机 tmux 里已不见它们）");
-                crate::session_facts::retire_local_idle(retire);
-            }
-        }
-        // 〔U4b · 第四波 · G2〕本机 tmux 会话关了（正向死亡帧）—— 此前这一帧在本机这条流上被直接丢掉。
-        //   与远端同序：**先把那一行从账本摘掉，再退** —— 否则 claude 随后退出时 `classify_removed`
-        //   仍看得见它 ⇒ 判成可重连（`#60` 现象 2 的本机版）。那条会话若已是可重连 ⇒ 立刻落已结束。
-        InboundFrame::TmuxSessionClosed { name } => {
-            let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
-            if let Some(raw) = crate::ssh_source::tmux_raw_for(origin) {
-                let (rest, sid) = local_tmux_closed(&raw, &name);
-                crate::ssh_source::record_tmux_raw(
-                    crate::backend::control::inbound_client::LOCAL_ORIGIN,
-                    rest,
-                );
-                let idle_now = crate::ssh_source::snapshot_idle_for_origin(origin);
-                if let Some(sid) = sid.filter(|s| idle_now.contains(s)) {
-                    tracing::info!("本机 tmux 会话 {name} 关闭 ⇒ 可重连的 sid={sid} 落已结束");
-                    crate::session_facts::retire_local_idle(vec![sid]);
-                }
-            }
-        }
-        // 〔U4b · 第四波 · G3〕本机活会话的容器事实：与远端流同一个口（`session_facts`）、同一个事件。
-        // 〔CF1 · 2026-09-24〕记完容器，这一帧**照样交回**读循环 —— 它的 `path` / `lines` 是本机旁路快照的起点
-        //   （本机会话的行从此走这条流，见下面内容三种那一臂）。
-        //   〔LOC1b · 第四波 4D〕本机会话的起停也从这一帧起（`ssh_source::local_lifecycle` ⇒ `session_map::feed`）。
-        f @ InboundFrame::SessionAdded { .. } => {
-            if let InboundFrame::SessionAdded { sid, container, .. } = &f {
-                crate::session_facts::note_container(sid, *container);
-            }
-            return Some(f);
-        }
+        // 〔MIG-1 · `99 §2.1 ⑬`〕本机的 tmux 观测两种帧 monitor 不再消费（〔MIG-1 续〕后端也不再发，那两帧删了）：
+        //   收割与「可重连」由本机后端的会话账本裁（`observe/session_ledger.rs`），成品 `session_state` 走下面那一臂进本机内容通道。
+        //   〔从前这里记 tmux 原文账（`ssh_source::record_tmux_raw`〔散文墓碑〕）＋ 本机收割器（`local_idle_retirements`〔散文墓碑〕）；
+        //    `session_added` 这一臂还记容器（`session_facts::note_container`〔散文墓碑〕）——容器今天随活会话成品一起进 `session_book`。〕
         InboundFrame::Reply {
             id,
             ok,
@@ -1551,8 +1497,11 @@ pub(crate) fn absorb_local_frame(
         //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
         //   「清单报完了」必须排在它前面那些宣告之后才有意义。此前这两种落在最后那个 `_ => {}` 里丢掉。
         // 〔FW1 · D-d〕记录文件不见了 / 被改过 ⇒ 同一条内容通道（与行同序）。
+        // 〔MIG-1〕会话成品 `session_added` · `session_state` 同一条有序通道（去向必须排在那个会话的行之后）。
         f @ (InboundFrame::Line { .. }
+        | InboundFrame::SessionAdded { .. }
         | InboundFrame::SessionRemoved { .. }
+        | InboundFrame::SessionState { .. }
         | InboundFrame::SessionStatus { .. }
         | InboundFrame::SessionsReplayed
         | InboundFrame::SessionFileNotice { .. }
@@ -1564,49 +1513,8 @@ pub(crate) fn absorb_local_frame(
     None
 }
 
-/// 〔U4b · 第四波 · G2〕本机收割器的对账状态（跨帧累计缺失计数）。一份常驻：本机只有一条后端流，
-/// 流断了重连后 idle 集没变，计数接着累计是对的（与远端「每连接一份」不同：远端断连有 flush 兜底归档）。
-fn local_reaper_state() -> &'static std::sync::Mutex<crate::tmux_reconcile::ReconcileState> {
-    static STATE: std::sync::OnceLock<std::sync::Mutex<crate::tmux_reconcile::ReconcileState>> =
-        std::sync::OnceLock::new();
-    STATE.get_or_init(Default::default)
-}
-
-/// 〔U4b · 第四波 · G2〕**本机收割的纯决策**：这一帧 `tmux ls` 之后，哪些本机「可重连」该落到已结束。
-///
-/// 与远端 `stream_loop` 的 `TmuxSessions` 臂同一个判定：观测无效（`Skip`）⇒ 本帧不算；有效 ⇒
-/// `reconcile_step`（去抖 `RETIRE_MISS_THRESHOLD` 拍）。`tracked` 与 `pre_bound` 都是**本机 idle 集**：
-/// 本机活会话的死活由 monitor 的 `session_map`（pidfile）判，不归这里管（远端 `tracked` 里的 `announced` 在本机没有对应物）；
-/// idle sid 的 `@ccm_sid` 在原文里出现过 = 铁证绑过 tmux ⇒ 直接播种 `ever_bound`（同远端那条 D 审计②）。
-pub(crate) fn local_idle_retirements(
-    state: &mut crate::tmux_reconcile::ReconcileState,
-    raw: &str,
-    observation: Option<&str>,
-    idle: &std::collections::HashSet<String>,
-) -> Vec<String> {
-    match crate::backend::control::tmux::classify_tmux_observation(raw, observation) {
-        crate::backend::control::tmux::TmuxObservation::Backend(backend) => {
-            crate::tmux_reconcile::reconcile_step(
-                state,
-                idle,
-                &backend,
-                idle,
-                crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
-            )
-        }
-        crate::backend::control::tmux::TmuxObservation::Skip(_) => Vec::new(),
-    }
-}
-
-/// 〔U4b · 第四波 · G2〕本机 tmux 会话 `name` 关了：摘掉那一行后的原文 ＋ 那一行上挂着的 sid（纯函数）。
-/// 按名字**逐字相等**找（`remove_tmux_line` 同一条纪律：不做前缀匹配）。
-pub(crate) fn local_tmux_closed(raw: &str, name: &str) -> (String, Option<String>) {
-    let sid = crate::backend::control::tmux::parse_tmux_ls(raw)
-        .into_iter()
-        .find(|e| e.name == name)
-        .and_then(|e| e.sid);
-    (crate::ssh_source::remove_tmux_line(raw, name), sid)
-}
+// 〔MIG-1〕本机收割器那三个函数（`local_reaper_state`〔散文墓碑〕· `local_idle_retirements`〔散文墓碑〕· `local_tmux_closed`〔散文墓碑〕）
+//   删了：收割搬进本机后端的会话账本（`src/backend/observe/session_ledger.rs`），与远端同一份。
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
@@ -1789,13 +1697,8 @@ pub(crate) fn local_stdio_consumer(
             &mine,
         );
     }
-    // ★ **本机那份 tmux 原文也要清**〔D 阶段补审 08-11，判据路〕。
-    //
-    // 远端断连早就清了（`ssh_source` 里 Batch9-F28 那处），而本机这侧流结束时
-    // **只摘入方向 client、不碰这张表** ⇒ 停掉本机后端之后 `<local>` 那份原文永久留着，
-    // 成了「tmux 还在」的**陈旧证据**：`find_tmux_origin_for_sid` 仍返回 `Some(<local>)`
-    // ⇒ `classify_removed(Some(_), Gone)` = `Idle` = 那个「永远消不掉、也 attach 不上的灰点」。
-    crate::ssh_source::forget_tmux_raw(crate::backend::control::inbound_client::LOCAL_ORIGIN);
+    // 〔MIG-1〕流结束时清本机 tmux 原文那一步（`forget_tmux_raw`〔散文墓碑〕）随那本账一起删了：monitor 不再存 tmux 快照，
+    //   本机的成品由 `consume_local` 收到流断那一件时整份作废（`session_book::In::LinkLost`）。
     ConsumerReport {
         exit: if early {
             ConsumerExit::Early

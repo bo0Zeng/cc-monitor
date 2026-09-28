@@ -56,6 +56,10 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
+    "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
+    "tests/backend/dial_probe_tests.rs",   // 〔MIG-1 续〕测试连接三步的结局（链路替身）
+    "tests/remote-probe.vitest.ts",        // 〔MIG-1 续〕测试连接的读口（请求体 · 严格收）
     "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
@@ -79,6 +83,7 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/codex/resume_tests.rs",
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
+    "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
     "tests/backend/observe/turn_detect_tests.rs",
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
@@ -122,18 +127,16 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_env_scrub_tests.rs",
     "tests/bridge/lib_nudge_skip_tests.rs",
     "tests/bridge/lib_remote_config_tests.rs",
-    "tests/bridge/port_forward_tests.rs",
+    // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
     "tests/bridge/remote_history_tests.rs",
-    "tests/bridge/session_facts_tests.rs",
+    "tests/bridge/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
     "tests/bridge/ssh_link_tests.rs",
     "tests/bridge/ssh_source_batcher_tests.rs",
-    "tests/bridge/ssh_source_reannounce_tests.rs",
     "tests/bridge/ssh_source_seam_tests.rs",
     "tests/bridge/ssh_source_snapshot_tail_tests.rs",
     "tests/bridge/ssh_source_snapshot_tests.rs",
-    "tests/bridge/tmux_reconcile_tests.rs",
     "tests/bridge/tool_registry_environment_tests.rs",
     "tests/bridge/tool_registry_not_managed_tests.rs",
     "tests/cards/api-error.test.ts",
@@ -270,6 +273,10 @@ const SCAN: &[&str] = &[
     "tests/account-chip.vitest.ts",
     "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
     "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
+    "tests/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
+    "tests/tmux-reads.vitest.ts", // 〔MIG-1 续〕读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
+    "tests/port-forward-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
+    "tests/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
     "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
     "tests/agent-profile-parity.vitest.ts",
     "tests/app-grid-claims.vitest.ts",
@@ -288,6 +295,9 @@ const SCAN: &[&str] = &[
     "tests/backend/control/kill_tests.rs",
     "tests/backend/control/resolve_query_tests.rs", // 〔TL2 · V126〕UNIT → SCAN：跨仓承诺那一族读冻结金样与 IPC-PROTOCOL
     "tests/backend/dial_sftp_tests.rs",
+    "tests/backend/observe/tmux_list_tests.rs", // 〔MIG-1 续〕解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
+    "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
+    "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
@@ -404,7 +414,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
     "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
-    "tests/bridge/session_map_tests.rs", // 〔LOC1b · 4D〕从 INTEGRATION 挪来：本机活会话表的真值表 ＋ 两条读源码的接线判据
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_write_registry_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
@@ -422,16 +431,13 @@ const SCAN: &[&str] = &[
     "tests/bridge/ssh_source_coldstart_preflight_guard.rs",
     "tests/bridge/ssh_source_dial_move_judge.rs",
     "tests/bridge/ssh_source_emits_parity.rs",
-    "tests/bridge/ssh_source_f032_idle_tests.rs",
     "tests/bridge/ssh_source_frame_dispatch_shape.rs",
     "tests/bridge/ssh_source_parse_frame_tests.rs",
     "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
     "tests/bridge/ssh_source_tier1_tests.rs",
-    "tests/bridge/ssh_source_tmux_snapshot_exposure_tests.rs",
     "tests/bridge/ssh_source_write_half_guard.rs",
     "tests/bridge/sync_command_registry_tests.rs", // 〔TL3〕同步 IPC 命令的调用闭包零 `block_on` / 零同步连后端（`INVARIANTS §10`）
     "tests/bridge/tmux_backend_gate_guard_tests.rs",
-    "tests/bridge/tmux_reconcile_source_of_truth_guard.rs",
     "tests/bridge/tool_registry_tests.rs",
     "tests/bridge/write_site_registry_spawn_sites.rs",
     "tests/bridge/write_site_registry_tests.rs",
@@ -849,11 +855,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "the_local_backend_host_really_registers_an_inbound_client",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),
-    (
-        "tests/bridge/backend/control/local_backend_tests.rs",
-        "the_local_tmux_frames_really_land_in_the_ledger",
-        Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
-    ),
+    // 〔MIG-1〕`local_backend_tests.rs` 那条真 tmux 实测（本机 tmux 帧进 monitor 账本）随那本账删了（真机层 28 → 27）。
     (
         "tests/bridge/local_lines_tests.rs",
         "a_real_backend_feeds_local_lines_through_the_production_read_loop",

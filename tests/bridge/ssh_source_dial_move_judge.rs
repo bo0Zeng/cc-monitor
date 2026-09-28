@@ -51,13 +51,8 @@ pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
              〔从前：「SFTP 会话要一个 russh 连接句柄，不是一条字节流 ⇒ 仍在界面进程里拨，用 `inproc_dial.rs` 那一份」。〕",
         "已经是 0。这一行留着是为了让「又长回来一处」当场红（处数钉成 0，不是删行）。",
     ),
-    (
-        "port_forward.rs",
-        0,
-        true,
-        "〔C2 09-24〕**搬走了**：绑口与 direct-tcpip 都在拨号代理里（`use: forward`），本文件只剩命令面与转发账。",
-        "已经是 0。这一行留着是为了让「又长回来一处」当场红。",
-    ),
+    // 〔MIG-1 · `99 §2.1 ⑬`〕`port_forward.rs` 那一行（C2 起处数钉 0）随文件删了：转发账也进了本机常驻后端
+    //   （`src/backend/dial/forwards.rs`），界面 crate 里没有这份文件了。先例同下面 `inproc_dial.rs` 那一行。
     // 〔SR1b 09-24〕`inproc_dial.rs` 那一行（进程内那一份自己的跳板，只服务 `sftp.rs`）**兑现了它写的解锁条件**：
     //   「与 `sftp.rs` 那一行同一天删：SFTP 换走 ⇒ 本文件整份删 ⇒ `russh` 出 `Cargo.toml`」—— 三件同拍。文件不在了，行随之删。
 ];
@@ -81,10 +76,6 @@ fn corpus() -> Vec<(&'static str, String)> {
         (
             "sftp.rs",
             production_code(include_str!("../../src/bridge/src/sftp.rs")),
-        ),
-        (
-            "port_forward.rs",
-            production_code(include_str!("../../src/bridge/src/port_forward.rs")),
         ),
     ]
 }
@@ -235,8 +226,9 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
     }
     let moved = DIAL_SITES.iter().filter(|(_, _, m, ..)| *m).count();
     assert_eq!(
-        moved, 3,
-        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `ssh_source.rs` 与 `port_forward.rs` 两份；〔SR1b〕+ `sftp.rs`）"
+        moved, 2,
+        "登记表说有 {moved} 份文件的拨号已经搬走了（C2 之后 `ssh_source.rs` 与 `port_forward.rs` 两份；〔SR1b〕+ `sftp.rs`；\
+         〔MIG-1〕3 → 2：`port_forward.rs` 整份删了、那一行随之删）"
     );
 }
 

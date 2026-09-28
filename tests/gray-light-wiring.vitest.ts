@@ -17,7 +17,7 @@
  * | `session-idle` 事件 → `onSessionIdle` | **本文件**（此前是 0 条） |
  * | `onSessionIdle` → `markTmuxIdle` 的接线（`main.ts:703`） | 仍无（要真机 DOM，记为诚实边界） |
  *
- * ⚠ 中间那段此前**一条判据都没有**：`grep '"session-idle"' src/*.vitest.ts` 零命中。
+ * ⚠ 中间那段此前**一条判据都没有**：`grep '"idle 格"' src/*.vitest.ts` 零命中。
  * 也就是说「后端喊了、前端听没听见」这件事，本仓一直没人验 —— 而 `#60` 问的正是它。
  *
  * # 保序也要钉
@@ -49,27 +49,28 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/commands", () => ({
   commands: { frontend_perf_log: vi.fn(() => Promise.resolve()) },
 }));
+// 〔MIG-1 · ⑬〕可重连 / 已结束并进了会话流（`{"idle": …}` / `{"ended": …}` 那两格）：换成会话流的桩往里灌。
+vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
+import { streamFake } from "./test-support/chan-stream-fake.ts";
+
+const STREAMS = { streams: [{ origin: "<local>", kind: "session-lines" }] };
 
 import { srcDirOf } from "./test-support/repo-root";
-describe("#60 最后一跳：session-idle 事件真的走到 onSessionIdle", () => {
+describe("#60 最后一跳：会话流里的 idle 那一格真的走到 onSessionIdle", () => {
   beforeEach(() => {
     subs.clear();
+    streamFake.reset();
   });
 
-  it("后端 emit session-idle ⇒ 前端 onSessionIdle 拿到那个 sid", async () => {
+  it("后端说可重连 ⇒ 前端 onSessionIdle 拿到那个 sid", async () => {
     const onSessionIdle = vi.fn();
     const onSessionEnded = vi.fn();
-    await bindEvents({ onSessionIdle, onSessionEnded } as never);
-
+    await bindEvents({ onSessionIdle, onSessionEnded } as never, STREAMS);
     // 抽取器自检：**没订到就零命中地绿** —— 本仓一路在治的那种空真。
-    expect(
-      subs.get("session-idle"),
-      "没订到 `session-idle` —— 本条会零命中地绿（检查 listen 的 mock 或 events.ts 的订阅）",
-    ).toBeTruthy();
-
-    subs.get("session-idle")!({ payload: { session_id: "sid-gray" } });
+    expect(streamFake.subscriptions.length, "没订到会话流 —— 本条会零命中地绿").toBe(1);
+    streamFake.lifecycle([{ idle: { session_id: "sid-gray" } }]);
     await vi.waitFor(() => expect(onSessionIdle).toHaveBeenCalledWith("sid-gray"));
     // 反向：它不该顺手把 ended 也叫了（灰灯 ≠ 归档，两条路在后端就分开了）。
     expect(onSessionEnded).not.toHaveBeenCalled();
@@ -113,11 +114,8 @@ describe("#60 最后一跳：session-idle 事件真的走到 onSessionIdle", () 
     await bindEvents({
       onSessionIdle: (s: string) => order.push(`idle:${s}`),
       onSessionEnded: (s: string) => order.push(`ended:${s}`),
-    } as never);
-    expect(subs.get("session-ended"), "没订到 `session-ended`").toBeTruthy();
-
-    subs.get("session-ended")!({ payload: { session_id: "a" } });
-    subs.get("session-idle")!({ payload: { session_id: "b" } });
+    } as never, STREAMS);
+    streamFake.lifecycle([{ ended: { session_id: "a" } }, { idle: { session_id: "b" } }]);
     await vi.waitFor(() => expect(order.length).toBe(2));
     expect(order).toEqual(["ended:a", "idle:b"]);
   });
