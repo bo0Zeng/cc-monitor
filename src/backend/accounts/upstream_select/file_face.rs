@@ -21,8 +21,8 @@
 //!
 //! # 路径：与中转里的上游选择**同一个出处**
 //!
-//! 中转里的上游选择按 [`super::creds::resolve_path`] 找那份文件，家目录是 `main.rs` 的 `agent_home`。
-//! 本模块用**同一个函数、同一个家目录出处**（[`machine_path`]）。中转住常驻后端进程里（本机远端同形），
+//! 中转里的上游选择按 [`super::creds::resolve_path`] 找那份文件（数据目录根上，家目录取进程环境的 `HOME`）。
+//! 本模块用**同一个函数、同一个取值器**（[`machine_path`]）。中转住常驻后端进程里（本机远端同形），
 //! 两边读的是同一个进程环境 ⇒ 写的这一份与读的那一份是同一个路径 —— 构造上的事，
 //! 不靠一个跨层传递的环境变量（中转那一层因此不必认识凭据文件的任何名字）。
 //!
@@ -49,17 +49,10 @@ use std::path::{Path, PathBuf};
 /// 本族的应答：`data` 或 `(code, message)`（形状同 `read_face::Answer`）。
 pub(crate) type FileFaceAnswer = Result<Value, (&'static str, String)>;
 
-/// 这台机器上那份文件在哪 —— **与中转里的上游选择同一个出处**（见模块头注）。
-///
-/// ⚠ 家目录借 `observe::history_query::agent_home` 那一句：它是 lib 这一侧**唯一**那处「解析本机 home」
-/// （与 `main.rs::resolve_agent_home` 逐字同一个适配层函数，`agent_locality_guard` 两处都登记着）。
-/// 本模块自己再直呼一次适配层 = 那张「加一个 agent 要回来改的地方」的表**长一格**，而那张表只许降；
-/// 自己拼一条路径 = 长出第二份规则。两样都不做。
+/// 这台机器上那份文件在哪 —— **与中转里的上游选择同一个出处**（`creds::resolve_path`，同一个进程环境；见模块头注）。
+/// 自己拼一条路径 = 长出第二份规则，不做。
 pub(crate) fn machine_path() -> PathBuf {
-    super::creds::resolve_path(
-        &|k| std::env::var(k).ok(),
-        &crate::observe::history_query::agent_home(),
-    )
+    super::creds::resolve_path(&|k| std::env::var(k).ok())
 }
 
 /// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。
@@ -270,17 +263,15 @@ fn write_at(
             &[("path", &path.display().to_string())],
         ),
     ))?;
-    // 只建**这一层**（`claudecode-frontend/`）；它的父目录是 agent 的家目录，不在就说出来、不替它建。
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err((
-                "io_failed",
-                copy_text(
-                    "beUpstreamFileFace.write.mkdirFailed",
-                    &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
-                ),
-            ));
-        }
+    // 只建**这一层**（数据目录 `~/.cc-monitor`，也是后端的家）：建的那一下只给本人（V160）；父目录是家目录，不在就说出来、不替它建。
+    if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
+        return Err((
+            "io_failed",
+            copy_text(
+                "beUpstreamFileFace.write.mkdirFailed",
+                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            ),
+        ));
     }
     // 〔HX2〕读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`）：两个后端进程同时给两个号写 key，
     //   从前后写的那一份整份盖掉先写的那一格（这一份连进程内锁都没有）。

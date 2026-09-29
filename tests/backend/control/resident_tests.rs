@@ -128,11 +128,11 @@ fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
         vec![
             (
                 names.0,
-                "/h/.claude/claudecode-frontend/apikey-credentials.json".to_string()
+                "/h/.cc-monitor/apikey-credentials.json".to_string()
             ),
             (
                 names.1,
-                "/h/.claude/claudecode-frontend/history-metadata.json".to_string()
+                "/h/.cc-monitor/history-metadata.json".to_string()
             ),
         ]
     );

@@ -87,18 +87,15 @@ pub const AUTH_STYLE_FIELD: &str = "auth_style";
 /// **「不再往顶层写」是调用面的事实，不是这个模块少了一个函数。**
 pub const LEGACY_ACCOUNT_ID: &str = "default";
 
-/// 那份文件相对 claude 家目录的位置。**两侧共用的唯一契约。**
+/// 那份文件在 monitor 数据目录**根上**的名字（[`credentials_path`]）。**两侧共用的唯一契约。**
 ///
 /// # 为什么住这里，而不是两边各写一份字面量
 ///
-/// monitor 与后端各有自己的「家目录」解析（前者 `paths::resolve_monitor_data_dir`，
-/// 后者 `agents::claudecode::paths::resolve_home`），但**落点的相对路径必须是同一个** ——
-/// 两边各写一份字符串，漂开的那天没有任何东西会说，而症状是
+/// monitor（`config::resolve_monitor_data_dir`）与后端（`upstream_select::creds::resolve_path`）各自解析，
+/// 但**落点必须是同一个** —— 两边各写一份字符串，漂开的那天没有任何东西会说，而症状是
 /// 「界面上配好了，上游选择说没配」这种**查不出来**的形状。
 ///
-/// ⚠ 它**不**跟随 `claudeDir` 覆盖（monitor 自己的数据目录本来就不跟随，见
-/// `src/frontend/shell/src/config.rs` 头注逐字：「monitor 自己的设置永远在默认
-/// `~/.claude/claudecode-frontend/` 下，不跟随 `claudeDir` 字段变化」）。
+/// ⚠ 它**不**跟随 `claudeDir` 覆盖（数据目录本来就不跟随，`INVARIANTS §2`）。
 pub const FILE_NAME: &str = "apikey-credentials.json";
 
 /// monitor 数据目录的覆盖变量（monitor `paths::DATA_DIR_ENV` 与远端常驻后端的默认推导共用这一个名字）。
@@ -107,8 +104,9 @@ pub const DATA_DIR_ENV: &str = "CCM_DATA_DIR";
 /// 历史注解文件在 monitor 数据目录下的名字（monitor `history::metadata_path` 与常驻后端默认推导共用）。
 pub const HISTORY_METADATA_FILE: &str = "history-metadata.json";
 
-/// monitor 数据目录：`CCM_DATA_DIR`（非空且绝对）优先，否则 `<home>/.claude/claudecode-frontend`；
+/// monitor 数据目录：`CCM_DATA_DIR`（非空且绝对）优先，否则 `<home>/.cc-monitor`（V160：一台机器一个家，与后端同一个）；
 /// 设了却不是绝对路径 ⇒ `None`（不退回真 profile）。〔TAIL〕两侧共用这一份，谁起常驻后端推出来的路径都一样。
+/// **这个目录的默认住址只在这里拼**（判据 `paths_tests::the_data_dir_is_spelled_in_one_place`）。
 pub fn monitor_data_dir(
     env_val: Option<&str>,
     home: Option<std::path::PathBuf>,
@@ -118,13 +116,13 @@ pub fn monitor_data_dir(
             let p = std::path::PathBuf::from(t);
             p.is_absolute().then_some(p)
         }
-        None => Some(home?.join(".claude").join("claudecode-frontend")),
+        None => Some(home?.join(".cc-monitor")),
     }
 }
 
-/// `<claude 家目录>/claudecode-frontend/apikey-credentials.json`。
-pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
-    home.join("claudecode-frontend").join(FILE_NAME)
+/// 凭据文件住数据目录根上：`<数据目录>/apikey-credentials.json`。
+pub fn credentials_path(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join(FILE_NAME)
 }
 
 /// 文件不存在 / 是空的时候给出去的模板。

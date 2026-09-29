@@ -27,9 +27,9 @@ fn temp_dir(tag: &str) -> PathBuf {
     p
 }
 
-/// 那份文件在临时「家目录」下的位置（与生产同一个相对落点：`<家>/claudecode-frontend/<FILE_NAME>`）。
+/// 那份文件在临时「家目录」下的位置（〔V160〕与生产同一个落点：`<家>/.cc-monitor/<FILE_NAME>`，期望手写）。
 fn file_in(home: &Path) -> PathBuf {
-    store::path_under_claude_home(home)
+    home.join(".cc-monitor").join(store::FILE_NAME)
 }
 
 /// 夹具 key：**结构样本**，不是任何真 key。
@@ -233,6 +233,7 @@ fn the_plaintext_never_leaves_in_either_answer() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// 文件 0600；〔DATA-HOME · V160〕它那一层目录（`~/.cc-monitor`，也是后端的家）由这一下建出来时是 0700。
 #[test]
 fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
     let home = temp_dir("perm");
@@ -244,6 +245,8 @@ fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "凭据文件不是只给本人：{mode:o}");
+        let dir = std::fs::metadata(f.parent().unwrap()).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir, 0o700, "数据目录建出来不是只给本人：{dir:o}");
     }
     // 读口的权限判断在这份文件上不出声（只给本人 ⇒ `notice` 为空）。
     assert!(
@@ -255,13 +258,13 @@ fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
 }
 
 #[test]
-fn a_missing_agent_home_is_said_and_not_created_for_you() {
+fn a_missing_home_is_said_and_not_created_for_you() {
     let home = temp_dir("nohome");
-    // 家目录本身不在：只许建 `claudecode-frontend/` 这一层，不替 agent 建它的家。
+    // 家目录本身不在：只许建数据目录这一层，不替人建家目录。
     let f = file_in(&home.join("not-there"));
     let err = answer_set_at(&f, &json!({"configDir": "/h/accts/work", "key": PLAIN})).unwrap_err();
     assert_eq!(err.0, "io_failed", "实得 {err:?}");
-    assert!(!home.join("not-there").exists(), "替 agent 建了家目录");
+    assert!(!home.join("not-there").exists(), "替人建了家目录");
     let _ = std::fs::remove_dir_all(&home);
 }
 

@@ -4136,7 +4136,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
              \"claude_dir\":\"/h/.claude\"{env}}}"
         )
     };
-    let seen = hello_with(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.claude/claudecode-frontend/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
+    let seen = hello_with(",\"host_env\":{\"CCM_APIKEY_CREDENTIALS\":\"/h/.cc-monitor/k.json\",\"CCM_RELAY_PORT\":\"8788\"}");
     let want = |creds: &str| -> Vec<(String, String)> {
         vec![
             ("CCM_RELAY_PORT".into(), "8788".into()),
@@ -4149,7 +4149,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
             &seen,
             "b1",
             "/h/.claude",
-            &want("/h/.claude/claudecode-frontend/k.json")
+            &want("/h/.cc-monitor/k.json")
         ),
         HelloVerdict::Ours,
         "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
@@ -4158,7 +4158,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         HelloVerdict::Stranger(w) => {
             assert!(
                 w.contains("CCM_APIKEY_CREDENTIALS")
-                    && w.contains("/h/.claude/claudecode-frontend/k.json")
+                    && w.contains("/h/.cc-monitor/k.json")
                     && w.contains("/tmp/iso/k.json")
                     && w.contains("CCM_DATA_DIR")
                     && !w.contains("CCM_RELAY_PORT："),
@@ -4167,7 +4167,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         }
         v => panic!("另一个数据目录起的后端被当成了我们的：{v:?}"),
     }
-    let mut more = want("/h/.claude/claudecode-frontend/k.json");
+    let mut more = want("/h/.cc-monitor/k.json");
     more.push((
         "CCM_HISTORY_METADATA".into(),
         "/tmp/iso/history-metadata.json".into(),

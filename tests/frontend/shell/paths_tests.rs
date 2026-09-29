@@ -1,6 +1,6 @@
 //! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）
 //!
-//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.claude/claudecode-frontend/`」。
+//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」（V160）。
 //! 其余几条判的是那句「永远」的**出口**（`config.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：
 //! 「只认**绝对路径**；空串 == 没设」·「给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile**」·
 //! 「全树只经 `config.rs::resolve_monitor_data_dir` 派生」。
@@ -32,10 +32,7 @@ fn home() -> std::path::PathBuf {
 #[test]
 fn with_nothing_set_it_is_the_documented_default() {
     let got = monitor_data_dir_from(None, Some(home())).expect("有 home 却算不出落点");
-    assert_eq!(
-        got,
-        std::path::PathBuf::from("/home/u/.claude/claudecode-frontend")
-    );
+    assert_eq!(got, std::path::PathBuf::from("/home/u/.cc-monitor"));
 }
 
 /// 给了一条绝对路径 ⇒ **原样用**，而且**不掺 home**。
