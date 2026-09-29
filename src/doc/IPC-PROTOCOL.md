@@ -1,6 +1,6 @@
 # 跨进程文件 IPC 协议
 
-cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）的所有通信都走 `~/.claude/work/` 下的 JSON 文件。
+cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）的所有通信都走 `~/.cc-monitor/` 下的 JSON 文件。
 
 本文档定义每个文件的字段、编码约束、写入方原子性语义、读取方反序列化容错策略，以及握手时序图。
 
@@ -31,8 +31,8 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
    - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../../src/frontend/shell/src/config.rs)。
    - **PS 端**：直接 `[System.IO.File]::WriteAllText` 即可，单调用本身原子。
 
-   **作用范围**：本条 `MoveFileExW` 路径**仅适用于** `~/.claude/work/` 下 monitor 自己产物（`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-registry/<PID>.json` 等）。**写用户文件**（PowerShell profile 等 monitor data dir 之外的文件）**必须**改走 `ReplaceFileW + backup + 写后校验`——理由是保留 dst 的 ACL/ADS/创建时间 + OneDrive placeholder 风险，详 [INVARIANTS.md § 4](INVARIANTS.md)。两者边界由 INVARIANT § 2（monitor data dir 永远在 `~/.claude/work/`）锁定，不会漂移。
-3. **路径必须**在 `~/.claude/work/` 下。**严禁**任何路径越界（用户主目录、Claude 数据目录等）。
+   **作用范围**：本条 `MoveFileExW` 路径**仅适用于** `~/.cc-monitor/` 下 monitor 自己产物（`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-registry/<PID>.json` 等）。**写用户文件**（PowerShell profile 等 monitor data dir 之外的文件）**必须**改走 `ReplaceFileW + backup + 写后校验`——理由是保留 dst 的 ACL/ADS/创建时间 + OneDrive placeholder 风险，详 [INVARIANTS.md § 4](INVARIANTS.md)。两者边界由 INVARIANT § 2（monitor data dir 永远在 `~/.cc-monitor/`）锁定，不会漂移。
+3. **路径必须**在 `~/.cc-monitor/` 下。**严禁**任何路径越界（用户主目录、Claude 数据目录等）。
 4. **目录不存在时自动创建**（`create_dir_all`）。
 
 ---
@@ -41,7 +41,7 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
-**位置**：`~/.claude/work/config.json`
+**位置**：`~/.cc-monitor/config.json`
 
 **写入方**：monitor 的主窗与设置窗（前端各模块经 IPC `patch_config`；诊断经 `set_diagnostics_config`）。〔CFG1〕**只有一个写函数** `config.rs::patch_config_at`：
 写者只交「改哪几条路径」（`ConfigEdit`：`{op:"set", path, value}` / `{op:"remove", path}`，`path[0]` 是顶层键），
@@ -62,7 +62,7 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
     // ... 见 src/frontend/ui/theme.ts TOKENS
   },
   "diagnostics": {                            // 可选；v2.0.0 起；缺省值见 src/frontend/shell/src/logging.rs
-    "log_enabled": true,                      // 写 logs/monitor.YYYY-MM-DD.log；切换需重启
+    "log_enabled": true,                      // 写 logs/monitor/monitor.YYYY-MM-DD.log；切换需重启
     "log_level": "info",                      // trace/debug/info/warn/error/off；reload 立即生效
     "error_toast": true,                      // ERROR 级别弹右下角 toast；立即生效
     "max_files": 3                            // 保留最近 N 天 log；切换需重启
@@ -80,7 +80,7 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 PS 端 `__ccm_bind` 通知 monitor "我想绑定，去找标题 = marker 的窗口"。
 
-**位置**：`~/.claude/work/ps-await/<PowerShell_PID>.json`
+**位置**：`~/.cc-monitor/ps-await/<PowerShell_PID>.json`
 
 **写入方**：PowerShell `__ccm_bind` helper（profile 里）
 **读取方**：monitor `bind::BindRegistry` 的 `bind-await-watcher` 线程（notify-debouncer）
@@ -111,7 +111,7 @@ PS 端 `__ccm_bind` 通知 monitor "我想绑定，去找标题 = marker 的窗�
 
 monitor 通知 PS "绑定成功，HWND = X"，同时是个**持久映射**让 monitor 后续查 (PS_PID → HWND)。
 
-**位置**：`~/.claude/work/ps-registry/<PowerShell_PID>.json`
+**位置**：`~/.cc-monitor/ps-registry/<PowerShell_PID>.json`
 
 **写入方**：monitor `bind::BindRegistry`
 **读取方**：monitor `SidHwndCache::record` 在 session 新建时按 claude_pid 反查 parent_pid 然后查这里；PS 端 `__ccm_bind` 启动时也读这个看是否已注册（指纹比对）
@@ -148,7 +148,7 @@ monitor 通知 PS "绑定成功，HWND = X"，同时是个**持久映射**让 mo
 
 session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，monitor 重启不丢。
 
-**位置**：`~/.claude/work/sid-hwnd-cache.json`
+**位置**：`~/.cc-monitor/sid-hwnd-cache.json`
 
 **写入方**：monitor `SidHwndCache::record / forget`
 **读取方**：monitor 启动恢复 + IPC `bring_terminal_to_front` 拉前时查
@@ -182,7 +182,7 @@ session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，
 
 "用 cc 启动 claude 时自动开 monitor" 开关 + monitor exe 路径。
 
-**位置**：`~/.claude/work/auto-launch.json`
+**位置**：`~/.cc-monitor/auto-launch.json`
 
 **写入方**：
 - monitor 设置面板（toggle 时通过 IPC `cc_set_auto_launch`）
@@ -205,11 +205,11 @@ session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，
 
 ---
 
-## 6. `logs/monitor.YYYY-MM-DD.log`（v2.0.0 起，issue #4）
+## 6. `logs/monitor/monitor.YYYY-MM-DD.log`（v2.0.0 起，issue #4）
 
 GUI app 诊断日志（解决 `windows_subsystem = "windows"` 无 stderr 的结构性问题）。
 
-**位置**：`~/.claude/work/logs/monitor.YYYY-MM-DD.log`
+**位置**：`~/.cc-monitor/logs/monitor/monitor.YYYY-MM-DD.log`（本机常驻后端那份在隔壁 `logs/backend/`）
 
 **写入方**：monitor 自身（`tracing-appender::rolling::daily` + `non_blocking` writer）
 **读取方**：用户（设置面板 [打开 log 文件] → 系统默认编辑器；或手动用记事本/VSCode 打开）
@@ -234,7 +234,7 @@ GUI app 诊断日志（解决 `windows_subsystem = "windows"` 无 stderr 的结�
 
 历史浏览器的用户元数据（star / 重命名 / 隐藏）。**与 jsonl 数据源完全分离**，绝不污染原始数据。
 
-**位置**：`~/.claude/work/history-metadata.json`
+**位置**：`~/.cc-monitor/history-metadata.json`
 
 **写入方**：monitor 历史浏览器（IPC `update_history_metadata`）
 **读取方**：monitor 历史浏览器（IPC `list_history_*` 时合并）
@@ -1714,7 +1714,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 ```text
 → {"id":"k1","cmd":"apikey-key-set","args":{"configDir":"/home/u/.claude-alt/work","key":"<明文>","baseUrl":"https://api.example.com"}}
-← {"kind":"reply","id":"k1","ok":true,"data":{"account":"work","path":"/home/u/.claude/work/apikey-credentials.json","masked":"sk-a****wxyz","baseUrl":"https://api.example.com"}}
+← {"kind":"reply","id":"k1","ok":true,"data":{"account":"work","path":"/home/u/.cc-monitor/apikey-credentials.json","masked":"sk-a****wxyz","baseUrl":"https://api.example.com"}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -4378,7 +4378,7 @@ deadline 是 **3000ms**（v2 从 800ms 提上来，覆盖 monitor 冷启动；�
 
 如果未来要加新的文件 IPC，必须：
 
-1. **位置**：必须在 `~/.claude/work/` 下，路径白名单严格
+1. **位置**：必须在 `~/.cc-monitor/` 下，路径白名单严格
 2. **schema**：在本文档新增一节，定义所有字段 + 类型 + 默认值 + 可选性
 3. **编码**：UTF-8 无 BOM，双向防御（写端无 BOM + 读端剥 BOM）
 4. **原子写**：双端都用原子机制（PS `[IO.File]::WriteAllText` / Rust `MoveFileExW`）

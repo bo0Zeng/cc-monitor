@@ -175,9 +175,9 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 
 ---
 
-## 2. monitor 自己的 data dir 永远是 `~/.claude/work/`
+## 2. monitor 自己的 data dir 永远是 `~/.cc-monitor/`
 
-不跟随用户在 UI 改的 `claudeDir` 漂移。
+不跟随用户在 UI 改的 `claudeDir` 漂移。〔V160〕一台机器一个家：与后端同一个目录，建出来只给本人（0700）；cc-monitor 对 `~/.claude` 只读会话、只写用户点名要装的资产。
 
 **为什么不能松动**：
 - 避免循环依赖：读 config 不能先解析 claudeDir，否则用户填错路径就再也打不开设置面板。
@@ -188,12 +188,12 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 它**只为「把这个进程整体挪到别处跑」而存在**（跑自动化测试、跑一次性复算），**不是**给用户搬家用的设置面（设置页「数据位置」只读展示）。规矩四条：
 1. 只认**绝对路径**；空串 == 没设（shell 里 `CCM_DATA_DIR=` 是最常见的「取消」写法）。
 2. 给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile** —— 退回去等于让一趟以为自己被隔离了的自动化去写用户的东西，而且没有一句话；宁可各消费者**可见地降级**。
-3. 它挪的是**整个** data dir（`config.json` · 凭据库 · 历史元数据 · 自启 · 全景 …）；全树只经 `config.rs::resolve_monitor_data_dir` 派生，别处不许自己拼 `~/.claude/work`。
+3. 它挪的是**整个** data dir（`config.json` · 凭据库 · 历史元数据 · 自启 · 全景 …）；默认住址只在 `creds_core::store::monitor_data_dir` 拼，monitor 全树只经 `config.rs::resolve_monitor_data_dir` 派生，别处不许自己拼数据目录。
 4. 它**不**改本条的另一半：`claudeDir` 照旧不影响 data dir 的位置。
 
 **谁在守**：`paths_tests.rs::with_nothing_set_it_is_the_documented_default`（本条正文那一半）· `paths_tests.rs::an_absolute_override_is_used_verbatim` ·
 `paths_tests.rs::an_empty_value_means_unset_not_broken` · `paths_tests.rs::a_relative_override_refuses_instead_of_quietly_using_the_real_profile` ·
-`paths_tests.rs::no_home_and_no_override_is_still_none` · `paths_tests.rs::nothing_else_in_the_monitor_tree_builds_that_path_itself`（全树只经一处派生）。
+`paths_tests.rs::no_home_and_no_override_is_still_none` · `paths_tests.rs::nothing_else_in_the_monitor_tree_builds_that_path_itself`（全树只经一处派生）· `paths_tests.rs::the_data_dir_is_spelled_in_one_place`（〔V160〕默认住址只在一处拼、生产段零处旧住址）。
 ⚠ **常驻后端那一格**：常驻后端的监听口仍按 Claude **家目录**算，隔离跑的 monitor 会敲到真 profile 那个 monitor 起的常驻后端；
 接不接由宿主比「它的数据身份」—— hello 回显的那几格宿主环境（凭据文件路径 · 历史注解路径）与这一趟要交的逐格相等才接，
 不等 ⇒ 出声拒绝、不接、不另起（〔HX2〕`local_backend_host.rs::hello_verdict`；此前是 E10 / GP1 交主会话第 4 条那个写穿缺口）。
@@ -211,7 +211,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
 | `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
-| `logs/` | **缓存/派生** | `logging.rs` | 诊断日志，滚动保留 3 天（§15） |
+| `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | 诊断日志：`monitor/` 是本进程按天滚动、保留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 
 - **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
 - **缓存/派生** = 能从别处重建，**随便删**。
@@ -397,7 +397,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 - tracing `try_init` 已经有 subscriber 报错（测试场景）→ `eprintln!` + 继续，不 panic
 - `monitor_data_dir` 解析失败（极罕见）→ fallback 到 `temp_dir().join("cc-monitor-fallback")`
 
-**为什么不能松动**：log 是诊断辅助，不是核心功能。"装了 monitor 但 log 文件没法写所以打不开" 是用户最反感的反讨厌设计。INVARIANT § 2 说 monitor data dir 永远在 `~/.claude/work/`——log dir 是 `<data_dir>/logs/`，data dir 解析永远应该成功（dirs::home_dir 在 Windows 99.99% 有值），剩下唯一失败路径是文件系统级 error 必须容忍。
+**为什么不能松动**：log 是诊断辅助，不是核心功能。"装了 monitor 但 log 文件没法写所以打不开" 是用户最反感的反讨厌设计。INVARIANT § 2 说 monitor data dir 永远在 `~/.cc-monitor/`——log dir 是 `<data_dir>/logs/monitor/`，data dir 解析永远应该成功（dirs::home_dir 在 Windows 99.99% 有值），剩下唯一失败路径是文件系统级 error 必须容忍。
 
 详 [`logging.rs`](../../src/frontend/shell/src/logging.rs) 的 `init()` 函数。
 
@@ -411,7 +411,7 @@ jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是�
 2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src/frontend/shell/src/lib.rs) 里 `unminimize + show + set_focus` 主窗口）
 3. 第二个实例自身立即退出
 
-**为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、`sid-hwnd-cache.json`、jsonl watcher、`logs/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：
+**为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、`sid-hwnd-cache.json`、jsonl watcher、`logs/monitor/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：
 
 - 双重渲染（两个窗口都监听同一 jsonl）
 - cc 握手 race（两个 monitor 都 EnumWindows 找 marker，先到先赢 / 后到的写不到 `ps-registry/`）

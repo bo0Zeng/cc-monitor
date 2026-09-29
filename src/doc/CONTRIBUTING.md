@@ -209,7 +209,7 @@ case "memory_recall":
 详细步骤 → [IPC-PROTOCOL.md § 添加新的跨进程协议文件](IPC-PROTOCOL.md#添加新的跨进程协议文件)。
 
 **关键**：
-- 路径必须在 `~/.claude/work/` 下
+- 路径必须在 `~/.cc-monitor/` 下
 - UTF-8 无 BOM
 - 原子写
 - 反序列化容错（`#[serde(default)]` + `#[serde(other)]`）

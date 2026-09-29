@@ -21,7 +21,7 @@
    └──────────┬───────────┘                    └──────────┬───────────┘
               │ 写                                         │ 改窗口标题 + 写
               ▼                                            ▼
-   ~/.claude/projects/                              ~/.claude/work/
+   ~/.claude/projects/                              ~/.cc-monitor/
        <encoded-cwd>/<sid>.jsonl                        ps-await/<PID>.json
    ~/.claude/sessions/<PID>.json                        ps-registry/<PID>.json
               │                                            │
@@ -321,7 +321,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 ## 4. 跨进程文件 IPC 简表
 
-monitor 与外部进程的所有通信都在 `~/.claude/work/` 下：
+monitor 与外部进程的所有通信都在 `~/.cc-monitor/` 下：
 
 | 路径 | 写入方 | 读取方 | 用途 | 生命周期 |
 |---|---|---|---|---|
@@ -331,7 +331,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/work/` 下：
 | `sid-hwnd-cache.json` | monitor | monitor 启动恢复 | sid → hwnd 持久缓存，新 session 出现时查这里复用绑定 | 持久 |
 | `auto-launch.json` | monitor 设置面板 + 启动时回写 | PowerShell (`__ccm_bind` 头部) | "用 cc 启动 claude 时自动开 monitor" 开关 + monitor exe 路径 | 持久 |
 | `history-metadata.json` | monitor 历史浏览器 | monitor 历史浏览器 | star / 重命名 / 隐藏 | 持久 |
-| `logs/monitor.YYYY-MM-DD.log` (v2.0.0+) | monitor (tracing-appender) | 用户（设置面板 [打开 log] / 编辑器） | GUI app 诊断日志，按天滚动保留 3 天 | 持久（自动清理老文件） |
+| `logs/monitor/monitor.YYYY-MM-DD.log` (v2.0.0+) | monitor (tracing-appender) | 用户（设置面板 [打开 log] / 编辑器） | GUI app 诊断日志，按天滚动保留 3 天 | 持久（自动清理老文件） |
 
 **只读外部数据源**（不属于 monitor 写入域，但 monitor 读取并展示）：
 

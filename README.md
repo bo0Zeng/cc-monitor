@@ -103,7 +103,7 @@
 
 - **应用**：行为（自动跟随切 Tab、是否拉前 monitor 窗口）· 快捷键（编辑器里自定义 action 的 chord，
   **可用 action 数以 `src/frontend/ui/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
-  **几个以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.claude/work/config.json`）·
+  **几个以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.cc-monitor/config.json`）·
   日志与数据（Claude 数据目录三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`；tracing 等级 toggle +
   log 路径 + 所有持久化路径透明展示）
 - **机器**：机器列表；每台机器的详情子页里是连接、**PowerShell `__ccm_bind` 一键装**、
