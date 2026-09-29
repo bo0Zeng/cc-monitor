@@ -54,6 +54,12 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "它只给界面起会话前问一个名字用；命令行那一侧 `ccm` 不给名时自己就铸（同一份 `plan::mint_tmux_name`，同一张会话快照），\
          第三方 skill 要起会话直接敲 `ccm` ⇒ 再开一个 CLI 口只是第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
+    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份。
+    (
+        "history-search-merge",
+        "它合的是界面逐台问回来的那几份（每台常驻后端各答各的 `history-search`）；命令行那一侧 `--search` 只问这一台、没有第二份可合 \
+         ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串。
     (
         "terminal-ssh",

@@ -366,6 +366,13 @@ enum Door {
 /// （`files::index::*` / `files::raw::*` / 围栏那几个函数 —— 原生后端一个都够不到）。
 const DOORS: &[(&str, &str, Door)] = &[
     ("stream/inbound.rs", "files::answer_wire", Door::Command),
+    // 〔FILES3 · `99 §2.2 ㉜`〕按内容搜要**可撤**（异步档：阻塞线程上那一趟看取消位）⇒ 同一族的第二个入口函数，
+    //   不是内部符号：它自己再进 `answer_grep`（与唯一入口 `answer` 里那一臂同一个本体）。
+    (
+        "stream/inbound.rs",
+        "files::answer_grep_cancellable",
+        Door::Command,
+    ),
     (
         "stream/inbound.rs",
         "control::files_write::answer_wire",
@@ -495,12 +502,13 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     assert_eq!(
         // 〔FILES2 · 第四波 09-27〕6 → 7：多了解压面 `control::files_extract::answer_wire`（`设计/60 §6.2` Q3）。
         // 〔MOD · 子步 4〕7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。
-        command, 8,
-        "命令注册那一处够到的入口从 8 个变成了 {command} 个 —— \
+        // 〔FILES3 · `99 §2.2 ㉜`〕8 → 9：读那一面多一个可撤的入口 `files::answer_grep_cancellable`（按内容搜，异步档）。
+        command, 9,
+        "命令注册那一处够到的入口从 9 个变成了 {command} 个 —— \
          四面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
          上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕／ 解压 `control::files_extract::answer_wire`〔FILES2 +1〕）各一个入口，\
          〔SR1b 09-24 +3〕传输台每连接一张表：表类型 ＋ 造表 `Desk::new` ＋ 答口 `Desk::answer_wire`。\
-         〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。\
+         〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。〔FILES3 +1〕按内容搜那个可撤的入口 `files::answer_grep_cancellable`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
 }

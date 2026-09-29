@@ -400,6 +400,7 @@ const SCAN: &[&str] = &[
     "tests/bridge/filewin/download_tests.rs",
     "tests/bridge/filewin/entry_tests.rs", // 〔TAIL〕INTEGRATION → SCAN：落盘那条（书签旧键搬家）随 V41 退役删了
     "tests/bridge/filewin/find_tests.rs",
+    "tests/bridge/filewin/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真通道上的合成后端 ＋ 跨半边金样
     "tests/bridge/filewin/lossy_pull_tests.rs", // 〔FILES2〕有损名下载：合成对端 ＋ 读后端源码钉暂存区常量相等
     "tests/bridge/filewin/cross_copy_tests.rs", // 〔FILES2〕复制到另一台：合成对端（按 origin 记）＋ 读 app 源码钉 <local> 相等
     "tests/bridge/filewin/fonts_tests.rs",
@@ -604,6 +605,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/files/raw_tests.rs",
     "tests/backend/files/scale_f2.rs",
     "tests/backend/files/size_tests.rs", // 〔W5-FILES〕算目录大小（临时目录真走一棵树）
+    "tests/backend/files/grep_tests.rs", // 〔FILES3 · ㉜〕按内容搜：真铺一棵临时树、注入设备号与小上界
     "tests/backend/footprint/face_tests.rs", // 〔MIG-3b 续〕`footprint-report` 那一面（真 stat 临时目录；原 `tests/backend/footprint_tests.rs`）
     // 〔RM1f〕SCAN → 集成：多了一条真进程判据（`cancel` 真打断在飞的 `panorama`，替身小程序是真进程）
     "tests/backend/stream/inbound_tests.rs",

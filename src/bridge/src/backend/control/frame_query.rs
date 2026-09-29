@@ -83,6 +83,8 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     // 〔MOD · `设计/90 §3` 判据 3〕记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
     "history-page",
     "drift-report",
+    // 〔FIX4 · `设计/90 §3` J15〕各台搜索结果合一份（合并排序进本机后端；界面经通道直接问，monitor 这一侧从不发它）。
+    "history-search-merge",
 ];
 
 // 〔MOD〕按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。

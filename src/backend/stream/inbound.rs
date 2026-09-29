@@ -154,6 +154,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔FILES2 · 第四波〕解压（`设计/60 §6.2` · §7 第 9 条 Q3）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "files-extract",
     "files-find",
+    // 〔FILES3 · `99 §2.2 ㉜`〕文件管理器按内容搜（那台后端走一遍、有字节与条数上界、可撤、不跟链接）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "files-grep",
     "files-home",
     "files-index-rebuild",
     "files-index-status",
@@ -195,6 +197,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
     "history-record",
     "history-search",
+    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份（界面逐台扇出，合并排序在本机后端）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "history-search-merge",
     "history-sessions",
     // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品（列 ＋ 挑 ＋ 读 ＋ 解析）；替掉只列候选的 `history-subagents`。
     "history-subagent",
@@ -2255,6 +2259,39 @@ pub const REGISTRY: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
+    // 〔FILES3 · `设计/99 §2.2 ㉜`〕**按内容搜**：`{path, needle, ignore_ascii_case?, limit?}` ⇒ 命中的那几份（第一处命中那一行 ＋ 命中几行）
+    //   ＋ 走了多少。**可撤** ⇒ 异步档：走那一趟放进阻塞线程池，`cancel` 丢掉这个 future 时守卫置取消位、那一趟随即停
+    //   （`files/mod.rs::answer_grep_cancellable`）。纯读。
+    CommandSpec {
+        name: "files-grep",
+        doc_anchor: Some("#### `files-grep`"),
+        codes: &["bad_args", "bad_path", "unreadable"],
+        fields: &[
+            "bytes",
+            "files",
+            "hits",
+            "ignore_ascii_case",
+            "limit",
+            "links",
+            "needle",
+            "path",
+            "skipped_binary",
+            "skipped_large",
+            "skipped_mounts",
+            "stopped",
+            "truncated",
+            "unreadable",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::files::answer_grep_cancellable(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
     CommandSpec {
         name: "files-find",
         doc_anchor: Some("#### `files-find`"),
@@ -2474,6 +2511,22 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::faces::read_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_core::sort_by_recency`）·
+    //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `acct-iso-cmd`）。
+    CommandSpec {
+        name: "history-search-merge",
+        doc_anchor: Some("#### `history-search-merge`"),
+        codes: &["bad_args"],
+        fields: &["sessionCount", "sessions", "totalHits", "truncated"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::faces::read_face::answer(&r.cmd, &r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     // 〔MOD〕子 agent 那一份出成品（`read_face.rs` 那一臂 ＋ `history_query::pick_subagent`）。同族同档、同一个只读宿主。

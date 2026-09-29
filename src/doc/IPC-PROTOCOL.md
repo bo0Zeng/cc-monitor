@@ -1013,9 +1013,37 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 | `index_missing` | ← | 🔴 **索引还没建过** ⇒ 上面几个数全是 0，而那**不是**「没搜到」。见本族总说明那条 ⚠ |
 
 ⚠ **它不重走、不阻塞**：拿的是手上那一份，并把年龄一起交回去。
-⚠ **只有「文件名子串匹配」这一档**：按内容搜 · 模糊匹配 · 排序 —— 一条都没设计。
+⚠ **只有「文件名子串匹配」这一档**；〔FILES3〕按内容搜是另一条 `files-grep`（见下）。模糊匹配 · 排序 —— 没设计。
 
 **错误码**：`bad_args`（`needle` 缺了 / 形状不对）。
+
+#### `files-grep`：在一个目录底下按内容搜（〔FILES3〕09-28；`设计/99 §2.2 ㉜`，**可撤**）
+
+```text
+→ {"id":"f9","cmd":"files-grep","args":{"path":"/home/u/p","needle":"TODO","ignore_ascii_case":false,"limit":200}}
+← {"kind":"reply","id":"f9","ok":true,"data":{
+     "path":"/home/u/p",
+     "hits":[{"path":"/home/u/p/src/a.rs","line":12,"text":"// TODO: split","matches":3}],
+     "files":480,"bytes":5242880,"links":2,"skipped_binary":7,"skipped_large":1,"skipped_mounts":0,"unreadable":0,
+     "limit":200,"truncated":false,"stopped":null}}
+```
+
+在那台机器上走一遍 `path` 那棵树、只回命中的那几份（字节不过网）。
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `path` | ↔ | 从哪个目录往下搜（字符串或 `{"b16":…}`；也可以是一份文件）；回送原样那一格 |
+| `needle` | → | 要找的**字节**子串（字符串或 `{"b16":…}`），1 至 256 字节 |
+| `ignore_ascii_case` | → | 只对 ASCII 段大小写不敏感（同 `files-find`）。不给 ⇒ `false` |
+| `limit` | ↔ | 最多回几份命中的文件。不给 / 给 0 ⇒ **200**，至多 **1000** |
+| `hits` | ← | 每份命中的文件一项：`path`（字符串或 `{"b16":…}`）· `line`（第一处命中所在行号，从 1 起）· `text`（那一行里命中前后至多 200 字节，首尾剥空白；非 UTF-8 走 `{"b16":…}`）· `matches`（这份里命中了几行）。同一层按名字字节序、先文件后子目录 |
+| `files` · `bytes` | ← | 这一趟读了几份、多少字节 |
+| `links` | ← | 碰到几条链接 —— **不跟**（它不一定在这棵树里，跟进去就是出界）；根本身是链接 ⇒ 不进去 |
+| `skipped_binary` · `skipped_large` · `skipped_mounts` · `unreadable` | ← | 看着像二进制（前 8 KiB 有 NUL）· 超过 8 MiB · 挂在底下的别的文件系统 · 读不了的，各跳过几项 |
+| `truncated` · `stopped` | ← | 上界到了没走完：`"hits"`（命中份数到 `limit`）/ `"bytes"`（一趟累计读到 256 MiB）；走完 ⇒ `false` · `null` |
+
+⚠ **可撤**：异步档，`cancel` 打得断 —— 走那一趟在阻塞线程池上，这一问被撤时取消位置上，那一趟下一项就收手（不回应答）。
+⚠ **纯读**：一个字节不写（同族边界①）。**错误码**：`bad_args`（`needle` 缺 / 空 / 超长 / 形状不对）· `bad_path` · `unreadable`（根读不到）。
 
 #### `files-index-status`：索引的新鲜度 / 条目数 / 常驻字节（步 `24f`，**不读 stdin**）
 
@@ -2358,6 +2386,18 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 
 ⚠ 选项**不在帧面另写一份语义**：这几个字段被摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit`，交给 CLI 那一臂同一个解析。
 
+#### `history-search-merge`：把各台的搜索结果合成一份（〔FIX4 · J15〕09-28；`设计/90 §3` J15，主会话裁 B）
+
+```text
+→ {"id":"q4","cmd":"history-search-merge","args":{"sessions":[{"sessionId":"a","updatedAt":100,"hitCount":3,"hitsTruncated":false,…},{"sessionId":"b","origin":"pi","updatedAt":300,"hitCount":2,"hitsTruncated":true,…}]}}
+← {"kind":"reply","id":"q4","ok":true,"data":{"totalHits":5,"sessionCount":2,"truncated":true,"sessions":[{"sessionId":"b",…},{"sessionId":"a",…}]}}
+```
+
+界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），把解码过的会话行（远端的补了 `origin`）一次交给**本机**后端合：
+`updatedAt` 倒序、稳定（`search_core::sort_by_recency`，与每台后端花 snippet 预算同一个函数）· `totalHits` = `hitCount` 之和 ·
+任一行 `hitsTruncated` ⇒ `truncated`。只读排序与计数要的那三格，其余原样透传。纯计算。错误码：`bad_args`（不是 `{sessions:[…]}` / 某一行那三格缺或类型不对）。
+只上帧面（`STREAM_ONLY`）。
+
 #### `history-subagent`：一份 subagent 记录的成品（〔MOD · `设计/05 §14.3` C 组〕列 ＋ 挑 ＋ 读 ＋ 解析）
 
 ```text
@@ -3686,6 +3726,9 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
 **W5-FILES 追加一条（第五波，2026-09-25）**：`--files-size` —— 同族第九条（算目录大小，逐条见上面 `files-size` 那一小节）。
 与帧面走**同一个 `run`**，读 stdin（那段 JSON 就是它的 `args`）。只读。
+
+**FILES3 追加一条（第四波，2026-09-28）**：`--files-grep` —— 同族第十一条（按内容搜，逐条见上面 `files-grep` 那一小节）。
+读 stdin（那段 JSON 就是它的 `args`）；一次性进程里没有要撤的在飞那一趟，上界照旧。只读。
 
 **`K-H1` 那一条：HTTP 中转**（搬字节那半）。〔DEL〕独立进程那一形（子命令 `--relay`）删了：
 中转只住常驻后端进程里（本机 V107 · 远端 V139），下面说的是它。

@@ -241,6 +241,10 @@ pub struct FakeBackend {
     /// 索引照常当场建好（与后端「走完才回」的时序不同，但窗口只看应答什么时候到）——
     /// 判据要在「重走还在飞」那一刻跑一帧，看首建那一行在不在。
     hold_rebuild: Option<std::sync::Arc<tokio::sync::Notify>>,
+    /// 〔FILES3〕`files-grep` 回的那一份成品（`None` ⇒ 按「这台后端拒」那一档：`unreadable`）。
+    pub grep_reply: Option<serde_json::Value>,
+    /// 〔FILES3〕给了 ⇒ `files-grep` 的应答扣住，等用例放行才回（「停」那条判据要在它还在飞那一刻撤）。
+    hold_grep: Option<std::sync::Arc<tokio::sync::Notify>>,
 }
 
 impl FakeBackend {
@@ -255,7 +259,15 @@ impl FakeBackend {
             refuse_stage_at: None,
             disk: Default::default(),
             hold_rebuild: None,
+            grep_reply: None,
+            hold_grep: None,
         }
+    }
+
+    /// 〔FILES3〕把 `files-grep` 的应答扣到 `gate` 被 `notify_one` 为止。
+    pub fn holding_grep(mut self, gate: std::sync::Arc<tokio::sync::Notify>) -> Self {
+        self.hold_grep = Some(gate);
+        self
     }
 
     /// 〔FW1〕合成盘上此刻那一份。
@@ -325,6 +337,16 @@ impl FakeBackend {
         Option<serde_json::Value>,
     ) {
         match cmd {
+            // 〔FILES3〕按内容搜：回用例给的那一份成品（窗口侧只判收、画、跳；走树的正确性判在 `tests/backend/files/grep_tests.rs`）。
+            "files-grep" => match &self.grep_reply {
+                Some(v) => (true, None, None, Some(v.clone())),
+                None => (
+                    false,
+                    Some("unreadable".into()),
+                    Some("要搜的这个目录读不到".into()),
+                    None,
+                ),
+            },
             "files-index-status" => (true, None, None, Some(self.status_json())),
             "files-index-rebuild" => {
                 let Some(root) = args.get("path").and_then(|v| v.as_str()) else {
@@ -899,6 +921,8 @@ impl crate::chan::router::Backends for Hosted {
         let (ok, code, message, data) = be.answer(&op.0, &args);
         let hold = if op.0 == "files-index-rebuild" {
             be.hold_rebuild.clone()
+        } else if op.0 == "files-grep" {
+            be.hold_grep.clone()
         } else {
             None
         };

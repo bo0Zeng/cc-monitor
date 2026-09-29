@@ -656,7 +656,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// `kill` 应答 ＋ `bus: {removed, failed, unread}`。⑬「待迁」清空。
 ///
 /// ★★★ **p5n-files-toctou**（2026-09-28，FIX5 合并那一拍）：行为 —— 文件管理写面闭 TOCTOU：不覆盖改名 `platform::fs::rename_noreplace`（Linux `renameat2`）· 复制与新建先写旁名再不覆盖上位 · 第三层开文件全程 `O_NOFOLLOW`；文案扫描补 CSS `content:` / 入口 HTML 与 R1 认形状。子命令没变。
-pub const BUILD_ID: &str = "p5n-files-toctou";
+///
+/// ★★★ **p5o-files-grep-search-merge**（2026-09-28，J15 ＋ FILES3 合并那一拍）：新帧命令 `history-search-merge`（多机搜索合并排序进本机后端，`search-core::sort_by_recency`）·
+/// `files-grep`（文件管理器按内容搜：不跟链接、不跨文件系统、命中文件数与读字节有上界、可撤；另有 CLI 面）· 删无调用者的 `ssh_source::winner_address`。
+pub const BUILD_ID: &str = "p5o-files-grep-search-merge";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -912,6 +915,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-read-chunk",
     // 〔W5-FILES · 第五波〕读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
     "--files-size",
+    // 〔FILES3 · `99 §2.2 ㉜`〕读族第十一条（按内容搜）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "--files-grep",
     // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--find-in-session",

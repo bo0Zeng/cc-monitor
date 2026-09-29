@@ -295,3 +295,68 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     assert!(note.contains('1'), "{note}");
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// 要求住址：`设计/90 §3` J15「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」（主会话 09-28 裁 B：
+/// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`）。期望原样搬自 `tests/views/history-search.vitest.ts` 那几条合并用例。
+#[test]
+fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
+    use serde_json::json;
+    let mk = |sid: &str, updated: i64, hits: u64, cut: bool, origin: Option<&str>| {
+        let mut v = json!({ "sessionId": sid, "updatedAt": updated, "hitCount": hits, "hitsTruncated": cut, "hits": [] });
+        if let Some(o) = origin {
+            v["origin"] = json!(o);
+        }
+        v
+    };
+    let merged = answer_merge(&json!({ "sessions": [
+        mk("local-old", 100, 3, false, None),
+        mk("rem-new", 300, 2, false, Some("pi")),
+        mk("rem-mid", 200, 1, false, Some("wsl")),
+        mk("tie-a", 150, 0, false, Some("pi")),
+        mk("tie-b", 150, 0, false, None),
+    ] }))
+    .unwrap();
+    let order: Vec<&str> = merged["sessions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["sessionId"].as_str().unwrap())
+        .collect();
+    // 倒序；同一时刻保持交进来的先后（稳定）。
+    assert_eq!(order, ["rem-new", "rem-mid", "tie-a", "tie-b", "local-old"]);
+    assert_eq!(merged["totalHits"], 6);
+    assert_eq!(merged["sessionCount"], 5);
+    assert_eq!(merged["truncated"], false);
+    // 其余各格原样透传（`origin` 缺 ＝ 本机，不补）。
+    assert_eq!(merged["sessions"][0]["origin"], "pi");
+    assert!(merged["sessions"][4].get("origin").is_none());
+    // 任一台的任一会话被砍过 ⇒ 整体 truncated（`K-R100`）。
+    for rows in [
+        json!([
+            mk("loc", 100, 1, false, None),
+            mk("rem", 200, 12, true, Some("pi"))
+        ]),
+        json!([
+            mk("loc", 100, 12, true, None),
+            mk("rem", 200, 1, false, Some("pi"))
+        ]),
+    ] {
+        assert_eq!(
+            answer_merge(&json!({ "sessions": rows })).unwrap()["truncated"],
+            true
+        );
+    }
+    assert_eq!(
+        answer_merge(&json!({ "sessions": [] })).unwrap(),
+        json!({ "totalHits": 0, "sessionCount": 0, "truncated": false, "sessions": [] })
+    );
+    // 形状不对 ⇒ bad_args（不替界面补值）。
+    for bad in [
+        json!({}),
+        json!({ "sessions": [ { "updatedAt": 1, "hitCount": 1 } ] }),
+        json!({ "sessions": [ { "updatedAt": "1", "hitCount": 1, "hitsTruncated": false } ] }),
+        json!({ "sessions": [ { "updatedAt": 1, "hitCount": -1, "hitsTruncated": false } ] }),
+    ] {
+        assert_eq!(answer_merge(&bad).unwrap_err().0, "bad_args");
+    }
+}

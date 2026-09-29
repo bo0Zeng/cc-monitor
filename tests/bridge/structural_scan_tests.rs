@@ -4837,8 +4837,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         // 〔LOC1b · 第四波 4D〕本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
-        ("src/views/history-search.ts", 1),
-        ("src/views/history.ts", 3), // 〔DUP1〕+1：新开那一支原先调的 `validateLocalLaunch`
+        ("src/views/history-search.ts", 2), // 〔FIX4 · J15〕+1：前端合并那一份（`mergeSearchResults`）删了，头注挂墓碑
+        ("src/views/history.ts", 3),        // 〔DUP1〕+1：新开那一支原先调的 `validateLocalLaunch`
         ("tests/bridge/drift_ledger_tests.rs", 1),
         // 〔MOD〕`src/bridge/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("tests/bridge/local_read_surface_registry_tests.rs", 10), // 〔MIG-3b 续〕7 → 10：足迹三处（判定 · 申报表 · 探针）随进后端删了 // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // 〔合并 MIG-3b × 主线 81f92f6a〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔MIG-3a〕+2：`aliases_read` / `aliases_install` 两行摘除的旧墓碑补上标记（它们的符号随别名进后端没了） // // 〔SH1〕+1：`.claude.json` 三候选的 home 读去掉 // 〔C4c〕+1：`accounts.rs` 那一行摘掉处的「降级说明」旧名 // 棘轮史里 E79 那一格
@@ -5056,7 +5056,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔NT2 · V25〕+1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
         ("src/backend/accounts/upstream/mod.rs", 4),
         ("src/backend/relay/mod.rs", 1),
-        ("src/bridge/src/ssh_source.rs", 24), // 〔MOD〕23 → 24 // 〔MIG-3b 续〕+1：流那一个一次性 exec 原语删了，原地一块 // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 21 → 22 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
+        ("src/bridge/src/ssh_source.rs", 25), // 〔FIX4 · V41〕24 → 25：`winner_address` 零生产调用者删了，原处挂墓碑 // 〔MOD〕23 → 24 // 〔MIG-3b 续〕+1：流那一个一次性 exec 原语删了，原地一块 // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 21 → 22 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔MOD〕`src/bridge/src/subagent.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("src/backend/footprint/registry.rs", 10), // 〔MIG-3b 续〕11 → 10：Claude 布局那一半搬进适配层，带走一块（`IndirectWrite` 那条 `~/.cc-bus/` note） // 〔MIG-3a · 09-28 预裁〕10 → 11：头注点当年那条部署命令 // // 〔E2 · 子步 4〕6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 〔E2〕5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         ("tests/bridge/exec_site_registry_tests.rs", 5), // 〔合并 MIG-3b × 主线 76b31e7c〕跑出来 5（两路各给远端 `ccm` 探针那两句挂了墓碑，合并取主线那两句；另两处是 MIG-3b 点旧名处） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑 // 〔MIG-2〕1 → 3
@@ -5147,13 +5147,14 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔FIX4 · `99 §2.1 ⑬`〕新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，
         //   新家头注点来历一块 · monitor 那侧判据原处各挂一块（六条搬走的期望 · 那个转发别名）。
         ("src/backend/dial/terminal.rs", 1),
+        ("tests/views/history-search.vitest.ts", 1), // 〔FIX4 · J15〕合并那三条搬进后端，原处一块
         ("tests/bridge/launch_tests.rs", 2),
         ("tests/bridge/quote_singleton_guard_tests.rs", 2),
         ("src/bridge/src/ccm_legacy.rs", 1), // 〔合并 MIG-3b × 主线 81f92f6a〕两边各自贴的墓碑相加，按盘上现数（跑出来核过）
         ("src/bridge/crates/deploy-core/src/lib.rs", 1),
         ("tests/bridge/ccm_legacy_tests.rs", 1),
         ("tests/bridge/lib_invariant_population_tests.rs", 2),
-        ("tests/bridge/ssh_source_tier1_tests.rs", 1),
+        ("tests/bridge/ssh_source_tier1_tests.rs", 2), // 〔FIX4 · V41〕1 → 2：F45 那两条判据随 `winner_address` 删了，原处一块
         ("src/settings/machine-card.ts", 1), // 〔E2〕「后端路径」那一格删了，按用户名预填它的函数原地留一块
         ("src/backend/control/ccm/mod.rs", 3), // 〔V151〕抢词表 `routes_to_backend` 删了，原地一块；〔09-27〕入口②（`<bin> ccm …`）删了，头注与 `SUBCOMMAND_WORD` 各一块
         ("src/backend/control/ccm/plan.rs", 1), // 〔09-27〕`self_argv` 的入口②那一形删了，原地一块

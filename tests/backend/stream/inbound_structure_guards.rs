@@ -324,6 +324,8 @@ fn every_registered_command_declares_its_run_kind() {
         "ccm-probe",
         // 〔FIX4 · ⑬〕`terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
         "terminal-ssh",
+        // 〔FIX4 · J15〕`history-search-merge`：各台结果合一份，纯计算 ⇒ 不进阻塞档。
+        "history-search-merge",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
@@ -332,6 +334,7 @@ fn every_registered_command_declares_its_run_kind() {
         "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
+        "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
