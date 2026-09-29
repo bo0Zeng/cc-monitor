@@ -316,13 +316,10 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
 fn the_status_shape_matches_the_monitor_dto() {
     let fields = ts_fields("PanoramaStatus");
     assert_eq!(fields, vec!["indexedAt", "stale", "symbols"]);
-    let src = prod();
-    for f in &fields {
-        assert!(
-            src.contains(&format!("\"{f}\":")),
-            "本程序的 status 应答里没有 `{f}` 这一格"
-        );
-    }
+    let v = serde_json::to_value(StatusReply::default()).unwrap();
+    let mut ours: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+    ours.sort();
+    assert_eq!(ours, fields, "本程序的 status 应答与前端那份接口对不上");
 }
 
 /// 前端 `types.ts` 里 `export interface <name> {` 的顶层字段名（排序；到行首 `}` 为止，内联对象类型不拆）。
@@ -649,6 +646,30 @@ fn the_probe_speaks_the_plugin_dialect() {
         .collect();
     built.sort();
     assert_eq!(long, built, "长活档 == 独占写（建索引）那几个");
+    // 〔PANO〕写表：`plans=` == [`PLANS`]；键 == 「算」那几个（`Need::Repo`，两向）；之后要跑的 op 都在 op 表里。
+    let plans = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("plans="))
+        .expect("没有写表那一行");
+    assert_eq!(plans, plans_line());
+    let mut keys: Vec<&str> = PLANS.iter().map(|(p, _)| *p).collect();
+    keys.sort();
+    let mut repo_ops: Vec<&str> = OPS
+        .iter()
+        .filter(|(_, n)| *n == Need::Repo)
+        .map(|(o, _)| *o)
+        .collect();
+    repo_ops.sort();
+    assert!(keys.len() >= 6, "写表只有 {keys:?}");
+    assert_eq!(keys, repo_ops, "写表的键 == 只算不写的那几个 op");
+    for (p, then) in PLANS {
+        if let Some(t) = then {
+            assert!(
+                OPS.iter().any(|(o, _)| o == t),
+                "`{p}` 之后要跑的 `{t}` 不在 op 表里"
+            );
+        }
+    }
     let shape = lines
         .iter()
         .find_map(|l| l.strip_prefix("shape="))
@@ -656,7 +677,7 @@ fn the_probe_speaks_the_plugin_dialect() {
     assert_eq!(shape, shape_code());
 }
 
-/// 生成物 `engine-contract.json` 的全文：op 表（名 → 档）＋ 形状代号。
+/// 生成物 `engine-contract.json` 的全文：op 表（名 → 档）＋ 写表（算 op → 之后要跑的）＋ 形状代号。
 fn contract_json() -> String {
     let ops: serde_json::Map<String, Value> = OPS
         .iter()
@@ -667,10 +688,15 @@ fn contract_json() -> String {
             )
         })
         .collect();
+    let plans: serde_json::Map<String, Value> = PLANS
+        .iter()
+        .map(|(p, then)| (p.to_string(), json!(then)))
+        .collect();
     let v = json!({
-        "_generated": "由 src/panorama-engine/main.rs 的 OPS 与 shape_code() 生成（tests/panorama-engine/cli_tests.rs::the_frontend_contract_is_generated_from_this_program），不许手改",
+        "_generated": "由 src/panorama-engine/main.rs 的 OPS · PLANS 与 shape_code() 生成（tests/panorama-engine/cli_tests.rs::the_frontend_contract_is_generated_from_this_program），不许手改",
         "shape": shape_code(),
         "ops": ops,
+        "plans": plans,
     });
     format!("{}\n", serde_json::to_string_pretty(&v).unwrap())
 }
@@ -692,6 +718,62 @@ fn the_frontend_contract_is_generated_from_this_program() {
     }
     assert_eq!(shape_code().len(), 16);
     assert!(vendor_pin().len() >= 7, "pin 没读到：{:?}", vendor_pin());
+    // 〔PANO〕形状代号摘进了自己的应答形状：本文件每个 `Serialize` 结构体都在 `own_dtos` 的样本里
+    // （今后自己加的 DTO 漏登记 ⇒ 红）；分派里不许手搓 `json!({…})` 对象（那样的形状摘不进来）。
+    let src = prod();
+    let mut dtos: Vec<String> = Vec::new();
+    let mut derive_ser = false;
+    for line in src.lines() {
+        let t = line.trim();
+        if t.starts_with("#[derive(") {
+            derive_ser = t.contains("Serialize");
+        } else if let Some(rest) = t.strip_prefix("struct ") {
+            if derive_ser {
+                dtos.push(
+                    rest.split(|c: char| !c.is_alphanumeric() && c != '_')
+                        .next()
+                        .unwrap()
+                        .to_string(),
+                );
+            }
+            derive_ser = false;
+        }
+    }
+    assert!(dtos.len() >= 4, "只抽到 {dtos:?} —— 抽取坏了");
+    let body = fn_body(&src, "own_dtos");
+    let missing: Vec<&String> = dtos.iter().filter(|d| !body.contains(d.as_str())).collect();
+    assert!(
+        missing.is_empty(),
+        "这些应答结构体没进 `own_dtos` 的样本（形状代号摘不到它们）：{missing:?}"
+    );
+    for f in ["dispatch", "dispatch_registry", "dispatch_plan"] {
+        assert!(
+            !fn_body(&src, f).contains("json!({"),
+            "`{f}` 里手搓了 `json!({{…}})` 应答 —— 写成结构体并进 `own_dtos`"
+        );
+    }
+}
+
+/// 生产段里 `fn <name>(` 的函数体（大括号配平）。
+fn fn_body(src: &str, name: &str) -> String {
+    let at = src
+        .find(&format!("fn {name}("))
+        .unwrap_or_else(|| panic!("生产段里找不到 `fn {name}(`"));
+    let open = at + src[at..].find('{').expect("函数没有体");
+    let mut depth = 0i32;
+    for (i, c) in src[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return src[open..open + i].to_string();
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("`fn {name}` 没收尾")
 }
 
 /// 索引根的锁：建索引独占、读共享（两个进程并发时进程内的锁管不到，只能靠它）。

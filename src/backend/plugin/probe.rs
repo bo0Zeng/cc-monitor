@@ -53,10 +53,7 @@ pub(crate) struct Answer {
     /// 〔FIX2〕形状代号（`shape=` 那一行；老一代没有这一行）。
     pub(crate) shape: Option<String>,
     /// 该插件自己的其它键（域枚举之类），原样带回，本层不解释。
-    ///
-    /// 〔RM1c〕模块级的死代码 `allow` 摘掉之后，只剩这一格今天没有生产读者：
-    /// 第一个生产调用方（代码全景）只要身份与能力、没有自己的域枚举。判据（`probe::tests`）读它。
-    #[allow(dead_code)]
+    /// 〔PANO〕第一个生产读者：代码全景的写表（`plans=`，由那个插件的适配层解释）。
     pub(crate) extras: Vec<(String, String)>,
 }
 
@@ -64,6 +61,14 @@ impl Answer {
     /// 会不会做这一件事。**子集检查，不比版本号。**
     pub(crate) fn can(&self, token: &str) -> bool {
         self.capabilities.iter().any(|c| c == token)
+    }
+
+    /// 该插件自己的某个键的原值（本层不解释；解释归那个插件的适配层）。
+    pub(crate) fn extra(&self, key: &str) -> Option<&str> {
+        self.extras
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 
     /// 〔PANO〕这件事是不是插件自报的长活档（宿主据此给长的那一档期限）。

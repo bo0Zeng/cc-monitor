@@ -3294,21 +3294,21 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"<形状代号>"}}
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"plan_add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"<形状代号>"}}
 ← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `repo` | → | 被写的仓在**这台机器上**的绝对路径 |
-| `op` | → | 写哪一种：`add_annotation` · `propose_annotation` · `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`（别的 ⇒ `bad_args`） |
-| `args` | → | 这一种写自己的参数（原样交给对应的 `plan_*`） |
-| `shape` | → | 〔PANO〕同 `panorama` 的 `shape`：每次问小程序（算 · 刷文档关联）都原样转交 |
+| `op` | → | 写哪一种 = 小程序 `--probe` 的写表 `plans=` 里的「算」op（今天 `plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；不在表里 ⇒ `bad_args`）。〔PANO〕后端不存这张表 |
+| `args` | → | 这一种写自己的参数（原样交给那个「算」op） |
+| `shape` | → | 〔PANO〕同 `panorama` 的 `shape`：每次问小程序（算 · 写成之后要跑的那一个）都原样转交 |
 | `data` | ← | 计划里的 `value` 原样（id / 在不在 / `null`，随 op 而定） |
 
 - 一件事全在这台：① 问这台的小程序要计划（`panorama` 的 `plan_*`，不写）→ ② `edit = null` ⇒ 原样回 → ③ 经**这台的文件管理面**落盘
   （`files-put`：`root` = 仓、`expect = before`、`parents`；`after = null` ⇒ `files-delete` 带 `expect = before`）→ ④ `stale` ⇒ 回 ① 重算，最多 3 趟
-  → ⑤ 文档关联那两种写成之后再 `refresh_doc_links`。写的规则（CAS · 暂存旁名换名上位 · 回读 · 围栏）只在文件管理面。
+  → ⑤ 写成之后，写表里这一项若写了 `><op>`（今天文档关联那两种 `>refresh_doc_links`），再跑那一个。写的规则（CAS · 暂存旁名换名上位 · 回读 · 围栏）只在文件管理面。
 - 错误码：「算」那一步的码原样交回（`not_installed` / `unsupported` 同样是界面请 monitor 放字节、再问一次的触发条件）· `stale`（3 趟都撞上别人改）·
   文件管理面的码原样（`refused` 等）· `failed`（计划形状对不上）。可取消档（同 `panorama`）。CLI 面自动派生（`--panorama-edit`）。
 

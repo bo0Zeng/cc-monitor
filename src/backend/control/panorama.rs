@@ -20,6 +20,7 @@
 //! 本模块**不存** op 表、不存形状代号：会哪些 op、哪个是长活，由小程序 `--probe` 自报（`capabilities=` · `long=`）；
 //! 要的是哪一代，由发起方在请求里带上 `shape`（前端取自与小程序同源的生成物 `src/frontend/ui/panorama/engine-contract.json`）。
 //! 未知 op / 形状对不上 ⇒ `unsupported`（放字节那条照旧接上）。本模块自己只留「档 → 秒数」那一张（[`deadline_for`]）。
+//! 写（`panorama-edit`）也一样：哪几个 op 是「算」、写成之后还要跑哪一个，照小程序自报的 `plans=`（[`answer_plan`]）。
 //! 〔墓碑 —— 此前这里写死 `SHAPE` 与 24 行 `OPS`（含期限档），re-vendor 一次后端就要改常量、每台重部署。〕
 //!
 //! # 只说查询语义（`protocol_doc_guard` 那条 `P7c-2` 约束）
@@ -146,6 +147,23 @@ pub(crate) fn fixed_candidates(exe_dir: Option<&Path>, home: Option<&Path>) -> V
 
 /// 帧面入口。〔RM1f〕异步：注册表里是 `Run::Async`，`cancel` 命中 ⇒ 这个 future 被丢 ⇒ 小程序那一组子进程被杀。
 pub(crate) async fn answer(args: &Value) -> Result<Value, (String, String)> {
+    let (fixed, store) = where_to_look()?;
+    answer_with(&fixed, &store, args)
+        .await
+        .map_err(|(c, m)| (c.to_string(), m))
+}
+
+/// 〔PANO〕「算」那一问（`panorama-edit` 用）：同 [`answer`]，另要求 `op` 在小程序自报的写表（`plans=`）里，
+/// 应答多一格 `then`（写成之后要跑的 op，没有 = `null`）。不在表里 ⇒ `bad_args`、不起那个 op。
+pub(crate) async fn answer_plan(args: &Value) -> Result<Value, (String, String)> {
+    let (fixed, store) = where_to_look()?;
+    answer_with_plan(&fixed, &store, args)
+        .await
+        .map_err(|(c, m)| (c.to_string(), m))
+}
+
+/// 去哪儿找小程序（固定候选）· 索引落哪（这台后端自己的数据目录）。
+fn where_to_look() -> Result<(Vec<PathBuf>, PathBuf), (String, String)> {
     let home = home();
     let exe_dir = std::env::current_exe()
         .ok()
@@ -157,9 +175,7 @@ pub(crate) async fn answer(args: &Value) -> Result<Value, (String, String)> {
             copy_text("bePanorama.answer.noHome", &[]),
         ));
     };
-    answer_with(&fixed, &store_dir(&home), args)
-        .await
-        .map_err(|(c, m)| (c.to_string(), m))
+    Ok((fixed, store_dir(&home)))
 }
 
 /// [`answer`] 的本体：候选与索引根是参数（判据拿夹具喂它，不去动进程级环境）。
@@ -167,6 +183,34 @@ pub(crate) async fn answer_with(
     fixed: &[PathBuf],
     store: &Path,
     args: &Value,
+) -> Result<Value, CmdErr> {
+    run_op(fixed, store, args, false).await
+}
+
+/// [`answer_plan`] 的本体（同 [`answer_with`]）。
+pub(crate) async fn answer_with_plan(
+    fixed: &[PathBuf],
+    store: &Path,
+    args: &Value,
+) -> Result<Value, CmdErr> {
+    run_op(fixed, store, args, true).await
+}
+
+/// 写表（`plans=` 的值，`<算 op>[><之后>]` 逗号列表）里 `op` 那一项：`Some(之后要跑的)`；不在表里 ⇒ `None`。
+pub(crate) fn plan_of(plans: Option<&str>, op: &str) -> Option<Option<String>> {
+    plans?.split(',').map(str::trim).find_map(|item| {
+        let (p, then) = item
+            .split_once('>')
+            .map_or((item, None), |(p, t)| (p, Some(t)));
+        (p == op).then(|| then.map(str::to_string))
+    })
+}
+
+async fn run_op(
+    fixed: &[PathBuf],
+    store: &Path,
+    args: &Value,
+    plan: bool,
 ) -> Result<Value, CmdErr> {
     let op = args.get("op").and_then(Value::as_str).ok_or((
         "bad_args",
@@ -229,6 +273,19 @@ pub(crate) async fn answer_with(
             Rejected::NotThePlugin { .. } => ("not_installed", r.message()),
         },
     )?;
+    let then = if plan {
+        let Some(then) = plan_of(answer.extra("plans"), op) else {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed(&format!(
+                    "`{op}` is not a planning op this program reports (`plans=`)"
+                )),
+            ));
+        };
+        Some(then)
+    } else {
+        None
+    };
     let deadline = deadline_for(answer.is_long(op));
     // ③ 起它。argv 直传不过 shell。
     let store_s = store.display().to_string();
@@ -240,7 +297,11 @@ pub(crate) async fn answer_with(
         argv.extend(["--args", a]);
     }
     let done = crate::plugin::invoke::run_abortable(&bin, &argv, deadline, &[], keep()).await;
-    classify(op, deadline, done.map_err(|n| not_run(&bin, n))?)
+    let mut got = classify(op, deadline, done.map_err(|n| not_run(&bin, n))?)?;
+    if let Some(then) = then {
+        got["then"] = json!(then);
+    }
+    Ok(got)
 }
 
 /// 〔FIX4 · `97 §8` · 主会话 09-28 裁「受管工具都应可卸，照 SU1 装卸账」〕**卸掉这台上的全景小程序**（帧 `panorama-uninstall`）。

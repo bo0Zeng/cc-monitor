@@ -249,6 +249,49 @@ fn an_old_generation_with_every_op_is_still_unsupported() {
     }
 }
 
+/// 要求住址：`99 §1 V158`「后端不带引擎知识」·〔PANO〕主会话 09-29「`EDITS` 挪出后端：由小程序自报，后端只照自报的表走」。
+///
+/// ★ 「算」那一问（`panorama-edit` 用）只认小程序 `plans=` 自报的写表：在表里 ⇒ 起它、应答带 `then`
+/// （写成之后要跑的 op，没有 = `null`）；不在表里（哪怕它会这个 op）⇒ `bad_args`、不起那个 op。
+#[cfg(unix)]
+#[test]
+fn a_plan_op_must_be_in_the_table_the_program_reports() {
+    let dir = scratch("plans");
+    let ran = dir.join("ran");
+    let bin = fake_program(
+        &dir,
+        "name=cc-monitor-panorama",
+        "plan_a,plan_b,status\\nplans=plan_a>refresh_x,plan_b",
+        &format!(
+            r#"echo "$1" >> '{}'; printf '{{"ok":true,"data":1}}\n'"#,
+            ran.display()
+        ),
+    );
+    let plan = |op: &str| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(answer_with_plan(
+                std::slice::from_ref(&bin),
+                &dir.join("s"),
+                &shaped(json!({"op": op, "repo": "/r"})),
+            ))
+    };
+    assert_eq!(
+        plan("plan_a").unwrap(),
+        json!({"result": 1, "then": "refresh_x"})
+    );
+    assert_eq!(plan("plan_b").unwrap(), json!({"result": 1, "then": null}));
+    assert_eq!(plan("status").unwrap_err().0, "bad_args");
+    assert_eq!(
+        std::fs::read_to_string(&ran).unwrap(),
+        "plan_a\nplan_b\n",
+        "不在写表里的那一个被起了"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn a_same_named_stranger_is_not_taken_for_the_program() {

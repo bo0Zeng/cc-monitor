@@ -64,26 +64,41 @@ impl Door for RepoDoor {
     }
 }
 
-/// 替身「算」：按顺序交一份计划（包成 `{result}`），记下被问了几次、问的是什么。
+/// 替身小程序：按顺序交一份计划（「算」那一问包成 `{result, then}`，别的包成 `{result}`），
+/// 记下被问了几次、问的是什么、是不是「算」那一问。`then` = 它的写表里这一种写成之后要跑的 op。
 #[derive(Clone)]
 struct Plans {
     queue: Arc<Mutex<Vec<Value>>>,
     asked: Arc<Mutex<Vec<Value>>>,
+    as_plan: Arc<Mutex<Vec<bool>>>,
+    then: Option<&'static str>,
 }
 
 impl Plans {
-    fn new(mut v: Vec<Value>) -> Plans {
+    fn new(v: Vec<Value>) -> Plans {
+        Plans::then(v, None)
+    }
+    fn then(mut v: Vec<Value>, then: Option<&'static str>) -> Plans {
         v.reverse();
         Plans {
             queue: Arc::new(Mutex::new(v)),
             asked: Arc::new(Mutex::new(Vec::new())),
+            as_plan: Arc::new(Mutex::new(Vec::new())),
+            then,
         }
     }
-    fn ask(&self) -> impl Fn(Value) -> std::future::Ready<Result<Value, (String, String)>> + '_ {
-        move |a: Value| {
+    fn ask(
+        &self,
+    ) -> impl Fn(Value, bool) -> std::future::Ready<Result<Value, (String, String)>> + '_ {
+        move |a: Value, plan: bool| {
             self.asked.lock().unwrap().push(a);
+            self.as_plan.lock().unwrap().push(plan);
             let p = self.queue.lock().unwrap().pop().expect("计划被多问了一次");
-            std::future::ready(Ok(json!({ "result": p })))
+            std::future::ready(Ok(if plan {
+                json!({ "result": p, "then": self.then })
+            } else {
+                json!({ "result": p })
+            }))
         }
     }
     fn times(&self) -> usize {
@@ -118,10 +133,15 @@ async fn the_plan_is_handed_to_the_door_verbatim() {
         Some("{\"id\":\"abc\"}"),
         true,
     )]);
-    let got = answer_with(d.clone(), &args(&d, "add_annotation"), plans.ask())
+    let got = answer_with(d.clone(), &args(&d, "plan_add_annotation"), plans.ask())
         .await
         .unwrap();
     assert_eq!(got, json!("abc"), "回的是计划里的 value");
+    assert_eq!(
+        *plans.as_plan.lock().unwrap(),
+        vec![true],
+        "只问了一次「算」、没跑别的"
+    );
     assert_eq!(
         plans.asked.lock().unwrap()[0],
         json!({ "op": "plan_add_annotation", "repo": d.repo(), "args": { "x": 1 }, "shape": "s1" })
@@ -148,7 +168,7 @@ async fn the_plan_is_handed_to_the_door_verbatim() {
 async fn nothing_to_write_sends_nothing() {
     let d = RepoDoor::new("noop");
     let plans = Plans::new(vec![json!({"value": false, "edit": null})]);
-    let got = answer_with(d.clone(), &args(&d, "remove_annotation"), plans.ask())
+    let got = answer_with(d.clone(), &args(&d, "plan_remove_annotation"), plans.ask())
         .await
         .unwrap();
     assert_eq!(got, json!(false));
@@ -156,17 +176,21 @@ async fn nothing_to_write_sends_nothing() {
 }
 
 /// ★ `stale`（算完之后盘上那份被别人改了）⇒ **重新要一份计划**，不拿旧计划硬写；趟数有上限（码 `stale`）。
+/// 〔PANO〕写成之后跑哪一个，照小程序写表里说的 `then`（后端不认识它是什么，也不存那张表）。
 #[tokio::test]
 async fn stale_means_plan_again_not_write_anyway() {
     let d = RepoDoor::new("stale");
     std::fs::write(d.root.join("d.md"), "v1").unwrap();
     d.interfere.lock().unwrap().push("v2".to_string());
-    let plans = Plans::new(vec![
-        plan(json!(null), "d.md", Some("v1"), Some("v1+link"), false),
-        plan(json!(null), "d.md", Some("v2"), Some("v2+link"), false),
-        json!({ "ok": true }), // 写成之后刷文档关联那一问
-    ]);
-    answer_with(d.clone(), &args(&d, "write_doc_link"), plans.ask())
+    let plans = Plans::then(
+        vec![
+            plan(json!(null), "d.md", Some("v1"), Some("v1+link"), false),
+            plan(json!(null), "d.md", Some("v2"), Some("v2+link"), false),
+            json!({ "ok": true }), // 写成之后小程序说要跑的那一问
+        ],
+        Some("refresh_x"),
+    );
+    answer_with(d.clone(), &args(&d, "plan_write_doc_link"), plans.ask())
         .await
         .unwrap();
     assert_eq!(
@@ -174,10 +198,8 @@ async fn stale_means_plan_again_not_write_anyway() {
         3,
         "stale 之后要重新问一次计划，写成之后再刷一次文档关联"
     );
-    assert_eq!(
-        plans.asked.lock().unwrap()[2]["op"],
-        json!(REFRESH_DOC_LINKS)
-    );
+    assert_eq!(plans.asked.lock().unwrap()[2]["op"], json!("refresh_x"));
+    assert_eq!(*plans.as_plan.lock().unwrap(), vec![true, true, false]);
     assert_eq!(plans.asked.lock().unwrap()[2]["shape"], json!("s1"));
     assert_eq!(
         std::fs::read_to_string(d.root.join("d.md")).unwrap(),
@@ -194,7 +216,7 @@ async fn stale_means_plan_again_not_write_anyway() {
             .map(|_| plan(json!(null), "d.md", Some("nope"), Some("y"), false))
             .collect(),
     );
-    let (code, e) = answer_with(d.clone(), &args(&d, "add_annotation"), plans.ask())
+    let (code, e) = answer_with(d.clone(), &args(&d, "plan_add_annotation"), plans.ask())
         .await
         .unwrap_err();
     assert_eq!(plans.times(), n);
@@ -211,7 +233,7 @@ async fn delete_hands_the_planned_bytes_to_the_door_as_expect() {
         plan(json!(true), "a.json", Some("stale-view"), None, false),
         plan(json!(true), "a.json", Some("old"), None, false),
     ]);
-    let got = answer_with(d.clone(), &args(&d, "remove_annotation"), plans.ask())
+    let got = answer_with(d.clone(), &args(&d, "plan_remove_annotation"), plans.ask())
         .await
         .unwrap();
     assert_eq!(got, json!(true));
@@ -233,31 +255,28 @@ async fn delete_hands_the_planned_bytes_to_the_door_as_expect() {
     assert!(!d.root.join("a.json").exists());
 }
 
-/// 计划形状不对（两端版本对不上）⇒ 说清楚，不猜；写之外的 op ⇒ `bad_args`、一次都不算。
+/// 计划形状不对（两端版本对不上）⇒ 说清楚，不猜。〔PANO〕写表之外的 op ⇒ `bad_args` 那一格随写表搬去小程序自报，
+/// 判据住 `control/panorama.rs` 的 `a_plan_op_must_be_in_the_table_the_program_reports`。
 #[tokio::test]
-async fn a_plan_of_the_wrong_shape_or_an_unknown_op_is_refused() {
+async fn a_plan_of_the_wrong_shape_is_refused() {
     let d = RepoDoor::new("shape");
     let plans = Plans::new(vec![json!({"value": 1, "edit": {"path": "x"}})]);
-    let (code, e) = answer_with(d.clone(), &args(&d, "add_annotation"), plans.ask())
+    let (code, e) = answer_with(d.clone(), &args(&d, "plan_add_annotation"), plans.ask())
         .await
         .unwrap_err();
     assert_eq!(code, "failed");
     assert!(e.contains("形状不对"), "{e}");
     assert!(d.writes().is_empty());
-    let plans = Plans::new(vec![]);
-    let (code, _) = answer_with(d.clone(), &args(&d, "index"), plans.ask())
-        .await
-        .unwrap_err();
-    assert_eq!((code.as_str(), plans.times()), ("bad_args", 0));
 }
 
 /// 「算」那一步的码原样往外交（`not_installed` / `unsupported` 是界面放字节再问一次的触发条件），一个字节不写。
 #[tokio::test]
 async fn the_plan_step_code_is_handed_out_as_is() {
     let d = RepoDoor::new("code");
-    let ask =
-        |_a: Value| std::future::ready(Err(("not_installed".to_string(), "没装".to_string())));
-    let (code, _) = answer_with(d.clone(), &args(&d, "add_annotation"), ask)
+    let ask = |_a: Value, _plan: bool| {
+        std::future::ready(Err(("not_installed".to_string(), "没装".to_string())))
+    };
+    let (code, _) = answer_with(d.clone(), &args(&d, "plan_add_annotation"), ask)
         .await
         .unwrap_err();
     assert_eq!(code, "not_installed");
@@ -310,30 +329,4 @@ fn the_plan_shape_matches_the_upstream_one() {
             "`{name}` 的字段两边对不上"
         );
     }
-}
-
-/// ★ 「算」op：[`EDITS`] 第二列 ＋ [`REFRESH_DOC_LINKS`] == 小程序自报的 op 表里 `plan_` 开头的 ＋ 刷文档关联那一个（两向，异源）。
-///
-/// 〔PANO〕后端不再存 op 表：另一侧读小程序的生成物 `src/frontend/ui/panorama/engine-contract.json`（运行时读，
-/// 同 `panorama_locus_guard` 的取舍；它 == 小程序 `OPS` 由小程序自己的判据钉）。
-#[test]
-fn the_edit_table_matches_the_plan_ops() {
-    let p = crate::guard_support::repo_root().join("src/frontend/ui/panorama/engine-contract.json");
-    let contract: Value = serde_json::from_str(
-        &std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}")),
-    )
-    .unwrap();
-    let mut theirs: Vec<&str> = contract["ops"]
-        .as_object()
-        .expect("生成物没有 ops")
-        .keys()
-        .map(String::as_str)
-        .filter(|op| op.starts_with("plan_") || *op == REFRESH_DOC_LINKS)
-        .collect();
-    theirs.sort_unstable();
-    let mut ours: Vec<&str> = EDITS.iter().map(|(_, p, _)| *p).collect();
-    ours.push(REFRESH_DOC_LINKS);
-    ours.sort_unstable();
-    assert!(theirs.len() >= 6, "只抽到 {theirs:?}");
-    assert_eq!(ours, theirs, "写那几种的「算」op 两边对不上");
 }
