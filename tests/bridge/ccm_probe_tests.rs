@@ -34,7 +34,9 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
     let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"), false);
     assert!(
         // 〔FIX5〕名片那半句按文案键取（`rsCcmProbe.card.summary` 不再是 `version=` 日志行形），不钉原文。
-        hint.contains("不是") && hint.contains(&describe_card(&legacy)) && hint.contains(&describe_card(&ours)),
+        hint.contains("不是")
+            && hint.contains(&describe_card(&legacy))
+            && hint.contains(&describe_card(&ours)),
         "那句话没把「它是谁 / 我们是谁」摆出来 —— 只说「不一样」等于没说：\n{hint}"
     );
     // 🔴 产品**不删**：措辞里不许出现祈使的「请删除」。
