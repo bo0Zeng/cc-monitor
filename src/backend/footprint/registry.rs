@@ -541,8 +541,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 what: Text(|| copy_text("rsToolRegistry.tools.ccmLocalWhat", &[])),
                 // 〔E2 · V28〕本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
                 source: ToolSource::EmbeddedBinary {
-                    repo_path:
-                        "src/frontend/shell/src/backend/control/local_backend.rs::extract_embedded_to",
+                    repo_path: "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
                 },
                 destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
                 touches: &[

@@ -55,7 +55,7 @@ async fn ask_slot(
     cfg: Option<&crate::ssh_source::RemoteConfig>,
     machine: &str,
 ) -> Result<crate::byte_table::Key, String> {
-    use crate::backend::control::backend_route::{route_call_error, Routed};
+    use crate::backend_route::{route_call_error, Routed};
     use crate::byte_table::{carried, Product};
     let carried: Vec<serde_json::Value> = carried(Product::Panorama)
         .iter()
@@ -123,7 +123,7 @@ pub(crate) fn push_target(home: &str) -> (String, String) {
 /// 〔RM1f〕本机那一台不经 SSH：[`place_local`] 把后端答的那一格（〔THIN〕`deploy-slot`，本机那一行）的字节放进 `~/.cc-monitor/bin/`（本机后端的第二个候选）。
 /// 〔墓碑 —— RM1e 那一版本机这一臂直接拒：「本机的代码全景组件不经推送 —— 它随本机后端一起放在本机后端旁边」。〕
 pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {
-    if origin.as_wire_str() == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+    if origin.as_wire_str() == crate::inbound_client::LOCAL_ORIGIN {
         let key = ask_slot(None, &copy_text("rsPanoramaBytes.local.machine", &[])).await?;
         let bytes = slot_bytes(key)?;
         return tokio::task::spawn_blocking(move || place_local(bytes))
@@ -165,7 +165,7 @@ fn place_local(bytes: &'static [u8]) -> Result<(), String> {
     let dir = dirs::home_dir()
         .map(|h| PUSH_DIR.split('/').fold(h, |p, seg| p.join(seg)))
         .ok_or_else(|| copy_text("rsPanoramaBytes.local.noHome", &[]))?;
-    let placed = crate::backend::control::local_backend::place_local_panorama(
+    let placed = crate::local_backend::place_local_panorama(
         &dir,
         &local_file_name(),
         bytes,
@@ -236,11 +236,11 @@ pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
 
 /// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
 pub(crate) fn install_notice(origin: &str) -> crate::ui_contract::RemoteHealthPayload {
-    let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+    let message = if origin == crate::inbound_client::LOCAL_ORIGIN {
         // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
         copy_text("rsPanoramaCall.install.local", &[])
     } else {
-        let who = crate::backend::control::cc_bus::machine_label(origin);
+        let who = crate::cc_bus::machine_label(origin);
         copy_text("rsPanoramaCall.install.remote", &[("who", &who)])
     };
     crate::ui_contract::RemoteHealthPayload {

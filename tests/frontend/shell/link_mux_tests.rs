@@ -16,7 +16,7 @@
 //! 而每个用例各有自己的台架客户端 —— 锁是再加一道保险，不是靠它才对）。
 
 use super::*;
-use crate::backend::control::inbound_client::{park, BackendHello};
+use crate::inbound_client::{park, BackendHello};
 use crate::ssh_source::{parse_frame, InboundFrame};
 use serde_json::Value;
 use std::time::Duration;
@@ -65,7 +65,7 @@ fn rig() -> Rig {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
             if let Some(f) = parse_frame(&l) {
-                crate::backend::control::local_backend::absorb_local_frame(f, Some(&c2));
+                crate::local_backend::absorb_local_frame(f, Some(&c2));
             }
         }
     });

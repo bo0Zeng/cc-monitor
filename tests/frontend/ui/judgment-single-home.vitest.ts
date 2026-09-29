@@ -299,7 +299,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/upstream-url.golden.json",
-      tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/frontend/ui/upstream-url-parity.vitest.ts"],
+      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/upstream-url-parity.vitest.ts"],
     },
     rustGone: ["src/comms/outward/upstream.rs::host_is_loopback", "src/common/creds-core/src/store.rs::check_base_url_shape"],
     // 中转那份不许再有自己的协议表 / 回环判定。
@@ -349,8 +349,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 两半各自接的是共享那一个（后端入口 · monitor 再导出），谁也没有自己再写一份字符集。
     rustNeedles: [
       { file: "src/backend/control/cc_bus.rs", text: "shell_quote_core::bus_id_ok(v)", count: 1 },
-      { file: "src/frontend/shell/src/backend/control/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
-      { file: "src/frontend/shell/src/backend/control/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
+      { file: "src/frontend/shell/src/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
+      { file: "src/frontend/shell/src/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
     ],
   },
   J13: {
@@ -408,7 +408,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/identifier-rules.golden.json",
-      tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/frontend/ui/identifier-rules-parity.vitest.ts"],
+      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/identifier-rules-parity.vitest.ts"],
     },
   },
   J18: {
@@ -430,7 +430,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/identifier-rules.golden.json",
-      tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/frontend/ui/identifier-rules-parity.vitest.ts"],
+      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/identifier-rules-parity.vitest.ts"],
     },
   },
   J19: {

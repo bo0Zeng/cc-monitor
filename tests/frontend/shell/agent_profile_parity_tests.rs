@@ -1,8 +1,6 @@
 use crate::adapter::{self, AgentKind};
 
-const GOLDEN: &str = include_str!(
-    "../../../../../src/frontend/shell/src/backend/control/fixtures/agent-profile-golden.tsv"
-);
+const GOLDEN: &str = include_str!("../../../tests/__fixtures__/agent-profile-golden.tsv");
 
 /// ★ `shared/ccm` 独有、**Rust 侧无对侧**的两个决策。
 ///
@@ -214,9 +212,8 @@ fn read_ccm() -> String {
 /// 那时 C4 的那一半就能搬了，回 F06 重新裁定。
 #[test]
 fn the_two_ccm_only_decisions_still_have_no_rust_counterpart() {
-    let src = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/adapter.rs"
-    ));
+    let src =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/adapter.rs"));
     assert!(
         src.contains("pub trait AgentAdapter"),
         "抽不到 `AgentAdapter` trait —— 路径或剥法坏了，本条会零命中地绿"

@@ -1395,8 +1395,7 @@ fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
 /// 〔MIG-3b 续〕monitor 那一侧 `ccm` 这个词（`local_backend.rs::CCM_ENTRY_WORD`）：申报表进了后端，
 /// 这个词仍住 monitor（本机那份由 monitor 释放）⇒ 读 monitor 的源码现抠（跨半边的边登记在 `cross_half_edge_registry.rs`）。
 fn monitor_ccm_word() -> &'static str {
-    const SRC: &str =
-        include_str!("../../../src/frontend/shell/src/backend/control/local_backend.rs");
+    const SRC: &str = include_str!("../../../src/frontend/shell/src/local_backend.rs");
     let head = "pub const CCM_ENTRY_WORD: &str = \"";
     let at = guard_core::find_pinned(SRC, head)
         .expect("monitor 那一侧的 `CCM_ENTRY_WORD` 改了写法")

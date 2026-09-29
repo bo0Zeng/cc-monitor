@@ -1,6 +1,6 @@
 //! 〔MIG-2 · `99 §2.1 ⑬` · `01 §1.1`〕**起一个会话的计划与渲染** —— 这台后端出成品，界面只把那串交给 monitor 开终端跑。
 //!
-//! 从 monitor `src/frontend/shell/src/backend/control/` 搬来（原在 monitor 进程里渲、界面 Tauri 问）：
+//! 从 monitor `src/frontend/shell/src/` 搬来（原在 monitor 进程里渲、界面 Tauri 问）：
 //! [`payload`]（载荷内核 ＋ 外层 tmux 三格）· [`ccm_invocation`]（`ccm …` 调用行）· [`wire`]（线上形状 → 渲染器）。
 //! [`local`]：本机起会话（新起 / resume / 接回）那一整条计划（原 `history.rs`）。
 //! 本机远端同一条 `chan.call(origin, …)`：渲的就是那台机器要跑的那一串，能力 / 中转这些事实问它自己。

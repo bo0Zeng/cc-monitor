@@ -9,7 +9,7 @@
 //! 那批东西（维度注册表 + `render_ccm_invocation` + 载荷编译）**就是决策内核**，
 //! 而后端对整个 crate 的用量只有一行 `posix_quote`。**它不是共享的，是没处放的。**
 //!
-//! P4a 给 monitor 划出了 `src/frontend/shell/src/backend/control/`，P4b 把那批东西搬了进去。
+//! P4a 给 monitor 划出了 `src/frontend/shell/src/`，P4b 把那批东西搬了进去。
 //! 留在这里的判据是**「backend 真的在用」**：
 //!
 //! | 项 | backend 用量 | 结论 |

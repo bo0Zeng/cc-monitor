@@ -177,7 +177,7 @@ fn every_listed_subcommand_is_actually_dispatched() {
 ///
 /// 「今天谁在双路上」遍历得出来；「**它为什么必须留着自己那条臂**」遍历不出来 ——
 /// 那是一次裁定。**两种角色的发现机制不同 ⇒ 分两张表**，
-/// 抄 `src/frontend/shell/src/backend/control/backend_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
+/// 抄 `src/frontend/shell/src/backend_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
 /// （逐字：「一张表混装两种角色是它自己会红的那种错」）。
 ///
 /// 没有这一张，[`every_listed_subcommand_has_a_live_dispatch_route`] 在双路那几条上
@@ -217,7 +217,7 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[
 ///   ③ `_` 兜底臂交给 `observe::history_query::run`，它认哪几条由**那份文件里
 ///      它自己那个 `match` 块**判。
 ///
-/// 分表这一形抄 `src/frontend/shell/src/backend/control/backend_kill.rs` 的
+/// 分表这一形抄 `src/frontend/shell/src/backend_kill.rs` 的
 /// `CREATION_PATHS`／`VALIDATORS`（逐字：「一张表混装两种角色是它自己会红的那种错，
 /// 因为两种角色的发现机制不同」），不自己重发明。
 ///

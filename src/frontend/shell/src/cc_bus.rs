@@ -21,7 +21,7 @@ pub use shell_quote_core::bus_id_ok as is_valid_bus_id;
 /// 一旦有人给本机另写一句「更亲切的」话，两条路就从措辞开始漂 ——
 /// 而措辞正是用户唯一看得见的那一面。
 pub(crate) fn machine_label(origin: &str) -> String {
-    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
         copy_text("rsCcBus.machine.local", &[])
     } else {
         origin.to_string()
@@ -50,5 +50,5 @@ pub(crate) fn describe_backend_too_old_for(origin: &str, _cmd: &str, outcome: &s
 }
 
 #[cfg(test)]
-#[path = "../../../../../../tests/frontend/shell/backend/control/cc_bus_tests.rs"]
+#[path = "../../../../tests/frontend/shell/cc_bus_tests.rs"]
 mod tests;

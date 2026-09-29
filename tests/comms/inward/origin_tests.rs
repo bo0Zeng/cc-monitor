@@ -103,7 +103,7 @@ fn the_sentinel_agrees_with_the_two_existing_homes() {
     // Rust 那一处（本文件之外的既有住址）
     assert_eq!(
         LOCAL,
-        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        crate::inbound_client::LOCAL_ORIGIN,
         "本文件的 `LOCAL` 与 `inbound_client::LOCAL_ORIGIN` 不一致 —— \n\
          那两个值必须逐字节相同，否则 `Origin::is_local()` 与后端那侧的判定会分叉，\n\
          而分叉的后果**不报错**：它只是查不到那个 origin，然后静默当成「没有这台机器」。"

@@ -156,7 +156,7 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     // 〔MIG-1 · `99 §2.1 ⑯`〕`ssh -G` 那一行出表（解析 ssh config 搬进后端）。
     // 〔SH1 · V136〕monitor 驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕出表：驾驶舱读面改走后端，monitor 不再起 `bash`。
     (
-        "backend/control/local_backend.rs",
+        "local_backend.rs",
         "supervise_with_stdio",
         "ManagedSpawn",
         "**注入形**：本层住 `backend/`，平台原语进不去 ⇒ 起进程那一下由宿主注进来的\

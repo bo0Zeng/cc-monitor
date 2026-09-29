@@ -280,7 +280,7 @@ fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
 /// 置可执行位失败 ⇒ 报、盘上没有半截的正式文件。
 #[test]
 fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() {
-    use crate::backend::control::local_backend::place_local_panorama;
+    use crate::local_backend::place_local_panorama;
     use std::cell::Cell;
     let dir = std::env::temp_dir().join(format!("ccm-rm1f-place-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);

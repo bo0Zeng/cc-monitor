@@ -350,16 +350,16 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/arch_doc_shape_guard_tests.rs",
     "tests/frontend/shell/asset_sync_tests.rs", // 〔AS2〕
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
-    "tests/frontend/shell/backend/control/agent_profile_parity_tests.rs",
-    "tests/frontend/shell/backend/control/backend_control_tests.rs",
-    "tests/frontend/shell/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
+    "tests/frontend/shell/agent_profile_parity_tests.rs",
+    "tests/frontend/shell/backend_control_tests.rs",
+    "tests/frontend/shell/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/comms/inward/backend_route_tests.rs",
     "tests/backend/control/launch_render/ccm_invocation_tests.rs",
-    "tests/frontend/shell/backend/control/frame_query_tests.rs",
-    "tests/frontend/shell/backend/control/inbound_client_tests.rs",
+    "tests/frontend/shell/frame_query_tests.rs",
+    "tests/frontend/shell/inbound_client_tests.rs",
     "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
     "tests/frontend/shell/backend_policy_tests.rs",
-    "tests/frontend/shell/backend_tests.rs",
+    "tests/frontend/shell/backend_client_guard_tests.rs", // 〔THIN〕原 `backend_tests.rs`：`backend/` 目录没了，两道判据改看逐个点名的那一组
     "tests/frontend/shell/bus_identity_registry_tests.rs",
     "tests/frontend/shell/byte_cap_registry_tests.rs",
     "tests/frontend/shell/byte_table_tests.rs",
@@ -369,7 +369,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
     "tests/backend/platform/shell/dialect_tests.rs", // 〔OSA · V156〕随方言搬进 `platform/shell/` // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
     "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
-    "tests/frontend/shell/backend/control/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
+    "tests/frontend/shell/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
     "tests/frontend/ui/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/frontend/shell/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/backend/footprint/rows_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/config_surface_tests.rs` 随判定搬进后端
@@ -542,7 +542,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
     "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
     "tests/frontend/ui/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
-    "tests/frontend/shell/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
+    "tests/frontend/shell/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     // 〔MIG-3a〕`tests/frontend/shell/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
     // 〔MIG-2〕基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
@@ -652,13 +652,13 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/adapter_tests.rs",
     "tests/frontend/shell/auto_launch_tests.rs",
     "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
-    "tests/frontend/shell/backend/control/local_backend_tests.rs",
+    "tests/frontend/shell/local_backend_tests.rs",
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
     // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
     "tests/backend/control/launch_render/payload_tests.rs",
     // 〔DUP1〕标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
-    "tests/frontend/shell/backend/control/payload_judgment_rules.rs",
-    "tests/frontend/shell/backend_layering.rs",
+    "tests/frontend/shell/payload_judgment_rules.rs",
+    // 〔THIN〕`tests/frontend/shell/backend_layering.rs` 删：它判 monitor 侧 `backend/` 里 `observe/` ↔ `control/` 两条线的方向，目录没了。
     "tests/frontend/shell/bind_tests.rs",
     "tests/frontend/shell/capability_registry_tests.rs",
     "tests/frontend/shell/chan/chan_tests.rs",
@@ -723,7 +723,7 @@ const SUPPORT: &[&str] = &[
     "tests/backend/files/index_testing.rs",
     "tests/backend/control/identity_tag_door.rs", // 〔RESYNC〕`identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/sftp_rig.rs",
-    "tests/frontend/shell/backend/control/backend_kill_creation_detect.rs",
+    "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/shell/filewin/copy_testing.rs",
     "tests/frontend/shell/filewin/find_testing.rs",
     "tests/frontend/shell/filewin/rows_testing.rs",
@@ -856,22 +856,22 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/comms/outward/server_tests.rs", needle: "relay::server::tests::relay_child_process_entry_point" },
     ),
     (
-        "tests/frontend/shell/backend/control/local_backend_tests.rs",
+        "tests/frontend/shell/local_backend_tests.rs",
         "e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),
     (
-        "tests/frontend/shell/backend/control/local_backend_tests.rs",
+        "tests/frontend/shell/local_backend_tests.rs",
         "e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),
     (
-        "tests/frontend/shell/backend/control/local_backend_tests.rs",
+        "tests/frontend/shell/local_backend_tests.rs",
         "e2e_the_supervisor_restarts_a_real_backend_after_it_is_killed",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),
     (
-        "tests/frontend/shell/backend/control/local_backend_tests.rs",
+        "tests/frontend/shell/local_backend_tests.rs",
         "the_local_backend_host_really_registers_an_inbound_client",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend" },
     ),

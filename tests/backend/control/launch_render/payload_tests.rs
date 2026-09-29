@@ -727,7 +727,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 }
 
 // 〔MIG-2〕`us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
-//   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/backend/control/payload_judgment_rules.rs`）。
+//   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/payload_judgment_rules.rs`）。
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
 #[test]

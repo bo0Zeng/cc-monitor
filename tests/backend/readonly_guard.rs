@@ -3817,7 +3817,7 @@ mod g6_staged_zero {
         (
             // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
             //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
-            "tests/frontend/shell/backend/control/launch_wire_f07_main_path_tests.rs",
+            "tests/frontend/shell/launch_wire_f07_main_path_tests.rs",
             "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",

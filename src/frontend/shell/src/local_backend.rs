@@ -1211,7 +1211,7 @@ pub const CCM_ENTRY_WORD: &str = "ccm";
 /// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
 /// 它得带着自己那个后缀。
 /// ⚠ 这里**不许**现算 `env::consts::EXE_SUFFIX` —— 那是平台原语，而本文件在
-/// `backend/backend_tests.rs::PLATFORM_EXCEPTIONS` 上只有一格例外额度，今天已被
+/// `backend_client_guard_tests.rs::PLATFORM_EXCEPTIONS` 上只有一格例外额度，今天已被
 /// `resolve_beside_this_exe` 占满（那张表挂着递减棘轮 `len() <= 1`）。
 pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
@@ -1453,7 +1453,7 @@ pub(crate) const BACKEND_SEP: &str = "--";
 /// 其余帧仍就地吸收，返回 `None`。
 pub(crate) fn absorb_local_frame(
     frame: crate::ssh_source::InboundFrame,
-    client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
+    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
 ) -> Option<crate::ssh_source::InboundFrame> {
     use crate::ssh_source::InboundFrame;
     match frame {
@@ -1492,7 +1492,7 @@ pub(crate) fn absorb_local_frame(
         InboundFrame::Probe { ticket, cell } => crate::probe_relay::deliver(&ticket, cell),
         // 〔TAP · V124〕中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
         InboundFrame::Tap(t) => {
-            crate::session_tap::deliver(crate::backend::control::inbound_client::LOCAL_ORIGIN, t)
+            crate::session_tap::deliver(crate::inbound_client::LOCAL_ORIGIN, t)
         }
         // 〔CF1〕内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
         // 〔LOC1b · 第四波 4D〕起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
@@ -1585,13 +1585,9 @@ pub(crate) fn local_stdio_consumer(
                 };
             }
         };
-    let mut parked = Some(crate::backend::control::inbound_client::park_owned_writer(
-        stdin,
-    ));
+    let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
-    let mut registered: Option<
-        std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
-    > = None;
+    let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
     let mut early = false;
     // ★ `K-P3b`：**我们这一侧的读端怎么结束的** —— 观测在这里，判在宿主层。
     //   初值是「干净 EOF」，而它**只在真的读到 EOF 时才成立**：下面那条 `Err` 支
@@ -1641,7 +1637,7 @@ pub(crate) fn local_stdio_consumer(
         // P3 刀 1 ＋〔SR1a〕应答与链路帧：**理由与前置条件写在 `absorb_local_frame` 的头注上**
         // ——〔08-12〕抽函数时这段散文一度**两处各一份**，那是第二份真相源，收敛掉。
         let witness = if parked.is_some() {
-            crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
+            crate::inbound_client::BackendHello::from_hello_frame(&frame)
         } else {
             None
         };
@@ -1665,14 +1661,11 @@ pub(crate) fn local_stdio_consumer(
             .take()
             .expect("上面刚判过 is_some")
             .into_client(witness);
-        crate::backend::control::inbound_client::register(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
-            client.clone(),
-        );
+        crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
         registered = Some(client);
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
-            crate::backend::control::inbound_client::LOCAL_ORIGIN
+            crate::inbound_client::LOCAL_ORIGIN
         );
     }
 
@@ -1694,10 +1687,7 @@ pub(crate) fn local_stdio_consumer(
     };
     // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
     if let Some(mine) = registered {
-        crate::backend::control::inbound_client::unregister(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
-            &mine,
-        );
+        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
     }
     // 〔MIG-1〕流结束时清本机 tmux 原文那一步（`forget_tmux_raw`〔散文墓碑〕）随那本账一起删了：monitor 不再存 tmux 快照，
     //   本机的成品由 `consume_local` 收到流断那一件时整份作废（`session_book::In::LinkLost`）。
@@ -1924,5 +1914,5 @@ pub fn start_or_extract(
 }
 
 #[cfg(test)]
-#[path = "../../../../../../tests/frontend/shell/backend/control/local_backend_tests.rs"]
+#[path = "../../../../tests/frontend/shell/local_backend_tests.rs"]
 mod tests;

@@ -237,7 +237,7 @@ fn pages(text: &str, from: usize, upto: usize, page: usize) -> Vec<(u64, String)
 
 /// 〔MOD〕后端那一页的逐行成品，在夹具这一侧**自己**造（异源：按原文数行尾、自己算 FNV-1a 64，不调后端也不调被测代码）：
 /// 每个可计行 `{end, hash}`（不进界面 ⇒ 没有成品，这里用不着）。
-fn rows_of_page(off: u64, body: &str) -> Vec<crate::backend::control::frame_query::Row> {
+fn rows_of_page(off: u64, body: &str) -> Vec<crate::frame_query::Row> {
     let fnv = |b: &[u8]| {
         b.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &x| {
             (h ^ u64::from(x)).wrapping_mul(0x0000_0100_0000_01b3)
@@ -253,7 +253,7 @@ fn rows_of_page(off: u64, body: &str) -> Vec<crate::backend::control::frame_quer
         if line.trim_start_matches('\u{feff}').trim().is_empty() {
             continue;
         }
-        out.push(crate::backend::control::frame_query::Row {
+        out.push(crate::frame_query::Row {
             end: had_nl.then_some(off + at as u64),
             hash: fnv(line.as_bytes()),
             message: None,

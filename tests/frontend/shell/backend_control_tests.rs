@@ -7,7 +7,7 @@ use super::*;
 #[test]
 fn the_three_ports_are_one_command_each_and_all_take_origin() {
     let src = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/backend_control.rs"
+        "../../../src/frontend/shell/src/backend_control.rs"
     ));
     const PORTS: &[&str] = &["backend_status", "backend_start", "backend_stop"];
     for p in PORTS {
@@ -65,7 +65,7 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
 #[test]
 fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
     let src = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/backend_control.rs"
+        "../../../src/frontend/shell/src/backend_control.rs"
     ));
     let at = guard_core::find_pinned(&src, "pub async fn backend_start(origin: String)")
         .expect("起口不在了");
@@ -111,8 +111,7 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
 /// —— **JoinHandle 直接丢**，于是远端流起了就再也停不下来。
 #[test]
 fn the_startup_path_really_registers_remote_handles() {
-    let prod =
-        guard_core::production_code(include_str!("../../../../../src/frontend/shell/src/lib.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
     guard_core::find_pinned(&prod, "backend_control::register_remote(").unwrap_or_else(|e| {
         panic!(
             "`lib.rs` 的生产段里没有恰好一处 `register_remote(`（{e}）。\n\
@@ -166,7 +165,7 @@ fn the_shared_stripper_keeps_the_registration_this_guard_must_scan() {
     //    **一句指向错地方的假诊断**。⇒ 逐针钉住扫描面本身。
     guard_core::assert_stripper_keeps(
         "backend_control_tests · lib.rs",
-        include_str!("../../../../../src/frontend/shell/src/lib.rs"),
+        include_str!("../../../src/frontend/shell/src/lib.rs"),
         &["backend_control::register_remote("],
     );
 }

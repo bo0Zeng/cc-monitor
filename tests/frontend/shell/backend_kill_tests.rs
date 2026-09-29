@@ -139,7 +139,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 
     // ── ① 反向锚点：backend 那条形状门还在（它没了本判据就在空转）──────────
     let kill_prod =
-        guard_core::production_code(include_str!("../../../../../src/backend/control/kill.rs"));
+        guard_core::production_code(include_str!("../../../src/backend/control/kill.rs"));
     // 〔TAIL · DUP3 §5 ③〕`=` 不再拒（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ 字符集只剩 `:`。
     let forbidden: Vec<char> = [':']
         .into_iter()
@@ -446,7 +446,7 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
     let fallback_alive = guard_core::contains_word(&monitor_prod, &verb);
     assert!(
         guard_core::contains_word(
-            &guard_core::production_code(include_str!("../../../../../src/backend/control/kill.rs")),
+            &guard_core::production_code(include_str!("../../../src/backend/control/kill.rs")),
             &verb
         ),
         "正控失败：后端 `control/kill.rs` 的生产段里认不出 `{verb}` —— 识别器瞎了，上面那个「不在」不可信"

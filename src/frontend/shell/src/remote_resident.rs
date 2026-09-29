@@ -124,7 +124,7 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
     let mut cmd = format!(
         "{} {} --resident-ensure",
         crate::ssh_source::BACKEND_CMD,
-        crate::backend::control::local_backend::BACKEND_SEP
+        crate::local_backend::BACKEND_SEP
     );
     if replace {
         cmd.push_str(" --replace");
@@ -183,7 +183,7 @@ pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, String> {
 
 /// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
 async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, String> {
-    use crate::backend::control::backend_route::{route_call_error, Routed};
+    use crate::backend_route::{route_call_error, Routed};
     let client = crate::dial_host::local_backend_accepting(VERDICT_CMD).await?;
     let args = serde_json::json!({ "mine": mine, "theirs": theirs, "replaced": replaced });
     let data = client
@@ -427,7 +427,7 @@ pub(crate) async fn stop(cfg: &RemoteConfig) -> Result<StopAnswer, String> {
     let cmd = format!(
         "{} {} --resident-stop",
         crate::ssh_source::BACKEND_CMD,
-        crate::backend::control::local_backend::BACKEND_SEP
+        crate::local_backend::BACKEND_SEP
     );
     let exec =
         crate::ssh_source::connect_and_exec_capture(cfg, &cmd, Some(OLD_BACKEND_MARKER)).await?;

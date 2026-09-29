@@ -77,5 +77,5 @@
 //! 不假装「搬一搬就好了」。
 
 #[cfg(test)]
-#[path = "../../../../../../tests/frontend/shell/backend/control/agent_profile_parity_tests.rs"]
+#[path = "../../../../tests/frontend/shell/agent_profile_parity_tests.rs"]
 mod tests;

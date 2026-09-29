@@ -49,24 +49,24 @@ const PENDING: &[&str] = &[
     //    （`backend_tests.rs` ＋ `backend_layering.rs`），两份里都有裸遍历
     //    ⇒ 按文件数的这张清单会从 1 条变 2 条。抬上限是被明文禁止的
     //    （而且 `the_pending_ratchet_never_turns_backwards` 对着 git 历史比，
-    //    抬了也不会绿）⇒ **真迁掉一个**：`backend_tests.rs::backend_files` 那个
+    //    抬了也不会绿）⇒ **真迁掉一个**：`backend_tests.rs` 里 `backend_files` 那个（〔THIN〕那份文件今天改写成 `backend_client_guard_tests.rs`）
     //    手写递归改走 `guard_core::scan_tree_excluding`（语义逐字相同，是纯死重）。
     //    ⇒ 清单里只留 `backend_layering.rs` 一条，条数与上限都不变。
     // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**下面 7 行换了住址，条数一格没变**
     //    （`PENDING_CEILING` 因此**没有动** —— 一个裸遍历都没少，只是它们跟着
     //    自己那条判据搬进了 `tests/`）。逐份点名：
-    //      `backend/control/backend_kill.rs`  → `tests/frontend/shell/backend/control/backend_kill_tests.rs`
-    //      `backend/control/launch_wire.rs`  → `tests/frontend/shell/backend/control/launch_wire_f07_main_path_tests.rs`
+    //      `backend/control/backend_kill.rs`  → `tests/frontend/shell/backend_kill_tests.rs`
+    //      `backend/control/launch_wire.rs`  → `tests/frontend/shell/launch_wire_f07_main_path_tests.rs`
     //      `panorama.rs`                     → `tests/frontend/shell/panorama_tests.rs`
     //      `parser.rs`                       → `tests/frontend/shell/parser_tests.rs`（〔MOD〕今天在 `tests/backend/agents/claudecode/parse_tests.rs`）
     //      `profile_installer.rs`            → `tests/frontend/shell/profile_installer_tests.rs`
     //      `ssh_source.rs`                   → `tests/frontend/shell/ssh_source_f032_idle_tests.rs`
     //      `utils.rs`                        → `tests/frontend/shell/utils_tests.rs`
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
-    "tests/frontend/shell/backend/control/backend_kill_tests.rs",
+    "tests/frontend/shell/backend_kill_tests.rs",
     // 〔MIG-2〕`launch_wire_f07_main_path_tests.rs` 这一行删了 —— 随载荷内核搬进后端测试段，同拍把手写递归换成 `scan_tree_excluding`
     //   （真迁完了）⇒ 存量少一条，上限同拍往下拧一格。
-    "tests/frontend/shell/backend_layering.rs",
+    // 〔THIN〕`backend_layering.rs` 这一行删了 —— 那份判据随 monitor 侧 `backend` 目录删了 ⇒ 存量少一条，上限同拍往下拧一格。
     // 〔LOC1a · 第四波 4D〕`tests/frontend/shell/backend/observe/local_query_tests.rs` 这一行删了 —— 那份判据文件随被测的
     //   `local_query.rs` 一起删（本机那几问改走 `<local>` 长连接）⇒ 存量少一条，上限同拍往下拧一格。
     // 🔴 〔步 7c 2026-09-19〕**`cross_half_edge_registry_tests.rs` 这一行删了 —— 真迁完了。**
@@ -125,7 +125,7 @@ const PENDING: &[&str] = &[
 /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
 // 08-08：`backend_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
 // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-const PENDING_CEILING: usize = 24; // 〔合并 MIG-1 × 主线 862be034〕两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · 〔MIG-2〕f07 那份真迁完 ⇒ 26 → 25 · 〔LOC1a〕`local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格 · `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
+const PENDING_CEILING: usize = 23; // 〔THIN〕24 → 23：`backend_layering.rs` 随 `backend` 目录删了 · // 〔合并 MIG-1 × 主线 862be034〕两路各少一条（MIG-1 `ssh_source_f032_idle_tests.rs` · MIG-2 f07）⇒ 24 · 〔MIG-2〕f07 那份真迁完 ⇒ 26 → 25 · 〔LOC1a〕`local_query_tests.rs` 随被测模块删了 ⇒ 存量少一条，上限同拍往下拧一格 · 〔RM1f〕`tests/frontend/shell/panorama_tests.rs` 随 monitor 的内嵌引擎删了 ⇒ 存量少一条，上限同拍往下拧一格 · `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
 /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
 ///
@@ -460,9 +460,9 @@ fn every_registry_guard_keeps_its_reverse_half() {
     const MUST_BE_RECOGNISED: &[(&str, &str)] = &[(
         // 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕住址跟着判据搬：`K-R31` 那条判据
         // 与它那张 `FORMS` 一起从 `src/backend/control/local_backend.rs` 搬到了
-        // `tests/frontend/shell/backend/control/local_backend_tests.rs`（现打：全树 `const FORMS:`
+        // `tests/frontend/shell/local_backend_tests.rs`（现打：全树 `const FORMS:`
         // 仍然**恰好一处**，就是它）。**表名与判据名一个字都没改。**
-        "tests/frontend/shell/backend/control/local_backend_tests.rs",
+        "tests/frontend/shell/local_backend_tests.rs",
         "`K-R31` 的 `nothing_in_the_production_path_runs_code_between_fork_and_exec`，\
              它的表叫 `FORMS`",
     )];
@@ -516,7 +516,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 「没扫到你」与「判过你了」在输出上一模一样。⇒ 拿真实住址把**本件的题眼**钉住。
     const MUST_BE_JUDGED_PER_GUARD: &[(&str, &str)] = &[(
         // 〔搬树 2026-09-18 · `16 §6.2` C 类〕住址跟着判据搬（表名与判据名没改）。
-        "tests/frontend/shell/backend/control/local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
+        "tests/frontend/shell/local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
         "`K-R36` 的题眼：它的表叫 `FORMS`、声明在它自己体内，\
              而同一份文件的测试段里另有几十处 `assert_eq!(` ——\
              文件级那一层对它恒真，判据级这一层才判得到它",

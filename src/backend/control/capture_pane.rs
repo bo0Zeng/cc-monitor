@@ -11,7 +11,7 @@
 //! 会 `send-keys`（[`super::launch`]）—— **唯独没有「把那一屏取回来」**。
 //!
 //! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
-//! （`src/frontend/shell/src/backend/control/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
+//! （`src/frontend/shell/src/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
 //! 「等 monitor 侧接上去」，**没有被结掉**。〔`K-R112` 接上了；〔C4e · 第四波 4C〕再往前一步：
 //! 界面经通道直接说本条原语（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节，本机与远端同一条路。〕
 //!

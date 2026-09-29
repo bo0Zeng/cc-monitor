@@ -33,9 +33,9 @@
 //!  没有总时限，`设计/15 §3.6` 病 2「每 59 s 吐一个字节的对端能拖到无限」。〕
 //! 期限的**值**暂住下面那几个常量：`99 §2 ⑭`「期限的值归谁」待主会话定稿（`调研/第四波记录/DL1.md §1`），定了按定稿搬。
 
-use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-use crate::backend::control::inbound_client;
+use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::copy_table::copy_text;
+use crate::inbound_client;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -345,5 +345,5 @@ pub(crate) async fn read_page(
 //   （按行号取回 · 子 agent · 按偏移取一段三条 Tauri 命令）退役，界面经通道直问那台后端的成品（`src/frontend/ui/record-reads.ts`）。
 
 #[cfg(test)]
-#[path = "../../../../../../tests/frontend/shell/backend/control/frame_query_tests.rs"]
+#[path = "../../../../tests/frontend/shell/frame_query_tests.rs"]
 mod tests;

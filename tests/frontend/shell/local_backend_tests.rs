@@ -172,8 +172,7 @@ fn the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on() {
 /// 为什么不许）。它核的是**出处段里逐字写着的那个数就是常量今天的值**：needle 由常量现拼。
 #[test]
 fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
-    let whole =
-        include_str!("../../../../../src/frontend/shell/src/backend/control/local_backend.rs");
+    let whole = include_str!("../../../src/frontend/shell/src/local_backend.rs");
     // ⚠ 定位串**运行时拼**，而且名字取自 `stringify!` 而不是又抄一个字面量：
     //   ① 直接写全串会命中**本条自己**（初版实测「命中 2 处」当场红 —— F23 那一族，
     //      本文件的 `C12` 源码钉早就是这么写的）；② `stringify!` 让这里零字面量复述。
@@ -241,7 +240,7 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 /// 而本条是那一族的第 N 个：不剥注释的话，**本文件上面那段头注自己就是第一处命中**
 /// （`K-R30` 自查逮到过一次，提交 `494ad4c`）。
 ///
-/// 🔴 最可能长出这种写法的恰恰是 `backend/control/local_backend.rs`
+/// 🔴 最可能长出这种写法的恰恰是 `local_backend.rs`
 /// （生产段起进程那一跳就在那儿）⇒ 它另走 `include_str!` **单独喂一遍**。
 ///
 /// ⚠ 〔`P4` 2026-09-21〕先前这一段的理由是「`scan_tree!` 按构造**摘除调用者自己那一份**」——
@@ -325,8 +324,8 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
     let root = crate::guard_support::repo_root();
     // 🔴 **最该被扫的就是 `local_backend.rs`** ⇒ 单独喂一遍。它走普通遍历本来就在人群里
     //    （自摘在这一处不生效，理由见本条头注），这一份是冗余但刻意保留的第二个来源。
-    let self_rel = "src/frontend/shell/src/backend/control/local_backend.rs";
-    let me = include_str!("../../../../../src/frontend/shell/src/backend/control/local_backend.rs");
+    let self_rel = "src/frontend/shell/src/local_backend.rs";
+    let me = include_str!("../../../src/frontend/shell/src/local_backend.rs");
     // ④ 剥法自检：剥完还残留测试属性 ⇒ 上面那张 `FORMS` 表自己就进了扫描面。
     guard_core::assert_no_test_code(self_rel, &guard_core::production_code(me));
     let mut corpus: Vec<(String, String)> = vec![(self_rel.to_string(), me.to_string())];
@@ -466,7 +465,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 #[test]
 fn two_processes_do_not_share_one_partial_file() {
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     // 人群**现算**：每一处「`.partial` 结尾的格式串 + 后面跟着实参」。
     // ⚠ 针带逗号是刻意的：`name.ends_with(".partial")`（清扫那一处**读**它）
@@ -561,7 +560,7 @@ fn the_sweep_only_takes_the_old_ones() {
 #[test]
 fn the_read_loop_really_calls_the_absorb_point() {
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     // 〔CF1〕吸收点从此把内容帧交回（`-> Option<InboundFrame>`），调用形去掉了行尾分号；
     //   「交回的帧真送进本机内容通道」由 `local_lines_tests` 另钉。
@@ -575,11 +574,11 @@ fn the_read_loop_really_calls_the_absorb_point() {
     // 〔SR1a〕★ M3：常驻那条载体（宿主的 `attach_stream`）**也**只经这一个吸收点 —— 恰好一处，
     // 而且两条循环结束时都把经它开的在飞链路一起结束（`link_mux::fail_owned_by`，各恰好一处）。
     let host = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/local_backend_host.rs"
+        "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
     let at = guard_core::find_pinned(
         &host,
-        "crate::backend::control::local_backend::absorb_local_frame(f, Some(&client))",
+        "crate::local_backend::absorb_local_frame(f, Some(&client))",
     )
     .expect("常驻载体的读循环里必须恰好有一处吸收点调用");
     assert!(
@@ -615,9 +614,8 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         unavailable: vec![],
         uncancellable: vec![],
     };
-    let witness =
-        crate::backend::control::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();
-    let client = crate::backend::control::inbound_client::park(mine).into_client(witness);
+    let witness = crate::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();
+    let client = crate::inbound_client::park(mine).into_client(witness);
     let c2 = std::sync::Arc::clone(&client);
     let call = tokio::spawn(async move {
         c2.call(
@@ -659,8 +657,7 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
 /// ③ **上限必须取远端那个常量**（两边各写一份机制，但值不许漂）。
 #[test]
 fn the_local_frame_reader_is_bounded_and_lossy() {
-    let src =
-        include_str!("../../../../../src/frontend/shell/src/backend/control/local_backend.rs");
+    let src = include_str!("../../../src/frontend/shell/src/local_backend.rs");
     let prod = guard_core::production_code(src);
     let at = guard_core::find_pinned(&prod, "fn local_stdio_consumer(")
         .expect("消费者不在了 —— 改了名就来改本条");
@@ -704,8 +701,7 @@ fn the_local_frame_reader_is_bounded_and_lossy() {
 /// 运行时那半由上面的实测证；两条合起来才闭合，单独任何一条都不够。
 #[test]
 fn the_production_entry_hands_the_stdio_consumer_down() {
-    let src =
-        include_str!("../../../../../src/frontend/shell/src/backend/control/local_backend.rs");
+    let src = include_str!("../../../src/frontend/shell/src/local_backend.rs");
     // 人群 = 本模块的**全部启动入口**，与 `the_startup_path_really_calls_this_module`
     // 那条用的是同一个清单。只钉「今天 lib.rs 在调的那一个」= 给下一个用另一个入口的人留坑。
     for name in ENTRIES {
@@ -821,7 +817,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let shim = crate::local_backend_host::tests::demand_tmux_shim(
         "本条起真后端，而后端一上来就往它连得到的 tmux server 装全局 hook",
     );
-    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
         .join("cc-monitor-backend-x86_64");
@@ -908,9 +904,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
     let mut client = None;
     for _ in 0..100 {
-        if let Some(c) = crate::backend::control::inbound_client::client_for(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
-        ) {
+        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
             client = Some(c);
             break;
         }
@@ -942,10 +936,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     client.close_write();
     std::thread::sleep(std::time::Duration::from_millis(500));
     let alive = Path::new(&format!("/proc/{pid}")).exists();
-    crate::backend::control::inbound_client::unregister(
-        crate::backend::control::inbound_client::LOCAL_ORIGIN,
-        &client,
-    );
+    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
     cleanup(&h);
     assert!(
         alive,
@@ -1106,7 +1097,7 @@ fn both_ccm_entries_spell_the_word_from_the_same_place() {
 #[test]
 fn the_local_path_does_not_hand_roll_version_comparison() {
     let src = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     // 判据串运行时拼，免得命中本文件自己的头注。
     let bad = format!("{}_id !=", "build");
@@ -1478,7 +1469,7 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
     //    `e.contains("再开一次")` 当场被算进欠账，棘轮 33 → 34 变红（实测）。
     //    ⚠ 这正是那条棘轮自己头注里记着的「判据自己跑飞」，只是这次是我喂的种子。
     //    局部也一并改成长名字，别再给传递闭包留同名的落脚点。
-    let build_rs = include_str!("../../../../../src/frontend/shell/build.rs");
+    let build_rs = include_str!("../../../src/frontend/shell/build.rs");
     let spelled = |konst: &str| -> String {
         let decl = build_rs
             .lines()
@@ -1492,7 +1483,7 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
     let file = spelled("NATIVE_BACKEND_FILE");
     // 〔DP1 · 第四波〕`include_bytes!` 那一处从 `local_backend.rs` 搬进了 `byte_table.rs`（全仓唯一的取字节口）。
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/byte_table.rs"
+        "../../../src/frontend/shell/src/byte_table.rs"
     ));
     // 🔴 〔2026-09-18 修笔误〕原来是 `"\"../../..{dir}/{file}\""` —— **`../../..` 与
     // `{dir}` 之间少一个 `/`**，拼出来是 `"../../..native-backend/…"`，而代码里是
@@ -1528,7 +1519,7 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
     //   **不用 `find_pinned`**：这个名字在本文件里还出现在头注里，本条要的是
     //   「生产段还引着它」，不是「只出现一次」。
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     assert!(
         guard_core::contains_word(&prod, "CCM_TARGET_EXE_SUFFIX"),
@@ -1627,7 +1618,7 @@ fn nothing_in_the_production_path_wakes_itself_up() {
         Decision::GiveUp { .. } => {}
     }
     let src = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     // 判据串运行时拼，免得命中本文件自己的头注（那里逐字讨论过这两个词）。
     for bad in [format!("thread::{}", "sleep"), format!("try_{}", "wait()")] {
@@ -1690,7 +1681,7 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_local_backend() {
 #[test]
 fn the_backend_bin_env_name_has_exactly_one_home() {
     let me = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let lit = format!("\"{}\"", super::BACKEND_BIN_ENV);
     let n_lit = me.matches(lit.as_str()).count();
@@ -1931,14 +1922,14 @@ fn the_startup_path_really_calls_this_module() {
     // 两个文件都不接，照样红（M8 变异实测）。
     let prod = format!(
         "{}\n{}",
-        guard_core::production_code(include_str!("../../../../../src/frontend/shell/src/lib.rs")),
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs")),
         guard_core::production_code(include_str!(
-            "../../../../../src/frontend/shell/src/local_backend_host.rs"
+            "../../../src/frontend/shell/src/local_backend_host.rs"
         )),
     );
     let prod = prod.as_str();
     let me = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
     assert!(
@@ -2060,8 +2051,7 @@ fn the_startup_path_really_calls_this_module() {
 /// 「开关必须真的起作用，两个方向都要」。**依据换了就写出来，不假装它没变。**
 #[test]
 fn the_exit_path_really_stops_the_local_backend() {
-    let prod =
-        guard_core::production_code(include_str!("../../../../../src/frontend/shell/src/lib.rs"));
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/lib.rs"));
     for needle in ["RunEvent::Exit", "LOCAL_BACKEND", ".stop()"] {
         assert!(
             prod.contains(needle),
@@ -2212,8 +2202,8 @@ fn every_real_backend_e2e_demands_a_private_tmux_dir() {
     // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着测试搬。**
     //
     // 本条数的是「**本文件里**带 `#[ignore]` 的真 backend e2e」。剖分把本模块的测试段
-    // 整个搬来了 `tests/frontend/shell/backend/control/local_backend_tests.rs`（就是本文件），
-    // 而 `src/frontend/shell/src/backend/control/local_backend.rs` 今天**一个 `#[test]` 都没有**
+    // 整个搬来了 `tests/frontend/shell/local_backend_tests.rs`（就是本文件），
+    // 而 `src/frontend/shell/src/local_backend.rs` 今天**一个 `#[test]` 都没有**
     // ⇒ 老语料一条都抓不到，那条「抽取器自检」按设计响了。
     // ⚠ 下面那句「本条的文档注释里就写着 `#[ignore]` 与 `CCM_E2E_BACKEND`」正是
     //   **因为语料是本文件**才成立的纪律 —— 两件事必须同改，别只改一半。
@@ -2534,7 +2524,7 @@ fn kill_for_test(pid: u32) {
 /// （实测：那条判据的地板当场红，报文逐字「它起真后端的来历不见了」）。
 fn shared_resolution_body() -> String {
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let at = prod
         .find("pub fn resolve_or_extract(")
@@ -2554,7 +2544,7 @@ fn shared_resolution_body() -> String {
 /// 监护线程「等它死 + 收尸」那一段的生产源码。
 fn wait_section() -> String {
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let at = prod
         .find("pub fn supervise_with_stdio(")
@@ -2833,7 +2823,7 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
 #[test]
 fn the_consumer_reports_what_it_observed_not_a_default() {
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     assert!(
         prod.len() > 10_000,
@@ -2872,7 +2862,7 @@ fn the_shared_stripper_keeps_the_exit_arm_this_guard_must_scan() {
     // `LOCAL_BACKEND`（259 / 1425 / 1443 / 1455）—— 都在 59 之后。
     guard_core::assert_stripper_keeps(
         "local_backend_tests · lib.rs",
-        include_str!("../../../../../src/frontend/shell/src/lib.rs"),
+        include_str!("../../../src/frontend/shell/src/lib.rs"),
         &["RunEvent::Exit", "LOCAL_BACKEND"],
     );
 }

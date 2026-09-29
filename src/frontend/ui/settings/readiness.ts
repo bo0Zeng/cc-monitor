@@ -112,7 +112,7 @@ const FACET_MEANING: Record<
  *    当年的理由逐字是「本机不需要后端（`watcher.rs` 直读 jsonl，主计划 §2.4
  *    那张表逐字写着「不需要」）」—— 那句话在 `C7`〔用 08-03〕之后就**不成立**了：
  *    `C7` 逐字「没有 daemonless，使用软件就要有后端 ⇒ **本机**也要有后端进程」，
- *    `backend/control/local_backend.rs` 就是它的产物。
+ *    `local_backend.rs` 就是它的产物。
  *    ⇒ 本机后端**今天真的存在**，而这张「还差什么」的清单当时永远不会告诉用户它没起来。
  *    ⚠ **这一条一个 `daemonless` 字样都不含，却与它同一档** —— 换个说法留着同一条退路，
  *    数名字的判据一格都不会红（`KR59D1` 的失效方向逐字写着这件事）。
@@ -131,7 +131,7 @@ const FACET_MEANING: Record<
  *      `shared/ccm` 那份 1592 行 bash 删了（`K33` 逐字「不要有什么 bash 脚本，
  *      不要有什么单独的 ccm」），今天的 `ccm` **就是后端二进制本身**；`K-R69` 起
  *      monitor 会把它放到 `~/.cc-monitor/bin/ccm`，**Windows 上那一份叫 `ccm.exe`，
- *      一样在**（名字的真相源是 `backend/control/local_backend.rs::local_ccm_entry_name`，
+ *      一样在**（名字的真相源是 `local_backend.rs::local_ccm_entry_name`，
  *      后缀由 `build.rs` 按 `TARGET` 算）。⇒ 「在他机器上压根无从补起」这句已经是假话。
  *    - 〔FIX3 · `99 §2.2 ㉔`〕非 Windows 本机那一格今天有写点了（`remote-section.ts::noteLocalCcm`，两件都报）；
  *      Windows 那一格仍不适用（问 PATH 那一跳 Windows 上答不了，`ccm_probe::probe_path_ccm`）。下面是当年的理由。

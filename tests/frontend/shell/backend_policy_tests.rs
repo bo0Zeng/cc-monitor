@@ -116,7 +116,7 @@ fn the_backend_policy_copy_has_exactly_one_home() {
         (
             "backend_control.rs",
             guard_core::production_code(include_str!(
-                "../../../src/frontend/shell/src/backend/control/backend_control.rs"
+                "../../../src/frontend/shell/src/backend_control.rs"
             )),
         ),
         (
@@ -737,7 +737,7 @@ fn the_unconditional_ban_is_gone_from_all_four_homes() {
         ),
         (
             "backend_control.rs",
-            include_str!("../../../src/frontend/shell/src/backend/control/backend_control.rs"),
+            include_str!("../../../src/frontend/shell/src/backend_control.rs"),
         ),
         (
             "src/frontend/ui/backend-policy.ts",
@@ -943,7 +943,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
 #[test]
 fn the_supervisor_itself_never_records_a_death() {
     let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     assert!(
         prod.len() > 10_000,
@@ -963,12 +963,12 @@ fn the_supervisor_itself_never_records_a_death() {
              ★ 它同时监护后端与中转 ⇒ 中转的死会被记进「这台机的后端」那本账。\n\
              ⇒ 记账落在客户那一侧的 `on_event`（`local_backend_host::backend_supervise_events`）。"
     );
-    // 整棵 `backend/` 也是 0 —— 判与记都不在那一半（`B1` 那次误诊正是判断落在 backend 层的产物）。
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend");
-    let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+    // 整组「调后端的客户端 ＋ 监护」（从前的 `backend/` 目录，〔THIN〕今天逐个点名：`backend_client_guard_tests.rs::GUARDED`）也是 0 ——
+    //   判与记都不在那一半（`B1` 那次误诊正是判断落在 backend 层的产物）。
+    let files: Vec<(std::path::PathBuf, String)> = crate::backend_client_guard::guarded_sources();
     assert!(
-        files.len() >= 5,
-        "只扫到 {} 份 backend 文件 —— 抽取坏了，本条在空转",
+        files.len() >= 5 && files.iter().all(|(_, s)| !s.is_empty()),
+        "只读到 {} 份那一组的文件 —— 抽取坏了，本条在空转",
         files.len()
     );
     let mut offenders: Vec<String> = Vec::new();
@@ -1029,7 +1029,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 //
 // ⚠ **这一段原本是两条，删掉了一条 —— 那条是我重复造的。**
 //   跨语言那条（Rust `inbound_client::LOCAL_ORIGIN` ↔ TS `backend-policy.ts`）
-//   **仓里本来就有**：`tests/frontend/shell/backend/control/inbound_client_tests.rs::
+//   **仓里本来就有**：`tests/frontend/shell/inbound_client_tests.rs::
 //   the_local_origin_is_the_same_string_on_both_sides`。
 //   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
 //   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
@@ -1227,8 +1227,7 @@ fn the_status_command_hands_the_panel_the_finished_face() {
     };
     let mut sink = CapturingSink::default();
     let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
-    let st =
-        crate::backend::control::backend_control::backend_status(origin.into()).expect("查状态");
+    let st = crate::backend_control::backend_status(origin.into()).expect("查状态");
     let got = st.get("health").expect("状态里没有 health 那一格").clone();
     let want = serde_json::to_value(health_face(&health(origin))).expect("成品序列化不了");
     assert_eq!(
@@ -1251,8 +1250,7 @@ fn the_status_command_hands_the_panel_the_finished_face() {
         "health 那一格的键不是成品那四个 —— 原料（计数 / 短摘要 / 账行）又上线了，界面就能再判一遍"
     );
     // 没记过的那一台：同一条命令回「无记录」那一档（远端今天恒是这一档 —— 那是真话，不是缺席）。
-    let quiet = crate::backend::control::backend_control::backend_status("pb1-没记过的一台".into())
-        .expect("查状态");
+    let quiet = crate::backend_control::backend_status("pb1-没记过的一台".into()).expect("查状态");
     assert_eq!(quiet["health"]["state"], "unknown");
 }
 

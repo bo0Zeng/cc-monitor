@@ -713,7 +713,7 @@ async fn fetch_snapshot(
     host_label: &str,
     replay: &Arc<EventReplay>,
 ) -> Result<FetchOutcome, String> {
-    use crate::backend::control::frame_query;
+    use crate::frame_query;
     let sid = &item.sid;
     let path = &item.path;
     let origin = crate::origin::Origin(host_label.to_string());
@@ -1728,15 +1728,15 @@ mod emits_parity;
 /// 客户端永不登记）⇒ `cargo test` **全绿**。它埋在 `stream_loop` 中段时没有任何判据碰得到。
 fn attach_inbound_client<W>(
     host_label: &str,
-    parked: &mut Option<crate::backend::control::inbound_client::ParkedWriter<W>>,
+    parked: &mut Option<crate::inbound_client::ParkedWriter<W>>,
     frame: Option<&InboundFrame>,
-) -> Option<std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>
+) -> Option<std::sync::Arc<crate::inbound_client::InboundClient>>
 where
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(frame?)?;
+    let witness = crate::inbound_client::BackendHello::from_hello_frame(frame?)?;
     let client = parked.take()?.into_client(witness);
-    crate::backend::control::inbound_client::register(host_label, client.clone());
+    crate::inbound_client::register(host_label, client.clone());
     Some(client)
 }
 
@@ -1747,7 +1747,7 @@ where
 /// **抽成函数同样是为了可测**（D 审计变异 MU12：把 `route_reply` 换成丢弃 ⇒ 全绿）。
 fn route_inbound_frame(
     host_label: &str,
-    client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
+    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
     frame: InboundFrame,
 ) -> bool {
     let (kind, id) = match &frame {
@@ -2687,21 +2687,19 @@ async fn stream_loop(
     // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
     // 〔THIN〕接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
     let remote_older = stream.remote_is_older();
-    let (stream, parked) = crate::backend::control::inbound_client::split_and_park(stream);
+    let (stream, parked) = crate::inbound_client::split_and_park(stream);
     let mut parked = Some(parked);
     // 本连接的入方向客户端（收到 hello 后才有）。函数任何退出路径经 guard 摘除注册表
     // 并叫醒还在等应答的调用方 —— 同 `SnapshotQueueCloser` 的形状。
-    let mut inbound: Option<
-        std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
-    > = None;
+    let mut inbound: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
     struct InboundCloser(
         String,
-        Option<std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
+        Option<std::sync::Arc<crate::inbound_client::InboundClient>>,
     );
     impl Drop for InboundCloser {
         fn drop(&mut self) {
             if let Some(c) = self.1.take() {
-                crate::backend::control::inbound_client::unregister(&self.0, &c);
+                crate::inbound_client::unregister(&self.0, &c);
             }
         }
     }
