@@ -29,9 +29,9 @@
 //! |---|---|---|
 //! | 表的键 | `(seg1, seg2)` 两段都是键，一段都不省 | `table::RoutingTable::lookup` |
 //! | 默认上游 | **每 agent 一行**：`agent → (环境旋钮, 内置默认)`；进程级的那个常量**整删**；〔NT2 · V25〕那一格住适配层 | `agents::Adapter::upstream`（经 `agents::default_upstreams` 读） |
-//! | 未登记的 agent | `/t/` 无行 ⇒ **502**；`/s/` 无行 ⇒ 404（不变）。**不回落到任何一家** | [`decide`] 最后那一支 |
+//! | 未登记的 agent | `/t/` 无行 ⇒ **404**（〔FIX3 · `99 §2.2 ⑫`〕先前 502：我们拒的一律 4xx）；`/s/` 无行 ⇒ 404。两格原因头不同。**不回落到任何一家** | [`decide`] 最后那一支 |
 //!
-//! ⚠ **「未登记 ⇒ 502」不是没做完，是照 `§3.1` 第 4 行那条 🔴「不许回落到某一个写死的常量」
+//! ⚠ **「未登记 ⇒ 拒」不是没做完，是照 `§3.1` 第 4 行那条 🔴「不许回落到某一个写死的常量」
 //! 做的 fail-closed** —— 先前它对**每一个** `seg1` 都成立（那张表还不存在），今天只对
 //! 表里没有的那几家成立。别把它改成「查不到就透传」：透传到哪一家？那正是要拆掉的那个回落。
 //!
@@ -44,11 +44,11 @@
 //!
 //! `§7` 步 3 的验收逐字是「`/t/` ＋ 表里无行 ⇒ **真的发到默认上游**且 auth 头逐字节原样」，
 //! 而 `§3.1` 第 4 行（拍板 (b) 甲，比 `§7` 新）逐字加了「**不许回落到某一个写死的常量**」。
-//! 先前两句在「每 agent 一行的默认上游」那张表落地之前不可能同时成立，本层取了后者（恒 502）。
+//! 先前两句在「每 agent 一行的默认上游」那张表落地之前不可能同时成立，本层取了后者（恒拒）。
 //! 那张表今天落了 ⇒ **两句同时成立**：登记过的 agent 走**它自己那一行**（不是某一个进程级常量），
-//! 未登记的仍是 502。两格的判据住 `tests/backend/relay/table_tests.rs`
+//! 未登记的仍是拒（今天 404 ＋ 原因头 `agent-not-registered`）。两格的判据住 `tests/backend/relay/table_tests.rs`
 //! （`decide` 被直接问，不经网络）；`wire_golden` 那一格用的 `seg1` 是一个**未登记**的名字，
-//! 仍钉着 502 那一半。
+//! 仍钉着「拒」那一半。
 
 pub(crate) mod creds; // `K-H2a`：从哪儿拿 key（**只读**）+ 读之前查一次权限（上游选择搬家带过来的）
                       // 〔RM1a · 第四波〕这台机器上那份凭据文件的**帧面读写口**（`apikey-key-set` / `apikey-read`）。
@@ -98,7 +98,7 @@ impl Upstreams {
     ///
     /// ⚠ 取值器是**注入的**（与 `listen::run_reading` 同一条纪律：判据不许去改进程环境）。
     /// ⚠ 为什么是「一家坏了整个起不来」而不是「那一家当未登记」：后者会把一次打错字
-    ///   变成「那一家的每一发都 502」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
+    ///   变成「那一家的每一发都被拒」，而进程照常跑着、启动日志里只有一行 —— 那是静默降级。
     pub(crate) fn from_env(get: &dyn Fn(&str) -> Option<String>) -> Option<Self> {
         let mut by_agent = std::collections::BTreeMap::new();
         // 〔NT2 · V25〕默认上游只查适配层（`agents::Adapter::upstream`）。
@@ -304,17 +304,15 @@ impl Destinations for Accounts {
     }
 }
 
-/// 上游选择 `Refuse` 的两个码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。
+/// 上游选择 `Refuse` 的码 —— **只有这一处**〔`设计/20 §3.1a` ②〕。
 ///
-/// ⚠ 它们与中转自己造的那几个码（503 在飞上界 · 504 传输失败，住 `relay` 那一侧）
-/// **必须两两不相交**（`D7`：同码 ⇒ agent 分不清是我们配错了还是上游挂了）。
-/// 钉这一条的判据住中转那边（`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`，
-/// 它扫整个 crate 的生产段，本文件在它的人群里）。
+/// 〔FIX3 · `99 §2.2 ⑫`〕照 HTTP 代理通行做法：路由不成立是**我们拒的**，一律 4xx（找不到路由 ⇒ 404，Envoy 的 `NR` 同形）；
+/// 5xx 只留给上游那侧（中转的传输失败 502 / 504，住 `relay` 那一侧）。两格同码，靠原因头（`reason`）分开。
+/// 钉「4xx 与 5xx 两组不相交、每个码一处常量」的判据住中转那边
+/// （`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`，它扫整个 crate 的生产段）。
 ///
-/// `/s/` 表里没这一行（`§3.1` 第 2 行）。
-const NO_ROW: &str = "404 Not Found";
-/// `/t/` 表里没这一行、而这个 agent 没登记默认上游（`§3.1` 第 4 行）。
-const AGENT_NOT_REGISTERED: &str = "502 Bad Gateway";
+/// `/s/` 表里没这一行（`§3.1` 第 2 行）· `/t/` 表里没这一行、而这个 agent 没登记默认上游（`§3.1` 第 4 行，先前是 502）。
+const NO_ROUTE: &str = "404 Not Found";
 
 /// `20 §3.1` 那张决策表**本身**，从「谁持锁、什么时候重载」里剥出来。
 ///
@@ -345,7 +343,8 @@ pub(crate) fn decide(
             //   今天这三条靠的是：本支**只答 `Refuse`**，而中转手里没有任何可以回落的值
             //   （每 agent 一行的默认上游住本层，中转一个上游字面量都没有，`table_guard` 那条两向相等断言钉着）。
             act(Destination::Refuse {
-                status: NO_ROW,
+                status: NO_ROUTE,
+                reason: "no-account-row",
                 why: copy_core::copy_static!("beUpstream.decide.noRow"),
             });
         }
@@ -363,7 +362,7 @@ pub(crate) fn decide(
             });
         }
 
-        // ── `/t/` 无行 ⇒ 按 `seg1` 取该 agent 的默认上游；未登记 ⇒ **502** ────────
+        // ── `/t/` 无行 ⇒ 按 `seg1` 取该 agent 的默认上游；未登记 ⇒ **404**（我们拒的）────
         (Mode::Passthrough, None) => match upstreams.of(agent) {
             // 🔴 **`§3.1` 第 4 行（2026-09-18 拍板 (b) 甲）逐字：「按 `seg1` 取该 agent
             //   的默认上游；`seg1` 未登记 ⇒ `Refuse { "502", "这个 agent 没有登记上游" }`。
@@ -373,11 +372,12 @@ pub(crate) fn decide(
             //   （`/t/` 从来不代入）。⚠ 取的是 `upstreams.of(agent)`，**不是**某一个进程级的值 ——
             //   那个进程级常量今天整删了。
             Some(base) => act(Destination::Passthrough { upstream: base }),
-            // ② 未登记 ⇒ **502**。★ 这不是没做完，是照那条 🔴 做的 fail-closed：
+            // ② 未登记 ⇒ 拒（`§3.1` 原写 502；`99 §2.2 ⑫` 改成我们拒的 4xx）。★ 这不是没做完，是照那条 🔴 做的 fail-closed：
             //   能选的只有「回落到某一家」（那条 🔴 明禁，后果逐字是「把 codex 的请求发给
             //   Anthropic」）与「拒」。选拒。
             None => act(Destination::Refuse {
-                status: AGENT_NOT_REGISTERED,
+                status: NO_ROUTE,
+                reason: "agent-not-registered",
                 why: copy_core::copy_static!("beUpstream.decide.agentNotRegistered"),
             }),
         },

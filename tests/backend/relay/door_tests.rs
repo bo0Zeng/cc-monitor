@@ -165,7 +165,10 @@ fn the_three_refusals_are_distinct_faces() {
     assert_eq!(faces[0].0, FORBIDDEN);
     assert_eq!(faces[1].0, MISDIRECTED);
     assert_eq!(faces[2].0, FORBIDDEN);
-    let whys: std::collections::BTreeSet<_> = faces.iter().map(|f| f.1).collect();
+    // 〔FIX3 · `99 §2.2 ⑫`〕原因头的值手写：两个 403 靠它分开。
+    let reasons: Vec<_> = faces.iter().map(|f| f.1).collect();
+    assert_eq!(reasons, ["browser-origin", "host-not-loopback", "bad-key"]);
+    let whys: std::collections::BTreeSet<_> = faces.iter().map(|f| f.2).collect();
     assert_eq!(whys.len(), 3, "三句为什么必须两两不同：{faces:?}");
     assert_eq!(Verdict::Pass("/".into()).refusal(), None);
 }

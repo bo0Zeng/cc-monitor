@@ -196,7 +196,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
             // 这一支根本还没读过一个字节，连请求头都还不存在。
             eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
-            let _ = server::respond_and_drain(&mut stream, server::BUSY);
+            let _ = server::respond_and_drain(&mut stream, server::BUSY, "busy");
             continue;
         }
         // ★ 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进那个闭包、拿不回来，
@@ -220,7 +220,7 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>, inflight: Arc<Atom
             inflight.fetch_sub(1, SeqCst);
             eprintln!("[relay] cannot spawn connection thread: {e}");
             if let Some(mut s) = spare {
-                let _ = server::respond_and_drain(&mut s, server::BUSY);
+                let _ = server::respond_and_drain(&mut s, server::BUSY, "busy");
             }
         }
     }
