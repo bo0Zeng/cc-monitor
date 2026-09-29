@@ -27,4 +27,9 @@ attachable: boolean | null,
 /**
  * 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
  */
-cwd: string | null, name: string | null, };
+cwd: string | null, name: string | null, 
+/**
+ * 〔FIX3 · `99 §2.2 ②`〕启动期令牌（`设计/80 §8.2`）：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
+ * 那台后端读不到 / 没索要 ⇒ 缺席。
+ */
+rbind_token?: string, };

@@ -13,9 +13,12 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "backend_send_into") };
 });
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+// 〔FIX3 · `设计/99 §2.2 ②`〕起了 agent 进程的那几条：窗口开了不当场说「起来了」，交 `launch-arrival.ts` 等那台报出它。
+vi.mock("../src/launch-arrival", () => ({ expectArrival: vi.fn(), arrivedBody: (o: string) => `报出了@${o}` }));
 // 〔LR2〕原来这里 mock 了 `../src/behavior`（只为那个已删的逃生口 `forceLaunchPayloadRenderer`）；`remote-launch-run.ts` 不再读行为配置。
 
 import { showActionFailureToast } from "../src/error-toast";
+import { expectArrival } from "../src/launch-arrival";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
@@ -33,6 +36,7 @@ import { renderLaunchPayloadStub, STUB_REFUSE_TAG } from "./test-support/launch-
 import type { PayloadRenderRequest } from "../src/launch-cli-wire.ts";
 
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
+const arrivalMock = expectArrival as unknown as ReturnType<typeof vi.fn>;
 
 function stubClipboard(writeText: (t: string) => Promise<void>): void {
   Object.defineProperty(globalThis.navigator, "clipboard", {
@@ -96,7 +100,7 @@ describe("F41 runRemoteResume", () => {
     vi.clearAllMocks();
   });
 
-  it("invoke 成功 → info toast「已拉起」,不碰剪贴板", async () => {
+  it("invoke 成功 → 不当场说起来了、交出「等它」（按 sid，直接开窗），不碰剪贴板", async () => {
     mockInvoke(() => Promise.resolve(undefined));
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
@@ -108,8 +112,13 @@ describe("F41 runRemoteResume", () => {
       rbindToken: expect.stringMatching(/^[0-9a-f]{32}$/),
     });
     expect(writeText).not.toHaveBeenCalled();
-    expect(toastMock).toHaveBeenCalledTimes(1);
-    expect(toastMock.mock.calls[0][0]).toBe("已在远端 resume");
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(arrivalMock).toHaveBeenCalledWith({
+      origin: "devbox",
+      match: { sid: "sid-1" },
+      tmuxName: null,
+      arrived: { title: "已在远端 resume", body: "报出了@devbox" },
+    });
   });
 
   // ★ U8a-2c-pre 的**接缝判据**。没有它，「把兜底 none 那格切回 TS」这个变异全绿 ——
@@ -244,7 +253,11 @@ describe("F41 runRemoteResume", () => {
     const ok = await runLocalResumeIntoExistingTmux("sid-l3", "l3-cc", "");
     expect(ok).toBe(true);
     expect(writeText).not.toHaveBeenCalled();
-    expect(String(toastMock.mock.calls[0][0])).toBe("已就地 resume");
+    // 载荷键进去那一刻就交出「等它」；接终端的窗口开了不再另说一句。
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(arrivalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ match: { sid: "sid-l3" }, tmuxName: "l3-cc", arrived: expect.objectContaining({ title: "已就地 resume" }) }),
+    );
   });
 
   // ★★ 08-12：「在该目录起新会话」的默认名必须过铸名口。
@@ -421,11 +434,14 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     vi.clearAllMocks();
   });
 
-  it("runRemoteResumeTmux 成功 → toast「已在 tmux 里 resume」+ 返回 true", async () => {
+  it("runRemoteResumeTmux 成功 → 等「已在 tmux 里 resume」（按 sid，没见到抓 cc-sid1 那一屏）+ 返回 true", async () => {
     mockInvoke(() => Promise.resolve(undefined));
     const ok = await runRemoteResumeTmux("devbox", "sid-1", "/p", "", "cc-sid1");
     expect(ok).toBe(true);
-    expect(toastMock.mock.calls[0][0]).toBe("已在 tmux 里 resume");
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(arrivalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ match: { sid: "sid-1" }, tmuxName: "cc-sid1", arrived: expect.objectContaining({ title: "已在 tmux 里 resume" }) }),
+    );
   });
   it("runRemoteResumeTmux 失败 → toast「拉起失败，已复制 tmux resume 命令」+ 返回 false", async () => {
     mockInvoke(() => Promise.reject("boom"));
@@ -435,7 +451,7 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 tmux resume 命令");
   });
 
-  it("runRemoteResumeIntoExistingTmux 成功 → toast「已在原来的 tmux 里就地 resume」+ 返回 true", async () => {
+  it("runRemoteResumeIntoExistingTmux 成功 → 等「已在原来的 tmux 里就地 resume」（按 sid，抓 cc-sid1 那一屏）+ 返回 true", async () => {
     // 〔C4e〕键入那一跳答「没有控制通道」（能证明没发出去）⇒ 回落到整串、终端拉起成功。原来这一格靠 `backend_send_into`
     //   〔散文墓碑〕回 `undefined` 时读 `.typed` 抛出来的那个 TypeError 碰巧走到回落 —— 那是一次意外，不是它要测的东西。
     mockInvoke(() => Promise.resolve(undefined));
@@ -445,8 +461,10 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     );
     const ok = await runRemoteResumeIntoExistingTmux("devbox", "sid-1", "cc-sid1", "");
     expect(ok).toBe(true);
-    expect(toastMock.mock.calls[0][0]).toBe("已在原来的 tmux 里就地 resume");
-    expect(toastMock.mock.calls[0][1]).toContain("cc-sid1");
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(arrivalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ match: { sid: "sid-1" }, tmuxName: "cc-sid1", arrived: expect.objectContaining({ title: "已在原来的 tmux 里就地 resume" }) }),
+    );
   });
   it("runRemoteResumeIntoExistingTmux 失败 → toast「拉起失败，已复制就地 resume 命令」+ 返回 false", async () => {
     mockInvoke(() => Promise.reject("boom"));
@@ -461,11 +479,17 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制就地 resume 命令");
   });
 
-  it("runRemoteLauncher 成功 → toast「已拉起「开新 Claude」」", async () => {
+  it("runRemoteLauncher 成功 → 等「已拉起「开新 Claude」」（新会话没有 sid：按这次铸的启动期令牌认）", async () => {
     mockInvoke(() => Promise.resolve(undefined));
     await runRemoteLauncher("devbox", "/p", "cc-proj", "");
-    expect(toastMock.mock.calls[0][0]).toBe("已拉起「开新 Claude」");
-    expect(toastMock.mock.calls[0][1]).toContain("cc-proj");
+    expect(toastMock).not.toHaveBeenCalled();
+    const spec = arrivalMock.mock.calls[0][0] as { match: { token?: string }; tmuxName: string; arrived: { title: string } };
+    expect(spec.arrived.title).toBe("已拉起「开新 Claude」");
+    expect(spec.tmuxName).toBe("cc-proj");
+    // 认它的令牌 == 交给窗口去登记的那一个（同一次铸币，不另铸）。
+    const sent = invokeMock.mock.calls.find((c) => c[0] === "launch_remote_terminal")?.[1] as { rbindToken: string };
+    expect(spec.match.token).toMatch(/^[0-9a-f]{32}$/);
+    expect(spec.match.token).toBe(sent.rbindToken);
   });
   it("runRemoteLauncher 失败 → toast「拉起失败，已复制命令」", async () => {
     mockInvoke(() => Promise.reject("boom"));

@@ -42,6 +42,7 @@ import { isSelectable } from "../accounts";
 import { fetchAccounts } from "../account-reads";
 import { withAccount, localLaunchAccountSync, localLaunchAccountNameSync, primeLocalLaunchAccounts } from "../launch-account";
 import { rememberLocalLaunch } from "../local-launch-backfill";
+import { arrivedBody, expectArrival } from "../launch-arrival";
 import { launchLocal } from "../launch-render";
 import {
   actionsFor,
@@ -1620,11 +1621,14 @@ export class HistoryView {
           ctx.cwd,
         );
         if (launchId !== null) rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
-        showActionFailureToast(
-          copyText("history.newSession.started"),
-          copyText("history.newSession.startedDetail", { cwd: ctx.cwd }),
-          { level: "info", durationMs: 6000 },
-        );
+        // 〔FIX3 · `设计/99 §2.2 ②`〕窗口开了不等于起来了：等本机后端报出一条在这个目录里新起的会话再说
+        //   （身份 token 在 Windows 上读不回来，认它靠「之后第一次出现、同目录的新 sid」）。
+        expectArrival({
+          origin: LOCAL_ORIGIN,
+          match: { cwd: ctx.cwd },
+          tmuxName: null,
+          arrived: { title: copyText("history.newSession.started"), body: arrivedBody(LOCAL_ORIGIN) },
+        });
       } catch (err) {
         showActionFailureToast(copyText("history.newSession.failed"), String(err));
       }
