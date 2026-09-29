@@ -10,7 +10,7 @@
 行数由 **条 63** 定：承诺的是**三格**（本机 Windows x86_64 · 远端 Linux · 本机 Linux x86_64），
 (Windows, aarch64) **显式拒绝**。〔V132 · 09-25〕本机 (Linux, aarch64) **不承诺**（用户原话
 「不承诺. 适配部分, 即os适配部分后面单独写单独做.」）—— 它不是零脚印（远端那格有 musl 字节），
-所以不进 `REFUSED`，进 `NOT_PROMISED`：代码里 `byte_table::promised` 对它答「否」，由 monitor 侧
+所以不进 `REFUSED`，进 `NOT_PROMISED`：代码里 `deploy_core::promised` 对它答「否」，由 monitor 侧
 `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 把下面 `PROMISE_FACE` / `NOT_PROMISED`
 与代码两向钉住（本文件是承诺面的唯一住址，那条判据读的就是这里）。
 
@@ -62,7 +62,7 @@ PROMISED = [
      "后端那个 crate 在 host triple 上编得过并跑得过测试"),
 ]
 
-# ── 承诺面（`byte_table::promised` 的真相源；键 = (origin, OS, arch)，只列表 A 里有产线的格）──────
+# ── 承诺面（`deploy_core::promised` 的真相源；键 = (origin, OS, arch)，只列表 A 里有产线的格）──────
 # 🔴 与代码两向相等（monitor `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 读这两张表）：
 #    承诺了而代码不放行、代码放行而这里没写，都红。
 PROMISE_FACE = [

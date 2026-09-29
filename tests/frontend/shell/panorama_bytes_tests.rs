@@ -6,7 +6,8 @@ use super::*;
 /// 那一格的原生产线），与「别的 OS / arch 答没有、不把一份 Linux ELF 推过去」。
 #[test]
 fn only_the_panorama_cells_with_a_production_line_get_bytes() {
-    use crate::byte_table::{key_of, Arch, Key, Os, Product, LINES};
+    use crate::byte_table::{Arch, Key, Os, Product, LINES};
+    use deploy_core::key_of;
     let linux = |arch| {
         Some(Key {
             os: Os::Linux,
@@ -61,7 +62,8 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
 /// 多一格 ⇒ 表里有一格、却没有那份字节；少一格 ⇒ 放进来的字节永远没人选。
 #[test]
 fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
-    use crate::byte_table::{key_of, Product, LINES};
+    use crate::byte_table::{Product, LINES};
+    use deploy_core::key_of;
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let at = src
@@ -97,7 +99,7 @@ fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
 #[test]
 fn the_embedded_bytes_are_the_right_arch() {
     for (arch, machine) in [("x86_64", 62u16), ("aarch64", 183u16)] {
-        let key = crate::byte_table::key_of("Linux", arch).expect("认得出");
+        let key = deploy_core::key_of("Linux", arch).expect("认得出");
         let b = crate::byte_table::pick(crate::byte_table::Product::Panorama, key)
             .expect("cfg 置了却选不出字节")
             .bytes;
