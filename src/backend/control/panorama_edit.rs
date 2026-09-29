@@ -1,14 +1,17 @@
 //! 要求住址：主会话 09-28 裁 MIG-3b 报备 3 ——「全景三条：`panorama-edit` 进后端 · 界面直问 `panorama` · 回「没装 / 太旧」时 monitor 放字节再问一次」。
 //!
-//! # 帧命令 `panorama-edit {repo, op, args}`（〔RM1d〕V110「引擎只算、文件管理来写」，本机远端同一条）
+//! # 帧命令 `panorama-edit {repo, op, args, shape}`（〔RM1d〕V110「引擎只算、文件管理来写」，本机远端同一条）
 //!
-//! ① 问**这台**的全景小程序要一份计划（[`EDITS`] 第二列那个 `plan_*` op，经 [`super::panorama::answer`]：小程序读盘上现状、
-//!    算出 `{value, edit: {rel, before, after, parents}}`，一个字节不写）→
+//! ① 问**这台**的全景小程序要一份计划（`op` 是它自报的写表 `plans=` 里的「算」op，经 [`super::panorama::answer_plan`]：
+//!    小程序读盘上现状、算出 `{value, edit: {rel, before, after, parents}}`，一个字节不写；不在写表里 ⇒ `bad_args`）→
 //! ② `edit = null` ⇒ 盘上已经是想要的样子，原样回 `value` →
 //! ③ `after` 是全文 ⇒ 这台文件管理面的 `files-put`（`root` = 仓、`expect = before`、`parents`）；
 //!    `after = null` ⇒ `files-delete`（〔RM1e〕带 `expect = before`：盘上不是那一份就不删）→
 //! ④ `stale`（盘上那份在算与写之间被别人改了）⇒ 回 ① 重算，最多 `assets::door::EDIT_ATTEMPTS` 趟 →
-//! ⑤ 文档关联那两种写成之后 `refresh_doc_links`（让文档关联的查询跟上；只写索引）。
+//! ⑤ 写成之后，小程序在写表里说了还要跑哪一个（今天是文档关联那两种 → `refresh_doc_links`，只写索引）就跑它。
+//!
+//! 〔PANO · `99 §1` V158「后端不带引擎知识」〕「写哪几种 · 各自的算 op · 写完要不要刷」原住本文件一张六行表，
+//! 今天只住小程序（`src/panorama-engine/main.rs` 里那张写表，经 `--probe` 的 `plans=` 自报）；本文件只照它走。
 //!
 //! 原住 monitor `panorama_call.rs`（问 · 交那一环 ＋ 那张六行表 ＋ 计划的线上形状，逐字搬来）：「算」与「写」本来就都在这台，
 //! monitor 那一跳只是在中间转。写的规则（CAS · 暂存旁名换名上位 · 回读 · 回滚 · 围栏）一条都不在这里 —— 在文件管理面。
@@ -22,21 +25,6 @@ use serde_json::Value;
 use crate::assets::door::{self, Door, Refused};
 
 type CmdErr = (String, String);
-
-/// ★**写那六种 → 它的「算」op → 写成之后要不要刷文档关联** —— 唯一住址。
-///
-/// 「算」op 的集合 == 小程序自报的 op 表（生成物 `engine-contract.json`）里 `plan_` 开头的那几个（判据两向）；界面写入口发的 op 集合 == 本表第一列（vitest 读本文件，两向）。
-pub(crate) const EDITS: &[(&str, &str, bool)] = &[
-    ("add_annotation", "plan_add_annotation", false),
-    ("propose_annotation", "plan_propose_annotation", false),
-    ("approve_annotation", "plan_approve_annotation", false),
-    ("remove_annotation", "plan_remove_annotation", false),
-    ("write_doc_link", "plan_write_doc_link", true),
-    ("remove_doc_link", "plan_remove_doc_link", true),
-];
-
-/// 写成之后让文档关联的查询跟上的那个 op。
-pub(crate) const REFRESH_DOC_LINKS: &str = "refresh_doc_links";
 
 /// 小程序交回的一份计划（上游 `edits::Planned` 的线上形状；字段名与上游 `FileEdit` 两向相等，判据读 vendored 源码）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
@@ -60,22 +48,27 @@ pub(crate) struct FileEdit {
     pub parents: bool,
 }
 
-/// 帧面入口（生产：「算」= 这台的 [`super::panorama::answer`]，写 = 这台的文件管理面）。
+/// 帧面入口（生产：「算」= 这台的 [`super::panorama::answer_plan`]，写完要跑的 = [`super::panorama::answer`]，写 = 这台的文件管理面）。
 pub(crate) async fn answer<D>(door: D, args: &Value) -> Result<Value, CmdErr>
 where
     D: Door + Clone + Send + 'static,
 {
-    answer_with(door, args, |a: Value| async move {
-        super::panorama::answer(&a).await
+    answer_with(door, args, |a: Value, plan: bool| async move {
+        if plan {
+            super::panorama::answer_plan(&a).await
+        } else {
+            super::panorama::answer(&a).await
+        }
     })
     .await
 }
 
-/// [`answer`] 的本体：`ask` 问一次小程序（`{op, repo, args}` → `{result}`）由调用方给（判据用替身数次数、造 `stale`）。
+/// [`answer`] 的本体：`ask(载荷, 是不是「算」)` 问一次小程序由调用方给（判据用替身数次数、造 `stale`）。
+/// 「算」那一问回 `{result, then}`（`then` = 写成之后要跑的 op），别的回 `{result}`。
 pub(crate) async fn answer_with<D, A, F>(door: D, args: &Value, ask: A) -> Result<Value, CmdErr>
 where
     D: Door + Clone + Send + 'static,
-    A: Fn(Value) -> F,
+    A: Fn(Value, bool) -> F,
     F: std::future::Future<Output = Result<Value, CmdErr>>,
 {
     let bad = |m: &str| {
@@ -97,35 +90,18 @@ where
     let op_args = args.get("args").cloned().unwrap_or(Value::Null);
     // 〔PANO〕要的那一代由发起方带来，每次问小程序都原样转交（后端不存形状代号）。
     let shape = args.get("shape").cloned().unwrap_or(Value::Null);
-    let Some((_, plan_op, refresh)) = EDITS.iter().find(|(n, ..)| *n == op) else {
-        return Err((
-            "bad_args".to_string(),
-            copy_text(
-                "rsPanoramaCall.edit.unknownOp",
-                &[
-                    ("op", op),
-                    (
-                        "edits",
-                        &EDITS
-                            .iter()
-                            .map(|(n, ..)| *n)
-                            .collect::<Vec<_>>()
-                            .join(&copy_text("rsPanoramaCall.edit.opSep", &[])),
-                    ),
-                ],
-            ),
-        ));
-    };
-    let result_of = |v: Value| v.get("result").cloned().unwrap_or(Value::Null);
     let mut last = String::new();
     let mut written = None;
+    // 写成之后要跑的 op：小程序在写表里说的（「算」那一问的应答带回来），本文件不认识它是什么。
+    let mut then: Option<String> = None;
     for _ in 0..door::EDIT_ATTEMPTS {
-        let raw = result_of(
-            ask(
-                serde_json::json!({ "op": plan_op, "repo": repo, "args": op_args, "shape": shape }),
-            )
-            .await?,
-        );
+        let got = ask(
+            serde_json::json!({ "op": op, "repo": repo, "args": op_args, "shape": shape }),
+            true,
+        )
+        .await?;
+        then = got.get("then").and_then(Value::as_str).map(str::to_string);
+        let raw = got.get("result").cloned().unwrap_or(Value::Null);
         let planned: Planned = serde_json::from_value(raw.clone()).map_err(|e| {
             (
                 "failed".to_string(),
@@ -181,15 +157,18 @@ where
             ),
         ));
     };
-    if *refresh {
-        ask(serde_json::json!({ "op": REFRESH_DOC_LINKS, "repo": repo, "shape": shape }))
-            .await
-            .map_err(|(c, e)| {
-                (
-                    c,
-                    copy_text("rsPanoramaCall.edit.notRefreshed", &[("e", &e)]),
-                )
-            })?;
+    if let Some(then) = then {
+        ask(
+            serde_json::json!({ "op": then, "repo": repo, "shape": shape }),
+            false,
+        )
+        .await
+        .map_err(|(c, e)| {
+            (
+                c,
+                copy_text("rsPanoramaCall.edit.notRefreshed", &[("e", &e)]),
+            )
+        })?;
     }
     Ok(value)
 }

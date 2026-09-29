@@ -138,17 +138,25 @@ async function remote<T>(
   return r as T;
 }
 
-/**
- * 一次写的期限：至多三趟「算」（`stale` 重算，同后端 `EDIT_ATTEMPTS`）＋ 一次建索引那一档（刷文档关联）。
- * 〔PANO〕一律按最坏的那一形给：「哪几种写要刷」只住后端 `control/panorama_edit.rs::EDITS`，这里不再抄一份。
- */
-export const EDIT_BUDGET_MS = QUERY_BUDGET_MS * 3 + BUILD_BUDGET_MS;
+/** 小程序自报的写表（生成物）：「算」op → 写成之后要跑的 op（没有 = `null`）。 */
+const PLANS: Readonly<Record<string, string | null>> = CONTRACT.plans;
+/** 一次写最多问几趟「算」（`stale` 重算；== 后端 `assets::door::EDIT_ATTEMPTS`，判据读后端源码）。 */
+const EDIT_ASKS = 3;
 
-/** 〔RM1d〕写：本机远端同一条（`op` 是后端 `control/panorama_edit.rs::EDITS` 第一列）。 */
+/**
+ * 一次写的期限：至多三趟「算」（按那个「算」op 的档）＋ 写表里说了写成之后还要跑的那一个（按它的档）。
+ * 〔PANO〕「哪几种写要刷」只住小程序的写表（生成物），这里按它逐个给，不再一律按最坏一形。
+ */
+export const editBudgetFor = (op: string): number => {
+  const then = PLANS[op];
+  return EDIT_ASKS * budgetFor(op) + (then ? budgetFor(then) : 0);
+};
+
+/** 〔RM1d〕写：本机远端同一条（〔PANO〕`op` 是小程序写表里的「算」op；那台后端照它自报的写表走）。 */
 function edit<T>(at: RepoAt, op: string, args: object): Promise<T> {
   const body = jsonBody({ repo: at.path, op, args, shape: SHAPE });
   // 每一问现造期限（同 `remote`）。
-  const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(EDIT_BUDGET_MS);
+  const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(editBudgetFor(op));
   return askOrPlace(
     () => chan.call(at.origin, "panorama-edit", body, budget()),
     () => commands.panorama_place({ origin: at.origin }),
@@ -250,7 +258,7 @@ export const addAnnotation = (
   symbol: string | null,
   body: string,
   author: string,
-): Promise<string> => edit(at, "add_annotation", { file, symbol, body, author });
+): Promise<string> => edit(at, "plan_add_annotation", { file, symbol, body, author });
 
 /** F72：agent 提议批注（Proposed，需人 approve 才 Active）。回批注 id。 */
 export const proposeAnnotation = (
@@ -259,26 +267,26 @@ export const proposeAnnotation = (
   symbol: string | null,
   body: string,
   author: string,
-): Promise<string> => edit(at, "propose_annotation", { file, symbol, body, author });
+): Promise<string> => edit(at, "plan_propose_annotation", { file, symbol, body, author });
 
 /** F72：批准一条 Proposed 批注 → Active。回它在不在。 */
 export const approveAnnotation = (at: RepoAt, id: string): Promise<boolean> =>
-  edit(at, "approve_annotation", { id });
+  edit(at, "plan_approve_annotation", { id });
 
 /** F72：删批注。回它原本在不在。 */
 export const removeAnnotation = (at: RepoAt, id: string): Promise<boolean> =>
-  edit(at, "remove_annotation", { id });
+  edit(at, "plan_remove_annotation", { id });
 
 /** F72：列全部批注（含 Proposed，审批队列用）。**读**。 */
 export const listAnnotations = (at: RepoAt): Promise<Annotation[]> => remote(at, "list_annotations");
 
 /** F72：把某 `.md` 关联到某符号（写 doc 的 frontmatter covers:，进仓可提交）。 */
 export const writeDocLink = (at: RepoAt, doc: string, target: string): Promise<void> =>
-  edit<unknown>(at, "write_doc_link", { doc, target }).then(() => undefined);
+  edit<unknown>(at, "plan_write_doc_link", { doc, target }).then(() => undefined);
 
 /** F72：删除某 `.md` 对某符号的关联。回它原本在不在。 */
 export const removeDocLink = (at: RepoAt, doc: string, target: string): Promise<boolean> =>
-  edit(at, "remove_doc_link", { doc, target });
+  edit(at, "plan_remove_doc_link", { doc, target });
 
 /**
  * ⭐ P3 护城河缝：一组文件/行 → 命中的符号 id。`ranges` 空 → 整文件所有符号。

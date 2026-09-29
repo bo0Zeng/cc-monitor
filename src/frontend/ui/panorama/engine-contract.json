@@ -1,5 +1,5 @@
 {
-  "_generated": "由 src/panorama-engine/main.rs 的 OPS 与 shape_code() 生成（tests/panorama-engine/cli_tests.rs::the_frontend_contract_is_generated_from_this_program），不许手改",
+  "_generated": "由 src/panorama-engine/main.rs 的 OPS · PLANS 与 shape_code() 生成（tests/panorama-engine/cli_tests.rs::the_frontend_contract_is_generated_from_this_program），不许手改",
   "ops": {
     "callees": "quick",
     "callers": "quick",
@@ -26,5 +26,13 @@
     "symbols_in_file": "quick",
     "touching": "quick"
   },
-  "shape": "cb9b7e80ace95ea4"
+  "plans": {
+    "plan_add_annotation": null,
+    "plan_approve_annotation": null,
+    "plan_propose_annotation": null,
+    "plan_remove_annotation": null,
+    "plan_remove_doc_link": "refresh_doc_links",
+    "plan_write_doc_link": "refresh_doc_links"
+  },
+  "shape": "8a7bf7c1f0c3bc9b"
 }
