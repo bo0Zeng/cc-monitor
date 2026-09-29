@@ -386,3 +386,43 @@ fn listed_subcommands_still_enter_query_mode() {
         );
     }
 }
+
+/// 〔MOD · `99 §2.1 ⑮`〕**argv 只在 `main.rs` 取一次**：后端生产树里读进程 argv 的地方（`env::args(` · `env::args_os(`）
+/// 恰好一处，住 `main.rs::main`；`control/ccm/plan.rs` 那一格由调用方交（`ccm::run` 的 `process_argv`）。
+#[test]
+fn x15_the_process_argv_is_read_once_in_main() {
+    let root = crate::guard_support::src_root();
+    let needles = [format!("env::{}(", "args"), format!("env::{}(", "args_os")];
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prod = crate::guard_support::production_code(&src);
+        for n in &needles {
+            for (i, _) in prod.match_indices(n.as_str()) {
+                let head = &prod[..i];
+                let f = head.rfind("fn ").map_or(String::new(), |j| {
+                    head[j + 3..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect()
+                });
+                found.push((rel.clone(), f));
+            }
+        }
+    }
+    assert!(
+        scanned >= 100,
+        "只扫到 {scanned} 份后端源文件 —— 遍历坏了，本条在空转"
+    );
+    assert_eq!(
+        found,
+        vec![("main.rs".to_string(), "main".to_string())],
+        "读进程 argv 的地方不再恰是 `main.rs::main` 那一处（⑮）—— 要 argv 的模块由调用方交"
+    );
+}

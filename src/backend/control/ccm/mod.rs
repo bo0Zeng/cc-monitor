@@ -305,12 +305,14 @@ pub(crate) fn self_invocation(argv: &[String]) -> Vec<String> {
 ///
 /// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来。
-pub fn run(args: &[String], running: RunningScan) -> i32 {
+/// 〔MOD · `99 §2.1 ⑮`〕`process_argv` ＝ 这个进程的整条 argv，由调用方（`main.rs`，argv 只在那里取一次）交；
+/// 本模块不自己读 `std::env::args`。
+pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i32 {
     let parsed = match argv::parse(args) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),
     };
-    let env = Env::from_process();
+    let env = Env::from_process(process_argv);
     match parsed {
         Parsed::Early(Early::Version) => {
             println!("ccm {CCM_VERSION}");
