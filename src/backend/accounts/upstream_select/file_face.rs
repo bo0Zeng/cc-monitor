@@ -50,14 +50,19 @@ use std::path::{Path, PathBuf};
 pub(crate) type FileFaceAnswer = Result<Value, (&'static str, String)>;
 
 /// 这台机器上那份文件在哪 —— **与中转里的上游选择同一个出处**（`creds::resolve_path`，同一个进程环境；见模块头注）。
-/// 自己拼一条路径 = 长出第二份规则，不做。
-pub(crate) fn machine_path() -> PathBuf {
+/// 自己拼一条路径 = 长出第二份规则，不做。推不出 ⇒ `Err`（那句话）。
+pub(crate) fn machine_path() -> Result<PathBuf, String> {
     super::creds::resolve_path(&|k| std::env::var(k).ok())
 }
 
-/// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。
+/// 这台那份表里有哪几行（[`rows_at`]）。推不出路径 ⇒ 零条，同「读不动」那一形：那句话由 `apikey-read` 的 `problem` 说。
+pub(crate) fn machine_rows() -> Vec<String> {
+    machine_path().map(|p| rows_at(&p)).unwrap_or_default()
+}
+
+/// `apikey-key-set`：给**一个账号**写 key，写完读回，回掩码。推不出路径 ⇒ 拒（一个字节不写）。
 pub(crate) fn answer_set(args: &Value) -> FileFaceAnswer {
-    answer_set_at(&machine_path(), args)
+    answer_set_at(&machine_path().map_err(|e| ("io_failed", e))?, args)
 }
 
 /// [`answer_set`] 的本体，路径是参数（判据拿临时目录喂它，不碰真家目录）。
@@ -151,7 +156,17 @@ pub(crate) fn answer_set_at(path: &Path, args: &Value) -> FileFaceAnswer {
 
 /// `apikey-read`：文件级的状态 ＋ 表里有哪几行。**从不回明文**。
 pub(crate) fn answer_read() -> FileFaceAnswer {
-    Ok(read_at(&machine_path()))
+    Ok(match machine_path() {
+        Ok(p) => read_at(&p),
+        // 推不出路径也是**状态**（同「读不动」）：没配、路径空、`problem` 说为什么。
+        Err(why) => json!({
+            "configured": false,
+            "masked": "",
+            "path": "",
+            "notice": null,
+            "problem": why,
+        }),
+    })
 }
 
 /// [`answer_read`] 的本体。**从不报错** —— 读不动 / 解析不了是**状态**（`problem`），不是一次失败：
