@@ -1777,7 +1777,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     tm.archiveTab("r1");
     rightClick("r1");
     const labels = menuLabels();
-    expect(labels).toContain("Resume");
+    expect(labels).toContain("Resume 这个会话");
     expect(labels).toContain("tmux");
     expect(labels).toContain("直连 · 不建 tmux 会话");
     expect(labels).not.toContain("Resume（直连）");
@@ -1873,7 +1873,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     tm.archiveTab("l1");
     rightClick("l1");
     const labels = menuLabels();
-    expect(labels).toContain("Resume");
+    expect(labels).toContain("Resume 这个会话");
     expect(labels).not.toContain("tmux");
     expect(labels).not.toContain("直连 · 不建 tmux 会话");
   });
