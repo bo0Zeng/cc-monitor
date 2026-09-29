@@ -119,7 +119,7 @@ pub(super) const BUSY: &str = "503 Service Unavailable";
 /// 〔FIX3 · `99 §2.2 ⑫`〕先前一律 504（502 被上游选择的 `Refuse` 占着）；那个 `Refuse` 改成 4xx 之后 502 让回给它的本义。
 const UPSTREAM_UNREACHABLE: &str = "502 Bad Gateway";
 /// 🔴 **中转自己的传输失败、卡在超时上**（连接超时 · 等响应超时）。
-const UPSTREAM_TIMEOUT: &str = "504 Gateway Timeout";
+const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 
 /// 〔`P16` 2026-09-22〕**`DOWNSTREAM_DEADLINE` 的那个值搬去 `listen.rs` 了** —— 墓碑。
 ///
@@ -511,7 +511,7 @@ impl UpstreamFailure {
             )
         });
         if timed_out {
-            UPSTREAM_TIMEOUT
+            UPSTREAM_TOO_SLOW
         } else {
             UPSTREAM_UNREACHABLE
         }
