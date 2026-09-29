@@ -132,15 +132,13 @@ describe("CP2c · 后端与子 crate 里还有对外字面量的文件 == 待办
 /**
  * 登记的例外（都在 COPY 写区外，交主会话；`调研/第四波记录/COPY.md` §设计 ①）：
  * - cc_bus 三条认的是 cc-bus 脚本自己的输出行（`设计/91 §3.2`：cc-bus 的文本不归文案表），不是表里的句子；
- * - `accounts.ts::deriveUi` 按「过旧」「不支持账号」认 —— 两支结果相同（都是 needs-update、reason 都是 e），是死判断，可直接删；
+ * - 〔WF2〕`accounts.ts::deriveUi` 按「过旧」「不支持账号」认的那两条删了（少了两条）：「需更新」改认结构化的 `AccountsState.oldBackend`（`chan-caller.ts::isOldBackend`）；
  * - `tab-drop.ts::defaultGroupName` 认自己起的默认组名「组 N」来续号 —— 那句改写（`tabDrop.group.defaultName`）续号就断。
  */
 const RECOGNIZE_BY_TEXT = [
   "src/backend/control/cc_bus.rs · 已杀会话",
   "src/backend/control/cc_bus.rs · 已摘掉",
   "src/backend/control/cc_bus.rs · 已 spawn:",
-  "src/frontend/ui/accounts.ts · 过旧",
-  "src/frontend/ui/accounts.ts · 不支持账号",
   "src/frontend/ui/tab-drop.ts · ^组\\s*(\\d+)$",
 ];
 

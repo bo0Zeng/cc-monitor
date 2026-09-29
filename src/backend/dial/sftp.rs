@@ -445,6 +445,13 @@ pub(crate) async fn put_atomic(
     //   〔墓碑 —— 「先删残留」那一步没了：固定名时它清上一趟崩掉留下的那一份；唯一名之后崩掉的那一趟留下的临时件
     //    没人认领（`put_atomic` 失败那几支会删自己的；进程被杀那一形留在 `~/.cc-monitor/bin/` 里，如实登记）。〕
     let tmp = format!("{rel}.{}.tmp", trip_tag());
+    // 〔WF2 · WIN3 读数 B〕失败那几支删**自己这一趟**的临时件；连接已经断了（`sender dropped`）⇒ 删不掉：说一句，
+    //   留下的那一份由下次连上的部署计划认领（`control/deploy_plan.rs::stale_leftovers`）。
+    let drop_own_tmp = || async {
+        if let Err(e) = s.sftp().remove_file(tmp.clone()).await {
+            tracing::warn!("dial: 上传没成，临时件 {tmp} 也没删掉（{e}）—— 下次连上由部署计划清");
+        }
+    };
     let attrs = FileAttributes {
         permissions: Some(mode),
         ..Default::default()
@@ -488,13 +495,13 @@ pub(crate) async fn put_atomic(
     drop(file);
     if let Err(e) = written {
         // 删的是**自己这一趟**建的那一份（名字只有这一趟知道）。
-        let _ = s.sftp().remove_file(tmp.clone()).await;
+        drop_own_tmp().await;
         return Err(e);
     }
     let bak = if s.sftp().try_exists(rel.clone()).await.unwrap_or(false) {
         let b = format!("{rel}.{}.bak", trip_tag());
         if let Err(e) = s.sftp().rename(rel.clone(), b.clone()).await {
-            let _ = s.sftp().remove_file(tmp.clone()).await;
+            drop_own_tmp().await;
             return Err(io(copy_text(
                 "beSftp.put.backupFailed",
                 &[("path", &rel), ("backup", &b), ("e", &e.to_string())],
@@ -505,7 +512,7 @@ pub(crate) async fn put_atomic(
         None
     };
     if let Err(e) = s.sftp().rename(tmp.clone(), rel.clone()).await {
-        let _ = s.sftp().remove_file(tmp.clone()).await;
+        drop_own_tmp().await;
         // 〔HX2〕自己挪走的那份旧的：落点还空着 ⇒ 挪回去（不留一个没有后端的落点）；
         //   落点已经被另一个部署者放上了新的 ⇒ 那份旧的没人要了，删掉（不留一个没人认领的备份件）。
         if let Some(b) = bak {
@@ -540,6 +547,32 @@ fn trip_tag() -> String {
         std::process::id(),
         nanos,
         SEQ.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+/// 〔WF2 · WIN3 读数 B〕这个名字是不是 [`put_atomic`] 留下的临时件 / 备份件：`<名>.<trip_tag>.tmp` 或 `.bak`
+/// （`trip_tag` = 三段非空小写十六进制、`-` 相连）。形状只认这一种 —— 别的名字不是我们放的，一个不碰。
+pub(crate) fn is_trip_leftover(name: &str) -> bool {
+    let Some(stem) = name
+        .strip_suffix(".tmp")
+        .or_else(|| name.strip_suffix(".bak"))
+    else {
+        return false;
+    };
+    let Some((base, tag)) = stem.rsplit_once('.') else {
+        return false;
+    };
+    let hex = |p: &str| !p.is_empty() && p.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let parts: Vec<&str> = tag.split('-').collect();
+    !base.is_empty() && parts.len() == 3 && parts.iter().all(|p| hex(p))
+}
+
+/// 列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。只读，不过围栏。
+pub(crate) async fn list_dir(s: &Session, path: &str) -> Option<Vec<(String, Option<u64>)>> {
+    let rd = s.sftp().read_dir(path.to_string()).await.ok()?;
+    Some(
+        rd.map(|e| (e.file_name(), e.metadata().mtime.map(u64::from)))
+            .collect(),
     )
 }
 

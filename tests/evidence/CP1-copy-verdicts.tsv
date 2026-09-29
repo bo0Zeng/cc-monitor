@@ -1,6 +1,4 @@
 住址	原文	裁词	依据
-src/frontend/ui/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
-src/frontend/ui/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/backend/control/capture_pane.rs:105	🔴 **本轮真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\n         逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\n         ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \n         第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\n         「tmux 连不上时会说 no server running」是个想当然，实测把它证伪了一半。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:113	tmux 在**默认 socket**（生产走的那条）上找不到 server 时的原话\n         （`no server running on /tmp/tmux-<uid>/default`）。\n         ⚠ **这一句本轮没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\n         而默认 socket 在沙箱里没法造出「无 server」态（那台沙箱自己在用 tmux）。\n         ⇒ 它今天只由 `every_registered_needle_lands_in_its_own_bucket` \n         用合成样本证明「落对了档」，**不是**「见过它」。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:128	tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane（`F01`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者

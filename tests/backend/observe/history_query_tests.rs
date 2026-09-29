@@ -327,3 +327,46 @@ fn loc1b_the_extra_roots_take_absolute_jsonl_paths_that_stay_inside() {
     }
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H「本机没有 projects 目录 ⇒ 整页加载失败，原话 read_dir … (os error 3)」·
+/// 题面 WF2 第 4 条。记录树根不在 ⇒ 零个项目、`Ok`（不是失败）；根在但读不了 ⇒ 说人话（期望取自文案表那一条，不含 `read_dir` / `os error`）。
+#[test]
+fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_plainly() {
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-noproj-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let mut out = Vec::new();
+    assert_eq!(list_projects_into(&tmp, &mut out), Ok(false));
+    assert!(out.is_empty(), "没有记录树却列出了东西");
+    // 帧面那一宿主当零个项目（不失败）；CLI 那一宿主照旧出声 rc=2（S6-Z3），话是人话。
+    let framed = crate::history::history_join::local_projects_with(
+        &tmp,
+        &[],
+        &crate::history::history_annotations::Loaded::NoPath,
+        &crate::history::history_join::NoLiveness,
+    );
+    assert_eq!(framed.map(|v| v["rows"].clone()), Ok(serde_json::json!([])));
+    assert_eq!(run(&tmp, &["--list-projects".to_string()]), 2);
+    // 〔WF2〕CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
+    assert_eq!(
+        list_projects_to(&tmp, &mut out).map_err(|(code, _)| code),
+        Err(Some(NO_RECORD_TREE))
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let root = projects_root(&tmp);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // root 跑测试时权限位拦不住读 —— 那一格判不了，如实跳过而不是假绿（同 `tasks_query_tests`）。
+        let perms_bite = std::fs::File::open(&root).is_err();
+        let got = list_projects_into(&tmp, &mut out);
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if perms_bite {
+            let e = got.expect_err("读不了的记录树却列成功了");
+            let path = root.display().to_string();
+            assert_eq!(e, copy_text("beHistory.dir.denied", &[("path", &path)]));
+            assert!(!e.contains("read_dir") && !e.contains("os error"), "{e}");
+        }
+    }
+    std::fs::remove_dir_all(&tmp).ok();
+}

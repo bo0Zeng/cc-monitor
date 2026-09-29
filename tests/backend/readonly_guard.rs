@@ -4271,6 +4271,14 @@ mod error_envelope_registry {
         ),
         (
             "observe/history_query.rs",
+            "serde_json::json!({ \"code\": code, \"message\": said })",
+            "〔WF2〕`--list-projects` 在「记录树根不在」时的带码信封（`no_record_tree`）",
+            "同 `accounts_query` 那一行的理由：它落在 observe 层，`control/` 的 `emit_err` 按 `layering_guard` 的边引不到\
+             （引了还会把 `cli_control` 可达的 tmux 带进三十来条帧命令的 `no_tmux` 判定）；只这一处、只这一个码，\
+             认码的是问它的那台后端（`remote_ask::settle_pulled` ⇒ `history_join` 远端那一支）。",
+        ),
+        (
+            "observe/history_query.rs",
             "\"invalid_args\"",
             "`--list-subagents` 的用法错",
             "同样**没有函数包着**。这一族三处（用法错 / 路径被拒 / 推不出目录）各写一份 `json!`，\

@@ -439,7 +439,9 @@ pub(crate) fn local_projects_with(
     live: &dyn Liveness,
 ) -> Result<Value, (&'static str, String)> {
     let mut buf = Vec::new();
-    crate::observe::history_query::list_projects_into(home, &mut buf).map_err(|e| ("failed", e))?;
+    // 〔WF2 · WIN3 读数 H〕记录树根不在 ⇒ 零个记录树项目（合成历史照并）：界面照空态画，不整页失败。
+    let _has_records = crate::observe::history_query::list_projects_into(home, &mut buf)
+        .map_err(|e| ("failed", e))?;
     let text = String::from_utf8_lossy(&buf);
     let ann = annotations(loaded);
     let t = ann.as_ref().ok().copied();
@@ -642,9 +644,24 @@ pub async fn answer_projects_with(
         }
         Some(o) => {
             let o = o.to_string();
-            let out = asked(
-                crate::stream::remote_ask::ask_with(&o, &["--list-projects"], table, remote).await,
-            )?;
+            // 〔WF2 · WIN3 读数 H〕那台没起过会话：它的 CLI 出声、但带码 `no_record_tree` ⇒ 零个项目（界面画「这台还没有会话记录」），
+            //   不并进「部分远端没加载上」。认的是码，不是话。
+            let out = match crate::stream::remote_ask::ask_with_coded(
+                &o,
+                &["--list-projects"],
+                table,
+                remote,
+            )
+            .await
+            {
+                Ok(out) => out,
+                Err(s)
+                    if s.code.as_deref() == Some(crate::observe::history_query::NO_RECORD_TREE) =>
+                {
+                    String::new()
+                }
+                Err(s) => return Err(("unreachable", s.message)),
+            };
             let live = remote_liveness(&o, table, remote).await;
             blocking(move || {
                 let ann = crate::history::history_annotations::load();

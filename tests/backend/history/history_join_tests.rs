@@ -190,6 +190,8 @@ struct Far {
     seen: Mutex<Vec<String>>,
     /// 〔GAP1〕`--session-accounts` 答什么；`None` ⇒ 那一问失败。
     live: Option<String>,
+    /// 〔WF2〕那台没起过会话：`--list-projects` 回 CLI 信封里的 `no_record_tree`。
+    no_tree: bool,
 }
 
 impl Remote for Far {
@@ -216,6 +218,63 @@ impl Remote for Far {
         };
         Box::pin(async move { Ok(out) })
     }
+
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::stream::remote_ask::Said>> + Send + 'a>>
+    {
+        if self.no_tree && command.contains("--list-projects") {
+            self.seen.lock().unwrap().push(command);
+            return Box::pin(async {
+                Err(crate::stream::remote_ask::Said {
+                    code: Some(crate::observe::history_query::NO_RECORD_TREE.to_string()),
+                    message: "这台还没有会话记录".to_string(),
+                })
+            });
+        }
+        Box::pin(async move {
+            self.run(dial, command, stdin).await.map_err(|message| {
+                crate::stream::remote_ask::Said {
+                    code: None,
+                    message,
+                }
+            })
+        })
+    }
+}
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H · 主会话 09-29 拍板 ④(a)「远端没起过会话 ⇒ 那台落『这台还没有会话记录』空态，不并进『部分远端没加载上』」。
+/// 那台 CLI 回 `no_record_tree` ⇒ 零个项目、`Ok`；别的码 / 无码的失败照旧是 `unreachable`（正控：同一台、码换掉就红回去）。
+#[tokio::test]
+async fn a_remote_without_a_record_tree_is_zero_projects_not_a_failure() {
+    let table = ReachTable::default();
+    reach(&table);
+    let far = Far {
+        no_tree: true,
+        ..Far::default()
+    };
+    let v = answer_projects_with(json!({"origin": "dev"}), &table, &far)
+        .await
+        .expect("没起过会话的那台被当成了失败");
+    assert_eq!(v["rows"], json!([]));
+    struct Broken;
+    impl Remote for Broken {
+        fn run<'a>(
+            &'a self,
+            _dial: &'a Value,
+            _command: String,
+            _stdin: Option<String>,
+        ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+            Box::pin(async { Err("那台问不到".to_string()) })
+        }
+    }
+    let e = answer_projects_with(json!({"origin": "dev"}), &table, &Broken)
+        .await
+        .unwrap_err();
+    assert_eq!(e.0, "unreachable");
 }
 
 fn reach(table: &ReachTable) {
