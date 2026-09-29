@@ -17047,6 +17047,16 @@
       "zh": "读响应",
       "args": []
     },
+    "beServer.words.sendFailed": {
+      "kind": "body",
+      "zh": "在请求发完之前断开了",
+      "args": []
+    },
+    "beServer.words.hopSend": {
+      "kind": "body",
+      "zh": "发请求",
+      "args": []
+    },
     "beServer.sentence.say": {
       "kind": "error",
       "zh": "上游 {host}:{port} {result}。卡在{hop}这一步。",

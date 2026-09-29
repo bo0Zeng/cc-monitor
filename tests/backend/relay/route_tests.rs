@@ -182,7 +182,7 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
 
 /// ★★★ 〔US1 · 4D〕**上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream::endpoint::launch_relay_with`，
 /// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、各段各落各位；再交给**生产段那张决策表**
-/// （`accounts::upstream::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 502。
+/// （`accounts::upstream::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 拒（404 ＋ 原因头，FIX3 之前是 502）。
 ///
 /// ⇒ 「注入的那一形，中转真的会照直通处理」这一截从成品到决策表一路是真的。先前这里是三条跨半边对拍
 /// （monitor `payload.rs` 的两份样例 · `APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕 现抠字面量），
@@ -223,7 +223,9 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
                 super::super::Destination::Passthrough { upstream } => {
                     format!("pass {}", upstream.host)
                 }
-                super::super::Destination::Refuse { status, .. } => format!("refuse {status}"),
+                super::super::Destination::Refuse { status, reason, .. } => {
+                    format!("refuse {status} {reason}")
+                }
                 super::super::Destination::Substitute { .. } => "substitute".to_string(),
             }
         });
@@ -240,7 +242,7 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
     };
     assert_eq!(
         said(&codex),
-        "refuse 502 Bad Gateway",
+        "refuse 404 Not Found agent-not-registered",
         "🔴 codex 走 `/t/` 没被拒 ⇒ 它的请求会被发到别家的上游"
     );
 }

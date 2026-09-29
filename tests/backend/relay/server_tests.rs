@@ -1102,13 +1102,13 @@ fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
 ///
 /// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
 /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
-/// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **504**
-/// （`设计/20 §3.1a`：中转自己的传输失败；先前这一格回 502，与上游选择 `Refuse` 撞码）。
+/// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502** ＋ 原因头 `upstream-only-interim`
+/// （`设计/20 §3.1a`：中转自己的传输失败；〔FIX3 · `99 §2.2 ⑫`〕不是超时 ⇒ 502，先前 504）。
 ///
 /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
 /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
 #[test]
-fn too_many_interim_responses_are_refused_with_504() {
+fn too_many_interim_responses_are_refused_with_502() {
     // 9 条 1xx（上限是 8）。分母：`"HTTP/1.1 100 Continue\r\n\r\n"` 重复 9 次。
     let script = concat!(
         "HTTP/1.1 100 Continue\r\n\r\n",
@@ -1132,12 +1132,16 @@ fn too_many_interim_responses_are_refused_with_504() {
     let mut got = String::new();
     c.read_to_string(&mut got).expect("read");
     assert!(
-        got.starts_with("HTTP/1.1 504 Gateway Timeout\r\n"),
-        "1xx 多到超过上限就该回 504（拿到的是：{got:?}）"
+        got.starts_with("HTTP/1.1 502 Bad Gateway\r\n"),
+        "1xx 多到超过上限就该回 502（拿到的是：{got:?}）"
+    );
+    assert!(
+        got.contains("\r\nX-Cc-Monitor-Reason: upstream-only-interim\r\n"),
+        "502 那一发没带原因头（拿到的是：{got:?}）"
     );
     assert!(
         got.contains("一直不给最终响应。卡在读响应这一步。"),
-        "504 那一发没说清卡在哪（拿到的是：{got:?}）"
+        "502 那一发没说清卡在哪（拿到的是：{got:?}）"
     );
 }
 
@@ -2035,15 +2039,15 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
         "表里查不到的账号段该回 404：{not_found:?}"
     );
 
-    // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；`设计/20 §3.1a` 之后回 504）──────────
+    // ── ㈢ **连不上上游那一支**（`K-H2a` 留下的那一格；`设计/20 §3.1a` 之后回 504，〔FIX3 · `99 §2.2 ⑫`〕起 502）──
     let (bad_gateway, _) = send_raw(
         relay.addr,
         "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/claude-code/acct-dead/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
-        bad_gateway.starts_with("HTTP/1.1 504"),
-        "上游连不上那一支该回 504：{bad_gateway:?}\n\
-         ★ 实得 404 时**先分辨是哪一种** —— 中转的两处 404 回的字节逐字节相同：\n\
+        bad_gateway.starts_with("HTTP/1.1 502"),
+        "上游连不上那一支该回 502：{bad_gateway:?}\n\
+         ★ 实得 404 时**先分辨是哪一种**（看原因头）：\n\
            ① 表里没有 `acct-dead`（`decide` 的 `Refuse`，`why` 是「代入模式要求表里有这一行」）；\n\
            ② 那条「没人听」的端口上**其实有人听**，而那个人回了 404\n\
               （最坏的一种：它就是中转自己 ⇒ 收到没有 `/s/` 前缀的路径 ⇒ `route::parse` 回 `None`）。\n\
@@ -3532,7 +3536,7 @@ fn the_dead_port_is_one_the_kernel_can_never_hand_out() {
     }
 }
 
-// ============================================================ `设计/20 §3.1a`：中转自己的传输失败回 504
+// ============================================================ `设计/20 §3.1a` · `99 §2.2 ⑫`：中转自己的传输失败回 502 / 504
 
 /// 一个**读完请求、回一串给定字节、然后按 `hold` 决定关不关**的假上游。
 ///
@@ -3588,101 +3592,128 @@ fn spawn_relay_with_upstream_deadline(
     addr
 }
 
-/// ★★★ `设计/20 §3.1a`：**中转自己的传输失败回 504，body 里一句话说清上游是谁、卡在哪一跳。**
+/// 一个**接下连接就关、一个字节都不读**的假上游 ⇒ 中转往它写一个大请求体时写到一半断（〔FIX3〕原 `WriteFailed` 那一支）。
+fn spawn_slamming_upstream() -> SocketAddr {
+    let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    std::thread::spawn(move || {
+        if let Some(Ok(s)) = listener.incoming().next() {
+            drop(s);
+        }
+    });
+    addr
+}
+
+/// 设计/99 §2.2 ⑫「状态码照 HTTP 代理通行做法 —— 我们拒的 4xx（带原因头），上游不可达 / 超时 502 / 504」·
+/// `设计/20 §3.1a`：**中转自己的传输失败回 502 / 504 ＋ 原因头，body 里一句话说清上游是谁、卡在哪一跳。**
 ///
-/// # 分母：五跳，逐跳一格
+/// # 分母：六跳，逐跳一格（期望值全是手写字面量，不拿 `FailedAt::words` / `reason` 算）
 ///
-/// | 跳 | 怎么造 | 先前下游拿到什么 |
+/// | 跳 | 怎么造 | 码 · 原因头 |
 /// |---|---|---|
-/// | 建立连接 | 上游指着一个没人听的端口 | 502 |
-/// | 没回应就断开 | 上游读完请求一个字节不回就关 | 502 |
-/// | 等响应超时 | 上游读完请求攥着不回，中转的上游期限设 300ms | **什么都没有**（`?` 往上抛，静默 FIN）|
-/// | 回的不是 HTTP | 上游回一行垃圾 | 502 |
-/// | 只有中间响应 | 上游回 9 条 `100 Continue`（上限 8） | 502（那一格另有一条专门的判据） |
+/// | 建立连接 | 上游指着一个没人听的端口 | 502 · `upstream-connect` |
+/// | 发请求 | 上游接下就关、不读；请求体 32 MiB 写不完 | 502 · `upstream-send`（先前什么都不回） |
+/// | 没回应就断开 | 上游读完请求一个字节不回就关 | 502 · `upstream-closed` |
+/// | 等响应超时 | 上游读完请求攥着不回，中转的上游期限设 300ms | 504 · `upstream-no-answer` |
+/// | 回的不是 HTTP | 上游回一行垃圾 | 502 · `upstream-not-http` |
+/// | 只有中间响应 | 9 条 `100 Continue` | 另一条判据（`too_many_interim_responses_are_refused_with_502`） |
 ///
-/// # 期望值是**手写字面量**
-///
-/// 状态行与那句话都是本条手写的，不是拿 `server::FailedAt::words` 算的 —— 拿被测函数算期望值，
-/// 改了文案本条会跟着漂、永远绿。
-///
-/// # 与上游选择那两个码**不同**（`D7` 可区分性）
-///
-/// 同一个中转、同一张表：表里没这一行 ⇒ 404；上游连不上 ⇒ 504。两个码不同，本条末尾顺带断一次。
+/// 同一个中转、同一张表：表里没这一行 ⇒ 404 ＋ `no-account-row`（我们拒的 4xx）；上游连不上 ⇒ 502。本条顺带断一次。
 #[test]
-fn relay_transport_failures_answer_504_saying_who_and_where() {
-    const STATUS_LINE: &str = "HTTP/1.1 504 Gateway Timeout\r\n";
+fn relay_transport_failures_answer_502_or_504_saying_who_and_where() {
+    const BAD_GATEWAY: &str = "HTTP/1.1 502 Bad Gateway\r\n";
+    let reason = |r: &str| format!("\r\nX-Cc-Monitor-Reason: {r}\r\n");
+    let get = "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
 
     // ① 建立连接：没人听的端口。
     let dead = a_port_nobody_listens_on();
     let (relay, _r, _t) = spawn_relay(SocketAddr::new(LOOPBACK, dead));
-    let (got, _) = send_raw(
-        relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+    let (got, _) = send_raw(relay, get);
+    assert!(got.starts_with(BAD_GATEWAY), "① 连不上该回 502：{got:?}");
+    assert!(
+        got.contains(&reason("upstream-connect")),
+        "① 原因头：{got:?}"
     );
-    assert!(got.starts_with(STATUS_LINE), "① 连不上该回 504：{got:?}");
     let want = format!("上游 127.0.0.1:{dead} 连不上。卡在建立连接这一步。");
     assert!(
         got.contains(&want),
         "① 没说清是谁、卡在哪：want {want:?} got {got:?}"
     );
-    // ★ 可区分性（`D7`）：**同一个中转**上，表里没有的那一行回的是 404，不是 504。
+    // ★ 我们拒的是 4xx：**同一个中转**上，表里没有的那一行回 404 ＋ 原因头 ＋ 一句为什么。
     let (miss, _) = send_raw(
         relay,
         "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/nosuch/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
     );
     assert!(
-        miss.starts_with("HTTP/1.1 404 Not Found\r\n"),
-        "同一个中转上「表里没这一行」该回 404：{miss:?}"
-    );
-
-    // ② 没回应就断开。
-    let up = spawn_replying_upstream(b"", false);
-    let (relay, _r, _t) = spawn_relay(up);
-    let (got, _) = send_raw(
-        relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        miss.starts_with("HTTP/1.1 404 Not Found\r\n") && miss.contains(&reason("no-account-row")),
+        "同一个中转上「表里没这一行」该回 404 ＋ 原因头：{miss:?}"
     );
     assert!(
-        got.starts_with(STATUS_LINE),
-        "② 上游不回就关该回 504：{got:?}"
+        miss.ends_with("404 Not Found\n这个账号在凭据文件里没有配置\n"),
+        "拒绝那一发没说为什么：{miss:?}"
+    );
+
+    // ② 发请求：写到一半上游断了（先前这一支一个 HTTP 字节都不回）。
+    let up = spawn_slamming_upstream();
+    let (relay, _r, _t) = spawn_relay(up);
+    let body = "x".repeat(32 * 1024 * 1024);
+    let (got, _) = send_raw(
+        relay,
+        &format!(
+            "POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    );
+    assert!(
+        got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-send")),
+        "② 请求没发完上游就断了该回 502 ＋ upstream-send：{:?}",
+        &got[..got.len().min(300)]
+    );
+    let want = format!(
+        "上游 127.0.0.1:{} 在请求发完之前断开了。卡在发请求这一步。",
+        up.port()
+    );
+    assert!(got.contains(&want), "② want {want:?} got {got:?}");
+
+    // ③ 没回应就断开。
+    let up = spawn_replying_upstream(b"", false);
+    let (relay, _r, _t) = spawn_relay(up);
+    let (got, _) = send_raw(relay, get);
+    assert!(
+        got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-closed")),
+        "③ 上游不回就关该回 502：{got:?}"
     );
     let want = format!(
         "上游 127.0.0.1:{} 没回应就断开了。卡在等响应这一步。",
         up.port()
     );
-    assert!(got.contains(&want), "② want {want:?} got {got:?}");
-
-    // ③ 等响应超时：先前这一格**一个 HTTP 字节都不回**。
-    let up = spawn_replying_upstream(b"", true);
-    let relay = spawn_relay_with_upstream_deadline(up, std::time::Duration::from_millis(300));
-    let (got, _) = send_raw(
-        relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
-    );
-    assert!(
-        got.starts_with(STATUS_LINE),
-        "③ 等响应超时该回 504（先前是静默 FIN）：{got:?}"
-    );
-    let want = format!("上游 127.0.0.1:{} 没有回应。卡在等响应这一步。", up.port());
     assert!(got.contains(&want), "③ want {want:?} got {got:?}");
 
-    // ④ 回的不是 HTTP。
+    // ④ 等响应超时：唯一回 504 的那一格。
+    let up = spawn_replying_upstream(b"", true);
+    let relay = spawn_relay_with_upstream_deadline(up, std::time::Duration::from_millis(300));
+    let (got, _) = send_raw(relay, get);
+    assert!(
+        got.starts_with("HTTP/1.1 504 Gateway Timeout\r\n")
+            && got.contains(&reason("upstream-no-answer")),
+        "④ 等响应超时该回 504：{got:?}"
+    );
+    let want = format!("上游 127.0.0.1:{} 没有回应。卡在等响应这一步。", up.port());
+    assert!(got.contains(&want), "④ want {want:?} got {got:?}");
+
+    // ⑤ 回的不是 HTTP。
     let up = spawn_replying_upstream(b"garbage\r\n\r\n", false);
     let (relay, _r, _t) = spawn_relay(up);
-    let (got, _) = send_raw(
-        relay,
-        "GET /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
-    );
+    let (got, _) = send_raw(relay, get);
     assert!(
-        got.starts_with(STATUS_LINE),
-        "④ 回的不是 HTTP 该回 504：{got:?}"
+        got.starts_with(BAD_GATEWAY) && got.contains(&reason("upstream-not-http")),
+        "⑤ 回的不是 HTTP 该回 502：{got:?}"
     );
     let want = format!(
         "上游 127.0.0.1:{} 回的不是 HTTP 响应。卡在读响应这一步。",
         up.port()
     );
-    assert!(got.contains(&want), "④ want {want:?} got {got:?}");
-    // ⑤「只有中间响应」那一跳由 `too_many_interim_responses_are_refused_with_504` 量。
+    assert!(got.contains(&want), "⑤ want {want:?} got {got:?}");
 }
 
 /// 本 crate 生产段里**每一个** HTTP 状态码字面量的住址〔`设计/20 §3.1a` ②，`D2`〕。
@@ -3713,14 +3744,15 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
         StatusGroup::NoRoute,
     ),
     (
-        "accounts/upstream/mod.rs",
-        "502 Bad Gateway",
-        StatusGroup::NoRoute,
-    ),
-    (
         "relay/server.rs",
         "503 Service Unavailable",
         StatusGroup::Busy,
+    ),
+    // 〔FIX3 · `99 §2.2 ⑫`〕上游那侧：不是超时 502 · 超时 504（先前一律 504；502 原先是上游选择的 `/t/` 未登记，改成了 404）。
+    (
+        "relay/server.rs",
+        "502 Bad Gateway",
+        StatusGroup::UpstreamFailed,
     ),
     (
         "relay/server.rs",
@@ -3844,13 +3876,14 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     };
     assert_eq!(
         codes_of(StatusGroup::NoRoute),
-        set(&[404, 502]),
-        "路由不成立那一组"
+        set(&[404]),
+        // 〔FIX3 · `99 §2.2 ⑫`〕我们拒的（读不懂 · 路由不成立 · 门）全是 4xx，上游那侧（下面那组）全是 5xx —— 期望值手写成这样。
+        "路由不成立那一组（〔FIX3〕`/t/` 未登记也是 404，原因头分开）"
     );
     assert_eq!(codes_of(StatusGroup::Busy), set(&[503]), "在飞上界那一组");
     assert_eq!(
         codes_of(StatusGroup::UpstreamFailed),
-        set(&[504]),
+        set(&[502, 504]),
         "中转传输失败那一组"
     );
     assert_eq!(

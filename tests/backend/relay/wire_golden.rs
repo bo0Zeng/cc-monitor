@@ -165,25 +165,29 @@ const GOLDEN: &[Golden] = &[
         ),
     },
     // ③ 代入模式 ＋ 表里**没有这一行** ⇒ 404，一个字节都不到上游，tee 上一行都没有。
+    //    〔FIX3 · `99 §2.2 ⑫`〕我们拒的 4xx 带原因头，响应体第二行说为什么。
     Golden {
         target: "/s/agentA/nosuch/v1/messages",
         upstream_head: None,
         downstream: concat!(
             "HTTP/1.1 404 Not Found\r\n",
-            "Content-Length: 14\r\n",
+            "Content-Length: 57\r\n",
+            "X-Cc-Monitor-Reason: no-account-row\r\n",
             "Connection: close\r\n",
             "\r\n",
             "404 Not Found\n",
+            "这个账号在凭据文件里没有配置\n",
         ),
         tee: "",
     },
-    // ④ 根本不是路由形状 ⇒ 同样 404，同样一个字节都不到上游。
+    // ④ 根本不是路由形状 ⇒ 同样 404，同样一个字节都不到上游；原因头与 ③ 不同。
     Golden {
         target: "/v1/messages",
         upstream_head: None,
         downstream: concat!(
             "HTTP/1.1 404 Not Found\r\n",
             "Content-Length: 14\r\n",
+            "X-Cc-Monitor-Reason: not-a-route\r\n",
             "Connection: close\r\n",
             "\r\n",
             "404 Not Found\n",
@@ -223,23 +227,24 @@ const GOLDEN: &[Golden] = &[
             "\n",
         ),
     },
-    // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ **502**，一个字节都不到上游。
+    // ⑥ 直通模式 ＋ 表里**没有这一行** ⇒ 拒，一个字节都不到上游。
     //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
     //    取该 agent 的默认上游」。那张每 agent 一行的表（条 59）今天落了
     //    （`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
-    //    ⇒ 未登记 ⇒ 502。理由整段住 `accounts::upstream::decide`；登记过的那一半由
+    //    ⇒ 未登记 ⇒ 拒。理由整段住 `accounts::upstream::decide`；登记过的那一半由
     //    `table_tests` 那条「登记过的走自己那一行、未登记的拒」量（不经网络）。
-    //    ⚠ 它与 ③ 的 404 **刻意不同码**：404 答的是「代入模式要求表里有这一行」，
-    //    502 答的是「这个 agent 没有登记上游」——两件事，两个码。
+    //    〔FIX3 · `99 §2.2 ⑫`〕码从 502 改成我们拒的 404；与 ③ 同码，原因头与那句话不同 —— 两件事靠原因头分。
     Golden {
         target: "/t/agentA/nosuch/v1/messages",
         upstream_head: None,
         downstream: concat!(
-            "HTTP/1.1 502 Bad Gateway\r\n",
-            "Content-Length: 16\r\n",
+            "HTTP/1.1 404 Not Found\r\n",
+            "Content-Length: 46\r\n",
+            "X-Cc-Monitor-Reason: agent-not-registered\r\n",
             "Connection: close\r\n",
             "\r\n",
-            "502 Bad Gateway\n",
+            "404 Not Found\n",
+            "这个 agent 没有登记上游\n",
         ),
         tee: "",
     },
@@ -339,7 +344,7 @@ impl TeeTap {
 ///
 /// ⚠ **它必须与下面那些请求行的首段逐字相同**（`/s/agentA/…`），否则 `/s/` 那几格全变 404。
 /// ⚠ 它**刻意不是**任何一家登记过的 agent：`/t/` ＋ 表里无行那一格（本文件第 ⑤′ 格，`/t/agentA/nosuch`）
-///   钉的是「未登记 ⇒ 502」—— 换成一家登记过的，那一格就会真的连出去。
+///   钉的是「未登记 ⇒ 拒」—— 换成一家登记过的，那一格就会真的连出去。
 /// ⚠ 这是**夹具**的改动，不是期望字节的改动：每一格手写的期望串一个字节都没动。
 const GOLDEN_AGENT: &str = "agentA";
 
