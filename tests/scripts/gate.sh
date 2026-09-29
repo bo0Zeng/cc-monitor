@@ -1620,8 +1620,11 @@ deadcode_t0=$(date +%s)
 #    `src/backend/footprint/registry.rs`）：`ToolSpec::touches` · `Provisioning` 的 `ALL`/`label` · `EnvTier` 的 `ALL`/`label` · `NOT_MANAGED` ——
 #    它们在后端那棵树里仍只有判据读（挂 `cfg_attr(not(test), allow(dead_code))` 并写明），本格射程外。
 #    ⚠ 现打：本工作树 = 14；上一拍（`d02612c0`，申报表还在 monitor）另起一份工作树现打 = 18，逐条对过只差这四条。
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 14，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'pin=14; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+# 🔴 **2026-09-28（第四波 MOD · 记录抽取进后端）：14 → 12，现打，逐条记**：−2 全出自 `codex_record·rs`（`token_usage_last` · `turn_context_model`）——
+#    那份文件整批搬进后端 `agents/codex/record.rs`（`90 §3` 判据 3：后端是记录解释的唯一的家），本格射程外。
+#    ⚠ 现打：本工作树 = 12；基线 `067ac1b2` 另起一份工作树现打 = 14，逐条对过只差这两条。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 12，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'pin=12; cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
