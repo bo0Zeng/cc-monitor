@@ -14,11 +14,11 @@
 |---|---|---|---|
 | ~~`Arc<session_map::SessionMap>`~~ 〔LOC1b · 4D〕已删 | — | — | 本机活会话表改由本机后端那条流的起停帧喂，住进程级的一张（`session_map::local()`，不 manage）；写者只有本机那条流的消费者（`ssh_source::consume_local` ⇒ `session_map::feed`），读者：本机 emitter · `frontend-ready` 对账 · `list_active_sessions`〔散文墓碑〕 / `list_session_activity`〔散文墓碑〕 |
 | `Arc<event_replay::EventReplay>` | `lib.rs::setup()` `app.manage(replay.clone())` | `EventReplay::new()` | 共享：setup 局部 + frontend-ready listener + jsonl async pump + State |
-| `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-changes-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
-| `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-changes-emitter` 线程 + State |
+| `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-book-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
+| `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-book-emitter` 线程 + State |
 | `Arc<logging::LoggingState>` | `lib.rs::setup()` `app.manage(logging_state.clone())` | `logging::init(monitor_data_dir)`（在 `tauri::Builder` 之前） | 共享：`lib.rs::run()` 局部（持有 WorkerGuard 到 setup 结束）+ setup 闭包内 `install_error_emitter` 注入 closure + State |
 | ~~`Arc<search::SearchIndex>`~~ (issue #6) 〔LOC1b · 4D〕已删 | — | — | 本机全文搜索改问本机后端（`history-search`），monitor 不再建索引 |
-| `Arc<bind::RemoteHwndCache>` (issue #18) | `lib.rs::setup()` `app.manage(remote_hwnd_cache.clone())` | `RemoteHwndCache::new()` | 共享：setup 局部 + `remote-session-emitter` 线程（`remote_cache_for_emitter`：每 sid scan 子线程 `try_bind` / session removed 时 `forget`）+ State |
+| `Arc<bind::RemoteHwndCache>` (issue #18) | `lib.rs::setup()` `app.manage(remote_hwnd_cache.clone())` | `RemoteHwndCache::new()` | 共享：setup 局部 + `session-book-emitter` 线程（`remote_cache_for_emitter` → `lib.rs::session_side_effects`：远端活会话没令牌时起 `remote-bind-scan` 子线程 `try_bind`；离开时 `apply_remote_disposition`，已结束才 `forget`）+ State |
 
 ---
 
@@ -73,9 +73,9 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 | Arc | 还在哪持有 |
 |---|---|
 | 〔MIG-1〕会话成品缓存 `session_book::book()`（进程级，**非 State**；替掉 LOC1b 那张本机活会话表） | (1) 两条流（`ssh_source::stream_loop` · `consume_local`）经 `session_book::feed` 交成品（**唯一写口**） (2) `session-book-emitter` 线程（转交会话流 ＋ 拉前绑定） (3) 就绪点 / 开窗重放（`event_replay.rs::lifecycle_replay`） |
-| `remote_active`（`HashSet<String>`，**非 State / 不 manage**，无 IPC 消费者） | (1) `remote-session-emitter` 线程（**唯一写者**，backend added/removed + 断连 flush，issue #20，INVARIANTS § 24） (2) `frontend-ready` listen 闭包（对账读） |
-| `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-changes-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
-| `sid_hwnd_cache` | (1) `session-changes-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |
+| ~~`remote_active`~~ 〔MIG-1〕已删（THIN 09-29 订正本行） | 连同写它的那条远端会话 emitter 线程一起没了：活 / 可重连 / 已结束的账住那台后端 `src/backend/observe/session_ledger.rs::SessionLedger`（发帧唯一出口上那一问），monitor 只收成品、存进上一行那本 `session_book`（INVARIANTS § 24 顶注） |
+| `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-book-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
+| `sid_hwnd_cache` | (1) `session-book-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |
 | `replay` | (1) `app.listen("frontend-ready", ...)` 闭包 (2) spawn 的 jsonl 处理 async task (3) `app.manage` |
 | `search_index` | (1) `search-index-build` 后台线程（构建期持有，构建完成即 drop 该 clone）(2) `app.manage` |
 | `logging_state` | (1) `run()` 局部（持有 WorkerGuard 维持 non_blocking writer thread 存活）(2) setup 闭包内通过 `install_error_emitter` 把 AppHandle wrap 成 closure 存入 state 的 emit_fn 字段 (3) `app.manage` |

@@ -4209,8 +4209,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
    ⚠ **代价（如实登记）**：**不在 tmux 里**跑的 `ccm` 从此**没有** rbind marker ——
    旧 poller 是直接 `printf` OSC 到终端的，而 `@ccm_sid` 是 tmux 会话级 option、
    没有 tmux 就没有地方放身份。ccm 会为此往 stderr 说一句，不静默。
-4. **扫描绑定**（`lib.rs` remote-session-emitter）：后端 `session_added` 后对该 sid
-   起独立线程，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
+4. **扫描绑定**（`lib.rs::session_side_effects`，跑在会话成品唯一出口线程 `session-book-emitter` 上；
+   〔THIN 09-29 订正〕原先那条远端会话 emitter 线程已无，活 / 可重连 / 已结束的账住后端 `observe/session_ledger.rs`）：
+   那台后端的 `session_added` 成品到达、且该会话**没有启动令牌**（`wants_title_prescan`）时对该 sid
+   起独立线程 `remote-bind-scan`，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
    `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，
    命中即组 `SidHwndBinding{hwnd, owner_pid, owner_proc_start}` 存入 `RemoteHwndCache`。
    **无持久化**——monitor 重启靠重连的 session_added 重扫重绑（对比本地 §4 持久化缓存）。
