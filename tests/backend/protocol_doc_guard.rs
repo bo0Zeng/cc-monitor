@@ -1211,6 +1211,14 @@ mod tests {
                 "一次性子命令 `--read-session-from-offset … --index` 的**出参行**（骨架索引），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
             ),
+            (
+                "agents/claudecode/turn.rs",
+                "Probe",
+                "**只读不出**：turn-end 判词读 CLI 记录行的窄探针（记录文件 schema 的五格），不上线",
+            ),
+            ("agents/claudecode/turn.rs", "ProbeMessage", "同上，`message` 里那一格"),
+            ("agents/claudecode/turn.rs", "LooseBool", "同上，形状不对当缺"),
+            ("agents/claudecode/turn.rs", "LooseStr", "同上，形状不对当缺"),
         ];
 
         let files: &[(&str, &str)] = &[
