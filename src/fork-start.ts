@@ -21,11 +21,11 @@
 import {
   inferForkLaunch,
   slotsNeedingInput,
-  forkTmuxName,
   type ForkLaunchFacts,
   type ForkLaunchInput,
 } from "./fork-launch";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
+import type { MintOutcome } from "./tmux-name-mint";
 import { copyText } from "./copy-table";
 
 /** 用户在追问小窗里给的答案。只覆盖 `unknown` 的那几格。 */
@@ -78,6 +78,11 @@ export interface ForkStartDeps {
     configDir: string | null;
     tmuxName: string | null;
   }) => Promise<boolean>;
+  /**
+   * 〔FIX4 · `90 §3` J7〕问那台后端给分叉会话铸 tmux 名（`tmux-name-mint {forkOf}`：`<源名>-fork-cc`，必与源名不同、按那台的会话快照避让）。
+   * 问不到 ⇒ `ok:false` 带原因 ⇒ 选了 tmux 就不起（抛，由 `runForkFlow` 出声）—— 拿空集自己拼一个就是「不避让」，#76 的形状。
+   */
+  mintForkName: (origin: Origin, source: string) => Promise<MintOutcome>;
 }
 
 export interface ForkStartInput {
@@ -87,14 +92,9 @@ export interface ForkStartInput {
   origin: Origin;
   /** 源会话的事实（喂给 `inferForkLaunch`）。 */
   source: ForkLaunchInput;
-  /** 源会话所在的 tmux 名（用来取一个**不同**的新名）。 */
+  /** 源会话所在的 tmux 名（用来取一个**不同**的新名；源已退出 ⇒ 缺席，拿 cwd 当源）。 */
   sourceTmuxName?: string | null;
-  /**
-   * 已被占用的 tmux 名（避让）。〔FE1〕**必填**，`null` = 名单没问到：选了 tmux 就不起
-   * （抛，由 `runForkFlow` 出声）—— 空集铸名就是「不避让」，#76 的形状。
-   * 先前是可选 ＋ `?? []`：不传就等于没查，而它「看起来有查」（`forkTmuxName` 那个默认值 F13 删过一次，同一个坑）。
-   */
-  takenTmuxNames: readonly string[] | null;
+  // 〔FIX4 · J7〕`takenTmuxNames`（已占用名，前端自己避让用）删了：避让在那台后端（[`ForkStartDeps.mintForkName`]）。
 }
 
 /** `failed` 与 `cancelled` 必须分开：前者要报错，后者是用户自己收手、不该再弹任何东西。 */
@@ -169,15 +169,15 @@ export async function startForkedSession(
   }
 
   // 远端：tmux 名**必须与原会话不同**，否则 ccm 会 attach 进原窗口。
-  if (useTmux && input.takenTmuxNames === null) {
-    throw new Error(copyText("tmuxMint.refused.body", {
-      machine: input.origin,
-      reason: copyText("tmuxMint.unknown.notAsked"),
-    }));
+  //   〔FIX4 · J7〕名字问那台后端铸；问不到 ⇒ 不起（抛，由 `runForkFlow` 出声），不自己拼一个顶上。
+  let tmuxName: string | null = null;
+  if (useTmux) {
+    const minted = await deps.mintForkName(input.origin, input.sourceTmuxName ?? cwd ?? "fork");
+    if (!minted.ok) {
+      throw new Error(copyText("tmuxMint.refused.body", { machine: input.origin, reason: minted.why }));
+    }
+    tmuxName = minted.name;
   }
-  const tmuxName = useTmux
-    ? forkTmuxName(input.sourceTmuxName ?? cwd ?? "fork", input.takenTmuxNames ?? [])
-    : null;
   const launched = await deps.startRemote({
     origin: input.origin,
     sessionId: input.newSessionId,

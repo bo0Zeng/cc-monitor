@@ -24,8 +24,6 @@ import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 import { AGENT_PROFILE } from "../agent-profile";
-// F13：`deriveTmuxName` 只产**基名建议**（这里只拿它当输入框的占位提示）；最终名过铸名口。
-import { deriveTmuxName } from "../remote-launch";
 // 〔FE1〕铸名口（列名单 ＋ 避让 ＋ 「列不出 ⇒ 不起」）本机远端同一个家。
 import { mintFreshTmuxName, refuseUnmintable } from "../tmux-name-mint";
 import { isSelectable, currentWorkingAccount } from "../accounts";
@@ -870,11 +868,17 @@ export class MachineCard {
       copyText("machineCard.launch.command"),
       copyText("machineCard.launch.commandHint"),
     );
-    // 工作目录变化 → 实时预览留空时将用的派生名(placeholder)。
-    cwdInput.addEventListener("input", () => {
-      nameInput.placeholder = cwdInput.value.trim()
-        ? copyText("machineCard.launch.tmuxNameDerived", { name: deriveTmuxName(cwdInput.value) })
-        : copyText("machineCard.launch.tmuxNameAuto");
+    // 工作目录填定 → 预览留空时将用的名字(placeholder)。〔FIX4 · J7〕名字问那台后端铸（与点「开始」时同一问）；
+    //   问不到 / 目录又改了 ⇒ 退回「自动生成」那一句。按 `change`（填完离开）问、不按每个键问。
+    cwdInput.addEventListener("change", () => {
+      const cwd = cwdInput.value.trim();
+      nameInput.placeholder = copyText("machineCard.launch.tmuxNameAuto");
+      if (!cwd) return;
+      void mintFreshTmuxName(origin, cwd).then((m) => {
+        if (m.ok && cwdInput.value.trim() === cwd) {
+          nameInput.placeholder = copyText("machineCard.launch.tmuxNameDerived", { name: m.name });
+        }
+      });
     });
 
     // A4：账号下拉。异步填充——账号库不可用（旧 backend / 未启用）则整行不显 → 不注入

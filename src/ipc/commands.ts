@@ -242,17 +242,22 @@ export const commands = {
    *
    *  ⚠ 它**只读**：跑两次 `--ccm-probe`，一个字节都不写；产品也**不删**用户 `~/.local/bin/ccm`
    *  下那份旧的（用户逐字「原本的配置要手动删除」）。 */
-  local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
+  local_ccm_entry_status: (fresh?: boolean) => invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
 
   // 〔LOC1a · 第四波 4D · C4e 批 4〕某会话的任务快照那一条退役：界面经通道直接问那台机器的后端 `tasks-list`
   //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
 
-  /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。
-   *  〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbindToken`：这次拉起铸的启动期令牌 ——
-   *  后端据此在新窗口里先做一次令牌握手（本地 `token → HWND` 表的生产写入方）。
-   *  可省（Rust 侧是 `Option<String>`）：账号部署那几个不起 agent 进程的调用方不带。 */
-  launch_remote_terminal: (args: { origin: string; remoteCmd: string; rbindToken?: string | null }) =>
-    invoke<void>("launch_remote_terminal", args),
+  /** 〔FIX4 · `设计/99 §2.1 ⑬`〕开一个终端窗口跑 `command`（**成品**：远端那一行由本机后端 `terminal-ssh` 渲好；本机那一串原样）。
+   *  Rust 返回 `Result<(), String>` ⇒ **桶①**。`ssh`：这一行要跑本机的 ssh（Windows 上先查 ssh.exe 在不在）。
+   *  〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbindToken`：这次拉起铸的启动期令牌 —— monitor 据此在新窗口里先做一次令牌握手
+   *  （本地 `token → HWND` 表的生产写入方）；账号部署那几个不起 agent 进程的调用方交 `null`。
+   *  只经 `src/terminal-open.ts::openTerminal` 调（开终端只有一个家）。 */
+  open_terminal_window: (args: { command: string; rbindToken: string | null; ssh: boolean }) =>
+    invoke<void>("open_terminal_window", args),
+
+  /** 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端那一问要的机器事实 `{machine, saved, jump, prefer}`（monitor 的机器表 ＋ 上次赢的那条）。
+   *  **桶②**：TS 不读它的字段，原样转交本机后端 `terminal-ssh`（组请求与渲染都在那里）。 */
+  terminal_dial: (args: { origin: string }) => invoke<unknown>("terminal_dial", args),
 
   /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),

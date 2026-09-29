@@ -96,7 +96,7 @@
       "tier": "AppInstalls",
       "tool_id": "panorama",
       "tool_name": "代码全景组件",
-      "uninstallable": false
+      "uninstallable": true
     },
     {
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",

@@ -29,7 +29,15 @@ vi.mock("../../src/ipc/commands", () => ({
     {
       get: (_t, name: string) => (...args: unknown[]) => {
         ipcCalls.push(name);
-        if (name === "chan_call") chanOps.push(String((args[0] as { op?: unknown } | undefined)?.op));
+        const op = name === "chan_call" ? String((args[0] as { op?: unknown } | undefined)?.op) : "";
+        if (name === "chan_call") chanOps.push(op);
+        // 〔FIX4 · J7〕铸名那一问（`tmux-name-mint`）按帧命令名回：名字 ⇒ 那台后端的成品 `{name}`；别的 ⇒ 原样 reject（通道那一层的错）。
+        if (op === "tmux-name-mint") {
+          const minted = ipcReplies.get(op);
+          if (typeof minted !== "string") return Promise.reject(minted);
+          const u = new TextEncoder().encode(JSON.stringify({ name: minted }));
+          return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+        }
         const reply = ipcReplies.get(name);
         // 〔FE1〕回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
         return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
@@ -75,6 +83,7 @@ vi.mock("../../src/ssh-config-reads", () => {
 import { loadConfig } from "../../src/config";
 import { fakeCfg } from "../config-patch-fake";
 import { copyText } from "../../src/copy-table";
+import { refusedReply } from "../test-support/chan-fake";
 const saveConfig = fakeCfg.saved;
 import {
   shouldShowResetFingerprint,
@@ -1067,17 +1076,17 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   /**
    * 〔FE1〕`设计/01 §5` D4「一条都不许静默忽略」：「开新 Claude」替用户派生的默认名要过铸名口，
-   * **名单没问到 ⇒ 不起、出声**。先前这里「列不出来就用空集铸名」—— 同一个 cwd 派生出同一个名字，
-   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。
-   * 正控：名单问到了（零会话 = 空表）⇒ 照常往下走到渲染那一跳。
+   * **铸不出 ⇒ 不起、出声**。先前这里「列不出来就用空集铸名」—— 同一个 cwd 派生出同一个名字，
+   * 撞上远端 `create-or-attach` 的幂等闸，静默接进第一个会话（#76）。〔FIX4 · J7〕铸名口是那台后端的 `tmux-name-mint`。
+   * 正控：那台铸了名字 ⇒ 照常往下走到渲染那一跳。
    */
   // 〔MIG-2〕起会话那几问（中转地址 `launch-endpoint` → 渲染 `launch-render-*`）改问那台后端（`src/launch-render.ts`），
   //   不再是 `commands.*` 包装 ⇒ 看通道：问到了其中第一问就算「往下走到了」（本桩不答，后面几问不会发）。
   const renderAsked = (): boolean => chanOps.some((op) => /^launch-(?:endpoint|render-)/.test(op));
-  const openLauncherAndStart = async (listing: unknown): Promise<void> => {
+  const openLauncherAndStart = async (minted: unknown): Promise<void> => {
     ipcCalls.length = 0;
     chanOps.length = 0;
-    ipcReplies.set("list_remote_tmux", listing);
+    ipcReplies.set("tmux-name-mint", minted);
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
     btns.find((b) => b.textContent === "开新 Claude")!.click();
@@ -1088,11 +1097,11 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
   };
 
-  it("★ 〔FE1〕开新 Claude：远端 tmux 名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
+  it("★ 〔FE1〕开新 Claude：那台铸不出名字 ⇒ 不起、出声（不自己拼一个不避让的名字）", async () => {
     document.body.innerHTML = "";
-    await openLauncherAndStart(new Error("ssh 抖动"));
-    expect(ipcCalls).toContain("list_remote_tmux");
-    expect(renderAsked(), "名单没问到还往下起了").toBe(false);
+    await openLauncherAndStart(refusedReply("invalid_args", "ssh 抖动"));
+    expect(chanOps).toContain("tmux-name-mint");
+    expect(renderAsked(), "铸不出名字还往下起了").toBe(false);
     expect(ipcCalls).not.toContain("launch_remote_terminal");
     const toast = document.body.textContent ?? "";
     expect(toast).toContain("没有起会话");
@@ -1101,9 +1110,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     document.body.innerHTML = "";
   });
 
-  it("正控：名单问到了（零会话 = 空表）⇒ 往下走到渲染那一跳", async () => {
+  it("正控：那台铸了名字 ⇒ 往下走到渲染那一跳", async () => {
     document.body.innerHTML = "";
-    await openLauncherAndStart([]);
+    await openLauncherAndStart("proj-cc");
     expect(renderAsked()).toBe(true);
     expect(document.body.textContent ?? "").not.toContain("没有起会话");
     ipcReplies.clear();

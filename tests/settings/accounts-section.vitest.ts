@@ -25,9 +25,14 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 // 〔MIG-3a〕acct-iso 两问改走通道（`chan_call`，op = `acct-iso-status` / `acct-iso-shellinit`，那台后端出成品）：
 //   替身翻译层把那一发译回旧名交给 `invokeMock`（各条断言按旧名数「问了几次、问的哪台」），把它答的译成成品字节；
 //   它拒 ⇒ 译成那台后端拒绝（`Refused`，话原样带着）。
-vi.mock("@tauri-apps/api/core", () => ({
+// 〔FIX4 · ⑬〕开终端那三步（`terminal_dial` → `terminal-ssh` → `open_terminal_window`）经 `terminalShim` 译回旧的 `launch_remote_terminal`。
+vi.mock("@tauri-apps/api/core", async () => {
+  const { isTerminalStep, terminalShim } = await import("../test-support/chan-fake");
+  const term = terminalShim((...a: unknown[]) => invokeMock(...a));
+  return {
   invoke: (...a: unknown[]) => {
     const [cmd, args] = a as [string, { origin?: string; op?: string } | undefined];
+    if (isTerminalStep(cmd, args)) return term(cmd, args);
     const legacy = cmd === "chan_call" ? { "acct-iso-status": "acct_iso_status", "acct-iso-shellinit": "acct_iso_shellinit" }[args?.op ?? ""] : undefined;
     if (legacy === undefined) return invokeMock(...a);
     const bytes = (v: unknown) => {
@@ -45,7 +50,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       },
     );
   },
-}));
+  };
+});
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../src/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
@@ -871,7 +877,11 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     const code = src();
     // ① 前端拿到的明文只出现在一处出口。
     const calls = [...code.matchAll(/commands\.(\w+)\(/g)].map((m) => m[1]);
-    expect(calls.length, "一条命令调用都没扫到 —— 抽取器坏了").toBeGreaterThan(0);
+    // 〔FIX4 · ⑬〕开终端那两处改走 `terminal-open.ts::openTerminal` 之后，本文件零条 `commands.*`（Tauri 命令）⇒
+    //   「抽取器坏了」那一格换成两向：零条 ⇔ 本文件不 import `commands`（import 了却一条没扫到 = 抽取器瞄偏了）。
+    expect(calls.length > 0, "扫到的 `commands.*` 条数与本文件 import 不 import `commands` 对不上 —— 抽取器坏了").toBe(
+      code.includes('from "../ipc/commands"'),
+    );
     // 〔HX2 · 4D〕那一处出口今天是经通道的发送口（`writeApikeyKey`），恰好一处；Tauri 那条写命令不在了。
     expect([...code.matchAll(/\bwriteApikeyKey\(/g)].length, "key 的出口不是恰好一处").toBe(1);
     expect(calls, "Tauri 那条写 key 的命令回来了").not.toContain("write_apikey_" + "credentials_key");
@@ -1983,7 +1993,8 @@ describe("S3：本机页新建账号", () => {
     await submit(el, "b");
     const launches = calls.filter(([c]) => c === "launch_remote_terminal");
     expect(launches).toHaveLength(1);
-    expect(launches[0][1]).toEqual({ origin: LOCAL_ORIGIN, remoteCmd: cmdAnswered(calls) });
+    // 〔FIX4 · ⑬〕开终端那一口（`openTerminal`）恒交 `rbindToken`（建号不起 agent 进程 ⇒ `null`）。
+    expect(launches[0][1]).toEqual({ origin: LOCAL_ORIGIN, remoteCmd: cmdAnswered(calls), rbindToken: null });
     // 〔DUP2 · J4〕命令问的是**本机**那台后端（同一条 `acct-iso-cmd`，`origin` 区分）。
     const asked = calls.filter(([c, a]) => isAcctIsoCmd(c, a)).map(([, a]) => (a as ChanCallArgs).origin);
     expect(new Set(asked)).toEqual(new Set([LOCAL_ORIGIN]));

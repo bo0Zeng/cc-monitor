@@ -269,6 +269,94 @@ pub(crate) async fn answer_with(
     classify(op, *deadline, done.map_err(|n| not_run(&bin, n))?)
 }
 
+/// 〔FIX4 · `97 §8` · 主会话 09-28 裁「受管工具都应可卸，照 SU1 装卸账」〕**卸掉这台上的全景小程序**（帧 `panorama-uninstall`）。
+///
+/// 装的那一下只写一份文件（落点 `~/.cc-monitor/bin/<`[`program_file_name`]`>`，`panorama_bytes` 放的）⇒ 卸只删那一份：
+/// 先问它是不是全景小程序（`--probe` 首行认身份，认不出 / 跑不起来 ⇒ `not_ours`、一个字节不动），再经这台文件管理面带 CAS 删
+/// （盘上逐字节 == 刚读到的那一份才删）。它跑出来的索引（[`store_dir`]）不是装时写的，不删，说出在哪。不在 ⇒ `removed: false`。
+pub(crate) async fn answer_uninstall(
+    door: impl crate::assets::door::Door + Send + Sync + 'static,
+) -> Result<Value, (String, String)> {
+    let Some(home) = home() else {
+        return Err((
+            "failed".to_string(),
+            copy_text("bePanorama.answer.noHome", &[]),
+        ));
+    };
+    uninstall_at(door, home).await
+}
+
+/// [`answer_uninstall`] 的本体：家目录是参数（判据拿临时目录喂它，不去动进程级环境）。
+pub(crate) async fn uninstall_at(
+    door: impl crate::assets::door::Door + Send + Sync + 'static,
+    home: PathBuf,
+) -> Result<Value, (String, String)> {
+    let rel = format!(
+        "{}/bin/{}",
+        super::exit_policy::DIR_NAME,
+        program_file_name()
+    );
+    let path = home.join(&rel);
+    let index = store_dir(&home).display().to_string();
+    // 读与删都是同步文件 I/O ⇒ 挪到阻塞线程池（同 `panorama_edit` 落盘那一步）。
+    let at = path.clone();
+    let read = tokio::task::spawn_blocking(move || std::fs::read(&at))
+        .await
+        .map_err(|e| ("failed".to_string(), e.to_string()))?;
+    let bytes = match read {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(
+                json!({ "removed": false, "path": path.display().to_string(), "index": index }),
+            )
+        }
+        Err(e) => {
+            return Err((
+                "failed".to_string(),
+                copy_text(
+                    "bePanorama.uninstall.unreadable",
+                    &[("path", &path.display().to_string()), ("e", &e.to_string())],
+                ),
+            ))
+        }
+    };
+    let not_ours = |why: String| {
+        (
+            "not_ours".to_string(),
+            copy_text(
+                "bePanorama.uninstall.notOurs",
+                &[("path", &path.display().to_string()), ("why", &why)],
+            ),
+        )
+    };
+    let probe = crate::plugin::invoke::run_abortable(
+        &path,
+        &[PROBE_FLAG],
+        PROBE_DEADLINE_SECS,
+        &[],
+        keep(),
+    )
+    .await;
+    let text = match probe {
+        Ok(d) if d.code == Some(0) => String::from_utf8_lossy(&d.stdout).into_owned(),
+        Ok(d) => return Err(not_ours(describe_exit(d.code))),
+        Err(n) => return Err(not_ours(not_run(&path, n).1)),
+    };
+    crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[], None)
+        .map_err(|r| not_ours(r.message()))?;
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let root = home.display().to_string();
+    tokio::task::spawn_blocking(move || {
+        door.ask(
+            "files-delete",
+            json!({ "root": root, "rel": rel, "expect": { "b16": hex } }),
+        )
+    })
+    .await
+    .map_err(|e| ("failed".to_string(), e.to_string()))??;
+    Ok(json!({ "removed": true, "path": path.display().to_string(), "index": index }))
+}
+
 /// 「根本没跑起来」那一类。
 fn not_run(bin: &Path, n: NotRun) -> CmdErr {
     match n {

@@ -378,6 +378,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
     void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
     refreshFirstRunHint(); // N-F3：账本/远端列表可能变了 → 「还差什么」现算一遍
+    void usageHud.loadLimitOverrides(); // 〔FIX4〕上下文上限覆盖表可能在设置页改过
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽。〔CFG1〕整段搬进 tab 栏自己的模块（`tab-bar-width.ts`），
   // 宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆（D §D5：原先住这里、直调 localStorage、键不在登记里）。

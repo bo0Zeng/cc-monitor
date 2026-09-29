@@ -1,5 +1,5 @@
 // A6：cc-acct-iso 部署 / 维护那几条命令 —— 设置「账号」组的内联向导把「要在那台机器的终端里跑的命令」交给
-// `launch_remote_terminal` 弹一个真实终端，让用户**亲眼看着、亲手确认**（DESIGN §6：动凭据的一切走终端，不经后端代跑；本模块不落盘、不读凭据）。
+// `terminal-open.ts::openTerminal` 弹一个真实终端，让用户**亲眼看着、亲手确认**（DESIGN §6：动凭据的一切走终端，不经后端代跑；本模块不落盘、不读凭据）。
 //
 // 〔DUP2 · 主会话 09-26 裁 J4〕**这条命令由那台机器的后端出**（帧命令 `acct-iso-cmd`，`src/backend/accounts/iso.rs`），
 // 预览与弹终端都经 `chan.call` 问它 —— 前端零拼 shell 串（`设计/90 §3` 判据 1 / 2 · `设计/01 §1.1`「命令串……都不在前端」）。
@@ -70,7 +70,7 @@ function cmdRefusals(): Refusals {
 
 /**
  * 问 `origin` 那台机器的后端：这一步在终端里要跑的那一行是什么（`acct-iso-cmd`）。
- * 拿到的就是成品（已 quote、已校验），原样交给 `launch_remote_terminal` / 原样上屏；问不到 ⇒ 抛 [`ControlError`]（那一句已说好）。
+ * 拿到的就是成品（已 quote、已校验），原样交给 `openTerminal` / 原样上屏；问不到 ⇒ 抛 [`ControlError`]（那一句已说好）。
  */
 export async function askAcctIsoCmd(origin: Origin, step: AcctIsoStep): Promise<string> {
   const payload = jsonBody(stepArgs(step));

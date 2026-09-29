@@ -186,6 +186,39 @@ fn the_session_name_derivation_rule() {
     );
 }
 
+/// 要求住址：`设计/90 §3` J7「tmux 名派生 ＋ 撞名避让只留后端」—— 分叉那条的基名随派生一起搬来（原 `fork-launch.vitest.ts::forkTmuxName` 那一族）。
+/// 基名必须与源名不同（同名 ⇒ `ccm` 把新会话接进原窗口）；拿 cwd 当源也必须是一个**建得出来**的新会话名（真正的消费者 [`validate_tmux_name`] 收得下）。
+#[test]
+fn the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name() {
+    assert_eq!(fork_tmux_base("myproj-cc"), "myproj-fork-cc");
+    assert_eq!(fork_tmux_base("bare"), "bare-fork-cc");
+    assert_eq!(fork_tmux_base("/home/pi/proj"), "proj-fork-cc");
+    assert_eq!(fork_tmux_base("/"), "session-fork-cc");
+    assert_eq!(fork_tmux_base(""), "session-fork-cc");
+    let taken = snapshot_of(&["myproj-fork-cc", "myproj-fork-cc-2"]);
+    assert_eq!(
+        mint_tmux_name(&fork_tmux_base("myproj-cc"), &taken),
+        "myproj-fork-cc-3"
+    );
+    for src in [
+        "/home/pi/proj",
+        "/tmp/e2e-remote",
+        "/p/my proj",
+        "/",
+        "",
+        "中文目录",
+        "myproj-cc",
+    ] {
+        let n = fork_tmux_base(src);
+        assert_ne!(n, src);
+        assert!(
+            validate_tmux_name(&n).is_ok(),
+            "源 {src:?} 产出了建不出来的名字 {n:?}"
+        );
+        assert!(n.ends_with("-cc"), "{n} 丢了 -cc 形状");
+    }
+}
+
 /// 〔搬自 `ccm-cli` / `cc-spawn-uplift` 的取名那一族〕**三条取名路的退让态度不一样。**
 ///
 /// 🔴 这一条是**自查逮到的**（铁律 15 那一拍）：头一版原生实现**整个没有退让**，

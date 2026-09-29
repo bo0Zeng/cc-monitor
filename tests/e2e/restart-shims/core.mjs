@@ -8,7 +8,7 @@
 //
 // 失败注入（模拟后端确定性失败,§5.2 边界）：
 //   CCM_KILL_FAIL=1     → kill_remote_tmux 抛（编排必须中止、不续 resume）。
-//   CCM_RESUME_FAIL=1   → launch_remote_terminal 抛（resume 没起来,不得记账/报成功）。
+//   CCM_RESUME_FAIL=1   → open_terminal_window 抛（resume 没起来,不得记账/报成功；〔FIX4〕原 `launch_remote_terminal`）。
 //
 // 账号 fixture 经 CCM_ACCOUNTS_JSON（RawAccountsResult）喂给真源 fetchAccounts/accountConfigDir。
 import { spawnSync } from "node:child_process";
@@ -75,12 +75,17 @@ export async function invoke(cmd, args = {}) {
       seq("kill");
       return undefined;
     }
-    case "launch_remote_terminal": {
-      const { remoteCmd } = args;
+    // 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端是三步（`src/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
+    //   （`terminal-ssh`，见 `chanCall`）→ monitor 开窗（`open_terminal_window`）。夹具不走 ssh：机器事实给个空壳、那一行原样回交进来的
+    //   命令，开窗那一步就地用 bash 跑它（与原先 `launch_remote_terminal` 那一臂同一个语义）。
+    case "terminal_dial":
+      return { machine: { label: args.origin } };
+    case "open_terminal_window": {
+      const remoteCmd = args.command;
       seq("resume-attempt");
       if (process.env.CCM_RESUME_FAIL === "1") {
         seq("resume-fail");
-        throw new Error("launch_remote_terminal rejected (injected IPC failure)");
+        throw new Error("open_terminal_window rejected (injected IPC failure)");
       }
       // runRemoteResumeTmux 的成功契约 = "拉起 IPC 被接受"（不等 attach）。真源命令串
       // 尾部 `tmux attach` 在无 tty 下即刻失败(无害),但 new-session -d + send-keys 已把
@@ -124,6 +129,9 @@ function chanCall(op, body) {
         notice: null,
       });
     }
+    case "terminal-ssh":
+      // 〔FIX4〕ssh 外壳的字节归 Rust（`tests/backend/dial_terminal_tests.rs`）；夹具原样回那串命令。
+      return enc({ command: body.command });
     case "accounts-trust":
       // trust 只警告不阻断（§5 ①）；e2e 里恒答「不知道」⇒ 走「未知」分支，不影响主流程。
       return enc({ trusted: false, known: false });
@@ -190,7 +198,8 @@ function chanCall(op, body) {
         refused("no_such_session", String(r.stderr || "").trim());
       }
       seq("kill");
-      return enc({ session: name, killed: true });
+      // 〔FIX4 · `95 §6`〕成品多一格 `bus`（顺手从 cc-bus 名册注销的结局）；夹具没有名册 ⇒ 什么都没注销（后端同形）。
+      return enc({ session: name, killed: true, bus: { removed: [], failed: [], unread: null } });
     }
     default:
       seq("chan?:" + op);

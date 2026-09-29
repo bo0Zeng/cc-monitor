@@ -11,9 +11,12 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: tmuxControlShim(launchRenderShim(invokeMock), "tmux_send_keys") };
 });
 vi.mock("../src/remote-launch-run", () => ({
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
+  // 〔FIX4 ④〕换号重启走「等到了没有」那一形（`arrived` / `missed` / `unsent`）。
+  runRemoteResumeTmuxAndWait: vi.fn().mockResolvedValue("arrived"),
 }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+// 〔FIX4 ④〕本机那一跳等「看见会话起来」：默认等到了；「没等到」那一格见下面 FIX4 那条。
+vi.mock("../src/launch-arrival", () => ({ awaitArrival: vi.fn().mockResolvedValue(true), expectArrival: vi.fn(), arrivedBody: () => "" }));
 // 〔FE1〕`accounts.ts` 按域拆开：规则（`accountConfigDir`）留在 `accounts.ts`，读面去了 `account-reads.ts`，
 //   偏好去了 `account-prefs.ts`，记 pin 去了 `launch-account.ts` —— 各在真住的模块上桩；
 //   本机那一跳（`local-resume.ts`）要的载荷形状（`explicitLocalAccountWire`，键名来自生成物）用真身。
@@ -33,7 +36,7 @@ vi.mock("../src/launch-account", async (importOriginal) => ({
   recordLastAccount: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { runRemoteResumeTmux } from "../src/remote-launch-run";
+import { runRemoteResumeTmuxAndWait } from "../src/remote-launch-run";
 import { accountConfigDir } from "../src/accounts";
 import { checkTrust } from "../src/account-reads";
 import { getModelForAccount } from "../src/account-prefs";
@@ -42,7 +45,7 @@ import { restartWithAccount, type RestartWithAccountOpts } from "../src/account-
 import { showActionFailureToast } from "../src/error-toast";
 import { answerAskDialog } from "./test-support/ask-dialog-driver.ts";
 
-const resumeTmux = runRemoteResumeTmux as unknown as ReturnType<typeof vi.fn>;
+const resumeTmux = runRemoteResumeTmuxAndWait as unknown as ReturnType<typeof vi.fn>;
 const acctConfigDir = accountConfigDir as unknown as ReturnType<typeof vi.fn>;
 const recordLast = recordLastAccount as unknown as ReturnType<typeof vi.fn>;
 const trust = checkTrust as unknown as ReturnType<typeof vi.fn>;
@@ -68,7 +71,7 @@ beforeEach(() => {
   invokeMock.mockResolvedValue(undefined);
   // Phase G：runRemoteResumeTmux 现在返回 boolean（true=真拉起来了）。默认给 true，
   // 让既有用例继续测"正常路径"；失败路径由下方专门那组显式 mockResolvedValue(false)。
-  resumeTmux.mockResolvedValue(true);
+  resumeTmux.mockResolvedValue("arrived");
   trust.mockResolvedValue({ available: true, trusted: true, known: true, error: null });
 });
 
@@ -158,7 +161,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
 // 却照样记 pin、照样报成功、还被批量对齐计成成功。这批用例锁住修复。
 describe("A5/Phase G：resume 真失败时不得上报成功", () => {
   beforeEach(() => {
-    resumeTmux.mockReset().mockResolvedValue(true);
+    resumeTmux.mockReset().mockResolvedValue("arrived");
   });
 
   it("resume 成功 → 返回 true 且记 lastAccount", async () => {
@@ -172,7 +175,7 @@ describe("A5/Phase G：resume 真失败时不得上报成功", () => {
   it("resume **失败**（命令构造失败/拉起失败，已回退剪贴板）→ 返回 false 且**不记** lastAccount", async () => {
     acctConfigDir.mockReturnValue("/h/.claude-alt/z");
     invokeMock.mockResolvedValue(undefined);
-    resumeTmux.mockResolvedValue(false); // ← 会话已被 kill，但新会话没起来
+    resumeTmux.mockResolvedValue("unsent"); // ← 会话已被 kill，但新会话没起来
     const ok = await restartWithAccount(baseOpts({ confirm: () => true }));
     expect(ok).toBe(false); // ← 变异锚点：退回 `return true` 这里就红
     expect(recordLast).not.toHaveBeenCalled(); // 没起来就别钉账号归属
@@ -258,5 +261,21 @@ describe("A3 本机换号重启（origin = <local>）", () => {
     expect(String(last?.[1])).not.toContain("远端");
     // 本机那一跳自己先说了一次**为什么**没起来（后端的原话）。
     expect(toasts.some((c) => String(c[1]).includes("没有 ccm"))).toBe(true);
+  });
+});
+
+/**
+ * 主会话 09-28 裁 FIX4 ④：「换号的 lastAccount / pin 只在等到之后才记（kill ＋ resume 全成才记，全成的定义换成『看见会话起来』）」。
+ */
+describe("FIX4 ④：换号重启等到会话起来才算成", () => {
+  it("远端发出去了但没看到会话起来 ⇒ false、不记账、不说「已用新账号重启」、也不另说失败（主窗口说过了）", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    resumeTmux.mockResolvedValue("missed");
+    const toasts = vi.mocked(showActionFailureToast);
+    toasts.mockClear();
+    const ok = await restartWithAccount(baseOpts());
+    expect(ok).toBe(false);
+    expect(recordLast).not.toHaveBeenCalled();
+    expect(toasts.mock.calls.map((c) => c[0])).toEqual([]);
   });
 });

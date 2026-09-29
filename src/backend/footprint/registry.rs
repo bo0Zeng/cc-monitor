@@ -647,13 +647,14 @@ pub const TOOLS: &[ToolSpec] = &[
     //   monitor 摘掉了内嵌引擎（V108 后半句），本机与远端的全景都由那台机器的后端经插件口起它。
     //   同 `backend` 那一形：一份代码、两个载体 —— 本机那份由 `panorama_bytes::place_local` 放、远端那份由 `panorama_bytes::push_to` 推，
     //   都只在那台后端答「没装 / 太旧」时才放（V108「只传给开过远端全景的机器」）。
-    //   `uninstallable: false`：今天没有「卸掉全景组件」这条口（卸后端那条 `sftp.rs::uninstall_remote_backend` 不碰它），如实声明。
+    //   〔FIX4 · `97 §8` · 主会话 09-28 裁〕`uninstallable: true`：卸口是那台后端的 `panorama-uninstall`（认身份、只删装时放下的那一份，
+    //   机器页「工具」栏的「代码全景组件」那一格点）。〔墓碑 —— 这之前是 `false`：「今天没有卸掉全景组件这条口」。〕
     //   〔墓碑 —— 这之前它住 [`NOT_MANAGED`]，理由是「vendored 进 monitor 二进制、没有落点」；那个身份 RM1f 起没了，见那一条。〕
     ToolSpec {
         id: "panorama",
         display_name: Text(|| copy_text("rsToolRegistry.tools.panoramaName", &[])),
         installable: true,
-        uninstallable: false,
+        uninstallable: true,
         carriers: &[
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.panoramaLocalWhat", &[])),

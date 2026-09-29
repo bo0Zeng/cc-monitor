@@ -6,7 +6,7 @@
 //! **「未找到远端配置: `<local>`」** —— 一句与真实原因毫无关系的话。真实原因从来不是
 //! 「配置没找到」，而是「这条路是远端专属的，本机根本不该走到这里」。
 //!
-//! 已逐个修过三处（`backend_kill` / `list_remote_tmux` / `launch_remote_terminal`），
+//! 已逐个修过三处（`backend_kill` / `list_remote_tmux` / `launch_remote_terminal`〔散文墓碑〕），
 //! 而 `P3b` 的 E 阶段又量到第四处（`capture_remote_pane`）。
 //!
 //! ⇒ **别再一个一个修。** 一个一个修的问题不是慢，是它对「第六次」毫无办法：
@@ -61,7 +61,9 @@ const CALL: &str = "load_remote_config_by_label(";
 #[cfg(test)]
 const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
     "dial_host.rs",
-    "request",
+    // 〔FIX4 · ⑬〕两处查配置从 `request` 挪进了它拆出来的 `machine_facts`（开终端那一问要同一份机器事实、不开链路）；
+    //   理由一字不变。另一个调用方 `launch.rs::terminal_dial` 在调它之前已经把 `<local>` 分走。
+    "machine_facts",
     "〔C2 09-24〕它查的是**跳板那一台**（`cfg.jump` 那个标签），而入参 `cfg` 已经是一台远端的配置 —— \
      本机没有「经跳板连本机」这一形（本机那条路不拨 SSH），`<local>` 结构上走不到这里：\
      调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。\
@@ -101,7 +103,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //   两条都改走通道（`<local>` 与远端同一条路、不查远端配置），函数随命令一起删了。**表只许变短，这一次它真的短了。**
     // 〔E2〕`probe_ccm_cli`〔散文墓碑〕 那一行还掉了：它不再查远端配置（改经那台后端的门问 `ccm-probe`，`<local>` 也是一个 origin）。
     // 〔SH1〕远端钩子诊断那一行还掉了：它不再查远端配置（〔MIG-3b〕今天整件是那台后端的帧命令 `hooks-diag`）。
-    ("launch.rs", "build_remote_ssh_ps_command"),
+    // 〔FIX4 · `99 §2.1 ⑬`〕`launch.rs` 那一行（远端拼 ssh 外壳时查跳板配置，`build_remote_ssh_ps_command`〔散文墓碑〕）**还掉了**：
+    //   ssh 外壳进了本机后端（`terminal-ssh`），跳板配置由宿主 `dial_host.rs::machine_facts` 查（上面 `REMOTE_ONLY` 那一行同一个家）。
+    //   **表只许变短，这一次它真的短了。**
     // 〔SH1 · V137〕`mcp.rs` 的 `list_remote_mcp_project_dirs`〔散文墓碑〕 / `read_remote_mcp_servers` 两行还掉了：MCP 列表改问那台后端，不再查远端配置。
     // 〔MIG-3a〕`mcp.rs` 那最后一行（远端项目 `.mcp.json` 读）随文件删了：MCP 读写进了那台后端，界面经通道直问、不查远端配置。
     // 〔RW1 · 第四波 09-24〕`mcp.rs` 远端写 / 删两个分支（`write_remote_mcp_server` / `remove_remote_mcp_server`）

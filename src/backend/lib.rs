@@ -651,7 +651,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5l-relay-codes-arrival**（2026-09-28，FIX3 合并那一拍）：中转状态码 —— 我们拒的 4xx（`/t/` 未登记 404）· 上游超时 504 / 其余 502 · `WriteFailed` 回 502 · 中转自答的响应带 `X-Cc-Monitor-Reason`；
 /// `live` 格带 `rbind_token`（起会话「真成功」认它）· 本机 ccm 探针补 `at=`。子命令没变。
-pub const BUILD_ID: &str = "p5l-relay-codes-arrival";
+///
+/// ★★★ **p5m-terminal-ssh-in-backend**（2026-09-28，FIX4 合并那一拍）：新帧命令 `terminal-ssh`（远端开终端的 ssh 外壳 / PowerShell 载荷由本机后端渲）· `tmux-name-mint`（tmux 名只在后端派生）· `panorama-uninstall`；
+/// `kill` 应答 ＋ `bus: {removed, failed, unread}`。⑬「待迁」清空。
+pub const BUILD_ID: &str = "p5m-terminal-ssh-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

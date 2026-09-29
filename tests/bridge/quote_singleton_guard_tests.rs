@@ -132,9 +132,9 @@ fn the_sole_home_really_holds_the_implementation() {
     );
 }
 
-/// ★ monitor 侧三个入口对同一输入产出**逐字节相同** —— 收口的行为判据。
+/// ★ monitor 侧的入口对同一输入产出**逐字节相同** —— 收口的行为判据。〔FIX4〕今天只剩 `ssh_source::shell_quote` 一个。
 ///
-/// ⚠ 初版只比了 `ssh_source::shell_quote` **一个** ⇒「把 `launch.rs::posix_quote` 换成
+/// ⚠ 初版只比了 `ssh_source::shell_quote` **一个** ⇒「把 `launch.rs` 的 `posix_quote`〔散文墓碑〕（〔FIX4〕已删）换成
 /// 不逃逸的实现」这个变异照样全绿（自己的变异检查抓到的）。零命中守卫也挡不住它 ——
 /// 换成 `format!` 不带逃逸序列时根本不含那个子串。⇒ 三个**逐个**对拍。
 ///
@@ -157,11 +157,8 @@ fn every_monitor_entry_point_agrees_byte_for_byte() {
             core,
             "ssh_source::shell_quote 与内核不一致：{s:?}"
         );
-        assert_eq!(
-            crate::launch::posix_quote(s),
-            core,
-            "launch::posix_quote 与内核不一致：{s:?}"
-        );
+        // 〔FIX4 · `99 §2.1 ⑬`〕`launch::posix_quote`〔散文墓碑〕那一行摘了：它唯一的用户（远端那条 ssh 外壳）随渲染进了本机后端
+        //   （`dial/terminal.rs` 直调 `shell_quote_core::posix_quote`），别名一起删了。
         // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy::sq` 那一行摘了：它唯一的调用方（跑安装脚本那一句）随「落进用户目录进那台后端」退役。
     }
 }

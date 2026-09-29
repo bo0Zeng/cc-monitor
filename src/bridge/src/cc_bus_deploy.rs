@@ -85,7 +85,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
 /// ⚠ 它**不是错误**（与非 Windows 那条同一条纪律）：装本身做完了，命令仍回 `Ok`。
 #[cfg(windows)]
 fn local_ccm_too_old_warning() -> Option<String> {
-    let st = crate::ccm_probe::local_ccm_entry_status();
+    let st = crate::ccm_probe::local_ccm_entry_status(None);
     Some(windows_ccm_precheck(
         st.entry.as_deref().map(|e| (e, &st.ours)),
         env!("BACKEND_BUILD_ID"),
