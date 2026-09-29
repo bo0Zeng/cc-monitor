@@ -152,6 +152,12 @@ export class HistoryView {
   private remoteCache: RemoteSourceCache<HistoryProject> | null = null;
   /** F76：`refresh()` 的代际号，防并发/交叠 refresh 的旧结果覆盖新结果（对齐 ftSeq）。 */
   private refreshSeq = 0;
+  /**
+   * 〔WF2 · WIN3 读数 H〕答了、但一个项目都没有的那几台（`undefined` = 本机）。按机器分组时各画一行「这台还没有会话记录」，
+   * 不是整页空态。只存内存：远端那一半随每次成功的 fan-out 换；持久化的暖绘缓存不带它（首开必刷，刷完就有）。
+   */
+  private emptyOrigins = new Set<string | undefined>();
+  private emptyRemotes: string[] = [];
   /** project_dir → 已加载的会话详情 */
   private sessionCache = new Map<string, HistorySessionEntry[]>();
   /** project_dir → 当前正在加载中的 Promise，防重复触发 */
@@ -401,16 +407,20 @@ export class HistoryView {
     // 本地批：每次重扫。〔WF2 · WIN3 读数 H〕本机读不了 ≠ 整页失败：说一声，本机那一段空着，远端照常加载。
     let local: HistoryProject[] = [];
     let localFailed: string | null = null;
+    let localEmpty = false;
     try {
       // 〔C4d〕问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
       const got = await fetchLocalProjects();
       local = got.projects;
+      localEmpty = local.length === 0;
       if (got.notice) showActionFailureToast(copyText("history.refresh.noticeTitle"), got.notice);
     } catch (e) {
       localFailed = historyReasonOf(e);
     }
     if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
     if (localFailed !== null) showActionFailureToast(copyText("history.refresh.localFailed"), localFailed);
+    this.emptyOrigins = new Set<string | undefined>(this.emptyRemotes);
+    if (localEmpty) this.emptyOrigins.add(undefined);
     // 先用「本地 + 已有远端缓存」渲染一帧（远端缓存命中时这就是最终态）。
     this.projects = [...local, ...(this.remoteCache?.projects ?? [])];
     this.renderList();
@@ -425,6 +435,9 @@ export class HistoryView {
       const res = await fetchRemoteProjects();
       if (seq !== this.refreshSeq) return; // 抢占：丢弃过期结果
       const remote = res.projects;
+      this.emptyRemotes = res.emptyHosts;
+      this.emptyOrigins = new Set<string | undefined>(res.emptyHosts);
+      if (localEmpty) this.emptyOrigins.add(undefined);
       if (res.failedHosts.length === 0) {
         // 全部台成功 → 缓存这份完整快照，TTL 内复用（空结果也缓存，无远端配置时省掉每次 IPC）。
         this.remoteCache = { projects: remote, loadedAt: Date.now() };
@@ -940,7 +953,9 @@ export class HistoryView {
     this.fanoutStats.renders += 1;
     this.listEl.replaceChildren();
     this.renderOriginFilter(); // F03：同步来源筛选 chip 行
-    if (this.projects.length === 0) {
+    // 〔WF2〕有几台：有项目的 ∪ 答了但零项目的（后者按机器分组时各画一行空态）。
+    const allOrigins = this.knownOrigins();
+    if (this.projects.length === 0 && allOrigins.length <= 1) {
       this.statusEl.textContent =
         copyText("history.list.empty");
       return;
@@ -949,7 +964,7 @@ export class HistoryView {
     // 项目过滤：搜索匹配（matchProject）+ F03 来源筛选（hiddenOrigins）正交叠加。
     // F86：隐藏筛选只在 >1 来源时生效——筛选 chip 行本身也只在 >1 来源时可见（renderOriginFilter）。
     // 持久化后，若不门控，「隐藏了唯一来源」会从「重启自愈的暂态」变成「无 chip 可复原的永久死锁」。
-    const applyHidden = new Set(this.projects.map((p) => p.origin)).size > 1;
+    const applyHidden = allOrigins.length > 1;
     const filteredProjects = this.projects.filter(
       (p) =>
         this.matchProject(p) &&
@@ -978,7 +993,6 @@ export class HistoryView {
     // F02 多机 #30：是否分组取决于**存在**几个来源（this.projects），不随 F03 隐藏 / 搜索
     // 过滤而塌缩——否则隐藏到只剩 1 来源时分组结构会突然变扁平。被隐藏 / 过滤光的来源其
     // section 为空、跳过不渲染。distinct ≤1（通常纯本地）→ 扁平（零回归）。
-    const allOrigins = [...new Set(this.projects.map((p) => p.origin))];
     if (allOrigins.length <= 1) {
       for (const proj of sorted) {
         this.appendProjectGroup(this.listEl, proj, searchActive);
@@ -986,12 +1000,17 @@ export class HistoryView {
     } else {
       for (const origin of this.orderOrigins(allOrigins)) {
         const group = sorted.filter((p) => p.origin === origin);
+        // 〔WF2 · WIN3 读数 H〕那台答了、一个项目都没有 ⇒ 画它的大区 ＋ 一行「这台还没有会话记录」（被 F03 隐藏的照旧不画）。
+        if (this.emptyOrigins.has(origin) && !this.hiddenOrigins.has(origin ?? "")) {
+          this.listEl.appendChild(this.buildOriginGroup(origin, [], searchActive));
+          continue;
+        }
         if (group.length === 0) continue; // 被 F03 隐藏 / 被搜索过滤光 → 不渲染空区
         this.listEl.appendChild(this.buildOriginGroup(origin, group, searchActive));
       }
     }
     // 全部被过滤 / 隐藏 → 列表空白，给一行提示（this.projects 非空但 sorted 空）。
-    if (sorted.length === 0) {
+    if (sorted.length === 0 && this.projects.length > 0) {
       const hint = document.createElement("div");
       hint.className = "history-empty-hint";
       hint.textContent = copyText("history.list.noMatch");
@@ -1123,6 +1142,12 @@ export class HistoryView {
     for (const proj of projects) {
       this.appendProjectGroup(body, proj, searchActive);
     }
+    if (projects.length === 0) {
+      const none = document.createElement("div");
+      none.className = "history-empty-hint";
+      none.textContent = copyText("history.originGroup.noRecords");
+      body.appendChild(none);
+    }
     details.appendChild(body);
 
     // F86：折叠偏好持久化（搜索激活时不写，避免污染用户偏好）。nextOverrides 只存偏离默认的项、
@@ -1139,8 +1164,13 @@ export class HistoryView {
   }
 
   /** F03 多机 #30：来源筛选 chip 行。distinct origin ≤1 → 隐藏；否则每来源一个 chip。 */
+  /** 〔WF2〕这一拍认得的几台：有项目的 ∪ 答了但零项目的。 */
+  private knownOrigins(): (string | undefined)[] {
+    return [...new Set<string | undefined>([...this.projects.map((p) => p.origin), ...this.emptyOrigins])];
+  }
+
   private renderOriginFilter(): void {
-    const origins = [...new Set(this.projects.map((p) => p.origin))];
+    const origins = this.knownOrigins();
     if (origins.length <= 1) {
       this.originFilterBar.style.display = "none";
       this.originFilterBar.replaceChildren();

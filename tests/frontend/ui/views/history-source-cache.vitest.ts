@@ -312,4 +312,27 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect((view as unknown as ViewInternals).projects.map((p) => p.origin)).toEqual(["hostA"]);
     expect(toast.mock.calls.map((c) => c[0])).toEqual([copyText("history.refresh.localFailed")]);
   });
+
+  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H · 主会话 09-29 拍板 ④(b)「历史页按机器分组时，某台零项目画一行『这台还没有会话记录』（不是整页空态）」。
+  it("按机器分组时，零项目的那几台（本机 · 远端）各画一行「这台还没有会话记录」，有项目的那台照常", async () => {
+    invokeMock.mockReset();
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
+      if (cmd === "list_history_projects") return Promise.resolve([]);
+      if (cmd === "list_remote_history_projects")
+        return Promise.resolve({ projects: [remoteProj("r1", "hostA")], failedHosts: [], emptyHosts: ["hostB"] });
+      return Promise.resolve(undefined);
+    }));
+    const view = new HistoryView();
+    await view.open();
+    const groups = [...document.querySelectorAll(".history-origin-group")].map((g) => ({
+      name: g.querySelector(".history-origin-name")?.textContent,
+      none: g.querySelector(".history-origin-body > .history-empty-hint")?.textContent ?? null,
+    }));
+    const none = copyText("history.originGroup.noRecords");
+    expect(groups).toEqual([
+      { name: copyText("history.originGroup.local"), none },
+      { name: "[hostA]", none: null },
+      { name: "[hostB]", none },
+    ]);
+  });
 });

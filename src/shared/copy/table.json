@@ -14846,6 +14846,11 @@
       "zh": "{projects} 个项目 · {sessions} 个会话",
       "args": ["projects", "sessions"]
     },
+    "history.originGroup.noRecords": {
+      "kind": "body",
+      "zh": "这台还没有会话记录",
+      "args": []
+    },
     "history.originGroup.local": {
       "kind": "body",
       "zh": "本地",

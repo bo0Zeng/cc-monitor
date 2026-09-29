@@ -31,7 +31,13 @@ use std::time::UNIX_EPOCH;
 /// 查询模式入口。返回进程退出码。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let result = match args.first().map(String::as_str) {
-        Some("--list-projects") => list_projects(agent_home),
+        Some("--list-projects") => {
+            return match list_projects_to(agent_home, &mut std::io::stdout().lock()) {
+                Ok(()) => 0,
+                Err((Some(code), said)) => coded_failure(code, &said),
+                Err((None, e)) => query_failed(&e),
+            }
+        }
         Some("--list-sessions") => match args.get(1) {
             Some(dir) => list_sessions(agent_home, dir),
             None => Err("--list-sessions requires <project_dir> argument".into()),
@@ -78,10 +84,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     };
     match result {
         Ok(()) => 0,
-        Err(e) => {
-            eprintln!("cc-monitor-backend query error: {e}");
-            2
-        }
+        Err(e) => query_failed(&e),
     }
 }
 
@@ -105,16 +108,39 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 ///
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
-fn list_projects(agent_home: &Path) -> Result<(), String> {
-    if list_projects_into(agent_home, &mut std::io::stdout().lock())? {
+/// 〔WF2〕老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
+/// （`agents/fake` 那条 S6-Z3 钉着）；但那一形带上结构化的码 [`NO_RECORD_TREE`]（`{code, message}` 信封），
+/// 问的那台后端认码 ⇒ 画「这台还没有会话记录」而不是「没加载上」。其余失败无码（`Err((None, 原因))`）。
+pub(crate) fn list_projects_to(
+    agent_home: &Path,
+    out: &mut dyn Write,
+) -> Result<(), (Option<&'static str>, String)> {
+    if list_projects_into(agent_home, out).map_err(|e| (None, e))? {
         return Ok(());
     }
-    // 〔WF2〕老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
-    //   （`agents/fake` 那条 S6-Z3 钉着）；只是话换成人话、不露 `read_dir` / `os error`。
-    Err(copy_text(
-        "beHistory.records.none",
-        &[("path", &projects_root(agent_home).display().to_string())],
+    Err((
+        Some(NO_RECORD_TREE),
+        copy_text(
+            "beHistory.records.none",
+            &[("path", &projects_root(agent_home).display().to_string())],
+        ),
     ))
+}
+
+/// 〔WF2 · WIN3 读数 H〕`--list-projects` 在「记录树根不在」时信封里的码（生产方住这里，认码的是 `history_join` 远端那一支）。
+pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
+
+/// 带码的那一行：CLI 错误信封（`{code, message}`，与 `cli_control::emit_err` 同一对键；那边读信封的是 `remote_ask::settle_pulled`）。
+/// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
+fn coded_failure(code: &str, said: &str) -> i32 {
+    eprintln!("{}", serde_json::json!({ "code": code, "message": said }));
+    2
+}
+
+/// 一次性查询失败的那一行（无码的旧形）。
+fn query_failed(e: &str) -> i32 {
+    eprintln!("cc-monitor-backend query error: {e}");
+    2
 }
 
 /// `--list-projects` 的本体，出口是参数 ——〔`C1` · 2026-09-24〕帧面那条（`history-projects`）

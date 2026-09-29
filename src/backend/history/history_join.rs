@@ -644,9 +644,24 @@ pub async fn answer_projects_with(
         }
         Some(o) => {
             let o = o.to_string();
-            let out = asked(
-                crate::stream::remote_ask::ask_with(&o, &["--list-projects"], table, remote).await,
-            )?;
+            // 〔WF2 · WIN3 读数 H〕那台没起过会话：它的 CLI 出声、但带码 `no_record_tree` ⇒ 零个项目（界面画「这台还没有会话记录」），
+            //   不并进「部分远端没加载上」。认的是码，不是话。
+            let out = match crate::stream::remote_ask::ask_with_coded(
+                &o,
+                &["--list-projects"],
+                table,
+                remote,
+            )
+            .await
+            {
+                Ok(out) => out,
+                Err(s)
+                    if s.code.as_deref() == Some(crate::observe::history_query::NO_RECORD_TREE) =>
+                {
+                    String::new()
+                }
+                Err(s) => return Err(("unreachable", s.message)),
+            };
             let live = remote_liveness(&o, table, remote).await;
             blocking(move || {
                 let ann = crate::history::history_annotations::load();

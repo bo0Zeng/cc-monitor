@@ -187,22 +187,38 @@ pub async fn ask_with(
     table: &Table,
     remote: &dyn Remote,
 ) -> Result<String, String> {
+    ask_with_coded(machine, argv, table, remote)
+        .await
+        .map_err(|s| s.message)
+}
+
+/// 〔WF2〕同 [`ask_with`]，失败时连那台 CLI 信封里的码一起交回（[`Said`]；拨不到 / 参数被拒没有码）。
+pub async fn ask_with_coded(
+    machine: &str,
+    argv: &[&str],
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<String, Said> {
+    let plain = |message: String| Said {
+        code: None,
+        message,
+    };
     // 〔TL3 · `INVARIANTS §47` ② · 主会话 09-26 按 V131 裁〕argv 是自由文本（项目目录名 · 会话路径 · 搜索词 …）⇒
     //   拼进远端命令之前先过拒绝集（只收 NUL / CR / LF，**不拒 shell 元字符** —— 交给 `command_line` 里那一处 quote）。
     //   判不过 ⇒ 一次都不拨。那台后端的路径是固定常量（〔E2〕）。
     if let Some(a) = argv.iter().find(|a| !shell_quote_core::free_text_ok(a)) {
-        return Err(copy_text(
+        return Err(plain(copy_text(
             "beRemoteAsk.argv.refused",
             &[
                 ("machine", &machine.to_string()),
                 ("value", &format!("{a:?}")),
             ],
-        ));
+        )));
     }
     let r = lock(table)
         .get(machine)
         .cloned()
-        .ok_or_else(|| unreachable_message(machine))?;
+        .ok_or_else(|| plain(unreachable_message(machine)))?;
     // 〔FIX · `设计/96 §3.6`〕子命令之后的自由文本走 stdin 一行（JSON 数组，收的一侧 `cli_control::expand_stdin_argv`）：
     //   命令行里只剩落点与旗标 ⇒ 远端登录 shell 是 fish 之类也同读。
     let (line, stdin) = match argv.split_first() {
@@ -212,7 +228,7 @@ pub async fn ask_with(
         ),
         _ => (command_line(argv), None),
     };
-    remote.run(&r.dial, line, stdin).await
+    remote.run_coded(&r.dial, line, stdin).await
 }
 
 /// 〔MIG-3a · `设计/01 §3.5` · 主会话 09-28 裁〕问可达表里那一台跑一条**帧命令的 CLI 面**（`--<cmd> --stdin-line`），
