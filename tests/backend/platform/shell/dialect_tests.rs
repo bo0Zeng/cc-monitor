@@ -460,3 +460,67 @@ fn a_powershell_builtin_alias_is_named_and_an_unknown_listing_is_said() {
     let said = builtin_alias_note("alphacc", &unknown).expect("问不到却当成没撞");
     assert!(said.contains("exit Some(1)"), "{said}");
 }
+
+/// PowerShell 5.1 单引号字面量的**最小词法模型**，照它词法器的规则手写（引号集与生产的 `PS_QUOTES` 异源）：
+/// 任一引号字符开串；串里一个引号字符后面紧跟一个引号字符 ⇒ 收后面那个；否则串到此为止；之后必须什么都不剩。
+const MODEL_PS_QUOTES: [char; 5] = ['\u{27}', '\u{2018}', '\u{2019}', '\u{201a}', '\u{201b}'];
+
+fn model_read_ps_literal(lit: &str) -> Option<String> {
+    let q = |c: char| MODEL_PS_QUOTES.contains(&c);
+    let mut it = lit.chars().peekable();
+    if !it.next().is_some_and(q) {
+        return None;
+    }
+    let mut out = String::new();
+    loop {
+        let c = it.next()?;
+        if !q(c) {
+            out.push(c);
+            continue;
+        }
+        match it.next_if(|&n| q(n)) {
+            Some(n) => out.push(n),
+            None => break,
+        }
+    }
+    it.next().is_none().then_some(out)
+}
+
+/// ★ 住址：`设计/99 §2.3`「高危四条（M/N PowerShell 引号注入 …）发版前修」· `第四波记录/WIN3.md §2` M/N。
+/// 唯一出口 [`ps_literal`] 渲出的串按模型读回 == 原串（值里的引号字符在哪、几个、混不混排都不许把串提前收尾）；
+/// 模型认的引号集 == `PS_QUOTES`（两向）。输入：{字母 · 五个引号 · `$` · 反引号 · `"` · 空格} 上长度 ≤ 4 的全部串。
+#[test]
+fn every_powershell_literal_reads_back_as_exactly_its_value() {
+    use std::collections::BTreeSet;
+    assert_eq!(
+        MODEL_PS_QUOTES.iter().copied().collect::<BTreeSet<char>>(),
+        PS_QUOTES.iter().copied().collect::<BTreeSet<char>>(),
+        "生产认的引号集与 PowerShell 词法器认的不是同一组"
+    );
+    let alphabet: Vec<char> = MODEL_PS_QUOTES
+        .iter()
+        .copied()
+        .chain(['a', '$', '`', '"', ' '])
+        .collect();
+    let mut layer = vec![String::new()];
+    let mut seen = 0usize;
+    for _ in 0..=4 {
+        for s in &layer {
+            let lit = ps_literal(s);
+            assert_eq!(
+                model_read_ps_literal(&lit).as_deref(),
+                Some(s.as_str()),
+                "{s:?} 渲成 {lit:?}，PowerShell 读回来不是它"
+            );
+            seen += 1;
+        }
+        layer = layer
+            .iter()
+            .flat_map(|s| alphabet.iter().map(move |c| format!("{s}{c}")))
+            .collect();
+    }
+    assert_eq!(seen, 11_111, "全排列没走全");
+    // 模型自己有牙：旧写法（只双写 ASCII `'`）遇上 `’` 就读不回来。
+    let old = format!("'{}'", "a\u{2019}b".replace('\'', "''"));
+    assert_eq!(model_read_ps_literal(&old), None);
+}
