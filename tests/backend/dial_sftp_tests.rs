@@ -640,7 +640,7 @@ async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_l
     let g = fs.lock().unwrap();
     assert_eq!(
         g.dir_modes.get(".cc-monitor/bin").copied(),
-        Some(crate::own_dir::PRIVATE_DIR_MODE),
+        Some(crate::common::own_dir::PRIVATE_DIR_MODE),
         "新建的 bin 没收成只给本人：{:?}",
         g.mutated
     );

@@ -90,6 +90,10 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     sid: records::session_id_of,
     turn_end: Some(turn::turn_end_uuid_of),
     drift: Some(drift::report),
+    delete: Some(super::SessionDelete {
+        locate: paths::session_file_for_delete,
+        is_record: paths::is_session_record_path,
+    }),
 };
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {

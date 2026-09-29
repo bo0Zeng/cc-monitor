@@ -145,6 +145,39 @@ pub(crate) struct RecordFace {
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> serde_json::Value>,
+    /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
+    pub(crate) delete: Option<SessionDelete>,
+}
+
+/// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；
+/// 由门（命令注册那一处）经 [`locate_session_for_delete`] · [`is_session_record`] 这一个窄口递给它。
+#[derive(Clone, Copy)]
+pub(crate) struct SessionDelete {
+    /// sid ⇒ 本机要删的那一份（找 → 解到底 → 恰是那一形）。
+    pub(crate) locate: fn(&str) -> Result<PathBuf, String>,
+    /// 这一份是不是会话记录的形状（写面删之前再问一次）。
+    pub(crate) is_record: fn(&Path) -> bool,
+}
+
+/// 记录树那一家（同 [`stream_record_face`]）的删会话两问。
+fn session_delete() -> Option<SessionDelete> {
+    stream_record_face().and_then(|r| r.delete)
+}
+
+/// 〔MOD〕窄口之一：sid ⇒ 要删的那一份。没有哪一家答得了 ⇒ 照实拒。
+pub(crate) fn locate_session_for_delete(sid: &str) -> Result<PathBuf, String> {
+    match session_delete() {
+        Some(d) => (d.locate)(sid),
+        None => Err(copy_core::copy_text(
+            "beFilesWrite.session.noReader",
+            &[("id", sid)],
+        )),
+    }
+}
+
+/// 〔MOD〕窄口之二：这一份是不是会话记录（没有哪一家答得了 ⇒ 不是）。
+pub(crate) fn is_session_record(p: &Path) -> bool {
+    session_delete().is_some_and(|d| (d.is_record)(p))
 }
 
 /// 〔MOD〕一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。

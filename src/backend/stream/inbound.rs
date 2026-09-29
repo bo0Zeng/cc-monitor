@@ -39,6 +39,14 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
+/// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，
+/// 由本门递给文件管理写面 —— 写面自己一家 agent 的布局都不认（`files/module_boundary_guard.rs` 围栏那一类为零）。
+const SESSION_PORT: crate::control::files_write::SessionPort =
+    crate::control::files_write::SessionPort {
+        locate: crate::agents::locate_session_for_delete,
+        is_record: crate::agents::is_session_record,
+    };
+
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
 /// 取值与 `control/resolve_query.rs::MAX_RESOLVE_STDIN` 同一量级（1 MiB）——
@@ -1942,7 +1950,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["bytes", "content", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1962,7 +1970,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1974,7 +1982,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["from", "path", "root", "to"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1988,7 +1996,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["expect", "path", "recursive", "rel", "removed", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2007,7 +2015,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["mode", "path", "rel", "root"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2034,7 +2042,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2085,7 +2093,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2112,7 +2120,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["exists", "path", "rel", "root", "text"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2127,7 +2135,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -2139,7 +2147,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["path", "sid"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::control::files_write::answer_wire(&r.cmd, &r.args)
+            crate::control::files_write::answer_wire(&r.cmd, &r.args, &SESSION_PORT)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

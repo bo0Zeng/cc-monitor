@@ -75,7 +75,7 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
 /// 登记表：`(文件, 函数, 建的是什么)`。第三列恰为 [`OWN_HOME`] 的那几行 = 建后端自家目录的地方。
 const OWN_HOME: &str = "后端自家目录";
 const DIR_CREATORS: &[(&str, &str, &str)] = &[
-    ("own_dir.rs", "ensure_private_dir", OWN_HOME),
+    ("common/own_dir.rs", "ensure_private_dir", OWN_HOME),
     ("dial/sftp.rs", "make_dir", OWN_HOME),
     (
         "control/files_write.rs",
@@ -147,7 +147,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     let home: Vec<&str> = DIR_CREATORS
         .iter()
         .filter(|(_, _, what)| *what == OWN_HOME)
-        .map(|(f, n, _)| if *f == "own_dir.rs" { *n } else { *f })
+        .map(|(f, n, _)| if *f == "common/own_dir.rs" { *n } else { *f })
         .collect();
     assert_eq!(
         home,
@@ -178,7 +178,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     ] {
         assert_eq!(
             src(f)
-                .matches("crate::own_dir::ensure_private_dir(")
+                .matches("crate::common::own_dir::ensure_private_dir(")
                 .count(),
             1,
             "{f} 建自家目录不是经 own_dir 恰好一处"
@@ -186,7 +186,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     }
     let sftp = src("dial/sftp.rs");
     assert_eq!(
-        sftp.matches("permissions: Some(crate::own_dir::PRIVATE_DIR_MODE)")
+        sftp.matches("permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE)")
             .count(),
         1,
         "远端部署建目录没用同一个权限位"

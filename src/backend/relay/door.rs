@@ -110,7 +110,7 @@ pub(crate) fn ensure_key(path: &Path) -> Result<Key, String> {
         )
     })?;
     // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。〔HX2〕挪到拿锁之前：锁的是这个目录，它得先在。
-    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beDoor.fs.mkdirFailed",
             &[("dir", &dir.display().to_string()), ("e", &e.to_string())],

@@ -362,7 +362,7 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
         // 〔HX1〕这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
-        crate::own_dir::ensure_private_dir(&next).map_err(|e| {
+        crate::common::own_dir::ensure_private_dir(&next).map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesCommit.staging.mkdirFailed",
                 &[("path", &next.display().to_string()), ("e", &e.to_string())],

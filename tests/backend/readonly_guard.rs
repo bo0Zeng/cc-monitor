@@ -182,7 +182,14 @@ mod tests {
             "alloc_probe",
             "线程级内存量具（整体 cfg(test)，生产构建为空）",
         ),
-        ("common", "两边都要、又不含平台原语的纯工具"),
+        (
+            "common",
+            "两边都要、又不含平台原语的纯工具。\
+             〔MOD · 子步 4 · 主会话裁〕`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖），它的理由原样： \
+             〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
+             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
+             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
         ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
         ("dial", "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处"),
         (
@@ -201,12 +208,6 @@ mod tests {
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
              写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
              见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
-        ),
-        (
-            "own_dir",
-            "〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
-             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
-             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "footprint",
@@ -763,7 +764,7 @@ mod tests {
              入口只有 `main.rs`（CLI 子命令 `--resident-ensure` · 常驻载体绑上口之后那一处）",
         ),
         (
-            "own_dir.rs",
+            "common/own_dir.rs",
             "〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
              不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
@@ -871,8 +872,8 @@ mod tests {
         ("control/resident.rs", "resident::", "main.rs"),
         // 〔HX1〕后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
-            "own_dir.rs",
-            "own_dir::ensure_private_dir",
+            "common/own_dir.rs",
+            "common::own_dir::ensure_private_dir",
             "control/files_commit.rs",
         ),
     ];
@@ -1371,7 +1372,7 @@ mod tests {
          没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
     ),
     (
-        "own_dir.rs",
+        "common/own_dir.rs",
         "〔HX1 · 4D〕后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
     )];
@@ -1735,7 +1736,7 @@ mod tests {
     ///
     /// 1. 例外那根围栏针 `fenced_session_file(` 在后端生产树里**恰好一处调用**（不算它自己的定义），
     ///    而且那一处住在 `delete_session_with` 的函数体里；
-    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**写面模块引用它；
+    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**适配层自家注册表引用它，注册表的窄口只有门引用（〔MOD〕改经门）；
     /// 3. 写面登记里那条命令的 `args` **恰好是** `["sid"]`；
     /// 4. 真跑：多给一个 `path` ⇒ `bad_args`（「只收 sid」是行为，不只是登记）。
     #[test]
@@ -1744,8 +1745,10 @@ mod tests {
         let call = format!("fenced_session_file{}", "(");
         let def = format!("fn {call}");
         let locate = format!("session_file_for_delete{}", "");
+        let port = format!("locate_session_for_{}", "delete");
         let mut calls: Vec<(String, String)> = Vec::new();
         let mut locators: std::collections::BTreeSet<String> = Default::default();
+        let mut port_users: std::collections::BTreeSet<String> = Default::default();
         let mut scanned = 0usize;
         for path in core_files() {
             if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
@@ -1777,7 +1780,10 @@ mod tests {
                 }
             }
             if prod.contains(locate.as_str()) && rel != "agents/claudecode/paths.rs" {
-                locators.insert(rel);
+                locators.insert(rel.clone());
+            }
+            if prod.contains(port.as_str()) && rel != "agents/mod.rs" {
+                port_users.insert(rel);
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
@@ -1790,10 +1796,17 @@ mod tests {
             "\n删会话那一道（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
              多出来的每一处都是把「能删会话文件」借给了第二个函数。"
         );
+        // 〔MOD · 子步 4〕落点那一问改经门：适配层那个入口只有它自家注册表那一行引用，
+        //   注册表的窄口（`agents::locate_session_for_delete`）只有门（命令注册那一处）引用、递给写面。
         assert_eq!(
             locators.into_iter().collect::<Vec<_>>(),
-            vec!["control/files_write.rs".to_string()],
-            "「按 sid 找要删的那一份」只许写面模块引用 —— 别的面拿到它就等于拿到了删会话的落点"
+            vec!["agents/claudecode/mod.rs".to_string()],
+            "「按 sid 找要删的那一份」只许适配层自家注册表那一行引用 —— 别的面拿到它就等于拿到了删会话的落点"
+        );
+        assert_eq!(
+            port_users.into_iter().collect::<Vec<_>>(),
+            vec!["stream/inbound.rs".to_string()],
+            "删会话落点的窄口只许门引用（它递给写面）—— 别的面拿到它就等于拿到了删会话的落点"
         );
         let spec = crate::control::files_write::MANAGE_COMMANDS
             .iter()
@@ -1804,9 +1817,14 @@ mod tests {
             &["sid"],
             "删历史会话那条命令**只收 sid** —— 多一个入参就多一种表达「另一份文件」的办法"
         );
+        let port = crate::control::files_write::SessionPort {
+            locate: crate::agents::locate_session_for_delete,
+            is_record: crate::agents::is_session_record,
+        };
         match crate::control::files_write::answer_wire(
             "files-delete-session",
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
+            &port,
         ) {
             Err((code, _)) => assert_eq!(code, "bad_args", "多给一个 `path` 该回 bad_args"),
             Ok(v) => panic!("🔴 多给了一个 `path`，删会话那条竟然答了：{v}"),
@@ -1823,7 +1841,7 @@ mod tests {
     ///
     /// 人群：后端生产树里**调**会话形状判定（`is_session_record_path(` / `is_session_record_file(`，
     /// 不算定义行）的 `(文件, 所在函数)`，逐行现打。
-    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」）·
+    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」；〔MOD〕经门递进来的 `SessionPort.is_record` 问）·
     /// 适配层 `session_file_for_delete_in`（按 sid 找到之后再判一次形状）· 适配层 `is_session_record_path`
     /// （`&Path` 门面，调字符串那一份）。期望取自 `files-delete-session` 那条既有裁决（RW1「只收 sid」），
     /// 不从判定本家现推（异源）。
@@ -1834,9 +1852,11 @@ mod tests {
     #[test]
     fn the_file_manager_face_never_asks_the_session_shape() {
         fn session_shape_calls(rel: &str, prod: &str) -> Vec<(String, String)> {
+            // 〔MOD · 子步 4〕写面今天经门递进来的窄口问（`SessionPort.is_record`），不再直呼适配层那个名字 ⇒ 第三根针。
             let needles = [
                 format!("is_session_record_{}(", "path"),
                 format!("is_session_record_{}(", "file"),
+                format!("is_{}(", "record"),
             ];
             let mut cur_fn = String::new();
             let mut out = Vec::new();
@@ -2360,7 +2380,7 @@ mod tests {
                             continue;
                         }
                         // 〔HX1〕带权限位建目录：只在建自家目录的那一个模块里放行。
-                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "own_dir.rs" {
+                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "common/own_dir.rs" {
                             continue;
                         }
                         // 🔴 〔波 5 ㈡〕第三层那个**闭集**：只在第三层模块里放行，别处照旧红。

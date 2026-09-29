@@ -332,7 +332,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
         ),
     ))?;
     // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::own_dir::ensure_private_dir(lock_dir).map_err(|e| {
+    crate::common::own_dir::ensure_private_dir(lock_dir).map_err(|e| {
         (
             "io_failed",
             copy_text(

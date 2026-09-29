@@ -170,7 +170,7 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
         )
     })?;
     // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beExitPolicy.writeAt.mkdirFailed",
             &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
