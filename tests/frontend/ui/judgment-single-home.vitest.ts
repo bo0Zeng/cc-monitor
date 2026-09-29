@@ -708,6 +708,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     say: NONE,
     stamp_scan_cmd: NONE,
     this_machine: NONE,
+    // 〔THIN〕产物在线上的那个词（帧命令 `deploy-slot` 的 `product`，两侧对上的契约）；TS 侧不说它 ⇒ NONE。
+    wire: NONE,
+    of_wire: NONE,
   },
 };
 

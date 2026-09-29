@@ -4946,6 +4946,9 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/gate_singleton_guard_tests.rs", 1),
         // 〔THIN〕新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
         ("src/frontend/shell/src/remote_resident.rs", 1),
+        // 〔THIN〕新行两条：全景「那台要哪一格」进了本机常驻后端 —— monitor 那个问 `uname` 的口（`probe_key`）原处一块 · 后端那一节点它的旧名一块。
+        ("src/frontend/shell/src/byte_table.rs", 1),
+        ("src/backend/control/deploy_plan.rs", 1),
         ("src/frontend/shell/src/panorama_bytes.rs", 1), // 〔MIG-3b 续〕新行：全景问 · 写 · 撤那一跳（`panorama_call.rs`）删了，放字节那一半搬来，点旧住址
         ("src/frontend/ui/panorama/api.ts", 1), // 〔MIG-3b 续〕新行：原 Tauri 命令三条删了（界面直问那台后端）
         ("tests/frontend/shell/ssh_source_write_half_guard.rs", 2), // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 1 → 2 // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑

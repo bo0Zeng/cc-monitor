@@ -56,6 +56,23 @@ pub enum Product {
     Panorama,
 }
 
+impl Product {
+    /// 〔THIN〕线上那个词（帧命令 `deploy-slot` 的 `product`）—— 两侧对上的契约，只此一份。
+    pub fn wire(self) -> &'static str {
+        match self {
+            Product::Backend => "backend",
+            Product::Panorama => "panorama",
+        }
+    }
+
+    /// [`Product::wire`] 的逆；认不出 ⇒ `None`。
+    pub fn of_wire(w: &str) -> Option<Product> {
+        [Product::Backend, Product::Panorama]
+            .into_iter()
+            .find(|p| p.wire() == w)
+    }
+}
+
 /// 表 B 的 origin 轴：目标机器是不是自己。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {

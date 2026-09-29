@@ -187,6 +187,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 〔THIN〕远端常驻后端 hello 的新旧改问本机常驻后端（`resident-verdict`，判定只在后端）：一问一答，照样走分流器，
     //   理由与 `sftp.rs` 问部署计划那条逐字相同（长连接不在时明说，没有第二条路可回落）。
     ("remote_resident.rs", Verdict::UsesRouter),
+    // 〔THIN〕全景推字节之前「那台要哪一格」改问本机常驻后端（`deploy-slot`）：一问一答，照样走分流器（理由同上两行）。
+    ("panorama_bytes.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

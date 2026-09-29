@@ -341,6 +341,8 @@ fn every_registered_command_declares_its_run_kind() {
         "deploy-plan",
         // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
         "resident-verdict",
+        // 〔THIN〕那台要哪一格：远端真异步（等 capture），本机纯判定。
+        "deploy-slot",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
         "remote-reach",
         // 〔MIG-1〕端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。

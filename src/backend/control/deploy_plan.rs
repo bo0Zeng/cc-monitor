@@ -13,6 +13,11 @@
 //!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
 //!
+//! # 〔THIN〕帧命令 `deploy-slot`（同一家，第 ① 步单拿出来）
+//!
+//! 全景小程序推字节之前「那台要哪一格」：远端问 `uname`、本机取这台的键 → 表 A / 表 B → 这一版带没带（[`answer_slot`]）；
+//! `deploy-plan` 的第 ① 步走同一个 `slot_of`。monitor 只按答里那一格取字节。
+//!
 //! # 〔THIN〕帧命令 `resident-verdict`（同一家）
 //!
 //! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
@@ -90,41 +95,67 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
     })
 }
 
+/// 〔THIN〕**那台要哪一格字节** —— 部署计划的第 ① 步，两件产物共用（`deploy-plan` 与 `deploy-slot` 都走它）。
+///
+/// 远端（有 `facing`）：问 `uname -s -m`（[`deploy_core::key_from_uname`]）；本机（`None`）：这台自己的键（`Key::this_machine`，
+/// `设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。→ 表 A / 表 B（[`deploy_core::judge`]）→ 这一版带没带那一格（`carried`）。
+/// 拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；回那一格与问 `uname` 那一趟拨号的 ack（本机 `Null`）。
+async fn slot_of(
+    facing: Option<&dyn Facing>,
+    product: Product,
+    carried: &[Key],
+    machine: &str,
+) -> Result<(Key, Value), (&'static str, String)> {
+    let said = |r: Refusal| ("refused", r.say(product, machine));
+    let (raw, route, ack) = match facing {
+        Some(f) => {
+            let (got, ack) = f
+                .exec(deploy_core::UNAME_CMD.to_string())
+                .await
+                .map_err(|e| {
+                    let said = match product {
+                        Product::Backend => copy_text(
+                            "rsSftp.deploy.unameFailed",
+                            &[("machine", machine), ("e", &e)],
+                        ),
+                        Product::Panorama => copy_text(
+                            "beDeploySlot.uname.failed",
+                            &[("machine", machine), ("e", &e)],
+                        ),
+                    };
+                    ("unreachable", said)
+                })?;
+            (
+                deploy_core::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
+                Route::Remote,
+                ack,
+            )
+        }
+        None => (Key::this_machine(), Route::Local, Value::Null),
+    };
+    let key = deploy_core::judge(product, route, raw).map_err(said)?;
+    if !carried.contains(&key) {
+        return Err(said(Refusal::NotCarried {
+            os: key.os.label().to_string(),
+            arch: key.arch.label().to_string(),
+        }));
+    }
+    Ok((key, ack))
+}
+
 /// 出计划。`machine` = monitor 交来的那台的名字（只用来说话）。失败 = `(code, 一句话)`。
 pub async fn plan(
     facing: &dyn Facing,
     carried: &[(Key, String)],
     machine: &str,
 ) -> Result<Plan, (&'static str, String)> {
-    let said = |r: Refusal| ("refused", r.say(Product::Backend, machine));
-    let (got, ack) = facing
-        .exec(deploy_core::UNAME_CMD.to_string())
-        .await
-        .map_err(|e| {
-            (
-                "unreachable",
-                copy_text(
-                    "rsSftp.deploy.unameFailed",
-                    &[("machine", machine), ("e", &e)],
-                ),
-            )
-        })?;
-    let key = deploy_core::judge(
-        Product::Backend,
-        Route::Remote,
-        deploy_core::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
-    )
-    .map_err(said)?;
+    let keys: Vec<Key> = carried.iter().map(|(k, _)| *k).collect();
+    let (key, ack) = slot_of(Some(facing), Product::Backend, &keys, machine).await?;
     let expected = carried
         .iter()
         .find(|(k, _)| *k == key)
         .map(|(_, id)| id.clone())
-        .ok_or_else(|| {
-            said(Refusal::NotCarried {
-                os: key.os.label().to_string(),
-                arch: key.arch.label().to_string(),
-            })
-        })?;
+        .expect("slot_of 只回带着的那一格");
     let landing = relay_route_core::BACKEND_LANDING_REL;
     let id = identity_at(facing, landing, relay_route_core::BACKEND_LANDING_SHELL)
         .await
@@ -285,6 +316,47 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
             crate::common::contract::malformed("missing `machine` (string)"),
         ))?;
     plan(facing, &carried, machine).await.map(|p| plan_json(&p))
+}
+
+// ═══ 〔THIN〕那台要哪一格（帧命令 `deploy-slot`）═══════════════════════════════════════════
+//
+// 全景小程序推字节之前那一问（`设计/00 §1.2`：表 A / 表 B 的承诺是裁决 ⇒ 住后端；monitor 只按答里那一格取字节）。
+// 从前 monitor 自己问 `uname`（`byte_table::probe_key`〔散文墓碑〕）再 `choose`；今天远端本机两形都问本机常驻后端。
+
+/// 帧面入口：`{product, machine, carried: [{os, arch}], dial?}` → `{os, arch, label, ack}`。有 `dial` ⇒ 那台远端；没有 ⇒ 本机。
+pub async fn answer_slot(
+    args: &Value,
+    facing: Option<&dyn Facing>,
+) -> Result<Value, (&'static str, String)> {
+    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+    let product = args
+        .get("product")
+        .and_then(Value::as_str)
+        .and_then(Product::of_wire)
+        .ok_or_else(|| bad("`product` must be `backend` or `panorama`"))?;
+    let machine = args
+        .get("machine")
+        .and_then(Value::as_str)
+        .filter(|m| !m.trim().is_empty())
+        .ok_or_else(|| bad("missing `machine` (string)"))?;
+    let carried: Vec<Key> = args
+        .get("carried")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("missing `carried` (array)"))?
+        .iter()
+        .map(|r| {
+            let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
+            deploy_core::key_of(s("os"), s("arch"))
+                .map_err(|_| bad("`carried` row names a machine outside table A"))
+        })
+        .collect::<Result<_, _>>()?;
+    let (key, ack) = slot_of(facing, product, &carried, machine).await?;
+    Ok(json!({
+        "os": key.os.label(),
+        "arch": key.arch.label(),
+        "label": key.label(),
+        "ack": ack,
+    }))
 }
 
 // ═══ 〔THIN〕远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════

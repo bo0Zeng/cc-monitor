@@ -10355,6 +10355,11 @@
       "zh": "问 {machine} 是什么机器没问成，没有装后端：{e}",
       "args": ["machine", "e"]
     },
+    "beDeploySlot.uname.failed": {
+      "kind": "error",
+      "zh": "问 {machine} 是什么机器没问成，没有放代码全景组件：{e}",
+      "args": ["machine", "e"]
+    },
     "rsSftp.identity.undecidable": {
       "kind": "error",
       "zh": "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}",
@@ -14327,6 +14332,11 @@
       "kind": "error",
       "zh": "本机后端：{message}",
       "args": ["message"]
+    },
+    "rsPanoramaBytes.slot.unreadable": {
+      "kind": "error",
+      "zh": "本机后端答的那一格对不上这一版的全景组件。两边版本不一致。",
+      "args": []
     },
     "rsPanoramaBytes.push.noConfig": {
       "kind": "error",

@@ -139,6 +139,8 @@ pub const COMMANDS: &[&str] = &[
     "ccm-probe",
     // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-plan",
+    // 〔THIN〕那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "deploy-slot",
     // 〔MOD〕这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "drift-report",
     "exit-policy-read",
@@ -1374,6 +1376,32 @@ pub const REGISTRY: &[CommandSpec] = &[
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔THIN〕**那台要哪一格字节**：`{product, machine, carried, dial?}` → `{os, arch, label, ack}`（有 `dial` ⇒ 沿池里那条 SSH 问 `uname`，真异步；
+    //   没有 ⇒ 本机那一格）。本体 `control/deploy_plan.rs::answer_slot`（与 `deploy-plan` 第 ① 步同一个 `slot_of`）。
+    CommandSpec {
+        name: "deploy-slot",
+        doc_anchor: Some("#### `deploy-slot`"),
+        codes: &["bad_args", "refused", "unreachable"],
+        fields: &[
+            "ack", "arch", "carried", "dial", "label", "machine", "os", "product",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let dial = r.args.get("dial").cloned();
+                let facing = dial.map(crate::control::deploy_plan::DialFacing::new);
+                crate::control::deploy_plan::answer_slot(
+                    &r.args,
+                    facing
+                        .as_ref()
+                        .map(|f| f as &dyn crate::control::deploy_plan::Facing),
+                )
+                .await
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
             })
         }),
     },
