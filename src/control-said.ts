@@ -118,7 +118,14 @@ export function unavailableSaid(origin: Origin, op: string): string | null {
   if (offer === undefined) void chan.offer(origin);
   const code = unavailableCode(offer, op);
   if (code === null) return null;
-  const machine = machineName(origin);
+  return unavailableReason(code, machineName(origin));
+}
+
+/**
+ * 那台说「做不到」的一个码说成人话（hello 的 `unavailable` · 真调用回的同一个码）。唯一住址：
+ * 置灰那一句（{@link unavailableSaid}）与测试连接那一格的「做不到的那几类」（`settings/machine-card.ts`）共用。
+ */
+export function unavailableReason(code: string, machine: string): string {
   switch (code) {
     case "no_tmux":
       return copyText("control.unavailable.noTmux", { machine });

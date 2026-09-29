@@ -274,6 +274,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "同上一格：那块盘不认这个旗时退回先看后改（要问是不是「没有这件原语」）",
     ),
     (
+        "platform::fs::rename_by_link",
+        Kind::Platform,
+        "〔主会话 09-28 裁〕盘不认不覆盖改名时，普通文件走 `link` ＋ `unlink`（目标已在 ⇒ 原子失败）",
+    ),
+    (
         "platform::fs::NO_FOLLOW",
         Kind::Platform,
         "〔FIX5〕全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",

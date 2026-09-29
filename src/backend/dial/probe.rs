@@ -36,6 +36,7 @@ fn outcome(
     fingerprint: Option<String>,
     endpoint: Option<String>,
     hello: Option<String>,
+    gaps: Vec<GapCount>,
     message: String,
 ) -> Value {
     json!({
@@ -44,8 +45,76 @@ fn outcome(
         "endpoint": endpoint,
         "backendOk": hello.is_some(),
         "backendHello": hello,
+        "backendGaps": gaps,
         "message": message,
     })
+}
+
+/// 〔主会话 09-28 裁〕测试连接那一行给人看的三格要的事实：后端版本（BUILD_ID）· 能用几项 / 这台说做不到几项；
+/// 做不到的按码分类、每类几项交出去（那句人话归 monitor：`control-said.ts::unavailableReason`，与置灰那一句同一个家 ——
+/// `wire::Unavailable` 头注「那句人话今天归 monitor」）。键值对那一形（`wire::hello_summary`）只进日志。
+struct HelloFacts {
+    build: String,
+    usable: usize,
+    gaps: usize,
+    by_code: Vec<GapCount>,
+}
+
+/// `hello.unavailable` 的一项（线上形状同 `wire::Unavailable`；那边只要写，这边只要读）。
+#[derive(serde::Deserialize)]
+struct Gap {
+    command: String,
+    code: String,
+}
+
+/// `backendGaps` 的一项：这台说做不到的一类（码）· 这一类几项。
+#[derive(serde::Serialize)]
+struct GapCount {
+    code: String,
+    count: usize,
+}
+
+fn hello_facts(hello: &Value) -> HelloFacts {
+    use std::collections::{BTreeMap, BTreeSet};
+    let commands: BTreeSet<String> = hello
+        .get("commands")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    // 逐项收，坏项丢掉、不连累整张。
+    let mut by_code: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for e in hello
+        .get("unavailable")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Ok(g) = serde_json::from_value::<Gap>(e.clone()) {
+            by_code.entry(g.code).or_default().insert(g.command);
+        }
+    }
+    let cant: BTreeSet<&String> = by_code.values().flatten().collect();
+    HelloFacts {
+        build: hello
+            .get("build_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| copy_text("beProbe.hello.noBuild", &[])),
+        usable: commands.iter().filter(|c| !cant.contains(c)).count(),
+        gaps: cant.len(),
+        by_code: by_code
+            .iter()
+            .map(|(code, cmds)| GapCount {
+                code: code.clone(),
+                count: cmds.len(),
+            })
+            .collect(),
+    }
 }
 
 /// 进度格的出口：本连接的应答通道（不丢、与应答同序）。
@@ -144,6 +213,7 @@ where
                 None,
                 None,
                 None,
+                Vec::new(),
                 copy_text(
                     "beProbe.test.sshFailed",
                     &[("e", &copy_text("beProbe.link.droppedBeforeAck", &[]))],
@@ -174,6 +244,7 @@ where
             None,
             None,
             None,
+            Vec::new(),
             copy_text("beProbe.test.sshFailed", &[("e", &why)]),
         ));
     }
@@ -197,6 +268,7 @@ where
                 fingerprint,
                 endpoint,
                 None,
+                Vec::new(),
                 copy_text("beProbe.test.probeFailed", &[("e", &e)]),
             ))
         }
@@ -210,10 +282,18 @@ where
             fingerprint,
             endpoint,
             None,
+            Vec::new(),
             copy_text("beProbe.test.noHello", &[]),
         ));
     };
-    let head = crate::stream::wire::hello_summary(&hello);
+    // 键值对那一形只进日志（`wire::hello_summary`）；界面那一行由下面三格拼（文案表）。
+    tracing::info!("测试连接：{}", crate::stream::wire::hello_summary(&hello));
+    let facts = hello_facts(&hello);
+    let (build, usable, gaps) = (
+        facts.build,
+        facts.usable.to_string(),
+        facts.gaps.to_string(),
+    );
     cells.push(json!({ "reached": "hello" })).await?;
 
     // ③ 控制通道往返。
@@ -221,9 +301,9 @@ where
         .get("commands")
         .and_then(Value::as_array)
         .is_some_and(|a| a.iter().any(|c| c.as_str() == Some("ping")));
-    let (control, message) = if !accepts_ping {
+    let (line, message) = if !accepts_ping {
         (
-            copy_text("beProbe.control.unsupported", &[]),
+            copy_text("beProbe.hello.tooOld", &[("build", &build)]),
             copy_text("beProbe.test.noControl", &[]),
         )
     } else {
@@ -268,14 +348,30 @@ where
         }
         match answered {
             Ok(()) => (
-                format!(
-                    "control=ok({}ms)",
-                    t0.elapsed().map(|d| d.as_millis()).unwrap_or(0)
+                copy_text(
+                    "beProbe.hello.ok",
+                    &[
+                        ("build", &build),
+                        ("usable", &usable),
+                        ("gaps", &gaps),
+                        (
+                            "ms",
+                            &t0.elapsed().map(|d| d.as_millis()).unwrap_or(0).to_string(),
+                        ),
+                    ],
                 ),
                 copy_text("beProbe.test.ok", &[]),
             ),
             Err(e) => (
-                format!("control=failed({e})"),
+                copy_text(
+                    "beProbe.hello.noAnswer",
+                    &[
+                        ("build", &build),
+                        ("usable", &usable),
+                        ("gaps", &gaps),
+                        ("e", &e),
+                    ],
+                ),
                 copy_text("beProbe.test.controlDown", &[]),
             ),
         }
@@ -285,7 +381,8 @@ where
         true,
         fingerprint,
         endpoint,
-        Some(format!("{head} {control}")),
+        Some(line),
+        facts.by_code,
         message,
     ))
 }

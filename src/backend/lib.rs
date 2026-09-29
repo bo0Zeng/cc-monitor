@@ -659,7 +659,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5o-files-grep-search-merge**（2026-09-28，J15 ＋ FILES3 合并那一拍）：新帧命令 `history-search-merge`（多机搜索合并排序进本机后端，`search-core::sort_by_recency`）·
 /// `files-grep`（文件管理器按内容搜：不跟链接、不跨文件系统、命中文件数与读字节有上界、可撤；另有 CLI 面）· 删无调用者的 `ssh_source::winner_address`。
-pub const BUILD_ID: &str = "p5o-files-grep-search-merge";
+///
+/// ★★★ **p5p-probe-said-link-fallback**（2026-09-28，FIX5 续合并那一拍）：行为 / 协议 —— 盘不认 `RENAME_NOREPLACE` 时普通文件走 `link` ＋ `unlink`、目录拒并出声；
+/// `remote-probe` 结局那一行改人话（版本 · 能用 / 做不到几项 · 往返毫秒）＋ `backendGaps`。子命令没变。
+pub const BUILD_ID: &str = "p5p-probe-said-link-fallback";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

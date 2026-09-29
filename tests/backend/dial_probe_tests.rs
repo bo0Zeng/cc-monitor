@@ -82,12 +82,18 @@ async fn ssh_up_but_no_hello_is_its_own_verdict() {
     assert_eq!(r["message"], copy_text("beProbe.test.noHello", &[]));
 }
 
+/// 设计/91 §6 第 9 条 · 99 §2.2 R1 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一行不露 `v=… build=… caps=[…]` 日志行，
+/// 露三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），做不到的那几类按码分类交给界面；键值对那一形只进日志。
+fn is_not_a_log_line(s: &str) -> bool {
+    !s.contains('=') && !s.contains('[')
+}
+
 #[tokio::test]
 async fn a_hello_that_answers_ping_is_all_green() {
     let (r, cells) = cells_of(&args(), |_req, up, mut down| async move {
         let _ = down.write_all(b"{\"v\":2,\"ok\":true,\"uses\":[\"stream\"]}\n").await;
         let _ = down
-            .write_all(b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/h/.claude\",\"commands\":[\"ping\"]}\n")
+            .write_all(b"{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/h/.claude\",\"capabilities\":[\"stream\"],\"commands\":[\"ping\",\"kill\",\"files-chmod\"],\"unavailable\":[{\"command\":\"kill\",\"code\":\"no_tmux\"}]}\n")
             .await;
         // 真去读那一问、按它的 id 回（证明往返真走了这条流）。
         let mut lines = tokio::io::BufReader::new(up).lines();
@@ -109,14 +115,28 @@ async fn a_hello_that_answers_ping_is_all_green() {
     assert_eq!(r["backendOk"], true);
     assert_eq!(r["message"], copy_text("beProbe.test.ok", &[]));
     let hello = r["backendHello"].as_str().unwrap();
+    // 三格：版本 b1 · 能用 2 项（ping · files-chmod）、做不到 1 项（kill）· 往返 N 毫秒（N 是现量的，只核是数）。
+    let want = copy_text(
+        "beProbe.hello.ok",
+        &[
+            ("build", "b1"),
+            ("usable", "2"),
+            ("gaps", "1"),
+            ("ms", "\u{0}"),
+        ],
+    );
+    let (pre, post) = want.split_once('\u{0}').unwrap();
+    let ms = hello
+        .strip_prefix(pre)
+        .and_then(|t| t.strip_suffix(post))
+        .unwrap_or_else(|| panic!("不是那三格：{hello}"));
     assert!(
-        hello.starts_with("v=1 build=b1 arch=x86_64 home=/h/.claude"),
+        !ms.is_empty() && ms.chars().all(|c| c.is_ascii_digit()),
         "{hello}"
     );
-    assert!(
-        hello.contains("control=ok(") && hello.ends_with("ms)"),
-        "{hello}"
-    );
+    // 做不到的按码分类交出去（那句人话归 monitor，`control-said.ts::unavailableReason`）。
+    assert_eq!(r["backendGaps"], json!([{"code": "no_tmux", "count": 1}]));
+    assert!(is_not_a_log_line(hello), "机器页那一行又是日志行：{hello}");
 }
 
 #[tokio::test]
@@ -149,6 +169,13 @@ async fn an_old_backend_without_commands_says_too_old() {
     );
     assert_eq!(r["backendOk"], true);
     assert_eq!(r["message"], copy_text("beProbe.test.noControl", &[]));
+    let unknown = copy_text("beProbe.hello.noBuild", &[]);
+    assert_eq!(
+        r["backendHello"],
+        json!(copy_text("beProbe.hello.tooOld", &[("build", &unknown)]))
+    );
+    assert!(is_not_a_log_line(r["backendHello"].as_str().unwrap()));
+    assert_eq!(r["backendGaps"], json!([]));
 }
 
 #[tokio::test]
