@@ -1,0 +1,90 @@
+/**
+ * 要求住址：`设计/99 §2.1 ⑬`「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
+ * 由本机后端渲（组请求用 `dial/machine.rs::resolve`），monitor 只开终端」（FIX4 题面第 1 条）。
+ *
+ * | 性质 | 判据 |
+ * |---|---|
+ * | 远端三步：monitor 交机器事实 → 本机后端 `terminal-ssh` 渲 → monitor 开窗（交的是后端渲的那一行，`ssh: true`） | 「远端」 |
+ * | 本机：原串直接开窗，不问机器事实、不问后端 | 「本机」 |
+ * | 后端回的形状不认 / 问不到 ⇒ 抛，一个窗口都不开（不拿原串顶上） | 「问不到」 |
+ * | 开窗只有一个家：生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts} | 「一个家」 |
+ *
+ * ssh 外壳的字节归 Rust（`tests/backend/dial_terminal_tests.rs`）；这里的替身写死后端渲了什么，不重抄渲染。
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { invoke } from "@tauri-apps/api/core";
+import { openTerminal, decodeTerminalLine } from "../../../src/frontend/ui/terminal-open";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
+import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
+import { productionTsFiles } from "../../test-support/production-sources.ts";
+import { stripComments } from "../../test-support/strip-comments.ts";
+
+const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
+const FACTS = { machine: { host: "10.0.0.2", user: "u", port: 22, label: "aya" }, saved: null, jump: null, prefer: null };
+const LINE = "& ssh -t -p 22 u@10.0.0.2 -- 'bash -lic ''claude --resume s1'''";
+
+/** 替身：机器事实 · 后端渲的那一行（`render` 回 `undefined` ⇒ 通道那一层失败）· 开窗照单全收。 */
+function serve(render: () => unknown): void {
+  invokeMock.mockImplementation((cmd: string, args: unknown) => {
+    if (cmd === "terminal_dial") return Promise.resolve(FACTS);
+    if (isChanCall(cmd, args, "terminal-ssh")) {
+      const r = render();
+      return r === undefined ? Promise.reject(NO_CHANNEL) : Promise.resolve(chanReply(r));
+    }
+    return Promise.resolve(undefined);
+  });
+}
+const calls = (name: string): unknown[] => invokeMock.mock.calls.filter(([c]) => c === name).map(([, a]) => a);
+
+beforeEach(() => invokeMock.mockReset());
+
+describe("远端", () => {
+  it("★ 三步：交机器事实 ＋ 命令给本机后端，开窗交的是后端渲的那一行（`ssh: true`，令牌原样）", async () => {
+    serve(() => ({ command: LINE }));
+    await openTerminal("aya", "claude --resume s1", "0123456789abcdef0123456789abcdef");
+    expect(calls("terminal_dial")).toEqual([{ origin: "aya" }]);
+    const asked = invokeMock.mock.calls.filter(([c, a]) => isChanCall(String(c), a, "terminal-ssh"));
+    expect(asked).toHaveLength(1);
+    expect((asked[0][1] as ChanCallArgs).origin).toBe(LOCAL_ORIGIN);
+    expect(chanArgsJson(asked[0][1] as ChanCallArgs)).toEqual({ ...FACTS, command: "claude --resume s1" });
+    expect(calls("open_terminal_window")).toEqual([
+      { command: LINE, rbindToken: "0123456789abcdef0123456789abcdef", ssh: true },
+    ]);
+  });
+});
+
+describe("本机", () => {
+  it("原串直接开窗（`ssh: false`），不问机器事实、不问后端", async () => {
+    serve(() => ({ command: LINE }));
+    await openTerminal(LOCAL_ORIGIN, "claude --resume s1", null);
+    expect(calls("terminal_dial")).toEqual([]);
+    expect(invokeMock.mock.calls.some(([c, a]) => isChanCall(String(c), a, "terminal-ssh"))).toBe(false);
+    expect(calls("open_terminal_window")).toEqual([{ command: "claude --resume s1", rbindToken: null, ssh: false }]);
+  });
+});
+
+describe("问不到", () => {
+  it("★ 后端不在 / 形状不认 ⇒ 抛，一个窗口都不开；正控：认得的那一形照开", async () => {
+    serve(() => undefined);
+    await expect(openTerminal("aya", "x")).rejects.toThrow();
+    serve(() => ({ command: LINE, extra: 1 }));
+    await expect(openTerminal("aya", "x")).rejects.toThrow(/读不懂/);
+    serve(() => ({ command: "" }));
+    await expect(openTerminal("aya", "x")).rejects.toThrow(/读不懂/);
+    expect(calls("open_terminal_window")).toEqual([]);
+    expect(decodeTerminalLine({ command: LINE })).toBe(LINE);
+  });
+});
+
+describe("一个家", () => {
+  it("★ 生产段调 `commands.open_terminal_window(` / `commands.terminal_dial(` 的文件 == {terminal-open.ts}", () => {
+    const hits = productionTsFiles()
+      .filter((f) => /\bcommands\.(?:open_terminal_window|terminal_dial)\s*\(/.test(stripComments(f.text, "ts")))
+      .map((f) => f.file)
+      .sort();
+    expect(hits, "有别处自己开终端了 —— 开终端只经 `src/frontend/ui/terminal-open.ts::openTerminal`").toEqual(["src/frontend/ui/terminal-open.ts"]);
+  });
+});

@@ -52,32 +52,32 @@ const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
  * 分支覆盖比语句更容易被 v8 版本差与用例增删扰动，余量不能收得太紧。
  */
 const PER_FILE_FLOORS = [
-  ["src/tabs.ts", 64, 69.9, 54, 59.7],
+  ["src/frontend/ui/tabs.ts", 64, 69.9, 54, 59.7],
   // 〔U2 · 2026-09-24〕`tabs.ts` 拆成 13 份，它原先那一格地板护着的代码大半搬走了 ⇒ 搬去的四份大的各自接一格
   //   （同一套纪律：当前值下方 ~5 点，实测一起写下）。`tabs.ts` 那一行不动（今天实测 79.0 / 67.4，高于原地板）。
-  ["src/tab-stream-view.ts", 85, 90.8, 78, 83.9],
-  ["src/tab-session-actions.ts", 62, 67.5, 59, 64.7],
-  ["src/tab-menu.ts", 66, 71.4, 70, 75.4],
-  ["src/tab-bar-view.ts", 82, 87.5, 72, 77.4],
-  ["src/views/history.ts", 63, 68.8, 45, 50.0],
-  ["src/views/panorama.ts", 51, 56.5, 19, 24.8],
-  ["src/settings/panel.ts", 75, 80.6, 50, 55.6],
-  ["src/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
-  ["src/settings/remote-section.ts", 60, 65.6, 40, 45.1],
-  ["src/settings/mcp-section.ts", 58, 63.5, 49, 54.5],
-  ["src/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
-  ["src/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
-  // 〔墓碑〕`src/views/usage-view.ts` —— 随用量 ②③ 两轴整轴退役而整删（`设计/50`，2026-09-18）。
+  ["src/frontend/ui/tab-stream-view.ts", 85, 90.8, 78, 83.9],
+  ["src/frontend/ui/tab-session-actions.ts", 62, 67.5, 59, 64.7],
+  ["src/frontend/ui/tab-menu.ts", 66, 71.4, 70, 75.4],
+  ["src/frontend/ui/tab-bar-view.ts", 82, 87.5, 72, 77.4],
+  ["src/frontend/ui/views/history.ts", 63, 68.8, 45, 50.0],
+  ["src/frontend/ui/views/panorama.ts", 51, 56.5, 19, 24.8],
+  ["src/frontend/ui/settings/panel.ts", 75, 80.6, 50, 55.6],
+  ["src/frontend/ui/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
+  ["src/frontend/ui/settings/remote-section.ts", 60, 65.6, 40, 45.1],
+  ["src/frontend/ui/settings/mcp-section.ts", 58, 63.5, 49, 54.5],
+  ["src/frontend/ui/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
+  ["src/frontend/ui/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
+  // 〔墓碑〕`src/frontend/ui/views/usage-view.ts` —— 随用量 ②③ 两轴整轴退役而整删（`设计/50`，2026-09-18）。
   // 原地板 81/86.2 · 63/68.4。删这一行的理由是**那个文件不在了**，不是「地板太严」——
   // 往下拧地板的合法理由只有这一个（同 `doc_claim_registry` 那条纪律）。
-  ["src/accounts.ts", 83, 88.9, 83, 88.1],
+  ["src/frontend/ui/accounts.ts", 83, 88.9, 83, 88.1],
   // 〔FE1 · 第四波 4D〕`accounts.ts` 按域拆开（1670 → 663 行，语句 102）：上面那一格的地板**不动**（拆后实测 100 / 96.2，
   //   高于原地板）。它原先护着的代码大半搬走了 ⇒ 搬去的两份大的各自接一格（同一套纪律：当前值下方 ~5 点，实测一起写下）。
   //   另三份小的（`account-prefs.ts` 39 句 · `local-launch-backfill.ts` 33 句 · `account-restart.ts` 收的那一段）不单列：语句数不够「核心」那一档。
-  ["src/account-reads.ts", 92, 97.3, 89, 94.3],
-  ["src/launch-account.ts", 91, 96.5, 81, 86.0],
+  ["src/frontend/ui/account-reads.ts", 92, 97.3, 89, 94.3],
+  ["src/frontend/ui/launch-account.ts", 91, 96.5, 81, 86.0],
   // F17 下半：批量调度状态机三条分支落地（53.33 → 84.44）。它决定整个重放期是 batch 还是 live。
-  ["src/events.ts", 81, 86.7, 62, 67.0],
+  ["src/frontend/ui/events.ts", 81, 86.7, 62, 67.0],
 ];
 
 /**
@@ -90,16 +90,16 @@ const PER_FILE_FLOORS = [
  * ⇒ **这类清单必须跟着重测走**，抄一次就腐一次。
  */
 const ZERO_TODAY = [
-  "src/main.ts",
-  "src/settings/cc_integration.ts",
-  "src/views/session-viewer.ts",
-  "src/keybindings/editor.ts",
-  "src/settings/data-section.ts",
-  "src/tasks-panel.ts",
+  "src/frontend/ui/main.ts",
+  "src/frontend/ui/settings/cc_integration.ts",
+  "src/frontend/ui/views/session-viewer.ts",
+  "src/frontend/ui/keybindings/editor.ts",
+  "src/frontend/ui/settings/data-section.ts",
+  "src/frontend/ui/tasks-panel.ts",
 ];
 
 /** 0% 文件总数的棘轮地板（含上面没逐个列出的小文件）。**只许降。** */
-// ⚠ 08-06 F15 把 `src/branch-fold.ts` 从 0% 里领走了（它此前**一条专属单测都没有**，
+// ⚠ 08-06 F15 把 `src/frontend/ui/branch-fold.ts` 从 0% 里领走了（它此前**一条专属单测都没有**，
 // 而那条 O(N²) 主线重算就住在里面）⇒ 上限 17→16。**只许降**。
 //
 // ⚠ **08-06 再棘一格：16→…→14→13。** 本会话给三个此前零覆盖的模块补了 vitest
@@ -123,12 +123,12 @@ try {
 }
 
 /**
- * 把 summary 的键归一成**仓根相对 + 正斜杠**（`src/tabs.ts`）—— 下面每一处比对都吃归一化后的键。
+ * 把 summary 的键归一成**仓根相对 + 正斜杠**（`src/frontend/ui/tabs.ts`）—— 下面每一处比对都吃归一化后的键。
  *
  * # 为什么必须归一（09-09，本脚本第一次在 windows-latest 上执行时逐条打出来的）
  *
  * 键是 `getFileCoverage().path`（`istanbul-reports/lib/json-summary/index.js:onDetail`），
- * 即**该平台的原生绝对路径**：Linux 上是 `/home/…/cc-monitor/src/tabs.ts`，
+ * 即**该平台的原生绝对路径**：Linux 上是 `/home/…/cc-monitor/src/frontend/ui/tabs.ts`，
  * Windows 上是 `D:\a\cc-monitor\cc-monitor\src\tabs.ts`。
  * 而本文件里那两张清单（`PER_FILE_FLOORS` · `ZERO_TODAY`）写的全是**正斜杠相对路径**。
  * ⇒ 原来那套 `k.endsWith("/" + rel)` 在 Windows 上**恒 false**：
@@ -212,7 +212,7 @@ for (const [rel, floor, measured, bFloor, bMeasured] of PER_FILE_FLOORS) {
 const zeroNow = files.filter(([, v]) => v.statements.pct === 0).map(([k]) => k);
 
 // ⚠ 三处都改成**等号**，不再用 `endsWith`：两边现在是同一种形状（仓根相对 + 正斜杠），
-//   而 `endsWith` 会把 `src/a/src/tabs.ts` 也认成 `src/tabs.ts` —— 松匹配在这里只会掩盖问题。
+//   而 `endsWith` 会把 `src/a/src/tabs.ts` 也认成 `src/frontend/ui/tabs.ts` —— 松匹配在这里只会掩盖问题。
 const newZero = zeroNow.filter((f) => !ZERO_TODAY.includes(f));
 // 只有语句数够大的新 0% 才算回归；小工具文件天然可能没测。
 const newZeroBig = newZero.filter((f) => {

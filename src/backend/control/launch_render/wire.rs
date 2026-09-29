@@ -74,7 +74,7 @@ pub enum WireContainer {
 /// 「远端的继承怎么表达是另一回事，**不算已解**」）。
 ///
 /// ⇒ 要给远端加这一态，落点是 `K-R90`，同拍要动的至少有三样：本枚举 ·
-/// `src/launch-cli-wire.ts`（TS 那份手写镜像，由 `launch-cli-wire.vitest.ts` 的
+/// `src/frontend/ui/launch-cli-wire.ts`（TS 那份手写镜像，由 `launch-cli-wire.vitest.ts` 的
 /// 「字段集相等」钉着）· `remote-launch-run.ts::buildCliRenderRequest`（真正填它的地方）。
 /// **别在这里顺手加一个变体就当远端也通了。**
 #[derive(Debug, Deserialize)]

@@ -40,7 +40,7 @@ def main():
     env.pop("TMUX_PANE", None)
     r = subprocess.run(
         ["cargo", "test", "-p", "monitor", "--lib", TEST, "--", "--ignored", "--nocapture", "--exact", f"local_lines::tests::{TEST}"],
-        cwd=os.path.join(ROOT, "src", "bridge"),
+        cwd=os.path.join(ROOT, "src", "frontend", "shell"),
         env=env,
         capture_output=True,
         text=True,

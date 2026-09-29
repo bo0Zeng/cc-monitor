@@ -378,7 +378,7 @@ fn the_profile_location_has_exactly_one_home() {
         files.len() > 500
             && files
                 .iter()
-                .any(|(r, _)| r == "src/bridge/src/data_paths.rs"),
+                .any(|(r, _)| r == "src/frontend/shell/src/data_paths.rs"),
         "`src/` 只扫到 {} 份，或者没扫到 data_paths.rs —— 遍历坏了",
         files.len()
     );
@@ -406,19 +406,28 @@ fn the_profile_location_census_sees_the_old_shapes() {
     );
     let old_ts = format!("const p = swap(x, \"{}\");\n/** {} */\n", n[1], n[2]);
     let got = profile_location_census(&[
-        ("src/bridge/src/data_paths.rs".into(), old_discover),
-        ("src/settings/x.ts".into(), old_ts),
+        ("src/frontend/shell/src/data_paths.rs".into(), old_discover),
+        ("src/frontend/ui/settings/x.ts".into(), old_ts),
     ]);
     let want: std::collections::BTreeMap<(String, String), usize> = [
         (
-            ("src/bridge/src/data_paths.rs".to_string(), n[0].clone()),
+            (
+                "src/frontend/shell/src/data_paths.rs".to_string(),
+                n[0].clone(),
+            ),
             1,
         ),
         (
-            ("src/bridge/src/data_paths.rs".to_string(), n[2].clone()),
+            (
+                "src/frontend/shell/src/data_paths.rs".to_string(),
+                n[2].clone(),
+            ),
             1,
         ),
-        (("src/settings/x.ts".to_string(), n[1].clone()), 1),
+        (
+            ("src/frontend/ui/settings/x.ts".to_string(), n[1].clone()),
+            1,
+        ),
     ]
     .into_iter()
     .collect();

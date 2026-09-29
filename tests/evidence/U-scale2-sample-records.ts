@@ -77,11 +77,11 @@
  * - `card-api-retry` / `card-api-error` / `card-bash-input` / `card-bash-output`
  *   在真语料里 0 条（本脚本顺带普查过：8 个项目 32 674 条记录里
  *   `system.subtype == "api_error"` 0 条、`<bash-input>` 0 条）
- *   ⇒ 这四个卡型的构造体在 `tests/scale2-height-corpus.ts` 里，标着 `synthetic`。
+ *   ⇒ 这四个卡型的构造体在 `tests/frontend/ui/scale2-height-corpus.ts` 里，标着 `synthetic`。
  *
  * 复算：`npx tsx tests/evidence/U-scale2-sample-records.ts`
  *
- * ⚠ 为什么是 `.ts` 而不是 `.mjs`：`tests/eslint-baseline.vitest.ts` 的第②格要求
+ * ⚠ 为什么是 `.ts` 而不是 `.mjs`：`tests/frontend/ui/eslint-baseline.vitest.ts` 的第②格要求
  * 每个被 lint 到的 `.mjs` 目录都要在 `eslint.config.js` 里有 `files:` 块认领，
  * 而 `eslint.config.js` 不在本轮写区里。**这不是绕过判据，是走它指的另一条合规路。**
  * 同理本文件不碰 `process` / `Buffer`（`tests/**` 那格只配了 browser globals）。

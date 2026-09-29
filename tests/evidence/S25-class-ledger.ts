@@ -2,9 +2,9 @@
  * `S25` —— **CSS 与代码之间那本账的量具**（`设计/40 §7` 步 9 ② · `设计/41 §12` 件 8）。
  *
  * 🔴 **这份文件只是量具，不是判据。** 判据（含"哪些前缀准用、凭什么准用"那张登记表）
- * 住 `tests/css-ledger.vitest.ts`。把量具与判据分开是**刻意的**，两条理由：
+ * 住 `tests/frontend/ui/css-ledger.vitest.ts`。把量具与判据分开是**刻意的**，两条理由：
  *
- * 1. `tests/scanning-guard-registry.vitest.ts` 有一条棘轮（`WALKER_CEILING = 11`）：
+ * 1. `tests/frontend/ui/scanning-guard-registry.vitest.ts` 有一条棘轮（`WALKER_CEILING = 11`）：
  *    **`.vitest.ts` / `.test.ts` 里做目录遍历的文件只许变少**。本量具要走 `src/` 整棵树，
  *    住进 `.vitest.ts` 就会把那条棘轮顶破 —— 而那个文件不在本轮写区。
  *    ⇒ 遍历留在本文件（它既不是 `.vitest.ts` 也不是 `.test.ts`，`IS_TEST` 取不到它），
@@ -41,18 +41,18 @@
  *
  * 第一版用 `` /`([^`]*)`/g `` 取模板，当场栽两次，两次都**静默给出错答案**：
  *
- * - **嵌套模板**：`src/paste-block.ts:90` 是
+ * - **嵌套模板**：`src/frontend/ui/paste-block.ts:90` 是
  *   `` root.className = `paste-block${spec.className ? ` ${spec.className}` : ""}` ``。
  *   正则在**内层**那个反引号就收尾 ⇒ 拿到的静态段是 `paste-block${spec.className ? `，
  *   token 切出来是 `paste-block$` 之类的垃圾，`.paste-block` 当场被判成死规则。
- * - **正则字面量里的引号**：`src/launcher-diagnostics.ts:149` 是
+ * - **正则字面量里的引号**：`src/frontend/ui/launcher-diagnostics.ts:149` 是
  *   ``  const q = (s) => `'${s.replace(/'/g, `'\\''`)}'` ``。
  *   那个 `/'/g` 里的单引号被当成字符串开头 ⇒ 词法**整份文件错位**，
  *   同一个文件里 476 行的 `wrap.className = "ccm-alias-gen"` 就此读不到 ⇒ 4 个类平白变死。
  *
  * ⇒ 本文件走一个**真词法器**：认单/双引号、模板（带 `${}` 嵌套栈）、行/块注释、
  *   以及正则字面量（靠"上一个有效字符"判 `/` 是除号还是正则开头的经典启发式）。
- *   它对着 `tests/css-ledger.vitest.ts` 里那组夹具跑**正控**，别删那组。
+ *   它对着 `tests/frontend/ui/css-ledger.vitest.ts` 里那组夹具跑**正控**，别删那组。
  *
  * ## 诚实边界（本量具买不到的东西）
  *
@@ -69,7 +69,7 @@
  * - 〔UC2 · `设计/41` 件 10〕**CSS Modules（`*.module.css`）不进本账的全局命名空间**：它们的类名构建时哈希，
  *   代码经 `import s from "./x.module.css"` 取 `s.xxx`，一个字面量都不写 ⇒ 按本账「字面量出现过才算活」
  *   的判准会全部被判死。所以 `cssClasses` 只收全局样式文件的类名，module 的类名另收进 `moduleClasses`，
- *   它们的两个方向由 `tests/css-modules.vitest.ts` 判（TS → CSS 由 `tsc` 吃逐文件类型，CSS → TS 由那份判据现扫）。
+ *   它们的两个方向由 `tests/frontend/ui/css-modules.vitest.ts` 判（TS → CSS 由 `tsc` 吃逐文件类型，CSS → TS 由那份判据现扫）。
  *   `cssFiles` 仍是 `src/**\/*.css` 全体（与 stylelint 的 glob 对拍、层与 z-index 两格照样管 module）。
  *   逐文件类型声明 `x.module.d.css.ts` 不是代码，不进 `codeFiles`。
  */
@@ -133,7 +133,7 @@ export function scanStrings(src: string): LexToken[] {
  * 把注释涂成同长空白（换行保留），别的一个字不动。
  *
  * 方向 ② 的那几条正则是**在源码原文上跑**的，不走词法器 —— 不先把注释抹掉就会读到散文。
- * 现打栽过：`src/render.ts:49` 的 JSDoc 里逐字写着
+ * 现打栽过：`src/frontend/ui/render.ts:49` 的 JSDoc 里逐字写着
  * `` `<code class="hljs language-X">` ``，于是 `.language-X` / `.code-pending` 这种
  * **只存在于注释里的名字**被当成"代码在用的类"，方向 ② 平白多出两条假账。
  */
@@ -382,7 +382,7 @@ function walk(dir: string, keep: (p: string) => boolean, out: string[] = []): st
  * 把一段文本切成「类名形状」的 token。
  *
  * ⚠ **按"类名能用的字符"切，不按空白切**。按空白切会让 `` `<div class="code-bar">` ``
- * 里的 `code-bar` 切不出来（它连在 `class="` 上），而那正是 `src/render.ts` 挂
+ * 里的 `code-bar` 切不出来（它连在 `class="` 上），而那正是 `src/frontend/ui/render.ts` 挂
  * `.code-bar` / `.code-lang` / `.code-copy` 的唯一写法。
  */
 function classTokens(text: string): string[] {
@@ -400,7 +400,7 @@ function addSite(m: SiteMap, k: string, site: string): void {
 
 /**
  * `const X = "字面量"` 这一形。收它是为了把 `` `${X}-open` `` 这种**常量拼接**填回去 ——
- * `.status-first-run-open` 就是这么活下来的（`src/first-run-hint.ts:65`）。
+ * `.status-first-run-open` 就是这么活下来的（`src/frontend/ui/first-run-hint.ts:65`）。
  */
 function collectConstants(sources: { rel: string; text: string }[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -446,7 +446,7 @@ const USE_FORMS: { name: string; re: RegExp; fromSelector: boolean }[] = [
   // `el.className = "a b"` / `{ className: "a b" }` / `el.className += " a"`
   { name: "className 赋值", re: /\bclassName\s*(?:=|\+=|:)\s*"([^"\n]*)"/g, fromSelector: false },
   { name: "className 赋值", re: /\bclassName\s*(?:=|\+=|:)\s*'([^'\n]*)'/g, fromSelector: false },
-  // HTML 片段里的 class 属性（`src/render.ts` 大量这么写）
+  // HTML 片段里的 class 属性（`src/frontend/ui/render.ts` 大量这么写）
   { name: "class 属性", re: /\bclass\s*=\s*"([^"\n<>]*)"/g, fromSelector: false },
   // `classList.add("a", "b")` 这一族
   { name: "classList", re: /\bclassList\.(?:add|remove|toggle|contains|replace)\(([^)\n]*)\)/g, fromSelector: false },

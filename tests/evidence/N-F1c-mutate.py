@@ -25,7 +25,7 @@ import sys
 
 MONITOR = "src-tauri/src/local_accounts.rs"
 DAEMON = "remote-daemon-proto/src/observe/accounts_query.rs"
-UI = "src/settings/accounts-section.ts"
+UI = "src/frontend/ui/settings/accounts-section.ts"
 
 # (刀号, 文件, 锚点, 期望命中次数, 替换成什么, 这一刀该验哪条 / 预期谁红)
 CUTS = {

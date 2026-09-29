@@ -585,13 +585,13 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 /// POSIX 那边 `cct() { ccm --ccm-tmux "$@"; }`，而 **Windows 上没有 tmux** ⇒ 给它一个
 /// 「名字在、行为不在」的壳比没有更坏（`K-R129` 那位用户正是照文案敲了 `cct`）。
 ///
-/// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/launcher-diagnostics.ts`
+/// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/frontend/ui/launcher-diagnostics.ts`
 /// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
 /// （它的下拉只遍历 `AccountAliasReport::rc_candidates`〔散文墓碑〕（〔AL1〕今天是 `AliasListing::rc_candidates`），而那张表现算自
 /// 那时 `account_aliases` 里那张 POSIX 候选表（〔AL1c〕今天住 `shell_dialect.rs` 的 POSIX 那一臂），**一份 PowerShell profile 都没有**），
 /// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
-/// PowerShell 那一臂是另一份文件（那时的 `src/settings/cc_integration.ts` 的 `renderScanResult`；〔AL1c〕今天并进了
-/// `src/settings/machine-aliases.ts`，是 PowerShell 那一侧的别名块，生成的别名在 PowerShell 上照样不带 tmux 那一族），
+/// PowerShell 那一臂是另一份文件（那时的 `src/frontend/ui/settings/cc_integration.ts` 的 `renderScanResult`；〔AL1c〕今天并进了
+/// `src/frontend/ui/settings/machine-aliases.ts`，是 PowerShell 那一侧的别名块，生成的别名在 PowerShell 上照样不带 tmux 那一族），
 /// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
 /// 读数 · 量法 · 分母住 `tests/evidence/K-R135-摸底.md`。
 ///

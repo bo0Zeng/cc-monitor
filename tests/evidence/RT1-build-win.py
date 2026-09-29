@@ -5,7 +5,7 @@
 本脚本只产字节，不碰虚拟机（拷过去、起、收是 `RT1-vm.py` 的事）。
 
 配方与 `tests/scripts/re-embed.sh::do_native` 同一条（后端 / 全景小程序 `--release --locked`，
-铺进 `src/bridge/native-backend/` 并旁挂 `.target`），差别只有一处：re-embed 取「本机 host triple」，
+铺进 `src/frontend/shell/native-backend/` 并旁挂 `.target`），差别只有一处：re-embed 取「本机 host triple」，
 这里钉死 `x86_64-pc-windows-gnu`（本机是 Linux）。
 
 ⚠ monitor 本体两处与 `cargo build` 裸跑不同，都照发版那一条补上：
@@ -15,8 +15,8 @@
     报 `export ordinal too large`，RT1 F1）；WIN1 已把它在 `Cargo.toml` 里收成 `["rlib"]`（全仓没有移动端，
     `cdylib` / `staticlib` 零消费者），门禁 `winlink` 那一格真链接 ⇒ 这里只**核**它还是 `["rlib"]`，不再改文件。
 
-产物（全在 .build/ 与 src/bridge/native-backend/ 下，两处都被 gitignore）：
-  .build/bridge/x86_64-pc-windows-gnu/release/{monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
+产物（全在 .build/ 与 src/frontend/shell/native-backend/ 下，两处都被 gitignore）：
+  .build/shell/x86_64-pc-windows-gnu/release/{monitor.exe,cc-monitor-filewin.exe,WebView2Loader.dll}
   .build/backend/x86_64-pc-windows-gnu/release/cc-monitor-backend.exe
   .build/panorama/x86_64-pc-windows-gnu/release/cc-monitor-panorama.exe
   以及两个替身（不是 cargo target，rustc 直编）：claude.exe · rt1-bench.exe → .build/rt1/
@@ -27,7 +27,7 @@ import subprocess
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 T = "x86_64-pc-windows-gnu"
-NATIVE = os.path.join(ROOT, "src", "bridge", "native-backend")
+NATIVE = os.path.join(ROOT, "src", "frontend", "shell", "native-backend")
 
 
 def run(cmd, cwd):
@@ -45,12 +45,12 @@ def main():
         shutil.copyfile(os.path.join(ROOT, src), os.path.join(NATIVE, name))
         with open(os.path.join(NATIVE, name + ".target"), "w") as f:
             f.write(T + "\n")
-    toml = open(os.path.join(ROOT, "src", "bridge", "Cargo.toml"), "rb").read()
+    toml = open(os.path.join(ROOT, "src", "frontend", "shell", "Cargo.toml"), "rb").read()
     assert toml.count(b'crate-type = ["rlib"]') == 1, \
         "crate-type 不再是 [\"rlib\"] —— cdylib 回来了 ⇒ -gnu 交叉链接会红在 export ordinal too large（RT1 F1）"
     try:
         run(["cargo", "build", "--release", "--locked", "-p", "monitor", "--target", T,
-             "--features", "tauri/custom-protocol"], os.path.join(ROOT, "src", "bridge"))
+             "--features", "tauri/custom-protocol"], os.path.join(ROOT, "src", "frontend", "shell"))
     finally:
         # 铺进去的是 **Windows** 字节（`.target` = windows-gnu）：留着 ⇒ 本机 Linux 构建在
         # `build.rs::embed_native_backend` 的 ① 号校验上当场 panic（2026-09-25 现打过一次）。用完即撤。

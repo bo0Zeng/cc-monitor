@@ -1,5 +1,5 @@
 {
-  "说明": "〔CFG1〕config.json 按键补丁的语义金样：手写。Rust 写口（tests/bridge/config_tests.rs::the_golden_cases_hold）与前端测试用的假盘（tests/config-patch-fake.ts，由 tests/config-patch-fake.vitest.ts 对拍）各跑一遍同一份。before 是盘上原文；refused 非空 ⇒ 整批拒、盘上字节不变。",
+  "说明": "〔CFG1〕config.json 按键补丁的语义金样：手写。Rust 写口（tests/frontend/shell/config_tests.rs::the_golden_cases_hold）与前端测试用的假盘（tests/frontend/ui/config-patch-fake.ts，由 tests/frontend/ui/config-patch-fake.vitest.ts 对拍）各跑一遍同一份。before 是盘上原文；refused 非空 ⇒ 整批拒、盘上字节不变。",
   "cases": [
     {
       "name": "段内一个子键：兄弟键不动",

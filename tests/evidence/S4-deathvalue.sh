@@ -4,7 +4,7 @@
 # 问的是一件事：**把快路的判定条件改反，判据会不会当场红。**
 # 不会红的判据是安慰剂 —— 命中率那个数只要一条路都没走到也照样算得出来。
 #
-# 四刀，每刀只动 `src/branch-fold.ts` 里 `noteFastPathShadow` 的**一个字符串**，
+# 四刀，每刀只动 `src/frontend/ui/branch-fold.ts` 里 `noteFastPathShadow` 的**一个字符串**，
 # 跑完立刻从备份还原（`trap ... EXIT` 兜底，脚本被 Ctrl-C 也会还原）。
 #
 #   刀① fork 判反      —— `ledgerParentSeen.has(p)` 前面加一个 `!`
@@ -19,8 +19,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SRC="$ROOT/src/branch-fold.ts"
-SPEC="tests/scale4-frame-ledger.vitest.ts"
+SRC="$ROOT/src/frontend/ui/branch-fold.ts"
+SPEC="tests/frontend/ui/scale4-frame-ledger.vitest.ts"
 BAK="$(mktemp)"
 cp "$SRC" "$BAK"
 restore() { cp "$BAK" "$SRC"; rm -f "$BAK"; }

@@ -1,0 +1,50 @@
+/**
+ * 〔W5-UI〕应用内对话框（`src/frontend/ui/ask-dialog.ts`）的样式。外观照 `.fork-ask` 那一套（同一种模态），
+ * 只是写成 module（UC2 M①：新样式一律 `.module.css`）。遮罩挂 `document.body`（`INVARIANTS §13`）。
+ */
+@layer components {
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgb(0 0 0 / 60%);
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .panel {
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    padding: 20px;
+    min-width: 360px;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .message {
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .field {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}

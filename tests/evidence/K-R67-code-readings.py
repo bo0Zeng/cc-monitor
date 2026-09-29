@@ -98,8 +98,8 @@ def main() -> int:
     line("远端 ccm 入口 shim（三行、零实现）", out or "? 零命中", "grep 'exec {} ccm' src-tauri/src/sftp.rs::ccm_entry_shim")
 
     # ⑥ 别名生成器吐的那一行（§D-1 ③）
-    rc, out = sh(r"""grep -n '() { ccm' src/launcher-diagnostics.ts""", root)
-    line("别名生成器吐的行", out or "? 零命中", "grep '() { ccm' src/launcher-diagnostics.ts::buildAliasLine")
+    rc, out = sh(r"""grep -n '() { ccm' src/frontend/ui/launcher-diagnostics.ts""", root)
+    line("别名生成器吐的行", out or "? 零命中", "grep '() { ccm' src/frontend/ui/launcher-diagnostics.ts::buildAliasLine")
 
     # ⑦ record_death 的生产调用点（§C-3 第 1 条）
     rc, out = sh(r"""grep -n 'DEATH_RECORD_SITES' src-tauri/src/daemon_policy.rs | head -3""", root)
@@ -127,8 +127,8 @@ def main() -> int:
         line("local_read_surface_registry", "? 文件不在", f)
 
     # ⑪ 终端集成那一块的宿主闸（§D-1 旁证 / §F 第 7 波）
-    rc, out = sh(r"""grep -n -A3 'CC_INTEGRATION_HOST_OS: readonly HostOs' src/settings/panel.ts""", root)
-    line("设置面板「终端集成」的宿主闸", out or "? 零命中", "grep CC_INTEGRATION_HOST_OS src/settings/panel.ts")
+    rc, out = sh(r"""grep -n -A3 'CC_INTEGRATION_HOST_OS: readonly HostOs' src/frontend/ui/settings/panel.ts""", root)
+    line("设置面板「终端集成」的宿主闸", out or "? 零命中", "grep CC_INTEGRATION_HOST_OS src/frontend/ui/settings/panel.ts")
 
     return 0
 

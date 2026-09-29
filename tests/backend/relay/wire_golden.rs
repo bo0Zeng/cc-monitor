@@ -39,8 +39,8 @@ use super::listen::{listen, serve, DOWNSTREAM_DEADLINE, UPSTREAM_DEADLINE};
 use super::server::Relay;
 use super::tee::{TapEvent, TapPort, TeeSink};
 use super::upstream::Base;
-use crate::accounts::upstream::table::RoutingTable;
-use crate::accounts::upstream::Accounts;
+use crate::accounts::upstream_select::table::RoutingTable;
+use crate::accounts::upstream_select::Accounts;
 use creds_core::store::AuthStyle;
 use creds_core::SecretKey;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -231,7 +231,7 @@ const GOLDEN: &[Golden] = &[
     //    🔴 `20 §3.1` 第 4 行逐字「不许回落到某一个写死的常量」：那一格要「按 `seg1`
     //    取该 agent 的默认上游」。那张每 agent 一行的表（条 59）今天落了
     //    （`agents::Adapter::upstream`，〔NT2 · V25〕跟着适配层），而本格的 `seg1`（`GOLDEN_AGENT`）**不在表里**
-    //    ⇒ 未登记 ⇒ 拒。理由整段住 `accounts::upstream::decide`；登记过的那一半由
+    //    ⇒ 未登记 ⇒ 拒。理由整段住 `accounts::upstream_select::decide`；登记过的那一半由
     //    `table_tests` 那条「登记过的走自己那一行、未登记的拒」量（不经网络）。
     //    〔FIX3 · `99 §2.2 ⑫`〕码从 502 改成我们拒的 404；与 ③ 同码，原因头与那句话不同 —— 两件事靠原因头分。
     Golden {
@@ -377,7 +377,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
     let relay = Arc::new(Relay::new(
         Arc::new(Accounts::new(
             table,
-            crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认"),
+            crate::accounts::upstream_select::Upstreams::from_env(&|_| None).expect("内置默认"),
         )),
         super::door::Key::for_tests(),
         TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),

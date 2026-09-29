@@ -399,7 +399,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 
 /// ★★〔步 23b · 2026-09-19〕**SFTP 那条依赖真的换成了 `russh-sftp` 3.x，而且钉住了。**
 ///
-/// 〔SR1b · 2026-09-24〕**从 monitor 搬来**（`tests/bridge/sftp_tests.rs`）：`russh-sftp` 出了界面清单，今天只在本 crate ——
+/// 〔SR1b · 2026-09-24〕**从 monitor 搬来**（`tests/frontend/shell/sftp_tests.rs`）：`russh-sftp` 出了界面清单，今天只在本 crate ——
 /// 判据跟着依赖走，读的是本 crate 的清单与 lock。正文逐字未动（除了两份文件的住址）。
 ///
 /// `设计/60 §6.5.3` 现打核过 5 个候选（crates.io / GitHub / docs.rs 三处 API），

@@ -163,7 +163,7 @@ pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compressio
 /// 余下的留在解压器里、拼进**下一包** ⇒ 包流错位。真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、
 /// 第一条通道的确认被吃掉、会话卡死。
 ///
-/// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../bridge/vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
+/// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
 /// ⇒ 闸开：判准的答案落到连接上。
 /// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着「闸 == russh 一来一回对不对」：
 /// 谁把补丁撤了（或换回一份还坏着的 russh）而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。

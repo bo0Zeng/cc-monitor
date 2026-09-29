@@ -23,10 +23,10 @@ const SHELL = ["#app", "#tab-bar", "#message-stream", "#status-bar"];
 //
 // 它为什么能静默活三天：**tier-2 这一档要真 Windows ＋ WebView2 ＋ session-1 hop**
 // ⇒ 不在 `npm test`、不在 `cargo test`、不在 `tests/scripts/gate.sh` 里
-// ⇒ **没有任何门禁跑得到它**。对照：姊妹判据 `tests/topbar-icons.vitest.ts`
+// ⇒ **没有任何门禁跑得到它**。对照：姊妹判据 `tests/frontend/ui/topbar-icons.vitest.ts`
 // 那条地板同拍就 6 → 5 改对了 —— 因为**它的人群是从 `main.ts` 现场派生的**，腐不了。
 //
-// ⇒ 处置不只是删那一行：`tests/topbar-list-parity.vitest.ts` 现在把**本表**与
+// ⇒ 处置不只是删那一行：`tests/frontend/ui/topbar-list-parity.vitest.ts` 现在把**本表**与
 // 从 `main.ts` 派生出来的那一份做**双向相等**。那条判据跑在本地门禁里
 // ⇒ **这一档跑不到，但这张表的前提从此有人看着。**
 const TOPBAR = [

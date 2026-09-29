@@ -88,7 +88,7 @@ pub fn token_usage_last(v: &Value) -> Option<&Value> {
 
 // 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做〔散文墓碑〕
 // `input -= cached`。它与 backend `agents/codex/parse.rs` 的那份**逐字相同却各写一遍**
-// ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `codex_token_core::codex_delta`
+// ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `token::codex_delta`
 // （唯一权威源），调用方直接拿映射好的增量。
 // 🔴 〔`设计/50`〕**钉住它「是唯一家」的那条判据没了**：它住 monitor 的用量模块，
 // 而用量 ②③ 两轴整轴退役、那份文件整删 ⇒ 今天没有任何东西在数这个映射有几个家。

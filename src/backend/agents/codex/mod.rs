@@ -26,6 +26,8 @@ pub(crate) mod parse;
 // 〔MOD〕记录分类 ＋ 映射进渲染模型（从 monitor `codex_record.rs` 搬来）。
 pub(crate) mod record;
 pub(crate) mod resume;
+// 〔RE〕Codex `token_count` → token 增量的唯一映射（原共享 crate `codex-token-core`，唯一消费者 `parse.rs`）。
+pub(crate) mod token;
 
 /// 〔C4d〕这一家的历史清单面（注册表 `Adapter.history` 那一格；通用层经注册表够到它，不直呼本模块）。
 pub(crate) const HISTORY: crate::agents::HistoryFace = crate::agents::HistoryFace {
@@ -47,7 +49,7 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 // 同一刀还带走了它的类型依赖：桶累加器用的 `usage_core::Totals` 住在
 // `crates/usage-core` 的 Claude 半，那半也删了（crate 改名 `codex-token-core`）。
 // ⇒ 它**不是被顺手删的，是编译器指着删的**：文件留着连编都编不过。
-// ⚠ **token 字段映射本身没动**：`parse.rs::last_token_delta` → `codex_token_core::codex_delta`
+// ⚠ **token 字段映射本身没动**：`parse.rs::last_token_delta` → `token::codex_delta`
 //   仍在，`codex_delta` 那三条单测照旧绿（`设计/50 §6` 钩子 6）。
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。

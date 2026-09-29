@@ -57,7 +57,7 @@ fn parse_sid_rejects_unexpanded_format_and_garbage() {
     );
 }
 
-/// 成品的线上形状 == 跨语言金样（界面 `src/tmux-reads.ts::decodeTmuxList` 严格收的就是这一份）。
+/// 成品的线上形状 == 跨语言金样（界面 `src/frontend/ui/tmux-reads.ts::decodeTmuxList` 严格收的就是这一份）。
 #[test]
 fn the_product_matches_the_cross_language_golden() {
     let golden: Value =

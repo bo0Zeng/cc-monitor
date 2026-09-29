@@ -11,7 +11,7 @@
 //! | ② | 原生后端**零处**伸手进它**内部** | [`the_native_backend_reaches_the_file_backend_only_through_its_doors`]：模块之外的后端生产段够到模块的符号，集合 == [`DOORS`]（几个入口函数，零个内部符号） |
 //! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 里除了挂载／汇总那一格，住址全是 `inbound.rs` |
 //!
-//! 形状照前端那一侧的先例 `tests/bridge/filewin/boundary_tests.rs`（正向逐格相等 ＋
+//! 形状照前端那一侧的先例 `tests/frontend/shell/filewin/boundary_tests.rs`（正向逐格相等 ＋
 //! 反向一元素零命中守卫 ＋ 抽取器在合成语料上正反各喂一遍）。抽取器是**移植**过来的一份，
 //! 不是共享的：两个 crate 之间没有共享落点（`src/backend` 刻意不在 monitor 那个 workspace 里），
 //! 而把它搬进 `guard-core` 是另一件活、不在本路写区。**两份会漂** —— 如实登记。
@@ -35,7 +35,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 // ═══════════════════════════════════════════════════════════════════
-// 抽取器 —— 移植自 `tests/bridge/filewin/boundary_tests.rs::paths_from`
+// 抽取器 —— 移植自 `tests/frontend/shell/filewin/boundary_tests.rs::paths_from`
 // ═══════════════════════════════════════════════════════════════════
 
 /// `crate` 这个关键字。

@@ -413,7 +413,7 @@ def main():
                                                 "backend": bin_path, "home": home, "rhome": rhome, "up": up_m,
                                                 "dl_remote": rsrc, "dl_local": os.path.join(d, "dl", "monitor.bin")})}
             r = subprocess.run(["cargo", "test", "--offline", "-p", "monitor", "--lib", "sr1b_loopback_deploy_and_transfer_through_the_resident_backend", "--", "--ignored", "--nocapture"],
-                               cwd=os.path.join(ROOT, "src", "bridge"), env=env, capture_output=True, text=True, timeout=3000)
+                               cwd=os.path.join(ROOT, "src", "frontend", "shell"), env=env, capture_output=True, text=True, timeout=3000)
             check("部署判定三形 · 入口 · 卸载 · 围栏原话 · 上传 / 下载经中继 全经本机常驻后端", "SR1B-LOOPBACK-MONITOR ok" in r.stdout and "1 passed" in r.stdout,
                   (r.stdout[-1500:], r.stderr[-1500:]))
     finally:

@@ -27,7 +27,7 @@
    与 sidecar」）—— 现打读数与机制逐条住下面 ⑭ 那一段的头注。
 6. 〔本拍 2026-09-23 立〕**产物路径的根 ↔ 两份 `.cargo/config.toml` 声明的 `target-dir`**
    （⑮，两向集合相等）。它落地时盘上**就有现物**：搬树之后 `release.yml` 里五处还写着
-   `src/bridge/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
+   `src/frontend/shell/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
    安装包都没有。逐条住下面 ⑮ 那一段的头注。
 
 # 🔴 第 3 句为什么归这份判据，而不是归 `platform` 那一格
@@ -137,7 +137,7 @@ LEDGER = "tests/evidence/K-G4-platform-ledger.py"
 #: 门禁本体 —— ⑫ 要读它那条 `muslbuild` 裁词里点名的工具链版本。
 GATE_SH = "tests/scripts/gate.sh"
 #: 内嵌那一段的住址 —— ⑪ 读它，确认「抠不到 `BUILD_ID`」是一条响亮的失败。
-BUILD_RS = "src/bridge/build.rs"
+BUILD_RS = "src/frontend/shell/build.rs"
 
 #: 🔴 **本文件里全部「跑 cargo 编后端」的步骤的完整登记** —— 与盘上现打**两向集合相等**。
 #: 失效方向逐字：有人给一个**没承诺的平台**加一条交叉编译（例：arm64 的 Windows），
@@ -194,7 +194,7 @@ BYTE_LINES = [
             ("build-backends", "Stage binaries"),
             ("build-windows", "Place + verify embedded backends"),
         ],
-        "into": "artifact `embedded-backends` → `src/bridge/embedded-backends/` → "
+        "into": "artifact `embedded-backends` → `src/frontend/shell/embedded-backends/` → "
                 "`build.rs::embed_backends` 的 `include_bytes!` ⇒ 进 exe 本体",
     },
     {
@@ -233,7 +233,7 @@ IDENTITY_READS = {
 #
 # 🔴 **它为什么也归这一格，而不是新开第 25 格**
 #
-# `19b` 已经把「产字节那条路」的**两端**收进本格：⑪ 读 `src/bridge/build.rs`（吃字节那一侧）、
+# `19b` 已经把「产字节那条路」的**两端**收进本格：⑪ 读 `src/frontend/shell/build.rs`（吃字节那一侧）、
 # ⑫ 读 `tests/scripts/gate.sh`（门禁那一侧的工具链版本）。`19c` 补的是同一条路上
 # **本机产字节**那一端：一条 re-embed 命令，它的配方必须与 `release.yml` 那一步**同源**
 # —— 判它就得同时读那两份文本，而「同时读那两份」正是本格的定义。
@@ -256,7 +256,7 @@ IDENTITY_READS = {
 #: re-embed 那条命令的本体。
 REEMBED_SH = "tests/scripts/re-embed.sh"
 #: 落点的 gitignore 住址。
-BRIDGE_GITIGNORE = "src/bridge/.gitignore"
+BRIDGE_GITIGNORE = "src/frontend/shell/.gitignore"
 #: 🔴 `build.rs` 里那个**出路唯一住址**常量的值，逐字。
 #: 它指的脚本必须在盘上 —— 「出路指着一个不存在的命令」与「没有出路」在文案上一模一样。
 REEMBED_CMD = "bash tests/scripts/re-embed.sh"
@@ -303,7 +303,7 @@ NO_FALLBACK_FNS = [
 # 逐字写着：「Tauri 安装包只装主二进制与 `externalBin` sidecar ⇒ 装机那份上
 # `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成写区外的欠账。
 #
-# **那句是假的。** 现打两趟推翻（用的是本仓这份 `src/bridge/Cargo.toml` ＋
+# **那句是假的。** 现打两趟推翻（用的是本仓这份 `src/frontend/shell/Cargo.toml` ＋
 # `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，`@tauri-apps/cli` 现锁的 2.11.2；
 # 二进制喂的是占位字节 —— 本条问的是**清单**，不是那几个字节能不能跑）：
 #   · 真 `.deb`（`npx tauri bundle --bundles deb`）：`dpkg-deb -c` 现打 `usr/bin/` 三份 ——
@@ -334,9 +334,9 @@ NO_FALLBACK_FNS = [
 #     安装脚本**，不是「装完之后 `C:\Program Files\cc-monitor\` 里真有那个文件」。
 #     没有 Windows 机器、也不跑 NSIS/WiX ⇒ 那一格仍然是**判不了**，不是「通过」。
 #: 本包的 manifest —— `[[bin]]` 的唯一住址。
-BRIDGE_CARGO = "src/bridge/Cargo.toml"
+BRIDGE_CARGO = "src/frontend/shell/Cargo.toml"
 #: `externalBin` 的唯一住址（刻意不在 `tauri.conf.json` 里，理由住 `release.yml` 那一步）。
-SIDECAR_CONF = "src/bridge/tauri.sidecar.conf.json"
+SIDECAR_CONF = "src/frontend/shell/tauri.sidecar.conf.json"
 #: 打包工具版本的唯一住址（两个 job 的 `npm install` / `npm ci` 都照它装）。
 PACKAGE_LOCK = "package-lock.json"
 CLI_LOCK_KEY = "node_modules/@tauri-apps/cli"
@@ -359,7 +359,7 @@ BIN_SHIPPING = {
                 "`File /a \"/oname=cc-monitor-filewin.exe\"`（⇒ `$INSTDIR`）；"
                 "deb 现打 `/usr/bin/cc-monitor-filewin`。⇒ `filewin::proc::resolve_window_bin` "
                 "的「exe 旁那一份」这一支在装机布局下命中",
-        "consumer": ("src/bridge/src/filewin/proc.rs", "BIN_STEM"),
+        "consumer": ("src/frontend/shell/src/filewin/proc.rs", "BIN_STEM"),
     },
 }
 #: 🔴 `externalBin` 那几项 ↔ 登记，两向集合相等（⑭d）。键 = 落点的**主干名**。
@@ -372,7 +372,7 @@ BIN_SHIPPING = {
 #:   `cc-monitor-backend` 这个名字的家是下面那个 Rust `const`（消费侧
 #:   `local_backend::resolve_with` 找的就是它），本文件**不抄一份**，实打去读。
 FOREIGN_SIDECARS = {
-    ("src/bridge/src/backend/control/local_backend.rs", "LOCAL_BACKEND_STEM"):
+    ("src/frontend/shell/src/backend/control/local_backend.rs", "LOCAL_BACKEND_STEM"):
         "F05b 的本机后端，来自 `src/backend` 那棵树（**不是**本包的 `[[bin]]`）；"
         "字节由 `release.yml` 的 `Stage local backend for externalBin` 铺进 `binaries/`",
 }
@@ -380,8 +380,8 @@ FOREIGN_SIDECARS = {
 # ══ 〔本拍 2026-09-23〕⑮ 产物路径的根 ↔ 声明的 `target-dir` ════════════════════════
 #
 # 🔴 **这一条落地时盘上就有现物，不用故意改坏。** 09-17 搬树（两个 cargo 工程搬进 `src/`，
-# 同拍加了仓根那份 `.cargo/config.toml`：`[build] target-dir = ".build/bridge"`）之后，
-# `release.yml` 里**五处**产物路径还写着 `src/bridge/target/release/…` —— 而最后一次发版是
+# 同拍加了仓根那份 `.cargo/config.toml`：`[build] target-dir = ".build/shell"`）之后，
+# `release.yml` 里**五处**产物路径还写着 `src/frontend/shell/target/release/…` —— 而最后一次发版是
 # v3.6.0（08-01，搬树之前）⇒ **一次都没人踩到过**。
 # 它坏得完全静默：三个 glob 全空 → `Get-ChildItem … -ErrorAction SilentlyContinue` 吞掉
 # 「路径不存在」→ `SHA256SUMS.txt` 空着照发 → `action-gh-release` 的 `files:` 一条都不匹配、
@@ -389,7 +389,7 @@ FOREIGN_SIDECARS = {
 # ⇒ 本条把「产物根」收成一个**两向集合相等**：`release.yml` 里每一处 cargo 产物路径的根
 #   ↔ 两份**进 git 的** `.cargo/config.toml` 声明的 `target-dir`。
 #
-# ⚠ 边界：本机个人的 `src/bridge/.cargo/`（被 `.gitignore` 挡着、不进 CI）**不在射程**；
+# ⚠ 边界：本机个人的 `src/frontend/shell/.cargo/`（被 `.gitignore` 挡着、不进 CI）**不在射程**；
 #   本条也不问「那个目录在 runner 上真有东西」—— 那仍然是发版那一趟才知道的事。
 CARGO_CONFIGS = [
     ".cargo/config.toml",
@@ -552,7 +552,7 @@ def prod_path_roots(steps):
         旧路径，那是账不是指令；`run:` 块里整行的 `#` 也在这里剥掉；
       · Windows 那几步混用反斜杠 ⇒ 先把 `\\` 归一成 `/`；
       · 只认「有一段**恰好**是 `release`/`debug`」的 token ⇒ `staged/…`、
-        `backend-artifacts/…`、`src/bridge/binaries/…`、`src/bridge/embedded-backends/…`
+        `backend-artifacts/…`、`src/frontend/shell/binaries/…`、`src/frontend/shell/embedded-backends/…`
         这些不是 cargo 产物，本条一个都不碰。
     """
     out = collections.defaultdict(list)
@@ -1120,9 +1120,9 @@ def run_checks(emit):
          ["staged/cc-monitor-panorama-%s" % a for a in pano_arches]),
         ("build-backends", None, "with.path", ["staged/cc-monitor-panorama-*"]),
         ("build-windows", "Place + verify embedded backends", "run",
-         ['src/bridge/embedded-backends/cc-monitor-panorama-$a']),
+         ['src/frontend/shell/embedded-backends/cc-monitor-panorama-$a']),
         ("build-linux", "Place embedded backends", "run",
-         ['src/bridge/embedded-backends/cc-monitor-panorama-$a']),
+         ['src/frontend/shell/embedded-backends/cc-monitor-panorama-$a']),
     ]
     for jn_want, sn_want, field, needles in pano_hops:
         if field == "with.path":
@@ -1180,7 +1180,7 @@ def run_checks(emit):
           "二十多 MB 垃圾**，后者是一条挡着空气的陈行"
           % (sorted(registered - ignored), sorted(ignored - registered),
              "/".join(LANDING_CONSTS), EXTERNALBIN_LANDING, BRIDGE_GITIGNORE, LANDING_MARK))
-    for d in sorted(re.findall(r'^[A-Z_]+_DIR="\$ROOT/src/bridge/([^"]+)"', reembed, re.M)):
+    for d in sorted(re.findall(r'^[A-Z_]+_DIR="\$ROOT/src/frontend/shell/([^"]+)"', reembed, re.M)):
         check(d in registered, "⑬d脚本往里倒字节的目录是登记过的·%s" % d,
               "`%s` %s在登记集合 %s 里 —— 不在 ＝ 那条命令往一个没人挡的目录里写二十多 MB"
               % (d, "" if d in registered else "**不**", sorted(registered)))
@@ -1267,7 +1267,7 @@ def run_checks(emit):
             (d / "tests" / "scripts" / "re-embed.sh").write_text(reembed, encoding="utf-8")
             (d / "src" / "backend" / "lib.rs").write_text(lib, encoding="utf-8")
             if body is not None:
-                nd = d / "src" / "bridge" / "native-backend"
+                nd = d / "src" / "frontend" / "shell" / "native-backend"
                 nd.mkdir(parents=True)
                 (nd / "cc-monitor-native").write_text("#!/bin/sh\n%s\n%s\n" % (stamp, body), encoding="utf-8")
                 (nd / "cc-monitor-native").chmod(0o755)
@@ -1420,7 +1420,7 @@ def run_checks(emit):
     check(got_roots == want_roots, "⑮产物路径的根 ↔ 声明的 `target-dir`，两向集合相等",
           "`release.yml` 里有而没声明 %s · 声明了而本文件没用 %s（声明侧 %r；"
           "每个根的原样 token：%r）—— 前者就是 2026-09-23 逮到的那条**静默**缺陷"
-          "（搬树之后 `src/bridge/target/release/…` 指空，三个 glob 全不匹配而只打 warning "
+          "（搬树之后 `src/frontend/shell/target/release/…` 指空，三个 glob 全不匹配而只打 warning "
           "⇒ Release 上一个安装包都没有）；后者是「那棵树的产物从此没人拿」"
           % (sorted(got_roots - want_roots), sorted(want_roots - got_roots), declared,
              {k: sorted(set(v))[:3] for k, v in sorted(roots.items())}))

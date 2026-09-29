@@ -3,7 +3,7 @@
 //!
 //! 从前分两半：monitor 的 `deploy_remote_acct_iso`〔散文墓碑〕把它自己内嵌的那份 vendored 脚本经 SFTP 推过来、写身份标记，
 //! 再（更早）经 ssh 跑 `cc-acct-iso-install.sh`。主会话 09-28 预裁「部署载荷只一种走法」：字节照 cc-bus 那样**随后端二进制走**
-//! （[`FILES`]，单一事实源是 `src/shared/cc-acct-iso/`（两棵树都不属于，同 `src/shared/cc-bus/`；〔09-28〕从 `src/bridge/vendor/` 挪来），编译期固化），落盘全经**这台后端的文件管理面**：
+//! （[`FILES`]，单一事实源是 `src/shared/cc-acct-iso/`（两棵树都不属于，同 `src/shared/cc-bus/`；〔09-28〕从 `src/frontend/shell/vendor/` 挪来），编译期固化），落盘全经**这台后端的文件管理面**：
 //! 字节 `files-put`（CAS：读到哪份就对哪份写）· 可执行位 `files-chmod` · 链接 `files-link`（写面闭集里 FILES2 那一个动词，不另起原语）；
 //! 装卸账记进 **skill 装记录那一份**（`name = "acct-iso"`，`at = "home"`：键是家目录、路径相对它；同形，不另立第二份账）。
 //!

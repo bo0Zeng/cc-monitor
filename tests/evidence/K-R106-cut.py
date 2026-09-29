@@ -62,7 +62,7 @@ NAME_R87 = """        return Err(NO_TMUX_NAME.into());
 SEAT_ROW = """        (
             "src/session-backend.ts",
             CreationVerdict::UpstreamValidated,
-            "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
+            "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
         ),
 """
 
@@ -122,7 +122,7 @@ CUTS = {
     "D2-orphan": [
         (
             KILL,
-            "由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
+            "由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
             "由上游那个校验器校验",
             1,
         )

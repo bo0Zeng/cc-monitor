@@ -3,7 +3,7 @@
 """TAP 台架：真后端（进程内中转）× 假上游 × **真 claude CLI** —— 产出 T7 的夹具，并量「jsonl 何时落盘」。
 
 住址：`<仓根>/tests/evidence/TAP-bench.py`
-夹具：`<仓根>/tests/__fixtures__/tap-bench.json`（由 `tests/live-card.vitest.ts` 的 T7 读）
+夹具：`<仓根>/tests/__fixtures__/tap-bench.json`（由 `tests/frontend/ui/live-card.vitest.ts` 的 T7 读）
 服务的要求：`设计/20 §8`（V24「SSE 确保快，落盘确保对」；对账键 `message.id`）· 设计与读数住仓外 `调研/第四波记录/TAP.md §7 T7 · §8 题 3 · §9`。
 
 跑法（仓根下；要先 `cargo build`（`src/backend`）出后端二进制，要本机有 `claude`）：

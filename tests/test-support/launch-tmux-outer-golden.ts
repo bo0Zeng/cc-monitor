@@ -31,9 +31,9 @@
  * ⚠ **金标准盖不到的，如实写在这里**：非法输入（空会话名 / 越界 `@ccm_sid` / 空 cwd）
  * Rust 一律 `Err`，那一类进不了这份金标准，由 `payload_tests.rs` 外层那几条管。
  */
-import { AGENT_PROFILE } from "../../src/agent-profile.ts";
-import { buildTmuxOuterRenderRequest } from "../../src/remote-launch-run.ts";
-import type { EnvOp, LaunchPlan, TmuxMode } from "../../src/launch-types.ts";
+import { AGENT_PROFILE } from "../../src/frontend/ui/agent-profile.ts";
+import { buildTmuxOuterRenderRequest } from "../../src/frontend/ui/remote-launch-run.ts";
+import type { EnvOp, LaunchPlan, TmuxMode } from "../../src/frontend/ui/launch-types.ts";
 
 /** 一条用例：`LaunchPlan` 里与这三格有关的那几个字段。 */
 export interface TmuxOuterCase {

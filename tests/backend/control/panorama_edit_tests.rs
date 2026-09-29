@@ -1,5 +1,5 @@
 //! 要求住址：主会话 09-28 裁 MIG-3b 报备 3 —— `panorama-edit` 进后端（〔RM1d〕V110「引擎只算、文件管理来写」）。
-//! 〔MIG-3b 续〕问 · 交那一环的判据原住 `tests/bridge/panorama_call_tests.rs`（monitor 那一跳），随实现搬来、期望一字未改；
+//! 〔MIG-3b 续〕问 · 交那一环的判据原住 `tests/frontend/shell/panorama_call_tests.rs`（monitor 那一跳），随实现搬来、期望一字未改；
 //! 门换成这台真的文件管理面（`inbound::LocalFiles`，落在临时目录当仓），「算」用替身按顺序交计划、数被问了几次。
 use super::*;
 use crate::assets::door::Door;
@@ -295,7 +295,7 @@ fn the_plan_shape_matches_the_upstream_one() {
         assert!(s.len() > 2_000, "{p:?} 只有 {} 字节", s.len());
         crate::guard_support::production_code(&s)
     };
-    let up = read("src/bridge/vendor/code-picture-core/src/edits.rs");
+    let up = read("src/panorama-engine/vendor/code-picture-core/src/edits.rs");
     let ours = read("src/backend/control/panorama_edit.rs");
     for name in ["Planned", "FileEdit"] {
         let theirs = struct_fields(&up, name);

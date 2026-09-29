@@ -1,7 +1,7 @@
 // 秤 2 真浏览器探针的打包配置。**与仓里的 `vite.config.ts` 完全分开**——
 // 那个是生产构建（outDir `.build/dist`），这个只把探针打成一个 IIFE 丢进 /tmp。
 // 产物不进仓：outDir 在 `/tmp/scale2-height-truth/dist`。
-// 写成 `.ts` 而不是 `.mjs`：理由与同目录那两个脚本一样（`tests/eslint-baseline.vitest.ts` 第②格）。
+// 写成 `.ts` 而不是 `.mjs`：理由与同目录那两个脚本一样（`tests/frontend/ui/eslint-baseline.vitest.ts` 第②格）。
 import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

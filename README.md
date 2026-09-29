@@ -10,7 +10,7 @@
 >
 > [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v3.8.1
 
-把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**对 Claude 的数据只读、零侵入**（不**修改** Claude Code 的 jsonl / pidfile；对它们的显式用户写只有两处：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。⚠ **这句话不覆盖用户自己的文件**：SFTP 面板、planned-build 收件箱、`~/.bashrc` 的 helper 安装、`.mcp.json` 等都是明确手势下的写，逐处登记在 `src/bridge/src/write_site_registry.rs`（本机，21 个「文件::函数」）与 `remote_write_registry.rs`（远端，10 处）。
+把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**对 Claude 的数据只读、零侵入**（不**修改** Claude Code 的 jsonl / pidfile；对它们的显式用户写只有两处：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。⚠ **这句话不覆盖用户自己的文件**：SFTP 面板、planned-build 收件箱、`~/.bashrc` 的 helper 安装、`.mcp.json` 等都是明确手势下的写，逐处登记在 `src/frontend/shell/src/write_site_registry.rs`（本机，21 个「文件::函数」）与 `remote_write_registry.rs`（远端，10 处）。
 
 **项目状态**：稳定可用。后端 cargo + 远端后端 + vendor `code-picture-core` + 前端 node 纯函数 & vitest+jsdom DOM 单测 + e2e 套件，tsc 严格类型检查，**CI 全绿**（**条数以实跑为准，本文件刻意不存副本** —— 见 `src/`src/doc/DEVELOPMENT.md` 那张表与 `.github/workflows/ci.yml` 的地板行）（Rust `cargo test`〔vendor 那份 `-p code-picture-core` 在 `src/panorama-engine` 里跑〕 + 前端 `npm test`〔+ eslint/stylelint 顾问式 + 覆盖率地板棘轮〕 + 远端后端 `cargo test` + e2e 脚本健康冒烟〔shellcheck/py_compile〕——`npm test` 只门禁前端）。当前发布 **v3.8.1**（**多账号 + 第三方 API 中转** —— 每个账号能配自己的上游端点与 key，只听回环的 HTTP 中转在转发时替换 `Authorization` 头、客户端一个凭据都不配，apikey 表里没有那一行的号照旧走官方直连；**本机也被当成一台机器** —— 新装完、一台远端都没配的人第一次打开也有东西可用；**⚠ 有两格不重新部署就会踩坑**：`ccm --tmux` 起会话统一走后端（本机 tmux 直起那条退路已从 exec 路上删掉，后端不可达即失败、退出码 `4`，`CCM_VERSION` 由 3 升到 4 ⇒ 要重新部署 `ccm`）、后端的构建标识已 bump 且它起的插件不再继承后端整份环境（每台已装过后端的远端连上会被判旧并自动重装一次）；v3.6.0：**任意对话节点分叉，两条都活着** —— 每条消息旁的 `⑂` 复制 `[根…这一条]` 成一个**新会话文件**并直接把它起起来，**原会话不受影响**；**远端会话也能分叉**（经后端在那台机器上做，只传 sid 不传路径）；实时会话里也有入口；被 ESC 回退掉的分支**保留路口但呈现区分**；新会话继承原会话的账号 / 工作目录 / tmux，查不出来的那几格**问一次而不是猜**；v3.5.0：**设置面板按「被设置的对象」重做：应用 / 机器 / 改动足迹三页，机器成为中心对象、本机是列表第一行，三处部署首次同屏；cc-bus 驾驶舱移出设置成顶层视图**；v3.4.0：**判活改内核事件、变灰从 ~16s 降到 ~0.13s + 首发 Linux `.deb`**；v3.3.0：**多账号：隔离又同步 + 按会话切账号 + app 内账号部署向导（#68/#69）**；此前 **Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌后端身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **后端自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸后端与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [src/`src/doc/ARCHITECTURE.md`](src/`src/doc/ARCHITECTURE.md`)。
 
@@ -95,15 +95,15 @@
 ### 设置面板（,）
 
 **三页 + 机器详情子页**（落地在「机器」页）。
-⚠ **每页有哪些块、共几块，家在 `tests/settings/panel-groups.vitest.ts`**
+⚠ **每页有哪些块、共几块，家在 `tests/frontend/ui/settings/panel-groups.vitest.ts`**
 —— 那里是逐页完整清单（机检，用完整相等断言，搬丢一块会红）。
 本节**刻意不复制那份清单**：它此前按「N 大折叠分组」逐条列出，而那套 IA 在 v3.5.0 重做后
 已不存在，「数据源 & 集成」里的 MCP 管理也早已搬去机器详情页 —— 一份没人看着的结构描述
 就是这个下场。
 
 - **应用**：行为（自动跟随切 Tab、是否拉前 monitor 窗口）· 快捷键（编辑器里自定义 action 的 chord，
-  **可用 action 数以 `src/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
-  **几个以 `src/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`）·
+  **可用 action 数以 `src/frontend/ui/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
+  **几个以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`）·
   日志与数据（Claude 数据目录三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`；tracing 等级 toggle +
   log 路径 + 所有持久化路径透明展示）
 - **机器**：机器列表；每台机器的详情子页里是连接、**PowerShell `__ccm_bind` 一键装**、
@@ -265,7 +265,7 @@ cc-monitor/
 │   ├── keybindings/        issue #5 快捷键编辑器
 │   └── views/              历史浏览器 + SessionViewer + B14 pane-preview（F60 tmux 画面预览）/ port-forward（F58 端口转发台）+ F91 grid-monitor（多 agent 监控）+ F84 command-bar（命令栏）
 │
-├── src/bridge/              后端 (Rust + Tauri 2)
+├── src/frontend/shell/              后端 (Rust + Tauri 2)
 │   └── src/
 │       ├── lib.rs          setup + invoke_handler 注册
 │       ├── watcher.rs      jsonl 文件 watcher（per-file seq 单调）
@@ -288,9 +288,8 @@ cc-monitor/
 │       ├── auto_launch.rs  cc 启动时自动开 monitor
 │       ├── logging.rs      tracing + ErrorEmitter
 │       ├── data_paths.rs   issue #3 透明化所有持久路径
-│       ├── config.rs       config.json R/W
-│       ├── paths.rs        Claude 数据目录三级回退
-│       ├── bridge.rs       事件常量 + payload schema（含 v2.6 seq 字段）
+│       ├── config.rs       config.json R/W ＋ Claude 数据目录三级回退（〔RE〕原 paths.rs 并进来）
+│       ├── ui_contract.rs       事件常量 + payload schema（含 v2.6 seq 字段）
 │       ├── subagent.rs     Task/Agent tool 子 jsonl 按需加载
 │       └── utils.rs        ⭐ days_from_civil + NetTicks/FileTime newtype + scan_dir_jsons + atomic_write_json + parse_iso8601_ms 等共享 helper
 │
@@ -298,7 +297,7 @@ cc-monitor/
 ├── src/backend/            后端本体（Rust，独立 Cargo 工程；本机与远端同一份）
 ├── src/doc/                架构 + 协议 + 不变量等深度文档
 ├── src/shared/             跨端共享的脚本与片段（cc-bus/ · ccm-aliases.sh）
-├── src/generated/          ts-rs 从 Rust 类型导出的 .ts（**生成物，别手改**）
+├── src/frontend/ui/generated/          ts-rs 从 Rust 类型导出的 .ts（**生成物，别手改**）
 │
 ├── tests/                  🔴 **全部测试都在这儿**（顶层只有 src/ 与 tests/ 两个文件夹）
 │   ├── backend/            后端那半的测试（含原先混在生产文件里的那 19 份）
@@ -330,7 +329,7 @@ cc-monitor/
 | [src/`src/doc/BUILDING.md`](src/`src/doc/BUILDING.md`) | 发版者 | 生产构建 / 打包 / Code Signing |
 | [src/`src/doc/RELEASING.md`](src/`src/doc/RELEASING.md`) | 发版者 | 发版 SOP + CHANGELOG 写法 |
 | [src/README.md](src/README.md) | 前端开发 | 前端模块导览 |
-| [src/bridge/README.md](src/bridge/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
+| [src/frontend/shell/README.md](src/frontend/shell/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
 | [src/backend/README.md](src/backend/README.md) | 远端后端开发 | 只读后端模块导览 + wire 协议 |
 | [tests/scripts/README.md](tests/scripts/README.md) | 用脚本的人 | 脚本说明 |
 | [tests/e2e/README.md](tests/e2e/README.md) | E2E | 套件与 DEV 探针：跑法 / 前置 / 人工场景（WebView2 复核） |

@@ -71,7 +71,7 @@ fn rust_cli_rendering_matches_the_typescript_golden_byte_for_byte() {
     }
     assert!(
         bad.is_empty(),
-        "{} 条 CLI 渲染与用例表的期望不一致（改了渲染器就回 `src/launch-cli-golden.ts` 改期望）：\n{}",
+        "{} 条 CLI 渲染与用例表的期望不一致（改了渲染器就回 `src/frontend/ui/launch-cli-golden.ts` 改期望）：\n{}",
         bad.len(),
         bad.join("\n")
     );

@@ -1,5 +1,5 @@
 {
-  "_": "由 src/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
+  "_": "由 src/frontend/ui/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
   "defaultLauncher": "claude",
   "cases": [
     {

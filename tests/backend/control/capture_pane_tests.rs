@@ -226,8 +226,8 @@ fn the_argv_is_the_read_only_capture_form_in_this_exact_order() {
 ///
 /// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；
 /// 线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
-/// 抓屏从这一拍起由界面经通道直接问（`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节 ——
-/// 于是「成品长什么样」「拒绝码有哪几个」从此只有后端这一侧与金样说了算，TS 那一半在 `tests/tmux-control.vitest.ts`。
+/// 抓屏从这一拍起由界面经通道直接问（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节 ——
+/// 于是「成品长什么样」「拒绝码有哪几个」从此只有后端这一侧与金样说了算，TS 那一半在 `tests/frontend/ui/tmux-control.vitest.ts`。
 ///
 /// 三格各自异源：请求样例过**生产**解析器（`kill::parse_name`，抓屏复用它）· 成品 == 生产构造器 [`reply`] ·
 /// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `inbound.rs`，不从本文件派生）。

@@ -12,7 +12,7 @@ Set-Location $PSScriptRoot
 $log = Join-Path $PSScriptRoot 'wdio.log'
 
 # 🔴〔2026-09-21 订正〕APP_EXE 原先在这里兜着一个**三段全错**的默认值
-#（用户名 vm260726 / 构建目录 src/bridge/target / 那台机器上没有这个仓），
+#（用户名 vm260726 / 构建目录 src/frontend/shell/target / 那台机器上没有这个仓），
 # 而 wdio.conf.mjs 里**抄着同一个错值** ⇒ 一个错的默认值有两处住址。
 # ⇒ 改成**说不出就当场停**，理由与失败签名逐条写在 wdio.conf.mjs 那一处。
 if (-not $env:APP_EXE) {

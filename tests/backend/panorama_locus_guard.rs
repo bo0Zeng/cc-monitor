@@ -17,7 +17,7 @@
 //! # 今天的读数（就是下面那两张登记表的内容，别在这段散文里复述第二遍）
 //!
 //! 人群 = 本仓今天的三个 `Cargo.lock`（monitor 那棵 · backend 那棵 · 独立全景小程序那棵）
-//! + `src/bridge/crates/` 下每个共享 crate 的 manifest。〔TL1〕三棵源码树的生产段那一半随取用面挪走了。
+//! + `src/common/` 下每个共享 crate 的 manifest。〔TL1〕三棵源码树的生产段那一半随取用面挪走了。
 //!
 //! # ⚠ 它认不出什么（逐条写，别读成全覆盖）
 //!
@@ -34,8 +34,8 @@
 //!   落地那天会出现一棵新的树、一份新的 lock。」〕
 //!   ⚠ 射程照旧：本条的人群是**登记的那几份 lock** ⇒ **「有人加了第四棵树却没登记」这一格本条买不到**
 //!   （件文件 `§0f` 第 4 条那一问，落点在 `KW2D4`）。本条能买到的是：新树**若走
-//!   `src/bridge/crates/` 那个现成的家**，当场红（正题④）。
-//! - **不认 vendor 本体**（`C7`：`src/bridge/vendor/code-picture-core/` 不动）。
+//!   `src/common/` 那个现成的家**，当场红（正题④）。
+//! - **不认 vendor 本体**（`C7`：`src/panorama-engine/vendor/code-picture-core/` 不动）。
 //!   引擎自己的 manifest 里那行 `[package] name` 不是一条依赖声明，采集器按**键的形状**认，
 //!   不按「文件里出现过这个名字」认 —— 同一条形状让
 //!   `exclude = ["vendor/code-picture-core"]`（那是 workspace 成员身份，不是依赖）
@@ -89,7 +89,7 @@ mod tests {
     ///
     /// 〔RM1c · 第四波〕第三份：`src/panorama-engine/Cargo.lock`（只装引擎的独立小程序）。
     const LOCKS: &[&str] = &[
-        "src/bridge/Cargo.lock",
+        "src/frontend/shell/Cargo.lock",
         "src/backend/Cargo.lock",
         "src/panorama-engine/Cargo.lock",
     ];
@@ -181,14 +181,14 @@ mod tests {
 
     /// ★ 正题④（**第三棵树最便宜的那个家**）：共享 crate 一个都不许把引擎链进来。
     ///
-    /// 为什么单立一条：`src/bridge/crates/` 是本仓今天现成的「第三棵树」的家
+    /// 为什么单立一条：`src/common/` 是本仓今天现成的「第三棵树」的家
     /// （7 个共享 crate 都住那儿），而两侧都 `path` 依赖着它们
     /// ⇒ 往任何一个里塞引擎依赖，等于**同时**把引擎链进两个地址空间，
     /// 而上面那条相等断言看的是 lock、要等 lock 重新解析才看得见。
     #[test]
     fn no_shared_crate_pulls_the_engine_into_a_second_address_space() {
         let (dashed, underscored) = engine_names();
-        let root = repo_root().join("src/bridge").join("crates");
+        let root = repo_root().join("src").join("common");
         let mans = guard_core::scan_tree!(&root, &["toml"]);
         assert!(
             mans.len() >= 5,
@@ -243,7 +243,7 @@ mod tests {
 
         // ② 针二单断（manifest 键的形状）：真依赖行认得出，两种写法都要。
         for line in [
-            format!("{dashed} = {{ path = \"../src/bridge/vendor/{dashed}\" }}"),
+            format!("{dashed} = {{ path = \"../src/frontend/shell/vendor/{dashed}\" }}"),
             format!("{underscored} = \"0.1\""),
         ] {
             assert!(

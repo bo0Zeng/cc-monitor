@@ -34,13 +34,13 @@
  *   TS 那份删了，字符集只在 Rust 载荷渲染判（判不过拒），前端只把空白读成默认启动器。
  *
  * 〔LR2〕住址从 `src/` 挪到 `tests/test-support/`：它的手写期望逐字就是整条 shell 命令，而 `设计/90 §3` 条 1
- * 要 `src/**\/*.ts` 零 shell 串（判据 `tests/launch-no-shell-in-ts.vitest.ts`，不开例外）。当年留在 `src/` 的理由
+ * 要 `src/**\/*.ts` 零 shell 串（判据 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`，不开例外）。当年留在 `src/` 的理由
  * 「`tests/` 不在 `tsconfig.json` 的 include 里、`LaunchPlan` 改形状 tsc 看不见这张表」重组之后已不成立
  * （`include` 今天是 `["src", "tests"]`）⇒ 挪过来 tsc 照样看得见。
  */
-import { AGENT_PROFILE } from "../../src/agent-profile.ts";
-import { buildPayloadRenderRequest } from "../../src/remote-launch-run.ts";
-import type { EnvOp, LaunchPlan } from "../../src/launch-types.ts";
+import { AGENT_PROFILE } from "../../src/frontend/ui/agent-profile.ts";
+import { buildPayloadRenderRequest } from "../../src/frontend/ui/remote-launch-run.ts";
+import type { EnvOp, LaunchPlan } from "../../src/frontend/ui/launch-types.ts";
 
 /** 一条用例：Rust `PayloadSpec` 的字段 + 手写的期望载荷。 */
 export interface GoldenCase {
@@ -129,9 +129,9 @@ export const GOLDEN_CASES: readonly GoldenCase[] = [
     //   本文件的用例**手写** `env` 数组、**从不跑维度注册表** ⇒ 把
     //   `RBIND_TOKEN_DIMENSION.order` 从 40 改成 15，本条金标准**照绿**。
     //   它钉的是「**给定这个顺序**，Rust 渲出来的字节就是 `payload` 那一串」。
-    //   「维度真的按这个顺序发」由 `tests/launch-dimensions.test.ts`
+    //   「维度真的按这个顺序发」由 `tests/frontend/ui/launch-dimensions.test.ts`
     //   （`buildLaunchPlan` 五种 EnvOp 数组相等 ＋ 模块加载即崩的顺序不变式）与
-    //   `tests/launch-requests.vitest.ts`（整条载荷逐字节相等）钉 —— M7b 实测那两处共红 5 条。
+    //   `tests/frontend/ui/launch-requests.vitest.ts`（整条载荷逐字节相等）钉 —— M7b 实测那两处共红 5 条。
     name: "五种 EnvOp 同时出现（顺序即契约）",
     payload: "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; export CCM_RBIND_TOKEN='0f1e2d3c4b5a69788796a5b4c3d2e1f0'; cd '/w' && claude",
     env: [

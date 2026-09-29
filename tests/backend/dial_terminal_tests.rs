@@ -1,7 +1,7 @@
 //! 要求住址：`设计/99 §2.1 ⑬`「待迁」最后一行 ——「远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）
 //! 由本机后端渲，monitor 只开终端」（FIX4 题面第 1 条）。
 //!
-//! 期望原样搬自 monitor `tests/bridge/launch_tests.rs` 钉 ssh 外壳的那六条（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 ·
+//! 期望原样搬自 monitor `tests/frontend/shell/launch_tests.rs` 钉 ssh 外壳的那六条（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 ·
 //! 单引号过两层）＋「拒双引号只拦 PowerShell 那条送法」的远端那一半 ＋「同一个载荷只多两层包装」的远端那一半 —— 被测对象搬了家、期望一个字没改；
 //! 新多两格：地址取竞速顺序第一条（`prefer`）· 跳板经 `machine::resolve`（查无 / 环 ⇒ `bad_jump`）。
 

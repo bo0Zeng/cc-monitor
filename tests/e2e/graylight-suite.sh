@@ -13,7 +13,7 @@
 #     → 收割/对账 retire → SESSION_ENDED → tabs.archiveTab → `[e2e] tab-state … liveness=dead recoverability=resumable`(已结束)
 # 〔U4〕探针行的两个键就是两个轴(原先是 `status=live tmuxIdle=1` / `status=archived`)。「进可重连之前是活的」
 #   不再靠同一行里的 `status=live` 证明:markTmuxIdle 只在活着时才转移、才打这一行(`tab-session-state.ts::nextState`),
-#   打出来本身就是证明。两条 grep 模式与探针真吐的行由 `tests/tab-session-state.vitest.ts` 对拍。
+#   打出来本身就是证明。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tab-session-state.vitest.ts` 对拍。
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────
@@ -126,7 +126,7 @@ esac
 #   **它想验「探针存在」，量的却是「探针已经打过」** —— 射程错了一格。
 # ⇒ 改量**结构性信号**：`tauri.conf.json` 的 `devUrl` 端口上有没有 vite。
 #   只有 `npx tauri dev` 会起它；生产构建走 `frontendDist`，那个端口是空的。
-_devport="$(grep -oE '"devUrl"[^0-9]*([0-9]+)' "$REPO/src/bridge/tauri.conf.json" | grep -oE '[0-9]+$')"
+_devport="$(grep -oE '"devUrl"[^0-9]*([0-9]+)' "$REPO/src/frontend/shell/tauri.conf.json" | grep -oE '[0-9]+$')"
 if [ -n "$_devport" ]; then
   curl -s -o /dev/null --max-time 3 "http://localhost:$_devport" \
     || _abort "devUrl 端口 $_devport 上没有 vite —— 跑的不是 \`npx tauri dev\`？DEV 探针会被 vite 整支消除，两条主断言永不可能通过"

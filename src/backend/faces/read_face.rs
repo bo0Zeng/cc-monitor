@@ -182,13 +182,13 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
         //   并的是**这台机器自己**那份表（与 `apikey-read` · 中转里的上游选择同一个出处）—— 远端从此第一次并上它自己的表。
         "accounts-list" => {
             let agent = str_arg(args, "agent")?;
-            let rows = crate::accounts::upstream::file_face::rows_at(
-                &crate::accounts::upstream::file_face::machine_path(),
+            let rows = crate::accounts::upstream_select::file_face::rows_at(
+                &crate::accounts::upstream_select::file_face::machine_path(),
             );
             let v = accounts_query::list_product(
                 &rows,
                 agent,
-                crate::accounts::upstream::CREDENTIALS_FILE_AGENT,
+                crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
             );
             let size = v.to_string().len();
             if size > LINES_CAP_BYTES {

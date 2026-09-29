@@ -6,7 +6,7 @@ name: Release
 #     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌后端、自动部署 (#29) 可用。
 #     〔RM1c · 第四波〕同一个 job、同一条配方再编一件：只装代码全景引擎的独立小程序
 #     （`src/panorama-engine`，V108 选 B），同进 `embedded-backends` 那个 artifact。
-#  2. build-windows：下载后端放进 src/bridge/embedded-backends/ → cargo tauri build →
+#  2. build-windows：下载后端放进 src/frontend/shell/embedded-backends/ → cargo tauri build →
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
 #  3. build-linux：同一批 backend artifact → tauri build --bundles deb → 追加进同一个 Release。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
@@ -17,7 +17,7 @@ name: Release
 #  ① 三个落点（`embedded-backends/` · `binaries/` · `native-backend/`）**全部 gitignore**
 #     ⇒ **字节不进仓**，它只在「发版那一趟」存在 ⇒ 表的值不是一个文件，是**一条产线**；
 #     🔴 〔步 `19c` 订正 09-19〕**这一句在步 8（全仓改名 `daemon`→`backend`）到今天之间是假的**：
-#     `src/bridge/.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/`，
+#     `src/frontend/shell/.gitignore` 里还写着 `/embedded-daemons/` 与 `/native-daemon/`，
 #     现打 `git check-ignore` **两条都不命中** ⇒ 三个落点里有两个从改名那天起就没被挡住。
 #     本拍把那两行改对，并给它们加了机检锚（`K-R124-ruler.py` ⑬d 与 `build.rs` 的落点常量两向对拍）
 #     —— 这句「硬事实」从此有人每趟核它。
@@ -28,7 +28,7 @@ name: Release
 #
 # `tests/scripts/re-embed.sh` 是「`BUILD_ID` bump 的同拍步骤」：开发树上 bump 了
 # `src/backend/lib.rs` 的 `const BUILD_ID` 之后，盘上那几份内嵌字节立刻变旧，
-# `src/bridge/build.rs` 的半 bump 守卫当场 panic、**整棵树编不过**
+# `src/frontend/shell/build.rs` 的半 bump 守卫当场 panic、**整棵树编不过**
 #（2026-09-18 实地踩过一次，四路 agent 同时中）。那条命令把它们重编回来。
 # 🔴 **它与本文件下面那两步是同一条配方，不是两条**：
 #   · `Cross-compile backend for both musl targets` ↔ 脚本的 `REEMBED_TARGETS` ＋ `REEMBED_BUILD_FLAGS`
@@ -221,7 +221,7 @@ jobs:
           tool: cargo-zigbuild@0.23.0
 
       # cc-monitor-backend 是独立 crate（无 workspace），静态编译成 musl。
-      # build_id 由源码 const BUILD_ID 决定（src/bridge/build.rs 同源解析），从源码编译天然版本一致。
+      # build_id 由源码 const BUILD_ID 决定（src/frontend/shell/build.rs 同源解析），从源码编译天然版本一致。
       #
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
       # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
@@ -241,15 +241,15 @@ jobs:
       # 〔RM1c · 第四波〕只装代码全景引擎的**独立小程序**（用户 09-24 V108 选 B）：
       # 后端经插件通用调用口按需起它，后端本体仍零 code-picture。同一条配方、同两个 target
       # （`tests/scripts/re-embed.sh` 逐字同源，`tests/evidence/K-R124-ruler.py` ⑬b 两向对拍）。
-      # 字节进同一个 artifact，落 `src/bridge/embedded-backends/cc-monitor-panorama-<arch>`，
-      # 由 `src/bridge/build.rs::embed_panoramas` 内嵌。⚠ 它**没有**身份戳（不随 `BUILD_ID` 走）。
+      # 字节进同一个 artifact，落 `src/frontend/shell/embedded-backends/cc-monitor-panorama-<arch>`，
+      # 由 `src/frontend/shell/build.rs::embed_panoramas` 内嵌。⚠ 它**没有**身份戳（不随 `BUILD_ID` 走）。
       - name: Cross-compile panorama for both musl targets
         working-directory: src/panorama-engine
         run: |
           cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
-      # 命名成 src/bridge/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
+      # 命名成 src/frontend/shell/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
       # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
       # 〔墓碑，本步原话逐字：「Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把
@@ -258,7 +258,7 @@ jobs:
       #  所以三个载体的清单**恒等**，而恒等的东西一格证据都不提供（K-R68 · DECISIONS#R26 裁定零）。〕
       # 今天后端自己带着一段 `#[used] static` 的身份戳（lib.rs::CC_MONITOR_BUILD_STAMP，
       # 〔19b 订正：步 9 起它住 lib.rs，这段头注原写 main.rs —— 指向一份抠不出东西的住址〕），
-      # 连续、拆不成立即数 ⇒ 下游（src/bridge/build.rs）直接从字节里扫，不需要任何旁文件。
+      # 连续、拆不成立即数 ⇒ 下游（src/frontend/shell/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
           mkdir -p staged
@@ -295,7 +295,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/bridge
+          workspaces: src/frontend/shell
 
       - name: Download cross-compiled backends
         uses: actions/download-artifact@v4
@@ -321,21 +321,21 @@ jobs:
       - name: Place + verify embedded backends
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force src/bridge/embedded-backends | Out-Null
+          New-Item -ItemType Directory -Force src/frontend/shell/embedded-backends | Out-Null
           foreach ($a in "x86_64","aarch64") {
             $f = Get-ChildItem -Recurse backend-artifacts -Filter "cc-monitor-backend-$a" | Select-Object -First 1
             if (-not $f) { Write-Error "backend artifact cc-monitor-backend-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
-            Copy-Item $f.FullName "src/bridge/embedded-backends/cc-monitor-backend-$a" -Force
+            Copy-Item $f.FullName "src/frontend/shell/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
             # 〔RM1c〕全景小程序同一批 artifact。缺了就是这一版远端全景没有字节可推 ⇒ 当场失败，不静默关掉。
             $p = Get-ChildItem -Recurse backend-artifacts -Filter "cc-monitor-panorama-$a" | Select-Object -First 1
             if (-not $p) { Write-Error "panorama artifact cc-monitor-panorama-$a 缺失——远端代码全景没有字节可推"; exit 1 }
-            Copy-Item $p.FullName "src/bridge/embedded-backends/cc-monitor-panorama-$a" -Force
+            Copy-Item $p.FullName "src/frontend/shell/embedded-backends/cc-monitor-panorama-$a" -Force
             Write-Host ("embedded panorama {0} ({1} bytes)" -f $a, $p.Length)
           }
           # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
           #    `设计/00 §1.5.4` 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
-          #    `src/bridge/build.rs::backend_lib_rs` 与本处是同一条住址，改一处就要改另一处；
+          #    `src/frontend/shell/build.rs::backend_lib_rs` 与本处是同一条住址，改一处就要改另一处；
           #    `tests/backend/build_id_guard.rs` 那条判据钉着三处都指得到真东西。
           # 🔴 〔19b · 09-19〕住址收进文件头那个 `env:` —— 本文件另有一步也要抠同一个 const，
           #    步 9 那次**只改了这一处**，另一处留在 main.rs 上指空了。读同一个量，不各写一份。
@@ -358,7 +358,7 @@ jobs:
           $want = "$open$src$close"
           Write-Host "expecting stamp: $want"
           foreach ($a in "x86_64","aarch64") {
-            $bytes = [System.IO.File]::ReadAllBytes("src/bridge/embedded-backends/cc-monitor-backend-$a")
+            $bytes = [System.IO.File]::ReadAllBytes("src/frontend/shell/embedded-backends/cc-monitor-backend-$a")
             $text  = [System.Text.Encoding]::Latin1.GetString($bytes)
             if ($text.IndexOf($want) -lt 0) { Write-Error "内嵌 backend $a 的字节里问不出身份戳 $want —— 它不是这套源码编出来的"; exit 1 }
             Write-Host "stamp $a = $src (从字节里扫出来的，不是从旁边抄的)"
@@ -374,10 +374,10 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}" -replace '^v',''
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $conf = (Get-Content src/bridge/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $cargo = (Select-String -Path src/bridge/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $conf = (Get-Content src/frontend/shell/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src/frontend/shell/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
           # Cargo.lock 里 monitor 包：`name = "monitor"` 紧跟的 version 行
-          $lockRaw = Get-Content src/bridge/Cargo.lock -Raw
+          $lockRaw = Get-Content src/frontend/shell/Cargo.lock -Raw
           $lock = if ($lockRaw -match '(?m)^name = "monitor"\r?\nversion = "([^"]+)"') { $Matches[1] } else { '<missing>' }
           # ── KR114D1：这一步拆成**两半**，因为手工触发时 `github.ref_name` 是**分支名**，
           #    拿它当版本号比，演练必然红在这里，而红的原因与「版本漂了」毫无关系。
@@ -444,10 +444,10 @@ jobs:
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          New-Item -ItemType Directory -Force src/bridge/binaries | Out-Null
+          New-Item -ItemType Directory -Force src/frontend/shell/binaries | Out-Null
           Copy-Item .build/backend/release/cc-monitor-backend.exe `
-            "src/bridge/binaries/cc-monitor-backend-$triple.exe" -Force
-          Get-ChildItem src/bridge/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
+            "src/frontend/shell/binaries/cc-monitor-backend-$triple.exe" -Force
+          Get-ChildItem src/frontend/shell/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
 
       # ── K-R42：**同一份二进制再铺一处** —— 让**裸 `monitor.exe`** 也带得上本机后端 ──────
       #
@@ -459,7 +459,7 @@ jobs:
       # `externalBin` 仍然只住 `tauri.sidecar.conf.json`、仍然只在下面 `tauri build` 那行
       # 用 `--config` 注入（进主配置会让 `cargo test` 也要求当前 target 的二进制存在，
       # 那是 C2 反面钉住的）。本步**只是把同一个产物再拷一份到 `embedded-backends/`**，
-      # 由 `src/bridge/build.rs::embed_native_backend` `include_bytes!` 进 exe。
+      # 由 `src/frontend/shell/build.rs::embed_native_backend` `include_bytes!` 进 exe。
       #
       # ⚠ **落点刻意不是 `embedded-backends/`**，理由住 `build.rs` 的 `NATIVE_BACKEND_DIR` 头注
       # （一句话：那个目录名是另一条判据认「谁会起真后端」用的来历串，
@@ -487,7 +487,7 @@ jobs:
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dir = "src/bridge/native-backend"
+          $dir = "src/frontend/shell/native-backend"
           $dst = "$dir/cc-monitor-native"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item .build/backend/release/cc-monitor-backend.exe $dst -Force
@@ -512,7 +512,7 @@ jobs:
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dst = "src/bridge/native-backend/cc-monitor-panorama"
+          $dst = "src/frontend/shell/native-backend/cc-monitor-panorama"
           Copy-Item .build/panorama/release/cc-monitor-panorama.exe $dst -Force
           Set-Content -Path "$dst.target" -Value $triple
           foreach ($f in $dst, "$dst.target") {
@@ -522,24 +522,24 @@ jobs:
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
-      # ⚠ `--config src/bridge/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
+      # ⚠ `--config src/frontend/shell/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
       # **不进主配置** —— `tauri-build` 要求当前 target 的本机后端在**编译期**就存在，
       # 进主配置会让 `cargo test` 也需要一份后端二进制（实测报错
       # `resource path binaries/cc-monitor-backend-<triple> doesn't exist`），
       # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
       - name: tauri build
-        run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles nsis,msi
+        run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles nsis,msi
 
-      # ── 🔴〔2026-09-23 现打修〕**产物根不是 `src/bridge/target/`，是 `.build/bridge/`** ────
+      # ── 🔴〔2026-09-23 现打修〕**产物根不是 `src/frontend/shell/target/`，是 `.build/shell/`** ────
       #
-      # 仓根有一份**进 git 的** `.cargo/config.toml`（`[build] target-dir = ".build/bridge"`；
+      # 仓根有一份**进 git 的** `.cargo/config.toml`（`[build] target-dir = ".build/shell"`；
       # 理由住它自己的头注：构建输出不许落在 `src/` 里，否则一族「走一遍源码树」的判据
       # 会被 `target/` 下成千上万份生成 `.rs` 淹没）。cargo 从 cwd 往上找配置
-      # ⇒ **CI 上一样生效**。现打核过（`cd src/bridge && cargo metadata --no-deps`）：
-      # `target_directory = <仓根>/.build/bridge`；`npx tauri bundle` 现打也落在那里
-      # （`.build/bridge/release/bundle/deb/cc-monitor_3.8.1_amd64.deb`）。
+      # ⇒ **CI 上一样生效**。现打核过（`cd src/frontend/shell && cargo metadata --no-deps`）：
+      # `target_directory = <仓根>/.build/shell`；`npx tauri bundle` 现打也落在那里
+      # （`.build/shell/release/bundle/deb/cc-monitor_3.8.1_amd64.deb`）。
       #
-      # 〔墓碑，本步与下面上传那一步原来逐字写的是 `src/bridge/target/release/…`。**那是
+      # 〔墓碑，本步与下面上传那一步原来逐字写的是 `src/frontend/shell/target/release/…`。**那是
       #  09-17 搬树（两个 cargo 工程搬进 `src/`、并加了上面那份配置）之后指空的路径**，
       #  而最后一次发版是 v3.6.0（08-01）—— 在那之前 ⇒ **一次都没人踩到过**。
       #  它坏得**完全静默**：三个 glob 全空 → 本步原来那个 `-ErrorAction SilentlyContinue`
@@ -553,11 +553,11 @@ jobs:
       - name: Compute SHA256 checksums
         shell: pwsh
         run: |
-          $bundleDir = ".build\bridge\release\bundle"
-          $want = @("$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", ".build\bridge\release\monitor.exe")
+          $bundleDir = ".build\shell\release\bundle"
+          $want = @("$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", ".build\shell\release\monitor.exe")
           $got = @(Get-ChildItem -Path $want -ErrorAction SilentlyContinue)
           if ($got.Count -ne $want.Count) {
-            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 这一形就是 2026-09-23 逮到的那条：产物根搬去了 .build/bridge/ 而这里还写着 src/bridge/target/ ⇒ 全空，却一声不响"
+            Write-Error "产物份数对不上：要 $($want.Count) 份（nsis setup · msi · 裸 exe），现打 $($got.Count) 份（$($got.Name -join ', ')）—— 这一形就是 2026-09-23 逮到的那条：产物根搬去了 .build/shell/ 而这里还写着 src/frontend/shell/target/ ⇒ 全空，却一声不响"
             exit 1
           }
           $got |
@@ -584,9 +584,9 @@ jobs:
         with:
           body_path: RELEASE_BODY.md
           files: |
-            .build/bridge/release/monitor.exe
-            .build/bridge/release/bundle/nsis/*-setup.exe
-            .build/bridge/release/bundle/msi/*.msi
+            .build/shell/release/monitor.exe
+            .build/shell/release/bundle/nsis/*-setup.exe
+            .build/shell/release/bundle/msi/*.msi
             SHA256SUMS.txt
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -615,7 +615,7 @@ jobs:
   #    （Ubuntu 24.04 已不默认提供）——在一个**没法在本地验证**的 job 上，
   #    那是两个额外的失败面。deb 用 Tauri 自带的纯 Rust 打包器，零外部工具。
   #    ⇒ **先把 deb 跑通，AppImage 留作后续**（已登记）。
-  # 4. **不动 `src/bridge/tauri.conf.json` 的 `bundle.targets`**（那是 Windows 主路径共享的
+  # 4. **不动 `src/frontend/shell/tauri.conf.json` 的 `bundle.targets`**（那是 Windows 主路径共享的
   #    最高风险面）；格式在命令行上给。
   build-linux:
     name: Build Linux artifacts (deb)
@@ -635,7 +635,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/bridge
+          workspaces: src/frontend/shell
 
       # 同 ci.yml::linux-app-build 那四个（构建期必需，不是打包才要）。
       - name: Install Linux build deps
@@ -661,16 +661,16 @@ jobs:
       - name: Place embedded backends
         run: |
           set -euo pipefail
-          mkdir -p src/bridge/embedded-backends
+          mkdir -p src/frontend/shell/embedded-backends
           for a in x86_64 aarch64; do
             bin=$(find backend-artifacts -name "cc-monitor-backend-$a" -type f | head -1)
             [ -n "$bin" ] || { echo "backend artifact 缺失（$a）"; exit 1; }
-            cp "$bin" "src/bridge/embedded-backends/cc-monitor-backend-$a"
+            cp "$bin" "src/frontend/shell/embedded-backends/cc-monitor-backend-$a"
             echo "embedded $a placed"
             # 〔RM1c〕全景小程序同一批 artifact（缺了 ⇒ `cp` 失败 ⇒ 本步失败，同上一行的口径）。
             pano=$(find backend-artifacts -name "cc-monitor-panorama-$a" -type f | head -1)
             [ -n "$pano" ] || { echo "panorama artifact 缺失（$a）"; exit 1; }
-            cp "$pano" "src/bridge/embedded-backends/cc-monitor-panorama-$a"
+            cp "$pano" "src/frontend/shell/embedded-backends/cc-monitor-panorama-$a"
             echo "embedded panorama $a placed"
           done
 
@@ -688,16 +688,16 @@ jobs:
         run: |
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
-          mkdir -p src/bridge/binaries
+          mkdir -p src/frontend/shell/binaries
           cp .build/backend/release/cc-monitor-backend \
-             "src/bridge/binaries/cc-monitor-backend-$triple"
-          ls -l src/bridge/binaries
+             "src/frontend/shell/binaries/cc-monitor-backend-$triple"
+          ls -l src/frontend/shell/binaries
 
       - name: tauri build (deb)
-        run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles deb
+        run: npx tauri build --config src/frontend/shell/tauri.sidecar.conf.json --bundles deb
 
-      # ⚠ 路径的理由与 Windows 那一步**同一条**（产物根是 `.build/bridge/`，不是
-      #   `src/bridge/target/`）—— 逐字住那一步的头注，这里不抄第二份。
+      # ⚠ 路径的理由与 Windows 那一步**同一条**（产物根是 `.build/shell/`，不是
+      #   `src/frontend/shell/target/`）—— 逐字住那一步的头注，这里不抄第二份。
       #   `[ -f ] || continue` 同拍换成硬失败：它是那条静默的另一半。
       - name: Compute SHA256 checksums (Linux)
         run: |
@@ -707,7 +707,7 @@ jobs:
           # 二进制名是 cargo 包名 `monitor`（不是 productName `cc-monitor`）——
           # 与 build-windows 里的 `monitor.exe` 同源；`installer.nsi` 现打的
           # `!define MAINBINARYNAME "monitor"` 也是这个名字。
-          for f in .build/bridge/release/bundle/deb/*.deb .build/bridge/release/monitor; do
+          for f in .build/shell/release/bundle/deb/*.deb .build/shell/release/monitor; do
             [ -f "$f" ] || { echo "::error::产物不在盘上：$f —— 产物根搬过一次（见 build-windows 那一步的头注）"; exit 1; }
             # 只把**路径**收成 basename，别顺手把 hash 也剥了
             #（`sed 's#.*/##'` 是贪婪的，会把 "hash  path/to/" 整段吃掉）。
@@ -727,7 +727,7 @@ jobs:
       #
       # ## 为什么两侧都**现算**，不写第三份清单
       #
-      # 左边从 `src/bridge/Cargo.toml` 的 `[[bin]]` ＋ `tauri.sidecar.conf.json` 的
+      # 左边从 `src/frontend/shell/Cargo.toml` 的 `[[bin]]` ＋ `tauri.sidecar.conf.json` 的
       # `externalBin` 现算（那是**唯一住址**，同一份也是判据 ⑭ 读的那两份）；右边从 `.deb`
       # 现打。手抄一份「应该有这三个」进本文件 = 又一个会漂的副本（本仓最贵那族病）。
       #
@@ -744,7 +744,7 @@ jobs:
         run: |
           set -euo pipefail
           # ⚠ 恰好一份才判得动（多一份 = 下面 `dpkg-deb -c "$deb"` 会拿到一串路径）。
-          debs=(.build/bridge/release/bundle/deb/*.deb)
+          debs=(.build/shell/release/bundle/deb/*.deb)
           [ "${#debs[@]}" -eq 1 ] && [ -f "${debs[0]}" ] \
             || { echo "::error::deb 不是恰好一份（现打 ${#debs[@]}：${debs[*]}）—— 判不了，按红记"; exit 1; }
           deb="${debs[0]}"
@@ -753,7 +753,7 @@ jobs:
           # ⚠ **刻意写成 `python3 -c` 一行，不用 heredoc**：`run: |` 是 YAML 的块标量，
           #   heredoc 的正文要顶到第 0 列才收得住终止符，而那**破掉块标量的缩进**
           #   ⇒ 整份 `release.yml` 解不动（现打栽过一次，`K-R124` 的 ④ 地板当场红）。
-          want="$(python3 -c 'import json,tomllib; bins={b["name"] for b in tomllib.load(open("src/bridge/Cargo.toml","rb"))["bin"]}; ext={p.rsplit("/",1)[-1] for p in json.load(open("src/bridge/tauri.sidecar.conf.json"))["bundle"]["externalBin"]}; print("\n".join(sorted(bins|ext)))')"
+          want="$(python3 -c 'import json,tomllib; bins={b["name"] for b in tomllib.load(open("src/frontend/shell/Cargo.toml","rb"))["bin"]}; ext={p.rsplit("/",1)[-1] for p in json.load(open("src/frontend/shell/tauri.sidecar.conf.json"))["bundle"]["externalBin"]}; print("\n".join(sorted(bins|ext)))')"
           got="$(dpkg-deb -c "$deb" | awk '{print $NF}' | sed -nE 's#^(\./)?usr/bin/##p' | LC_ALL=C sort)"
           printf '想要：\n%s\n现打（%s 的 usr/bin/）：\n%s\n' "$want" "$deb" "$got"
           # 🔴 两向：`diff` 对**两个方向**都出声。少一个 = 安装包里没有它（用户点那个按钮会
@@ -796,8 +796,8 @@ jobs:
         with:
           body_path: RELEASE_BODY.md
           files: |
-            .build/bridge/release/bundle/deb/*.deb
-            .build/bridge/release/monitor
+            .build/shell/release/bundle/deb/*.deb
+            .build/shell/release/monitor
             SHA256SUMS-linux.txt
             backend-artifacts/cc-monitor-backend-x86_64
             backend-artifacts/cc-monitor-backend-aarch64

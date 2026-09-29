@@ -159,8 +159,8 @@ def classify(paths):
 def area(paths):
     """产品面那一档再按**动到哪一层**打标（给人读 CHANGELOG 时当筛子用）。"""
     f = any(p.startswith("src/") and ".test." not in p and ".vitest." not in p
-            and not p.startswith("src/generated/") for p in paths)
-    g = any(p.startswith("src/generated/") for p in paths)
+            and not p.startswith("src/frontend/ui/generated/") for p in paths)
+    g = any(p.startswith("src/frontend/ui/generated/") for p in paths)
     b = any(p.startswith("src-tauri/src/") for p in paths)
     d = any(p.startswith("remote-daemon-proto/src") for p in paths)
     s = any(p.startswith("shared/") for p in paths)
@@ -200,7 +200,7 @@ def commits(base="v3.7.0"):
           "`hooks/` `doc/` 或 `*.test.*` / `*.vitest.*` 里")
     print("  · **产品面** = 其余（动到了会进构建的代码）")
     print("  ⚠ 「产品面」**不等于**「用户可见」：这一档里混着大量内部重构，"
-          "所以下面对它再按层打一个标 —— F=`src/` 前端 · G=`src/generated/` · "
+          "所以下面对它再按层打一个标 —— F=`src/` 前端 · G=`src/frontend/ui/generated/` · "
           "B=`src-tauri/src/` · D=daemon · S=`shared/`")
     print()
     for k in ("产品面", "内部判据与量具", "纯文档", "空提交"):

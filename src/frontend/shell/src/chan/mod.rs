@@ -1,0 +1,58 @@
+//! **通道** —— 通信层面 A 的第一个**进程外**客户端那一条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。
+//!
+//! # 为什么要有它（用户裁决逐字）
+//!
+//! 「**甲, 窗口变成独立前端. 我说了后端要模块化, 即原生后端+文件管理后端. 现在先解耦清楚.
+//! 然后 monitor 可以打开文件管理器的前端**」
+//!
+//! 文件管理窗口已经是独立进程了（`filewin/proc.rs`），而它**在构造上够不着后端**：
+//! 客户端登记表是进程级的（新进程里是空的）· 本机后端那个口一次只服务一条流 ·
+//! 远端后端住在 monitor 手里那条 SSH 流里。⇒ 窗口今天只能走退路，按构造违反 `D11`。
+//! ⇒ **窗口是又一个前端**，它该说的正是 `01 §2.2` 那两个动作。本模块就是那两个动作跨进程的那条路。
+//!
+//! # 五份，两侧（〔C4a〕＋ webview 那一侧一份宿主）
+//!
+//! | 文件 | 住哪一侧 | 通信层成员？ | 干什么 |
+//! |---|---|---|---|
+//! | `wire.rs` | 两端共用 | ✅ | `05 §3.3` 的全部类型 ＋ 拆帧 |
+//! | `router.rs` | monitor 进程 | ✅ | 认证 ＋ 按 `origin` 转给注入的句柄 ＋ 撤单 ＋ credit |
+//! | `client.rs` | 外部前端进程 | ✅ | `Comms` 的实现：`call` / `subscribe` |
+//! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 绑回环 · 造钥匙 · `accept` · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
+//! | `dial.rs` | 外部前端进程 | ❌ 刻意不是 | 按交接件拨号（`C5`：成员只用交给它的流） |
+//! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | 〔C4a〕**主界面**（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄；期限执行与回环那条共用 `router::settle`。成员那一半是 TS 的 `src/comms/inward/chan.ts` |
+//!
+//! # 为什么住 `src/frontend/shell/src/chan/` 而不是 `backend/` 下
+//!
+//! - `backend/` 是 monitor 侧的**后端边界**（读 / 控制两条能力线）；本模块是**通信层**面 A，
+//!   两者按 `01 §2` 是不同的层 —— 住进去就是把层画错。
+//! - 成员（三份）与宿主（两份）**同住一个目录**，为的是让「绑口在外、`serve` 在内」这条
+//!   `C5` 的分界**一眼看得见**：谁盖了标记、谁没盖，就在同一个 `ls` 里。
+//!   先例是面 B 的 `relay/`：`listen.rs`（绑口，不是成员）与 `server.rs`（成员）同目录。
+//! - 外部前端是本包的另一个二进制（`cc-monitor-filewin`），经 `monitor_lib::chan` 够得着它
+//!   ⇒ 本模块在 `lib.rs` 里是 `pub mod`（与 `filewin` 同一条理由）。
+//!
+//! # 买到什么
+//!
+//! - 一个进程外前端**第一次**能用 `call` / `subscribe` 走到后端，而且只能经一把钥匙进来。
+//! - 路由器（成员）身上零业务、零读盘、零起进程、零绑口、零期限常量 —— `C1`–`C5` 十一条当场对它成立。
+//!
+//! # 买不到什么（逐条，别读宽）
+//!
+//! - ✅〔F2 · 2026-09-24〕**第一个真前端接上了**：文件窗口进程（`filewin/proc.rs::dial_back` 拨回，`filewin/source.rs::ask` 说 `call`）。
+//! - ✅〔F7c · 2026-09-24〕**生产上的 `subscribe` 有了第一条流**：传输进度 `transfer/<id>`；其余 `kind` 照旧没有（理由住 `host.rs` 头注）。
+//! - **不买重连**（`client.rs` 头注）· **不买对端撤活**（`host.rs` 头注）· **不买协议版本协商**（`wire.rs` 头注）。
+
+// 〔RE〕通信层成员住 `src/comms/inward/chan/`（`99 §2.1 ⑰`）；非成员 dial / host / webview 留在壳
+#[path = "../../../../comms/inward/chan/client.rs"]
+pub mod client;
+pub mod dial;
+pub mod host;
+#[path = "../../../../comms/inward/chan/router.rs"]
+pub mod router;
+pub mod webview;
+#[path = "../../../../comms/inward/chan/wire.rs"]
+pub mod wire;
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/chan/chan_tests.rs"]
+mod tests;

@@ -347,7 +347,7 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
 }
 
 /// 上一条那七句里的六句，**在入库夹具里逐字出现**（夹具由 TS 落盘：〔LR1〕`out` 是
-/// `src/launch-cli-golden.ts` 用例表里手写的期望 —— TS 渲染器删了之后它是另一份手写说法）——
+/// `src/frontend/ui/launch-cli-golden.ts` 用例表里手写的期望 —— TS 渲染器删了之后它是另一份手写说法）——
 /// 所以那六句不是自说自话。带文件规模自检：夹具读空时 `contains` 会全假、方向是红，
 /// 但那时报的错会很难懂，所以先断言它有内容。
 #[test]

@@ -28,7 +28,7 @@ import pathlib
 import subprocess
 import sys
 
-UI = "src/settings/accounts-section.ts"
+UI = "src/frontend/ui/settings/accounts-section.ts"
 
 # `N2M6` 切的是这一份 —— 它**在本件写区之外**（写区里只有它的 `.vitest.ts`）。
 #
@@ -40,7 +40,7 @@ UI = "src/settings/accounts-section.ts"
 # 与 `git diff <基点>` 两个口径都会当场把没还原的情况打红（`NF2D4` 那三个口径就是干这个的）。
 # ⚠ 这是实现方的一个判断，已在交回报告里点名报给 PM —— 要是 PM 认为不该碰，这一刀撤掉，
 #   那两条判据就只剩测试内那一组正反对照（绿→红→绿），没有源码级的死值验。
-SEC = "src/settings/remote-section.ts"
+SEC = "src/frontend/ui/settings/remote-section.ts"
 
 # 本机那四档的写点（`reloadLocal` 里）。缩进是判据的一部分：远端那八行里有
 # 逐字相同的句子（`已读取` / `未启用` / `已启用`），只有缩进与 `state.` / `ui.`

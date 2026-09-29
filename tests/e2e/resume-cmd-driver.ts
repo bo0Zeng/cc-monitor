@@ -21,9 +21,9 @@ import {
   planResumeIntoExistingTmux,
   planResumeTmux,
   planResumeDirect,
-} from "../../src/launch-requests.ts";
+} from "../../src/frontend/ui/launch-requests.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
-import { resolveFollowAccount, accountConfigDir } from "../../src/accounts.ts";
+import { resolveFollowAccount, accountConfigDir } from "../../src/frontend/ui/accounts.ts";
 
 function opt(v: string | undefined): string | undefined {
   return v === undefined || v === "-" || v === "" ? undefined : v;

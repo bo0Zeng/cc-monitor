@@ -680,9 +680,10 @@ fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
 /// 两条一起才关得住「不许出现第二份 snippet」。
 #[test]
 fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
-    // 〔MIG-3a〕人群 = 两棵 Rust 树（monitor `src/bridge/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
+    // 〔MIG-3a〕人群 = 两棵 Rust 树（monitor `src/frontend/shell/src` ＋ 后端 `src/backend`）：住址从 monitor 搬进了后端。
     let root = crate::guard_support::repo_root();
-    let mut files = guard_core::scan_tree_excluding(&root.join("src/bridge/src"), &["rs"], &[]);
+    let mut files =
+        guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[]);
     files.extend(guard_core::scan_tree_excluding(
         &root.join("src/backend"),
         &["rs"],
@@ -1587,11 +1588,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
     let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
     let mut fns_scanned = 0usize;
     for (path, raw) in &files {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = guard_core::module_address(&root, path);
         let prod = guard_core::production_code(raw);
         // 顶层函数：从 `fn 名(` / `fn 名<` 到下一个列 0 的 `}`。
         let mut at = 0usize;
