@@ -680,6 +680,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // 〔MIG-3b · 4d-lanes 子步 1〕部署决策（新立；本机常驻后端出计划 · monitor 放字节共用）。TS 侧零处判部署 ⇒ 全 NONE。
   "deploy-core": {
     LEGACY_BACKEND_REL: NONE,
+    LEGACY_ENTRY_REL: NONE, // 〔THIN〕旧入口路径（契约：后端判去向 · monitor 照删 · 足迹一行）
     LEGACY_BACKEND_WORD: NONE,
     LINES: NONE,
     UNAME_CMD: NONE,

@@ -10400,6 +10400,16 @@
       "zh": "问 {machine} 是什么机器没问成，没有放代码全景组件：{e}",
       "args": ["machine", "e"]
     },
+    "beDeployRetired.kept.notOurs": {
+      "kind": "body",
+      "zh": "不是 cc-monitor 放的",
+      "args": []
+    },
+    "beDeployRetired.kept.unreadable": {
+      "kind": "body",
+      "zh": "读不成文本（读不动、不是 UTF-8 或太大），认不出是不是 cc-monitor 放的",
+      "args": []
+    },
     "rsSftp.identity.undecidable": {
       "kind": "error",
       "zh": "判不了 {machine} 的 {path} 是哪一版后端，没有动它：{why}",
@@ -16138,14 +16148,9 @@
       "zh": "~/{rel} 没动：{why}。",
       "args": ["rel", "why"]
     },
-    "rsCcmLegacy.kept.unreadable": {
-      "kind": "body",
-      "zh": "读不成文本（{e}），认不出是不是 cc-monitor 放的",
-      "args": ["e"]
-    },
-    "rsCcmLegacy.kept.notOurs": {
-      "kind": "body",
-      "zh": "不是 cc-monitor 放的",
+    "rsCcmLegacy.verdict.unreadable": {
+      "kind": "error",
+      "zh": "本机后端答的旧入口去向对不上这一版。两边版本不一致。",
       "args": []
     },
     "rsCcmLegacy.kept.changed": {

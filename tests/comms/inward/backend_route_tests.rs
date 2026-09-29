@@ -189,6 +189,8 @@ const SENDERS: &[(&str, Verdict)] = &[
     ("remote_resident.rs", Verdict::UsesRouter),
     // 〔THIN〕全景推字节之前「那台要哪一格」改问本机常驻后端（`deploy-slot`）：一问一答，照样走分流器（理由同上两行）。
     ("panorama_bytes.rs", Verdict::UsesRouter),
+    // 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向改问本机常驻后端（`deploy-retired`）：一问一答，照样走分流器。
+    ("ccm_legacy.rs", Verdict::UsesRouter),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

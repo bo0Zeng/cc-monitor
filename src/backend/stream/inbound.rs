@@ -139,6 +139,8 @@ pub const COMMANDS: &[&str] = &[
     "ccm-probe",
     // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-plan",
+    // 〔THIN〕那台旧入口 `~/.local/bin/ccm` 的去向（认出是我们放的才删 ⇒ 后端判，monitor 照删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "deploy-retired",
     // 〔THIN〕那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-slot",
     // 〔MOD〕这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
@@ -1374,6 +1376,29 @@ pub const REGISTRY: &[CommandSpec] = &[
                         .unwrap_or(serde_json::Value::Null),
                 );
                 crate::control::deploy_plan::answer(&r.args, &facing)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔THIN〕**那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
+    //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
+    CommandSpec {
+        name: "deploy-retired",
+        doc_anchor: Some("#### `deploy-retired`"),
+        codes: &["bad_args", "unreachable"],
+        fields: &["dial", "expect", "verdict", "why"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let facing = crate::control::deploy_plan::DialFacing::new(
+                    r.args
+                        .get("dial")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                crate::control::deploy_plan::answer_retired(&r.args, &facing)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))

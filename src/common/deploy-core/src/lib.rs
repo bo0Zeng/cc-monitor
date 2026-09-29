@@ -676,7 +676,8 @@ const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
 const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
 
 /// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。
-/// 两个用户：旧落点 `~/.local/bin/ccm`（monitor `ccm_legacy::sweep`）与今天的落点上从前那份三行入口（[`landing_verdict`]）。
+/// 用户：旧落点 [`LEGACY_ENTRY_REL`]（〔THIN〕后端 `deploy_plan::retired_verdict`，从前在 monitor `ccm_legacy`）· 今天的落点上从前那份三行入口（[`landing_verdict`]）·
+/// monitor 本机探针认 PATH 上另一个 `ccm`（`ccm_probe::reach_of`，登记的残留）。
 pub fn is_ours(text: &str) -> bool {
     let mut lines = text.lines();
     let (Some(first), Some(second)) = (lines.next(), lines.next()) else {
@@ -708,6 +709,10 @@ pub fn landing_verdict(
     }
     identity_decision(id, expected, machine, path)
 }
+
+/// 〔GP1 · THIN〕旧版放在远端的 `ccm` 入口（三行 shim / 更早的 bash 启动器）：家目录相对。
+/// 后端判它的去向（`control/deploy_plan.rs::retired_verdict`）· monitor 照删 · 足迹那一行，同一个常量。
+pub const LEGACY_ENTRY_REL: &str = ".local/bin/ccm";
 
 /// 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）：SFTP 那一侧（家目录相对）。
 /// 后端问它是谁、monitor 删它，同一个常量。
