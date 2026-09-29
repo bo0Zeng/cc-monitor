@@ -52,7 +52,7 @@
 //! 见 `production_ts` 的头注 —— 量具本身是本轮真正修掉的东西。
 //!
 //! ⚠⚠ 上表 ① 那个「0 处」的**分母 08-29 换过一次**〔`K-P2` C 阶段第二拍〕：
-//! 原来只数 `src/bridge/src` 那棵树，现在**同时数 `shared/ccm` 的生产段** ——
+//! 原来只数 `src/frontend/shell/src` 那棵树，现在**同时数 `shared/ccm` 的生产段** ——
 //! 因为 `K-P2 §0d`〔PM 08-29〕把接线路裁成了「`ccm` 直接问后端二进制」，
 //! 而那条路整条落在那份 shell 脚本里，旧扫描面**够不到它**。
 //! **读数仍然是 0，变的是分母。** 逐字理由在
@@ -189,7 +189,7 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
 /// 与依据二（**起会话那格**有没有切到后端）。依据一在步 22b·B 翻成回潮闸、在 LR2 随那一族删掉而整条没了
 /// （「不许回来」今天住 `tests/launch-no-shell-in-ts.vitest.ts`）；依据二与删不删 TS 无关，一个字没动：
 ///
-/// - **Rust 生产段**（`src/bridge/src/**.rs`）**不许**发 `create-or-attach` —— monitor 侧 `launch` 那条
+/// - **Rust 生产段**（`src/frontend/shell/src/**.rs`）**不许**发 `create-or-attach` —— monitor 侧 `launch` 那条
 ///   `.call` 只发 `send-into`；
 /// - **`src/backend/control/ccm/`** **必须**发 —— `ccm` 容器路接在后端那条一次性口上（`K-P2` `D3`）。
 ///
@@ -205,7 +205,7 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
     //   原先跳过 `launch_wire.rs` 那一格随它搬出这棵树而作废）。
     let mut scanned = 0usize;
     for (p, raw) in
-        guard_core::scan_tree_excluding(&repo_root().join("src/bridge/src"), &["rs"], &[])
+        guard_core::scan_tree_excluding(&repo_root().join("src/frontend/shell/src"), &["rs"], &[])
     {
         scanned += 1;
         if guard_core::production_code(&raw).contains(mode.as_str()) {
@@ -286,8 +286,8 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
 /// 不是运行时静默跳过。（同 `launch_payload_parity.rs` 自己对夹具与 TS 那一半的做法。）
 /// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着判据搬**：
 /// 那条逐字节对拍是一条 `#[test]`，剖分把它从
-/// `src/bridge/src/backend/control/launch_payload_parity.rs` 搬到了
-/// `tests/bridge/backend/control/launch_payload_parity_tests.rs`。
+/// `src/frontend/shell/src/backend/control/launch_payload_parity.rs` 搬到了
+/// `tests/frontend/shell/backend/control/launch_payload_parity_tests.rs`。
 /// 指着生产段那一份的话，下面三条量的是一个**已经不含那条判据**的文件 ——
 /// 而它们的反空真（「对拍那条判据不在了」）**按设计当场响了**，没有零命中地绿。
 /// ⚠ **两半拼起来**：剖分把那条 `#[test]` 搬去了 `_tests.rs`，而它依赖的
@@ -358,7 +358,7 @@ fn the_parity_fn_body(src: &str, at: usize) -> Result<&str, String> {
     //    `"\n}\n"` 是对的，但它仍然是一根**位置针**（它假设收尾 `}` 正好在列 0），
     //    而「剖分退一层缩进」这件事在本仓已经发生过两轮。按行比不携带列假设。
     //    ⚠ 顺带一条真实收益：本轮 `needle_anchor_registry` 把两棵测试树收进语料之后，
-    //      本文件的裸 `.find("` 才第一次被数到（此前整棵 `tests/bridge/backend/` 不在
+    //      本文件的裸 `.find("` 才第一次被数到（此前整棵 `tests/frontend/shell/backend/` 不在
     //      任何扫描面里）—— 那条递减棘轮因此凭空多了一格余量。改掉针 = 把余量还回去，
     //      而不是把上限从 8 调到 9（那条判据的文案逐字禁止后者）。
     let end = {
@@ -683,7 +683,7 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
 //
 // # 口径（不写清口径的数就是半句假话）
 //
-// 数的是 **monitor 这一侧**（`src/*.ts` ＋ `src/bridge/src/**.rs`）
+// 数的是 **monitor 这一侧**（`src/*.ts` ＋ `src/frontend/shell/src/**.rs`）
 // 「能产出**起一个会话的那条 shell 串**（或它的一整层）」的实现。
 //
 // ⚠ **`src/backend/` 那棵树不在人群里**，这是口径不是遗漏：那是**后端二进制自己**的
@@ -794,7 +794,7 @@ fn the_outer_tmux_command_has_exactly_one_home() {
 
     let root = repo_root();
     // 〔MIG-2〕两棵 Rust 生产树（monitor ＋ 后端）一起数：那一份搬进了后端。
-    for tree in ["src/bridge/src", "src/backend"] {
+    for tree in ["src/frontend/shell/src", "src/backend"] {
         for (p, raw) in guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]) {
             scanned += 1;
             if guard_core::production_code(&raw).contains(needle.as_str()) {

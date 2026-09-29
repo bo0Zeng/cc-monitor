@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""设计/99 §4 步 7b —— 仓库重组第 3 批：src/bridge/ 混合文件剖分。
+"""设计/99 §4 步 7b —— 仓库重组第 3 批：src/frontend/shell/ 混合文件剖分。
 
-把 `src/bridge/` 里 `#[cfg(test)] mod X { … }` 这种**内联测试模块块**整块搬到
-`<repo>/tests/bridge/…` 下，原地只留 `设计/16 §3.1` 那三行：
+把 `src/frontend/shell/` 里 `#[cfg(test)] mod X { … }` 这种**内联测试模块块**整块搬到
+`<repo>/tests/frontend/shell/…` 下，原地只留 `设计/16 §3.1` 那三行：
 
     #[cfg(test)]
-    #[path = "../../../tests/bridge/<…>.rs"]
+    #[path = "../../../tests/frontend/shell/<…>.rs"]
     mod X;
 
 🔴 `设计/16 §6.1` 那条纪律在这里是**硬的**：对每个文件，剖分后 src 段 + test 段
@@ -217,7 +217,7 @@ def rel_up(from_file: str, to_file: str) -> str:
 
 # 两棵生产树 → 两棵测试树。`src/backend` 这一格是步 7c 加的（`设计/16 §6` 第 2 批
 # 只搬了目录与 19 份纯测试文件，**剖分从来没排进那三批**）。
-TREES = {"src/bridge": "tests/bridge", "src/backend": "tests/backend"}
+TREES = {"src/frontend/shell": "tests/frontend/shell", "src/backend": "tests/backend"}
 
 
 def tree_of(src_rel: str) -> str:
@@ -228,8 +228,8 @@ def tree_of(src_rel: str) -> str:
 
 
 def dest_for(src_rel: str, mod_name: str, single: bool) -> str:
-    """src/bridge/src/foo.rs           → tests/bridge/foo_tests.rs
-    src/bridge/src/a/b.rs              → tests/bridge/a/b_tests.rs
+    """src/frontend/shell/src/foo.rs           → tests/frontend/shell/foo_tests.rs
+    src/frontend/shell/src/a/b.rs              → tests/frontend/shell/a/b_tests.rs
     src/common/x-core/src/l.rs  → tests/common/x-core/l_tests.rs
     src/backend/foo.rs                 → tests/backend/foo_tests.rs
     src/backend/a/b.rs                 → tests/backend/a/b_tests.rs
@@ -241,7 +241,7 @@ def dest_for(src_rel: str, mod_name: str, single: bool) -> str:
     """
     tree = tree_of(src_rel)
     rest = src_rel[len(tree) + 1:]
-    if tree == "src/bridge":
+    if tree == "src/frontend/shell":
         if rest.startswith("src/"):
             rest = rest[len("src/"):]
         else:
@@ -398,7 +398,7 @@ def selfcheck(files):
     | 5 | 篡改测试体里的 `include_str!`/`#[path]` 字面量 | `retarget` 的来回改写不是对合（步 7c 新加）|
     | 6 | 在测试体**末尾追加**一行 | 变异 1 删中间，逮不到「末尾多/少一行」（步 7c 新加）|
 
-    🔴 变异 4/5/6 是步 7c 为 `src/backend` 补的：那棵树的形状与 `src/bridge` 不同 ——
+    🔴 变异 4/5/6 是步 7c 为 `src/backend` 补的：那棵树的形状与 `src/frontend/shell` 不同 ——
     多块文件更多（`main.rs` 4 块 · `observe/history_query.rs` 4 块）、`mod.rs` 占比更高
     （目标名要用目录名，见 `dest_for`）、`include_str!` 更密。**变异 4 是其中最要紧的一条**：
     原来的三种全部只动 `moved[0]`，一个「只对账第一块」的 bug 会安静地绿。
@@ -500,10 +500,10 @@ def main():
 
     if a.selfcheck:
         # 没给 `--only` ⇒ 现造合成夹具（理由见 `SELFCHECK_FIXTURE` 的头注），跑完**一定删掉**。
-        # ⚠ 夹具落在 `src/bridge/src/` 下是刻意的：`dest_for` / `rel_up` 都按树认住址。
+        # ⚠ 夹具落在 `src/frontend/shell/src/` 下是刻意的：`dest_for` / `rel_up` 都按树认住址。
         #   它只在这条路上短暂存在，且 `--selfcheck` **不写盘目标文件**。
         if not a.only:
-            fx_rel = "src/bridge/src/zz_selfcheck_fixture.rs"
+            fx_rel = "src/frontend/shell/src/zz_selfcheck_fixture.rs"
             fx_abs = os.path.join(REPO, fx_rel)
             assert not os.path.exists(
                 fx_abs
@@ -519,8 +519,8 @@ def main():
         # 两棵树各挑：最大的 · 块最多的 · 带 include_str! 的 · mod.rs 那一形
         # （步 7c 换过一次：原来那 5 份是步 7b 已经剖完的文件，今天没有内联块 ⇒ 空转）
         sample = a.only or [
-            "src/bridge/src/tool_registry.rs",          # 3773 行 · 3 块 · include_str!
-            "src/bridge/src/lib.rs",                    # 5 块（本仓最多）
+            "src/frontend/shell/src/tool_registry.rs",          # 3773 行 · 3 块 · include_str!
+            "src/frontend/shell/src/lib.rs",                    # 5 块（本仓最多）
             "src/common/guard-core/src/lib.rs",  # crates/ 那一形
             "src/backend/observe/watcher.rs",           # 5306 行（本仓最大）
             "src/backend/main.rs",                      # 4 块 · include_str!

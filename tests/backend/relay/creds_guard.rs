@@ -347,7 +347,7 @@ mod tests {
             defining.lines().any(|l| l.trim_start().starts_with(&format!("{feature} = ["))),
             "非空对照失败：`creds-core` 那份 manifest 里数不到定义 `{feature}` 的那一行 —— 这把尺子是瞎的"
         );
-        let monitor = read_manifest("src/bridge/Cargo.toml");
+        let monitor = read_manifest("src/frontend/shell/Cargo.toml");
         assert!(
             !monitor.lines().any(|l| l.contains(&feature)),
             "monitor 又开了 `{feature}` —— 它不写也不读这份文件（写者与读者都是那台后端），写半边该由编译器挡在它外面"

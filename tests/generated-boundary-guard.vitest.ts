@@ -101,7 +101,7 @@ function tsDerivingSources(): string[] {
       else if (e.name.endsWith(".rs") && read(rel).includes("ts_rs::TS")) out.push(rel);
     }
   };
-  walk("src/bridge/src");
+  walk("src/frontend/shell/src");
   // 〔MOD · `设计/90 §3` 判据 3〕记录的线上形状随记录解释搬进了后端（`agents/claudecode/schema.rs`），ts-rs 从后端导出 ——
   //   后端那一侧也在范围里，否则下面几条通用性质对 `JsonlRecord` 一族静默失效（C04d 那一课）。
   walk("src/backend");
@@ -174,7 +174,7 @@ describe("C01 边界生成物", () => {
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
       // P8a：marketplace 只读枚举的两个载荷（`declared_plugins` 刻意是可空的
       // ——`null` 是「读不到」，`0` 是「真的一个都没声明」，两者不许合并）。
-      "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/bridge/src/origin.rs` 头注）
+      "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/frontend/shell/src/origin.rs` 头注）
       "OriginSessionsListedPayload.ts", // 〔U4b〕某台机器的活会话清单报完了（`origin-sessions-listed`）
       // 〔RM1f〕`PanoramaStatus.ts` 出列：它的 Rust 源（monitor `panorama.rs`）随内嵌引擎删了；
       //   形状今天住 `src/panorama/types.ts`（手写），全景小程序的 `the_status_shape_matches_the_monitor_dto` 对拍它。
@@ -204,13 +204,13 @@ describe("C01 边界生成物", () => {
       // 〔第四波 S4〕"TransferProgress.ts" 走了（它的 Rust 源随池子最后那条命令一起删了）。
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
       "UserText.ts", //               〔RENDER2 · J10〕monitor 按 search-core::user_text 给 user 记录填的成品
-      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src/bridge/src/adapter.rs` 的
+      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src/frontend/shell/src/adapter.rs` 的
       // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
       // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、
       // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
       // ⚠ 排在最后不是分组：`files.sort()` 是默认排序，小写字母排在大写之后。
       "agent-profile-table.ts",
-      // 〔DUP1 · 第四波 4D〕**第三份值表**，源是 `src/bridge/src/backend/control/payload.rs::export_bindings_judgment_rules`：
+      // 〔DUP1 · 第四波 4D〕**第三份值表**，源是 `src/frontend/shell/src/backend/control/payload.rs::export_bindings_judgment_rules`：
       // 标识符放行判定（`INVARIANTS §47` ①）里前端写入点要先说一句的那一格（模型名）—— 式子从 `shell-quote-core` 的常量现生成，
       // 前端不手抄规则（`设计/90 §3` 判据 2）。排在这里是默认排序：小写 `j` 在 `a` 之后、`l` 之前。
       "judgment-rules.ts",
@@ -227,9 +227,9 @@ describe("C01 边界生成物", () => {
     // `K-R95`：第三种标记 —— 值表生成器不止 `adapter.rs` 一个了。
     const GENERATED_BY = [
       TS_RS_HEADER,
-      "src/bridge/src/adapter.rs",
+      "src/frontend/shell/src/adapter.rs",
       "src/backend/control/launch_render/wire.rs", // 〔MIG-2〕`launch-render-facts.ts` 的生成器随渲染搬进后端
-      "src/bridge/src/backend/control/payload.rs", // 〔DUP1〕`judgment-rules.ts`
+      "src/frontend/shell/src/backend/control/payload.rs", // 〔DUP1〕`judgment-rules.ts`
     ];
     for (const f of files) {
       const src = read(`src/generated/${f}`);
@@ -469,7 +469,7 @@ describe("C01 边界生成物", () => {
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {
     const info = code(read("src/generated/DataPathInfo.ts"));
-    const rust = rustCode(read("src/bridge/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
+    const rust = rustCode(read("src/frontend/shell/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
     expect(info, "剥过头了").toContain("export type DataPathInfo");
     expect(rust, "剥过头了").toContain("pub struct DataPathInfo");
 
@@ -581,7 +581,7 @@ describe("C01 边界生成物", () => {
  */
 describe("C02 事件名钉死", () => {
   it("bridge.rs 的事件名常量（〔MIG-1〕今天 3 个），TS 侧字面量逐个对上", () => {
-    const rust = rustCode(read("src/bridge/src/bridge.rs"));
+    const rust = rustCode(read("src/frontend/shell/src/bridge.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
     // 从源码抠出 `pub const X: &str = "y";` 的所有对
@@ -629,7 +629,7 @@ describe("C02 事件名钉死", () => {
  */
 describe("〔DL1〕accounts-changed：两侧同一个串 · 零裸事件", () => {
   it("★ kind 串两侧相等：TS 常量 == Rust `event_replay.rs::ACCOUNTS_CHANGED_KIND`（从 Rust 源码抠，异源）", () => {
-    const rs = read("src/bridge/src/event_replay.rs");
+    const rs = read("src/frontend/shell/src/event_replay.rs");
     // 变量名别叫 `m`：`scanning-guard-registry` 按名字认「磁盘语料变量」，同文件里别处的 `m.includes("…")` 会被误算进棘轮。
     const pinned = rs.match(/pub const ACCOUNTS_CHANGED_KIND: &str = "([^"]+)";/);
     expect(pinned, "Rust 那一侧的常量抠不出来").not.toBeNull();

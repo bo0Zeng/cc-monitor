@@ -542,7 +542,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 // 〔E2 · V28〕本机 `ccm` 就是后端本身（逐字节副本删了）：放它的是 `extract_embedded_to`。
                 source: ToolSource::EmbeddedBinary {
                     repo_path:
-                        "src/bridge/src/backend/control/local_backend.rs::extract_embedded_to",
+                        "src/frontend/shell/src/backend/control/local_backend.rs::extract_embedded_to",
                 },
                 destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
                 touches: &[
@@ -604,7 +604,7 @@ pub const TOOLS: &[ToolSpec] = &[
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.backendBesideWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/binaries/cc-monitor-backend",
+                    repo_path: "src/frontend/shell/binaries/cc-monitor-backend",
                 },
                 // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
                 // 而那个目录是装机时由人选的。同 `$ACCT_ISO_DEST` 那一格的理由：
@@ -659,7 +659,7 @@ pub const TOOLS: &[ToolSpec] = &[
             Carrier {
                 what: Text(|| copy_text("rsToolRegistry.tools.panoramaLocalWhat", &[])),
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/native-backend/cc-monitor-panorama",
+                    repo_path: "src/frontend/shell/native-backend/cc-monitor-panorama",
                 },
                 destination: ToolDestination::LocalHomeRelative(
                     ".cc-monitor/bin/cc-monitor-panorama",

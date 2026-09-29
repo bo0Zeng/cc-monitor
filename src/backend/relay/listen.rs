@@ -24,7 +24,7 @@
 //! | `LOOPBACK` | 同上，钉它的是 **`src/backend/stream/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!
 //! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
-//! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
+//! `src/frontend/shell/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。
 
 use super::server::{self, Relay, LOOPBACK};
 use super::{door, tee::TeeSink, Startup};

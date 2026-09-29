@@ -1,5 +1,5 @@
 //! 要求住址：主会话 09-28 裁 MIG-3b 报备 2 —— 公钥推送进本机后端（`pubkey-push`），写 `authorized_keys` 经那台（后端不在就一次 exec、只写这一件）。
-//! 〔MIG-3b 续〕校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/bridge/pubkey_tests.rs`，随实现搬来、期望一字未改。
+//! 〔MIG-3b 续〕校验 · 规划 · 解记号 · 那一串 shell 的判据原住 `tests/frontend/shell/pubkey_tests.rs`，随实现搬来、期望一字未改。
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use std::sync::Mutex;

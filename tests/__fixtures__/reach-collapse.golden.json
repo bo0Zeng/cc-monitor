@@ -1,7 +1,7 @@
 {
   "说明": [
     "〔C4e · 第四波 4C〕F14 那条安全判定（「能证明一个字节都没到对端」才许换一条路重做）的两份实现对拍：",
-    "Rust 侧 tests/bridge/chan/webview_tests.rs 把 inbound 的每一种失败经 backend_route::layer_call_error 分层、按 webview 那一跳的线上形状序列化，连同 backend_route::route_call_error 判出的「可回落」（NoChannel）产出本表 == 本文件；",
+    "Rust 侧 tests/frontend/shell/chan/webview_tests.rs 把 inbound 的每一种失败经 backend_route::layer_call_error 分层、按 webview 那一跳的线上形状序列化，连同 backend_route::route_call_error 判出的「可回落」（NoChannel）产出本表 == 本文件；",
     "TS 侧 tests/tmux-control.vitest.ts 用 ipc/chan.ts::decodeFail 解每一行、ipc/chan-caller.ts::provablyNotSent 判 == 本表。"
   ],
   "rows": [

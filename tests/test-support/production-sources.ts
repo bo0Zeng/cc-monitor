@@ -44,7 +44,7 @@ export function productionTsFiles(subdir = "src"): ProductionSource[] {
 
 /**
  * 〔DP1 · 第四波〕同一套遍历，收 `.rs`（文案表的 Rust 读口落地之后，`copy-table.vitest.ts` 的「引用」一侧要读它们）。
- * Rust 这一侧的判据住在仓外的 `tests/bridge/` 等目录（经 `#[path]` 挂进来），`src/` 下的 `.rs` 就是生产段 ——
+ * Rust 这一侧的判据住在仓外的 `tests/frontend/shell/` 等目录（经 `#[path]` 挂进来），`src/` 下的 `.rs` 就是生产段 ——
  * 与 `.ts` 同一个用意：判据读不到自己。⚠ 不剥注释（同上，那是调用方的事）。
  */
 export function productionRsFiles(subdir: string): ProductionSource[] {

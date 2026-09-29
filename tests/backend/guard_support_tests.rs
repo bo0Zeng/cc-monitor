@@ -108,7 +108,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
 ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
 ///
 /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-/// （`src/backend/guard_support.rs` ＋ `tests/bridge/structural_scan_tests.rs`）——
+/// （`src/backend/guard_support.rs` ＋ `tests/frontend/shell/structural_scan_tests.rs`）——
 /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
 /// 下一次还是一处真一处假。钉着它的是
 /// `guard_support_tests.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
@@ -139,7 +139,7 @@ fn the_reexported_leak_check_still_bites() {
 /// # 题面
 ///
 /// 本文件的 `every_backend_file_strips_clean` 与 monitor 那一侧的同名判据
-/// （住 `src/bridge/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
+/// （住 `src/frontend/shell/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
 ///
 /// ⚠ 这里**刻意不写出对侧那个判据的函数名**。
 /// **成因订正**〔`P4` 2026-09-21〕：先前这里写的是「`structural_scan.rs` 里的
@@ -170,15 +170,15 @@ fn the_two_strip_clean_notes_stay_one_sentence() {
     let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");
     let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
     // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕monitor 那一份住址跟着共用段搬了：
-    //    那一段是一条判据的头注，剖分把它从 `src/bridge/src/structural_scan.rs`
-    //    带去了 `tests/bridge/structural_scan_tests.rs`。**那段话一个字没改。**
+    //    那一段是一条判据的头注，剖分把它从 `src/frontend/shell/src/structural_scan.rs`
+    //    带去了 `tests/frontend/shell/structural_scan_tests.rs`。**那段话一个字没改。**
     // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕**后端那一份住址也跟着共用段搬了。**
     //    那一段同样是一条判据的头注，剖分把它从 `src/backend/guard_support.rs`
     //    带去了 `tests/backend/guard_support_tests.rs`（也就是**本文件**）。
     //    **那段话一个字没改**；两个住址今天都在 `tests/` 下，这正是 `§4.1` 说的
     //    「剖分之后判据与生产代码物理不同文件」在这一格上的样子。
     let sites = [
-        "tests/bridge/structural_scan_tests.rs",
+        "tests/frontend/shell/structural_scan_tests.rs",
         "tests/backend/guard_support_tests.rs",
     ];
     let mut blocks: Vec<(&str, String)> = Vec::new();

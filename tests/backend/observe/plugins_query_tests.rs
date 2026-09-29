@@ -4,7 +4,7 @@
 //! `declared_plugins: null` ＋ `declared_error` 理由，整张表照出」—— 前七条判它；`INVARIANTS §1` 逐字「**不去数**
 //! `marketplaces/<id>/plugins/` 那个目录」—— 快照目录不计数那一条判它（`§1` 那段散文点的读实现住址已过期，性质仍成立）。〔JA1 点址 2026-09-24〕
 //!
-//! 〔RM1b · 第四波〕从 monitor `tests/bridge/plugins_tests.rs`（`P8a`）**原样搬来** —— 本体搬进了后端，
+//! 〔RM1b · 第四波〕从 monitor `tests/frontend/shell/plugins_tests.rs`（`P8a`）**原样搬来** —— 本体搬进了后端，
 //! 判据跟着本体走（口径一字未改）；另加一条线上契约的字段集判据。夹具只造结构，不采任何真数据。
 
 use super::*;

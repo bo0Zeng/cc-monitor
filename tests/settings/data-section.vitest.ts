@@ -174,7 +174,7 @@ describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」�
   beforeEach(() => document.body.replaceChildren());
 
   it("★ 跨语言常量对拍：TS 的 LOGS_DIR_LABEL == Rust 的 data_paths.rs::LOGS_DIR_LABEL", () => {
-    const rs = readFileSync("src/bridge/src/data_paths.rs", "utf8");
+    const rs = readFileSync("src/frontend/shell/src/data_paths.rs", "utf8");
     const m = /pub const LOGS_DIR_LABEL: &str = "([^"]*)";/.exec(rs);
     expect(m, "Rust 那侧找不到 LOGS_DIR_LABEL —— 名字改了就来改这条").not.toBeNull();
     expect(LOGS_DIR_LABEL).toBe(m![1]);

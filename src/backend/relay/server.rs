@@ -3,7 +3,7 @@
 //!
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/99 §4 P16`，2026-09-22 用户裁〕
 //!
-//! 登记那一侧在 `tests/bridge/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
+//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
 //! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
 //!
 //! **凭什么**：本文件第一行就是答案 —— 它是**中转本体**（`20 §4` 要的那个名字正是
@@ -23,11 +23,11 @@
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
-//! | `tests/bridge/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | 〔R3 订正〕**今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
-//! | `tests/bridge/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
-//! | `tests/bridge/structural_scan_tests.rs` | `("src/backend/relay/server.rs", "handle_alloc_error", 1)` |
+//! | `tests/frontend/shell/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | 〔R3 订正〕**今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
+//! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
+//! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/backend/relay/server.rs", "handle_alloc_error", 1)` |
 //!
-//! 那几处都在 `tests/bridge/` 下，**不在本拍的写区里**（写区逐字是
+//! 那几处都在 `tests/frontend/shell/` 下，**不在本拍的写区里**（写区逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
 //! ⇒ 本拍**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
 //! 这里剩下的就是 `20 §4` 说的 `exchange`。改名要与那几处同拍，留给下一件。
@@ -78,7 +78,7 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
 /// 64 MiB 比本仓见过的任何一次请求都宽两个量级以上，同时把「一个数就能耗尽内存」这条路堵死。
-/// **登记住址** `src/bridge/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 const BODY_CAP: usize = 64 * 1024 * 1024;
 /// **tee 侧解码缓冲**的字节上限（`SseSplitter` 的半行 · `ChunkedView` 攒着的那截）。
 ///

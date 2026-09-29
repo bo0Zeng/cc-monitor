@@ -54,7 +54,7 @@
      ⇒ 它**不进主集**（今天不对外），但**单列成预备队**（面②的 `log-error` 轨），带住址。
   4. **`panic!` / `expect(` / `assert!`**。理由：崩溃信息不是界面文案，且绝大多数住在测块。
   5. **注释、文档注释、`src/doc/*.md`、`README*`**。理由：`91` 管的是"对外说的话"，不是文档。
-  6. **`src/generated/`**（ts-rs 生成物）、`src/bridge/vendor/`（第三方）、`src/bridge/gen/`、
+  6. **`src/generated/`**（ts-rs 生成物）、`src/frontend/shell/vendor/`（第三方）、`src/frontend/shell/gen/`、
      `tests/`、`*.vitest.ts`。理由：不是人写的对外文案，改它们要改生成器/上游。
   7. **cc-bus 注入给另一个 agent 的文本**。理由：`91 §3.2` 逐字划出去了 ——
      「它不是给人看的话，是对方那一轮的输入，改它等于改对方的 prompt」。
@@ -102,13 +102,13 @@ SRC_ROOT = REPO / "src"
 
 EXCLUDED_DIRS = (
     "src/generated",            # ts-rs 生成物
-    "src/vendor",               # 第三方（〔RE〕原 `src/bridge/vendor`：russh 补丁副本）
+    "src/vendor",               # 第三方（〔RE〕原 `src/frontend/shell/vendor`：russh 补丁副本）
     "src/panorama-engine/vendor",  # 第三方（〔RE〕code-picture-core 跟唯一消费者走）
-    "src/bridge/gen",           # 生成物
-    "src/bridge/embedded-daemons",
-    "src/bridge/scripts",
-    "src/bridge/icons",
-    "src/bridge/capabilities",
+    "src/frontend/shell/gen",           # 生成物
+    "src/frontend/shell/embedded-daemons",
+    "src/frontend/shell/scripts",
+    "src/frontend/shell/icons",
+    "src/frontend/shell/capabilities",
     "src/doc",                  # 文档
     # 〔CP2c · 第四波 4C〕判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
     # 被排除同一条理由 —— 判据支撑，不是生产面）。它的 `Err(…)` 是判据红时印给开发者看的，不是对外文案。
@@ -125,8 +125,8 @@ EXCLUDED_FILE_RE = re.compile(
 # 91 §3.2：cc-bus 注入给另一个 agent 的文本，两套规矩，别混。
 CC_BUS_INJECT_FILES = (
     "src/shared/cc-bus",
-    "src/bridge/src/cc_bus.rs",
-    "src/bridge/src/cc_bus_deploy.rs",
+    "src/frontend/shell/src/cc_bus.rs",
+    "src/frontend/shell/src/cc_bus_deploy.rs",
 )
 
 # 🔴 修 bug（CP1 2026-09-24）：Rust 里 `'` 不一定开一个字符字面量 —— 生命周期 `'a`、

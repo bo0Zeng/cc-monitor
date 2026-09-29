@@ -1,8 +1,8 @@
 //! 要求住址：`4d-lanes.md` MIG-3b 第 1 条 —— 部署决策的唯一一份（本机常驻后端出计划 · monitor 放字节共用）。
 //!
-//! 〔MIG-3b〕这几格原住 `tests/bridge/sftp_tests.rs`（判定那时住 monitor 的 `sftp.rs`），随判定搬来，期望一字未改；
+//! 〔MIG-3b〕这几格原住 `tests/frontend/shell/sftp_tests.rs`（判定那时住 monitor 的 `sftp.rs`），随判定搬来，期望一字未改；
 //! 界标改由参数交（[`Marks`]）⇒ 这里用一对**占位界标**（与真界标无关：规矩只看「两个界标之间 `[[:alnum:]_.-]+`」）。
-//! 表 A / 表 B 那几格仍住 `tests/bridge/byte_table_tests.rs`（经 `byte_table` 的再导出量同一份实现，另有几格读 monitor 的槽）。
+//! 表 A / 表 B 那几格仍住 `tests/frontend/shell/byte_table_tests.rs`（经 `byte_table` 的再导出量同一份实现，另有几格读 monitor 的槽）。
 
 use super::*;
 

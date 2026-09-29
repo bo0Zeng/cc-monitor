@@ -1,6 +1,6 @@
 //! 设计/01 §1.1（「一切判定都在后端：口径、命令串……」）· `99 §2.1 ⑬`：本机起会话的计划与渲染（`control/launch_render/local.rs`）。
 //!
-//! 〔MIG-2〕从 monitor `tests/bridge/history_tests.rs` 搬来的那一族（旧路逐字节形状 · 账号三态 · 注入闸 · `ccm` 容器路 ·
+//! 〔MIG-2〕从 monitor `tests/frontend/shell/history_tests.rs` 搬来的那一族（旧路逐字节形状 · 账号三态 · 注入闸 · `ccm` 容器路 ·
 //! 中转前缀 · 身份 token）改成喂 [`Facts`] 驱动生产那一条纯函数 [`plan`]，不再靠线程局部的替身缝。
 //! 买不到：真起一个终端窗口（那是 monitor `open_local_terminal` 的事）· 真 Windows 上 PowerShell 真跑。
 

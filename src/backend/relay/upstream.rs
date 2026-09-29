@@ -3,7 +3,7 @@
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/99 §4 P16`（`05 §8` 步 4 的剩余），2026-09-22〕
 //!
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/bridge/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
+//! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
 //! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
 //!
 //! **凭什么它属于通信层**：`设计/01 §0` 那张图里**面 B（agent ↔ 上游 API）本来就在

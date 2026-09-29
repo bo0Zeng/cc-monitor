@@ -13,9 +13,9 @@
  * `config-surface-section.ts` 的设计承诺当文案与欠账当文案）。本条盯的就是它们。
  *
  * 🔴 **〔射程 · 说清它盖不到什么〕**
- * - **盖不到后端产的那一半**：`**下一步：…**`（`src/bridge/src/backend_policy.rs::death_copy`）
+ * - **盖不到后端产的那一半**：`**下一步：…**`（`src/frontend/shell/src/backend_policy.rs::death_copy`）
  *   与整条 `ledger_line` 是**运行期**才拼出来的，jsdom 里没有真后端 ⇒ 这把尺子看不见它们。
- *   那是 `70 §7` **第二刀 步 7** 的活，住 `src/bridge/`（本轮写区之外）。
+ *   那是 `70 §7` **第二刀 步 7** 的活，住 `src/frontend/shell/`（本轮写区之外）。
  *   它们登记在下面的 `BACKEND_SIDE_DEBT` 里 —— **登记不等于判了**，写出来是为了
  *   「没提」不被读成「治好了」。
  * - **盖不到运行期才灌进来的后端字符串**：`data_paths.rs` 那条带 `sid` / `HWND` 的说明
@@ -197,7 +197,7 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
   it("🔴 正控：五种形状，同一个 `violationsOf()` 一条不落地逮得到", () => {
     const sample =
       "崩了：**下一步：这一格才是自愈要治的那一格**，而重起归第二档 —— 判据不可信的时候重起是放大器。\n" +
-      "src/bridge/src/backend_policy.rs:371 里那句；monitor 是 GUI 应用（windows_subsystem=windows）。\n" +
+      "src/frontend/shell/src/backend_policy.rs:371 里那句；monitor 是 GUI 应用（windows_subsystem=windows）。\n" +
       "所有后端 tracing 输出写到文件。\n" +
       "「[死亡账] origin=<local> 判定=崩了 退出状态=exit -1073741510」\n" +
       "这一项该由 cc-monitor 自带，而安装入口还没写。";
@@ -293,12 +293,12 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
 
   it("后端那一侧的欠账**登记在案**（本条判不了，别把「没提」读成「治好了」）", () => {
     // 这一格不是断言代码，是断言**我们没有假装那几条已经没了**。
-    // 它会在有人把登记清空时红 —— 那时要么债真还了（去 `src/bridge/` 核过再删），
+    // 它会在有人把登记清空时红 —— 那时要么债真还了（去 `src/frontend/shell/` 核过再删），
     // 要么是有人把不方便的话删掉了。
     // 〔ST2〕三条全还清 ⇒ 0。再有人往这里登记，就是又欠了一笔（要写清住址与理由）。
     expect(Object.keys(BACKEND_SIDE_DEBT).length).toBe(0);
     for (const [addr, why] of Object.entries(BACKEND_SIDE_DEBT)) {
-      expect(addr.startsWith("src/bridge/"), `${addr} 不在后端那一侧，登记错地方了`).toBe(true);
+      expect(addr.startsWith("src/frontend/shell/"), `${addr} 不在后端那一侧，登记错地方了`).toBe(true);
       expect(why.length, `${addr} 的理由是空的`).toBeGreaterThan(10);
     }
   });

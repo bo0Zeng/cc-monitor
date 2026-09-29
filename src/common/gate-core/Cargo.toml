@@ -2,7 +2,7 @@
 name = "gate-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "§34 Gate 2（identity）的唯一实现：一个 tmux 会话是不是本工具管的。monitor 与后端共用同一份判定，防「搬进后端时静默丢掉一道门」。"
 
 # **只依赖同族共享 crate**，理由同 shell-quote-core：backend 是 Linux-only 的静态 musl 二进制、

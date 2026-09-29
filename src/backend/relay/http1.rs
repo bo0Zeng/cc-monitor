@@ -6,7 +6,7 @@
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/05 §8` 步 4，2026-09-21〕
 //!
 //! 这一枚标记是**盘上那一侧**的凭据（登记那一侧在
-//! `tests/bridge/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
+//! `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，两向集合相等）。
 //! 盖上它 = **上锁**，不是放行：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
 //!
 //! **凭什么它属于通信层**：`设计/05 §4.2` 那张「四样不共享」表里，面 B 的**协议**一栏

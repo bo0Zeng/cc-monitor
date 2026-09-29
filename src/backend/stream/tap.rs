@@ -27,7 +27,7 @@ use crate::stream::wire::{Frame, TapEnd};
 ///
 /// ⚠ **是条数不是体量**（体量由 `relay::TAP_DATA_CAP` 封）。值：token 级的 SSE 一秒几十到上百件，
 /// 256 件够吸收写者被内容帧占住的一小段；再多攒着只是让活卡更晚，不如丢了让 jsonl 定稿。
-/// 登记住址 `src/bridge/src/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
+/// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
 pub(crate) const TAP_CAPACITY: usize = 256;
 
 /// 进程级 hub：此刻每条流连接的 tap 发送端。

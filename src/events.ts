@@ -8,7 +8,7 @@ import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } 
 import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
-// 源是 `src/bridge/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
+// 源是 `src/frontend/shell/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
 // **仍然 `export`**，但理由要写准（C02 Phase D 审计 S4）：初版写的是「别的模块从这里
 // import 这些类型」——**那句可被 grep 否证**：这 5 个名字除本文件与守卫测试外，
 // 全仓没有任何 import 点。真正的理由是**不缩小已经导出的表面**（保守、零代价，

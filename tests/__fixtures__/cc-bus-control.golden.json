@@ -3,7 +3,7 @@
     "〔C4e · 第四波 4C〕界面直接说的 cc-bus 写面 ＋ 查在线那几条帧命令：输入样例 · 请求样例 · 成品样例 · 拒绝码集合。",
     "后端侧（tests/backend/control/cc_bus_tests.rs::the_bus_products_match_the_cross_language_golden）：请求样例过各自的生产解析器 · 成品 == 生产构造器（bus-list / bus-broadcast 由同一份输入样例现算）· 码集合 == inbound::REGISTRY 那一块。",
     "界面侧（tests/cc-bus-control.vitest.ts）：请求体 == 这里那一份 · 解码器读同一份成品 · 同一份码集合逐码说出一句各不相同的话。",
-    "内容是结构占位（agent 名 alpha_cc / gone_cc / x_cc，正文 hi），不含真会话正文。", "〔DUP2 · J12〕ids：规则只有一份（shell_quote_core::bus_id_ok）—— 后端 bus-send / bus-kill / bus-spawn 入口（tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus）与 monitor 读收件箱（tests/bridge/backend/control/cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples）各读这一份；界面不再判 id，只把 bad_id 说成人话。"
+    "内容是结构占位（agent 名 alpha_cc / gone_cc / x_cc，正文 hi），不含真会话正文。", "〔DUP2 · J12〕ids：规则只有一份（shell_quote_core::bus_id_ok）—— 后端 bus-send / bus-kill / bus-spawn 入口（tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus）与 monitor 读收件箱（tests/frontend/shell/backend/control/cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples）各读这一份；界面不再判 id，只把 bad_id 说成人话。"
   ],
   "ids": {
     "ok": ["alpha_cc", "proj_cc-2", "a", "A_1", "cc-monitor"],

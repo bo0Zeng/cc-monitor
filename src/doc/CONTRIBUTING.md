@@ -17,7 +17,7 @@
 
 ```bash
 # 假设撤掉 BindRegistry State + aliases_read IPC（它是 BindRegistry 今天在命令面上的消费者之一）
-cd src/bridge
+cd src/frontend/shell
 
 # 1. State 消费者全 grep
 grep -rn 'State<.*Arc<BindRegistry>>' src/
@@ -33,10 +33,10 @@ grep -rn 'aliases_read' src/
 cd .. && grep -rn 'invoke<.*"aliases_read"' src/
 
 # 5. 跨进程文件 IO 全 grep（如果撤的是文件协议）
-grep -rn 'ps-await\|ps-registry' src/bridge/src/ src/
+grep -rn 'ps-await\|ps-registry' src/frontend/shell/src/ src/
 
 # 6. 删完跑：
-cd src/bridge && cargo check && cargo test --workspace
+cd src/frontend/shell && cargo check && cargo test --workspace
 cd .. && npm run build
 
 # !! cargo check 不能挡 State 漏 manage 的运行时 panic !!
@@ -66,8 +66,8 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 ### 1.4 改 Tauri capability / permission
 
-- [ ] 改 `src/bridge/capabilities/default.json`
-- [ ] cargo build 后看 `src/bridge/gen/schemas/acl-manifests.json` 实际 permission set 内容确认
+- [ ] 改 `src/frontend/shell/capabilities/default.json`
+- [ ] cargo build 后看 `src/frontend/shell/gen/schemas/acl-manifests.json` 实际 permission set 内容确认
 - [ ] dev mode 实测涉及的 IPC 不报 `Permission xxx not allowed`
 
 **警示**：plugin 的 `<plugin>:default` permission set 通常**不包含所有** `allow-*`；某些 allow 默认空 scope 需要 inline 给 path/url pattern。详 [DEVELOPMENT.md § 查 capability 报错](DEVELOPMENT.md#查-capability-报错)。
@@ -76,14 +76,14 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 - [ ] 改 **版本号三处对齐**（必做）：
   - `package.json::version`
-  - `src/bridge/Cargo.toml::[package].version`
-  - `src/bridge/tauri.conf.json::version`
+  - `src/frontend/shell/Cargo.toml::[package].version`
+  - `src/frontend/shell/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
 - [ ] 若改过后端：`src/backend/lib.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
-      > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src/bridge/build.rs` 在「内嵌二进制的
+      > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src/frontend/shell/build.rs` 在「内嵌二进制的
       > **字节里问不出身份戳**」「字节自报的身份 ≠ 源码 `BUILD_ID`」「抠不到源码 `BUILD_ID`」三种情况
       > 直接 **panic 掉编译**（原来只有一条比 mtime 的 warning，漏掉了真实发生过的半 bump）。
-      > 三条都以「`src/bridge/embedded-backends/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
+      > 三条都以「`src/frontend/shell/embedded-backends/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
       > 时是优雅降级，那一档由 `ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired` 兜。
       > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-backend-二进制f08b)。
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
@@ -122,12 +122,12 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 **步骤**：
 
-1. **后端** `src/bridge/src/lib.rs`（或独立 module 如 `stats.rs`）：
+1. **后端** `src/frontend/shell/src/lib.rs`（或独立 module 如 `stats.rs`）：
 
 ```rust
 #[tauri::command]
 async fn monitor_get_active_ids() -> Result<Vec<String>, String> {
-    // 本机活会话表（本机后端帧喂的，进程级一张）提供哪些公开 API 见 src/bridge/src/session_map.rs。
+    // 本机活会话表（本机后端帧喂的，进程级一张）提供哪些公开 API 见 src/frontend/shell/src/session_map.rs。
     Ok(session_map::local()
         .read()
         .snapshot_active()
@@ -137,7 +137,7 @@ async fn monitor_get_active_ids() -> Result<Vec<String>, String> {
 }
 ```
 
-⚠️ **示例是说明性的**，落地前必须 `cargo check`。本机活会话表（`session_map::LocalTable`）的公开方法见 `documentSymbol src/bridge/src/session_map.rs` 或 `pub fn` grep。
+⚠️ **示例是说明性的**，落地前必须 `cargo check`。本机活会话表（`session_map::LocalTable`）的公开方法见 `documentSymbol src/frontend/shell/src/session_map.rs` 或 `pub fn` grep。
 
 2. **注册到 invoke_handler**（`lib.rs::run()` 内）：
 
@@ -259,7 +259,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 
 **步骤**：
 
-1. **cargo build 一次** 让 `src/bridge/gen/schemas/acl-manifests.json` 重新生成。
+1. **cargo build 一次** 让 `src/frontend/shell/gen/schemas/acl-manifests.json` 重新生成。
 2. **看 plugin-X 的 `permissions`** 找具体 `allow-foo` 的定义，看 description 是否需要 scope。
 3. **`capabilities/default.json` 加 permission**：
 
@@ -353,7 +353,7 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
 3. `cargo fmt + cargo clippy + cargo test --workspace + cargo test -p code-picture-core〔在 src/panorama-engine 里跑〕 + npm test + npm run coverage + npm run build` 全绿。
-   ⚠ **`--all` 只是 `--workspace` 的弃用别名**（audit-0805 F18 订正）。〔TL1 · 4C 拍板 ③〕RM1f 起 monitor 不再依赖 vendor `code-picture-core`（链它的只剩 `src/panorama-engine`）⇒ 它不再是 `src/bridge` workspace 的成员，这条 `--exclude` 在那里只剩一条 cargo warning（`excluded package(s) not found`）⇒ 删了；裸 `--workspace` 现打就是那 9 个成员（`monitor` ＋ 8 个共享 crate）。vendor 再被拉回来会让成员数变 10：monitor 清单零 vendor 依赖那条判据（`shared_crate_registry`）与门禁 `cargo` 那一格的包数相等当场红。vendor 自测要到 `src/panorama-engine` 里跑（`ci.yml` 那一步同）。
+   ⚠ **`--all` 只是 `--workspace` 的弃用别名**（audit-0805 F18 订正）。〔TL1 · 4C 拍板 ③〕RM1f 起 monitor 不再依赖 vendor `code-picture-core`（链它的只剩 `src/panorama-engine`）⇒ 它不再是 `src/frontend/shell` workspace 的成员，这条 `--exclude` 在那里只剩一条 cargo warning（`excluded package(s) not found`）⇒ 删了；裸 `--workspace` 现打就是那 9 个成员（`monitor` ＋ 8 个共享 crate）。vendor 再被拉回来会让成员数变 10：monitor 清单零 vendor 依赖那条判据（`shared_crate_registry`）与门禁 `cargo` 那一格的包数相等当场红。vendor 自测要到 `src/panorama-engine` 里跑（`ci.yml` 那一步同）。
    ⚠ **各项条数与 CI job 数刻意不写在这里**：那些数在仓里曾有 4-5 份拷贝、全部漂成假的。
    分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；本机后端 / 远端后端 / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `tests/e2e/f40-suite.sh`（见 tests/e2e/README.md）
 4. PR 描述：

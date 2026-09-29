@@ -16,7 +16,7 @@
  *
  * 〔PB1 · `设计/90 §4` 阶段 B〕原来这里还有一组「K-P3 那句读数 —— 三档逐格钉死」（TS 那份 `describeBackendHealth` 的运行时判据）。
  * 三档判定搬到了后端（`backend_policy.rs::health_face`）、TS 那份删了 ⇒ 那一组的对象不存在了，随之退役；
- * 判准逐格（全零 · 四个计数各自 = 1）住 `tests/bridge/backend_policy_tests.rs::the_health_face_is_judged_by_the_whole_ledger_not_by_crashes_alone`，
+ * 判准逐格（全零 · 四个计数各自 = 1）住 `tests/frontend/shell/backend_policy_tests.rs::the_health_face_is_judged_by_the_whole_ledger_not_by_crashes_alone`，
  * TS 零实现由 `judgment-single-home.vitest.ts` 的 J21 钉。
  */
 import { describe, it, expect } from "vitest";

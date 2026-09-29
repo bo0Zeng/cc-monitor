@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 35
     defaults:
       run:
-        working-directory: src/bridge
+        working-directory: src/frontend/shell
     steps:
       - uses: actions/checkout@v4
         # 🔴 `fetch-depth: 0` 在这个 job 上是**判据的输入**，不是习惯问题。
@@ -73,11 +73,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/bridge
+          workspaces: src/frontend/shell
 
       # fmt 已经过项目历史校准，强制约束
       # G2（Phase G 代码工程审计）：这六个共享 crate 现在是**真 workspace member**
-      # （`src/bridge/Cargo.toml` 的 `[workspace]`）。收敛前它们只是 path 依赖 ——
+      # （`src/frontend/shell/Cargo.toml` 的 `[workspace]`）。收敛前它们只是 path 依赖 ——
       # `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项，`-p` 能跑靠的是
       # cargo 允许选中依赖图里的非 member 包，**不是 workspace 机制**。
       # ⇒ 原来 ~17 条 `--manifest-path`/`-p` 收敛成下面三条。
@@ -124,7 +124,7 @@ jobs:
       # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
       # 显式 `-p` 把它的 25 个测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
-      # 〔RM1f · V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/bridge` 里 `-p` 选不到它了；
+      # 〔RM1f · V108 后半句〕monitor 不再依赖它（摘掉了内嵌引擎）⇒ 在 `src/frontend/shell` 里 `-p` 选不到它了；
       #   今天链它的只剩全景小程序 ⇒ 这一步换到那棵树里跑（同一个包、同一份 vendor 源码，`-p` 照旧选中依赖图里的它）。
       - name: cargo test (vendor code-picture-core)
         working-directory: src/panorama-engine
@@ -135,7 +135,7 @@ jobs:
   # ## 题面（`设计/15 §2.6` 漏洞 3 逐字）
   #
   # 上面 `rust` job 是**唯一**跑 `cargo test --workspace` 的地方，而它 `runs-on: windows-latest`；
-  # Linux 侧对 `src/bridge` 今天只有 `linux-app-build` 那一条 `cargo build` ——
+  # Linux 侧对 `src/frontend/shell` 今天只有 `linux-app-build` 那一条 `cargo build` ——
   # **「编得过」不等于「跑得对」**。⇒ monitor 那批 `#[cfg(unix)]` 门控的测试
   # **云端执行面 = 0**，它们只在开发机的本地门禁（`tests/scripts/gate.sh`）里跑过。
   #
@@ -173,7 +173,7 @@ jobs:
     timeout-minutes: 35
     defaults:
       run:
-        working-directory: src/bridge
+        working-directory: src/frontend/shell
     steps:
       - uses: actions/checkout@v4
         with:
@@ -183,7 +183,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/bridge
+          workspaces: src/frontend/shell
 
       - name: Install Linux build deps
         run: |
@@ -224,7 +224,7 @@ jobs:
       # 让告警可见但不红 CI；新代码作者本地 `npm run lint` 自查。
       #
       # **E83（2026-08-01）：作用面从 `eslint src` 放开到 `eslint .`。** 本仓 `eslint.config.js`
-      # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/bridge / …），
+      # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/frontend/shell / …），
       # 而脚本只跑 `src` ⇒ 那份意图从没兑现，`tests/e2e/**/*.mjs` 里 39 个 `no-undef` 永远没人看得到，
       # 且它们一个真问题都不是（纯缺一段 node/browser globals）。补完 globals 后
       # **全仓实测当时仍是 7 项**，基线数字不变、覆盖面变大。〔AL1d · 第四波 4B · 09-24〕那天剩三项：
@@ -320,7 +320,7 @@ jobs:
       #
       # ⚠ 为什么用 `uses:` 装而不是加一步 `run:`：`shared_crate_registry::
       # every_ci_run_step_is_classified_as_local_or_unrunnable` 要求本文件里**每一条 `run:` 步骤**
-      # 都在 `src/bridge/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
+      # 都在 `src/frontend/shell/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
       # ⚠ 版本与 `release.yml` 那步**刻意保持一致**（`mlugg/setup-zig@v1` + zig `0.14.0`）：
       # 那一步已经在本仓 CI 上跑过，少一个会自己变的量。
       - uses: mlugg/setup-zig@v1
@@ -403,7 +403,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/bridge
+          workspaces: src/frontend/shell
 
       # Tauri v2 在 Linux 上的构建期依赖。**逐个都是编译 app 必需**（不是打包才要的）：
       # webkit2gtk-4.1 = WebView；gtk-3 = 窗口；ayatana-appindicator3 = 托盘；rsvg2 = 图标。
@@ -424,7 +424,7 @@ jobs:
         run: npm run build
 
       - name: cargo build (full app binary, not --lib)
-        working-directory: src/bridge
+        working-directory: src/frontend/shell
         run: cargo build
 
   # F09：e2e 脚本**健康冒烟**（非真 e2e）。真 e2e（Xvfb + tauri dev 全量 app + xdotool，见
@@ -954,7 +954,7 @@ jobs:
   #
   # 按「要不要 Rust 工具链」拆两个 job：多数套件只要 tmux+node，秒级；只有 2 套要从真 builder
   # 取命令串（教训清单第 2 条：验收输入必须从真 builder 取，绝不手搓等价命令），
-  # 它们得编译 src/bridge，而 src/bridge 依赖 tauri v2 → Linux 上需要 webkit2gtk 一套系统库。
+  # 它们得编译 src/frontend/shell，而 src/frontend/shell 依赖 tauri v2 → Linux 上需要 webkit2gtk 一套系统库。
   # 拆开的好处：快的那个先给信号，不被慢的 Linux Tauri 构建挡住。
   e2e-tmux:
     name: E2E real-machine (tmux, no Rust)
@@ -1009,7 +1009,7 @@ jobs:
 
       # 🔴 〔`K-R48` 第二拍 09-11〕原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
       #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
-      #    `src/bridge/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
+      #    `src/frontend/shell/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
 
       # 08-13：`cc-send` 兜底路径的滞留队列补投。**本套件不用 tmux**（收发全走文件）——
       # 于是 `C7i` 那条红线在它身上天然不成立。它起的唯一进程是 `cc-busd` 自己，
@@ -1060,7 +1060,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src/bridge
+          workspaces: src/frontend/shell
 
       # **E67④（2026-08-01）订正**：原注释写着「这两套只从 Rust 侧取命令串、不跑前端，无需 node」
       # ——**不成立**。`resume-backend-frames.sh` 第 3 步要跑 `npx tsx tests/e2e/resume-cmd-driver.ts`
@@ -1076,7 +1076,7 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # src/bridge 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
+      # src/frontend/shell 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
       # （Windows job 不需要，故只在这里装）。
       # ⚠ **`jq` 是 `CI-J1` 搬家带过来的真依赖**，不是顺手加的：`tests/e2e/backend-cc-bus.sh:33`
       #   是 `command -v jq || exit 1` 的硬门（它整套断言都拿 `jq` 读回帧）。
@@ -1099,7 +1099,7 @@ jobs:
       # G-C：这三套要一个**真后端二进制**（backend-wrapper.sh 默认取
       # `.build/backend/debug/cc-monitor-backend`）。主计划把「怎么把后端产物
       # 从 `backend` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
-      # 本 job 已有 Rust 工具链，而 backend crate 比它已经在编的 src/bridge 轻得多。
+      # 本 job 已有 Rust 工具链，而 backend crate 比它已经在编的 src/frontend/shell 轻得多。
       - name: build debug backend（供 backend-frames 三套）
         run: cargo build --manifest-path src/backend/Cargo.toml
 
@@ -1171,7 +1171,7 @@ jobs:
         run: bash tests/e2e/assert-pass-floor.sh inbound-frames 30
 
       # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
-      # `src/bridge/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
+      # `src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
       # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
       #
       #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后
@@ -1217,7 +1217,7 @@ jobs:
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
       # ★★ `K-P1` 08-26：**7 → 14**。多出来的 7 条是常驻那条路的真进程判据
       #    （`KPY2` 认已有实例 5 条含一条**非空对照** · `KPY3` 不留僵尸 2 条），
-      #    它们住 `src/bridge/src/local_backend_host.rs`，由本套件**第二趟** `--ignored` 拉起。
+      #    它们住 `src/frontend/shell/src/local_backend_host.rs`，由本套件**第二趟** `--ignored` 拉起。
       #    ⚠ 不棘的话那 7 条明天能被整族删掉而 CI 照样绿 —— 那正是
       #    `assert-pass-floor.sh` 头注写的失效模式：**不是变红，是静默缩水**。
       - name: 本机后端监护真进程验收（F05a + K-P1 常驻）
@@ -1240,7 +1240,7 @@ jobs:
       # 〔TL1 · 4C · 2026-09-25〕本机拉起真的建出 tmux 会话（`P3t-Y5`）：这套从前**只有脚本、没有任何执行链引用**
       #    （不在 `package.json` ⇒ 这张地板表与 `e2e_gate_registry` 都看不见它；TQ1 现打逮到）。4C 现打 10 过 / 0 败 ⇒ 接回。
       #    它要上面那步编好的 debug backend（软链成 `ccm`）＋ 本 job 装的 tmux；命令串取自 monitor 那条
-      #    `#[ignore]` 渲染出口（`history_tests.rs` 那一条，要 `src/bridge` 的测试编译 —— 本 job 本来就编）。
+      #    `#[ignore]` 渲染出口（`history_tests.rs` 那一条，要 `src/frontend/shell` 的测试编译 —— 本 job 本来就编）。
       #    ⚠ 它跑在 `bash -lic` 里（生产送法）：runner 的登录 shell 若把 PATH 重排到 shim 前面，脚本顶上两道前置会 ABORT（退出码 2），
       #      不会降级去起真 claude 或打到别的 tmux server —— 那一红是环境的，不是被测对象的。真 runner 上没跑过（本机现打）。
       - name: 本机拉起真建出 tmux 会话（P3t-Y5）

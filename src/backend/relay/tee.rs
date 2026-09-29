@@ -2,7 +2,7 @@
 //!
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔DEL〕
 //!
-//! 登记那一侧在 `tests/bridge/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。先前挡着它的只有 `X4`
+//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。先前挡着它的只有 `X4`
 //! （NDJSON 行落点的 `try_send`，丢了不说）；那个落点随独立 `--relay` 删了，剩下的 tap 那一形「丢必须说」由位置号原位兑现。
 //!
 //! # 落点：**tap**（常驻后端进程内那一份中转，〔TAP · V124〕）
@@ -115,7 +115,7 @@ pub(crate) trait TapPort: Send + Sync {
 ///
 /// 值怎么定的：Anthropic 的 SSE 是 token 级增量，`message_start` 带整份 usage 也在 KiB 级；
 /// 16 KiB 以上的一个事件只可能来自不正常的上游。它同时把「宿主通道满载」封在 `容量 × 16 KiB`。
-/// 登记住址 `src/bridge/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
+/// 登记住址 `src/frontend/shell/src/byte_cap_registry.rs`（尺寸类常量不登记就红）。
 pub(crate) const TAP_DATA_CAP: usize = 16 * 1024;
 
 /// 〔TAP〕一个响应在 tee 这一侧的游标：`resp` 与下一个要占的号 `n`。由 [`TeeSink::open`] 发出，

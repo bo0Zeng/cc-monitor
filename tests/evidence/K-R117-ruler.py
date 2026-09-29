@@ -133,7 +133,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 🔴 〔步 8 改名 2026-09-19〕这张归档表的四个能力 id 跟着账本改了：
     #   `daemon.deploy` · `app.daemon-policy` · `daemon.lifecycle` · `daemon.status`
     #   → `backend.*`。判据自己红的时候说「**别改表去凑**」，核法照它给的两条：
-    #   ① 新名在盘上吗 —— `tests/bridge/parity_ledger_tests.rs` 里四个 `backend.*` 都在 ✅
+    #   ① 新名在盘上吗 —— `tests/frontend/shell/parity_ledger_tests.rs` 里四个 `backend.*` 都在 ✅
     #   ② 两侧跟上了吗 —— `sftp.rs:743/796` ＋ `ipc/commands.ts:739/959` 都跟上了 ✅
     #   ⇒ 是「有人改了命令名」那一种，**改表是跟上真相，不是凑绿**。
     ("backend.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
@@ -359,7 +359,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 一条带 origin 参数的」的最后两对），并进了同一行里那两条本机名下。
         # ⚠ 本条红的时候逐字写着「**别改表去凑**：要么是切件方案指了一条盘上不存在的命令，
         #   要么是有人改了命令名」。**核过了，两种都不是，是第三种：那两条命令不存在了。**
-        #   现打：`src/bridge/src/lib.rs` 的 `generate_handler!` 里已无此二名；
+        #   现打：`src/frontend/shell/src/lib.rs` 的 `generate_handler!` 里已无此二名；
         #   `mcp.rs` 里它们今天是 `pub(crate) async fn`（合并后那条命令的远端分支），
         #   `#[tauri::command]` 属性已摘。⇒ 改表是**人群跟着现实走**，不是凑绿。
         # 🔴 **改的是「名单」不是「判法」**：`R8a` 仍然是「名单 ↔ 现打人群」的两向集合相等，
@@ -1244,7 +1244,7 @@ def main() -> int:
     args = ap.parse_args()
     root = os.path.abspath(args.root)
 
-    src_dir = os.path.join(root, "src", "bridge", "src")
+    src_dir = os.path.join(root, "src", "frontend", "shell", "src")
     if not os.path.isdir(src_dir):
         crash(f"`{src_dir}` 不存在 —— `--root` 指错树了")
     try:
@@ -1257,7 +1257,7 @@ def main() -> int:
 
     # 🔴 **语料跨两棵树**〔2026-09-19 · 步 7c〕
     #
-    # 剖分把**仅测的常量表**整批搬去了 `tests/bridge/`。本尺子原来只读 `src/bridge/src/`，
+    # 剖分把**仅测的常量表**整批搬去了 `tests/frontend/shell/`。本尺子原来只读 `src/frontend/shell/src/`，
     # 于是接连崩在三处 —— 而三处的报错**各不相同**，一个一个补会补很久：
     #   ① 收尾针 `"\n    ];"` 把 4 格缩进焊死（`UNMANAGED_ENV` 的 `];` 落到第 0 列）
     #      ⇒ 报 `substring not found` 在 **tail**（已在 `const_block` 里改成与缩进无关）
@@ -1283,15 +1283,15 @@ def main() -> int:
         prod = os.path.join(src_dir, f"{stem}.rs")
         if os.path.exists(prod):
             parts.append(slurp(prod))
-        tdir = os.path.join(root, "tests", "bridge")
+        tdir = os.path.join(root, "tests", "frontend", "shell")
         if os.path.isdir(tdir):
             for fn in sorted(os.listdir(tdir)):
                 if fn.startswith(stem) and fn.endswith(".rs"):
                     parts.append(slurp(os.path.join(tdir, fn)))
         if not parts:
             raise SystemExit(
-                f"`{stem}` 的语料一份都找不到（既不在 `src/bridge/src/`，"
-                f"也不在 `tests/bridge/{stem}*.rs`）—— 语料搬家了而本尺子没跟上。\n"
+                f"`{stem}` 的语料一份都找不到（既不在 `src/frontend/shell/src/`，"
+                f"也不在 `tests/frontend/shell/{stem}*.rs`）—— 语料搬家了而本尺子没跟上。\n"
                 f"  ⚠ **不许回落成空串**：那会让下面每一格零命中地绿。"
             )
         return "\n".join(parts)

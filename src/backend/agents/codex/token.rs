@@ -71,7 +71,7 @@ impl CodexDelta {
 /// 来历：`U7-2` 把 Claude 口径收进本 crate 时**漏了 Codex 这一侧** ——
 /// backend 的 `agents/codex/parse.rs` 与 monitor 的 `codex_record.rs` 各写一份、逐字相同、
 /// 无一条判据钉住，后来才收到这里。
-/// 🔴 **〔`设计/50`〕守它「是唯一家」的那条判据没了**：它住 `src/bridge/src/usage.rs`
+/// 🔴 **〔`设计/50`〕守它「是唯一家」的那条判据没了**：它住 `src/frontend/shell/src/usage.rs`
 /// （`kou_jing_singleton`），而那份文件随用量 ② 轴整轴退役 ——  〔散文墓碑〕
 /// **如实登记为射程边界**：今天挡「有人再写第二份」的只有下面那三条单测钉住的行为，
 /// 没有任何东西在数「这个映射有几个家」。

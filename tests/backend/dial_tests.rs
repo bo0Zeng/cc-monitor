@@ -11,7 +11,7 @@
 //! # 甲半在哪
 //!
 //! 甲半（界面这一侧：backend 那条长连接流不再自己拨号）住
-//! `../../bridge/src/ssh_source.rs` 的测试模块 —— **两侧各扫各的 crate**，
+//! `../../frontend/shell/src/ssh_source.rs` 的测试模块 —— **两侧各扫各的 crate**，
 //! 刻意不从这里 `include_str!` 伸到对面去（那会新增一条跨轨编译期边，
 //! 而那张登记表不在本轮写区里）。
 

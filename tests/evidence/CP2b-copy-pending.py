@@ -85,7 +85,7 @@ def load_cp1():
 # 〔MG1 · 合并 CP2b × CP2c，09-25〕常驻端 `src/backend/**` 与 monitor 的子 crate `src/common/**` 归 CP2c 的待办表
 # （`CP2c-backend-copy-pending.py`，射程恰是这两棵）⇒ 本表的人群排除它们：两张表各管一半、人群不重叠，
 # 并集仍是普查的全部对外字面量（两份判据都挂在 vitest 上，漏哪一半都红）。
-# ⚠ 前缀按「相对仓根」判；monitor crate 里的 `src/bridge/src/backend/` 是界面进程的后端调用层，仍归本表。
+# ⚠ 前缀按「相对仓根」判；monitor crate 里的 `src/frontend/shell/src/backend/` 是界面进程的后端调用层，仍归本表。
 CP2C_SCOPE = ("src/backend/", "src/common/")
 
 

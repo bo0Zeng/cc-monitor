@@ -18,7 +18,7 @@
 //! 那一刀**不生效**）。⇒ 判据与被扫的代码**必须不在同一个文件**。
 //! 而本文件今天不在人群里的**真正**理由是住址：它住 `tests/backend/relay/`，
 //! 而扫的是 `src/backend/relay`。
-//! 第一版就是写在 `server.rs` 里的，`cargo test --manifest-path src/bridge/Cargo.toml`
+//! 第一版就是写在 `server.rs` 里的，`cargo test --manifest-path src/frontend/shell/Cargo.toml`
 //! 当场把它点名（「有扫描型判据在测试段里裸遍历目录，且不在存量清单里」）。
 //!
 //! # 它哪天会变瞎

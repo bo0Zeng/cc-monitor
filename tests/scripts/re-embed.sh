@@ -5,10 +5,10 @@
 #
 # 协议面一变就要 bump `src/backend/lib.rs` 的 `const BUILD_ID`（那份谱系里每一条都写着
 # 「不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠」）。而 bump 的那一刻，
-# `src/bridge/embedded-backends/` 里那两份 musl 字节**立刻变旧** —— 它们是上一版源码编的，
+# `src/frontend/shell/embedded-backends/` 里那两份 musl 字节**立刻变旧** —— 它们是上一版源码编的，
 # 身份戳里写的还是上一个 id。于是二选一，两条都坏：
 #
-#   · 有人在盯（今天就是这样）⇒ `src/bridge/build.rs::embed_backends` 的**半 bump 守卫**
+#   · 有人在盯（今天就是这样）⇒ `src/frontend/shell/build.rs::embed_backends` 的**半 bump 守卫**
 #     当场 `panic!`，**整棵树编不过**。2026-09-18 实地踩过一次：删用量 ⇒ bump `p2j`→`p2k`
 #     ⇒ **四路 agent 同时编不过**。
 #   · 没人在盯 ⇒ 装出去的是一份自报旧 id 的字节，已部署的远端**不判 stale、不重装**，
@@ -73,7 +73,7 @@
 # ⇒ 修的是**构建这一侧**，不是运行期（运行期那条解析链「exe 旁 → 本机 Linux 用内嵌 musl
 #   → 本产物自带的那份」一个字都没动，也**没有**多一条「起不来就换一条路」的分支）：
 #   · **开发构建的路径是明写的，而且就是发版那一条**：`--native` 编出本机原生后端、
-#     铺进 `src/bridge/native-backend/`，`build.rs::embed_native_backend` 把它内嵌进 exe，
+#     铺进 `src/frontend/shell/native-backend/`，`build.rs::embed_native_backend` 把它内嵌进 exe，
 #     运行期按原路自释放再起。**配方与发版那两步逐字同源**（判据 ⑬b 钉着）。
 #   · **「起得来」从一句警告变成可判的**：本文件现在**真起一趟**那份字节
 #     （[`native_starts`]：空 stdin、隔离的 HOME、一个一律失败的 tmux 替身），
@@ -113,11 +113,11 @@ REEMBED_TARGETS=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl)
 #: `env.CCM_BACKEND_IDENTITY_SRC` 是同一份文件（步 9 把它从 `main.rs` 搬来）。
 IDENTITY_SRC="$ROOT/src/backend/lib.rs"
 #: 内嵌落点 —— 名字定死在 `build.rs` 的 `EMBEDDED_BACKENDS_DIR` / `NATIVE_BACKEND_DIR`
-#: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/bridge/.gitignore` 三向钉在一起）。
-EMBEDDED_DIR="$ROOT/src/bridge/embedded-backends"
+#: （判据 ⑬c/⑬d 把这两处与本文件、与 `src/frontend/shell/.gitignore` 三向钉在一起）。
+EMBEDDED_DIR="$ROOT/src/frontend/shell/embedded-backends"
 #: 〔RM1c〕全景小程序的源码树与它那张 op 表的住址（`--check` 拿它与字节自报的能力对拍）。
 PANORAMA_SRC="$ROOT/src/panorama-engine"
-NATIVE_DIR="$ROOT/src/bridge/native-backend"
+NATIVE_DIR="$ROOT/src/frontend/shell/native-backend"
 
 pass=0
 fail=0
@@ -170,10 +170,10 @@ do_build() {
     arch="${t%%-*}"
     cp "$ROOT/.build/backend/$t/release/cc-monitor-backend" \
        "$EMBEDDED_DIR/cc-monitor-backend-$arch"
-    printf '==> 铺好 src/bridge/embedded-backends/cc-monitor-backend-%s\n' "$arch"
+    printf '==> 铺好 src/frontend/shell/embedded-backends/cc-monitor-backend-%s\n' "$arch"
     cp "$ROOT/.build/panorama/$t/release/cc-monitor-panorama" \
        "$EMBEDDED_DIR/cc-monitor-panorama-$arch"
-    printf '==> 铺好 src/bridge/embedded-backends/cc-monitor-panorama-%s\n' "$arch"
+    printf '==> 铺好 src/frontend/shell/embedded-backends/cc-monitor-panorama-%s\n' "$arch"
   done
 }
 
@@ -212,7 +212,7 @@ do_native() {
   # 名字里没有 triple ⇒ 「给哪个平台编的」只能靠这份旁挂清单
   # （`build.rs::embed_native_backend` 的 ① 号硬校验读它，对不上当场 panic）。
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-native.target"
-  printf '==> 铺好 src/bridge/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
+  printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-native（＋ .target = %s）\n' "$triple"
   # 〔RM1f〕本机原生的全景小程序（monitor 摘内嵌引擎之后，本机全景 = 本机后端 → 插件口 → 它）。
   #   与 `release.yml` 的 `Build local panorama (native)` ＋ `Stage native panorama for self-extract` 同一条配方；
   #   落点名字定死在 `build.rs::NATIVE_PANORAMA_FILE`（判据对拍）。
@@ -220,7 +220,7 @@ do_native() {
   ( cd "$PANORAMA_SRC" && cargo build "${REEMBED_BUILD_FLAGS[@]}" )
   cp "$ROOT/.build/panorama/release/cc-monitor-panorama$exe" "$NATIVE_DIR/cc-monitor-panorama"
   printf '%s\n' "$triple" > "$NATIVE_DIR/cc-monitor-panorama.target"
-  printf '==> 铺好 src/bridge/native-backend/cc-monitor-panorama（＋ .target = %s）\n' "$triple"
+  printf '==> 铺好 src/frontend/shell/native-backend/cc-monitor-panorama（＋ .target = %s）\n' "$triple"
 }
 
 # 🔴〔B1〕**真起一趟**本机那一份，回它 stdout 的第一行（起不来就回空串）。
@@ -392,7 +392,7 @@ do_check() {
     fi
   elif [ "$require_native" = "1" ]; then
     bad "开发构建起得来本机后端（本机那一份在盘上）" \
-        "src/bridge/native-backend/cc-monitor-native 没铺 ⇒ 这棵树编出来的 exe **起不了本机后端**（D11：这不是「开发构建里的正常情况」）。出路：bash tests/scripts/re-embed.sh --native"
+        "src/frontend/shell/native-backend/cc-monitor-native 没铺 ⇒ 这棵树编出来的 exe **起不了本机后端**（D11：这不是「开发构建里的正常情况」）。出路：bash tests/scripts/re-embed.sh --native"
   else
     printf 'skip  本机内嵌后端 :: 没铺（这棵树编出来的 exe 起不了本机后端 —— 开发构建要它就跑 --native，判它用 --check-dev）\n'
   fi

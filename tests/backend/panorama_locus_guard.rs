@@ -89,7 +89,7 @@ mod tests {
     ///
     /// 〔RM1c · 第四波〕第三份：`src/panorama-engine/Cargo.lock`（只装引擎的独立小程序）。
     const LOCKS: &[&str] = &[
-        "src/bridge/Cargo.lock",
+        "src/frontend/shell/Cargo.lock",
         "src/backend/Cargo.lock",
         "src/panorama-engine/Cargo.lock",
     ];
@@ -243,7 +243,7 @@ mod tests {
 
         // ② 针二单断（manifest 键的形状）：真依赖行认得出，两种写法都要。
         for line in [
-            format!("{dashed} = {{ path = \"../src/bridge/vendor/{dashed}\" }}"),
+            format!("{dashed} = {{ path = \"../src/frontend/shell/vendor/{dashed}\" }}"),
             format!("{underscored} = \"0.1\""),
         ] {
             assert!(

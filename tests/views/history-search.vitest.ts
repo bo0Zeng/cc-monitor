@@ -1,7 +1,7 @@
 /**
  * 历史全文搜索（`src/views/history-search.ts`）：本机与各台远端同一条路。
  *
- * 〔C4a · 第四波〕合并与远端 fan-out 从 Rust 搬来时，判据跟着它的家走（原 `tests/bridge/search_tests.rs` 那一组逐条同形）。
+ * 〔C4a · 第四波〕合并与远端 fan-out 从 Rust 搬来时，判据跟着它的家走（原 `tests/frontend/shell/search_tests.rs` 那一组逐条同形）。
  * 〔LOC1b · 第四波 4D〕本机那一半也改问本机后端（`chan.call(LOCAL_ORIGIN, "history-search")`），monitor 内存索引删了 ⇒
  * 合并只剩「一组会话行」这一形；「本机 indexing」那两条随那一态删了。
  * 要求住址：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」。

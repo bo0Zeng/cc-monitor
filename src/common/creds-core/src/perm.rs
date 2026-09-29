@@ -3,7 +3,7 @@
 //!
 //! # 两个平台**同一个签名**，各自的边界各自写清（`KS5`）
 //!
-//! 形状照 `src/bridge/src/platform_fs.rs::make_executable` 那个现成先例
+//! 形状照 `src/frontend/shell/src/platform_fs.rs::make_executable` 那个现成先例
 //! （Unix 置 `0o700`、Windows 文档化的无操作、**签名两边一致**、由宿主注入给平台无关的一半）。
 //!
 //! ⚠⚠ **但本模块的 Windows 那半不许照抄那个「无操作」**：

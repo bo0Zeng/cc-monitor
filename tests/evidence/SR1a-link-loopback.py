@@ -318,7 +318,7 @@ def main():
                    "SR1A_LOOPBACK": json.dumps({"host": "127.0.0.1", "port": port, "user": user, "key_path": f"{d}/client_key",
                                                 "backend": bin_path, "home": home})}
             r = subprocess.run(["cargo", "test", "-p", "monitor", "--lib", "loopback_roundtrip_through_the_resident_backend", "--", "--ignored", "--nocapture"],
-                               cwd=os.path.join(ROOT, "src", "bridge"), env=env, capture_output=True, text=True, timeout=3000)
+                               cwd=os.path.join(ROOT, "src", "frontend", "shell"), env=env, capture_output=True, text=True, timeout=3000)
             check("字节流 · 收全 · 阶段 ＋ 指纹 全经本机常驻后端", "SR1A-LOOPBACK-MONITOR ok" in r.stdout and "1 passed" in r.stdout,
                   (r.stdout[-1200:], r.stderr[-800:]))
     finally:

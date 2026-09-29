@@ -2,7 +2,7 @@
 name = "deploy-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "部署决策的唯一一份：那台机器要哪一格字节（表 A · 表 B）· 那台落点上那一份是谁（身份戳）· 该不该换（BUILD_ID 可比序）。本机常驻后端出计划、monitor 只放字节，两侧共用（无 IO、无平台依赖）。"
 
 # **只依赖同族共享 crate**（同 branch-core / relay-route-core 的约束）：backend 是 Linux-only 的静态 musl 二进制、

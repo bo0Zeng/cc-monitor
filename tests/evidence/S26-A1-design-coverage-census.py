@@ -34,7 +34,7 @@
 
 **(1) 人群（一项 = 一个生产源码文件）**
 
-  住在 `src/bridge/src/` · `src/backend/` · `src/**/*.ts` 之下，且
+  住在 `src/frontend/shell/src/` · `src/backend/` · `src/**/*.ts` 之下，且
     · 后缀是 `.ts` 或 `.rs`
     · 不在 `EXCLUDED_DIRS` / `EXCLUDED_FILE_RE` 里
     · **生产行数 > 0**（见 (2)）
@@ -48,7 +48,7 @@
   `.rs`：总行数 − 落在 `#[cfg(test)]` 块（含 `#[cfg(test)] mod x;` 声明行）里的行数。
   `.ts`：总行数（测试住 `tests/`，不与生产同文件）。
 
-  🔴 **为什么必须这么算**：`src/bridge/src/` 里 39 个判据文件有 `98%` 的行在 `#[cfg(test)]`
+  🔴 **为什么必须这么算**：`src/frontend/shell/src/` 里 39 个判据文件有 `98%` 的行在 `#[cfg(test)]`
   里（现打，见面⑦）。不剥就会把**判据**当成**生产代码**普查 —— 而判据「设计零提及 ＋
   生产零调用方」是**常态**，那会一次灌进来三万行假候选。⇒ `prod_lines == 0` 的文件
   **整个出人群**，单列进面⑦（「判据层」轨）。
@@ -66,7 +66,7 @@
                                               `session-viewer` · `profile_installer`
     T4b `stem`    单词 stem，**且长成代码 token**（反引号里 / 带 `::` / `/` / `.rs`）
                                               `` `panorama` `` · `adapter::` · `launch/`
-    T5 `dir`      任一祖先目录被点名          `settings/` · `src/bridge/src/backend/`
+    T5 `dir`      任一祖先目录被点名          `settings/` · `src/frontend/shell/src/backend/`
 
   **候选 = T1..T5（含 T4b）全不命中**。这是刻意选的错误方向（纪律 2）：
   错要错成「漏报一项待裁」，不许错成「把一件设计过的东西列进删除候选」。
@@ -98,12 +98,12 @@
  🔴 三、这个定义**排除了什么** —— 每条都是明写的取舍，不是忘了
 ═══════════════════════════════════════════════════════════════════════════════
 
-  1. **`src/common/*`（8 个共享 crate）与 `src/bridge/vendor/*`（2 个）**。
-     理由：用户给的人群逐字是「`src/bridge/src` · `src/backend` · `src/*.ts` · `src/**/*.ts`」。
+  1. **`src/common/*`（8 个共享 crate）与 `src/frontend/shell/vendor/*`（2 个）**。
+     理由：用户给的人群逐字是「`src/frontend/shell/src` · `src/backend` · `src/*.ts` · `src/**/*.ts`」。
      crates/ 与 vendor/ **不在里面**。⇒ 面⑨ 把它们的规模作为**已登记未扫面**打印出来，
      不假装扫过。（⚠ `codex-token-core` 属于丙那一族，面⑤ 会点它的名但不判。）
-  2. **`src/generated/`**（ts-rs 生成物 81 个）、`src/bridge/gen/`、`src/bridge/embedded-daemons/`、
-     `src/bridge/scripts/`、`src/bridge/icons/`、`src/bridge/capabilities/`、`src/doc/`。
+  2. **`src/generated/`**（ts-rs 生成物 81 个）、`src/frontend/shell/gen/`、`src/frontend/shell/embedded-daemons/`、
+     `src/frontend/shell/scripts/`、`src/frontend/shell/icons/`、`src/frontend/shell/capabilities/`、`src/doc/`。
      理由：生成物 / 内嵌资产 / 文档，不是人写的生产逻辑；改它们要改生成器或上游。
   3. **`tests/`** —— 用户逐字排除。
   4. **`*.d.ts` · `*.vitest.ts` · `*.test.ts` · `*.spec.ts` · `*-golden.ts` · `build.rs` ·
@@ -111,7 +111,7 @@
   5. **`.css` / `.json` / `.yml` / `.html`**。理由：本量具的两问②③ 只对 `.ts`/`.rs` 成立
      （CSS 没有 import 图可言）。⇒ `设计/40`/`41` 管的 CSS 面**已有自己的量具**
      （`css-ledger.vitest.ts`），本篇不重复；面⑨ 登记这个缺口。
-     ⚠ 现打逮到一处 CSS/JSON 侧的残留（`src/bridge/tauri.sidecar.conf.json`），
+     ⚠ 现打逮到一处 CSS/JSON 侧的残留（`src/frontend/shell/tauri.sidecar.conf.json`），
      面⑨ 点名但**不判**，因为它出本量具的射程。
   6. **符号级残留**（模块在用、里面某个 `pub fn` 没人用）。理由见定义 (1)。
   7. **`调研/真相源/` 的提及不算「设计点名」**。理由：`99 §3.2` 逐字把
@@ -158,12 +158,12 @@ EXCLUDED_DIRS = (
     "src/common",
     "src/vendor",
     "src/panorama-engine/vendor",
-    "src/bridge/gen",
-    "src/bridge/embedded-daemons",
-    "src/bridge/scripts",
-    "src/bridge/icons",
-    "src/bridge/capabilities",
-    "src/bridge/target",
+    "src/frontend/shell/gen",
+    "src/frontend/shell/embedded-daemons",
+    "src/frontend/shell/scripts",
+    "src/frontend/shell/icons",
+    "src/frontend/shell/capabilities",
+    "src/frontend/shell/target",
     "src/backend/target",
     "tests",
     "node_modules",
@@ -209,8 +209,8 @@ SHELVED = [
         "用户 09-17 明确搁置，暂不设计",
         [
             "src/backend/agents/codex/*.rs",
-            "src/bridge/src/adapter/codex.rs",
-            "src/bridge/src/codex_record.rs",
+            "src/frontend/shell/src/adapter/codex.rs",
+            "src/frontend/shell/src/codex_record.rs",
         ],
     ),
 ]
@@ -218,7 +218,7 @@ SHELVED = [
 # ── 太泛的目录，不作 T5 依据 ────────────────────────────────────────────────
 #  理由：它们覆盖整棵树，命中等于「没判」。
 TOO_GENERIC_DIRS = {
-    "src", "src/bridge", "src/bridge/src", "src/backend", "tests",
+    "src", "src/frontend/shell", "src/frontend/shell/src", "src/backend", "tests",
     "src/views", "doc", "调研", "设计", "真相源",
 }
 # ⚠ `src/views` 上榜是因为它被当「前端视图那一族」泛指过；它的成员改用 T1..T4 判。
@@ -558,8 +558,8 @@ def build_keys(rec: Rec) -> None:
     rec.keys["dir"] = [a for a in ancestors if a and a not in TOO_GENERIC_DIRS]
 
     if rec.lang == "rs":
-        if rel.startswith("src/bridge/src/"):
-            sub = rel[len("src/bridge/src/"):]
+        if rel.startswith("src/frontend/shell/src/"):
+            sub = rel[len("src/frontend/shell/src/"):]
         elif rel.startswith("src/backend/"):
             sub = rel[len("src/backend/"):]
         else:
@@ -737,14 +737,14 @@ TAURI_CMD_RE = re.compile(r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?
 
 
 def rust_crate_of(rel: str):
-    if rel.startswith("src/bridge/src/"):
-        return "bridge"
+    if rel.startswith("src/frontend/shell/src/"):
+        return "shell"
     if rel.startswith("src/backend/"):
         return "backend"
     return None
 
 
-CRATE_ROOTS = ("src/bridge/src", "src/backend")
+CRATE_ROOTS = ("src/frontend/shell/src", "src/backend")
 
 # ── 变异开关：`--selftest` 用它们逐个关掉一条承重步骤 ────────────────────────
 #  🔴 每个开关对准**定义里的一个取舍**，关掉它必须有一条判据当场红。
@@ -758,8 +758,8 @@ MUT = {"mod_as_edge": False, "no_cfg_strip": False, "no_comment_mask": False}
 #  Rust 两个 crate 各一个根。
 ENTRIES = (
     "src/main.ts",
-    "src/bridge/src/lib.rs",
-    "src/bridge/src/main.rs",
+    "src/frontend/shell/src/lib.rs",
+    "src/frontend/shell/src/main.rs",
     "src/backend/main.rs",
 )
 
@@ -806,7 +806,7 @@ def family_of(rel: str) -> str:
     于是**整族死代码恰好是最容易漏的那一种**。
 
     ⇒ 族 = crate 根下的**第一段子目录**（`src/backend/sidecars` · `src/views` · `src/settings`）；
-       直接住在根上的文件（`src/bridge/src/history.rs` · `src/tabs.ts`）各自成族。
+       直接住在根上的文件（`src/frontend/shell/src/history.rs` · `src/tabs.ts`）各自成族。
     ⇒ 「外部调用方」= 族外的调用方。四档用**外部调用方**分，报告同时打印文件级的数。
     """
     for root in CRATE_ROOTS:
@@ -876,7 +876,7 @@ def wire_rust(pop: dict, out_edges: dict) -> int:
 
     # 命令面
     handler_text = ""
-    lib = pop.get("src/bridge/src/lib.rs")
+    lib = pop.get("src/frontend/shell/src/lib.rs")
     if lib:
         m = re.search(r"generate_handler!\s*\[", lib.ptext)
         if m:
@@ -956,8 +956,8 @@ def gate_corpus():
                 continue
             if p.is_file():
                 out[p.relative_to(REPO).as_posix()] = p.read_text(encoding="utf-8", errors="replace")
-    # `src/bridge/src` 里判据的 cfg(test) 段（那 39 个还没搬走的判据文件）
-    for p in sorted((REPO / "src/bridge/src").rglob("*.rs")):
+    # `src/frontend/shell/src` 里判据的 cfg(test) 段（那 39 个还没搬走的判据文件）
+    for p in sorted((REPO / "src/frontend/shell/src").rglob("*.rs")):
         rel = p.relative_to(REPO).as_posix()
         raw = p.read_text(encoding="utf-8", errors="replace")
         skel = mask_comments(raw, "rs", blank_strings=True)
@@ -1040,7 +1040,7 @@ def run(pop_lister=disk_lister, pop_reader=disk_reader, design_loader=load_desig
     #  (b) `prod_lines == 0` —— 整份住在 `#[cfg(test)]` 里。
     #  🔴 (a) 不可省：`ccm_cli_contract.rs` 的 `prod_lines` 是 1（结构性残余一行），
     #     只用 (b) 会把它当生产代码，于是一个纯判据文件进了「甲」档待裁清单。
-    testonly_names = {"bridge": set(), "backend": set()}
+    testonly_names = {"shell": set(), "backend": set()}
     for rel, rec in allfiles.items():
         if rec.lang != "rs":
             continue
@@ -1285,8 +1285,8 @@ def main_report(args) -> int:
     if css.exists():
         P(f"  · `src/styles.css`：{css.stat().st_size:,} 字节 —— `.css` 出本量具射程"
           "（②③ 对 CSS 不成立），CSS 面另有 `css-ledger.vitest.ts`")
-    sc = REPO / "src/bridge/tauri.sidecar.conf.json"
-    P(f"  · `src/bridge/tauri.sidecar.conf.json`：{'**还在**' if sc.exists() else '已无'} —— "
+    sc = REPO / "src/frontend/shell/tauri.sidecar.conf.json"
+    P(f"  · `src/frontend/shell/tauri.sidecar.conf.json`：{'**还在**' if sc.exists() else '已无'} —— "
       "条 67 删的是 `src/backend/sidecars/` 的 `.rs`，这个 `.json` 是同族残留。")
     P("    ⚠ 点名但**不判**（`.json` 出射程），也**不改**（本轮只读）。")
 

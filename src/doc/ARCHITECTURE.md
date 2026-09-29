@@ -2,7 +2,7 @@
 
 新贡献者第一站。读完应该能回答：数据从哪儿来、经过谁、停在哪儿、为什么这么分。
 
-每个模块的"当下设计 + 为什么"详见各子目录 README — [`../README.md`](../README.md)、[`../../src/bridge/README.md`](../../src/bridge/README.md)、[`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
+每个模块的"当下设计 + 为什么"详见各子目录 README — [`../README.md`](../README.md)、[`../../src/frontend/shell/README.md`](../../src/frontend/shell/README.md)、[`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
 
 跨切面文档：
 - 全局不变量 → [INVARIANTS.md](INVARIANTS.md)
@@ -123,7 +123,7 @@
 ## 2. 层边界（不放逐文件模块表 —— 见本节末）
 
 > ⚠ **F19 重写**（2026-08-04）。原来这一节是一张 **122 行的逐文件模块树**，而：
-> - 它与 `src/bridge/README.md` 的目录树**各存一份**，**两份都缺 `backend/`**；
+> - 它与 `src/frontend/shell/README.md` 的目录树**各存一份**，**两份都缺 `backend/`**；
 > - 本文件自己在开头与结尾**两次**把「模块表」委派给子目录 README —— 它自己就说过不该放；
 > - 更要紧的是：**本工作区最大的两件结构性事实在它里面不存在** ——
 >   `backend` 这个词全文只出现过 **1 次**（且指的是前端的 `session-backend.ts`），
@@ -137,7 +137,7 @@
 
 **backend = 读（`observe/`）+ 控制（`control/`）**，**一份代码、两种承载**：
 **远端进程** = `src/backend/`（独立 crate，**不是 workspace 成员**，见 2.6）·
-**本机进程** = `src/bridge/src/backend/`。
+**本机进程** = `src/frontend/shell/src/backend/`。
 
 两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**
 〔原话逐字：「本机**只有一层**」—— 2026-09-12 `K-R71` 建了 `observe/` 之后不成立〕——
@@ -213,7 +213,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 那条散文曾写 13，而机器数是 7；点名的 `local_accounts.rs` 早已不是 reader，
 它 `:564-565` 自陈「现在问本机后端」）。挡着它们的是两样有名有姓的东西：后端侧的查询集缺口，
 以及 `tasks.rs` / `search.rs` 今天带着的宿主耦合（`backend/` 有一道宿主无关守卫）。
-⇒ **今天没有触发器**，逐条理由住 `src/bridge/src/backend/mod.rs` 头注最后一节。
+⇒ **今天没有触发器**，逐条理由住 `src/frontend/shell/src/backend/mod.rs` 头注最后一节。
 
 〔原话逐字，留作来历：「⚠ **monitor 侧的 `observe/` 今天刻意未建**……先搬进来再删掉是纯搬运。
 **谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
@@ -246,7 +246,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 ⚠ 〔F18 实测订正〕这一节原来写「monitor 侧今天不成立 —— 平台原语散在 `bind.rs`/`utils.rs`」。
 **那句把两半混说了**：
 
-- **backend 那一半（`src/bridge/src/backend/`）生产段零平台 cfg、零平台原语** ——
+- **backend 那一半（`src/frontend/shell/src/backend/`）生产段零平台 cfg、零平台原语** ——
   唯一那 3 处 `#[cfg(unix)]`/`#[cfg(windows)]` 全在 `local_backend.rs` 的**测试段**
   （夹具在收拾自己起的子进程）。⇒ 这条纪律在它该管的范围里**已经成立**，
   由 `backend::tests::the_backend_half_stays_platform_agnostic` 钉住不许退化，
@@ -287,15 +287,15 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 `src/common/*`（6 个）是 monitor 与后端的共同实现落点（判定只许有一个家）。
 而 **后端 crate 刻意不是 workspace 成员** —— 它要能在目标机上**原生构建**。
 
-⚠ **代价是实的、要写下来**：在 `src/bridge` 里跑 `cargo fmt --all` / `cargo test`
+⚠ **代价是实的、要写下来**：在 `src/frontend/shell` 里跑 `cargo fmt --all` / `cargo test`
 **覆不到后端**（曾因此漏过一次 fmt 红）⇒ 门禁读数必须**八处分别跑**
 （monitor · 后端 · 6 个共享 crate）。
 
 ### 2.7 逐文件清单去哪了
 
-- Rust 侧：`src/bridge/README.md`
+- Rust 侧：`src/frontend/shell/README.md`
 - 前端：`src/README.md`
-- `backend/` 内部：`src/bridge/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表
+- `backend/` 内部：`src/frontend/shell/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表
   （**加文件不写理由就红** —— 那是这个目录不再变成平铺堆的机制）
 
 ---
@@ -521,4 +521,4 @@ v1.6.x 试过的"从 claude PID 走 parent chain + WT 进程 + 终端类进程 +
 - 想加新 jsonl 类型：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 jsonl 类型
 - 想改/加跨进程协议文件：见 [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
 - 想加新 IPC 命令：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 IPC + [STATE-MATRIX.md](STATE-MATRIX.md)
-- 想改某个具体模块：找对应子目录 README（`src/` 或 `src/bridge/`）的模块表
+- 想改某个具体模块：找对应子目录 README（`src/` 或 `src/frontend/shell/`）的模块表

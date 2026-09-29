@@ -243,7 +243,7 @@ fn session_index_entry_keeps_the_path_fence() {
 }
 
 /// 〔U3b〕**跨 crate 的 seq 空间对拍**：后端索引读同一份夹具，逐行对同一份金标准。
-/// monitor 那侧（`session_skeleton·rs::LineNumberer`）在 `tests/bridge/session_skeleton_tests.rs`
+/// monitor 那侧（`session_skeleton·rs::LineNumberer`）在 `tests/frontend/shell/session_skeleton_tests.rs`
 /// 对**同一份**金标准 —— 两侧实现不同源，金标准是手算的（见 `.golden` 头注）。
 #[test]
 fn index_rows_match_the_shared_seq_space_golden() {

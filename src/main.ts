@@ -595,7 +595,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       hostOs,
       // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
       // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
-      //   直达那一节要动 `src/bridge` 与 `settings/panel.ts`，都在本件写区外。
+      //   直达那一节要动 `src/frontend/shell` 与 `settings/panel.ts`，都在本件写区外。
       openList: () => void openSettingsWindow(),
     });
     const reload = async (): Promise<void> => {
@@ -843,7 +843,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 〔MIG-1〕红绿灯的初始值随 `live` 成品一起在就绪点交（`activity` 那一格），不再另拉快照（`list_session_activity`〔散文墓碑〕）。
 
-  // 注：maximize / 全屏后内容错位的修复在 Rust 侧（src/bridge/src/lib.rs on_window_event：
+  // 注：maximize / 全屏后内容错位的修复在 Rust 侧（src/frontend/shell/src/lib.rs on_window_event：
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。
   // 旧版（v2.13.0）在这里做的 onResized + scrollTop 微滚动够不着 DOM 之下的合成层偏移，已删。
 });

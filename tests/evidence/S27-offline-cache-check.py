@@ -13,7 +13,7 @@ specified」—— **门禁红在「下不到包」这条与代码对不对毫�
 
 # 两个人群（都必须非空 —— 扫到 0 条当成失败，不是「没问题」）
 
-- **P1「今天」**：`src/bridge/Cargo.lock` ＋ `src/backend/Cargo.lock` ＋ `src/panorama-engine/Cargo.lock`（〔RM1c〕）里
+- **P1「今天」**：`src/frontend/shell/Cargo.lock` ＋ `src/backend/Cargo.lock` ＋ `src/panorama-engine/Cargo.lock`（〔RM1c〕）里
   **source 指向 crates.io** 的全部 `(name, version)` 去重并集。
   这是**今天**门禁断网构建要的全集。现打 672 条（2026-09-19）。
   ⚠ `path` 依赖（本仓自己那 19 个块）不在人群里 —— 它们不走 registry 缓存。
@@ -55,7 +55,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # 它的 lock 由 monitor 那份播种后剪枝（同一批版本）⇒ 今天不新增任何 `(name, version)`，
 # 但它**是**一份断网构建要解析的 lock，不进人群的话哪天它自己升一个版本就没人点名。
 LOCKS = [
-    ROOT / "src" / "bridge" / "Cargo.lock",
+    ROOT / "src" / "frontend" / "shell" / "Cargo.lock",
     ROOT / "src" / "backend" / "Cargo.lock",
     ROOT / "src" / "panorama-engine" / "Cargo.lock",
 ]

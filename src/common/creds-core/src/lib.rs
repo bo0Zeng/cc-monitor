@@ -204,10 +204,10 @@ mod sealed {
         ///   `src/common/creds-core/src/store.rs`（`merge_key`）。
         ///
         /// ⚠⚠ **订正〔D1 阻-1，08-27〕：这一段先前写的是一句盘上没有的承诺。**
-        /// 它原文写着「它在 `src/bridge` 生产段里应当是 0 次」「在后端生产段里应当是 0 次」，
+        /// 它原文写着「它在 `src/frontend/shell` 生产段里应当是 0 次」「在后端生产段里应当是 0 次」，
         /// 并声称「三条断言各自守一格」—— 而实际盘上**那两格根本不存在**：
         /// `creds-core` 这条判据只扫 `include_str!("lib.rs")`（**它自己这一个文件**），
-        /// backend 那条只扫 backend crate，**`src/bridge` 整个不在任何人的人群里**。
+        /// backend 那条只扫 backend crate，**`src/frontend/shell` 整个不在任何人的人群里**。
         /// 审计一刀坐实：在 monitor 生产段取一次明文 `eprintln!` 出去 ⇒ 8 包合计 **1284 passed，一条没红**。
         /// **留着一句盘上没有的承诺，比没有这句话更坏。**
         ///
@@ -219,7 +219,7 @@ mod sealed {
         /// 2. **定义面的后门**：`the_type_has_no_second_impl_block_that_hands_the_inner_string_out`（本文件）——
         ///    `Deref` / `AsRef<str>` 这一类一句话就能开的后门；
         /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
-        ///    （`src/bridge/src/creds_store.rs`）—— 扫 **`src/bridge/src` · `src/common` ·
+        ///    （`src/frontend/shell/src/creds_store.rs`）—— 扫 **`src/frontend/shell/src` · `src/common` ·
         ///    `src/backend` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
         /// 另有后端那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
         pub fn expose_for_persisting(&self) -> &str {

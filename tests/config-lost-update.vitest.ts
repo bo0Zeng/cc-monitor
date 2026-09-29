@@ -18,7 +18,7 @@
  *
  * ⚠ 射程：假盘的 `patch_config` 用 `tests/config-patch-fake.ts::applyConfigEdits`（与 Rust 写口跑同一份金样）。本条**只**证明
  * 「前端每个写者只交自己那几条路径」；Rust 写口本身在并发下合并得对不对，归
- * `tests/bridge/config_tests.rs`（真文件、真线程）。
+ * `tests/frontend/shell/config_tests.rs`（真文件、真线程）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 

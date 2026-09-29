@@ -161,7 +161,7 @@ impl EnvRead {
 ///
 /// ⚠⚠ **调用形状（`proc_env_var(pid, <键>)` 这一串字面）是两把尺子的量点**，别改：
 /// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants`
-/// 与**跨 crate** 的 `src/bridge/src/doc_claim_registry_tests.rs::env_keys_actually_read`
+/// 与**跨 crate** 的 `src/frontend/shell/src/doc_claim_registry_tests.rs::env_keys_actually_read`
 /// 都按这串字面数「backend 今天真读几个键」，后者再拿那个数去与盘上五份文档的计数词对拍。
 /// `K-R21` 只换返回类型、**一个字面都没动**，正是为了不惊动它们。
 ///
@@ -226,7 +226,7 @@ pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
 /// ⚠ **单位是平台原生的，与 Linux 的 jiffies 不可互比** —— 本值只拿来与**同一个读法**读出来的
 /// 另一次比相等（`#34` 基线 · `pidwatch` 开句柄后的复核），或经 [`start_epoch_from_ticks`] 换成秒。
 /// ⚠ 于是 `watcher.rs::add_time_verdict` 的「与 pidfile 里的 `procStart` 逐值相等」那一支在 Windows 上
-/// **按构造不会命中**（claude 在 Windows 上写的是 .NET 本地 ticks，`src/bridge/src/utils.rs::NetTicks`），
+/// **按构造不会命中**（claude 在 Windows 上写的是 .NET 本地 ticks，`src/frontend/shell/src/utils.rs::NetTicks`），
 /// 那一趟落到它自己的兜底启发式（「进程起得比 pidfile 晚 ⇒ 冒名」）—— 保守方向，登记在
 /// `第四波记录/WN1.md`；把两种单位对上是那个判定自己的事（`observe/`），不在翻译官这一层。
 /// 其余平台：`None`（「不知道」的诚实表达）。`proc_cmdline` 在 Windows 上仍是 `None`（要读 PEB）。

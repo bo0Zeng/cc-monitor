@@ -33,13 +33,13 @@ if [ ! -d "$home/projects/s7-bench" ]; then
 fi
 
 rm -rf "$dv"
-mkdir -p "$dv/src/bridge" "$dv/tests"
+mkdir -p "$dv/src/frontend/shell" "$dv/tests"
 cp -a "$repo/src/backend" "$dv/src/"
-cp -a "$repo/src/common" "$dv/src/bridge/"
+cp -a "$repo/src/common" "$dv/src/frontend/shell/"
 # `src/backend/Cargo.toml` 头注逐字：「`cargo build` **真的独立**，`cargo test` **不独立**」——
 # 测块有几条 `include_str!` 伸进 monitor 那棵树与 `src/doc/`。要在副本里跑得动等价性
 # 对拍就得把这两棵也带上，否则不是测试红，是**编译**红。
-cp -a "$repo/src/bridge/src" "$dv/src/bridge/"
+cp -a "$repo/src/frontend/shell/src" "$dv/src/frontend/shell/"
 cp -a "$repo/src/doc" "$dv/src/"
 cp -a "$repo/tests/backend" "$dv/tests/"
 cp -a "$repo/tests/evidence" "$dv/tests/"

@@ -16,7 +16,7 @@
 //!
 //! # 每台机器上的写者恰好一个
 //!
-//! monitor 所在那台：monitor 自己（`src/bridge/src/creds_store.rs`，本路一个字节没动）。
+//! monitor 所在那台：monitor 自己（`src/frontend/shell/src/creds_store.rs`，本路一个字节没动）。
 //! 其余每台：那台的后端，就是本模块。monitor **从不**把 `apikey-key-set` 发给本机那条连接。
 //!
 //! # 路径：与中转里的上游选择**同一个出处**

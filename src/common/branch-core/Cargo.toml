@@ -2,7 +2,7 @@
 name = "branch-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "会话分叉：按 sid 找那份会话文件 + 记录变换——两侧共用的唯一一份（无平台依赖；IO 只有一处只读的目录枚举，K-R88）。"
 
 # **依赖只有 serde_json，这是本 crate 能被两侧共用的前提。**

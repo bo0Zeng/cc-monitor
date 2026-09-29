@@ -2,7 +2,7 @@
  * 〔CFG1〕假盘（`tests/config-patch-fake.ts`）的补丁语义 == 金样 `tests/__fixtures__/config-patch.golden.json`。
  *
  * 守的要求：`设计/30 §4`「各自只写自己那个键」· `设计/70 §6.3` 红线 ④「读不懂的 `config.json` 不写」。
- * Rust 写口跑同一份金样（`tests/bridge/config_tests.rs::the_golden_cases_hold`）⇒ 前端测试里那块假盘不是自说自话。
+ * Rust 写口跑同一份金样（`tests/frontend/shell/config_tests.rs::the_golden_cases_hold`）⇒ 前端测试里那块假盘不是自说自话。
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

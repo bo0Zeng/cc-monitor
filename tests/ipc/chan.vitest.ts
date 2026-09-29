@@ -22,7 +22,7 @@
  * | 〔W5-UI〕报信用那一跳失败 ⇒ 同样原位 `closed{ours: Broken}` 并撤掉（原先被吞 ⇒ 静默停流） | 「S5 信用报不上去」 |
  *
  * 买不到：真 Tauri IPC 那一跳（要一个活的 webview）—— 这里 mock 的是 `invoke`，
- * 它之后的那一跳由 Rust 侧 `tests/bridge/chan/webview_tests.rs` 用合成句柄 ＋ 真 `router::settle` 量。
+ * 它之后的那一跳由 Rust 侧 `tests/frontend/shell/chan/webview_tests.rs` 用合成句柄 ＋ 真 `router::settle` 量。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";

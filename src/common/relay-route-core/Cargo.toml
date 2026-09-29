@@ -2,7 +2,7 @@
 name = "relay-route-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "中转门牌的唯一住址：端口 · 钥匙文件相对路径 · 路由路径的语法（两个前缀 · 段闸 · 拼 · 拆）。monitor 与后端共用（设计/20 §5 目标）。"
 
 # **零依赖**。同 acct-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、

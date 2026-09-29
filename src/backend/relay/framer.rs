@@ -2,7 +2,7 @@
 //!
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔SC1 · 第四波 4B〕
 //!
-//! 登记那一侧在 `tests/bridge/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
+//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
 //! 它只认**字节与分隔符**，不认里面是什么 —— 那是 `设计/05 §2` 四样里的「载荷（不透明字节）」。
 //! 这段代码先前住在成员 `http1.rs` 的 `ChunkedView` 里、受十一条管着；搬出来单住一份，
 //! 不同拍盖标记就等于**出了锁**。

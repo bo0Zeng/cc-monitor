@@ -104,11 +104,11 @@ import { streamFake } from "./test-support/chan-stream-fake.ts";
 
 /** `src/events.ts` 的 `BATCH_SIZE`：问不到 `isInputPending` 时，每个 drain tick 至多处理这么多条。 */
 const FRONT_BATCH_SIZE = 40;
-/** `src/bridge/src/event_replay.rs` 的 `CHUNK_SIZE`：后端 replay 的切块大小。 */
+/** `src/frontend/shell/src/event_replay.rs` 的 `CHUNK_SIZE`：后端 replay 的切块大小。 */
 const BACKEND_CHUNK_SIZE = 600;
 // 〔CF2〕原来还有一个「低于它就不切块、单次 emit」的阈值（200）：重放改走通道的订阅之后没了 ——
 //   一块就是一次投递，不足 600 条自然就是一块。
-/** `src/bridge/src/event_replay.rs` 的 `CHUNK_PAUSE_MS`：块与块之间后端 sleep 这么久。 */
+/** `src/frontend/shell/src/event_replay.rs` 的 `CHUNK_PAUSE_MS`：块与块之间后端 sleep 这么久。 */
 const BACKEND_CHUNK_PAUSE_MS = 10;
 
 // ───────────────────────── 队列深度探针 ─────────────────────────
@@ -175,7 +175,7 @@ function makePayload(seq: number): unknown {
 }
 
 /**
- * 复刻 `src/bridge/src/event_replay.rs` 的 `build_chunks`：**从尾往前切**，所以
+ * 复刻 `src/frontend/shell/src/event_replay.rs` 的 `build_chunks`：**从尾往前切**，所以
  * `chunks[0..n-2]` 各 `CHUNK_SIZE` 条，**最后一块**才是余数（可能小于 CHUNK_SIZE）。
  * 〔CF2〕原来还有「低于 200 条不切块」那一支；重放改走订阅之后没了（不足一块自然就是一块）。
  */
@@ -576,7 +576,7 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
 
   it("events.ts 的 BATCH_SIZE 与 event_replay.rs 的两个切块常量都还是本文件写的那个值", () => {
     const events = read("../src/events.ts");
-    const replay = read("../src/bridge/src/event_replay.rs");
+    const replay = read("../src/frontend/shell/src/event_replay.rs");
     // 抽取器自检：文件必须真的读到了东西。
     expect(events.length, "src/events.ts 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
     expect(replay.length, "event_replay.rs 读出来是空的 —— 本条会零命中地绿").toBeGreaterThan(1000);
@@ -591,13 +591,13 @@ describe("秤 5 · C：本文件镜像的那 3 个常量没有漂（读，不改
         mine: FRONT_BATCH_SIZE,
       },
       {
-        where: "src/bridge/src/event_replay.rs",
+        where: "src/frontend/shell/src/event_replay.rs",
         src: replay,
         re: /const\s+CHUNK_SIZE\s*:\s*usize\s*=\s*(\d+)\s*;/,
         mine: BACKEND_CHUNK_SIZE,
       },
       {
-        where: "src/bridge/src/event_replay.rs",
+        where: "src/frontend/shell/src/event_replay.rs",
         src: replay,
         re: /const\s+CHUNK_PAUSE_MS\s*:\s*u64\s*=\s*(\d+)\s*;/,
         mine: BACKEND_CHUNK_PAUSE_MS,
