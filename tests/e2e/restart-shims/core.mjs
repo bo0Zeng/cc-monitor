@@ -198,7 +198,8 @@ function chanCall(op, body) {
         refused("no_such_session", String(r.stderr || "").trim());
       }
       seq("kill");
-      return enc({ session: name, killed: true });
+      // 〔FIX4 · `95 §6`〕成品多一格 `bus`（顺手从 cc-bus 名册注销的结局）；夹具没有名册 ⇒ 什么都没注销（后端同形）。
+      return enc({ session: name, killed: true, bus: { removed: [], failed: [], unread: null } });
     }
     default:
       seq("chan?:" + op);
