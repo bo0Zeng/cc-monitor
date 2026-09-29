@@ -840,6 +840,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--aliases-block-render",
     "--aliases-block-install",
     "--aliases-block-remove",
+    // 〔WF1 · L〕帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--powershell-policy-set",
     "--skill-host-read",
     "--skill-host-write",
     "--skill-uninstall-apply",

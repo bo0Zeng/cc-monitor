@@ -42,8 +42,10 @@ import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级
 import { buildPasteBlock } from "../paste-block";
 import { ACTIVE_AGENT, listAgents } from "../agent-profile";
 // 〔MIG-3a〕别名六问走通道、那台后端出成品（`../alias-reads`）；类型随成品住那边（从前是 monitor 生成的类型）。
-import type { Alias, AliasRender, StartupFile, Shell } from "../alias-reads";
+import type { Alias, AliasRender, ExecPolicy, PsHost, StartupFile, Shell } from "../alias-reads";
+import { askConfirm, type ConfirmFn } from "../ask-dialog";
 import {
+  allowLocalScripts,
   installAliasBlock,
   installAliases,
   readAliases,
@@ -58,6 +60,10 @@ import { hostOs } from "./host-os";
 import { copyText } from "../copy-table";
 import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
+
+/** 〔WF1 · L〕界面上怎么叫那一代 PowerShell（两代的执行策略分开存）。 */
+const psName = (h: PsHost): string =>
+  h === "pwsh" ? copyText("machineAliases.policy.hostPwsh") : copyText("machineAliases.policy.hostPowershell");
 
 /**
  * 〔AL1c〕这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。
@@ -347,6 +353,8 @@ export function buildAliasManager(opts: {
   origin: () => Origin;
   loadAccounts: () => Promise<string[]>;
   onBlockDone?: (verb: "install" | "remove", error: string | null) => void;
+  /** 〔WF1 · L〕改执行策略之前问一句的注入缝（缺省走应用内对话框）。 */
+  confirm?: ConfirmFn;
 }): HTMLElement {
   const shell = opts.platform;
   const copy = platformCopy()[shell];
@@ -544,7 +552,11 @@ export function buildAliasManager(opts: {
   rcElsewhere.className = "settings-cc-legacy-warn";
   rcElsewhere.hidden = true;
   const rcNote = el("div", "settings-hint");
-  rcBlock.append(rcStatusRow, withCcRow, rcWarn, rcButtons, rcNote, rcLegacy, rcElsewhere);
+  // 〔WF1 · L · `设计/99 §2.3`〕加载这份 `$PROFILE` 的那一代 PowerShell 会不会跑它（执行策略由那台后端现问、判）；
+  //   不会且不是组策略钉着 ⇒ 给标准做法的按钮，点了先确认再发。
+  const rcPolicy = el("div", "settings-hint");
+  const allowBtn = button(copyText("machineAliases.policy.allow"), "", () => void onAllow());
+  rcBlock.append(rcStatusRow, withCcRow, rcWarn, rcPolicy, allowBtn, rcButtons, rcNote, rcLegacy, rcElsewhere);
   wrap.appendChild(rcBlock);
   // 〔AL1c〕PowerShell 那一侧还有两格不随启动文件走：握手的终端数 ＋ 自动打开 monitor（原「终端集成」）· 用户级 PATH。
   // 它们一构造就问后端 ⇒ **第一次展开才建**（见下面 `toggle`），守住这一块「构造零 I/O」。
@@ -822,8 +834,13 @@ export function buildAliasManager(opts: {
       // 〔TL1 · 4C〕旧版块（PowerShell v2）没有接上别名文件那一行 —— 重装一次就带上（`71 §6.1`）。
       rcStatus.textContent = b.outdated
         ? copyText("machineAliases.rcStatus.installedOutdated", { path: c.path, version })
-        : copyText("machineAliases.rcStatus.installed", { path: c.path, version });
-      rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-ok";
+        : c.policy?.loads === false
+          ? copyText("machineAliases.rcStatus.installedNotLoaded", { path: c.path, version, ps: psName(c.policy.host) })
+          : copyText("machineAliases.rcStatus.installed", { path: c.path, version });
+      rcStatus.className =
+        c.policy?.loads === false
+          ? "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn"
+          : "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-ok";
     } else if (!c.exists) {
       rcStatus.textContent = copyText("machineAliases.rcStatus.newFile", { path: c.path });
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-info";
@@ -831,6 +848,7 @@ export function buildAliasManager(opts: {
       rcStatus.textContent = copyText("machineAliases.rcStatus.absent", { path: c.path, blockWhat: copy.blockWhat });
       rcStatus.className = "ccm-rc-block-status settings-cc-profile-badge settings-cc-badge-warn";
     }
+    showPolicy(c.policy ?? null);
     installBtn.textContent = b.present ? copyText("machineAliases.rc.reinstall") : copyText("machineAliases.rc.install");
     uninstallBtn.hidden = !b.present;
     // 「你配置里这几行是旧的」：后端逐行指名，产品自己一个字节都不删。
@@ -873,7 +891,55 @@ export function buildAliasManager(opts: {
     // 成功失败都重读：盘上现在是什么样，就显示什么样（清单那一格不动 —— 人可能还没写入）。
     await readBack(true);
     if (failed) rcStatus.textContent = failed;
-    rcNote.textContent = !failed && verb === "install" ? copy.blockAfterInstall : "";
+    const pol = selected()?.policy ?? null;
+    rcNote.textContent =
+      failed || verb !== "install"
+        ? ""
+        : pol === null || pol.loads === true
+          ? copy.blockAfterInstall
+          : copyText("machineAliases.policy.afterInstall");
+  };
+
+  /** 〔WF1 · L〕执行策略那一行：只在它会挡住块（或说不清）时出声；不会挡 ⇒ 不占地方。 */
+  const showPolicy = (p: ExecPolicy | null): void => {
+    const ps = p ? psName(p.host) : "";
+    rcPolicy.textContent =
+      p === null || p.loads === true
+        ? ""
+        : p.error !== null
+          ? copyText("machineAliases.policy.unknown", { ps, e: p.error })
+          : p.loads === null
+            ? copyText("machineAliases.policy.unclear", { ps, policy: p.effective ?? "" })
+            : p.groupPolicy
+              ? copyText("machineAliases.policy.groupPolicy", { ps, policy: p.effective ?? "" })
+              : copyText("machineAliases.policy.blocks", { ps, policy: p.effective ?? "" });
+    rcPolicy.hidden = rcPolicy.textContent === "";
+    allowBtn.hidden = !(p?.loads === false && !p.groupPolicy);
+  };
+
+  /** 〔WF1 · L〕标准做法那颗按钮：先确认（不代改），再请那台后端设、再重读（现状以它现问的为准）。 */
+  const onAllow = async (): Promise<void> => {
+    const p = selected()?.policy;
+    if (!p) return;
+    const ps = psName(p.host);
+    if (!(await (opts.confirm ?? askConfirm)(copyText("machineAliases.policy.confirm", { ps })))) return;
+    allowBtn.disabled = true;
+    let said: string;
+    try {
+      const r = await allowLocalScripts(opts.origin(), p.host);
+      const now = r.policy.effective ?? "";
+      said =
+        r.policy.loads === true
+          ? copyText("machineAliases.policy.setDone", { ps, policy: now })
+          : r.policy.groupPolicy
+            ? copyText("machineAliases.policy.groupPolicy", { ps, policy: now })
+            : copyText("machineAliases.policy.setFailed", { ps, e: r.setError ?? r.policy.error ?? now });
+    } catch (e) {
+      said = copyText("machineAliases.policy.setFailed", { ps, e: String(e) });
+    }
+    allowBtn.disabled = false;
+    await readBack(true);
+    rcNote.textContent = said;
   };
 
   /** 〔AL1d〕预览别名块：与装那一下同一份渲染（后端 `plan_install`），方言由选中那份文件定。 */

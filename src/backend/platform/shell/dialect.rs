@@ -96,6 +96,8 @@ pub(crate) struct StartupCandidate {
     /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
     pub path: String,
     pub listed: Listed,
+    /// 〔WF1 · L〕哪一代 PowerShell 加载它（执行策略按代问）；POSIX 与人另指的那一份 ⇒ `None`。
+    pub host: Option<super::PsHost>,
 }
 
 /// 一份候选**不在盘上时**列不列。
@@ -219,10 +221,10 @@ pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<Stri
 /// `Get-Alias` 那一段：只读、不吃任何用户输入。
 const GET_ALIAS_SCRIPT: &str = "Get-Alias | ForEach-Object { $_.Name + [char]9 + $_.Definition }";
 
-/// 起一次 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
+/// 起一次 5.1 的 `-NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
 /// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。这台没有 PowerShell ⇒ `Err`（说问不到）。
 fn ask_get_alias() -> PsAliases {
-    let mut cmd = crate::platform::shell::powershell_readonly(GET_ALIAS_SCRIPT)
+    let mut cmd = crate::platform::shell::powershell_on(super::PsHost::Desktop, GET_ALIAS_SCRIPT)
         .ok_or_else(|| copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
     let out = cmd
         .stdout(std::process::Stdio::piped())
@@ -419,6 +421,7 @@ impl ShellDialect for Posix {
             .map(|n| StartupCandidate {
                 path: crate::platform::paths::join_under(home, n),
                 listed: Listed::IfFileExists,
+                host: None,
             })
             .collect()
     }
@@ -666,7 +669,10 @@ impl ShellDialect for PowerShell {
             .filter(|d| d.starts_with(home))
             .unwrap_or_else(|| home.join("Documents"));
         let mut out = Vec::new();
-        for (dir, always) in [("WindowsPowerShell", true), ("PowerShell", false)] {
+        for (dir, always, host) in [
+            ("WindowsPowerShell", true, super::PsHost::Desktop),
+            ("PowerShell", false, super::PsHost::Core),
+        ] {
             let d = docs.join(dir);
             let listed = if always {
                 Listed::Always
@@ -677,6 +683,7 @@ impl ShellDialect for PowerShell {
                 out.push(StartupCandidate {
                     path: d.join(f).display().to_string(),
                     listed: listed.clone(),
+                    host: Some(host),
                 });
             }
         }
