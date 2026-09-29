@@ -409,7 +409,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "apikey-routing",
-        "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream/endpoint.rs`），命令删了",
+        "这几个号在那台的表里有没有行 · 那台的中转在不在：monitor 那条命令（`apikey_routing_for`）本机自己读凭据文件 ＋ 连回环口、         远端转 `apikey-read` 的 `rows` ＋ `relay-status`，再调 `acct-core` 那条规则 —— 人群与判准整个搬进后端（`accounts/upstream_select/endpoint.rs`），命令删了",
     ),
     // 〔SU1 · 第四波 4C · V116〕skill 卸的「看」那一半：生来就走通道（没有过 monitor 那一条）。
     (

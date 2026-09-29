@@ -5,7 +5,7 @@
 //! （`调研/第四波记录/GP1.md §3`）。本族今天判 monitor 这一侧剩下的：与后端算同一份文件并显式交出去 ·
 //! 明文只往下传登记过的那几跳 · 写半边零调用 · 账号 id 只有一份规则。〔US1〕读侧（三态 · 权限提醒）与「写下的那一行
 //! 正是起会话那一侧找的那一行」随读者换成那台后端一起搬去后端那一份判据。写路那几条性质（写的那一刻读盘 · 未知键一个不吃 ·
-//! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/upstream/file_face_tests.rs`）。
+//! 出生即只给本人 · Base URL 形状错整次不写）住后端那一份写口的判据（`tests/backend/accounts/upstream_select/file_face_tests.rs`）。
 //! 明文出口跨三棵树逐处计数那几条守 `设计/20 §6` 第 4 行逐字「明文只有一个出口」（原文点一个，判据登记两个 —— 原文比判据窄）。
 //! ⚠ 「key 不进 `config.json`」与 TS 状态类型对拍那几条没有逐字原文。
 //! 与 `crates/creds-core/store_tests.rs` 不重复：那族判纯函数。〔JA1 点址 2026-09-24〕
@@ -112,10 +112,10 @@ fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
 /// ⇒ 这一条钉的是结构：写侧只许**调**那一份唯一的规则，自己不许再取一次末段名。
 #[test]
 fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
-    // 〔HX2 · 第四波 4D〕写侧推 id 的那一半今天住后端写口 `accounts/upstream/file_face.rs`（界面经通道交 `configDir`，
+    // 〔HX2 · 第四波 4D〕写侧推 id 的那一半今天住后端写口 `accounts/upstream_select/file_face.rs`（界面经通道交 `configDir`，
     //   那台后端推）。〔GP1 那一版住 monitor `apikey_remote.rs`（`send_key`〔散文墓碑〕）；更早住 `creds_store.rs`。〕
     let src = guard_core::production_code(include_str!(
-        "../../../src/backend/accounts/upstream/file_face.rs"
+        "../../../src/backend/accounts/upstream_select/file_face.rs"
     ));
     guard_core::assert_no_test_code("后端写口 id 规则", &src);
     // ① **调**那一份唯一的规则，恰好一处。
@@ -162,7 +162,7 @@ const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
     (
         "expose_for_auth_header(",
         1,
-        "src/backend/accounts/upstream/mod.rs",
+        "src/backend/accounts/upstream_select/mod.rs",
     ),
     (
         "expose_for_persisting(",
@@ -360,7 +360,7 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
 ///
 /// monitor 仍开着 `harden`（Windows 上读 DACL 要它），编译器因此兜不住「monitor 写不了这份文件」—— 由本条兜：
 /// 人群 = `src/frontend/shell/src` 下全部 `.rs` 的生产段（剥测试段与注释），针两根，**零命中**。
-/// 正控：同一把针在后端那一份写口（`src/backend/accounts/upstream/file_face.rs`）上数得到 —— 针没瞎。
+/// 正控：同一把针在后端那一份写口（`src/backend/accounts/upstream_select/file_face.rs`）上数得到 —— 针没瞎。
 /// 要求住址：主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」（`GP1.md §3`）。
 #[test]
 fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
@@ -389,7 +389,7 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
         "monitor 生产段够到了凭据文件的写半边 —— 本机那一份的写者是本机常驻后端，monitor 一个字节都不写：{hits:?}"
     );
     let face = guard_core::production_code(include_str!(
-        "../../../src/backend/accounts/upstream/file_face.rs"
+        "../../../src/backend/accounts/upstream_select/file_face.rs"
     ));
     assert!(
         needles.iter().any(|n| face.contains(n.as_str())),

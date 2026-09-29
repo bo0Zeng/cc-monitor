@@ -94,7 +94,7 @@ export const ACCOUNT_NAMES: AccountName[] = [
     fresh: "CCM_APIKEY_CREDENTIALS",
     freshRe: ident("CCM_APIKEY_CREDENTIALS"),
     kind: "环境变量",
-    why: "盖的是 apikey 凭据文件的路径 —— 读它的是上游选择（`accounts::upstream::creds`），中转一个字节都不读",
+    why: "盖的是 apikey 凭据文件的路径 —— 读它的是上游选择（`accounts::upstream_select::creds`），中转一个字节都不读",
     state: "done",
   },
   {
@@ -229,19 +229,19 @@ export const ACCOUNT_NAMES: AccountName[] = [
   {
     old: "relay::table",
     re: ident("relay::table"),
-    fresh: "accounts::upstream::table",
-    freshRe: ident("accounts::upstream::table"),
+    fresh: "accounts::upstream_select::table",
+    freshRe: ident("accounts::upstream_select::table"),
     kind: "过期住址",
-    why: "路由表住 `src/backend/accounts/upstream/table.rs`",
+    why: "路由表住 `src/backend/accounts/upstream_select/table.rs`",
     state: "done",
   },
   {
     old: "relay::creds",
     re: ident("relay::creds"),
-    fresh: "accounts::upstream::creds",
-    freshRe: ident("accounts::upstream::creds"),
+    fresh: "accounts::upstream_select::creds",
+    freshRe: ident("accounts::upstream_select::creds"),
     kind: "过期住址",
-    why: "读凭据文件住 `src/backend/accounts/upstream/creds.rs`（`relay::creds_guard` 是另一个名字，不在此列）",
+    why: "读凭据文件住 `src/backend/accounts/upstream_select/creds.rs`（`relay::creds_guard` 是另一个名字，不在此列）",
     state: "done",
   },
   // ── 判据名 ─────────────────────────────────────────────────────────────────
@@ -391,10 +391,10 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
   {
     old: "accounts::apikey / accounts/apikey",
     re: /accounts(?:::|\/|\\\\)apikey(?![A-Za-z0-9_])/,
-    fresh: "accounts::upstream",
-    freshRe: ident("accounts::upstream"),
+    fresh: "accounts::upstream_select",
+    freshRe: ident("accounts::upstream_select"),
     kind: "过期住址",
-    why: "V114 落地列：代码 `accounts/apikey/` → `accounts/upstream/`",
+    why: "V114 落地列：代码 `accounts/apikey/` → `accounts/upstream_select/`",
     state: "done",
   },
   {
@@ -418,7 +418,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
 ];
 
 /** V114 那几条旧叫法**只许**活在这几份文件挂了墓碑标记的行里（讲来历）。两向相等。 */
-export const V114_TOMBSTONED_FILES = ["src/backend/accounts/upstream/mod.rs", "src/comms/outward/mod.rs"];
+export const V114_TOMBSTONED_FILES = ["src/backend/accounts/upstream_select/mod.rs", "src/comms/outward/mod.rs"];
 
 /** 墓碑标记：从 `structural_scan.rs` 那一份常量声明里现抠（不在本文件写第二份字面量）。 */
 export function proseTombstoneMark(): string {
@@ -466,7 +466,7 @@ export function notScanned(path: string): boolean {
 /** 扫描面必须含的锚文件（自定位）。 */
 const ANCHORS = [
   "src/comms/outward/mod.rs",
-  "src/backend/accounts/upstream/mod.rs",
+  "src/backend/accounts/upstream_select/mod.rs",
   "src/backend/control/launch_render/payload.rs", // 〔MIG-2〕随载荷渲染搬进后端
   "src/frontend/ui/accounts.ts",
   "src/doc/IPC-PROTOCOL.md",

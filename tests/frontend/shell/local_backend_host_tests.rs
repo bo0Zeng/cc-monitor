@@ -4241,8 +4241,8 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
             "pub(crate) const ENV_PORT: &str = \"",
         ),
         (
-            "crate::accounts::upstream::creds::ENV_CREDENTIALS",
-            "accounts/upstream/creds.rs",
+            "crate::accounts::upstream_select::creds::ENV_CREDENTIALS",
+            "accounts/upstream_select/creds.rs",
             "pub(crate) const ENV_CREDENTIALS: &str = \"",
         ),
         (

@@ -39,7 +39,7 @@
 //! ⚠ 加 `/t/` 时槽位一格没动 ⇒ [`segment_is_safe`] 一字不改，`parse` 只多剥一次前缀；〔V141〕之后槽位少了第 3 段。
 //!
 //! ⚠ `/t/` 的流量挂在全量注入开关后面（默认开，RL2；`设计/20 §7` 步 4）。〔US1〕注入哪个地址由上游选择
-//! `accounts/upstream/endpoint.rs` 拼（`relay_route_core::base_url`，与本文件切的是同一份语法）。
+//! `accounts/upstream_select/endpoint.rs` 拼（`relay_route_core::base_url`，与本文件切的是同一份语法）。
 //!
 //! # ⚠ `<account>` 那一段是 `K-H2` 加的，理由与代价逐条记这里
 //!

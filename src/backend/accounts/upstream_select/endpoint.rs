@@ -292,5 +292,5 @@ fn account_arg(args: &Value) -> Result<LaunchAccount, (&'static str, String)> {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/accounts/upstream/endpoint_tests.rs"]
+#[path = "../../../../tests/backend/accounts/upstream_select/endpoint_tests.rs"]
 mod tests;

@@ -9,8 +9,8 @@ use super::super::listen::{
 };
 use super::super::upstream;
 use super::super::{TapBody, TapEvent, TapPort};
-use crate::accounts::upstream::creds;
-use crate::accounts::upstream::{self as accounts, table::RoutingTable, Accounts};
+use crate::accounts::upstream_select::creds;
+use crate::accounts::upstream_select::{self as accounts, table::RoutingTable, Accounts};
 use creds_core::SecretKey;
 use std::io::BufRead;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
@@ -39,7 +39,7 @@ const TEST_AGENT: &str = "agentA";
 /// 第二家（`routes_two_keys…` 用它证「两个键走同一个进程」）。
 const TEST_AGENT_B: &str = "agentB";
 
-/// 拿**生产段那张决策表**（`accounts::upstream::decide`，与 `Accounts::resolve` 同一份实现）
+/// 拿**生产段那张决策表**（`accounts::upstream_select::decide`，与 `Accounts::resolve` 同一份实现）
 /// 问一次，再把答案交给生产段那个渲染函数，返回它吐出来的那串字节。
 ///
 /// ⚠⚠ 判据**不自己判**「这一行该不该换头 / 要不要丢掉客户端那份」——
@@ -1342,7 +1342,7 @@ const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_p
 /// # 它走的是**生产接线**
 ///
 /// 〔DEL〕独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
-/// （`accounts::upstream::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
+/// （`accounts::upstream_select::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
 /// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::stream::tap::hub().attach()`），
 /// 每件逐字写成**线上那一形 `tap` 帧**（`tap::to_frame`）落 stdout —— 判据读到的就是会上 wire 的那几帧。
 #[test]
@@ -1364,8 +1364,9 @@ fn relay_child_process_entry_point() {
     // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
     //   而凭据那份文件的位置由 `CCM_APIKEY_CREDENTIALS` 覆盖，父进程一定会设它
     //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-    let said =
-        crate::accounts::upstream::host_relay(&crate::agents::claudecode::paths::resolve_home());
+    let said = crate::accounts::upstream_select::host_relay(
+        &crate::agents::claudecode::paths::resolve_home(),
+    );
     eprintln!("[relay-child] {said}");
     loop {
         std::thread::park();
@@ -2174,7 +2175,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
 ///
 /// # 死值验落在哪一格
 ///
-/// 把 `accounts::upstream::auth_header_of`（`P16` 之后住上游选择）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+/// 把 `accounts::upstream_select::auth_header_of`（`P16` 之后住上游选择）里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
 /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
 /// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
 ///
@@ -3190,7 +3191,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
 /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
 ///
-/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream/file_face.rs`，
+/// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream_select/file_face.rs`，
 /// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
 /// 这个共同祖先上会合**：backend 单向依赖 `src/common/*`，够得着它们。
@@ -3739,7 +3740,7 @@ const STATUS_HOMES: &[(&str, &str, StatusGroup)] = &[
     ),
     ("relay/server.rs", "404 Not Found", StatusGroup::NoRoute),
     (
-        "accounts/upstream/mod.rs",
+        "accounts/upstream_select/mod.rs",
         "404 Not Found",
         StatusGroup::NoRoute,
     ),

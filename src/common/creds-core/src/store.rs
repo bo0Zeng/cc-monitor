@@ -36,7 +36,7 @@ pub const KEY_FIELD: &str = "api_key";
 /// 形状：`{"accounts": {"<账号 id>": {"api_key": "…", "base_url": "…"}}}`。
 /// `<账号 id>` 会**原样**变成路由键里那一段（`/s/<agent>/<账号 id>/<key>/…`）
 /// ⇒ 它必须是路由段放得下的字符；放不下的那一条**永远匹配不上**，
-/// 由上游选择装表时出声（`accounts::upstream::table::build` 那条「这一行进不了表」）。
+/// 由上游选择装表时出声（`accounts::upstream_select::table::build` 那条「这一行进不了表」）。
 pub const ACCOUNTS_FIELD: &str = "accounts";
 
 /// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用这个 agent 的默认上游（适配层 `agents::Adapter::upstream`，〔NT2 · V25〕）。
@@ -73,7 +73,7 @@ pub const AUTH_STYLE_FIELD: &str = "auth_style";
 ///   **谁都不许顺手删它**（删掉就是打掉老用户手上那份文件），
 ///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
 ///   `an_unconfigured_file_yields_no_rows_at_all` 两条钉着。
-/// - **写**：界面那条路（〔GP1 · 第四波〕每台机器那台后端的写口 `accounts/upstream/file_face.rs`，本机也是）落的是 `accounts.<id>`，
+/// - **写**：界面那条路（〔GP1 · 第四波〕每台机器那台后端的写口 `accounts/upstream_select/file_face.rs`，本机也是）落的是 `accounts.<id>`，
 ///   **一个字节都不再往顶层那一格写**。机检住后端那一侧的
 ///   `file_face_tests::gp1_the_write_side_never_targets_the_legacy_top_level_slot`。
 ///
@@ -140,7 +140,7 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 ///
 /// 那个闭集只有一个住址（[`AuthStyle::ALL`]）。在这里再抄一份，加第四个成员的那天
 /// 这份模板会**静默变旧**，而它是随产物发到用户机器上的那一份。
-/// ⇒ 模板只点名字段，合法值由上游选择装表时**现算**印出来（`accounts::upstream::creds::announce`）。
+/// ⇒ 模板只点名字段，合法值由上游选择装表时**现算**印出来（`accounts::upstream_select::creds::announce`）。
 pub fn template() -> String {
     let example = format!(
         "\"{ACCOUNTS_FIELD}\": {{ \"my-account\": {{ \"{KEY_FIELD}\": \"sk-...\", \"base_url\": \"https://api.example.com\" }} }}"
@@ -343,7 +343,7 @@ pub fn read_auth_style(doc: &Map<String, Value>) -> AuthStyleSetting {
 }
 
 /// 表里的一条。**上游与 key 在这里还是分开的两个值** ——
-/// 把它们焊成一个不可分解的值是**上游选择**的活（`accounts::upstream::table` 的 `Row`）。
+/// 把它们焊成一个不可分解的值是**上游选择**的活（`accounts::upstream_select::table` 的 `Row`）。
 ///
 /// ⚠ **刻意不 `derive(Debug)`**：同 `relay::server::Relay` 那条（`KS1` 的第二道）。
 /// `SecretKey` 自己的 `Debug` 是遮蔽形，但**少一个能顺手印整条的入口就少一个出口**。

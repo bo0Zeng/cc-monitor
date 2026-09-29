@@ -354,7 +354,7 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     let words: [(&str, &str); 8] = [
         (
             "APIKEY_TABLE_AGENT",
-            "src/backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
+            "src/backend/accounts/upstream_select/mod.rs::CREDENTIALS_FILE_AGENT",
         ),
         (
             "AGENTS_WITH_DEFAULT_UPSTREAM",
@@ -362,27 +362,27 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
         ),
         (
             "apikey_endpoint_for",
-            "src/backend/accounts/upstream/endpoint.rs::decide_launch",
+            "src/backend/accounts/upstream_select/endpoint.rs::decide_launch",
         ),
         (
             "relay_endpoint_for",
-            "src/backend/accounts/upstream/endpoint.rs::decide_launch",
+            "src/backend/accounts/upstream_select/endpoint.rs::decide_launch",
         ),
         (
             "RelayAsk",
-            "src/backend/accounts/upstream/endpoint.rs::decide_launch",
+            "src/backend/accounts/upstream_select/endpoint.rs::decide_launch",
         ),
         (
             "apikey_rows",
-            "src/backend/accounts/upstream/file_face.rs::rows_at",
+            "src/backend/accounts/upstream_select/file_face.rs::rows_at",
         ),
         (
             "read_accounts",
-            "src/backend/accounts/upstream/file_face.rs::read_at",
+            "src/backend/accounts/upstream_select/file_face.rs::read_at",
         ),
         (
             "apikey_routed_subset",
-            "src/backend/accounts/upstream/endpoint.rs::answer_routing_with",
+            "src/backend/accounts/upstream_select/endpoint.rs::answer_routing_with",
         ),
     ];
     let literals: [(&str, &str); 4] = [

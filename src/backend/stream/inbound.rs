@@ -1452,7 +1452,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["account", "baseUrl", "configDir", "key", "masked", "path"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::accounts::upstream::file_face::answer_set(&r.args)
+            crate::accounts::upstream_select::file_face::answer_set(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1465,12 +1465,12 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["configured", "masked", "notice", "path", "problem"],
         takes_input: false,
         run: Run::Blocking(|_r| {
-            crate::accounts::upstream::file_face::answer_read()
+            crate::accounts::upstream_select::file_face::answer_read()
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream/endpoint.rs`）。
+    // 〔US1 · 第四波 4D〕上游选择出的两份成品（`accounts/upstream_select/endpoint.rs`）。
     //   阻塞档：读一次凭据文件、装一次表；「中转在不在」读本进程的监听状态（中转住这里）。
     //   〔DEL 续〕只上流面（`cli_control::STREAM_ONLY`）：一次性进程里没有中转，答 `listening:false` 是假话。
     // 〔MIG-2〕成品只剩 `baseUrl`：「中转不在时拒还是直连」也在这里判完（非它不可 ⇒ `relay_down`）。
@@ -1481,7 +1481,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["account", "agent", "allSessions", "baseUrl"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::accounts::upstream::endpoint::answer_launch(&r.args)
+            crate::accounts::upstream_select::endpoint::answer_launch(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -1569,7 +1569,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         fields: &["routed", "running"],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::accounts::upstream::endpoint::answer_routing(&r.args)
+            crate::accounts::upstream_select::endpoint::answer_routing(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

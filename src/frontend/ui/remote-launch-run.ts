@@ -141,7 +141,7 @@ function withMintedRbindToken(mods: LaunchModifiers): LaunchModifiers {
 /** 〔RL1 · 第四波〕**这次拉起的中转地址**：问那台后端一次（〔MIG-2〕`launch-endpoint` 出成品），有就作为载荷里的一条
  *  `export-relay-base-url` 补进去；`null` ⇒ plan 原样（照旧直连，逐字节不变）。
  *
- *  - 判断只在那台机器的后端一处（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`，`设计/20 §3.2`）
+ *  - 判断只在那台机器的后端一处（帧命令 `launch-endpoint`，决策表 `accounts/upstream_select/endpoint.rs::decide_launch`，`设计/20 §3.2`）
  *    —— 本函数**不判**，只转交；
  *  - 远端那台**用到才起**它的中转（后端那一侧做）；apikey 号的中转起不来 ⇒ 后端 reject，
  *    本函数原样抛给执行器那一格 catch（toast「无法构造…」＋ 那句说得出是哪台的理由）；

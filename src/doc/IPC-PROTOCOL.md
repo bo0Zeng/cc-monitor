@@ -1706,7 +1706,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
   「本机后端写的那份就是这个 monitor 用的那份」由**连接本身**保证：常驻载体接上之前 hello 的 `host_env` 已与 monitor 要交的
   `CCM_APIKEY_CREDENTIALS` 两向比过（`local_backend_host.rs::hello_verdict`），被监护的 stdio 载体是 monitor 按同一份环境起的。
   〔GP1 那一版：monitor 发之前先问一次 `apikey-read` 核 `path`；RM1a 那一版：「monitor **从不**把 `apikey-key-set` 发给本机那条连接」。〕
-- **路径**与那台机器上中转里的上游选择**同一个出处**（`accounts::upstream::creds::resolve_path` ＋ 同一个家目录）。
+- **路径**与那台机器上中转里的上游选择**同一个出处**（`accounts::upstream_select::creds::resolve_path` ＋ 同一个家目录）。
 - 🔴 **明文只在 `apikey-key-set` 的 `args.key` 里**：不进 argv、不进 env、不进任何日志；两条的应答都只有**掩码**。
 - 两条都**不起中转**；中转那两条（`relay-*`）也**不碰凭据**。
 
@@ -1766,7 +1766,7 @@ monitor 进程内也**不再有它的副本**（原来那条「启动时 / 改�
 
 #### `launch-endpoint`：这个号这一发走哪、注入什么（US1 · 4D）
 
-起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是 `设计/20 §3.2` 那一张（上游选择 `accounts/upstream/endpoint.rs::decide_launch` 是唯一实现）。
+起会话那一侧（本机与远端同一条）问一次：往 `ANTHROPIC_BASE_URL` 里写哪个中转地址，或者不写。决策表是 `设计/20 §3.2` 那一张（上游选择 `accounts/upstream_select/endpoint.rs::decide_launch` 是唯一实现）。
 〔MIG-2〕回的是**成品**：「中转不在时拒还是直连」也在这里判完（原先回四格、由 monitor 再判一遍）。
 
 ```text
@@ -3735,7 +3735,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口由宿主以 `CCM_RELAY_PORT` 交（值是 `relay_route_core::PORT`，`8788`），**没有缺省值**（认不出 ⇒ 不开）。
 - 〔RL1 · V107 · V139〕流模式（stdio 或常驻监听口两条载体一样）的后端**被交了** `CCM_RELAY_PORT`
-  ⇒ 在本进程里起中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream::host_relay`），接受循环跑一条专属线程，
+  ⇒ 在本进程里起中转（中转 ＋ 上游选择同一份代码，`relay::listen::host` ＋ `accounts::upstream_select::host_relay`），接受循环跑一条专属线程，
   随进程生死（常驻后端按「退出行为」留或退，中转一起）。**tee 落 tap 口**（`tap` 帧；stdout 是 wire）·
   **起不来不退出**（出声，后端照常服务）。没交端口 ⇒ 不开（测试连接探针那一趟流模式就是这一格）。
   宿主：本机 monitor 起后端时交；远端 `--resident-ensure` 起常驻子进程时交同一个值。
@@ -3772,7 +3772,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   〔TL3 · 审计 F 🔴-3〕再订正：先前这里写「monitor 起本机会话时判（`payload::relay_endpoint_for`）· 远端机器那一半不注入」，
   US1（4D）之后两句都反了〕：
   起会话的那一侧（**本机与远端同一条路**，monitor `history::relay_endpoint_on`）先问**那台机器的后端**要成品
-  —— 帧命令 `launch-endpoint`（见上面那一节），决策表的唯一实现是后端上游选择 `accounts/upstream/endpoint.rs::decide_launch`
+  —— 帧命令 `launch-endpoint`（见上面那一节），决策表的唯一实现是后端上游选择 `accounts/upstream_select/endpoint.rs::decide_launch`
   （`设计/20 §3.2`），monitor 只转交入参、照成品执行：
   那台的 apikey 表里有 (agent, 账号) 这一行 ⇒ 注入 `/s/`（`whenDown: refuse`：中转不在 ⇒ **拒绝起会话**；
   中转住那台的常驻后端里，本机远端同形，不另起一个〔DEL〕）；没有这一行 ⇒ 默认**不注入**。

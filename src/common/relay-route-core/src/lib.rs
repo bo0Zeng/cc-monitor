@@ -21,7 +21,7 @@
 //! # 谁用哪几样
 //!
 //! - 后端：中转 `relay/route.rs::parse`（[`parse_target`]）· 中转宿主 `relay/listen.rs`（[`PORT`]）· 门 `relay/door.rs`（[`KEY_FILE_REL`]）·
-//!   上游选择 `accounts/upstream/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）。
+//!   上游选择 `accounts/upstream_select/endpoint.rs`（[`base_url`]：起会话那一发注入哪个地址，**只有它拼**）。
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 渲染 `$(cat "$HOME/<钥匙>")` 那一段（[`KEY_FILE_REL`]）·
 //!   载荷里那条中转地址的 fail-closed 校验（[`base_url_shape_ok`]，[`base_url`] 的逆）· 起会话身份 token 的字符集（[`segment_is_safe`]）。
 

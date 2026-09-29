@@ -1,7 +1,7 @@
 //! 〔MIG-2 · `99 §2.1 ⑬`〕**本机起会话**（新起 / resume / 接回）的计划与渲染 —— 原 monitor `history.rs` 那一整条，
 //! 搬进本机后端出成品；monitor 只剩「开一个终端窗口跑这串」（`open_local_terminal`）。
 //!
-//! 一条命令串 = 中转前缀（这一发要不要经中转，[`crate::accounts::upstream::endpoint::launch_relay`]）
+//! 一条命令串 = 中转前缀（这一发要不要经中转，[`crate::accounts::upstream_select::endpoint::launch_relay`]）
 //! ＋ 身份前缀（`CCM_LAUNCH_ID`，交回调用方回填 sid）＋ 本体（POSIX：先试 `ccm` 容器路、渲不出来退旧路；Windows：PowerShell 旧路）。
 //! 事实（平台 · `ccm` 装没装 · 中转答什么 · 目录在不在）由 [`Facts`] 给，[`plan`] 是纯的 —— 判据喂确定的事实驱动生产那一条。
 
@@ -97,7 +97,7 @@ impl Facts {
     pub(crate) const PRODUCTION: Facts = Facts {
         windows: crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
         probe_ccm: probe_local_ccm,
-        relay: crate::accounts::upstream::endpoint::launch_relay,
+        relay: crate::accounts::upstream_select::endpoint::launch_relay,
         is_dir: dir_exists,
     };
 }

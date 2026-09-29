@@ -1,7 +1,7 @@
 //! **上游选择**（apikey 端点改写那一块）：`resolve` 那张决策表的**唯一住址**（`设计/20 §3.1`）。
 //! 〔V114 · 2026-09-25〕原叫「层 2 / 账号层」、模块名 `apikey`，改名上游选择 / `upstream`；纯命名，行为不变。〔散文墓碑〕
 //!
-//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream/`：`accounts/` 是账号**域**，
+//! 〔`A3` 第二波 · 2026-09-24〕从 `accounts/` 挪进子目录 `accounts/upstream_select/`：`accounts/` 是账号**域**，
 //! 它下面「挂在中转上当上游选择的这一块」与「账号隔离工具的查询」（`accounts/iso.rs`）是两件事，
 //! 不共用一张登记表（用户「账号就账号, 中转就中转」）。两块互不引用，由
 //! `upstream_selection_guard::the_two_halves_of_the_account_domain_do_not_reference_each_other` 钉着。
@@ -58,7 +58,7 @@ pub(crate) mod file_face;
 // 〔US1 · 4D〕起会话那一发走哪、注入什么（帧面 `launch-endpoint`）· 界面「这几个号在表里有没有行」（`apikey-routing`）——
 // `设计/20 §3.2` 那张表的唯一住址（先前住 monitor `payload::relay_endpoint_for`〔散文墓碑〕）。
 pub(crate) mod endpoint;
-mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/upstream/policy.rs`）
+mod policy; // 热重载（`20 §4`：`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
 pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**
 
 pub(crate) use policy::Reload;
