@@ -1323,7 +1323,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
   仍会拒的只有**路径解析**那几形：上跳 / 绝对路径 / 空段 / 父目录不在 / 解完链接跑出 `root`（跟链接的动词解到底再判）——
   它不限制改什么，只保证改的就是 `root ＋ rel` 那一格。
 - 错误码四个，与 `files-create` 同义：`bad_path` · `bad_args` · `refused`（路径解析拒的 / 形状不对）· `io_failed`（盘上没成）。
-- ⚠ **判定与动手之间的窗**（TOCTOU）：〔FIX5〕能用原子原语闭合的已闭合 —— 改名不覆盖（`renameat2(RENAME_NOREPLACE)`；Windows `MoveFileExW` 不带替换旗）· 复制与 `files-put` 新建那一形先写同目录旁名再不覆盖上位 · 开文件全程 `O_NOFOLLOW`（Windows 没有等价开法）。仍开着：父目录在解析与动手之间被整个换掉 · 递归删 / 递归复制逐条的窗 · CAS 与换名之间 · `files-chmod` 跟链接。那块盘不认不覆盖改名（NFS、部分 FUSE）⇒ 退回先看后改。
+- ⚠ **判定与动手之间的窗**（TOCTOU）：〔FIX5〕能用原子原语闭合的已闭合 —— 改名不覆盖（`renameat2(RENAME_NOREPLACE)`；Windows `MoveFileExW` 不带替换旗）· 复制与 `files-put` 新建那一形先写同目录旁名再不覆盖上位 · 开文件全程 `O_NOFOLLOW`（Windows 没有等价开法）。仍开着：父目录在解析与动手之间被整个换掉 · 递归删 / 递归复制逐条的窗 · CAS 与换名之间 · `files-chmod` 跟链接。那块盘不认不覆盖改名（NFS、部分 FUSE）⇒ 普通文件走 `link` ＋ `unlink`（目标已在时 `link` 原子失败），目录拒（`refused`：「这个盘不支持不覆盖改名目录」），不退回先看后改。
 - ⚠ **真远端那一维没有读数**：五条全在本机文件系统上跑过。
 - **CLI 面同样有它们**（从命令注册那一处派生，与 `files-create` 同一条理由）：
   `--files-mkdir` · `--files-rename` · `--files-delete` · `--files-chmod` · `--files-write-text`，
@@ -1355,7 +1355,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `path` | ← | 新名字的落点 |
 
 🔴 **`to` 已经在了 ⇒ 拒（`io_failed`），不覆盖**：unix 上系统那一步会静默顶掉已有目标，
-那是一次没人问过的覆盖。〔FIX5〕一次原子的不覆盖改名，没有先看后改的窗（盘不认这个旗时退回先看后改）。
+那是一次没人问过的覆盖。〔FIX5〕一次原子的不覆盖改名，没有先看后改的窗；盘不认这个旗 ⇒ 普通文件 `link` ＋ `unlink`、目录 `refused`（说「这个盘不支持不覆盖改名目录」）。
 
 #### `files-delete`：删一个文件或一个**空**目录（显式 `recursive` 才删整棵树）
 
@@ -3146,7 +3146,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 ← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"ssh"}}
 ← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"hello"}}
 ← {"kind":"probe","ticket":"6f1c…","cell":{"reached":"control"}}
-← {"kind":"probe","ticket":"6f1c…","cell":{"end":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"v=1 build=… control=ok(12ms)","message":"SSH 与后端均正常。"}}}
+← {"kind":"probe","ticket":"6f1c…","cell":{"end":{"sshOk":true,"fingerprint":"SHA256:…","endpoint":"10.0.0.2:22","backendOk":true,"backendHello":"版本 p5o · 能用 40 项、这台做不到 3 项 · 往返 12 毫秒","backendGaps":[{"code":"no_tmux","count":3}],"message":"SSH 与后端均正常。"}}}
 ← {"kind":"reply","id":"p1","ok":true,"data":null}
 ```
 
@@ -3154,7 +3154,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 〔MIG-1 收尾 · 主会话裁「进度不许倒退」〕**边拨边推**：每走一段往本连接的应答通道推一帧 `probe`（见出方向那张表），`cell` 恰好一个键 ——
 `stage`（拨号阶段行，与界面 `ConnectStage` 同形）· `reached`（`ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了）· `end`（结局，**最后一格**）；
 应答本身不带体。`ticket` 是界面交来的票（1..=64 个 `[A-Za-z0-9-]`，进度流 `probe-progress/<ticket>` 的名字），本后端只当不透明的串回填。
-结局里每步结论都在（部分成功照样回）：`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）。界面到点没等到 `end` ⇒ 最后收到的那一格说得出停在哪一段。
+结局里每步结论都在（部分成功照样回）：`sshOk: false` 时**不回指纹**（免得把失配的 key 固化）。〔FIX5 续 · 主会话 09-28 裁〕`backendHello` 是那台后端的三格人话（版本 `build_id` · 能用几项 / hello 的 `unavailable` 说做不到几项 · `ping` 往返毫秒；按文案表 `beProbe.hello.*` 拼），`backendGaps` 是做不到的那几类（`[{code, count}]`，按 hello 的 `unavailable` 分；码的人话归 monitor，与置灰那一句同一个家 `control-said.ts::unavailableReason`，界面点开看）；`v=… build=… caps=[…]` 那一形只进后端日志（`wire::hello_summary`）。界面到点没等到 `end` ⇒ 最后收到的那一格说得出停在哪一段。
 错误码：`invalid_args`（缺 `ticket` / `machine` / 缺 host · user / 端口不对）· `bad_jump` · `failed`（链路那一侧回话读不懂 · 发起它的那条连接关了）。**只在帧面**（硬臂：要拿本连接的应答通道）。
 
 #### `forward-stop`：停一条转发（MIG-1，09-28）

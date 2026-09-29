@@ -474,6 +474,9 @@ mod tests {
         //   不是新动词，是「改名」的另一种写法（原子的不许顶掉）；住 `platform/fs.rs`（那份文件没有 `fs::` 前缀的调用，默认层扫不到它的系统调用 ——
         //   谁调得到它由这一格钉：只在第三层放行，别处写 `fs::rename_noreplace(` 当场红）。
         "rename_noreplace",
+        // 〔主会话 09-28 裁 · 8 → 9〕盘不认不覆盖改名时普通文件的那一形（`crate::platform::fs::rename_by_link` = `link` ＋ `unlink`）：
+        //   仍是「改名」，住 `platform/fs.rs`；目录不走它（调用方拒）。一步建硬链接那个动词（`fs::hard_link`）照旧在禁表上。
+        "rename_by_link",
         "write",
     ];
 
