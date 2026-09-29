@@ -168,10 +168,11 @@ impl Ready for Upstreams {
     fn into_destinations(
         self: Box<Self>,
         get: &dyn Fn(&str) -> Option<String>,
-        home: &std::path::Path,
+        // 〔DATA-HOME · V160〕凭据文件住数据目录根上、按用户家（取值器里的 `HOME`）推，不再按中转递来的 agent 家拼 ⇒ 这一格空转。
+        _home: &std::path::Path,
         out: &mut dyn Write,
     ) -> std::sync::Arc<dyn Destinations> {
-        let (table, creds_path, stamp) = load_credentials(get, home, &self, out);
+        let (table, creds_path, stamp) = load_credentials(get, &self, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         std::sync::Arc::new(
@@ -506,7 +507,6 @@ fn headers_to_clear() -> &'static [&'static str] {
 /// 打的都是**生产段真正跑的那一份**，不是一个同构的副本。
 pub(crate) fn load_credentials(
     get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
     upstreams: &Upstreams,
     out: &mut dyn Write,
 ) -> (
@@ -514,7 +514,7 @@ pub(crate) fn load_credentials(
     std::path::PathBuf,
     Option<(std::time::SystemTime, u64)>,
 ) {
-    let path = creds::resolve_path(get, home);
+    let path = creds::resolve_path(get);
     // `D1 阻-2`：把**这一刻**那份文件的 mtime 一起记下来 —— 重载靠它判「动过没有」。
     // ⚠ 顺序：**先 stat 再读**。反过来的话，「读完到 stat 之间那次写」会被记成「已经读过了」，
     //   那一次修改就永远不会被重载看见（一个会留下来的错，不是一次抖动）。

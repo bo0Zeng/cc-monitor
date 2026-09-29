@@ -23,7 +23,7 @@
 //! 自手写 `write(tmp) + remove + rename` 三步非原子，crash 即丢；统一走本 helper
 //! 后 Windows 上走 `ReplaceFileW`，非 Windows 走 `std::fs::rename`，全程原子。
 //!
-//! **作用范围限于** `~/.claude/work/` 下 monitor 自己产物
+//! **作用范围限于** monitor 数据目录（`~/.cc-monitor/`）下 monitor 自己产物
 //! （详 IPC-PROTOCOL.md § 通用约束）。用户文件（PowerShell profile）必须仍走
 //! `profile_installer` 自己的 backup + 写后校验路径，详 INVARIANTS § 4。
 

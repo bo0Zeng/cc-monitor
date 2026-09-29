@@ -20,20 +20,16 @@ use super::*;
 fn the_two_sides_resolve_the_same_file() {
     let home = dirs::home_dir().expect("这台机器得有 home");
     let mine = resolve_path().expect("monitor 侧算得出来");
-    // backend 侧算法：`store::path_under_claude_home(<claude 家目录>)`。
-    let backends = store::path_under_claude_home(&home.join(".claude"));
+    // 〔DATA-HOME · V160〕期望手写：数据目录根上那一份（后端默认臂按用户家推同一个）。
+    let backends = home.join(".cc-monitor").join("apikey-credentials.json");
     assert_eq!(mine, backends, "两侧算出来的凭据文件路径不一样 —— 契约漂了");
     // 非空对照：这把尺子分得出不同的路径（不是恒相等）。
-    assert_ne!(
-        mine,
-        store::path_under_claude_home(&home.join(".claude-other"))
-    );
+    assert_ne!(mine, store::credentials_path(&home.join(".claude-other")));
 
-    // ★★ `K-H2b` `D1 阻-3`：**上面那个 `home.join(".claude")` 是手写的根** ——
-    // 它钉住的只有**相对段**（`work/apikey-credentials.json` 这一截），
-    // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
-    // backend 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
-    // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
+    // ★★ `K-H2b` `D1 阻-3`：**上面那个根是手写的** ——
+    // 钉不住「两侧的**根**会不会算到两个地方去」。阻-3 的病：
+    // backend 侧的根从前走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**（〔V160〕今天默认臂改按用户家推，不再认它）；
+    // monitor 这一侧**刻意不跟随** ⇒ 中转一旦继承到那个变量，
     // 两侧读写的就是两份文件，而症状是「界面上配好了，上游选择说没配」。
     //
     // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
@@ -58,7 +54,7 @@ fn the_two_sides_resolve_the_same_file() {
     // 反空真：这把尺子分得出「不是那个路径」（不是恒相等）。
     assert!(
         !envs.iter().any(|(_, v)| *v
-            == store::path_under_claude_home(&home.join(".claude-other"))
+            == store::credentials_path(&home.join(".claude-other"))
                 .display()
                 .to_string()),
         "这把尺子对任何路径都说「是」—— 它恒真，本条按红处理"

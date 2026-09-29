@@ -553,6 +553,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     AUTH_STYLE_FIELD: NONE,
     BASE_URL_FIELD: NONE,
     create_private: NONE,
+    // 〔DATA-HOME · V160〕`path_under_claude_home` 改名：凭据文件住数据目录根上。
+    credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
     expose_for_persisting: NONE,
@@ -576,7 +578,6 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ordered_keys: NONE,
     ordered_value: NONE,
     parse: NONE,
-    path_under_claude_home: NONE,
     probe: NONE,
     read_accounts: NONE,
     read_auth_style: NONE,
