@@ -50,21 +50,31 @@ pub(crate) struct Loaded {
 
 /// 算出那份文件在哪。`env` 覆盖优先，其次这台 monitor 数据目录（默认 `~/.cc-monitor`，V160）根上那一份。
 ///
-/// 默认臂按**用户家**（`HOME`，与中转钥匙 `relay::door::key_path` 同一个取法）经 `store::monitor_data_dir` 推，
-/// 不按 agent 家（`CLAUDE_CONFIG_DIR` 换号不许把凭据换到另一份）；不看 `CCM_DATA_DIR`：隔离跑时两个宿主都显式交 [`ENV_CREDENTIALS`]。
+/// 数据目录与 monitor 那一侧**同一条规矩**：`store::monitor_data_dir(CCM_DATA_DIR, HOME)`（家目录取法同中转钥匙
+/// `relay::door::key_path`），不按 agent 家（`CLAUDE_CONFIG_DIR` 换号不许把凭据换到另一份）。
+/// 推不出（`CCM_DATA_DIR` 设了却不是绝对路径 / 没有家目录）⇒ `Err`（那句话），**不退回真 profile**。
 ///
 /// **纯函数**：取值器是注入的 ⇒ 判据打得到这条接线，而不必去改进程环境
 /// （`std::env::set_var` 与并行跑的别的判据是竞态 —— 隔壁 `server::run_reading` 的头注
 /// 逐字记着这一课）。
-pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>) -> PathBuf {
-    match get(ENV_CREDENTIALS) {
-        Some(p) if !p.trim().is_empty() => PathBuf::from(p),
-        _ => {
-            let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
-            // 没有家目录 ⇒ 空路径上那个文件名（与 agent 家退回相对 `.claude` 同一形：读不到、写不进，照实报）。
-            store::credentials_path(&store::monitor_data_dir(None, home).unwrap_or_default())
-        }
+pub(crate) fn resolve_path(get: &dyn Fn(&str) -> Option<String>) -> Result<PathBuf, String> {
+    if let Some(p) = get(ENV_CREDENTIALS).filter(|p| !p.trim().is_empty()) {
+        return Ok(PathBuf::from(p));
     }
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
+    store::monitor_data_dir(get(store::DATA_DIR_ENV).as_deref(), home)
+        .map(|d| store::credentials_path(&d))
+        .ok_or_else(|| {
+            copy_text(
+                "beUpstreamCreds.path.noDataDir",
+                &[("env", store::DATA_DIR_ENV)],
+            )
+        })
+}
+
+/// 推不出那份文件在哪时要说的那一行（中转装表那一刻；形状同 [`announce`] 里「读不动」那一行）。
+pub(crate) fn announce_unresolved(p: &str, out: &mut dyn std::io::Write) {
+    let _ = writeln!(out, "[apikey] credentials problem: {p}");
 }
 
 /// 读一次。**只读** —— 本模块一个文件系统变更调用都没有（`K-H2a` 裁四；〔RM1a〕裁四今天收窄成

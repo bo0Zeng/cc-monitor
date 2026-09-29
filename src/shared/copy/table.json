@@ -17246,6 +17246,11 @@
       "zh": "读不了凭据文件：{e}",
       "args": ["e"]
     },
+    "beUpstreamCreds.path.noDataDir": {
+      "kind": "error",
+      "zh": "找不到数据目录，API key 那份文件没读也没写。{env} 设了却不是绝对路径，或者没有家目录。",
+      "args": ["env"]
+    },
     "beUpstreamTable.noteAuthStyleNoAuth.say": {
       "kind": "body",
       "zh": "这一条一个鉴权头都不发，客户端自带的那份也不转发。这是给不校验凭据的本地部署用的。",
