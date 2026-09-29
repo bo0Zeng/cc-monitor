@@ -266,8 +266,7 @@ fn which_exists(cmd: &str) -> bool {
 ///   （渲染器拒了才走的 `build_local_posix_command`），由 〔散文墓碑〕
 ///   `the_local_resume_payload_has_no_session_container_today` 继续钉； 〔散文墓碑〕
 ///   正面事实由 `the_rendered_local_command_really_carries_the_container` 钉。 〔散文墓碑〕
-///   ⚠ **今天生产上还到不了正面那条**：会话名要由前端 `mintTmuxName` 传下来（P3t-Y2b），
-///   而本机的「已占用名字」集合还不存在（ROADMAP `U11`）⇒ 名字恒为 `None` ⇒ 恒走回落。
+///   ⚠ 会话名要由前端传下来（P3t-Y2b；〔FIX4 · `90 §3` J7〕前端问本机后端的 `tmux-name-mint` 铸，问不到 ⇒ `None` ⇒ 走回落）。
 ///   功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）红线内**没实测**，是推的。
 /// - **脱离 app 的进程组**（`process_group(0)`）+ stdio 全 null：
 ///   否则子进程会跟着 app 的 Ctrl-C 一起走，也会把 app 的 stdio 占住。

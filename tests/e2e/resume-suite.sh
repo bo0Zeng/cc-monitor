@@ -205,7 +205,7 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 #
 # **E67③（2026-07-31）：这里是全套件唯一断言「生产侧 tmux 命名形状」的地方，也正是它把
 # CI 红了两个版本。** S4b-3b（用户 2026-07-31）把命名从 `cc-<X>` 反转成 `<X>-cc`，
-# 前端（`mintSessionTmuxName`/`deriveTmuxName`）与 Rust（`tmux::is_ccm_tmux_name`，
+# 前端（当年的铸名口；〔FIX4 · J7〕今天派生只在后端）与 Rust（`tmux::is_ccm_tmux_name`，
 # 新旧两种都认）都同步了，**只有这条 e2e 的期望值没跟上** ⇒ 断言恒假，
 # 而且连带下一条（拿老名字去 `session_exists`）也必然失败。
 #
@@ -218,9 +218,12 @@ SID7="$(cat /proc/sys/kernel/random/uuid)"
 #    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
 #    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
 #    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。
+# 〔FIX4 · `设计/90 §3` J7〕名字由后端铸（`tmux-name-mint {cwd}`：`/tmp/e2e-remote` ⇒ `e2e-remote-cc`，派生与避让的逐格归
+#    `tests/backend/control/ccm/plan_tests.rs`）；本套件不碰后端 ⇒ 这里用后端会铸的那个名字，改钉「它在建之前确实没被占」——
+#    否则下面测到的是 create-gate 短路、不是回退新建（原先那一格 `drv mint-name` 调的前端铸名口随 J7 删了）。
 EXPECT7="e2e-remote-cc"   # basename("/tmp/e2e-remote") + `-cc`；撞名时才追加 `-2/-3`
-FRESH="$(drv mint-name "/tmp/e2e-remote" "cc-unrelated,cc-other")"
-[ "$FRESH" = "$EXPECT7" ] && ok "B6b 无撞名 → 铸名口复用 base 名 $EXPECT7" || bad "B6b mint-name=$FRESH(期望 $EXPECT7)"
+FRESH="$EXPECT7"
+[ "$(session_exists "$FRESH")" = 0 ] && ok "B6b 新名 $FRESH 建之前没被占（走的是回退新建，不是 create-gate 短路）" || bad "B6b $FRESH 建之前已存在"
 CMD7="$(drv tmux-new "$SID7" "/tmp/e2e-remote" "$FAKE" "$FRESH" -)"
 # 后面两条查的是**真被建出来的那个**（`$FRESH`），不是我们期望的那个 —— 否则命名断言
 # 一旦失败，这里会跟着报一条误导性的「没建会话」，把一个错误放大成两个。

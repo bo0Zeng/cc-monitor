@@ -209,6 +209,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-read"
                 // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
+                // 〔FIX4 · J7〕铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
+                | "tmux-name-mint"
                 // 〔MIG-1〕`~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
                 | "ssh-config-aliases"
                 | "ssh-config-import"
@@ -396,8 +398,9 @@ fn every_registered_command_declares_its_run_kind() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "hooks-diag", // 〔MIG-3b〕
-        "resync",     // 〔RESYNC〕
+        "tmux-name-mint", // 〔FIX4 · J7〕
+        "hooks-diag",     // 〔MIG-3b〕
+        "resync",         // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",

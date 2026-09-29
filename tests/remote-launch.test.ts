@@ -1,5 +1,5 @@
 /**
- * remote-launch.ts（会话名铸造口）＋ 起会话请求构造的纯逻辑断言脚本。Batch14-F41（接替 remote-resume-cmd.test.ts）。
+ * 起会话请求构造的纯逻辑断言脚本（〔FIX4 · J7〕会话名铸造口 `remote-launch.ts` 删了：派生 ＋ 避让只在后端，见下）。Batch14-F41（接替 remote-resume-cmd.test.ts）。
  * 跑法：`node tests/remote-launch.test.ts` 或 `npm run test:remote-launch`。
  * 同 api-error.test.ts：零 node 依赖、失败 throw 非零退出。
  *
@@ -14,13 +14,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { srcDirOf } from "./test-support/repo-root.ts";
 import { AGENT_PROFILE } from "../src/agent-profile.ts";
-import {
-} from "../src/shell-quote.ts";
-import { mintSessionTmuxName, mintTmuxName, deriveTmuxName } from "../src/remote-launch.ts";
 import {
   planResumeDirect,
   planResumeTmux,
@@ -190,50 +184,20 @@ test("#72 tmux 新建：@ccm_sid 用**完整 sid**（不是会话名前 8 位）
   eq(o?.name, "deadbeef-cc");
 });
 
-test("F13 mintTmuxName:基名没被占 → 原样返回", () => {
-  eq(mintTmuxName("proj-cc", new Set()), "proj-cc");
-  eq(mintTmuxName("proj-cc", new Set(["other-cc"])), "proj-cc");
-});
-
-test("F13 mintTmuxName:被占 → 从 -2 起找第一个空位（数字在末段）", () => {
-  eq(mintTmuxName("proj-cc", new Set(["proj-cc"])), "proj-cc-2");
-  eq(mintTmuxName("proj-cc", new Set(["proj-cc", "proj-cc-2"])), "proj-cc-3");
-  // 中间有空位就用它，不一味往后长
-  eq(mintTmuxName("proj-cc", new Set(["proj-cc", "proj-cc-3"])), "proj-cc-2");
-});
-
-test("★ F13 mintTmuxName:产名与避让不可分离 —— 它是全仓唯一的铸名口", () => {
-  // 撞名的根因不是「忘了检查」，是**两件事被拆开了**：五个产出点里只有两个带避让，
-  // 而带避让的那个避让的正好是不带避让的那个会产的名字。
-  // 这条钉住「老产出点现在从这里出名」：给同一个 existing，避让行为必须逐字一致。
-  const taken = new Set(["proj-cc"]);
-  eq(mintSessionTmuxName("/home/pi/proj", taken), mintTmuxName("proj-cc", taken));
-  // `existing` 是必填参数（无默认值）—— 少传会被 tsc 挡住，那是编译期那一层的判据；
-  // 这里钉「空集合与非空集合确实走不同分支」，证明它真的读了这个参数、不是摆设。
-  eq(mintTmuxName("proj-cc", new Set()) !== mintTmuxName("proj-cc", taken), true);
-});
-
-test("F13 铸名口:`<项目名>-cc` 的基名只由 mintSessionTmuxName 产（请求逐字用传进来的名）", () => {
-  // ⚠ **本条替代了原来那两条**（「sid>8 位 → 取前 8」与「省略 name 时的默认名 == 铸名口的基名」）。
-  // 那两条钉的是 `planResumeTmux` **自己那个默认值**的形状，而 F13 把那个默认值**删掉了**：
-  // 会话名一律由调用方过 `mintTmuxName` 铸出来再传进来。⇒ 它们钉的性质**不复存在**，
-  // 不是被放宽（铁律 13：删判据前先证明它恒绿 —— 这里是「被测对象没了」，比恒绿更彻底）。
-  //
-  // 接手那个性质的是本条 + `session_name_registry` 的递减棘轮（全仓「谁在产 `-cc` 名」的账）。
-  const cwd = "/home/pi/my-proj";
-  const base = mintSessionTmuxName(cwd, new Set());
-  eq(base, "my-proj-cc"); // 基名形状仍由那唯一的产地钉住
-  // 撞名时往后排，而且**这一段是 mintTmuxName 干的**（产名与避让不可分离）。
-  eq(mintSessionTmuxName(cwd, new Set(["my-proj-cc"])), "my-proj-cc-2");
-  // 请求逐字用传进来的名字，不自己派生任何东西。
-  eq(req(planResumeTmux("deadbeef-1234-5678", "", "claude", base)).outer?.name, base);
+// 〔FIX4 · `设计/90 §3` J7〕这里原来四条钉 TS 铸名口（`mintTmuxName` 避让 · `mintSessionTmuxName` 基名 · 两者不可分离）。
+// 被测对象删了：tmux 名的派生 ＋ 避让只在后端（`control/ccm/plan.rs`：`derive_tmux_name` · `mint_tmux_name` · `fork_tmux_base`），
+// 界面问那台后端的 `tmux-name-mint`。期望原样搬进 `tests/backend/control/ccm/plan_tests.rs`（派生 · 避让 · 分叉基名）与
+// `ccm_tests.rs::the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot`（帧那一格）。请求逐字用传进来的名 ⇒ 下面这条。
+test("铸好的名字：请求逐字用传进来的名，不自己派生任何东西", () => {
+  eq(req(planResumeTmux("deadbeef-1234-5678", "", "claude", "my-proj-cc")).outer?.name, "my-proj-cc");
   eq(req(planResumeTmux("deadbeef-1234-5678", "", "claude", "totally-other-cc")).outer?.name, "totally-other-cc");
 });
 
 test("★★ KR96D3 铸名口:名字可读、sid 一个片段都不进去（用户 R55：「要是可读的名字 / 不要id」）", () => {
   const SID = "cb3230f3-dead-beef-0000-111122223333";
-  const name = mintSessionTmuxName("/home/pi/my-proj", new Set());
-  eq(name, "my-proj-cc");
+  // 〔FIX4 · J7〕名字由后端铸（`tmux-name-mint {cwd}`，派生只收 cwd ⇒ 结构上进不去 sid；`/home/pi/my-proj` ⇒ `my-proj-cc`，
+  //   Rust `plan_tests.rs::the_session_name_derivation_rule` 那一族钉）。这里钉请求那一半：名字原样、sid 骑在 `@ccm_sid` 上。
+  const name = "my-proj-cc";
   // ① 名字里出现 sid 片段 ⇒ 红。逐字扫**每一个** ≥4 字符的前缀，不是只看 8 位那一种
   //    （只看 8 位的话，一个改成 `slice(0,6)` 的实现会静默通过）。
   let checked = 0;
@@ -244,12 +208,7 @@ test("★★ KR96D3 铸名口:名字可读、sid 一个片段都不进去（用�
     }
   }
   if (checked < 30) throw new Error(`只扫了 ${checked} 个片段 —— 扫描器坏了，本条在空转`);
-  // ② 撞名不避让 ⇒ 红；③ 产出 `<项目名>-cc-2` ⇒ 绿。
-  eq(mintSessionTmuxName("/home/pi/my-proj", new Set(["my-proj-cc"])), "my-proj-cc-2");
-  eq(
-    mintSessionTmuxName("/home/pi/my-proj", new Set(["my-proj-cc", "my-proj-cc-2"])),
-    "my-proj-cc-3",
-  );
+  // ② ③（撞名避让 ⇒ `<项目名>-cc-2`）〔FIX4 · J7〕随铸名口搬进后端：`plan_tests.rs` 的避让那一族。
   // ④ sid **必须还在** —— 只是不在名字里：它的载体是 tmux 的 `@ccm_sid`，
   //    而那一格由请求的 `outer.ccmSid` 交给后端写进命令串（字节那一半归 Rust 夹具）。
   //    把它一起去掉 ⇒ 本行当场红。
@@ -279,24 +238,8 @@ test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DU
   }
 });
 
-test("F74 mintSessionTmuxName:基名空闲→基名;被占→加后缀取第一个空位", () => {
-  // S4b-3b：命名反转成 `<X>-cc`。`K-R96`：`<X>` 从 cwd 来（可读），不再是 sid 前 8 位。
-  eq(mintSessionTmuxName("/srv/dash", new Set()), "dash-cc");
-  // 基名被占(漂移的会话仍占着原名)→ -2,保证新建自己的 tmux 跑 --resume,落进原会话。
-  eq(mintSessionTmuxName("/srv/dash", new Set(["dash-cc"])), "dash-cc-2");
-  // -2 也被占 → 顺延到第一个空位。
-  eq(
-    mintSessionTmuxName("/srv/dash", new Set(["dash-cc", "dash-cc-2", "dash-cc-3"])),
-    "dash-cc-4",
-  );
-  // cwd 派生不出东西（根 / 空串）⇒ 回落 `session-cc`，与 `deriveTmuxName` 同一条兜底。
-  eq(mintSessionTmuxName("/", new Set()), "session-cc");
-  eq(mintSessionTmuxName("", new Set(["session-cc"])), "session-cc-2");
-  // 生成的名恒能过 planResumeTmux 的裸拼校验(闭环:两函数同一命名域)。
-  const picked = mintSessionTmuxName("/srv/dash", new Set(["dash-cc"]));
-  eq(picked, "dash-cc-2");
-  eq(req(planResumeTmux("s1", "", "claude", picked)).outer?.name, picked);
-});
+// 〔FIX4 · J7〕这里原来一条 `mintSessionTmuxName` 的避让逐格（空闲 ⇒ 基名 · 被占 ⇒ 第一个空位 · 根 ⇒ `session-cc`）：
+// 随铸名口搬进后端（`plan_tests.rs`：`the_session_name_derivation_rule` · 退让规则那几格）。
 
 // 〔LR2〕这里原来有一条 `buildOpenTerminalCmd`（旧面板「在此打开终端」那颗按钮的 TS 那份）。
 // 生产调用方 0（旧面板已退役；文件窗口用 Rust `filewin/shell.rs::build_open_terminal_cmd`），
@@ -331,15 +274,7 @@ test("attach：名字按 quoted 交给后端、不带任何载荷字段；名字
   eq(req(planAttach("x\ny")).outer?.name, "x\ny", "含换行原样（Rust 那侧拒）");
 });
 
-test("deriveTmuxName:basename / 尾斜杠 / 特殊字符换- / 空→session-cc", () => {
-  // S4b-3b（用户 2026-07-31）：`cc-` 前缀反转成 `-cc` 后缀。
-  eq(deriveTmuxName("/home/pi/proj"), "proj-cc");
-  eq(deriveTmuxName("/home/pi/proj/"), "proj-cc", "去尾斜杠");
-  eq(deriveTmuxName("/home/pi/my proj!"), "my-proj-cc", "空格/! 换- 折叠去尾");
-  eq(deriveTmuxName("/a/b.c"), "b-c-cc", ". 换-");
-  eq(deriveTmuxName(""), "session-cc");
-  eq(deriveTmuxName("/"), "session-cc", "根→空 basename→session-cc");
-});
+// 〔FIX4 · J7〕这里原来一条 `deriveTmuxName` 的派生逐格：规则只剩后端那一份（`plan_tests.rs::the_session_name_derivation_rule`）。
 
 test("起新会话：create 那一格、名字按 quoted、cwd 归外层、没有 --resume、没有 @ccm_sid", () => {
   eq(req(planLauncher("/home/pi/proj", "cc-proj", "claude")), {
@@ -421,50 +356,9 @@ test("F01 漂移守卫：e2e shim 的 tmux 目标是 =名: 精确形态", () => 
   );
 });
 
-// ★★ P3s-Y2（D 阶段补）：**产 `create` 的路径，名字不许是 `deriveTmuxName` 的直出。**
-//
-// 拆掉 `or` 之后这条从「保险」变成「必需」：`new-session` 不再吞错，名字撞了就是**建失败**。
-// 而撞名由铸造口（`mintTmuxName`，全仓唯一带避让的那个）在**上游**保证不发生。
-// 人群是「**要新造一个名字**的那些地方」（三个调用点里只有一个是新建；`account-restart` 传原会话名 ·
-// `fork-flow` 分叉），钉法按**源码数据流**：`deriveTmuxName(` 的返回值必须先过 `mintTmuxName(`。
-// 〔LR2〕搬家时顺手修了一处：它原来排在那份套件「失败就抛」那一行**之后**，失败只打一个 ✗、
-// 套件照样退出 0 —— 这条判据此前**红不了**。现在排在收尾检查之前。
-test("P3s-Y2：新造名字的路径，deriveTmuxName 的结果必须过铸造口", () => {
-  // 〔FE1〕「列名单 → 铸名」收进 `tmux-name-mint.ts` 之后，那两个入口（`remote-launch-run.ts` 起新会话 ·
-  //   `settings/machine-card.ts` 开新 Claude）不再自己派生名字，派生只剩 `remote-launch.ts::mintSessionTmuxName`
-  //   那一行（= `mintTmuxName(deriveTmuxName(cwd), existing)`，由 `tmux-name-mint.ts` 唯一调用，
-  //   `tests/launch-orchestration-single-home.vitest.ts` K1 两向钉）。⇒ 人群 = 三份文件里所有产名的那一行，
-  //   现打恰好 1（地板 `< 2` 换成相等：两个入口任一处又自己派生 ⇒ 数变 ⇒ 红）。
-  const files = ["remote-launch-run.ts", "settings/machine-card.ts", "remote-launch.ts"];
-  let checked = 0;
-  for (const f of files) {
-    const src = readFileSync(resolve(srcDirOf(dirname(fileURLToPath(import.meta.url))), f), "utf8");
-    // ⚠ 按代码行扫，不扫注释（解释「为什么要过铸造口」的注释里逐字写着 `deriveTmuxName(`）。
-    for (const line of src.split("\n")) {
-      const code = line.trim();
-      if (code.startsWith("//") || code.startsWith("*") || code.startsWith("/*")) continue;
-      if (!code.includes("deriveTmuxName(")) continue;
-      if (code.includes("function deriveTmuxName(")) continue; // 定义处，不是产名
-      // ⚠ UI 文案不算产名（「留空则用 ${deriveTmuxName(cwd)}」只是给用户看建议名）。
-      //   〔CP2b · 4C〕文案进了文案表之后那句展示长成 `copyText("…", { name: deriveTmuxName(…) })` ⇒ 同样算展示。
-      if ((code.includes("`") || code.includes("copyText(")) && !code.includes("mintTmuxName(")) continue;
-      checked += 1;
-      if (!code.includes("mintTmuxName(")) {
-        throw new Error(
-          `${f}: 有一处 deriveTmuxName( 没被 mintTmuxName( 包住 —— 那是**基名直出**。\n` +
-            `C14 拆掉 or 之后 new-session 不再吞错 ⇒ 名字撞了就是建失败给用户看。\n` +
-            `而撞名本该由铸造口在上游避掉（issue #76 那一族）。那一行：${code}`,
-        );
-      }
-    }
-  }
-  // 完备性自检：一处都没扫到 = 抽取器坏了（人群空时「全过」与「没测」长得一样）。
-  if (checked !== 1)
-    throw new Error(
-      `扫到 ${checked} 处产名的 deriveTmuxName(（现打应为 1：remote-launch.ts::mintSessionTmuxName）` +
-        ` —— 0 = 抽取器坏了；> 1 = 有入口又自己派生名字了（该走 tmux-name-mint.ts）`,
-    );
-});
+// 〔FIX4 · `设计/90 §3` J7〕这里原来一条「P3s-Y2：新造名字的路径，`deriveTmuxName` 的结果必须过铸造口」（源码数据流扫 TS）。
+// TS 那份派生删了 ⇒ 被测的数据流不存在了：界面零铸名（`tests/judgment-single-home.vitest.ts` J7 翻 `zero` ·
+// `tests/bridge/session_name_registry_tests.rs` 的递减棘轮 —— 前端零 `-cc` 产名点）；名字一律问后端 `tmux-name-mint`。
 
 if (failed > 0) {
   console.error(`\n${failed} remote-launch test(s) failed`);

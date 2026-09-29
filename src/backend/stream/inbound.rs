@@ -274,6 +274,8 @@ pub const COMMANDS: &[&str] = &[
     "tasks-list",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
+    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：这台派生 ＋ 按这台那张会话快照避让（前端那份铸名口删了）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "tmux-name-mint",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
     "transfer-start",
@@ -3344,6 +3346,20 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::faces::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FIX4 · `90 §3` J7〕**起会话要一个 tmux 名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
+    //   本体 `control/ccm/mod.rs::answer_tmux_name_mint`；阻塞档（快照问一次就起一次 `tmux`）。
+    CommandSpec {
+        name: "tmux-name-mint",
+        doc_anchor: Some("#### `tmux-name-mint`"),
+        codes: &["invalid_args"],
+        fields: &["name"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::ccm::answer_tmux_name_mint(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
