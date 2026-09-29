@@ -156,6 +156,8 @@ pub(crate) struct Plan {
     pub(crate) expected: String,
     pub(crate) action: DeployAction,
     pub(crate) legacy: deploy_core::LegacyVerdict,
+    /// 〔WF2 · WIN3 读数 B〕落点目录里没人要的上传残件（家目录相对；后端判的，这里只照删）。
+    pub(crate) leftovers: Vec<String>,
     /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 ack（拨号在本机后端里）：逐地址指纹由 [`ask_plan_for`] 交给
     /// `dial_host::settle_host_key` 固化 —— 与 monitor 自己开链路那几条同一个判定，不另写。
     pub(crate) ack: crate::ssh_link::Ack,
@@ -163,12 +165,13 @@ pub(crate) struct Plan {
 
 /// `deploy-plan` 的应答 → [`Plan`]（**严格收**：少一格、多一格、认不出的值都是错 —— 两侧漂了要当场说出来）。
 pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
-    const KEYS: [&str; 10] = [
+    const KEYS: [&str; 11] = [
         "ack",
         "action",
         "arch",
         "expected",
         "label",
+        "leftovers",
         "legacy",
         "legacy_why",
         "os",
@@ -202,6 +205,11 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
         (Some("unknown"), Some(e)) => deploy_core::LegacyVerdict::Unknown(e.to_string()),
         _ => return Err(bad()),
     };
+    let leftovers: Vec<String> = obj
+        .get("leftovers")
+        .cloned()
+        .and_then(|a| serde_json::from_value(a).ok())
+        .ok_or_else(bad)?;
     let ack: crate::ssh_link::Ack = obj
         .get("ack")
         .cloned()
@@ -216,6 +224,7 @@ pub(crate) fn decode_plan(v: &serde_json::Value) -> Result<Plan, String> {
             .to_string(),
         action,
         legacy,
+        leftovers,
     })
 }
 
@@ -332,6 +341,16 @@ async fn apply_legacy(verdict: &deploy_core::LegacyVerdict, fs: &RemoteFs) -> St
     }
 }
 
+/// 〔WF2 · WIN3 读数 B〕照计划删上一趟没收拾掉的上传残件（后端判的哪几份；删不掉只进日志、不挡连接，下次连上再来）。
+async fn sweep_leftovers(leftovers: &[String], fs: &RemoteFs, origin: &str) {
+    for rel in leftovers {
+        match fs.remove(rel).await {
+            Ok(_) => tracing::info!("远端 [{origin}] 删了上一趟留下的上传残件 ~/{rel}"),
+            Err(e) => tracing::warn!("远端 [{origin}] 上传残件 ~/{rel} 没删掉：{e}"),
+        }
+    }
+}
+
 /// 连接前确保远端后端已（自动）部署到固定落点 `~/.cc-monitor/bin/ccm`（issue #29；〔E2〕那个文件就是后端本身）。
 ///
 /// 流程：① 〔MIG-3b〕问本机常驻后端要计划（[`ask_plan`]：那台是什么机器、要哪一格、落点那一份是谁、换不换）——
@@ -394,7 +413,8 @@ pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<String, Deplo
             None
         }
     };
-    // 〔E2 · E-c〕每次连上（预检）都照计划处理一次旧落点；结局只进日志，不挡连接。
+    // 〔E2 · E-c〕每次连上（预检）都照计划处理一次旧落点；结局只进日志，不挡连接。〔WF2〕上传残件同一拍。
+    sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
     let swept = apply_legacy(&plan.legacy, &fs).await;
     if !swept.is_empty() {
         tracing::info!("远端 [{}] {swept}", cfg.origin_label());
@@ -493,7 +513,8 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
             )
         }
     };
-    // 〔E2 · E-c〕旧落点那份后端字节（后端认出是我们编的才删）。
+    // 〔E2 · E-c〕旧落点那份后端字节（后端认出是我们编的才删）。〔WF2〕上传残件同一拍。
+    sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
     let swept = apply_legacy(&plan.legacy, &fs).await;
     // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
     //   （经那台的后端、带 CAS；那一格在 SFTP 两个写根之外）。没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。

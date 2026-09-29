@@ -9,9 +9,10 @@
 //!    **换成什么**；拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；
 //! 2. 落点那一份是谁：stat（没有 / 0 字节就不必再问）→ 扫它字节里的身份戳（一次 exec，不跑它）；
 //!    不肯说自己是谁时读回来看是不是从前那份三行入口 —— **身份判定**（`96 §7.2`）；
-//! 3. **该不该换**（[`deploy_core::landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`deploy_core::legacy_verdict`]）。
+//! 3. **该不该换**（[`deploy_core::landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`deploy_core::legacy_verdict`]）；
+//! 4. 〔WF2 · WIN3 读数 B〕落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
-//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
+//! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
 //!
 //! # 它归 `control/` 的理由
 //!
@@ -54,6 +55,27 @@ pub trait Facing: Send + Sync {
     ) -> Fut<'a, Result<(Option<Option<u64>>, Option<bool>), String>>;
     /// 整份读回来；读不出 · 比 `max` 大（先问大小，大了不读）⇒ `None`。
     fn read<'a>(&'a self, rel: &'a str, max: u64) -> Fut<'a, Option<Vec<u8>>>;
+    /// 〔WF2〕列一个目录：`(名字, 修改时间秒)`；列不出 ⇒ `None`。
+    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>>;
+}
+
+/// 〔WF2 · WIN3 读数 B〕残件多久没动过才算没人要：远大于 monitor 等一次 `put` 的上限（`dial_host::FILES_PUT_DEADLINE`，600 秒）
+/// ⇒ 另一个部署者正在写的那一份（修改时间随写不断刷新）不会被当成残件；也容得下两台机器之间一些钟差。
+pub const LEFTOVER_STALE_SECS: u64 = 3600;
+
+/// 〔WF2 · WIN3 读数 B〕`dir` 里哪几份是 [`crate::dial::sftp::put_atomic`] 留下、已经没人要的临时件 / 备份件（`dir/名字`，排序）。
+/// 只认那个形状（`dial::sftp::is_trip_leftover`）；修改时间缺 / 比 `now` 新 ⇒ 不算（宁可多留一轮）。
+pub fn stale_leftovers(dir: &str, entries: &[(String, Option<u64>)], now_secs: u64) -> Vec<String> {
+    let mut out: Vec<String> = entries
+        .iter()
+        .filter(|(name, mtime)| {
+            crate::dial::sftp::is_trip_leftover(name)
+                && mtime.is_some_and(|t| now_secs.saturating_sub(t) > LEFTOVER_STALE_SECS)
+        })
+        .map(|(name, _)| format!("{dir}/{name}"))
+        .collect();
+    out.sort();
+    out
 }
 
 /// 一份计划。
@@ -64,6 +86,8 @@ pub struct Plan {
     pub expected: String,
     pub action: DeployAction,
     pub legacy: LegacyVerdict,
+    /// 〔WF2〕落点目录里没人要的临时件 / 备份件（家目录相对）；monitor 照删。列不出那个目录 ⇒ 空（下次再问）。
+    pub leftovers: Vec<String>,
     /// 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟的 ack（本机后端里拨的号 —— 第一次连一台没钉过指纹的机器就在这一跳）：
     /// 原样交回，monitor 按它固化指纹（`dial_host::settle_host_key`，与自己拨号那几条同一个判定）。
     pub ack: Value,
@@ -86,11 +110,12 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
     })
 }
 
-/// 出计划。`machine` = monitor 交来的那台的名字（只用来说话）。失败 = `(code, 一句话)`。
+/// 出计划。`machine` = monitor 交来的那台的名字（只用来说话）；`now_secs` = 此刻（判残件新旧）。失败 = `(code, 一句话)`。
 pub async fn plan(
     facing: &dyn Facing,
     carried: &[(Key, String)],
     machine: &str,
+    now_secs: u64,
 ) -> Result<Plan, (&'static str, String)> {
     let said = |r: Refusal| ("refused", r.say(Product::Backend, machine));
     let (got, ack) = facing
@@ -153,11 +178,18 @@ pub async fn plan(
         )
         .await,
     );
+    let bin = landing.rsplit_once('/').map_or(".", |(d, _)| d);
+    let leftovers = facing
+        .list(bin)
+        .await
+        .map(|entries| stale_leftovers(bin, &entries, now_secs))
+        .unwrap_or_default();
     Ok(Plan {
         key,
         expected,
         action,
         legacy,
+        leftovers,
         ack,
     })
 }
@@ -185,6 +217,7 @@ pub fn plan_json(p: &Plan) -> Value {
         "theirs": theirs,
         "legacy": legacy,
         "legacy_why": legacy_why,
+        "leftovers": p.leftovers,
         "ack": p.ack,
     })
 }
@@ -267,6 +300,13 @@ impl Facing for DialFacing {
                 .filter(|b| b.len() as u64 <= max)
         })
     }
+
+    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>> {
+        Box::pin(async move {
+            let s = self.session().await.ok()?;
+            crate::dial::sftp::list_dir(s, rel).await
+        })
+    }
 }
 
 /// 帧面入口：`{dial, carried, machine?}` → 计划。
@@ -280,7 +320,13 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
             "bad_args",
             crate::common::contract::malformed("missing `machine` (string)"),
         ))?;
-    plan(facing, &carried, machine).await.map(|p| plan_json(&p))
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    plan(facing, &carried, machine, now)
+        .await
+        .map(|p| plan_json(&p))
 }
 
 #[cfg(test)]
