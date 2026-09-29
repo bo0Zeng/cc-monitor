@@ -654,7 +654,9 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5m-terminal-ssh-in-backend**（2026-09-28，FIX4 合并那一拍）：新帧命令 `terminal-ssh`（远端开终端的 ssh 外壳 / PowerShell 载荷由本机后端渲）· `tmux-name-mint`（tmux 名只在后端派生）· `panorama-uninstall`；
 /// `kill` 应答 ＋ `bus: {removed, failed, unread}`。⑬「待迁」清空。
-pub const BUILD_ID: &str = "p5m-terminal-ssh-in-backend";
+///
+/// ★★★ **p5n-files-toctou**（2026-09-28，FIX5 合并那一拍）：行为 —— 文件管理写面闭 TOCTOU：不覆盖改名 `platform::fs::rename_noreplace`（Linux `renameat2`）· 复制与新建先写旁名再不覆盖上位 · 第三层开文件全程 `O_NOFOLLOW`；文案扫描补 CSS `content:` / 入口 HTML 与 R1 认形状。子命令没变。
+pub const BUILD_ID: &str = "p5n-files-toctou";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

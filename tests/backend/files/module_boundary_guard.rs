@@ -264,6 +264,21 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "〔HX1 拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid",
     ),
     (
+        "platform::fs::rename_noreplace",
+        Kind::Platform,
+        "〔FIX5 · `设计/60 §7` 第 7 条〕不覆盖改名（改名 · 复制上位 · 读改写新建那一形）：原子的「目标已在就失败」是平台原语",
+    ),
+    (
+        "platform::fs::noreplace_unsupported",
+        Kind::Platform,
+        "同上一格：那块盘不认这个旗时退回先看后改（要问是不是「没有这件原语」）",
+    ),
+    (
+        "platform::fs::NO_FOLLOW",
+        Kind::Platform,
+        "〔FIX5〕全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",
+    ),
+    (
         "common::contract::malformed",
         Kind::Common,
         "〔COPY · 09-27〕契约错只进表一句（`设计/91 §5.5`「请求格式不对：{detail}」）",

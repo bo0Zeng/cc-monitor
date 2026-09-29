@@ -46,7 +46,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch, Notify};
 
 use crate::control::files_commit::{KEY_LEN, PART_SUFFIX};
-use crate::control::files_write::resolve_in_root;
+use crate::control::files_write::{opener, resolve_in_root};
 use crate::dial::sftp::{self, Dial, Session};
 use crate::stream::wire::{Frame, TransferEnd};
 
@@ -150,7 +150,7 @@ fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, String> {
             )
         })?;
     }
-    std::fs::OpenOptions::new()
+    opener()
         .write(true)
         .create_new(true)
         .open(&at)
@@ -184,7 +184,7 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
         )
     })?;
-    let mut fresh = std::fs::OpenOptions::new()
+    let mut fresh = opener()
         .write(true)
         .create_new(true)
         .open(&at)
@@ -195,7 +195,7 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
             )
         })?;
     let copied = {
-        let src = std::fs::File::open(&old).map_err(|e| {
+        let src = opener().read(true).open(&old).map_err(|e| {
             copy_text(
                 "beTransfer.land.readPartFailed",
                 &[("path", &old.display().to_string()), ("e", &e.to_string())],
@@ -497,7 +497,11 @@ pub(crate) async fn download_to_local(
     // 〔FW1 · 第四波〕`rf_at` = 远端句柄此刻停在哪（知道才填）。尾块对上了 ⇒ 探针那一读恰好读满到 `have`，
     //   句柄就停在 `have` == `resume_from`。
     let (resume_from, rf_at) = if have > 0 {
-        match tokio::fs::File::open(&part_path).await {
+        match tokio::fs::OpenOptions::from(opener())
+            .read(true)
+            .open(&part_path)
+            .await
+        {
             Ok(mut half) => {
                 let r = tails_agree(&mut half, &mut rf, have, total).await;
                 (r, (r == have).then_some(have))

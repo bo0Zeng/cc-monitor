@@ -340,7 +340,7 @@
 }
 
 .grid-monitor-cell.cell-bg .grid-monitor-cell-title::before {
-  content: "⚙ ";
+  content: var(--mark-bg-cell);
   color: var(--text-faint);
 }
 

@@ -94,6 +94,8 @@
 //!    **兜底的是 `O_EXCL` 本身** —— 最后那一段若已存在（含它是一条 symlink），
 //!    开文件这一步直接失败，不会跟随过去写。⇒ 窗里能被利用的只剩「父目录整个被换掉」
 //!    这一形，而那需要对目标根有写权限的本地攻击者。**如实登记为未闭合。**
+//!    〔FIX5 · `设计/99 §2.2`〕能用原子原语闭合的已闭合：改名不覆盖（[`rename_no_clobber`]）· 复制与读改写新建先写旁名再不覆盖上位 ·
+//!    开文件全程不跟链接（[`opener`]）。仍开着：父目录被整个换掉（要逐段 `openat` 一族）· 递归删 / 复制逐条的窗 · CAS 与换名之间 · 改权限跟链接。
 //! 2. ✅〔波 5 ㈢ · 2026-09-23 · **本条已假，留原话当墓碑**〕
 //!    原话是「**只认得当前这一个配置根**：账号隔离（cc-acct-iso）靠切那个环境变量，
 //!    盘上可以同时有好几个账号目录，而配置根解析只答得出**此刻这一个**。
@@ -323,7 +325,7 @@ pub fn create_new_file(
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let mut f = std::fs::OpenOptions::new()
+    let mut f = opener()
         .write(true)
         .create_new(true)
         .open(&target)
@@ -400,6 +402,61 @@ pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Pa
     Ok(real)
 }
 
+/// 〔FIX5 · `设计/60 §7` 第 7 条「全程 `O_NOFOLLOW`」〕第三层开文件**只有这一个出处**：unix 上带 `O_NOFOLLOW` ——
+/// 最后一段是链接 ⇒ 开就失败，解析过的路径在开之前被换成一条链接也跟不过去。Windows 没有等价的开法（`platform::fs` 头注），照旧。
+/// `readonly_guard` 第三层钉着：五个模块里 `OpenOptions::new()` 只在这里出现，每一次开都挂在它后面。
+pub(crate) fn opener() -> std::fs::OpenOptions {
+    #[allow(unused_mut)]
+    let mut o = std::fs::OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        o.custom_flags(crate::platform::fs::NO_FOLLOW);
+    }
+    o
+}
+
+/// 〔FIX5〕读一整份，不跟最后那一段的链接（[`opener`]）。
+pub(crate) fn read_nofollow(p: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read as _;
+    let mut buf = Vec::new();
+    opener().read(true).open(p)?.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+/// 〔FIX5 · `设计/60 §7` 第 7 条〕**不覆盖地改名** `root ＋ from` → `root ＋ to`：两条各过路径解析，然后一次
+/// `platform::fs::rename_noreplace` —— 目标已在（含一条链接）⇒ `AlreadyExists`、一个字节不动，没有先看后改的窗。
+/// 回 `(源, 目标, 那一下的结局)`；路径解析拒 ⇒ `Err`。
+///
+/// 那块盘不认这个旗（NFS · 部分 FUSE · 老内核 · 别的 unix）⇒ 退回先看后改（今天之前的做法，窗在那种盘上重新打开），记一行。
+/// `between` 是判据插竞争用的口（解析之后、动手之前；生产传空）。
+fn rename_no_clobber(
+    root: &Path,
+    from: &Path,
+    to: &Path,
+    between: &mut dyn FnMut(),
+) -> Result<(PathBuf, PathBuf, std::io::Result<()>), String> {
+    let src = resolve_in_root(root, from)?;
+    let dst = resolve_in_root(root, to)?;
+    between();
+    let done = match crate::platform::fs::rename_noreplace(&src, &dst) {
+        Err(e) if crate::platform::fs::noreplace_unsupported(&e) => {
+            tracing::warn!(
+                "改名 {} → {}：这块盘不认「不覆盖改名」（{e}），退回先看后改（看与改之间有窗）",
+                src.display(),
+                dst.display()
+            );
+            if std::fs::symlink_metadata(&dst).is_ok() {
+                Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists))
+            } else {
+                std::fs::rename(&src, &dst)
+            }
+        }
+        other => other,
+    };
+    Ok((src, dst, done))
+}
+
 /// 新建一个目录。**只建最后那一段**：父目录不在 ⇒ 路径解析② 那一步就拒
 /// （「顺手把中间几层补出来」是另一件事，没人裁过）。
 pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
@@ -422,32 +479,41 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
 /// 〔FN1 · V119〕从前这一句的理由是「能把任意文件改名成一份会话文件的名字」—— 那一道拦截用户拿掉了。
 ///
 /// 🔴 **目标已经在了就拒**：unix 上系统那一步**会静默顶掉**已有的目标文件 —— 那就是一次
-/// 没人问过的覆盖。⇒ 先看一眼（不跟链接地看），在就拒。
-/// ⚠ 看与改之间有一个窗（TOCTOU）；原子的「不许顶掉」要平台专有的调用，本刀没做，如实登记。
+/// 没人问过的覆盖。〔FIX5〕从「先看一眼、在就拒」换成一次原子的不覆盖改名（[`rename_no_clobber`]）：看与改之间那个窗没了。
 pub fn rename_entry(
     root: &Path,
     from: impl AsRef<Path>,
     to: impl AsRef<Path>,
 ) -> Result<PathBuf, WriteRefusal> {
-    let src = resolve_in_root(root, from).map_err(WriteRefusal::Refused)?;
-    let dst = resolve_in_root(root, to).map_err(WriteRefusal::Refused)?;
-    if std::fs::symlink_metadata(&dst).is_ok() {
-        return Err(WriteRefusal::Io(copy_text(
-            "beFilesWrite.rename.exists",
-            &[("path", &dst.display().to_string())],
-        )));
-    }
-    std::fs::rename(&src, &dst).map_err(|e| {
-        WriteRefusal::Io(copy_text(
+    rename_entry_racing(root, from.as_ref(), to.as_ref(), &mut || {})
+}
+
+/// [`rename_entry`] 的本体；`between` 见 [`rename_no_clobber`]。
+fn rename_entry_racing(
+    root: &Path,
+    from: &Path,
+    to: &Path,
+    between: &mut dyn FnMut(),
+) -> Result<PathBuf, WriteRefusal> {
+    let (src, dst, done) =
+        rename_no_clobber(root, from, to, between).map_err(WriteRefusal::Refused)?;
+    match done {
+        Ok(()) => Ok(dst),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(WriteRefusal::Io(copy_text(
+                "beFilesWrite.rename.exists",
+                &[("path", &dst.display().to_string())],
+            )))
+        }
+        Err(e) => Err(WriteRefusal::Io(copy_text(
             "beFilesWrite.rename.failed",
             &[
                 ("src", &src.display().to_string()),
                 ("dst", &dst.display().to_string()),
                 ("e", &e.to_string()),
             ],
-        ))
-    })?;
-    Ok(dst)
+        ))),
+    }
 }
 
 /// 删一个文件或一个**空**目录。**删的是链接本身**（不跟过去）。
@@ -527,7 +593,7 @@ pub fn delete_file_expecting(
             &[("path", &target.display().to_string())],
         )));
     }
-    let current = std::fs::read(&target).map_err(|e| {
+    let current = read_nofollow(&target).map_err(|e| {
         WriteRefusal::Io(copy_text(
             "beFilesWrite.read.failed",
             &[
@@ -693,7 +759,14 @@ pub fn overwrite_text(
             "覆盖写 {}：这一次不是原子写，因为{why}（原子换会把它拆开）—— 改成就地写",
             real.display()
         );
-        std::fs::write(&real, bytes).map_err(|e| {
+        // 〔FIX5〕不跟链接地开（[`opener`]）、不顺手新建：解析完之后它被换成链接 / 被删了 ⇒ 开就失败，不写到别处去。
+        use std::io::Write as _;
+        let wrote = opener()
+            .write(true)
+            .truncate(true)
+            .open(&real)
+            .and_then(|mut f| f.write_all(bytes));
+        wrote.map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesWrite.write.failed",
                 &[("path", &real.display().to_string()), ("e", &e.to_string())],
@@ -701,7 +774,7 @@ pub fn overwrite_text(
         })?;
         return Ok(real);
     }
-    swap_in(root, rel, bytes, Some(md.permissions()))
+    swap_in(root, rel, bytes, Some(md.permissions()), false, &mut || {})
 }
 
 /// 〔HX1〕一份文件的 `(硬链接数, 属主 uid)`（跟链接地看）。**非 unix 上没有这两个概念 ⇒ `None`**（那边照原子换 / Windows 臂办）。
@@ -824,7 +897,7 @@ pub fn overwrite_text_expecting(
             &[("path", &real.display().to_string())],
         )));
     }
-    let current = std::fs::read(&real).map_err(|e| {
+    let current = read_nofollow(&real).map_err(|e| {
         WriteRefusal::Io(copy_text(
             "beFilesWrite.read.failed",
             &[("path", &real.display().to_string()), ("e", &e.to_string())],
@@ -1061,14 +1134,15 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 ///    就能借它把根外那一份盖掉 —— 而路径解析判的是**链接本身**那条路径。
 /// 2. 目标已在时它**就地截断重写**：写到一半失败，留下的是半份旧文件、半份新内容。
 ///
-/// ⇒ 拼法（三个动词都早在闭集里，**闭集一个字没变**）：
+/// ⇒ 拼法（三个动词都早在闭集里，**闭集一个字没变**）：两支都先 `O_EXCL` 开一个同目录的暂存旁名 → 写满 → 按句柄抄权限位，再上位：
 ///
-/// | 覆盖策略 | 怎么落 | 目标已在 |
+/// | 覆盖策略 | 怎么上位 | 目标已在 |
 /// |---|---|---|
-/// | `overwrite = false`（缺省） | `O_EXCL` 直接开目标 | 开那一步就失败（含它只是一条链接），**一个字节不动** |
-/// | `overwrite = true`（**显式**） | `O_EXCL` 开一个同目录的暂存旁名 → 写满 → 换名上位 | 换名那一下**原子地**顶掉（顶掉的是链接本身，不跟过去） |
+/// | `overwrite = false`（缺省） | 〔FIX5〕不覆盖改名（[`rename_no_clobber`]） | 上位那一下原子地失败（含它只是一条链接、含写的中途才冒出来的），**一个字节不动**，旁名删掉 |
+/// | `overwrite = true`（**显式**） | 换名上位 | 换名那一下**原子地**顶掉（顶掉的是链接本身，不跟过去） |
 ///
-/// 写失败 ⇒ 删掉**我们自己刚建的那一份**（暂存旁名或新目标），原样带回原因。
+/// 〔FIX5〕不覆盖那一支从前是 `O_EXCL` 直接开目标：写到一半时目标那一格已经露出半份。今天目标那一格只会整份出现。
+/// 写失败 ⇒ 删掉**我们自己刚建的那一份**（暂存旁名），原样带回原因。
 ///
 /// # 路径解析：三条路径各过一次
 ///
@@ -1086,7 +1160,17 @@ pub fn copy_entry(
     to: impl AsRef<Path>,
     overwrite: bool,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    let to = to.as_ref();
+    copy_entry_racing(root, from.as_ref(), to.as_ref(), overwrite, &mut || {})
+}
+
+/// [`copy_entry`] 的本体；`between` 见 [`land_copy`]。
+fn copy_entry_racing(
+    root: &Path,
+    from: &Path,
+    to: &Path,
+    overwrite: bool,
+    between: &mut dyn FnMut(),
+) -> Result<(PathBuf, u64), WriteRefusal> {
     let src = resolve_existing_in_root(root, from).map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(root, to).map_err(WriteRefusal::Refused)?;
     if src == dst {
@@ -1107,86 +1191,99 @@ pub fn copy_entry(
             &[("path", &src.display().to_string())],
         )));
     }
-    // 落在哪：不覆盖 ⇒ 直接落目标；显式覆盖 ⇒ 先落同目录的暂存旁名（它自己也过一遍路径解析）。
-    let land_rel = if overwrite {
-        let name = to.file_name().ok_or_else(|| {
-            WriteRefusal::Refused(copy_text(
-                "beFilesWrite.path.noName",
-                &[("path", &to.display().to_string())],
-            ))
-        })?;
-        let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // 〔FW5〕旁名按**原始字节**拼（名字可以不是 UTF-8）：`.` ＋ 原名 ＋ 固定后缀。
-        let mut side = std::ffi::OsString::from(".");
-        side.push(name);
-        side.push(format!(".ccm-copy-{}-{seq}.part", std::process::id()));
-        to.with_file_name(side)
-    } else {
-        to.to_path_buf()
-    };
-    let (land, n) = land_copy(root, &land_rel, &src, src_md.permissions())?;
-    if overwrite {
-        if let Err(e) = std::fs::rename(&land, &dst) {
-            std::fs::remove_file(&land).ok();
-            return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.swap.failed",
-                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-            )));
-        }
-    }
-    Ok((dst, n))
+    land_copy(root, to, &src, src_md.permissions(), overwrite, between)
 }
 
-/// 〔W5-FILES · 抽出〕把 `src`（已经过了路径解析的真路径）的字节落进 `root ＋ land_rel` 那一格上**新建**的一份：
-/// `O_EXCL` 新建 → 写满 → 抄源的权限位。任一步失败 ⇒ 删掉**我们自己刚建的那一份**，原样带回原因。
+/// 〔W5-FILES · 抽出〕把 `src`（已经过了路径解析的真路径）的字节落进 `root ＋ dst_rel` 那一格：
+/// 同目录暂存旁名 `O_EXCL` 新建 → 写满 → 抄源的权限位 → 上位（`overwrite` 换名顶掉；否则〔FIX5〕不覆盖改名）。
+/// 任一步失败 ⇒ 删掉**我们自己刚建的那一份**（旁名），原样带回原因。回 `(落点, 字节数)`。
 ///
 /// 🔴 〔W5-FILES · `设计/60 §7 #11`〕**权限位从源抄**（此前是进程缺省、受 umask —— 那条被登记为开着的缺陷）。
-/// 用的是闭集里已有的「改权限」，落在我们自己刚建的那一份上；`Permissions` 原样搬（unix 是 mode 低 12 位，
-/// 别处是只读位）⇒ 不需要平台分支。单文件复制（[`copy_entry`]）与复制目录共用这一段。
+/// 用的是闭集里已有的「改权限」，〔FIX5〕落在我们自己刚建的那一份的**句柄**上（没有路径可被换成链接）；`Permissions` 原样搬
+/// （unix 是 mode 低 12 位，别处是只读位）⇒ 不需要平台分支。单文件复制（[`copy_entry`]）与复制目录共用这一段。
+/// 〔FIX5〕源与旁名都经 [`opener`] 开（不跟链接）：源在解析之后被换成一条链接 ⇒ 开就失败，不把链接那头的东西抄进来。
+/// `between`：旁名写满之后、上位之前（判据插竞争用；生产传空）。
 fn land_copy(
     root: &Path,
-    land_rel: &Path,
+    dst_rel: &Path,
     src: &Path,
     perms: std::fs::Permissions,
+    overwrite: bool,
+    between: &mut dyn FnMut(),
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    let land = resolve_in_root(root, land_rel).map_err(WriteRefusal::Refused)?;
-    let mut reader = std::fs::File::open(src).map_err(|e| {
+    let name = dst_rel.file_name().ok_or_else(|| {
+        WriteRefusal::Refused(copy_text(
+            "beFilesWrite.path.noName",
+            &[("path", &dst_rel.display().to_string())],
+        ))
+    })?;
+    let seq = COPY_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // 〔FW5〕旁名按**原始字节**拼（名字可以不是 UTF-8）：`.` ＋ 原名 ＋ 固定后缀。
+    let mut side_name = std::ffi::OsString::from(".");
+    side_name.push(name);
+    side_name.push(format!(".ccm-copy-{}-{seq}.part", std::process::id()));
+    let side_rel = dst_rel.with_file_name(side_name);
+    let side = resolve_in_root(root, &side_rel).map_err(WriteRefusal::Refused)?;
+    let mut reader = opener().read(true).open(src).map_err(|e| {
         WriteRefusal::Io(copy_text(
             "beFilesWrite.copy.openSrcFailed",
             &[("path", &src.display().to_string()), ("e", &e.to_string())],
         ))
     })?;
-    let mut writer = std::fs::OpenOptions::new()
+    let mut writer = opener()
         .write(true)
         .create_new(true)
-        .open(&land)
+        .open(&side)
         .map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesWrite.create.failed",
-                &[("path", &land.display().to_string()), ("e", &e.to_string())],
+                &[("path", &side.display().to_string()), ("e", &e.to_string())],
             ))
         })?;
+    let drop_side = |why: WriteRefusal| {
+        // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
+        std::fs::remove_file(&side).ok();
+        why
+    };
     let n = match std::io::copy(&mut reader, &mut writer) {
         Ok(n) => n,
         Err(e) => {
             drop(writer);
-            // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
-            std::fs::remove_file(&land).ok();
-            return Err(WriteRefusal::Io(copy_text(
+            return Err(drop_side(WriteRefusal::Io(copy_text(
                 "beFilesWrite.copy.broke",
-                &[("path", &land.display().to_string()), ("e", &e.to_string())],
-            )));
+                &[("path", &side.display().to_string()), ("e", &e.to_string())],
+            ))));
         }
     };
+    let moded = writer.set_permissions(perms);
     drop(writer);
-    if let Err(e) = std::fs::set_permissions(&land, perms) {
-        std::fs::remove_file(&land).ok();
-        return Err(WriteRefusal::Io(copy_text(
+    if let Err(e) = moded {
+        return Err(drop_side(WriteRefusal::Io(copy_text(
             "beFilesWrite.copy.modeFailed",
-            &[("path", &land.display().to_string()), ("e", &e.to_string())],
-        )));
+            &[("path", &side.display().to_string()), ("e", &e.to_string())],
+        ))));
     }
-    Ok((land, n))
+    if overwrite {
+        let dst =
+            resolve_in_root(root, dst_rel).map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
+        between();
+        if let Err(e) = std::fs::rename(&side, &dst) {
+            return Err(drop_side(WriteRefusal::Io(copy_text(
+                "beFilesWrite.swap.failed",
+                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
+            ))));
+        }
+        return Ok((dst, n));
+    }
+    let (_, dst, done) = rename_no_clobber(root, &side_rel, dst_rel, between)
+        .map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
+    if let Err(e) = done {
+        return Err(drop_side(WriteRefusal::Io(copy_text(
+            "beFilesWrite.create.failed",
+            &[("path", &dst.display().to_string()), ("e", &e.to_string())],
+        ))));
+    }
+    Ok((dst, n))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1430,7 +1527,7 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
         return Ok(0);
     }
     let perms = std::fs::metadata(&src).map_err(unreadable)?.permissions();
-    land_copy(&plan.root, dst_rel, &src, perms).map(|(_, n)| n)
+    land_copy(&plan.root, dst_rel, &src, perms, false, &mut || {}).map(|(_, n)| n)
 }
 
 /// 目录的权限位抄过去（全部落完之后倒序调）。两边各过一次路径解析。
@@ -1683,7 +1780,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, (&'static
             ),
         ));
     }
-    let bytes = std::fs::read(&real).map_err(|e| {
+    let bytes = read_nofollow(&real).map_err(|e| {
         (
             "io_failed",
             copy_text(
@@ -1758,7 +1855,27 @@ pub fn put_text(
     keep_backup: bool,
     parents: bool,
 ) -> Result<Put, WriteRefusal> {
-    let rel = rel.as_ref();
+    put_text_racing(
+        root,
+        rel.as_ref(),
+        bytes,
+        expect,
+        keep_backup,
+        parents,
+        &mut || {},
+    )
+}
+
+/// [`put_text`] 的本体；`between` 交给 [`swap_in`]（CAS 判完、旁名写满之后，换名上位之前）。
+fn put_text_racing(
+    root: &Path,
+    rel: &Path,
+    bytes: &[u8],
+    expect: Option<&[u8]>,
+    keep_backup: bool,
+    parents: bool,
+    between: &mut dyn FnMut(),
+) -> Result<Put, WriteRefusal> {
     if parents {
         make_parents(root, rel)?;
     }
@@ -1787,7 +1904,7 @@ pub fn put_text(
                 &[("path", &real.display().to_string())],
             )));
         }
-        let cur = std::fs::read(&real).map_err(|e| {
+        let cur = read_nofollow(&real).map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesWrite.read.failed",
                 &[("path", &real.display().to_string()), ("e", &e.to_string())],
@@ -1834,8 +1951,17 @@ pub fn put_text(
         }
         _ => None,
     };
-    swap_in(root, rel, bytes, perms.clone())?;
-    let back = std::fs::read(&dst);
+    // 〔FIX5〕原来不在（`expect: null`）⇒ 换名上位不许顶掉任何东西：CAS 判完「不在」之后冒出来的那一份照样不盖，回 `stale`。
+    match swap_in(root, rel, bytes, perms.clone(), current.is_none(), between) {
+        Err(WriteRefusal::Stale(_)) => {
+            return Err(WriteRefusal::Stale(copy_text(
+                "beFilesWrite.put.appeared",
+                &[("path", &dst.display().to_string())],
+            )))
+        }
+        other => other?,
+    };
+    let back = read_nofollow(&dst);
     if back.as_deref().ok() != Some(bytes) {
         let why = match &back {
             Ok(b) => copy_text(
@@ -1851,7 +1977,7 @@ pub fn put_text(
             ),
         };
         let undone = match current.as_deref() {
-            Some(orig) => swap_in(root, rel, orig, perms).is_ok(),
+            Some(orig) => swap_in(root, rel, orig, perms, false, &mut || {}).is_ok(),
             None => remove_created(root, rel).is_ok(),
         };
         let note = match (existed, undone, &backup) {
@@ -1921,17 +2047,28 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     Ok(())
 }
 
-/// 把 `bytes` **原子地**换上 `rel` 那一格：同目录 `O_EXCL` 暂存旁名 → 写满 → （沿用原权限位）→ 换名上位。
+/// 把 `bytes` **原子地**换上 `rel` 那一格：同目录 `O_EXCL` 暂存旁名 → 写满 → （沿用原权限位，按句柄）→ 换名上位。
 /// 最后一段在盘上就解到底（改真文件，不换掉链接）；失败删掉自己的暂存旁名。
+/// 〔FIX5〕`create`（调用方判过「原来不在」）⇒ 上位走不覆盖改名（[`rename_no_clobber`]）：那一格此刻已有东西 ⇒ `Stale`、旁名删掉。
+/// `between`：旁名写满之后、上位之前（判据插竞争用；生产传空）。
 fn swap_in(
     root: &Path,
     rel: &Path,
     bytes: &[u8],
     perms: Option<std::fs::Permissions>,
+    create: bool,
+    between: &mut dyn FnMut(),
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let dst = if std::fs::symlink_metadata(&at).is_ok() {
+    let exists = std::fs::symlink_metadata(&at).is_ok();
+    if create && exists {
+        return Err(WriteRefusal::Stale(copy_text(
+            "beFilesWrite.put.appeared",
+            &[("path", &at.display().to_string())],
+        )));
+    }
+    let dst = if exists {
         resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?
     } else {
         at
@@ -1962,8 +2099,8 @@ fn swap_in(
     let mut side_name = std::ffi::OsString::from(".");
     side_name.push(name);
     side_name.push(format!(".ccm-put-{}-{seq}.part", std::process::id()));
-    let side = dst.with_file_name(side_name);
-    let mut f = std::fs::OpenOptions::new()
+    let side = dst.with_file_name(&side_name);
+    let mut f = opener()
         .write(true)
         .create_new(true)
         .open(&side)
@@ -1981,16 +2118,34 @@ fn swap_in(
             &[("path", &side.display().to_string()), ("e", &e.to_string())],
         )));
     }
+    let moded = perms.map_or(Ok(()), |p| f.set_permissions(p));
     drop(f);
-    if let Some(p) = perms {
-        if let Err(e) = std::fs::set_permissions(&side, p) {
-            std::fs::remove_file(&side).ok();
-            return Err(WriteRefusal::Io(copy_text(
-                "beFilesWrite.swap.sideModeFailed",
-                &[("path", &side.display().to_string()), ("e", &e.to_string())],
-            )));
-        }
+    if let Err(e) = moded {
+        std::fs::remove_file(&side).ok();
+        return Err(WriteRefusal::Io(copy_text(
+            "beFilesWrite.swap.sideModeFailed",
+            &[("path", &side.display().to_string()), ("e", &e.to_string())],
+        )));
     }
+    if create {
+        let why = match rename_no_clobber(root, &rel.with_file_name(&side_name), rel, between) {
+            Ok((_, _, Ok(()))) => return Ok(dst),
+            Err(m) => WriteRefusal::Refused(m),
+            Ok((_, _, Err(e))) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                WriteRefusal::Stale(copy_text(
+                    "beFilesWrite.put.appeared",
+                    &[("path", &dst.display().to_string())],
+                ))
+            }
+            Ok((_, _, Err(e))) => WriteRefusal::Io(copy_text(
+                "beFilesWrite.swap.failed",
+                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
+            )),
+        };
+        std::fs::remove_file(&side).ok();
+        return Err(why);
+    }
+    between();
     if let Err(e) = std::fs::rename(&side, &dst) {
         std::fs::remove_file(&side).ok();
         return Err(WriteRefusal::Io(copy_text(
@@ -2024,7 +2179,7 @@ fn land_backup(
     bak_name.push(format!(".ccm-backup-{ms}-{seq}"));
     let bak_rel = rel.with_file_name(bak_name);
     let bak = resolve_in_root(root, &bak_rel).map_err(WriteRefusal::Refused)?;
-    let mut f = std::fs::OpenOptions::new()
+    let mut f = opener()
         .write(true)
         .create_new(true)
         .open(&bak)
@@ -2042,15 +2197,16 @@ fn land_backup(
             &[("path", &bak.display().to_string()), ("e", &e.to_string())],
         )));
     }
-    drop(f);
     if let Some(p) = perms {
+        // 〔FIX5〕按句柄改（没有路径可被换成链接）；删那一下仍按路径（删的是链接本身，不跟）。
         keep_mode(
             &bak,
             p,
-            |b, p| std::fs::set_permissions(b, p),
+            |_, p| f.set_permissions(p),
             |b| std::fs::remove_file(b),
         )?;
     }
+    drop(f);
     Ok(bak)
 }
 
@@ -2653,3 +2809,8 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/control/overwrite_atomic_tests.rs"]
 mod overwrite_atomic_tests;
+
+// 〔FIX5〕TOCTOU 那几条闭合的竞争判据（`设计/99 §2.2` · `60 §7` 第 7 条）。
+#[cfg(test)]
+#[path = "../../../tests/backend/control/files_toctou_tests.rs"]
+mod toctou_tests;
