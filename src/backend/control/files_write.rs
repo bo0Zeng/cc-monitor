@@ -94,7 +94,7 @@
 //!    **兜底的是 `O_EXCL` 本身** —— 最后那一段若已存在（含它是一条 symlink），
 //!    开文件这一步直接失败，不会跟随过去写。⇒ 窗里能被利用的只剩「父目录整个被换掉」
 //!    这一形，而那需要对目标根有写权限的本地攻击者。**如实登记为未闭合。**
-//!    〔FIX5 · `设计/99 §2.2`〕能用原子原语闭合的已闭合：改名不覆盖（[`rename_no_clobber`]）· 复制与读改写新建先写旁名再不覆盖上位 ·
+//!    〔FIX5 · `设计/99 §2.2`〕能用原子原语闭合的已闭合：改名不覆盖（[`rename_no_clobber`]；盘不认那个旗 ⇒ 普通文件 `link ＋ unlink`、目录拒）· 复制与读改写新建先写旁名再不覆盖上位 ·
 //!    开文件全程不跟链接（[`opener`]）。仍开着：父目录被整个换掉（要逐段 `openat` 一族）· 递归删 / 复制逐条的窗 · CAS 与换名之间 · 改权限跟链接。
 //! 2. ✅〔波 5 ㈢ · 2026-09-23 · **本条已假，留原话当墓碑**〕
 //!    原话是「**只认得当前这一个配置根**：账号隔离（cc-acct-iso）靠切那个环境变量，
@@ -428,32 +428,38 @@ pub(crate) fn read_nofollow(p: &Path) -> std::io::Result<Vec<u8>> {
 /// `platform::fs::rename_noreplace` —— 目标已在（含一条链接）⇒ `AlreadyExists`、一个字节不动，没有先看后改的窗。
 /// 回 `(源, 目标, 那一下的结局)`；路径解析拒 ⇒ `Err`。
 ///
-/// 那块盘不认这个旗（NFS · 部分 FUSE · 老内核 · 别的 unix）⇒ 退回先看后改（今天之前的做法，窗在那种盘上重新打开），记一行。
-/// `between` 是判据插竞争用的口（解析之后、动手之前；生产传空）。
+/// 那块盘不认这个旗（NFS · 部分 FUSE · 老内核 · 别的 unix）⇒ 〔主会话 09-28 裁〕不退回先看后改：
+/// 普通文件（含链接本身）走 `platform::fs::rename_by_link`（`link` 在目标已在时原子失败，NFS 上也成立）；
+/// 目录没有这条路 ⇒ 拒、出声（`Err`，说「这个盘不支持不覆盖改名目录」）。
+/// `between` 是判据插竞争用的口（解析之后、动手之前；生产传空）；`force_link` 让判据走那块盘的那一支（生产传 `false`）。
 fn rename_no_clobber(
     root: &Path,
     from: &Path,
     to: &Path,
     between: &mut dyn FnMut(),
+    force_link: bool,
 ) -> Result<(PathBuf, PathBuf, std::io::Result<()>), String> {
     let src = resolve_in_root(root, from)?;
     let dst = resolve_in_root(root, to)?;
     between();
-    let done = match crate::platform::fs::rename_noreplace(&src, &dst) {
-        Err(e) if crate::platform::fs::noreplace_unsupported(&e) => {
-            tracing::warn!(
-                "改名 {} → {}：这块盘不认「不覆盖改名」（{e}），退回先看后改（看与改之间有窗）",
-                src.display(),
-                dst.display()
-            );
-            if std::fs::symlink_metadata(&dst).is_ok() {
-                Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists))
-            } else {
-                std::fs::rename(&src, &dst)
-            }
+    if !force_link {
+        match crate::platform::fs::rename_noreplace(&src, &dst) {
+            Err(e) if crate::platform::fs::noreplace_unsupported(&e) => {}
+            other => return Ok((src, dst, other)),
         }
-        other => other,
-    };
+    }
+    if std::fs::symlink_metadata(&src).is_ok_and(|m| m.is_dir()) {
+        return Err(copy_text(
+            "beFilesWrite.rename.dirNoNoreplace",
+            &[("path", &src.display().to_string())],
+        ));
+    }
+    tracing::warn!(
+        "改名 {} → {}：这块盘不认「不覆盖改名」，普通文件改走 link ＋ unlink",
+        src.display(),
+        dst.display()
+    );
+    let done = crate::platform::fs::rename_by_link(&src, &dst);
     Ok((src, dst, done))
 }
 
@@ -496,7 +502,7 @@ fn rename_entry_racing(
     between: &mut dyn FnMut(),
 ) -> Result<PathBuf, WriteRefusal> {
     let (src, dst, done) =
-        rename_no_clobber(root, from, to, between).map_err(WriteRefusal::Refused)?;
+        rename_no_clobber(root, from, to, between, false).map_err(WriteRefusal::Refused)?;
     match done {
         Ok(()) => Ok(dst),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -1275,7 +1281,7 @@ fn land_copy(
         }
         return Ok((dst, n));
     }
-    let (_, dst, done) = rename_no_clobber(root, &side_rel, dst_rel, between)
+    let (_, dst, done) = rename_no_clobber(root, &side_rel, dst_rel, between, false)
         .map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
     if let Err(e) = done {
         return Err(drop_side(WriteRefusal::Io(copy_text(
@@ -2128,20 +2134,21 @@ fn swap_in(
         )));
     }
     if create {
-        let why = match rename_no_clobber(root, &rel.with_file_name(&side_name), rel, between) {
-            Ok((_, _, Ok(()))) => return Ok(dst),
-            Err(m) => WriteRefusal::Refused(m),
-            Ok((_, _, Err(e))) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                WriteRefusal::Stale(copy_text(
-                    "beFilesWrite.put.appeared",
-                    &[("path", &dst.display().to_string())],
-                ))
-            }
-            Ok((_, _, Err(e))) => WriteRefusal::Io(copy_text(
-                "beFilesWrite.swap.failed",
-                &[("path", &dst.display().to_string()), ("e", &e.to_string())],
-            )),
-        };
+        let why =
+            match rename_no_clobber(root, &rel.with_file_name(&side_name), rel, between, false) {
+                Ok((_, _, Ok(()))) => return Ok(dst),
+                Err(m) => WriteRefusal::Refused(m),
+                Ok((_, _, Err(e))) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    WriteRefusal::Stale(copy_text(
+                        "beFilesWrite.put.appeared",
+                        &[("path", &dst.display().to_string())],
+                    ))
+                }
+                Ok((_, _, Err(e))) => WriteRefusal::Io(copy_text(
+                    "beFilesWrite.swap.failed",
+                    &[("path", &dst.display().to_string()), ("e", &e.to_string())],
+                )),
+            };
         std::fs::remove_file(&side).ok();
         return Err(why);
     }
