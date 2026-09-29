@@ -35,11 +35,11 @@
 
 // 〔MIG-3b〕表 A / 表 B 本身（键 · 产线 · 承诺 · 拒绝那五形与它们的话 · `uname` 的解读）搬进了共享的 `deploy-core`：
 //   本机常驻后端出部署计划（`deploy-plan`）要同一份判定。本文件留下的是**槽**（这一版带着哪几份字节）与取字节口。
+// 〔THIN〕表 B 的承诺是裁决（`设计/00 §1.2`「判定只在后端」）⇒ 生产段只剩本机后端引导那一处经 [`choose`] 用它（报备，见头注）；
+//   全景推字节「那台要哪一格」改问本机常驻后端（帧命令 `deploy-slot`），`uname` 那一问与它的解读不再住 monitor。
 #[cfg(test)]
-pub(crate) use deploy_core::key_of;
-pub(crate) use deploy_core::{
-    key_from_uname, promised, Arch, Key, Os, Product, Refusal, Route, LINES, UNAME_CMD,
-};
+pub(crate) use deploy_core::{key_from_uname, key_of, promised, UNAME_CMD};
+pub(crate) use deploy_core::{Arch, Key, Os, Product, Refusal, Route, LINES};
 
 /// 表里取到的一份字节。
 #[derive(Debug, Clone, Copy)]
@@ -159,7 +159,7 @@ fn native_key() -> Option<Key> {
 ///
 /// 双来源格（头注「同一格两份来源」）：Linux 构建上，本机原生那两槽也落在 (Linux, 这台的 arch)。**两类字节的次序
 /// 各照各自今天的**：后端 musl 先（`start_local_backend` 从前就是「宿主那份 musl 优先、产物自带的兜底」）；全景原生先
-/// （RM1f 的 `local_panorama_binary` 就是「原生 → 否则 musl」）。两份哪份该留是 `96 §7.3` 第一条，本表不替它裁。
+/// （RM1f 那一版本机取全景字节就是「原生 → 否则 musl」）。两份哪份该留是 `96 §7.3` 第一条，本表不替它裁。
 pub(crate) fn pick(product: Product, key: Key) -> Option<Picked> {
     let mine = native_key() == Some(key);
     let native_b = || if mine { native_backend() } else { None };
@@ -174,6 +174,9 @@ pub(crate) fn pick(product: Product, key: Key) -> Option<Picked> {
 }
 
 /// 拒绝点（在向目标机器写第一个字节之前）：键 → 产线 → 承诺（`deploy_core::judge`）→ 这一版带没带（本文件）。五形各在一步上，不合并。
+///
+/// 〔THIN〕生产段只剩**本机后端引导**一个调用方（`local_backend_host::start_local_backend`）：那一刻本机后端还没起、问不了它 ——
+/// 这一处判定留在 monitor 是已登记的残留（`调研/第四波记录/THIN.md §四`，待主会话拍板）。全景两条路改问本机常驻后端 `deploy-slot`。
 pub(crate) fn choose(
     product: Product,
     route: Route,
@@ -186,23 +189,27 @@ pub(crate) fn choose(
     })
 }
 
-/// 〔MIG-3b〕这一版为远端带着哪几格后端字节、各自自报的身份 —— 交给本机常驻后端出部署计划的那一份事实
-/// （「这一版带没带」只有放字节的一侧知道）。只列表 A 有产线、表 B 对远端承诺、且真带着的格。
-pub(crate) fn carried_backends() -> Vec<(Key, &'static str)> {
+/// 〔THIN〕这一版为某件产物**真带着字节**的那几格（表 A 有产线的格里 [`pick`] 取得到的）—— 交给本机常驻后端判「那台要哪一格」的事实
+/// （「这一版带没带」只有放字节的一侧知道）。**不按承诺筛**：承不承诺是后端判（`deploy-plan` · `deploy-slot`）。
+pub(crate) fn carried(product: Product) -> Vec<Key> {
     LINES
         .iter()
-        .filter(|(p, k)| *p == Product::Backend && promised(Route::Remote, *k))
-        .filter_map(|(_, k)| Some((*k, pick(Product::Backend, *k)?.build_id?)))
+        .filter(|(p, k)| *p == product && pick(product, *k).is_some())
+        .map(|(_, k)| *k)
         .collect()
 }
 
-/// 问远端那台的键。链路本身没通 ⇒ `Err`（普通失败：连都连不上，后面的流也起不来）；问得出答案 ⇒ `Ok(键或拒绝)`。
-pub(crate) async fn probe_key(
-    cfg: &crate::ssh_source::RemoteConfig,
-) -> Result<Result<Key, Refusal>, String> {
-    let got = crate::ssh_source::connect_and_exec_capture(cfg, UNAME_CMD, None).await?;
-    Ok(key_from_uname(got.exit_status, &got.stdout, &got.stderr))
+/// 〔MIG-3b〕这一版为远端带着哪几格后端字节、各自自报的身份 —— 交给本机常驻后端出部署计划的那一份事实。
+/// 〔THIN〕不再按表 B 筛（从前 `promised(Remote, …)`）：承诺是后端判的。
+pub(crate) fn carried_backends() -> Vec<(Key, &'static str)> {
+    carried(Product::Backend)
+        .into_iter()
+        .filter_map(|k| Some((k, pick(Product::Backend, k)?.build_id?)))
+        .collect()
 }
+
+// 〔THIN〕`probe_key`〔散文墓碑〕（问远端 `uname -s -m` 再解读）删了：全景推字节「那台要哪一格」整问进了本机常驻后端（`deploy-slot`），
+//   monitor 里再没有一处跑 `uname`。
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/byte_table_tests.rs"]

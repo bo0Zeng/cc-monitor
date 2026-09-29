@@ -2135,6 +2135,29 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 `io_failed`（stat 落点那一问没问成）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 扫不动 —— 显式失败、不覆盖，出路是机器页「卸载后端」）。
 ⚠ **CLI 面也有它**（`--deploy-plan`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：一次性进程自己新拨一条 SSH，真正的用法是常驻后端的帧面。
 
+#### `deploy-slot`：那台要哪一格字节（THIN，09-29；远端**只读**那台）
+
+「判定只在后端」（`设计/00 §1.2`）：表 A（有没有产线）· 表 B（这个 origin 承不承诺）· 这一版带没带，是 `deploy-plan` 的第 ① 步，单拿出来给**代码全景小程序**
+推字节之前问（monitor 只按答里那一格取自己带着的字节放上去）。只有**本机常驻后端**有意义。有 `dial` ⇒ 沿池里那条 SSH capture `uname -s -m`、按远端那一行判；
+没有 ⇒ 本机：这台自己的 (OS, arch)、按本机那一行判（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。拒绝点在写第一个字节之前；**一个字节都不写**。
+
+```text
+→ {"id":"s1","cmd":"deploy-slot","args":{"product":"panorama","machine":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519","use":"files"},"carried":[{"os":"Linux","arch":"x86_64"},{"os":"Linux","arch":"arm64"}]}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"os":"Linux","arch":"x86_64","label":"Linux / x86_64","ack":{"ok":true,"fingerprints":{"10.0.0.2:22":"SHA256:…"}}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `product` | → | `panorama`（全景小程序）· `backend`（后端本体；部署走 `deploy-plan`，这一形只为同一张表） |
+| `machine` | → | 那台的名字（只用来说话；本机交「本机」） |
+| `dial` | → | 可缺：那台的拨号请求（同 `deploy-plan`）；缺 ⇒ 问的是本机 |
+| `carried` | → | 这一版为这件产物带着字节的格：每格 `{os, arch}`（表 A 认得的词）。认不出 ⇒ `bad_args` |
+| `os` / `arch` / `label` | ← | 那台是表 A 的哪一格 |
+| `ack` | ← | 问 `uname` 那一趟拨号的 `DialAck` 原样（monitor 按它固化指纹）；本机 `null` |
+
+**错误码**：`bad_args`（`product` / `machine` / `carried` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）。
+⚠ **CLI 面也有它**（`--deploy-slot`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：真正的用法是本机常驻后端的帧面。
+
 #### `resident-verdict`：远端常驻后端要不要换一次（THIN，09-29；纯判定）
 
 「判定只在后端」（`设计/00 §1.2`）：monitor 接远端常驻后端时读到 hello，把 hello 里的 `build_id` 交给**本机常驻后端**问「换还是接」，

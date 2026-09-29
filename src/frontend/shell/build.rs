@@ -858,7 +858,7 @@ const NATIVE_PANORAMA_FILE: &str = "cc-monitor-panorama";
 /// monitor 摘掉内嵌引擎之后，本机全景 = 「本机后端 → 插件口 → `cc-monitor-panorama`」。本机后端要在
 /// `~/.cc-monitor/bin/` 找到一份**这台机器能跑的**小程序 ⇒ 字节得跟着 monitor 走（本机不经推送，
 /// 由 monitor 放下来：`local_backend::place_local_panorama`）。Linux 本机用远端那两份 musl 就跑得起来
-/// （`panorama_bytes::local_panorama_binary` 的第二个来源）；**Windows / macOS 本机没有**，只能按 `TARGET` 原生编一份。
+/// （本机那一份的第二个来源，`byte_table::pick` 的全景那一臂）；**Windows / macOS 本机没有**，只能按 `TARGET` 原生编一份。
 ///
 /// # 形状与 [`embed_native_backend`] 同一套（理由逐字住那里，不抄第二份）
 ///
