@@ -9,7 +9,7 @@
 //! 失败 ⇒ 删掉自己刚建的暂存件；**不论成败**都删掉这一键的全部块（与 `commit_text` 同一条）。
 
 use super::files_commit::{chunk_name, drop_chunks, is_key, STAGING_DIR};
-use super::files_write::{resolve_in_root, WriteRefusal};
+use super::files_write::{opener, resolve_in_root, WriteRefusal};
 use copy_core::copy_text;
 use std::path::Path;
 
@@ -35,7 +35,7 @@ fn assemble(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<(), Write
             &[("path", &what.display().to_string()), ("e", &e.to_string())],
         ))
     };
-    let mut out = std::fs::OpenOptions::new()
+    let mut out = opener()
         .write(true)
         .create_new(true)
         .open(&part)
@@ -58,7 +58,10 @@ fn assemble(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<(), Write
             )));
             break;
         }
-        let copied = std::fs::File::open(&at).and_then(|mut f| std::io::copy(&mut f, &mut out));
+        let copied = opener()
+            .read(true)
+            .open(&at)
+            .and_then(|mut f| std::io::copy(&mut f, &mut out));
         match copied {
             Ok(n) => total += n,
             Err(e) => {

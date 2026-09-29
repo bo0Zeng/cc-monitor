@@ -189,9 +189,15 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
     );
 }
 
-/// `fs::write(` 在一段生产代码里的位置。
+/// 就地写在一段生产代码里的位置：`fs::write(` · 〔FIX5〕不跟链接的截断开（`.truncate(true)`，`files_write::opener` 那条链）。
 fn write_calls(code: &str) -> Vec<usize> {
-    code.match_indices("fs::write(").map(|(i, _)| i).collect()
+    let mut at: Vec<usize> = code
+        .match_indices("fs::write(")
+        .chain(code.match_indices(".truncate(true)"))
+        .map(|(i, _)| i)
+        .collect();
+    at.sort_unstable();
+    at
 }
 
 #[test]
@@ -210,7 +216,8 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             );
         }
     }
-    // 〔HX1 · 拍板项 2〕两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支。
+    // 〔HX1 · 拍板项 2〕两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
+    // （〔FIX5〕后者从 `fs::write` 换成不跟链接的截断开，处数不变）。
     assert_eq!(
         files,
         vec![
@@ -251,8 +258,12 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     let swap = ow.find("swap_in(").expect("原子换那一支");
     let w = write_calls(ow)[0];
     assert!(asked < w && w < swap, "就地写不在「不该原子换」那一支里");
-    // 正控：数法认得出一处就地写。
+    // 正控：数法认得出两形就地写。
     assert_eq!(write_calls("std::fs::write(&p, b)").len(), 1);
+    assert_eq!(
+        write_calls("opener().write(true).truncate(true).open(&p)").len(),
+        1
+    );
 }
 
 /// 〔HX1 · 主会话裁拍板项 2〕**有硬链接的目标退回就地写**：两个名字都看得见新内容、inode 不换、链接数不变。

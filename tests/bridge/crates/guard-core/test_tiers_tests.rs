@@ -584,6 +584,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/control/files_extract_tests.rs",
     "tests/backend/control/files_upload_chunks_tests.rs",
     "tests/backend/control/files_write_tests.rs",
+    "tests/backend/control/files_toctou_tests.rs", // 〔FIX5〕TOCTOU 闭合的竞争判据：临时目录上真改名 / 真复制 / 真链接
     "tests/backend/control/fork_write_tests.rs",
     "tests/backend/control/identity_tag_tests.rs",
     "tests/backend/control/launch_tests.rs", // 〔W5-VIS〕由扫描层挪来：S4 那条判据真起一个假 tmux 子进程（`ran` 收 stderr）
