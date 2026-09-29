@@ -63,8 +63,7 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/record_page_tests.rs",
     "tests/frontend/ui/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs",        // 〔MIG-1 续〕机器配置 → 拨号请求的规则
-    "tests/backend/dial_terminal_tests.rs", // 〔FIX4 · ⑬〕开终端那一行（ssh 外壳 ＋ PowerShell 载荷）的渲染规则
-    "tests/backend/dial_probe_tests.rs",    // 〔MIG-1 续〕测试连接三步的结局（链路替身）
+    "tests/backend/dial_probe_tests.rs",          // 〔MIG-1 续〕测试连接三步的结局（链路替身）
     // 〔MIG-1 收尾〕`tests/frontend/ui/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
     "tests/frontend/ui/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/frontend/ui/pubkey-push.vitest.ts", // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
@@ -316,6 +315,7 @@ const SCAN: &[&str] = &[
     "tests/backend/observe/tmux_list_tests.rs", // 〔MIG-1 续〕解析判据 ＋ 写跨语言金样（`include_str!` 读 `tmux-list.golden.json`）
     "tests/backend/dial_forwards_tests.rs", // 〔MIG-1〕转发账判据 ＋ 写跨语言金样（`include_str!` 读 `forward-list.golden.json`）
     "tests/backend/dial_ssh_config_tests.rs", // 〔MIG-1〕规则判据 ＋ 写跨语言金样（`include_str!` 读 `ssh-config.golden.json`）
+    "tests/backend/dial_terminal_tests.rs", // 〔WF1 · G〕UNIT → SCAN：开终端那一行的渲染规则 ＋ 三份起会话夹具的全部请求都过守卫（`include_str!` 读 `launch_render/fixtures/*.json`）
     "tests/backend/dial_tests.rs",
     "tests/backend/files/module_boundary_guard.rs",
     "tests/backend/guard_support_tests.rs",
@@ -964,6 +964,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/backend/observe/search_query_reading.rs",
         "sx1_real_history_search_reading",
         Trigger::Manual("〔SX1〕读数不是判据：真规模本机历史只量冷首趟 / 热态耗时与条数；跑法住它自己的头注"),
+    ),
+    (
+        "tests/frontend/shell/profile_installer_tests.rs",
+        "wf1_real_powershell_add_then_remove_restores_the_user_path",
+        Trigger::Manual("〔WF1 · K〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
     ),
 ];
 

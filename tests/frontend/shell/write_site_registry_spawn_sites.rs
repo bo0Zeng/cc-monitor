@@ -85,12 +85,14 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
     // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
     // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
+    // 〔WF1 · K〕那个 .NET 调用按 `REG_SZ` 写、读回展开值（`%VAR%` 被冻成字面）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
+    // 广播自己做（`profile_installer.rs::SETTING_CHANGE_BROADCAST`）；仍是这一跳、这一段生成的字节，写点仍是加 / 撤两处。
     //
     // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
     // `<脚本>` **只可能是 `profile_installer` 那三个 `render_*` 函数的输出**
     // （探 / 加 / 撤），**不吃任何用户输入** —— 里面唯一的变量是 `tool_registry` 申报的
     // 那个目录。同文件的 `the_generated_path_command_edits_only_the_user_scope_and_never_via_setx`
-    // 在数「生产段起进程恰好一处、写环境变量恰好两处」，别读成「这里能跑任意命令」。
+    // 在数「生产段起进程恰好一处、写用户级 PATH 恰好两处」，别读成「这里能跑任意命令」。
     ("profile_installer.rs", "run_user_path_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <我们自己生成的那段>`",
      "`R85` 用户逐字「应当让用户手动点击加，也能管理删除」⇒ **点击即执行是允许的**（`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定）。\
           必须起进程的理由是**那一档只有 Windows 的用户级环境块里有**，而 Rust 侧够得着它的另一条路（直接写注册表）会造出第二份 PATH 编辑实现、并把 `WM_SETTINGCHANGE` 广播的责任揽到自己身上 —— 两条都被 `R88` 否掉了。\

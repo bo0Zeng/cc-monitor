@@ -109,15 +109,38 @@ pub(crate) fn ccm_bin_dir_rel() -> Option<&'static str> {
 /// 它归**显示这段命令的那一侧**（界面那一格）去配说明。
 /// 别把说明混进可执行文本里：混进去，用户复制一整段就会连注释一起跑。
 pub fn render_user_path_setup_command() -> Option<String> {
-    let dir = ccm_bin_dir_windows()?;
+    let head = user_path_read_prelude()?;
     Some(format!(
-        "$d = Join-Path $env:USERPROFILE '{dir}'\n\
-         $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n\
-         if (($p -split ';') -notcontains $d) {{\n\
-         \x20   [Environment]::SetEnvironmentVariable('Path', (@($p, $d) | Where-Object {{ $_ }}) -join ';', 'User')\n\
+        "{head}\
+         if (-not ($p -split ';' | Where-Object {{ [Environment]::ExpandEnvironmentVariables($_) -eq $d }})) {{\n\
+         \x20   $n = if ($p -eq '') {{ $d }} elseif ($p.EndsWith(';')) {{ $p + $d + ';' }} else {{ $p + ';' + $d }}\n\
+         \x20   $k.SetValue('Path', $n, $t)\n\
+         {SETTING_CHANGE_BROADCAST}\
          }}\n"
     ))
 }
+
+/// 〔WF1 · K · `第四波记录/WIN3.md §2` K〕加 / 撤两条共用的开头：我们那个目录 ＋ 用户级 `Path` 的**原值与原类型**。
+///
+/// 读的是注册表 `HKCU\Environment` 里**未展开**的原值（`DoNotExpandEnvironmentNames`）与它的类型（`GetValueKind`，
+/// 不在 ⇒ 按 Windows 的缺省 `ExpandString`）；写回按原类型 ⇒ `%USERPROFILE%` 这类写法原样留着、`REG_EXPAND_SZ` 不被改成 `REG_SZ`
+/// （从前走 `[Environment]::GetEnvironmentVariable(…, 'User')` 读回的是展开值、`SetEnvironmentVariable` 写的是 `REG_SZ`）。
+/// 比「是不是我们那一格」按**每格展开之后**比：与状态那一格读的展开值是同一种相等（[`user_path_has_our_bin`]）。
+fn user_path_read_prelude() -> Option<String> {
+    let dir = ccm_bin_dir_windows()?;
+    Some(format!(
+        "$d = Join-Path $env:USERPROFILE '{dir}'\n\
+         $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')\n\
+         $p = [string]$k.GetValue('Path', '', 'DoNotExpandEnvironmentNames')\n\
+         $t = if ($null -ne $k.GetValue('Path')) {{ $k.GetValueKind('Path') }} else {{ 'ExpandString' }}\n"
+    ))
+}
+
+/// 直接写了注册表 ⇒ 自己广播 `WM_SETTINGCHANGE`（`"Environment"`），新开的终端才读得到新值、不用重新登录
+/// （`[Environment]::SetEnvironmentVariable` 替你做这一步，我们不走它 —— 它按 `REG_SZ` 写）。
+const SETTING_CHANGE_BROADCAST: &str = "    Add-Type -Namespace CcMonitor -Name Env -MemberDefinition '[DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r);'\n\
+    $r = [UIntPtr]::Zero\n\
+    [void][CcMonitor.Env]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)\n";
 
 /// 🔴 `KR135D1` 的另一半（`R85` 逐字「**也能管理删除**」）：**把我们那一段从用户级
 /// PATH 上摘掉的那条命令。** 「加」是上面那一条，这一条是「撤」。
@@ -134,8 +157,8 @@ pub fn render_user_path_setup_command() -> Option<String> {
 ///
 /// # 🔴 第三条，它是撤这一侧**独有**的：**只摘自己那一段，不碰别的**
 ///
-/// 过滤条件 `-ne $d` 是**整格**比较（PowerShell 的 `-ne` 对字符串默认大小写不敏感，
-/// 与加那一侧的 `-notcontains` 是**同一种相等**）⇒ 摘掉的**恰好**是我们加进去的那一格。
+/// 过滤条件 `-ne $d` 是**整格**比较（每格先展开 `%VAR%` 再比；PowerShell 的 `-ne` 对字符串默认大小写不敏感，
+/// 与加那一侧的 `-eq` 是**同一种相等**）⇒ 摘掉的**恰好**是我们那一格。
 ///
 /// **刻意不用** `-replace` / `-like` / `.Replace()` —— 那三种都是**子串**口径：
 /// 用户 PATH 上存在 `…\.cc-monitor\bin-old`（任何以我们那一段为前缀的目录）时会被一起打掉，
@@ -147,19 +170,23 @@ pub fn render_user_path_setup_command() -> Option<String> {
 /// 语义是「当前目录」，删掉它是一次**我们没被要求做的改动**（哪怕它算个改进）。
 /// ⇒ 除我们那一格之外**逐字复原**，这是「只摘自己那一段」的字面意思。
 ///
-/// ⚠ 摘完剩下空串是**正常**的：`.NET` 把空串当「删掉这个变量」，
-/// 而那正是「我们那一格是用户级 PATH 上唯一一格」时该有的结果 —— 不是清空了用户的 PATH
+/// ⚠ 摘完剩下空串是**正常**的：删掉这个值（`DeleteValue`），
+/// 那正是「我们那一格是用户级 PATH 上唯一一格」时该有的结果 —— 不是清空了用户的 PATH
 /// （**机器级那一档一个字节都没碰**，用户下次开终端仍然有完整的系统 PATH）。
+/// 〔WF1 · K〕我们那一格不在 ⇒ 一个字节不写；写回按原类型、别的格逐字（`%VAR%` 不展开）⇒ 加了再撤回到原样。
 ///
 /// ⚠ **要重开终端才看得到** —— 与加那一侧同理，已经开着的进程拿的是自己启动那一刻的
 /// 环境块副本。这句话不放进可执行文本里（放进去，用户复制一整段就会连注释一起跑）。
 pub fn render_user_path_removal_command() -> Option<String> {
-    let dir = ccm_bin_dir_windows()?;
+    let head = user_path_read_prelude()?;
     Some(format!(
-        "$d = Join-Path $env:USERPROFILE '{dir}'\n\
-         $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n\
-         $kept = @($p -split ';' | Where-Object {{ $_ -ne $d }})\n\
-         [Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')\n"
+        "{head}\
+         $kept = @($p -split ';' | Where-Object {{ [Environment]::ExpandEnvironmentVariables($_) -ne $d }})\n\
+         if ($kept.Count -ne @($p -split ';').Count) {{\n\
+         \x20   $n = $kept -join ';'\n\
+         \x20   if ($n -eq '') {{ $k.DeleteValue('Path', $false) }} else {{ $k.SetValue('Path', $n, $t) }}\n\
+         {SETTING_CHANGE_BROADCAST}\
+         }}\n"
     ))
 }
 
@@ -176,8 +203,8 @@ pub fn render_user_path_removal_command() -> Option<String> {
 ///
 /// # 🔴 相等口径与生成的那两条命令**必须是同一种**，否则界面会撒谎
 ///
-/// 加那一条用 `-notcontains $d`、撤那一条用 `-ne $d`，两者在 PowerShell 里都是
-/// **整格 · 大小写不敏感**。这里逐字照同一种：按 `;` 切开比**整格**，
+/// 加那一条用 `-eq $d`、撤那一条用 `-ne $d`（〔WF1 · K〕都比每格展开 `%VAR%` 之后的样子），两者在 PowerShell 里都是
+/// **整格 · 大小写不敏感**。这里逐字照同一种（`user_path_raw` 是探针读回的展开值）：按 `;` 切开比**整格**，
 /// 用 `eq_ignore_ascii_case`。
 ///
 /// ⚠ **刻意不做路径规范化**（不砍末尾 `\`、不解析 `..`、不 `canonicalize`）——
@@ -262,10 +289,11 @@ pub struct UserPathStatus {
 /// 1. **直接写注册表会造出第二份 PATH 编辑实现** —— 而走 Tauri 命令的理由本身就是
 ///    「别给同一族动作另起一条路」。⇒ 这一跳跑的**就是我们生成给用户看的那段字节**，
 ///    「点按钮」与「自己复制去跑」**逐字同一份**，实现真的只有一处（`K33`）。
-/// 2. `[Environment]::SetEnvironmentVariable(…,'User')` **自带 `WM_SETTINGCHANGE` 广播**；
-///    自己写注册表就得自己记得广播，忘了的后果是「改了、新开的终端看不到，要重登录」
+/// 2. 广播 `WM_SETTINGCHANGE` 不能忘，忘了的后果是「改了、新开的终端看不到，要重登录」
 ///    —— **那正是本件在杀的那个形状**（`R86` 逐字「看起来装好了、换个终端就没了」）。
-///    用一个会重新制造本病的手法去治本病，不行。
+///    〔WF1 · K〕`[Environment]::SetEnvironmentVariable(…,'User')` 自带广播，可它按 `REG_SZ` 写、读回的是展开值
+///    （`%USERPROFILE%` 被冻成字面、`REG_EXPAND_SZ` 变 `REG_SZ`）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
+///    广播自己做（[`SETTING_CHANGE_BROADCAST`]）。仍是这一段生成的字节，不是 Rust 写注册表。
 ///
 /// # argv 的形状（`write_site_registry::SPAWNS` 那一行逐字记的就是这个）
 ///
