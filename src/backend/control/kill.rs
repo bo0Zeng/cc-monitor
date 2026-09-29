@@ -20,7 +20,7 @@
 //! # 〔SH1 · D-g〕杀成之后顺手从 cc-bus 收掉登记在这个会话上的 id
 //!
 //! 杀之前读下全部 pane 的根进程 pid，杀成之后按 `agents.tsv` 第 4 列那个 pid 认人、逐个 `cc-kill`（`cc_bus::unregister_panes`）；
-//! 那一步失败只 warn，不改杀会话的结局，应答形状不变。
+//! 那一步失败不改杀会话的结局；〔FIX4 · `95 §6`〕注销的结局进成品的 `bus` 那一格（注销了谁 · 谁没注销成 · 名册读不到），界面说一句。
 //!
 //! # 错误码
 //!
@@ -80,7 +80,7 @@ pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
 }
 
 /// 真做事：过三道门 → 对**句柄**下 `kill-session`。
-pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
+pub(crate) fn run(name: &str) -> Result<super::cc_bus::BusCleanup, CmdErr> {
     let target = super::launch::exact_target(name);
     // ★ Gate 1（`=name:` 精确匹配，`exact_target` 内部）· Gate 2（身份）· Gate 3（windows==1）
     //   ⇒ 通过后拿到句柄。**顺序不可反**：门在 kill 之前，由
@@ -101,8 +101,8 @@ pub(crate) fn run(name: &str) -> Result<(), CmdErr> {
             )
         })?;
     if out.status.success() {
-        super::cc_bus::unregister_panes(name, &panes);
-        return Ok(());
+        let bus = super::cc_bus::unregister_panes(name, &panes);
+        return Ok(bus);
     }
     Err((
         "kill_failed",
@@ -143,15 +143,15 @@ pub(crate) fn kill_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
     let name = parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
-    run(&name).map_err(|(c, m)| (c.to_string(), m))?;
-    Ok(reply(&name))
+    let bus = run(&name).map_err(|(c, m)| (c.to_string(), m))?;
+    Ok(reply(&name, &bus))
 }
 
 /// 〔C4e · 第四波 4C〕帧面成品 `{session, killed}` 的构造器 —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
 /// 界面（`src/tmux-control.ts::killSession`）从此直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn reply(name: &str) -> serde_json::Value {
-    serde_json::json!({ "session": name, "killed": true })
+pub(crate) fn reply(name: &str, bus: &super::cc_bus::BusCleanup) -> serde_json::Value {
+    serde_json::json!({ "session": name, "killed": true, "bus": bus.to_json() })
 }
 
 #[cfg(test)]

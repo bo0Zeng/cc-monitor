@@ -852,25 +852,56 @@ pub(crate) fn ids_on_panes(rows: &[RosterRow], pane_pids: &[u32]) -> Vec<String>
 
 /// 〔SH1 · D-g〕monitor 杀会话成功之后：对登记在那个会话 pane 上的每个 id 调 `cc-kill`（名册 · 台账 · 状态 · 收件箱一起清）。
 /// 这一步不改杀会话的结局：cc-bus 没装就安静跳过；读不到名册 / 某个 `cc-kill` 失败 ⇒ warn 一句说清。
-pub(crate) fn unregister_panes(session: &str, pane_pids: &[u32]) {
+pub(crate) fn unregister_panes(session: &str, pane_pids: &[u32]) -> BusCleanup {
+    let mut out = BusCleanup::default();
     if pane_pids.is_empty() {
-        return;
+        return out;
     }
     let rows = match roster() {
         Ok((rows, _)) => rows,
-        Err((code, _)) if code == "not_installed" => return,
+        Err((code, _)) if code == "not_installed" => return out,
         Err((code, msg)) => {
             tracing::warn!("杀了会话 {session:?}，但读不到 cc-bus 名册（{code}：{msg}）—— 登记在它上面的 id 没注销");
-            return;
+            out.unread = Some(msg);
+            return out;
         }
     };
     for id in ids_on_panes(&rows, pane_pids) {
         match kill_id(&id) {
-            Ok(v) => tracing::info!("杀了会话 {session:?}，顺手从 cc-bus 收掉登记在它上面的 {id}：{v}"),
-            Err((code, msg)) => tracing::warn!(
-                "杀了会话 {session:?}，但从 cc-bus 收掉 {id} 失败（{code}：{msg}）—— 名册里那一行还在"
-            ),
+            Ok(v) => {
+                tracing::info!("杀了会话 {session:?}，顺手从 cc-bus 收掉登记在它上面的 {id}：{v}");
+                out.removed.push(id);
+            }
+            Err((code, msg)) => {
+                tracing::warn!(
+                    "杀了会话 {session:?}，但从 cc-bus 收掉 {id} 失败（{code}：{msg}）—— 名册里那一行还在"
+                );
+                out.failed.push((id, msg));
+            }
         }
+    }
+    out
+}
+
+/// 〔FIX4 · `95 §6`〕杀会话顺手注销的结局（进 `kill` 成品的 `bus` 那一格；界面说一句）。
+/// 全空 ＝ 没有要注销的（没装 cc-bus / 这个会话上没登记 / 读不到 pane）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BusCleanup {
+    /// 注销掉了的 id。
+    pub(crate) removed: Vec<String>,
+    /// 没注销成的 `(id, 原话)`。
+    pub(crate) failed: Vec<(String, String)>,
+    /// 名册读不到（原话）⇒ 登记在上面的一个都没注销。
+    pub(crate) unread: Option<String>,
+}
+
+impl BusCleanup {
+    pub(crate) fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "removed": self.removed,
+            "failed": self.failed.iter().map(|(id, why)| serde_json::json!({ "id": id, "why": why })).collect::<Vec<_>>(),
+            "unread": self.unread,
+        })
     }
 }
 
