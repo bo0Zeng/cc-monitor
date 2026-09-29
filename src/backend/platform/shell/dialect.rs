@@ -570,30 +570,24 @@ pub(crate) fn ps_wrapper_function(name: &str, word: &str) -> String {
     )
 }
 
-/// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`（原住 `assets/aliases/block.rs`，别名块模板填数据目录那一格用）。
-/// ⚠ 与 [`PowerShell::word`] 不同：它只双写 ASCII `'`，不管弯引号 —— 两份各有来历，纯搬家不合并（`第四波记录/OSA.md`）。
-pub(crate) fn ps_single_quoted(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
+/// 〔WF1 · `WIN3.md §2` M/N〕**PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
+/// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
+///
+/// 别名参数也每个都走它、不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有 `--%`（停止解析）与 `--x=a.b` 在 `.` 处被劈开两个坑。
+pub(crate) fn ps_literal(s: &str) -> String {
+    let mut out = String::from("'");
+    for c in s.chars() {
+        if PS_QUOTES.contains(&c) {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
 }
 
 impl PowerShell {
-    /// 一个参数：**每个都单引号**（引号字符双写）。
-    ///
-    /// 为什么不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有两个已知坑 —— `--%` 是停止解析记号；
-    /// `--x=a.b` 这一形会在 `.` 处被劈成两个参数 —— 而 W1（真 Windows）买不到 ⇒ 取最保守的一形。
-    fn word(w: &str) -> String {
-        let mut out = String::from("'");
-        for c in w.chars() {
-            if PS_QUOTES.contains(&c) {
-                out.push(c);
-            }
-            out.push(c);
-        }
-        out.push('\'');
-        out
-    }
-
-    /// `'a' 'b''c'` → `["a", "b'c"]`。只认 [`Self::word`] 产出的那一形（每个词都是一对单引号）。
+    /// `'a' 'b''c'` → `["a", "b'c"]`。只认 [`ps_literal`] 产出的那一形（每个词都是一对单引号）。
     fn split_words(s: &str) -> Result<Vec<String>, String> {
         let mut out = Vec::new();
         let mut it = s.chars().peekable();
@@ -696,7 +690,7 @@ impl ShellDialect for PowerShell {
     /// `if (Test-Path -LiteralPath '…') { . '…' }` —— `-LiteralPath` 让路径里的 `[` `]` 不被当通配符；
     /// 文件不在时整行什么都不做。
     fn source_line(&self, our_file: &str) -> String {
-        let p = Self::word(our_file);
+        let p = ps_literal(our_file);
         format!("if (Test-Path -LiteralPath {p}) {{ . {p} }}")
     }
 
@@ -717,14 +711,14 @@ impl ShellDialect for PowerShell {
         let mut call = format!("    & {word}");
         for w in left {
             call.push(' ');
-            call.push_str(&Self::word(w));
+            call.push_str(&ps_literal(w));
         }
         call.push_str(PS_TAIL);
         if let Some(right) = right {
             call.push_str(PS_END);
             for w in right {
                 call.push(' ');
-                call.push_str(&Self::word(w));
+                call.push_str(&ps_literal(w));
             }
         }
         [

@@ -18,7 +18,7 @@
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
-use crate::platform::shell::dialect::ps_single_quoted;
+use crate::platform::shell::dialect::ps_literal;
 
 /// 远端命令长度上限（防异常输入；正常 resume 命令 < 300 字节）。与 monitor 本机那条送法的上限同值。
 pub(crate) const MAX_COMMAND: usize = 4096;
@@ -116,7 +116,7 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
         .as_deref()
         .map(|k| k.trim().trim_end_matches('\\'))
     {
-        Some(k) if !k.is_empty() => format!(" -i {}", ps_single_quoted(k)),
+        Some(k) if !k.is_empty() => format!(" -i {}", ps_literal(k)),
         _ => String::new(),
     };
     let jump = match &req.jump {
@@ -129,7 +129,7 @@ pub(crate) fn render(req: &super::DialRequest) -> Result<String, CmdErr> {
         port = first.port,
         user = req.user,
         host = first.host,
-        cmd = ps_single_quoted(&wrapped),
+        cmd = ps_literal(&wrapped),
     ))
 }
 

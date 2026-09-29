@@ -279,3 +279,58 @@ fn the_literal_census_sees_planted_syntax_and_ignores_comments() {
         "往真消费者的副本里塞一行 PowerShell 渲染，尺子该只数出塞进去的那两根"
     );
 }
+
+/// 「值直接接在单引号后」与「双写单引号的替换串」—— 手写 PowerShell 单引号字面量的两种形。
+const SQ_NEEDLES: &[&str] = &["'{", "''"];
+
+/// 唯一出口 `dialect::ps_literal` 之外允许的命中（都不是 PowerShell 字面量，逐条说清）。
+const SQ_ELSEWHERE: &[(&str, &str, usize)] = &[
+    // 报错句里「起不来的是哪个程序」那个主语，不进 shell。
+    ("control/ccm/mod.rs", "'{", 1),
+    // POSIX：值先过 `config_dir_command_safe` 白名单（不含 `'`）再进单引号。
+    ("control/launch_render/payload.rs", "'{", 1),
+    // POSIX：tmux 的 `-F` 格式串是常量。
+    ("observe/tmux_observe.rs", "'{", 2),
+];
+
+fn sq_census_of(src: &str) -> BTreeMap<&'static str, usize> {
+    let lits = string_literals(&guard_core::production_code(src));
+    SQ_NEEDLES
+        .iter()
+        .map(|n| (*n, lits.iter().map(|l| l.matches(n).count()).sum::<usize>()))
+        .filter(|(_, k)| *k > 0)
+        .collect()
+}
+
+/// ★ 住址：`设计/99 §2.3`「高危四条（M/N PowerShell 引号注入 …）发版前修」。
+/// 后端生产段里 PowerShell 单引号字面量只有一个出口（`platform/shell/dialect.rs::ps_literal`）：
+/// 两根手写形的命中 == [`SQ_ELSEWHERE`]（两向）；正控：往副本里塞回旧的只转 ASCII 那一形数得出。
+#[test]
+fn powershell_single_quoted_literals_have_one_exit() {
+    let root = crate::guard_support::src_root();
+    let mut got = BTreeMap::new();
+    for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (n, k) in sq_census_of(&src) {
+            got.insert((rel.clone(), n), k);
+        }
+    }
+    let want: BTreeMap<(String, &str), usize> = SQ_ELSEWHERE
+        .iter()
+        .map(|(f, n, k)| ((f.to_string(), *n), *k))
+        .collect();
+    assert_eq!(
+        got, want,
+        "有值绕过 `dialect::ps_literal` 自己进了单引号（PowerShell 还把 ‘ ’ ‚ ‛ 当引号）⇒ 改调它；\
+         确实不是 PowerShell 字面量的，写进 `SQ_ELSEWHERE` 并说清"
+    );
+    let planted = "fn q(s: &str) -> String {\n    format!(\"'{}'\", s.replace('\\'', \"''\"))\n}\n";
+    assert_eq!(
+        sq_census_of(planted),
+        BTreeMap::from([("'{", 1), ("''", 1)])
+    );
+}
