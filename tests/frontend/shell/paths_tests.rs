@@ -1,9 +1,9 @@
 //! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）
 //!
 //! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.claude/work/`」。
-//! 其余几条判的是那句「永远」的**出口**（`paths.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：
+//! 其余几条判的是那句「永远」的**出口**（`config.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：
 //! 「只认**绝对路径**；空串 == 没设」·「给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile**」·
-//! 「全树只经 `paths.rs::resolve_monitor_data_dir` 派生」。
+//! 「全树只经 `config.rs::resolve_monitor_data_dir` 派生」。
 //! 〔JA1 点址 2026-09-24：当时缺条、候选升格 · TL2 2026-09-25 补成 `§2` 的明文例外（IV1 报的第 3 件）〕
 
 use super::*;
@@ -141,11 +141,11 @@ fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
         "只扫到 {scanned} 份 `.rs` —— 扫描面塌了，下面那一比会空真地绿"
     );
     // 〔TAIL〕规则搬进共享 crate（`creds_core::store::monitor_data_dir`，远端常驻后端按同一份推默认路径）⇒
-    //   monitor 这棵树里一处都不该自己拼；`paths.rs` 转交它（正控，防「一处都没扫到」的空真）。
+    //   monitor 这棵树里一处都不该自己拼；`config.rs`（原 `paths.rs`）转交它（正控，防「一处都没扫到」的空真）。
     assert!(
-        guard_core::production_code(include_str!("../../../src/frontend/shell/src/paths.rs"))
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"))
             .contains("creds_core::store::monitor_data_dir("),
-        "`paths.rs` 不再转交共享那一份规则"
+        "`config.rs`（原 `paths.rs`）不再转交共享那一份规则"
     );
     assert_eq!(
         builders,
@@ -153,17 +153,17 @@ fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
         "monitor 这棵树里有地方自己拼那条路径（规则只该住 `creds_core::store::monitor_data_dir`）。\n\
          ★ 多一处就意味着 `CCM_DATA_DIR` 盖不住它 ⇒ 一趟自以为被隔离的跑\n\
            仍然会往用户真 profile 里写那一样东西。\n\
-         ⇒ 处置：让它经 `paths::resolve_monitor_data_dir()` 派生。"
+         ⇒ 处置：让它经 `config::resolve_monitor_data_dir()` 派生。"
     );
 
     // 那个 env 名字**只在一处被读** —— 否则「读了哪个变量」会长出第二种答案。
-    let me = guard_core::production_code(include_str!("../../../src/frontend/shell/src/paths.rs"));
+    let me = guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"));
     let read = format!("env::var({})", "DATA_DIR_ENV");
     assert_eq!(
         me.matches(read.as_str()).count(),
         1,
-        "`paths.rs` 里读 `{}` 的地方不是恰好一处",
-        crate::paths::DATA_DIR_ENV
+        "`config.rs`（原 `paths.rs`）里读 `{}` 的地方不是恰好一处",
+        crate::config::DATA_DIR_ENV
     );
     // 反空真：这把尺子认得出「不在」。
     assert!(!me.contains("env::var(DATA_DIR_ENV_THAT_DOES_NOT_EXIST)"));

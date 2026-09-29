@@ -671,7 +671,7 @@ fn spawn_detached(
     //   接进一份有上限、滚动的文件（后端 `stderr_log.rs`），设置「日志」里看得到。**只这条载体交**：被监护那条的
     //   stderr 已经进本进程的滚动日志（`StderrSink::ToLog`），交了反而分成两处。目录由这里建好（后端只新建文件、不建目录）；
     //   拿不到数据目录 / 建不了目录 ⇒ 不交，后端照旧不落盘（不猜路径）。
-    if let Some(p) = crate::paths::resolve_monitor_data_dir()
+    if let Some(p) = crate::config::resolve_monitor_data_dir()
         .map(|d| crate::logging::backend_stderr_log_path(&d))
         .filter(|p| {
             p.parent()
@@ -1128,7 +1128,7 @@ fn start_detached(
     ) {
         return DetachOutcome::NotTaken;
     }
-    let Some(home) = crate::paths::resolve_claude_dir() else {
+    let Some(home) = crate::config::resolve_claude_dir() else {
         return DetachOutcome::NotTaken;
     };
     let home = home.to_string_lossy().into_owned();
@@ -1435,7 +1435,7 @@ fn run_resident_stop(bin: &std::path::Path) -> Result<crate::remote_resident::St
         .env_remove("TMUX")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped());
-    if let Some(home) = crate::paths::resolve_claude_dir() {
+    if let Some(home) = crate::config::resolve_claude_dir() {
         cmd.env("CLAUDE_CONFIG_DIR", home);
     }
     // 三条策略（`00 §1.5.2`）：`Hidden`（一次性子命令不该闪窗）· `JobKillOnClose`（就地等它退，别留后代）·

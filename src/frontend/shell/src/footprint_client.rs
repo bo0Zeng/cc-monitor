@@ -12,7 +12,7 @@ use std::path::PathBuf;
 pub fn footprint_client_facts() -> Result<Value, String> {
     facts(
         dirs::home_dir(),
-        crate::paths::resolve_claude_dir(),
+        crate::config::resolve_claude_dir(),
         std::env::var("PATH").ok(),
     )
 }

@@ -68,7 +68,7 @@ fn the_two_sides_resolve_the_same_file() {
 /// `KS7`：它**不是**前端整份读写的那份配置。
 #[test]
 fn the_key_never_lands_in_the_config_file_the_frontend_rewrites_wholesale() {
-    let cfg = crate::paths::resolve_config_path().expect("config path");
+    let cfg = crate::config::resolve_config_path().expect("config path");
     let creds = resolve_path().expect("creds path");
     assert_ne!(cfg, creds, "凭据落在了前端『读—改—写』整份的那个文件上");
     // 同一个目录是**可以**的（`§0a` 要的是「不进那份配置」，不是「不同目录」）。

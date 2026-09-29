@@ -16,7 +16,6 @@
 //! 用户明确选了「物理删除」。前端二次确认后经通道直说那台机器的后端 `files-delete-session`（〔MIG-3b〕monitor 那条转交删了）；
 //! 删完那条注解由界面交本机后端 `history-forget` 连带删。Claude Code 自己也不再能 resume 这个会话。
 
-use crate::paths;
 use std::path::PathBuf;
 
 // === 〔C4d · 第四波 4B〕历史清单与注解搬进了本机常驻后端 ===
@@ -38,7 +37,7 @@ use std::path::PathBuf;
 /// 文件留在原处、同一路径）：monitor 起本机后端时用 `CCM_HISTORY_METADATA` 把**本函数算出来的这一个**交过去
 /// （`local_backend_host::relay_host_envs`），同一路径因此是构造出来的，不是两侧算法对齐出来的。
 pub(crate) fn metadata_path() -> Option<PathBuf> {
-    Some(paths::resolve_monitor_data_dir()?.join(creds_core::store::HISTORY_METADATA_FILE))
+    Some(crate::config::resolve_monitor_data_dir()?.join(creds_core::store::HISTORY_METADATA_FILE))
 }
 
 #[cfg(test)]

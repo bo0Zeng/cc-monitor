@@ -544,7 +544,7 @@ fn notice(origin: String, kind: &'static str, message: String) {
 /// 按它自己在 `remote.hosts` 里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
 pub(crate) fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
     let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
-    let Some(path) = crate::paths::resolve_config_path() else {
+    let Some(path) = crate::config::resolve_config_path() else {
         return;
     };
     for (origin, host, strict, reported) in pin_targets(cfg, req, ack) {

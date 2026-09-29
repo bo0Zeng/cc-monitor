@@ -175,7 +175,8 @@ pub async fn open_file_window(
 ) -> Result<usize, String> {
     let source = Source::remote(cfg);
     // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
-    let bookmarks = crate::paths::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d));
+    let bookmarks =
+        crate::config::resolve_monitor_data_dir().map(|d| super::bookmarks::file_in(&d));
     // ⓪ 三者优先级 —— 那一段是**纯函数**（[`plan_target`]），理由见它的头注。
     //    〔MIG-3a · 09-28 裁 3〕home 那一支不在这里问了：`cwd` 缺席交给窗口进程（`proc::first_screen`）。
     let (cwd, reveal) = match plan_target(&path, reveal_file.as_deref())? {

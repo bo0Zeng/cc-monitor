@@ -92,7 +92,7 @@ pub fn set_enabled(monitor_data_dir: &Path, enabled: bool) -> Result<(), String>
 
 /// 返回 monitor_data_dir 的 PathBuf 便利方法（IPC 命令用）
 pub fn data_dir() -> Option<PathBuf> {
-    crate::paths::resolve_monitor_data_dir()
+    crate::config::resolve_monitor_data_dir()
 }
 
 #[cfg(test)]

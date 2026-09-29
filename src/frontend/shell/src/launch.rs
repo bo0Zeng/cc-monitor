@@ -654,7 +654,7 @@ pub async fn open_terminal_window(
         }
         #[cfg(not(windows))]
         let _ = ssh;
-        let data_dir = crate::paths::resolve_monitor_data_dir();
+        let data_dir = crate::config::resolve_monitor_data_dir();
         let ps_command =
             with_rbind_bind_prelude(command, rbind_token.as_deref(), data_dir.as_deref())?;
         launch_powershell_window(&ps_command, None)?;
