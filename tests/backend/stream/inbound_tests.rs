@@ -1094,10 +1094,9 @@ async fn a_cancel_really_stops_an_in_flight_panorama_index() {
     std::fs::write(
         &bin,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf 'name=cc-monitor-panorama\\nversion=t\\ncapabilities=index\\nshape={shape}\\n'; exit 0; fi\n\
+            "#!/bin/sh\nif [ \"$1\" = \"--probe\" ]; then printf 'name=cc-monitor-panorama\\nversion=t\\ncapabilities=index\\nlong=index\\nshape=t1\\n'; exit 0; fi\n\
              echo $$ > '{p}.tmp'; mv '{p}.tmp' '{p}'\nexec sleep 300\n",
             p = pidf.display(),
-            shape = crate::control::panorama::SHAPE
         ),
     )
     .unwrap();
@@ -1110,7 +1109,7 @@ async fn a_cancel_really_stops_an_in_flight_panorama_index() {
         Request {
             id: "pano".into(),
             cmd: "panorama".into(),
-            args: serde_json::json!({"op": "index", "repo": "/r"}),
+            args: serde_json::json!({"op": "index", "repo": "/r", "shape": "t1"}),
         },
         tx.clone(),
         running.clone(),

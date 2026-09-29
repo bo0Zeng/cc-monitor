@@ -15,6 +15,7 @@
 //! | `name` | ★ **身份行，必须是第一行、必须逐字对上** | 防 `PATH` 上同名的无关程序被当成插件 |
 //! | `version` | **只进诊断文案**，不参与「能不能用」的判断 | `E7` 逐字排除了比版本号大小 |
 //! | `capabilities` | 逗号列表，**集合语义**，做**子集检查** | 加 token 安全，删/改名才危险 |
+//! | `long` | 〔PANO〕长活档的能力（逗号列表，⊆ `capabilities`）；不在里面的是短活档 | 宿主按档给期限，档 → 秒数住调用方适配层（`99 §1` V158「后端不带引擎知识」） |
 //! | `shape` | 〔FIX2〕形状代号：调用方给了期望就**逐字比**，对不上（含缺这一行）= 旧一代 | 能力表相同、应答形状变了那一形（`设计/97 §8`） |
 //! | 其余 | 该插件自己的域枚举（它支持哪些东西） | 插件自己定，本层原样带回 |
 //!
@@ -47,13 +48,12 @@ pub(crate) struct Answer {
     pub(crate) version: Option<String>,
     /// 能力 token 集合。
     pub(crate) capabilities: Vec<String>,
+    /// 〔PANO〕长活档的能力（`long=` 那一行；没有这一行 = 全是短活档）。
+    pub(crate) long: Vec<String>,
     /// 〔FIX2〕形状代号（`shape=` 那一行；老一代没有这一行）。
     pub(crate) shape: Option<String>,
     /// 该插件自己的其它键（域枚举之类），原样带回，本层不解释。
-    ///
-    /// 〔RM1c〕模块级的死代码 `allow` 摘掉之后，只剩这一格今天没有生产读者：
-    /// 第一个生产调用方（代码全景）只要身份与能力、没有自己的域枚举。判据（`probe::tests`）读它。
-    #[allow(dead_code)]
+    /// 〔PANO〕第一个生产读者：代码全景的写表（`plans=`，由那个插件的适配层解释）。
     pub(crate) extras: Vec<(String, String)>,
 }
 
@@ -61,6 +61,19 @@ impl Answer {
     /// 会不会做这一件事。**子集检查，不比版本号。**
     pub(crate) fn can(&self, token: &str) -> bool {
         self.capabilities.iter().any(|c| c == token)
+    }
+
+    /// 该插件自己的某个键的原值（本层不解释；解释归那个插件的适配层）。
+    pub(crate) fn extra(&self, key: &str) -> Option<&str> {
+        self.extras
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// 〔PANO〕这件事是不是插件自报的长活档（宿主据此给长的那一档期限）。
+    pub(crate) fn is_long(&self, token: &str) -> bool {
+        self.long.iter().any(|c| c == token)
     }
 }
 
@@ -134,6 +147,7 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
     let mut name: Option<String> = None;
     let mut version: Option<String> = None;
     let mut capabilities: Vec<String> = Vec::new();
+    let mut long: Vec<String> = Vec::new();
     let mut shape: Option<String> = None;
     let mut extras: Vec<(String, String)> = Vec::new();
     for line in text.lines() {
@@ -163,13 +177,8 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
         }
         match k {
             "version" => version = Some(v.to_string()),
-            "capabilities" => {
-                capabilities = v
-                    .split(',')
-                    .map(|t| t.trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .collect()
-            }
+            "capabilities" => capabilities = tokens(v),
+            "long" => long = tokens(v),
             "shape" => shape = Some(v.to_string()),
             _ => extras.push((k.to_string(), v.to_string())),
         }
@@ -179,6 +188,7 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
             name,
             version,
             capabilities,
+            long,
             shape,
             extras,
         }),
@@ -187,6 +197,14 @@ pub(crate) fn parse(text: &str, want_name: &str) -> Result<Answer, Rejected> {
             saw: copy_text("beProbe.parse.emptyOutput", &[]),
         }),
     }
+}
+
+/// 逗号列表 → token（去空白、去空项）。
+fn tokens(v: &str) -> Vec<String> {
+    v.split(',')
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect()
 }
 
 /// 宿主把**「我要哪些 token」**写成一份显式清单，逐个查。

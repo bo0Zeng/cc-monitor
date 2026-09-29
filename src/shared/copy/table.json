@@ -13762,16 +13762,6 @@
       "zh": "文档关联已经写进去了，但全景里的关联没跟着刷新（{e}）。点「刷新」重建一次就能看到",
       "args": ["e"]
     },
-    "rsPanoramaCall.edit.opSep": {
-      "kind": "body",
-      "zh": " · ",
-      "args": []
-    },
-    "rsPanoramaCall.edit.unknownOp": {
-      "kind": "error",
-      "zh": "不认识的全景写入 {op}（认得的：{edits}）",
-      "args": ["op", "edits"]
-    },
     "rsPanoramaCall.install.remote": {
       "kind": "body",
       "zh": "{who} 上还没有这一版的代码全景组件，正在把它装上去。约 20 MB，慢链路上要等一会儿；装好之后这一问会自己接着答。",
