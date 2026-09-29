@@ -2876,7 +2876,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 | `shell` | → | 同 `aliases-render` |
 | `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
 | `aliasPath` · `exists` · `aliases` · `unparsed` | ← | 这台上那份别名文件的路径 · 在不在 · 读回的清单 · 认不出的行（原文带原因） |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}` |
+| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy}`，`block` = 别名块现状 `{present, version, outdated, conflictingFunctions, manualCleanupHint}`；`policy`（〔WF1〕只有 `$PROFILE` 那几份有）= 加载它的那一代 PowerShell 的执行策略，现问 `{host, effective, loads, groupPolicy, error}`（`host` = `powershell` / `pwsh`；`loads` = 这一档下它会不会跑这份未签名的本地文件，说不清 ⇒ `null`；`groupPolicy` = 组策略钉着） |
 | `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
 
 读经本进程文件管理面（`files-home` · `files-peek` · `files-stat`）。已握手的终端数不在这里（住 monitor 进程里）。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-read`）。
@@ -2939,6 +2939,22 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 整块删，块外一个字节不动；没有块 ⇒ 原样；围栏损坏 ⇒ 中止。写经本进程 `files-put`（带备份）。
 错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--aliases-block-remove`）。
+
+#### `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（WF1，09-29，**写用户设置**）
+
+```text
+→ {"id":"a7","cmd":"powershell-policy-set","args":{"host":"powershell"}}
+← {"kind":"reply","id":"a7","ok":true,"data":{"policy":{"host":"powershell","effective":"RemoteSigned","loads":true,"groupPolicy":false,"error":null},"setError":null}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `host` | → | 哪一代：`powershell`（5.1）· `pwsh`（7） |
+| `policy` | ← | 设完现问的那一份（形状同 `aliases-read` 候选里的 `policy`） |
+| `setError` | ← | 设的那一下 PowerShell 的原话（组策略压着时它会报）；`null` = 没报 |
+
+只做一件固定的事（`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`），不收策略值；界面只在用户点了、确认了之后发（`设计/99 §2.3`，不代改）。
+这台不说 PowerShell ⇒ `refused`。错误码：`bad_args` · `refused`。⚠ **CLI 面也有它**（`--powershell-policy-set`）。
 
 #### `cc-bus-install-state`：这台装的 cc-bus 是哪一版（MIG-3a 子步 3，09-28，**只读**）
 
@@ -3730,6 +3746,8 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 与帧面走**同一个 `run`**，读 stdin（那段 JSON 就是它的 `args`）。只读。
 
 **FILES3 追加一条（第四波，2026-09-28）**：`--files-grep` —— 同族第十一条（按内容搜，逐条见上面 `files-grep` 那一小节）。
+
+**WF1 追加一条（09-29）**：`--powershell-policy-set` —— 见上面它自己那一小节。与帧面同一个 `run`；**读 stdin**（`{host}`）。
 读 stdin（那段 JSON 就是它的 `args`）；一次性进程里没有要撤的在飞那一趟，上界照旧。只读。
 
 **`K-H1` 那一条：HTTP 中转**（搬字节那半）。〔DEL〕独立进程那一形（子命令 `--relay`）删了：

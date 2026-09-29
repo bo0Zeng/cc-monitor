@@ -8,6 +8,7 @@
  * | 写别名文件（选了 rc 只查不装） | `aliases-install` | [`AliasInstallReport`] |
  * | 别名块预览（纯） | `aliases-block-render` | `{text}` |
  * | 别名块装 / 卸 | `aliases-block-install` / `-remove` | `{}` |
+ * | 执行策略设成当前用户 `RemoteSigned`（用户确认后） | `powershell-policy-set` | [`PolicySet`] |
  *
  * 从前是 monitor 的六条 Tauri 命令（`aliases_*`，规则与方言在 monitor 一份、事实问那台后端）；规则 · 方言 · 围栏整族进了
  * 那台后端（`src/backend/assets/aliases/`），这里只按形状严格收。**前端不做安全判断**。
@@ -55,6 +56,21 @@ export interface BlockState {
   manualCleanupHint: string;
 }
 
+/** 〔WF1 · L〕哪一代 PowerShell（线上名与后端 `platform::shell::PsHost` 逐字）。 */
+export type PsHost = "powershell" | "pwsh";
+
+/** 〔WF1 · L〕加载这份 `$PROFILE` 的那一代 PowerShell 的执行策略（那台后端现问）。 */
+export interface ExecPolicy {
+  host: PsHost;
+  /** 生效那一档的原词；问不到 ⇒ `null`，原话在 `error`。 */
+  effective: string | null;
+  /** 这一档下它会不会跑我们装的块（本地、未签名）；说不清 ⇒ `null`。判在后端。 */
+  loads: boolean | null;
+  /** 组策略钉着 ⇒ 改当前用户那一档没用。 */
+  groupPolicy: boolean;
+  error: string | null;
+}
+
 /** 一份候选启动文件（rc / `$PROFILE`）的状态。 */
 export interface StartupFile {
   path: string;
@@ -63,6 +79,14 @@ export interface StartupFile {
   block: BlockState;
   /** 在盘上、那台后端读不了它 —— 后端原话；`null` = 读得了或不在。 */
   unreadable: string | null;
+  /** 〔WF1 · L〕只有 `$PROFILE` 那几份有；POSIX 与人另指的那一份 ⇒ `null`。 */
+  policy: ExecPolicy | null;
+}
+
+/** `powershell-policy-set` 的成品：设完现问的那一份 ＋ 设的那一下 PowerShell 的原话（没报 ⇒ `null`）。 */
+export interface PolicySet {
+  policy: ExecPolicy;
+  setError: string | null;
 }
 
 /** 读回口的成品。 */
@@ -138,17 +162,44 @@ function decodeBlockState(v: unknown): BlockState {
   };
 }
 
+function decodePolicy(v: unknown): ExecPolicy {
+  if (
+    !isObj(v) ||
+    !sameKeys(v, ["host", "effective", "loads", "groupPolicy", "error"]) ||
+    (v.host !== "powershell" && v.host !== "pwsh") ||
+    !optStr(v.effective) ||
+    (v.loads !== null && typeof v.loads !== "boolean") ||
+    typeof v.groupPolicy !== "boolean" ||
+    !optStr(v.error)
+  )
+    throw bad();
+  return { host: v.host, effective: v.effective, loads: v.loads, groupPolicy: v.groupPolicy, error: v.error };
+}
+
 function decodeStartupFile(v: unknown): StartupFile {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["path", "sourced", "exists", "block", "unreadable"]) ||
+    !sameKeys(v, ["path", "sourced", "exists", "block", "unreadable", "policy"]) ||
     typeof v.path !== "string" ||
     typeof v.sourced !== "boolean" ||
     typeof v.exists !== "boolean" ||
     !optStr(v.unreadable)
   )
     throw bad();
-  return { path: v.path, sourced: v.sourced, exists: v.exists, block: decodeBlockState(v.block), unreadable: v.unreadable };
+  return {
+    path: v.path,
+    sourced: v.sourced,
+    exists: v.exists,
+    block: decodeBlockState(v.block),
+    unreadable: v.unreadable,
+    policy: v.policy === null ? null : decodePolicy(v.policy),
+  };
+}
+
+/** `powershell-policy-set` 的成品。严格收。 */
+export function decodePolicySet(v: unknown): PolicySet {
+  if (!isObj(v) || !sameKeys(v, ["policy", "setError"]) || !optStr(v.setError)) throw bad();
+  return { policy: decodePolicy(v.policy), setError: v.setError };
 }
 
 /** `aliases-read` 的成品。严格收。 */
@@ -252,6 +303,20 @@ export async function installAliasBlock(origin: Origin, rcPath: string, withCc: 
     const body = jsonBody({ rcPath, withCc });
     const budget = budgetWithin(ALIAS_BUDGET_MS);
     decodeEmpty(readJson(await chan.call(origin, "aliases-block-install", body, budget)));
+  } catch (e) {
+    throw said(e);
+  }
+}
+
+/**
+ * 〔WF1 · L · `设计/99 §2.3`〕把那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（后端只做这一件固定的事）。
+ * **只在用户点了、确认了之后调**（不代改）。
+ */
+export async function allowLocalScripts(origin: Origin, host: PsHost): Promise<PolicySet> {
+  try {
+    const body = jsonBody({ host });
+    const budget = budgetWithin(ALIAS_BUDGET_MS);
+    return decodePolicySet(readJson(await chan.call(origin, "powershell-policy-set", body, budget)));
   } catch (e) {
     throw said(e);
   }
