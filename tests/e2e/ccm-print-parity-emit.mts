@@ -3,8 +3,8 @@
 // 〔LR1 · U8c-3〕输入源从「现场跑 TS 渲染器 `tryRenderCli`」换成**入库夹具 `cli-golden.json`**
 // 里名字以 `print-parity:` 打头的那四条用例的 `out`。
 // ⚠ 这**不是**换成手搓命令：那四行的来历有一条链，每一环都有东西会红 ——
-//   ① `out` 写在 `src/launch-cli-golden.ts` 的用例表里（手写期望），落盘 == 现场由
-//      `tests/launch-payload-golden.vitest.ts` 管；
+//   ① `out` 写在 `src/frontend/ui/launch-cli-golden.ts` 的用例表里（手写期望），落盘 == 现场由
+//      `tests/frontend/ui/launch-payload-golden.vitest.ts` 管；
 //   ② `cargo` 那一侧（`launch_cli_parity.rs`）拿同一份夹具的 `req` 跑**生产**命令
 //      `render_ccm_launch`，与 `out` 逐字节比 ⇒ 这四行 == 今天生产渲染器（Rust）的产出；
 //   ③ 本套件把它们喂给真 `ccm --print`，验「生产渲染器那一行，真 ccm 读得懂」。

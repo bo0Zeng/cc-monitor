@@ -58,7 +58,7 @@ echo "fork fixture: $SID8 → $PROJ_DIR(宿主 pid=$HOST_PID)"
 
 # ── 1. 触发整页 reload(HMR 全刷新→重新 replay),等新一轮 fe_perf 汇总 ──
 MARK=$(wc -l <"$LOG")
-touch "$REPO/src/main.ts"
+touch "$REPO/src/frontend/ui/main.ts"
 echo "等待重放完成(fe_perf 汇总)…"
 for _ in $(seq 1 60); do
   # 先落变量再 grep(herestring 无 SIGPIPE;pipefail 下 grep -q 提前退出会误伤管道)
@@ -81,7 +81,7 @@ DRAIN=$(grep "batch payloads drained" <<<"$MAINBLK" | tail -1 | sed -E 's/.*\(\+
                                 || bad "门控失效:rendered=$RENDERED deferred=$DEFERRED"
 [ "$DRAIN" -lt "$DRAIN_MAX_MS" ] && ok "drain ${DRAIN}ms < ${DRAIN_MAX_MS}ms" \
                                  || bad "drain ${DRAIN}ms 超阈值"
-# 抖动 = 密度绊线(标定见 src/e2e-probe.ts 头注释):健康 ≈0.12-0.16 反转/帧,
+# 抖动 = 密度绊线(标定见 src/frontend/ui/e2e-probe.ts 头注释):健康 ≈0.12-0.16 反转/帧,
 # §21 病态 ≈1.0;断 ≤0.4——亚像素舍入摆动放行,逐帧震荡回归必绊
 JIT=$(grep "\[e2e\] jitter" <<<"$NEW" | tail -1 || true)
 if [ -n "$JIT" ]; then

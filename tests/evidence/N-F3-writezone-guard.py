@@ -30,9 +30,9 @@ import sys
 
 # 写区：`.dispatch.json` 的四项代码仓路径 + PM 补充给的「src/ 下、名字带 first-run」的口子。
 WRITE_EXACT = {
-    "src/main.ts",
-    "src/styles.css",
-    "src/settings/accounts-section.ts",
+    "src/frontend/ui/main.ts",
+    "src/frontend/ui/styles.css",
+    "src/frontend/ui/settings/accounts-section.ts",
 }
 WRITE_PREFIX = ("evidence/",)
 
@@ -114,9 +114,9 @@ def main() -> int:
     print(r3.stdout if r3.stdout.strip() else "(空)")
     print(f"退出码 {r3.returncode}")
     # 「差集为空」要有一个**非空对照**，否则「命令没跑」与「跑了是空」在终端上同形。
-    r3n = git("diff", base, "--", "src/main.ts")
+    r3n = git("diff", base, "--", "src/frontend/ui/main.ts")
     print(
-        "非空对照（同一条命令指向写区内的 src/main.ts）："
+        "非空对照（同一条命令指向写区内的 src/frontend/ui/main.ts）："
         f"{len(r3n.stdout.splitlines())} 行，退出码 {r3n.returncode}"
     )
 

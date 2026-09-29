@@ -4061,7 +4061,7 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
 }
 
 /// 〔RESYNC〕帧面 `resync` 的成品 == 跨语言金样的形状（键集合相等、每格是计数）；`sid` 给了却不是非空字符串 ⇒ `bad_args`。
-/// 界面那一侧 `tests/resync.vitest.ts` 按同一份金样解。
+/// 界面那一侧 `tests/frontend/ui/resync.vitest.ts` 按同一份金样解。
 #[test]
 fn resync_face_reply_matches_the_cross_language_golden() {
     let golden: serde_json::Value =

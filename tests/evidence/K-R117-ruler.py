@@ -39,7 +39,7 @@
      🔴 钉的是**名单**，份数一律 `len()` 现算（表里一个基数字面量都没有）；判 `==` 不判 `<=`。
      🔴 **落点只认调用形状 `.<命令>(`** —— 只在注释 / 散文里提到命令名的那一份不算落点，
         否则这把尺子可以**靠删一条注释变绿**，而「落点收到 1」正是 S1–S5 的收工判据。
-  R10 **纪律 A 的闸**（`KR128D3`）：`R10a` 22 条在 `src/ipc/commands.ts` 里逐条有包装层入口
+  R10 **纪律 A 的闸**（`KR128D3`）：`R10a` 22 条在 `src/frontend/ui/ipc/commands.ts` 里逐条有包装层入口
      （TS 键 ＋ `invoke` 线上串两侧都在）· `R10b` `claims()` 每个装 / 卸符号要么是真
      `#[tauri::command]`、要么在 `CLAIMS_NON_COMMAND_SYMBOLS` 明示名单里。
      🔴 钉的是**命令名**不是文件字节 ⇒ 往那三份里加一条**与这 22 条无关**的新命令**不红**。
@@ -203,7 +203,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
     # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
     # 〔墓碑 C4e · 第四波 4C〕`launch.send-into` 随就地 resume 改由界面经通道直接说后端 `launch`
-    # （`src/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
+    # （`src/frontend/ui/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
     # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # 〔MIG-3a〕`mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
@@ -214,7 +214,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   ⇒ 这条能力已不在 Tauri 命令账本 `LEDGER` 里，按 `usage.*` 那条同一个理由摘掉。
     # 〔墓碑 · MIG-1〕`port-forward` 随端口转发三条进本机常驻后端（帧命令 `forward-*`，界面经通道直说）退役：Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（留着会让 `R3b` 恒红）。
     # 〔墓碑 · 第四波 4D US1〕`apikey.routing` 随「这几个账号在 apikey 表里有没有行」改由界面经通道直问后端 `apikey-routing`
-    #   （`src/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
+    #   （`src/frontend/ui/apikey-reads.ts`，跨语言金样 `tests/__fixtures__/apikey.golden.json`）退役；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     # 〔墓碑 · 第四波 4D LOC1b〕`search.history` · `search.index` 随本机搜索改走 `<local>` 的 `history-search`（monitor 内存索引、三条搜索命令与「重新索引」按钮删）退役；理由同上面几条墓碑。
     ("session.forget", (NA, "—", "会话")),
     ("session.launch", (NA, "—", "起会话")),
@@ -325,7 +325,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "是本轮新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
        "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
        "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端写区。"
-       "⚠ 而且**前端落点一个字都没多**：它们的调用点在 `src/launcher-diagnostics.ts`，"
+       "⚠ 而且**前端落点一个字都没多**：它们的调用点在 `src/frontend/ui/launcher-diagnostics.ts`，"
        "那一份本来就在 `FRONTEND_PIN['S2']` 里 ⇒ `R9` 那条棘轮不动。"
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
        "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
@@ -334,7 +334,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 〔MIG-3a · 09-28 预裁〕`deploy_remote_acct_iso` 摘了（字节随后端二进制走，界面经通道问 `acct-iso-install`）⇒ 本组今天零条。
         # 〔A3 第二波 09-24〕`acct-iso.check` 的**本机对侧**（问本机后端 `--acct-iso-status`），
         # 与 `check_remote_acct_iso` 出参逐字相同 ⇒ 同一件的另一半。
-        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机空态问装没装），
+        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/frontend/ui/settings/accounts-section.ts`（本机空态问装没装），
         # 那一份本来就在 `FRONTEND_PIN['S3']` 里 ⇒ 名单按实数现打**不变**（1 → 1，没有换份）。
         # 〔SH1〕它与远端那条今天是同一条 `acct_iso_status`（上面那行）。
     ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
@@ -347,7 +347,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         # 〔MIG-3a〕`acct_iso_shellinit` 摘了（rc 片段那一问进了后端出成品、界面直问）。
         # 〔A3 第二波 09-24〕`acct-iso.shellinit` 的**本机对侧**，与远端那条共用围栏判定
         # `shellinit_fence_state` ⇒ 归 ② 同一件。
-        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/settings/accounts-section.ts`（本机那一块的
+        # 〔第三波 S3 09-24〕接上界面了：调用点在 `src/frontend/ui/settings/accounts-section.ts`（本机那一块的
         # 「生成 rc 片段」），那一份本来就在 `FRONTEND_PIN['S4']` 里 ⇒ 名单按实数现打**不变**（2 → 2）。
         # 〔SH1〕它与远端那条今天是同一条 `acct_iso_shellinit`（上面那行）。
     ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处在 `K-R117` 现打时恰好 2 条命令"
@@ -396,42 +396,42 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
 #
 # 每行：组 -> (钉住的落点名单, 这个数是哪天量的 · 用什么量的, 该变的时候谁来改)
 FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
-    ("S1", (("src/settings/machine-card.ts",),
+    ("S1", (("src/frontend/ui/settings/machine-card.ts",),
             "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）",
             "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
-    ("S2", (("src/settings/machine-aliases.ts",),
+    ("S2", (("src/frontend/ui/settings/machine-aliases.ts",),
             "〔MIG-2〕**2 → 1**：`src/ccm-probe.ts` 随 `probe_ccm_cli` 删了（远端探测住进那台后端）。"
-            "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/settings/cc_integration.ts` 并进了 "
-            "`src/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
+            "〔AL1c · 第四波 4B · 2026-09-24〕**3 → 2**：`src/frontend/ui/settings/cc_integration.ts` 并进了 "
+            "`src/frontend/ui/settings/machine-aliases.ts`（`设计/71 §7` W5：界面合成一份，终端集成成了 PowerShell 那一侧的别名块），"
             "它那几处 `cc_integration_*` 调用换到同一份文件里 ⇒ 落点少一份。"
-            "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
-            "`src/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
+            "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/frontend/ui/launcher-diagnostics.ts` → "
+            "`src/frontend/ui/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
             "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
             "**份数没变（3 → 3），是换了一份**：`launcher-diagnostics.ts` 今天一条 S2 调用都没有了",
             "S2 收完本机半那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
-            "⚠ `src/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
+            "⚠ `src/frontend/ui/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
             "`cc_integration_status`，不是调用点（见 `§S5d` 第二档）")),
     ("S3", ((),
-            "〔MIG-3a · 09-28 预裁〕**1 → 0**：`src/settings/accounts-section.ts` 那一处（`deploy_remote_acct_iso`）改经通道问那台后端 `acct-iso-install`，"
+            "〔MIG-3a · 09-28 预裁〕**1 → 0**：`src/frontend/ui/settings/accounts-section.ts` 那一处（`deploy_remote_acct_iso`）改经通道问那台后端 `acct-iso-install`，"
             "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
             "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
-            "（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条**注释里的提名**"
+            "（`§3-3` 写「S3 今天 2」是把 `src/frontend/ui/accounts.ts` 那条**注释里的提名**"
             "算成了落点，见 `§S5d` 第二档 —— 那一半仍然成立）")),
     ("S4", ((),
-            "〔MIG-3a · 09-28 · 主会话 09-27 裁〕**1 → 0**：`src/settings/machine-aliases.ts` 那几处（`aliases_*`）改经通道问那台后端，"
-            "S4 这一组没有 Tauri 命令了。〔MIG-3a · 09-28〕**2 → 1**：`src/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
-            "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/launcher-diagnostics.ts` → "
-            "`src/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
+            "〔MIG-3a · 09-28 · 主会话 09-27 裁〕**1 → 0**：`src/frontend/ui/settings/machine-aliases.ts` 那几处（`aliases_*`）改经通道问那台后端，"
+            "S4 这一组没有 Tauri 命令了。〔MIG-3a · 09-28〕**2 → 1**：`src/frontend/ui/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
+            "量于 09-15 · 同上。〔AL1 · 2026-09-24〕`src/frontend/ui/launcher-diagnostics.ts` → "
+            "`src/frontend/ui/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
             "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
-    ("S5", (("src/settings/cc-bus-section.ts",),
-            "〔MIG-3a · 09-28〕**2 → 1**：`src/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
-            "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
+    ("S5", (("src/frontend/ui/settings/cc-bus-section.ts",),
+            "〔MIG-3a · 09-28〕**2 → 1**：`src/frontend/ui/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
+            "量于 09-15 · 同上。〔MIG-3a · 09-27〕**3 → 2**：`src/frontend/ui/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",
             "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S5']`")),
@@ -464,7 +464,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
 
 # 全盘目标 —— **这张表就是 R63 裁定三那三条**。key = 收工之后用户去的那一份文件。
 FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
-    ("src/settings/machine-card.ts", (
+    ("src/frontend/ui/settings/machine-card.ts", (
         "①一处「安装后端」",
         "R63裁定三+K15+K35+K36+R75",
         "「装后端」本来就是**对某一台机器**的动作 ⇒ 它的入口该跟着机器走。UI 侧这一处"
@@ -475,18 +475,18 @@ FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
         "⚠ 现打 `remote-section.rebuild_cards` 只给远端建 `MachineCard`，本机页是一个"
         "空 div、只靠 per-machine 分节填 ⇒ **本机今天在结构上是二等公民**，"
         "而那正是 R63 点名的「按实现分」。补本机那一栏是 `S2` 的活。")),
-    # 〔AL1 · 2026-09-24〕这一行的 key 从 `src/launcher-diagnostics.ts` 换成了
-    #   `src/settings/machine-aliases.ts`：`设计/70 §3.3` · `设计/71 §13` 把 ②（别名 ＝ 生成那段、
+    # 〔AL1 · 2026-09-24〕这一行的 key 从 `src/frontend/ui/launcher-diagnostics.ts` 换成了
+    #   `src/frontend/ui/settings/machine-aliases.ts`：`设计/70 §3.3` · `设计/71 §13` 把 ②（别名 ＝ 生成那段、
     #   手贴或写入）并进**机器页**（别名是每台机器一份）⇒ ② 那一处今天住机器页「本机 → 工具 → 别名」。
     #   下面那段理由是 `K-R131` 当时写的（那时这一处还是 `launcher-diagnostics.ts`），逐字留着。
-    ("src/settings/machine-aliases.ts", (
+    ("src/frontend/ui/settings/machine-aliases.ts", (
         "②一处「生成 bash/PowerShell 那段让用户自己填」",
         "R63裁定三+K33",
         "它今天**已经是**这一处：模块头注逐字记着 Phase D UX 审计把「诊断」与「别名生成器」"
         "两半合并到同一处的理由（分居两处会让用户看到诊断却无路可循）；`paste-block.ts` 那个"
         "共用待贴组件的规范宿主也是它。⇒ `remote_acct_iso_shellinit` 那块待贴片段"
         "（今天住 `accounts-section.ts`）搬进来，② 就只剩一处。")),
-    ("src/settings/mcp-section.ts", (
+    ("src/frontend/ui/settings/mcp-section.ts", (
         "③一处「安装 MCP / skill 等」",
         "R63裁定三+K34",
         "R63 逐字「安装mcp功能\\skill等等」。`cc-bus` 的装口（`deploy_local_cc_bus` / "
@@ -498,27 +498,27 @@ FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
 # 逐组目标 —— **收工判据按这张表判**，不再是「恒等于 1」。
 # 每行：组 -> (收工之后该组落点名单**逐字**应当是什么, 为什么)
 FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
-    ("S1", (("src/settings/machine-card.ts",),
+    ("S1", (("src/frontend/ui/settings/machine-card.ts",),
             "**已达标，S1 的前端这一半不用做**。四条远端装口今天就住在组件栏里，"
             "而那正是 ① 该在的地方。⚠ 从前那句「目标：空」讲不通：R63 要的是「收成一处」"
             "不是「取消入口」，降到空等于用户再也没有地方部署远端后端，与 `K27`"
             "（部署是产品的一部分，由客户端做）直接冲突。")),
-    ("S2", (("src/settings/machine-card.ts",),
+    ("S2", (("src/frontend/ui/settings/machine-card.ts",),
             "「终端集成」那一块（`cc_integration_*`）与本机 ccm 入口查询并进组件栏的"
             "**本机页那一份**。〔MIG-2〕`src/ccm-probe.ts` 删了（它原是非入口，见 `FRONTEND_NON_ENTRY` 那条墓碑）。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
             "`cc_integration_install` 归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
             "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
-    ("S3", (("src/settings/machine-card.ts",),
+    ("S3", (("src/frontend/ui/settings/machine-card.ts",),
             "**没达标，前端这一半要做**：把「一键部署 cc-acct-iso」从「账号」栏的空态里"
             "搬进组件栏。R63 裁定三逐字点名「不许再按『…装账号隔离』这样按实现分」，"
             "而今天它正是一个按实现分出来的独立装口。`R75`〔用@09-14「account 进后端」〕"
             "已把它归 ①。账号栏留一句指路（**不带命令调用** ⇒ 不算落点）。")),
-    ("S4", (("src/settings/machine-aliases.ts",),
+    ("S4", (("src/frontend/ui/settings/machine-aliases.ts",),
             "`remote_acct_iso_shellinit` 那块待贴片段从 `accounts-section.ts` 搬到 ② 那一处，"
             "与 `aliases_*` 同处（〔AL1〕② 那一处今天是机器页的「别名」）。")),
-    ("S5", (("src/settings/mcp-section.ts", "src/views/inbox-view.ts"),
-            "`cc-bus` 的两条装口从驾驶舱搬进 ③；`src/views/inbox-view.ts` 留着，"
+    ("S5", (("src/frontend/ui/settings/mcp-section.ts", "src/frontend/ui/views/inbox-view.ts"),
+            "`cc-bus` 的两条装口从驾驶舱搬进 ③；`src/frontend/ui/views/inbox-view.ts` 留着，"
             "它不是装口（见 `FRONTEND_NON_ENTRY`）。")),
 ])
 
@@ -529,7 +529,7 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
 FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
     # 〔墓碑 MIG-2〕`src/ccm-probe.ts`（`probe_ccm_cli` 的按 origin 5 分钟缓存，渲染链的非入口落点）随命令删了：
     #   远端装没装 ccm 由那台后端渲染时自己现查，前端不再转述探测结果。
-    ("src/views/inbox-view.ts",
+    ("src/frontend/ui/views/inbox-view.ts",
      "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
      "**装不了 skill**：`skill_host::resolve_editable` 第一刀就是 "
      "`requested.canonicalize()`，报错逐字「解析路径失败（**文件必须已存在**）」⇒ 它只能"
@@ -548,7 +548,7 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 #
 # 三份各自怎么判、以及**哪一份判不了**，逐份写死（`brief` 17：判不了就写判不了）：
 #
-#   · `src/ipc/commands.ts`（包装层）—— **判**。22 条逐条要有包装层入口，
+#   · `src/frontend/ui/ipc/commands.ts`（包装层）—— **判**。22 条逐条要有包装层入口，
 #     而且**两侧都要在**：TS 键 与 `invoke("…")` 的线上串。这一格是**跨语言对拍**
 #     （Rust 侧的 `LEDGER` ↔ TS 侧的包装层），两边同源的可能性为零 ⇒ 不是空真。
 #
@@ -595,11 +595,11 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "界面在机器页「代码全景组件」那一格经通道直问，本来就不是 Tauri 命令",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
-        "它自己不是 Tauri 命令：没有用户按钮，〔MIG-3b 续〕界面（`src/panorama/api.ts::askOrPlace`）听到那台后端答「没装 / 太旧」时"
+        "它自己不是 Tauri 命令：没有用户按钮，〔MIG-3b 续〕界面（`src/frontend/ui/panorama/api.ts::askOrPlace`）听到那台后端答「没装 / 太旧」时"
         "请 monitor 的 `panorama_place` 放字节，那一条调它（V108「只传给开过远端全景的机器」）",
 }
 
-# `src/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
+# `src/frontend/ui/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
 # ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
 #   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
 # 〔主会话 09-25 · LOC1b 合并那一拍〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
@@ -882,7 +882,7 @@ def ok(msg: str) -> None:
 def collect_ts(root: str):
     """`src/**.ts` 的分母（`§S5b` 与 `§S5c`–`§S5e` **共用这一份**，别各写一遍）。
 
-    排除 `*.vitest.ts` 与 `src/generated/`。返回 `{相对路径: 正文}`，
+    排除 `*.vitest.ts` 与 `src/frontend/ui/generated/`。返回 `{相对路径: 正文}`，
     遍历次序 = `os.walk` ＋ 每层 `sorted(files)`（定序，别让读数随文件系统漂）。
     """
     out = OrderedDict()
@@ -908,13 +908,13 @@ def frontend_landing(texts, cmds, wrapper: str):
     🔴 **为什么第二档非分不可**（本件最要防的形状）：只在注释 / 散文 / 字符串里写了
     命令名的那一份**不是用户入口**。把它算成落点，这把尺子就**可以靠删一条注释变绿** ——
     而「落点数收到 1」正是 S1–S5 的收工判据 ⇒ 那等于给第三块发了一条假出口。
-    现打就有两份是这一形（`src/accounts.ts` · `src/settings/panel.ts`，逐处印在下面）。
+    现打就有两份是这一形（`src/frontend/ui/accounts.ts` · `src/frontend/ui/settings/panel.ts`，逐处印在下面）。
 
     ⚠ **买不到什么**：别的调用形状（`invoke("<名>")` 直呼 · 先解构再裸调）本函数**看不见**。
       为了让它**不静默**，第二档逐处 `文件:行号` 印出来：哪天有人换了调用形状，
       那一份会从「落点」掉进「只提到」那一档，**在读数面上当场可见**（不是判红，是点名）。
 
-    ⚠ `wrapper`（`src/ipc/commands.ts`）**不算落点** —— 22 条逐条都在它里面，
+    ⚠ `wrapper`（`src/frontend/ui/ipc/commands.ts`）**不算落点** —— 22 条逐条都在它里面，
       它是共用包装层，不是「散在各处的用户入口」。它另有 `§S5e` 专门判。
 
     返回 `(calls, mentions)`：
@@ -942,7 +942,7 @@ def frontend_landing(texts, cmds, wrapper: str):
 def wrapper_entries(text: str, cmds):
     """包装层两侧：TS 键（`  <名>: (`）与线上串（`invoke…("<名>"`）各命中几次。
 
-    形状取自本仓今天 `src/ipc/commands.ts` 的固定写法，逐字两例：
+    形状取自本仓今天 `src/frontend/ui/ipc/commands.ts` 的固定写法，逐字两例：
       `  probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),`
       `  write_skill_file: (args: {…}) =>` ＋ 下一行 `    invoke<void>("write_skill_file", args),`
     ⇒ 键与串**允许不在同一行**，两侧分别数。
@@ -1159,7 +1159,7 @@ def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
     """`§S5e`（`KR128D3`）：**纪律 A 的闸** —— 三份共用文件的命令名。
 
     判两份、明说第三份判不了（逐份理由见 `CLAIMS_NON_COMMAND_SYMBOLS` 上面那段头注）：
-      `R10a` `src/ipc/commands.ts`：22 条逐条要有包装层入口，TS 键与线上串**两侧都在**。
+      `R10a` `src/frontend/ui/ipc/commands.ts`：22 条逐条要有包装层入口，TS 键与线上串**两侧都在**。
       `R10b` `tool_registry.rs`：`claims()` 每个装 / 卸符号要么是真 `#[tauri::command]`，
              要么在明示的非命令名单里。
       `parity_ledger.rs`：**判不了（空真）**，它的闸在 `§S5c`。
@@ -1173,7 +1173,7 @@ def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
     print("  🔴 判的是**命令名集合**，不是文件字节：往这三份里加一条与这 22 条无关的新命令"
           "**不红**（按字节钉的闸三天内就会被人绕过去）。")
 
-    # ① `src/ipc/commands.ts`
+    # ① `src/frontend/ui/ipc/commands.ts`
     if len(texts) < 30:
         print(f"\n  ① `{wrapper}` —— 本档**跳过**（`src` 下只有 {len(texts)} 份 .ts，"
               f"多半是 `--root` 指到了只有 src-tauri 的夹具）。"
@@ -1466,15 +1466,15 @@ def main() -> int:
 
     # ── §S5b 前端落点（切件的写区要按这个切，别手写） ─────────────────────────
     print(head("§S5b 前端落点 —— 每条安装面命令在 `src/**.ts` 里被谁引用"))
-    print("  ⚠ 分母 = `<root>/src` 下的 `.ts`，**排除** `*.vitest.ts` 与 `src/generated/`；"
-          "`src/ipc/commands.ts` 是**共用包装层**（每条都在它里面），单列不重复印。")
+    print("  ⚠ 分母 = `<root>/src` 下的 `.ts`，**排除** `*.vitest.ts` 与 `src/frontend/ui/generated/`；"
+          "`src/frontend/ui/ipc/commands.ts` 是**共用包装层**（每条都在它里面），单列不重复印。")
     ts_root = os.path.join(root, "src")
     # 〔`K-R128` 09-15〕这一段目录遍历抽成了 `collect_ts()` —— **本节输出逐字不变**，
     # 改它只为一件事：让 `§S5c`–`§S5e` 与本节**共用同一份分母**。两处各写一遍 `os.walk`
     # 正是本文件头注点名的「同一件事的第二份表示，而它们会各自漂」。
     texts = collect_ts(root)
     ts_files = list(texts)
-    wrapper = "src/ipc/commands.ts"
+    wrapper = "src/frontend/ui/ipc/commands.ts"
     if len(ts_files) < 30:
         print(f"  （`{ts_root}` 下只有 {len(ts_files)} 份 .ts —— 本节跳过，"
               f"多半是 `--root` 指到了只有 src-tauri 的夹具）")

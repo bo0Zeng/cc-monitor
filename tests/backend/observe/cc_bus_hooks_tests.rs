@@ -382,7 +382,7 @@ fn scratch(tag: &str) -> std::path::PathBuf {
 const HOME_MARK: &str = "/HOME";
 
 /// ★ 成品两侧对拍：一台造好的机器（显式路径那一格在盘上 · 裸命令那一格 `PATH` 上没有）⇒ 整份成品 == 金样。
-/// 金样同时是界面解码器（`src/settings/cc-bus-hooks-section.ts::decodeHooksReport`）的输入。
+/// 金样同时是界面解码器（`src/frontend/ui/settings/cc-bus-hooks-section.ts::decodeHooksReport`）的输入。
 #[test]
 fn the_product_is_the_golden_the_ui_decodes() {
     let home = scratch("golden");

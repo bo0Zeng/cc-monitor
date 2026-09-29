@@ -1,6 +1,6 @@
 //! 〔MIG-1 续 · `设计/99 §2.1 ⑬`〕`tmux-list` 出**成品**：这台机器的 tmux 会话逐行解析好了交出去（原先交原样行、解析住 monitor 的
 //! `parse_tmux_ls`〔散文墓碑〕，界面经 monitor 那两条 Tauri 命令问）。解析规则从 monitor 原样搬来（F74 `@ccm_sid` 字符集 · K-R12 段数上下溢），
-//! 本机远端同一份；界面经 `chan.call(origin, "tmux-list")` 直接问（`src/tmux-reads.ts`）。
+//! 本机远端同一份；界面经 `chan.call(origin, "tmux-list")` 直接问（`src/frontend/ui/tmux-reads.ts`）。
 //!
 //! 与流里那份 tmux 观测**同一趟** `tmux ls -F`（`watcher::list_for_query`：同一段脚本、同一个格式串、同一个四态分类）。
 

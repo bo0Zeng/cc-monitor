@@ -72,7 +72,7 @@ pub(crate) trait Door {
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused>;
     // 〔MIG-3a〕「只删一个空目录」那一形（〔FW1〕`delete_empty_dir`〔散文墓碑〕）随卸 skill 进后端删了：收空目录今天在那台后端里（`assets/skill_flow.rs`）。
     // 〔MIG-3b 续〕改权限那一形（`chmod`，唯一用户是公钥推送）随推送进本机后端删了。
-    // 〔MIG-3b〕`delete_session` 那一问走了：删会话由界面经通道直说那台后端（`src/session-writes.ts`），门不再转交。
+    // 〔MIG-3b〕`delete_session` 那一问走了：删会话由界面经通道直说那台后端（`src/frontend/ui/session-writes.ts`），门不再转交。
     // 〔MIG-3a〕「一个路径在不在」那一形（`stat_kind`〔散文墓碑〕）的用户（别名读回 · cc-bus 装）都进了后端 ⇒ 删。
     // 〔MIG-3a〕「列一个目录」那一形（`list_dir`〔散文墓碑〕）随收件箱进后端删了：列 skill 实例今天在那台后端里（`agents/claudecode/skill_host.rs`）。
 }

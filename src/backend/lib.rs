@@ -264,7 +264,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
 ///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
 ///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
-///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/tmux-control.ts::capturePane` 经通道直接问）。
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/frontend/ui/tmux-control.ts::capturePane` 经通道直接问）。
 ///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧后端上休眠」，
 ///   这一次是**旧后端上那三条还在**，而新 monitor 不再调它们 ——
 ///   真正会出事的是**反向**：一台装着新后端的远端，旧 monitor 仍会去调

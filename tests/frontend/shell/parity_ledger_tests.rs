@@ -36,9 +36,9 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 〔RM1a · 第四波〕两条都收 `origin` ⇒ `Both`：本机读写 monitor 自己那一份，远端交那台机器的后端
     // （`apikey-read` / `apikey-key-set`）。`creds.apikey` 那条平价欠账（「把 key 送到远端的路」）结清。
     // 〔US1 · 第四波 4D〕读那条（`read_apikey_credentials_status`）与 `apikey.routing` 那一条（`apikey_routing_for`）〔散文墓碑〕退役：
-    //   界面经通道直接问那台后端（`apikey-read` / `apikey-routing`，`src/apikey-reads.ts`）。
+    //   界面经通道直接问那台后端（`apikey-read` / `apikey-routing`，`src/frontend/ui/apikey-reads.ts`）。
     // 〔HX2 · 第四波 4D〕写那条（`write_apikey_credentials_key`〔散文墓碑〕）也退役：界面经通道直接发 `apikey-key-set`
-    //   （`src/apikey-reads.ts::writeApikeyKey`）—— 写前核路径那一问由常驻后端的身份（带数据目录）答了。
+    //   （`src/frontend/ui/apikey-reads.ts::writeApikeyKey`）—— 写前核路径那一问由常驻后端的身份（带数据目录）答了。
     // 〔RL1 · 第四波〕这次拉起往 `ANTHROPIC_BASE_URL` 里写哪个中转地址 —— 按 origin 取那台的事实
     // （远端用到才起那台的中转），判断只在 `payload::relay_endpoint_for` 一处 ⇒ `Both`。
     // 它接替了 RM1a 那条只对远端的 `relay_ensure`（零调用方；能力 `relay.machine` 随之退役）。
@@ -95,7 +95,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 〔C4d · 第四波 4B〕`update_history_metadata`（`history.metadata`）· `list_last_accounts`（`accounts.last-used`）两行退役：
     //   注解的读写者换成本机常驻后端（帧命令 `history-annotate` / `history-last-accounts`，界面经通道问 `<local>`）。
     // 〔LOC1b · 第四波 4D〕`search_history`（`search.history`，Both）退役：本机远端的全文搜索都经通道说 `history-search`
-    //   （界面 `src/views/history-search.ts`），不再是 Tauri 命令 ⇒ 能力数 −1（它是这项能力唯一的命令；原本对称 ⇒ 不对称数不动）。
+    //   （界面 `src/frontend/ui/views/history-search.ts`），不再是 Tauri 命令 ⇒ 能力数 −1（它是这项能力唯一的命令；原本对称 ⇒ 不对称数不动）。
     // ⚠ **P3b 复核（08-12）：这条能力两侧都登记着，但实现是 Win32 专属。**
     // `bind.rs` 的 `SetForegroundWindow` / `IsWindow` / `ShowWindow` 全在 `#[cfg(windows)]` 下
     // ⇒ **Linux 上这两条命令都没有实现**（不是坏了，是没写）。
@@ -112,7 +112,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 〔MIG-3b〕钩子诊断本机 / 远端那一对退役：本机远端合成一条帧命令 `hooks-diag`，界面经通道直问那台。
     // 〔C4d · 第四波 4B〕`list_history_projects`（Local）/ `list_remote_history_projects`（Remote）那一对退役 ——
     //   步 12·C 在这里判「不合」的那道设计题（「项目列表的 fan-out 住哪一层」）由主会话 09-25 裁掉了：join 进本机常驻后端
-    //   （`history-projects {origin?}`，一台一问），fan-out 搬到前端（`src/history-reads.ts::fetchRemoteProjects`，
+    //   （`history-projects {origin?}`，一台一问），fan-out 搬到前端（`src/frontend/ui/history-reads.ts::fetchRemoteProjects`，
     //   `failedHosts` / TTL 缓存的语义原样）。两条 Tauri 命令都没了 ⇒ 能力 `history.list-projects` 在本表里不再有行。
     // 🔴 **〔步 12·C 2026-09-20〕下面这五行是「一条命令自己办两侧」，不是「两条命令各办一侧」。**
     //
@@ -123,15 +123,15 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 「同一件事有几条路」。两者别混着读。
     // 〔C4d · 第四波 4B〕`stream_history_sessions_in_project`（`history.list-sessions`）退役：本机常驻后端 `history-sessions` 出成品。
     // 〔MOD · `05 §14.3` C 组〕`history.read-session` 那三条（整份读 · 按偏移 · 按行号）退役：那台后端出记录行，界面经通道直问
-    //   （`history-page` / `history-lines`，`src/record-reads.ts`）⇒ 能力 `history.read-session` 从此不再有 Tauri 命令
+    //   （`history-page` / `history-lines`，`src/frontend/ui/record-reads.ts`）⇒ 能力 `history.read-session` 从此不再有 Tauri 命令
     //   （同 `plugins.marketplaces` 那一先例：今天是通道操作，本机与远端同一条路）。
     // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点 —— 按偏移取一段正文。
     // 归**已有**能力 `history.read-session`：读的是同一份会话 jsonl，两侧都走 `subagent::Backend` ⇒ `Both`。
     // 〔C4b · 第四波 4B〕同能力的另三条（骨架索引 · 大纲清单 · 会话内查找）**退役**：界面经通道直接说帧命令
-    //   `history-index` / `history-user-inputs` / `history-find`（后端出成品，`src/session-reads.ts`），
+    //   `history-index` / `history-user-inputs` / `history-find`（后端出成品，`src/frontend/ui/session-reads.ts`），
     //   本机与远端同一条路 ⇒ 它们不再是 Tauri 命令；能力数与不对称数都不动（本能力照旧 `{Both}`）。
     // 〔CF2 · 第四波 4B〕按行号取一段正文（不依赖骨架索引）：本机 `<local>` 与远端同一条帧命令 `history-lines`。
-    // 〔MIG-3b〕删会话那一行退役：界面经通道直说那台后端 `files-delete-session`（`src/session-writes.ts`）。
+    // 〔MIG-3b〕删会话那一行退役：界面经通道直说那台后端 `files-delete-session`（`src/frontend/ui/session-writes.ts`）。
     // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp.read` · `mcp.list-project-dirs` · `mcp.write` · `mcp.remove`）与推 / 拉（`mcp.sync`）
     //   八条退役：界面经通道直问那台后端（`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`），
     //   本机远端同一条路 ⇒ 它们不再是 Tauri 命令；那几格能力都是对称的 ⇒ 不对称数不动。
@@ -140,7 +140,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //   monitor 只剩「在本机开一个终端窗口跑这串」（下面 `open_local_terminal`）。能力 `session.launch` 仍两侧各一条。
     ("open_local_terminal", "session.launch", Side::Local),
     // 〔C4c · 第四波 4B〕U4b 那一行（resume 之前问记录还在不在，`Both`）退役：界面经通道直接问后端 `history-record`
-    //   （`src/session-reads.ts::probeSessionRecord`）。能力 `history.read-session` 还有别的命令 ⇒ 能力数与不对称数都不动。
+    //   （`src/frontend/ui/session-reads.ts::probeSessionRecord`）。能力 `history.read-session` 还有别的命令 ⇒ 能力数与不对称数都不动。
     // 〔FIX4 · `99 §2.1 ⑬`〕`launch_remote_terminal`〔散文墓碑〕退役：ssh 外壳由本机后端 `terminal-ssh` 渲。monitor 剩两条：
     //   交开终端那一问的机器事实（只远端有 —— 本机那一支不经 ssh，原串直接开窗）⇒ 归 `session.launch` 的远端那一侧，
     //   与本机那一侧 `open_local_terminal` 配成一对（能力照旧两侧都有）；
@@ -179,7 +179,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 不对称理由已从 `ASYMMETRY_REASONS` 删除——留着就是宣称一条已经补上的欠账）。
     // 〔步 12·C 2026-09-20〕**两条并成一条**（上面那五行的第五条）——
     // 被并掉的那条命令自己的头注逐字写着「差异今天只剩一处：活儿在远端干」。
-    // 〔MIG-3b〕分叉那一行退役：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
+    // 〔MIG-3b〕分叉那一行退役：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
     // 〔RM1f · V108 后半句〕本机那十七条进程内全景命令（`panorama_index` … `panorama_diagram`，per-repo 引擎池）
     //   随 monitor 摘掉内嵌引擎一起退役：本机远端同一条 `panorama_call`（见下，翻 `Both`）。
     // 〔RM1c · 第四波〕远端仓的全景（V108 选 B）：按 origin 问那台机器的后端 `panorama`（经插件口起独立小程序）。
@@ -235,7 +235,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     //
     // ⇒ 这条不是「改个分类」，是**这条能力真的两侧都有了**。
     // 〔C4e · 第四波 4C〕`backend_send_into`〔散文墓碑〕（Both，能力 `launch.send-into` 的唯一命令）退役：就地 resume 那一次键入
-    //   改由界面经通道直接说后端的 `launch{mode:"send-into"}`（`src/tmux-control.ts::sendInto`），不是 Tauri 命令、不进本表 ⇒
+    //   改由界面经通道直接说后端的 `launch{mode:"send-into"}`（`src/frontend/ui/tmux-control.ts::sendInto`），不是 Tauri 命令、不进本表 ⇒
     //   能力 `launch.send-into` 随之从本表没了（它原本对称，不对称数不动）。
     // 〔MIG-2 · `99 §2.1 ⑬`〕`render_ccm_launch` · `render_local_attach` · `render_launch_payload`〔散文墓碑〕三条退役：起会话的渲染进了
     //   那台后端（帧命令 `launch-render-cli` · `launch-render-payload` · `launch-local` 的接回那一格），本机远端同一条 `chan.call(origin, …)`
@@ -300,15 +300,15 @@ const LEDGER: &[(&str, &str, Side)] = &[
     // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话那两条（远端 `tmux.manage` · 本机 `tmux.local-census`，§40 九对合并「第 10 对」那一注记）出表：
     //   那台后端的 `tmux-list` 出成品、界面经通道直问，本机远端同一条路 —— 通道上的问法不是 Tauri 命令、不进本表（同上面抓屏 / 杀会话 / 送键）。
     // 〔C4e · 第四波 4C〕抓屏那一条（`capture_remote_pane`〔散文墓碑〕，Remote）退役：界面经通道直接问那台机器的后端
-    //   （`src/tmux-control.ts::capturePane`，`capture-pane`），本机与远端同一条路；通道上的问法不是 Tauri 命令、不进本表。
+    //   （`src/frontend/ui/tmux-control.ts::capturePane`，`capture-pane`），本机与远端同一条路；通道上的问法不是 Tauri 命令、不进本表。
     // 〔C4e · 第四波 4C〕杀会话 / 送键两条（`kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕，Remote）退役：界面经通道直接说
-    //   后端的 `kill` / `launch`（`src/tmux-control.ts::killSession` / `sendKeys`），本机与远端同一条路 ——
+    //   后端的 `kill` / `launch`（`src/frontend/ui/tmux-control.ts::killSession` / `sendKeys`），本机与远端同一条路 ——
     //   `FRAME_PLANE_VERDICTS` 里那两行「`Side` 栏欠一次订正」的账随命令一起结了（不是翻了 `Side`）。
     // P4a（08-12）：读面三条**已经支持本机**（同一条命令串，只是不包进 ssh）⇒ 转 Both。
     // 〔SH1 · V136〕`read_cc_bus_state` / `read_cc_bus_inbox` 两条 Both 退役：驾驶舱读面改由界面经通道问后端 `bus-state` / `bus-inbox`。
     // 〔C4e · 第四波 4C〕写面四条与查在线那一条（`check_cc_bus_agent_online` · `cc_bus_send` · `cc_bus_spawn` ·
     //   `cc_bus_broadcast` · `cc_bus_kill`〔散文墓碑〕）退役：界面经通道直接说那台机器后端的 `bus-list` / `bus-send` /
-    //   `bus-spawn` / `bus-broadcast` / `bus-kill`（`src/cc-bus-control.ts`），本机与远端同一条路；通道上的问法不是 Tauri 命令、
+    //   `bus-spawn` / `bus-broadcast` / `bus-kill`（`src/frontend/ui/cc-bus-control.ts`），本机与远端同一条路；通道上的问法不是 Tauri 命令、
     //   不进本表。`FRAME_PLANE_VERDICTS` 里 spawn / broadcast / kill 三行「`Side` 栏欠一次订正」的账随命令一起结了（不是翻了 `Side`）；
     //   这项能力剩下读面两条（都 `Both`）⇒ 它不再不对称，`ASYMMETRY_REASONS` 那一行一并摘了。
 ];
@@ -328,7 +328,7 @@ const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
     // 〔RM1a · 第四波〕`audit.config-surface` 那一行（`ParityDebt`：「本地能答、远端答不出，本页明写不连 SSH」）**结清、删掉**：
     //   远端那一栏由那台机器的后端答路径事实（`footprint-probe`），用户裁「补后端读口，远端也有真栏」。
     // 〔C4e · 第四波 4C〕`cc-bus.cockpit` 那一行（`ParityDebt`，三次订正过的「写面欠本机那一侧」）**结清、删掉**：
-    //   写面五条都改由界面经通道直接说那台机器的后端（本机与远端同一条路，`src/cc-bus-control.ts`），monitor 那几条命令退役；
+    //   写面五条都改由界面经通道直接说那台机器的后端（本机与远端同一条路，`src/frontend/ui/cc-bus-control.ts`），monitor 那几条命令退役；
     //   这项能力在 `LEDGER` 里只剩读面两条，都是 `Both` ⇒ 不再不对称。
     // 〔AL2 · 第四波 4D〕`alias.block-preview` 那一行删：六条 `aliases_*` 都 `Both` 了（`71 §8 #6` 裁了、做了）。
     ("backend.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 backend**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** backend（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有本机后端就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要后端」。"),
@@ -1165,11 +1165,11 @@ const FRAME_PLANE_ANYWHERE: &[&str] = &[
 /// ⇒ **登记成欠账，归后续一件**；本条保证的是**它从此不会静默**。
 const FRAME_PLANE_VERDICTS: &[(&str, FrameVerdict, &str)] = &[
     // 〔C4e · 第四波 4C〕抓屏那一行（`capture_remote_pane`〔散文墓碑〕）的欠账**随命令一起结了**，不是翻了 `Side`：
-    //   界面经通道直接问那台机器的后端（`src/tmux-control.ts::capturePane`），本机与远端同一条路，
+    //   界面经通道直接问那台机器的后端（`src/frontend/ui/tmux-control.ts::capturePane`），本机与远端同一条路，
     //   通道上的问法不是 Tauri 命令、不在 `Side` 这一栏里。
     // 〔C4e · 第四波 4C〕`kill_remote_tmux` / `tmux_send_keys` 两行（`〔散文墓碑〕`）同上一块：欠的那次 `Side` 订正随命令一起结了。
     // 〔C4e · 第四波 4C〕cc-bus 那三行（`cc_bus_broadcast` / `cc_bus_kill` / `cc_bus_spawn`〔散文墓碑〕）同上：欠的那次 `Side` 订正
-    //   随命令一起结了（界面经通道直接说后端的 `bus-*`，`src/cc-bus-control.ts`）。**本表今天是空的** —— 那不是「大家都改好了」，
+    //   随命令一起结了（界面经通道直接说后端的 `bus-*`，`src/frontend/ui/cc-bus-control.ts`）。**本表今天是空的** —— 那不是「大家都改好了」，
     //   是这一族候选的命令全部退役；机制照留：哪天再有一条 `Side::Remote` 命令改走 origin 无关的帧面派发，候选集 ≠ 本表 ⇒ 红。
 ];
 

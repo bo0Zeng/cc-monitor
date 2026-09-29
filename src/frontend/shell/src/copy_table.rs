@@ -1,4 +1,4 @@
-//! 〔DP1 · 第四波〕**对外文案表的 Rust 读口** —— 与前端 `src/copy-table.ts::copyText` 读的是同一份
+//! 〔DP1 · 第四波〕**对外文案表的 Rust 读口** —— 与前端 `src/frontend/ui/copy-table.ts::copyText` 读的是同一份
 //! `src/shared/copy/table.json`（`设计/91 §5.1.1`：在表里 = 对外，不在表里 = 不对外，没有第三种）。
 //!
 //! 要求住址：`设计/01 §6.9`「所有对外文案与报错都从一张表来（结构化的 key → 文本，插值点留在表里）」。

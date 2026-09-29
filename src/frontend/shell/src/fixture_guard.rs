@@ -26,7 +26,7 @@
 //! - 它的**活引用 10 处 / 5 份文件**，全是 `.ts`（四套秤的 vitest ＋ 一份共用语料构造器）；
 //! - 全仓搜「孤儿 / 未引用」这一族的判据：**零命中**（不截断的 `grep`，
 //!   `.rs` / `.ts` / `.sh` 三族都搜过）。唯一提到这个目录的守卫是
-//!   `tests/settings/base-wording-guard.vitest.ts`，而它是**把这个目录跳过**的。
+//!   `tests/frontend/ui/settings/base-wording-guard.vitest.ts`，而它是**把这个目录跳过**的。
 //! - 死值验：`tests/__fixtures__/` 下放一份零引用的 `.jsonl`
 //!   ⇒ `cargo test -p monitor --lib` **1753 passed / 0 failed**，一格没红。
 //!

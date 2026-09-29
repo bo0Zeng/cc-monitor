@@ -5,7 +5,7 @@
  * 读 `/tmp/scale2-height-truth/result-{chromium,webkitgtk}.json`（探针的原始读数），
  * ① 打印按 card class 分桶的相对误差分布（p50/p90/max，两个口径）；
  * ② 把 Chromium 那一份**真高**固化成 `tests/evidence/U-scale2-truth-golden.json`，
- *    供 `tests/scale2-height-truth.vitest.ts` 当门禁语料。
+ *    供 `tests/frontend/ui/scale2-height-truth.vitest.ts` 当门禁语料。
  *
  * # 为什么金标准只存"真高"、不存"估值当判据"
  *

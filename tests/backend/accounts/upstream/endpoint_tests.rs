@@ -261,7 +261,7 @@ fn us1_the_routing_answer_is_the_routed_dirs_and_the_probe() {
 }
 
 /// ★★ 跨语言金样：三条成品（`apikey-read` · `apikey-routing` · `launch-endpoint`）对同一份夹具 ==
-/// `tests/__fixtures__/apikey.golden.json`（夹具根替换成 `<root>`）。另一个读者是 TS 解码器（`tests/apikey-reads.vitest.ts`）
+/// `tests/__fixtures__/apikey.golden.json`（夹具根替换成 `<root>`）。另一个读者是 TS 解码器（`tests/frontend/ui/apikey-reads.vitest.ts`）
 /// ⇒ 两侧异源：后端改一个键名本条红，TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 /// 守的要求：`设计/05 §14.3`「线上形状由一份跨语言金样钉住（后端测试产出 == 金样 · TS 解码器读同一份）」。
 #[test]

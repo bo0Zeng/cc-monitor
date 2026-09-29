@@ -95,15 +95,15 @@
 ### 设置面板（,）
 
 **三页 + 机器详情子页**（落地在「机器」页）。
-⚠ **每页有哪些块、共几块，家在 `tests/settings/panel-groups.vitest.ts`**
+⚠ **每页有哪些块、共几块，家在 `tests/frontend/ui/settings/panel-groups.vitest.ts`**
 —— 那里是逐页完整清单（机检，用完整相等断言，搬丢一块会红）。
 本节**刻意不复制那份清单**：它此前按「N 大折叠分组」逐条列出，而那套 IA 在 v3.5.0 重做后
 已不存在，「数据源 & 集成」里的 MCP 管理也早已搬去机器详情页 —— 一份没人看着的结构描述
 就是这个下场。
 
 - **应用**：行为（自动跟随切 Tab、是否拉前 monitor 窗口）· 快捷键（编辑器里自定义 action 的 chord，
-  **可用 action 数以 `src/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
-  **几个以 `src/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.claude/work/config.json`）·
+  **可用 action 数以 `src/frontend/ui/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
+  **几个以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.claude/work/config.json`）·
   日志与数据（Claude 数据目录三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`；tracing 等级 toggle +
   log 路径 + 所有持久化路径透明展示）
 - **机器**：机器列表；每台机器的详情子页里是连接、**PowerShell `__ccm_bind` 一键装**、
@@ -298,7 +298,7 @@ cc-monitor/
 ├── src/backend/            后端本体（Rust，独立 Cargo 工程；本机与远端同一份）
 ├── src/doc/                架构 + 协议 + 不变量等深度文档
 ├── src/shared/             跨端共享的脚本与片段（cc-bus/ · ccm-aliases.sh）
-├── src/generated/          ts-rs 从 Rust 类型导出的 .ts（**生成物，别手改**）
+├── src/frontend/ui/generated/          ts-rs 从 Rust 类型导出的 .ts（**生成物，别手改**）
 │
 ├── tests/                  🔴 **全部测试都在这儿**（顶层只有 src/ 与 tests/ 两个文件夹）
 │   ├── backend/            后端那半的测试（含原先混在生产文件里的那 19 份）

@@ -428,7 +428,7 @@ fn bus_ids_are_judged_here_before_they_reach_cc_bus() {
     ] {
         assert!(parse_send(&bad).is_err(), "形状不对却放行了：{bad:?}");
     }
-    // 「规则只有一份、后端入口用的就是共享那一个」由 `tests/judgment-single-home.vitest.ts` 的 J12 行钉（`rustNeedles`）。
+    // 「规则只有一份、后端入口用的就是共享那一个」由 `tests/frontend/ui/judgment-single-home.vitest.ts` 的 J12 行钉（`rustNeedles`）。
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -579,7 +579,7 @@ fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
 ///
 /// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。查在线 · 发消息 · 收掉 · 派生 · 广播五件从这一拍起由界面经通道直接说
-/// （`src/cc-bus-control.ts`），monitor 那一跳只搬字节。
+/// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
 /// 各格异源：请求样例过**生产**解析器（`parse_send` / `parse_kill` / `parse_spawn` / `parse_broadcast`）·
 /// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `join_identity` 现算 —— 〔FIX · ㊷〕与 `bus-state` 同一个解析器；

@@ -715,12 +715,12 @@ fn each_registered_status_still_matches_reality() {
                 "ccm 调用行内核在后端 `control/launch_render/ccm_invocation.rs`",
             ),
             "production-ts-calls-the-rust-renderers" => (
-                // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/launch-render.ts` 问。
-                read("src/launch-render.ts").contains("chan.call(origin, \"launch-render-cli\"")
-                    && read("src/launch-render.ts")
+                // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/frontend/ui/launch-render.ts` 问。
+                read("src/frontend/ui/launch-render.ts").contains("chan.call(origin, \"launch-render-cli\"")
+                    && read("src/frontend/ui/launch-render.ts")
                         .contains("chan.call(origin, \"launch-render-payload\"")
-                    && read("src/remote-launch-run.ts").contains("renderCli(")
-                    && read("src/remote-launch-run.ts").contains("renderPayload("),
+                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderCli(")
+                    && read("src/frontend/ui/remote-launch-run.ts").contains("renderPayload("),
                 "生产 TS 主路在问那台后端的两条渲染帧命令",
             ),
             // 「待做」那一格：**反向**量法 —— TS 渲染器还在，就说明确实还没删。
@@ -933,7 +933,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
         // 〔LR2 2026-09-25〕下面四条：`INVARIANTS.md` §33b 的沿革段逐字点着它们 —— 它们是 TS 兜底一族的
         //   「存续理由」判据与两把尺子，随那一族（`launch-render-fallback.ts` · `session-backend.ts` · 五个 builder）
         //   按 `设计/00 §2.5 ④` 删了。那几句是「那一族当年靠什么站着」的解释，改写会丢线索（同 `build_usage_probe_cmd`）；
-        //   「那一族长回来」由 `tests/launch-no-shell-in-ts.vitest.ts` 挡着。
+        //   「那一族长回来」由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 挡着。
         (
             "the_ts_fallback_renderer_now_stands_on_its_own_consumers",
             "〔LR2〕历史句：TS 兜底渲染器的「存续理由」判据，那一族删了",
@@ -1207,14 +1207,14 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
         ),
         (
             "tests/session-backend-gate.vitest.ts",
-            "**历史句**〔LR2〕：`§31` 第①条的旧机检，已由 `tests/launch-no-shell-in-ts.vitest.ts` 接替",
+            "**历史句**〔LR2〕：`§31` 第①条的旧机检，已由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 接替",
         ),
         (
             "tests/session-backend.test.ts",
-            "**历史句**〔LR2〕：座的套件，已删（与座无关的两条搬进 `tests/remote-launch.test.ts`）",
+            "**历史句**〔LR2〕：座的套件，已删（与座无关的两条搬进 `tests/frontend/ui/remote-launch.test.ts`）",
         ),
         (
-            "src/cards/memory-recall.ts",
+            "src/frontend/ui/cards/memory-recall.ts",
             "**示例占位**：原文是「通常新建 `…`」，教人照着建一个，本就不指向现存文件",
         ),
         (

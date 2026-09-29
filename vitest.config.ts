@@ -5,11 +5,11 @@ import { defineConfig } from "vitest/config";
 // 由 `tsx tests/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
 // `<name>.vitest.ts` 即自动纳入。
 // ── 🔴 显示时区与 locale 钉死在这里（09-19）────────────────────────────────────
-// 起因：断网沙箱里 `tests/scale2-height-truth.vitest.ts` 红，而宿主上它绿 —— 同一个提交、
+// 起因：断网沙箱里 `tests/frontend/ui/scale2-height-truth.vitest.ts` 红，而宿主上它绿 —— 同一个提交、
 // 同一份 node_modules。现打差异只有两条：宿主 `TZ=America/Los_Angeles` / `zh-CN`，
 // 容器 `TZ=UTC` / `en-US`。
 //
-// 🔴 **秤 2 的语料 94 张卡全部带时间戳**，渲染走 `src/format.ts` 的
+// 🔴 **秤 2 的语料 94 张卡全部带时间戳**，渲染走 `src/frontend/ui/format.ts` 的
 // `toLocaleTimeString([], …)` —— `[]` 就是「跟这台机器走」。于是：
 //   · 宿主渲染出 `05:34`（12:34 UTC 换成 PDT）
 //   · 容器渲染出 `12:34 PM`
@@ -22,7 +22,7 @@ import { defineConfig } from "vitest/config";
 //
 // 🔴 **这两个值必须与金标准那一趟一致**（`tests/evidence/U-scale2-truth-golden.json`
 //   的 `env` 戳）。改任何一个 ⇒ 金标准作废，要重打：`bash tests/evidence/U-scale2-run.sh`。
-//   `tests/scale2-height-truth.vitest.ts` 有一条判据逐字对拍这件事，改了不重打会当场红。
+//   `tests/frontend/ui/scale2-height-truth.vitest.ts` 有一条判据逐字对拍这件事，改了不重打会当场红。
 // ⚠ 在 `defineConfig` 之外、模块顶层设 —— worker 是**新进程**，从这里继承 env；
 //   放进 `test.env` 太晚（ICU 的默认 locale 在进程启动时就定了）。
 process.env.TZ = "America/Los_Angeles";

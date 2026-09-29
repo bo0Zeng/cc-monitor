@@ -1,5 +1,5 @@
 //! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema —— **这些类型就是界面收到的记录的线上形状**
-//! （ts-rs 从这里导出 `src/generated/`）。〔MOD · `设计/90 §3` 判据 3〕它从 monitor 的 `messages.rs` 搬进来：
+//! （ts-rs 从这里导出 `src/frontend/ui/generated/`）。〔MOD · `设计/90 §3` 判据 3〕它从 monitor 的 `messages.rs` 搬进来：
 //! 记录解释只住后端，monitor 只把成品原样转交（`15 §5.3 C7`）。
 //!
 //! `JsonlRecord` enum 按 `type` 字段反序列化（user / assistant / system / summary /
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct UserText {
     /// 剥完、trim 过的真内容；空 = 整条都是注入噪声（不建卡）。
     pub clean: String,
@@ -61,7 +61,7 @@ impl JsonlRecord {
 /// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ForkedFrom {
     #[serde(rename = "sessionId")]
     pub session_id: String,
@@ -71,7 +71,7 @@ pub struct ForkedFrom {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "type")]
 pub enum JsonlRecord {
     #[serde(rename = "user")]
@@ -296,7 +296,7 @@ pub enum JsonlRecord {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ApiMessage {
     pub role: String,
     // 同上：`unknown` 逼前端先做形状判断（`cards/index.ts` 的 `ContentBlock` 就是那层解释模型）。
@@ -319,7 +319,7 @@ pub struct ApiMessage {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct Usage {
     #[serde(default)]
     pub input_tokens: u32,
@@ -332,7 +332,7 @@ pub struct Usage {
 }
 
 /// ApiMessage.content 的强类型 schema（仅作文档参考）。当前 monitor 反序列化
-/// `content` 为 `serde_json::Value`，TS 端做形状判断（详 `src/cards/index.ts`）。
+/// `content` 为 `serde_json::Value`，TS 端做形状判断（详 `src/frontend/ui/cards/index.ts`）。
 /// 保留此类型供后续做 Rust 端 typed parsing 时使用，无外部调用方。
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, Clone)]

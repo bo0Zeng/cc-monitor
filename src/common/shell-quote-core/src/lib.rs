@@ -30,7 +30,7 @@
 //! # 名字（P4c）
 //!
 //! **P4b 之前它叫 `launch-core`** —— 那时它持有决策内核，名字还说得过去。缩到只剩 quote 之后
-//! 那个名字就成了说谎，P4c 改成 `shell-quote-core`：与 TS `src/shell-quote.ts`、
+//! 那个名字就成了说谎，P4c 改成 `shell-quote-core`：与 TS `src/frontend/ui/shell-quote.ts`、
 //! `shared/ccm::sq` 同族，**一眼看出这三份是同一件事**（跨语言那两份由黄金串夹具对拍）。
 //! ⚠ 计划文档（`.claude/planned-build/`）里的 `launch-core` 是当时的实况，刻意没改。
 
@@ -61,7 +61,7 @@ pub fn posix_free_path_ok(p: &str) -> bool {
 // 〔DUP1 · `INVARIANTS §47` ①〕**标识符类**的放行判定：闭集白名单 ＋ 不许 `-` 开头 ＋ 钉上界。
 //
 // 与上面 ② 自由文本那一层、下面唯一的 quote 同住（TL3 的先例：判定与 quote 同住）。
-// 每一条都是**全仓唯一的一份**（`设计/01 §5` D1；登记表 `tests/judgment-single-home.vitest.ts`）：
+// 每一条都是**全仓唯一的一份**（`设计/01 §5` D1；登记表 `tests/frontend/ui/judgment-single-home.vitest.ts`）：
 // 前端不判（线上校验交后端判，`设计/90 §3` 判据 2），monitor 渲染 · 后端 ccm 都调这里。
 // 首字符一律要 ASCII 字母数字：`-` 开头会被下游当选项解析（`--model -x` · `resume --x`），quote 挡不住。
 // ═══════════════════════════════════════════════════════════════════════════
@@ -103,7 +103,7 @@ pub fn model_name_ok(s: &str) -> bool {
 pub const ACCOUNT_NAME_MAX: usize = 32;
 
 /// 账号名在字母数字之外还放行的字符（首字符除外）。〔DUP2〕单独提成常量：新建账号表单要在写入点先说一句，
-/// 规则从这里现生成到 `src/generated/judgment-rules.ts`（不手抄）。
+/// 规则从这里现生成到 `src/frontend/ui/generated/judgment-rules.ts`（不手抄）。
 pub const ACCOUNT_NAME_EXTRA: &str = "_-";
 
 /// **账号名**（`--account <名>`）：1..=[`ACCOUNT_NAME_MAX`] 位 · 首字符 ASCII 字母数字 · 其余字母数字或 [`ACCOUNT_NAME_EXTRA`]。
@@ -138,7 +138,7 @@ pub fn bus_id_ok(s: &str) -> bool {
 /// 核过是**同一个令牌**：写侧 monitor 渲 `export CCM_RBIND_TOKEN=<令牌>`（`payload.rs`）、拉起时按它登记窗口（`launch.rs` 握手前奏）；
 /// 读侧后端从 `/proc/<pid>/environ` 读**同一个变量**（`identity_tag.rs::rbind_token_of`）。两半都要 ⇒ 共享 crate；
 /// 形状是闭集字母表 ＋ 定长 = `INVARIANTS §47` ① 标识符那一形 ⇒ 与 sid / 模型名 / 账号名 / bus id 同住。
-/// 前端铸币口按 [`RBIND_TOKEN_ALPHABET`] × 本常量**造**令牌（两个值由 monitor 现生成进 `src/generated/judgment-rules.ts`）。
+/// 前端铸币口按 [`RBIND_TOKEN_ALPHABET`] × 本常量**造**令牌（两个值由 monitor 现生成进 `src/frontend/ui/generated/judgment-rules.ts`）。
 pub const RBIND_TOKEN_LEN: usize = 32;
 
 /// 启动期令牌的字母表 —— **小写**十六进制（大写 `A`–`F` 刻意不在里面，见 [`rbind_token_ok`]）。

@@ -16,8 +16,8 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLaunchRenderRequest } from "../../src/remote-launch-run.ts";
-import type { LaunchPlan } from "../../src/launch-types.ts";
+import { buildLaunchRenderRequest } from "../../src/frontend/ui/remote-launch-run.ts";
+import type { LaunchPlan } from "../../src/frontend/ui/launch-types.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 

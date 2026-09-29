@@ -2,7 +2,7 @@
   "说明": [
     "〔PB1 · 设计/90 §4 阶段 B · 设计/05 §14.3〕设置页「健康」那一格的成品（backend_status 的 health）的跨语言金样。",
     "Rust：tests/frontend/shell/backend_policy_tests.rs 按 counts / lastBrief 造读数，喂生产的 backend_policy::health_face，序列化后与 face 逐格相等。",
-    "TS：tests/settings/backend-section.vitest.ts 读同一份，face 逐档喂解码器、画进 DOM。",
+    "TS：tests/frontend/ui/settings/backend-section.vitest.ts 读同一份，face 逐档喂解码器、画进 DOM。",
     "改了那几句文案 ⇒ Rust 那条先红（它会印出现产的成品），照印出来的改这里。counts 是结构夹具，不取自任何真机读数。"
   ],
   "cases": [

@@ -1082,7 +1082,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
     },
     // 〔C4e · 第四波 4C〕广播：列名单（同 `bus-list` 那一个函数）→ 挑在线的 → 逐个投递（同 `bus-send` 那一处起进程）。
-    //   原是 monitor 里的组合；界面改经通道直接说后端（`src/cc-bus-control.ts`），组合收进这一侧（业务解释只有一个家）。
+    //   原是 monitor 里的组合；界面改经通道直接说后端（`src/frontend/ui/cc-bus-control.ts`），组合收进这一侧（业务解释只有一个家）。
     //   起子进程并等它们退出 ⇒ 阻塞档，同下面几条。部分投递失败**不整条回错**（成品里逐个列），
     //   只有「一条都还没发」的那一步（列名单）失败才回码。
     CommandSpec {

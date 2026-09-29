@@ -109,7 +109,7 @@ fn the_sentinel_agrees_with_the_two_existing_homes() {
          而分叉的后果**不报错**：它只是查不到那个 origin，然后静默当成「没有这台机器」。"
     );
     // TS 那一处
-    let ts = include_str!("../../../src/backend-policy.ts");
+    let ts = include_str!("../../../src/frontend/ui/backend-policy.ts");
     let needle = "export const LOCAL_ORIGIN = ";
     let n = ts.matches(needle).count();
     assert_eq!(

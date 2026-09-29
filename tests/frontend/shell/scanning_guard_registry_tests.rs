@@ -296,7 +296,7 @@ fn test_regions(src: &str) -> String {
 /// 1. **「自检重建了扫描面副本」是不是缺陷** —— 不是。`polling_registry` 与
 ///    `session_name_registry` 的自检确实各自又走了一遍遍历器，但
 ///    ① 把 `scan()` 的根整个打瞎 ⇒ 棘轮的**反向那半**当场红
-///    （逐字「登记表里的 `src/session-accounts-poll.ts` 已经没有周期唤醒了」）；
+///    （逐字「登记表里的 `src/frontend/ui/session-accounts-poll.ts` 已经没有周期唤醒了」）；
 ///    ② 局部缩水（静默跳过一个子目录）⇒ 自检的地板红（`118 < 170`），
 ///    因为自检与 `scan()` **共用同一个 walker 函数**，函数体坏了两边一起坏。
 /// 2. **是不是有登记表只做单向对拍** —— 没有。六个登记表逐个变异验过，

@@ -42,7 +42,7 @@ pub const OVERFLOW_KEY: &str = "<overflow>";
 /// monitor 天生观测的两个「降级点」（〔MOD〕记录那两面随解析进了后端：`agents/claudecode/drift.rs`，帧命令 `drift-report`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum DriftFace {
     /// `sessions/<PID>.json` 里未登记的 `kind`（排他白名单：非 `interactive` 一律当 bg）。
@@ -68,7 +68,7 @@ impl DriftFace {
 /// 一个键的记账。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct DriftEntry {
     /// 看不懂的那个值（记录 type / kind / status / token）。
     pub key: String,
@@ -85,7 +85,7 @@ pub struct DriftEntry {
 /// 一个面的快照。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct DriftFaceReport {
     pub face: DriftFace,
     /// 这个面「看不懂时会发生什么」（`DriftFace::consequence`）。
@@ -99,7 +99,7 @@ pub struct DriftFaceReport {
 /// 〔ST3〕读口的回包：**带回它答的是哪台**（界面按回声判，同足迹那一格）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct DriftLedgerReport {
     /// 这份账是哪台机器的（本机 `"<local>"`、远端那台的名字）。
     pub origin: crate::origin::Origin,

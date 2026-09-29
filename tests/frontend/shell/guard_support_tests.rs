@@ -25,7 +25,7 @@ fn every_address_points_at_something_we_can_name() {
         (
             "repo_src_root",
             repo_src_root(),
-            &["main.ts", "backend", "frontend"][..],
+            &["README.md", "backend", "frontend"][..], // 〔RE〕前端 TS 搬进 `frontend/ui/`，`src/` 根下只剩 README 与各层目录
         ),
         ("tests_root", tests_root(), &["backend", "e2e"][..]),
         (

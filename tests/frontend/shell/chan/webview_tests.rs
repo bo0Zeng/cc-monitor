@@ -337,7 +337,7 @@ fn a_body_that_is_not_utf8_becomes_broken_not_lossy() {
 /// 那一收拢 == TS `ipc/chan-caller.ts::provablyNotSent`，跨语言金样 `tests/__fixtures__/reach-collapse.golden.json`。
 ///
 /// 守的要求：`设计/05 §4.5.2`（面 A「连不上时怎么办」）与 `backend_route` 头注那条分界线逐字
-/// 「**能不能证明这条命令根本没发出去**」—— 就地 resume 迁到界面之后（`src/tmux-control.ts::sendInto`），
+/// 「**能不能证明这条命令根本没发出去**」—— 就地 resume 迁到界面之后（`src/frontend/ui/tmux-control.ts::sendInto`），
 /// 同一条规则在 TS 那一侧有了第二份（它读的是 webview 这一跳上线后的分层错误，不是 inbound 的枚举）。
 /// 两份一漂，后果就是 F14 记的那一形：一次「后端已键入但应答超时」被判成可回落 ⇒ 载荷第二次键入正在跑的 claude。
 ///
@@ -403,7 +403,7 @@ fn the_fallback_rule_equals_the_golden_file_the_ts_side_judges() {
         serde_json::Value::Array(rows),
         golden["rows"],
         "Rust 那条「能不能回落」的收拢与金样对不上 —— TS 那侧（`provablyNotSent`）按金样判，两份会各说各的。\n\
-         真改了规则就重打金样，并同拍改 `src/ipc/chan-caller.ts::provablyNotSent`"
+         真改了规则就重打金样，并同拍改 `src/frontend/ui/ipc/chan-caller.ts::provablyNotSent`"
     );
 }
 

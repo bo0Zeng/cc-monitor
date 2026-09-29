@@ -32,7 +32,7 @@
 //!    **POSIX** 服务端上量的）；
 //! 3. **本仓没有任何一处回读权限**：部署的读回比对（〔SR1b〕后端算事实、monitor 的 `sftp.rs::verify_readback` 判）
 //!    三条分支逐字只比**字节与长度**（从前那一份叫 `verify_uploaded_bytes`〔散文墓碑〕）。
-//!    再加一条：全仓唯一那条 OS 判定 `src/settings/host-os.ts` 头注逐字说它量的是
+//!    再加一条：全仓唯一那条 OS 判定 `src/frontend/ui/settings/host-os.ts` 头注逐字说它量的是
 //!    **monitor 自己**跑在哪个 OS 上，**不是远端** ⇒ 代码里根本没有「对面是什么 OS」这个量。
 //!
 //! ⇒ 结论：**机密性只能由「真正拿着那份文件的那台机器」自己检查**（这就是 [`perm`] 存在的理由），

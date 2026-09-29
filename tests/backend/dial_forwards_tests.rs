@@ -159,7 +159,7 @@ async fn a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link() {
         }
         tokio::task::yield_now().await;
     }
-    // 跨语言金样：界面那一侧（`src/port-forward-reads.ts::decodeForwards`）严格收的就是这一份。
+    // 跨语言金样：界面那一侧（`src/frontend/ui/port-forward-reads.ts::decodeForwards`）严格收的就是这一份。
     let golden: Value =
         serde_json::from_str(include_str!("../__fixtures__/forward-list.golden.json")).unwrap();
     assert_eq!(id, "fwd-1");

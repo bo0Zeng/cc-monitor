@@ -51,8 +51,8 @@
  * - **`subscribe` 没有续传**：webview 页面一重载 JS 状态全没，游标无处可存 ⇒ 句柄对 `from` 原位说用法错。
  */
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { commands } from "../../ipc/commands";
-import type { Origin } from "../../ipc/origin";
+import { commands } from "../../frontend/ui/ipc/commands";
+import type { Origin } from "../../frontend/ui/ipc/origin";
 
 /**
  * 一次调用的期限与撤单手柄。`until` 是绝对时刻（`performance.now()` 钟面），**调用者给，本文件不造**

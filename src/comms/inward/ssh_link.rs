@@ -37,7 +37,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt};
 /// 〔C2〕搬自 `ssh_source.rs`：类型名与线上形状一个字没动（前端生成物 `ConnectStage.ts` 只有这段注释变了）。
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConnectStage {
     /// 某地址开始拨号（TCP ＋ 握手）。

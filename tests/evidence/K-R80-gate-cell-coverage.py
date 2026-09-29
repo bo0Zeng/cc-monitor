@@ -117,7 +117,7 @@ TREES = [
     "src/common/",           # 共享 crate（〔RE〕原住 bridge 包的 `crates/`）
     "src/comms/",            # 通信层成员（〔RE〕面 A 由壳编、面 B 由后端编，另有 1 份 TS）
     "src/frontend/shell/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
-    "src/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
+    "src/frontend/ui/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
     "src/shared/",           # 19   重构前的 `shared/`
     "src/doc/",              # 9    重构前的 `doc/`
     "src/",                  # 126  前端 TS —— catch-all，必须排在上面几棵之后
@@ -245,7 +245,7 @@ cell(
     **{
         "src/": (PART, "只判**安装面那 22 条命令**在 `src/**.ts` 里的**落点分布**"
                        "（哪几份文件调它们，现打 8 份）＋ 它们在包装层 "
-                       "`src/ipc/commands.ts` 里的入口在不在（TS 键 ＋ `invoke` 线上串两侧）。"
+                       "`src/frontend/ui/ipc/commands.ts` 里的入口在不在（TS 键 ＋ `invoke` 线上串两侧）。"
                        "⚠ 这棵树的其余部分本格**一个字都不问**：别的命令、组件、样式、"
                        "任何一行逻辑对不对，一格读数都不动。"
                        "⚠ 连这 22 条**调用得对不对**也不问 —— 只问「在哪几份文件里被调」。"
@@ -520,7 +520,7 @@ cell(
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{
-        "src/generated/": ("无", "〔现打 09-19〕这棵树是 `.ts`，Rust 那侧碰不到它 —— **盯「Rust 源改了而生成物没跟」的是 `generated` 那一格，不是本格**"),
+        "src/frontend/ui/generated/": ("无", "〔现打 09-19〕这棵树是 `.ts`，Rust 那侧碰不到它 —— **盯「Rust 源改了而生成物没跟」的是 `generated` 那一格，不是本格**"),
         "tests/": ("部", "〔现打 09-19〕`tests/frontend/shell/` 那 152 份 `.rs` 靠 `src/frontend/shell/src/*.rs` 里的 `#[path]` 挂进 crate ⇒ 本格**编它们、跑它们**（步 7b 把测试段整批搬出生产树之后，两棵生产树的真 `#[test]` 是 0/0，测试全在这棵树里）。⚠ `.ts` 那一半本格看不见"),
         "src/frontend/shell/": (FULL, "13 个成员的 `--lib` 判据，合计求和 + 包数相等断言（CP2c 加 `copy-core` 后 9 → 10 · US1 加 `relay-route-core` 后 10 → 11 · DUP2 加 `agent-tools-core` 后 11 → 12 · DUP3 加 `upstream-url-core` 后 12 → 13 · MIG-3b 加 `deploy-core` 后 13 → 14 · RE 把 `codex-token-core` 搬进后端后 14 → 13）"
                              "〔09-14 现打：`gate.sh` 那行是 `run_gate_sum cargo 9`；"
@@ -572,7 +572,7 @@ cell(
         "src/shared/": (PART, "〔现打 09-20〕被**扫**，同上"),
         "src/doc/": (PART, "〔现打 09-20〕被**扫**（`.md` 不在后缀面里 ⇒ 实际命中为 0，"
                            "但它在根之下、不在排除名单里，如实记成「扫过」而不是「不碰」）"),
-        "src/generated/": (PART, "〔现打 09-20〕被**扫**（生成物同样可能被人盖标记，"
+        "src/frontend/ui/generated/": (PART, "〔现打 09-20〕被**扫**（生成物同样可能被人盖标记，"
                                  "不给它开口子）"),
         ROOTFILES: (PART, "〔现打 09-20〕`src/frontend/shell/Cargo.toml` 那一份是语料见证之一"
                           "（每个后缀各一个逐字住址，`toml` 那个落在这里）。⚠ 真正的仓根文件"
@@ -615,12 +615,12 @@ cell(
 
 cell(
     "generated",
-    anchor="git diff --quiet --exit-code -- src/generated/",
+    anchor="git diff --quiet --exit-code -- src/frontend/ui/generated/",
     cwd="仓根",
-    cmd="git diff --quiet --exit-code -- src/generated/",
+    cmd="git diff --quiet --exit-code -- src/frontend/ui/generated/",
     **{
-        "src/generated/": ("全", "〔现打 09-19〕本格的命令逐字是 `git diff --quiet --exit-code -- src/generated/` ⇒ 分母**就是这棵树**，82 份一份不漏"),
-        "src/": (PART, "**只有 `src/generated/`**，而且只判**已跟踪文件的 diff** ——"
+        "src/frontend/ui/generated/": ("全", "〔现打 09-19〕本格的命令逐字是 `git diff --quiet --exit-code -- src/frontend/ui/generated/` ⇒ 分母**就是这棵树**，82 份一份不漏"),
+        "src/": (PART, "**只有 `src/frontend/ui/generated/`**，而且只判**已跟踪文件的 diff** ——"
                        "全新的生成物是 untracked，本格看不见（那一格归 `generated-boundary-guard`）"),
     },
 )
@@ -648,7 +648,7 @@ cell(
     cwd="src/panorama-engine/",
     cmd="cargo test",
     **{
-        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/panorama/types.ts` 一处"),
+        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/frontend/ui/panorama/types.ts` 一处"),
         "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
         VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `ci.yml` 的 `-p code-picture-core`）"),
         "src/frontend/shell/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
@@ -668,7 +668,7 @@ cell(
     cwd="仓根",
     cmd="node_modules/.bin/tsc --noEmit --listFiles（＋ 程序面份数对账）",
     **{
-        "src/generated/": ("全", "〔现打 09-19〕`include` 的第一项是 `src` ⇒ 这 82 份 `ts_rs` 生成物全部过 `tsc --noEmit`，且它们在 `/src/` 下 ⇒ **也在本格那条恒等对账的两侧**"),
+        "src/frontend/ui/generated/": ("全", "〔现打 09-19〕`include` 的第一项是 `src` ⇒ 这 82 份 `ts_rs` 生成物全部过 `tsc --noEmit`，且它们在 `/src/` 下 ⇒ **也在本格那条恒等对账的两侧**"),
         "tests/": ("部", "〔现打 09-19〕`tsconfig.json` 的 `include` 是 `['src', 'tests']` ⇒ 这棵树的 155 份 `.ts` **确实被 tsc 读进程序、真判了类型**。⚠ 〔订正 09-19〕上一版这条裁词写的是「本格那条恒等对账盖不到它们」——**当时是真的**：`want` 数 `find src tests/e2e`、`got` 的正则是 `/(src|e2e)/`，两侧同时把 `tests/` 的其余 162 份剔掉，等式照样成立。死值验坐实过：把 `include` 收窄成 `['src', 'tests/e2e']`，**旧公式 210 == 210 全绿**，而那 162 份当场不再被检。⇒ 本拍把两侧都改成按 `include` 的真值数（**372 == 372**），同一刀下新公式 372 != 210 **红**。所以这棵树的 `.ts` 今天**既被判了类型、也进了那条恒等对账**"),
         "src/": (FULL, "`tsconfig.json` 的 `include` 第一项就是这棵树 ⇒ 下面每一份 "
                        "`.ts`/`.tsx`/`.mts` 都进程序，**而且本格自己现打对账**"
@@ -689,7 +689,7 @@ cell(
     cwd="仓根",
     cmd="npm test（16 个 tsx 套件 + vitest run）",
     **{
-        "src/generated/": ("部", "〔现打 09-19〕生成物被套件 import ⇒ 会被编进去，但它们自己不是套件"),
+        "src/frontend/ui/generated/": ("部", "〔现打 09-19〕生成物被套件 import ⇒ 会被编进去，但它们自己不是套件"),
         "tests/": ("部", "〔现打 09-19〕`vitest.config.ts` 的 `include: ['tests/**/*.vitest.ts']` ⇒ 现打 **134** 份 `.vitest.ts` 全在本格的分母里。⚠ 229 份 `.rs` 与 `test-support/` 那几份不是套件，本格不跑"),
         "src/": (FULL, "16 个 tsx 套件全在 `src/` 下 + `vitest.config.ts` 的 "
                        "`include: [\"src/**/*.vitest.ts\"]`。⚠ **「跑了 0 个也照绿」那一格 15/17 守不住**"
@@ -769,7 +769,7 @@ cell(
         "src/frontend/shell/": (PART, "同上"),
         "src/shared/": (PART, "只数 `.sh`/`.ts` 的份数"),
         "src/": (PART, "只数 `.ts` 的份数"),
-        "src/generated/": (PART, "同上 —— 生成物也在 git 里，两侧同口径"),
+        "src/frontend/ui/generated/": (PART, "同上 —— 生成物也在 git 里，两侧同口径"),
         "tests/e2e/": (PART, "只数 `.sh` 的份数"),
         "tests/evidence/": (PART, "只数 `.sh`/`.ts`/`.rs` 的份数（这棵树三种都有）"),
         "tests/scripts/": (PART, "只数 `.sh` 的份数"),
@@ -953,7 +953,7 @@ NO_GATE_NEEDED = {
                     "`tsconfig.json` / `eslint.config.js` / `.stylelintrc.json` 决定类型与 lint 的口径。"
                     "⇒ 本条**不声称它们不需要门**，只声称**它们已被逐份数到**。"
                     "〔U1 09-24〕三入口拆分后多了 `settings.html` / `viewer.html`；三份 html 与 vite input、"
-                    "`lib.rs` 开窗 url 的三处对账住 `tests/entry-graphs.vitest.ts`（经 `npm` 那一格跑到），"
+                    "`lib.rs` 开窗 url 的三处对账住 `tests/frontend/ui/entry-graphs.vitest.ts`（经 `npm` 那一格跑到），"
                     "但那是**依赖面的对账**，不是这一档的分母 ⇒ 判档不改"},
             {"档": "依赖锁", "判": UNJUDGED, "成员": ["package-lock.json"],
              "why": "它决定 `npm ci` 装出来的是哪一棵依赖树 —— 同样既不是文档也不是仓库元数据。"
@@ -1070,7 +1070,7 @@ CELL_PATTERNS = [
 ]
 # 这两格不走那三个函数，各自手写判定 ⇒ 单独按**逐字锚点**认。
 HANDWRITTEN = {
-    "generated": "git diff --quiet --exit-code -- src/generated/",
+    "generated": "git diff --quiet --exit-code -- src/frontend/ui/generated/",
 }
 ROLLCALL = re.compile(r"GATE: OK —— (\d+) 格全绿")
 

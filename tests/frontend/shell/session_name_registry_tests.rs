@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 /// **必须写退役归属**）· `consumer`（只判名字形状、不产名）。
 const REGISTERED: &[(&str, &str, usize, &str)] = &[
     // 〔FIX4 · `设计/90 §3` J7〕前端那两格出表：`src/remote-launch.ts`（`deriveTmuxName`，原 `producer-target`）整份删、
-    //   `src/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
+    //   `src/frontend/ui/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
     //   ⇒ 前端零产名点（界面要名字就问那台后端的 `tmux-name-mint`）；后端那一份从「副本」翻成**唯一本体**。
     (
         // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
@@ -205,7 +205,7 @@ fn the_scan_actually_reads_all_four_surfaces() {
 /// ★ 递减棘轮：目录内容 == 登记表，**连每个文件的命中数一起钉**。
 ///
 /// ⚠ **F13（2026-08-04）往下拧了一格：5 → 4 个文件。**
-/// 消灭的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值 —— 它与 `pickFreshTmuxName`
+/// 消灭的是 `src/frontend/ui/launch-requests.ts` 那个 `<sid8>-cc` 默认值 —— 它与 `pickFreshTmuxName`
 /// 的基名逐字相同却**不做撞名避让**，正是用户问的「为什么会撞名」的根因之一。
 /// **是本条棘轮的「少一处也红」提醒我来拧的**（不是我记得）——
 /// 只挡回潮的棘轮不会自己往下走，那半句的价值就在这里。
@@ -255,7 +255,7 @@ fn every_duplicate_producer_names_its_retirement_owner() {
         "产名的本体只许一个文件 —— 〔FIX4 · J7〕今天是后端 `control/ccm/plan.rs`（前端那份 `remote-launch.ts` 删了）；\
              〔`K-R96` 09-12〕sid 派生那一族随 `R55`「要是可读的名字 / 不要id」整条退役了。"
     );
-    // F13（2026-08-04）：4 → 3。退役的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值
+    // F13（2026-08-04）：4 → 3。退役的是 `src/frontend/ui/launch-requests.ts` 那个 `<sid8>-cc` 默认值
     // （与 `pickFreshTmuxName` 基名逐字相同却不做撞名避让 —— 用户问的「为什么会撞名」的根因之一）。
     // 剩下 3 份：`fork-launch.ts`（→ F13 已改调铸名口，仍自产基名）·`shared/ccm`（→ F06）·
     // `cc-spawn`（→ F13a）。⚠ **〔F13a 摸底订正 08-04〕它等的不是「本机后端」** ——

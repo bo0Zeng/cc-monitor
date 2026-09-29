@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔SH1 · V136〕驾驶舱读面（bus-state · bus-inbox）的跨语言金样：后端测试产出 == 金样 · TS 解码器（src/cc-bus-control.ts）读同一份。",
+    "〔SH1 · V136〕驾驶舱读面（bus-state · bus-inbox）的跨语言金样：后端测试产出 == 金样 · TS 解码器（src/frontend/ui/cc-bus-control.ts）读同一份。",
     "输入只采结构（占位 id / 占位句），不采真会话；reply 是手写期望。"
   ],
   "state": {

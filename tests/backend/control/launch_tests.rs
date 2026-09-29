@@ -633,7 +633,7 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
                 "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
                      `src/doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
-                     · 界面 `src/tmux-control.ts::decodeTyped`（〔C4e〕此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
+                     · 界面 `src/frontend/ui/tmux-control.ts::decodeTyped`（〔C4e〕此前是 monitor 的 `SendIntoResponse::typed`）。**一起改。**"
             );
         }
     }
@@ -678,8 +678,8 @@ fn no_doc_claims_the_payload_really_landed() {
     let root = crate::guard_support::repo_root();
     let overclaim = format!("{}键入了", "真的");
     // 〔C4e · 第四波 4C〕第二份原是 monitor 的就地 resume 发送端（`backend_launch.rs`，逐字转发 `typed`）；
-    //   它迁到界面删了，今天读 `typed` 的是 `src/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
-    let files = ["src/doc/IPC-PROTOCOL.md", "src/tmux-control.ts"];
+    //   它迁到界面删了，今天读 `typed` 的是 `src/frontend/ui/tmux-control.ts::decodeTyped` / `sendInto` ⇒ 换成那一份。
+    let files = ["src/doc/IPC-PROTOCOL.md", "src/frontend/ui/tmux-control.ts"];
     let mut total = 0usize;
     let mut hits = Vec::new();
     for f in files {
@@ -712,7 +712,7 @@ fn no_doc_claims_the_payload_really_landed() {
 ///
 /// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：……线上形状由一份跨语言金样钉住
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。送键 / 就地 resume 从这一拍起由界面经通道直接说
-/// （`src/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
+/// （`src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`），monitor 那一跳只搬字节。
 ///
 /// 四格各自异源：`send-into` 的请求样例过**生产**解析器 [`parse_request`]、
 /// 且解出来是它自称的那个 mode · 成品 == 生产构造器 [`reply`] · 码集合 == 后端登记表 `inbound::REGISTRY` 那一块。

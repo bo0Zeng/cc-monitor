@@ -1,0 +1,213 @@
+/**
+ * toast、SFTP 面板、状态栏账号 chip、账号配色 —— 三个窗口的模块图里都有它们的建元素处。
+ *
+ * 加载它的窗口：**三个窗口**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
+ * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
+ *
+ * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ */
+
+@layer components {
+/* === 通用 toast 体系（v2.0.0 落地 issue #4 + INVARIANT § 12）===
+ *
+ * .ccm-toast-stack: 固定右下角的堆叠容器；多个 toast append 进来自动垂直排列
+ * .ccm-toast:        toast 卡片本体
+ * .ccm-toast-error:  红色 variant（error-toast.ts 用）
+ *
+ * P4.5：tabs.ts::bringTerminalToFront 已改用 showActionFailureToast，旧的
+ * #bring-terminal-toast 单例 selector 已删除。
+ */
+#ccm-toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column-reverse; /* 最新插入的在最下面（视觉上最靠近底部） */
+  gap: 8px;
+  max-width: 540px;
+  pointer-events: none; /* 容器不挡点击，子 toast 自己开 */
+}
+
+.ccm-toast {
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--accent, #c25b3b);
+  color: var(--text, #d6cfc6);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: var(--font-size-small, 13px);
+  line-height: 1.45;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ccm-toast-error {
+  border-color: var(--error, #e06c75);
+}
+
+.ccm-toast-headline {
+  font-weight: 600;
+  color: var(--error, #e06c75);
+  margin-bottom: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+/* audit-0805 F07：同标题合流时的计数徽章（`×N`）。默认 `hidden`，只有真合流过才显示 ——
+   没合流时不该出现一个孤零零的 `×1`。 */
+.ccm-toast-count {
+  margin-left: 6px;
+  opacity: 0.7;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.ccm-toast-body {
+  color: var(--text, #d6cfc6);
+}
+
+/* A3：状态栏「当前账号」chip（照 .status-cmdk 形态）+ 账号选单浮层 */
+.status-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 1px 7px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.status-account:hover {
+  opacity: 1;
+  color: var(--text, #d6cfc6);
+  border-color: var(--border-strong, #55493c);
+}
+
+.status-account-icon {
+  font-size: 0.9em;
+  line-height: 1;
+}
+
+.status-account-label {
+  max-width: 10ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A3：tab 行账号徽章（该会话属于哪个账号；未知 .unknown 显 —，弱化） */
+/* 账号头像（account-ux U4/U5）：圆角方块 + 缩写，不透明填充 + 双 hairline 兜任一主题的分隔。 */
+.acct-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  font-variant: small-caps;
+  line-height: 1;
+  flex: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* 幽灵态（U5：lastAccount 软来源）——淡填充 + 描边，弱于实心 live。 */
+.acct-avatar.ghost {
+  /* S21 步 8：这一族原本 10 处 `!important` 已全摘 —— `.acct-avatar.ghost` 是
+     (0,2,0)、`.acct-avatar.ghost.acct-cN` 是 (0,3,0)，而被压的 `.acct-cN` 只有 (0,1,0)，
+     **按特异度本来就该赢**，与源码顺序无关。死值验读数同上。 */
+  background: transparent;
+  color: var(--text-2);
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.72;
+}
+
+.acct-c0 {
+  background: var(--acct-c0);
+  color: var(--acct-ink0);
+}
+
+.acct-c1 {
+  background: var(--acct-c1);
+  color: var(--acct-ink1);
+}
+
+.acct-c2 {
+  background: var(--acct-c2);
+  color: var(--acct-ink2);
+}
+
+.acct-c3 {
+  background: var(--acct-c3);
+  color: var(--acct-ink3);
+}
+
+.acct-c4 {
+  background: var(--acct-c4);
+  color: var(--acct-ink4);
+}
+
+.acct-c5 {
+  background: var(--acct-c5);
+  color: var(--acct-ink5);
+}
+
+.acct-c6 {
+  background: var(--acct-c6);
+  color: var(--acct-ink6);
+}
+
+.acct-c7 {
+  background: var(--acct-c7);
+  color: var(--acct-ink7);
+}
+
+/* 幽灵态描边取该 slot 的填充色（用 color 承载，box-shadow currentColor 引用）。 */
+.acct-avatar.ghost.acct-c0 {
+  color: var(--acct-c0);
+}
+
+.acct-avatar.ghost.acct-c1 {
+  color: var(--acct-c1);
+}
+
+.acct-avatar.ghost.acct-c2 {
+  color: var(--acct-c2);
+}
+
+.acct-avatar.ghost.acct-c3 {
+  color: var(--acct-c3);
+}
+
+.acct-avatar.ghost.acct-c4 {
+  color: var(--acct-c4);
+}
+
+.acct-avatar.ghost.acct-c5 {
+  color: var(--acct-c5);
+}
+
+.acct-avatar.ghost.acct-c6 {
+  color: var(--acct-c6);
+}
+
+.acct-avatar.ghost.acct-c7 {
+  color: var(--acct-c7);
+}
+}

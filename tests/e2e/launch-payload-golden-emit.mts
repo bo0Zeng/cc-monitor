@@ -3,7 +3,7 @@
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { renderGoldenFixture } from "../test-support/launch-payload-golden.ts";
-import { renderCliGoldenFixture } from "../../src/launch-cli-golden.ts";
+import { renderCliGoldenFixture } from "../../src/frontend/ui/launch-cli-golden.ts";
 import { renderTmuxOuterFixture } from "../test-support/launch-tmux-outer-golden.ts";
 
 const OUT = new URL("../../src/backend/control/launch_render/fixtures/payload-golden.json", import.meta.url);

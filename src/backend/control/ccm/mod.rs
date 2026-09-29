@@ -484,7 +484,7 @@ pub(crate) fn answer_print(
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
 ///
 /// 码：`invalid_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
-/// （`src/tmux-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
+/// （`src/frontend/ui/tmux-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
 pub(crate) fn answer_tmux_name_mint(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {

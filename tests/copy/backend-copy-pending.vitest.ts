@@ -16,7 +16,7 @@
  * # 真正的量具不在这个文件里
  *
  * 人群借普查 `K-T68-A1` 与 CP1 台账，相等判定住 `tests/evidence/CP2c-backend-copy-pending.py`（口径见它的头注）。
- * 本文件只把它挂进 `npm test`，形状照 `tests/copy-verdicts-ledger.vitest.ts`。
+ * 本文件只把它挂进 `npm test`，形状照 `tests/frontend/ui/copy-verdicts-ledger.vitest.ts`。
  *
  * # 不判什么（诚实段）
  *
@@ -139,9 +139,9 @@ const RECOGNIZE_BY_TEXT = [
   "src/backend/control/cc_bus.rs · 已杀会话",
   "src/backend/control/cc_bus.rs · 已摘掉",
   "src/backend/control/cc_bus.rs · 已 spawn:",
-  "src/accounts.ts · 过旧",
-  "src/accounts.ts · 不支持账号",
-  "src/tab-drop.ts · ^组\\s*(\\d+)$",
+  "src/frontend/ui/accounts.ts · 过旧",
+  "src/frontend/ui/accounts.ts · 不支持账号",
+  "src/frontend/ui/tab-drop.ts · ^组\\s*(\\d+)$",
 ];
 
 const MATCH_CALL =

@@ -10,7 +10,7 @@ export default tseslint.config(
     // Rust、产物、依赖、覆盖率报告、各类 config 自身不 lint。
     ignores: [
       // C01：ts-rs 生成物，没人该手动去修它（Phase D 审计 S5）
-      "src/generated/**",
+      "src/frontend/ui/generated/**",
       "dist/**",
       // 🔴 2026-09-18：构建输出已统一改到 `.build/`（`vite.config.ts` 的 `outDir` ＋
       //   两份 `.cargo/config.toml` 的 `target-dir`）⇒ 上面那条 `dist/**` 从此**罩不住任何东西**。
@@ -72,10 +72,10 @@ export default tseslint.config(
     //
     // ⇒ 补上 globals（node + wdio 的 mocha 风格全局），并把 `npm run lint` 放开到 `eslint .`。
     // 补完实测：全仓当时是 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
-    // 〔AL1d · 第四波 4B · 09-24〕那天剩三处：`src/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
-    //   记住上次选择的 localStorage 写）随那段代码删了（`tests/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
-    // 〔DUP1 · 第四波 4D〕那天剩两处：`src/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
-    // 〔STC · 第四波 4D〕今天全仓 1 个：`tests/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
+    // 〔AL1d · 第四波 4B · 09-24〕那天剩三处：`src/frontend/ui/settings/machine-aliases.ts` 里那四处空 catch（原「终端集成」
+    //   记住上次选择的 localStorage 写）随那段代码删了（`tests/frontend/ui/eslint-baseline.vitest.ts` 的基线常量同拍 7 → 3）。
+    // 〔DUP1 · 第四波 4D〕那天剩两处：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了（基线常量同拍 3 → 2）。
+    // 〔STC · 第四波 4D〕今天全仓 1 个：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了，
     //   它那一处未用变量跟着没了（合并 DUP1 时按「基数 3 ＋ 两边各 −1」算成 1，eslint 现打核过）。
     files: ["tests/e2e/**/*.mjs"],
     languageOptions: {

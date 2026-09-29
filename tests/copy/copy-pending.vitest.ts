@@ -17,7 +17,7 @@
  *
  * 「对外字面量」的人群借普查 `K-T68-A1`（主集里 `via=literal` 的）与 CP1 台账（存疑带里不是 `[不对外]` 的），
  * 相等判定住 `tests/evidence/CP2b-copy-pending.py`（口径见它的头注）。本文件只把它挂进 `npm test`，
- * 形状照 `tests/copy-verdicts-ledger.vitest.ts`（一个性质一把尺子，不在 TS 里重写）。
+ * 形状照 `tests/frontend/ui/copy-verdicts-ledger.vitest.ts`（一个性质一把尺子，不在 TS 里重写）。
  *
  * # 不判什么（诚实段）
  *

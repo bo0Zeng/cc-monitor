@@ -61,28 +61,28 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/turn_tests.rs",
     "tests/backend/agents/codex/record_tests.rs",
     "tests/backend/observe/record_page_tests.rs",
-    "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
-    "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
+    "tests/frontend/ui/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
+    "tests/backend/dial_machine_tests.rs",        // 〔MIG-1 续〕机器配置 → 拨号请求的规则
     "tests/backend/dial_terminal_tests.rs", // 〔FIX4 · ⑬〕开终端那一行（ssh 外壳 ＋ PowerShell 载荷）的渲染规则
     "tests/backend/dial_probe_tests.rs",    // 〔MIG-1 续〕测试连接三步的结局（链路替身）
-    // 〔MIG-1 收尾〕`tests/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
-    "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
-    "tests/pubkey-push.vitest.ts",    // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
+    // 〔MIG-1 收尾〕`tests/frontend/ui/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
+    "tests/frontend/ui/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
+    "tests/frontend/ui/pubkey-push.vitest.ts", // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
-    "tests/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
-    "tests/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
-    "tests/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
+    "tests/frontend/ui/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
+    "tests/frontend/ui/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
+    "tests/frontend/ui/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
     // 〔MIG-3a · 09-28 预裁〕`tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行删了：整份随那条部署命令删了（字节随后端二进制走）。
     "tests/common/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
-    "tests/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
-    "tests/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
-    "tests/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
-    "tests/account-color.vitest.ts",
-    "tests/account-commands.vitest.ts",
-    "tests/account-restart.vitest.ts",
-    "tests/accounts.vitest.ts",
-    "tests/backend-policy.vitest.ts",
+    "tests/frontend/ui/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
+    "tests/frontend/ui/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
+    "tests/frontend/ui/events-stream-closed.vitest.ts", // 〔W5-UI〕会话流 closed 格 ⇒ 恰好一条 toast
+    "tests/frontend/ui/account-color.vitest.ts",
+    "tests/frontend/ui/account-commands.vitest.ts",
+    "tests/frontend/ui/account-restart.vitest.ts",
+    "tests/frontend/ui/accounts.vitest.ts",
+    "tests/frontend/ui/backend-policy.vitest.ts",
     "tests/backend/accounts/upstream/table_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
@@ -101,9 +101,9 @@ const UNIT: &[&str] = &[
     "tests/comms/outward/upstream_tests.rs",
     "tests/backend/stream/tap_tests.rs",  // 〔TAP〕hub 与帧转换
     "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
-    "tests/branch-button.vitest.ts",
-    "tests/branch-fold-batching.vitest.ts",
-    "tests/branching.test.ts",
+    "tests/frontend/ui/branch-button.vitest.ts",
+    "tests/frontend/ui/branch-fold-batching.vitest.ts",
+    "tests/frontend/ui/branching.test.ts",
     // 〔C4d〕`tests/frontend/shell/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
     "tests/frontend/shell/adapter/claude_code_tests.rs",
     "tests/frontend/shell/adapter/codex_tests.rs",
@@ -145,127 +145,127 @@ const UNIT: &[&str] = &[
     "tests/backend/footprint/registry_environment_tests.rs",
     "tests/backend/footprint/registry_not_managed_tests.rs",
     "tests/frontend/shell/footprint_client_tests.rs", // 〔MIG-3b 续〕monitor 自己进程那几条事实（纯函数；两拍之后它不再 stat）
-    "tests/cards/api-error.test.ts",
-    "tests/cards/bash-collapse.vitest.ts",
-    "tests/cards/bash.test.ts",
-    "tests/cards/compact.vitest.ts",
-    "tests/cards/diff.test.ts",
-    "tests/cards/file-input.vitest.ts",
-    "tests/cards/interactive.vitest.ts",
-    "tests/cards/json-prefix.vitest.ts", // 〔W5-RENDER R2〕firstLineOf / jsonPrefix 与原式对拍（纯函数）
-    "tests/config-fields.vitest.ts",
-    "tests/e2e-probe.vitest.ts",
-    "tests/error-toast.vitest.ts",
-    "tests/events-burst.vitest.ts",
-    "tests/events-yield.vitest.ts",
-    "tests/file-window.vitest.ts",
-    "tests/fork-ask.vitest.ts",
-    "tests/fork-launch.vitest.ts",
-    "tests/fork-start.vitest.ts",
-    "tests/format.test.ts",
-    "tests/height-estimate.vitest.ts",
-    "tests/invariants-frontend-guard.vitest.ts",
-    "tests/keybindings/actions.vitest.ts",
-    "tests/launch-arrival.vitest.ts", // 〔FIX3〕起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
-    "tests/launch-dimensions.test.ts",
-    "tests/launch-menu.vitest.ts",
-    "tests/launch-requests.vitest.ts",
-    "tests/launcher-diagnostics.vitest.ts",
-    "tests/live-window.vitest.ts",
-    "tests/panorama/agent-clip.vitest.ts",
-    "tests/panorama/d20-gate.vitest.ts",
-    "tests/panorama/layout.vitest.ts",
-    // 〔STC〕`tests/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
-    "tests/panorama/subgraph-layers.vitest.ts",
-    "tests/reconcile-shell.vitest.ts",
-    "tests/record-timeline.vitest.ts",
-    "tests/remote-health.test.ts",
-    "tests/remote-launch-run.vitest.ts",
-    "tests/render-window.vitest.ts",
-    "tests/resume-presets.vitest.ts",
-    "tests/route-parity.vitest.ts",
-    "tests/send-into-backend.vitest.ts",
-    "tests/session-accounts-poll.vitest.ts",
-    "tests/session-status.vitest.ts",
-    "tests/settings/account-new-form.vitest.ts",
-    "tests/settings/acct-deploy.vitest.ts",
-    "tests/settings/cc-bus-hooks-section.vitest.ts",
-    "tests/settings/cc-bus-section.vitest.ts",
-    "tests/settings/config-surface-section.vitest.ts",
-    "tests/settings/context-limits-section.vitest.ts", // 〔FIX4〕`contextLimits` 的入口（假 IPC）
-    "tests/settings/diagnostics-section.vitest.ts",
-    "tests/settings/drift-ledger-section.vitest.ts",
-    "tests/settings/host-os.vitest.ts",
-    "tests/settings/info-icon.vitest.ts",
-    "tests/settings/machine-aliases.vitest.ts",
-    "tests/settings/machine-context.vitest.ts",
-    "tests/settings/machine-list-backend-cells.vitest.ts",
-    "tests/settings/machine-status.vitest.ts",
-    "tests/settings/machine-sync.vitest.ts",
-    "tests/settings/mcp-section.vitest.ts",
-    "tests/settings/panel-block-isolation.vitest.ts",
-    "tests/settings/panel-deferred-io.vitest.ts",
-    "tests/settings/panel-groups.vitest.ts",
-    "tests/settings/panorama-section.vitest.ts", // 〔FIX4〕全景小程序卸口（假通道）
-    "tests/settings/panel-machine-page-visibility.vitest.ts",
-    "tests/settings/panel-per-machine-deferred-io.vitest.ts",
-    "tests/settings/panel-window-lifecycle.vitest.ts",
-    "tests/settings/pending-and-block-errors.vitest.ts",
-    "tests/settings/readiness.vitest.ts",
-    "tests/settings/remote-section-smoke.vitest.ts",
-    "tests/settings/restart-notice.vitest.ts",
-    "tests/settings/router.vitest.ts",
-    "tests/settings/settings-skeleton.vitest.ts",
-    "tests/settings/settings-unique-names.vitest.ts",
-    "tests/settings/ui-copy-discipline.vitest.ts",
-    "tests/settings/unknown-keys-notice.vitest.ts",
-    "tests/skeleton-ledger.vitest.ts",
-    "tests/skeleton-view.vitest.ts",
-    "tests/stream-viewport-resize.vitest.ts",
-    "tests/tab-bar-perf.vitest.ts",
-    "tests/tab-bar-state.vitest.ts",
-    "tests/tab-collections.vitest.ts",
-    "tests/tasks-panel-origin.vitest.ts",
+    "tests/frontend/ui/cards/api-error.test.ts",
+    "tests/frontend/ui/cards/bash-collapse.vitest.ts",
+    "tests/frontend/ui/cards/bash.test.ts",
+    "tests/frontend/ui/cards/compact.vitest.ts",
+    "tests/frontend/ui/cards/diff.test.ts",
+    "tests/frontend/ui/cards/file-input.vitest.ts",
+    "tests/frontend/ui/cards/interactive.vitest.ts",
+    "tests/frontend/ui/cards/json-prefix.vitest.ts", // 〔W5-RENDER R2〕firstLineOf / jsonPrefix 与原式对拍（纯函数）
+    "tests/frontend/ui/config-fields.vitest.ts",
+    "tests/frontend/ui/e2e-probe.vitest.ts",
+    "tests/frontend/ui/error-toast.vitest.ts",
+    "tests/frontend/ui/events-burst.vitest.ts",
+    "tests/frontend/ui/events-yield.vitest.ts",
+    "tests/frontend/ui/file-window.vitest.ts",
+    "tests/frontend/ui/fork-ask.vitest.ts",
+    "tests/frontend/ui/fork-launch.vitest.ts",
+    "tests/frontend/ui/fork-start.vitest.ts",
+    "tests/frontend/ui/format.test.ts",
+    "tests/frontend/ui/height-estimate.vitest.ts",
+    "tests/frontend/ui/invariants-frontend-guard.vitest.ts",
+    "tests/frontend/ui/keybindings/actions.vitest.ts",
+    "tests/frontend/ui/launch-arrival.vitest.ts", // 〔FIX3〕起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
+    "tests/frontend/ui/launch-dimensions.test.ts",
+    "tests/frontend/ui/launch-menu.vitest.ts",
+    "tests/frontend/ui/launch-requests.vitest.ts",
+    "tests/frontend/ui/launcher-diagnostics.vitest.ts",
+    "tests/frontend/ui/live-window.vitest.ts",
+    "tests/frontend/ui/panorama/agent-clip.vitest.ts",
+    "tests/frontend/ui/panorama/d20-gate.vitest.ts",
+    "tests/frontend/ui/panorama/layout.vitest.ts",
+    // 〔STC〕`tests/frontend/ui/panorama/session-files.test.ts` 出列：被测对象（写类工具口径）搬进后端，七条搬成 `tests/backend/observe/facts_query_tests.rs` 里一条。
+    "tests/frontend/ui/panorama/subgraph-layers.vitest.ts",
+    "tests/frontend/ui/reconcile-shell.vitest.ts",
+    "tests/frontend/ui/record-timeline.vitest.ts",
+    "tests/frontend/ui/remote-health.test.ts",
+    "tests/frontend/ui/remote-launch-run.vitest.ts",
+    "tests/frontend/ui/render-window.vitest.ts",
+    "tests/frontend/ui/resume-presets.vitest.ts",
+    "tests/frontend/ui/route-parity.vitest.ts",
+    "tests/frontend/ui/send-into-backend.vitest.ts",
+    "tests/frontend/ui/session-accounts-poll.vitest.ts",
+    "tests/frontend/ui/session-status.vitest.ts",
+    "tests/frontend/ui/settings/account-new-form.vitest.ts",
+    "tests/frontend/ui/settings/acct-deploy.vitest.ts",
+    "tests/frontend/ui/settings/cc-bus-hooks-section.vitest.ts",
+    "tests/frontend/ui/settings/cc-bus-section.vitest.ts",
+    "tests/frontend/ui/settings/config-surface-section.vitest.ts",
+    "tests/frontend/ui/settings/context-limits-section.vitest.ts", // 〔FIX4〕`contextLimits` 的入口（假 IPC）
+    "tests/frontend/ui/settings/diagnostics-section.vitest.ts",
+    "tests/frontend/ui/settings/drift-ledger-section.vitest.ts",
+    "tests/frontend/ui/settings/host-os.vitest.ts",
+    "tests/frontend/ui/settings/info-icon.vitest.ts",
+    "tests/frontend/ui/settings/machine-aliases.vitest.ts",
+    "tests/frontend/ui/settings/machine-context.vitest.ts",
+    "tests/frontend/ui/settings/machine-list-backend-cells.vitest.ts",
+    "tests/frontend/ui/settings/machine-status.vitest.ts",
+    "tests/frontend/ui/settings/machine-sync.vitest.ts",
+    "tests/frontend/ui/settings/mcp-section.vitest.ts",
+    "tests/frontend/ui/settings/panel-block-isolation.vitest.ts",
+    "tests/frontend/ui/settings/panel-deferred-io.vitest.ts",
+    "tests/frontend/ui/settings/panel-groups.vitest.ts",
+    "tests/frontend/ui/settings/panorama-section.vitest.ts", // 〔FIX4〕全景小程序卸口（假通道）
+    "tests/frontend/ui/settings/panel-machine-page-visibility.vitest.ts",
+    "tests/frontend/ui/settings/panel-per-machine-deferred-io.vitest.ts",
+    "tests/frontend/ui/settings/panel-window-lifecycle.vitest.ts",
+    "tests/frontend/ui/settings/pending-and-block-errors.vitest.ts",
+    "tests/frontend/ui/settings/readiness.vitest.ts",
+    "tests/frontend/ui/settings/remote-section-smoke.vitest.ts",
+    "tests/frontend/ui/settings/restart-notice.vitest.ts",
+    "tests/frontend/ui/settings/router.vitest.ts",
+    "tests/frontend/ui/settings/settings-skeleton.vitest.ts",
+    "tests/frontend/ui/settings/settings-unique-names.vitest.ts",
+    "tests/frontend/ui/settings/ui-copy-discipline.vitest.ts",
+    "tests/frontend/ui/settings/unknown-keys-notice.vitest.ts",
+    "tests/frontend/ui/skeleton-ledger.vitest.ts",
+    "tests/frontend/ui/skeleton-view.vitest.ts",
+    "tests/frontend/ui/stream-viewport-resize.vitest.ts",
+    "tests/frontend/ui/tab-bar-perf.vitest.ts",
+    "tests/frontend/ui/tab-bar-state.vitest.ts",
+    "tests/frontend/ui/tab-collections.vitest.ts",
+    "tests/frontend/ui/tasks-panel-origin.vitest.ts",
     "tests/test-support/component-sources.vitest.ts",
-    "tests/usage-hud.vitest.ts",
-    "tests/views/cc-bus-view.vitest.ts",
-    "tests/views/context-limit.test.ts",
-    "tests/views/counted.vitest.ts",
-    "tests/views/grid-monitor.vitest.ts",
-    "tests/views/history-actions.test.ts",
-    "tests/views/history-actions.vitest.ts",
-    "tests/views/history-cache.test.ts",
+    "tests/frontend/ui/usage-hud.vitest.ts",
+    "tests/frontend/ui/views/cc-bus-view.vitest.ts",
+    "tests/frontend/ui/views/context-limit.test.ts",
+    "tests/frontend/ui/views/counted.vitest.ts",
+    "tests/frontend/ui/views/grid-monitor.vitest.ts",
+    "tests/frontend/ui/views/history-actions.test.ts",
+    "tests/frontend/ui/views/history-actions.vitest.ts",
+    "tests/frontend/ui/views/history-cache.test.ts",
     // 〔LOC1b · 4D〕两份等本机索引的前端判据（`history-close-stops-retry` · `history-index-wait`）随那条 1 s 重跑链删了。
-    "tests/views/history-counted.vitest.ts",
-    "tests/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
-    "tests/views/history-filter-collapse.vitest.ts",
-    "tests/views/history-prefs.test.ts",
-    "tests/views/history-search-resume.vitest.ts",
-    "tests/views/history-search-truncation.vitest.ts",
-    "tests/views/history-search.vitest.ts",
-    "tests/views/history-source-cache.vitest.ts",
-    "tests/views/pane-preview.vitest.ts",
-    "tests/views/panorama-ann-queue.vitest.ts",
-    "tests/views/panorama-copy-agent.vitest.ts",
-    "tests/views/panorama-d20.vitest.ts",
-    "tests/views/panorama-diagram.vitest.ts",
-    "tests/views/panorama-f71.vitest.ts",
-    "tests/views/panorama-f72.vitest.ts",
-    "tests/views/panorama-highlight.vitest.ts",
-    "tests/views/panorama-p7b.vitest.ts",
-    "tests/views/panorama-pick-repo.vitest.ts",
-    "tests/views/panorama-remote.vitest.ts",
-    "tests/views/session-find.vitest.ts",
-    "tests/views/session-viewer-scroll.vitest.ts",
-    "tests/views/session-viewer-skeleton.vitest.ts",
-    "tests/views/user-input-panel.vitest.ts",
+    "tests/frontend/ui/views/history-counted.vitest.ts",
+    "tests/frontend/ui/views/history-state-chip.vitest.ts", // 〔AR1〕历史状态词只住 sessionState.*
+    "tests/frontend/ui/views/history-filter-collapse.vitest.ts",
+    "tests/frontend/ui/views/history-prefs.test.ts",
+    "tests/frontend/ui/views/history-search-resume.vitest.ts",
+    "tests/frontend/ui/views/history-search-truncation.vitest.ts",
+    "tests/frontend/ui/views/history-search.vitest.ts",
+    "tests/frontend/ui/views/history-source-cache.vitest.ts",
+    "tests/frontend/ui/views/pane-preview.vitest.ts",
+    "tests/frontend/ui/views/panorama-ann-queue.vitest.ts",
+    "tests/frontend/ui/views/panorama-copy-agent.vitest.ts",
+    "tests/frontend/ui/views/panorama-d20.vitest.ts",
+    "tests/frontend/ui/views/panorama-diagram.vitest.ts",
+    "tests/frontend/ui/views/panorama-f71.vitest.ts",
+    "tests/frontend/ui/views/panorama-f72.vitest.ts",
+    "tests/frontend/ui/views/panorama-highlight.vitest.ts",
+    "tests/frontend/ui/views/panorama-p7b.vitest.ts",
+    "tests/frontend/ui/views/panorama-pick-repo.vitest.ts",
+    "tests/frontend/ui/views/panorama-remote.vitest.ts",
+    "tests/frontend/ui/views/session-find.vitest.ts",
+    "tests/frontend/ui/views/session-viewer-scroll.vitest.ts",
+    "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
+    "tests/frontend/ui/views/user-input-panel.vitest.ts",
     "tests/common/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
     "tests/common/deploy-core/lib_tests.rs", // 〔MIG-3b〕新共享 crate `deploy-core` 的判定（纯函数）
-    "tests/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
+    "tests/frontend/ui/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
     // 〔OSA〕基数 → 增量 +1：`$PROFILE` 备份那一格问本机后端（假通道）。
-    "tests/settings/profile-backups.vitest.ts",
+    "tests/frontend/ui/settings/profile-backups.vitest.ts",
 ];
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
@@ -276,28 +276,28 @@ const SCAN: &[&str] = &[
     "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/backend/agents/claudecode/schema_tests.rs",
     "tests/backend/agents/claudecode/schema_title_coverage.rs",
-    "tests/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
+    "tests/frontend/ui/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
     "tests/frontend/shell/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
     "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
-    "tests/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
-    "tests/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
-    "tests/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
-    "tests/config-patch-fake.vitest.ts",  // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
-    "tests/tab-bar-width.vitest.ts",      // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
-    "tests/ask-dialog.vitest.ts", // 〔W5-UI〕D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
-    "tests/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
-    "tests/account-availability-guard.vitest.ts",
-    "tests/account-base-semantics.vitest.ts",
-    "tests/account-chip.vitest.ts",
-    "tests/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
-    "tests/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
-    "tests/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
-    "tests/tmux-reads.vitest.ts", // 〔MIG-1 续〕读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
-    "tests/port-forward-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
-    "tests/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
-    "tests/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
-    "tests/agent-profile-parity.vitest.ts",
-    "tests/app-grid-claims.vitest.ts",
+    "tests/frontend/ui/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
+    "tests/frontend/ui/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
+    "tests/frontend/ui/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
+    "tests/frontend/ui/config-patch-fake.vitest.ts", // 〔CFG1〕假盘对跨语言金样 config-patch.golden.json
+    "tests/frontend/ui/tab-bar-width.vitest.ts", // 〔CFG1〕J7 tab 栏宽度走存储接入层、零裸 localStorage
+    "tests/frontend/ui/ask-dialog.vitest.ts", // 〔W5-UI〕D1 生产 TS 零原生 confirm/prompt（AST 扫）· D1b askConfirm/askText 必 await ＋ 调用方清单
+    "tests/frontend/ui/bg-flat.vitest.ts", // 〔BG1〕V125：tab 栏通用代码零 bg 分叉（扫 `src/frontend/ui/tabs.ts` ＋ `src/tab-*.ts`）· CSS 零 `.tab-bg`
+    "tests/frontend/ui/account-availability-guard.vitest.ts",
+    "tests/frontend/ui/account-base-semantics.vitest.ts",
+    "tests/frontend/ui/account-chip.vitest.ts",
+    "tests/frontend/ui/accounts-decode.vitest.ts", // 〔C4c〕读跨语言金样（`tests/__fixtures__/accounts.golden.json`）
+    "tests/frontend/ui/apikey-reads.vitest.ts", // 〔US1〕读跨语言金样（`tests/__fixtures__/apikey.golden.json`）
+    "tests/frontend/ui/ssh-config-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/ssh-config.golden.json`）
+    "tests/frontend/ui/tmux-reads.vitest.ts", // 〔MIG-1 续〕读跨语言金样（`tests/__fixtures__/tmux-list.golden.json`）
+    "tests/frontend/ui/port-forward-reads.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/forward-list.golden.json`）
+    "tests/frontend/ui/session-stream-credit.vitest.ts", // 〔MIG-1〕读跨语言金样（`tests/__fixtures__/session-stream-credit.golden.json`）
+    "tests/frontend/ui/history-reads.vitest.ts", // 〔C4d〕读跨语言金样（`tests/__fixtures__/history-products.golden.json`）
+    "tests/frontend/ui/agent-profile-parity.vitest.ts",
+    "tests/frontend/ui/app-grid-claims.vitest.ts",
     "tests/backend/agent_boundary_guard.rs",
     "tests/backend/agent_locality_guard.rs",
     "tests/backend/alloc_probe_tests.rs",
@@ -325,7 +325,7 @@ const SCAN: &[&str] = &[
     "tests/backend/main_stream_flag_tests.rs",
     "tests/backend/main_window_raise_guard.rs",
     "tests/backend/no_timer_guard.rs",
-    // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
+    // 〔STC〕会话事实的口径与续传（纯字节）＋ 一条异源对拍读生成物 `src/frontend/ui/generated/agent-profile-table.ts` ⇒ 判别器判扫描层。
     "tests/backend/panorama_locus_guard.rs",
     "tests/backend/platform/cfgless_guard.rs",
     "tests/backend/platform/fallback_guard.rs",
@@ -345,7 +345,7 @@ const SCAN: &[&str] = &[
     "tests/backend/relay/table_guard.rs",
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
-    "tests/base-flag-contract-guard.vitest.ts",
+    "tests/frontend/ui/base-flag-contract-guard.vitest.ts",
     "tests/frontend/shell/agent_dispatch_registry_tests.rs",
     "tests/frontend/shell/arch_doc_shape_guard_tests.rs",
     "tests/frontend/shell/asset_sync_tests.rs", // 〔AS2〕
@@ -367,12 +367,12 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/byte_table_tests.rs",
     "tests/frontend/shell/ccm_cli_contract_tests.rs",
     "tests/frontend/shell/chan/webview_tests.rs",
-    "tests/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
-    "tests/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
+    "tests/frontend/ui/mcp-reads.vitest.ts", // 〔MIG-3a〕MCP 读写 / 推拉走通道：解码器读跨语言金样
+    "tests/frontend/ui/alias-reads.vitest.ts", // 〔MIG-3a〕别名六问走通道：解码器读跨语言金样 aliases.golden.json ＋ 问对那台
     "tests/backend/platform/shell/dialect_tests.rs", // 〔OSA · V156〕随方言搬进 `platform/shell/` // 〔MIG-3a〕方言进了那台后端（读法 ＋ `$PROFILE` 一个家的全树普查）
     "tests/backend/assets/aliases/fence_tests.rs",   // 〔MIG-3a〕围栏块配对 ＋ 形状账（源码扫描）
     "tests/frontend/shell/backend/control/cc_bus_deploy_tests.rs", // 〔MIG-3a · 子步 3〕装 / 三态进了后端，只剩装前 `ccm` 预检（纯函数 ＋ 读源码）⇒ INTEGRATION → SCAN
-    "tests/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
+    "tests/frontend/ui/asset-reads.vitest.ts", // 〔MIG-3a〕资产同步 ＋ skill 装卸走通道：解码器读跨语言金样
     "tests/frontend/shell/command_home_registry_tests.rs", // 〔MIG-3a · `99 §2.1 ⑬`〕Tauri 命令两张封闭表（扫源码）
     "tests/backend/footprint/rows_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/config_surface_tests.rs` 随判定搬进后端
     "tests/frontend/shell/copy_table_tests.rs",
@@ -408,7 +408,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/filewin/transfer_tests.rs",
     "tests/frontend/shell/fixture_guard_tests.rs",
     // 〔MIG-3b 续〕`tests/frontend/shell/footprint_remote_tests.rs` 删了：两趟问法随实现进后端 face（`tests/backend/footprint/face_tests.rs`）。
-    "tests/settings/footprint-reads.vitest.ts", // 〔MIG-3b 续〕足迹成品的跨语言金样（TS 那一侧读同一份）
+    "tests/frontend/ui/settings/footprint-reads.vitest.ts", // 〔MIG-3b 续〕足迹成品的跨语言金样（TS 那一侧读同一份）
     "tests/frontend/shell/frame_cadence_guard_tests.rs",
     "tests/frontend/shell/gate_singleton_guard_tests.rs",
     "tests/frontend/shell/guard_support_tests.rs",
@@ -441,7 +441,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/snapshot_resume_tests.rs",
     "tests/frontend/shell/spawn_managed_exit_sites.rs",
     "tests/frontend/shell/spawn_managed_tests.rs",
-    "tests/events-tap-machines.vitest.ts", // 〔HOST〕读 `src/main.ts` 的 tap 订阅清单
+    "tests/frontend/ui/events-tap-machines.vitest.ts", // 〔HOST〕读 `src/frontend/ui/main.ts` 的 tap 订阅清单
     "tests/frontend/shell/ssh_source_capped_line_tests.rs",
     "tests/frontend/shell/ssh_source_coldstart_perf_guard.rs",
     "tests/frontend/shell/ssh_source_coldstart_preflight_guard.rs",
@@ -457,92 +457,92 @@ const SCAN: &[&str] = &[
     "tests/backend/footprint/registry_tests.rs", // 〔MIG-3b 续〕原 `tests/frontend/shell/tool_registry_tests.rs` 随申报表搬进后端
     "tests/frontend/shell/write_site_registry_spawn_sites.rs",
     "tests/frontend/shell/write_site_registry_tests.rs",
-    "tests/config-unknown-keys.vitest.ts",
+    "tests/frontend/ui/config-unknown-keys.vitest.ts",
     "tests/copy/copy-rules.vitest.ts",
     "tests/copy/copy-table.vitest.ts",
     "tests/copy/copy-terms.vitest.ts",
-    "tests/css-conventions.vitest.ts",
-    "tests/css-ledger.vitest.ts",
-    "tests/css-modules.vitest.ts",
-    "tests/entry-graphs.vitest.ts",
-    "tests/events-batch-schedule.vitest.ts",
-    "tests/first-run-hint.vitest.ts",
-    "tests/fork-flow.vitest.ts",
-    "tests/generated-boundary-guard.vitest.ts",
-    "tests/gray-light-wiring.vitest.ts",
-    "tests/identifier-rules-parity.vitest.ts", // 〔DUP1〕读共用金样（仓内文本）⇒ 扫描层
-    "tests/import-cycle-guard.vitest.ts",
+    "tests/frontend/ui/css-conventions.vitest.ts",
+    "tests/frontend/ui/css-ledger.vitest.ts",
+    "tests/frontend/ui/css-modules.vitest.ts",
+    "tests/frontend/ui/entry-graphs.vitest.ts",
+    "tests/frontend/ui/events-batch-schedule.vitest.ts",
+    "tests/frontend/ui/first-run-hint.vitest.ts",
+    "tests/frontend/ui/fork-flow.vitest.ts",
+    "tests/frontend/ui/generated-boundary-guard.vitest.ts",
+    "tests/frontend/ui/gray-light-wiring.vitest.ts",
+    "tests/frontend/ui/identifier-rules-parity.vitest.ts", // 〔DUP1〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/frontend/ui/import-cycle-guard.vitest.ts",
     "tests/comms/inward/chan.vitest.ts",
-    "tests/ipc/commands.vitest.ts",
+    "tests/frontend/ui/ipc/commands.vitest.ts",
     // 〔DUP1〕判定只有一个家（`90 §3` 判据 2：读 `*-core` 与 TS 生产段全集 ⇒ 扫描层）。
-    "tests/judgment-single-home.vitest.ts",
-    "tests/launch-cli-wire.vitest.ts",
-    "tests/launch-no-shell-in-ts.vitest.ts", // 〔LR2〕`设计/90 §3` 条 1（接替 session-backend-gate）
+    "tests/frontend/ui/judgment-single-home.vitest.ts",
+    "tests/frontend/ui/launch-cli-wire.vitest.ts",
+    "tests/frontend/ui/launch-no-shell-in-ts.vitest.ts", // 〔LR2〕`设计/90 §3` 条 1（接替 session-backend-gate）
     // 〔FE1〕铸名 / 本机 resume 编排各只有一个家（读生产段全集 ⇒ 扫描层）。
-    "tests/launch-orchestration-single-home.vitest.ts",
-    "tests/launch-payload-golden.vitest.ts",
-    "tests/launch-tmux-outer-golden.vitest.ts",
-    "tests/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
-    "tests/liveness-process-names-parity.vitest.ts",
-    // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/tabs.ts` 与 `src/**/*.ts` 的 AST）。
-    "tests/online-bypass-ledger.vitest.ts",
-    // 〔TL3〕「是不是本机」只在 `src/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
-    "tests/origin-single-home.vitest.ts",
+    "tests/frontend/ui/launch-orchestration-single-home.vitest.ts",
+    "tests/frontend/ui/launch-payload-golden.vitest.ts",
+    "tests/frontend/ui/launch-tmux-outer-golden.vitest.ts",
+    "tests/frontend/ui/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
+    "tests/frontend/ui/liveness-process-names-parity.vitest.ts",
+    // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/frontend/ui/tabs.ts` 与 `src/**/*.ts` 的 AST）。
+    "tests/frontend/ui/online-bypass-ledger.vitest.ts",
+    // 〔TL3〕「是不是本机」只在 `src/frontend/ui/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。
+    "tests/frontend/ui/origin-single-home.vitest.ts",
     // 〔GAP1 · `设计/01 §1.5`〕overlay 路由的语义 ＋ `main.ts` 零处自判开没开（源码扫描）。
-    "tests/overlay-router.vitest.ts",
-    "tests/panorama/api-remote.vitest.ts",
-    "tests/panorama/diagram-guards.vitest.ts",
-    "tests/paste-block-guard.vitest.ts",
-    "tests/paste-block.vitest.ts",
-    "tests/remote-config.vitest.ts",
-    "tests/rbind-token-shape-parity.vitest.ts", // 〔LR2〕从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
-    "tests/replay-tail-keep.vitest.ts",
-    "tests/render.vitest.ts", // 〔W5-RENDER R3〕由 UNIT 挪来：D3 那一格读 `src/render.ts` 源码（顶层零 `let`）
-    "tests/scale1-render-cost.vitest.ts",
-    "tests/scale2-height-truth.vitest.ts",
-    "tests/scale3-one-screen-gate.vitest.ts",
-    "tests/scale4-frame-ledger.vitest.ts",
-    "tests/scale5-replay-queue-depth.vitest.ts",
-    "tests/scale6-memory-ledger.vitest.ts",
-    "tests/scanning-guard-registry.vitest.ts",
-    "tests/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
-    "tests/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
-    "tests/resync.vitest.ts", // 〔RESYNC〕读跨语言金样（`tests/__fixtures__/resync.golden.json`）
-    "tests/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
-    "tests/settings/accounts-section.vitest.ts",
-    "tests/settings/backend-section.vitest.ts",
-    "tests/settings/base-wording-guard.vitest.ts",
-    "tests/settings/data-section.vitest.ts",
-    "tests/settings/facet-producer-guard.vitest.ts",
-    "tests/settings/assets-section.vitest.ts", // 〔AS2〕
-    "tests/settings/machine-aliases-naming.vitest.ts", // 〔W5-ALIAS〕读后端 `plan.rs` 原文对拍撞名退让
-    "tests/settings/mcp-sync.vitest.ts",               // 〔AS1〕
-    "tests/settings/open-settings.vitest.ts",
-    "tests/settings/plugins-section.vitest.ts",
-    "tests/settings/remote-section.vitest.ts",
-    "tests/settings/settings-source-markdown.vitest.ts",
+    "tests/frontend/ui/overlay-router.vitest.ts",
+    "tests/frontend/ui/panorama/api-remote.vitest.ts",
+    "tests/frontend/ui/panorama/diagram-guards.vitest.ts",
+    "tests/frontend/ui/paste-block-guard.vitest.ts",
+    "tests/frontend/ui/paste-block.vitest.ts",
+    "tests/frontend/ui/remote-config.vitest.ts",
+    "tests/frontend/ui/rbind-token-shape-parity.vitest.ts", // 〔LR2〕从 launch-render-fallback.vitest.ts 搬来（读 Rust `payload.rs`）
+    "tests/frontend/ui/replay-tail-keep.vitest.ts",
+    "tests/frontend/ui/render.vitest.ts", // 〔W5-RENDER R3〕由 UNIT 挪来：D3 那一格读 `src/frontend/ui/render.ts` 源码（顶层零 `let`）
+    "tests/frontend/ui/scale1-render-cost.vitest.ts",
+    "tests/frontend/ui/scale2-height-truth.vitest.ts",
+    "tests/frontend/ui/scale3-one-screen-gate.vitest.ts",
+    "tests/frontend/ui/scale4-frame-ledger.vitest.ts",
+    "tests/frontend/ui/scale5-replay-queue-depth.vitest.ts",
+    "tests/frontend/ui/scale6-memory-ledger.vitest.ts",
+    "tests/frontend/ui/scanning-guard-registry.vitest.ts",
+    "tests/frontend/ui/session-reads.vitest.ts", // 〔C4b〕读跨语言金样（`tests/__fixtures__/session-reads.golden.json`）
+    "tests/frontend/ui/tmux-control.vitest.ts", // 〔C4e〕读跨语言金样（`tests/__fixtures__/tmux-control.golden.json`）
+    "tests/frontend/ui/resync.vitest.ts", // 〔RESYNC〕读跨语言金样（`tests/__fixtures__/resync.golden.json`）
+    "tests/frontend/ui/cc-bus-control.vitest.ts", // 〔C4e 批 3b〕读跨语言金样（`tests/__fixtures__/cc-bus-control.golden.json`）
+    "tests/frontend/ui/settings/accounts-section.vitest.ts",
+    "tests/frontend/ui/settings/backend-section.vitest.ts",
+    "tests/frontend/ui/settings/base-wording-guard.vitest.ts",
+    "tests/frontend/ui/settings/data-section.vitest.ts",
+    "tests/frontend/ui/settings/facet-producer-guard.vitest.ts",
+    "tests/frontend/ui/settings/assets-section.vitest.ts", // 〔AS2〕
+    "tests/frontend/ui/settings/machine-aliases-naming.vitest.ts", // 〔W5-ALIAS〕读后端 `plan.rs` 原文对拍撞名退让
+    "tests/frontend/ui/settings/mcp-sync.vitest.ts",               // 〔AS1〕
+    "tests/frontend/ui/settings/open-settings.vitest.ts",
+    "tests/frontend/ui/settings/plugins-section.vitest.ts",
+    "tests/frontend/ui/settings/remote-section.vitest.ts",
+    "tests/frontend/ui/settings/settings-source-markdown.vitest.ts",
     // 〔DUP1〕`tests/shell-quote-deceptive-parity.vitest.ts` 删了：它拍的是 TS 那份 `isValidConfigDir` 对 Rust 欺骗字符集，
     //   TS 那份按 `设计/90 §3` 判据 2 删了（拒绝集只在 Rust，`payload_tests.rs` 逐码位钉）。
-    "tests/tab-session-state.vitest.ts",
-    "tests/tabs-copy-terms.vitest.ts",
-    "tests/tabs-split-graph.vitest.ts",
-    "tests/tabs.vitest.ts",
-    "tests/terminal-front-command.vitest.ts",
-    "tests/terminal-open.vitest.ts", // 〔FIX4 · ⑬〕开终端三步 ＋「开窗只有一个家」（扫生产段）
+    "tests/frontend/ui/tab-session-state.vitest.ts",
+    "tests/frontend/ui/tabs-copy-terms.vitest.ts",
+    "tests/frontend/ui/tabs-split-graph.vitest.ts",
+    "tests/frontend/ui/tabs.vitest.ts",
+    "tests/frontend/ui/terminal-front-command.vitest.ts",
+    "tests/frontend/ui/terminal-open.vitest.ts", // 〔FIX4 · ⑬〕开终端三步 ＋「开窗只有一个家」（扫生产段）
     "tests/test-support/strip-comments.vitest.ts",
-    "tests/tmux-cache-single-writer.vitest.ts",
-    "tests/topbar-icons.vitest.ts",
-    "tests/topbar-list-parity.vitest.ts",
-    "tests/turn-notify.vitest.ts",
-    "tests/views/command-bar.vitest.ts",
-    "tests/views/history-fanout.vitest.ts",
-    "tests/views/inbox-view.vitest.ts",
-    "tests/views/live-user-inputs.vitest.ts",
-    "tests/views/session-viewer-user-inputs.vitest.ts",
-    "tests/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
-    "tests/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
+    "tests/frontend/ui/tmux-cache-single-writer.vitest.ts",
+    "tests/frontend/ui/topbar-icons.vitest.ts",
+    "tests/frontend/ui/topbar-list-parity.vitest.ts",
+    "tests/frontend/ui/turn-notify.vitest.ts",
+    "tests/frontend/ui/views/command-bar.vitest.ts",
+    "tests/frontend/ui/views/history-fanout.vitest.ts",
+    "tests/frontend/ui/views/inbox-view.vitest.ts",
+    "tests/frontend/ui/views/live-user-inputs.vitest.ts",
+    "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts",
+    "tests/frontend/ui/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
+    "tests/frontend/ui/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
     "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
-    "tests/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
+    "tests/frontend/ui/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/frontend/shell/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     // 〔MIG-3a〕`tests/frontend/shell/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
@@ -656,7 +656,7 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 RK1〕SCAN → INTEGRATION：RK1 加的 `the_rendered_relay_export_carries_no_key_and_a_real_shell_expands_it_from_home`
     // 铺夹具家目录、起真 `sh` 展开 `$(cat …)` ⇒ 判别器判集成层，照挪。
     "tests/backend/control/launch_render/payload_tests.rs",
-    // 〔DUP1〕标识符放行判定的生成物（写 `src/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
+    // 〔DUP1〕标识符放行判定的生成物（写 `src/frontend/ui/generated/judgment-rules.ts`）＋ 共用金样 ⇒ 写真文件 ⇒ 集成层。
     "tests/frontend/shell/backend/control/payload_judgment_rules.rs",
     "tests/frontend/shell/backend_layering.rs",
     "tests/frontend/shell/bind_tests.rs",
@@ -701,14 +701,14 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/user_files_tests.rs",
     "tests/frontend/shell/utils_tests.rs",
     // 〔CF1 · 09-24〕`tests/frontend/shell/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
-    "tests/copy-verdicts-ledger.vitest.ts",
+    "tests/frontend/ui/copy-verdicts-ledger.vitest.ts",
     "tests/copy/backend-copy-pending.vitest.ts",
     // 〔MG1 合 CP2b〕CP2b 待办表判据：起 python3 子进程跑 `CP2b-copy-pending.py --json` ⇒ 判别器判集成层（CP2b 分支上漏登记）。
     "tests/copy/copy-pending.vitest.ts",
-    "tests/eslint-baseline.vitest.ts",
+    "tests/frontend/ui/eslint-baseline.vitest.ts",
     "tests/naming/account-vs-relay-naming.vitest.ts",
-    "tests/node-suite-registry-guard.vitest.ts",
-    "tests/offline-cargo-cache.vitest.ts",
+    "tests/frontend/ui/node-suite-registry-guard.vitest.ts",
+    "tests/frontend/ui/offline-cargo-cache.vitest.ts",
     "tests/backend/observe/search_query_golden_tests.rs", // 〔SX1〕J1 合成语料写临时目录、对冻结金样
     "tests/backend/observe/search_query_reading.rs", // 〔SX1〕秤（真机层那一条）：起 python3 丢页缓存
     "tests/backend/observe/search_query_index_tests.rs", // 〔SX1〕J2 / J3 临时目录上一串变更
@@ -945,7 +945,7 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Manual("要本机真实历史数据（只读），改 F63 解析时人工重算的台账；跑法住它自己的头注"),
     ),
     (
-        "tests/render.vitest.ts",
+        "tests/frontend/ui/render.vitest.ts",
         "!process.env.W2_COST",
         Trigger::Manual("读数不是判据：`W2_COST=1` 时才量慢路与快路的墙钟（墙钟不当判据）"),
     ),

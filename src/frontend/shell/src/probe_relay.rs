@@ -1,6 +1,6 @@
 //! 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕**测试连接进度的消费侧（monitor 这一半）**：本机常驻后端发来的
 //! `probe` 帧（`dial/probe.rs` 边拨边推的一格），原样交给会话流的句柄（`event_replay::EventReplay::on_probe`），
-//! 界面经通道 `subscribe(<local>, "probe-progress/<票>")` 收（`src/remote-probe.ts`）。
+//! 界面经通道 `subscribe(<local>, "probe-progress/<票>")` 收（`src/frontend/ui/remote-probe.ts`）。
 //!
 //! 与 [`crate::session_tap`] 同形：读循环（`local_backend::absorb_local_frame`）手里没有 `AppHandle` ⇒ 出口由 `lib.rs` 的 setup
 //! 装一次（[`install_sink`]）；装之前来的直接丢（界面那时也还没在订）。**零解释**：那一格是什么由界面严格收。

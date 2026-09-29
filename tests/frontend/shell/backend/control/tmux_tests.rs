@@ -45,7 +45,7 @@ fn ccm_tmux_name_whitelist() {
 /// **今天三条路各自真正的入口**，一条都没少：
 /// ① 谓词本体 [`gate1_admit_target`]（今天只剩 [`exact_target`] 这个跨轨锚点在用）；
 /// ②③④〔C4e · 第四波 4C〕三条路（抓屏 · 送键 · 杀会话）的生产入口原本也在这里真跑一遍、断言在任何 IO 之前就地拒；
-///    三条整条迁到界面之后（`src/tmux-control.ts`），那一格随入口搬过去：`tests/tmux-control.vitest.ts`
+///    三条整条迁到界面之后（`src/frontend/ui/tmux-control.ts`），那一格随入口搬过去：`tests/frontend/ui/tmux-control.vitest.ts`
 ///    「空目标就地拒，一个字节都不发」三个入口各一条（Tauri 命令 `tmux_send_keys` / `kill_remote_tmux`〔散文墓碑〕删了）。
 ///
 /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，
@@ -350,12 +350,12 @@ fn every_target_placeholder_comes_from_exact_target() {
 // （`the_local_capture_is_no_longer_a_dead_end`〔散文墓碑〕）。抓屏改由界面经通道直接问那台机器的后端之后，
 // monitor 里**那条路本身不在了**（`capture_remote_pane` / `capture_via_backend`〔散文墓碑〕都删了），两刀各自的去处：
 // ① 「没有第二份实现」⇒ 下面这条零命中（整棵 monitor 生产段）＋ `frame_query_tests` 那条「已迁的零发送点」；
-// ② 「本机与远端同一条路、通道不在时两句话不同」⇒ `tests/tmux-control.vitest.ts`（`<local>` 照样经通道问 · 两句话不同）。
+// ② 「本机与远端同一条路、通道不在时两句话不同」⇒ `tests/frontend/ui/tmux-control.vitest.ts`（`<local>` 照样经通道问 · 两句话不同）。
 
 /// ★★〔C4e · 第四波 4C〕**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
 ///
 /// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」——
-/// 抓屏的解释今天只住 `src/tmux-control.ts`；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现
+/// 抓屏的解释今天只住 `src/frontend/ui/tmux-control.ts`；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现
 /// （`K-R112` 删掉的那一形：`command -v tmux` 门控 ＋ 两个哨兵）。
 /// 帧命令名 `"capture-pane"` 那一格由 `frame_query_tests::the_channeled_ops_are_sent_only_through_the_channel` 管
 /// （`CHANNELED_ELSEWHERE` 那一行：monitor 生产段零字面量），本条管**shell 串那几种形态**。
@@ -383,7 +383,7 @@ fn the_monitor_has_no_capture_path_any_more() {
         assert!(
             !corpus.contains(shape.as_str()),
             "monitor 生产段里又出现了 `{shape}` —— 抓屏在 monitor 里长回了一条路；\
-             它只许住界面一处（`src/tmux-control.ts::capturePane`）"
+             它只许住界面一处（`src/frontend/ui/tmux-control.ts::capturePane`）"
         );
     }
     // 〔MIG-1 续〕正控换锚：列会话那条只读调用（格式串常量）随解析搬进了后端 ⇒ 认今天真在的 Gate 1 对拍锚点。
@@ -398,7 +398,7 @@ fn the_monitor_has_no_capture_path_any_more() {
 //   `connect_and_exec_cmd`）＋「说真实原因」（对 `<local>` 不报「未找到远端配置」、本机与远端两句话不同）。
 //   两条命令整条迁到界面之后：
 //   ① 回潮闸 ⇒ `tmux_backend_gate_guard` 那两条改钉「monitor 生产段里一处破坏性 tmux 动词都没有」（界面那一侧结构上没有 SSH）；
-//   ② 说真实原因 ⇒ `tests/tmux-control.vitest.ts`「通道不在：本机与远端两句话不同」（结束会话 · 发按键各一遍）。
+//   ② 说真实原因 ⇒ `tests/frontend/ui/tmux-control.vitest.ts`「通道不在：本机与远端两句话不同」（结束会话 · 发按键各一遍）。
 
 /// F01 回归：tmux `-t` 目标**必须**精确匹配（`'=<名>:'`），绝不留裸目标。
 ///
@@ -465,7 +465,7 @@ fn tmux_targets_use_exact_match() {
 
 // 〔C4e · 第四波 4C〕这里原来住着「抓不到的五档分得开、认不出的码不许猜」（`the_five_capture_refusals_stay_apart`〔散文墓碑〕，
 //   驱动 monitor 的 `describe_capture_refusal`〔散文墓碑〕）。那一份说法随抓屏迁到界面：同一条性质住
-//   `tests/tmux-control.vitest.ts`（码集合取自跨语言金样 —— 与后端 `REGISTRY` 那一块对拍过的同一份，不是手抄）。
+//   `tests/frontend/ui/tmux-control.vitest.ts`（码集合取自跨语言金样 —— 与后端 `REGISTRY` 那一块对拍过的同一份，不是手抄）。
 
 // 〔MIG-1 续 · `99 §2.1 ⑬`〕列会话那一族的判据（解析四条 · 格式串真 TAB · `TMUX_LS_FMT` 双写点 · `tmux-list` 成品严格收 ·
 //   K-R12 `J1` 下溢死值）随解析搬进后端：`tests/backend/observe/tmux_list_tests.rs`（格式串只剩后端一个家，双写点那条随之无所对拍）。

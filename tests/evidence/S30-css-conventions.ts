@@ -1,13 +1,13 @@
 /**
  * `S30` —— **CSS 三条约定的量具**（`设计/40 §7` 步 9 ① · `设计/41 §7` · `设计/41 §10`）。
  *
- * 🔴 **这份文件只是量具，不是判据。** 登记表与判定住 `tests/css-conventions.vitest.ts`。
+ * 🔴 **这份文件只是量具，不是判据。** 登记表与判定住 `tests/frontend/ui/css-conventions.vitest.ts`。
  * 分家的理由与 `tests/evidence/S25-class-ledger.ts` 逐字相同，这里不复述一份：
- * `tests/scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 只数
+ * `tests/frontend/ui/scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 只数
  * `.vitest.ts` / `.test.ts`（`IS_TEST`）里的遍历者，量具住在 `tests/evidence/` 下的
  * 普通 `.ts` 里既满足那条棘轮，又让死值验能对着**镜像树**跑（`cssFacts(<别的根>)`）。
  *
- * ## 为什么不是扩 `tests/css-ledger.vitest.ts`
+ * ## 为什么不是扩 `tests/frontend/ui/css-ledger.vitest.ts`
  *
  * 那本账（`S25`）管的是**类名与 z-index 的两个方向**，它的读数
  * `tests/evidence/S25-css-ledger-readings.md` 逐字写着「装了 4 格 / 13 条断言」。
@@ -21,20 +21,20 @@
  * |---|---|---|
  * | `cssFacts` | CSS 里**定义过**的自定义属性 · **`var()` 到**的自定义属性 · `transition` 动的属性 · 规则表 | ⑤ ⑥ ⑦ |
  * | `setPropertyVars` | TS 里 `style.setProperty("--x", …)` 设的名字 | ⑤ |
- * | `themeTokens` | `src/theme.ts` 的 `TOKEN_MAP` 暴露给用户的那几个 `cssVar` | ⑤ |
+ * | `themeTokens` | `src/frontend/ui/theme.ts` 的 `TOKEN_MAP` 暴露给用户的那几个 `cssVar` | ⑤ |
  * | `hiddenSites` | TS 里 `<元素>.hidden = …` 的每一处，以及那个元素挂的类名 | ⑦ |
  *
  * ## 🔴 三个会让尺子静默给出错答案的地方（都踩过，逐条钉住）
  *
- * 1. **CSS 注释里的散文会被当成代码。** `src/styles/tokens.css` 的头注逐字写着
+ * 1. **CSS 注释里的散文会被当成代码。** `src/frontend/ui/styles/tokens.css` 的头注逐字写着
  *    「z-index 只许写 `var(--z-*)`」—— 不剥注释就会多出一个叫 `--z-` 的「未定义变量」，
  *    而它根本不存在。⇒ `stripCssComments` 是承重的，判据那边有一条自检盯着它真的剥掉了东西。
- * 2. **同名局部变量跨函数串味。** `src/tabs.ts` 里 `wrap` / `list` 这两个名字在
+ * 2. **同名局部变量跨函数串味。** `src/frontend/ui/tabs.ts` 里 `wrap` / `list` 这两个名字在
  *    `ensureArchiveUi()`（`.tab-archive` / `.tab-archive-list`）与建分组那段
  *    （`.tab-group` / `.tab-group-list`）各用了一次。按「整份文件里这个名字挂过哪些类」
  *    去收，一个 `.hidden =` 会同时认领四个类名 —— **四个里有两个是错的**。
  *    ⇒ 取的是**离它最近的那一次上游赋值**（`nearest`），不是全文件并集。
- * 3. **接收者要整段比，不能只比最后一个标识符。** `src/settings/panel.ts:606` 是
+ * 3. **接收者要整段比，不能只比最后一个标识符。** `src/frontend/ui/settings/panel.ts:606` 是
  *    `b.el.hidden = …`，而同一份文件 `:353` 有 `this.el.classList.add("open")`。
  *    只比 `el` 会把设置面板自己的 `.open` 安到别人头上（第一版实测就这么错的）。
  *    ⇒ `RE_HIDDEN` / `RE_CLASSNAME` 抓的都是**完整的点号链**，逐字相等才算同一个元素。
@@ -190,9 +190,9 @@ export function setPropertyVars(root: string): Map<string, string[]> {
   return out;
 }
 
-/** `src/theme.ts` 的 `TOKEN_MAP` 暴露给用户调的那几个 `cssVar`（按出现顺序）。 */
+/** `src/frontend/ui/theme.ts` 的 `TOKEN_MAP` 暴露给用户调的那几个 `cssVar`（按出现顺序）。 */
 export function themeTokens(root: string): string[] {
-  const text = readFileSync(join(root, "src", "theme.ts"), "utf8");
+  const text = readFileSync(join(root, "src", "frontend", "ui", "theme.ts"), "utf8");
   return [...text.matchAll(/cssVar:\s*["'`](--[A-Za-z0-9_-]+)["'`]/g)].map((m) => m[1]);
 }
 
@@ -633,7 +633,7 @@ export function windowSheets(root: string): Map<string, string[]> {
 
 /** `layers.css` 里那一句 `@layer a, b, …;` 的层序（先写的优先级低）。 */
 export function layerOrder(root: string): string[] {
-  const text = stripCssComments(readFileSync(join(root, "src/styles/layers.css"), "utf8"));
+  const text = stripCssComments(readFileSync(join(root, "src/frontend/ui/styles/layers.css"), "utf8"));
   const m = /@layer\s+([^;{]+);/.exec(text);
   return m ? m[1].split(",").map((x) => x.trim()) : [];
 }

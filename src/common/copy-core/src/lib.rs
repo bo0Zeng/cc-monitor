@@ -10,7 +10,7 @@
 //! `调研/第四波记录/CP2c.md §2.1`）· `creds-core`（被上面两方同时链接，自己也有要对人说的话）。
 //! `creds-core` 够不着任何一个宿主的 `crate::copy_table`；各写一份取文实现就是 `91 §5.1` 的先例 B 形。
 //!
-//! # 纪律（与 TS 那一侧 `src/copy-table.ts::copyText` 同一套，判据住 `tests/copy/copy-table.vitest.ts`）
+//! # 纪律（与 TS 那一侧 `src/frontend/ui/copy-table.ts::copyText` 同一套，判据住 `tests/copy/copy-table.vitest.ts`）
 //!
 //! - key 必须是字面量（判据按调用形状从 `.rs` 里抠 `copy_text("…", &[…])`，与表两向相等）；
 //! - 参数是 `&[("名", 值)]` 的数组字面量，名的集合 == 表里那一条的 `args`；

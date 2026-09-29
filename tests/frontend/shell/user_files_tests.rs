@@ -155,7 +155,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         "门发出去的这几条后端根本没登记：{unknown:?} —— 发过去只会拿到 unknown_command"
     );
     // 反向：`RW1` 在后端写面加的三条，每一条在 monitor 这一侧都有消费者（不许登记了没人用）。
-    // 〔MIG-3b〕`files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/session-writes.ts`）。
+    // 〔MIG-3b〕`files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/frontend/ui/session-writes.ts`）。
     // 〔MIG-3b 续〕`files-put` 出了这一组：最后经门写的全景批注进了那台后端（`panorama-edit` 在后端里经 `LocalFiles` 发它）。
     for trio in ["files-peek"] {
         assert!(

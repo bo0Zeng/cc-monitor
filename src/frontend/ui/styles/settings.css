@@ -1,0 +1,2508 @@
+/**
+ * 设置面板本体与它的各节、键位编辑器、配置面审计、待贴块。
+ *
+ * 加载它的窗口：**只有设置窗**（住址：各窗口 html 的 `<link rel="stylesheet">` 列表 ——
+ * `index.html` / `settings.html` / `viewer.html`，那就是每个窗口的 CSS 清单，没有第二份）。
+ *
+ * 〔三入口拆分 · `设计/41 §9`〕本文件由基线 `src/frontend/ui/styles.css` 按「哪几个窗口的模块图里有它的建元素处」
+ * 逐块切出来，**块内容逐字搬、块间保持原序**。切法与判据见 `设计/41` 末尾追加的那一节。
+ */
+
+@layer components {
+/* F87（#50+#51）：MCP 管理段样式（原缺、名字与摘要糊在一起——业务二审 gap#7 修）。 */
+/* P6b：工作目录清单。`datalist` 是自动补全（要先敲才补），这排 chip 是**可浏览**的 ——
+   实测本机 12 个项目里只有 4 个真有 .mcp.json，没有清单就只能一个个猜着点。 */
+/* P6c：resume 命令预设条。与 .mcp-dirs 同形（一排可点的 chip），
+   但**刻意不共用一个类名** —— 两处的语义不同（一个是目录、一个是命令），
+   将来任一处要单独调样式时，共用的类会逼人先做一次拆分。 */
+.settings-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+/* P6c D 补审：chip + 移除口 */
+.settings-preset-wrap {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.settings-preset {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-dirs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* 路径可能很长（实测最长 111 字符）⇒ 单条限宽 + 省略号，靠 title 看全，
+   否则一条路径就能把整行撑破、把其余候选挤到看不见。 */
+.mcp-dir-chip {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* F87b-fix：远端读失败常驻内联错误 + 重试；远端列表头（user-scope 说明 + 重新读取）；编辑态横幅。 */
+.mcp-remote-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  color: var(--error);
+  font-size: var(--font-size-small);
+}
+
+.mcp-remote-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.mcp-remote-head .settings-hint {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcp-loading {
+  opacity: 0.8;
+}
+
+.mcp-edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--accent, #7aa2f7);
+  background: var(--overlay-hover);
+  border-radius: 4px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+
+.mcp-edit-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcp-machine-label {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+/* E59：`.mcp-machine-btn` 两条已删 —— 那排「机器：本机 / devbox / nano」按钮不再存在
+ * （本分节只活在机器详情页上，页头就是选择器）。现在这里只剩一个只读的机器名。 */
+.mcp-machine-name {
+  color: var(--text);
+  font-size: var(--font-size-small);
+}
+
+.mcp-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mcp-server-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  min-width: 0;
+}
+
+.mcp-server-name {
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.mcp-server-summary {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* F87b①②：行内按钮组（JSON 折叠 / 编辑 / 删）——JSON 钮起靠右聚拢；紧凑尺寸不撑高行。 */
+.mcp-server-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.mcp-json-toggle.active {
+  color: var(--text);
+  border-color: var(--text-2);
+}
+
+/* F87b①：看完整 JSON 折叠详情——来源路径 + 完整配置，等宽、可横向滚，默认收起。 */
+.mcp-server-detail {
+  margin: 2px 0 6px 12px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.mcp-server-detail.is-collapsed {
+  display: none;
+}
+
+.mcp-server-src {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.mcp-server-json {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  background: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.mcp-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* === 设置面板：PowerShell 集成区 (cc_integration.ts) === */
+/* ⚠ S21：`.settings-cc-profiles` / `-card` / `-head` / `-name` / `-path` 五条已删 ——
+   那个「一张 profile 卡」的组件被重写掉了，样式留在原地零引用。
+   活着的是下面 `-status` / `-badge` / `-buttons` / `-warn` 这几条（cc_integration.ts 现打在用）。 */
+.settings-cc-profile-status {
+  margin-bottom: 8px;
+}
+
+.settings-cc-profile-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.settings-cc-badge-ok {
+  background: rgba(100, 180, 100, 0.15);
+  color: #98c898;
+}
+
+.settings-cc-badge-warn {
+  background: rgba(200, 130, 80, 0.15);
+  color: var(--accent, #c25b3b);
+}
+
+.settings-cc-badge-info {
+  background: rgba(150, 150, 150, 0.15);
+  color: var(--text-2, #bcb5a8);
+}
+
+.settings-cc-profile-warn {
+  background: rgba(200, 130, 80, 0.1);
+  border-left: 3px solid var(--accent, #c25b3b);
+  padding: 6px 10px;
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--text-2, #bcb5a8);
+}
+
+.settings-cc-profile-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* 活跃注册数行 */
+.settings-cc-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-2, #bcb5a8);
+}
+
+.settings-cc-stat-label {
+  color: var(--text-faint, #8a8275);
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-cc-stat-value {
+  font-weight: 600;
+  color: var(--text, #d6cfc6);
+}
+
+/* ! 信息图标 + hover tooltip
+   用 textContent 填充内容，CSS 控制显示/隐藏 + 多行（pre-line）。 */
+.settings-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint, #8a8275);
+  color: var(--text-faint, #8a8275);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  margin-left: 6px;
+  user-select: none;
+  position: relative;
+  font-family: var(--font-base, sans-serif);
+  line-height: 1;
+}
+
+.settings-info-icon:hover {
+  color: var(--text, #d6cfc6);
+  border-color: var(--text, #d6cfc6);
+}
+
+/* v1.7.13: tooltip 改 portal 模式（position: fixed + JS 算位置），
+   彻底脱离 .settings-body 的 overflow-y: auto 裁剪。位置完全由 JS 设置，CSS 只管样式 + 默认隐藏。 */
+.settings-info-tooltip {
+  display: none;
+  position: fixed;
+  /* top / left 由 JS 动态设 */
+  width: max-content;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 8px 10px;
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--border-strong, #5a5046);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2, #bcb5a8);
+  z-index: var(--z-toast);
+  text-align: left;
+  white-space: pre-line;
+  font-weight: 400;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* v1.7.2 legacy profile (profile.ps1) 遗留警告 */
+.settings-cc-legacy-warn {
+  background: rgba(200, 130, 80, 0.1);
+  border-left: 3px solid var(--accent, #c25b3b);
+  padding: 10px 12px;
+  margin: 12px 0;
+  font-size: 12px;
+  color: var(--text-2, #bcb5a8);
+  border-radius: 4px;
+}
+
+/* === auto-launch toggle === */
+.settings-cc-autolaunch {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 8px;
+  background: var(--bg-2, #2a2520);
+}
+
+.settings-checkbox {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.settings-checkbox-label {
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text, #d6cfc6);
+}
+
+.settings-cc-autolaunch-path {
+  margin-top: 6px;
+  margin-left: 22px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.settings-cc-autolaunch-path-value {
+  color: var(--text-2, #bcb5a8);
+}
+
+/* === 设置面板：cc 集成预览 modal === */
+.settings-cc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-cc-modal {
+  background: var(--bg, #1f1b16);
+  border: 1px solid var(--border-strong, #5a5046);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 760px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-cc-modal-title {
+  font-weight: 600;
+  color: var(--text, #d6cfc6);
+  font-size: 14px;
+}
+
+.settings-cc-modal-code {
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  padding: 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-y: auto;
+  flex: 1;
+  color: var(--text-2, #bcb5a8);
+}
+
+.settings-cc-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* === Settings Panel === */
+
+.settings-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 100vw;
+  background: var(--bg-2);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -4px 0 12px var(--overlay-shadow);
+  transform: translateX(100%);
+  transition: transform 0.22s ease;
+  display: flex;
+  flex-direction: column;
+  z-index: var(--z-view);
+}
+
+.settings-panel.open {
+  transform: translateX(0);
+}
+
+/* F82a（#56+#47）：独立设置窗口模式 —— 设置面板占满整窗。
+   〔三入口拆分〕原先这里还有两条兜底：`body.settings-window-mode #app { display: none }` 与
+   「设置窗里把顶栏 trigger 再藏一次」。`settings.html` 里**既没有 `#app` 也没有 trigger**
+   （它只有一个空 body），两条都没有对象，删了。 */
+body.settings-window-mode .settings-panel {
+  width: 100vw;
+  max-width: 100vw;
+  border-left: none;
+  box-shadow: none;
+  transform: none; /* 无抽屉滑入（脱流铺满，别从右缘滑） */
+  transition: none;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-close {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.settings-close:hover {
+  color: var(--text);
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+/* S2（settings-ia）：设置窗两栏 —— 左导航 + 右内容。
+   刻意**不动** `.settings-body` 既有的 `overflow-y: auto`：改滚动容器会牵连 banner、
+   窗口模式、以及 `.settings-flyout` 那套 `position:fixed` 脱流的注释所依赖的前提。
+   导航用 `position: sticky` 跟着 body 滚，效果等价、改动面小得多。 */
+.settings-shell {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.settings-nav {
+  flex: 0 0 150px;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.settings-nav-item:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+
+.settings-nav-item-active {
+  background: var(--bg-2);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 内容列必须能被压缩，否则里面的宽表格/长路径会把 flex 项撑开、把导航挤没。 */
+.settings-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 页与页之间不叠：可见性由路由器设 `hidden`，这里只兜底防样式表里别处的
+   `display` 规则把 hidden 元素又显示回来。 */
+.settings-page[hidden] {
+  display: none;
+}
+
+/* S3（settings-ia）：机器列表行上的状态格子。
+   「上次动作的结论 + 它有多旧」——绝不伪装成实时（主计划 §1-2）。 */
+.remote-machine-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: var(--font-size-small);
+  gap: 8px;
+  margin-left: 10px;
+}
+
+.remote-status-cell {
+  white-space: nowrap;
+}
+
+.remote-status-ok {
+  color: var(--success);
+}
+
+.remote-status-fail {
+  color: var(--error);
+}
+
+/* 「不适用」与「未测过」用同一种弱化色，但**语义不同**：前者是本机不需要后端，
+   后者是还没测过。区分在文案（title / 图标 — vs ·），不靠颜色。 */
+.remote-status-na,
+.remote-status-unknown {
+  color: var(--text-2);
+}
+
+/* S5 / E56：机器页顶部的「还差什么」。**空的时候整块不渲染**（见 renderGaps），
+   所以这里不必为空态设计。 */
+.remote-gaps {
+  background: var(--bg-2);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+.remote-gaps-head {
+  margin-bottom: 4px;
+}
+
+.remote-gaps-list {
+  font-size: var(--font-size-small);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.remote-gap {
+  padding: 2px 0;
+}
+
+/* 「确认缺」与「还没测过」**视觉上必须能分开** —— 它们是两种不同的结论，
+   混成一个颜色就等于把「不知道」说成了「缺」。 */
+.remote-gap[data-kind="missing"] {
+  color: var(--error);
+}
+
+.remote-gap[data-kind="unknown"] {
+  color: var(--text-2);
+}
+
+/* S4b-3b-2：页内横向分栏（机器详情页的 连接/组件/账号/工具）。
+   与左侧导航同一个 SettingsRouter，只是排布方向不同。 */
+.settings-shell-h {
+  display: block;
+}
+
+.settings-shell-h .settings-nav {
+  border-bottom: 1px solid var(--border, var(--bg-2));
+  flex-direction: row;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  position: static;
+}
+
+.settings-shell-h .settings-nav-item {
+  border-radius: 6px 6px 0 0;
+}
+
+.settings-shell-h .settings-content {
+  min-width: 0;
+}
+
+/* 卡片被拆成两半后，两半各自不再需要额外间距（间距由所在栏给）。 */
+.machine-part > :first-child {
+  margin-top: 0;
+}
+
+/* S4b-3b：机器列表的工具条（列表级动作全在这一条上，且在列表之前）。 */
+.remote-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.remote-toolbar-toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* S4b：列表里的机器行（表单在它自己那一页，这里只有名字 + 状态 + 删除）。 */
+.remote-machine-row .remote-machine-legend {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.remote-machine-open {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.remote-machine-open:hover {
+  text-decoration: underline;
+}
+
+/* 导航里的机器子项：缩进一级，与父项「机器」区分开。 */
+.settings-nav-item-child {
+  font-size: var(--font-size-small);
+  padding-left: 22px;
+}
+
+/* 本机行：不可编辑、不可删，视觉上比远端机器卡片轻。 */
+.remote-machine-local {
+  opacity: 0.95;
+}
+
+.settings-page-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.settings-page-title {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+.settings-group-title {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+/* issue #3 (A 透明化): 设置面板「数据存储」区。
+   折叠分组内嵌一个 headless DataSection，列出所有持久路径 + WebView2 + localStorage。 */
+.settings-data-headless {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-data-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-data-loading,
+.settings-data-error {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  padding: 8px 0;
+}
+
+.settings-data-error {
+  color: var(--error);
+}
+
+.settings-data-block {
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 10px 4px 10px;
+  background: color-mix(in srgb, var(--bg-2) 50%, transparent);
+}
+
+.settings-data-block-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.settings-data-block-title {
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.settings-data-block-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.settings-data-block-subtitle.clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.settings-data-block-subtitle.clickable:hover {
+  color: var(--text-2);
+}
+
+.settings-data-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-data-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas:
+    "label  meta  open"
+    "desc   desc  desc"
+    "path   path  path";
+  gap: 2px 8px;
+  padding: 6px 6px;
+  border-top: 1px dashed var(--border-soft);
+  align-items: baseline;
+}
+
+.settings-data-item:first-child {
+  border-top: none;
+}
+
+.settings-data-item.absent {
+  opacity: 0.55;
+}
+
+.settings-data-item-label {
+  grid-area: label;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--text);
+}
+
+.settings-data-item[data-kind="dir"] .settings-data-item-label::before {
+  content: var(--mark-dir);
+}
+
+.settings-data-item[data-kind="file"] .settings-data-item-label::before {
+  content: var(--mark-file);
+}
+
+.settings-data-item-desc {
+  grid-area: desc;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+}
+
+.settings-data-item-meta {
+  grid-area: meta;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
+
+.settings-data-item.exists .settings-data-item-meta {
+  color: var(--text-2);
+}
+
+.settings-data-item-open {
+  grid-area: open;
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.settings-data-item-open:hover:not(:disabled) {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+
+.settings-data-item-open:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.settings-data-item-path {
+  grid-area: path;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  word-break: break-all;
+}
+
+.settings-data-ls-list {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.settings-data-ls-list .settings-data-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  grid-template-columns: none;
+  grid-template-areas: none;
+}
+
+.settings-data-ls-key {
+  color: var(--accent);
+}
+
+.settings-data-ls-eq {
+  color: var(--text-faint);
+}
+
+.settings-data-ls-value {
+  color: var(--text-2);
+  word-break: break-all;
+}
+
+.settings-data-note {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.settings-data-note strong {
+  color: var(--warn);
+}
+
+/* issue #7: 可折叠分组（外观 / 诊断 / 快捷键 etc.）
+   用 grid-template-rows: 0fr ↔ 1fr 技巧做平滑展开 —— 不用预测内容高度。 */
+.settings-collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  /* 占用 .settings-group-title 的 8px 底部边距，折叠时也需要保留视觉间隔 */
+  margin-bottom: 8px;
+  padding: 2px 0;
+  border-radius: 3px;
+  outline: none;
+}
+
+.settings-collapsible-header:hover {
+  background: var(--bg-2);
+}
+
+.settings-collapsible-header:focus-visible {
+  background: var(--bg-2);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.settings-collapsible-arrow {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-2);
+  transition: transform 150ms ease;
+  transform: rotate(0deg);
+}
+
+.settings-collapsible-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.settings-collapsible-title {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-collapsible-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+
+.settings-collapsible-body.expanded {
+  grid-template-rows: 1fr;
+}
+
+.settings-collapsible-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* collapsible 折叠时不需要 header 下面的 8px 边距空气 */
+.settings-collapsible.collapsed .settings-collapsible-header {
+  margin-bottom: 0;
+}
+
+/* F08：越层启动器诊断——只读提示，不是错误（用户的自定义命令本身没有"错"，只是没享受到
+   账号/模型偏好的好处），用 warn 色但不用 error 色，同 accounts-row-badge.warn 的既有克制。 */
+.settings-launcher-warning {
+  margin-top: 4px;
+  font-size: var(--font-size-small);
+  color: var(--warn);
+}
+
+.settings-input-select {
+  width: 220px;
+  cursor: pointer;
+}
+
+/* 单项"恢复默认"按钮：贴在每个 settings-row 右侧 */
+.settings-field-reset {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  border-radius: 4px;
+  padding: 0;
+  margin-left: 4px;
+  transition:
+    color 120ms,
+    background 120ms,
+    border-color 120ms;
+}
+
+.settings-field-reset:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+  border-color: var(--border-strong);
+}
+
+.settings-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.settings-btn-primary:hover {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+
+/* 数据目录设置：纵向铺开布局 */
+.settings-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.settings-row-end {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-input-wide {
+  width: 100%;
+}
+
+/* 顶部 banner（保存后的提示） */
+.settings-banner {
+  font-size: var(--font-size-small);
+  color: var(--warn);
+  background: rgba(212, 160, 74, 0.08);
+  border: 1px solid rgba(212, 160, 74, 0.2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: none;
+}
+
+.settings-banner.settings-banner-show {
+  display: block;
+}
+
+/* 远端「测试连接」结果（issue #15 Tier 1） */
+.remote-test-result {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: var(--font-size-small);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.remote-test-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* F46：连接过程分阶段泳道日志 */
+.remote-stage-log {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border, #ccc);
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.9;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.remote-stage-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.remote-test-mark {
+  font-weight: bold;
+}
+
+.remote-test-ok {
+  color: var(--success);
+}
+
+.remote-test-err {
+  color: var(--error);
+}
+
+.remote-test-msg {
+  color: var(--text-faint);
+}
+
+.remote-test-fp {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  word-break: break-all;
+}
+
+/* FIX 4（issue #15）：首次 / TOFU 捕获的指纹未经验证，固化前的安全提醒。 */
+.remote-test-caution {
+  flex-basis: 100%;
+  color: var(--warn);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
+}
+
+/* Feature ②：远端 ↗ 拉前的只读 ccm wrapper 片段。等宽、保留空白、可横向滚动、带边框。 */
+/* F81（#40）：拉前块默认折叠——<summary> 作可点击标题，自定义披露三角（同 .card-compact-summary 范式）。
+   details 保持块流（不加 .settings-row 的 display:flex，否则折叠失效），补 settings-row 的竖向节奏。 */
+.remote-wrapper-details {
+  padding: 6px 0;
+}
+
+.remote-wrapper-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.remote-wrapper-summary::-webkit-details-marker {
+  display: none;
+}
+
+.remote-wrapper-summary::before {
+  content: var(--mark-closed);
+  color: var(--text-faint);
+}
+
+.remote-wrapper-details[open] > .remote-wrapper-summary::before {
+  content: var(--mark-open);
+}
+
+.remote-wrapper-snippet {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-small);
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* === 远端机器列表（多机 #30）=== */
+
+.remote-machines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.remote-machine {
+  margin: 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.remote-machine-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer; /* 点 legend 折叠/展开 */
+}
+
+/* 折叠指示符：▸ 折叠 / ▾ 展开 */
+.remote-machine-toggle {
+  display: inline-block;
+  width: 12px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+/* 机器名占满中段，把删除按钮推到右侧 */
+.remote-machine-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 折叠：只留 legend（机器名行），隐藏全部字段 + 测试/安装区 */
+.remote-machine.is-collapsed {
+  padding-bottom: 6px;
+}
+
+.remote-machine.is-collapsed .remote-machine-body {
+  display: none;
+}
+
+.remote-machine-remove {
+  font-size: var(--font-size-small);
+  padding: 1px 8px;
+}
+
+/* backend / ccm 安装位置提示：比普通 hint 略醒目的小框（左边框 + 圆角） */
+.remote-install-info {
+  margin: 8px 0 4px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 4px;
+  line-height: 1.55;
+}
+
+/* 动作按钮行（测试 / 装卸 backend / 装卸 ccm）：按钮多，允许换行、右对齐 */
+.settings-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* === Keybindings Editor (issue #5) ===
+   modal overlay 仿小窗口风格：fixed 全屏 backdrop + 居中浮窗。
+   `--z-overlay` > `--z-view`（设置面板），保证从设置里点开能浮在设置之上。 */
+.kb-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-deep);
+  z-index: var(--z-overlay);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.kb-editor-overlay.open {
+  display: flex;
+}
+
+.kb-editor-window {
+  width: min(720px, 92vw);
+  max-height: 82vh;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px var(--overlay-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.kb-editor-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg);
+}
+
+.kb-editor-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.kb-editor-close {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.kb-editor-close:hover {
+  color: var(--text);
+}
+
+.kb-editor-hint {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.kb-editor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.kb-editor-section + .kb-editor-section {
+  margin-top: 16px;
+}
+
+.kb-editor-section-title {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 6px 0;
+  font-weight: 600;
+}
+
+.kb-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.kb-editor-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.kb-editor-row:last-child {
+  border-bottom: none;
+}
+
+.kb-editor-row-disabled {
+  opacity: 0.55;
+}
+
+.kb-editor-name {
+  padding: 8px 6px;
+  color: var(--text);
+  width: 50%;
+}
+
+.kb-editor-chord {
+  padding: 8px 6px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.kb-editor-chord.kb-editor-recording {
+  color: var(--warn);
+  background: var(--overlay-hover);
+  border-radius: 3px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.kb-editor-ops {
+  padding: 6px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.kb-editor-btn-record,
+.kb-editor-btn-reset {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: var(--font-size-small);
+  margin-left: 4px;
+}
+
+.kb-editor-btn-record:hover:not(:disabled),
+.kb-editor-btn-reset:hover:not(:disabled) {
+  background: var(--overlay-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.kb-editor-btn-record:disabled,
+.kb-editor-btn-reset:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.kb-editor-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-strong);
+  display: flex;
+  justify-content: flex-end;
+  background: var(--bg);
+}
+
+.kb-editor-reset-all {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: var(--font-size-small);
+}
+
+.kb-editor-reset-all:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* 设置面板「快捷键」分组的 "已自定义 N 项" chip */
+.settings-kb-chip {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片）。`--z-overlay` > 设置面板
+   （`--z-view`）—— 从设置里点开,低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
+.launcher-back {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.launcher-box {
+  width: min(90%, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--bg, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+}
+
+.launcher-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.launcher-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.launcher-field input,
+.launcher-field select {
+  padding: 6px 8px;
+  background: var(--field-bg);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.launcher-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.pf-panel {
+  width: min(92%, 620px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pf-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border, #444);
+}
+
+.pf-title {
+  flex: 1;
+  font-weight: 600;
+}
+
+.pf-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border, #444);
+}
+
+.pf-arrow {
+  opacity: 0.6;
+}
+
+.pf-input {
+  padding: 4px 8px;
+  background: var(--bg, #2a2a2a);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-size: 13px;
+  min-width: 90px;
+  flex: 1;
+}
+
+.pf-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border, #555);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.pf-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pf-list {
+  overflow-y: auto;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pf-empty {
+  opacity: 0.6;
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.pf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+}
+
+.pf-desc {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.pf-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.pf-dot-ok {
+  background: var(--success, #3fb950);
+}
+
+.pf-dot-err {
+  background: var(--error, #f85149);
+}
+
+/* F57:~/.ssh/config 批量导入预览弹框。`--z-overlay` > 设置面板(`--z-view`)——从设置里点开,
+   低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
+.import-preview-back {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.import-preview-box {
+  width: min(92%, 560px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--bg, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+}
+
+.import-preview-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.import-preview-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.import-preview-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+}
+
+.import-preview-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.import-preview-label {
+  padding: 3px 6px;
+  background: var(--field-bg);
+  border: 1px solid var(--border, #444);
+  border-radius: 3px;
+  color: inherit;
+  font-size: 13px;
+}
+
+.import-preview-info {
+  font-size: 11px;
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+
+.import-preview-split {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.import-preview-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* account-ux U6：chip 上的 ⚠k 不一致计数（k 个活会话不在当前账号）。仅信息，点 chip
+   进菜单才有对齐入口 → 不做成按钮、不抢眼，只用 warn 色示意。 */
+.account-picker-action.danger {
+  color: var(--warn, #d4a04a);
+}
+
+/* ============================================================
+   account-ux U7：设置「账号」组的 IA + 表格样式。
+   在此之前**账号表这一片**（bar / meta / table / row / hint / info / not-enabled）一条 CSS 都没有,
+   是裸 div 竖排:无列、无对齐、长 configDir 撑爆宽度。（A6 的 .accounts-wizard/.accounts-maint*
+   本来就有样式,见下方;本轮只把维护区整块收进 <details>,不重写其内部。）
+   颜色一律走 token、零硬编码。**但注意**:theme.ts 的 TOKENS 只覆盖 bg/bg-2/card/text/text-2/
+   success/warn/error/live 等;这里还用到 --overlay-hover / --border-* / --text-faint / --accent,
+   它们是 :root 里的固定值、不在换肤范围。本仓也**没有浅色主题**(color-scheme: dark,全文件无
+   prefers-color-scheme)——所以别声称"明暗两套都覆盖了"。若用户把 bg 调成浅色,--overlay-hover
+   (#ffffff06) 与 --border-faint 会近乎消失,行分隔线会变淡:这是全仓既有约定,非本块独有。
+   注意：本文件的注释里别写 "-*" 紧跟斜杠的写法，那会提前闭合 CSS 注释（构建会报
+   css-syntax-error，后半段注释文字会漏进样式表）。
+   ============================================================ */
+
+/* 顶部条：远端选择 + 刷新。单远端时 JS 会把 select 隐掉，只剩「远端：」+ 刷新。 */
+.accounts-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* E59：`.accounts-origin-select` 已删 —— 账号分节不再自己挑机器（origin 只来自共用 store）。 */
+.accounts-refresh {
+  flex: none;
+  padding: 3px 10px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.accounts-refresh:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+
+/* U7：「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里说清楚（管辖范围）。 */
+.accounts-current-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+
+.accounts-current-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.accounts-current-name {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+}
+
+.accounts-current-email {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accounts-current-scope {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  margin-left: auto;
+  text-align: right;
+}
+
+/* 当前账号存在但**不可用**（未登录 / 逃生口 / 目录缺失）→ 用 warn 色示警：此时 U6 的徽章与
+   对齐面整体休眠，横幅必须如实说，否则用户会以为它在生效。 */
+.accounts-current-banner.unusable {
+  border-left-color: var(--warn);
+}
+
+.accounts-meta {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 路径 / 操作。
+   路径列吃掉剩余宽度并单行省略（全文在 title 里），操作列右对齐。 */
+/* 列定义放在**表**上、行用 subgrid 继承它 —— 否则每行各自是一个独立 grid，`auto`/`fr` 轨道
+   按各自那一行的内容算宽，列**跨行对不齐**（当前账号那行没有「设为当前账号」按钮、in-place 账号
+   没有「登录终端」，行宽本来就不同 ⇒ 只要有 ≥2 个账号必然错位）。这正是本功能要解决的问题。
+   `overflow-x:auto`：设置窗没有 min_inner_size，用户可以拖到很窄，宁可横向滚也别把最右的按钮裁掉。 */
+.accounts-table {
+  display: grid;
+  /* 邮箱权重 > 路径：isolated 账号的 configDir 就是 <acctsDir>/<name>，行与行之间往往只差最后
+     一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
+     也有「复制路径」按钮兜着。
+     🔴 〔`设计/50` 09-18〕**8 轨道 → 7**：F10 那条用量列（原第 6 条 `minmax(0, 1fr)`）随用量
+     ③ 轴整轴退役 —— 行里的用量单元格已经不渲染了，留着它就是最后一条轨道空着、整表右偏。
+     条数契约由 `tests/frontend/ui/settings/accounts-section.vitest.ts`「每行子元素数 == grid 列数(7)」守。 */
+  grid-template-columns:
+    14px 16px minmax(0, auto) minmax(0, 1.2fr) auto
+    minmax(0, 0.8fr) auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.accounts-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-left: 2px solid transparent;
+}
+
+/* subgrid 不支持时（Chromium <117 / WebKitGTK <2.42）：`grid-template-columns: subgrid` 会被丢弃，
+   行会退化成单列竖排堆叠 —— 那比不对齐还糟。显式退回 flex 行（= U7 之前的观感，仍可读）。 */
+@supports not (grid-template-columns: subgrid) {
+  .accounts-table {
+    display: flex;
+    flex-direction: column;
+  }
+  .accounts-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
+.accounts-row + .accounts-row,
+.accounts-row-apikey + .accounts-row {
+  border-top: 1px solid var(--border-faint);
+}
+
+.accounts-row:hover {
+  background: var(--overlay-hover);
+}
+
+/* 比 hover 更实一档：否则鼠标划过任意一行时，那行和当前行背景一模一样，只剩 ★ 可辨。 */
+.accounts-row.current {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.accounts-row-mark {
+  color: var(--accent);
+  font-size: var(--font-size-small);
+  line-height: 1;
+  text-align: center;
+}
+
+/* 账号名最长可到 64 字符（validateAcctName）——不省略会把 auto 列撑爆、把邮箱/路径两列压没。 */
+.accounts-row-name {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.accounts-row-email,
+.accounts-row-dir {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.accounts-row-dir {
+  color: var(--text-faint);
+  font-family: var(--font-mono, monospace);
+}
+
+/* 「信息才显」(用户决策③) 同源：健康态每行都一样，恒真的信息不携带信息，涂绿只会稀释真正
+   要跳出来的「未登录 / 逃生口」。故健康态走 faint，异常态才上 warn。 */
+.accounts-row-badge {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.accounts-row-badge.warn {
+  color: var(--warn);
+}
+
+.accounts-row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.accounts-row-actions button {
+  padding: 2px 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.accounts-row-actions button:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+  border-color: var(--border-medium);
+}
+
+/* F07：每账号默认模型输入——尺寸/边框对齐同一行的按钮，别让它看起来像另一套控件。 */
+.accounts-row-model {
+  width: 84px;
+  padding: 2px 6px;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+
+.accounts-row-model:focus {
+  border-color: var(--border-medium);
+  outline: none;
+}
+
+.accounts-hint,
+.accounts-info {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+/* Z01：账号列表「能用但有缺」的说明（旧 backend / 旧 cc-acct-iso ⇒ 看不见账号 0）。
+   不是错误态，所以不用 --danger；但必须比普通 hint 显眼，否则等于静默。 */
+.accounts-hint-warn {
+  color: var(--warn);
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+}
+
+.accounts-info {
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  margin-top: 0;
+}
+
+/* 未启用态（部署向导）的标题/正文。**不给外框**——里面的 .accounts-wizard 自带边框+底色，
+   再套一层就是"框里套框"。 */
+.accounts-not-enabled {
+  padding: 0;
+}
+
+.accounts-ne-title {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.accounts-ne-body {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* ─── N-F1b：本机那一支（没有配任何远端时，这一节讲的是这台机器） ────────────────
+   刻意**不复用** .accounts-table / .accounts-row：那两个类的列轨道是按远端那张表的
+   8 列排的（★/头像/名/邮箱/状态/用量/路径/操作），本机这几行只有 6 格，套上去列会错位。
+   ⚠ 本机这一支今天是**只读**的：没有操作列、没有用量列 —— 少的那两列不是漏写。
+   列宽的权重照 .accounts-table 那段头注的同一条理由：邮箱 > 路径（isolated 账号的
+   configDir 逐行只差最后一个字符，而邮箱才分辨得出是哪个号）。 */
+.accounts-local-head {
+  color: var(--text-2);
+}
+
+.accounts-local-table {
+  display: grid;
+  /* 头像 / 名 / 邮箱 / 状态 / 路径 / 当前标记 */
+  grid-template-columns:
+    16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  /* 设置窗没有 min_inner_size，用户可以拖到很窄 —— 宁可横向滚也别把最右一格裁掉。 */
+  overflow-x: auto;
+}
+
+.accounts-local-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-left: 2px solid transparent;
+}
+
+/* subgrid 不支持时（Chromium <117 / WebKitGTK <2.42）：那条声明会被整条丢弃，行退化成
+   单列竖排堆叠 —— 比不对齐更糟。显式退回 flex 行。理由与 .accounts-table 那段逐字同源。 */
+@supports not (grid-template-columns: subgrid) {
+  .accounts-local-table {
+    display: flex;
+    flex-direction: column;
+  }
+  .accounts-local-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
+.accounts-local-row + .accounts-local-row {
+  border-top: 1px solid var(--border-faint);
+}
+
+.accounts-local-row:hover {
+  background: var(--overlay-hover);
+}
+
+/* 比 hover 更实一档：否则鼠标划过任意一行时，那行与当前行背景一模一样。 */
+.accounts-local-row.current {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* 账号名最长可到 64 字符（validateAcctName）——不省略会把 auto 列撑爆。 */
+.accounts-local-row-name {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.accounts-local-row-email,
+.accounts-local-row-dir {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.accounts-local-row-dir {
+  color: var(--text-faint);
+  font-family: var(--font-mono, monospace);
+}
+
+/* 健康态 faint、异常态才上 warn —— 恒真的信息不携带信息，涂色只会稀释真正要跳出来的那几个。
+   （与 .accounts-row-badge 同一条理由，那里的头注写着全文。） */
+.accounts-local-row-badge {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.accounts-local-row-badge.warn {
+  color: var(--warn);
+}
+
+.accounts-local-row-mark {
+  font-size: var(--font-size-small);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* 空态：正题一行 + 下一步一行。下一步走普通 hint 的弱色，别和正题抢。 */
+.accounts-local-empty-next {
+  margin-top: 4px;
+}
+
+/* U7：维护区收进 <details> 默认折叠——加账号 / 自检 / 补链都低频且带 danger，不该常驻占版面。 */
+.accounts-maint-wrap {
+  margin-top: 10px;
+}
+
+/* 折叠标记跟随本仓既有范式（.card-compact-summary / .block-summary / .remote-wrapper-summary
+   都是「去掉原生三角 + ::before 自绘 ▸/▾」），别在这里独一份显原生三角。 */
+.accounts-maint-wrap > summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+  list-style: none;
+}
+
+.accounts-maint-wrap > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accounts-maint-wrap > summary::before {
+  content: var(--mark-closed);
+  color: var(--text-faint);
+}
+
+.accounts-maint-wrap[open] > summary::before {
+  content: var(--mark-open);
+}
+
+.accounts-maint-wrap > summary:hover {
+  color: var(--text);
+}
+
+/* 折叠容器已给了标题，里面那块就不必再顶一个 margin */
+.accounts-maint-wrap .accounts-maint {
+  margin-top: 6px;
+}
+
+/* A2（`设计/70 §4.4`）：新建账号 —— 一张常驻表单，岔口（订阅 / 第三方 apikey）在表单里。
+   外框与向导同一套（边框 + 淡底），不另造一种框。按钮走 settings-btn，「创建」是 primary 不是红色。 */
+.accounts-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.accounts-new-hint {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+.accounts-new-access {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.accounts-new-key {
+  display: flex;
+  flex-direction: column;
+}
+
+.accounts-new-key[hidden] {
+  display: none;
+}
+
+/* 高级（凭据快照）：折叠标记同 .accounts-maint-wrap 的既有范式（去掉原生三角 + 自绘 ▸/▾）。 */
+.accounts-new-adv > summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 2px 0;
+  user-select: none;
+  list-style: none;
+}
+
+.accounts-new-adv > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accounts-new-adv > summary::before {
+  content: var(--mark-closed);
+  color: var(--text-faint);
+}
+
+.accounts-new-adv[open] > summary::before {
+  content: var(--mark-open);
+}
+
+.accounts-new-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 「建好后自动写 key」还在等的那几个号：一行一个，带「放弃」。 */
+.accounts-new-pending {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 账号那一行展开出来的「配 apikey」一格：跨满整行，挂在那一行紧后面（不算那一行的列）。 */
+.accounts-row-apikey {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 8px 40px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+
+.accounts-row-apikey[hidden] {
+  display: none;
+}
+
+/* 操作列那颗开合按钮：长相交给 .accounts-row-actions button，这里只管「展开着」的那一态。 */
+.accounts-row-apikey-toggle[aria-expanded="true"] {
+  border-color: var(--border-medium);
+  color: var(--text);
+}
+
+/* A6:设置「账号」组的部署/维护向导 */
+.accounts-wizard,
+.accounts-maint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+/* （U7 删掉了 .accounts-maint-title 的规则：产生它的那个 div 已被 <details> 的 <summary> 取代，
+   全仓无使用者。） */
+
+/* F08：别名生成器——折叠标记同 .accounts-maint-wrap 的既有范式（自绘 ▸/▾，不用原生三角）。 */
+.ccm-alias-gen {
+  margin-top: 10px;
+}
+
+.ccm-alias-gen > summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+  list-style: none;
+}
+
+.ccm-alias-gen > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ccm-alias-gen > summary::before {
+  content: var(--mark-closed);
+  color: var(--text-faint);
+}
+
+.ccm-alias-gen[open] > summary::before {
+  content: var(--mark-open);
+}
+
+.ccm-alias-gen-hint {
+  margin: 4px 0 0;
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+}
+
+.ccm-alias-gen-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+
+.ccm-alias-gen-grid input[type="text"],
+.ccm-alias-gen-grid select {
+  padding: 3px 6px;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+
+/* T03 迁移后这个 class 挂在 paste-block 的根 div 上，不再是 .ccm-alias-gen-grid 的
+   flex 子项——`flex-basis` 已无意义（删），`font-family` 若留在根上会**下渗到三行灰字**
+   （那三个 div 没自设字体）。所以只给输出面本身设等宽。 */
+.ccm-alias-gen-out > .paste-block-out {
+  color: var(--text-2);
+}
+
+.accounts-wiz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.accounts-wiz-name,
+.accounts-maint-name,
+.accounts-maint-cred {
+  padding: 6px 8px;
+  background: var(--field-bg);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.accounts-wiz-err,
+.accounts-maint-err {
+  min-height: 1em;
+  font-size: 12px;
+  color: var(--error);
+}
+
+.accounts-wiz-preview {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--field-bg);
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  opacity: 0.9;
+}
+
+.accounts-wiz-btns,
+.accounts-maint-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.accounts-wiz-copyrow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -2px;
+}
+
+.accounts-wiz-btns button,
+.accounts-wiz-copyrow button,
+.accounts-maint button {
+  padding: 5px 10px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  background: var(--field-bg);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.accounts-wiz-btns button:hover:not(:disabled),
+.accounts-wiz-copyrow button:hover:not(:disabled),
+.accounts-maint button:hover:not(:disabled) {
+  border-color: var(--accent, #c96442);
+}
+
+.accounts-wiz-btns button:disabled,
+.accounts-maint button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.accounts-wiz-btns button.danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.accounts-wiz-note {
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+/* === T02 配置面审计视图 ===
+   审计指出：`config-surface-*` 与 `tone-*` 在 CSS 里一处定义都没有，于是
+   「不存在」和「未确定 —— …」在屏幕上大概没有区别——15 条测试守的 `tone-unknown`
+   ≠ `tone-bad` 只落在 class 名上。这一页的全部价值是**可信告知**，三档语气必须真看得出来：
+   - ok（绿）= 查到了
+   - bad（红）= 真的不存在
+   - unknown（黄）= 查不了，**不是**"坏"。混色就等于把假警报画成警报。
+   （同类的 `cc-bus-*` / `hooks-*` 也缺 CSS，那是 B03/B04 的既有欠账，另账登记，不在本轮扩面。） */
+.config-surface-tool {
+  margin: 12px 0 4px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.config-surface-source {
+  font-weight: 400;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.config-surface-row,
+.config-surface-scope {
+  border-left: 3px solid var(--text-faint);
+  padding: 6px 10px;
+  margin: 4px 0 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.config-surface-row.tone-ok,
+.config-surface-scope.tone-ok {
+  border-left-color: var(--success);
+}
+
+.config-surface-row.tone-bad,
+.config-surface-scope.tone-bad {
+  border-left-color: var(--error);
+}
+
+/* 未确定用 warn 而**不是** error：它不是坏消息，只是我们查不了 */
+.config-surface-row.tone-unknown,
+.config-surface-scope.tone-unknown {
+  border-left-color: var(--warn);
+}
+
+.config-surface-path,
+.config-surface-scope-head {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.config-surface-note {
+  font-family: inherit;
+  color: var(--text-faint);
+}
+
+.config-surface-resolved,
+.config-surface-effect,
+.config-surface-undo,
+.config-surface-scope-detail {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.config-surface-state {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.config-surface-row.tone-bad .config-surface-state {
+  color: var(--error);
+}
+
+.config-surface-row.tone-unknown .config-surface-state {
+  color: var(--warn);
+}
+
+/* === T03 待贴文本统一组件 ===
+   三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
+   warning 用 warn 色——它说的是"你选的形态与盘上现状冲突"，是需要看见的提醒。 */
+.paste-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.paste-block-out {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  width: 100%;
+  /* 迁移前 A3 是 <pre class="remote-wrapper-snippet">（`white-space: pre` + 横向滚动）。
+     换成 textarea 后默认软换行，29 行的 wrapper 片段会被折得很难读——把语义补回来。 */
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.paste-block-target,
+.paste-block-merge,
+.paste-block-activation {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.paste-block-target {
+  font-family: var(--font-mono, monospace);
+}
+
+/* T03 审计闭环：钩子形态警示（待贴块旁那条 + 远端诊断里那两条）。
+   用 warn 色——它说的是"你选的形态与那一端的盘面冲突"，需要看见但不是错误。 */
+.cc-bus-hooks-form-warning,
+.cc-bus-hooks-diag-warning {
+  border-left: 3px solid var(--warn);
+  padding: 4px 8px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+/* T04：位置徽章（挂在路径行上，不占独立一行——审计核实 10 行里 9 行的"位置"
+   在「现状」那列已经说过了）。 */
+.config-surface-host {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  font-family: var(--font-base);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* === T07：分区块隔离的失败态 + B03/B04 补齐的 CSS ===
+   失败块用 error 色左条——它是真的坏了（区别于 config-surface 的 warn"未确定"）。 */
+.settings-block-failed {
+  border-left: 3px solid var(--error);
+  padding-left: 8px;
+}
+
+.settings-block-failed-msg {
+  font-size: 12px;
+  color: var(--error);
+  margin: 4px 0;
+}
+
+.settings-block-failed-out {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  width: 100%;
+}
+
+/* B03/B04 的欠账（T02/T03 只补了自己那几段） */
+.cc-bus-hooks-source,
+.cc-bus-hooks-note {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.cc-bus-hooks-form {
+  width: 100%;
+}
+
+.cc-bus-hooks-why {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 8px;
+}
+}

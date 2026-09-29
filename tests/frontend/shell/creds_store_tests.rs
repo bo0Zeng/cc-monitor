@@ -399,7 +399,7 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
 
 // 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 那两条（TS 手写类型双向对拍 · 类型装不下明文）随结构体一起退役：
 //   状态由那台后端出成品（`apikey-read`），「装不下明文」由后端应答的形状（`file_face_tests` · 跨语言金样
-//   `tests/__fixtures__/apikey.golden.json` 的零明文断言）与 TS 解码器的严格收（`tests/apikey-reads.vitest.ts`：多一格就抛）钉着。
+//   `tests/__fixtures__/apikey.golden.json` 的零明文断言）与 TS 解码器的严格收（`tests/frontend/ui/apikey-reads.vitest.ts`：多一格就抛）钉着。
 
 // ================================================================ `K-H2` `KH7`
 
@@ -411,11 +411,11 @@ fn gp1_the_monitor_never_reaches_the_credentials_write_half() {
 /// ★★★ 〔HX2 · 第四波 4D〕**monitor 生产段里没有一处能把明文 key 叫出名字的写口**（零命中，带正控）。
 ///
 /// 要求住址：`K-H2` `KH7`（明文只许被往下传登记过的那几次）—— 今天那几次在 monitor 里是**零**：界面经通道
-/// `chan.call(这台, "apikey-key-set", {configDir, key})` 交那台机器的后端（`src/apikey-reads.ts::writeApikeyKey`），
+/// `chan.call(这台, "apikey-key-set", {configDir, key})` 交那台机器的后端（`src/frontend/ui/apikey-reads.ts::writeApikeyKey`），
 /// monitor 只转不透明字节。一旦有人在 monitor 里再开一条收 key 的 Tauri 命令、或自己发 `apikey-key-set`，本条红。
 ///
 /// 人群 = monitor 生产段全部 `.rs`（`src/frontend/shell/src`）。针 = 那条旧命令名 ＋ 帧命令名。正控：后端 `inbound.rs` 里那条帧命令数得到；
-/// 前端那一处发送口恰好一处（`src/apikey-reads.ts`）。
+/// 前端那一处发送口恰好一处（`src/frontend/ui/apikey-reads.ts`）。
 #[test]
 fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -450,7 +450,7 @@ fn hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend() {
         "正控失败：后端命令表里也数不到那条帧命令"
     );
     // 正控 ②：前端发送口恰好一处。
-    let ts = include_str!("../../../src/apikey-reads.ts");
+    let ts = include_str!("../../../src/frontend/ui/apikey-reads.ts");
     assert_eq!(
         ts.matches(needles[1].as_str()).count(),
         1,

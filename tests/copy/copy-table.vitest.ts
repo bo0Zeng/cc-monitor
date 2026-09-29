@@ -1,6 +1,6 @@
 /**
  * CP2a · 抽表机制（`调研/设计/91 §5.1.1` 四个决定）的判据。表住 `src/shared/copy/table.json`，
- * 取文口住 `src/copy-table.ts::copyText`。
+ * 取文口住 `src/frontend/ui/copy-table.ts::copyText`。
  *
  * # 判什么
  *
@@ -33,7 +33,7 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { copyText, type CopyKey } from "../../src/copy-table.ts";
+import { copyText, type CopyKey } from "../../src/frontend/ui/copy-table.ts";
 import { productionRsFiles, productionTsFiles } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
@@ -42,7 +42,7 @@ import { loadTable, NAMED_PH, type Table } from "./copy-support.ts";
 const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
 const KEY_RE = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/;
 /** 取文口自己住的文件：它里头的 `copyText` 是定义，不是引用。 */
-const HOME = "src/copy-table.ts";
+const HOME = "src/frontend/ui/copy-table.ts";
 const FN = "copyText";
 
 /** 表自己的形状问题。 */

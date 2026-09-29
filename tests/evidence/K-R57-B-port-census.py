@@ -250,7 +250,7 @@ w("【5】🔴 `config_surface_report` —— 今天**最接近**「齐了没有
 w("─" * 78)
 w("  ⚠ 起点里说「查的口全是逐个问，没有一个回答『齐了没有』」——**这句要订正**：")
 w("    `config_surface_report` 是聚合的（一次扫完、返回一张 rows 表，设置面板里真有消费者")
-w("    `src/settings/config-surface-section.ts:168`）。本量具第一版把它漏进了「其它」档，")
+w("    `src/frontend/ui/settings/config-surface-section.ts:168`）。本量具第一版把它漏进了「其它」档，")
 w("    因为它名字里没有 status/check/diagnose —— **按名字分类的量具就是会这样漏**，如实记。")
 w("  ⇒ 该问的不是「有没有聚合口」，而是「**它的人群是什么**」。")
 w("")

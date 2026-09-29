@@ -103,9 +103,9 @@ def command_params() -> None:
 def counts() -> None:
     """跟着「新增一条命令」走的那几个写死的数 —— **逐处点名**，别只报「两个 147」。"""
     spots = [
-        ("src/ipc/commands.vitest.ts", r"const RUST_COMMAND_COUNT = (\d+);", "Rust 声明=注册 的唯一命令名数"),
-        ("src/ipc/commands.vitest.ts", r"const TS_LITERAL_COMMAND_COUNT = (\d+);", "TS 字面量命令名数"),
-        ("src/ipc/commands.vitest.ts", r"包装层今天覆盖 \$\{keys\.length\} 个`\)\.toBe\((\d+)\)", "包装层条目数"),
+        ("src/frontend/ui/ipc/commands.vitest.ts", r"const RUST_COMMAND_COUNT = (\d+);", "Rust 声明=注册 的唯一命令名数"),
+        ("src/frontend/ui/ipc/commands.vitest.ts", r"const TS_LITERAL_COMMAND_COUNT = (\d+);", "TS 字面量命令名数"),
+        ("src/frontend/ui/ipc/commands.vitest.ts", r"包装层今天覆盖 \$\{keys\.length\} 个`\)\.toBe\((\d+)\)", "包装层条目数"),
         ("src-tauri/src/parity_ledger.rs", r"assert_eq!\(LEDGER\.len\(\), (\d+),", "平价对账表行数"),
         ("src-tauri/src/parity_ledger.rs", r"assert_eq!\(sides\.len\(\), (\d+),", "能力总数"),
         ("src-tauri/src/parity_ledger.rs", r"assert_eq!\(asym\.len\(\), (\d+),", "不对称能力数"),
@@ -119,7 +119,7 @@ def counts() -> None:
 
 def fallback_reach() -> None:
     """兜底那条路今天的生产入口逐处（尺子B 的粗版；权威读数在 `launch_wire::TS_FALLBACK_REACH`）。"""
-    src = ts_production((ROOT / "src/remote-launch-run.ts").read_text())
+    src = ts_production((ROOT / "src/frontend/ui/remote-launch-run.ts").read_text())
     print(f"[fallback-reach] `renderFallback` 在 remote-launch-run.ts 生产段出现 {src.count('renderFallback')} 处")
     probe = (ROOT / "src/ccm-probe.ts").read_text()
     for st in ('"installed"', '"not-installed"', '"unknown"'):

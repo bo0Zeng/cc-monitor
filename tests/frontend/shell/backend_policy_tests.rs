@@ -102,13 +102,15 @@ fn without_a_channel_nothing_is_made_up() {
 fn the_backend_policy_copy_has_exactly_one_home() {
     let homes: Vec<(&str, String)> = vec![
         (
-            "src/backend-policy.ts",
-            guard_core::strip_comment_lines(include_str!("../../../src/backend-policy.ts")),
+            "src/frontend/ui/backend-policy.ts",
+            guard_core::strip_comment_lines(include_str!(
+                "../../../src/frontend/ui/backend-policy.ts"
+            )),
         ),
         (
-            "src/settings/backend-section.ts",
+            "src/frontend/ui/settings/backend-section.ts",
             guard_core::strip_comment_lines(include_str!(
-                "../../../src/settings/backend-section.ts"
+                "../../../src/frontend/ui/settings/backend-section.ts"
             )),
         ),
         (
@@ -738,12 +740,12 @@ fn the_unconditional_ban_is_gone_from_all_four_homes() {
             include_str!("../../../src/frontend/shell/src/backend/control/backend_control.rs"),
         ),
         (
-            "src/backend-policy.ts",
-            include_str!("../../../src/backend-policy.ts"),
+            "src/frontend/ui/backend-policy.ts",
+            include_str!("../../../src/frontend/ui/backend-policy.ts"),
         ),
         (
-            "src/settings/backend-section.ts",
-            include_str!("../../../src/settings/backend-section.ts"),
+            "src/frontend/ui/settings/backend-section.ts",
+            include_str!("../../../src/frontend/ui/settings/backend-section.ts"),
         ),
     ];
     // 针**运行时拼**：本条自己的散文里就有这几个字，写成一个整串的话它会命中自己
@@ -1037,7 +1039,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 // ——合并是一次设计变更，回去看 `设计/00 §2.5 ①`」。它守的是「合并之前别顺手改」，不是「永远不合」。
 // C4b 读了 `00 §2.5 ①`（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
 // 「哪台机器」本身（它只是本机那条命令结果的缓存键），账号面没有第二个概念 ⇒ 这一次就是它等的那次设计变更。
-// ⇒ 本条改成钉**合了之后**的形状；TS 那一侧按语法树的零命中住 `tests/ipc/commands.vitest.ts`（「本机只有一个表示」）。
+// ⇒ 本条改成钉**合了之后**的形状；TS 那一侧按语法树的零命中住 `tests/frontend/ui/ipc/commands.vitest.ts`（「本机只有一个表示」）。
 
 /// 账号面**不再有自己的本机表示**：`accounts.ts` 生产段里零处 `LOCAL_ORIGIN` 声明、零处 `"__local__"`；
 /// 本机那个值的家恰好一个（`backend-policy.ts` 的 `LOCAL_ORIGIN = "<local>"`，正控）。
@@ -1046,8 +1048,8 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 /// 专钉「账号面那一份不许再声明一个同名常量」—— 换个值再声明一次，TS 那条的字面量扫描认不出它的用意。
 #[test]
 fn the_account_face_has_no_local_origin_of_its_own() {
-    let policy = include_str!("../../../src/backend-policy.ts");
-    let accounts = include_str!("../../../src/accounts.ts");
+    let policy = include_str!("../../../src/frontend/ui/backend-policy.ts");
+    let accounts = include_str!("../../../src/frontend/ui/accounts.ts");
     let needle = "export const LOCAL_ORIGIN = ";
     let prod = |src: &str| guard_core::strip_comment_lines(src);
     // 正控：本机那个值恰好一个家，值是 `<local>`。
@@ -1084,7 +1086,7 @@ fn the_account_face_has_no_local_origin_of_its_own() {
 // ── 〔第四波 ST2 · `设计/70 §7` 第二刀 步 7〕后端停止产 markdown 与设计论证 ─────────
 
 /// `70 §2.4` 那五种形状里，**后端这一侧**能产出来的四种（markdown · 源码住址 · 日志行格式 · 设计论证）。
-/// 与 `tests/settings/ui-copy-discipline.vitest.ts::SHAPES` 同义；这里只认字面，不做语义判断。
+/// 与 `tests/frontend/ui/settings/ui-copy-discipline.vitest.ts::SHAPES` 同义；这里只认字面，不做语义判断。
 fn ui_copy_violations(s: &str) -> Vec<&'static str> {
     let mut out = Vec::new();
     if s.contains("**") {

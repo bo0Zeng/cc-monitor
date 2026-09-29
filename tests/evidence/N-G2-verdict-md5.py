@@ -8,7 +8,7 @@
 | 块 | 认法（锚点必须**恰好命中一次**，否则报错不猜） |
 |---|---|
 | `run_gate` / `run_gate_sum` / `run_e2e` | `^名字() {` ⋯ 到第一行顶格 `}` |
-| `generated`（行内） | `git diff --quiet --exit-code -- src/generated/` ⋯ 到第一行顶格 `esac` |
+| `generated`（行内） | `git diff --quiet --exit-code -- src/frontend/ui/generated/` ⋯ 到第一行顶格 `esac` |
 | `pb check`（行内） | `if [ -z "${PB_WS:-}" ]; then` ⋯ 到第一行顶格 `fi` |
 
 ## 🔴 量具自己的两条自证（`NG2D4` 的 acceptor 点名要的）
@@ -48,7 +48,7 @@ DOORS: list[tuple[str, str, str]] = [
     ("run_gate", "run_gate() {", "}"),
     ("run_gate_sum", "run_gate_sum() {", "}"),
     ("run_e2e", "run_e2e() {", "}"),
-    ("generated", "git diff --quiet --exit-code -- src/generated/", "esac"),
+    ("generated", "git diff --quiet --exit-code -- src/frontend/ui/generated/", "esac"),
     # 〔墓碑 2026-09-18〕`pb check` 那一格已从 `gate.sh` 整格删除（用户拍板）——
     # 本仓没有 `.claude/planned-build/`，且它调的 `pb.py` 不在盘上 ⇒ 没有可判的对象。
     # 本行随之摘掉；复活那道门时要连这一行一起回来。

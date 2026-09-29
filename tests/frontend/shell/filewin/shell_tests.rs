@@ -2387,7 +2387,7 @@ fn opening_a_terminal_with_no_runtime_says_so_on_the_window() {
 
 /// 🔴 **「在此打开终端」拼出来的那一串 —— 三种形状，期望串手写。**
 ///
-/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读 `tests/remote-launch.test.ts` 里旧面板那条判据的三行
+/// 〔LR2〕这里原来是一条跨语言对拍：期望串现读 `tests/frontend/ui/remote-launch.test.ts` 里旧面板那条判据的三行
 /// （TS `buildOpenTerminalCmd` 的黄金样例）。那份 TS 实现生产调用方 0（旧面板已退役），
 /// 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删 ⇒ 本函数成了唯一一份，
 /// 那三行的字节**原样**搬进来当期望（行为零变化）。

@@ -6,13 +6,13 @@
  * C01/C02/C03 三个功能里，「拿注释当代码判据」这个形状**栽了四次**：
  * ① 生成物的 JSDoc 里含有 Rust doc comment 搬过来的字，被当成类型判据；
  * ② 剥了 TS 侧、忘了剥 Rust 侧，「钉住显式决定」那条断言被自己的注释喂饱；
- * ③ 裸 `grep -c bigint src/generated/*.ts` 数到 3 个文件，全在 JSDoc 散文里；
+ * ③ 裸 `grep -c bigint src/frontend/ui/generated/*.ts` 数到 3 个文件，全在 JSDoc 散文里；
  * ④ 数 `#[tauri::command]` 时把**注释里提到**它的地方也计入，报出一个不存在的「7 个命令未注册」。
  *
  * C04a 起有**第二个守卫文件**要用它。两份手抄的剥注释语义一旦漂移，就是**静默削弱守卫**
  * ——而那正是 `rust-ts-boundary` 这个工作区在治的病。所以按 ≥2 那把尺子抽成单一实现。
  *
- * **只被 `*.vitest.ts` 引用 ⇒ 进不了 bundle**：vite 的入口是 `index.html` 里的 `/src/main.ts`，
+ * **只被 `*.vitest.ts` 引用 ⇒ 进不了 bundle**：vite 的入口是 `index.html` 里的 `/src/frontend/ui/main.ts`，
  * 没有任何生产文件 import 任何 `.vitest.ts` ⇒ 本文件压根不在入口的模块图里
  * （**不是** tree-shaking 摇掉的——C04a Phase D 审计订正：结论对、原来写的机制不对）。
  * 这一条由 `generated-boundary-guard.vitest.ts` 的「生产代码不许 import test-support」机检。
@@ -74,7 +74,7 @@ export type SourceLang = "rust" | "ts";
  * 去掉块注释与行注释，**逐字符保留行结构**（注释里的字符换成空格，换行原样留下）。
  *
  * 「保留行结构」是有意的，而且现在是**真的**：C04a Phase D 审计指出旧实现这句是假声称
- * （块注释被连换行一起删，`src/generated/DataPathInfo.ts` 64 行剥成 16 行），
+ * （块注释被连换行一起删，`src/frontend/ui/generated/DataPathInfo.ts` 64 行剥成 16 行），
  * 而 `generated-boundary-guard.vitest.ts` 里「往上收属性要跳空行」那段循环的设计理由
  * 正建立在这个前提上，且那个形状按计划要复制 127 次 ⇒ 不能留一个假前提在根上。
  * 现在改成等量空格替换，行号与相邻关系逐行对齐。

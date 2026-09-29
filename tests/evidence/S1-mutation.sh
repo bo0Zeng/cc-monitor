@@ -15,8 +15,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SANDBOX=/tmp/scale1-mutation
 LOG="$ROOT/tests/evidence/S1-mutation-log.txt"
-GATE="tests/scale1-render-cost.vitest.ts"
-SRC="src/render-stream-record.ts"
+GATE="tests/frontend/ui/scale1-render-cost.vitest.ts"
+SRC="src/frontend/ui/render-stream-record.ts"
 
 # 真仓那两个文件跑之前的指纹 —— 收尾时对拍。
 # ⚠ **刻意不用 `git status`**：本轮这两个文件本来就是未提交的工作区改动，

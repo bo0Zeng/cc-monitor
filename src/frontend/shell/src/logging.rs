@@ -97,7 +97,7 @@ pub fn backend_stderr_log_path(monitor_data_dir: &Path) -> PathBuf {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct DiagnosticsConfig {
     /// 是否写 log 文件。toggle 后需要重启 monitor 才能生效（layer 已注册不可摘）。
     #[serde(default = "default_log_enabled")]
@@ -140,7 +140,7 @@ impl Default for DiagnosticsConfig {
 /// `set_diagnostics_config` 返回值：告诉前端是否需要弹"请重启"提示。
 #[derive(Debug, Clone, Copy, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum RestartHint {
     /// 全部立即生效，无需重启
@@ -520,7 +520,7 @@ fn write_diagnostics_to_config(
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct LogFileInfo {
     pub dir: String,
     pub current_file: Option<String>,
@@ -535,7 +535,7 @@ pub struct LogFileInfo {
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct LogFileEntry {
     pub path: String,
     // 同上：字节数量纲，8 PB。

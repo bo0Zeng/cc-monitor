@@ -236,8 +236,8 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
 ///
 /// # 它补的是一处**有意的例外**，让这处例外不比生成物弱
 ///
-/// `src/ipc/commands.ts` 头注那「三桶」规则说：TS 侧真消费字段的命令（桶③）该用
-/// **生成物**类型。`ccm_user_path_status` 破了这条 —— 生成物要落进 `src/generated/`，
+/// `src/frontend/ui/ipc/commands.ts` 头注那「三桶」规则说：TS 侧真消费字段的命令（桶③）该用
+/// **生成物**类型。`ccm_user_path_status` 破了这条 —— 生成物要落进 `src/frontend/ui/generated/`，
 /// 而那份目录**不在 `K-R135` 的写区里**。⇒ 手写一份，并用这条判据钉住它：
 /// 生成物买的是「Rust 改了、TS 自动跟着变」，这一条买的是
 /// 「**Rust 改了、TS 没跟 ⇒ 当场红**」。⚠ 它买不到「TS 多写了一个 Rust 没有的字段」
@@ -268,18 +268,18 @@ fn the_user_path_status_wire_fields_match_the_hand_written_ts() {
         !keys.is_empty(),
         "一个线上字段都没算出来 —— 判据够不着被测对象了，先修判据"
     );
-    let ts = include_str!("../../../src/ipc/commands.ts");
+    let ts = include_str!("../../../src/frontend/ui/ipc/commands.ts");
     // 地板：那份接口真的在（否则下面每一条都靠「找不到也不出声」蒙混过去）。
     assert!(
         ts.contains("export interface UserPathStatus {"),
-        "`src/ipc/commands.ts` 里那份手写接口不见了 —— 要么它换成了生成物\
+        "`src/frontend/ui/ipc/commands.ts` 里那份手写接口不见了 —— 要么它换成了生成物\
              （那就把本判据删掉，并把 `commands.ts` 那条注释一起改），要么有人顺手删了它"
     );
     for k in &keys {
         assert!(
             ts.contains(&format!("\n  {k}")),
             "线上字段 `{k}` 在前端那份**手写**接口里找不到。\n\
-                 改了 Rust 侧的 `UserPathStatus` 就要同拍改 `src/ipc/commands.ts` —— \
+                 改了 Rust 侧的 `UserPathStatus` 就要同拍改 `src/frontend/ui/ipc/commands.ts` —— \
                  这一处没有生成物替你跟（理由住那条注释）。\n\
                  线上字段现算是这几个：{keys:?}"
         );

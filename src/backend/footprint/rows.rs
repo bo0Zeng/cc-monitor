@@ -906,7 +906,7 @@ pub struct ConfigSurfaceReport {
     /// 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
     pub claude_config_dir: String,
     pub home: String,
-    // 〔MIG-3b 续〕`origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上（`src/settings/footprint-reads.ts`）。
+    // 〔MIG-3b 续〕`origin` 那一格不上线了：界面经通道问哪台自己知道，回声校验那一格由读者挂上（`src/frontend/ui/settings/footprint-reads.ts`）。
 }
 
 // 〔MIG-3b 续〕Tauri 命令 `config_surface_report`〔散文墓碑〕与 monitor 自己那台的探针（`with_monitor_probe`〔散文墓碑〕）删了：

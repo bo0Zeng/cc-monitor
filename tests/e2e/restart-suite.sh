@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # auto-e2e F-E3(命令级整合):换号重启编排（#68/#69）——`compact → kill → resume(新账号)` 序列（〔V154〕不再键入 /exit）+
-# resume 落**新账号的 CLAUDE_CONFIG_DIR** + §5.2 失败语义。驱动**真源** src/account-restart.ts
+# resume 落**新账号的 CLAUDE_CONFIG_DIR** + §5.2 失败语义。驱动**真源** src/frontend/ui/account-restart.ts
 # `restartWithAccount`（经 restart-cmd-driver.ts + restart-shims/ 把 Tauri IPC 边界重定向到真 tmux +
 # fake-claude,见那两个文件头注),逐边界断言编排真正发出的命令序列 / resume argv / 账号解析 / 失败语义。
 #
@@ -8,7 +8,7 @@
 # Windows→回退剪贴板、绝不执行)。本套件测的是**真编排逻辑 + 真 tmux 效果 + 真账号解析**,唯一替换的
 # 是那道无法在 Linux 触达、本该由后端 Rust 执行 tmux 的 IPC 边界(见 tests/e2e/README + resume-suite.sh 头注)。
 # 批量对齐 alignAllToCurrentAccount 的 idle/busy 分桶是 TabManager DOM 方法,其诚实天花板 = DOM(jsdom)级,
-# 由 tests/tabs.vitest.ts「account-ux U6」块覆盖(单独 vitest 跑);本套件在**命令级**钉 confirm 闸门
+# 由 tests/frontend/ui/tabs.vitest.ts「account-ux U6」块覆盖(单独 vitest 跑);本套件在**命令级**钉 confirm 闸门
 # (放行 / 拦下,B4/B1/B2),两者互补。
 #
 # 红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。

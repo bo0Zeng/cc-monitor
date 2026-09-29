@@ -211,7 +211,7 @@ fn expand_tilde_basics() {
 }
 
 /// 设计/05 §14.3「成品的两侧对拍」：三条 `ssh-config-*` 的线上形状 == 跨语言金样 `tests/__fixtures__/ssh-config.golden.json`
-/// （TS 解码器 `src/ssh-config-reads.ts` 读同一份）。成品由生产构造器出（`answer_*` 用的同一个 `to_value` ＋ 聚合）。
+/// （TS 解码器 `src/frontend/ui/ssh-config-reads.ts` 读同一份）。成品由生产构造器出（`answer_*` 用的同一个 `to_value` ＋ 聚合）。
 #[test]
 fn the_three_products_match_the_cross_language_golden() {
     let golden: serde_json::Value =

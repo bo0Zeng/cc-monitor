@@ -1886,7 +1886,7 @@ fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
 }
 
 /// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
-/// 那份金样的另一个读者是 TS 解码器（`tests/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
+/// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
 /// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 #[test]
 fn the_account_products_match_the_cross_language_golden() {

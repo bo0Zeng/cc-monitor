@@ -177,7 +177,7 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "control/backend_route.rs",
         "control",
         "F04c：「这条命令能不能回落」的**唯一**判定（Rust 侧；〔C4e〕`kill` / `send-keys` 迁到界面后，\
-         界面那一侧同一条规则住 `src/ipc/chan-caller.ts::provablyNotSent`，跨语言金样钉两份）。\
+         界面那一侧同一条规则住 `src/frontend/ui/ipc/chan-caller.ts::provablyNotSent`，跨语言金样钉两份）。\
          分界线是「能不能**证明**这条命令根本没发出去」，不是「成功/失败」。\
          两份实现必漂，而漂开的后果是把一次**被门拒绝**洗成另一条路的成功",
     ),

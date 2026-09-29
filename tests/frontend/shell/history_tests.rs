@@ -92,7 +92,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history/history_join_tests.rs`
 //     （`local_liveness_answers_true_and_false_and_unknown_is_its_own_bucket` · `a_local_listing_joins_the_record_tree_and_the_synthesized_history` ·
 //     `one_remote_is_asked_exactly_once_with_the_old_subcommands` · `remote_projects_carry_the_annotation_counts_and_say_unknown_honestly`）；
-//     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/history-reads.vitest.ts`；
+//     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/frontend/ui/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/frontend/ui/history-reads.vitest.ts`；
 //   - `K-R92` 线上那几格分得开「不知道」与「真的是 0」· 「不知道」自成一档排序（`the_three_counts_can_say_i_do_not_know` 那两条〔散文墓碑〕）
 //     ⇒ 后端 `history_join_tests.rs`（`unreadable_annotations_are_unknown_not_zero` · `projects_sort_unknown_between_known_true_and_known_false`）；
 //   - 两个线上形状的驼峰契约（`history_project_camel_case_contract` 那两条〔散文墓碑〕）⇒ 跨语言金样 `tests/__fixtures__/history-products.golden.json`
@@ -106,8 +106,8 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
 
 // 〔MIG-3b〕删会话那道 stem 一致性闸的两条判据（只交 sid · 对不上一个请求都不发）与
-//   分叉结果形状那一条（驼峰键）随 monitor 那两条命令删了：界面经通道直说那台后端（`src/session-writes.ts`），
-//   分叉成品由金样 `tests/__fixtures__/session-fork.golden.json` 钉（`tests/session-writes.vitest.ts` 读同一份）；
+//   分叉结果形状那一条（驼峰键）随 monitor 那两条命令删了：界面经通道直说那台后端（`src/frontend/ui/session-writes.ts`），
+//   分叉成品由金样 `tests/__fixtures__/session-fork.golden.json` 钉（`tests/frontend/ui/session-writes.vitest.ts` 读同一份）；
 //   stem 闸是恒真的（会话行的 `sessionId` 由后端按文件名 stem 出），后端删之前自己判「落点恰是 `<sid>.jsonl`」。
 
 // 〔RW1 · 第四波 · 2026-09-24〕这里原来是本机分叉那份实现的四条 IO 判据（`O_EXCL` 不覆盖 · 软链逃逸按 sid 找不到 ·
@@ -179,7 +179,7 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
                  后端那一侧 ≠ 1 ⇒ 不走共享那份了，或一条路上问了两遍。"
         );
     }
-    // 〔MIG-3b〕「只有一处发送点」那一格挪到界面：前端 `chan.call` 的 `session-fork` 只在 `src/session-writes.ts`
+    // 〔MIG-3b〕「只有一处发送点」那一格挪到界面：前端 `chan.call` 的 `session-fork` 只在 `src/frontend/ui/session-writes.ts`
     //   （`frame_query_tests::the_channeled_ops_are_sent_only_through_the_channel` 数 monitor 零字面量）。
 
     // ③ 两条分叉路径上**一处目录枚举都没有** —— 「自己又找了一遍」的形状。

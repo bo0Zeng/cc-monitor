@@ -269,7 +269,7 @@ fn the_fixture_scanner_can_tell_an_orphan_from_none() {
 
     // ③ 「活引用来源」的三条排除，逐条正反各一。
     assert!(counts_as_live_reference_site(
-        "tests/scale2-height-corpus.ts"
+        "tests/frontend/ui/scale2-height-corpus.ts"
     ));
     assert!(counts_as_live_reference_site(
         "src/frontend/shell/src/lib.rs"

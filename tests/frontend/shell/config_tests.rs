@@ -6,7 +6,7 @@
 //!   那会把用户其余配置一起抹掉）」。
 //!
 //! J2（并发不丢）打真文件、真线程；J3（补丁语义）期望全是手写 JSON 字面量，不经被测代码生成。
-//! 前端那一半（每个写者只交自己的路径、两个 realm 同写）在 `tests/config-lost-update.vitest.ts`。
+//! 前端那一半（每个写者只交自己的路径、两个 realm 同写）在 `tests/frontend/ui/config-lost-update.vitest.ts`。
 use super::*;
 use serde_json::json;
 use std::sync::{Arc, Barrier};
@@ -195,7 +195,7 @@ fn an_unreadable_file_is_left_alone() {
     }
 }
 
-/// 线上形状：前端交来的 JSON（`src/generated/ConfigEdit.ts` 的形状）能按原样解出来。手写字面量。
+/// 线上形状：前端交来的 JSON（`src/frontend/ui/generated/ConfigEdit.ts` 的形状）能按原样解出来。手写字面量。
 #[test]
 fn the_wire_shape_deserializes() {
     let edits: Vec<ConfigEdit> = serde_json::from_value(json!([
@@ -212,7 +212,7 @@ fn the_wire_shape_deserializes() {
 }
 
 /// 金样 `tests/__fixtures__/config-patch.golden.json`（手写）逐条跑真写口：`after` 逐值相等；
-/// `refused` ⇒ 错误种类对得上、盘上字节不变。前端测试用的假盘跑同一份（`tests/config-patch-fake.vitest.ts`）。
+/// `refused` ⇒ 错误种类对得上、盘上字节不变。前端测试用的假盘跑同一份（`tests/frontend/ui/config-patch-fake.vitest.ts`）。
 #[test]
 fn the_golden_cases_hold() {
     let golden: Value =

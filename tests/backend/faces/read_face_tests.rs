@@ -514,7 +514,7 @@ fn golden_facts_session(home: &Path) -> String {
 /// ★★〔C4b · 第四波 4B〕**跨语言金样**：三条帧命令对同一份夹具会话的成品 == `tests/__fixtures__/session-reads.golden.json`。
 /// 〔STC · 第四波〕＋ 第四条 `history-facts`（对它自己那份夹具 [`golden_facts_session`]）。
 ///
-/// 那份金样的另一个读者是 TS 解码器（`tests/session-reads.vitest.ts` 读同一份文件、逐字段断言）⇒ 两侧**异源**：
+/// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/session-reads.vitest.ts` 读同一份文件、逐字段断言）⇒ 两侧**异源**：
 /// 后端改一个键名 ⇒ 本条红；TS 解码器改一个键名 ⇒ 那边红。金样是手写落盘的，不是任一侧跑出来就算数的
 /// （本条红时印出现打的成品，人读过再改金样）。
 #[test]
@@ -1003,7 +1003,7 @@ fn golden_record_session(home: &Path) -> PathBuf {
 /// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
 ///
 /// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/backend/control/frame_query_tests.rs`）·
-/// TS 解码器（`tests/session-reads.vitest.ts` 那一节）⇒ 三侧**异源**：后端改一个键名本条红，收的那两侧改一个键名各自红。
+/// TS 解码器（`tests/frontend/ui/session-reads.vitest.ts` 那一节）⇒ 三侧**异源**：后端改一个键名本条红，收的那两侧改一个键名各自红。
 #[test]
 fn the_record_products_match_the_cross_language_golden() {
     let home = scratch("mod-golden");

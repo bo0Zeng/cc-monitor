@@ -70,7 +70,7 @@ pub const AUTH_KIND_API_KEY: &str = "api-key";
 ///
 /// ⚠ **本数组只是「今天认识哪些字面量」，不是「将来只会有这两个」。**
 /// 加第三档的步骤：这里加一个常量 + `auth_ready` 里给它一条规则 +
-/// TS 侧 `src/accounts.ts` 的 `AuthKind` 联合加一支（〔C4d〕monitor 那份 Rust 枚举与生成物已退役；
+/// TS 侧 `src/frontend/ui/accounts.ts` 的 `AuthKind` 联合加一支（〔C4d〕monitor 那份 Rust 枚举与生成物已退役；
 /// 后端成品与跨语言金样 `tests/__fixtures__/accounts.golden.json` 跟着变，TS 解码器不认就红）。
 pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 
@@ -167,7 +167,7 @@ pub fn apikey_routed_subset(
 /// ⚠ **`true` 不等于「真能连上」**（件计划 `KA6a`）：api-key 号今天还没有配端点的路，
 /// 起会话会在 claude 那边报鉴权失败。⇒ UI **必须**把这个状态说出来
 /// （徽章写「api-key（未配置端点）」而不是「已登录」，落点
-/// `src/accounts.ts::accountStatusBadge`），否则这一维交付出去就是一个新的坏体验。
+/// `src/frontend/ui/accounts.ts::accountStatusBadge`），否则这一维交付出去就是一个新的坏体验。
 ///
 /// ⚠ 也不等于「凭据有效」（`KA6b`）：订阅那一支仍然只 stat 存在性，过期/吊销看不出来。
 pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {

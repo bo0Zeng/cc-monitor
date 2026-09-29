@@ -6,7 +6,7 @@
 //!
 //! **最隐蔽的重写坑(调研 03 档 §3.1)**:`tmux ls -F` 的格式串**不解释**字面 `\t`——给什么
 //! 字节原样输出。所以分隔符必须是**真 TAB 字节(0x09)**。Rust 里 `"\t"` 是真 TAB(勿写
-//! `\\t`),解析按真 TAB `split`（〔MIG-1 续〕那份解析今天住后端 `observe/tmux_list.rs`）。F60 抓屏曾续挂本模块（〔C4e〕已迁到界面 `src/tmux-control.ts`）;kill/rename
+//! `\\t`),解析按真 TAB `split`（〔MIG-1 续〕那份解析今天住后端 `observe/tmux_list.rs`）。F60 抓屏曾续挂本模块（〔C4e〕已迁到界面 `src/frontend/ui/tmux-control.ts`）;kill/rename
 //! 明确不做(见 MASTERPLAN 不做清单),F52 短路门未扩本模块。
 //! 〔MIG-1 续〕列会话那一族（格式串 · 解析 · 两条命令）搬进了后端（`tmux-list` 出成品），本模块只剩 Gate 1 的跨轨对拍锚点。
 
@@ -16,7 +16,7 @@ use crate::ssh_source;
 // 〔MIG-1 续 · `99 §2.1 ⑬`〕这里原来住着「列 tmux 会话」在 monitor 这一侧的全部：格式串双写点 `TMUX_LS_FMT`（与它的列数）·
 //   段数下溢谓词 `tmux_tab_underflow`〔散文墓碑〕· 会话类型 `TmuxSession`（ts-rs 生成物）· 解析 `parse_tmux_ls`〔散文墓碑〕· 成品严格收
 //   `decode_tmux_list`〔散文墓碑〕· 两条 Tauri 命令 `list_remote_tmux` / `list_local_tmux`〔散文墓碑〕。解析搬进那台后端（`src/backend/observe/tmux_list.rs`：
-//   `tmux-list` 出成品，规则原样搬、判据随之搬），界面经通道直接问（`src/tmux-reads.ts::listTmux`，本机远端同一形）⇒ 格式串只剩后端一个家。
+//   `tmux-list` 出成品，规则原样搬、判据随之搬），界面经通道直接问（`src/frontend/ui/tmux-reads.ts::listTmux`，本机远端同一形）⇒ 格式串只剩后端一个家。
 
 // 〔MIG-1 · `99 §2.1 ⑬`〕这里原来住着 `TmuxSessions.observation` 在 monitor 这一侧的分类（`classify_tmux_observation`〔散文墓碑〕·
 //   `SkipReason` · `OBS_*` 三个双写点字面量）—— 喂 monitor 那两份收割器的。收割搬进后端会话账本之后零调用方，删了；
@@ -24,8 +24,8 @@ use crate::ssh_source;
 
 // 〔C4e · 第四波 4C〕这里原来住着抓屏那一族在 monitor 侧的解释：帧命令名常量 `CAPTURE_PANE`、
 //   五个拒绝码的人话 `describe_capture_refusal`〔散文墓碑〕（再往前是 `K-R112` 删掉的 `classify_capture_output`〔散文墓碑〕）。
-//   抓屏改由界面经通道直接问那台机器的后端（`src/tmux-control.ts::capturePane`），「五档分得开、认不出的码原样带出去」
-//   那条口径随之搬到 TS 的 `captureRefusal`（`tests/tmux-control.vitest.ts` 逐码钉着）。
+//   抓屏改由界面经通道直接问那台机器的后端（`src/frontend/ui/tmux-control.ts::capturePane`），「五档分得开、认不出的码原样带出去」
+//   那条口径随之搬到 TS 的 `captureRefusal`（`tests/frontend/ui/tmux-control.vitest.ts` 逐码钉着）。
 
 /// F01：tmux `-t <target>` 的**精确匹配**包装。
 ///
@@ -130,7 +130,7 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 // 〔C4e · 第四波 4C〕这里原来住着「后端通道不在」那一档的用户可见文案 `no_channel_message`〔散文墓碑〕（`K-R72` / `K-R112`）：
 //   本机与远端两句话不同（下一步不同），抓屏 · 送键 · 杀会话三条共用。三条都迁到界面之后，
 //   那两句随之搬进文案表（`tmuxControl.channel.localDown` / `remoteDown`），「本机与远端的话不许一样」
-//   由 `tests/tmux-control.vitest.ts`「通道不在」那一条钉着。
+//   由 `tests/frontend/ui/tmux-control.vitest.ts`「通道不在」那一条钉着。
 
 // ★★ `K-R72`（09-12）：**这里原来住着送键与杀会话那两条桌面侧回落的执行面。**
 //
@@ -152,12 +152,12 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 
 // 〔C4e · 第四波 4C〕这里原来住着抓屏的发送端 `capture_via_backend` 与 Tauri 命令 `capture_remote_pane`〔散文墓碑〕：
 //   空目标先拒（〔DUP3〕这一件今天归后端入口，界面那一份删了）· 预问那台后端认不认 · 转 `capture-pane` · 取 `screen`。其余三件今天只在界面一处
-//   （`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节（`chan/webview.rs::chan_call`）。
+//   （`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节（`chan/webview.rs::chan_call`）。
 //   `K-R112` 买到的三样（本机也能预览 · 五档分开 · 精确形态只剩后端一份）一样没丢：本机仍经 `<local>` 那条长连接、
 //   五档在 TS 逐码分开、`=name:` 仍只住后端 `control/capture_pane.rs::capture_on`。
 
 // 〔C4e · 第四波 4C〕这里原来住着杀会话与送键两条 Tauri 命令 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕
-//   （F79 / A5；`K-R72` 起只剩后端一条路、三态分流）。两条迁到界面：`src/tmux-control.ts::killSession` /
+//   （F79 / A5；`K-R72` 起只剩后端一条路、三态分流）。两条迁到界面：`src/frontend/ui/tmux-control.ts::killSession` /
 //   `sendKeys` 经通道直接说后端的 `kill` / `launch`（`send-into`；〔RST 续 · V41〕裸键 mode `send-keys-raw` 随 V154 无调用者删了）。
 //   **它们买到的东西一样没丢**：Gate 1 空目标仍被拒（〔DUP3〕由后端入口拒，界面那一份删了）· Gate 2 / 3 仍只在后端 `control/gate.rs` ·
 //   `Refused` 与 `NoChannel` 仍是两句话 · 仍然没有第二条路（界面那一侧结构上没有 SSH）。

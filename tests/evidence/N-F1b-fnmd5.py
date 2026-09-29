@@ -30,9 +30,9 @@ import subprocess
 import sys
 
 PATHS = [
-    "src/accounts.ts",
-    "src/settings/accounts-section.ts",
-    "src/settings/accounts-section.vitest.ts",
+    "src/frontend/ui/accounts.ts",
+    "src/frontend/ui/settings/accounts-section.ts",
+    "src/frontend/ui/settings/accounts-section.vitest.ts",
 ]
 
 # 一个「段」的头：顶层导出、或类体内的方法 / getter。

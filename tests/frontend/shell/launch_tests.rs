@@ -96,7 +96,7 @@ fn every_terminal_window_backend_opens_carries_the_backend_path() {
 /// 那里逐字写着 `container: { kind: "none" }`（`launch-requests.ts:45`，
 /// 是全文件唯一一个 `none`，其余四个 plan 才是 tmux）。
 ///
-/// F08 上半订正过**两条**同源假头注（`launch.rs:122` 与 `src/fork-start.ts`），
+/// F08 上半订正过**两条**同源假头注（`launch.rs:122` 与 `src/frontend/ui/fork-start.ts`），
 /// 但**漏了这三处** —— 因为它们在**另一条路**（远端）上，看起来像是另一件事。
 /// ⇒ 复核时才发现（E1：台账是筛子不是免检章）。
 ///
@@ -274,7 +274,7 @@ fn the_posix_message_states_a_decision_not_a_missing_feature() {
 /// **静默退回**：用户又开始在 Linux 上每次点 ↗ 都读到「拉起失败」，而两边各自看都对。
 #[test]
 fn the_posix_marker_is_the_one_the_frontend_matches_on() {
-    const RUNNER: &str = include_str!("../../../src/remote-launch-run.ts");
+    const RUNNER: &str = include_str!("../../../src/frontend/ui/remote-launch-run.ts");
     let key = "export const POSIX_NO_WINDOW_MARKER = \"";
     let at = RUNNER
         .find(key)

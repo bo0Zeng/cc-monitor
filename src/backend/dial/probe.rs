@@ -12,7 +12,7 @@
 //! （`stage` 握手那几行 → `reached: ssh` → `reached: hello` → `reached: control`），结局是最后一格（`end`）；
 //! monitor 把它们交进界面订的 `probe-progress/<ticket>`。界面到点没等到结局时，最后收到的那一格就说得出停在哪一段。
 //! ⚠ **期限归发起方**（主会话裁 · DL1「值归发起方」）：本 crate 零定时器（`no_timer_guard` 按调用形态禁 `timeout(`），原先 monitor 那两段
-//!   等待（hello 8 s · ping 5 s）不在这里；界面那一问的预算按那个量级给（约 15 s，`src/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
+//!   等待（hello 8 s · ping 5 s）不在这里；界面那一问的预算按那个量级给（约 15 s，`src/frontend/ui/remote-probe.ts`），到点由宿主那侧 `cancel` 打断。
 //!   往返毫秒数照旧报：量一次经过时间不是定时器（取的是墙钟 `SystemTime` 的差，不让任何东西自己醒来）。
 
 use copy_core::copy_text;

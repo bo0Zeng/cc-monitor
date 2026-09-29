@@ -110,7 +110,7 @@ fn the_search_kou_jing_has_exactly_one_home() {
 
     // ── ③〔LOC1b · 第四波 4D〕monitor 那一侧**不再搜**：生产树里零处调 `search_core::`、零处定义那 12 个助手。
     //   要求住址：`设计/00 §2.5 ①` 逐字「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」·
-    //   `90 §4 F`「搜索收口到 search-core ＋ 后端」。本机搜索今天经通道问本机后端（`src/views/history-search.ts`）。
+    //   `90 §4 F`「搜索收口到 search-core ＋ 后端」。本机搜索今天经通道问本机后端（`src/frontend/ui/views/history-search.ts`）。
     //   正控：同一个识别器在后端那一份上认得出调用（否则零命中是空真）。
     //   〔MOD〕原先唯一的例外（`messages.rs` 解析 user 记录时调注入噪声那一条规则）随记录解释进了后端
     //   （`agents/claudecode/schema.rs::UserText::of`）⇒ monitor 这一侧零例外。

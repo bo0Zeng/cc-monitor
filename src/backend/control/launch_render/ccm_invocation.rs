@@ -25,7 +25,7 @@
 //!
 //! 〔LR1 · U8c-3〕TS 那份渲染器删了之后，不再有「另一种语言的实现」可对拍。独立说法是两份
 //! **手写**的期望：本文件的自测（P1 那批，判据自带清单、不遍历被测常量，见文件尾）与入库夹具
-//! `fixtures/cli-golden.json`（`src/launch-cli-golden.ts` 用例表手写 `out`，`req` 由生产的
+//! `fixtures/cli-golden.json`（`src/frontend/ui/launch-cli-golden.ts` 用例表手写 `out`，`req` 由生产的
 //! TS 请求构造现产 ⇒ 顺带钉住线与映射，`launch_cli_parity.rs`）。
 //! ⚠ **ok 与 refusal 两类都要覆盖** —— 只比 ok 的话，「该降级却渲染出来了」抓不到，
 //! 而那正是 §33 铁律要防的形态。
@@ -103,7 +103,7 @@ impl Refusal {
             // （〔MIG-2〕今天是 `local.rs::render_ccm`，只在非 Windows 那一支走到）。
             // 〔LR1 · U8c-3〕原先挡着改字的那条（与 TS 渲染器逐字节对拍）随 TS 那份删了；
             // 〔CP2b〕进文案表那一拍按 CP1 裁词（改·§2.1）改成说「Windows 本机」，
-            // `src/launch-cli-golden.ts` 里「本地 transport」那条用例的期望同拍改。
+            // `src/frontend/ui/launch-cli-golden.ts` 里「本地 transport」那条用例的期望同拍改。
             Refusal::NotSsh => copy_text("rsCcmInvocation.refusal.windowsLocal", &[]),
             Refusal::MissingCap(c) => copy_text(
                 "rsCcmInvocation.refusal.missingCap",

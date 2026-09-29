@@ -393,7 +393,7 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
 /// （`shell_quote_core::bus_id_ok`：非空 · 不以 `-` 开头 · 只含 `[A-Za-z0-9_-]`，全仓唯一一份）。判不过 ⇒ `bad_id`，一个进程都不起。
 ///
 /// 为什么在这里判、而不是「交给 cc-bus 自己去拒」：`§47` 逐字「**『对端会校验』不是理由**」—— 收掉一个 agent 的后果是杀一棵进程树；
-/// 界面那一道（C4e 第四次搬家住在 `src/cc-bus-control.ts`）按 `设计/90 §3` 判据 2 删了，「本侧」从此是真把 id 交出去的这一侧（第五次搬家）。
+/// 界面那一道（C4e 第四次搬家住在 `src/frontend/ui/cc-bus-control.ts`）按 `设计/90 §3` 判据 2 删了，「本侧」从此是真把 id 交出去的这一侧（第五次搬家）。
 /// ⚠ 判的是**形状**，不是**成员资格**：「这个名字登没登记过」仍归 cc-bus（`registered` 那一格照旧如实回）。
 /// `said` 收那个值的 `{:?}` 形、给出那一句（文案走表：key 在各调用处写字面量，`copy-table.vitest.ts` 按调用点两向对拍）。
 fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), CmdErr> {
@@ -580,7 +580,7 @@ pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> 
 
 /// 〔C4e · 第四波 4C〕`bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 拿**同一个**构造器对拍：
-/// 界面（`src/cc-bus-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
+/// 界面（`src/frontend/ui/cc-bus-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
 pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({ "agents": agents })
 }

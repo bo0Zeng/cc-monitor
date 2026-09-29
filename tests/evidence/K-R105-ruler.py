@@ -147,7 +147,7 @@ REACH_TARGETS = [
             "buildAttachCmd",
         ],
     ),
-    ("src/remote-launch-run.ts", ["runRemoteResume", "runRemoteResumeTmux", "runRemoteLauncher"]),
+    ("src/frontend/ui/remote-launch-run.ts", ["runRemoteResume", "runRemoteResumeTmux", "runRemoteLauncher"]),
     ("src/launch-render-fallback.ts", ["renderFallback"]),
 ]
 
@@ -280,9 +280,9 @@ def three_questions() -> None:
 
     carriers = {
         "REMOTE_HOST_FIELDS 那一项": '"daemonless",'
-        in production_ts((ROOT / "src/remote-config.ts").read_text(encoding="utf8")),
+        in production_ts((ROOT / "src/frontend/ui/remote-config.ts").read_text(encoding="utf8")),
         "机器卡片那个 input": "daemonlessInput"
-        in production_ts((ROOT / "src/settings/machine-card.ts").read_text(encoding="utf8")),
+        in production_ts((ROOT / "src/frontend/ui/settings/machine-card.ts").read_text(encoding="utf8")),
         "数据源那条轮询回落": "daemonless_stream_loop"
         in production_rs((ROOT / "src-tauri/src/ssh_source.rs").read_text(encoding="utf8")),
     }

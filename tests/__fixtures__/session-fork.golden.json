@@ -1,5 +1,5 @@
 {
-  "_doc": "〔LOC1a · 第四波 4D〕帧命令 session-fork 的线上形状（设计/05 §14.6）。后端 fork_write_tests::the_frame_face_and_the_cli_face_are_one_fork 核 product / request 键集 == 真产出；界面 tests/session-writes.vitest.ts 用同一份解码（〔MIG-3b〕monitor 那一跳删了）。结构占位，不含真会话。",
+  "_doc": "〔LOC1a · 第四波 4D〕帧命令 session-fork 的线上形状（设计/05 §14.6）。后端 fork_write_tests::the_frame_face_and_the_cli_face_are_one_fork 核 product / request 键集 == 真产出；界面 tests/frontend/ui/session-writes.vitest.ts 用同一份解码（〔MIG-3b〕monitor 那一跳删了）。结构占位，不含真会话。",
   "request": { "sid": "0473c3a0-1111-2222-3333-444455556666", "uuid": "9a1b2c3d-0000-4000-8000-000000000001" },
   "product": { "sessionId": "5f0e1d2c-aaaa-4bbb-8ccc-dddddddddddd", "jsonlPath": "/home/u/.claude/projects/-home-u-proj/5f0e1d2c-aaaa-4bbb-8ccc-dddddddddddd.jsonl" }
 }
