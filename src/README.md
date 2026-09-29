@@ -2,12 +2,12 @@
 
 Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— ~12K 行 TS 的中型应用（根 README 口径），原生 DOM 依旧足够——分层靠模块边界与本导览维持。
 
-本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/bridge/README.md`](../src/bridge/README.md)。
+本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/frontend/shell/README.md`](../src/frontend/shell/README.md)。
 
 ## 入口
 
 ```
-index.html  ─> /src/main.ts (defer)
+index.html  ─> /src/frontend/ui/main.ts (defer)
                   │
                   ├─ loadTheme()       从 config.json 应用 CSS 变量
                   ├─ new TabManager()  → tabs.ts
@@ -46,7 +46,7 @@ index.html  ─> /src/main.ts (defer)
 | **format.ts** ⭐ v2.6 | 时间 / 字节格式化合并：消息卡用 `formatTimestampShort`（永远 hh:mm）；历史浏览器用 `formatTimestampSmart`（当天 hh:mm，跨天加日期）；`formatBytes` 统一精度 | `formatTimestampShort / formatTimestampSmart / formatBytes` |
 | **tmux-name-mint.ts** (FE1 · FIX4) | 起会话要的 tmux 名：问那台后端 `tmux-name-mint`（〔FIX4 · `设计/90 §3` J7〕派生 ＋ 撞名避让只在后端 `control/ccm/plan.rs`；原 `remote-launch.ts` 那份铸名口删了）；问不到 ⇒ 不铸名。另有分叉要的名单读口 `readTmuxListing` | `mintFreshTmuxName / mintForkTmuxName / refuseUnmintable / readTmuxListing` |
 | **remote-launch-run.ts** (B14-F41) | 远端拉起执行器：开终端（`terminal-open.ts::openTerminal`，〔FIX4 · ⑬〕ssh 外壳本机后端渲、monitor 开窗）→ 失败回退把命令复制到剪贴板 + toast 提示（happy-path 拉终端，degrade-path 复制） | `runRemoteResume / runRemoteResumeTmux / runRemoteLauncher / runRemoteAttach` |
-| **agent-profile.ts** (F-MA) | 前端侧 agent 画像——把散落在 `cards/*` / `tabs.ts` 的 **Claude Code 专属工具名 / 进程名 / 嵌套 env** 常量收敛到一处（对应 Rust `src/bridge/src/adapter`）。第一刀值不变、行为零变化，接第二个具体 agent 时这里按 agent 切换；只收敛「工具名字符串」，不拆记录模型 | `AGENT_PROFILE`（agentTools / interactiveTools / diffTools / mdTools / livenessProcessNames 常量集） |
+| **agent-profile.ts** (F-MA) | 前端侧 agent 画像——把散落在 `cards/*` / `tabs.ts` 的 **Claude Code 专属工具名 / 进程名 / 嵌套 env** 常量收敛到一处（对应 Rust `src/frontend/shell/src/adapter`）。第一刀值不变、行为零变化，接第二个具体 agent 时这里按 agent 切换；只收敛「工具名字符串」，不拆记录模型 | `AGENT_PROFILE`（agentTools / interactiveTools / diffTools / mdTools / livenessProcessNames 常量集） |
 | **turn-notify.ts** (B14-F42) | 完成一轮系统通知：`turnEndNotifier` 单例 `observe(sid, tabTitle, payload, inBatch)` 判 turn-end 弹通知，四门（批量 / 新鲜度 / 防抖 / 聚焦）+ 插件权限懒检查；`turn-notify.vitest.ts` 锁 | `turnEndNotifier.observe(...)` |
 | **remote-health.ts** (SS-F #32) | listen `remote-health` 事件，按 `(origin,kind)` 节流后弹灰色 info toast：`overflow`（拥塞丢行）/ `version`（旧后端降级）/ `degraded`（B14-F59 daemonless 降级模式，`headlineFor` 映射「远端降级模式」）。`remote-health.test.ts` 锁纯逻辑 | `bindRemoteHealth() / headlineFor(kind)` |
 | **settings/remote-section.ts** (issue #15 + B14) | 设置面板「远端」区：全局启用 toggle + 每台主机卡（label/host/port/user/密钥/backendPath/指纹+重置/**备用地址** F45/**跳板** F56/**daemonless 降级勾选** F59）+ 测试连接（阶段日志 F46）+ 公钥推送 F50 + 文件面板/端口转发 F58 入口 + 「开新 Claude」F53 + ssh-config 批量导入·智能聚合 F57。数据层在 `remote-config.ts`：`readRemoteConfig` / `patchRemoteConfig`（config.json `remote` 段，局部合并，只动 `remote` 这一个键）+ `findHostByOrigin` F54 反查；`remote-section.vitest.ts` 锁往返/聚合/反查 | `RemoteSection.element`（数据层 `readRemoteConfig() / patchRemoteConfig() / findHostByOrigin()` 住 `remote-config.ts`） |
@@ -63,7 +63,7 @@ index.html  ─> /src/main.ts (defer)
 | **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |
 | **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改 + v2.2 fork 树形 + 流式 session 列表）。**issue #6 加「全文」模式**：逐台（本机也是，〔LOC1b〕）经通道问那台后端的 `history-search` 搜会话内容（默认 user/assistant 文本，可勾选含工具内容）+ 结果 snippet `<mark>` 高亮 + 点击跳 viewer 定位 | `HistoryView.open() / handleEscape()` |
 | **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染；**issue #6 加 `scrollToUuid`**：从搜索结果跳进来时加载后定位命中消息 + 临时高亮。**v2.8.1 修空白 bug**：流元素 class `stream session-viewer-stream` 没有 `.active`，命中基类 `.stream{visibility:hidden}`（多 Tab 机制：仅 `.active` 流可见）→ 卡片全渲染却不可见；`.session-viewer-stream` 显式 `visibility:visible` 修复（详 INVARIANT § 23）。另逐条 `try/catch` 渲染，单条失败不再整屏空白。**Batch13-F39 尾部优先增量渲染**：Channel 阶段只收集 payload（meta/branch 经 `routeMetaAndBranch`），首屏渲染尾 150 条（深链另渲目标 ±100 岛），上翻自动补批（同步手动补偿视口），`UnrenderedRanges`（render-window.ts）记账未渲染洞——37MB 会话首屏 65.5s→1.1s。**F62 建分支**：本地会话经 `onCardRendered` 钩子给每张 user/assistant 卡挂 `⑂`→invoke `create_branch_session`→info toast 一键 resume 分支（远端会话不挂） | `SessionViewer.load(opts) / dispose()` |〔散文墓碑〕
-| **views/pane-preview.ts** (B14-F60) | 远端 tmux 画面只读预览 overlay（body-level fixed，点外关 + Esc + ✕）：经 `src/tmux-control.ts::capturePane`（〔C4e〕界面经通道直接问那台机器后端的 `capture-pane`）抓 `tmux capture-pane -p` 的屏幕文本，等宽 `<pre>` 展示 + 「重新抓取」手动刷新；非 attach、只读非实时；一次只开一个 | `openPanePreview(origin, target) / closePanePreview()` |
+| **views/pane-preview.ts** (B14-F60) | 远端 tmux 画面只读预览 overlay（body-level fixed，点外关 + Esc + ✕）：经 `src/frontend/ui/tmux-control.ts::capturePane`（〔C4e〕界面经通道直接问那台机器后端的 `capture-pane`）抓 `tmux capture-pane -p` 的屏幕文本，等宽 `<pre>` 展示 + 「重新抓取」手动刷新；非 attach、只读非实时；一次只开一个 | `openPanePreview(origin, target) / closePanePreview()` |
 | **copy-table.ts**（CP2a，`设计/91 §5.1`） | 对外文案的唯一取文口：文案住 `shared/copy/table.json`（key = `<面>.<场景>.<变体>` · `kind` 五档 · 具名占位符），术语对照表住 `shared/copy/terms.json`，规矩表住 `shared/copy/rules.json`。key 必须是字面量；表 ↔ 引用两向相等由 `tests/copy/copy-table.vitest.ts` 判。今天只抽了样板区 `views/pane-preview.ts`，全量抽表在最后一波 | `copyText(key, {…args})` |
 | **views/port-forward.ts** (B14-F58) | 本地端口转发(-L)管理台 overlay（照 SFTP 面板范式）：列当前转发 + 加转发表单（选主机 / 本地端口 / 远端 host:port）+ 启停 + 刷新；〔MIG-1〕经 `port-forward-reads.ts` 问本机常驻后端 `forward-start`/`forward-stop`/`forward-list`（账住后端），转发经已有 SSH 连接隧道 | `openPortForwardPanel()` |
 | **views/grid-monitor.ts** (F91 #27) | 多 agent 并排**监控**——跨机只读 mission-control 状态板（body-level fixed overlay）：一屏 grid、一 cell/会话按机器分组，显红绿灯 / 标题 / cwd / 运行中 subagent 数 / context% / unread / ⚙bg；点 cell = `switchTo` 导航。零后端零写，数据取 `TabManager.snapshotSessions()`，开着时 1Hz 轮询重渲；分组 / 排序 / 汇总纯函数可测 | `GridMonitorView.open()/close() / groupSessionsByOrigin / sortSessionsInGroup / summarizeSessions` |

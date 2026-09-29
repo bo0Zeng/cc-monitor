@@ -20,7 +20,7 @@
     d4   `KR118D1` ④ —— 第二条判定（「程序面没被掏空」）的第一刀：把 `tsconfig.json` 的
                        `include` 收窄到一个子目录。
                        🔴 **实测这一刀射程过粗，没打中它想打的那一支** —— 收窄同时丢掉了
-                       `src/vite-env.d.ts` 那份环境声明 ⇒ `tsc` 直接 `rc=2`，红在**退出码**
+                       `src/frontend/ui/vite-env.d.ts` 那份环境声明 ⇒ `tsc` 直接 `rc=2`，红在**退出码**
                        那一支上；顺带 `npm` 也红（`node-suite-registry-guard.vitest.ts`
                        早就有一条判据在守「include 里还有 `e2e`」）。读数留着，见留档。
     d4b  `KR118D1` ④b —— 换最小面再打一次：`exclude` 掉 `src/**/*.vitest.ts`。
@@ -50,11 +50,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / ".k-r118-cut-backup.json"
 
-COUNTED = "src/views/counted.ts"
+COUNTED = "src/frontend/ui/views/counted.ts"
 GATE = "scripts/gate.sh"
 TSCONFIG = "tsconfig.json"
 PKG = "package.json"
-PROBE = "src/views/kr118-probe-neutral.ts"
+PROBE = "src/frontend/ui/views/kr118-probe-neutral.ts"
 
 CARGO = "src-tauri/Cargo.toml"
 CONF = "src-tauri/tauri.conf.json"
@@ -120,10 +120,10 @@ SELF_COUNT_BACK = sub(GATE, "# │ 〔自述·格数〕16 格", "# │ 〔自述
 NARROW_INCLUDE = sub(
     TSCONFIG,
     '"include": ["src", "e2e"]',
-    '"include": ["src/views"]',
+    '"include": ["src/frontend/ui/views"]',
 )
 # `d4b`：**最小面**那一刀。`exclude` 掉那 127 份 `.vitest.ts`（没有任何生产代码 import 它们，
-# `src/vite-env.d.ts` 也还在 ⇒ 程序面小了一大截而**一条类型错都没有**）
+# `src/frontend/ui/vite-env.d.ts` 也还在 ⇒ 程序面小了一大截而**一条类型错都没有**）
 # ⇒ `tsc` 退出码是 **0**，只有「真读进程序的份数 != 盘上现打的份数」那一支拦得住它。
 DROP_VITEST_FROM_PROGRAM = sub(
     TSCONFIG,
@@ -138,7 +138,7 @@ CUTS = {
     "d3": ("KR118D1 ③ 阴性对照：d1 ＋ 把 tsc 那一格整格拿掉 ⇒ 一条都不红",
            compose(RETURN_BACK, DROP_CELL)),
     "d4": ("KR118D1 ④ tsconfig 的 include 收窄到一个子目录 —— 🔴 实测射程过粗（丢掉 "
-           "src/vite-env.d.ts ⇒ rc=2，红在退出码那一支；npm 另有一条判据也红）。读数留档，"
+           "src/frontend/ui/vite-env.d.ts ⇒ rc=2，红在退出码那一支；npm 另有一条判据也红）。读数留档，"
            "最小面那一刀是 d4b",
            NARROW_INCLUDE),
     "d4b": ("KR118D1 ④b exclude 掉全部 .vitest.ts ⇒ tsc 退出码是 0，而「份数对账」那一支必须红",

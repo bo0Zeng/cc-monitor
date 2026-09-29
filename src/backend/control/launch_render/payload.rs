@@ -203,7 +203,7 @@ pub enum EnvOp<'a> {
         value: &'a str,
     },
     /// 〔RL1 · 第四波〕中转地址 `ANTHROPIC_BASE_URL`：远端（与本机「就地 resume」那一格）拉起时，
-    /// 值由那台机器的后端出成品（帧命令 `launch-endpoint`，决策表 `accounts/upstream/endpoint.rs::decide_launch`），
+    /// 值由那台机器的后端出成品（帧命令 `launch-endpoint`，决策表 `accounts/upstream_select/endpoint.rs::decide_launch`），
     /// 经 `history::relay_endpoint_on` → tauri `relay_endpoint_for_launch` 交给前端、再原样放进载荷。
     /// 〔TL3 · 审计 F 🔴-3〕先前这里链到 monitor 的 `relay_endpoint_for`〔散文墓碑〕—— US1 把那张表整块搬进了后端。
     ///
@@ -722,7 +722,7 @@ pub fn render_tmux_outer(outer: &TmuxOuter, payload: Option<&str>) -> Result<Str
 // 先前这一段还住着 `设计/20 §3.2` 那张决策表（`relay_endpoint_for` / `apikey_endpoint_for` / `RelayAsk`〔散文墓碑〕）、
 // 凭据文件那一家（`APIKEY_TABLE_AGENT`〔散文墓碑〕）、登记了默认上游的 agent（`AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕）、
 // 路由语法（两个前缀 · 段闸 · 拼串 · 两份跨半边样例）—— 每一样都是后端那一份的第二份（B-decouple §2.1 必须拆 1）。
-// 今天：决策表住后端上游选择 `accounts/upstream/endpoint.rs`（帧命令 `launch-endpoint` 出成品，起会话那一侧只转交、执行：
+// 今天：决策表住后端上游选择 `accounts/upstream_select/endpoint.rs`（帧命令 `launch-endpoint` 出成品，起会话那一侧只转交、执行：
 // `history::relay_endpoint_on`）；端口 · 钥匙路径 · 路由语法住共享 crate `relay_route_core`（`设计/20 §5` 目标），两侧 `use` 同一份。
 // 渲染 shell 串属于开终端那一侧（`20 §3.3`），留在这里。
 //
@@ -868,4 +868,4 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 mod tests;
 
 // 〔MIG-2〕标识符放行判定的生成物（`judgment-rules.ts`）那一段没跟着搬：它只读共享 crate 的常量，与载荷无关，留在 monitor
-//   （`src/bridge/src/backend/control/mod.rs` 的测试段）。
+//   （`src/frontend/shell/src/backend/control/mod.rs` 的测试段）。

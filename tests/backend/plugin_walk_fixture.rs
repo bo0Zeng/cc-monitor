@@ -1485,6 +1485,12 @@ mod tests {
             &["rs"],
             &["plugin_walk_fixture.rs"],
         ));
+        // 〔RE〕本 crate 的第二棵测试树（面 B 成员单测，`tests/comms/outward/`）。
+        pop.extend(guard_core::scan_tree_excluding(
+            &crate::guard_support::comms_tests_root(),
+            &["rs"],
+            &[],
+        ));
         for (p, raw) in pop {
             if guard_core::test_source(&raw).contains(needle.as_str()) {
                 others.push(

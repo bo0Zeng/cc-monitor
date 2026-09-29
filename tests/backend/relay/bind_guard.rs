@@ -18,7 +18,7 @@
 //! 那一刀**不生效**）。⇒ 判据与被扫的代码**必须不在同一个文件**。
 //! 而本文件今天不在人群里的**真正**理由是住址：它住 `tests/backend/relay/`，
 //! 而扫的是 `src/backend/relay`。
-//! 第一版就是写在 `server.rs` 里的，`cargo test --manifest-path src/bridge/Cargo.toml`
+//! 第一版就是写在 `server.rs` 里的，`cargo test --manifest-path src/frontend/shell/Cargo.toml`
 //! 当场把它点名（「有扫描型判据在测试段里裸遍历目录，且不在存量清单里」）。
 //!
 //! # 它哪天会变瞎
@@ -46,11 +46,11 @@
 mod tests {
     #[test]
     fn no_non_loopback_bind_literal_in_relay_production_code() {
-        let dir = crate::guard_support::src_root().join("relay");
-        // 针**运行时拼**：直接写字面量的话本文件自己就是命中源。
-        // ⚠ 〔`P4` 2026-09-21〕先前这里写着「而 `scan_tree!` 已经摘掉了本文件 ——
-        //   两道保险，别只靠一道」。**那一道今天不生效**（自摘在这一处恒空转，见模块头注），
-        //   运行时拼针是**唯一**承重的那一道 —— 别把它改成字面量。
+        let dir = crate::guard_support::relay_root(); // 〔RE〕`relay` 模块的根（面 B 成员 ＋ 挂回来的 door / listen）
+                                                      // 针**运行时拼**：直接写字面量的话本文件自己就是命中源。
+                                                      // ⚠ 〔`P4` 2026-09-21〕先前这里写着「而 `scan_tree!` 已经摘掉了本文件 ——
+                                                      //   两道保险，别只靠一道」。**那一道今天不生效**（自摘在这一处恒空转，见模块头注），
+                                                      //   运行时拼针是**唯一**承重的那一道 —— 别把它改成字面量。
         let needles = [
             format!("0.0.{}", "0.0"),
             format!("[{}]", "::"),

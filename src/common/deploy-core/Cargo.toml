@@ -1,0 +1,14 @@
+[package]
+name = "deploy-core"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "部署决策的唯一一份：那台机器要哪一格字节（表 A · 表 B）· 那台落点上那一份是谁（身份戳）· 该不该换（BUILD_ID 可比序）。本机常驻后端出计划、monitor 只放字节，两侧共用（无 IO、无平台依赖）。"
+
+# **只依赖同族共享 crate**（同 branch-core / relay-route-core 的约束）：backend 是 Linux-only 的静态 musl 二进制、
+# 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
+# 〔MIG-3b · 4d-lanes 子步 1〕新立的理由：部署决策进本机常驻后端（`deploy-plan`），而 monitor 另有三个用户要同一份判定
+# （本机那一份的身份 · 远端 hello 的新旧 · 全景推字节的表 A/B）⇒ 一份实现两侧 use，不各写一份。
+[dependencies]
+copy-core = { path = "../copy-core" }
+shell-quote-core = { path = "../shell-quote-core" }

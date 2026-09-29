@@ -2,7 +2,7 @@
 
 新贡献者第一站。读完应该能回答：数据从哪儿来、经过谁、停在哪儿、为什么这么分。
 
-每个模块的"当下设计 + 为什么"详见各子目录 README — [`../README.md`](../README.md)、[`../../src/bridge/README.md`](../../src/bridge/README.md)、[`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
+每个模块的"当下设计 + 为什么"详见各子目录 README — [`../README.md`](../README.md)、[`../../src/frontend/shell/README.md`](../../src/frontend/shell/README.md)、[`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
 
 跨切面文档：
 - 全局不变量 → [INVARIANTS.md](INVARIANTS.md)
@@ -123,7 +123,7 @@
 ## 2. 层边界（不放逐文件模块表 —— 见本节末）
 
 > ⚠ **F19 重写**（2026-08-04）。原来这一节是一张 **122 行的逐文件模块树**，而：
-> - 它与 `src/bridge/README.md` 的目录树**各存一份**，**两份都缺 `backend/`**；
+> - 它与 `src/frontend/shell/README.md` 的目录树**各存一份**，**两份都缺 `backend/`**；
 > - 本文件自己在开头与结尾**两次**把「模块表」委派给子目录 README —— 它自己就说过不该放；
 > - 更要紧的是：**本工作区最大的两件结构性事实在它里面不存在** ——
 >   `backend` 这个词全文只出现过 **1 次**（且指的是前端的 `session-backend.ts`），
@@ -137,7 +137,7 @@
 
 **backend = 读（`observe/`）+ 控制（`control/`）**，**一份代码、两种承载**：
 **远端进程** = `src/backend/`（独立 crate，**不是 workspace 成员**，见 2.6）·
-**本机进程** = `src/bridge/src/backend/`。
+**本机进程** = `src/frontend/shell/src/backend/`。
 
 两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**
 〔原话逐字：「本机**只有一层**」—— 2026-09-12 `K-R71` 建了 `observe/` 之后不成立〕——
@@ -150,7 +150,7 @@
 | `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
 | `observe/` | 有 | **未做**〔2026-09-25 LOC1a：唯一的住户 —— 每问 exec 一次本机后端的那一跳 —— 删了，本机读面改走 `<local>` 长连接；空壳目录一并删〕—— 此前 2026-09-12 `K-R71` 建成，见 2.2 |
 | `platform/` | 有 | **待做** —— 但 backend 那一半今天**零平台面**，所以还不需要它（见 2.4） |
-| `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src/bridge/crates/*`（见 2.6） |
+| `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src/common/*`（见 2.6） |
 
 ⚠ 这张表量的是「**这一层在 monitor 侧落地了没有**」，**不是**「平台原语已经收敛干净了」——
 后者是 C10 的判据（跨 target 编译）的事，今天**不成立**，见 2.4。
@@ -213,7 +213,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 那条散文曾写 13，而机器数是 7；点名的 `local_accounts.rs` 早已不是 reader，
 它 `:564-565` 自陈「现在问本机后端」）。挡着它们的是两样有名有姓的东西：后端侧的查询集缺口，
 以及 `tasks.rs` / `search.rs` 今天带着的宿主耦合（`backend/` 有一道宿主无关守卫）。
-⇒ **今天没有触发器**，逐条理由住 `src/bridge/src/backend/mod.rs` 头注最后一节。
+⇒ **今天没有触发器**，逐条理由住 `src/frontend/shell/src/backend/mod.rs` 头注最后一节。
 
 〔原话逐字，留作来历：「⚠ **monitor 侧的 `observe/` 今天刻意未建**……先搬进来再删掉是纯搬运。
 **谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
@@ -226,15 +226,15 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
 `tmux_send_keys` → `control/launch.rs` 的 `send-into`（〔RST 续〕裸键 mode `send-keys-raw` 已删）。
 〔C4e · 第四波 4C〕再往前一步：那两条（连同抓屏、就地 resume）不再是 monitor 的 Tauri 命令 ——
-界面经通道直接说后端的 `kill` / `launch` / `capture-pane`（`src/tmux-control.ts`），monitor 那一跳只搬字节；
-「能不能回落」那条判定在界面那一侧同义一份（`src/ipc/chan-caller.ts::provablyNotSent`），
+界面经通道直接说后端的 `kill` / `launch` / `capture-pane`（`src/frontend/ui/tmux-control.ts`），monitor 那一跳只搬字节；
+「能不能回落」那条判定在界面那一侧同义一份（`src/frontend/ui/ipc/chan-caller.ts::provablyNotSent`），
 与 Rust `backend_route::route_call_error` 由跨语言金样 `tests/__fixtures__/reach-collapse.golden.json` 对拍。
 
 🔴 **订正（`K-R106` 2026-09-13 现打）**：这里原来写着「一次性 SSH 那两条降为**过渡期**的
 第二条路」—— 那两条 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处），
 今天**盘上只有后端这一条**；回潮闸住 `tmux_backend_gate_guard.rs`
-（〔C4e〕monitor 生产段里再出现 `kill-session` 就红；界面只经 `src/tmux-control.ts` 一处说这几条）。
-「通道不在时怎么办」的判定**只有一份**（`backend/control/backend_route.rs`，三态
+（〔C4e〕monitor 生产段里再出现 `kill-session` 就红；界面只经 `src/frontend/ui/tmux-control.ts` 一处说这几条）。
+「通道不在时怎么办」的判定**只有一份**（`src/comms/inward/backend_route.rs`，三态
 `Done` / `Refused` / `NoChannel`），而**过门被拒绝一律不另找一条路**
 （另找一条 = 把一次被门拒绝洗成另一条路的成功）。
 
@@ -246,7 +246,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 ⚠ 〔F18 实测订正〕这一节原来写「monitor 侧今天不成立 —— 平台原语散在 `bind.rs`/`utils.rs`」。
 **那句把两半混说了**：
 
-- **backend 那一半（`src/bridge/src/backend/`）生产段零平台 cfg、零平台原语** ——
+- **backend 那一半（`src/frontend/shell/src/backend/`）生产段零平台 cfg、零平台原语** ——
   唯一那 3 处 `#[cfg(unix)]`/`#[cfg(windows)]` 全在 `local_backend.rs` 的**测试段**
   （夹具在收拾自己起的子进程）。⇒ 这条纪律在它该管的范围里**已经成立**，
   由 `backend::tests::the_backend_half_stays_platform_agnostic` 钉住不许退化，
@@ -284,18 +284,18 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 ### 2.6 共享 crate：为什么后端 **不进** workspace
 
-`src/bridge/crates/*`（6 个）是 monitor 与后端的共同实现落点（判定只许有一个家）。
+`src/common/*`（6 个）是 monitor 与后端的共同实现落点（判定只许有一个家）。
 而 **后端 crate 刻意不是 workspace 成员** —— 它要能在目标机上**原生构建**。
 
-⚠ **代价是实的、要写下来**：在 `src/bridge` 里跑 `cargo fmt --all` / `cargo test`
+⚠ **代价是实的、要写下来**：在 `src/frontend/shell` 里跑 `cargo fmt --all` / `cargo test`
 **覆不到后端**（曾因此漏过一次 fmt 红）⇒ 门禁读数必须**八处分别跑**
 （monitor · 后端 · 6 个共享 crate）。
 
 ### 2.7 逐文件清单去哪了
 
-- Rust 侧：`src/bridge/README.md`
+- Rust 侧：`src/frontend/shell/README.md`
 - 前端：`src/README.md`
-- `backend/` 内部：`src/bridge/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表
+- `backend/` 内部：`src/frontend/shell/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表
   （**加文件不写理由就红** —— 那是这个目录不再变成平铺堆的机制）
 
 ---
@@ -362,7 +362,7 @@ replay 时按块投递（一次 Tauri 事件里一串格），前端 push 进同
 **为什么**：Tauri IPC 每次 emit 都有序列化 + 派发 overhead。N=3000 时累计 ~400ms 主线程阻塞，启动可见显著卡顿。BATCH 单次序列化降到 ~50ms。
 
 ### 视口外渲染跳过 = content-visibility + 精确估高（#35 F38，虚拟化第一层）
-所有顶层卡片(`.stream-content > *` 与折叠段内 `.branch-fold-body-inner > *`)带 `content-visibility: auto`——视口外与隐藏 tab 的卡片跳过布局/绘制。`contain-intrinsic-size` 初值由 `src/height-estimate.ts` 在建卡时按块类型精确估算(prose 走 @chenglou/pretext canvas 测宽、代码块行数×行高、折叠 details 常数;**估值只是初值**,`auto` 关键字让浏览器渲染过后记住真实尺寸)。约束:估高路径**绝不许抛**(pretext 失败双降级+三振永久禁用);780px 定宽列是估值成立前提;卡片被 reparent 进 fold 后由 inner 规则续保 c-v。这层吃掉了 paint/layout 成本,是后两层(F39/F40 不建 DOM)的地基。
+所有顶层卡片(`.stream-content > *` 与折叠段内 `.branch-fold-body-inner > *`)带 `content-visibility: auto`——视口外与隐藏 tab 的卡片跳过布局/绘制。`contain-intrinsic-size` 初值由 `src/frontend/ui/height-estimate.ts` 在建卡时按块类型精确估算(prose 走 @chenglou/pretext canvas 测宽、代码块行数×行高、折叠 details 常数;**估值只是初值**,`auto` 关键字让浏览器渲染过后记住真实尺寸)。约束:估高路径**绝不许抛**(pretext 失败双降级+三振永久禁用);780px 定宽列是估值成立前提;卡片被 reparent 进 fold 后由 inner 规则续保 c-v。这层吃掉了 paint/layout 成本,是后两层(F39/F40 不建 DOM)的地基。
 
 ### 启动重放贴底消抖 = 守卫式 snap + overflow-anchor + 尾部优先收纳（F40a）
 重放"末块先发"。Batch13-F40a 起 `TabManager.onLine` 按 seq 门控（详 INVARIANTS § 21）：
@@ -521,4 +521,4 @@ v1.6.x 试过的"从 claude PID 走 parent chain + WT 进程 + 终端类进程 +
 - 想加新 jsonl 类型：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 jsonl 类型
 - 想改/加跨进程协议文件：见 [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
 - 想加新 IPC 命令：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 IPC + [STATE-MATRIX.md](STATE-MATRIX.md)
-- 想改某个具体模块：找对应子目录 README（`src/` 或 `src/bridge/`）的模块表
+- 想改某个具体模块：找对应子目录 README（`src/` 或 `src/frontend/shell/`）的模块表

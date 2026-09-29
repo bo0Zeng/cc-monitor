@@ -25,13 +25,13 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 
 PATHS = [
-    "src/settings/accounts-section.ts",
-    "src/settings/accounts-section.vitest.ts",
-    "src/settings/readiness.vitest.ts",
-    "src/settings/machine-status.vitest.ts",
+    "src/frontend/ui/settings/accounts-section.ts",
+    "src/frontend/ui/settings/accounts-section.vitest.ts",
+    "src/frontend/ui/settings/readiness.vitest.ts",
+    "src/frontend/ui/settings/machine-status.vitest.ts",
     # 09-05 续作：PM 把写区扩到这一份（`NF2D3` 最后那一跳的判据非落在它身上不可）。
     # ⚠ 分母跟着写区走 —— 写区扩了而这张表没扩，「改动面」就会漏掉整整一份文件。
-    "src/settings/remote-section.vitest.ts",
+    "src/frontend/ui/settings/remote-section.vitest.ts",
 ]
 
 

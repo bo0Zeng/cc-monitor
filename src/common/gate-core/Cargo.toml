@@ -1,0 +1,15 @@
+[package]
+name = "gate-core"
+version = "0.1.0"
+edition = "2021"
+workspace = "../../frontend/shell"
+description = "§34 Gate 2（identity）的唯一实现：一个 tmux 会话是不是本工具管的。monitor 与后端共用同一份判定，防「搬进后端时静默丢掉一道门」。"
+
+# **只依赖同族共享 crate**，理由同 shell-quote-core：backend 是 Linux-only 的静态 musl 二进制、
+# 刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
+# 本 crate 只做**纯判定**：不起进程、不碰 tmux、不认识 shell。
+# 「怎么去问远端 `@ccm_sid`」由两侧各自的承载负责（monitor 拼 shell 串、backend argv 直传）。
+[dependencies]
+# 〔DUP2 · J6〕tmux 会话名那两条规则要视觉欺骗字符那一张权威表（`acct_core::is_deceptive_char`，`INVARIANTS §47` ② 的拒绝集）。
+# 同族共享 crate、零依赖；不在这里另抄一份表（抄了就是第二个家）。
+acct-core = { path = "../acct-core" }

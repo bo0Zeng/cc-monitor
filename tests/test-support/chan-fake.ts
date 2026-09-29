@@ -51,7 +51,7 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 // 这三条从前是三条 Tauri 命令（`read_session_index` / `list_user_inputs` / `find_in_session`〔散文墓碑〕），
 // 判据按命令名答话、按旧形参断言。今天它们是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 那一问的参数」，把判据手里那份回包译成**后端的成品字节**（或通道的失败）。
-// ⚠ 译法逐格照生产：请求体的键名是 `src/session-reads.ts` 发的那几个，成品的键名是后端 `read_face.rs` 出的那几个
+// ⚠ 译法逐格照生产：请求体的键名是 `src/frontend/ui/session-reads.ts` 发的那几个，成品的键名是后端 `read_face.rs` 出的那几个
 //   （跨语言金样 `tests/__fixtures__/session-reads.golden.json` 钉着两侧）。
 
 /** 三问各自的名字（判据里的叫法 = 旧命令名，只为让断言读起来是「哪一问」）。 */
@@ -190,7 +190,7 @@ export function withSessionReads(
 //
 // 从前是四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` · `load_subagent`〔散文墓碑〕），
 // 判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
-// `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
+// `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/frontend/ui/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
 
 /** 四问各自的名字（判据里的叫法 = 旧命令名）。 */
@@ -281,7 +281,7 @@ export async function recordReadReply(
 // 判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
 // 今天它们是一发 `chan_call`（op = `accounts-list` / `accounts-trust`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
-// ⚠ 译法逐格照生产：请求体键名是 `src/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
+// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
 //   出的那几个（跨语言金样 `tests/__fixtures__/accounts.golden.json` 钉着两侧）。
 // ⚠ 旧回包里「老后端」那几种缺格（账号缺 `authKind` / `authReady`、`meta: null`）在成品里不存在 ⇒ 按旧消费侧的回落补齐：
 //   `authKind` 缺 ⇒ 订阅 · `authReady` 缺 ⇒ `loggedIn`（`accountReady` 那条旧回落）· `meta: null` ⇒ 没启用（`deriveUi` 那一档）。
@@ -382,7 +382,7 @@ export function withAccountReads(
 //   - 展开一个项目 = 一发 `chan_call`（op `history-sessions`，`{project_dir, origin?}`，一次交全、不再逐条流）；
 //   - 改注解 / 上次账号表 / 删会话连带删注解 = `history-annotate` / `history-last-accounts` / `history-forget`。
 // ⇒ 本节把这几发译回「哪一问 ＋ 旧形参」，把判据手里那份旧回包译成**本机后端的成品字节**（或通道的失败）。
-// ⚠ 译法逐格照生产：请求体键名是 `src/history-reads.ts` 发的那几个，成品键名是后端 `history_join.rs` 出的那几个
+// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/history-reads.ts` 发的那几个，成品键名是后端 `history_join.rs` 出的那几个
 //   （跨语言金样 `tests/__fixtures__/history-products.golden.json` 钉着两侧）。旧回包里缺的格按旧消费侧的读法补齐（缺 ⇒ `null` / 缺省）。
 // ⚠ 「一次 fan-out」从一发 `list_remote_history_projects` 变成「一发 `list_remote_mcp_origins` ＋ 逐台 N 发」—— 计数时一次 fan-out
 //   按那一发 `list_remote_mcp_origins` 算（[`historyCalls`]）。
@@ -640,7 +640,7 @@ export function withHistoryReads(
 // 它们从前是四条 Tauri 命令（`capture_remote_pane` / `kill_remote_tmux` / `tmux_send_keys` / `backend_send_into`〔散文墓碑〕），
 // 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `capture-pane` / `kill` / `launch`）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**（或通道的失败）。
-// ⚠ 译法逐格照生产：请求体键名是 `src/tmux-control.ts` 发的那几个，成品键名是后端那三个构造器出的那几个
+// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/tmux-control.ts` 发的那几个，成品键名是后端那三个构造器出的那几个
 //   （跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着两侧）。
 // ⚠ `launch` 一个 op 有两个叫法（送键 · 就地 resume），调用方说这份判据里它该译成哪一个（同一份判据里只会出现其中一种）。
 
@@ -713,11 +713,11 @@ export function killCallsOf(calls: ReadonlyArray<readonly unknown[]>): [string, 
     });
 }
 
-// ─── 〔C4e 批 3b〕cc-bus 驾驶舱写面那几发（`src/cc-bus-control.ts`）───
+// ─── 〔C4e 批 3b〕cc-bus 驾驶舱写面那几发（`src/frontend/ui/cc-bus-control.ts`）───
 // 它们从前是五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` / `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕），
 // 驾驶舱的 DOM 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `bus-list` / `bus-send` / `bus-kill` / `bus-spawn` /
 // `bus-broadcast`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**。
-// ⚠ 译法逐格照生产：请求体键名是 `src/cc-bus-control.ts` 发的那几个，成品键名是后端那几个构造器出的那几个
+// ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/cc-bus-control.ts` 发的那几个，成品键名是后端那几个构造器出的那几个
 //   （跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 钉着两侧）。
 // ⚠ 查在线是**唯一译不回旧形参的一格**：`bus-list` 的请求体里没有 id（问的是整份名单，挑人在界面）⇒ 旧形参只剩 `{origin}`，
 //   替身回 `{<id>: true | false | null}`（每人一格 `live`），本节把它铺成名单。
@@ -814,7 +814,7 @@ export function ccBusControlShim(
 //   抛 ⇒ 对端拒（码 `refused`）。开窗那一跳（`open_local_terminal`）原样交给替身。
 /**
  * 一发 `launch-local` 的请求体 ⇒ 它从前那三条 Tauri 命令（见本节头注）里的哪一条 ＋ 旧形参。
- * ⚠ 译法逐格照 `src/launch-render.ts::planLocalLaunch` 发的键：`account` 缺席 ⇒ 旧形参里也缺席（三态不许压成两态）。
+ * ⚠ 译法逐格照 `src/frontend/ui/launch-render.ts::planLocalLaunch` 发的键：`account` 缺席 ⇒ 旧形参里也缺席（三态不许压成两态）。
  */
 function localLaunchOldArgs(b: Record<string, unknown>): [string, Record<string, unknown>] {
   const action = b.action as { kind: string; sid?: string };
@@ -990,7 +990,7 @@ export function tmuxMintCalls(calls: ReadonlyArray<readonly unknown[]>): [string
 //  〔FIX4 · `设计/99 §2.1 ⑬`〕开终端改成三步之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 今天开终端是三步（`src/terminal-open.ts`）：monitor `terminal_dial {origin}`（机器事实）→ 本机后端 `terminal-ssh`
+// 今天开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor `terminal_dial {origin}`（机器事实）→ 本机后端 `terminal-ssh`
 // （渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command, rbindToken, ssh}`。判据手里的替身按**旧的那一条**答话、断言
 // （`launch_remote_terminal {origin, remoteCmd, rbindToken}`）⇒ 本节把三步译回那一条：
 // - `terminal-ssh` **原样回**交进来的那串（ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染）；

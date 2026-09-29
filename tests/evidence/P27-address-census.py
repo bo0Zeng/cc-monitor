@@ -9,7 +9,7 @@
 
 本仓的约定是明文写着的 —— `comm_boundary_registry_tests.rs` 第一行逐字：
 「模块头注（这张表为什么存在 · 成员怎么认 · 买到什么买不到什么）住
-`src/bridge/src/comm_boundary_registry.rs`，**不在这里抄第二份**」。
+`src/frontend/shell/src/comm_boundary_registry.rs`，**不在这里抄第二份**」。
 ⇒ 判据文件由生产模块 `#[path]` 收留，住址按约定住生产侧。只读判据自己那几行
 去问「它服务哪条要求」，对这一族**在构造上答不出**。
 

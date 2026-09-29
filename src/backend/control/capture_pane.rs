@@ -3,7 +3,7 @@
 //!
 //! # 它补的是哪个洞
 //!
-//! monitor 侧 `src/bridge/src/parity_ledger.rs` 的 `tmux.manage` 那一格逐字记了一个月：
+//! monitor 侧 `src/frontend/shell/src/parity_ledger.rs` 的 `tmux.manage` 那一格逐字记了一个月：
 //! 「能不能预览这件事一点没变，**仍等后端出原语**」。**本模块就是那条原语。**
 //!
 //! 在它之前后端会 `list-sessions`（`common/session_snapshot.rs`）、会
@@ -11,9 +11,9 @@
 //! 会 `send-keys`（[`super::launch`]）—— **唯独没有「把那一屏取回来」**。
 //!
 //! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
-//! （`src/bridge/src/backend/control/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
+//! （`src/frontend/shell/src/backend/control/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
 //! 「等 monitor 侧接上去」，**没有被结掉**。〔`K-R112` 接上了；〔C4e · 第四波 4C〕再往前一步：
-//! 界面经通道直接说本条原语（`src/tmux-control.ts::capturePane`），monitor 那一跳只搬字节，本机与远端同一条路。〕
+//! 界面经通道直接说本条原语（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节，本机与远端同一条路。〕
 //!
 //! # 🔴 只出原语，不出轮询（`KR86D3`）
 //!
@@ -241,7 +241,7 @@ pub(crate) fn capture_on(socket: Option<&str>, name: &str) -> Result<String, Cmd
 /// 抓一次 `name` 这个 tmux 会话此刻的那一屏。**只读**：不 attach、不落 buffer、不写盘。
 ///
 /// ⚠ **刻意不过身份门（Gate 2）**：这是一次只读快照，与 monitor 侧同族那一处口径一致
-/// （`src/bridge/src/exec_site_registry.rs` 里 `capture_remote_pane` 那一行逐字：
+/// （`src/frontend/shell/src/exec_site_registry.rs` 里 `capture_remote_pane` 那一行逐字：
 /// 「只读快照，MASTERPLAN 明确不为它加身份门」）。破坏性动作那三道门在 [`super::gate`]，
 /// 与本处无关 —— **别顺手给它加门，也别顺手把那三道门搬过来**。
 pub(crate) fn capture(name: &str) -> Result<String, CmdErr> {
@@ -277,7 +277,7 @@ pub(crate) fn capture_for_inbound(
 
 /// 〔C4e · 第四波 4C〕帧面成品 `{name, screen}` 的构造器 —— 从 [`capture_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
-/// 界面（`src/tmux-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
+/// 界面（`src/frontend/ui/tmux-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
 pub(crate) fn reply(name: &str, screen: &str) -> serde_json::Value {
     serde_json::json!({ "name": name, "screen": screen })
 }

@@ -912,6 +912,8 @@ mod tests {
         // 两棵树 —— 与 `backend_sources()` 同一个人群，否则那条「数量相等」在对拍两个不同的集合。
         let mut n = 0usize;
         let mut stack: Vec<std::path::PathBuf> = crate::guard_support::code_roots().to_vec();
+        // 〔RE〕面 B 成员住 `src/comms/outward/`（`backend_sources` 那一侧由 `guard_core` 顺着 `#[path]` 收进来）。
+        stack.push(crate::guard_support::relay_root());
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).expect("read src dir") {
                 let path = entry.expect("dir entry").path();

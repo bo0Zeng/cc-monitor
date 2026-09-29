@@ -15,7 +15,7 @@
 //! 4. **一台只问一次**（`KR83D3` 的形状）：远端项目清单 N 个项目 ⇒ 对面恰被问 1 次、问的是 `--list-projects`；会话清单问的是 `--list-sessions <dir>`。
 //! 5. **够不到就说**：可达表里没有那一台 ⇒ `unreachable`，对面一次都没被问；远端的项目目录名同样过形状闸。
 //! 6. **合成历史**：`<kind>:<cwd>` 分组、名字、会话行逐格；**跨语言金样** `tests/__fixtures__/history-products.golden.json`
-//!    （远端项目 · 远端会话 · 合成会话三份成品 —— TS 解码器读同一份，`tests/history-reads.vitest.ts`）。
+//!    （远端项目 · 远端会话 · 合成会话三份成品 —— TS 解码器读同一份，`tests/frontend/ui/history-reads.vitest.ts`）。
 //!
 //! # 买不到
 //!

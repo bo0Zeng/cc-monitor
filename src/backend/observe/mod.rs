@@ -38,5 +38,6 @@ pub(crate) mod tasks_query;
 pub(crate) mod tmux_list; // 〔MIG-1 续 · ⑬〕`tmux-list` 出成品（解析从 monitor `parse_tmux_ls`〔散文墓碑〕 搬来）
                           // 〔SE1〕「你说过的话」清单的纯核（四条口径的唯一住址）；argv 与分派在 `history_query`。
 pub(crate) mod record_page; // 〔MOD〕按路径读正文出成品（切行 · 编号 · 挑哪一家解释）
+pub(crate) mod tmux_observe; // 〔RE · C4〕tmux 观测（原 `watcher.rs` A 块，`设计/15 §4.1`）
 pub(crate) mod user_inputs;
 pub mod watcher;

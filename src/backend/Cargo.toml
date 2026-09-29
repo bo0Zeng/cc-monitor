@@ -5,8 +5,8 @@ name = "cc-monitor-backend"
 # 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
 #
 # · 它不参加 `release.yml` 那道「四处版本号与 tag 一致」的检查（那四处是
-#   `package.json` / `src/bridge/tauri.conf.json` / `src/bridge/Cargo.toml` /
-#   `src/bridge/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
+#   `package.json` / `src/frontend/shell/tauri.conf.json` / `src/frontend/shell/Cargo.toml` /
+#   `src/frontend/shell/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
 #   `K25`/`K36` 裁的是「一份代码、每平台一份原生二进制」，而它换不换由**行为变没变**决定
 #   （`BUILD_ID` 的 bump 纪律），不由发版节奏决定。给它一个跟 tag 走的版本号 = 给后端
 #   造**第二个身份**，那正是 `K33`「后端只有一个」在身份这一维要避开的事。
@@ -27,8 +27,8 @@ edition = "2021"
 #
 # F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
 #   · `cargo build`  **真的独立**。把两条 backend→monitor 的 `include_str!` 路径打断，
-#     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src/bridge/`。
-#   · `cargo test`   **不独立**。它需要 `../src/bridge/` 在 —— 两条判据要跨轨对拍
+#     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src/frontend/shell/`。
+#   · `cargo test`   **不独立**。它需要 `../src/frontend/shell/` 在 —— 两条判据要跨轨对拍
 #     （`control/gate.rs` 读 Gate 2 的黄金夹具 · `control/launch.rs` 读 monitor 的
 #     `tmux.rs` 断言 `format!("={target}:")` 两侧同形）。打断后 `cargo test --no-run`
 #     exit=101，两条都被逐字点名。
@@ -79,14 +79,14 @@ harness = false
 test = true
 
 [dependencies]
-# Versions pinned to whatever ../bridge/Cargo.lock already resolved so the
+# Versions pinned to whatever ../frontend/shell/Cargo.lock already resolved so the
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
 # tokio 1.52.x, notify 6.1.x, notify-debouncer-mini 0.4.x, walkdir 2.5.x,
 # tracing 0.1.x). Keep this list minimal.
 #
 # ⚠ 订正〔回修轮 08-25，承接 D1 `重要-4` / `漂-2`〕：**上面这句话只管它点名的那几条。**
-# `rustls` / `webpki-roots`（K-H1 加的，见本表末尾）**不在** `../bridge/Cargo.lock` 里 ——
-# 同一把尺子 `grep -c '^name = "rustls"$' ../bridge/Cargo.lock` ⇒ **0**，`webpki-roots` ⇒ **0**
+# `rustls` / `webpki-roots`（K-H1 加的，见本表末尾）**不在** `../frontend/shell/Cargo.lock` 里 ——
+# 同一把尺子 `grep -c '^name = "rustls"$' ../frontend/shell/Cargo.lock` ⇒ **0**，`webpki-roots` ⇒ **0**
 # （而上面点名的 serde / serde_json / tokio / notify / notify-debouncer-mini / walkdir /
 #  tracing / tracing-subscriber / libc 逐个量都是 1）。
 # ⇒ 这两条**没有**被 pin 到 monitor 那份 lock，**也不能**靠「monitor 早就下过」变成离线可用。
@@ -95,16 +95,16 @@ test = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
-branch-core = { path = "../bridge/crates/branch-core" }
-codex-token-core = { path = "../bridge/crates/codex-token-core" }
+branch-core = { path = "../common/branch-core" }
+# 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate 成模块 `agents/codex/token.rs`（唯一消费者在那儿）。
 # 〔DUP2 · J19〕agent 工具词表的唯一一份（会话事实的 agent 列表按它认工具名；monitor 渲染 agent 卡用同一份）。
-agent-tools-core = { path = "../bridge/crates/agent-tools-core" }
+agent-tools-core = { path = "../common/agent-tools-core" }
 # 〔DUP3 · J9〕上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
-upstream-url-core = { path = "../bridge/crates/upstream-url-core" }
-acct-core = { path = "../bridge/crates/acct-core" }
+upstream-url-core = { path = "../common/upstream-url-core" }
+acct-core = { path = "../common/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # 🔴 〔RM1a · 第四波〕**开了 `harden`** —— `K-H2a` 裁四「backend 只许读」收窄成
-# 「backend 里只有账号域那一份（`accounts/upstream/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
+# 「backend 里只有账号域那一份（`accounts/upstream_select/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
 # 理由：远端那台机器上的 key 只能由那台的后端写（`调研/第四波记录/RM1a.md §1`：那份文件是上游选择
 # 自己的状态，不是用户文件，走 `readonly_guard` 第四层）。「出生即只给本人」只有一份实现
 # （`creds_core::perm::create_private`），不在本 crate 另写一个 ⇒ 要它就得开这个 feature。
@@ -112,24 +112,24 @@ acct-core = { path = "../bridge/crates/acct-core" }
 #   写半边（`perm::create_private` / `perm::make_private`）在本 crate 生产段的引用处 == 第四层登记的那一份
 #   （`readonly_guard::g6_dependency_signoff` 那条边界判据 ＋ `relay::creds_guard` 那条 feature 判据）。
 # 顺带：开了之后 Windows 上 `perm::probe` 也读得了 DACL（先前那条「查不出来」的代价没了）。
-creds-core = { path = "../bridge/crates/creds-core", features = ["harden"] }
+creds-core = { path = "../common/creds-core", features = ["harden"] }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
-shell-quote-core = { path = "../bridge/crates/shell-quote-core" }
+shell-quote-core = { path = "../common/shell-quote-core" }
 # 〔US1 · 4D〕中转门牌的唯一住址（端口 · 钥匙文件路径 · 路由语法），与 monitor 同一份（`设计/20 §5` 目标）。
-relay-route-core = { path = "../bridge/crates/relay-route-core" }
+relay-route-core = { path = "../common/relay-route-core" }
 # K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
 # 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
-search-core = { path = "../bridge/crates/search-core" }
+search-core = { path = "../common/search-core" }
 # F03：§34 Gate 2 的唯一实现。**生产依赖**——这道门要在 `control/` 的生产段真的执行，
 # 不是只在测试里比对（那样就成了「门在测试里、路在生产里」）。
-gate-core = { path = "../bridge/crates/gate-core" }
+gate-core = { path = "../common/gate-core" }
 # 〔CP2c · 第四波 4C〕对外文案表的 Rust 取文口（`设计/01 §6.9`：所有对外文案与报错都从一张表来）。
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`（选 A 的理由：
 # `调研/第四波记录/CP2c.md §2.1`）。依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
-copy-core = { path = "../bridge/crates/copy-core" }
+copy-core = { path = "../common/copy-core" }
 # 〔MIG-3b〕部署决策的唯一一份（表 A / 表 B · 身份戳 · 只升不降），与 monitor 同一份：本机常驻后端出计划（`control/deploy_plan.rs`），monitor 只放字节。
-deploy-core = { path = "../bridge/crates/deploy-core" }
+deploy-core = { path = "../common/deploy-core" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -174,8 +174,8 @@ libc = "0.2"
 # 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
 # 根子是两个词混着用了，分清楚：
 #   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在本件**之前**就已在
-#     monitor 的依赖图里 —— `git show c3cf193:src/bridge/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
-#     `cargo tree -i ring --manifest-path ../bridge/Cargo.toml` ⇒ `ring └── russh └── monitor`。
+#     monitor 的依赖图里 —— `git show c3cf193:src/frontend/shell/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
+#     `cargo tree -i ring --manifest-path ../frontend/shell/Cargo.toml` ⇒ `ring └── russh └── monitor`。
 #     同一把尺子量 **backend 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**backend 侧**第一条」是真话。
 #   · **本机 cargo 缓存**（`~/.cargo/registry/cache/` 里有没有那个 `.crate` 文件）：**只说这台机器**，
 #     与依赖图是两件事。缓存里有不等于依赖图里有，反过来也一样。
@@ -195,12 +195,12 @@ webpki-roots = "1"
 # ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
-# 版本与 feature 集**逐字照抄**当年 `../bridge/Cargo.toml` 那一行（`0.61.1` · `default-features = false`
+# 版本与 feature 集**逐字照抄**当年 `../frontend/shell/Cargo.toml` 那一行（`0.61.1` · `default-features = false`
 # · `["ring", "flate2", "rsa"]`）—— 理由不是省事：**两侧握出来的必须是同一套算法集**，
 # 一侧多开一个 feature 就意味着「界面拨得通、代理拨不通」这种只在某台远端上才现形的分叉。
 # 〔SR1b · 2026-09-24〕**界面那一侧的 `russh` / `russh-sftp` / `primefield` 三行已经删了**（界面进程零 SSH，V89）
 # ⇒ 「两侧同一套」这句话今天没有第二侧了；本 crate 是唯一的 SSH 客户端。
-# `primefield` 那条钉（搬自 `../bridge/Cargo.toml`，那一行随三行一起删了）：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
+# `primefield` 那条钉（搬自 `../frontend/shell/Cargo.toml`，那一行随三行一起删了）：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
 # 它们要 primefield 0.14.0-rc.9；cargo 默认会在 0.14.0-rc.* 里取最新的 rc.10（改了 ff trait 拆分，与 rc.9 的
 # p256/p521 不兼容 ⇒ `E0277 FieldElement: elliptic_curve::Field`）。本 crate **没有**声明它，靠的是 lock 里锁着的
 # `0.14.0-rc.9`（`K-P6b-r3-lock-prime.py` 播的种）—— 与下面 `crypto-bigint` 那段同一个处境：**重解析就会撞上**。
@@ -227,7 +227,7 @@ webpki-roots = "1"
 # ⇒ `--offline` 把候选集限成「已下载的那几份」⇒ 唯一候选是 yanked 的那份
 # ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
 # `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
-# `../bridge/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
+# `../frontend/shell/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
 # monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `tests/evidence/K-P6b-r3-lock-prime.py`
 # 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
 # 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
@@ -239,7 +239,7 @@ webpki-roots = "1"
 #
 # ① **今天钉着哪个版本 —— 本轮现打**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
 #    `grep -c '^name = "crypto-bigint"$' <lock>`）：`src/backend/Cargo.lock` ⇒ **1** 处、
-#    版本 **`0.7.3`**；`../bridge/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
+#    版本 **`0.7.3`**；`../frontend/shell/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
 #
 # ② 🔴 **后果一句话：「今天编得过」不等于「明天还编得过」。**
 #    今天编得过，**是因为 lock 里已经写着** —— `cargo` 只在**解析**那一步挡 yanked。
@@ -272,7 +272,7 @@ russh = { version = "0.61.1", default-features = false, features = ["ring", "fla
 # 🔴 **它只服务 `src/dial/sftp.rs` 那一份**：`readonly_guard::remote_write_layer` 把「持 SFTP 会话 /
 # 开子系统 / 协议改动动词」钉在那**一份文件**上，而那份文件的写根 == `{~/.cc-monitor/staging, ~/.cc-monitor/bin}`
 # （`INVARIANTS §41.6` 的 V89 订正）。签字行住 `readonly_guard::g6_dependency_signoff`。
-# 版本照抄当年 `../bridge/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；`设计/60 §6.5.3` 现打核过 5 个候选、
+# 版本照抄当年 `../frontend/shell/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；`设计/60 §6.5.3` 现打核过 5 个候选、
 # 用户「不要 GPL」核过）。monitor 那一行同拍删了（界面进程零 SFTP）⇒ 本 crate 是唯一一份。
 # ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
 # 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
@@ -295,13 +295,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
-guard-core = { path = "../bridge/crates/guard-core" }
+guard-core = { path = "../common/guard-core" }
 # 〔CZ1 · 2026-09-25〕vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：
 # 盘上每一份与 `VENDOR.md` 里取自 `.crate` 的 sha256 逐份相等。**只在测试期链接**；版本就是 lock 里 russh 那棵树
 # 早已解析的 `sha2 0.11.0`（离线可用、不新增包）。
 sha2 = "0.11"
 # 〔MOD · C01 同一条理由〕记录解释进了后端（`agents/claudecode/schema.rs`）⇒ 界面收到的记录的线上形状从这里导出
-# `src/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
+# `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
 
@@ -311,9 +311,9 @@ ts-rs = "12.0.1"
 # 副本 = 本机缓存里那份 `russh-0.61.1.crate` 原样解开（其 sha256 == 本 lock 原先锁的 checksum）＋ 只改
 # `src/compression.rs::Decompress::decompress` 的收尾判断（用本轮调用**之后**的进度；上游用调用之前的 ⇒
 # 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 —— `调研/第四波记录/NT1.md §1.1a`）。
-# 来历、改了哪几行、上游修好之后怎么撤：`../bridge/vendor/russh/VENDOR.md`。
+# 来历、改了哪几行、上游修好之后怎么撤：`../vendor/russh/VENDOR.md`。
 # 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。
-# ⚠ 住 `src/bridge/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
+# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
 #   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
 [patch.crates-io]
-russh = { path = "../bridge/vendor/russh" }
+russh = { path = "../vendor/russh" }

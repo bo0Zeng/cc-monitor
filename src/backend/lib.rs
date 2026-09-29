@@ -10,7 +10,7 @@
 //!
 //! 🔴 **`BUILD_ID` 必须住这里，不能留在 `main.rs`** —— in-process 那条路**没有
 //! 那个 `main.rs`**，身份会跟着消失。它的三处盘上消费者已同拍改到本文件：
-//!   · `src/bridge/build.rs`（`backend_lib_rs()` ⇒ 两条内嵌路的编译期期望值）
+//!   · `src/frontend/shell/build.rs`（`backend_lib_rs()` ⇒ 两条内嵌路的编译期期望值）
 //!   · `.github/workflows/release.yml`（清单里那个 build_id）
 //!   · `tests/backend/build_id_guard.rs`（真身份住址的逐条核对）
 //! **别在第四处写它的住址。**
@@ -65,6 +65,8 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+                    // 〔RE〕面 B 的成员住 `src/comms/outward/`（`99 §2.1 ⑰`）；非成员 door / listen 留 `relay/`，模块树不变
+#[path = "../comms/outward/mod.rs"]
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
@@ -211,7 +213,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
 ///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-///   本轮**没做**（本工作树也没铺 `src/bridge/embedded-backends/`）。
+///   本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
 ///   🔴 **别把它读成「远端画面预览通了」**：本件只出后端这一侧的原语，
 ///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
@@ -225,7 +227,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
 ///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-backends/`）。
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
 ///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出后端这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
 ///
@@ -252,7 +254,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   那七次的 `unknown argument` + exit 2；帧面那半是 p2i 那次的 `hello.commands` 里没有它
 ///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-backends/` ⇒ 不涉及 re-embed）。
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/` ⇒ 不涉及 re-embed）。
 ///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
 ///
@@ -262,7 +264,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
 ///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
 ///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
-///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/tmux-control.ts::capturePane` 经通道直接问）。
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（〔C4e〕今天由界面 `src/frontend/ui/tmux-control.ts::capturePane` 经通道直接问）。
 ///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧后端上休眠」，
 ///   这一次是**旧后端上那三条还在**，而新 monitor 不再调它们 ——
 ///   真正会出事的是**反向**：一台装着新后端的远端，旧 monitor 仍会去调
@@ -298,13 +300,13 @@ pub const PROTO_VERSION: u32 = 1;
 ///      ⇒ `files::index::rebuild_once` 与 `files::browse_watch::set_browsing` 至今
 ///      零生产调用方 ⇒ 真机上 `files-find` 恒回 `index_missing: true`。
 ///      〔⚠ 2026-09-21 收窄：**「零生产调用方」这半已假** —— 波 β 的 `P2` 接上了
-///       `src/bridge/src/filewin/find.rs`。而「恒回 `index_missing`」这半**只在没人
+///       `src/frontend/shell/src/filewin/find.rs`。而「恒回 `index_missing`」这半**只在没人
 ///       开那个窗口去搜的时候**还成立。这一段是当时的账，留着当历史。〕
 ///      这是设计面的缺口（要补得先在那张表上裁第五条），**不在本刀里自己长出来**。
-///   ② **消费侧还没有** —— `src/bridge` 那一头一个字节没动。
+///   ② **消费侧还没有** —— `src/frontend/shell` 那一头一个字节没动。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k / p2l 如实登记：这一半是**源码半**，
 ///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做** ——
-///   本工作树没铺 `src/bridge/embedded-backends/`，现打
+///   本工作树没铺 `src/frontend/shell/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的是「这棵树上没有一份对不上的字节」，
 ///   **不是**「字节是对的」（那条边界是它自己头注里逐字写的）。
 ///
@@ -323,11 +325,11 @@ pub const PROTO_VERSION: u32 = 1;
 ///   〔✅ 2026-09-21：**那条判据有了，住在发命令那一侧** ——
 ///    `filewin::find::tests` 四条两侧都钉（没索引 ⇒ 恰好 1 条重走、顺序也钉 ·
 ///    **阴性对照**：不过期 ⇒ 一条都不发 · 只差 `stale` 一个布尔的对照 · 连打五趟只发一趟）。
-///    ⇒ 「后端这棵树钉不住」仍然成立，而**那一格换成由 bridge 那棵树钉着**。〕
+///    ⇒ 「后端这棵树钉不住」仍然成立，而**那一格换成由壳（`src/frontend/shell`）那棵树钉着**。〕
 ///   〔W5-FILES · 09-25 订正〕上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
 ///   会让进程里那一个监听器跟上名单（`files::browse_watch::keep_watching`），浏览的目录此后一有动静 overlay 就重列。
 ///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-///   本轮**没做** —— 本工作树没铺 `src/bridge/embedded-backends/`，现打
+///   本轮**没做** —— 本工作树没铺 `src/frontend/shell/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
 ///
 /// ★★ **欠着一笔 bump：`设计/80 §8.7` 步 2（`rbind-token`）** —— 本轮**刻意不 bump**。
@@ -349,7 +351,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///    白重装一轮」）。
 /// ② **这一波是多棵树并行**（步 1 在另一棵工作树上）。两棵树各 bump 一次 =
 ///    一次合并冲突 ＋ 一个谁也说不清的版本号。**bump 是发版那一拍的动作，不是步的动作。**
-/// ③ 本工作树没铺 `src/bridge/embedded-backends/`，`release-gate` 的 ⑬「bump 的同拍要
+/// ③ 本工作树没铺 `src/frontend/shell/embedded-backends/`，`release-gate` 的 ⑬「bump 的同拍要
 ///    re-embed」在这里只答得出「这棵树上没有一份对不上的字节」⇒ 真 bump 也买不到那一半。
 ///
 /// ⇒ **解锁条件（发版那一拍，同轮做完）**：步 1／3 落地、monitor 侧开始发
@@ -467,7 +469,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// `history-forget` · `history-last-accounts`（两个命令面）。＋ 行为：`history-projects` / `history-sessions` 应答改成
 /// 本机后端出的跨机 join 成品 `{rows, notice}`；注解文件的读写者换成本机后端。
 ///
-/// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/bridge/vendor/russh`，
+/// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/vendor/russh`，
 /// 修 zlib 解压一包只交出约 2 倍包长的缺陷），闸 `RUSSH_ZLIB_SOUND` 开 ⇒ 判准下「远」的链路从此真走 zlib@openssh.com。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///
@@ -665,7 +667,7 @@ pub const PROTO_VERSION: u32 = 1;
 pub const BUILD_ID: &str = "p5p-probe-said-link-fallback";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
-/// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
+/// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
 /// 再经 `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE` 交给 monitor 生产段。
 /// **别在第二处写这两个字面量。**
 pub const BUILD_STAMP_OPEN: &str = "<<ccm-build-id:";
@@ -716,7 +718,7 @@ pub const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
 ///
 /// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
 /// 搜 [`BUILD_STAMP_OPEN`] 就问得出它是谁。消费者：
-/// `src/bridge/build.rs`（内嵌两条路的构建期校验）· `src/bridge/src/sftp.rs`
+/// `src/frontend/shell/build.rs`（内嵌两条路的构建期校验）· `src/frontend/shell/src/sftp.rs`
 /// （推远端之前的运行期见证）· 本 crate `build_id_guard` 的自扫判据。
 ///
 /// `#[used]` ＋ `#[no_mangle]`：前者挡「没人读它就优化掉」，后者让它在符号表里也留个名

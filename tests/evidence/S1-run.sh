@@ -15,7 +15,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG="$ROOT/tests/evidence/S1-render-cost-log.txt"
-GATE="tests/scale1-render-cost.vitest.ts"
+GATE="tests/frontend/ui/scale1-render-cost.vitest.ts"
 
 cd "$ROOT"
 

@@ -1,9 +1,9 @@
 // auto-e2e F-E3:换号重启编排的**真源驱动器**（测试 fixture,非生产改动）。仿 tests/e2e/resume-cmd-driver.ts,
-// 但驱动的是**有副作用的编排** `restartWithAccount`（src/account-restart.ts,真源,绝不重写一份），
+// 但驱动的是**有副作用的编排** `restartWithAccount`（src/frontend/ui/account-restart.ts,真源,绝不重写一份），
 // 经 restart-shims/loader.mjs 把 Tauri IPC 边界重定向到真 tmux + fake-claude（见该 loader 头注）。
 //
 // 诚实天花板 = 命令级:真编排逻辑 + 真 tmux 效果 + 真账号解析（accountConfigDir/detectAccountMismatch
-// 都是 src/accounts.ts 真源）。
+// 都是 src/frontend/ui/accounts.ts 真源）。
 //
 // ⚠⚠ **P3b 订正（08-12）**：这里原本写「GUI 全链在 Linux 结构性不可达
 // （**launch.rs 仅 Windows**→回退剪贴板）」——**括号里那句是假的**：
@@ -28,8 +28,8 @@ import module from "node:module";
 // 必须在动态 import 真源之前登记钩子（同 tick 登记 → 后续 import 生效）。
 module.register(new URL("./restart-shims/loader.mjs", import.meta.url).href);
 
-const { restartWithAccount } = await import("../../src/account-restart.ts");
-const { detectAccountMismatch, accountConfigDir } = await import("../../src/accounts.ts");
+const { restartWithAccount } = await import("../../src/frontend/ui/account-restart.ts");
+const { detectAccountMismatch, accountConfigDir } = await import("../../src/frontend/ui/accounts.ts");
 
 function opt(v: string | undefined): string | undefined {
   return v === undefined || v === "-" || v === "" ? undefined : v;

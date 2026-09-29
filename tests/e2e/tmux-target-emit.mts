@@ -19,7 +19,7 @@ import {
   planResumeIntoExistingTmux,
   planAttach,
   planLauncher,
-} from "../../src/launch-requests.ts";
+} from "../../src/frontend/ui/launch-requests.ts";
 import { renderCmdViaProduction } from "./launch-render-driver.ts";
 
 const out: Record<string, string> = {

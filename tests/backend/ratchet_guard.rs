@@ -208,7 +208,7 @@ mod tests {
     /// ⇒ 那三条字面量钉住的是**那三个字符串**，不是「承诺一条不存在的周期性退路」这条性质。
     ///
     /// ★ 本仓**已经判过这一形而且已经有解**：monitor 侧 [`crate::…frame_cadence_guard`]
-    /// （`src/bridge/src/frame_cadence_guard.rs`）头注逐字记着 —— 手写 4 条字面量的那一版被
+    /// （`src/frontend/shell/src/frame_cadence_guard.rs`）头注逐字记着 —— 手写 4 条字面量的那一版被
     /// 「同一句话换个单位、换个动词」（`8s` → 中文写法、`推` → `推一帧`）**三条判据全绿**地绕过，
     /// ⚠ 这里**刻意不逐字抄那句话** —— 它今天是 `frame_cadence_guard` 的禁词，
     /// 抄进来这份文件当场被它打红（08-27 实测，我就是这样被本仓自己的判据逮住的）。
@@ -253,7 +253,7 @@ mod tests {
     /// 〔`P4` 2026-09-21〕：`crate_production_sources()` 走的 `scan_tree!`，而它那一刀
     /// **在这一处不生效**（判据由 `#[path]` 挂载 ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
     /// 本模块不在自己的语料里靠的是**住址**：它住 `tests/backend/`，扫的是 `src/backend`；
-    /// 同仓 `src/bridge/src/frame_cadence_guard.rs` 更是**已经在连注释一起扫**
+    /// 同仓 `src/frontend/shell/src/frame_cadence_guard.rs` 更是**已经在连注释一起扫**
     /// `src/backend`（`:183` 逐字「这里**刻意不剥注释** —— 被禁的正是注释里的说法」）。
     /// **真正的障碍是另外两条**：
     /// ① `main.rs:651` 那条**自解释注释逐字引用了被禁短语**（它记的是「这句话原先逐字是…」）——

@@ -249,7 +249,7 @@ fn every_file_this_head_note_points_at_really_exists() {
         );
     }
     // 头注里写住址有四种形态：后端树内的裸文件名 · `relay/xxx.rs` 这种树内相对路径 ·
-    // `src/bridge/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
+    // `src/frontend/shell/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
     // **monitor 侧的裸文件名**（`backend_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
     let roots = [
         // 〔搬树 2026-09-17〕后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
@@ -258,12 +258,12 @@ fn every_file_this_head_note_points_at_really_exists() {
         // 〔搬测试 2026-09-17〕头注里点名的很多是判据文件，它们今天住第二棵树。
         crate::guard_support::tests_root(),
         crate::guard_support::repo_root(),
-        crate::guard_support::repo_root().join("src/bridge/src"),
+        crate::guard_support::repo_root().join("src/frontend/shell/src"),
         // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**monitor 也有第二棵树。**
-        //    上一格（`src/bridge/src`）接的是「头注点名 monitor 侧的裸文件名」那一形，
-        //    而剖分之后 monitor 的判据整批住 `<repo>/tests/bridge/`
+        //    上一格（`src/frontend/shell/src`）接的是「头注点名 monitor 侧的裸文件名」那一形，
+        //    而剖分之后 monitor 的判据整批住 `<repo>/tests/frontend/shell/`
         //    ⇒ 头注里那些 `X_tests.rs` 四个根一个都够不着，被读成「假住址」。
-        crate::guard_support::repo_root().join("tests/bridge"),
+        crate::guard_support::repo_root().join("tests/frontend/shell"),
     ];
     let mut checked = 0usize;
     for word in head.split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))) {
@@ -272,10 +272,14 @@ fn every_file_this_head_note_points_at_really_exists() {
             continue;
         }
         checked += 1;
+        // 〔RE〕`relay/xxx.rs` 是模块住址：`relay` 的根（`mod.rs` 所在）住 `src/comms/outward/`，非成员 door / listen 住 `src/backend/relay/`。
+        let as_relay_module = w
+            .strip_prefix("relay/")
+            .is_some_and(|r| crate::guard_support::relay_root().join(r).exists());
         assert!(
-            roots.iter().any(|r| r.join(w).exists()),
+            roots.iter().any(|r| r.join(w).exists()) || as_relay_module,
             "头注指着 `{w}`，而五个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · \
-                 monitor 生产树 `src/bridge/src/` · monitor 测试树 `tests/bridge/`）——\n\
+                 monitor 生产树 `src/frontend/shell/src/` · monitor 测试树 `tests/frontend/shell/`）——\n\
                  ★ 指了住址而住址是假的：读者会以为那一格有人守着，去找的时候什么都没有。\n\
                  ⇒ 要么改成真名，要么把那句话删掉；**别留一个假住址**。"
         );

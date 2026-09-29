@@ -7,14 +7,14 @@
  * 每张卡另记头 / 体的高，外框 = 位置 − 头 − 体（第一级公式里正文之外那一段）。只 Chromium 一个引擎（生产 WebView2 同族）。
  * 结果写 `window.__RESULT` ＋ `window.__DONE`，由 `RENDER2-skel-run.ts` 读回、写金样 `RENDER2-skel-golden.json`。
  */
-import "../../src/styles/layers.css";
-import "../../src/styles/reset.css";
-import "../../src/styles/tokens.css";
-import "../../src/styles/layout.css";
-import "../../src/styles/shared.css";
-import "../../src/styles.css";
+import "../../src/frontend/ui/styles/layers.css";
+import "../../src/frontend/ui/styles/reset.css";
+import "../../src/frontend/ui/styles/tokens.css";
+import "../../src/frontend/ui/styles/layout.css";
+import "../../src/frontend/ui/styles/shared.css";
+import "../../src/frontend/ui/styles.css";
 import fixtureJsonl from "../__fixtures__/scale2-height-records.jsonl?raw";
-import { buildCorpus } from "../scale2-height-corpus";
+import { buildCorpus } from "../frontend/ui/scale2-height-corpus";
 
 declare global {
   interface Window {

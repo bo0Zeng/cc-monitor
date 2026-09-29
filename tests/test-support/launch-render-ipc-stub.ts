@@ -32,7 +32,7 @@
  * 空串 cwd · create/send-into 少送载荷）—— 那几道的判据在 Rust 那侧，
  * 上层 vitest 要验拒绝就直接 mock 一次 reject，别指望本文件替它拒。
  */
-import type { PayloadRenderRequest, WireTmuxOuter } from "../../src/launch-cli-wire.ts";
+import type { PayloadRenderRequest, WireTmuxOuter } from "../../src/frontend/ui/launch-cli-wire.ts";
 
 /** Rust 那侧 `payload::refuse()` 打的标。前端按它分流（`remote-launch-run.ts::REFUSE_TAG`）。 */
 export const STUB_REFUSE_TAG = "REFUSE:";

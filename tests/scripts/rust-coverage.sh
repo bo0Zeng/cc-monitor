@@ -15,10 +15,10 @@
 # # 它量什么
 #
 # 两侧各跑一遍**门禁里那条同样的** `cargo test`（插桩版、单独的 target 目录，不碰日常构建）：
-#   bridge  —— `cd src/bridge && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
+#   shell   —— `cd src/frontend/shell && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
 #   backend —— `cd src/backend && cargo test`（= 门禁 `backend` 那一格）
 # 测试里 spawn 出去的子进程（后端二进制、`current_exe` 起的子测试）也是插桩的，它们的 `.profraw` 一并算进来。
-# 报告的人群是**生产源码**：`src/bridge/src` · `src/bridge/crates/*/src` · `src/backend`；
+# 报告的人群是**生产源码**：`src/frontend/shell/src` · `src/common/*/src` · `src/backend` · `src/comms`（两侧经 `#[path]` 编的通信层成员）；
 # 测试树 `tests/`、vendor、依赖 crate 一律滤掉（`--ignore-filename-regex`）。
 #
 # # 它量不到什么
@@ -26,11 +26,11 @@
 # - 只量「这一趟 `cargo test` 在**这台机器**上执行到了哪几行」：`#[ignore]` 的、要 `embedded_backends` cfg 的、
 #   要 Xvfb / 真 sshd 的，这一趟没跑就不算 —— 读数是**门禁那两格**的覆盖，不是全部判据的覆盖。
 # - 行被执行 ≠ 行被断言：源码扫描型判据读源码**文本**，一行生产代码都不执行 ⇒ 它们对这个数贡献为 0，
-#   而那不代表它们没守东西（测试层分级见 `tests/bridge/crates/guard-core/test_tiers_tests.rs`）。
+#   而那不代表它们没守东西（测试层分级见 `tests/common/guard-core/test_tiers_tests.rs`）。
 # - TS 那一半归 `npm run coverage`（vitest v8）＋ `tests/scripts/assert-coverage-floors.mjs`，本脚本不碰。
 #
 # 用法：
-#   bash tests/scripts/rust-coverage.sh [bridge|backend|both]   # 默认 both
+#   bash tests/scripts/rust-coverage.sh [shell|backend|both]   # 默认 both
 # 产物落 `<repo>/.build/coverage/<侧>/`（`.gitignore` 的 `/.build/` 已忽略）：
 #   report.txt（逐文件表）· summary.json（`llvm-cov export -summary-only`）· 末尾一行 `RUST-COVERAGE <侧> 行 a/b`。
 # 环境变量：`LLVM_PROFDATA` / `LLVM_COV` 指定工具（默认 PATH 上的 `llvm-profdata` / `llvm-cov`）。
@@ -83,7 +83,7 @@ run_side() {
   # 被测的目标文件：测试二进制（同一组参数 --no-run，不会重编）＋ 本侧的可执行文件（测试会 spawn 它）。
   # ⚠ 这一趟也要给 `LLVM_PROFILE_FILE`：插桩标志对 build script 与 proc-macro 也生效，它们一旦被执行
   #   （真要重编的时候，rustc 会加载插桩过的 proc-macro），不给路径就往**当前目录**落 `default_*.profraw`
-  #   —— TQ1 落地那趟现打在 `src/bridge/` 下落了 70 份。给它一个 `.build/` 下的去处，不进源码树。
+  #   —— TQ1 落地那趟现打在 `src/frontend/shell/` 下落了 70 份。给它一个 `.build/` 下的去处，不进源码树。
   local objs=()
   local exe
   while IFS= read -r exe; do
@@ -133,15 +133,15 @@ print("%d/%d 行（%.1f%%）· 生产源文件 %d 份" % (t["covered"], t["count
 }
 
 case "$which_side" in
-  bridge | both) run_side bridge src/bridge --workspace --lib ;;
+  shell | both) run_side shell src/frontend/shell --workspace --lib ;;
 esac
 case "$which_side" in
   backend | both) run_side backend src/backend ;;
 esac
 case "$which_side" in
-  bridge | backend | both) ;;
+  shell | backend | both) ;;
   *)
-    echo "用法：bash tests/scripts/rust-coverage.sh [bridge|backend|both]" >&2
+    echo "用法：bash tests/scripts/rust-coverage.sh [shell|backend|both]" >&2
     exit 2
     ;;
 esac

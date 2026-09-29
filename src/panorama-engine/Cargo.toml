@@ -13,10 +13,10 @@ edition = "2021"
 publish = false
 
 # Standalone crate，**刻意不进任何 workspace**（同 `src/backend` 那条理由）：
-# 它按目标平台单独编、单独随后端部署；拖进 `src/bridge` 那个 workspace 等于让 monitor 的
+# 它按目标平台单独编、单独随后端部署；拖进 `src/frontend/shell` 那个 workspace 等于让 monitor 的
 # `cargo test --all` 替它背那 11 棵 C 构建树（9 门 grammar ＋ tree-sitter ＋ SQLite）。
 #
-# 🔴 住址**不许**是 `src/bridge/crates/`：`panorama_locus_guard` 正题④ —— 两棵树都 path 依赖
+# 🔴 住址**不许**是 `src/common/`：`panorama_locus_guard` 正题④ —— 两棵树都 path 依赖
 # 那个目录下的共享 crate，往那里放一个链引擎的包 = 同时给两个地址空间装上引擎。
 # 本 crate 自己一份 `Cargo.lock`（第三份 lock），登记在 `panorama_locus_guard::LOCKS`
 # 与 `ENGINE_LINKED_BY` —— 「引擎被链进了哪几个地址空间」这句话的账面形态。
@@ -27,11 +27,11 @@ path = "main.rs"
 
 [dependencies]
 # 副本是上游的镜子，不是分身（`VENDOR.md`）：本 crate 只**用**它，一个字不改它。
-code-picture-core = { path = "../bridge/vendor/code-picture-core" }
+code-picture-core = { path = "vendor/code-picture-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [dev-dependencies]
 # 源码扫描型判据的「只留生产段」剥法 —— 全仓一份（`structural_scan` 的「剥注释实现只许一份」）。
-guard-core = { path = "../bridge/crates/guard-core" }
+guard-core = { path = "../common/guard-core" }
 

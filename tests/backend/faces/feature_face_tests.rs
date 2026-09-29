@@ -115,7 +115,7 @@ fn plugins_marketplaces_answers_the_survey_itself_and_keeps_the_three_exits_apar
 /// ★★〔C4b · 第四波 4B〕**跨语言金样**：`plugins-marketplaces` 对一份夹具家目录的成品 ==
 /// `tests/__fixtures__/plugins-survey.golden.json`（夹具临时目录那一截换成 `<home>` 再比）。
 ///
-/// 那份金样的另一个读者是界面的解码器（`tests/settings/plugins-section.vitest.ts` 读同一份文件、逐字段断言）
+/// 那份金样的另一个读者是界面的解码器（`tests/frontend/ui/settings/plugins-section.vitest.ts` 读同一份文件、逐字段断言）
 /// ⇒ 两侧**异源**：后端改一个键名 ⇒ 本条红；界面解码器改一个键名 ⇒ 那边红。夹具只造结构（占位名、占位时间）。
 #[test]
 fn the_survey_product_matches_the_cross_language_golden() {
@@ -157,7 +157,7 @@ fn the_survey_product_matches_the_cross_language_golden() {
 ///
 /// 要求住址：`设计/05 §14.3`「正路是把解释挪进后端、直接出成品……线上形状由一份跨语言金样钉住（后端测试产出 == 金样 ·
 /// TS 解码器读同一份）」。异源：金样里的 `files` 由**生产**路径（`answer_at` → `session_tasks` → `task_entry`）现算，
-/// 与手写的 `product` 逐格相等；界面那一侧（`tests/tasks-decode.vitest.ts`）读同一份。
+/// 与手写的 `product` 逐格相等；界面那一侧（`tests/frontend/ui/tasks-decode.vitest.ts`）读同一份。
 /// 金样的 `files` 覆盖了旧口径（serde `TaskEntry`）的每一档：多余键不带 · BOM · `null` 可选格不出现 · id 不是串 / blocks 是 null /
 /// 缺必填 / 半截 JSON / 不是数字名 ⇒ 都不算任务。
 #[test]

@@ -10,7 +10,7 @@
  *
  * # 为什么**不是**「扫整个目录」
  *
- * 那些不变量是**针对某个组件**的，不是针对整个 `src/settings/`。
+ * 那些不变量是**针对某个组件**的，不是针对整个 `src/frontend/ui/settings/`。
  * 「不许写盘」对 `cc-bus-hooks` 成立，对 `accounts-section` / `remote-section`
  * 根本不成立（它们本来就要写配置）。一刀切会得到一堆假红，然后守卫被放宽或删掉 ——
  * 比范围缩小更糟。
@@ -25,7 +25,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const SETTINGS_DIR = resolve(process.cwd(), "src/settings");
+const SETTINGS_DIR = resolve(process.cwd(), "src/frontend/ui/settings");
 
 /** 剥掉整行注释——守卫扫的是**代码**，文件头注里写了禁用模式不该打红自己。 */
 export function stripLineComments(src: string): string {
@@ -42,7 +42,7 @@ export interface ComponentSource {
 }
 
 /**
- * 收集 `src/settings/` 下所有以 `prefix` 开头的**生产**源文件（排除测试）。
+ * 收集 `src/frontend/ui/settings/` 下所有以 `prefix` 开头的**生产**源文件（排除测试）。
  * 调用方应断言返回非空（反向自检：别让守卫空转成假绿）。
  */
 export function componentSources(prefix: string): ComponentSource[] {

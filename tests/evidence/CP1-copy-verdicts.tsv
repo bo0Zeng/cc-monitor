@@ -1,6 +1,6 @@
 住址	原文	裁词	依据
-src/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
-src/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
+src/frontend/ui/accounts.ts:120	过旧	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
+src/frontend/ui/accounts.ts:120	不支持账号	保留	[不对外] deriveUi 里对后端错误串做 includes 匹配的探针串，不渲染
 src/backend/control/capture_pane.rs:105	🔴 **本轮真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\n         逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\n         ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \n         第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\n         「tmux 连不上时会说 no server running」是个想当然，实测把它证伪了一半。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:113	tmux 在**默认 socket**（生产走的那条）上找不到 server 时的原话\n         （`no server running on /tmp/tmux-<uid>/default`）。\n         ⚠ **这一句本轮没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\n         而默认 socket 在沙箱里没法造出「无 server」态（那台沙箱自己在用 tmux）。\n         ⇒ 它今天只由 `every_registered_needle_lands_in_its_own_bucket` \n         用合成样本证明「落对了档」，**不是**「见过它」。	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
 src/backend/control/capture_pane.rs:128	tmux 对 target-pane 解析失败时的原话。`=名:` 收的正是 target-pane（`F01`）	保留	[不对外] NO_*_NEEDLES 针表的理由列，classify() 只拿第 0 列（针）去匹配 stderr，理由列生产段无读者
@@ -48,57 +48,57 @@ src/backend/plugin/invoke.rs:102	决定裸调的复用命令连到哪一台服�
 src/backend/plugin/invoke.rs:104	字符编码那一档，三个键一起进（这个优先级最高）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:105	字符编码那一档，三个键一起进	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:106	字符编码那一档，三个键一起进（这个优先级最低）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
-src/bridge/crates/creds-core/src/lib.rs:238	SecretKey(<已遮蔽>)	保留	[不对外] SecretKey 手写 Debug 的遮蔽形，只在 {:?} 路径里代替密钥出现，防泄漏用，不是文案
-src/bridge/src/backend/control/backend_control.rs:163	已起：{}	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）
-src/bridge/src/backend/control/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
-src/bridge/src/backend/control/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）
-src/bridge/src/backend/control/backend_control.rs:187	{origin} 的流已重起	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词，将来若上界面要换 新词:流
-src/bridge/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
-src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
-src/bridge/crates/deploy-core/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 〔E2〕匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（〔MIG-3b〕随 is_ours 搬进 deploy-core）
-src/bridge/src/backend/control/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
-src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
-src/bridge/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
-src/bridge/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
-src/bridge/src/backend_policy.rs:516	起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口	保留	[不对外] DEATH_RECORD_SITES 登记表说明
-src/bridge/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
-src/bridge/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
-src/bridge/src/filewin/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
-src/bridge/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
-src/bridge/src/filewin/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字；〔TAIL〕那两句随书签旧键退役删了，只剩别处还用的 `处`）
-src/bridge/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
-src/bridge/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
-src/bridge/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] 〔S5 · V41〕REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
+src/common/creds-core/src/lib.rs:238	SecretKey(<已遮蔽>)	保留	[不对外] SecretKey 手写 Debug 的遮蔽形，只在 {:?} 路径里代替密钥出现，防泄漏用，不是文案
+src/frontend/shell/src/backend/control/backend_control.rs:163	已起：{}	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）
+src/frontend/shell/src/backend/control/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
+src/frontend/shell/src/backend/control/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）
+src/frontend/shell/src/backend/control/backend_control.rs:187	{origin} 的流已重起	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词，将来若上界面要换 新词:流
+src/frontend/shell/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
+src/frontend/shell/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
+src/common/deploy-core/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 〔E2〕匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（〔MIG-3b〕随 is_ours 搬进 deploy-core）
+src/frontend/shell/src/backend/control/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
+src/frontend/shell/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
+src/frontend/shell/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
+src/frontend/shell/src/backend_policy.rs:509	监护路：backend 那个 `on_event` **闭包**收到 `Exited` 那一拍。\n         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假后端能跑**同一个闭包**\n         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码	保留	[不对外] DEATH_RECORD_SITES 登记表说明
+src/frontend/shell/src/backend_policy.rs:516	起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口	保留	[不对外] DEATH_RECORD_SITES 登记表说明
+src/frontend/shell/src/filewin/fonts.rs:257	共向式幕横模滚长	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/frontend/shell/src/filewin/fonts.rs:258	事任何头选项	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案
+src/frontend/shell/src/filewin/fonts.rs:293	变收	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔F9c 与 FW34 合并〕F9c 删掉的 9 个字里仍被 preview / workspace 用着的两个）
+src/frontend/shell/src/filewin/fonts.rs:277	×★☆书加懂找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕书签栏那几个字）
+src/frontend/shell/src/filewin/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕搬家那一跳两句的字；〔TAIL〕那两句随书签旧键退役删了，只剩别处还用的 `处`）
+src/frontend/shell/src/filewin/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕预览那几个字）
+src/frontend/shell/src/filewin/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
+src/frontend/shell/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] 〔S5 · V41〕REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
 src/backend/footprint/registry.rs:1310	**这个名字今天只剩一个身份不属本表：MCP server（code-picture 的 Agent head，给 Claude 用）** —— \n         它确实「装到别处」，但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 server 条目），\n         是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / `config_surface.rs` 里 `code-picture` 零命中）。\n\n         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\n         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\n         〔TL1 · 4C〕它的另外两个身份都不在这里了：① **vendored 进 monitor 二进制的 crate**（原先本条的主理由：\n         「没有 `destination`、没有安装动作、卸载它等于重新编译 monitor」）—— RM1f 起 monitor 摘掉了内嵌引擎（V108 后半句），这个身份没了；\n         它变成只装引擎的独立小程序 `cc-monitor-panorama`（`src/panorama-engine`），本机放到 `~/.cc-monitor/bin/`、远端推到那台的 \n         `~/.cc-monitor/bin/` —— 那是**有落点的部署物**，进了 [`TOOLS`]（`id: "panorama"`，两个载体）。\n         ② **独立进程那一层**（`src/backend/sidecars/codepicture/`，条 67 · 2026-09-18 整棵删了，环境闭集里那条 `code-picture-sidecar` 同拍摘了）。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔TL1：改写 —— 小程序那一身份进了 TOOLS（panorama），「vendored 进二进制」那一身份 RM1f 起没了，只剩 MCP head 不属本表；裁词不变〕
 src/backend/footprint/registry.rs:1324	**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\n         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\n         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\n         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\n         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。	保留	[不对外] NOT_MANAGED 登记表理由
-src/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
-src/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
-src/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
-src/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
-src/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
-src/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
-src/ipc/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
-src/ipc/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
-src/ipc/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）
-src/ipc/chan.ts:77	对端答「不行」	保留	[不对外] 〔C4a〕同上（`peer/refused` 那一档的日志句）
-src/ipc/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` 那一档的日志句）
-src/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
-src/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
-src/settings/plugins-section.ts:81	不是一个对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/settings/plugins-section.ts:83	顶层的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/settings/plugins-section.ts:87	第 {…} 条不是对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/settings/plugins-section.ts:89	第 {…} 条的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/settings/plugins-section.ts:93	第 {…} 条有一格类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
-src/bridge/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
-src/bridge/src/bind.rs:304	{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>	保留	[不对外] 日志里窗口标题的脱敏形
-src/bridge/src/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
-src/bridge/src/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
-src/bridge/src/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
-src/bridge/src/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
-src/bridge/src/chan/router.rs:232	客户端发来了一帧只该由路由器发的头	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
-src/bridge/src/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
-src/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 〔C4b〕只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
+src/frontend/ui/events.ts:585	[perf] === 启动管线 timeline (前端 performance.now ms · window={…}) ===	保留	[不对外] 启动管线 perf timeline 行，经 console.info / frontend_perf_log 进开发者日志
+src/frontend/ui/events.ts:589	[perf]   first jsonl-batch in   T+{…} (+{…}) ← 后端 replay 完成	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/events.ts:591	[perf]   batch payloads drained T+{…} (+{…}) ← drain 全部 {…} 条	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/events.ts:592	[perf]   onBatchEnd fired       T+{…} (+{…}) ← 300ms grace 后真正切 live	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/events.ts:595	[perf]   建卡 rendered={…} · 收纳 deferred={…} · drained={…}(累计)	保留	[不对外] perf timeline 开发者日志行
+src/frontend/ui/events.ts:596	[perf]   ── 总耗时（DOM → 加载完成）：{…}ms ──	保留	[不对外] perf timeline 开发者日志行
+src/comms/inward/chan.ts:66	通道：{…}	保留	[不对外] 〔C4a〕`ChanError.message`：通道失败只进 console.warn（调用方按层说自己的话，界面那句不从这里取）
+src/comms/inward/chan.ts:75	第 {…} 跳卡在 {…}：{…}（发出去了没有：{…}）	保留	[不对外] 〔C4a〕`describeCallError` 给日志看的那一句，与 `chan/wire.rs` 的 `CallError` 的 Display 同形
+src/comms/inward/chan.ts:77	对端不认这个操作	保留	[不对外] 〔C4a〕同上（`peer/unsupported` 那一档的日志句）
+src/comms/inward/chan.ts:77	对端答「不行」	保留	[不对外] 〔C4a〕同上（`peer/refused` 那一档的日志句）
+src/comms/inward/chan.ts:79	本侧：{…}	保留	[不对外] 〔C4a〕同上（`ours` 那一档的日志句）
+src/frontend/ui/remote-launch-run.ts:338	刻意不替你挑终端模拟器	保留	[不对外] 对后端错误串做 includes 的匹配锚点（那句话本身由后端产、另行裁）
+src/frontend/ui/settings/machine-status.ts:33	（本机）	保留	[不对外] LOCAL_MACHINE_KEY 是本机那一行的存储键（头注：刻意取一个用户填不出的名字防撞车），显示时 describeGap 等处换成「本机」
+src/frontend/ui/settings/plugins-section.ts:81	不是一个对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/frontend/ui/settings/plugins-section.ts:83	顶层的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/frontend/ui/settings/plugins-section.ts:84	顶层两格的类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/frontend/ui/settings/plugins-section.ts:87	第 {…} 条不是对象	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/frontend/ui/settings/plugins-section.ts:89	第 {…} 条的键是 {…}	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/frontend/ui/settings/plugins-section.ts:93	第 {…} 条有一格类型不对	保留	[不对外] 〔C4b〕`decodeSurvey` 形状核验的细目：只进 console.warn（界面那句是固定的「插件市场清单的形状对不上」，不带键名）
+src/frontend/shell/src/bind.rs:300	{RBIND_TOKEN_MARKER_PREFIX}<32hex 已隐去>	保留	[不对外] 日志里 marker 的脱敏形
+src/frontend/shell/src/bind.rs:304	{}{RBIND_TOKEN_MARKER_PREFIX}<已隐去>	保留	[不对外] 日志里窗口标题的脱敏形
+src/comms/inward/chan/router.rs:146	回 Welcome 写不出去：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
+src/comms/inward/chan/router.rs:171	读出错：{e}	保留	[不对外] 只进日志（host.rs 的 tracing::warn），连接结束原因
+src/comms/inward/chan/router.rs:182	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
+src/comms/inward/chan/router.rs:203	编号 {id} 还在飞，又来了一次	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
+src/comms/inward/chan/router.rs:232	客户端发来了一帧只该由路由器发的头	保留	[不对外] 只进日志（host.rs 的 tracing::warn），客户端违约
+src/comms/inward/chan/wire.rs:306	Key(<不打印>)	保留	[不对外] Key 的 Debug，刻意不打印内容
+src/frontend/ui/session-reads.ts:251	这台机器上的后端版本旧，还给不出骨架索引（重装后端之后就有）	保留	[不对外] 〔C4b〕只进 console.info（骨架未接的原因），界面行为是退回尾部窗口；替掉 monitor 那一句「对面后端不认 --index」
 src/backend/control/cc_bus.rs:782	已 spawn:	保留	[不对外] 在 cc-spawn 回显里认新会话名字的匹配串（spawned_id_of），只决定回值里的 id，不是展示文本
 src/backend/control/exit_policy.rs:105	读 {} 失败：{e}	保留	[不对外] 〔B2〕「读不出来」的原因：只进线上 `reason` 一格与后端日志，界面只说 EXIT_UNREADABLE 那一句、不显示它
 src/backend/control/exit_policy.rs:109	{} 不是 JSON：{e}	保留	[不对外] 同上：`reason` 一格与日志，界面不显示
@@ -115,30 +115,30 @@ src/backend/relay/listen.rs:352	{ENV_PORT}={raw:?} 不是端口号（{e}）	保�
 src/backend/relay/listen.rs:361	读不出绑到的地址：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/backend/relay/listen.rs:372	起不来接受线程：{e}	保留	[不对外] 〔RL1〕常驻后端进程内中转的日志 / `Hosted` 的说法，只进后端 stderr（stdio 载体上转进 monitor 滚动日志），不上界面
 src/panorama-engine/main.rs:368	读不出盘上那一份：{e}	保留	[可达存疑] 〔RM1d〕全景小程序算批注 / 文档关联的新内容时读现状失败（权限 / 编码 / 是个目录，不是「不存在」）⇒ failed 经后端回到全景页写入口的失败提示；{e} 是系统那句原话，给人判是哪一种；绝不当成不存在去覆盖
-src/panorama/api.ts:42	代码全景：这一问已取消	保留	[不对外] 〔RM1f〕`PanoramaCancelled` 的 `message`：视图按类型认它（`instanceof`），说的是自己那句「已取消建立索引」；这一句只进日志 / 开发者控制台
-src/bridge/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
-src/bridge/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
+src/frontend/ui/panorama/api.ts:42	代码全景：这一问已取消	保留	[不对外] 〔RM1f〕`PanoramaCancelled` 的 `message`：视图按类型认它（`instanceof`），说的是自己那句「已取消建立索引」；这一句只进日志 / 开发者控制台
+src/frontend/shell/src/event_replay.rs:512	没有叫 `{kind}` 的流	保留	[不对外] 〔CF2〕会话流句柄对认不出的流标签原位回的 Closed{Peer} 体（`{code,message}` 信封）；前端只记进控制台（events.ts 的 closed 那一支），不上界面
+src/frontend/shell/src/event_replay.rs:520	会话内容流不支持从某一格续看（页面重载就是一条新的订阅）	保留	[不对外] 〔CF2〕同上：给了 from 游标时原位回的 Closed{Peer(bad_args)} 体；生产调用方恒给 null，只进控制台
 src/backend/assets/skill_install.rs:363	来源那台读不出原文	保留	[不对外] 〔AS2〕skill-install-plan 内部比较用的占位值（进 JSON 值相等比较，不上线也不给人看）
-src/settings/assets-section.ts:89	不是对象	保留	[不对外] 〔AS2〕assets-section 解码失败时进 console.warn 的诊断（界面上只说 assets.load.shape 那一句）
-src/settings/assets-section.ts:92	顶层缺格	保留	[不对外] 〔AS2〕同上一行
-src/settings/assets-section.ts:97	machines 那一格	保留	[不对外] 〔AS2〕同上一行
-src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕同上一行
-src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
-src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
-src/bridge/crates/deploy-core/src/lib.rs:659	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔GP1 · MIG-3b 随 is_ours 搬进 deploy-core〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
+src/frontend/ui/settings/assets-section.ts:89	不是对象	保留	[不对外] 〔AS2〕assets-section 解码失败时进 console.warn 的诊断（界面上只说 assets.load.shape 那一句）
+src/frontend/ui/settings/assets-section.ts:92	顶层缺格	保留	[不对外] 〔AS2〕同上一行
+src/frontend/ui/settings/assets-section.ts:97	machines 那一格	保留	[不对外] 〔AS2〕同上一行
+src/frontend/ui/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕同上一行
+src/frontend/ui/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
+src/frontend/ui/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
+src/common/deploy-core/src/lib.rs:659	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔GP1 · MIG-3b 随 is_ours 搬进 deploy-core〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
 src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n	保留	[不对外] 〔NT2 · S1〕后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件
 src/backend/stderr_log.rs:169	[stderr] 被交了日志路径但接不上：{why}	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：接不上的原因
-src/settings/assets-section.ts:217	installs 那一格	保留	[不对外] 〔SU1〕console.warn 里标应答哪一格形状不对（给开发者看），用户看到的是 assets.load.shape
-src/settings/assets-section.ts:226	顶层缺格	保留	[不对外] 〔SU1〕同上一行
-src/settings/assets-section.ts:237	rows 那一格	保留	[不对外] 〔SU1〕同上一行
-src/settings/assets-section.ts:243	seen 那一格	保留	[不对外] 〔SU1〕同上一行
-src/bridge/src/filewin/fonts.rs:305	启持支格求码误象返	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表那一拍 ＋9 −3 之后的现文）
-src/bridge/src/filewin/fonts.rs:308	·—…→⚠⬆、。「」一上下不与东丢两个中串为主也了些交亮代以件份会传位作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化原去参发取口只叫可台合同名后吗含命和哪器回围在坏型备复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
-src/bridge/src/filewin/fonts.rs:309	大太失如字存它完定容对小少尔就尾屏已布带帧并序建开引当录往径必态成或截打扫把拒拖拼拿按换据掉排接搜摞撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
-src/bridge/src/filewin/fonts.rs:310	用的盖目相看着确秒称程空窗端符第答类索约级组终经结给绝编者能节范行表被西要覆见览认许话说请读负败走起超趟路跳身载辑输过还这进远连送通那部都里重销错闭问限除非面须首高（），：；？📁📄🔗	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
-src/bridge/src/filewin/fonts.rs:314	值准择描置边间隔需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）
+src/frontend/ui/settings/assets-section.ts:217	installs 那一格	保留	[不对外] 〔SU1〕console.warn 里标应答哪一格形状不对（给开发者看），用户看到的是 assets.load.shape
+src/frontend/ui/settings/assets-section.ts:226	顶层缺格	保留	[不对外] 〔SU1〕同上一行
+src/frontend/ui/settings/assets-section.ts:237	rows 那一格	保留	[不对外] 〔SU1〕同上一行
+src/frontend/ui/settings/assets-section.ts:243	seen 那一格	保留	[不对外] 〔SU1〕同上一行
+src/frontend/shell/src/filewin/fonts.rs:305	启持支格求码误象返	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表那一拍 ＋9 −3 之后的现文）
+src/frontend/shell/src/filewin/fonts.rs:308	·—…→⚠⬆、。「」一上下不与东丢两个中串为主也了些交亮代以件份会传位作你侧保做儿先全八关内再写几出列刚删别到制刷前剩动勾化原去参发取口只叫可台合同名后吗含命和哪器回围在坏型备复外多	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
+src/frontend/shell/src/filewin/fonts.rs:309	大太失如字存它完定容对小少尔就尾屏已布带帧并序建开引当录往径必态成或截打扫把拒拖拼拿按换据掉排接搜摞撤操改数敲整文断新旧时是更最有本机权条来样根框次正此段比没法洞消点版物状现	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
+src/frontend/shell/src/filewin/fonts.rs:310	用的盖目相看着确秒称程空窗端符第答类索约级组终经结给绝编者能节范行表被西要覆见览认许话说请读负败走起超趟路跳身载辑输过还这进远连送通那部都里重销错闭问限除非面须首高（），：；？📁📄🔗	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）〔MG1 合并 FN1 × CP2b：探针再 −9 `住 历 史 场 弄 挡 浏 管 跑`〕
+src/frontend/shell/src/filewin/fonts.rs:314	值准择描置边间隔需	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔CP2b〕全量抽表之后的现文）
 src/backend/lib.rs:1152	Windows 上没有 tmux（也不打算装）。「会话活在前端之外」在 Windows 上用哪种机制，\n              用户 09-24 裁「先不做 Windows 这一族」、机制未定（V109）⇒ **暂时不做**；\n              将来选定机制的那一拍一并给出等价物。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1161	「接回一个还活着的会话」今天的实现是 `tmux attach`。Windows 上那条路不存在 \n              ⇒ 等 V109 那一族选定机制（未定）时一并给出等价物，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1169	「把会话留在后台」今天是 `tmux detach`。同 `attach`，等 V109 那一族选定机制，**暂时不做**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
@@ -156,25 +156,25 @@ src/backend/lib.rs:1322	与帧面 `launch` 那一行是**同一条实现**（CLI
 src/backend/lib.rs:1242	改的是 **unix 权限位**（低 12 位），命令自己声明了 `no_unix_mode` 码。Windows 上没有这套位\n              （那边是 ACL ＋ 只读属性），`change_mode` 在那里回 `no_unix_mode`、一个字节不动。\n              ⇒ 这一条本身**不该跨过去**；Windows 那边若要「改访问权限」，是另一条能力、另立一行〔FW5 分档：结构〕。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/lib.rs:1251	与帧面 `files-chmod` 那一行是**同一条实现**（CLI 面经 `cli_control::spec_for` \n              派生到同一条登记）⇒ 同一个理由：unix 权限位这一条**不该跨过去**。	保留	[不对外] 〔CP2c〕设计登记表 TARGET_GAPS 的理由散文（字段已由 why 改名 rationale）：只给判据读，不上界面（CP2c 记录 §3 第 5 类）
 src/backend/observe/search_query.rs:146	全文搜索：{n} 个会话文件读不动，这一趟没搜到它们（逐份原因见上面几行）	保留	[不对外] 〔W5-VIS〕search_counting 扫完那一行总账，只经 tracing::warn! 进后端日志
-src/bridge/src/frame_tally.rs:47	[{}] 跳过一帧认不出的（未知 kind / 坏帧），这条流上累计 {} 帧；这一帧开头：{}	保留	[不对外] 〔W5-VIS〕丢帧账：只经 tracing::warn! 进 monitor 日志
-src/bridge/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条流上累计 {} 行）；这一行开头：{}	保留	[不对外] 〔W5-VIS〕同上
-src/bridge/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧认不出的，{} 行含非 UTF-8 字节	保留	[不对外] 〔W5-VIS〕同上（流结束那一行总账）
-src/bridge/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
-src/bridge/src/filewin/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字；〔W5-FILES〕−1 字 `恰`）
+src/frontend/shell/src/frame_tally.rs:47	[{}] 跳过一帧认不出的（未知 kind / 坏帧），这条流上累计 {} 帧；这一帧开头：{}	保留	[不对外] 〔W5-VIS〕丢帧账：只经 tracing::warn! 进 monitor 日志
+src/frontend/shell/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条流上累计 {} 行）；这一行开头：{}	保留	[不对外] 〔W5-VIS〕同上
+src/frontend/shell/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧认不出的，{} 行含非 UTF-8 字节	保留	[不对外] 〔W5-VIS〕同上（流结束那一行总账）
+src/frontend/shell/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
+src/frontend/shell/src/filewin/fonts.rs:318	●＋双另右好己底忙标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW34〕标签页 ＋ 双栏那几个字；〔W5-FILES〕−1 字 `恰`）
 src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] 〔FW1 · D-c〕files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
-src/bridge/src/filewin/fonts.rs:324	仍然摘盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW1 · D-c〕＋4 字，编辑器存盘 CAS 那几句）
+src/frontend/shell/src/filewin/fonts.rs:324	仍然摘盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FW1 · D-c〕＋4 字，编辑器存盘 CAS 那几句）
 src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] 〔HX1〕exit_after_drain 的 why，只进后端 tracing 日志
 src/backend/main.rs:361	hello 写不出去	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:424	收到停机信号	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:429	对端走了（写不出去）	保留	[不对外] 〔HX1〕同上，只进后端日志
 src/backend/main.rs:751	流结束 ⇒ 这台机器的退出策略是「结束」	保留	[不对外] 〔HX1〕同上，只进后端日志
-src/bridge/src/filewin/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕算大小那几句的字）
-src/bridge/src/filewin/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕编辑面查找替换那几句的字）
-src/bridge/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/bridge/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/bridge/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/bridge/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
-src/bridge/src/filewin/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FILES2〕解压到这里那几句的字）
+src/frontend/shell/src/filewin/fonts.rs:329	算链	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕算大小那几句的字）
+src/frontend/shell/src/filewin/fonts.rs:331	查替	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔W5-FILES〕编辑面查找替换那几句的字）
+src/frontend/shell/src/backend_policy.rs:384	{reason}；找过 {} 处：{}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/backend_policy.rs:392	它一个字节都没说就退出了	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] 〔PB1〕death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
+src/frontend/shell/src/filewin/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（〔FILES2〕解压到这里那几句的字）
 src/backend/control/files_commit.rs:112	把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；〔FW1〕先核整份摘要 `expect: {sha256}`，\n             不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_commit.rs:121	把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/control/files_commit.rs:128	按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \n               `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；〔FW1〕`expect: {sha256}` 必给，\n               盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面

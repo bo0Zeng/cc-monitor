@@ -34,7 +34,7 @@
 
 **(1) 人群（一项 = 一个生产源码文件）**
 
-  住在 `src/bridge/src/` · `src/backend/` · `src/**/*.ts` 之下，且
+  住在 `src/frontend/shell/src/` · `src/backend/` · `src/**/*.ts` 之下，且
     · 后缀是 `.ts` 或 `.rs`
     · 不在 `EXCLUDED_DIRS` / `EXCLUDED_FILE_RE` 里
     · **生产行数 > 0**（见 (2)）
@@ -48,7 +48,7 @@
   `.rs`：总行数 − 落在 `#[cfg(test)]` 块（含 `#[cfg(test)] mod x;` 声明行）里的行数。
   `.ts`：总行数（测试住 `tests/`，不与生产同文件）。
 
-  🔴 **为什么必须这么算**：`src/bridge/src/` 里 39 个判据文件有 `98%` 的行在 `#[cfg(test)]`
+  🔴 **为什么必须这么算**：`src/frontend/shell/src/` 里 39 个判据文件有 `98%` 的行在 `#[cfg(test)]`
   里（现打，见面⑦）。不剥就会把**判据**当成**生产代码**普查 —— 而判据「设计零提及 ＋
   生产零调用方」是**常态**，那会一次灌进来三万行假候选。⇒ `prod_lines == 0` 的文件
   **整个出人群**，单列进面⑦（「判据层」轨）。
@@ -59,14 +59,14 @@
 
   判法 = 在**去掉否定区**的 22 篇设计正文里，找这个文件的「住址键」。**五档，宁可宽**：
 
-    T1 `path`     全相对路径逐字出现          `src/views/session-viewer.ts`
+    T1 `path`     全相对路径逐字出现          `src/frontend/ui/views/session-viewer.ts`
     T2 `tail`     父目录名 + 基名              `views/session-viewer.ts` · `control/launch.rs`
     T3 `base`     基名                        `session-viewer.ts` · `launch.rs`
     T4 `stem`     去后缀名，**且名字里含 `_` 或 `-`**（多词名才够特异）
                                               `session-viewer` · `profile_installer`
     T4b `stem`    单词 stem，**且长成代码 token**（反引号里 / 带 `::` / `/` / `.rs`）
                                               `` `panorama` `` · `adapter::` · `launch/`
-    T5 `dir`      任一祖先目录被点名          `settings/` · `src/bridge/src/backend/`
+    T5 `dir`      任一祖先目录被点名          `settings/` · `src/frontend/shell/src/backend/`
 
   **候选 = T1..T5（含 T4b）全不命中**。这是刻意选的错误方向（纪律 2）：
   错要错成「漏报一项待裁」，不许错成「把一件设计过的东西列进删除候选」。
@@ -75,7 +75,7 @@
 **(4) 生产调用方（②）**
 
   `.ts`：**别的生产 `.ts` 文件**里有一条 import 说明符解析到它。
-         入口 `src/main.ts` 例外（`index.html` 的 `<script src>` 是它的调用方）。
+         入口 `src/frontend/ui/main.ts` 例外（`index.html` 的 `<script src>` 是它的调用方）。
   `.rs`：**别的生产 `.rs` 文件**的**生产文本**（遮注释 ＋ 剥 `#[cfg(test)]`）里
          引用了它的模块路径。
          🔴 **`mod x;` 声明行不算调用方** —— 它是「编不编它」，不是「谁用它」。
@@ -91,19 +91,19 @@
      而那个调用方是**同族的兄弟** `acquire.rs`。可条 67 的已知答案是**整族零调用方**。
      ⇒ 一个「自己内部互相引、族外没人用」的子树，按文件算**永远算不出零** ——
      而那恰好是整族死代码的标准形状，也就是最该被普查抓住的那一种。
-     族 = crate 根下第一段子目录（`src/backend/sidecars` · `src/views` · `src/settings`）；
+     族 = crate 根下第一段子目录（`src/backend/sidecars` · `src/frontend/ui/views` · `src/frontend/ui/settings`）；
      直接住根上的文件各自成族。四档按**族外**分，报告两个数都打。
 
 ═══════════════════════════════════════════════════════════════════════════════
  🔴 三、这个定义**排除了什么** —— 每条都是明写的取舍，不是忘了
 ═══════════════════════════════════════════════════════════════════════════════
 
-  1. **`src/bridge/crates/*`（8 个共享 crate）与 `src/bridge/vendor/*`（2 个）**。
-     理由：用户给的人群逐字是「`src/bridge/src` · `src/backend` · `src/*.ts` · `src/**/*.ts`」。
+  1. **`src/common/*`（8 个共享 crate）与 `src/frontend/shell/vendor/*`（2 个）**。
+     理由：用户给的人群逐字是「`src/frontend/shell/src` · `src/backend` · `src/*.ts` · `src/**/*.ts`」。
      crates/ 与 vendor/ **不在里面**。⇒ 面⑨ 把它们的规模作为**已登记未扫面**打印出来，
      不假装扫过。（⚠ `codex-token-core` 属于丙那一族，面⑤ 会点它的名但不判。）
-  2. **`src/generated/`**（ts-rs 生成物 81 个）、`src/bridge/gen/`、`src/bridge/embedded-daemons/`、
-     `src/bridge/scripts/`、`src/bridge/icons/`、`src/bridge/capabilities/`、`src/doc/`。
+  2. **`src/frontend/ui/generated/`**（ts-rs 生成物 81 个）、`src/frontend/shell/gen/`、`src/frontend/shell/embedded-daemons/`、
+     `src/frontend/shell/scripts/`、`src/frontend/shell/icons/`、`src/frontend/shell/capabilities/`、`src/doc/`。
      理由：生成物 / 内嵌资产 / 文档，不是人写的生产逻辑；改它们要改生成器或上游。
   3. **`tests/`** —— 用户逐字排除。
   4. **`*.d.ts` · `*.vitest.ts` · `*.test.ts` · `*.spec.ts` · `*-golden.ts` · `build.rs` ·
@@ -111,7 +111,7 @@
   5. **`.css` / `.json` / `.yml` / `.html`**。理由：本量具的两问②③ 只对 `.ts`/`.rs` 成立
      （CSS 没有 import 图可言）。⇒ `设计/40`/`41` 管的 CSS 面**已有自己的量具**
      （`css-ledger.vitest.ts`），本篇不重复；面⑨ 登记这个缺口。
-     ⚠ 现打逮到一处 CSS/JSON 侧的残留（`src/bridge/tauri.sidecar.conf.json`），
+     ⚠ 现打逮到一处 CSS/JSON 侧的残留（`src/frontend/shell/tauri.sidecar.conf.json`），
      面⑨ 点名但**不判**，因为它出本量具的射程。
   6. **符号级残留**（模块在用、里面某个 `pub fn` 没人用）。理由见定义 (1)。
   7. **`调研/真相源/` 的提及不算「设计点名」**。理由：`99 §3.2` 逐字把
@@ -153,16 +153,17 @@ DESIGN_DIR = REPO.parent / "调研" / "设计"
 # ── 人群边界 ────────────────────────────────────────────────────────────────
 POP_ROOTS = ("src",)
 EXCLUDED_DIRS = (
-    "src/generated",
+    "src/frontend/ui/generated",
     "src/doc",
-    "src/bridge/crates",
-    "src/bridge/vendor",
-    "src/bridge/gen",
-    "src/bridge/embedded-daemons",
-    "src/bridge/scripts",
-    "src/bridge/icons",
-    "src/bridge/capabilities",
-    "src/bridge/target",
+    "src/common",
+    "src/vendor",
+    "src/panorama-engine/vendor",
+    "src/frontend/shell/gen",
+    "src/frontend/shell/embedded-daemons",
+    "src/frontend/shell/scripts",
+    "src/frontend/shell/icons",
+    "src/frontend/shell/capabilities",
+    "src/frontend/shell/target",
     "src/backend/target",
     "tests",
     "node_modules",
@@ -208,8 +209,8 @@ SHELVED = [
         "用户 09-17 明确搁置，暂不设计",
         [
             "src/backend/agents/codex/*.rs",
-            "src/bridge/src/adapter/codex.rs",
-            "src/bridge/src/codex_record.rs",
+            "src/frontend/shell/src/adapter/codex.rs",
+            "src/frontend/shell/src/codex_record.rs",
         ],
     ),
 ]
@@ -217,10 +218,10 @@ SHELVED = [
 # ── 太泛的目录，不作 T5 依据 ────────────────────────────────────────────────
 #  理由：它们覆盖整棵树，命中等于「没判」。
 TOO_GENERIC_DIRS = {
-    "src", "src/bridge", "src/bridge/src", "src/backend", "tests",
-    "src/views", "doc", "调研", "设计", "真相源",
+    "src", "src/frontend/shell", "src/frontend/shell/src", "src/backend", "tests",
+    "src/frontend/ui/views", "doc", "调研", "设计", "真相源",
 }
-# ⚠ `src/views` 上榜是因为它被当「前端视图那一族」泛指过；它的成员改用 T1..T4 判。
+# ⚠ `src/frontend/ui/views` 上榜是因为它被当「前端视图那一族」泛指过；它的成员改用 T1..T4 判。
 
 CJK_DOC_RE = re.compile(r"\.md$")
 
@@ -557,8 +558,8 @@ def build_keys(rec: Rec) -> None:
     rec.keys["dir"] = [a for a in ancestors if a and a not in TOO_GENERIC_DIRS]
 
     if rec.lang == "rs":
-        if rel.startswith("src/bridge/src/"):
-            sub = rel[len("src/bridge/src/"):]
+        if rel.startswith("src/frontend/shell/src/"):
+            sub = rel[len("src/frontend/shell/src/"):]
         elif rel.startswith("src/backend/"):
             sub = rel[len("src/backend/"):]
         else:
@@ -663,9 +664,9 @@ def match_design(rec: Rec, docs) -> list:
     #      那会把真待裁项藏起来，而藏起来正是这一族最不该犯的错。
     #
     # ⚠ 后缀那一支**按语言分**：一个 `.ts` 文件永远不会被 `foo.rs` 点名。
-    #   第一版不分，于是 `设计/00` 里的 `platform/paths.rs` 把 `src/paths.ts` 也算成了点名。
+    #   第一版不分，于是 `设计/00` 里的 `platform/paths.rs` 把 `src/frontend/ui/paths.ts` 也算成了点名。
     # ⚠ 剩下的歧义**不修、明写**：`设计/00` 那句「`paths`+`records`+…五块」是**裸词**，
-    #   它说的是 `claudecode/paths.rs`，但 `src/paths.ts` 的 stem 一样。
+    #   它说的是 `claudecode/paths.rs`，但 `src/frontend/ui/paths.ts` 的 stem 一样。
     #   按纪律 2 取**偏保守**（算成点名、不进候选），代价是 T4b 这一档要人核 ——
     #   所以报告把 T4b 全列出来，不藏。
     suffix = r"\.ts\b" if rec.lang == "ts" else r"\.rs\b|::"
@@ -725,9 +726,9 @@ def wire_ts(pop: dict, out_edges: dict) -> int:
                 pop[tgt].caller_kinds.add("import")
                 out_edges.setdefault(rel, set()).add(tgt)
                 edges += 1
-    if "src/main.ts" in pop:
-        pop["src/main.ts"].callers.add("index.html:<script src>")
-        pop["src/main.ts"].caller_kinds.add("入口")
+    if "src/frontend/ui/main.ts" in pop:
+        pop["src/frontend/ui/main.ts"].callers.add("index.html:<script src>")
+        pop["src/frontend/ui/main.ts"].caller_kinds.add("入口")
     return edges
 
 
@@ -736,14 +737,14 @@ TAURI_CMD_RE = re.compile(r"#\[tauri::command[^\]]*\]\s*(?:pub\s+)?(?:async\s+)?
 
 
 def rust_crate_of(rel: str):
-    if rel.startswith("src/bridge/src/"):
-        return "bridge"
+    if rel.startswith("src/frontend/shell/src/"):
+        return "shell"
     if rel.startswith("src/backend/"):
         return "backend"
     return None
 
 
-CRATE_ROOTS = ("src/bridge/src", "src/backend")
+CRATE_ROOTS = ("src/frontend/shell/src", "src/backend")
 
 # ── 变异开关：`--selftest` 用它们逐个关掉一条承重步骤 ────────────────────────
 #  🔴 每个开关对准**定义里的一个取舍**，关掉它必须有一条判据当场红。
@@ -753,12 +754,12 @@ CRATE_ROOTS = ("src/bridge/src", "src/backend")
 MUT = {"mod_as_edge": False, "no_cfg_strip": False, "no_comment_mask": False}
 
 # ── 入口 —— 「可达」这一问的起点 ────────────────────────────────────────────
-#  TS 只有一个入口：`index.html` 的 `<script type="module" src="/src/main.ts">`（现打）。
+#  TS 只有一个入口：`index.html` 的 `<script type="module" src="/src/frontend/ui/main.ts">`（现打）。
 #  Rust 两个 crate 各一个根。
 ENTRIES = (
-    "src/main.ts",
-    "src/bridge/src/lib.rs",
-    "src/bridge/src/main.rs",
+    "src/frontend/ui/main.ts",
+    "src/frontend/shell/src/lib.rs",
+    "src/frontend/shell/src/main.rs",
     "src/backend/main.rs",
 )
 
@@ -770,7 +771,7 @@ def reachable(pop: dict, edges: dict) -> set:
 
       · 按**文件**算调用方：`sidecars/codepicture/fetch.rs` 报「1 个」，
         而那个调用方是同族兄弟 `acquire.rs` ⇒ 整族死代码算不出零。
-      · 按**族外**算调用方：`sidecars/` 过了，但 `src/views/history-prefs.ts` 当场假红 ——
+      · 按**族外**算调用方：`sidecars/` 过了，但 `src/frontend/ui/views/history-prefs.ts` 当场假红 ——
         它只被同族的 `views/history.ts` import，而 `history.ts` 是活的
         （`main.ts` → `history.ts` → `history-prefs.ts`）。「族外零调用方」把
         **一个活模块的内部帮手**判成了死代码。
@@ -804,8 +805,8 @@ def family_of(rel: str) -> str:
     一个自己内部互相引、外面没人用的子树，按文件算永远算不出「零」，
     于是**整族死代码恰好是最容易漏的那一种**。
 
-    ⇒ 族 = crate 根下的**第一段子目录**（`src/backend/sidecars` · `src/views` · `src/settings`）；
-       直接住在根上的文件（`src/bridge/src/history.rs` · `src/tabs.ts`）各自成族。
+    ⇒ 族 = crate 根下的**第一段子目录**（`src/backend/sidecars` · `src/frontend/ui/views` · `src/frontend/ui/settings`）；
+       直接住在根上的文件（`src/frontend/shell/src/history.rs` · `src/frontend/ui/tabs.ts`）各自成族。
     ⇒ 「外部调用方」= 族外的调用方。四档用**外部调用方**分，报告同时打印文件级的数。
     """
     for root in CRATE_ROOTS:
@@ -875,7 +876,7 @@ def wire_rust(pop: dict, out_edges: dict) -> int:
 
     # 命令面
     handler_text = ""
-    lib = pop.get("src/bridge/src/lib.rs")
+    lib = pop.get("src/frontend/shell/src/lib.rs")
     if lib:
         m = re.search(r"generate_handler!\s*\[", lib.ptext)
         if m:
@@ -955,8 +956,8 @@ def gate_corpus():
                 continue
             if p.is_file():
                 out[p.relative_to(REPO).as_posix()] = p.read_text(encoding="utf-8", errors="replace")
-    # `src/bridge/src` 里判据的 cfg(test) 段（那 39 个还没搬走的判据文件）
-    for p in sorted((REPO / "src/bridge/src").rglob("*.rs")):
+    # `src/frontend/shell/src` 里判据的 cfg(test) 段（那 39 个还没搬走的判据文件）
+    for p in sorted((REPO / "src/frontend/shell/src").rglob("*.rs")):
         rel = p.relative_to(REPO).as_posix()
         raw = p.read_text(encoding="utf-8", errors="replace")
         skel = mask_comments(raw, "rs", blank_strings=True)
@@ -1039,7 +1040,7 @@ def run(pop_lister=disk_lister, pop_reader=disk_reader, design_loader=load_desig
     #  (b) `prod_lines == 0` —— 整份住在 `#[cfg(test)]` 里。
     #  🔴 (a) 不可省：`ccm_cli_contract.rs` 的 `prod_lines` 是 1（结构性残余一行），
     #     只用 (b) 会把它当生产代码，于是一个纯判据文件进了「甲」档待裁清单。
-    testonly_names = {"bridge": set(), "backend": set()}
+    testonly_names = {"shell": set(), "backend": set()}
     for rel, rec in allfiles.items():
         if rec.lang != "rs":
             continue
@@ -1258,7 +1259,7 @@ def main_report(args) -> int:
     P("【面⑧】**判不了** —— 静态扫不出来的调用路径，如实登记（纪律 4）")
     P("─" * 79)
     P("  ② 这一问在下面这几族上**结论不可靠**，不许读成「零调用方」：")
-    P("   1. **动态 `invoke(\"<名>\")`** —— `src/ipc/commands.ts` 头注自陈：")
+    P("   1. **动态 `invoke(\"<名>\")`** —— `src/frontend/ui/ipc/commands.ts` 头注自陈：")
     P("      「Rust 有而 TS 静态看不见的那 7 个动态名」。⇒ 带 `#[tauri::command]` 的模块，")
     P("      本量具只认「名字逐字出现在 `generate_handler![…]` 里」这一条，认不出动态构名。")
     P("   2. **`querySelector` / 事件委托 / `addEventListener`** —— DOM 侧的钩子不是 import 边。")
@@ -1275,17 +1276,17 @@ def main_report(args) -> int:
     P("\n" + "─" * 79)
     P("【面⑨】**已登记未扫面** —— 明写，不假装扫过")
     P("─" * 79)
-    for d in ("src/bridge/crates", "src/bridge/vendor"):
+    for d in ("src/common", "src/vendor", "src/panorama-engine/vendor"):
         fs = [p for p in (REPO / d).rglob("*.rs") if "/target/" not in p.as_posix()]
         P(f"  · `{d}/`：{len(fs)} 个 `.rs` / "
           f"{sum(p.read_text(errors='replace').count(chr(10)) for p in fs):,} 行 —— "
           "不在用户给的人群里")
-    css = REPO / "src/styles.css"
+    css = REPO / "src/frontend/ui/styles.css"
     if css.exists():
-        P(f"  · `src/styles.css`：{css.stat().st_size:,} 字节 —— `.css` 出本量具射程"
+        P(f"  · `src/frontend/ui/styles.css`：{css.stat().st_size:,} 字节 —— `.css` 出本量具射程"
           "（②③ 对 CSS 不成立），CSS 面另有 `css-ledger.vitest.ts`")
-    sc = REPO / "src/bridge/tauri.sidecar.conf.json"
-    P(f"  · `src/bridge/tauri.sidecar.conf.json`：{'**还在**' if sc.exists() else '已无'} —— "
+    sc = REPO / "src/frontend/shell/tauri.sidecar.conf.json"
+    P(f"  · `src/frontend/shell/tauri.sidecar.conf.json`：{'**还在**' if sc.exists() else '已无'} —— "
       "条 67 删的是 `src/backend/sidecars/` 的 `.rs`，这个 `.json` 是同族残留。")
     P("    ⚠ 点名但**不判**（`.json` 出射程），也**不改**（本轮只读）。")
 

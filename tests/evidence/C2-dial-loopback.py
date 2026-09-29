@@ -188,7 +188,7 @@ def main():
             env = {**os.environ, "CCM_DIAL_PROXY": bin_path,
                    "C2_LOOPBACK": json.dumps({"host": "127.0.0.1", "port": port, "user": user, "key_path": f"{d}/client_key", "proxy": bin_path})}
             r = subprocess.run(["cargo", "test", "-p", "monitor", "--lib", "loopback_roundtrip_through_the_proxy", "--", "--ignored", "--nocapture"],
-                               cwd=os.path.join(ROOT, "src", "bridge"), env=env, capture_output=True, text=True, timeout=1200)
+                               cwd=os.path.join(ROOT, "src", "frontend", "shell"), env=env, capture_output=True, text=True, timeout=1200)
             check("字节流 · 收全 · 阶段 ＋ 指纹 全经宿主", "C2-LOOPBACK-MONITOR ok" in r.stdout and "1 passed" in r.stdout,
                   (r.stdout[-800:], r.stderr[-800:]))
     finally:

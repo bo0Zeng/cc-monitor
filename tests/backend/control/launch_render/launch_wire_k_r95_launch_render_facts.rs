@@ -27,9 +27,9 @@
 
 /// 🔴 `K-R95`：本机拉起载荷里「哪个号」那一格的**取值口**（〔LR1〕随下面那条判据从
 /// `launch_cli_parity.rs` 搬来 —— 它与 `ccm …` 渲染器无关）。
-/// 〔FE1 · 第四波 4D〕住址从 `src/accounts.ts` 换到 `src/launch-account.ts`：`accounts.ts` 按域拆开，
+/// 〔FE1 · 第四波 4D〕住址从 `src/frontend/ui/accounts.ts` 换到 `src/frontend/ui/launch-account.ts`：`accounts.ts` 按域拆开，
 /// 「起会话挑哪个号 ＋ 载荷上那一格的形状」归起停域那一份。
-const TS_ACCOUNTS: &str = include_str!("../../../../src/launch-account.ts");
+const TS_ACCOUNTS: &str = include_str!("../../../../src/frontend/ui/launch-account.ts");
 
 /// 生成物的头。`generated-boundary-guard.vitest.ts` 认两样东西：
 /// 「谁生成的」那一行 ＋「不许手改」那句话。
@@ -104,7 +104,7 @@ fn local_launch_account_wire() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// 生成 `src/generated/launch-render-facts.ts` 的正文。
+/// 生成 `src/frontend/ui/generated/launch-render-facts.ts` 的正文。
 fn render_launch_render_facts() -> String {
     let mut s = String::from(HEADER);
 
@@ -131,14 +131,14 @@ fn render_launch_render_facts() -> String {
     s
 }
 
-/// `K-R95`：生成 `src/generated/launch-render-facts.ts`。
+/// `K-R95`：生成 `src/frontend/ui/generated/launch-render-facts.ts`。
 ///
 /// 名字必须以 `export_bindings` 打头 —— `npm run gen:types` 就是
 /// `cargo test --lib export_bindings`。
 #[test]
 fn export_bindings_launch_render_facts() {
     let repo = crate::guard_support::repo_root();
-    let out = repo.join("src/generated/launch-render-facts.ts");
+    let out = repo.join("src/frontend/ui/generated/launch-render-facts.ts");
     let body = render_launch_render_facts();
     std::fs::write(&out, body).unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
 }
@@ -193,7 +193,7 @@ fn the_frontend_reads_the_account_wire_table_instead_of_writing_the_keys_out_aga
     ] {
         assert!(
             TS_ACCOUNTS.contains(needle),
-            "`src/launch-account.ts` 里没有 `{needle}` —— 本机拉起载荷「哪个号」那一格\n\
+            "`src/frontend/ui/launch-account.ts` 里没有 `{needle}` —— 本机拉起载荷「哪个号」那一格\n\
                  又变回前端自己拼了（`K28`：前端不许自己发明对外行为）。\n\
                  ⚠ 产出**逐字节相同**，所以除了本条没有任何东西看得见它。"
         );

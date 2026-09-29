@@ -786,7 +786,7 @@ fn the_backend_is_one_thing_landing_in_several_places() {
     let mut want: Vec<(String, String, HostScope)> = vec![
         // ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）
         (
-            "src/bridge/binaries/cc-monitor-backend".into(),
+            "src/frontend/shell/binaries/cc-monitor-backend".into(),
             "$APP_DIR".into(),
             HostScope::Client,
         ),
@@ -956,7 +956,7 @@ fn every_carrier_says_which_one_it_is() {
 // 那是把账做平，不是把名字改对」。
 // ⇒ 下面两条各买一半：
 //   · 第一条是**零命中守卫**，射程 = 闭集那张表的**数据**本身（改回旧 id ⇒ 当场红）；
-//   · 第二条是**登记 ＋ 递减棘轮**，射程 = `src/bridge/src` ＋ `src/bridge/crates` 两棵树 ——
+//   · 第二条是**登记 ＋ 递减棘轮**，射程 = `src/frontend/shell/src` ＋ `src/common` 两棵树 ——
 //     没登记就不许带旧名，登记了就只许变少。**那张表就是那份读数**，不是一句话。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -990,7 +990,7 @@ enum Why {
 
 /// **旧名字的存量账。闭集。**
 ///
-/// `(相对 `src/bridge/` 的路径, 哪一档, 今天的处数)`
+/// `(相对 `src/frontend/shell/` 的路径, 哪一档, 今天的处数)`
 ///
 /// 🔴 表名叫 `SITES` 不是随手起的：`scanning_guard_registry::TABLE_DECLS`
 /// 那条纪律逐字「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成
@@ -1024,13 +1024,13 @@ const SITES: &[(&str, Why, usize)] = &[
     //     而不是**某个动作**（「迁移落地」）——后者遇到「动作被取消」就会指空。
     //   · `Why::Wording`（0 行）—— **这一档清零了**。界面串与散文里那句「远端 ＋ 旧词」
     //     两侧同拍改成了「远端后端」，一处不剩。
-    // 〔MIG-3a〕`src/skill_host.rs` / `tests/bridge/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
+    // 〔MIG-3a〕`src/skill_host.rs` / `tests/frontend/shell/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
     // 〔MIG-3b 续〕`src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
-    ("crates/guard-core/src/lib.rs", Why::OldId, 1),
+    ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
     // 〔MIG-3b 续〕下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
     ("src/backend/footprint/registry.rs", Why::OldId, 2),
     ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
-    // 〔MIG-3a〕`tests/bridge/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
+    // 〔MIG-3a〕`tests/frontend/shell/fenced_block_tests.rs` 那一行随判据搬进后端（`tests/backend/assets/aliases/fence_tests.rs`）。
     (
         "tests/backend/footprint/registry_environment_tests.rs",
         Why::OldId,
@@ -1180,7 +1180,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # 它买的是「改了哪些 / 没改哪些 / 为什么」这句话**有分母**
 ///
-/// 人群 = `src/bridge/src` ＋ `src/bridge/crates` 两棵树的 `.rs`（**现算**，不写死份数）。
+/// 人群 = `src/frontend/shell/src` ＋ `src/common` 两棵树的 `.rs`（**现算**，不写死份数）。
 /// 三向都判：
 ///   ① 盘上带旧名而 [`SITES`] 里没有 ⇒ 红（**别再往盘上加旧名**）；
 ///   ② `SITES` 里有而盘上已经没有 ⇒ 红（**账不许挂空号**）；
@@ -1207,7 +1207,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 /// ⇒ 下面那句 `include_str!` 的 `push` 今天是**冗余**的第二份（`src/` 那棵已经收过它，
 /// 而 `got` 是按 `(住址, Why)` 入 `BTreeMap`，同键覆盖 ⇒ 不会数两遍）；**刻意不删**：
 /// 它把「闭集的家一定在面里」钉成一件不依赖根清单的事。
-/// ⇒ 而「本文件自己在面里」这句**今天是真的**：第三棵根逐字是 `tests/bridge`，
+/// ⇒ 而「本文件自己在面里」这句**今天是真的**：第三棵根逐字是 `tests/frontend/shell`，
 /// 本文件在里面，并且在 [`SITES`] 里有自己那一行（按等号认）。
 /// 对价是本文件的针**全部运行期拼**（见 [`old_name_counts`]），否则量具自己会被自己数进去。
 #[test]
@@ -1216,19 +1216,22 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::path::PathBuf;
 
     // 〔MIG-3b 续〕本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
-    let bridge = crate::guard_support::repo_root().join("src").join("bridge");
-    let manifest = bridge.as_path();
+    let shell = crate::guard_support::repo_root().join("src/frontend/shell");
+    let manifest = shell.as_path();
     let src_root = manifest.join("src");
-    let crates_root = manifest.join("crates");
+    let crates_root = crate::guard_support::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
     // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕monitor 这半边今天**第三棵树**：
-    //    测试段整个住 `<repo>/tests/bridge`。少扫它 ⇒ 搬过去的那几处旧名字
+    //    测试段整个住 `<repo>/tests/frontend/shell`。少扫它 ⇒ 搬过去的那几处旧名字
     //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
     files.extend(guard_core::scan_tree!(
-        &crate::guard_support::repo_root()
-            .join("tests")
-            .join("bridge"),
+        &crate::guard_support::repo_root().join("tests/frontend/shell"),
+        &["rs"]
+    ));
+    // 〔RE〕monitor 那半边的通信层成员单测镜像住 `tests/comms/inward/`。
+    files.extend(guard_core::scan_tree!(
+        &crate::guard_support::repo_root().join("tests/comms/inward"),
         &["rs"]
     ));
     // 闭集的家与随它搬进后端的三份判据（〔MIG-3b 续〕它们不在上面三棵根里了，逐份加回来）。
@@ -1263,8 +1266,8 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     let mut got: BTreeMap<(String, Why), usize> = BTreeMap::new();
     for (p, text) in &files {
         // 🔴 〔搬树 2026-09-18〕住址两种前缀：本 crate 里的按 `manifest` 相对
-        //    （`src/…` / `crates/…`，与表里既有的几十行同形），第三棵树 `tests/bridge`
-        //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/bridge/…`）。
+        //    （`src/…`，与表里既有的几十行同形），第三棵树 `tests/frontend/shell` 与共享 crate 的家 `src/common`
+        //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/frontend/shell/…` · `src/common/…`）。
         //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
         let rel = p
             .strip_prefix(manifest)
@@ -1342,7 +1345,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         })
         .collect();
     println!(
-        "【KR81D2 存量读数】面 = `src/bridge/src` ＋ `src/bridge/crates` 共 {} 份 `.rs`（现算）· \
+        "【KR81D2 存量读数】面 = `src/frontend/shell/src` ＋ `src/common` 共 {} 份 `.rs`（现算）· \
              还带旧名的 {} 份 / {total} 处（{}）· 登记 {} 行 · \
              ⚠ 面外判不了：`remote{}daemon{}proto/` 那棵树与前端 `src/**/*.ts`",
         files.len(),
@@ -1392,7 +1395,8 @@ fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
 /// 〔MIG-3b 续〕monitor 那一侧 `ccm` 这个词（`local_backend.rs::CCM_ENTRY_WORD`）：申报表进了后端，
 /// 这个词仍住 monitor（本机那份由 monitor 释放）⇒ 读 monitor 的源码现抠（跨半边的边登记在 `cross_half_edge_registry.rs`）。
 fn monitor_ccm_word() -> &'static str {
-    const SRC: &str = include_str!("../../../src/bridge/src/backend/control/local_backend.rs");
+    const SRC: &str =
+        include_str!("../../../src/frontend/shell/src/backend/control/local_backend.rs");
     let head = "pub const CCM_ENTRY_WORD: &str = \"";
     let at = guard_core::find_pinned(SRC, head)
         .expect("monitor 那一侧的 `CCM_ENTRY_WORD` 改了写法")
@@ -1587,7 +1591,7 @@ struct Claim {
 
 /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
 fn claims() -> Vec<Claim> {
-    const SFTP: &str = include_str!("../../../src/bridge/src/sftp.rs");
+    const SFTP: &str = include_str!("../../../src/frontend/shell/src/sftp.rs");
     // 〔MIG-3a · 主会话 09-27 裁〕别名块（`ccm` 的装 / 卸口）进了那台后端：`src/backend/assets/aliases/block.rs`。
     const PROFILE_INSTALLER: &str = include_str!("../../../src/backend/assets/aliases/block.rs");
     // 〔MIG-3a〕项目 `.mcp.json` 的写进了那台后端（D 组收进后端）：装 / 卸口住 `src/backend/assets/mcp_edit.rs`。
@@ -1600,7 +1604,7 @@ fn claims() -> Vec<Claim> {
     // 〔MIG-3a · 主会话 09-28 预裁〕cc-acct-iso 的装进了那台后端（字节随后端二进制走）：装口住 `src/backend/assets/acct_iso_install.rs`。
     const ACCT_ISO_INSTALL: &str = include_str!("../../../src/backend/assets/acct_iso_install.rs");
     // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
-    const PANORAMA_BYTES: &str = include_str!("../../../src/bridge/src/panorama_bytes.rs");
+    const PANORAMA_BYTES: &str = include_str!("../../../src/frontend/shell/src/panorama_bytes.rs");
     let sftp = || ImplHome {
         addr: "sftp.rs",
         text: SFTP,
@@ -1826,7 +1830,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
     assert!(
         guard_core::fn_names_starting_with(
-            include_str!("../../../src/bridge/src/sftp.rs"),
+            include_str!("../../../src/frontend/shell/src/sftp.rs"),
             &["uninstall"]
         )
         .contains(&"uninstall_remote_backend".to_string()),

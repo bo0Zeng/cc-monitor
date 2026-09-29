@@ -15,12 +15,12 @@
 //! 剩下的**只有「删 TS 那两个渲染器」**，而那是 U8c-3 的题目、不是 F07 的
 //! —— F07 要的是「走 backend」，不是「删旧的」。
 //! 〔LR1 · U8c-3 前一半〕`ccm …` 调用行那一份（`launch-render-cli.ts`）已删，它的夹具换成
-//! 「生产请求 ＋ 手写期望」（`src/launch-cli-golden.ts` 头注）。
+//! 「生产请求 ＋ 手写期望」（`src/frontend/ui/launch-cli-golden.ts` 头注）。
 //! 〔LR2 · U8c-3 后一半〕兜底那一族（`launch-render-fallback.ts` · `session-backend.ts` ·
 //! `remote-launch.ts` 五个 builder）也删了：零生产调用，两份夹具（`payload-golden.json` ·
 //! `tmux-outer-golden.json`）的左边同样换成手写期望。本文件原来管它的那几张表
 //! （尺子A 处数表 · 尺子B 生产可达表 · 那份换人手续）随之删；「这一族不许回来」由
-//! `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。`设计/00 §2.5 ④` 的「只留 Rust 两份」到了。
+//! `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1）。`设计/00 §2.5 ④` 的「只留 Rust 两份」到了。
 //!
 //! # ⚠ 摸底在 `src/doc/INVARIANTS.md §33b` 里抓到**两处过期陈述**
 //!
@@ -42,7 +42,7 @@
 //! |---|---|---|
 //! | ① 生产切到后端的 `launch` 了吗 | 部分是（`send-into` 一格） | **仍是「部分是」**：生产段 `create-or-attach` **0 处**（下面那条判据在量），`attach` 结构上不归后端（`control/launch.rs` 头注「本模块**不 attach**」） |
 //! | ② attach 那条串归谁产 | 一半有答案 | **仍挡着，而且不止 attach**：`renderFallback` 的三格（tmux `create` / `send-into` / `attach`）全在 TS。⇒「只剩 attach 那一格」是把阻碍读窄了 |
-//! | ③ daemonless 的远端还要不要能起会话 | **未决**（U12 待做） | **已决：要。** `U12` 那个**件**被 `C7` 关掉了，但 `C7` 裁的是「**本机**也要有后端进程」；而 `daemonless` 今天是**每台远端主机的用户开关**（`src/settings/machine-card.ts` 那个 checkbox「daemonless 降级读取（无需后端）」→ `RemoteHostConfig.daemonless`，生产段 7 个文件 31 处）⇒ 那种主机**存在**、且它的 `↗` 走纯 SSH（`launch_remote_terminal` 不经后端）⇒ 起会话只能靠 monitor 自己渲染整串 |
+//! | ③ daemonless 的远端还要不要能起会话 | **未决**（U12 待做） | **已决：要。** `U12` 那个**件**被 `C7` 关掉了，但 `C7` 裁的是「**本机**也要有后端进程」；而 `daemonless` 今天是**每台远端主机的用户开关**（`src/frontend/ui/settings/machine-card.ts` 那个 checkbox「daemonless 降级读取（无需后端）」→ `RemoteHostConfig.daemonless`，生产段 7 个文件 31 处）⇒ 那种主机**存在**、且它的 `↗` 走纯 SSH（`launch_remote_terminal` 不经后端）⇒ 起会话只能靠 monitor 自己渲染整串 |
 //!
 //! ⇒ ③ 从**软障碍（未决，所以不敢删）变成硬障碍（已决为「要」，所以确定不能删）**。
 //! **「件关掉了」不等于「约束消失了」** —— 这是本节第三次栽在同一形状上，
@@ -52,7 +52,7 @@
 //! 见 `production_ts` 的头注 —— 量具本身是本轮真正修掉的东西。
 //!
 //! ⚠⚠ 上表 ① 那个「0 处」的**分母 08-29 换过一次**〔`K-P2` C 阶段第二拍〕：
-//! 原来只数 `src/bridge/src` 那棵树，现在**同时数 `shared/ccm` 的生产段** ——
+//! 原来只数 `src/frontend/shell/src` 那棵树，现在**同时数 `shared/ccm` 的生产段** ——
 //! 因为 `K-P2 §0d`〔PM 08-29〕把接线路裁成了「`ccm` 直接问后端二进制」，
 //! 而那条路整条落在那份 shell 脚本里，旧扫描面**够不到它**。
 //! **读数仍然是 0，变的是分母。** 逐字理由在
@@ -107,9 +107,9 @@ fn production_ts(src: &str) -> String {
 
 /// 本组判据读的全部 TS 语料 —— `production_ts` 的适用面就是这张表。
 const TS_CORPUS: &[&str] = &[
-    "src/remote-launch-run.ts",
-    "src/remote-config.ts",
-    "src/settings/machine-card.ts",
+    "src/frontend/ui/remote-launch-run.ts",
+    "src/frontend/ui/remote-config.ts",
+    "src/frontend/ui/settings/machine-card.ts",
     // 〔FIX4 · J7〕`src/remote-launch.ts` 出表：那份铸名口随派生 ＋ 避让搬进后端，整份删了。
     // 〔LR2〕原来这里的注释讲的是「TS 兜底路的消费者各自登记在哪」；那一族删了，
     // 这几份留在语料里只为一件事：`production_ts` 的行尾截断在它们上面安全（不含 `://`）。
@@ -150,10 +150,10 @@ fn the_ts_comment_stripper_actually_strips() {
 /// ★ **生产接线钉**：主路真的调那两条 backend 渲染命令。
 ///
 /// 一旦有人把它改回「TS 自己渲染」，本条红。〔LR2〕TS 那份兜底渲染器已删，回退要先把它写回来 ——
-/// 那一步由 `tests/launch-no-shell-in-ts.vitest.ts`（`设计/90 §3` 条 1）挡着；本条管的是接线这一头。
+/// 那一步由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`设计/90 §3` 条 1）挡着；本条管的是接线这一头。
 #[test]
 fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
-    let ts = read_ts("src/remote-launch-run.ts");
+    let ts = read_ts("src/frontend/ui/remote-launch-run.ts");
     assert!(
         ts.len() > 5000,
         "remote-launch-run.ts 只有 {} 字节，抽错了？",
@@ -161,8 +161,8 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
     );
     // 剥整行注释 + 行尾注释（F10 那次学到的：行尾注释里的提及不算数）。
     let prod = production_ts(&ts);
-    // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/launch-render.ts` 问（那一份里 `chan.call` 的操作名是字面量）。
-    let client = production_ts(&read_ts("src/launch-render.ts"));
+    // 〔MIG-2〕两条渲染今天是那台后端的帧命令，主路经 `src/frontend/ui/launch-render.ts` 问（那一份里 `chan.call` 的操作名是字面量）。
+    let client = production_ts(&read_ts("src/frontend/ui/launch-render.ts"));
     for needle in [
         "chan.call(origin, \"launch-render-cli\"",
         "chan.call(origin, \"launch-render-payload\"",
@@ -187,9 +187,9 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
 /// 立它时要回答「U8c-3（删 TS 渲染器）为什么今天删不得」，依据有两条：
 /// 依据一（生产主路仍调 TS 兜底 · 兜底仍问 TS 座要外层 tmux 命令 · 两个夹具发生器还在调它）
 /// 与依据二（**起会话那格**有没有切到后端）。依据一在步 22b·B 翻成回潮闸、在 LR2 随那一族删掉而整条没了
-/// （「不许回来」今天住 `tests/launch-no-shell-in-ts.vitest.ts`）；依据二与删不删 TS 无关，一个字没动：
+/// （「不许回来」今天住 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`）；依据二与删不删 TS 无关，一个字没动：
 ///
-/// - **Rust 生产段**（`src/bridge/src/**.rs`）**不许**发 `create-or-attach` —— monitor 侧 `launch` 那条
+/// - **Rust 生产段**（`src/frontend/shell/src/**.rs`）**不许**发 `create-or-attach` —— monitor 侧 `launch` 那条
 ///   `.call` 只发 `send-into`；
 /// - **`src/backend/control/ccm/`** **必须**发 —— `ccm` 容器路接在后端那条一次性口上（`K-P2` `D3`）。
 ///
@@ -205,7 +205,7 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
     //   原先跳过 `launch_wire.rs` 那一格随它搬出这棵树而作废）。
     let mut scanned = 0usize;
     for (p, raw) in
-        guard_core::scan_tree_excluding(&repo_root().join("src/bridge/src"), &["rs"], &[])
+        guard_core::scan_tree_excluding(&repo_root().join("src/frontend/shell/src"), &["rs"], &[])
     {
         scanned += 1;
         if guard_core::production_code(&raw).contains(mode.as_str()) {
@@ -256,7 +256,7 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
     //   （生产主路调 TS 兜底 · 兜底问 TS 座要外层命令）与后来的「消费者表」。那几条前提先后没了
     //   （步 22b·B 生产切走 · LR2 把那一族删了），本条只剩下面这一件：「起会话那格」在两棵树上各自什么样。
     // ⚠ 而 **Rust 那棵树仍然必须是零** —— 〔C4e〕monitor 侧那条 `.call("launch")` 连同它的发送端迁到界面删了
-    //   （界面经 `src/tmux-control.ts` 只发 `send-into`，`tmux_backend_gate_guard` 那条「只经一处」钉着）。
+    //   （界面经 `src/frontend/ui/tmux-control.ts` 只发 `send-into`，`tmux_backend_gate_guard` 那条「只经一处」钉着）。
     //   **两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
     assert!(
         hits.is_empty(),
@@ -286,8 +286,8 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
 /// 不是运行时静默跳过。（同 `launch_payload_parity.rs` 自己对夹具与 TS 那一半的做法。）
 /// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着判据搬**：
 /// 那条逐字节对拍是一条 `#[test]`，剖分把它从
-/// `src/bridge/src/backend/control/launch_payload_parity.rs` 搬到了
-/// `tests/bridge/backend/control/launch_payload_parity_tests.rs`。
+/// `src/frontend/shell/src/backend/control/launch_payload_parity.rs` 搬到了
+/// `tests/frontend/shell/backend/control/launch_payload_parity_tests.rs`。
 /// 指着生产段那一份的话，下面三条量的是一个**已经不含那条判据**的文件 ——
 /// 而它们的反空真（「对拍那条判据不在了」）**按设计当场响了**，没有零命中地绿。
 /// ⚠ **两半拼起来**：剖分把那条 `#[test]` 搬去了 `_tests.rs`，而它依赖的
@@ -358,7 +358,7 @@ fn the_parity_fn_body(src: &str, at: usize) -> Result<&str, String> {
     //    `"\n}\n"` 是对的，但它仍然是一根**位置针**（它假设收尾 `}` 正好在列 0），
     //    而「剖分退一层缩进」这件事在本仓已经发生过两轮。按行比不携带列假设。
     //    ⚠ 顺带一条真实收益：本轮 `needle_anchor_registry` 把两棵测试树收进语料之后，
-    //      本文件的裸 `.find("` 才第一次被数到（此前整棵 `tests/bridge/backend/` 不在
+    //      本文件的裸 `.find("` 才第一次被数到（此前整棵 `tests/frontend/shell/backend/` 不在
     //      任何扫描面里）—— 那条递减棘轮因此凭空多了一格余量。改掉针 = 把余量还回去，
     //      而不是把上限从 8 调到 9（那条判据的文案逐字禁止后者）。
     let end = {
@@ -683,7 +683,7 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
 //
 // # 口径（不写清口径的数就是半句假话）
 //
-// 数的是 **monitor 这一侧**（`src/*.ts` ＋ `src/bridge/src/**.rs`）
+// 数的是 **monitor 这一侧**（`src/*.ts` ＋ `src/frontend/shell/src/**.rs`）
 // 「能产出**起一个会话的那条 shell 串**（或它的一整层）」的实现。
 //
 // ⚠ **`src/backend/` 那棵树不在人群里**，这是口径不是遗漏：那是**后端二进制自己**的
@@ -700,7 +700,7 @@ fn the_byte_for_byte_parity_still_has_two_independent_sides() {
 /// 加一份、删一份都必须回来改这张表 —— 改的时候人会看见 `LAUNCH_RENDERER_TARGET`。
 // 🔴 〔LR1 · U8c-3 前一半〕**5 → 4**：原第一行 `("src/launch-render-cli.ts", "tryRenderCli",
 // "TS · ccm 调用行", …)` 删了 —— 零生产调用，最后只剩「产 `cli-golden.json` 的 `out`」一个用途，
-// 那一格换成了用例表里的手写期望（`src/launch-cli-golden.ts` 头注写了为什么夹具本身不删）。
+// 那一格换成了用例表里的手写期望（`src/frontend/ui/launch-cli-golden.ts` 头注写了为什么夹具本身不删）。
 // 🔴 〔LR2 · U8c-3 后一半〕**4 → 2，到了 `LAUNCH_RENDERER_TARGET`**：TS 兜底渲染器（`renderFallback`）
 // 与它的座（`TMUX_BACKEND`）两行删了 —— 零生产调用，最后只剩「两份夹具的左边」一个用途，
 // 那一格同样换成了用例表里的手写期望（`tests/test-support/launch-payload-golden.ts` / `launch-tmux-outer-golden.ts` 头注）。
@@ -719,7 +719,7 @@ const LAUNCH_RENDERERS: &[(&str, &str, &str, &str)] = &[
          —— 同一条命令 `render_launch_payload`（`outer` 缺席 = `container:\"none\"` 那一格，\
          带 `outer` = tmux 那三格）。这里原来逐字写着「外层三格 `render_tmux_outer` 本拍刚补出来，\
          **生产调用方 0**，如实登记」，那是 22b·A 的读数。\
-         生产路上的那道闸由 `tests/remote-launch-run.vitest.ts` 的 `W22B` 组钉着。",
+         生产路上的那道闸由 `tests/frontend/ui/remote-launch-run.vitest.ts` 的 `W22B` 组钉着。",
     ),
 ];
 
@@ -794,7 +794,7 @@ fn the_outer_tmux_command_has_exactly_one_home() {
 
     let root = repo_root();
     // 〔MIG-2〕两棵 Rust 生产树（monitor ＋ 后端）一起数：那一份搬进了后端。
-    for tree in ["src/bridge/src", "src/backend"] {
+    for tree in ["src/frontend/shell/src", "src/backend"] {
         for (p, raw) in guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]) {
             scanned += 1;
             if guard_core::production_code(&raw).contains(needle.as_str()) {
@@ -808,7 +808,7 @@ fn the_outer_tmux_command_has_exactly_one_home() {
         }
     }
     // 〔LR2〕原来这里接着扫 `src/**/*.ts`（那时 TS 座 `session-backend.ts` 是第二个家）。座删了之后
-    //   前端那一侧改由 `tests/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1：三个入口的 import 闭包里
+    //   前端那一侧改由 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts` 管（`设计/90 §3` 条 1：三个入口的 import 闭包里
     //   零 `tmux <动词> -` / `&&` 字面量）—— 它按执行链取人群，把 `src/` 里两份夹具用例表的手写期望
     //   （它们逐字就是这条命令）排在前端之外；这里再扫一遍 TS 就得另抄一份那个排除，两份会漂。
     // ★ 抽取器自检：人群没缩水（否则 `homes` 恒空 ⇒ 集合相等会在两边都空时假绿）。
@@ -830,7 +830,7 @@ fn the_outer_tmux_command_has_exactly_one_home() {
         homes, want,
         "\n★ 外层 tmux 命令的家变了。两向集合相等，所以多一个少一个都在这儿说话：\n\
          · **多一个** ⇒ 有人又照抄了一份 `tmux new-session …`。`设计/00 §2.5 ④` 的整个\n\
-           要点是消灭副本；前端那一侧另有 `tests/launch-no-shell-in-ts.vitest.ts`（`设计/90 §3` 条 1）。\n\
+           要点是消灭副本；前端那一侧另有 `tests/frontend/ui/launch-no-shell-in-ts.vitest.ts`（`设计/90 §3` 条 1）。\n\
          · **少一个** ⇒ 起会话那三格没人产得出了（`payload.rs::render_tmux_outer`）。\n"
     );
 }

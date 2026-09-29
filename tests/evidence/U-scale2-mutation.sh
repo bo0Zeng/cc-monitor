@@ -5,17 +5,17 @@
 # 🔴 **不在真仓里改。** 整棵 `src/` + `tests/` `cp -a` 到 `/tmp/scale2-mutation/`
 # （`node_modules` 软链过去），在**副本**里变异、跑、还原。
 # 理由不是洁癖：本轮是六路并发，真仓的 `src/` 有别的路在动，
-# 哪怕两秒钟的窗口也不该开。跑完对一次 `sha256sum src/height-estimate.ts`，前后必须逐位相同。
+# 哪怕两秒钟的窗口也不该开。跑完对一次 `sha256sum src/frontend/ui/height-estimate.ts`，前后必须逐位相同。
 #
 # 用法：bash tests/evidence/U-scale2-mutation.sh          # 从仓根跑
 # 读数：tests/evidence/U-scale2-mutation-log.txt（本脚本覆盖写）
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BEFORE_SHA="$( cd "$ROOT" && sha256sum src/height-estimate.ts )"
+BEFORE_SHA="$( cd "$ROOT" && sha256sum src/frontend/ui/height-estimate.ts )"
 SANDBOX=/tmp/scale2-mutation
 LOG="$ROOT/tests/evidence/U-scale2-mutation-log.txt"
-GATE="tests/scale2-height-truth.vitest.ts"
+GATE="tests/frontend/ui/scale2-height-truth.vitest.ts"
 
 rm -rf "$SANDBOX"; mkdir -p "$SANDBOX"
 cp -a "$ROOT/src" "$ROOT/tests" "$ROOT/package.json" "$ROOT/tsconfig.json" \
@@ -46,16 +46,16 @@ run_gate | tee -a "$LOG"
 #   一份「9 个变异 9 个没抓到」的日志会被读成「秤不灵」，而真相是**变异根本没发生**。
 #   ⇒ 每个变异后对一次文件，没变就当场喊，并记进日志。
 mutate () {
-  cp src/height-estimate.ts /tmp/he-scale2.bak
-  sed -i "$2" src/height-estimate.ts
+  cp src/frontend/ui/height-estimate.ts /tmp/he-scale2.bak
+  sed -i "$2" src/frontend/ui/height-estimate.ts
   say ""
   say "######## $1"
-  if cmp -s /tmp/he-scale2.bak src/height-estimate.ts; then
+  if cmp -s /tmp/he-scale2.bak src/frontend/ui/height-estimate.ts; then
     say "  🔴 变异没落地（sed 模式没匹配到任何一行）—— 下面这一格的绿**不算数**，去修模式"
   else
     run_gate | tee -a "$LOG"
   fi
-  cp /tmp/he-scale2.bak src/height-estimate.ts
+  cp /tmp/he-scale2.bak src/frontend/ui/height-estimate.ts
 }
 
 mutate "M1 · card-api-retry 常数 17 → 120（退回修之前的 CSS 兜底值）" \
@@ -107,13 +107,13 @@ say "  ⚠ 2026-09-18 之前这一条更钝：那时 card-assistant 的上限挂
 say "  砍行高等于往真值方向改 —— 门禁连「变差」都看不出来。这一轮把根修掉、上限拧到 0.3 之后，"
 say "  同一个变异离红只剩 4.3 个点。**钝是真的钝，但比原来锐了一个数量级。**"
 say ""
-say "######## 真仓 src/height-estimate.ts 有没有被变异溅到（两行相同 = 一个字没改）"
+say "######## 真仓 src/frontend/ui/height-estimate.ts 有没有被变异溅到（两行相同 = 一个字没改）"
 # ⚠ 原先这一格看的是 `git status --porcelain`，那是**错的哨兵**：它只会告诉你"这个文件
 #   相对 HEAD 改没改"，而本轮真仓里本来就躺着未提交的修（常数 + extractProseText）
 #   ⇒ 它必然非空，于是这一格永远"红"，红得没有信息。真正要问的是
 #   **"跑变异这段时间里它动没动"** ⇒ 比前后两个 sha256。
 say "  跑之前 $BEFORE_SHA"
-say "  跑之后 $( cd "$ROOT" && sha256sum src/height-estimate.ts )"
+say "  跑之后 $( cd "$ROOT" && sha256sum src/frontend/ui/height-estimate.ts )"
 say "[END]"
 echo
 echo "读数写到了 $LOG"

@@ -9,8 +9,8 @@
   · 跑法：`python3 evidence/k-r65-tier-and-provisioning-cuts.py`（在任意目录都行）
   · 台子：`ccmon-devbox:latest` 沙箱（`DECISIONS.md#R21`：会执行被测代码的一律进沙箱）
     - Rust 那半：`cargo test -p monitor --lib`
-    - 前端那半：`npx vitest run src/settings/config-surface-section.vitest.ts
-                             src/settings/readiness.vitest.ts`
+    - 前端那半：`npx vitest run src/frontend/ui/settings/config-surface-section.vitest.ts
+                             src/frontend/ui/settings/readiness.vitest.ts`
       ⚠ 只跑这两份 —— 本件动的前端面就这两份，**别把这两份的分母读成全量 npm**
       （全量归门禁那一格）。
 
@@ -91,8 +91,8 @@ def run_cargo() -> list[str]:
 def run_npm() -> list[str]:
     raw = strip_ansi(
         devbox(
-            "npx vitest run src/settings/config-surface-section.vitest.ts "
-            "src/settings/readiness.vitest.ts --reporter=verbose 2>&1"
+            "npx vitest run src/frontend/ui/settings/config-surface-section.vitest.ts "
+            "src/frontend/ui/settings/readiness.vitest.ts --reporter=verbose 2>&1"
         )
     )
     lines = []
@@ -165,8 +165,8 @@ def restore(saved: dict, baseline_dirty: str):
 
 TR = "src-tauri/src/tool_registry.rs"
 CS = "src-tauri/src/config_surface.rs"
-FE = "src/settings/config-surface-section.ts"
-RD = "src/settings/readiness.ts"
+FE = "src/frontend/ui/settings/config-surface-section.ts"
+RD = "src/frontend/ui/settings/readiness.ts"
 AQ = "remote-daemon-proto/src/sidecars/codepicture/acquire.rs"
 
 # ── 一刀一组：`(题目, [Cut, …])` ──────────────────────────────────────────

@@ -59,7 +59,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 /// 〔`K-R61` 09-11 现打过一次：初版这里只写了四处，漏的正是 `plugin/probe.rs` 那一行 ——
 /// 而那一处本轮**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
 ///
-/// - `src/bridge/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
+/// - `src/frontend/shell/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
 ///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
 /// - `src/backend/plugin/probe.rs` 的
 ///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
@@ -71,7 +71,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 /// - `src/backend/control/launch_render/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
-/// - `src/bridge/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
+/// - `src/frontend/shell/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
 ///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
 ///   抠的是 backend **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
 ///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `BACKEND_CAPABILITIES` 逐字不变。〕
@@ -484,7 +484,7 @@ pub(crate) fn answer_print(
 /// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
 ///
 /// 码：`invalid_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
-/// （`src/tmux-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
+/// （`src/frontend/ui/tmux-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
 pub(crate) fn answer_tmux_name_mint(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {

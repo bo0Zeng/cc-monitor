@@ -1255,7 +1255,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
 /// `//` 开头的行），`structural_scan::every_comment_stripping_transformer_is_registered`
 /// 当场逮住它，逐字问：「先问共享原语为什么不够 —— 答得出来就登记，答不出来就改成调它」。
 /// **答不出来**（`production_code` 做的就是这两件事）⇒ 改成调它。
-/// ⚠ 那张登记表住 `src/bridge/src/structural_scan.rs`，**不在本拍写区** ——
+/// ⚠ 那张登记表住 `src/frontend/shell/src/structural_scan.rs`，**不在本拍写区** ——
 /// 而它给的第一条出路本来就不需要动登记表。〔与 `launcher_identity_registry` 头注
 /// 记的那一次是同一条：那一次也是这条判据逮的，处置也一样。〕
 fn production_text() -> String {
@@ -1886,7 +1886,7 @@ fn the_trust_product_answers_through_the_same_function_as_the_cli_arm() {
 }
 
 /// ★★ **跨语言金样**：两条成品对同一份夹具 == `tests/__fixtures__/accounts.golden.json`（夹具根替换成 `<root>`）。
-/// 那份金样的另一个读者是 TS 解码器（`tests/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
+/// 那份金样的另一个读者是 TS 解码器（`tests/frontend/ui/accounts-decode.vitest.ts`）⇒ 两侧异源：后端改一个键名本条红，
 /// TS 解码器改一个键名那边红。金样手写落盘（本条红时印出现打的成品，人读过再改）。
 #[test]
 fn the_account_products_match_the_cross_language_golden() {
@@ -1982,7 +1982,7 @@ fn both_readers_of_the_manifest_see_the_same_accounts() {
 //
 // 要求住址：主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 3 条，逐字）「`local_accounts.rs` 的 `list_from_dir`〔散文墓碑〕
 // （零生产调用方的本机参照实现）删，**挂着的判据锚点改指现存实现**」。下面三条的断言逐字搬自 monitor
-// `tests/bridge/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
+// `tests/frontend/shell/local_accounts_tests.rs` 那三条（U7-4 / audit-0805），被测对象从那份参照实现换成后端这份真在答账号清单的。
 
 /// ★ 读上限的三种失败（不存在 / 不是普通文件 / 过大）**两两分得开**，过大的那句带实际字节数；
 /// 正好等于上限**放行**（`>` 不是 `>=`），差一个字节就拒。

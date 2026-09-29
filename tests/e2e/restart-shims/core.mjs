@@ -75,7 +75,7 @@ export async function invoke(cmd, args = {}) {
       seq("kill");
       return undefined;
     }
-    // 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端是三步（`src/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
+    // 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
     //   （`terminal-ssh`，见 `chanCall`）→ monitor 开窗（`open_terminal_window`）。夹具不走 ssh：机器事实给个空壳、那一行原样回交进来的
     //   命令，开窗那一步就地用 bash 跑它（与原先 `launch_remote_terminal` 那一臂同一个语义）。
     case "terminal_dial":
@@ -96,7 +96,7 @@ export async function invoke(cmd, args = {}) {
       return undefined;
     }
     // 〔E2 尾 09-27〕账号三问与 tmux 两条控制（结束 · 发按键）今天走**通道**（`chan.call(origin, op, payload)` ⇒
-    //   包装层 `chan_call`，`src/ipc/chan.ts`），不再是各自的 Tauri 命令。旧的那几臂（`list_remote_accounts` ·
+    //   包装层 `chan_call`，`src/comms/inward/chan.ts`），不再是各自的 Tauri 命令。旧的那几臂（`list_remote_accounts` ·
     //   `kill_remote_tmux` · `tmux_send_keys` …）从那天起没有调用方，编排拿到 `undefined` 当场判「账号不可用」
     //   ⇒ 本 shim 跟着改成**说通道**：去程是 JSON 字节、回程是 JSON 字节；「不行」按对端拒绝信封
     //   `{err:"Refused", body:<{code,message} 的字节>}` 抛（`chan.ts::decodeFail` 认的那一形）。
@@ -150,7 +150,7 @@ function chanCall(op, body) {
       if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
       return enc({ session: name, created: false, typed: true });
     }
-    // 〔MIG-2〕resume 那一串由那台后端出（`src/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
+    // 〔MIG-2〕resume 那一串由那台后端出（`src/frontend/ui/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
     //   ⇒ 交给**生产那一条**：`launch-render-emit.sh` → 后端 `emit_launch_render_for_e2e` → 生产
     //   `control/launch_render/wire.rs::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
     //   拒了 ⇒ 与后端 `launch_render::answer_payload` 同一个码 `refused`，原话带出去。

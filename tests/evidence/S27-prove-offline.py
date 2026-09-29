@@ -18,7 +18,7 @@
 # 🔴 为什么它是 `.py` 而不是更自然的 `.sh`
 
 `ci.yml` 的 `e2e-smoke` job 把 `tests/evidence/*.sh` 纳进 shellcheck，并且那条覆盖面
-地板被 `src/bridge/src/shell_lint_registry.rs` 钉成**恒等式**（不是「≥」）——
+地板被 `src/frontend/shell/src/shell_lint_registry.rs` 钉成**恒等式**（不是「≥」）——
 本目录多一个 `.sh`，那条判据当场红并逐字报「地板写着 69，而那条表达式今天真实覆盖 70」。
 实测过：先写成 `.sh` 时它就是这么红的。改地板要同时动 `ci.yml` 与那棵 Rust 树，
 不在本件的写区里 ⇒ 换成 `.py`（`tests/evidence/*.py` 没有同形的人群地板，
@@ -26,7 +26,7 @@ CI 的 `python syntax compile` 那步只盖 `tests/e2e/*.py`）。
 
 # 三格
 
-  stage0  今天两棵树（`src/bridge` · `src/backend`）断网 `cargo fetch --locked` —— 不动仓库
+  stage0  今天两棵树（`src/frontend/shell` · `src/backend`）断网 `cargo fetch --locked` —— 不动仓库
   stage1  scratch 副本里加 `russh-sftp = "3.0.0"`，**联网**解析一次并把包喂进本机缓存
           （`cargo fetch` **不带 `--target` = 抓全 target**，`wasm-bindgen` 那一族才躲不过；
            只跑 `cargo build` 的人本机永远抓不到它们 ⇒ 本机全绿、断网门禁照红）
@@ -81,8 +81,10 @@ def prime() -> bool:
     shutil.rmtree(WORK, ignore_errors=True)
     (WORK / "src").mkdir(parents=True)
     shutil.copytree(ROOT / "src" / "backend", WORK / "src" / "backend")
-    # 8 个 `*-core` 的 path 依赖写的是 `../bridge/crates/…` ⇒ 软链补同深度才解得开。
-    (WORK / "src" / "bridge").symlink_to(ROOT / "src" / "bridge")
+    # 共享 crate 的 path 依赖写的是 `../common/…`（〔RE〕原 `../bridge/crates/…`）⇒ 软链补同深度才解得开；
+    # russh 补丁副本 `../vendor/russh` 同理。
+    (WORK / "src" / "common").symlink_to(ROOT / "src" / "common")
+    (WORK / "src" / "vendor").symlink_to(ROOT / "src" / "vendor")
     (WORK / "tests" / "evidence").mkdir(parents=True)
     bench = ROOT / "tests" / "evidence" / "S7-history-read.rs"
     if bench.is_file():
@@ -111,7 +113,7 @@ def main() -> int:
     failed = False
 
     # ── stage0：今天两棵树 ────────────────────────────────────────────────
-    for tree in ("src/bridge", "src/backend"):
+    for tree in ("src/frontend/shell", "src/backend"):
         print(f"── stage0 · {tree}（真断网 cargo fetch --locked，不带 --offline）")
         p = netless(ROOT / tree, "cargo", "fetch", "--locked")
         if p.returncode == 0:

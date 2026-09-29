@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Serializes with an external `kind` tag, e.g.
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
-/// `src/bridge/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
+/// `src/frontend/shell/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
 /// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,7 +145,7 @@ pub struct Unavailable {
 /// 两向对拍）。监听口的 token 永远不在这里。
 pub const HOST_ECHO_ENVS: [&str; 3] = [
     crate::relay::ENV_PORT,
-    crate::accounts::upstream::creds::ENV_CREDENTIALS,
+    crate::accounts::upstream_select::creds::ENV_CREDENTIALS,
     crate::history::history_annotations::ENV_PATH,
 ];
 
@@ -258,7 +258,7 @@ pub enum Frame {
         ///    客户端硬发照样走真路，成不成由 `no_tmux` 那条老路回答。
         ///    ⇒ 将来要「**会变的**可用性」，走一条新帧（`emits` 那一轴），**不要回头改 hello**：
         ///    hello 结构上就是「连接建立时说一次」的东西。现成材料已经有 ——
-        ///    `observe/watcher.rs` 的 `OBS_NO_TMUX` 是一份运行期读数（watch loop 周期跑
+        ///    `observe/tmux_observe.rs` 的 `OBS_NO_TMUX` 是一份运行期读数（watch loop 周期跑
         ///    本地 `tmux ls`），它不是做不到，是**来得比握手晚**。
         ///
         /// # 〔NET2〕已真填

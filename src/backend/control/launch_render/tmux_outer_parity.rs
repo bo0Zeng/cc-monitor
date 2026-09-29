@@ -35,7 +35,8 @@ const FIXTURE: &str = include_str!("fixtures/tmux-outer-golden.json");
 /// 夹具本身有 `include_str!` 保护（删了就编译失败），但阻止「夹具变陈旧」的唯一机制是
 /// 那个 vitest 文件 —— 把它改名成 `.spec.ts` 就同时从 vitest 的 glob 和门禁里消失，
 /// 之后两种语言可以**永远静默分家**。改名/删除 ⇒ 这里编译失败。
-const TS_HALF: &str = include_str!("../../../../tests/launch-tmux-outer-golden.vitest.ts");
+const TS_HALF: &str =
+    include_str!("../../../../tests/frontend/ui/launch-tmux-outer-golden.vitest.ts");
 
 /// 用例数。夹具被清空/截断时，逐条循环会「零命中零失败」地绿 —— 这条挡的正是那个。
 ///

@@ -75,7 +75,7 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
     // 〔MIG-2〕本机起会话：计划里要读本进程的中转状态（`launch_relay`），一次性进程里没有中转 ⇒ 同 `launch-endpoint` 只上流面。
     (
         "launch-local",
-        "它经 `accounts::upstream::endpoint::launch_relay` 读本进程的中转监听状态（中转住常驻后端进程里）；\
+        "它经 `accounts::upstream_select::endpoint::launch_relay` 读本进程的中转监听状态（中转住常驻后端进程里）；\
          一次性进程里没有中转 ⇒ 「非它不可」的号会被误拒、「有它更好」的会被说成直连 —— 同 `launch-endpoint` 那一格（`STREAM_ONLY`）。",
     ),
     (

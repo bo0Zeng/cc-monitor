@@ -3,7 +3,7 @@
 无 devtools/eval 通道(生产与 `CCM_NO_DEVTOOLS=1` 下 webview 不可注入)——断言数据
 全部走 **DEV 探针 → 后端日志**:
 
-- `src/e2e-probe.ts`(仅 dev 构建,`import.meta.env.DEV` 门控):
+- `src/frontend/ui/e2e-probe.ts`(仅 dev 构建,`import.meta.env.DEV` 门控):
   - 启动重放抖动探针:batch 窗口内逐 rAF 采样定点卡片 `getBoundingClientRect().top`
     的方向反转(INVARIANTS §21:scrollTop 单调,只测它发现不了抖动),批末落盘
     `[e2e] jitter frames=… reversals=… retargets=…`。
@@ -13,7 +13,7 @@
 - 日志:`~/.claude/work/logs/monitor.<日期>.log`,grep `fe_perf`。
 - 抖动指标 = **密度绊线**(反转/帧):守卫 snap 的整数 scrollTop 对分数行高布局有
   ±亚像素合法舍入摆动,幅度与 §21 病态同级、密度差一个量级——健康 ≈0.12-0.16,
-  病态 ≈1.0,断言 ≤0.4(标定 2026-07-08,详 src/e2e-probe.ts 头注释)。
+  病态 ≈1.0,断言 ≤0.4(标定 2026-07-08,详 src/frontend/ui/e2e-probe.ts 头注释)。
 
 ## ★★ tmux 隔离：一律走 `tmux-shim.sh`（`C7i` 红线）
 
@@ -32,7 +32,7 @@ trap 'tmux_shim_cleanup' EXIT
 
 **绝不用 `TMUX_TMPDIR` 做隔离** —— `$TMUX` 一有值就压过它。2026-08-11 一条探针就是这么把
 用户**9 个真实 tmux 会话**打没的；`C7i` 因此逐字禁掉那条路。机检在
-`src/bridge/src/e2e_gate_registry.rs`（零容忍、零例外）。
+`src/frontend/shell/src/e2e_gate_registry.rs`（零容忍、零例外）。
 
 ⚠ 要把隔离**传给被你拉起的子进程**（比如被监护的后端自己会跑 `tmux ls`）时，
 传的是 **shim 目录**、让它进子进程的 `PATH`，**不是**传 `TMUX_TMPDIR`
@@ -102,7 +102,7 @@ bash tests/e2e/tier2-rig.sh teardown  # 按 pid 收 dev ＋ vite ＋ Xvfb
    （`[e2e] jitter` 有 3 行）· 试过 4 个底边偏移 ＋ 先左键取焦点。
    ⚠ **没验证的一个猜测**：`window.addEventListener("auxclick")` 在当前 WebKitGTK（2.52.6）上
    可能不再收中键 —— 要改成 `mousedown` 判 `button===1` 才收。**这只是猜测，没有证据**，
-   验它要动 `src/e2e-probe.ts` 再重建。⇒ 这一格今天的状态是**「判不了」**，不是「产品坏了」。
+   验它要动 `src/frontend/ui/e2e-probe.ts` 再重建。⇒ 这一格今天的状态是**「判不了」**，不是「产品坏了」。
 
 ⚠ 另记：**这份配方没提窗口管理器，而没有 WM 时 `xdotool getmouselocation` 报 `window:0`**
 （指针与窗口关联不上）。装 `openbox` 才正常。08-13 那次能跑，说明当时的环境有 WM 或
@@ -175,7 +175,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要后端就能跑」，否则每个开发动作都变重。
 
-> **代价，如实写在这里**：**本地改了 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`）（或 `src/account-restart.ts` /
+> **代价，如实写在这里**：**本地改了 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`）（或 `src/frontend/ui/account-restart.ts` /
 > `src/remote-launch.ts` 这类被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
 > 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
 > 想连地板一起验就 `bash tests/e2e/assert-pass-floor.sh restart 24`。
@@ -226,7 +226,7 @@ TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
 收尾只用 `-S <私有 socket> kill-server` 收自己那台；**绝不裸 `kill-server`**
 （万一隔离没生效，裸的那个会打到开发者的 server 上）。
 
-**单实例串行**:fixture 目录/cwd 固定名(`-tmp-e2e-fork`)且 `touch src/main.ts` 会触发
+**单实例串行**:fixture 目录/cwd 固定名(`-tmp-e2e-fork`)且 `touch src/frontend/ui/main.ts` 会触发
 全窗口 reload——并发跑两个套件会互删 fixture、互触发重放,结果不可信。
 
 套件场景:①启动门控(rendered≪deferred)+ drain 阈值 + 抖动密度绊线;②贴底快照;

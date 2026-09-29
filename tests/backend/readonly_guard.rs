@@ -77,7 +77,7 @@ mod tests {
     /// 🔴 〔`99 §2.5 P9` 2026-09-18〕〔散文墓碑〕**这里原来住着 `strip_cfg_test` —— 一份便宜近似，已退役。**
     ///
     /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
-    /// [`guard_core::production_source`]（`src/bridge/crates/guard-core`），
+    /// [`guard_core::production_source`]（`src/common/guard-core`），
     /// 本 crate 经 `guard_support` 再导出。`guard_support` 的模块头注逐字记着搬家的理由：
     /// 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
     /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。
@@ -86,13 +86,13 @@ mod tests {
     ///
     /// 🔴 **退役的理由不是「它变成恒等函数了」** —— `设计/16 §4.1` 当初那条预言
     /// **今天还不成立**，现打读数进了 `16 §4.1`：`src/backend` 上它剥掉 1 081 538 字节
-    /// （64 份里 51 份被它动过），`src/bridge/src` 上 1 429 612 字节。
+    /// （64 份里 51 份被它动过），`src/frontend/shell/src` 上 1 429 612 字节。
     /// 实测把它改成恒等函数，后端当场红 3 条，`no_test_code_leaks_into_any_production_section`
     /// 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是 `16 §5.1`
     /// **一条形状只许有一个住址**，不是「它没用了」。
     ///
     /// 两者的差别现打过（`16 §4.1` 表）：换成 `production_source` 之后，
-    /// `src/bridge/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
+    /// `src/frontend/shell/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
     /// 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
     /// 两个 workspace 的用例数与红绿**一格没动**。
 
@@ -778,7 +778,7 @@ mod tests {
 
     /// ★ **第三层那扇门** —— 后端生产树里**唯一**被允许引用第三层模块的文件。
     ///
-    /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/bridge/filewin/boundary_tests.rs`
+    /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/frontend/shell/filewin/boundary_tests.rs`
     /// 那条「app 侧只许有一条门」）：期望集合只有这一个元素，多出任何一个都红。
     const MUTATING_FACE_DOORS: &[(&str, &str)] = &[(
         "stream/inbound.rs",
@@ -823,7 +823,7 @@ mod tests {
          线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
         ),
         (
-            "accounts/upstream/file_face.rs",
+            "accounts/upstream_select/file_face.rs",
             "〔RM1a · 第四波〕上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
              不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
@@ -945,7 +945,7 @@ mod tests {
             "stream/inbound.rs",
         ),
         (
-            "accounts/upstream/file_face.rs",
+            "accounts/upstream_select/file_face.rs",
             "file_face::answer_set",
             "stream/inbound.rs",
         ),
@@ -3817,7 +3817,7 @@ mod g6_staged_zero {
         (
             // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
             //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
-            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            "tests/frontend/shell/backend/control/launch_wire_f07_main_path_tests.rs",
             "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",
@@ -3904,10 +3904,13 @@ mod g6_staged_zero {
     fn backend_files() -> Vec<(String, String, String)> {
         let src_root = crate::guard_support::src_root();
         let tests_root = crate::guard_support::tests_root();
+        // 〔RE〕面 B 成员的单测镜像住 `tests/comms/outward/`（生产那一半由 `guard_core` 顺着 `#[path]` 收进 `src_root`）。
+        let comms_tests = crate::guard_support::comms_tests_root();
         let mut out = Vec::new();
         for (root, excluded, prefix) in [
             (&src_root, &[] as &[&str], ""),
             (&tests_root, &["readonly_guard.rs"], "tests/backend/"),
+            (&comms_tests, &[], "tests/comms/outward/"),
         ] {
             for (path, src) in guard_core::scan_tree_excluding(root, &["rs"], excluded) {
                 let rel = format!(
@@ -3970,7 +3973,7 @@ mod g6_staged_zero {
         assert!(
             out_of_reach <= 1,
             "有 {out_of_reach} 条标着 `跨 crate` —— 本判据住 backend crate（它刻意不属于 workspace），\
-             够不着 `src/bridge`。标的条数超过 1 就说明这张表的家选错了，\
+             够不着 `src/frontend/shell`。标的条数超过 1 就说明这张表的家选错了，\
              该按 `Bx` 说的另立一处两侧都够得着的落点。"
         );
     }
@@ -4591,7 +4594,7 @@ mod g6_dependency_signoff {
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
              `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
              〔RM1a · 第四波〕本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
-             （上游选择自己的状态文件，第四层登记的 `accounts/upstream/file_face.rs`），\
+             （上游选择自己的状态文件，第四层登记的 `accounts/upstream_select/file_face.rs`），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
              先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
@@ -4688,7 +4691,7 @@ mod g6_dependency_signoff {
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做。\
-             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/bridge/vendor/russh`，只改了 \
+             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/vendor/russh`，只改了 \
              `compression.rs` 解压收尾那一段、没碰任何 IO）⇒ 源码进了树、**可以**量了，但本档仍是「未量」：本轮没扫它的写面",
         ),
         (
@@ -4735,7 +4738,7 @@ mod g6_dependency_signoff {
             DEV_DEPS,
             UNMEASURED,
             "〔MOD · 2026-09-28〕记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
-             **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/generated/` 写生成物 —— \
+             **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/frontend/ui/generated/` 写生成物 —— \
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
         (
@@ -4771,16 +4774,8 @@ mod g6_dependency_signoff {
             "只开 `env-filter`。日志去向由本 crate 自己给的 writer 定（今天是标准错误）——\
              落盘那一形要另一条 crate，而本清单上没有",
         ),
-        (
-            // 🔴 〔`设计/50` 删用量 09-18〕原名 `usage-core`（装着 Claude 用量口径的累加器
-            //    ＋ Codex 那半）。用量 ② 轴退役带走了累加器那半与它两侧的消费者
-            //    ⇒ crate 劈剩 Codex 的 token 增量映射一件事，改名 `codex-token-core`。
-            //    **签字一格没松**：仍是仓内 crate、现打 0 处写面。
-            "codex-token-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "Codex `token_count` 事件 → token 增量的映射（纯数据）；仓内 crate，现打 0 处写面",
-        ),
+        // 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
+        //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
         (
             // 〔DUP2 · J19〕agent 工具名的唯一一份（会话事实的 agent 列表按它认工具名）。
             "agent-tools-core",
@@ -5196,7 +5191,7 @@ mod g6_dependency_signoff {
 
     /// 🔴 〔RM1a · 第四波〕**`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
-    /// **恰好**是第四层登记的那一份 `accounts/upstream/file_face.rs`（两向集合相等）。
+    /// **恰好**是第四层登记的那一份 `accounts/upstream_select/file_face.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
@@ -5243,7 +5238,7 @@ mod g6_dependency_signoff {
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
         // 〔RK1〕第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
         let want: std::collections::BTreeSet<String> = [
-            "accounts/upstream/file_face.rs".to_string(),
+            "accounts/upstream_select/file_face.rs".to_string(),
             // 〔HOST〕第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
             "control/resident.rs".to_string(),
             "relay/door.rs".to_string(),

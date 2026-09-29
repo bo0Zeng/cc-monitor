@@ -34,7 +34,7 @@ HIST = "src-tauri/src/history.rs"
 CCMI = "src-tauri/src/backend/control/ccm_invocation.rs"
 PARITY = "src-tauri/src/backend/control/launch_payload_parity.rs"
 PLAN = "remote-daemon-proto/src/control/ccm/plan.rs"
-RUN = "src/remote-launch-run.ts"
+RUN = "src/frontend/ui/remote-launch-run.ts"
 
 MUT = [
     # ── KR89D1：六格表有没有牙 ───────────────────────────────────────────────

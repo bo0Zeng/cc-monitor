@@ -208,7 +208,7 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     // ⚠ 走 `scan_tree_excluding(.., &[])` 而不是 `scan_tree!`：**明写「一份都不排除」**。
     // `scan_tree!` 在这里已经是空转的（`file!()` 给的折返路径后缀比不命中），
     // 而一个空转的自摘和一个真在工作的自摘**长得一模一样** —— 那正是条 73 禁的那一形。
-    let files: Vec<(std::path::PathBuf, String)> = ["src/bridge/src", "src/backend"]
+    let files: Vec<(std::path::PathBuf, String)> = ["src/frontend/shell/src", "src/backend"]
         .iter()
         .flat_map(|t| guard_core::scan_tree_excluding(&root.join(t), &["rs"], &[]))
         .collect();
@@ -689,7 +689,7 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
 
 // 〔US1 · 第四波 4D〕这里原先是路由构造口与上游选择判断口的七条判据（样例对拍 · 段闸拒 · 有行没行 · 别家同 id ·
 //   凭据文件那一家 · 中转没跑就拒）：构造口与段闸进了共享 crate `relay_route_core`（它自己的判据）、判断口搬进后端
-//   `accounts/upstream/endpoint.rs`（`endpoint_tests` 逐格手写期望），起会话那一侧的执行由 `history_tests` 那几条量。
+//   `accounts/upstream_select/endpoint.rs`（`endpoint_tests` 逐格手写期望），起会话那一侧的执行由 `history_tests` 那几条量。
 
 /// ★★ `KH2B4`「**只有一个构造口**」的 monitor 半 —— 计数，不是「有没有一个函数」。
 ///
@@ -727,7 +727,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 }
 
 // 〔MIG-2〕`us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
-//   没跟着载荷内核搬：留在 monitor 测试段（`tests/bridge/backend/control/payload_judgment_rules.rs`）。
+//   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/backend/control/payload_judgment_rules.rs`）。
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
 #[test]
@@ -1304,7 +1304,7 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
 /// | B | `history.rs` 的 `$env:` 分支 | **接上**（`relay_env_prefix_ps`），⚠ 只到「编得过」 |
 /// | C | `shared/ccm` | **没接** —— 见下面 `NOT_WIRED` 里的理由 |
 /// | ~~D~~ | ~~TS 兜底渲染器那一处~~ | 〔LR2 2026-09-25〕那一族连同它的发射点删了（`设计/00 §2.5 ④`）⇒ 人群 5 → 4 |
-/// | E | `src/bridge/src/launch.rs` 的 `.env(k, v)`（开窗那一跳，进程级） | **没接** |
+/// | E | `src/frontend/shell/src/launch.rs` 的 `.env(k, v)`（开窗那一跳，进程级） | **没接** |
 ///
 /// ⚠ **本条钉的是「决定点的个数」，不是「每一处都接上了」** ——
 /// 没接上的那两处（C · E）各有一条写下来的理由。
@@ -1378,12 +1378,12 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             want: 1,
             wired: Some(NOT_WIRED_CCM),
         },
-        // 〔LR2 2026-09-25〕这里原来有 `D · src/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
+        // 〔LR2 2026-09-25〕这里原来有 `D · src/frontend/ui/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
         //   针 `export CLAUDE_CONFIG_DIR=${posixQuote(`，登记为「没接」）。那一族零生产调用、按
         //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {
             what: "E · launch.rs（进程级，开窗那一跳）",
-            src: include_str!("../../../../src/bridge/src/launch.rs"),
+            src: include_str!("../../../../src/frontend/shell/src/launch.rs"),
             // 3 处：POSIX 开窗 1 + Windows 两个 spawn 点各 1（`launch.rs` 自己那条
             // `every_terminal_window_backend_opens_carries_the_backend_path` 也数这个数）。
             needle: ".env(k, v)",
@@ -1626,7 +1626,7 @@ fn the_launch_token_env_var_has_the_same_name_on_both_halves() {
 }
 
 // 〔US1 · 第四波 4D〕`设计/20 §7` 步 4（全量注入带开关、codex 不注、撞名不注、两种降级分开）那一组判据随决策表搬进后端：
-//   `tests/backend/accounts/upstream/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
+//   `tests/backend/accounts/upstream_select/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
 //   「登记了默认上游的 agent」只在适配层那一格（NT2 · V25），monitor 这一侧的那份登记表整删。
 
 /// 〔TL3 · `INVARIANTS §47` ②〕工作目录是自由文本路径：载荷的 `cd` 与外层 `new-session -c` 两处、以及 ccm 那条路的 `--cwd`，

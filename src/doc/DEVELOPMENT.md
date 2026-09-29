@@ -33,7 +33,7 @@ powershell -NoProfile -File scripts\run.ps1 dev          # 弹 1100x800 窗口
 ### dev 模式的特殊行为
 
 - **自动打开 DevTools**（`lib.rs::setup()` 内 `#[cfg(debug_assertions)] window.open_devtools()`），可看前端 console
-- **HMR**：保存 `src/` 下 TS / CSS 会触发 vite HMR 自动刷新前端；保存 `src/bridge/` 下 Rust 会触发增量 cargo build + 重启 monitor
+- **HMR**：保存 `src/` 下 TS / CSS 会触发 vite HMR 自动刷新前端；保存 `src/frontend/shell/` 下 Rust 会触发增量 cargo build + 重启 monitor
 - **`main.ts` 强制 full reload**：HMR 检测到任何 TS 改动直接 `location.reload()`，不做部分热替换。避免长跑监控时旧 listener 与新代码并存导致消息重复 / event_replay 状态不一致
 
 ### 其它常用命令
@@ -110,8 +110,8 @@ DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
 
 报 `Permission xxx not allowed`：
 
-1. 看 `src/bridge/gen/schemas/acl-manifests.json` 确认 plugin 的 permission set 实际内容
-2. 看 `src/bridge/capabilities/default.json` 当前 grant 了哪些
+1. 看 `src/frontend/shell/gen/schemas/acl-manifests.json` 确认 plugin 的 permission set 实际内容
+2. 看 `src/frontend/shell/capabilities/default.json` 当前 grant 了哪些
 3. 通常需要加 inline scoped permission，详 [CONTRIBUTING § 2.6](CONTRIBUTING.md#26-添加新-tauri-capability-permission)
 
 ---
@@ -119,7 +119,7 @@ DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
 ## 跑测试
 
 ```powershell
-cd src/bridge
+cd src/frontend/shell
 cargo test --workspace   # ★ 后端全量（见下方警告）
 cargo test --lib profile_installer                   # 单个模块
 cargo test --lib -- --nocapture                      # 看 println! 输出
@@ -131,7 +131,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 > 由 `doc_claim_registry_tests.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
 >
 > **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
-> - `cargo fmt --all --check`（两侧：`src/bridge/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
+> - `cargo fmt --all --check`（两侧：`src/frontend/shell/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
 > - `tests/scripts/verify-committed-state.sh` —— 全仓**唯一量「提交状态」**的门（其余都量工作树）。
 >   本仓不 push ⇒ CI 见不到这些 commit，**这道门只能在本机跑**，理由见它自己的头注；
 > - `node tests/scripts/assert-coverage-floors.mjs` —— 逐文件覆盖率地板 + 0% 文件递减棘轮；
@@ -142,7 +142,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,**13 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/panorama-session-files/**launch-dimensions** 纯逻辑(〔LR1〕`launch-render-cli` 那一组随 TS 渲染器删了;〔LR2〕`session-backend` 那一组随 TS 座删了)。<br>**这张清单的单一事实源是 `tests/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
+| node 纯函数断言(`src/**/*.test.ts`,**13 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/pricing/panorama-session-files/**launch-dimensions** 纯逻辑(〔LR1〕`launch-render-cli` 那一组随 TS 渲染器删了;〔LR2〕`session-backend` 那一组随 TS 座删了)。<br>**这张清单的单一事实源是 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
 | vitest + jsdom(`src/**/*.vitest.ts`;条数以 `npm run test:dom` 实跑为准,**别在文档里存副本** —— 这个数在仓里有 4-5 份拷贝、注定漂,见 BACKLOG E65) | `npm run test:dom`(覆盖率 `npm run coverage`) | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar、账号徽章/灰灯 等 |
 | E2E 套件(`npm run test:f40` = `tests/e2e/f40-suite.sh`；⚠ 它会往 `~/.claude/` 写 fixture，**本机受限环境别跑**) | **手动**,Linux Xvfb + `tauri dev`(前置见 [tests/e2e/README.md](../../tests/e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
 
@@ -166,7 +166,7 @@ $env:RUST_LOG = "debug"; powershell -NoProfile -File scripts\run.ps1 dev
 $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 ```
 
-生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src/bridge/src/logging.rs` + 设置面板。
+生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src/frontend/shell/src/logging.rs` + 设置面板。
 
 ---
 

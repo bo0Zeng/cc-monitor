@@ -137,7 +137,7 @@ cut(
 
 # ── 刀 H（前端）：默认那一档也去读用户的文件 ────────────────────────────────
 cut(
-    "H", "src/launcher-diagnostics.ts",
+    "H", "src/frontend/ui/launcher-diagnostics.ts",
     "    if ([...rcSel.options].some((o) => o.value === keep)) rcSel.value = keep;\n",
     "    if ([...rcSel.options].some((o) => o.value === keep)) rcSel.value = keep;\n"
     "    // 【刀 H】挂上去就去扫一遍（默认那一档也发 IPC）。\n"
@@ -150,7 +150,7 @@ cut(
 
 # ── 刀 I（前端）：装失败被吞掉 ──────────────────────────────────────────────
 cut(
-    "I", "src/launcher-diagnostics.ts",
+    "I", "src/frontend/ui/launcher-diagnostics.ts",
     "      rcStatus.textContent = `${verb}失败：${String(e)}`;\n",
     "      rcStatus.textContent = `${verb}完成`;\n",
     VITEST,
@@ -158,7 +158,7 @@ cut(
 
 # ── 刀 J（前端）：那段「这几行是旧的」被改写而不是原样上屏 ──────────────────
 cut(
-    "J", "src/launcher-diagnostics.ts",
+    "J", "src/frontend/ui/launcher-diagnostics.ts",
     "    rcLegacy.textContent = scan.manual_cleanup_hint;\n",
     "    rcLegacy.textContent = scan.manual_cleanup_hint.split(`\\n`)[0];\n",
     VITEST,
@@ -223,7 +223,7 @@ PI = "src-tauri/src/profile_installer.rs"
 TR = "src-tauri/src/tool_registry.rs"
 FB = "src-tauri/src/fenced_block.rs"
 CS = "src-tauri/src/config_surface.rs"
-LD = "src/launcher-diagnostics.ts"
+LD = "src/frontend/ui/launcher-diagnostics.ts"
 
 EDITS = [
     # ① 装：POSIX 那一臂什么都不装
@@ -324,7 +324,7 @@ def z_main():
 
 
 def z2_main():
-    """刀 Z2：**前端生产文件整份退回基线**（`src/launcher-diagnostics.ts`）。
+    """刀 Z2：**前端生产文件整份退回基线**（`src/frontend/ui/launcher-diagnostics.ts`）。
 
     与刀 Z 的前端那一处（只把 `rcBlock` 恒 hidden）**不是同一刀**，而且这一点是量出来的：
     只把它藏起来，7 条新断言里只红 1 条（按钮还在、处理器还在、IPC 照发）；
@@ -335,7 +335,7 @@ def z2_main():
     ⇒ 看起来「还原了」，实际把基线版留在了暂存区（本拍现打踩过一次）。
     """
     base = "e1390ab"
-    path = "src/launcher-diagnostics.ts"
+    path = "src/frontend/ui/launcher-diagnostics.ts"
     subprocess.run(["git", "-C", str(WT), "restore", f"--source={base}",
                     "--worktree", "--", path], check=True)
     try:

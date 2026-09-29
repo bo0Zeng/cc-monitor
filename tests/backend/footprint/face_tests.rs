@@ -8,7 +8,7 @@
 //! # 买不到的
 //!
 //! - 🔴 真远端：环境是那台**后端进程**的，不是用户交互 shell 的。
-//! - 真 monitor 那一趟（`footprint_client_facts`）：monitor 侧 `tests/bridge/footprint_client_tests.rs`。
+//! - 真 monitor 那一趟（`footprint_client_facts`）：monitor 侧 `tests/frontend/shell/footprint_client_tests.rs`。
 
 use super::*;
 use crate::footprint::registry::HostScope;
@@ -242,7 +242,7 @@ fn home_falls_back_to_userprofile_and_is_required() {
 }
 
 /// ★ 线上成品两侧对拍：一台什么都没装的机器（家目录不在、`PATH` 取不到）上远端那一栏的整份应答 == 跨语言金样
-/// `tests/__fixtures__/footprint-report.golden.json`（界面 `src/settings/footprint-reads.ts::decodeFootprint` 读同一份）。
+/// `tests/__fixtures__/footprint-report.golden.json`（界面 `src/frontend/ui/settings/footprint-reads.ts::decodeFootprint` 读同一份）。
 #[cfg(not(windows))]
 #[test]
 fn the_report_wire_matches_the_cross_language_golden() {
