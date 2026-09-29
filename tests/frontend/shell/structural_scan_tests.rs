@@ -1717,9 +1717,9 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("bind.rs", "bind.rs", 225),
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("bind_tests.rs", "bind.rs", 319),
-        ("bridge.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
+        ("ui_contract.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("data_paths.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
-        ("inbound_client.rs", "bridge.rs", 95),
+        ("inbound_client.rs", "ui_contract.rs", 95),
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("launch_tests.rs", "launch.rs", 122),
         // 🔴 〔步 7c 剖分 2026-09-19〕**这一行删了 —— 那处行号地址改成了符号地址。**
@@ -4544,7 +4544,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/README.md", "list_active_sessions", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
         ("src/frontend/shell/README.md", "list_session_activity", 1), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
         (
-            "src/frontend/shell/src/bridge.rs",
+            "src/frontend/shell/src/ui_contract.rs",
             "list_active_sessions",
             1,
         ), // 〔MIG-1〕⑬ 会话生命周期并进会话流后退役
@@ -5084,7 +5084,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/creds_store_tests.rs", 11), // 〔HX2 · 4D〕2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
-        ("src/frontend/shell/src/bridge.rs", 2), // 〔MIG-1〕1 → 2：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
+        ("src/frontend/shell/src/ui_contract.rs", 2), // 〔MIG-1〕1 → 2：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         ("src/frontend/ui/entry-viewer.ts", 1),
         ("src/doc/STATE-MATRIX.md", 3), // 〔MIG-1〕1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         // 〔S5 · 第四波 · V41〕`parse_remote_hosts` 旧单对象那一支与守它的测试删了，接替它的判据头注挂一块。

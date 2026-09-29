@@ -8,7 +8,7 @@ import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW, accountsChangedItems } 
 import { SESSION_TASKS_KIND, SESSION_TASKS_WINDOW, tasksChangedItems } from "./tasks-stream";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
-// 源是 `src/frontend/shell/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
+// 源是 `src/frontend/shell/src/ui_contract.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
 // **仍然 `export`**，但理由要写准（C02 Phase D 审计 S4）：初版写的是「别的模块从这里
 // import 这些类型」——**那句可被 grep 否证**：这 5 个名字除本文件与守卫测试外，
 // 全仓没有任何 import 点。真正的理由是**不缩小已经导出的表面**（保守、零代价，
@@ -164,7 +164,7 @@ export const STREAM_WINDOW = 20_000;
 
 /**
  * 〔MIG-1 · `设计/99 §2.1 ⑬` 登记的例外〕会话流里**不吃 credit、不丢**的那几种格（会话起停 / 状态的成品）。
- * 收到它们不还 credit（monitor 那一侧交它们时本来就没扣）。Rust 那一侧同一张表是 `bridge.rs::SessionStreamFrame::takes_credit`，
+ * 收到它们不还 credit（monitor 那一侧交它们时本来就没扣）。Rust 那一侧同一张表是 `ui_contract.rs::SessionStreamFrame::takes_credit`，
  * 两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
  */
 export const CREDIT_EXEMPT_FRAMES = [

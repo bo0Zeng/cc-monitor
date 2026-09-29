@@ -193,7 +193,7 @@ pub(crate) fn placed_count(origin: &str) -> u64 {
 pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
 
 /// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
-pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload {
+pub(crate) fn install_notice(origin: &str) -> crate::ui_contract::RemoteHealthPayload {
     let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
         copy_text("rsPanoramaCall.install.local", &[])
@@ -201,7 +201,7 @@ pub(crate) fn install_notice(origin: &str) -> crate::bridge::RemoteHealthPayload
         let who = crate::backend::control::cc_bus::machine_label(origin);
         copy_text("rsPanoramaCall.install.remote", &[("who", &who)])
     };
-    crate::bridge::RemoteHealthPayload {
+    crate::ui_contract::RemoteHealthPayload {
         origin: origin.to_string(),
         kind: INSTALL_NOTICE_KIND.to_string(),
         message,
@@ -223,7 +223,10 @@ pub async fn panorama_place(
         seen,
         || {
             use tauri::Emitter;
-            if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, install_notice(&wire)) {
+            if let Err(e) = app.emit(
+                crate::ui_contract::events::REMOTE_HEALTH,
+                install_notice(&wire),
+            ) {
                 tracing::warn!("[{wire}] 「正在装代码全景组件」那一句没发出去：{e}");
             }
         },

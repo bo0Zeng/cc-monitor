@@ -266,8 +266,8 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 `seq: u64`（`SeqCounter` 跨调用累加；〔RENDER2〕从 0 重读时先发 `session_file_reread` 再从 0 重数；`--tail-only` 下起点是当前完整行数 ⇒ seq 就是行号，
 与 monitor 旁路快照的编号同一个空间，§25a）；〔CF1 · 2026-09-24〕**本机与远端同一个来源**：monitor 自己那套
 jsonl watcher 与它的第二套游标 / seq 已删，本机会话的行也是本机后端的 `line` 帧（`ssh_source·rs::LineIntake`）。
-`bridge::JsonlLinePayload` 携带该 seq 字段；所有交付路径（〔CF2 · 第四波 4B〕会话流经通道 `subscribe`：
-实时逐行 / 成批切块 / 就绪点重放，一格的体是 `bridge::SessionStreamFrame`）都透传 seq 不变。seq 保证**时序**、不保证**投递次数**——投递语义是 at-least-once
+`ui_contract::JsonlLinePayload` 携带该 seq 字段；所有交付路径（〔CF2 · 第四波 4B〕会话流经通道 `subscribe`：
+实时逐行 / 成批切块 / 就绪点重放，一格的体是 `ui_contract::SessionStreamFrame`）都透传 seq 不变。seq 保证**时序**、不保证**投递次数**——投递语义是 at-least-once
 （重连重放、快照与实时的重叠区是同 seq 重投；〔RENDER2〕截断重读不再换新 seq，而是换代：先出声、从 0 重数），详 § 25。
 
 **前端契约**：每个 Tab / SessionViewer 持一个 `RecordTimeline`，

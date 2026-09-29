@@ -1216,8 +1216,8 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     use std::path::PathBuf;
 
     // 〔MIG-3b 续〕本判据随申报表搬进了后端，扫的仍是 monitor 那半边（外加随表搬来的那四份）：根改按仓根现算。
-    let bridge = crate::guard_support::repo_root().join("src/frontend/shell");
-    let manifest = bridge.as_path();
+    let shell = crate::guard_support::repo_root().join("src/frontend/shell");
+    let manifest = shell.as_path();
     let src_root = manifest.join("src");
     let crates_root = crate::guard_support::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);

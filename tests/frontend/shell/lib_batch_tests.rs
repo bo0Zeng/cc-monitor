@@ -18,8 +18,9 @@ fn jline(
         session_id: session_id.to_string(),
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,
-        message: message
-            .map(|m| crate::bridge::RecordBody::from_json(m.to_string()).expect("成品是 JSON")),
+        message: message.map(|m| {
+            crate::ui_contract::RecordBody::from_json(m.to_string()).expect("成品是 JSON")
+        }),
         cwd: cwd.map(str::to_string),
         end: None,
     }

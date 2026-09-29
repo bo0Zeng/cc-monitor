@@ -55,7 +55,7 @@ impl TapEnd {
     }
 }
 
-type Sink = Box<dyn Fn(crate::bridge::SessionTapPayload) + Send + Sync>;
+type Sink = Box<dyn Fn(crate::ui_contract::SessionTapPayload) + Send + Sync>;
 
 fn sink() -> &'static OnceLock<Sink> {
     static SINK: OnceLock<Sink> = OnceLock::new();
@@ -63,19 +63,19 @@ fn sink() -> &'static OnceLock<Sink> {
 }
 
 /// 装出口。**只装一次**（第二次装被忽略并记一句 —— setup 只跑一次，多装一定是接线错了）。
-pub fn install_sink(f: impl Fn(crate::bridge::SessionTapPayload) + Send + Sync + 'static) {
+pub fn install_sink(f: impl Fn(crate::ui_contract::SessionTapPayload) + Send + Sync + 'static) {
     if sink().set(Box::new(f)).is_err() {
         tracing::warn!("session_tap 的出口装了第二次 —— 忽略（setup 只该装一次）");
     }
 }
 
 /// 一帧 → 发给前端的那一件（纯函数：字段一一照搬，`origin` 由调用方给）。
-pub fn to_payload(origin: &str, t: Tap) -> crate::bridge::SessionTapPayload {
+pub fn to_payload(origin: &str, t: Tap) -> crate::ui_contract::SessionTapPayload {
     let (data, end) = match t.body {
         TapBody::Data(d) => (Some(d), None),
         TapBody::End(e) => (None, Some(e.as_wire().to_string())),
     };
-    crate::bridge::SessionTapPayload {
+    crate::ui_contract::SessionTapPayload {
         origin: crate::origin::Origin(origin.to_string()),
         stream: t.stream,
         resp: t.resp,

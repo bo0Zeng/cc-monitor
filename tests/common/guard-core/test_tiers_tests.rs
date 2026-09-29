@@ -31,8 +31,8 @@
 //!
 //! - 「e2e 要么进门禁要么登记理由」：`e2e_gate_registry_tests.rs::every_e2e_suite_is_either_gated_or_registered_as_exempt`
 //!   —— 本文件只按名字钉住它在（它被删 / 改名，e2e 层那条自检红）。
-//! - 「bridge 那两棵树里的 `#[ignore]` 有触发者」：`shared_crate_registry_tests.rs::every_ignored_test_still_has_someone_who_triggers_it`。
-//!   它**只扫 bridge**；后端那几条子进程入口今天不在任何触发表里 —— 真机层把两棵树与 TS 一起圈进来。
+//! - 「壳那两棵树里的 `#[ignore]` 有触发者」：`shared_crate_registry_tests.rs::every_ignored_test_still_has_someone_who_triggers_it`。
+//!   它**只扫壳那一侧**；后端那几条子进程入口今天不在任何触发表里 —— 真机层把两棵树与 TS 一起圈进来。
 //!
 //! # 买不到什么（逐条）
 //!

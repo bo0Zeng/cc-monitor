@@ -998,7 +998,7 @@ pub(crate) fn build(
         // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
         // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
         // ⚠ 这几行的形状（`payload = format!("export <VAR>={}; {payload}", sq(v));`）有人在逐行认：
-        //   `bridge` 那条 `KP5ED1`（`payload_tests·rs::forwarded_by_container_path`）从起点
+        //   壳那一侧（`src/frontend/shell`）的 `KP5ED1`（`payload_tests·rs::forwarded_by_container_path`）从起点
         //   `let mut payload = inner.iter()` 数到登记那段注释，改形状它会红。
         if account.is_empty() && !o.use_base {
             if let Some(v) = env

@@ -32,7 +32,7 @@ mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，
             //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
             //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
-mod bridge;
+mod ui_contract;
 // 通信层面 A 的第一个进程外客户端那条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。
 // `pub` 同 `filewin`：它的客户端那一半给另一个二进制（外部前端）经 `monitor_lib::chan` 用。
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
@@ -797,12 +797,12 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 crate::dial_host::install_host_key_notice(move |n| {
-                    let payload = bridge::RemoteHealthPayload {
+                    let payload = ui_contract::RemoteHealthPayload {
                         origin: n.origin,
                         kind: n.kind.to_string(),
                         message: n.message,
                     };
-                    if let Err(e) = handle.emit(bridge::events::REMOTE_HEALTH, payload) {
+                    if let Err(e) = handle.emit(ui_contract::events::REMOTE_HEALTH, payload) {
                         tracing::warn!("emit remote-health(host key) failed: {e}");
                     }
                 });
@@ -911,13 +911,13 @@ pub fn run() {
             {
                 let replay = replay.clone();
                 let t0_capture = t0;
-                app.listen(bridge::events::FRONTEND_READY, move |event| {
+                app.listen(ui_contract::events::FRONTEND_READY, move |event| {
                     // Batch5-F19：payload 携带用户上次所在 tab（localStorage 记忆），
                     // replay 按 session 分组、该 tab 的块先发。缺省/解析失败 → None
                     // （行为同 F19 前；viewer 等旧调用方不带 payload 也安全）。
-                    // 契约定义在 bridge.rs（单一来源，G 验收纠偏）。
+                    // 契约定义在 ui_contract.rs（单一来源，G 验收纠偏）。
                     let priority_sid =
-                        serde_json::from_str::<bridge::FrontendReadyPayload>(event.payload())
+                        serde_json::from_str::<ui_contract::FrontendReadyPayload>(event.payload())
                             .ok()
                             .and_then(|p| p.priority_sid);
                     let replay = replay.clone();
@@ -1311,7 +1311,7 @@ pub(crate) fn batch_to_payloads(
     lines: Vec<ssh_source::JsonlLine>,
     origin: &crate::origin::Origin,
     runs: &mut SkipRuns,
-) -> Vec<bridge::JsonlLinePayload> {
+) -> Vec<ui_contract::JsonlLinePayload> {
     let label = origin.host_name().map(str::to_string);
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
@@ -1319,7 +1319,7 @@ pub(crate) fn batch_to_payloads(
         match line.message {
             Some(message) => {
                 runs.saw(&line.session_id, line.seq, None);
-                payloads.push(bridge::JsonlLinePayload {
+                payloads.push(ui_contract::JsonlLinePayload {
                     session_id: line.session_id,
                     cwd: line.cwd,
                     path: line.path.to_string_lossy().into_owned(),
