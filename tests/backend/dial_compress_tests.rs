@@ -218,6 +218,43 @@ fn russh_zlib_stream_round_trips(packets: &[Vec<u8>]) -> bool {
     })
 }
 
+/// 〔WF2 · WIN3 读数 A〕**压**那一半：用 russh 生产路上那个 `compress_into`（`PacketWriter` 每包调它、输出接在 5 字节包头之后）
+/// 连着压几包，再用**另一只**解压器（flate2 原生 `Decompress`，每包 `Sync` 冲刷，与对端 sshd 的 inflate 同形）逐包解 ——
+/// 每包逐字节同、包头原样才算对。上游缺陷的真形：一包的压缩输出超出「输入 + 10」那一刻就收工，没吐完的拼进下一包。
+fn russh_zlib_compresses_whole_packets(packets: &[Vec<u8>]) -> bool {
+    use russh::compression::{Compress, Compression};
+    const HEAD: usize = 5;
+    let mut c = Compress::None;
+    Compression::ZlibOpenSSH.init_compress(&mut c);
+    let mut d = flate2::Decompress::new(true);
+    packets.iter().all(|payload| {
+        let mut buf = vec![0xA5u8; HEAD];
+        let Ok(n) = c.compress_into(payload, &mut buf, HEAD) else {
+            return false;
+        };
+        if buf.len() != HEAD + n || buf[..HEAD] != [0xA5u8; HEAD] {
+            return false;
+        }
+        let input = &buf[HEAD..];
+        let start = d.total_in();
+        let mut out: Vec<u8> = Vec::new();
+        loop {
+            out.reserve(payload.len() + 64);
+            let used = (d.total_in() - start) as usize;
+            if d.decompress_vec(&input[used..], &mut out, flate2::FlushDecompress::Sync)
+                .is_err()
+            {
+                return false;
+            }
+            let used = (d.total_in() - start) as usize;
+            if (used == input.len() && out.len() < out.capacity()) || out.len() > payload.len() {
+                break;
+            }
+        }
+        out == *payload
+    })
+}
+
 /// ★ Z5：**闸 == russh 的解压今天对不对**（两向相等）。异源 = russh 自己的编解码。
 ///
 /// NT1 现打（上游 0.61.1）：一包 1000 字节的可压载荷（压成 39 字节）解回来只有 78 字节 —— 解压器最多交出 ≈ 2 × 包长。
@@ -233,19 +270,31 @@ fn the_gate_matches_what_russh_really_does() {
         .enumerate()
         .map(|(k, &n)| (0..n).map(|i| line[(i + k) % line.len()]).collect())
         .collect();
-    let (single, multi) = (
+    // 〔WF2〕压那一半：满长的一包通道数据（32 768 字节 ＋ 9 字节消息头）不可压 · 一包可压的 · 再一包更长的不可压 · 收尾一包可压的。
+    let pressed: Vec<Vec<u8>> = vec![
+        incompressible(32_777, 7),
+        stream[0].clone(),
+        incompressible(70_000, 11),
+        stream[2].clone(),
+    ];
+    let (single, multi, whole) = (
         russh_zlib_round_trips(&compressible),
         russh_zlib_stream_round_trips(&stream),
+        russh_zlib_compresses_whole_packets(&pressed),
     );
-    let sound = single && multi;
+    let sound = single && multi && whole;
     assert_eq!(
         RUSSH_ZLIB_SOUND, sound,
-        "闸（RUSSH_ZLIB_SOUND = {RUSSH_ZLIB_SOUND}）与 russh 的解压实况（一来一回对不对 = {sound}：单包 {single} · 多包 {multi}）不一致 —— \
-         russh 修好了就开闸（压缩判准的答案才落到连接上）；还坏着就别开（开了每条远端连接都会在第一条通道上卡死）"
+        "闸（RUSSH_ZLIB_SOUND = {RUSSH_ZLIB_SOUND}）与 russh 的 zlib 实况（一来一回对不对 = {sound}：单包 {single} · 多包 {multi} · 不可压整包 {whole}）不一致 —— \
+         russh 修好了就开闸（压缩判准的答案才落到连接上）；还坏着就别开（开了每条远端连接都会在第一条通道上卡死 / 大块写断链）"
     );
     assert!(
         russh_zlib_round_trips(b"q7#Kx"),
         "正控：一包近乎不可压的短载荷都一来一回不对 —— 量具用错了，不是 russh 的那一形"
+    );
+    assert!(
+        russh_zlib_compresses_whole_packets(&stream),
+        "正控：可压的几包经另一只解压器都解不回 —— 压那一半的量具用错了，不是「不可压大包」那一形"
     );
 }
 
@@ -644,6 +693,88 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
             "闸关着（russh 解压坏着）而真 sshd 上压的那趟收全了 —— russh 那一形不在了？先看 the_gate_matches_what_russh_really_does"
         );
     }
+}
+
+/// 不可压的字节（xorshift64*，定种子 ⇒ 每趟同一份）：zlib 压不动、输出比输入略长 —— WIN3 读数 A 那一形。
+fn incompressible(n: usize, seed: u64) -> Vec<u8> {
+    let mut x = seed | 1;
+    (0..n)
+        .map(|_| {
+            x ^= x >> 12;
+            x ^= x << 25;
+            x ^= x >> 27;
+            (x.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 56) as u8
+        })
+        .collect()
+}
+
+/// ★ ZR2（读数，`#[ignore]`）〔WF2 · WIN3 读数 A〕：**真 sshd 上**强制压 / 强制不压各一趟，经部署那条路（`sftp::put_atomic`）
+/// 往暂存区放 33 000 字节与 1 MiB **不可压**的字节，读回逐字节同。WIN3 现打（p5p）：压的那趟 > 32 000 字节就断
+/// （sshd「channel_input_data: … incomplete message」）。由 `tests/evidence/WF2-zlib-container.py` 起一次性容器 sshd、
+/// 带 `NT1_COMPRESS={host,port,user,key_path}` 来跑；协商结果由那份脚本读 sshd 日志核（异源）。
+#[ignore = "要真 sshd：由 tests/evidence/WF2-zlib-container.py 带环境变量来跑"]
+#[tokio::test(flavor = "multi_thread")]
+async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
+    let Ok(raw) = std::env::var("NT1_COMPRESS") else {
+        panic!("没有 NT1_COMPRESS —— 这条读数由 WF2-zlib-container.py 来跑");
+    };
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let host = v["host"].as_str().unwrap().to_string();
+    let port = v["port"].as_u64().unwrap() as u16;
+    let user = v["user"].as_str().unwrap().to_string();
+    let key = v["key_path"].as_str().unwrap().to_string();
+    let mut bad = Vec::new();
+    for compress in [false, true] {
+        let tcp = tokio::net::TcpStream::connect((host.as_str(), port))
+            .await
+            .unwrap();
+        let checker = Checker {
+            expected: None,
+            observed: Default::default(),
+            reported: Default::default(),
+            stages: StageSink::new(false),
+            endpoint: format!("{host}:{port}"),
+        };
+        let mut h = russh::client::connect_stream(config(false, compress), tcp, checker)
+            .await
+            .unwrap();
+        authenticate(&mut h, &user, Some(&key), None).await.unwrap();
+        let ch = h.channel_open_session().await.unwrap();
+        ch.request_subsystem(true, "sftp").await.unwrap();
+        let s = crate::dial::sftp::Session::over(ch.into_stream(), Box::new(()))
+            .await
+            .unwrap();
+        let dir = format!("{}/{}", s.home(), crate::dial::sftp::STAGING_ROOT);
+        crate::dial::sftp::make_dirs(&s, &dir).await.unwrap();
+        for (n, seed) in [(33_000usize, 7u64), (1 << 20, 11)] {
+            let blob = incompressible(n, seed);
+            let path = format!("{dir}/zr2-{compress}-{n}");
+            let put = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                crate::dial::sftp::put_atomic(&s, &path, &blob, 0o600),
+            )
+            .await;
+            let back = match &put {
+                Ok(Ok(())) => crate::dial::sftp::read_all(&s, &path).await,
+                _ => None,
+            };
+            let ok = back.as_deref() == Some(blob.as_slice());
+            println!(
+                "WF2-ZR2 compress={compress} n={n} put={} readback_ok={ok}",
+                match &put {
+                    Ok(Ok(())) => "ok".to_string(),
+                    Ok(Err(e)) => format!("err({e})"),
+                    Err(_) => "timeout".to_string(),
+                }
+            );
+            if !ok {
+                bad.push(format!("compress={compress} n={n}"));
+            }
+        }
+        drop(s);
+        let _ = h.disconnect(russh::Disconnect::ByApplication, "", "").await;
+    }
+    assert!(bad.is_empty(), "这几趟没放上 / 读回不同：{bad:?}");
 }
 
 /// 数读到 / 写出的字节（线上字节 = TCP 上读写的，压缩在它之上）。

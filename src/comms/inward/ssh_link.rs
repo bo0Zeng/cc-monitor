@@ -84,6 +84,9 @@ pub struct Ack {
     /// 〔MIG-1 收尾〕同上，跳板那一台。
     #[serde(default)]
     pub jump_strict: bool,
+    /// 〔WF2〕开通道被远端回拒时 SSH 协议给的原因码（RFC 4254 §5.1，如 `administratively_prohibited` · `connect_failed`）；老后端 / 别的失败 ⇒ `None`。
+    #[serde(default)]
+    pub open_refused: Option<String>,
     #[serde(default)]
     pub v: u32,
     #[serde(default)]
@@ -108,6 +111,8 @@ pub enum LinkError {
     Refused {
         why: String,
         fingerprint: Option<String>,
+        /// 〔WF2〕开通道被回拒的原因码（[`Ack::open_refused`] 原样）。
+        open_refused: Option<String>,
     },
     /// 代理不认所请求的用法 —— 它比界面老。
     TooOld { wanted: String, v: u32 },
@@ -208,6 +213,7 @@ pub async fn handshake<R: AsyncBufRead + Unpin>(
                     .error
                     .unwrap_or_else(|| copy_text("rsSshLink.dial.noReason", &[])),
                 fingerprint: ack.fingerprint,
+                open_refused: ack.open_refused,
             });
         }
         if !ack.uses.iter().any(|u| u == want) {

@@ -201,6 +201,7 @@ describe("远端那一批的 fan-out（失败语义原样搬自 monitor 那一�
     expect(await fetchRemoteProjects()).toEqual({
       projects: [],
       failedHosts: [],
+      emptyHosts: [],
     });
     expect(chanCalls()).toHaveLength(0);
   });

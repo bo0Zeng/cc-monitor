@@ -693,6 +693,7 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
         winner: None,
         strict: false,
         jump_strict: false,
+        open_refused: None,
         v: 2,
         uses: vec![],
     };

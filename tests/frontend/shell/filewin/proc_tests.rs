@@ -62,6 +62,13 @@ fn synthetic_request() -> OpenRequest {
         )),
         // 〔FILES2 · V152〕机器名单也进种子对拍（带中文与空格）。
         machines: vec!["<local>".to_string(), "台架 远端".to_string()],
+        // 〔WF2〕工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
+        work_area: Some(crate::WorkArea {
+            x: -1920,
+            y: 0,
+            w: 1920,
+            h: 1040,
+        }),
     }
 }
 
@@ -101,6 +108,12 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     assert!(
         !want.machines.is_empty(),
         "夹具里这一格得非空，否则两侧都是空恒相等"
+    );
+    // 〔WF2 · WIN3 读数 D〕工作区：漂了 ⇒ 窗口夹进的是别的一块。
+    assert_eq!(got.work_area, want.work_area, "工作区漂了");
+    assert!(
+        want.work_area.is_some(),
+        "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
     );
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
     //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
@@ -271,6 +284,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         handoff: synthetic_handoff(),
         bookmarks: None,
         machines: Vec::new(),
+        work_area: None,
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -383,10 +397,11 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         handoff: synthetic_handoff(),
         bookmarks: None,
         machines: Vec::new(),
+        work_area: None,
     };
     let run = |tag: &str, say: &str, linger: u32| {
         std::env::set_var(BIN_ENV, scripted_stand_in(&dir, tag, say, linger));
-        let r = open_in_new_process(&req);
+        let r = open_in_new_process(&req, Box::new(|_| {}));
         std::env::remove_var(BIN_ENV);
         r
     };
@@ -419,6 +434,56 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         Err(Unopened::Process(e)) => assert!(!e.is_empty()),
         other => panic!("说了一句不是约定形状的话，却回了：{other:?}"),
     }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 J「窗口出现后 166 ms 进程退出，monitor 判成功、用户零提示（早失败检测是竞速）」·
+/// 题面 WF2 第 7 条「判成功之后很快退出也要报」。替身说「列到 3 行」、活过开窗预算（300 ms）再退：
+/// ① 退出码非零 ⇒ 开窗照回成功，**之后**收尸线程交来那一句（带退出码）；② 退出码 0（用户关窗那一形）⇒ 一句都不交。
+#[cfg(unix)]
+#[test]
+fn a_window_that_dies_after_being_judged_open_is_still_reported() {
+    use std::os::unix::fs::PermissionsExt;
+    let _g = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!("filewin-late-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("造不出临时目录");
+    let req = OpenRequest {
+        source: Source::remote(synthetic_cfg()),
+        cwd: None,
+        reveal: None,
+        handoff: synthetic_handoff(),
+        bookmarks: None,
+        machines: Vec::new(),
+        work_area: None,
+    };
+    let listed = encode_ready(&Ready::Listed(3)).trim().to_string();
+    let run = |code: u32| {
+        let p = dir.join(format!("late-{code}.sh"));
+        std::fs::write(
+            &p,
+            format!(
+                "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{listed}'\nsleep 0.6\nexit {code}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::env::set_var(BIN_ENV, &p);
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let r = open_in_new_process(&req, Box::new(move |said| tx.send(said).unwrap()));
+        std::env::remove_var(BIN_ENV);
+        (r, rx.recv_timeout(std::time::Duration::from_secs(10)))
+    };
+    let (r, said) = run(7);
+    assert_eq!(r.map(|(_, n)| n), Ok(3), "活过预算的那一形该先回成功");
+    let said = said.expect("判成功之后退出码 7 退了，却一句都没交");
+    let why = copy_text("rsFilewinProc.late.exited", &[("st", "exit status: 7")]);
+    assert_eq!(
+        said,
+        copy_text("rsFilewinProc.open.seeStderr", &[("why", &why)])
+    );
+    let (r, said) = run(0);
+    assert!(r.is_ok());
+    assert!(said.is_err(), "体面退出（用户关窗）也报了：{said:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -496,14 +561,18 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
     // ⚠ 内容刻意是 ASCII：它只需要**不是**一个可执行文件的头。
     std::fs::write(&fake, b"not an ELF at all\n").expect("写不出来");
     std::env::set_var(BIN_ENV, &fake);
-    let e = open_in_new_process(&OpenRequest {
-        source: Source::remote(synthetic_cfg()),
-        cwd: Some(dir.to_string_lossy().to_string()),
-        reveal: None,
-        handoff: synthetic_handoff(),
-        bookmarks: None,
-        machines: Vec::new(),
-    })
+    let e = open_in_new_process(
+        &OpenRequest {
+            source: Source::remote(synthetic_cfg()),
+            cwd: Some(dir.to_string_lossy().to_string()),
+            reveal: None,
+            handoff: synthetic_handoff(),
+            bookmarks: None,
+            machines: Vec::new(),
+            work_area: None,
+        },
+        Box::new(|_| {}),
+    )
     .expect_err("拿一个不是二进制的文件当窗口进程，居然报了成功");
     println!("  现打：{e:?}");
     let Unopened::Process(e) = e else {

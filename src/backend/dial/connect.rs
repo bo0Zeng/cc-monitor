@@ -164,7 +164,7 @@ pub(crate) const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compressio
 /// 第一条通道的确认被吃掉、会话卡死。
 ///
 /// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
-/// ⇒ 闸开：判准的答案落到连接上。
+/// ⇒ 闸开：判准的答案落到连接上。〔WF2 · CZ2〕压那一半同病（不可压的满长包只交出前一截 ⇒ 对端断链，WIN3 读数 A），同一份副本里补了。
 /// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着「闸 == russh 一来一回对不对」：
 /// 谁把补丁撤了（或换回一份还坏着的 russh）而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。
 pub(crate) const RUSSH_ZLIB_SOUND: bool = true;

@@ -31,7 +31,13 @@ use std::time::UNIX_EPOCH;
 /// 查询模式入口。返回进程退出码。
 pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let result = match args.first().map(String::as_str) {
-        Some("--list-projects") => list_projects(agent_home),
+        Some("--list-projects") => {
+            return match list_projects_to(agent_home, &mut std::io::stdout().lock()) {
+                Ok(()) => 0,
+                Err((Some(code), said)) => coded_failure(code, &said),
+                Err((None, e)) => query_failed(&e),
+            }
+        }
         Some("--list-sessions") => match args.get(1) {
             Some(dir) => list_sessions(agent_home, dir),
             None => Err("--list-sessions requires <project_dir> argument".into()),
@@ -78,10 +84,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     };
     match result {
         Ok(()) => 0,
-        Err(e) => {
-            eprintln!("cc-monitor-backend query error: {e}");
-            2
-        }
+        Err(e) => query_failed(&e),
     }
 }
 
@@ -105,16 +108,53 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 ///
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
-fn list_projects(agent_home: &Path) -> Result<(), String> {
-    list_projects_into(agent_home, &mut std::io::stdout().lock())
+/// 〔WF2〕老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
+/// （`agents/fake` 那条 S6-Z3 钉着）；但那一形带上结构化的码 [`NO_RECORD_TREE`]（`{code, message}` 信封），
+/// 问的那台后端认码 ⇒ 画「这台还没有会话记录」而不是「没加载上」。其余失败无码（`Err((None, 原因))`）。
+pub(crate) fn list_projects_to(
+    agent_home: &Path,
+    out: &mut dyn Write,
+) -> Result<(), (Option<&'static str>, String)> {
+    if list_projects_into(agent_home, out).map_err(|e| (None, e))? {
+        return Ok(());
+    }
+    Err((
+        Some(NO_RECORD_TREE),
+        copy_text(
+            "beHistory.records.none",
+            &[("path", &projects_root(agent_home).display().to_string())],
+        ),
+    ))
+}
+
+/// 〔WF2 · WIN3 读数 H〕`--list-projects` 在「记录树根不在」时信封里的码（生产方住这里，认码的是 `history_join` 远端那一支）。
+pub(crate) const NO_RECORD_TREE: &str = "no_record_tree";
+
+/// 带码的那一行：CLI 错误信封（`{code, message}`，与 `cli_control::emit_err` 同一对键；那边读信封的是 `remote_ask::settle_pulled`）。
+/// 不调 `emit_err`：观测层不往控制层伸手（`layering_guard`）。
+fn coded_failure(code: &str, said: &str) -> i32 {
+    eprintln!("{}", serde_json::json!({ "code": code, "message": said }));
+    2
+}
+
+/// 一次性查询失败的那一行（无码的旧形）。
+fn query_failed(e: &str) -> i32 {
+    eprintln!("cc-monitor-backend query error: {e}");
+    2
 }
 
 /// `--list-projects` 的本体，出口是参数 ——〔`C1` · 2026-09-24〕帧面那条（`history-projects`）
 /// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答。
-pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<(), String> {
+///
+/// 〔WF2 · WIN3 读数 H〕回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
+/// 怎么说由两个宿主各自定：帧面当零个项目（界面照空态「还没有会话记录」画，别的机器照常）· CLI 照旧出声。
+pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
     let root = projects_root(agent_home);
-    let entries =
-        std::fs::read_dir(&root).map_err(|e| format!("read_dir {} failed: {e}", root.display()))?;
+    let entries = match std::fs::read_dir(&root) {
+        Ok(it) => it,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(unreadable_dir(&root, &e)),
+    };
     for entry in entries.flatten() {
         let dir = entry.path();
         if !dir.is_dir() {
@@ -126,7 +166,18 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
         };
         writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
-    Ok(())
+    Ok(true)
+}
+
+/// 〔WF2 · WIN3 读数 H〕会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— `设计/91` 不露实现词）。
+fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
+    tracing::warn!("history_query: 读不了 {}：{e}", dir.display());
+    let path = dir.display().to_string();
+    if e.kind() == std::io::ErrorKind::PermissionDenied {
+        copy_text("beHistory.dir.denied", &[("path", &path)])
+    } else {
+        copy_text("beHistory.dir.unreadable", &[("path", &path)])
+    }
 }
 
 /// 一个项目目录 → `--list-projects` 的那一行；目录下没有会话记录 ⇒ `None`（不展示）。
@@ -209,8 +260,7 @@ pub(crate) fn list_sessions_into(
     // 〔audit-0805 08-06〕**改调共享围栏**（E3）：此前这里是一份内联副本，
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
     let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
-    let entries =
-        std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
+    let entries = std::fs::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
     for entry in entries.flatten() {
         let p = entry.path();
         if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {

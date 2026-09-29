@@ -191,3 +191,51 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
         "那台停一次最长 {worst}ms，monitor 只等 {ours}ms —— 会在结局出来之前放弃"
     );
 }
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 E（`AllowTcpForwarding no` ⇒ 控制隧道被回拒、每分钟新拨 33 条 SSH）·
+/// 题面 WF2 第 3 条「认出这个拒绝、停止重试、界面明说」。替身开隧道：
+/// ① 回拒码是「不许端口转发」⇒ **恰好开 1 次**就停、回 `Unsupported`（`after_round` 据它不再重连）、话是那一句；
+/// ② 正控：口上还没人（`connect_failed`）两次、第三次通 ⇒ 照旧等着再开，恰好 3 次、接成。
+#[tokio::test]
+async fn a_tunnel_refused_for_forwarding_stops_at_the_first_try() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let tries = AtomicUsize::new(0);
+    let got = retry_tunnel(
+        || {
+            tries.fetch_add(1, Ordering::SeqCst);
+            async {
+                Err::<(), _>((
+                    "远端 127.0.0.1:4 连不上".to_string(),
+                    Some(FORWARDING_PROHIBITED.to_string()),
+                ))
+            }
+        },
+        4,
+    )
+    .await;
+    assert_eq!(tries.load(Ordering::SeqCst), 1, "被拒转发还在重开隧道");
+    let said = copy_text("rsRemoteResident.tunnel.forwardingProhibited", &[]);
+    assert_eq!(got, Err(AttachErr::Unsupported(said.clone())));
+    assert_eq!(
+        crate::ssh_source::after_round(Some(said.clone()), std::time::Duration::from_secs(2)),
+        crate::ssh_source::AfterRound::Stop(said),
+        "这一形之后整条流还按退避重连"
+    );
+
+    let tries = AtomicUsize::new(0);
+    let got = retry_tunnel(
+        || {
+            let n = tries.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if n < 2 {
+                    Err(("没人在听".to_string(), Some("connect_failed".to_string())))
+                } else {
+                    Ok(n)
+                }
+            }
+        },
+        4,
+    )
+    .await;
+    assert_eq!((got, tries.load(Ordering::SeqCst)), (Ok(2), 3));
+}

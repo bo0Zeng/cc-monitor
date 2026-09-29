@@ -44,6 +44,7 @@ impl std::fmt::Debug for Ensured {
 pub(crate) enum AttachErr {
     /// 〔DEL 续 · 主会话裁〕那台不是 Unix（后端脱离不了）⇒ **永久不支持**：记在那台的连接状态里，
     /// 不再自动按退避重连；界面出声，用户点「起」（`backend_start`）才再试一次。
+    /// 〔WF2 · WIN3 读数 E〕那台 sshd 不许端口转发（控制隧道被回拒 `administratively_prohibited`）同属这一形：重试不会变，要那台改配置。
     Unsupported(String),
     /// 别的失败 ⇒ 照常按退避重连。
     Failed(String),
@@ -302,19 +303,40 @@ impl tokio::io::AsyncWrite for Replayed {
 }
 
 /// 开隧道：远端口上还没人（子进程刚起、还没 bind）⇒ 隔 [`TUNNEL_WAIT`] 再开，至多 [`TUNNEL_TRIES`] 次。
-async fn tunnel_when_bound(cfg: &RemoteConfig, port: u16) -> Result<DialStream, String> {
+async fn tunnel_when_bound(cfg: &RemoteConfig, port: u16) -> Result<DialStream, AttachErr> {
+    retry_tunnel(|| crate::dial_host::tunnel(cfg, port), port).await
+}
+
+/// 远端回拒开通道、原因码是这个 ⇒ 那台 sshd 不许端口转发（`AllowTcpForwarding no` · `DisableForwarding` ·
+/// authorized_keys 的 `no-port-forwarding` / `permitopen` 都回它；口上没人听回的是 `connect_failed`）。
+pub(crate) const FORWARDING_PROHIBITED: &str = "administratively_prohibited";
+
+/// [`tunnel_when_bound`] 的编排（`open` = 开一次隧道；判据用替身）。〔WF2 · WIN3 读数 E〕回拒码是
+/// [`FORWARDING_PROHIBITED`] ⇒ **当场停**、[`AttachErr::Unsupported`]（重试不会变：从前这里照样再开 29 次，每次一条新 SSH，
+/// 接着整条流按退避重连 —— 真机每分钟 33 条拨号）；别的失败（口上还没人）照旧隔一会儿再开。
+pub(crate) async fn retry_tunnel<T, F, Fut>(mut open: F, port: u16) -> Result<T, AttachErr>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, (String, Option<String>)>>,
+{
     let mut last = String::new();
     for _ in 0..TUNNEL_TRIES {
-        match crate::dial_host::tunnel(cfg, port).await {
+        match open().await {
             Ok(s) => return Ok(s),
-            Err(e) => last = e,
+            Err((_, Some(code))) if code == FORWARDING_PROHIBITED => {
+                return Err(AttachErr::Unsupported(copy_text(
+                    "rsRemoteResident.tunnel.forwardingProhibited",
+                    &[],
+                )));
+            }
+            Err((e, _)) => last = e,
         }
         tokio::time::sleep(TUNNEL_WAIT).await;
     }
-    Err(copy_text(
+    Err(AttachErr::Failed(copy_text(
         "rsRemoteResident.tunnel.unreachable",
         &[("port", &port.to_string()), ("e", &last)],
-    ))
+    )))
 }
 
 /// **接上那台的常驻后端**（没有就起一个）：起 · 找 → 隧道 → hello（旧 ⇒ 换一次）→ attach。

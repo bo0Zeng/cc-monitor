@@ -79,7 +79,6 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/dial/probe.rs", "let _ = up_w.shutdown().await;", 1, Why::DeadLink, "〔MIG-1 续〕测试连接探完关上行写半边（结局已定，这条探活链路随即整条丢掉）"),
     ("src/backend/dial/pool.rs", "let _ = self.freed.set(freed);", 1, Why::SetOnce, "族的铃只挂一次"),
     ("src/backend/dial/sftp.rs", "let _ = s.sftp().remove_file(b).await;", 2, Why::CleanupAfterFailure, "〔HX2〕部署换名成功后删自己挪走的旧备份件 / 换名失败而落点已被别的部署者占上时删它；删不掉只剩一份 `.bak`"),
-    ("src/backend/dial/sftp.rs", "let _ = s.sftp().remove_file(tmp.clone()).await;", 3, Why::CleanupAfterFailure, "〔HX2〕删**自己这一趟**建的临时件（名字唯一，只这一趟知道）；主错误已在回"),
     ("src/backend/dial/sftp.rs", "let _ = s.sftp().rename(b, rel.clone()).await;", 1, Why::CleanupAfterFailure, "〔HX2〕换名失败、落点还空着 ⇒ 把自己挪走的旧文件挪回去（主错误已在回）"),
     ("src/backend/dial/sftp.rs", "let _ = tokio::io::copy(&mut (&mut *input).take(size), &mut tokio::io::sink()).await;", 1, Why::Drain, ""),
     ("src/backend/dial/sftp.rs", "let _ = write_line(out, &refused(\"bad_request\", &e)).await;", 1, Why::DeadLink, ""),
@@ -90,7 +89,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=forward without `for", 1, Why::DeadLink, ""),
     // 〔HOST〕隧道那一臂的两条失败 ack（同上几行：写不进去说明界面已经走了）。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::common::contract::malformed(\"use=tunnel without `tunn", 1, Why::DeadLink, ""),
-    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.tunnel.unreachable\", &[(\"port\", &port.to_s", 1, Why::DeadLink, ""),
+    // 〔WF2〕开 direct-tcpip 失败那一条改成先按回拒码组 ack（`open_refused`）再写；写不进去同上。
+    ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &ack).await;", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", 4, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.failed\", &[(\"e\", &e.to_string())]), f", 1, Why::DeadLink, ""),
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.forward.bindFailed\", &[ (\"port\", &spec.loc", 1, Why::DeadLink, ""),

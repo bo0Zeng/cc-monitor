@@ -1357,6 +1357,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "arch",
             "expected",
             "label",
+            "leftovers",
             "legacy",
             "legacy_why",
             "os",
