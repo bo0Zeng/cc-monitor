@@ -739,6 +739,11 @@
       "zh": "那台机器的常驻后端端口（127.0.0.1:{port}）一直连不上：{e}",
       "args": ["port", "e"]
     },
+    "rsRemoteResident.tunnel.forwardingProhibited": {
+      "kind": "error",
+      "zh": "接不上：那台 sshd 不许端口转发（AllowTcpForwarding no），cc-monitor 连不到它的后端。把那台 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local、重启 sshd，再在机器页点「起」。",
+      "args": []
+    },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
       "zh": "接入请求没送到那台机器的常驻后端：{e}",

@@ -447,10 +447,17 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 fn the_leftover_shape_is_exactly_what_put_atomic_names() {
     let tag = super::trip_tag();
     for suffix in ["tmp", "bak"] {
-        assert!(super::is_trip_leftover(&format!("ccm.{tag}.{suffix}")), "{tag}.{suffix}");
+        assert!(
+            super::is_trip_leftover(&format!("ccm.{tag}.{suffix}")),
+            "{tag}.{suffix}"
+        );
     }
     let short = tag.rsplit_once('-').unwrap().0;
-    for not in [format!("ccm.{tag}.part"), format!("ccm.{short}.tmp"), format!(".{tag}.tmp")] {
+    for not in [
+        format!("ccm.{tag}.part"),
+        format!("ccm.{short}.tmp"),
+        format!(".{tag}.tmp"),
+    ] {
         assert!(!super::is_trip_leftover(&not), "{not}");
     }
 }

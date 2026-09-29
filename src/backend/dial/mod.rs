@@ -220,6 +220,10 @@ pub struct DialAck {
     pub strict: bool,
     /// 〔MIG-1 收尾〕同上，跳板那一台（直连 ⇒ `false`）。
     pub jump_strict: bool,
+    /// 〔WF2 · WIN3 读数 E〕开通道被远端回拒时，SSH 协议给的原因码（RFC 4254 §5.1：`administratively_prohibited` ·
+    /// `connect_failed` · `unknown_channel_type` · `resource_shortage` · `unknown`）。只有 `tunnel` 那一形填；其余 ⇒ `None`。additive。
+    /// 界面据它分「那台 sshd 不许端口转发」（停、不重试）与「那个口上还没人」（等一会儿再开）。
+    pub open_refused: Option<&'static str>,
     /// 协议版本（[`ACK_V`]）。
     pub v: u32,
     /// 本代理认得的用法（[`USES`]）。
@@ -238,9 +242,33 @@ impl DialAck {
             winner: None,
             strict: false,
             jump_strict: false,
+            open_refused: None,
             v: ACK_V,
             uses: USES,
         }
+    }
+
+    /// 〔WF2〕同 [`DialAck::failed`]，带上远端回拒开通道的原因码。
+    fn open_refused(error: String, fingerprint: Option<String>, why: &'static str) -> Self {
+        DialAck {
+            open_refused: Some(why),
+            ..DialAck::failed(error, fingerprint)
+        }
+    }
+}
+
+/// 〔WF2〕russh 的开通道失败 → 线上那个原因码（[`DialAck::open_refused`]）。不是开通道被拒 ⇒ `None`。
+pub(crate) fn open_failure_word(e: &russh::Error) -> Option<&'static str> {
+    use russh::ChannelOpenFailure as F;
+    match e {
+        russh::Error::ChannelOpenFailure(f) => Some(match f {
+            F::AdministrativelyProhibited => "administratively_prohibited",
+            F::ConnectFailed => "connect_failed",
+            F::UnknownChannelType => "unknown_channel_type",
+            F::ResourceShortage => "resource_shortage",
+            F::Unknown => "unknown",
+        }),
+        _ => None,
     }
 }
 
