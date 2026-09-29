@@ -239,7 +239,7 @@ fn every_monitor_file_strips_clean() {
 /// `readonly_guard::g6_dependency_signoff::…::the_clean_verdict_is_re_measured_on_the_tree_every_run`
 /// 按**原文行**重扫那几棵仓内 crate，不走 `production_code`）。
 /// 〔09-12 现打：先写在 `guard-core` 里，门禁 `backend` 那格当场 `685 passed; 1 failed`，
-///  逐字点名 `guard-core（../src/bridge/crates/guard-core）src/lib.rs:2219: \`fs::create_dir\``〔行号墓碑〕
+///  逐字点名 `guard-core（../src/common/guard-core）src/lib.rs:2219: \`fs::create_dir\``〔行号墓碑〕
 ///  —— 那个行号是**当时那一趟**的读数，那段代码已经搬走 ⇒ 它必然腐；留着是为了说清
 ///  「那把尺子按原文行数、连测试夹具都算」，不是给人拿去定位。
 ///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着后端本体两层判据。〕
@@ -540,7 +540,7 @@ fn the_detour_ratchet_reaches_both_trees() {
         }
     }
     // 地板逐棵树各一条 —— 合起来一条挡不住「一棵塌了另一棵涨了」。
-    // 09-12 现打：monitor 118（`src/bridge/src` 108 ＋ `src/bridge/crates` 9 ＋ `build.rs` 1；
+    // 09-12 现打：monitor 118（`src/bridge/src` 108 ＋ `src/common` 9 ＋ `build.rs` 1；
     //   当年 `scan_tree!` 的自摘把本文件摘掉过，`addr_corpus` 用相对住址补回来；
     //   那一刀在本仓**已经不生效**，补回来的是第二份，见 `addr_corpus` 头注）· backend 88。
     assert!(
@@ -837,14 +837,9 @@ fn every_comment_stripping_transformer_is_registered() {
     // （`cc_bus` / `hooks_diag` 的 `non_test_code` · `ccm_invocation` 的 `refusal_variants` ·
     // `launch_wire` 的 `production_ts`）整批掉出人群，而「没有新增第二份剥法」这个结论
     // 就是在一个缺了一大块的分母上得出的。**少扫不会红，只会零命中地绿。**
-    // ⚠ 四棵根**互不包含**（`src/bridge/src` · `src/bridge/crates` 是并列的两棵，
+    // ⚠ 四棵根**互不包含**（`src/bridge/src` · `src/common` 是并列的两棵，
     //   `src/backend` 与 `tests` 各自独立）—— 那是 `§5.4b` 纪律 1 要的那一问。
-    for sub in [
-        "src/bridge/src",
-        "src/bridge/crates",
-        "src/backend",
-        "tests",
-    ] {
+    for sub in ["src/bridge/src", "src/common", "src/backend", "tests"] {
         for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let file = f
                 .file_name()
@@ -1469,12 +1464,7 @@ fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
     // `<repo>/tests/backend/` ⇒ 原来那三棵树**一份也够不着它们**，
     // 而下面那些「符号地址 / 行号地址 / 死名」判据的人群就少了那一块 ——
     // **少扫不会红，只会零命中地绿**。
-    for sub in [
-        "src/bridge/src",
-        "src/bridge/crates",
-        "src/backend",
-        "tests",
-    ] {
+    for sub in ["src/bridge/src", "src/common", "src/backend", "tests"] {
         out.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
     }
     let br = root.join("src/bridge/build.rs");
@@ -2009,7 +1999,7 @@ fn dead_name_corpus() -> Vec<(String, String)> {
     let root = addr_repo_root();
     let mut out: Vec<(String, String)> = Vec::new();
     // 🔴 〔搬树 2026-09-18〕**两棵根，互不包含。** 上一版列了五个根，其中
-    // `"src/bridge/src"` · `"src/bridge/crates"` · `"src/doc"` 在搬树之后**全都是
+    // `"src/bridge/src"` · `"src/common"` · `"src/doc"` 在搬树之后**全都是
     // `"src"` 的子目录** ⇒ 那些文件被**数两遍**，于是「盘上 N 处」全部翻倍，
     // 而登记表写的是搬家前的真数 ⇒ 一片假红（本轮实发：`local_is_posix` 1→2 之类）。
     //
@@ -2445,9 +2435,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         (
             // 〔2026-09-18〕**这里一度被我改成 2，那是错的** —— 那个 2 是语料根互相
-            // 包含造成的**重复计数**假象（`src/bridge/crates` 是 `src` 的子目录）。
+            // 包含造成的**重复计数**假象（`src/common` 是 `src` 的子目录）。
             // 根去重之后真数仍是 1。⇒ 看到「盘上比登记多一倍」先怀疑语料面，别改账。
-            "src/bridge/crates/acct-core/src/lib.rs",
+            "src/common/acct-core/src/lib.rs",
             "contract_matches_the_backend_implementation",
             1,
         ),
@@ -2477,12 +2467,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    散文里点它们是为了说清「入参长什么样 / 哪些字段刻意不单列」。
         //    ⚠ 它们在改名前住 `crates/usage-core/src/lib.rs`，这张表按路径认键 ⇒ 随改名换住址。
         (
-            "src/bridge/crates/codex-token-core/src/lib.rs",
+            "src/common/codex-token-core/src/lib.rs",
             "reasoning_output_tokens",
             1,
         ),
         (
-            "src/bridge/crates/codex-token-core/src/lib.rs",
+            "src/common/codex-token-core/src/lib.rs",
             "total_token_usage",
             2,
         ),
@@ -2853,7 +2843,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/README.md", "create_branch_session", 1),
         ("src/bridge/README.md", "delete_remote_history_session", 2),
         (
-            "src/bridge/crates/branch-core/src/lib.rs",
+            "src/common/branch-core/src/lib.rs",
             "create_branch_session",
             1,
         ),
@@ -3285,7 +3275,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 〔SR1b · 2026-09-24〕读回比对的判定改成吃后端交回的事实（`verify_readback`），creds-core 那段历史引用旧名留墓碑。
         (
-            "src/bridge/crates/creds-core/src/lib.rs",
+            "src/common/creds-core/src/lib.rs",
             "verify_uploaded_bytes",
             1,
         ),
@@ -3868,7 +3858,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/bridge/README.md", "aggregate_remote_usage_all", 1),
         (
-            "src/bridge/crates/codex-token-core/src/lib.rs",
+            "src/common/codex-token-core/src/lib.rs",
             "kou_jing_singleton",
             1,
         ),
@@ -4005,7 +3995,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 那段解释里**逐字引用了旧名字**（不引就说不清换掉的是谁、为什么），
         // ⇒ 按本条第②条出路：同一行贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
         (
-            "tests/bridge/crates/guard-core/lib_tests.rs",
+            "tests/common/guard-core/lib_tests.rs",
             "the_caller_never_gets_its_own_source_back",
             1,
         ),
@@ -4830,7 +4820,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔SR1b · 2026-09-24〕后端那份 SFTP：原子上传的来历随函数从 monitor 搬来（改权限那条旧判据名一块）。
         ("src/backend/dial/sftp.rs", 1),
         // 〔SR1b · 2026-09-24〕creds-core 头注里「远端那一侧」那段：原子上传与读回比对的住址搬了，两处旧名挂墓碑。
-        ("src/bridge/crates/creds-core/src/lib.rs", 2),
+        ("src/common/creds-core/src/lib.rs", 2),
         // 〔RL1 · 第四波 · 2026-09-24〕中转并进本机常驻后端，monitor 另起中转那一族删了；中转名字表那一行注释挂一块。
         ("tests/naming/account-vs-relay-naming.vitest.ts", 1),
         // 〔C4a · 第四波 · 2026-09-24〕「会话 ↔ 账号」与远端全文搜索改走通道，Rust 那几份删了，留下的三处病史各挂一块：
@@ -4901,7 +4891,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
         ("src/bridge/README.md", 15), // 〔MIG-1 续〕列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 〔合并 MIG-1 × 主线 862be034〕主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 〔MIG-2〕11 → 13
         ("src/bridge/build.rs", 1),
-        ("src/bridge/crates/codex-token-core/src/lib.rs", 1),
+        ("src/common/codex-token-core/src/lib.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
         ("src/bridge/src/backend/control/cc_bus.rs", 1), // 〔SH1 · V136〕19 → 1：驾驶舱读面迁走、整份收成两句共用说法，旧墓碑段随之删，新头注一处 // 〔C4e 批 3b〕11 → 19：−1 点杀会话发送端那条理由的一处随收掉命令删了；＋9 写面五条迁到界面，原处两块墓碑 ＋ 更早几块墓碑里「换了住址」指向的住址也走了、逐行补标 // 〔C4e 批 2〕+1：点 monitor 杀会话发送端那条读 `killed` 的理由，发送端迁到界面
@@ -4974,7 +4964,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   按本表的口径它是墓碑：**不删那段话**，但挂上标记、登记在册。
         ("src/bridge/src/filewin/editor.rs", 3), // 〔F7c 收尾 09-24〕1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/bridge/comm_boundary_registry_tests.rs", 3), // 〔RW1〕+2：sftp.rs 那一行的阻塞随 F11 清空 · 头注里那个公开名字
-        ("tests/bridge/crates/guard-core/lib_tests.rs", 1),
+        ("tests/common/guard-core/lib_tests.rs", 1),
         ("tests/bridge/doc_claim_registry_tests.rs", 2), // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
         ("tests/bridge/filewin/entry_tests.rs", 2), // 〔MIG-3a · 09-28 裁 3〕1 → 2：旧名那一块随两条判据退役，新贴两块点它们
         ("tests/backend/assets/aliases/fence_tests.rs", 3), // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕+2：序列那五条判据的墓碑（`apply` 两处） // 〔TL1 · 4C〕新：写规则那条的死值验说明点代装 rc 那一跳（已退役）的旧名
@@ -5151,7 +5141,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/bridge/launch_tests.rs", 2),
         ("tests/bridge/quote_singleton_guard_tests.rs", 2),
         ("src/bridge/src/ccm_legacy.rs", 1), // 〔合并 MIG-3b × 主线 81f92f6a〕两边各自贴的墓碑相加，按盘上现数（跑出来核过）
-        ("src/bridge/crates/deploy-core/src/lib.rs", 1),
+        ("src/common/deploy-core/src/lib.rs", 1),
         ("tests/bridge/ccm_legacy_tests.rs", 1),
         ("tests/bridge/lib_invariant_population_tests.rs", 2),
         ("tests/bridge/ssh_source_tier1_tests.rs", 2), // 〔FIX4 · V41〕1 → 2：F45 那两条判据随 `winner_address` 删了，原处一块
@@ -5172,7 +5162,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/bridge/src/parity_ledger.rs", 1), // 〔MIG-3b〕新贴：点远端 `ccm` 探针旧命令名
         ("tests/bridge/agent_dispatch_registry_tests.rs", 1), // 〔MIG-3b〕新贴：点 LOC1b 删掉的那个门面名
         ("src/README.md", 1), // 〔MIG-3b〕新贴：点分叉那条旧命令名的散文挂墓碑
-        ("src/bridge/crates/branch-core/src/lib.rs", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
+        ("src/common/branch-core/src/lib.rs", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/branch-button.vitest.ts", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/views/history-actions.vitest.ts", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/account-reads.ts", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
@@ -5422,7 +5412,7 @@ fn the_tombstone_mark_scanner_really_sees_each_shape() {
 
 /// 两棵**生产树**的仓根相对住址。`P9` 剩下两件的前提说的就是这两棵树。
 ///
-/// ⚠ 这里**不含** `src/bridge/crates` —— 那八个共享 crate 从来就是「判据与被测代码
+/// ⚠ 这里**不含** `src/common` —— 那八个共享 crate 从来就是「判据与被测代码
 /// 同住一份文件」的形状（`guard-core` 自己就是最大的一份），它们不在 `设计/16`
 /// 的剖分计划里，混进来会让下面那两个读数说不清自己在说哪件事。
 const P9_PRODUCTION_TREES: &[&str] = &["src/backend", "src/bridge/src"];

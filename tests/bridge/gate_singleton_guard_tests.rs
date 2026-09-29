@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 唯一允许持有这个判定的文件（相对仓根）。
-const SOLE_HOME: &str = "src/bridge/crates/gate-core/src/lib.rs";
+const SOLE_HOME: &str = "src/common/gate-core/src/lib.rs";
 
 /// 判定形状的源码指纹。**运行时拼**，免得本文件自己被扫到时命中。
 /// 判定的**源码指纹**。
@@ -38,7 +38,7 @@ fn repo_root() -> PathBuf {
 
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    for base in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
+    for base in ["src/bridge/src", "src/common", "src/backend"] {
         walk(&root.join(base), &mut out);
     }
     out

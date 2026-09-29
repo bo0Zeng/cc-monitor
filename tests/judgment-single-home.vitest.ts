@@ -16,7 +16,7 @@
  *
  * # 四条
  *
- * 1. **人群两向（D5）**：盘上 `src/bridge/crates/*-core/src` 生产段的 `pub fn` / `pub const` / `pub static`
+ * 1. **人群两向（D5）**：盘上 `src/common/*-core/src` 生产段的 `pub fn` / `pub const` / `pub static`
  *    名字全集 == [`CORE_ITEMS`] 的键全集（逐 crate）。新长一个 `*-core` 项而不登记 ⇒ 红 ——
  *    逼着回答「TS 里有没有它的孪生」。`guard-core` 整 crate 排出人群，理由现核：它在每一份提到它的
  *    `Cargo.toml` 里都只在 `[dev-dependencies]`（测试基础设施，不是产品判定）。
@@ -225,7 +225,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
     rustNeedles: [
-      { file: "src/bridge/crates/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
+      { file: "src/common/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
       // 〔DUP3〕monitor 的 Gate 1 调的是 gate-core 那一条（恰一处），它自己的私有谓词不许长回来（`rustGone`）。
       { file: "src/bridge/src/backend/control/tmux.rs", text: "gate_core::existing_tmux_name_issue(", count: 1 },
@@ -268,7 +268,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       exports: ["RBIND_TOKEN_ALPHABET", "RBIND_TOKEN_LEN"],
       importers: ["src/remote-launch-run.ts"],
     },
-    parity: { via: "src/bridge/crates/shell-quote-core/src/lib.rs", tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
+    parity: { via: "src/common/shell-quote-core/src/lib.rs", tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
     rustGone: [
       "src/bridge/src/bind.rs::rbind_token_shape_ok",
       `${PAYLOAD_RS}::rbind_token_shape_ok`,
@@ -276,7 +276,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
     // 字母表字面量只住共享 crate 一处；两半各自的写法不许长回来。
     rustNeedles: [
-      { file: "src/bridge/crates/shell-quote-core/src/lib.rs", text: '"0123456789abcdef"', count: 1 },
+      { file: "src/common/shell-quote-core/src/lib.rs", text: '"0123456789abcdef"', count: 1 },
       { file: PAYLOAD_RS, text: '"0123456789abcdef"', count: 0 },
       { file: "src/backend/control/identity_tag.rs", text: "(b'a'..=b'f')", count: 0 },
     ],
@@ -301,7 +301,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       via: "tests/__fixtures__/upstream-url.golden.json",
       tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/upstream-url-parity.vitest.ts"],
     },
-    rustGone: ["src/backend/relay/upstream.rs::host_is_loopback", "src/bridge/crates/creds-core/src/store.rs::check_base_url_shape"],
+    rustGone: ["src/backend/relay/upstream.rs::host_is_loopback", "src/common/creds-core/src/store.rs::check_base_url_shape"],
     // 中转那份不许再有自己的协议表 / 回环判定。
     rustNeedles: [
       { file: "src/backend/relay/upstream.rs", text: '("https", true)', count: 0 },
@@ -332,7 +332,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     needles: [],
     parity: {
       via: "tests/__fixtures__/copy-interpolation.golden.json",
-      tests: ["tests/bridge/crates/copy-core/lib_tests.rs", "tests/copy/copy-table.vitest.ts"],
+      tests: ["tests/common/copy-core/lib_tests.rs", "tests/copy/copy-table.vitest.ts"],
     },
     why: "`设计/01 §6.9` 逐字「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」—— 设计明写两个读口",
   },
@@ -449,7 +449,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       exports: ["AGENT_PROFILE_TABLE"],
       importers: ["src/agent-profile.ts"],
     },
-    parity: { via: "src/bridge/crates/agent-tools-core/src/lib.rs", tests: ["tests/agent-profile-parity.vitest.ts"] },
+    parity: { via: "src/common/agent-tools-core/src/lib.rs", tests: ["tests/agent-profile-parity.vitest.ts"] },
     rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
     rustNeedles: [
       { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
@@ -736,7 +736,7 @@ const CARGO_TOMLS_TOP = ["src/bridge/Cargo.toml", "src/backend/Cargo.toml", "src
 /** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 后端 · 全景引擎 · creds-core 各一）。 */
 const GUARD_CORE_DEP_LINES = 4;
 
-const CRATES_ROOT = "src/bridge/crates";
+const CRATES_ROOT = "src/common";
 
 // ─────────────────────────────── 抽取 ───────────────────────────────
 
@@ -1036,7 +1036,7 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
     expect(stripComments('/** accounts.golden.json */\nconst x = 1;', "ts").includes("accounts.golden.json")).toBe(false);
     expect(stripComments('readFileSync("tests/__fixtures__/accounts.golden.json")', "ts").includes("accounts.golden.json")).toBe(true);
     expect(viaNeedle("tests/__fixtures__/accounts.golden.json")).toBe("__fixtures__/accounts.golden.json");
-    expect(viaNeedle("src/bridge/crates/agent-tools-core/src/lib.rs")).toBe("agent-tools-core/src/lib.rs");
+    expect(viaNeedle("src/common/agent-tools-core/src/lib.rs")).toBe("agent-tools-core/src/lib.rs");
     // `mirror` 的设计住址形状：认得出两种、认不出空话。
     expect(DESIGN_ADDRESS.test("`设计/01 §6.9` 逐字")).toBe(true);
     expect(DESIGN_ADDRESS.test("INVARIANTS §47")).toBe(true);

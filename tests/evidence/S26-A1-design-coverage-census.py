@@ -98,7 +98,7 @@
  🔴 三、这个定义**排除了什么** —— 每条都是明写的取舍，不是忘了
 ═══════════════════════════════════════════════════════════════════════════════
 
-  1. **`src/bridge/crates/*`（8 个共享 crate）与 `src/bridge/vendor/*`（2 个）**。
+  1. **`src/common/*`（8 个共享 crate）与 `src/bridge/vendor/*`（2 个）**。
      理由：用户给的人群逐字是「`src/bridge/src` · `src/backend` · `src/*.ts` · `src/**/*.ts`」。
      crates/ 与 vendor/ **不在里面**。⇒ 面⑨ 把它们的规模作为**已登记未扫面**打印出来，
      不假装扫过。（⚠ `codex-token-core` 属于丙那一族，面⑤ 会点它的名但不判。）
@@ -155,7 +155,7 @@ POP_ROOTS = ("src",)
 EXCLUDED_DIRS = (
     "src/generated",
     "src/doc",
-    "src/bridge/crates",
+    "src/common",
     "src/bridge/vendor",
     "src/bridge/gen",
     "src/bridge/embedded-daemons",
@@ -1275,7 +1275,7 @@ def main_report(args) -> int:
     P("\n" + "─" * 79)
     P("【面⑨】**已登记未扫面** —— 明写，不假装扫过")
     P("─" * 79)
-    for d in ("src/bridge/crates", "src/bridge/vendor"):
+    for d in ("src/common", "src/bridge/vendor"):
         fs = [p for p in (REPO / d).rglob("*.rs") if "/target/" not in p.as_posix()]
         P(f"  · `{d}/`：{len(fs)} 个 `.rs` / "
           f"{sum(p.read_text(errors='replace').count(chr(10)) for p in fs):,} 行 —— "

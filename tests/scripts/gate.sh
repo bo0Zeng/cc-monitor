@@ -80,7 +80,7 @@
 # │   散文里再抄一份必腐：它 09-20 立表时是 0 份，09-21 步 3 之后是非空，而这 6 处
 # │   自述**一条都不会红**（`gate-selfdesc` 的锚只钉裁词前缀）。
 # │ 〔自述·现物〕`test-tiers` 那一格没有独立的判据文件 —— 被测对象就是
-# │   `tests/bridge/crates/guard-core/test_tiers_tests.rs`（测试层分级：分区 ＋ 五层各一条反空真自检 ＋
+# │   `tests/common/guard-core/test_tiers_tests.rs`（测试层分级：分区 ＋ 五层各一条反空真自检 ＋
 # │   `tests/benches/` 登记 ＋ 合成夹具自检，TQ1 09-24 第 29 格），判定（三方对拍 ＋ 两条逐字锚点）逐字写在
 # │   下面那一行 `run_gate test-tiers` 的内联脚本里。条数的唯一住址是那一行的 `pin`。
 # │ 〔自述·退役〕〔第四波 S4〕第 26 格 `f3-copy`（秤 F3 两向）连同它量的那条零流量复制一起退役：
@@ -2023,7 +2023,7 @@ printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 
 # ── `test-tiers`（TQ1 09-24，第 29 格）：测试层分级那一族**还在不在** ─────────────────────
 #
 # 同 `comm-boundary` 那一形，理由也同：那一族挂在 `guard-core` 的 lib 上
-# （`src/bridge/crates/guard-core/src/lib.rs` 末尾那一行 `mod test_tiers;`），
+# （`src/common/guard-core/src/lib.rs` 末尾那一行 `mod test_tiers;`），
 # 那一行被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小十二 ——「摘掉了」与「全绿」在终端上分不开。
 # 而这一族守的正是「别的判据有没有静默变空」⇒ 它自己静默变空是最贵的那一种。
 # 三方对拍：`pin`（写死在本行）· 那份文件里现打的 `#[test]` 条数 · `cargo` 真跑出来的 passed，三侧异源；
@@ -2035,7 +2035,7 @@ printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 
 #   · 「挂载」那条腿：`guard-core` 的 `lib.rs` 里 `mod test_tiers;` 那一行改成别的模块名 ⇒
 #     `cargo` 编得过、这一族零条跑 ⇒ 抠不出 passed ／ 真跑 0 ≠ pin ⇒ 红。
 run_gate test-tiers '判过的条数 = 测试层分级那一族（分区 ＋ 单元 / 扫描 / 集成 / e2e / 真机五层各一条反空真自检 ＋ `benches/` 登记 ＋ 五条合成夹具自检）这一趟真跑过的条数。**三方对拍**：本行钉的 12 · 那份文件里现打的 `#[test]` 条数 · `cargo test -p guard-core --lib test_tiers::` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（分区 · 真机层）各命中**恰好 1 次**。⚠ **本格存在的唯一理由**：那一族挂在 `guard-core` 的 lib 上，那一行 `mod` 被摘掉时十二条一起消失，而 `cargo` 那一格只会合计小一点。⚠ 本格买的是「测试层分级没有静默消失」，**不买**任何一层的判据判得对；⚠ 这 12 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
-         bash -c 'pin=12; f=tests/bridge/crates/guard-core/test_tiers_tests.rs; \
+         bash -c 'pin=12; f=tests/common/guard-core/test_tiers_tests.rs; \
 part=the_tiers_partition_the_test_files_on_disk; \
 real=real_machine_tier_every_ignored_test_is_registered_and_its_trigger_still_reaches_it; \
 [ -r "$f" ] || { printf "test-tiers: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \

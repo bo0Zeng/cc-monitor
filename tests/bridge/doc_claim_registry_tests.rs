@@ -978,12 +978,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
     //    少这一棵 ⇒ 那些符号被读成「全仓找不到 —— 改名或删了」，
     //    而它们一个都没改名、也没删，只是搬了家。
     //    ⚠ 四棵根互不包含（`§5.4b` 纪律 1）。
-    for root in [
-        "src/bridge/src",
-        "src/bridge/crates",
-        "src/backend",
-        "tests",
-    ] {
+    for root in ["src/bridge/src", "src/common", "src/backend", "tests"] {
         srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
     }
     // 〔08-06 第二次补扫描面〕**把 `doc_claim_registry.rs` 也收进来**。
@@ -2007,7 +2002,7 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
     let mut defined: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         std::collections::BTreeMap::new();
     let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-    for root in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
+    for root in ["src/bridge/src", "src/common", "src/backend"] {
         srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
     }
     for (_, raw) in &srcs {

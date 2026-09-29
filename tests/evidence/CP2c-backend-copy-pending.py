@@ -12,7 +12,7 @@
     `调研/第四波记录/CP2c.md §2.1`）；
   · `设计/91 §6` 第 7 条「后端 crate 没有表的读口 —— 露得到界面的那部分进表时，读口住哪没定」（本路定了：`copy-core`）。
 
-与 CP2b 的 `CP2b-copy-pending.py` **同形**（人群、两向、三刀一样），只是射程是 `src/backend/**` ∪ `src/bridge/crates/**`。
+与 CP2b 的 `CP2b-copy-pending.py` **同形**（人群、两向、三刀一样），只是射程是 `src/backend/**` ∪ `src/common/**`。
 两张表各管一半、互不相交：CP2b 那张管前端与 monitor crate（合并时它那张表里这两棵的行删掉，见 CP2c 记录 §7）。
 
 跑法（仓根下）：
@@ -60,7 +60,7 @@ HERE = Path(__file__).resolve().parent
 CP1_PATH = HERE / "CP1-copy-verdicts.py"
 PENDING = HERE / "CP2c-backend-copy-pending.tsv"
 HEADER = ("文件", "理由")
-SCOPE = ("src/backend/", "src/bridge/crates/")
+SCOPE = ("src/backend/", "src/common/")
 SCOPE_FILES_FLOOR = 100
 PROBE_SRC = (
     "pub fn a() -> Result<(), String> {\n"
@@ -144,7 +144,7 @@ def read_pending(path: Path):
         if cols[0] in rows:
             problems.append(f"待办表第 {i} 行重复：{cols[0]}")
         if not in_scope(cols[0]):
-            problems.append(f"待办表第 {i} 行不在射程里（只管 src/backend/ 与 src/bridge/crates/）：{cols[0]}")
+            problems.append(f"待办表第 {i} 行不在射程里（只管 src/backend/ 与 src/common/）：{cols[0]}")
         rows[cols[0]] = cols[1]
     return rows, problems
 

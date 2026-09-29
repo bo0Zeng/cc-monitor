@@ -143,10 +143,10 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/assets/skill_ledger.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", 1, Why::Diag, "「写不进去不拖垮后端」（`15 §4.7 S1` 脱离载体那一格）"),
     ("src/backend/stderr_log.rs", "let _ = self.fresh();", 1, Why::Diag, "「写不进去不拖垮后端」（`15 §4.7 S1` 脱离载体那一格）"),
-    ("src/bridge/crates/creds-core/src/perm.rs", "let _ = CloseHandle(token);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/bridge/crates/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", 1, Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
-    ("src/bridge/crates/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", 5, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/bridge/crates/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", 2, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/common/creds-core/src/perm.rs", "let _ = CloseHandle(token);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/common/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", 1, Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
+    ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", 5, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     // 〔SH1 · V136〕`cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
     ("src/bridge/src/backend/control/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
     ("src/bridge/src/backend/control/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
@@ -226,7 +226,7 @@ const KEY_CHARS: usize = 120;
 const ROOTS: &[&str] = &[
     "src/backend",
     "src/bridge/src",
-    "src/bridge/crates",
+    "src/common",
     "src/panorama-engine",
 ];
 

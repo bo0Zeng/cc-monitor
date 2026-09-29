@@ -148,7 +148,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
 // 〔DUP2〕**191 → 190**，同上（**被测对象没了**）：`launch-dimensions.test.ts` −1（「rbind-token：形状闸逐格」那条 —— TS 的
 // `isValidRbindToken` 与维度 `apply` 里那道自检按 `设计/90 §3` 判据 2 删了，逐格坏样本归 Rust `payload_tests.rs`）。删后现打 190 ⇒ 棘到现打值。
 // 〔DUP2 · J6〕**190 → 187**，同上：`remote-launch.test.ts` −3（TS 的 `isValidTmuxName` / `isValidNewTmuxName` 删了，三条逐格
-// ——attach 拒绝面 · F01 新建禁 glob · F04b 新建禁 `=`——原样搬进 `tests/bridge/crates/gate-core/lib_tests.rs`）。删后现打 187 ⇒ 棘到现打值。
+// ——attach 拒绝面 · F01 新建禁 glob · F04b 新建禁 `=`——原样搬进 `tests/common/gate-core/lib_tests.rs`）。删后现打 187 ⇒ 棘到现打值。
 // 〔FIX4 · J7〕**187 → 181**，同上（**被测对象没了**）：`remote-launch.test.ts` −6（TS 铸名口删了；派生 · 避让 · 分叉基名的逐格
 // 归 Rust `tests/backend/control/ccm/plan_tests.rs` ＋ 帧那一格 `ccm_tests.rs`）。删后现打 181 ⇒ 棘到现打值。
 const TOTAL_FLOOR = 181;

@@ -232,7 +232,7 @@ fn the_retry_budget_number_has_a_measured_origin_pinned_to_it() {
 ///
 /// # 它扫的是什么、扫不到什么
 ///
-/// 扫描面 = `src/bridge/src` · `src/backend` · `src/bridge/crates` 三棵树的
+/// 扫描面 = `src/bridge/src` · `src/backend` · `src/common` 三棵树的
 /// `.rs`，逐份过 [`guard_core::production_code`]（剥测试段 + 剥块注释 + 剥整行与行尾 `//`）。
 /// ⇒ 本条那张形态表住 `#[cfg(test)]` 里、那几段前提住 `///` 里，**按构造都进不了扫描面**
 /// —— `scanning_guard_registry` 头注四类里的第二类（「剥生产段（构造性摘除）」）。
@@ -329,7 +329,7 @@ fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
     // ④ 剥法自检：剥完还残留测试属性 ⇒ 上面那张 `FORMS` 表自己就进了扫描面。
     guard_core::assert_no_test_code(self_rel, &guard_core::production_code(me));
     let mut corpus: Vec<(String, String)> = vec![(self_rel.to_string(), me.to_string())];
-    for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
+    for sub in ["src/bridge/src", "src/backend", "src/common"] {
         for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let rel = f
                 .strip_prefix(&root)

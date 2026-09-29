@@ -32,7 +32,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              退役归 **U11 本体**。",
     ),
     (
-        "src/bridge/crates/gate-core/src/lib.rs",
+        "src/common/gate-core/src/lib.rs",
         "consumer",
         2,
         "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
@@ -91,7 +91,7 @@ fn scan_files() -> Vec<PathBuf> {
     collect_ts(&root.join("src"), &mut files);
     files.sort();
     collect_rs(&root.join("src/bridge/src"), &mut files);
-    collect_rs(&root.join("src/bridge/crates"), &mut files);
+    collect_rs(&root.join("src/common"), &mut files);
     // 🔴 〔`K-R48` 第二拍 09-11〕`shared/ccm` 删了 ⇒ 换成后端那份原生实现。
     //    `collect_rs` 只扫 `src/bridge/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
     for extra in [
@@ -191,7 +191,7 @@ fn the_scan_actually_reads_all_four_surfaces() {
     );
     for f in [
         "src/bridge/src/backend/control/tmux.rs",
-        "src/bridge/crates/gate-core/src/lib.rs",
+        "src/common/gate-core/src/lib.rs",
         "src/backend/control/ccm/plan.rs",
         "src/shared/cc-bus/scripts/cc-spawn",
     ] {

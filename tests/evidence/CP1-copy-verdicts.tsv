@@ -48,14 +48,14 @@ src/backend/plugin/invoke.rs:102	决定裸调的复用命令连到哪一台服�
 src/backend/plugin/invoke.rs:104	字符编码那一档，三个键一起进（这个优先级最高）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:105	字符编码那一档，三个键一起进	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
 src/backend/plugin/invoke.rs:106	字符编码那一档，三个键一起进（这个优先级最低）	保留	[不对外] INHERITED_ENV_KEYS 的理由列，invoke.rs:203 以 `_why` 丢弃，只读第 0 列（环境变量名）
-src/bridge/crates/creds-core/src/lib.rs:238	SecretKey(<已遮蔽>)	保留	[不对外] SecretKey 手写 Debug 的遮蔽形，只在 {:?} 路径里代替密钥出现，防泄漏用，不是文案
+src/common/creds-core/src/lib.rs:238	SecretKey(<已遮蔽>)	保留	[不对外] SecretKey 手写 Debug 的遮蔽形，只在 {:?} 路径里代替密钥出现，防泄漏用，不是文案
 src/bridge/src/backend/control/backend_control.rs:163	已起：{}	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）
 src/bridge/src/backend/control/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
 src/bridge/src/backend/control/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）
 src/bridge/src/backend/control/backend_control.rs:187	{origin} 的流已重起	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词，将来若上界面要换 新词:流
 src/bridge/src/backend/control/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
 src/bridge/src/backend/control/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
-src/bridge/crates/deploy-core/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 〔E2〕匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（〔MIG-3b〕随 is_ours 搬进 deploy-core）
+src/common/deploy-core/src/lib.rs:663	# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）	保留	[不对外] 〔E2〕匹配用的记号：认旧版三行 ccm 入口（生成器随「ccm 就是后端本体」删了）的第二行，只拿来比对、不渲染（〔MIG-3b〕随 is_ours 搬进 deploy-core）
 src/bridge/src/backend/control/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] 〔W5-VIS〕FrameTally 的流名，只出现在丢帧账那几行日志里
 src/bridge/src/backend_policy.rs:400	[死亡账] origin={origin} 判定={} 退出状态={} —— {}	保留	[不对外] 〔CP2b 复核〕ST2 步 7 起界面只取 last_brief（判定＋退出状态），ledger_line 只经 DeathSink 落 monitor 日志；原裁「界面只取判定＋退出状态两格，日志行留在日志」已兑现 ⇒ 这一行今天不对外，不进文案表（原裁：改·§2.1 [可达存疑]）
 src/bridge/src/backend_policy.rs:504	脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍	保留	[不对外] DEATH_RECORD_SITES：判据用的登记表（记录点住址＋说明），生产代码不读
@@ -125,7 +125,7 @@ src/settings/assets-section.ts:97	machines 那一格	保留	[不对外] 〔AS2�
 src/settings/assets-section.ts:103	rows 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:109	from 那一格	保留	[不对外] 〔AS2〕同上一行
 src/settings/assets-section.ts:116	problems 那一格	保留	[不对外] 〔AS2〕同上一行
-src/bridge/crates/deploy-core/src/lib.rs:659	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔GP1 · MIG-3b 随 is_ours 搬进 deploy-core〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
+src/common/deploy-core/src/lib.rs:659	# ccm — cc-monitor 统一启动器	保留	[不对外] 〔GP1 · MIG-3b 随 is_ours 搬进 deploy-core〕匹配用的记号：认旧版 bash 启动器（09-11 前推到远端 ~/.local/bin/ccm 的那一份）第二行
 src/backend/stderr_log.rs:51	[stderr-log] 上一份挪成 {}（每份上限 {CAP_BYTES} 字节）；再早的那一份丢了\n	保留	[不对外] 〔NT2 · S1〕后端 stderr 诊断文件滚动时写进新那份第一行的日志行（丢了哪一份要带身份）；只进日志文件
 src/backend/stderr_log.rs:163	[stderr] 没被交日志路径 ⇒ stderr 原样	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志（没被交路径 ⇒ stderr 不动）
 src/backend/stderr_log.rs:165	[stderr] 本进程的输出落在 {}（每份上限 {} 字节，留一份旧的）	保留	[不对外] 〔NT2 · S1〕后端流模式起来时的一行 tracing 日志：诊断落在哪份文件

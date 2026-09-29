@@ -184,7 +184,7 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
         "monitor-backend-common-landed",
         MeasureShape::LineHasResidents,
         Verdict::Holds,
-        "与 `platform/` 那格逐字同形。⚠ 这条线的文档那一格逐字写着「**刻意不建**：         monitor 侧的共用面住 `src/bridge/crates/*`」⇒ 它大概率**永远**停在这一支，         而空壳目录那条红正是为它准备的",
+        "与 `platform/` 那格逐字同形。⚠ 这条线的文档那一格逐字写着「**刻意不建**：         monitor 侧的共用面住 `src/common/*`」⇒ 它大概率**永远**停在这一支，         而空壳目录那条红正是为它准备的",
     ),
 ];
 

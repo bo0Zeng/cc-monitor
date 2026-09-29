@@ -222,7 +222,7 @@
 //!
 //! 覆盖：`src/bridge/src` · `src/backend`。
 //! **仍然没看的（09-06 现打，本仓 `.rs` 的其余落点）**：
-//! `src/bridge/crates`（9 份）· `src/bridge/vendor`（23 份）· `src/bridge/build.rs`（1 份）。
+//! `src/common`（9 份）· `src/bridge/vendor`（23 份）· `src/bridge/build.rs`（1 份）。
 //! ⚠ 那三处闭集命中同样是 0（现打）⇒ 今天补进来也是 +0 红；
 //! **但「今天 +0」不是「不用补」** —— 这一行说的是「没看」，不是「没有」。
 //!

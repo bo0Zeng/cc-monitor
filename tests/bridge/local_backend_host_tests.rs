@@ -30,7 +30,7 @@ use super::*;
 /// - **也买不到**「本文件的测试段真的被剥干净了」—— 那归 `structural_scan.rs` 里那条
 ///   走 `guard_core::assert_tree_strips_clean` 的树级反向自检。
 /// - ⚠ 这条 `include_str!` **不是跨半边的边**：`cross_half_edge_registry` 那张表管的是
-///   monitor ↔ backend，而 `src/bridge/crates/` 与 `src/bridge/src/` 同属这一半。
+///   monitor ↔ backend，而 `src/common/` 与 `src/bridge/src/` 同属这一半。
 ///   同形先例：`dial_home_registry::INTERFACE_MANIFEST` · `usage.rs` 读 `usage-core`。
 #[test]
 fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
@@ -39,7 +39,7 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
     // 🔴 **这一族只许有一个家**（`brief` 13b）：别在上面那段注释里、也别在别的判据里再抄一份
     //   —— 抄一份就有两个家，而漂开的那一天两边看起来一模一样。
     const PIN: &str = r#"strip_visibility(mod_line).starts_with("mod ")"#;
-    const GUARD_CORE: &str = include_str!("../../src/bridge/crates/guard-core/src/lib.rs");
+    const GUARD_CORE: &str = include_str!("../../src/common/guard-core/src/lib.rs");
     // 反空真：先证 `include_str!` 真读到了东西，否则「找不到就红」是空转。
     assert!(
         GUARD_CORE.len() > 10_000,
@@ -49,7 +49,7 @@ fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
     assert_eq!(
         GUARD_CORE.matches(PIN).count(),
         1,
-        "在 `src/bridge/crates/guard-core/src/lib.rs` 里没有恰好一处剥法那一行的逐字校验位：\n\
+        "在 `src/common/guard-core/src/lib.rs` 里没有恰好一处剥法那一行的逐字校验位：\n\
              逐字 `{PIN}`\n\
              ⇒ 两种来路，都要人来看：\n\
              ① **剥法被改了**（退回按字面前缀认 `mod ` 那一版？）—— 那么本文件上面那个\n\
@@ -1431,9 +1431,8 @@ fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
     //   升级一次 monitor 就换一个口 = 下一次启动去连空口、起第二个后端，
     //   而那正是本件要防的那件事。
     // 〔HOST〕实现搬进共享 crate（本机宿主与远端 `--resident-ensure` 同一个函数）⇒ 锚点跟着看那一份。
-    let me = guard_core::production_code(include_str!(
-        "../../src/bridge/crates/relay-route-core/src/lib.rs"
-    ));
+    let me =
+        guard_core::production_code(include_str!("../../src/common/relay-route-core/src/lib.rs"));
     assert!(
         !me.contains("DefaultHasher"),
         "端口用上了 `DefaultHasher` —— 它的输出**跨 Rust 版本不保证稳定**（标准库自己写的）。\

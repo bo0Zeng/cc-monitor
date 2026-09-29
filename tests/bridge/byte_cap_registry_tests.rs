@@ -468,14 +468,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
     // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
     (
-        "src/bridge/crates/search-core/src/lib.rs",
+        "src/common/search-core/src/lib.rs",
         "MAIN_CAP",
         20_000,
         "单条 main 文本进索引的**字符**数（monitor 与后端同一份）",
         "索引截断（不丢数据）",
     ),
     (
-        "src/bridge/crates/search-core/src/lib.rs",
+        "src/common/search-core/src/lib.rs",
         "TOOL_CAP",
         4_000,
         "单条 tool 文本进索引的**字符**数（monitor 与后端同一份）",
@@ -1000,7 +1000,7 @@ fn eval_cap(expr: &str) -> Option<u64> {
 /// 但那是**运气**不是设计」。那一刀**在这一处不生效**（判据由 `#[path]` 挂载
 /// ⇒ `file!()` 是折返路径 ⇒ 后缀比不命中）。
 /// 今天挡住那张 `CAPS` 表自匹配的是**住址**：本文件住 `tests/bridge/`，而下面三棵根是
-/// `src/bridge/src` · `src/backend` · `src/bridge/crates` —— 它一份都不在里面。
+/// `src/bridge/src` · `src/backend` · `src/common` —— 它一份都不在里面。
 /// 〔audit-0805 **F23**：这一族已实测栽过五次〕
 /// 生产段里**全部**尺寸类 const：`const NAME: u64|usize|u32 = <expr>`。
 ///
@@ -1010,12 +1010,12 @@ fn eval_cap(expr: &str) -> Option<u64> {
 fn size_typed_consts() -> Vec<(String, String, Option<u64>)> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 `K-R100` 09-13 加第三条 `src/bridge/crates`：搜索的两条封顶（`MAIN_CAP` /
+    // 🔴 `K-R100` 09-13 加第三条 `src/common`：搜索的两条封顶（`MAIN_CAP` /
     // `TOOL_CAP`）从两侧各一份收进了共享 crate `search-core`。**不加这一条**，
     // 那两条上限会从本表的扫描面里静默消失 —— 表里还登记着、盘上再也扫不到，
     // 而 `the_registered_numbers_still_match_the_source` 会以「算不出来」的形态红，
     // 报的方向还是错的。
-    for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
+    for sub in ["src/bridge/src", "src/backend", "src/common"] {
         for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let body = guard_core::production_source(&raw);
             let rel = f
@@ -1106,11 +1106,11 @@ fn every_size_typed_constant_is_either_a_cap_or_registered_as_not_one() {
 fn scan() -> Vec<(String, String, Option<u64>)> {
     let root = repo_root();
     let mut out = Vec::new();
-    // 🔴 `K-R100` 09-13：`src/bridge/crates` 这一条与 `size_typed_consts()` 那边同源同理
+    // 🔴 `K-R100` 09-13：`src/common` 这一条与 `size_typed_consts()` 那边同源同理
     // ——搜索的两条封顶已收进共享 crate `search-core`。
     // ⚠ 上面 `size_typed_consts` 的头注说「两者共用同一份遍历」，**盘上不是**：
     // 这里自己又走了一遍。⇒ **改扫描面要两处一起改**（本轮就是漏了这一处才红的）。
-    for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
+    for sub in ["src/bridge/src", "src/backend", "src/common"] {
         for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             // ★ 只扫**生产段**〔08-06〕：本条原来扫整份文件，于是**测试里的夹具常量**
             // 也被当成生产上限（`common/fs.rs` 的顺序判据里那个 `const CAP` 当场被误报）。
@@ -1320,10 +1320,10 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
 fn the_exclusion_list_is_not_dead_wood() {
     let root = repo_root();
     let mut all = String::new();
-    // 🔴 `K-R100` 09-13 加 `src/bridge/crates`：排除表的语料面必须与**产生上限的那个语料面**
+    // 🔴 `K-R100` 09-13 加 `src/common`：排除表的语料面必须与**产生上限的那个语料面**
     // 一致（`size_typed_consts()` / `scan()` 都已含它）。不一致的话，一条针对共享 crate
     // 里常量的排除会被本条判成「死木」—— 而它其实活着，只是本条看不见它。
-    for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
+    for sub in ["src/bridge/src", "src/backend", "src/common"] {
         for (_, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let body = guard_core::production_source(&raw);
             all.push_str(&body);

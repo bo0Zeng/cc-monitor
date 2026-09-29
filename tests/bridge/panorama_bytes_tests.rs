@@ -193,15 +193,19 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
 #[test]
 fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choose() {
     // 〔MIG-3b〕命令串随表 A / 表 B 搬进共享的 `deploy-core`（本机常驻后端出部署计划也问这一条）⇒ 射程是 monitor 生产段 ∪ 共享 crate，
-    //   住址集合 == {`crates/deploy-core/src/lib.rs`}；全景这一臂经 `byte_table::probe_key` 用它（下面那几格锚）。
+    //   住址集合 == {`src/common/deploy-core/src/lib.rs`}；全景这一臂经 `byte_table::probe_key` 用它（下面那几格锚）。
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let needle = format!("uname -s {}", "-m");
     let mut at: Vec<String> = Vec::new();
-    for root in [base.join("src"), base.join("crates")] {
+    let repo = crate::guard_support::repo_root();
+    for root in [
+        base.join("src"),
+        crate::guard_support::repo_src_root().join("common"),
+    ] {
         for (p, src) in guard_core::scan_tree!(&root, &["rs"]) {
             if guard_core::production_code(&src).contains(&needle) {
                 at.push(
-                    p.strip_prefix(base)
+                    p.strip_prefix(&repo)
                         .unwrap_or(&p)
                         .to_string_lossy()
                         .replace('\\', "/"),
@@ -212,7 +216,7 @@ fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choos
     at.sort();
     assert_eq!(
         at,
-        vec!["crates/deploy-core/src/lib.rs".to_string()],
+        vec!["src/common/deploy-core/src/lib.rs".to_string()],
         "问机器的那条命令在 monitor 生产段 ∪ 共享 crate 的住址不是只有 deploy-core"
     );
     // 正控：同一把尺子在一段合成源码上数得出（不然上面的「只有一处」可能是空真 —— 它的非空由 deploy-core 那一处担着）。

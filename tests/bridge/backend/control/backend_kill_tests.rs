@@ -42,10 +42,10 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
         //（第一拍它与 `shared/ccm` 并存、表是 5 条；第二拍脚本删了，回到 4 条。）
         "src/backend/control/ccm/plan.rs",
         // 〔DUP2 · J6〕规则搬进共享 crate 之后，这一条的禁字集字面量不住本文件了 ⇒ 从「自己校验」改记「过上游那一份」，
-        //   上游 = 下面理由里点名的 `src/bridge/crates/gate-core/src/lib.rs`（③b 靠这个点名把那条校验器接回人群）。
+        //   上游 = 下面理由里点名的 `src/common/gate-core/src/lib.rs`（③b 靠这个点名把那条校验器接回人群）。
         CreationVerdict::UpstreamValidated,
         "显式 `--tmux=<名>` / `--tmux-base=<基名>` 两条都先过 `validate_tmux_name`，它调共享那一份 \
-             `src/bridge/crates/gate-core/src/lib.rs` 的 `new_tmux_name_issue`（禁字集 `NEW_TMUX_NAME_REFUSED` 逐字拒 `* ? . : =`，\
+             `src/common/gate-core/src/lib.rs` 的 `new_tmux_name_issue`（禁字集 `NEW_TMUX_NAME_REFUSED` 逐字拒 `* ? . : =`，\
              另拒前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128；〔DUP2〕规则全仓只剩这一份）；\
              派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
              **构造上产不出禁字**。三条入口都由 `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
@@ -66,7 +66,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
         "src/backend/control/launch_render/payload.rs",
         CreationVerdict::ValidatesItselfByAllowlist,
         "〔DUP2 · J6〕界面那一道（TS 的两个会话名谓词）删了，名字的规则只有一份：`TmuxTarget::check` 对**新建**那一格\
-             调 `src/bridge/crates/gate-core/src/lib.rs` 的 `new_tmux_name_issue`（拒 `* ? . : =` · 前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128），\
+             调 `src/common/gate-core/src/lib.rs` 的 `new_tmux_name_issue`（拒 `* ? . : =` · 前导 `-` · 控制符 · 视觉欺骗字符 · 超过 128），\
              对 attach / 送进已有会话调 `existing_tmux_name_issue`（拒绝集 ＋ 非空，V131 ②）；另对 `Raw` 那一支只放行 `[A-Za-z0-9_-]`\
              （裸拼的渲染前提，构造上产不出 `:` `=` `*` `?` `.` 与控制字符）；\
              `@ccm_sid` 另过 `shell_quote_core::session_id_ok`（它是**裸拼**的；〔DUP1〕原先那份 `ccm_sid_safe`〔散文墓碑〕收进共享那一条）。三条都由 \
@@ -104,7 +104,7 @@ const VALIDATORS: &[(&str, &str, &str)] = &[
     //    （`"*?.:="`，后端 `validate_tmux_name` 自己那一份）。规则收成一份进共享 crate 之后只剩下面这一行 ——
     //    禁字集字面量住它，`plan.rs` 与 `payload.rs` 两条创建路径的理由各点它的名（③b 那条边）。
     (
-        "src/bridge/crates/gate-core/src/lib.rs",
+        "src/common/gate-core/src/lib.rs",
         "\"*?.:=\"",
         "`NEW_TMUX_NAME_REFUSED` —— 新建会话名的禁字集，全仓唯一一份（`new_tmux_name_issue` 用它）；\
              刻意写成一个字符串字面量而不是 `matches!(c, '*' | '?' | …)`，就是为了让本判据的第二列钉得住它\

@@ -871,7 +871,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     )
     .unwrap();
     pin_definition(
-        include_str!("../../../src/bridge/crates/relay-route-core/src/lib.rs"),
+        include_str!("../../../src/common/relay-route-core/src/lib.rs"),
         r#"pub const BACKEND_LANDING_REL: &str = ".cc-monitor/bin/ccm";"#,
         "pub const BACKEND_LANDING_REL",
         "后端落点",

@@ -149,9 +149,7 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     const CALL: &str = "branch_core::find_session_file(";
 
     // ① 唯一那份：声明只有一处，且住在共享 crate 里。
-    let core = guard_core::production_code(include_str!(
-        "../../src/bridge/crates/branch-core/src/lib.rs"
-    ));
+    let core = guard_core::production_code(include_str!("../../src/common/branch-core/src/lib.rs"));
     let decls = core.matches("pub fn find_session_file").count();
     assert_eq!(
         decls, 1,
@@ -247,7 +245,10 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
         "两条 apikey 规则在两半里又长出了定义：{found:?}"
     );
     let core_prod = guard_core::production_code(
-        &std::fs::read_to_string(root.join("crates/acct-core/src/lib.rs")).unwrap(),
+        &std::fs::read_to_string(
+            crate::guard_support::repo_src_root().join("common/acct-core/src/lib.rs"),
+        )
+        .unwrap(),
     );
     for d in defs {
         guard_core::find_pinned(&core_prod, d)

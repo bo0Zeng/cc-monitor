@@ -131,7 +131,7 @@
   是**文件内的分支**，不是独立文件：现打 `src/cards/index.ts` 里「codex」出现 **1 次**、
   `src/agent-profile.ts` **3 次**。⇒ **文件级的普查看不见它**，本量具的射程到不了
   （头注排除项第 6 条：符号级/行级残留不在射程内）。
-- `src/bridge/crates/codex-token-core/`（**87 行**）不在用户给的人群里（crates/ 排除）。
+- `src/common/codex-token-core/`（**87 行**）不在用户给的人群里（crates/ 排除）。
 - ⚠ 顺带两处文档腐：`99 §3.3` 写「`cards/index.ts` 1125 行」—— **现打 1 201**。
 
 ---
@@ -226,7 +226,7 @@
 
 | 没扫什么 | 规模（现打） | 为什么 |
 |---|---:|---|
-| `src/bridge/crates/*`（8 个共享 crate） | **6 036** 行 | 不在用户给的人群里 |
+| `src/common/*`（8 个共享 crate） | **6 036** 行 | 不在用户给的人群里 |
 | `src/bridge/vendor/*`（2 个） | **4 378** 行 | 同上（且是第三方 / vendored） |
 | `src/styles.css` | **185 984** 字节 | `.css` 没有 import 图，②③ 对它不成立；CSS 面另有 `css-ledger.vitest.ts` |
 | `src/generated/`（81 个 `.ts`） | — | ts-rs 生成物，改它要改生成器 |

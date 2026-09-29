@@ -30,7 +30,7 @@ const TREES: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "共享 crate",
-        "src/bridge/crates",
+        "src/common",
         7,
         "两侧的清单都 `path` 依赖它们 ⇒ 谁在这里取用引擎，两侧都会被编进去，\
              而上面那两条老判据一份都看不见（09-04 现打 9 份 `.rs`，地板取 7）",

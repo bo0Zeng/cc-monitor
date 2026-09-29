@@ -18,7 +18,7 @@
 #   bridge  —— `cd src/bridge && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
 #   backend —— `cd src/backend && cargo test`（= 门禁 `backend` 那一格）
 # 测试里 spawn 出去的子进程（后端二进制、`current_exe` 起的子测试）也是插桩的，它们的 `.profraw` 一并算进来。
-# 报告的人群是**生产源码**：`src/bridge/src` · `src/bridge/crates/*/src` · `src/backend`；
+# 报告的人群是**生产源码**：`src/bridge/src` · `src/common/*/src` · `src/backend`；
 # 测试树 `tests/`、vendor、依赖 crate 一律滤掉（`--ignore-filename-regex`）。
 #
 # # 它量不到什么
@@ -26,7 +26,7 @@
 # - 只量「这一趟 `cargo test` 在**这台机器**上执行到了哪几行」：`#[ignore]` 的、要 `embedded_backends` cfg 的、
 #   要 Xvfb / 真 sshd 的，这一趟没跑就不算 —— 读数是**门禁那两格**的覆盖，不是全部判据的覆盖。
 # - 行被执行 ≠ 行被断言：源码扫描型判据读源码**文本**，一行生产代码都不执行 ⇒ 它们对这个数贡献为 0，
-#   而那不代表它们没守东西（测试层分级见 `tests/bridge/crates/guard-core/test_tiers_tests.rs`）。
+#   而那不代表它们没守东西（测试层分级见 `tests/common/guard-core/test_tiers_tests.rs`）。
 # - TS 那一半归 `npm run coverage`（vitest v8）＋ `tests/scripts/assert-coverage-floors.mjs`，本脚本不碰。
 #
 # 用法：

@@ -956,7 +956,7 @@ fn every_carrier_says_which_one_it_is() {
 // 那是把账做平，不是把名字改对」。
 // ⇒ 下面两条各买一半：
 //   · 第一条是**零命中守卫**，射程 = 闭集那张表的**数据**本身（改回旧 id ⇒ 当场红）；
-//   · 第二条是**登记 ＋ 递减棘轮**，射程 = `src/bridge/src` ＋ `src/bridge/crates` 两棵树 ——
+//   · 第二条是**登记 ＋ 递减棘轮**，射程 = `src/bridge/src` ＋ `src/common` 两棵树 ——
 //     没登记就不许带旧名，登记了就只许变少。**那张表就是那份读数**，不是一句话。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1026,7 +1026,7 @@ const SITES: &[(&str, Why, usize)] = &[
     //     两侧同拍改成了「远端后端」，一处不剩。
     // 〔MIG-3a〕`src/skill_host.rs` / `tests/bridge/skill_host_tests.rs` 两行随文件删了（收件箱那一面进了后端）。
     // 〔MIG-3b 续〕`src/structural_scan.rs` 那一行随 `fn_names_starting_with` 的头注搬进共享的 guard-core（处数不变）。
-    ("crates/guard-core/src/lib.rs", Why::OldId, 1),
+    ("src/common/guard-core/src/lib.rs", Why::OldId, 1),
     // 〔MIG-3b 续〕下面四行随申报表与它的判据搬进后端（`src/backend/footprint/` · `tests/backend/footprint/`），处数不变。
     ("src/backend/footprint/registry.rs", Why::OldId, 2),
     ("tests/backend/footprint/rows_tests.rs", Why::OldId, 3), // 〔E2〕4 → 3：远端投影那条判据不再点后端（`$BACKEND_PATH` 删了），讲后端旧名的那句随之删
@@ -1180,7 +1180,7 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # 它买的是「改了哪些 / 没改哪些 / 为什么」这句话**有分母**
 ///
-/// 人群 = `src/bridge/src` ＋ `src/bridge/crates` 两棵树的 `.rs`（**现算**，不写死份数）。
+/// 人群 = `src/bridge/src` ＋ `src/common` 两棵树的 `.rs`（**现算**，不写死份数）。
 /// 三向都判：
 ///   ① 盘上带旧名而 [`SITES`] 里没有 ⇒ 红（**别再往盘上加旧名**）；
 ///   ② `SITES` 里有而盘上已经没有 ⇒ 红（**账不许挂空号**）；
@@ -1219,7 +1219,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     let bridge = crate::guard_support::repo_root().join("src").join("bridge");
     let manifest = bridge.as_path();
     let src_root = manifest.join("src");
-    let crates_root = manifest.join("crates");
+    let crates_root = crate::guard_support::repo_root().join("src/common");
     let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
     files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
     // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕monitor 这半边今天**第三棵树**：
@@ -1263,8 +1263,8 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
     let mut got: BTreeMap<(String, Why), usize> = BTreeMap::new();
     for (p, text) in &files {
         // 🔴 〔搬树 2026-09-18〕住址两种前缀：本 crate 里的按 `manifest` 相对
-        //    （`src/…` / `crates/…`，与表里既有的几十行同形），第三棵树 `tests/bridge`
-        //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/bridge/…`）。
+        //    （`src/…`，与表里既有的几十行同形），第三棵树 `tests/bridge` 与共享 crate 的家 `src/common`
+        //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/bridge/…` · `src/common/…`）。
         //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
         let rel = p
             .strip_prefix(manifest)
@@ -1342,7 +1342,7 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         })
         .collect();
     println!(
-        "【KR81D2 存量读数】面 = `src/bridge/src` ＋ `src/bridge/crates` 共 {} 份 `.rs`（现算）· \
+        "【KR81D2 存量读数】面 = `src/bridge/src` ＋ `src/common` 共 {} 份 `.rs`（现算）· \
              还带旧名的 {} 份 / {total} 处（{}）· 登记 {} 行 · \
              ⚠ 面外判不了：`remote{}daemon{}proto/` 那棵树与前端 `src/**/*.ts`",
         files.len(),

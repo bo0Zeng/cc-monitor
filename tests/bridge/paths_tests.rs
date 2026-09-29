@@ -112,7 +112,7 @@ fn no_home_and_no_override_is_still_none() {
 /// —— 而不是挪了八分之七。
 ///
 /// ⚠ **射程边界，如实登记（两条都不在本条管辖内）**：
-/// ① `src/bridge/crates/creds-core/src/store.rs` 自己拼 `work`
+/// ① `src/common/creds-core/src/store.rs` 自己拼 `work`
 ///    ——它吃一个传进来的 `home`，是**共享 crate**，monitor 与后端都用；
 ///    monitor 这侧经 `creds_store.rs` → `resolve_monitor_data_dir` 进来 ⇒ 被盖住；
 ///    后端那侧走它自己的 env（`src/backend/accounts/creds.rs` 头注逐字

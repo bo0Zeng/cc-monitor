@@ -299,7 +299,7 @@ function rustStaticList(name: string): string[] {
       read(ADAPTER_RS),
       `${ADAPTER_RS} 的 claude agent 工具名不再是共享 crate 那一份的别名 —— 又长出第二份了？`,
     ).toMatch(/^static CLAUDE_AGENT_TOOLS: &\[&str\] = &agent_tools_core::CLAUDE_AGENT_TOOLS;$/m);
-    const home = "src/bridge/crates/agent-tools-core/src/lib.rs";
+    const home = "src/common/agent-tools-core/src/lib.rs";
     const m = /^pub const CLAUDE_AGENT_TOOLS: \[&str; \d+\] = \[(.*)\];$/m.exec(read(home));
     expect(m, `在 ${home} 里抠不到 \`pub const CLAUDE_AGENT_TOOLS: [&str; N] = […];\``).toBeTruthy();
     return [...(m?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((x) => x[1]);

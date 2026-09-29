@@ -28,7 +28,7 @@ const ESCAPE_ALT_RAW: &str = r#"'"'"'"#;
 const ESCAPE_ALT_PLAIN: &str = r#"'\"'\"'"#;
 
 /// 唯一允许持有这个实现的文件（相对仓根）。
-const SOLE_HOME: &str = "src/bridge/crates/shell-quote-core/src/lib.rs";
+const SOLE_HOME: &str = "src/common/shell-quote-core/src/lib.rs";
 
 fn repo_root() -> PathBuf {
     // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
@@ -38,7 +38,7 @@ fn repo_root() -> PathBuf {
 /// 扫 monitor + backend + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    for base in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
+    for base in ["src/bridge/src", "src/common", "src/backend"] {
         walk(&root.join(base), &mut out);
     }
     out

@@ -600,15 +600,15 @@ fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
     //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
     //
     // ⚠ **标的搬家了，本条跟着搬**〔`K-R100` 09-13〕：那个循环原先住 `src/search.rs`，
-    //   收口后随 `find_ci` 搬进共享 crate `crates/search-core/src/lib.rs`
+    //   收口后随 `find_ci` 搬进共享 crate `src/common/search-core/src/lib.rs`
     //   （`rust_files()` 只走 `src/`，够不着）。⇒ 直接按住址读，别让本条以
     //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
     //   它不见了不是因为有人删了它，是因为它搬走了。
-    let anchor = root().join("crates/search-core/src/lib.rs");
+    let anchor = crate::guard_support::repo_src_root().join("common/search-core/src/lib.rs");
     let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
     assert!(
         search.contains(&format!("for i in 0{}n", "..")),
-        "`crates/search-core/src/lib.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
+        "`src/common/search-core/src/lib.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
              —— 下面那条反向断言失去了标的"
     );
     assert_eq!(
