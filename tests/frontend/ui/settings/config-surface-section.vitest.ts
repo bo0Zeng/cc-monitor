@@ -554,7 +554,7 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足
     const box = s.element.querySelector<HTMLElement>("[data-footprint-unanswered]")!;
     expect(box.hidden).toBe(false);
     const why = box.querySelector<HTMLElement>("[aria-label]");
-    expect(s.element.textContent).toContain("这台机器（devbox）的足迹还查不了");
+    expect(s.element.textContent).toContain(copyText("configSurface.remote.unanswered", { machine: "devbox" }));
     expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY());
   });
 
