@@ -191,6 +191,7 @@ const UNIT: &[&str] = &[
     "tests/settings/cc-bus-hooks-section.vitest.ts",
     "tests/settings/cc-bus-section.vitest.ts",
     "tests/settings/config-surface-section.vitest.ts",
+    "tests/settings/context-limits-section.vitest.ts", // 〔FIX4〕`contextLimits` 的入口（假 IPC）
     "tests/settings/diagnostics-section.vitest.ts",
     "tests/settings/drift-ledger-section.vitest.ts",
     "tests/settings/host-os.vitest.ts",

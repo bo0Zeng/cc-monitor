@@ -544,10 +544,8 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     ["windows", "powershell"],
     ["linux", "posix"],
     ["macos", "posix"],
-    // ⚠ 认不出 OS ⇒ POSIX。从前「终端集成」在这一格**照常构造**（藏错了 Windows 用户就找不到安装入口），
-    //   而「别名」在这一格走 POSIX；两块并成一块只能取一边 ⇒ 取别名那一边（不在非 Windows 上写 `$PROFILE`）。
-    //   这一格的取舍报给主会话（`调研/第四波记录/AL1c.md §5`）。
-    ["unknown", "posix"],
+    // 〔FIX4 · `71 §8` 第 7 条，主会话 09-28 裁〕认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（先前取 POSIX）。
+    ["unknown", "unknown"],
   ] as const) {
     it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {
       __setHostOsForTests(os);
