@@ -896,7 +896,7 @@ fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {
 }
 
 /// 〔DUP2 · 主会话 09-26 裁 J6〕`--ccm-tmux=<名>`（要**新建**的会话名，`§47` ①）与 `attach <名>`（一个**已有**会话，V131 ②）
-/// 写成 ccm 参数之前先过 gate-core 那两条（全仓唯一一份；界面那两个谓词按 `设计/90 §3` 判据 2 删了 —— 这条路此前零判定、
+/// 写成 ccm 参数之前先过 `gate_rules` 那两条（全仓唯一一份；界面那两个谓词按 `设计/90 §3` 判据 2 删了 —— 这条路此前零判定、
 /// 只靠界面那一道），**正反各一格**。
 #[test]
 fn a_tmux_name_is_judged_before_it_becomes_a_ccm_argument() {

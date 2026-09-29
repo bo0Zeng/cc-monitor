@@ -516,7 +516,8 @@ cell(
     # 〔DUP3 · 4D〕新共享 crate `upstream-url-core`（J9）⇒ 成员 12 → 13（本路增量 ＋1），`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
     # 〔MIG-3b · 4D〕新共享 crate `deploy-core` ⇒ 成员 13 → 14（本路增量 ＋1），`gate.sh` 同拍改 `cargo 14`，本锚点同拍跟上。
     # 〔RE〕`codex-token-core` 搬进后端 ⇒ 成员 14 → 13，`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
-    anchor="run_gate_sum cargo 13 bash -c",
+    # 〔THIN〕`gate-core` 收成后端模块 ⇒ 成员 13 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
+    anchor="run_gate_sum cargo 12 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{

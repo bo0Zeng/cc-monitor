@@ -13,7 +13,7 @@
  *
  * # 本文件做的只有四件（都是调用方那一侧的事）
  *
- * 1. **不判目标名**（〔DUP3 · 主会话 09-26 裁〕`§34` Gate 1 并进 `gate-core` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
+ * 1. **不判目标名**（〔DUP3 · 主会话 09-26 裁〕`§34` Gate 1 并进后端 `control/gate_rules.rs` 的 tmux 名那一族，TS 零）：会话名原样交给后端；
  *    空目标由后端入口拒（`invalid_args`，`=:` 会被 tmux 读成「当前会话」那一格），本文件照各动作那句「后端不接受这个会话名」
  *    带上后端原话说出来。**Gate 2 / 3（身份门 · 窗口门）只在后端 `control/gate.rs`**，本文件不写第二份。
  *    （先前这里有一道「空目标就地拒、一个字节都不发」—— 那是 Gate 1 在界面的一份，`设计/90 §3` 判据 2 删了。）
@@ -250,7 +250,7 @@ export type SendIntoOutcome =
  */
 export async function sendInto(origin: Origin, name: string, payload: string): Promise<SendIntoOutcome> {
   // 〔FIX · `设计/99 §2 ㊹`〕空名 / 空载荷不在这里判：交给那台后端（`launch` 进门拒 ⇒ refused，带它的原话）；
-  //   回落那一跳渲整串的是 Rust 渲染器（`payload.rs::render_tmux_outer`，目标过 `gate-core` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
+  //   回落那一跳渲整串的是 Rust 渲染器（`payload.rs::render_tmux_outer`，目标过后端 `gate_rules` 已有会话那一条）⇒ 坏数据两条路都被同一处拒。
   try {
     const body = jsonBody({ mode: "send-into", name, payload });
     const budget = budgetWithin(CONTROL_BUDGET_MS);

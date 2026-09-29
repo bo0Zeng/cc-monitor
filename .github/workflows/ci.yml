@@ -1171,7 +1171,7 @@ jobs:
         run: bash tests/e2e/assert-pass-floor.sh inbound-frames 30
 
       # F03：§34 Gate 2 在后端侧的真机验收。用例逐行来自那张唯一的判定表
-      # `src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
+      # `tests/__fixtures__/gate2-golden.tsv`（〔THIN〕后端与本套两条轨道同一份）。
       # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
       #
       #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后

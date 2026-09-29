@@ -1391,7 +1391,8 @@ run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc
 # 〔DUP3 · 4D〕12 → 13（本路增量 ＋1）：新共享 crate `upstream-url-core`（上游 base URL 能不能用，J9）。
 # 〔MIG-3b · 4D〕13 → 14（本路增量 ＋1）：新共享 crate `deploy-core`（部署决策：本机常驻后端出计划、monitor 放字节共用）。
 # 〔RE〕14 → 13：`codex-token-core` 搬进后端（`agents/codex/token.rs`，monitor 零引用），它的 3 条随后端那一格跑。
-run_gate_sum cargo 13 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
+# 〔THIN〕13 → 12：`gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了），它的单测随后端那一格跑。
+run_gate_sum cargo 12 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/frontend/shell/embedded-backends/` 铺没铺。
 #

@@ -4606,12 +4606,7 @@ mod g6_dependency_signoff {
             "〔CP2c〕对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
              与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
         ),
-        (
-            "gate-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "§34 Gate 2 的唯一实现（生产段真的在执行它）；仓内 crate，现打 0 处写面",
-        ),
+        // 〔THIN〕`gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（默认层那条判据数它的写面）。
         (
             "guard-core",
             DEV_DEPS,

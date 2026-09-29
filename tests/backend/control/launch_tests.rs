@@ -226,22 +226,12 @@ fn arm_of<'a>(src: &'a str, head: &str) -> &'a str {
     arm
 }
 
-/// `=name:` 的形状必须与 monitor 侧一致（F01：裸 `-t` 会打到兄弟会话上）。
+/// `=name:` 就是 tmux 的精确匹配形（F01：裸 `-t` 会打到兄弟会话上）。
+/// 〔THIN〕从前还跨轨对拍 monitor `tmux.rs` 里那一份；那一份（只剩对拍锚点在用）随 monitor 侧的 Gate 残留删了 ⇒ 只剩这一个家。
 #[test]
-fn exact_target_shape_matches_the_monitor_side() {
+fn exact_target_is_the_exact_match_shape() {
     assert_eq!(exact_target("cc-abc"), "=cc-abc:");
-    // 跨轨对拍：monitor `tmux.rs` 里那条 `format!("={target}:")`。
-    const MONITOR_TMUX: &str =
-        include_str!("../../../src/frontend/shell/src/backend/control/tmux.rs");
-    let prod = crate::guard_support::production_code(MONITOR_TMUX);
-    // 运行时拼，避免命中本文件自己。
-    let shape = format!("=%s{}", "target}:");
-    let needle = shape.replace("%s", "{");
-    assert!(
-        prod.contains(&needle),
-        "monitor 侧的精确匹配形状变了（找不到 `{needle}`）—— 两侧必须同形，\
-             否则一边打到兄弟会话上而另一边不会，排查起来会非常难"
-    );
+    assert_eq!(exact_target("si*"), "=si*:");
 }
 
 /// ★ #76 防线的形态迁移：`send-into` **绝不新建会话**。

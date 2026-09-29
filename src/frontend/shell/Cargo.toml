@@ -15,7 +15,6 @@ members = [
     "../../common/acct-core",
     "../../common/branch-core",
     "../../common/creds-core",
-    "../../common/gate-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
     "../../common/search-core",
@@ -27,6 +26,7 @@ members = [
     "../../common/upstream-url-core",
     # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
     "../../common/deploy-core",
+    # 〔THIN〕`gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
 ]
 # 〔RE〕`exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
 #   不在本 workspace 根下面，按构造就成不了成员（path 依赖只有住在根目录里才自动入圈）。
@@ -145,9 +145,7 @@ shell-quote-core = { path = "../../common/shell-quote-core" }
 relay-route-core = { path = "../../common/relay-route-core" }
 # 〔MIG-3b〕部署决策的唯一一份：本机常驻后端出计划（`deploy-plan`）用它判，monitor 照计划取字节、本机那一份的身份 · 远端 hello 的新旧 · 全景的表 A/B 也用它。
 deploy-core = { path = "../../common/deploy-core" }
-# F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
-# monitor 与后端共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
-gate-core = { path = "../../common/gate-core" }
+# 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
 # 〔LOC1b · 第四波 4D〕monitor 不再搜：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份索引删了；
 # 「monitor 生产树里零处再搜」由 `tests/frontend/shell/search_kou_jing_guard.rs` ③ 钉。

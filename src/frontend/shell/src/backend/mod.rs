@@ -127,15 +127,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     ),
     ("control/mod.rs", "control", "写/控制面的说明"),
     (
-        "control/tmux.rs",
-        "control",
-        "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
-         tmux 的**三条原语**（列会话 / 抓屏 / send-keys）＋ 杀会话 —— 全是控制面。\
-         `daemon` 密度第五高的那份（`设计/90 §1.1` 那条顺序事实），\
-         而它一行 GUI 把手、一行平台 cfg 都没有（这正是它搬得动、\
-         而 `ssh_source.rs` / `local_backend_host.rs` 搬不动的分水岭）。",
-    ),
-    (
         "control/backend_control.rs",
         "control",
         "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
@@ -187,7 +178,7 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "F05a：本机后端进程的「起与看住」。决策那半（local_backend 路径解析 + 崩溃频率上限）是纯函数；\
          监护器用 `std::process::Command`，等子进程死靠**读它 stdout 到 EOF**（零定时器，C12）。\
          ⚠ 今天只认打包进安装包的本机后端、不扫 dev 产物 —— 理由是后端一起来就无条件\
-         往 tmux server 装全局 hook 且没有开关（F05 摸底 §2.5）",
+         往 tmux 服务端装全局 hook 且没有开关（F05 摸底 §2.5）",
     ),
     (
         "control/agent_profile_parity.rs",
@@ -195,12 +186,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "F06：agent 适配表（`fixtures/agent-profile-golden.tsv`）的跨语言对拍 —— \
          **C4「ccm 变零决策」的前置**：搬之前先证明三份副本逐字一致。\
          另钉两条前提：ccm 独有的两个决策仍无 Rust 对侧 · ccm 仍拒绝 codex 的 subcommand 形 resume",
-    ),
-    (
-        "control/gate2_parity.rs",
-        "control",
-        "F03：§34 Gate 2 判定表（`fixtures/gate2-golden.tsv`）在 monitor 这一侧的独立对拍。\
-         同一张表另有两个读者：backend 的 `control/gate.rs` 与 `tests/e2e/backend-gate2-acceptance.sh`",
     ),
 ];
 
