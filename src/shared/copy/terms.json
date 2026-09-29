@@ -630,6 +630,26 @@
       "noScanWhy": "全是普通中文词，只有在我们的语境里才是行话；正则分不出「流程」和「流」、「能力」和「能力声明」那种区别 ⇒ 只靠人工 review（主观项）。",
       "ledger": [],
       "source": "CP1 台账"
+    },
+    {
+      "word": "Rust 调试形",
+      "tier": "禁",
+      "say": "说那个值本身；没有值就说「没有」或留「—」。不把 Some(…) / None 原样打上界面（那是 {:?} 把 Option 印出来的样子）。",
+      "scan": { "re": "\\bSome\\(|\\bNone\\b", "flags": "" },
+      "examples": ["pid=Some(1234)", "账号：None"],
+      "counterExamples": ["none", "Nonesuch", "Something"],
+      "source": "设计/91 §6 第 9 条 · 设计/99 §2.2（FIX5）",
+      "note": "只认得表里写死的形；插值实参在运行期才变成 Some(…)（{x:?} 喂 Option 进占位符）的那一形静态看不见。"
+    },
+    {
+      "word": "key=value 日志行形",
+      "tier": "禁",
+      "say": "写成一句话：「版本 5」「类型 k-calls」「主目录 /home/u」，不写 version=5 · kind=… · HOME=… 这种日志行里的键值对。命令行参数（--ccm-tmux=<名>）与网址参数（?viewer=）不在此列。",
+      "scan": { "re": "(?<![\\w=\\-./:?&%])[A-Za-z_][A-Za-z0-9_]*=(?!=)", "flags": "" },
+      "examples": ["version=5", "（kind=k-calls）", "HOME=/home/u", "control=unsupported：后端太旧"],
+      "counterExamples": ["--ccm-tmux=<名> 与 --tmux-base 只能选一个", "地址里缺 ?viewer= 参数", "留空 = claude", "长度非法（1..=64）", "a == b"],
+      "source": "设计/91 §6 第 9 条 · 设计/99 §2.2（FIX5）",
+      "note": "只认 ASCII 键；「解析为=…」这种中文键的写法认不出。运行期拼出来的日志行（Rust 里纯英文的 format!）不在表里，也不在这一格的射程里。"
     }
   ]
 }
