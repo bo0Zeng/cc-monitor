@@ -163,16 +163,15 @@ fn lock_for_write(path: &Path) -> Result<crate::platform::lock::DirLock, (&'stat
             ),
         )
     })?;
-    if let Err(e) = std::fs::create_dir(dir) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            return Err((
-                "io_failed",
-                copy_text(
-                    "beHistoryAnnotations.writeAt.mkdirFailed",
-                    &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
-                ),
-            ));
-        }
+    // 〔DATA-HOME · V160〕这一层是数据目录，默认就是 `~/.cc-monitor`（后端的家）⇒ 建的那一下只给本人。
+    if let Err(e) = crate::common::own_dir::ensure_private_dir(dir) {
+        return Err((
+            "io_failed",
+            copy_text(
+                "beHistoryAnnotations.writeAt.mkdirFailed",
+                &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
+            ),
+        ));
     }
     crate::platform::lock::hold(dir).map_err(|e| ("io_failed", e))
 }

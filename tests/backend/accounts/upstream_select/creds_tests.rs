@@ -33,6 +33,22 @@ fn tmpdir(tag: &str) -> PathBuf {
     d
 }
 
+/// 这个临时「家」下那份文件的默认落点（〔V160〕数据目录 `~/.cc-monitor` 根上；期望手写，不借生产那一份）。
+fn default_file(home: &Path) -> PathBuf {
+    home.join(".cc-monitor").join(store::FILE_NAME)
+}
+
+/// 取值器：只答 `HOME`（与 `ENV_CREDENTIALS` 那一格，给了才答）。
+fn env_with(home: &Path, creds: Option<&str>) -> impl Fn(&str) -> Option<String> {
+    let home = home.display().to_string();
+    let creds = creds.map(str::to_string);
+    move |k| match k {
+        "HOME" => Some(home.clone()),
+        ENV_CREDENTIALS => creds.clone(),
+        _ => None,
+    }
+}
+
 /// ★★ **`KS9②` 的正主**：只往盘上放一份文件，**一次界面都不开**，上游选择就拿到了 key。
 ///
 /// 走的是**生产段那条真实的路**（`resolve_path` → `load`），
@@ -40,7 +56,7 @@ fn tmpdir(tag: &str) -> PathBuf {
 #[test]
 fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
     let home = tmpdir("only-file");
-    let p = store::path_under_claude_home(&home);
+    let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     // ← 这一行就是「人手写了一份 JSON 放进去」。没有任何界面、没有任何 IPC。
     std::fs::write(
@@ -49,7 +65,7 @@ fn upstream_selection_loads_the_key_from_a_hand_written_file_alone() {
     )
     .expect("写夹具");
 
-    let resolved = resolve_path(&|_| None, &home);
+    let resolved = resolve_path(&env_with(&home, None)).expect("有家目录却推不出");
     assert_eq!(resolved, p, "路径解析没落在契约那条路上");
     let loaded = load(&resolved);
     assert!(loaded.problem.is_none(), "不该有问题：{:?}", loaded.problem);
@@ -70,16 +86,8 @@ fn env_overrides_the_default_location() {
     let home = tmpdir("env-override");
     let elsewhere = home.join("somewhere-else.json");
     std::fs::write(&elsewhere, b"{\"api_key\":\"sk-ant-ELSEWHERE\"}").expect("写夹具");
-    let got = resolve_path(
-        &|k| {
-            if k == ENV_CREDENTIALS {
-                Some(elsewhere.display().to_string())
-            } else {
-                None
-            }
-        },
-        &home,
-    );
+    let got =
+        resolve_path(&env_with(&home, Some(&elsewhere.display().to_string()))).expect("显式给了");
     assert_eq!(got, elsewhere);
     assert_eq!(
         single_key(&load(&got))
@@ -88,8 +96,36 @@ fn env_overrides_the_default_location() {
         "sk-ant-ELSEWHERE"
     );
     // 非空对照：空串的覆盖**不算覆盖**，回默认路径。
-    let dflt = resolve_path(&|_| Some("   ".to_string()), &home);
-    assert_eq!(dflt, store::path_under_claude_home(&home));
+    let dflt = resolve_path(&env_with(&home, Some("   ")));
+    assert_eq!(dflt, Ok(default_file(&home)));
+    // 〔V160〕默认臂按用户家推、不认 agent 家：给了 `CLAUDE_CONFIG_DIR` 也落在同一份。
+    let with_agent_home = |k: &str| match k {
+        "CLAUDE_CONFIG_DIR" => Some("/elsewhere/.claude-acct".to_string()),
+        _ => env_with(&home, None)(k),
+    };
+    assert_eq!(resolve_path(&with_agent_home), Ok(default_file(&home)));
+    // 〔DATA-HOME · 主会话裁〕数据目录与 monitor 同一条规矩：`CCM_DATA_DIR`（绝对）⇒ 它根上那一份（期望手写）；
+    //   设了却是相对路径 ⇒ 出声（`Err`），不退回家目录下那一份；显式给的 `CCM_APIKEY_CREDENTIALS` 仍优先。
+    let with_data_dir = |dd: &'static str, creds: Option<&'static str>| {
+        let base = env_with(&home, creds);
+        move |k: &str| match k {
+            "CCM_DATA_DIR" => Some(dd.to_string()),
+            _ => base(k),
+        }
+    };
+    assert_eq!(
+        resolve_path(&with_data_dir("/iso", None)),
+        Ok(PathBuf::from("/iso/apikey-credentials.json"))
+    );
+    let refused = resolve_path(&with_data_dir("iso", None)).expect_err("相对路径被收下了");
+    assert!(
+        refused.contains("CCM_DATA_DIR"),
+        "那句话没点名是哪一格：{refused}"
+    );
+    assert_eq!(
+        resolve_path(&with_data_dir("iso", Some("/x/c.json"))),
+        Ok(PathBuf::from("/x/c.json"))
+    );
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -97,7 +133,7 @@ fn env_overrides_the_default_location() {
 #[test]
 fn a_broken_file_is_a_problem_not_a_silent_not_configured() {
     let home = tmpdir("broken");
-    let p = store::path_under_claude_home(&home);
+    let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     std::fs::write(&p, b"{\"api_key\": }").expect("写夹具");
     let loaded = load(&p);
@@ -121,7 +157,7 @@ fn a_broken_file_is_a_problem_not_a_silent_not_configured() {
 fn a_world_readable_file_is_announced_with_a_fix_and_still_serves_the_key() {
     use std::os::unix::fs::PermissionsExt;
     let home = tmpdir("too-wide");
-    let p = store::path_under_claude_home(&home);
+    let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     std::fs::write(&p, b"{\"api_key\":\"sk-ant-WIDE\"}").expect("写夹具");
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
@@ -159,7 +195,7 @@ fn a_world_readable_file_is_announced_with_a_fix_and_still_serves_the_key() {
 #[test]
 fn nothing_that_gets_announced_ever_carries_the_key() {
     let home = tmpdir("announce-clean");
-    let p = store::path_under_claude_home(&home);
+    let p = default_file(&home);
     std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
     std::fs::write(&p, b"{\"api_key\":\"sk-ant-CANARY-IN-ANNOUNCE\"}").expect("写夹具");
     let loaded = load(&p);
@@ -187,7 +223,7 @@ fn nothing_that_gets_announced_ever_carries_the_key() {
 #[test]
 fn a_missing_file_prints_the_template_so_import_does_not_need_guessing() {
     let home = tmpdir("missing");
-    let loaded = load(&store::path_under_claude_home(&home));
+    let loaded = load(&default_file(&home));
     let mut buf: Vec<u8> = Vec::new();
     announce_all(&loaded, &mut buf);
     let text = String::from_utf8(buf).expect("utf8");

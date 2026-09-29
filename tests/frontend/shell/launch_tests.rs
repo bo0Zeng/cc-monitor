@@ -1237,7 +1237,7 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
 const WT4_TOK: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 
 fn wt4_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from("/home/u/.claude/work")
+    std::path::PathBuf::from("/home/u/.cc-monitor")
 }
 
 /// 从渲出来的前奏里把 `$<name> = '<值>'` 那一行的值抠出来（PowerShell 单引号字面量，`''` → `'`）。

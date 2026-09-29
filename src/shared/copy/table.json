@@ -9784,7 +9784,7 @@
     },
     "diagnostics.info.logs": {
       "kind": "body",
-      "zh": "后端日志写在：\n~/.claude/work/logs/monitor.YYYY-MM-DD.log。\n出错时同时在右下角弹一条提示，点它直接打开日志文件。",
+      "zh": "后端日志写在：\n~/.cc-monitor/logs/monitor/monitor.YYYY-MM-DD.log。\n出错时同时在右下角弹一条提示，点它直接打开日志文件。",
       "args": []
     },
     "driftLedger.copy.failed": {
@@ -17245,6 +17245,11 @@
       "kind": "error",
       "zh": "读不了凭据文件：{e}",
       "args": ["e"]
+    },
+    "beUpstreamCreds.path.noDataDir": {
+      "kind": "error",
+      "zh": "找不到数据目录，API key 那份文件没读也没写。{env} 设了却不是绝对路径，或者没有家目录。",
+      "args": ["env"]
     },
     "beUpstreamTable.noteAuthStyleNoAuth.say": {
       "kind": "body",

@@ -1,6 +1,6 @@
-//! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）
+//! # 要求住址：`INVARIANTS §2`（含「唯一的明文例外：`CCM_DATA_DIR`」那一段）· V160（一台机器一个家 `~/.cc-monitor/`）
 //!
-//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.claude/work/`」。
+//! `with_nothing_set_it_is_the_documented_default` 点的是 `§2` 正文，逐字「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」（V160）。
 //! 其余几条判的是那句「永远」的**出口**（`config.rs::monitor_data_dir_from`），逐字点 `§2` 例外段的四条规矩：
 //! 「只认**绝对路径**；空串 == 没设」·「给了但不合法（相对路径）⇒ **`None`，不退回用户真 profile**」·
 //! 「全树只经 `config.rs::resolve_monitor_data_dir` 派生」。
@@ -32,10 +32,7 @@ fn home() -> std::path::PathBuf {
 #[test]
 fn with_nothing_set_it_is_the_documented_default() {
     let got = monitor_data_dir_from(None, Some(home())).expect("有 home 却算不出落点");
-    assert_eq!(
-        got,
-        std::path::PathBuf::from("/home/u/.claude/work")
-    );
+    assert_eq!(got, std::path::PathBuf::from("/home/u/.cc-monitor"));
 }
 
 /// 给了一条绝对路径 ⇒ **原样用**，而且**不掺 home**。
@@ -105,55 +102,18 @@ fn no_home_and_no_override_is_still_none() {
     assert_eq!(monitor_data_dir_from(None, None), None);
 }
 
-/// 🔴 **那个出口真的盖住了 monitor 这一侧的全部** —— 没人自己拼那条路径。
+/// 🔴 **那个出口真的盖住了 monitor 这一侧的全部** —— monitor 经 `config.rs` 转交共享那一份规则、只读一处 env。
 ///
 /// ⚠ 判源码是**代理**（同族先例 `transfer_tests::the_real_adapters_speak_only_through_the_channel`）。
-/// 买的是：`CCM_DATA_DIR` 一设，monitor 这棵树上**所有**落点一起挪
-/// —— 而不是挪了八分之七。
-///
-/// ⚠ **射程边界，如实登记（两条都不在本条管辖内）**：
-/// ① `src/common/creds-core/src/store.rs` 自己拼 `work`
-///    ——它吃一个传进来的 `home`，是**共享 crate**，monitor 与后端都用；
-///    monitor 这侧经 `creds_store.rs` → `resolve_monitor_data_dir` 进来 ⇒ 被盖住；
-///    后端那侧走它自己的 env（`src/backend/accounts/creds.rs` 头注逐字
-///    「env 覆盖优先」）⇒ **两个出口，各管一半**，本条不合并它们。
-/// ② `src/backend` 整棵树不在本条射程里（另一个 workspace）。
+/// 「没人自己拼那条路径」那一半〔DATA-HOME〕挪进 [`the_data_dir_is_spelled_in_one_place`]（全 `src/` 生产段，不只 monitor 这棵树）。
 #[test]
 fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
-    let root = crate::guard_support::repo_src_root().join("frontend/shell/src");
-    let mut builders: Vec<String> = Vec::new();
-    let mut scanned = 0usize;
-    let needle = format!("join({:?})", "work");
-    for f in guard_core::files_by_extension(&root, "rs") {
-        let path = root.join(&f);
-        let Ok(src) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        scanned += 1;
-        let prod = guard_core::production_code(&src);
-        if prod.contains(needle.as_str()) {
-            builders.push(f);
-        }
-    }
-    // 反空真：扫描面没塌。
-    assert!(
-        scanned > 50,
-        "只扫到 {scanned} 份 `.rs` —— 扫描面塌了，下面那一比会空真地绿"
-    );
     // 〔TAIL〕规则搬进共享 crate（`creds_core::store::monitor_data_dir`，远端常驻后端按同一份推默认路径）⇒
-    //   monitor 这棵树里一处都不该自己拼；`config.rs`（原 `paths.rs`）转交它（正控，防「一处都没扫到」的空真）。
+    //   `config.rs`（原 `paths.rs`）转交它。
     assert!(
         guard_core::production_code(include_str!("../../../src/frontend/shell/src/config.rs"))
             .contains("creds_core::store::monitor_data_dir("),
         "`config.rs`（原 `paths.rs`）不再转交共享那一份规则"
-    );
-    assert_eq!(
-        builders,
-        Vec::<String>::new(),
-        "monitor 这棵树里有地方自己拼那条路径（规则只该住 `creds_core::store::monitor_data_dir`）。\n\
-         ★ 多一处就意味着 `CCM_DATA_DIR` 盖不住它 ⇒ 一趟自以为被隔离的跑\n\
-           仍然会往用户真 profile 里写那一样东西。\n\
-         ⇒ 处置：让它经 `config::resolve_monitor_data_dir()` 派生。"
     );
 
     // 那个 env 名字**只在一处被读** —— 否则「读了哪个变量」会长出第二种答案。
@@ -167,4 +127,74 @@ fn nothing_else_in_the_monitor_tree_builds_that_path_itself() {
     );
     // 反空真：这把尺子认得出「不在」。
     assert!(!me.contains("env::var(DATA_DIR_ENV_THAT_DOES_NOT_EXIST)"));
+}
+
+/// 要求住址：V160「一台机器一个家 `~/.cc-monitor/`……**不写搬家代码、不认老路径**」· `INVARIANTS §2` 规矩 3「默认住址只在 `creds_core::store::monitor_data_dir` 拼」。
+///
+/// ① `src/` 生产段（`.rs` 剥掉测试段；`src/doc` 与 `.md` 散文、不进 git 的 `.cargo/` · `gen/` · `embedded-backends/` 不算）**零处**旧住址的名字；
+/// ② 默认住址那个目录名在 `creds-core/src/store.rs` 生产段恰好一处，且就在 `monitor_data_dir` 里。
+/// 正控：同一个判定认得出合成语料里的旧名。
+#[test]
+fn the_data_dir_is_spelled_in_one_place() {
+    let old = ["claudecode", "frontend"].join("-");
+    let spells_old = |rel: &str, text: &str| -> bool {
+        let prod = if rel.ends_with(".rs") {
+            guard_core::production_code(text)
+        } else {
+            text.to_string()
+        };
+        prod.contains(old.as_str())
+    };
+    let root = crate::guard_support::repo_src_root();
+    let skip = [
+        "doc/",
+        "frontend/shell/.cargo/",
+        "frontend/shell/gen/",
+        "frontend/shell/embedded-backends/",
+    ];
+    let mut scanned = 0usize;
+    let mut hits: Vec<String> = Vec::new();
+    for rel in guard_core::files_under(&root) {
+        if rel.ends_with(".md") || skip.iter().any(|p| rel.starts_with(p)) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(root.join(&rel)) else {
+            continue; // 二进制（图标之类）
+        };
+        scanned += 1;
+        if spells_old(&rel, &text) {
+            hits.push(rel);
+        }
+    }
+    assert!(scanned > 500, "只扫到 {scanned} 份 —— 扫描面塌了");
+    assert_eq!(
+        hits,
+        Vec::<String>::new(),
+        "生产段里还有数据目录的旧住址（V160：不认老路径）"
+    );
+    assert!(
+        spells_old("x.ts", &format!("const d = '~/.claude/{old}';")),
+        "正控：认不出旧名"
+    );
+    // 阴性对照：测试段里的旧名不算（夹具许写旧住址）。
+    assert!(!spells_old(
+        "x.rs",
+        &format!("fn f() {{}}\n\n#[cfg(test)]\nmod tests {{\n    const D: &str = \"{old}\";\n}}\n")
+    ));
+
+    let store =
+        guard_core::production_code(include_str!("../../../src/common/creds-core/src/store.rs"));
+    let dir_lit = format!("{:?}", ".cc-monitor");
+    assert_eq!(
+        store.matches(dir_lit.as_str()).count(),
+        1,
+        "store.rs 里数据目录名不是恰好一处"
+    );
+    let at = guard_core::find_pinned(&store, "pub fn monitor_data_dir(")
+        .expect("monitor_data_dir 不在了");
+    let body = &store[at..at + store[at..].find("\n}\n").expect("没收尾")];
+    assert!(
+        body.contains(dir_lit.as_str()),
+        "默认住址不在 monitor_data_dir 里拼：{body}"
+    );
 }

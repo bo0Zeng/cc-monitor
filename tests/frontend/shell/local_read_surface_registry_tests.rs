@@ -57,7 +57,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
     (
         "src/config.rs",
         "hub",
-        9,
+        8, // 〔DATA-HOME · V160〕9 → 8：`CCM_DATA_DIR` 不合法那句日志原本点着数据目录的旧住址（在 `.claude` 下）；数据目录搬出 `.claude` 了
         "〔RE〕住址 `src/paths.rs` → `src/config.rs`（`15 §2.2`「config ＋ paths → 一处」，整份并进来、处数不变）。\
              〔TAIL · 09-26〕10 → 9：数据目录那条规则搬进共享 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认），本文件只转交。\
              **路径真相源** —— 只回答「`~/.claude` 与它的子目录在哪」，自己不读内容。\
@@ -286,7 +286,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     (
         "config.rs", // 〔RE〕原 `paths.rs`
         "resolve_monitor_data_dir",
-        "`~/.claude/work`",
+        "`~/.cc-monitor`",
         "monitor 自己的数据目录；写侧在 `write_site_registry`",
     ),
     // 〔AL2 · 第四波 4D〕`profile_installer.rs` 那一行（围栏拿 `home_dir()` 当基准）摘了：围栏的 home 今天问那台后端（`fence_on`）。

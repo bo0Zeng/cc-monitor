@@ -166,7 +166,7 @@ $env:RUST_LOG = "debug"; powershell -NoProfile -File scripts\run.ps1 dev
 $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 ```
 
-生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src/frontend/shell/src/logging.rs` + 设置面板。
+生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src/frontend/shell/src/logging.rs` + 设置面板。
 
 ---
 
@@ -178,13 +178,13 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 - 有但 Tab 不出现：dev console 看会话流的交格（〔CF2〕`chan-items` 事件；`[events] 会话流 …` 那几行说看不见 / 丢格 / 关了）是否到前端
 
 ### cc 集成握手不成功
-- `~/.claude/work/ps-await/<PID>.json` 写了又被删 → monitor 收到了
+- `~/.cc-monitor/ps-await/<PID>.json` 写了又被删 → monitor 收到了
 - 写了**没被删** → monitor 没 watch 到 / parse 失败
 - 看 dev stdout 是否有 `bind: parse ... failed`
 
 ### profile 写入失败
 - 设置面板 [安装] 后看 alert 报错
-- 检查 `~/.claude/work/...` 下不存在（v1.7.10 的"防御性 abort"会触发）
+- 检查 `~/.cc-monitor/...` 下不存在（v1.7.10 的"防御性 abort"会触发）
 - 检查目标 profile 路径是否真存在 + 权限
 
 ### tooltip 不显示 / 显示在错位置
