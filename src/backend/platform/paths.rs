@@ -29,7 +29,7 @@ pub(crate) fn path_key(p: &Path) -> PathBuf {
 ///
 /// # 它从哪来
 ///
-/// `K-R52` 的 A2 堆里挂着 `observe/watcher.rs::tmux_socket_dir` 那句
+/// `K-R52` 的 A2 堆里挂着 `observe/tmux_observe.rs::tmux_socket_dir` 那句
 /// `PathBuf::from("/tmp")`，签字栏逐字：「同一行上方的 `uid` 那半**已经**有两条
 /// `#[cfg]` 臂了，而这一半没有 —— 典型的『只修一半』。该和 `platform/paths.rs` 住一起。」
 /// 这就是它搬过来之后的样子，连同它那另一半（[`current_uid`]）。

@@ -178,7 +178,7 @@
 //! **只占 1 行**。反例逐行读过，随手四个（**点符号不点行号**，行号下一轮就变成假话）：
 //! `control/kill.rs::run` 里逐字 `let out = Command::new("tmux")` ·
 //! `control/launch.rs::tmux` 里逐字 `match Command::new("tmux")` ·
-//! `observe/watcher.rs::run_tmux_ls` 与 `observe/watcher.rs::query_tmux_server` 里逐字
+//! `observe/tmux_observe.rs::run_tmux_ls` 与 `observe/tmux_observe.rs::query_tmux_server` 里逐字
 //! `std::process::Command::new("sh")`。**「唯一」一个反例就倒。**
 //! ⚠ **这个 55 没拆生产段与测试段**（15 份里有 3 份是守卫与夹具：`readonly_guard.rs` 9 ·
 //! `no_timer_guard.rs` 3 · `plugin_walk_fixture.rs` 1，合计 13 行）——

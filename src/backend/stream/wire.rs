@@ -258,7 +258,7 @@ pub enum Frame {
         ///    客户端硬发照样走真路，成不成由 `no_tmux` 那条老路回答。
         ///    ⇒ 将来要「**会变的**可用性」，走一条新帧（`emits` 那一轴），**不要回头改 hello**：
         ///    hello 结构上就是「连接建立时说一次」的东西。现成材料已经有 ——
-        ///    `observe/watcher.rs` 的 `OBS_NO_TMUX` 是一份运行期读数（watch loop 周期跑
+        ///    `observe/tmux_observe.rs` 的 `OBS_NO_TMUX` 是一份运行期读数（watch loop 周期跑
         ///    本地 `tmux ls`），它不是做不到，是**来得比握手晚**。
         ///
         /// # 〔NET2〕已真填

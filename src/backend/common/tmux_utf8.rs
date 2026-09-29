@@ -57,7 +57,7 @@
 //!
 //! # ⚠ 家只有一个，而**镜子有三面**（如实登记边界）
 //!
-//! 本 crate 内的两个消费者（`control/gate.rs` · `observe/watcher.rs`）**引用**这里，
+//! 本 crate 内的两个消费者（`control/gate.rs` · `observe/tmux_observe.rs`）**引用**这里，
 //! 编译器兜住，漂不了。monitor 是**另一个二进制**：两个 crate 不共享源码树，
 //! 而共享 crate 的落点（`src/common/*-core`）没有一个的职责装得下
 //! 「怎么起 tmux」这件事 ⇒ 那一份只能留在 `src/frontend/shell/src/backend/control/tmux.rs`，

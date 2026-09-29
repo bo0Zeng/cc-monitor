@@ -107,7 +107,7 @@ impl SessionLedger {
     /// 一份 tmux 观测（`raw` = `tmux ls -F` 原文，`observation` = `watcher` 的四态取值）：收割 ＋（第一份可观测的）推导 ＋
     /// 放出压着的清单。回紧跟着要发的帧。
     pub(crate) fn on_tmux(&mut self, raw: &str, observation: Option<&str>) -> Vec<Frame> {
-        let observable = crate::observe::watcher::tmux_view_is_observable(raw, observation);
+        let observable = crate::observe::tmux_observe::tmux_view_is_observable(raw, observation);
         let kind = if observable {
             "observable"
         } else {
@@ -124,7 +124,7 @@ impl SessionLedger {
             );
             self.last_kind = Some(kind);
         }
-        let now: BTreeMap<String, String> = crate::observe::watcher::session_rows(raw)
+        let now: BTreeMap<String, String> = crate::observe::tmux_observe::session_rows(raw)
             .into_iter()
             .map(|r| (r.name, r.ccm_sid))
             .collect();

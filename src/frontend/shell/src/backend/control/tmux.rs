@@ -20,7 +20,7 @@ use crate::ssh_source;
 
 // 〔MIG-1 · `99 §2.1 ⑬`〕这里原来住着 `TmuxSessions.observation` 在 monitor 这一侧的分类（`classify_tmux_observation`〔散文墓碑〕·
 //   `SkipReason` · `OBS_*` 三个双写点字面量）—— 喂 monitor 那两份收割器的。收割搬进后端会话账本之后零调用方，删了；
-//   「这一份观测能不能拿来收割」只剩后端一个家（`src/backend/observe/watcher.rs::tmux_view_is_observable`）。
+//   「这一份观测能不能拿来收割」只剩后端一个家（`src/backend/observe/tmux_observe.rs::tmux_view_is_observable`）。
 
 // 〔C4e · 第四波 4C〕这里原来住着抓屏那一族在 monitor 侧的解释：帧命令名常量 `CAPTURE_PANE`、
 //   五个拒绝码的人话 `describe_capture_refusal`〔散文墓碑〕（再往前是 `K-R112` 删掉的 `classify_capture_output`〔散文墓碑〕）。

@@ -632,6 +632,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/observe/search_query_find_tests.rs",
     "tests/backend/observe/search_query_tests.rs",
     "tests/backend/observe/tasks_query_tests.rs",
+    "tests/backend/observe/tmux_observe_tests.rs",
     "tests/backend/observe/watcher_tests.rs",
     "tests/backend/plugin/discover_tests.rs",
     // 〔RM1f〕单元 → 集成：`run_abortable` 两条判据真起进程（被丢 ⇒ 整组都没了 · 没被丢 ⇒ 与同步那一形同果）

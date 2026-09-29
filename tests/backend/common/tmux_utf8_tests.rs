@@ -73,7 +73,7 @@ fn decl_anchor(kind: &str, ident: &str) -> String {
 }
 
 /// 本 crate 里**引用**这个家的两个消费者（相对 `src/`）—— 层各一个，正是门槛 ① 的那两层。
-const CONSUMERS: &[&str] = &["control/gate.rs", "observe/watcher.rs"];
+const CONSUMERS: &[&str] = &["control/gate.rs", "observe/tmux_observe.rs"]; // 〔RE · C4〕observe 这一层的消费者随 A 块从 `watcher.rs` 搬走
 
 /// 判据的**核**：给一份 `(名字, 生产段)` 表与一条声明，数出「除家以外还有谁也声明了它」。
 ///
@@ -181,9 +181,9 @@ fn both_consumer_layers_reference_the_home_instead_of_declaring_their_own() {
             )),
         ),
         (
-            "observe/watcher.rs".to_string(),
+            "observe/tmux_observe.rs".to_string(),
             crate::guard_support::production_code(include_str!(
-                "../../../src/backend/observe/watcher.rs"
+                "../../../src/backend/observe/tmux_observe.rs"
             )),
         ),
     ];

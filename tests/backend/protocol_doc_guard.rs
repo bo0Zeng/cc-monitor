@@ -1248,6 +1248,10 @@ mod tests {
                 include_str!("../../src/backend/observe/watcher.rs"),
             ),
             (
+                "observe/tmux_observe.rs", // 〔RE · C4〕原 `watcher.rs` A 块（人群不缩）
+                include_str!("../../src/backend/observe/tmux_observe.rs"),
+            ),
+            (
                 "observe/accounts_query.rs",
                 include_str!("../../src/backend/observe/accounts_query.rs"),
             ),
