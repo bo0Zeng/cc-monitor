@@ -108,7 +108,7 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
       return r instanceof Error ? Promise.reject(r) : Promise.resolve(r);
     }));
   };
-  const S = (name: string) => ({ name, path: "/p", command: "claude", attached: false, windows: 1, sid: null });
+  const S = (name: string) => ({ name, path: "/p", command: "claude", attached: false, windows: 1, sid: null, agent: true });
 
   it("★ readTmuxListing 逐格 == 手写表", async () => {
     // 期望是手写的（`tmux.rs::list_remote_tmux` 头注那三档 ＋ `list_local_tmux` 的 None = 不知道）。

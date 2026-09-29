@@ -132,6 +132,42 @@ pub(crate) struct Adapter {
     /// 〔MOD · `设计/90 §3` 判据 3〕这一家的**记录解释**：一行原文在渲染模型里是什么 · sid 怎么从文件名来 · 轮次边沿 · 漂移账。
     /// 收进注册表而不是让通用层直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) records: Option<RecordFace>,
+    /// 〔THIN〕tmux 前台命令（`#{pane_current_command}`）是这几个之一 ⇒ 那个 pane 跑的是这一家（从前界面按画像表自己判）。
+    /// `None` ＝ 今天没人考据过。收进注册表而不是让 `observe/tmux_list.rs` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]。
+    pub(crate) processes: Option<&'static [&'static str]>,
+}
+
+/// 〔THIN〕一个 `tool_use` 在界面上画成哪一种卡 —— **通用的值域**；哪个工具名算哪一种是各家的格式知识（`agents/<名>/`，
+/// 注册表 [`RecordFace::tool_card`]）。没有这一格 ＝ 普通工具卡。随记录成品带出（`JsonlRecord::Assistant` 的 `toolCards`），
+/// 界面只按它画、不认工具名（`设计/00 §1.2` 判定只在后端 · `§2.1` 加一个 agent 只改 `agents/`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub enum ToolCard {
+    /// 展开 ＝ 子会话（折叠卡里嵌着渲染子 agent 的记录）。
+    Agent,
+    /// agent 在等用户决定（默认展开，不进工具组折叠）。
+    Interactive,
+    /// 写类工具（参数按行级 diff 画）。
+    Diff,
+    /// 结果默认按 Markdown 画。
+    Md,
+}
+
+/// 〔THIN〕记录树那一家（[`stream_record_face`]）怎么画这个工具名 —— 通用层（会话事实）认 agent 工具的唯一入口。
+pub(crate) fn tool_card_of(name: &str) -> Option<ToolCard> {
+    stream_record_face()
+        .and_then(|r| r.tool_card)
+        .and_then(|f| f(name))
+}
+
+/// 〔THIN〕这个 tmux 前台命令是不是注册表里某一家的进程（[`Adapter::processes`]）—— `tmux-list` 每一行的 `agent`。
+pub(crate) fn is_agent_process(command: &str) -> bool {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.processes)
+        .any(|names| names.contains(&command))
 }
 
 /// 〔MOD〕一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
@@ -143,6 +179,8 @@ pub(crate) struct RecordFace {
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 〔THIN〕一个工具名在界面上画成哪一种卡（[`ToolCard`]）。`None` ＝ 这一家的工具名今天没人考据过（一律普通工具卡）。
+    pub(crate) tool_card: Option<fn(&str) -> Option<ToolCard>>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> serde_json::Value>,
     /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
@@ -403,13 +441,13 @@ pub(crate) fn skill_asset_face() -> Option<AssetFace> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), records: Some(claudecode::RECORDS) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, records: Some(codex::RECORDS) },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, records: Some(codex::RECORDS), processes: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

@@ -15,23 +15,46 @@
 // 上一条钉的是**调参值**（30 行折叠 / 头部 20 行）——写死会让判据变成那个数的第二份副本，
 // 合法微调就误红。**本条钉的是需求本身**：这两个工具之所以要特殊对待，是因为它们
 // 「在等用户决定」，那不是可调的，是这条功能存在的理由。
-// ⇒ 判据里写 `AskUserQuestion` / `ExitPlanMode` **就是需求的落点**；
-// `agent-profile.ts` 里那个集合是实现。从集合里删掉一个，就该红。
+// ⇒ 判据里写 `AskUserQuestion` / `ExitPlanMode` **就是需求的落点**。
+//
+// 〔THIN · `设计/00 §1.2` 判定只在后端〕「哪个工具算交互工具」今天住那台后端的适配层（`agents/claudecode/cards.rs`，
+// 判据 `tests/backend/agents/claudecode/cards_tests.rs` 逐名钉着这两个），随 assistant 记录的 `toolCards` 带来；
+// 界面这一半只剩「**照卡型办**」：卡型是 `interactive` ⇒ 整条消息走 `kind: "card"`（不进工具组折叠），没有卡型 ⇒ 工具组。
 import { describe, it, expect } from "vitest";
-import { isInteractiveTool, buildInteractiveCard } from "../../../../src/frontend/ui/cards/interactive";
+import { buildInteractiveCard } from "../../../../src/frontend/ui/cards/interactive";
+import { renderMessage } from "../../../../src/frontend/ui/cards/index";
+import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import type { JsonlRecord } from "../../../../src/frontend/ui/generated/JsonlRecord";
 
 describe("交互等待类工具：不许被折进通用工具组", () => {
-  it("★ AskUserQuestion 与 ExitPlanMode 必须被判成交互工具（从 profile 里删掉任一个，这条红）", () => {
-    expect(isInteractiveTool("AskUserQuestion"), "问题卡被折叠 = 用户看不出有问题在等他").toBe(
-      true,
-    );
-    expect(isInteractiveTool("ExitPlanMode"), "计划卡被折叠 = 用户看不出要他拍板").toBe(true);
+  const ctx = () => ({
+    parentPath: "/p/s.jsonl",
+    origin: LOCAL_ORIGIN,
+    toolUseNames: new Map(),
+    toolUseElements: new Map(),
+    pendingToolResults: new Map(),
+    lazy: false,
+  });
+  const ask = (cards: Record<string, string> | undefined): JsonlRecord =>
+    ({
+      type: "assistant",
+      uuid: "a",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "t1", name: "AskUserQuestion", input: { questions: [{ question: "q?", options: [{ label: "x" }] }] } },
+        ],
+      },
+      ...(cards ? { toolCards: cards } : {}),
+    }) as never;
+
+  it("★ 后端说这是交互卡（`toolCards` 里是 `interactive`）⇒ 默认可见的一张卡，不进工具组", () => {
+    expect(renderMessage(ask({ t1: "interactive" }), ctx() as never).kind, "问题卡被折叠 = 用户看不出有问题在等他").toBe("card");
   });
 
-  it("★ 反向：普通工具不许被判成交互工具（否则本谓词恒真、等于没判据）", () => {
-    for (const name of ["Bash", "Read", "Edit", "Task", ""]) {
-      expect(isInteractiveTool(name), `${name} 不该走交互卡`).toBe(false);
-    }
+  it("★ 反向：没有卡型 ⇒ 普通工具组（界面不按工具名自己判 —— 否则上一条恒真、等于没判据）", () => {
+    expect(renderMessage(ask(undefined), ctx() as never).kind).toBe("tool-group");
   });
 });
 

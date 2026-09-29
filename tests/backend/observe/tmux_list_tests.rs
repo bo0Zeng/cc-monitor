@@ -65,7 +65,7 @@ fn the_product_matches_the_cross_language_golden() {
     assert_eq!(
         product(
             true,
-            "proj-cc\t/home/u/proj\tclaude\t1\t2\tsid-1\nweb\t/srv\tzsh\t0\t1\t"
+            "proj-cc\t/home/u/proj\tclaude\t1\t2\tsid-1\nweb\t/srv\tzsh\t0\t1\t\nn\t/n\tnode\t0\t1\t"
         ),
         golden["installed"]
     );

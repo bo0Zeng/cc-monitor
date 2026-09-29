@@ -290,17 +290,19 @@ fn a_prior_of_the_wrong_shape_is_refused() {
 }
 
 // 〔DUP2 · 主会话 09-26 裁 J19〕这里原来有一条异源对拍（后端的 agent 工具名 == 生成物 `agent-profile-table.ts` 里 claude 那一行）
-// ＋ 它的取数助手与取数正控。两份收成一份进共享 crate `agent_tools_core` 之后，两半按构造是同一个常量 ⇒ 那条对拍恒真、随之退役
-// （判定本身的正反两格住 `tests/common/agent-tools-core/lib_tests.rs`；「只有一份」由 `tests/frontend/ui/judgment-single-home.vitest.ts` 的 J19 钉）。
+// ＋ 它的取数助手与取数正控。〔THIN〕agent 工具名今天住适配层 `agents/claudecode/cards.rs`（判定本身的正反两格住它的
+// `cards_tests.rs`），本文件经注册表那一格够它（`agents::tool_card_of`）；下面钉「经注册表够到的就是那一张」。
 
 #[test]
 fn the_two_lookups_answer_from_their_tables() {
-    for t in agent_tools_core::CLAUDE_AGENT_TOOLS {
-        assert!(agent_tools_core::is_claude_agent_tool(t));
+    use crate::agents::{tool_card_of, ToolCard};
+    for t in ["Agent", "Task"] {
+        assert_eq!(tool_card_of(t), Some(ToolCard::Agent), "{t}");
     }
-    assert!(!agent_tools_core::is_claude_agent_tool("Bash"));
-    assert!(
-        !agent_tools_core::is_claude_agent_tool("task"),
+    assert_ne!(tool_card_of("Bash"), Some(ToolCard::Agent));
+    assert_ne!(
+        tool_card_of("task"),
+        Some(ToolCard::Agent),
         "大小写敏感：工具名原样比对"
     );
     for (name, key) in EDIT_TOOL_PATH_KEYS {

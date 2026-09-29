@@ -16,6 +16,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::agents::ToolCard;
+
 /// 〔RENDER2 · J10 · `设计/10 §2.2b ⑤` 那条不等价的根〕一条 user 正文按注入噪声规则判过的成品。
 #[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -39,6 +41,30 @@ impl UserText {
 }
 
 impl JsonlRecord {
+    /// 〔THIN〕assistant 记录填上 `toolCards`（`content` 里每个 `tool_use` 按本家工具词表判一次；别的类型原样）。
+    pub(crate) fn with_tool_cards(mut self) -> Self {
+        if let Self::Assistant {
+            message,
+            tool_cards,
+            ..
+        } = &mut self
+        {
+            *tool_cards = message
+                .content
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|b| b.get("type").and_then(serde_json::Value::as_str) == Some("tool_use"))
+                .filter_map(|b| {
+                    let id = b.get("id")?.as_str()?;
+                    let card = super::cards::tool_card(b.get("name")?.as_str()?)?;
+                    Some((id.to_string(), card))
+                })
+                .collect();
+        }
+        self
+    }
+
     /// user 记录填上 [`UserText`]（别的类型原样）。
     pub(crate) fn with_user_text(mut self) -> Self {
         if let Self::User {
@@ -135,6 +161,19 @@ pub enum JsonlRecord {
         error: Option<serde_json::Value>,
         #[serde(rename = "apiErrorStatus", default)]
         api_error_status: Option<u32>,
+        /// 〔THIN · `设计/00 §1.2` 判定只在后端〕这条消息里每个 `tool_use` 的卡型：`tool_use.id` → [`ToolCard`]（普通工具卡不列）。
+        /// 原文里没有这一格：解析完由 [`JsonlRecord::with_tool_cards`] 按本家工具词表（`cards::tool_card`）填；界面只按它画、不认工具名。
+        #[serde(
+            rename = "toolCards",
+            skip_deserializing,
+            default,
+            skip_serializing_if = "std::collections::BTreeMap::is_empty"
+        )]
+        #[cfg_attr(
+            test,
+            ts(optional, as = "Option<std::collections::BTreeMap<String, ToolCard>>")
+        )]
+        tool_cards: std::collections::BTreeMap<String, ToolCard>,
     },
 
     #[serde(rename = "ai-title")]

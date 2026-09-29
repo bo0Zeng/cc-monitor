@@ -4771,13 +4771,7 @@ mod g6_dependency_signoff {
         ),
         // 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
         //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
-        (
-            // 〔DUP2 · J19〕agent 工具名的唯一一份（会话事实的 agent 列表按它认工具名）。
-            "agent-tools-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "agent 的工具词表（一个常量 ＋ 一个查表函数，纯数据）；仓内 crate，现打 0 处写面",
-        ),
+        // 〔THIN〕`agent-tools-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/cards.rs`，纯数据映射，0 处写面）。
         (
             "walkdir",
             DEPS,

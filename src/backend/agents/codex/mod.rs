@@ -40,6 +40,8 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     parse: record::parsed_line,
     sid: parse::codex_sid_from_path,
     turn_end: None,
+    // 〔THIN〕Codex 的工具名今天没人考据过（`codex_record.rs` 的真机样本里只见过 `shell`）⇒ 不给卡型，界面画普通工具卡。
+    tool_card: None,
     drift: None,
     delete: None,
 };

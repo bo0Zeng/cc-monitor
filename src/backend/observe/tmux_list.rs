@@ -20,6 +20,9 @@ pub(crate) struct TmuxRow {
     pub(crate) windows: u32,
     /// F74：`@ccm_sid`（此 tmux 当前所跑 claude 会话的 sid）。未设置 / 不是合法 sid 字符集 ⇒ `None`。
     pub(crate) sid: Option<String>,
+    /// 〔THIN〕前台命令是注册表里某一家 agent 的进程（`agents::is_agent_process`；Claude 是 `claude` / `node`）。
+    /// 从前界面按画像表的判活进程名自己判（`tmux-sessions.ts::isClaudeTmuxCommand`〔散文墓碑〕），判定进了后端。
+    pub(crate) agent: bool,
 }
 
 /// 格式串的列数（`tmux_observe::TMUX_LS_FMT`：name ⇥ path ⇥ cmd ⇥ attached ⇥ windows ⇥ @ccm_sid）。
@@ -67,6 +70,7 @@ pub(crate) fn rows(raw: &str) -> Vec<TmuxRow> {
                 attached: f[3] == "1",
                 windows: f[4].parse().unwrap_or(0),
                 sid,
+                agent: crate::agents::is_agent_process(f[2]),
             })
         })
         .collect()

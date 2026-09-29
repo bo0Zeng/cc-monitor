@@ -50,10 +50,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-tools-core"
-version = "0.1.0"
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -239,7 +235,6 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
- "agent-tools-core",
  "branch-core",
  "copy-core",
  "creds-core",

@@ -100,7 +100,9 @@ pub const ALL_AGENT_KINDS: [AgentKind; 2] = [AgentKind::ClaudeCode, AgentKind::C
 
 /// 一个 agent 的**画像**：前端那份 `AGENT_PROFILE` 今天用到的每一格，加上「它是谁」。
 ///
-/// 五个 `Option` 字段的 `None` 读作**「这一格今天没人考据过」**，不是「空的」。
+/// 〔THIN · `设计/00 §1.2` 判定只在后端〕从前这里还有五格**判定用的词表**（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
+/// 判活进程名），生成给界面按工具名画卡、按 tmux 前台命令认会话。那几张表进了后端适配层（`src/backend/agents/claudecode/cards.rs`），
+/// 卡型随记录成品带出（`toolCards`）、tmux 那一格随 `tmux-list` 成品带出（`agent`）⇒ 本画像只剩起会话那几格事实。
 #[allow(dead_code)] // 消费方在 TS 那一侧（生成物）；Rust 这侧只有生成器与判据读它 —— 不假装它在别处在用。
 pub struct AgentProfileFacts {
     /// 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。
@@ -113,29 +115,10 @@ pub struct AgentProfileFacts {
     pub resume_kind: &'static str,
     pub resume_token: &'static str,
     pub nested_env: &'static [&'static str],
-    pub agent_tools: Option<&'static [&'static str]>,
-    pub interactive_tools: Option<&'static [&'static str]>,
-    pub diff_tools: Option<&'static [&'static str]>,
-    pub md_tools: Option<&'static [&'static str]>,
-    pub liveness_process_names: Option<&'static [&'static str]>,
 }
 
-/// 子 agent 工具（展开 = 子会话）。〔`K-R93` 从 `src/frontend/ui/agent-profile.ts` 搬来，值逐字未改〕
-/// 〔DUP2 · J19〕值住共享 crate `agent_tools_core`（后端会话事实的 agent 列表用同一份；两半编译期不许互咬 ⇒ 共享 crate）。
-static CLAUDE_AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;
-/// 交互工具（agent 在等用户决定）。〔同上〕
-static CLAUDE_INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
-/// 写类工具（行级 diff）。〔同上〕
-static CLAUDE_DIFF_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit"];
-/// 结果默认按 markdown 渲染的工具。〔同上〕
-static CLAUDE_MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"];
-/// tmux 前台命令算该 agent 的会话（CC 是 Node CLI，视启动路径也可能报解释器）。〔同上〕
-///
-/// ⚠ 这一格从前**没有权威方**（`tests/frontend/ui/liveness-process-names-parity.vitest.ts` 的头注逐字说过
-/// 「`agent-profile-golden.tsv` 只有 4 个 key，不含这一项；`AgentAdapter` trait 也没有这个方法」）。
-/// 今天权威方在这里 —— 但 **backend 那一侧仍是各写各的**（`agents/claudecode/liveness.rs` 的内联
-/// 字面量），两侧仍靠那条对拍咬着。收成一份归 `backend-api` F11，本件没做。
-static CLAUDE_LIVENESS_PROCESS_NAMES: &[&str] = &["claude", "node"];
+// 〔THIN〕五张工具 / 进程词表（agent 工具那一张原取自共享 crate `agent-tools-core` · 交互 · 写类 · markdown · 判活进程名）搬进后端
+//   `agents/claudecode/cards.rs`（值逐字未改）：界面不再按工具名判卡型、不再按命令名认 tmux 会话，判定只在后端。
 
 /// resume 的调用形态 —— 与 `backend/control/agent_profile_parity.rs` 那条**同一条推法**：
 /// 以 `--` 开头 = flag，否则 = 子命令。
@@ -155,7 +138,7 @@ pub fn agent_profile_facts(kind: AgentKind) -> AgentProfileFacts {
         AgentKind::ClaudeCode => "claude",
         AgentKind::Codex => "codex",
     };
-    let facts = AgentProfileFacts {
+    AgentProfileFacts {
         agent,
         adapter_id: a.id(),
         default_launcher: a.default_launcher(),
@@ -163,26 +146,6 @@ pub fn agent_profile_facts(kind: AgentKind) -> AgentProfileFacts {
         resume_kind: resume_kind_of(a.resume_flag()),
         resume_token: a.resume_flag(),
         nested_env: a.nested_env_to_scrub(),
-        // 下面五格：claude 那份在下面填上；**codex 那五格今天没人考据过**（不是空的）。
-        agent_tools: None,
-        interactive_tools: None,
-        diff_tools: None,
-        md_tools: None,
-        liveness_process_names: None,
-    };
-    match kind {
-        AgentKind::ClaudeCode => AgentProfileFacts {
-            agent_tools: Some(CLAUDE_AGENT_TOOLS),
-            interactive_tools: Some(CLAUDE_INTERACTIVE_TOOLS),
-            diff_tools: Some(CLAUDE_DIFF_TOOLS),
-            md_tools: Some(CLAUDE_MD_TOOLS),
-            liveness_process_names: Some(CLAUDE_LIVENESS_PROCESS_NAMES),
-            ..facts
-        },
-        // ⚠ Codex 的工具名 / 判活进程名**本仓今天没有考据过的读数**（`codex_record.rs` 的真机样本里
-        // 只出现过 `shell` 一个名字，那不足以当一张表）⇒ 五格留 `None`＝「不知道」。
-        // 编一份出来，或者拿 claude 那份顶上，都是 `KR93D3` 禁的那件事。
-        AgentKind::Codex => facts,
     }
 }
 
