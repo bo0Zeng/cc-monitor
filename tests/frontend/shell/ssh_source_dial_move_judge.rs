@@ -305,7 +305,7 @@ fn body_before_this_item() -> String {
     s
 }
 
-/// 〔C2〕**C2 之前**的 `connect_and_exec_cmd` 函数体，逐字冻结（出处：`git show aede6f5d:src/frontend/shell/src/ssh_source.rs`）。
+/// 〔C2〕**C2 之前**的 `connect_and_exec_cmd` 函数体，逐字冻结（出处：`git show bf3cdc83:src/frontend/shell/src/ssh_source.rs`）。
 /// 逐行存的理由与上面那份一样（列 0 的 `}` 会弄坏共用剥法）。
 const PRIM_BEFORE_C2_LINES: &[&str] = &[
     "pub async fn connect_and_exec_cmd(",

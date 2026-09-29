@@ -375,7 +375,7 @@ export async function bindEvents(
   handlers: EventHandlers,
   opts: BindEventsOptions = {},
 ): Promise<void> {
-  // 〔合并 MIG-1 × 主线 eebf51de〕本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
+  // 〔合并 MIG-1 × 主线 8c6cdc0e〕本函数里最后几条 Tauri 监听两边各自退役（MIG-1：会话起停 / 状态并进会话流；MIG-3b：`task-update`
   //   改走 `session-tasks`）⇒ 按窗口作用域监听的那个包装（`sub`）与「等监听注册完」那一格一起没了。
 
   const queue = new DrainQueue<QueueItem>();

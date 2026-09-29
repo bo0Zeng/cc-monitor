@@ -3078,8 +3078,8 @@ mod spawn_registry {
         // 〔DEL〕**14 → 13**：`relay/machine.rs` 那一处（起脱离的 `--relay`）随那一族删了。
         // 〔MIG-3a〕**13 → 14**：`platform/shell.rs` 多一处 `powershell.exe`（别名方言问内建别名，从 monitor 搬来，真的新面）。
         // 〔MIG-1 · `99 §2.1 ⑯`〕＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
-        // 〔合并 MIG-1 × 主线 19671e6b〕基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
-        // 〔合并 MIG-1 × 主线 eebf51de〕主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
+        // 〔合并 MIG-1 × 主线 b9818369〕基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
+        // 〔合并 MIG-1 × 主线 8c6cdc0e〕主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
         // 〔WF1 · L〕**15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
         const SPAWN_SITES_TODAY: usize = 16;
         assert_eq!(

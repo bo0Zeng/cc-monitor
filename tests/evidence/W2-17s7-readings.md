@@ -1,6 +1,6 @@
 # W2 · `设计/17 §7`「当天可上的 6 条」—— 现打盘点与两条新落地的读数
 
-> 分支 `w2/seventeen-six`，基点 `9b1cfd9e`（`wave0/delete-usage-and-fix-gate` tip）。
+> 分支 `w2/seventeen-six`，基点 `b44e39c1`（`wave0/delete-usage-and-fix-gate` tip）。
 > 排期表住址：`99 §4` 第一批第 2 行 · `99 §4.5.1` A 路。
 
 ---
@@ -11,7 +11,7 @@
 
 | # | `§7` 那一条 | 住址 | 现打状态 |
 |---|---|---|---|
-| 1 | `§2.2` 三个卡型常数 ＋ `return null` 出声 | `height-estimate.ts::estimateStreamNodeHeight` ＋ `::bashOutputHeight` ＋ `::warnUnknownCard` | ✅ **已落地**（`d21d52a7`→`7f8abecf`→`c001fa13`），且常数已按秤 2 重定，见 §1 |
+| 1 | `§2.2` 三个卡型常数 ＋ `return null` 出声 | `height-estimate.ts::estimateStreamNodeHeight` ＋ `::bashOutputHeight` ＋ `::warnUnknownCard` | ✅ **已落地**（`d21d52a7`→`7f8abecf`→`82f65904`），且常数已按秤 2 重定，见 §1 |
 | 2 | `§2.4` `approximateSize` 挪进三元 | `cards/index.ts::renderResultContent`（两处 summary 三元） | ✅ **已落地**（`d21d52a7`），三元的 else 分支上有逐字注释 |
 | 3 | `§2.6` `preprocessMath` 前置闸 | `render.ts::preprocessMath` | ⬜ **本轮做**，见 §2 |
 | 4 | `§2.1` `toExcerpt` 先截断再折叠 | `views/user-input-index.ts::toExcerpt` | ✅ **已落地**（`d21d52a7`），另带一条病态输入（前缀几乎全空白）的回退支 |

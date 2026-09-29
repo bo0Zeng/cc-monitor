@@ -1554,7 +1554,7 @@ deadcode_t0=$(date +%s)
 #     （测试段有调用方）。生产调用方只在 Windows 那支 ⇒ 本格（Linux 非 test 构建）看它是死的。
 #     ⚠ 这一条**不会**自己出列；它的代价就是「平台分支抽出来可测」本身，不是漏。
 # ⚠ 这个数是**现打**的（合并后主线 `cargo check -p monitor --message-format=short`），不是 33+2 算的；
-#   两条的新旧由 `95132442:src/frontend/shell/src/bind.rs` 里这两个函数**零命中**核过。
+#   两条的新旧由 `9ba7f7a7:src/frontend/shell/src/bind.rs` 里这两个函数**零命中**核过。
 # 🔴 **2026-09-24（第二波 T4 令牌步 4）：35 → 34，降的 1 条逐条记在这里。**
 # **又是那条刻意的耦合按设计开火了，而且上面那段逐字预告过它**：
 #   「`lookup_hwnd_for_token` …… **步 4 落地那一拍它会自己出列 ⇒ 本格当场红，逼人改回 34。**」
@@ -1617,18 +1617,18 @@ deadcode_t0=$(date +%s)
 #    ② −1 `fenced_block·rs::FENCE_SHAPES`（那张形状账只有判据读，随别名块进后端时住进判据文件 `tests/backend/assets/aliases/fence_tests.rs`）。
 #    同拍另有 `user_files·rs::list_dir` / `LIST_LIMIT`（收件箱进后端）· `rel_under` / `join_under`（别名进后端）四项零调用方，**当拍删了**，不进这个数。
 #    ⚠ 现打：本工作树 `cargo check -p monitor --message-format=short | grep -c "never used"` = 19。
-# 🔴 **2026-09-28（合并 MIG-3b × 主线 81f92f6a）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了，〔MIG-3b 子步 2〕）；
-#    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 81f92f6a 现打 19，逐条对过只差这一条）。
+# 🔴 **2026-09-28（合并 MIG-3b × 主线 5bb03b34）：19 → 18**：−1 `hooks_diag·rs` 第 51 行那一条（钩子诊断整个文件随进后端 `hooks-diag` 删了，〔MIG-3b 子步 2〕）；
+#    MIG-3b 另删的 `dial_host·rs::RemoteFs::stat`（部署判定进后端后零调用方）当拍就删、没进过这个数。现打本工作树 = 18（主线 5bb03b34 现打 19，逐条对过只差这一条）。
 # 🔴 **2026-09-28（合 MIG-1 × 主线 p5e）：主树现打 19 → 回 18，现打，逐条记**：多的那一条是 `inbound_client·rs::InboundClient::close_write` ——
 #    它唯一的生产调用方（测试连接那次一次性探测）随测试连接进本机后端删了，只剩两条起真后端的判据还用它 ⇒ 连同 `WriteJob::CloseWrite`
 #    改成只编进测试档（`#[cfg(test)]`），生产段不再有关写半边这回事。没有抬这个数。
 # 🔴 **2026-09-28（MIG-3b 续 · 足迹进后端）：18 → 14，现打，逐条记**：−4 全出自 `tool_registry·rs`（申报表随「一处后端」进了后端
 #    `src/backend/footprint/registry.rs`）：`ToolSpec::touches` · `Provisioning` 的 `ALL`/`label` · `EnvTier` 的 `ALL`/`label` · `NOT_MANAGED` ——
 #    它们在后端那棵树里仍只有判据读（挂 `cfg_attr(not(test), allow(dead_code))` 并写明），本格射程外。
-#    ⚠ 现打：本工作树 = 14；上一拍（`d02612c0`，申报表还在 monitor）另起一份工作树现打 = 18，逐条对过只差这四条。
+#    ⚠ 现打：本工作树 = 14；上一拍（`4a223c87`，申报表还在 monitor）另起一份工作树现打 = 18，逐条对过只差这四条。
 # 🔴 **2026-09-28（第四波 MOD · 记录抽取进后端）：14 → 12，现打，逐条记**：−2 全出自 `codex_record·rs`（`token_usage_last` · `turn_context_model`）——
 #    那份文件整批搬进后端 `agents/codex/record.rs`（`90 §3` 判据 3：后端是记录解释的唯一的家），本格射程外。
-#    ⚠ 现打：本工作树 = 12；基线 `067ac1b2` 另起一份工作树现打 = 14，逐条对过只差这两条。
+#    ⚠ 现打：本工作树 = 12；基线 `95670597` 另起一份工作树现打 = 14，逐条对过只差这两条。
 run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 12，理由见上方注释）。射程只有 monitor 一个包的生产段；backend 那棵树与 cfg(test) 里的死代码本行盖不到' \
          bash -c 'pin=12; cd src/frontend/shell && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \

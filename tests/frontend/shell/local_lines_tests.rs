@@ -167,7 +167,7 @@ const FRAMES: &[(&str, &str)] = &[
         "link_end",
         r#"{"kind":"link_end","link":"cf1-no-such-link"}"#,
     ),
-    // 〔合并主线 8f9263c3〕U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容。
+    // 〔合并主线 5014e2f3〕U4b 的「A 的清单报完了」与 SR1b 的传输进度 —— 都不是会话内容。
     //   〔LOC1b · 4D〕「清单报完了」从此交回（本机活会话表要它，且要排在它前面那些宣告之后）；传输进度仍就地吸收。
     ("sessions_replayed", r#"{"kind":"sessions_replayed"}"#),
     // 〔FW1 · 第四波 4D · D-d〕记录文件不见了 / 被改过 —— **是**会话内容那一族（与行同序进内容通道）。

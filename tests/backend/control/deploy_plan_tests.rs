@@ -530,7 +530,7 @@ fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
 //
 // 要求住址：`设计/01 §6.7b` ③（V28 · V41）「部署后端时、每次连上时各扫一次，认出是我们放的才删（`files-delete` 带期望值），
 // 认不出的不动」＋ `设计/00 §1.2`「判定只在后端」。真值表的期望是字面量，取自 git 史上那两份真文件的头两行
-// （`git show e8f9e08e^:shared/ccm` · `ccm_entry_shim`〔散文墓碑〕在 `b2bab98f` / `9c20ce0f` 的两代；从前住 monitor `ccm_legacy_tests.rs` 的 L1）。
+// （`git show e8f9e08e^:shared/ccm` · `ccm_entry_shim`〔散文墓碑〕在 `b2bab98f` / `e2af9404` 的两代；从前住 monitor `ccm_legacy_tests.rs` 的 L1）。
 
 /// 09-15 那一代 shim（带 `CCM_SELF` 那一行）。
 const SHIM_0915: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${CCM_SELF:-$0}\" exec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";

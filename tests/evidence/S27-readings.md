@@ -1,7 +1,7 @@
 # S27 读数 —— `99 §4` 步 `23a`：把 crate 条目喂进断网门禁的缓存
 
 > 现打 2026-09-19，量于主树 `/home/zbl/文档/claudecode-frontend/cc-monitor`
-> （分支 `wave0/delete-usage-and-fix-gate`，提交 `03ab498f`）。
+> （分支 `wave0/delete-usage-and-fix-gate`，提交 `1bdfbec7`）。
 > 宿主 `cargo 1.98.1` / `rustc 1.98.1`。**本轮没有 commit，没有动任何 `Cargo.lock`，
 > 没有动任何 `.rs` / `.ts` 源码。**
 

@@ -186,7 +186,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
         }
     }
     assert!(
-        // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 cf3277f4〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
+        // 〔C4d · 第四波 4B〕逐次拨号那条路（`remote_history.rs` 那一处）删了 ⇒ −1；〔合并 C4d × 主线 303fed89〕主线 11（DP1 −1）＋ 本路 −1 ⇒ 10。
         // 〔SH1〕驾驶舱两条 shell 读删了 ⇒ 10 → 8；钩子诊断远端那条改问后端 ⇒ 7；MCP 远端读改问后端 ⇒ 6；列 tmux ⇒ 5。
         // 〔E2〕5 → 4：远端 `ccm` 探针改问那台后端 `ccm-probe`（`probe_ccm_cli` 那一处 `connect_and_exec_cmd` 不在了）。〔散文墓碑〕
         // 〔DEL〕4 → 3：远端流模式那一处（起随 SSH 生死的流模式后端）随那一形删了。

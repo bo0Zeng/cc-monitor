@@ -1,6 +1,6 @@
 # 步 20 前置核账：条 51 / 条 66 今天成不成立（现打 2026-09-19）
 
-分支 `w20/settings-four` · 基点 `9b1cfd9e`（= `wave0/delete-usage-and-fix-gate` 的 tip）。
+分支 `w20/settings-four` · 基点 `b44e39c1`（= `wave0/delete-usage-and-fix-gate` 的 tip）。
 
 > 排期表 `99 §4` 步 20 那一行写着「**要 11c 先答那个值的住址**」。
 > 本文件先把那句话核一遍，再决定要不要往下做 —— 结论是**一半成立、一半不成立**，

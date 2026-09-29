@@ -2513,18 +2513,18 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    API key 那两问从 monitor 的两条 Tauri 命令改走通道；每处显式给期限。
     // 〔HX1 · 4D · D-f〕31 → 32：`account-reads.ts::fetchSessionAccountsOrNull`（`accounts-sessions`，机器页「停」本机后端之前
     //    现问一次走中转的活会话；不走缓存、问不到回 `null`）；显式给期限。
-    // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 66f2b6bf〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
+    // 〔LOC1a · 第四波 4D〕〔合并 LOC1a × 主线 4837d0bd〕主线 31 ＋ 1：`tasks-panel.ts::fetchSessionTasks`（`tasks-list`）——
     //    任务快照从 monitor 的 Tauri 命令改走通道（C4e 批 4）；显式给期限。
     // 〔合并 HX1 × LOC1a〕两路各自 31 ＋ 1 ⇒ 31 ＋ 2 = 33。
-    // 〔HX2 · 4D〕〔合并 HX2 × 主线 290d8c33〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
-    // 〔STC · 第四波 4D〕〔合并 STC × 主线 39f5ab18〕主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
+    // 〔HX2 · 4D〕〔合并 HX2 × 主线 99b8adb6〕主线 33 ＋ 1 ⇒ 34：`apikey-reads.ts::writeApikeyKey`（`apikey-key-set`，写 key 从 monitor 那条 Tauri 命令改走通道）；显式给期限。
+    // 〔STC · 第四波 4D〕〔合并 STC × 主线 aa8c29f3〕主线 35 ＋ 1 ⇒ 36：`session-reads.ts::readSessionFacts`（`history-facts`，会话事实出成品 ——
     //    此前是前端 `onLine` 旁路自己攒的，不是替掉一条 Tauri 命令）；显式给期限（`READ_BUDGET_MS`）。
     // 〔CF2 · 第四波 4B〕`chan.subscribe`（TS，主界面）恰好 1 处：`events.ts::bindEvents` 按 `streams` 订会话内容流
     //    （主窗口每台机器一条、独立窗口一条，都经这一处）。
     // 〔TAP〕`session-tap` 与会话行走同一处（`plan` 里多一种流），仍是 1。
     // 〔DL1 · 第五波〕`accounts-changed`（替掉裸事件 `remote-backend-ready`；`设计/01 §2.2`「前端只有两个动作」）同样经这一处
     //    （合并 TAP 时从单独一处 `watchAccountsChanged` 收回 `bindEvents` 的 `plan`，照 TAP 那一形）⇒ 仍是 1。
-    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 a6b10281 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
+    // 〔W5-ALIAS · 第五波先行〕＋1（合并主线 3c815828 之后 34 → 35；那一拍两边各自写成 34、git 当同一行合了，现打 35）：`settings/machine-aliases.ts::previewAlias` 一处（别名预览 `ccm-print`，
     //    问本机常驻后端「这条别名实际会执行什么」，`设计/71 §2.3`）；显式给期限（`PREVIEW_BUDGET_MS`）。
     // 〔DUP2 · J4〕36 → 37：`settings/acct-deploy.ts::askAcctIsoCmd` 一处（cc-acct-iso 步骤那一行问那台后端 `acct-iso-cmd`；
     //    新建表单预览 · 启用向导预览 · 弹终端三个用处都经这一处）；显式给期限（`CMD_BUDGET_MS`）。
@@ -2535,7 +2535,7 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     //    MCP 读写与推拉从 monitor 那八条 Tauri 命令改走通道；显式给期限（`MCP_BUDGET_MS` / `SYNC_BUDGET_MS`）。
     // 〔MIG-3a〕基数 47 → 增量 +5 ⇒ 52：`skill-install-reads.ts` 四处（`skill-read` · `skill-install-plan` · `-apply` · `skill-uninstall-apply`）
     //    ＋ `assets-sync-reads.ts` 一处（`assets-sync`）；显式给期限（`SKILL_BUDGET_MS` / `SYNC_BUDGET_MS`）。
-    // 〔合并 MIG-3a × 主线 ad308378〕基数 52 ＋ MIG-3a +11 ＋ MIG-2 +4 ⇒ 67。
+    // 〔合并 MIG-3a × 主线 5b52f042〕基数 52 ＋ MIG-3a +11 ＋ MIG-2 +4 ⇒ 67。
     // 〔MIG-3a · 子步 3〕基数 61 → 增量 +2 ⇒ 63：`cc-bus-install-reads.ts` 两处（`cc-bus-install` / `-state`）。
     // 〔MIG-3a · 主会话 09-28 裁〕基数 63 → 增量 −2 ⇒ 61：MCP 推拉 3 → 2、skill 装 3 → 2（经前端中继那一形改成只问本机枢纽一次）。
     // 〔MIG-3a〕基数 57 → 增量 +6 ⇒ 63：`alias-reads.ts` 六处（`aliases-*`）；显式给期限（`ALIAS_BUDGET_MS`）。
@@ -2543,15 +2543,15 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     // 〔MIG-3a〕基数 52 → 增量 +2 ⇒ 54：`acct-iso-reads.ts` 两处（`acct-iso-status` · `acct-iso-shellinit`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
     // 〔MIG-3a · 09-28 裁 2〕基数 67 → 增量 +1 ⇒ 68：`acct-iso-reads.ts` 一处（`acct-iso-install`）；显式给期限（`ACCT_ISO_BUDGET_MS`）。
     // 〔MIG-1 · `99 §2.1 ⑯`〕基数 41 → 增量 +3 ⇒ 44：`ssh-config-reads.ts` 三处（`ssh-config-aliases` · `-resolve` · `-import`，`~/.ssh/config` 导入从 monitor 三条 Tauri 命令改问本机常驻后端）；各自显式给期限。
-    // 〔合并 MIG-1 × 主线 19671e6b〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
+    // 〔合并 MIG-1 × 主线 b9818369〕基数 41 ＋ MIG-3a 11 ＋ MIG-1 3 ⇒ 55。
     // 〔MIG-2〕基数 52 → 增量 +4 ⇒ 56：`launch-render.ts` 四处（`launch-render-cli` · `launch-render-payload` · `launch-endpoint` · `launch-local`），
     //    起会话的渲染 / 中转地址 / 本机计划从 monitor 那几条 Tauri 命令改走通道；显式给期限（`budgetWithin(...)`）。
-    // 〔合并 MIG-1 × 主线 862be034〕主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
+    // 〔合并 MIG-1 × 主线 bc175f33〕主线 56 ＋ MIG-1 本路 6（ssh 配置三问 ＋ 端口转发三问）⇒ 62。
     assert_eq!(
         per_entry,
         [
             ("call", 1usize),
-            ("chan.call", 94usize), // 〔WF1 · L〕+1：`alias-reads.ts::allowLocalScripts`（`powershell-policy-set`，用户确认后改执行策略）；显式给期限（`ALIAS_BUDGET_MS`） // 〔FIX4 · J15〕+1：`views/history-search.ts::searchAllMachines`（`history-search-merge`，各台结果合一份问本机后端）；显式给期限（`MERGE_BUDGET_MS`） // 〔FIX4 · ⑬〕+1：`terminal-open.ts::renderSshLine`（`terminal-ssh`，开终端那一行问本机后端渲）；显式给期限（`RENDER_BUDGET_MS`） // 〔FIX4 · J7〕+1：`tmux-name-mint.ts::askMint`（`tmux-name-mint`，起会话要的 tmux 名问那台后端铸）；显式给期限（`MINT_BUDGET_MS`） // 〔FIX4〕+1：`settings/panorama-section.ts::uninstallPanorama`（`panorama-uninstall`，全景小程序卸口）；显式给期限（`UNINSTALL_BUDGET_MS`） // 〔MOD〕+5：`record-reads.ts` 五处（`history-page` 两处 · `history-lines` · `history-subagent` · `drift-report`；会话正文四条从 monitor 那几条 Tauri 命令改走通道，漂移账记录那两面问那台后端）// 〔MIG-3b 续〕+1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// 〔MIG-3b 续〕+2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // 〔MIG-3b 续〕+1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 e1934b2e〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
+            ("chan.call", 94usize), // 〔WF1 · L〕+1：`alias-reads.ts::allowLocalScripts`（`powershell-policy-set`，用户确认后改执行策略）；显式给期限（`ALIAS_BUDGET_MS`） // 〔FIX4 · J15〕+1：`views/history-search.ts::searchAllMachines`（`history-search-merge`，各台结果合一份问本机后端）；显式给期限（`MERGE_BUDGET_MS`） // 〔FIX4 · ⑬〕+1：`terminal-open.ts::renderSshLine`（`terminal-ssh`，开终端那一行问本机后端渲）；显式给期限（`RENDER_BUDGET_MS`） // 〔FIX4 · J7〕+1：`tmux-name-mint.ts::askMint`（`tmux-name-mint`，起会话要的 tmux 名问那台后端铸）；显式给期限（`MINT_BUDGET_MS`） // 〔FIX4〕+1：`settings/panorama-section.ts::uninstallPanorama`（`panorama-uninstall`，全景小程序卸口）；显式给期限（`UNINSTALL_BUDGET_MS`） // 〔MOD〕+5：`record-reads.ts` 五处（`history-page` 两处 · `history-lines` · `history-subagent` · `drift-report`；会话正文四条从 monitor 那几条 Tauri 命令改走通道，漂移账记录那两面问那台后端）// 〔MIG-3b 续〕+1：`settings/footprint-reads.ts` 的 `ask`（`footprint-report`，足迹从 monitor 那条 Tauri 命令改走通道）// 〔MIG-3b 续〕+2：`panorama/api.ts` 的 `remote`（`panorama`）· `edit`（`panorama-edit`），全景从 monitor 那三条 Tauri 命令改走通道 // 〔MIG-3b 续〕+1：`pubkey-push.ts::pushPublicKey` 问本机 `pubkey-push` // 〔OSA〕基数 79 → 增量 +1：`settings/profile-backups.ts` 问本机 `files-ls`（`$PROFILE` 备份那一格） // 〔合并 MIG-3a × 主线 f5a294e1〕基数 67 ＋ 主线 +11（78）＋ MIG-3a +1（`acct-iso-install`）⇒ 79
             ("chan.subscribe", 2usize), // 〔MIG-1 收尾〕1 → 2：`remote-probe.ts::probeMachine` 订那一趟测试连接的进度流（`probe-progress/<票>`，一次一条、结局到了就撤）—— 它不是长活的会话流，不进 `bindEvents` 的 `plan`
             ("subscribe", 1usize)
         ]
