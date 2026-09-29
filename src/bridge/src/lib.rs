@@ -36,7 +36,6 @@ mod bridge;
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 mod ccm_legacy; // 〔GP1 · 第四波〕旧版放在 `~/.local/bin/ccm` 的那一份：认出是我们放的就删（`设计/01 §6.7b` 迁移 ② ③）
 pub mod chan;
-mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 // 〔MIG-3b 续 · 主会话 09-28 裁①〕`mod config_surface;` · `mod footprint_remote;` · `mod tool_registry;`〔散文墓碑〕（足迹的申报表 ＋ 判定 ＋ 远端事实两趟问法）整族进了后端
 //   （`src/backend/footprint/`，帧命令 `footprint-report`）；monitor 只剩它自己那台那几行的事实。
@@ -68,14 +67,14 @@ mod launch;
 mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
-mod messages;
 // 〔STOP〕`stop_grace`〔散文墓碑〕删：「请它收尾 → 等 → 强杀」搬进那台机器上的一次性子命令 `--resident-stop`（后端 `control/resident.rs`）。
 // 〔RM1f · V108 后半句〕`mod panorama;`（进程内 per-repo 引擎池 ＋ 17 条本机全景命令）删了：本机也走本机后端 → 全景小程序（`panorama_call`），monitor 不再链 vendored 引擎。
 mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序：推上去 · 本机放一份（〔DP1〕字节本身从 `byte_table` 取）
                     // 〔MIG-3b 续 · 主会话 09-28 裁〕`panorama_call`〔散文墓碑〕（全景问 · 写 · 撤经 monitor 那一跳转）整份删了：界面经通道直问那台后端 `panorama` / `panorama-edit`，
                     //   撤单过通道那一跳；放字节那一半（`panorama_place`）住 `panorama_bytes.rs`。
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
-mod parser;
+                            // 〔MOD · `设计/90 §3` 判据 3〕`mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
+                            //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
                  // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
@@ -83,7 +82,7 @@ mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给�
 mod profile_installer;
 // 〔MIG-3b 续 · ⑬〕`pubkey`〔散文墓碑〕（F50 公钥推送）进了本机后端：帧命令 `pubkey-push`（`src/backend/assets/pubkey.rs`），界面经通道直问。
 // 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
-mod remote_history;
+// 〔MOD〕`mod remote_history;`〔散文墓碑〕删：最后一个函数（按名字核「这台配置过」）随子 agent 那条命令退役。
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
                            // 〔LOC1b · 第四波 4D〕`mod search;` 删了：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份内存索引〔散文墓碑〕随之退役。
@@ -200,7 +199,7 @@ mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]
 mod structural_scan;
-mod subagent;
+// 〔MOD〕`mod subagent;`〔散文墓碑〕删：子 agent 那一份（列 ＋ 挑 ＋ 读 ＋ 解析）由那台后端 `history-subagent` 出成品，界面经通道直问。
 // 〔W5-VIS〕业务路径零裸吞：每一处 `let _ =` / 语句级 `.ok();` 登记为什么可以丢（整体 #[cfg(test)]）。
 #[cfg(test)]
 mod swallow_registry;
@@ -208,8 +207,7 @@ mod swallow_registry;
 //   注释写在上一行：行尾注释会让 rustfmt 把下一行的注释块缩进对齐过去（同 `local_read_surface_registry` 那一段）。
 #[cfg(test)]
 mod sync_command_registry;
-// 〔`设计/10` 骨架 · 子步 3〕monitor 侧「从偏移读」：骨架索引 ＋ 按偏移取一段正文。
-mod session_skeleton;
+// 〔MOD〕`mod session_skeleton;`〔散文墓碑〕删：按偏移 / 按行号取正文由那台后端出记录行（`history-page` · `history-lines`），界面经通道直问。
 // 〔C4b · 第四波 4B〕大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
 //   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
@@ -985,7 +983,6 @@ pub fn run() {
             // 〔MIG-3a · `99 §2.1 ⑬`〕资产目录同步（`assets_sync`）与 skill 装 / 卸三条退役：界面经通道直问那台后端
             //   （`assets-sync` 问 `<local>` · `skill-read` / `skill-install-plan` / `skill-install-apply` / `skill-uninstall-apply`，
             //   `src/assets-sync-reads.ts` · `src/skill-install-reads.ts`）。
-            subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
@@ -1017,10 +1014,8 @@ pub fn run() {
             // 〔C4d · 第四波 4B〕历史清单两条（本机项目 · 展开一个项目）与远端项目清单、改注解、上次账号表那五条退役：
             //   join 与注解搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`），
             //   界面经通道问（`src/history-reads.ts`）。
-            history::stream_read_session_jsonl,
-            // 〔`设计/10` 骨架 · 子步 3〕`--read-session-from-offset` 在 monitor 侧的调用点（〔C4b〕骨架索引那一条改走通道）。
-            session_skeleton::read_session_range,
-            session_skeleton::read_session_lines,
+            // 〔MOD · `05 §14.3` C 组〕会话正文四条（整份读 · 子 agent · 按偏移 · 按行号）退役：那台后端出记录行，
+            //   界面经通道直问（`src/record-reads.ts`：`history-page` · `history-subagent` · `history-lines`）。
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             // 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条命令并进上面 `aliases_block_install` / `_remove`（带 `origin`），删。
             // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
@@ -1115,13 +1110,6 @@ pub fn run() {
                 //   （`the_exit_arm_collects_no_relay` 的零命中守卫数着这件事）。
             }
         });
-}
-
-fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
-    match rec {
-        messages::JsonlRecord::User { cwd, .. } => cwd.clone(),
-        _ => None,
-    }
 }
 
 /// Batch7-F24：读 config.json 顶层 `showBgSessions`（默认 true）。**OnceLock 缓存
@@ -1298,23 +1286,23 @@ fn parse_host_obj(
     })
 }
 
-/// 按 label 选台（`remote_history` 的历史查询据此选连哪台）。无匹配 → None。
+/// 按 label 选台。无匹配 → None。
 pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::RemoteConfig> {
     load_remote_configs()
         .into_iter()
         .find(|c| c.origin_label() == label)
 }
 
-/// 把后端帧里来的一批 `JsonlLine` parse 成可 emit 的 `JsonlLinePayload`。
+/// 把后端帧里来的一批 `JsonlLine` 组成可 emit 的 `JsonlLinePayload`。
 ///
 /// v2.4.2 issue #2 抽出的最小 seam。〔CF1〕今天它**只有一个**生产调用方：`ssh_source::flush_lines`
-/// （远端流 · 本机流 · 旁路快照三路的行都从那里出去）。这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
-/// 的行为唯一。过滤次序、解析错误 warn-then-continue、`seq` 透传都必须与历史一致。
+/// （远端流 · 本机流 · 旁路快照三路的行都从那里出去）。
 ///
-/// `origin`：数据来源。载荷上的 `origin` 字段由它派生（与 `session_skeleton·rs::range_payloads` 同一口径）：
-/// 本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字（issue #15，前端 Tab 标题加
-/// `[host]` 前缀以区分本地/远端）。透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
-/// 〔ST3〕它同时是记账的那台：看不懂的行记在 `origin` 名下（原先收 `Option<String>`，`None` = 本机）。
+/// 〔MOD · `设计/90 §3` 判据 3〕**这里不解释记录**：这一行在渲染模型里是什么（`message`）、进不进界面（有没有 `message`）、
+/// 它自己的 `cwd`，都是那台后端给的成品（`agents/claudecode/`）；本函数只组载荷、记「连着的不可显示那一段」，`seq` 透传。
+///
+/// `origin`：数据来源。载荷上的 `origin` 字段由它派生：本机 ⇒ 不带（前端 Tab 标题不加前缀，与历史一致）；远端 ⇒ 那台的名字
+/// （issue #15，前端 Tab 标题加 `[host]` 前缀以区分本地/远端）。
 pub(crate) fn batch_to_payloads(
     lines: Vec<ssh_source::JsonlLine>,
     origin: &crate::origin::Origin,
@@ -1324,26 +1312,22 @@ pub(crate) fn batch_to_payloads(
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
         let skipped = runs.pending(&line.session_id, line.seq);
-        match parser::parse_line(origin, &line.raw) {
-            Ok(Some(record)) if record.is_displayable() => {
+        match line.message {
+            Some(message) => {
                 runs.saw(&line.session_id, line.seq, None);
-                let cwd = extract_cwd(&record);
                 payloads.push(bridge::JsonlLinePayload {
-                    session_id: line.session_id.clone(),
-                    cwd,
+                    session_id: line.session_id,
+                    cwd: line.cwd,
                     path: line.path.to_string_lossy().into_owned(),
                     // P5.1：后端给每行编行号（`--tail-only` 下与快照同一个行号空间）；前端按 seq 排到 timeline
                     seq: line.seq,
                     origin: label.clone(),
-                    message: record,
+                    message,
                     skipped_from: skipped,
                 });
             }
-            other => {
-                // 不可显示 / 解析不出：照占号、不出 payload —— 记进「连着的不可显示那一段」。
-                if let Err(e) = other {
-                    tracing::warn!("parse line failed in {}: {e}", line.path.display());
-                }
+            None => {
+                // 不进界面（后端没给成品）：照占号、不出 payload —— 记进「连着的不可显示那一段」。
                 runs.saw(
                     &line.session_id,
                     line.seq,

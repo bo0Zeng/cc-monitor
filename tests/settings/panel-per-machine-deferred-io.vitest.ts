@@ -114,6 +114,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
   "chan_call", // 足迹：〔MIG-3b 续〕按 devbox 经通道问 `footprint-report`
   // 〔ST3〕「未识别的数据」按机器分：切到 devbox 由它自己的订阅重读，按 devbox 去问，恰好一发。
   "drift_ledger_report",
+  "chan_call", // 〔MOD〕未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
 ];
 /**
  * 第一次可见就是 devbox：per-machine 那一批放一次，**每一发恰好一次**。
@@ -124,6 +125,7 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
   "chan_call", // 足迹：〔ST2 · MIG-3b 续〕按 devbox 经通道问 `footprint-report`
   "drift_ledger_report", // 未识别的数据：〔ST3〕按 devbox 去问
+  "chan_call", // 〔MOD〕未识别的数据里记录那两面：经通道问 devbox 那台后端 `drift-report`
   "load_config", // 账号：读远端清单
   "chan_call", // 账号：devbox 那一台（〔C4c〕经通道说 `accounts-list`）
   "chan_call", // MCP：devbox 的项目候选（〔MIG-3a〕经通道说 `mcp-read`）

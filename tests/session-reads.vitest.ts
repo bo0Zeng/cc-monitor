@@ -243,3 +243,31 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(r4.available === false && r4.failure).toBe("transport");
   });
 });
+
+// 〔MOD · `设计/05 §14.3` C 组〕会话正文那几条：TS 解码器读同一份跨语言金样（后端 `read_face_tests.rs` 钉着它 == 帧面现打）。
+describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
+  const recordGolden = JSON.parse(
+    readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/record-reads.golden.json"), "utf8"),
+  ) as Record<string, unknown>;
+
+  it("★★ 金样：整份读 · 按行号 · 子 agent 三份成品读得懂；远端那台的载荷带上它的名字、本机不带", async () => {
+    const { decodePage, decodeLines, decodeSubagent } = await import("../src/record-reads");
+    const page = decodePage("<local>", recordGolden["history-page"]);
+    expect([page.next, page.nextSeq, page.eof]).toEqual([273, 3, true]);
+    expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, (p.message as { uuid?: string }).uuid])).toEqual([
+      [1, "r", "/w", "r-1"],
+      [2, "r", null, "r-2"],
+    ]);
+    expect(page.payloads.every((p) => p.origin === undefined)).toBe(true);
+    const lines = decodeLines("devbox", recordGolden["history-lines"]);
+    expect([lines.from, lines.next, lines.eof]).toEqual([1, 3, true]);
+    expect(lines.payloads.map((p) => [p.seq, p.origin])).toEqual([
+      [1, "devbox"],
+      [2, "devbox"],
+    ]);
+    const sub = decodeSubagent(recordGolden["history-subagent"]);
+    expect([sub.agent_id, sub.records.length]).toEqual(["a1", 1]);
+    // 反向：外层多一格 ⇒ 不收（两端契约对不上，不猜）。
+    expect(() => decodePage("<local>", { ...(recordGolden["history-page"] as object), extra: 1 })).toThrow();
+  });
+});

@@ -182,7 +182,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/bridge/src/filewin/cross_copy.rs", "tx.send(overwrite).ok();", 1, Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
     ("src/bridge/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", 1, Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
     ("src/bridge/src/filewin/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", 1, Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
-    ("src/bridge/src/history.rs", "let _ = on_chunk.send(chunk);", 1, Why::PeerGone, ""),
+    // 〔MOD〕`history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
     ("src/bridge/src/launch.rs", "let _ = child.wait();", 1, Why::Reap, ""),
     ("src/bridge/src/lib.rs", "let _ = AttachThreadInput(fg_thread, cur_thread, false);", 1, Why::WindowBestEffort, ""),
     ("src/bridge/src/lib.rs", "let _ = BringWindowToTop(h);", 1, Why::WindowBestEffort, ""),

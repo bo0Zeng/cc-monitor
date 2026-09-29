@@ -134,7 +134,7 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "line",
-        r#"{"kind":"line","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","seq":7,"raw":"{}"}"#,
+        r#"{"kind":"line","session_id":"s1","path":"/h/.claude/projects/p/s1.jsonl","seq":7}"#,
     ),
     (
         "session_added",
@@ -270,9 +270,8 @@ fn frame(line: &str) -> LocalItem {
 #[test]
 fn the_local_dispatch_core_matches_the_hand_written_table() {
     const LINE_A: &str =
-        r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"raw":"{\"x\":1}"}"#;
-    const LINE_B: &str =
-        r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"raw":"{}"}"#;
+        r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"message":{"x":1}}"#;
+    const LINE_B: &str = r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0}"#;
     const ADD_A: &str = r#"{"kind":"session_added","sid":"a","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
     const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","sid":"a"}"#;
     const ADD_B_BG: &str =
@@ -284,14 +283,16 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         session_id: "a".into(),
         path: "/p/a.jsonl".into(),
         seq: 4,
-        raw: r#"{"x":1}"#.into(),
+        message: crate::bridge::RecordBody::from_json(r#"{"x":1}"#.into()),
+        cwd: None,
         end: None,
     };
     let line_b = LocalStep::Line {
         session_id: "b".into(),
         path: "/p/b.jsonl".into(),
         seq: 0,
-        raw: "{}".into(),
+        message: None,
+        cwd: None,
         end: None,
     };
 
@@ -644,7 +645,8 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
     assert_eq!(lines, Some(2), "prime 到的完整行数（空白行不计）");
     // ② 追加一行 ⇒ 下一条这个会话的 line 帧就是它：seq == 行号 2（历史两行不重放）。
-    let appended = "{\"type\":\"user\",\"n\":2}";
+    // 〔MOD〕后端出成品：这一行要进得了界面（带链身份的 user 记录），帧上才有 `message` 可比。
+    let appended = "{\"type\":\"user\",\"uuid\":\"u2\",\"timestamp\":\"t\",\"message\":{\"role\":\"user\",\"content\":\"x\"}}";
     let mut f = std::fs::OpenOptions::new()
         .append(true)
         .open(&jsonl)
@@ -663,14 +665,14 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         })
     };
     let mut nudges = 0;
-    let (seq, raw) = loop {
+    let (seq, message) = loop {
         match wait_line(&mut rx) {
             Some(LocalItem::Frame(InboundFrame::Line {
                 session_id,
                 seq,
-                raw,
+                message,
                 ..
-            })) if session_id == sid => break (seq, raw),
+            })) if session_id == sid => break (seq, message),
             Some(_) => continue,
             None => {
                 nudges += 1;
@@ -683,7 +685,13 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
             }
         }
     };
-    assert_eq!((seq, raw.as_str()), (2, appended));
+    assert_eq!(seq, 2);
+    let m = message.expect("后端没给那一行的成品");
+    assert!(
+        m.0.get().contains("\"uuid\":\"u2\""),
+        "成品不是那一行：{}",
+        m.0.get()
+    );
     println!("CF1-LOCAL-LINES nudges={nudges}");
     // ③ 后端没了 ⇒ 读循环收尾送「流结束」。
     let _ = child.kill();
@@ -716,7 +724,7 @@ fn the_local_product_core_matches_the_hand_written_table() {
     const LEFT_B: &str = r#"{"kind":"session_state","sid":"b","state":"ended"}"#;
     const REM_A: &str = r#"{"kind":"session_removed","sid":"a"}"#;
     const LISTED: &str = r#"{"kind":"sessions_replayed"}"#;
-    const LINE: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0,"raw":"{}"}"#;
+    const LINE: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":0}"#;
     let local = || "<local>".to_string();
 
     let none = HashSet::new();

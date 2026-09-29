@@ -128,7 +128,7 @@ pub fn session_meta_cwd(v: &Value) -> Option<&str> {
 }
 
 /// Codex sid = rollout 文件名的 UUID（`rollout-<ts>-<uuid>` → `<uuid>`）。**校验强度对齐 monitor
-/// `adapter::codex_sid_from_rollout`（Phase D 审计修 parity 发散）**：须 `rollout-` 前缀 + 末 36 字符
+/// `adapter::codex_sid_from_rollout`（Phase D 审计修 parity 发散）**：须 `rollout-` 前缀 + 末 36 字符〔散文墓碑〕
 /// 过 UUID 形校验，否则 `None`（→ 调用方跳过该文件，同 monitor，避免畸形名吐幽灵行）。末 36 用 `get`
 /// （非字节切片）→ 非字符边界安全返 None、不 panic（比 monitor 的 `&rest[..]` 切片更稳）。
 pub fn codex_sid_from_path(path: &Path) -> Option<String> {

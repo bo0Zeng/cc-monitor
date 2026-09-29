@@ -10,7 +10,7 @@
 /// 那次是**靠人发现的**：改名之后标题会静默消失，没有任何判据会红。
 ///
 /// ⇒ 本条把「谁承载标题」这件事变成可机检的：
-/// 人群 = `messages.rs` 的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
+/// 人群 = `agents/claudecode/schema.rs`（〔MOD〕原 monitor `messages.rs`）的 `JsonlRecord` 里**带 `*title` 字段**的变体（今天 2 个）；
 /// 性质 = 它必须被标题抽取段接住 ——〔C4d · 第四波 4B〕那一段今天住后端 `observe/history_query.rs::analyze_session`
 /// （本机与远端同一个函数），按记录的线上类型名分臂。
 /// 加第三种标题记录而忘了接 ⇒ 红。
@@ -19,7 +19,7 @@
 /// 而「带一个叫 `xxx_title` 的字段」才是它承载标题的实据。
 #[test]
 fn every_title_bearing_record_is_consumed_by_the_extractor() {
-    let msgs = include_str!("../../src/bridge/src/messages.rs");
+    let msgs = include_str!("../../../../src/backend/agents/claudecode/schema.rs");
     let b = msgs
         .find("enum JsonlRecord")
         .expect("找不到 `JsonlRecord` 定义 —— 记录类型搬家了，本条要跟着改");
@@ -71,8 +71,8 @@ fn every_title_bearing_record_is_consumed_by_the_extractor() {
     //   按 `JsonlRecord::<变体>` 分臂）搬进本机常驻后端，本机与远端同一个函数
     //   （`src/backend/observe/history_query.rs::analyze_session`，按记录的**线上类型名**分臂）。
     //   ⇒ 本条的「被接住」从「`history.rs` 里有 `JsonlRecord::<变体>`」换成「后端那个函数里有 `Some("<线上类型名>")` 那一臂」；
-    //   人群（带 `*title` 字段的变体）照旧从 `messages.rs` 抠，线上类型名从它上面那行 `serde(rename)` 抠 —— 两份源码异源。
-    let backend = include_str!("../../src/backend/observe/history_query.rs");
+    //   人群（带 `*title` 字段的变体）照旧从记录的 schema（〔MOD〕今天在 `agents/claudecode/schema.rs`）抠，线上类型名从它上面那行 `serde(rename)` 抠 —— 两份源码异源。
+    let backend = include_str!("../../../../src/backend/observe/history_query.rs");
     let at = guard_core::find_pinned(
         backend,
         "fn analyze_session(p: &Path) -> serde_json::Value {",

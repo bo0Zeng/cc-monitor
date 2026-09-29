@@ -86,7 +86,7 @@ pub fn token_usage_last(v: &Value) -> Option<&Value> {
     unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")
 }
 
-// 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做
+// 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做〔散文墓碑〕
 // `input -= cached`。它与 backend `agents/codex/parse.rs` 的那份**逐字相同却各写一遍**
 // ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `codex_token_core::codex_delta`
 // （唯一权威源），调用方直接拿映射好的增量。

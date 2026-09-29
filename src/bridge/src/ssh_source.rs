@@ -53,7 +53,7 @@ use crate::event_replay::EventReplay;
 //   （那条双写点 `REMOVAL_CAUSE_SUPERSEDED`〔散文墓碑〕随「按 cause 裁可重连」搬进后端 `observe/session_ledger.rs`）。
 use crate::session_book::{Fate, In as BookIn, LiveMeta};
 
-/// 一行会话记录的原文 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。
+/// 一行会话记录的成品 ＋ 它在那份文件里的行号（`seq`）—— 进 [`flush_lines`] 之前的形状。
 ///
 /// 〔CF1 · 2026-09-24〕它原先住 monitor 自己的 jsonl watcher（`watcher.rs`，已删）。
 /// 本机那条流改走后端的 `line` 帧之后，**所有**行都从后端的帧来（远端流 · 本机流 · 旁路快照），
@@ -64,7 +64,10 @@ pub struct JsonlLine {
     pub session_id: String,
     pub path: std::path::PathBuf,
     pub seq: u64,
-    pub raw: String,
+    /// 〔MOD · `设计/90 §3` 判据 3〕那台后端给的成品：这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
+    pub message: Option<crate::bridge::RecordBody>,
+    /// 这条记录自己的 `cwd`（后端给的）。
+    pub cwd: Option<String>,
     /// 〔RENDER2 · `99 §2.1` ㊱②〕这一行之后（含它的 `\n`）那一个字节的偏移 = 下一行的起点（后端 `line.byte_offset` ·
     /// 快照的行区间末端）；说不准 ⇒ `None`。续点据它记「从哪个字节接着读」。
     pub end: Option<u64>,
@@ -695,11 +698,7 @@ enum FetchOutcome {
     Cancelled,
 }
 
-/// 判定快照流的一行是否计入行号（**必须与 backend `read_new_lines` 一字一致**：
-/// BOM + 全空白的行跳过且不消耗 seq——两路 seq 同处行号空间的前提）。
-fn snapshot_line_countable(line: &str) -> bool {
-    !line.trim_start_matches('\u{feff}').trim().is_empty()
-}
+// 〔MOD〕「快照那一行计不计号」（`snapshot_line_countable`〔散文墓碑〕）删了：后端只交可计行（口径只住后端 `history_query::line_counts`）。
 
 /// 拉取单个会话的完整历史快照并灌进既有管线。
 ///
@@ -764,7 +763,7 @@ async fn fetch_snapshot(
         .await?;
         // 一页没读满那一行（`next < end` 且没到头）⇒ 核不了，照续传（不许把「没读全」说成「被改过」）。
         let whole = page.eof || page.next >= w.end;
-        if whole && !crate::snapshot_resume::witness_holds(&w, &page.text) {
+        if whole && !crate::snapshot_resume::witness_holds(&w, &page.rows) {
             tracing::warn!(
                 "snapshot [{host_label}] {sid}: 续点那一行（字节 {}–{}）与上次不是同一行 —— 记录文件在断线期间被改写过，整份重读",
                 w.start,
@@ -820,11 +819,10 @@ async fn fetch_snapshot(
                 );
                 break 'read;
             }
-            for (line, span) in crate::snapshot_resume::page_lines(offset, &page.text) {
-                if !snapshot_line_countable(line) {
-                    continue;
-                }
-                pick.see(upto, plan.end, line, span);
+            let spans = crate::snapshot_resume::row_spans(offset, &page.rows);
+            // 〔MOD〕后端只交可计行、每行带成品（进不进界面 · `cwd` · 摘要都是它给的）；这里只编号、挑见证、攒批。
+            for (row, span) in page.rows.into_iter().zip(spans) {
+                pick.see(upto, plan.end, row.hash, span);
                 let Some(seq) = walk.step() else {
                     continue; // 续传：锚到续点之间的行前端已有，数掉不发
                 };
@@ -832,7 +830,8 @@ async fn fetch_snapshot(
                     session_id: sid.to_string(),
                     path: std::path::PathBuf::from(path),
                     seq,
-                    raw: line.to_string(),
+                    message: row.message,
+                    cwd: row.cwd,
                     end: span.map(|(_, e)| e),
                 });
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
@@ -1163,7 +1162,9 @@ pub enum InboundFrame {
         session_id: String,
         path: String,
         seq: u64,
-        raw: String,
+        /// 〔MOD〕成品（`message`，缺 ＝ 不进界面）与这条记录自己的 `cwd`。
+        message: Option<crate::bridge::RecordBody>,
+        cwd: Option<String>,
         /// 〔RENDER2 · ㊱②〕后端的 `byte_offset`（这一行末尾含 `\n` 的累计字节）；老后端不带 ⇒ `None`。
         end: Option<u64>,
     },
@@ -1344,6 +1345,31 @@ fn overflow_health_message(
 ///
 /// 调用方（[`run`]）对 `None` 一律 `tracing::warn!` 后 continue，永不中断流。
 pub fn parse_frame(line: &str) -> Option<InboundFrame> {
+    // 〔MOD〕内容帧是最热的那一种：按类型直解，成品（`message`）以原文收下、不建 `Value`（monitor 不读它的字段）。
+    if line.starts_with(r#"{"kind":"line","#) {
+        #[derive(serde::Deserialize)]
+        struct LineFrame {
+            session_id: String,
+            path: String,
+            seq: u64,
+            #[serde(default)]
+            message: Option<Box<serde_json::value::RawValue>>,
+            #[serde(default)]
+            cwd: Option<String>,
+            #[serde(default)]
+            byte_offset: Option<u64>,
+        }
+        if let Ok(f) = serde_json::from_str::<LineFrame>(line) {
+            return Some(InboundFrame::Line {
+                session_id: f.session_id,
+                path: f.path,
+                seq: f.seq,
+                message: f.message.map(crate::bridge::RecordBody),
+                cwd: f.cwd,
+                end: f.byte_offset,
+            });
+        }
+    }
     let value: serde_json::Value = serde_json::from_str(line).ok()?;
     let obj = value.as_object()?;
     let kind = obj.get("kind")?.as_str()?;
@@ -1411,17 +1437,23 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 uncancellable,
             })
         }
+        // 〔MOD〕一般走不到这里（`line` 帧在上面按类型直解，成品不经 `Value`）；形状不是那一形时落到这里再认一次。
         "line" => {
             let session_id = obj.get("session_id")?.as_str()?.to_string();
             let path = obj.get("path")?.as_str()?.to_string();
             let seq = obj.get("seq")?.as_u64()?;
-            let raw = obj.get("raw")?.as_str()?.to_string();
+            let message = match obj.get("message") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(m) => Some(crate::bridge::RecordBody::from_json(m.to_string())?),
+            };
+            let cwd = obj.get("cwd").and_then(|v| v.as_str()).map(str::to_string);
             let end = obj.get("byte_offset").and_then(serde_json::Value::as_u64);
             Some(InboundFrame::Line {
                 session_id,
                 path,
                 seq,
-                raw,
+                message,
+                cwd,
                 end,
             })
         }
@@ -2252,7 +2284,8 @@ pub(crate) enum LocalStep {
         session_id: String,
         path: String,
         seq: u64,
-        raw: String,
+        message: Option<crate::bridge::RecordBody>,
+        cwd: Option<String>,
         end: Option<u64>,
     },
     /// 进 [`LineIntake::announced`]。
@@ -2386,7 +2419,8 @@ pub(crate) fn local_step(
             session_id,
             path,
             seq,
-            raw,
+            message,
+            cwd,
             end,
         }) => {
             if hidden.contains(&session_id) {
@@ -2396,7 +2430,8 @@ pub(crate) fn local_step(
                     session_id,
                     path,
                     seq,
-                    raw,
+                    message,
+                    cwd,
                     end,
                 }
             }
@@ -2490,7 +2525,8 @@ pub(crate) async fn consume_local(
                     session_id,
                     path,
                     seq,
-                    raw,
+                    message,
+                    cwd,
                     end,
                 } => {
                     intake
@@ -2498,7 +2534,8 @@ pub(crate) async fn consume_local(
                             session_id,
                             path: std::path::PathBuf::from(path),
                             seq,
-                            raw,
+                            message,
+                            cwd,
                             end,
                         })
                         .await
@@ -2899,7 +2936,8 @@ async fn stream_loop(
                 session_id,
                 path,
                 seq,
-                raw,
+                message,
+                cwd,
                 end,
             }) => {
                 // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
@@ -2909,7 +2947,8 @@ async fn stream_loop(
                         session_id,
                         path: std::path::PathBuf::from(path),
                         seq,
-                        raw,
+                        message,
+                        cwd,
                         end,
                     })
                     .await;

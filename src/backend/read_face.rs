@@ -44,7 +44,7 @@ pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 /// 要转义（引号、反斜杠）—— 留一半余量。
 pub(crate) const LINE_CAP_BYTES: usize = 32 << 20;
 
-/// 〔MOD〕「整份读进查看器」那一件读到多少字节就明拒（原 monitor `history.rs::MAX_SESSION_BYTES`，F06）。
+/// 〔MOD〕「整份读进查看器」那一件读到多少字节就明拒（原 monitor `history·rs` 那个 `MAX_SESSION_BYTES`〔散文墓碑〕，F06）。
 ///
 /// ⚠〔audit-0805 F06〕实测本机最大会话 **270,103,105 字节**，已经越过这条线 ⇒ 上限会被真实数据打到，
 /// 打到之后不能是静默：`history-page` 带 `whole` 时读过它就回 `too_large`，那句话说清读到了哪。

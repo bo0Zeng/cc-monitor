@@ -535,7 +535,7 @@ const MOVED_OUT: &[&str] = &[
     // 〔MIG-3a〕`skill_host.rs` 整份删了（收件箱那一面进了后端）⇒ 出名单。
     "cc_bus_deploy.rs",
     "history.rs",
-    "remote_history.rs",
+    // 〔MOD〕`remote_history.rs` 整份删了（最后一个函数随子 agent 那条命令退役）⇒ 出名单。
     "user_files.rs",
 ];
 

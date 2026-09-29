@@ -41,11 +41,11 @@ import {
   type StreamSink,
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
-import { commands } from "./ipc/commands";
 import { releaseEnhanceRoot } from "./render";
 import { remaining } from "./ipc/chan";
 import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
+import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
@@ -193,9 +193,7 @@ export class TabStreamView {
     const fetched = runs.map(([a, b]) => {
       const first = sk.ledger.factsOf(a)!;
       const lastRow = sk.ledger.factsOf(b - 1)!;
-      return commands
-        .read_session_range({ origin, jsonlPath, offset: first.o, until: lastRow.o + lastRow.n, seqBase: a, lineCount: b - a })
-        .catch((): JsonlLinePayload[] => []);
+      return readRange(origin, jsonlPath, first.o, lastRow.o + lastRow.n, a).catch((): JsonlLinePayload[] => []);
     });
     void Promise.all(fetched)
       .then((pages) => {
@@ -841,7 +839,7 @@ export class TabStreamView {
   /**
    * 〔`设计/10` 骨架 · 子步 5〕**按偏移取正文**：物化 `[lo, hi)` 时，账本里没有、也还没到过的那些
    * 会建卡的行（`seenSeqs` 里没有、索引说它不是「不建卡」的那种）⇒ 按索引里的字节边界向后端要
-   * （`read_session_range` = `--read-session-from-offset … --until`），回来的行**走 `onLine` 全套**
+   * （〔MOD〕`record-reads.ts::readRange` = 那台后端 `history-page` 带 `until`），回来的行**走 `onLine` 全套**
    * （去重、旁路记账、门控 —— 这段已经不在占位里了，门控会就地建卡），与重放来的行一视同仁。
    *
    * 今天它补的是「重放还没推到」的那一截（远端尾部优先快照的回填期、大会话启动重放的在途期）；
@@ -877,15 +875,7 @@ export class TabStreamView {
     for (const [a, b] of runs) {
       const first = ledger.factsOf(a)!;
       const lastRow = ledger.factsOf(b - 1)!;
-      const fetched: Promise<void> = commands
-        .read_session_range({
-          origin,
-          jsonlPath: tab.parentPath,
-          offset: first.o,
-          until: lastRow.o + lastRow.n,
-          seqBase: a,
-          lineCount: b - a,
-        })
+      const fetched: Promise<void> = readRange(origin, tab.parentPath, first.o, lastRow.o + lastRow.n, a)
         .then((payloads) => {
           if (this.store.tabs.get(tab.sessionId) !== tab) return;
           // 没见过的 ⇒ 走 `onLine` 全套（旁路记账、去重、门控）；
@@ -936,7 +926,7 @@ export class TabStreamView {
 
   /**
    * 〔CF2 · 第四波 4B〕**按行号往下取一批**（`调研/第四波记录/CF2.md §1.4`）：账本空了、渲染窗口最老那一条
-   * 不是第 0 行 ⇒ 问 `[floor − FILL_BATCH, floor)`（`read_session_lines`，后端 `history-lines`）。
+   * 不是第 0 行 ⇒ 问 `[floor − FILL_BATCH, floor)`（〔MOD〕`record-reads.ts::readLines`，后端 `history-lines`）。
    *
    * 这是**没接骨架**的 tab 的取回路（接了骨架的按字节取，`fetchMissingRows`）。monitor 的重放缓冲从此每个会话
    * 只留尾巴（`event_replay·rs::REPLAY_TAIL_KEEP`），F5 之后更早的就从这里要回来；没被修剪过的会话问一次就到顶。
@@ -950,14 +940,7 @@ export class TabStreamView {
     if (!range || !tab.parentPath) return;
     tab.window.markFetchingBelow(range.until);
     this.updateSentinel(tab);
-    void commands
-      .read_session_lines({
-        origin: tab.origin,
-        jsonlPath: tab.parentPath,
-        from: range.from,
-        until: range.until,
-        leftMs: TabStreamView.BELOW_BUDGET_MS,
-      })
+    void readLines(tab.origin, tab.parentPath, range.from, range.until, TabStreamView.BELOW_BUDGET_MS)
       .then((page) => {
         if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
         const fresh = page.payloads.filter((p) => !tab.seenSeqs.has(p.seq));
@@ -989,7 +972,7 @@ export class TabStreamView {
    * 〔CF2 · 第四波 4B〕**会话流丢过格之后补这一个 tab**（`TabManager.onStreamGap`，`调研/第四波记录/CF2.md §3.5`）：
    *
    * ① 账本（还没上屏的）整份出账（`dropPending`）—— 之后往上翻按行号取回（`fetchBelow`）；
-   * ② 从「见过的最大行号 + 1」起按行号往后取到末尾（`read_session_lines` 不给 `until`，一段 ≤ 1 MiB，取到 `eof`）——
+   * ② 从「见过的最大行号 + 1」起按行号往后取到末尾（`readLines` 不给 `until`，一段 ≤ 1 MiB，取到 `eof`）——
    *    丢在已上屏那一段之后的新行从这里回来；多取的（其实到过的）由 `(sid, seq)` 去重吃掉。
    * 取回来的走 `feedHistoryRows`（批语义、不复活远端 tab）。一行都没见过的 tab 不往后取（那会把整份会话拉一遍；
    * 它的内容等下一次宣告 / 下一行，或往上翻按行号取 —— 如实登记）。
@@ -1014,8 +997,7 @@ export class TabStreamView {
         );
         return;
       }
-      void commands
-        .read_session_lines({ origin: tab.origin, jsonlPath, from, leftMs })
+      void readLines(tab.origin, jsonlPath, from, undefined, leftMs)
         .then((page) => {
           if (this.store.tabs.get(tab.sessionId) !== tab) return this.forwardFills.delete(tab);
           this.feedHistoryRows(

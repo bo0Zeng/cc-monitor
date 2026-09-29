@@ -313,16 +313,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // 〔LOC1a · 第四波 4D〕`tests/bridge/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
     //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
     //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
-    (
-        "monitor→backend",
-        "tests/bridge/history_title_coverage.rs",
-        "src/backend/observe/history_query.rs",
-        "★〔C4d · 第四波 4B 新增〕**承载标题的记录一个不漏被标题抽取接住** —— \
-         `history::title_coverage::every_title_bearing_record_is_consumed_by_the_extractor`。人群（带 `*title` 字段的 \
-         `JsonlRecord` 变体与它的线上类型名）只住 monitor 的 `messages.rs`，而标题抽取那一段随本机历史清单搬进了后端 \
-         `analyze_session`（本机与远端同一个函数）⇒ 这条性质只能同时读两侧源码才验得了。失效方向同它立项时那一次：\
-         CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
-    ),
+    // 〔MOD〕`tests/bridge/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
+    //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
+    //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。
     // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/`）：backend 的判据去读 monitor ──
     // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
     //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。

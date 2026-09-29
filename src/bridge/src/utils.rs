@@ -1,7 +1,6 @@
 //! 跨模块工具：日期 / 时间换算 + 原子 JSON 写入 + procStart newtype。
 //!
-//! `days_from_civil` 在 `subagent`（按 timestamp 关联 subagent meta）
-//! 与 `history`（jsonl ISO8601 时间戳排序）两处都用，提取至此避免重复。
+//! `days_from_civil`：〔MOD〕按时间戳挑子 agent 那一份进了后端之后，生产段零读者，只剩文件窗口那份日期换算的异源对拍在用。
 //!
 //! ## procStart newtype（P1.1）
 //!
@@ -32,6 +31,10 @@
 /// 跨月 / 跨年 / 闰年都单调。
 ///
 /// 参考：http://howardhinnant.github.io/date_algorithms.html
+///
+/// 〔MOD〕生产段今天零读者（按时间戳挑子 agent 那一份进了后端）；留着给文件窗口那份日期换算当**异源**正向
+/// （`filewin/source_tests.rs`，它是 `filewin/source.rs` 那份逆运算的对拍）。
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
@@ -198,43 +201,8 @@ pub fn now_ms() -> i64 {
     systime_to_ms(std::time::SystemTime::now())
 }
 
-/// 解析 ISO 8601 字符串到 unix ms。失败返 None。仅用于排序 / 显示。
-///
-/// 形如 `2026-05-20T15:11:42[.fff]Z` 或带时区 `+HH:MM`（时区被忽略——按 UTC 算）。
-/// frac 自动归一到 ms：3 位 → 原值，>3 位 → 除以 10^(n-3)，<3 位 → 乘 10^(3-n)。
-/// 用 `days_from_civil` 保证跨月跨年单调（原 `(y*12+m)*31+d` 月末有 bug）。
-pub fn parse_iso8601_ms(s: &str) -> Option<i64> {
-    let bytes = s.as_bytes();
-    if bytes.len() < 19 {
-        return None;
-    }
-    let year: i64 = s.get(0..4)?.parse().ok()?;
-    let month: u32 = s.get(5..7)?.parse().ok()?;
-    let day: u32 = s.get(8..10)?.parse().ok()?;
-    let hour: u32 = s.get(11..13)?.parse().ok()?;
-    let min: u32 = s.get(14..16)?.parse().ok()?;
-    let sec: u32 = s.get(17..19)?.parse().ok()?;
-    let mut ms: i64 = 0;
-    if s.len() > 19 && bytes[19] == b'.' {
-        let mut end = 20;
-        while end < bytes.len() && bytes[end].is_ascii_digit() {
-            end += 1;
-        }
-        let frac = s.get(20..end)?;
-        let frac_num: i64 = frac.parse().ok()?;
-        ms = match frac.len() {
-            0 => 0,
-            1 => frac_num * 100,
-            2 => frac_num * 10,
-            3 => frac_num,
-            n if n > 3 => frac_num / 10_i64.pow((n - 3) as u32),
-            _ => 0,
-        };
-    }
-    let days = days_from_civil(year, month as i64, day as i64);
-    let total = days * 86_400 + hour as i64 * 3600 + min as i64 * 60 + sec as i64;
-    Some(total * 1000 + ms)
-}
+// 〔MOD〕`parse_iso8601_ms`〔散文墓碑〕删：唯一调用方（按时间戳挑子 agent 那一份）随「找 ＋ 挑」进了后端
+//   （后端 `observe/search_query.rs::parse_iso8601_ms`）。
 
 // === P3：目录扫 + JSON parse → HashMap 通用 helper ===
 

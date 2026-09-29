@@ -269,7 +269,7 @@ pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
     }
 }
 
-/// 〔MOD · 原 monitor `subagent.rs::choose_subagent` · `pick_closest`〕从 [`list_subagents_into`] 的候选行里挑**一个**：
+/// 〔MOD · 原 monitor `subagent·rs` 的 `choose_subagent` · `pick_closest`〔散文墓碑〕〕从 [`list_subagents_into`] 的候选行里挑**一个**：
 /// `description` 精确串等筛，再按首行时间戳与 `tool_use_timestamp` 差距最小挑。**纯函数，不碰文件系统**。
 ///
 /// 挑的规则只有这一份（`C1`）：原先它住 monitor、后端只列不挑；「找」与「挑」一起进了后端之后，界面只问一次。

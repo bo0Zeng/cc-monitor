@@ -133,7 +133,7 @@ const DEPS: Record<string, readonly string[]> = {
   // ① 〔STC〕会话事实的投影（后端出成品 ⇒ tab 上的 Map / Set / 两格）：只有类型依赖。
   //   原先的两条（agent 工具名判定 `cards/subagent.ts` · 写类工具表 `panorama/session-files.ts`）随抽取器一起搬进了后端。
   "src/tab-session-facts.ts": [],
-  // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，经 ipc/commands 包装层要骨架索引与正文。
+  // ③ 实时流视图：渲染栈 ＋ 骨架 ＋ 大纲 ＋ 分叉按钮，〔MOD〕骨架索引与正文都经通道问那台后端。
   //   〔SE2〕大纲的界面从直接建 `UserInputPanel` 换成建查找面板（它里面挂着大纲）⇒ `user-input-panel` 只剩类型依赖。
   "src/tab-stream-view.ts": [
     "src/branch-button.ts",
@@ -144,8 +144,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/height-refiner.ts", // 〔RENDER2 · `设计/10 §2.5b`〕第二级估高：视口附近的占位行交 Worker 精算
     "src/ipc/chan-caller.ts", // 〔DL1〕丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（`设计/05 §3.3.2` 造期限的那一手）
     "src/ipc/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
-    "src/ipc/commands.ts",
+    // 〔MOD〕`ipc/commands.ts` 出列：按偏移 / 按行号取正文那两条包装退役，改经 `record-reads.ts` 走通道。
     "src/live-window.ts", // 〔RENDER2〕从头重读 ⇒ tab 整份重来时新建 `TailWindow` / `SeqSet`（原先只有类型依赖）
+    "src/record-reads.ts", // 〔MOD〕按偏移 / 按行号取正文经通道问那台后端（`history-page` · `history-lines`，后端出记录行）
     "src/record-timeline.ts",
     "src/render-stream-record.ts",
     "src/render.ts", // 〔W5-RENDER R5〕关 tab 时 `releaseEnhanceRoot`：lazy 补算的 IO 按滚动容器分（`设计/10 §3.5` D2）

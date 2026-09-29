@@ -1011,11 +1011,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 fn every_ignored_test_still_has_someone_who_triggers_it() {
     /// 不由 e2e 驱动、**刻意手动**的，逐条写清谁在什么时候跑它。
     const MANUAL: &[(&str, &str)] = &[
-        (
-            "f63_real_data_ledger",
-            "不是 e2e：它要本机真实历史数据（头注记着 771 会话 / 643MB 的基线），\
-             跑法写在自己的头注里，属于「改 F63 解析时人工重算的台账」",
-        ),
+        // 〔MOD〕`f63_real_data_ledger` 那一行随记录解析搬进了后端（`tests/backend/agents/claudecode/parse_tests.rs`）。
         (
             "the_readings_behind_the_two_thresholds",
             "〔F9 09-24〕不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\

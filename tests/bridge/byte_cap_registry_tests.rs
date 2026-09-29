@@ -306,14 +306,8 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //   monitor 这一侧不再有它们。
     // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
     //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
-    // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`：本机冷读也经那台后端，本机远端同一条上限。
-    (
-        "src/bridge/src/history.rs",
-        "MAX_SESSION_BYTES",
-        256 * 1024 * 1024,
-        "读一整份会话 jsonl（本机远端同一条）",
-        "截断+说清",
-    ),
+    // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`；〔MOD〕→ 后端 `read_face.rs::WHOLE_SESSION_MAX_BYTES`
+    //   （「整份读进查看器」那一件的上限判定随记录解释进了后端，登记在后端那一段）。
     // 🔴〔第十二刀 2026-09-22〕**它管的不是字节，是条目数** —— 如实登记这一点。
     //    本表的抽取器按「具名常量 ＋ 一个够大的数」取人群，不看单位；
     //    而「一屏最多多少行」与本表别的那几项**不是同一种量**，
@@ -512,6 +506,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     // ---- backend 侧 ----
+    // 〔MOD〕从 monitor `history·rs` 那个 `MAX_SESSION_BYTES`〔散文墓碑〕搬来：「整份读进查看器」那一件读过它就明拒、那句话说读到了哪（F06）。
+    (
+        "src/backend/read_face.rs",
+        "WHOLE_SESSION_MAX_BYTES",
+        256 * 1024 * 1024,
+        "查看器读一整份会话 jsonl（`history-page` 带 `whole`；本机远端同一条）",
+        "拒收+回错",
+    ),
     (
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
@@ -1214,14 +1216,14 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
-    let b1 = by("src/bridge/src/history.rs", "MAX_SESSION_BYTES");
+    let b1 = by("src/backend/read_face.rs", "WHOLE_SESSION_MAX_BYTES");
     let b2 = by(
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
     );
     assert_eq!(
         b1, b2,
-        "「一整份会话 jsonl」的上限两侧漂开了（monitor {b1} / backend {b2}）。\
+        "「一整份会话 jsonl」的上限两处漂开了（查看器整份读 {b1} / 分叉 {b2}）。\
              ⚠ `fork_write.rs` 的注释写的是「同一**量级**」，而本条钉的是**相等** —— \
              因为它们是同一个量。要刻意分开就把这条判据与那句注释**一起**改。"
     );
