@@ -174,14 +174,29 @@ pub async fn open_file_window(
     path: String,
     reveal_file: Option<String>,
 ) -> Result<usize, String> {
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
     // 〔WF2 · WIN3 读数 D〕主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
     let work_area = app
         .get_webview_window(crate::MAIN_WINDOW_LABEL)
         .as_ref()
         .and_then(crate::WorkArea::of);
-    open_with(cfg, path, reveal_file, work_area).await
+    // 〔WF2 · WIN3 读数 J〕开出来之后又不体面地退了 ⇒ 经远端健康那条通道出声（同一个 toast 出口）。
+    let origin = cfg.origin_label();
+    let late: super::proc::LateExit = Box::new(move |said| {
+        let payload = crate::ui_contract::RemoteHealthPayload {
+            origin,
+            kind: FILEWIN_EXIT_KIND.to_string(),
+            message: said,
+        };
+        if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
+            tracing::warn!("文件窗口没了那一条没有发出去：{e}");
+        }
+    });
+    open_with(cfg, path, reveal_file, work_area, late).await
 }
+
+/// 〔WF2〕文件窗口开出来之后又退了那一形在 `remote-health` 上的 `kind`（界面 `remote-health.ts` 按它选标题）。
+pub(crate) const FILEWIN_EXIT_KIND: &str = "filewin-exit";
 
 /// [`open_file_window`] 去掉「问 Tauri」那一步之后的全部（判据从这里进：判据进程里没有 `AppHandle`）。
 pub(crate) async fn open_with(
@@ -189,6 +204,7 @@ pub(crate) async fn open_with(
     path: String,
     reveal_file: Option<String>,
     work_area: Option<crate::WorkArea>,
+    late: super::proc::LateExit,
 ) -> Result<usize, String> {
     let source = Source::remote(cfg);
     // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
@@ -223,7 +239,7 @@ pub(crate) async fn open_with(
     //      （阻塞读 ⇒ 放在 `spawn_blocking` 上，不占 async worker）。
     //    🔴 `D11`：一条退路都没有。起不了独立进程就是错，照实报（`proc` 里那几档
     //      各自带着自己的原因），**不许**退回同进程开一个。
-    let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req))
+    let opened = tokio::task::spawn_blocking(move || open_in_new_process(&req, late))
         .await
         .map_err(|e| copy_text("rsFilewinEntry.open.failed", &[("why", &e.to_string())]))?;
     let (pid, n) = opened.map_err(unopened_said)?;

@@ -370,7 +370,11 @@ pub enum Unopened {
 /// # Errors
 ///
 /// [`spawn_window`] 的任何一档 · 窗口进程说列不出来 · 一句话没说就退了 · 说了就绪却在开窗预算内就退了。
-pub fn open_in_new_process(req: &OpenRequest) -> Result<(u32, usize), Unopened> {
+/// 〔WF2 · WIN3 读数 J〕「判成功」之后窗口进程**不体面地退了**（退出码非零 / 被信号杀）⇒ 收尸线程把这句话交给它、由调用方出声。
+/// 早退检测从此不是竞速：开窗预算之内退的照旧当场回错；预算之外退的（真机 166 ms 那一形）由它补报。
+pub type LateExit = Box<dyn FnOnce(String) + Send + 'static>;
+
+pub fn open_in_new_process(req: &OpenRequest, late: LateExit) -> Result<(u32, usize), Unopened> {
     let mut child = spawn_window(req).map_err(Unopened::Process)?;
     let pid = child.id();
     let Some(out) = child.stdout.take() else {
@@ -379,7 +383,7 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<(u32, usize), Unopened> 
                 "收不掉那个窗口进程（{e}）—— 它说的话对不上约定，可能还会开出一个没人认的窗口"
             );
         }
-        reap_later(child, None);
+        reap_later(child, None, None);
         return Err(Unopened::Process(copy_text(
             "rsFilewinProc.spawn.noStdout",
             &[],
@@ -389,7 +393,7 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<(u32, usize), Unopened> 
     let n = match read_ready(&mut out) {
         Ok(Some(Ready::Listed(n))) => n,
         Ok(Some(Ready::Failed(said))) => {
-            reap_later(child, Some(out));
+            reap_later(child, Some(out), None);
             return Err(Unopened::Said(said));
         }
         Ok(None) => {
@@ -410,7 +414,7 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<(u32, usize), Unopened> 
                     "收不掉那个窗口进程（{e}）—— 它说的话对不上约定，可能还会开出一个没人认的窗口"
                 );
             }
-            reap_later(child, Some(out));
+            reap_later(child, Some(out), None);
             return Err(Unopened::Process(garbled));
         }
     };
@@ -423,13 +427,13 @@ pub fn open_in_new_process(req: &OpenRequest) -> Result<(u32, usize), Unopened> 
             Ok(None) => copy_text("rsFilewinProc.open.failed", &[]),
             Err(e) => copy_text("rsFilewinProc.open.failedWhy", &[("e", &e.to_string())]),
         };
-        reap_later(child, Some(out));
+        reap_later(child, Some(out), None);
         return Err(Unopened::Process(copy_text(
             "rsFilewinProc.open.seeStderr",
             &[("why", &why.to_string())],
         )));
     }
-    reap_later(child, Some(out));
+    reap_later(child, Some(out), Some(late));
     Ok((pid, n))
 }
 
@@ -461,9 +465,11 @@ pub fn read_ready(r: &mut impl std::io::BufRead) -> Result<Option<Ready>, String
 ///
 /// 〔MIG-3a · 09-28 裁 3〕它也把那根 stdout 读到 EOF（`out`）：就绪那一行之后窗口进程不该再往 stdout 写，
 /// 但万一有（某个库自己往 stdout 打），没人读的管子写满就会卡住那个窗口 —— 读掉扔了，零代价。
+/// 〔WF2〕`late` 只在「判成功」那一支给（别的几支当场已经回过错，不再报第二遍）。
 fn reap_later(
     child: crate::spawn_managed::ManagedChild,
     out: Option<std::io::BufReader<std::process::ChildStdout>>,
+    late: Option<LateExit>,
 ) {
     std::thread::spawn(move || {
         if let Some(mut out) = out {
@@ -471,8 +477,16 @@ fn reap_later(
                 tracing::debug!("窗口进程的 stdout 读到一半断了（{e}）—— 只影响排空，不影响收尸");
             }
         }
-        if let Err(e) = child.wait_for_status() {
-            tracing::warn!("收不掉那个窗口进程（{e}）—— 内核里会留一条僵尸记录");
+        match child.wait_for_status() {
+            Ok(st) if !st.success() => {
+                tracing::warn!("文件窗口开出来之后又退出了：{st}");
+                if let Some(say) = late {
+                    let why = copy_text("rsFilewinProc.late.exited", &[("st", &st.to_string())]);
+                    say(copy_text("rsFilewinProc.open.seeStderr", &[("why", &why)]));
+                }
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!("收不掉那个窗口进程（{e}）—— 内核里会留一条僵尸记录"),
         }
     });
 }

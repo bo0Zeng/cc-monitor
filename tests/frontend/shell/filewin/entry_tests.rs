@@ -38,9 +38,15 @@ async fn without_a_channel_no_window_process_is_started() {
         ("/srv/whatever", None),
         ("", Some("/a/b.txt")),
     ] {
-        let e = open_with(synth_cfg(), path.into(), reveal.map(str::to_string), None)
-            .await
-            .expect_err("没有通道口竟然开了窗");
+        let e = open_with(
+            synth_cfg(),
+            path.into(),
+            reveal.map(str::to_string),
+            None,
+            Box::new(|_| {}),
+        )
+        .await
+        .expect_err("没有通道口竟然开了窗");
         assert_eq!(
             e,
             copy_text("rsFilewinEntry.open.noHost", &[]),

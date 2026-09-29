@@ -5557,6 +5557,11 @@
       "zh": "⚠ 远端后端没装上",
       "args": []
     },
+    "remoteHealth.head.fileWindowGone": {
+      "kind": "body",
+      "zh": "⚠ 文件窗口退出了",
+      "args": []
+    },
     "remoteHealth.head.historyFailed": {
       "kind": "body",
       "zh": "⚠ 远端历史快照拉取失败",
@@ -10288,6 +10293,11 @@
     "rsFilewinProc.open.exited": {
       "kind": "error",
       "zh": "文件窗口没能打开（进程退出：{st}）",
+      "args": ["st"]
+    },
+    "rsFilewinProc.late.exited": {
+      "kind": "error",
+      "zh": "文件窗口开出来之后又退出了：{st}",
       "args": ["st"]
     },
     "rsFilewinProc.seed.sendFailed": {
