@@ -945,7 +945,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
              它来自 `std::os::unix::process::CommandExt`，而 `std::os::unix` 在\n\
              `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
              ⇒ 脱离的落点只能是**宿主知识层**（`local_backend_host.rs`），\n\
-             照 `platform_fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
+             照 `platform::fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
              ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS.len() <= 1` 是递减棘轮，今天正好 1 条。"
     );
 
@@ -4320,7 +4320,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     std::fs::remove_dir_all(&base).ok();
     std::fs::create_dir_all(&base).expect("base");
     let fresh = base.join("new").join(".cc-monitor");
-    crate::platform_fs::ensure_private_dir(&fresh).expect("建");
+    crate::platform::fs::ensure_private_dir(&fresh).expect("建");
     assert_eq!(mode(&fresh), 0o700);
     // 生产那一条真路：token 文件落进一个还不存在的目录 ⇒ 那一层是 0700。
     let via_token = base.join("tok").join(".cc-monitor");
@@ -4329,13 +4329,13 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
     let old = base.join("old");
     std::fs::create_dir_all(&old).expect("预置");
     std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    crate::platform_fs::ensure_private_dir(&old).expect("已在");
+    crate::platform::fs::ensure_private_dir(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     std::fs::remove_dir_all(&base).ok();
 }
 
 /// 〔HX1 · 主会话裁 HX1 拍板项 4〕**monitor 生产段每一处建目录都登记在案，建后端自家目录（`~/.cc-monitor` 一族）的只有
-/// `platform_fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
+/// `platform::fs::ensure_private_dir` 一处**（本机起后端前 · token / pid 那一层 · 释放二进制 / 全景小程序 / ccm 入口那几处经注入）。
 /// 守的要求：主会话裁「建自家目录收成一个小函数 …… 判据：生产段建 `~/.cc-monitor` 的调用点 == 那个函数一处（两向，带正控）」。
 /// 形状：`src/frontend/shell/src` 生产段里 `fs::create_dir(` / `fs::create_dir_all(` / `fs::DirBuilder::new(` 的所在 (文件, 函数) == 登记表（两向）；
 /// 登记表里「后端自家目录」那一格恰好是那一个函数；正控：合成语料里多一处必被认出。后端那一半另有一份（`own_dir_tests`）。
@@ -4343,7 +4343,7 @@ fn hx1_the_monitor_home_dir_is_born_private_and_an_existing_one_is_left_alone() 
 fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_home() {
     const OWN_HOME: &str = "后端自家目录";
     const DIR_CREATORS: &[(&str, &str, &str)] = &[
-        ("platform_fs.rs", "ensure_private_dir", OWN_HOME),
+        ("platform/fs.rs", "ensure_private_dir", OWN_HOME),
         (
             "logging.rs",
             "build_rolling_appender",
@@ -4428,13 +4428,13 @@ fn hx1_every_monitor_dir_creation_is_registered_and_only_one_builds_the_backend_
         .map(|(f, n, _)| ((*f).to_string(), (*n).to_string()))
         .collect();
     want.sort();
-    assert_eq!(found, want, "monitor 生产段建目录的地方与登记表对不上 —— 建的若是 `~/.cc-monitor` 一族，改走 `platform_fs::ensure_private_dir`");
+    assert_eq!(found, want, "monitor 生产段建目录的地方与登记表对不上 —— 建的若是 `~/.cc-monitor` 一族，改走 `platform::fs::ensure_private_dir`");
     let home: Vec<&str> = DIR_CREATORS
         .iter()
         .filter(|(_, _, w)| *w == OWN_HOME)
         .map(|(f, _, _)| *f)
         .collect();
-    assert_eq!(home, vec!["platform_fs.rs"]);
+    assert_eq!(home, vec!["platform/fs.rs"]);
     // 正控。
     assert_eq!(
         creations(

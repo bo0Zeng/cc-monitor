@@ -290,7 +290,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
         "cc-monitor-panorama",
         b"v1-bytes",
         &mk,
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::ensure_private_dir,
     )
     .unwrap();
     assert_eq!(std::fs::read(&p).unwrap(), b"v1-bytes");
@@ -301,7 +301,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
         "cc-monitor-panorama",
         b"v1-bytes",
         &mk,
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::ensure_private_dir,
     )
     .unwrap();
     assert_eq!(made.get(), 1, "逐字节相等还重写了一次");
@@ -311,7 +311,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
         "cc-monitor-panorama",
         b"v2-bytes",
         &mk,
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::ensure_private_dir,
     )
     .unwrap();
     assert_eq!(made.get(), 2, "字节变了却没重写");
@@ -323,7 +323,7 @@ fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() 
         "cc-monitor-panorama",
         b"v3-bytes!",
         &bad,
-        &crate::platform_fs::ensure_private_dir
+        &crate::platform::fs::ensure_private_dir
     )
     .is_err());
     assert_eq!(std::fs::read(&p).unwrap(), b"v2-bytes");

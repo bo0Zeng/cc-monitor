@@ -133,7 +133,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/frontend/shell/config_tests.rs",
         "src/backend/platform/lock.rs",
-        "〔HX2 · 第四波 4D〕`config.json` 的跨进程锁（monitor `platform_fs::hold_dir_lock`）与后端第四层那把（`platform/lock.rs::hold`）\
+        "〔HX2 · 第四波 4D〕`config.json` 的跨进程锁（monitor `platform::fs::hold_dir_lock`）与后端第四层那把（`platform/lock.rs::hold`）\
          是两个 crate 各一份的**同一种锁**（两个 crate 没有能放平台原语的共享落点）——「同一种」只能同时读两份源码对拍：\
          unix 都锁目录、Windows 互斥量名字的拼法逐字相同；只读一侧就成了自己跟自己比",
     ),

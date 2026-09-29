@@ -78,9 +78,9 @@ mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（�
                             // 〔MOD · `设计/90 §3` 判据 3〕`mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
                             //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
 mod paths;
-mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
-                 // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
-                 //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
+mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
+              // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
+              //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
 mod profile_installer;
 // 〔MIG-3b 续 · ⑬〕`pubkey`〔散文墓碑〕（F50 公钥推送）进了本机后端：帧命令 `pubkey-push`（`src/backend/assets/pubkey.rs`），界面经通道直问。
 // 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
