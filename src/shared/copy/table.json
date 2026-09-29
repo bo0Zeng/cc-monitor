@@ -1812,6 +1812,26 @@
       "zh": "结束 {target} 被拒，没有给出原因。",
       "args": ["target"]
     },
+    "tmuxControl.kill.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "tmuxControl.kill.busRemoved": {
+      "kind": "body",
+      "zh": "顺手从 cc-bus 名册里注销了 {ids}。",
+      "args": ["ids"]
+    },
+    "tmuxControl.kill.busFailed": {
+      "kind": "error",
+      "zh": "从 cc-bus 名册注销 {id} 没成，名册里那一行还在：{why}",
+      "args": ["id", "why"]
+    },
+    "tmuxControl.kill.busUnread": {
+      "kind": "error",
+      "zh": "读不到 cc-bus 名册，登记在这个会话上的 id 没注销：{why}",
+      "args": ["why"]
+    },
     "tmuxControl.kill.notConfirmed": {
       "kind": "error",
       "zh": "{machine} 的后端没有确认 {target} 已经结束。这次按没结束处理，刷新会话列表后再决定要不要重试。",

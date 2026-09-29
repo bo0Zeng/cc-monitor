@@ -231,6 +231,26 @@ describe("〔C4e〕结束会话 · 发按键：按形状收", () => {
   });
 });
 
+describe("FIX4 · 杀会话顺手注销的结局", () => {
+  /** 设计/95 §6「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
+  it("★ bus 那一格 ⇒ 一句话：注销了谁 · 谁没注销成 · 名册读不到；全空不说；那一格缺 / 形状不对 ⇒ 读不懂", () => {
+    const bus = (b: unknown) => ({ ...KILL.reply, bus: b });
+    expect(decodeKilled("aya", "demo-cc", KILL.reply)).toBeNull();
+    expect(decodeKilled("aya", "demo-cc", bus({ removed: ["p_cc", "q_cc"], failed: [], unread: null }))).toBe(
+      "顺手从 cc-bus 名册里注销了 p_cc、q_cc。",
+    );
+    expect(decodeKilled("aya", "demo-cc", bus({ removed: [], failed: [{ id: "r_cc", why: "它不在" }], unread: null }))).toBe(
+      "从 cc-bus 名册注销 r_cc 没成，名册里那一行还在：它不在",
+    );
+    expect(decodeKilled("aya", "demo-cc", bus({ removed: [], failed: [], unread: "cc-list 退出 1" }))).toBe(
+      "读不到 cc-bus 名册，登记在这个会话上的 id 没注销：cc-list 退出 1",
+    );
+    for (const bad of [{ session: "demo-cc", killed: true }, bus({ removed: [], failed: [] }), bus({ removed: [1], failed: [], unread: null })]) {
+      expect(() => decodeKilled("aya", "demo-cc", bad), JSON.stringify(bad)).toThrow(/读不懂/);
+    }
+  });
+});
+
 describe("〔C4e〕结束会话 · 发按键：发出去之前与失败怎么说", () => {
   it("★ 〔DUP3〕空目标不在界面判：原样交给后端，后端拒了照原话说（两个动作各一遍）", async () => {
     answer({ fail: refusedReply("invalid_args", "`name` 为空") });

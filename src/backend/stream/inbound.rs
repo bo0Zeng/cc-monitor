@@ -3458,7 +3458,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_many_windows",
             "kill_failed",
         ],
-        fields: &["killed", "name", "session"],
+        fields: &["bus", "killed", "name", "session"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },

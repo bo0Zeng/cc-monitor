@@ -732,12 +732,13 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 
 ```text
 → {"id":"K1","cmd":"kill","args":{"name":"1a2b3c4d-cc"}}
-← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true}}
+← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true,"bus":{"removed":[],"failed":[],"unread":null}}}
 ```
 
 〔SH1 · D-g · 09-26〕杀成之后**顺手从 cc-bus 收掉登记在这个会话上的 id**：过门之后、杀之前读下这个会话全部 pane 的根进程 pid，
 杀成之后经 `cc-list --tsv` 读名册、按第 4 列 pane pid 认人（不按会话名猜），逐个 `cc-kill <id>`（名册 · 台账 · 状态 · 收件箱一起清）。
-这一步不改结局：cc-bus 没装就跳过，读不到名册 / `cc-kill` 失败只写一行 warn；应答形状不变。
+这一步不改结局：cc-bus 没装就跳过；〔FIX4 · `95 §6`〕结局进成品的 `bus` 那一格 —— `removed`（注销掉的 id）· `failed`（`{id, why}`，名册里那一行还在）·
+`unread`（名册读不到的原话，读得到 ⇒ `null`），界面照它说一句（全空 ⇒ 不说）。
 
 **它必须过 §34 的三道门**
 （⚠ **`K-R72` 2026-09-12**：monitor 侧 `kill_remote_tmux` 那条 shell 路**已经删了**——

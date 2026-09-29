@@ -672,7 +672,7 @@ export function tmuxControlShim(
       } catch (e) {
         throw refusedReply("kill_failed", wordsOf(e));
       }
-      return chanReply({ session: name, killed: true });
+      return chanReply({ session: name, killed: true, bus: { removed: [], failed: [], unread: null } });
     }
     if (a.op === "capture-pane") {
       let screen: unknown;

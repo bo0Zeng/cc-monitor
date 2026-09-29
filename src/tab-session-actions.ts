@@ -643,15 +643,16 @@ export class TabSessionActions {
     const confirmFn: ConfirmFn = opts?.confirm ?? askConfirm;
     const message = copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat });
     const kill = async (): Promise<void> => {
-      await killSession(origin, tmuxName);
+      const bus = await killSession(origin, tmuxName);
       const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
-      showActionFailureToast(
-        copyText("tabSessionActions.kill.done"),
-        opts?.idle
-          ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
-          : copyText("sessionState.killLive.done", { who, name: tmuxName }),
-        { level: "info", durationMs: 6000 },
-      );
+      const done = opts?.idle
+        ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
+        : copyText("sessionState.killLive.done", { who, name: tmuxName });
+      // 〔FIX4 · `95 §6`〕顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说）。
+      showActionFailureToast(copyText("tabSessionActions.kill.done"), bus === null ? done : `${done}\n${bus}`, {
+        level: "info",
+        durationMs: 6000,
+      });
     };
     void (async () => {
       if (!(await confirmFn(message))) return;
