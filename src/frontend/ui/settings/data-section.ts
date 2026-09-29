@@ -11,7 +11,7 @@
  * - 进入面板时 invoke `get_data_paths` 拉一次后端探测（async + spawn_blocking）
  * - 前端再 enumerate localStorage 加到本地 section
  * - 文件不存在时灰显 + 标 "(尚未创建)"
- * - 卸载行为说明：NSIS 默认不清 `~/.claude/claudecode-frontend/`，用户元数据保留
+ * - 卸载行为说明：NSIS 默认不清 `~/.cc-monitor/`，用户元数据保留
  */
 
 // C04a：**本模块是包装层的样板**——不再直接 import `invoke`，改用 `commands`。

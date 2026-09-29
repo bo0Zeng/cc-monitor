@@ -137,7 +137,7 @@
       "word": "Claude Code",
       "tier": "限用",
       "tally": { "re": "claude\\s*code", "flags": "i" },
-      "inTable": 23,
+      "inTable": 22,
       "meaning": "Anthropic 的命令行工具；命令名 claude。",
       "context": "产品名，许说。讲它的 hooks、settings.json 等它自己的概念时许用它的原名。",
       "source": "外部产品名"

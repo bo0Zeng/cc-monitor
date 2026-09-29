@@ -168,15 +168,19 @@ impl Ready for Upstreams {
     fn into_destinations(
         self: Box<Self>,
         get: &dyn Fn(&str) -> Option<String>,
-        home: &std::path::Path,
+        // 〔DATA-HOME · V160〕凭据文件住数据目录根上、按用户家（取值器里的 `HOME`）推，不再按中转递来的 agent 家拼 ⇒ 这一格空转。
+        _home: &std::path::Path,
         out: &mut dyn Write,
     ) -> std::sync::Arc<dyn Destinations> {
-        let (table, creds_path, stamp) = load_credentials(get, home, &self, out);
+        let (table, source) = load_credentials(get, &self, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-        std::sync::Arc::new(
-            Accounts::new(table, *self).reloading_from(Reload::new(creds_path, stamp)),
-        )
+        // 〔DATA-HOME〕推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
+        let accounts = Accounts::new(table, *self);
+        std::sync::Arc::new(match source {
+            Some((path, stamp)) => accounts.reloading_from(Reload::new(path, stamp)),
+            None => accounts,
+        })
     }
 }
 
@@ -498,7 +502,7 @@ fn headers_to_clear() -> &'static [&'static str] {
     })
 }
 
-/// 读一次凭据并**把该说的话说出去**，返回装好的表 ＋ 那份文件的路径与印记。
+/// 读一次凭据并**把该说的话说出去**，返回装好的表 ＋ 那份文件的路径与印记（推不出路径 ⇒ `None`、空表）。
 ///
 /// ★ 它为什么被抽成一个有名字的函数（同 `listen::resolve_port` / `run_reading` 那两次的理由）：
 /// `run_with` 的尾巴是**永不返回**的 `serve()` ⇒ 长在里面的东西没有任何判据够得着。
@@ -506,15 +510,24 @@ fn headers_to_clear() -> &'static [&'static str] {
 /// 打的都是**生产段真正跑的那一份**，不是一个同构的副本。
 pub(crate) fn load_credentials(
     get: &dyn Fn(&str) -> Option<String>,
-    home: &std::path::Path,
     upstreams: &Upstreams,
     out: &mut dyn Write,
 ) -> (
     RoutingTable,
-    std::path::PathBuf,
-    Option<(std::time::SystemTime, u64)>,
+    Option<(std::path::PathBuf, Option<(std::time::SystemTime, u64)>)>,
 ) {
-    let path = creds::resolve_path(get, home);
+    let path = match creds::resolve_path(get) {
+        Ok(p) => p,
+        Err(why) => {
+            creds::announce_unresolved(&why, out);
+            let (table, _, _) = table::build(
+                Vec::new(),
+                CREDENTIALS_FILE_AGENT,
+                upstreams.of_credentials_file(),
+            );
+            return (table, None);
+        }
+    };
     // `D1 阻-2`：把**这一刻**那份文件的 mtime 一起记下来 —— 重载靠它判「动过没有」。
     // ⚠ 顺序：**先 stat 再读**。反过来的话，「读完到 stat 之间那次写」会被记成「已经读过了」，
     //   那一次修改就永远不会被重载看见（一个会留下来的错，不是一次抖动）。
@@ -530,5 +543,5 @@ pub(crate) fn load_credentials(
         upstreams.of_credentials_file(),
     );
     creds::announce(&loaded, table.len(), &rejected, &notes, out);
-    (table, path, stamp)
+    (table, Some((path, stamp)))
 }

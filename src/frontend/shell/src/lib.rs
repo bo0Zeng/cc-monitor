@@ -509,7 +509,13 @@ pub fn run() {
     // 配置（避免 log 初始化跟 config 初始化循环依赖）。
     let monitor_data_dir = config::resolve_monitor_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("cc-monitor-fallback"));
+    // 〔DATA-HOME · V160〕数据目录就是 `~/.cc-monitor`（后端的家），本进程里头一个碰它的是下面的日志 ⇒ 先按「只给本人」建好；
+    //   建不了不拦启动（`INVARIANTS §15`），日志那一步自己会出声。
+    let born_private = platform::fs::ensure_private_dir(&monitor_data_dir);
     let logging_state = logging::init(&monitor_data_dir);
+    if let Err(e) = born_private {
+        tracing::warn!("{e}");
+    }
     tracing::info!(
         "[perf] T+{}ms cc-monitor starting (data_dir={}, log_dir={})",
         t0.elapsed().as_millis(),
@@ -872,7 +878,7 @@ pub fn run() {
             //   本机判活改由本机后端的帧来，monitor 不再需要知道 pidfile 住哪。
             // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
-            // monitor 自己的数据目录：~/.claude/claudecode-frontend
+            // monitor 自己的数据目录：~/.cc-monitor（V160）
             let monitor_data_dir = config::resolve_monitor_data_dir().ok_or("no data dir")?;
             tracing::info!("monitor_data_dir: {}", monitor_data_dir.display());
 

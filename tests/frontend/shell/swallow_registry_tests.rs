@@ -51,7 +51,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials file: {}\", loaded.path.display());", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials permissions too wide: {how}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials permissions unknown: {why}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
-    ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials problem: {p}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
+    // 〔DATA-HOME〕1 → 2：`announce_unresolved` 同一句（推不出凭据文件在哪），同一个诊断出口。
+    ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials problem: {p}\");", 2, Why::Diag, "`announce` / `announce_unresolved` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: auth_style must be one of: {legal}\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: configured, {rows} account(s) routable\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: not configured\");", 1, Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),

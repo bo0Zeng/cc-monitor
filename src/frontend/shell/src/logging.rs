@@ -9,7 +9,7 @@
 //!
 //! ## 三层方案
 //!
-//! 1. **滚动 log 文件**：写到 `~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log`，
+//! 1. **滚动 log 文件**：写到 `~/.cc-monitor/logs/monitor/monitor.YYYY-MM-DD.log`（后端那份在隔壁 `logs/backend/`），
 //!    按天滚动，保留最近 N 天（默认 3）。non_blocking writer 不阻塞业务线程。
 //! 2. **EnvFilter reload**：用 `tracing_subscriber::reload::Layer<EnvFilter>` 让
 //!    "改日志级别" 这种运行时操作不重启就生效。
@@ -72,18 +72,25 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Registry;
 
 const LOG_DIR_NAME: &str = "logs";
+/// 〔DATA-HOME · V160〕monitor 自己的滚动日志住日志目录下这一层，与后端那份 [`BACKEND_STDERR_DIR`] 并排、两边不撞名。
+const MONITOR_LOG_DIR: &str = "monitor";
 const LOG_FILE_PREFIX: &str = "monitor";
 const LOG_FILE_SUFFIX: &str = "log";
 const ERROR_EVENT: &str = "monitor-error";
 
 /// 〔NT2 · S1 · `设计/15 §4.7 S1`〕本机后端**脱离常驻**时自己的 stderr 诊断文件：住日志目录下这一层子目录
-/// （后端那侧 `src/backend/stderr_log.rs` 满了换份，同一目录里多一份旧的）。放子目录而不放日志目录顶层：
-/// 顶层的 `.log` 是本进程按天滚动的那一族（「当前文件」按 mtime 取最新 —— 混进去会被认成 monitor 自己的）。
+/// （后端那侧 `src/backend/stderr_log.rs` 满了换份，同一目录里多一份旧的）。与 [`MONITOR_LOG_DIR`] 分开放：
+/// 那边的 `.log` 是本进程按天滚动的那一族（「当前文件」按 mtime 取最新 —— 混进去会被认成 monitor 自己的）。
 const BACKEND_STDERR_DIR: &str = "backend";
 const BACKEND_STDERR_FILE: &str = "stderr.log";
 
 /// 起脱离那条载体时交给后端的那一格（后端 `stderr_log::ENV` 同值，`logging_tests` 从后端源码现抠着对拍）。
 pub const BACKEND_STDERR_LOG_ENV: &str = "CCM_BACKEND_STDERR_LOG";
+
+/// monitor 自己的滚动日志目录 `<数据目录>/logs/monitor/`。**唯一一处算它**（写的与设置页读的是同一个）。
+pub fn monitor_log_dir(monitor_data_dir: &Path) -> PathBuf {
+    monitor_data_dir.join(LOG_DIR_NAME).join(MONITOR_LOG_DIR)
+}
 
 /// 本机后端 stderr 诊断文件（当前那一份）的路径。**唯一一处算它**：起后端时交出去的与设置页读的是同一个。
 pub fn backend_stderr_log_path(monitor_data_dir: &Path) -> PathBuf {
@@ -353,7 +360,7 @@ where
 /// 持有到 monitor 进程退出（drop 时 worker 线程 flush）。
 pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
     let cfg = read_diagnostics_from_config(monitor_data_dir);
-    let log_dir = monitor_data_dir.join(LOG_DIR_NAME);
+    let log_dir = monitor_log_dir(monitor_data_dir);
 
     // 1. EnvFilter + reload handle
     let initial_filter = build_env_filter(&cfg.log_level).unwrap_or_else(|| {

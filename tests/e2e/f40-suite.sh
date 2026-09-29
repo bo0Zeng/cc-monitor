@@ -13,7 +13,7 @@ export DISPLAY
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # 日志按 UTC 日期命名而 date +%F 是本地时区——跨午夜/异时区 shell 会拼错文件名
 # (实测踩中:PDT shell vs UTC 命名)。默认取最新的 monitor.*.log。
-LOG="${E2E_LOG:-$(ls -t "$HOME"/.claude/claudecode-frontend/logs/monitor.*.log 2>/dev/null | head -1)}"
+LOG="${E2E_LOG:-$(ls -t "$HOME"/.cc-monitor/logs/monitor/monitor.*.log 2>/dev/null | head -1)}"
 PROJ_DIR="$HOME/.claude/projects/-tmp-e2e-fork"
 DRAIN_MAX_MS="${E2E_DRAIN_MAX_MS:-8000}"
 

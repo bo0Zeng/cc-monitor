@@ -604,7 +604,7 @@ const STDERR_MAX_LINE_BYTES: u64 = 8 * 1024;
 const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";
 
 /// 把一个子进程的 stderr **读到 EOF**，前 [`STDERR_LOG_BUDGET_BYTES`] 字节逐行接进
-/// monitor 的滚动日志（`logging.rs`：`~/.claude/claudecode-frontend/logs/monitor.<日期>.log`）。
+/// monitor 的滚动日志（`logging.rs`：`~/.cc-monitor/logs/monitor/monitor.<日期>.log`）。
 ///
 /// # 三条设计约束，每一条都是别人踩过的坑
 ///

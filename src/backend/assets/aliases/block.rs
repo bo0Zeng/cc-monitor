@@ -78,6 +78,7 @@ pub(crate) struct BlockState {
     /// 〔TL1 · 4C〕块在、而版本串不是这一版模板的那个 ⇒ `true`（只有 PowerShell 那一对有版本串）。
     /// v3 起模板结尾多一行接上别名文件（`设计/71 §6.1`）—— 装着 v2 的人**重装一次**才带上那一行，界面据此提示。
     /// 〔HX2 · 4D〕v4 起 `__ccm_bind` 找 monitor 数据目录走唯一出口（渲染时填）—— 装着 v3 的人同样重装一次。
+    /// 〔DATA-HOME · V160〕v5：数据目录搬到 `~/.cc-monitor`，v4 块里 `$ccmDir` 写的是旧住址 ⇒ 抬版本，装着 v4 的人重装一次（不认老路径）。
     /// 「这一版是哪个」只从模板本身读（[`current_block_version`]），不另写一份字面量。
     pub outdated: bool,
     /// 块外已有的同名函数（与 [`CC_FUNCTION_NAME`] 同名）。
@@ -598,7 +599,7 @@ fn encode_for_disk(flavor: Shell, content: &str) -> String {
 /// 〔HX2 · RT1 F6〕`monitor_data_dir` 填进模板那一格 `{{MONITOR_DATA_DIR}}`（`__ccm_bind` 找 `ps-registry/` · `ps-await/` ·
 /// `auto-launch.json` 的那个目录），按 PowerShell 单引号字面量写。它只有一个出口 —— `paths::resolve_monitor_data_dir`
 /// （跟 `CCM_DATA_DIR`），由 [`plan_install`] 取了交进来。
-/// 〔墓碑 —— 从前模板里自己写死一份 `Join-Path $env:USERPROFILE '.claude\claudecode-frontend'`：数据目录的第二个住址，
+/// 〔墓碑 —— 从前模板里自己写死一份 `Join-Path $env:USERPROFILE '<数据目录的旧住址>'`：数据目录的第二个住址，
 ///  `CCM_DATA_DIR` 隔离跑时每次 `cc` 白等 3 s ＋ 一句「绑定超时」（`第四波记录/RT1.md §8` F6）。〕
 pub(crate) fn render_cc_code(
     command_name: &str,

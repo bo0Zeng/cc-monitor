@@ -42,7 +42,7 @@ src/frontend/shell/
     ├── session_map.rs # 直读 ~/.claude/sessions/<PID>.json + 进程探活
     ├── bind.rs        # cc 集成绑定：ps-await/ps-registry 文件 IPC + EnumWindows 找 marker + SidHwndCache + bring_terminal_to_front
     ├── profile_installer.rs # PowerShell profile 块插入/卸载 + 命令冲突扫描
-    ├── auto_launch.rs # auto-launch monitor 开关持久化（~/.claude/claudecode-frontend/auto-launch.json）
+    ├── auto_launch.rs # auto-launch monitor 开关持久化（~/.cc-monitor/auto-launch.json）
     ├── subagent.rs    # load_subagent IPC + description 关联
     ├── adapter.rs     # F-MA agent 适配层：会话布局/解析/活性/resume 假设收敛到 AgentAdapter（CC 第一个实例）
     ├── adapter/
@@ -194,7 +194,7 @@ src/frontend/shell/
 完整清单在 [src/`src/doc/INVARIANTS.md`](../`src/doc/INVARIANTS.md`)，本模块特别相关：
 
 - § 1 — 零侵入（watcher 只读 projects/ + sessions/；history 物理删除是显式例外）
-- § 2 — monitor data dir 永远 `~/.claude/claudecode-frontend/`，不跟 claudeDir
+- § 2 — monitor data dir 永远 `~/.cc-monitor/`，不跟 claudeDir
 - § 3 — 跨进程 JSON UTF-8 无 BOM（双向防御）
 - § 4 — profile 写入 `ReplaceFileW` + backup + 校验
 - § 5 — JSONL 单一时序（seq 字段 + RecordTimeline binary insert）
