@@ -260,22 +260,19 @@ describe("F41 runRemoteResume", () => {
     );
   });
 
-  // ★★ 08-12：「在该目录起新会话」的默认名必须过铸名口。
-  //
-  // 全仓 `deriveTmuxName` 只有两个生产调用点，`machine-card.ts` 那个 F13 修过、
-  // 这个漏了 ⇒ 同一个 cwd 点两次会派生同名 ⇒ 撞 create-or-attach 的幂等闸
-  // ⇒ 静默接进第一个会话（issue #76 那一族）。
-  //
-  // 两条：撞了要**让**；列不出来要**诚实降级**（不避让，但也别挡住起会话）。
-  it("同 cwd 已有会话 → 起新会话的名字让到 -2，不撞进幂等闸", async () => {
-    const cmds: string[] = [];
+  // ★★ 08-12：「在该目录起新会话」的默认名必须过铸名口（同一个 cwd 点两次会派生同名 ⇒ 撞 create-or-attach 的幂等闸
+  //   ⇒ 静默接进第一个会话，issue #76 那一族）。〔FIX4 · `设计/90 §3` J7〕铸名口今天是那台后端的 `tmux-name-mint`
+  //   （派生 ＋ 避让逐格归 `tests/backend/control/ccm/plan_tests.rs`）⇒ 这里钉前端那一半：问的是那台、交的是 cwd、
+  //   用的就是它铸回来的那个（替身写死它避让到了 `-2`）；问不到 ⇒ 不起、出声（不自己拼一个不避让的名字）。
+  const newSessionRig = (mint: () => Promise<unknown>): { remoteCmds: string[]; mintArgs: unknown[] } => {
+    const remoteCmds: string[] = [];
+    const mintArgs: unknown[] = [];
     invokeMock.mockImplementation((cmd: string, args?: unknown) => {
       if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      cmds.push(cmd);
-      if (cmd === "list_remote_tmux")
-        return Promise.resolve([
-          { name: "proj-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
-        ]);
+      if (cmd === "tmux_name_mint") {
+        mintArgs.push(args);
+        return mint();
+      }
       // 🔴 〔步 22b·B〕铸出来的名字今天落在**后端渲的外层 tmux 命令**里
       //（`create` 那一格 ⇒ `new-session -d -s <名>`），所以这条桩非配不可。
       if (cmd === "render_launch_payload")
@@ -286,39 +283,26 @@ describe("F41 runRemoteResume", () => {
       }
       return Promise.resolve(undefined);
     });
-    const remoteCmds: string[] = [];
     stubClipboard(vi.fn().mockResolvedValue(undefined));
+    return { remoteCmds, mintArgs };
+  };
+
+  it("起新会话的名字是那台后端铸的（它让到了 -2 ⇒ 交出去的就是 -2），问的是那台 ＋ 这个 cwd", async () => {
+    const { remoteCmds, mintArgs } = newSessionRig(() => Promise.resolve("proj-cc-2"));
     await runNewSessionRemote("aya", "/home/u/proj", "");
+    expect(mintArgs).toEqual([{ origin: "aya", cwd: "/home/u/proj" }]);
     const sent = remoteCmds.join("\n");
     expect(sent).toContain("proj-cc-2");
     // ★ 不许还是那个裸基名 —— 撞上去就是「以为开了新的，其实回到了旧的」。
     expect(sent).not.toMatch(/[^-]proj-cc[^-0-9]/);
   });
 
-  // 〔FE1〕这一条先前钉的是**缺陷**：「列不出会话 ⇒ 诚实降级用基名」—— 空集铸名 = 不避让 = #76 的形状，
-  //   而本机那一侧早写着「绝不退化成空集」。住址 `设计/01 §5` D4「一条都不许静默忽略」。
-  //   ⇒ 没问到 ⇒ 不起、出声；正控：远端**没装 tmux**（`null`，确定答案）⇒ 照起、用基名。
-  const newSessionRig = (listing: () => Promise<unknown>): string[] => {
-    const remoteCmds: string[] = [];
-    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === "relay_endpoint_for_launch") return Promise.resolve(null); // 〔RL1〕缺省不注入
-      if (cmd === "list_remote_tmux") return listing();
-      if (cmd === "render_launch_payload")
-        return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
-      if (cmd === "launch_remote_terminal") {
-        remoteCmds.push((args as { remoteCmd: string }).remoteCmd);
-        return Promise.resolve(undefined);
-      }
-      return Promise.resolve(undefined);
-    });
-    stubClipboard(vi.fn().mockResolvedValue(undefined));
-    return remoteCmds;
-  };
-
-  it("★ 〔FE1〕列不出会话（远端不可达）→ 不起、出声，不拿空集铸名", async () => {
-    const remoteCmds = newSessionRig(() => Promise.reject("ssh 抖动"));
+  // 〔FE1〕先前钉过的**缺陷**：「列不出会话 ⇒ 诚实降级用基名」—— 空集铸名 = 不避让 = #76 的形状。
+  //   住址 `设计/01 §5` D4「一条都不许静默忽略」。⇒ 问不到 ⇒ 不起、出声。
+  it("★ 〔FE1〕铸不出名字（那台后端拒 / 不可达）→ 不起、出声，不自己拼一个", async () => {
+    const { remoteCmds } = newSessionRig(() => Promise.reject("ssh 抖动"));
     await runNewSessionRemote("aya", "/home/u/proj", "");
-    expect(remoteCmds, "没问到名单还起了 —— 名字没避让，可能接进已有会话（#76）").toEqual([]);
+    expect(remoteCmds, "铸不出名字还起了 —— 名字没避让，可能接进已有会话（#76）").toEqual([]);
     expect(invokeMock.mock.calls.some((c) => c[0] === "launch_remote_terminal")).toBe(false);
     expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock.mock.calls[0][0]).toBe("没有起会话");
@@ -326,8 +310,8 @@ describe("F41 runRemoteResume", () => {
     expect(toastMock.mock.calls[0][1]).toContain("ssh 抖动");
   });
 
-  it("正控：远端没装 tmux（确定答案 `null`）→ 照起、用基名", async () => {
-    const remoteCmds = newSessionRig(() => Promise.resolve(null));
+  it("正控：那台后端铸了基名（例：没装 tmux ⇒ 一个名字都没占）→ 照起、用它", async () => {
+    const { remoteCmds } = newSessionRig(() => Promise.resolve("proj-cc"));
     await runNewSessionRemote("aya", "/home/u/proj", "");
     expect(remoteCmds.join("\n")).toContain("proj-cc");
   });
@@ -947,6 +931,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
         return Promise.resolve(renderLaunchPayloadStub((args as { req: PayloadRenderRequest }).req));
       if (cmd === "backend_send_into") return Promise.resolve({ typed: false, mayFallBack: true, reason: "无通道" });
       if (cmd === "list_remote_tmux") return Promise.resolve([]);
+      if (cmd === "tmux_name_mint") return Promise.resolve("w-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "launch_remote_terminal") {
         launched.push((args as { remoteCmd: string }).remoteCmd);
         return Promise.resolve(undefined);
@@ -1075,6 +1060,7 @@ describe("设计/80 §8.7 步 3：启动期令牌的铸币口", () => {
         return Promise.resolve(opts.typed ? { typed: true, mayFallBack: false, reason: null } : { typed: false, mayFallBack: true, reason: "无通道" });
       if (cmd === "render_ccm_launch") return Promise.resolve({ ok: true, cmd: "<ccm-attach-line>", reason: null });
       if (cmd === "list_remote_tmux") return Promise.resolve([]);
+      if (cmd === "tmux_name_mint") return Promise.resolve("w-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "launch_remote_terminal") {
         handed.push((args as { rbindToken?: string | null }).rbindToken);
         return Promise.resolve(undefined);

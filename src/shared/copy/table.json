@@ -1812,6 +1812,26 @@
       "zh": "结束 {target} 被拒，没有给出原因。",
       "args": ["target"]
     },
+    "tmuxControl.kill.listSep": {
+      "kind": "body",
+      "zh": "、",
+      "args": []
+    },
+    "tmuxControl.kill.busRemoved": {
+      "kind": "body",
+      "zh": "顺手从 cc-bus 名册里注销了 {ids}。",
+      "args": ["ids"]
+    },
+    "tmuxControl.kill.busFailed": {
+      "kind": "error",
+      "zh": "从 cc-bus 名册注销 {id} 没成，名册里那一行还在：{why}",
+      "args": ["id", "why"]
+    },
+    "tmuxControl.kill.busUnread": {
+      "kind": "error",
+      "zh": "读不到 cc-bus 名册，登记在这个会话上的 id 没注销：{why}",
+      "args": ["why"]
+    },
     "tmuxControl.kill.notConfirmed": {
       "kind": "error",
       "zh": "{machine} 的后端没有确认 {target} 已经结束。这次按没结束处理，刷新会话列表后再决定要不要重试。",
@@ -6337,6 +6357,11 @@
       "zh": "一条别名是一个名字加一组 ccm 参数。在终端里敲这个名字，就等于敲 ccm 加上这组参数，后面还能再接别的参数。",
       "args": []
     },
+    "machineAliases.unknownOs.said": {
+      "kind": "body",
+      "zh": "认不出这台的系统，没法生成别名块。不知道该写 bash 的还是 PowerShell 的，不替你猜。",
+      "args": []
+    },
     "machineAliases.manager.title": {
       "kind": "title",
       "zh": "别名",
@@ -8443,7 +8468,7 @@
     },
     "ccBus.spawn.intro": {
       "kind": "body",
-      "zh": "在上面选中的那台机器的某个目录开一个独立 agent。走那台机器上的 cc-spawn：同目录已有活会话就复用，没有才新建。注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。",
+      "zh": "在上面选中的那台机器的某个目录开一个独立 agent。走那台机器上的 cc-spawn：每次都新起一个会话，不复用同目录里已有的，名字撞了就往后排。注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。",
       "args": [],
       "waive": {
         "C-T1": "cc-spawn 是那台机器上真实的命令名，用户在终端里就叫它这个"
@@ -10749,6 +10774,11 @@
       "kind": "error",
       "zh": "当前目录 {cwd} 开不了终端。要绝对路径，不含 .. 段、换行或 NUL",
       "args": ["cwd"]
+    },
+    "rsFilewinShell.terminal.badReply": {
+      "kind": "error",
+      "zh": "本机后端回的开终端那一行读不懂，两端版本对不上",
+      "args": []
     },
     "rsFilewinShell.terminal.noRuntime": {
       "kind": "error",
@@ -13562,6 +13592,11 @@
       "zh": "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」",
       "args": []
     },
+    "rsLaunch.terminalDial.local": {
+      "kind": "error",
+      "zh": "这一问只对远端。本机开终端直接开窗，没有要交的机器事实",
+      "args": []
+    },
     "rsLaunch.remote.noConfig": {
       "kind": "error",
       "zh": "未找到远端配置：{machine}",
@@ -13572,35 +13607,45 @@
       "zh": "本机不是 Windows：cc-monitor 刻意不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
       "args": []
     },
-    "rsLaunch.refuse.jumpNotFound": {
+    "beTerminal.refuse.empty": {
       "kind": "error",
-      "zh": "拒绝启动：跳板配置未找到：{jumpLabel}",
-      "args": ["jumpLabel"]
-    },
-    "rsLaunch.refuse.jumpSelf": {
-      "kind": "error",
-      "zh": "拒绝启动：跳板不能指向自己",
+      "zh": "拒绝启动：远端命令为空",
       "args": []
     },
-    "rsLaunch.refuse.host": {
+    "beTerminal.refuse.tooLong": {
       "kind": "error",
-      "zh": "拒绝启动：host 含非法字符：{host}",
-      "args": ["host"]
+      "zh": "拒绝启动：远端命令过长（{len} > {max}）",
+      "args": ["len", "max"]
     },
-    "rsLaunch.refuse.user": {
+    "beTerminal.refuse.control": {
       "kind": "error",
-      "zh": "拒绝启动：user 含非法字符：{user}",
-      "args": ["user"]
+      "zh": "拒绝启动：远端命令含控制字符",
+      "args": []
     },
-    "rsLaunch.refuse.doubleQuote": {
+    "beTerminal.refuse.doubleQuote": {
       "kind": "error",
       "zh": "拒绝启动：远端命令含双引号，PowerShell 5.1 传参会把它改坏。启动参数请改用单引号写法，或使用复制粘贴回退",
       "args": []
     },
-    "rsLaunch.what.remoteCmd": {
-      "kind": "body",
-      "zh": "远端命令",
-      "args": []
+    "beTerminal.refuse.user": {
+      "kind": "error",
+      "zh": "拒绝启动：user 含非法字符：{user}",
+      "args": ["user"]
+    },
+    "beTerminal.refuse.host": {
+      "kind": "error",
+      "zh": "拒绝启动：host 含非法字符：{host}",
+      "args": ["host"]
+    },
+    "beTerminal.refuse.jumpUser": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
+      "args": ["jumpUser"]
+    },
+    "beTerminal.refuse.jumpHost": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
+      "args": ["jumpHost"]
     },
     "rsLaunch.refuse.badToken": {
       "kind": "error",
@@ -13636,16 +13681,6 @@
       "kind": "error",
       "zh": "拒绝启动：{what}为空",
       "args": ["what"]
-    },
-    "rsLaunch.refuse.jumpHost": {
-      "kind": "error",
-      "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
-      "args": ["jumpHost"]
-    },
-    "rsLaunch.refuse.jumpUser": {
-      "kind": "error",
-      "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
-      "args": ["jumpUser"]
     },
     "panoramaApi.backend.tooOld": {
       "kind": "error",
@@ -14506,6 +14541,86 @@
     "ccBus.spawn.arrived": {
       "kind": "body",
       "zh": "派生的 agent 起来了",
+      "args": []
+    },
+    "contextLimits.editor.title": {
+      "kind": "title",
+      "zh": "高级：上下文上限",
+      "args": []
+    },
+    "contextLimits.editor.intro": {
+      "kind": "body",
+      "zh": "状态栏的上下文占用按模型的上限算。某个模型实际开了更大的上下文、占用被算高了，在这里改它的上限。一行一条，写「模型名片段 = 上限 tokens」，例如 claude-sonnet-4-5 = 1000000。空着就用内置的上限。离开这一格就存。",
+      "args": []
+    },
+    "contextLimits.editor.field": {
+      "kind": "control",
+      "zh": "模型上限覆盖",
+      "args": []
+    },
+    "contextLimits.editor.saved": {
+      "kind": "body",
+      "zh": "已保存，状态栏按新上限算。",
+      "args": []
+    },
+    "contextLimits.editor.cleared": {
+      "kind": "body",
+      "zh": "已清空，状态栏回到内置的上限。",
+      "args": []
+    },
+    "contextLimits.editor.badLine": {
+      "kind": "error",
+      "zh": "第 {n} 行读不懂，没保存。每行写「模型名片段 = 正整数」，改好离开这一格就存。",
+      "args": ["n"]
+    },
+    "contextLimits.editor.loadFailed": {
+      "kind": "error",
+      "zh": "读不到现在的设置：{e}",
+      "args": ["e"]
+    },
+    "contextLimits.editor.saveFailed": {
+      "kind": "error",
+      "zh": "没保存：{e}",
+      "args": ["e"]
+    },
+    "panorama.uninstall.title": {
+      "kind": "title",
+      "zh": "代码全景组件",
+      "args": []
+    },
+    "panorama.uninstall.intro": {
+      "kind": "body",
+      "zh": "这台机器上放着代码全景要用的小程序。卸掉它只删那一个程序文件，索引留着；下次打开这台的代码全景会再放一份。",
+      "args": []
+    },
+    "panorama.uninstall.action": {
+      "kind": "action",
+      "zh": "卸载代码全景组件",
+      "args": []
+    },
+    "panorama.uninstall.confirm": {
+      "kind": "body",
+      "zh": "要卸掉这台机器上的代码全景组件吗？",
+      "args": []
+    },
+    "panorama.uninstall.done": {
+      "kind": "body",
+      "zh": "卸掉了：{path}。索引还在 {index}，要删自己删。",
+      "args": ["path", "index"]
+    },
+    "panorama.uninstall.absent": {
+      "kind": "body",
+      "zh": "这台没装代码全景组件（{path} 不在）。",
+      "args": ["path"]
+    },
+    "panorama.uninstall.unreadable": {
+      "kind": "error",
+      "zh": "那台后端的回应读不懂，不确定卸掉没有。",
+      "args": []
+    },
+    "panorama.uninstall.oldBackend": {
+      "kind": "error",
+      "zh": "那台后端太旧，还不会卸代码全景组件，先更新它。",
       "args": []
     },
     "localResume.launch.arrived": {
@@ -16856,6 +16971,16 @@
       "zh": "{bin} 没答上它会做什么（{how}）：{detail}",
       "args": ["bin", "how", "detail"]
     },
+    "bePanorama.uninstall.unreadable": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "bePanorama.uninstall.notOurs": {
+      "kind": "error",
+      "zh": "{path} 认不出是 cc-monitor 放的全景小程序，没动它：{why}",
+      "args": ["path", "why"]
+    },
     "bePanorama.answer.noHome": {
       "kind": "error",
       "zh": "这台机器上找不到家目录（HOME 和 USERPROFILE 都没设），不知道把索引放哪",
@@ -17217,9 +17342,24 @@
       "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
       "args": ["e"]
     },
-    "tmuxMint.unknown.notAsked": {
+    "terminalOpen.backend.tooOld": {
       "kind": "error",
-      "zh": "没问到那台机器上已有哪些 tmux 会话",
+      "zh": "本机后端太旧，还不会给远端开终端。重启 cc-monitor 换上新的后端就有了",
+      "args": []
+    },
+    "terminalOpen.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的开终端那一行，两端版本对不上",
+      "args": []
+    },
+    "tmuxMint.backend.tooOld": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不会给新会话取名。重装那台机器的后端就有了",
+      "args": []
+    },
+    "tmuxMint.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端取的会话名，两端版本对不上",
       "args": []
     },
     "tmuxMint.refused.title": {
@@ -17229,7 +17369,7 @@
     },
     "tmuxMint.refused.body": {
       "kind": "error",
-      "zh": "问不出 {machine} 上已有哪些 tmux 会话。新会话的名字可能撞上已有的、接进别的会话里，所以这次没有起。原因：{reason}",
+      "zh": "没从 {machine} 问到新会话的名字。取名要先看那台已有哪些 tmux 会话，免得撞名接进别的会话，所以这次没有起。原因：{reason}",
       "args": ["machine", "reason"]
     },
     "localResume.launch.failed": {

@@ -24,11 +24,15 @@ vi.mock("../src/behavior", () => ({
 }));
 vi.mock("../src/fork-ask", () => ({ askForkLaunch: vi.fn() }));
 vi.mock("../src/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(true),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
+  // 〔FIX4 ④〕分叉走「等到了没有」那一形。
+  runRemoteResumeAndWait: vi.fn().mockResolvedValue("arrived"),
+  runRemoteResumeTmuxAndWait: vi.fn().mockResolvedValue("arrived"),
 }));
+vi.mock("../src/launch-arrival", () => ({ awaitArrival: vi.fn().mockResolvedValue(true), expectArrival: vi.fn(), arrivedBody: () => "" }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { awaitArrival } from "../src/launch-arrival";
+import { showActionFailureToast } from "../src/error-toast";
 import { deriveForkSource, runForkFlow } from "../src/fork-flow";
 import { askForkLaunch } from "../src/fork-ask";
 import type { SessionAccount } from "../src/accounts";
@@ -107,21 +111,14 @@ describe("deriveForkSource", () => {
     const f = deriveForkSource([], [T("other-cc", "别的-sid")], "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.sourceTmuxName).toBeNull();
-    // 但它的名字仍要进「已占用」，否则新分支可能取到同名
-    expect(f.takenTmuxNames).toEqual(["other-cc"]);
-  });
-
-  it("已占用的 tmux 名 = 整张清单（含非 claude 的），新名要避开它们", () => {
-    const f = deriveForkSource([], [T("a", null, "zsh"), T("b", "s1")], "s1", "/p");
-    expect(f.takenTmuxNames).toEqual(["a", "b"]);
+    // 〔FIX4 · J7〕「它的名字仍要进已占用」那一格随避让搬进后端（`tmux-name-mint` 问那台自己的会话快照）。
   });
 
   it("两份快照都取不到（远端不可达）→ 全落「不知道」，不落具体值", () => {
     const f = deriveForkSource(null, null, "s1", "/p");
     expect(f.source.sourceIsLive).toBe(false);
     expect(f.source.liveConfigDir).toBeUndefined();
-    // 〔FE1〕名单没取到 = `null`，**不是**空表（空表 = 「一个都没占」，拿它铸名就是不避让，#76 的形状）。
-    expect(f.takenTmuxNames).toBeNull();
+    expect(f.sourceTmuxName).toBeNull();
     expect(f.source.sourceCwd, "cwd 来自 jsonl，与远端可达性无关").toBe("/p");
   });
 });
@@ -230,7 +227,12 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
   const NEW = "deadbeef-2222-4333-8444-555566667777";
 
   /** 源会话活着、账号确认是「账号 0」（⇒ 三格全 known ⇒ 一次都不用问）。 */
-  function serveLocal(tmuxNames: string[] | null): void {
+  /** 那台（本机）后端铸名那一问被问到的入参（〔FIX4 · J7〕名字问后端，判据只核问了什么、用了什么）。 */
+  const mintAsks: { origin: string; args: { cwd?: string; forkOf?: string } }[] = [];
+
+  /** 源会话活着、账号确认是「账号 0」（⇒ 三格全 known ⇒ 一次都不用问）。`minted`：本机后端铸回的名字；`null` = 问不到。 */
+  function serveLocal(minted: string | null): void {
+    mintAsks.length = 0;
     invokeMock.mockImplementation(launchRenderShim((cmd: string, args: unknown) => {
       // 〔C4a〕本机「会话 ↔ 账号」经通道问本机后端（原先是 E79 那条已退役的本机 Tauri 命令）。
       if (isChanCall(cmd, args, "accounts-sessions")) {
@@ -240,19 +242,10 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
           ]),
         );
       }
-      if (cmd === "list_local_tmux") {
-        return Promise.resolve(
-          tmuxNames === null
-            ? null
-            : tmuxNames.map((name) => ({
-                name,
-                path: "/p",
-                command: "claude",
-                attached: false,
-                windows: 1,
-                sid: null,
-              })),
-        );
+      if (cmd === "tmux_name_mint") {
+        const { origin, ...rest } = args as Record<string, unknown>;
+        mintAsks.push({ origin: String(origin), args: rest });
+        return Promise.resolve(minted ?? undefined);
       }
       return Promise.resolve(undefined);
     }));
@@ -282,18 +275,18 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
     askMock.mockResolvedValue(null);
   });
 
-  it("★★ 基名被占 ⇒ 载荷里的 `tmuxName` **让到了 `-2`**（真过了铸造口，不是拼出来的）", async () => {
-    // 判别格：新会话的基名 `p-cc` 已经被占着。
-    // 〔`K-R96` 09-12〕基名从 **cwd**（`/p`）派生，不再是 `<sid8>-cc`
-    // （用户 `R55`：「要是可读的名字 / 不要id」）。
-    serveLocal(["p-cc", "别人的-cc"]);
+  it("★★ 载荷里的 `tmuxName` 是本机后端铸回来的那个（问的是新会话的 cwd，不是拼出来的）", async () => {
+    // 〔FIX4 · `设计/90 §3` J7〕派生（`<项目名>-cc`）＋ 避让（`-2`）在后端：这里替身写死它铸了 `p-cc-2`。
+    // 〔`K-R96` 09-12〕基名从 **cwd**（`/p`）派生，不再是 `<sid8>-cc`（用户 `R55`：「要是可读的名字 / 不要id」）。
+    serveLocal("p-cc-2");
     expect(await fork()).toBe("started");
     // 反空真：三格全 known ⇒ **一次追问小窗都不该弹**（弹了说明事实喂错了，下面在测别的东西）。
     expect(askMock, "不该弹追问小窗 —— 源会话事实三格全 known").not.toHaveBeenCalled();
+    expect(mintAsks, "铸名要问本机后端、交新会话的 cwd").toEqual([{ origin: LOCAL_ORIGIN, args: { cwd: "/p" } }]);
     expect(
       resumePayload().tmuxName,
-      "分叉本机起的载荷里没有让过位的 tmux 名 —— 要么名字没传（后端 `NO_TMUX_NAME` 早退\n" +
-        "⇒ 会话不进具名容器），要么没过 `remote-launch.ts::mintTmuxName`（全仓唯一铸造口）。",
+      "分叉本机起的载荷里没有后端铸的 tmux 名 —— 要么名字没传（后端 `NO_TMUX_NAME` 早退\n" +
+        "⇒ 会话不进具名容器），要么没问后端 `tmux-name-mint`（全仓唯一铸造口）。",
     ).toBe("p-cc-2");
     // `K-R96`：名字里**一个 sid 片段都没有** —— 新老 sid 都不许出现。
     expect(String(resumePayload().tmuxName).includes(NEW.slice(0, 8))).toBe(false);
@@ -304,7 +297,19 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
     expect(resumePayload().account).toEqual({ kind: "base" });
   });
 
-  it("★★ 本机 tmux 快照是 `null`（**不知道**）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {
+  /** 主会话 09-28 裁 FIX4 ④：「分叉也走真成功：调用方等到才说『已分叉』」。 */
+  it("FIX4 ④：发出去了但没看到分叉出来的会话起来 ⇒ 不是 started、不说「已分叉」", async () => {
+    serveLocal("p-cc");
+    vi.mocked(awaitArrival).mockResolvedValueOnce(false);
+    const toasts = vi.mocked(showActionFailureToast);
+    toasts.mockClear();
+    expect(await fork()).toBe("failed");
+    // 没看到那一句由主窗口的等待方说（这里被替身顶掉）；分叉这一侧一个字都不再说（尤其不说「✓ 已从这一轮分叉并起新会话」）。
+    expect(toasts.mock.calls.map((c) => c[0])).toEqual([]);
+    expect(vi.mocked(awaitArrival)).toHaveBeenCalledWith(expect.objectContaining({ match: { sid: NEW }, arrived: null }));
+  });
+
+  it("★★ 本机后端问不到（**不知道**占了哪些名字）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {
     serveLocal(null);
     expect(await fork()).toBe("started");
     expect(

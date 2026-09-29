@@ -234,15 +234,21 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
+    // 〔FIX4 · `设计/90 §3` J7〕翻 `zero`：派生（`name_segment` → `<段>-cc` / `<段>-fork-cc`）＋ 避让只在后端，
+    //   帧命令 `tmux-name-mint`（`control/ccm/mod.rs::answer_tmux_name_mint`，按那台的会话快照避让）；
+    //   界面要名字就问它（`src/tmux-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
+    //   `fork-launch.ts::forkTmuxName`）删。
     homes: [
       "src/backend/control/ccm/plan.rs::derive_tmux_name",
+      "src/backend/control/ccm/plan.rs::fork_tmux_base",
       "src/backend/control/ccm/plan.rs::next_free_name",
     ],
-    status: "open",
-    defs: ["tmuxNameSegment", "deriveTmuxName", "mintTmuxName"],
-    needles: [],
-    owner: "第五波阶段 E / G（主会话认可 FE1 报备：`90 §3` 下沉后端归那里）",
-    why: "铸名要那台机器的 tmux 名单，下沉 = 一条新帧命令",
+    status: "zero",
+    defs: ["tmuxNameSegment", "deriveTmuxName", "mintTmuxName", "mintSessionTmuxName", "forkTmuxName"],
+    needles: [
+      { text: "session-cc", count: 0 },
+      { text: "-fork-cc", count: 0 },
+    ],
   },
   J8: {
     what: "启动期令牌形状",

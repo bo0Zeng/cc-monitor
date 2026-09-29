@@ -311,3 +311,42 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
         json!({"result": null})
     );
 }
+
+/// 设计/97 §8（主会话 09-28 裁 FIX4）「全景小程序卸口：给（受管工具都应可卸，照 SU1 装卸账）」：
+/// 不在 ⇒ `removed:false`；是全景小程序（`--probe` 首行认得）⇒ 删掉那一份、索引不动；认不出 ⇒ `not_ours`、一个字节不动。
+#[cfg(unix)]
+#[tokio::test]
+async fn uninstall_removes_only_the_placed_program_and_only_when_it_is_ours() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = std::env::temp_dir().join(format!("pano-uninstall-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let bin = home.join(".cc-monitor/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let index = home.join(".cc-monitor/panorama");
+    std::fs::create_dir_all(&index).unwrap();
+    let prog = bin.join(program_file_name());
+    let door = crate::stream::inbound::LocalFiles;
+
+    let v = uninstall_at(door, home.clone())
+        .await
+        .expect("不在也不是错");
+    assert_eq!(v["removed"], false);
+
+    let write = |body: &str| {
+        std::fs::write(&prog, body).unwrap();
+        std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    write("#!/bin/sh\necho 'name=someone-else'\n");
+    let e = uninstall_at(door, home.clone())
+        .await
+        .expect_err("认不出的不许删");
+    assert_eq!(e.0, "not_ours");
+    assert!(prog.exists(), "认不出却动了它");
+
+    write("#!/bin/sh\necho 'name=cc-monitor-panorama'\necho 'version=9'\n");
+    let v = uninstall_at(door, home.clone()).await.expect("是它就删");
+    assert_eq!(v["removed"], true);
+    assert!(!prog.exists(), "说删了却还在");
+    assert!(index.exists(), "索引不是装时写的，不许删");
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -554,7 +554,9 @@ for _i in $(seq 1 100); do [ -f "$_dg/a" ] && [ -f "$_dg/b" ] && break; sleep 0.
 printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
 chk "  台架：两个会话都登记上了（带 pane pid）" "$(awk -F'\t' '$4!=""{n++} END{print n+0}' "$BUS/agents.tsv")" "2"
 out="$(printf '{"name":"dg-cc"}' | d --kill)"
-chk "杀会话本身照旧成功、应答形状不变" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
+chk "杀会话本身照旧成功" "$(printf '%s' "$out" | jq -c '[.session, .killed]')" '["dg-cc",true]'
+# 〔FIX4 · 设计/95 §6〕注销的结局进成品的 `bus` 那一格：注销了谁 · 谁没注销成 · 名册读得到。
+chk "★ 成品 bus 那一格说出注销了 dg_cc（没有失败、名册读得到）" "$(printf '%s' "$out" | jq -c '[.bus.removed, .bus.failed, .bus.unread]')" '[["dg_cc"],[],null]'
 chk "★ 登记在被杀会话上的 dg_cc 从名册里没了" "$(awk -F'\t' '$1=="dg_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "0"
 chk "★ 它的收件箱也清了（cc-bus「收掉成员」的全套）" "$([ -e "$BUS/inbox/dg_cc.jsonl" ] && echo 在 || echo 没了)" "没了"
 chk "★ 别的会话上登记的 dgother_cc 原样在" "$(awk -F'\t' '$1=="dgother_cc"' "$BUS/agents.tsv" | wc -l | tr -d ' ')" "1"

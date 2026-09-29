@@ -13,9 +13,9 @@
  *
  * | # | 性质 | 形状 |
  * |---|---|---|
- * | K1 | 铸名只有一个家 | 生产段调 `mintSessionTmuxName(` 的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
+ * | K1 | 铸名只有一个家 | 〔FIX4 · J7〕生产段发 `tmux-name-mint`（问那台后端铸名）的文件集合 == `{tmux-name-mint.ts}`；问 tmux 名单的文件集合 == 手写集合（两向） |
  * | K2 | 本机 resume 编排只有一个家 | 生产段以 resume 动作问本机后端起会话（`launchLocal(` / `planLocalLaunch(` ＋ `kind: "resume"`）的文件集合 == `{local-resume.ts}`（两向） |
- * | K3 | 列不出 ⇒ 不铸名 | `readTmuxListing` 三态逐格 == 手写表；`mintFreshTmuxName` 在 unknown 上回 `ok:false`；本机 resume 在 unknown 上交 `tmuxName: null` |
+ * | K3 | 问不到 ⇒ 不铸名 | `readTmuxListing` 三态逐格 == 手写表；`mintFreshTmuxName` 问不到 / 形状不认 ⇒ `ok:false`；本机 resume 问不到 ⇒ 交 `tmuxName: null` |
  *
  * | K4 | D-h：本机跟随时 pin 那个号选不了 ⇒ 不起、说清、给「用当前账号」的显式选择 | 零次本机 resume（`launch-local`）＋ 一条可点提示；点了 ⇒ 以当前号起；正控：pin 可选 ⇒ 带 pin 起 |
  *
@@ -24,12 +24,12 @@
  *
  * K3 的四个远端入口各有一条行为判据，住各自的测试文件（那里有现成的桩）：
  * `remote-launch-run.vitest.ts`「列不出会话 ⇒ 不起、出声」· `settings/remote-section.vitest.ts`「开新 Claude …」·
- * `tabs.vitest.ts`「tmux 全新 resume …」· `fork-start.vitest.ts`「名单没问到（null）…」。每条都配正控。
+ * `tabs.vitest.ts`「tmux 全新 resume …」· `fork-start.vitest.ts`「铸不出名字且要进 tmux …」。每条都配正控。
  *
  * # 同波别的路长出新成员时会怎么红
  *
  * K1 / K2 的人群是**生产段全集**（`test-support/production-sources.ts`），不是登记表：
- * 别的路新写一处 `mintSessionTmuxName(` / 以 resume 动作的 `launchLocal(` / `list_*_tmux(` ⇒ 集合多一个 ⇒ 红，
+ * 别的路新写一处 `"tmux-name-mint"` / 以 resume 动作的 `launchLocal(` / `listTmux(` ⇒ 集合多一个 ⇒ 红，
  * 报文点名那个文件。它该不该存在，回来看它是不是本该走这两个家。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -45,7 +45,7 @@ import { launchRenderShim, localLaunchCalls } from "./test-support/chan-fake";
 import { productionTsFiles } from "./test-support/production-sources.ts";
 import { stripComments } from "./test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../src/ipc/origin";
-import { readTmuxListing, mintFreshTmuxName, listingFromFetch } from "../src/tmux-name-mint";
+import { readTmuxListing, mintFreshTmuxName } from "../src/tmux-name-mint";
 import { resumeLocalSession } from "../src/local-resume";
 import { showActionFailureToast } from "../src/error-toast";
 import type { Account, AccountsState } from "../src/accounts";
@@ -63,19 +63,20 @@ function filesMatching(re: RegExp, skip: readonly string[] = []): string[] {
 }
 
 describe("K1 · 铸名只有一个家", () => {
-  it("★ 生产段调 `mintSessionTmuxName(` 的文件 == {tmux-name-mint.ts}（定义处 remote-launch.ts 除外）", () => {
+  // 〔FIX4 · `设计/90 §3` J7〕派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `tmux-name-mint`，发这一问的只许一个家。
+  it("★ 生产段发 `tmux-name-mint` 的文件 == {tmux-name-mint.ts}", () => {
     expect(
-      filesMatching(/\bmintSessionTmuxName\s*\(/, ["src/remote-launch.ts"]),
-      "有别的地方自己「列名单 → 铸名」了。起会话的 tmux 名只许经 `src/tmux-name-mint.ts`" +
-        "（它守着「列不出 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
+      filesMatching(/["']tmux-name-mint["']/),
+      "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/tmux-name-mint.ts`" +
+        "（它守着「问不到 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
     ).toEqual(["src/tmux-name-mint.ts"]);
   });
 
   it("★ 问 tmux 名单的生产文件 == 手写集合（两向）", () => {
     // 手写期望，不从实现生成。每一格为什么在（〔MIG-1 续〕取法换成读口 `listTmux(`；读口的定义处 `tmux-reads.ts` 除外）：
-    // - `tmux-name-mint.ts`：铸名的家（本机 ＋ 远端）。
+    // - `tmux-name-mint.ts`：`readTmuxListing`（分叉那条要知道源会话此刻在哪个 tmux 里）。
     // - `tab-session-actions.ts`：`fetchTmuxFresh`，TabManager 唯一取数点（attach / kill / 就地 resume 要**活的**那一份；
-    //   它取回来的答案经 `listingFromFetch` 交给铸名的家，不自己铸）。
+    //   全新那一支要名字 ⇒ 问后端铸，〔FIX4 · J7〕不拿这份名单自己铸）。
     const want = ["src/tab-session-actions.ts", "src/tmux-name-mint.ts"];
     expect(
       filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/, ["src/tmux-reads.ts"]),
@@ -127,32 +128,43 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     }
   });
 
-  it("★ 名单没问到 ⇒ mintFreshTmuxName 回 ok:false 且带原因；正控：问到了 ⇒ 避让到 -2", async () => {
-    reply(undefined, new Error("ssh 抖动"));
+  /** 〔FIX4 · J7〕那台后端铸名那一问：名字 ⇒ 成品；`null` ⇒ 问不到；`"bad"` ⇒ 回了认不得的形状。记下被问的入参。 */
+  const mintAsks: { origin: string; args: { cwd?: string; forkOf?: string } }[] = [];
+  const replyMint = (minted: string | null | { bad: unknown }): void => {
+    mintAsks.length = 0;
+    invokeMock.mockImplementation(launchRenderShim((cmd: string, args: unknown) => {
+      if (cmd !== "tmux_name_mint") return Promise.resolve(undefined);
+      const { origin, ...rest } = args as Record<string, unknown>;
+      mintAsks.push({ origin: String(origin), args: rest });
+      return Promise.resolve(minted ?? undefined);
+    }));
+  };
+
+  it("★ 问不到 ⇒ mintFreshTmuxName 回 ok:false 且带原因；形状不认 ⇒ 同样不铸；正控：那台铸了 ⇒ 用它铸的", async () => {
+    replyMint(null);
     const no = await mintFreshTmuxName("aya", "/home/u/proj");
     expect(no.ok).toBe(false);
-    expect(no.ok ? "" : no.why).toContain("ssh 抖动");
-    reply(undefined, [S("proj-cc")]);
+    expect(no.ok ? "" : no.why).not.toBe("");
+    replyMint({ bad: { name: "proj-cc", extra: 1 } });
+    expect((await mintFreshTmuxName("aya", "/home/u/proj")).ok).toBe(false);
+    replyMint("proj-cc-2");
     expect(await mintFreshTmuxName("aya", "/home/u/proj")).toEqual({ ok: true, name: "proj-cc-2" });
+    expect(mintAsks).toEqual([{ origin: "aya", args: { cwd: "/home/u/proj" } }]);
   });
 
-  it("listingFromFetch：undefined（调用方那一问抛了）⇒ unknown；null（那台没装 tmux，〔MIG-1 续〕本机远端同义）⇒ known 空表", () => {
-    expect(listingFromFetch(undefined).kind).toBe("unknown");
-    expect(listingFromFetch(null)).toEqual({ kind: "known", sessions: [] });
-  });
-
-  it("★ 本机 resume：名单不知道 ⇒ 交 `tmuxName: null`（后端如实不进容器）；正控：知道 ⇒ 交铸出来的名字", async () => {
+  it("★ 本机 resume：问不到 ⇒ 交 `tmuxName: null`（后端如实不进容器）；正控：问到 ⇒ 交本机后端铸的名字", async () => {
     const sent = (): Record<string, unknown> =>
       localLaunchCalls(invokeMock.mock.calls, "resume_history_session")[0];
-    reply(null, undefined);
+    replyMint(null);
     expect(
       await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } }),
     ).toBe(true);
     expect(sent().tmuxName).toBeNull();
     invokeMock.mockReset();
-    reply([S("proj-cc")], undefined);
+    replyMint("proj-cc-2");
     await resumeLocalSession({ sid: "s1", cwd: "/home/u/proj", account: { kind: "explicit", configDir: null, name: null } });
     expect(sent().tmuxName).toBe("proj-cc-2");
+    expect(mintAsks).toEqual([{ origin: LOCAL_ORIGIN, args: { cwd: "/home/u/proj" } }]);
     // 账号 0 是**显式 `base`**，不是省略（省略 = 没表态 = 被 shell rc 里的默认号顶掉）。
     expect(sent().account).toEqual({ kind: "base" });
   });

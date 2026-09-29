@@ -732,12 +732,13 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 
 ```text
 → {"id":"K1","cmd":"kill","args":{"name":"1a2b3c4d-cc"}}
-← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true}}
+← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true,"bus":{"removed":[],"failed":[],"unread":null}}}
 ```
 
 〔SH1 · D-g · 09-26〕杀成之后**顺手从 cc-bus 收掉登记在这个会话上的 id**：过门之后、杀之前读下这个会话全部 pane 的根进程 pid，
 杀成之后经 `cc-list --tsv` 读名册、按第 4 列 pane pid 认人（不按会话名猜），逐个 `cc-kill <id>`（名册 · 台账 · 状态 · 收件箱一起清）。
-这一步不改结局：cc-bus 没装就跳过，读不到名册 / `cc-kill` 失败只写一行 warn；应答形状不变。
+这一步不改结局：cc-bus 没装就跳过；〔FIX4 · `95 §6`〕结局进成品的 `bus` 那一格 —— `removed`（注销掉的 id）· `failed`（`{id, why}`，名册里那一行还在）·
+`unread`（名册读不到的原话，读得到 ⇒ `null`），界面照它说一句（全空 ⇒ 不说）。
 
 **它必须过 §34 的三道门**
 （⚠ **`K-R72` 2026-09-12**：monitor 侧 `kill_remote_tmux` 那条 shell 路**已经删了**——
@@ -2445,7 +2446,7 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 
 设置「账号」那几块（新建账号表单 · 启用向导 · 维护 · 登录）要在那台机器的终端里跑的 `cc-acct-iso …` 由**这台后端**出
 （主会话 09-26 裁 J4：`设计/01 §1.1`「命令串……都不在前端」· `设计/90 §3` 判据 2；先例 `ccm-print`）。界面的逐字预览与「弹终端」都问它，
-拿到的一行原样上屏 / 原样交给 `launch_remote_terminal`（跑它的是用户面前那个终端，DESIGN §6）。本机远端同一条命令，`origin` 区分。
+拿到的一行原样上屏 / 原样交给开终端那一口（`src/terminal-open.ts::openTerminal`，〔FIX4〕；跑它的是用户面前那个终端，DESIGN §6）。本机远端同一条命令，`origin` 区分。
 
 ```text
 → {"id":"a3","cmd":"acct-iso-cmd","args":{"step":"add-apply","name":"z","credFile":"/home/u/snap.json"}}
@@ -3008,6 +3009,34 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
+#### `terminal-ssh`：给一台远端开终端要跑的那一串（〔FIX4〕09-28；`设计/99 §2.1 ⑬`「待迁」最后一行：ssh 外壳与 PowerShell 窗口载荷由本机后端渲，monitor 只开终端）
+
+```text
+→ {"id":"ts1","cmd":"terminal-ssh","args":{"machine":{"host":"pi.local","user":"pi","port":22,"label":"pi"},"command":"claude --resume s1"}}
+← {"kind":"reply","id":"ts1","ok":true,"data":{"command":"& ssh -t -p 22 pi@pi.local -- 'bash -lic ''claude --resume s1'''"}}
+```
+
+入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
+`command`。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
+（交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
+**只算不起**：不拨号、不开窗（开窗 · 令牌握手前奏是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command`）· `bad_jump`（跳板交不来 / 指自己）·
+`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单）。只上帧面（`STREAM_ONLY`）。
+
+#### `tmux-name-mint`：起会话要的 tmux 名（〔FIX4〕09-28；`设计/90 §3` J7「派生 ＋ 避让只留后端」）
+
+```text
+→ {"id":"tm1","cmd":"tmux-name-mint","args":{"cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"tm1","ok":true,"data":{"name":"proj-cc-2"}}
+→ {"id":"tm2","cmd":"tmux-name-mint","args":{"forkOf":"proj-cc"}}
+← {"kind":"reply","id":"tm2","ok":true,"data":{"name":"proj-fork-cc"}}
+```
+
+**入参恰给一格**：`cwd`（起新会话 / 全新 resume：基名 `<项目名>-cc`，派生规则同 `ccm` 不给名时那一条）或 `forkOf`（分叉：源会话的 tmux 名，
+源已退出时交它的 cwd；基名 `<去掉末尾 -cc 再净化>-fork-cc`）。净化：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`；
+空 ⇒ `session-cc` / `session-fork-cc`。撞了往后排（`-2` / `-3` …），避让问的是**这台**那张会话快照（问一次更新一次，与 `ccm` 起会话、
+`--ccm-print` 同一份）；这台没装 tmux ⇒ 交基名。**只算不起**：不建会话、不写盘。前端 `src/tmux-name-mint.ts` 问（本机远端同一形），
+问不到 ⇒ 不铸名（空集铸名 = 不避让，issue #76 的形状）。错误码：`invalid_args`。只上帧面（`STREAM_ONLY`：CLI 那一侧 `ccm` 自己就铸）。
+
 #### `ssh-config-aliases`：这台 `~/.ssh/config` 里可点的别名（MIG-1，09-27，**只读**）
 
 ```text
@@ -3209,6 +3238,17 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
   本命令自己不推、不写。
   〔RM1f · 本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
   放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
+
+#### `panorama-uninstall`：卸掉这台的全景小程序（〔FIX4〕09-28；`设计/97 §8` 主会话裁「受管工具都应可卸，照 SU1 装卸账」）
+
+```text
+→ {"id":"pu1","cmd":"panorama-uninstall"}
+← {"kind":"reply","id":"pu1","ok":true,"data":{"removed":true,"path":"/home/u/.cc-monitor/bin/cc-monitor-panorama","index":"/home/u/.cc-monitor/panorama"}}
+```
+
+装那一下只放一份文件（落点 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`）⇒ 卸只删那一份：先 `--probe` 认身份（认不出 / 跑不起来 ⇒ `not_ours`，一个字节不动），
+再经这台文件管理面带逐字节 `expect` 删（与刚读到的不等 ⇒ `stale`）。它跑出来的索引（`index`）不是装时写的，不删、只说在哪。不在 ⇒ `removed: false`。
+后端旁边随后端一起铺的那一份不碰（不是装进来的）。码：`not_ours` · `failed`（没有家目录 / 读不了）· `stale` · `refused` · `io_failed`（删那一跳的原码）。
 
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 

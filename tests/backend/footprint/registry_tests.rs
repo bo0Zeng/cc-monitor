@@ -1555,6 +1555,9 @@ fn fenced_block_implies_uninstallable() {
 struct ImplSite {
     addr: &'static str,
     definition: &'static str,
+    /// 〔FIX4 · `97 §8`〕这一处不住 [`Claim::home`] 那份文件时，它自己的家（全景小程序：装口在 monitor 放字节、卸口在那台后端）。
+    /// `None` = 住 `home` 那份（其余各行）。
+    elsewhere: Option<ImplHome>,
 }
 
 /// 一个工具的装 / 卸实现**住在哪份文件**。
@@ -1614,12 +1617,14 @@ fn claims() -> Vec<Claim> {
         // 〔RW1 · 第四波 09-24〕签名变了：落盘经「门」（生产 = 本机后端的文件管理那一面），本进程不写。
         // 〔MIG-3a〕门就是那台后端本进程的 `files-*`（同步）。
         definition: "pub(crate) fn install_to_profile(\n    d: &dyn Door,\n    path: &Path,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
+        elsewhere: None,
     }
     };
     let profile_uninstall = || {
         ImplSite {
         addr: "block.rs::uninstall_from_profile",
         definition: "pub(crate) fn uninstall_from_profile(d: &dyn Door, path: &Path) -> Result<(), String> {",
+        elsewhere: None,
     }
     };
     vec![
@@ -1640,6 +1645,7 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "cc_bus_install.rs::answer_install",
                 definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
+                elsewhere: None,
             }),
             uninstall: None,
         },
@@ -1652,6 +1658,7 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "acct_iso_install.rs::answer_install",
                 definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
+                elsewhere: None,
             }),
             uninstall: None,
         },
@@ -1661,14 +1668,16 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "sftp.rs::deploy_remote_backend",
                 definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
+                elsewhere: None,
             }),
             uninstall: Some(ImplSite {
                 addr: "sftp.rs::uninstall_remote_backend",
                 definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
+                elsewhere: None,
             }),
         },
         // 〔TL1 · 4C〕代码全景小程序：装口 `push_to`（本机那一臂落 `place_local`，远端那一臂经那台后端的文件链路推）；
-        //   **没有卸口**（`uninstall: None`，负向扫描守着这个家）。
+        //   〔FIX4〕卸口住那台后端 `control/panorama.rs::answer_uninstall`（`elsewhere`）。
         Claim {
             tool: "panorama",
             home: Some(ImplHome {
@@ -1678,8 +1687,17 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "panorama_bytes.rs::push_to",
                 definition: "pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {",
+                elsewhere: None,
             }),
-            uninstall: None,
+            // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕卸口在那台后端（`panorama-uninstall`：认身份、只删装时放下的那一份）。
+            uninstall: Some(ImplSite {
+                addr: "panorama.rs::answer_uninstall",
+                definition: "pub(crate) async fn answer_uninstall(",
+                elsewhere: Some(ImplHome {
+                    addr: "panorama.rs",
+                    text: include_str!("../../../src/backend/control/panorama.rs"),
+                }),
+            }),
         },
         Claim {
             tool: "project-mcp",
@@ -1691,10 +1709,12 @@ fn claims() -> Vec<Claim> {
                 addr: "assets/mcp_edit.rs::answer_put",
                 // 〔MIG-3a〕从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
                 definition: "pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {",
+                elsewhere: None,
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/mcp_edit.rs::answer_remove",
                 definition: "pub(crate) fn answer_remove(d: &dyn Door, args: &Value) -> Answer {",
+                elsewhere: None,
             }),
         },
         // 〔AS2 · 第四波 4B · V113〕资产目录里「装到这台」的 skill；〔SU1 · V116〕卸只删装记录里那几个文件。
@@ -1709,10 +1729,12 @@ fn claims() -> Vec<Claim> {
             install: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_install",
                 definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
+                elsewhere: None,
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_uninstall",
                 definition: "pub(crate) fn answer_uninstall(\n    d: &dyn Door,\n    ledger: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
+                elsewhere: None,
             }),
         },
         Claim {
@@ -1846,7 +1868,8 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
         ] {
             checked += 1;
             let real = match (c.home.as_ref(), site) {
-                (Some(home), Some(s)) => {
+                (Some(claim_home), Some(s)) => {
+                    let home = s.elsewhere.as_ref().unwrap_or(claim_home);
                     // 住址与签名互相校验：符号名必须逐字相等，文件必须就是那个家。
                     assert_eq!(
                         s.addr,

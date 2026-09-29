@@ -40,7 +40,7 @@ import { isLocalOrigin, isRemoteOrigin } from "./ipc/origin";
 import { commands } from "./ipc/commands";
 import { probeSessionRecord, reasonOf, type RecordProbe } from "./session-reads";
 import { lastAccounts } from "./history-reads";
-import { listingFromFetch, mintFromListing, refuseUnmintable } from "./tmux-name-mint";
+import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { listTmux } from "./tmux-reads";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开文件窗口进入远端 cwd（而非只提示打不开）。〔F7b〕老 SFTP 面板删了。
@@ -420,12 +420,14 @@ export class TabSessionActions {
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
     // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
     // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
-    // 〔FE1〕铸名只经 `tmux-name-mint.ts`；名单没问到 ⇒ 不铸、不起、说清（不拿空集去避让）。
-    const name = mintFromListing(cwd, listingFromFetch(fetched));
-    if (name === null) {
-      refuseUnmintable(origin, copyText("tmuxMint.unknown.notAsked"));
+    // 〔FE1〕铸名只经 `tmux-name-mint.ts`；〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 按它的会话快照避让）。
+    //   问不到 ⇒ 不铸、不起、说清（不拿空集去避让）。
+    const minted = await mintFreshTmuxName(origin, cwd);
+    if (!minted.ok) {
+      refuseUnmintable(origin, minted.why);
       return;
     }
+    const name = minted.name;
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
     await withAccount(
       origin,
@@ -643,15 +645,16 @@ export class TabSessionActions {
     const confirmFn: ConfirmFn = opts?.confirm ?? askConfirm;
     const message = copyText("tabSessionActions.kill.confirm", { name: tmuxName, machine: isLocal ? copyText("tabSessionActions.who.local") : origin, body, caveat });
     const kill = async (): Promise<void> => {
-      await killSession(origin, tmuxName);
+      const bus = await killSession(origin, tmuxName);
       const who = isLocal ? copyText("tabSessionActions.who.local") : copyText("tabSessionActions.who.remote", { machine: origin });
-      showActionFailureToast(
-        copyText("tabSessionActions.kill.done"),
-        opts?.idle
-          ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
-          : copyText("sessionState.killLive.done", { who, name: tmuxName }),
-        { level: "info", durationMs: 6000 },
-      );
+      const done = opts?.idle
+        ? copyText("sessionState.killIdle.done", { who, name: tmuxName })
+        : copyText("sessionState.killLive.done", { who, name: tmuxName });
+      // 〔FIX4 · `95 §6`〕顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说）。
+      showActionFailureToast(copyText("tabSessionActions.kill.done"), bus === null ? done : `${done}\n${bus}`, {
+        level: "info",
+        durationMs: 6000,
+      });
     };
     void (async () => {
       if (!(await confirmFn(message))) return;
