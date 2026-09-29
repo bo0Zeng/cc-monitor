@@ -106,17 +106,27 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
 fn list_projects(agent_home: &Path) -> Result<(), String> {
-    list_projects_into(agent_home, &mut std::io::stdout().lock())
+    if list_projects_into(agent_home, &mut std::io::stdout().lock())? {
+        return Ok(());
+    }
+    // 〔WF2〕老 CLI 那一面照旧**出声**（rc=2）：它是远端 / 一次性问者的契约，零行会被读成「这家没有会话」
+    //   （`agents/fake` 那条 S6-Z3 钉着）；只是话换成人话、不露 `read_dir` / `os error`。
+    Err(copy_text(
+        "beHistory.records.none",
+        &[("path", &projects_root(agent_home).display().to_string())],
+    ))
 }
 
 /// `--list-projects` 的本体，出口是参数 ——〔`C1` · 2026-09-24〕帧面那条（`history-projects`）
 /// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答。
-pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<(), String> {
+///
+/// 〔WF2 · WIN3 读数 H〕回「记录树根在不在」：不在 ⇒ `Ok(false)`、一行不写（这台还没起过会话 —— 判定只在这一处）；
+/// 怎么说由两个宿主各自定：帧面当零个项目（界面照空态「还没有会话记录」画，别的机器照常）· CLI 照旧出声。
+pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<bool, String> {
     let root = projects_root(agent_home);
     let entries = match std::fs::read_dir(&root) {
         Ok(it) => it,
-        // 〔WF2 · WIN3 读数 H〕这台还没起过会话（记录树根不在）⇒ 零个项目，不是失败 —— 界面照「还没有会话记录」画，别的机器照常。
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(unreadable_dir(&root, &e)),
     };
     for entry in entries.flatten() {
@@ -130,7 +140,7 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
         };
         writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
-    Ok(())
+    Ok(true)
 }
 
 /// 〔WF2 · WIN3 读数 H〕会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— `设计/91` 不露实现词）。

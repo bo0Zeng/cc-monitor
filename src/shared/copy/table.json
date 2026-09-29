@@ -18917,6 +18917,11 @@
       "zh": "这台的会话记录目录 {path} 没有读权限",
       "args": ["path"]
     },
+    "beHistory.records.none": {
+      "kind": "error",
+      "zh": "这台还没有会话记录：{path} 还不在",
+      "args": ["path"]
+    },
     "beHistory.dir.unreadable": {
       "kind": "error",
       "zh": "这台的会话记录目录 {path} 读不了",
