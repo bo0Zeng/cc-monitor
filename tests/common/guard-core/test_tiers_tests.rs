@@ -88,6 +88,7 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
     "tests/backend/agents/codex/resume_tests.rs",
+    "tests/backend/agents/codex/token_tests.rs", // 〔RE〕原 `tests/common/codex-token-core/lib_tests.rs`（crate 搬进后端成模块）
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
     "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
@@ -111,7 +112,6 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/bridge/chan/transfer_stream_tests.rs",
     "tests/common/branch-core/lib_tests.rs",
-    "tests/common/codex-token-core/lib_tests.rs",
     "tests/common/creds-core/store_tests.rs",
     "tests/common/gate-core/lib_tests.rs",
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate

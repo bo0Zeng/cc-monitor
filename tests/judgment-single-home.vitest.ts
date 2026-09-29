@@ -546,10 +546,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 〔DUP1〕`is_plain_sid` 成 `shell_quote_core::session_id_ok` 的再导出（`pub use`，不再是本 crate 的 `pub fn`）。
     SESSION_LOOKUP_DEPTH: NONE,
   },
-  "codex-token-core": {
-    codex_delta: NONE,
-    is_noop: NONE,
-  },
+  // 〔RE〕`codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   "copy-core": {
     copy_text: "J11",
     TABLE_JSON: NONE,
