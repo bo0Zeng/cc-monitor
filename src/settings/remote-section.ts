@@ -353,6 +353,7 @@ export class RemoteSection {
     // 〔步 14〕后端那四格。本机在后端那套名字里叫 `LOCAL_ORIGIN`（不是本分节的 `LOCAL_MACHINE_KEY`）。
     this.appendRowExtras(legend, LOCAL_ORIGIN);
     void this.noteLocalBackend();
+    void this.noteLocalCcm();
     // **没有删除按钮** —— 本机删不掉，这不是「暂未实现」，是它本来就不该能删。
     return row;
   }
@@ -388,6 +389,29 @@ export class RemoteSection {
       // 见头注：查不到就不写。**不许在这里补一个 `fail`** —— 那是替用户下一个没做过的结论。
       return;
     }
+    this.redrawLocalRow();
+  }
+
+  /**
+   * 〔FIX3 · `设计/99 §2.2 ㉔` · `15 §5.4 D5`〕**本机 `ccm` 那一格的写点**：两件都报 ——「我们那份装下来了」＋「登录 shell 里敲
+   * `ccm` 走到的是不是它」。判定与那句话都在 monitor 的 Rust 一侧（`ccm_probe::local_ccm_cell`），这里只照记；
+   * 说不清（`ok === null`）⇒ 不写。与 `noteLocalBackend` 同一种时机（打开设置面板重建列表时一次，只问本机）。
+   * Windows 本机这一格不适用（`readiness.notApplicable`），不问。
+   */
+  private async noteLocalCcm(): Promise<void> {
+    if (hostOs() === "windows") return;
+    try {
+      const st = await commands.local_ccm_entry_status();
+      if (typeof st?.ok !== "boolean") return;
+      recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: st.ok ? "ok" : "fail", detail: st.summary });
+    } catch {
+      return;
+    }
+    this.redrawLocalRow();
+  }
+
+  /** 本机那一行的状态格与「还差什么」按账本重画一次。 */
+  private redrawLocalRow(): void {
     const strip = this.machinesContainer.querySelector<HTMLElement>(
       ".remote-machine-local .remote-machine-status",
     );
