@@ -38,6 +38,8 @@ import { commands, type StopAnswer } from "../ipc/commands";
 import { chan } from "../ipc/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
+import { hostOs } from "./host-os";
+import { noteLocalCcm } from "./machine-aliases"; // 〔FIX4 ⑥〕本机 ccm 那一格的唯一写点
 
 /** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
 const SETTLE_TRIES = 30;
@@ -450,6 +452,10 @@ export class BackendSection {
     btn.disabled = true;
     try {
       const r = await resync(origin);
+      // 〔FIX4 · 主会话裁⑥ · V149 手动兜底〕本机那一行对齐 ⇒ 顺手作废「PATH 上的 ccm」那份 5 分钟缓存、重记那一格（Windows 不适用）。
+      if (isLocalOrigin(origin) && hostOs() !== "windows") {
+        noteLocalCcm(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
+      }
       showActionFailureToast(copyText("backend.resync.doneTitle"), resyncSaid(r), { level: "info", durationMs: 6000 });
       void emit(RESYNC_DONE_EVENT, { origin }); // ㉟①：主窗口标出这台上记录没了的固定条
     } catch (e) {

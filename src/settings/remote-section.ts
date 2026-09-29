@@ -59,6 +59,7 @@ import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { hostOs } from "./host-os"; // S9：本机 OS 决定哪些组件适用
+import { noteLocalCcm } from "./machine-aliases"; // 〔FIX4〕本机 ccm 那一格的唯一写点
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
@@ -401,9 +402,7 @@ export class RemoteSection {
   private async noteLocalCcm(): Promise<void> {
     if (hostOs() === "windows") return;
     try {
-      const st = await commands.local_ccm_entry_status();
-      if (typeof st?.ok !== "boolean") return;
-      recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: st.ok ? "ok" : "fail", detail: st.summary });
+      await noteLocalCcm(); // 写点只有 `machine-aliases.ts::noteLocalCcm` 一处（K-R117 S2 本机半）
     } catch {
       return;
     }
