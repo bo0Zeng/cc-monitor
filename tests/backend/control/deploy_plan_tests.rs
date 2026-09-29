@@ -159,17 +159,27 @@ async fn nothing_at_the_landing_is_deployed() {
 
 #[tokio::test]
 async fn an_older_build_is_replaced_and_a_newer_one_is_kept_with_its_own_identity() {
-    let older = plan(&Fake::linux(Some("p9a-old")), &carried("p9b-mine"), "box", NOW)
-        .await
-        .unwrap();
+    let older = plan(
+        &Fake::linux(Some("p9a-old")),
+        &carried("p9b-mine"),
+        "box",
+        NOW,
+    )
+    .await
+    .unwrap();
     assert!(
         matches!(older.action, DeployAction::Deploy(_)),
         "{:?}",
         older.action
     );
-    let newer = plan(&Fake::linux(Some("p9c-new")), &carried("p9b-mine"), "box", NOW)
-        .await
-        .unwrap();
+    let newer = plan(
+        &Fake::linux(Some("p9c-new")),
+        &carried("p9b-mine"),
+        "box",
+        NOW,
+    )
+    .await
+    .unwrap();
     assert!(
         matches!(&newer.action, DeployAction::Keep { theirs, .. } if theirs == "p9c-new"),
         "{:?}",
@@ -197,14 +207,18 @@ async fn a_windows_remote_is_refused_as_not_promised() {
         deploy_core::UNAME_CMD.into(),
         said(0, "MINGW64_NT-10.0-19045 x86_64\n"),
     );
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap_err();
+    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
     assert_eq!(code, "refused");
 }
 
 #[tokio::test]
 async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
     let f = Fake::default();
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap_err();
+    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
     assert_eq!(code, "unreachable");
 }
 
@@ -212,7 +226,9 @@ async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
 async fn an_unstamped_landing_is_undecidable_unless_it_is_our_old_three_line_entry() {
     let mut f = Fake::linux(Some("x"));
     f.exec.insert(landing_scan(), said(1, ""));
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap_err();
+    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
     assert_eq!(code, "undecidable");
 
     f.read.insert(
@@ -260,7 +276,10 @@ async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else
         ("ccm.2c0-18d9c8c1df0ec9e7-c.tmp", Some(old)),
         ("ccm.2c0-18d9c8c1df0ec9e7-d.bak", Some(old)),
         ("ccm.2c1-18d9c8c1df0ec9e8-0.tmp", Some(NOW - 60)),
-        ("ccm.2c1-18d9c8c1df0ec9e8-1.tmp", Some(NOW - LEFTOVER_STALE_SECS)),
+        (
+            "ccm.2c1-18d9c8c1df0ec9e8-1.tmp",
+            Some(NOW - LEFTOVER_STALE_SECS),
+        ),
         ("ccm.2c2-1-2.tmp", None),
         ("ccm", Some(old)),
         ("notes.tmp", Some(old)),
@@ -283,7 +302,10 @@ async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else
     );
     f.list.clear();
     let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
-    assert_eq!((p.leftovers, p.action), (Vec::<String>::new(), DeployAction::Skip));
+    assert_eq!(
+        (p.leftovers, p.action),
+        (Vec::<String>::new(), DeployAction::Skip)
+    );
 }
 
 /// 键集合 == 金样 `tests/__fixtures__/deploy-plan.golden.json` 的键（monitor 的解码器读同一份金样）。

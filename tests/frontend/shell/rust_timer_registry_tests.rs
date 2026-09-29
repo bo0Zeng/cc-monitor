@@ -66,9 +66,10 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "src/remote_resident.rs",
         "wait-for-condition",
         1,
-        "〔HOST · V139〕`tunnel_when_bound` 的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
+        "〔HOST · V139〕`tunnel_when_bound`（〔WF2〕编排住 `retry_tunnel`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
              后端**不等它 bind**（后端零定时器）⇒ 这里等**那台回环口上有人在听**这个一次性条件（开隧道成功即止），\
-             有次数上限，等不到就如实报「连不上」、交重连那一层。不是节拍器：只在接那台常驻后端的那一趟跑。",
+             有次数上限，等不到就如实报「连不上」、交重连那一层；〔WF2〕远端回拒码是「不许端口转发」⇒ 当场停、不等。\
+             不是节拍器：只在接那台常驻后端的那一趟跑。",
     ),
     (
         "src/dial_host.rs",

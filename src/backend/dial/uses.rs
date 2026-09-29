@@ -39,6 +39,7 @@ fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
         winner: Some(l.winner.clone()),
         strict,
         jump_strict,
+        open_refused: None,
         v: ACK_V,
         uses: USES,
     }
@@ -483,18 +484,17 @@ async fn serve<R, W>(
             let channel = match opened {
                 Ok(c) => c,
                 Err(e) => {
-                    let _ = write_stages_then_ack(
-                        out,
-                        stages,
-                        &DialAck::failed(
-                            copy_text(
-                                "beUses.tunnel.unreachable",
-                                &[("port", &port.to_string()), ("e", &e.to_string())],
-                            ),
-                            fp,
-                        ),
-                    )
-                    .await;
+                    let said = copy_text(
+                        "beUses.tunnel.unreachable",
+                        &[("port", &port.to_string()), ("e", &e.to_string())],
+                    );
+                    // 〔WF2 · WIN3 读数 E〕远端回拒开通道 ⇒ 原因码随 ack 交回（`AllowTcpForwarding no` 回的是
+                    //   `administratively_prohibited`，口上没人听回的是 `connect_failed`）；界面据它决定停不停。
+                    let ack = match super::open_failure_word(&e) {
+                        Some(why) => DialAck::open_refused(said, fp, why),
+                        None => DialAck::failed(said, fp),
+                    };
+                    let _ = write_stages_then_ack(out, stages, &ack).await;
                     return;
                 }
             };

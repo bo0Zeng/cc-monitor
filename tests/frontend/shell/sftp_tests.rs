@@ -484,7 +484,10 @@ fn the_plan_decoder_reads_the_golden() {
         p.legacy,
         deploy_core::LegacyVerdict::Unknown("placeholder".into())
     );
-    assert_eq!(p.leftovers, vec![".cc-monitor/bin/ccm.1-2-3.tmp".to_string()]);
+    assert_eq!(
+        p.leftovers,
+        vec![".cc-monitor/bin/ccm.1-2-3.tmp".to_string()]
+    );
     let with = |k: &str, v: serde_json::Value| {
         let mut x = product.clone();
         x[k] = v;
