@@ -683,11 +683,18 @@ mod tests {
     ///   （[`super::shell`] / [`super::paths`] 各自的单测）与跨 target 编译。
     /// - **只许变长**：一处修好了就把它的文件加进来；**从这张表里删名字**等于允许回退，
     ///   要删得先说清那条平台原语今天住在哪儿。
-    const CLOSED_FOR_GOOD: &[(&str, &str)] = &[(
-        "observe/watcher.rs",
-        "`K-R55` 09-11：两跳 `sh -c` 搬进 `platform/shell.rs`，\
-         `/tmp` 与 `uid` 搬进 `platform/paths.rs` ⇒ 门外命中 0",
-    )];
+    const CLOSED_FOR_GOOD: &[(&str, &str)] = &[
+        (
+            "observe/watcher.rs",
+            "`K-R55` 09-11：两跳 `sh -c` 搬进 `platform/shell.rs`，\
+             `/tmp` 与 `uid` 搬进 `platform/paths.rs` ⇒ 门外命中 0",
+        ),
+        (
+            "observe/tmux_observe.rs",
+            "〔RE · C4〕原 `watcher.rs` A 块整块搬来（那两跳 `sh -c` 的调用点与 socket 目录都在这块里）\
+             ⇒ 上一行那份承诺跟着代码走",
+        ),
+    ];
 
     // ══════════════════════════ 扫 ══════════════════════════
 

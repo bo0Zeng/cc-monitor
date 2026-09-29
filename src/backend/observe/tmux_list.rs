@@ -2,7 +2,7 @@
 //! `parse_tmux_ls`〔散文墓碑〕，界面经 monitor 那两条 Tauri 命令问）。解析规则从 monitor 原样搬来（F74 `@ccm_sid` 字符集 · K-R12 段数上下溢），
 //! 本机远端同一份；界面经 `chan.call(origin, "tmux-list")` 直接问（`src/frontend/ui/tmux-reads.ts`）。
 //!
-//! 与流里那份 tmux 观测**同一趟** `tmux ls -F`（`watcher::list_for_query`：同一段脚本、同一个格式串、同一个四态分类）。
+//! 与流里那份 tmux 观测**同一趟** `tmux ls -F`（`tmux_observe::list_for_query`：同一段脚本、同一个格式串、同一个四态分类）。
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -22,7 +22,7 @@ pub(crate) struct TmuxRow {
     pub(crate) sid: Option<String>,
 }
 
-/// 格式串的列数（`watcher::TMUX_LS_FMT`：name ⇥ path ⇥ cmd ⇥ attached ⇥ windows ⇥ @ccm_sid）。
+/// 格式串的列数（`tmux_observe::TMUX_LS_FMT`：name ⇥ path ⇥ cmd ⇥ attached ⇥ windows ⇥ @ccm_sid）。
 const FIELDS: usize = 6;
 
 /// 原样行 → 成品。字段数不符 / 名字空的行丢掉（半截行、非法行不进结果）；windows 非数字回退 0。
@@ -75,7 +75,7 @@ pub(crate) fn rows(raw: &str) -> Vec<TmuxRow> {
 /// `tmux-list` 的成品：`{installed, sessions}`。观测无效 ⇒ `unobservable`（不是零会话）。
 pub(crate) fn answer() -> Result<Value, (&'static str, String)> {
     let (installed, lines) =
-        crate::observe::watcher::list_for_query().map_err(|m| ("unobservable", m))?;
+        crate::observe::tmux_observe::list_for_query().map_err(|m| ("unobservable", m))?;
     Ok(product(installed, &lines.join("\n")))
 }
 
