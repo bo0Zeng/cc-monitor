@@ -38,6 +38,13 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」
           ★ 三条策略为什么是这三格：探针绝不该在用户桌面上闪窗口；`-lic` 起出来的整棵树超时时要一起收（只杀 `bash` 漏得掉用户 rc 起的东西）；有用的字节只在 stdout 上。",
      "Hidden · JobKillOnClose · Null"),
+    // ── 〔WF1 · `99 §2.2 ㉔`〕Windows 那一形的「你 PATH 上那个 `ccm` 是谁」。
+    ("ccm_probe.rs", "probe_via_fresh_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <现拼 PATH 的常量串>` ＋ `powershell.exe -NonInteractive -Command <常量探测串>`（带那份 PATH、照常加载 profile）",
+     "同 `probe_with` 那一行问的是「终端里敲 `ccm` 走到哪」，Windows 上的终端是 PowerShell ⇒ 非起一个加载 profile 的 PowerShell 不可（profile 里的函数 / 别名与 PATH 一样决定走到哪）。\
+          第一跳只读注册表里机器级 ＋ 用户级 PATH（新开终端拿到的是这一份，本进程继承来的可能是改之前的），第二跳带着它问 `Get-Command ccm` ＋ 名片；\
+          两段脚本都是常量（`FRESH_PATH_PS` · `CCM_PROBE_PS`），零插值、不吃用户输入；一个字节都不写
+          ★ 三条策略为什么是这三格：同 `probe_with`：不闪窗口；超时收整棵（profile 里起了什么不知道）；有用的字节只在 stdout 上。",
+     "Hidden · JobKillOnClose · Null"),
     // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
     ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
      "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\

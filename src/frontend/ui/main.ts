@@ -47,7 +47,6 @@ import { readRemoteConfig, sftpEligibleHosts, hostKey } from "./remote-config";
 // 刚装完没打开过设置的人一个字都看不到。两个维度两个值，见 first-run-hint.ts 头注。
 import { FirstRunHint } from "./first-run-hint";
 import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
-import { hostOs } from "./settings/host-os";
 import { createUnknownKeysBar } from "./settings/unknown-keys-notice";
 import { openSettingsWindow } from "./settings/open-settings"; // ST1：点「设置」有反馈（不 import 设置面板）
 import { collectAccountRows, createEventRefresher } from "./session-accounts-poll";
@@ -592,7 +591,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     const firstRunHint = new FirstRunHint(status, {
       origins: () => origins,
       statusOf: readStatus,
-      hostOs,
       // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
       // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
       //   直达那一节要动 `src/frontend/shell` 与 `settings/panel.ts`，都在本件写区外。

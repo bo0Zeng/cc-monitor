@@ -970,6 +970,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "wf1_real_powershell_add_then_remove_restores_the_user_path",
         Trigger::Manual("〔WF1 · K〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑生成的加 / 撤两段（注册表换替身）；跑法住它自己的头注"),
     ),
+    (
+        "tests/frontend/shell/ccm_probe_tests.rs",
+        "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
+        Trigger::Manual("〔WF1 · ㉔〕读数不是判据：要一个 PowerShell（`CCM_PWSH`）跑 Windows 那一形的探测串三种情形；跑法住它自己的头注"),
+    ),
 ];
 
 /// 判别器判错的那几份：`(文件, 应归的层, 理由)`。

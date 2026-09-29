@@ -768,10 +768,9 @@ export function buildAliasManager(opts: {
   };
 
   const load = async (): Promise<void> => {
-    // 本机 ccm 那一格是 POSIX 的读法（`$HOME/.cc-monitor/bin/ccm` 与 PATH 上那一份）；
-    // Windows 上「终端找不找得到 ccm」由用户级 PATH 那一格答。
+    // 本机 ccm 那一格：我们那一份装下来了没有 ＋ 终端里敲 `ccm` 走到的是不是它（〔WF1 · ㉔〕Windows 上问新开的 PowerShell）。
     wrap.dataset.origin = opts.origin();
-    if (shell === "posix" && local) {
+    if (local) {
       try {
         const st = await noteLocalCcm();
         pathCcm.hidden = !st.message;
@@ -1302,7 +1301,7 @@ function showPreviewModal(titleText: string, code: string): void {
  * 设计/99 §2.2 ㉔ · `15 §5.4 D5`：**本机 `ccm` 那一格的唯一写点**（K-R117 S2 本机半钉在本文件）。问一次本机那一格（判定与那句话在 monitor
  * `ccm_probe::local_ccm_cell`），`ok` 说得清就记账（两件都成 ⇒ ok；有一件不成 ⇒ fail 并照记那句话；说不清 ⇒ 不写）。
  * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 〔FIX4 ⑥〕本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，V149 手动兜底）。
- * Windows 本机这一格不适用（`readiness.notApplicable`）：调用方不在那一形上叫它。
+ * 〔WF1 · ㉔〕Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
  */
 export async function noteLocalCcm(fresh = false): Promise<LocalCcmEntry> {
   const st = await commands.local_ccm_entry_status(fresh);
