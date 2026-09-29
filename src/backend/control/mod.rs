@@ -17,7 +17,7 @@
 //!   理由与射程住那一层的登记表。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
 //! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回
-//!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
+//!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在 [`gate_rules`]（〔THIN〕从共享 crate 收回本层）。
 //!   它**只读** tmux，但归 control/ —— 因为它是「能不能改这个会话」这个**决策**的一部分
 //!   （定框 C13：区别不在进程在哪，在它有没有决策权）。
 //! - [`identity_tag`]（`U-NP④`）：**把 `@ccm_sid` 打到 tmux 会话上**（改 tmux server 运行期状态）。
@@ -79,6 +79,8 @@ pub mod files_upload_chunks;
 pub mod files_write;
 pub mod fork_write;
 pub(crate) mod gate;
+// 〔THIN〕§34 Gate 2 与 tmux 会话名两条规则（原共享 crate `gate-core`：monitor 那一侧的门删了，只剩本层用）。
+pub(crate) mod gate_rules;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;

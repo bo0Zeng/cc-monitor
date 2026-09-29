@@ -132,9 +132,8 @@ type CmdErr = (&'static str, String);
 /// 而 `=` 前缀只在 target-**session** 解析路径上被识别；`send-keys` 收的是 target-**pane**，
 /// `=name` 会直接 `can't find pane`。尾冒号把串强制成 `session:` 形态，`=` 才落对位置。
 ///
-/// **与 monitor 侧的区别**：那边 `tmux::exact_target` 还要 `shell_quote` 一层，因为它拼的是
-/// 要穿过 shell 的命令串；这里是 argv 直传，**不引号化**（引号化了就成了名字的一部分）。
-/// 两边**形状**必须一致，由 `exact_target_shape_matches_the_monitor_side` 跨轨钉住。
+/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。〔THIN〕monitor 侧那一份（`tmux::exact_target`〔散文墓碑〕，
+/// 只剩跨轨对拍锚点在用）删了 ⇒ 精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
 pub(crate) fn exact_target(name: &str) -> String {
     format!("={name}:")
 }
@@ -165,7 +164,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
             crate::common::contract::malformed("missing `name`"),
         ))?
         .to_string();
-    // 〔TAIL · DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate-core`）；长度照旧。
+    // 〔TAIL · DUP3 §5 ⑦〕Gate 1 与结束 · 抓屏同一份（`kill::admit_existing_name` → `gate_rules`）；长度照旧。
     super::kill::admit_existing_name(&name)?;
     check_len("name", &name)?;
 
@@ -498,11 +497,11 @@ fn secondary(
 }
 
 /// 真做事。**只在 `Disposition::spawn` 的独立 task 上跑** —— 它会阻塞（起进程）。
-/// J6 新建那一条（`gate_core::new_tmux_name_issue`）判不过时说哪一句；过得了 ⇒ `None`。
+/// J6 新建那一条（`crate::control::gate_rules::new_tmux_name_issue`）判不过时说哪一句；过得了 ⇒ `None`。
 /// `ccm` 铸名（`ccm/plan.rs::validate_tmux_name`）与 `create-or-attach` 新建那一支说的是同一句。
 pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
-    use gate_core::TmuxNameIssue as I;
-    Some(match gate_core::new_tmux_name_issue(n)? {
+    use crate::control::gate_rules::TmuxNameIssue as I;
+    Some(match crate::control::gate_rules::new_tmux_name_issue(n)? {
         I::Empty | I::LeadingDash => {
             copy_text("bePlan.validateTmuxName.emptyOrDash", &[("name", n)])
         }
@@ -513,7 +512,10 @@ pub(crate) fn new_tmux_name_said(n: &str) -> Option<String> {
             "bePlan.validateTmuxName.tooLong",
             &[
                 ("name", n),
-                ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+                (
+                    "max",
+                    &crate::control::gate_rules::NEW_TMUX_NAME_MAX.to_string(),
+                ),
             ],
         ),
     })
@@ -549,7 +551,7 @@ fn run_with(
             })
         }
         Mode::CreateOrAttach => {
-            // 〔FIX · `设计/99 §2 ㊹` · DUP3 §5 ⑤〕要**新建**的名字过 J6 新建那一条（`gate-core`，与 `ccm` 铸名同一条）：
+            // 〔FIX · `设计/99 §2 ㊹` · DUP3 §5 ⑤〕要**新建**的名字过 J6 新建那一条（`gate_rules`，与 `ccm` 铸名同一条）：
             //   过不了、而那个会话已经在 ⇒ 照旧幂等接回（已有会话走的是已有那一条，进门时判过）；不在 ⇒ 拒并说清。
             if let Some(said) = new_tmux_name_said(&req.name) {
                 if tmux(&["has-session", "-t", &t])?.ok {
@@ -609,7 +611,7 @@ fn run_with(
             // 所以它够不着别人的会话，「冒名」那一层在这里不成立。
             //
             // 它真正的问题是**过早取得权威**：`@ccm_sid` 是破坏性动作（`kill`，
-            // `super::gate::admit_destructive` → `gate_core::gate2`）**唯一认的事实**。
+            // `super::gate::admit_destructive` → `crate::control::gate_rules::gate2`）**唯一认的事实**。
             // 建会话即写它 ⇒ 一个「声明了 sid、但那个 claude 进程还没起（甚至永远起不来）」
             // 的空会话**当场获得事实身份**。那正是 F04 修掉的 `R10`：
             // 意图（通道 A）与事实（通道 B）之间的那道确认被绕过去了。

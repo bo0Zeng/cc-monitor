@@ -210,7 +210,8 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 〔DUP2 · 主会话 09-26 裁 J6〕唯一一份进 `gate-core`：**新建**（本工具铸的名，`§47` ①）· **已有会话**（attach / 送进已在的，
     //   V131 ②：拒绝集 ＋ 非空，寻址恒 `=<名>:`）。monitor 载荷外层（`payload.rs::check`）· `ccm …` 调用行 · 后端
     //   `ccm/plan.rs::validate_tmux_name`（成只管「说哪一句」的薄壳）都调它；TS 两个谓词与两处内联式子删。
-    homes: ["gate-core::new_tmux_name_issue", "gate-core::existing_tmux_name_issue"],
+    // 〔THIN〕共享 crate `gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）⇒ homes 换成路径形。
+    homes: ["src/backend/control/gate_rules.rs::new_tmux_name_issue", "src/backend/control/gate_rules.rs::existing_tmux_name_issue"],
     status: "zero",
     // 〔DUP3 · 主会话 09-26 裁〕§34 Gate 1「只拒空」的两个住址（界面 `tmux-control.ts::rejectEmptyTarget` · monitor `tmux.rs` 的私有谓词）
     //   并进本行：目标都是已有会话 ⇒ 判定就是 `existing_tmux_name_issue`；界面那一份删（TS 零，空目标原样交给后端，后端入口拒），
@@ -225,12 +226,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     ],
     // 禁字集字面量只住 gate-core 一处；后端 plan.rs 那份自己的不许长回来。
     rustNeedles: [
-      { file: "src/common/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
+      { file: "src/backend/control/gate_rules.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
-      // 〔DUP3〕monitor 的 Gate 1 调的是 gate-core 那一条（恰一处），它自己的私有谓词不许长回来（`rustGone`）。
-      { file: "src/frontend/shell/src/backend/control/tmux.rs", text: "gate_core::existing_tmux_name_issue(", count: 1 },
+      // 〔THIN〕monitor `tmux.rs` 那一格（Gate 1 调 gate-core 恰一处 · 私有谓词不许长回来）随整份文件删了：
+      //   monitor 生产段零处够门，由 `tests/frontend/shell/gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` 钉。
     ],
-    rustGone: ["src/frontend/shell/src/backend/control/tmux.rs::is_safe_tmux_target"],
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
@@ -596,18 +596,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     WIDE_PRINCIPALS: NONE,
     wide_principals_in_sddl: NONE,
   },
-  "gate-core": {
-    allowed: NONE,
-    as_str: NONE,
-    gate2: NONE,
-    is_ccm_tmux_name: NONE,
-    needs_remote_sid: NONE,
-    // 〔DUP2 · J6〕tmux 会话名的两条规则（全仓唯一一份）与它们的常量。
-    new_tmux_name_issue: "J6",
-    existing_tmux_name_issue: "J6",
-    NEW_TMUX_NAME_MAX: NONE,
-    NEW_TMUX_NAME_REFUSED: NONE,
-  },
+  // 〔THIN〕`gate-core` 那一格删了：它收成后端模块（`control/gate_rules.rs`），不再是共享 crate，不在本表人群里。
   "relay-route-core": {
     ALL: NONE,
     // 〔E2 · V28〕后端落点（`~/.cc-monitor/bin/ccm`，两半同一份）；TS 侧没有孪生（界面那句话里的路径在文案表里）。

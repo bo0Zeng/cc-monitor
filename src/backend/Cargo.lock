@@ -245,7 +245,6 @@ dependencies = [
  "creds-core",
  "deploy-core",
  "flate2",
- "gate-core",
  "guard-core",
  "libc",
  "notify",
@@ -806,13 +805,6 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
-]
-
-[[package]]
-name = "gate-core"
-version = "0.1.0"
-dependencies = [
- "acct-core",
 ]
 
 [[package]]

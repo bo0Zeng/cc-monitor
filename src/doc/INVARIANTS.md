@@ -171,7 +171,7 @@ monitor 进程**一个字节都不直接写用户文件**。rc / `$PROFILE` / �
 （`~/.cc-monitor/bin/` 自部署，例外 2），G6 只是让它多写一个 `projects/` 下的**新** jsonl，
 并第一次给它的写面套上了机检守卫。
 
-**A5 tmux 会话名契约是跨语言隐性耦合，改一端必须同步另一端**：本工具建的远端 tmux 会话名恒为 `cc-<sid8>[-N]`（当年由前端铸名口生成（那份文件〔FIX4〕已删）；〔FIX4 · `设计/90 §3` J7〕今天名字的派生 ＋ 避让只在后端 `control/ccm/plan.rs`，形状是 `<项目名>-cc[-N]`，界面经帧命令 `tmux-name-mint` 问）。Rust 侧 `tmux::is_ccm_tmux_name`（`src/frontend/shell/src/backend/control/tmux.rs`）用 `cc-` 前缀 + `[A-Za-z0-9_-]` 白名单**门控 `tmux_send_keys`**（A5 换号重启在旧号 send `/compact`），**绝不向用户自己的其它 tmux 会话发按键**。两端各写一份该契约、仅靠测试对齐（跨语言无法共享函数）。**若改了前端的 tmux 名前缀/字符集，必须同步 Rust 白名单**，否则 send-keys 会被静默拒绝、compact 悄悄失效（不阻断重启，但优化白丢）。注：`kill_remote_tmux`（F79）**曾**沿用既有行为无此白名单 —— ⚠ **F04b 2026-08-04 订正：这句自 F04 起就假了**（F04 给 kill 补了 Gate 2 union，F04a 又加了 Gate 3；**F04b 起它的主路是后端的 `kill` 命令**，三道门在后端侧复现）。原文留痕是因为下面那半仍然成立且仍在生产：A5 破坏性重启在 `restartTabWithAccount` 里用 `live.sid === sid` 精确守卫兜底——只精确命中 `@ccm_sid` 才 kill，绝不按 cwd 回退猜（防杀错会话 + 双进程）。**A5+**：〔RST 续 · V41〕发按键只剩一形 `send-into`（键入 ＋ 回车，如 `/compact`）；当年为优雅退出发 `Escape` 加的裸键那一形（`enter=false` / mode `send-keys-raw`）随 V154「直接 kill」无调用者，已删。
+**A5 tmux 会话名契约是跨语言隐性耦合，改一端必须同步另一端**：本工具建的远端 tmux 会话名恒为 `cc-<sid8>[-N]`（当年由前端铸名口生成（那份文件〔FIX4〕已删）；〔FIX4 · `设计/90 §3` J7〕今天名字的派生 ＋ 避让只在后端 `control/ccm/plan.rs`，形状是 `<项目名>-cc[-N]`，界面经帧命令 `tmux-name-mint` 问）。Rust 侧 `is_ccm_tmux_name`（〔THIN〕今天只住后端 `src/backend/control/gate_rules.rs`，monitor 那个转调壳删了）用 `cc-` 前缀 + `[A-Za-z0-9_-]` 白名单**门控 `tmux_send_keys`**（A5 换号重启在旧号 send `/compact`），**绝不向用户自己的其它 tmux 会话发按键**。两端各写一份该契约、仅靠测试对齐（跨语言无法共享函数）。**若改了前端的 tmux 名前缀/字符集，必须同步 Rust 白名单**，否则 send-keys 会被静默拒绝、compact 悄悄失效（不阻断重启，但优化白丢）。注：`kill_remote_tmux`（F79）**曾**沿用既有行为无此白名单 —— ⚠ **F04b 2026-08-04 订正：这句自 F04 起就假了**（F04 给 kill 补了 Gate 2 union，F04a 又加了 Gate 3；**F04b 起它的主路是后端的 `kill` 命令**，三道门在后端侧复现）。原文留痕是因为下面那半仍然成立且仍在生产：A5 破坏性重启在 `restartTabWithAccount` 里用 `live.sid === sid` 精确守卫兜底——只精确命中 `@ccm_sid` 才 kill，绝不按 cwd 回退猜（防杀错会话 + 双进程）。**A5+**：〔RST 续 · V41〕发按键只剩一形 `send-into`（键入 ＋ 回车，如 `/compact`）；当年为优雅退出发 `Escape` 加的裸键那一形（`enter=false` / mode `send-keys-raw`）随 V154「直接 kill」无调用者，已删。
 
 ---
 
@@ -895,7 +895,8 @@ set-option / show-options / kill-session / has-session / attach **全部**动词
 1. ~~`src/session-backend.ts` 的 `exactTarget()` —— 前端 shell 渲染面~~ 〔LR2 2026-09-25：座删了；
    shell 渲染面今天是 Rust `src/backend/control/launch_render/payload.rs`（〔MIG-2〕搬进后端）的外层三格（`TmuxTarget` 渲 `=名:`，
    由 `tmux-outer-golden.json` 逐字节钉着）〕
-2. `src/frontend/shell/src/backend/control/tmux.rs` 的 `exact_target()` —— IPC 控制面
+2. ~~monitor 壳里 `tmux.rs` 那份 `exact_target()` —— IPC 控制面~~ 〔THIN：只剩跨轨对拍锚点在用，删了；
+   控制面今天是后端 `control/launch.rs::exact_target`（argv 直传，`exact_target_is_the_exact_match_shape` 钉着）〕
 3. `tests/e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
    必须**与生产同构**，否则 e2e 对这条假绿
 4. `shared/ccm`（F02 统一启动 CLI）—— 独立的 tmux 命令构造器（不复用前三处，语言/执行环境不同）；
@@ -908,12 +909,12 @@ e2e 的 shell 探针（`has-session` / `set-option` / `kill-session`）同样要
 
 **漂移守卫**：`session-backend.test.ts` 有一条读 `tests/e2e/restart-shims/core.mjs` 的断言把 shim 形态与座钉在一起
 （〔LR2〕那条随座的套件删之前搬进了 `tests/frontend/ui/remote-launch.test.ts`，断言一字未改）；
-Rust 侧 `tmux_targets_use_exact_match` 钉死三个命令构造点（且显式断言**不含**裸目标，防被"简化"回去）。
+Rust 侧〔THIN〕今天只剩后端 `control/launch.rs::exact_target` 一处构造点（argv 直传，`exact_target_is_the_exact_match_shape` 钉形状）；monitor 生产段零处 `-t {…}`（`tmux_backend_gate_guard_tests.rs::every_target_placeholder_comes_from_exact_target`）。
 
-**第二道防线**：〔DUP2 · 主会话 09-26 裁 J6〕规则只有一份，住共享 crate `gate-core`（原先界面两个谓词 ＋ 后端 `validate_tmux_name` ＋ 载荷 `TmuxTarget::check` 三家各写各的）。
-**新建**（本工具铸的名）走 `gate_core::new_tmux_name_issue`：禁 glob 字符 `*`/`?` 与目标语法 `.` `:` `=`、前导 `-`、控制符与视觉欺骗字符、超过 128 —— 本工具永远不把 glob 建进名字；
-monitor 载荷外层（`payload.rs` 的 `TmuxTarget::check`）· `ccm …` 调用行（`ccm_invocation.rs`）· 后端 `ccm/plan.rs::validate_tmux_name` 都调它，判不过带 `REFUSE:` 标拒。
-attach 已有会话走宽松的 `gate_core::existing_tmux_name_issue`（V131 ②：只拒空 · 控制符 · 视觉欺骗字符）：那些名字不是我们建的，禁 glob 既无收益（`=名:` 已关闭 glob 这一级，
+**第二道防线**：〔DUP2 · 主会话 09-26 裁 J6〕规则只有一份，住后端 `control/gate_rules.rs`（〔THIN〕原共享 crate `gate-core`；原先界面两个谓词 ＋ 后端 `validate_tmux_name` ＋ 载荷 `TmuxTarget::check` 三家各写各的）。
+**新建**（本工具铸的名）走 `gate_rules::new_tmux_name_issue`：禁 glob 字符 `*`/`?` 与目标语法 `.` `:` `=`、前导 `-`、控制符与视觉欺骗字符、超过 128 —— 本工具永远不把 glob 建进名字；
+载荷外层（`payload.rs` 的 `TmuxTarget::check`）· `ccm …` 调用行（`ccm_invocation.rs`）· 后端 `ccm/plan.rs::validate_tmux_name` 都调它，判不过带 `REFUSE:` 标拒。
+attach 已有会话走宽松的 `gate_rules::existing_tmux_name_issue`（V131 ②：只拒空 · 控制符 · 视觉欺骗字符）：那些名字不是我们建的，禁 glob 既无收益（`=名:` 已关闭 glob 这一级，
 实测 `-t '=st*ar:'` rc=0 且精确；DUP2 在隔离 socket 上复测过 `=a*` 不命中 `a*a`、`=-x` 不当选项，读数 `调研/第四波记录/DUP2.md §0.1`）又是行为回归。
 
 ## 32. 本仓只有暗色主题——别声称"明暗两套都覆盖了"（仓库级事实）
@@ -1315,20 +1316,19 @@ U8c-1 摸底后拆成三步：
 
 **三道门**（⚠ **F04b 2026-08-04**：`kill` 主路切到后端；**F04c** 切 `send-keys`；
 **`K-R72` 2026-09-12**：两条回落删净）：
-1. **Gate 1（恒强制）** —— 〔DUP3 · 主会话 09-26 裁〕判定**并进 `gate-core` 的 tmux 名那一族**：目标都是已有会话 ⇒
-   就是「已有会话」那一条 `gate_core::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符，V131 ②）。
+1. **Gate 1（恒强制）** —— 〔DUP3 · 主会话 09-26 裁〕判定**并进 tmux 名那一族**（〔THIN〕今天住后端 `control/gate_rules.rs`）：目标都是已有会话 ⇒
+   就是「已有会话」那一条 `gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符，V131 ②）。
    先前「只拒空」有两个住址（〔C4e〕界面 `tmux-control.ts` 的一个谓词，抓屏 · 送键 · 杀会话三条共用 · monitor `tmux.rs` 的私有谓词），
    都是它的真子集：界面那一份删了（`设计/90 §3` 判据 2，TS 零 —— 空目标原样交给后端，由后端入口拒：
    `src/backend/control/kill.rs::parse_name`（kill · capture 共用）· `src/backend/control/launch.rs::parse_request`，`invalid_args`，
-   界面照各动作那句「后端不接受这个会话名」带后端原话说）；monitor 那一份改调 gate-core（`tmux.rs::gate1_admit_target`，
-   今天只剩跨轨锚点 `exact_target` 在用）。⚠ 后端那两个入口今天仍是各自的一份（trim 空 · 控制符 · `:` `=`），
-   不是 gate-core 那一条 —— 报主会话（`调研/第四波记录/DUP3.md §5 ⑦`）。
+   界面照各动作那句「后端不接受这个会话名」带后端原话说）；monitor 那一份 Gate 1 前检（只剩跨轨锚点在用）
+   〔THIN〕删了 —— monitor 一道门都没有。〔TAIL〕后端那两个入口并成 `kill.rs::admit_existing_name` → 同一条 `gate_rules`。
    空 target（`=:` 会被 tmux 解析成「当前会话」）是唯一真正危险的默认值。**不额外收紧 glob / 元字符**——
    交给 `shell_quote` 安全引号化，禁 glob 是新建那一条 `new_tmux_name_issue` 的职责，见 §31a「第二道防线」。
    ⚠ **`K-R72` 把这个谓词从 `exact_target` 里分出来（不是复制一份）**：`exact_target` 产的是
    给 shell 用的精确串 `'=<名>:'`，而送键 / 杀会话今天不拼 shell 串 —— 让它们为一次校验去要
    一个用不上的串就是「一个值装了两件事」。
-2. **Gate 2（identity，union）** —— 判定本体的唯一家是 `gate-core`（`gate_singleton_guard`
+2. **Gate 2（identity，union）** —— 判定本体的唯一家是后端 `control/gate_rules.rs`（〔THIN〕原 `gate-core`；`gate_singleton_guard`
    钉着「全仓只有一份」）；**执行面今天只在后端** 的 `control/gate.rs::admit`。
    `is_ccm_tmux_name`（本地、零 IO，前缀命中）**或** `@ccm_sid` 已设（远端核验）。**`is_ccm_tmux_name` 不删除**——F02 之前的老 `cc-*` 会话没有 `@ccm_sid`，
    仍必须可 kill/send-keys，否则是向后兼容回归；F02 之后 `--tmux=<自定义名>` 建的会话没有前缀，
@@ -2197,7 +2197,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | cc-bus agent id（①；〔DUP2〕**后端交给 `cc-send` / `cc-kill` 之前**） | `shell_quote_core::bus_id_ok`（全仓唯一一份）：后端 `control/cc_bus.rs` 的 `parse_send` / `parse_kill` 入口（拒码 `bad_id`）·〔SH1〕读收件箱搬进后端 `bus-inbox` 的 `parse_inbox`（拒码 `bad_id`，交给 `cc-log` 之前判）；monitor `cc_bus.rs` 留 `is_valid_bus_id` 这个再导出名。查在线不把 id 交给任何人，不判。〔DUP3〕`bus-send` / `bus-broadcast` 给的 `from`（作 `CC_BUS_ID` 交给 `cc-send`，`given_sender`，拒码 `bad_id`）· 广播名单里的收件人（`cc-list` 的输出、对端来的值，`recipient_refused`：不发、照实进 `failed`）同一个判定 | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`（金样 `tests/__fixtures__/cc-bus-control.golden.json` 的 `ids` 正反两向，拒在起进程之前）· monitor `cc_bus_tests.rs::rejects_leading_dash_ids_from_real_disk` · `cc_bus_tests.rs::rejects_shell_metachars_and_control` · `cc_bus_tests.rs::accepts_real_ids` · 后端 `cc_bus_tests.rs::the_cockpit_read_products_match_the_cross_language_golden`（`--help` 当收件箱 id 在起进程之前拒）· `cc_bus_tests.rs::the_bus_id_rule_agrees_with_the_shared_samples`（同一份 `ids`）· `tests/frontend/ui/cc-bus-control.vitest.ts`（界面不判、原样交；`bad_id` 逐动作一句、带后端原话） · 〔DUP3〕后端 `cc_bus_tests.rs::senders_and_broadcast_recipients_are_judged_before_they_reach_cc_send`（同一份 `ids` 正反两向） |
 | 派生时的账号名（①；〔DUP2〕**后端交给 `cc-spawn` 之前**） | 同一个 `shell_quote_core::bus_id_ok`：后端 `parse_spawn` 入口（拒码 `bad_id`；〔C4e〕那一道原住界面 `checkSpawnShape`，界面今天只判「选了 tool · 目录非空」） | 后端 `cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus` · `tests/frontend/ui/cc-bus-control.vitest.ts`（含「不许白名单 agent 种类」那一格） |
 | 唯一的 quote（②） | `ssh_source.rs::shell_quote` | `cc_bus_tests.rs::quote_roundtrip_is_the_real_property` |
-| 本工具新建的 tmux 会话名（①；〔DUP2 · J6〕monitor 载荷外层 · `ccm …` 调用行 · 后端 ccm） | `gate_core::new_tmux_name_issue`（全仓唯一一份）：monitor `payload.rs` 的 `TmuxTarget::check`（新建那一格）· `ccm_invocation.rs` 的 `--tmux=`（`Refusal::IdentifierRefused`）· 后端 `plan.rs::validate_tmux_name`（只管说哪一句）。attach / 送进已有会话走 `gate_core::existing_tmux_name_issue`（②：拒绝集 ＋ 非空，寻址 `=<名>:`） | `gate-core lib_tests::a_new_session_name_passes_real_names_and_refuses_what_would_confuse_tmux` · `lib_tests::an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_cannot_hold` · `payload_tests.rs::a_tmux_name_follows_the_create_or_existing_rule_from_gate_core` · `ccm_invocation_tests.rs::a_tmux_name_is_judged_before_it_becomes_a_ccm_argument` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
+| 本工具新建的 tmux 会话名（①；〔DUP2 · J6〕载荷外层 · `ccm …` 调用行 · 后端 ccm） | `gate_rules::new_tmux_name_issue`（全仓唯一一份，〔THIN〕后端 `control/gate_rules.rs`）：`payload.rs` 的 `TmuxTarget::check`（新建那一格）· `ccm_invocation.rs` 的 `--tmux=`（`Refusal::IdentifierRefused`）· 后端 `plan.rs::validate_tmux_name`（只管说哪一句）。attach / 送进已有会话走 `gate_rules::existing_tmux_name_issue`（②：拒绝集 ＋ 非空，寻址 `=<名>:`） | `gate_rules_tests::a_new_session_name_passes_real_names_and_refuses_what_would_confuse_tmux` · `lib_tests::an_existing_session_name_is_refused_only_for_what_quote_and_exact_match_cannot_hold` · `payload_tests.rs::a_tmux_name_follows_the_create_or_existing_rule_from_gate_core` · `ccm_invocation_tests.rs::a_tmux_name_is_judged_before_it_becomes_a_ccm_argument` · `plan_tests.rs::a_session_name_that_would_confuse_tmux_is_refused` |
 | 分叉的 sid / 消息 uuid（①；〔MIG-3b〕**后端 `session-fork` 入口**：界面经通道直说、不判） | 后端 `fork_write.rs::answer_wire_at`（判定取 `shell-quote-core::session_id_ok`，「长度不对 / 形状不对」两句人话在那里；拒码 `bad_args`、源一个字节不读） | 后端 `fork_write_tests.rs::the_fork_ids_are_whitelisted_at_the_frame_face` |
 | session id（①：resume 的 sid · `@ccm_sid` / `--ccm-sid` · 按 sid 找会话文件；〔DUP1 · 主会话 09-26「J5 那一族统一」〕六份收成一份，规则取交集） | `shell-quote-core::session_id_ok`（`branch_core::is_plain_sid` 是它的再导出）· 接在载荷外层 · 载荷线 `resumeSid` · `ccm_invocation` · 本机拉起 · 后端 `ccm/argv.rs::validate`。⚠ 后端 `resolve` 那条（`resolve_query.rs::is_valid_session_id`）刻意不收：行为冻结给仓外 aterm（`V126`） | `shell-quote-core lib_tests::a_session_id_is_a_short_plain_token_that_never_starts_with_a_dash` · `payload_tests.rs::a_resume_sid_and_a_session_mark_are_judged_before_they_enter_the_payload` · `ccm_invocation_tests.rs::an_identifier_is_refused_before_it_becomes_a_ccm_argument` · 后端 `argv_tests.rs::a_session_id_is_judged_before_it_goes_anywhere` |
 | 模型名（①；〔DUP1 · 主会话 09-26「两侧同一份、真实模型名都放行」〕） | `shell-quote-core::model_name_ok` · 接在载荷 `ExportModel` · `ccm_invocation` 的 `--model` · 后端 `ccm/argv.rs::validate`；前端写入点读生成物 `src/frontend/ui/generated/judgment-rules.ts`（同一组常量现生成） | `shell-quote-core lib_tests::real_model_names_pass_and_option_or_shell_shapes_do_not` · `payload_judgment_rules.rs::the_shared_golden_agrees_with_the_one_rule` ＋ `tests/frontend/ui/identifier-rules-parity.vitest.ts`（两侧对同一份金样）· `payload_tests.rs::the_model_export_passes_real_names_and_refuses_the_rest` |
@@ -2207,7 +2207,7 @@ CSP 兜底源是 `'self'` · 脚本执行面的几种放开形逐个禁 ＋ 那�
 | 端口转发规格（①；〔MIG-1〕随转发账搬进本机常驻后端，围栏在查可达表 / 拨号之前） | 后端 `forwards.rs::parse_spec` | 后端 `dial_forwards_tests.rs::the_spec_fence_stands_before_any_lookup_or_dial` |
 | 账号配置目录（②） | 〔DUP1〕全表住 `acct-core`（`config_dir_posix_ok` · `config_dir_ok` · `config_dir_char_unsafe`，全仓唯一一份）；`payload.rs::config_dir_command_safe` 与后端 `accounts_query.rs::is_safe_config_dir` 是转手的薄壳；后端 `ccm/plan.rs` 直接用 `config_dir_ok`（`control → observe` 那条禁止边不用破）· `local.rs::validate_config_dir_ps`（Windows 形，〔MIG-2〕本机后端） | `local_tests.rs::every_injection_shape_is_refused_not_sanitized` · `accounts_query_tests.rs::unsafe_config_dirs_are_dropped` · `accounts_query_tests.rs::every_group_of_deceptive_characters_is_rejected_in_a_config_dir` |
 | 远端落点路径（②） | `mcp_edit.rs::project_root`（〔MIG-3a〕项目 `.mcp.json` 的落点进了那台后端：这台上的绝对路径、不含 `..`）（〔MIG-3a · 09-28〕cc-acct-iso 部署落点那道围栏随 monitor 那条部署命令删了：落点由那台后端按自己的家目录算、不收外来路径） | `mcp_edit_tests.rs::a_broken_mcp_json_is_never_overwritten_and_relative_dirs_are_refused` |
-| tmux 目标（已有会话：抓屏 · 结束 · 送键的 §34 Gate 1；〔DUP3〕并进本表 tmux 名那一行的「已有会话」那一条） | `gate_core::existing_tmux_name_issue`：monitor `tmux.rs::gate1_admit_target`（跨轨锚点 `exact_target`）；三条路的空目标由后端入口拒（`kill.rs::parse_name` · `launch.rs::parse_request`，⚠ 各自一份、还不是 gate-core 那一条，`DUP3.md §5 ⑦`） | `tmux_tests.rs::gate1_admits_an_existing_target_by_the_one_gate_core_rule` · `tests/frontend/ui/tmux-control.vitest.ts`（界面不判、原样交；后端拒了照原话说） |
+| tmux 目标（已有会话：抓屏 · 结束 · 送键的 §34 Gate 1；〔DUP3〕并进本表 tmux 名那一行的「已有会话」那一条） | `gate_rules::existing_tmux_name_issue`：〔THIN〕monitor 那一份 Gate 1 前检（只剩跨轨锚点在用）删了；三条路的目标由后端入口判（〔TAIL〕`kill.rs::admit_existing_name` → 同一条 `gate_rules`） | 后端 `kill_tests.rs` · `gate_singleton_guard_tests.rs::the_monitor_holds_no_gate_of_its_own` · `tests/frontend/ui/tmux-control.vitest.ts`（界面不判、原样交；后端拒了照原话说） |
 | 自由文本（②：工作目录 · 文件窗口当前目录 · 远端一次性子命令的 argv · 透传给 agent 的参数 · 登记备注 · ccm 继承来的三个变量〔DUP3：启动器挪去 ③〕；〔TL3 · 主会话 09-26 按 V131 裁〕拒绝集**只收 NUL / CR / LF**、**不拒 shell 元字符**，形式按各自语境） | 拒绝集 `shell-quote-core::free_text_ok`（与唯一的 quote 同住）· POSIX 路径形式 `shell-quote-core::posix_free_path_ok`（载荷两处 cwd · `ccm_invocation` 的 `--cwd` · 文件窗口「在此打开终端」）· 后端 `ccm/plan.rs::free_text_gate` / `inherited_gate`（本机语境的「绝对」）· `remote_ask.rs::ask_with` | `shell-quote-core lib_tests::free_text_refuses_exactly_nul_cr_lf_and_lets_real_names_through` · `plan_tests.rs::free_text_values_pass_real_names_and_refuse_what_the_quote_cannot_hold` · `remote_ask_tests.rs::one_shot_argv_refuses_only_what_the_quote_cannot_hold` · `shell_tests.rs::the_open_terminal_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` · `payload_tests.rs::a_free_text_cwd_passes_real_names_and_refuses_what_quote_cannot_hold` |
 | 远端后端路径（〔E2 · V28〕`backendPath` 那一格删了：落点恒是那台的 `~/.cc-monitor/bin/ccm`，常量住 `relay-route-core`，没有外来值要判） | monitor `ssh_source.rs::BACKEND_CMD` · `sftp.rs::LANDING_REL`（流模式 · 测试连接的探针 · 部署 / 卸载 / 身份扫描 · 常驻起停都只插这一个常量）· 后端 `remote_ask.rs::command_line`（可达表不再登记路径） | `sftp_tests.rs::the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there` · `exec_site_registry_tests.rs::every_remote_exec_declares_where_its_command_came_from` |
 | 启动器（③ 命令片段；〔DUP3〕本机 · 远端载荷 · ccm 三处三条规则收成一张） | `shell_quote_core::launcher_refused_char`：本机后端 `local.rs::checked_launcher`（〔MIG-2〕拼进 PowerShell / bash）· `payload.rs::render_payload`（远端载荷）· 后端 `ccm/plan.rs::free_text_gate` 的 `--launcher` 那一格 | `shell-quote-core lib_tests::a_launcher_is_a_command_fragment_from_one_whitelist` · `local_tests.rs::every_injection_shape_is_refused_not_sanitized` · `payload_tests.rs::the_launcher_is_refused_when_it_carries_injection_chars` · `plan_tests.rs::a_launcher_is_one_command_fragment_from_the_shared_whitelist` |
@@ -2349,7 +2349,7 @@ shell 套件那一侧 `e2e_gate_registry_tests.rs::no_e2e_suite_isolates_with_tm
 - 下溢出声：`gate_tests.rs::the_underflow_predicate_catches_the_real_dirty_bytes` · `tmux_observe_tests.rs::the_underflow_predicate_only_fires_downward` ·
   `session_snapshot_tests.rs::a_tab_starved_line_is_dropped_instead_of_becoming_a_session` · `tmux_list_tests.rs::a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today`。
 - 口径一个家：`tmux_utf8_tests.rs::each_kou_jing_has_exactly_one_home_and_it_is_this_file` · `tmux_utf8_tests.rs::both_consumer_layers_reference_the_home_instead_of_declaring_their_own` ·
-  `tmux_utf8_tests.rs::the_one_home_scan_actually_bites`（量具）· monitor 侧 `tmux_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_matches_it`（跨仓对拍）。
+  `tmux_utf8_tests.rs::the_one_home_scan_actually_bites`（量具）· monitor 侧 `tmux_backend_gate_guard_tests.rs::utf8_client_kou_jing_has_one_home_and_this_side_has_none`（跨仓：monitor 零份）。
 
 **违反过几次**：`K-R12`（09-04）在无挂载容器里量：当时**六处**读 tmux 的调用点，在 POSIX 客户端 locale 下**六处全部被改写**，一处不剩（`tests/evidence/K-R12-deathvalue.md`）。
 同一趟逮到一条真缺陷：monitor 送键前远端核验那条串用 `cut -f` 取 sid，没有分隔符的整行被原样放行 ⇒ sid 变成整行 ⇒ `[ -n "$sid" ]` 恒真 ⇒ **远端核验被静默绕过**（fail-open）。

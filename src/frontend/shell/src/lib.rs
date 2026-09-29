@@ -147,7 +147,7 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 #[cfg(test)]
 mod fixture_guard; // `99 §4.8.3 P15`：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后后端零定时器；被禁措辞见模块头注）
-mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
+mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（〔THIN〕后端 `control/gate_rules.rs`）
 
 #[cfg(test)]
 mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套

@@ -5,7 +5,7 @@ edition = "2021"
 workspace = "../../frontend/shell"
 description = "上游 base URL 能不能用（形状 · 协议闭集 · 明文只许回环）的唯一一份：后端中转解析 · 上游选择装表 · 写口与界面生成物共用（无 IO、无平台依赖）。"
 
-# **零依赖**。同 acct-core / gate-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
+# **零依赖**。同 acct-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、
 # 且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
 # 〔DUP3 · 主会话 09-26 裁 J9〕新立的理由（选址写在 `调研/第四波记录/DUP3.md §1`）：用它的有通信层成员 `relay/upstream.rs`
 # （`设计/01 §2.1` C2 不许依赖业务 crate，`creds-core` 是业务 crate）；`relay-route-core` 头注明写「没有上游」。

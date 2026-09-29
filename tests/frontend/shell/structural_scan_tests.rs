@@ -788,7 +788,7 @@ fn every_comment_stripping_transformer_is_registered() {
         // 〔搬树 2026-09-18 · `16 §6.2` C 类〕随测试段搬去 `tests/frontend/shell/backend/control/`。
         ("ccm_invocation_tests.rs::refusal_variants", "不是剥法：从 `enum Refusal` 的定义里抽变体名（跳过 doc 行只是为了不把注释当变体）"),
         ("agent_profile_parity_tests.rs::rows", "不是剥法：解析对拍表的行"),
-        ("gate2_parity_tests.rs::rows", "不是剥法：解析 golden 表的行"),
+        // 〔THIN〕monitor 那一轨 gate2 对拍（解析金表行的那个函数）那一行摘了：随 monitor 侧的门删了。
         ("gate_tests.rs::golden_rows", "不是剥法：backend 侧解析同一张 golden 表"),
         // 08-08 第二刀：`live_lines` 已变成一句委托（改调 `strip_hash_comment_lines`）⇒
         // 它不再是一份剥法，登记删掉。**同一天里这张表两次告诉我「你在写第二份剥法」**：
@@ -2654,6 +2654,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 〔THIN〕gate-core 收成后端模块：零调用方的取反名删了 · monitor 转调壳那条判据翻面，原处各一块。
+        ("src/backend/control/gate_rules.rs", "needs_remote_sid", 1),
+        (
+            "tests/frontend/shell/gate_singleton_guard_tests.rs",
+            "the_monitor_wrapper_really_delegates",
+            1,
+        ),
         // 〔FIX4 · `99 §2.1 ⑬`〕远端开终端那一行（ssh 外壳）随渲染搬进本机后端 `dial/terminal.rs`：点旧名的散文。
         (
             "src/backend/dial/terminal.rs",
@@ -2751,11 +2758,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "record_tmux_raw",
             1,
         ),
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "classify_tmux_observation",
-            1,
-        ),
         // 〔MIG-1 续〕`tmux.rs` 里 `tmux_raw_for` 那一行摘了：点它的那段文档随本机列会话那条命令（`list_local_tmux`）整条删了。
         ("src/frontend/shell/src/bind.rs", "is_process_alive", 1),
         ("src/frontend/shell/src/lib.rs", "load_with_changes", 1),
@@ -2803,11 +2805,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/backend/control/inbound_client_tests.rs",
             "removal_cause_wire_literal_stays_in_sync",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "classify_tmux_observation",
             1,
         ),
         (
@@ -3102,11 +3099,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔C4e 批 2〕杀会话 · 送键 · 就地 resume 三条迁到界面：退役的函数 / 判据名在原处与点它们的散文里挂墓碑。
         // 〔C4e 批 3b〕`cc_bus.rs` · `killed_from_reply` 那一行摘了：点它的那句在收掉那条 Tauri 命令的体里，命令整条迁到界面（整轴退役）。
         (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "no_channel_message",
-            1,
-        ),
-        (
             "src/frontend/shell/src/tmux_backend_gate_guard.rs",
             "kill_now_routes_through_the_backend",
             2,
@@ -3119,11 +3111,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/backend/control/backend_kill_tests.rs",
             "the_refusal_wording_matches_the_sibling_command",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "the_local_kill_never_falls_back_to_ssh",
             1,
         ),
         (
@@ -3147,36 +3134,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // 〔C4e · 第四波 4C〕抓屏整条迁到界面：monitor 那一份说法（五档人话）与 `KR112D2` 的两刀机检 ＋ 五档那条随之退役，原处挂墓碑。
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "describe_capture_refusal",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "describe_capture_refusal",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "the_capture_path_asks_the_backend_instead_of_composing_a_shell_line",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "the_five_capture_refusals_stay_apart",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "the_local_capture_is_no_longer_a_dead_end",
-            1,
-        ),
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "tmux_shell_line_markers",
-            1,
-        ),
         //   抓屏的参数构造器随之删了，它的跨轨对拍一起退役（〔C4e 批 2〕`command_args.rs` 整份随后续的送键 / 就地 resume 删掉，
         //   那一行墓碑跟着文件走了）。
         // 〔LOC1a · 第四波 4D〕本机四个一次性 exec 改走 `<local>` 长连接：一次性查询的宿主三格（`local_backend_one_shot_query`）·
@@ -3923,33 +3880,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
         ("src/doc/INVARIANTS.md", "gate_guard_expr", 1),
         (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "build_kill_session_cmd",
-            2,
-        ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "build_kill_session_cmd",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "build_send_keys_remote_cmd",
-            2,
-        ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "build_send_keys_remote_cmd",
-            1,
-        ),
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "gate_guard_expr",
-            1,
-        ),
-        (
             "tests/frontend/shell/tmux_backend_gate_guard_tests.rs",
             "build_kill_session_cmd",
             1,
@@ -4113,11 +4043,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // 〔SH1〕列 tmux 改问后端：守那条跨 SSH 串的判据退役，原处挂墓碑。
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand",
-            1,
-        ),
         ("src/backend/footprint/registry.rs", "build_online_cmd", 1),
         (
             "tests/frontend/shell/spawn_managed_exit_sites.rs",
@@ -4130,25 +4055,9 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         // 〔C4e 批 3b〕`cc_bus_tests.rs` · `build_kill_cmd` 那一行摘了：理由同上一行（点它的那句在收掉那条退役判据里）。
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "build_capture_pane_cmd",
-            2, // 〔C4e〕3 → 2：`capture_remote_pane` 的头注（点它旧构造器的那一句）随命令一起删了
-        ),
-        (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "build_capture_pane_cmd",
-            1,
-        ),
         //    同一件事的另一半：那条串的**出口判定**（两个哨兵 `NO_TMUX` / `NO_PANE`）
         //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
         //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "classify_capture_output",
-            1,
-        ),
         // 🔴 〔`15 §5.1 A3` 09-18〕`spawn_managed` 那个唯一出口把仓里三份**各自长着的**
         //    正确做法收编了，其中两份连符号一起没了：`local_backend_host::hide_console_window`
         //    （`00 §1.5.1` 步 1 的止血，它自己的头注就写着「A3 落地时它会被换成注入参数」）
@@ -4704,21 +4613,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "decode_tmux_list",
-            1,
-        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "parse_tmux_ls",
-            1,
-        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "src/frontend/shell/src/backend/control/tmux.rs",
-            "tmux_tab_underflow",
-            1,
-        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
             "src/frontend/shell/src/cross_half_edge_registry.rs",
             "backend_watcher_src",
             1,
@@ -4732,16 +4626,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/frontend/shell/backend/control/inbound_client_tests.rs",
             "capture_pane_args",
-            1,
-        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "backend_watcher_src",
-            2,
-        ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        (
-            "tests/frontend/shell/backend/control/tmux_tests.rs",
-            "the_local_send_keys_never_falls_back_to_ssh",
             1,
         ), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         (
@@ -5055,6 +4939,11 @@ fn every_prose_tombstone_mark_is_registered() {
     /// 不是（量具脚本里的针、讲机制的散文）⇒ 同样记一笔，并在旁边写清它是哪一类。
     /// **不许**为了让本条变绿就把标记删掉 —— 删掉的是账，不是病。
     const REGISTERED: &[(&str, usize)] = &[
+        // 〔THIN〕新行三条：gate-core 收成后端模块 `control/gate_rules.rs`（零调用方的 `needs_remote_sid` 原处一块）·
+        //   后端 `exact_target` 的头注点 monitor 那份旧壳 · monitor 那条转调判据翻成「monitor 一道门都没有」。
+        ("src/backend/control/gate_rules.rs", 1),
+        ("src/backend/control/launch.rs", 1),
+        ("tests/frontend/shell/gate_singleton_guard_tests.rs", 1),
         ("src/frontend/shell/src/panorama_bytes.rs", 1), // 〔MIG-3b 续〕新行：全景问 · 写 · 撤那一跳（`panorama_call.rs`）删了，放字节那一半搬来，点旧住址
         ("src/frontend/ui/panorama/api.ts", 1), // 〔MIG-3b 续〕新行：原 Tauri 命令三条删了（界面直问那台后端）
         ("tests/frontend/shell/ssh_source_write_half_guard.rs", 2), // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 1 → 2 // 〔MIG-1〕新行：会话 / tmux 账本搬进后端，点旧名的散文挂墓碑
@@ -5098,7 +4987,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/platform/ssh_agent.rs", 1), // 头注「搬自」那一句里 agent 鉴权旧名
         ("tests/frontend/shell/local_origin_registry_tests.rs", 11), // 〔MOD〕9 → 11 // 〔MIG-3b〕7 → 9：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑 // 〔SH1〕+1：地板 15 → 13 那段点的两处读面函数删了 // 〔C4e 批 3b〕+1：`K-R112` 地板那段点的查在线命令迁到界面 // 〔C4e 批 2〕+1：K-R56 那一行点的送键命令迁到界面 // 〔C4e〕+1：`K-R112` 地板那段点的抓屏命令迁到界面 // 〔C4c〕+1：分诊债 11 → 10（账号面那一处查远端配置随命令删了）// 地板 17 → 16 · 分诊债 12 → 11 两处（跳板查配置那一处随文件走了）
         // 〔SR1b 子步 3〕`sftp_move_ledger`（SFTP 14 处拨号的挡路石底账）随那 14 处全搬完退役：点它名字的两处旁注各一块。
-        ("src/frontend/shell/src/backend/control/mod.rs", 1),
+        ("src/frontend/shell/src/backend/control/mod.rs", 3), // 〔THIN〕1 → 3：`tmux` · `gate2_parity` 两份随 monitor 侧的门删了，原处各一块
         ("tests/backend/footprint/registry_tests.rs", 2), // 〔MIG-3b 续〕1 → 2：两个现算口从生产段搬来、旧住址那一句
         // 〔SR1b · 2026-09-24〕后端那份 SFTP：原子上传的来历随函数从 monitor 搬来（改权限那条旧判据名一块）。
         ("src/backend/dial/sftp.rs", 1),
@@ -5190,7 +5079,6 @@ fn every_prose_tombstone_mark_is_registered() {
             12,
         ), // 〔合并 MIG-1 × 主线 862be034〕主线 5 ＋ MIG-1 本路增量 ⇒ 12（盘上现打） // 〔E2 · 子步 4〕3 → 5：逐字节副本 `install_local_ccm_entry` 与带 id 的释放名 `local_extract_name` 删了，点旧名处各一块 //, // 〔E2〕2 → 3：`ccm_entry_shim` 删了，原地留一块
         ("src/backend/control/launch_render/payload.rs", 7), // 〔DUP1〕+2：模型名那一格原先「刻意宽容渲染」、TS `isValidModelName` 删了 · launcher 那道闸头注里点 TS `sanitizeRemoteLauncher` 那句（TS 那份删了） // 〔US1〕+3：上游选择那半搬走留下的墓碑 // 〔TL3 · 🔴-3〕+1：`ExportRelayBaseUrl` 头注里链到已删判断口那一句改成今天的出处，旧名留一块
-        ("src/frontend/shell/src/backend/control/tmux.rs", 15), // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 11 → 15 // 〔SH1〕+1：跨 SSH 那条 `tmux ls` 用的旗随改问后端删了，原处留墓碑 // 〔C4e 批 2〕+2：杀会话 / 送键两条 Tauri 命令与「通道不在」那句文案迁到界面，原处各一块 // 〔C4e〕+1：抓屏整条迁到界面，发送端与 Tauri 命令原处一块
         ("src/frontend/shell/src/cc_bus_deploy.rs", 2), // 〔MIG-3a · 子步 3〕+1：装与三态那两条 Tauri 命令进后端，头注留墓碑 //
         ("src/frontend/shell/src/ccm_cli_contract.rs", 1),
         // 🔴〔本机侧退役 2026-09-23〕文件管理器「本机」那一侧整条退役，
@@ -5248,7 +5136,6 @@ fn every_prose_tombstone_mark_is_registered() {
             "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
             2, // 〔RST 续 · V41〕3 → 2：裸键 mode `send-keys-raw` 删了，守「它只有一个家」那条判据整条退役，它头注里点旧住址那块墓碑随之删 // 〔C4e 批 2〕+1：送键 mode 名的家从 monitor 搬到界面，点旧住址 · 〔LR2〕−2（见上）⇒ 4 +1 −2 = 3
         ),
-        ("tests/frontend/shell/backend/control/tmux_tests.rs", 16), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑 14 → 16 // 〔MIG-1〕13 → 14：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔SH1〕+1：守跨 SSH `tmux ls` 那条判据退役 // 〔C4e 批 2〕+3：本机杀会话 / 送键不许回落那两条退役 ＋ Gate 1 那条的说明点旧命令名 // 〔C4e〕+6：抓屏迁到界面，`KR112D2` 两刀 ＋ 五档那条随 monitor 那一份退役，原处与 Gate 1 那条的说明里点旧名
         ("tests/frontend/shell/backend_tests.rs", 1),
         ("tests/frontend/shell/byte_cap_registry_tests.rs", 11), // 〔MOD〕10 → 11 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 9 → 10 // 〔SH1〕+1：远端 `.claude.json` 那条上限删了；+1：钩子诊断读远端 settings.json 的上限删了；+2：驾驶舱读面那两个上限（名册 · 收件箱）随 shell 读删了 // 〔合并 LOC1b〕+1：F10b 那段病史点的远端读会话函数删了 // 〔C4e 批 3b〕+1：`K-R112` 地板那段点的查在线命令迁到界面 // 〔C4e〕+1：`K-R112` 地板那段点的抓屏命令迁到界面 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔MIG-3b〕`hooks_diag.rs` 那一行随文件删了（钩子诊断整轴进后端，那块墓碑守的「远端拨号 shell」一起没了）。
@@ -5291,7 +5178,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/ssh_source_snapshot_tail_tests.rs", 1),
         ("tests/frontend/shell/structural_scan_tests.rs", 1),
         // 〔MOD〕`tests/frontend/shell/subagent_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/frontend/shell/tmux_backend_gate_guard_tests.rs", 6), // 〔C4e 批 2〕+3：看住的两个命令与四条判据随命令迁到界面翻面，原处与两张表各一块
+        ("tests/frontend/shell/tmux_backend_gate_guard_tests.rs", 8), // 〔THIN〕6 → 8：`MONITOR_TMUX` 随 `tmux.rs` 删了 ＋ 从 `tmux_tests.rs` 挪来三条那一段的来历
+        // 〔C4e 批 2〕+3：看住的两个命令与四条判据随命令迁到界面翻面，原处与两张表各一块
         ("tests/backend/footprint/registry_environment_tests.rs", 1),
         ("tests/evidence/K-R20-C-deadname-census.py", 1),
         ("tests/evidence/S29-legacy-compat-census.py", 11),

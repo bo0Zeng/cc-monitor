@@ -1,56 +1,27 @@
-//! **§34 Gate 2（identity）的唯一实现** —— 「这个 tmux 会话是不是本工具管的？」
+//! 要求住址：`INVARIANTS §34`（破坏性动作过三道门，门只住后端）·「〔THIN〕共享 crate 只放契约、判定只在后端」（`设计/00 §1.2`）。
 //!
-//! 〔RE · 第四波 D 段 · `设计/15 §2.5`〕**两个消费者今天调的不是同一组函数，照实写**：
-//! - 后端生产段真判：[`gate2`]（`control/gate.rs`，送键 / 杀会话之前那道门）· [`new_tmux_name_issue`] ·
-//!   [`existing_tmux_name_issue`]（`control/launch.rs` · `control/kill.rs` · `control/launch_render/`）；
-//! - monitor 生产段剩下的两处（`src/frontend/shell/src/backend/control/tmux.rs` 的 `gate1_admit_target` →
-//!   [`existing_tmux_name_issue`]、`is_ccm_tmux_name` 转调壳）都只是跨轨对拍的锚点 —— 抓屏 · 送键 · 杀会话由后端入口判。
-//! ⇒ 「Gate 2 两侧共用同一道门」今天**不是**生产期共用同一次判定，靠的是同一张金表
-//!   `src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv` 的测试期对拍（monitor `gate2_parity_tests.rs` ·
-//!   后端 `gate_tests.rs` · e2e `backend-gate2-acceptance.sh` 三个读者各自读它）。
+//! **§34 Gate 2（identity）与 tmux 会话名两条规则的唯一实现** ——「这个 tmux 会话是不是本工具管的？」「这个名字能不能建 / 能不能寻址？」
 //!
-//! # 为什么要单独一个 crate（F03，定框 C1/C6）
+//! 〔THIN〕它从前是共享 crate `gate-core`（F03 立：当时 monitor 与后端各有一份门）。monitor 侧最后两处（Gate 1 前检 ·
+//! `is_ccm_tmux_name` 的转调壳，只剩跨轨对拍锚点在用）删了之后，消费者只剩后端 `control/` 一层
+//! （`gate.rs` 送键 / 杀会话之前那道门 · `launch.rs` · `kill.rs` · `launch_render/` · `ccm/plan.rs`）⇒ 收成后端模块，共享 crate 那一格没了。
+//! 金表 `tests/__fixtures__/gate2-golden.tsv` 两个读者：`gate_tests.rs` 与 e2e `backend-gate2-acceptance.sh`。
 //!
-//! 这道门挡的是「往一个不是本工具管理的 tmux 会话里打字 / 把它杀掉」。
-//! 在 F03 之前它**只活在 monitor 一侧**，而且被拆成了两半、两种语言：
+//! # 边界：本模块只判，不取
 //!
-//! - 本地半支：`src/frontend/shell/src/backend/control/tmux.rs` 里一个私有的 `is_ccm_tmux_name`；
-//! - 远端半支：backend `control/gate.rs::probe` 取回的 `@ccm_sid`，由 `admit` 判。
-//!   ⚠ `K-R72`（09-12）之前这里还有第二份：monitor 侧 `build_guarded_tmux_cmd` 拼出来的
-//!   **shell 串**里那句 `[ -n "$sid" ]`。那条路（送键与杀会话的桌面侧 SSH 回落）已经删了，
-//!   远端半支从此**只有后端一个家**。
-//!
-//! backend 的 `control/launch.rs` 则**完全没有**这道门 —— 它建会话时 `set-option` **写**
-//! `@ccm_sid`，却从不**核验**它。于是「把 send-keys/kill 改走后端」会**静默丢掉一道门**：
-//! 功能看起来一样、门禁全绿，而门没了。那条路此前由 `tmux_backend_gate_guard`
-//! 这条**前提触发器**挡着（「backend 一出现身份守卫就主动红，逼人回来重新裁定」）。
-//!
-//! ⇒ 定框 C1「backend 一份代码、两种承载」在这里的落地就是：
-//! **判定收进本 crate，两侧各自负责怎么把 `remote_sid` 取回来。**
-//!
-//! # 边界：本 crate 只判，不取
-//!
-//! 「怎么问远端 `@ccm_sid`」两侧形态完全不同 ——
-//! monitor 拼一条穿过 ssh + shell 的原子命令（`display-message` 与动作同一个 round-trip，
-//! 防 TOCTOU）；backend 就在那台机器上，argv 直传跑一次 `tmux display-message`。
-//! 把取值也塞进来就得引入平台/进程/shell，共享当场破掉。
+//! 「怎么问那台 `@ccm_sid`」住 `gate.rs::probe`（就在那台机器上 argv 直传跑一次 `tmux display-message`）；
+//! 本模块不起进程、不碰 tmux、不认识 shell。
 //!
 //! # ⚠ `@ccm_sid` 不是 `@ccm_sid_expect`
 //!
-//! `shared/ccm` 刻意分了两个 option：通道 A（意图）写 `@ccm_sid_expect`，
-//! 只有通道 B（独立读会话文件确认后）才写 `@ccm_sid`。
-//! ⚠ `U-NP④`（08-14）：通道 B 的执行者已从 `shared/ccm` 里那条每秒 poller 换成 **backend**
-//! （`control/identity_tag.rs`，pidfile inotify 驱动）。**两个 key 的语义一个字没变**，
-//! 只是事实的写者变成了独立第三方 —— 这里的判定不受影响，改注释是因为旧措辞已不成立。
-//! 原注释逐字写着「**破坏性动作只认 `@ccm_sid`**」——
-//! 因为一个「声明了但从未真正跑起来」的 sid 不该永久冒充事实。
-//! ⇒ 调用方喂进 [`gate2`] 的必须是 `@ccm_sid`。**放宽到 `_expect` 就是把这道门拆了。**
+//! 通道 A（意图）写 `@ccm_sid_expect`，只有通道 B（后端 `control/identity_tag.rs` 读会话文件确认后）才写 `@ccm_sid`。
+//! 调用方喂进 [`gate2`] 的必须是 `@ccm_sid`。**放宽到 `_expect` 就是把这道门拆了。**
 
 /// Gate 2 的判定结果。**三态而不是 bool** —— 两种「允许」的代价不同：
 /// 名字命中是零 IO 的，`@ccm_sid` 命中是花了一次 round-trip 换来的。
 /// 调用方要靠这个区别决定「值不值得先问一次远端」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Gate2 {
+pub(crate) enum Gate2 {
     /// 名字形状本身就是「这是我们的会话」的证明 —— **零 IO，不必问远端**。
     AllowedByName,
     /// 远端 `@ccm_sid` 已设 —— 问过远端才拿到的允许。
@@ -61,7 +32,7 @@ pub enum Gate2 {
 
 impl Gate2 {
     /// 允不允许动这个会话。
-    pub fn allowed(self) -> bool {
+    pub(crate) fn allowed(self) -> bool {
         !matches!(self, Gate2::Rejected)
     }
 
@@ -69,7 +40,9 @@ impl Gate2 {
     ///
     /// ⚠ **不要用 `{:?}`** —— `Debug` 是给人看的、改它不算 breaking change，
     /// 而夹具里那一列一旦跟着变就成了「两侧一起漂」。这里显式钉死字面量。
-    pub fn as_str(self) -> &'static str {
+    /// 生产段不读它（它是金表那一格的名字，读者是 `gate_tests.rs`）⇒ 精确 allow。
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Gate2::AllowedByName => "allowed_by_name",
             Gate2::AllowedByRemoteSid => "allowed_by_remote_sid",
@@ -90,10 +63,10 @@ impl Gate2 {
 ///
 /// # 字符集那一条不是洁癖
 ///
-/// monitor 侧会把名字拼进一条穿过 shell 的命令串。虽然那条路另有 `posix_quote` 兜底，
+/// 名字会被拼进 `ccm …` 调用行那类穿过 shell 的命令串。虽然那条路另有 `posix_quote` 兜底，
 /// 但**身份判定自己也拒绝元字符**，是为了让「名字命中 ⇒ 跳过远端核验」这条零 IO 快路
 /// 不依赖下游的引号化正确性。
-pub fn is_ccm_tmux_name(name: &str) -> bool {
+pub(crate) fn is_ccm_tmux_name(name: &str) -> bool {
     let charset_ok = name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
@@ -111,14 +84,7 @@ pub fn is_ccm_tmux_name(name: &str) -> bool {
     charset_ok && (old_prefix || new_suffix)
 }
 
-/// 名字没命中时才需要花一次 round-trip 去问远端 `@ccm_sid`。
-///
-/// 单独给它一个名字（而不是让调用方写 `!is_ccm_tmux_name(..)`），是为了让
-/// 「要不要多一次 round-trip」这个决策在两侧**是同一个函数**，
-/// 而不是两处各写一个取反 —— 那种形状漂起来不会红。
-pub fn needs_remote_sid(name: &str) -> bool {
-    !is_ccm_tmux_name(name)
-}
+// 〔THIN〕`needs_remote_sid`〔散文墓碑〕删：它是给「两侧同一个取反」立的名字，monitor 那一侧没了之后零调用方。
 
 /// Gate 2 union：名字命中 **或** 远端 `@ccm_sid` 已设。
 ///
@@ -129,8 +95,8 @@ pub fn needs_remote_sid(name: &str) -> bool {
 ///
 /// `None` 与 `Some("")` 今天都判 `Rejected`（**fail closed**），
 /// 但保留区别是为了让调用方能给出不同的诊断（「会话不存在」vs「不是本工具的会话」）——
-/// 这正是 monitor 侧 `CCM_NO_SESSION` 与 `CCM_GUARD_REJECTED` 的分界。
-pub fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
+/// 这正是 `gate.rs` 里 `no_such_session` 与 `wrong_owner` 的分界。
+pub(crate) fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
     if is_ccm_tmux_name(name) {
         return Gate2::AllowedByName;
     }
@@ -155,22 +121,22 @@ pub fn gate2(name: &str, remote_sid: Option<&str>) -> Gate2 {
 //   那些名字不是我们建的，里面真有 glob 字符）。寻址恒走 tmux 精确匹配形 `=<名>:`（`INVARIANTS §31a`：`*` `?` 不被当通配、
 //   前导 `-` 不被当选项 —— DUP2 在隔离 socket 上现打过，读数在 `调研/第四波记录/DUP2.md §0.1`）。
 //
-// 本 crate 只判、不说：各调用处按 [`TmuxNameIssue`] 用自己的文案出声（句子不进共享 crate）。
+// 本模块只判、不说：各调用处按 [`TmuxNameIssue`] 用自己的文案出声（句子不进本模块）。
 // 欺骗字符表是 `acct_core::is_deceptive_char` 那一张权威表（`§47` ② 的拒绝集），不在这里另抄一份。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// 本工具**新建**的会话名最长多少个字符（按 Unicode 标量数）。
-pub const NEW_TMUX_NAME_MAX: usize = 128;
+pub(crate) const NEW_TMUX_NAME_MAX: usize = 128;
 
 /// 新建会话名里不许出现的字符：tmux 目标语法 `.` `:` `=` 与 glob `*` `?`。
 ///
 /// 刻意写成**一个字符串字面量**：创建路径那条跨轨判据（`backend_kill_tests.rs` 的 `VALIDATORS`）钉的就是这个表达式本身，
 /// 并逐个核后端 kill 形状门拒的每个字符都在里面。
-pub const NEW_TMUX_NAME_REFUSED: &str = "*?.:=";
+pub(crate) const NEW_TMUX_NAME_REFUSED: &str = "*?.:=";
 
 /// 一个会话名为什么不行（调用处按它说自己的那一句）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TmuxNameIssue {
+pub(crate) enum TmuxNameIssue {
     /// 空串。
     Empty,
     /// 以 `-` 开头（只对新建判）。
@@ -196,7 +162,7 @@ fn refused_char(n: &str) -> Option<TmuxNameIssue> {
 }
 
 /// **新建**会话名（本工具铸的 · 用户给的新名）过不过：`None` = 过。规则见本节头注。
-pub fn new_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
+pub(crate) fn new_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
     if n.is_empty() {
         return Some(TmuxNameIssue::Empty);
     }
@@ -216,7 +182,7 @@ pub fn new_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
 }
 
 /// **已有会话**的名字（attach · 送进一个已在的会话）过不过：`None` = 过。只拒空、控制符与视觉欺骗字符（V131 ②）。
-pub fn existing_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
+pub(crate) fn existing_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
     if n.is_empty() {
         return Some(TmuxNameIssue::Empty);
     }
@@ -224,5 +190,5 @@ pub fn existing_tmux_name_issue(n: &str) -> Option<TmuxNameIssue> {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/common/gate-core/lib_tests.rs"]
+#[path = "../../../tests/backend/control/gate_rules_tests.rs"]
 mod tests;

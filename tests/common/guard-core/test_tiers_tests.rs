@@ -113,7 +113,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
     "tests/common/branch-core/lib_tests.rs",
     "tests/common/creds-core/store_tests.rs",
-    "tests/common/gate-core/lib_tests.rs",
+    "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
     "tests/common/search-core/lib_tests.rs",
     "tests/frontend/shell/filewin/corpus_tests.rs",
@@ -356,10 +356,8 @@ const SCAN: &[&str] = &[
     "tests/comms/inward/backend_route_tests.rs",
     "tests/backend/control/launch_render/ccm_invocation_tests.rs",
     "tests/frontend/shell/backend/control/frame_query_tests.rs",
-    "tests/frontend/shell/backend/control/gate2_parity_tests.rs",
     "tests/frontend/shell/backend/control/inbound_client_tests.rs",
     "tests/backend/control/launch_render/launch_wire_f07_main_path_tests.rs",
-    "tests/frontend/shell/backend/control/tmux_tests.rs",
     "tests/frontend/shell/backend_policy_tests.rs",
     "tests/frontend/shell/backend_tests.rs",
     "tests/frontend/shell/bus_identity_registry_tests.rs",

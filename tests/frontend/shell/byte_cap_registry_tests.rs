@@ -1599,12 +1599,7 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
     //   问那台是什么机器改成 `byte_table::probe_key`，走 `connect_and_exec_capture`（stdout / stderr 各有上限、带退出码），
     //   不再是一处无上限的流读 ⇒ 按上面几条同一个理由摘掉。
     // 〔MIG-3b 续〕`pubkey.rs` 那一条（远端追加公钥那一趟的 stdout）走了：推送进了本机后端，走 `capture_full`（有上限、带退出码）。
-    (
-        "src/frontend/shell/src/backend/control/tmux.rs",
-        "远端 `tmux ls` / `capture-pane` 等四处的 stdout",
-        "同上一条；四处同一族同一文件，故按文件登记（照 `polling_registry` 的口径）。\
-             **退役归 F10d**。",
-    ),
+    // 〔THIN〕`backend/control/tmux.rs` 那一条走了：那份文件随 monitor 侧的 Gate 残留删了（四处流读早已各自搬进后端）。
 ];
 
 /// ★ **前提触发器的重写**〔devbench F10b〕。

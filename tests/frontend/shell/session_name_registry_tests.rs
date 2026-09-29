@@ -32,14 +32,15 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              退役归 **U11 本体**。",
     ),
     (
-        "src/common/gate-core/src/lib.rs",
+        "src/backend/control/gate_rules.rs",
         "consumer",
         2,
         "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
              登记它是为了让上面那条「多一处就红」不会被消费点噪音淹掉。\
              ⚠ **F03 从 `src/frontend/shell/src/backend/control/tmux.rs` 搬到这里**：判定收进共享 crate，\
              monitor 与后端共用同一份（定框 C1）。本条棘轮当场红了 —— \
-             **它就该红**：被测对象搬家，判据要跟着走，而不是让它悄悄少扫一处。",
+             **它就该红**：被测对象搬家，判据要跟着走，而不是让它悄悄少扫一处。\
+             〔THIN〕共享 crate 收回后端模块（monitor 那一侧的门删了）⇒ 住址跟着换、扫描面按 extra 点名它。",
     ),
 ];
 
@@ -78,7 +79,7 @@ fn hits(src: &str) -> usize {
         .count()
 }
 
-/// 扫描面：`src/**/*.ts`（排除测试）+ `src/frontend/shell/src/backend/control/tmux.rs` + 两个 shell 脚本。
+/// 扫描面：`src/**/*.ts`（排除测试）+ monitor 与 `src/common` 的 `.rs` + 后端两份（`ccm/plan.rs` · `control/gate_rules.rs`）+ `cc-spawn`。
 /// 扫描面本体 —— **单独抽出来，好让自检量的是「真正被扫的那一份」**。
 ///
 /// 〔audit-0805 08-06〕这一步不是重构洁癖：上一版自检自己又走了一遍遍历器，
@@ -96,6 +97,8 @@ fn scan_files() -> Vec<PathBuf> {
     //    `collect_rs` 只扫 `src/frontend/shell/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
     for extra in [
         "src/backend/control/ccm/plan.rs",
+        // 〔THIN〕原 `src/common/gate-core`（上面 `collect_rs` 扫得到那一棵）收成后端模块 ⇒ 按 extra 点名。
+        "src/backend/control/gate_rules.rs",
         "src/shared/cc-bus/scripts/cc-spawn",
     ] {
         files.push(root.join(extra));
@@ -190,8 +193,7 @@ fn the_scan_actually_reads_all_four_surfaces() {
         rs.len()
     );
     for f in [
-        "src/frontend/shell/src/backend/control/tmux.rs",
-        "src/common/gate-core/src/lib.rs",
+        "src/backend/control/gate_rules.rs",
         "src/backend/control/ccm/plan.rs",
         "src/shared/cc-bus/scripts/cc-spawn",
     ] {

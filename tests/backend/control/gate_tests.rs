@@ -197,9 +197,8 @@ fn the_underflow_predicate_catches_the_real_dirty_bytes() {
     );
 }
 
-/// 判定表的**唯一真相源**，三条轨道各自独立读它（见文件头注）。
-const GOLDEN: &str =
-    include_str!("../../../src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv");
+/// 判定表的**唯一真相源**：后端这一轨与 e2e 各自独立读它（〔THIN〕monitor 那一轨随 monitor 侧的门删了）。
+const GOLDEN: &str = include_str!("../../__fixtures__/gate2-golden.tsv");
 
 fn golden_rows() -> Vec<(String, String, Option<String>, String)> {
     GOLDEN
@@ -244,7 +243,7 @@ fn the_golden_table_is_actually_read_from_the_monitor_side_fixture() {
 fn the_backend_side_agrees_with_the_golden_table() {
     let mut bad = Vec::new();
     for (id, name, sid, want) in golden_rows() {
-        let got = gate_core::gate2(&name, sid.as_deref()).as_str();
+        let got = crate::control::gate_rules::gate2(&name, sid.as_deref()).as_str();
         if got != want {
             bad.push(format!(
                 "  {id}: name={name:?} sid={sid:?} 期望={want} 实得={got}"
@@ -519,10 +518,8 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
         .and_then(|t| t.trim().parse().ok())
         .expect("地板值解析不出来 —— 调用行的形状变了");
 
-    let golden = std::fs::read_to_string(
-        root.join("src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv"),
-    )
-    .expect("判定表读不到");
+    let golden = std::fs::read_to_string(root.join("tests/__fixtures__/gate2-golden.tsv"))
+        .expect("判定表读不到");
     let rows = golden
         .lines()
         .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())

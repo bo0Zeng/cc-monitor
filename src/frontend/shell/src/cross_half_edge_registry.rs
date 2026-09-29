@@ -312,27 +312,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // 〔MOD〕`tests/frontend/shell/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
     //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
     //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。
-    // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/`）：backend 的判据去读 monitor ──
+    // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/` · 〔THIN〕2 → 0）：backend 的判据去读 monitor ──
     // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
     //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。
     // 〔MIG-3a · 主会话 09-28 预裁〕`iso_tests.rs` → vendored `cc-acct-iso` 那一条出列：cc-acct-iso 的字节随后端二进制走，
     //   vendored 目录挪去 `src/shared/cc-acct-iso/`（两棵树都不属于，同 `src/shared/cc-bus/`）⇒ 不是跨半边的边，不登记。
-    (
-        "backend→monitor",
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
-        "tests/backend/control/gate_tests.rs",
-        "src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv",
-        "§34 Gate 2 的黄金夹具**只有一个家**（定框 §4：同一个数不许两侧各写一份）—— \
-         backend 与 monitor 各自独立读同一张表",
-    ),
-    (
-        "backend→monitor",
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
-        "tests/backend/control/launch_tests.rs",
-        "src/frontend/shell/src/backend/control/tmux.rs",
-        "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
-         F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
-    ),
+    // 〔THIN〕这里原先还有两条 backend → monitor：`control/gate_tests.rs` 读 monitor 那份 `gate2-golden.tsv`（金表挪去
+    //   `tests/__fixtures__/`：两棵树都不属于、后端与 e2e 两侧读同一份 ⇒ 不是跨半边的边）· `control/launch_tests.rs` 抠 monitor
+    //   `tmux.rs` 的 `={target}:`（那份跨轨锚点随 monitor 侧的 Gate 残留删了，精确匹配形只剩后端一个家）⇒ 两条出列（2 → 0）。
     // 〔US1 · 第四波 4D〕这里原先还有两条 backend → monitor：`relay/route_tests.rs` 抠 `payload.rs` 的路由样例 /
     //   凭据文件那一家 / 登记了默认上游的 agent（`KH2B4` 那一族）· `relay/door_tests.rs` 抠 `payload.rs` 的钥匙文件路径（RK1）。
     //   两样都不再有第二份：路由语法与门牌进了共享 crate `relay-route-core`（`设计/20 §5` 目标），决策表进了后端上游选择 ⇒ 两条边出列（4 → 2）。

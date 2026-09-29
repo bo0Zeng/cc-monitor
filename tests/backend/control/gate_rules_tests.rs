@@ -42,12 +42,10 @@ fn the_union_allows_by_name_without_asking_the_remote() {
     for sid in [None, Some(""), Some("whatever")] {
         assert_eq!(gate2("cc-abc12345", sid), Gate2::AllowedByName);
     }
-    assert!(!needs_remote_sid("cc-abc12345"));
 }
 
 #[test]
 fn the_union_allows_a_custom_name_only_when_the_remote_sid_is_set() {
-    assert!(needs_remote_sid("e2e-custom"));
     assert_eq!(
         gate2("e2e-custom", Some("abc123")),
         Gate2::AllowedByRemoteSid
