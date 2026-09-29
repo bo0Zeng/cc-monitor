@@ -57,7 +57,8 @@ const ok = {
   fingerprint: "SHA256:k",
   endpoint: "10.0.0.2:22",
   backendOk: true,
-  backendHello: "v=1 control=ok(3ms)",
+  backendHello: "版本 p5o · 能用 40 项、这台做不到 0 项 · 往返 3 毫秒",
+  backendGaps: [],
   message: "SSH 与后端均正常。",
 };
 const dialing = { kind: "dialing", endpoint: "10.0.0.2:22" };

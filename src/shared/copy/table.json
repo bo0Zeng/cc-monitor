@@ -16796,11 +16796,6 @@
       "zh": "SSH 与后端均正常。",
       "args": []
     },
-    "beProbe.control.unsupported": {
-      "kind": "error",
-      "zh": "后端太旧，不能在远端起会话",
-      "args": []
-    },
     "beProbe.link.droppedBeforeAck": {
       "kind": "error",
       "zh": "链路还没说成不成就断了",
@@ -19404,6 +19399,36 @@
       "kind": "error",
       "zh": "这个盘不支持不覆盖改名目录，没改：{path}",
       "args": ["path"]
+    },
+    "beProbe.hello.ok": {
+      "kind": "body",
+      "zh": "版本 {build} · 能用 {usable} 项、这台做不到 {gaps} 项 · 往返 {ms} 毫秒",
+      "args": ["build", "usable", "gaps", "ms"]
+    },
+    "beProbe.hello.noAnswer": {
+      "kind": "body",
+      "zh": "版本 {build} · 能用 {usable} 项、这台做不到 {gaps} 项 · 问了一句没等到回话：{e}",
+      "args": ["build", "usable", "gaps", "e"]
+    },
+    "beProbe.hello.tooOld": {
+      "kind": "body",
+      "zh": "版本 {build} · 后端太旧，不能在远端起会话",
+      "args": ["build"]
+    },
+    "beProbe.hello.noBuild": {
+      "kind": "body",
+      "zh": "没报",
+      "args": []
+    },
+    "machineCard.test.gapsSummary": {
+      "kind": "action",
+      "zh": "看这台做不到的是哪些",
+      "args": []
+    },
+    "machineCard.test.gapRow": {
+      "kind": "body",
+      "zh": "{reason}：{n} 项做不到",
+      "args": ["reason", "n"]
     }
   }
 }

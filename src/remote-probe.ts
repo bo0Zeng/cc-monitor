@@ -27,8 +27,10 @@ export interface ConnTestResult {
   endpoint: string | null;
   /** 那台后端回了 hello 没有。 */
   backendOk: boolean;
-  /** hello 的人读摘要（`v=.. build=.. home=.. … control=..`）。 */
+  /** 那台后端的三格（版本 · 能用几项 / 做不到几项 · 往返毫秒），后端按文案表拼好的一句（〔FIX5 续〕不再是 `v=.. build=..` 日志行）。 */
   backendHello: string | null;
+  /** 这台说做不到的那几类：码 ＋ 这一类几项（后端按 hello 的 `unavailable` 分好；空 = 没有 / 没回 hello）。人话在界面说（`control-said.ts::unavailableReason`）。 */
+  backendGaps: { code: string; count: number }[];
   /** 人读的总体状态 / 失败原因。 */
   message: string;
 }
@@ -74,12 +76,16 @@ function bad(): never {
 export function decodeProbe(v: unknown): ConnTestResult {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "message"]) ||
+    !sameKeys(v, ["sshOk", "fingerprint", "endpoint", "backendOk", "backendHello", "backendGaps", "message"]) ||
     typeof v.sshOk !== "boolean" ||
     !nullableStr(v.fingerprint) ||
     !nullableStr(v.endpoint) ||
     typeof v.backendOk !== "boolean" ||
     !nullableStr(v.backendHello) ||
+    !Array.isArray(v.backendGaps) ||
+    !v.backendGaps.every(
+      (g) => isObj(g) && sameKeys(g, ["code", "count"]) && typeof g.code === "string" && Number.isInteger(g.count),
+    ) ||
     typeof v.message !== "string"
   ) {
     bad();
@@ -90,6 +96,7 @@ export function decodeProbe(v: unknown): ConnTestResult {
     endpoint: v.endpoint,
     backendOk: v.backendOk,
     backendHello: v.backendHello,
+    backendGaps: v.backendGaps as { code: string; count: number }[],
     message: v.message,
   };
 }

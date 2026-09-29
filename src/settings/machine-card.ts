@@ -35,6 +35,7 @@ import { pushPublicKey } from "../pubkey-push";
 import type { ResolvedHost } from "../ssh-config-reads";
 import { askConfirm } from "../ask-dialog";
 import { copyText } from "../copy-table";
+import { unavailableReason } from "../control-said";
 
 /** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
 function buildTextRow(
@@ -1161,6 +1162,24 @@ export class MachineCard {
       ? copyText("machineCard.test.backendOk", { hello: res.backendHello ? `（${res.backendHello}）` : "" })
       : copyText("machineCard.test.backendDown");
     this.testResult.appendChild(makeStatusLine(res.backendOk, backendText));
+    // 〔FIX5 续 · 主会话 09-28 裁〕这台说做不到的那几类：点开看全表（一类一句；码的人话与置灰那一句同一个家）。
+    if (res.backendGaps.length > 0) {
+      const machine = this.labelInput.value.trim() || this.hostInput.value.trim();
+      const gaps = document.createElement("details");
+      gaps.className = "remote-test-line";
+      const summary = document.createElement("summary");
+      summary.textContent = copyText("machineCard.test.gapsSummary");
+      gaps.appendChild(summary);
+      for (const g of res.backendGaps) {
+        const row = document.createElement("div");
+        row.textContent = copyText("machineCard.test.gapRow", {
+          reason: unavailableReason(g.code, machine),
+          n: String(g.count),
+        });
+        gaps.appendChild(row);
+      }
+      this.testResult.appendChild(gaps);
+    }
 
     if (res.message) {
       const msg = document.createElement("div");
