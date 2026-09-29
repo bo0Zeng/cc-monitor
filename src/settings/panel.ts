@@ -46,6 +46,7 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { ContextLimitsSection } from "./context-limits-section"; // 〔FIX4〕`contextLimits` 的入口
+import { PanoramaSection } from "./panorama-section"; // 〔FIX4〕全景小程序卸口
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
@@ -1138,6 +1139,12 @@ export class SettingsPanel {
         appliesTo: "both",
         tab: "tools",
         ...this.loadableBlock(copyText("settingsPanel.group.assets"), () => new AssetsSection(() => assetInstallApi())),
+      },
+      // 〔FIX4 · `97 §8`〕代码全景组件的卸口（那台后端 `panorama-uninstall`；本机远端同一条）。
+      {
+        appliesTo: "both",
+        tab: "tools",
+        ...this.loadableBlock(copyText("panorama.uninstall.title"), () => new PanoramaSection()),
       },
       // P8a：插件面（marketplace）只读枚举。
       // 〔RM1b · 第四波〕`appliesTo: "local"` → `"both"`：后端补了 `plugins-marketplaces`

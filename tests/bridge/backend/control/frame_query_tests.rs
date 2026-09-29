@@ -302,6 +302,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端算计划 ＋ 经这台文件管理面落盘（`control/panorama_edit.rs`，`stale` 重算）；前端 `src/panorama/api.ts::edit` 问，\
          monitor 这一侧零发送点",
     ),
+    // 〔FIX4 · `97 §8`〕全景小程序卸口。
+    (
+        "panorama-uninstall",
+        "后端认身份 ＋ 经这台文件管理面 CAS 删装时放下的那一份（`control/panorama.rs::answer_uninstall`）；\
+         前端 `src/settings/panorama-section.ts` 问，monitor 这一侧零发送点",
+    ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",

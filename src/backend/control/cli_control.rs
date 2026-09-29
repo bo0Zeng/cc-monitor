@@ -162,6 +162,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "forward-start",
     "forward-stop",
     "forward-list",
+    // 〔FIX4 · `97 §8`〕卸全景小程序：界面在机器页点的破坏性动作，不开 CLI 面（第三方 skill 用不着它，一次性进程里跑也无须）。
+    "panorama-uninstall",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。
