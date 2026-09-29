@@ -3211,6 +3211,17 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
   〔RM1f · 本机对称〕本机那一台同一个触发点：本机后端答这两个码 ⇒ monitor 把它自己带着的那一份（按 `TARGET` 内嵌的原生小程序，Linux 本机退用 musl 那份）
   放到 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`（逐字节相等就不写）→ 再问一次。Windows 上后端找的文件名带 `.exe`、插件口的 Windows 臂只认 `.exe`。
 
+#### `panorama-uninstall`：卸掉这台的全景小程序（〔FIX4〕09-28；`设计/97 §8` 主会话裁「受管工具都应可卸，照 SU1 装卸账」）
+
+```text
+→ {"id":"pu1","cmd":"panorama-uninstall"}
+← {"kind":"reply","id":"pu1","ok":true,"data":{"removed":true,"path":"/home/u/.cc-monitor/bin/cc-monitor-panorama","index":"/home/u/.cc-monitor/panorama"}}
+```
+
+装那一下只放一份文件（落点 `~/.cc-monitor/bin/cc-monitor-panorama[.exe]`）⇒ 卸只删那一份：先 `--probe` 认身份（认不出 / 跑不起来 ⇒ `not_ours`，一个字节不动），
+再经这台文件管理面带逐字节 `expect` 删（与刚读到的不等 ⇒ `stale`）。它跑出来的索引（`index`）不是装时写的，不删、只说在哪。不在 ⇒ `removed: false`。
+后端旁边随后端一起铺的那一份不碰（不是装进来的）。码：`not_ours` · `failed`（没有家目录 / 读不了）· `stale` · `refused` · `io_failed`（删那一跳的原码）。
+
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text

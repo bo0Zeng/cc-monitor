@@ -587,6 +587,10 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "〔MIG-3a〕`skill-install` 的装口：那台后端的帧命令 `skill-install-apply` 本体，本来就不是 Tauri 命令",
     "assets/skill_flow.rs::answer_uninstall":
         "同上，卸那一侧（`skill-uninstall-apply`）",
+    # 〔FIX4 · `97 §8`〕全景小程序的卸口：那台后端帧命令 `panorama-uninstall` 的本体。
+    "panorama.rs::answer_uninstall":
+        "〔FIX4〕代码全景小程序的**卸口**：那台后端的帧命令 `panorama-uninstall` 本体（认身份、经那台文件管理面 CAS 删装时放下的那一份），"
+        "界面在机器页「代码全景组件」那一格经通道直问，本来就不是 Tauri 命令",
     "panorama_bytes.rs::push_to":
         "代码全景小程序的**装口**（本机那一臂放到 `~/.cc-monitor/bin/`、远端那一臂经那台后端的文件链路推），"
         "它自己不是 Tauri 命令：没有用户按钮，〔MIG-3b 续〕界面（`src/panorama/api.ts::askOrPlace`）听到那台后端答「没装 / 太旧」时"

@@ -6359,7 +6359,7 @@
     },
     "machineAliases.unknownOs.said": {
       "kind": "body",
-      "zh": "认不出这台的系统，没法生成别名块：不知道该写 bash 的还是 PowerShell 的，不替你猜。",
+      "zh": "认不出这台的系统，没法生成别名块。不知道该写 bash 的还是 PowerShell 的，不替你猜。",
       "args": []
     },
     "machineAliases.manager.title": {
@@ -14573,6 +14573,46 @@
       "zh": "没保存：{e}",
       "args": ["e"]
     },
+    "panorama.uninstall.title": {
+      "kind": "title",
+      "zh": "代码全景组件",
+      "args": []
+    },
+    "panorama.uninstall.intro": {
+      "kind": "body",
+      "zh": "这台机器上放着代码全景要用的小程序。卸掉它只删那一个程序文件，索引留着；下次打开这台的代码全景会再放一份。",
+      "args": []
+    },
+    "panorama.uninstall.action": {
+      "kind": "action",
+      "zh": "卸载代码全景组件",
+      "args": []
+    },
+    "panorama.uninstall.confirm": {
+      "kind": "body",
+      "zh": "要卸掉这台机器上的代码全景组件吗？",
+      "args": []
+    },
+    "panorama.uninstall.done": {
+      "kind": "body",
+      "zh": "卸掉了：{path}。索引还在 {index}，要删自己删。",
+      "args": ["path", "index"]
+    },
+    "panorama.uninstall.absent": {
+      "kind": "body",
+      "zh": "这台没装代码全景组件（{path} 不在）。",
+      "args": ["path"]
+    },
+    "panorama.uninstall.unreadable": {
+      "kind": "error",
+      "zh": "那台后端的回应读不懂，不确定卸掉没有。",
+      "args": []
+    },
+    "panorama.uninstall.oldBackend": {
+      "kind": "error",
+      "zh": "那台后端太旧，还不会卸代码全景组件，先更新它。",
+      "args": []
+    },
     "localResume.launch.arrived": {
       "kind": "body",
       "zh": "已在本机 resume",
@@ -16920,6 +16960,16 @@
       "kind": "error",
       "zh": "{bin} 没答上它会做什么（{how}）：{detail}",
       "args": ["bin", "how", "detail"]
+    },
+    "bePanorama.uninstall.unreadable": {
+      "kind": "error",
+      "zh": "读不了 {path}：{e}",
+      "args": ["path", "e"]
+    },
+    "bePanorama.uninstall.notOurs": {
+      "kind": "error",
+      "zh": "{path} 认不出是 cc-monitor 放的全景小程序，没动它：{why}",
+      "args": ["path", "why"]
     },
     "bePanorama.answer.noHome": {
       "kind": "error",

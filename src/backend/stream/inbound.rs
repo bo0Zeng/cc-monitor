@@ -234,6 +234,8 @@ pub const COMMANDS: &[&str] = &[
     "panorama",
     // 〔MIG-3b 续〕全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "panorama-edit",
+    // 〔FIX4 · `97 §8`〕全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "panorama-uninstall",
     "ping",
     "plugins-marketplaces",
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
@@ -3418,6 +3420,21 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
+        }),
+    },
+    // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕**卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
+    CommandSpec {
+        name: "panorama-uninstall",
+        doc_anchor: Some("#### `panorama-uninstall`"),
+        codes: &["not_ours", "failed", "stale", "refused", "io_failed"],
+        fields: &["index", "path", "removed"],
+        takes_input: false,
+        run: Run::Async(|_r| {
+            Box::pin(async move {
+                crate::control::panorama::answer_uninstall(LocalFiles)
+                    .await
+                    .map(Some)
+            })
         }),
     },
     // 〔MIG-3b 续 · RM1d〕**全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→

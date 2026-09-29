@@ -205,6 +205,7 @@ const UNIT: &[&str] = &[
     "tests/settings/panel-block-isolation.vitest.ts",
     "tests/settings/panel-deferred-io.vitest.ts",
     "tests/settings/panel-groups.vitest.ts",
+    "tests/settings/panorama-section.vitest.ts", // 〔FIX4〕全景小程序卸口（假通道）
     "tests/settings/panel-machine-page-visibility.vitest.ts",
     "tests/settings/panel-per-machine-deferred-io.vitest.ts",
     "tests/settings/panel-window-lifecycle.vitest.ts",

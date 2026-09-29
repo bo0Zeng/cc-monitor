@@ -42,6 +42,12 @@ use super::*;
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // 〔FIX4 · `97 §8`〕卸全景小程序：机器页上点的破坏性动作。
+    (
+        "panorama-uninstall",
+        "它是界面在机器页上点、二次确认过的破坏性动作（删 `~/.cc-monitor/bin` 里那份小程序）；第三方 skill 没有卸它的理由，\
+         开 CLI 口只多一个不经确认就能删文件的入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // 〔MIG-1 收尾〕测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
     (
         "remote-probe",
@@ -323,6 +329,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "ssh-config-import",
         // 〔MIG-3b〕这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
+        // 〔FIX4〕卸这台的全景小程序：无入参（落点固定）。
+        "panorama-uninstall",
     ];
     let declared: Vec<&str> = REGISTRY
         .iter()

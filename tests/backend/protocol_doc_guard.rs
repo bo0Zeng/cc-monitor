@@ -460,9 +460,12 @@ mod tests {
             //   查询面仍只有 `panorama` 一条。
             vec![
                 "#### `panorama-edit`".to_string(),
+                // 〔FIX4 · `97 §8` · 主会话 09-28 裁「受管工具都应可卸」〕多一条卸口 `panorama-uninstall`（不带 op、不碰引擎，只删装时放下的那一份）。
+                "#### `panorama-uninstall`".to_string(),
                 "#### `panorama`".to_string(),
                 "panorama".to_string(),
                 "panorama-edit".to_string(),
+                "panorama-uninstall".to_string(),
             ],
             "`inbound.rs` 里含「全景」那个词的字符串字面量不再恰好是那两条命令名（查询 `panorama` · 写 `panorama-edit`）—— \
              全景在协议面只许以这两条命令出现，op 走载荷（请先读本判据的头注）。"
