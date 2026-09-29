@@ -532,6 +532,8 @@ export function withHistoryReads(
     // 〔MIG-1 续〕列 tmux 会话那一发也在这里译回旧名字（本判据族大多经这一层，免逐条改）。
     const tmux = tmuxReadOf(cmd, args);
     if (tmux) return tmuxProduct(tmux[0], answer(tmux[0], tmux[1]));
+    const mint = tmuxMintOf(cmd, args);
+    if (mint) return tmuxMintProduct(answer(mint[0], mint[1]));
     if (cmd === "list_remote_mcp_origins") {
       try {
         const r = ((await answer("list_remote_history_projects", {})) ??
@@ -672,7 +674,7 @@ export function tmuxControlShim(
       } catch (e) {
         throw refusedReply("kill_failed", wordsOf(e));
       }
-      return chanReply({ session: name, killed: true });
+      return chanReply({ session: name, killed: true, bus: { removed: [], failed: [], unread: null } });
     }
     if (a.op === "capture-pane") {
       let screen: unknown;
@@ -834,11 +836,16 @@ export function localLaunchCalls(calls: ReadonlyArray<readonly unknown[]>, which
 export function launchRenderShim(
   inner: (cmd: string, args?: unknown) => unknown,
 ): (cmd: string, args?: unknown) => Promise<unknown> {
+  const term = terminalShim(inner);
   return async (cmd, args) => {
+    // 〔FIX4 · ⑬〕开终端那三步也在这里译回旧的那一条（起会话那几条判据都要开终端）。
+    if (isTerminalStep(cmd, args)) return term(cmd, args);
     if (cmd !== "chan_call") return inner(cmd, args);
     // 〔MIG-1 续〕列 tmux 会话那一发也在这里译回旧名字（起会话那几条判据都要问名单）。
     const tmux = tmuxReadOf(cmd, args);
     if (tmux) return tmuxProduct(tmux[0], inner(tmux[0], tmux[1]));
+    const mint = tmuxMintOf(cmd, args);
+    if (mint) return tmuxMintProduct(inner(mint[0], mint[1]));
     const a = args as ChanCallArgs;
     const body = () => chanArgsJson(a) as Record<string, unknown>;
     switch (a.op) {
@@ -934,6 +941,84 @@ export function withTmuxReads(
   return async (cmd, args) => {
     const t = tmuxReadOf(cmd, args);
     if (t) return tmuxProduct(t[0], inner(t[0], t[1]));
+    const m = tmuxMintOf(cmd, args);
+    if (m) return tmuxMintProduct(inner(m[0], m[1]));
+    return inner(cmd, args);
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔FIX4 · `设计/90 §3` J7〕起会话要的 tmux 名改问那台后端（`tmux-name-mint`）之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 同上一节的译法：一发 `chan_call`（op = `tmux-name-mint`）译成判据手里那个替身认得的名字 `tmux_name_mint`
+// （形参 `{origin, cwd}` / `{origin, forkOf}`），替身答一个**名字**。派生 ＋ 避让的规则只在后端（`control/ccm/plan.rs`）⇒
+// 这里**不重抄**：判据自己写死「那台铸了什么」，钉的是前端问了谁、问的什么、用的是不是它铸回来的、问不到时怎么办。
+// - 名字（字符串）⇒ 成品 `{name}`；`{ bad: v }` ⇒ 原样回 `v`（形状不认那一格）；
+// - `undefined`（替身没答）⇒ 那台没有控制通道（问不到）；抛 ⇒ 那台后端拒（码 `invalid_args`，原话带着）。
+/** 一发 `chan_call` 若是铸名那一问 ⇒ `["tmux_name_mint", {origin, …入参}]`；否则 `null`。 */
+export function tmuxMintOf(cmd: string, args: unknown): [string, Record<string, unknown>] | null {
+  if (!isChanCall(cmd, args, "tmux-name-mint")) return null;
+  return ["tmux_name_mint", { origin: args.origin, ...(chanArgsJson(args) as Record<string, unknown>) }];
+}
+
+/** 替身答的 ⇒ 后端成品（见本节头注）。 */
+async function tmuxMintProduct(got: Promise<unknown> | unknown): Promise<ArrayBuffer> {
+  let v: unknown;
+  try {
+    v = await got;
+  } catch (e) {
+    throw refusedReply("invalid_args", wordsOf(e));
+  }
+  if (v === undefined) throw NO_CHANNEL;
+  if (typeof v === "string") return chanReply({ name: v });
+  return chanReply((v as { bad: unknown }).bad);
+}
+
+/** 被问过的铸名那几发（`[origin, 入参]`，入参去掉 `origin`）。 */
+export function tmuxMintCalls(calls: ReadonlyArray<readonly unknown[]>): [string, Record<string, unknown>][] {
+  return calls
+    .map(([c, a]) => tmuxMintOf(String(c), a))
+    .filter((x): x is [string, Record<string, unknown>] => x !== null)
+    .map(([, a]) => {
+      const { origin, ...rest } = a;
+      return [String(origin), rest];
+    });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔FIX4 · `设计/99 §2.1 ⑬`〕开终端改成三步之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 今天开终端是三步（`src/terminal-open.ts`）：monitor `terminal_dial {origin}`（机器事实）→ 本机后端 `terminal-ssh`
+// （渲 `ssh -t …` 那一行）→ monitor `open_terminal_window {command, rbindToken, ssh}`。判据手里的替身按**旧的那一条**答话、断言
+// （`launch_remote_terminal {origin, remoteCmd, rbindToken}`）⇒ 本节把三步译回那一条：
+// - `terminal-ssh` **原样回**交进来的那串（ssh 外壳的字节归 Rust：`tests/backend/dial_terminal_tests.rs`，这里不重抄渲染）；
+// - 开窗那一步凭「上一次 `terminal_dial` 问的是哪台」补回 origin；`ssh: false` ⇒ 本机串 `<local>`。
+/** 这一发是不是开终端那三步之一。 */
+export function isTerminalStep(cmd: string, args: unknown): boolean {
+  return cmd === "terminal_dial" || cmd === "open_terminal_window" || isChanCall(cmd, args, "terminal-ssh");
+}
+
+/** 把开终端那三步译回旧的 `launch_remote_terminal`（见本节头注）；别的原样交进去。 */
+export function terminalShim(
+  inner: (cmd: string, args?: unknown) => unknown,
+): (cmd: string, args?: unknown) => Promise<unknown> {
+  let asked: string | null = null;
+  return async (cmd, args) => {
+    if (cmd === "terminal_dial") {
+      asked = (args as { origin: string }).origin;
+      return { machine: { label: asked } };
+    }
+    if (isChanCall(cmd, args, "terminal-ssh")) {
+      return chanReply({ command: (chanArgsJson(args) as { command: string }).command });
+    }
+    if (cmd === "open_terminal_window") {
+      const a = args as { command: string; rbindToken: string | null; ssh: boolean };
+      const origin = a.ssh ? (asked ?? "<没问过 terminal_dial>") : "<local>";
+      asked = null;
+      return inner("launch_remote_terminal", { origin, remoteCmd: a.command, rbindToken: a.rbindToken });
+    }
     return inner(cmd, args);
   };
 }

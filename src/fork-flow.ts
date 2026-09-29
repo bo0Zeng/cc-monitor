@@ -25,12 +25,12 @@ import { resolveResumeCommand } from "./remote-config";
 import { isSelectable, type Account, type SessionAccount } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
 import { findClaudeTmuxMatches, type TmuxSession } from "./tmux-sessions";
-import { resumeLocalSession } from "./local-resume";
-import { readTmuxListing } from "./tmux-name-mint";
+import { resumeLocalSessionAndWait } from "./local-resume";
+import { mintForkTmuxName, readTmuxListing } from "./tmux-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
-import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
+import { runRemoteResumeAndWait, runRemoteResumeTmuxAndWait } from "./remote-launch-run";
 import { copyText } from "./copy-table";
 
 export interface ForkFlowInput {
@@ -53,12 +53,7 @@ export interface ForkSourceFacts {
   source: ForkLaunchInput;
   /** 源会话所在 tmux 名（新名要避开它）。 */
   sourceTmuxName: string | null;
-  /**
-   * 远端已占用的全部 tmux 名（新名要避开它们）。
-   * 〔FE1〕**`null` = 名单没问到**（不是「一个都没占」）⇒ 选了 tmux 就不起、说清（`fork-start.ts`）。
-   * 先前这里 `?? []`：远端不可达时拿空集铸 `-fork-cc`，与 #76 同形。
-   */
-  takenTmuxNames: string[] | null;
+  // 〔FIX4 · `90 §3` J7〕`takenTmuxNames` 删了：避让在那台后端（`tmux-name-mint {forkOf}`），前端不再拿名单自己铸。
 }
 
 /**
@@ -91,8 +86,6 @@ export function deriveForkSource(
       liveTmuxName: tmuxName,
     },
     sourceTmuxName: tmuxName,
-    // 〔FE1〕`null` / `undefined` = 名单没取到 ⇒ `null`，不压成空集（见字段头注）。
-    takenTmuxNames: sessions ? sessions.map((s) => s.name) : null,
   };
 }
 
@@ -123,7 +116,6 @@ export async function collectForkSource(
     return {
       source: { ...facts.source, liveTmuxName: null },
       sourceTmuxName: null,
-      takenTmuxNames: [],
     };
   }
   // 〔FE1〕tmux 名单只经 `tmux-name-mint.ts::readTmuxListing` 取（本机远端同一个家）：
@@ -173,14 +165,15 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
     //   「账号 0」的生产路，而 POSIX 后端只有那一态渲染得出容器）、账号是**用户在小窗里显式选的**：
     //   账号 0 ⇒ 显式 `base`（不是省略：省略 = 没表态 = 被 shell rc 里的默认号顶掉），具名 ⇒ 名字说得出才带（`K-R53`）。
     //   ⚠ 这里铸的是**新会话自己**的 `<项目名>-cc`（避让本机现有名字），与远端那条「避开源会话的名字」
-    //     （`fork-start.ts::forkTmuxName`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
-    startLocal: (a) =>
-      resumeLocalSession({
+    //     （`fork-start.ts` 问那台后端 `tmux-name-mint {forkOf}`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
+    // 〔FIX4 · 主会话裁 ④〕「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
+    startLocal: async (a) =>
+      (await resumeLocalSessionAndWait({
         sid: a.sessionId,
         cwd: a.cwd,
         account: { kind: "explicit", configDir: a.configDir, name: a.accountName },
         failureTitle: copyText("localResume.fork.failed"),
-      }),
+      })) === "arrived",
 
     startRemote: async (a) => {
       const behavior = await getBehavior();
@@ -189,10 +182,14 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       // 所以 null 要落成 undefined，**不能落成空串**（空值 ≠ 未设，见 accounts.ts Z01）。
       const mods = { configDir: a.configDir ?? undefined };
       // ★ 返回值必须往上传：那两条路失败时**不抛**，只弹自己的 toast 并回 false。
-      return a.tmuxName
-        ? runRemoteResumeTmux(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
-        : runRemoteResume(a.origin, a.sessionId, a.cwd, launcher, mods);
+      const r = a.tmuxName
+        ? await runRemoteResumeTmuxAndWait(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
+        : await runRemoteResumeAndWait(a.origin, a.sessionId, a.cwd, launcher, mods);
+      return r === "arrived";
     },
+
+    // 〔FIX4 · `90 §3` J7〕分叉会话的 tmux 名问那台后端铸（派生 ＋ 避让都在那一台）。
+    mintForkName: mintForkTmuxName,
   };
 }
 
@@ -220,7 +217,6 @@ export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcom
         origin: input.origin,
         source: facts.source,
         sourceTmuxName: facts.sourceTmuxName,
-        takenTmuxNames: facts.takenTmuxNames,
       },
       productionDeps(input),
     );

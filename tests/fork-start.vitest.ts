@@ -17,12 +17,17 @@ import { LOCAL_ORIGIN } from "../src/ipc/origin";
 type LocalArgs = Parameters<ForkStartDeps["startLocal"]>[0];
 type RemoteArgs = Parameters<ForkStartDeps["startRemote"]>[0];
 type AskFn = ForkStartDeps["ask"];
+type MintFn = ForkStartDeps["mintForkName"];
 
-function deps(over: { ask?: AskFn } = {}) {
+/** 〔FIX4 · J7〕铸名是那台后端的事（`tmux-name-mint {forkOf}`）；替身回一个与源名**无关**的固定名，好认出「用的就是它铸的」。 */
+const MINTED = "minted-by-backend-fork-cc";
+
+function deps(over: { ask?: AskFn; mint?: MintFn } = {}) {
   return {
     ask: vi.fn<AskFn>(over.ask ?? (async () => ({}))),
     startLocal: vi.fn(async (_a: LocalArgs) => true),
     startRemote: vi.fn(async (_a: RemoteArgs) => true),
+    mintForkName: vi.fn<MintFn>(over.mint ?? (async () => ({ ok: true, name: MINTED }))),
   };
 }
 const asDeps = (d: ReturnType<typeof deps>): ForkStartDeps => d as unknown as ForkStartDeps;
@@ -39,7 +44,7 @@ describe("什么时候问", () => {
   it("★ 信息齐全（源会话活着）→ **一次都不问**，直接起", async () => {
     const d = deps();
     const r = await startForkedSession(
-      { newSessionId: "new1", takenTmuxNames: [], origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+      { newSessionId: "new1", origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
       asDeps(d),
     );
     expect(r).toBe("started");
@@ -50,7 +55,7 @@ describe("什么时候问", () => {
   // 而这条要守的是「问，且只问一次 + 顺序稳定」，所以换到两格都会问的远端上。
   it("★ 源会话已退出（账号/tmux 未知）→ 问，且**只问一次**", async () => {
     const d = deps({ ask: vi.fn(async () => ({ configDir: null, useTmux: false })) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: "devbox", source: DEAD }, asDeps(d));
     expect(d.ask).toHaveBeenCalledTimes(1);
     // 传给弹窗的是「要问哪几格」，顺序稳定
     expect(d.ask.mock.calls[0][1]).toEqual(["account", "tmux"]);
@@ -58,7 +63,7 @@ describe("什么时候问", () => {
 
   it("★ 用户取消 → **什么都不起**", async () => {
     const d = deps({ ask: async () => null });
-    const r = await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
+    const r = await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
     expect(r).toBe("cancelled");
     expect(d.startLocal).not.toHaveBeenCalled();
     expect(d.startRemote).not.toHaveBeenCalled();
@@ -68,19 +73,19 @@ describe("什么时候问", () => {
 describe("账号：知道就照搬，不知道就用用户答的，**绝不自己填**", () => {
   it("活着 → 照搬源会话的 configDir", async () => {
     const d = deps();
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: LIVE }, asDeps(d));
     expect(d.startLocal.mock.calls[0][0].configDir).toBe("/home/u/.claude-alt/z");
   });
 
   it("★ 已退出 + 用户选账号 0 → 传 null（= 一个字都不注入）", async () => {
     const d = deps({ ask: vi.fn(async () => ({ configDir: null, useTmux: false })) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
     expect(d.startLocal.mock.calls[0][0].configDir).toBeNull();
   });
 
   it("★ 已退出 + 用户选了某账号 → 用用户选的那个", async () => {
     const d = deps({ ask: async () => ({ configDir: "/acct/b", useTmux: false }) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
     expect(d.startLocal.mock.calls[0][0].configDir).toBe("/acct/b");
   });
 
@@ -97,7 +102,7 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
     const d = deps({ ask: async () => ({ useTmux: false }) });
     await startForkedSession(
       {
-        newSessionId: "n", takenTmuxNames: [],
+        newSessionId: "n",
         origin: LOCAL_ORIGIN,
         // ← 陷阱：会话已退出，但调用方顺手把「当前账号」传了进来
         source: { sourceIsLive: false, sourceCwd: "/p", liveConfigDir: "/acct/当前" },
@@ -113,7 +118,7 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
   it("★ 已退出 + 弹窗没给账号（用户只答了别的）→ 落到账号 0，**不猜一个**", async () => {
     // 这里的关键是「不去拿当前账号顶替」。落账号 0 是**保守**：不注入任何身份。
     const d = deps({ ask: vi.fn(async () => ({ useTmux: false })) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
     expect(d.startLocal.mock.calls[0][0].configDir).toBeNull();
   });
 
@@ -134,7 +139,7 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
   it("★★ `K-R53`：账号名与 configDir 同形取值（选了就带上 · 继承时如实 null）", async () => {
     // ① 用户在小窗里选了某个号 ⇒ 两半一起下来。
     const picked = deps({ ask: async () => ({ configDir: "/acct/b", accountName: "acct-b", useTmux: false }) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(picked));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(picked));
     expect(picked.startLocal.mock.calls[0][0].configDir).toBe("/acct/b");
     expect(
       picked.startLocal.mock.calls[0][0].accountName,
@@ -143,7 +148,7 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
 
     // ② 源会话活着（`known`）⇒ 盘上只有目录、从来没有名字 ⇒ 如实 `null`。
     const inherited = deps();
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE }, asDeps(inherited));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: LIVE }, asDeps(inherited));
     expect(inherited.startLocal.mock.calls[0][0].configDir).toBe("/home/u/.claude-alt/z");
     expect(
       inherited.startLocal.mock.calls[0][0].accountName,
@@ -152,7 +157,7 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
 
     // ③ 账号 0 ⇒ 两半都是 null。
     const zero = deps({ ask: async () => ({ configDir: null, accountName: null, useTmux: false }) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(zero));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(zero));
     expect(zero.startLocal.mock.calls[0][0].configDir).toBeNull();
     expect(zero.startLocal.mock.calls[0][0].accountName).toBeNull();
   });
@@ -166,81 +171,63 @@ describe("G6：本机那条路不问 tmux", () => {
    */
   it("★ 本机 + 源会话已退出 → 只问账号，不问 tmux", async () => {
     const d = deps({ ask: vi.fn(async () => ({ configDir: null })) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: DEAD }, asDeps(d));
     expect(d.ask.mock.calls[0][1]).toEqual(["account"]);
   });
 
   it("远端仍然要问 tmux（那条路真能表达）", async () => {
     const d = deps({ ask: vi.fn(async () => ({ configDir: null, useTmux: true })) });
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: "devbox", source: DEAD }, asDeps(d));
     expect(d.ask.mock.calls[0][1]).toEqual(["account", "tmux"]);
   });
 
   it("★ 本机 + 什么都不缺 → 一次都不问（tmux 那格被摘掉后清单为空）", async () => {
     // LIVE 的 tmux 是 known，本来就不会问；这里守的是「摘 tmux 不会误伤 account」。
     const d = deps();
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: LIVE }, asDeps(d));
     expect(d.ask).not.toHaveBeenCalled();
   });
 });
 
 describe("tmux 名", () => {
-  it("★ 必须与原会话不同 —— 同名会 attach 进原窗口，毁掉「两条都活着」", async () => {
+  // 〔FIX4 · `设计/90 §3` J7〕名字由那台后端铸（「与源名不同」「避让已占用」两条期望随 `fork_tmux_base` 搬进
+  //   `tests/backend/control/ccm/plan_tests.rs`）。这里钉编排那一半：问的是源名、用的是它铸的、问不到就不起。
+  it("★ 问那台后端铸名：交的是源会话的 tmux 名，用的是它铸回来的那个", async () => {
     const d = deps();
     await startForkedSession(
-      { newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+      { newSessionId: "n", origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
       asDeps(d),
     );
-    const name = d.startRemote.mock.calls[0][0].tmuxName;
-    expect(name).not.toBe("p-cc");
-    expect(name).toBe("p-fork-cc");
+    expect(d.mintForkName.mock.calls).toEqual([["devbox", "p-cc"]]);
+    expect(d.startRemote.mock.calls[0][0].tmuxName).toBe(MINTED);
   });
 
-  it("避让已占用的名字", async () => {
-    const d = deps();
-    await startForkedSession(
-      {
-        newSessionId: "n",
-        origin: "devbox",
-        source: LIVE,
-        sourceTmuxName: "p-cc",
-        takenTmuxNames: ["p-fork-cc"],
-      },
-      asDeps(d),
-    );
-    // Phase G：撞名后缀改成**追加在最后**（`p-fork-cc-2`），与 `mintSessionTmuxName`
-    // 写下的同一条规则对齐（「让『第几个』始终是名字的末段」）。原来是 `p-fork2-cc`。
-    expect(d.startRemote.mock.calls[0][0].tmuxName).toBe("p-fork-cc-2");
+  it("源会话已退出（没有 tmux 名可继承）⇒ 拿它的 cwd 当源去问", async () => {
+    const d = deps({ ask: vi.fn(async () => ({ configDir: null, useTmux: true })) });
+    await startForkedSession({ newSessionId: "n", origin: "devbox", source: DEAD }, asDeps(d));
+    expect(d.mintForkName.mock.calls).toEqual([["devbox", "/home/u/p"]]);
+    expect(d.startRemote.mock.calls[0][0].tmuxName).toBe(MINTED);
   });
 
-  // 〔FE1〕`设计/01 §5` D4：远端名单**没问到**（`null`）而要进 tmux ⇒ 不起、抛给 `runForkFlow` 出声。
-  //   先前 `?? []`：空集铸 `-fork-cc`，不避让（#76 的形状）。正控：上面「避让已占用的名字」那条（名单问到了）。
-  it("★ 〔FE1〕名单没问到（null）且要进 tmux ⇒ 抛（不起），不拿空集铸名", async () => {
-    const d = deps();
+  // 〔FE1〕`设计/01 §5` D4：问不到而要进 tmux ⇒ 不起、抛给 `runForkFlow` 出声（不自己拼一个不避让的名字）。
+  it("★ 〔FE1〕铸不出名字且要进 tmux ⇒ 抛（不起），原因带出去", async () => {
+    const d = deps({ mint: async () => ({ ok: false, why: "链路断了" }) });
     await expect(
       startForkedSession(
-        { newSessionId: "n", takenTmuxNames: null, origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+        { newSessionId: "n", origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
         asDeps(d),
       ),
-    ).rejects.toThrow(/没有起/);
+    ).rejects.toThrow(/没有起[\s\S]*链路断了/);
     expect(d.startRemote).not.toHaveBeenCalled();
   });
 
-  it("正控：名单没问到但**不进 tmux** ⇒ 照起（名单只在铸名时要）", async () => {
-    const d = deps();
+  it("正控：**不进 tmux** ⇒ 不问名字、照起", async () => {
+    const d = deps({ mint: async () => ({ ok: false, why: "不该被问" }) });
     await startForkedSession(
-      { newSessionId: "n", takenTmuxNames: null, origin: "devbox", source: { ...LIVE, liveTmuxName: "" } },
+      { newSessionId: "n", origin: "devbox", source: { ...LIVE, liveTmuxName: "" } },
       asDeps(d),
     );
-    expect(d.startRemote.mock.calls[0][0].tmuxName).toBeNull();
-  });
-
-  it("源会话不在 tmux 里 → 新的也不进 tmux（tmuxName 为 null）", async () => {
-    const d = deps();
-    await startForkedSession(
-      { newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: { ...LIVE, liveTmuxName: "" } },
-      asDeps(d),
-    );
+    expect(d.mintForkName).not.toHaveBeenCalled();
     expect(d.startRemote.mock.calls[0][0].tmuxName).toBeNull();
   });
 });
@@ -256,7 +243,7 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
     const d = deps();
     d.startRemote.mockImplementation(async () => false);
     const r = await startForkedSession(
-      { newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+      { newSessionId: "n", origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
       asDeps(d),
     );
     expect(r).toBe("failed");
@@ -269,14 +256,14 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
     d.startLocal.mockImplementation(async () => false);
     expect(
       await startForkedSession(
-        { newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE },
+        { newSessionId: "n", origin: LOCAL_ORIGIN, source: LIVE },
         asDeps(d),
       ),
     ).toBe("failed");
     const ok = deps();
     expect(
       await startForkedSession(
-        { newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE },
+        { newSessionId: "n", origin: LOCAL_ORIGIN, source: LIVE },
         asDeps(ok),
       ),
     ).toBe("started");
@@ -285,7 +272,7 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
   it("startRemote 回 true → started", async () => {
     const d = deps();
     const r = await startForkedSession(
-      { newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+      { newSessionId: "n", origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
       asDeps(d),
     );
     expect(r).toBe("started");
@@ -294,7 +281,7 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
   it("failed 与 cancelled 是两回事（取消不该被当成失败去报错）", async () => {
     const d = deps({ ask: async () => null });
     const r = await startForkedSession(
-      { newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: DEAD },
+      { newSessionId: "n", origin: "devbox", source: DEAD },
       asDeps(d),
     );
     expect(r).toBe("cancelled");
@@ -304,12 +291,12 @@ describe("Phase G：远端拉起失败不许被读成成功", () => {
 describe("本机 / 远端分流", () => {
   it("origin=null → 走本机；非 null → 走远端，且带上 origin", async () => {
     const a = deps();
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: LOCAL_ORIGIN, source: LIVE }, asDeps(a));
+    await startForkedSession({ newSessionId: "n", origin: LOCAL_ORIGIN, source: LIVE }, asDeps(a));
     expect(a.startLocal).toHaveBeenCalledTimes(1);
     expect(a.startRemote).not.toHaveBeenCalled();
 
     const b = deps();
-    await startForkedSession({ newSessionId: "n", takenTmuxNames: [], origin: "devbox", source: LIVE }, asDeps(b));
+    await startForkedSession({ newSessionId: "n", origin: "devbox", source: LIVE }, asDeps(b));
     expect(b.startRemote.mock.calls[0][0].origin).toBe("devbox");
     expect(b.startLocal).not.toHaveBeenCalled();
   });
@@ -317,7 +304,7 @@ describe("本机 / 远端分流", () => {
   it("★ 全程不碰原会话 —— 传下去的恒是**新** sid", async () => {
     const d = deps();
     await startForkedSession(
-      { newSessionId: "NEW", takenTmuxNames: [], origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
+      { newSessionId: "NEW", origin: "devbox", source: LIVE, sourceTmuxName: "p-cc" },
       asDeps(d),
     );
     expect(d.startRemote.mock.calls[0][0].sessionId).toBe("NEW");
@@ -326,7 +313,8 @@ describe("本机 / 远端分流", () => {
     // `deps()` 造的夹具，那是**断言夹具等于它自己，恒真**；而且 `asDeps` 经 `unknown` 强转，
     // 真接口新增字段它也不会红。要守「没有作用于原会话的口子」得从**类型侧**守：
     // 下面这行让 `ForkStartDeps` 一旦多出第四个成员就编译不过（`Exclude` 结果非 never）。
-    type Extra = Exclude<keyof ForkStartDeps, "ask" | "startLocal" | "startRemote">;
+    // 〔FIX4 · J7〕`mintForkName` 进名单：它只问那台后端要一个**新**名字（只读，不作用于任何会话）。
+    type Extra = Exclude<keyof ForkStartDeps, "ask" | "startLocal" | "startRemote" | "mintForkName">;
     const noExtraMembers: Extra extends never ? true : never = true;
     expect(noExtraMembers).toBe(true);
   });

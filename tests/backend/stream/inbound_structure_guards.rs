@@ -209,6 +209,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "mcp-read"
                 // 〔SH1〕列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
                 | "tmux-list"
+                // 〔FIX4 · J7〕铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
+                | "tmux-name-mint"
                 // 〔MIG-1〕`~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
                 | "ssh-config-aliases"
                 | "ssh-config-import"
@@ -320,13 +322,16 @@ fn every_registered_command_declares_its_run_kind() {
         "acct-iso-cmd",
         // 〔E2〕`ccm-probe`：拼 `--ccm-probe` 那几行，纯函数 ⇒ 不进阻塞档。
         "ccm-probe",
+        // 〔FIX4 · ⑬〕`terminal-ssh`：开终端那一串，纯函数（校验 ＋ quote，不拨号不起进程）⇒ 不进阻塞档。
+        "terminal-ssh",
         // 〔AS2 · 第四波 4B〕资产目录的同步：真异步（拨号 / 等远端 capture），在 await 点可取消。
         "assets-sync",
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步，在 await 点可取消），本机那一跳挪到阻塞线程池。
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
-        "pubkey-push",   // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
+        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
@@ -395,8 +400,9 @@ fn every_registered_command_declares_its_run_kind() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
-        "hooks-diag", // 〔MIG-3b〕
-        "resync",     // 〔RESYNC〕
+        "tmux-name-mint", // 〔FIX4 · J7〕
+        "hooks-diag",     // 〔MIG-3b〕
+        "resync",         // 〔RESYNC〕
         "panorama",
         "apikey-key-set",
         "apikey-read",

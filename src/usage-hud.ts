@@ -11,7 +11,7 @@
  * 「今日 token」= 后续项（需跨会话聚合，非纯前端；本刀先聚焦 context% 这个最高价值信号）。
  */
 
-import { contextPercent, normalizeModel, type ContextLimitOverrides } from "./views/context-limit";
+import { contextPercent, normalizeModel, readContextLimits, type ContextLimitOverrides } from "./views/context-limit";
 import { loadConfig } from "./config";
 import s from "./usage-hud.module.css";
 import { copyText } from "./copy-table";
@@ -42,18 +42,12 @@ export class UsageHud {
   }
 
   /** 读 config.json `contextLimits`（模型子串→上限 tokens）覆盖表，纠正 1M 模型 ctx% 误报。失败静默用默认表。 */
-  private async loadLimitOverrides(): Promise<void> {
+  /** 〔FIX4〕设置页改了覆盖表（`SETTINGS_APPLIED_EVENT`）⇒ 主窗口重读一次。 */
+  async loadLimitOverrides(): Promise<void> {
     try {
       const cfg = (await loadConfig()) as Record<string, unknown>;
-      const raw = cfg["contextLimits"];
-      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        const out: ContextLimitOverrides = {};
-        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-          if (typeof v === "number" && v > 0) out[k] = v;
-        }
-        this.limitOverrides = out;
-        this.render(); // 覆盖表迟到 → 重算已显的 chip
-      }
+      this.limitOverrides = readContextLimits(cfg["contextLimits"]);
+      this.render(); // 覆盖表迟到 / 改过 → 重算已显的 chip
     } catch {
       /* 用内置默认上限表 */
     }

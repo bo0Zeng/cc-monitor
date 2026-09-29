@@ -74,7 +74,7 @@ fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
     let panes = at("let panes = pane_pids(&handle);");
     let kill = at(".args([\"kill-session\"");
     let ok = at("if out.status.success() {");
-    let unregister = at("super::cc_bus::unregister_panes(name, &panes);");
+    let unregister = at("let bus = super::cc_bus::unregister_panes(name, &panes);");
     assert!(
         admit < panes && panes < kill,
         "pane pid 要在过门之后、kill-session 之前读"
@@ -82,7 +82,7 @@ fn the_kill_path_reads_panes_before_it_kills_and_unregisters_only_after() {
     assert!(ok < unregister, "顺手注销只能在杀成那一支里");
     let after_ok = &src[ok..];
     assert!(
-        after_ok.find("unregister_panes").unwrap() < after_ok.find("return Ok(())").unwrap(),
+        after_ok.find("unregister_panes").unwrap() < after_ok.find("return Ok(bus)").unwrap(),
         "顺手注销要在杀成那一支返回之前"
     );
 }
@@ -120,7 +120,7 @@ fn the_kill_product_matches_the_cross_language_golden() {
     let k = &g["kill"];
     let name = parse_name(&k["request"]).expect("金样的请求样例过不了生产解析器");
     assert_eq!(
-        reply(&name),
+        reply(&name, &crate::control::cc_bus::BusCleanup::default()),
         k["reply"],
         "后端出的 kill 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道结束了没有」"
     );
@@ -140,5 +140,20 @@ fn the_kill_product_matches_the_cross_language_golden() {
     assert_eq!(
         got, want,
         "金样里的拒绝码与后端登记的不相等 —— 界面那张「码 → 一句话」的表就会漏一档或多一档"
+    );
+}
+
+/// 设计/95 §6「要说得给 `kill` 的成品加一格」：注销结局三样原样进 `bus` 那一格（期望值手写）。
+#[test]
+fn the_kill_reply_carries_what_the_bus_cleanup_did() {
+    let c = crate::control::cc_bus::BusCleanup {
+        removed: vec!["p_cc".into()],
+        failed: vec![("r_cc".into(), "它不在".into())],
+        unread: None,
+    };
+    assert_eq!(
+        reply("demo-cc", &c),
+        serde_json::json!({"session": "demo-cc", "killed": true,
+            "bus": {"removed": ["p_cc"], "failed": [{"id": "r_cc", "why": "它不在"}], "unread": null}})
     );
 }

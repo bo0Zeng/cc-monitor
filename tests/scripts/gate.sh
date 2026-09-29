@@ -1922,7 +1922,8 @@ run_e2e rbind-token-endtoend   9
 # 〔TAIL · 09-26〕`backend-cc-bus`：DUP2 把拒码改成 `bad_id` 之后它红了 3 条、一整天没人看见 ——
 #   它只挂在 `ci.yml` 那条不通电的流水线上。接进本机执行链（isolated tmux socket ＋ jq，fail-closed）。
 #   〔量于 2026-09-26，本工作树 `w4/tail`〕**96 PASS / 0 FAIL**。
-run_e2e backend-cc-bus        96
+#   〔FIX4〕96 → 97：多一格「杀会话成品的 `bus` 那一格说出注销了谁」（`设计/95 §6`）。
+run_e2e backend-cc-bus        97
 # 〔E2 尾 · 09-27〕同一族的另外四套：只挂在 `ci.yml` 那条不通电的流水线上（本仓不推送），于是各红了几天没人看见 ——
 #   `backend-gate2` 的 `meta_equals` 判据过时（DUP3 §5 ⑦ 按设计放行 `=`，它仍期望 `invalid_args`）·
 #   `local-backend` 两趟过滤串重叠、常驻那族跑两遍（且第一个宿主起的后端没人收，靠收尾 `pkill -f` 兜着）·

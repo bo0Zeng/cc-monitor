@@ -475,6 +475,49 @@ pub(crate) fn answer_print(
     Ok(serde_json::json!({ "line": plan::render(&plan) }))
 }
 
+/// 〔FIX4 · `设计/90 §3` J7〕帧命令 `tmux-name-mint`：**起会话要一个 tmux 名 —— 问这台**。
+///
+/// 入：`{"cwd": "<目录>"}`（起新会话 / 全新 resume：基名 `<项目名>-cc`）或 `{"forkOf": "<源会话的 tmux 名，或它的 cwd>"}`
+/// （分叉：基名 `<…>-fork-cc`），二者恰给一个。出：`{"name": "<最终名>"}`。
+/// 避让问的是**这台**那张唯一的会话快照（[`crate::common::session_snapshot`]，问一次更新一次），与 `ccm` 起会话、
+/// `--ccm-print` 同一份 [`plan::mint_tmux_name`] ⇒ 界面铸出来的名字与终端里敲 `ccm` 在同一目录铸的**同一个**。
+/// 这台没装 tmux ⇒ 一个名字都没占 ⇒ 交基名（起不起得来归起会话那一步说）。
+///
+/// 码：`invalid_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
+/// （`src/tmux-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
+pub(crate) fn answer_tmux_name_mint(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    tmux_name_mint_with(args, crate::common::session_snapshot::global())
+}
+
+/// [`answer_tmux_name_mint`] 的内核（快照是入参：测试拿脚本化探测器造一份）。
+pub(crate) fn tmux_name_mint_with(
+    args: &serde_json::Value,
+    snap: &crate::common::session_snapshot::SessionSnapshot,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    let text = |k: &str| args.get(k).and_then(serde_json::Value::as_str);
+    let base = match (text("cwd"), text("forkOf")) {
+        (Some(cwd), None) => plan::derive_tmux_name(cwd),
+        (None, Some(source)) => plan::fork_tmux_base(source),
+        _ => {
+            return Err((
+                "invalid_args",
+                crate::common::contract::malformed(
+                    "give exactly one of `cwd` / `forkOf` (a string)",
+                ),
+            ))
+        }
+    };
+    let name = match snap.taken_names() {
+        Ok(taken) => plan::mint_tmux_name(&base, &taken),
+        // 这台没装 tmux：没有会话 ⇒ 没有名字可撞。
+        Err(("no_tmux", _)) => base,
+        Err(e) => return Err(e),
+    };
+    Ok(serde_json::json!({ "name": name }))
+}
+
 /// `--base` 与「已继承 `CLAUDE_CONFIG_DIR`」这两条路**不需要账号表** ——
 /// 读它就是白付一次 IO，还会把「这台机器没有账号库」变成一句多余的话。
 fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {

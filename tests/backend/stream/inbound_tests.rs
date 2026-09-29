@@ -432,13 +432,15 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "ping",
         "resolve",
         "acct-iso-cmd",
-        "ccm-probe", // 〔E2〕纯函数，普通 spawn
+        "ccm-probe",    // 〔E2〕纯函数，普通 spawn
+        "terminal-ssh", // 〔FIX4 · ⑬〕纯函数（校验 ＋ quote），普通 spawn
         "assets-sync",
         // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽：等远端 capture（真异步），本机那一跳自己挪到阻塞线程池。
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
-        "pubkey-push",   // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
+        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
@@ -561,6 +563,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        "tmux-name-mint", // 〔FIX4 · J7〕问一次会话快照 = 起一次 `tmux`
         // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -637,11 +640,14 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "acct-iso-cmd",
         // 〔E2〕`ccm-probe`：纯函数，普通 spawn。
         "ccm-probe",
+        // 〔FIX4 · ⑬〕`terminal-ssh`：纯函数，普通 spawn。
+        "terminal-ssh",
         "assets-sync",
         "mcp-sync-hub-preview",
         "mcp-sync-hub-apply",
-        "pubkey-push",   // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
+        "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
+        "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
@@ -717,6 +723,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        "tmux-name-mint",     // 〔FIX4 · J7〕问一次会话快照 = 起一次 `tmux`
         "ssh-config-aliases", // 〔MIG-1〕读一份文件
         "ssh-config-import",  // 〔MIG-1〕逐个起 `ssh -G`
         "ssh-config-resolve", // 〔MIG-1〕起一次 `ssh -G`

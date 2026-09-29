@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(() => Promise.resolve()), 
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../src/tmux-control", () => ({ capturePane: vi.fn() }));
 
+import { emit } from "@tauri-apps/api/event";
 import { showActionFailureToast } from "../src/error-toast";
 import { capturePane } from "../src/tmux-control";
 import {
@@ -100,5 +101,34 @@ describe("等它", () => {
       "等了 45 秒，devbox上没有报出这个会话。tmux 会话「cc-x」那一屏读不到：Error: 没有这个会话",
       "等了 45 秒，本机上没有报出这个会话。启动器的原话在那个终端窗口里，这边读不到。",
     ]);
+  });
+});
+
+/** 主会话 09-28 裁 FIX4 ④：「执行器回一个『等到了没有』的 promise，调用方等到才说」—— 带票的那件，主窗口等到 / 没等到都回一声。 */
+describe("FIX4 ④ 带票的等", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    toast.mockReset();
+    vi.mocked(emit).mockClear();
+    __resetArrivalsForTests();
+  });
+  afterEach(() => {
+    __resetArrivalsForTests();
+    vi.useRealTimers();
+  });
+  const done = () => vi.mocked(emit).mock.calls.filter((c) => c[0] === "launch-arrival-done").map((c) => c[1]);
+
+  it("等到了 ⇒ 回 arrived:true、`arrived: null` 时自己不说话；没等到 ⇒ 回 arrived:false 并照常说没看到", async () => {
+    watchArrival(spec({ match: { sid: "s1" }, arrived: null, ticket: "T1" }));
+    noteLive("devbox", "s1", seen(null));
+    expect(done()).toEqual([{ ticket: "T1", arrived: true }]);
+    expect(toast).not.toHaveBeenCalled();
+    watchArrival(spec({ match: { sid: "s2" }, arrived: null, ticket: "T2" }));
+    await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
+    expect(done()).toEqual([
+      { ticket: "T1", arrived: true },
+      { ticket: "T2", arrived: false },
+    ]);
+    expect(toast.mock.calls.map((c) => c[0])).toEqual(["命令发出去了，但没看到会话起来"]);
   });
 });
