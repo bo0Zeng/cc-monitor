@@ -23,7 +23,7 @@
 
 use super::*;
 use crate::history::history_annotations::{load_at, Entry};
-use crate::history::remote_ask::{Remote, Table as ReachTable};
+use crate::stream::remote_ask::{Remote, Table as ReachTable};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -219,7 +219,7 @@ impl Remote for Far {
 }
 
 fn reach(table: &ReachTable) {
-    crate::history::remote_ask::answer_reach_with(
+    crate::stream::remote_ask::answer_reach_with(
         &json!({"origin": "dev", "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}}),
         table,
     )
@@ -239,8 +239,8 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
     assert_eq!(
         *far.seen.lock().unwrap(),
         vec![
-            crate::history::remote_ask::command_line(&["--list-projects"]),
-            crate::history::remote_ask::command_line(&["--session-accounts"]),
+            crate::stream::remote_ask::command_line(&["--list-projects"]),
+            crate::stream::remote_ask::command_line(&["--session-accounts"]),
         ],
         "N 个项目 ⇒ 对面恰被问一次清单 ＋ 一次判活（为了拿星标补问 --list-sessions 就会在这里红）"
     );
@@ -258,9 +258,9 @@ async fn one_remote_is_asked_exactly_once_with_the_old_subcommands() {
         vec![
             format!(
                 "{} <stdin [\"-w-alpha\"]>",
-                crate::history::remote_ask::command_line(&["--list-sessions", "--stdin-line"])
+                crate::stream::remote_ask::command_line(&["--list-sessions", "--stdin-line"])
             ),
-            crate::history::remote_ask::command_line(&["--session-accounts"]),
+            crate::stream::remote_ask::command_line(&["--session-accounts"]),
         ]
     );
 }

@@ -1,7 +1,7 @@
 //! 设计/01 §3.5：「观测方沿它本来就拥有的那条连接去拉被观测方」·「不是经前端中继」（主会话 09-28 裁：两台之间那几件，
 //! 界面只问本机一次，本机常驻后端当枢纽向来源那台取、向被写那台写；被写那台照旧自己判 CAS、`stale` 就停）。
 use super::*;
-use crate::history::remote_ask::{register, Remote, Table};
+use crate::stream::remote_ask::{register, Remote, Table};
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -229,10 +229,10 @@ impl Remote for CodedRemote {
         _dial: &'a Value,
         _command: String,
         _stdin: Option<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, crate::history::remote_ask::Said>> + Send + 'a>>
+    ) -> Pin<Box<dyn Future<Output = Result<String, crate::stream::remote_ask::Said>> + Send + 'a>>
     {
         Box::pin(async {
-            Err(crate::history::remote_ask::Said {
+            Err(crate::stream::remote_ask::Said {
                 code: Some("stale".to_string()),
                 message: "盘上那份在看差异之后被改过".to_string(),
             })

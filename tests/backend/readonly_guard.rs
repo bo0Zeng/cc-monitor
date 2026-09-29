@@ -254,23 +254,23 @@ mod tests {
         ),
         (
             "history",
-            "〔MOD〕从 crate 根归进来的三件（纯搬家），各自归 backend-core 的理由原样： \
+            "〔MOD〕从 crate 根归进来的两件（纯搬家），各自归 backend-core 的理由原样： \
              `history_join` —— 〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
              pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为主会话 09-25 裁「join 只一个家，在本机常驻后端」。\
              **零写盘**：注解只读（`history_annotations::load`） · \
              `history_annotations` —— 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
              `history-last-accounts`。它归 backend-core 是因为主会话 09-25 裁「读写者换成本机常驻后端」；写的只有那一份 \
-             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写 · \
-             `remote_ask` —— 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
-             帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
-             可达表只在本进程内存里",
+             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
             "stream",
-            "〔MOD〕进后端的口 ① 帧面（从 crate 根归进来，纯搬家），各自的理由原样： \
+            "〔MOD〕进后端的口 ① 帧面 ＋ 跨机问答原语（从 crate 根归进来，纯搬家），各自的理由原样： \
              `wire` —— 线上协议的帧定义与编解码 · \
              `inbound` —— 流连接上的入方向（信封 / 分派 / 取消） · \
              `listen` —— 常驻监听口的纯判定（接受循环在 main.rs） · \
+             `remote_ask` —— 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
+             帧面 `remote-reach`（跨机问答原语，主会话裁归这里）。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
+             可达表只在本进程内存里 · \
              `tap` —— 〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
              它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
              **零写盘**：只在内存里递事件",

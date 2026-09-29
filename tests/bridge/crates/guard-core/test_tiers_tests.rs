@@ -572,7 +572,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/agents/codex/history_tests.rs", // 〔C4d〕Codex 历史清单那一面（临时目录上的会话树）
     "tests/backend/history/history_annotations_tests.rs", // 〔C4d〕注解读写（夹具拷进临时目录真写真读）
     "tests/backend/history/history_join_tests.rs", // 〔C4d〕历史跨机 join（临时目录上的记录树 ＋ 替身对面）
-    "tests/backend/history/remote_ask_tests.rs", // 〔C4d〕问远端那一跳（真 sh 读回引号 ＋ 替身对面）
+    "tests/backend/stream/remote_ask_tests.rs", // 〔C4d〕问远端那一跳（真 sh 读回引号 ＋ 替身对面）
     "tests/backend/assets/skill_install_tests.rs", // 〔AS2〕
     "tests/backend/common/fs_tests.rs",
     "tests/backend/control/capture_pane_tests.rs",
