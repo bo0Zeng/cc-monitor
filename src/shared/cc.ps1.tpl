@@ -3,8 +3,7 @@
 # 文档: https://github.com/bo0Zeng/cc-monitor
 
 function __ccm_bind {
-    # 在这个 PowerShell session 里向 cc-monitor 注册 (PS_PID -> 当前 console hwnd) 映射。
-    # 已注册 + 进程指纹一致 → 直接返回（avoid title flicker on every invocation）。
+    # 把这个 PowerShell 窗口登记给 cc-monitor，之后 Tab ↗ 能切到它。已经登记过就直接返回。
     $ccmDir = {{MONITOR_DATA_DIR}}
     $regFile = Join-Path $ccmDir "ps-registry\$PID.json"
     $autoLaunchFile = Join-Path $ccmDir 'auto-launch.json'
@@ -22,7 +21,7 @@ function __ccm_bind {
         } catch {}
     }
 
-    # v1.7.1：可选 auto-launch monitor（用户在 monitor UI 里 toggle 开启）
+    # 设置里勾了「用 cc 启动 claude 时自动打开 monitor」：monitor 没在跑就把它启动起来。
     if (Test-Path $autoLaunchFile) {
         try {
             $alCfg = Get-Content $autoLaunchFile -Raw -ErrorAction Stop | ConvertFrom-Json
@@ -39,11 +38,7 @@ function __ccm_bind {
                         }
                     } catch {}
                     if (-not $running) {
-                        # 传 --background → monitor 启动时不抢前台焦点（窗口仍可见，但不从
-                        # 当前终端偷焦点，用户接着敲 claude 不被打断）。手动双击启动不带此
-                        # 参数，仍正常置前。
-                        # v2：不再死等 2s——绑定等待循环本身"好了就走"（deadline 3s 覆盖
-                        # monitor 启动 + 启动时 drain ps-await），起得快就不用白等。
+                        # --background：monitor 在后台启动，不抢这个终端的焦点。
                         Start-Process -FilePath $monPath -ArgumentList '--background' -ErrorAction SilentlyContinue | Out-Null
                     }
                 }
@@ -56,24 +51,17 @@ function __ccm_bind {
     try { New-Item -ItemType Directory -Path $awaitDir -Force -ErrorAction Stop | Out-Null } catch {}
     $awaitFile = Join-Path $awaitDir "$PID.json"
 
-    # v2 竞态修复：**先设窗口标题、再写 await 文件**。monitor 的 notify 在文件落地
-    # 瞬间就会 EnumWindows 找 marker——旧顺序（先写文件后设标题）下 monitor 扫得越快
-    # 越容易"找不到窗口"，把 await 删掉走失败路径，绑定成败全凭时序运气（v2.21 实测：
-    # 每个新 shell 首次 cc 固定烧满超时）。
+    # 先设窗口标题、再写登记文件：monitor 一看到登记文件就按这个标题找窗口。
     $oldTitle = $Host.UI.RawUI.WindowTitle
     $Host.UI.RawUI.WindowTitle = $marker
 
-    # v1.7.8：PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM，monitor 端 serde_json
-    # 不剥 BOM 解析失败。这里用 .NET WriteAllText + UTF8Encoding($false) 显式无 BOM。
-    # （v1.7.8 monitor 也加了剥 BOM 兜底，所以 v1.7.8 用户即使用老模板也能 work）
+    # 用不带 BOM 的 UTF-8 写（PowerShell 5.1 的 Out-File 会写 BOM）。
     $json = @{ ps_pid = $PID; marker = $marker; proc_start = "$procStart" } |
         ConvertTo-Json -Compress
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($awaitFile, $json, $utf8NoBom)
 
-    # v2：deadline 800ms → 3s（覆盖 monitor 冷启动；循环"好了就走"，正常绑定仍是
-    # 几十 ms 量级）；退出条件加"registry 已落地且指纹匹配"——不依赖 await 删除这
-    # 一种信号，monitor 任何清理时序下注册一落地就返回。
+    # 最多等 3 秒，登记好了就走。
     $deadline = (Get-Date).AddMilliseconds(3000)
     $bound = $false
     while ((Test-Path $awaitFile) -and ((Get-Date) -lt $deadline)) {
@@ -99,7 +87,6 @@ function __ccm_bind {
     }
 }
 {{CC_FUNCTION_BLOCK}}
-# 这一行让 cc-monitor「别名」那一块写的那份文件自动接上（它是 cc-monitor 自己的文件，随时可删；没生成过就什么都不做）。
-# 与 POSIX 别名块最后那一行同一件事：接上别名文件的那一行只住别名块里，cc-monitor 不另往 $PROFILE 里写第二处。
+# 接上 cc-monitor「别名」那一块写的别名文件（没生成过就什么都不做）。
 if (Test-Path -LiteralPath "$HOME\.cc-monitor\aliases.ps1") { . "$HOME\.cc-monitor\aliases.ps1" }
 # === cc-monitor END ===
