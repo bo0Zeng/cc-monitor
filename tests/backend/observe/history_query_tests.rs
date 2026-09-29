@@ -346,6 +346,11 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
     );
     assert_eq!(framed.map(|v| v["rows"].clone()), Ok(serde_json::json!([])));
     assert_eq!(run(&tmp, &["--list-projects".to_string()]), 2);
+    // 〔WF2〕CLI 那一声带结构化的码（问它的那台后端认码画空态，不认话）。
+    assert_eq!(
+        list_projects_to(&tmp, &mut out).map_err(|(code, _)| code),
+        Err(Some(NO_RECORD_TREE))
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

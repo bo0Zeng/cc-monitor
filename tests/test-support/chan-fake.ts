@@ -523,7 +523,7 @@ export function withHistoryReads(
   answer: (cmd: string, args: Record<string, unknown>) => unknown,
 ): (cmd: string, args?: unknown) => Promise<unknown> {
   let remote:
-    { projects: Record<string, unknown>[]; failedHosts: string[] } | "failed" =
+    { projects: Record<string, unknown>[]; failedHosts: string[]; emptyHosts?: string[] } | "failed" =
     {
       projects: [],
       failedHosts: [],
@@ -546,6 +546,7 @@ export function withHistoryReads(
           failedHosts: (Array.isArray(r.failedHosts)
             ? r.failedHosts
             : []) as string[],
+          emptyHosts: (Array.isArray(r.emptyHosts) ? r.emptyHosts : []) as string[],
         };
       } catch {
         remote = "failed";
@@ -555,6 +556,8 @@ export function withHistoryReads(
       for (const p of remote.projects)
         if (typeof p.origin === "string") origins.add(p.origin);
       for (const h of remote.failedHosts) origins.add(h);
+      // 〔WF2〕答了、但一个项目都没有的那几台（`emptyHosts`，可缺）也是台。
+      for (const h of remote.emptyHosts ?? []) origins.add(h);
       return [...origins];
     }
     if (cmd === "chan_call") {
