@@ -148,7 +148,7 @@ pub(crate) fn answer_launch(args: &Value) -> EndpointAnswer {
 pub(crate) fn launch_relay(args: &Value) -> Result<Option<String>, (&'static str, String)> {
     launch_relay_with(
         args,
-        &super::file_face::rows_at(&super::file_face::machine_path()),
+        &super::file_face::machine_rows(),
         &crate::relay::our_relay_listening,
     )
 }
@@ -212,7 +212,7 @@ pub(crate) fn launch_relay_with(
 pub(crate) fn answer_routing(args: &Value) -> EndpointAnswer {
     answer_routing_with(
         args,
-        &super::file_face::rows_at(&super::file_face::machine_path()),
+        &super::file_face::machine_rows(),
         &crate::relay::our_relay_listening,
     )
 }

@@ -828,7 +828,7 @@ mod tests {
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
              不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
-             只建 `claudecode-frontend/` 那一层目录；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
+             只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
         ),
         (
             "assets/asset_catalog.rs",

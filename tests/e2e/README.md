@@ -10,7 +10,7 @@
   - 状态快照:`Ctrl+Alt+F9` **或中键点状态栏**(headless 用——xdotool 的 XTEST
     合成键盘进不了 WebKitGTK webview,鼠标事件畅通)→ `[e2e] snapshot
     {sid,scrollTop,distBottom,pending,midBuffer,timeline,foldWraps,sentinel,err}`。
-- 日志:`~/.claude/claudecode-frontend/logs/monitor.<日期>.log`,grep `fe_perf`。
+- 日志:`~/.cc-monitor/logs/monitor/monitor.<日期>.log`,grep `fe_perf`。
 - 抖动指标 = **密度绊线**(反转/帧):守卫 snap 的整数 scrollTop 对分数行高布局有
   ±亚像素合法舍入摆动,幅度与 §21 病态同级、密度差一个量级——健康 ≈0.12-0.16,
   病态 ≈1.0,断言 ≤0.4(标定 2026-07-08,详 src/frontend/ui/e2e-probe.ts 头注释)。

@@ -1,5 +1,5 @@
 /**
- * 主题层：把用户偏好（颜色 / 字体 / 字号）持久化到 ~/.claude/claudecode-frontend/config.json
+ * 主题层：把用户偏好（颜色 / 字体 / 字号）持久化到 ~/.cc-monitor/config.json
  * 并实时映射到 :root 上的 CSS 变量。
  *
  * 解耦原则：

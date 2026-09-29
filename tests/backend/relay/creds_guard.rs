@@ -214,6 +214,12 @@ mod tests {
             "文件读不动 / 解析不了",
         ),
         (
+            // 〔DATA-HOME · 主会话裁〕同一个头、另一处：推不出那份文件在哪（`CCM_DATA_DIR` 相对 / 没有家目录）—— 装表那一刻说一次。
+            "accounts/upstream_select/creds.rs",
+            "[apikey] credentials problem:",
+            "推不出凭据文件在哪（`creds::announce_unresolved`）",
+        ),
+        (
             "accounts/upstream_select/creds.rs",
             "[apikey] credentials permissions too wide:",
             "权限过宽（`KS11`）",

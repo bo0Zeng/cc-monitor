@@ -46,7 +46,8 @@ setup() {
   fp="$(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}')"
   [ -n "$fp" ] || die "取不到本机 ed25519 host key 指纹"
 
-  mkdir -p "$SBX/.claude/claudecode-frontend" "$RIG"
+  mkdir -p "$SBX/.cc-monitor" "$RIG"
+  chmod 700 "$SBX/.cc-monitor"   # 数据目录与后端的家同一个，只给本人（V160）
   cp "$REPO/tests/e2e/backend-wrapper.sh" "$RIG/backend-wrapper.sh"
   chmod +x "$RIG/backend-wrapper.sh"
   # 🔴 前提 2：文件名逐字是 `.build_id`（同目录隐藏文件），**不是** `<二进制名>.build_id`。
@@ -78,7 +79,7 @@ cfg = {
         }],
     }
 }
-p = f"{sbx}/.claude/claudecode-frontend/config.json"
+p = f"{sbx}/.cc-monitor/config.json"
 with open(p, "w", encoding="utf-8") as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
 print(f"  写了 {p}")
@@ -100,7 +101,7 @@ PY
 }
 
 dev() {
-  [ -f "$SBX/.claude/claudecode-frontend/config.json" ] || die "先跑 setup"
+  [ -f "$SBX/.cc-monitor/config.json" ] || die "先跑 setup"
   cd "$REPO"
   # 前提 1：RUSTUP_HOME / CARGO_HOME 显式指回真路径（它们不是账号数据）。
   DISPLAY="$DISP" HOME="$SBX" CLAUDE_CONFIG_DIR="$SBX/.claude" \
@@ -110,7 +111,7 @@ dev() {
 
 run() {
   local log
-  log="$(ls -t "$SBX"/.claude/claudecode-frontend/logs/monitor.*.log 2>/dev/null | head -1 || true)"
+  log="$(ls -t "$SBX"/.cc-monitor/logs/monitor/monitor.*.log 2>/dev/null | head -1 || true)"
   [ -n "$log" ] || die "沙箱里没有 monitor 日志 —— dev 实例在跑吗？（bash $0 dev）"
   echo "  日志：$log"
   local rc=0

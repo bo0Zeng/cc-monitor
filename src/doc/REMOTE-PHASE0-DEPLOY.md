@@ -200,7 +200,7 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 
 ## 7. 在 cc-monitor 里配置（设置面板 → 远端模式，S6）
 
-设置面板「远端 (SSH)」分组里**点「+ 添加机器」**为每台远端各填一组字段（多机 #30，写进 `~/.claude/claudecode-frontend/config.json` 的 `remote.hosts[]` 数组；旧的单 `remote` 对象仍兼容读、保存时自动升级成数组）。下表是**单台**字段，多台就重复填多张卡片：
+设置面板「远端 (SSH)」分组里**点「+ 添加机器」**为每台远端各填一组字段（多机 #30，写进 `~/.cc-monitor/config.json` 的 `remote.hosts[]` 数组；旧的单 `remote` 对象仍兼容读、保存时自动升级成数组）。下表是**单台**字段，多台就重复填多张卡片：
 
 | 字段 | 例（WSL / 路径 A） | 例（NanoPi / 路径 B） |
 |---|---|---|

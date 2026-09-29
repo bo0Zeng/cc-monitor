@@ -4,7 +4,7 @@
  * # 为什么住 `config.json` 而不是 localStorage
  *
  * `data-section` 把两个存储分得很清：`config.json` 住 `monitorDataDir`
- * （`~/.claude/claudecode-frontend/`，**NSIS 卸载默认不清**，用户元数据保留）；
+ * （`~/.cc-monitor/`，**NSIS 卸载默认不清**，用户元数据保留）；
  * 而 localStorage 住 **WebView2 用户数据目录**，与 `cache` / `cookies` / `IndexedDB` 同处
  * ——那段文案逐字：「想彻底清除（星标 / 颜色配置 / WebView2 cache 等）请**手动删除上面的目录**」。
  *
