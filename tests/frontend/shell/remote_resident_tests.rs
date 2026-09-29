@@ -9,35 +9,42 @@ fn hello(build: &str) -> String {
     )
 }
 
-/// H6：比手上这一版旧 ⇒ 换一次；换过之后仍旧 ⇒ 照接（不来回）；同版 / 比我新 / 不可比 ⇒ 照接；不是 hello ⇒ 不是我们的。
+/// 〔THIN〕hello 只读线上形状：是 hello ⇒ 那台报的 build（缺 ⇒ 空串，交本机后端判）；不是 hello ⇒ 不是我们的。
+/// 「换一次 · 只升不降」那张真值表随判定进了本机常驻后端（`tests/backend/control/deploy_plan_tests.rs::the_verdict_replaces_only_upward_and_only_once`）。
 #[test]
-fn the_hello_decides_replace_only_upward_and_only_once() {
+fn the_hello_is_read_for_its_build_and_nothing_else() {
+    assert_eq!(hello_build(&hello("p4a-x")), Ok("p4a-x".to_string()));
+    assert_eq!(hello_build(r#"{"kind":"hello","v":1}"#), Ok(String::new()));
+    assert!(hello_build(r#"{"attach":"refused"}"#).is_err());
+}
+
+/// 〔THIN〕本机常驻后端的答严格收：恰 `{action, older}`，`action` 只认 `replace` / `attach`（金样同 `IPC-PROTOCOL.md` 那一节）。
+#[test]
+fn the_verdict_answer_is_read_strictly() {
+    use serde_json::json;
     assert_eq!(
-        hello_decision(&hello("p4a-x"), "p4j-y", false),
-        HelloDecision::Replace
+        decode_verdict(&json!({"action": "replace", "older": true})),
+        Ok(Verdict {
+            replace: true,
+            older: true
+        })
     );
     assert_eq!(
-        hello_decision(&hello("p4a-x"), "p4j-y", true),
-        HelloDecision::Attach,
-        "换过一次还旧就再换 —— 两个 monitor 会来回互杀"
+        decode_verdict(&json!({"action": "attach", "older": false})),
+        Ok(Verdict {
+            replace: false,
+            older: false
+        })
     );
-    assert_eq!(
-        hello_decision(&hello("p4j-y"), "p4j-y", false),
-        HelloDecision::Attach
-    );
-    assert_eq!(
-        hello_decision(&hello("p5a-z"), "p4j-y", false),
-        HelloDecision::Attach,
-        "比我新的被换掉了 —— 部署只升不降"
-    );
-    assert_eq!(
-        hello_decision(&hello("dev"), "p4j-y", false),
-        HelloDecision::Attach
-    );
-    assert!(matches!(
-        hello_decision(r#"{"attach":"refused"}"#, "p4j-y", false),
-        HelloDecision::NotOurs(_)
-    ));
+    for bad in [
+        json!({"action": "keep", "older": false}),
+        json!({"action": "attach"}),
+        json!({"action": "attach", "older": "no"}),
+        json!({"action": "attach", "older": false, "extra": 1}),
+        json!(null),
+    ] {
+        assert!(decode_verdict(&bad).is_err(), "{bad}");
+    }
 }
 
 fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::ssh_source::RemoteExec {

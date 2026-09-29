@@ -2135,6 +2135,28 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 `io_failed`（stat 落点那一问没问成）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 扫不动 —— 显式失败、不覆盖，出路是机器页「卸载后端」）。
 ⚠ **CLI 面也有它**（`--deploy-plan`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：一次性进程自己新拨一条 SSH，真正的用法是常驻后端的帧面。
 
+#### `resident-verdict`：远端常驻后端要不要换一次（THIN，09-29；纯判定）
+
+「判定只在后端」（`设计/00 §1.2`）：monitor 接远端常驻后端时读到 hello，把 hello 里的 `build_id` 交给**本机常驻后端**问「换还是接」，
+只照答办（`remote_resident::attach`）。规矩与 `deploy-plan` 同一家：`BUILD_ID` 可比序只升不降（HX2 D-b），那台比手上这一版旧 ⇒ 换一次
+（`--resident-ensure --replace`），换过一次仍旧 ⇒ 照接；同一版 · 更新 · 序解不出 ⇒ 接。不碰盘、不拨号。
+
+```text
+→ {"id":"v1","cmd":"resident-verdict","args":{"mine":"p5a-x","theirs":"p4z-y","replaced":false}}
+← {"kind":"reply","id":"v1","ok":true,"data":{"action":"replace","older":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `mine` | → | monitor 手上这一版后端自报的身份（非空） |
+| `theirs` | → | 那台 hello 报的 `build_id`（缺 ⇒ 空串） |
+| `replaced` | → | 这一趟是不是已经换过一次 |
+| `action` | ← | `replace`（换掉再接）· `attach`（接上它） |
+| `older` | ← | 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」） |
+
+**错误码**：`bad_args`（`mine` 缺或空 · 缺 `theirs` / `replaced`）。
+⚠ **CLI 面也有它**（`--resident-verdict`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：真正的用法是本机常驻后端的帧面。
+
 #### `history-annotate`：改一条历史注解（C4d · 第四波 4B，2026-09-25）
 
 历史注解（星标 / 改名 / 隐藏 / 上次用哪个号起这个会话）的**读写者是本机常驻后端**（主会话 09-25 裁：文件留在原处、同一路径，不迁移、一条不丢）。

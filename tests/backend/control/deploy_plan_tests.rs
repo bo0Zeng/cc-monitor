@@ -333,3 +333,49 @@ async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
     assert_eq!(plan_json(&p)["ack"], fake_ack(1));
 }
+
+// ═══ 〔THIN〕`resident-verdict`：远端常驻后端 hello 的新旧 ═══════════════════════════════════
+// 要求住址：`设计/00 §1.2`「共享 crate 只放契约，判定只在后端」· `设计/00 §2.2`（monitor 里的共享判定残留：远端常驻换不换）。
+// 从 monitor `remote_resident_tests.rs` 那一条（`hello_decision` 的真值表）搬来：判定进了本机常驻后端，真值表跟着判定走。
+
+/// 只升不降、只换一次：那台旧 ⇒ 换（换过一次就接）；同一版 · 更新 · 序解不出 ⇒ 接。`older` 与 `replaced` 无关。
+#[test]
+fn the_verdict_replaces_only_upward_and_only_once() {
+    // (那台报的, 换过没有) ⇒ (换, 那台旧)
+    for (theirs, replaced, want) in [
+        ("p4a-x", false, (true, true)),
+        ("p4a-x", true, (false, true)),
+        ("p4j-y", false, (false, false)),
+        ("p5a-z", false, (false, false)),
+        ("dev", false, (false, false)),
+        ("", false, (false, false)),
+    ] {
+        let v = resident_verdict("p4j-y", theirs, replaced);
+        assert_eq!((v.replace, v.older), want, "{theirs} replaced={replaced}");
+    }
+}
+
+/// 帧面那一格：`{action, older}` 恰这两个键；缺 `mine`（或空）· `theirs` · `replaced` ⇒ `bad_args`。
+#[test]
+fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
+    let got =
+        answer_resident_verdict(&json!({"mine": "p4j-y", "theirs": "p4a-x", "replaced": false}))
+            .expect("答得出");
+    assert_eq!(got, json!({"action": "replace", "older": true}));
+    let got =
+        answer_resident_verdict(&json!({"mine": "p4j-y", "theirs": "p4a-x", "replaced": true}))
+            .expect("答得出");
+    assert_eq!(got, json!({"action": "attach", "older": true}));
+    for bad in [
+        json!({"theirs": "p4a-x", "replaced": false}),
+        json!({"mine": "", "theirs": "p4a-x", "replaced": false}),
+        json!({"mine": "p4j-y", "replaced": false}),
+        json!({"mine": "p4j-y", "theirs": "p4a-x"}),
+    ] {
+        assert_eq!(
+            answer_resident_verdict(&bad).map_err(|(c, _)| c),
+            Err("bad_args"),
+            "{bad}"
+        );
+    }
+}

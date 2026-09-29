@@ -249,6 +249,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
     "remote-probe",
     "remote-reach",
+    // 〔THIN〕远端常驻后端 hello 的新旧（换 / 接）由本机常驻后端判，monitor 只照做（与 `deploy-plan` 一家）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "resident-verdict",
     "resolve",
     // 〔RESYNC · V149〕手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
     "resync",
@@ -1370,6 +1372,22 @@ pub const REGISTRY: &[CommandSpec] = &[
                 );
                 crate::control::deploy_plan::answer(&r.args, &facing)
                     .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔THIN〕**远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
+    //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端，`设计/00 §1.2`）。
+    CommandSpec {
+        name: "resident-verdict",
+        doc_anchor: Some("#### `resident-verdict`"),
+        codes: &["bad_args"],
+        fields: &["action", "mine", "older", "replaced", "theirs"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::deploy_plan::answer_resident_verdict(&r.args)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })

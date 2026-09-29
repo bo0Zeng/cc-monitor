@@ -780,6 +780,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--capture-pane",
     // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
+    // 〔THIN〕远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--resident-verdict",
     // 〔MOD〕这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--drift-report",
     // 〔MIG-3b 续〕全景写（帧面 `panorama-edit` 的 CLI 面，自动派生）。
