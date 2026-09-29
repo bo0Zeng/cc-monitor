@@ -79,6 +79,17 @@ describe("〔RESYNC〕手动对齐", () => {
     expect(() => decodeResynced("aya", { ...golden.reply, added: -1 })).toThrow(ControlError);
   });
 
+  /** 主会话 09-28 裁 FIX4 ⑥（V149 手动兜底）：「本机 PATH 探针的 5 分钟缓存在『重新对齐』时作废，不再多等」。 */
+  it("FIX4 ⑥：本机整机对齐那一下作废本机 ccm 那份缓存；远端 · 只对一个会话的不碰", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => (cmd === "chan_call" ? chanReply(golden.reply) : { ok: null, summary: "" }));
+    await resync("aya");
+    await resync("<local>", golden.request.sid);
+    await resync("<local>");
+    await flush();
+    const probes = invokeMock.mock.calls.filter(([cmd]) => cmd === "local_ccm_entry_status");
+    expect(probes).toEqual([["local_ccm_entry_status", { fresh: true }]]);
+  });
+
   it("★ 认得出关卡 2：真 `killSession` 被 `wrong_owner` 拒 ⇒ 认；`no_such_session` ⇒ 不认", async () => {
     const thrown = async (code: string): Promise<unknown> => {
       invokeMock.mockImplementation(async () => {
