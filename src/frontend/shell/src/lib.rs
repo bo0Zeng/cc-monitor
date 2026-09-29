@@ -89,7 +89,11 @@ mod kill_name_tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/backend_client_guard_tests.rs"]
 mod backend_client_guard;
+// 〔THIN 第 5 件〕monitor 生产段只许依赖契约类共享 crate（`设计/00 §1.2`）。
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
+mod contract_crate_guard;
 mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // 第三方 API key 那份文件在本机的「它在哪」（`resolve_path`）；〔GP1 · US1〕写侧与读侧掩码都不在 monitor 了（本机常驻后端写、答）
 #[cfg(test)]

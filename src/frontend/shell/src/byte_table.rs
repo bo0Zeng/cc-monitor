@@ -37,8 +37,7 @@
 //   本机常驻后端出部署计划（`deploy-plan`）要同一份判定。本文件留下的是**槽**（这一版带着哪几份字节）与取字节口。
 // 〔THIN〕表 B 的承诺是裁决（`设计/00 §1.2`「判定只在后端」）⇒ 生产段只剩本机后端引导那一处经 [`choose`] 用它（报备，见头注）；
 //   全景推字节「那台要哪一格」改问本机常驻后端（帧命令 `deploy-slot`），`uname` 那一问与它的解读不再住 monitor。
-#[cfg(test)]
-pub(crate) use deploy_core::{key_from_uname, key_of, promised, UNAME_CMD};
+//   判据那几份（`key_of` · `key_from_uname` · `promised`）在测试档里直接 `use deploy_core::…`，本文件生产段不再导出判定名。
 pub(crate) use deploy_core::{Arch, Key, Os, Product, Refusal, Route, LINES};
 
 /// 表里取到的一份字节。
