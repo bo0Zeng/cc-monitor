@@ -1,10 +1,10 @@
-//! 用户配置 R/W —— `~/.claude/work/config.json`。
+//! 用户配置 R/W —— `~/.cc-monitor/config.json`。
 //!
 //! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/frontend/ui/config.ts::CONFIG_KEY_OWNERS`），
 //! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。
 //!
-//! 配置文件位置走 `paths::resolve_config_path` —— monitor 自己的设置永远在
-//! 默认 `~/.claude/work/` 下，不跟随 `claudeDir` 字段变化。
+//! 配置文件位置走 [`resolve_config_path`] —— monitor 自己的设置永远在
+//! 默认 `~/.cc-monitor/` 下（V160：一台机器一个家，与后端同一个），不跟随 `claudeDir` 字段变化。
 //!
 //! 🔴 〔CFG1 · 4D〕**写 `config.json` 只有一个口：[`patch_config_at`]。** 整份替换那一形（旧 `save_config`）删了。 〔散文墓碑〕
 //!
@@ -31,7 +31,7 @@
 //!
 //! ### 关于循环依赖
 //!
-//! monitor 自己的 config.json 始终保存在**默认位置** `~/.claude/work/config.json`，
+//! monitor 自己的 config.json 始终保存在**默认位置** `~/.cc-monitor/config.json`，
 //! **不**跟随 claudeDir 变化。这样：
 //!   - 读 monitor 配置不需要先解析 claudeDir
 //!   - 用户切换 Claude 数据目录后，monitor 的 theme/字体设置不会丢
@@ -526,7 +526,7 @@ pub const DATA_DIR_ENV: &str = creds_core::store::DATA_DIR_ENV;
 
 /// Monitor 自己的 user-data 目录。
 ///
-/// 默认 `~/.claude/work/` —— **不跟随 `claudeDir` 变化**
+/// 默认 `~/.cc-monitor/`（V160）—— **不跟随 `claudeDir` 变化**
 /// （避免循环依赖、且保留用户设置在切换数据目录后仍存在）。
 ///
 /// # 🔴 那个 env 出口为什么必须有（`设计/99 §4.9.7 P17`）
@@ -578,7 +578,7 @@ pub fn monitor_data_dir_from(env_val: Option<&str>, home: Option<PathBuf>) -> Op
         }
         // 🔴 **不退回真 profile** —— 逐条理由住上面那一节。
         (Some(t), None) => tracing::warn!(
-            "{} 不是绝对路径（{}）—— 拒绝使用，也**不**退回 ~/.claude/work：                 那会让一趟以为自己被隔离了的自动化去写用户的东西",
+            "{} 不是绝对路径（{}）—— 拒绝使用，也**不**退回 ~/.cc-monitor：                 那会让一趟以为自己被隔离了的自动化去写用户的东西",
             DATA_DIR_ENV,
             t
         ),

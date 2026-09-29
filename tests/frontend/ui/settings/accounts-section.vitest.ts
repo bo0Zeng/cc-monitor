@@ -678,7 +678,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     return {
       configured: true,
       masked: "sk-a**********WXYZ",
-      path: "/h/.claude/work/apikey-credentials.json",
+      path: "/h/.cc-monitor/apikey-credentials.json",
       notice: null,
       problem: null,
       ...p,
