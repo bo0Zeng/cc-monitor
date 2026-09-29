@@ -5129,7 +5129,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/filewin/editor.rs", 3), // 〔F7c 收尾 09-24〕1 → 3（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）
         ("tests/frontend/shell/comm_boundary_registry_tests.rs", 3), // 〔RW1〕+2：sftp.rs 那一行的阻塞随 F11 清空 · 头注里那个公开名字
         ("tests/common/guard-core/lib_tests.rs", 1),
-        ("tests/frontend/shell/doc_claim_registry_tests.rs", 2), // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
+        ("tests/frontend/shell/doc_claim_registry_tests.rs", 3), // 〔THIN〕+1：U8c-2b-0 量法原先读的 `ssh_source` 转调壳删了，点旧名的散文挂墓碑 // 〔LOC1a〕+1：本机一次性 exec / 任务行解释 / 分叉 exec 那几条路删了，点旧名的散文挂墓碑
         ("tests/frontend/shell/filewin/entry_tests.rs", 2), // 〔MIG-3a · 09-28 裁 3〕1 → 2：旧名那一块随两条判据退役，新贴两块点它们
         ("tests/backend/assets/aliases/fence_tests.rs", 3), // 〔W5-ALIAS · 删 `fenced_block::apply` 那一族〕+2：序列那五条判据的墓碑（`apply` 两处） // 〔TL1 · 4C〕新：写规则那条的死值验说明点代装 rc 那一跳（已退役）的旧名
         // 🔴〔本机侧退役 2026-09-23〕`parent_dir` 只剩一个算法 ⇒ 那条判据改了名
@@ -5304,7 +5304,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/assets/acct_iso_install.rs", 1), // 〔MIG-3a · 09-28 预裁〕新贴：头注点当年 monitor 那条部署命令
         ("tests/frontend/ui/settings/acct-deploy.vitest.ts", 1), // 〔MIG-3a · 09-28 预裁〕新贴：`deriveAcctIsoDir` 那一组判据随函数删了
         ("src/frontend/shell/src/filewin/entry.rs", 2), // 〔MIG-3a · 09-28 裁 3〕新贴：开窗前那两问进窗口进程，monitor 侧三个函数退役
-        ("src/frontend/shell/src/quote_singleton_guard.rs", 2), // 〔FIX4 · ⑬〕1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-3a · 09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
+        ("src/frontend/shell/src/quote_singleton_guard.rs", 3), // 〔THIN〕2 → 3：病史里 `ssh_source` 那层转调壳随零生产调用删了，挂墓碑 // 〔FIX4 · ⑬〕1 → 2：开终端 ssh 外壳进本机后端，点旧名的散文挂墓碑 // 〔MIG-3a · 09-28 裁 2〕新贴：病史里那第五份 sq 随跑安装脚本退役
         // 〔FIX4 · `99 §2.1 ⑬`〕新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，
         //   新家头注点来历一块 · monitor 那侧判据原处各挂一块（六条搬走的期望 · 那个转发别名）。
         ("src/backend/dial/terminal.rs", 1),

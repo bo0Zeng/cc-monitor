@@ -703,12 +703,14 @@ fn each_registered_status_still_matches_reality() {
             // ⇒ 改成读真正的家，并加一条「文件必须存在」的断言，杜绝同样的静默空转。
             "posix-quote-has-one-home" => (
                 {
-                    let host = "src/frontend/shell/src/ssh_source.rs";
+                    // 〔THIN〕从前读 monitor `ssh_source.rs` 那层转调壳（`shell_quote`〔散文墓碑〕）转不转内核；那层壳零生产调用、删了
+                    //   ⇒ 量法改读家本身（唯一性另由 `quote_singleton_guard` 守）。
+                    let home = "src/common/shell-quote-core/src/lib.rs";
                     assert!(
-                        repo_root().join(host).is_file(),
-                        "量法读的 {host} 不存在 —— 读不到的文件只会静默返回空串"
+                        repo_root().join(home).is_file(),
+                        "量法读的 {home} 不存在 —— 读不到的文件只会静默返回空串"
                     );
-                    prod(host).contains("shell_quote_core::posix_quote")
+                    prod(home).contains("pub fn posix_quote(")
                 },
                 "Rust 侧的 POSIX quote 收在共享 crate（另有 `quote_singleton_guard` 单点守卫）",
             ),

@@ -266,10 +266,11 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
 // 〔MOD〕`remote_history.rs` 整份删了（最后一个函数 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令退役），它的测试文件里
 //   这一条与它无关的对照挪到这里。
 #[test]
-fn shell_quote_via_ssh_source() {
+fn shell_quote_via_the_shared_core() {
+    // 〔THIN〕`ssh_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。
     assert_eq!(
-        crate::ssh_source::shell_quote("/a/b c.jsonl"),
+        shell_quote_core::posix_quote("/a/b c.jsonl"),
         "'/a/b c.jsonl'"
     );
-    assert_eq!(crate::ssh_source::shell_quote("a'b"), r"'a'\''b'");
+    assert_eq!(shell_quote_core::posix_quote("a'b"), r"'a'\''b'");
 }
