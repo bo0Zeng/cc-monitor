@@ -5,9 +5,12 @@
 // 由 restart-cmd-driver.ts 在动态 import 真源之前 module.register 进来（tsx 转译钩子之上再叠一层）。
 const CORE = new URL("./core.mjs", import.meta.url).href;
 const TOAST = new URL("./error-toast.mjs", import.meta.url).href;
+// 〔FIX4 · ④〕换号重启等「那台报出会话起来了」：事件那一层换成站在主窗口位置的替身（`event.mjs` 头注）。
+const EVENT = new URL("./event.mjs", import.meta.url).href;
 
 export async function resolve(spec, ctx, next) {
   if (spec === "@tauri-apps/api/core") return { url: CORE, shortCircuit: true };
+  if (spec === "@tauri-apps/api/event") return { url: EVENT, shortCircuit: true };
   const r = await next(spec, ctx);
   if (r.url.endsWith("/error-toast.ts") || r.url.endsWith("/error-toast")) {
     return { url: TOAST, shortCircuit: true };
