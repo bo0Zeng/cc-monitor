@@ -40,6 +40,7 @@ import { historyCalls, withHistoryReads, type HistoryRead } from "../../../test-
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
 import { LS_KEYS } from "../../../../src/frontend/ui/local-storage";
 import { showActionFailureToast } from "../../../../src/frontend/ui/error-toast";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -293,5 +294,22 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     ).toBe("-w-alpha");
     // 本地项目那一问不带 origin（请求体里没有这一格 ⇒ 译回旧形参是 `<local>`）。
     expect(calls[0].origin).toBe("<local>");
+  });
+
+  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 H「历史页整页『加载失败』，lx 的历史也不显示」· 题面 WF2 第 4 条「不整页失败、不拖别的机器」。
+  it("本机那一问失败：出声一次，远端项目照常进列表（不整页失败）", async () => {
+    invokeMock.mockReset();
+    invokeMock.mockImplementation(withHistoryReads((cmd: string) => {
+      if (cmd === "list_history_projects") return Promise.reject(new Error("本机读不了"));
+      if (cmd === "list_remote_history_projects")
+        return Promise.resolve({ projects: [remoteProj("r1")], failedHosts: [] });
+      return Promise.resolve(undefined);
+    }));
+    const toast = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
+    toast.mockClear();
+    const view = new HistoryView();
+    await view.open();
+    expect((view as unknown as ViewInternals).projects.map((p) => p.origin)).toEqual(["hostA"]);
+    expect(toast.mock.calls.map((c) => c[0])).toEqual([copyText("history.refresh.localFailed")]);
   });
 });

@@ -15026,10 +15026,10 @@
       "zh": "部分远端的历史没加载上",
       "args": []
     },
-    "history.refresh.failed": {
-      "kind": "body",
-      "zh": "加载失败：{reason}",
-      "args": ["reason"]
+    "history.refresh.localFailed": {
+      "kind": "error",
+      "zh": "本机的历史没加载上",
+      "args": []
     },
     "history.refresh.noticeTitle": {
       "kind": "error",
@@ -18871,6 +18871,16 @@
       "kind": "error",
       "zh": "绑定本地端口 127.0.0.1:{port} 失败：{e}",
       "args": ["port", "e"]
+    },
+    "beHistory.dir.denied": {
+      "kind": "error",
+      "zh": "这台的会话记录目录 {path} 没有读权限",
+      "args": ["path"]
+    },
+    "beHistory.dir.unreadable": {
+      "kind": "error",
+      "zh": "这台的会话记录目录 {path} 读不了",
+      "args": ["path"]
     },
     "beUses.tunnel.unreachable": {
       "kind": "error",

@@ -398,18 +398,19 @@ export class HistoryView {
     this.listEl.replaceChildren();
     this.sessionCache.clear();
     this.loadingProjects.clear();
-    // 本地批：每次重扫。失败即整体失败（本地都读不了没得显示）。
-    let local: HistoryProject[];
+    // 本地批：每次重扫。〔WF2 · WIN3 读数 H〕本机读不了 ≠ 整页失败：说一声，本机那一段空着，远端照常加载。
+    let local: HistoryProject[] = [];
+    let localFailed: string | null = null;
     try {
       // 〔C4d〕问本机常驻后端（它并注解、判活、合成 Codex 项目）；注解没并上 ⇒ 说一声（星标 / 隐藏数显示成「不知道」）。
       const got = await fetchLocalProjects();
       local = got.projects;
       if (got.notice) showActionFailureToast(copyText("history.refresh.noticeTitle"), got.notice);
     } catch (e) {
-      if (seq === this.refreshSeq) this.statusEl.textContent = copyText("history.refresh.failed", { reason: historyReasonOf(e) });
-      return;
+      localFailed = historyReasonOf(e);
     }
     if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
+    if (localFailed !== null) showActionFailureToast(copyText("history.refresh.localFailed"), localFailed);
     // 先用「本地 + 已有远端缓存」渲染一帧（远端缓存命中时这就是最终态）。
     this.projects = [...local, ...(this.remoteCache?.projects ?? [])];
     this.renderList();
