@@ -58,7 +58,6 @@ import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
 import { LOCAL_ORIGIN } from "../backend-policy";
-import { hostOs } from "./host-os"; // S9：本机 OS 决定哪些组件适用
 import { noteLocalCcm } from "./machine-aliases"; // 〔FIX4〕本机 ccm 那一格的唯一写点
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
@@ -397,10 +396,9 @@ export class RemoteSection {
    * 〔FIX3 · `设计/99 §2.2 ㉔` · `15 §5.4 D5`〕**本机 `ccm` 那一格的写点**：两件都报 ——「我们那份装下来了」＋「登录 shell 里敲
    * `ccm` 走到的是不是它」。判定与那句话都在 monitor 的 Rust 一侧（`ccm_probe::local_ccm_cell`），这里只照记；
    * 说不清（`ok === null`）⇒ 不写。与 `noteLocalBackend` 同一种时机（打开设置面板重建列表时一次，只问本机）。
-   * Windows 本机这一格不适用（`readiness.notApplicable`），不问。
+   * 〔WF1 · ㉔〕Windows 本机同样问（新开的 PowerShell 里敲 `ccm` 走到哪）。
    */
   private async noteLocalCcm(): Promise<void> {
-    if (hostOs() === "windows") return;
     try {
       await noteLocalCcm(); // 写点只有 `machine-aliases.ts::noteLocalCcm` 一处（K-R117 S2 本机半）
     } catch {
@@ -467,7 +465,6 @@ export class RemoteSection {
       origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
       statusOf: readStatus,
       // S9：Windows 本机的启动器是「终端集成」那块，不是 POSIX 的 ccm。
-      hostOs: hostOs(),
     });
     const summary = summarizeGaps(gaps);
     this.gapsBox.replaceChildren();

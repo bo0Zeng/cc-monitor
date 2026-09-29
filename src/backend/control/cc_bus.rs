@@ -117,12 +117,8 @@ pub(crate) fn fixed_candidates(
 /// 那句话由通用口拼（它知道查过哪几处），本模块只给它 cc-bus 自己的那句尾巴。
 fn find(name: &str) -> Result<PathBuf, CmdErr> {
     let override_dir = std::env::var_os("CC_BUS_BIN_DIR").filter(|d| !d.is_empty());
-    let home = std::env::var_os("HOME").filter(|h| !h.is_empty());
-    let fixed = fixed_candidates(
-        override_dir.as_ref().map(Path::new),
-        home.as_ref().map(Path::new),
-        name,
-    );
+    let home = crate::platform::paths::home_dir();
+    let fixed = fixed_candidates(override_dir.as_ref().map(Path::new), home.as_deref(), name);
     crate::plugin::discover::find(name, &fixed, true, &NOT_INSTALLED_HINT)
         .map_err(|msg| ("not_installed", msg))
 }

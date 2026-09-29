@@ -72,14 +72,9 @@ pub fn resolve_home() -> PathBuf {
 
 /// 不看 `CLAUDE_CONFIG_DIR` 的那一格：`$HOME/.claude`（同 [`resolve_home`] 的退路）—— `ccm --base` 与「没选账号」时的家目录。
 pub fn default_home() -> PathBuf {
-    if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(HOME_DIR_NAME);
-    }
-    #[cfg(windows)]
-    if let Some(profile) = std::env::var_os("USERPROFILE") {
-        return PathBuf::from(profile).join(HOME_DIR_NAME);
-    }
-    PathBuf::from(HOME_DIR_NAME)
+    crate::platform::paths::home_dir()
+        .map(|h| h.join(HOME_DIR_NAME))
+        .unwrap_or_else(|| PathBuf::from(HOME_DIR_NAME))
 }
 
 /// 给了账号配置目录 ⇒ 就是它；没给 ⇒ `from_env` 时 [`resolve_home`]（看 `CLAUDE_CONFIG_DIR`），否则 [`default_home`]。

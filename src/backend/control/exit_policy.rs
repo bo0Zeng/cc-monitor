@@ -90,10 +90,11 @@ impl Read {
 /// 这台机器上那个文件的路径。家目录：`HOME`，没有再退 `USERPROFILE`（Windows）。
 /// 两个都没有 ⇒ `None`（调用方把它说成「读不出来」，**不猜一个路径**）。
 pub fn policy_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| std::env::var_os("USERPROFILE").filter(|h| !h.is_empty()))?;
-    Some(PathBuf::from(home).join(DIR_NAME).join(FILE_NAME))
+    Some(
+        crate::platform::paths::home_dir()?
+            .join(DIR_NAME)
+            .join(FILE_NAME),
+    )
 }
 
 /// 读一次 `path`。**每次调用都真去读盘**，没有任何记忆。

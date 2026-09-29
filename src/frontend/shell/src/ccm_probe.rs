@@ -120,7 +120,6 @@ const LOCAL_PROBE_TTL: std::time::Duration = std::time::Duration::from_secs(300)
 /// 与远端同款：`command -v` 找不到 → `NO_CCM` 哨兵 → `installed: false`，
 /// 调用方据此诚实降级回旧路。`bash` 本身跑不起来（罕见）也走这条 —— 探不到就当没装，
 /// 绝不让「探测失败」升级成「拉不起来」。
-#[cfg(not(windows))]
 pub(crate) fn probe_local_ccm() -> CcmProbeResult {
     // ★★ **锁不跨子进程**〔D 阶段补审 08-12〕。
     //
@@ -148,7 +147,6 @@ pub(crate) fn probe_local_ccm() -> CcmProbeResult {
 /// 本机实测一次 0.12–0.13s（`bash -lic` 那层要跑完用户的交互式 rc）。给到 5s
 /// 是留给「rc 里有 nvm/conda 这类慢初始化」的机器，而不是留给「rc 会卡住」的机器 ——
 /// 后者要的是**有个头**，不是等得更久。
-#[cfg(not(windows))]
 const LOCAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// 带超时地跑一次探测。**超时不是错误，是「当没装」** —— 调用方据此降级回旧路。
@@ -165,6 +163,61 @@ const LOCAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 #[cfg(not(windows))]
 pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
     probe_with(timeout, CCM_PROBE_CMD)
+}
+
+/// 〔WF1 · `99 §2.2 ㉔`〕Windows 那一形：新开一个 PowerShell 窗口时敲 `ccm` 走到哪（见 [`probe_via_fresh_powershell`]）。
+#[cfg(windows)]
+pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
+    probe_via_fresh_powershell(timeout)
+}
+
+/// 〔WF1 · ㉔〕Windows 上「新开一个终端窗口时的 PATH」：注册表里机器级 ＋ 用户级（展开之后）现拼 ——
+/// 本进程继承来的是 monitor 起的那一刻的那一份，用户刚在设置里加过的用户级 PATH 它看不到。
+#[cfg(any(windows, test))]
+const FRESH_PATH_PS: &str = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\
+(@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n";
+
+/// 〔WF1 · ㉔〕Windows 那一形的探测串，跑在**照常加载 profile** 的 PowerShell 里（`$PROFILE` 在哪、怎么加载由 PowerShell 自己答）。
+/// 输出与 [`CCM_PROBE_CMD`] 同形：名片 ＋ 空行 ＋ `at=<住址>`，找不到 ⇒ `NO_CCM`；住址：程序 ⇒ 它的路径，函数 / 别名 ⇒ 名字（同 `command -v`）。
+#[cfg(any(windows, test))]
+const CCM_PROBE_PS: &str = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\
+$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
+if ($c) { & ccm '--' '--ccm-probe'; ''; 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) } else { 'NO_CCM' }\n";
+
+/// 两跳：① 不读 profile 的那一个现拼 PATH（[`FRESH_PATH_PS`]）；② 带这份 PATH 起一个照常加载 profile 的，问 [`CCM_PROBE_PS`]。
+/// 与 POSIX 那一形（`bash -lic`）同一个等待与解析（[`capture_spawned`] · [`parse_probe_output`]）；哪一跳没成 ⇒ 当没装（同 POSIX）。
+#[cfg(windows)]
+fn probe_via_fresh_powershell(timeout: std::time::Duration) -> CcmProbeResult {
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    let Some(path) = capture_spawned(timeout, &|| {
+        let mut c = std::process::Command::new("powershell.exe");
+        c.args(["-NoProfile", "-NonInteractive", "-Command", FRESH_PATH_PS])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped());
+        spawn_managed_cmd(
+            &mut c,
+            ConsolePolicy::Hidden,
+            Lifetime::JobKillOnClose,
+            StderrSink::Null,
+        )
+    }) else {
+        return parse_probe_output("");
+    };
+    let path = path.trim().to_string();
+    probe_spawned(timeout, &|| {
+        let mut c = std::process::Command::new("powershell.exe");
+        c.args(["-NonInteractive", "-Command", CCM_PROBE_PS])
+            .env("PATH", &path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped());
+        // 三条策略同 POSIX 那一形：不闪窗口 · 超时收整棵（profile 里起了什么不知道）· 有用的字节只在 stdout。
+        spawn_managed_cmd(
+            &mut c,
+            ConsolePolicy::Hidden,
+            Lifetime::JobKillOnClose,
+            StderrSink::Null,
+        )
+    })
 }
 
 /// [`probe_local_ccm_uncached`] 的内层。**命令是参数只为了让判据能喂一个「一定挂住」的串**；
@@ -233,9 +286,17 @@ fn probe_spawned(
     timeout: std::time::Duration,
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
 ) -> CcmProbeResult {
+    parse_probe_output(&capture_spawned(timeout, spawn).unwrap_or_default())
+}
+
+/// 起它、等它（带上限）、读它的 stdout。起不来 / 超时 / 读坏了 ⇒ `None`（**不采信半截输出**，理由见下面两支）。
+fn capture_spawned(
+    timeout: std::time::Duration,
+    spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
+) -> Option<String> {
     use std::io::Read;
     let Ok(mut child) = spawn() else {
-        return parse_probe_output("");
+        return None;
     };
     // ⚠ 读线程必须在**等之前**起：管道缓冲写满时子进程会阻塞在 write 上，
     // 那时再怎么等都等不到它退出 —— 「等它退出再读」是个会自锁的顺序。
@@ -273,15 +334,15 @@ fn probe_spawned(
             "本机 ccm 探测：读它的输出出错（{e}）—— 这一次按没装处理，但那不是「确认没装」"
         );
         // 读坏了的那一截同超时那一形：**不采信半截输出**（理由见下面超时那一支）。
-        return parse_probe_output("");
+        return None;
     }
     if timed_out {
         // 超时那次**不采信半截输出**：`parse_probe_output` 只看首行，
         // 半截的首行恰好可能是 `name=ccm` 而 `capabilities=` 还没来 ⇒ 会被读成「装了但没能力」，
         // 那是个比「没装」更难查的假象。
-        return parse_probe_output("");
+        return None;
     }
-    parse_probe_output(&String::from_utf8_lossy(&buf))
+    Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
 // 🪦〔MIG-2 · `99 §2.1 ⑬`〕这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
@@ -530,21 +591,10 @@ fn describe_card(r: &CcmProbeResult) -> String {
 /// 不需要 [`LOCAL_PROBE_TIMEOUT`] 那么宽（那一档的宽度是留给用户 rc 的）。
 const OURS_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// 你 PATH 上那个 `ccm` 是谁。**Windows 上今天答不了，如实回 `None`。**
-///
-/// 🔴 **登记一条诚实边界，别读成「做了」**：唯一一条「问 PATH 上那个」的机制是
-/// [`CCM_PROBE_CMD`] ＋ `bash -lic`（非走登录 shell 不可 —— PATH 就是 rc 决定的，
-/// `src/shared/ccm-aliases.sh` 里那行往 `PATH` 前插 `~/.cc-monitor/bin` 的就是活例）。
-/// Windows 上没有对应物，而**照着 `PATH` 变量自己走一遍不是同一件事**
-/// （少了 rc 那一层，还要按 `PATHEXT` 判可执行 —— 那一格已经是一条待决 `KU22`）。
-/// ⇒ 这里**不发明第二套机制**，回 `None`，由上面那句话说成「查不了」。
-#[cfg(not(windows))]
+/// 你 PATH 上那个 `ccm` 是谁：交互 shell 里敲 `ccm` 走到哪（POSIX `bash -lic` · 〔WF1 · ㉔〕Windows 新开的 PowerShell），
+/// 不是照着 `PATH` 变量自己走一遍（那样少了 rc / profile 那一层）。
 fn probe_path_ccm() -> Option<CcmProbeResult> {
     Some(probe_local_ccm())
-}
-#[cfg(windows)]
-fn probe_path_ccm() -> Option<CcmProbeResult> {
-    None
 }
 
 /// 〔E2 · `96 §7.2.2`〕这个文件的字节是不是我们编的后端（身份戳恰一个）—— 只读字节，不跑它。

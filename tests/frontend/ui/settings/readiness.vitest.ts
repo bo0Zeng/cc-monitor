@@ -108,44 +108,11 @@ describe("computeGaps", () => {
     ).toBe(true);
   });
 
-  it("★ S9：Windows 本机的 ccm 不算缺（它的对应物是「终端集成」那块）", () => {
-    const gaps = computeGaps({
-      origins: [LOCAL_MACHINE_KEY],
-      statusOf: none,
-      hostOs: "windows",
-    });
-    // 不排掉的话，Windows 用户会在这张专为新用户做的清单上读到
-    // 一条「本机缺 cc 命令」—— 而那条在他机器上无从补起。
-    expect(gaps.some((g) => g.facet === "ccm")).toBe(false);
-    // 反向自检：本机**其它**项照常出现（不是整台被跳过了）
-    expect(gaps.some((g) => g.facet === "acctIso")).toBe(true);
-  });
-
-  it("★ S9：非 Windows 本机的 ccm 照常算数（bash 的 cc 在这些机器上是真能装的）", () => {
-    for (const os of ["linux", "macos", "unknown"] as const) {
-      const gaps = computeGaps({
-        origins: [LOCAL_MACHINE_KEY],
-        statusOf: none,
-        hostOs: os,
-      });
-      expect(gaps.some((g) => g.facet === "ccm"), os).toBe(true);
-    }
-    // 不传 hostOs 也按「照常算数」处理（省略 ≠ Windows）
-    expect(
-      computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none }).some(
-        (g) => g.facet === "ccm",
-      ),
-    ).toBe(true);
-  });
-
-  it("★ S9：OS 门只管本机 —— 远端机器的 ccm 在 Windows 上照常算数", () => {
-    // 远端是不是 POSIX 跟 monitor 跑在哪没关系（远端一律走 ccm）。
-    const gaps = computeGaps({
-      origins: ["aya"],
-      statusOf: none,
-      hostOs: "windows",
-    });
+  it("★ 本机的 ccm 照常算数（〔WF1 · `99 §2.2 ㉔`〕两平台同一条规则：Windows 上的写点是新开的 PowerShell 里敲 `ccm` 走到哪）", () => {
+    // 〔S9〕从前 Windows 本机这一格判不适用、要注入 monitor 跑在哪个 OS；那条豁免与那个入参一起删了（`readiness.ts::notApplicable` 头注第 3 条）。
+    const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
+    expect(gaps.some((g) => g.facet === "acctIso")).toBe(true);
   });
 
   it("账本里显式记成 na 的也不算缺", () => {
@@ -209,19 +176,22 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     accounts: { kind: "ok", at: T },
   };
 
-  it("★ Windows 本机：适用格恰好是那三格，写绿之后 summarizeGaps 返回 null", () => {
+  it("★ 本机：适用格恰好是那四格，写绿之后 summarizeGaps 返回 null", () => {
     // 分母（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1，**不是空清单**；
     //   · 先断这台机在这个 OS 上的适用格集合非空、且恰好是我们要写绿的那几格。
     const origins = [LOCAL_MACHINE_KEY];
     expect(origins.length).toBe(1);
-    const before = computeGaps({ origins, statusOf: none, hostOs: "windows" });
+    const before = computeGaps({ origins, statusOf: none });
     expect(
       before.map((g) => g.facet),
-      "适用格不是这三格 —— 那下面这条 null 就不是本件买来的",
-    ).toEqual(["backend", "acctIso", "accounts"]);
+      "适用格不是这四格 —— 那下面这条 null 就不是本件买来的",
+    ).toEqual(["backend", "ccm", "acctIso", "accounts"]);
 
-    const after = computeGaps({ origins, statusOf: () => localGreen, hostOs: "windows" });
+    const after = computeGaps({
+      origins,
+      statusOf: () => ({ ...localGreen, ccm: { kind: "ok" as const, at: T } }),
+    });
     expect(after).toEqual([]);
     expect(summarizeGaps(after)).toBeNull();
   });
@@ -230,25 +200,24 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: none, // = 本件之前的行为：那几格从来没人写
-      hostOs: "windows",
     });
     expect(gaps.map((g) => `${g.facet}:${g.kind}`)).toEqual([
       "backend:unknown",
+      "ccm:unknown",
       "acctIso:unknown",
       "accounts:unknown",
     ]);
     const s = summarizeGaps(gaps);
-    // 〔W5-VIS · 缺口三〕后端那一格是必需的，另两格可选 —— 摘要按轻重分开说。
-    expect(s).toBe("必需：1 项还没测过；可选：2 项还没测过");
+    // 〔W5-VIS · 缺口三〕后端那一格是必需的，另几格可选 —— 摘要按轻重分开说。
+    expect(s).toBe("必需：1 项还没测过；可选：3 项还没测过");
   });
 
-  it("★ 非 Windows 本机的 `ccm` 一格照常算数：没记 ⇒ 剩它一条，记上 ok ⇒ 清空", () => {
+  it("★ 本机的 `ccm` 一格照常算数：没记 ⇒ 剩它一条，记上 ok ⇒ 清空", () => {
     // 〔FIX3 · `99 §2.2 ㉔`〕这一格先前全仓没有写点（本条当年是把那个缺口钉在明处）；今天写点是
     // `remote-section.ts::noteLocalCcm`（打开设置面板时问一次本机，接线由 `remote-section.vitest.ts` 那条 FIX3 ㉔ 钉）。
     const rest = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: () => localGreen,
-      hostOs: "linux",
     });
     expect(rest.map((g) => g.facet)).toEqual(["ccm"]);
     expect(summarizeGaps(rest)).not.toBeNull();
@@ -257,7 +226,6 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
       computeGaps({
         origins: [LOCAL_MACHINE_KEY],
         statusOf: () => ({ ...localGreen, ccm: { kind: "ok" as const, at: T } }),
-        hostOs: "linux",
       }),
     ).toEqual([]);
   });

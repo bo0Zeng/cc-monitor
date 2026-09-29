@@ -131,18 +131,37 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
             !cmd.trim().is_empty(),
             "「{which}」生成出来是空的 —— 下面全是空真"
         );
-        // 「探」那条只读，不写 ⇒ 写那一条只对「加」「撤」成立。
-        if *which != "探" {
+        // 「探」那条只读（读展开值，比整格）；〔WF1 · K〕「加」「撤」读 `HKCU\Environment` 的**未展开原值与原类型**、按原类型写回、自己广播。
+        if *which == "探" {
             assert!(
-                cmd.contains("SetEnvironmentVariable('Path', ") && cmd.contains("'User')"),
-                "「{which}」没有在写**用户级** PATH：\n{cmd}"
+                cmd.contains("GetEnvironmentVariable('Path', 'User')"),
+                "「探」不是从**用户级**那一档读的：\n{cmd}"
             );
+        } else {
+            for need in [
+                "[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')",
+                "GetValue('Path', '', 'DoNotExpandEnvironmentNames')",
+                "GetValueKind('Path')",
+                "SetValue('Path', $n, $t)",
+                "SendMessageTimeout(",
+            ] {
+                assert!(
+                    cmd.contains(need),
+                    "「{which}」少了 `{need}` —— 要读未展开的原值与原类型、按原类型写回、写完广播（`WIN3.md §2` K）。\n{cmd}"
+                );
+            }
+            for landmine in [
+                "SetEnvironmentVariable('Path'",
+                "GetEnvironmentVariable('Path', 'User')",
+                "Where-Object { $_ }",
+            ] {
+                assert!(
+                    !cmd.contains(landmine),
+                    "「{which}」出现了 `{landmine}`：它读回展开值 / 按 `REG_SZ` 写 / 顺手滤掉空项 \
+                     ⇒ `%VAR%` 被冻成字面、`REG_EXPAND_SZ` 变 `REG_SZ`、多出或丢掉空项（`WIN3.md §2` K）。\n{cmd}"
+                );
+            }
         }
-        assert!(
-            cmd.contains("GetEnvironmentVariable('Path', 'User')"),
-            "「{which}」的新值不是从**用户级**那一档读出来的 —— 拿 `$env:PATH`\
-                 （机器级＋用户级拼起来的那一份）当基准，会把整条系统 PATH 复制进用户 PATH。\n{cmd}"
-        );
         // ── 两个地雷，两侧同一批 ─────────────────────────────────────
         for landmine in ["setx", "'Machine'", "\"Machine\"", "$env:PATH"] {
             assert!(
@@ -154,13 +173,13 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
     // ── 加：幂等（跑两次不许把目录塞两遍）──────────────────────────
     let add = &both[1].1;
     assert!(
-        add.contains("-notcontains $d"),
-        "「加」跑第二次会重复追加：\n{add}"
+        add.contains("[Environment]::ExpandEnvironmentVariables($_) -eq $d"),
+        "「加」跑第二次会重复追加（每格展开后整格比）：\n{add}"
     );
     // ── 撤：整格，而且**只**摘我们那一格 ──────────────────────────
     let del = &both[2].1;
     assert!(
-        del.contains("-ne $d"),
+        del.contains("[Environment]::ExpandEnvironmentVariables($_) -ne $d"),
         "「撤」不是按**整格**比的 —— 子串口径会把 `<我们那段>-old` 之类一起删掉，\
              而那是删用户的东西，不可逆。\n{del}"
     );
@@ -221,10 +240,12 @@ fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
                  `-NonInteractive` 保证它不会弹提示等人回车，把界面挂住。"
         );
     }
-    let writers = prod.matches("SetEnvironmentVariable").count();
+    // 〔WF1 · K〕写法换成按原类型写注册表：数的是 `SetValue('Path'`（加 · 撤各一处），`SetEnvironmentVariable` 一处都不许有。
+    assert_eq!(prod.matches("SetEnvironmentVariable").count(), 0);
+    let writers = prod.matches("SetValue('Path'").count();
     assert_eq!(
         writers, 2,
-        "生产段里「写环境变量」的地方应当**恰好两处**（`render_user_path_setup_command` \
+        "生产段里「写用户级 PATH」的地方应当**恰好两处**（`render_user_path_setup_command` \
              与 `render_user_path_removal_command` 各一处），实得 {writers} 处。\n\
              多一处 = 有人在别处又拼了一段改 PATH 的 PowerShell ⇒ **同一件事有了第二份实现**，\
              而那正是 `K33`「所有命令只许有一处」禁的；也正是 `R88` 否掉「Rust 直接写注册表」\
@@ -404,4 +425,123 @@ fn the_shared_alias_snippet_puts_exactly_the_ccm_landing_on_path() {
         path,
         "source 两趟 PATH 变了 —— 嵌套 shell 会让 PATH 无限变长"
     );
+}
+
+/// 〔WF1 · K〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored`，那个程序收一个 `.ps1` 路径去跑）。
+/// 住址：`设计/99 §2.3`「中低各条发版前修」· `第四波记录/WIN3.md §2` K（用户级 PATH 由 `ExpandString` 变 `String`、`%VAR%` 被冻成字面、多一个空项）。
+///
+/// 用真 PowerShell 跑生成的「加」「撤」两段：注册表那一跳换成替身键（只有 Windows 有注册表），`Join-Path` 按 Windows 拼，
+/// 广播那三行换成计数。期望逐条手写：加 ⇒ 我们那一格恰好多一格（原值以 `;` 收尾就插在那个空项之前）、类型不变、广播一次；
+/// 再加 ⇒ 一个字节不动、不广播；撤 ⇒ 逐字回到原样（原来不在就还是不在）。
+/// 买不到：真注册表的读写与 `WM_SETTINGCHANGE` 真被新终端收到（要 Windows）。
+#[test]
+#[ignore = "要一个 PowerShell：CCM_PWSH=<收 .ps1 路径的程序> cargo test -- --ignored"]
+fn wf1_real_powershell_add_then_remove_restores_the_user_path() {
+    let Ok(pwsh) = std::env::var("CCM_PWSH") else {
+        panic!("没给 CCM_PWSH");
+    };
+    let open = "$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')\n";
+    let fake = |script: String| -> String {
+        assert_eq!(script.matches(open).count(), 1, "锚不住开键那一行");
+        assert_eq!(
+            script.matches(SETTING_CHANGE_BROADCAST).count(),
+            1,
+            "锚不住广播那三行"
+        );
+        script
+            .replace(open, "$k = $global:fake\n")
+            .replace(SETTING_CHANGE_BROADCAST, "    $global:bc++\n")
+    };
+    let add = fake(render_user_path_setup_command().unwrap());
+    let del = fake(render_user_path_removal_command().unwrap());
+    let ours = r"C:\Users\u\.cc-monitor\bin";
+    // (原值, 原类型；None = 不在) → 加之后的值（None = 已经在了、不动）· 撤之后的值（None = 不在）
+    #[rustfmt::skip]
+    let cases: &[(Option<(&str, &str)>, Option<String>, Option<&str>)] = &[
+        (None, Some(ours.into()), None),
+        (Some((r"%USERPROFILE%\AppData\Local\Microsoft\WindowsApps;", "ExpandString")),
+         Some(format!(r"%USERPROFILE%\AppData\Local\Microsoft\WindowsApps;{ours};")),
+         Some(r"%USERPROFILE%\AppData\Local\Microsoft\WindowsApps;")),
+        (Some((r"C:\A", "String")), Some(format!(r"C:\A;{ours}")), Some(r"C:\A")),
+        (Some((r"C:\A;;C:\B", "ExpandString")), Some(format!(r"C:\A;;C:\B;{ours}")), Some(r"C:\A;;C:\B")),
+        (Some((&format!("{ours}-old"), "ExpandString")), Some(format!("{ours}-old;{ours}")), Some(&format!("{ours}-old"))),
+        (Some((r"C:\A;%USERPROFILE%\.cc-monitor\bin", "ExpandString")), None, Some(r"C:\A")),
+    ];
+    let q = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    let mut ps = String::from(
+        "$ErrorActionPreference = 'Stop'\n\
+         $env:USERPROFILE = 'C:\\Users\\u'\n\
+         function Join-Path($a, $b) { \"$a\\$b\" }\n\
+         class FakeKey {\n\
+           [hashtable]$v = @{}; [hashtable]$kind = @{}\n\
+           [object] GetValue([string]$n) { return $this.v[$n] }\n\
+           [object] GetValue([string]$n, [object]$def, [object]$opt) { if ($this.v.ContainsKey($n)) { return $this.v[$n] }; return $def }\n\
+           [object] GetValueKind([string]$n) { return $this.kind[$n] }\n\
+           [void] SetValue([string]$n, [object]$val, [object]$t) { $this.v[$n] = [string]$val; $this.kind[$n] = [string]$t }\n\
+           [void] DeleteValue([string]$n, [bool]$throw) { $this.v.Remove($n); $this.kind.Remove($n) }\n\
+         }\n\
+         function Snap { if ($global:fake.v.ContainsKey('Path')) { @($global:fake.v['Path'], $global:fake.kind['Path']) } else { @($null, $null) } }\n",
+    );
+    for (i, (orig, _, _)) in cases.iter().enumerate() {
+        let seed = match orig {
+            Some((v, t)) => format!(
+                "$global:fake.v['Path'] = {}; $global:fake.kind['Path'] = {}\n",
+                q(v),
+                q(t)
+            ),
+            None => String::new(),
+        };
+        ps.push_str(&format!(
+            "$global:fake = [FakeKey]::new(); $global:bc = 0\n{seed}\
+             & {{\n{add}}}\n$a = Snap; $ab = $global:bc\n\
+             & {{\n{add}}}\n$a2 = Snap; $ab2 = $global:bc - $ab\n\
+             & {{\n{del}}}\n$r = Snap; $rb = $global:bc - $ab - $ab2\n\
+             [pscustomobject]@{{ i = {i}; a = $a; ab = $ab; a2 = $a2; ab2 = $ab2; r = $r; rb = $rb }} | ConvertTo-Json -Compress -Depth 3\n"
+        ));
+    }
+    let dir = tmpdir("wf1-pwsh");
+    let file = dir.0.join("harness.ps1");
+    std::fs::write(&file, &ps).unwrap();
+    let out = std::process::Command::new(&pwsh)
+        .arg(&file)
+        .output()
+        .expect("起 CCM_PWSH");
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "PowerShell 没跑完：{}\n{text}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let rows: Vec<serde_json::Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).expect(l))
+        .collect();
+    assert_eq!(rows.len(), cases.len(), "{text}");
+    for (row, (orig, after_add, after_del)) in rows.iter().zip(cases) {
+        let (ov, ok) = orig.map_or((None, None), |(v, t)| {
+            (Some(v.to_string()), Some(t.to_string()))
+        });
+        let kind = ok.clone().or(Some("ExpandString".into()));
+        let pair = |v: &serde_json::Value| {
+            (
+                v[0].as_str().map(String::from),
+                v[1].as_str().map(String::from),
+            )
+        };
+        let want_add = match after_add {
+            Some(v) => (Some(v.clone()), kind.clone()),
+            None => (ov.clone(), ok.clone()),
+        };
+        assert_eq!(pair(&row["a"]), want_add, "加：{orig:?}");
+        assert_eq!(
+            row["ab"],
+            u64::from(after_add.is_some()),
+            "加的广播：{orig:?}"
+        );
+        assert_eq!(pair(&row["a2"]), want_add, "再加动了：{orig:?}");
+        assert_eq!(row["ab2"], 0, "再加又广播：{orig:?}");
+        let want_del = (after_del.map(String::from), after_del.and(kind.clone()));
+        assert_eq!(pair(&row["r"]), want_del, "撤：{orig:?}");
+        assert_eq!(row["rb"], 1, "撤的广播：{orig:?}");
+    }
 }

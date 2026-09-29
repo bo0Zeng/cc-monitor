@@ -619,30 +619,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(ofA.some((f) => f.startsWith("connection:"))).toBe(false);
   });
 
-  it("★ S9：本机的 ccm 条目跟着 monitor 的 OS 走（钉的是接线，不是纯函数）", async () => {
-    // `readiness.vitest.ts` 已经证明 `computeGaps` 会按 `hostOs` 排掉这一项；
-    // 这一条守的是**调用点真把 `hostOs()` 传进去了** —— 漏传时纯函数测试全绿。
-    const localCcm = (sec: { element: HTMLElement }) =>
-      [
-        ...sec.element.querySelectorAll<HTMLElement>(
-          `.remote-gap[data-origin="${LOCAL_MACHINE_KEY}"]`,
-        ),
-      ].some((i) => i.dataset.facet === "ccm");
-
-    localStorage.clear();
-    __setHostOsForTests("windows");
-    expect(
-      localCcm(await mount([mkH("a", "1.1.1.1")], fakePages().host)),
-      "Windows 本机的启动器是「终端集成」，不该说它缺 ccm",
-    ).toBe(false);
-
-    localStorage.clear();
-    __setHostOsForTests("linux");
-    expect(
-      localCcm(await mount([mkH("a", "1.1.1.1")], fakePages().host)),
-      "Linux 本机的 ccm 是真能装的，照常算数",
-    ).toBe(true);
-  });
+  // 〔WF1 · `99 §2.2 ㉔`〕「★ S9：本机的 ccm 条目跟着 monitor 的 OS 走」那一条删了：它钉的是 monitor 跑在哪个 OS 传进 `computeGaps` 的接线，
+  //   那个入参随 Windows 豁免一起删了（`readiness.ts::notApplicable` 头注第 3 条），没有被测对象。
 
   // ───────────────────────────────────────────────────────────────────────────
   // `N-F2` `NF2D3` **最后那一跳**：`summary === null` ⇒ 这一块**整块不出现**
@@ -673,6 +651,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
    */
   function greenLocalTwo(): void {
     recordFacet(LOCAL_MACHINE_KEY, "backend", { kind: "ok", detail: "已连上" });
+    recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: "ok", detail: "是它" });
     recordFacet(LOCAL_MACHINE_KEY, "acctIso", { kind: "ok", detail: "已启用" });
     recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个" });
   }
@@ -687,9 +666,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ NF2D3 最后那一跳：本机全绿 + 零远端 ⇒ 「还差什么」整块不出现", async () => {
     // 分母先钉死，别让「一台机器都没有」蒙混过去：
     //   · 远端 **0** 台，而清单的入参是 `[LOCAL_MACHINE_KEY, ...hosts]` ⇒ 机器数 **1**；
-    //   · monitor 跑在 Windows 上 ⇒ 本机的适用格**恰好**是 `backend` / `acctIso` / `accounts`
-    //     三格（`connection` 不适用；`ccm` 的对应物是「终端集成」那块）。
-    //     ⚠ `K-R59`：`backend` 是这一拍新算进来的那一格。
+    //   · 本机的适用格**恰好**是 `backend` / `ccm` / `acctIso` / `accounts` 四格（`connection` 不适用）。
+    //     ⚠ `K-R59`：`backend` 是那一拍新算进来的；〔WF1 · ㉔〕`ccm` 在 Windows 上也算了。
     // 下面这一屏是那个分母的**真实渲染**：它必须先真的出现、且逐项等于这两格。
     localStorage.clear();
     __setHostOsForTests("windows");
@@ -700,6 +678,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ).not.toBe("none");
     expect(gapKeysOf(before)).toEqual([
       `${LOCAL_MACHINE_KEY}/backend:unknown`,
+      `${LOCAL_MACHINE_KEY}/ccm:unknown`,
       `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
       `${LOCAL_MACHINE_KEY}/accounts:unknown`,
     ]);
@@ -729,6 +708,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(back.textContent).toContain("还没测过");
     expect(gapKeysOf(back)).toEqual([
       `${LOCAL_MACHINE_KEY}/backend:unknown`,
+      `${LOCAL_MACHINE_KEY}/ccm:unknown`,
       `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
       `${LOCAL_MACHINE_KEY}/accounts:unknown`,
     ]);
@@ -858,7 +838,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
    * 设计/99 §2.2 ㉔「本机 ccm 那一格两件都报」· `15 §5.4 D5`「补本机·ccm 那一格的写点」：
    * `noteLocalCcm` 照 monitor 那一侧的判定记账 —— 两件都成 ⇒ ok；有一件不成 ⇒ fail 且那句话照记；说不清 ⇒ 不写；Windows 本机不问。
    */
-  it("FIX3 ㉔：本机 ccm 那一格由 `noteLocalCcm` 写，照 ok / 不写 / Windows 不问", async () => {
+  it("FIX3 ㉔：本机 ccm 那一格由 `noteLocalCcm` 写，照 ok / 不写；〔WF1〕Windows 上同样问", async () => {
     __setHostOsForTests("linux");
     for (const [ok, want] of [
       [true, "ok"],
@@ -880,7 +860,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     __setHostOsForTests("windows");
     ipcReplies.set("local_ccm_entry_status", { ok: true, summary: "x" });
     await mount([], fakePages().host);
-    expect(ipcCalls).not.toContain("local_ccm_entry_status");
+    // 〔WF1 · ㉔〕Windows 本机同样问、同样记（新开的 PowerShell 里敲 `ccm` 走到哪）。
+    expect(ipcCalls).toContain("local_ccm_entry_status");
+    expect(readStatus(LOCAL_MACHINE_KEY).ccm?.kind).toBe("ok");
     ipcReplies.delete("local_ccm_entry_status");
   });
 

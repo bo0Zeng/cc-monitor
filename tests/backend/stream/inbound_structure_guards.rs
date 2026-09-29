@@ -250,6 +250,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "aliases-block-render"
                 | "aliases-block-install"
                 | "aliases-block-remove"
+                // 〔WF1 · L〕起一次那一代 PowerShell 设执行策略再现问（同步子进程）。
+                | "powershell-policy-set"
                 | "skill-host-read"
                 | "skill-host-write"
                 | "skill-uninstall-apply"
@@ -461,6 +463,7 @@ fn every_registered_command_declares_its_run_kind() {
         "aliases-block-render",
         "aliases-block-install",
         "aliases-block-remove",
+        "powershell-policy-set",
         "skill-host-read",
         "skill-host-write",
         "skill-uninstall-apply",

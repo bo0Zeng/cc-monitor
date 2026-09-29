@@ -4,7 +4,7 @@
 // 构造零 I/O。shell 文本长什么样、真 bash 执行下来对不对，归后端 `tests/backend/assets/aliases/aliases_tests.rs`
 // —— 本文件一个字节的 shell 文本都不断言（前端也一个字节都不拼）。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Alias } from "../../../../src/frontend/ui/alias-reads";
+import type { Alias, ExecPolicy } from "../../../../src/frontend/ui/alias-reads";
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 8; i += 1) await Promise.resolve();
@@ -126,14 +126,18 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   let oldAt: Set<string>;
   /** 〔W5-UI〕非 null ⇒ 读「自动打开 monitor」那项设置失败，拒绝原因就是它。 */
   let autoLaunchFail: string | null;
+  /** 〔WF1 · L〕`/h/rc-a` 那份候选带的执行策略（后端现问的那一份）；点了「允许」之后换成 `policyAfter`。 */
+  let policyA: ExecPolicy | null;
+  let policyAfter: ExecPolicy | null;
 
   /** 〔AL1d〕一份候选（别名文件那一行与别名块共用）；`block` 是后端那一次扫描带回来的别名块现状。 */
   const cand = (
     path: string,
-    over: { exists?: boolean; present?: boolean; hint?: string; outdated?: boolean } = {},
+    over: { exists?: boolean; present?: boolean; hint?: string; outdated?: boolean; policy?: ExecPolicy | null } = {},
   ) => ({
     path,
     sourced: false,
+    policy: over.policy ?? null,
     exists: over.exists ?? true,
     block: {
       present: over.present ?? false,
@@ -154,6 +158,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     blockAt = new Set();
     oldAt = new Set();
     autoLaunchFail = null;
+    policyA = null;
+    policyAfter = null;
     vi.resetModules();
     vi.doMock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn() }));
     // 〔W5-ALIAS〕预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
@@ -190,6 +196,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
                 present: blockAt.has("/h/rc-a"),
                 hint: "第 3 行 ccm",
                 outdated: oldAt.has("/h/rc-a"),
+                policy: policyA,
               }),
               cand("/h/rc-b", { exists: false, present: blockAt.has("/h/rc-b") }),
               ...(other ? [cand(other, { present: blockAt.has(other) })] : []),
@@ -229,6 +236,11 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
           seen.push({ cmd: "aliases_block_remove", args: a });
           blockAt.delete(a.rcPath);
           return Promise.resolve();
+        },
+        allowLocalScripts: (origin: string, host: string) => {
+          seen.push({ cmd: "powershell_policy_set", args: { origin, host } });
+          policyA = policyAfter;
+          return Promise.resolve({ policy: policyAfter, setError: null });
         },
         renderAliasBlock: (origin: string, rcPath: string, withCc: boolean) => {
           const a = { origin, rcPath, withCc };
@@ -270,12 +282,13 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     document.body.replaceChildren();
   });
 
-  async function mount(): Promise<HTMLDetailsElement> {
+  async function mount(confirm?: (msg: string) => boolean): Promise<HTMLDetailsElement> {
     const m = await import("../../../../src/frontend/ui/settings/machine-aliases");
     const el = m.buildAliasManager({
       platform: plat,
       origin: () => "<local>",
       loadAccounts: async () => ["z", "b", "0"],
+      confirm,
     }) as HTMLDetailsElement;
     document.body.appendChild(el);
     await flush();
@@ -307,7 +320,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
     // 〔MIG-3a〕握手终端数从读回口的成品里拆出来、另问 monitor（`bound_terminal_count`）⇒ PowerShell 那一侧首开多这一发。
-    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status"],
+    // 〔WF1 · `99 §2.2 ㉔`〕本机 ccm 那一格 Windows 上也问（新开的 PowerShell 里敲 `ccm` 走到哪）。
+    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status"],
   };
 
   it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多", async () => {
@@ -627,6 +641,68 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
         rcPath: "/h/rc-a",
         withCc: true,
       });
+    });
+
+    // 〔WF1 · L · `设计/99 §2.3`〕执行策略：块不会被加载 ⇒ 不说「装好了」、说原因、给标准做法的按钮；点了先确认才发；组策略钉着 ⇒ 只照说。
+    const pol = (effective: string, loads: boolean | null, groupPolicy = false): ExecPolicy => ({
+      host: "powershell",
+      effective,
+      loads,
+      groupPolicy,
+      error: null,
+    });
+    const policyLine = (el: HTMLElement): string =>
+      [...el.querySelectorAll<HTMLElement>(".ccm-rc-block .settings-hint")].map((x) => x.textContent).join("|");
+    const allowBtn = (el: HTMLElement): HTMLButtonElement | undefined =>
+      [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "允许运行本机脚本");
+
+    it("〔WF1 · L〕执行策略挡住块：装了也说「不会加载」、装后不说「装好了」；按钮先确认，拒了一发都不发，确认了才发、按那一代发", async () => {
+      policyA = pol("Restricted", false);
+      policyAfter = pol("RemoteSigned", true);
+      const asked: string[] = [];
+      let answer = false;
+      const el = await mount((msg) => {
+        asked.push(msg);
+        return answer;
+      });
+      await open(el);
+      await pick(el, "/h/rc-a");
+      expect(policyLine(el)).toContain("Restricted");
+      expect(allowBtn(el)!.hidden).toBe(false);
+      clickText(el, "装别名块");
+      await flush();
+      expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("不会加载它");
+      expect(policyLine(el)).not.toContain("装好了");
+      expect(policyLine(el)).toContain("要看这台 PowerShell 的执行策略");
+      allowBtn(el)!.click();
+      await flush();
+      expect(asked.length).toBe(1);
+      expect(asked[0]).toContain("RemoteSigned");
+      expect(seen.filter((c) => c.cmd === "powershell_policy_set"), "没确认就改了").toEqual([]);
+      answer = true;
+      allowBtn(el)!.click();
+      await flush();
+      expect(seen.filter((c) => c.cmd === "powershell_policy_set").map((c) => c.args)).toEqual([
+        { origin: "<local>", host: "powershell" },
+      ]);
+      expect(policyLine(el)).toContain("改好了");
+      expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain("已经装了");
+      expect(allowBtn(el)!.hidden).toBe(true);
+    });
+
+    it("〔WF1 · L〕组策略钉着 ⇒ 照说、不给按钮；会加载 ⇒ 执行策略那一行不出声、装后照旧说「装好了」", async () => {
+      policyA = pol("AllSigned", false, true);
+      const el = await mount(() => true);
+      await open(el);
+      await pick(el, "/h/rc-a");
+      expect(policyLine(el)).toContain("组策略");
+      expect(allowBtn(el)!.hidden).toBe(true);
+      policyA = pol("RemoteSigned", true);
+      clickText(el, "装别名块");
+      await flush();
+      expect(policyLine(el)).not.toContain("执行策略");
+      expect(policyLine(el)).toContain("装好了");
+      expect(allowBtn(el)!.hidden).toBe(true);
     });
   }
 
