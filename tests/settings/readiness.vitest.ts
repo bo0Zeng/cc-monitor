@@ -242,13 +242,9 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     expect(s).toBe("必需：1 项还没测过；可选：2 项还没测过");
   });
 
-  it("★ 诚实边界：非 Windows 本机还剩 `ccm` 一格 —— 本机的 ccm 至今没有任何写点", () => {
-    // 这一条**不是**在断本件做完了，正相反：它把本件**没**买到的那一格钉在明处。
-    // `machine-card` 那三格（connection / backend / ccm）的写点全都按远端 host key 记账
-    //（`this.persistedKey ?? hostKey(this.collect())`）⇒ 全仓对 `LOCAL_MACHINE_KEY`
-    // 的 ccm 写点是 **0 个**。于是在 Linux / macOS 上，本机那一栏就算这两格全绿，
-    // 清单里仍会剩一条「本机 · ccm：未测过」。
-    // ⇒ 「整块消失」今天只在 **Windows 本机 + 零远端** 这一格上真的走得到。
+  it("★ 非 Windows 本机的 `ccm` 一格照常算数：没记 ⇒ 剩它一条，记上 ok ⇒ 清空", () => {
+    // 〔FIX3 · `99 §2.2 ㉔`〕这一格先前全仓没有写点（本条当年是把那个缺口钉在明处）；今天写点是
+    // `remote-section.ts::noteLocalCcm`（打开设置面板时问一次本机，接线由 `remote-section.vitest.ts` 那条 FIX3 ㉔ 钉）。
     const rest = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: () => localGreen,

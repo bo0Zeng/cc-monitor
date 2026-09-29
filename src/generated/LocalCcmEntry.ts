@@ -22,4 +22,13 @@ on_path: CcmProbeResult, verdict: PathCcmVerdict,
 /**
  * 给人读的那句话。没有话要说时是**空串**（`Ours` 那一档）。
  */
-message: string, };
+message: string, 
+/**
+ * 〔FIX3 · `99 §2.2 ㉔` · `15 §5.4 D5`〕机器列表本机那一格（`ccm`）记什么：`Some(true)` = 两件都成
+ * （我们那份装下来了 ＋ 登录 shell 里敲 `ccm` 走到的就是它）· `Some(false)` = 有一件不成 · `None` = 说不清（不写账本）。
+ */
+ok: boolean | null, 
+/**
+ * 那一格的一句话，两件都说。
+ */
+summary: string, };

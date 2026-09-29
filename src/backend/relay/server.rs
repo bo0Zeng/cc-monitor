@@ -93,12 +93,15 @@ const READ_CHUNK: usize = 64 * 1024;
 
 // ══ 中转**自己造**的状态码 —— 每个码只有这一处住址〔`设计/20 §3.1a` ②，`D2`〕═══════════
 //
-// `20 §3.1a` 那两条可机检的形状：① 我们自己造的三组码 —— 上游选择 `Refuse`（404/502）·
-// 在飞上界（503）· 中转传输失败（504）—— **两两不相交**；② 它们**只有一处常量**，
-// 不许散在各个返回点上（否则「可区分」这件事第二天就会被人不小心撞掉）。
-// ⇒ 中转的码全在下面这几行；上游选择那两个住 `accounts` 那一侧（中转不认识它们）。
+// 〔FIX3 · `99 §2.2 ⑫`〕照 HTTP 代理通行做法分两边：**我们拒的一律 4xx**（门 403/421 · 读不懂 400/411/413 ·
+// 路由不成立 404，后者住上游选择那一侧）；**5xx 只说上游那侧**（连不上 / 断了 / 回的不是 HTTP ⇒ 502 · 超时 ⇒ 504）；
+// 在飞上界 503 是我们这侧吃不下（代理的通行码）。上游自己的码原样透传 ⇒ 同一个码可能是我们说的、也可能是上游说的，
+// 分开它们的是**原因头** [`REASON_HEADER`]：中转自己回的每一条响应都带它，透传的从来不带。
 // 钉这两条的判据：`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`
-// （盘上扫出来的状态码字面量 ⇔ 登记表，两向相等；登记表里三组两两不相交）。
+// （盘上扫出来的状态码字面量 ⇔ 登记表，两向相等；我们拒的全是 4xx、上游那侧全是 5xx）。
+
+/// 〔FIX3 · `99 §2.2 ⑫`〕中转自己回的响应带的原因头：值是一个 ASCII 短词（`bad-key` · `no-account-row` · `upstream-connect` …）。
+pub(super) const REASON_HEADER: &str = "X-Cc-Monitor-Reason";
 
 /// 下游请求**读不懂**（头坏了 / `Content-Length` 读不懂）。
 const BAD_REQUEST: &str = "400 Bad Request";
@@ -106,25 +109,17 @@ const BAD_REQUEST: &str = "400 Bad Request";
 const LENGTH_REQUIRED: &str = "411 Length Required";
 /// 下游请求体超 `BODY_CAP`。
 const PAYLOAD_TOO_LARGE: &str = "413 Payload Too Large";
-/// 路径**根本不是路由的形状**。与上游选择那个 404（表里没这一行）同属「路由不成立」一组，
-/// 下游读到的字节逐字节相同 —— 这是 `wire_golden` ③④ 两格钉着的**今天的行为**。
+/// 路径**根本不是路由的形状**。与上游选择那个 404（表里没这一行）同属「路由不成立」一组，原因头不同。
 const NOT_A_ROUTE: &str = "404 Not Found";
 /// 在飞连接顶满（`listen.rs::INFLIGHT_CONNECTIONS`）或起不了连接线程。**「我们这侧现在吃不下」**。
 ///
 /// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
 pub(super) const BUSY: &str = "503 Service Unavailable";
-/// 🔴 **中转自己的传输失败**：上游连不上 · 没回应 · 回的不是 HTTP 响应〔`设计/20 §3.1a`〕。
-///
-/// # 为什么是 504，不是先前的 502
-///
-/// 502 已经被上游选择的 `Refuse`（「这个 agent 没有登记上游」）占着，而 `D7` 要求
-/// 「路由不成立」与「上游不在」**可区分**：同码 ⇒ agent 分不清是我们配错了还是上游挂了。
-/// 502 · 503 都被占了，504 与它们同属网关族，是剩下唯一一个语义不冲突的码。
-///
-/// ⚠ **这一格是为可区分性付的账**（`20 §3.1a` 逐字认下的）：504 的字面语义是「上游**超时**」，
-/// 而「连不上」「回的不是 HTTP」都不是超时。能把几种失败分开的只有 body 里那句 `why`
-/// （见 [`UpstreamFailure`]）—— 上游自己也会答 5xx 并被原样转发，码本身永远消不掉那一重歧义。
-const UPSTREAM_FAILED: &str = "504 Gateway Timeout";
+/// 🔴 **中转自己的传输失败、而且不是超时**：上游连不上 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx〔`设计/20 §3.1a`〕。
+/// 〔FIX3 · `99 §2.2 ⑫`〕先前一律 504（502 被上游选择的 `Refuse` 占着）；那个 `Refuse` 改成 4xx 之后 502 让回给它的本义。
+const UPSTREAM_UNREACHABLE: &str = "502 Bad Gateway";
+/// 🔴 **中转自己的传输失败、卡在超时上**（连接超时 · 等响应超时）。
+const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 
 /// 〔`P16` 2026-09-22〕**`DOWNSTREAM_DEADLINE` 的那个值搬去 `listen.rs` 了** —— 墓碑。
 ///
@@ -164,7 +159,7 @@ pub(super) fn apply_downstream_deadline(
 }
 
 /// 上游**中间响应**（1xx）最多容忍几条〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
-/// 超了回 [`UPSTREAM_FAILED`]（先前是 502）：那已经不是一个正常的上游。
+/// 超了回 [`UPSTREAM_UNREACHABLE`]（502）：那已经不是一个正常的上游。
 const INTERIM_RESPONSES_ALLOWED: usize = 8;
 
 /// 中转的运行期状态。**一个进程一份**，跨连接共享。
@@ -288,29 +283,32 @@ impl Relay {
     }
 }
 
-pub(super) fn respond_status(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
-    respond_body(down, status, format!("{status}\n"))
+pub(super) fn respond_status(
+    down: &mut TcpStream,
+    status: &str,
+    reason: &str,
+) -> std::io::Result<()> {
+    respond_body(down, status, reason, format!("{status}\n"))
 }
 
-/// 中转传输失败那一格：状态行 ＋ **一句说得清是谁、卡在哪的话**（`20 §3.1a`：`why` 两句）。
-///
-/// ⚠ 只有 [`UPSTREAM_FAILED`] 走这里。`Refuse` 的 `why` **仍然不上线**：那几格的下游字节
-/// 由 `wire_golden` 逐字节钉着，本拍不动线上已有的字节，只给新长出来的这一格配话。
+/// 中转传输失败那一格：状态行（502 / 504，[`UpstreamFailure::status`]）＋ 原因头 ＋ **一句说得清是谁、卡在哪的话**（`20 §3.1a`）。
 fn respond_upstream_failed(down: &mut TcpStream, why: &UpstreamFailure) -> std::io::Result<()> {
     // ⚠ 只印上游的主机与端口 ＋ 一句固定文案，**永不印请求头**（`K9` 裁定四第 1 条）。
     let upstream_failure = why.for_log();
     eprintln!("[relay] upstream failed: {upstream_failure}");
     let said = why.sentence();
-    respond_body(
-        down,
-        UPSTREAM_FAILED,
-        format!("{UPSTREAM_FAILED}\n{said}\n"),
-    )
+    let status = why.status();
+    respond_body(down, status, why.at.reason(), format!("{status}\n{said}\n"))
 }
 
-fn respond_body(down: &mut TcpStream, status: &str, body: String) -> std::io::Result<()> {
+fn respond_body(
+    down: &mut TcpStream,
+    status: &str,
+    reason: &str,
+    body: String,
+) -> std::io::Result<()> {
     let head = format!(
-        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{REASON_HEADER}: {reason}\r\nConnection: close\r\n\r\n",
         body.len()
     );
     down.write_all(head.as_bytes())?;
@@ -336,16 +334,25 @@ fn respond_body(down: &mut TcpStream, status: &str, body: String) -> std::io::Re
 ///
 /// **诚实边界**：下游的字节要是**在我们排完之后**才到，`close` 照样发 RST。
 /// 这一支不追求「一定送达」，只把常见那一形（请求已经整条发出来了）从静默变成有声。
-pub(super) fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
-    let r = respond_status(down, status);
+pub(super) fn respond_and_drain(
+    down: &mut TcpStream,
+    status: &str,
+    reason: &str,
+) -> std::io::Result<()> {
+    let r = respond_status(down, status, reason);
     drain_arrived(down);
     r
 }
 
 /// 同 [`respond_and_drain`]，只是体里多一句为什么〔RK1：门拒绝那几格要说清是哪一问拒的，
 /// 否则 403「钥匙不对」与 403「带了 Origin」在下游那一侧读起来一样〕。
-fn respond_body_and_drain(down: &mut TcpStream, status: &str, body: String) -> std::io::Result<()> {
-    let r = respond_body(down, status, body);
+fn respond_body_and_drain(
+    down: &mut TcpStream,
+    status: &str,
+    reason: &str,
+    body: String,
+) -> std::io::Result<()> {
+    let r = respond_body(down, status, reason, body);
     drain_arrived(down);
     r
 }
@@ -367,28 +374,25 @@ fn drain_arrived(down: &mut TcpStream) {
     let _ = down.set_nonblocking(false);
 }
 
-/// 上游选择答完那一刻，中转手里的**四种**结局。
-///
-/// # 为什么是四种而不是「成功 / 失败」两种
-///
-/// 四条路的**下游看到的字节各不相同**，合并任意两条都是一次行为变化：
+/// 上游选择答完那一刻，中转手里的**三种**结局（下游看到的字节各不相同）。
 ///
 /// | 结局 | 下游看到 | 上游收到过字节吗 |
 /// |---|---|---|
 /// | `Sent` | 上游那条响应，逐块透传 | 是 |
-/// | `Refused` | 上游选择给的那句状态行（404 / 502，住 `accounts` 那一侧） | **否** |
-/// | `Unreachable` | [`UPSTREAM_FAILED`]（504）＋ 一句 `why` | 否（连都没连上） |
-/// | `WriteFailed` | **什么都没有**（连接以错误收尾，`serve` 印一句） | **是**（已经发过一截） |
+/// | `Refused` | 上游选择给的 4xx ＋ 原因头 ＋ 一句为什么（住 `accounts` 那一侧） | **否** |
+/// | `UpstreamFailed` | 502 / 504 ＋ 原因头 ＋ 一句 `why`（[`UpstreamFailure`]） | 连不上 ⇒ 否；发到一半断了 ⇒ 发过一截 |
 ///
-/// ⚠ 最后两条**刻意分开**：`WriteFailed` 那一路我们已经往上游发过字节了，
-/// 这条连接的结局不由我们编 —— 回一个 502 等于替上游说它没收到。
-/// 〔`20 §3.1a` 那一拍没动这一支：它的理由是「字节已经出去了」，与码是哪一个无关。〕
+/// 〔FIX3 · `99 §2.2 ⑫`〕「发到一半断了」（先前的 `WriteFailed`）原先**什么都不回**（连接以错误收尾）：
+/// 下游那时一个字节都还没收到，回一个码不会与已发的字节打架 ⇒ 并进传输失败、回 502 说清卡在发请求（出声，不静默）。
 enum Answered {
     /// 已连上、请求已写完。带着**这是谁**（后面等响应那一段失败时 `why` 要说得出来）。
     Sent(Conn, Who),
-    Refused(&'static str),
-    Unreachable(UpstreamFailure),
-    WriteFailed(std::io::Error),
+    Refused {
+        status: &'static str,
+        reason: &'static str,
+        why: &'static str,
+    },
+    UpstreamFailed(UpstreamFailure),
 }
 
 /// 中转传输失败时那句 `why` 的两半：**上游是谁 · 卡在哪一跳**〔`设计/20 §3.1a`〕。
@@ -430,6 +434,8 @@ impl Who {
 pub(super) enum FailedAt {
     /// 连接都没建立起来（拒绝连接 · 名字解析不了 · TLS 握手失败 · 连接超时）。
     Connect,
+    /// 连上了，请求没发完连接就断了（先前的 `WriteFailed`，FIX3 起回码）。
+    Send,
     /// 请求发过去了，对方没回响应就把连接关了。
     ClosedBeforeAnswer,
     /// 请求发过去了，等响应时出错或超时。
@@ -447,6 +453,10 @@ impl FailedAt {
             FailedAt::Connect => (
                 copy_core::copy_static!("beServer.words.cantConnect"),
                 copy_core::copy_static!("beServer.words.hopConnect"),
+            ),
+            FailedAt::Send => (
+                copy_core::copy_static!("beServer.words.sendFailed"),
+                copy_core::copy_static!("beServer.words.hopSend"),
             ),
             FailedAt::ClosedBeforeAnswer => (
                 copy_core::copy_static!("beServer.words.closedBeforeAnswer"),
@@ -468,12 +478,42 @@ impl FailedAt {
     }
 }
 
+impl FailedAt {
+    /// 原因头的值（[`REASON_HEADER`]）：每一跳一个 ASCII 短词。
+    pub(super) fn reason(self) -> &'static str {
+        match self {
+            FailedAt::Connect => "upstream-connect",
+            FailedAt::Send => "upstream-send",
+            FailedAt::ClosedBeforeAnswer => "upstream-closed",
+            FailedAt::NoAnswer => "upstream-no-answer",
+            FailedAt::NotHttp => "upstream-not-http",
+            FailedAt::OnlyInterim => "upstream-only-interim",
+        }
+    }
+}
+
 impl UpstreamFailure {
     fn new(who: &Who, at: FailedAt, cause: Option<std::io::Error>) -> Self {
         Self {
             who: who.clone(),
             at,
             cause,
+        }
+    }
+
+    /// 〔FIX3 · `99 §2.2 ⑫`〕回哪个码：卡在超时上（底层错误是 `TimedOut` / `WouldBlock`——后者是 socket 读写期限到了的样子）⇒ 504，
+    /// 其余上游那侧的失败 ⇒ 502。
+    pub(super) fn status(&self) -> &'static str {
+        let timed_out = self.cause.as_ref().is_some_and(|e| {
+            matches!(
+                e.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            )
+        });
+        if timed_out {
+            UPSTREAM_TOO_SLOW
+        } else {
+            UPSTREAM_UNREACHABLE
         }
     }
 
@@ -525,7 +565,11 @@ fn send_upstream(
         Ok(c) => c,
         Err(e) => {
             let who = Who::of(base);
-            return Answered::Unreachable(UpstreamFailure::new(&who, FailedAt::Connect, Some(e)));
+            return Answered::UpstreamFailed(UpstreamFailure::new(
+                &who,
+                FailedAt::Connect,
+                Some(e),
+            ));
         }
     };
     let wrote = (|| -> std::io::Result<()> {
@@ -537,7 +581,11 @@ fn send_upstream(
     })();
     match wrote {
         Ok(()) => Answered::Sent(up, Who::of(base)),
-        Err(e) => Answered::WriteFailed(e),
+        Err(e) => Answered::UpstreamFailed(UpstreamFailure::new(
+            &Who::of(base),
+            FailedAt::Send,
+            Some(e),
+        )),
     }
 }
 
@@ -552,10 +600,10 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut down_r = BufReader::new(down);
 
     let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP)? else {
-        return respond_and_drain(&mut down_w, BAD_REQUEST);
+        return respond_and_drain(&mut down_w, BAD_REQUEST, "bad-request-head");
     };
     let Some(head) = http1::parse_request(&raw_head) else {
-        return respond_and_drain(&mut down_w, BAD_REQUEST);
+        return respond_and_drain(&mut down_w, BAD_REQUEST, "bad-request-head");
     };
     // 🔴 〔RK1 · `INVARIANTS §48.1a`〕**进门三问排在一切之前**（读请求体之前、问上游选择之前）：
     //   Origin ⇒ 403 · Host 非回环 ⇒ 421 · 钥匙不对 ⇒ 403。过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`
@@ -563,17 +611,22 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let target = match door::admit(&head, &relay.door) {
         door::Verdict::Pass(rest) => rest,
         refused => {
-            let (status, why) = refused.refusal().expect("非 Pass 那几格都有拒绝的说法");
+            let (status, reason, why) = refused.refusal().expect("非 Pass 那几格都有拒绝的说法");
             // ⚠ 只印是哪一问拒的，**永不印请求头 / 路径**（`K9` 裁定四第 1 条；路径里可能正是一把错钥匙）。
             eprintln!("[relay] refused at the door: {status}");
-            return respond_body_and_drain(&mut down_w, status, format!("{status}\n{why}\n"));
+            return respond_body_and_drain(
+                &mut down_w,
+                status,
+                reason,
+                format!("{status}\n{why}\n"),
+            );
         }
     };
     if head.is_chunked_body() {
-        return respond_and_drain(&mut down_w, LENGTH_REQUIRED);
+        return respond_and_drain(&mut down_w, LENGTH_REQUIRED, "length-required");
     }
     let Some(r) = route::parse(&target) else {
-        return respond_and_drain(&mut down_w, NOT_A_ROUTE);
+        return respond_and_drain(&mut down_w, NOT_A_ROUTE, "not-a-route");
     };
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
@@ -586,11 +639,13 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
             Some(b) => b,
             // 超 `BODY_CAP`：一个字节都没读过（连接上还压着那 n 字节）⇒ 说清楚再关。
-            None => return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE),
+            None => return respond_and_drain(&mut down_w, PAYLOAD_TOO_LARGE, "payload-too-large"),
         },
         http1::BodyLen::Absent => Vec::new(),
         // **有这个头但读不懂** ⇒ 400，**不许**当成「没有请求体」往上游发一条空体。
-        http1::BodyLen::Unparsable => return respond_and_drain(&mut down_w, BAD_REQUEST),
+        http1::BodyLen::Unparsable => {
+            return respond_and_drain(&mut down_w, BAD_REQUEST, "bad-content-length")
+        }
     };
 
     relay.served.fetch_add(1, Ordering::SeqCst);
@@ -610,13 +665,16 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut answered: Option<Answered> = None;
     relay.dest.resolve(r.mode, &r.key, &mut |d| {
         answered = Some(match d {
-            // 路由不成立 ⇒ 回这个码，**一个字节都不发上游**。
-            // ⚠ `why` 今天不印（见 `Destination::Refuse` 那一格的头注）；`debug_assert`
-            //   只保证上游选择说得出理由，不产生任何生产段的输出。
-            Destination::Refuse { status, why } => {
-                debug_assert!(!why.is_empty(), "每一条 Refuse 都要说得出为什么");
-                Answered::Refused(status)
-            }
+            // 路由不成立 ⇒ 回这个码 ＋ 原因头 ＋ 那句为什么，**一个字节都不发上游**。
+            Destination::Refuse {
+                status,
+                reason,
+                why,
+            } => Answered::Refused {
+                status,
+                reason,
+                why,
+            },
             // 下游那份 auth 头**原样转发**。中转手里没有任何 key。
             Destination::Passthrough { upstream } => send_upstream(
                 upstream,
@@ -646,12 +704,19 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
         .expect("上游选择一次都没答 —— `Destinations::resolve` 的契约被破了")
     {
         Answered::Sent(up, who) => (up, who),
-        Answered::Refused(status) => return respond_and_drain(&mut down_w, status),
-        Answered::Unreachable(why) => return respond_upstream_failed(&mut down_w, &why),
-        // 写的过程中断了（上游中途关连接那一路）⇒ **原样往上传**，
-        // 由 `serve()` 那句 `[relay] connection ended` 收尾。⚠ 这一支**不回状态码**：
-        // 我们已经往上游发过字节了，这条连接的结局不由我们编。
-        Answered::WriteFailed(e) => return Err(e),
+        Answered::Refused {
+            status,
+            reason,
+            why,
+        } => {
+            return respond_body_and_drain(
+                &mut down_w,
+                status,
+                reason,
+                format!("{status}\n{why}\n"),
+            )
+        }
+        Answered::UpstreamFailed(why) => return respond_upstream_failed(&mut down_w, &why),
     };
 
     // ★★ `重要-1(D3)`：**1xx 是中间响应，不是最终响应**。
@@ -666,7 +731,7 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   **原样转给上游**（它不在逐跳表里）⇒ 合规的上游正好回 100，正中这一形。
     //
     // 今天：1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
-    // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 [`UPSTREAM_FAILED`]（那已经不是一个正常的上游）。
+    // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 [`UPSTREAM_UNREACHABLE`]（那已经不是一个正常的上游）。
     // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级
     //   （`Upgrade` / `Connection` 都在逐跳表里、根本转不到上游），真收到 101 就会
     //   继续往下读，而其后是隧道字节不是 HTTP 头 ⇒ `parse_response` 失败 ⇒ **502**。
@@ -674,8 +739,8 @@ pub(super) fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //
     // 🔴 〔`设计/20 §3.1a`〕这一段的四种失败**全是中转自己的传输失败**（上游不答 / 答的不是
     //   HTTP），先前三支回 502、读出错那一支**什么都不回**（`?` 往上抛，下游拿到一个没有
-    //   任何 HTTP 响应的 FIN）。今天四支一律回 [`UPSTREAM_FAILED`] ＋ 一句说得清卡在哪的话。
-    //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）从「静默 FIN」变成「504 ＋ why」：
+    //   任何 HTTP 响应的 FIN）。今天四支一律回码（超时 504、其余 502，FIX3）＋ 原因头 ＋ 一句说得清卡在哪的话。
+    //   ⚠ 读出错那一支（上游读期限到了 / 连接被重置）从「静默 FIN」变成「504（超时）或 502 ＋ why」：
     //     `05 §4.5.3` ① 逐字「把传输失败翻成一个 HTTP 响应，原样回给 agent」。
     //     下游那一侧此刻**一个字节都还没收到**（响应头还没写），所以回一个状态码不会与已发的字节打架。
     let (headers, raw_resp) = {

@@ -4282,11 +4282,6 @@
       "zh": "拉起失败，已复制命令",
       "args": []
     },
-    "remoteLaunchRun.launcher.startedBody": {
-      "kind": "body",
-      "zh": "新终端窗口正在连接 [{machine}]，在 tmux 会话「{name}」里启动 Claude。",
-      "args": ["machine", "name"]
-    },
     "remoteLaunchRun.launcher.started": {
       "kind": "body",
       "zh": "已拉起「开新 Claude」",
@@ -4306,11 +4301,6 @@
       "kind": "body",
       "zh": "已就地 resume，attach 命令已复制",
       "args": []
-    },
-    "remoteLaunchRun.inPlaceLocal.doneBody": {
-      "kind": "body",
-      "zh": "已在本机 tmux 会话「{name}」里就地 resume，没有新建。终端窗口正在接上它。",
-      "args": ["name"]
     },
     "remoteLaunchRun.inPlaceLocal.done": {
       "kind": "body",
@@ -4347,16 +4337,6 @@
       "zh": "拉起失败，已复制就地 resume 命令",
       "args": []
     },
-    "remoteLaunchRun.inPlace.doneBody": {
-      "kind": "body",
-      "zh": "新终端窗口正在连接 [{machine}]，在原来的 tmux 会话「{name}」里 resume，不新建。",
-      "args": ["machine", "name"]
-    },
-    "remoteLaunchRun.inPlace.doneByBackend": {
-      "kind": "body",
-      "zh": "已在 tmux 会话「{name}」里就地 resume，没有新建。新终端窗口正在连接 [{machine}] 接上它。",
-      "args": ["name", "machine"]
-    },
     "remoteLaunchRun.inPlace.done": {
       "kind": "body",
       "zh": "已在原来的 tmux 里就地 resume",
@@ -4372,11 +4352,6 @@
       "zh": "拉起失败，已复制 tmux resume 命令",
       "args": []
     },
-    "remoteLaunchRun.resumeTmux.startedBody": {
-      "kind": "body",
-      "zh": "新终端窗口正在连接 [{machine}]，在 tmux 会话里 resume 这个会话。",
-      "args": ["machine"]
-    },
     "remoteLaunchRun.resumeTmux.started": {
       "kind": "body",
       "zh": "已在 tmux 里 resume",
@@ -4391,11 +4366,6 @@
       "kind": "error",
       "zh": "拉起失败，已复制 resume 命令",
       "args": []
-    },
-    "remoteLaunchRun.resume.startedBody": {
-      "kind": "body",
-      "zh": "新终端窗口正在连接 [{machine}] 并 resume 这个会话。",
-      "args": ["machine"]
     },
     "remoteLaunchRun.resume.started": {
       "kind": "body",
@@ -13799,8 +13769,38 @@
     },
     "rsCcmProbe.hint.notOurs": {
       "kind": "body",
-      "zh": "PATH 上的 ccm 不是 cc-monitor 装的那份，终端里敲 ccm 会用到它。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
-      "args": ["theirs", "ours", "where"]
+      "zh": "终端里敲 ccm 走到的是 {at}，不是 cc-monitor 装的那份。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
+      "args": ["at", "theirs", "ours", "where"]
+    },
+    "rsCcmProbe.hint.oldEntry": {
+      "kind": "body",
+      "zh": "终端里敲 ccm 走到的是 {at}，那是 cc-monitor 早先放的旧入口，现在不用了。\ncc-monitor 不替你删。要让终端用 cc-monitor 这一份（{where}）：删掉 {at}，或让 ~/.cc-monitor/bin 排在 PATH 更前面。",
+      "args": ["at", "where"]
+    },
+    "rsCcmProbe.cell.notLanded": {
+      "kind": "body",
+      "zh": "cc-monitor 自带的那份没装下来",
+      "args": []
+    },
+    "rsCcmProbe.cell.notOurBytes": {
+      "kind": "body",
+      "zh": "装的位置上那份不是 cc-monitor 的",
+      "args": []
+    },
+    "rsCcmProbe.cell.ours": {
+      "kind": "body",
+      "zh": "装下来了，终端里敲 ccm 用的就是它",
+      "args": []
+    },
+    "rsCcmProbe.cell.elsewhere": {
+      "kind": "body",
+      "zh": "装下来了，但终端里敲 ccm 走到的是 {at}",
+      "args": ["at"]
+    },
+    "rsCcmProbe.cell.absent": {
+      "kind": "body",
+      "zh": "装下来了，但终端里敲 ccm 找不到它",
+      "args": []
     },
     "rsCcmProbe.hint.notInstalled": {
       "kind": "body",
@@ -14473,10 +14473,45 @@
       "zh": "起新会话失败",
       "args": []
     },
-    "history.newSession.startedDetail": {
+    "launchArrival.arrived.body": {
       "kind": "body",
-      "zh": "新终端窗口正在 {cwd} 启动。",
-      "args": ["cwd"]
+      "zh": "{machine}上报出了这个会话。",
+      "args": ["machine"]
+    },
+    "launchArrival.missed.title": {
+      "kind": "error",
+      "zh": "命令发出去了，但没看到会话起来",
+      "args": []
+    },
+    "launchArrival.missed.inWindow": {
+      "kind": "error",
+      "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。启动器的原话在那个终端窗口里，这边读不到。",
+      "args": ["secs", "machine"]
+    },
+    "launchArrival.missed.words": {
+      "kind": "error",
+      "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。tmux 会话「{name}」最后几行：\n{words}",
+      "args": ["secs", "machine", "name", "words"]
+    },
+    "launchArrival.missed.emptyScreen": {
+      "kind": "error",
+      "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。tmux 会话「{name}」那一屏是空的。",
+      "args": ["secs", "machine", "name"]
+    },
+    "launchArrival.missed.noScreen": {
+      "kind": "error",
+      "zh": "等了 {secs} 秒，{machine}上没有报出这个会话。tmux 会话「{name}」那一屏读不到：{why}",
+      "args": ["secs", "machine", "name", "why"]
+    },
+    "ccBus.spawn.arrived": {
+      "kind": "body",
+      "zh": "派生的 agent 起来了",
+      "args": []
+    },
+    "localResume.launch.arrived": {
+      "kind": "body",
+      "zh": "已在本机 resume",
+      "args": []
     },
     "history.newSession.started": {
       "kind": "body",
@@ -17045,6 +17080,16 @@
     "beServer.words.hopRead": {
       "kind": "body",
       "zh": "读响应",
+      "args": []
+    },
+    "beServer.words.sendFailed": {
+      "kind": "body",
+      "zh": "在请求发完之前断开了",
+      "args": []
+    },
+    "beServer.words.hopSend": {
+      "kind": "body",
+      "zh": "发请求",
       "args": []
     },
     "beServer.sentence.say": {

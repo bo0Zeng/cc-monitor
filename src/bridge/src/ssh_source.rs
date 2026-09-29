@@ -2340,6 +2340,7 @@ pub(crate) fn local_product(
             waiting_for,
             container,
             pid,
+            rbind_token,
             ..
         }) => (!local_hides(session_kind.as_deref(), show_bg)).then(|| BookIn::Live {
             origin: origin(),
@@ -2353,6 +2354,7 @@ pub(crate) fn local_product(
                 waiting_for: waiting_for.clone(),
                 container: *container,
                 pid: *pid,
+                rbind_token: rbind_token.clone(),
             },
         }),
         LocalItem::Frame(InboundFrame::SessionStatus {
@@ -2991,6 +2993,7 @@ async fn stream_loop(
                         waiting_for,
                         container,
                         pid: None,
+                        rbind_token,
                     },
                 });
                 // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队

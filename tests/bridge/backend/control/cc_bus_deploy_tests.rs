@@ -59,6 +59,7 @@ fn windows_precheck_really_probes_and_its_five_answers_are_distinguishable() {
         version: Some("5".into()),
         capabilities: caps.iter().map(|c| c.to_string()).collect(),
         build: build.map(str::to_string),
+        at: None,
     };
     let at = "$HOME/.cc-monitor/bin/ccm.exe";
     let full = card(true, CC_SPAWN_NEEDS, Some(want));

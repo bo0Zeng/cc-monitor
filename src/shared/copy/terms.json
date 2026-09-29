@@ -76,7 +76,8 @@
       "word": "tmux",
       "tier": "限用",
       "tally": { "re": "\\btmux\\b", "flags": "i" },
-      "inTable": 116,
+      "inTable": 114,
+      "inTableNote": "〔FIX3 · 99 §2.2 ②〕116 → 114：起会话那几条「窗口正在连接…」的正文删了 5 句（resumeTmux.startedBody · launcher.startedBody · inPlace.doneBody · inPlace.doneByBackend · inPlaceLocal.doneBody，见到会话才说、改用 launchArrival.arrived.body）＋ 没看到会话那三句说「tmux 会话「名」那一屏」（launchArrival.missed.words / emptyScreen / noScreen）。",
       "meaning": "用户机器上的终端复用程序。",
       "context": "讲用户自己能 attach / 看得见的 tmux 会话时许说（「tmux 会话」比「终端复用会话」清楚）。我们对 tmux 的用法（send-keys · capture-pane · @ccm_sid 这类会话标记）不许露，见禁档。",
       "source": "设计/91 §4 R1b（2026-09-18 裁定）",
@@ -113,7 +114,8 @@
       "word": "ccm",
       "tier": "限用",
       "tally": { "re": "(?<![\\w-])ccm(?![\\w-])", "flags": "i" },
-      "inTable": 69,
+      "inTable": 73,
+      "inTableNote": "〔FIX3 · 99 §2.2 ㉔〕69 → 73：本机那一格的三句（rsCcmProbe.cell.ours / elsewhere / absent）＋ 旧入口那句（rsCcmProbe.hint.oldEntry），都在讲「终端里敲 ccm」。",
       "meaning": "用户在 shell 里敲的那个命令；它就是后端程序本身（设计/01 §6.7b）。",
       "context": "只在讲「shell 里敲的命令」时许说（ccm 的参数、别名、写进 ~/.bashrc 的那一段）。讲「机器上装的那个程序」时说「后端」。「ccm 助手」「ccm wrapper」是我们起的名，禁。",
       "source": "设计/01 §6.7b · 设计/70 §5（MC1：「ccm 助手」删掉）· CP1 判不了之一（settings/machine-card.ts「卸载 ccm 中」）· 用户 09-24「继续叫卸载ccm」（99 §1 V80：原先那条 ask 结案删掉）",
@@ -545,6 +547,15 @@
       "say": "「安装位置」或直接写路径。",
       "scan": { "re": "落点", "flags": "" },
       "source": "设计/91 §7.3"
+    },
+    {
+      "word": "基座",
+      "tier": "禁",
+      "say": "「不指定账号」（不做账号隔离，用那台机器 ~/.claude 那一套）。",
+      "points": "账号",
+      "scan": { "re": "基座", "flags": "" },
+      "source": "设计/99 §2.2 ㉙③（主会话 09-28 按 V157 裁：界面文字不用架构行话）· 设计/80 §9.0 · 设计/91 §4 R1",
+      "note": "内部标识符（kind:\"base\" · useBase · --base）不动，那是实现词；管的是对外文字。"
     },
     {
       "word": "围栏",

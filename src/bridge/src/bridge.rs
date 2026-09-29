@@ -274,6 +274,11 @@ pub struct SessionLivePayload {
     /// 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
     pub cwd: Option<String>,
     pub name: Option<String>,
+    /// 〔FIX3 · `99 §2.2 ②`〕启动期令牌（`设计/80 §8.2`）：前端起新会话时铸的那一个，据它认出「我刚起的那条起来了」。
+    /// 那台后端读不到 / 没索要 ⇒ 缺席。
+    #[cfg_attr(test, ts(optional))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rbind_token: Option<String>,
 }
 
 /// 〔U4b · 第四波〕`container` 格 的 payload。`container` 只有两个值：`"tmux"` / `"none"`

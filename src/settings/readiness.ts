@@ -133,6 +133,8 @@ const FACET_MEANING: Record<
  *      monitor 会把它放到 `~/.cc-monitor/bin/ccm`，**Windows 上那一份叫 `ccm.exe`，
  *      一样在**（名字的真相源是 `backend/control/local_backend.rs::local_ccm_entry_name`，
  *      后缀由 `build.rs` 按 `TARGET` 算）。⇒ 「在他机器上压根无从补起」这句已经是假话。
+ *    - 〔FIX3 · `99 §2.2 ㉔`〕非 Windows 本机那一格今天有写点了（`remote-section.ts::noteLocalCcm`，两件都报）；
+ *      Windows 那一格仍不适用（问 PATH 那一跳 Windows 上答不了，`ccm_probe::probe_path_ccm`）。下面是当年的理由。
  *    - **没跟着翻的那半（本轮刻意不动，理由可证伪）**：撤掉这一条会让 Windows 用户
  *      **永久**多一条「本机 · ccm：未测过」—— 因为**全仓对本机 `ccm` 这一格
  *      一个 `recordFacet` 写点都没有**（下面那条「诚实边界」判据自己就写着这件事）。

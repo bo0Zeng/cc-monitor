@@ -124,9 +124,11 @@ TAG="$(tmux show-options -v -t "=$SESSION:" @ccm_sid 2>/dev/null || true)"
 # ── 2. GRAY:kill fake-claude(留 tmux)→ SessionRemoved + tmux 帧仍含 @ccm_sid ──
 FAKE_PID="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$CLAUDE_DIR"/sessions/*.json)"
 echo "-- kill fake-claude pid=$FAKE_PID(claude 退,tmux 会话保留 = 灰)--"
+# 〔FIX3〕记号必须在 kill **之前**取：后端靠 pidfd 判死、几乎零延迟，kill 之后再数行数，那一拍的 session_state
+#   可能已经写进帧日志、落在记号之前 ⇒ 「等不到可重连」（主线 6 过 1 红的根因；与仓路径是不是 ASCII 无关）。
+MARK_KILL="$(wc -l <"$FRAMES")"
 kill "$FAKE_PID" 2>/dev/null || true
 FAKE_PID=""
-MARK_KILL="$(wc -l <"$FRAMES")"
 SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12)" \
   && ok "SessionRemoved(claude 死 → 灰):$SR" \
   || bad "12s 内未见 SessionRemoved($SID)"

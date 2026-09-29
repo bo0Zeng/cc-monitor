@@ -64,7 +64,7 @@ export interface EventHandlers {
    */
   onSessionStarted?: (
     sessionId: string,
-    meta: { cwd: string | null; kind: string | null; name: string | null },
+    meta: { cwd: string | null; kind: string | null; name: string | null; rbindToken: string | null },
   ) => void;
   /** Batch5-F18：远端会话宣告 → 建骨架 Tab（不等首行）。Batch7-F24：附 pidfile
    *  元信息（p1e backend 起有值；旧 backend → null）。 */
@@ -77,6 +77,8 @@ export interface EventHandlers {
       attachable: boolean | null;
       cwd: string | null;
       name: string | null;
+      /** 〔FIX3 · `99 §2.2 ②`〕启动期令牌（那台读回的；缺席 ⇒ `null`）：`launch-arrival.ts` 认「我刚起的那条」。 */
+      rbindToken: string | null;
     },
   ) => void;
   /**
@@ -206,6 +208,7 @@ type QueueItem =
       cwd: string | null;
       sessionKind: string | null;
       name: string | null;
+      rbindToken: string | null;
     }
   // Batch5-F18：远端会话宣告（backend session_added 透传）——骨架 Tab 入口。
   // 走同一 queue 与 ended/started/行保序（INVARIANT § 20 / issue #20 教训）。
@@ -218,6 +221,7 @@ type QueueItem =
       attachable: boolean | null;
       cwd: string | null;
       name: string | null;
+      rbindToken: string | null;
     }
   // 〔U4b · 第四波〕容器事实 / 某台清单报完了 —— 同一 queue 保序（见 EventHandlers 里两条的注释）。
   | { kind: "container"; sessionId: string; container: string }
@@ -495,6 +499,7 @@ export async function bindEvents(
           cwd: item.cwd,
           kind: item.sessionKind,
           name: item.name,
+          rbindToken: item.rbindToken,
         });
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
@@ -502,6 +507,7 @@ export async function bindEvents(
           attachable: item.attachable,
           cwd: item.cwd,
           name: item.name,
+          rbindToken: item.rbindToken,
         });
       } else if (item.kind === "container") {
         handlers.onSessionContainer?.(item.sessionId, item.container);
@@ -612,7 +618,14 @@ export async function bindEvents(
           // 〔MIG-1 · ⑬〕会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
           const p = f.live;
           if (isLocalOrigin(p.origin)) {
-            queue.push({ kind: "started", sessionId: p.session_id, cwd: p.cwd ?? null, sessionKind: p.kind ?? null, name: p.name ?? null });
+            queue.push({
+              kind: "started",
+              sessionId: p.session_id,
+              cwd: p.cwd ?? null,
+              sessionKind: p.kind ?? null,
+              name: p.name ?? null,
+              rbindToken: p.rbind_token ?? null,
+            });
           } else {
             queue.push({
               kind: "remote-added",
@@ -622,6 +635,7 @@ export async function bindEvents(
               attachable: p.attachable ?? null,
               cwd: p.cwd ?? null,
               name: p.name ?? null,
+              rbindToken: p.rbind_token ?? null,
             });
           }
         } else if (f !== null && typeof f === "object" && "activity" in f) {

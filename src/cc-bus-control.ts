@@ -37,6 +37,7 @@
  * 查在线 15 秒 · 发消息 / 收掉 / 广播 30 秒 · 派生 90 秒 —— 与它们上一个住址（monitor 那几个发送端）同值。
  */
 import { copyText } from "./copy-table";
+import { arrivedBody, expectArrival } from "./launch-arrival";
 import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
 import { chan } from "./ipc/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
@@ -284,7 +285,17 @@ export async function spawnAgent(origin: Origin, req: SpawnRequest): Promise<str
   const payload = jsonBody(args);
   const budget = budgetWithin(SPAWN_BUDGET_MS);
   const v = await settle(origin, "bus-spawn", chan.call(origin, "bus-spawn", payload, budget), spawnRefusals());
-  return saidOfSpawn(v);
+  const said = saidOfSpawn(v);
+  // 〔FIX3 · `设计/99 §2.2 ②`〕cc-spawn 回了不等于 agent 起来了（pane 里当场退回 shell 那一形它照样回 0）：
+  //   等那台报出一条在这个目录里新起的会话再说；没见到就抓那个 tmux 会话的一屏当原话。
+  const id = isObj(v) && typeof v.id === "string" ? v.id : null;
+  expectArrival({
+    origin,
+    match: { cwd: req.dir },
+    tmuxName: id,
+    arrived: { title: copyText("ccBus.spawn.arrived"), body: arrivedBody(origin) },
+  });
+  return said;
 }
 
 // ─── 广播（`bus-broadcast`）───
