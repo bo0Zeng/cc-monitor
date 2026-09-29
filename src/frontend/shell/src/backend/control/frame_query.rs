@@ -256,7 +256,7 @@ pub(crate) async fn tail(
 }
 
 // 〔C4c · 第四波 4B〕`history-record` 那一问的发送端（`record` / `parse_record` / `RecordProbe`〔散文墓碑〕）删了：
-//   唯一调用方（Tauri 命令 `probe_session_record`）退役，界面经通道直接问后端（`src/session-reads.ts::probeSessionRecord`，
+//   唯一调用方（Tauri 命令 `probe_session_record`）退役，界面经通道直接问后端（`src/frontend/ui/session-reads.ts::probeSessionRecord`，
 //   「缺一格不许读成『不在』」那条口径随之搬到 TS 的 `decodeRecord`）。
 
 /// `history-read` 那一页里的一个可计行（〔MOD〕后端出的成品：monitor 不解析记录，只搬）。
@@ -342,7 +342,7 @@ pub(crate) async fn read_page(
 
 // 〔MOD · `05 §14.3` C 组〕按行号取一段（`session_lines` / `parse_session_lines`）· 读整段逐行（`read_lines`）·〔散文墓碑〕
 //   一次性查询按 argv 分流（`ArgvRoute` / `route_argv` / `refuses` / `run_routed`）〔散文墓碑〕删了：它们的调用方
-//   （按行号取回 · 子 agent · 按偏移取一段三条 Tauri 命令）退役，界面经通道直问那台后端的成品（`src/record-reads.ts`）。
+//   （按行号取回 · 子 agent · 按偏移取一段三条 Tauri 命令）退役，界面经通道直问那台后端的成品（`src/frontend/ui/record-reads.ts`）。
 
 #[cfg(test)]
 #[path = "../../../../../../tests/frontend/shell/backend/control/frame_query_tests.rs"]

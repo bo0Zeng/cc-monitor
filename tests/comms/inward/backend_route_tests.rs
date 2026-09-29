@@ -87,7 +87,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 〔C4e · 第四波 4C〕这里原来头三行是 `backend_kill.rs` / `backend_send_keys.rs` / `backend_launch.rs`
     //   （杀会话 · 送键 · 就地 resume 三个发送端，都 `UsesRouter`；`backend_launch` 那一行还记着 F14 的
     //   「`may_fall_back` 第三个字段 · 上一版误记成例外、改好当天如设计般红过一次」）。三条 Tauri 命令迁到界面
-    //   （`src/tmux-control.ts` 经通道直接说 `kill` / `launch`），发送端整份删了，发现阶段扫不到它们 ⇒ 三行摘掉。
+    //   （`src/frontend/ui/tmux-control.ts` 经通道直接说 `kill` / `launch`），发送端整份删了，发现阶段扫不到它们 ⇒ 三行摘掉。
     //   它们守的那件事没丢：Rust 这一侧的分层判定照旧只在 `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它）；
     //   F14 那条「能不能回落」在界面那一侧的同义一份（`ipc/chan-caller.ts::provablyNotSent`）由跨语言金样
     //   `tests/__fixtures__/reach-collapse.golden.json` 与本侧 `route_call_error` 对拍（`chan/webview_tests.rs`）。
@@ -95,7 +95,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   摘了：测试连接搬进本机后端（`dial/probe.rs`），monitor 这一侧不再发那一问。
 
     // 〔C4e · 第四波 4C〕**`cc_bus.rs` 那一行退役了**：P4f 起它把 cc-bus 写面（发消息 · 收掉 · 派生 · 查在线）经后端的
-    //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
+    //   `bus-*` 原语转一手、走分流器；现在界面经通道直接说（`src/frontend/ui/cc-bus-control.ts`，广播的挑人也搬进了后端 `bus-broadcast`），
     //   monitor 的 `cc_bus.rs` 只剩读名单 / 读收件箱两条 shell 读，不再是走后端的发送端 —— 从登记表删，不留过渡格。
     //   「monitor 里写面一条路都不剩」由 `cc_bus_tests.rs::the_monitor_has_no_cc_bus_write_path_any_more` 两向判。
     // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`capture_via_backend`〔散文墓碑〕，〔C4e〕已删）
@@ -107,7 +107,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
     //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。〔散文墓碑〕
     // 〔C4e · 第四波 4C〕**上面那一行（`tmux.rs`）退役了**：抓屏改由界面经通道直接问那台机器的后端
-    //   （`src/tmux-control.ts::capturePane`），monitor 里那个发送端（`capture_via_backend`〔散文墓碑〕）删了 ——
+    //   （`src/frontend/ui/tmux-control.ts::capturePane`），monitor 里那个发送端（`capture_via_backend`〔散文墓碑〕）删了 ——
     //   `tmux.rs` 从此不再直连 `inbound_client`，发现阶段扫不到它，登记跟着摘。分层判定照旧只在
     //   `backend_route::layer_call_error` 一处（通道宿主 `host.rs` 用它），界面那一侧只把分好层的结果翻成一句话。
     // ★ 〔步 `24f` 第四刀 09-21〕**第七个发送端** —— 原生文件窗口那一侧的搜索
@@ -176,7 +176,7 @@ const SENDERS: &[(&str, Verdict)] = &[
     //   **照样走分流器**（`route_call_error` ＋ `no_channel`），理由与 `frame_query.rs` 那条逐字相同；
     //   它要的 `stale` 那一档是从分流器递回来的 `(code, message)` 里认的，不自己 match 错误枚举。
     ("user_files.rs", Verdict::UsesRouter),
-    // 〔MIG-3b 续〕代码全景那一问的发送端（`panorama_call.rs`〔散文墓碑〕）删了：界面经通道直问那台后端，按码放字节那一步在界面（`src/panorama/api.ts::askOrPlace`）。
+    // 〔MIG-3b 续〕代码全景那一问的发送端（`panorama_call.rs`〔散文墓碑〕）删了：界面经通道直问那台后端，按码放字节那一步在界面（`src/frontend/ui/panorama/api.ts::askOrPlace`）。
     // ★ 〔SR1b · 第四波〕传输台的中继（`sftp_pool.rs`）：窗口的开单 / 订阅经它转给**本机**常驻后端
     //   （`transfer-*` 四条，传输台住那里）。没有第二条路可回落（`D11`：不进程内开 SFTP），
     //   后端说的码原样带回窗口；**照样走分流器**，理由与 `link_mux.rs` 那一行逐字相同。

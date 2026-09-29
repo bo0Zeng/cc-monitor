@@ -559,7 +559,7 @@ gate_diag() {
 #
 # ★ **分母现打（`K-G3` 09-01，跑了一趟真 `npm test` 数命中行，不是抽样）**：
 #   整趟输出里命中 `([0-9]+) (passed|个测试)` 的**只有 3 行** ——
-#   `test:diff` 的 `17 passed, 0 failed`（`tests/cards/diff.test.ts:234`）·
+#   `test:diff` 的 `17 passed, 0 failed`（`tests/frontend/ui/cards/diff.test.ts:234`）·
 #   vitest 的 `117 passed`（Test Files）与 `1480 passed`（Tests）。
 #   ⇒ **16 个 tsx 套件里有 15 个不带数字**（`all X tests passed` 那一形），**第 16 个（`diff`）带**，
 #   但它的 17 被 `sort -rn` 吃掉 ⇒ **`n` 仍恒等于 `test:dom` 那一个数**。
@@ -1420,9 +1420,9 @@ fi
 # ★ 生成物漂移（K-A1 第四轮 `R1`）：**改了 Rust 不跑生成，这里红。**
 #
 # 形状照 `.github/workflows/ci.yml` 那条「生成物必须最新（C05）」来 —— 它逐字是
-# `git diff --exit-code -- ../../src/generated`（那一步在 `src/frontend/shell` 目录下跑，所以带 `../`；
+# `git diff --exit-code -- ../../src/frontend/ui/generated`（那一步在 `src/frontend/shell` 目录下跑，所以带 `../`；
 # 本脚本开头已经 `cd` 到仓根，所以不带），失败时印一句 `::error::` 提示「请跑
-# npm run gen:types 并把 src/generated/ 一起提交」再 `git diff --stat`。
+# npm run gen:types 并把 src/frontend/ui/generated/ 一起提交」再 `git diff --stat`。
 # ⚠ 那条 CI 步骤的头注还写明了它**排除了什么**：它只买「已提交的生成物 == 从 Rust 源生成的」
 # 这一半，另一半「TS 消费方 == 已提交的生成物」由 frontend job 的 `tsc` 买 —— 拆成两半的理由是
 # **没有任何 job 同时有 Rust 和 node**（给 Rust job 加 `npm ci` 是分钟级，给 frontend job 加
@@ -1430,14 +1430,14 @@ fi
 #
 # ⚠⚠ **位置是承重的：它必须排在上面那道 `cargo` 门之后。**
 # `ts-rs` 的导出测试就住 `cargo test --lib` 里（`package.json` 的 `gen:types` 逐字就是
-# `cd src/frontend/shell && cargo test --lib export_bindings`）⇒ 跑过那道门，`src/generated/**` 已经被
+# `cd src/frontend/shell && cargo test --lib export_bindings`）⇒ 跑过那道门，`src/frontend/ui/generated/**` 已经被
 # 按当前 Rust 源重写了一遍，这里的 `git diff` 才是「Rust 源 与 已提交版本」的差。
 # 排在它**之前** ⇒ 检查的是一棵还没被重写的树，**恒绿 = 假绿**。
 #
 # 立项理由（K-A1 D 阶段审计实测：往 `RemoteAccount` 加一个字段而**不**跑生成，四条读数）：
 #   · vitest 全量（含 `generated-boundary-guard` 那一族）**1467 全绿**
 #   · `npx tsc --noEmit` **0 错**
-#   · `cargo test --lib` **自己把 `src/generated/RemoteAccount.ts` 重写了、然后报
+#   · `cargo test --lib` **自己把 `src/frontend/ui/generated/RemoteAccount.ts` 重写了、然后报
 #     `1181 passed; 0 failed`（绿）** ⇒ 本脚本原来那四道门**结构上一条都抓不到**
 #   · 只有 CI 那条抓得到。
 # 而本脚本头注自称「出货前的**唯一闸门**」—— 补上这一句才对得起那句话。
@@ -1447,8 +1447,8 @@ fi
 #
 # ⚠ 射程如实写（它**抓不到**什么，三条）：
 #   1. 它判**已跟踪文件的 diff** ⇒ 一个**全新**的生成物文件是 untracked，`git diff` 看不见。
-#      那一格由 `tests/generated-boundary-guard.vitest.ts` 的目录清单**逐项等号对拍**钉住
-#      （它对 `src/generated/` 做 `readdirSync` + 等号比对，新增文件必然让它红一次）。
+#      那一格由 `tests/frontend/ui/generated-boundary-guard.vitest.ts` 的目录清单**逐项等号对拍**钉住
+#      （它对 `src/frontend/ui/generated/` 做 `readdirSync` + 等号比对，新增文件必然让它红一次）。
 #   2. 它不判生成物**内容对不对**（该不该 `ts(optional)` 之类）—— 那也是上面那一族的活。
 #   3. 它判的是**工作树**，不判「你有没有真把它 commit 上去」（那一维归 `npm run verify:committed`，
 #      与本脚本头注里那条分工一致）。
@@ -1456,15 +1456,15 @@ fi
 #   也得手接一次。漏接的形状是：`GATE_ONLY` 点不到它、而它照样跑，
 #   于是收据里 `ran ∪ skipped` 少一格 ⇒ `K-G4C` 的两向相等当场分叉（那是**响的**）。
 if gate_wants generated; then
-git diff --quiet --exit-code -- src/generated/
+git diff --quiet --exit-code -- src/frontend/ui/generated/
 gen_rc=$?
 GATE_RAN+=("generated")
 case "$gen_rc" in
   0) printf '  ok   %-14s %s\n' "generated" "与 Rust 源一致（跑过上面那道 cargo 门之后再判的）" ;;
   1)
-    printf '  FAIL %-14s %s\n' "generated" "src/generated/ 与 Rust 源不一致："
-    git diff --stat -- src/generated/
-    fails+=("generated（改了带 ts_rs::TS 的类型 ⇒ 跑 npm run gen:types 并把 src/generated/ 一起提交）")
+    printf '  FAIL %-14s %s\n' "generated" "src/frontend/ui/generated/ 与 Rust 源不一致："
+    git diff --stat -- src/frontend/ui/generated/
+    fails+=("generated（改了带 ts_rs::TS 的类型 ⇒ 跑 npm run gen:types 并把 src/frontend/ui/generated/ 一起提交）")
     ;;
   *)
     # 退出码既不是 0 也不是 1（如 128：不在 git 仓里）⇒ **判不了**。不许当成绿。
@@ -1571,7 +1571,7 @@ deadcode_t0=$(date +%s)
 #   ⚠ 同一拍 T4 让 `bind.rs::lookup_hwnd_for_token` 有了生产调用方（35→34 那一拍已记）。
 # 🔴 **2026-09-24（第三波 B2 合并）：33 → 34，现打，逐条记**：B2 加了第四句退出文案 `backend_policy.rs::EXIT_UNREADABLE`
 #   （「那台机器上的退出策略读不出来，按默认办」）。它与同文件已在册的 `EXIT_KILLS` / `EXIT_UNATTENDED` / `EXIT_SELF_DIES` /
-#   `EXIT_COPY` 同一族：Rust 这一份**只为与 TS 那份逐字对拍而存在**（家在 `src/backend-policy.ts`），非 test 构建里本来就没读者。
+#   `EXIT_COPY` 同一族：Rust 这一份**只为与 TS 那份逐字对拍而存在**（家在 `src/frontend/ui/backend-policy.ts`），非 test 构建里本来就没读者。
 #   ⚠ 这一族要不要整族挂 `#[cfg(test)]` 是另一件事（会一次降 7 条），不在合并这一拍做。
 # 🔴 **2026-09-24（F7c 收尾，主会话授权动这一个数）：34 → 36，现打，逐条记**：
 #   池子那十二条 Tauri 命令删了之后，`sftp_pool.rs` 里**浏览那一半**的通道闸在生产上没人用了 ——
@@ -1652,7 +1652,7 @@ run_gate panorama-engine '单包 src/panorama-engine（独立 crate），只有�
 # ## 题面：一条缺陷 09-12 进来、09-14 才被发现，而发现它的不是任何判据
 #
 # `tauri build` 的第一步是 `npm run build` ＝ `tsc && vite build`。09-14 `K-R114` 去**真编一次
-# 发版产物**，那一步在 `src/views/history.ts` 上红了 6 条 `TS2322` —— 而同一棵树的门禁
+# 发版产物**，那一步在 `src/frontend/ui/views/history.ts` 上红了 6 条 `TS2322` —— 而同一棵树的门禁
 # **15 格全绿**（现打，`tests/evidence/K-R118-deathvalue.md#§A` 的 `M0`）。
 #
 # 🔴 **两条路同时断，这一格补的是第一条**：

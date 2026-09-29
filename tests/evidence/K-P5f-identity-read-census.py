@@ -203,7 +203,7 @@ REGISTRY: list[dict] = [
     ),
     dict(
         id="U3", carrier="C1", layer="消费", kind="生产", face="跨机器+本机",
-        path="src/tmux-sessions.ts",
+        path="src/frontend/ui/tmux-sessions.ts",
         anchor="s.sid === sid && isClaudeTmuxCommand(s.command)",
         n=2,
         who="前端 findClaudeTmux（`:52`）与 willFallBackToCwd（`:93`）",
@@ -212,7 +212,7 @@ REGISTRY: list[dict] = [
     ),
     dict(
         id="U4", carrier="C1", layer="消费", kind="生产", face="跨机器+本机",
-        path="src/tmux-sessions.ts",
+        path="src/frontend/ui/tmux-sessions.ts",
         anchor="s.sid === sid && !isClaudeTmuxCommand(s.command)",
         n=1,
         who="前端 findIdleTmux",

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 ///
 /// `session.launch` 是**从界面起**的那几条路。〔C4e · 第四波 4C〕原来还有第二项 `launch.send-into`
 /// （「往**已存在**的 tmux 送载荷」那条，它同样会让一个 agent 进程出生 ⇒ 同属本表的人群）：
-/// 它唯一的命令 `backend_send_into`〔散文墓碑〕迁到界面（`src/tmux-control.ts::sendInto` 经通道直接说后端的 `launch`），
+/// 它唯一的命令 `backend_send_into`〔散文墓碑〕迁到界面（`src/frontend/ui/tmux-control.ts::sendInto` 经通道直接说后端的 `launch`），
 /// 那项能力随之从账本里没了 ⇒ `L3` 从「账本那半」挪到「锚点那半」（人群一个没少，见 `REGISTERED` 那一行）。
 const LAUNCH_CAPS: &[&str] = &["session.launch"];
 
@@ -79,11 +79,11 @@ const REGISTERED: &[Launcher] = &[
                   **归 PM 下一拍（写区要含前端）。**",
     },
     Launcher {
-        // 〔C4e · 第四波 4C〕住址换了：monitor 的 Tauri 命令 `backend_send_into`〔散文墓碑〕→ 界面 `src/tmux-control.ts::sendInto`
+        // 〔C4e · 第四波 4C〕住址换了：monitor 的 Tauri 命令 `backend_send_into`〔散文墓碑〕→ 界面 `src/frontend/ui/tmux-control.ts::sendInto`
         //   （经通道直接说后端的 `launch{mode:"send-into"}`）。它不再是 Tauri 命令 ⇒ 进不了账本，改成人点的锚点。
-        label: "L3 · 往已存在的 tmux 送载荷（`src/tmux-control.ts::sendInto`）",
+        label: "L3 · 往已存在的 tmux 送载荷（`src/frontend/ui/tmux-control.ts::sendInto`）",
         ledger_cmds: &[],
-        anchors: &[("src/tmux-control.ts", "export async function sendInto(", 1)],
+        anchors: &[("src/frontend/ui/tmux-control.ts", "export async function sendInto(", 1)],
         plants: false,
         why: "今天没落，理由是**它不是「起一条新会话」**：send-into 把载荷送进一条\
                   **已经存在**的 tmux 会话，那条会话的身份在它**建的时候**就该打过了 —— \

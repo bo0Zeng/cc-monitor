@@ -88,16 +88,16 @@ pub const SESSION_LINES_KIND: &str = "session-lines";
 pub const SESSION_TAP_KIND: &str = "session-tap";
 
 /// 〔DL1〕本文件认的另一个流标签：那台机器上「账号清单可能变了」（见头注那张表）。
-/// TS 那一侧的同一个串住 `src/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
+/// TS 那一侧的同一个串住 `src/frontend/ui/session-accounts-poll.ts::ACCOUNTS_CHANGED_KIND`（两侧对拍在 `session-accounts-poll.vitest.ts`）。
 pub const ACCOUNTS_CHANGED_KIND: &str = "accounts-changed";
 
 /// 〔MIG-3b · `99 §2.1 ㉓②`〕本文件认的又一种流：那台机器上「某个会话的任务清单变了」（格体 `{"sid": …}`，没有留存）。
-/// TS 那一侧的同一个串住 `src/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/events-tap.vitest.ts`）。
+/// TS 那一侧的同一个串住 `src/frontend/ui/tasks-stream.ts::SESSION_TASKS_KIND`（两侧对拍在 `tests/frontend/ui/events-tap.vitest.ts`）。
 pub const SESSION_TASKS_KIND: &str = "session-tasks";
 
 /// 〔MIG-1 收尾 · 主会话裁「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，
 /// 格体是后端原样那一格 `{stage}` / `{reached}` / `{end}`，没有留存；只在 `<local>` 上有）。
-/// TS 那一侧的同一个串住 `src/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/remote-probe.vitest.ts`）。
+/// TS 那一侧的同一个串住 `src/frontend/ui/remote-probe.ts::PROBE_PROGRESS_KIND`（两侧对拍在 `tests/frontend/ui/remote-probe.vitest.ts`）。
 /// 流名刻意不叫命令名（命令是那台后端的 `remote-probe`，monitor 生产段不许有它的字面量 —— 发送点只在界面）。
 pub const PROBE_PROGRESS_KIND: &str = "probe-progress";
 
@@ -196,7 +196,7 @@ struct Held {
 /// ① **前端开一个 tab 时最多建多少条不用滚动**：`tabs.ts` 的 `materializeUntilFilled` 是
 ///    `MATERIALIZE_TAIL_K`（150）× 最多 4 轮 = **600**。尾巴少于它，F5 之后那一屏就要等
 ///    按偏移取正文（多一次 IPC ＋ 一次后端进程）；多于它，多出来的那段首屏根本用不上。
-///    ⇒ 取 600。这条等式由 `tests/replay-tail-keep.vitest.ts` 对着两边源码钉着（改一边会红）。
+///    ⇒ 取 600。这条等式由 `tests/frontend/ui/replay-tail-keep.vitest.ts` 对着两边源码钉着（改一边会红）。
 /// ② **它够不够一屏**（2026-09-24，gpd 本机 39 份会话，按骨架第一级粗估、1080 px 视口）：
 ///    被截的 7 份里，尾巴 600 条覆盖 **11.8–75.3 屏**（p50 28.6）⇒ 首屏 ＋ 头几次上翻都不用去取。
 ///    对照：150 条最坏只有 1.6 屏（离「一屏」只差一点），300 条最坏 6.6 屏。

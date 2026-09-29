@@ -4,10 +4,10 @@
 //! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
 //!
 //! 本文件原本挂在杀会话的 monitor 发送端 `backend_kill.rs`〔散文墓碑〕下面，一起住着那个发送端自己的几条单元判据
-//! （读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/tmux-control.ts::killSession`
+//! （读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
 //! 经通道直接说后端的 `kill`），发送端删了：
 //! - 它自己的那几条随它退役 —— 「读 `killed` 不许猜」搬到 TS `decodeKilled`，「拒绝码逐码一句」搬到 TS 那张表
-//!   （`tests/tmux-control.vitest.ts`，码集合取自跨语言金样 `tests/__fixtures__/tmux-control.golden.json`）；
+//!   （`tests/frontend/ui/tmux-control.vitest.ts`，码集合取自跨语言金样 `tests/__fixtures__/tmux-control.golden.json`）；
 //! - **本文件剩下的两条不跟着走**（它们守的与 monitor 里有没有发送端无关），文件原地不动，改挂在
 //!   `backend/control/mod.rs` 的测试段（`kill_name_tests`）。
 
@@ -58,7 +58,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
     //    ★ 同 `K-R72` 那次逐字：这一改是**结构性强制的随动**，不是顺手删记录。
     // 🔴 〔LR2 2026-09-25〕**`src/session-backend.ts` 这一行删了** —— `设计/00 §2.5 ④` 收官那天删的
     //    就是它（下面那条 Rust 对侧的注释原来逐字预告了这一行）。它原来的理由是「只是渲染器：名字由上游
-    //    `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验」；那条上游关系今天挂在
+    //    `mintTmuxName` 产、由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验」；那条上游关系今天挂在
     //    下面那条 Rust 创建路径的理由里（③b 要求每条校验器都有创建路径点它的名）。
     (
         // 〔`设计/90 §4 E` 2026-09-19 建 · 步 22b·B 接上生产 · LR2 起是外层三格唯一的家〕
@@ -78,7 +78,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
 ///
 /// # ⚠ 为什么是两张表
 ///
-/// 第一版我把 `src/shell-quote.ts` 塞进了 `CREATION_PATHS` —— 而**它不产 `new-session`**，
+/// 第一版我把 `src/frontend/ui/shell-quote.ts` 塞进了 `CREATION_PATHS` —— 而**它不产 `new-session`**，
 /// 它是**校验器**。判据当场红（遍历只找到 4 个产出方，登记表却有 5 条）。
 /// ⇒ 两张表各司其职：
 ///
@@ -100,7 +100,7 @@ const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
 /// 两个方向都活：拿掉 `=` ⇒ 字面量不再出现 ⇒ 红；backend 新增禁字 ⇒ 字面量缺它 ⇒ 红。
 #[cfg(test)]
 const VALIDATORS: &[(&str, &str, &str)] = &[
-    // 〔DUP2 · 主会话 09-26 裁 J6〕原来这里两行：`src/shell-quote.ts`（`[*?=]`，TS 的新建谓词）与 `src/backend/control/ccm/plan.rs`
+    // 〔DUP2 · 主会话 09-26 裁 J6〕原来这里两行：`src/frontend/ui/shell-quote.ts`（`[*?=]`，TS 的新建谓词）与 `src/backend/control/ccm/plan.rs`
     //    （`"*?.:="`，后端 `validate_tmux_name` 自己那一份）。规则收成一份进共享 crate 之后只剩下面这一行 ——
     //    禁字集字面量住它，`plan.rs` 与 `payload.rs` 两条创建路径的理由各点它的名（③b 那条边）。
     (
@@ -319,7 +319,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
     // `CREATION_PATHS` 是遍历出来的（少一条会红），`VALIDATORS` 是**手写**的，
     // 少一条不红、**多一条也不红**。
     //
-    // ⇒ 活体形状（当年就摆在盘上）：`src/shell-quote.ts` 这一行当时靠
+    // ⇒ 活体形状（当年就摆在盘上）：`src/frontend/ui/shell-quote.ts` 这一行当时靠
     // TS 座那条创建路径的理由把它引进来。〔LR2 2026-09-25〕那一天到了：座删了，本条当场按设计要求
     // 「同一拍把这条校验器一起处置」—— 它**还有人在用**（生产 TS 的 `planLauncher` 过它），
     // 于是把 `payload.rs` 那条创建路径的理由写全、点了它的名。原先的推演留档如下：`CREATION_PATHS` 少一行、
@@ -514,5 +514,5 @@ fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
 
 // 〔C4e · 第四波 4C〕这里原来住着「两条后端命令的拒绝文案说同一件事」（`the_refusal_wording_matches_the_sibling_command`〔散文墓碑〕，
 //   对照 monitor 里杀会话与送键两个发送端各自那份 `refusal_text`）。两个发送端都迁到界面删了，
-//   拒绝码 → 一句话从此只有 `src/tmux-control.ts` 一份（按动作分表：结束会话 · 发按键），
-//   「逐码一句、两两不同、带会话名与后端原话」由 `tests/tmux-control.vitest.ts` 钉着。
+//   拒绝码 → 一句话从此只有 `src/frontend/ui/tmux-control.ts` 一份（按动作分表：结束会话 · 发按键），
+//   「逐码一句、两两不同、带会话名与后端原话」由 `tests/frontend/ui/tmux-control.vitest.ts` 钉着。

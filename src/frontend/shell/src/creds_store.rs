@@ -35,7 +35,7 @@ pub(crate) fn resolve_path() -> Option<PathBuf> {
 
 // 〔US1 · 第四波 4D〕读侧掩码（`ApikeyCredentialsStatus` · `read_status` · `read_status_at` · `notice_of`）〔散文墓碑〕退役：
 //   本机那份文件的状态由本机常驻后端答（帧面 `apikey-read`，`src/backend/accounts/upstream/file_face.rs::read_at`），
-//   界面经 `chan.call` 直接问、按形状收（`src/apikey-reads.ts`，「永远只有掩码」那一格由后端应答的形状与跨语言金样钉着）。
+//   界面经 `chan.call` 直接问、按形状收（`src/frontend/ui/apikey-reads.ts`，「永远只有掩码」那一格由后端应答的形状与跨语言金样钉着）。
 //   本机与远端同一条路 —— monitor 这一侧从此不读这份文件。
 
 // 〔GP1 · 第四波〕**这里原来是本机那一份的写口**（`write_key`〔散文墓碑〕 / `write_key_at`〔散文墓碑〕 /

@@ -8,8 +8,8 @@
  *
  * # 它打三段读数
  *
- * - **A 段 · 真高**：整份语料（`tests/scale2-height-corpus.ts`）插进真的
- *   `.stream > .stream-content`（真的 `src/styles.css`），**关掉 `content-visibility`**
+ * - **A 段 · 真高**：整份语料（`tests/frontend/ui/scale2-height-corpus.ts`）插进真的
+ *   `.stream > .stream-content`（真的 `src/frontend/ui/styles.css`），**关掉 `content-visibility`**
  *   让每张卡都真排版，逐卡读 `getBoundingClientRect().height`（border-box）
  *   ＋ 扣掉 padding/border 得到 **content-box**。
  *   关 c-v 的理由：c-v:auto 的卡在视口外会被 skip，那时读到的是**估值本身**，
@@ -32,24 +32,24 @@
  * 结果写 `window.__RESULT`（JSON 文本）＋ `window.__DONE = true`，与
  * `真相源/90` 的两个 runner 的取值约定一致。
  */
-// 〔三入口拆分 · 住址搬家〕原先这一行 `import "../../src/styles.css"` 就带着令牌与重置
+// 〔三入口拆分 · 住址搬家〕原先这一行 `import "../../src/frontend/ui/styles.css"` 就带着令牌与重置
 // （它 `@import` 了 tokens.css、自带 `@layer reset`）；拆开之后它们各住一份。照 `viewer.html` 的
 // 样式表清单逐份引（viewer 窗 = tab 管理 ＋ 渲染栈，正是本探针量的那一块），次序与那份清单相同。
-import "../../src/styles/layers.css";
-import "../../src/styles/reset.css";
-import "../../src/styles/tokens.css";
-import "../../src/styles/layout.css";
-import "../../src/styles/shared.css";
-import "../../src/styles.css";
+import "../../src/frontend/ui/styles/layers.css";
+import "../../src/frontend/ui/styles/reset.css";
+import "../../src/frontend/ui/styles/tokens.css";
+import "../../src/frontend/ui/styles/layout.css";
+import "../../src/frontend/ui/styles/shared.css";
+import "../../src/frontend/ui/styles.css";
 import fixtureJsonl from "../__fixtures__/scale2-height-records.jsonl?raw";
-import { buildCorpus, htmlFingerprint } from "../scale2-height-corpus";
+import { buildCorpus, htmlFingerprint } from "../frontend/ui/scale2-height-corpus";
 import {
   estimateStreamNodeHeight,
   applyIntrinsicSize,
   appliedIntrinsicPx,
   extractProseText,
   codeBlockHeight,
-} from "../../src/height-estimate";
+} from "../../src/frontend/ui/height-estimate";
 
 declare global {
   interface Window {
@@ -64,7 +64,7 @@ declare global {
  *
  * 🔴 这里原先还有一份硬写的 `const APPLIED_FLOOR = 24`（`applyIntrinsicSize` 里那个
  * `Math.max(24, …)` 的**第二份副本**）。2026-09-18 地板去掉之后，"真正写进 style 的数"
- * 收成了一个住址：`appliedIntrinsicPx`（`src/height-estimate.ts`），本文件**调它**而不再抄它
+ * 收成了一个住址：`appliedIntrinsicPx`（`src/frontend/ui/height-estimate.ts`），本文件**调它**而不再抄它
  * —— 抄的那份改源码不会跟着变，探针会安静地在量一个不再出货的配置（`99 条 75` 第 3 处）。
  */
 const CSS_FALLBACK_PX = 120;

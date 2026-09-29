@@ -3,7 +3,7 @@
 //! 守的要求（逐字）：
 //! - 主会话 09-26 交接（TL3 三格之①）：「**模型名**字符集 …… 定一个两侧同一份的规则（住共享 crate），真实模型名都放行。」
 //! - `设计/90 §3` 判据 2：「凡是有对应 `*-core` crate 的判定，TS 侧零实现」—— 前端要在写入点先说一句的那一格，
-//!   **不手抄规则**，读 monitor 从 `shell-quote-core` 那组常量现生成的 `src/generated/judgment-rules.ts`（`DUP1.md §4 ①` 的甲）。
+//!   **不手抄规则**，读 monitor 从 `shell-quote-core` 那组常量现生成的 `src/frontend/ui/generated/judgment-rules.ts`（`DUP1.md §4 ①` 的甲）。
 //! - `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 //!
 //! 〔DUP2 · 第四波 4D〕同一份生成物又多三样：账号名（J18，`shell_quote_core::account_name_ok` 那组常量）·
@@ -16,7 +16,7 @@
 //!    （死值验时实测到生成器先把刀后的式子写了回去）—— 「生成物不陈旧」只交给门禁那一格的 `git diff`。
 //! 2. [`the_shared_golden_agrees_with_the_one_rule`]：共用金样 `tests/__fixtures__/identifier-rules.golden.json`
 //!    的每一条都喂给 Rust 那一份（`session_id_ok` · `model_name_ok` · `account_name_ok`），期望是金样里**手写**的；
-//!    TS 那一侧 `tests/identifier-rules-parity.vitest.ts` 拿同一份金样喂生成出来的式子 ⇒ 两侧逐条对同一份，不是彼此对拍。
+//!    TS 那一侧 `tests/frontend/ui/identifier-rules-parity.vitest.ts` 拿同一份金样喂生成出来的式子 ⇒ 两侧逐条对同一份，不是彼此对拍。
 //!
 //! 买不到：生成出来的正则与 Rust 那几行 `chars().all(...)` 是**两种写法**（一个是式子、一个是循环）——
 //! 两者一致只由金样里的那些样本证明，样本之外的串（例如非 ASCII 的奇怪码位）靠两侧都「只认 ASCII」这个共同的写法兜着。
@@ -30,7 +30,7 @@ const HEADER: &str = "\
 //
 // 〔DUP1 · DUP2〕判定只有一个家（住共享 crate，或 monitor 的渲染模块）；前端要在写入点先说一句、或要按规则造一个值的那几条，
 // 规则**数据**从那里现生成到这里（不手抄）。两侧由共用金样逐条对：标识符 `tests/__fixtures__/identifier-rules.golden.json` ·
-// 账号种类 `tests/__fixtures__/accounts.golden.json`；令牌由 `tests/rbind-token-shape-parity.vitest.ts` 拿铸出来的值对 Rust 源码。
+// 账号种类 `tests/__fixtures__/accounts.golden.json`；令牌由 `tests/frontend/ui/rbind-token-shape-parity.vitest.ts` 拿铸出来的值对 Rust 源码。
 ";
 
 /// 正则字符类里要转义的那几个（其余标点在字符类里就是字面量）。
@@ -271,11 +271,11 @@ fn base_url_issue_patterns() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// 生成 `src/generated/judgment-rules.ts`。
+/// 生成 `src/frontend/ui/generated/judgment-rules.ts`。
 #[test]
 fn export_bindings_judgment_rules() {
     let repo = crate::guard_support::repo_root();
-    let out = repo.join("src/generated/judgment-rules.ts");
+    let out = repo.join("src/frontend/ui/generated/judgment-rules.ts");
     std::fs::write(&out, render_judgment_rules())
         .unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
 }
@@ -315,7 +315,7 @@ fn the_shared_golden_agrees_with_the_one_rule() {
 }
 
 /// 〔DUP3 · J9〕共用金样 `tests/__fixtures__/upstream-url.golden.json` 逐条：`upstream_url_core::usable` 的结论 == 手写的 want
-/// （TS 那一侧 `tests/upstream-url-parity.vitest.ts` 读同一份跑生成的式子 ⇒ 两侧各对金样，不是彼此对拍）。
+/// （TS 那一侧 `tests/frontend/ui/upstream-url-parity.vitest.ts` 读同一份跑生成的式子 ⇒ 两侧各对金样，不是彼此对拍）。
 #[test]
 fn the_upstream_url_golden_agrees_with_the_one_rule() {
     let raw = include_str!("../../../../__fixtures__/upstream-url.golden.json");

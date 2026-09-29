@@ -1,6 +1,6 @@
 //! 用户配置 R/W —— `~/.claude/claudecode-frontend/config.json`。
 //!
-//! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/config.ts::CONFIG_KEY_OWNERS`），
+//! Rust 端不解释配置内容（schema 在前端定义，顶层键的主人登记在 `src/frontend/ui/config.ts::CONFIG_KEY_OWNERS`），
 //! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。
 //!
 //! 配置文件位置走 `paths::resolve_config_path` —— monitor 自己的设置永远在
@@ -47,7 +47,7 @@ pub fn load_config() -> Result<Value, String> {
 /// `theme` / `remote` 要的是**整键替换**，`keybindings` 的值里还有合法的 `null`。路径形状让写者明说替换到哪一层。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(tag = "op", rename_all = "lowercase")]
 pub enum ConfigEdit {
     Set {
@@ -92,7 +92,7 @@ pub enum ConfigEdit {
 /// （`remote.hosts` 的 origin 就是 `["label", "host"]`：`label` 非空取它、否则 `host`）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct ElemKey {
     pub fields: Vec<String>,
     pub equals: String,

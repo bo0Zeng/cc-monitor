@@ -65,7 +65,7 @@
     · `package.json`             —— 套件名，被 `K-P2-F-suites.py` 与 `ci.yml` 对拍
 
   **不在人群里**：`src/**/*.ts` 前端生产源（那是被判的对象，不是判据）· `调研/**`（散文）·
-  `node_modules/` · `.build/` · `coverage/` · `src/generated/`（生成物，重生成即改）。
+  `node_modules/` · `.build/` · `coverage/` · `src/frontend/ui/generated/`（生成物，重生成即改）。
 
 **(3) 四形（`WHAT`）—— 任务书那四档，逐处只落一档**
 

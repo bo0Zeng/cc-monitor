@@ -106,7 +106,7 @@ fn quote_roundtrip_is_the_real_property() {
 /// ★★〔C4e · 第四波 4C〕**monitor 里 cc-bus 写面一条路都不剩**（零命中 ＋ 正控）。
 ///
 /// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」—— 发消息 / 收掉 / 派生 / 广播的解释
-/// 今天只住 `src/cc-bus-control.ts`（广播的挑人住后端）；monitor 里再长出一条拼 `cc-send` / `cc-kill` / `cc-spawn` /
+/// 今天只住 `src/frontend/ui/cc-bus-control.ts`（广播的挑人住后端）；monitor 里再长出一条拼 `cc-send` / `cc-kill` / `cc-spawn` /
 /// `cc-broadcast` shell 串的路，就是 `K-R98` / `K-R112` / BS1b 一条条删掉的那几条 SSH 路回来了（它们纯按名字、没有身份核对）。
 /// 帧命令名那一格由 `frame_query_tests` 的 `CHANNELED_ELSEWHERE`（monitor 生产段零字面量）管，本条管 shell 串那几种形态。
 /// 正控：同一识别器在后端 `control/cc_bus.rs` 的生产段上认得出它真在转调的 `cc-send`。
@@ -147,7 +147,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
     assert_eq!(
         who, only_deployer,
         "monitor 生产段里提到 cc-bus 写面脚本名的文件 ≠ {{部署器 × 四个名字}} —— 多出来的那个就是在 monitor 里长回的一条\
-         拼 shell 串的路（它只许经后端的 `bus-*` 原语，界面经 `src/cc-bus-control.ts` 一处说）；少了就是豁免过期"
+         拼 shell 串的路（它只许经后端的 `bus-*` 原语，界面经 `src/frontend/ui/cc-bus-control.ts` 一处说）；少了就是豁免过期"
     );
     let backend = guard_core::production_code(
         &std::fs::read_to_string(root.join("src/backend/control/cc_bus.rs"))
@@ -159,7 +159,7 @@ fn the_monitor_has_no_cc_bus_write_path_any_more() {
     );
 }
 
-/// ★★〔C4e · 第四波 4C〕**界面说 cc-bus 那五条只经一处**：`chan.call(origin, "bus-…"` 只住 `src/cc-bus-control.ts`，
+/// ★★〔C4e · 第四波 4C〕**界面说 cc-bus 那五条只经一处**：`chan.call(origin, "bus-…"` 只住 `src/frontend/ui/cc-bus-control.ts`，
 /// 各恰好一处。
 ///
 /// 守的要求：同上一条（业务解释只有一个家）—— 先核 id / 正文 / 派生形状、按形状收、逐态说人话，这几件只写在那一份里；
@@ -203,8 +203,8 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
     for op in ops {
         assert_eq!(
             homes.get(op).cloned().unwrap_or_default().into_iter().collect::<Vec<_>>(),
-            vec!["src/cc-bus-control.ts".to_string()],
-            "`{op}` 的 `chan.call` 出现在 `src/cc-bus-control.ts` 之外（或那一份里没有了）—— 界面说它的家不止一个"
+            vec!["src/frontend/ui/cc-bus-control.ts".to_string()],
+            "`{op}` 的 `chan.call` 出现在 `src/frontend/ui/cc-bus-control.ts` 之外（或那一份里没有了）—— 界面说它的家不止一个"
         );
         assert_eq!(
             counts.get(op).copied(),
@@ -217,7 +217,7 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
 /// ★〔C4e · 第四波 4C〕**agent id 的规则对金样**：monitor [`is_valid_bus_id`]（读收件箱那一条）读跨语言金样
 /// `cc-bus-control.golden.json` 的 `ids`。
 ///
-/// 〔DUP2 · J12〕界面那一份（`src/cc-bus-control.ts` 里的 TS 副本）删了，实现搬进共享 crate（`shell_quote_core::bus_id_ok`），
+/// 〔DUP2 · J12〕界面那一份（`src/frontend/ui/cc-bus-control.ts` 里的 TS 副本）删了，实现搬进共享 crate（`shell_quote_core::bus_id_ok`），
 /// 这里的 [`is_valid_bus_id`] 是它的再导出；后端 `bus-*` 入口用同一个函数判同一份 `ids`
 /// （`tests/backend/control/cc_bus_tests.rs::bus_ids_are_judged_here_before_they_reach_cc_bus`）。本条留着：读收件箱这一侧对金样。
 #[test]

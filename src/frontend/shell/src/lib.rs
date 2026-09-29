@@ -1,13 +1,13 @@
 // 🔴 〔搬树 2026-09-18〕**ts-rs 的 `export_to` 是三级 `../`，不是两级。**
 // 本 crate 从 `<repo>/src-tauri` 搬到 `<repo>/src/frontend/shell` ⇒ 到仓根多了一级。
 // 漏改的症状**不是编译错**：ts-rs 会把全部类型写进一个叫 `<repo>/src/src/generated`
-// 的**文件**（因为那个目录不存在），而 `src/generated/*.ts` 那 86 份**从此不再更新**
+// 的**文件**（因为那个目录不存在），而 `src/frontend/ui/generated/*.ts` 那 86 份**从此不再更新**
 // ⇒ CI 那条「生成物必须最新」会红，而本机什么都不响。
 // 现打：32 个文件 / 84 处属性，全在 `src/frontend/shell/src/*.rs` 同一层。
 //
 // 🔴 **结尾那个 `/` 也是承重的**：ts-rs 12 把不带斜杠的 `export_to` 当**文件路径**。
 // 重组那一趟把两件都改坏了：① 少一级 `..`；② **结尾斜杠被吃掉**
-// （重组前逐字是 `"../../src/generated/"`）。
+// （重组前逐字是 `"../../src/frontend/ui/generated/"`）。
 // 两个错叠在一起恰好**不报错**：`src/src/generated` 那个目录不存在 ⇒ ts-rs 安静地
 // 建了一个同名**文件**，把全部类型塞进去。只补 `..` 不补斜杠则当场 `Is a directory`（84 条红）。
 // ⇒ 这一格的教训：**"改完能编过"不等于改对了** —— 这两处都不是编译期能看见的。
@@ -80,10 +80,10 @@ mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（�
 mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
                  // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
-                 //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/settings/plugins-section.ts::fetchSurvey`）。
+                 //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
 mod profile_installer;
 // 〔MIG-3b 续 · ⑬〕`pubkey`〔散文墓碑〕（F50 公钥推送）进了本机后端：帧命令 `pubkey-push`（`src/backend/assets/pubkey.rs`），界面经通道直问。
-// 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/session-writes.ts`）。
+// 〔MIG-3b〕分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
 // 〔MOD〕`mod remote_history;`〔散文墓碑〕删：最后一个函数（按名字核「这台配置过」）随子 agent 那条命令退役。
 mod remote_resident; // 〔HOST · V139〕远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
@@ -212,7 +212,7 @@ mod swallow_registry;
 mod sync_command_registry;
 // 〔MOD〕`mod session_skeleton;`〔散文墓碑〕删：按偏移 / 按行号取正文由那台后端出记录行（`history-page` · `history-lines`），界面经通道直问。
 // 〔C4b · 第四波 4B〕大纲清单与会话内查找两个模块（`session_outline` / `session_find`）删了：
-//   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/session-reads.ts`）。
+//   界面经通道直接说帧命令 `history-user-inputs` / `history-find`，后端出成品（`src/frontend/ui/session-reads.ts`）。
 // 〔C2 · U3 第 3 件〕远端流断线重连后，旁路快照从续点接着拉（不再从第 0 行整份重拉）。
 mod snapshot_resume;
 // 〔MIG-3b〕`tasks` 模块（本机任务 notify ＋ `task-update`）删了：监视进后端，界面经通道订 `session-tasks`。
@@ -980,12 +980,12 @@ pub fn run() {
             drift_ledger::drift_ledger_report,
             // 〔MIG-2〕`ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // 〔MIG-3a · `99 §2.1 ⑬`〕MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
-            //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/mcp-reads.ts` · `src/mcp-sync-reads.ts`）。
+            //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
             config::list_remote_mcp_origins,
             // 〔MIG-3a · `99 §2.1 ⑬`〕资产目录同步（`assets_sync`）与 skill 装 / 卸三条退役：界面经通道直问那台后端
             //   （`assets-sync` 问 `<local>` · `skill-read` / `skill-install-plan` / `skill-install-apply` / `skill-uninstall-apply`，
-            //   `src/assets-sync-reads.ts` · `src/skill-install-reads.ts`）。
+            //   `src/frontend/ui/assets-sync-reads.ts` · `src/frontend/ui/skill-install-reads.ts`）。
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
@@ -1016,9 +1016,9 @@ pub fn run() {
             open_log_dir,
             // 〔C4d · 第四波 4B〕历史清单两条（本机项目 · 展开一个项目）与远端项目清单、改注解、上次账号表那五条退役：
             //   join 与注解搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`），
-            //   界面经通道问（`src/history-reads.ts`）。
+            //   界面经通道问（`src/frontend/ui/history-reads.ts`）。
             // 〔MOD · `05 §14.3` C 组〕会话正文四条（整份读 · 子 agent · 按偏移 · 按行号）退役：那台后端出记录行，
-            //   界面经通道直问（`src/record-reads.ts`：`history-page` · `history-subagent` · `history-lines`）。
+            //   界面经通道直问（`src/frontend/ui/record-reads.ts`：`history-page` · `history-subagent` · `history-lines`）。
             // 〔U3b〕接上骨架的会话，重放缓冲只留尾巴（`设计/10` 步 8）
             // 〔AL2 · 第四波 4D〕远端装 / 卸别名块那两条命令并进上面 `aliases_block_install` / `_remove`（带 `origin`），删。
             // F08c：部署 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）。
@@ -1258,7 +1258,7 @@ fn parse_host_obj(
     let jump = str_field("jump").map(str::to_string);
     // 🔴 `K-R59`（定框 `K35`）：这里原来读 `daemonless`（per-host 降级开关）。
     //    那个键今天**故意不读** —— 盘上还留着 `true` 的旧配置由界面侧
-    //    （`src/remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY`）认出来、指名告知一次，
+    //    （`src/frontend/ui/remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY`）认出来、指名告知一次，
     //    后端这一侧一律按「有后端」走，不再有第二条路。
     // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
     let addresses: Vec<String> = match obj.get("addresses") {
@@ -1373,10 +1373,10 @@ impl SkipRuns {
 }
 
 // 〔US1 · 第四波 4D〕`read_apikey_credentials_status`〔散文墓碑〕退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-read`
-//   （`src/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
+//   （`src/frontend/ui/apikey-reads.ts::readApikeyStatus`，本机与远端同一条路），monitor 那一份状态读者与转发一起删。
 
 // 〔US1 · 第四波 4D〕`apikey_routing_for`〔散文墓碑〕与它的答案结构退役：界面经 `chan.call` 直接问那台机器的后端 `apikey-routing`
-//   （`src/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
+//   （`src/frontend/ui/apikey-reads.ts::fetchApikeyRouting`）—— 「表里有哪几行」与「中转在不在」两样事实都是那台后端的，人群只有一份。
 
 /// 〔MIG-2 · `设计/20 §3.2`〕全量注入开关：monitor 进程环境 `CCM_RELAY_ALL_SESSIONS`（默认开，`=0` 才关）。
 /// 它是 monitor 自己的配置（`99 §2.1 ⑬`「本机 monitor 配置」），界面问一次、随起会话那一问交给那台后端（`launch-endpoint` / `launch-local`）。
@@ -1391,12 +1391,12 @@ pub(crate) const RELAY_ALL_SESSIONS_ENV: &str = "CCM_RELAY_ALL_SESSIONS";
 
 // 〔HX2 · 第四波 4D〕墓碑：这里从前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕（`K-H2a` 从界面配一把 key；
 //   〔RM1a〕按 origin 交那台机器的后端；〔GP1〕本机那一臂先核路径）。常驻后端身份带上数据目录之后（`local_backend_host::hello_verdict`
-//   比 hello 的 `host_env`），核路径那一问由连接本身答 ⇒ 界面经通道直接发 `apikey-key-set`（`src/apikey-reads.ts::writeApikeyKey`），
+//   比 hello 的 `host_env`），核路径那一问由连接本身答 ⇒ 界面经通道直接发 `apikey-key-set`（`src/frontend/ui/apikey-reads.ts::writeApikeyKey`），
 //   账号 id 由后端推（`acct_core::apikey_account_id_of_dir`）。monitor 里从此没有明文 key 的具名绑定。
 //   `KH2C1` 前端那一侧的机检（它的旧名 `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕）照旧在 `accounts-section.vitest.ts`。
 
 // 〔MIG-3a · `设计/99 §2.1 ⑬` · 主会话 09-27 裁〕别名一族六条（`aliases_render` / `_read` / `_install` / `aliases_block_*`〔散文墓碑〕）退役：
-//   规则 · 方言 · 围栏住那台机器的后端（`src/backend/assets/aliases/`），界面经 `chan.call(origin, "aliases-*")` 直问（`src/alias-reads.ts`）。
+//   规则 · 方言 · 围栏住那台机器的后端（`src/backend/assets/aliases/`），界面经 `chan.call(origin, "aliases-*")` 直问（`src/frontend/ui/alias-reads.ts`）。
 
 /// 〔MIG-3a〕这台（monitor 所在那台）**已经跟 monitor 完成拉前握手的终端数**（PowerShell 别名块里 `__ccm_bind` 的产物）。
 /// 从前夹在 `aliases_read` 的成品里（`bound_terminals`）；它住本进程的 `BindRegistry`、不是那台后端盘上的事实 ⇒ 单独一问（⑬「拉前」）。
@@ -1417,7 +1417,7 @@ fn forget_session(
 }
 
 /// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，
-/// 加载 `viewer.html?viewer=<sid>` —— 独立入口 `src/entry-viewer.ts`（三入口拆分，`设计/01 §1.2`）。
+/// 加载 `viewer.html?viewer=<sid>` —— 独立入口 `src/frontend/ui/entry-viewer.ts`（三入口拆分，`设计/01 §1.2`）。
 /// 窗口已存在则前置聚焦（不重复开）。双屏 / 并排查看用。
 ///
 /// **必须 `async`**：Tauri 2 同步 `fn` 命令在**主线程**执行，而
@@ -1473,7 +1473,7 @@ async fn open_session_in_new_window(
 
 /// F82a（#56+#47）：把「设置」开进独立窗口（SS-3 终态：设置搬独立窗）。单例 `settings` 窗，
 /// 已存在则前置聚焦。**必须 `async`**（同 `open_session_in_new_window`：同步命令建窗死锁，见其
-/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `settings.html`（独立入口 `src/entry-settings.ts`）→ `bootstrapSettings`
+/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `settings.html`（独立入口 `src/frontend/ui/entry-settings.ts`）→ `bootstrapSettings`
 /// 精简挂载 SettingsPanel（windowMode）。设置项经既有 config 命令读写（窗口无关），无需 replay/事件流；
 /// 保存时前端广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为（跨窗同步）。
 #[tauri::command]
@@ -1511,7 +1511,7 @@ fn pct_encode(s: &str) -> String {
 }
 
 // 〔CF2 · 第四波 4B〕独立窗口的定向重放（`replay_session_to_window`〔散文墓碑〕）退役：独立窗口自己订
-//   `session-lines/<sid>`（`src/entry-viewer.ts`），留存由那条订阅当场交。
+//   `session-lines/<sid>`（`src/frontend/ui/entry-viewer.ts`），留存由那条订阅当场交。
 
 /// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
 ///
@@ -1726,7 +1726,7 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
 //
 // 用户 `R85` 逐字：「**应该让用户手动点击加，也能管理删除。就像是 log 数据管理一样。**」
 // ⇒ 三样：**现在状态（现算不缓存）· 一个按钮加 · 一个按钮撤**，形状照
-// `src/settings/diagnostics-section.ts`（用户点名的那个范式，它现打也全走 `commands.*`）。
+// `src/frontend/ui/settings/diagnostics-section.ts`（用户点名的那个范式，它现打也全走 `commands.*`）。
 //
 // 实现一律住 `profile_installer` 那一族（`R87` 裁定：同一族动作不许另起一条路）；
 // 这三条只是**包装层**，一行业务逻辑都不许写在这里。

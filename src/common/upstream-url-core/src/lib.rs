@@ -2,7 +2,7 @@
 //!
 //! 先前三份各管一截：写口 `creds-core` 的形状关 · 中转 `relay/upstream.rs::Base::parse` · 上游选择装表时的「明文只许回环」；
 //! 界面还有一份用 `new URL()` 的（与后端漂开）。今天：[`parse`]（形状）＋ [`upstream_is_loopback`] ＝ [`usable`]；
-//! 界面读 monitor 从这里现生成的式子（`src/generated/judgment-rules.ts`），两侧由金样 `tests/__fixtures__/upstream-url.golden.json` 逐条对。
+//! 界面读 monitor 从这里现生成的式子（`src/frontend/ui/generated/judgment-rules.ts`），两侧由金样 `tests/__fixtures__/upstream-url.golden.json` 逐条对。
 //! 本 crate 只判、不说：句子归调用处（同 `gate-core::TmuxNameIssue` 的先例）。
 
 /// 认得的两种协议与「走不走 TLS」。**闭集只有这一个住址**（报错与生成物都从这里派生）。

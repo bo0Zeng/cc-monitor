@@ -4738,7 +4738,7 @@ mod g6_dependency_signoff {
             DEV_DEPS,
             UNMEASURED,
             "〔MOD · 2026-09-28〕记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
-             **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/generated/` 写生成物 —— \
+             **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/frontend/ui/generated/` 写生成物 —— \
              与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
         (

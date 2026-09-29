@@ -468,7 +468,7 @@ const ANCHORS = [
   "src/comms/outward/mod.rs",
   "src/backend/accounts/upstream/mod.rs",
   "src/backend/control/launch_render/payload.rs", // 〔MIG-2〕随载荷渲染搬进后端
-  "src/accounts.ts",
+  "src/frontend/ui/accounts.ts",
   "src/doc/IPC-PROTOCOL.md",
   "tests/evidence/K-R117-ruler.py",
 ];

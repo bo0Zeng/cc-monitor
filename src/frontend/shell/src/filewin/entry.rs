@@ -34,7 +34,7 @@
 //! 回 `()` 的话前端拿不到任何可说的东西，那条「点了之后出声」的链就断在包装层。
 //! 回**这一趟列到的行数** ⇒ 前端那句提示里的数是**真读数**，不是文案。
 //! ⚠ 刻意不回一个结构体：`设计` 那条纪律是「返回类型只在 TS 侧真消费字段时才生成」
-//! （`tests/ipc/commands.vitest.ts` 头注逐字），一个 `usize` 不需要 `ts-rs`。
+//! （`tests/frontend/ui/ipc/commands.vitest.ts` 头注逐字），一个 `usize` 不需要 `ts-rs`。
 //!
 //! # 🔴 三、签名为什么只吃 `RemoteConfig` —— 因为**只有一侧**
 //!
@@ -50,8 +50,8 @@
 //! 于是顶栏那颗按钮接过来时**不必先自己解一趟路径**（那正是老面板今天在做的事）。
 //! 逐条理由住 [`open_file_window`] 的 `# 🔴〔第七刀〕` 那一节。
 //!
-//! ⚠ 顶栏那个 SFTP 入口（`src/main.ts::openSftpFromTopbar`，0 台提示 / 1 台直开 / 多台选单）
-//! **这一刀没碰** —— `src/main.ts` 不在本刀写区。要把原生窗口接到顶栏上，
+//! ⚠ 顶栏那个 SFTP 入口（`src/frontend/ui/main.ts::openSftpFromTopbar`，0 台提示 / 1 台直开 / 多台选单）
+//! **这一刀没碰** —— `src/frontend/ui/main.ts` 不在本刀写区。要把原生窗口接到顶栏上，
 //! 得连那颗按钮一起改，那是下一刀的事（而且那一刀正好是「旧面板退役」那一刀）。
 
 use crate::copy_table::copy_text;

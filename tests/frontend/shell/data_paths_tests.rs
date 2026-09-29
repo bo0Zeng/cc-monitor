@@ -67,7 +67,7 @@ fn probe_dir_never_returns_size() {
 }
 
 // 〔OSA · 主会话 09-28 裁〕这里原来有「目录里认得出 `.ccm-backup-`」那一条 —— 那一格随 `$PROFILE` 备份搬到界面问本机后端
-//   （`tests/settings/profile-backups.vitest.ts`）。
+//   （`tests/frontend/ui/settings/profile-backups.vitest.ts`）。
 
 // ── 〔第四波 ST2 · 用户 09-24 裁「真相 / 缓存列提前做」〕────────────────────────
 

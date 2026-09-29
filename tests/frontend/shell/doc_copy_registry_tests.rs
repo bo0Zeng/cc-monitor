@@ -376,8 +376,8 @@ const POINTER_ONLY_SUFFIX: &[(&str, &[&str], &str, &str)] = &[
     (
         "主题 token 数",
         &[" 个 token"],
-        "以 `src/theme.ts` 的 `TOKENS` 为准",
-        "`src/theme.ts` 的 `TOKENS` 数组本身（**刻意不抄条数** —— 原写「今天 14 条」，实为 15，本模块 police 的正是这个形状）",
+        "以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准",
+        "`src/frontend/ui/theme.ts` 的 `TOKENS` 数组本身（**刻意不抄条数** —— 原写「今天 14 条」，实为 15，本模块 police 的正是这个形状）",
     ),
     (
         "reader 文件数",
@@ -388,7 +388,7 @@ const POINTER_ONLY_SUFFIX: &[(&str, &[&str], &str, &str)] = &[
     (
         "设置面板的折叠分组数",
         &[" 大折叠分组"],
-        "家在 `tests/settings/panel-groups.vitest.ts`",
+        "家在 `tests/frontend/ui/settings/panel-groups.vitest.ts`",
         "`panel-groups.vitest.ts` 的逐页完整清单（完整相等断言，搬丢一块会红）",
     ),
     (
@@ -469,7 +469,7 @@ fn the_guards_that_keep_the_accurate_numbers_accurate_still_exist() {
     // 〔搬 src-tauri 2026-09-17〕**这里没有 `"src/frontend/shell/src"`，不是漏了**：
     // 它已经是 `"src"` 的子目录，两个都列会把每个文件数两遍。
     // 🔴 〔搬树 2026-09-18 补 `"tests"`〕`HAS_A_GUARD` 里点名的符号有一部分
-    // 住在测试文件里（例：`NODE_SUITES` 今天在 `tests/node-suite-registry-guard.vitest.ts`），
+    // 住在测试文件里（例：`NODE_SUITES` 今天在 `tests/frontend/ui/node-suite-registry-guard.vitest.ts`），
     // 而那些文件从 `src/` 搬到了 `<repo>/tests/` ⇒ 只扫 `"src"` 会把它们读成
     // **「判据已经不在源码里了」**，而那是假的（本轮实发一次）。
     for sub in ["src", "tests"] {

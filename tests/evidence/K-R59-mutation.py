@@ -48,16 +48,16 @@ def box_argv(cmd: str) -> list:
 CUTS = [
     # (刀号, 一句话, 文件, 锚点逐字, 换成什么, 跑什么, 怎么读)
     ("M1", "KR59D1① 把字段塞回落盘清单（名字那一侧·最小面 1 行）",
-     "src/remote-config.ts", '  "jump",\n', '  "jump",\n  "daemonless",\n', "cargo:f07_main_path_tests"),
+     "src/frontend/ui/remote-config.ts", '  "jump",\n', '  "jump",\n  "daemonless",\n', "cargo:f07_main_path_tests"),
     ("M2", "KR59D1④ 把界面那一格塞回（名字那一侧·最小面 1 行）",
-     "src/settings/machine-card.ts", "  private jumpInput!: HTMLInputElement;\n",
+     "src/frontend/ui/settings/machine-card.ts", "  private jumpInput!: HTMLInputElement;\n",
      "  private jumpInput!: HTMLInputElement;\n  private daemonlessInput!: HTMLInputElement;\n",
      "cargo:f07_main_path_tests"),
     ("M3", "🔴 KR59D1⑤ 把本机那条豁免塞回（**不含 daemonless 字样**·最小面 1 行）",
-     "src/settings/readiness.ts", '  if (facet === "connection") return true;',
+     "src/frontend/ui/settings/readiness.ts", '  if (facet === "connection") return true;',
      '  if (facet === "daemon" || facet === "connection") return true;', "vitest:readiness"),
     ("M3b", "🔴 KR59D1⑤ 把界面那处写死的 `na` 塞回（同一档的第 ⑥ 处·最小面 1 行）",
-     "src/settings/remote-section.ts", "    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));",
+     "src/frontend/ui/settings/remote-section.ts", "    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));",
      '    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY), {\n      daemon: { kind: "na", detail: "不需要", at: 0 },\n    });',
      "vitest:readiness"),
     ("M4", "KR59D1 删过界：摘掉 `connect_and_exec_cmd` 的一个现有消费者（改走函数项，编得过）",
@@ -69,29 +69,29 @@ CUTS = [
      "    fn the_ts_fallback_renderer_now_stands_on_its_own_consumers() {",
      "    fn a_name_that_is_not_the_tombstone() {", "cargo:f07_main_path_tests"),
     ("M7", "🔴 KR59D3 死值验：把那条**指名的告知**去掉（computeGaps 那一支·最小面 1 块）",
-     "src/settings/readiness.ts",
+     "src/frontend/ui/settings/readiness.ts",
      '      if (facet === "daemon" && input.legacyNoBackend?.(origin)) {',
      '      if (false && facet === "daemon" && input.legacyNoBackend?.(origin)) {',
      "vitest:readiness"),
     ("M8", "KR59D3 另一半：把「认出旧配置」那一步掏空（签名留着·返回同型空值）",
-     "src/remote-config.ts", "  return raw\n    .filter((h) => h[LEGACY_NO_BACKEND_KEY] === true)",
+     "src/frontend/ui/remote-config.ts", "  return raw\n    .filter((h) => h[LEGACY_NO_BACKEND_KEY] === true)",
      "  return ([] as Record<string, unknown>[])\n    .filter((h) => h[LEGACY_NO_BACKEND_KEY] === true)",
      "vitest:readiness"),
     ("M1b", "KR59D1① 同一刀量在 TS 那一侧：字段塞回落盘清单 ⇒ 保存又会把旧键写出去",
-     "src/remote-config.ts", '  "jump",\n', '  "jump",\n  "daemonless",\n', "vitest:migration"),
+     "src/frontend/ui/remote-config.ts", '  "jump",\n', '  "jump",\n  "daemonless",\n', "vitest:migration"),
     ("M12", "K-R59 翻面那条的牙：让扇出**排掉一台**（原判据断的正是「一台都不排」）",
-     "src/session-accounts-poll.ts", "  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f));",
+     "src/frontend/ui/session-accounts-poll.ts", "  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f));",
      "  const per = await mapWithLimit(hosts.filter((_, i) => i !== 1), limit, (h) => oneHost(h, f));",
      "vitest:poll"),
     ("M13", "K-R59 翻面那条的牙：把 `deriveUi` 那一支 `hidden` 塞回（`accounts.rs` 那条串的下游）",
-     "src/accounts.ts", '    if (e.includes("过旧") || e.includes("不支持账号")) {',
+     "src/frontend/ui/accounts.ts", '    if (e.includes("过旧") || e.includes("不支持账号")) {',
      '    if (e.includes("daemonless")) return { kind: "hidden", reason: e } as AccountsUi;\n'
      '    if (e.includes("过旧") || e.includes("不支持账号")) {', "vitest:accounts"),
     ("M11", "🔴 KR59D3 产品面：把那条告知的**名字**从 DOM 上摘掉（最小面 1 行）",
-     "src/settings/remote-section.ts", "      if (g.code) li.dataset.code = g.code;",
+     "src/frontend/ui/settings/remote-section.ts", "      if (g.code) li.dataset.code = g.code;",
      "      if (false && g.code) li.dataset.code = g.code;", "vitest:readiness"),
     ("M9", "7u 把实现掏空①：`noteLocalBackend` 只留签名（本机 daemon 的唯一写点）",
-     "src/settings/remote-section.ts", "  private async noteLocalBackend(): Promise<void> {\n    try {",
+     "src/frontend/ui/settings/remote-section.ts", "  private async noteLocalBackend(): Promise<void> {\n    try {",
      "  private async noteLocalBackend(): Promise<void> {\n    if (1 > 0) return;\n    try {",
      "vitest:readiness"),
     ("M10", "7u 把实现掏空②：`TS_FALLBACK_KEEPERS` 那一半的比对掏空（表留着，不再比）",
@@ -107,14 +107,14 @@ SUITES = {
     "cargo:exec_site_registry":
         "cd src-tauri && cargo test -p monitor --lib exec_site_registry 2>&1 | tail -25",
     "vitest:migration":
-        "npx vitest run src/settings/remote-section.vitest.ts src/remote-config.vitest.ts 2>&1 | tail -40",
+        "npx vitest run src/frontend/ui/settings/remote-section.vitest.ts src/remote-config.vitest.ts 2>&1 | tail -40",
     "vitest:poll":
         "npx vitest run src/session-accounts-poll.vitest.ts 2>&1 | tail -30",
     "vitest:accounts":
         "npx vitest run src/accounts.vitest.ts src/account-chip.vitest.ts 2>&1 | tail -30",
     "vitest:readiness":
-        "npx vitest run src/settings/readiness.vitest.ts src/settings/remote-section.vitest.ts "
-        "src/settings/accounts-section.vitest.ts src/remote-config.vitest.ts 2>&1 | tail -40",
+        "npx vitest run src/frontend/ui/settings/readiness.vitest.ts src/frontend/ui/settings/remote-section.vitest.ts "
+        "src/frontend/ui/settings/accounts-section.vitest.ts src/remote-config.vitest.ts 2>&1 | tail -40",
 }
 
 

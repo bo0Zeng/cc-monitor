@@ -145,8 +145,8 @@
       "prod_hits": 6,
       "test_hits": 1,
       "prod_sample": [
-        "src/tabs.ts:1733",
-        "src/tabs.ts:1738",
+        "src/frontend/ui/tabs.ts:1733",
+        "src/frontend/ui/tabs.ts:1738",
         "src-tauri/src/bridge.rs:23",
         "src-tauri/src/bridge.rs:31",
         "src-tauri/src/lib.rs:1204",
@@ -179,10 +179,10 @@
       "prod_hits": 10,
       "test_hits": 1,
       "prod_sample": [
-        "src/events.ts:28",
-        "src/events.ts:39",
-        "src/events.ts:107",
-        "src/events.ts:476",
+        "src/frontend/ui/events.ts:28",
+        "src/frontend/ui/events.ts:39",
+        "src/frontend/ui/events.ts:107",
+        "src/frontend/ui/events.ts:476",
         "src-tauri/src/bridge.rs:235",
         "src-tauri/src/ssh_source.rs:1671",
         "src-tauri/src/lib.rs:713",
@@ -271,7 +271,7 @@
       "prod_hits": 2,
       "test_hits": 0,
       "prod_sample": [
-        "src/events.ts:476",
+        "src/frontend/ui/events.ts:476",
         "src-tauri/src/bridge.rs:24"
       ],
       "test_sample": [],
@@ -284,9 +284,9 @@
       "prod_hits": 3,
       "test_hits": 7,
       "prod_sample": [
-        "src/tabs.ts:1543",
-        "src/tabs.ts:1735",
-        "src/main.ts:739"
+        "src/frontend/ui/tabs.ts:1543",
+        "src/frontend/ui/tabs.ts:1735",
+        "src/frontend/ui/main.ts:739"
       ],
       "test_sample": [
         "src/tabs.vitest.ts:475",
@@ -303,8 +303,8 @@
       "prod_hits": 2,
       "test_hits": 0,
       "prod_sample": [
-        "src/tabs.ts:1729",
-        "src/main.ts:811"
+        "src/frontend/ui/tabs.ts:1729",
+        "src/frontend/ui/main.ts:811"
       ],
       "test_sample": [],
       "verdict": "只有生产段引用（零测试）"
@@ -316,9 +316,9 @@
       "prod_hits": 3,
       "test_hits": 7,
       "prod_sample": [
-        "src/tabs.ts:3566",
-        "src/session-status.ts:20",
-        "src/views/grid-monitor.ts:422"
+        "src/frontend/ui/tabs.ts:3566",
+        "src/frontend/ui/session-status.ts:20",
+        "src/frontend/ui/views/grid-monitor.ts:422"
       ],
       "test_sample": [
         "src/session-status.vitest.ts:8",
@@ -335,14 +335,14 @@
       "prod_hits": 15,
       "test_hits": 14,
       "prod_sample": [
-        "src/tabs.ts:3567",
-        "src/tabs.ts:3568",
-        "src/session-status.ts:12",
-        "src/session-status.ts:16",
-        "src/session-status.ts:17",
-        "src/session-status.ts:21",
-        "src/session-status.ts:22",
-        "src/styles.css:1375"
+        "src/frontend/ui/tabs.ts:3567",
+        "src/frontend/ui/tabs.ts:3568",
+        "src/frontend/ui/session-status.ts:12",
+        "src/frontend/ui/session-status.ts:16",
+        "src/frontend/ui/session-status.ts:17",
+        "src/frontend/ui/session-status.ts:21",
+        "src/frontend/ui/session-status.ts:22",
+        "src/frontend/ui/styles.css:1375"
       ],
       "test_sample": [
         "src/session-status.vitest.ts:7",
@@ -359,14 +359,14 @@
       "prod_hits": 26,
       "test_hits": 26,
       "prod_sample": [
-        "src/e2e-probe.ts:115",
-        "src/tabs.ts:172",
-        "src/tabs.ts:177",
-        "src/tabs.ts:1190",
-        "src/tabs.ts:1209",
-        "src/tabs.ts:1217",
-        "src/tabs.ts:1287",
-        "src/tabs.ts:1288"
+        "src/frontend/ui/e2e-probe.ts:115",
+        "src/frontend/ui/tabs.ts:172",
+        "src/frontend/ui/tabs.ts:177",
+        "src/frontend/ui/tabs.ts:1190",
+        "src/frontend/ui/tabs.ts:1209",
+        "src/frontend/ui/tabs.ts:1217",
+        "src/frontend/ui/tabs.ts:1287",
+        "src/frontend/ui/tabs.ts:1288"
       ],
       "test_sample": [
         "src/tabs.vitest.ts:547",
@@ -383,9 +383,9 @@
       "prod_hits": 3,
       "test_hits": 11,
       "prod_sample": [
-        "src/tabs.ts:1525",
-        "src/main.ts:704",
-        "src/main.ts:1015"
+        "src/frontend/ui/tabs.ts:1525",
+        "src/frontend/ui/main.ts:704",
+        "src/frontend/ui/main.ts:1015"
       ],
       "test_sample": [
         "src/gray-light-wiring.vitest.ts:93",
@@ -416,12 +416,12 @@
         "ssh_source.rs",
         "src-tauri/src/lib.rs",
         "bridge.rs",
-        "src/events.ts",
-        "src/tabs.ts",
-        "src/session-status.ts",
-        "src/views/grid-monitor.ts",
-        "src/main.ts",
-        "src/styles.css",
+        "src/frontend/ui/events.ts",
+        "src/frontend/ui/tabs.ts",
+        "src/frontend/ui/session-status.ts",
+        "src/frontend/ui/views/grid-monitor.ts",
+        "src/frontend/ui/main.ts",
+        "src/frontend/ui/styles.css",
         "wire.rs"
       ],
       "prod_hits": 0,
@@ -461,12 +461,12 @@
         "ssh_source.rs",
         "src-tauri/src/lib.rs",
         "bridge.rs",
-        "src/events.ts",
-        "src/tabs.ts",
-        "src/session-status.ts",
-        "src/views/grid-monitor.ts",
-        "src/main.ts",
-        "src/styles.css",
+        "src/frontend/ui/events.ts",
+        "src/frontend/ui/tabs.ts",
+        "src/frontend/ui/session-status.ts",
+        "src/frontend/ui/views/grid-monitor.ts",
+        "src/frontend/ui/main.ts",
+        "src/frontend/ui/styles.css",
         "wire.rs"
       ],
       "prod_hits": 21,
@@ -498,12 +498,12 @@
         "ssh_source.rs",
         "src-tauri/src/lib.rs",
         "bridge.rs",
-        "src/events.ts",
-        "src/tabs.ts",
-        "src/session-status.ts",
-        "src/views/grid-monitor.ts",
-        "src/main.ts",
-        "src/styles.css",
+        "src/frontend/ui/events.ts",
+        "src/frontend/ui/tabs.ts",
+        "src/frontend/ui/session-status.ts",
+        "src/frontend/ui/views/grid-monitor.ts",
+        "src/frontend/ui/main.ts",
+        "src/frontend/ui/styles.css",
         "wire.rs"
       ],
       "prod_hits": 0,

@@ -76,9 +76,9 @@ pub fn active() -> &'static dyn AgentAdapter {
 // # 它治的是什么
 //
 // `K-R54` 表第 11 行：同一张 agent 适配表盘上有**两份** —— 后端这一份（claude ＋ codex）
-// 与前端 `src/agent-profile.ts` 的 `AGENT_PROFILE`（🔴 **只有 claude**）。
+// 与前端 `src/frontend/ui/agent-profile.ts` 的 `AGENT_PROFILE`（🔴 **只有 claude**）。
 // 前端那份从此不再自己写死：值由下面这个取数口给出，经生成物
-// `src/generated/agent-profile-table.ts`（本文件的 `export_bindings_agent_profile_table`
+// `src/frontend/ui/generated/agent-profile-table.ts`（本文件的 `export_bindings_agent_profile_table`
 // 生成，`npm run gen:types` 重跑）送到 TS 那一侧。
 // ⇒ **删掉前端那一份的同一刻，codex 那一格也补上了**（不是回归，是把一格漏的补上）。
 //
@@ -120,7 +120,7 @@ pub struct AgentProfileFacts {
     pub liveness_process_names: Option<&'static [&'static str]>,
 }
 
-/// 子 agent 工具（展开 = 子会话）。〔`K-R93` 从 `src/agent-profile.ts` 搬来，值逐字未改〕
+/// 子 agent 工具（展开 = 子会话）。〔`K-R93` 从 `src/frontend/ui/agent-profile.ts` 搬来，值逐字未改〕
 /// 〔DUP2 · J19〕值住共享 crate `agent_tools_core`（后端会话事实的 agent 列表用同一份；两半编译期不许互咬 ⇒ 共享 crate）。
 static CLAUDE_AGENT_TOOLS: &[&str] = &agent_tools_core::CLAUDE_AGENT_TOOLS;
 /// 交互工具（agent 在等用户决定）。〔同上〕
@@ -131,7 +131,7 @@ static CLAUDE_DIFF_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit"];
 static CLAUDE_MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"];
 /// tmux 前台命令算该 agent 的会话（CC 是 Node CLI，视启动路径也可能报解释器）。〔同上〕
 ///
-/// ⚠ 这一格从前**没有权威方**（`tests/liveness-process-names-parity.vitest.ts` 的头注逐字说过
+/// ⚠ 这一格从前**没有权威方**（`tests/frontend/ui/liveness-process-names-parity.vitest.ts` 的头注逐字说过
 /// 「`agent-profile-golden.tsv` 只有 4 个 key，不含这一项；`AgentAdapter` trait 也没有这个方法」）。
 /// 今天权威方在这里 —— 但 **backend 那一侧仍是各写各的**（`agents/claudecode/liveness.rs` 的内联
 /// 字面量），两侧仍靠那条对拍咬着。收成一份归 `backend-api` F11，本件没做。

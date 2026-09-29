@@ -1,6 +1,6 @@
 {
   "说明": [
-    "〔MIG-3a〕MCP 推 / 拉三问的跨语言金样：后端对临时目录现算 == reply；界面 `src/mcp-sync-reads.ts` 读同一份。",
+    "〔MIG-3a〕MCP 推 / 拉三问的跨语言金样：后端对临时目录现算 == reply；界面 `src/frontend/ui/mcp-sync-reads.ts` 读同一份。",
     "只采结构（占位 server 名 / 占位命令）。`<SRC>` / `<DST>` 由测试换成临时目录下的真路径。"
   ],
   "sourceText": "{\"mcpServers\":{\"a\":{\"command\":\"a\"},\"b\":{\"command\":\"b2\"}}}",

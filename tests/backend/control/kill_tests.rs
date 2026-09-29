@@ -107,7 +107,7 @@ fn kill_uses_the_destructive_gate_not_the_plain_one() {
 /// ★★〔C4e · 第四波 4C〕**跨语言金样**：界面直接收的 `kill` 成品，两侧读同一份 `tests/__fixtures__/tmux-control.golden.json`。
 ///
 /// 守的要求：`设计/05 §14.3` 逐字「**成品的两侧对拍**：界面按形状严格收……线上形状由一份跨语言金样钉住
-/// （后端测试产出 == 金样 · TS 解码器读同一份）」。杀会话从这一拍起由界面经通道直接说（`src/tmux-control.ts::killSession`），
+/// （后端测试产出 == 金样 · TS 解码器读同一份）」。杀会话从这一拍起由界面经通道直接说（`src/frontend/ui/tmux-control.ts::killSession`），
 /// monitor 那一跳只搬字节 —— 成品的键、拒绝码的集合从此只有后端这一侧与金样说了算。
 ///
 /// 三格各自异源：请求样例过**生产**解析器 [`parse_name`] · 成品 == 生产构造器 [`reply`] ·

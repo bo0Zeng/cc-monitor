@@ -1,6 +1,6 @@
 /**
  * `P21` —— **`INVARIANTS.md` 讲前端那五条的量具**（判与登记住
- * `tests/invariants-frontend-guard.vitest.ts`，分家的理由同 `S25`/`S30`：
+ * `tests/frontend/ui/invariants-frontend-guard.vitest.ts`，分家的理由同 `S25`/`S30`：
  * `scanning-guard-registry.vitest.ts` 的 `WALKER_CEILING` 不许测试文件再多一个遍历者，
  * 而本文件不是 `*.vitest.ts`/`*.test.ts` ⇒ 不进那条棘轮的人群）。
  *
@@ -78,7 +78,7 @@ export function alertCallSites(sources = productionCode()): Site[] {
 /**
  * 应用的全部 CSS，剥注释后拼成一份。
  *
- * 〔三入口拆分 · 人群改定义〕原先人群就是 `src/styles.css` 这一份；拆开之后是
+ * 〔三入口拆分 · 人群改定义〕原先人群就是 `src/frontend/ui/styles.css` 这一份；拆开之后是
  * **三个 html 的 `<link rel="stylesheet">` 清单去重** —— 那就是三个窗口真正加载的全部样式表，
  * 没有第二份清单可漂。下游各条（规则数 > 500、fixed 选择器 == 25、包含块正控）一字未改。
  */
@@ -264,7 +264,7 @@ const LITERAL = /^(["'`])((?:\\.|(?!\1).)*)\1/;
 
 /** `LS_KEYS` 对象字面量里登记的那一族 key。 */
 function lsKeysBlock(sources: ReadonlyArray<{ file: string; code: string }>): StorageKey[] {
-  const ls = sources.find((s) => s.file === "src/local-storage.ts");
+  const ls = sources.find((s) => s.file === "src/frontend/ui/local-storage.ts");
   if (!ls) return [];
   const from = ls.code.indexOf("export const LS_KEYS");
   const to = ls.code.indexOf("\n} as const;", from);
@@ -356,7 +356,7 @@ export function opaqueKeySites(sources = productionCode()): OpaqueKeySite[] {
 /**
  * 切出一个**顶层**函数的函数体（含签名行）。
  *
- * 判定「函数结束」用的是**列 0 的 `}`** —— 本仓 `src/main.ts` 的
+ * 判定「函数结束」用的是**列 0 的 `}`** —— 本仓 `src/frontend/ui/main.ts` 的
  * `bootstrapViewer` / `bootstrapSettings` 都是顶层 `async function`，缩进是 prettier
  * 保证的。切不到时返回 `null`，由调用侧那条分母自检当场红（**不返回空串**：
  * 空串会让下面那几条「A 必须在 B 之前」全部零命中地绿）。
@@ -369,9 +369,9 @@ export function topLevelFnBody(code: string, name: string): string | null {
   return end ? rest.slice(0, end.index + 2) : null;
 }
 
-/** `src/main.ts` 剥注释后的代码（条 22 那几项的住址都在这一份里）。 */
+/** `src/frontend/ui/main.ts` 剥注释后的代码（条 22 那几项的住址都在这一份里）。 */
 export function mainCode(sources = productionCode()): string {
-  return sources.find((s) => s.file === "src/main.ts")?.code ?? "";
+  return sources.find((s) => s.file === "src/frontend/ui/main.ts")?.code ?? "";
 }
 
 // ────────────────────────── 条 21.2（JS 侧临时关闭的还原纪律）──────────────────────────

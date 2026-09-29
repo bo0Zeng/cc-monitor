@@ -407,7 +407,7 @@ fn the_profile_location_census_sees_the_old_shapes() {
     let old_ts = format!("const p = swap(x, \"{}\");\n/** {} */\n", n[1], n[2]);
     let got = profile_location_census(&[
         ("src/frontend/shell/src/data_paths.rs".into(), old_discover),
-        ("src/settings/x.ts".into(), old_ts),
+        ("src/frontend/ui/settings/x.ts".into(), old_ts),
     ]);
     let want: std::collections::BTreeMap<(String, String), usize> = [
         (
@@ -424,7 +424,10 @@ fn the_profile_location_census_sees_the_old_shapes() {
             ),
             1,
         ),
-        (("src/settings/x.ts".to_string(), n[1].clone()), 1),
+        (
+            ("src/frontend/ui/settings/x.ts".to_string(), n[1].clone()),
+            1,
+        ),
     ]
     .into_iter()
     .collect();

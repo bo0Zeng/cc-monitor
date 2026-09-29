@@ -507,7 +507,7 @@ pub struct FileWindow {
     /// 🔴〔第十刀〕**「就是这个文件」** —— 要高亮的那一行的名字 ＋ 滚过去了没有。
     ///
     /// 它是 `P3`（老面板退役）的最后一格功能前置：老面板 `open(revealPath)`
-    /// 那一形（会话工具卡 → 文件跳转，`src/cards/index.ts::openRemoteFileInSftp`）
+    /// 那一形（会话工具卡 → 文件跳转，`src/frontend/ui/cards/index.ts::openRemoteFileInSftp`）
     /// 在这之前窗口**一处都没有**。
     ///
     /// ⚠ 两个字段刻意分开：**高亮要一直留着**（一帧的高亮在连续重绘的窗口上等于看不见），

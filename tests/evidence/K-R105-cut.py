@@ -28,7 +28,7 @@ KILL = "src-tauri/src/backend/control/daemon_kill.rs"
 PARITY = "src-tauri/src/backend/control/launch_payload_parity.rs"
 SSH = "src-tauri/src/ssh_source.rs"
 ROUTE = "src-tauri/src/backend/control/daemon_route.rs"
-TABS = "src/tabs.ts"
+TABS = "src/frontend/ui/tabs.ts"
 SEAT = "src/session-backend.ts"
 
 # `刀名 -> [(文件, 锚点, 替换, 期望命中数)]`；`替换 is None` 表示删文件（另行处理）。
@@ -87,7 +87,7 @@ CUTS = {
     "D4-orphan": [
         (
             KILL,
-            "由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
+            "由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
             "由上游那个校验器校验",
             1,
         )
@@ -96,7 +96,7 @@ CUTS = {
     "D4-droppath": [
         (
             KILL,
-            '        (\n            "src/session-backend.ts",\n            CreationVerdict::UpstreamValidated,\n            "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",\n        ),\n',
+            '        (\n            "src/session-backend.ts",\n            CreationVerdict::UpstreamValidated,\n            "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/frontend/ui/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",\n        ),\n',
             "",
             1,
         ),

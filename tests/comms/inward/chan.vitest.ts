@@ -47,7 +47,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { ChanError, chan, decodeFail, decodeItem, remaining, type CallError, type Item } from "../../../src/comms/inward/chan";
-import { budgetWithin, saidOf } from "../../../src/ipc/chan-caller";
+import { budgetWithin, saidOf } from "../../../src/frontend/ui/ipc/chan-caller";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { stripComments } from "../../test-support/strip-comments";
 
@@ -198,7 +198,7 @@ describe("〔C4a〕webview 通道客户端", () => {
   it("★ 成员不解释载荷：`chan.ts` 生产段零 `JSON.parse` / `JSON.stringify`（正控：调用方那一侧命中）", () => {
     const code = (rel: string): string => stripComments(readFileSync(resolve(REPO_ROOT, rel), "utf8"), "ts");
     const jsonUses = (c: string): number => (c.match(/\bJSON\.(?:parse|stringify)\s*\(/g) ?? []).length;
-    expect(jsonUses(code("src/ipc/chan-caller.ts")), "正控：调用方那一侧恰好两处（`jsonBody` 的 stringify · `readJson` 的 parse）").toBe(2);
+    expect(jsonUses(code("src/frontend/ui/ipc/chan-caller.ts")), "正控：调用方那一侧恰好两处（`jsonBody` 的 stringify · `readJson` 的 parse）").toBe(2);
     expect(jsonUses(code("src/comms/inward/chan.ts")), "通道成员自己解释了载荷 —— `设计/05 §2`：载荷是不透明字节").toBe(0);
   });
 });

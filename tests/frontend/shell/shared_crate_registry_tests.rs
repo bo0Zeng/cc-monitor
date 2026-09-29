@@ -580,7 +580,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         ("cargo fmt --check（整个 workspace）", true, "`cd src/frontend/shell && cargo fmt --all --check`"),
         ("cargo clippy（整个 workspace，vendor 除外）", true, "同名命令；无 `-D warnings` ⇒ 只有真错才红"),
         ("cargo test（整个 workspace，vendor 除外）", true, "本区门禁主命令"),
-        ("生成物必须最新（C05；改了 Rust 就得重新生成并提交）", true, "`git diff --exit-code -- ../src/generated/`"),
+        ("生成物必须最新（C05；改了 Rust 就得重新生成并提交）", true, "`git diff --exit-code -- ../src/frontend/ui/generated/`"),
         ("cargo test (vendor code-picture-core)", true, "只**读地跑**；实测跑完 `git status` 对 vendor 零改动 ⇒ 不违反红线"),
         // ── job rust-linux〔`15 §5.2 B4`〕
         // 🔴 **写区外的随动**，与 `K-R114` 09-14 那条同一形（见下面 `e2e-smoke` 那一格的注释）：
@@ -864,7 +864,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
 /// ⚠ 顺带澄清一处容易误读的历史：最后改它的提交叫「G-C：三族 e2e 进 CI」，
 /// 查过那次 diff —— 进 CI 的是 `graylight-frames` 等五条，**不含本套件**，提交没说假话。
 ///
-/// 与 `tests/node-suite-registry-guard.vitest.ts` 不冲突（E3）：那条钉的是
+/// 与 `tests/frontend/ui/node-suite-registry-guard.vitest.ts` 不冲突（E3）：那条钉的是
 /// 「16 个 tsx 套件各自有断言地板」，本条钉的是「套件有没有人调」——两个事实。
 #[test]
 fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {

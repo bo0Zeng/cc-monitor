@@ -392,10 +392,10 @@ fn the_backend_now_has_gate3() {
 //   「`send-keys` 也必须走后端通道」（`send_keys_now_routes_through_the_backend`〔散文墓碑〕）·「两条命令走同一个分流器」
 //   （`both_commands_branch_on_the_same_three_way_verdict`〔散文墓碑〕），外加抽取器自检 A。它们钉的都是 monitor 里
 //   `kill_remote_tmux` / `tmux_send_keys` 那两个函数体（主路走后端 · 回潮闸 · 三态不许压成两态 · `enter` 真传过去）。
-//   两条命令整条迁到界面（`src/tmux-control.ts`）之后，那两个函数体不在了，每一格的去处：
+//   两条命令整条迁到界面（`src/frontend/ui/tmux-control.ts`）之后，那两个函数体不在了，每一格的去处：
 //   · 主路走后端 ＋ 回潮闸 ⇒ 下面第一条：monitor 生产段里**一处**杀会话的 shell 串都没有（界面那一侧结构上没有 SSH）；
 //   · 界面只经一处说这几条 ⇒ 下面第二条；
-//   · 三态不许压成两态（「门拒绝」与「通道不在」两句话不同）⇒ `tests/tmux-control.vitest.ts`（身份门那一句 ≠ 通道不在那一句）；
+//   · 三态不许压成两态（「门拒绝」与「通道不在」两句话不同）⇒ `tests/frontend/ui/tmux-control.vitest.ts`（身份门那一句 ≠ 通道不在那一句）；
 //   · 〔RST 续 · V41〕`enter` 那一格随裸键 mode `send-keys-raw` 删了（V154 之后无调用者；送键只剩 `send-into`）。
 //   后端那两道门（身份 · 窗口）还在路上 —— 上面两条反向锚点不动，界面从此**只**靠它们。
 
@@ -429,7 +429,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     assert!(
         !guard_core::contains_word(&corpus, &verb),
         "monitor 生产段里又出现了 `{verb}` —— 杀会话在 monitor 里长回了一条自己拼 shell 串的路。\n\
-         杀会话只许走后端的 `kill`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/tmux-control.ts::killSession` 说它。"
+         杀会话只许走后端的 `kill`（先过身份门 ＋ 窗口门、对句柄下手）；界面经 `src/frontend/ui/tmux-control.ts::killSession` 说它。"
     );
     let kill_rs = backend_control_production()
         .into_iter()
@@ -443,7 +443,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
 }
 
 /// ★★〔C4e · 第四波 4C〕**界面说这几条控制类帧命令只经一处**：`capture-pane` / `kill` / `launch` 的 `chan.call`
-/// 只住 `src/tmux-control.ts`。
+/// 只住 `src/frontend/ui/tmux-control.ts`。
 ///
 /// 守的要求：`设计/05 §14.3`「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
 /// 按形状收、`killed` / `typed` 不为真不当成功、就地 resume 能不能回落（F14），这几件只写在那一份里；
@@ -472,7 +472,7 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             let c = prod.matches(n).count();
             if c > 0 {
                 homes.entry(n.to_string()).or_default().push(rel.clone());
-                if rel == "src/tmux-control.ts" {
+                if rel == "src/frontend/ui/tmux-control.ts" {
                     *counts.entry(n).or_default() += c;
                 }
             }
@@ -482,8 +482,8 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
     for n in needles {
         assert_eq!(
             homes.get(n).cloned().unwrap_or_default(),
-            vec!["src/tmux-control.ts".to_string()],
-            "`{n}` 出现在 `src/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
+            vec!["src/frontend/ui/tmux-control.ts".to_string()],
+            "`{n}` 出现在 `src/frontend/ui/tmux-control.ts` 之外（或那一份里没有了）—— 界面说这条控制类帧命令的家不止一个"
         );
     }
     // 正控 ＋ 恒等：抓屏 1 · 结束 1 · 送键与就地 resume 各 1 ⇒ launch 2（〔RST 续〕「打断」那个 mode 名 1 → 删）。
@@ -494,6 +494,6 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             ("chan.call(origin, \"kill\"", 1),
             ("chan.call(origin, \"launch\"", 2),
         ],
-        "`src/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
+        "`src/frontend/ui/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
 }

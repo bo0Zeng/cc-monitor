@@ -370,7 +370,7 @@ const CORPUS_WITNESS: &[(&str, &str)] = &[
         "src/backend/stream/wire.rs",
         "backend 那棵 Rust 树 · 后缀 rs",
     ),
-    ("src/tabs.ts", "前端那棵 TS 树 · 后缀 ts"),
+    ("src/frontend/ui/tabs.ts", "前端那棵 TS 树 · 后缀 ts"),
     (
         "src/frontend/shell/Cargo.toml",
         "清单面（`C2` 的依赖图那一侧要读它）· 后缀 toml",
@@ -2443,9 +2443,9 @@ fn x6_every_frontend_call_site_passes_an_explicit_budget() {
     let all = corpus();
     // 抽取器自检：两种语言的前端语料都真的在（人群为空不等于语料为空）。
     assert!(
-        all.iter()
-            .any(|(rel, _)| rel == "src/tabs.ts" && is_frontend_for(rel, "ts", &member_paths)),
-        "前端语料里找不到 `src/tabs.ts` —— 语料面坏了，本条此刻在空转"
+        all.iter().any(|(rel, _)| rel == "src/frontend/ui/tabs.ts"
+            && is_frontend_for(rel, "ts", &member_paths)),
+        "前端语料里找不到 `src/frontend/ui/tabs.ts` —— 语料面坏了，本条此刻在空转"
     );
     assert!(
         all.iter()

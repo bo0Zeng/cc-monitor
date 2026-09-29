@@ -55,7 +55,7 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
         sent: Mutex::new(vec![]),
         reply: good_reply(),
     };
-    // 〔MIG-3a〕应答原样交回（monitor 不解释它，界面那一问经通道直问、`src/assets-sync-reads.ts` 按形状收）。
+    // 〔MIG-3a〕应答原样交回（monitor 不解释它，界面那一问经通道直问、`src/frontend/ui/assets-sync-reads.ts` 按形状收）。
     let got = sync_with(&cfg(), &rec).await.expect("握手那一刻");
     assert_eq!(got, good_reply());
     let sent = rec.sent.lock().unwrap().clone();

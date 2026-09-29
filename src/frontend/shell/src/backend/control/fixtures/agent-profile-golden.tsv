@@ -3,7 +3,7 @@
 # 三份：
 #   1. monitor Rust  `adapter::for_kind(..)`（claude + codex 两个 adapter 模块）
 #   2. `shared/ccm`   五个 `agent_*` shell 函数（claude + codex）
-#   3. 前端 TS       `src/agent-profile.ts::AGENT_PROFILE`（**只有 claude**，是单 profile）
+#   3. 前端 TS       `src/frontend/ui/agent-profile.ts::AGENT_PROFILE`（**只有 claude**，是单 profile）
 #
 # ⚠ 为什么要这张表：**C4 要 ccm 变零决策执行臂** —— 而「搬决策」的前置是
 #   「**先证明两侧今天逐字一致**」。不一致的话搬完不知道搬没搬对，

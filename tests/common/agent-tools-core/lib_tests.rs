@@ -1,6 +1,6 @@
 //! 〔DUP2 · J19〕`agent-tools-core` 的判据。
 //!
-//! 要求住址：`设计/01 §5` D1「一个判定只有一个家」· `设计/90 §3` 判据 2；登记表 `tests/judgment-single-home.vitest.ts` 的 J19。
+//! 要求住址：`设计/01 §5` D1「一个判定只有一个家」· `设计/90 §3` 判据 2；登记表 `tests/frontend/ui/judgment-single-home.vitest.ts` 的 J19。
 
 use super::*;
 

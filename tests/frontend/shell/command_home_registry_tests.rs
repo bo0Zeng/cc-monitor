@@ -211,7 +211,7 @@ const PENDING: &[(&str, &str)] = &[
     // 〔MIG-1〕`~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
     // 〔MIG-1 续〕测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局（主会话裁）。
     // 〔MIG-1〕本机活会话表那两条（红绿灯快照 · 骨架清单）迁走了：会话账本进后端，骨架与灯是会话流里的 `live` / `activity` 成品（⑬）。
-    // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/tmux-reads.ts`）。
+    // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/frontend/ui/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
     // 〔FIX4 · `99 §2.1 ⑬`〕`launch_remote_terminal`〔散文墓碑〕迁走了：远端那一行（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端
@@ -230,7 +230,7 @@ const PENDING: &[(&str, &str)] = &[
     //   monitor 天生观测的两面（`UnknownBackendToken` · `UnknownSessionKind`）留在 `drift_ledger_report`，进「monitor 自己的事」（日志）。
     // 〔MOD · `设计/90 §3` 判据 3〕会话正文四条（`stream_read_session_jsonl` · `load_subagent` · `read_session_range` ·
     //   `read_session_lines`〔散文墓碑〕）迁了：记录解释进了后端，界面经通道直问那台后端（`history-page` · `history-subagent` ·
-    //   `history-lines`，`src/record-reads.ts`）。
+    //   `history-lines`，`src/frontend/ui/record-reads.ts`）。
     // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
     // 〔MIG-3b 续〕公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。

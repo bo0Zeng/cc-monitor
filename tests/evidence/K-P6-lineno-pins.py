@@ -78,7 +78,7 @@ PINS: list[tuple[str, int, str]] = [
     # ── ⑦ 文案面 ──────────────────────────────────────────────────
     ("src-tauri/src/ssh_source.rs", 422, "pub enum ConnectStage {"),
     ("src-tauri/src/ssh_source.rs", 442, "pub fn classify_stage(err: &str) -> &'static str {"),
-    ("src/settings/machine-card.ts", 121, "export function describeStage(st: ConnectStage): {"),
+    ("src/frontend/ui/settings/machine-card.ts", 121, "export function describeStage(st: ConnectStage): {"),
 ]
 
 

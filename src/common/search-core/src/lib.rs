@@ -32,7 +32,7 @@
 //!
 //! 收口前 monitor 按 `updated_at` desc 花预算、backend 按 `WalkDir`（= `readdir`）
 //! 先走到的顺序花。**两侧的展示顺序都是 `updatedAt` desc**（合并后重排 ——
-//! 〔C4a〕合并今天住前端 `src/views/history-search.ts` 的 `mergeSearchResults`，同口径 —— 前端照序渲染）⇒ 预算顺序一旦与展示顺序不同，**缺 snippet 的正好是列表最上面
+//! 〔C4a〕合并今天住前端 `src/frontend/ui/views/history-search.ts` 的 `mergeSearchResults`，同口径 —— 前端照序渲染）⇒ 预算顺序一旦与展示顺序不同，**缺 snippet 的正好是列表最上面
 //! 那几张卡**。理由与读数逐条写在 `sort_by_recency` 的文档注释里。
 
 use serde_json::Value;

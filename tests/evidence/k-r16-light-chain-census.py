@@ -39,12 +39,12 @@ CHAIN = [
     "ssh_source.rs",
     "src-tauri/src/lib.rs",
     "bridge.rs",
-    "src/events.ts",
-    "src/tabs.ts",
-    "src/session-status.ts",
-    "src/views/grid-monitor.ts",
-    "src/main.ts",
-    "src/styles.css",
+    "src/frontend/ui/events.ts",
+    "src/frontend/ui/tabs.ts",
+    "src/frontend/ui/session-status.ts",
+    "src/frontend/ui/views/grid-monitor.ts",
+    "src/frontend/ui/main.ts",
+    "src/frontend/ui/styles.css",
     "wire.rs",
 ]
 

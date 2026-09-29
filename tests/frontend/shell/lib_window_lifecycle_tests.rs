@@ -68,7 +68,7 @@ fn the_main_label_is_the_one_tauri_conf_declares() {
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // 〔S5 · 第四波 · `INVARIANTS §22` 第 1、2 条〕开窗 IPC 的两格 —— 从前只写在散文里、没有一条会红的判据
-// （`tests/invariants-frontend-guard.vitest.ts` 头注从前登记着「22.1/22.2 没人守」，本拍改指这里）。
+// （`tests/frontend/ui/invariants-frontend-guard.vitest.ts` 头注从前登记着「22.1/22.2 没人守」，本拍改指这里）。
 //
 // 要求住址：`src/doc/INVARIANTS.md §22`，逐字：「**开窗 IPC 必须 `async`**」·「**禁止**用 `&str` 目标
 // （→`EventTarget::AnyLabel`）配模块级 `listen`（→`Any`）—— Tauri 2 按 kind 匹配，`Any` 监听命不中 `AnyLabel` 发射，事件静默丢弃」。

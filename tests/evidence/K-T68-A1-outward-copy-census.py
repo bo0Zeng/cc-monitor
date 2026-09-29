@@ -54,7 +54,7 @@
      ⇒ 它**不进主集**（今天不对外），但**单列成预备队**（面②的 `log-error` 轨），带住址。
   4. **`panic!` / `expect(` / `assert!`**。理由：崩溃信息不是界面文案，且绝大多数住在测块。
   5. **注释、文档注释、`src/doc/*.md`、`README*`**。理由：`91` 管的是"对外说的话"，不是文档。
-  6. **`src/generated/`**（ts-rs 生成物）、`src/frontend/shell/vendor/`（第三方）、`src/frontend/shell/gen/`、
+  6. **`src/frontend/ui/generated/`**（ts-rs 生成物）、`src/frontend/shell/vendor/`（第三方）、`src/frontend/shell/gen/`、
      `tests/`、`*.vitest.ts`。理由：不是人写的对外文案，改它们要改生成器/上游。
   7. **cc-bus 注入给另一个 agent 的文本**。理由：`91 §3.2` 逐字划出去了 ——
      「它不是给人看的话，是对方那一轮的输入，改它等于改对方的 prompt」。
@@ -101,7 +101,7 @@ REPO = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO / "src"
 
 EXCLUDED_DIRS = (
-    "src/generated",            # ts-rs 生成物
+    "src/frontend/ui/generated",            # ts-rs 生成物
     "src/vendor",               # 第三方（〔RE〕原住 bridge 包的 `vendor/`：russh 补丁副本）
     "src/panorama-engine/vendor",  # 第三方（〔RE〕code-picture-core 跟唯一消费者走）
     "src/frontend/shell/gen",           # 生成物
@@ -207,14 +207,14 @@ SINKS = [
          re=re.compile(r"\bshowErrorToast\s*\("), argkind={}, default_kind="body"),
 
     # ── 模态确认 / 浏览器原生对话框 ──────────────────────────────────────
-    # 〔W5-UI〕应用内对话框 `src/ask-dialog.ts` 接替了原生 `confirm` / `prompt`（真 app 里原生 `confirm` 是插件注入的
-    #   async 替身，恒真值）⇒ 出口换了住址，锚跟着认新名；原生那两形留着（生产里已零处，`tests/ask-dialog.vitest.ts` D1 钉）。
+    # 〔W5-UI〕应用内对话框 `src/frontend/ui/ask-dialog.ts` 接替了原生 `confirm` / `prompt`（真 app 里原生 `confirm` 是插件注入的
+    #   async 替身，恒真值）⇒ 出口换了住址，锚跟着认新名；原生那两形留着（生产里已零处，`tests/frontend/ui/ask-dialog.vitest.ts` D1 钉）。
     dict(id="dialog.confirm", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?confirm\s*\(|\baskConfirm\s*\(")),
     dict(id="dialog.alert", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?alert\s*\(")),
 
-    # 〔FIX5〕CSS 伪元素里的符号经文案表来：起步时设成自定义属性（`src/css-marks.ts`），CSS 写 `content: var(--mark-…)`。
+    # 〔FIX5〕CSS 伪元素里的符号经文案表来：起步时设成自定义属性（`src/frontend/ui/css-marks.ts`），CSS 写 `content: var(--mark-…)`。
     dict(id="css.var", lang="ts", bucket="css-content", mode="call", kind="body",
          re=re.compile(r"\.style\.setProperty\s*\(")),
 

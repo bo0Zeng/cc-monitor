@@ -123,7 +123,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     // 〔SH1〕`backend/control/tmux.rs` 里列会话那一行（〔MIG-1 续〕那条命令已整条搬走）还掉了：列会话改问那台后端 `tmux-list`，不再查远端配置。
     // `K-R56`（09-11）：`tmux_send_keys`〔散文墓碑〕从这里**还掉了** —— 它当时在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
-    // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。
+    // 〔C4e · 第四波 4C〕那条命令整个迁到界面（`src/frontend/ui/tmux-control.ts::sendKeys`），当年钉它的行为判据随之退役。
 ];
 
 #[cfg(test)]

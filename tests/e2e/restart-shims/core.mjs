@@ -75,7 +75,7 @@ export async function invoke(cmd, args = {}) {
       seq("kill");
       return undefined;
     }
-    // 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端是三步（`src/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
+    // 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端是三步（`src/frontend/ui/terminal-open.ts`）：monitor 交机器事实（`terminal_dial`）→ 本机后端渲 ssh 那一行
     //   （`terminal-ssh`，见 `chanCall`）→ monitor 开窗（`open_terminal_window`）。夹具不走 ssh：机器事实给个空壳、那一行原样回交进来的
     //   命令，开窗那一步就地用 bash 跑它（与原先 `launch_remote_terminal` 那一臂同一个语义）。
     case "terminal_dial":
@@ -150,7 +150,7 @@ function chanCall(op, body) {
       if (r.status !== 0) refused("no_such_session", String(r.stderr || "").trim());
       return enc({ session: name, created: false, typed: true });
     }
-    // 〔MIG-2〕resume 那一串由那台后端出（`src/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
+    // 〔MIG-2〕resume 那一串由那台后端出（`src/frontend/ui/launch-render.ts` ⇒ 帧命令 `launch-render-payload`，成品 `{cmd}`）。
     //   ⇒ 交给**生产那一条**：`launch-render-emit.sh` → 后端 `emit_launch_render_for_e2e` → 生产
     //   `control/launch_render/wire.rs::render_launch_payload`（与 `launch-render-driver.ts` 同一个出口，一字不另写）。
     //   拒了 ⇒ 与后端 `launch_render::answer_payload` 同一个码 `refused`，原话带出去。

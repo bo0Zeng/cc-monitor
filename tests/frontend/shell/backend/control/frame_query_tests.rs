@@ -138,15 +138,15 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-sessions",
         "本机与远端都迁：两条 Tauri 命令（远端帧面 · 本机一次性 exec）各在 Rust 里把同一种行解析一遍；\
-         迁过去之后逐行解释只剩 `src/account-reads.ts::parseSessionAccountLines` 一处",
+         迁过去之后逐行解释只剩 `src/frontend/ui/account-reads.ts::parseSessionAccountLines` 一处",
     ),
     (
         "history-search",
-        "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/views/history-search.ts`，\
+        "远端那半迁：逐台 fan-out ＋ 补 origin ＋ 与本机索引合并三件事搬到 `src/frontend/ui/views/history-search.ts`，\
          每件只有那一个家。〔LOC1b · 4D〕本机那半也迁了：本机也经通道问本机后端，monitor 内存索引删了",
     ),
     // 〔C4b · 第四波 4B〕会话读面那三条：**解释挪进后端、直接出成品**（`read_face.rs`），monitor 那一份
-    //   「核头尾、剥行、失败分档」删了；界面经 `src/session-reads.ts` 问，本机与远端同一条路。
+    //   「核头尾、剥行、失败分档」删了；界面经 `src/frontend/ui/session-reads.ts` 问，本机与远端同一条路。
     (
         "history-index",
         "后端出成品 `{from, end, rows}`；行本身前端不解释（`SkeletonFacts`）；monitor 那份核头尾删了",
@@ -163,26 +163,26 @@ const CHANNELED: &[(&str, &str)] = &[
     (
         "accounts-list",
         "后端出成品 `{meta, accounts, notice}`，并上**那台机器自己**那份 apikey 表（`acct_core::apikey_routed_subset`）；\
-         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/account-reads.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
+         monitor 那份行解析 / 降级说明 / 本机并表删了，界面经 `src/frontend/ui/account-reads.ts::fetchAccounts` 问、按形状收，本机与远端同一条路",
     ),
     (
         "accounts-trust",
         "后端出成品 `{trusted, known}`（CLI 那一臂同一个函数）；替掉最后两条逐次拨号的 `--account-trust*`，\
-         界面经 `src/account-reads.ts::checkTrust` 问",
+         界面经 `src/frontend/ui/account-reads.ts::checkTrust` 问",
     ),
     // 〔C4d · 第四波 4B〕历史跨机 join 那两条（主会话 09-25 裁：注解读写者换成本机常驻后端，它经 `remote_ask` 问远端那台、
     //   并上注解、出成品）—— 从 [`HELD_BACK`] 挪过来：「远端那台的后端出不了成品」那条理由由「问**本机**后端、带 `origin`」解开了。
     (
         "history-projects",
         "本机常驻后端出成品 `{rows, notice}`（`history_join.rs`：记录树 ＋ Codex 合成 ＋ pidfile 判活 ＋ 远端经 `remote_ask`，\
-         并上本机注解）；monitor 那份 join（`history_project_from_row` 一族）与两条 Tauri 命令删了，界面经 `src/history-reads.ts` 问 `<local>`",
+         并上本机注解）；monitor 那份 join（`history_project_from_row` 一族）与两条 Tauri 命令删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`",
     ),
     (
         "history-sessions",
         "同 `history-projects`：会话行口径收成后端一份（`analyze_session`，本机与远端同一个函数），monitor 那份 `analyze_jsonl` /\
          `remote_session_entry` 删了",
     ),    // 〔MOD · `设计/90 §3` 判据 3 · `05 §14.3` C 组〕子 agent 那一条：记录解释进了后端（`agents/claudecode/`），
-    //   后端出成品，界面经 `src/record-reads.ts` 直问；monitor 那份解析与那条 Tauri 命令删了。
+    //   后端出成品，界面经 `src/frontend/ui/record-reads.ts` 直问；monitor 那份解析与那条 Tauri 命令删了。
     (
         "history-subagent",
         "子 agent 那一份：列 ＋ 挑 ＋ 读 ＋ 解析都在后端（`history_query::pick_subagent` ＋ `record_page::all_records`），成品 `{path, agent_id, records}`",
@@ -194,7 +194,7 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
-    // 〔MOD · `设计/90 §3` 判据 3〕会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/record-reads.ts` 直问。
+    // 〔MOD · `设计/90 §3` 判据 3〕会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/frontend/ui/record-reads.ts` 直问。
     (
         "history-page",
         "按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段）：编号 · 进不进界面 · `cwd` 都是后端给的，`whole` 那一件的上限判定也在后端",
@@ -210,7 +210,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`ssh_source.rs` 里那三条，〔散文墓碑〕）搬进后端。
     (
         "ssh-config-aliases",
-        "别名清单：后端 `dial/ssh_config.rs` 读 `~/.ssh/config` 出成品 `{aliases}`；前端 `src/ssh-config-reads.ts` 按形状收，monitor 零 `.ssh` 读面",
+        "别名清单：后端 `dial/ssh_config.rs` 读 `~/.ssh/config` 出成品 `{aliases}`；前端 `src/frontend/ui/ssh-config-reads.ts` 按形状收，monitor 零 `.ssh` 读面",
     ),
     (
         "ssh-config-import",
@@ -223,34 +223,34 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 〔MIG-1 续 · `99 §2.1 ⑬`〕测试连接：monitor 那条 Tauri 命令与它手里那份探针退役，本机后端组请求、拨一次、回结局。
     (
         "remote-probe",
-        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/remote-probe.ts` 按恰好的键集合收",
+        "测试连接：界面交表单那一台（＋ 已保存的同名那一份 · 跳板），后端 `dial/probe.rs` 出结局；前端 `src/frontend/ui/remote-probe.ts` 按恰好的键集合收",
     ),
     // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话：monitor 那两条 Tauri 命令（本机 · 远端）与它们那份解析退役，那台后端出成品。
     (
         "tmux-list",
-        "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/tmux-reads.ts` 按恰好的键集合收",
+        "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/frontend/ui/tmux-reads.ts` 按恰好的键集合收",
     ),
     // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：合并排序进本机后端（`search_core::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",
         "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::answer_merge`（`search_core::sort_by_recency`）；\
-         前端 `src/views/history-search.ts` 问，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
     (
         "terminal-ssh",
         "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `dial/machine.rs::resolve`）；\
-         前端 `src/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
+         前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
     // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
     (
         "tmux-name-mint",
-        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_tmux_name_mint`）；前端 `src/tmux-name-mint.ts` 问，monitor 这一侧零发送点",
+        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_tmux_name_mint`）；前端 `src/frontend/ui/tmux-name-mint.ts` 问，monitor 这一侧零发送点",
     ),
     // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",
-        "列转发：后端 `dial/forwards.rs::list_with` 出成品 `{forwards}`；前端 `src/port-forward-reads.ts` 按恰好的键集合收",
+        "列转发：后端 `dial/forwards.rs::list_with` 出成品 `{forwards}`；前端 `src/frontend/ui/port-forward-reads.ts` 按恰好的键集合收",
     ),
     (
         "forward-start",
@@ -264,79 +264,79 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     //   `relay_endpoint_for_launch` · `new_local_session` / `resume_history_session` / `render_local_attach`〔散文墓碑〕）。
     (
         "launch-render-cli",
-        "`ccm …` 调用行：后端出成品 `{ok, cmd, reason}`（`control/launch_render/wire.rs`）；前端 `src/launch-render.ts::renderCli` 按形状收",
+        "`ccm …` 调用行：后端出成品 `{ok, cmd, reason}`（`control/launch_render/wire.rs`）；前端 `src/frontend/ui/launch-render.ts::renderCli` 按形状收",
     ),
     (
         "launch-render-payload",
-        "裸载荷 / 外层 tmux 三格：后端出成品 `{cmd}`，坏输入回码 `refused`；前端 `src/launch-render.ts::renderPayload`",
+        "裸载荷 / 外层 tmux 三格：后端出成品 `{cmd}`，坏输入回码 `refused`；前端 `src/frontend/ui/launch-render.ts::renderPayload`",
     ),
     (
         "launch-endpoint",
-        "这一发的中转地址：后端出成品 `{baseUrl}`（「不在时拒还是直连」也判完）；前端 `src/launch-render.ts::launchEndpoint`，monitor 零发送点",
+        "这一发的中转地址：后端出成品 `{baseUrl}`（「不在时拒还是直连」也判完）；前端 `src/frontend/ui/launch-render.ts::launchEndpoint`，monitor 零发送点",
     ),
     (
         "launch-local",
-        "本机起会话整条：本机后端出成品 `{cmd, launchId}`（`control/launch_render/local.rs`）；前端 `src/launch-render.ts::planLocalLaunch`，\
+        "本机起会话整条：本机后端出成品 `{cmd, launchId}`（`control/launch_render/local.rs`）；前端 `src/frontend/ui/launch-render.ts::planLocalLaunch`，\
          monitor 只剩开终端窗口（`open_local_terminal`）",
     ),
     // 〔MIG-3b · `设计/05 §9` 第 12 条〕删会话 · 分叉：两件改世界的事本来就在那台后端，monitor 只剩转交 ⇒ 转交删了，界面直接说。
     (
         "files-delete-session",
-        "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
+        "后端出成品 `{path}`（只收 sid，落点由那台后端按 sid 找）；前端 `src/frontend/ui/session-writes.ts::deleteSession` 问、按恰好的键集合收，\
          monitor 这一侧零发送点（门那一问 `Door::delete_session` 删了）",
     ),
     (
         "session-fork",
-        "后端出成品 `{sessionId, jsonlPath}`（`fork_write.rs`，sid / uuid 在入口过 `session_id_ok`）；前端 `src/session-writes.ts::forkSession` 问、\
+        "后端出成品 `{sessionId, jsonlPath}`（`fork_write.rs`，sid / uuid 在入口过 `session_id_ok`）；前端 `src/frontend/ui/session-writes.ts::forkSession` 问、\
          `decodeFork` 按恰好的键集合收（金样 `session-fork.golden.json`），monitor 这一侧零发送点",
     ),
     // 〔MIG-3b · `设计/95 §6`〕钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
         "hooks-diag",
         "后端出成品 `{diagnosis, snippet_home, snippet_bare, source}`（`observe/cc_bus_hooks.rs`，读那台自己的 `settings.json` ＋ stat）；\
-         前端 `src/settings/cc-bus-hooks-section.ts::fetchHooksReport` 问、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/cc-bus-hooks-section.ts::fetchHooksReport` 问、`decodeHooksReport` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥推送：本机后端读 `.pub` · 组请求 · 经那台后端写或一次 exec，界面直接问本机。
     (
         "pubkey-push",
-        "后端出成品 `{outcome, pubPath, via}`（`assets/pubkey.rs`）；前端 `src/pubkey-push.ts::pushPublicKey` 问、`decodePush` 按恰好的键集合收\
+        "后端出成品 `{outcome, pubPath, via}`（`assets/pubkey.rs`）；前端 `src/frontend/ui/pubkey-push.ts::pushPublicKey` 问、`decodePush` 按恰好的键集合收\
          （金样 `pubkey-push.golden.json`），monitor 这一侧零发送点（那条 Tauri 命令与它的两条路删了）",
     ),
     // 〔MIG-3b 续 · 主会话 09-28 裁①〕足迹：成品由那台后端出（申报表 ＋ 判定进了后端）。
     (
         "footprint-report",
-        "后端出成品 `{report, clientAsks}`（`src/backend/footprint/`）；前端 `src/settings/footprint-reads.ts::readFootprint` 问、\
+        "后端出成品 `{report, clientAsks}`（`src/backend/footprint/`）；前端 `src/frontend/ui/settings/footprint-reads.ts::readFootprint` 问、\
          `decodeFootprint` 按恰好的键集合收（金样 `footprint-report.golden.json`）；monitor 这一侧零发送点（`footprint_remote.rs`〔散文墓碑〕删了），\
          只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
     // 〔MIG-3b 续 · 主会话 09-28 裁〕代码全景：界面经通道直问那台后端（原 monitor 那一跳 `panorama_call.rs`〔散文墓碑〕删了）。
     (
         "panorama",
-        "后端出成品 `{result}`（`control/panorama.rs` 起那台的全景小程序）；前端 `src/panorama/api.ts::remote` 问，\
+        "后端出成品 `{result}`（`control/panorama.rs` 起那台的全景小程序）；前端 `src/frontend/ui/panorama/api.ts::remote` 问，\
          回「没装 / 太旧」时请 monitor 放字节（`panorama_place`）再问一次；monitor 这一侧零发送点",
     ),
     (
         "panorama-edit",
-        "后端算计划 ＋ 经这台文件管理面落盘（`control/panorama_edit.rs`，`stale` 重算）；前端 `src/panorama/api.ts::edit` 问，\
+        "后端算计划 ＋ 经这台文件管理面落盘（`control/panorama_edit.rs`，`stale` 重算）；前端 `src/frontend/ui/panorama/api.ts::edit` 问，\
          monitor 这一侧零发送点",
     ),
     // 〔FIX4 · `97 §8`〕全景小程序卸口。
     (
         "panorama-uninstall",
         "后端认身份 ＋ 经这台文件管理面 CAS 删装时放下的那一份（`control/panorama.rs::answer_uninstall`）；\
-         前端 `src/settings/panorama-section.ts` 问，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/panorama-section.ts` 问，monitor 这一侧零发送点",
     ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
         "resync",
         "新帧命令（手动对齐）：后端出成品 `{added, removed, retagged, watchers}`（`resync_face.rs` → `observe/watcher.rs::resync`）；\
-         前端 `src/resync.ts::resync` 问、`decodeResynced` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/resync.ts::resync` 问、`decodeResynced` 按恰好的键集合收，monitor 这一侧零发送点",
     ),
     // 〔GAP1 · `设计/15 §4.7 S1`〕生在帧面上、界面直接问的那一条。
     (
         "backend-log",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{path, size, text, truncated}`（`read_face.rs::log_tail`，读本进程被交的那份诊断文件）；\
-         前端 `src/settings/backend-section.ts::readBackendLog` 按形状收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/settings/backend-section.ts::readBackendLog` 按形状收，monitor 这一侧零发送点",
     ),
     (
         "plugins-marketplaces",
@@ -348,13 +348,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-facts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/facts_query.rs`），\
-         续传令牌就是上一份成品原样；前端 `src/session-reads.ts::readSessionFacts` 问、`decodeFacts` 按恰好的键集合收，\
+         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 问、`decodeFacts` 按恰好的键集合收，\
          monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
     ),
     (
         "history-record",
         "`BORN_ON_FRAME`（U4b）那一条：后端应答就是成品 `{present, root}`，monitor 那条命令（`probe_session_record`）\
-         只在转、核两格 —— 核验搬到唯一的消费者 `src/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\
+         只在转、核两格 —— 核验搬到唯一的消费者 `src/frontend/ui/session-reads.ts::decodeRecord`（缺一格仍是契约坏了，不读成「不在」），\
          命令与发送端（`frame_query::record`）删了",
     ),
     // 〔C4c · 第四波 4B〕`C4b.md §6.6` A 组第二批：`app.backend-policy`（S5 进主线后前置满足）。
@@ -384,7 +384,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          界面 `settings/assets-section.ts::decodeCatalog` 按形状收",
     ),
     // 〔C4d · 第四波 4B〕注解三条：读写者换成本机常驻后端（`history_annotations.rs`，文件原地不动）；monitor 那两条命令
-    //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/history-reads.ts` 问 `<local>`。
+    //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
     (
         "history-annotate",
         "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
@@ -397,12 +397,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "history-last-accounts",
         "sid → 上次用哪个号起（账号徽章回落 · 带账号 resume 前现读）；从前是 monitor 读那份文件",
     ),
-    // 〔US1 · 第四波 4D〕`05 §14.3` B 组：API key 那两问（`creds.apikey` 读 · `apikey.routing`）—— 后端出成品，界面经 `src/apikey-reads.ts` 问。
+    // 〔US1 · 第四波 4D〕`05 §14.3` B 组：API key 那两问（`creds.apikey` 读 · `apikey.routing`）—— 后端出成品，界面经 `src/frontend/ui/apikey-reads.ts` 问。
     (
         "apikey-read",
         "那台机器上那份凭据文件的状态（只回掩码）：monitor 那条命令（`read_apikey_credentials_status`）本机自己读文件、远端转这一条          —— 本机那一份读者删了，界面按形状严格收（`apikey-reads.ts::decodeApikeyStatus`，跨语言金样 `apikey.golden.json`）。         〔HX2 · 4D〕monitor 写 key 之前核路径那一问（`apikey_remote::send_key`〔散文墓碑〕）随写臂一起删了 —— monitor 生产段零处问它",
     ),
-    // 〔HX2 · 第四波 4D〕`creds.apikey` 写：界面经 `src/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
+    // 〔HX2 · 第四波 4D〕`creds.apikey` 写：界面经 `src/frontend/ui/apikey-reads.ts::writeApikeyKey` 直接交那台后端（账号 id 由后端推）。
     (
         "apikey-key-set",
         "给一个号配 key：monitor 那条命令（`write_apikey_credentials_key`〔散文墓碑〕）推账号 id、本机那一臂先问 `apikey-read` 核路径再转这一条 ——         推 id 搬进后端写口（`acct_core` 那一份规则），核路径由常驻后端的身份（hello 的 `host_env`）答，命令与写臂删了",
@@ -425,7 +425,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "capture-pane",
         "后端应答就是成品 `{name, screen}`，monitor 那条命令（`capture_remote_pane`）只在拒空目标、预问认不认、转、\
-         把五个拒绝码说成人话 —— 那一份解释搬到唯一的消费者那一侧 `src/tmux-control.ts::capturePane`\
+         把五个拒绝码说成人话 —— 那一份解释搬到唯一的消费者那一侧 `src/frontend/ui/tmux-control.ts::capturePane`\
          （预览窗 `views/pane-preview.ts` 调它），命令与发送端（`capture_via_backend`〔散文墓碑〕）删了",
     ),
     // 〔C4e · 第四波 4C〕`tmux.manage` 其余两格（杀会话 · 送键）＋ `launch.send-into`（就地 resume）：
@@ -434,7 +434,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "kill",
         "后端应答就是成品 `{session, killed}`（身份门 ＋ 窗口门在后端先过、对句柄下手）；monitor 那条命令只在拒空目标、\
-         转、核 `killed`、按三态说人话 —— 那一份解释搬到 `src/tmux-control.ts::killSession`，命令与发送端\
+         转、核 `killed`、按三态说人话 —— 那一份解释搬到 `src/frontend/ui/tmux-control.ts::killSession`，命令与发送端\
          （`backend_kill.rs`）删了",
     ),
     (
@@ -442,17 +442,17 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "界面只说它的 `send-into` 一个 mode（送键 · 就地 resume；`create-or-attach` 归 ccm；〔RST 续〕裸键 mode 已删）；\
          后端应答就是成品 `{session, created, typed}`。monitor 那两个发送端（`backend_send_keys.rs` / `backend_launch.rs`）\
          只在拒空目标 / 空载荷、把 `enter` 翻成 mode 名、核 `typed`、按三态说人话、给就地 resume 判「能不能回落」—— \
-         那一份搬到 `src/tmux-control.ts::sendKeys` / `sendInto`（F14 那条规则住 `ipc/chan-caller.ts::provablyNotSent`，\
+         那一份搬到 `src/frontend/ui/tmux-control.ts::sendKeys` / `sendInto`（F14 那条规则住 `ipc/chan-caller.ts::provablyNotSent`，\
          与 Rust `route_call_error` 跨语言金样对拍）",
     ),
     // 〔C4e · 第四波 4C〕`C4c.md §5.6` A 组 `cc-bus.cockpit`：五条 Tauri 命令（`check_cc_bus_agent_online` / `cc_bus_send` /
     //   `cc_bus_kill` / `cc_bus_spawn` / `cc_bus_broadcast`〔散文墓碑〕）同拍迁完。广播那一条先在后端长出 `bus-broadcast`
-    //   （挑人 ＋ 逐个投递搬进后端），界面才只剩「说成人话」。解释的家：`src/cc-bus-control.ts`（单一住址由
+    //   （挑人 ＋ 逐个投递搬进后端），界面才只剩「说成人话」。解释的家：`src/frontend/ui/cc-bus-control.ts`（单一住址由
     //   `cc_bus_tests.rs::the_front_end_speaks_the_bus_ops_only_through_one_module` 判）。
     (
         "bus-list",
         "查一个 agent 在不在线：后端应答就是成品（名单 ＋ 每人 `live`），monitor 那条命令只在转 ＋ 按 id 挑一个 ——\
-         挑人与「问不到 ≠ 离线」搬到 `src/cc-bus-control.ts::agentOnline`",
+         挑人与「问不到 ≠ 离线」搬到 `src/frontend/ui/cc-bus-control.ts::agentOnline`",
     ),
     (
         "bus-send",
@@ -491,7 +491,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
          界面 `cc-bus-control.ts::decodeInbox` 按形状收",
     ),
     // 〔MIG-3a · `99 §2.1 ⑬`〕D 组 MCP：读写与推拉的计算、读、写都进了那台后端（`assets/mcp_edit.rs` · `assets/mcp_sync_flow.rs`），
-    //   monitor 那八条 Tauri 命令（`mcp.rs` · `mcp_sync.rs`〔散文墓碑〕）删了；界面经 `src/mcp-reads.ts` / `src/mcp-sync-reads.ts` 按形状收。
+    //   monitor 那八条 Tauri 命令（`mcp.rs` · `mcp_sync.rs`〔散文墓碑〕）删了；界面经 `src/frontend/ui/mcp-reads.ts` / `src/frontend/ui/mcp-sync-reads.ts` 按形状收。
     (
         "mcp-read",
         "MCP 三段 ＋ 用过的项目目录：后端从来就出成品，monitor 那几条命令（`read_mcp_servers` 等）只在核形状 ＋ 转 —— \
@@ -592,7 +592,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "skill-uninstall-apply",
         "新帧命令：被卸那台判 · 删 · 摘记录 · 收空目录同一台，`stale` 就停并说清前面删了哪几个",
     ),
-    // 〔OSA · 主会话 09-28 裁〕基数 → 增量 +1：数据位置页 `$PROFILE` 备份那一格（`src/settings/profile-backups.ts`）问本机后端那几个目录里
+    // 〔OSA · 主会话 09-28 裁〕基数 → 增量 +1：数据位置页 `$PROFILE` 备份那一格（`src/frontend/ui/settings/profile-backups.ts`）问本机后端那几个目录里
     //   有没有 `.ccm-backup-`（候选由 `aliases-read` 答）；monitor 那份探法删了。文件窗口自己也列目录（见 `ASKED_BY_MONITOR_ITSELF`）。
     (
         "files-ls",
@@ -894,7 +894,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 }
 
 // 〔C4c · 第四波 4B〕`history-record` 应答解释那条判据（`parse_record`〔散文墓碑〕）随发送端删了；同一条口径
-//   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/session-reads.vitest.ts`）。
+//   「缺一格是契约坏了，**绝不**读成『不在』」搬到 TS 那一侧 `session-reads.ts::decodeRecord`（`tests/frontend/ui/session-reads.vitest.ts`）。
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 〔LOC1a · 第四波 4D〕本机查询接的是**正在跑的那份**常驻后端（WIN1 撤回的 F2 由本件接住）
@@ -1196,11 +1196,11 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
          〔W5-VIS〕续传时多一件：读正文之前先读回续点那一行核见证（一问，`PAGE_BUDGET`）—— 2 → 3，多的就是这一处",
     ),
     // 〔合并 DL1 × 主线 06b5dc08〕LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
-    // 〔MIG-3a〕acct-iso 两问那两个发起点摘了：界面经通道直问（`src/acct-iso-reads.ts`），期限在那边造。
+    // 〔MIG-3a〕acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。
     // 〔MIG-3b〕在那台分叉一条会话那一行摘了：monitor 不再发（界面经通道直说 `session-fork`，期限在界面那一手造）。
     // 〔MIG-3b〕远端钩子诊断那一行摘了：monitor 不再问（界面经通道直问 `hooks-diag`，期限在界面那一手造）。
-    // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/mcp-reads.ts`），期限在那边造。
-    // 〔SH1〕列远端 tmux 会话那一行（monitor 问那台后端 `tmux-list`）〔MIG-1 续〕摘了：界面经通道直问（`src/tmux-reads.ts`），期限在那边造。
+    // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/frontend/ui/mcp-reads.ts`），期限在那边造。
+    // 〔SH1〕列远端 tmux 会话那一行（monitor 问那台后端 `tmux-list`）〔MIG-1 续〕摘了：界面经通道直问（`src/frontend/ui/tmux-reads.ts`），期限在那边造。
 ];
 
 /// 一份生产段里 `Deadline::within(` 的每一处，按「所在的最近一个 `fn` 名」记账（定义那一行不算）。
@@ -1284,7 +1284,7 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 #[test]
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
-    // 〔MOD〕历史浏览器读整份那一件（`history·rs` 那个 `stream_read_session_jsonl`〔散文墓碑〕）进了界面（期限在 `src/record-reads.ts` 那一手造）。
+    // 〔MOD〕历史浏览器读整份那一件（`history·rs` 那个 `stream_read_session_jsonl`〔散文墓碑〕）进了界面（期限在 `src/frontend/ui/record-reads.ts` 那一手造）。
     let cases: [(&str, &str, &str); 1] = [(
         include_str!("../../../../../src/frontend/shell/src/ssh_source.rs"),
         "async fn fetch_snapshot(",

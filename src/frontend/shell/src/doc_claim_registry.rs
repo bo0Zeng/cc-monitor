@@ -145,7 +145,7 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
         Verdict::FallsShort,
         "🔴 **本表唯一一条今天就用一刀验过的**：它声称「**生产** TS 主路在调那两条 Rust \
          渲染命令」，而量法用的是 `read()` 而不是 `prod()` ⇒ **没剥注释**。\
-         09-12 现打：把 `src/remote-launch-run.ts` 里那 3 行调用**整行注释掉**，\
+         09-12 现打：把 `src/frontend/ui/remote-launch-run.ts` 里那 3 行调用**整行注释掉**，\
          本模块 19 条判据 **一条不红**。\
          ⚠ **别把这条读成「那个性质没人守」** —— 真正接住它的是 \
          `backend/control/launch_wire.rs` 里那条生产接线钉（同一刀下它**当场红**，\
@@ -334,7 +334,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         EnvKeyClaim::Asserts,
     ),
     // 〔C4a · 第四波〕`local_accounts.rs` 那一份（E79 那条本机会话账号查询的头注里讲「抠哪几个环境变量」那一句）
-    //   随那条查询整条退役（本机与远端收成一条经通道的路，逐行解释搬去 `src/accounts.ts`）⇒ 副本少一份，这一行删掉。
+    //   随那条查询整条退役（本机与远端收成一条经通道的路，逐行解释搬去 `src/frontend/ui/accounts.ts`）⇒ 副本少一份，这一行删掉。
     // 发版说明里那一份（`3.7.0` 起草，09-09）。**它在断言当下，不是在引述**：
     // 用户读发版说明是为了知道「装上这一版之后，这东西今天做什么」——
     // 那正是 `Asserts` 的定义，而不是病史 / 判据文案那一类。

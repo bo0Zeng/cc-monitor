@@ -131,7 +131,7 @@ def reach() -> None:
           "分母 = 该文件的导出符号在 `src/**` 别处生产段里的引用处数")
     targets = {
         "src/launch-render-fallback.ts": ["renderFallback"],
-        "src/remote-launch-run.ts": [
+        "src/frontend/ui/remote-launch-run.ts": [
             "renderLaunchCommand", "runLocalResumeIntoExistingTmux",
             "runRemoteResumeTmux", "runRemoteLauncher", "runNewSessionRemote",
             "runRemoteResumeDirect", "runRemoteResumeIntoExistingTmux", "runAttachRemote",

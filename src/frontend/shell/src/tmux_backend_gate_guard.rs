@@ -40,7 +40,7 @@
 //!    于是按它自己的要求翻面：从「不许出现」改成 [`the_backend_now_has_gate3`]（**不许消失**）。
 //!    ⚠ **它红了不是误报，是它的岗位。** 删掉它才是错的处置（铁律 13）。
 //!
-//! 4. **〔C4e · 第四波 4C〕两条命令整条迁到界面**（`src/tmux-control.ts::killSession` / `sendKeys` 经通道直接说
+//! 4. **〔C4e · 第四波 4C〕两条命令整条迁到界面**（`src/frontend/ui/tmux-control.ts::killSession` / `sendKeys` 经通道直接说
 //!    后端的 `kill` / `launch`）：monitor 里 `kill_remote_tmux` / `tmux_send_keys`〔散文墓碑〕那两个函数体不在了，
 //!    第 2 条那两格（`kill_now_routes_through_the_backend` / `send_keys_now_routes_through_the_backend`〔散文墓碑〕）
 //!    翻成 [`tests::the_monitor_has_no_second_path_that_kills_a_session`]（monitor 里一处杀会话的 shell 串都没有）

@@ -30,8 +30,8 @@
 //! 并让它在 Linux 上**真脱离**（`process_group(0)` + stdio 全 null + 协议改走那个口）
 //! ⇒ 「勾掉开关」在那一支上**真的**是「继续跑」。
 //!
-//! ⇒ 禁令换成**按状态分档**（`K-P1 KPY4`，由 `tests/settings/backend-section.vitest.ts` 机检）：
-//! 用户可见的那四句话有**唯一一个家**（〔CP2b〕文案表 `backendPolicy.exit.*`；TS 那侧 `src/backend-policy.ts` 按名字取）。
+//! ⇒ 禁令换成**按状态分档**（`K-P1 KPY4`，由 `tests/frontend/ui/settings/backend-section.vitest.ts` 机检）：
+//! 用户可见的那四句话有**唯一一个家**（〔CP2b〕文案表 `backendPolicy.exit.*`；TS 那侧 `src/frontend/ui/backend-policy.ts` 按名字取）。
 //!
 //! ⚠⚠ **「无人监护」这半是用户裁定的一半，不许省**（`DECISIONS` `K14` 逐字：
 //! 「第一档必须在 UI 上如实说『继续跑，无人监护』，这是本裁定的一半，

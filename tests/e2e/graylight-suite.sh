@@ -13,7 +13,7 @@
 #     → 收割/对账 retire → SESSION_ENDED → tabs.archiveTab → `[e2e] tab-state … liveness=dead recoverability=resumable`(已结束)
 # 〔U4〕探针行的两个键就是两个轴(原先是 `status=live tmuxIdle=1` / `status=archived`)。「进可重连之前是活的」
 #   不再靠同一行里的 `status=live` 证明:markTmuxIdle 只在活着时才转移、才打这一行(`tab-session-state.ts::nextState`),
-#   打出来本身就是证明。两条 grep 模式与探针真吐的行由 `tests/tab-session-state.vitest.ts` 对拍。
+#   打出来本身就是证明。两条 grep 模式与探针真吐的行由 `tests/frontend/ui/tab-session-state.vitest.ts` 对拍。
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────

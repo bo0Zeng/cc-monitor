@@ -2,20 +2,20 @@
 # 秤 6（`设计/17 §6` 表第 6 行）的**死值验**。
 #
 # 判据绿不等于判据在量东西。这个脚本逐个把秤上的一根针拔掉（每次只拔一根，
-# 拔完立刻装回去），看 `tests/scale6-memory-ledger.vitest.ts` 会不会当场红。
+# 拔完立刻装回去），看 `tests/frontend/ui/scale6-memory-ledger.vitest.ts` 会不会当场红。
 # **哪一刀没让它红，哪一格就是装饰。** 原文记进 `tests/evidence/S6-memory-ledger.md`。
 #
 # 用法：bash tests/evidence/S6-mutations.sh
 # 退出码：全部刀都让判据红 ⇒ 0；有任何一刀判据仍绿 ⇒ 1（并点名是哪一刀）。
 #
-# ⚠ 它会**临时改工作区里的 `src/cards/index.ts` 与 `src/tabs.ts`**，每刀结束立刻还原，
+# ⚠ 它会**临时改工作区里的 `src/frontend/ui/cards/index.ts` 与 `src/frontend/ui/tabs.ts`**，每刀结束立刻还原，
 #   `trap` 兜底（Ctrl-C / 中途失败也还原）。跑之前工作区最好是干净的。
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CARDS="$REPO/src/cards/index.ts"
-TABS="$REPO/src/tabs.ts"
-SPEC="tests/scale6-memory-ledger.vitest.ts"
+CARDS="$REPO/src/frontend/ui/cards/index.ts"
+TABS="$REPO/src/frontend/ui/tabs.ts"
+SPEC="tests/frontend/ui/scale6-memory-ledger.vitest.ts"
 
 BAK="$(mktemp -d)"
 cp "$CARDS" "$BAK/cards.ts"

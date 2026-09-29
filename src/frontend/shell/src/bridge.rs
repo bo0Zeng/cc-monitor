@@ -54,7 +54,7 @@ pub mod events {
 /// Notes: session fork (`/branch`) 创建新 jsonl 文件 → 新 session_id，timeline 独立。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct JsonlLinePayload {
     pub session_id: String,
     pub cwd: Option<String>,
@@ -108,7 +108,7 @@ impl Eq for RecordBody {}
 
 /// 〔CF2 · 第四波 4B〕会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
 ///
-/// 通道只搬不透明字节（`设计/05 §3.3.0`）；读它的是两端的业务那一侧（这里造、`src/events.ts` 读）。
+/// 通道只搬不透明字节（`设计/05 §3.3.0`）；读它的是两端的业务那一侧（这里造、`src/frontend/ui/events.ts` 读）。
 ///
 /// - `{"line": JsonlLinePayload}`：一行记录（seq = 行号，与实时 / 快照 / 按行号取回同一个空间）。
 /// - `{"batch": "start" | "end"}`：一段**成批**的行（F5 重放 · 一次攒出 ≥ 50 行的大增量）的边界。
@@ -116,7 +116,7 @@ impl Eq for RecordBody {}
 ///   ⚠ 它们也占 credit、占位置：没 credit 时同样可能被丢（前端有「队列清空就补排结束」的兜底）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStreamFrame {
     Line(JsonlLinePayload),
@@ -149,7 +149,7 @@ pub enum SessionStreamFrame {
 impl SessionStreamFrame {
     /// 〔MIG-1 · ⑬ 登记的例外〕这一格吃不吃 credit：行与批边界 · 记录文件出声吃（可丢、丢了按行号补）；
     /// 起停那几种**不吃、不丢**（丢了别处补不回来）。穷尽 `match`：新长一种格编译期就要表态。
-    /// TS 那一侧同一张表住 `src/events.ts::CREDIT_EXEMPT_FRAMES`，两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
+    /// TS 那一侧同一张表住 `src/frontend/ui/events.ts::CREDIT_EXEMPT_FRAMES`，两侧对金样 `tests/__fixtures__/session-stream-credit.golden.json`。
     pub fn takes_credit(&self) -> bool {
         match self {
             SessionStreamFrame::Line(_)
@@ -197,7 +197,7 @@ impl SessionStreamFrame {
 /// 〔MIG-1〕[`SessionStreamFrame::SnapshotInflight`] 的体。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SnapshotInflightPayload {
     pub count: u32,
 }
@@ -205,7 +205,7 @@ pub struct SnapshotInflightPayload {
 /// 〔FW1〕[`SessionStreamFrame::FileNotice`] 的体。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionFileNoticePayload {
     pub session_id: String,
     /// 那台机器（本机 `<local>`）—— 与行的 `origin` 同一格语义，订阅按它分流。
@@ -218,7 +218,7 @@ pub struct SessionFileNoticePayload {
 /// 〔CF2〕成批那一段的哪一头。
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum BatchEdge {
     Start,
@@ -227,7 +227,7 @@ pub enum BatchEdge {
 
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionEndedPayload {
     pub session_id: String,
 }
@@ -236,7 +236,7 @@ pub struct SessionEndedPayload {
 /// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
 }
@@ -246,7 +246,7 @@ pub struct SessionIdlePayload {
 /// （原先逐会话发一格 `session_id`）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionUnseenPayload {
     pub origin: crate::origin::Origin,
 }
@@ -255,7 +255,7 @@ pub struct SessionUnseenPayload {
 /// 前端：本机 ⇒ 复活已有 tab / 建骨架（原 `session-started`）；远端 ⇒ 建骨架（原 `remote-session-added`）。先于该会话的行。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionLivePayload {
     pub session_id: String,
     /// 哪台机器（本机 `<local>`；远端是 `[label]` Tab 前缀）。
@@ -285,7 +285,7 @@ pub struct SessionLivePayload {
 /// （判不了的不发这个事件）。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionContainerPayload {
     pub session_id: String,
     pub container: String,
@@ -297,7 +297,7 @@ pub struct SessionContainerPayload {
 /// `data`（SSE 事件原文，一个 JSON 串）与 `end`（`"done"` / `"broken"`）恰有一个。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionTapPayload {
     pub origin: crate::origin::Origin,
     pub stream: String,
@@ -317,7 +317,7 @@ pub struct SessionTapPayload {
 /// 〔U4b · 第四波〕`listed` 格 的 payload：哪台机器的清单报完了。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct OriginSessionsListedPayload {
     /// 用 `Origin`，不用裸字符串（`origin_tests::no_new_raw_string_origin_parameters` 那条棘轮）；线上逐字同一个字符串。
     pub origin: crate::origin::Origin,
@@ -328,7 +328,7 @@ pub struct OriginSessionsListedPayload {
 /// 解析失败 → None（旧行为；viewer 窗口不发此事件）。
 #[derive(Debug, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct FrontendReadyPayload {
     #[serde(rename = "prioritySid")]
     pub priority_sid: Option<String>,
@@ -344,7 +344,7 @@ pub struct FrontendReadyPayload {
 /// 直接展示给用户的人读说明。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteHealthPayload {
     pub origin: String,
@@ -357,7 +357,7 @@ pub struct RemoteHealthPayload {
 /// `waiting_for` 仅 status=="waiting" 时有（"permission prompt" / "dialog open" …）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 pub struct SessionActivityPayload {
     pub session_id: String,
     pub status: Option<String>,

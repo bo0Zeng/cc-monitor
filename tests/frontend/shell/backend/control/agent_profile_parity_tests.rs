@@ -107,7 +107,7 @@ fn the_rust_adapter_agrees_with_the_golden_table() {
 /// ★ `K-R93`：**前端那份画像的取数口**也与夹具一致。
 ///
 /// 上面那条钉的是 `AgentAdapter` trait；本条钉的是 `adapter::agent_profile_facts`
-/// —— 它才是**前端今天真正拿到的那份值**的源头（经生成物 `src/generated/
+/// —— 它才是**前端今天真正拿到的那份值**的源头（经生成物 `src/frontend/ui/generated/
 /// agent-profile-table.ts` 送到 TS）。**两条都要**：trait 与取数口是两个能各自漂的面，
 /// 取数口完全有可能被人就地写死一份而 trait 一个字没动。
 #[test]

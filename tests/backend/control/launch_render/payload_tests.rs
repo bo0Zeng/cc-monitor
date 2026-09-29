@@ -1378,7 +1378,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             want: 1,
             wired: Some(NOT_WIRED_CCM),
         },
-        // 〔LR2 2026-09-25〕这里原来有 `D · src/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
+        // 〔LR2 2026-09-25〕这里原来有 `D · src/frontend/ui/shell-quote.ts` 一格（TS 兜底渲染器的真发射点，
         //   针 `export CLAUDE_CONFIG_DIR=${posixQuote(`，登记为「没接」）。那一族零生产调用、按
         //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {

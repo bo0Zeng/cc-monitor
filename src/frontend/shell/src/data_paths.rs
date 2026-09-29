@@ -21,18 +21,18 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 // **那个 `../..` 里有一级是「幻影目录」**（Phase D 审计 S1 查清 `ts-rs` 源码）：
 // 有效路径 = `cwd` / `export_dir` / `export_to`，而 `export_dir` 默认是 `./bindings`
 // ——**那个目录永不被创建**，它只是被 `../` 抵消掉的一级。所以从 `src/frontend/shell/` 跑测试时：
-//   `src/frontend/shell/` + `bindings/` + `../../src/generated` = `<repo>/src/generated/` ✓
+//   `src/frontend/shell/` + `bindings/` + `../../src/frontend/ui/generated` = `<repo>/src/frontend/ui/generated/` ✓
 // 基准是**测试二进制的 cwd**（`std::env::current_dir()`，不是 `CARGO_MANIFEST_DIR`），
 // 而 cargo 会把它设成 package root ⇒ `cargo test` 与
 // `cargo test --manifest-path src/frontend/shell/Cargo.toml` 都落对（审计双向实测过）。
 // **直接跑测试二进制则会落到仓库外**（审计实测落在 cwd 上两级）——CI 安全，
 // 因为 `ci.yml` 用 `working-directory: src/frontend/shell`。
-// 记这一段是因为：**我第一次写成 `../src/generated/`，落到了 `src/frontend/shell/src/generated/`**，
+// 记这一段是因为：**我第一次写成 `../src/frontend/ui/generated/`，落到了 `src/frontend/shell/src/generated/`**，
 // 而不翻 ts-rs 源码是推不出为什么要两级的。
 pub struct DataPathInfo {
     /// 用户可见的简短名字（如 "config.json"）
@@ -99,7 +99,7 @@ pub struct DataPathInfo {
 /// 这一格回答的是「删了会不会丢东西」，混着真相的文件删了就会丢。
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub enum DataClass {
     /// 用户手写 / 意图：删了丢东西，要备份。
@@ -110,7 +110,7 @@ pub enum DataClass {
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DataPathsResponse {
     pub monitor_data_dir: String,
@@ -119,7 +119,7 @@ pub struct DataPathsResponse {
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
     // 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一格 —— 「`$PROFILE` 在哪」只由后端方言答，
-    //   界面经通道直接问本机后端（`src/settings/profile-backups.ts`），本命令不再带它。
+    //   界面经通道直接问本机后端（`src/frontend/ui/settings/profile-backups.ts`），本命令不再带它。
 }
 
 /// 日志目录那一行的名字。〔ST2 · `70 §11.3.2`〕设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
@@ -261,7 +261,7 @@ fn detect_webview_data_dir(handle: &AppHandle) -> Option<DataPathInfo> {
 }
 
 // 〔OSA · 主会话 09-28 裁〕这里原来有 `$PROFILE` 备份目录那一族（探 `$PROFILE` 两个目录名 · 目录里有没有 `.ccm-backup-`）——
-//   `$PROFILE` 位置的第二个读者；搬到界面经通道问本机后端（`src/settings/profile-backups.ts`）。
+//   `$PROFILE` 位置的第二个读者；搬到界面经通道问本机后端（`src/frontend/ui/settings/profile-backups.ts`）。
 
 /// IPC：前端设置面板「数据」区打开时调一次。
 ///

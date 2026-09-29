@@ -35,7 +35,7 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     //      · `CONTRIBUTING.md` 的 markdown 锚点 —— 目标标题（`REMOTE-PHASE0-DEPLOY.md`）这一拍跟着改了，锚点同步改，链接没断；
     //      · `README.md` 里那串 CI job 名 —— `.github/workflows/ci.yml` 的 job 同拍改名；
     //      · `tests/e2e/README.md` 与 `src/frontend/shell/README.md` 的两处占位符 `<daemon>` —— 换成 `<backend>`；
-    //      · `src/frontend/shell/README.md` 里「安装 / 卸载 daemon」两句 —— 界面按钮文案住 `src/settings/machine-card.ts`，同拍改成「安装 / 卸载后端」。
+    //      · `src/frontend/shell/README.md` 里「安装 / 卸载 daemon」两句 —— 界面按钮文案住 `src/frontend/ui/settings/machine-card.ts`，同拍改成「安装 / 卸载后端」。
     //    ⇒ **账不许挂空号**：这六条今天在盘上都命中 0 次，留着就是六条空转的放行。
     ("src/doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
      "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),

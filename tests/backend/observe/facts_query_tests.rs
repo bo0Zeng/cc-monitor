@@ -291,7 +291,7 @@ fn a_prior_of_the_wrong_shape_is_refused() {
 
 // 〔DUP2 · 主会话 09-26 裁 J19〕这里原来有一条异源对拍（后端的 agent 工具名 == 生成物 `agent-profile-table.ts` 里 claude 那一行）
 // ＋ 它的取数助手与取数正控。两份收成一份进共享 crate `agent_tools_core` 之后，两半按构造是同一个常量 ⇒ 那条对拍恒真、随之退役
-// （判定本身的正反两格住 `tests/common/agent-tools-core/lib_tests.rs`；「只有一份」由 `tests/judgment-single-home.vitest.ts` 的 J19 钉）。
+// （判定本身的正反两格住 `tests/common/agent-tools-core/lib_tests.rs`；「只有一份」由 `tests/frontend/ui/judgment-single-home.vitest.ts` 的 J19 钉）。
 
 #[test]
 fn the_two_lookups_answer_from_their_tables() {
@@ -309,7 +309,7 @@ fn the_two_lookups_answer_from_their_tables() {
     assert_eq!(edit_path_key("Read"), None);
 }
 
-/// 〔STC〕写类工具的口径 —— **逐条搬自前端被删的 `tests/panorama/session-files.test.ts`**（七条，被测对象
+/// 〔STC〕写类工具的口径 —— **逐条搬自前端被删的 `tests/frontend/ui/panorama/session-files.test.ts`**（七条，被测对象
 /// `collectEditedFiles` 随搬家删了、口径住进本文件）：Edit / Write / MultiEdit 取 `file_path` · NotebookEdit 取
 /// `notebook_path` · 非写类不收 · 多个全收保序 · 非 assistant 不收 · 畸形静默跳过 · Windows 路径原样收。
 /// （单条记录内的顺序就是块序；去重 / 近因序那一格在 [`the_four_facts_follow_the_moved_rules`]。）

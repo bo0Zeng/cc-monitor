@@ -72,9 +72,9 @@ fn the_window_process_words_reach_the_webview_verbatim() {
 /// 判的是三样，少一样那条「用户点得开」的链就断在某一处：
 /// ① Rust 侧有 `#[tauri::command]` 这个属性（否则它只是一个普通函数）；
 /// ② `lib.rs` 的 `generate_handler!` 里注册了它（否则 `invoke` 直接 reject）；
-/// ③ 前端包装层 `src/ipc/commands.ts` 里有它，**键名与线上那个串都在**。
+/// ③ 前端包装层 `src/frontend/ui/ipc/commands.ts` 里有它，**键名与线上那个串都在**。
 ///
-/// ⚠ 第 ③ 条与 `tests/ipc/commands.vitest.ts` 的 `C04a` 同族但**不是重复**：
+/// ⚠ 第 ③ 条与 `tests/frontend/ui/ipc/commands.vitest.ts` 的 `C04a` 同族但**不是重复**：
 /// 那边判的是「两侧的集合相等」（整面），这边判的是「**这一条**在不在」（点名）。
 /// 集合判据在两侧同时漏掉同一条时是静默的；点名的不会。
 #[test]
@@ -113,14 +113,14 @@ fn this_command_is_wired_all_the_way_to_the_frontend_wrapper() {
     );
 
     // ③ 前端包装层两侧都在。
-    let wrapper = include_str!("../../../../src/ipc/commands.ts");
+    let wrapper = include_str!("../../../../src/frontend/ui/ipc/commands.ts");
     assert!(
         wrapper.contains(&format!("{name}: (")),
-        "`src/ipc/commands.ts` 里没有 `{name}` 这个键"
+        "`src/frontend/ui/ipc/commands.ts` 里没有 `{name}` 这个键"
     );
     assert!(
         wrapper.contains(&format!("\"{name}\"")),
-        "`src/ipc/commands.ts` 里那个键没把 `{name}` 这个串传给 `invoke`"
+        "`src/frontend/ui/ipc/commands.ts` 里那个键没把 `{name}` 这个串传给 `invoke`"
     );
 
     // 反空真：这把尺子认得出「不在」。
@@ -228,7 +228,7 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
 //
 // 老面板 `open()` 有三种入口模式，窗口此前只覆盖两种。差的那一格是 **F54**：
 // 远端**文件**路径 ⇒ 进它父目录 ＋ 高亮那一行。而那条路是**活的**
-//（`src/cards/index.ts::openRemoteFileInSftp` 里那个可点元素）
+//（`src/frontend/ui/cards/index.ts::openRemoteFileInSftp` 里那个可点元素）
 // ⇒ 先退役老面板 = 那颗「跳到这个文件」当场失效。
 
 /// `path` 非空 ⇒ 它赢，**`reveal_file` 一起给也不管用**。

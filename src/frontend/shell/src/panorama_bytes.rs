@@ -8,7 +8,7 @@
 //!
 //! 〔墓碑 —— RM1c 那一版这里写着「推上去不在这里」：F08 部署路那时正被 SR1b 搬进本机常驻后端，
 //!  本模块零生产调用方。SR1b 已合（部署经 `dial_host::RemoteFs`）。〕
-//! 触发点在界面（〔MIG-3b 续〕`src/panorama/api.ts::askOrPlace`，经 [`panorama_place`]）：那台 `panorama` 回「没装 / 太旧」才推（V108「只传给开过远端全景的机器」），
+//! 触发点在界面（〔MIG-3b 续〕`src/frontend/ui/panorama/api.ts::askOrPlace`，经 [`panorama_place`]）：那台 `panorama` 回「没装 / 太旧」才推（V108「只传给开过远端全景的机器」），
 //! 不随后端部署顺手推。推法与 F08 部署后端同一条路：〔TL1 · 4C〕问那台是什么机器（`byte_table::probe_key`；〔MIG-3b〕部署后端那一问进了本机常驻后端，
 //! 两处同一条命令串、同一份解读 `deploy_core::key_from_uname`）→ `byte_table::choose(Panorama, Remote, …)`（表 B 那一步：不承诺 / 这一版没带 ⇒ 写第一个字节之前就拒，
 //! 拒绝的话出自 `Refusal::say` 那一个口）→ 本机常驻后端那条 `files` 链路
@@ -141,7 +141,7 @@ fn place_local() -> Result<(), String> {
 // ═══ 〔MIG-3b 续 · 主会话 09-28 裁〕放字节那一条命令 ═══════════════════════════════════════════
 //
 // 界面直问那台后端 `panorama` / `panorama-edit`；那台回「没装 / 太旧」（`not_installed` / `unsupported`）⇒ 界面请这里**放字节**、
-// 再问一次（`src/panorama/api.ts::askOrPlace`）。原 `panorama_call.rs`〔散文墓碑〕那一跳（问 · 转 · 撤）整份删了，放字节那一半搬来这里：
+// 再问一次（`src/frontend/ui/panorama/api.ts::askOrPlace`）。原 `panorama_call.rs`〔散文墓碑〕那一跳（问 · 转 · 撤）整份删了，放字节那一半搬来这里：
 // 每台一把锁 · 真要放之前在远端健康通道上说一声 · 本机远端同一个口（[`push_to`]）。
 
 /// 每台机器一把「正在放」的锁 ＋ 放成过几次（同一台同时几问都撞上「没装」时只放一份：排队的那一问进锁时发现
