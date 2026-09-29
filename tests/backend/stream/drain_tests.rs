@@ -468,20 +468,8 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         "取票不在 SpawnBlocking 那一支里"
     );
 
-    // `main.rs`：生产段零处 `exit(`（流模式的 exit 只住 `exit_after_drain`；一次性查询 / ccm / 监听口配置那几处例外逐条登记）。
+    // 〔MOD · ⑮〕`process::exit(` 的所在函数那一格挪进 [`x15_the_process_exits_only_in_main_and_exit_after_drain`]（全树，不只 `main.rs`）。
     let main = crate::guard_support::production_code(include_str!("../../../src/backend/main.rs"));
-    let mut exits: Vec<String> = call_sites(&main, "process::exit")
-        .into_iter()
-        .map(|i| enclosing_fn(&main, i))
-        .collect();
-    exits.sort();
-    // 登记：`main` 里四处（ccm 那一趟 · 〔FIX〕argv 一族的 stdin 一行读不动 · 一次性查询 · 监听口配置不成立）＋ `serve_listening` 绑不上口那一处。
-    // 五处都发生在**一条命令都还没收**之前 ⇒ 没有可排空的。
-    assert_eq!(
-        exits,
-        vec!["main", "main", "main", "main", "serve_listening"],
-        "`main.rs` 里 `process::exit(` 的所在函数集合变了 —— 流模式的退出口必须经 `inbound::exit_after_drain`"
-    );
     let mut drains: Vec<String> = call_sites(&main, "exit_after_drain")
         .into_iter()
         .map(|i| enclosing_fn(&main, i))
@@ -511,16 +499,57 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
         Ok(within[0]),
         "生产入口交的期限不是 DRAIN_DEADLINE"
     );
-    // 正控：数法认得出多出来的一处 `exit(`。
-    let planted = format!("{main}\nfn planted() {{ std::process::exit(0); }}\n");
-    assert_eq!(call_sites(&planted, "process::exit").len(), 6);
-    assert_eq!(
-        enclosing_fn(
-            &planted,
-            *call_sites(&planted, "process::exit").last().unwrap()
-        ),
-        "planted"
+}
+
+/// 〔MOD · `99 §2.1 ⑮`〕**退出口只有 `main` 与 `exit_after_drain`**：后端生产树里 `process::exit(` 的所在函数，全树逐处现打。
+///
+/// 期望（异源：取自 ⑮ 那句裁决与 `main.rs` 的分派形状，不从被扫的源码现推）：
+/// `main.rs::main` 五处（ccm 那一趟 · argv 一族的 stdin 一行读不动 · 一次性查询 · 监听口配置不成立 · 绑不上口）——
+/// 都发生在**一条命令都还没收**之前、没有可排空的；`stream/inbound.rs::exit_after_drain_within` 一处
+/// （`exit_after_drain` 的本体：生产入口只经它，期限由 d3 钉）。别处一处都不许有 —— 模块里想退就把退出码交回调用方。
+#[test]
+fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
+    let root = crate::guard_support::src_root();
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut scanned = 0usize;
+    for (path, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        scanned += 1;
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prod = crate::guard_support::production_code(&src);
+        for i in call_sites(&prod, "process::exit") {
+            found.push((rel.clone(), enclosing_fn(&prod, i)));
+        }
+    }
+    assert!(
+        scanned >= 100,
+        "只扫到 {scanned} 份后端源文件 —— 遍历坏了，本条在空转"
     );
+    found.sort();
+    let want: Vec<(String, String)> = [
+        ("main.rs", "main"),
+        ("main.rs", "main"),
+        ("main.rs", "main"),
+        ("main.rs", "main"),
+        ("main.rs", "main"),
+        ("stream/inbound.rs", "exit_after_drain_within"),
+    ]
+    .iter()
+    .map(|(a, b)| (a.to_string(), b.to_string()))
+    .collect();
+    assert_eq!(
+        found, want,
+        "后端生产树里 `process::exit(` 的所在函数变了 —— 退出口只许是 `main` 与 `exit_after_drain`（⑮）；\
+         模块里想退，把退出码交回 `main`"
+    );
+    // 正控：数法认得出多出来的一处 `exit(`，也认得出它住哪个函数。
+    let planted = "fn planted() { std::process::exit(0); }\n";
+    let at = call_sites(planted, "process::exit");
+    assert_eq!(at.len(), 1);
+    assert_eq!(enclosing_fn(planted, at[0]), "planted");
 }
 
 // ── A1（同住本文件：都是 `main.rs` 流模式那几行的接线）────────────────────

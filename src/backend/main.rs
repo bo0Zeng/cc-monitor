@@ -94,12 +94,14 @@ async fn main() {
     //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
     //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
     // 〔V151〕分流只经 `control::ccm::route`：当后端用时，后端认的 argv 是它交回来的那一串（去掉了打头的 `--`）。
+    // 〔MOD · `99 §2.1 ⑮`〕argv 只在这里取一次：分流看 `[1..]`，ccm 那一趟要的「我被怎么叫的」由这里交（`ccm::run` 的 `process_argv`）。
+    let process_argv: Vec<String> = std::env::args().collect();
     let backend_args: Vec<String> = {
-        let rest: Vec<String> = std::env::args().skip(1).collect();
+        let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(&rest) {
             // 〔FIX · V138 订正〕resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => {
-                std::process::exit(control::ccm::run(&ccm_args, |dir| {
+                std::process::exit(control::ccm::run(&ccm_args, &process_argv, |dir| {
                     let home = agent_home(dir, false);
                     observe::watcher::running_sessions(&home)
                 }))
@@ -245,14 +247,19 @@ async fn main() {
             //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
             let stop = inbound::shutdown_listener();
             tokio::select! {
-                _ = serve_listening(
+                served = serve_listening(
                     port,
                     token,
                     hello,
                     agent_home,
                     (with_bg, tail_only, with_rbind_token),
                     self_record,
-                ) => {}
+                ) => {
+                    // 〔MOD · ⑮〕绑不上口 ⇒ 那一步交回退出码，在这里退（退出口只有 `main` 与 `exit_after_drain`）。
+                    if let Err(code) = served {
+                        std::process::exit(code);
+                    }
+                }
                 _ = stop => {
                     tracing::info!("shutdown signal received; exiting");
                 }
@@ -598,7 +605,7 @@ async fn serve_listening(
     agent_home: PathBuf,
     defaults: (bool, bool, bool),
     self_record: bool,
-) {
+) -> Result<(), i32> {
     let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -613,7 +620,8 @@ async fn serve_listening(
                  这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
                  对不上就出声并拒绝，**不许静默复用**，更不许换个口再起一个。"
             );
-            std::process::exit(if in_use {
+            // 〔MOD · ⑮〕退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
+            return Err(if in_use {
                 listen::EXIT_ADDR_IN_USE
             } else {
                 listen::EXIT_BAD_LISTEN_CONFIG
