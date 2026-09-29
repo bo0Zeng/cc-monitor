@@ -54,13 +54,13 @@ const DEPLOY_CONTRACT: &[(&str, &str)] = &[
     ),
     ("LegacyVerdict", "`deploy-plan` 答话里旧落点那一格的形状"),
     ("LEGACY_BACKEND_REL", "旧落点路径"),
+    (
+        "LEGACY_ENTRY_REL",
+        "旧入口路径（`~/.local/bin/ccm`；去向后端判，monitor 照删）",
+    ),
     ("Marks", "身份戳的两个界标（文件格式）"),
     ("RemoteIdentity", "读身份戳的结果形状"),
     ("identity_of_bytes", "从字节里读身份戳（文件格式，不跑它）"),
-    (
-        "is_ours",
-        "认得出是不是我们从前放的那两形入口（文件格式的记号）",
-    ),
 ];
 
 /// `deploy-core` 判定符号在 monitor 生产段的**自举残留**：(符号, 住址 `文件::函数`, 为什么搬不进后端)。
@@ -75,6 +75,11 @@ const DEPLOY_RESIDUAL: &[(&str, &str, &str)] = &[
         "identity_decision",
         "src/frontend/shell/src/local_backend.rs::extract_embedded_to",
         "同上：本机那一份换不换，放完它才有后端",
+    ),
+    (
+        "is_ours",
+        "src/frontend/shell/src/ccm_probe.rs::reach_of",
+        "本机探针那一格：PATH 上另一个 `ccm` 是不是我们早先放的旧入口（只用来说话，不删；WF1 写区，另排）",
     ),
 ];
 

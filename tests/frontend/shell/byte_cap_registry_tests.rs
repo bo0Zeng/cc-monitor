@@ -614,6 +614,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
         "跳过+说清",
     ),
+    // 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向（`deploy-retired`）：读回的全文要原样装进那一趟 `files-delete` 的 `expect`。
+    (
+        "src/backend/control/deploy_plan.rs",
+        "RETIRED_READ_MAX",
+        256 * 1024,
+        "读回远端旧入口 `~/.local/bin/ccm` 认它是不是我们放的（全文原样当 `files-delete` 的期望值）",
+        "跳过+说清",
+    ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
         "src/backend/dial/sftp.rs",

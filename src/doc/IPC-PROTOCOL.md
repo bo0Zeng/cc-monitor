@@ -2137,6 +2137,28 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 `io_failed`（stat 落点那一问没问成）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 扫不动 —— 显式失败、不覆盖，出路是机器页「卸载后端」）。
 ⚠ **CLI 面也有它**（`--deploy-plan`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：一次性进程自己新拨一条 SSH，真正的用法是常驻后端的帧面。
 
+#### `deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向（THIN，09-29；远端**只读**那台）
+
+「判定只在后端」（`设计/00 §1.2`）：旧版放在远端 `~/.local/bin/ccm` 的那一份（三行 shim · 更早的 bash 启动器，`设计/01 §6.7b` ③）
+认不认得出是我们放的、删不删，由本机常驻后端判（`control/deploy_plan.rs::retired_verdict`，与 `deploy-plan` 的上传残件同一家：落点上该清的东西）；
+monitor 照答经**那台**后端的 `files-delete`（带 `expect`）删（`ccm_legacy.rs`，部署按钮与那台长连接握手完成两个时刻）。
+不并进 `deploy-plan` 的答：计划在连上那台常驻后端之前问（预检），那时 `files-delete` 无门可走。
+
+```text
+→ {"id":"r1","cmd":"deploy-retired","args":{"dial":{…}}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"verdict":"remove","expect":"#!/bin/sh\n# cc-monitor: ccm = …\n…","why":null}}
+```
+
+| 字段 | 向 | 意思 |
+|---|---|---|
+| `dial` | → | 怎么够到那台（与 `files` 链路同一份拨号请求）；沿池里那条 SSH 开只读 SFTP：stat ＋ 至多一次读回（上限 256 KiB，与 `files-peek` 同一个口径） |
+| `verdict` | ← | `absent`（不在）· `remove`（第一行 `#!`、第二行认得出两形记号之一 ⇒ 是我们放的）· `keep`（别的一律不动） |
+| `expect` | ← | 只在 `remove` 时是字符串：读到的全文，删时原样交 `files-delete` 当期望值（盘上变了就不删）；其余 `null` |
+| `why` | ← | 只在 `keep` 时是字符串：为什么不动（不是我们放的 · 读不成文本）；其余 `null` |
+
+错误码：`bad_args`（缺 `dial`：不许退成问本机）· `unreachable`（SFTP 开不成）。
+⚠ **CLI 面也有它**（`--deploy-retired`，入参从 stdin 读）。
+
 #### `deploy-slot`：那台要哪一格字节（THIN，09-29；远端**只读**那台）
 
 「判定只在后端」（`设计/00 §1.2`）：表 A（有没有产线）· 表 B（这个 origin 承不承诺）· 这一版带没带，是 `deploy-plan` 的第 ① 步，单拿出来给**代码全景小程序**

@@ -525,3 +525,84 @@ fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
         );
     }
 }
+
+// ═══ 〔THIN〕`deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向 ═══════════════════════
+//
+// 要求住址：`设计/01 §6.7b` ③（V28 · V41）「部署后端时、每次连上时各扫一次，认出是我们放的才删（`files-delete` 带期望值），
+// 认不出的不动」＋ `设计/00 §1.2`「判定只在后端」。真值表的期望是字面量，取自 git 史上那两份真文件的头两行
+// （`git show e8f9e08e^:shared/ccm` · `ccm_entry_shim`〔散文墓碑〕在 `b2bab98f` / `9c20ce0f` 的两代；从前住 monitor `ccm_legacy_tests.rs` 的 L1）。
+
+/// 09-15 那一代 shim（带 `CCM_SELF` 那一行）。
+const SHIM_0915: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${CCM_SELF:-$0}\" exec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
+/// 最后一代 shim（MC1 起，不带 `CCM_SELF`）。
+const SHIM_LAST: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
+/// 09-11 之前那份 bash 启动器的头两行（后面几千行略去 —— 认它只看头两行）。
+const LAUNCHER_HEAD: &str =
+    "#!/usr/bin/env bash\n# ccm — cc-monitor 统一启动器（unify-launch F02）\n#\n# 核心思想……\n";
+
+async fn retired_at(stat: (Option<Option<u64>>, Option<bool>), bytes: Option<&[u8]>) -> Value {
+    let mut f = Fake::default();
+    f.stat.insert(deploy_core::LEGACY_ENTRY_REL.into(), stat);
+    if let Some(b) = bytes {
+        f.read
+            .insert(deploy_core::LEGACY_ENTRY_REL.into(), b.to_vec());
+    }
+    let args = serde_json::json!({ "dial": { "host": "h" } });
+    answer_retired(&args, &f).await.expect("答得出")
+}
+
+/// 两形认、别的一律不认；认出 ⇒ `remove` 且 `expect` 恰是读到的全文；答的形状恰三格。
+#[tokio::test]
+async fn retired_only_the_two_forms_we_ever_placed_are_removed_and_with_what_was_read() {
+    let present = (Some(Some(64)), None);
+    let remove = |t: &str| serde_json::json!({ "verdict": "remove", "expect": t, "why": null });
+    for (what, text) in [
+        ("09-15 那一代 shim", SHIM_0915),
+        ("最后一代 shim", SHIM_LAST),
+        ("09-11 之前的 bash 启动器", LAUNCHER_HEAD),
+    ] {
+        assert_eq!(
+            retired_at(present, Some(text.as_bytes())).await,
+            remove(text),
+            "{what}"
+        );
+    }
+    let kept = |v: &Value| v["verdict"] == "keep" && v["expect"].is_null() && v["why"].is_string();
+    for (what, text) in [
+        ("用户自己的脚本", "#!/bin/sh\nexec my-own-ccm \"$@\"\n"),
+        ("只有一行", "#!/bin/sh\n"),
+        (
+            "记号不在第二行",
+            "#!/bin/sh\n# 我自己的包装\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n",
+        ),
+        (
+            "第一行不是 #!",
+            "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n",
+        ),
+    ] {
+        let v = retired_at(present, Some(text.as_bytes())).await;
+        assert!(kept(&v), "{what}：{v}");
+    }
+    // 不在 ⇒ absent；0 字节 ⇒ keep；在但读不回来 / 不是 UTF-8 ⇒ keep（不猜）。
+    assert_eq!(
+        retired_at((None, Some(false)), None).await,
+        serde_json::json!({ "verdict": "absent", "expect": null, "why": null })
+    );
+    assert!(kept(&retired_at((Some(Some(0)), None), None).await));
+    assert!(kept(&retired_at(present, None).await));
+    assert!(kept(&retired_at(present, Some(&[0xff, 0xfe, b'\n'])).await));
+}
+
+/// 缺 `dial` ⇒ `bad_args`（不许退成问本机）；SFTP 开不成 ⇒ `unreachable`。
+#[tokio::test]
+async fn retired_refuses_without_a_dial_and_says_unreachable_when_the_link_fails() {
+    let f = Fake::default();
+    let (code, _) = answer_retired(&serde_json::json!({}), &f)
+        .await
+        .unwrap_err();
+    assert_eq!(code, "bad_args");
+    let (code, _) = answer_retired(&serde_json::json!({ "dial": { "host": "h" } }), &f)
+        .await
+        .unwrap_err();
+    assert_eq!(code, "unreachable");
+}

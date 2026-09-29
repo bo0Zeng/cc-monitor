@@ -12,6 +12,12 @@
 //! 3. **该不该换**（[`deploy_core::landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`deploy_core::legacy_verdict`]）；
 //! 4. 〔WF2 · WIN3 读数 B〕落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
+//! # 〔THIN〕帧命令 `deploy-retired`（同一家：落点上该清的东西）
+//!
+//! 旧版放在远端 `~/.local/bin/ccm` 的那一份（`设计/01 §6.7b` ③）：认出是我们放的才删、删带读到的那一份当期望值（[`retired_verdict`]）；
+//! monitor 照答经那台后端 `files-delete` 删。不并进 `deploy-plan` 的答：计划是连上那台常驻后端**之前**问的（预检），
+//! 那时 `files-delete` 无门可走（那一格在 SFTP 两个写根之外）；删它的两个时刻（部署按钮 · 那台长连接握手完成）那台后端都在。
+//!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
 //!
 //! # 〔THIN〕帧命令 `deploy-slot`（同一家，第 ① 步单拿出来）
@@ -41,6 +47,10 @@ use deploy_core::{
     DeployAction, Key, LegacyVerdict, Marks, Product, Refusal, RemoteIdentity, Route,
 };
 use serde_json::{json, Value};
+
+/// 〔THIN〕旧入口 `~/.local/bin/ccm` 最多读多少：读到的全文要原样装进 monitor 那一趟 `files-delete` 的 `expect`
+/// （后端一行上限 1 MiB）⇒ 取与 `files-peek` 同一个口径的数（那一面的常量不跨模块取：文件管理后端只经它的门够）。
+const RETIRED_READ_MAX: u64 = 256 * 1024;
 
 /// 认从前那份三行入口时最多读多少（它几十字节；比这大就不是那一形 ⇒ 不读，按「不说自己是谁」显式失败）。
 const ENTRY_READ_MAX: u64 = 64 * 1024;
@@ -362,6 +372,73 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
     plan(facing, &carried, machine, now)
         .await
         .map(|p| plan_json(&p))
+}
+
+// ═══ 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
+//
+// 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里，monitor 照删。从前 monitor `ccm_legacy::sweep`
+// 自己读、自己认（`deploy_core::is_ours`）、自己决定删；今天它只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
+
+/// 旧入口那一份的去向。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Retired {
+    /// 那儿没有东西。
+    Absent,
+    /// 认出是我们放的 ⇒ 删；`expect` = 读到的全文（`files-delete` 的期望值：盘上还是它才删）。
+    Remove { expect: String },
+    /// 不动；`why` 说为什么（不是我们放的 · 读不成文本）。
+    Keep { why: String },
+}
+
+/// **纯函数**：stat 的结论 ＋ 读回来的字节（读不出 / 比 [`RETIRED_READ_MAX`] 大 ⇒ `None`）→ 去向。
+/// 只认 [`deploy_core::is_ours`] 那两形；别的一律不动（用户自己的脚本 · 空文件 · 不是 UTF-8 · 读不回来）。
+pub fn retired_verdict(at: deploy_core::TargetBinary, bytes: Option<Vec<u8>>) -> Retired {
+    use deploy_core::TargetBinary;
+    let not_ours = || Retired::Keep {
+        why: copy_text("beDeployRetired.kept.notOurs", &[]),
+    };
+    match at {
+        TargetBinary::Missing => Retired::Absent,
+        TargetBinary::Empty => not_ours(),
+        TargetBinary::Present | TargetBinary::Unknown => match bytes.map(String::from_utf8) {
+            Some(Ok(text)) if deploy_core::is_ours(&text) => Retired::Remove { expect: text },
+            Some(Ok(_)) => not_ours(),
+            _ => Retired::Keep {
+                why: copy_text("beDeployRetired.kept.unreadable", &[]),
+            },
+        },
+    }
+}
+
+/// 帧面入口：`{dial}` → `{verdict: "absent" | "remove" | "keep", expect, why}`。缺 `dial` ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
+pub async fn answer_retired(
+    args: &Value,
+    facing: &dyn Facing,
+) -> Result<Value, (&'static str, String)> {
+    if !args.get("dial").is_some_and(Value::is_object) {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("missing `dial` (object)"),
+        ));
+    }
+    let rel = deploy_core::LEGACY_ENTRY_REL;
+    let (size, exists) = facing.stat(rel).await.map_err(|e| ("unreachable", e))?;
+    let at = deploy_core::interpret_target_probe(size, exists);
+    let bytes = match at {
+        deploy_core::TargetBinary::Present | deploy_core::TargetBinary::Unknown => {
+            let got = facing.read(rel, RETIRED_READ_MAX).await;
+            if got.is_none() {
+                tracing::warn!("deploy-retired：~/{rel} 读不回来或比上限大 —— 认不出、不删");
+            }
+            got
+        }
+        _ => None,
+    };
+    Ok(match retired_verdict(at, bytes) {
+        Retired::Absent => json!({ "verdict": "absent", "expect": null, "why": null }),
+        Retired::Remove { expect } => json!({ "verdict": "remove", "expect": expect, "why": null }),
+        Retired::Keep { why } => json!({ "verdict": "keep", "expect": null, "why": why }),
+    })
 }
 
 // ═══ 〔THIN〕那台要哪一格（帧命令 `deploy-slot`）═══════════════════════════════════════════

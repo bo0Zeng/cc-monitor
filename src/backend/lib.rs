@@ -788,6 +788,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--deploy-plan",
     // 〔THIN〕远端常驻后端 hello 的新旧（帧面 `resident-verdict` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--resident-verdict",
+    // 〔THIN〕那台旧入口的去向（帧面 `deploy-retired` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--deploy-retired",
     // 〔THIN〕那台要哪一格字节（帧面 `deploy-slot` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
     "--deploy-slot",
     // 〔MOD〕这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。

@@ -1218,7 +1218,7 @@ pub fn local_ccm_entry_name() -> String {
 }
 
 // 〔E2 · V28 · `设计/01 §6.7b`〕远端三行入口的生成器 `ccm_entry_shim`〔散文墓碑〕删了：远端落点 `~/.cc-monitor/bin/ccm` 上放的就是
-//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由 `ccm_legacy::is_ours` 认（它记着那一形的第二行）。
+//   后端字节（`sftp.rs::LANDING_REL`）。已部署机器上的旧入口由本机常驻后端认（`deploy_plan::retired_verdict` 调 `deploy_core::is_ours`，〔THIN〕从前在 `ccm_legacy`）。
 
 // 〔E2 · V28〕`install_local_ccm_entry`〔散文墓碑〕（把后端逐字节拷一份叫 `ccm`，V28「第二份拷贝」）删了：
 //   落点 `~/.cc-monitor/bin/ccm` 放的就是后端本身（[`extract_embedded_to`]）。
