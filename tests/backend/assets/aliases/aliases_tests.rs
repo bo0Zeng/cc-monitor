@@ -1318,3 +1318,61 @@ fn rel_under_keeps_writes_inside_home_on_both_path_styles() {
         assert!(door::rel_under("/home/u", bad).is_err(), "{bad} 竟然过了");
     }
 }
+
+/// ★ 住址：`设计/99 §2.3`「L 的做法：那台后端只读现问生效策略，块不会加载就明说」。
+/// 每份 `$PROFILE` 候选带**加载它的那一代**的执行策略（5.1 目录 ⇒ `powershell`，7 目录 ⇒ `pwsh`）；同一代一次读只问一次；
+/// POSIX 候选与人另指的那一份不带（说不出是哪一代加载它）。
+#[test]
+fn each_profile_candidate_carries_the_policy_of_the_powershell_that_loads_it() {
+    use crate::platform::shell::{powershell::ExecPolicy, PsHost};
+    let h = tmp_home("ps-policy");
+    std::fs::create_dir_all(h.0.join("Documents/PowerShell")).unwrap();
+    std::fs::write(h.0.join("mine.ps1"), "# mine\n").unwrap();
+    let asked = std::cell::RefCell::new(Vec::new());
+    let ask = |host: PsHost| {
+        asked.borrow_mut().push(host);
+        ExecPolicy {
+            host,
+            effective: Some(format!("{host:?}")),
+            loads: Some(host == PsHost::Core),
+            group_policy: false,
+            error: None,
+        }
+    };
+    let extra = h.0.join("mine.ps1").display().to_string();
+    let got: Vec<(String, Option<PsHost>)> =
+        rc_candidates_asking(&door(&h), &hs(&h), Shell::PowerShell, Some(&extra), &ask)
+            .unwrap()
+            .into_iter()
+            .map(|c| {
+                let rel = c.path.strip_prefix(&hs(&h)).unwrap().replace('\\', "/");
+                (rel, c.policy.map(|p| p.host))
+            })
+            .collect();
+    let d = Some(PsHost::Desktop);
+    let c = Some(PsHost::Core);
+    assert_eq!(
+        got,
+        vec![
+            (
+                "/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1".into(),
+                d
+            ),
+            ("/Documents/WindowsPowerShell/profile.ps1".into(), d),
+            (
+                "/Documents/PowerShell/Microsoft.PowerShell_profile.ps1".into(),
+                c
+            ),
+            ("/Documents/PowerShell/profile.ps1".into(), c),
+            ("/mine.ps1".into(), None),
+        ]
+    );
+    assert_eq!(
+        *asked.borrow(),
+        vec![PsHost::Desktop, PsHost::Core],
+        "同一代该只问一次"
+    );
+    std::fs::write(h.0.join(".bashrc"), "# mine\n").unwrap();
+    let posix = rc_candidates_asking(&door(&h), &hs(&h), P, None, &ask).unwrap();
+    assert!(!posix.is_empty() && posix.iter().all(|c| c.policy.is_none()));
+}

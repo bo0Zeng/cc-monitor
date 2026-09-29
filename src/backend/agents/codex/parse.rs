@@ -86,7 +86,7 @@ pub fn resolve_codex_dir() -> Option<PathBuf> {
     if let Some(h) = std::env::var_os("CODEX_HOME").filter(|h| !h.is_empty()) {
         return Some(PathBuf::from(h));
     }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex"))
+    crate::platform::paths::home_dir().map(|h| h.join(".codex"))
 }
 
 /// Codex 会话记录根 `<codex_dir>/sessions`（日期分区树 `YYYY/MM/DD/rollout-*.jsonl` 在其下）。

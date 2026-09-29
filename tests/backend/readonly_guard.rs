@@ -2933,10 +2933,23 @@ mod spawn_registry {
             "〔MIG-3a · `设计/99 §2.1 ⑬`〕别名方言问 PowerShell **内建别名**（`Get-Alias`，固定脚本、不吃用户输入、`-NoProfile` \
              `-NonInteractive`、不弹窗）—— 撞了的名字定义了也敲不到（`71 §8` 第 8 条）。从 monitor `shell_dialect.rs` 搬来：\
              规则进了那台后端，问的是**那台自己**的 PowerShell。**只读**，只在说 PowerShell 的那台（Windows）上起，\
-             进程内缓存一次。唯一调用方 `platform/shell/dialect.rs::ask_get_alias`（〔OSA〕方言住适配层）。",
+             进程内缓存一次。调用方 `platform/shell/dialect.rs::ask_get_alias`（〔OSA〕方言住适配层）。\
+             〔WF1 · L · `设计/99 §2.3`〕同一处口（`platform/shell/mod.rs::powershell_command`）又多两种**固定脚本**的用途：\
+             ① 现问执行策略（`Get-ExecutionPolicy` 三行，只读；`aliases-read` 每份 5.1 的 `$PROFILE` 候选）；\
+             ② **写一格用户设置**：`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`（HKCU 那一档，值写死），\
+             只由 `powershell-policy-set` 跑 —— 界面在用户点了、确认了之后才发（主会话 09-29 裁「只在用户点击并确认后执行，不代改」）。",
             "缩性质",
-            "有别的办法读到那台 PowerShell 的内建别名表（不起进程）的那天摘掉。\
-             ⚠ 在那之前**不许**往这一处口底下加第二种用途（它是只读的固定脚本口）。",
+            "有别的办法读到那台 PowerShell 的内建别名表与执行策略（不起进程）的那天摘掉只读那两种。\
+             ⚠ 写的那一种只许是上面那一句固定脚本，不许收界面给的策略值。",
+        ),
+        (
+            "platform/shell/mod.rs",
+            "pwsh.exe",
+            "〔WF1 · L · `设计/99 §2.3`〕PowerShell 7 那一代（它的 `$PROFILE` 在 `Documents/PowerShell/`，执行策略与 5.1 分开存）：\
+             同上一条的 ① ② 两种固定脚本（现问执行策略 · 用户确认后设当前用户 `RemoteSigned`），只在 7 的 profile 目录在时问。",
+            "缩性质",
+            "有别的办法不起进程就读到 PowerShell 7 的执行策略的那天摘掉只读那一种；\
+             ⚠ 写的那一种只许是上一条那一句固定脚本，不许收界面给的策略值。",
         ),
         // 〔DEL〕`relay/machine.rs` 那一行（远端起一个脱离的 `--relay`）摘了：中转只住常驻后端进程里（V139），那一处起法随之删。
         (
@@ -3067,7 +3080,8 @@ mod spawn_registry {
         // 〔MIG-1 · `99 §2.1 ⑯`〕＋1：`dial/ssh_config.rs` 那一处（`ssh -G` 解析 ssh config，从 monitor 搬来 —— monitor 那一处同拍删了）。
         // 〔合并 MIG-1 × 主线 19671e6b〕基数 14 − DEL 1 ＋ MIG-1 1 ⇒ 14。
         // 〔合并 MIG-1 × 主线 eebf51de〕主线 14（含 MIG-3a 的 `powershell.exe`）＋ MIG-1 1（`dial/ssh_config.rs`）⇒ 15（现打核过）。
-        const SPAWN_SITES_TODAY: usize = 15;
+        // 〔WF1 · L〕**15 → 16**：`platform/shell/mod.rs` 按代起 PowerShell，程序名写成两个字面量（`powershell.exe` · `pwsh.exe`，后者是新面）。
+        const SPAWN_SITES_TODAY: usize = 16;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

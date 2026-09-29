@@ -27,7 +27,6 @@ import {
   type MachineFacet,
   type MachineStatus,
 } from "./machine-status";
-import type { HostOs } from "./host-os";
 import { copyText } from "../copy-table";
 
 export type GapKind = "missing" | "unknown";
@@ -120,40 +119,14 @@ const FACET_MEANING: Record<
  *    **Phase G 逮到的真 bug**：漏了这一条，于是每台新装的机器落地页顶上永久挂着一条
  *    **blocking** 的「本机 · 连接：未测过 —— **连不上这台机器，它上面的会话都看不到**」。
  *    那句话对本机是**假的**，而且它是清单里最重的一级，还没有任何按钮能把它消掉。
- * 3. **S9**：`ccm` 是 POSIX 的 bash 启动器。monitor 跑在 Windows 上时，本机的对应物是
- *    「终端集成」那块 PowerShell $PROFILE 注入（§2.4 表里「本机 · 启动器」一格），
- *    不是 `ccm`。不排掉的话，Windows 用户会在这张专为新用户做的清单上，
- *    读到一条「本机缺 cc 命令」—— 而那条在他机器上压根无从补起。
+ * 3. 〔S9〕从前这里另排掉 Windows 本机的 `ccm`（那时 Windows 上没有写点，不排掉就是一条永远消不掉的「未测过」）。
+ *    〔WF1 · `99 §2.2 ㉔`〕Windows 上也有写点了（`ccm_probe::probe_via_fresh_powershell`：新开的 PowerShell 里敲 `ccm` 走到哪）
+ *    ⇒ 这一条连同它要的 `hostOs` 入参一起删了，两平台同一条规则。
  *
- *    🔴 **〔`K-R69` 09-12〕这一条的前提翻了一半，而结论今天没跟着翻 —— 两件事都写在这里。**
- *
- *    - **翻了的那半**：「`ccm` 是 POSIX 的 bash 启动器」**今天不成立**。`K-R48` 第二拍把
- *      `shared/ccm` 那份 1592 行 bash 删了（`K33` 逐字「不要有什么 bash 脚本，
- *      不要有什么单独的 ccm」），今天的 `ccm` **就是后端二进制本身**；`K-R69` 起
- *      monitor 会把它放到 `~/.cc-monitor/bin/ccm`，**Windows 上那一份叫 `ccm.exe`，
- *      一样在**（名字的真相源是 `local_backend.rs::local_ccm_entry_name`，
- *      后缀由 `build.rs` 按 `TARGET` 算）。⇒ 「在他机器上压根无从补起」这句已经是假话。
- *    - 〔FIX3 · `99 §2.2 ㉔`〕非 Windows 本机那一格今天有写点了（`remote-section.ts::noteLocalCcm`，两件都报）；
- *      Windows 那一格仍不适用（问 PATH 那一跳 Windows 上答不了，`ccm_probe::probe_path_ccm`）。下面是当年的理由。
- *    - **没跟着翻的那半（本轮刻意不动，理由可证伪）**：撤掉这一条会让 Windows 用户
- *      **永久**多一条「本机 · ccm：未测过」—— 因为**全仓对本机 `ccm` 这一格
- *      一个 `recordFacet` 写点都没有**（下面那条「诚实边界」判据自己就写着这件事）。
- *      把「不适用」换成一条永远消不掉的「未测过」，是拿一种假话换另一种。
- *      ⇒ 撤它要与「谁来记这一格」同拍做，而**那是产品决定**（`ok` 的判据是
- *      「我们那一份装下来了」还是「终端里敲 `ccm` 走到的就是它」？两者今天可以不同 ——
- *      见 `ccm_probe::PathCcmVerdict` 的四态）。`K-R69` 的三条 DoD 都不含它 ⇒
- *      **不自批、交回 PM**（`brief` 17：题目比该做的窄一格时，改题不是实现方能自批的事）。
- *
- * 三条都是同一句话：**把不适用算成缺，会让用户以为自己装漏了东西**。
+ * 都是同一句话：**把不适用算成缺，会让用户以为自己装漏了东西**。
  */
-function notApplicable(
-  origin: string,
-  facet: MachineFacet,
-  hostOs: HostOs,
-): boolean {
-  if (origin !== LOCAL_MACHINE_KEY) return false;
-  if (facet === "connection") return true;
-  return facet === "ccm" && hostOs === "windows";
+function notApplicable(origin: string, facet: MachineFacet): boolean {
+  return origin === LOCAL_MACHINE_KEY && facet === "connection";
 }
 
 export interface ReadinessInput {
@@ -161,12 +134,6 @@ export interface ReadinessInput {
   origins: string[];
   /** 读账本。注入进来而不是直接 import，纯函数才好测。 */
   statusOf: (origin: string) => MachineStatus;
-  /**
-   * S9：monitor 跑在哪个 OS 上。**注入而不是直接调 `hostOs()`** ——
-   * 这个模块的卖点就是纯函数（`K-R59` 之前那个 `isBackendless` 当初也是为同一个理由注入的）。
-   * 省略 = 按非 Windows 处理（`ccm` 照常算数）。
-   */
-  hostOs?: HostOs;
 }
 
 /**
@@ -178,11 +145,10 @@ export interface ReadinessInput {
 export function computeGaps(input: ReadinessInput): Gap[] {
   const blocking: Gap[] = [];
   const optional: Gap[] = [];
-  const os = input.hostOs ?? "unknown";
   for (const origin of input.origins) {
     const st = input.statusOf(origin);
     for (const facet of MACHINE_FACETS) {
-      if (notApplicable(origin, facet, os)) continue;
+      if (notApplicable(origin, facet)) continue;
       const cur = st[facet];
       // `na` = 不适用，不是缺（账本里也可能显式记成 na）。
       if (cur?.kind === "ok" || cur?.kind === "na") continue;

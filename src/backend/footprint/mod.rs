@@ -53,10 +53,7 @@ pub(crate) fn answer_with(
     args: &Value,
 ) -> FootprintAnswer {
     let client = client_arg(args.get("client"))?;
-    let home = get("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| get("USERPROFILE").filter(|h| !h.is_empty()))
-        .map(PathBuf::from)
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
         .ok_or(("failed", copy_text("beFootprint.env.noHome", &[])))?;
     let path_env = get("PATH");
     let own_meta = |p: &Path| meta_of(p);

@@ -59,7 +59,6 @@
 
 import { computeGaps, summarizeGaps } from "./settings/readiness";
 import type { MachineStatus } from "./settings/machine-status";
-import type { HostOs } from "./settings/host-os";
 import { copyText } from "./copy-table";
 
 /**
@@ -72,16 +71,14 @@ export const FIRST_RUN_HINT_PREFIX = copyText("firstRunHint.firstRunHintPrefix.p
 export const FIRST_RUN_HINT_CLASS = "status-first-run";
 
 /**
- * 依赖**注入而不是直接 import** —— 与 `readiness.ts` 同一个理由（它的 `statusOf` /
- * `hostOs` 与那条迁移告知当初就是为这个注入的）：注入了才测得动「补齐 ⇒ 消失」。
+ * 依赖**注入而不是直接 import** —— 与 `readiness.ts` 同一个理由（它的 `statusOf`
+ * 当初就是为这个注入的）：注入了才测得动「补齐 ⇒ 消失」。
  */
 export interface FirstRunHintDeps {
   /** 要算哪几台机器（本机用 `LOCAL_MACHINE_KEY`）。顺序即 `computeGaps` 的呈现顺序。 */
   origins: () => string[];
   /** 读 S3 那本账。 */
   statusOf: (origin: string) => MachineStatus;
-  /** S9：本机 OS 决定哪些组件适用（Windows 本机没有 `ccm`）。 */
-  hostOs: () => HostOs;
   /** 点它 ⇒ 打开那张清单住的地方。 */
   openList: () => void;
 }
@@ -120,7 +117,6 @@ export class FirstRunHint {
       computeGaps({
         origins: this.deps.origins(),
         statusOf: this.deps.statusOf,
-        hostOs: this.deps.hostOs(),
       }),
     );
   }

@@ -57,19 +57,39 @@ pub(crate) fn posix_shell(script: &str) -> Option<std::process::Command> {
     }
 }
 
-/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕备一条 `powershell.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
+/// 〔WF1 · L〕这台的哪一代 PowerShell：两代各读各的 profile 目录、各有一份执行策略（线上名 `powershell` / `pwsh`）。
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub(crate) enum PsHost {
+    /// Windows 自带的 5.1。
+    #[serde(rename = "powershell")]
+    Desktop,
+    /// PowerShell 7。
+    #[serde(rename = "pwsh")]
+    Core,
+}
+
+/// 〔MIG-3a · `设计/99 §2.1 ⑬`〕备一条 `<那一代>.exe -NoProfile -NonInteractive -Command <脚本>`（不弹窗）。
 /// **非 Windows 上回 `None`** —— 那里没有自带的 PowerShell（同 [`posix_shell`] 的反面，理由同）。
 ///
-/// 只给**固定脚本**用（今天唯一的调用方：别名方言问内建别名 `Get-Alias`，[`dialect`]）；
-/// `-NoProfile` 让结果不被用户 profile 左右，`-NonInteractive` 让它绝不等人回车。不 `spawn`，送出去那一下归调用方。
-pub(crate) fn powershell_readonly(script: &str) -> Option<std::process::Command> {
-    if !speaks_powershell() {
-        return None;
-    }
-    let mut c = std::process::Command::new("powershell.exe");
+/// 只给**固定脚本**用（`Get-Alias` · 执行策略那两句）；`-NoProfile` 让结果不被用户 profile 左右，`-NonInteractive` 让它绝不等人回车。
+/// 〔WF1 · L〕剥掉继承来的 `PSExecutionPolicyPreference`：那是父进程给的进程级策略，新开的 PowerShell 窗口没有它。
+/// 不 `spawn`，送出去那一下归调用方。
+pub(crate) fn powershell_on(host: PsHost, script: &str) -> Option<std::process::Command> {
+    speaks_powershell().then(|| powershell_command(host, script))
+}
+
+fn powershell_command(host: PsHost, script: &str) -> std::process::Command {
+    // 程序名写成字面量：起进程登记表（`tests/backend/readonly_guard.rs` 那张 `ALLOWED`）按它认是谁。
+    let mut c = match host {
+        PsHost::Desktop => std::process::Command::new("powershell.exe"),
+        PsHost::Core => std::process::Command::new("pwsh.exe"),
+    };
     c.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+    c.env_remove("PSExecutionPolicyPreference");
     hide_console(&mut c);
-    Some(c)
+    c
 }
 
 /// `CREATE_NO_WINDOW`：挡掉 Windows 给控制台程序新开的那个黑框。别处没有控制台窗口这一说 ⇒ 什么都不做。

@@ -825,7 +825,7 @@ fn user_base_url_say() -> String {
 /// 注入的 URL 今天**不是**直接进 agent 的 env：它渲染成 shell 文本，经 `tmux send-keys` 的 **argv** 打进 pane 的交互 shell
 /// （[`render_tmux_outer`]），会进 shell 历史、界面的终端回滚；远端那一形还绕 webview 一圈（`relay_endpoint_for_launch`）。
 /// 钥匙字面拼进去，就会出现在同机别的用户 `ps` 看得见的 argv 里。⇒ URL 本身**不带钥匙**，
-/// 渲染器把钥匙段写成 `$(cat "$HOME/<本常量>")`，在**那台机器的 pane shell 里**展开 ——
+/// 渲染器把钥匙段写成 `$(cat ~/<本常量>)`，在**那台机器的 pane shell 里**展开 ——
 /// 钥匙只从 `0600` 文件进 agent 进程自己的 env。`$HOME` 在哪台上展开就读哪台的钥匙（与「回环地址是自指的」同一个道理）。
 ///
 /// 〔US1〕值只住共享 crate（`relay_route_core::KEY_FILE_REL`），后端 `door.rs::KEY_FILE_REL` 是同一个 const。

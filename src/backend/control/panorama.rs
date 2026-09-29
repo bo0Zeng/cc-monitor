@@ -106,12 +106,9 @@ static NOT_INSTALLED_HINT: std::sync::LazyLock<String> =
 /// 命令级错误：`(code, message)`。
 type CmdErr = (&'static str, String);
 
-/// 家目录：`HOME`，没有再退 `USERPROFILE`（同 `exit_policy::policy_path` 的口径）。
+/// 家目录（`platform::paths::home_dir`）。
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| std::env::var_os("USERPROFILE").filter(|h| !h.is_empty()))
-        .map(PathBuf::from)
+    crate::platform::paths::home_dir()
 }
 
 /// 索引落哪：那台机器上后端自己的数据目录下 `panorama/`（**不是**被分析的仓）。

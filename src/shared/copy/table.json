@@ -6405,6 +6405,66 @@
         "C-T1": "__ccm_bind 是要用户亲手写进自己函数开头的那一行命令名，换个说法用户就没法照做"
       }
     },
+    "machineAliases.policy.hostPowershell": {
+      "kind": "body",
+      "zh": "Windows PowerShell 5.1",
+      "args": []
+    },
+    "machineAliases.policy.hostPwsh": {
+      "kind": "body",
+      "zh": "PowerShell 7",
+      "args": []
+    },
+    "machineAliases.rcStatus.installedNotLoaded": {
+      "kind": "body",
+      "zh": "{path}：别名块装了{version}，但 {ps} 不会加载它",
+      "args": ["path", "version", "ps"]
+    },
+    "machineAliases.policy.blocks": {
+      "kind": "body",
+      "zh": "{ps} 不会运行这份 $PROFILE：执行策略是 {policy}。装在这里的别名块不会生效。",
+      "args": ["ps", "policy"]
+    },
+    "machineAliases.policy.groupPolicy": {
+      "kind": "body",
+      "zh": "{ps} 的执行策略（{policy}）由组策略定，这里改不了。",
+      "args": ["ps", "policy"]
+    },
+    "machineAliases.policy.unknown": {
+      "kind": "body",
+      "zh": "问不到 {ps} 的执行策略，说不清装上的块会不会生效。原因：{e}",
+      "args": ["ps", "e"]
+    },
+    "machineAliases.policy.unclear": {
+      "kind": "body",
+      "zh": "{ps} 的执行策略是 {policy}，说不清它会不会运行这份 $PROFILE。",
+      "args": ["ps", "policy"]
+    },
+    "machineAliases.policy.allow": {
+      "kind": "action",
+      "zh": "允许运行本机脚本",
+      "args": []
+    },
+    "machineAliases.policy.confirm": {
+      "kind": "body",
+      "zh": "把 {ps} 的执行策略设成 RemoteSigned（只改你这个用户）？本机的脚本照常运行，从网上下载的脚本要有签名才运行。这是 PowerShell 的标准做法。",
+      "args": ["ps"]
+    },
+    "machineAliases.policy.setDone": {
+      "kind": "body",
+      "zh": "改好了：{ps} 的执行策略现在是 {policy}。开一个新的 PowerShell 窗口生效。",
+      "args": ["ps", "policy"]
+    },
+    "machineAliases.policy.setFailed": {
+      "kind": "error",
+      "zh": "没改成 {ps} 的执行策略。{e}",
+      "args": ["ps", "e"]
+    },
+    "machineAliases.policy.afterInstall": {
+      "kind": "body",
+      "zh": "装进去了。它能不能生效要看这台 PowerShell 的执行策略，见上面那一行。",
+      "args": []
+    },
     "machineAliases.powershell.blockInstallTitle": {
       "kind": "body",
       "zh": "把登记终端窗口的那一小段装进你选的那份 $PROFILE；勾了「同时装 cc 函数」再加一个 cc 函数。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
@@ -19274,6 +19334,11 @@
       "kind": "error",
       "zh": "这台机器上没有 PowerShell，问不了它的内建别名",
       "args": []
+    },
+    "rsPsPolicy.listing.unreadable": {
+      "kind": "error",
+      "zh": "读不懂 PowerShell 答的执行策略：{out}",
+      "args": ["out"]
     },
     "aliasReads.reply.badShape": {
       "kind": "error",

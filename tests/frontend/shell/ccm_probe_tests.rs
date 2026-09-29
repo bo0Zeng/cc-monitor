@@ -437,3 +437,95 @@ fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
         "字节是我们的却问不出名片 ⇒ 说不清，不写账本"
     );
 }
+
+/// 〔WF1 · `99 §2.2 ㉔`〕读数，**不在门禁**（要一个 PowerShell；`CCM_PWSH=<程序> cargo test -- --ignored`，那个程序收一个 `.ps1` 路径去跑）。
+/// 住址：`设计/99 §2.2 ㉔`「本机 ccm 那一格两件都报 ——「我们那份装下来了」＋「登录 shell 里敲 `ccm` 走到的是不是它」」。
+///
+/// Windows 那一形的探测串（`CCM_PROBE_PS`）在真 PowerShell 里跑三种情形，输出交给同一个 [`parse_probe_output`]：
+/// PATH 上有一个 `ccm` 程序 ⇒ 名片读得出、住址是它的路径；只有同名函数 ⇒ 名片读得出、住址是名字（判词回退比名片）；都没有 ⇒ 没装、无住址。
+/// 买不到：`powershell.exe` 5.1 本身 · 真加载用户 profile · 现拼 PATH 那一跳（`FRESH_PATH_PS` 读注册表，只有 Windows 有）。
+#[test]
+#[ignore = "要一个 PowerShell：CCM_PWSH=<收 .ps1 路径的程序> cargo test -- --ignored"]
+fn wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves() {
+    let Ok(pwsh) = std::env::var("CCM_PWSH") else {
+        panic!("没给 CCM_PWSH");
+    };
+    let card = "name=ccm\nversion=5\ncapabilities=new,resume\nbuild=b1\n";
+    let dir = std::env::temp_dir().join(format!("wf1-ccm-probe-{}", std::process::id()));
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let ccm = bin.join("ccm");
+    std::fs::write(
+        &ccm,
+        format!(
+            "#!/bin/sh\n[ \"$1 $2\" = '-- --ccm-probe' ] && printf '{}'\n",
+            card.replace('\n', "\\n")
+        ),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&ccm, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let run = |tag: &str, setup: &str| -> CcmProbeResult {
+        let f = dir.join(format!("{tag}.ps1"));
+        std::fs::write(&f, format!("{setup}\n{CCM_PROBE_PS}")).unwrap();
+        let out = std::process::Command::new(&pwsh)
+            .arg(&f)
+            .output()
+            .expect("起 CCM_PWSH");
+        assert!(
+            out.status.success(),
+            "{tag}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        parse_probe_output(&String::from_utf8_lossy(&out.stdout))
+    };
+    let on_path = run(
+        "app",
+        "$env:PATH = \"$PSScriptRoot/bin\" + [IO.Path]::PathSeparator + $env:PATH",
+    );
+    let func = run(
+        "func",
+        &format!(
+            "$env:PATH = '/usr/bin:/bin'\nfunction ccm {{ '{}' }}",
+            card.trim_end().replace('\n', "'; '")
+        ),
+    );
+    let none = run("none", "$env:PATH = '/usr/bin:/bin'");
+    let _ = std::fs::remove_dir_all(&dir);
+    let want_card = |r: &CcmProbeResult| {
+        (
+            r.installed,
+            r.version.clone(),
+            r.capabilities.clone(),
+            r.build.clone(),
+        )
+    };
+    let full = (
+        true,
+        Some("5".to_string()),
+        vec!["new".to_string(), "resume".to_string()],
+        Some("b1".to_string()),
+    );
+    assert_eq!(want_card(&on_path), full, "程序：{on_path:?}");
+    assert!(
+        on_path
+            .at
+            .as_deref()
+            .is_some_and(|a| a.ends_with("/bin/ccm")),
+        "程序的住址该是它的路径：{on_path:?}"
+    );
+    assert_eq!(want_card(&func), full, "函数：{func:?}");
+    assert_eq!(
+        func.at.as_deref(),
+        Some("ccm"),
+        "函数的住址该是名字：{func:?}"
+    );
+    assert_eq!(
+        (none.installed, none.at.as_deref()),
+        (false, None),
+        "没有：{none:?}"
+    );
+}

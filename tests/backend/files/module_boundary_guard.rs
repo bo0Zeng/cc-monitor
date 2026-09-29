@@ -264,6 +264,11 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "〔HX1 拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid",
     ),
     (
+        "platform::paths::home_dir",
+        Kind::Platform,
+        "〔WF1 · F〕这台后端的家目录只在平台层答（`HOME` → `USERPROFILE`）：`files-home` 与暂存区都拼在它底下",
+    ),
+    (
         "platform::fs::rename_noreplace",
         Kind::Platform,
         "〔FIX5 · `设计/60 §7` 第 7 条〕不覆盖改名（改名 · 复制上位 · 读改写新建那一形）：原子的「目标已在就失败」是平台原语",

@@ -555,6 +555,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "〔MIG-3a · 主会话 09-27 裁〕新帧命令：别名那一族（规则 · 方言 · 围栏住那台后端 `assets/aliases/`），monitor 那六条 Tauri 命令删了",
     ),
     (
+        "powershell-policy-set",
+        "〔WF1 · L · `设计/99 §2.3`〕新帧命令：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（`assets/aliases/mod.rs::answer_policy_set`）；\
+         前端 `src/frontend/ui/alias-reads.ts::allowLocalScripts` 问（用户点了、确认了之后），monitor 这一侧零发送点",
+    ),
+    (
         "skill-host-list",
         "〔MIG-3a〕新帧命令：收件箱那一面（声明 ＋ 三道围栏住后端适配层 `skill_host.rs`），monitor 那三条 Tauri 命令删了",
     ),
