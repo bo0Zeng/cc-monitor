@@ -68,8 +68,8 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     // 〔FILES2 · 第四波〕解压落一份文件写一半 / 设权限失败 ⇒ 删自己 `O_EXCL` 刚建的那一份；上传块形拼暂存件失败 ⇒ 删自己刚建的 `<key>.part`。
     ("src/backend/control/files_extract.rs", "std::fs::remove_file(&at).ok();", 1, Why::CleanupAfterFailure, "解压写一份失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回（随后整趟回滚）"),
     ("src/backend/control/files_upload_chunks.rs", "std::fs::remove_file(p).ok();", 1, Why::CleanupAfterFailure, "拼暂存件失败之后删自己 `O_EXCL` 刚建的那一份；主错误已在回，块由 `drop_chunks` 收"),
-    ("src/backend/control/files_write.rs", "std::fs::remove_file(&land).ok();", 3, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
-    ("src/backend/control/files_write.rs", "std::fs::remove_file(&side).ok();", 3, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
+    // 〔FIX5〕`(&land)` 那一行 3 → 0：复制也先落旁名，三处清理并成 `land_copy` 里一处删 `side`；`(&side)` 3 → 5：多的是那一处 ＋ 读改写新建那一形不覆盖上位失败那一处。
+    ("src/backend/control/files_write.rs", "std::fs::remove_file(&side).ok();", 5, Why::CleanupAfterFailure, "写失败之后删自己这一趟建的旁名 / 半成品；主错误已在回"),
     ("src/backend/control/tmux_hook.rs", "let _ = crate::platform::signal::send_sigusr1(pid);", 1, Why::PeerGone, "信号送不到 = 那个进程已不在；发之前有进程身份复核（`15 §4.7` 做得好的对照组）"),
     ("src/backend/control/transfer.rs", "let _ = forward.await;", 1, Why::Reap, "等进度转发任务收尾（它自己只往已结束的票上报数）"),
     ("src/backend/control/transfer.rs", "let _ = rf.shutdown().await;", 1, Why::DeadLink, "关远端文件句柄；传输的结局已经定了"),

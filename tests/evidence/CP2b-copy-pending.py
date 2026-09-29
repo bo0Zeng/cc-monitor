@@ -59,6 +59,21 @@ HEADER = ("文件", "理由")
 PROBE_SAMPLES = ("✕", "↗", " · ", "关闭", "{…}：{…}", "x", "—")
 PROBE: dict = {}
 
+# 〔FIX5 · `91 §6` 第 5 条〕正控：CSS 的 `content:` 与入口 HTML 那两面真在人群里 —— 现造一棵临时树（一份 css ＋ 一份入口 html），
+# 普查必须**恰好**认出下面那几句（注释 · 脚本里的字 · `var(--x)` 都不算）。今天源码里一条都不剩，没有这一格就没人看「还认不认得」。
+STATIC_PROBE_CSS = '.a::before { content: "▸ "; }\n.b::after { content: var(--m); }\n/* content: "注释里的字" */\n.c::after { content: "\\2713"; }\n'
+STATIC_PROBE_HTML = '<!doctype html><html><head><title>某窗口</title><!-- 注释里的字 --></head><body><p>正文</p><script>const s = "脚本里的字";</script></body></html>\n'
+
+
+def static_probe(census) -> list:
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "src"
+        src.mkdir()
+        (src / "a.css").write_text(STATIC_PROBE_CSS, encoding="utf-8")
+        (Path(td) / "index.html").write_text(STATIC_PROBE_HTML, encoding="utf-8")
+        _files, got = census.scan_static_faces(src)
+    return sorted(f"{e['sink']}:{e['kind']}:{e['text']}" for e in got)
+
 
 def load_cp1():
     spec = importlib.util.spec_from_file_location("cp1_copy_verdicts", CP1_PATH)
@@ -96,6 +111,7 @@ def _outward_literals_all(cp1, src_root: Path | None = None, ledger: Path | None
     out = []
     PROBE["via_table"] = sum(1 for e in entries if e.get("via") == "table" and e["bucket"] not in census.RESERVE_BUCKETS)
     PROBE["is_copy_text"] = {t: census.is_copy_text(t) for t in PROBE_SAMPLES}
+    PROBE["static_faces"] = static_probe(census)
     for e in entries:
         if e["bucket"] in census.RESERVE_BUCKETS or e.get("via") != "literal":
             continue

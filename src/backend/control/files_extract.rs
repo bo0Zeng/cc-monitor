@@ -20,7 +20,7 @@
 //! ⚠ 两个库自己的「一步解到盘上」（`unpack` / `extract`）**不用**：它们的写不经我们的路径解析。
 
 use super::files_write::{
-    lexical_in_root, resolve_existing_in_root, resolve_in_root, Answer, ManageCommand,
+    lexical_in_root, opener, resolve_existing_in_root, resolve_in_root, Answer, ManageCommand,
     WriteRefusal, TREE_ENTRY_CAP,
 };
 use copy_core::copy_text;
@@ -317,7 +317,7 @@ fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
 }
 
 fn open_archive(path: &Path) -> Result<std::fs::File, Fail> {
-    std::fs::File::open(path).map_err(|e| {
+    opener().read(true).open(path).map_err(|e| {
         io_failed(copy_text(
             "beFilesExtract.archive.unreadable",
             &[("path", &path.display().to_string()), ("e", &e.to_string())],
@@ -436,24 +436,24 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
             &[("path", &at.display().to_string()), ("e", &e.to_string())],
         ))
     };
-    let mut out = std::fs::OpenOptions::new()
+    let mut out = opener()
         .write(true)
         .create_new(true)
         .open(&at)
         .map_err(fail)?;
-    let wrote = std::io::copy(body, &mut out);
-    drop(out);
     // 写一半 / 设权限没成 ⇒ 删掉**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在），它还没进回滚那张表。
-    let done = wrote.and_then(|n| {
+    // 〔FIX5〕权限位按句柄改（没有路径可被换成链接）。
+    let done = std::io::copy(body, &mut out).and_then(|n| {
         #[cfg(unix)]
         if let Some(m) = mode {
             use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&at, std::fs::Permissions::from_mode(m))?;
+            out.set_permissions(std::fs::Permissions::from_mode(m))?;
         }
         #[cfg(not(unix))]
         let _ = mode;
         Ok(n)
     });
+    drop(out);
     done.map_err(|e| {
         std::fs::remove_file(&at).ok();
         fail(e)
