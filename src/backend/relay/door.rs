@@ -197,20 +197,23 @@ pub(crate) enum Verdict {
 }
 
 impl Verdict {
-    /// 拒绝那几格回什么：状态行 ＋ 一句为什么。`Pass` ⇒ `None`。
-    pub(super) fn refusal(&self) -> Option<(&'static str, &'static str)> {
+    /// 拒绝那几格回什么：状态行 ＋ 原因头的值（`server::REASON_HEADER`）＋ 一句为什么。`Pass` ⇒ `None`。
+    pub(super) fn refusal(&self) -> Option<(&'static str, &'static str, &'static str)> {
         match self {
             Verdict::Pass(_) => None,
             Verdict::Browser => Some((
                 FORBIDDEN,
+                "browser-origin",
                 "relay: requests carrying an Origin header are refused (browser pages may not use this port)",
             )),
             Verdict::NotLoopbackHost => Some((
                 MISDIRECTED,
+                "host-not-loopback",
                 "relay: the Host header must be a loopback literal (127.0.0.1 / localhost / [::1])",
             )),
             Verdict::BadKey => Some((
                 FORBIDDEN,
+                "bad-key",
                 "relay: missing or wrong relay key (first path segment)",
             )),
         }

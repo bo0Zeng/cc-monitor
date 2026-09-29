@@ -52,6 +52,7 @@ import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import type { LaunchContext, LaunchPlan } from "./launch-types";
 import { copyText } from "./copy-table";
+import { arrivedBody, expectArrival, type ArrivalMatch } from "./launch-arrival";
 
 // 〔MIG-2〕原先这里有 `REFUSE_TAG`（Rust 渲染器给业务拒绝打的串标，前端按它分「拒」与「IPC 异常」）：
 //   渲染搬进后端帧命令之后，拒绝走码（`refused`，`launch-render.ts::isRefusal`），串标这一侧删了。
@@ -438,10 +439,22 @@ export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderReques
 
 interface LaunchToasts {
   success: string;
-  successDetail: string;
+  /** 只有 `claim`（接回那一格）用得着：窗口开了就说。 */
+  successDetail?: string;
   failureCopied: string;
   failureNotCopied: string;
 }
+
+/**
+ * 〔FIX3 · `设计/99 §2.2 ②`〕窗口开出来之后说什么：
+ * `expect` = 这一趟起了 agent 进程 ⇒ 不当场说「起来了」，交 `launch-arrival.ts` 等那台报出它；
+ * `silent` = 起会话那一跳已经交过「等它」了（就地 resume 先键入、再开窗接上）⇒ 窗口开了不再说话；
+ * `claim` = 没起进程（接回）⇒ 窗口开了就说。
+ */
+type AfterOpen =
+  | { kind: "expect"; match: ArrivalMatch; tmuxName: string | null }
+  | { kind: "silent" }
+  | { kind: "claim" };
 
 /** MASTERPLAN §3 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
  *  6 个 executor 的 invoke→toast/剪贴板回退骨架逐字相同，只有文案与 `origin` 不同——收敛成
@@ -474,10 +487,20 @@ async function invokeLaunchOrCopyFallback(
   // 〔第二波 T4〕这次拉起的启动期令牌（`rbindTokenOf`）；`attach` 那一格恒 `null`。
   //   交给后端，让新开的窗口以它为 marker 登记进本地表（`launch.rs::with_rbind_bind_prelude`）。
   rbindToken: string | null,
+  after: AfterOpen,
 ): Promise<boolean> {
   try {
     await commands.launch_remote_terminal({ origin, remoteCmd: cmd, rbindToken });
-    showActionFailureToast(toasts.success, toasts.successDetail, { level: "info", durationMs: 6000 });
+    if (after.kind === "expect") {
+      expectArrival({
+        origin,
+        match: after.match,
+        tmuxName: after.tmuxName,
+        arrived: { title: toasts.success, body: arrivedBody(origin) },
+      });
+    } else if (after.kind === "claim") {
+      showActionFailureToast(toasts.success, toasts.successDetail ?? "", { level: "info", durationMs: 6000 });
+    }
     return true;
   } catch (err) {
     // 回退：复制命令让用户自己粘贴（保留 F09 语义）。
@@ -534,10 +557,9 @@ export async function runRemoteResume(
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resume.started"),
-    successDetail: copyText("remoteLaunchRun.resume.startedBody", { machine: origin }),
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token);
+  }, token, { kind: "expect", match: { sid }, tmuxName: null });
 }
 
 /** F52：tmux 版 resume——在远端 tmux 会话 `<sid8>-cc` 里幂等 resume Claude;失败回退复制命令。
@@ -571,10 +593,9 @@ export async function runRemoteResumeTmux(
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resumeTmux.started"),
-    successDetail: copyText("remoteLaunchRun.resumeTmux.startedBody", { machine: origin }),
     failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token);
+  }, token, { kind: "expect", match: { sid }, tmuxName: name });
 }
 
 /** U8a-2c-1 + **F14**：把 `send-keys` 那半边交给**远端 backend**（`control/launch.rs`，`mode:"send-into"`）。
@@ -693,6 +714,13 @@ export async function runRemoteResumeIntoExistingTmux(
       return false;
     }
     if (sent.verdict === "typed") {
+      // 〔FIX3 · ②〕载荷已经键进那个 pane ⇒ 从这一刻起等那台报出它（接终端的窗口开不开得了不改变这件事）。
+      expectArrival({
+        origin,
+        match: { sid },
+        tmuxName: name,
+        arrived: { title: copyText("remoteLaunchRun.inPlace.done"), body: arrivedBody(origin) },
+      });
       const attach = planAttach(name);
       cmd = await renderLaunchCommand(origin, attach.ctx, attach.plan);
       viaBackend = true;
@@ -705,12 +733,9 @@ export async function runRemoteResumeIntoExistingTmux(
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.inPlace.done"),
-    successDetail: viaBackend
-      ? copyText("remoteLaunchRun.inPlace.doneByBackend", { name, machine: origin })
-      : copyText("remoteLaunchRun.inPlace.doneBody", { machine: origin, name }),
     failureCopied: copyText("remoteLaunchRun.inPlace.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token);
+  }, token, viaBackend ? { kind: "silent" } : { kind: "expect", match: { sid }, tmuxName: name });
 }
 
 /**
@@ -768,6 +793,13 @@ export async function runLocalResumeIntoExistingTmux(
     }
     return false;
   }
+  // 〔FIX3 · ②〕载荷已经键进那个 pane ⇒ 从这一刻起等本机后端报出它。
+  expectArrival({
+    origin: LOCAL_ORIGIN,
+    match: { sid },
+    tmuxName: name,
+    arrived: { title: copyText("remoteLaunchRun.inPlaceLocal.done"), body: arrivedBody(LOCAL_ORIGIN) },
+  });
   // ★ attach 那半**与远端共用同一条路**〔用户裁定 08-12：「attach 暂时就用纯 linux bash
   //   以及 windows 的 PowerShell + Windows Terminal」〕。
   //
@@ -816,10 +848,9 @@ export async function runLocalResumeIntoExistingTmux(
   }
   await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
     success: copyText("remoteLaunchRun.inPlaceLocal.done"),
-    successDetail: copyText("remoteLaunchRun.inPlaceLocal.doneBody", { name }),
     failureCopied: copyText("remoteLaunchRun.inPlaceLocal.copied"),
     failureNotCopied: copyText("remoteLaunchRun.inPlaceLocal.manual"),
-  }, rbindTokenOf(plan));
+  }, rbindTokenOf(plan), { kind: "silent" });
   // ★ 就地 resume 本身已经成了（`typed`）——**attach 开不开得了窗口不改变这个结论**。
   //   返回 `false` 会让调用方以为这次 resume 没做成，那是把两件事混成一件。
   return true;
@@ -877,12 +908,12 @@ export async function runRemoteLauncher(
     showActionFailureToast(copyText("remoteLaunchRun.launcher.buildFailed"), String(err));
     return;
   }
+  // 新开的会话拉起那一刻没有 sid：认它靠这次铸进进程环境的启动期令牌（那台读回、随 `live` 报上来）。
   await invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.launcher.started"),
-    successDetail: copyText("remoteLaunchRun.launcher.startedBody", { machine: origin, name: tmuxName }),
     failureCopied: copyText("remoteLaunchRun.launcher.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token);
+  }, token, { kind: "expect", match: token ? { token } : { cwd }, tmuxName });
 }
 
 /** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。
@@ -901,5 +932,5 @@ export async function runRemoteAttach(origin: string, name: string): Promise<voi
     successDetail: copyText("remoteLaunchRun.attach.startedBody", { machine: origin, name }),
     failureCopied: copyText("remoteLaunchRun.attach.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, null); // `attach` 不铸币（`planAttach` 不收 `mods`）⇒ 新窗口不做令牌握手
+  }, null, { kind: "claim" }); // `attach` 不铸币（`planAttach` 不收 `mods`）⇒ 新窗口不做令牌握手
 }

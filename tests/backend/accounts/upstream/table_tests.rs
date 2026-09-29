@@ -366,7 +366,8 @@ use crate::relay::{Destination, Mode, RouteKey};
 /// 问一次生产段那张决策表，把答案压成一个好比对的形状。
 #[derive(Debug, PartialEq, Eq)]
 enum Said {
-    Refuse(&'static str),
+    /// `(状态行, 原因头)`〔FIX3：两格同是 404，靠原因头分开〕。
+    Refuse(&'static str, &'static str),
     Passthrough(String),
     /// `(上游主机, 要写的那个头值)`。
     Substitute(String, Option<String>),
@@ -380,7 +381,7 @@ fn ask(t: &RoutingTable, u: &Upstreams, mode: Mode, seg1: &str, seg2: &str) -> S
     let mut out = None;
     decide(t, u, mode, &key, &mut |d| {
         out = Some(match d {
-            Destination::Refuse { status, .. } => Said::Refuse(status),
+            Destination::Refuse { status, reason, .. } => Said::Refuse(status, reason),
             Destination::Passthrough { upstream } => Said::Passthrough(upstream.host_header()),
             Destination::Substitute { upstream, auth } => Said::Substitute(
                 upstream.host_header(),
@@ -440,7 +441,7 @@ fn the_same_account_id_under_two_agents_is_two_rows_and_a_third_agent_finds_neit
     // ★ 最坏失效形态的那一格：第三家（今天它就是 codex 的位置）拿同一个 id ⇒ 404，不是「借一行」。
     assert_eq!(
         ask(&t, &u, Mode::Substitute, "agent-three", "3"),
-        Said::Refuse("404 Not Found"),
+        Said::Refuse("404 Not Found", "no-account-row"),
         "第三家查到了别家的 3 号 ⇒ 那就是「拿 A 的 key 发 B 的请求」"
     );
 }
@@ -465,9 +466,9 @@ fn rows_loaded_from_the_credentials_file_belong_to_the_agent_they_were_loaded_un
 }
 
 /// ★★★ **条 59 ＋ 「未登记直接拒」**：`/t/` ＋ 表里无行 ⇒ **登记过的那家**发到它**自己那一行**，
-/// **未登记的**回 502。两格用同一把尺子量，互为对照。
+/// **未登记的**被拒（〔FIX3 · `99 §2.2 ⑫`〕我们拒的一律 4xx：404 ＋ 原因头 `agent-not-registered`，先前 502）。两格用同一把尺子量，互为对照。
 ///
-/// 🔴 那个 502 **不许**变成「透传到某一家」：那正是 `设计/20 §3.1` 第 4 行那条 🔴 禁的回落。
+/// 🔴 那个拒绝 **不许**变成「透传到某一家」：那正是 `设计/20 §3.1` 第 4 行那条 🔴 禁的回落。
 #[test]
 fn passthrough_without_a_row_goes_to_that_agents_own_upstream_and_an_unregistered_agent_is_refused()
 {
@@ -480,14 +481,14 @@ fn passthrough_without_a_row_goes_to_that_agents_own_upstream_and_an_unregistere
     );
     assert_eq!(
         ask(&t, &u, Mode::Passthrough, "codex", "acct-anything"),
-        Said::Refuse("502 Bad Gateway"),
+        Said::Refuse("404 Not Found", "agent-not-registered"),
         "🔴 未登记的 agent 没被拒 ⇒ 它的请求被发到了某一家的上游"
     );
     // `/s/` 无行仍是 404（`§3.1` 第 2 行，一字不改），与 agent 登没登记无关。
     for agent in ["claude-code", "codex"] {
         assert_eq!(
             ask(&t, &u, Mode::Substitute, agent, "acct-anything"),
-            Said::Refuse("404 Not Found"),
+            Said::Refuse("404 Not Found", "no-account-row"),
             "{agent}：`/s/` 无行该是 404"
         );
     }

@@ -165,6 +165,7 @@ const UNIT: &[&str] = &[
     "tests/height-estimate.vitest.ts",
     "tests/invariants-frontend-guard.vitest.ts",
     "tests/keybindings/actions.vitest.ts",
+    "tests/launch-arrival.vitest.ts", // 〔FIX3〕起会话的真成功正信号（纯函数 ＋ 假定时器，不碰真窗口）
     "tests/launch-dimensions.test.ts",
     "tests/launch-menu.vitest.ts",
     "tests/launch-requests.vitest.ts",

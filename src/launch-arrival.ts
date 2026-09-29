@@ -1,0 +1,144 @@
+/**
+ * 设计/99 §2.2 ②「起会话的真成功正信号：只有看见那台后端报出这个会话才说起来了；预算内没见到 ⇒ 说命令发出去了，
+ * 但没看到会话起来，并给出启动器那一行的退出原话，不报成功」。
+ *
+ * 起会话的各条路（`remote-launch-run.ts` 的执行器 · `local-resume.ts` · 历史页起新会话 · cc-bus 派生）把命令发出去之后
+ * 不再自己说「起来了」，而是交一件「等它」（[`expectArrival`]）。等的那一方只有一个：**主窗口**（它订着每台机器的会话流，
+ * 设置窗 / 查看窗订不全）⇒ 预期经窗口间事件交过去（同 `settings/events.ts` 那两条跨窗事件的做法），主窗口在
+ * [`bindLaunchArrivals`] 里收下、在 [`noteLive`] 里对那台报上来的活会话（`live` 格）。预算到了还没见到 ⇒ 说没见到：
+ * 起在 tmux 里的顺手抓那一屏当原话（`tmux-control.ts::capturePane`），直接开窗的说原话在那个窗口里。
+ *
+ * 认「是不是它」只看那台报上来的事实：resume 按 sid；新开的远端会话按启动期令牌（`设计/80 §8.2`，那台从进程环境读回）；
+ * 本机起新会话与 cc-bus 派生按「预期之后第一次出现、工作目录相同的新 sid」（身份 token 在 Windows 上读不回来）。
+ */
+import { emit, listen } from "@tauri-apps/api/event";
+import { copyText } from "./copy-table";
+import { machineName } from "./control-said";
+import { showActionFailureToast } from "./error-toast";
+import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
+import { capturePane } from "./tmux-control";
+
+/** 预算：从命令发出去到那台报出会话。慢机器上 ssh 握手 ＋ claude 冷启动在这之内；过了只说「没看到」，不说失败。 */
+export const ARRIVAL_BUDGET_MS = 45_000;
+/** 原话取那一屏最后几行（非空行）。 */
+const WORDS_LINES = 6;
+/** 发起方窗口 → 主窗口：交一件「等它」（载荷 [`ArrivalSpec`]）。 */
+export const LAUNCH_EXPECT_EVENT = "launch-arrival-expect";
+
+/** 认它用的那一格。 */
+export type ArrivalMatch = { sid: string } | { token: string } | { cwd: string };
+
+export interface ArrivalSpec {
+  origin: Origin;
+  match: ArrivalMatch;
+  /** 起在哪个 tmux 会话里（有 ⇒ 没见到时抓那一屏当原话）；`null` = 直接开的窗口。 */
+  tmuxName: string | null;
+  /** 见到了说的那一句。 */
+  arrived: { title: string; body: string };
+}
+
+/** 那台报上来的一条活会话里认它要用的两样。 */
+export interface LiveSeen {
+  cwd: string | null;
+  rbindToken: string | null;
+}
+
+interface Pending extends ArrivalSpec {
+  /** `{cwd}` 那一格：预期那一刻这台已经报过的 sid（它们不算「新起的」）。 */
+  before: Set<string>;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const pending = new Set<Pending>();
+/** 每台报过的活会话 sid（`{cwd}` 那一格要分新旧）。 */
+const seenLive = new Map<string, Set<string>>();
+
+const key = (o: Origin): string => (isLocalOrigin(o) ? LOCAL_ORIGIN : o);
+const trimSlash = (p: string): string => (p.length > 1 ? p.replace(/\/+$/, "") : p);
+
+/** 纯函数：这条活会话是不是那件预期要等的。 */
+export function arrivalMatches(match: ArrivalMatch, sid: string, seen: LiveSeen, before: ReadonlySet<string>): boolean {
+  if ("sid" in match) return match.sid === sid;
+  if ("token" in match) return match.token !== "" && seen.rbindToken === match.token;
+  return !before.has(sid) && seen.cwd !== null && trimSlash(seen.cwd) === trimSlash(match.cwd);
+}
+
+/** 纯函数：那一屏 ⇒ 原话（最后几行非空行）。 */
+export function lastWords(screen: string): string {
+  return screen
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim() !== "")
+    .slice(-WORDS_LINES)
+    .join("\n");
+}
+
+/** 见到了那一句的正文（标题由各条路自己给）。 */
+export function arrivedBody(o: Origin): string {
+  return copyText("launchArrival.arrived.body", { machine: machineName(o) });
+}
+
+async function sayMissed(p: ArrivalSpec): Promise<void> {
+  const secs = String(Math.round(ARRIVAL_BUDGET_MS / 1000));
+  const machine = machineName(p.origin);
+  let body: string;
+  if (p.tmuxName === null) {
+    body = copyText("launchArrival.missed.inWindow", { secs, machine });
+  } else {
+    try {
+      const words = lastWords(await capturePane(p.origin, p.tmuxName));
+      body =
+        words === ""
+          ? copyText("launchArrival.missed.emptyScreen", { secs, machine, name: p.tmuxName })
+          : copyText("launchArrival.missed.words", { secs, machine, name: p.tmuxName, words });
+    } catch (e) {
+      body = copyText("launchArrival.missed.noScreen", { secs, machine, name: p.tmuxName, why: String(e) });
+    }
+  }
+  showActionFailureToast(copyText("launchArrival.missed.title"), body, { level: "error", durationMs: 15000 });
+}
+
+/** 发起方（任何窗口）：命令已经发出去了 ⇒ 交主窗口等那台报出这条会话再说起来了。 */
+export function expectArrival(spec: ArrivalSpec): void {
+  // 交不过去（没有 Tauri 宿主）⇒ 这一趟没人等：记一笔，不替它说起没起来。
+  emit(LAUNCH_EXPECT_EVENT, spec).catch((e: unknown) => console.warn("[launch-arrival] 交不给主窗口：", e));
+}
+
+/** 主窗口：收下一件「等它」。 */
+export function watchArrival(spec: ArrivalSpec): void {
+  const p: Pending = {
+    ...spec,
+    before: new Set(seenLive.get(key(spec.origin)) ?? []),
+    // 一次性的预算（`polling_registry` 登记）：到点只说一次「没看到」，不重试、不轮询。
+    timer: setTimeout(() => {
+      if (pending.delete(p)) void sayMissed(p);
+    }, ARRIVAL_BUDGET_MS),
+  };
+  pending.add(p);
+}
+
+/** 主窗口：那台的会话流报出了一条活会话（`main.ts` 的本机 / 远端两个入口都交这里）。 */
+export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
+  const k = key(origin);
+  for (const p of pending) {
+    if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.before)) continue;
+    clearTimeout(p.timer);
+    pending.delete(p);
+    showActionFailureToast(p.arrived.title, p.arrived.body, { level: "info", durationMs: 6000 });
+  }
+  let s = seenLive.get(k);
+  if (!s) seenLive.set(k, (s = new Set()));
+  s.add(sid);
+}
+
+/** 主窗口：接上发起方交过来的预期（`main.ts` 装一次）。 */
+export function bindLaunchArrivals(): void {
+  void listen<ArrivalSpec>(LAUNCH_EXPECT_EVENT, (e) => watchArrival(e.payload));
+}
+
+/** 只给判据用。 */
+export function __resetArrivalsForTests(): void {
+  for (const p of pending) clearTimeout(p.timer);
+  pending.clear();
+  seenLive.clear();
+}

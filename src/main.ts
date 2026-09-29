@@ -64,6 +64,7 @@ import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
 import { fetchSessionAccounts, fetchAccounts } from "./account-reads";
 import { resolvePendingLocalLaunches } from "./local-launch-backfill";
+import { bindLaunchArrivals, noteLive } from "./launch-arrival";
 import { copyText } from "./copy-table";
 import { appStore } from "./app-store";
 import { OverlayRouter } from "./overlay-router";
@@ -366,6 +367,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   let refreshFirstRunHint: () => void = () => {};
   // 〔RESYNC · `99 §2.1` ㉟①〕设置窗「重新对齐」做完 ⇒ 标出那台上记录没了的固定条（不自动摘）。
   void listen<{ origin: string }>(RESYNC_DONE_EVENT, (e) => void tabs.flagPinsWithoutRecord(e.payload.origin));
+  // 〔FIX3 · `99 §2.2 ②`〕任何窗口起会话之后交过来的「等它」都在这里收（主窗口订着每台的会话流）。
+  bindLaunchArrivals();
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
@@ -745,6 +748,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       void resolvePendingLocalLaunches();
       // 〔MIG-1〕本机骨架也在就绪点才到（与远端同一条路）⇒ 上次所在 tab 是本机会话时同样在这里补切。
       startup?.onAppeared(sessionId);
+      noteLive(LOCAL_ORIGIN, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 〔FIX3 · ②〕起会话的真成功正信号
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
@@ -766,6 +770,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e backend 附 cwd/kind/name
     // ——骨架标题即时完整（bg → ⚙ ＋ 任务名；〔BG1〕不再挂宿主排成树）；旧后端缺省照旧 sid 前缀。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
+      noteLive(origin, sessionId, { cwd: meta.cwd, rbindToken: meta.rbindToken }); // 〔FIX3 · ②〕起会话的真成功正信号
       tabs.createSkeletonTab(
         sessionId,
         meta.cwd || null,

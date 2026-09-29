@@ -18,6 +18,7 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
         version: Some("5".into()),
         capabilities: vec!["new".into(), "resume".into(), "detach".into()],
         build: None,
+        at: None,
     };
     // 用户机器上那份 2026-07-27 的旧 bash：答得出 `--ccm-probe`（所以「在不在」判不了它），
     // 但版本与能力集都是上一代。
@@ -26,10 +27,11 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
         version: Some("4".into()),
         capabilities: vec!["new".into(), "resume".into()],
         build: None,
+        at: None,
     };
     let v = classify_path_ccm(&ours, &legacy);
     assert_eq!(v, PathCcmVerdict::NotOurs, "旧的没被认出来");
-    let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"));
+    let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"), false);
     assert!(
         hint.contains("不是") && hint.contains("version=4") && hint.contains("version=5"),
         "那句话没把「它是谁 / 我们是谁」摆出来 —— 只说「不一样」等于没说：\n{hint}"
@@ -43,7 +45,7 @@ fn a_stale_ccm_on_path_is_named_out_loud() {
     // ★ 同版本同能力 ⇒ 判 `Ours`，而且**没有话要说**（免得每次打开都吓人一跳）。
     assert_eq!(classify_path_ccm(&ours, &ours), PathCcmVerdict::Ours);
     assert_eq!(
-        render_path_ccm_hint(PathCcmVerdict::Ours, &ours, &ours, None),
+        render_path_ccm_hint(PathCcmVerdict::Ours, &ours, &ours, None, false),
         ""
     );
     // ★ 我们自己那份没装 ⇒ **说不出**，不许说成「你 PATH 上那个是旧的」。
@@ -69,12 +71,14 @@ fn the_verdict_cannot_be_reached_by_comparing_paths() {
         version: Some("5".into()),
         capabilities: vec!["new".into()],
         build: None,
+        at: None,
     };
     let b = CcmProbeResult {
         installed: true,
         version: Some("5".into()),
         capabilities: vec!["new".into(), "detach".into()],
         build: None,
+        at: None,
     };
     // 同版本、能力集差一项 ⇒ 仍判「不是我们那一份」。**路径在这里根本不存在。**
     assert_eq!(classify_path_ccm(&a, &b), PathCcmVerdict::NotOurs);
@@ -84,12 +88,14 @@ fn the_verdict_cannot_be_reached_by_comparing_paths() {
         version: Some("5".into()),
         capabilities: vec!["detach".into(), "new".into()],
         build: None,
+        at: None,
     };
     let a2 = CcmProbeResult {
         installed: true,
         version: Some("5".into()),
         capabilities: vec!["new".into(), "detach".into()],
         build: None,
+        at: None,
     };
     assert_eq!(
         classify_path_ccm(&a2, &b2),
@@ -146,6 +152,7 @@ fn the_probe_carries_the_build_identity_of_the_binary_itself() {
         version: Some("5".into()),
         capabilities: vec!["new".into()],
         build: Some("p9-old".into()),
+        at: None,
     };
     let b = CcmProbeResult {
         build: Some("p9-new".into()),
@@ -294,7 +301,134 @@ fn our_own_ccm_is_identified_by_its_bytes_before_it_is_run() {
     let body = &prod[at..];
     guard_core::find_pinned(
         body,
-        "Some(p) if ours_by_bytes(p) => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),",
+        "let ours_bytes = installed.is_some_and(|p| ours_by_bytes(p));",
+    )
+    .expect("「是不是我们的字节」那一格不在了");
+    guard_core::find_pinned(
+        body,
+        "Some(p) if ours_bytes => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),",
     )
     .expect("起 `--ccm-probe` 那一臂不在「先认字节」的守卫后面");
+}
+
+/// 设计/99 §2.2 ㉔「本机 ccm 那一格两件都报：我们那份装下来了 ＋ 登录 shell 里敲 ccm 走到的是不是它 —— 走到别处（如旧 shim）就明说是哪一份、怎么清，不代清」。
+///
+/// 三件：① 探针补的 `at=` 行摘得出（名片认不得也摘）；② 落在哪按**文件**判（软链解开 · 旧入口认得出 · 同名片的旧 shim 也判「不是它」）；
+/// ③ 那一格两件都说、`ok` 只在两件都成时为真，说不清不写。期望值全是手写字面量。
+#[cfg(unix)]
+#[test]
+fn the_local_ccm_cell_reports_both_halves_and_names_where_ccm_really_goes() {
+    // ①
+    let r = parse_probe_output("name=ccm\nversion=5\ncapabilities=new\n\nat=/h/.local/bin/ccm\n");
+    assert!(r.installed);
+    assert_eq!(r.at.as_deref(), Some("/h/.local/bin/ccm"));
+    let broken = parse_probe_output("\nat=/h/.local/bin/ccm\n");
+    assert!(!broken.installed, "答不出名片的旧入口不算「装了」");
+    assert_eq!(
+        broken.at.as_deref(),
+        Some("/h/.local/bin/ccm"),
+        "答不出名片也要说得出住址"
+    );
+    assert_eq!(parse_probe_output("NO_CCM\n").at, None);
+
+    // ②
+    let d = std::env::temp_dir().join(format!("ccm-fix3-reach-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let landing = d.join("landing-ccm");
+    std::fs::write(&landing, b"\x7fELF").unwrap();
+    let link = d.join("link-ccm");
+    std::os::unix::fs::symlink(&landing, &link).unwrap();
+    let shim = d.join("shim-ccm");
+    std::fs::write(
+        &shim,
+        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec x ccm \"$@\"\n",
+    )
+    .unwrap();
+    let mine = d.join("mine-ccm");
+    std::fs::write(&mine, "#!/bin/sh\necho hi\n").unwrap();
+    let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
+    assert_eq!(reach_of(None, Some(&landing)), Reach::Nothing);
+    assert_eq!(
+        reach_of(Some(&s(&link)), Some(&landing)),
+        Reach::Landing,
+        "软链到落点就是它"
+    );
+    assert_eq!(
+        reach_of(Some(&s(&shim)), Some(&landing)),
+        Reach::OtherFile {
+            path: s(&shim),
+            old_entry: true
+        }
+    );
+    assert_eq!(
+        reach_of(Some(&s(&mine)), Some(&landing)),
+        Reach::OtherFile {
+            path: s(&mine),
+            old_entry: false
+        }
+    );
+    assert_eq!(
+        reach_of(Some("ccm"), Some(&landing)),
+        Reach::NotAFile,
+        "函数 / 别名不是文件"
+    );
+    let card = CcmProbeResult {
+        installed: true,
+        version: Some("5".into()),
+        capabilities: vec!["new".into()],
+        build: None,
+        at: Some(s(&shim)),
+    };
+    let other = Reach::OtherFile {
+        path: s(&shim),
+        old_entry: true,
+    };
+    assert_eq!(
+        judge_path_ccm(&card, &card, &other),
+        PathCcmVerdict::NotOurs,
+        "名片一样、落在另一个文件（旧 shim 转给同版本后端）仍不是它"
+    );
+    assert_eq!(
+        judge_path_ccm(&card, &card, &Reach::NotAFile),
+        PathCcmVerdict::Ours
+    );
+    let hint = render_path_ccm_hint(
+        PathCcmVerdict::NotOurs,
+        &card,
+        &card,
+        Some("$HOME/.cc-monitor/bin/ccm"),
+        true,
+    );
+    assert!(
+        hint.contains(&s(&shim)) && hint.contains("删掉") && !hint.contains("请删除"),
+        "旧入口那句要指名是哪一份、怎么清，不催：{hint}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+
+    // ③
+    assert_eq!(
+        local_ccm_cell(true, true, PathCcmVerdict::Ours, &card),
+        (Some(true), "装下来了，终端里敲 ccm 用的就是它".to_string())
+    );
+    assert_eq!(
+        local_ccm_cell(true, true, PathCcmVerdict::NotOurs, &card),
+        (
+            Some(false),
+            format!("装下来了，但终端里敲 ccm 走到的是 {}", s(&shim))
+        )
+    );
+    assert_eq!(
+        local_ccm_cell(true, true, PathCcmVerdict::Absent, &card),
+        (Some(false), "装下来了，但终端里敲 ccm 找不到它".to_string())
+    );
+    assert_eq!(
+        local_ccm_cell(false, false, PathCcmVerdict::Undetermined, &card),
+        (Some(false), "cc-monitor 自带的那份没装下来".to_string())
+    );
+    assert_eq!(
+        local_ccm_cell(true, true, PathCcmVerdict::Undetermined, &card),
+        (None, String::new()),
+        "字节是我们的却问不出名片 ⇒ 说不清，不写账本"
+    );
 }
