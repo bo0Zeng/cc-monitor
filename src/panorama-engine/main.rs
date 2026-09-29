@@ -188,7 +188,7 @@ pub fn parse_argv(argv: &[String]) -> Result<Parsed, Fail> {
 
 /// vendored 副本的 pin（`VENDOR.md` 里 `vendored commit:` 后那对反引号里的值）。
 fn vendor_pin() -> &'static str {
-    const MD: &str = include_str!("../bridge/vendor/code-picture-core/VENDOR.md");
+    const MD: &str = include_str!("vendor/code-picture-core/VENDOR.md");
     let at = MD
         .find("vendored commit:`")
         .expect("VENDOR.md 没有 vendored commit 那一行");

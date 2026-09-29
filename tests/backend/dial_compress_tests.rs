@@ -250,12 +250,12 @@ fn the_gate_matches_what_russh_really_does() {
 }
 
 /// vendored russh 副本的住址（仓根相对）。与后端清单 `[patch.crates-io]` 那一行指的是同一处（V2 对拍）。
-const VENDORED_RUSSH: &str = "src/bridge/vendor/russh";
+const VENDORED_RUSSH: &str = "src/vendor/russh";
 
 /// 副本目录的绝对住址。住址写成字面量（`test_tiers` 扫描层按 `repo_root().join("…")` 字面量核它在盘上），
 /// 与 [`VENDORED_RUSSH`] 同一处由这里的断言钉住（V2 拿常量去比 `[patch.crates-io]` 那一行）。
 fn vendored_russh_dir() -> std::path::PathBuf {
-    let dir = crate::guard_support::repo_root().join("src/bridge/vendor/russh");
+    let dir = crate::guard_support::repo_root().join("src/vendor/russh");
     assert_eq!(dir, crate::guard_support::repo_root().join(VENDORED_RUSSH));
     dir
 }
@@ -415,7 +415,7 @@ fn the_vendored_russh_differs_from_the_crate_only_where_registered() {
 
 /// ★ V2〔CZ1〕：**补丁真接上了**（三份文本对拍）。
 ///
-/// ① 后端清单 `[patch.crates-io]` 段里恰好一条、就是 `russh`、指向 `../bridge/vendor/russh`（== [`VENDORED_RUSSH`]）；
+/// ① 后端清单 `[patch.crates-io]` 段里恰好一条、就是 `russh`、指向 `../vendor/russh`（== [`VENDORED_RUSSH`]）；
 /// ② 依赖声明那一行的版本 == 副本 `Cargo.toml` 的 `version` == lock 里 `russh` 那一块的 `version`；
 /// ③ lock 里 `russh` 恰好一块、而且**没有** `source`（= path 来源；有 `source` 就是 crates.io 那份还坏着的）。
 /// 没接上的样子（有人删了补丁那两行）：③ 当场红；Z5 也红（链回上游那份坏的）。

@@ -53,7 +53,8 @@ SKIP_PREFIXES = [
     ("target/", "构建产物"),
     (".build/", "构建产物"),
     ("tests/evidence/", "量具与记录 —— 那是**过去量到的读数**，改了等于把历史改成假话"),
-    ("src/bridge/vendor/", "第三方 vendored 代码，不是我们的名字"),
+    ("src/vendor/", "第三方 vendored 代码，不是我们的名字"),
+    ("src/panorama-engine/vendor/", "第三方 vendored 代码，不是我们的名字"),
     ("src/bridge/icons/", "二进制"),
 ]
 SKIP_FILES = [

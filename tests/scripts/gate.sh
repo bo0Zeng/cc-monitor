@@ -1248,7 +1248,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # 在 `src/backend` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
 # `src/bridge/build.rs` · `src/bridge/src/lib.rs` · `src/bridge/src/main.rs` ·
 # `crates/{acct,branch,codex-token,creds,gate,guard,shell-quote}-core/src/lib.rs`，
-# 以及 🔴 **`src/bridge/vendor/code-picture-core/src/lib.rs`**。
+# 以及 🔴 **`src/panorama-engine/vendor/code-picture-core/src/lib.rs`**。
 #（成因：那棵树的 path 依赖指进 `../../src/bridge`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
 # ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格

@@ -2,7 +2,7 @@
 // 与 **vendored 上游 Rust 源码**逐项两向比。
 //
 // 异源在哪：左边是本仓 TS（`RENDERERS` 的键、`HONESTY_CELLS` 的键、夹具的键 —— 夹具经 tsc
-// 钉成与 `types.ts` 镜像逐键相同），右边是 `src/bridge/vendor/code-picture-core/src/diagram/*.rs`
+// 钉成与 `types.ts` 镜像逐键相同），右边是 `src/panorama-engine/vendor/code-picture-core/src/diagram/*.rs`
 // 里的 `enum` 变体与 `struct` 字段（按固定文件名读，不遍历目录）。
 // 上游加一种形状 / 一格诚实信号 / 一个字段而本仓没跟 ⇒ 红；本仓多写一个上游没有的 ⇒ 也红。
 //
@@ -17,7 +17,7 @@ import { HONESTY_CELLS, honestyLine } from "../../src/panorama/diagram-honesty";
 import type { CallGraphBody, ClustersBody, TypeGraphBody } from "../../src/panorama/types";
 import * as fx from "./diagram-fixtures";
 
-const VD = "src/bridge/vendor/code-picture-core/src/diagram/";
+const VD = "src/panorama-engine/vendor/code-picture-core/src/diagram/";
 const rust = (f: string): string => readFileSync(VD + f, "utf8");
 const ALL_RUST = ["mod.rs", "registry.rs", "shape.rs", "uml.rs"].map(rust).join("\n");
 

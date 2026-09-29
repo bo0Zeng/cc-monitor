@@ -10,7 +10,7 @@ SSH 压缩按已写好的判准开。缺陷的现打与判准住 `调研/第四�
   当时锁的 checksum（取的就是 lock 锁的那一份）。上游仓 `https://github.com/warp-tech/russh`，
   `.cargo_vcs_info.json` 记的上游提交 `a2ffd0fafd2522793761b12ebc9496007e4b287a`（`path_in_vcs = russh`）。
 - `.crate` 里的**全部文件原样**（含 `tests/` `examples/` `benches/`），只少一份 `Cargo.lock`
-  （被仓根 `.gitignore` 的 `src/bridge/vendor/**/Cargo.lock` 挡着；path 依赖的 lock 本来不参加解析）。
+  （被仓根 `.gitignore` 的 `src/vendor/**/Cargo.lock` 挡着；path 依赖的 lock 本来不参加解析）。
 - 许可 **Apache-2.0**（`Cargo.toml` 的 `license`）。`.crate` 里没带许可全文 ⇒ 本目录的 `LICENSE-APACHE` 是副本特有的一份
   （Apache-2.0 §4(a)「随分发附一份许可」），正文取自本机缓存 `serde-1.0.228/LICENSE-APACHE`（同一份 Apache-2.0 条款）。
 
@@ -37,7 +37,7 @@ loop {
 可压比 > 2 的包（会话 jsonl 3–5 倍）几乎每一包都中；真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上一开压缩，
 第一条通道的确认就被吃掉、会话卡死（`调研/第四波记录/NT1.md §1.1a` 现打）。`0.61.2` 的 `compression.rs` 与 `0.61.1` 逐字相同，升级不解决。
 
-**补丁**（`git log -p -- src/bridge/vendor/russh/src/compression.rs` 看得到逐行，共 +11 行、0 行删）：
+**补丁**（`git log --follow -p -- src/vendor/russh/src/compression.rs` 看得到逐行，共 +11 行、0 行删）：
 
 1. 调用之后重取 `n_in_` / `n_out_`（遮蔽调用前那两个），收尾判断用它们；
 2. 多一格「还有空位而这一轮一字未动 ⇒ 收工」防空转（输入被截断时解压器在等不存在的下文；原码在这一形上同样会空转，
@@ -50,7 +50,7 @@ loop {
 ## 怎么接的
 
 - 后端 `src/backend/Cargo.toml`：依赖那一行不动（`russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }`），
-  末尾 `[patch.crates-io] russh = { path = "../bridge/vendor/russh" }`。lock 的差只有 russh 那一块丢了 `source` / `checksum`（= path 来源），
+  末尾 `[patch.crates-io] russh = { path = "../vendor/russh" }`。lock 的差只有 russh 那一块丢了 `source` / `checksum`（= path 来源），
   其余包一个版本都没动（`crypto-bigint 0.7.3` 那一形照旧：别让 cargo 重解析，见后端 `Cargo.toml` 头注）。
 - 闸 `src/backend/dial/connect.rs::RUSSH_ZLIB_SOUND` 开（`true`）：判准（`compression_for`）的答案落到连接上。
 - **不进任何 workspace**：monitor 的 `[workspace]` 不列它、也没有成员依赖它；它只作为后端（独立 crate）的 path 依赖被编。
@@ -73,7 +73,7 @@ loop {
 
 1. 核上游新版的 `Decompress::decompress` 真修了：先把后端清单的 russh 升到那一版、**暂不删补丁**，
    把 `[patch.crates-io]` 两行注释掉跑 Z5 —— 绿（闸开 == 解压对）才算上游修好；红就是没修，别撤。
-2. 删 `[patch.crates-io]` 那两行（连同块头注释）与本目录 `src/bridge/vendor/russh/`；lock 跟着升级落回 registry 来源。
+2. 删 `[patch.crates-io]` 那两行（连同块头注释）与本目录 `src/vendor/russh/`；lock 跟着升级落回 registry 来源。
 3. 删 V1 / V2 两条判据与后端 `[dev-dependencies]` 里只为 V1 加的 `sha2`（`readonly_guard` 签字表那一行同拍摘）。
 4. Z5 与闸原样留着（它们守的是「闸 == russh 实况」，与 russh 从哪来无关）。
 

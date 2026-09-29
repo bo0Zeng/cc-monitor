@@ -28,7 +28,8 @@ members = [
     # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
     "../common/deploy-core",
 ]
-exclude = ["vendor/code-picture-core"]
+# 〔RE〕`exclude = ["vendor/code-picture-core"]` 删了：vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`，
+#   不在本 workspace 根下面，按构造就成不了成员（path 依赖只有住在根目录里才自动入圈）。
 
 [package]
 name = "monitor"
@@ -119,7 +120,7 @@ sha2 = "0.10"
 
 # 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
 # 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
-# vendored 副本原地不动（`vendor/code-picture-core`，小程序经 `../bridge/vendor/…` 链它；挪家是另一件事）。
+# vendored 副本〔RE〕随唯一消费者搬进 `src/panorama-engine/vendor/code-picture-core`（`99 §2.1 ⑰`）。
 # G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
 branch-core = { path = "../common/branch-core" }
 # 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。

@@ -212,7 +212,8 @@ fn check_acct_iso_vendor_freshness() {
 /// 发**可见的 `cargo:warning`**。**上游仓缺席（CI/Windows）→ 静默 no-op，绝不拖垮构建**
 /// （同 `embed_backends` 二进制缺席 no-op）。软警告非硬失败——开发期上游领先副本是常态。
 fn check_vendor_freshness() {
-    let vendor_md = Path::new("vendor/code-picture-core/VENDOR.md");
+    // 〔RE〕vendor 随唯一消费者搬进 `src/panorama-engine/vendor/`（`99 §2.1 ⑰`）；本检查原地留在这里、只改住址。
+    let vendor_md = Path::new("../panorama-engine/vendor/code-picture-core/VENDOR.md");
     println!("cargo:rerun-if-changed={}", vendor_md.display());
     let Ok(text) = std::fs::read_to_string(vendor_md) else {
         return;
@@ -251,7 +252,7 @@ fn check_vendor_freshness() {
         .count();
     if n > 0 {
         println!(
-            "cargo:warning=vendor code-picture-core 过期:上游 core 有 {n} 个未 re-vendor 的提交(pin={pin})。见 vendor/code-picture-core/VENDOR.md 的 re-vendor 菜谱。"
+            "cargo:warning=vendor code-picture-core 过期:上游 core 有 {n} 个未 re-vendor 的提交(pin={pin})。见 src/panorama-engine/vendor/code-picture-core/VENDOR.md 的 re-vendor 菜谱。"
         );
     }
 }

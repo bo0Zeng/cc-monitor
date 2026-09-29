@@ -35,7 +35,7 @@
 //!   ⚠ 射程照旧：本条的人群是**登记的那几份 lock** ⇒ **「有人加了第四棵树却没登记」这一格本条买不到**
 //!   （件文件 `§0f` 第 4 条那一问，落点在 `KW2D4`）。本条能买到的是：新树**若走
 //!   `src/common/` 那个现成的家**，当场红（正题④）。
-//! - **不认 vendor 本体**（`C7`：`src/bridge/vendor/code-picture-core/` 不动）。
+//! - **不认 vendor 本体**（`C7`：`src/panorama-engine/vendor/code-picture-core/` 不动）。
 //!   引擎自己的 manifest 里那行 `[package] name` 不是一条依赖声明，采集器按**键的形状**认，
 //!   不按「文件里出现过这个名字」认 —— 同一条形状让
 //!   `exclude = ["vendor/code-picture-core"]`（那是 workspace 成员身份，不是依赖）
