@@ -22,7 +22,7 @@ fn the_mcp_product_matches_the_cross_language_golden() {
     let d = dir.display().to_string();
     std::fs::write(&cj, g["claudeJson"].as_str().unwrap().replace("<DIR>", &d)).unwrap();
     std::fs::write(dir.join(".mcp.json"), g["mcpJson"].as_str().unwrap()).unwrap();
-    let got = crate::feature_face::mcp_reply(&read_at(Some(&cj), Some(&dir)));
+    let got = crate::faces::feature_face::mcp_reply(&read_at(Some(&cj), Some(&dir)));
     let want: serde_json::Value = serde_json::from_str(
         &g["reply"]
             .to_string()
@@ -32,7 +32,7 @@ fn the_mcp_product_matches_the_cross_language_golden() {
     .unwrap();
     let _ = std::fs::remove_dir_all(&root);
     assert_eq!(got, want, "`mcp-read` 成品与金样不相等");
-    let spec = crate::inbound::REGISTRY
+    let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|s| s.name == "mcp-read")
         .expect("登记表里没有 `mcp-read`");

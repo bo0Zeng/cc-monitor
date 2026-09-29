@@ -305,7 +305,7 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
         }
         files.insert(
             (*rel).to_string(),
-            json!({ "digest": crate::skill_ledger::digest_of(text), "created": true }),
+            json!({ "digest": crate::assets::skill_ledger::digest_of(text), "created": true }),
         );
     }
     let record_failed = record(&json!({ "op": "add", "name": NAME, "files": files }))

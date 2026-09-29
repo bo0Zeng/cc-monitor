@@ -1,7 +1,7 @@
 //! 设计/96 §3.5：「写：一趟，不重算」·「`stale` ⇒ 停、说清停在哪 / 前面写了哪几个，**不重读**」—— 推拉的 I/O 进了被写那台后端自己（MIG-3a）。
 use super::*;
-use crate::inbound::LocalFiles;
-use crate::mcp_sync::There;
+use crate::assets::mcp_sync::There;
+use crate::stream::inbound::LocalFiles;
 
 /// 这台上的事实：`PATH` 查不动（`unknown`），路径一律「没有」—— 金样不把开发机烤进去。
 struct NoFacts;
@@ -71,7 +71,7 @@ fn the_mcp_sync_flow_matches_the_cross_language_golden() {
     );
     let _ = std::fs::remove_dir_all(&root);
     for (name, want) in g["codes"].as_object().unwrap() {
-        let spec = crate::inbound::REGISTRY
+        let spec = crate::stream::inbound::REGISTRY
             .iter()
             .find(|s| s.name == name)
             .expect("登记表里没有");

@@ -45,7 +45,7 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
 /// 建的那一下就是只给本人（unix：`DirBuilder` 的 mode 在创建时生效，没有「先按 umask 建出来、再收窄」的那一段），
 /// 缺的中间几层一并这样建；**已在的不动**（那可能是用户自己设的）。别的平台照常建（那边不是 unix 权限位这一问）。
 ///
-/// 与后端那一份（`src/backend/own_dir.rs::ensure_private_dir`）是两个 crate 各一份：两个 crate 没有能放平台原语的共享落点
+/// 与后端那一份（`src/backend/common/own_dir.rs::ensure_private_dir`）是两个 crate 各一份：两个 crate 没有能放平台原语的共享落点
 /// （`creds-core` 的平台那半是 `harden` feature，monitor 不开）—— 权限位同一个值（0700），各自的判据各钉一半。
 /// 这是 `backend/control/local_backend.rs` 那几处释放的注入参数（`C10`：那一半不认识平台），宿主自己也直接调。
 pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {

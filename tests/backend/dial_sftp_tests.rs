@@ -265,7 +265,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
         None,
     )
     .await;
-    assert_eq!(v["data"], crate::wire::b64_encode(b"new"));
+    assert_eq!(v["data"], crate::stream::wire::b64_encode(b"new"));
     // 〔MIG-3b 续 · V41〕`stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
     let v = ask(
         &mut w,
@@ -640,7 +640,7 @@ async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_l
     let g = fs.lock().unwrap();
     assert_eq!(
         g.dir_modes.get(".cc-monitor/bin").copied(),
-        Some(crate::own_dir::PRIVATE_DIR_MODE),
+        Some(crate::common::own_dir::PRIVATE_DIR_MODE),
         "新建的 bin 没收成只给本人：{:?}",
         g.mutated
     );

@@ -107,12 +107,12 @@ pub fn run_ensure(agent_home: &Path, args: &[String], hosted: &[(&str, String)])
 pub fn ensure(agent_home: &Path, args: &[String]) -> i32 {
     let mut hosted = vec![
         (
-            crate::listen::RELAY_PORT_ENV,
+            crate::stream::listen::RELAY_PORT_ENV,
             relay_route_core::PORT.to_string(),
         ),
         (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
     ];
-    let [_, creds_env, meta_env] = crate::wire::HOST_ECHO_ENVS;
+    let [_, creds_env, meta_env] = crate::stream::wire::HOST_ECHO_ENVS;
     if let Some(h) = home() {
         // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
         let _ = log_dir_chain(&h);
@@ -152,7 +152,8 @@ pub(crate) fn parse_grace(args: &[String]) -> Result<u32, String> {
     let Some(i) = args.iter().position(|a| a == "--grace") else {
         return Ok(STOP_GRACE_MS);
     };
-    let drain_secs = u32::try_from(crate::inbound::DRAIN_DEADLINE.as_secs()).unwrap_or(u32::MAX);
+    let drain_secs =
+        u32::try_from(crate::stream::inbound::DRAIN_DEADLINE.as_secs()).unwrap_or(u32::MAX);
     let bad = || {
         copy_text(
             "beResident.stop.badGrace",
@@ -237,7 +238,7 @@ fn ensure_token(path: &Path) -> Result<String, String> {
 }
 
 fn ensure_dir(dir: &Path) -> Result<(), String> {
-    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beResident.fs.mkdirFailed",
             &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
@@ -321,9 +322,9 @@ pub(crate) fn child_env(
     hosted: &[(&str, String)],
 ) -> Vec<(String, String)> {
     let mut env = vec![
-        (crate::listen::ENV_PORT.into(), port.to_string()),
+        (crate::stream::listen::ENV_PORT.into(), port.to_string()),
         (
-            crate::listen::ENV_TOKEN_FILE.into(),
+            crate::stream::listen::ENV_TOKEN_FILE.into(),
             token_path.display().to_string(),
         ),
     ];
@@ -342,7 +343,7 @@ fn spawn_detached(exe: &Path, env: &[(String, String)]) -> Result<u32, (&'static
     let mut cmd = std::process::Command::new(exe);
     cmd.args(DEFAULT_STREAM_ARGS)
         .env_remove("TMUX")
-        .env_remove(crate::listen::ENV_TOKEN)
+        .env_remove(crate::stream::listen::ENV_TOKEN)
         .envs(env.iter().cloned())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())

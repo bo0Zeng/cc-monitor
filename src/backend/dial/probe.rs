@@ -19,8 +19,8 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use tokio::io::{AsyncWriteExt, BufReader};
 
-use crate::remote_ask::{self, AbortOnDrop};
-use crate::wire::Frame;
+use crate::stream::remote_ask::{self, AbortOnDrop};
+use crate::stream::wire::Frame;
 
 /// 链路上一行的上限（阶段行 · ack · hello · 应答；hello 行是后端出方向单行，同一个量级）。
 const LINE_CAP: u64 = 1024 * 1024;
@@ -213,7 +213,7 @@ where
             copy_text("beProbe.test.noHello", &[]),
         ));
     };
-    let head = crate::wire::hello_summary(&hello);
+    let head = crate::stream::wire::hello_summary(&hello);
     cells.push(json!({ "reached": "hello" })).await?;
 
     // ③ 控制通道往返。

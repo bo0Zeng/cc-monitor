@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const P: Shell = Shell::Posix;
 
-/// 〔MIG-3a〕判据用的门：本进程那几条 `files-*` 原样走（[`crate::inbound::LocalFiles`]），只有 `files-home` 答临时目录 ——
+/// 〔MIG-3a〕判据用的门：本进程那几条 `files-*` 原样走（[`crate::stream::inbound::LocalFiles`]），只有 `files-home` 答临时目录 ——
 /// 写的规则不在这里判（那一份住后端 `files_write_tests.rs`），也**绝不碰真实家目录**。
 pub(crate) struct HomeDoor(pub PathBuf);
 impl Door for HomeDoor {
@@ -11,7 +11,7 @@ impl Door for HomeDoor {
         if cmd == "files-home" {
             return Ok(json!({ "path": self.0.display().to_string() }));
         }
-        crate::inbound::LocalFiles.ask(cmd, args)
+        crate::stream::inbound::LocalFiles.ask(cmd, args)
     }
 }
 
@@ -1214,7 +1214,7 @@ fn a_dialect_this_machine_does_not_speak_is_refused_out_loud() {
     } else {
         let e = dialect_here(Shell::PowerShell).expect_err("不在 Windows 的后端 × PowerShell 该拒");
         assert!(
-            e.contains("PowerShell") && e.contains(&crate::asset_catalog::machine_label()),
+            e.contains("PowerShell") && e.contains(&crate::assets::asset_catalog::machine_label()),
             "{e}"
         );
         let (code, _) = answer_render(&json!({ "aliases": [], "shell": "powershell" }))
@@ -1289,7 +1289,7 @@ fn the_alias_wire_matches_the_cross_language_golden() {
         .map(String::as_str)
         .collect();
     assert_eq!(json!(keys), g["blockRenderKeys"]);
-    let codes: std::collections::BTreeMap<String, Vec<String>> = crate::inbound::REGISTRY
+    let codes: std::collections::BTreeMap<String, Vec<String>> = crate::stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.name.starts_with("aliases-"))
         .map(|s| {

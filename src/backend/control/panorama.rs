@@ -115,7 +115,7 @@ pub(crate) const OPS: &[(&str, u64)] = &[
 /// 〔RM1f〕小程序每条输出流最多留多少字节（交给插件口 `run_abortable`，多出来的它照读照丢）：
 /// 与「结果太大」那一格（[`classify`]）**同一个**上限 `read_face::LINES_CAP_BYTES` ⇒ `len() >` 它就是 `too_large`。
 fn keep() -> u64 {
-    crate::read_face::LINES_CAP_BYTES as u64
+    crate::faces::read_face::LINES_CAP_BYTES as u64
 }
 
 /// 找不到时那句话的尾巴（这个插件自己的话）。
@@ -303,7 +303,7 @@ fn describe_exit(code: Option<i32>) -> String {
 /// | 期限命令超时（`Done::timed_out`，那个码是通用层的事实） | `timed_out`（说清是哪一档期限） |
 /// | 被信号打断 / 其余 | `failed` ＋ 摘一行诊断 |
 pub(crate) fn classify(op: &str, deadline: u64, done: Done) -> Result<Value, CmdErr> {
-    if done.stdout.len() > crate::read_face::LINES_CAP_BYTES {
+    if done.stdout.len() > crate::faces::read_face::LINES_CAP_BYTES {
         return Err((
             "too_large",
             copy_text(
@@ -311,7 +311,10 @@ pub(crate) fn classify(op: &str, deadline: u64, done: Done) -> Result<Value, Cmd
                 &[
                     ("op", &op.to_string()),
                     ("size", &(done.stdout.len()).to_string()),
-                    ("cap", &(crate::read_face::LINES_CAP_BYTES).to_string()),
+                    (
+                        "cap",
+                        &(crate::faces::read_face::LINES_CAP_BYTES).to_string(),
+                    ),
                 ],
             ),
         ));

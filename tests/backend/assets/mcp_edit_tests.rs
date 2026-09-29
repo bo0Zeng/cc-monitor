@@ -1,6 +1,6 @@
 //! 设计/99 §2.1 ⑬：「命令实现经 `inbound_client` / `BackendDoor` 碰到后端的必须在「待迁」」—— D 组 MCP 写进了那台后端自己（`mcp-server-put` / `-remove`）。
 use super::*;
-use crate::inbound::LocalFiles;
+use crate::stream::inbound::LocalFiles;
 
 fn fixture(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("mig3a-mcp-{tag}-{}", std::process::id()));
@@ -38,7 +38,7 @@ fn the_mcp_edit_product_matches_the_cross_language_golden() {
     );
     let _ = std::fs::remove_dir_all(&root);
     for name in ["mcp-server-put", "mcp-server-remove"] {
-        let spec = crate::inbound::REGISTRY
+        let spec = crate::stream::inbound::REGISTRY
             .iter()
             .find(|s| s.name == name)
             .expect("登记表里没有");

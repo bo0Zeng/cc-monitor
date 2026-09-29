@@ -85,7 +85,7 @@
 //!
 //! ⚠ **「哪几份文件算 Claude 的会话数据」这条知识不在本模块**：`control/` 是通用层，
 //! 它不该知道那个目录叫什么（`agent_locality_guard` 的针就钉在这上面）。
-//! 判定的住址是适配层里的 `is_session_record_path`，本模块只是**调用它** ——〔FN1〕今天只剩删会话那一处调用。
+//! 判定的住址是适配层里的 `is_session_record_path`；〔MOD〕本模块连它的名字都不引，由门经 [`SessionPort`] 递进来 ——〔FN1〕今天只剩删会话那一处要它。
 //!
 //! # 🔴 诚实边界 —— 本模块买到的与**买不到**的
 //!
@@ -109,7 +109,6 @@
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed（`99 §4` 条 19c），
 //!    那几处全在本轮写区之外。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
-use crate::agents::claudecode::paths::{is_session_record_path, session_file_for_delete};
 use copy_core::copy_text;
 use std::path::{Component, Path, PathBuf};
 
@@ -1605,7 +1604,7 @@ pub fn copy_tree_with(
 //   沿用原权限位 = 改权限；补父目录 = 逐级建目录（每一级各过一遍路径解析）。
 //
 // 🔴 **删会话**（[`delete_session`]）：它**只收 sid**，落点由适配层按 sid 找
-//   （`agents::claudecode::paths::session_file_for_delete`），不收路径 ⇒ 调用方表达不出「另一份文件」。
+//   （门经 [`SessionPort`] 递进来的那一个窄口），不收路径 ⇒ 调用方表达不出「另一份文件」。
 //   `readonly_guard` 第三层的针因此多一根 `fenced_session_file(`，判据钉它在生产树里恰好被调用一处。
 //   〔FN1 · V119〕它从前的说法是「会话文件围栏唯一的例外」—— 文件管理面的会话文件围栏拿掉之后没有「例外」可言了；
 //   它自己那道（「删的必须**是**一份会话、名字恰是 `<sid>.jsonl`」）一个字节没动。
@@ -2096,21 +2095,33 @@ fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
 
 /// 🔴 **删一份历史会话 —— 只收 sid。**
 ///
-/// 落点由适配层按 sid 在本机记录树里找（[`session_file_for_delete`]：找 → 解到底 → 恰是
+/// 落点由适配层按 sid 在本机记录树里找（门递进来的 [`SessionPort::locate`]：找 → 解到底 → 恰是
 /// `<项目>/<sid>.jsonl` → 必须是会话文件的形状）。这一条是「用户在历史浏览器里明确点了删」那一件事。
 /// 〔FN1 · V119〕从前这里写「别的写一律不许碰会话文件，这一条是唯一的例外」—— 文件管理面今天什么都能改，
 /// 这一条的独特之处只剩「只收 sid、只删恰是那一形的那一份」。
-pub fn delete_session(sid: &str) -> Result<PathBuf, WriteRefusal> {
-    delete_session_with(sid, session_file_for_delete)
+pub fn delete_session(sid: &str, sessions: &SessionPort) -> Result<PathBuf, WriteRefusal> {
+    delete_session_with(sid, sessions.locate, sessions.is_record)
 }
 
-/// [`delete_session`] 的本体。`locate` 由调用方给（生产侧 = 适配层那一份；判据拿临时目录当 home），
+/// 〔MOD · 子步 4 · 主会话裁〕删会话那一条要问的两件事（落点 · 形状）是 agent 记录布局的知识，
+/// 本模块一家都不认 ⇒ 由门（命令注册那一处）从原生那一侧的窄口（`agents::locate_session_for_delete` ·
+/// `agents::is_session_record`）取来递进 [`answer_wire`]。
+#[derive(Clone, Copy)]
+pub struct SessionPort {
+    /// sid ⇒ 要删的那一份。
+    pub locate: fn(&str) -> Result<PathBuf, String>,
+    /// 这一份是不是会话记录。
+    pub is_record: fn(&Path) -> bool,
+}
+
+/// [`delete_session`] 的本体。`locate` / `is_record` 由调用方给（生产侧 = 门递进来的窄口；判据拿临时目录当 home），
 /// 删之前**必须**先过 [`fenced_session_file`]。
 pub fn delete_session_with(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
+    is_record: impl FnOnce(&Path) -> bool,
 ) -> Result<PathBuf, WriteRefusal> {
-    let target = fenced_session_file(sid, locate).map_err(WriteRefusal::Refused)?;
+    let target = fenced_session_file(sid, locate, is_record).map_err(WriteRefusal::Refused)?;
     std::fs::remove_file(&target).map_err(|e| {
         WriteRefusal::Io(copy_text(
             "beFilesWrite.session.deleteFailed",
@@ -2128,6 +2139,7 @@ pub fn delete_session_with(
 fn fenced_session_file(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
+    is_record: impl FnOnce(&Path) -> bool,
 ) -> Result<PathBuf, String> {
     let p = locate(sid)?;
     let want = format!("{sid}.jsonl");
@@ -2140,7 +2152,7 @@ fn fenced_session_file(
             ],
         ));
     }
-    if !is_session_record_path(&p) {
+    if !is_record(&p) {
         return Err(copy_text(
             "beFilesWrite.session.notRecord",
             &[("path", &p.display().to_string())],
@@ -2589,7 +2601,7 @@ fn answer_put(args: &serde_json::Value) -> Answer {
     }))
 }
 
-fn answer_delete_session(args: &serde_json::Value) -> Answer {
+fn answer_delete_session(args: &serde_json::Value, sessions: &SessionPort) -> Answer {
     // 🔴 **只收 sid**：多给任何一个键都拒 —— 这一条只按 sid 找那一份、从不收路径，
     //    「顺手也收一个路径」那一形连表达的机会都不给。
     if let Some(obj) = args.as_object() {
@@ -2606,7 +2618,7 @@ fn answer_delete_session(args: &serde_json::Value) -> Answer {
         "bad_args",
         crate::common::contract::malformed("missing `sid` or not a string"),
     ))?;
-    let done = delete_session(sid).map_err(refusal)?;
+    let done = delete_session(sid, sessions).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }
 
@@ -2614,7 +2626,7 @@ fn answer_delete_session(args: &serde_json::Value) -> Answer {
 ///
 /// 🔴 分派写成一个对 [`MANAGE_COMMANDS`] 的 `match`，而「表里有、分派没有」
 /// 那种静默的不可用由判据钉住（本仓 `p1t-removal-cause` 那次真 bug 就是这一形）。
-pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
+pub fn answer_wire(wire_name: &str, args: &serde_json::Value, sessions: &SessionPort) -> Answer {
     match wire_name {
         "files-create" => answer_create(args),
         "files-mkdir" => answer_mkdir(args),
@@ -2625,7 +2637,7 @@ pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
         "files-copy" => answer_copy(args),
         "files-peek" => answer_peek(args),
         "files-put" => answer_put(args),
-        "files-delete-session" => answer_delete_session(args),
+        "files-delete-session" => answer_delete_session(args, sessions),
         other => Err((
             "bad_args",
             crate::common::contract::malformed(&format!("unknown write command `{other}`")),

@@ -7,12 +7,12 @@
 //! 枚举与摘录搬进这里（Codex 的格式知识只许住 `agents/codex/`，`agent_locality_guard` 判据①），
 //! 通用层（`history_join.rs`）经注册表 `Adapter.history` 那一格够到它（不增 `ADAPTER_CALL_SITES`）。
 //!
-//! # 口径（逐格照搬 monitor 那两份）
+//! # 口径
 //!
 //! - 会话 = `<codex home>/sessions/**/rollout-<ts>-<uuid>.jsonl`；sid = 文件名末尾那个 UUID（`parse::codex_sid_from_path`，不像就跳过）。
 //! - cwd = **首行** `session_meta.cwd`（缺 / 坏 ⇒ 空串，归「(codex)」组）；修改时刻 = 文件 mtime（毫秒）。
 //! - 首条真用户话 = 前 200 行里第一条 `response_item.message` 且 `role == "user"`，文本拍平后去掉**注入的上下文**
-//!   （[`INJECTED_CONTEXT_MARKERS`]，与 monitor 渲染那一侧同一张表，判据对拍）；取前 200 个字符。
+//!   （`record::is_injected_context`，与渲染那一侧同一份）；取前 200 个字符。
 //!
 //! Codex 没有 pidfile ⇒ 判活答不了（「不知道」，不是「没活」）；Codex 的会话目录里也没有项目概念（按 cwd 分组是通用层的事）。
 
@@ -22,34 +22,9 @@ use std::path::Path;
 
 use super::parse;
 
-/// Codex 往首条 user 消息里注入的上下文（不是用户敲的）：以这几样开头的就跳过。
-/// ⚠ 与 monitor 渲染那一侧 `codex_record·rs::is_injected_context` 那张表**逐项相同**（判据现抠对拍）。
-pub(crate) const INJECTED_CONTEXT_MARKERS: [&str; 3] = [
-    "<environment_context>",
-    "<recommended_plugins>",
-    "# AGENTS.md instructions",
-];
-
-fn is_injected_context(text: &str) -> bool {
-    let t = text.trim_start();
-    INJECTED_CONTEXT_MARKERS.iter().any(|m| t.starts_with(m))
-}
-
-/// 数组文本拍平（`message.content` 真机恒数组 `[{type:input_text, text}]`）；裸串原样；其它 ⇒ 空。
-fn flatten_text(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Array(items) => items
-            .iter()
-            .filter_map(|it| match it {
-                Value::String(s) => Some(s.clone()),
-                _ => it.get("text").and_then(Value::as_str).map(str::to_string),
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
-}
+// 〔MOD〕「注入的上下文」那张表与数组文本拍平只住 [`super::record`] 一份（渲染那一侧从 monitor 搬进来之后，
+//   同一个模块里没有理由再留第二份、再靠判据对拍）。
+use super::record::{flatten_text, is_injected_context};
 
 /// 读首行 `session_meta` 的 cwd。缺 / 坏 ⇒ 空串。
 fn first_line_cwd(p: &Path) -> String {

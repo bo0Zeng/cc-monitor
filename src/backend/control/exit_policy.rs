@@ -170,7 +170,7 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
         )
     })?;
     // 〔HX1〕只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beExitPolicy.writeAt.mkdirFailed",
             &[("dir", &(dir.display()).to_string()), ("e", &e.to_string())],
@@ -221,8 +221,9 @@ fn write_at(path: &Path, kill: bool) -> Result<(), String> {
 /// 不另记一份（记了就是第二个真相源，也撞 E2「不缓存」）。一次性 CLI 面没有这些环境 ⇒ 按被监护说（保守那一句）。
 fn resident_now() -> bool {
     matches!(
-        crate::listen::mode_from(&|k| std::env::var(k).ok()),
-        Ok(crate::listen::Mode::Listen { .. } | crate::listen::Mode::ListenTokenFile { .. })
+        crate::stream::listen::mode_from(&|k| std::env::var(k).ok()),
+        Ok(crate::stream::listen::Mode::Listen { .. }
+            | crate::stream::listen::Mode::ListenTokenFile { .. })
     )
 }
 

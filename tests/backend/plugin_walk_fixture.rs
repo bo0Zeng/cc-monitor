@@ -274,12 +274,12 @@ mod tests {
     fn unavailable_from_plugin(
         installed: Option<bool>,
         code: &str,
-    ) -> Vec<crate::wire::Unavailable> {
+    ) -> Vec<crate::stream::wire::Unavailable> {
         let mut out = Vec::new();
         if installed == Some(false) {
-            for spec in crate::inbound::REGISTRY {
+            for spec in crate::stream::inbound::REGISTRY {
                 if spec.codes.contains(&code) {
-                    out.push(crate::wire::Unavailable {
+                    out.push(crate::stream::wire::Unavailable {
                         command: spec.name.to_string(),
                         code: code.to_string(),
                     });
@@ -461,7 +461,7 @@ mod tests {
     #[derive(Debug)]
     struct Walk {
         done: Vec<&'static str>,
-        declared: Vec<crate::wire::Unavailable>,
+        declared: Vec<crate::stream::wire::Unavailable>,
         bin: PathBuf,
         answered_caps: Vec<String>,
         extras: Vec<(String, String)>,
@@ -913,7 +913,7 @@ mod tests {
         assert!(!w.declared.is_empty(), "事前那张表是空的");
         for u in &w.declared {
             assert!(
-                crate::inbound::COMMANDS.contains(&u.command.as_str()),
+                crate::stream::inbound::COMMANDS.contains(&u.command.as_str()),
                 "声明做不到的 `{}` 根本不在 `commands` 里 —— 本字段说的是「接得下但做不到」",
                 u.command
             );
@@ -1252,7 +1252,7 @@ mod tests {
         //   它真正的对照在下面 ①：那个词**必须是 `inbound::REGISTRY` 里真有人登记的**。
 
         // ① 那个词**必须有主**：`REGISTRY` 里得真有命令登记它。
-        let owners: Vec<&str> = crate::inbound::REGISTRY
+        let owners: Vec<&str> = crate::stream::inbound::REGISTRY
             .iter()
             .filter(|s| s.codes.contains(&REGISTRY_OWNED_CODE))
             .map(|s| s.name)
@@ -1280,7 +1280,7 @@ mod tests {
             "确证没装时列出来的，不是 `REGISTRY` 里登记了那个词的那几条：{missing:?}"
         );
         for u in &missing {
-            let spec = crate::inbound::REGISTRY
+            let spec = crate::stream::inbound::REGISTRY
                 .iter()
                 .find(|s| s.name == u.command)
                 .unwrap_or_else(|| panic!("声明了一条 `REGISTRY` 里没有的命令：{}", u.command));
@@ -1293,7 +1293,7 @@ mod tests {
                 spec.codes
             );
             assert!(
-                crate::inbound::COMMANDS.contains(&u.command.as_str()),
+                crate::stream::inbound::COMMANDS.contains(&u.command.as_str()),
                 "`{}` 不在 `commands` 里 —— 「根本不接」那一格由不在 `commands` 里表达，\
                  不该出现在这张「接得下但做不到」的表上",
                 u.command
@@ -1321,11 +1321,11 @@ mod tests {
         //    ⇒ 它「说得出」，但**说不出口**。走出路乙（`REGISTRY` 8 → 9）才买得到另一半，
         //    而那要动 PM 持有的文件 ⇒ `§4` 上报。
         assert!(
-            !crate::inbound::COMMANDS.contains(&plugin_name().as_str()),
+            !crate::stream::inbound::COMMANDS.contains(&plugin_name().as_str()),
             "假插件的名字混进了 `inbound::COMMANDS` —— 那是**出货面**，夹具不许进去"
         );
         assert!(
-            !crate::inbound::REGISTRY
+            !crate::stream::inbound::REGISTRY
                 .iter()
                 .any(|s| s.name == plugin_name()),
             "假插件混进了 `inbound::REGISTRY` —— 真填 `hello.commands` 那天，\
@@ -1709,10 +1709,14 @@ mod tests {
         );
         // 那两个会随环境一起漂过去的变量名，点住住址（不复述它们的值）。
         assert!(
-            !crate::listen::ENV_PORT.is_empty() && !crate::listen::ENV_TOKEN.is_empty(),
+            !crate::stream::listen::ENV_PORT.is_empty()
+                && !crate::stream::listen::ENV_TOKEN.is_empty(),
             "常驻口那两个变量名空了 —— 本格头注 ② 段指的就是它们"
         );
-        assert_ne!(crate::listen::ENV_PORT, crate::listen::ENV_TOKEN);
+        assert_ne!(
+            crate::stream::listen::ENV_PORT,
+            crate::stream::listen::ENV_TOKEN
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1776,8 +1780,8 @@ mod tests {
             ])
             .env(INHERIT_MARK, "1")
             // ★ 键名现取，值是夹具的。
-            .env(crate::listen::ENV_PORT, FAKE_PORT_VALUE)
-            .env(crate::listen::ENV_TOKEN, FAKE_TOKEN_VALUE)
+            .env(crate::stream::listen::ENV_PORT, FAKE_PORT_VALUE)
+            .env(crate::stream::listen::ENV_TOKEN, FAKE_TOKEN_VALUE)
             .stdin(std::process::Stdio::null())
             .output()
             .expect("起不来那个内层进程");
@@ -1815,8 +1819,8 @@ mod tests {
             // 这里**不做断言也不打读数行** —— 「它到底跑没跑」由外层那条数读数行的断言看着。
             return;
         }
-        let port_key = crate::listen::ENV_PORT;
-        let token_key = crate::listen::ENV_TOKEN;
+        let port_key = crate::stream::listen::ENV_PORT;
+        let token_key = crate::stream::listen::ENV_TOKEN;
 
         // ── 分母①：本进程（扮演后端）的环境键 ────────────────────────────
         let parent: std::collections::BTreeSet<String> = std::env::vars_os()
@@ -1968,11 +1972,11 @@ mod tests {
     fn adding_a_plugin_still_costs_the_host_something() {
         // 落点 1/2 的机检**今天真在**：命令表两侧互为镜子，且每条转调型命令都带文档锚点。
         assert_eq!(
-            crate::inbound::COMMANDS.len(),
-            crate::inbound::REGISTRY.len(),
+            crate::stream::inbound::COMMANDS.len(),
+            crate::stream::inbound::REGISTRY.len(),
             "命令表两侧的条数对不上 —— 落点 1 那道机检此刻自己就是红的"
         );
-        let owners: Vec<&crate::inbound::CommandSpec> = crate::inbound::REGISTRY
+        let owners: Vec<&crate::stream::inbound::CommandSpec> = crate::stream::inbound::REGISTRY
             .iter()
             .filter(|s| s.codes.contains(&REGISTRY_OWNED_CODE))
             .collect();

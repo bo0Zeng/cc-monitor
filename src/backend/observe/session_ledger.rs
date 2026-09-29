@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::wire::{Frame, RemovalCause, SessionFate};
+use crate::stream::wire::{Frame, RemovalCause, SessionFate};
 
 /// 活的 / 可重连的会话在 tmux 里**连续几份快照**看不见才算没了（去抖：`/branch` 换 sid 那一拍新旧并存，
 /// 等于 1 会把还活着、只是换了 sid 的会话误判）。编译期兜死不许小于 2。

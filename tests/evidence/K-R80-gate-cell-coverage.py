@@ -318,7 +318,7 @@ cell(
     cwd="remote-daemon-proto/",
     cmd="cargo fmt --check（刻意不加 --all）",
     **{
-        "tests/": ("部", "〔现打 09-19〕同法死值验：`tests/backend/inbound_tests.rs` 加乱行 ⇒ `rc=1`。只盖 `tests/backend/` 那 75 份 `.rs`"),
+        "tests/": ("部", "〔现打 09-19〕同法死值验：`tests/backend/stream/inbound_tests.rs` 加乱行 ⇒ `rc=1`。只盖 `tests/backend/` 那 75 份 `.rs`"),
         "src/backend/": (PART, "唯一成员 `cc-monitor-remote`，射程 = 从 `src/main.rs` "
                                        "顺 `mod` 走得到的那些 `.rs`；走不到的文件本格看不见"),
         "src/bridge/": blind("刻意**不加** `--all`：加了 rustfmt 实收 12 个 crate 根、11 个在这棵树外"),
@@ -546,7 +546,7 @@ cell(
         "src/": (PART, "〔现打 09-20〕前端 TS 被**扫**（`.ts` 也在后缀面里，`§3.2` 那条"
                        "「前端不知道 transport」要靠它）。今天一份成员都没有 ⇒ 扫的结论全是「不是成员」"),
         "src/backend/": (PART, "〔现打 09-20〕被**扫**（找标记）。语料见证里逐字钉着 "
-                               "`src/backend/wire.rs` 必须在这一趟扫描面里 —— 那是防「扫描面被改窄」的钉子"),
+                               "`src/backend/stream/wire.rs` 必须在这一趟扫描面里 —— 那是防「扫描面被改窄」的钉子"),
         "src/shared/": (PART, "〔现打 09-20〕被**扫**，同上"),
         "src/doc/": (PART, "〔现打 09-20〕被**扫**（`.md` 不在后缀面里 ⇒ 实际命中为 0，"
                            "但它在根之下、不在排除名单里，如实记成「扫过」而不是「不碰」）"),

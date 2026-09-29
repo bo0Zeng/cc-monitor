@@ -1,15 +1,6 @@
 use super::*;
 
-/// 行计数口径必须与 backend read_new_lines 一字一致：BOM+全空白跳过。
-#[test]
-fn snapshot_line_countable_matches_backend_semantics() {
-    assert!(snapshot_line_countable(r#"{"a":1}"#));
-    assert!(snapshot_line_countable("\u{feff}{\"a\":1}")); // BOM+内容 → 计
-    assert!(!snapshot_line_countable("")); // 空行 → 跳
-    assert!(!snapshot_line_countable("   ")); // 全空白 → 跳
-    assert!(!snapshot_line_countable("\u{feff}")); // 纯 BOM → 跳
-    assert!(!snapshot_line_countable("\u{feff}  \t")); // BOM+空白 → 跳
-}
+// 〔MOD〕「快照那一行计不计号」那一条随函数删了：后端只交可计行，口径只住后端 `history_query::line_counts`。
 
 /// 队列语义：sid 幂等、priority 优先出队、close 后清空账再 None。
 #[tokio::test]

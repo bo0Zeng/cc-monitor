@@ -128,7 +128,7 @@ pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 
 /// backend 那侧收「听哪个口」的 env 名。
 ///
-/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/listen.rs::ENV_PORT`。
+/// ⚠ **跨 crate 字面量**：backend 那边是 `src/backend/stream/listen.rs::ENV_PORT`。
 /// 两边漂了**不会报错** —— 起出来的后端会当成「没设」而走 stdio 那条路，
 /// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「连不上」。
 /// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍

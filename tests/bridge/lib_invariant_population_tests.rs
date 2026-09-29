@@ -414,7 +414,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 〔TL3 · §47〕路径那一格在 `register` 进门判；argv（自由文本）在 `ask_with` 拼之前过拒绝集（只收 NUL / CR / LF，主会话 09-26 按 V131 裁）。
     // 〔E2 · V28〕2 → 1：那台后端的路径不再登记（固定落点常量打头，不 quote）⇒ 只剩 argv 那一格。
     (
-        "src/backend/remote_ask.rs",
+        "src/backend/stream/remote_ask.rs",
         1,
         &[(
             "src/bridge/crates/shell-quote-core/src/lib.rs",

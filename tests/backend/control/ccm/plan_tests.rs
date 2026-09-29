@@ -1240,7 +1240,7 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
         "../../../../src/backend/control/ccm/plan.rs"
     ));
     let from_process = me
-        .split("pub(crate) fn from_process() -> Self {")
+        .split("pub(crate) fn from_process(process_argv: &[String]) -> Self {")
         .nth(1)
         .and_then(|b| b.split("\n    }\n}\n").next())
         .expect("找不到 `Env::from_process` —— 抽取器坏了");

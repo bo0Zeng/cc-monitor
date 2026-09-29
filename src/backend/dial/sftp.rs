@@ -582,7 +582,7 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
         return Ok(());
     }
     let private = FileAttributes {
-        permissions: Some(crate::own_dir::PRIVATE_DIR_MODE),
+        permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE),
         ..Default::default()
     };
     if let Err(e) = s.sftp().set_metadata(rel.clone(), private).await {
@@ -780,7 +780,7 @@ async fn answer<R: AsyncRead + Unpin>(
                     Some(_) => (None, None),
                 };
                 Ok(serde_json::json!({
-                    "data": data.as_deref().map(crate::wire::b64_encode),
+                    "data": data.as_deref().map(crate::stream::wire::b64_encode),
                     "exists": exists,
                     "size": size,
                 }))

@@ -7,11 +7,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { copyText } from "../../src/copy-table";
 import { countUnit, faceTitle, formatEntry, formatReport } from "../../src/settings/drift-ledger-section";
-import type { DriftFace, DriftFaceReport } from "../../src/settings/drift-ledger-section";
+import type { DriftFace, DriftFaceReport, ShownFace } from "../../src/settings/drift-ledger-section";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 
-/** 后端 `DriftFace` 的四个变体（`src/generated/DriftFace.ts` 是源）。 */
-const FACES: DriftFace[] = [
+/** 四个面：记录那两面由那台后端答（〔MOD〕`drift-report`），monitor 天生观测的两面是 `src/generated/DriftFace.ts`。 */
+const FACES: Array<DriftFace | string> = [
   "unknown_record_type",
   "known_type_parse_failed",
   "unknown_session_kind",
@@ -46,7 +46,7 @@ describe("countUnit", () => {
 });
 
 describe("formatReport", () => {
-  const report: DriftFaceReport[] = [
+  const report: ShownFace[] = [
     {
       face: "unknown_record_type",
       consequence: "这条记录不显示、不进搜索、不计费",
@@ -105,6 +105,7 @@ describe("DriftLedgerSection（DOM）", () => {
     vi.doMock("../../src/ipc/commands", () => ({
       commands: { drift_ledger_report: () => Promise.reject(new Error("boom")) },
     }));
+    vi.doMock("../../src/record-reads", () => ({ readRecordDrift: () => Promise.resolve([]) }));
     const { DriftLedgerSection } = await import("../../src/settings/drift-ledger-section");
     const s = new DriftLedgerSection();
     // `设计/70 §1.3 B`（步 2）：构造期**不再**发 I/O —— 这一块住「改动足迹」页，
@@ -123,21 +124,22 @@ describe("DriftLedgerSection（DOM）", () => {
   });
 
   it("有漂移时把键、计数、后果都渲染出来", async () => {
+    // 〔MOD〕记录那一面由那台后端答（`record-reads.ts::readRecordDrift`），monitor 那一本这里是空的。
     vi.doMock("../../src/ipc/commands", () => ({
       commands: {
-        drift_ledger_report: ({ origin }: { origin: string }) =>
-          Promise.resolve({
-            origin,
-            faces: [
-              {
-                face: "unknown_record_type",
-                consequence: "不显示、不进搜索、不计费",
-                overflowed: false,
-                entries: [{ key: "fork-context-ref", count: 5, first_sample: '{"type":"x"}' }],
-              },
-            ] satisfies DriftFaceReport[],
-          }),
+        drift_ledger_report: ({ origin }: { origin: string }) => Promise.resolve({ origin, faces: [] }),
       },
+    }));
+    vi.doMock("../../src/record-reads", () => ({
+      readRecordDrift: () =>
+        Promise.resolve([
+          {
+            face: "unknown_record_type",
+            consequence: "不显示、不进搜索、不计费",
+            overflowed: false,
+            entries: [{ key: "fork-context-ref", count: 5, first_sample: '{"type":"x"}' }],
+          },
+        ] satisfies ShownFace[]),
     }));
     const { DriftLedgerSection } = await import("../../src/settings/drift-ledger-section");
     const s = new DriftLedgerSection();
@@ -165,7 +167,7 @@ describe("〔ST3 · 未识别的数据按机器分：每台问自己那一本〕
     origin,
     faces: [
       {
-        face: "unknown_record_type",
+        face: "unknown_backend_token",
         consequence: "后果",
         overflowed: false,
         entries: [{ key: `key-of-${origin}`, count: 1, first_sample: null }],
@@ -187,6 +189,7 @@ describe("〔ST3 · 未识别的数据按机器分：每台问自己那一本〕
         },
       },
     }));
+    vi.doMock("../../src/record-reads", () => ({ readRecordDrift: () => Promise.resolve([]) }));
     const ctx = await import("../../src/settings/machine-context");
     ctx.__resetMachineContextForTests();
     const mod = await import("../../src/settings/drift-ledger-section");

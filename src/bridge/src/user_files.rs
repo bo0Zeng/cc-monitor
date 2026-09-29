@@ -82,7 +82,7 @@ pub(crate) trait Door {
 
 // 〔MIG-3a〕`rel_under` / `join_under`〔散文墓碑〕两个字符串拼法随别名那一族进了那台后端（`src/backend/assets/door.rs` 那一份），monitor 零调用方 ⇒ 删。
 
-/// 后端入方向一行的上限（`src/backend/inbound.rs::MAX_LINE_BYTES` 的本侧镜像；两个 crate 引不到对方 ⇒
+/// 后端入方向一行的上限（`src/backend/stream/inbound.rs::MAX_LINE_BYTES` 的本侧镜像；两个 crate 引不到对方 ⇒
 /// `byte_cap_registry` 读两侧源码钉相等）。读改写的写那一半把新内容与读到的那一份装进同一行请求。
 pub(crate) const REQUEST_LINE_CAP: usize = 1 << 20;
 

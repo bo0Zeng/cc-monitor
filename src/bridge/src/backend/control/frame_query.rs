@@ -8,7 +8,7 @@
 //! `--search` / `--list-subagents`）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
 //! 读完 stdout 就断 —— 而同一台机器上**早就有一条**长连接（流模式那条），
 //! 入方向一问一答也早就通了（`inbound_client`）。后端那边这一拍把八条登记上了帧面
-//! （`history-*` / `accounts-*`，`src/backend/read_face.rs`），本模块是 monitor 这一侧的发送端。
+//! （`history-*` / `accounts-*`，`src/backend/faces/read_face.rs`），本模块是 monitor 这一侧的发送端。
 //!
 //! # 走哪条分流
 //!
@@ -49,7 +49,8 @@ pub(crate) const MOVED: &[(&str, &str)] = &[
     ("--read-session", "history-read"),
     ("--read-session-tail", "history-tail"),
     ("--search", "history-search"),
-    ("--list-subagents", "history-subagents"),
+    // 〔MOD〕右列从只列候选的 `history-subagents` 换成出成品的 `history-subagent`（列 ＋ 挑 ＋ 读 ＋ 解析）。
+    ("--list-subagents", "history-subagent"),
     ("--list-accounts", "accounts-list"),
     ("--session-accounts", "accounts-sessions"),
     // 〔SR1a · 09-24〕骨架索引与大纲清单：每开一个大会话就要一次（不是「点一次才发一次」）。
@@ -79,15 +80,14 @@ pub(crate) const BORN_ON_FRAME: &[&str] = &[
     "history-facts",
     // 〔GAP1 · `设计/15 §4.7 S1`〕那台后端自己的 stderr 诊断文件尾部（设置页「日志」经通道直接问；monitor 这一侧从不发它）。
     "backend-log",
+    // 〔MOD · `设计/90 §3` 判据 3〕记录解释进后端之后生在帧面上的两条（界面经通道直接问；monitor 这一侧从不发它们）。
+    "history-page",
+    "drift-report",
 ];
 
-/// 按行一问的期限：30s（与已删的逐次拨号那条路的整体限时同值）。它只盖「远端跑查询 ＋ 回程」，不盖握手。
-pub(crate) const LINES_BUDGET: Duration = Duration::from_secs(30);
+// 〔MOD〕按行一问的期限 `LINES_BUDGET`〔散文墓碑〕删：「按行那几条」最后的发送端（子 agent 列候选）随命令退役。
 /// 一问一页的期限（一次 `history-tail` · 一段 `history-lines`）：与旧逐行读的单次超时同值（60s）。
 pub(crate) const PAGE_BUDGET: Duration = Duration::from_secs(60);
-/// 〔DL1〕[`read_lines`] 那一**件**（subagent 读一整段，分页）的总时限：一次性远端那一趟的天花板，
-/// 直接取 `dial_host::ONE_SHOT_DEADLINE`（NT2 A4 给经池里那条 SSH 的一次性路装的同一个数 —— 对齐、不另起一个）。
-pub(crate) const READ_LINES_BUDGET: Duration = crate::dial_host::ONE_SHOT_DEADLINE;
 /// 〔DL1〕分页读一大份时假定的**最低**速率（字节 / 秒）：「最大那一份在不低于它时读得完」。
 /// ⚠ 暂定、没有读数（`设计/05 §9` 第 1 条「每条路该给多少秒没有证据」照旧开着）。
 pub(crate) const READ_FLOOR_BPS: u64 = 512 * 1024;
@@ -207,28 +207,7 @@ pub(crate) fn who(origin: &Origin) -> String {
     }
 }
 
-/// 按行那六条：`data.lines` 原样拿回（逐行、trim 过、剔空行 —— 与已删的逐次拨号那条路的出参同形）。
-/// 期限由发起方给（一问的值是 [`LINES_BUDGET`]）。
-pub(crate) async fn lines(
-    origin: &Origin,
-    cmd: &str,
-    args: Value,
-    deadline: Deadline,
-) -> Result<Vec<String>, String> {
-    let data = call(origin, cmd, args, deadline).await?;
-    let who = who(origin);
-    let rows = data
-        .get("lines")
-        .and_then(Value::as_array)
-        .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))?;
-    Ok(rows
-        .iter()
-        .filter_map(Value::as_str)
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect())
-}
+// 〔MOD〕按行那几条的出口 `lines`〔散文墓碑〕删：最后的调用方（子 agent 列候选 · 按 argv 分流）随命令退役。
 
 /// `history-tail` 那张图（字段同后端 `history_query::TailPlan`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -278,14 +257,50 @@ pub(crate) async fn tail(
 //   唯一调用方（Tauri 命令 `probe_session_record`）退役，界面经通道直接问后端（`src/session-reads.ts::probeSessionRecord`，
 //   「缺一格不许读成『不在』」那条口径随之搬到 TS 的 `decodeRecord`）。
 
+/// `history-read` 那一页里的一个可计行（〔MOD〕后端出的成品：monitor 不解析记录，只搬）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Row {
+    /// 这一行（含 `\n`）之后那个字节的偏移（后端按原始字节算，说得准）；残尾 ⇒ `None`。
+    pub end: Option<u64>,
+    /// 这一行正文的摘要（后端算，跨进程稳定）—— 续传前核「还是不是那一行」。
+    pub hash: u64,
+    /// 这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
+    pub message: Option<crate::bridge::RecordBody>,
+    /// 这条记录自己的 `cwd`。
+    pub cwd: Option<String>,
+}
+
 /// `history-read` 的一页。
 pub(crate) struct Page {
-    /// 这一页（后端 UTF-8 有损解码过）。切在行尾，区间末尾那一页例外（余下的全给，含 torn 残尾）。
-    pub text: String,
+    /// 这一页里的可计行（次序同文件）。
+    pub rows: Vec<Row>,
     /// 下一页从这里起（原始字节偏移）。
     pub next: u64,
     /// 区间到头了。
     pub eof: bool,
+}
+
+/// 一行成品的形状（后端 `observe/record_page.rs::rows_of`）；不对 ⇒ `None`（整页当形状对不上）。
+pub(crate) fn row_of(v: &Value) -> Option<Row> {
+    let end = match v.get("end")? {
+        Value::Null => None,
+        e => Some(e.as_u64()?),
+    };
+    let message = match v.get("message") {
+        None => None,
+        Some(m) if m.is_object() => Some(crate::bridge::RecordBody::from_json(m.to_string())?),
+        Some(_) => return None,
+    };
+    let cwd = match v.get("cwd") {
+        None => None,
+        Some(c) => Some(c.as_str()?.to_string()),
+    };
+    Some(Row {
+        end,
+        hash: v.get("hash")?.as_u64()?,
+        message,
+        cwd,
+    })
 }
 
 /// 读 `[offset, until)` 的**一页**。
@@ -305,10 +320,13 @@ pub(crate) async fn read_page(
     }
     let data = call(origin, "history-read", args, deadline).await?;
     let who = who(origin);
-    let text = data.get("text").and_then(Value::as_str);
+    let rows = data
+        .get("rows")
+        .and_then(Value::as_array)
+        .and_then(|rs| rs.iter().map(row_of).collect::<Option<Vec<Row>>>());
     let next = data.get("next").and_then(Value::as_u64);
     let eof = data.get("eof").and_then(Value::as_bool);
-    let (Some(text), Some(next), Some(eof)) = (text, next, eof) else {
+    let (Some(rows), Some(next), Some(eof)) = (rows, next, eof) else {
         return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
     };
     if !eof && next <= offset {
@@ -317,201 +335,12 @@ pub(crate) async fn read_page(
             &[("who", &who), ("offset", &offset.to_string())],
         ));
     }
-    Ok(Page {
-        text: text.to_string(),
-        next,
-        eof,
-    })
+    Ok(Page { rows, next, eof })
 }
 
-/// 〔CF2 · 第四波 4B〕`history-lines` 的一段（字段同后端 `history_query::LinesPage`）。
-pub(crate) struct LinesPage {
-    /// 第一条的行号。
-    pub from: u64,
-    /// 可计行的原文（后端只交可计行；第 k 条是第 `from + k` 行）。
-    pub lines: Vec<String>,
-    /// 下一段从这一行起（恒 `from + lines.len()`）。
-    pub next: u64,
-    /// 读过了最后一个完整行。
-    pub eof: bool,
-}
-
-/// 〔CF2 · 第四波 4B〕按**行号**取回第 `[from, upto)` 行的**一段**（`upto` 缺 ＝ 到末尾）。
-///
-/// 期限由发起方给（一问的值同一页 `history-read`：[`PAGE_BUDGET`] —— 后端要从文件头数到 `from`，与读一页同量级）。
-/// ⚠ 应答自己对不上（`from` 不是问的那个 · `next != from + 条数` · 没到头却一条没交）⇒ 当场报错，
-/// 调用方的循环不会空转、取回的正文不会落错行号。
-pub(crate) async fn session_lines(
-    origin: &Origin,
-    path: &str,
-    from: u64,
-    upto: Option<u64>,
-    deadline: Deadline,
-) -> Result<LinesPage, String> {
-    // 形参叫 `upto`（同 [`read_page`]）：`rust_timer_registry` 的 shell 周期唤醒扫描认「until 空格」。
-    let mut args = json!({"path": path, "from": from});
-    if let Some(u) = upto {
-        args["until"] = json!(u);
-    }
-    let data = call(origin, "history-lines", args, deadline).await?;
-    parse_session_lines(origin, from, &data)
-}
-
-/// [`session_lines`] 的应答解释（纯函数）。
-pub(crate) fn parse_session_lines(
-    origin: &Origin,
-    asked: u64,
-    data: &Value,
-) -> Result<LinesPage, String> {
-    let who = who(origin);
-    let from = data.get("from").and_then(Value::as_u64);
-    let next = data.get("next").and_then(Value::as_u64);
-    let eof = data.get("eof").and_then(Value::as_bool);
-    let lines = data.get("lines").and_then(Value::as_array);
-    let (Some(from), Some(next), Some(eof), Some(lines)) = (from, next, eof, lines) else {
-        return Err(copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]));
-    };
-    let lines: Vec<String> = lines
-        .iter()
-        .map(|l| l.as_str().map(str::to_string))
-        .collect::<Option<_>>()
-        .ok_or_else(|| copy_text("rsFrameQuery.reply.badShape", &[("who", &who)]))?;
-    if from != asked || next != from + lines.len() as u64 || (!eof && lines.is_empty()) {
-        return Err(copy_text(
-            "rsFrameQuery.lines.inconsistent",
-            &[
-                ("who", &who),
-                ("asked", &asked.to_string()),
-                ("from", &from.to_string()),
-                ("next", &next.to_string()),
-                ("count", &(lines.len()).to_string()),
-            ],
-        ));
-    }
-    Ok(LinesPage {
-        from,
-        lines,
-        next,
-        eof,
-    })
-}
-
-/// 读整段区间，收成逐行（trim 过、剔空行）—— 与已删的逐次拨号那条路读 `--read-session` 的出参同形。
-///
-/// 〔DL1〕**一件事一个期限**：每一页都拿调用方给的同一个 `deadline`（值是 [`READ_LINES_BUDGET`]），
-/// 越往后剩得越少；总时限一到，停在哪一页就在哪一页说「没在 N 秒内答完」。
-pub(crate) async fn read_lines(
-    origin: &Origin,
-    path: &str,
-    from: u64,
-    upto: Option<u64>,
-    deadline: Deadline,
-) -> Result<Vec<String>, String> {
-    let mut out = Vec::new();
-    let mut offset = from;
-    loop {
-        let page = read_page(origin, path, offset, upto, deadline).await?;
-        out.extend(
-            page.text
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .map(str::to_string),
-        );
-        offset = page.next;
-        if page.eof {
-            return Ok(out);
-        }
-    }
-}
-
-/// `subagent::Backend::query` 远端那一支用的：一条 argv 能不能走帧面、走哪条。
-///
-/// 认得的形状恰好是本仓今天真在发的那几种（`subagent.rs` 与 `session_skeleton.rs` 造的 argv）；
-/// 认不出 ⇒ `None`，调用方当场说「这条查询没有帧命令」（〔C4d〕逐次拨号那条路删了，不回落）。
-pub(crate) enum ArgvRoute {
-    Lines(&'static str, Value),
-    Read {
-        path: String,
-        from: u64,
-        upto: Option<u64>,
-    },
-}
-
-impl ArgvRoute {
-    /// 这条路走的是哪条帧命令（报错与「认不认」那一问用）。
-    pub(crate) fn frame_cmd(&self) -> &'static str {
-        match self {
-            ArgvRoute::Lines(cmd, _) => cmd,
-            ArgvRoute::Read { .. } => "history-read",
-        }
-    }
-
-    /// 〔DL1〕这条路那**一件**该给多少：按行一问 [`LINES_BUDGET`] · 读整段（分页）[`READ_LINES_BUDGET`]。
-    /// 只给值；造期限的那一手在发起方（`subagent·rs::Backend::query`）。
-    pub(crate) fn budget(&self) -> Duration {
-        match self {
-            ArgvRoute::Lines(..) => LINES_BUDGET,
-            ArgvRoute::Read { .. } => READ_LINES_BUDGET,
-        }
-    }
-}
-
-/// 〔C2 · SE1 欠账〕长连接**在**、却**不认**这条帧命令 ⇒ `true`（对面的后端比这条查询老）。
-///
-/// 没有长连接 ⇒ `false`：那是「够不着」（瞬时），不是「对面老」—— 由 [`run_routed`] 照旧报「没有控制通道」。
-/// 与 [`call`] 里那一问是**同一个** `accepts`，只是提前问，让调用方拿到种类而不是一句话。
-pub(crate) fn refuses(origin: &Origin, route: &ArgvRoute) -> bool {
-    inbound_client::client_for(origin.as_wire_str()).is_some_and(|c| !c.accepts(route.frame_cmd()))
-}
-
-pub(crate) fn route_argv(argv: &[&str]) -> Option<ArgvRoute> {
-    match argv {
-        // 〔C4d · 第四波 4B〕`--list-projects` / `--list-sessions` 两形删了：历史清单前端经通道问**本机**常驻后端
-        //   （`history-projects` / `history-sessions` 带 `origin`，它沿池里那条 SSH 去问那台），monitor 这一侧不再有路发它们。
-        ["--list-subagents", parent] => Some(ArgvRoute::Lines(
-            "history-subagents",
-            json!({"parent": parent}),
-        )),
-        // 〔C4c · 第四波 4B〕`--list-accounts` 那一形删了：账号清单前端经通道直接说 `accounts-list`（后端出成品）。
-        // 〔C4b · 第四波 4B〕骨架索引 · 会话内查找 · 大纲清单三形删了（原是 SR1a / SE2 加的三臂）：
-        //   界面经通道直接说 `history-index` / `history-find` / `history-user-inputs`，后端出成品，
-        //   monitor 这一侧再没有任何一条路发它们（`frame_query_tests` 那条「迁过去的只走通道」钉着）。
-        // 〔C4a · 第四波〕`--session-accounts` 那一形删了：「会话 ↔ 账号」前端经通道直接说 `accounts-sessions`，
-        //   monitor 这一侧再没有任何一条路发它（`frame_query_tests` 那条「迁过去的只走通道」钉着）。
-        ["--read-session", path] => Some(ArgvRoute::Read {
-            path: path.to_string(),
-            from: 0,
-            upto: None,
-        }),
-        // `session_skeleton::range_argv` 那一形（选项在前）。
-        ["--read-session-from-offset", "--until", end, path, off] => {
-            let (Ok(end), Ok(off)) = (end.parse::<u64>(), off.parse::<u64>()) else {
-                return None;
-            };
-            Some(ArgvRoute::Read {
-                path: path.to_string(),
-                from: off,
-                upto: Some(end),
-            })
-        }
-        _ => None,
-    }
-}
-
-/// 按 [`route_argv`] 的结论跑那条帧查询，出逐行。期限由发起方给（值见 [`ArgvRoute::budget`]）。
-pub(crate) async fn run_routed(
-    origin: &Origin,
-    route: ArgvRoute,
-    deadline: Deadline,
-) -> Result<Vec<String>, String> {
-    match route {
-        ArgvRoute::Lines(cmd, args) => lines(origin, cmd, args, deadline).await,
-        ArgvRoute::Read { path, from, upto } => {
-            read_lines(origin, &path, from, upto, deadline).await
-        }
-    }
-}
+// 〔MOD · `05 §14.3` C 组〕按行号取一段（`session_lines` / `parse_session_lines`）· 读整段逐行（`read_lines`）·〔散文墓碑〕
+//   一次性查询按 argv 分流（`ArgvRoute` / `route_argv` / `refuses` / `run_routed`）〔散文墓碑〕删了：它们的调用方
+//   （按行号取回 · 子 agent · 按偏移取一段三条 Tauri 命令）退役，界面经通道直问那台后端的成品（`src/record-reads.ts`）。
 
 #[cfg(test)]
 #[path = "../../../../../tests/bridge/backend/control/frame_query_tests.rs"]

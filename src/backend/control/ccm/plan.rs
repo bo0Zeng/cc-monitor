@@ -89,7 +89,7 @@ impl Env {
     /// ⚠ **配置文件那一层是收窄过的**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash，
     /// 里面可以写任意 shell）；这里只认 `KEY=value`（值两侧的成对引号会被剥掉）。
     /// **这不是等价**，登记在模块头注。
-    pub(crate) fn from_process() -> Self {
+    pub(crate) fn from_process(process_argv: &[String]) -> Self {
         use super::argv::Defaults;
         // 〔WIN1〕家目录：`HOME`，没有再退 `USERPROFILE` —— 与本 crate 其余各处同一个口径
         //   （`exit_policy::policy_path` · `asset_catalog` · `panorama`）。从前只认 `HOME`：Windows 上
@@ -134,7 +134,8 @@ impl Env {
             //   而当时这一段只取 `argv[0]`、丢了 `ccm` 那个词 ⇒ 要 shim 把 `$0` 塞进环境变量补回来。
             //   CC1 之后不再丢词 ⇒ **shim 制造的那个问题没了，补丁也就不需要了**
             //   （`设计/01 §6.7b` 逐字「`CCM_SELF` 这个环境变量随之删掉」）。
-            self_argv: super::self_invocation(&std::env::args().collect::<Vec<_>>()),
+            // 〔MOD · ⑮〕argv 由调用方交（`main.rs` 取的那一次），本模块不再自己读。
+            self_argv: super::self_invocation(process_argv),
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             running_sessions: None,

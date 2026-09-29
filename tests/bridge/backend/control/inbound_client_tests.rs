@@ -420,7 +420,7 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
 #[test]
 fn the_e2e_command_list_matches_the_backend_command_table() {
     const SUITE: &str = include_str!("../../../e2e/inbound-backend-frames.sh");
-    const BACKEND_INBOUND: &str = include_str!("../../../../src/backend/inbound.rs");
+    const BACKEND_INBOUND: &str = include_str!("../../../../src/backend/stream/inbound.rs");
 
     // backend 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`
     let i = BACKEND_INBOUND

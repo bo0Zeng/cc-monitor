@@ -4,7 +4,7 @@
  * - **期限**（[`budgetWithin`]）：`设计/05 §3.3.2`「值归调用方 · 执行归通信层」—— 绝对时刻由调用方造，
  *   通信层（`src/ipc/chan.ts`）只执行、从不「重新 `now() + …`」（`X5`）。⇒ 造的那一手住这里，不住成员里。
  * - **JSON**：通道只搬不透明字节，**不知道**载荷长什么样（`§2`：载荷是不透明字节）。
- *   而后端帧面上的每一条命令（`src/backend/inbound.rs` / `read_face.rs`）收一个 JSON 对象、回一个 JSON 值 ——
+ *   而后端帧面上的每一条命令（`src/backend/stream/inbound.rs` / `read_face.rs`）收一个 JSON 对象、回一个 JSON 值 ——
  *   那是**后端的**约定，不是通道的。⇒ 这件事住这里，与 monitor 侧 `chan/host.rs` 那一句
  *   「这个后端说 JSON：载荷在这里才第一次被当成 JSON 读」对称。
  *

@@ -111,7 +111,7 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     //   monitor 不再查远端配置。本机那条路仍没有端口转发（可达表里没有 `<local>` ⇒ 回 `unreachable`，明说）。
     // 〔LOC1a · 第四波 4D〕`remote_branch.rs` 的 `create_remote_branch_session` 那一行**还掉了**：分叉本机远端同走帧命令 `session-fork`，〔散文墓碑〕
     //   不再查远端配置（`client_for(origin)` 对 `<local>` 与远端一视同仁）。
-    ("remote_history.rs", "require_cfg_by_label"),
+    // 〔MOD〕`("remote_history.rs", "require_cfg_by_label")` 摘了：那份文件随子 agent 那条命令删了。
     // 〔SR1b · 09-24〕`inproc_dial.rs` 那一行（跳板那一跳查配置，只服务 SFTP）**还掉了**：界面进程零 SSH，
     //   那份文件整份删了 —— 跳板配置今天由宿主 `dial_host.rs::request` 查（上面 `forward` 那一行同一个家）。
     // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——

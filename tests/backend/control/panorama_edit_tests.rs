@@ -60,7 +60,7 @@ impl Door for RepoDoor {
                 std::fs::write(self.root.join(rel), v).unwrap();
             }
         }
-        crate::inbound::LocalFiles.ask(cmd, args)
+        crate::stream::inbound::LocalFiles.ask(cmd, args)
     }
 }
 

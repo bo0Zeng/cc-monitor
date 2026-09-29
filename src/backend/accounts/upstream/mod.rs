@@ -137,10 +137,16 @@ impl Upstreams {
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
 /// 取值器是**真环境**。回一句给宿主日志看的话。
 /// 〔DEL〕先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
-/// 〔TAP · V124〕tee 的落点是进程级那一个 tap 口（`crate::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
+/// 〔TAP · V124〕tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （`设计/20 §11` I2：② 不碰响应体）。
 pub fn host_relay(home: &std::path::Path) -> String {
-    crate::relay::host(&|k| std::env::var(k).ok(), home, &Boot, crate::tap::port()).to_string()
+    crate::relay::host(
+        &|k| std::env::var(k).ok(),
+        home,
+        &Boot,
+        crate::stream::tap::port(),
+    )
+    .to_string()
 }
 
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）。

@@ -1,6 +1,6 @@
 //! 设计/99 §2.1 ⑬ · F03b：收件箱编辑读写经那台后端自己的文件管理面，写带 CAS（打开之后被改过 ⇒ `stale`、一个字节不写）。
 use super::*;
-use crate::inbound::LocalFiles;
+use crate::stream::inbound::LocalFiles;
 
 /// 读回打开时那一份；照那一份写 ⇒ 成；盘上已被改过 ⇒ `stale`、盘上一个字节不动。
 #[test]

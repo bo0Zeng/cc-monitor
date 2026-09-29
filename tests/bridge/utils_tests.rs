@@ -69,39 +69,7 @@ fn atomic_write_json_replace_keeps_content() {
     let _ = std::fs::remove_file(&tmp);
 }
 
-#[test]
-fn iso_parse_simple() {
-    let ms = parse_iso8601_ms("2026-05-20T15:11:42.345Z").unwrap();
-    assert!(ms > 1_700_000_000_000);
-    assert!(ms < 2_000_000_000_000);
-}
-
-#[test]
-fn iso_parse_no_fraction() {
-    let ms = parse_iso8601_ms("2026-05-20T15:11:42Z").unwrap();
-    assert!(ms > 1_700_000_000_000);
-}
-
-#[test]
-fn iso_parse_bad_returns_none() {
-    assert!(parse_iso8601_ms("not-a-date").is_none());
-}
-
-#[test]
-fn iso_parse_short_frac_normalizes() {
-    // 1 位 frac → 乘 100 to ms
-    let a = parse_iso8601_ms("2026-05-20T00:00:00.5Z").unwrap();
-    let b = parse_iso8601_ms("2026-05-20T00:00:00.500Z").unwrap();
-    assert_eq!(a, b);
-}
-
-#[test]
-fn iso_parse_long_frac_truncates() {
-    // 6 位 frac → 除 1000 to ms（剥 us）
-    let a = parse_iso8601_ms("2026-05-20T00:00:00.123456Z").unwrap();
-    let b = parse_iso8601_ms("2026-05-20T00:00:00.123Z").unwrap();
-    assert_eq!(a, b);
-}
+// 〔MOD〕`parse_iso8601_ms` 那五条随函数删了（按时间戳挑子 agent 那一份进了后端，后端 `search_query` 那份自带判据）。
 
 #[test]
 fn now_ms_increases_monotonically() {

@@ -163,7 +163,7 @@ fn the_dial_only_happens_under_dial_home() {
 #[test]
 fn the_link_arms_are_actually_wired_into_the_dispatch() {
     let inbound_prod =
-        crate::guard_support::production_code(include_str!("../../src/backend/inbound.rs"));
+        crate::guard_support::production_code(include_str!("../../src/backend/stream/inbound.rs"));
     assert!(
         inbound_prod.len() > 3_000,
         "剥完 inbound.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",

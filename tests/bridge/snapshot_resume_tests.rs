@@ -233,46 +233,63 @@ fn pages(text: &str, from: usize, upto: usize, page: usize) -> Vec<(u64, String)
     out
 }
 
-/// 照生产那一遍（`fetch_snapshot`）走：逐页 `page_lines` → 可计行 → `WitnessPick`。
+/// 〔MOD〕后端那一页的逐行成品，在夹具这一侧**自己**造（异源：按原文数行尾、自己算 FNV-1a 64，不调后端也不调被测代码）：
+/// 每个可计行 `{end, hash}`（不进界面 ⇒ 没有成品，这里用不着）。
+fn rows_of_page(off: u64, body: &str) -> Vec<crate::backend::control::frame_query::Row> {
+    let fnv = |b: &[u8]| {
+        b.iter().fold(0xcbf2_9ce4_8422_2325_u64, |h, &x| {
+            (h ^ u64::from(x)).wrapping_mul(0x0000_0100_0000_01b3)
+        })
+    };
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    for seg in body.split_inclusive('\n') {
+        let had_nl = seg.ends_with('\n');
+        let line = seg.strip_suffix('\n').unwrap_or(seg);
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        at += seg.len();
+        if line.trim_start_matches('\u{feff}').trim().is_empty() {
+            continue;
+        }
+        out.push(crate::backend::control::frame_query::Row {
+            end: had_nl.then_some(off + at as u64),
+            hash: fnv(line.as_bytes()),
+            message: None,
+            cwd: None,
+        });
+    }
+    out
+}
+
+/// 照生产那一遍（`fetch_snapshot`）走：逐页的行成品 → 区间（`row_spans`）→ `WitnessPick`。
 fn pick_over(text: &str, how: &Read, plan: &TailPlan, page: usize) -> Option<Option<Witness>> {
     let walk = Walk::new(how, plan);
     let mut pick = WitnessPick::default();
     for (from, upto) in walk.segments().to_vec() {
         for (off, body) in pages(text, from as usize, upto as usize, page) {
-            for (line, span) in page_lines(off, &body) {
-                if !line.trim_start_matches('\u{feff}').trim().is_empty() {
-                    pick.see(upto, plan.end, line, span);
-                }
+            let rows = rows_of_page(off, &body);
+            for (row, span) in rows.iter().zip(row_spans(off, &rows)) {
+                pick.see(upto, plan.end, row.hash, span);
             }
         }
     }
     pick.done()
 }
 
-/// ① 逐行的字节区间：CRLF · 多字节 · 空行都与**从原文独立数出**的区间相等；有损解码（U+FFFD）之后本页余下说不准 ⇒ `None`；
-/// 页末没有换行的残尾 ⇒ `None`。
+/// ① 逐行的字节区间：起点 ＝ 上一个可计行的末端（中间的空白行算进下一行的区间）、末端是后端给的；与**从原文独立数出**的相等；
+/// 残尾（末端 `None`）那一行 ⇒ `None`。
 #[test]
-fn w5vis_page_lines_gives_each_line_its_raw_byte_span() {
-    let text = "{\"a\":1}\r\n\n  \n{\"中文\":\"é\"}\n{\"z\":0}\n";
-    let got = page_lines(100, text);
-    let mut want = Vec::new();
-    let mut start = 0usize;
-    for (i, _) in text.match_indices('\n') {
-        let raw = &text[start..i];
-        want.push((
-            raw.trim_end_matches('\r'),
-            Some((100 + start as u64, 101 + i as u64)),
-        ));
-        start = i + 1;
-    }
-    assert_eq!(got, want, "区间与原文独立数出的不相等");
-    let lossy = "{\"a\":1}\n{\"b\":\"\u{FFFD}\"}\n{\"c\":3}\n{\"torn";
-    let got = page_lines(0, lossy);
-    assert_eq!(got[0].1, Some((0, 8)));
+fn w5vis_row_spans_run_from_one_countable_end_to_the_next() {
+    let text = "{\"a\":1}\r\n\n  \n{\"中文\":\"é\"}\n{\"z\":0}\n{\"torn";
+    let rows = rows_of_page(100, text);
+    let got = row_spans(100, &rows);
+    let e1 = 100 + "{\"a\":1}\r\n".len() as u64;
+    let e2 = 100 + "{\"a\":1}\r\n\n  \n{\"中文\":\"é\"}\n".len() as u64;
+    let e3 = e2 + "{\"z\":0}\n".len() as u64;
     assert_eq!(
-        (got[1].1, got[2].1, got[3].1),
-        (None, None, None),
-        "替换字符之后与残尾都该说不准：{got:?}"
+        got,
+        vec![Some((100, e1)), Some((e1, e2)), Some((e2, e3)), None],
+        "区间与原文独立数出的不相等"
     );
 }
 
@@ -282,42 +299,55 @@ fn w5vis_page_lines_gives_each_line_its_raw_byte_span() {
 fn w5vis_the_witness_tells_an_append_from_a_rewrite_that_grew() {
     let (text, rows) = fixture(120);
     let plan = plan_of(&text, &rows, 40);
+    let read_back =
+        |t: &str, w: &Witness| rows_of_page(w.start, &t[w.start as usize..w.end as usize]);
     for page in [64usize, 1_000, 1 << 20] {
         let w = pick_over(&text, &Read::Full, &plan, page)
             .expect("末端那一段读到了可计行")
-            .expect("全是 UTF-8，区间说得准");
-        let (last_start, last_body) = rows.last().unwrap();
+            .expect("末端说得准");
+        let (_, last_body) = rows.last().unwrap();
         assert_eq!(
-            (w.start, w.end),
-            (*last_start, *last_start + last_body.len() as u64 + 1),
+            w.end,
+            text.len() as u64,
             "页大小 {page}：见证不是最后一个可计行"
         );
-        assert!(witness_holds(&w, &text[w.start as usize..w.end as usize]));
+        assert_eq!(
+            &text[w.start as usize..w.end as usize].trim_start(),
+            &format!("{last_body}\n"),
+            "页大小 {page}：见证区间不是最后那一行（前面只许夹空白行）"
+        );
+        assert!(witness_holds(&w, &read_back(&text, &w)));
         // 追加：前缀原样 ⇒ 同一行。
         let appended = format!("{text}{{\"more\":1}}\n");
-        assert!(witness_holds(
-            &w,
-            &appended[w.start as usize..w.end as usize]
-        ));
+        assert!(witness_holds(&w, &read_back(&appended, &w)));
         // 整份改写而且变长：最后那一行改了一个字、后面又追加了很多 ⇒ 文件比锚长（`plan_read` 照续传），但见证对不上。
         let mut rewritten = text.clone();
-        let at = w.start as usize + 2;
+        let at = w.end as usize - 3;
         rewritten.replace_range(at..at + 1, "#");
         rewritten.push_str(&"{\"grown\":true}\n".repeat(50));
         assert!(rewritten.len() > text.len());
         assert!(
-            !witness_holds(&w, &rewritten[w.start as usize..w.end as usize]),
+            !witness_holds(&w, &read_back(&rewritten, &w)),
             "页大小 {page}：改写过的那一行没被认出"
         );
     }
-    // 读回来的那一段多了一个换行（已不是恰好一行）⇒ 不是。
+    // 读回来的那一段不是恰好一行 / 末端对不上 ⇒ 不是。
+    let one = rows_of_page(0, "abc\n");
     let w = Witness {
         start: 0,
         end: 4,
-        hash: line_hash("abc"),
+        hash: one[0].hash,
     };
-    assert!(witness_holds(&w, "abc\n") && witness_holds(&w, "abc\r\n"));
-    assert!(!witness_holds(&w, "ab\nc\n") && !witness_holds(&w, "abc"));
+    assert!(witness_holds(&w, &one));
+    assert_eq!(
+        rows_of_page(0, "abc\r\n")[0].hash,
+        w.hash,
+        "行尾的 `\\r` 不进摘要"
+    );
+    assert!(
+        !witness_holds(&w, &rows_of_page(0, "ab\nc\n"))
+            && !witness_holds(&w, &rows_of_page(0, "abc"))
+    );
 }
 
 /// ③ 三形：末端那一段一行可计行都没读到 ⇒ 旧见证照留（锚那一行没变）；读到了但说不准 ⇒ 清掉；读到了 ⇒ 换新。
@@ -377,12 +407,12 @@ fn w5vis_the_witness_is_kept_cleared_or_replaced_by_what_the_walk_saw() {
 fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
     fn wired(prod: &str) -> Result<(), String> {
         let at = |a: &str| guard_core::find_pinned(prod, a).map_err(|e| format!("`{a}`：{e}"));
-        let check = at("crate::snapshot_resume::witness_holds(&w, &page.text)")?;
+        let check = at("crate::snapshot_resume::witness_holds(&w, &page.rows)")?;
         let walk = at("crate::snapshot_resume::Walk::new(&how, &plan)")?;
         let full = at("how = crate::snapshot_resume::Read::Full;")?;
         let told = at("change: FileChange::Rewritten.as_wire().to_string(),")?;
         let forgot = at("crate::snapshot_resume::forget(&origin, sid);")?;
-        at("pick.see(upto, plan.end, line, span);")?;
+        at("pick.see(upto, plan.end, row.hash, span);")?;
         let done = at("crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);")?;
         let noted = at("crate::snapshot_resume::note_witness(&origin, sid, pick.done());")?;
         if !(check < forgot && forgot < told && told < full && full < walk) {
@@ -396,7 +426,7 @@ fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs"));
     wired(&prod).unwrap_or_else(|e| panic!("{e}"));
     let old = prod.replacen(
-        "crate::snapshot_resume::witness_holds(&w, &page.text)",
+        "crate::snapshot_resume::witness_holds(&w, &page.rows)",
         "true",
         1,
     );

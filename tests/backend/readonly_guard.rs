@@ -182,7 +182,14 @@ mod tests {
             "alloc_probe",
             "线程级内存量具（整体 cfg(test)，生产构建为空）",
         ),
-        ("common", "两边都要、又不含平台原语的纯工具"),
+        (
+            "common",
+            "两边都要、又不含平台原语的纯工具。\
+             〔MOD · 子步 4 · 主会话裁〕`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖），它的理由原样： \
+             〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
+             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
+             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
         ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
         ("dial", "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处"),
         (
@@ -196,79 +203,11 @@ mod tests {
              那一格 09-21 的处置：**不是把数改对，是把抄来的第二份摘掉**。",
         ),
         (
-            "asset_catalog",
-            "〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
-             「这台机器上有哪些 skill / 项目级 MCP」是**那台机器上**的事实；写的只有后端**自己的**目录文件 \
-             `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
-        ),
-        (
-            "skill_install",
-            "〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
-             （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
-             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：\
-             `skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（被卸那台逐文件比摘要、判删哪几个）；\
-             删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘",
-        ),
-        (
-            "skill_ledger",
-            "〔SU1 · 第四波 4C · V116〕skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
-             它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
-             `~/.cc-monitor/skill-installs.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
-        ),
-        (
-            "asset_sync",
-            "〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
-             在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
-             SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
-             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。〔C4d〕跑远端那一跳与可达表搬去了 `remote_ask`",
-        ),
-        (
-            "history_annotations",
-            "〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
-             `history-last-accounts`。它归 backend-core 是因为主会话 09-25 裁「读写者换成本机常驻后端」；写的只有那一份 \
-             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
-        ),
-        (
-            "history_join",
-            "〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
-             pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为主会话 09-25 裁「join 只一个家，在本机常驻后端」。\
-             **零写盘**：注解只读（`history_annotations::load`）",
-        ),
-        (
-            "tap",
-            "〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
-             它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
-             **零写盘**：只在内存里递事件",
-        ),
-        (
             "stderr_log",
             "〔NT2 · 第四波 4C · S1〕脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件（`设计/15 §4.7 S1`）。\
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
              写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
              见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
-        ),
-        (
-            "own_dir",
-            "〔HX1 · 4D · 主会话裁〕后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
-             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
-             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
-        ),
-        (
-            "remote_ask",
-            "〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
-             帧面 `remote-reach`。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
-             可达表只在本进程内存里",
-        ),
-        (
-            "feature_face",
-            "〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
-             本体在 `observe/`，它只解 `args`、装应答。**零写盘**",
-        ),
-        (
-            "fork_face",
-            "〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
-             它归 backend-core 是因为本体在 `control/` 而家目录的出处在 `observe/`（`control → observe` 反向不许）。\
-             **零写盘**：写的是本体（白名单层那一处 `O_EXCL` 新建），本文件只转交",
         ),
         (
             "footprint",
@@ -280,31 +219,67 @@ mod tests {
             "assets",
             "〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
              它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `inbound.rs::LocalFiles` 递进来的\
-             本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`",
+             本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`。 \
+             〔MOD〕从 crate 根归进来五件（纯搬家；上面「零写盘」说的是 MIG-3a 那几份，`asset_catalog` / `skill_ledger` 写的是后端**自己的**文件），各自理由原样： \
+             `asset_catalog` —— 〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
+             「这台机器上有哪些 skill / 项目级 MCP」是**那台机器上**的事实；写的只有后端**自己的**目录文件 \
+             `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写 · \
+             `asset_sync` —— 〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
+             在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
+             SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
+             `inbound.rs` 递进来，本模块不直呼它（第四层 ④）。〔C4d〕跑远端那一跳与可达表搬去了 `remote_ask` · \
+             `mcp_sync` —— 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
+             它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\
+             **零写盘、零读文件内容**（原文由 `files-peek` 读来，写经 `files-put`；本模块只 stat） · \
+             `skill_install` —— 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
+             （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
+             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。〔SU1 · 第四波 4C · V116〕又多两条只读帧命令：\
+             `skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（被卸那台逐文件比摘要、判删哪几个）；\
+             删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘 · \
+             `skill_ledger` —— 〔SU1 · 第四波 4C · V116〕skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
+             它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
+             `~/.cc-monitor/skill-installs.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
         ),
         (
-            "mcp_sync",
-            "〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
-             它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\
-             **零写盘、零读文件内容**（原文由 `files-peek` 读来，写经 `files-put`；本模块只 stat）",
+            "faces",
+            "〔MOD〕帧面宿主（从 crate 根归进来，纯搬家），各自归 backend-core 的理由原样： \
+             `read_face` —— 〔`C1` · 09-24〕只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
+             本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘** · \
+             `feature_face` —— 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
+             本体在 `observe/`，它只解 `args`、装应答。**零写盘** · \
+             `fork_face` —— 〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
+             它归 backend-core 是因为本体在 `control/` 而家目录的出处在 `observe/`（`control → observe` 反向不许）。\
+             **零写盘**：写的是本体（白名单层那一处 `O_EXCL` 新建），本文件只转交 · \
+             `resync_face` —— 〔RESYNC · V149〕帧面 `resync`（手动对齐）的宿主壳：解 `args`、交 `observe/watcher.rs::resync`、装应答。**零写盘**\
+             （打标改的是 tmux server 的运行期状态，住 `control/identity_tag.rs`）",
         ),
-        ("inbound", "流连接上的入方向（信封 / 分派 / 取消）"),
-        ("listen", "常驻监听口的纯判定（接受循环在 main.rs）"),
+        (
+            "history",
+            "〔MOD〕从 crate 根归进来的两件（纯搬家），各自归 backend-core 的理由原样： \
+             `history_join` —— 〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（记录树 ＋ 合成历史 ＋ \
+             pidfile 判活 ＋ 远端经 `remote_ask`，并上注解）。它归 backend-core 是因为主会话 09-25 裁「join 只一个家，在本机常驻后端」。\
+             **零写盘**：注解只读（`history_annotations::load`） · \
+             `history_annotations` —— 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
+             `history-last-accounts`。它归 backend-core 是因为主会话 09-25 裁「读写者换成本机常驻后端」；写的只有那一份 \
+             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+        ),
+        (
+            "stream",
+            "〔MOD〕进后端的口 ① 帧面 ＋ 跨机问答原语（从 crate 根归进来，纯搬家），各自的理由原样： \
+             `wire` —— 线上协议的帧定义与编解码 · \
+             `inbound` —— 流连接上的入方向（信封 / 分派 / 取消） · \
+             `listen` —— 常驻监听口的纯判定（接受循环在 main.rs） · \
+             `remote_ask` —— 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
+             帧面 `remote-reach`（跨机问答原语，主会话裁归这里）。它归 backend-core 是因为 SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：\
+             可达表只在本进程内存里 · \
+             `tap` —— 〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
+             它归 backend-core 是因为中转住本机常驻后端这个进程（V107），帧从这个进程的 wire 出去。\
+             **零写盘**：只在内存里递事件",
+        ),
         ("observe", "观测面 —— 读，不改变世界"),
         ("platform", "唯一允许平台原语与平台 cfg 的层"),
         ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
-        (
-            "read_face",
-            "〔`C1` · 09-24〕只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
-             本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘**",
-        ),
         ("relay", "HTTP 中转搬字节那半"),
-        (
-            "resync_face",
-            "〔RESYNC · V149〕帧面 `resync`（手动对齐）的宿主壳：解 `args`、交 `observe/watcher.rs::resync`、装应答。**零写盘**\
-             （打标改的是 tmux server 的运行期状态，住 `control/identity_tag.rs`）",
-        ),
-        ("wire", "线上协议的帧定义与编解码"),
         // ── 下面这些整体是 `cfg(test)` 的守卫，生产构建为空 ──────────────────
         // 🔴 **它们也在人群里，这是刻意的**：护栏扫的是「源码里有没有写盘的形状」，
         //    而一条守卫自己偷偷写盘（比如把读数落到盘上）同样违反那条铁律。
@@ -701,7 +676,7 @@ mod tests {
     /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/bridge/filewin/boundary_tests.rs`
     /// 那条「app 侧只许有一条门」）：期望集合只有这一个元素，多出任何一个都红。
     const MUTATING_FACE_DOORS: &[(&str, &str)] = &[(
-        "inbound.rs",
+        "stream/inbound.rs",
         "命令注册那一处 —— 帧面与 CLI 面共用它（`cli_control` 从 `REGISTRY` 派生）。\
          用户那句「只允许后端的文件管理部分写文件」在源码上的形态就是：\
          够得到写原语的**只有**这里那几条 `files-*` 写命令",
@@ -751,7 +726,7 @@ mod tests {
              只建 `work/` 那一层目录；失败删自己的临时文件。线上入口只有 `inbound.rs` 的 `apikey-key-set`",
         ),
         (
-            "asset_catalog.rs",
+            "assets/asset_catalog.rs",
             "〔AS2 · 第四波 4B · V113〕**资产目录** `~/.cc-monitor/assets-catalog.json`：这台看到的 skill / 项目级 MCP \
              ＋ 别的后端同步来的各台快照。文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据\
              （用户的 skill 与 `.mcp.json` 本模块一个字节都不写）。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；只建 \
@@ -759,7 +734,7 @@ mod tests {
              `assets-catalog` / `assets-catalog-merge`（＋ 派生的 CLI 面）",
         ),
         (
-            "history_annotations.rs",
+            "history/history_annotations.rs",
             "〔C4d · 第四波 4B〕**历史注解**那一份文件（星标 / 改名 / 隐藏 / 上次账号；就是 monitor 从前读写的 \
              `<monitor 数据目录>/history-metadata.json`，路径由 monitor 起本机后端时交 `CCM_HISTORY_METADATA`）。主会话 09-25 裁 \
              「读写者换成本机常驻后端、文件留在原处」：它是界面的注解、只有我们读写 ⇒ 后端**自己的**状态，不是用户数据\
@@ -789,13 +764,13 @@ mod tests {
              入口只有 `main.rs`（CLI 子命令 `--resident-ensure` · 常驻载体绑上口之后那一处）",
         ),
         (
-            "own_dir.rs",
+            "common/own_dir.rs",
             "〔HX1 · 4D · 主会话裁 HX1 拍板项 4〕**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
              不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
         ),
         (
-            "skill_ledger.rs",
+            "assets/skill_ledger.rs",
             "〔SU1 · 第四波 4C · V116〕**skill 装记录** `~/.cc-monitor/skill-installs.json`：从别的机器装到这台的 skill，装时写进了哪几个文件 \
              （各自的摘要 ＋ 装之前在不在）。用户裁「要，只删装时写进去的文件」—— 卸只删这里记着的。文件名 / 格式 / 落点都是本仓定的、\
              只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（skill 目录里的文件本模块一个字节都不写不删）。`O_EXCL` 建临时文件 → \
@@ -830,7 +805,7 @@ mod tests {
     /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
-            "inbound.rs",
+            "stream/inbound.rs",
             "命令注册那一处 —— `exit-policy-set` 与〔RM1a〕`apikey-key-set` 各一条（帧面与派生的 CLI 面共用）；\
              〔AS2〕资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；〔C4d〕历史注解那两条（`history-annotate` / `history-forget`）；\
              〔SU1〕skill 装记录那一条（`skill-install-record`）。\
@@ -862,21 +837,25 @@ mod tests {
         (
             "control/exit_policy.rs",
             "exit_policy::answer_set",
-            "inbound.rs",
+            "stream/inbound.rs",
         ),
         (
             "accounts/upstream/file_face.rs",
             "file_face::answer_set",
-            "inbound.rs",
+            "stream/inbound.rs",
         ),
         // 〔AS2〕三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
         // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许 `inbound.rs` 碰。
-        ("asset_catalog.rs", "asset_catalog::answer_", "inbound.rs"),
+        (
+            "assets/asset_catalog.rs",
+            "asset_catalog::answer_",
+            "stream/inbound.rs",
+        ),
         // 〔C4d〕两条写口同一个前缀（`answer_annotate` · `answer_forget`）⇒ 针取前缀；读口 `last_accounts` / `load` 不在针上。
         (
-            "history_annotations.rs",
+            "history/history_annotations.rs",
             "history_annotations::answer_",
-            "inbound.rs",
+            "stream/inbound.rs",
         ),
         // 〔RK1〕中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/door.rs", "door::ensure_key", "relay/listen.rs"),
@@ -884,13 +863,17 @@ mod tests {
         // 针取模块前缀：装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰。
         ("stderr_log.rs", "stderr_log::", "main.rs"),
         // 〔SU1〕一条写口 `answer_record` ⇒ 针取前缀同上两条；读口 `load_at` / `read_at` / `ledger_path` / `digest_of` 不在针上（`skill_install.rs` 读它合法）。
-        ("skill_ledger.rs", "skill_ledger::answer_", "inbound.rs"),
+        (
+            "assets/skill_ledger.rs",
+            "skill_ledger::answer_",
+            "stream/inbound.rs",
+        ),
         // 〔HOST〕针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
         ("control/resident.rs", "resident::", "main.rs"),
         // 〔HX1〕后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
-            "own_dir.rs",
-            "own_dir::ensure_private_dir",
+            "common/own_dir.rs",
+            "common::own_dir::ensure_private_dir",
             "control/files_commit.rs",
         ),
     ];
@@ -1389,7 +1372,7 @@ mod tests {
          没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
     ),
     (
-        "own_dir.rs",
+        "common/own_dir.rs",
         "〔HX1 · 4D〕后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
     )];
@@ -1675,8 +1658,9 @@ mod tests {
     /// 若两侧取自同一张表（比如拿 `REGISTRY` 去比 `REGISTRY`）就是恒真。
     #[test]
     fn inside_the_door_only_the_file_manager_commands_reach_the_mutating_face() {
-        let src = std::fs::read_to_string(crate::guard_support::src_root().join("inbound.rs"))
-            .expect("读 inbound.rs");
+        let src =
+            std::fs::read_to_string(crate::guard_support::src_root().join("stream/inbound.rs"))
+                .expect("读 inbound.rs");
         let prod = guard_core::production_code(&src);
         // 〔F7c · 第三波 09-24〕第三层从此两个模块 ⇒ 针按登记表**派生**（每个模块一根），不手写第二份。
         let needles: Vec<String> = MUTATING_FACE_MODULES
@@ -1752,7 +1736,7 @@ mod tests {
     ///
     /// 1. 例外那根围栏针 `fenced_session_file(` 在后端生产树里**恰好一处调用**（不算它自己的定义），
     ///    而且那一处住在 `delete_session_with` 的函数体里；
-    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**写面模块引用它；
+    /// 2. 适配层那个「按 sid 找要删的那一份」的入口，后端生产树里**只有**适配层自家注册表引用它，注册表的窄口只有门引用（〔MOD〕改经门）；
     /// 3. 写面登记里那条命令的 `args` **恰好是** `["sid"]`；
     /// 4. 真跑：多给一个 `path` ⇒ `bad_args`（「只收 sid」是行为，不只是登记）。
     #[test]
@@ -1761,8 +1745,10 @@ mod tests {
         let call = format!("fenced_session_file{}", "(");
         let def = format!("fn {call}");
         let locate = format!("session_file_for_delete{}", "");
+        let port = format!("locate_session_for_{}", "delete");
         let mut calls: Vec<(String, String)> = Vec::new();
         let mut locators: std::collections::BTreeSet<String> = Default::default();
+        let mut port_users: std::collections::BTreeSet<String> = Default::default();
         let mut scanned = 0usize;
         for path in core_files() {
             if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs") {
@@ -1794,7 +1780,10 @@ mod tests {
                 }
             }
             if prod.contains(locate.as_str()) && rel != "agents/claudecode/paths.rs" {
-                locators.insert(rel);
+                locators.insert(rel.clone());
+            }
+            if prod.contains(port.as_str()) && rel != "agents/mod.rs" {
+                port_users.insert(rel);
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
@@ -1807,10 +1796,17 @@ mod tests {
             "\n删会话那一道（`{call}`）必须**恰好一处调用**、住 `delete_session_with`。\n\
              多出来的每一处都是把「能删会话文件」借给了第二个函数。"
         );
+        // 〔MOD · 子步 4〕落点那一问改经门：适配层那个入口只有它自家注册表那一行引用，
+        //   注册表的窄口（`agents::locate_session_for_delete`）只有门（命令注册那一处）引用、递给写面。
         assert_eq!(
             locators.into_iter().collect::<Vec<_>>(),
-            vec!["control/files_write.rs".to_string()],
-            "「按 sid 找要删的那一份」只许写面模块引用 —— 别的面拿到它就等于拿到了删会话的落点"
+            vec!["agents/claudecode/mod.rs".to_string()],
+            "「按 sid 找要删的那一份」只许适配层自家注册表那一行引用 —— 别的面拿到它就等于拿到了删会话的落点"
+        );
+        assert_eq!(
+            port_users.into_iter().collect::<Vec<_>>(),
+            vec!["stream/inbound.rs".to_string()],
+            "删会话落点的窄口只许门引用（它递给写面）—— 别的面拿到它就等于拿到了删会话的落点"
         );
         let spec = crate::control::files_write::MANAGE_COMMANDS
             .iter()
@@ -1821,9 +1817,14 @@ mod tests {
             &["sid"],
             "删历史会话那条命令**只收 sid** —— 多一个入参就多一种表达「另一份文件」的办法"
         );
+        let port = crate::control::files_write::SessionPort {
+            locate: crate::agents::locate_session_for_delete,
+            is_record: crate::agents::is_session_record,
+        };
         match crate::control::files_write::answer_wire(
             "files-delete-session",
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
+            &port,
         ) {
             Err((code, _)) => assert_eq!(code, "bad_args", "多给一个 `path` 该回 bad_args"),
             Ok(v) => panic!("🔴 多给了一个 `path`，删会话那条竟然答了：{v}"),
@@ -1840,7 +1841,7 @@ mod tests {
     ///
     /// 人群：后端生产树里**调**会话形状判定（`is_session_record_path(` / `is_session_record_file(`，
     /// 不算定义行）的 `(文件, 所在函数)`，逐行现打。
-    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」）·
+    /// 期望：删历史会话那一条要的三处 —— 写面 `fenced_session_file`（「要删的必须**是**会话」；〔MOD〕经门递进来的 `SessionPort.is_record` 问）·
     /// 适配层 `session_file_for_delete_in`（按 sid 找到之后再判一次形状）· 适配层 `is_session_record_path`
     /// （`&Path` 门面，调字符串那一份）。期望取自 `files-delete-session` 那条既有裁决（RW1「只收 sid」），
     /// 不从判定本家现推（异源）。
@@ -1851,9 +1852,11 @@ mod tests {
     #[test]
     fn the_file_manager_face_never_asks_the_session_shape() {
         fn session_shape_calls(rel: &str, prod: &str) -> Vec<(String, String)> {
+            // 〔MOD · 子步 4〕写面今天经门递进来的窄口问（`SessionPort.is_record`），不再直呼适配层那个名字 ⇒ 第三根针。
             let needles = [
                 format!("is_session_record_{}(", "path"),
                 format!("is_session_record_{}(", "file"),
+                format!("is_{}(", "record"),
             ];
             let mut cur_fn = String::new();
             let mut out = Vec::new();
@@ -2377,7 +2380,7 @@ mod tests {
                             continue;
                         }
                         // 〔HX1〕带权限位建目录：只在建自家目录的那一个模块里放行。
-                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "own_dir.rs" {
+                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "common/own_dir.rs" {
                             continue;
                         }
                         // 🔴 〔波 5 ㈡〕第三层那个**闭集**：只在第三层模块里放行，别处照旧红。
@@ -3577,20 +3580,20 @@ mod g6_staged_zero {
             "跨 crate",
         ),
         // 〔步 7c 剖分 2026-09-19 · C 类〕住址跟着**判据**搬：这两条的第二栏是判据名，
-        // 而那两条判据这一轮从 `src/backend/wire.rs` 的测试段搬进了
-        // `tests/backend/wire_tests.rs`。**表的条数一格没变。**
+        // 而那两条判据这一轮从 `src/backend/stream/wire.rs` 的测试段搬进了
+        // `tests/backend/stream/wire_tests.rs`。**表的条数一格没变。**
         // ⚠ 顺带收紧了一格：旧住址（生产段那份 `wire.rs`）里今天只剩一句**散文**提到
         //   第一个名字 —— 存在性检查在散文上照样过，而那不是「判据还在」。
         //   指到判据真住的那份文件之后，它认的是那个 `fn` 本身。
         (
-            "tests/backend/wire_tests.rs",
+            "tests/backend/stream/wire_tests.rs",
             "production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen",
             "`main.rs` 生产段给 `homes` 赋值**恰好 1 处**且逐字是空构造",
             "自己就是那条判据",
             "本 crate",
         ),
         (
-            "tests/backend/wire_tests.rs",
+            "tests/backend/stream/wire_tests.rs",
             "the_backend_can_already_discover_homes_it_just_does_not_send_them",
             "反锚：发现能力**还在**（合成夹具走真发现路 + 精确字节断言）",
             "自己就是那条判据",
@@ -4482,6 +4485,14 @@ mod g6_dependency_signoff {
             "〔CZ1 · 2026-09-25〕只给 vendored russh 副本算指纹（`dial_compress_tests` 的 V1：盘上每一份 == `VENDOR.md` 登记的 sha256）。\
              **只在测试期链接**，不进发布二进制；版本是 russh 那棵树早已锁着的 `0.11.0`（不新增包）。纯内存摘要 —— 它不开文件，\
              读副本的是判据自己（经 `guard_core::scan_tree_excluding`）",
+        ),
+        (
+            "ts-rs",
+            DEV_DEPS,
+            UNMEASURED,
+            "〔MOD · 2026-09-28〕记录的线上形状（`agents/claudecode/schema.rs`）导出 TS 类型用（`#[cfg_attr(test, derive(ts_rs::TS))]`）。\
+             **只在测试期链接**，不进发布二进制；写面只有 `cargo test` 里 `export_bindings_*` 往 `src/generated/` 写生成物 —— \
+             与 monitor 那一侧同一个用法（C01），版本是 monitor 那份 lock 早已解析的 `12.0.1`",
         ),
         (
             "shell-quote-core",

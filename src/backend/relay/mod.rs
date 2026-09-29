@@ -89,7 +89,7 @@
 //! `裁-2`（PM 08-25）要 tee 走「每次响应一个新文件（`O_EXCL` 新建）」；只读护栏的默认层把标准库里「新建文件」的每一种
 //! 写法都禁掉了，绕开它的三条路（把调用放进白名单模块 / 类型别名改写 / 直走 `libc`）都是「让护栏变瞎」⇒ 不落文件。
 //! 中转住常驻后端进程里（`listen::host`，本机 V107 · 远端 V139），那个进程的 stdout 在 stdio 载体上**就是 wire** ⇒ 也不落 stdout：
-//! 〔TAP · V124〕落宿主交下来的 tap 口（`TeeSink::to_port`，宿主 `crate::tap`），事件变成 `tap` 帧走 wire 自己那条有界通道。
+//! 〔TAP · V124〕落宿主交下来的 tap 口（`TeeSink::to_port`，宿主 `crate::stream::tap`），事件变成 `tap` 帧走 wire 自己那条有界通道。
 //! 挡着它的判据：`host_tests::the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout`
 //! （真子进程走生产接线，转发之后 stdout 上零 tee 输出）。
 //! 〔DEL〕先前独立的 `--relay` 进程把 tee 写成 NDJSON 行落自己的 stdout（零消费者）—— 那一形随它删了。
@@ -194,7 +194,7 @@
 //!
 //! ## 许引
 //!
-//! `crate::common::…` · `crate::platform::…` · `crate::wire`（通用面），
+//! `crate::common::…` · `crate::platform::…` · `crate::stream::wire`（通用面），
 //! 以及标准库与本层内部模块。**其余一律走入参**（`E6`）—— `home` 就是活标本。
 //!
 //! ## 反过来：**别处不许伸手进来**
@@ -257,7 +257,7 @@ mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节�
 /// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
 pub(crate) use listen::{host, ENV_PORT};
 
-/// 〔TAP · V124〕tee 的第二个落点的口与它交出去的那件事（宿主 `crate::tap` 实现口、把事件转成 `tap` 帧）。
+/// 〔TAP · V124〕tee 的第二个落点的口与它交出去的那件事（宿主 `crate::stream::tap` 实现口、把事件转成 `tap` 帧）。
 /// 字段语义与「位置号原位说缺口」住 `tee.rs` 头注「第二个落点」。
 pub(crate) use tee::{TapBody, TapEvent, TapPort};
 

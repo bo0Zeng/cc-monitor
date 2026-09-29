@@ -445,7 +445,7 @@ fn the_token_value_never_reaches_a_log_macro() {
 /// 「不在 tmux 会话里：程序退了只能 resume」。
 #[test]
 fn container_maps_every_tag_outcome_to_the_hand_written_table() {
-    use crate::wire::SessionContainer;
+    use crate::stream::wire::SessionContainer;
     let table: Vec<(Outcome, Option<SessionContainer>)> = vec![
         (Outcome::Tagged("$1".into()), Some(SessionContainer::Tmux)),
         (Outcome::AlreadyCurrent, Some(SessionContainer::Tmux)),

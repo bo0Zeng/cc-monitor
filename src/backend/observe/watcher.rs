@@ -55,7 +55,7 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
-use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter};
+use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
@@ -2169,22 +2169,31 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
 }
 
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
+///
+/// 〔MOD〕这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::stream_record_face`）；
+/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。
 fn send_line(session_id: &str, path_str: &str, line: ReadLine, sink: &mut FrameSink) {
-    // backend-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
-    // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
-    let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
-        .ok()
-        .and_then(|v| crate::observe::turn_detect::turn_end_uuid(&v).map(str::to_string));
+    let face = crate::agents::stream_record_face();
+    let parsed = face.and_then(|f| match (f.parse)(&line.raw) {
+        Ok(Some(p)) if p.displayable => Some(p),
+        _ => None,
+    });
+    // §2.1 不变量并存：Line 逐行照发**每一条**；turn-end 是额外的边沿信号，不替代、不过滤 Line。
+    let turn_uuid = face.and_then(|f| f.turn_end).and_then(|t| t(&line.raw));
+    let (message, cwd) = match parsed {
+        Some(p) => (Some(p.message), p.cwd),
+        None => (None, None),
+    };
     sink.send(Frame::Line {
         session_id: session_id.to_string(),
         path: path_str.to_string(),
         seq: line.seq,
-        raw: line.raw,
+        message,
+        cwd,
         byte_offset: line.byte_offset, // backend-01 gap#2：累计原始字节（对齐 aterm LineFramer）
     });
     // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
-    // 方案 C raw-per-record、backend 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
-    // #backend 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
+    // TurnEnd 不带 byte_offset（只 Line 带）。
     if let Some(uuid) = turn_uuid {
         sink.send(Frame::TurnEnd {
             session_id: session_id.to_string(),
@@ -2539,7 +2548,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
 
 /// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，
 /// 回（容器，这次真写了没有）。`tag()` 自带「值一样就不动」⇒ 对账不多写一次。
-fn tag_identity(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+fn tag_identity(pid: u32, sid: &str) -> (Option<crate::stream::wire::SessionContainer>, bool) {
     let outcome = crate::control::identity_tag::tag(pid, sid);
     if let Some(note) = outcome.failure_note(pid, sid) {
         tracing::warn!("{note}");
