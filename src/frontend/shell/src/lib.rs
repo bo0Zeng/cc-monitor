@@ -445,8 +445,12 @@ pub(crate) fn fit_window_to_work_area(w: &tauri::WebviewWindow) {
         pos.x,
         pos.y
     );
-    let _ = w.set_size(tauri::PhysicalSize::new(iw, ih));
-    let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+    if let Err(e) = w.set_size(tauri::PhysicalSize::new(iw, ih)) {
+        tracing::warn!("窗口 {} 缩不进工作区：{e}", w.label());
+    }
+    if let Err(e) = w.set_position(tauri::PhysicalPosition::new(x, y)) {
+        tracing::warn!("窗口 {} 挪不进工作区：{e}", w.label());
+    }
 }
 
 // 〔RL1 · V107〕这里先前是 `D7 阻-3` 那条缝（`ExitShutdownSinks` ＋ 它的收口点）：退出臂按现问的「退出行为」

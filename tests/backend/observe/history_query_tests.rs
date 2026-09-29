@@ -353,7 +353,7 @@ fn a_machine_without_a_projects_dir_lists_nothing_and_an_unreadable_one_says_so_
         std::fs::create_dir_all(&root).unwrap();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o000)).unwrap();
         // root 跑测试时权限位拦不住读 —— 那一格判不了，如实跳过而不是假绿（同 `tasks_query_tests`）。
-        let perms_bite = std::fs::read_dir(&root).is_err();
+        let perms_bite = std::fs::File::open(&root).is_err();
         let got = list_projects_into(&tmp, &mut out);
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
         if perms_bite {
