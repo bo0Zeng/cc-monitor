@@ -1299,7 +1299,7 @@
     },
     "deploy.refused.unsupportedMachine": {
       "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备后端。它的会话不会自动接上。",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的后端。它的会话不会自动接上。",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.osUnknown": {
@@ -1314,12 +1314,12 @@
     },
     "deploy.refused.notPromisedHere": {
       "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这一种的后端今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "zh": "{machine} 是 {os} 机器，这种系统的后端只在本机用，不装到远程机器上。",
       "args": ["machine", "os"]
     },
     "deploy.refused.notPromisedLocal": {
       "kind": "error",
-      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
+      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.notCarried": {
@@ -1329,7 +1329,7 @@
     },
     "panorama.refused.unsupportedMachine": {
       "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备代码全景组件。那台机器上看不了代码全景。",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的代码全景组件。那台机器上看不了代码全景。",
       "args": ["machine", "os", "arch"]
     },
     "panorama.refused.osUnknown": {
@@ -1344,12 +1344,12 @@
     },
     "panorama.refused.notPromisedHere": {
       "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这一种的代码全景组件今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "zh": "{machine} 是 {os} 机器，这种系统只在本机放代码全景组件，不装到远端。",
       "args": ["machine", "os"]
     },
     "panorama.refused.notPromisedLocal": {
       "kind": "error",
-      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
+      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
       "args": ["machine", "os", "arch"]
     },
     "panorama.refused.notCarried": {
@@ -2029,7 +2029,7 @@
     },
     "ccBus.send.ghost": {
       "kind": "body",
-      "zh": "已投递给 {id}，但这个名字没在总线上登记过。今天没有进程会读它的收件箱，名字打错了吗？",
+      "zh": "已投递给 {id}，但这个名字没在总线上登记过。现在没有进程会读它的收件箱，名字打错了吗？",
       "args": ["id"]
     },
     "ccBus.send.unknownLive": {
@@ -2074,7 +2074,7 @@
     },
     "ccBus.kill.staleOnly": {
       "kind": "body",
-      "zh": "{id} 的登记摘掉了，会话没动：这个名字今天挂在别人的会话上。",
+      "zh": "{id} 的登记摘掉了，会话没动：这个名字现在挂在别人的会话上。",
       "args": ["id"]
     },
     "ccBus.kill.nothing": {
@@ -2414,7 +2414,7 @@
     },
     "inboxView.save.saved": {
       "kind": "body",
-      "zh": "已保存（后端已读回逐字节比对）",
+      "zh": "已保存",
       "args": []
     },
     "inboxView.reload.readFailed": {
@@ -5539,7 +5539,7 @@
     },
     "remoteConfig.remoteConfigUnrecognized.unrecognized": {
       "kind": "body",
-      "zh": "认不出远端配置，这里一台机器都不显示。config.json 的 remote 段没有 hosts 列表（旧的单台写法不再认）；在这里重新添加机器，会按新写法存下来。",
+      "zh": "认不出 config.json 里的远端配置，这里一台机器都不显示。在这里重新添加机器即可。",
       "args": []
     },
     "remoteHealth.bindRemoteHealthToast.noMessage": {
@@ -6221,7 +6221,7 @@
     },
     "machineAliases.rc.previewHint": {
       "kind": "body",
-      "zh": "看一眼装进去的那一块长什么样，和装的那一下是同一份。",
+      "zh": "看一眼要装进去的那一块长什么样。",
       "args": []
     },
     "machineAliases.rc.preview": {
@@ -7429,7 +7429,7 @@
     },
     "accounts.row.modelHint": {
       "kind": "body",
-      "zh": "这个账号起会话时默认使用的模型，如 opus 或 sonnet；留空就跟随账号自身的默认。只对 cc-monitor 发起的会话生效，终端里手敲 ccm 暂不认这条偏好。",
+      "zh": "这个账号起会话时默认使用的模型，如 opus 或 sonnet；留空就跟随账号自身的默认。只对 cc-monitor 发起的会话生效，终端里手敲 ccm 不认这条偏好。",
       "args": []
     },
     "accounts.row.model": {
@@ -7574,7 +7574,7 @@
     },
     "accounts.table.bulkGone": {
       "kind": "body",
-      "zh": "批量对齐已下线。请在会话右键菜单的「换号重启」里逐个切换账号。",
+      "zh": "要换账号，在会话右键菜单的「换号重启」里逐个换。",
       "args": []
     },
     "accounts.table.switchScope": {
@@ -7827,7 +7827,7 @@
     },
     "accounts.apikeyEditor.noRow": {
       "kind": "body",
-      "zh": "{name}：API key 表里还没有它那一行，它的会话今天走官方直连。",
+      "zh": "{name}：API key 表里还没有它那一行，它的会话现在走官方直连。",
       "args": ["name"]
     },
     "accounts.apikeyEditor.hasRow": {
@@ -7847,7 +7847,7 @@
     },
     "accounts.apikeyFile.legacyTop": {
       "kind": "body",
-      "zh": "顶层那一把（历史格式）：已配置 {masked}。它照常还能用，但界面不再往那一格写。",
+      "zh": "顶层那一把：已配置 {masked}，照常能用；界面不改它。",
       "args": ["masked"]
     },
     "accounts.apikeyFile.editHint": {
@@ -7992,7 +7992,7 @@
     },
     "settingsPanel.fallback.body": {
       "kind": "body",
-      "zh": "{why}。下面这几块本该在每台机器自己的页面上，现在临时留在这里；它们都还能用，只是位置不对。",
+      "zh": "{why}。这几块先放在这里，照常能用。",
       "args": ["why"]
     },
     "settingsPanel.nav.machines": {
@@ -8646,7 +8646,7 @@
     },
     "ccBus.build.installHint": {
       "kind": "body",
-      "zh": "把仓内那份 cc-bus 装到 ~/.claude/skills/cc-bus/（幂等；覆盖前自动留备份）",
+      "zh": "把 cc-monitor 自带的那份 cc-bus 装到 ~/.claude/skills/cc-bus/（覆盖前自动留备份）",
       "args": []
     },
     "ccBus.build.install": {
@@ -9116,7 +9116,7 @@
     },
     "plugins.build.intro": {
       "kind": "body",
-      "zh": "这一页列出这台机器上登记的 Claude Code marketplace，和每个 marketplace 声明的插件数。它回答的是「有哪些插件可以装」，不是「装了哪些 / 启用了哪些」—— 后者今天在盘上没有真相源，与其猜一个数字给你看，不如说清这一点。只读、按需读一次，不后台轮询。",
+      "zh": "这一页列出这台机器上登记的 Claude Code marketplace，和每个 marketplace 声明的插件数。它说的是「有哪些插件可以装」，不是「装了哪些 / 启用了哪些」，后者查不到。只读，打开时读一次。",
       "args": []
     },
     "plugins.updated.date": {
@@ -9489,7 +9489,7 @@
     },
     "configSurface.remote.unanswered": {
       "kind": "body",
-      "zh": "这台机器（{machine}）的足迹还查不了。要那台机器上的后端来答，它这一版还答不了。",
+      "zh": "这台机器（{machine}）的足迹查不了：那台的后端答不上来。",
       "args": ["machine"]
     },
     "configSurface.scopes.intro": {
@@ -9614,7 +9614,7 @@
     },
     "configSurface.undo.manual": {
       "kind": "body",
-      "zh": "暂无自动撤销；如需清理请按上面的路径手动处理",
+      "zh": "cc-monitor 撤不了；要清理请按上面的路径手动处理",
       "args": []
     },
     "configSurface.undo.fenced": {
@@ -10387,7 +10387,7 @@
     },
     "rsFilewinProc.bin.notFound": {
       "kind": "error",
-      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n安装包里带着它（装完与主程序在同一个目录）。走到这一句多半是两种情形之一：① 手里是 Release 页上那个单文件版，它不带随包程序，出路是装一次安装包；② 开发树里第二个程序还没编译，出路是 cargo build --bin {binStem}。要指定别处的一份，设环境变量 {binEnv}。",
+      "zh": "找不到文件窗口程序（{binStem}）。看过这几处：{looked}\n它随安装包一起装，和主程序在同一个目录；单文件版不带它，装一次安装包就有。要用别处的一份，设环境变量 {binEnv}。",
       "args": ["binStem", "looked", "binEnv"]
     },
     "rsFilewinProc.selfPath.failed": {
@@ -10487,12 +10487,12 @@
     },
     "rsSftp.identity.oldEntry": {
       "kind": "body",
-      "zh": "那里是旧版 cc-monitor 放的三行 ccm 入口，换成后端本身",
+      "zh": "那里是旧版 cc-monitor 放的 ccm 入口，换成了新版",
       "args": []
     },
     "rsSftp.legacyBackend.removed": {
       "kind": "body",
-      "zh": "旧版放的后端 {rel} 认出是 cc-monitor 编的，已删掉（今天后端就是 ~/.cc-monitor/bin/ccm）。",
+      "zh": "旧版 cc-monitor 放的后端 {rel} 已删掉。",
       "args": ["rel"]
     },
     "rsSftp.legacyBackend.kept": {
@@ -12434,7 +12434,7 @@
     },
     "rsLocalBackend.resolve.notBeside": {
       "kind": "error",
-      "zh": "这一份 monitor 旁边没有本机后端（{stem}）。它随安装包一起发，装完与 monitor 在同一个目录。旁边没有不等于这台机器上没有：产物里内嵌了本机后端时，monitor 会自己释放一份再起它，那一步成没成由它自己报。两条都没有时，装一次安装包（Releases 页）。远端功能不受影响。",
+      "zh": "monitor 旁边没有本机后端（{stem}）。它随安装包一起装，和 monitor 在同一个目录；装一次安装包（Releases 页）就有。远端功能不受影响。",
       "args": ["stem"]
     },
     "rsBackendControl.handle.missing": {
@@ -13501,12 +13501,12 @@
     },
     "rsDialHost.local.absent": {
       "kind": "error",
-      "zh": "本机后端不在，远端连不了。远端的 SSH 由本机后端来拨，等了 {ms} 毫秒还没连上本机后端。到设置 → 后端里看本机后端的状态",
+      "zh": "本机后端不在，远端连不了：等了 {ms} 毫秒还没连上本机后端。到设置 → 后端里看本机后端的状态",
       "args": ["ms"]
     },
     "rsDialHost.local.tooOld": {
       "kind": "error",
-      "zh": "本机后端太旧，重开 monitor 后再试。远端的 SSH 与 SFTP 从这一版起由本机后端来做，要先停掉旧的本机后端。",
+      "zh": "本机后端太旧，远端连不了。停掉旧的本机后端、重开 monitor 后再试。",
       "args": []
     },
     "rsLinkMux.b64.badChar": {
@@ -13784,7 +13784,7 @@
     },
     "rsLaunch.posix.noTerminalWindow": {
       "kind": "body",
-      "zh": "本机不是 Windows：cc-monitor 刻意不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
+      "zh": "本机不是 Windows，cc-monitor 不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
       "args": []
     },
     "beTerminal.refuse.empty": {
@@ -15408,7 +15408,7 @@
     },
     "accounts.local.emptyNext": {
       "kind": "body",
-      "zh": "下一步：在这台机器上装好 cc-acct-iso，跑一次初始化。现在这个登录态会收进第一个隔离账号。cc-monitor 还不能在本机这一侧替你装，先在终端里做。",
+      "zh": "下一步：在这台机器上装好 cc-acct-iso，跑一次初始化。现在这个登录态会收进第一个隔离账号。cc-monitor 不在本机替你装，要在终端里做。",
       "args": []
     },
     "accounts.local.emptyTitle": {
@@ -15548,7 +15548,7 @@
     },
     "accounts.badge.whyRemote": {
       "kind": "body",
-      "zh": "key 可以存到远端那台机器上。但远端起的会话今天还不经中转换上它，只有本机会话会。要用这个号，先在远端那台机器上自己配好第三方端点。",
+      "zh": "key 可以存到远端那台机器上。但远端起的会话不经中转换上它，只有本机会话会。要用这个号，先在远端那台机器上自己配好第三方端点。",
       "args": []
     },
     "accounts.badge.whyNoRow": {
@@ -15853,12 +15853,12 @@
     },
     "rsToolRegistry.tools.backendRemoteNote": {
       "kind": "body",
-      "zh": "固定放在那台的 ~/.cc-monitor/bin/ccm。在那台机器上它就是那台机器的本地后端，「远端」只是相对这台 cc-monitor 说的",
+      "zh": "固定放在那台的 ~/.cc-monitor/bin/ccm",
       "args": []
     },
     "rsToolRegistry.tools.backendRemoteWhat": {
       "kind": "body",
-      "zh": "推到远端那台机器上跑的那一份后端。在那台机器上它就是本地后端",
+      "zh": "推到远端那台机器上跑的后端",
       "args": []
     },
 
@@ -15940,12 +15940,12 @@
     },
     "rsToolRegistry.tools.ccmLocalNote": {
       "kind": "body",
-      "zh": "本机那条 ccm，放在 cc-monitor 自己的目录里（就是本机后端那个文件）。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
+      "zh": "本机那条 ccm，放在 cc-monitor 自己的目录里。不碰你 ~/.local/bin 下那份旧的，那一份要不要删由你定",
       "args": []
     },
     "rsToolRegistry.tools.ccmLocalWhat": {
       "kind": "body",
-      "zh": "本机上的 ccm 命令。它就是后端程序本身，不是另一份实现",
+      "zh": "本机上的 ccm 命令",
       "args": []
     },
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
@@ -15955,7 +15955,7 @@
     },
     "rsToolRegistry.tools.ccmRemoteWhat": {
       "kind": "body",
-      "zh": "远端那台机器上的 ccm 命令。它就是推过去的那一份后端本身，不是另一份实现",
+      "zh": "远端那台机器上的 ccm 命令",
       "args": []
     },
     "rsToolRegistry.tools.ccmName": {
@@ -16255,17 +16255,17 @@
     },
     "rsToolRegistry.tools.ccmLegacyNote": {
       "kind": "body",
-      "zh": "旧版 cc-monitor 放的入口（今天入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
+      "zh": "旧版 cc-monitor 放的入口（现在入口在 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 放的就删，认不出的不动",
       "args": []
     },
     "rsToolRegistry.tools.backendLegacyExtractNote": {
       "kind": "body",
-      "zh": "旧版 cc-monitor 在本机放的后端（文件名带版本号）。今天后端就是 ~/.cc-monitor/bin/ccm；启动时认出是 cc-monitor 编的就删，删不掉的下次再删",
+      "zh": "旧版 cc-monitor 在本机放的后端（文件名带版本号）。启动时认出是 cc-monitor 编的就删，删不掉的下次再删",
       "args": []
     },
     "rsToolRegistry.tools.backendLegacyNote": {
       "kind": "body",
-      "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端（今天后端就是 ~/.cc-monitor/bin/ccm）。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
+      "zh": "旧版 cc-monitor 按「后端路径」配置放的那份后端。部署后端时、连上那台时各看一眼，认出是 cc-monitor 编的就删，认不出的不动",
       "args": []
     },
     "ccBus.broadcast.listSep": {
