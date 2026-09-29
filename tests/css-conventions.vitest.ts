@@ -201,7 +201,8 @@ describe("S30 ⑤ 自定义属性对账，两个方向（设计/40 §7 步 9 ①
         `  TS 设了但 CSS 没人用：${minus(fromTs, new Set(fromCss)).join(" ") || "（无）"}\n` +
         "左边多 ⇒ 写错了变量名（那条声明会被浏览器整条丢弃）；右边多 ⇒ setProperty 设了个没人读的名字。",
     ).toEqual(fromTs);
-    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(2);
+    // 〔FIX5〕2 → 11：多了 `css-marks.ts` 那九个 `--mark-*`（CSS 伪元素里的符号从文案表来，`设计/91 §6` 第 5 条）。
+    expect(fromTs.length, "TS 侧一个 setProperty 都没扫到 ⇒ 上面那条会变成「两边都空」的假绿").toBe(11);
   });
 
   it("② theme.ts 那 14 个旋钮，CSS 里必须都有默认值", () => {

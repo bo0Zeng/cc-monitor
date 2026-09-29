@@ -59,8 +59,9 @@
   7. **cc-bus 注入给另一个 agent 的文本**。理由：`91 §3.2` 逐字划出去了 ——
      「它不是给人看的话，是对方那一轮的输入，改它等于改对方的 prompt」。
      ⇒ `EXCLUDED_FILE_RE` 里点名了 cc-bus 的注入文本住址，面⑦ 会报它被排除了几条。
-  8. **CSS 里的 `content:`**。理由：本拍没扫 `.css`（`styles.css` 18 万字节）⇒ **已登记缺口**，
-     面⑨ 会把它作为"已知未扫面"打印出来，不假装扫过。
+  8. 〔FIX5 · `91 §6` 第 5 条〕**已补**：`src/**/*.css` 的 `content:` 字面量（解 CSS 转义）与仓根三份入口 HTML
+     （`index.html` · `settings.html` · `viewer.html`，`41 §9` 三入口）的静态文本（文本节点 ＋ `title` / `aria-label` /
+     `placeholder` / `alt` 属性）进主集，出口 `css.content` / `html.text` / `html.attr`（`scan_static_faces`）。
 
 **包含但有保留的两条（说清楚，别读成确定）**：
   · `throw new Error("中文")`：它本身不是渲染面，但它的文本会被 catch 之后进 toast。
@@ -211,6 +212,10 @@ SINKS = [
          re=re.compile(r"(?<![\w.])(?:window\.)?confirm\s*\(|\baskConfirm\s*\(")),
     dict(id="dialog.alert", lang="ts", bucket="confirm", mode="call", kind="body",
          re=re.compile(r"(?<![\w.])(?:window\.)?alert\s*\(")),
+
+    # 〔FIX5〕CSS 伪元素里的符号经文案表来：起步时设成自定义属性（`src/css-marks.ts`），CSS 写 `content: var(--mark-…)`。
+    dict(id="css.var", lang="ts", bucket="css-content", mode="call", kind="body",
+         re=re.compile(r"\.style\.setProperty\s*\(")),
 
     # ── 元素文本（kind 靠回溯 createElement 的 tag 推） ────────────────────
     dict(id="dom.textContent", lang="ts", bucket="dom-text", mode="assign", kind=None,
@@ -960,6 +965,67 @@ def line_of(src: str, off: int) -> int:
     return src.count("\n", 0, off) + 1
 
 
+# 〔FIX5 · `91 §6` 第 5 条〕两面静态文本：CSS 的 `content:` · 入口 HTML。它们不是 TS / Rust 源码，另走一条短路。
+ENTRY_HTML = ("index.html", "settings.html", "viewer.html")
+CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+CSS_CONTENT = re.compile(r"(?<![-\w])content\s*:([^;{}]*)")
+CSS_STRING = re.compile(r'"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'')
+CSS_ESCAPE = re.compile(r"\\([0-9a-fA-F]{1,6})\s?|\\(.)")
+HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+HTML_RAW = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.S | re.I)
+HTML_TEXT = re.compile(r">([^<>]+)<")
+HTML_ATTR = re.compile(r"\s(?:title|aria-label|placeholder|alt)\s*=\s*\"([^\"]*)\"")
+
+
+def _blank(m) -> str:
+    """遮掉一段（注释 / 脚本），换行留着 ⇒ 行号不漂。"""
+    return re.sub(r"[^\n]", " ", m.group(0))
+
+
+def css_unescape(text: str) -> str:
+    return CSS_ESCAPE.sub(lambda m: chr(int(m.group(1), 16)) if m.group(1) else m.group(2), text)
+
+
+def scan_static_faces(root: Path):
+    """→ (扫过的文件, 主集条目)：`root` 下的 `.css` ＋ `root` 是仓里那个 `src/` 时仓根的三份入口 HTML。"""
+    files, out = [], []
+    csss = [p for p in sorted(root.rglob("*.css")) if p.is_file()] if root.exists() else []
+    htmls = [root.parent / h for h in ENTRY_HTML if root.name == "src" and (root.parent / h).is_file()]
+    for path in csss + htmls:
+        rel = path.relative_to(REPO).as_posix() if path.is_relative_to(REPO) else path.as_posix()
+        if any(rel.startswith(d + "/") for d in EXCLUDED_DIRS):
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        files.append(rel)
+
+        def add(off, text, bucket, sink, kind):
+            out.append(dict(file=rel, line=line_of(masked, off), bucket=bucket, sink=sink, kind=kind,
+                            kind_src="sink", lang=path.suffix[1:], track=track_of(rel, path.suffix[1:]),
+                            text=text, params=0, site=(rel, line_of(masked, off), sink), via="literal"))
+
+        if path.suffix == ".css":
+            masked = CSS_COMMENT.sub(_blank, raw)
+            for m in CSS_CONTENT.finditer(masked):
+                for sm in CSS_STRING.finditer(m.group(1)):
+                    text = css_unescape(sm.group(1) if sm.group(1) is not None else sm.group(2))
+                    if is_copy_text(text):
+                        add(m.start(1) + sm.start(), text, "css-content", "css.content", "body")
+        else:
+            masked = HTML_RAW.sub(_blank, HTML_COMMENT.sub(_blank, raw))
+            for m in HTML_TEXT.finditer(masked):
+                text = m.group(1).strip()
+                if text and is_copy_text(text):
+                    in_title = masked[:m.start() + 1].lower().endswith("<title>")
+                    add(m.start(1), text, "html-text", "html.text", "title" if in_title else "body")
+            for m in HTML_ATTR.finditer(masked):
+                if is_copy_text(m.group(1)):
+                    add(m.start(1), m.group(1), "html-text", "html.attr", "body")
+    return files, out
+
+
 def scan(root: Path):
     entries = []          # 主集 + 预备队（带 bucket 区分）
     residual = []         # 定义之外的含汉字字面量
@@ -1078,6 +1144,9 @@ def scan(root: Path):
             residual.append(dict(file=rel, line=line_of(masked, s), ctx=ctx, text=text[:80],
                                  encl=encl_of.get(s, "")))
 
+    # 〔FIX5〕CSS `content:` 与入口 HTML 的静态文本：直接进主集（它们一定上界面，没有「存疑」这一说）。
+    _static_files, static_entries = scan_static_faces(root)
+    entries.extend(static_entries)
     return files, scanned_lines, entries, residual, english, ccbus_excluded
 
 
@@ -1101,6 +1170,8 @@ def mask_sanity(files):
 
 
 def track_of(rel: str, lang: str) -> str:
+    if lang in ("css", "html"):
+        return "前端 CSS / HTML"
     if lang == "ts":
         return "前端 TS"
     if rel.startswith("src/backend/"):
@@ -1178,7 +1249,9 @@ def main_report(args) -> int:
     P(f"  遮注释 + 剥 #[cfg(test)] 之后的行数                  : {lines}")
     P(f"  明写排除：{', '.join(EXCLUDED_DIRS)}")
     P(f"  cc-bus 注入文本（91 §3.2 划出去的）被排除条数         : {ccbus}")
-    P("  ⚠ 未扫面（已登记，不假装扫过）：.css 的 content: · .html · README*.md · 英文文案")
+    static_files, _static = scan_static_faces(SRC_ROOT)
+    P(f"  〔FIX5〕CSS（content:）与入口 HTML（静态文本）                  : {len(static_files)}")
+    P("  ⚠ 未扫面（已登记，不假装扫过）：README*.md · 英文文案")
     raw_anchor, masked_anchor = mask_sanity(files)
     P(f"  遮罩自检：`.textContent =` 原文 {raw_anchor} 处 / 遮注释后 {masked_anchor} 处 "
       f"（差 {raw_anchor - masked_anchor} = 注释里的引文）")

@@ -793,11 +793,11 @@ body.settings-window-mode .settings-panel {
 }
 
 .settings-data-item[data-kind="dir"] .settings-data-item-label::before {
-  content: "📁 ";
+  content: var(--mark-dir);
 }
 
 .settings-data-item[data-kind="file"] .settings-data-item-label::before {
-  content: "📄 ";
+  content: var(--mark-file);
 }
 
 .settings-data-item-desc {
@@ -1121,12 +1121,12 @@ body.settings-window-mode .settings-panel {
 }
 
 .remote-wrapper-summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   color: var(--text-faint);
 }
 
 .remote-wrapper-details[open] > .remote-wrapper-summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .remote-wrapper-snippet {
@@ -2069,12 +2069,12 @@ body.settings-window-mode .settings-panel {
 }
 
 .accounts-maint-wrap > summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   color: var(--text-faint);
 }
 
 .accounts-maint-wrap[open] > summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .accounts-maint-wrap > summary:hover {
@@ -2135,12 +2135,12 @@ body.settings-window-mode .settings-panel {
 }
 
 .accounts-new-adv > summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   color: var(--text-faint);
 }
 
 .accounts-new-adv[open] > summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .accounts-new-btns {
@@ -2212,12 +2212,12 @@ body.settings-window-mode .settings-panel {
 }
 
 .ccm-alias-gen > summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   color: var(--text-faint);
 }
 
 .ccm-alias-gen[open] > summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .ccm-alias-gen-hint {

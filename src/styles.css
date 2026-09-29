@@ -65,7 +65,7 @@
 }
 
 .tab-context-menu-item.has-submenu::after {
-  content: "\25b8";
+  content: var(--mark-submenu);
   position: absolute;
   right: 8px;
 }
@@ -296,7 +296,7 @@
 }
 
 .tab.ended .tab-title::after {
-  content: " ·";
+  content: var(--mark-ended);
   color: var(--text-2);
   margin-left: 2px;
 }
@@ -722,7 +722,7 @@
 
 .branch-fold-wrap .viewer-branch-btn::after {
   /* 一个小角标，让「这条不是主线」在**不 hover** 时也看得出来 */
-  content: "↩";
+  content: var(--mark-branch);
   position: absolute;
   right: -3px;
   bottom: -4px;
@@ -1110,7 +1110,7 @@
 }
 
 .ask-option.is-chosen .ask-option-label::before {
-  content: "✓ ";
+  content: var(--mark-chosen);
   color: var(--success);
   font-weight: 700;
 }
@@ -1202,14 +1202,14 @@
 }
 
 .card-compact-summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   display: inline-block;
   width: 14px;
   color: var(--text-2);
 }
 
 .card-compact[open] > .card-compact-summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .card-compact-summary:hover {
@@ -1260,14 +1260,14 @@
 }
 
 .card-tool-group-summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   display: inline-block;
   width: 14px;
   color: var(--text-2);
 }
 
 .card-tool-group[open] > .card-tool-group-summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .card-tool-group-summary:hover {
@@ -1315,14 +1315,14 @@
 }
 
 .block-collapsible .block-summary::before {
-  content: "▸ ";
+  content: var(--mark-closed);
   display: inline-block;
   width: 14px;
   color: var(--text-2);
 }
 
 .block-collapsible[open] > .block-summary::before {
-  content: "▾ ";
+  content: var(--mark-open);
 }
 
 .block-collapsible .block-summary:hover {

@@ -19144,6 +19144,51 @@
       "kind": "body",
       "zh": "{dest} 已是这一版 cc-acct-iso（{version}），没重写。",
       "args": ["version", "dest"]
+    },
+    "cssMarks.menu.submenu": {
+      "kind": "body",
+      "zh": "▸",
+      "args": []
+    },
+    "cssMarks.tab.ended": {
+      "kind": "body",
+      "zh": " ·",
+      "args": []
+    },
+    "cssMarks.branch.mark": {
+      "kind": "body",
+      "zh": "↩",
+      "args": []
+    },
+    "cssMarks.ask.chosen": {
+      "kind": "body",
+      "zh": "✓ ",
+      "args": []
+    },
+    "cssMarks.fold.closed": {
+      "kind": "body",
+      "zh": "▸ ",
+      "args": []
+    },
+    "cssMarks.fold.open": {
+      "kind": "body",
+      "zh": "▾ ",
+      "args": []
+    },
+    "cssMarks.cell.background": {
+      "kind": "body",
+      "zh": "⚙ ",
+      "args": []
+    },
+    "cssMarks.data.dir": {
+      "kind": "body",
+      "zh": "📁 ",
+      "args": []
+    },
+    "cssMarks.data.file": {
+      "kind": "body",
+      "zh": "📄 ",
+      "args": []
     }
   }
 }
