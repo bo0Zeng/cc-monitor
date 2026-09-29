@@ -696,7 +696,7 @@
     },
     "rsRemoteResident.ensure.unsupported": {
       "kind": "error",
-      "zh": "接不上：那台机器不是 Unix。远端只支持 Unix 机器，后端要在那里常驻。那台说：{why}",
+      "zh": "接不上：远端只支持 Unix 机器，那台不是。那台说：{why}",
       "args": ["why"]
     },
     "rsRemoteResident.ensure.answerUnreadable": {
@@ -5064,7 +5064,7 @@
     },
     "accountChip.selectDefault.doneBody": {
       "kind": "body",
-      "zh": "以后新会话、以及没指定过账号的 resume 都会用 {name}{email}；正在跑的会话不受影响（切号不重启任何东西）；已归属别的号的会话保持原号，要换到 {name} 就在那个 tab 上右键选「把此会话切到账号 {name}」。",
+      "zh": "以后新会话和没指定过账号的 resume 都用 {name}{email}。正在跑的会话不受影响；已归属别的账号的会话不变，要换就在那个 tab 上右键选「把此会话切到账号 {name}」。",
       "args": ["name", "email"]
     },
     "accountChip.selectDefault.done": {
@@ -5968,7 +5968,7 @@
     },
     "machineAliases.userPath.refreshHint": {
       "kind": "body",
-      "zh": "重新读一次你的用户级 PATH（现算，不缓存）",
+      "zh": "重新读一次你的用户级 PATH",
       "args": []
     },
     "machineAliases.userPath.refresh": {
@@ -7937,7 +7937,7 @@
     },
     "settingsPanel.behavior.remoteResumeInfo": {
       "kind": "body",
-      "zh": "远端 resume 或起会话时实际敲的启动器。\n推荐填 ccm（部署过后端就有），tmux 与账号由 cc-monitor 经参数控制。\n⚠ 别填 cct 这类自己建 tmux 的命令：它会另起一个 tmux，cc-monitor 设的账号环境变量落在那个 tmux 之外、被整个吃掉，「用账号 X resume」就不生效。\n留空 = claude。",
+      "zh": "远端 resume 或起会话时实际敲的启动器。\n推荐填 ccm（部署过后端就有），tmux 与账号由 cc-monitor 经参数控制。\n⚠ 别填 cct 这类自己建 tmux 的命令：账号设置到不了它另起的那个 tmux，「用账号 X resume」会不生效。\n留空 = claude。",
       "args": []
     },
     "settingsPanel.behavior.remoteResumeHint": {
@@ -8791,7 +8791,7 @@
     },
     "ccBusHooks.build.whyNotWrite": {
       "kind": "body",
-      "zh": "为什么不替你写：~/.claude/settings.json 是一份共享的全局配置。你自己的编辑器、别的工具、别的 skill 都可能在动它，cc-monitor 单方面改它有可能覆盖掉你或它们的改动。cc-bus 自己的安装脚本同样不碰它（它只软链命令、建目录，然后把钩子片段打印出来让你自己贴）。所以这里给你诊断结果和现成片段，最后一步由你来做。",
+      "zh": "为什么不替你写：~/.claude/settings.json 是共享的全局配置。你的编辑器、别的工具和 skill 都可能在改它，cc-monitor 改它可能覆盖掉别人的改动；cc-bus 自己的安装脚本也不碰它，只把钩子片段打印出来让你贴。所以这里只给诊断结果和现成片段，最后一步由你来做。",
       "args": []
     },
     "ccBusHooks.build.intro": {
@@ -9201,7 +9201,7 @@
     },
     "remote.wrapper.help": {
       "kind": "body",
-      "zh": "用 ccm 起会话（而不是直接用 claude）。远端会周期性把 ssh 窗口标题设成一个带会话编号的标记，本地 monitor 扫到就绑定那个窗口；同时让 tmux 会话记下它是哪个会话，\n于是从终端起的会话 app 也认得出、能 attach、能换号重启。\n\n✅ 每台机器页的「组件」栏：「部署后端」放好 ccm 入口（~/.cc-monitor/bin/ccm），\n「装别名块」把别名块写进 ~/.bashrc，先备份、可以重装；下面片段就是那个别名块，\n可以手动复制：zsh 或自定义 profile 用得上；ccm 入口仍要用「部署后端」放。\n\n⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n切到那个窗口、切不到具体 tab。建议每个远端会话单独开窗。",
+      "zh": "用 ccm 起会话（而不是直接用 claude）。这样从终端起的会话 app 也认得出，能切到它的终端窗口、能 attach、能换号重启。\n\n✅ 每台机器页的「组件」栏：「部署后端」放好 ccm 入口（~/.cc-monitor/bin/ccm），「装别名块」把别名块写进 ~/.bashrc，先备份、可以重装。下面片段就是那个别名块，zsh 或自定义 profile 可以手动复制；ccm 入口仍要用「部署后端」放。\n\n⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能切到那个窗口、切不到具体 tab。建议每个远端会话单独开窗。",
       "args": [],
       "waive": {
         "C-L3": "四段的帮助说明，括号分散在不同段里，每段至多一处"
@@ -9639,7 +9639,7 @@
     },
     "configSurface.gap.unknownIsNotAbsent": {
       "kind": "body",
-      "zh": "查不动不等于它不在。只是这台机器上判断不了，不说明它没装。",
+      "zh": "查不动不等于不在：这台机器上判断不了，不说明它没装。",
       "args": []
     },
     "configSurface.install.unknown": {
@@ -10402,7 +10402,7 @@
     },
     "rsFilewinProc.seed.empty": {
       "kind": "error",
-      "zh": "没有收到启动参数。这个程序不是给人直接运行的，要由 cc-monitor 从 stdin 把要显示的内容交给它。{binEnv} 指的就是它",
+      "zh": "没有收到启动参数。这个程序由 cc-monitor 打开，不直接运行。{binEnv} 指的就是它",
       "args": ["binEnv"]
     },
     "rsFilewinProc.seed.encodeFailed": {
@@ -10562,7 +10562,7 @@
     },
     "rsSftp.verify.contentDiffers": {
       "kind": "error",
-      "zh": "上传后校验失败：{path} 长度相同（{expectedLen} 字节）但内容不同。首个差异在第 {at} 字节；这类损坏只比长度是查不出来的。",
+      "zh": "上传后校验失败：{path} 长度相同（{expectedLen} 字节）但内容不同。首个差异在第 {at} 字节。",
       "args": ["path", "expectedLen", "at"]
     },
     "rsSftp.verify.unreadable": {
@@ -11052,7 +11052,7 @@
     },
     "rsFilewinSource.watch.cutShort": {
       "kind": "error",
-      "zh": "这一趟传输没说完就断了",
+      "zh": "传输没完成就断了",
       "args": []
     },
     "rsFilewinSource.ask.empty": {
@@ -11092,7 +11092,7 @@
     },
     "rsFilewinSource.home.notUtf8": {
       "kind": "error",
-      "zh": "那台机器的 home 目录不是合法 UTF-8，窗口的路径是字符串，找不到它",
+      "zh": "那台机器的 home 目录名不是合法 UTF-8，打不开",
       "args": []
     },
     "rsFilewinSource.home.noPath": {
@@ -12097,7 +12097,7 @@
     },
     "rsFilewinEditor.reply.noDigest": {
       "kind": "error",
-      "zh": "那台机器上的后端太旧，存不回去，就没有打开。读文本的回答里没有这份内容的摘要。",
+      "zh": "那台机器上的后端太旧，存不回去，所以没有打开。需要更新后端。",
       "args": []
     },
     "rsFilewinEditor.saved.noDigest": {
@@ -12112,7 +12112,7 @@
     },
     "rsFilewinEditor.overwrite.readFailed": {
       "kind": "error",
-      "zh": "为了覆盖先读一趟盘上那份，没读到：{why}。编辑框里的字还在。",
+      "zh": "覆盖前读不到盘上那份：{why}。编辑框里的字还在。",
       "args": ["why"]
     },
     "rsFilewinEditor.overCap.notice": {
@@ -12337,12 +12337,12 @@
     },
     "rsPayload.launcher.injection": {
       "kind": "error",
-      "zh": "启动命令 {launcher} 里有不允许的字符 {c}，不能拼进命令。它会被键进会话执行；只许字母、数字、空格、-_./ 和开头的 ~/（命令名或路径，可带参数）。",
+      "zh": "启动命令 {launcher} 里有不允许的字符 {c}，不能拼进命令。只许字母、数字、空格、-_./ 和开头的 ~/（命令名或路径，可带参数）。",
       "args": ["launcher", "c"]
     },
     "rsPayload.arg.notSafe": {
       "kind": "error",
-      "zh": "参数 {arg} 不在允许的字符范围里，不能拼进命令。命令是用空格拼起来的：空白会把它拆成几个参数，shell 元字符会另起一条命令。允许的是 A-Z a-z 0-9 与 -_.:/=,@+；非 ASCII 字符也一律拒。",
+      "zh": "参数 {arg} 里有不允许的字符，不能拼进命令。只许 A-Z a-z 0-9 与 -_.:/=,@+，不许空白和非 ASCII 字符。",
       "args": ["arg"]
     },
     "rsPayload.nestedEnv.empty": {
@@ -12387,7 +12387,7 @@
     },
     "rsLocalBackend.extraction.failed": {
       "kind": "error",
-      "zh": "这一份 monitor 自己带着本机后端，但它{marker}：往 {dir} 里写的时候失败了（{err}）。\n这不是「这份产物没有本机后端」，那是另一回事，下一步也不一样。\n下一步挑一条：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；② 让 monitor 跑在一个家目录写得进去的账号下；③ 不想动它就装一次安装包（Releases 页），装出来的那份后端与 monitor 同目录，根本不用写这里。",
+      "zh": "cc-monitor 自带的本机后端{marker}：往 {dir} 里写的时候失败了（{err}）。\n可以：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；② 让 monitor 跑在一个家目录写得进去的账号下；③ 装一次安装包（Releases 页），装出来的后端与 monitor 同目录，不用写这里。",
       "args": ["marker", "dir", "err"]
     },
     "rsLocalBackend.extraction.refusedMarker": {
@@ -12464,7 +12464,7 @@
     },
     "rsBackendControl.origin.empty": {
       "kind": "error",
-      "zh": "机器名不许为空：开关是按机器的，没有全局这一档",
+      "zh": "机器名不许为空",
       "args": []
     },
     "rsInboundClient.error.refused": {
@@ -13351,7 +13351,7 @@
     },
     "rsUserFiles.ask.tooBig": {
       "kind": "error",
-      "zh": "这份文件太大，一趟装不下。这一趟要 {bytes} 字节，上限 {cap}，一个字节都没动。",
+      "zh": "这份文件太大（{bytes} 字节，上限 {cap}），没有动。",
       "args": ["bytes", "cap"]
     },
     "rsUserFiles.ask.notDone": {
@@ -15238,7 +15238,7 @@
     },
     "rsHistory.relay.downRefused": {
       "kind": "error",
-      "zh": "起不了会话：账号 {account} 在{where}的 API key 表里有一行，但{where}的中转没在听（{why}）。\n照旧起出去的话，claude 那边会报一个像网络故障的连接失败，而真正的原因在 cc-monitor 这一侧。\n先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
+      "zh": "起不了会话：账号 {account} 在{where}的 API key 表里有一行，但{where}的中转没在运行（{why}）。\n先让那台机器的后端（本机：设置 → 本机后端）与它的中转起来再试，或把这个账号那一行从那台机器的凭据文件里去掉。",
       "args": ["account", "where", "why"]
     },
     "apikeyReads.status.badShape": {
@@ -15463,7 +15463,7 @@
     },
     "accounts.restartLocate.markLost": {
       "kind": "body",
-      "zh": "这个会话的进程里带着 cc-monitor 起会话时留下的身份标记。但它现在不在 cc-monitor 的 tmux 里，多半是 tmux 会话被重建过。换号重启要往那个 tmux 里发按键，找不到就不能动手，乱猜会动错会话。{tail}",
+      "zh": "这个会话的进程里带着 cc-monitor 起会话时留下的身份标记。但它现在不在 cc-monitor 的 tmux 里，多半是 tmux 会话被重建过。找不到它所在的 tmux，就没法换号重启。{tail}",
       "args": ["tail"]
     },
     "accounts.restartLocate.markLostTitle": {
@@ -15925,7 +15925,7 @@
     },
     "rsToolRegistry.tools.ccBusBinNote": {
       "kind": "body",
-      "zh": "cc-bus 自己的安装脚本建的 11 条命令链接，不是 cc-monitor 建的。钩子诊断时只查 cc-register 与 cc-bus-stop-hook 在不在；这个通配也会数到 cc-acct-iso 的同前缀链接，所以计数多 1",
+      "zh": "cc-bus 自己的安装脚本建的命令链接，不是 cc-monitor 建的。钩子诊断只查 cc-register 与 cc-bus-stop-hook 在不在；计数会把 cc-acct-iso 同前缀的链接也算进去，多 1",
       "args": []
     },
     "rsToolRegistry.tools.ccBusHooksNote": {
