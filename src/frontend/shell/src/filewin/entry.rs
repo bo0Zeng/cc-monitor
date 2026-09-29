@@ -169,9 +169,26 @@ fn machine_names() -> Vec<String> {
 
 #[tauri::command]
 pub async fn open_file_window(
+    app: tauri::AppHandle,
     cfg: RemoteConfig,
     path: String,
     reveal_file: Option<String>,
+) -> Result<usize, String> {
+    use tauri::Manager;
+    // 〔WF2 · WIN3 读数 D〕主窗所在那台显示器的工作区（窗口进程开出来第一拍夹进它）。
+    let work_area = app
+        .get_webview_window(crate::MAIN_WINDOW_LABEL)
+        .as_ref()
+        .and_then(crate::WorkArea::of);
+    open_with(cfg, path, reveal_file, work_area).await
+}
+
+/// [`open_file_window`] 去掉「问 Tauri」那一步之后的全部（判据从这里进：判据进程里没有 `AppHandle`）。
+pub(crate) async fn open_with(
+    cfg: RemoteConfig,
+    path: String,
+    reveal_file: Option<String>,
+    work_area: Option<crate::WorkArea>,
 ) -> Result<usize, String> {
     let source = Source::remote(cfg);
     // 〔FW34〕书签文件住 monitor 自己的数据目录（不是用户文件），路径在这一侧算好交过去。
@@ -194,6 +211,7 @@ pub async fn open_file_window(
         handoff,
         bookmarks,
         machines: machine_names(),
+        work_area,
     };
     // 🔴〔第十三刀 2026-09-23〕**起一个独立进程**；〔MIG-3a · 09-28 裁 3〕它先列第一屏、说一行，再开窗。
     //

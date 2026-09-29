@@ -3707,7 +3707,17 @@ pub fn open_detached(
     cwd: String,
     rt: Option<tokio::runtime::Handle>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
-    open_detached_seeded(source, cwd, rt, None, Vec::new(), None, None, Vec::new())
+    open_detached_seeded(
+        source,
+        cwd,
+        rt,
+        None,
+        Vec::new(),
+        None,
+        None,
+        Vec::new(),
+        None,
+    )
 }
 
 /// 同 [`open_detached`]，但**带着已经列好的那一屏**开窗。
@@ -3737,6 +3747,8 @@ pub fn open_detached_seeded(
     bookmarks: Option<std::path::PathBuf>,
     // 〔FILES2 · V152〕「复制到另一台」下拉里的机器（开窗种子带来的）。
     machines: Vec<String>,
+    // 〔WF2 · WIN3 读数 D〕开出来第一拍夹进这块工作区（`None` ＝ 不夹）。
+    work_area: Option<crate::WorkArea>,
 ) -> std::thread::JoinHandle<Result<(), String>> {
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -3768,7 +3780,10 @@ pub fn open_detached_seeded(
                 // 第一拍：读文件 ＋ `set_fonts`。**这里复核不了**（`fonts.rs §四`）。
                 w.font = FontState::Pending(fonts::install(&cc.egui_ctx));
                 // 〔FW34〕最外一层是 `Workspace`（标签页 ＋ 双栏 ＋ 预览），开窗那一个目录视图是它的第一个标签页。
-                Ok(Box::new(super::workspace::Workspace::new(w)) as Box<dyn eframe::App>)
+                Ok(Box::new(FitOnce {
+                    inner: super::workspace::Workspace::new(w),
+                    work: work_area,
+                }) as Box<dyn eframe::App>)
             }),
         )
         .map_err(|e| copy_text("rsFilewinShell.window.openFailed", &[("e", &e.to_string())]))
@@ -3783,6 +3798,53 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/filewin/shell_keys_tests.rs"]
 mod keys_tests;
+
+/// 〔WF2 · WIN3 读数 D〕开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
+struct FitOnce<A> {
+    inner: A,
+    work: Option<crate::WorkArea>,
+}
+
+impl<A: eframe::App> eframe::App for FitOnce<A> {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        if let Some(work) = self.work {
+            let (outer, inner, ppp) = ui.ctx().input(|i| {
+                let v = i.viewport();
+                (v.outer_rect, v.inner_rect, v.native_pixels_per_point)
+            });
+            if let (Some(outer), Some(inner), Some(ppp)) = (outer, inner, ppp) {
+                self.work = None;
+                for cmd in fit_commands(outer, inner, ppp, work) {
+                    ui.ctx().send_viewport_cmd(cmd);
+                }
+            }
+        }
+        self.inner.ui(ui, frame);
+    }
+}
+
+/// [`FitOnce`] 那一拍发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
+/// `crate::fit_into_work_area`（Tauri 那几扇窗也用它），再换回逻辑点。本来就在里面 ⇒ 空。
+pub(crate) fn fit_commands(
+    outer: egui::Rect,
+    inner: egui::Rect,
+    ppp: f32,
+    work: crate::WorkArea,
+) -> Vec<egui::ViewportCommand> {
+    let px = |v: f32| (v * ppp).round();
+    let Some(((w, h), (x, y))) = crate::fit_into_work_area(
+        (px(outer.min.x) as i32, px(outer.min.y) as i32),
+        (px(outer.width()) as u32, px(outer.height()) as u32),
+        (px(inner.width()) as u32, px(inner.height()) as u32),
+        work,
+    ) else {
+        return Vec::new();
+    };
+    vec![
+        egui::ViewportCommand::InnerSize(egui::vec2(w as f32 / ppp, h as f32 / ppp)),
+        egui::ViewportCommand::OuterPosition(egui::pos2(x as f32 / ppp, y as f32 / ppp)),
+    ]
+}
 
 /// 〔W5-FILES〕编辑面查找栏上按了哪一颗。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
