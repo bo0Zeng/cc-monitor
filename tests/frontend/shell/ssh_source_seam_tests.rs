@@ -75,14 +75,17 @@ fn the_overflow_message_stops_lying_when_state_was_lost() {
     assert!(!m.contains("清单**不全**"), "没截断就别说截断：{m}");
 }
 
-/// 只丢内容帧时**逐字沿用老说法** —— 旧后端（`p1x` 之前）不发 `lost`，
-/// 也落这一档，行为必须与从前一字不差。
+/// 只丢内容帧时**沿用老说法那一句**（按文案键，`设计/91 §6`）—— 旧后端（`p1x` 之前）不发 `lost`，
+/// 也落这一档，说的必须是同一句。
 #[test]
 fn the_overflow_message_is_byte_identical_when_only_lines_were_lost() {
     let m = super::overflow_health_message("box1", 3, &[], false);
     assert_eq!(
         m,
-        "远端 [box1] 管道拥塞，可能丢失约 3 条实时行；重开该会话可看完整历史。"
+        copy_text(
+            "rsSshSource.health.overflowLines",
+            &[("host", "box1"), ("dropped", "3")]
+        )
     );
 }
 

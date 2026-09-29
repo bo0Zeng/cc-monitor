@@ -595,6 +595,17 @@ fn kind_name(is_dir: bool, is_file: bool, is_symlink: bool) -> &'static str {
     }
 }
 
+/// 读不了时那一截原因：常见的两种说成人话，其余用系统原话（`ErrorKind` 的调试名 `PermissionDenied` 不上屏，`设计/91 §4` R1）。
+fn io_kind_said(e: &std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied => {
+            copy_core::copy_text("beFilesRead.ioKind.denied", &[])
+        }
+        std::io::ErrorKind::NotFound => copy_core::copy_text("beFilesRead.ioKind.notFound", &[]),
+        _ => e.to_string(),
+    }
+}
+
 /// 这一族认得的类型名 —— **闭集，唯一住址**。判据按它对拍 [`kind_name`] 的出口。
 pub const KINDS: &[&str] = &["dir", "file", "other", "symlink"];
 
@@ -605,10 +616,7 @@ fn answer_ls(args: &serde_json::Value) -> Answer {
     let rd = std::fs::read_dir(&dir).map_err(|e| {
         (
             "unreadable",
-            copy_core::copy_text(
-                "beFilesRead.ls.unreadable",
-                &[("kind", &format!("{:?}", e.kind()))],
-            ),
+            copy_core::copy_text("beFilesRead.ls.unreadable", &[("kind", &io_kind_said(&e))]),
         )
     })?;
     let mut entries: Vec<serde_json::Value> = Vec::new();
@@ -660,7 +668,7 @@ fn answer_stat(args: &serde_json::Value) -> Answer {
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
-                &[("kind", &format!("{:?}", e.kind()))],
+                &[("kind", &io_kind_said(&e))],
             ),
         )
     })?;
@@ -767,7 +775,7 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.rebuild.rootUnreadable",
-                &[("kind", &format!("{:?}", e.kind()))],
+                &[("kind", &io_kind_said(&e))],
             ),
         )
     })?;
@@ -942,7 +950,7 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
             )),
         ));
     }
-    let kind = |e: std::io::Error| format!("{:?}", e.kind());
+    let kind = |e: std::io::Error| io_kind_said(&e);
     let md = std::fs::metadata(&path).map_err(|e| {
         (
             "unreadable",
@@ -1004,7 +1012,7 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
-                &[("kind", &format!("{:?}", e.kind()))],
+                &[("kind", &io_kind_said(&e))],
             ),
         )
     })?;
@@ -1032,7 +1040,7 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.text.openFailed",
-                &[("kind", &format!("{:?}", e.kind()))],
+                &[("kind", &io_kind_said(&e))],
             ),
         )
     })?;
@@ -1040,10 +1048,7 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
     std::io::Read::read_to_end(&mut std::io::Read::take(f, max + 1), &mut buf).map_err(|e| {
         (
             "unreadable",
-            copy_core::copy_text(
-                "beFilesRead.text.readBroke",
-                &[("kind", &format!("{:?}", e.kind()))],
-            ),
+            copy_core::copy_text("beFilesRead.text.readBroke", &[("kind", &io_kind_said(&e))]),
         )
     })?;
     if buf.len() as u64 > max {
@@ -1092,7 +1097,7 @@ fn answer_size(args: &serde_json::Value) -> Answer {
             "unreadable",
             copy_core::copy_text(
                 "beFilesRead.size.unreadable",
-                &[("kind", &format!("{:?}", e.kind()))],
+                &[("kind", &io_kind_said(&e))],
             ),
         )
     })?;
@@ -1181,7 +1186,7 @@ fn grep_unreadable(e: &std::io::Error) -> (&'static str, String) {
         "unreadable",
         copy_core::copy_text(
             "beFilesRead.grep.unreadable",
-            &[("kind", &format!("{:?}", e.kind()))],
+            &[("kind", &io_kind_said(&e))],
         ),
     )
 }

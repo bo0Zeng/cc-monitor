@@ -1359,7 +1359,8 @@ fn the_block_preview_is_byte_for_byte_what_an_install_writes() {
 #[test]
 fn ccm_aliases_snippet_has_required_elements() {
     for needle in [
-        ".local/bin",               // CLI 落点必须进 PATH，否则别名全指向不存在的命令
+        // CLI 落点必须进 PATH，否则别名全指向不存在的命令。〔COPY-R〕钉整条 export：原先钉的 `.local/bin` 只剩头注里一句旧话在喂它。
+        "export PATH=\"$HOME/.cc-monitor/bin:$PATH\"",
         "cc()",                     // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
         "cct()",                    // tmux 版
         "ccm \"$@\" -- --ccm-tmux", // 别名只做组合，不自己建容器；〔V151〕ccm 的选项在 `--` 右边

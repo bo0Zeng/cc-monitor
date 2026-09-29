@@ -7,6 +7,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
+/** 〔V161〕「欠的那一档」计数行，一项时那一句（按文案键取，不钉原文）。 */
+const OWED_1 = copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: 1 });
+
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...a: unknown[]) => invokeMock(...a),
@@ -149,6 +152,7 @@ describe("describeUndo", () => {
     expect(t).not.toContain("可按片段");
     expect(t).toContain("手动");
   });
+  // 〔V161〕用户 09-29「不能把开发过程混进去」⇒ 欠的那一档说现状，不再说「还没有」；按文案键断言。
   // 🔴 〔`K-R65`〕上一版这一条逐字断的是「尚未支持部署」，而那句话是**两头下注**的
   // （原文「尚未支持部署，**或**本来就不该由它装」）—— 读者读不出自己这一行是哪一种。
   // 档进线上形状之后，四档各说各的话，这一条跟着按档断。
@@ -158,11 +162,11 @@ describe("describeUndo", () => {
     const owed = say("AppShipsNoInstallerYet");
     const theirs = say("UserInstallsWePrompt");
     const notOurs = say("AppOnlyChecks");
-    // 「我们欠的」必须保住「还没有」这个语义，且**不许**说成「不该由它装」（`KR65D2`）。
-    // 〔ST2 · `70 §11.4` #1〕但不再用「谁欠谁」的话说（「该由 cc-monitor 自带 / 还没写」）—— 一格状态。
-    expect(owed).toBe("暂无撤销：还没有安装入口");
+    // 〔V161〕用户 09-29「所有文案…不能把开发过程混进去」：这一档说现状（这里装不了），不再留「还没有」那层意思；
+    //   仍**不许**说成「不该由它装」（`KR65D2`），也不用「谁欠谁」的话说（〔ST2 · `70 §11.4` #1〕）。按文案键断言。
+    expect(owed).toBe(copyText("configSurface.undo.noInstaller"));
     expect(owed).not.toContain("不该");
-    expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写/);
+    expect(owed).not.toMatch(/该由 cc-monitor 自带|还没写|还没有|暂无|今天/);
     // 「你自己装」那一档要说清是你自己装（〔CP2b〕CP1 裁 §2.2）。〔FIX2 · 99 §2.1 ㉛②〕按文案键断言、不钉原文。
     expect(theirs).toBe(copyText("configSurface.undo.userInstalls"));
     // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
@@ -249,6 +253,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     expect(p!.textContent).toContain("自己装");
   });
 
+  // 〔V161〕那一格的话按文案键取（不再钉「还没有安装入口」原文）；数得出来这一点照旧。
   it("KR65D2：「app 该自带而还没有装口」那一格**在屏幕上数得出来**", async () => {
     const owed = prompted({
       tool_id: "cc-acct-iso-local",
@@ -259,8 +264,8 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     // 一项都没有时整行不渲染，不写「0 项」
     expect(summarizeOwedInstallers([prompted()])).toBeNull();
     const txt = summarizeOwedInstallers([owed])!;
-    // 〔ST2 · `§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。
-    expect(txt).toBe("⚠ 1 项还没有安装入口");
+    // 〔ST2 · `§11.3.1`〕数照旧数得出来，措辞不再说「我们欠」；名单挪进展开。〔V161〕按文案键断言。
+    expect(txt).toBe(OWED_1);
     expect(owedInstallerNames([owed, prompted()])).toEqual(["cc-acct-iso 本机那份"]);
 
     serve(report({ rows: [owed] }));
@@ -269,7 +274,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     const el = s.element.querySelector(".config-surface-owed") as HTMLElement;
     expect(el, "计数行必须在 DOM 里").not.toBeNull();
     expect(el.hidden).toBe(false);
-    expect(el.textContent).toContain("⚠ 1 项还没有安装入口");
+    expect(el.textContent).toContain(OWED_1);
     const which = el.querySelector<HTMLElement>("[data-owed-names]")!;
     expect(which.querySelector("summary")?.textContent).toBe("哪 1 项");
     expect(which.textContent).toContain("cc-acct-iso 本机那份");
@@ -291,7 +296,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
     );
     expect(txt).toContain("自己装");
     // 〔ST2〕计数与名单都进可复制文本（名单不许只在屏幕上）。
-    expect(txt).toContain("⚠ 1 项还没有安装入口：cc-acct-iso 本机那份");
+    expect(txt).toContain(`${OWED_1}：cc-acct-iso 本机那份`);
   });
 
   it("〔ST2 · 用户 09-24 裁「一起改」〕可复制诊断文本的首行跟块名一致：「足迹」，不再是「配置面审计」", () => {
@@ -322,7 +327,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
 describe("formatReportText", () => {
   it("把解析基准、未确定理由、作用域优先级都带上（用户要拿它贴给别人）", () => {
     const txt = formatReportText(report());
-    expect(txt).toContain("~/.claude 解析为=/h/.claude");
+    expect(txt).toContain(copyText("configSurface.report.claudeDir", { claudeConfigDir: "/h/.claude" }));
     expect(txt).toContain("~/.local/bin/ccm");
     expect(txt).toContain("解析为: /h/.local/bin/ccm");
     // 审计实测：删掉 `位置:` 那一行推送，16 项全绿——诊断文本里的位置此前零覆盖
@@ -398,7 +403,7 @@ describe("ConfigSurfaceSection", () => {
     // 实测：删掉那段 `Array.isArray` 校验后，`render(undefined)` 抛 TypeError 被同一个
     // try/catch 吞掉，产生**一模一样**的"扫描失败"+toast，这条测试照样绿——
     // 也就是说它守的是 catch 存在，不是形状校验存在。现在改成断言那句专属错误文案。
-    expect(s.element.textContent).toContain("形状不对");
+    expect(s.element.textContent).toContain(copyText("configSurface.refresh.badShape"));
     expect(toastMock).toHaveBeenCalled();
   });
 
@@ -406,7 +411,7 @@ describe("ConfigSurfaceSection", () => {
     serve({ rows: null, settings_scopes: [] });
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
-    expect(s.element.textContent).toContain("形状不对");
+    expect(s.element.textContent).toContain(copyText("configSurface.refresh.badShape"));
   });
 
   it("扫描失败时「复制诊断文本」保持禁用（没东西可复制）", async () => {
@@ -554,7 +559,7 @@ describe("〔ST2 · 用户 09-24 裁「远端也有真栏」 · MIG-3b 续〕足
     const box = s.element.querySelector<HTMLElement>("[data-footprint-unanswered]")!;
     expect(box.hidden).toBe(false);
     const why = box.querySelector<HTMLElement>("[aria-label]");
-    expect(s.element.textContent).toContain("这台机器（devbox）的足迹还查不了");
+    expect(s.element.textContent).toContain(copyText("configSurface.remote.unanswered", { machine: "devbox" }));
     expect(why?.getAttribute("aria-label")).toBe(REMOTE_UNANSWERED_WHY());
   });
 

@@ -5,6 +5,7 @@
  * 请求问对那台、说对那条、参数原样。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -48,22 +49,22 @@ describe("金样：后端出的成品，TS 读得懂", () => {
 describe("严格收", () => {
   it("多一格 / 缺一格 / 类型不对 ⇒ 抛（每一层都查）", () => {
     const r = G.readReply as Record<string, unknown>;
-    expect(() => decodeAliasListing({ ...r, boundTerminals: 2 })).toThrow(/两端版本对不上/);
+    expect(() => decodeAliasListing({ ...r, boundTerminals: 2 })).toThrow(copyText("aliasReads.reply.badShape"));
     const { otherRc: _o, ...short } = r;
-    expect(() => decodeAliasListing(short)).toThrow(/两端版本对不上/);
+    expect(() => decodeAliasListing(short)).toThrow(copyText("aliasReads.reply.badShape"));
     const cands = r.rcCandidates as Record<string, unknown>[];
     const c0 = cands[0] as Record<string, unknown>;
     expect(() => decodeAliasListing({ ...r, rcCandidates: [{ ...c0, block: { ...(c0.block as object), extra: 1 } }] })).toThrow(
-      /两端版本对不上/,
+      copyText("aliasReads.reply.badShape"),
     );
-    expect(() => decodeAliasRender({ ...G.renderReply, collisions: [1] })).toThrow(/两端版本对不上/);
-    expect(() => decodeAliasInstallReport({ ...G.installReply, wroteAliasFile: "yes" })).toThrow(/两端版本对不上/);
+    expect(() => decodeAliasRender({ ...G.renderReply, collisions: [1] })).toThrow(copyText("aliasReads.reply.badShape"));
+    expect(() => decodeAliasInstallReport({ ...G.installReply, wroteAliasFile: "yes" })).toThrow(copyText("aliasReads.reply.badShape"));
   });
   it("块那三口：预览只收 `{text}`；装 / 卸只收 `{}`", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ text: "x", more: 1 }));
-    await expect(renderAliasBlock("devbox", "~/.bashrc", false)).rejects.toThrow(/两端版本对不上/);
+    await expect(renderAliasBlock("devbox", "~/.bashrc", false)).rejects.toThrow(copyText("aliasReads.reply.badShape"));
     invokeMock.mockResolvedValueOnce(chanReply({ ok: true }));
-    await expect(removeAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(/两端版本对不上/);
+    await expect(removeAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(copyText("aliasReads.reply.badShape"));
   });
 });
 

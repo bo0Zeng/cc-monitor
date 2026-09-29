@@ -265,7 +265,14 @@ async fn a_plan_of_the_wrong_shape_is_refused() {
         .await
         .unwrap_err();
     assert_eq!(code, "failed");
-    assert!(e.contains("形状不对"), "{e}");
+    // 〔COPY-R〕按文案键断言（`设计/91 §6`）：那句话的每一截字面都在，不钉原文。
+    let template = copy_text(
+        "rsPanoramaCall.edit.badPlan",
+        &[("e", "\u{0}"), ("raw", "\u{0}")],
+    );
+    for piece in template.split('\u{0}').filter(|p| !p.is_empty()) {
+        assert!(e.contains(piece), "缺「{piece}」：{e}");
+    }
     assert!(d.writes().is_empty());
 }
 
