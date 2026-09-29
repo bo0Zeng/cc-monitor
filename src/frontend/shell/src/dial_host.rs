@@ -343,7 +343,7 @@ impl tokio::io::AsyncWrite for DialStream {
 
 /// 开链路、交请求、在 [`ACK_DEADLINE`] 内读完握手。成功 ⇒ 链路 ＋ ack。
 ///
-/// 失败回 `(说法, 看到过的指纹)` —— 测试连接要把指纹给用户看（TOFU 固化 / 失配时比对）。
+/// 失败回 `(说法, 开通道被远端回拒的原因码)` —— 〔WF2〕原因码只有 `tunnel` 那一形会有（[`tunnel`] 的调用方据它决定停不停）。
 async fn open(
     cfg: &RemoteConfig,
     req: &serde_json::Value,
@@ -363,8 +363,10 @@ async fn open(
     let shake = ssh_link::handshake(&mut r, want, ack_line_cap(), on_stage);
     let ack = match tokio::time::timeout(ACK_DEADLINE, shake).await {
         Ok(Ok(ack)) => ack,
-        Ok(Err(LinkError::Refused { why, fingerprint })) => {
-            return Err((why, fingerprint));
+        Ok(Err(LinkError::Refused {
+            why, open_refused, ..
+        })) => {
+            return Err((why, open_refused));
         }
         Ok(Err(e)) => return Err((e.to_string(), None)),
         // 到点：`r`（链路）随本函数返回被丢掉 ⇒ `link-close` ⇒ 后端收掉这条链路的拨号。
@@ -626,12 +628,14 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
 
 /// 〔HOST · V139〕**一条到远端常驻后端监听口的隧道**（链路 `use:"tunnel"`：本机常驻后端在池里那条 SSH 连接上开
 /// direct-tcpip 到远端 `127.0.0.1:port`）。出生带一次性总时限；接成流之后由调用方摘（`remote_resident::attach`）。
-pub(crate) async fn tunnel(cfg: &RemoteConfig, port: u16) -> Result<DialStream, String> {
-    let req = request(cfg, "tunnel", serde_json::json!({ "tunnel_port": port }))?;
-    open(cfg, &req, "tunnel", &mut |_| {})
-        .await
-        .map(|(s, _)| s)
-        .map_err(|(e, _)| e)
+/// 失败回 `(说法, 开通道被远端回拒的原因码)`（〔WF2〕`remote_resident::retry_tunnel` 据码分停 / 等）。
+pub(crate) async fn tunnel(
+    cfg: &RemoteConfig,
+    port: u16,
+) -> Result<DialStream, (String, Option<String>)> {
+    let req = request(cfg, "tunnel", serde_json::json!({ "tunnel_port": port }))
+        .map_err(|e| (e, None))?;
+    open(cfg, &req, "tunnel", &mut |_| {}).await.map(|(s, _)| s)
 }
 
 /// **收全一条 exec**：stdout / stderr / 退出码。`abort_marker` 一出现就提前收（老后端掉进流模式永不 EOF）。

@@ -192,6 +192,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const snap: AccountsState = {
       origin: LOCAL_ORIGIN, // 〔C4b〕账号面的本机就是 `LOCAL_ORIGIN`（`"__local__"` 已退役）
       available: true,
+      oldBackend: false,
       error: null,
       notice: null,
       meta: null,

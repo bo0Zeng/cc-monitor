@@ -317,6 +317,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             }),
             strict: true,
             jump_strict: false,
+            open_refused: Some("administratively_prohibited"),
             v: ACK_V,
             uses: USES,
         },
@@ -344,6 +345,39 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
         v["jump_fingerprints"],
         serde_json::json!({"j:22": "SHA256:j"})
     );
+    // 〔WF2〕开通道被回拒的原因码（additive；界面据它分「不许端口转发」与「口上还没人」）。
+    assert_eq!(v["open_refused"], "administratively_prohibited");
+}
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 E（`AllowTcpForwarding no` ⇒ 控制隧道被拒、界面每分钟新拨 33 条）。
+/// 开通道失败的原因码 == RFC 4254 §5.1 那张表（期望逐格取自 RFC 原文的码名，异源于实现）；不是开通道失败 ⇒ 不给码。
+#[test]
+fn channel_open_failures_map_to_the_rfc_reason_words() {
+    use russh::ChannelOpenFailure as F;
+    let rows = [
+        (F::AdministrativelyProhibited, "administratively_prohibited"),
+        (F::ConnectFailed, "connect_failed"),
+        (F::UnknownChannelType, "unknown_channel_type"),
+        (F::ResourceShortage, "resource_shortage"),
+        (F::Unknown, "unknown"),
+    ];
+    for (f, want) in rows {
+        assert_eq!(
+            open_failure_word(&russh::Error::ChannelOpenFailure(f)),
+            Some(want)
+        );
+    }
+    assert_eq!(open_failure_word(&russh::Error::Disconnect), None);
+    // 在执行链上：`tunnel` 那一臂开 direct-tcpip 失败时恰好一处把原因码装进 ack（其余几臂不装）。
+    let prod =
+        crate::guard_support::production_code(include_str!("../../src/backend/dial/uses.rs"));
+    let at = guard_core::find_pinned(&prod, "Use::Tunnel => {").expect("tunnel 那一臂不是恰好一处");
+    let arm = &prod[at..prod[at..]
+        .find("Use::Files =>")
+        .map_or(prod.len(), |e| at + e)];
+    guard_core::find_pinned(arm, "super::open_failure_word(&e)")
+        .expect("tunnel 那一臂没把原因码交出去");
+    guard_core::find_pinned(&prod, "DialAck::open_refused(").expect("装原因码的 ack 不是恰好一处");
 }
 
 /// 〔C2〕v2 的字段全是可选的：老界面（v1 六个字段）发来的请求照样读得动，而且用法缺省是长流。

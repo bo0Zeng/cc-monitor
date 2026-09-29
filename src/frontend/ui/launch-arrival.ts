@@ -82,14 +82,23 @@ export function lastWords(screen: string): string {
     .join("\n");
 }
 
+/**
+ * 〔WF2 · WIN3 §2〕这一族几句都是「{machine}上…」：机器名以字母数字收尾（`lx`）⇒ 与后面的汉字隔一个空格（「lx 上报出了」）；
+ * 「本机」不隔。空格随值而定，模板写不出来 ⇒ 在填值这一处定。
+ */
+export function machineBeforeHan(o: Origin): string {
+  const m = machineName(o);
+  return /[A-Za-z0-9]$/.test(m) ? `${m} ` : m;
+}
+
 /** 见到了那一句的正文（标题由各条路自己给）。 */
 export function arrivedBody(o: Origin): string {
-  return copyText("launchArrival.arrived.body", { machine: machineName(o) });
+  return copyText("launchArrival.arrived.body", { machine: machineBeforeHan(o) });
 }
 
 async function sayMissed(p: ArrivalSpec): Promise<void> {
   const secs = String(Math.round(ARRIVAL_BUDGET_MS / 1000));
-  const machine = machineName(p.origin);
+  const machine = machineBeforeHan(p.origin);
   let body: string;
   if (p.tmuxName === null) {
     body = copyText("launchArrival.missed.inWindow", { secs, machine });

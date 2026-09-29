@@ -135,6 +135,7 @@ function state(p: Partial<AccountsState>): AccountsState {
   return {
     origin: "aya",
     available: true,
+    oldBackend: false,
     error: null,
     notice: null,
     meta: {
@@ -244,7 +245,7 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
   });
 
   it("老后端（不支持账号）→ 提示需更新，不渲染表", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "backend 过旧" }));
+    fetchAccountsMock.mockResolvedValue(state({ available: false, oldBackend: true, error: "backend 过旧" }));
     const el = await mount();
     expect(el.querySelector(".accounts-info")?.textContent).toContain("需要更新");
     expectNoReadyChrome(el);
@@ -1073,7 +1074,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
     setCurrentMachine("aya"); // 〔第三波 S3〕站到 aya 那一页上（上面的 `noRemotes()` 把 store 置回了本机）
-    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "backend 过旧" }));
+    fetchAccountsMock.mockResolvedValue(state({ available: false, oldBackend: true, error: "backend 过旧" }));
     const remoteEl = await mount();
     expect(
       (remoteEl.textContent ?? "").includes("远端"),
@@ -1651,7 +1652,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   // ---- 远端那条路一个字节不变 ----
 
   it("★ NF2D2 远端侧：远端那五支写进账本的东西逐格不变，且本机那一栏一格不长", async () => {
-    // 分母 = 远端那条路今天**全部**五支（`reload` 里 catch + `deriveUi` 的四个 kind），
+    // 分母 = 远端那条路今天**全部**六支（`reload` 里 catch + `deriveUi` 的各个 kind；〔WF2〕多了 query-failed 一支），
     // 逐支各跑一次真面板。少一支，那一支上顺手改坏一行不会红。
     const H = host().label;
     const remote = async (
@@ -1675,11 +1676,21 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     expect(
       await remote(() =>
         fetchAccountsMock.mockResolvedValue(
-          state({ available: false, error: "backend 过旧", accounts: [] }),
+          state({ available: false, oldBackend: true, error: "backend 过旧", accounts: [] }),
         ),
       ),
       "老后端那一支",
     ).toEqual({ accounts: { kind: "fail", detail: "后端需更新" } });
+
+    // 〔WF2 · WIN3 读数 C〕第六支：没问出来 ⇒ 说查询失败，不说需更新。
+    expect(
+      await remote(() =>
+        fetchAccountsMock.mockResolvedValue(
+          state({ available: false, error: "现在够不着那台机器的后端", accounts: [] }),
+        ),
+      ),
+      "查询失败那一支",
+    ).toEqual({ accounts: { kind: "fail", detail: "没查到" } });
 
     expect(
       await remote(() => fetchAccountsMock.mockResolvedValue(state({ accounts: [] }))),

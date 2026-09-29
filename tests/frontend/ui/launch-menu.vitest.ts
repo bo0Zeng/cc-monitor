@@ -30,6 +30,7 @@ function state(accounts: Account[], available = true): AccountsState {
   return {
     origin: "host",
     available,
+    oldBackend: false,
     error: null,
     meta: null,
     accounts,

@@ -45,6 +45,8 @@ export function chipLabel(state: AccountsState | null): string {
   switch (ui.kind) {
     case "needs-update":
       return copyText("accountChip.label.backendOld");
+    case "query-failed":
+      return copyText("accountChip.label.queryFailed");
     case "not-enabled":
       return copyText("accountChip.label.disabled");
     case "ready": {
@@ -206,7 +208,9 @@ export class AccountChip {
       info.textContent =
         ui.kind === "needs-update"
           ? copyText("accountChip.menu.backendOld")
-          : copyText("accountChip.menu.notEnabled");
+          : ui.kind === "query-failed"
+            ? copyText("accountChip.menu.queryFailed", { reason: ui.reason })
+            : copyText("accountChip.menu.notEnabled");
       menu.appendChild(info);
       menu.appendChild(this.menuAction(copyText("accountChip.menu.manageDeploy"), () => this.deps.openSettings()));
     } else {

@@ -256,6 +256,9 @@ enum Kind {
     /// `设计/01 §6.9`「所有对外文案与报错都从一张表来」—— 表是编译期内嵌的一份 JSON，窗口进程与 app 读同一份字节，
     /// 取文口是纯函数（查表 ＋ 填占位符），不碰进程外任何东西。
     Copy,
+    /// 〔WF2 · WIN3 读数 D〕**窗口几何**：工作区那个类型 ＋「一扇窗夹进工作区」那一个判定（`lib.rs::fit_into_work_area`，纯函数）。
+    /// 不是欠账：它与 Tauri 那几扇窗共用一个家（一个判定不许两个家），不碰进程外任何东西。
+    Geometry,
     /// monitor 那一侧：通道宿主（交接件 · 生产句柄）。
     Host,
     /// monitor 那一侧：起进程那个全仓唯一出口（`exec_site_registry` 管着）。
@@ -263,6 +266,9 @@ enum Kind {
     /// 〔FW34 · 第四波 09-24〕monitor 那一侧：monitor 自己的数据目录 —— 书签文件住那儿，
     /// 开窗时在这一侧算好全路径、放进种子交给窗口进程（窗口进程自己不找数据目录）。
     DataDir,
+    /// 〔WF2 · WIN3 读数 J〕monitor 那一侧：出声的既有通道（`remote-health` 事件与它的载荷）——
+    /// 窗口进程「判成功」之后又不体面地退了，那一句经它到界面 toast。
+    Notify,
     /// monitor 那一侧：那条命令的入参类型（那台机器的配置）。
     /// 〔F7a · 第三波 09-24〕这一类原先还装着「开窗前解 home」（走 SFTP，后端没有这一问）——
     /// 现在问后端 `files-home`，走的是 `Host` 那一类的同一个句柄 ⇒ 这一类只剩配置，改了名。
@@ -327,6 +333,9 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::OwnState),
     // ── 对外文案表（CP2b）──
     ("copy_table::copy_text", Kind::Copy),
+    // ── 窗口几何（〔WF2〕开窗第一拍夹进种子带来的工作区）──
+    ("WorkArea", Kind::Geometry),
+    ("fit_into_work_area", Kind::Geometry),
 ];
 
 /// ★ **monitor 那一侧**（`entry.rs` ＋ [`MONITOR_FNS`]）够得到的 app 侧符号，逐条。
@@ -345,6 +354,13 @@ const MONITOR_SIDE: &[(&str, Kind)] = &[
     ("config::resolve_monitor_data_dir", Kind::DataDir), // 〔RE〕原 `paths::`（`paths.rs` 并进 `config.rs`）
     // 〔CP2b〕monitor 那一侧（entry.rs）的报错也从文案表取。
     ("copy_table::copy_text", Kind::Copy),
+    // 〔WF2 · WIN3 读数 D〕问主窗所在显示器的工作区，放进种子。
+    ("MAIN_WINDOW_LABEL", Kind::Geometry),
+    ("WorkArea", Kind::Geometry),
+    ("WorkArea::of", Kind::Geometry),
+    // 〔WF2 · WIN3 读数 J〕开出来之后又退了那一句经 `remote-health` 出声。
+    ("ui_contract::RemoteHealthPayload", Kind::Notify),
+    ("ui_contract::events::REMOTE_HEALTH", Kind::Notify),
 ];
 
 /// 一段生产代码 → `(函数名, 那一块)`。函数外的行归 `""`。

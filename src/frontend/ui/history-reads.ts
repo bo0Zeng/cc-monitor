@@ -79,10 +79,11 @@ export interface EntryMetadata {
   lastAccount: string | null;
 }
 
-/** 远端那一批：项目 ＋ 失败的那几台。 */
+/** 远端那一批：项目 ＋ 失败的那几台 ＋〔WF2〕答了、但一个项目都没有的那几台（界面给它们画「这台还没有会话记录」）。 */
 export interface RemoteProjectsResult {
   projects: HistoryProject[];
   failedHosts: string[];
+  emptyHosts: string[];
 }
 
 const PROJECTS_BUDGET_MS = 30_000;
@@ -303,7 +304,7 @@ export async function fetchLocalProjects(): Promise<{
  */
 export async function fetchRemoteProjects(): Promise<RemoteProjectsResult> {
   const origins = await commands.list_remote_mcp_origins();
-  if (origins.length === 0) return { projects: [], failedHosts: [] };
+  if (origins.length === 0) return { projects: [], failedHosts: [], emptyHosts: [] };
   const per = await Promise.all(
     origins.map(async (origin) => {
       try {
@@ -336,6 +337,7 @@ export async function fetchRemoteProjects(): Promise<RemoteProjectsResult> {
   return {
     projects: per.flatMap((p) => p.projects),
     failedHosts: failed.map((p) => p.origin),
+    emptyHosts: per.filter((p) => p.error === null && p.projects.length === 0).map((p) => p.origin),
   };
 }
 
