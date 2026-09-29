@@ -198,52 +198,11 @@ fn next_backoff_doubles_then_caps() {
 //   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
 //   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
-fn ep(host: &str, port: u16) -> Endpoint {
-    Endpoint {
-        host: host.into(),
-        port,
-    }
-}
-
-// === F45：winner_address（喂 remote-launch 的拨号地址）===
-
-fn cfg_with(label: &str, host: &str, port: u16, addresses: Vec<String>) -> RemoteConfig {
-    RemoteConfig {
-        host: host.into(),
-        label: label.into(),
-        port,
-        user: "u".into(),
-        key_path: None,
-        host_key_fingerprint: None,
-        addresses,
-        jump: None,
-    }
-}
-
-#[test]
-fn winner_address_falls_back_to_host_when_no_last_good() {
-    let cfg = cfg_with("wa-none", "h.example", 2200, vec!["10.0.0.9".into()]);
-    assert_eq!(winner_address(&cfg), ep("h.example", 2200));
-}
-
-#[test]
-fn winner_address_uses_last_good_then_invalidates_on_config_change() {
-    // 用独立 origin 避免与其它测试共享的 last-good store 串味。
-    let cfg = cfg_with("wa-lg", "h.example", 22, vec!["10.0.0.9".into()]);
-    record_last_good(&cfg, &ep("10.0.0.9", 22));
-    assert_eq!(
-        winner_address(&cfg),
-        ep("10.0.0.9", 22),
-        "已连过 → last-good 胜者"
-    );
-    // 配置改掉备用地址 → 记下 last-good 那一刻的地址配置对不上了 → 回退 host（〔MIG-1 收尾〕不再在界面进程里解析地址来判）。
-    let cfg2 = cfg_with("wa-lg", "h.example", 22, vec![]);
-    assert_eq!(
-        winner_address(&cfg2),
-        ep("h.example", 22),
-        "配置变更失效 last-good"
-    );
-}
+// 〔FIX4 · V41〕F45 那两条（`winner_address`〔散文墓碑〕：没连过 ⇒ `host:port`；连过 ⇒ 上次赢的那条，地址配置改过即失效）随被测函数删了：
+//   远端开终端进了本机后端（`terminal-ssh`），那个函数零生产调用。两半各有等价判据、不补：
+//   「上次赢的那条排首 / 已不在这台地址里就不动」⇒ 后端 `dial_machine_tests::a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`
+//   ＋ 开终端那一行 `dial_terminal_tests::the_address_is_the_first_in_race_order_so_the_last_winner_is_used`；
+//   「地址配置改过 ⇒ 上次那条失效」⇒ monitor `dial_host_tests::the_last_winner_goes_over_as_prefer_while_the_config_is_unchanged`。
 
 // 〔E2 · V28〕`backendPath` 那一格删了（落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）⇒ 从前那道放行判定
 //   `backend_path_for_shell`〔散文墓碑〕与它的两条判据没有外来值可判，一起删了。
