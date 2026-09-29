@@ -4688,7 +4688,7 @@ mod g6_dependency_signoff {
              host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
              但那是**用法**上的签字，不是对它源码的读数。\
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做。\
-             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/bridge/vendor/russh`，只改了 \
+             〔CZ1 · 2026-09-25〕今天链的是仓内补过的副本（`[patch.crates-io]` → `src/vendor/russh`，只改了 \
              `compression.rs` 解压收尾那一段、没碰任何 IO）⇒ 源码进了树、**可以**量了，但本档仍是「未量」：本轮没扫它的写面",
         ),
         (

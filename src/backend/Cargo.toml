@@ -311,9 +311,9 @@ ts-rs = "12.0.1"
 # 副本 = 本机缓存里那份 `russh-0.61.1.crate` 原样解开（其 sha256 == 本 lock 原先锁的 checksum）＋ 只改
 # `src/compression.rs::Decompress::decompress` 的收尾判断（用本轮调用**之后**的进度；上游用调用之前的 ⇒
 # 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 —— `调研/第四波记录/NT1.md §1.1a`）。
-# 来历、改了哪几行、上游修好之后怎么撤：`../bridge/vendor/russh/VENDOR.md`。
+# 来历、改了哪几行、上游修好之后怎么撤：`../vendor/russh/VENDOR.md`。
 # 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。
-# ⚠ 住 `src/bridge/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
+# ⚠ 住 `src/vendor/` 而不住本目录：本 crate 的扫描型守卫按 `guard_support::src_root()` 递归收 `.rs`，
 #   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
 [patch.crates-io]
-russh = { path = "../bridge/vendor/russh" }
+russh = { path = "../vendor/russh" }

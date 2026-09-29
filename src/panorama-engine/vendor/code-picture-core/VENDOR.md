@@ -73,7 +73,7 @@ cc-monitor 仓内,CI 无需改 checkout、构建自洽。
 ## 如何 re-vendor(上游有更新时)
 ```
 UP=<code-picture 仓>/crates/code-picture-core
-VD=src/bridge/vendor/code-picture-core
+VD=src/panorama-engine/vendor/code-picture-core
 # 注意:rm 会删本 VENDOR.md(副本特有、非上游文件),re-vendor 后重写它、更新 pin
 rm -rf "$VD" && mkdir -p "$VD" && cp -r "$UP/src" "$UP/Cargo.toml" "$VD/"
 # 重建本 VENDOR.md(更新 commit/时间/变化);cargo build 验证;跑门槛

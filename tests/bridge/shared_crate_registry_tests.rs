@@ -224,12 +224,13 @@ fn every_shared_crate_is_a_workspace_member() {
         "这些共享 crate 不在 `[workspace] members` 里：{missing:?}\n\
              ⇒ `cargo test --workspace` 覆不到它们，测试会**静默地**从门禁里消失。"
     );
-    // vendor 那条 exclude 不许没掉：没了它，vendor 的 25 条会掺进 `--workspace` 的读数。
-    // ⚠ 它**挡不住** vendor 成为成员（`exclude` 对成员的 path 依赖不生效，G2 实测）——
-    //    真正把它挡在外面的是 CI 命令行上的 `--exclude`，本条钉的是「这个意图还在」。
+    // 〔RE〕vendor 随唯一消费者搬出本包（`src/panorama-engine/vendor/` · `src/vendor/`，`99 §2.1 ⑰`），
+    //   那条 `exclude` 随之删了：住在 workspace 根外面的 path 依赖按构造成不了成员。
+    //   同一个意图（vendor 别掺进 `--workspace` 的读数）改钉位置那一半：本包根下没有 vendor 目录、也不再需要 exclude。
     assert!(
-        ws.contains("exclude = [\"vendor/code-picture-core\"]"),
-        "`[workspace] exclude` 里的 vendor 那条没了"
+        !ws.lines().any(|l| l.trim_start().starts_with("exclude"))
+            && !root().join("vendor").exists(),
+        "本包根下又出现了 vendor 目录 / `[workspace] exclude` —— vendor 该跟它的唯一消费者住（`99 §2.1 ⑰`）"
     );
 }
 

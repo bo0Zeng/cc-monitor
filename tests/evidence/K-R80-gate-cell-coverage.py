@@ -102,13 +102,19 @@ GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "s
 #     不属于任何目录的文件（`git ls-files` 里不含 `/` 的那些）。
 #
 # 〔现打 09-19〕15 棵合计 **1343** 份 == `git ls-files` 现打 1343（分区，不重不漏）。
-VENDOR = "src/bridge/vendor/"
+# 〔RE · 收尾重排〕vendor 跟唯一消费者走（`99 §2.1 ⑰`）：russh → `src/vendor/`，code-picture-core → `src/panorama-engine/vendor/`
+#   ⇒ 原来一棵 `VENDOR` 拆成两棵；共享 crate 搬出 `src/bridge/` 住 `src/common/` ⇒ 单立一棵。
+#   新树**没单独裁的格沿用它来的那棵的裁词**（`DERIVED`，见 `cell()`）—— 搬家不改哪一格盖到它。
+VENDOR = "src/vendor/"
+VENDOR_PANO = "src/panorama-engine/vendor/"
 ROOTFILES = "<仓根文件>"
 # 🔴 **顺序是承重的**：`tree_of()` 首匹配即归属 ⇒ 长前缀必须排在它的 catch-all 之前。
 #    把 `src/` 挪到 `src/backend/` 前面，后端那 69 份会被前端那棵吞掉，而**一条判据都不红**。
 TREES = [
     "src/backend/",          # 69   后端 Rust（重构前的 `remote-daemon-proto/`）
-    VENDOR,                  # 33   vendor 两棵：code-picture-core 25 · cc-acct-iso 8
+    VENDOR,                  # russh 补丁副本（〔RE〕原 `src/bridge/vendor/russh`）
+    VENDOR_PANO,             # code-picture-core（〔RE〕原 `src/bridge/vendor/code-picture-core`）
+    "src/common/",           # 共享 crate（〔RE〕原 `src/bridge/crates/`）
     "src/bridge/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
     "src/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
     "src/shared/",           # 19   重构前的 `shared/`
@@ -155,9 +161,16 @@ def all_blind(reason=OUT_OF_TREE):
 REGISTRY = {}
 
 
+# 〔RE〕搬家分出来的树 → 它来的那棵：没单独裁的格沿用来处的裁词（纯搬家不改覆盖）。
+DERIVED = {VENDOR_PANO: VENDOR, "src/common/": "src/bridge/"}
+
+
 def cell(name, anchor, cwd, cmd, **verdicts):
     c = all_blind()
     c.update(verdicts)
+    for new, src in DERIVED.items():
+        if new not in verdicts and src in verdicts:
+            c[new] = verdicts[src]
     REGISTRY[name] = {"anchor": anchor, "cwd": cwd, "cmd": cmd, "cover": c}
 
 

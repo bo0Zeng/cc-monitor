@@ -42,7 +42,7 @@ const TREES: &[(&str, &str, usize, &str)] = &[
 /// 排除要有住址、有理由、还要有幽灵检查 —— **一个没人知道的过滤器与一个没人知道的洞
 /// 长得一模一样。**
 const EXCLUDED_TREES: &[(&str, &str)] = &[(
-    "src/bridge/vendor/code-picture-core",
+    "src/panorama-engine/vendor/code-picture-core",
     "引擎本体自己的家：取用口那个符号是在这里**定义**的，把它算进人群等于要求\
          「定义处也只许有一处取用」——那是另一件事。且 `C7` 逐字「vendor 不动」，\
          它进人群只会造出一条谁也不许修的红。monitor 清单的 `[workspace] exclude` \

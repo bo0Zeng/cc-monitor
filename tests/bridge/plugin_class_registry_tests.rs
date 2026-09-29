@@ -481,7 +481,7 @@ fn code_picture_lives_in_its_own_program_and_neither_in_the_monitor_nor_the_back
     //    用整行相等是刻意的：子串会被「path 改指别处」这种撑大式改动从缝里溜过去）。
     let program = must_read("src/panorama-engine/Cargo.toml", 300);
     let dep = format!(
-        "code-picture-core = {} path = \"../bridge/vendor/code-picture-core\" {}",
+        "code-picture-core = {} path = \"vendor/code-picture-core\" {}",
         '{', '}'
     );
     guard_core::pin_line(&program, &dep).unwrap_or_else(|e| {

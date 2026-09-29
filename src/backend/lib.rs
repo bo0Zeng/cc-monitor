@@ -467,7 +467,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// `history-forget` · `history-last-accounts`（两个命令面）。＋ 行为：`history-projects` / `history-sessions` 应答改成
 /// 本机后端出的跨机 join 成品 `{rows, notice}`；注解文件的读写者换成本机后端。
 ///
-/// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/bridge/vendor/russh`，
+/// ★★★ **p3m-ssh-zlib**（2026-09-25，第四波 CZ1 合并那一拍）：行为 —— russh 换成仓内打补丁的副本（`src/vendor/russh`，
 /// 修 zlib 解压一包只交出约 2 倍包长的缺陷），闸 `RUSSH_ZLIB_SOUND` 开 ⇒ 判准下「远」的链路从此真走 zlib@openssh.com。
 /// 子命令没变，照 p1v 先例不加历史行。
 ///

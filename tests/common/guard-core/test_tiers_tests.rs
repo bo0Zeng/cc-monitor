@@ -2707,7 +2707,7 @@ fn every_bench_lives_in_the_benches_home_and_runs_under_cargo_test() {
     let mut bad = Vec::new();
     let manifests: Vec<String> = crate::files_by_extension(&root.join("src"), "toml")
         .into_iter()
-        .filter(|r| r.ends_with("Cargo.toml") && !under(r, "bridge/vendor/"))
+        .filter(|r| r.ends_with("Cargo.toml") && !r.split('/').any(|seg| seg == "vendor"))
         .collect();
     for m in &manifests {
         let dir = root.join("src").join(m);

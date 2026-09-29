@@ -3426,7 +3426,7 @@ key_path · host_key_fingerprint · 竞速地址 · 跳板`；〔NT1〕默认一
   下一条链路拨新的 —— 不再等 keepalive 连错三次（约 90 s）才换。
 - 压缩：判准住 `dial/connect.rs::compression_for`（回环不压 · 内核量到的握手往返 ≥ 5 ms 才压 · 读不到就压），
   闸 `RUSSH_ZLIB_SOUND` **开着**〔CZ1 · V118〕：上游 russh 0.61 的 zlib 解压一包最多交出约两倍包长（真 sshd 上一开压缩第一条通道就卡死），
-  后端链的是仓内补过的副本（`Cargo.toml` 的 `[patch.crates-io]` → `src/bridge/vendor/russh`，改了哪几行见那里的 `VENDOR.md`）。
+  后端链的是仓内补过的副本（`Cargo.toml` 的 `[patch.crates-io]` → `src/vendor/russh`，改了哪几行见那里的 `VENDOR.md`）。
   协商偏好序：压 ⇒ `zlib@openssh.com, zlib, none`（远端关了压缩照样连得上）；跳板自己那条永远不压，答案给隧道里的目标。
 
 **一条链路上的字节 = C2 拨号代理原来的 stdout，逐字节同形**：`stages=true` 时若干行 `{"stage":{…}}` → **恰好一行** ack

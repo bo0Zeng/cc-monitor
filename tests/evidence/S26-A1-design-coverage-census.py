@@ -156,7 +156,8 @@ EXCLUDED_DIRS = (
     "src/generated",
     "src/doc",
     "src/common",
-    "src/bridge/vendor",
+    "src/vendor",
+    "src/panorama-engine/vendor",
     "src/bridge/gen",
     "src/bridge/embedded-daemons",
     "src/bridge/scripts",
@@ -1275,7 +1276,7 @@ def main_report(args) -> int:
     P("\n" + "─" * 79)
     P("【面⑨】**已登记未扫面** —— 明写，不假装扫过")
     P("─" * 79)
-    for d in ("src/common", "src/bridge/vendor"):
+    for d in ("src/common", "src/vendor", "src/panorama-engine/vendor"):
         fs = [p for p in (REPO / d).rglob("*.rs") if "/target/" not in p.as_posix()]
         P(f"  · `{d}/`：{len(fs)} 个 `.rs` / "
           f"{sum(p.read_text(errors='replace').count(chr(10)) for p in fs):,} 行 —— "

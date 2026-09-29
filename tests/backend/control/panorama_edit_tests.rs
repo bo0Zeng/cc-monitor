@@ -295,7 +295,7 @@ fn the_plan_shape_matches_the_upstream_one() {
         assert!(s.len() > 2_000, "{p:?} 只有 {} 字节", s.len());
         crate::guard_support::production_code(&s)
     };
-    let up = read("src/bridge/vendor/code-picture-core/src/edits.rs");
+    let up = read("src/panorama-engine/vendor/code-picture-core/src/edits.rs");
     let ours = read("src/backend/control/panorama_edit.rs");
     for name in ["Planned", "FileEdit"] {
         let theirs = struct_fields(&up, name);
