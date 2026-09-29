@@ -75,9 +75,9 @@ pub(crate) const BUILD_DEADLINE_SECS: u64 = 900;
 /// 其余（短活档）的期限（秒）。一问一答每次都要 `Engine::open`（很轻），overview 不跨进程缓存 ⇒ 大仓每次重算。
 pub(crate) const QUERY_DEADLINE_SECS: u64 = 60;
 
-/// **档 → 秒数**（只住这里）：按小程序自报的档给这一次的期限。
-pub(crate) fn deadline_for(answer: &crate::plugin::probe::Answer, op: &str) -> u64 {
-    if answer.is_long(op) {
+/// **档 → 秒数**（只住这里）：按小程序自报的档（`long` = 它把这个 op 报在 `long=` 里）给这一次的期限。
+pub(crate) fn deadline_for(long: bool) -> u64 {
+    if long {
         BUILD_DEADLINE_SECS
     } else {
         QUERY_DEADLINE_SECS
@@ -229,7 +229,7 @@ pub(crate) async fn answer_with(
             Rejected::NotThePlugin { .. } => ("not_installed", r.message()),
         },
     )?;
-    let deadline = deadline_for(&answer, op);
+    let deadline = deadline_for(answer.is_long(op));
     // ③ 起它。argv 直传不过 shell。
     let store_s = store.display().to_string();
     let mut argv: Vec<&str> = vec![op, "--store", store_s.as_str()];
