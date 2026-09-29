@@ -19,6 +19,7 @@ import {
   ARRIVAL_BUDGET_MS,
   __resetArrivalsForTests,
   arrivalMatches,
+  arrivedBody,
   lastWords,
   noteLive,
   watchArrival,
@@ -87,7 +88,7 @@ describe("等它", () => {
     expect(capture).toHaveBeenCalledWith("devbox", "cc-s1");
     expect(toast.mock.calls[0][0]).toBe("命令发出去了，但没看到会话起来");
     expect(toast.mock.calls[0][1]).toBe(
-      "等了 45 秒，devbox上没有报出这个会话。tmux 会话「cc-s1」最后几行：\n$ claude --resume s1\nbash: claude: command not found\n$",
+      "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「cc-s1」最后几行：\n$ claude --resume s1\nbash: claude: command not found\n$",
     );
   });
 
@@ -98,7 +99,7 @@ describe("等它", () => {
     await vi.advanceTimersByTimeAsync(ARRIVAL_BUDGET_MS + 1);
     const bodies = toast.mock.calls.map((c) => String(c[1])).sort();
     expect(bodies).toEqual([
-      "等了 45 秒，devbox上没有报出这个会话。tmux 会话「cc-x」那一屏读不到：Error: 没有这个会话",
+      "等了 45 秒，devbox 上没有报出这个会话。tmux 会话「cc-x」那一屏读不到：Error: 没有这个会话",
       "等了 45 秒，本机上没有报出这个会话。启动器的原话在那个终端窗口里，这边读不到。",
     ]);
   });
@@ -130,5 +131,11 @@ describe("FIX4 ④ 带票的等", () => {
       { ticket: "T2", arrived: false },
     ]);
     expect(toast.mock.calls.map((c) => c[0])).toEqual(["命令发出去了，但没看到会话起来"]);
+  });
+
+  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2`「文案小事：『lx上报出了这个会话』机器名与汉字无空格」。
+  it("机器名以字母数字收尾 ⇒ 与后面的汉字隔一个空格；「本机」不隔", () => {
+    expect(arrivedBody("lx")).toBe("lx 上报出了这个会话。");
+    expect(arrivedBody("<local>")).toBe("本机上报出了这个会话。");
   });
 });

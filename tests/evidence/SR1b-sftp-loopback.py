@@ -20,7 +20,7 @@
   ④ 上传：只写 `~/.cc-monitor/staging/<key>.part`，逐字节等于本机那份；帧序 got 单调、最后一帧 done
   ⑤ 续传：暂存件先放前 N 字节 ⇒ sftp-server 记下的这一趟写入字节数 == 总长 − N
   ⑥ 撤：上传撤 ⇒ 暂存件删；下载撤 ⇒ `.part` 留
-  ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ refused、零写
+  ⑦ 下载：落地逐字节对、`.part` 不留；远端不存在 ⇒ failed、`.part` 不留；本机落点是会话文件 ⇒ 照样开单（〔WF2 跟上〕V119 之后没有数据围栏，`设计/60 §3.5`）
   ⑧ 〔NT1 改〕长流 ＋ files 链路一条、全部传输分道一条：sshd **恰好两次**鉴权、**恰好两条** TCP
   ⑨ 子系统留口仍不开：use=subsystem ⇒ unsupported_use
 
@@ -235,7 +235,8 @@ def main():
                     n = int(ln.rsplit(" written ", 1)[1].split()[0])
             return n
 
-        base = {"host": "127.0.0.1", "port": port, "user": user, "key_path": f"{d}/client_key", "host_key_fingerprint": None}
+        # 〔WF2 · WIN3 §2〕拨号只收界面那一格原样的配置（MIG-1 之后 `dial/machine.rs::resolve`）；平铺 host/port 那一形会被回 `invalid_args`。
+        base = {"machine": {"host": "127.0.0.1", "port": port, "user": user, "label": "sr1b", "keyPath": f"{d}/client_key"}}
         be = Backend(bin_path, home)
         cmds = be.hello.get("commands", [])
         check("后端的 hello 声明了传输四条", all(c in cmds for c in ("transfer-upload", "transfer-download", "transfer-start", "transfer-stop")), cmds)
@@ -315,7 +316,10 @@ def main():
         last = be.end_of(xid)
         frames = be.xfer.get(xid, [])
         gots = [f["got"] for f in frames]
-        check("终局 done、bytes == 本机大小", bool(last) and last["end"] == {"state": "done", "bytes": os.path.getsize(up)}, last)
+        # 〔WF2 跟上〕FW1 之后 done 帧带整份摘要（`sha256`，提交那一步要它）⇒ 摘要也要等于本机那份。
+        with open(up, "rb") as fh:
+            up_sha = hashlib.sha256(fh.read()).hexdigest()
+        check("终局 done、bytes == 本机大小、sha256 == 本机那份", bool(last) and last["end"] == {"state": "done", "bytes": os.path.getsize(up), "sha256": up_sha}, last)
         check("got 单调不减", gots == sorted(gots), gots[:20])
         part = f"{rhome}/.cc-monitor/staging/{key}.part"
         with open(up, "rb") as a, open(part, "rb") as b:
@@ -390,7 +394,7 @@ def main():
         check("远端不存在 ⇒ failed、.part 不留", bool(last) and last["end"].get("state") == "failed" and not os.path.exists(miss + ".part") and not os.path.exists(miss), last)
         sess = os.path.join(home, ".claude", "projects", "p", "x.jsonl")
         r = be.call("transfer-download", {"dial": base, "remote_path": rsrc, "local_path": sess})
-        check("本机落点是会话文件 ⇒ refused、零写", bool(r) and not r["ok"] and r.get("code") == "refused" and not os.listdir(os.path.dirname(sess)), r)
+        check("本机落点是会话文件 ⇒ 照样开单（V119：没有数据围栏）", bool(r) and r["ok"], r)
 
         # 〔NT1 · 2026-09-24〕长流在时传输分道（`dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
         #   被主连接托着、之后的传输都复用它）⇒ 长流 ＋ files 一条、六趟传输一条：恰好两次鉴权、两条 TCP。

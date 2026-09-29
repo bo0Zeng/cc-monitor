@@ -56,6 +56,7 @@ function state(p: Partial<AccountsState>): AccountsState {
   return {
     origin: "devbox",
     available: true,
+    oldBackend: false,
     error: null,
     notice: null,
     meta: {
@@ -82,12 +83,15 @@ describe("deriveUi 降级矩阵（DESIGN §7）", () => {
   // 🔴 `K-R59`：这里此前有一条「daemonless → hidden」。定框 `K35` 之后
   //    `accounts.rs::cfg_for` 不再产出那条错误串 ⇒ `AccountsUi` 的 `hidden` 那一档
   //    **再也到不了**，连档带测一起下岗。
-  it("🔴 K-R59：任何 `available:false` 都落到 needs-update —— 不再有「安静隐藏」那一档", () => {
-    const ui = deriveUi(state({ available: false, error: "该主机配置为 daemonless（无后端），账号功能不可用" }));
-    expect(ui.kind).toBe("needs-update");
+  // 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 C「后端需更新在任何查询失败时都显示」· 题面 WF2 第 5 条「只在真的版本不够时显示；查询失败按码说查询失败」。
+  it("🔴 K-R59 · WF2：`available:false` 按失败种类分 —— 对端不认 ⇒ needs-update；其余 ⇒ query-failed（原因原样）；不再有「安静隐藏」那一档", () => {
+    const failed = deriveUi(state({ available: false, error: "现在够不着那台机器的后端，连接不在或断了" }));
+    expect(failed).toEqual({ kind: "query-failed", reason: "现在够不着那台机器的后端，连接不在或断了" });
+    // 原因串里碰巧有「过旧」也不算（从前按串猜）：种类只看 `oldBackend`。
+    expect(deriveUi(state({ available: false, error: "版本过旧？" })).kind).toBe("query-failed");
   });
-  it("旧 backend → needs-update", () => {
-    const ui = deriveUi(state({ available: false, error: "远端后端不支持账号查询（版本过旧）——请更新 backend" }));
+  it("旧 backend（对端说不认这条命令）→ needs-update", () => {
+    const ui = deriveUi(state({ available: false, oldBackend: true, error: "远端后端不支持账号查询（版本过旧）——请更新 backend" }));
     expect(ui.kind).toBe("needs-update");
   });
   it("未启用（enabled:false）→ not-enabled，带 manifest 路径", () => {
@@ -1266,6 +1270,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
   const st = (accounts: Account[], defaultName: string | null): AccountsState => ({
     origin: "<local>",
     available: true,
+    oldBackend: false,
     error: null,
     meta: null,
     accounts,

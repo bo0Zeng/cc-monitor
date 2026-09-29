@@ -75,6 +75,7 @@ function state(p: Partial<AccountsState>): AccountsState {
   return {
     origin: "devbox",
     available: true,
+    oldBackend: false,
     error: null,
     notice: null,
     meta: {
@@ -115,7 +116,11 @@ describe("chipLabel", () => {
     expect(chipLabel(null)).toBe("未连远端");
   });
   it("旧 backend → 后端需更新", () => {
-    expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("后端需更新");
+    expect(chipLabel(state({ available: false, oldBackend: true, error: "版本过旧" }))).toBe("后端需更新");
+  });
+  // 〔WF2 · WIN3 读数 C〕没问出来 ≠ 要更新。
+  it("查询失败 → 账号没查到（不说需更新）", () => {
+    expect(chipLabel(state({ available: false, error: "现在够不着那台机器的后端" }))).toBe("账号没查到");
   });
   it("未启用 → 未启用", () => {
     expect(

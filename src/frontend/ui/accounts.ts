@@ -109,6 +109,8 @@ export interface AccountsState {
   origin: Origin;
   available: boolean;
   error: string | null;
+  /** 〔WF2 · WIN3 读数 C〕`available:false` 的那一次是不是「那台后端比这条查询老」（`chan-caller.ts::isOldBackend` 判的）；其余失败 ⇒ `false`。 */
+  oldBackend: boolean;
   meta: AccountsMeta | null;
   accounts: Account[];
   /** 本机选择的默认账号（config.json）；缺省跟随 manifest 的 isDefault。 */
@@ -126,7 +128,8 @@ export interface AccountsState {
 // 「该主机配置为 daemonless（无后端）」那条错误串产出，而 `K35` 把那一档整个删了
 //（`accounts.rs::cfg_for` 那个早返回一起走）⇒ 留着就是一档**再也到不了**的 UI 状态。
 export type AccountsUi =
-  | { kind: "needs-update"; reason: string } // 旧 backend
+  | { kind: "needs-update"; reason: string } // 旧 backend（只有对端说「不认这条命令」那一形）
+  | { kind: "query-failed"; reason: string } // 〔WF2〕没问出来（够不着 / 期限到 / 对端说不行 / 形状不对）
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
   | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
 
@@ -136,11 +139,9 @@ export type AccountsUi =
 export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
-    if (e.includes("过旧") || e.includes("不支持账号")) {
-      return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.needsUpdate") };
-    }
-    // 其它不可用（查询失败等）：当作"需更新/不可用"，可点开设置看原因
-    return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.unavailable") };
+    // 〔WF2 · WIN3 读数 C〕按失败的**种类**分（从前按原因串里有没有「过旧」猜，又把其余一律并进「需更新」—— 真机上远端没部署上 / 拒转发都说成要更新）。
+    if (state.oldBackend) return { kind: "needs-update", reason: e || copyText("accounts.deriveUi.needsUpdate") };
+    return { kind: "query-failed", reason: e || copyText("accounts.deriveUi.unavailable") };
   }
   if (!state.meta?.enabled || state.accounts.length === 0) {
     return {

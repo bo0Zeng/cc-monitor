@@ -332,7 +332,7 @@ fn resolve_local_home(
             ));
         }
         let dir = match dir_part {
-            Some(d) => base.join(d),
+            Some(d) => base.join(native_rel(d, std::path::MAIN_SEPARATOR)),
             None => base,
         };
         return Ok(PathResolution::LocalGlob {
@@ -341,19 +341,32 @@ fn resolve_local_home(
             suffix: suffix.to_string(),
         });
     }
-    Ok(PathResolution::Local(base.join(rel)))
+    Ok(PathResolution::Local(
+        base.join(native_rel(rel, std::path::MAIN_SEPARATOR)),
+    ))
+}
+
+/// 〔WF2 · WIN3 §2〕申报表里的 `~/` 之后那段用 `/` 写；拼到本机家目录上时换成这台的分隔符 ——
+/// 否则 Windows 上足迹页是 `C:\Users\u\.cc-monitor/bin/ccm*` 这样正反斜杠混拼。`sep` 由调用方给（判据喂 `\`）。
+pub(crate) fn native_rel(rel: &str, sep: char) -> String {
+    rel.replace('/', &sep.to_string())
 }
 
 /// 展示用：这条解析指向的东西（含 glob pattern）。
 fn describe_target(r: &PathResolution) -> String {
+    describe_target_with(r, std::path::MAIN_SEPARATOR)
+}
+
+/// [`describe_target`] 的本体，分隔符由调用方给（判据喂 Windows 那一个）。
+pub(crate) fn describe_target_with(r: &PathResolution, sep: char) -> String {
     match r {
         PathResolution::Local(p) => p.to_string_lossy().into_owned(),
         PathResolution::LocalGlob {
             dir,
             prefix,
             suffix,
-        } => format!("{}/{prefix}*{suffix}", dir.display()),
-        PathResolution::EitherHost(inner) => describe_target(inner),
+        } => format!("{}{sep}{prefix}*{suffix}", dir.display()),
+        PathResolution::EitherHost(inner) => describe_target_with(inner, sep),
         PathResolution::Remote(p) | PathResolution::NeedsProjectDir(p) => p.clone(),
         PathResolution::NeedsUserConfig { what } => what.clone(),
         PathResolution::WindowsProfile => "$PROFILE".to_string(),

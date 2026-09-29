@@ -166,12 +166,12 @@ export class TabMenu {
       if (isRemoteOrigin(t.origin)) {
         items.push({
           id: "resume",
-          label: "Resume",
+          label: copyText("tabMenu.item.resume"),
           submenu: this.buildResumeSubmenu(sid, []),
         });
       } else {
         items.push({
-          label: "Resume",
+          label: copyText("tabMenu.item.resume"),
           onClick: () => void this.actions.resumeTab(sid),
         });
       }
@@ -567,7 +567,7 @@ export class TabMenu {
     if (resumeOnly) {
       updateTabContextMenuItem("resume", {
         id: "resume",
-        label: "Resume",
+        label: copyText("tabMenu.item.resume"),
         submenu: this.buildResumeSubmenu(sid, accountOptions),
       });
       return;
