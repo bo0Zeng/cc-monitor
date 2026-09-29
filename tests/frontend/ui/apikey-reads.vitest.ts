@@ -11,6 +11,7 @@
  * | 两问各自经通道说对的帧命令、对的请求体，失败折成一句人话（不退化成「没配」/「没行」） | 「请求」「失败」 |
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -74,7 +75,7 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
     ["老后端还回 rows", { ...st, rows: [] }],
     ["不是对象", "x"],
   ])("apikey-read · %s", (_n, v) => {
-    expect(() => decodeApikeyStatus(v)).toThrow(/两端版本对不上/);
+    expect(() => decodeApikeyStatus(v)).toThrow(copyText("apikeyReads.status.badShape"));
   });
   it.each([
     ["多一格", { ...rt, x: 1 }],
@@ -82,7 +83,7 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
     ["routed 里不是字符串", { routed: [1], running: true }],
     ["running 不是布尔", { routed: [], running: 1 }],
   ])("apikey-routing · %s", (_n, v) => {
-    expect(() => decodeApikeyRouting(v)).toThrow(/两端版本对不上/);
+    expect(() => decodeApikeyRouting(v)).toThrow(copyText("apikeyReads.routing.badShape"));
   });
 });
 
@@ -160,7 +161,7 @@ describe("〔HX2〕W2 写 key：经通道交那台机器的后端", () => {
       { ...WRITTEN, baseUrl: 3 },
       null,
     ]) {
-      expect(() => decodeApikeyWritten(bad)).toThrow(/两端版本对不上/);
+      expect(() => decodeApikeyWritten(bad)).toThrow(copyText("apikeyReads.write.badShape"));
     }
   });
   it("失败说人话、话里不带明文", async () => {

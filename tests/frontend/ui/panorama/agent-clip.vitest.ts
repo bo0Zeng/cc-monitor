@@ -12,6 +12,12 @@ import {
   type ClipContext,
 } from "../../../../src/frontend/ui/panorama/agent-clip";
 import type { Edge, Symbol as PanoSymbol } from "../../../../src/frontend/ui/panorama/types";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+
+// 〔COPY-R〕索引时间那一行与「看不见」缺值那一句按文案键取（`设计/91 §6`：判据按键、不钉原文）；其余照旧整串相等。
+const ISO = "2026-09-21T14:13:20.000Z";
+const STAMP = copyText("agentClip.stamp.line", { iso: ISO, indexedAt: 1_790_000_000, stale: "" });
+const STAMP_STALE = copyText("agentClip.stamp.line", { iso: ISO, indexedAt: 1_790_000_000, stale: copyText("agentClip.stamp.stale") });
 
 const sym = (over: Partial<PanoSymbol> = {}): PanoSymbol => ({
   id: "src/a.rs#f",
@@ -51,7 +57,7 @@ describe("CP7 复制给 agent", () => {
       "仓：/home/u/repo",
       "对象：符号 src/a.rs#f（Function · Rust · src/a.rs:10-20）",
       "签名：fn f(x: u32) -> u32",
-      "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000）",
+      STAMP,
       "看不见：全仓 12 处调用未解析 · 1 个文件解析失败 · 全景图只画了 9/40 个文件",
       "分不清：本符号 3 条直接边里 2 条按名字凑（启发 1 · 动态猜测 1），动态派发 0 条，确定 1 条",
       "调用了（callees，2）：",
@@ -74,7 +80,7 @@ describe("CP7 复制给 agent", () => {
       CLIP_HEAD,
       "仓：/home/u/repo",
       "对象：文件 src/a.rs（子系统「core」· 2 个符号 · 含入口点）",
-      "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000）",
+      STAMP,
       "看不见：全仓 12 处调用未解析 · 1 个文件解析失败 · 全景图只画了 9/40 个文件",
       "分不清：文件级没有边 —— 边的确定度要点进符号那一级看",
       "符号（2）：",
@@ -84,14 +90,10 @@ describe("CP7 复制给 agent", () => {
   });
 
   it("C3 读数缺了不许省掉那一行 —— 如实说「未取到 / 时效未知 / 陈旧」", () => {
-    expect(stampLine(null)).toBe("索引读数：未取到（查索引状态失败）—— 这段内容的时效未知");
-    expect(stampLine({ indexedAt: null, stale: false })).toBe(
-      "索引读数：本仓没有索引记录 —— 这段内容的时效未知",
-    );
-    expect(stampLine({ indexedAt: 1_790_000_000, stale: true })).toBe(
-      "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000） · ⚠ 索引已陈旧：源文件在这次索引之后改过",
-    );
-    expect(unseenLine(null)).toBe("看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知");
+    expect(stampLine(null)).toBe(copyText("agentClip.stamp.failed"));
+    expect(stampLine({ indexedAt: null, stale: false })).toBe(copyText("agentClip.stamp.none"));
+    expect(stampLine({ indexedAt: 1_790_000_000, stale: true })).toBe(STAMP_STALE);
+    expect(unseenLine(null)).toBe(copyText("agentClip.unseen.unknown"));
     expect(unsureLine([], [])).toBe(
       "分不清：本符号 0 条直接边里 0 条按名字凑（启发 0 · 动态猜测 0），动态派发 0 条，确定 0 条",
     );

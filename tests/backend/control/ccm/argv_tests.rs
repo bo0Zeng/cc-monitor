@@ -243,11 +243,19 @@ fn the_ccm_argv_is_parsed_in_exactly_one_place() {
 fn a_session_id_is_judged_before_it_goes_anywhere() {
     let uuid = "0473c3a0-1111-2222-3333-444455556666";
     assert_eq!(ok(&["--ccm-sid", uuid]).ccm_sid, uuid);
+    // 〔COPY-R〕拒的那一句按文案键断言（`设计/91 §6`），不钉原文。
+    let refused = |sid: &str| {
+        copy_text(
+            "beArgv.validate.badCcmSid",
+            &[("sid", &format!("{:?}", sid))],
+        )
+    };
     for bad in ["a_b", "a;b", "a.b"] {
         let arg = format!("--ccm-sid={bad}");
-        assert!(err(&[&arg]).contains("不合形状"), "坏 sid {bad:?} 放行了");
+        assert_eq!(err(&[&arg]), refused(bad), "坏 sid {bad:?} 放行了");
     }
-    assert!(err(&["--ccm-sid", &"a".repeat(65)]).contains("不合形状"));
+    let long = "a".repeat(65);
+    assert_eq!(err(&["--ccm-sid", &long]), refused(&long));
 }
 
 /// 〔DUP1 · `INVARIANTS §47` ①〕`--account`：与建账号的那个工具逐字同的那一份判（`shell_quote_core::account_name_ok`），**正反各一格**。

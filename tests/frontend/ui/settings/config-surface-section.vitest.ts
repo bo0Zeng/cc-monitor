@@ -322,7 +322,7 @@ describe("K-R65：「提示用户装」那一档真的会出声", () => {
 describe("formatReportText", () => {
   it("把解析基准、未确定理由、作用域优先级都带上（用户要拿它贴给别人）", () => {
     const txt = formatReportText(report());
-    expect(txt).toContain("~/.claude 解析为=/h/.claude");
+    expect(txt).toContain(copyText("configSurface.report.claudeDir", { claudeConfigDir: "/h/.claude" }));
     expect(txt).toContain("~/.local/bin/ccm");
     expect(txt).toContain("解析为: /h/.local/bin/ccm");
     // 审计实测：删掉 `位置:` 那一行推送，16 项全绿——诊断文本里的位置此前零覆盖
@@ -398,7 +398,7 @@ describe("ConfigSurfaceSection", () => {
     // 实测：删掉那段 `Array.isArray` 校验后，`render(undefined)` 抛 TypeError 被同一个
     // try/catch 吞掉，产生**一模一样**的"扫描失败"+toast，这条测试照样绿——
     // 也就是说它守的是 catch 存在，不是形状校验存在。现在改成断言那句专属错误文案。
-    expect(s.element.textContent).toContain("形状不对");
+    expect(s.element.textContent).toContain(copyText("configSurface.refresh.badShape"));
     expect(toastMock).toHaveBeenCalled();
   });
 
@@ -406,7 +406,7 @@ describe("ConfigSurfaceSection", () => {
     serve({ rows: null, settings_scopes: [] });
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
-    expect(s.element.textContent).toContain("形状不对");
+    expect(s.element.textContent).toContain(copyText("configSurface.refresh.badShape"));
   });
 
   it("扫描失败时「复制诊断文本」保持禁用（没东西可复制）", async () => {

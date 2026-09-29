@@ -691,7 +691,7 @@
     },
     "rsRemoteResident.ensure.tooOld": {
       "kind": "error",
-      "zh": "那台机器上的后端太旧，不认常驻那条命令。",
+      "zh": "那台机器上的后端太旧，需要更新。",
       "args": []
     },
     "rsRemoteResident.ensure.unsupported": {
@@ -721,17 +721,17 @@
     },
     "rsRemoteResident.verdict.unreadable": {
       "kind": "error",
-      "zh": "本机后端对「换不换那台的常驻后端」的回答读不懂：{e}",
+      "zh": "本机后端回的内容读不懂，定不了要不要换掉那台的后端：{e}",
       "args": ["e"]
     },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
-      "zh": "常驻后端没说完第一句：连接断了，或那行太长。",
+      "zh": "那台机器的后端刚连上就断了，或回的内容太长。",
       "args": []
     },
     "rsRemoteResident.handshake.replyCut": {
       "kind": "error",
-      "zh": "常驻后端没回完接入请求：连接断了，或那行太长。",
+      "zh": "那台机器的后端没回完接入请求就断了，或回的内容太长。",
       "args": []
     },
     "rsRemoteResident.handshake.readFailed": {
@@ -756,7 +756,7 @@
     },
     "rsRemoteResident.handshake.notAttachReply": {
       "kind": "error",
-      "zh": "回的不是接入应答",
+      "zh": "那台机器的后端回的内容不对",
       "args": []
     },
     "rsRemoteResident.handshake.refused": {
@@ -766,7 +766,7 @@
     },
     "rsBackendControl.remote.stopFailed": {
       "kind": "error",
-      "zh": "{origin} 的流已断，但停那台的常驻后端没成：{e}",
+      "zh": "已和 {origin} 断开，但停那台的后端没成：{e}",
       "args": ["origin", "e"]
     },
     "beResident.home.missing": {
@@ -1299,7 +1299,7 @@
     },
     "deploy.refused.unsupportedMachine": {
       "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的后端。它的会话不会自动接上。",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备后端。它的会话不会自动接上。",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.osUnknown": {
@@ -1314,12 +1314,12 @@
     },
     "deploy.refused.notPromisedHere": {
       "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这种系统的后端只在本机用，不装到远程机器上。",
+      "zh": "{machine} 是 {os} 机器，这一种的后端今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
       "args": ["machine", "os"]
     },
     "deploy.refused.notPromisedLocal": {
       "kind": "error",
-      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
+      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.notCarried": {
@@ -1329,7 +1329,7 @@
     },
     "panorama.refused.unsupportedMachine": {
       "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的代码全景组件。那台机器上看不了代码全景。",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备代码全景组件。那台机器上看不了代码全景。",
       "args": ["machine", "os", "arch"]
     },
     "panorama.refused.osUnknown": {
@@ -1344,12 +1344,12 @@
     },
     "panorama.refused.notPromisedHere": {
       "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这种系统只在本机放代码全景组件，不装到远端。",
+      "zh": "{machine} 是 {os} 机器，这一种的代码全景组件今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
       "args": ["machine", "os"]
     },
     "panorama.refused.notPromisedLocal": {
       "kind": "error",
-      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
+      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
       "args": ["machine", "os", "arch"]
     },
     "panorama.refused.notCarried": {
@@ -1379,12 +1379,12 @@
     },
     "assets.load.tooOld": {
       "kind": "error",
-      "zh": "这台机器上的后端版本旧。重装后端之后就有资产目录。",
+      "zh": "这台机器上的后端版本旧，需要更新。",
       "args": []
     },
     "assets.load.shape": {
       "kind": "error",
-      "zh": "资产目录的形状对不上。多半是后端与界面版本不一致。",
+      "zh": "这台的后端回的内容读不懂。多半是版本不一致，需要更新后端。",
       "args": []
     },
     "assets.load.problem": {
@@ -1749,7 +1749,7 @@
     },
     "control.reply.unreadable": {
       "kind": "error",
-      "zh": "{machine} 的后端回的内容读不懂。多半是两边版本不一致，需要更新它。",
+      "zh": "{machine} 的后端回的内容读不懂，多半是它的版本不对，需要更新。",
       "args": ["machine"]
     },
     "tmuxControl.capture.noTmux": {
@@ -1779,7 +1779,7 @@
     },
     "tmuxControl.capture.otherCode": {
       "kind": "error",
-      "zh": "抓取 {target} 的画面被拒：{code}：{detail}",
+      "zh": "抓取 {target} 的画面被拒（{code}）：{detail}",
       "args": ["target", "code", "detail"]
     },
     "tmuxControl.capture.noReason": {
@@ -1819,7 +1819,7 @@
     },
     "tmuxControl.kill.otherCode": {
       "kind": "error",
-      "zh": "结束 {target} 被拒：{code}：{detail}",
+      "zh": "结束 {target} 被拒（{code}）：{detail}",
       "args": ["target", "code", "detail"]
     },
     "tmuxControl.kill.noReason": {
@@ -1884,7 +1884,7 @@
     },
     "tmuxControl.keys.otherCode": {
       "kind": "error",
-      "zh": "发送按键给 {target} 被拒：{code}：{detail}",
+      "zh": "发送按键给 {target} 被拒（{code}）：{detail}",
       "args": ["target", "code", "detail"]
     },
     "tmuxControl.keys.noReason": {
@@ -1894,7 +1894,7 @@
     },
     "tmuxControl.keys.notConfirmed": {
       "kind": "error",
-      "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，不会换一条路重发。",
+      "zh": "{machine} 的后端没有确认按键已经送到 {target}。这次按没送到处理，没有重发。",
       "args": ["machine", "target"]
     },
     "ccBus.online.notInstalled": {
@@ -1909,7 +1909,7 @@
     },
     "ccBus.online.otherCode": {
       "kind": "error",
-      "zh": "问不到 {id} 在不在线：{code}：{detail}",
+      "zh": "问不到 {id} 在不在线（{code}）：{detail}",
       "args": ["id", "code", "detail"]
     },
     "ccBus.online.noReason": {
@@ -1934,12 +1934,12 @@
     },
     "ccBus.read.badId": {
       "kind": "error",
-      "zh": "没去读：这个 id 的形状不对（{detail}）",
+      "zh": "没去读：这个 id 不合法（{detail}）",
       "args": ["detail"]
     },
     "ccBus.read.otherCode": {
       "kind": "error",
-      "zh": "读不到：{code}：{detail}",
+      "zh": "读不到（{code}）：{detail}",
       "args": ["code", "detail"]
     },
     "ccBus.read.noReason": {
@@ -2009,7 +2009,7 @@
     },
     "ccBus.send.otherCode": {
       "kind": "error",
-      "zh": "{id} 的消息没有发出去：{code}：{detail}",
+      "zh": "{id} 的消息没有发出去（{code}）：{detail}",
       "args": ["id", "code", "detail"]
     },
     "ccBus.send.noReason": {
@@ -2054,7 +2054,7 @@
     },
     "ccBus.kill.otherCode": {
       "kind": "error",
-      "zh": "没有收掉 {id}：{code}：{detail}",
+      "zh": "没有收掉 {id}（{code}）：{detail}",
       "args": ["id", "code", "detail"]
     },
     "ccBus.kill.noReason": {
@@ -2109,7 +2109,7 @@
     },
     "ccBus.spawn.otherCode": {
       "kind": "error",
-      "zh": "没有派生：{code}：{detail}",
+      "zh": "没有派生（{code}）：{detail}",
       "args": ["code", "detail"]
     },
     "ccBus.spawn.noReason": {
@@ -2154,7 +2154,7 @@
     },
     "ccBus.broadcast.otherCode": {
       "kind": "error",
-      "zh": "没有广播：{code}：{detail}",
+      "zh": "没有广播（{code}）：{detail}",
       "args": ["code", "detail"]
     },
     "ccBus.broadcast.noReason": {
@@ -2747,7 +2747,7 @@
     },
     "panorama.copyButton.agentHint": {
       "kind": "body",
-      "zh": "复制一段能贴进对话的文本。里面有仓、对象、索引读数，以及有多少看不见、分不清。",
+      "zh": "复制一段能贴进对话的文本。里面有仓、对象、索引时间，以及有多少看不见、分不清。",
       "args": []
     },
     "panorama.copyButton.agent": {
@@ -3312,7 +3312,7 @@
     },
     "panorama.applyOverview.emptyHint": {
       "kind": "body",
-      "zh": "这个仓的符号太少，或者大部分文件解析失败。顶部的覆盖读数会说明是哪种；仍可以用上方搜索框查符号。",
+      "zh": "这个仓的符号太少，或者大部分文件解析失败。顶部的覆盖情况会说明是哪种；仍可以用上方搜索框查符号。",
       "args": []
     },
     "panorama.applyOverview.emptyTitle": {
@@ -3492,7 +3492,7 @@
     },
     "agentClip.clip.honesty": {
       "kind": "body",
-      "zh": "诚实信号：{honesty}",
+      "zh": "完整度：{honesty}",
       "args": ["honesty"]
     },
     "agentClip.clip.diagramObject": {
@@ -3573,12 +3573,12 @@
     },
     "agentClip.unseen.unknown": {
       "kind": "body",
-      "zh": "看不见：未取到全仓覆盖读数（全景没加载完）—— 漏了多少未知",
+      "zh": "看不见：全景没加载完，不知道漏了多少",
       "args": []
     },
     "agentClip.stamp.line": {
       "kind": "body",
-      "zh": "索引读数：{iso}（unix {indexedAt}）{stale}",
+      "zh": "索引时间：{iso}（unix {indexedAt}）{stale}",
       "args": ["iso", "indexedAt", "stale"]
     },
     "agentClip.stamp.stale": {
@@ -3588,12 +3588,12 @@
     },
     "agentClip.stamp.none": {
       "kind": "body",
-      "zh": "索引读数：本仓没有索引记录 —— 这段内容的时效未知",
+      "zh": "索引时间：本仓没有索引记录，这段内容的时效未知",
       "args": []
     },
     "agentClip.stamp.failed": {
       "kind": "body",
-      "zh": "索引读数：未取到（查索引状态失败）—— 这段内容的时效未知",
+      "zh": "索引时间：没取到（查索引状态失败），这段内容的时效未知",
       "args": []
     },
     "agentClip.head.banner": {
@@ -3713,7 +3713,7 @@
     },
     "diagramView.paint.unsupported": {
       "kind": "body",
-      "zh": "这一版还画不出这种形状的图（{shape}）。可以点「复制 Mermaid」拿到上游画好的文本。",
+      "zh": "画不出这种图（{shape}）。可以点「复制 Mermaid」拿到上游画好的文本。",
       "args": ["shape"]
     },
     "diagramView.knobs.copyMermaid": {
@@ -5174,7 +5174,7 @@
     },
     "accountsDecode.bad.trust": {
       "kind": "error",
-      "zh": "信任检查的回答格式不对，两边版本可能对不上",
+      "zh": "信任检查的回答格式不对，可能是后端版本不对",
       "args": []
     },
     "accountsDecode.where.nth": {
@@ -5189,7 +5189,7 @@
     },
     "accountsDecode.bad.list": {
       "kind": "error",
-      "zh": "账号清单的格式不对（{what}），两边版本可能对不上",
+      "zh": "账号清单的格式不对（{what}），可能是后端版本不对",
       "args": ["what"]
     },
     "agentProfile.lookup.unknown": {
@@ -5389,7 +5389,7 @@
     },
     "forkAsk.account.base": {
       "kind": "control",
-      "zh": "账号 0 · 不注入 CLAUDE_CONFIG_DIR",
+      "zh": "账号 0 · 不设 CLAUDE_CONFIG_DIR",
       "args": []
     },
     "forkAsk.field.account": {
@@ -5614,7 +5614,7 @@
     },
     "recordReads.ask.oldBackend": {
       "kind": "error",
-      "zh": "那台机器的后端太旧，还不认读会话记录这一问。重装那台机器的后端就有了",
+      "zh": "那台机器的后端太旧，读不了会话记录，需要更新。",
       "args": []
     },
     "sessionReads.missing.facts": {
@@ -5659,7 +5659,7 @@
     },
     "sessionReads.ctor.unreadable": {
       "kind": "error",
-      "zh": "那台机器的后端回的内容读不懂。多半是两边版本对不上，重装那台机器的后端试试。",
+      "zh": "那台机器的后端回的内容读不懂。多半是它的版本不对，需要更新。",
       "args": []
     },
     "skeletonView.ledgerFromIndex.noIndex": {
@@ -5953,7 +5953,7 @@
     },
     "machineAliases.userPath.notWindows": {
       "kind": "body",
-      "zh": "这一档只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 工具 → 别名」里那个别名块。",
+      "zh": "这一项只有 Windows 有。这台机器上让终端找到 ccm 的，是「本机 → 工具 → 别名」里那个别名块。",
       "args": []
     },
     "machineAliases.userPath.empty": {
@@ -5978,7 +5978,7 @@
     },
     "machineAliases.userPath.removeHint": {
       "kind": "body",
-      "zh": "只摘掉 cc-monitor 加的那一格，你 PATH 上别的东西一个字节都不动。",
+      "zh": "只摘掉 cc-monitor 加的那一项，PATH 上别的不动。",
       "args": []
     },
     "machineAliases.userPath.remove": {
@@ -6111,7 +6111,7 @@
     },
     "machineAliases.load.ccmFailed": {
       "kind": "error",
-      "zh": "问不到本机 ccm 这一格：{e}",
+      "zh": "查不了本机终端里的 ccm：{e}",
       "args": ["e"]
     },
     "machineAliases.readBack.failed": {
@@ -6477,7 +6477,7 @@
     },
     "machineAliases.posix.blockInstallTitle": {
       "kind": "body",
-      "zh": "把 cc / cct 与「接上别名文件」那一行（src/shared/ccm-aliases.sh）装进你选的那份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
+      "zh": "把 cc / cct 与接上别名文件的那一行装进你选的那份配置。只动 cc-monitor 那一小块，写前先备份、写后回读比对、不对就恢复。",
       "args": []
     },
     "machineStatus.facet.failIcon": {
@@ -6617,7 +6617,7 @@
     },
     "acctDeploy.cmd.contract": {
       "kind": "error",
-      "zh": "那台机器的后端没读懂这一问，两边版本对不上：{detail}",
+      "zh": "那台机器的后端版本不对，需要更新：{detail}",
       "args": ["detail"]
     },
     "acctDeploy.cmd.otherCode": {
@@ -7027,7 +7027,7 @@
     },
     "machineCard.deploy.intro": {
       "kind": "body",
-      "zh": "把后端装到上面「后端路径」那一格，终端里的 ccm 入口（~/.cc-monitor/bin/ccm）一起放好。启用这台机器之后，连上时也会自动装后端；这里是手动的那一下。",
+      "zh": "把后端装到上面填的「后端路径」，终端里的 ccm 入口（~/.cc-monitor/bin/ccm）一起放好。启用这台机器之后，连上时也会自动装。",
       "args": []
     },
     "machineCard.deploy.title": {
@@ -8240,7 +8240,7 @@
     },
     "settingsPanel.info.dataDir": {
       "kind": "body",
-      "zh": "「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。",
+      "zh": "「Claude 数据目录」—— monitor 读取的 .claude 根目录（下含 projects/ 和 sessions/）。默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。",
       "args": []
     },
     "settingsPanel.info.keybindings": {
@@ -8543,7 +8543,7 @@
     },
     "ccBus.spawn.accountNone": {
       "kind": "control",
-      "zh": "账号：不指定，不注入任何账号",
+      "zh": "账号：不指定",
       "args": []
     },
     "ccBus.machine.noRemote": {
@@ -9156,7 +9156,7 @@
     },
     "plugins.bad.shape": {
       "kind": "error",
-      "zh": "插件市场清单的形状对不上（后端与界面版本不一致？重装那台机器的后端试试）",
+      "zh": "插件市场清单读不懂。多半是那台机器的后端版本不对，需要更新。",
       "args": []
     },
     "remote.save.failed": {
@@ -9474,12 +9474,12 @@
     },
     "configSurface.backend.tooOld": {
       "kind": "error",
-      "zh": "这台的后端太旧，还不认足迹这一问（重启 cc-monitor 换上新的后端；远端那台重新部署后端）",
+      "zh": "这台的后端太旧，查不了足迹。本机重启 cc-monitor 就会换上新的后端，远端要重新部署后端。",
       "args": []
     },
     "configSurface.refresh.badShape": {
       "kind": "error",
-      "zh": "后端返回的足迹形状不对，两端版本对不上",
+      "zh": "后端返回的足迹读不懂，多半是后端版本不对，需要更新。",
       "args": []
     },
     "configSurface.refresh.scanningMachine": {
@@ -9524,7 +9524,7 @@
     },
     "configSurface.build.whyUndetermined": {
       "kind": "body",
-      "zh": "这三类本机无从判断，报成「缺失」会是假警报。远端路径要 SSH（请到部署向导里查）；项目里的 .mcp.json 得先知道是哪个项目；Windows 的 $PROFILE 由 PowerShell 决定。",
+      "zh": "这三类本机无从判断，报成「缺失」会是假警报。远端路径要 SSH（请到那台机器的页面里查）；项目里的 .mcp.json 得先知道是哪个项目；Windows 的 $PROFILE 由 PowerShell 决定。",
       "args": []
     },
     "configSurface.build.undetermined": {
@@ -9579,7 +9579,7 @@
     },
     "configSurface.report.claudeDir": {
       "kind": "body",
-      "zh": "~/.claude 解析为={claudeConfigDir}",
+      "zh": "~/.claude 解析为 {claudeConfigDir}",
       "args": ["claudeConfigDir"]
     },
     "configSurface.report.head": {
@@ -9834,7 +9834,7 @@
     },
     "driftLedger.refresh.badShape": {
       "kind": "error",
-      "zh": "返回的形状不对（faces 不是数组）",
+      "zh": "后端返回的内容读不懂（faces 不是数组）",
       "args": []
     },
     "driftLedger.build.copying": {
@@ -10092,7 +10092,7 @@
     },
     "backend.policy.badShape": {
       "kind": "error",
-      "zh": "后端写完回来的内容格式不对，两边版本可能对不上",
+      "zh": "后端写完回来的内容格式不对，可能是后端版本不对",
       "args": []
     },
     "backend.stopSaid.graceful": {
@@ -10142,7 +10142,7 @@
     },
     "backend.health.badShape": {
       "kind": "error",
-      "zh": "健康读数的格式不对",
+      "zh": "健康状态的格式不对",
       "args": []
     },
     "backend.buildCells.exitKills": {
@@ -10232,7 +10232,7 @@
     },
     "backend.ctor.intro": {
       "kind": "body",
-      "zh": "每台机各一行。「退出行为」那一格写着 monitor 退出时这台机会怎样。",
+      "zh": "每台机各一行。「退出行为」那一栏写着 monitor 退出时这台机会怎样。",
       "args": []
     },
     "backend.ctor.title": {
@@ -10267,17 +10267,17 @@
     },
     "backend.exitPolicy.oldBackend": {
       "kind": "body",
-      "zh": "那台机器的后端还不认「退出行为」这一问。重装那台机器的后端就有了。",
+      "zh": "那台机器的后端太旧，看不了退出行为，需要更新。",
       "args": []
     },
     "pubkeyPush.backend.tooOld": {
       "kind": "error",
-      "zh": "本机后端太旧，不认「推送公钥」这一问（重启 cc-monitor 换上新的后端）。",
+      "zh": "本机后端太旧，推送不了公钥。重启 cc-monitor 就会换上新的后端。",
       "args": []
     },
     "pubkeyPush.reply.badShape": {
       "kind": "error",
-      "zh": "本机后端回的推送结果认不出（两边版本对不上）。",
+      "zh": "本机后端回的推送结果读不懂，多半是后端版本不对。",
       "args": []
     },
     "bePubkey.add.noOutcome": {
@@ -10412,7 +10412,7 @@
     },
     "rsSftp.plan.badProduct": {
       "kind": "error",
-      "zh": "部署计划认不出，没有装后端（两边版本对不上）：{v}",
+      "zh": "部署计划读不懂，没有装后端，多半是本机后端版本不对：{v}",
       "args": ["v"]
     },
     "rsSftp.plan.internal": {
@@ -10542,7 +10542,7 @@
     },
     "rsSftp.stamp.unfinished": {
       "kind": "body",
-      "zh": "那一问没有答完",
+      "zh": "问版本没有问完",
       "args": []
     },
     "rsSftp.upload.badKept": {
@@ -10677,7 +10677,7 @@
     },
     "rsFilewinShell.busy.pendingAsk": {
       "kind": "body",
-      "zh": "有一问还没答",
+      "zh": "有一个确认框还没答",
       "args": []
     },
     "rsFilewinShell.busy.editorOpen": {
@@ -10907,7 +10907,7 @@
     },
     "rsFilewinGrep.reply.badShape": {
       "kind": "error",
-      "zh": "那台后端回的按内容搜读不懂，两端版本对不上",
+      "zh": "那台后端回的搜索结果读不懂。多半是它的版本不对，需要更新。",
       "args": []
     },
     "rsFilewinGrep.summary.line": {
@@ -10952,7 +10952,7 @@
     },
     "rsFilewinShell.terminal.badReply": {
       "kind": "error",
-      "zh": "本机后端回的开终端那一行读不懂，两端版本对不上",
+      "zh": "本机后端回的内容读不懂，终端没打开。多半是后端版本不对。",
       "args": []
     },
     "rsFilewinShell.terminal.noRuntime": {
@@ -10992,27 +10992,27 @@
     },
     "rsFilewinSource.said.hopFault": {
       "kind": "error",
-      "zh": "没走通：{leg}那一段{what}，{did}",
+      "zh": "没做成：{what}，{did}（{leg}）",
       "args": ["leg", "what", "did"]
     },
     "rsFilewinSource.said.legHost": {
       "kind": "body",
-      "zh": "主程序到后端",
+      "zh": "主程序与后端之间",
       "args": []
     },
     "rsFilewinSource.said.legWindow": {
       "kind": "body",
-      "zh": "窗口到主程序",
+      "zh": "文件窗口与主程序之间",
       "args": []
     },
     "rsFilewinSource.said.mayHaveRun": {
       "kind": "body",
-      "zh": "对面可能已经做了",
+      "zh": "可能已经执行了",
       "args": []
     },
     "rsFilewinSource.said.notSent": {
       "kind": "body",
-      "zh": "这一趟没发出去",
+      "zh": "请求没发出去",
       "args": []
     },
     "rsFilewinSource.said.timeout": {
@@ -11022,7 +11022,7 @@
     },
     "rsFilewinSource.said.broken": {
       "kind": "body",
-      "zh": "断了",
+      "zh": "连接断了",
       "args": []
     },
     "rsFilewinSource.said.unreachable": {
@@ -11042,12 +11042,12 @@
     },
     "rsFilewinSource.watch.localBreak": {
       "kind": "error",
-      "zh": "这一趟传输在本侧断了：{why}",
+      "zh": "传输在本机这边断了：{why}",
       "args": ["why"]
     },
     "rsFilewinSource.watch.hostGone": {
       "kind": "error",
-      "zh": "窗口到主程序那一段断了，这一趟传输也就撤了",
+      "zh": "文件窗口和主程序断开了，这次传输已撤回",
       "args": []
     },
     "rsFilewinSource.watch.cutShort": {
@@ -11057,7 +11057,7 @@
     },
     "rsFilewinSource.ask.empty": {
       "kind": "error",
-      "zh": "后端回了一条空回答，和约定的不一样",
+      "zh": "后端回了一条空回答",
       "args": []
     },
     "rsFilewinSource.ask.unreadable": {
@@ -11132,7 +11132,7 @@
     },
     "rsFilewinWriteops.result.done": {
       "kind": "body",
-      "zh": "上一摞 {ok} 件做完、{skipped} 件跳过",
+      "zh": "上一批 {ok} 件做完、{skipped} 件跳过",
       "args": ["ok", "skipped"]
     },
     "rsFilewinWriteops.result.failedSep": {
@@ -11142,7 +11142,7 @@
     },
     "rsFilewinWriteops.result.failed": {
       "kind": "body",
-      "zh": "上一摞 {n} 件没做成：{failed}",
+      "zh": "上一批 {n} 件没做成：{failed}",
       "args": ["n", "failed"]
     },
     "rsFilewinWriteops.confirm.doNone": {
@@ -11207,7 +11207,7 @@
     },
     "rsFilewinWriteops.toOp.notOne": {
       "kind": "error",
-      "zh": "这个框一次出 {n} 件，不是一件",
+      "zh": "这个框一次只能做一件，现在是 {n} 件",
       "args": ["n"]
     },
     "rsFilewinWriteops.heading.chmodOne": {
@@ -11282,7 +11282,7 @@
     },
     "rsFilewinFind.ui.root": {
       "kind": "body",
-      "zh": "索引走的那个根：{root}",
+      "zh": "索引的根目录：{root}",
       "args": ["root"]
     },
     "rsFilewinFind.round.findFailed": {
@@ -11397,7 +11397,7 @@
     },
     "rsFilewinFind.reply.missingField": {
       "kind": "error",
-      "zh": "回答里少了 {k} 字段，两边版本可能对不上",
+      "zh": "后端的回答缺 {k} 字段，多半是版本不对",
       "args": ["k"]
     },
     "rsFilewinWorkspace.acrossArgs.notUnder": {
@@ -11537,7 +11537,7 @@
     },
     "rsFilewinTransfer.upload.noDigest": {
       "kind": "error",
-      "zh": "传输台没交回摘要，没法比对，没有写进目标。请重开 app 再传。",
+      "zh": "传输没有交回校验值，没法比对，没有写进目标。请重开 app 再传。",
       "args": []
     },
     "rsFilewinTransfer.ui.failed": {
@@ -11572,7 +11572,7 @@
     },
     "rsFilewinTransfer.reply.missingField": {
       "kind": "error",
-      "zh": "回答里没有 {key} 字段，和约定的不一样",
+      "zh": "后端的回答缺 {key} 字段，多半是版本不对",
       "args": ["key"]
     },
     "rsFilewinTransfer.label.cancel": {
@@ -11725,6 +11725,16 @@
       "zh": "这个路径读不到：{kind}",
       "args": ["kind"]
     },
+    "beFilesRead.ioKind.denied": {
+      "kind": "body",
+      "zh": "没有权限",
+      "args": []
+    },
+    "beFilesRead.ioKind.notFound": {
+      "kind": "body",
+      "zh": "不存在",
+      "args": []
+    },
     "rsFilewinFind.freshness.skippedMounts": {
       "kind": "body",
       "zh": " · 有 {n} 个目录在另一个盘上，没进去，那底下的搜不到",
@@ -11742,7 +11752,7 @@
     },
     "rsFilewinSize.reply.missingField": {
       "kind": "error",
-      "zh": "算大小的回答里没有 {field} 字段，两边版本可能对不上",
+      "zh": "算大小的回答缺 {field} 字段，多半是后端版本不对",
       "args": ["field"]
     },
     "rsFilewinSize.outcome.line": {
@@ -11857,7 +11867,7 @@
     },
     "beFilesCommit.exdev.copyFailed": {
       "kind": "error",
-      "zh": "暂存区与目标不在同一个盘上，改走复制也没成：{e}。目标没动，暂存件还在",
+      "zh": "临时文件与目标不在同一个盘上，改走复制也没成：{e}。目标没动，临时文件还在",
       "args": ["e"]
     },
     "rsFilewinCopy.ui.askOverwriteMany": {
@@ -11872,7 +11882,7 @@
     },
     "rsFilewinCopy.batch.dirClash": {
       "kind": "error",
-      "zh": "另一栏已经有同名的：{names}。目录不覆盖、不合并，这一摞一件都没做",
+      "zh": "另一栏已经有同名的：{names}。目录不覆盖、不合并，这一批一件都没做",
       "args": ["names"]
     },
     "rsFilewinCopy.outcome.refused": {
@@ -11897,12 +11907,12 @@
     },
     "rsFilewinCopy.remote.noCount": {
       "kind": "error",
-      "zh": "复制的回答里没有 {field} 字段，和约定的不一样",
+      "zh": "复制的回答缺 {field} 字段，多半是后端版本不对",
       "args": ["field"]
     },
     "rsFilewinWorkspace.copyToOther.unaddressable": {
       "kind": "error",
-      "zh": "{name} 复制不了（名字读不出来），这一摞一件都没做",
+      "zh": "{name} 复制不了（名字读不出来），这一批一件都没做",
       "args": ["name"]
     },
     "rsFilewinCopy.ui.askOverwrite": {
@@ -11912,7 +11922,7 @@
     },
     "rsFilewinCopy.remote.noBytes": {
       "kind": "error",
-      "zh": "复制的回答里没有 bytes 字段，和约定的不一样",
+      "zh": "复制的回答缺 bytes 字段，多半是后端版本不对",
       "args": []
     },
     "rsFilewinCopy.args.notSameDir": {
@@ -12037,7 +12047,7 @@
     },
     "rsFilewinEditor.reply.noText": {
       "kind": "error",
-      "zh": "读文本的回答里没有 text 字段，和约定的不一样",
+      "zh": "读文本的回答缺 text 字段，多半是后端版本不对",
       "args": []
     },
     "rsFilewinEditor.notText.notice": {
@@ -12092,7 +12102,7 @@
     },
     "rsFilewinEditor.saved.noDigest": {
       "kind": "error",
-      "zh": "已经存进去了，可后端没交回新摘要。再存一次会被当成盘上被改过，请关掉重新打开再改。",
+      "zh": "已经存进去了。要再改，请关掉重新打开，不然下次存会被当成文件被别处改过。",
       "args": []
     },
     "rsFilewinEditor.overwrite.notText": {
@@ -12272,17 +12282,17 @@
     },
     "rsPayload.outer.attachWithPayload": {
       "kind": "error",
-      "zh": "接入那一格带了要运行的内容。它只把终端接进一个已经在跑的会话，不起任何 agent 进程；带了说明调用方把格子搞错了。",
+      "zh": "请求格式不对：接进已有会话时不该带要运行的内容。",
       "args": []
     },
     "rsPayload.outer.sendIntoNoPayload": {
       "kind": "error",
-      "zh": "接进已有会话那一格没带要运行的内容。那会把用户接进一个空 shell。",
+      "zh": "请求格式不对：没带要运行的内容。往已有会话里发送的话，只会接进一个空 shell。",
       "args": []
     },
     "rsPayload.sessionMark.bad": {
       "kind": "error",
-      "zh": "会话标记 {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
     "rsPayload.model.bad": {
@@ -12302,7 +12312,7 @@
     },
     "rsPayload.outer.createNoPayload": {
       "kind": "error",
-      "zh": "新建那一格没带要运行的内容。那会只建一个空会话再接进去。",
+      "zh": "请求格式不对：没带要运行的内容。新建会话的话，只会建一个空会话。",
       "args": []
     },
     "rsPayload.tmuxName.control": {
@@ -12317,7 +12327,7 @@
     },
     "rsPayload.tmuxName.rawBad": {
       "kind": "error",
-      "zh": "tmux 会话名 {name} 声明成原样拼接，却含不许的字符（只许 A-Z a-z 0-9 _ -）",
+      "zh": "tmux 会话名 {name} 含不许的字符（只许 A-Z a-z 0-9 _ -）",
       "args": ["name"]
     },
     "rsPayload.tmuxName.empty": {
@@ -12337,7 +12347,7 @@
     },
     "rsPayload.nestedEnv.empty": {
       "kind": "error",
-      "zh": "嵌套环境变量的键表是空的，会渲染出一句空的 unset",
+      "zh": "请求格式不对：要清掉的环境变量列表是空的",
       "args": []
     },
     "rsPayload.relay.userBaseUrl": {
@@ -12352,7 +12362,7 @@
     },
     "rsPayload.rbindToken.bad": {
       "kind": "error",
-      "zh": "CCM_RBIND_TOKEN 格式不对，不能拼进命令：{value}（要 32 个小写十六进制字符）",
+      "zh": "启动令牌格式不对，不能拼进命令：{value}（要 32 个小写十六进制字符）",
       "args": ["value"]
     },
     "rsPayload.configDir.bad": {
@@ -12367,7 +12377,7 @@
     },
     "rsPayload.configDir.emptyNamed": {
       "kind": "error",
-      "zh": "具名账号的配置目录是空的（账号 0 请用 base）",
+      "zh": "具名账号的配置目录是空的（账号 0 不设配置目录）",
       "args": []
     },
     "rsLocalBackend.stdio.broken": {
@@ -12469,7 +12479,7 @@
     },
     "rsInboundClient.error.timeoutPeerRunsOn": {
       "kind": "error",
-      "zh": "等回答超时（{after} 毫秒）；那台的后端不认撤单，那件事可能还在跑",
+      "zh": "等回答超时（{after} 毫秒）；那台的后端撤不回，那件事可能还在跑",
       "args": ["after"]
     },
     "rsInboundClient.error.cancelled": {
@@ -12519,12 +12529,12 @@
     },
     "rsLaunchWire.cwd.both": {
       "kind": "error",
-      "zh": "同时送了顶层工作目录和外层 tmux 的工作目录。tmux 那两格的工作目录归外层的 new-session -c，内层不加 cd；两个都送说明调用方搞混了，拒绝。",
+      "zh": "请求格式不对：同时给了两个工作目录。",
       "args": []
     },
     "rsLaunchWire.resumeSid.bad": {
       "kind": "error",
-      "zh": "会话 ID {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
     "rsLaunchWire.resumeSid.notInArgs": {
@@ -12534,7 +12544,7 @@
     },
     "rsLaunchWire.attach.withPayload": {
       "kind": "error",
-      "zh": "接入那一格带了要运行的内容（env / args / launcher）。它不起任何 agent 进程，这几项会被丢掉；请求格式不对，拒绝。",
+      "zh": "请求格式不对：接进已有会话时不该带要运行的内容（env / args / launcher）。",
       "args": []
     },
     "rsConfigSurface.scope.projectNote": {
@@ -12739,7 +12749,7 @@
     },
     "rsConfigSurface.observe.remote": {
       "kind": "error",
-      "zh": "远端路径（{path}）——本页不连 SSH，请到部署向导里查",
+      "zh": "远端路径（{path}）——本页不连 SSH，请到那台机器的页面里查",
       "args": ["path"]
     },
     "rsConfigSurface.observe.needsConfig": {
@@ -12864,7 +12874,7 @@
     },
     "rsDriftLedger.consequence.unknownBackendToken": {
       "kind": "body",
-      "zh": "该能力不会被使用（保守缺省）。多半是远端后端比 monitor 新",
+      "zh": "这项功能不会被用上。多半是远端后端比 monitor 新",
       "args": []
     },
     "rsDriftLedger.consequence.unknownSessionKind": {
@@ -13014,7 +13024,7 @@
     },
     "rsShellDialect.ps.handEdited": {
       "kind": "error",
-      "zh": "function {name}（函数体不是 cc-monitor 生成的那一形，可能被手改过）",
+      "zh": "function {name}（函数体不是 cc-monitor 生成的样子，可能被手改过）",
       "args": ["name"]
     },
     "rsShellDialect.ps.noCcmCall": {
@@ -13120,7 +13130,7 @@
     },
     "rsProfileInstaller.userPath.notWindows": {
       "kind": "error",
-      "zh": "这台机器上没有「用户级 PATH」这一档 —— 它是 Windows 独有的",
+      "zh": "这台机器上没有「用户级 PATH」这一项 —— 它是 Windows 独有的",
       "args": []
     },
     "rsProfileInstaller.ps.exitCode": {
@@ -13316,7 +13326,7 @@
     },
     "rsAssetSync.call.emptyReply": {
       "kind": "error",
-      "zh": "本机后端回了一条空应答",
+      "zh": "本机后端回了一条空回答",
       "args": []
     },
     "rsAssetSync.call.internal": {
@@ -13336,7 +13346,7 @@
     },
     "rsUserFiles.ask.emptyReply": {
       "kind": "error",
-      "zh": "{who} 的后端回了一条空应答",
+      "zh": "{who} 的后端回了一条空回答",
       "args": ["who"]
     },
     "rsUserFiles.ask.tooBig": {
@@ -13376,7 +13386,7 @@
     },
     "rsChanWire.hop.unreachable": {
       "kind": "error",
-      "zh": "连不上对面",
+      "zh": "连不上",
       "args": []
     },
     "rsChanWire.hop.dropped": {
@@ -13391,12 +13401,12 @@
     },
     "rsChanWire.peer.unsupported": {
       "kind": "error",
-      "zh": "对面不支持这个操作",
+      "zh": "后端不支持这个操作",
       "args": []
     },
     "rsChanWire.peer.refused": {
       "kind": "error",
-      "zh": "对面拒绝了这个操作",
+      "zh": "后端拒绝了这个操作",
       "args": []
     },
     "rsChanWire.ours.cancelled": {
@@ -13476,7 +13486,7 @@
     },
     "rsDialHost.ask.timeout": {
       "kind": "error",
-      "zh": "本机后端 {secs} 秒没答这一问",
+      "zh": "本机后端 {secs} 秒没回答",
       "args": ["secs"]
     },
     "rsDialHost.ask.sendRequestFailed": {
@@ -13586,7 +13596,7 @@
     },
     "rsBind.activate.refused": {
       "kind": "error",
-      "zh": "SetForegroundWindow 被拒绝（窗口可能在任务栏闪烁；用户需要先点 monitor 窗口）",
+      "zh": "没能把窗口切到前台（它可能在任务栏闪烁；先点一下 monitor 窗口再试）",
       "args": []
     },
     "rsBind.verify.pidReused": {
@@ -13626,27 +13636,27 @@
     },
     "rsSftpPool.call.noTicket": {
       "kind": "error",
-      "zh": "本机后端开了单却没回票号：{v}",
+      "zh": "本机后端没回传输编号：{v}",
       "args": ["v"]
     },
     "rsSftpPool.call.notTransfer": {
       "kind": "error",
-      "zh": "{other} 不是传输台的命令",
+      "zh": "请求格式不对：{other} 不是传输命令",
       "args": ["other"]
     },
     "rsSftpPool.call.missingField": {
       "kind": "error",
-      "zh": "{op} 少了 {k}，或者它不是一个字符串",
+      "zh": "请求格式不对：少了 {k}，或者它不是一个字符串（{op}）",
       "args": ["op", "k"]
     },
     "rsChanWire.frame.tooLong": {
       "kind": "error",
-      "zh": "一段 {n} 字节，超出帧长度字段的表示范围",
+      "zh": "一段 {n} 字节，太长了，发不出去",
       "args": ["n"]
     },
     "rsChanWire.frame.badHead": {
       "kind": "error",
-      "zh": "帧头解不出来：{e}",
+      "zh": "收到的数据头解不出来：{e}",
       "args": ["e"]
     },
     "rsChanWire.segment.tooLong": {
@@ -13656,7 +13666,7 @@
     },
     "rsChanHost.transfer.noResume": {
       "kind": "error",
-      "zh": "传输进度不支持从某一格续看",
+      "zh": "传输进度不支持从中途接着看",
       "args": []
     },
     "rsChanHost.transfer.noConfig": {
@@ -13671,17 +13681,17 @@
     },
     "rsChanHost.start.twice": {
       "kind": "error",
-      "zh": "通道口已经起过一次了",
+      "zh": "内部错误：本机连接服务起了两次",
       "args": []
     },
     "rsChanHost.start.bindFailed": {
       "kind": "error",
-      "zh": "通道口绑不上回环：{e}",
+      "zh": "本机连接服务绑不上 127.0.0.1：{e}",
       "args": ["e"]
     },
     "rsOrigin.route.blank": {
       "kind": "error",
-      "zh": "{command} 收到的机器名是空的。没给名字不等于本机：本机也要写成 \"{local}\"。",
+      "zh": "请求格式不对：机器名是空的，本机也要写成 \"{local}\"（{command}）",
       "args": ["command", "local"]
     },
     "rsOrigin.expecting.name": {
@@ -13774,7 +13784,7 @@
     },
     "rsLaunch.terminalDial.local": {
       "kind": "error",
-      "zh": "这一问只对远端。本机开终端直接开窗，没有要交的机器事实",
+      "zh": "请求格式不对：本机开终端不需要这一步",
       "args": []
     },
     "rsLaunch.remote.noConfig": {
@@ -13784,7 +13794,7 @@
     },
     "rsLaunch.posix.noTerminalWindow": {
       "kind": "body",
-      "zh": "本机不是 Windows，cc-monitor 不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
+      "zh": "本机不是 Windows：cc-monitor 刻意不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
       "args": []
     },
     "beTerminal.refuse.empty": {
@@ -13829,7 +13839,7 @@
     },
     "rsLaunch.refuse.badToken": {
       "kind": "error",
-      "zh": "拒绝启动：启动令牌形状不对（应为 32 个小写十六进制字符）",
+      "zh": "拒绝启动：启动令牌格式不对（应为 32 个小写十六进制字符）",
       "args": []
     },
     "rsLaunch.local.notOnWindows": {
@@ -13864,12 +13874,12 @@
     },
     "panoramaApi.backend.tooOld": {
       "kind": "error",
-      "zh": "这台的后端太旧，不认代码全景这一问（重启 cc-monitor 换上新的后端）。",
+      "zh": "这台的后端太旧，看不了代码全景（重启 cc-monitor 换上新的后端）。",
       "args": []
     },
     "panoramaApi.reply.noResult": {
       "kind": "error",
-      "zh": "代码全景的应答里没有结果，两端版本对不上",
+      "zh": "代码全景的回答里没有结果，多半是后端版本不对",
       "args": []
     },
     "rsPanoramaCall.edit.notRefreshed": {
@@ -13879,12 +13889,12 @@
     },
     "rsPanoramaCall.install.remote": {
       "kind": "body",
-      "zh": "{who} 上还没有这一版的代码全景组件，正在把它装上去。约 20 MB，慢链路上要等一会儿；装好之后这一问会自己接着答。",
+      "zh": "{who} 上还没有这一版的代码全景组件，正在把它装上去。约 20 MB，慢链路上要等一会儿；装好之后会自己接着显示。",
       "args": ["who"]
     },
     "rsPanoramaCall.install.local": {
       "kind": "body",
-      "zh": "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后这一问会自己接着答。",
+      "zh": "本机还没有这一版的代码全景组件，正在把它放好（一两秒）。放好之后会自己接着显示。",
       "args": []
     },
     "rsPanoramaCall.edit.gaveUp": {
@@ -13894,7 +13904,7 @@
     },
     "rsPanoramaCall.edit.badPlan": {
       "kind": "error",
-      "zh": "代码全景组件交回的编辑计划形状不对（{e}），两端版本对不上：{raw}",
+      "zh": "代码全景组件交回的编辑计划读不懂（{e}），多半是版本不对：{raw}",
       "args": ["e", "raw"]
     },
     "panoramaApi.place.stillSays": {
@@ -13954,7 +13964,7 @@
     },
     "rsCcmProbe.card.summary": {
       "kind": "body",
-      "zh": "版本 {version} · {count} 项能力",
+      "zh": "版本 {version} · {count} 项功能",
       "args": ["version", "count"]
     },
     "rsCcmProbe.card.notFound": {
@@ -14140,7 +14150,7 @@
     },
     "rsBackendPolicy.call.noData": {
       "kind": "error",
-      "zh": "[{machine}] 的后端应答里没有数据，两端版本对不上",
+      "zh": "[{machine}] 的后端回答里没有数据，多半是版本不对",
       "args": ["machine"]
     },
     "rsBackendPolicy.call.failed": {
@@ -14150,7 +14160,7 @@
     },
     "rsBackendPolicy.call.tooOld": {
       "kind": "error",
-      "zh": "[{machine}] 的后端太旧，还不认这条命令。重装那台机器的后端就有了",
+      "zh": "[{machine}] 的后端太旧，重装那台机器的后端之后再试",
       "args": ["machine"]
     },
     "beSshConfig.host.sshGExit": {
@@ -14175,12 +14185,12 @@
     },
     "rsSshSource.health.degraded": {
       "kind": "body",
-      "zh": "远端后端是旧版本（{build}，当前 {expected}），本连接降级运行。后台会话不可见，历史全量推送容易拥塞。请在设置里重装这台机器的后端。",
+      "zh": "远端后端是旧版本（{build}，当前 {expected}），有些功能用不了。后台会话看不见，历史加载容易卡住。请在设置里重装这台机器的后端。",
       "args": ["build", "expected"]
     },
     "rsSshSource.upgrade.reconnect": {
       "kind": "error",
-      "zh": "后端的能力有更新，重新连接一次",
+      "zh": "后端更新了，重新连接一次",
       "args": []
     },
     "rsSshSource.version.protoMismatch": {
@@ -14210,7 +14220,7 @@
     },
     "rsSshSource.health.overflowLines": {
       "kind": "body",
-      "zh": "远端 [{host}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。",
+      "zh": "远端 [{host}] 连接拥塞，可能丢了约 {dropped} 条实时消息；重开该会话可看完整历史。",
       "args": ["host", "dropped"]
     },
     "rsSshSource.snapshot.incompletePlan": {
@@ -14250,7 +14260,7 @@
     },
     "sessionWrites.fork.badProduct": {
       "kind": "error",
-      "zh": "那台后端说分叉成功了，但结果认不出来（{e}）。多半是两边版本不一样，先别重试，刷新会话列表看看有没有多出来的那一条",
+      "zh": "那台后端说分叉成功了，但结果认不出来（{e}）。多半是后端版本不对，先别重试，刷新会话列表看看有没有多出来的那一条",
       "args": ["e"]
     },
     "historyActions.menu.delete": {
@@ -14385,7 +14395,7 @@
     },
     "machineAliases.aliasPreview.tooOld": {
       "kind": "error",
-      "zh": "这台机器的后端还不认识预览，重启一次 cc-monitor 换上新后端再试",
+      "zh": "这台机器的后端太旧，预览不了。重启一次 cc-monitor 换上新后端再试",
       "args": []
     },
     "machineAliases.tmuxNaming.none": {
@@ -14435,7 +14445,7 @@
     },
     "rsPanoramaBytes.slot.unreadable": {
       "kind": "error",
-      "zh": "本机后端答的那一格对不上这一版的全景组件。两边版本不一致。",
+      "zh": "本机后端的回答对不上这一版的代码全景组件。多半是后端版本不对。",
       "args": []
     },
     "rsPanoramaBytes.push.noConfig": {
@@ -14450,12 +14460,12 @@
     },
     "rsCcmInvocation.refusal.idSid": {
       "kind": "error",
-      "zh": "会话 ID {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idCcmSid": {
       "kind": "error",
-      "zh": "会话标记 {value} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "zh": "会话 ID {value} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
       "args": ["value"]
     },
     "rsCcmInvocation.refusal.idModel": {
@@ -14645,7 +14655,7 @@
     },
     "history.accountResume.hint": {
       "kind": "body",
-      "zh": "以账号「{name}」{email} 起这个会话（注入它的 CLAUDE_CONFIG_DIR）",
+      "zh": "以账号「{name}」{email} 起这个会话（用它的 CLAUDE_CONFIG_DIR）",
       "args": ["name", "email"]
     },
     "history.accountResume.item": {
@@ -14958,12 +14968,12 @@
     },
     "history.searchSession.moreStarved": {
       "kind": "body",
-      "zh": "…还有 {rest} 条命中没显示（摘录预算已用完）。点这里打开会话",
+      "zh": "…还有 {rest} 条命中没显示（摘录已到上限）。点这里打开会话",
       "args": ["rest"]
     },
     "history.searchSession.allStarved": {
       "kind": "body",
-      "zh": "本会话 {hitCount} 条命中，摘录预算已用完，一条都没显示出来。点这里打开会话",
+      "zh": "本会话 {hitCount} 条命中，摘录已到上限，一条都没显示出来。点这里打开会话",
       "args": ["hitCount"]
     },
     "history.searchSession.count": {
@@ -14988,7 +14998,7 @@
     },
     "history.search.mergeBadShape": {
       "kind": "error",
-      "zh": "读不懂本机后端合好的搜索结果，两端版本对不上",
+      "zh": "读不懂本机后端回的搜索结果，多半是后端版本不对",
       "args": []
     },
     "history.search.searching": {
@@ -15183,12 +15193,12 @@
     },
     "historyReads.reason.fallback": {
       "kind": "error",
-      "zh": "本机后端版本旧，还答不了历史清单（重装后端之后就有）",
+      "zh": "本机后端版本旧，读不了历史清单，需要更新。",
       "args": []
     },
     "historyReads.shape.unreadable": {
       "kind": "error",
-      "zh": "本机后端回的历史清单读不懂，多半是两边版本不一样。重装后端试试",
+      "zh": "本机后端回的历史清单读不懂。多半是后端版本不对，重装后端试试",
       "args": []
     },
     "history.search.summary": {
@@ -15198,12 +15208,12 @@
     },
     "history.search.summaryTruncated": {
       "kind": "body",
-      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话。摘录预算已用完，缩小关键词范围能看到更多",
+      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话。摘录已到上限，缩小关键词范围能看到更多",
       "args": ["query", "totalHits", "sessionCount"]
     },
     "history.search.summaryStarved": {
       "kind": "body",
-      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话。摘录预算已用完，{starved} 个会话只列了标题；缩小关键词范围能看到更多",
+      "zh": "「{query}」匹配 {totalHits} 条 · {sessionCount} 个会话。摘录已到上限，{starved} 个会话只列了标题；缩小关键词范围能看到更多",
       "args": ["query", "totalHits", "sessionCount", "starved"]
     },
     "history.list.summary": {
@@ -15233,42 +15243,42 @@
     },
     "apikeyReads.status.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的凭据文件状态，两端版本对不上",
+      "zh": "读不懂那台后端回的凭据文件状态，多半是它的版本不对",
       "args": []
     },
     "apikeyReads.write.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的写入结果，两端版本对不上",
+      "zh": "读不懂那台后端回的写入结果，多半是它的版本不对",
       "args": []
     },
     "apikeyReads.routing.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的账号表情况，两端版本对不上",
+      "zh": "读不懂那台后端回的账号表情况，多半是它的版本不对",
       "args": []
     },
     "apikeyReads.backend.tooOld": {
       "kind": "error",
-      "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "zh": "那台机器的后端太旧，重装那台机器的后端之后再试",
       "args": []
     },
     "tmuxReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的 tmux 会话清单，两端版本对不上",
+      "zh": "读不懂那台后端回的 tmux 会话清单，多半是它的版本不对",
       "args": []
     },
     "tmuxReads.backend.tooOld": {
       "kind": "error",
-      "zh": "那台机器的后端太旧，还不认列 tmux 会话这一问。重装那台机器的后端就有了",
+      "zh": "那台机器的后端太旧，列不了 tmux 会话。重装那台机器的后端之后再试",
       "args": []
     },
     "remoteProbe.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂本机后端回的测试结果，两端版本对不上",
+      "zh": "读不懂本机后端回的测试结果，多半是后端版本不对",
       "args": []
     },
     "remoteProbe.backend.tooOld": {
       "kind": "error",
-      "zh": "本机后端太旧，还不认测试连接这一问。重启 cc-monitor 换上新后端就有了",
+      "zh": "本机后端太旧，测试不了连接。重启 cc-monitor 换上新后端再试",
       "args": []
     },
     "startupActive.gone.title": {
@@ -15278,27 +15288,27 @@
     },
     "startupActive.gone.body": {
       "kind": "body",
-      "zh": "每台机器都报完了活会话，里面没有 {sid}，这次留在当前这一格",
+      "zh": "每台机器都报完了在跑的会话，里面没有 {sid}。这次留在当前的标签页",
       "args": ["sid"]
     },
     "portForwardReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂本机后端回的转发清单，两端版本对不上",
+      "zh": "读不懂本机后端回的转发清单，多半是后端版本不对",
       "args": []
     },
     "portForwardReads.backend.tooOld": {
       "kind": "error",
-      "zh": "本机后端太旧，还不认端口转发这一问。重启 cc-monitor 换上新后端就有了",
+      "zh": "本机后端太旧，用不了端口转发。重启 cc-monitor 换上新后端再试",
       "args": []
     },
     "sshConfigReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂本机后端回的 ssh 配置，两端版本对不上",
+      "zh": "读不懂本机后端回的 ssh 配置，多半是后端版本不对",
       "args": []
     },
     "sshConfigReads.backend.tooOld": {
       "kind": "error",
-      "zh": "本机后端太旧，还不认读 ssh 配置这一问。重启 cc-monitor 换上新后端就有了",
+      "zh": "本机后端太旧，读不了 ssh 配置。重启 cc-monitor 换上新后端再试",
       "args": []
     },
     "rsHistory.launch.noSessionName": {
@@ -15333,7 +15343,7 @@
     },
     "rsFrameQuery.reply.badShape": {
       "kind": "error",
-      "zh": "{who}的应答认不出来，多半是两边版本不一样",
+      "zh": "{who}的回答读不懂，多半是后端版本不对",
       "args": ["who"]
     },
     "rsFrameQuery.readPage.stuck": {
@@ -15343,7 +15353,7 @@
     },
     "rsFrameQuery.reply.inconsistent": {
       "kind": "error",
-      "zh": "{who}的应答前后对不上：{plan}",
+      "zh": "{who}的回答前后对不上：{plan}",
       "args": ["who", "plan"]
     },
     "rsFrameQuery.said.internal": {
@@ -15373,7 +15383,7 @@
     },
     "rsFrameQuery.call.tooOld": {
       "kind": "error",
-      "zh": "{who}的后端太旧，还不认这条查询。重装那台机器的后端就有了",
+      "zh": "{who}的后端太旧，重装那台机器的后端之后再试",
       "args": ["who"]
     },
     "rsSubagent.load.notFound": {
@@ -15383,7 +15393,7 @@
     },
     "accounts.oldBackend.trust": {
       "kind": "error",
-      "zh": "那台机器的后端版本过旧，还不认信任预检这一问。重装那台机器的后端就有了",
+      "zh": "那台机器的后端版本过旧，做不了信任检查。重装那台机器的后端之后再试",
       "args": []
     },
     "accounts.local.scopeHint": {
@@ -15433,7 +15443,7 @@
     },
     "accounts.oldBackend.accounts": {
       "kind": "error",
-      "zh": "那台机器的后端版本过旧，还不认账号清单这一问。重装那台机器的后端就有了",
+      "zh": "那台机器的后端版本过旧，读不了账号清单。重装那台机器的后端之后再试",
       "args": []
     },
     "accounts.setModel.invalid": {
@@ -15633,7 +15643,7 @@
     },
     "rsToolRegistry.env.loginShellWhy": {
       "kind": "body",
-      "zh": "探 ccm 能力时要一个登录 shell 把你的 rc 读进来",
+      "zh": "查 ccm 时要一个登录 shell 把你的 rc 读进来",
       "args": []
     },
     "rsToolRegistry.env.loginShellName": {
@@ -15663,12 +15673,12 @@
     },
     "rsToolRegistry.env.terminalExitWhy": {
       "kind": "body",
-      "zh": "POSIX 上开会话窗口只认这一个统一出口",
+      "zh": "POSIX 上开终端窗口只经它",
       "args": []
     },
     "rsToolRegistry.env.terminalExitName": {
       "kind": "title",
-      "zh": "POSIX 终端出口",
+      "zh": "xdg-terminal-exec",
       "args": []
     },
     "rsToolRegistry.env.tmuxWhy": {
@@ -15950,7 +15960,7 @@
     },
     "rsToolRegistry.tools.ccmRemoteProfileNote": {
       "kind": "body",
-      "zh": "或你在部署向导里选的其它 profile",
+      "zh": "或你在「别名」那一块选的其它 profile",
       "args": []
     },
     "rsToolRegistry.tools.ccmRemoteWhat": {
@@ -16065,22 +16075,22 @@
     },
     "rsLocalBackendHost.stream.asyncFailed": {
       "kind": "error",
-      "zh": "连接接入异步运行时失败：{e}",
+      "zh": "内部错误：连接接不进来（{e}）",
       "args": ["e"]
     },
     "rsLocalBackendHost.stream.nonblockingFailed": {
       "kind": "error",
-      "zh": "连接转成非阻塞失败：{e}",
+      "zh": "内部错误：连接设置失败（{e}）",
       "args": ["e"]
     },
     "rsLocalBackendHost.stream.notHello": {
       "kind": "error",
-      "zh": "后端的第一行应答不对，没有登记这条连接",
+      "zh": "后端回的第一句不对，没有登记这条连接",
       "args": []
     },
     "rsLocalBackendHost.stream.badFirstLine": {
       "kind": "error",
-      "zh": "后端的第一行应答解析不出来",
+      "zh": "后端回的第一句读不懂",
       "args": []
     },
     "rsLocalBackendHost.spawn.unsupported": {
@@ -16095,7 +16105,7 @@
     },
     "rsLocalBackendHost.attach.unreadable": {
       "kind": "error",
-      "zh": "后端的应答看不懂：{line}",
+      "zh": "后端的回答看不懂：{line}",
       "args": ["line"]
     },
     "rsLocalBackendHost.attach.refused": {
@@ -16105,7 +16115,7 @@
     },
     "rsLocalBackendHost.attach.notJson": {
       "kind": "error",
-      "zh": "后端的应答不是 JSON（{e}）：{line}",
+      "zh": "后端的回答不是 JSON（{e}）：{line}",
       "args": ["e", "line"]
     },
     "rsLocalBackendHost.attach.sendFailed": {
@@ -16115,27 +16125,27 @@
     },
     "rsLocalBackendHost.handshake.readFailed": {
       "kind": "error",
-      "zh": "读对方的应答失败：{e}",
+      "zh": "端口上那个程序的回答读不到：{e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.handshake.tooLong": {
       "kind": "error",
-      "zh": "对方回的一行超过 {cap} 字节还没换行，不再读",
+      "zh": "端口上那个程序回的一行超过 {cap} 字节还没换行，不再读",
       "args": ["cap"]
     },
     "rsLocalBackendHost.handshake.notUtf8": {
       "kind": "error",
-      "zh": "对方回的这一行不是 UTF-8：{e}",
+      "zh": "端口上那个程序回的这一行不是 UTF-8：{e}",
       "args": ["e"]
     },
     "rsLocalBackendHost.handshake.closed": {
       "kind": "error",
-      "zh": "对方关了连接",
+      "zh": "端口上那个程序关了连接",
       "args": []
     },
     "rsLocalBackendHost.probe.noAnswer": {
       "kind": "error",
-      "zh": "端口 {port} 能连上，但对方没有应答：{e}",
+      "zh": "端口 {port} 能连上，但那边没有回答：{e}",
       "args": ["port", "e"]
     },
     "rsLocalBackendHost.probe.noDeadline": {
@@ -16160,7 +16170,7 @@
     },
     "rsLocalBackendHost.hello.notBackendLine": {
       "kind": "error",
-      "zh": "端口上的程序答的第一行不是后端的应答（{bytes} 字节）",
+      "zh": "端口上的程序答的第一行不是后端的回答（{bytes} 字节）",
       "args": ["bytes"]
     },
     "rsLocalBackendHost.fs.writeFailed": {
@@ -16210,7 +16220,7 @@
     },
     "rsCcmLegacy.verdict.unreadable": {
       "kind": "error",
-      "zh": "本机后端答的旧入口去向对不上这一版。两边版本不一致。",
+      "zh": "本机后端的回答读不懂，多半是后端版本不对。",
       "args": []
     },
     "rsCcmLegacy.kept.changed": {
@@ -16300,8 +16310,11 @@
     },
     "beArgv.validate.badCcmSid": {
       "kind": "error",
-      "zh": "会话标记 {sid} 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
-      "args": ["sid"]
+      "zh": "--ccm-sid 的值 {sid} 不合法（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+      "args": ["sid"],
+      "waive": {
+        "C-T1": "--ccm-sid 是用户在终端里敲的真实旗标名"
+      }
     },
     "beArgv.validate.badAccount": {
       "kind": "error",
@@ -16400,7 +16413,7 @@
     },
     "bePlan.build.freeTextRefused": {
       "kind": "error",
-      "zh": "{what} 的值 {value} 不能拼进命令。工作目录要绝对路径、不含 .. 段；哪一格都不能有换行或 NUL",
+      "zh": "{what} 的值 {value} 不能拼进命令。工作目录要绝对路径、不含 .. 段；哪一项都不能有换行或 NUL",
       "args": ["what", "value"]
     },
     "bePlan.build.runningElsewhere": {
@@ -16823,7 +16836,7 @@
     },
     "beRemoteAsk.run.tooOld": {
       "kind": "error",
-      "zh": "那台的后端太旧，不认资产目录。",
+      "zh": "那台的后端太旧，读不了资产目录，需要更新。",
       "args": []
     },
     "beRemoteAsk.run.resultUnreadable": {
@@ -16898,7 +16911,7 @@
     },
     "beProbe.client.gone": {
       "kind": "error",
-      "zh": "发起测试的那一侧已经走了（这条连接关了），测试停下",
+      "zh": "发起测试的一方已经断开，测试停下",
       "args": []
     },
     "beProbe.test.ok": {
@@ -16908,7 +16921,7 @@
     },
     "beProbe.link.droppedBeforeAck": {
       "kind": "error",
-      "zh": "链路还没说成不成就断了",
+      "zh": "连接还没说成不成就断了",
       "args": []
     },
     "beProbe.link.closed": {
@@ -16943,7 +16956,7 @@
     },
     "beForwards.start.noAck": {
       "kind": "error",
-      "zh": "链路还没说成不成就断了",
+      "zh": "连接还没说成不成就断了",
       "args": []
     },
     "beForwards.stop.notFound": {
@@ -16968,7 +16981,7 @@
     },
     "beAssetSync.syncOne.unparsable": {
       "kind": "error",
-      "zh": "对面答的目录读不懂：{e}",
+      "zh": "那台机器回的目录读不懂：{e}",
       "args": ["e"]
     },
     "beAssetSync.foldBlocking.failed": {
@@ -16998,7 +17011,7 @@
     },
     "beMcpSync.plan.conflictUnconfirmed": {
       "kind": "error",
-      "zh": "「{n}」两边不一样，还没说要不要盖掉对面那一条。这一趟一条都没写。",
+      "zh": "「{n}」两边不一样，还没说要不要盖掉目标那一条。这一趟一条都没写。",
       "args": ["n"]
     },
     "beMcpSync.plan.notInSource": {
@@ -17038,12 +17051,12 @@
     },
     "beInbound.dispatch.unknown": {
       "kind": "error",
-      "zh": "这台后端不认得 {other} 这个操作，可能版本太旧",
+      "zh": "这台后端版本太旧，不支持这个操作（{other}）",
       "args": ["other"]
     },
     "beInbound.dispatch.unhandled": {
       "kind": "error",
-      "zh": "后端内部出错，没处理 {other} 这条命令",
+      "zh": "后端内部出错，这条命令没处理（{other}）",
       "args": ["other"]
     },
     "beInbound.dispatch.cannotCancel": {
@@ -17108,17 +17121,17 @@
     },
     "bePanorama.classify.failed": {
       "kind": "error",
-      "zh": "代码全景「{op}」没做成（{how}）：{message}",
+      "zh": "代码全景没做成（{op} · {how}）：{message}",
       "args": ["op", "how", "message"]
     },
     "bePanorama.classify.timedOut": {
       "kind": "error",
-      "zh": "代码全景「{op}」超过 {deadline} 秒没做完，已经停掉",
+      "zh": "代码全景超过 {deadline} 秒没做完，已经停掉（{op}）",
       "args": ["op", "deadline"]
     },
     "bePanorama.classify.tooLarge": {
       "kind": "error",
-      "zh": "代码全景「{op}」的结果太大（{size} 字节，上限 {cap}），没有返回",
+      "zh": "代码全景的结果太大，没有返回（{op}：{size} 字节，上限 {cap}）",
       "args": ["op", "size", "cap"]
     },
     "bePanorama.describeExit.signal": {
@@ -17173,7 +17186,7 @@
     },
     "bePanorama.classify.badReply": {
       "kind": "error",
-      "zh": "代码全景「{op}」说做完了，但交回的结果读不懂：{said}",
+      "zh": "代码全景说做完了，但交回的结果读不懂（{op}）：{said}",
       "args": ["op", "said"]
     },
     "beHttp1.readExactBody.shortBody": {
@@ -17324,7 +17337,7 @@
     },
     "beUpstreamEndpoint.relay.notListening": {
       "kind": "body",
-      "zh": "这台后端里的中转没在听。多半是口被别的程序占着，原因在这台后端的日志里",
+      "zh": "这台后端里的中转没在运行。多半是端口被别的程序占着，原因在这台后端的日志里",
       "args": []
     },
     "beUpstreamTable.whyIdUnusable.say": {
@@ -17514,27 +17527,27 @@
     },
     "beRelayListen.key.unavailable": {
       "kind": "error",
-      "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
+      "zh": "拿不到中转钥匙（{e}），中转没有起：没有钥匙的话谁都能用它",
       "args": ["e"]
     },
     "terminalOpen.backend.tooOld": {
       "kind": "error",
-      "zh": "本机后端太旧，还不会给远端开终端。重启 cc-monitor 换上新的后端就有了",
+      "zh": "本机后端太旧，给远端开不了终端。重启 cc-monitor 换上新后端再试",
       "args": []
     },
     "terminalOpen.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂本机后端回的开终端那一行，两端版本对不上",
+      "zh": "读不懂本机后端回的开终端结果，多半是后端版本不对",
       "args": []
     },
     "tmuxMint.backend.tooOld": {
       "kind": "error",
-      "zh": "那台机器的后端太旧，还不会给新会话取名。重装那台机器的后端就有了",
+      "zh": "那台机器的后端太旧，给新会话取不了名。重装那台机器的后端之后再试",
       "args": []
     },
     "tmuxMint.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端取的会话名，两端版本对不上",
+      "zh": "读不懂那台后端取的会话名，多半是它的版本不对",
       "args": []
     },
     "tmuxMint.refused.title": {
@@ -17919,7 +17932,7 @@
     },
     "beFilesExtract.args.unknownCmd": {
       "kind": "error",
-      "zh": "「{cmd}」不是解压那一面的命令",
+      "zh": "请求格式不对：「{cmd}」不是解压命令",
       "args": ["cmd"]
     },
     "beFilesExtract.undo.at": {
@@ -17934,17 +17947,17 @@
     },
     "beTransfer.home.mismatch": {
       "kind": "error",
-      "zh": "SFTP 起始目录不是后端的 home。起始目录是 {sftp}，home 是 {home}；暂存件会落到后端看不见的地方，一个字节没传",
+      "zh": "SFTP 起始目录不是后端的 home。起始目录是 {sftp}，home 是 {home}；临时文件会落到后端看不见的地方，一个字节没传",
       "args": ["sftp", "home"]
     },
     "beUploadChunks.args.bad": {
       "kind": "error",
-      "zh": "块形上传的参数不对（键「{key}」，块数 {chunks}）",
+      "zh": "分块上传的参数不对（键「{key}」，块数 {chunks}）",
       "args": ["key", "chunks"]
     },
     "beUploadChunks.io.failed": {
       "kind": "error",
-      "zh": "拼暂存件时 {path} 出错：{e}",
+      "zh": "拼临时文件时 {path} 出错：{e}",
       "args": ["path", "e"]
     },
     "beUploadChunks.chunk.missing": {
@@ -19172,17 +19185,17 @@
     },
     "mcpReads.read.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的 MCP 列表，两端版本对不上",
+      "zh": "读不懂那台后端回的 MCP 列表，多半是它的版本不对",
       "args": []
     },
     "mcpReads.edit.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的 MCP 写入结果，两端版本对不上",
+      "zh": "读不懂那台后端回的 MCP 写入结果，多半是它的版本不对",
       "args": []
     },
     "mcpReads.backend.tooOld": {
       "kind": "error",
-      "zh": "那台机器的后端太旧，还不认这一问。重装那台机器的后端就有了",
+      "zh": "那台机器的后端太旧，重装那台机器的后端之后再试",
       "args": []
     },
     "beMcpSyncFlow.preview.sameFile": {
@@ -19192,7 +19205,7 @@
     },
     "beMcpSyncFlow.apply.notInCopy": {
       "kind": "error",
-      "zh": "「{name}」不在拷出来的那一份里 —— 两端对不上，一个字节都没写",
+      "zh": "「{name}」不在拷出来的那一份里，一个字节都没写",
       "args": ["name"]
     },
     "beMcpSyncFlow.apply.stale": {
@@ -19207,7 +19220,7 @@
     },
     "mcpSyncReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的差异 / 写入结果，两端版本对不上。这一趟什么都没写。",
+      "zh": "读不懂那台后端回的差异 / 写入结果，多半是它的版本不对。这一趟什么都没写。",
       "args": []
     },
     "mcp.read.problem": {
@@ -19217,7 +19230,7 @@
     },
     "beSkillFlow.install.noOriginal": {
       "kind": "error",
-      "zh": "「{path}」没有原文 —— 两端对不上，停下了",
+      "zh": "「{path}」没有原文，停下了",
       "args": ["path"]
     },
     "beSkillFlow.install.stale": {
@@ -19237,7 +19250,7 @@
     },
     "beSkillFlow.uninstall.noSeen": {
       "kind": "error",
-      "zh": "「{path}」你看的时候没有它的原文 —— 两端对不上，停下了",
+      "zh": "「{path}」你看的时候没有它的原文，停下了",
       "args": ["path"]
     },
     "beSkillFlow.uninstall.stale": {
@@ -19282,12 +19295,12 @@
     },
     "skillInstallReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的 skill 差异 / 装卸结果，两端版本对不上。这一趟什么都没写。",
+      "zh": "读不懂那台后端回的 skill 差异 / 装卸结果，多半是它的版本不对。这一趟什么都没写。",
       "args": []
     },
     "assetsSyncReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂本机后端回的同步结果，两端版本对不上。",
+      "zh": "读不懂本机后端回的同步结果，多半是后端版本不对。",
       "args": []
     },
     "beSkillFlow.stopped.listSep": {
@@ -19307,12 +19320,12 @@
     },
     "acctIsoReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的 cc-acct-iso 状态 / 片段，两端版本对不上。",
+      "zh": "读不懂那台后端回的 cc-acct-iso 状态 / 片段，多半是它的版本不对。",
       "args": []
     },
     "beSkillInbox.face.none": {
       "kind": "error",
-      "zh": "这台后端不认得任何带 skill 的 agent，收件箱这一面没有着落。",
+      "zh": "这台后端不认得任何带 skill 的 agent，找不到收件箱。",
       "args": []
     },
     "beSkillInbox.door.here": {
@@ -19322,7 +19335,7 @@
     },
     "skillInboxReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的收件箱内容，两端版本对不上。",
+      "zh": "读不懂那台后端回的收件箱内容，多半是它的版本不对。",
       "args": []
     },
     "rsAccountAliases.dialect.notHere": {
@@ -19342,7 +19355,7 @@
     },
     "aliasReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂那台后端回的别名内容，两端版本对不上。",
+      "zh": "读不懂那台后端回的别名内容，多半是它的版本不对。",
       "args": []
     },
     "rsProfileInstaller.preview.what": {
@@ -19357,7 +19370,7 @@
     },
     "beRemoteAsk.json.unreadable": {
       "kind": "error",
-      "zh": "{machine} 回的成品读不懂（{e}）。那台的后端多半太旧，重装它就好。",
+      "zh": "{machine} 回的内容读不懂（{e}）。那台的后端多半太旧，重装它就好。",
       "args": ["machine", "e"]
     },
     "beAssetsHub.source.changed": {
@@ -19392,7 +19405,7 @@
     },
     "beCcBusInstall.embed.notUtf8": {
       "kind": "error",
-      "zh": "内嵌的 {rel} 不是 UTF-8，装不了（写口只收文本）",
+      "zh": "cc-monitor 带着的 {rel} 不是 UTF-8，装不了（只能装文本文件）",
       "args": ["rel"]
     },
     "beCcBusInstall.record.failed": {
@@ -19402,7 +19415,7 @@
     },
     "ccBusInstallReads.reply.badShape": {
       "kind": "error",
-      "zh": "读不懂本机后端回的 cc-bus 安装结果，两端版本对不上。",
+      "zh": "读不懂本机后端回的 cc-bus 安装结果，多半是后端版本不对。",
       "args": []
     },
     "beAcctIsoInstall.record.failed": {
@@ -19442,7 +19455,7 @@
     },
     "rsFilewinProc.ready.unreadable": {
       "kind": "error",
-      "zh": "文件窗口回的话读不懂（两端版本对不上）：{e}",
+      "zh": "文件窗口回的话读不懂（多半是版本不对）：{e}",
       "args": ["e"]
     },
     "rsFilewinProc.seed.readFailed": {
