@@ -138,6 +138,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { setBehavior } from "../../../../src/frontend/ui/behavior";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { beforeEach, afterEach } from "vitest";
 
 // S9：jsdom 的 UA 含 `linux`。从前非 Windows 上「终端集成」那块**根本不构造**，钉成 windows 为的是守完整那组；
@@ -208,7 +209,7 @@ describe("T07 分区块隔离（真行为）", () => {
     const hint = page.querySelector<HTMLElement>('[data-fallback="per-machine"]');
     expect(hint, "得说一句「为什么它们在这儿」，不能默默换个位置").not.toBeNull();
     expect(hint!.hasAttribute("aria-busy"), "它不是加载态了，别再说自己在忙").toBe(false);
-    expect(hint!.textContent).toContain("位置不对");
+    expect(hint!.textContent).toBe(copyText("settingsPanel.fallback.body", { why: copyText("settingsPanel.machines.buildFailed") }));
     // 「都还能用」——账号那块的真身还在 DOM 里，不是被兜底提示替掉了。
     expect(document.querySelector(".accounts-section-stub")).not.toBeNull();
     // 〔ST2 · 步 14〕后端那几行本该挂在机器列表的行上 —— 列表没建起来 ⇒ 它们也退回列表页，不许无处安放。

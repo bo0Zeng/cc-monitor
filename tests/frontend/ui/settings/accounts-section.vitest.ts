@@ -802,7 +802,7 @@ describe("K-H2a：第三方 API key 的前端一半", () => {
     expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).toContain("n2：API key 表里还没有它那一行");
     const legacy = renderApikeyFileBlock(status()).querySelector(".apikey-file-legacy");
     expect(legacy?.textContent, "顶层那一把没有单独显").toContain("sk-a**********WXYZ");
-    expect(legacy!.textContent).toContain("不再往那一格写");
+    expect(legacy!.textContent).toContain(copyText("accounts.apikeyFile.legacyTop", { masked: "sk-a**********WXYZ" }));
     // 编辑格里**不许**出现顶层那一把 —— 那会被读成这个号的状态。
     expect(renderApikeyEditor(ACCTS[1], () => {}).editor.textContent).not.toContain("sk-a");
   });

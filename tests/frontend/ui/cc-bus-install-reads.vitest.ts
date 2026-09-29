@@ -4,6 +4,7 @@
  * 〔MIG-3a · 子步 3〕cc-bus 装到本机改经通道问本机后端（`cc-bus-install` / `-state`）：三态严格收、装的结果严格收、问的是本机。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -20,16 +21,16 @@ describe("严格收", () => {
   it("三态各自收得下；drifted 缺格 / 多格 / 负数 ⇒ 抛", () => {
     expect(decodeCcBusInstallState({ state: "not_installed" })).toEqual({ state: "not_installed" });
     expect(decodeCcBusInstallState({ state: "drifted", differing: 1, missing: 0 })).toEqual({ state: "drifted", differing: 1, missing: 0 });
-    expect(() => decodeCcBusInstallState({ state: "drifted", differing: 1 })).toThrow(/两端版本对不上/);
-    expect(() => decodeCcBusInstallState({ state: "up_to_date", differing: 0 })).toThrow(/两端版本对不上/);
-    expect(() => decodeCcBusInstallState({ state: "drifted", differing: -1, missing: 0 })).toThrow(/两端版本对不上/);
-    expect(() => decodeCcBusInstallState({ state: "weird" })).toThrow(/两端版本对不上/);
+    expect(() => decodeCcBusInstallState({ state: "drifted", differing: 1 })).toThrow(copyText("ccBusInstallReads.reply.badShape"));
+    expect(() => decodeCcBusInstallState({ state: "up_to_date", differing: 0 })).toThrow(copyText("ccBusInstallReads.reply.badShape"));
+    expect(() => decodeCcBusInstallState({ state: "drifted", differing: -1, missing: 0 })).toThrow(copyText("ccBusInstallReads.reply.badShape"));
+    expect(() => decodeCcBusInstallState({ state: "weird" })).toThrow(copyText("ccBusInstallReads.reply.badShape"));
   });
   it("装的结果：五格齐、类型对；多一格（从前的 warning）⇒ 抛", () => {
     const ok = { dest: "/h/.claude/skills/cc-bus", written: 3, unchanged: 0, backup: null, recordFailed: null };
     expect(decodeCcBusInstalled(ok)).toEqual(ok);
-    expect(() => decodeCcBusInstalled({ ...ok, warning: null })).toThrow(/两端版本对不上/);
-    expect(() => decodeCcBusInstalled({ ...ok, backup: 1 })).toThrow(/两端版本对不上/);
+    expect(() => decodeCcBusInstalled({ ...ok, warning: null })).toThrow(copyText("ccBusInstallReads.reply.badShape"));
+    expect(() => decodeCcBusInstalled({ ...ok, backup: 1 })).toThrow(copyText("ccBusInstallReads.reply.badShape"));
   });
 });
 

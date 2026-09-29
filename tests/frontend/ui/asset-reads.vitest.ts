@@ -5,6 +5,7 @@
  * 改走通道：解码器读后端测试对拍过的同一份金样；请求问对那台、说对那条。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -44,12 +45,12 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
   const i = SKILL.installReply as Record<string, unknown>;
   const u = SKILL.uninstallReply as Record<string, unknown>;
   it.each([
-    ["assets-sync 多一格", () => decodeAssetsSynced({ ...s, x: 1 })],
-    ["assets-sync 行里 pushed 不是数", () => decodeAssetsSynced({ ...s, synced: [{ ...(s.synced as object[])[0], pushed: "1" }] })],
-    ["install 缺一格", () => decodeSkillInstalled((({ chmodFailed: _c, ...r }) => r)(i))],
-    ["uninstall 类型不对", () => decodeSkillUninstalled({ ...u, dirRemoved: "no" })],
-  ])("%s", (_n, f) => {
-    expect(f).toThrow(/两端版本对不上/);
+    ["assets-sync 多一格", () => decodeAssetsSynced({ ...s, x: 1 }), "assetsSyncReads.reply.badShape"],
+    ["assets-sync 行里 pushed 不是数", () => decodeAssetsSynced({ ...s, synced: [{ ...(s.synced as object[])[0], pushed: "1" }] }), "assetsSyncReads.reply.badShape"],
+    ["install 缺一格", () => decodeSkillInstalled((({ chmodFailed: _c, ...r }) => r)(i)), "skillInstallReads.reply.badShape"],
+    ["uninstall 类型不对", () => decodeSkillUninstalled({ ...u, dirRemoved: "no" }), "skillInstallReads.reply.badShape"],
+  ] as const)("%s", (_n, f, key) => {
+    expect(f).toThrow(copyText(key));
   });
 });
 
@@ -106,6 +107,6 @@ describe("请求：问对那台、说对那条", () => {
   });
   it("看差异的成品多一格 ⇒ 抛", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ dir: "/d", rows: [], target: [], source: [], write: null }));
-    await expect(skillInstallPreview({ from: "aya", to: "<local>", name: "demo" })).rejects.toThrow(/两端版本对不上/);
+    await expect(skillInstallPreview({ from: "aya", to: "<local>", name: "demo" })).rejects.toThrow(copyText("skillInstallReads.reply.badShape"));
   });
 });

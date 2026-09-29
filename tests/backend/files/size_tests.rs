@@ -132,6 +132,12 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     )
     .expect_err("不存在的路径算出了大小");
     assert_eq!(e.0, "unreadable");
+    // 〔COPY-R〕原因说成人话，不把 `ErrorKind` 的调试名（`NotFound`）原样上屏。
+    let not_found = copy_core::copy_text("beFilesRead.ioKind.notFound", &[]);
+    assert_eq!(
+        e.1,
+        copy_core::copy_text("beFilesRead.size.unreadable", &[("kind", &not_found)])
+    );
     let e = crate::files::answer_wire("files-size", &serde_json::json!({}))
         .expect_err("没给 path 竟然收了");
     assert_eq!(e.0, "bad_path");

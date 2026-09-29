@@ -167,7 +167,7 @@ describe("P8a-Y3：界面不声称安装/启用", () => {
 
   it("界面文案明说「不是装了哪些」", () => {
     expect(src).toContain("装了哪些");
-    expect(src).toContain("没有真相源");
+    expect(src).toContain(copyText("plugins.build.intro"));
   });
 });
 
@@ -313,7 +313,7 @@ describe("〔C4b〕plugins-marketplaces 的成品按形状收（`decodeSurvey`�
       ["数不是整数", { entries: [{ ...full, declared_plugins: 1.5 }], file_absent: false }],
       ["旧的「恰一行」形状", { lines: ["{}"] }],
     ] as const) {
-      expect(() => decodeSurvey(bad), `${what} 被静默收下了`).toThrow(/形状对不上/);
+      expect(() => decodeSurvey(bad), `${what} 被静默收下了`).toThrow(copyText("plugins.bad.shape"));
     }
   });
 });

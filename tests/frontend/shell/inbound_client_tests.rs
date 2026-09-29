@@ -817,20 +817,29 @@ async fn a_peer_that_cannot_withdraw_is_said_out_loud() {
             );
         let _first = next_line(&mut peer).await;
         let err = caller.await.expect("task").unwrap_err();
-        let CallError::Timeout { withdraw, .. } = err else {
+        let CallError::Timeout { withdraw, after } = err else {
             panic!("{err:?}");
         };
         assert_eq!(withdraw, want, "{ops:?}");
         let said = err.to_string();
+        let ms = after.as_millis().to_string();
         let told = warns.peer_cannot_withdraw();
         match want {
             Withdraw::NotOffered => {
-                assert!(said.contains("不认撤单"), "结果里没说对端不认：{said}");
+                // 〔COPY-R〕按文案键断言（`设计/91 §6`），不钉原文。
+                assert_eq!(
+                    said,
+                    copy_text("rsInboundClient.error.timeoutPeerRunsOn", &[("after", &ms)]),
+                    "结果里没说对端不认"
+                );
                 assert_eq!(told.len(), 1, "{told:?}");
                 assert!(told[0].contains("`ping`"), "没点名那条命令：{told:?}");
             }
             Withdraw::Asked | Withdraw::Unsent => {
-                assert!(!said.contains("不认撤单"), "{said}");
+                assert_eq!(
+                    said,
+                    copy_text("rsInboundClient.error.timeout", &[("after", &ms)])
+                );
                 assert!(told.is_empty(), "{told:?}");
             }
         }

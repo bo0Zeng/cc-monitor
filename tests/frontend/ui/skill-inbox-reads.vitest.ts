@@ -4,6 +4,7 @@
  * 〔MIG-3a〕收件箱三问（`skill-host-list` / `-read` / `-write`）改走通道：围栏在那台后端，这里按形状严格收、问对那台。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -23,14 +24,14 @@ describe("严格收", () => {
     expect(decodeSkillViews({ skills: [view] })).toEqual([view]);
     expect(decodeSkillViews({ skills: [{ ...view, missing_reason: "没装" }] })[0]?.missing_reason).toBe("没装");
     const { editable: _drop, ...short } = view;
-    expect(() => decodeSkillViews({ skills: [short] })).toThrow(/两端版本对不上/);
-    expect(() => decodeSkillViews({ skills: [{ ...view, extra: 1 }] })).toThrow(/两端版本对不上/);
-    expect(() => decodeSkillViews({ skills: [{ ...view, instances: [1] }] })).toThrow(/两端版本对不上/);
-    expect(() => decodeSkillViews({ skills: [view], more: 1 })).toThrow(/两端版本对不上/);
+    expect(() => decodeSkillViews({ skills: [short] })).toThrow(copyText("skillInboxReads.reply.badShape"));
+    expect(() => decodeSkillViews({ skills: [{ ...view, extra: 1 }] })).toThrow(copyText("skillInboxReads.reply.badShape"));
+    expect(() => decodeSkillViews({ skills: [{ ...view, instances: [1] }] })).toThrow(copyText("skillInboxReads.reply.badShape"));
+    expect(() => decodeSkillViews({ skills: [view], more: 1 })).toThrow(copyText("skillInboxReads.reply.badShape"));
   });
   it("读回多一格 ⇒ 抛", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ text: "t", extra: 1 }));
-    await expect(readSkillFile("aya", "/p", "planned-build", "/p/INBOX.txt")).rejects.toThrow(/两端版本对不上/);
+    await expect(readSkillFile("aya", "/p", "planned-build", "/p/INBOX.txt")).rejects.toThrow(copyText("skillInboxReads.reply.badShape"));
   });
 });
 

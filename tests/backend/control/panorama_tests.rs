@@ -331,7 +331,15 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
         classify("status", 1, done(None, Vec::new())).unwrap_err(),
         (
             "failed",
-            "代码全景「status」没做成（被中途终止）：".to_string()
+            // 〔COPY-R〕按文案键拼出期望（`设计/91 §6`），不钉原文。
+            copy_text(
+                "bePanorama.classify.failed",
+                &[
+                    ("op", "status"),
+                    ("how", &copy_text("bePanorama.describeExit.signal", &[])),
+                    ("message", ""),
+                ],
+            )
         )
     );
     // 成功那一格：`data` 原样装进 `result`（`null` 也是一个答案：「没有这个符号」）。

@@ -85,6 +85,7 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
 
 import type { SkillView } from "../../../../src/frontend/ui/skill-inbox-reads";
 import { InboxView } from "../../../../src/frontend/ui/views/inbox-view";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 /** 生产段：剥掉块注释与整行 `//`（免得头注里的说明被当成代码命中）。 */
@@ -290,7 +291,7 @@ describe("F03b 收件箱 overlay：真渲染", () => {
       // 〔RW1〕CAS 期望 = 打开时读到的那一份（agent 在这之后改过 ⇒ 后端一个字节不写）。
       expected: "旧的",
     });
-    expect(statusText()).toBe("已保存（后端已读回逐字节比对）");
+    expect(statusText()).toBe(copyText("inboxView.save.saved"));
 
     // 存成功之后，下一次保存的期望换成刚存进去的那一份（否则第二次保存必然被当成「被人改过」）。
     textareaEl().value = "第二次";

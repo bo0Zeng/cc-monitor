@@ -677,7 +677,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5t-monitor-thin**（2026-09-29，THIN 合并那一拍）：monitor 里残留的共享判定全部进后端 —— 远端常驻换不换（`resident-verdict`）· 那台要哪一格字节（`deploy-slot`）· 远端旧 `~/.local/bin/ccm` 认不认得出、删不删（`deploy-retired`）· agent 卡型与判活词表进 `agents/claudecode/cards.rs`（assistant 成品带 `toolCards`，`tmux-list` 每行带 `agent`）· Gate 1 前检删、gate-core 收成后端模块 · branch-core 进 `agents/claudecode/` · acct-core 夹具挪到 feature 后面；共享 crate 只放契约，monitor 只许链契约类。
 ///
 /// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍，V160）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
-pub const BUILD_ID: &str = "p5u-one-data-home";
+///
+/// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍，V161）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
+pub const BUILD_ID: &str = "p5v-plain-copy";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
