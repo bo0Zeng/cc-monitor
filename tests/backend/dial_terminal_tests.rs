@@ -187,3 +187,127 @@ fn bad_inputs_are_refused_and_say_which_cell() {
         "invalid_args"
     );
 }
+
+/// 流进 `terminal-ssh` 的远端命令的全部来路（`ccm …` 调用行 · 载荷 / tmux 外层三格，后者带不带中转前缀）×
+/// 入库三份夹具的每条请求 × 典型工作目录 ⇒ `(哪条, 渲出来的命令)`。渲不出来的（降级 / 拒）不在里面。
+fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
+    use crate::control::launch_render::wire;
+    const RELAY: &str = "http://127.0.0.1:8788/s/claude-code/acct-a";
+    let fixture = |s: &str| -> Vec<Value> {
+        serde_json::from_str::<Value>(s).unwrap()["cases"]
+            .as_array()
+            .unwrap()
+            .clone()
+    };
+    let mut out = Vec::new();
+    for c in fixture(include_str!(
+        "../../src/backend/control/launch_render/fixtures/cli-golden.json"
+    )) {
+        let caps: std::collections::BTreeSet<String> = c["caps"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        for cwd in std::iter::once(c["req"]["cwd"].clone()).chain(cwds.iter().map(|d| json!(d))) {
+            let mut req = c["req"].clone();
+            req["cwd"] = cwd.clone();
+            let got = wire::render_ccm_launch_with(
+                serde_json::from_value(req).unwrap(),
+                &caps,
+                !c["caps"].is_null(),
+            );
+            if let Some(cmd) = got.cmd {
+                out.push((format!("cli {} · cwd {cwd}", c["name"]), cmd));
+            }
+        }
+    }
+    for c in fixture(include_str!(
+        "../../src/backend/control/launch_render/fixtures/payload-golden.json"
+    ))
+    .into_iter()
+    .chain(fixture(include_str!(
+        "../../src/backend/control/launch_render/fixtures/tmux-outer-golden.json"
+    ))) {
+        let mode = c["req"]["outer"]["mode"].as_str().map(str::to_string);
+        let cwd_at: Option<&[&str]> = match mode.as_deref() {
+            None => Some(&["cwd"]),
+            Some("create") => Some(&["outer", "cwd"]),
+            _ => None,
+        };
+        let mut cwd_vals = vec![None];
+        if cwd_at.is_some() {
+            cwd_vals.extend(cwds.iter().map(|d| Some(*d)));
+        }
+        for cwd in cwd_vals {
+            for relay in [false, mode.as_deref() != Some("attach")] {
+                let mut req = c["req"].clone();
+                if let (Some(at), Some(d)) = (cwd_at, cwd) {
+                    let slot = at.iter().fold(&mut req, |v, k| &mut v[*k]);
+                    *slot = json!(d);
+                }
+                if relay {
+                    req["env"].as_array_mut().unwrap().insert(
+                        0,
+                        json!({ "kind": "export-relay-base-url", "value": RELAY }),
+                    );
+                }
+                if let Ok(cmd) = wire::render_launch_payload(serde_json::from_value(req).unwrap()) {
+                    out.push((format!("{} · cwd {cwd:?} · 中转 {relay}", c["name"]), cmd));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// ★ 住址：`设计/99 §2.3`「高危四条（… G Windows 开远端会话被自家守卫拒 …）发版前修」· `第四波记录/WIN3.md §2` G。
+/// 后端自己渲出、会交给 `terminal-ssh` 的每一条远端命令（[`every_rendered_remote_command`]：典型工作目录 ——
+/// 空格 · 中文 · 弯引号 · 单引号）都过这道守卫（零命中）；带中转前缀的那几条真的在人群里。
+/// 守卫不放宽（正控）：同一条路上工作目录带 `"` 的照旧拒。
+#[test]
+fn every_remote_command_the_backend_renders_passes_the_terminal_guard() {
+    let cwds = [
+        "/home/u/c c",
+        "/home/u/文档/项目",
+        "/home/u/a\u{2019}b",
+        "/home/u/it's",
+    ];
+    let all = every_rendered_remote_command(&cwds);
+    let refused: Vec<String> = all
+        .iter()
+        .filter_map(|(what, cmd)| {
+            run(machine("h", "u", 22, None), cmd)
+                .err()
+                .map(|e| format!("  {what}\n    {cmd}\n    ⇒ {e:?}"))
+        })
+        .collect();
+    assert!(
+        refused.is_empty(),
+        "后端自己渲的远端命令被开终端那道守卫拒了（Windows 上这一趟就起不来）：\n{}",
+        refused.join("\n")
+    );
+    let relayed = all.iter().filter(|(w, _)| w.ends_with("中转 true")).count();
+    assert!(relayed > 0, "带中转前缀的那几条一条都没渲出来 —— 人群塌了");
+    assert_eq!(
+        all.iter()
+            .filter(|(_, c)| c.contains("export ANTHROPIC_BASE_URL="))
+            .count(),
+        relayed,
+        "带中转那几条没真带上前缀"
+    );
+    let dq = every_rendered_remote_command(&["/home/u/a\"b"]);
+    let with_dq: Vec<&String> = dq
+        .iter()
+        .map(|(_, c)| c)
+        .filter(|c| c.contains('"'))
+        .collect();
+    assert!(!with_dq.is_empty(), "正控没造出带双引号的命令");
+    for c in with_dq {
+        assert_eq!(
+            run(machine("h", "u", 22, None), c).unwrap_err().0,
+            "refused",
+            "守卫被放宽了：{c}"
+        );
+    }
+}
