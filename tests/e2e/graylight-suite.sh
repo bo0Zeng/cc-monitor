@@ -70,7 +70,7 @@ _gc_sock_cleanup() {
 
 DISPLAY="${E2E_DISPLAY:-:80}"; export DISPLAY
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-LOG="${E2E_LOG:-$(ls -t "$HOME"/.claude/work/logs/monitor.*.log 2>/dev/null | head -1)}"
+LOG="${E2E_LOG:-$(ls -t "$HOME"/.cc-monitor/logs/monitor/monitor.*.log 2>/dev/null | head -1)}"
 CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-remote-claude}"
 GRAY_WAIT="${E2E_GRAY_WAIT:-30}"    # 灰:backend 判活 + 会话账本成品帧 + 会话流
 ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 hook → 重探 → 会话账本裁已结束

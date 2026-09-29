@@ -206,11 +206,24 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
             (old.to_string_lossy().into_owned(), 3)
         ]
     );
-    // 顶层按 `.log` 收：子目录不算一份文件。
-    std::fs::write(root.join("logs").join("monitor.2026-09-25.log"), b"m").unwrap();
-    let top = list_log_entries(&root.join("logs"), Some(LOG_FILE_SUFFIX));
-    assert_eq!(top.len(), 1, "顶层混进了后端那一族：{top:?}");
+    // monitor 那一层按 `.log` 收：后端那一族不混进来。
+    let ours = monitor_log_dir(&root);
+    std::fs::create_dir_all(&ours).unwrap();
+    std::fs::write(ours.join("monitor.2026-09-25.log"), b"m").unwrap();
+    let top = list_log_entries(&ours, Some(LOG_FILE_SUFFIX));
+    assert_eq!(top.len(), 1, "monitor 那一层混进了后端那一族：{top:?}");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// 〔DATA-HOME〕V160 逐字「日志分 `logs/backend/` · `logs/monitor/`」：monitor 的滚动日志与本机后端那份各住一层、不撞名（期望手写）。
+#[test]
+fn monitor_and_backend_logs_live_side_by_side_under_logs() {
+    let root = std::path::Path::new("/d");
+    assert_eq!(monitor_log_dir(root), std::path::PathBuf::from("/d/logs/monitor"));
+    assert_eq!(
+        backend_stderr_log_path(root),
+        std::path::PathBuf::from("/d/logs/backend/stderr.log")
+    );
 }
 
 /// 交给后端的那个变量名 == 后端读的那个（异源：从后端源码里现抠 `pub const ENV`）；路径就是设置页读的那一份（同一个函数）。
@@ -259,7 +272,7 @@ fn log_file_info_reports_the_backend_stderr_file_from_the_same_path_it_was_hande
     let state = LoggingState {
         cfg: RwLock::new(DiagnosticsConfig::default()),
         reload_handle,
-        log_dir: root.join(LOG_DIR_NAME),
+        log_dir: monitor_log_dir(&root),
         monitor_data_dir: root.clone(),
         error_emit_fn: Arc::new(RwLock::new(None)),
         error_emit_enabled: Arc::new(AtomicBool::new(false)),
