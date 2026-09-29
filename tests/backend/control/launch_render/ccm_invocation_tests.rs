@@ -270,6 +270,8 @@ fn refusal_variants() -> Vec<String> {
 
 #[test]
 fn every_refusal_reason_is_pinned_byte_for_byte() {
+    // 〔COPY-R〕会话 ID 那一句按文案键取（`设计/91 §6`：判据按键、不钉原文），其余几句照旧逐字。
+    let sid_refused = copy_text("rsCcmInvocation.refusal.idSid", &[("value", "\"--evil\"")]);
     let pairs: &[(Refusal, &str)] = &[
         (Refusal::NotInstalled, "远端还没装后端"),
         (Refusal::NotSsh, "Windows 本机不用 ccm 命令起会话"),
@@ -305,7 +307,7 @@ fn every_refusal_reason_is_pinned_byte_for_byte() {
                 slot: IdentifierSlot::Sid,
                 value: format!("{:?}", "--evil"),
             },
-            "会话 ID \"--evil\" 不合形状（1 到 64 位，只许 A-Z a-z 0-9 与 -，不以 - 开头）",
+            &sid_refused,
         ),
     ];
     // ★ 人群**从枚举派生**，不再手写「七个」这个数。

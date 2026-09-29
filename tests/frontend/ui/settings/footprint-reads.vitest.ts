@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeFootprint } from "../../../../src/frontend/ui/settings/footprint-reads";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const golden = JSON.parse(
   readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../../__fixtures__/footprint-report.golden.json"), "utf8"),
@@ -29,7 +30,7 @@ describe("〔MIG-3b 续〕足迹成品的跨语言金样", () => {
     const state = clone();
     state.rows[0].state = { kind: "maybe" };
     for (const bad of [extra, missing, tier, state, null, { ...golden, origin: "<local>" }]) {
-      expect(() => decodeFootprint(bad)).toThrow(/形状不对/);
+      expect(() => decodeFootprint(bad)).toThrow(copyText("configSurface.refresh.badShape"));
     }
   });
 });

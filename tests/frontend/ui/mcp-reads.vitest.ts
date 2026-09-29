@@ -5,6 +5,7 @@
  * 改走通道：TS 解码器读后端测试写下的同一份金样（异源：Rust 对临时目录现算 == 金样；这里解同一份）；请求说对 op、问对那台。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -46,13 +47,13 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
   const r = READ.reply as Record<string, unknown>;
   const p = SYNC.previewReply as Record<string, unknown>;
   it.each([
-    ["mcp-read 多一格", () => decodeMcpRead({ ...r, x: 1 })],
-    ["mcp-read 认不出的 scope", () => decodeMcpRead({ ...r, entries: [{ scope: "weird", name: "w", server: {}, sourcePath: "" }] })],
-    ["put 回执缺一格", () => decodeMcpEdited({ path: "/p" })],
-    ["preview 行多一格", () => decodeMcpSyncPreview({ ...p, rows: [{ ...(p.rows as object[])[0], extra: 1 }] })],
-    ["apply 回执类型不对", () => decodeMcpSyncApplied({ path: "/p", written: "yes", names: [] })],
-  ])("%s", (_n, f) => {
-    expect(f).toThrow(/两端版本对不上/);
+    ["mcp-read 多一格", () => decodeMcpRead({ ...r, x: 1 }), "mcpReads.read.badShape"],
+    ["mcp-read 认不出的 scope", () => decodeMcpRead({ ...r, entries: [{ scope: "weird", name: "w", server: {}, sourcePath: "" }] }), "mcpReads.read.badShape"],
+    ["put 回执缺一格", () => decodeMcpEdited({ path: "/p" }), "mcpReads.edit.badShape"],
+    ["preview 行多一格", () => decodeMcpSyncPreview({ ...p, rows: [{ ...(p.rows as object[])[0], extra: 1 }] }), "mcpSyncReads.reply.badShape"],
+    ["apply 回执类型不对", () => decodeMcpSyncApplied({ path: "/p", written: "yes", names: [] }), "mcpSyncReads.reply.badShape"],
+  ] as const)("%s", (_n, f, key) => {
+    expect(f).toThrow(copyText(key));
   });
 });
 

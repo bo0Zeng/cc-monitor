@@ -44,6 +44,7 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
 vi.mock("../../../../src/frontend/ui/format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { HistoryView } from "../../../../src/frontend/ui/views/history";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 type AnySession = Record<string, unknown>;
 
@@ -102,14 +103,14 @@ describe("K-R100 KR100D3：截断说得出话，且与「真的没有结果」�
     const { status, results } = render(view, response({ totalHits: 0, sessionCount: 0, sessions: [] }));
     expect(results.textContent).toContain("无匹配");
     expect(results.querySelectorAll(".search-session")).toHaveLength(0);
-    expect(status).not.toContain("预算");
+    expect(status).toBe(copyText("history.search.summary", { query: "docker", totalHits: 0, sessionCount: 0 }));
   });
 
   it("(B) 有命中、全给了 snippet → 有命中行，没有任何截断提示", () => {
     const { status, results } = render(view, response());
     expect(results.querySelectorAll(".search-hit").length).toBeGreaterThan(0);
     expect(results.querySelector(".search-hit-more")).toBeNull();
-    expect(status).not.toContain("预算");
+    expect(status).toBe(copyText("history.search.summary", { query: "docker", totalHits: 1, sessionCount: 1 }));
   });
 
   it("(C) 远端被预算砍了 → 状态行说得出，卡片说得出，且点得开", () => {
@@ -126,13 +127,12 @@ describe("K-R100 KR100D3：截断说得出话，且与「真的没有结果」�
     );
 
     // ① 截断而不说 ⇒ 红。状态行必须点名。
-    expect(status).toContain("预算");
-    expect(status).toContain("1 个会话只列了标题");
+    expect(status).toBe(copyText("history.search.summaryStarved", { query: "docker", totalHits: 12, sessionCount: 1, starved: 1 }));
 
     // ② 卡片自己也必须说，而且不许再写「点任意条」——那时候一条都没有。
     const more = results.querySelector<HTMLElement>(".search-hit-more");
     expect(more).toBeTruthy();
-    expect(more!.textContent).toContain("预算已用完");
+    expect(more!.textContent).toBe(copyText("history.searchSession.allStarved", { hitCount: 12 }));
     expect(more!.textContent).not.toContain("点任意条");
     expect(more!.classList.contains("search-hit-more-truncated")).toBe(true);
 
@@ -148,8 +148,8 @@ describe("K-R100 KR100D3：截断说得出话，且与「真的没有结果」�
     const a = starved.querySelector(".search-hit-more")!.textContent!;
     const b = capped.querySelector(".search-hit-more")!.textContent!;
     expect(a).not.toEqual(b);
-    expect(a).toContain("预算已用完");
-    expect(b).not.toContain("预算");
+    expect(a).toBe(copyText("history.searchSession.moreStarved", { rest: 39 }));
+    expect(b).toBe(copyText("history.searchSession.moreCapped", { rest: 39, shown: 1 }));
     // 一个是「你的结果被砍了」，一个是「这个会话话多」——只有前者该染色出声。
     expect(starved.querySelector(".search-hit-more-truncated")).toBeTruthy();
     expect(capped.querySelector(".search-hit-more-truncated")).toBeNull();
@@ -176,7 +176,7 @@ describe("K-R100 KR100D3：截断说得出话，且与「真的没有结果」�
         sessions: [session({ hitCount: 12, hits: [], hitsTruncated: true })],
       }),
     );
-    expect(c.status).toContain("预算");
+    expect(c.status).toBe(copyText("history.search.summaryStarved", { query: "docker", totalHits: 12, sessionCount: 1, starved: 1 }));
     const entry = c.results.querySelector<HTMLElement>(".search-hit-more");
     expect(entry).toBeTruthy();
     // 🔴 卡片里一条命中行都没有 ⇒ 这一行是**唯一**入口，它必须真的能打开会话。

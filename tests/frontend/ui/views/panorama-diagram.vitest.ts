@@ -31,6 +31,7 @@ import { DiagramPane } from "../../../../src/frontend/ui/panorama/diagram-view";
 import { honestyLine } from "../../../../src/frontend/ui/panorama/diagram-honesty";
 import { CLIP_HEAD } from "../../../../src/frontend/ui/panorama/agent-clip";
 import { PanoramaView } from "../../../../src/frontend/ui/views/panorama";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import * as fx from "../panorama/diagram-fixtures";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
@@ -137,9 +138,7 @@ describe("PN1b 选图（界面）", () => {
   it("P5 新形状：如实说「这一版还画不出」，诚实信号照常，复制 Mermaid 拿到上游原文", async () => {
     vi.mocked(api.diagram).mockResolvedValue(fx.view(fx.unknownShapeDiagram));
     await choose(v, "k-new");
-    expect(q<HTMLElement>(v, ".panorama-diagram-note").textContent).toBe(
-      "这一版还画不出这种形状的图（hexagon）。可以点「复制 Mermaid」拿到上游画好的文本。",
-    );
+    expect(q<HTMLElement>(v, ".panorama-diagram-note").textContent).toBe(copyText("diagramView.paint.unsupported", { shape: "hexagon" }));
     expect(probe(v).root.querySelectorAll(".panorama-diagram-canvas svg").length).toBe(0);
     expect(q<HTMLElement>(v, '[data-pano="diagram-honesty"]').textContent).toBe(honestyLine(fx.honestyFull));
     q<HTMLButtonElement>(v, '[data-pano="diagram-copy-mermaid"]').click();
@@ -185,8 +184,8 @@ describe("PN1b 选图（界面）", () => {
       CLIP_HEAD,
       "仓：/repo",
       "对象：图「乙图」（类型 k-calls） · 中心符号 src/a/x.rs#f",
-      "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000） · ⚠ 索引已陈旧：源文件在这次索引之后改过",
-      `诚实信号：${honestyLine(fx.callDiagram.honesty)}`,
+      copyText("agentClip.stamp.line", { iso: "2026-09-21T14:13:20.000Z", indexedAt: 1_790_000_000, stale: copyText("agentClip.stamp.stale") }),
+      copyText("agentClip.clip.honesty", { honesty: honestyLine(fx.callDiagram.honesty) }),
       "Mermaid：",
       "flowchart LR",
       "  %% k-calls",

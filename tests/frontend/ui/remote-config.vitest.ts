@@ -9,6 +9,7 @@
  * 纯函数、不碰文件系统，故不需要 mock `config.ts`。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 // 〔CFG1〕config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
@@ -185,7 +186,7 @@ describe("〔S5 · V41〕remote 段认不出", () => {
       expect(got.hosts, JSON.stringify(remote)).toEqual([]);
       expect(got.unrecognized, JSON.stringify(remote)).toBe(REMOTE_CONFIG_UNRECOGNIZED);
     }
-    expect(REMOTE_CONFIG_UNRECOGNIZED.startsWith("认不出远端配置")).toBe(true);
+    expect(REMOTE_CONFIG_UNRECOGNIZED).toBe(copyText("remoteConfig.remoteConfigUnrecognized.unrecognized"));
   });
 
   it("对照：hosts: [] 与没有 remote 段都不带那一句", async () => {

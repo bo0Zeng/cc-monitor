@@ -24,6 +24,15 @@ import * as clip from "../../../../src/frontend/ui/panorama/agent-clip";
 import { PanoramaView } from "../../../../src/frontend/ui/views/panorama";
 import type { FileBubble, PanoramaLayout } from "../../../../src/frontend/ui/panorama/layout";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
+
+// 〔COPY-R〕索引时间那一行按文案键取（`设计/91 §6`：判据按键、不钉原文）。
+const STAMP_HEAD = `${copyText("agentClip.stamp.failed").split("：")[0]}：`;
+const STAMP_STALE = copyText("agentClip.stamp.line", {
+  iso: "2026-09-21T14:13:20.000Z",
+  indexedAt: 1_790_000_000,
+  stale: copyText("agentClip.stamp.stale"),
+});
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const sym: PanoSymbol = {
@@ -107,8 +116,8 @@ describe("CP7 复制给 agent（界面接线）", () => {
       "仓：/repo",
       "对象：符号 src/a.rs#f（Function · Rust · src/a.rs:1-5）",
     ]);
-    expect(lines.filter((l) => /^(索引读数|看不见|分不清)：/.test(l))).toEqual([
-      "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000） · ⚠ 索引已陈旧：源文件在这次索引之后改过",
+    expect(lines.filter((l) => l.startsWith(STAMP_HEAD) || /^(看不见|分不清)：/.test(l))).toEqual([
+      STAMP_STALE,
       "看不见：全仓 5 处调用未解析 · 2 个文件解析失败 · 全景图只画了 2/7 个文件",
       "分不清：本符号 1 条直接边里 1 条按名字凑（启发 1 · 动态猜测 0），动态派发 0 条，确定 0 条",
     ]);
@@ -127,7 +136,7 @@ describe("CP7 复制给 agent（界面接线）", () => {
     expect(lines.slice(1, 6)).toEqual([
       "仓：/repo",
       "对象：文件 src/a.rs（子系统「core」· 4 个符号）",
-      "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000） · ⚠ 索引已陈旧：源文件在这次索引之后改过",
+      STAMP_STALE,
       "看不见：全仓 5 处调用未解析 · 2 个文件解析失败 · 全景图只画了 2/7 个文件",
       "分不清：文件级没有边 —— 边的确定度要点进符号那一级看",
     ]);
@@ -147,8 +156,6 @@ describe("CP7 复制给 agent（界面接线）", () => {
     await flush();
     copyBtn(v)!.click();
     await flush();
-    expect(written[0].split("\n").filter((l) => l.startsWith("索引读数："))).toEqual([
-      "索引读数：未取到（查索引状态失败）—— 这段内容的时效未知",
-    ]);
+    expect(written[0].split("\n").filter((l) => l.startsWith(STAMP_HEAD))).toEqual([copyText("agentClip.stamp.failed")]);
   });
 });

@@ -4,6 +4,7 @@
  * 〔MIG-3a〕`acct-iso-status` / `acct-iso-shellinit` 改走通道：成品由那台后端出（围栏在那边校验），这里按形状严格收、问对那台。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -27,11 +28,11 @@ describe("严格收", () => {
   });
   it("没装是答案；缺格 / 多格 / 类型不对 ⇒ 抛", () => {
     expect(decodeAcctIsoStatus({ installed: false, path: null, looked: "~/.local/bin" }).installed).toBe(false);
-    expect(() => decodeAcctIsoStatus({ installed: false, path: null })).toThrow(/两端版本对不上/);
-    expect(() => decodeAcctIsoStatus({ installed: false, path: null, looked: null, vendor_id: "v" })).toThrow(/两端版本对不上/);
-    expect(() => decodeAcctIsoStatus({ installed: "no", path: null, looked: null })).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoStatus({ installed: false, path: null })).toThrow(copyText("acctIsoReads.reply.badShape"));
+    expect(() => decodeAcctIsoStatus({ installed: false, path: null, looked: null, vendor_id: "v" })).toThrow(copyText("acctIsoReads.reply.badShape"));
+    expect(() => decodeAcctIsoStatus({ installed: "no", path: null, looked: null })).toThrow(copyText("acctIsoReads.reply.badShape"));
     expect(decodeAcctIsoSnippet({ snippet: "x" })).toBe("x");
-    expect(() => decodeAcctIsoSnippet({ snippet: "x", extra: 1 })).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoSnippet({ snippet: "x", extra: 1 })).toThrow(copyText("acctIsoReads.reply.badShape"));
   });
 });
 
@@ -64,11 +65,11 @@ describe("acct-iso-install", () => {
   it("严格收：缺格 / 多格 / 类型不对 ⇒ 抛", () => {
     expect(decodeAcctIsoInstalled(ok)).toEqual(ok);
     const { recordFailed: _, ...short } = ok;
-    expect(() => decodeAcctIsoInstalled(short)).toThrow(/两端版本对不上/);
-    expect(() => decodeAcctIsoInstalled({ ...ok, extra: 1 })).toThrow(/两端版本对不上/);
-    expect(() => decodeAcctIsoInstalled({ ...ok, linked: "yes" })).toThrow(/两端版本对不上/);
-    expect(() => decodeAcctIsoInstalled({ ...ok, written: -1 })).toThrow(/两端版本对不上/);
-    expect(() => decodeAcctIsoInstalled({ ...ok, written: 1.5 })).toThrow(/两端版本对不上/);
+    expect(() => decodeAcctIsoInstalled(short)).toThrow(copyText("acctIsoReads.reply.badShape"));
+    expect(() => decodeAcctIsoInstalled({ ...ok, extra: 1 })).toThrow(copyText("acctIsoReads.reply.badShape"));
+    expect(() => decodeAcctIsoInstalled({ ...ok, linked: "yes" })).toThrow(copyText("acctIsoReads.reply.badShape"));
+    expect(() => decodeAcctIsoInstalled({ ...ok, written: -1 })).toThrow(copyText("acctIsoReads.reply.badShape"));
+    expect(() => decodeAcctIsoInstalled({ ...ok, written: 1.5 })).toThrow(copyText("acctIsoReads.reply.badShape"));
   });
   it("一发、origin 原样、请求体为空（落点那台自己算）", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(ok));
