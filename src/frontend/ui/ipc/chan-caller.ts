@@ -74,7 +74,7 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
   const err = e.error;
   switch (err.layer) {
     case "peer": {
-      if (err.why === "unsupported") return oldBackendSays;
+      if (unsupported(err)) return oldBackendSays;
       const r = refusalOf(err.body);
       return r ? copyText("chanCaller.said.errorCoded", { code: r.code, message: r.message }) : copyText("chanCaller.said.error");
     }
@@ -87,6 +87,19 @@ export function saidOf(e: unknown, oldBackendSays: string): string {
       // 〔NET2 · `05 §3.3.3`〕那台对这一条不认撤 ⇒ 说它可能还在跑。
       return err.runsOn === true ? copyText("chanCaller.said.withdrawnRunsOn") : copyText("chanCaller.said.withdrawn");
   }
+}
+
+/**
+ * 〔WF2 · WIN3 读数 C〕这一次失败是不是「那台后端比这条查询老」（对端**事前**就说不认这条命令）。按层判、不看文字；
+ * 「需要更新」只许从这里来 —— 够不着 / 期限到 / 对端说不行都不是它（那几形照 [`saidOf`] 说查询失败的原因）。
+ */
+export function isOldBackend(e: unknown): boolean {
+  return e instanceof ChanError && unsupported(e.error);
+}
+
+/** 那一形的唯一判法（[`saidOf`] 与 [`isOldBackend`] 共用；类型守卫 ⇒ 另一支里 `body` 可读）。 */
+function unsupported(err: CallError): err is Extract<CallError, { why: "unsupported" }> {
+  return err.layer === "peer" && err.why === "unsupported";
 }
 
 /**

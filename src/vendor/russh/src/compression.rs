@@ -224,6 +224,30 @@ impl Compress {
         input_len.saturating_add(10)
     }
 
+    /// CZ2 PATCH（cc-monitor 2026-09-29）：这一包压完了没有（`true` ⇒ 收工；`false` ⇒ 缓冲撑满了，扩了再压）。
+    /// `before` = 本轮调用之前的进度；`room` = 这一包可用的输出缓冲长。还有空位、输入没吃光、这一轮又一字未动 ⇒ 报错（不交半包）。
+    fn zlib_packet_done(
+        c: flate2::Status,
+        before: (usize, usize),
+        z: &flate2::Compress,
+        base: (usize, usize),
+        input_len: usize,
+        room: usize,
+    ) -> Result<bool, crate::Error> {
+        let n_in_ = z.total_in() as usize - base.0;
+        let n_out_ = z.total_out() as usize - base.1;
+        if n_out_ == room {
+            return Ok(false);
+        }
+        if n_in_ == input_len {
+            return Ok(true);
+        }
+        if c == flate2::Status::BufError || (n_in_, n_out_) == before {
+            return Err(crate::Error::Inconsistent);
+        }
+        Ok(false)
+    }
+
     pub fn compress<'a>(
         &mut self,
         input: &'a [u8],
@@ -242,12 +266,11 @@ impl Compress {
                     let n_out_ = z.total_out() as usize - n_out;
                     #[allow(clippy::indexing_slicing)] // length checked
                     let c = z.compress(&input[n_in_..], &mut output[n_out_..], flush)?;
-                    match c {
-                        flate2::Status::BufError => {
-                            output.resize(output.len() * 2, 0);
-                        }
-                        _ => break,
+                    // CZ2 PATCH（cc-monitor 2026-09-29，Apache-2.0 §4(b)；原样见 VENDOR.md）：同 `compress_into` 那一处。
+                    if Self::zlib_packet_done(c, (n_in_, n_out_), z, (n_in, n_out), input.len(), output.len())? {
+                        break;
                     }
+                    output.resize(output.len() * 2, 0);
                 }
                 let n_out_ = z.total_out() as usize - n_out;
                 #[allow(clippy::indexing_slicing)] // length checked
@@ -280,13 +303,14 @@ impl Compress {
                     let n_out_ = z.total_out() as usize - n_out;
                     #[allow(clippy::indexing_slicing)] // length checked
                     let c = z.compress(&input[n_in_..], &mut output[start_len + n_out_..], flush)?;
-                    match c {
-                        flate2::Status::BufError => {
-                            let growth = output.len().saturating_sub(start_len).max(1);
-                            output.resize(output.len() + growth, 0);
-                        }
-                        _ => break,
+                    // CZ2 PATCH（cc-monitor 2026-09-29，Apache-2.0 §4(b)；原样见 VENDOR.md）：上游见 `Ok` 就收工，而输出缓冲
+                    // （输入 + 10）撑满时 deflate 回的正是 `Ok` ⇒ 不可压的大包（压出来比输入长 > 10 字节）只交出前一截，
+                    // 余下留在压缩器里、拼进下一包 ⇒ 对端「incomplete message」断链。改成：吃光输入且缓冲还有空位（冲刷做完）才收工，撑满就扩。
+                    if Self::zlib_packet_done(c, (n_in_, n_out_), z, (n_in, n_out), input.len(), output.len() - start_len)? {
+                        break;
                     }
+                    let growth = output.len().saturating_sub(start_len).max(1);
+                    output.resize(output.len() + growth, 0);
                 }
                 let n_out_ = z.total_out() as usize - n_out;
                 output.truncate(start_len + n_out_);

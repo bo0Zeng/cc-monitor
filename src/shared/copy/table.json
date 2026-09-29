@@ -744,6 +744,11 @@
       "zh": "那台机器的常驻后端端口（127.0.0.1:{port}）一直连不上：{e}",
       "args": ["port", "e"]
     },
+    "rsRemoteResident.tunnel.forwardingProhibited": {
+      "kind": "error",
+      "zh": "接不上：那台 sshd 不许端口转发（AllowTcpForwarding no），cc-monitor 连不到它的后端。把那台 sshd_config 里的 AllowTcpForwarding 改成 yes 或 local、重启 sshd，再在机器页点「起」。",
+      "args": []
+    },
     "rsRemoteResident.handshake.attachNotSent": {
       "kind": "error",
       "zh": "接入请求没送到那台机器的常驻后端：{e}",
@@ -1726,6 +1731,11 @@
       "kind": "body",
       "zh": "{machine}做不到这件事（{code}）",
       "args": ["machine", "code"]
+    },
+    "tabMenu.item.resume": {
+      "kind": "action",
+      "zh": "Resume 这个会话",
+      "args": []
     },
     "tabMenu.item.greyed": {
       "kind": "control",
@@ -5097,6 +5107,11 @@
       "zh": "远端后端需要更新才能用多账号",
       "args": []
     },
+    "accountChip.menu.queryFailed": {
+      "kind": "body",
+      "zh": "这台的账号没查到：{reason}",
+      "args": ["reason"]
+    },
     "accountChip.refresh.icon": {
       "kind": "body",
       "zh": "👤",
@@ -5120,6 +5135,11 @@
     "accountChip.label.backendOld": {
       "kind": "body",
       "zh": "后端需更新",
+      "args": []
+    },
+    "accountChip.label.queryFailed": {
+      "kind": "body",
+      "zh": "账号没查到",
       "args": []
     },
     "accountChip.label.noRemote": {
@@ -5540,6 +5560,11 @@
     "remoteHealth.head.notDeployed": {
       "kind": "body",
       "zh": "⚠ 远端后端没装上",
+      "args": []
+    },
+    "remoteHealth.head.fileWindowGone": {
+      "kind": "body",
+      "zh": "⚠ 文件窗口退出了",
       "args": []
     },
     "remoteHealth.head.historyFailed": {
@@ -6772,6 +6797,11 @@
     },
     "machineCard.launch.cwdHint": {
       "kind": "control",
+      "zh": "远端绝对路径，留空用登录后的目录",
+      "args": []
+    },
+    "machineCard.launch.cwdTitle": {
+      "kind": "body",
       "zh": "远端绝对路径，如 /home/<你的用户名>/proj；留空就是登录后的默认目录",
       "args": []
     },
@@ -7678,6 +7708,16 @@
     "accounts.status.backendOldBody": {
       "kind": "body",
       "zh": "远端后端需要更新才能用多账号：{reason}",
+      "args": ["reason"]
+    },
+    "accounts.status.queryFailed": {
+      "kind": "body",
+      "zh": "没查到",
+      "args": []
+    },
+    "accounts.status.queryFailedBody": {
+      "kind": "body",
+      "zh": "这台的账号清单没查到：{reason}",
       "args": ["reason"]
     },
     "accounts.status.backendOld": {
@@ -10263,6 +10303,11 @@
     "rsFilewinProc.open.exited": {
       "kind": "error",
       "zh": "文件窗口没能打开（进程退出：{st}）",
+      "args": ["st"]
+    },
+    "rsFilewinProc.late.exited": {
+      "kind": "error",
+      "zh": "文件窗口开出来之后又退出了：{st}",
       "args": ["st"]
     },
     "rsFilewinProc.seed.sendFailed": {
@@ -14806,6 +14851,11 @@
       "zh": "{projects} 个项目 · {sessions} 个会话",
       "args": ["projects", "sessions"]
     },
+    "history.originGroup.noRecords": {
+      "kind": "body",
+      "zh": "这台还没有会话记录",
+      "args": []
+    },
     "history.originGroup.local": {
       "kind": "body",
       "zh": "本地",
@@ -15026,10 +15076,10 @@
       "zh": "部分远端的历史没加载上",
       "args": []
     },
-    "history.refresh.failed": {
-      "kind": "body",
-      "zh": "加载失败：{reason}",
-      "args": ["reason"]
+    "history.refresh.localFailed": {
+      "kind": "error",
+      "zh": "本机的历史没加载上",
+      "args": []
     },
     "history.refresh.noticeTitle": {
       "kind": "error",
@@ -18866,6 +18916,21 @@
       "kind": "error",
       "zh": "绑定本地端口 127.0.0.1:{port} 失败：{e}",
       "args": ["port", "e"]
+    },
+    "beHistory.dir.denied": {
+      "kind": "error",
+      "zh": "这台的会话记录目录 {path} 没有读权限",
+      "args": ["path"]
+    },
+    "beHistory.records.none": {
+      "kind": "error",
+      "zh": "这台还没有会话记录：{path} 还不在",
+      "args": ["path"]
+    },
+    "beHistory.dir.unreadable": {
+      "kind": "error",
+      "zh": "这台的会话记录目录 {path} 读不了",
+      "args": ["path"]
     },
     "beUses.tunnel.unreachable": {
       "kind": "error",

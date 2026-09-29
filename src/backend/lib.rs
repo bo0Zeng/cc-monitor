@@ -667,7 +667,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5q-panorama-self-report**（2026-09-29，PANO 合并那一拍，V158）：协议 —— `panorama` / `panorama-edit` 请求必带 `shape`（期望的小程序形状由发起方带，后端比 `--probe` 自报的）；
 /// op 表 · 期限档 · 写表（算 op → 写成之后那一步）都由小程序自报，后端零引擎常量；`panorama-edit` 的 `op` 改成「算」op 名；op `subgraph` 删、`neighborhood` 加（跳数由小程序给，前端不算图）。形状代号换代 ⇒ 各台首次打开全景重放一次小程序字节。
-pub const BUILD_ID: &str = "p5q-panorama-self-report";
+///
+/// ★★★ **p5r-link-fixes-win3**（2026-09-29，WF2 合并那一拍，WIN3 上一趟读数）：行为 / 协议 —— russh 副本压缩循环 CZ2（撑满就扩、吃光且冲刷完才收工：压缩链路上大块不可压数据不再断）·
+/// `deploy-plan` 多 `leftovers`（部署残件每次连上照删）· 拨号 ack 多 `open_refused`（对端拒端口转发 ⇒ 停止重拨、明说）· `--list-projects` 没有记录树时出错行带码 `no_record_tree`（本机后端认它当零个项目）。子命令没变。
+pub const BUILD_ID: &str = "p5r-link-fixes-win3";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

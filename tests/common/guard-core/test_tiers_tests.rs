@@ -960,6 +960,12 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced",
         Trigger::Filter { by: "tests/evidence/NT1-net-loopback.py", needle: "zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced" },
     ),
+    // 〔WF2 · WIN3 读数 A〕一次性容器 sshd 上强制压、放不可压的大块（那份驱动一趟跑 ZR 与 ZR2 两条）。
+    (
+        "tests/backend/dial_compress_tests.rs",
+        "zr_real_sshd_takes_incompressible_puts_when_forced",
+        Trigger::Filter { by: "tests/evidence/WF2-zlib-container.py", needle: "zr_real_sshd" },
+    ),
     (
         "tests/backend/observe/search_query_reading.rs",
         "sx1_real_history_search_reading",

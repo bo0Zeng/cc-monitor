@@ -1199,6 +1199,9 @@ body.settings-window-mode .settings-panel {
 .remote-machine-remove {
   font-size: var(--font-size-small);
   padding: 1px 8px;
+  /* 〔WF2 · WIN3 §2〕窄窗里 legend 挤它 ⇒「删除」竖排成两行：不换行、不被压缩。 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* backend / ccm 安装位置提示：比普通 hint 略醒目的小框（左边框 + 圆角） */

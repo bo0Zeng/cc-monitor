@@ -2109,12 +2109,13 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 「部署决策进后端、monitor 只放字节」（`4d-lanes` MIG-3b 第 1 条）。只有**本机常驻后端**有意义（沿池里那条 SSH 问那台，同 `assets-sync`）。
 一趟：① capture `uname -s -m` → 表 A（有没有产线）· 表 B（远端承不承诺）· `carried`（这一版带没带那一格）—— 拒绝点在写第一个字节之前；
 ② 落点 `~/.cc-monitor/bin/ccm`：SFTP stat（没有 / 0 字节就不必再问）→ capture `LC_ALL=C grep -aoE <身份戳正则> -- "$HOME"/.cc-monitor/bin/ccm`（读字节、不跑它）；
-不肯说自己是谁时读回来（≤ 64 KiB，先问大小）看是不是从前那份三行入口；③ 按 `BUILD_ID` 可比序只升不降判换不换；④ 旧落点 `~/.cc-monitor/bin/cc-monitor-backend` 同法问身份，判删不删。
-**一个字节都不写**：放字节（mkdir · 原子上传 · 读回比对）与删旧落点是 monitor 经 `files` 链路照计划做。纯判定住共享 crate `deploy-core`（monitor 同一份）。
+不肯说自己是谁时读回来（≤ 64 KiB，先问大小）看是不是从前那份三行入口；③ 按 `BUILD_ID` 可比序只升不降判换不换；④ 旧落点 `~/.cc-monitor/bin/cc-monitor-backend` 同法问身份，判删不删；
+⑤ 〔WF2〕SFTP 列 `~/.cc-monitor/bin/`：上传留下的 `<名>.<trip>.tmp|bak`（`dial/sftp.rs::put_atomic` 的形状）一小时没动过的 ⇒ 进 `leftovers`。
+**一个字节都不写**：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件是 monitor 经 `files` 链路照计划做。纯判定住共享 crate `deploy-core`（monitor 同一份）。
 
 ```text
 → {"id":"d1","cmd":"deploy-plan","args":{"machine":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519","use":"files"},"carried":[{"os":"Linux","arch":"x86_64","id":"p4z-x"},{"os":"Linux","arch":"arm64","id":"p4z-x"}]}}
-← {"kind":"reply","id":"d1","ok":true,"data":{"os":"Linux","arch":"x86_64","label":"Linux / x86_64","expected":"p4z-x","action":"deploy","why":"…","theirs":null,"legacy":"absent","legacy_why":null}}
+← {"kind":"reply","id":"d1","ok":true,"data":{"os":"Linux","arch":"x86_64","label":"Linux / x86_64","expected":"p4z-x","action":"deploy","why":"…","theirs":null,"legacy":"absent","legacy_why":null,"leftovers":[],"ack":{…}}}
 ```
 
 | 字段 | 向 | 说明 |
@@ -2129,6 +2130,7 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 | `theirs` | ← | `keep` 时那台上那一份自报的身份，否则 `null` |
 | `legacy` | ← | 旧落点那一份：`absent`（不在）· `remove`（身份戳恰一个 ⇒ 删）· `keep`（别的 ⇒ 不动）· `unknown`（连问都没问成） |
 | `legacy_why` | ← | `unknown` 时的原话，否则 `null` |
+| `leftovers` | ← | 〔WF2〕落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问） |
 | `ack` | ← | 〔MIG-3b 续 · VIS2〕问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定） |
 
 **错误码**：`bad_args`（`carried` / `machine` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）·

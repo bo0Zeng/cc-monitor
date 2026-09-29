@@ -149,6 +149,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
              不限任何字节量。",
     ),
     (
+        "LEFTOVER_STALE_SECS",
+        "〔WF2〕**时间**不是体量：部署残件（`put_atomic` 的临时件 / 备份件）多久没动过才算没人要（秒）；远大于 monitor 等一次 put 的 600 秒。",
+    ),
+    (
         "STAGING_STALE_SECS",
         "〔F7c · 第三波 09-24〕**时间**不是体量：暂存区里一份上传件多少秒没动过才算孤儿\
              （后端 `files_commit·rs::sweep_stale`，只在一次提交成功时顺手扫，不是节拍器）。\

@@ -847,6 +847,7 @@ export class MachineCard {
     const mkField = (
       labelText: string,
       placeholder: string,
+      hint = "",
     ): HTMLInputElement => {
       const row = document.createElement("label");
       row.className = "launcher-field";
@@ -855,14 +856,17 @@ export class MachineCard {
       const input = document.createElement("input");
       input.type = "text";
       input.placeholder = placeholder;
+      if (hint) input.title = hint;
       input.spellcheck = false;
       row.append(span, input);
       box.appendChild(row);
       return input;
     };
+    // 〔WF2 · WIN3 §2〕占位只放一句短的（长的那句在 460 px 的框里被截掉），例子挪到悬停说明。
     const cwdInput = mkField(
       copyText("machineCard.launch.cwd"),
       copyText("machineCard.launch.cwdHint"),
+      copyText("machineCard.launch.cwdTitle"),
     );
     const nameInput = mkField(copyText("machineCard.launch.tmuxName"), copyText("machineCard.launch.tmuxNameHint"));
     const cmdInput = mkField(
