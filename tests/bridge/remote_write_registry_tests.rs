@@ -511,7 +511,8 @@ fn the_file_window_uses_exactly_the_pool_commands_it_registers() {
         // 〔FILES2 · 第四波〕25 → 29，多的是 `extract.rs`（解压：经通道问后端 `files-extract`）· `lossy_pull.rs`（有损名下载：
         //   经通道 `files-copy` 进暂存区再 `transfer-download`）· `chunk_upload.rs`（上传块形：经通道 `files-stage-chunk`）·
         //   `cross_copy.rs`（复制到另一台：下 / 传都经通道）—— 四份一个池子符号都不碰。
-        29,
+        // 〔FILES3〕29 → 30，多的是 `grep.rs`（按内容搜：经通道问后端 `files-grep`，一个池子符号都不碰）。
+        30,
         "`filewin/` 那棵树现扫到 {} 份 `.rs`（2026-09-22 现打 14：copy · corpus · **download** · **editor** · entry · \
          find · fonts · mod · rows · scale · shell · source · transfer · writeops）\
          〔第十三刀 09-23：14 → 16，多的是 **proc** 与 **win_main**（窗口改独立进程：\

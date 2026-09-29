@@ -214,6 +214,12 @@ mod tests {
              tmux 会话与 claude 会话是两回事（`@ccm_sid` 才把它们连起来）。",
         ),
         (
+            "observe/search_query.rs",
+            "\"sessions\"",
+            "〔FIX4 · J15〕这是 **`history-search-merge` 线上的字段名**（各台搜索结果的会话行那一摞，界面 `SearchResult.sessions`），\
+             不是哪个 agent 的 `sessions/` 目录布局 —— 合并只读 `updatedAt` / `hitCount` / `hitsTruncated` 三格。",
+        ),
+        (
             "stream/inbound.rs",
             "\"sessions\",",
             "〔MIG-1 续〕同上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",

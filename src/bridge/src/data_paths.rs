@@ -143,6 +143,10 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     }
 }
 
+/// 〔FILES3 · `设计/99 §2.2 ㉜`〕文件管理窗口书签那份文件的名字 —— **唯一住址**（本文件是数据目录的唯一权威枚举点）。
+/// 窗口进程那一侧（`filewin/bookmarks.rs`）引它，app 这一侧不去够窗口模块（「文件管理器可以单独搞」那道门只有一扇）。
+pub const FILEWIN_BOOKMARKS_FILE: &str = "filewin-bookmarks.json";
+
 /// monitor data dir 下逐个文件 / 目录的枚举 —— **唯一权威枚举点**（`INVARIANTS §2.1`）。
 /// 〔ST2〕从 [`collect`] 里抽出来，只为让「每一项是哪一类」能不带 `AppHandle` 地被判据逐项对拍。
 fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
@@ -172,6 +176,14 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             monitor_data_dir.join("history-metadata.json"),
             "history-metadata.json",
             &copy_text("rsDataPaths.monitor.historyMeta", &[]),
+            DataClass::Truth,
+        ),
+        // 〔FILES3 · `设计/99 §2.2 ㉜`〕文件管理窗口的书签（`设计/60 §2.8`：monitor 自己的状态文件，与 `config.json` 同一族）。
+        //   名字只住本文件 [`FILEWIN_BOOKMARKS_FILE`] 一处（窗口那一侧 `filewin/bookmarks.rs::FILE_NAME` 引它）；你收藏的目录 ⇒ 删了会丢，按真相记。
+        probe_file(
+            monitor_data_dir.join(FILEWIN_BOOKMARKS_FILE),
+            FILEWIN_BOOKMARKS_FILE,
+            &copy_text("rsDataPaths.monitor.bookmarks", &[]),
             DataClass::Truth,
         ),
         probe_dir(

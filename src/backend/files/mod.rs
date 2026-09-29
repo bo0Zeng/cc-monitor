@@ -141,6 +141,7 @@
 //!    ⇒ 这两样都在步 `8a` 的射程之外，登记在 `设计/99 §4.8.3 P12`。
 
 pub mod browse_watch;
+pub mod grep;
 pub mod index;
 pub mod raw;
 // 〔W5-FILES · 第五波〕`files.size`（算目录大小，`设计/60 §6.2`）。
@@ -372,6 +373,31 @@ pub const CAPABILITIES: &[Capability] = &[
         args: &["len", "offset", "path"],
         fields: &["content", "eof", "offset", "path", "size"],
         codes: &["bad_args", "bad_path", "not_text", "unreadable"],
+    },
+    // ── 〔FILES3 · 第四波 · 2026-09-28 · `设计/99 §2.2 ㉜`〕读族第十一条：按内容搜 ─────────────────────────────
+    //   在那台机器上走一遍一个目录、只回命中的那几份（有字节与条数上界、可撤、不跟链接）。纯读，整族照旧一个字节不写。
+    Capability {
+        name: "files.grep",
+        purpose: "在一个目录底下按内容搜 —— 不跟链接、不进别的文件系统，有字节与命中数上界，每份回第一处命中那一行",
+        effect: Effect::ReadsOnly,
+        impl_files: &["grep.rs", "mod.rs", "raw.rs"],
+        targets: TARGETS,
+        args: &["ignore_ascii_case", "limit", "needle", "path"],
+        fields: &[
+            "bytes",
+            "files",
+            "hits",
+            "limit",
+            "links",
+            "path",
+            "skipped_binary",
+            "skipped_large",
+            "skipped_mounts",
+            "stopped",
+            "truncated",
+            "unreadable",
+        ],
+        codes: &["bad_args", "bad_path", "unreadable"],
     },
     Capability {
         name: "files.home",
@@ -1094,6 +1120,108 @@ fn home_var() -> Option<std::ffi::OsString> {
     }
 }
 
+/// `files.grep` 的入参：`{path, needle, ignore_ascii_case?, limit?}`。`needle` 与 `path` 同两种形（字符串 / `{"b16"}`），
+/// 非空、至多 [`grep::NEEDLE_MAX_BYTES`] 字节；`limit` 缺省 [`grep::DEFAULT_LIMIT`]、至多 [`grep::MAX_LIMIT`]。
+fn grep_args(
+    args: &serde_json::Value,
+) -> Result<(std::path::PathBuf, grep::GrepArgs), (&'static str, String)> {
+    let path = path_arg(args)?;
+    let needle = args.get("needle").and_then(raw::from_json).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `needle` (a string or {\"b16\": \"<hex>\"})"),
+    ))?;
+    if needle.is_empty() || needle.len() > grep::NEEDLE_MAX_BYTES {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`needle` must be 1..={} bytes",
+                grep::NEEDLE_MAX_BYTES
+            )),
+        ));
+    }
+    let limit = match args.get("limit").and_then(serde_json::Value::as_u64) {
+        Some(n) if n > 0 => (n as usize).min(grep::MAX_LIMIT),
+        _ => grep::DEFAULT_LIMIT,
+    };
+    Ok((
+        path,
+        grep::GrepArgs {
+            needle,
+            ignore_ascii_case: args
+                .get("ignore_ascii_case")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            limit,
+        },
+    ))
+}
+
+/// `files.grep` 的成品（见 [`grep`] 头注）。
+fn grep_reply(top: &std::path::Path, limit: usize, g: &grep::Grepped) -> serde_json::Value {
+    let stopped = match g.stopped {
+        grep::Stopped::Hits => serde_json::json!("hits"),
+        grep::Stopped::Bytes => serde_json::json!("bytes"),
+        grep::Stopped::Done | grep::Stopped::Cancelled => serde_json::Value::Null,
+    };
+    serde_json::json!({
+        "path": raw::to_json(raw::path_bytes(top)),
+        "hits": g.hits.iter().map(|h| serde_json::json!({
+            "path": raw::to_json(&h.path),
+            "line": h.line,
+            "text": raw::to_json(&h.text),
+            "matches": h.matches,
+        })).collect::<Vec<_>>(),
+        "files": g.files,
+        "bytes": g.bytes,
+        "links": g.links,
+        "skipped_binary": g.skipped_binary,
+        "skipped_large": g.skipped_large,
+        "skipped_mounts": g.skipped_mounts,
+        "unreadable": g.unreadable,
+        "limit": limit,
+        "truncated": matches!(g.stopped, grep::Stopped::Hits | grep::Stopped::Bytes),
+        "stopped": stopped,
+    })
+}
+
+fn grep_unreadable(e: &std::io::Error) -> (&'static str, String) {
+    (
+        "unreadable",
+        copy_core::copy_text(
+            "beFilesRead.grep.unreadable",
+            &[("kind", &format!("{:?}", e.kind()))],
+        ),
+    )
+}
+
+/// `files.grep` —— 同步那一臂（唯一入口 [`answer`] 走它；取消位由调用方给）。
+fn answer_grep(args: &serde_json::Value, cancel: &std::sync::atomic::AtomicBool) -> Answer {
+    let (top, a) = grep_args(args)?;
+    let g = grep::search(&top, &a, cancel).map_err(|e| grep_unreadable(&e))?;
+    Ok(grep_reply(&top, a.limit, &g))
+}
+
+/// `files-grep` 帧面那一臂：**可撤**。走一趟放进阻塞线程池；这个 future 被丢掉（`cancel` 帧）⇒ 守卫把取消位置上，
+/// 阻塞线程上那一趟看见它就收手（每进一项看一次）。
+pub async fn answer_grep_cancellable(args: serde_json::Value) -> Answer {
+    struct RaiseOnDrop(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for RaiseOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _raise = RaiseOnDrop(flag.clone());
+    tokio::task::spawn_blocking(move || answer_grep(&args, &flag))
+        .await
+        .unwrap_or_else(|e| {
+            Err((
+                "unreadable",
+                copy_core::copy_text("beFilesRead.grep.unreadable", &[("kind", &e.to_string())]),
+            ))
+        })
+}
+
 /// `files.home` —— 这台机器上「开在 home」那个起点。
 ///
 /// 🔴 **说不出就拒，不猜**：没有这一格 / 是空的 / 不是绝对路径 ⇒ `no_home`。
@@ -1142,6 +1270,7 @@ pub fn answer(name: &str, args: &serde_json::Value) -> Answer {
         "files.home" => answer_home(),
         "files.size" => answer_size(args),
         "files.read.chunk" => answer_read_chunk(args),
+        "files.grep" => answer_grep(args, &std::sync::atomic::AtomicBool::new(false)),
         other => Err((
             "unknown_capability",
             crate::common::contract::malformed(&format!("unknown capability `{other}`")),

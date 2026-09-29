@@ -59,6 +59,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "BINARY_SNIFF_LEN",
+        "〔FILES3〕**看多远**不是上界：按内容搜判二进制时看每份开头多少字节（里面有 NUL ⇒ 当二进制跳过、记数进 `skipped_binary`）；什么都不因它被截掉。",
+    ),
+    (
         "STOP_GRACE_MS",
         "〔STOP〕**时间**不是体量：一次性子命令 `--resident-stop` 请常驻后端收尾之后等它退的宽限期（毫秒）；比后端自己的排空上限长（`resident_tests` 钉）。",
     ),
@@ -435,6 +439,22 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "本机那条送法的命令串长度（字节）",
         "拒收+回错",
     ),
+    // 〔FILES3 · `设计/99 §2.2 ㉜`「有字节与条数上界」〕按内容搜那三道。
+    (
+        "src/backend/files/grep.rs",
+        "FILE_MAX_BYTES",
+        8 << 20,
+        "按内容搜时单份文件的表观大小（字节）",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/files/grep.rs",
+        "TOTAL_MAX_BYTES",
+        256 << 20,
+        "按内容搜一趟累计读进来的字节",
+        "截断+说清",
+    ),
+    // ⚠ 判二进制看开头多远那个数（`BINARY_SNIFF_LEN`）不是上界 —— 什么都不因它被截掉，不登记。
     // 〔FIX4 · `99 §2.1 ⑬`〕远端那条送法（ssh 外壳）随渲染进了本机后端，上限同值搬过去。
     (
         "src/backend/dial/terminal.rs",

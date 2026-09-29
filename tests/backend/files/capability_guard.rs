@@ -58,6 +58,8 @@ use crate::files::index::tests::resident_lock;
 const REGISTERED: &[&str] = &[
     "files.browse",
     "files.find",
+    // 〔FILES3〕出处 `设计/99 §2.2 ㉜`「文件管理器做按内容搜」；`设计/96 §2.9` 那张表同样还没跟上（本路不写设计篇，报备主会话补一行）。
+    "files.grep",
     "files.home",
     "files.index.rebuild",
     "files.index.status",
@@ -858,6 +860,31 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 4 }),
             serde_json::json!({ "path": p(&text_a), "offset": 0, "len": 2 }),
         ),
+        // 〔FILES3 · ㉜〕`files.grep` 的四个参数：那两份文本（`alpha` / `beta`）所在的目录上各差一个键，命中必然不同。
+        (
+            "files.grep",
+            "path",
+            serde_json::json!({ "path": p(&text_dir), "needle": "alpha" }),
+            serde_json::json!({ "path": p(&fx.root), "needle": "alpha" }),
+        ),
+        (
+            "files.grep",
+            "needle",
+            serde_json::json!({ "path": p(&text_dir), "needle": "alpha" }),
+            serde_json::json!({ "path": p(&text_dir), "needle": "beta" }),
+        ),
+        (
+            "files.grep",
+            "ignore_ascii_case",
+            serde_json::json!({ "path": p(&text_dir), "needle": "ALPHA", "ignore_ascii_case": true }),
+            serde_json::json!({ "path": p(&text_dir), "needle": "ALPHA", "ignore_ascii_case": false }),
+        ),
+        (
+            "files.grep",
+            "limit",
+            serde_json::json!({ "path": p(&text_dir), "needle": "a", "limit": 1000 }),
+            serde_json::json!({ "path": p(&text_dir), "needle": "a", "limit": 1 }),
+        ),
     ];
 
     // ── ① 分区恒等：探针表 ↔ `args` 声明，逐条能力**两向相等** ─────────────
@@ -910,8 +937,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 〔F7a〕探针对数恒等：8 → 10（`files.read.text` 的 `path` · `max_bytes` 两对）。
     // 〔W5-FILES〕10 → 11（`files.size` 的 `path` 一对）。
     // 〔FILES2〕11 → 14（`files.read.chunk` 的 `path` · `offset` · `len` 三对）。
+    // 〔FILES3〕14 → 18（`files.grep` 的 `path` · `needle` · `ignore_ascii_case` · `limit` 四对）。
     assert_eq!(
-        checked, 14,
+        checked, 18,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();

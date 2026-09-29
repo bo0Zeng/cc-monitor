@@ -302,14 +302,8 @@ pub(crate) fn record_last_good(cfg: &RemoteConfig, ep: &Endpoint) {
     }
 }
 
-/// F45：当前应向该 origin 拨号的首选地址（PowerShell resume/attach 命令用它，而非盲取
-/// `cfg.host`）。已连过、且地址配置没改 → last-good 胜者；否则 → `host:port`。
-pub fn winner_address(cfg: &RemoteConfig) -> Endpoint {
-    last_good_for(cfg).unwrap_or(Endpoint {
-        host: cfg.host.clone(),
-        port: cfg.port,
-    })
-}
+// 〔FIX4 · V41〕F45 那个「当前该拨的首选地址」（`winner_address`〔散文墓碑〕，喂 monitor 自己拼的 PowerShell ssh 命令）删了：
+//   开终端那一行进了本机后端（`terminal-ssh`），地址由 `dial/machine.rs::resolve` 按交过去的 `prefer`（[`last_good_for`]）排首。
 
 // 〔MIG-1 收尾〕竞发拨号顺序（last-good 排首、其余保序）那个纯函数 `winner_order` 搬进后端 `dial/machine.rs::request`（`prefer`）。
 

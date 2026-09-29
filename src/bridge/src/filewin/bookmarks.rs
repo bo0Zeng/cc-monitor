@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex};
 use super::source::Origin;
 
 /// 书签文件的名字（住 monitor 数据目录下）。**唯一住址**。
-pub const FILE_NAME: &str = "filewin-bookmarks.json";
+pub const FILE_NAME: &str = crate::data_paths::FILEWIN_BOOKMARKS_FILE;
 
 /// 整份书签：机器 → 那台机器上的目录（保序、不重样）。
 pub type Book = BTreeMap<String, Vec<String>>;
