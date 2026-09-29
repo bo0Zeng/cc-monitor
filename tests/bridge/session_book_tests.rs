@@ -166,3 +166,31 @@ fn unseen_is_one_machine_level_cell_and_settle_again_follows_the_list() {
     assert_eq!(said(b.settle_again("pi", "q")), vec!["left q Ended"]);
     assert!(b.settle_again("pi", "a").is_empty(), "活着的不说");
 }
+
+/// 设计/99 §2.2 ②「只有看见那台后端报出这个会话才说起来了」：新开的会话起会话方只有启动期令牌 ⇒ 活会话那一格要把令牌原样带给前端；
+/// 那台读不回（缺席）⇒ 线上不出这个键（与加它之前逐字节相同）。期望值手写。
+#[test]
+fn the_live_cell_carries_the_launch_token_or_leaves_the_key_out() {
+    let with = Out::Live {
+        origin: "pi".into(),
+        sid: "a".into(),
+        meta: LiveMeta {
+            rbind_token: Some("0123456789abcdef0123456789abcdef".into()),
+            ..Default::default()
+        },
+    };
+    let first = |o: &Out| serde_json::to_string(&o.frames()[0]).unwrap();
+    assert_eq!(
+        first(&with),
+        r#"{"live":{"session_id":"a","origin":"pi","kind":null,"attachable":null,"cwd":null,"name":null,"rbind_token":"0123456789abcdef0123456789abcdef"}}"#
+    );
+    let without = Out::Live {
+        origin: "pi".into(),
+        sid: "a".into(),
+        meta: LiveMeta::default(),
+    };
+    assert_eq!(
+        first(&without),
+        r#"{"live":{"session_id":"a","origin":"pi","kind":null,"attachable":null,"cwd":null,"name":null}}"#
+    );
+}

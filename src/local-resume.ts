@@ -34,6 +34,7 @@ import { getBehavior } from "./behavior";
 import { mintFromListing, readTmuxListing } from "./tmux-name-mint";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
+import { arrivedBody, expectArrival } from "./launch-arrival";
 
 /** 这次本机 resume 用哪个号。 */
 export type LocalResumeAccount =
@@ -124,6 +125,13 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
       },
       req.cwd,
     );
+    // 〔FIX3 · `设计/99 §2.2 ②`〕窗口开了不等于起来了：等本机后端报出这条会话再说。
+    expectArrival({
+      origin: LOCAL_ORIGIN,
+      match: { sid: req.sid },
+      tmuxName,
+      arrived: { title: copyText("localResume.launch.arrived"), body: arrivedBody(LOCAL_ORIGIN) },
+    });
     // `D3 阻-2`：本机这条路也往 pin 里写（跟随那一态；显式那一态由调用方按自己的语义记 ——
     //   换号重启只在 kill ＋ resume 全成之后才记，分叉是新会话、不记）。⚠ 不等待。
     if (plan?.kind === "named") recordLocalLaunchAccount(req.sid, plan.name);
