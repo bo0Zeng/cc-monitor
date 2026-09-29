@@ -1727,6 +1727,11 @@
       "zh": "{machine}做不到这件事（{code}）",
       "args": ["machine", "code"]
     },
+    "tabMenu.item.resume": {
+      "kind": "action",
+      "zh": "Resume 这个会话",
+      "args": []
+    },
     "tabMenu.item.greyed": {
       "kind": "control",
       "zh": "{label}（{why}）",
@@ -6792,6 +6797,11 @@
     },
     "machineCard.launch.cwdHint": {
       "kind": "control",
+      "zh": "远端绝对路径，留空用登录后的目录",
+      "args": []
+    },
+    "machineCard.launch.cwdTitle": {
+      "kind": "body",
       "zh": "远端绝对路径，如 /home/<你的用户名>/proj；留空就是登录后的默认目录",
       "args": []
     },
