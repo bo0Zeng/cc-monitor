@@ -13,6 +13,10 @@
 //!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
 //!
+//! # 〔THIN〕帧命令 `resident-verdict`（同一家）
+//!
+//! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
+//!
 //! # 它归 `control/` 的理由
 //!
 //! 同 [`super::resolve_query`]：产「要怎么改变世界」的计划属于控制的前半；它自己只读（stat · read · 两条只读 exec）。
@@ -281,6 +285,50 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
             crate::common::contract::malformed("missing `machine` (string)"),
         ))?;
     plan(facing, &carried, machine).await.map(|p| plan_json(&p))
+}
+
+// ═══ 〔THIN〕远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
+//
+// monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`deploy_core::is_newer`）；
+// 判定归后端（`设计/00 §1.2`「判定只在后端」），与部署计划同一家：「换不换」都在这里判，monitor 只照做。
+
+/// hello 那一问的答：`replace` = 换掉再接（只升不降，HX2 D-b，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Verdict {
+    pub replace: bool,
+    pub older: bool,
+}
+
+/// **纯函数**：`mine` = monitor 手上这一版自报的身份 · `theirs` = 那台 hello 报的 · `replaced` = 这一趟已经换过一次。
+pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
+    let older = deploy_core::is_newer(mine, theirs);
+    Verdict {
+        replace: older && !replaced,
+        older,
+    }
+}
+
+/// 帧面入口：`{mine, theirs, replaced}` → `{action: "attach" | "replace", older}`。`mine` 空 / 缺 · 缺 `theirs` / `replaced` ⇒ `bad_args`。
+pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, String)> {
+    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+    let mine = args
+        .get("mine")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| bad("missing `mine` (non-empty string)"))?;
+    let theirs = args
+        .get("theirs")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("missing `theirs` (string)"))?;
+    let replaced = args
+        .get("replaced")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| bad("missing `replaced` (bool)"))?;
+    let v = resident_verdict(mine, theirs, replaced);
+    Ok(json!({
+        "action": if v.replace { "replace" } else { "attach" },
+        "older": v.older,
+    }))
 }
 
 #[cfg(test)]

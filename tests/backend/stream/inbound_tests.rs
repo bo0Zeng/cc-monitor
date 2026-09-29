@@ -446,6 +446,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         "deploy-plan", // 〔MIG-3b〕真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消
+        "resident-verdict", // 〔THIN〕纯判定，普通 spawn
         "panorama",
         "remote-reach",
         "history-projects",
@@ -657,6 +658,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端），普通 spawn。
         "deploy-plan",
+        // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，普通 spawn。
+        "resident-verdict",
         // 〔C4d · 第四波 4B〕可达表登记（纯内存，普通 spawn）。
         "remote-reach",
         // 〔MIG-1〕端口转发三条：起真异步（在 await 点可取消）· 停 / 列纯内存。

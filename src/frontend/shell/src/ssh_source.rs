@@ -1867,24 +1867,27 @@ fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict
 }
 
 /// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
-fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
+/// `remote_older` = 接上那一刻本机常驻后端答的「那台比手上这一版旧」（`remote_resident::Replayed::remote_is_older`）。
+fn version_warning(
+    reported_v: u64,
+    reported_build_id: &str,
+    label: &str,
+    remote_older: bool,
+) -> Option<String> {
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
-        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降，`deploy_core::identity_decision`）：
+        // 〔HX2 · 主会话 D-b〕按新旧分两句（部署只升不降）：
         //   那台旧 ⇒ 下次连上的部署预检会换掉它；那台不比这一版旧 ⇒ 这个 monitor 不会把它换回去。
+        //   〔THIN〕新旧不在这里比（从前调 `deploy_core::is_newer`）：本机常驻后端接上那一刻判过（`resident-verdict`），这里只按答挑句子。
         //   〔墓碑 —— 从前一句话不分新旧（`rsSshSource.version.buildMismatch`：「…建议更新后端（后续将支持自动部署）」），自动部署早已落地。〕
-        VersionVerdict::StaleBuild { reported }
-            if deploy_core::is_newer(EXPECTED_BACKEND_BUILD_ID, &reported) =>
-        {
-            Some(copy_text(
-                "rsSshSource.version.remoteOlder",
-                &[
-                    ("label", &label.to_string()),
-                    ("reported", &reported.to_string()),
-                    ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
-                ],
-            ))
-        }
+        VersionVerdict::StaleBuild { reported } if remote_older => Some(copy_text(
+            "rsSshSource.version.remoteOlder",
+            &[
+                ("label", &label.to_string()),
+                ("reported", &reported.to_string()),
+                ("mine", &EXPECTED_BACKEND_BUILD_ID.to_string()),
+            ],
+        )),
         VersionVerdict::StaleBuild { reported } => Some(copy_text(
             "rsSshSource.version.remoteNotOlder",
             &[
@@ -2651,7 +2654,9 @@ async fn stream_loop(
     // 〔HOST · V139 · DEL〕接那台的**常驻后端**（没有就起一个；与本机同形）。这是远端唯一的一形：
     //   起不了常驻（非 unix / 太旧）就是一次失败、说清为什么，不回落到随 SSH 生死的流模式。
     let flags = (with_bg, tail_only, with_rbind_token);
-    let stream = match crate::remote_resident::attach(cfg, flags).await {
+    let stream: crate::remote_resident::Replayed = match crate::remote_resident::attach(cfg, flags)
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             // 〔DEL 续〕非 unix ⇒ 记进这台的连接状态（`run` 据此停下，不再按退避重连）。
@@ -2680,6 +2685,8 @@ async fn stream_loop(
     // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
     // 客户端。切与停必须是同一步：中间留一个裸 `WriteHalf` 就等于留了一个「Hello 之前能写」
     // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
+    // 〔THIN〕接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
+    let remote_older = stream.remote_is_older();
     let (stream, parked) = crate::backend::control::inbound_client::split_and_park(stream);
     let mut parked = Some(parked);
     // 本连接的入方向客户端（收到 hello 后才有）。函数任何退出路径经 guard 摘除注册表
@@ -2860,7 +2867,7 @@ async fn stream_loop(
                 replay.origin_seen(&crate::origin::Origin(host_label.clone()), true);
                 // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
                 // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
-                if let Some(msg) = version_warning(v, &build_id, &host_label) {
+                if let Some(msg) = version_warning(v, &build_id, &host_label, remote_older) {
                     tracing::warn!("ssh_source remote [{host_label}] version: {msg}");
                     let payload = crate::ui_contract::RemoteHealthPayload {
                         origin: host_label.clone(),

@@ -339,6 +339,8 @@ fn every_registered_command_declares_its_run_kind() {
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。
         "deploy-plan",
+        // 〔THIN〕远端常驻后端 hello 的新旧：纯判定，不碰盘不拨号。
+        "resident-verdict",
         // 〔C4d · 第四波 4B〕可达表登记：纯内存，普通 spawn。
         "remote-reach",
         // 〔MIG-1〕端口转发：起 = 真异步（查可达表 · 开链路 · 等 ack），停 / 列 = 纯内存一把锁。

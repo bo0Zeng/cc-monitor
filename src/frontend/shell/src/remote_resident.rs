@@ -4,6 +4,7 @@
 //! - 起 · 找：经链路 `capture` 在远端跑 `--resident-ensure`（它无条件起一个脱离的自己；口上已有常驻后端时子进程退 3）→
 //!   回 `{port, token}`；再经链路 `tunnel`（本机常驻后端开 direct-tcpip 到远端回环口）连上去读 hello、交 attach 行。
 //! - 只升不降：hello 的 build 比手上这一版旧 ⇒ `--resident-ensure --replace` 一次；比我新 ⇒ 照接。
+//!   〔THIN〕「换不换」由本机常驻后端判（帧命令 `resident-verdict`，与 `deploy-plan` 一家；`设计/00 §1.2` 判定只在后端），这里只照做。
 //! - 停：`--resident-stop`（〔STOP〕那台自己做「请它收尾 → 宽限期内等 → 到点强杀」，这里只发一次、拿回 `graceful | killed | not_running`）。
 //!
 //! 〔DEL〕远端只有常驻这一形：那台答「脱离不了」（非 unix）⇒ 明说不支持；太旧不认这条子命令 ⇒ 出声报错（V41）。
@@ -133,28 +134,71 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<Ensured, AttachErr>
     Ok(parse_ensured(&parse_answer(&exec)?)?)
 }
 
-/// 读到的 hello 怎么办（纯函数）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HelloDecision {
-    /// 接上它。
-    Attach,
-    /// 它比手上这一版旧 ⇒ 换掉再来（只升不降，HX2）。
-    Replace,
-    /// 口上不是常驻后端。
-    NotOurs(String),
-}
-
-pub(crate) fn hello_decision(line: &str, expected: &str, replaced: bool) -> HelloDecision {
+/// hello 那一行里那台报的 build（纯函数，只读线上形状）。口上不是常驻后端（第一行不是 hello）⇒ `Err`（那句话）。
+/// 〔THIN〕从前这里还判「换不换」（`hello_decision`〔散文墓碑〕调 `deploy_core::is_newer`）：判定进了本机常驻后端（[`ask_verdict`]）。
+pub(crate) fn hello_build(line: &str) -> Result<String, String> {
     let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
     if v["kind"] != "hello" {
-        return HelloDecision::NotOurs(copy_text("rsRemoteResident.hello.notOurs", &[]));
+        return Err(copy_text("rsRemoteResident.hello.notOurs", &[]));
     }
-    let theirs = v["build_id"].as_str().unwrap_or_default();
-    if !replaced && deploy_core::is_newer(expected, theirs) {
-        HelloDecision::Replace
-    } else {
-        HelloDecision::Attach
+    Ok(v["build_id"].as_str().unwrap_or_default().to_string())
+}
+
+/// 〔THIN〕本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
+pub(crate) const VERDICT_CMD: &str = "resident-verdict";
+
+/// 问那一趟的上限：纯判定、不拨号，只是本机那条长连接上一问一答。
+const VERDICT_BUDGET: Duration = Duration::from_secs(10);
+
+/// 〔THIN〕本机常驻后端对 hello 那一问的答：`replace` = 换掉再接 · `older` = 那台比手上这一版旧（版本那句话按它挑）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Verdict {
+    pub(crate) replace: bool,
+    pub(crate) older: bool,
+}
+
+/// 应答 → [`Verdict`]（**严格收**：恰 `{action, older}` 两格、`action` 只认两个词 —— 两侧漂了当场说出来）。
+pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, String> {
+    let bad = |what: &str| {
+        copy_text(
+            "rsRemoteResident.verdict.unreadable",
+            &[("e", &what.to_string())],
+        )
+    };
+    let obj = v.as_object().ok_or_else(|| bad("not an object"))?;
+    if obj.len() != 2 {
+        return Err(bad("expected exactly `action` and `older`"));
     }
+    let replace = match obj.get("action").and_then(serde_json::Value::as_str) {
+        Some("replace") => true,
+        Some("attach") => false,
+        _ => return Err(bad("`action` is neither `replace` nor `attach`")),
+    };
+    let older = obj
+        .get("older")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| bad("`older` is not a bool"))?;
+    Ok(Verdict { replace, older })
+}
+
+/// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
+async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, String> {
+    use crate::backend::control::backend_route::{route_call_error, Routed};
+    let client = crate::dial_host::local_backend_accepting(VERDICT_CMD).await?;
+    let args = serde_json::json!({ "mine": mine, "theirs": theirs, "replaced": replaced });
+    let data = client
+        .call(VERDICT_CMD, args, VERDICT_BUDGET)
+        .await
+        .map_err(
+            |e| match route_call_error(&e, |_code, message| message.to_string()) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+                Routed::Done => copy_text(
+                    "rsRemoteResident.verdict.unreadable",
+                    &[("e", &"no answer".to_string())],
+                ),
+            },
+        )?;
+    decode_verdict(&data.unwrap_or_default())
 }
 
 /// attach 行：钥匙 ＋ 这条连接要的流模式旗标（远端 `listen::attach_flags` 的逆）。
@@ -205,6 +249,15 @@ async fn read_line(
 pub struct Replayed {
     head: std::io::Cursor<Vec<u8>>,
     inner: DialStream,
+    /// 〔THIN〕接上那一刻本机常驻后端答的「那台比手上这一版旧」（版本提示那句话按它挑，monitor 不自己比）。
+    older: bool,
+}
+
+impl Replayed {
+    /// 〔THIN〕接上那一刻本机常驻后端答的「那台比手上这一版旧」。
+    pub(crate) fn remote_is_older(&self) -> bool {
+        self.older
+    }
 }
 
 impl tokio::io::AsyncRead for Replayed {
@@ -276,20 +329,22 @@ pub(crate) async fn attach(
         let link = tunnel_when_bound(cfg, ensured.port).await?;
         let mut r = tokio::io::BufReader::new(link);
         let hello = read_line(&mut r, true).await?;
-        match hello_decision(
-            &hello,
+        let theirs = hello_build(&hello)?;
+        // 〔THIN〕换不换问本机常驻后端（判定只在后端），这里只照做。
+        let verdict = ask_verdict(
             crate::ssh_source::EXPECTED_BACKEND_BUILD_ID,
+            &theirs,
             replaced,
-        ) {
-            HelloDecision::NotOurs(why) => return Err(why.into()),
-            HelloDecision::Replace => {
-                tracing::info!("remote_resident [{origin}] 常驻后端比手上这一版旧 ⇒ 换掉再接");
-                drop(r);
-                replaced = true;
-                ensured = ensure(cfg, true).await?;
-                continue;
-            }
-            HelloDecision::Attach => {}
+        )
+        .await?;
+        if verdict.replace {
+            tracing::info!(
+                "remote_resident [{origin}] 本机后端判那台常驻后端比手上这一版旧 ⇒ 换掉再接"
+            );
+            drop(r);
+            replaced = true;
+            ensured = ensure(cfg, true).await?;
+            continue;
         }
         let not_sent = |e: std::io::Error| {
             copy_text(
@@ -324,6 +379,7 @@ pub(crate) async fn attach(
             head: std::io::Cursor::new(head),
             // 接成了就是订阅：摘掉一次性总时限（`05 §3.3.2`，同流模式那一条）。
             inner: r.into_inner().lives_long(),
+            older: verdict.older,
         });
     }
 }

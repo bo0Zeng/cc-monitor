@@ -719,6 +719,11 @@
       "zh": "那台机器上常驻后端的端口被别的程序占着。",
       "args": []
     },
+    "rsRemoteResident.verdict.unreadable": {
+      "kind": "error",
+      "zh": "本机后端对「换不换那台的常驻后端」的回答读不懂：{e}",
+      "args": ["e"]
+    },
     "rsRemoteResident.handshake.helloCut": {
       "kind": "error",
       "zh": "常驻后端没说完第一句：连接断了，或那行太长。",
@@ -12317,11 +12322,6 @@
       "zh": "这一份 monitor 旁边没有本机后端（{stem}）。它随安装包一起发，装完与 monitor 在同一个目录。旁边没有不等于这台机器上没有：产物里内嵌了本机后端时，monitor 会自己释放一份再起它，那一步成没成由它自己报。两条都没有时，装一次安装包（Releases 页）。远端功能不受影响。",
       "args": ["stem"]
     },
-    "rsTmux.target.empty": {
-      "kind": "error",
-      "zh": "非法 tmux 目标（空）：{target}",
-      "args": ["target"]
-    },
     "rsBackendControl.handle.missing": {
       "kind": "error",
       "zh": "没有这台机器的记录：{origin}（启动时没登记过？）",
@@ -17586,11 +17586,6 @@
       "kind": "error",
       "zh": "没有广播：{detail}",
       "args": ["detail"]
-    },
-    "rsTmux.target.badChar": {
-      "kind": "error",
-      "zh": "非法 tmux 目标（含控制字符或会被看错的字符 {c}）：{target}",
-      "args": ["target", "c"]
     },
     "bePlan.build.launcherRefused": {
       "kind": "error",
