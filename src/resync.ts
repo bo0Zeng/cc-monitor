@@ -10,6 +10,7 @@ import { copyText } from "./copy-table";
 import { ControlError, exactKeys, isObj, settle, unreadable, type Refusals } from "./control-said";
 import { showActionFailureToast } from "./error-toast";
 import { chan } from "./ipc/chan";
+import { commands } from "./ipc/commands";
 import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
@@ -59,7 +60,12 @@ export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
   const payload = jsonBody(sid === undefined ? {} : { sid });
   const budget = budgetWithin(RESYNC_BUDGET_MS);
   const v = await settle(origin, "resync", chan.call(origin, "resync", payload, budget), refusals);
-  return decodeResynced(origin, v);
+  const r = decodeResynced(origin, v);
+  // 〔FIX4 · 主会话裁⑥〕本机整机对齐那一下顺手作废「PATH 上的 ccm」那份 5 分钟缓存（手动兜底，V149）：下一次看到的就是此刻。
+  if (isLocalOrigin(origin) && sid === undefined) {
+    commands.local_ccm_entry_status(true).catch((e: unknown) => console.warn("[resync] 本机 ccm 那一格没重问：", e));
+  }
+  return r;
 }
 
 /** 对齐的结果 ⇒ 一句话：对齐差异 ＋ 〔REREAD · V155〕补读了几条（0 ⇒「没有漏的」）。 */

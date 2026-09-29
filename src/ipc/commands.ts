@@ -242,7 +242,7 @@ export const commands = {
    *
    *  ⚠ 它**只读**：跑两次 `--ccm-probe`，一个字节都不写；产品也**不删**用户 `~/.local/bin/ccm`
    *  下那份旧的（用户逐字「原本的配置要手动删除」）。 */
-  local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
+  local_ccm_entry_status: (fresh?: boolean) => invoke<LocalCcmEntry>("local_ccm_entry_status", { fresh: fresh ?? null }),
 
   // 〔LOC1a · 第四波 4D · C4e 批 4〕某会话的任务快照那一条退役：界面经通道直接问那台机器的后端 `tasks-list`
   //   （后端出成品，`tasks-panel.ts::fetchSessionTasks` / `decodeTasks`）。
