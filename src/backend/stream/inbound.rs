@@ -1741,7 +1741,7 @@ pub const REGISTRY: &[CommandSpec] = &[
                 crate::assets::asset_sync::answer(
                     &r.args,
                     fold,
-                    &crate::history::remote_ask::DialRemote,
+                    &crate::stream::remote_ask::DialRemote,
                 )
                 .await
                 .map(Some)
@@ -1761,7 +1761,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
         run: Run::Async(|r| {
             Box::pin(async move {
-                crate::history::remote_ask::answer_reach(&r.args)
+                crate::stream::remote_ask::answer_reach(&r.args)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
@@ -2882,8 +2882,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 crate::assets::hub::mcp_preview(
                     &hub_here(),
                     &r.args,
-                    &crate::history::remote_ask::REACH,
-                    &crate::history::remote_ask::DialRemote,
+                    &crate::stream::remote_ask::REACH,
+                    &crate::stream::remote_ask::DialRemote,
                 )
                 .await
                 .map(Some)
@@ -2910,8 +2910,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 crate::assets::hub::mcp_apply(
                     &hub_here(),
                     &r.args,
-                    &crate::history::remote_ask::REACH,
-                    &crate::history::remote_ask::DialRemote,
+                    &crate::stream::remote_ask::REACH,
+                    &crate::stream::remote_ask::DialRemote,
                 )
                 .await
                 .map(Some)
@@ -2929,8 +2929,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 crate::assets::hub::skill_preview(
                     &hub_here(),
                     &r.args,
-                    &crate::history::remote_ask::REACH,
-                    &crate::history::remote_ask::DialRemote,
+                    &crate::stream::remote_ask::REACH,
+                    &crate::stream::remote_ask::DialRemote,
                 )
                 .await
                 .map(Some)
@@ -2956,8 +2956,8 @@ pub const REGISTRY: &[CommandSpec] = &[
                 crate::assets::hub::skill_apply(
                     &hub_here(),
                     &r.args,
-                    &crate::history::remote_ask::REACH,
-                    &crate::history::remote_ask::DialRemote,
+                    &crate::stream::remote_ask::REACH,
+                    &crate::stream::remote_ask::DialRemote,
                 )
                 .await
                 .map(Some)

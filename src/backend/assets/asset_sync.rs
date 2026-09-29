@@ -37,7 +37,7 @@
 //! # 可达表（内存）与「问远端」那一跳
 //!
 //! 〔C4d · 第四波 4B〕两样都**不住这里了**：主会话 09-25 裁「一路造、两路用」—— `DialRemote`（capture 那一跳）
-//! 与可达表（`origin → {拨号请求, 远端后端路径, 对面的 id}`）原样提到中立住址 `crate::history::remote_ask`，逻辑一字不改；
+//! 与可达表（`origin → {拨号请求, 远端后端路径, 对面的 id}`）原样提到中立住址 `crate::stream::remote_ask`，逻辑一字不改；
 //! 本模块只剩资产目录那一套（拉什么、并什么、推什么、扇不扇出）。历史跨机 join 用的是同一张表、同一个对面。
 
 use copy_core::copy_text;
@@ -46,7 +46,7 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value};
 
 // 〔C4d〕问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
-use crate::history::remote_ask::{lock, Reach, Remote, Table, REACH};
+use crate::stream::remote_ask::{lock, Reach, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
 /// 〔W5-AUX〕原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
@@ -63,12 +63,12 @@ pub type Fold =
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command() -> String {
-    crate::history::remote_ask::command_line(&[PULL_FLAG])
+    crate::stream::remote_ask::command_line(&[PULL_FLAG])
 }
 
 /// 〔W5-AUX · `设计/96 §3.6`〕推那一趟的命令行：**只有后端路径与两个旗标，不含载荷**；载荷由 [`push_stdin`] 经 capture 写进 stdin。
 pub fn push_command() -> String {
-    crate::history::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
+    crate::stream::remote_ask::command_line(&[PUSH_FLAG, crate::STDIN_LINE_FLAG])
 }
 
 /// 推那一趟写进远端 stdin 的那一行（载荷本身是紧凑 JSON、没有换行 ⇒ 恰好一行）。
@@ -266,13 +266,13 @@ pub async fn answer_with(
         if !lock(table).contains_key(o) {
             return Err((
                 "unreachable",
-                crate::history::remote_ask::unreachable_message(o),
+                crate::stream::remote_ask::unreachable_message(o),
             ));
         }
         first = Some(o.to_string());
     } else if origin.is_some() {
         // 〔C4d〕登记那一段原样搬进 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
-        first = Some(crate::history::remote_ask::register(table, args)?);
+        first = Some(crate::stream::remote_ask::register(table, args)?);
     } else if args.get("dial").is_some() {
         return Err((
             "bad_args",
@@ -312,7 +312,7 @@ pub async fn answer_with(
             }
         }
     }
-    let reach_rows = crate::history::remote_ask::reach_rows(table);
+    let reach_rows = crate::stream::remote_ask::reach_rows(table);
     Ok(json!({ "self": own_id, "synced": synced, "reach": reach_rows }))
 }
 

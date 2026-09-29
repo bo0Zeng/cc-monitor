@@ -237,9 +237,7 @@ impl DialFacing {
 
 impl Facing for DialFacing {
     fn exec(&self, command: String) -> Fut<'_, Result<(crate::dial::Captured, Value), String>> {
-        Box::pin(crate::history::remote_ask::capture_full(
-            &self.dial, command,
-        ))
+        Box::pin(crate::stream::remote_ask::capture_full(&self.dial, command))
     }
 
     fn stat<'a>(

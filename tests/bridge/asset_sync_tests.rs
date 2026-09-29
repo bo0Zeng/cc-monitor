@@ -104,8 +104,12 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         "本侧发 / 读的字段与后端声明的不相等（两向）"
     );
     // 远端要认的那条在后端命令镜子里
-    let commands_block = &inbound[inbound.find("pub const COMMANDS").unwrap()..];
-    let commands_block = &commands_block[..commands_block.find("];").unwrap()];
+    let at = guard_core::find_pinned(&inbound, "pub const COMMANDS").expect("后端命令镜子");
+    let commands_block: String = inbound[at..]
+        .lines()
+        .take_while(|l| l.trim() != "];")
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(commands_block.contains(&format!("\"{REMOTE_NEEDS}\"")));
     assert!(commands_block.contains(&format!("\"{CMD}\"")));
 }
@@ -188,7 +192,11 @@ fn the_reach_registration_sends_what_the_backend_registers() {
         declared, used,
         "本侧发 / 读的字段与后端 `remote-reach` 声明的不相等（两向）"
     );
-    let commands_block = &inbound[inbound.find("pub const COMMANDS").unwrap()..];
-    let commands_block = &commands_block[..commands_block.find("];").unwrap()];
+    let at = guard_core::find_pinned(&inbound, "pub const COMMANDS").expect("后端命令镜子");
+    let commands_block: String = inbound[at..]
+        .lines()
+        .take_while(|l| l.trim() != "];")
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(commands_block.contains(&format!("\"{REACH_CMD}\"")));
 }

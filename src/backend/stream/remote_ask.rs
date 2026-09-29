@@ -5,7 +5,7 @@
 //! `设计/01 §3.5`：「观测方沿它本来就拥有的那条连接去拉被观测方」（零新通道）。
 //! AS2 用这一形造出了资产目录的自动同步（`调研/第四波记录/AS2.md §3.4`）；C4c 的历史跨机 join 要同一跳
 //! （`C4c.md §3.3`）。主会话 09-25 裁：「**把 `DialRemote` ＋ 可达表从 `asset_sync.rs` 提到中立住址
-//! `src/backend/history/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它**」—— 一路造、两路用，不各写一份。
+//! `src/backend/stream/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它**」—— 一路造、两路用，不各写一份。
 //!
 //! # 形状（乙：池里那条连接上多开一个 capture exec）
 //!
@@ -482,5 +482,5 @@ fn settle_pulled(got: &Value) -> Result<String, Said> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/history/remote_ask_tests.rs"]
+#[path = "../../../tests/backend/stream/remote_ask_tests.rs"]
 mod tests;

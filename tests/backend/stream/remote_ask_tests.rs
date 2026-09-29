@@ -3,7 +3,7 @@
 //! # 守的要求（住址）
 //!
 //! - 主会话 09-25 裁（`调研/第四波记录/C4d.md` 「主会话裁」第 1 条，逐字）：「**口收成一份**：把 `DialRemote` ＋ 可达表从
-//!   `asset_sync.rs` 提到中立住址 `src/backend/history/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它；判据钉
+//!   `asset_sync.rs` 提到中立住址 `src/backend/stream/remote_ask.rs`（逻辑一字不改），`asset_sync` 改调它；判据钉
 //!   「**后端生产树里开远端一次性 exec 的只有这一处**」」。
 //! - `设计/01 §3.5`（逐字）：「观测方沿它本来就拥有的那条连接去拉被观测方。」
 //!
@@ -70,7 +70,7 @@ fn only_this_module_opens_a_one_shot_exec_on_a_remote() {
             .filter(|p| !p.starts_with("dial/"))
             .cloned()
             .collect();
-        let want: std::collections::BTreeSet<String> = ["history/remote_ask.rs".to_string()].into();
+        let want: std::collections::BTreeSet<String> = ["stream/remote_ask.rs".to_string()].into();
         assert_eq!(
             outside, want,
             "`{needle}` 在 `dial/` 之外的家对不上 —— 多 = 又长出一个自己跑远端 exec 的地方（该改调 `remote_ask::ask`）；\
@@ -359,7 +359,7 @@ async fn one_shot_argv_refuses_only_what_the_quote_cannot_hold() {
 #[test]
 fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
     let dial = json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}});
-    let with = crate::history::remote_ask::capture_request(
+    let with = crate::stream::remote_ask::capture_request(
         &dial,
         "'/b' '--x'".into(),
         Some("{\"a\":1}\n".into()),
@@ -375,10 +375,10 @@ fn the_capture_request_carries_the_stdin_line_verbatim_and_only_when_given() {
     );
     assert_eq!(
         cap.abort_marker.as_deref(),
-        Some(crate::history::remote_ask::HELLO_MARKER)
+        Some(crate::stream::remote_ask::HELLO_MARKER)
     );
-    let without = crate::history::remote_ask::capture_request(&dial, "'/b'".into(), None)
-        .expect("拼得出请求");
+    let without =
+        crate::stream::remote_ask::capture_request(&dial, "'/b'".into(), None).expect("拼得出请求");
     assert_eq!(
         without.capture.expect("capture 参数在").stdin,
         None,

@@ -40,7 +40,7 @@ pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻�
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
-pub mod history; // 〔MOD〕历史跨机 join · 注解 · 问远端那一跳（history_join · history_annotations · remote_ask）
+pub mod history; // 〔MOD〕历史跨机 join 与注解（history_join · history_annotations）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
@@ -71,7 +71,7 @@ pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、�
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
-pub mod stream; // 〔MOD〕进后端的口 ① 帧面：wire · inbound · listen · tap
+pub mod stream; // 〔MOD〕进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds

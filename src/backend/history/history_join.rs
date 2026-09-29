@@ -5,7 +5,7 @@
 //! 主会话 09-25 裁（`调研/第四波记录/C4d.md`「主会话裁」第 2 条，逐字）：「本机注解的**读写者**换成本机常驻后端 ——
 //! 文件留在原处、同一路径，不迁移、一条不丢；本机后端经 `remote_ask` 问远端那台的项目 / 会话清单、并上注解、出成品；
 //! 前端经 `chan.call`。codex 合成的项目与会话一起进后端（join 只一个家）」。`D1`：一个判定一个家。
-//! `设计/01 §3.5`：「观测方沿它本来就拥有的那条连接去拉被观测方」—— 远端那一跳是 [`crate::history::remote_ask`]。
+//! `设计/01 §3.5`：「观测方沿它本来就拥有的那条连接去拉被观测方」—— 远端那一跳是 [`crate::stream::remote_ask`]。
 //!
 //! # 形状
 //!
@@ -473,10 +473,10 @@ pub(crate) fn live_from_session_accounts(stdout: &str) -> LiveSet {
 /// 那台的判活：问 `--session-accounts`；问不到 ⇒ `None`（调用方用 [`NoLiveness`]，不当成「全死」）。
 async fn remote_liveness(
     machine: &str,
-    table: &crate::history::remote_ask::Table,
-    remote: &dyn crate::history::remote_ask::Remote,
+    table: &crate::stream::remote_ask::Table,
+    remote: &dyn crate::stream::remote_ask::Remote,
 ) -> Option<LiveSet> {
-    crate::history::remote_ask::ask_with(machine, &["--session-accounts"], table, remote)
+    crate::stream::remote_ask::ask_with(machine, &["--session-accounts"], table, remote)
         .await
         .ok()
         .map(|out| live_from_session_accounts(&out))
@@ -609,8 +609,8 @@ fn asked(r: Result<String, String>) -> Result<String, (&'static str, String)> {
 pub async fn answer_projects(args: Value) -> Result<Value, (&'static str, String)> {
     answer_projects_with(
         args,
-        &crate::history::remote_ask::REACH,
-        &crate::history::remote_ask::DialRemote,
+        &crate::stream::remote_ask::REACH,
+        &crate::stream::remote_ask::DialRemote,
     )
     .await
 }
@@ -618,8 +618,8 @@ pub async fn answer_projects(args: Value) -> Result<Value, (&'static str, String
 /// [`answer_projects`] 的可喂夹具那一半：远端那一跳的表与对面由调用方给（`KR83D3`：数得出「一台问了几次」）。
 pub async fn answer_projects_with(
     args: Value,
-    table: &crate::history::remote_ask::Table,
-    remote: &dyn crate::history::remote_ask::Remote,
+    table: &crate::stream::remote_ask::Table,
+    remote: &dyn crate::stream::remote_ask::Remote,
 ) -> Result<Value, (&'static str, String)> {
     match origin_arg(&args)? {
         None => {
@@ -643,7 +643,7 @@ pub async fn answer_projects_with(
         Some(o) => {
             let o = o.to_string();
             let out = asked(
-                crate::history::remote_ask::ask_with(&o, &["--list-projects"], table, remote).await,
+                crate::stream::remote_ask::ask_with(&o, &["--list-projects"], table, remote).await,
             )?;
             let live = remote_liveness(&o, table, remote).await;
             blocking(move || {
@@ -662,8 +662,8 @@ pub async fn answer_projects_with(
 pub async fn answer_sessions(args: Value) -> Result<Value, (&'static str, String)> {
     answer_sessions_with(
         args,
-        &crate::history::remote_ask::REACH,
-        &crate::history::remote_ask::DialRemote,
+        &crate::stream::remote_ask::REACH,
+        &crate::stream::remote_ask::DialRemote,
     )
     .await
 }
@@ -671,8 +671,8 @@ pub async fn answer_sessions(args: Value) -> Result<Value, (&'static str, String
 /// [`answer_sessions`] 的可喂夹具那一半。
 pub async fn answer_sessions_with(
     args: Value,
-    table: &crate::history::remote_ask::Table,
-    remote: &dyn crate::history::remote_ask::Remote,
+    table: &crate::stream::remote_ask::Table,
+    remote: &dyn crate::stream::remote_ask::Remote,
 ) -> Result<Value, (&'static str, String)> {
     let dir = args
         .get("project_dir")
@@ -709,7 +709,7 @@ pub async fn answer_sessions_with(
             }
             let o = o.to_string();
             let out = asked(
-                crate::history::remote_ask::ask_with(&o, &["--list-sessions", &dir], table, remote)
+                crate::stream::remote_ask::ask_with(&o, &["--list-sessions", &dir], table, remote)
                     .await,
             )?;
             let live = remote_liveness(&o, table, remote).await;
