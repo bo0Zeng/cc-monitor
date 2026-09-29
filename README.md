@@ -288,8 +288,7 @@ cc-monitor/
 │       ├── auto_launch.rs  cc 启动时自动开 monitor
 │       ├── logging.rs      tracing + ErrorEmitter
 │       ├── data_paths.rs   issue #3 透明化所有持久路径
-│       ├── config.rs       config.json R/W
-│       ├── paths.rs        Claude 数据目录三级回退
+│       ├── config.rs       config.json R/W ＋ Claude 数据目录三级回退（〔RE〕原 paths.rs 并进来）
 │       ├── ui_contract.rs       事件常量 + payload schema（含 v2.6 seq 字段）
 │       ├── subagent.rs     Task/Agent tool 子 jsonl 按需加载
 │       └── utils.rs        ⭐ days_from_civil + NetTicks/FileTime newtype + scan_dir_jsons + atomic_write_json + parse_iso8601_ms 等共享 helper

@@ -30,7 +30,7 @@ use std::path::PathBuf;
 /// ⚠ 它**不跟随** `claudeDir` 覆盖：`config.rs` 头注逐字「monitor 自己的设置永远在默认
 /// `~/.claude/claudecode-frontend/` 下，不跟随 `claudeDir` 字段变化」。
 pub(crate) fn resolve_path() -> Option<PathBuf> {
-    Some(crate::paths::resolve_monitor_data_dir()?.join(store::FILE_NAME))
+    Some(crate::config::resolve_monitor_data_dir()?.join(store::FILE_NAME))
 }
 
 // 〔US1 · 第四波 4D〕读侧掩码（`ApikeyCredentialsStatus` · `read_status` · `read_status_at` · `notice_of`）〔散文墓碑〕退役：

@@ -55,10 +55,11 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              **4 → 3**：派生 `sessions/` 目录那一行随 monitor 自己那份判活删了（本机判活改由本机后端的帧来）。",
     ),
     (
-        "src/paths.rs",
+        "src/config.rs",
         "hub",
         9,
-        "〔TAIL · 09-26〕10 → 9：数据目录那条规则搬进共享 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认），本文件只转交。\
+        "〔RE〕住址 `src/paths.rs` → `src/config.rs`（`15 §2.2`「config ＋ paths → 一处」，整份并进来、处数不变）。\
+             〔TAIL · 09-26〕10 → 9：数据目录那条规则搬进共享 `creds_core::store::monitor_data_dir`（远端常驻后端按同一份推默认），本文件只转交。\
              **路径真相源** —— 只回答「`~/.claude` 与它的子目录在哪」，自己不读内容。\
              切后端之后它**仍然要在** ⇒ **不属**退役范围。\
              〔`P17` 2026-09-22：9 → 10。多的那一处是 `env::var(CCM_DATA_DIR)` ——\
@@ -277,13 +278,13 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
     //   对 `acct-core` 的常量与后端缺省解析那一处），本机那份参照实现连同这一处 `home_dir()` 一起删了。
     // 〔SH1 · V137〕`mcp.rs` 那一行（`.claude.json` 三候选的 `home_dir()`〔散文墓碑〕）去掉：MCP 列表改问那台后端，monitor 不再伸手进 home 找它。
     (
-        "paths.rs",
+        "config.rs", // 〔RE〕原 `paths.rs`
         "resolve_claude_dir",
         "`~/.claude`",
         "claude 目录真相源（`hub`）；本模块棘轮的中心",
     ),
     (
-        "paths.rs",
+        "config.rs", // 〔RE〕原 `paths.rs`
         "resolve_monitor_data_dir",
         "`~/.claude/claudecode-frontend`",
         "monitor 自己的数据目录；写侧在 `write_site_registry`",

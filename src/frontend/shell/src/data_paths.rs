@@ -130,7 +130,7 @@ pub const LOGS_DIR_LABEL: &str = "logs/";
 /// 收集所有 monitor 写到磁盘的数据路径。需要 AppHandle 才能拿 LocalAppData 推断 WebView2 路径。
 pub fn collect(handle: &AppHandle) -> DataPathsResponse {
     let monitor_data_dir =
-        crate::paths::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
+        crate::config::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
 
     let entries = monitor_entries(&monitor_data_dir);
 

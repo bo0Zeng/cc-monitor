@@ -77,7 +77,6 @@ mod panorama_bytes; // 〔RM1c · 第四波〕全景小程序：推上去 · 本
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
                             // 〔MOD · `设计/90 §3` 判据 3〕`mod messages;` · `mod parser;` · `mod codex_record;`〔散文墓碑〕（记录解析）整族搬进了后端
                             //   `agents/claudecode/`（`schema` · `parse`）与 `agents/codex/record.rs`：monitor 只把后端给的成品原样转交。
-mod paths;
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
               // 〔C4b · 第四波 4B〕`plugins` 模块（P8a 的 marketplace 只读枚举，`list_plugin_marketplaces`〔散文墓碑〕）删了：
               //   后端 `plugins-marketplaces` 直接出成品，界面经通道问（`src/frontend/ui/settings/plugins-section.ts::fetchSurvey`）。
@@ -388,7 +387,7 @@ pub fn run() {
     //
     // **monitor_data_dir 必须能解析**：这里用 dirs::home_dir 兜底，不依赖任何
     // 配置（避免 log 初始化跟 config 初始化循环依赖）。
-    let monitor_data_dir = paths::resolve_monitor_data_dir()
+    let monitor_data_dir = config::resolve_monitor_data_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("cc-monitor-fallback"));
     let logging_state = logging::init(&monitor_data_dir);
     tracing::info!(
@@ -749,7 +748,7 @@ pub fn run() {
             // 〔MIG-3b〕这里原来还算 `tasks_dir`（喂 monitor 自己那条任务 notify）—— 监视进了后端，monitor 不再需要知道任务住哪。
 
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
-            let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
+            let monitor_data_dir = config::resolve_monitor_data_dir().ok_or("no data dir")?;
             tracing::info!("monitor_data_dir: {}", monitor_data_dir.display());
 
             // v2.0.0：把 AppHandle 注入给 ErrorEmitterLayer（之前一直是 None，
@@ -1135,8 +1134,8 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 合法 host → 空 Vec。
 ///
 /// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
-/// `paths::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
-/// `paths.rs::read_user_override`（同一个 config.json，同样的 best-effort 容错）。
+/// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
+/// `config.rs::read_user_override`（同一个 config.json，同样的 best-effort 容错）。
 ///
 /// remote 段 schema（S6/S7 的设置 UI 负责写）：
 /// ```json
@@ -1155,7 +1154,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 没有 `hosts` 数组）**不再认**：[`parse_remote_hosts`] 回 `Err`，这里照原样落一条 `error!` 日志、不连任何远端 ——
 /// 不再把它悄悄当成一台，也不装作「没配远端」（D4）。
 pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
-    let Some(cfg_path) = paths::resolve_config_path() else {
+    let Some(cfg_path) = config::resolve_config_path() else {
         return Vec::new();
     };
     if !cfg_path.exists() {

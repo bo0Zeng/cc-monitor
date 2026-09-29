@@ -26,7 +26,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
     fn data_root(&self) -> Option<PathBuf> {
         // 三级回退:用户配置 claudeDir → CLAUDE_CONFIG_DIR → ~/.claude。
-        crate::paths::resolve_claude_dir()
+        crate::config::resolve_claude_dir()
     }
     fn nested_env_to_scrub(&self) -> &'static [&'static str] {
         CLAUDE_NESTED_ENV

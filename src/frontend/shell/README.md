@@ -36,7 +36,6 @@ src/frontend/shell/
 └── src/
     ├── main.rs        # → lib::run()
     ├── lib.rs         # Tauri Builder + 工作线程编排 + IPC 注册
-    ├── paths.rs       # CLAUDE_CONFIG_DIR 三级解析
     ├── messages.rs    # JsonlRecord enum (覆盖全部 type)
     ├── parser.rs      # 按行解析 + BOM
     ├── local_lines.rs # 本机会话内容的入口通道（本机后端的 line 帧 → 与远端同一个 LineIntake，CF1）
@@ -74,7 +73,7 @@ src/frontend/shell/
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **lib.rs** | Tauri Builder + setup() + IPC handler 注册 + single-instance plugin (issue #9) + 启动清洗嵌套 CLAUDECODE/CLAUDE_CODE_* 标记 (#24) | `pub fn run()` |
-| **paths.rs** | 解析 `.claude` 数据目录（三级回退） | `resolve_claude_dir() / resolve_monitor_data_dir() / resolve_config_path()` |
+| **config.rs**（〔RE〕原 paths.rs 并进来） | 解析 `.claude` 数据目录（三级回退） | `resolve_claude_dir() / resolve_monitor_data_dir() / resolve_config_path()` |
 | **messages.rs** | `JsonlRecord` enum + `ApiMessage` + `ContentBlock` | `JsonlRecord::is_displayable()` |
 | **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(origin, raw)` |
 | **local_lines.rs** (CF1) | 本机会话内容的入口通道：本机两条读循环（常驻 TCP · stdio 监护）把本机后端发来的内容帧（`line` / `session_added` / `session_removed`）送进来，交给 `ssh_source::consume_local`，再进与远端同一个 `LineIntake`（攒批 ＋ 静默窗 ＋ 旁路快照 ＋ 续点）。有界通道 ⇒ 消费者跟不上时读循环停读、后端写阻塞（背压，不丢）。原先 monitor 自己那套 jsonl watcher（第二套游标与 seq）随 CF1 删了 | `install / deliver / deliver_blocking / stream_ended` |
