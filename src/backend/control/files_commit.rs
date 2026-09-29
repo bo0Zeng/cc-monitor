@@ -679,8 +679,7 @@ fn u64_arg(args: &serde_json::Value, key: &str) -> Result<u64, (&'static str, St
 
 /// 这台后端的家（暂存区拼在它底下）。
 fn home_dir() -> Result<PathBuf, (&'static str, String)> {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
+    crate::platform::paths::home_dir()
         .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
 }
 

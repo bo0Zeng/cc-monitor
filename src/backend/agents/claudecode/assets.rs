@@ -40,10 +40,7 @@ pub(crate) fn claude_json() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV).filter(|d| !d.is_empty()) {
         return Some(config_path_in(Path::new(&dir)));
     }
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .filter(|h| !h.is_empty())
-        .map(|h| config_path_in(Path::new(&h)))
+    crate::platform::paths::home_dir().map(|h| config_path_in(&h))
 }
 
 /// 注册表那一格的实现：按这台机器的环境现解两个根，现扫。
