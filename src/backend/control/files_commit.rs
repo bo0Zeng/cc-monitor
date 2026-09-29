@@ -63,8 +63,8 @@
 //! 由 [`sweep_stale`] 按同一个期限收（它认得两种形状）。
 
 use crate::control::files_write::{
-    content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
-    ManageCommand, WriteRefusal,
+    content_sha256, opener, overwrite_text_expecting, read_nofollow, resolve_in_root,
+    sha256_expect_of, Answer, ManageCommand, WriteRefusal,
 };
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
@@ -250,7 +250,7 @@ pub fn commit_upload_in(
         return Ok((dest, bytes));
     }
     // 不覆盖：先占位（`O_EXCL`，目标已在 ⇒ 当场失败），再改名上位盖掉自己那个占位。
-    std::fs::OpenOptions::new()
+    opener()
         .write(true)
         .create_new(true)
         .open(&dest)
@@ -317,11 +317,8 @@ fn land_staged(
         Err(_) => {}
     }
     let copied = (|| -> std::io::Result<()> {
-        let mut reader = std::fs::File::open(&staged)?;
-        let mut writer = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&side)?;
+        let mut reader = opener().read(true).open(&staged)?;
+        let mut writer = opener().write(true).create_new(true).open(&side)?;
         std::io::copy(&mut reader, &mut writer)?;
         writer.sync_all()?;
         drop(writer);
@@ -391,7 +388,7 @@ pub fn stage_chunk(home: &Path, key: &str, seq: u64, bytes: &[u8]) -> Result<u64
     }
     let dir = ensure_staging(home)?;
     let at = resolve_in_root(&dir, &chunk_name(key, seq)).map_err(WriteRefusal::Refused)?;
-    let mut f = std::fs::OpenOptions::new()
+    let mut f = opener()
         .write(true)
         .create_new(true)
         .open(&at)
@@ -459,7 +456,7 @@ fn gather_chunks(home: &Path, key: &str, chunks: u64, bytes: u64) -> Result<Vec<
                 &[("seq", &seq.to_string()), ("bytes", &bytes.to_string())],
             )));
         }
-        let got = std::fs::read(&p).map_err(|e| {
+        let got = read_nofollow(&p).map_err(|e| {
             WriteRefusal::Io(copy_text(
                 "beFilesCommit.chunk.unreadable",
                 &[

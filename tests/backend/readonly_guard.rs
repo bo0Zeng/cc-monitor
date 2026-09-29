@@ -470,6 +470,10 @@ mod tests {
         //   （`设计/60 §6.2` · `§7` 第 9 条；= GNU `cp -R` 缺省的 `-P`）。
         //   只在 `control/files_extract.rs::land_link` 一处调用；从 [`MUTATING_FACE_STILL_FORBIDDEN`] 挪过来（那边摘掉 `fs::symlink(`，`soft_link` 那个旧名照旧禁）。
         "symlink",
+        // 〔FIX5 · 7 → 8〕不覆盖改名（`crate::platform::fs::rename_noreplace`，`设计/99 §2.2` · `60 §7` 第 7 条）：
+        //   不是新动词，是「改名」的另一种写法（原子的不许顶掉）；住 `platform/fs.rs`（那份文件没有 `fs::` 前缀的调用，默认层扫不到它的系统调用 ——
+        //   谁调得到它由这一格钉：只在第三层放行，别处写 `fs::rename_noreplace(` 当场红）。
+        "rename_noreplace",
         "write",
     ];
 
@@ -489,7 +493,15 @@ mod tests {
     ///   刻意不进全局只读表，理由同上（不替全后端放一个词）。
     ///   〔W5-FILES · 第五波 · **4 → 3**〕`MetadataExt` 摘走：设计让设备号的读走 `platform/`（`设计/60 §3.7`），
     ///   它进了默认层的只读表（`every_fs_call_in_backend_production_is_read_only` 那张），不再是本层专属。
-    const MUTATING_FACE_AUX: &[&str] = &["File::from_std", "Permissions", "symlink_metadata"];
+    ///   〔FIX5 · **3 → 5**〕`noreplace_unsupported`（问「这块盘认不认不覆盖改名」，读）· `NO_FOLLOW`（开文件不跟链接的旗，一个常量）：
+    ///   都住 `platform/fs.rs`，只有第三层用。
+    const MUTATING_FACE_AUX: &[&str] = &[
+        "File::from_std",
+        "Permissions",
+        "symlink_metadata",
+        "noreplace_unsupported",
+        "NO_FOLLOW",
+    ];
 
     /// 第三层模块**仍然不许**出现的东西。
     ///
@@ -514,11 +526,106 @@ mod tests {
         "fs::soft_link",
         // 〔FILES2〕`fs::symlink(` 挪进闭集（[`MUTATING_FACE_VERBS`] 的 `symlink`）。
         "File::create",
-        "truncate(true)",
+        // 〔FIX5〕`truncate(true)` 挪走：就地覆盖写（硬链接 / 别人的文件那一支）从 `fs::write` 换成不跟链接的截断开
+        //   （[`open_chain_shape`] 的 `InPlace` 那一形）；它只许住 `overwrite_text` 一处，由 `overwrite_atomic_tests::w4_…` 钉。
         "append(true)",
         "set_len",
         "create(true)",
     ];
+
+    /// 〔FIX5 · `设计/99 §2.2` · `60 §7` 第 7 条〕第三层一次开文件的那条链是哪一形：
+    /// 从 `.open(` 往回找最近的 `opener()` / `OpenOptions::new()`（中间不许隔一个 `;` —— 链必须是一个表达式），按链上的旗分。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum OpenShape {
+        /// `O_EXCL` 新建（`.create_new(true)`，不截断 · 不追加）。
+        Exclusive,
+        /// 只读（`.read(true)`，没有任何写旗）。
+        ReadOnly,
+        /// 就地覆盖写（`.write(true).truncate(true)`，不新建 · 不追加）。
+        InPlace,
+        /// 别的（含找不到链头）。
+        Other,
+    }
+
+    /// 回 `(形, 链头是不是 opener())`。
+    pub(super) fn open_chain_shape(code: &str, open_at: usize) -> (OpenShape, bool) {
+        let before = &code[..open_at];
+        let heads = [("opener()", true), ("OpenOptions::new()", false)];
+        let Some((start, from_opener)) = heads
+            .iter()
+            .filter_map(|(h, o)| before.rfind(h).map(|k| (k, *o)))
+            .max_by_key(|(k, _)| *k)
+        else {
+            return (OpenShape::Other, false);
+        };
+        let chain: String = before[start..]
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if chain.contains(';') {
+            return (OpenShape::Other, false);
+        }
+        let has = |x: &str| chain.contains(x);
+        let shape = if has(".create_new(true)")
+            && !has(".truncate(")
+            && !has(".append(")
+            && !has(".create(true)")
+        {
+            OpenShape::Exclusive
+        } else if has(".read(true)")
+            && !has(".write(")
+            && !has(".append(")
+            && !has(".truncate(")
+            && !has(".create")
+        {
+            OpenShape::ReadOnly
+        } else if has(".write(true)")
+            && has(".truncate(true)")
+            && !has(".create")
+            && !has(".append(")
+        {
+            OpenShape::InPlace
+        } else {
+            OpenShape::Other
+        };
+        (shape, from_opener)
+    }
+
+    /// 〔FIX5〕第三层一份生产段（剥注释）里**不合形**的开：链不是那三形之一，或链头不是 `opener()`（没带 `O_NOFOLLOW`）。
+    /// 取代白名单层那条「`.open(` 与 `.create_new(true)` 逐一配对」在第三层的用法：第三层今天有只读的开与就地覆盖写，配对数不成立了，
+    /// 而它守的那件事（写句柄只有 `O_EXCL` 新建一种）换成「写句柄只有 `O_EXCL` 新建与就地覆盖写两形、后者只许一处」。
+    pub(super) fn face_open_problems(code: &str) -> Vec<String> {
+        code.match_indices(".open(")
+            .filter_map(|(k, _)| {
+                let (shape, from_opener) = open_chain_shape(code, k);
+                (shape == OpenShape::Other || !from_opener).then(|| {
+                    let head = code[..k].rfind('\n').map_or(0, |i| i + 1);
+                    format!(
+                        "{shape:?}{}：{}",
+                        if from_opener {
+                            ""
+                        } else {
+                            "（链头不是 opener()）"
+                        },
+                        code[head..k].trim()
+                    )
+                })
+            })
+            .collect()
+    }
+
+    /// 〔FIX5〕一段代码里第一个**改动**：`fs::<闭集动词>(` · 不是只读那一形的 `.open(`（只读的开不改世界，不要求先过路径解析）。
+    fn first_mutation(chunk: &str) -> Option<(usize, String)> {
+        let verbs = mutation_calls()
+            .into_iter()
+            .filter(|c| c != ".open(")
+            .filter_map(|c| chunk.find(c.as_str()).map(|k| (k, c)));
+        let opens = chunk
+            .match_indices(".open(")
+            .find(|(k, _)| open_chain_shape(chunk, *k).0 != OpenShape::ReadOnly)
+            .map(|(k, _)| (k, ".open(".to_string()));
+        verbs.chain(opens).min_by_key(|(k, _)| *k)
+    }
 
     /// 路径解析调用的针。**本层模块的路径解析入口只有这两个**（其余两道被它们串着）——
     /// 〔FN1 · V119〕旧名 `FENCE_CALLS`，针旧名 `fenced_target(` / `fenced_existing(`：会话数据围栏拿掉之后
@@ -633,7 +740,6 @@ mod tests {
 
     /// 判据 2：列举之后、**列举与改动之间没有路径解析**的那几处，逐条回 `函数名 → 那个改动`。
     pub(super) fn mutations_after_listing_unresolved(prod: &str) -> Vec<String> {
-        let calls = mutation_calls();
         let mut bad = Vec::new();
         for (a, b) in fn_chunks(prod) {
             let chunk = &prod[a..b];
@@ -641,11 +747,7 @@ mod tests {
                 continue;
             };
             let after = &chunk[r..];
-            let first_mut = calls
-                .iter()
-                .filter_map(|c| after.find(c.as_str()).map(|k| (k, c.clone())))
-                .min_by_key(|(k, _)| *k);
-            let Some((mk, which)) = first_mut else {
+            let Some((mk, which)) = first_mutation(after) else {
                 continue;
             };
             let fenced_between = RESOLVE_CALLS
@@ -900,7 +1002,6 @@ mod tests {
     /// 外层那一块 —— 那只会让判定**更严**，不会更松）。块里第一个改动调用之前，
     /// 必须已经出现一次 [`RESOLVE_CALLS`] 里的调用。第一个 `fn` 之前的改动一律算没过路径解析。
     pub(super) fn unresolved_mutations(prod: &str) -> Vec<String> {
-        let calls = mutation_calls();
         // 〔FW5〕切块抽成了 [`fn_chunks`]（列举那条判据共用同一份切法，一条形状一个住址）。
         // ⚠ 那份切法里的循环变量刻意**不叫 `line`**：`needle_anchor_registry` 的语料变量识别是**按名字、
         //   整份文件**算的，本文件别处有一句 `let t = line.trim()`（与这里无关的另一个作用域）——
@@ -910,11 +1011,7 @@ mod tests {
         let mut bad = Vec::new();
         for (a, b) in bounds {
             let chunk = &prod[a..b];
-            let first_mut = calls
-                .iter()
-                .filter_map(|c| chunk.find(c.as_str()).map(|k| (k, c.clone())))
-                .min_by_key(|(k, _)| *k);
-            let Some((mk, which)) = first_mut else {
+            let Some((mk, which)) = first_mutation(chunk) else {
                 continue;
             };
             let first_fence = RESOLVE_CALLS.iter().filter_map(|f| chunk.find(f)).min();
@@ -1044,8 +1141,16 @@ mod tests {
             // 🔴 〔波 5 ㈡〕第三层：改动既有数据，只许在这里，而且每一处先过路径解析。
             if is_mutating_face(&rel) {
                 face += 1;
-                if let Err(why) = open_calls_are_all_exclusive(&prod) {
-                    panic!("第三层模块 {}：{why}", path.display());
+                // 〔FIX5〕第三层的开按链形判（[`face_open_problems`]），不再按「`.open(` 与 `.create_new(true)` 逐一配对」。
+                let odd = face_open_problems(&guard_core::production_code(&src));
+                if !odd.is_empty() {
+                    panic!(
+                        "第三层模块 {} 里有不合形的开文件：\n  {}\n\n\
+                         第三层的开只许三形 —— `O_EXCL` 新建 · 只读 · 就地覆盖写（只许 `overwrite_text` 一处）—— \
+                         而且链头必须是 `files_write::opener()`（全程 `O_NOFOLLOW`，`设计/60 §7` 第 7 条）。",
+                        path.display(),
+                        odd.join("\n  ")
+                    );
                 }
                 if let Some(pat) = violates_mutating_face_layer(&prod) {
                     panic!(
@@ -1998,6 +2103,100 @@ mod tests {
         }
     }
 
+    /// 〔FIX5〕第三层里**跟链接**的开法（没经 `files_write::opener()`、不带 `O_NOFOLLOW`）—— 逐条登记 `(模块, 针, 处数, why)`。
+    const FACE_FOLLOWING_OPENS: &[(&str, &str, usize, &str)] = &[
+        (
+            "control/transfer.rs",
+            "File::open(",
+            1,
+            "上传的源：用户在本机挑的那一份文件，路径不经解析；跟链接就是这个动作的意思（同 `cp 链接 目标`）",
+        ),
+        (
+            "control/files_write.rs",
+            "fs::write(",
+            1,
+            "`swap_in` 的 Windows 臂：Windows 没有「遇链接就失败」的开法（`platform/fs.rs` 头注），就地写保 ACE",
+        ),
+    ];
+    const FOLLOWING_NEEDLES: &[&str] = &[
+        "File::open(",
+        "fs::read(",
+        "fs::read_to_string(",
+        "fs::write(",
+    ];
+
+    /// 设计/99 §2.2 · 设计/60 §7 第 7 条：「全程 `O_NOFOLLOW`」—— 第三层开文件只有一个出处。
+    ///
+    /// ① 五个模块生产段（剥注释）里 `OpenOptions::new()` 恰一处、住 `files_write::opener`，且那一处带 `NO_FOLLOW`；
+    /// ② 每一次 `.open(` 的链头都是 `opener()`（由 `scan` 里的 [`face_open_problems`] 判，这里只判它今天零条）；
+    /// ③ 跟链接的开法（`File::open` · `fs::read` · `fs::read_to_string` · `fs::write`）== [`FACE_FOLLOWING_OPENS`]（两向，按处数）。
+    #[test]
+    fn the_mutating_face_opens_every_file_through_the_one_nofollow_opener() {
+        let src_dir = crate::guard_support::src_root();
+        let mut news: Vec<String> = Vec::new();
+        let mut follows = std::collections::BTreeMap::new();
+        let mut odd: Vec<String> = Vec::new();
+        for (rel, _) in MUTATING_FACE_MODULES {
+            let src = std::fs::read_to_string(src_dir.join(rel)).expect("读第三层模块");
+            let prod = guard_core::production_code(&src);
+            news.extend(
+                prod.matches("OpenOptions::new()")
+                    .map(|_| (*rel).to_string()),
+            );
+            for n in FOLLOWING_NEEDLES {
+                let c = prod.matches(n).count();
+                if c > 0 {
+                    follows.insert(((*rel).to_string(), (*n).to_string()), c);
+                }
+            }
+            odd.extend(
+                face_open_problems(&prod)
+                    .into_iter()
+                    .map(|p| format!("{rel}: {p}")),
+            );
+        }
+        assert_eq!(
+            news,
+            vec!["control/files_write.rs".to_string()],
+            "第三层里 `OpenOptions::new()` 不是恰好一处（`files_write::opener`）—— 多出来的那一处开的文件不带 `O_NOFOLLOW`"
+        );
+        let fw =
+            guard_core::production_code(include_str!("../../src/backend/control/files_write.rs"));
+        let at = fw.find("fn opener(").expect("`files_write::opener` 不在了");
+        let body = &fw[at..at + fw[at..].find("\n}\n").expect("opener 的尾")];
+        assert!(
+            body.contains("OpenOptions::new()")
+                && body.contains("custom_flags(crate::platform::fs::NO_FOLLOW)"),
+            "`opener` 里那一处开法没带 `NO_FOLLOW`：\n{body}"
+        );
+        assert!(
+            odd.is_empty(),
+            "链头不是 opener() / 形状不对的开：\n  {}",
+            odd.join("\n  ")
+        );
+        let want: std::collections::BTreeMap<(String, String), usize> = FACE_FOLLOWING_OPENS
+            .iter()
+            .map(|(m, n, c, _)| (((*m).to_string(), (*n).to_string()), *c))
+            .collect();
+        assert_eq!(
+            follows, want,
+            "第三层里跟链接的开法与登记表对不上（左 = 盘上现打）。新冒出来的那一处换成 `opener()`；真要跟链接就登记并写清为什么"
+        );
+        for (m, n, _, why) in FACE_FOLLOWING_OPENS {
+            assert!(
+                why.chars().count() >= 20,
+                "`{m}` 的 `{n}` 没写清为什么要跟链接"
+            );
+        }
+        // 正控：数法认得出一处跟链接的开。
+        assert_eq!(
+            guard_core::production_code("let b = std::fs::read(&p)?;")
+                .matches("fs::read(")
+                .count(),
+            1
+        );
+    }
+
     /// 🔴 **第三层每一个判定，在合成样本上正反各喂一遍。**
     ///
     /// 在真树上判不够：「判定采到了而且全过」与「判定什么都没采到」输出一样。
@@ -2101,6 +2300,48 @@ mod tests {
                 "默认层认不出 `fs::{v}` —— 那别的面写它就不会红"
             );
         }
+        // 〔FIX5〕开文件的链形：三形各认得出、别的一律 Other；链头不是 opener() 的报出来；只读的开不算改动。
+        let shape = |c: &str| open_chain_shape(c, c.find(".open(").expect("样本里要有 .open(")).0;
+        assert_eq!(
+            shape("let f = opener().write(true).create_new(true).open(&p)?;"),
+            OpenShape::Exclusive
+        );
+        assert_eq!(
+            shape("let f = opener()\n    .read(true)\n    .open(&p)?;"),
+            OpenShape::ReadOnly
+        );
+        assert_eq!(
+            shape("let f = opener().write(true).truncate(true).open(&p)?;"),
+            OpenShape::InPlace
+        );
+        for bad in [
+            "let f = opener().write(true).open(&p)?;",
+            "let f = opener().write(true).create(true).truncate(true).open(&p)?;",
+            "let f = opener().append(true).write(true).open(&p)?;",
+            "let mut o = opener(); o.read(true); let f = o.open(&p)?;",
+            "let f = x.open(&p)?;",
+        ] {
+            assert_eq!(shape(bad), OpenShape::Other, "`{bad}` 该是 Other");
+        }
+        assert_eq!(
+            face_open_problems("let f = std::fs::OpenOptions::new().read(true).open(&p)?;").len(),
+            1,
+            "链头不是 opener()（没带 O_NOFOLLOW）的开没被报出来"
+        );
+        assert!(face_open_problems("let f = opener().read(true).open(&p)?;").is_empty());
+        assert!(
+            unresolved_mutations("fn f(p: &Path) {\n    let x = opener().read(true).open(p);\n}\n")
+                .is_empty(),
+            "只读的开被当成了改动 —— 读一份文件不该要求先过路径解析"
+        );
+        assert_eq!(
+            unresolved_mutations(
+                "fn f(p: &Path) {\n    let x = opener().write(true).create_new(true).open(p);\n}\n"
+            )
+            .len(),
+            1,
+            "没先过路径解析的 O_EXCL 新建没被报出来"
+        );
     }
 
     /// U-1（2026-08-01）：**剥法的欠剥方向也要机器钉住。**
