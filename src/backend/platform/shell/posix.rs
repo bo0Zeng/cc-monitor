@@ -46,9 +46,11 @@ pub(crate) fn if_command(name: &str, then: &str, otherwise: &str) -> String {
 }
 
 /// `VAR` 在这个 shell 里已经有值 ⇒ 说一句 `say`（已成词）、不动它；否则 `export VAR=<词>`。
+/// 〔WF1 · G〕判空写成 `[ ${VAR:+x} ]`（有值 ⇒ 一个词 `x`；没有 ⇒ 零个词、`[ ]` 为假），不带双引号：
+/// 这一段会流进 Windows 那条开终端的路（`dial/terminal.rs`），PowerShell 5.1 向原生程序传参会改坏内嵌的 `"`。
 pub(crate) fn export_unless_set(var: &str, word: &str, say: &str) -> String {
     format!(
-        "[ -n \"${{{var}:-}}\" ] && printf '%s\\n' {say} || {}",
+        "[ ${{{var}:+x}} ] && printf '%s\\n' {say} || {}",
         export(var, word)
     )
 }
@@ -71,8 +73,9 @@ pub(crate) fn add_line_once(
 }
 
 /// 一个词：`<head>` ＋ 家目录底下 `rel` 那份文件的内容（**现读**，钥匙不进 argv）＋ `<tail>`（head / tail 已成词）。
+/// 〔WF1 · G〕不带双引号（理由同 [`export_unless_set`]）：`~/` 展开的结果不分词；文件内容是十六进制钥匙，不含空白与通配符。
 pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
-    format!("{head}\"$(cat \"$HOME/{rel}\")\"{tail}")
+    format!("{head}$(cat ~/{rel}){tail}")
 }
 
 /// 从一份会被 `.` source 的 sh 配置里抠 `VAR=` 的值 —— **纯文本解析，绝不 source**（后端不跑 shell）。

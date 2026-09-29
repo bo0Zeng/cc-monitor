@@ -1035,6 +1035,16 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     const MANUAL: &[(&str, &str)] = &[
         // 〔MOD〕`f63_real_data_ledger` 那一行随记录解析搬进了后端（`tests/backend/agents/claudecode/parse_tests.rs`）。
         (
+            "wf1_real_powershell_add_then_remove_restores_the_user_path",
+            "〔WF1 · K〕不是判据是**读数**：要一个 PowerShell（`CCM_PWSH`，收一个 `.ps1` 路径的程序；本机用容器里的 PowerShell 7）\
+             跑生成的用户级 PATH 加 / 撤两段（注册表换替身）。谁什么时候跑：改 `profile_installer.rs` 那两段渲染的那一拍，交付前跑一趟、把结果贴进报告。",
+        ),
+        (
+            "wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves",
+            "〔WF1 · ㉔〕不是判据是**读数**：同上一条要一个 PowerShell（`CCM_PWSH`），跑 Windows 那一形的 ccm 探测串三种情形。\
+             谁什么时候跑：改 `ccm_probe.rs` 里 `CCM_PROBE_PS` 的那一拍，交付前跑一趟、把结果贴进报告。",
+        ),
+        (
             "the_readings_behind_the_two_thresholds",
             "〔F9 09-24〕不是判据是**读数**：大文件模式两个门槛的来源，只在 **release** 档上有意义\
              （debug 档慢一个数量级，拿它推门槛就是 `设计/60 §9 §四.0` 订正过的那个错）。\

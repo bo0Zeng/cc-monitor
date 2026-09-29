@@ -96,12 +96,9 @@ fn valid_digest(d: &str) -> bool {
 
 /// 这台机器上记录文件的路径。家目录：`HOME`，没有再退 `USERPROFILE`；都没有 ⇒ `None`（不猜）。
 pub fn ledger_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| std::env::var_os("USERPROFILE").filter(|h| !h.is_empty()))?;
+    let home = crate::platform::paths::home_dir()?;
     Some(
-        PathBuf::from(home)
-            .join(crate::control::exit_policy::DIR_NAME)
+        home.join(crate::control::exit_policy::DIR_NAME)
             .join(FILE_NAME),
     )
 }

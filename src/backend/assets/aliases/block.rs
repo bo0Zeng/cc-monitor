@@ -619,11 +619,9 @@ pub(crate) fn render_cc_code(
         .replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
         .replace(
             "{{MONITOR_DATA_DIR}}",
-            &dialect::ps_single_quoted(&monitor_data_dir.to_string_lossy()),
+            &dialect::ps_literal(&monitor_data_dir.to_string_lossy()),
         )
 }
-
-// 〔OSA〕这里原来有 `ps_single_quoted`（PowerShell 单引号字面量）—— 方言的写法，搬进 `platform/shell/dialect.rs`。
 
 /// idempotent 安装：把 cc function 块写到 profile，已有 ccm 块则原地替换。
 /// 用户在 BEGIN/END 块外的内容完全不动。

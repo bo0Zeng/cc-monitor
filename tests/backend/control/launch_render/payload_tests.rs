@@ -1423,7 +1423,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
     // 〔RK1〕钥匙段是读钥匙文件的命令替换（形状理由在 `RELAY_KEY_FILE_REL` 头注）。
     assert_eq!(
         relay_env_prefix_posix("http://127.0.0.1:8788/s/a/b"),
-        "[ -n \"${ANTHROPIC_BASE_URL:-}\" ] && printf '%s\\n' 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' || export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'\"$(cat \"$HOME/.cc-monitor/relay-key\")\"'/s/a/b'; "
+        "[ ${ANTHROPIC_BASE_URL:+x} ] && printf '%s\\n' 'cc-monitor：这个会话用你自己设的端点（ANTHROPIC_BASE_URL），不走中转，拿不到流式' || export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/'$(cat ~/.cc-monitor/relay-key)'/s/a/b'; "
     );
     assert_eq!(
         relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b"),

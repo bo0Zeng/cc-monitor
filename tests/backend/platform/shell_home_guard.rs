@@ -279,3 +279,124 @@ fn the_literal_census_sees_planted_syntax_and_ignores_comments() {
         "往真消费者的副本里塞一行 PowerShell 渲染，尺子该只数出塞进去的那两根"
     );
 }
+
+/// 「值直接接在单引号后」与「双写单引号的替换串」—— 手写 PowerShell 单引号字面量的两种形。
+const SQ_NEEDLES: &[&str] = &["'{", "''"];
+
+/// 唯一出口 `dialect::ps_literal` 之外允许的命中（都不是 PowerShell 字面量，逐条说清）。
+const SQ_ELSEWHERE: &[(&str, &str, usize)] = &[
+    // 报错句里「起不来的是哪个程序」那个主语，不进 shell。
+    ("control/ccm/mod.rs", "'{", 1),
+    // POSIX：值先过 `config_dir_command_safe` 白名单（不含 `'`）再进单引号。
+    ("control/launch_render/payload.rs", "'{", 1),
+    // POSIX：tmux 的 `-F` 格式串是常量。
+    ("observe/tmux_observe.rs", "'{", 2),
+];
+
+fn sq_census_of(src: &str) -> BTreeMap<&'static str, usize> {
+    let lits = string_literals(&guard_core::production_code(src));
+    SQ_NEEDLES
+        .iter()
+        .map(|n| (*n, lits.iter().map(|l| l.matches(n).count()).sum::<usize>()))
+        .filter(|(_, k)| *k > 0)
+        .collect()
+}
+
+/// ★ 住址：`设计/99 §2.3`「高危四条（M/N PowerShell 引号注入 …）发版前修」。
+/// 后端生产段里 PowerShell 单引号字面量只有一个出口（`platform/shell/dialect.rs::ps_literal`）：
+/// 两根手写形的命中 == [`SQ_ELSEWHERE`]（两向）；正控：往副本里塞回旧的只转 ASCII 那一形数得出。
+#[test]
+fn powershell_single_quoted_literals_have_one_exit() {
+    let root = crate::guard_support::src_root();
+    let mut got = BTreeMap::new();
+    for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (n, k) in sq_census_of(&src) {
+            got.insert((rel.clone(), n), k);
+        }
+    }
+    let want: BTreeMap<(String, &str), usize> = SQ_ELSEWHERE
+        .iter()
+        .map(|(f, n, k)| ((f.to_string(), *n), *k))
+        .collect();
+    assert_eq!(
+        got, want,
+        "有值绕过 `dialect::ps_literal` 自己进了单引号（PowerShell 还把 ‘ ’ ‚ ‛ 当引号）⇒ 改调它；\
+         确实不是 PowerShell 字面量的，写进 `SQ_ELSEWHERE` 并说清"
+    );
+    let planted = "fn q(s: &str) -> String {\n    format!(\"'{}'\", s.replace('\\'', \"''\"))\n}\n";
+    assert_eq!(
+        sq_census_of(planted),
+        BTreeMap::from([("'{", 1), ("''", 1)])
+    );
+}
+
+/// 〔WF1 · F〕家目录那两个环境变量名（字面量**整串相等**才算，`"$HOME/…"` 这类 shell 文本不算）。
+const HOME_VARS: &[&str] = &["HOME", "USERPROFILE"];
+
+/// `platform/paths.rs::home_dir_from` 之外允许的命中（逐条说清）。
+const HOME_ELSEWHERE: &[(&str, &str, usize)] = &[
+    // 交给插件子进程**透传**的变量名表（不是读家目录）。
+    ("plugin/invoke.rs", "HOME", 1),
+];
+
+/// `std::env::home_dir` 的调用：〔主会话 09-29 裁〕`dial/ssh_config.rs` 那一处归 WF2，WF1 合后改调同一个家目录函数。
+const STD_HOME_DIR_ELSEWHERE: &[(&str, usize)] = &[("dial/ssh_config.rs", 1)];
+
+fn home_census_of(src: &str) -> (BTreeMap<&'static str, usize>, usize) {
+    let prod = guard_core::production_code(src);
+    let lits = string_literals(&prod);
+    let vars = HOME_VARS
+        .iter()
+        .map(|v| (*v, lits.iter().filter(|l| l.as_str() == *v).count()))
+        .filter(|(_, k)| *k > 0)
+        .collect();
+    (vars, prod.matches("env::home_dir").count())
+}
+
+/// ★ 住址：`设计/99 §2.3`「高危四条 … 与中低各条发版前修」· `第四波记录/WIN3.md §2` F（后端多处只读 `HOME`、另有多处各自手写 `HOME.or(USERPROFILE)`）。
+/// 后端生产段读家目录只在 `platform/paths.rs::home_dir_from` 一处：`"HOME"` / `"USERPROFILE"` 字面量的 `(文件, 名字) → 处数` ==
+/// 那一处各 1 ＋ [`HOME_ELSEWHERE`]（两向）；`std::env::home_dir` 的调用 == [`STD_HOME_DIR_ELSEWHERE`]。正控：往副本里塞回一处手写读数得出。
+#[test]
+fn the_home_directory_is_read_in_one_place() {
+    let root = crate::guard_support::src_root();
+    let mut vars = BTreeMap::new();
+    let mut std_calls = BTreeMap::new();
+    for (p, src) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
+        let rel = p
+            .strip_prefix(&root)
+            .unwrap_or(&p)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let (v, n) = home_census_of(&src);
+        for (name, k) in v {
+            vars.insert((rel.clone(), name), k);
+        }
+        if n > 0 {
+            std_calls.insert(rel, n);
+        }
+    }
+    let mut want: BTreeMap<(String, &str), usize> = HOME_ELSEWHERE
+        .iter()
+        .map(|(f, v, k)| ((f.to_string(), *v), *k))
+        .collect();
+    for v in HOME_VARS {
+        want.insert(("platform/paths.rs".to_string(), *v), 1);
+    }
+    assert_eq!(
+        vars, want,
+        "家目录又有人自己读了（Windows 上默认没有 `HOME`）⇒ 改调 `platform::paths::home_dir` / `home_dir_from`；\
+         不是读家目录的（透传表之类），写进 `HOME_ELSEWHERE` 并说清"
+    );
+    let want_std: BTreeMap<String, usize> = STD_HOME_DIR_ELSEWHERE
+        .iter()
+        .map(|(f, k)| (f.to_string(), *k))
+        .collect();
+    assert_eq!(std_calls, want_std, "`std::env::home_dir` 的调用点变了");
+    let planted = "fn h() -> Option<std::ffi::OsString> {\n    std::env::var_os(\"HOME\")\n}\n";
+    assert_eq!(home_census_of(planted), (BTreeMap::from([("HOME", 1)]), 0));
+}

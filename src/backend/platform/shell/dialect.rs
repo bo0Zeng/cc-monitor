@@ -96,6 +96,8 @@ pub(crate) struct StartupCandidate {
     /// 那台机器上的绝对路径（按那台 home 的写法拼，见 `user_files::join_under`）。
     pub path: String,
     pub listed: Listed,
+    /// 〔WF1 · L〕哪一代 PowerShell 加载它（执行策略按代问）；POSIX 与人另指的那一份 ⇒ `None`。
+    pub host: Option<super::PsHost>,
 }
 
 /// 一份候选**不在盘上时**列不列。
@@ -219,10 +221,10 @@ pub(crate) fn builtin_alias_note(name: &str, aliases: &PsAliases) -> Option<Stri
 /// `Get-Alias` 那一段：只读、不吃任何用户输入。
 const GET_ALIAS_SCRIPT: &str = "Get-Alias | ForEach-Object { $_.Name + [char]9 + $_.Definition }";
 
-/// 起一次 `powershell.exe -NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
+/// 起一次 5.1 的 `-NoProfile -NonInteractive -Command <固定脚本>`（这条 argv 与不弹窗那一格住 `platform::shell`）。
 /// `-NoProfile`：问的是**自带**那一份（用户 profile 里另加 / 删的别名不算）。这台没有 PowerShell ⇒ `Err`（说问不到）。
 fn ask_get_alias() -> PsAliases {
-    let mut cmd = crate::platform::shell::powershell_readonly(GET_ALIAS_SCRIPT)
+    let mut cmd = crate::platform::shell::powershell_on(super::PsHost::Desktop, GET_ALIAS_SCRIPT)
         .ok_or_else(|| copy_text("rsShellDialect.ps.noPowerShellHere", &[]))?;
     let out = cmd
         .stdout(std::process::Stdio::piped())
@@ -419,6 +421,7 @@ impl ShellDialect for Posix {
             .map(|n| StartupCandidate {
                 path: crate::platform::paths::join_under(home, n),
                 listed: Listed::IfFileExists,
+                host: None,
             })
             .collect()
     }
@@ -570,30 +573,24 @@ pub(crate) fn ps_wrapper_function(name: &str, word: &str) -> String {
     )
 }
 
-/// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`（原住 `assets/aliases/block.rs`，别名块模板填数据目录那一格用）。
-/// ⚠ 与 [`PowerShell::word`] 不同：它只双写 ASCII `'`，不管弯引号 —— 两份各有来历，纯搬家不合并（`第四波记录/OSA.md`）。
-pub(crate) fn ps_single_quoted(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
+/// 〔WF1 · `WIN3.md §2` M/N〕**PowerShell 单引号字面量的唯一出口**：`'…'` 包裹，[`PS_QUOTES`] 里每个字符都双写。
+/// 后端生产段凡是把一个值放进 PowerShell 单引号里的都只调它（判据 `shell_home_guard.rs` 零命中）。
+///
+/// 别名参数也每个都走它、不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有 `--%`（停止解析）与 `--x=a.b` 在 `.` 处被劈开两个坑。
+pub(crate) fn ps_literal(s: &str) -> String {
+    let mut out = String::from("'");
+    for c in s.chars() {
+        if PS_QUOTES.contains(&c) {
+            out.push(c);
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
 }
 
 impl PowerShell {
-    /// 一个参数：**每个都单引号**（引号字符双写）。
-    ///
-    /// 为什么不像 POSIX 那样「安全字符裸放」：PS 5.1 对裸词有两个已知坑 —— `--%` 是停止解析记号；
-    /// `--x=a.b` 这一形会在 `.` 处被劈成两个参数 —— 而 W1（真 Windows）买不到 ⇒ 取最保守的一形。
-    fn word(w: &str) -> String {
-        let mut out = String::from("'");
-        for c in w.chars() {
-            if PS_QUOTES.contains(&c) {
-                out.push(c);
-            }
-            out.push(c);
-        }
-        out.push('\'');
-        out
-    }
-
-    /// `'a' 'b''c'` → `["a", "b'c"]`。只认 [`Self::word`] 产出的那一形（每个词都是一对单引号）。
+    /// `'a' 'b''c'` → `["a", "b'c"]`。只认 [`ps_literal`] 产出的那一形（每个词都是一对单引号）。
     fn split_words(s: &str) -> Result<Vec<String>, String> {
         let mut out = Vec::new();
         let mut it = s.chars().peekable();
@@ -672,7 +669,10 @@ impl ShellDialect for PowerShell {
             .filter(|d| d.starts_with(home))
             .unwrap_or_else(|| home.join("Documents"));
         let mut out = Vec::new();
-        for (dir, always) in [("WindowsPowerShell", true), ("PowerShell", false)] {
+        for (dir, always, host) in [
+            ("WindowsPowerShell", true, super::PsHost::Desktop),
+            ("PowerShell", false, super::PsHost::Core),
+        ] {
             let d = docs.join(dir);
             let listed = if always {
                 Listed::Always
@@ -683,6 +683,7 @@ impl ShellDialect for PowerShell {
                 out.push(StartupCandidate {
                     path: d.join(f).display().to_string(),
                     listed: listed.clone(),
+                    host: Some(host),
                 });
             }
         }
@@ -696,7 +697,7 @@ impl ShellDialect for PowerShell {
     /// `if (Test-Path -LiteralPath '…') { . '…' }` —— `-LiteralPath` 让路径里的 `[` `]` 不被当通配符；
     /// 文件不在时整行什么都不做。
     fn source_line(&self, our_file: &str) -> String {
-        let p = Self::word(our_file);
+        let p = ps_literal(our_file);
         format!("if (Test-Path -LiteralPath {p}) {{ . {p} }}")
     }
 
@@ -717,14 +718,14 @@ impl ShellDialect for PowerShell {
         let mut call = format!("    & {word}");
         for w in left {
             call.push(' ');
-            call.push_str(&Self::word(w));
+            call.push_str(&ps_literal(w));
         }
         call.push_str(PS_TAIL);
         if let Some(right) = right {
             call.push_str(PS_END);
             for w in right {
                 call.push(' ');
-                call.push_str(&Self::word(w));
+                call.push_str(&ps_literal(w));
             }
         }
         [

@@ -74,7 +74,7 @@ function renderInner(req: PayloadRenderRequest): string {
         case "export-relay-base-url": {
           const m = /^(http:\/\/[^/]*\/)(.*)$/.exec(op.value);
           const [origin, path] = m ? [m[1], `/${m[2]}`] : [op.value, ""];
-          return `export ANTHROPIC_BASE_URL=${q(origin)}"$(cat "$HOME/.cc-monitor/relay-key")"${q(path)}; `;
+          return `export ANTHROPIC_BASE_URL=${q(origin)}$(cat ~/.cc-monitor/relay-key)${q(path)}; `;
         }
         case "unset-config-dir":
           return "unset CLAUDE_CONFIG_DIR; ";

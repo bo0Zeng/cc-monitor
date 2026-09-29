@@ -1109,15 +1109,7 @@ fn answer_size(args: &serde_json::Value) -> Answer {
 }
 
 fn home_var() -> Option<std::ffi::OsString> {
-    let pick = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
-    #[cfg(windows)]
-    {
-        pick("HOME").or_else(|| pick("USERPROFILE"))
-    }
-    #[cfg(not(windows))]
-    {
-        pick("HOME")
-    }
+    crate::platform::paths::home_dir().map(std::path::PathBuf::into_os_string)
 }
 
 /// `files.grep` 的入参：`{path, needle, ignore_ascii_case?, limit?}`。`needle` 与 `path` 同两种形（字符串 / `{"b16"}`），

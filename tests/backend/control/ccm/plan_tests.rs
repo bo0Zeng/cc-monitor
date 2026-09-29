@@ -1299,7 +1299,7 @@ fn the_home_is_home_then_userprofile_and_paths_under_it_are_joined_per_segment()
     );
 }
 
-/// 〔US1 · RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat "$HOME/…")` 形，
+/// 〔US1 · RK1 报 2〕E10：继承来的中转地址（钥匙已展开）不许原样进载荷 —— 渲回 `$(cat ~/…)` 形，
 /// 真 `sh` 在夹具家目录下展开后 == 原地址；认不出的（用户自己的端点 · 形状不对的）原样。
 /// 守的要求：`INVARIANTS §48.1a`（中转钥匙不进 argv）· RK1 记录 §5.7 第 3 条（主会话交本路）。
 #[test]
@@ -1328,7 +1328,7 @@ fn us1_an_inherited_keyed_relay_url_goes_inward_as_a_file_read_not_as_the_key() 
         "钥匙原样进了载荷（会进 tmux send-keys 的 argv）：{p}"
     );
     assert!(
-        p.contains("\"$(cat \"$HOME/.cc-monitor/relay-key\")\""),
+        p.contains("'$(cat ~/.cc-monitor/relay-key)'"),
         "没渲成现读钥匙文件那一形：{p}"
     );
     // 真 shell：取载荷里那一句 export，在夹具家目录下跑、印出来 == 原地址。

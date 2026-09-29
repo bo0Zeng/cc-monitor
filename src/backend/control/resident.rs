@@ -44,9 +44,7 @@ const TOKEN_BYTES: usize = 16;
 pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
 
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
+    crate::platform::paths::home_dir()
 }
 
 fn pid_path(home: &Path, port: u16) -> PathBuf {

@@ -96,6 +96,8 @@ pub(crate) struct StartupFile {
     /// 〔AL2〕在盘上、可那台后端读不了它（非 UTF-8 · 太大 · 解到 home 外 · I/O）—— 后端原话；`None` = 读得了或不在。
     /// 从前本机直读时这一形被吞成「没有别名块」。
     pub unreadable: Option<String>,
+    /// 〔WF1 · L〕加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
+    pub policy: Option<crate::platform::shell::powershell::ExecPolicy>,
 }
 
 /// 生成文件的绝对路径。`home` 由调用方给 —— 测试拿临时目录当 home，**绝不碰真实家目录**。
@@ -623,13 +625,32 @@ pub(crate) fn rc_candidates_via(
     shell: Shell,
     extra: Option<&str>,
 ) -> Result<Vec<StartupFile>, String> {
+    rc_candidates_asking(
+        d,
+        home,
+        shell,
+        extra,
+        &crate::platform::shell::powershell::execution_policy,
+    )
+}
+
+/// 同上，执行策略由 `ask` 答（同一代一次读里只问一次；判据交替身）。
+pub(crate) fn rc_candidates_asking(
+    d: &dyn Door,
+    home: &str,
+    shell: Shell,
+    extra: Option<&str>,
+    ask: &dyn Fn(crate::platform::shell::PsHost) -> crate::platform::shell::powershell::ExecPolicy,
+) -> Result<Vec<StartupFile>, String> {
     let dia = shell.dialect();
+    let mut asked = std::collections::BTreeMap::new();
     let mut cands = dia.startup_candidates(home);
     if let Some(x) = extra {
         if !cands.iter().any(|c| c.path == x) {
             cands.push(dialect::StartupCandidate {
                 path: x.to_string(),
                 listed: Listed::Always,
+                host: None,
             });
         }
     }
@@ -654,6 +675,9 @@ pub(crate) fn rc_candidates_via(
                 .map(|t| block::block_state(Path::new(&c.path), t))
                 .unwrap_or_default(),
             unreadable,
+            policy: c
+                .host
+                .map(|h| asked.entry(h).or_insert_with(|| ask(h)).clone()),
             path: c.path,
         });
     }
@@ -793,6 +817,17 @@ pub(crate) fn answer_block_remove(d: &dyn Door, args: &Value) -> Answer {
     let (_, p) = block_target(d, args)?;
     block::uninstall_from_profile(d, Path::new(&p)).map_err(refused)?;
     Ok(json!({}))
+}
+
+/// 〔WF1 · L · `设计/99 §2.3`〕`powershell-policy-set {host}` → `{policy, setError}`：那一代 PowerShell 当前用户那一档设成
+/// `RemoteSigned`，再现问一次。只做这一件固定的事（不收策略值）；界面只在用户点了、确认了之后发。这台不说 PowerShell ⇒ 拒。
+pub(crate) fn answer_policy_set(args: &Value) -> Answer {
+    dialect_here(Shell::PowerShell).map_err(refused)?;
+    let host: crate::platform::shell::PsHost =
+        serde_json::from_value(args.get("host").cloned().unwrap_or(Value::Null))
+            .map_err(|_| bad("`host` must be \"powershell\" or \"pwsh\""))?;
+    let (policy, set_error) = crate::platform::shell::powershell::allow_local_scripts(host);
+    Ok(json!({ "policy": policy, "setError": set_error }))
 }
 
 #[cfg(test)]

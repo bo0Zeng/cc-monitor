@@ -39,3 +39,80 @@ fn there_is_no_posix_shell_off_unix() {
         "非 unix 上竟然备出了一条 shell 命令 —— 那只能是编出来的"
     );
 }
+
+use super::PsHost;
+
+/// ★ 住址：`设计/99 §2.3`「L 的做法：那台后端只读现问生效策略，块不会加载就明说」。
+/// 执行策略的词 → 本地未签名的 profile（我们装的块）跑不跑：PowerShell 定义的七个词逐个（手写规格，照 `about_Execution_Policies`），
+/// 不分大小写；`Undefined` / `Default` 的效果随 Windows 版本变 ⇒ 说不清；别的词也说不清。
+#[test]
+fn which_execution_policies_load_a_local_unsigned_profile() {
+    use super::powershell::policy_loads_local_script as loads;
+    let spec = [
+        ("Restricted", Some(false)),
+        ("AllSigned", Some(false)),
+        ("RemoteSigned", Some(true)),
+        ("Unrestricted", Some(true)),
+        ("Bypass", Some(true)),
+        ("Undefined", None),
+        ("Default", None),
+    ];
+    for (w, want) in spec {
+        assert_eq!(loads(w), want, "{w}");
+        assert_eq!(loads(&w.to_uppercase()), want, "{w} 大写");
+    }
+    assert_eq!(loads("Signed"), None);
+}
+
+/// ★ 住址同上。三行（生效 · `MachinePolicy` · `UserPolicy`）读成现状：组策略任一档有值 ⇒ 钉着；行数不对 ⇒ 说认不出、带原话。
+#[test]
+fn the_policy_listing_reads_the_effective_policy_and_group_policy() {
+    use super::powershell::read_policy_listing as read;
+    let a = read(PsHost::Desktop, "Restricted\r\nUndefined\r\nUndefined\r\n");
+    assert_eq!(
+        (a.effective.as_deref(), a.loads, a.group_policy, a.error),
+        (Some("Restricted"), Some(false), false, None)
+    );
+    let b = read(PsHost::Core, "AllSigned\nUndefined\nAllSigned\n");
+    assert_eq!(
+        (b.host, b.loads, b.group_policy),
+        (PsHost::Core, Some(false), true)
+    );
+    let c = read(PsHost::Desktop, "RemoteSigned\n");
+    assert_eq!((c.effective, c.loads), (None, None));
+    assert!(
+        c.error.is_some_and(|e| e.contains("RemoteSigned")),
+        "认不出却没带原话"
+    );
+}
+
+/// ★ 住址同上。起那一代 PowerShell：按代选程序、`-NoProfile -NonInteractive -Command <脚本>`，
+/// 剥掉继承来的 `PSExecutionPolicyPreference`（父进程给的进程级策略，新开的窗口没有它 —— 不剥就会把它当成那台的策略答）。
+#[test]
+fn a_powershell_starts_without_profile_and_without_the_inherited_policy() {
+    for (h, exe) in [
+        (PsHost::Desktop, "powershell.exe"),
+        (PsHost::Core, "pwsh.exe"),
+    ] {
+        let c = super::powershell_command(h, "Get-ExecutionPolicy");
+        assert_eq!(c.get_program(), exe);
+        let args: Vec<_> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-ExecutionPolicy"
+            ]
+        );
+        assert!(
+            c.get_envs()
+                .any(|(k, v)| k == "PSExecutionPolicyPreference" && v.is_none()),
+            "没剥继承来的进程级策略"
+        );
+    }
+}

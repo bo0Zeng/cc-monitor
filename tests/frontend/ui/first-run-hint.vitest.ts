@@ -70,7 +70,6 @@ function rig(): Rig {
   const hint = new FirstRunHint(host, {
     origins: () => ORIGINS,
     statusOf: book.statusOf,
-    hostOs: () => "linux",
     openList,
   });
   return {
@@ -86,7 +85,7 @@ function rig(): Rig {
 /** 与被测对象**同一份入参**现算的期望摘要 —— 判据不自己造第二套数。 */
 function expectedSummary(statusOf: () => MachineStatus): string | null {
   return summarizeGaps(
-    computeGaps({ origins: ORIGINS, statusOf, hostOs: "linux" }),
+    computeGaps({ origins: ORIGINS, statusOf }),
   );
 }
 
@@ -140,7 +139,6 @@ describe("NF3D2 · 第一次打开说得出下一步", () => {
     const hint2 = new FirstRunHint(hint2Host, {
       origins: () => ORIGINS,
       statusOf: () => partial,
-      hostOs: () => "linux",
       openList: vi.fn(),
     });
     hint2.refresh();
@@ -245,7 +243,6 @@ describe("NF3D3 · 🔴 「还差什么」与「别再烦我」是两件事，�
     const next = new FirstRunHint(host2, {
       origins: () => ORIGINS,
       statusOf: r.book.statusOf,
-      hostOs: () => "linux",
       openList: vi.fn(),
     });
     next.refresh();
@@ -295,7 +292,6 @@ describe("〔第四波 ST2〕指路的措辞跟上改名：「诊断」，指向
     const hint = new FirstRunHint(host, {
       origins: () => ["（本机）"],
       statusOf: () => ({}),
-      hostOs: () => "linux",
       openList: vi.fn(),
     });
     hint.refresh();

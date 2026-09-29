@@ -670,7 +670,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5r-link-fixes-win3**（2026-09-29，WF2 合并那一拍，WIN3 上一趟读数）：行为 / 协议 —— russh 副本压缩循环 CZ2（撑满就扩、吃光且冲刷完才收工：压缩链路上大块不可压数据不再断）·
 /// `deploy-plan` 多 `leftovers`（部署残件每次连上照删）· 拨号 ack 多 `open_refused`（对端拒端口转发 ⇒ 停止重拨、明说）· `--list-projects` 没有记录树时出错行带码 `no_record_tree`（本机后端认它当零个项目）。子命令没变。
-pub const BUILD_ID: &str = "p5r-link-fixes-win3";
+///
+/// ★★★ **p5s-win-shell-fixes**（2026-09-29，WF1 合并那一拍，WIN3 上一趟读数）：行为 / 协议 —— PowerShell 单引号字面量只留一个出口（认全五个引号字符）· 流进 Windows 开终端那条路的远端命令不带双引号 ·
+/// 执行策略挡住别名块时明说、给标准做法（新帧命令 `powershell-policy-set`，只在用户确认后执行）· 写用户 PATH 保持注册表原类型 · 后端家目录收成 `platform` 一个家 · Windows 上本机 ccm 也现测。
+pub const BUILD_ID: &str = "p5s-win-shell-fixes";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -843,6 +846,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--aliases-block-render",
     "--aliases-block-install",
     "--aliases-block-remove",
+    // 〔WF1 · L〕帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
+    "--powershell-policy-set",
     "--skill-host-read",
     "--skill-host-write",
     "--skill-uninstall-apply",
