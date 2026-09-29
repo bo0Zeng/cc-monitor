@@ -563,8 +563,13 @@ pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
 /// 的 `HOME_REACHES` 里登记着 —— 那是 monitor 自己的目录，不是伸手拿用户的东西）。
 /// 起进程面：两次 `--ccm-probe`（`write_site_registry::SPAWNS` 里登记着）。
 /// **一个字节都不写。**
+///
+/// 〔FIX4 · 主会话裁⑥ · V149 手动兜底〕`fresh` = 先作废 PATH 探针那份 5 分钟缓存再问（「重新对齐」那一下交；缺席 = 照缓存）。
 #[tauri::command]
-pub fn local_ccm_entry_status() -> LocalCcmEntry {
+pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
+    if fresh == Some(true) {
+        *LOCAL_PROBE_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
     let home = dirs::home_dir();
     let path = home.as_ref().map(|h| {
         h.join(".cc-monitor")

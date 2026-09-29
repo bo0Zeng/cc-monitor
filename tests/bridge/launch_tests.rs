@@ -1,18 +1,5 @@
 use super::*;
 
-fn cfg(host: &str, user: &str, port: u16, key: Option<&str>) -> RemoteConfig {
-    RemoteConfig {
-        host: host.into(),
-        label: "t".into(),
-        port,
-        user: user.into(),
-        key_path: key.map(String::from),
-        host_key_fingerprint: None,
-        addresses: Vec::new(),
-        jump: None,
-    }
-}
-
 /// ★ U8b：**POSIX 上「不开终端窗口」是既定设计，文案不许暗示「以后会支持」。**
 ///
 /// 原文案「拉起终端窗口仅支持 Windows（v1）」里那个 `(v1)` 在撒谎 —— L1 早就裁决过
@@ -523,7 +510,7 @@ fn no_terminal_emulator_is_ever_spawned_from_this_file() {
 ///
 /// # 为什么隔壁那条判据挡不住
 ///
-/// `local_and_remote_share_the_same_payload` 断的正是「逐字节透传」，
+/// `local_posix_sends_the_payload_itself_without_an_ssh_wrap` 断的正是「逐字节透传」，
 /// 而它**只喂一个 payload，且那个 payload 里没有中转前缀**
 /// ⇒ 一把**只针对前缀**的剪刀从它下面走过去。
 /// ★ 这与 `D6 阻-2` 是**同一族病**：**输入域 = 1**（「形状对、恒答其中一张脸」）。
@@ -610,43 +597,17 @@ fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
 /// ★ L1 的验收判据（主计划 §2「关键判断」第 1 条逐字）：
 /// **给同一个 plan 换 transport，除 ssh 包装外输出逐字节相同。**
 ///
-/// 这条测试就是那句话的机器版：把远端命令体里的 ssh 包装层层剥掉，
-/// 剩下的必须与本地 argv **逐字节**相等。任何一侧偷偷加/减修饰都会红。
+/// 〔FIX4 · `设计/99 §2.1 ⑬`〕远端那一半（ssh 外壳 ＋ PS 单引号层剥净之后就是同一串）随渲染搬进本机后端：
+/// `tests/backend/dial_terminal_tests.rs::the_basic_shape_goes_through_the_agent_and_wraps_the_payload_only_twice`。
+/// 这里留本地那一半：直接 exec `bash -lic <载荷>`，载荷逐字节不动、没有 ssh 包。
 #[test]
-fn local_and_remote_share_the_same_payload() {
+fn local_posix_sends_the_payload_itself_without_an_ssh_wrap() {
     let payload = "unset CLAUDE_CONFIG_DIR; cd '/home/z/p' && ccm --tmux claude --resume s1";
     let local = build_local_posix_argv(payload).unwrap();
     assert_eq!(
         local,
         vec!["bash", "-lic", payload],
         "本地：直接 exec，无 ssh 包"
-    );
-
-    let c = cfg("h", "u", 22, None);
-    let remote = build_remote_ssh_ps_command(&c, payload).unwrap();
-    // 剥 ssh 层 → 剥 PS 单引号层 → 得到与本地同构的 `bash -lic <quoted>`
-    let after_dashdash = remote.rsplit_once("-- ").unwrap().1;
-    let inner = after_dashdash
-        .strip_prefix('\'')
-        .and_then(|s| s.strip_suffix('\''))
-        .expect("ps quoted")
-        .replace("''", "'");
-    assert_eq!(
-        inner,
-        format!("bash -lic {}", posix_quote(payload)),
-        "远端：同一个 payload，只多了 ssh + PS 两层包装"
-    );
-    // ★ 逐字节：把远端**每一层包装都反解**之后，得到的必须就是本地那一串。
-    //（不能写成 `inner.contains(payload)` —— payload 里有单引号，`posix_quote`
-    //  会把它变成 `'\''`；那条会误报，而它误报说明的恰恰是「包装确实存在」。）
-    let unwrapped = inner
-        .strip_prefix("bash -lic '")
-        .and_then(|s| s.strip_suffix('\''))
-        .expect("bash -lic 层")
-        .replace(r"'\''", "'");
-    assert_eq!(
-        unwrapped, local[2],
-        "剥净包装后，两条路送的是同一串（逐字节）"
     );
 }
 
@@ -665,15 +626,11 @@ fn local_argv_shares_the_transport_agnostic_validation() {
 /// ★ 「拒绝双引号」是 **PowerShell 5.1 的怪癖**，不是命令本身的性质
 /// ⇒ 它只该拦远端那条路，**不该**跟着搬到 POSIX 本地。
 ///
-/// 判据落在性质上，不落在表面特征上：把一个 Windows 传参畸变套到 Linux 上，
-/// 会让本地路径无端拒绝一批合法命令。
+/// 〔FIX4〕远端（走 PowerShell）那一半的「应拒」随渲染搬进本机后端（`dial_terminal_tests.rs::bad_inputs_are_refused_and_say_which_cell`）；
+/// 这里留本地那一半。
 #[test]
 fn double_quote_rejection_is_powershell_only() {
     let with_dq = r#"claude --append-system-prompt "be brief""#;
-    assert!(
-        build_remote_ssh_ps_command(&cfg("h", "u", 22, None), with_dq).is_err(),
-        "远端（走 PowerShell）应拒"
-    );
     assert!(
         build_local_posix_argv(with_dq).is_ok(),
         "POSIX 本地不经 PowerShell，不该拦"
@@ -1258,105 +1215,9 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     );
 }
 
-#[test]
-fn build_basic_agent_auth() {
-    let c = cfg("pi.local", "pi", 22, None);
-    let remote = "unset X; cd '/home/pi' && claude --resume s1";
-    let got = build_remote_ssh_ps_command(&c, remote).unwrap();
-    assert!(
-        got.starts_with("& ssh -t -p 22 pi@pi.local -- "),
-        "基本形态（agent 无 -i）: {got}"
-    );
-    // 解码 PS 单引号层（'' → '，全量双写故非重叠替换可逆）应还原传输包装形态。
-    let payload = got.rsplit_once("-- ").unwrap().1;
-    let inner = payload
-        .strip_prefix('\'')
-        .and_then(|s| s.strip_suffix('\''))
-        .expect("ps quoted");
-    assert_eq!(
-        inner.replace("''", "'"),
-        format!("bash -lic {}", posix_quote(remote))
-    );
-}
-
-#[test]
-fn build_key_and_port() {
-    let c = cfg("10.0.0.2", "u", 2222, Some(r"C:\Users\z's\id_ed25519"));
-    let got = build_remote_ssh_ps_command(&c, "claude --resume s1").unwrap();
-    assert!(got.starts_with("& ssh -t -p 2222 -i 'C:\\Users\\z''s\\id_ed25519' u@10.0.0.2 -- "));
-    // PS 单引号层把 ' 双写：bash -lic 'claude…' → ''claude…''
-    assert!(got.contains("bash -lic ''claude --resume s1''"), "{got}");
-}
-
-#[test]
-fn build_ipv6_host_ok() {
-    let c = cfg("[::1]", "u", 22, None);
-    assert!(build_remote_ssh_ps_command(&c, "claude --resume s1").is_ok());
-}
-
-#[test]
-fn build_jump_arg_variants() {
-    // F56：默认 port 省 :port,非默认带;非法 user/host 拒。
-    assert_eq!(
-        build_jump_arg("pi", "jump.local", 22).unwrap(),
-        " -J pi@jump.local"
-    );
-    assert_eq!(
-        build_jump_arg("u", "10.0.0.1", 2222).unwrap(),
-        " -J u@10.0.0.1:2222"
-    );
-    assert!(build_jump_arg("bad user", "h", 22).is_err(), "非法 user 拒");
-    assert!(build_jump_arg("u", "h;rm -rf", 22).is_err(), "非法 host 拒");
-}
-
-#[test]
-fn reject_bad_inputs() {
-    let c = cfg("h", "u", 22, None);
-    assert!(build_remote_ssh_ps_command(&c, "").is_err(), "空命令拒");
-    assert!(
-        build_remote_ssh_ps_command(&c, "a\nb").is_err(),
-        "控制字符拒"
-    );
-    assert!(
-        build_remote_ssh_ps_command(&c, "cc --x \"y\"").is_err(),
-        "双引号拒（PS native 畸变面）"
-    );
-    assert!(
-        build_remote_ssh_ps_command(&c, &"a".repeat(5000)).is_err(),
-        "超长拒"
-    );
-    let bad_user = cfg("h", "u ser", 22, None);
-    assert!(
-        build_remote_ssh_ps_command(&bad_user, "x").is_err(),
-        "user 空格拒"
-    );
-    let empty_user = cfg("h", "", 22, None);
-    assert!(
-        build_remote_ssh_ps_command(&empty_user, "x").is_err(),
-        "user 空拒"
-    );
-    let bad_host = cfg("h; rm", "u", 22, None);
-    assert!(
-        build_remote_ssh_ps_command(&bad_host, "x").is_err(),
-        "host 注入拒"
-    );
-}
-
-#[test]
-fn remote_cmd_single_quotes_survive_both_layers() {
-    // cwd 带单引号：前端 posixQuote 产出 '\'' 序列，PS 层再双写——验证嵌套后形态可逆。
-    let c = cfg("h", "u", 22, None);
-    let remote = r"cd '/a'\''b' && claude --resume s1";
-    let got = build_remote_ssh_ps_command(&c, remote).unwrap();
-    // PS 单引号字面量内：每个 ' 变 ''。解码（'' → '）应还原出 bash -lic 'POSIX(remote)'。
-    let ps_payload = got.rsplit_once("-- ").map(|(_, p)| p).expect("has payload");
-    let inner = ps_payload
-        .strip_prefix('\'')
-        .and_then(|s| s.strip_suffix('\''))
-        .expect("ps quoted");
-    let decoded = inner.replace("''", "'");
-    assert_eq!(decoded, format!("bash -lic {}", posix_quote(remote)));
-}
+// 〔FIX4 · `设计/99 §2.1 ⑬`〕这里原来六条钉 `build_remote_ssh_ps_command`〔散文墓碑〕与 `build_jump_arg`〔散文墓碑〕（基本形态 · 钥匙与口 ·
+// IPv6 · 跳板参数 · 坏输入 · 单引号过两层）：ssh 外壳搬进本机后端（帧命令 `terminal-ssh`），期望原样搬进
+// `tests/backend/dial_terminal_tests.rs`（被测对象搬了家，一个期望没改；跳板那一格改经 `machine::resolve`）。
 
 // ═══════ `设计/80 §8.7` 步 3 收尾（第二波 T4）：**本地半的生产写入方** ═══════════════════
 //
@@ -1571,17 +1432,18 @@ fn the_launch_token_never_reaches_a_log_macro_in_launch_rs() {
     );
 }
 
-/// ★ 接线（**文本**这一层）：`launch_remote_terminal` 的两条出路（本机 / 远端）**都**先接前奏再开窗。
+/// ★ 接线（**文本**这一层）：开窗那一条命令（`open_terminal_window`）先接前奏再开窗。
 ///
-/// 射程如实写：它是一个 tauri 命令（读配置、探 `ssh.exe`、真开窗），本机驱动不了 ⇒
-/// 这里判的是**函数体的文字**：开窗 `launch_powershell_window(` 几处，接前奏 `with_rbind_bind_prelude(`
-/// 就得几处，而且每一处都把 `rbind_token` 递进去。死值验：把远端那一支的前奏删掉 ⇒ 2 ≠ 1 红。
+/// 射程如实写：它是一个 tauri 命令（探 `ssh.exe`、真开窗），本机驱动不了 ⇒ 这里判的是**函数体的文字**：
+/// 开窗 `launch_powershell_window(` 几处，接前奏 `with_rbind_bind_prelude(` 就得几处，而且每一处都把 `rbind_token` 递进去。
+/// 〔FIX4 · `99 §2.1 ⑬`〕原来那条命令分本机 / 远端两条出路（远端那条自己拼 ssh）；ssh 外壳搬进本机后端之后只剩一条出路。
+/// 死值验：把前奏删掉 ⇒ 1 ≠ 0 红。
 #[test]
-fn both_exits_of_launch_remote_terminal_hand_the_token_to_the_prelude() {
+fn the_window_opener_hands_the_token_to_the_prelude() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/launch.rs"));
     let start = prod
-        .find("pub async fn launch_remote_terminal(")
-        .expect("生产段里找不到 `launch_remote_terminal` —— 改名了就回来改本条");
+        .find("pub async fn open_terminal_window(")
+        .expect("生产段里找不到 `open_terminal_window` —— 改名了就回来改本条");
     // ⚠ 变量刻意不叫 `body`：本文件里另有一个 `body` 是 `read_to_string` 读进来的语料，
     //   `needle_anchor_registry` 的语料追踪按**名字**认 —— 同名会把这里（`include_str!` 的编译期文本）
     //   误算进那条递减棘轮。
@@ -1591,12 +1453,12 @@ fn both_exits_of_launch_remote_terminal_hand_the_token_to_the_prelude() {
     let preludes = fn_text.matches("with_rbind_bind_prelude(").count();
     let handed = fn_text.matches("rbind_token.as_deref()").count();
     assert_eq!(
-        opens, 2,
-        "开窗的出路不是 2 条（本机 / 远端）—— 抽取器瞄偏了，或多了一条出路：\n{fn_text}"
+        opens, 1,
+        "开窗的出路不是 1 条 —— 抽取器瞄偏了，或多了一条出路：\n{fn_text}"
     );
     assert_eq!(
         preludes, opens,
-        "有一条开窗的出路没接令牌握手前奏 —— 那条路拉起的窗口本地表收不到"
+        "开窗的出路没接令牌握手前奏 —— 那条路拉起的窗口本地表收不到"
     );
-    assert_eq!(handed, opens, "有一处前奏没拿到这次的令牌");
+    assert_eq!(handed, opens, "前奏没拿到这次的令牌");
 }

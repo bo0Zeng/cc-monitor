@@ -18,6 +18,18 @@
  *  纠正上限，避免被默认 200k 除出**误报 ctx≥80%**。存 config.json `contextLimits` 字段。纯模块——由调用方注入。 */
 export type ContextLimitOverrides = Record<string, number>;
 
+/** 〔FIX4 · `70 §10` 第 8 条〕config.json `contextLimits` 那一格 ⇒ 覆盖表（读的唯一一份：状态栏 chip 与设置页都走它）。
+ *  不是对象 ⇒ 空表；非正数 / 非数字的那几行丢掉（手改坏了的盘不许把表整个带歪）。 */
+export function readContextLimits(raw: unknown): ContextLimitOverrides {
+  const out: ContextLimitOverrides = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (k.trim() !== "" && typeof v === "number" && Number.isFinite(v) && v > 0) out[k] = v;
+    }
+  }
+  return out;
+}
+
 /** context 占用%用的模型上限（tokens）。未知返 null → 调用方显 `?` 不显错 %。`overrides` 优先（子串匹配）。 */
 export function contextLimit(
   model: string | null | undefined,

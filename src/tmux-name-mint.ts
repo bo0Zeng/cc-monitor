@@ -1,41 +1,32 @@
 /**
  * 〔FE1 · 第四波 4D〕**起会话时那个 tmux 会话名从哪来 —— 本机与远端同一个家。**
  *
- * 守的要求：`设计/01 §5` D1「**一个判定只有一个家**」（「同一条规则有两份实现，它们就会漂；而漂开的后果是静默的错，不是报错」）
- * ＋ D4「**一条都不许静默忽略**」。
+ * 守的要求：`设计/01 §5` D1「**一个判定只有一个家**」＋ D4「**一条都不许静默忽略**」；
+ * 〔FIX4〕`设计/90 §3` J7「tmux 名派生 ＋ 撞名避让只留后端」。
  *
- * # 为什么收成一个
+ * # 名字是那台后端铸的
  *
- * 「列出那台机器现有的 tmux 名 → 从 cwd 派生基名 → 撞名避让」此前抄了五份：本机两份（`ipc/local-tmux-name.ts`
- * ＋ `tab-session-actions.ts` 里一份内联），远端三份（`remote-launch-run.ts::runNewSessionRemote` ·
- * `settings/machine-card.ts` 开新 Claude · `tab-session-actions.ts::resumeTabTmuxInner` 全新那一支）。
- * **降级口径两种**：本机「列不出 ⇒ 不铸」，远端「列不出 ⇒ 空集铸名、不避让」。后者正是 issue #76 的形状 ——
- * 同一个 cwd 派生出同一个名字，撞上远端 `create-or-attach` 的幂等闸，**静默接进第一个会话，而用户以为开了新的**。
- * 注释里记着四次「这里修了、那里漏了」。
+ * 「从 cwd 派生基名 → 撞名避让」原先前端一份（`remote-launch.ts` 的 `deriveTmuxName` · `mintTmuxName` ·
+ * `mintSessionTmuxName`，分叉那条 `fork-launch.ts::forkTmuxName`）、后端一份（`control/ccm/plan.rs`，终端里敲 `ccm` 走它），
+ * 两边逐字同规则、跨语言对拍钉着。〔FIX4 · J7〕前端那份删了：要名字就问**那台**后端的 `tmux-name-mint`
+ * （`{cwd}` ⇒ `<项目名>-cc` · `{forkOf}` ⇒ `<…>-fork-cc`，按那台那张会话快照避让）—— 规则与名单都在那一台，
+ * 于是界面铸出来的名字与终端里在同一目录敲 `ccm` 铸的是同一个。
  *
- * # 规则只有一条：列不出 ⇒ 不铸名
+ * # 规则只有一条：问不到 ⇒ 不铸名
  *
- * 「列不出」与「零会话」是两件事，不许压成一个空集：
- *
- * 〔MIG-1 续〕读口是 `tmux-reads.ts::listTmux`（那台后端的 `tmux-list` 成品），**本机远端同一形**：
- *
- * | 回什么 | 读作 |
- * |---|---|
- * | 列表（含空表） | 知道 |
- * | `null` | 知道：那台**没装 tmux** ⇒ 一个名字都没占 |
- * | 抛 | **不知道**（那台后端不在 / 太旧 / 观测无效） |
- *
+ * 问不到（链路断 · 那台后端比这一问老 · 回的形状不认）⇒ [`MintOutcome`] `ok:false` 带原因，**不许**自己拼一个名字顶上 ——
+ * 不避让的名字就是 issue #76 的形状：同一个 cwd 派生出同一个名字，撞上已有会话，**静默接进第一个会话，而用户以为开了新的**。
  * 「不铸名」之后怎么办归调用方：本机把 `null` 交给后端（它有一条如实的「不进容器」旧路）；
  * 远端**没有**不进 tmux 的起法 ⇒ [`refuseUnmintable`]：不起，说清是哪台、为什么。
  *
- * ⚠ 算法本身（基名 `<项目名>-cc` ＋ `-2` / `-3` 避让）仍住 `remote-launch.ts`（`deriveTmuxName` ·
- * `mintTmuxName` · `mintSessionTmuxName`，纯函数、`node` 单测）；本文件只管「拿什么集合去避让」这一格。
- * 分叉那条（`fork-launch.ts::forkTmuxName`，基名 `-fork-cc`）用的是同一份 [`readTmuxListing`]。
+ * 分叉那条要知道源会话此刻在哪个 tmux 里（`fork-flow.ts`），那是另一问 —— 名单读口 [`readTmuxListing`] 也住这里
+ * （`tmux-reads.ts::listTmux` 的三态：列表 = 知道 · `null` = 那台没装 tmux · 抛 = 不知道）。
  */
 import { listTmux } from "./tmux-reads";
 import type { Origin } from "./ipc/origin";
-import { mintSessionTmuxName } from "./remote-launch";
 import type { TmuxSession } from "./tmux-sessions";
+import { chan } from "./ipc/chan";
+import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
 
@@ -44,49 +35,56 @@ export type TmuxListing =
   | { kind: "known"; sessions: readonly TmuxSession[] }
   | { kind: "unknown"; why: string };
 
-/** 问一次那台机器的 tmux 名单。**不抛**：问不到就是 `unknown`，带着原因。 */
+/** 问一次那台机器的 tmux 名单。**不抛**：问不到就是 `unknown`，带着原因；没装 tmux ⇒ 一张确定的空表。 */
 export async function readTmuxListing(origin: Origin): Promise<TmuxListing> {
   try {
-    return listingFromFetch(await listTmux(origin));
+    const sessions = await listTmux(origin);
+    return { kind: "known", sessions: sessions ?? [] };
   } catch (e) {
     return { kind: "unknown", why: String(e) };
   }
 }
 
-/**
- * 把一个**已经取回来**的答案读成 [`TmuxListing`]（给自己已经问过一次的调用方：
- * `tab-session-actions.ts::fetchTmuxFresh` 是 TabManager 里唯一的取数点，别为铸名再问一次）。
- *
- * `undefined` = 调用方那一问抛了（没问到）。`null` = 那台没装 tmux（〔MIG-1 续〕本机远端同一义，见头注表）。
- */
-export function listingFromFetch(
-  sessions: readonly TmuxSession[] | null | undefined,
-): TmuxListing {
-  if (sessions === undefined) return { kind: "unknown", why: copyText("tmuxMint.unknown.notAsked") };
-  if (sessions === null) return { kind: "known", sessions: [] };
-  return { kind: "known", sessions };
-}
-
-/** 名单里被占了的那些名字；`unknown` ⇒ `null`（**不是**空集）。 */
-export function takenNamesOf(listing: TmuxListing): string[] | null {
-  return listing.kind === "known" ? listing.sessions.map((s) => s.name) : null;
-}
-
-/** 给一个 cwd 铸一个不撞现有名字的会话名；名单不知道 ⇒ `null`（绝不退化成空集）。 */
-export function mintFromListing(cwd: string, listing: TmuxListing): string | null {
-  const taken = takenNamesOf(listing);
-  return taken === null ? null : mintSessionTmuxName(cwd, new Set(taken));
-}
-
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
 
-/** 问名单 ＋ 铸名，一步。 */
-export async function mintFreshTmuxName(origin: Origin, cwd: string): Promise<MintOutcome> {
-  const listing = await readTmuxListing(origin);
-  const name = mintFromListing(cwd, listing);
-  return name !== null
-    ? { ok: true, name }
-    : { ok: false, why: listing.kind === "unknown" ? listing.why : "" };
+/** 期限：那台后端问一次会话快照（起一次 `tmux ls`）就答；15 s 盖住回程（远端没连着还要握手），与 `tmux-list` 同一档。 */
+const MINT_BUDGET_MS = 15_000;
+
+/** `tmux-name-mint` 的成品 `{name}` ⇒ 名字；形状不认 ⇒ `null`。严格收（恰好一个键、非空串）。 */
+export function decodeMinted(v: unknown): string | null {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o);
+  return keys.length === 1 && keys[0] === "name" && typeof o.name === "string" && o.name !== "" ? o.name : null;
+}
+
+/** 问那台后端铸一个名字（两形共用的那一趟）。**不抛**。 */
+async function askMint(origin: Origin, args: { cwd: string } | { forkOf: string }): Promise<MintOutcome> {
+  let reply: Uint8Array;
+  try {
+    const body = jsonBody(args);
+    const budget = budgetWithin(MINT_BUDGET_MS);
+    reply = await chan.call(origin, "tmux-name-mint", body, budget);
+  } catch (e) {
+    return { ok: false, why: saidOf(e, copyText("tmuxMint.backend.tooOld")) };
+  }
+  let name: string | null = null;
+  try {
+    name = decodeMinted(readJson(reply));
+  } catch {
+    name = null;
+  }
+  return name !== null ? { ok: true, name } : { ok: false, why: copyText("tmuxMint.reply.badShape") };
+}
+
+/** 起新会话 / 全新 resume：那台按 cwd 派生 `<项目名>-cc`、按它的会话快照避让。 */
+export function mintFreshTmuxName(origin: Origin, cwd: string): Promise<MintOutcome> {
+  return askMint(origin, { cwd });
+}
+
+/** 分叉：源会话的 tmux 名（源已退出 ⇒ 它的 cwd）⇒ 那台铸 `<…>-fork-cc`（必与源名不同）、同样避让。 */
+export function mintForkTmuxName(origin: Origin, source: string): Promise<MintOutcome> {
+  return askMint(origin, { forkOf: source });
 }
 
 /** 远端铸不出名字 ⇒ 不起，说清是哪台、为什么（D4）。 */

@@ -315,7 +315,10 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("ssh_source::RemoteConfig", Kind::Transfer),
     // ── 本地预判围栏 ──〔FN1 · V119〕那一行（围栏本家那个判定）随窗口那道预判删了：这一类清零。
     // ── 本机动作 ──
-    ("launch::launch_remote_terminal", Kind::Terminal),
+    // 〔FIX4 · `99 §2.1 ⑬`〕开终端三步：机器事实（monitor 的机器表 ＋ 上次赢的那条）→ 窗口那条通道问本机后端 `terminal-ssh` →
+    //   开窗（`launch_remote_terminal`〔散文墓碑〕那一条拼 ssh 的边退役，ssh 外壳进了本机后端）。
+    ("dial_host::machine_facts", Kind::Terminal),
+    ("launch::open_terminal_window", Kind::Terminal),
     // ── monitor 自己的状态 ──
     ("utils::atomic_write_json", Kind::OwnState),
     // ── 对外文案表（CP2b）──
@@ -545,7 +548,9 @@ fn every_declared_edge_falls_in_a_live_category() {
         //   （上传下载经通道开单、订阅进度）· `sftp_cancel_transfer`〔散文墓碑〕（复制那一腿的取消，随复制走后端删了）走掉；
         //   剩 `RemoteConfig`（窗口进程拿着那台机器的配置当种子）。
         // 〔FN1 · V119〕本地围栏 1 → 0（类别删了）：窗口那道预判随「文件管理器不需要任何围栏」删了。
-        (1, 1),
+        // 〔FIX4 · `99 §2.1 ⑬`〕本机动作 1 → 2：开终端那一条（原先自己拼 ssh 的 `launch_remote_terminal`〔散文墓碑〕）拆成
+        //   机器事实（`dial_host::machine_facts`）＋ 开窗（`launch::open_terminal_window`），ssh 外壳经通道问本机后端 `terminal-ssh`。
+        (1, 2),
         "窗口进程里「还不是通道」的那几类条数变了（传输 · 本机动作）\
          〔F7a 09-24〕传输 7 → 5：编辑器读文本那两条（池子那条读文本命令 ＋ 它的上限常量）换成后端 \
          `files-read-text`，上限常量搬回窗口（`editor::MAX_EDIT_BYTES`）；\

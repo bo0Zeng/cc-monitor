@@ -229,6 +229,17 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "tmux-list",
         "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/tmux-reads.ts` 按恰好的键集合收",
     ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
+    (
+        "terminal-ssh",
+        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `dial/machine.rs::resolve`）；\
+         前端 `src/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
+    ),
+    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
+    (
+        "tmux-name-mint",
+        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_tmux_name_mint`）；前端 `src/tmux-name-mint.ts` 问，monitor 这一侧零发送点",
+    ),
     // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",
@@ -301,6 +312,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "panorama-edit",
         "后端算计划 ＋ 经这台文件管理面落盘（`control/panorama_edit.rs`，`stale` 重算）；前端 `src/panorama/api.ts::edit` 问，\
          monitor 这一侧零发送点",
+    ),
+    // 〔FIX4 · `97 §8`〕全景小程序卸口。
+    (
+        "panorama-uninstall",
+        "后端认身份 ＋ 经这台文件管理面 CAS 删装时放下的那一份（`control/panorama.rs::answer_uninstall`）；\
+         前端 `src/settings/panorama-section.ts` 问，monitor 这一侧零发送点",
     ),
     // 〔RESYNC · V149〕生在帧面上、界面直接问的一条（不是只读宿主那一族，故不进 `BORN_ON_FRAME`）。
     (
@@ -619,6 +636,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "files-ls",
         1,
         "文件窗口列目录（`filewin/source.rs::CMD_LS`）：窗口进程自己问那台后端，不是替主界面转",
+    ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕文件窗口「在此打开终端」：窗口进程自己问本机后端渲那一行（`filewin/shell.rs::TERMINAL_CMD`）。
+    (
+        "terminal-ssh",
+        1,
+        "文件窗口「在此打开终端」（`filewin/shell.rs::TERMINAL_CMD`）：窗口进程自己问本机后端渲 ssh 那一行，不是替主界面转",
     ),
 ];
 

@@ -553,13 +553,13 @@ pub(crate) fn qarg(s: &str) -> String {
     }
 }
 
-/// 从一个目录派生 tmux 会话名。
+/// tmux 会话名里**一段**的净化（不含 `-cc` 后缀）：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`。
+/// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
-/// 与前端 `src/shell-quote.ts::deriveTmuxName` **逐字同规则**（跨语言双写点）：
-/// basename → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-` → 加 `-cc` 后缀。
-/// 同规则 = 终端与 app「开新 Claude」在同一目录造出**同一个名字** ⇒ 幂等接回同一会话。
-pub(crate) fn derive_tmux_name(cwd: &str) -> String {
-    let trimmed = cwd.trim_end_matches('/');
+/// 〔FIX4 · `设计/90 §3` J7〕全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
+/// 界面要名字就问这台后端的 `tmux-name-mint`（[`super::answer_tmux_name_mint`]）。
+fn name_segment(raw: &str) -> String {
+    let trimmed = raw.trim_end_matches('/');
     let base = trimmed.rsplit('/').next().unwrap_or("");
     let mut s = String::new();
     let mut last_dash = false;
@@ -580,12 +580,41 @@ pub(crate) fn derive_tmux_name(cwd: &str) -> String {
         s.push(c);
     }
     let s: String = s.chars().take(32).collect();
-    let s = s.trim_matches('-');
+    s.trim_matches('-').to_string()
+}
+
+/// 从一个目录派生 tmux 会话名（**基名**，还没避让）：`<段>-cc`；段为空 ⇒ `session-cc`。
+///
+/// 同规则 = 终端里敲 `ccm` 与 app「开新 Claude」在同一目录造出**同一个基名**。
+/// 〔FIX4 · J7〕界面那份 `deriveTmuxName` 删了（原先两边逐字同规则、`ccm-cli.test.sh` 跨语言对拍钉着）：规则只剩这一份。
+pub(crate) fn derive_tmux_name(cwd: &str) -> String {
+    let s = name_segment(cwd);
     if s.is_empty() {
         "session-cc".to_string()
     } else {
         format!("{s}-cc")
     }
+}
+
+/// 〔FIX4 · J7〕分叉出来那条会话的**基名**：`<源名去掉末尾 -cc 再净化>-fork-cc`；净化后为空 ⇒ `session-fork-cc`。
+///
+/// 源是源会话所在的 tmux 名；源会话已退出、没有 tmux 名可继承时调用方交它的 cwd（同一个净化器 ⇒ 产不出非法名，
+/// Phase G 审计抓过的那一下：`/home/pi/proj-fork-cc`）。**必须与源名不同**，否则 `ccm` 会把新会话接进原会话那个窗口。
+/// 原住前端 `fork-launch.ts::forkTmuxName`，照 J7 搬来。
+pub(crate) fn fork_tmux_base(source: &str) -> String {
+    let seg = name_segment(source.strip_suffix("-cc").unwrap_or(source));
+    let seg = if seg.is_empty() {
+        "session"
+    } else {
+        seg.as_str()
+    };
+    format!("{seg}-fork-cc")
+}
+
+/// 〔FIX4 · J7〕给一个基名、一份**那张快照**里的已占用名 ⇒ 最终名（撞了往后排）。
+/// 帧命令 `tmux-name-mint` 与 [`build`] 走同一个 [`next_free_name`]；`taken` 只收 [`TakenNames`]（造不出第二份）。
+pub(crate) fn mint_tmux_name(base: &str, taken: &TakenNames) -> String {
+    next_free_name(base, taken.as_slice())
 }
 
 /// 基名撞了就退让：`<基名>` → `<基名>-2` → `<基名>-3` … 取第一个没被占的。
@@ -929,7 +958,7 @@ pub(crate) fn build(
         };
         // ★★ `K-R96`：**退让就在这里发生**，`--ccm-print` 与真跑因此拿到同一个名字。
         let name = match (step_aside, taken) {
-            (true, Some(t)) => next_free_name(&base, t.as_slice()),
+            (true, Some(t)) => mint_tmux_name(&base, t),
             // 不退让 / 问不到快照 ⇒ 原样（后者是诚实降级，见本函数头注）。
             _ => base,
         };

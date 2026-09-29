@@ -6,7 +6,7 @@
 //!
 //! | 段 | 今天在哪 |
 //! |---|---|
-//! | 会话名 | F13 的铸名口（`mintTmuxName`，避让不可分离） |
+//! | 会话名 | F13 的铸名口（避让不可分离）；〔FIX4 · `90 §3` J7〕今天住后端 `control/ccm/plan.rs`，界面经帧命令 `tmux-name-mint` 问 |
 //! | §34 三道门 | F03 + F04a 已搬进 backend `control/` |
 //! | 内层载荷 | `backend::control::payload`（P4b） |
 //! | ccm 调用行 | `backend::control::ccm_invocation`（P4b） |
@@ -110,7 +110,7 @@ const TS_CORPUS: &[&str] = &[
     "src/remote-launch-run.ts",
     "src/remote-config.ts",
     "src/settings/machine-card.ts",
-    "src/remote-launch.ts",
+    // 〔FIX4 · J7〕`src/remote-launch.ts` 出表：那份铸名口随派生 ＋ 避让搬进后端，整份删了。
     // 〔LR2〕原来这里的注释讲的是「TS 兜底路的消费者各自登记在哪」；那一族删了，
     // 这几份留在语料里只为一件事：`production_ts` 的行尾截断在它们上面安全（不含 `://`）。
     // 两份夹具用例表挪出了 `src/`（`设计/90 §3` 条 1：`src/**` 零 shell 串），住址跟着改。

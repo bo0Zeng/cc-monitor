@@ -27,7 +27,7 @@ CCM="$CCMDIR/ccm"
 #   `--list-accounts` 的帧形状、`KREC` 的记账 shim 转发给 `/usr/bin:/bin` 上那一个）——
 #   而那几份假后端与它们服务的判据本轮一起删了：同一个进程之下没有「帧」这回事，
 #   账号表由后端自己读那份 manifest。**本文件今天一处都不用 `jq`**（`grep -c jq` 自己看）。
-#   ⚠ **`npx` 那条纪律仍在**：下面会话名派生那一节靠 `npx tsx` 真跑前端那个函数做跨语言对拍。
+#   〔FIX4 · J7〕原来这里还有一条「`npx` 那条纪律仍在」（会话名派生那一节拿 `npx tsx` 真跑前端那个函数对拍）：前端那份删了，那一节改手写期望，本文件不再要 `npx`。
 
 PASS=0; FAIL=0
 ck() { # ck <描述> <期望> <实得>
@@ -288,46 +288,24 @@ cmp_cwd "布局4：非 git 目录 → 目录自己"                 "$TMPROOT/pl
 cmp_cwd "布局5：工作区自身（非 git）→ 自己"             "$CC_WORKSPACE"
 
 echo
-echo "===== 会话名派生：与前端 deriveTmuxName **真值对拍**（跨语言漂移守卫）====="
-# 同规则 = 终端 cct 与 app「开新 Claude」在同一目录造出同一个名字 → 幂等接回同一会话。
-# 不与手写期望比，与 src/remote-launch.ts 的真实实现比。
+echo "===== 会话名派生：真跑那条路铸出来的名字（〔FIX4 · J7〕前端那份删了，规则只剩后端一份）====="
+# 同规则 = 终端里敲 `ccm` 与 app「开新 Claude」（问后端 `tmux-name-mint`，同一个 `plan::mint_tmux_name`）在同一目录铸同一个名字。
+# 〔FIX4 · `设计/90 §3` J7〕原先这 5 条拿 `npx tsx` 真跑前端 `deriveTmuxName` 对拍（跨语言双写点的漂移守卫，E49）。
+#   前端那份删了 ⇒ 没有第二份可拍；期望改手写（与 `plan_tests.rs::the_session_name_derivation_rule` 同一组样本），
+#   钉的是「`--ccm-print` 那一行里抽得出这个名字」—— 抽取器失灵（下面 `^[{ ]*` 那段注脚）照样当场红。
 # **必须 env -u TMUX**：CLI 在 tmux 内会退化成"就地起"（不建嵌套会话），
 # 那时 --print 没有 tmux 命令序列可抓。生产路径是 `ssh -t … bash -lic`，$TMUX 本就不存在。
 # ⚠ **`^[{ ]*` 不能省**〔`U-NP④` 08-14 顺手修的既有腐坏〕：`P3sc`（08-13）把撞名改成
 # 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
-# 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条跨语言对拍**全部拿到空串、静默常红**。
-# 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「对拍不一致」，真因是抽取器失灵。
+# 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条**全部拿到空串、静默常红**。
+# 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「不一致」，真因是抽取器失灵。
 name_of() { env -u TMUX CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" -- --ccm-tmux --cwd "$1" --ccm-print 2>&1 \
             | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
-if command -v npx >/dev/null 2>&1; then
-  for d in /home/pi/proj "/home/pi/a  b" /home/pi/proj/// / /home/pi/.hidden.dir; do
-    want="$(cd "$REPO" && npx --no-install tsx -e "
-      import {deriveTmuxName} from './src/remote-launch.ts';
-      process.stdout.write(deriveTmuxName(process.argv[1]));
-    " "$d" 2>/dev/null)"
-    got="$(name_of "$d")"
-    # tmux 名撞名时 CLI 会加 -2/-3；此处只比基名（测试环境不建会话，故恒等基名）
-    ck "deriveTmuxName 对拍: $d" "$want" "$got"
-  done
-else
-  # U0（2026-08-01）：**缺 npx 不许静默 SKIP。**
-  #
-  # 原来这里是 `echo "SKIP | 无 npx，跳过跨语言对拍"`，看着很客气，实际后果是：
-  # 5 条断言不跑 ⇒ 合计 PASS 从 44 掉到 39 ⇒ `assert-pass-floor.sh ccm-cli 44` 判红，
-  # 诊断写的是「断言数缩水 / 套件被削弱」—— **真因是环境缺工具，报的是代码退化**。
-  # 排查的人会去翻这个套件最近改了什么，而那里什么也没发生。
-  #
-  # 而被跳掉的这 5 条不是可有可无：它们是 `deriveTmuxName`（TS）与
-  # `derive_tmux_name`（bash）之间**唯一**的真值对拍 —— 跨语言双写点的漂移守卫。
-  # 少了它，两边规则各自演化不会有任何信号（E49 记的就是这条）。
-  #
-  # ⇒ 改成 fail-closed 且**诊断说真话**。CI 上 npx 恒在，这条只会在本机裸环境触发。
-  FAIL=$((FAIL + 1))
-  echo "FAIL | 跨语言对拍无法运行：**找不到 npx** —— 环境缺工具，不是套件退化"
-  echo "     | 被跳过的是 deriveTmuxName(TS) ↔ derive_tmux_name(bash) 的真值对拍，"
-  echo "     | 即跨语言双写点唯一的漂移守卫（E49）。装上 node/npx 再跑，或明确接受此处无守卫。"
-fi
-
+# tmux 名撞名时 CLI 会加 -2/-3；此处只比基名（测试环境不建会话，故恒等基名）
+for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|proj-cc" "/|session-cc" "/home/pi/.hidden.dir|hidden-dir-cc"; do
+  d="${pair%%|*}"; want="${pair##*|}"
+  ck "会话名派生: $d" "$want" "$(name_of "$d")"
+done
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ⚠ 〔`K-R48` 第二拍 09-11〕**本文件原来有 264 条断言，本轮删到 46 条。**

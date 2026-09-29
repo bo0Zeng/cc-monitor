@@ -130,12 +130,25 @@ function killRefusals(target: string): Refusals {
 }
 
 /**
- * `kill` 的成品 ⇒ 做成了没有。恰好 `{session, killed}` 且 `killed === true` 才算结束了；
- * 形状对但 `killed` 不为真 ⇒ 「后端没确认结束」（**不当成功**：破坏性动作在未知状态上不许往下走）。
+ * `kill` 的成品 ⇒ 做成了没有 ＋ 〔FIX4 · `95 §6`〕顺手从 cc-bus 名册注销的结局那一句（没有要说的 ⇒ `null`）。
+ * 恰好 `{session, killed, bus}` 且 `killed === true` 才算结束了；形状对但 `killed` 不为真 ⇒ 「后端没确认结束」
+ * （**不当成功**：破坏性动作在未知状态上不许往下走）。`bus` 那一格形状不对 ⇒ 整份读不懂。
  */
-export function decodeKilled(origin: Origin, target: string, v: unknown): void {
-  if (!isObj(v) || !exactKeys(v, ["session", "killed"]) || typeof v.session !== "string" || typeof v.killed !== "boolean") {
-    throw unreadable(origin, "kill", "is not exactly {session, killed}");
+export function decodeKilled(origin: Origin, target: string, v: unknown): string | null {
+  if (!isObj(v) || !exactKeys(v, ["session", "killed", "bus"]) || typeof v.session !== "string" || typeof v.killed !== "boolean") {
+    throw unreadable(origin, "kill", "is not exactly {session, killed, bus}");
+  }
+  const bus = v.bus;
+  if (
+    !isObj(bus) ||
+    !exactKeys(bus, ["removed", "failed", "unread"]) ||
+    !Array.isArray(bus.removed) ||
+    !bus.removed.every((x) => typeof x === "string") ||
+    !Array.isArray(bus.failed) ||
+    !bus.failed.every((f) => isObj(f) && exactKeys(f, ["id", "why"]) && typeof f.id === "string" && typeof f.why === "string") ||
+    !(bus.unread === null || typeof bus.unread === "string")
+  ) {
+    throw unreadable(origin, "kill", "bus is not exactly {removed: string[], failed: {id, why}[], unread: string|null}");
   }
   if (!v.killed) {
     throw new ControlError(
@@ -143,17 +156,22 @@ export function decodeKilled(origin: Origin, target: string, v: unknown): void {
       "kill reply has killed=false but no refusal code",
     );
   }
+  const said: string[] = [];
+  if (bus.unread !== null) said.push(copyText("tmuxControl.kill.busUnread", { why: bus.unread }));
+  if (bus.removed.length > 0) said.push(copyText("tmuxControl.kill.busRemoved", { ids: (bus.removed as string[]).join(copyText("tmuxControl.kill.listSep")) }));
+  for (const f of bus.failed as { id: string; why: string }[]) said.push(copyText("tmuxControl.kill.busFailed", { id: f.id, why: f.why }));
+  return said.length === 0 ? null : said.join("\n");
 }
 
 /**
  * 结束 `origin` 上的 tmux 会话 `target`（**破坏性**：调用方先二次确认）。身份门 · 窗口门在后端先过，
  * 后端对**句柄**下手（不是名字）。失败 ⇒ 抛 [`ControlError`]；**没有第二条路可回落**。
  */
-export async function killSession(origin: Origin, target: string): Promise<void> {
+export async function killSession(origin: Origin, target: string): Promise<string | null> {
   const payload = jsonBody({ name: target });
   const budget = budgetWithin(CONTROL_BUDGET_MS);
   const v = await settle(origin, "kill", chan.call(origin, "kill", payload, budget), killRefusals(target));
-  decodeKilled(origin, target, v);
+  return decodeKilled(origin, target, v);
 }
 
 // ─── 发按键 · 就地恢复（都是 `launch` 那条帧命令） ───

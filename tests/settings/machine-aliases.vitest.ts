@@ -695,14 +695,19 @@ describe("localShell：本机用哪种方言", () => {
     const { __setHostOsForTests } = await import("../../src/settings/host-os");
     __setHostOsForTests(null);
   });
-  it("Windows ⇒ powershell；其余（含测不出）⇒ posix", async () => {
+  /** 设计/71 §8 第 7 条（主会话 09-28 裁 FIX4）「认不出 OS 时：不猜方言 —— 明说、安装入口置灰」。 */
+  it("Windows ⇒ powershell；Linux / macOS ⇒ posix；认不出 ⇒ 不猜（null），那一格明说、装的入口置灰", async () => {
     vi.resetModules();
     const { __setHostOsForTests } = await import("../../src/settings/host-os");
-    const { localShell } = await import("../../src/settings/machine-aliases");
-    const want = { windows: "powershell", linux: "posix", macos: "posix", unknown: "posix" } as const;
+    const { localShell, buildUnknownOsAliasBlock } = await import("../../src/settings/machine-aliases");
+    const want = { windows: "powershell", linux: "posix", macos: "posix", unknown: null } as const;
     for (const [os, sh] of Object.entries(want)) {
       __setHostOsForTests(os as "windows" | "linux" | "macos" | "unknown");
       expect(localShell(), os).toBe(sh);
     }
+    const block = buildUnknownOsAliasBlock();
+    expect(block.textContent).toContain("认不出这台的系统，没法生成别名块");
+    const btns = [...block.querySelectorAll("button")];
+    expect(btns.map((b) => [b.textContent, b.disabled])).toEqual([["装别名块", true]]);
   });
 });

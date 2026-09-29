@@ -54,7 +54,8 @@ export const CONFIG_KEY_OWNERS = {
   tabBar: "src/tab-bar-state.ts",
   // src/tab-collections.ts
   tabCollections: "src/tab-collections.ts",
-  // src/usage-hud.ts —— **只读**，前端没有任何地方写它（手改 config.json 的旋钮）
+  // src/usage-hud.ts 读（经 `views/context-limit.ts::readContextLimits`）；〔FIX4 · `70 §10` 第 8 条〕设置页「外观 → 高级」写
+  //   （`settings/context-limits-section.ts`），不再只能手改 config.json。
   contextLimits: "src/usage-hud.ts",
   // ── src/behavior.ts 那一族 ─────────────────────────────────────────────
   autoFollowUserActive: "src/behavior.ts",

@@ -24,10 +24,8 @@
  * ——同 `readiness.ts` 那条「缺 ≠ 不知道」：不知道就说不知道。
  */
 
-// tmux 名的净化器与 `deriveTmuxName` **共用一份**（`forkTmuxName` 头注写了为什么）。
-import { tmuxNameSegment } from "./shell-quote";
-// F13：撞名避让只有一个家（`mintTmuxName`）—— 别在这里重写。
-import { mintTmuxName } from "./remote-launch";
+// 〔FIX4 · `90 §3` J7〕分叉会话的 tmux 名（原 `forkTmuxName`：`<源名>-fork-cc` ＋ 避让）搬进后端
+//   （`control/ccm/plan.rs::fork_tmux_base`，帧命令 `tmux-name-mint {forkOf}`）；这里只剩推断与追问。
 import { copyText } from "./copy-table";
 
 /** 某个维度的取值：知道（带来源）或不知道（带原因）。 */
@@ -104,30 +102,4 @@ export function describeSlot(k: keyof ForkLaunchFacts, f: ForkLaunchFacts): stri
   return s.kind === "known"
     ? copyText("forkLaunch.slot.same", { label, from: s.from })
     : copyText("forkLaunch.slot.ask", { label, why: s.why });
-}
-
-/**
- * 新会话的 tmux 名。**必须与原会话不同**，否则 `ccm` 会把新会话
- * attach 进原会话那个窗口 —— 那正好毁掉「两条都活着」。
- *
- * 命名跟 `shared/ccm` 的 `<X>-cc` 形状一致，加 `-fork` 段；撞名后缀**追加在最后**
- * （`<X>-fork-cc-2`）—— 与 `remote-launch.ts::mintSessionTmuxName` 写下的同一条规则对齐：
- * 「让『第几个』始终是名字的末段」。
- *
- * # ★ Phase G 审计抓出的一个阻塞：基名必须净化
- *
- * 调用方在「源会话已退出 ⇒ 没有 tmux 名可继承」时会拿 **cwd** 当基名
- * （`fork-start.ts`）。此前本函数直接把它拼成 `/home/pi/proj-fork-cc`，
- * 而 `launch-requests.ts::planResumeTmux` 的 `/^[A-Za-z0-9_][A-Za-z0-9_-]*$/` 当场拒掉 ⇒
- * **「分叉一条已退出的远端会话」这条主路径 100% 起不来**（而且失败还被吞成成功 toast）。
- *
- * ⇒ 基名一律过 `tmuxNameSegment`（与 `deriveTmuxName` **同一个**净化器，不是另写一份）。
- * 净化后为空（如 cwd 是 `/`）→ 退回 `session`，与 `deriveTmuxName` 的兜底一致。
- */
-export function forkTmuxName(sourceName: string, taken: readonly string[]): string {
-  // F13：⚠ **`taken` 的默认值 `= []` 已删。** 那个默认值让本函数的避让形同虚设 ——
-  // 调用方不传就等于没检查，而它「看起来有检查」。少传一个参数现在会被 `tsc` 挡住。
-  // 避让本身搬进 `mintTmuxName`（全仓唯一铸造口），这里只负责基名形状。
-  const base = tmuxNameSegment(sourceName.replace(/-cc$/, "")) || "session";
-  return mintTmuxName(`${base}-fork-cc`, new Set(taken));
 }

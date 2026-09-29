@@ -114,7 +114,8 @@ session_alive() { tmux has-session -t "=$1:" 2>/dev/null && echo 1 || echo 0; }
 drive_restart() {
   local sid="$1" sess="$2" acct="$3" cf="$4" cfm="$5" seqf="$6" toastf="$7"; shift 7
   : >"$seqf"; : >"$toastf"
-  env "$@" CCM_SEQ_LOG="$seqf" CCM_TOAST_LOG="$toastf" \
+  # 〔FIX4 · ④〕`CCM_ARRIVAL_ARGV_DIR`：事件替身（`restart-shims/event.mjs`）站在主窗口位置认「会话起来了」时看的那份 argv.log（新账号目录）。
+  env "$@" CCM_SEQ_LOG="$seqf" CCM_TOAST_LOG="$toastf" CCM_ARRIVAL_ARGV_DIR="$NEW" \
     npx tsx "$DRV" restart aya "$sid" "$CWD_DIR" "$sess" "$acct" "$FAKE" "$cf" "$cfm" 1
 }
 

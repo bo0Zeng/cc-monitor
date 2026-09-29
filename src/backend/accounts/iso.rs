@@ -300,7 +300,7 @@ pub(crate) fn parse_cmd_args(args: &serde_json::Value) -> Result<Step, (&'static
 }
 
 /// 快照路径那道校验。〔DUP3 · 主会话 09-26 裁：比 V131 多拒的几格要有理由〕`"` 与控制符（C0 · DEL · C1 = `char::is_control`）
-/// 是 monitor 远端拉起那一跳（`launch.rs::build_remote_ssh_ps_command`）的拒收面 —— 这一行唯一能带进它们的外部值就是快照路径，
+/// 是远端拉起那一跳开终端那一行（〔FIX4〕`dial/terminal.rs::render`，帧命令 `terminal-ssh`）的拒收面 —— 这一行唯一能带进它们的外部值就是快照路径，
 /// 不在这里拒就会到「弹终端」时被一句不指向它的话拒掉（D7）。
 /// 〔FIX · `99 §2 ㊹` 甲〕`-` 开头那一格删了：理由不成立（`cc-acct-iso` 把 `--from-credentials` 的下一个词原样当值，DUP3 §0.1），
 /// 不换 `posix_free_path_ok`（那会连 `~/…` 与相对路径一起拒 —— 它们 `cc-acct-iso` 自己 `to_abs` 解得动，拒了就是「拒过头」，`§47`）。

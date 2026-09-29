@@ -234,6 +234,8 @@ pub const COMMANDS: &[&str] = &[
     "panorama",
     // 〔MIG-3b 续〕全景写：这台算计划、这台文件管理面落盘（原 monitor 那一跳在中间转）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "panorama-edit",
+    // 〔FIX4 · `97 §8`〕全景小程序卸口：只删装时放下的那一份（先认身份、CAS 删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "panorama-uninstall",
     "ping",
     "plugins-marketplaces",
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
@@ -270,8 +272,12 @@ pub const COMMANDS: &[&str] = &[
     "ssh-config-import",
     "ssh-config-resolve",
     "tasks-list",
+    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "terminal-ssh",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
+    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：这台派生 ＋ 按这台那张会话快照避让（前端那份铸名口删了）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "tmux-name-mint",
     // 〔SR1b〕传输四条（`control/transfer.rs`）：传输台住本机常驻后端，SFTP 跟其它 SSH 同一条连接。
     "transfer-download",
     "transfer-start",
@@ -3324,6 +3330,23 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
     },
+    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（一行 PowerShell：
+    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `acct-iso-cmd` 那一形）。
+    CommandSpec {
+        name: "terminal-ssh",
+        doc_anchor: Some("#### `terminal-ssh`"),
+        codes: &["invalid_args", "bad_jump", "refused"],
+        fields: &["command"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::terminal::answer(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
     // 〔SH1〕列这台的 tmux 会话。〔MIG-1 续〕成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {
         name: "tmux-list",
@@ -3342,6 +3365,20 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::faces::feature_face::answer(&r.cmd, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FIX4 · `90 §3` J7〕**起会话要一个 tmux 名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
+    //   本体 `control/ccm/mod.rs::answer_tmux_name_mint`；阻塞档（快照问一次就起一次 `tmux`）。
+    CommandSpec {
+        name: "tmux-name-mint",
+        doc_anchor: Some("#### `tmux-name-mint`"),
+        codes: &["invalid_args"],
+        fields: &["name"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::ccm::answer_tmux_name_mint(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -3420,6 +3457,21 @@ pub const REGISTRY: &[CommandSpec] = &[
             Box::pin(async move { crate::control::panorama::answer(&r.args).await.map(Some) })
         }),
     },
+    // 〔FIX4 · `97 §8` · 主会话 09-28 裁〕**卸掉这台的全景小程序**：认身份（`--probe`）→ 这台文件管理面 CAS 删那一份；索引不动。本体 `control/panorama.rs::answer_uninstall`。
+    CommandSpec {
+        name: "panorama-uninstall",
+        doc_anchor: Some("#### `panorama-uninstall`"),
+        codes: &["not_ours", "failed", "stale", "refused", "io_failed"],
+        fields: &["index", "path", "removed"],
+        takes_input: false,
+        run: Run::Async(|_r| {
+            Box::pin(async move {
+                crate::control::panorama::answer_uninstall(LocalFiles)
+                    .await
+                    .map(Some)
+            })
+        }),
+    },
     // 〔MIG-3b 续 · RM1d〕**全景写批注 / 文档关联**：`{repo, op, args}` → 这台的小程序算计划 → 这台文件管理面落盘（CAS，`stale` 重算）→
     //   文档关联那两种再刷一次索引。「算」那一步的码原样交回（`not_installed` / `unsupported` ⇒ 界面放字节再问一次）。本体 `control/panorama_edit.rs`。
     CommandSpec {
@@ -3458,7 +3510,7 @@ pub const REGISTRY: &[CommandSpec] = &[
             "too_many_windows",
             "kill_failed",
         ],
-        fields: &["killed", "name", "session"],
+        fields: &["bus", "killed", "name", "session"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },

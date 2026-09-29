@@ -225,6 +225,8 @@ describe("S2 设置面板分页结构", () => {
       "MCP",
       // 〔AS2 · 4B〕资产目录：别的机器有、这台没有的 skill / MCP，装要你点（本机与远端页都有）。
       "资产目录",
+      // 〔FIX4 · `97 §8`〕代码全景组件的卸口（本机与远端页都有）。
+      "代码全景组件",
       // P8a：marketplace 只读枚举。**只在本机页**——远端今天没有这条口
       // （欠账记在 `parity_ledger::plugins.marketplaces`），挂到远端就是个恒失败的块。
       "插件（marketplace）",
@@ -399,6 +401,7 @@ describe("S2 设置面板分页结构", () => {
       "别名", // 〔AL1〕本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（〔AL1c〕终端集成并进了它）
       "MCP",
       "资产目录", // 〔AS2〕
+      "代码全景组件", // 〔FIX4〕
       "插件（marketplace）",
       "cc-bus 钩子",
       "足迹",
@@ -544,10 +547,8 @@ describe("S9 本机 OS 门（〔AL1c〕别名那一块的平台）", () => {
     ["windows", "powershell"],
     ["linux", "posix"],
     ["macos", "posix"],
-    // ⚠ 认不出 OS ⇒ POSIX。从前「终端集成」在这一格**照常构造**（藏错了 Windows 用户就找不到安装入口），
-    //   而「别名」在这一格走 POSIX；两块并成一块只能取一边 ⇒ 取别名那一边（不在非 Windows 上写 `$PROFILE`）。
-    //   这一格的取舍报给主会话（`调研/第四波记录/AL1c.md §5`）。
-    ["unknown", "posix"],
+    // 〔FIX4 · `71 §8` 第 7 条，主会话 09-28 裁〕认不出 OS ⇒ **不猜方言**：那一格明说、装的入口置灰（先前取 POSIX）。
+    ["unknown", "unknown"],
   ] as const) {
     it(`★ ${os} ⇒ 别名那一块是 ${shell}；单独的「终端集成」一块不再有`, async () => {
       __setHostOsForTests(os);

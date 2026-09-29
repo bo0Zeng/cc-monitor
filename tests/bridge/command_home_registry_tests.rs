@@ -44,15 +44,9 @@ impl Own {
     }
 }
 
-/// 哪一路负责迁走它（闭集：不许有没主的行）。
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Lane {
-    // 〔MIG-1 续〕`Mig1` 那一路欠的行还清了（最后一行 `test_remote_connection` 随测试连接进本机后端删了），变体随之删掉。
-    Mig2,
-    Mig3a,
-    // 〔MIG-3b 续〕`Mig3b` 那一路欠的行还清了（足迹 · 全景 · 公钥三件迁走、漂移账改派 MOD），变体随之删掉。
-    // 〔MOD〕`Mod` 那一路欠的行还清了（会话正文四条改走通道、漂移账那一条挪进「monitor 自己的事」），变体随之删掉。
-}
+// 〔FIX4 · `设计/99 §2.1 ⑬`〕「哪一路负责迁走它」那个闭集（`Lane`）收了：「待迁」最后一行 `launch_remote_terminal`〔散文墓碑〕随 ssh 外壳
+//   进本机后端（帧命令 `terminal-ssh`）清掉，再没有没迁完的行 ⇒ 变体一个不剩、枚举本身删掉。「待迁」表留着（今天为空，
+//   判据 1 仍两向：新长一条碰后端的 Tauri 命令 ⇒ 要么进「monitor 自己的事」写理由、要么进「待迁」写卡在哪）。
 
 /// 「monitor 自己的事」：命令 · 哪一类 · 理由。
 const MONITOR_OWN: &[(&str, Own, &str)] = &[
@@ -75,6 +69,17 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
         "backend_stop",
         Own::Lifecycle,
         "停后端（SIGTERM → 等 → 超时才 SIGKILL）",
+    ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕开终端：monitor 只开窗（接令牌握手前奏 → PowerShell 窗口），交来的是成品（远端那一行由本机后端 `terminal-ssh` 渲）。
+    (
+        "open_terminal_window",
+        Own::Window,
+        "开一个终端窗口跑交来的那一串：接上令牌握手前奏（窗口登记进 monitor 自己那张 `bind.rs` 表）再开 PowerShell 窗口；不拼 ssh、不判命令",
+    ),
+    (
+        "terminal_dial",
+        Own::Config,
+        "交开终端那一问要的机器事实（monitor 的机器表 ＋ 上次赢的那条，`dial_host::machine_facts`）；组请求与渲染在本机后端",
     ),
     ("load_config", Own::Config, "本机 monitor 配置"),
     ("patch_config", Own::Config, "本机 monitor 配置"),
@@ -200,8 +205,8 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
 ];
 
-/// 「待迁」：命令 · 哪一路 · 卡在哪。
-const PENDING: &[(&str, Lane, &str)] = &[
+/// 「待迁」：命令 · 卡在哪。〔FIX4〕今天为空（「哪一路」那一格随 `Lane` 一起收了）。
+const PENDING: &[(&str, &str)] = &[
     // MIG-1：会话 / tmux 账本 ＋ ssh 配置解读进后端。
     // 〔MIG-1〕`~/.ssh/config` 导入那三条（别名 · `ssh -G` · 批量）迁走了：本机常驻后端帧命令 `ssh-config-*`（⑯）。
     // 〔MIG-1 续〕测试连接迁走了：界面把表单那一台交给本机后端（`remote-probe`），后端组请求、拨一次、回结局（主会话裁）。
@@ -209,12 +214,9 @@ const PENDING: &[(&str, Lane, &str)] = &[
     // 〔MIG-1 续〕列 tmux 会话两条（本机 · 远端）迁走了：那台后端的 `tmux-list` 出成品，界面经通道直问（`src/tmux-reads.ts`）。
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
-    (
-        "launch_remote_terminal",
-        Lane::Mig2,
-        "远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）还在 monitor 拼：它读 monitor 的机器配置，\
-         等 MIG-1 ⑯（`ssh -G` 与 `~/.ssh/config` 解读进本机后端）之后由本机后端渲（〔MIG-2〕报备：待主会话排）",
-    ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕`launch_remote_terminal`〔散文墓碑〕迁走了：远端那一行（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）由本机后端
+    //   `terminal-ssh` 渲（组请求走 `dial/machine.rs::resolve`），monitor 剩开窗 `open_terminal_window` 与交机器事实 `terminal_dial`
+    //   两条，进「monitor 自己的事」。「待迁」从此为空。
     // MIG-3a：资产与 D 组。
     // 〔MIG-3a〕别名六条（`aliases_*`）已迁：规则 · 方言 · 围栏进了那台后端（`aliases-*`），从本表删。
     // 〔MIG-3a · 主会话 09-28 预裁〕`deploy_remote_acct_iso`〔散文墓碑〕 已迁：字节随后端二进制走（部署载荷只一种走法），装 · 链接 · 配置 · 记账
@@ -742,7 +744,7 @@ fn the_two_tables_are_disjoint_and_cover_every_tauri_command() {
     let files = monitor_tree();
     let reg: BTreeSet<String> = registered(&files["lib.rs"], &files).into_keys().collect();
     let own: BTreeSet<String> = MONITOR_OWN.iter().map(|(c, _, _)| c.to_string()).collect();
-    let pending: BTreeSet<String> = PENDING.iter().map(|(c, _, _)| c.to_string()).collect();
+    let pending: BTreeSet<String> = PENDING.iter().map(|(c, _)| c.to_string()).collect();
     assert_eq!(own.len(), MONITOR_OWN.len(), "「monitor 自己的事」有重行");
     assert_eq!(pending.len(), PENDING.len(), "「待迁」有重行");
     let both: Vec<_> = own.intersection(&pending).collect();
@@ -758,7 +760,7 @@ fn the_two_tables_are_disjoint_and_cover_every_tauri_command() {
     let reasons = MONITOR_OWN
         .iter()
         .map(|(c, _, w)| (c, w))
-        .chain(PENDING.iter().map(|(c, _, w)| (c, w)));
+        .chain(PENDING.iter().map(|(c, w)| (c, w)));
     for (c, why) in reasons {
         assert!(!why.trim().is_empty(), "`{c}` 那一行没写理由");
     }

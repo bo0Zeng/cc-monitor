@@ -42,7 +42,7 @@ import type { AccountsState } from "../../src/accounts";
 import { invalidateAccountsCache } from "../../src/account-reads";
 import { __resetLocalLaunchSnapshotForTests, __setLocalLaunchSnapshotForTests } from "../../src/launch-account";
 import { resolvePendingLocalLaunches, __resetPendingLocalLaunchesForTests, __pendingLocalLaunchCountForTests } from "../../src/local-launch-backfill";
-import { historyCalls, isChanCall, launchRenderShim, linesReply, localLaunchCalls, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
+import { historyCalls, isChanCall, launchRenderShim, linesReply, localLaunchCalls, tmuxMintCalls, withAccountReads, withHistoryReads } from "../test-support/chan-fake";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
 import { answerAskDialog, answerAskText, askDialogText, noAskDialog } from "../test-support/ask-dialog-driver.ts";
 import { showActionFailureToast } from "../../src/error-toast";
@@ -437,25 +437,12 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     return call!;
   }
 
-  /** 让 `list_local_tmux` 回一份本机 tmux 快照（`null` = 不知道）。 */
-  function serveLocalTmux(names: string[] | null): void {
-    invokeMock.mockImplementation(withHistoryReads(launchRenderShim((cmd: string) => {
-      if (cmd === "list_local_tmux") {
-        return Promise.resolve(
-          names === null
-            ? null
-            : names.map((name) => ({
-                name,
-                path: "/p",
-                command: "claude",
-                attached: false,
-                windows: 1,
-                sid: null,
-              })),
-        );
-      }
-      return Promise.resolve(undefined);
-    })));
+  /** 〔FIX4 · `设计/90 §3` J7〕让本机后端答铸名那一问（`tmux-name-mint`）：名字 ⇒ 它铸了这个；`null` ⇒ 问不到（不知道）。
+   *  派生 ＋ 避让的规则只在后端（逐格归 `tests/backend/control/ccm/plan_tests.rs`）⇒ 替身写死它铸了什么，不重抄规则。 */
+  function serveLocalMint(minted: string | null): void {
+    invokeMock.mockImplementation(withHistoryReads(launchRenderShim((cmd: string) =>
+      Promise.resolve(cmd === "tmux_name_mint" && minted !== null ? minted : undefined),
+    )));
   }
 
   async function clickResume(): Promise<void> {
@@ -476,47 +463,38 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     document.body.replaceChildren();
   });
 
-  it("★★ 基名被占 ⇒ 载荷里的 `tmuxName` **让到了 `-2`**（证明它真过了铸造口，不是拼出来的）", async () => {
-    // 判别格：基名 `p-cc`（`K-R96`：`basename(cwd)` + `-cc`，`cwd` 夹具是 `/p`）已经被占着。
-    // 恒回一个常量、或自己拼一份基名规则（那正是 F13 修掉的坑），这一格都过不了。
-    serveLocalTmux(["p-cc", "别人的-cc"]);
+  it("★★ 载荷里的 `tmuxName` 就是本机后端铸回来的那个（它让到了 `-2` ⇒ 交的就是 `-2`；不是前端拼出来的）", async () => {
+    // 判别格：后端避让过（`p-cc` 被占 ⇒ `p-cc-2`）。前端恒回一个常量、或自己拼一份基名规则（F13 修掉的坑），这一格都过不了。
+    serveLocalMint("p-cc-2");
     await clickResume();
     expect(
       resumePayload().tmuxName,
-      "历史页 resume 的载荷里没有让过位的 tmux 名 ——\n" +
+      "历史页 resume 的载荷里没有后端铸的 tmux 名 ——\n" +
         "要么名字压根没传（后端 `NO_TMUX_NAME` 早退 ⇒ 会话不进具名容器），\n" +
-        "要么没过 `remote-launch.ts::mintTmuxName`（全仓唯一带撞名避让的铸造口）：\n" +
-        "另一处精心让出 `-2`，你直接撞上去 —— 那就是 issue #76 的形状。",
+        "要么没问本机后端 `tmux-name-mint`（全仓唯一带撞名避让的铸造口）：自己拼的名字不避让 —— 那就是 issue #76 的形状。",
     ).toBe("p-cc-2");
   });
 
-  it("★ 没被占 ⇒ 就是基名本身（反过来钉住：它不是**恒**加后缀）", async () => {
-    serveLocalTmux(["别人的-cc"]);
+  it("★ 换一个铸回来的名字，载荷跟着换（反过来钉住：不是恒一个常量）", async () => {
+    serveLocalMint("p-cc");
     await clickResume();
     expect(resumePayload().tmuxName).toBe("p-cc");
   });
 
-  it("★★ KR96D3：名字读得出是哪个项目，且**一个 sid 片段都没有**", async () => {
-    // 夹具的 sid 是 `s1`、cwd 是 `/p` ⇒ 名字该是 `p-cc`（从 cwd 来），不是 `s1-cc`。
-    // 用户 `R55` 裁定一逐字：「**要是可读的名字 / 不要id**」。
-    serveLocalTmux([]);
+  it("★★ KR96D3：问铸名时只交 cwd（名字读得出是哪个项目，**一个 sid 片段都进不去**）；sid 仍在载荷里", async () => {
+    // 夹具的 sid 是 `s1`、cwd 是 `/p`。用户 `R55` 裁定一逐字：「**要是可读的名字 / 不要id**」。
+    // 〔FIX4 · J7〕名字由本机后端从 cwd 派生 ⇒ 前端这一侧能钉的是「交出去的只有 cwd」—— 把 sid 一起交过去 ⇒ 这一行当场红。
+    serveLocalMint("p-cc");
     await clickResume();
-    const name = String(resumePayload().tmuxName);
-    expect(name).toBe("p-cc");
-    expect(
-      name.includes("s1"),
-      "会话名里还带着 sid —— sid 的载体是 tmux 的 `@ccm_sid`，不是名字",
-    ).toBe(false);
-    // 而 sid **必须还在载荷里**（后端拿它去 `set-option @ccm_sid`）：
-    // 把它一起去掉 ⇒ 这一行当场红。
+    expect(tmuxMintCalls(invokeMock.mock.calls)).toEqual([[LOCAL_ORIGIN, { cwd: "/p" }]]);
+    // 而 sid **必须还在载荷里**（后端拿它去 `set-option @ccm_sid`）：把它一起去掉 ⇒ 这一行当场红。
     expect(resumePayload().sessionId).toBe("s1");
   });
 
-  it("★★ 本机 tmux 快照是 `null`（**不知道**）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {
-    // `list_local_tmux` 回 `null` = 本机后端通道没起 / 还没推过帧 = 不知道，
-    // **不是**「一个名字都没占」。此时硬铸就是「不避让」⇒ issue #76
+  it("★★ 本机后端问不到（**不知道**占了哪些名字）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {
+    // 问不到 ≠ 「一个名字都没占」。此时自己铸一个就是「不避让」⇒ issue #76
     //「静默接进第一个会话，而用户以为开了新的」。诚实的做法是不传，让后端降级回旧路。
-    serveLocalTmux(null);
+    serveLocalMint(null);
     await clickResume();
     expect(
       resumePayload().tmuxName,
@@ -526,8 +504,8 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(true);
   });
 
-  it("★ 远端那条路**不受影响**：不查本机 tmux、也不发本机 resume", async () => {
-    serveLocalTmux(["s1-cc"]);
+  it("★ 远端那条路**不受影响**：不问本机后端铸名、也不发本机 resume", async () => {
+    serveLocalMint("s1-cc");
     const view = new HistoryView();
     const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
@@ -535,8 +513,8 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(localLaunchCalls(invokeMock.mock.calls, "resume_history_session").length > 0).toBe(false);
     expect(
-      invokeMock.mock.calls.some((c) => c[0] === "list_local_tmux"),
-      "远端 resume 去查了本机的 tmux 名 —— 那是拿本机的事实去铸远端的名字",
+      tmuxMintCalls(invokeMock.mock.calls).some(([o]) => o === LOCAL_ORIGIN),
+      "远端 resume 去问了本机后端铸名 —— 那是拿本机的事实去铸远端的名字",
     ).toBe(false);
   });
 });
