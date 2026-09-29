@@ -1,5 +1,12 @@
 //! cc-acct-iso 账号库契约的**唯一定义**，外加平台无关的名字安全判据。
 //!
+//! 〔RE · 第四波 D 段〕**今天的两个消费者**（`设计/00 §1.2` 共享 crate 那张表）：
+//! - 后端生产：`observe/accounts_query.rs` · `accounts/upstream_select/file_face.rs` · `accounts/upstream_select/endpoint.rs` ·
+//!   `control/ccm/plan.rs` · `control/launch_render/payload.rs`；
+//! - monitor 只经**生成物**用它：`tests/frontend/shell/backend/control/payload_judgment_rules.rs` 从
+//!   [`AUTH_KINDS`] 现生成 `src/frontend/ui/generated/judgment-rules.ts`（J16）；monitor 生产代码零引用
+//!   （下面「三个读者」一节是来历）。
+//!
 //! # 这份数据有三个读者
 //!
 //! bash 写侧（`cc-acct-iso`）· 远端后端（`observe/accounts_query.rs`）·
