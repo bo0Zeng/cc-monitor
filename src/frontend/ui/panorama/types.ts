@@ -128,10 +128,13 @@ export interface NodeView {
   annotations: Annotation[];
 }
 
-/** 以某符号为心的双向邻域子图（节点集 + 边集）。P2 未用（留 P4）。 */
-export interface SubGraph {
-  symbols: Symbol[];
-  edges: Edge[];
+/**
+ * 〔PANO · CP1〕以某符号为心的邻域，每个符号带**距根几跳**（`neighborhood` op；小程序 `src/panorama-engine/main.rs`
+ * 自己的 DTO，跳数由它按上游 `subgraph` 的 depth 口径给，前端只分组不算）。根不进 `reached`。
+ */
+export interface Neighborhood {
+  root: string;
+  reached: { id: string; depth: number }[];
 }
 
 /** 受影响的符号 + 反向距离（1 = 直接调用者）。 */

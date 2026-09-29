@@ -36,11 +36,11 @@ import type {
   Edge,
   ImpactSet,
   IndexStats,
+  Neighborhood,
   NodeView,
   Overview,
   PanoramaDiagram,
   PanoramaStatus,
-  SubGraph,
   Symbol as PanoramaSymbol,
 } from "./types";
 import { copyText } from "../copy-table";
@@ -196,9 +196,9 @@ export function panoramaLoadDecision(
 export const node = (at: RepoAt, symbol: string): Promise<NodeView | null> =>
   remote(at, "node", { symbol });
 
-/** 以某符号为心的双向邻域子图。 */
-export const subgraph = (at: RepoAt, symbol: string, depth: number): Promise<SubGraph> =>
-  remote(at, "subgraph", { symbol, depth });
+/** 以某符号为心的双向邻域，每个符号带距根几跳（〔PANO〕跳数由那台的小程序给，前端不算）。 */
+export const neighborhood = (at: RepoAt, symbol: string, depth: number): Promise<Neighborhood> =>
+  remote(at, "neighborhood", { symbol, depth });
 
 /** 反向调用边（谁调用了它，BFS 到 depth）。 */
 export const callers = (at: RepoAt, symbol: string, depth: number): Promise<Edge[]> =>

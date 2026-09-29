@@ -192,7 +192,7 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
         ("reindex", json!({})),
         ("overview", json!({"budget": 2000})),
         ("node", json!({"symbol": alpha})),
-        ("subgraph", json!({"symbol": alpha, "depth": 1})),
+        ("neighborhood", json!({"symbol": alpha, "depth": 1})),
         ("impact", json!({"symbol": beta_id})),
         ("docs_for", json!({"symbol": alpha})),
         ("drift", json!({})),
@@ -256,6 +256,49 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
     let mut table: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
     table.sort();
     assert_eq!(ran, table, "有 op 没在真引擎上跑过");
+}
+
+/// 要求住址：`设计/97 §1` 判据 CP1「人那一侧**不许出现任何图分析**……只许三件事：取 · 画 · 收」· `99 §1` V158「前端不算图（CP1）」。
+///
+/// ★ 「距根几跳」由本程序给（前端只按它分组）：链 `a → b → c` 上，`a` 两跳内 = `b`@1 · `c`@2；
+/// `c` 一跳内只有调它的 `b`（调用方那一侧也算邻域）；根不进结果。真引擎、合成夹具。
+#[test]
+fn the_neighborhood_says_how_many_hops_each_symbol_is() {
+    let t = Tmp::new("chain");
+    std::fs::create_dir_all(t.0.join("src")).unwrap();
+    std::fs::write(
+        t.0.join("src/lib.rs"),
+        "pub fn a() -> u32 {\n    b()\n}\n\npub fn b() -> u32 {\n    c()\n}\n\npub fn c() -> u32 {\n    1\n}\n",
+    )
+    .unwrap();
+    let store = Tmp::new("store");
+    let (r, s) = (t.0.as_path(), store.0.as_path());
+    call("index", r, s, json!({})).unwrap();
+    let id = |n: &str| format!("src/lib.rs#{n}");
+    let hops = |sym: &str, depth: u32| -> Vec<(String, u64)> {
+        let v = call(
+            "neighborhood",
+            r,
+            s,
+            json!({"symbol": id(sym), "depth": depth}),
+        )
+        .unwrap();
+        assert_eq!(v["root"], json!(id(sym)), "{v}");
+        v["reached"]
+            .as_array()
+            .unwrap_or_else(|| panic!("没有 reached：{v}"))
+            .iter()
+            .map(|x| {
+                (
+                    x["id"].as_str().unwrap().to_string(),
+                    x["depth"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(hops("a", 2), vec![(id("b"), 1), (id("c"), 2)]);
+    assert_eq!(hops("a", 1), vec![(id("b"), 1)], "一跳就只到一跳");
+    assert_eq!(hops("c", 1), vec![(id("b"), 1)], "调它的那一侧也算");
 }
 
 /// ★ `status` 的三格 == 前端 `PanoramaStatus`（`src/frontend/ui/panorama/types.ts` 那个手写接口 —— 异源：前端按它收）。

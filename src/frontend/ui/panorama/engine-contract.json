@@ -10,6 +10,7 @@
     "impact": "quick",
     "index": "long",
     "list_annotations": "quick",
+    "neighborhood": "quick",
     "node": "quick",
     "overview": "quick",
     "plan_add_annotation": "quick",
@@ -22,9 +23,8 @@
     "reindex": "long",
     "search": "quick",
     "status": "quick",
-    "subgraph": "quick",
     "symbols_in_file": "quick",
     "touching": "quick"
   },
-  "shape": "fc90734129492e26"
+  "shape": "cb9b7e80ace95ea4"
 }

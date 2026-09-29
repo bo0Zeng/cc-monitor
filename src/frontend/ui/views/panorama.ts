@@ -23,13 +23,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as api from "../panorama/api";
 import type { RepoAt } from "../panorama/api";
 import { isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import {
-  clampDepth,
-  layerImpact,
-  layerSubGraph,
-  MAX_DEPTH,
-  type Layer,
-} from "../panorama/subgraph-layers";
+import { clampDepth, layerByDepth, MAX_DEPTH, type Layer } from "../panorama/subgraph-layers";
 import type {
   Annotation,
   Overview,
@@ -1402,13 +1396,14 @@ export class PanoramaView implements OverlayHandle {
       try {
         if (what === "subgraph") {
           const depth = clampDepth(Number(depthSel.value));
-          const sgv = await api.subgraph(this.at(repo), symbol, depth);
+          // 〔PANO · CP1〕跳数是那台给的（`neighborhood`），这里只分组。
+          const nb = await api.neighborhood(this.at(repo), symbol, depth);
           if (mine !== gen) return; // 期间点了别的，这次的结果作废
-          render(layerSubGraph(sgv, symbol), copyText("panorama.subgraph.emptyNeighbors"));
+          render(layerByDepth(nb.root, nb.reached), copyText("panorama.subgraph.emptyNeighbors"));
         } else {
           const imp = await api.impact(this.at(repo), symbol);
           if (mine !== gen) return;
-          render(layerImpact(imp), copyText("panorama.subgraph.noCallers"));
+          render(layerByDepth(imp.root, imp.affected), copyText("panorama.subgraph.noCallers"));
         }
       } catch (e) {
         if (mine !== gen) return;

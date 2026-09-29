@@ -88,7 +88,8 @@ pub const OPS: &[(&str, Need)] = &[
     ("reindex", Need::Build),
     ("overview", Need::Read),
     ("node", Need::Read),
-    ("subgraph", Need::Read),
+    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（前端只分组，不算）。
+    ("neighborhood", Need::Read),
     ("callers", Need::Read),
     ("callees", Need::Read),
     ("impact", Need::Read),
@@ -484,9 +485,9 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
             let a: SymbolArgs = take(op, args)?;
             out(e.node(&a.symbol))
         }
-        "subgraph" => {
+        "neighborhood" => {
             let a: SymbolDepthArgs = take(op, args)?;
-            out(e.subgraph(&a.symbol, a.depth))
+            Ok(neighborhood(e, &a.symbol, a.depth))
         }
         "callers" => {
             let a: SymbolDepthArgs = take(op, args)?;
@@ -550,6 +551,34 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
         }
         other => Err(Fail::BadArgs(format!("op `{other}` 不在分派里"))),
     }
+}
+
+/// 〔PANO · `97` CP1「人那一侧不许出现任何图分析」· `99 §1` V158〕以 `sym` 为心的邻域，**每个符号带距根几跳**：
+/// `{root, reached: [{id, depth}]}`（同一层按 id 排，根不进结果）。
+///
+/// 跳数 = 它最早出现在第几跳的上游 `subgraph(sym, d)` 里（`d = 1..=depth`，一层没有新的就停）——
+/// 只用上游的答案、不自写图算法，口径与上游 `subgraph` 的 depth 同一个（callers ∪ callees 各自按方向走）。
+/// 此前这一步住前端（对 `subgraph` 的边做无向 BFS）。上游给了这个口就换过去（`调研/第四波记录/PANO.md`「上游需求」①）。
+fn neighborhood(e: &Engine, sym: &str, depth: u32) -> Value {
+    let root = sym.to_string();
+    let mut seen: std::collections::HashSet<String> =
+        std::collections::HashSet::from([root.clone()]);
+    let mut reached: Vec<Value> = Vec::new();
+    for d in 1..=depth {
+        let sg = e.subgraph(&root, d);
+        let mut layer: Vec<String> = sg
+            .edges
+            .iter()
+            .flat_map(|x| [x.from.clone(), x.to.clone()])
+            .filter(|id| seen.insert(id.clone()))
+            .collect();
+        if layer.is_empty() {
+            break;
+        }
+        layer.sort();
+        reached.extend(layer.into_iter().map(|id| json!({ "id": id, "depth": d })));
+    }
+    json!({ "root": root, "reached": reached })
 }
 
 /// 一次调用 → (stdout 那一行, stderr 那一行（可空）, 退出码)。纯函数外壳，好测。
