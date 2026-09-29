@@ -739,7 +739,7 @@ fn the_launch_request_and_product_match_the_cross_language_golden() {
         *r,
         "后端出的 launch 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道送到没有」"
     );
-    let spec = crate::inbound::REGISTRY
+    let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|s| s.name == "launch")
         .expect("后端登记表里没有 `launch`");

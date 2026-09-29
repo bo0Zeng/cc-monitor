@@ -363,7 +363,7 @@ SDK / 脚本驱动的会话正好是 **①要 ②不要**，现有字段表达�
 「就地 resume」。它以为里面没东西，实际正跑着你的脚本。
 
 **消费侧（monitor）怎么用**：后端把它 additive 放上 `session_added` 帧
-（`src/backend/wire.rs`，最小 `BUILD_ID` = **`p1v-attachable`**），
+（`src/backend/stream/wire.rs`，最小 `BUILD_ID` = **`p1v-attachable`**），
 monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ② 把这些 sid 从 idle-tmux 判定里排除。
 
 **只认真正的布尔**：字符串 `"false"` 之类当没写（⇒ 视为可以）。宁可少一次门控，

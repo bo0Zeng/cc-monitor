@@ -12,3 +12,10 @@ pub(crate) mod mcp_sync_flow;
 pub(crate) mod pubkey;
 pub(crate) mod skill_flow;
 pub(crate) mod skill_inbox;
+
+// 〔MOD〕从 crate 根归进来（纯搬家，`00 §2.1` 资产那一行）。
+pub mod asset_catalog; // 〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，第四层；一个用户文件都不写）
+pub mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）
+pub mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan`（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
+pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
+pub mod skill_ledger; // 〔SU1 · 第四波 4C · V116〕skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，第四层）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写

@@ -43,7 +43,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, Semaphore};
 
-use crate::wire::{b64_decode, b64_encode, Frame};
+use crate::stream::wire::{b64_decode, b64_encode, Frame};
 
 /// 一块下行 / 上行字节的上限（解码后）。32 KiB：base64 之后 ≈ 43 KiB 一行，远在两侧单行上限之下
 /// （monitor 读后端出方向 64 MiB，后端读入方向 1 MiB —— `inbound::MAX_LINE_BYTES`）。

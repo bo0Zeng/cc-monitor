@@ -982,7 +982,7 @@ pub(crate) enum CappedLine {
 ///
 /// # ★ 为什么不是 `read_line` 加一句长度判断
 ///
-/// 那是后端侧栽过的坑，逐字记在 `src/backend/inbound.rs` 头注里：
+/// 那是后端侧栽过的坑，逐字记在 `src/backend/stream/inbound.rs` 头注里：
 /// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
 /// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
 /// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
@@ -1174,7 +1174,7 @@ pub enum InboundFrame {
         sid: String,
         session_kind: Option<String>,
         /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
-        /// 语义与来源见 `src/backend/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
+        /// 语义与来源见 `src/backend/stream/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
         cwd: Option<String>,
         name: Option<String>,
@@ -1190,7 +1190,7 @@ pub enum InboundFrame {
         ///
         /// 它是 `↗ 拉前终端` 那个 join 的**远端那一半**：`sid ──wire──→ token`，
         /// 再经本地那张表 `token ──→ HWND`（`bind.rs::lookup_hwnd_for_token`）。
-        /// 完整论证住 `src/backend/wire.rs` 的同名字段与 `src/doc/IPC-PROTOCOL.md` §9.3。
+        /// 完整论证住 `src/backend/stream/wire.rs` 的同名字段与 `src/doc/IPC-PROTOCOL.md` §9.3。
         ///
         /// **缺席的三种来历，消费侧必须分得开**（`IPC-PROTOCOL.md` 那三句的 monitor 侧版本）：
         /// ① 后端没声明 `rbind-token` 能力 ⇒ monitor 压根没发 `--with-rbind-token`
@@ -2723,7 +2723,7 @@ async fn stream_loop(
     tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stream);
         // 按 `\n` 切（协议保证每帧一行、帧内换行已被后端转义成 `\n` 两字符，
-        // 见 src/backend/wire.rs）。
+        // 见 src/backend/stream/wire.rs）。
         // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
         // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的后端都可能）。
         let mut buf: Vec<u8> = Vec::new();

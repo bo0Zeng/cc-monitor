@@ -8,7 +8,7 @@
 
 use super::door::{self, Door, Refused};
 use super::mcp_edit::{plan_project_mcp, project_root, upsert_mcp_server_value, MCP_JSON};
-use crate::mcp_sync::Facts;
+use crate::assets::mcp_sync::Facts;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -48,8 +48,10 @@ pub(crate) fn answer_preview(d: &dyn Door, facts: &dyn Facts, args: &Value) -> A
     if args.get("sameMachine").and_then(Value::as_bool) == Some(true) && tgt.path == source_path {
         return Err(("bad_args", copy_text("beMcpSyncFlow.preview.sameFile", &[])));
     }
-    let plan =
-        crate::mcp_sync::answer_with(facts, &json!({ "source": source, "target": tgt.text }))?;
+    let plan = crate::assets::mcp_sync::answer_with(
+        facts,
+        &json!({ "source": source, "target": tgt.text }),
+    )?;
     let (sv, tv) = (servers_in(Some(source)), servers_in(tgt.text.as_deref()));
     let rows: Vec<Value> = plan["rows"]
         .as_array()
@@ -86,7 +88,7 @@ pub(crate) fn answer_apply(d: &dyn Door, facts: &dyn Facts, args: &Value) -> Ans
             ))
         }
     };
-    let plan = crate::mcp_sync::answer_with(
+    let plan = crate::assets::mcp_sync::answer_with(
         facts,
         &json!({ "source": source, "target": target, "take": args.get("take"), "overwrite": args.get("overwrite") }),
     )?;

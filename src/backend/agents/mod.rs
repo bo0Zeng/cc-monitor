@@ -66,7 +66,7 @@
 //! （同轮还补了判据④的针：此前只认全路径 `agents::<名>::`，本文件写的相对路径 `codex::`
 //! 一处都数不到 —— 那是本区第二次「量具的作用域比事实**小**」。）
 
-use crate::wire::AgentHome;
+use crate::stream::wire::AgentHome;
 use std::path::{Path, PathBuf};
 
 pub mod claudecode;

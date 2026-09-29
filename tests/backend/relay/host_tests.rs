@@ -48,7 +48,7 @@ fn fake_upstream() -> SocketAddr {
 
 /// 〔TAP〕这几条只量「起没起来 / 转没转发」，不看 tee 抄了什么 ⇒ 给一个自己的 hub（不碰进程级那一个）。
 fn no_tap() -> std::sync::Arc<dyn super::super::TapPort> {
-    std::sync::Arc::new(crate::tap::TapHub::default())
+    std::sync::Arc::new(crate::stream::tap::TapHub::default())
 }
 
 /// 一次性目录（判据绝不碰用户真实的凭据文件）。
@@ -515,7 +515,7 @@ fn drain(
 fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clean_end() {
     let body = tap_body();
     let up = fake_upstream_with(body.clone());
-    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let hub = std::sync::Arc::new(crate::stream::tap::TapHub::default());
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tap1", up, hub.clone());
 
@@ -551,7 +551,7 @@ fn tap_gets_every_sse_data_payload_in_order_with_contiguous_positions_and_a_clea
 fn the_stream_label_is_the_session_id_the_agent_sends_in_its_own_request_header() {
     let body = tap_body();
     let up = fake_upstream_with(body);
-    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let hub = std::sync::Arc::new(crate::stream::tap::TapHub::default());
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tapv141", up, hub.clone());
     let sid = "3f2a9c1e-7d44-4c3b-9a55-0e6b2f1d8c77";
@@ -591,7 +591,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
     // ① 容量 1、不读：第一件进去之后全满 ⇒ 只剩第 0 号；收尾那一件也投不进（尾巴也会丢 ——
     //    接收侧拿「0 号之后再没有东西」判不出断没断，那一格由前端的撤卡规则兜，见 TAP.md §4）。
     let up = fake_upstream_with(body.clone());
-    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let hub = std::sync::Arc::new(crate::stream::tap::TapHub::default());
     let mut rx = hub.attach_bounded(1);
     let addr = hosted_with_tap("tap2", up, hub.clone());
     let resp = through(addr);
@@ -610,7 +610,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
 
     // ② 没人连着：hub 里没有发送端 ⇒ 转发照常。
     let up = fake_upstream_with(body.clone());
-    let lonely = std::sync::Arc::new(crate::tap::TapHub::default());
+    let lonely = std::sync::Arc::new(crate::stream::tap::TapHub::default());
     let addr = hosted_with_tap("tap3", up, lonely);
     let resp = through(addr);
     assert_eq!(
@@ -632,7 +632,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
         b.push_str("\n\n");
     }
     let up = fake_upstream_with(b.clone());
-    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let hub = std::sync::Arc::new(crate::stream::tap::TapHub::default());
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tap4", up, hub.clone());
     let resp = through(addr);
@@ -659,7 +659,7 @@ fn a_tap_that_cannot_keep_up_loses_positions_visibly_and_never_touches_the_forwa
 #[test]
 fn a_response_without_sse_events_hands_nothing_to_the_tap() {
     let up = fake_upstream_with("{\"type\":\"error\"}".to_string());
-    let hub = std::sync::Arc::new(crate::tap::TapHub::default());
+    let hub = std::sync::Arc::new(crate::stream::tap::TapHub::default());
     let mut rx = hub.attach();
     let addr = hosted_with_tap("tap5", up, hub.clone());
     let resp = through(addr);

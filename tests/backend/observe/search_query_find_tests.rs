@@ -235,7 +235,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
         serde_json::json!({ "total": total, "hits": hits })
     };
     let ask = |tools: bool| {
-        crate::read_face::answer_at(
+        crate::faces::read_face::answer_at(
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "include_tools": tools, "limit": 500}),

@@ -214,7 +214,7 @@ mod tests {
              tmux 会话与 claude 会话是两回事（`@ccm_sid` 才把它们连起来）。",
         ),
         (
-            "inbound.rs",
+            "stream/inbound.rs",
             "\"sessions\",",
             "〔MIG-1 续〕同上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
         ),
@@ -248,7 +248,7 @@ mod tests {
     /// 两条纪律同 `FROZEN_COMPAT`：① 每条必须有非空解锁条件；② 条数有天花板且只许降。
     const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[
         (
-            "wire.rs",
+            "stream/wire.rs",
             "claude_dir",
             "`Hello` 帧里今天**真在线上**的目录字段。`S4` 走 additive 迁移（新字段 `homes` \
              承载 agent 维度），这个字段原地冻结 ⇒ 线上字节零变化。",

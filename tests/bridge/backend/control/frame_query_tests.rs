@@ -34,7 +34,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 后端 `inbound.rs` 生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**）。
 /// 〔C4b〕抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/inbound.rs");
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/stream/inbound.rs");
     let src = std::fs::read_to_string(&p).expect("读后端 inbound.rs");
     let prod = guard_core::production_code(&src);
     let blocks: Vec<(String, String)> = prod
@@ -1326,7 +1326,10 @@ fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
     assert!(rows[0].message.is_none(), "不进界面的元数据记录不该带成品");
     assert_eq!(rows[1].cwd.as_deref(), Some("/w"));
     let m: Value = serde_json::from_str(rows[1].message.as_ref().unwrap().0.get()).unwrap();
-    assert_eq!(m, golden["history-read"]["rows"][1]["message"], "成品没原样转交");
+    assert_eq!(
+        m, golden["history-read"]["rows"][1]["message"],
+        "成品没原样转交"
+    );
     // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
     assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "message": "x"})).is_none());
 }

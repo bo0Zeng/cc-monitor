@@ -595,7 +595,7 @@ mod tests {
     /// # 它此前只覆盖一半，而漏掉的那半从 0 长到了 5
     ///
     /// 本函数原来只抠 `main.rs` 里的 `Some("--`，也就是**一次性子命令**那一面。
-    /// 而后端还有第二个命令面：[`crate::inbound::COMMANDS`]（常驻通道命令）。
+    /// 而后端还有第二个命令面：[`crate::stream::inbound::COMMANDS`]（常驻通道命令）。
     /// 实测（`audit-0805` 的只读核实）：
     ///
     /// - `BUILD_ID` 从 `4617f34`（07-31，`p1v-attachable`）之后**再没变过**；
@@ -664,7 +664,7 @@ mod tests {
         );
         // ── 第二个命令面：常驻通道命令（`inbound::COMMANDS` 是它的单一真相源）──────
         // 排序后写成 `ch:<名>`，与 `--x` 那一面在同一个字符串里但**不会混淆**。
-        let mut chans: Vec<String> = crate::inbound::COMMANDS
+        let mut chans: Vec<String> = crate::stream::inbound::COMMANDS
             .iter()
             .map(|c| format!("ch:{c}"))
             .collect();

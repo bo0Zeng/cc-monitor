@@ -134,7 +134,7 @@
 //!      没有一条判据把它们横着对起来，豁免表也还不存在。
 //!    - 🔴 **而「在这台机器上做不到」那个轴与本轴还没对上**，两件事别混：
 //!      本轴（`设计/96 §2` 的 target 轴）逐字答「每个平台**编不编得过**」，是**编译期**的；
-//!      [`crate::wire::Unavailable`] 那个轴答「这条命令我接得下，但**在这台机器上**做不到」，
+//!      [`crate::stream::wire::Unavailable`] 那个轴答「这条命令我接得下，但**在这台机器上**做不到」，
 //!      是**运行期逐机器**的。〔NET2〕后者已真填（`main.rs` 填 `unavailable_here()`，
 //!      `main_fourth_face_tests::production_hello_fills_unavailable_from_this_machine` 钉着），
 //!      判准与本轴同源（`codes` 里的 `no_tmux` / `no_unix_mode`）。

@@ -396,7 +396,7 @@ fn v126_the_error_codes_and_the_envelope_are_the_frozen_ones() {
         .filter(|c| !oneshot_only.contains(c))
         .cloned()
         .collect();
-    let spec = crate::inbound::REGISTRY
+    let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|c| c.name == "resolve")
         .expect("inbound::REGISTRY 里没有 `resolve` —— 跨仓承诺的流那条入口没了");
@@ -440,7 +440,7 @@ fn v126_both_entry_points_of_the_commitment_are_still_wired() {
     )
     .unwrap_or_else(|e| panic!("`main.rs` 分派里 `--resolve` 那一臂不在了：{e}"));
     let inbound = guard_core::strip_comment_lines(&crate::guard_support::production_code(
-        include_str!("../../../src/backend/inbound.rs"),
+        include_str!("../../../src/backend/stream/inbound.rs"),
     ));
     let at = inbound
         .find("name: \"resolve\",")

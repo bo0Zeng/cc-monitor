@@ -233,7 +233,7 @@ fn the_cockpit_read_products_match_the_cross_language_golden() {
         "`bus-inbox` 成品与金样不相等"
     );
     for (op, key) in [("bus-state", "state"), ("bus-inbox", "inbox")] {
-        let mut want: Vec<&str> = crate::inbound::REGISTRY
+        let mut want: Vec<&str> = crate::stream::inbound::REGISTRY
             .iter()
             .find(|s| s.name == op)
             .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))
@@ -592,7 +592,7 @@ fn the_bus_products_match_the_cross_language_golden() {
     ))
     .expect("金样读不出来");
     let codes_of = |op: &str| -> Vec<String> {
-        let mut v: Vec<String> = crate::inbound::REGISTRY
+        let mut v: Vec<String> = crate::stream::inbound::REGISTRY
             .iter()
             .find(|s| s.name == op)
             .unwrap_or_else(|| panic!("后端登记表里没有 `{op}`"))

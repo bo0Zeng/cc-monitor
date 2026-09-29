@@ -7,7 +7,7 @@
  * 此前这三条是 monitor 的三条 Tauri 命令（`read_session_index` / `list_user_inputs` / `find_in_session`〔散文墓碑〕）：
  * 本机每问一次 exec 一个一次性后端进程、远端走帧面按行拿回「头 ＋ 行 ＋ 尾」，monitor 再核头尾、剥行、
  * 把失败分档 —— 那一份解释住在 monitor 中层（`frame_query_tests::HELD_BACK` 那三行）。
- * 今天后端的帧应答**就是成品**（`src/backend/read_face.rs`：`{from,end,rows}` / `{from,end,entries}` / `{total,hits}`），
+ * 今天后端的帧应答**就是成品**（`src/backend/faces/read_face.rs`：`{from,end,rows}` / `{from,end,entries}` / `{total,hits}`），
  * 本文件经 `chan.call` 直接问、按形状收；monitor 那一跳只搬字节，三条命令与那一份解释一起删了。
  * **本机与远端同一条路**（本机那台由 `<local>` 那条长连接答）。
  *

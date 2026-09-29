@@ -48,7 +48,7 @@ use tokio::sync::{mpsc, watch, Notify};
 use crate::control::files_commit::{KEY_LEN, PART_SUFFIX};
 use crate::control::files_write::resolve_in_root;
 use crate::dial::sftp::{self, Dial, Session};
-use crate::wire::{Frame, TransferEnd};
+use crate::stream::wire::{Frame, TransferEnd};
 
 /// 开单：上传。
 pub const TRANSFER_UPLOAD: &str = "transfer-upload";

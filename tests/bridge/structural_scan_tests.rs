@@ -1757,7 +1757,7 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("ratchet_guard.rs", "main.rs", 651),
         ("ratchet_guard.rs", "observe/watcher.rs", 1040),
         ("ratchet_guard.rs", "tmux_hook.rs", 6),
-        ("single_stream_guard.rs", "inbound.rs", 35),
+        ("single_stream_guard.rs", "stream/inbound.rs", 35),
         ("single_stream_guard.rs", "main.rs", 585),
         ("single_stream_guard.rs", "observe/watcher.rs", 77),
         ("single_stream_guard.rs", "relay/tee.rs", 169),
@@ -2378,28 +2378,32 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/backend/inbound.rs",
+            "src/backend/stream/inbound.rs",
             "handlers_never_run_on_the_reader_task",
             1,
         ),
         // 🔴 〔步 7c 后端剖分 2026-09-19 · C 类〕**这一条拆成两行，总处数守恒（3 ＝ 2 ＋ 1）。**
         //    那个名字的 3 处散文引用里，2 处留在生产段的头注里、1 处随测试段搬走了。
         (
-            "src/backend/inbound.rs",
+            "src/backend/stream/inbound.rs",
             "hello_commands_match_the_dispatch_table",
             2,
         ),
         (
-            "tests/backend/inbound_structure_guards.rs",
+            "tests/backend/stream/inbound_structure_guards.rs",
             "hello_commands_match_the_dispatch_table",
             1,
         ),
         (
-            "src/backend/inbound.rs",
+            "src/backend/stream/inbound.rs",
             "hello_is_flushed_before_the_inbound_reader_starts",
             1,
         ),
-        ("src/backend/listen.rs", "frozen_single_client_guard", 1),
+        (
+            "src/backend/stream/listen.rs",
+            "frozen_single_client_guard",
+            1,
+        ),
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕同上，**总处数守恒（2 ＝ 1 ＋ 1）**。
         (
             "src/backend/observe/accounts_query.rs",
@@ -2678,7 +2682,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/backend/wire.rs",
+            "src/backend/stream/wire.rs",
             "removal_cause_wire_literal_stays_in_sync",
             1,
         ),
@@ -3719,7 +3723,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/backend/wire.rs",
+            "src/backend/stream/wire.rs",
             "hello_bytes_for_claude_are_frozen",
             1,
         ),
@@ -4102,7 +4106,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //   新文件判的是中继，没有一句还在说那几个旧判据 ⇒ 真该没有，不是删线索。
         // 🔴 〔C4c · 第四波 4B〕账号清单（远端 / 本机）与信任预检三条 Tauri 命令改走通道、后端出成品：monitor 那一份行解析 ·
         //    本机并表 · 本机信任预检三件函数随之删了；留下的散文逐字点旧名讲来历 ⇒ 第②条出路（逐处一块）。
-        ("src/backend/read_face.rs", "with_apikey_table", 1),
+        ("src/backend/faces/read_face.rs", "with_apikey_table", 1),
         (
             "src/bridge/src/backend/control/frame_query.rs",
             "run_list_query",
@@ -4131,7 +4135,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 〔C4d〕本机账号参照实现删了（list_from_dir 一族 ＋ accounts.rs 整份），点旧名的散文挂墓碑
         (
-            "tests/backend/read_face_tests.rs",
+            "tests/backend/faces/read_face_tests.rs",
             "line_shaped_answers_carry_the_rows",
             1,
         ), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
@@ -4151,12 +4155,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/bridge/src/history.rs", "enumerate_codex_sessions", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
         ("src/bridge/src/history.rs", "local_projects_via", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
         (
-            "tests/backend/history_annotations_tests.rs",
+            "tests/backend/history/history_annotations_tests.rs",
             "c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden",
             1,
         ), // 〔C4d〕历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
         (
-            "tests/backend/history_join_tests.rs",
+            "tests/backend/history/history_join_tests.rs",
             "unknown_is_its_own_bucket_when_sorting",
             1,
         ), // 〔C4d〕历史清单与注解搬进本机常驻后端，点 monitor 旧实现 / 退役判据的散文挂墓碑
@@ -4875,7 +4879,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/backend/assets/aliases/aliases_tests.rs", 1),
         ("tests/generated-boundary-guard.vitest.ts", 3), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑 // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         ("tests/settings/panel-deferred-io.vitest.ts", 1),
-        ("src/backend/wire.rs", 2), // 〔MIG-1〕1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
+        ("src/backend/stream/wire.rs", 2), // 〔MIG-1〕1 → 2：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 //
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
         ("src/bridge/README.md", 15), // 〔MIG-1 续〕列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 〔合并 MIG-1 × 主线 862be034〕主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 〔MIG-2〕11 → 13
         ("src/bridge/build.rs", 1),
@@ -5021,7 +5025,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/keybindings/actions.vitest.ts", 1),
         // 〔C4c · 第四波 4B〕账号清单与信任预检改走通道（后端出成品）：monitor 那几件函数与它们的判据删了，
         //   逐处挂了墓碑（模块头注 · 退役那几节的旁注 · 后端出成品那一臂点名它替掉了谁）。
-        ("src/backend/read_face.rs", 2), // 〔MOD〕1 → 2
+        ("src/backend/faces/read_face.rs", 2), // 〔MOD〕1 → 2
         // 〔C4d〕`tests/bridge/accounts_tests.rs` 那一行去掉：整份随 `accounts.rs` 删了（守的那条 serde 名对拍随 Rust 枚举一起退役，字面量今天由后端金样 ＋ TS 解码器钉）。
         // 〔C4c · 第四波 4B〕记录那一问（`history-record`）改走通道：monitor 的发送端与它的判据删了，原处各一块。
         ("src/bridge/src/backend/control/frame_query.rs", 7), // 〔MOD〕3 → 7 // 〔MIG-3b 续〕2 → 3：点 `panorama_call.rs` 旧住址那一句 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
@@ -5043,8 +5047,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/codex/history.rs", 2), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
         ("src/backend/observe/history_query.rs", 3), // 〔MOD〕2 → 3 // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
         ("tests/backend/observe/history_query_tests.rs", 1), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
-        ("tests/backend/read_face_tests.rs", 1), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
-        ("tests/backend/history_annotations_tests.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
+        ("tests/backend/faces/read_face_tests.rs", 1), // 〔C4d〕历史跨机 join 进本机后端：会话行口径收成一份 ＋ Codex 历史搬进适配层，点 monitor 那几份旧实现 / 退役判据的散文挂墓碑
+        ("tests/backend/history/history_annotations_tests.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔C4e · 第四波 4C〕抓屏（`capture-pane`）改由界面经通道直接问：monitor 的 Tauri 命令、发送端、参数构造器与它们的判据删了，
         //   原处与点它们旧名的散文各一块。
         // 〔C4e 批 2〕`src/bridge/src/backend/control/command_args.rs` 那一行删了：整份随它最后两个调用方（送键 · 就地 resume 的发送端）删掉。
@@ -5069,7 +5073,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/send-into-backend.vitest.ts", 2),
         ("tests/tabs.vitest.ts", 3), // 〔MIG-1〕1 → 3：⑬ 退役的会话清单/活动命令与 buffered_* 旧名挂墓碑
         ("tests/views/pane-preview.vitest.ts", 1),
-        ("tests/backend/history_join_tests.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
+        ("tests/backend/history/history_join_tests.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔MOD〕`tests/bridge/history_title_coverage.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("tests/bridge/origin_tests.rs", 9), // 〔MOD〕7 → 9 // 〔合并 MIG-3b × 主线 19671e6b〕主线 5 ＋ MIG-3b +2（远端分叉 · 远端删会话两个分支函数删了）// 〔MIG-3a〕+2：远端 MCP 写 / 删两个分支函数随 `mcp.rs` 删了 // // 〔SH1〕+1：远端项目目录那个分支删了 // 〔合并 LOC1b〕+1：远端读会话函数（本机远端合成一条） // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔US1 · 4D〕上游选择那半（决策表 · 人群 · 路由语法 · 本机读侧）从 monitor 搬走：点旧名的散文挂墓碑。

@@ -164,7 +164,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
     //   只断言**与世界无关**的性质：不断言条数 —— 那会变成「跑测试这台机器上装没装 tmux」。
     for u in &unavailable_here() {
         assert!(
-            super::inbound::COMMANDS.contains(&u.command.as_str()),
+            crate::stream::inbound::COMMANDS.contains(&u.command.as_str()),
             "声明做不到的 `{}` 根本不在 `commands` 里 —— 本字段说的是「接得下但做不到」，\
                  「根本不接」那一格由不在 `commands` 里表达",
             u.command
@@ -391,7 +391,7 @@ fn the_windows_arm_is_wired_into_the_source() {
 /// 本条把那次改名变成一次红。
 #[test]
 fn the_declared_code_is_one_the_registry_already_declares() {
-    let owners: Vec<&str> = crate::inbound::REGISTRY
+    let owners: Vec<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.codes.contains(&NO_TMUX))
         .map(|s| s.name)
@@ -403,7 +403,7 @@ fn the_declared_code_is_one_the_registry_already_declares() {
              而它自己不会喊疼。（本常量只是拿去查表，`REGISTRY` 才是真相源。）"
     );
     for u in unavailable_from(Some(false)) {
-        let spec = crate::inbound::REGISTRY
+        let spec = crate::stream::inbound::REGISTRY
             .iter()
             .find(|s| s.name == u.command)
             .unwrap_or_else(|| panic!("声明了一条 `REGISTRY` 里没有的命令：{}", u.command));

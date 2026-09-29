@@ -407,7 +407,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 抄一份的话，「清单少一棵」与「钉子少一条」会被同一次编辑一起改掉 ⇒ 恒真。
     // 形状照上面的 [`MUST_BE_RECOGNISED`]：拿**盘上真有的那一份**当见证。
     const MUST_BE_IN_REACH: &[(&str, &str)] = &[(
-        "src/backend/wire.rs",
+        "src/backend/stream/wire.rs",
         "backend 那棵树的见证 —— `K-R37` 之前本条的实参逐字只有 `src/bridge/src`，\
              那棵树的 `.rs` 一份也没被打开过",
     )];

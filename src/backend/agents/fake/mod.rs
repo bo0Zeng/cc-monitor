@@ -315,7 +315,7 @@ pub(crate) enum Stop {
 /// # ⚠ 边界（本函数最容易被读错的一句，写在这里而不是只写在计划里）
 ///
 /// 前两段（`发现` / `宣告`）**真的调用通用层的机器**：
-/// [`crate::agents::visible_among`] 的判准与 [`crate::wire::Frame::Hello`] 的序列化。
+/// [`crate::agents::visible_among`] 的判准与 [`crate::stream::wire::Frame::Hello`] 的序列化。
 /// 后四段（`读会话`/`判活`/`账号`/`resume`）**没有过通用层** ——
 /// 通用层今天在这五段上直呼 `crate::agents::claudecode::…`（27 处里的 22 处），
 /// 没有任何入口收第二种布局。⇒ 这五段是假 agent 拿自己的知识自问自答。
@@ -391,7 +391,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     done.push(STAGES[0]);
 
     // ── ② 宣告：**真的走通用层**（塞进 `Hello.homes` 并序列化成一行）。
-    let line = crate::wire::to_line(&crate::wire::Frame::Hello {
+    let line = crate::stream::wire::to_line(&crate::stream::wire::Frame::Hello {
         v: 1,
         build_id: "s6".into(),
         host_arch: "x86_64".into(),

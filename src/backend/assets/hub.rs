@@ -31,7 +31,7 @@ use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-use crate::remote_ask::{Remote, Table};
+use crate::history::remote_ask::{Remote, Table};
 
 type Answer = Result<Value, (String, String)>;
 
@@ -81,14 +81,14 @@ async fn ask_one(
                 .map_err(|e| ("io_failed".to_string(), e.to_string()))?
         }
         Some(m) => {
-            if !crate::remote_ask::lock(table).contains_key(m) {
+            if !crate::history::remote_ask::lock(table).contains_key(m) {
                 return Err((
                     "unreachable".to_string(),
-                    crate::remote_ask::unreachable_message(m),
+                    crate::history::remote_ask::unreachable_message(m),
                 ));
             }
             // 〔主会话 09-28 裁〕码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
-            crate::remote_ask::ask_json(m, cmd, &args, table, remote)
+            crate::history::remote_ask::ask_json(m, cmd, &args, table, remote)
                 .await
                 .map_err(|s| {
                     (

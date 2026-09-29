@@ -263,7 +263,7 @@ fn the_edge_scan_sees_both_trees_and_actually_parses() {
 /// 抽取器要求宏参数是**字面量**（`(` 之后跳过空白必须是 `"`）。
 /// 不是字面量的（`concat!(env!("OUT_DIR"), "/x")` 这种）**被静默跳过** ——
 /// 跳过是对的，但**没有任何东西记着跳过了几处**。
-/// 于是 `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../backend/wire.rs"))`
+/// 于是 `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../backend/stream/wire.rs"))`
 /// 这样一条**真的跨界边**会整条隐形，而它与今天已经在用的写法只差一个路径。
 ///
 /// ⚠ 这不是假想形态：本仓**今天就有两处** `include_bytes!(concat!(env!("OUT_DIR"), …))`。

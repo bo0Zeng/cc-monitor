@@ -138,7 +138,7 @@ use std::sync::{Arc, Mutex};
 ///   打开约 20 ms、每键 ≤ 3.03 ms）。
 pub const MAX_EDIT_BYTES: usize = 8 * 1024 * 1024;
 
-/// 🔴〔F9c〕**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/inbound.rs::MAX_LINE_BYTES`，
+/// 🔴〔F9c〕**一条请求行最多多长** ＝ 后端入方向一行的上限（`src/backend/stream/inbound.rs::MAX_LINE_BYTES`，
 /// 审计加的防 OOM 线，所有命令共用；多一个字节整行丢弃）。
 ///
 /// 存盘用它分两支：整份装得进一行 ⇒ 一条 `files-write-text`；装不进 ⇒ 按它切块（[`plan_chunks`]），
