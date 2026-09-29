@@ -1286,6 +1286,8 @@ const PROSE_TREES: &[(&str, usize)] = &[
     ("src/backend", 58),
     ("tests/frontend/shell", 140),
     ("tests/backend", 65),
+    // 〔RE〕通信层成员的单测镜像（从上面两棵里搬出来的 9 份 ＋ 1 份 `.vitest.ts` 不在 `.rs` 人群）；地板取现打份数。
+    ("tests/comms", 9),
 ];
 
 /// 一行算不算**散文行**：注释行，或**续行字符串**（`"…\` 那种多行失败文案）的一部分。

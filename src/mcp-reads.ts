@@ -10,7 +10,7 @@
  * 从前这几条是 monitor 的 Tauri 命令（`read_mcp_servers` 等七条，D 组「monitor 算好、后端写」）；计算与写都进了那台后端
  * （`src/backend/assets/mcp_edit.rs`），这里只按形状严格收（金样 `tests/__fixtures__/mcp-read.golden.json` · `mcp-edit.golden.json`）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

@@ -179,7 +179,7 @@ async fn backend_errors_pass_through_unchanged() {
     );
 }
 
-/// 金标准住址：TS 那侧（`tests/ipc/chan.vitest.ts`）读**同一份文件**解回三层 —— 两侧不各写一份字面量。
+/// 金标准住址：TS 那侧（`tests/comms/inward/chan.vitest.ts`）读**同一份文件**解回三层 —— 两侧不各写一份字面量。
 const GOLDEN: &str = "tests/__fixtures__/chan-webview-fail.golden.json";
 
 #[test]
@@ -229,7 +229,7 @@ fn the_fail_shape_equals_the_golden_file_the_ts_side_decodes() {
     assert_eq!(
         got, want,
         "交回 webview 的失败形状与金标准不同 —— TS 那侧按金标准解，两边会各说各的。\n\
-         真改了线上形状就重打金标准，并同拍改 `src/ipc/chan.ts` 的解码"
+         真改了线上形状就重打金标准，并同拍改 `src/comms/inward/chan.ts` 的解码"
     );
 }
 
@@ -251,7 +251,7 @@ fn a_blank_origin_never_reaches_a_backend() {
 //  要求住址：`设计/05 §3.3.4`（`Item` 五个变体；「`Gap` 必须在流里的原位」）· `§3.3.0`「载荷是不透明字节」。
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 金标准住址：TS 那侧（`tests/ipc/chan.vitest.ts`）读**同一份文件**解回 `Item` —— 两侧不各写一份字面量。
+/// 金标准住址：TS 那侧（`tests/comms/inward/chan.vitest.ts`）读**同一份文件**解回 `Item` —— 两侧不各写一份字面量。
 const ITEMS_GOLDEN: &str = "tests/__fixtures__/chan-webview-items.golden.json";
 
 /// ★ S5（Rust 那一半）：每个 `Item` 变体交回 webview 的形状 == 金标准（体按 UTF-8 原样成字符串，不解析）。

@@ -49,7 +49,7 @@ vi.mock("../src/ipc/commands", () => ({
 }));
 
 // 〔CF2 · 第四波 4B〕会话内容从通道 `subscribe` 来：换成桩，按句柄的形状灌（`test-support/chan-stream-fake.ts`）。
-vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
+vi.mock("../src/comms/inward/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
 import { streamFake } from "./test-support/chan-stream-fake.ts";

@@ -271,7 +271,7 @@ fn f4_a_bare_lf_never_ends_a_chunk_size_line() {
 
 /// `relay/` 生产段（逐份过 `production_code`，再过共享的剥注释原语 —— 散文里提到 `drain` 不算手抄）。
 fn relay_production() -> Vec<(String, String)> {
-    let root = crate::guard_support::src_root().join("relay");
+    let root = crate::guard_support::relay_root(); // 〔RE〕`relay` 模块的根
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {

@@ -24,7 +24,7 @@ import { resolve } from "node:path";
 
 const calls = vi.hoisted(() => ({ invoke: [] as string[], chan: [] as string[] }));
 
-vi.mock("../../src/ipc/chan", () => ({
+vi.mock("../../src/comms/inward/chan", () => ({
   chan: {
     call: async (origin: string, op: string, body: Uint8Array) => {
       // 〔MIG-3a〕同步那一问改走通道（问本机后端 `assets-sync`，远端那一页只报 origin）：按旧名录进 `invoke` 那一列，断言不变。

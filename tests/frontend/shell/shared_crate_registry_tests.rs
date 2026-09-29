@@ -1116,6 +1116,11 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         &repo.join("tests/frontend/shell"),
         &["rs"]
     ));
+    // 〔RE〕通信层成员的单测镜像（`tests/comms/inward/`）也是本 crate 的测试。
+    ignore_corpus.extend(guard_core::scan_tree!(
+        &repo.join("tests/comms/inward"),
+        &["rs"]
+    ));
     for (path, src) in ignore_corpus {
         let stem = path
             .file_stem()
@@ -1234,11 +1239,16 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
         //   ⇒ **摘除静默空转**，而「摘了」与「没摘」在输出上一模一样。
         // ⇒ 这里**明写**排除，不依赖那个宏的自摘。
         let me = "shared_crate_registry_tests.rs";
-        let judge_corpus: Vec<_> =
+        let mut judge_corpus: Vec<_> =
             guard_core::scan_tree!(&repo.join("tests").join("frontend/shell"), &["rs"])
                 .into_iter()
                 .filter(|(path, _)| !path.to_string_lossy().ends_with(me))
                 .collect();
+        // 〔RE〕本 crate 的第二棵测试树（通信层成员单测，`tests/comms/inward/`）。
+        judge_corpus.extend(guard_core::scan_tree!(
+            &repo.join("tests/comms/inward"),
+            &["rs"]
+        ));
         assert!(
             !judge_corpus.is_empty(),
             "判据语料排掉本文件之后成了空集 —— 树的住址错了，本条在空转"

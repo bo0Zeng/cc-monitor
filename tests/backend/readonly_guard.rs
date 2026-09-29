@@ -3904,10 +3904,13 @@ mod g6_staged_zero {
     fn backend_files() -> Vec<(String, String, String)> {
         let src_root = crate::guard_support::src_root();
         let tests_root = crate::guard_support::tests_root();
+        // 〔RE〕面 B 成员的单测镜像住 `tests/comms/outward/`（生产那一半由 `guard_core` 顺着 `#[path]` 收进 `src_root`）。
+        let comms_tests = crate::guard_support::comms_tests_root();
         let mut out = Vec::new();
         for (root, excluded, prefix) in [
             (&src_root, &[] as &[&str], ""),
             (&tests_root, &["readonly_guard.rs"], "tests/backend/"),
+            (&comms_tests, &[], "tests/comms/outward/"),
         ] {
             for (path, src) in guard_core::scan_tree_excluding(root, &["rs"], excluded) {
                 let rel = format!(

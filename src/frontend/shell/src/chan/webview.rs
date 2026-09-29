@@ -8,7 +8,7 @@
 //! 它要的只是 `§3.3` 那个签名在 Tauri IPC 这一跳上的样子：
 //!
 //! ```text
-//! webview (src/ipc/chan.ts)  ──Tauri IPC──▶  chan_call（本文件）──▶ router::settle ──▶ 注入的 Backends
+//! webview (src/comms/inward/chan.ts)  ──Tauri IPC──▶  chan_call（本文件）──▶ router::settle ──▶ 注入的 Backends
 //!   第 0 跳：webview ↔ monitor                                      第 1 跳：monitor ↔ 后端
 //! ```
 //!
@@ -20,7 +20,7 @@
 //!
 //! 它碰 Tauri（`#[tauri::command]` · `tauri::ipc::Response`）、按生产注入句柄（[`super::host::InboundBackends`]）、
 //! 给「空白名」那一档当场拒 —— 那是**宿主**做的几件事（`C5` 的「绑口 / 注入在外」同形）。
-//! 成员那一半是 TS 的 `src/ipc/chan.ts`（webview 手里那一半，与 `client.rs` 对称）。
+//! 成员那一半是 TS 的 `src/comms/inward/chan.ts`（webview 手里那一半，与 `client.rs` 对称）。
 //!
 //! # 载荷原样
 //!
@@ -36,7 +36,7 @@
 //! # 〔CF2 · 第四波 4B〕`subscribe` 那一半
 //!
 //! ```text
-//! webview (src/ipc/chan.ts)  ── chan_subscribe(origin, kind, from, want, id) ──▶ 本文件 ──▶ 注入的句柄（event_replay·rs）
+//! webview (src/comms/inward/chan.ts)  ── chan_subscribe(origin, kind, from, want, id) ──▶ 本文件 ──▶ 注入的句柄（event_replay·rs）
 //!   events.ts 的流          ◀── Tauri 事件 `chan-items` {sub, items} ─────────── WebviewSink（emit_to 那个 webview）
 //!                            ── chan_want(id, more) / chan_stop(id) ────────────▶
 //! ```
@@ -157,7 +157,7 @@ pub(crate) fn cancel_inflight(id: &str) -> bool {
     false
 }
 
-/// 〔MIG-3b 续〕主界面撤掉一问（`src/ipc/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
+/// 〔MIG-3b 续〕主界面撤掉一问（`src/comms/inward/chan.ts`：`Budget.cancel` 拨下 ⇒ 带着那一问的编号发这一条）。
 /// 撤单手柄拨下 ⇒ `router::settle` 丢掉那次调用 ⇒ `inbound_client` 的放弃守卫补发 `cancel{target}` ⇒ 后端可取消档停下
 /// （全景：小程序连同 `timeout` 前缀那一组子进程被杀）。
 #[tauri::command]
@@ -235,10 +235,10 @@ pub fn chan_offer(origin: crate::origin::Origin) -> Option<OfferView> {
 //  〔CF2 · 第四波 4B〕`subscribe`
 // ════════════════════════════════════════════════════════════════════════════
 
-/// 交给 webview 的事件名（`src/ipc/chan.ts` 按窗口作用域听它）。
+/// 交给 webview 的事件名（`src/comms/inward/chan.ts` 按窗口作用域听它）。
 pub const ITEMS_EVENT: &str = "chan-items";
 
-/// 流里一格在 webview 这一跳上的样子（`src/ipc/chan.ts::decodeItem` 按它解；跨语言金样
+/// 流里一格在 webview 这一跳上的样子（`src/comms/inward/chan.ts::decodeItem` 按它解；跨语言金样
 /// `tests/__fixtures__/chan-webview-items.golden.json`）。体是文本（见模块头注）。
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "t", rename_all = "snake_case")]

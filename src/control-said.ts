@@ -11,7 +11,7 @@
  * 这里的 [`settle`] 只接一个已经发出去的 `Promise`。
  */
 import { copyText } from "./copy-table";
-import { chan, ChanError, unavailableCode, type CallError } from "./ipc/chan";
+import { chan, ChanError, unavailableCode, type CallError } from "./comms/inward/chan";
 import { readJson, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 

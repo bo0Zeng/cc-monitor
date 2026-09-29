@@ -35,7 +35,7 @@
  */
 
 import { commands, type StopAnswer } from "../ipc/commands";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { hostOs } from "./host-os";

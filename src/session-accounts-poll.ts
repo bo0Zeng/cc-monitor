@@ -49,7 +49,7 @@
 
 import type { RemoteHostConfig } from "./remote-config";
 import type { Account, AccountsState, SessionAccount } from "./accounts";
-import type { Item } from "./ipc/chan";
+import type { Item } from "./comms/inward/chan";
 
 /**
  * 同时在飞的远端数上限。

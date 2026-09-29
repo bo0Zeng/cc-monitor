@@ -131,7 +131,7 @@ const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
     (
         "expose_for_auth_header",
         Handling::HandsOut,
-        "唯一的**换头**出口。调用点恰好 1 处，在 `src/backend/relay/server.rs`",
+        "唯一的**换头**出口。调用点恰好 1 处，在 `src/comms/outward/server.rs`",
     ),
     (
         "expose_for_persisting",

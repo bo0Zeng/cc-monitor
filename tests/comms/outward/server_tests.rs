@@ -3838,11 +3838,7 @@ fn every_status_we_make_has_one_home_and_the_three_groups_are_disjoint() {
     assert!(files.len() >= 30, "只扫到 {} 份 —— 取法坏了", files.len());
     let mut on_disk: Vec<(String, String)> = Vec::new();
     for (p, raw) in &files {
-        let rel = p
-            .strip_prefix(&root)
-            .unwrap_or(p)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = guard_core::module_address(&root, p); // 〔RE〕按模块住址认（面 B 成员住 `src/comms/outward/`）
         for lit in status_literals(&crate::guard_support::production_code(raw)) {
             on_disk.push((rel.clone(), lit));
         }

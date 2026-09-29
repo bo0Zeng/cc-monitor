@@ -20,7 +20,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import * as api from "../../src/panorama/api";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
-import { ChanError } from "../../src/ipc/chan";
+import { ChanError } from "../../src/comms/inward/chan";
 import { chanArgsJson, chanReply, isChanCall, refusedReply, type ChanCallArgs } from "../test-support/chan-fake";
 
 const REMOTE: api.RepoAt = { origin: "box1", path: "/srv/proj" };

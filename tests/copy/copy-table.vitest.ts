@@ -275,6 +275,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     ...productionRsFiles("src/frontend/shell/src"),
     ...productionRsFiles("src/backend"),
     ...productionRsFiles("src/common"),
+    ...productionRsFiles("src/comms"), // 〔RE〕通信层成员（两个 crate 经 `#[path]` 编它们）
   ];
   const rsAll = rsFiles
     .filter((f) => !RS_DEFINITIONS.has(f.file))

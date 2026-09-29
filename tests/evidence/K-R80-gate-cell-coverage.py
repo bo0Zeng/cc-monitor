@@ -112,9 +112,10 @@ ROOTFILES = "<仓根文件>"
 #    把 `src/` 挪到 `src/backend/` 前面，后端那 69 份会被前端那棵吞掉，而**一条判据都不红**。
 TREES = [
     "src/backend/",          # 69   后端 Rust（重构前的 `remote-daemon-proto/`）
-    VENDOR,                  # russh 补丁副本（〔RE〕原 `src/frontend/shell/vendor/russh`）
-    VENDOR_PANO,             # code-picture-core（〔RE〕原 `src/frontend/shell/vendor/code-picture-core`）
-    "src/common/",           # 共享 crate（〔RE〕原 `src/frontend/shell/crates/`）
+    VENDOR,                  # russh 补丁副本（〔RE〕原住 bridge 包的 `vendor/russh`）
+    VENDOR_PANO,             # code-picture-core（〔RE〕原住 bridge 包的 `vendor/code-picture-core`）
+    "src/common/",           # 共享 crate（〔RE〕原住 bridge 包的 `crates/`）
+    "src/comms/",            # 通信层成员（〔RE〕面 A 由壳编、面 B 由后端编，另有 1 份 TS）
     "src/frontend/shell/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
     "src/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
     "src/shared/",           # 19   重构前的 `shared/`
@@ -171,6 +172,13 @@ def cell(name, anchor, cwd, cmd, **verdicts):
     for new, src in DERIVED.items():
         if new not in verdicts and src in verdicts:
             c[new] = verdicts[src]
+    # 〔RE〕`src/comms/` 的住户来自三棵树（面 A 的 `.rs` 由壳编 · 面 B 的 `.rs` 由后端编 · 1 份 TS 原住 `src/` 兜底那棵）：
+    #   没单独裁的格，取那三棵里第一个不是「无」的裁词（盖到哪一份，就说哪一份的话）。
+    if "src/comms/" not in verdicts:
+        for src in ("src/frontend/shell/", "src/backend/", "src/"):
+            if c.get(src, (NONE, ""))[0] != NONE:
+                c["src/comms/"] = c[src]
+                break
     REGISTRY[name] = {"anchor": anchor, "cwd": cwd, "cmd": cmd, "cover": c}
 
 

@@ -55,12 +55,8 @@ fn backend_files() -> Vec<String> {
     // 本文件住 `tests/frontend/shell/`，不在 `src/backend` 这棵树里。
     let mut out: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
-        .map(|(p, _)| {
-            p.strip_prefix(&root)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .replace('\\', "/")
-        })
+        // 〔RE〕按模块住址认：`control/backend_route.rs` 住 `src/comms/inward/`（通信层成员），模块仍在本目录的树上。
+        .map(|(p, _)| guard_core::module_address(&root, &p))
         .collect();
     out.sort();
     out

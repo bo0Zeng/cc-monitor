@@ -39,7 +39,7 @@
 import { copyText } from "./copy-table";
 import { arrivedBody, expectArrival } from "./launch-arrival";
 import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 

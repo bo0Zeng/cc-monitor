@@ -148,11 +148,8 @@ fn the_win32_process_reads_live_in_exactly_one_file() {
     for (path, raw) in guard_core::scan_tree_excluding(&root, &["rs"], &[]) {
         scanned += 1;
         let prod = guard_core::production_code(&raw);
-        let rel = path
-            .strip_prefix(&root)
-            .expect("扫出来的都在后端源码树底下")
-            .to_string_lossy()
-            .replace('\\', "/");
+        // 〔RE〕顺着 `#[path]` 收进来的按模块住址认。
+        let rel = guard_core::module_address(&root, &path);
         if names.iter().any(|n| guard_core::contains_word(&prod, n)) {
             seen.insert(rel.clone());
         }

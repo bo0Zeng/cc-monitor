@@ -29,7 +29,7 @@
  */
 
 import { dispatcher } from "./keybindings/registry";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { isLocalOrigin, type Origin } from "./ipc/origin";

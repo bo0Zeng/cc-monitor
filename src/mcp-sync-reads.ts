@@ -10,7 +10,7 @@
  * 判定与读写都在后端（`src/backend/assets/hub.rs` · `mcp_sync_flow.rs`）；这里零判定、按形状严格收（金样 `mcp-sync-flow.golden.json`）。
  * `from` / `to` 线上是可达表的键，**本机那台发 `null`**（后端不认 `<local>` 这个名字）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

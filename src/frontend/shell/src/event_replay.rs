@@ -34,7 +34,7 @@
 //! ## 订阅（〔CF2 · 第四波 4B〕`设计/05 §8` 步 6「流那半收口成 `subscribe`」）
 //!
 //! 会话内容到前端**不再是两个 Tauri 广播事件**（`jsonl-line` / `jsonl-batch`，已退役）：前端经通道说
-//! `chan.subscribe(origin, kind, from, want)`（`src/ipc/chan.ts` → `chan/webview.rs::chan_subscribe`），
+//! `chan.subscribe(origin, kind, from, want)`（`src/comms/inward/chan.ts` → `chan/webview.rs::chan_subscribe`），
 //! 本文件是那条流的**句柄**那一侧 —— 它认识会话，通道那两半不认识。
 //!
 //! | `kind` | 交什么 | 什么时候交留存（重放） |

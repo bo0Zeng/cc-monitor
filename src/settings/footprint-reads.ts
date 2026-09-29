@@ -7,7 +7,7 @@
  * - 形状严格收（多一格 / 少一格 / 类型不对 ⇒「两端契约对不上」，不猜）；线上形状由跨语言金样 `footprint-report.golden.json` 钉着。
  * 〔墓碑 —— 从前是 Tauri 命令 `config_surface_report`〔散文墓碑〕（判定住 monitor），类型是 ts-rs 生成物。〕
  */
-import { chan, ChanError } from "../ipc/chan";
+import { chan, ChanError } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, type Origin } from "../ipc/origin";

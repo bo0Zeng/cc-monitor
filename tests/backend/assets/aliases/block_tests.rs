@@ -1588,11 +1588,7 @@ fn the_alias_block_is_written_through_exactly_one_door() {
     let mut seen: Vec<(String, String, String)> = Vec::new(); // (文件, 函数, 函数体)
     let mut fns_scanned = 0usize;
     for (path, raw) in &files {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = guard_core::module_address(&root, path);
         let prod = guard_core::production_code(raw);
         // 顶层函数：从 `fn 名(` / `fn 名<` 到下一个列 0 的 `}`。
         let mut at = 0usize;

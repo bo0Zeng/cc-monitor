@@ -12,7 +12,7 @@ import { exactKeys, isObj, settle, unreadable, type Refusals } from "../control-
 // 〔DUP2 · `设计/90 §3` 判据 2〕账号名规则只有一份（`shell_quote_core::account_name_ok`，与建账号的工具 `cc-acct-iso` 逐字同）；
 // 这里读它现生成的那份（`src/generated/judgment-rules.ts`），不手抄。
 import { ACCOUNT_NAME_MAX, accountNameOk } from "../generated/judgment-rules";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody } from "../ipc/chan-caller";
 import type { Origin } from "../ipc/origin";
 

@@ -253,7 +253,11 @@ function walk(dir: string, ext: string, out: string[] = []): string[] {
  */
 function rustCommands(): Set<string> {
   const out = new Set<string>();
-  for (const f of walk(resolve(REPO_ROOT, "src/frontend/shell/src"), ".rs")) {
+  // 〔RE〕本 crate 的通信层成员住 `src/comms/inward/`（经 `#[path]` 编进来）。
+  for (const f of [
+    ...walk(resolve(REPO_ROOT, "src/frontend/shell/src"), ".rs"),
+    ...walk(resolve(REPO_ROOT, "src/comms/inward"), ".rs"),
+  ]) {
     const code = stripComments(readFileSync(f, "utf8"), "rust");
     for (const m of code.matchAll(/#\[tauri::command\b[^\]]*\]/g)) {
       const tail = code.slice(m.index, m.index + 120);
@@ -1059,7 +1063,7 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
       "`Origin` 的生成物正文不是 `string`。\n" +
         "🔴 它上一拍是 `null | string`（`Origin::Unspecified(())` 那个变体的线上形状），\n" +
         "   `设计/05 §8` 步 2 把那个变体**退役**了（处置与理由逐条写在\n" +
-        "   `src/frontend/shell/src/origin.rs` 头注里）。\n" +
+        "   `src/comms/inward/origin.rs` 头注里）。\n" +
         "⇒ 这一行变回带 `null` 的形状，只有一个原因：**Rust 那侧把变体加回去了**。\n" +
         "   那时全仓 8 处写着 `origin: Origin` 的参数会**一个字不改**地又装得下 `null`，\n" +
         "   而上面那条参数面判据照绿 —— 本条就是为这一形立的。",

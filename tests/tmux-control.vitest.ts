@@ -37,7 +37,7 @@ import {
   sendInto,
   sendKeys,
 } from "../src/tmux-control";
-import { decodeFail } from "../src/ipc/chan";
+import { decodeFail } from "../src/comms/inward/chan";
 import { provablyNotSent } from "../src/ipc/chan-caller";
 import { REPO_ROOT } from "./test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "./test-support/chan-fake";
@@ -354,7 +354,7 @@ describe("〔C4e〕就地 resume（F14：只有能证明没发出去才许回落
 describe("〔NET2 · 主会话 09-27 裁 A〕那台握手时说过做不到的，菜单置灰并说为什么", () => {
   it("kill 在「没有 tmux」的那台上不可点、字后面带原因；那台没说的项与没问过的机器照常", async () => {
     const { gateByOffer } = await import("../src/tab-menu");
-    const { chan } = await import("../src/ipc/chan");
+    const { chan } = await import("../src/comms/inward/chan");
     invokeMock.mockImplementation((cmd: string, args: { origin?: string }) =>
       Promise.resolve(
         cmd === "chan_offer" && args.origin === "net2-box"

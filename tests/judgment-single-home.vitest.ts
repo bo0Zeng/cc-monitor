@@ -301,11 +301,11 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       via: "tests/__fixtures__/upstream-url.golden.json",
       tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/upstream-url-parity.vitest.ts"],
     },
-    rustGone: ["src/backend/relay/upstream.rs::host_is_loopback", "src/common/creds-core/src/store.rs::check_base_url_shape"],
+    rustGone: ["src/comms/outward/upstream.rs::host_is_loopback", "src/common/creds-core/src/store.rs::check_base_url_shape"],
     // 中转那份不许再有自己的协议表 / 回环判定。
     rustNeedles: [
-      { file: "src/backend/relay/upstream.rs", text: '("https", true)', count: 0 },
-      { file: "src/backend/relay/upstream.rs", text: "is_loopback()", count: 0 },
+      { file: "src/comms/outward/upstream.rs", text: '("https", true)', count: 0 },
+      { file: "src/comms/outward/upstream.rs", text: "is_loopback()", count: 0 },
     ],
   },
   J10: {
@@ -355,7 +355,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J13: {
     what: "一次失败能否证明一个字节没发出",
-    homes: ["src/frontend/shell/src/backend/control/backend_route.rs::route_call_error"],
+    homes: ["src/comms/inward/backend_route.rs::route_call_error"],
     // 〔DUP2 · 主会话 09-26 裁〕登记「镜像 ＋ 金样」：Rust 侧把每一种失败分层上线、连同判出的「可回落」写成金样，TS 读同一份逐行判。
     status: "mirror",
     defs: ["provablyNotSent"],

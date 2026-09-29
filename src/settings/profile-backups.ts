@@ -8,7 +8,7 @@
  *
  * 只在本机说 PowerShell 时问（`machine-aliases.ts::localShell`：本机后端就跑在这台上）；别的平台没有 `$PROFILE` ⇒ 空。
  */
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "../ipc/chan-caller";
 import { LOCAL_ORIGIN } from "../backend-policy";
 import { unreadable } from "../control-said";

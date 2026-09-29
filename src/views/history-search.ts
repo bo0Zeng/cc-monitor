@@ -22,7 +22,7 @@
  * - 「哪几台远端」问的是 `list_remote_mcp_origins`（名字里的 `mcp` 是它第一个用户留下的，不是限定）。
  */
 import { commands } from "../ipc/commands";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, linesOf, readJson } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
 import { copyText } from "../copy-table";

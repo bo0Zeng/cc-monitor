@@ -25,7 +25,7 @@
 //! |---|---|
 //! | `tests/frontend/shell/creds_store_tests.rs::PLAINTEXT_EXIT_SITES` | 〔R3 订正〕**今天已不钉本文件**：`expose_for_auth_header(` 恰好 1 处、住 `src/backend/accounts/upstream/mod.rs`（上游选择算好头材料交下来，本层碰不到明文）|
 //! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
-//! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/backend/relay/server.rs", "handle_alloc_error", 1)` |
+//! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/comms/outward/server.rs", "handle_alloc_error", 1)` |
 //!
 //! 那几处都在 `tests/frontend/shell/` 下，**不在本拍的写区里**（写区逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
@@ -1030,5 +1030,5 @@ fn rewrite_response_head(raw: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/server_tests.rs"]
+#[path = "../../../tests/comms/outward/server_tests.rs"]
 mod tests;

@@ -272,8 +272,12 @@ fn every_file_this_head_note_points_at_really_exists() {
             continue;
         }
         checked += 1;
+        // 〔RE〕`relay/xxx.rs` 是模块住址：`relay` 的根（`mod.rs` 所在）住 `src/comms/outward/`，非成员 door / listen 住 `src/backend/relay/`。
+        let as_relay_module = w
+            .strip_prefix("relay/")
+            .is_some_and(|r| crate::guard_support::relay_root().join(r).exists());
         assert!(
-            roots.iter().any(|r| r.join(w).exists()),
+            roots.iter().any(|r| r.join(w).exists()) || as_relay_module,
             "头注指着 `{w}`，而五个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · \
                  monitor 生产树 `src/frontend/shell/src/` · monitor 测试树 `tests/frontend/shell/`）——\n\
                  ★ 指了住址而住址是假的：读者会以为那一格有人守着，去找的时候什么都没有。\n\

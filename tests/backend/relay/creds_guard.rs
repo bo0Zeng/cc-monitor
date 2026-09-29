@@ -612,7 +612,13 @@ mod tests {
         let root = crate::guard_support::src_root();
         let mut files = Vec::new();
         for r in LOG_ROOTS {
-            let got = guard_core::scan_tree!(&root.join(r), &["rs"]);
+            // 〔RE〕`relay` 模块的根住 `src/comms/outward/`（`mod.rs` 在那儿，door / listen 由它挂回）。
+            let dir = if *r == "relay" {
+                crate::guard_support::relay_root()
+            } else {
+                root.join(r)
+            };
+            let got = guard_core::scan_tree!(&dir, &["rs"]);
             assert!(!got.is_empty(), "`{r}/` 一份文件都没扫到 —— 取法坏了");
             files.extend(got);
         }
@@ -632,11 +638,7 @@ mod tests {
             //    点得到唯一一份文件，改不改都不会让一条日志悄悄换个家。
             //    〔2026-09-24〕上游选择搬到 `src/backend/accounts/` 之后，基准从 `relay/` 换成
             //    `src/backend/`（两棵根都相对它），中转那几行的住址栏因此多了 `relay/` 前缀。
-            let name = path
-                .strip_prefix(&root)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            let name = guard_core::module_address(&root, path); // 〔RE〕按模块住址认
             let prod = production_code(raw);
             // ⚠⚠ **针不许互相包含** —— 这一行是改过一次的，经过记这里，因为它正是
             //    本工作区那族病的第一形（**针拼错**），而且是**相等断言逮住的**：

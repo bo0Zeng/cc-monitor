@@ -22,7 +22,7 @@
 //!   ⇒ 一个字节至多被搬一次：它被搬，说明它排在本轮最后一个分隔符之后；下一次 `push` 再搬它之前，
 //!   必须有一个分隔符落在它后面 —— 而那一刻它已经被取走了。
 //!
-//! 判据（次数 / 长度的相等，不看墙钟）住 `tests/backend/relay/framer_tests.rs`。
+//! 判据（次数 / 长度的相等，不看墙钟）住 `tests/comms/outward/framer_tests.rs`。
 
 /// 按一个分隔符增量切行。分隔符**以 `\n` 收尾**（`b"\n"` 或 `b"\r\n"`）：
 /// 找的是 `\n`，找到之后再核它前面那几个字节 —— 这样跨两次 `push` 的 `\r` | `\n` 也认得出，
@@ -147,5 +147,5 @@ impl LineFramer {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/framer_tests.rs"]
+#[path = "../../../tests/comms/outward/framer_tests.rs"]
 mod tests;

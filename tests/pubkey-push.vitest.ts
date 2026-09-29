@@ -8,8 +8,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const sent: { origin: string; op: string; body: unknown; until: unknown }[] = [];
 let reply: unknown = null;
-vi.mock("../src/ipc/chan", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/ipc/chan")>()),
+vi.mock("../src/comms/inward/chan", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/comms/inward/chan")>()),
   chan: {
     call: async (origin: string, op: string, body: Uint8Array, budget: { until: number }) => {
       sent.push({ origin, op, body: JSON.parse(new TextDecoder().decode(body)), until: budget?.until });

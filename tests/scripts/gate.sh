@@ -73,7 +73,7 @@
 # │   死值验住 `tests/evidence/W24C-deathvalue.md`。
 # │ 〔自述·现物〕`comm-boundary` 那一格没有独立的判据文件 —— 被测对象就是
 # │   `tests/frontend/shell/comm_boundary_registry_tests.rs`（通信层那一族，`13b` 步 1 09-20 第 27 格；C1–C5 ＋ X1–X6
-# │   ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 元判据，17 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
+# │   ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 住址 ＋ 元判据，18 条），判定（三方对拍 ＋ 元判据/「说得出今天是空的」两条逐字锚点）
 # │   逐字写在下面那一行 `run_gate comm-boundary` 的内联脚本里。
 # │   🔴 本格买的是「这一族还在不在」。⚠ **这里刻意不写人群有几份** —— 那个数
 # │   有唯一住址（该族自己那条三方相等 ＋ 模块头注那句，两处都是被判的），
@@ -1510,7 +1510,7 @@ deadcode_t0=$(date +%s)
 # 「codex 后面单独做」（用户 2026-09-18 拍板）的**已知代价**，不是删漏 —— 别顺手清掉。
 #
 # 🔴 **2026-09-20：33 → 36，涨的 3 条逐条记在这里**（本格自己要求「说清为什么留着」）。
-# 三条**全部出自 `src/frontend/shell/src/origin.rs`**，是步 12（`origin` 归一）第一刀的**预期状态**：
+# 三条**全部出自 `src/comms/inward/origin.rs`**，是步 12（`origin` 归一）第一刀的**预期状态**：
 #   · `src/origin.rs` 的 `LOCAL` 常量 · `Origin` 这个 enum ·
 #     `Origin` 的五个方法（`local` / `is_local` / `is_remote` / `host_name` / `as_wire_str`）
 # 这一刀刻意**只定类型、不换调用点**（线上形状与今天逐字节相同、零协议变更），
@@ -1998,6 +1998,7 @@ run_e2e resume-frames          7
 #   ⚠ 「声明」那条腿与「真跑」那条腿会被**同一次编辑**一起改掉（真删一条判据 ⇒ 两个都变 15），
 #     而那时 `pin` 还是 16 ⇒ 照样红。**本格的反空真锚是那个三方相等，不是任何单独一条腿。**
 #
+# ★ 〔RE · 收尾重排〕`pin` **17 → 18**：`99 §2.1 ⑰` 立「`src/comms/` 下文件集合 == 登记表」那一腿（`the_comms_tree_holds_exactly_the_registered_members`），判据与 `pin` 同拍。
 # ★ 〔2026-09-22〕`pin` **从 16 抬到 17**（`设计/99 §4 P16`「步 4 的剩余」立第十七条：
 #   面 A 的传输面候选逐份两向集合相等）。同一拍逐腿再砍过一遍，读数与上面那次同形：
 #   · 只加判据**不**抬 `pin` ⇒ 当场红，逐字「本行钉 16 · … 声明 17 条 · cargo 真跑 17 条」；
@@ -2007,8 +2008,8 @@ run_e2e resume-frames          7
 #     而「把上限调上去让今天好过」是方向相反的另一件事 —— 那一种会让分母悄悄变小，
 #     这一种让分母变大而三侧仍异源。⇒ 判据与 `pin` **必须同拍改，别分两次**；
 #     单独抬 `pin` 或单独加判据，两个方向都当场红。
-run_gate comm-boundary '判过的条数 = 通信层那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 元判据）这一趟真跑过的条数。**三方对拍**：本行钉的 17 · 那份文件里现打的 `#[test]` 条数 · `cargo test` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（元判据 · 「说得出今天是空的」那条）各命中**恰好 1 次**。⚠ **本格存在的唯一理由是那一族的人群可能是空集** —— 模块被摘掉时十七条与元判据一起消失，而 `cargo` 那一格只会合计小一点，「摘掉了」与「全绿」在终端上分不开。⚠ 本格买的是「这十七条没有静默消失」，**不买**它们判得对（那由它们各自的头注与死值验负责），更**不买**「没盖标记的文件不是通信层」（那张表自己写死的最大边界）；⚠ 这 17 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
-         bash -c 'pin=17; f=tests/frontend/shell/comm_boundary_registry_tests.rs; \
+run_gate comm-boundary '判过的条数 = 通信层那一族（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 住址 ＋ 元判据）这一趟真跑过的条数。**三方对拍**：本行钉的 18 · 那份文件里现打的 `#[test]` 条数 · `cargo test` 真跑出来的 passed，三个数必须**相等** ＋ 两条逐字锚点（元判据 · 「说得出今天是空的」那条）各命中**恰好 1 次**。⚠ **本格存在的唯一理由是那一族的人群可能是空集** —— 模块被摘掉时十八条与元判据一起消失，而 `cargo` 那一格只会合计小一点，「摘掉了」与「全绿」在终端上分不开。⚠ 本格买的是「这十七条没有静默消失」，**不买**它们判得对（那由它们各自的头注与死值验负责），更**不买**「没盖标记的文件不是通信层」（那张表自己写死的最大边界）；⚠ 这 17 条**同时**算在 `cargo` 那一格的合计里 —— 两格都在，档位不叠加' \
+         bash -c 'pin=18; f=tests/frontend/shell/comm_boundary_registry_tests.rs; \
 meta=every_criterion_is_on_the_execution_chain; \
 empty=the_boundary_registry_says_out_loud_how_big_it_is_today; \
 [ -r "$f" ] || { printf "comm-boundary: 那一族的判据本体 %s 盘上读不到 —— 住址改了就回来改本格，不许静默跳过\n" "$f"; exit 1; }; \
@@ -2019,7 +2020,7 @@ ran=$(printf "%s\n" "$out" | grep -oE "^test result: ok\. [0-9]+ passed" | grep 
 if [ -z "$ran" ]; then printf "%s\n" "$out" | tail -25; printf "comm-boundary: 那趟输出里抠不出「test result: ok. N passed」—— 读法与 cargo 的输出面对不上，本格判不了（不许当成绿）\n"; exit 1; fi; \
 if [ "$declared" -ne "$pin" ] || [ "$ran" -ne "$pin" ]; then printf "comm-boundary: 三方对拍分叉 —— 本行钉 %s · %s 里现打声明 %s 条 · cargo 真跑 %s 条；三个数必须相等。真加/删了一条判据，就回来改本行那个 pin（别去动另外两边）\n" "$pin" "$f" "$declared" "$ran"; exit 1; fi; \
 for t in "$meta" "$empty"; do n=$(printf "%s\n" "$out" | grep -c "comm_boundary_registry::tests::$t \.\.\. ok"); if [ "$n" -ne 1 ]; then printf "comm-boundary: 锚点 %s 在这趟跑过的名单里命中 %s 次（应当恰好 1 次）—— 它没跑，或者它改了名\n" "$t" "$n"; exit 1; fi; done; \
-printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
+printf "comm-boundary: %s passed（C1–C5 ＋ X1–X6 ＋ 锚 ＋ 余下五份 ＋ 传输面四份 ＋ 住址 ＋ 元判据；三方对拍 pin %s == 声明 %s == 真跑 %s）\n" "$ran" "$pin" "$declared" "$ran"'
 
 # ── `test-tiers`（TQ1 09-24，第 29 格）：测试层分级那一族**还在不在** ─────────────────────
 #

@@ -1024,11 +1024,8 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&src_root, &["rs"], &[])
         .into_iter()
         .map(|(p, raw)| {
-            let rel = p
-                .strip_prefix(&src_root)
-                .expect("扫出来的文件都在 src 底下")
-                .to_string_lossy()
-                .replace('\\', "/");
+            // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            let rel = guard_core::module_address(&src_root, &p);
             (rel, guard_core::production_code(&raw))
         })
         .collect();

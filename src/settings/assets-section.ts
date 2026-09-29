@@ -21,7 +21,7 @@
  * 纯函数（`decodeCatalog` · `reachOf` · `skillDefaultTake` · `skillApplyArgs` · `hereText` · `skillSuspectText` ·
  * `decodeInstalls` · `decodeUninstallPlan` · `uninstallDefaultTake` · `uninstallApplyArgs`）零 DOM，node 可测。
  */
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";

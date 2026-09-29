@@ -10,7 +10,7 @@
  * 前半那一形是界面先问来源那台读、再把原文递给被写那台 —— 经前端中继，撞 `01 §3.5`，主会话 09-28 裁改掉。
  * 判 · 写 · 记都在后端（`src/backend/assets/hub.rs` · `skill_flow.rs`）；这里零判定、按形状严格收（金样 `skill-flow.golden.json`）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { hubMachine } from "./mcp-sync-reads";

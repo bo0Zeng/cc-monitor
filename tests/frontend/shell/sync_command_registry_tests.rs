@@ -434,11 +434,8 @@ fn this_crate() -> Vec<(String, String)> {
     let files: Vec<(String, String)> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, text)| {
-            let rel = p
-                .strip_prefix(&root)
-                .expect("扫到的文件不在 src 下")
-                .to_string_lossy()
-                .replace('\\', "/");
+            // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            let rel = guard_core::module_address(&root, &p);
             (rel, text)
         })
         .collect();

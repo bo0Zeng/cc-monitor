@@ -159,7 +159,7 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
     // 〔W5-ALIAS〕预览走通道（`chan.call(origin, "ccm-print", …)`）：替身把每一发记进同一本账（`chan:<op>`），
     //   首开那几发的集合相等判据因此也看得见「展开时有没有偷问预览」。
     previewFails = false;
-    vi.doMock("../../src/ipc/chan", () => ({
+    vi.doMock("../../src/comms/inward/chan", () => ({
       // `chan-caller.ts::saidOf` 按 `instanceof ChanError` 分流 —— 替身也得交出这个类（替身抛的是普通 Error）。
       ChanError: class ChanError extends Error {},
       chan: {

@@ -9,6 +9,8 @@
 // 〔C4e · 第四波 4C〕这里原来还有四份：`backend_kill` / `backend_launch` / `backend_send_keys`（杀会话 · 就地 resume ·
 //   送键三个发送端）与 `command_args`（它们共用的参数构造器）。四条 Tauri 命令迁到界面（`src/tmux-control.ts`
 //   经通道直接说后端的 `kill` / `launch` / `capture-pane`）之后，它们没了生产调用方，整份删了。
+// 〔RE〕通信层成员住 `src/comms/inward/`（`99 §2.1 ⑰`），模块树不变
+#[path = "../../../../../comms/inward/backend_route.rs"]
 pub mod backend_route;
 // 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的三份 —— 它们干的全是控制面的活：
 //    `backend_control`（每台机一个开关的命令层）· `cc_bus`（起 / 杀 / 发）·

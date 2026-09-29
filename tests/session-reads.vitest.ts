@@ -17,7 +17,7 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { ChanError } from "../src/ipc/chan";
+import { ChanError } from "../src/comms/inward/chan";
 import {
   decodeFacts,
   decodeFind,
@@ -145,7 +145,7 @@ describe("〔C4b〕会话读面三问：经通道说对的帧命令", () => {
 
   it("正控：`ChanError` 是经通道那一层抛出来的那一个（折叠认得它）", async () => {
     invokeMock.mockRejectedValueOnce(UNSUPPORTED);
-    const { chan } = await import("../src/ipc/chan");
+    const { chan } = await import("../src/comms/inward/chan");
     await expect(chan.call("devbox", "history-index", new Uint8Array(), { until: performance.now() + 1000 })).rejects.toBeInstanceOf(
       ChanError,
     );

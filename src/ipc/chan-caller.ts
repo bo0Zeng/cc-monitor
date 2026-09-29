@@ -2,7 +2,7 @@
  * 〔C4a · 第四波〕**通道的调用方那一侧** —— 调用方与通道之间那一薄层：期限怎么造 ＋ 后端的帧命令说 JSON。
  *
  * - **期限**（[`budgetWithin`]）：`设计/05 §3.3.2`「值归调用方 · 执行归通信层」—— 绝对时刻由调用方造，
- *   通信层（`src/ipc/chan.ts`）只执行、从不「重新 `now() + …`」（`X5`）。⇒ 造的那一手住这里，不住成员里。
+ *   通信层（`src/comms/inward/chan.ts`）只执行、从不「重新 `now() + …`」（`X5`）。⇒ 造的那一手住这里，不住成员里。
  * - **JSON**：通道只搬不透明字节，**不知道**载荷长什么样（`§2`：载荷是不透明字节）。
  *   而后端帧面上的每一条命令（`src/backend/stream/inbound.rs` / `read_face.rs`）收一个 JSON 对象、回一个 JSON 值 ——
  *   那是**后端的**约定，不是通道的。⇒ 这件事住这里，与 monitor 侧 `chan/host.rs` 那一句
@@ -10,7 +10,7 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import { ChanError, type Budget, type CallError } from "./chan";
+import { ChanError, type Budget, type CallError } from "../comms/inward/chan";
 import { copyText } from "../copy-table";
 
 /**

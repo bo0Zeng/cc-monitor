@@ -95,7 +95,7 @@ vi.mock("../src/ipc/commands", () => ({
 //   ⚠ 读数的适用范围跟着变了一格：生产上句柄按 credit 交（`events.ts::STREAM_WINDOW` 格），前端落后超过一个窗口
 //   句柄就**停下等**（重放）/ 丢并报 `gap`（实时）⇒ 队列深度在生产上有上界 = 窗口。本文件的桩**不看 credit**，
 //   量的仍是「前端这一侧的 drain 追不追得上」那条曲线本身。
-vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
+vi.mock("../src/comms/inward/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
 import { streamFake } from "./test-support/chan-stream-fake.ts";

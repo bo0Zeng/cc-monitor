@@ -236,9 +236,11 @@ mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它
 #[cfg(test)]
 #[path = "../../../tests/backend/relay/creds_guard.rs"]
 mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
+#[path = "../../backend/relay/door.rs"] // 〔RE〕非成员：住后端中转宿主目录 `src/backend/relay/`
 mod door; // 〔RK1〕中转口的门：钥匙住哪 · 谁铸 · 进门三问（Origin / Host / 钥匙）
 mod framer; // `17 §3.7`：`relay/` 里唯一的增量分帧器（游标，不 drain）—— `tee.rs` 与 `http1.rs` 是它的两个客户
 mod http1;
+#[path = "../../backend/relay/listen.rs"] // 〔RE〕非成员，同上
 mod listen; // `20 §4`：监听面 —— bind / accept / 在途上界 / 起监听之前的接线
 mod route;
 // 〔AR1 · `设计/15 §2.1` B3〕`nodelay_guard`（Nagle 零命中的源码扫描）退役删了：「两个方向都真的关了 Nagle」

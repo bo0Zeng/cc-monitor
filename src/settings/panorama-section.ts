@@ -7,7 +7,7 @@
  */
 import { askConfirm, type ConfirmFn } from "../ask-dialog";
 import { copyText } from "../copy-table";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import type { Origin } from "../ipc/origin";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";

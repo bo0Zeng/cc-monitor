@@ -106,5 +106,5 @@ pub(crate) fn parse(target: &str) -> Option<Route> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/route_tests.rs"]
+#[path = "../../../tests/comms/outward/route_tests.rs"]
 mod tests;

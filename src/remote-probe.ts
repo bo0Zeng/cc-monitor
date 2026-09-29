@@ -10,7 +10,7 @@
  * 交过去的是设置页表单里那台（**可能还没保存**）的配置 ＋ 已保存的那一份（表单空着指纹时，同一个 host 才继承）＋ 跳板那一台；
  * 拨号请求在后端组（`src/backend/dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
-import { chan, ChanError, type Item } from "./ipc/chan";
+import { chan, ChanError, type Item } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { copyText } from "./copy-table";

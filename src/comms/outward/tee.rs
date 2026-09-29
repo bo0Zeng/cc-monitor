@@ -200,5 +200,5 @@ impl TeeSink {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/tee_tests.rs"]
+#[path = "../../../tests/comms/outward/tee_tests.rs"]
 mod tests;

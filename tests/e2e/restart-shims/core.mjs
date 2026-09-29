@@ -96,7 +96,7 @@ export async function invoke(cmd, args = {}) {
       return undefined;
     }
     // 〔E2 尾 09-27〕账号三问与 tmux 两条控制（结束 · 发按键）今天走**通道**（`chan.call(origin, op, payload)` ⇒
-    //   包装层 `chan_call`，`src/ipc/chan.ts`），不再是各自的 Tauri 命令。旧的那几臂（`list_remote_accounts` ·
+    //   包装层 `chan_call`，`src/comms/inward/chan.ts`），不再是各自的 Tauri 命令。旧的那几臂（`list_remote_accounts` ·
     //   `kill_remote_tmux` · `tmux_send_keys` …）从那天起没有调用方，编排拿到 `undefined` 当场判「账号不可用」
     //   ⇒ 本 shim 跟着改成**说通道**：去程是 JSON 字节、回程是 JSON 字节；「不行」按对端拒绝信封
     //   `{err:"Refused", body:<{code,message} 的字节>}` 抛（`chan.ts::decodeFail` 认的那一形）。

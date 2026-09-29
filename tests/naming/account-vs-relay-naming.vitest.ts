@@ -418,7 +418,7 @@ export const UPSTREAM_SELECTION_NAMES: AccountName[] = [
 ];
 
 /** V114 那几条旧叫法**只许**活在这几份文件挂了墓碑标记的行里（讲来历）。两向相等。 */
-export const V114_TOMBSTONED_FILES = ["src/backend/accounts/upstream/mod.rs", "src/backend/relay/mod.rs"];
+export const V114_TOMBSTONED_FILES = ["src/backend/accounts/upstream/mod.rs", "src/comms/outward/mod.rs"];
 
 /** 墓碑标记：从 `structural_scan.rs` 那一份常量声明里现抠（不在本文件写第二份字面量）。 */
 export function proseTombstoneMark(): string {
@@ -465,7 +465,7 @@ export function notScanned(path: string): boolean {
 
 /** 扫描面必须含的锚文件（自定位）。 */
 const ANCHORS = [
-  "src/backend/relay/mod.rs",
+  "src/comms/outward/mod.rs",
   "src/backend/accounts/upstream/mod.rs",
   "src/backend/control/launch_render/payload.rs", // 〔MIG-2〕随载荷渲染搬进后端
   "src/accounts.ts",

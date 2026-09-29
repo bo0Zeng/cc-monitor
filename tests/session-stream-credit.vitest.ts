@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) }),
 }));
-vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
+vi.mock("../src/comms/inward/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents, CREDIT_EXEMPT_FRAMES } from "../src/events";
 import { streamFake } from "./test-support/chan-stream-fake.ts";
