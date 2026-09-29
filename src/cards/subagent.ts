@@ -9,14 +9,13 @@
  * 不直接调 Rust 命令以外的全局状态。
  */
 
-import { commands } from "../ipc/commands";
 import { AGENT_PROFILE } from "../agent-profile";
 import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 
 /** Rust subagent::load_subagent 的返回结构 */
 // C04d 批 2：改用生成物。**它的 `records: Vec<JsonlRecord>` 传递依赖是 C04c 生成的**
 // ——那一轮把 `JsonlRecord` 变成生成物的投资，在这里第一次收息（否则这一批还得先啃它）。
-import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
+import { loadSubagent, type SubagentLoadResult } from "../record-reads";
 import type { Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";
 
@@ -76,21 +75,15 @@ export function buildAgentCard(
     //
     // 这里原来是一条降级：「远端会话（[origin]）暂不支持展开 subagent——其记录在远端机器上」，
     // 尾注还写着「真·远端拉取留 backlog（backend `--read-subagent` 协议扩容）」——那件事做了，
-    // 只是形状不同：backend 出 `--list-subagents` **只列候选**，
-    // description 匹配与按时间戳挑最近**留在后端本侧**，与本机那条共用同一个 `pick_closest`
+    // 〔MOD〕今天「找 ＋ 挑 ＋ 读 ＋ 解析」都在那台后端（`history-subagent`，挑的规则只一份 `history_query::pick_subagent`），
     //（定框 `C1`：别长第二套语义）。⇒ 这里只需把 origin 传下去。
     loading = true;
     bodyEl.textContent = copyText("subagent.loadAndRender.loading");
 
     try {
-      const result: SubagentLoadResult = await commands.load_subagent({
-        parentJsonlPath: ctx.parentPath,
-        description: desc,
-        toolUseTimestamp: timestamp,
-        // 🔴 **〔步 2〕本机是 `LOCAL_ORIGIN`（`"<local>"`），不是 `null`。**
-        // 〔C4a〕前端那一半也收成了同一个表示（`ctx.origin` 必填、本机就是这个名字）⇒ 原样过线。
-        origin: ctx.origin,
-      });
+      // 〔MOD〕经通道直接问那台后端 `history-subagent`（列 ＋ 挑 ＋ 读 ＋ 解析都在后端，`src/record-reads.ts`）；
+      //   本机是 `LOCAL_ORIGIN`（`"<local>"`），与远端同一条路。
+      const result: SubagentLoadResult = await loadSubagent(ctx.origin, ctx.parentPath, desc, timestamp);
       bodyEl.replaceChildren();
       renderSubagentBody(bodyEl, result, renderChild, ctx.origin);
       loaded = true;

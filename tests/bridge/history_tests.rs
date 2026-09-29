@@ -1,5 +1,5 @@
 // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话那一族判据（旧路形状 · 账号三态 · 注入闸 · `ccm` 容器路 · 中转前缀 · 身份 token · 三条缝）
-//   随计划与渲染搬进本机后端：`tests/backend/control/launch_render/local_tests.rs`。这里只剩读正文 · 删会话 · 分叉那几族。
+//   随计划与渲染搬进本机后端：`tests/backend/control/launch_render/local_tests.rs`。这里只剩「只一处」那几条（〔MOD〕读正文那一族随判定进了后端）。
 use super::*;
 
 /// 每个测试独占的临时目录（仓库约定不引 `tempfile`，用 pid + 计数器保唯一）。
@@ -88,7 +88,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 // 〔C4d · 第四波 4B〕历史清单与注解搬进本机常驻后端（主会话 09-25 裁：join 只一个家、注解读写者换成本机后端）——
 //   这里原先驱动 monitor 那一份实现的几组判据随被测函数一起退役，它们钉的性质各自在新家有判据（逐条对应）：
 //   - `K-R97` 本机项目清单来自后端那一行 · 行里的「不知道」不被压平 · 本机判活答真值 · 一次列举只问一次
-//     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history_join_tests.rs`
+//     （`the_local_project_list_is_whatever_the_backend_said` 那一组〔散文墓碑〕）⇒ 后端 `tests/backend/history/history_join_tests.rs`
 //     （`local_liveness_answers_true_and_false_and_unknown_is_its_own_bucket` · `a_local_listing_joins_the_record_tree_and_the_synthesized_history` ·
 //     `one_remote_is_asked_exactly_once_with_the_old_subcommands` · `remote_projects_carry_the_annotation_counts_and_say_unknown_honestly`）；
 //     「本机后端不在 ≠ 一个项目都没有」⇒ 通道的失败层级（`src/history-reads.ts` 抛、界面说「加载失败」），判据 `tests/history-reads.vitest.ts`；
@@ -99,7 +99,7 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 //   - Codex 分组 · 首条真用户话去注入（`codex_projects_group_by_cwd` 那两条〔散文墓碑〕）⇒ 后端 `tests/backend/agents/codex/history_tests.rs`
 //     ＋ `history_join_tests.rs::synthesized_history_groups_by_cwd_under_the_kind_prefix`；
 //   - 上次账号的 serde 与 patch 三态 · 只含真有的那几条（`last_account_serde_and_patch_semantics` 那两条〔散文墓碑〕）⇒ 后端
-//     `tests/backend/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did` · `last_accounts_are_only_the_entries_that_have_one`）；
+//     `tests/backend/history/history_annotations_tests.rs`（`patch_semantics_match_what_the_monitor_did` · `last_accounts_are_only_the_entries_that_have_one`）；
 //   - 摘录按字符截断（`truncate_chars_unicode` 那三条〔散文墓碑〕）⇒ `search-core` 的 `truncate_excerpt`（后端会话行改用它）；
 //   - 「迁移前」旧读者读注解夹具 == 金样（`c4d_the_old_reader_reads_the_annotation_fixture_as_the_golden`〔散文墓碑〕，子步 4 那一拍对过）
 //     ⇒ 金样 `tests/__fixtures__/history-metadata.readout.golden.json` 留作「迁移前」的冻结读数，后端新读者照旧对它。
@@ -255,125 +255,17 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
     }
 }
 
-const LOC1B_CLAUDE_PAGE: &str = concat!(
-    "{\"type\":\"permission-mode\",\"permissionMode\":\"default\"}\n",
-    "\n",
-    "{\"type\":\"user\",\"uuid\":\"u1\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"cwd\":\"/w\",\"message\":{\"role\":\"user\",\"content\":\"x\"}}\n",
-    "{\"type\":\"assistant\",\"uuid\":\"a1\",\"timestamp\":\"2026-01-01T00:00:01Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"y\"}]}}\n",
-);
+// 〔MOD · `05 §14.3` C 组〕`SessionPager` 那四条（本机远端同一个分页器 · 行号跨页连续 · 种类按文件名判 · 冷读只经后端）
+//   随读正文那条命令一起退役：判定进了后端，住 `tests/backend/observe/record_page_tests.rs`（编号 · 只出进界面的 ·
+//   按根认是哪一家）与 `tests/backend/faces/read_face_tests.rs`（`history-page` 那一臂）。
 
-/// 同一页喂本机与远端两个 pager：记录、seq、cwd、sid 逐格相同，差别**只在**载荷上的 `origin`（本机省略、远端是机器名）。
+// 〔MOD〕`remote_history.rs` 整份删了（最后一个函数 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令退役），它的测试文件里
+//   这一条与它无关的对照挪到这里。
 #[test]
-fn loc1b_one_pager_serves_both_sides_and_only_the_payload_origin_differs() {
-    let path = "/h/.claude/projects/p/0b8f7a4e-0000-4000-8000-000000000001.jsonl";
-    let mut local = SessionPager::new(&crate::origin::Origin::local(), path);
-    let mut remote = SessionPager::new(&crate::origin::Origin("aya".into()), path);
-    let (l, r) = (
-        local.page(LOC1B_CLAUDE_PAGE),
-        remote.page(LOC1B_CLAUDE_PAGE),
-    );
-    // permission-mode 不可显示但占号（seq 0），空行不占号 ⇒ user=1、assistant=2。
-    assert_eq!(l.iter().map(|p| p.seq).collect::<Vec<_>>(), vec![1, 2]);
-    assert_eq!(r.iter().map(|p| p.seq).collect::<Vec<_>>(), vec![1, 2]);
-    for (a, b) in l.iter().zip(&r) {
-        assert_eq!(a.session_id, "0b8f7a4e-0000-4000-8000-000000000001");
-        assert_eq!(
-            (&a.session_id, &a.cwd, &a.path),
-            (&b.session_id, &b.cwd, &b.path)
-        );
-        assert_eq!(a.cwd.as_deref(), Some("/w"), "cwd 从首条 user 记录起往后带");
-        assert_eq!(
-            serde_json::to_value(&a.message).unwrap(),
-            serde_json::to_value(&b.message).unwrap()
-        );
-    }
-    assert!(
-        l.iter().all(|p| p.origin.is_none()),
-        "本机载荷不带 origin（前端视为本机）"
-    );
-    assert!(r.iter().all(|p| p.origin.as_deref() == Some("aya")));
-}
-
-/// 页边界不重置行号：第二页接着第一页的号往下数（分页是 transport 的事，seq 口径不许跟着变）。
-#[test]
-fn loc1b_numbering_continues_across_pages() {
-    let path = "/h/.claude/projects/p/s.jsonl";
-    let mut whole = SessionPager::new(&crate::origin::Origin::local(), path);
-    let one: Vec<u64> = whole
-        .page(LOC1B_CLAUDE_PAGE)
-        .iter()
-        .map(|p| p.seq)
-        .collect();
-    let (head, tail) =
-        LOC1B_CLAUDE_PAGE.split_at(LOC1B_CLAUDE_PAGE.find("{\"type\":\"assistant\"").unwrap());
-    let mut paged = SessionPager::new(&crate::origin::Origin::local(), path);
-    let mut two: Vec<u64> = paged.page(head).iter().map(|p| p.seq).collect();
-    two.extend(paged.page(tail).iter().map(|p| p.seq));
-    assert_eq!(one, two);
-}
-
-/// 种类按文件名形态判：远端的 Codex rollout 路径（本机没有那一家的根）也走 Codex 解析、sid 取末尾 UUID；
-/// 同一行放进 Claude 名字的文件 ⇒ 按 Claude 解（抢救成 `Unrecognized`），两形确实分叉（正反控）。
-#[test]
-fn loc1b_the_agent_kind_comes_from_the_file_name_on_either_side() {
-    let uuid = "0b8f7a4e-0000-4000-8000-000000000002";
-    let codex_path =
-        format!("/far/away/.codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-{uuid}.jsonl");
-    let line = "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"x\"}]}}\n";
-    let mut codex = SessionPager::new(&crate::origin::Origin("aya".into()), &codex_path);
-    let got = codex.page(line);
-    assert_eq!(got.len(), 1);
-    assert_eq!(got[0].session_id, uuid);
-    assert!(
-        matches!(got[0].message, crate::messages::JsonlRecord::User { .. }),
-        "Codex 的 user 消息要映射成 User 记录：{:?}",
-        got[0].message
-    );
-    let mut claude = SessionPager::new(
-        &crate::origin::Origin("aya".into()),
-        "/far/away/.claude/projects/p/s.jsonl",
-    );
-    let as_claude = claude.page(line);
-    assert!(
-        !as_claude
-            .iter()
-            .any(|p| matches!(p.message, crate::messages::JsonlRecord::User { .. })),
-        "同一行按 Claude 解不该成 User —— 否则上一条没证明种类真的按名字分了"
-    );
-}
-
-/// 读一整份会话的那条 Tauri 命令**只有一条路**：经那台后端的 `history-read` 分页，体里零处按本机分叉、零处自己开文件。
-/// 正控：针在一段写着本机分支的合成串里认得出来（否则零命中是空真）。
-#[test]
-fn loc1b_the_cold_read_command_has_no_local_branch_and_opens_no_file() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
-    let start = prod
-        .find("pub async fn stream_read_session_jsonl(")
-        .expect("找不到那条命令 —— 本条空转");
-    let end = prod[start..]
-        .find("\n}\n")
-        .map(|k| start + k)
-        .expect("找不到函数尾");
-    let body = &prod[start..end];
-    let needles = [
-        "Route::Local",
-        "Route::Remote",
-        "is_local()",
-        "File::open",
-        "remote_history::",
-    ];
-    let hits = |s: &str| needles.iter().filter(|n| s.contains(*n)).count();
+fn shell_quote_via_ssh_source() {
     assert_eq!(
-        hits(body),
-        0,
-        "冷读命令体里又长出了按本机 / 远端分叉或自己开文件的那一形：\n{body}"
+        crate::ssh_source::shell_quote("/a/b c.jsonl"),
+        "'/a/b c.jsonl'"
     );
-    assert_eq!(
-        body.matches("frame_query::read_page(").count(),
-        1,
-        "取原文只经那台后端这一处"
-    );
-    // 正控：旧形状（本机分支自己开文件）会被认出来。
-    let old = "if let crate::origin::Route::Remote(host) = origin.route(\"x\")? { return crate::remote_history::f(host).await; } let file = File::open(&target);";
-    assert_eq!(hits(old), 3);
+    assert_eq!(crate::ssh_source::shell_quote("a'b"), r"'a'\''b'");
 }

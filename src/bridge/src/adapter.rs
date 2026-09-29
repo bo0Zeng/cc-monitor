@@ -10,7 +10,7 @@
 pub mod claude_code;
 pub mod codex;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Phase 2（Codex 泛化）：受支持的 agent 种类。Claude Code 是第一个、Codex 是「第二个样本」
 /// （SS-1 说好的第二刀触发点）。monitor 先定义；backend（`src/backend`）与 frontend
@@ -18,31 +18,13 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {
     ClaudeCode,
-    /// Codex（〔LOC1b〕今天由 `kind_of_record_name` 按文件名形态派发）。
+    /// Codex（〔MOD〕生产段今天只在画像表那一格用它 —— 读正文按文件名派发那一处随记录解释进了后端）。
+    #[cfg_attr(not(test), allow(dead_code))]
     Codex,
 }
 
-/// 从记录文件路径取 session_id 的策略（per-kind）。取代原 `sid_from_stem: bool`——Codex 的
-/// `rollout-<ts>-<uuid>.jsonl` 文件名 stem **不等于** sid（sid 是末尾 UUID），bool 表达不了。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SidStrategy {
-    /// 文件名 stem 即 sid（CC：`<sid>.jsonl`）。
-    Stem,
-    /// Codex `rollout-<YYYY-MM-DDThh-mm-ss>-<uuid>.jsonl` → 末 36 字符 UUID。
-    CodexRollout,
-}
-
-/// 文件型 agent 的会话源布局(目录 / 命名约定)。把散落的「知道 CC 目录结构」字面量收这里,
-/// 消除会话发现层(live / history / search / remote 四链)对具体子目录名的硬编码。
-pub struct SessionLayout {
-    // 〔LOC1b · 第四波 4D〕「会话记录子目录」「活性 pidfile 子目录」「会话记录扩展名」三格删了：它们的读者只有
-    //   monitor 自己读本机会话 / 判活那几个函数（已删，见下面那块墓碑）；那几件事今天问本机后端，目录布局归后端 `agents/`。
-    /// 从记录文件路径取 sid 的策略(CC = `Stem`;Codex = `CodexRollout`)。
-    pub sid_strategy: SidStrategy,
-    // 〔CF1 · 2026-09-24〕「扫描时跳过的路径段」那一格（CC = `subagents`）随 monitor 自己那套 jsonl watcher 删了 ——
-    //   它唯一的读者就是那条 watcher 的「是不是顶层会话记录文件」判定；本机会话内容改走本机后端的 `line` 帧之后，
-    //   同一条规矩由后端那一份（`observe/watcher.rs` 的 subagent 路径判定）管。
-}
+// 〔MOD · `设计/90 §3` 判据 3〕「会话源布局」（`SessionLayout` · 取 sid 的策略 `SidStrategy`〔散文墓碑〕）删了：它最后的读者是
+//   monitor 读正文那条分页器（按文件名判是哪一家、取 sid），那件事随记录解释进了后端（`agents::record_face_of`）。
 
 /// 一个 agent CLI 的适配器。第一个实例 = [`claude_code::ClaudeCodeAdapter`]。
 ///
@@ -53,8 +35,6 @@ pub trait AgentAdapter: Send + Sync {
     fn id(&self) -> &'static str;
     /// agent 数据根目录(CC = `resolve_claude_dir` 的三级回退)。
     fn data_root(&self) -> Option<PathBuf>;
-    /// 会话源布局。
-    fn layout(&self) -> &SessionLayout;
     /// resume/拉起前要从进程环境清洗掉的**嵌套会话** env(否则 agent 自认嵌套子会话、不写记录)。
     /// CC = `CLAUDECODE` / `CLAUDE_CODE_*`(spec §5);其它 agent 各不相同,无则空。
     fn nested_env_to_scrub(&self) -> &'static [&'static str];
@@ -88,53 +68,8 @@ pub fn active() -> &'static dyn AgentAdapter {
 //   monitor 自己读本机会话 / 判活 / 建索引的那几份实现，而冷读 · 判活 · 搜索都改问本机后端了（本机远端同一条路）⇒ 零调用方，删。
 //   按 agent 找记录目录 / 判记录文件的活今天住后端的适配层（`src/backend/agents/`）。
 
-/// 〔LOC1b · 4D〕按记录文件的**名字形态**判 [`AgentKind`]：`rollout-<ts>-<uuid>.jsonl` ⇒ Codex，其余 ⇒ Claude。
-///
-/// 从前另有一个按本机根前缀判的 `kind_of_path`〔散文墓碑〕；本函数不看本机有没有那一家的根 —— 冷读本机远端合成一条之后，远端的路径也要判得对
-/// （那台机器的 Codex 根在哪，本机不知道）。形态口径与 [`session_id_from_path_with`] 的 `CodexRollout` 同一个函数。
-pub fn kind_of_record_name(p: &Path) -> AgentKind {
-    if codex_sid_from_rollout(p).is_some() {
-        AgentKind::Codex
-    } else {
-        AgentKind::ClaudeCode
-    }
-}
-
-// 〔MIG-3b · `99 §2.1 ㉓②`〕「任务追踪目录」那个门面删了：它唯一的调用方（monitor 自己那条任务 notify）随监视进后端一起走了，
-//   任务目录住哪只剩后端 `observe/tasks_query.rs::tasks_root` 一份。
-
-/// Phase 2：按 layout 的 [`SidStrategy`] 取 sid（供 per-kind 派发/测）。
-pub fn session_id_from_path_with(layout: &SessionLayout, p: &Path) -> Option<String> {
-    match layout.sid_strategy {
-        SidStrategy::Stem => p.file_stem().and_then(|s| s.to_str()).map(String::from),
-        SidStrategy::CodexRollout => codex_sid_from_rollout(p),
-    }
-}
-
-/// Codex `rollout-<YYYY-MM-DDThh-mm-ss>-<uuid>.jsonl` → 末尾 36 字符 UUID（= ThreadId =
-/// session_meta.id）。时间戳内也含 `-`，故不能按 `-` 切；取 stem 末 36 字符并校验 UUID 形。
-/// 非 rollout 前缀 / 过短 / 末段非 UUID → `None`（不臆造）。（`.jsonl.zst` 冷会话见 F2。）
-fn codex_sid_from_rollout(p: &Path) -> Option<String> {
-    let stem = p.file_stem().and_then(|s| s.to_str())?;
-    let rest = stem.strip_prefix("rollout-")?;
-    if rest.len() < 36 {
-        return None;
-    }
-    // 末 36 用 `.get()`（非字节切片）→ 非字符边界（畸形多字节名）安全返 None、不 panic。
-    // Phase G 审计修：原 `&rest[..]` 会在含多字节字符的畸形文件名上 panic、挂掉整个历史/用量扫描
-    // （对齐 backend `codex::codex_sid_from_path` 已加固的 .get 写法，消两端 parity 发散）。
-    let uuid = rest.get(rest.len() - 36..)?;
-    is_uuid(uuid).then(|| uuid.to_string())
-}
-
-/// UUID 形校验：`8-4-4-4-12` 十六进制 + 固定位 `-`（第 8/13/18/23 字符）。
-fn is_uuid(s: &str) -> bool {
-    s.len() == 36
-        && s.bytes().enumerate().all(|(i, b)| match i {
-            8 | 13 | 18 | 23 => b == b'-',
-            _ => b.is_ascii_hexdigit(),
-        })
-}
+// 〔MOD〕按文件名形态判是哪一家（`kind_of_record_name`）· 取 sid（`session_id_from_path_with` · `codex_sid_from_rollout` · `is_uuid`）〔散文墓碑〕
+//   〔散文墓碑〕删：唯一调用方（读正文的分页器）随记录解释进了后端，同一件事住后端 `agents/codex/parse.rs::codex_sid_from_path`。
 
 // ── `K-R93`（09-12）：**前端那份 agent 画像的取数口** ────────────────────────────
 //

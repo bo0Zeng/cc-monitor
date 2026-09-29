@@ -104,29 +104,3 @@ fn the_first_real_user_line_skips_injected_context_and_is_capped() {
     assert_eq!(first_user_excerpt(&d.join("missing.jsonl")), "");
     let _ = std::fs::remove_dir_all(&d);
 }
-
-/// ★ 注入上下文那张表 == monitor 渲染那一侧 `codex_record·rs::is_injected_context` 里那张（逐项、同序）。
-#[test]
-fn the_injected_context_markers_match_the_monitor_side() {
-    let monitor = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/bridge/src/codex_record.rs"),
-    )
-    .expect("读 monitor 那份源码");
-    let prod = guard_core::production_code(&monitor);
-    let at = guard_core::find_pinned(&prod, "fn is_injected_context(text: &str) -> bool {")
-        .unwrap_or_else(|e| panic!("monitor 那一侧的判定不是恰好一处：{e}"));
-    let body = &prod[at..];
-    let end = body.find("\n}").expect("函数没收尾");
-    let body = &body[..end];
-    let theirs: Vec<&str> = body
-        .split('"')
-        .enumerate()
-        .filter(|(i, _)| i % 2 == 1)
-        .map(|(_, s)| s)
-        .collect();
-    assert_eq!(
-        theirs,
-        INJECTED_CONTEXT_MARKERS.to_vec(),
-        "两侧认的注入上下文不一样 —— 列表摘要与会话里渲染出来的首句会对不上"
-    );
-}

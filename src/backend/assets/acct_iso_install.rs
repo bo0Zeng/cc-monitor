@@ -143,7 +143,7 @@ pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
             written += 1;
             files.insert(
                 at,
-                json!({ "digest": crate::skill_ledger::digest_of(text), "created": created }),
+                json!({ "digest": crate::assets::skill_ledger::digest_of(text), "created": created }),
             );
         }
         if *rel == "scripts/cc-acct-iso" {
@@ -155,7 +155,7 @@ pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
     if let Some(created) = land(d, &home, &marker, &stamp, false)? {
         files.insert(
             marker,
-            json!({ "digest": crate::skill_ledger::digest_of(&stamp), "created": created }),
+            json!({ "digest": crate::assets::skill_ledger::digest_of(&stamp), "created": created }),
         );
     }
     let main_text = main_text.unwrap_or_default();
@@ -170,7 +170,7 @@ pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
         door::link(d, &home, LINK_REL, &main_abs).map_err(refused)?;
         files.insert(
             LINK_REL.to_string(),
-            json!({ "digest": crate::skill_ledger::digest_of(&main_text), "created": true }),
+            json!({ "digest": crate::assets::skill_ledger::digest_of(&main_text), "created": true }),
         );
         true
     };
@@ -191,7 +191,7 @@ pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
         }
         files.insert(
             CONFIG_REL.to_string(),
-            json!({ "digest": crate::skill_ledger::digest_of(sample), "created": true }),
+            json!({ "digest": crate::assets::skill_ledger::digest_of(sample), "created": true }),
         );
         true
     };

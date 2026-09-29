@@ -58,7 +58,7 @@ const PENDING: &[&str] = &[
     //      `backend/control/backend_kill.rs`  → `tests/bridge/backend/control/backend_kill_tests.rs`
     //      `backend/control/launch_wire.rs`  → `tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs`
     //      `panorama.rs`                     → `tests/bridge/panorama_tests.rs`
-    //      `parser.rs`                       → `tests/bridge/parser_tests.rs`
+    //      `parser.rs`                       → `tests/bridge/parser_tests.rs`（〔MOD〕今天在 `tests/backend/agents/claudecode/parse_tests.rs`）
     //      `profile_installer.rs`            → `tests/bridge/profile_installer_tests.rs`
     //      `ssh_source.rs`                   → `tests/bridge/ssh_source_f032_idle_tests.rs`
     //      `utils.rs`                        → `tests/bridge/utils_tests.rs`
@@ -79,7 +79,8 @@ const PENDING: &[&str] = &[
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/local_read_surface_registry_tests.rs",
     // 〔RM1f〕`tests/bridge/panorama_tests.rs` 这一行删了：那份文件随 monitor 的内嵌引擎（`panorama.rs`（已删））一起删了 ⇒ 上限跟着 −1。
-    "tests/bridge/parser_tests.rs",
+    // 〔MOD〕`tests/bridge/parser_tests.rs` 随记录解析搬进后端 → `tests/backend/agents/claudecode/parse_tests.rs`（同一条手动台账，照旧裸遍历真语料）。
+    "tests/backend/agents/claudecode/parse_tests.rs",
     "tests/bridge/polling_registry_tests.rs",
     // 〔MIG-3a〕`tests/bridge/profile_installer_tests.rs` → `tests/backend/assets/aliases/block_tests.rs`（别名块那一半的判据随代码进了后端，
     //   裸遍历那几处跟着走；monitor 留下的那份不再遍历）⇒ 换住址，条数不变。
@@ -406,7 +407,7 @@ fn every_registry_guard_keeps_its_reverse_half() {
     // 抄一份的话，「清单少一棵」与「钉子少一条」会被同一次编辑一起改掉 ⇒ 恒真。
     // 形状照上面的 [`MUST_BE_RECOGNISED`]：拿**盘上真有的那一份**当见证。
     const MUST_BE_IN_REACH: &[(&str, &str)] = &[(
-        "src/backend/wire.rs",
+        "src/backend/stream/wire.rs",
         "backend 那棵树的见证 —— `K-R37` 之前本条的实参逐字只有 `src/bridge/src`，\
              那棵树的 `.rs` 一份也没被打开过",
     )];

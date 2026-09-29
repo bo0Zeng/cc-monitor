@@ -71,13 +71,8 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
              收 kind、按 kind 取适配器，**没有 `active()`**。\
              〔LOC1b · 第四波 4D〕**3 → 1**：`records_dir_for` 与 `records_roots` 那两处随它们删了（零调用方）",
     ),
-    (
-        "history.rs",
-        Face::RuntimeDispatch,
-        1,
-        "按文件名形态判出 kind 之后取 layout（`kind_of_record_name` → `for_kind(kind)`）—— 好方向。\
-             〔LOC1b · 第四波 4D〕**2 → 1**：本机那一支取根那一次（`for_kind(kind).data_root()`）随那一支删了",
-    ),
+    // 〔MOD〕`history.rs` 那一处 `RuntimeDispatch`（按文件名形态判出 kind 之后取 layout）随读正文的分页器删了：
+    //   按根认是哪一家进了后端（`agents::record_face_of`）。
 ];
 
 /// 立表那天的读数（前三张脸的总数）。**只许降。**

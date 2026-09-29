@@ -211,6 +211,7 @@ import {
   withAccountReads,
   withHistoryReads,
   withSessionReads,
+  recordReadCalls,
   withTmuxReads,
 } from "./test-support/chan-fake";
 import type { SessionFacts } from "../src/session-reads";
@@ -907,7 +908,7 @@ describe("TabManager 生命周期", () => {
     // 〔CF2〕按行号取回：答一个空页（from 原样、next = from）。
     // 〔RENDER2〕原先答的是「[from, until) 一条可显示的都没有」—— 答了之后那一段整段记成见过（`seenSeqs.addRange`），
     //   下面「再造残账」那几条 seq 10–14 就成了自相矛盾的夹具（同一段号既说没有、又来了可显示的行）⇒ 改成空页。
-    vi.mocked(invoke).mockImplementation(((cmd: string, args?: { from: number; until: number }) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) =>
       Promise.resolve(
         cmd === "read_session_lines"
           ? { from: args!.from, next: args!.from, eof: false, payloads: [] }
@@ -921,9 +922,9 @@ describe("TabManager 生命周期", () => {
     const t = home(tm).store.tabs.get("sentB")!;
     expect(t.window.pendingCount).toBe(0);
     // 〔CF2〕渲染窗口最老那一条是第 100 行（> 0）⇒ 下面可能还有：jsdom 恒不可滚 ⇒ 切入的 R-2 踢链当场问 [0, 100)
-    expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_lines")).toEqual([
+    expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines")).toEqual([
       // 〔DL1〕`leftMs`：往上翻是一件一问，交这一问的整份期限（`TabStreamView.BELOW_BUDGET_MS`）
-      ["read_session_lines", { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100, leftMs: 60_000 }],
+      { origin: "<local>", jsonlPath: "/p/sentB.jsonl", from: 0, until: 100, leftMs: 60_000 },
     ]);
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain("正在取");
     await new Promise((r) => setTimeout(r, 0));
@@ -4817,9 +4818,10 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(idx(300));
       if (cmd === "read_session_range") {
-        const a = args as { seqBase: number; lineCount: number };
+        // 〔MOD〕请求里不再带 `lineCount`（后端自己数）：这一段几行按夹具的行边界算（o = seq × 10、n = 10）。
+        const a = args as { seqBase: number; offset: number; until: number };
         return Promise.resolve(
-          Array.from({ length: a.lineCount }, (_, k) => mk("miss", a.seqBase + k, `u${a.seqBase + k}`)),
+          Array.from({ length: (a.until - a.offset) / 10 }, (_, k) => mk("miss", a.seqBase + k, `u${a.seqBase + k}`)),
         );
       }
       return Promise.resolve(undefined);
@@ -4830,13 +4832,10 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     t.skeleton!.ensure(101, 3); // [98, 105)：98/99/103/104 在账本里，100–102 没到过
-    const ranges = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range");
+    const ranges = recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");
     // 连续缺的三行并成**一段**、一次 IPC；字节边界取自索引（o = seq×10，n = 10）
     expect(ranges).toEqual([
-      [
-        "read_session_range",
-        { origin: "<local>", jsonlPath: "/p/miss.jsonl", offset: 1000, until: 1030, seqBase: 100, lineCount: 3 },
-      ],
+      { origin: "<local>", jsonlPath: "/p/miss.jsonl", offset: 1000, until: 1030, seqBase: 100 },
     ]);
     await settle();
     const rendered = spy.mock.calls.map((c) => (c[0] as { seq: number }).seq).sort((x, y) => x - y);
@@ -4853,7 +4852,7 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     expect(obs.length).toBe(3);
     expect(obs.every((c) => c[3] === true), "历史行按 live 喂了 ⇒ 会为旧轮次弹通知").toBe(true);
     // 150 不在这一段里 ⇒ 没被要
-    expect(ranges.some((c) => (c[1] as { seqBase: number }).seqBase === 150)).toBe(false);
+    expect(ranges.some((c) => c.seqBase === 150)).toBe(false);
   });
 
   it("滚动：接上骨架后**每次**滚动都交给 fillVisible —— 不再只在离顶 800px 内才补（占位可以在中部）", async () => {
@@ -4872,9 +4871,10 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads((cmd: string, args?: unknown) => {
       if (cmd === "read_session_index") return Promise.resolve(idx(1100));
       if (cmd === "read_session_range") {
-        const a = args as { seqBase: number; lineCount: number };
+        // 〔MOD〕同上：这一段几行按夹具的行边界算。
+        const a = args as { seqBase: number; offset: number; until: number };
         return Promise.resolve(
-          Array.from({ length: a.lineCount }, (_, k) => mk("big", a.seqBase + k, `u${a.seqBase + k}`)),
+          Array.from({ length: (a.until - a.offset) / 10 }, (_, k) => mk("big", a.seqBase + k, `u${a.seqBase + k}`)),
         );
       }
       return Promise.resolve(undefined);
@@ -4905,10 +4905,8 @@ describe("〔设计/10〕骨架接入：索引 → 占位 → 门控 → 跳转"
     vi.mocked(turnEndNotifier.observe).mockClear();
     t.skeleton!.ensure(300, 2); // [298, 303)
     await settle();
-    expect(
-      vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range").map((c) => c[1]),
-    ).toEqual([
-      { origin: "<local>", jsonlPath: "/p/big.jsonl", offset: 2980, until: 3030, seqBase: 298, lineCount: 5 },
+    expect(recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range")).toEqual([
+      { origin: "<local>", jsonlPath: "/p/big.jsonl", offset: 2980, until: 3030, seqBase: 298 },
     ]);
     expect(spy.mock.calls.map((c) => (c[0] as { seq: number }).seq)).toEqual([298, 299, 300, 301, 302]);
     expect(vi.mocked(turnEndNotifier.observe), "见过的行又走了一遍 onLine 旁路").not.toHaveBeenCalled();
@@ -5349,12 +5347,12 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 20));
   };
-  const asks = () =>
-    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_lines").map((c) => c[1]);
+  const asks = () => recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_lines");
   /** 后端答：`[from, until)` 里每一行都可显示（seq 就是行号）。 */
   const answerAll = (sid: string, origin?: string) =>
-    ((cmd: string, a?: { from: number; until: number }) =>
-      Promise.resolve(
+    withSessionReads((cmd: string, args?: Record<string, unknown>) => {
+      const a = args as { from: number; until: number } | undefined;
+      return Promise.resolve(
         cmd === "read_session_lines"
           ? {
               from: a!.from,
@@ -5363,7 +5361,8 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
               payloads: Array.from({ length: a!.until - a!.from }, (_, k) => mk(sid, a!.from + k, origin)),
             }
           : undefined,
-      )) as never;
+      );
+    }) as never;
 
   it("★ L3：账尽 ＋ 最老那一条不是第 0 行 ⇒ 问 [floor − 200, floor)；回来的进账本、补上屏；问到第 0 行就不再问", async () => {
     vi.mocked(invoke).mockImplementation(answerAll("lb"));
@@ -5401,10 +5400,12 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
 
   it("★ L3：问回来的那一段全是不显示的记录（floor 不动）⇒ 下一问接着往下、不原地重问；问到第 0 行为止、之后再踢也不问", async () => {
     // 后端答：那一段一条可显示的都没有（seq 里本来就有不显示的记录占的号）
-    vi.mocked(invoke).mockImplementation(((cmd: string, a?: { from: number; until: number }) =>
-      Promise.resolve(
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) => {
+      const a = args as { from: number; until: number } | undefined;
+      return Promise.resolve(
         cmd === "read_session_lines" ? { from: a!.from, next: a!.until, eof: false, payloads: [] } : undefined,
-      )) as never);
+      );
+    }) as never);
     tm.onLine(mk("head", 1));
     tm.onLine(mk("nd", 450)); // floor = 450
     const t = home(tm).store.tabs.get("nd")!;
@@ -5426,7 +5427,7 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
   });
 
   it("★ L3：问不动（老后端 / 断了）⇒ 〔GAP1〕下一次上翻再问一次；连续第二次才哨兵说原因、不再自动重问；切走再切回来才再问一次", async () => {
-    vi.mocked(invoke).mockImplementation(((cmd: string) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string) =>
       cmd === "read_session_lines"
         ? Promise.reject(new Error("那台后端还不认这条查询"))
         : Promise.resolve(undefined)) as never);
@@ -5442,7 +5443,8 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
     await settle();
     expect(asks().length, "第一次失败之后的下一次上翻该再问一次").toBe(2);
     expect(asks()[1]).toEqual(asks()[0]);
-    expect(t.window.belowState).toEqual({ kind: "failed", reason: "那台后端还不认这条查询" });
+    // 〔MOD〕失败经通道那一跳说（`chan-caller.ts::saidOf` 带上对端的码），原因那一句原样在里面。
+    expect(t.window.belowState).toEqual({ kind: "failed", reason: expect.stringContaining("那台后端还不认这条查询") });
     expect(t.stream.contentElement.querySelector(".stream-more-above")?.textContent).toContain(
       "那台后端还不认这条查询",
     );
@@ -5475,10 +5477,8 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
 
   it("★ S3′：会话流丢过格（`onStreamGap`）⇒ 那台机器的 tab：账本整份出账、从见过的最大行号 + 1 起往后取到 eof；别的机器的 tab 不动", async () => {
     const pages = new Map<string, number>();
-    vi.mocked(invoke).mockImplementation(((
-      cmd: string,
-      a?: { jsonlPath: string; from: number; until?: number },
-    ) => {
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) => {
+      const a = args as { jsonlPath: string; from: number; until?: number } | undefined;
       if (cmd !== "read_session_lines") return Promise.resolve(undefined);
       // 往后那一问（不给 until）：每份会话两段，第二段到 eof
       const n = (pages.get(a!.jsonlPath) ?? 0) + 1;
@@ -5538,11 +5538,11 @@ describe("〔CF2〕没接骨架的 tab：按行号往下取", () => {
    * 钟面用替身（`performance.now` 每被读一次走 25 秒），不等真时间。
    */
   it("★ DL1：丢格之后往后补 —— 每问交剩下的、越来越少；总期限一过就不再问", async () => {
-    vi.mocked(invoke).mockImplementation(((cmd: string, a?: { from: number }) =>
+    vi.mocked(invoke).mockImplementation(withSessionReads((cmd: string, args?: Record<string, unknown>) =>
       Promise.resolve(
         cmd === "read_session_lines"
           ? // 第 30 行到头：期限一直在的话（每页重新计时那一形）会一路问到这里 —— 问 20 次、干净地红，而不是无限问下去把 worker 撑爆
-            { from: a!.from, next: a!.from + 1, eof: a!.from >= 30, payloads: [mk("dl", a!.from)] }
+            { from: Number(args!.from), next: Number(args!.from) + 1, eof: Number(args!.from) >= 30, payloads: [mk("dl", Number(args!.from))] }
           : undefined,
       )) as never);
     tm.onLine(mk("dl", 10));

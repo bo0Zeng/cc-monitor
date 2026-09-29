@@ -1,14 +1,8 @@
 //! F-MA:Claude Code 适配器(**第一个实例**)。把现有 CC 专属逻辑原样包进 [`AgentAdapter`],
 //! **零行为变化**——第一刀是纯抽象,现有测试全绿即验收。
 
-use super::{AgentAdapter, SessionLayout, SidStrategy};
+use super::AgentAdapter;
 use std::path::PathBuf;
-
-/// CC 会话源布局:`~/.claude/{projects,sessions,tasks}`;记录 `<projects>/<enc(cwd)>/<sid>.jsonl`。
-/// 〔LOC1b · 4D〕monitor 这一侧只剩任务目录与取 sid 的策略两格（会话子目录 / 活性目录 / 扩展名随 monitor 读本机盘那几份实现删了）；〔MIG-3b〕任务目录那一格也删了（监视进后端）。
-static CLAUDE_LAYOUT: SessionLayout = SessionLayout {
-    sid_strategy: SidStrategy::Stem,
-};
 
 /// CC 的嵌套会话 env(resume 前清洗,否则 CC 自认嵌套子会话不写 JSONL/不注册 pidfile,spec §5)。
 /// ⚠ **顺序不是随手排的（U8c-2a 起）**：它与 TS `AGENT_PROFILE.nestedEnvVars` **逐项同序**。
@@ -33,9 +27,6 @@ impl AgentAdapter for ClaudeCodeAdapter {
     fn data_root(&self) -> Option<PathBuf> {
         // 三级回退:用户配置 claudeDir → CLAUDE_CONFIG_DIR → ~/.claude。
         crate::paths::resolve_claude_dir()
-    }
-    fn layout(&self) -> &SessionLayout {
-        &CLAUDE_LAYOUT
     }
     fn nested_env_to_scrub(&self) -> &'static [&'static str] {
         CLAUDE_NESTED_ENV

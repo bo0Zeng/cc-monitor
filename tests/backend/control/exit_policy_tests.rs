@@ -148,7 +148,7 @@ fn the_wire_shape_is_exactly_the_registered_fields() {
         }
     }
     for name in ["exit-policy-read", "exit-policy-set"] {
-        let spec = crate::inbound::REGISTRY
+        let spec = crate::stream::inbound::REGISTRY
             .iter()
             .find(|s| s.name == name)
             .unwrap_or_else(|| panic!("注册表里没有 {name}"));
@@ -233,7 +233,7 @@ fn the_said_line_is_exact_on_every_cell() {
 #[test]
 fn the_production_wire_reads_the_carrier_from_the_listen_mode() {
     assert!(
-        std::env::var(crate::listen::ENV_PORT).is_err(),
+        std::env::var(crate::stream::listen::ENV_PORT).is_err(),
         "测试进程里有监听口环境 —— 本格的前提不成立"
     );
     assert_eq!(

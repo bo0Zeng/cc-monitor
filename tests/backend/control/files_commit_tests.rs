@@ -785,11 +785,11 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     stage_chunk(&home, key, 0, b"x").expect("写一块");
     assert_eq!(
         mode(&home.join(".cc-monitor")),
-        crate::own_dir::PRIVATE_DIR_MODE
+        crate::common::own_dir::PRIVATE_DIR_MODE
     );
     assert_eq!(
         mode(&home.join(STAGING_DIR)),
-        crate::own_dir::PRIVATE_DIR_MODE
+        crate::common::own_dir::PRIVATE_DIR_MODE
     );
     std::fs::remove_dir_all(&home).ok();
 
@@ -809,7 +809,7 @@ fn hx1_the_staging_dirs_are_born_private_and_an_existing_one_is_left_alone() {
     );
     assert_eq!(
         mode(&home.join(STAGING_DIR)),
-        crate::own_dir::PRIVATE_DIR_MODE
+        crate::common::own_dir::PRIVATE_DIR_MODE
     );
     std::fs::remove_dir_all(&home).ok();
 }

@@ -306,14 +306,8 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //   monitor 这一侧不再有它们。
     // 〔C4d · 第四波 4B〕`local_accounts.rs` 的 `MANIFEST_CAP`（本机读账号 manifest，「降级+说清」）那一行出列：
     //   那份零生产调用方的本机参照实现删了，读 manifest 只剩后端一处（`MAX_MANIFEST_BYTES`，登记在后端那一段）。
-    // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`：本机冷读也经那台后端，本机远端同一条上限。
-    (
-        "src/bridge/src/history.rs",
-        "MAX_SESSION_BYTES",
-        256 * 1024 * 1024,
-        "读一整份会话 jsonl（本机远端同一条）",
-        "截断+说清",
-    ),
+    // 〔LOC1b · 第四波 4D〕住址 `remote_history.rs` → `history.rs`；〔MOD〕→ 后端 `read_face.rs::WHOLE_SESSION_MAX_BYTES`
+    //   （「整份读进查看器」那一件的上限判定随记录解释进了后端，登记在后端那一段）。
     // 🔴〔第十二刀 2026-09-22〕**它管的不是字节，是条目数** —— 如实登记这一点。
     //    本表的抽取器按「具名常量 ＋ 一个够大的数」取人群，不看单位；
     //    而「一屏最多多少行」与本表别的那几项**不是同一种量**，
@@ -385,7 +379,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/listen.rs",
+        "src/backend/stream/listen.rs",
         "ATTACH_LINE_CAP",
         8 * 1024,
         "backend 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
@@ -512,6 +506,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     // ---- backend 侧 ----
+    // 〔MOD〕从 monitor `history·rs` 那个 `MAX_SESSION_BYTES`〔散文墓碑〕搬来：「整份读进查看器」那一件读过它就明拒、那句话说读到了哪（F06）。
+    (
+        "src/backend/faces/read_face.rs",
+        "WHOLE_SESSION_MAX_BYTES",
+        256 * 1024 * 1024,
+        "查看器读一整份会话 jsonl（`history-page` 带 `whole`；本机远端同一条）",
+        "拒收+回错",
+    ),
     (
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
@@ -541,7 +543,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/inbound.rs",
+        "src/backend/stream/inbound.rs",
         "MAX_LINE_BYTES",
         1 << 20,
         "入方向单行",
@@ -641,7 +643,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔`C1` · 09-24〕只读查询的帧面宿主那三个数（一帧应答要整个进内存、整个过线）。
     (
-        "src/backend/read_face.rs",
+        "src/backend/faces/read_face.rs",
         "READ_PAGE_BYTES",
         1 << 20,
         "`history-read` 一页（一帧应答）的正文字节数",
@@ -649,21 +651,21 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔GAP1 · `设计/15 §4.7 S1`〕`backend-log` 一帧回多少：只回诊断文件的尾部，`truncated: true` 说清前面还有。
     (
-        "src/backend/read_face.rs",
+        "src/backend/faces/read_face.rs",
         "LOG_TAIL_BYTES",
         256 << 10,
         "`backend-log` 一帧回的后端诊断文件尾部字节数",
         "截断+说清",
     ),
     (
-        "src/backend/read_face.rs",
+        "src/backend/faces/read_face.rs",
         "LINE_CAP_BYTES",
         32 << 20,
         "`history-read` 里单独一行比一页还长时最多续读多长",
         "拒收+回错",
     ),
     (
-        "src/backend/read_face.rs",
+        "src/backend/faces/read_face.rs",
         "LINES_CAP_BYTES",
         32 << 20,
         "按行那六条帧查询（`history-projects` 等）整份输出",
@@ -748,7 +750,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "硬报错",
     ),
     (
-        "src/backend/asset_catalog.rs",
+        "src/backend/assets/asset_catalog.rs",
         "CATALOG_MAX_BYTES",
         16 * 1024 * 1024,
         "后端自有的资产目录文件 `~/.cc-monitor/assets-catalog.json`（读不出来就不覆盖）",
@@ -756,14 +758,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔SU1 · 第四波 4C〕skill 装记录那份文件：超了当读不懂 ⇒ 不覆盖、`ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
     (
-        "src/backend/skill_ledger.rs",
+        "src/backend/assets/skill_ledger.rs",
         "MAX_BYTES",
         4 * 1024 * 1024,
         "后端自有的 skill 装记录 `~/.cc-monitor/skill-installs.json`（读不出来就不覆盖）",
         "拒收+回错",
     ),
     (
-        "src/backend/asset_catalog.rs",
+        "src/backend/assets/asset_catalog.rs",
         "SKILL_MAX_FILE_BYTES",
         4 * 1024 * 1024,
         "算一个 skill 的摘要时读其中一个文件（超了只记长度，`summary.truncated` 说出来）",
@@ -771,7 +773,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     ),
     // 〔C4d · 第四波 4B〕历史注解那一份文件（读写者换成本机常驻后端）。超了当读不懂：读回「不知道」、拒写、一个字节不动。
     (
-        "src/backend/history_annotations.rs",
+        "src/backend/history/history_annotations.rs",
         "MAX_BYTES",
         64 * 1024 * 1024,
         "读一份历史注解文件（星标 / 改名 / 隐藏 / 上次账号；monitor 从前读写的那一份，路径由它交）",
@@ -788,7 +790,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 〔C4d · 第四波 4B〕住址随「问远端那一跳」搬家（`asset_sync.rs` → `remote_ask.rs`，逻辑一字不改）；
     //   量从「拉回来的那一份目录」放宽成「经那一跳问回来的任何一份 stdout」（资产目录 · 历史项目 / 会话清单）。
     (
-        "src/backend/remote_ask.rs",
+        "src/backend/stream/remote_ask.rs",
         "PULL_MAX_BYTES",
         16 * 1024 * 1024,
         "本机后端经池里那条 SSH 在远端跑一条一次性子命令、拿回来的 stdout（资产目录 · 历史清单；capture）",
@@ -827,7 +829,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     (
-        "src/backend/asset_sync.rs",
+        "src/backend/assets/asset_sync.rs",
         "PUSH_MAX_BYTES",
         96 * 1024,
         "同步时一趟推给远端的载荷（管进一条 `sh -c` 命令，受 `MAX_ARG_STRLEN` 限）；多台切块，单台超了不推、说出来",
@@ -1214,14 +1216,14 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //   `observe/accounts_query.rs::MAX_MANIFEST_BYTES` 一处，「两侧漂开」在结构上不再可能（同对 D 的处置）。
 
     // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
-    let b1 = by("src/bridge/src/history.rs", "MAX_SESSION_BYTES");
+    let b1 = by("src/backend/faces/read_face.rs", "WHOLE_SESSION_MAX_BYTES");
     let b2 = by(
         "src/backend/control/fork_write.rs",
         "MAX_SESSION_JSONL_BYTES",
     );
     assert_eq!(
         b1, b2,
-        "「一整份会话 jsonl」的上限两侧漂开了（monitor {b1} / backend {b2}）。\
+        "「一整份会话 jsonl」的上限两处漂开了（查看器整份读 {b1} / 分叉 {b2}）。\
              ⚠ `fork_write.rs` 的注释写的是「同一**量级**」，而本条钉的是**相等** —— \
              因为它们是同一个量。要刻意分开就把这条判据与那句注释**一起**改。"
     );
@@ -1253,7 +1255,7 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     // 对 F〔F9c · 第四波〕：窗口存盘时一行的上限 ＝ 后端入方向一行的上限 ⇒ 钉相等。
     //   窗口多给一个字节 ⇒ 后端整行丢弃（`line_too_long`）；少给 ⇒ 只是多切几块（不错，但两份数漂了就该有人看）。
     let f1 = by("src/bridge/src/filewin/editor.rs", "SAVE_LINE_CAP");
-    let f2 = by("src/backend/inbound.rs", "MAX_LINE_BYTES");
+    let f2 = by("src/backend/stream/inbound.rs", "MAX_LINE_BYTES");
     assert_eq!(
         f1, f2,
         "窗口存盘一行的上限与后端入方向一行上限漂开了（窗口 {f1} / 后端 {f2}）。\
@@ -1506,7 +1508,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     // 〔GAP1〕`read_face::log_tail` 的上限是入参 `max`，唯一调用点给的是 `min(调用方要的, LOG_TAIL_BYTES)`（已在 `CAPS` 里）。
     // ⚠ 不是静默截断：从 `size − max` 起读、应答带 `truncated`（前面还有没回的）。
     (
-        "src/backend/read_face.rs",
+        "src/backend/faces/read_face.rs",
         "max",
         "`log_tail` 的上限是入参，`backend-log` 那一臂给的是封顶 `LOG_TAIL_BYTES`（已在 `CAPS` 里）；\
              读的是尾部，应答 `truncated` 说清前面还有 —— 截断且说清。",
@@ -1813,7 +1815,7 @@ fn every_uncapped_stream_read_has_an_owner() {
              ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的后端，都会让\n\
              「无界读」变成「无界堆分配」。backend 侧为此栽过一次实测：\n\
              喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB\n\
-             （见 `src/backend/inbound.rs` 头注）。\n\
+             （见 `src/backend/stream/inbound.rs` 头注）。\n\
              两条路：① 加上限（`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`）；\n\
              ② 登记进 `UNCAPPED_STREAM_READS` 并写明**谁退役它**。",
         orphans.join("\n")

@@ -42,7 +42,7 @@
  * 4. 全仓 TS **字面量**命令名 ⊆ Rust 命令集，且唯一名数 == 112，且
  *    「Rust 有而 TS 静态看不见」的那 7 个动态名逐字钉死。
  */
-import { invoke, type Channel } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 
 // 〔MIG-3a〕`SkillView` 搬进 `src/skill-inbox-reads.ts`（收件箱三问改走通道、后端出成品）。
 // 〔US1 · 第四波 4D〕`ApikeyCredentialsStatus` 与 `ApikeyRoutingView` 两个类型搬进 `src/apikey-reads.ts`（那两问改走通道、后端出成品，
@@ -76,11 +76,8 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // `code-picture-core/src/model.rs`，`VENDOR.md` 铁律「副本是上游的镜子」⇒ 不在副本里加 `ts_rs` 派生）。
 // 〔改前这里 import 那十几个类型给进程内那十七条包装用，`PanoramaStatus` 用生成物；三样都随内嵌引擎退役了。〕
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
-import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
-import type { SessionLinesPage } from "../generated/SessionLinesPage";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
-import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 
 /**
  * 类型化命令表。**键名必须逐字节等于 Rust 侧的命令名**，
@@ -208,25 +205,8 @@ export const commands = {
   // 〔MIG-1 续 · `设计/99 §2.1 ⑬`〕测试连接的包装（带 `Channel<ConnectStage>` 阶段泳道那一条）随命令退役删了：
   //   界面把那台配置交给本机后端（帧命令 `remote-probe`，`src/remote-probe.ts`），阶段行随结局一并回来。
 
-  /**
-   * 流式读会话 jsonl。Rust 返回 `Result<u32, String>`（条数）。
-   *
-   * 🔴 **〔步 12·C 2026-09-20〕`stream_read_remote_session`〔散文墓碑〕已退役，两条收成这一条。**〔LOC1b · 4D〕Rust 那一侧两支也合成了一条（本机也经本机后端 `history-read`）。
-   *
-   * 这一行原先逐字写着「**注意它与 `stream_read_session_jsonl` 的签名刻意不同**：
-   * 远端这条 `origin: String` 是**必填**，本地那条**根本没有 origin**」——
-   * 那句「刻意不同」正是 `设计/00 §2.5 ①` 要治的东西：**两侧走的不是同一条路，
-   * 而让它们不同的只是一个参数**。
-   *
-   * ⚠ 它原先买到的那条编译期保护（「给本地命令传 origin」是编译错）**没有丢，是换了形状**：
-   * 现在是「**不传** origin」编译错（`origin` 必填、且类型不是 `string | undefined`）。
-   * ⇒ 本机要逐字送 `LOCAL_ORIGIN`，不许省。
-   */
-  stream_read_session_jsonl: (args: {
-    origin: Origin;
-    jsonlPath: string;
-    onChunk: Channel<JsonlLinePayload[]>;
-  }) => invoke<number>("stream_read_session_jsonl", args),
+  // 〔MOD · `05 §14.3` C 组〕会话正文四条（`stream_read_session_jsonl` · `load_subagent` · `read_session_range` ·
+  //   `read_session_lines`〔散文墓碑〕）的包装随命令退役删了：那台后端出记录行 / 成品，界面经通道直问（`src/record-reads.ts`）。
 
   // 〔SH1 · V136〕`read_cc_bus_inbox` / `read_cc_bus_state` 两条退役：驾驶舱读面经通道直接问后端（`src/cc-bus-control.ts`）。
 
@@ -300,6 +280,7 @@ export const commands = {
 
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   // 〔ST3〕按机器分：问哪台答哪台，回包带回 `origin`（界面按回声判）。monitor 自己的命令，不经后端。
+  // 〔MOD〕只答 monitor 天生观测的两面；记录那两面问那台后端（`record-reads.ts::readRecordDrift`）。
   drift_ledger_report: (args: { origin: Origin }) =>
     invoke<DriftLedgerReport>("drift_ledger_report", args),
   // 〔C4b · 第四波 4B〕P8a 的 marketplace 面（`list_plugin_marketplaces`〔散文墓碑〕）退役：经通道直接说帧命令
@@ -314,46 +295,10 @@ export const commands = {
 
   // 〔MIG-3b〕cc-bus 钩子诊断两条（本机 / 远端）退役：界面经通道直问那台后端 `hooks-diag`（`settings/cc-bus-hooks-section.ts::fetchHooksReport`）。
 
-  /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
-  load_subagent: (args: {
-    parentJsonlPath: string;
-    description: string;
-    toolUseTimestamp: string;
-    /**
-     * P7c-1：远端会话的 subagent 记录在远端机器上 —— 后端按它分流。
-     *
-     * 🔴 **〔`设计/05 §8` 步 2 · 09-20〕这一行原先是 `origin: string | null`，`null` = 本机。**
-     * 那是全仓最后一处**在入方向的线上**用 `null` 表示本机的命令参数。
-     * 步 2 逐字「`origin` 去 `null` 化 —— 本机也带 origin」⇒ 本机逐字送 `LOCAL_ORIGIN`
-     * （`"<local>"`，住 `backend-policy.ts`）。Rust 那一侧同拍换成了 `origin::Origin`，
-     * 而 `Origin` 里**已经没有**「没说」这一档（`null` 连反序列化都过不去）。
-     */
-    origin: Origin;
-  }) => invoke<SubagentLoadResult>("load_subagent", args),
 
   // 〔C4b · 第四波 4B〕骨架索引那一条（`read_session_index`〔散文墓碑〕）退役：经通道直接说帧命令 `history-index`，
   //   后端出成品（`src/session-reads.ts::readSessionIndex`）。
 
-  /**
-   * 〔`设计/10` 骨架 · 子步 3〕**按偏移取一段正文** `[offset, until)` —— 两端、`seqBase`、`lineCount`
-   * 都取自骨架索引（这一段第一行的 seq、这一段的可计行数）。「只物化可见区」要的那一段。
-   */
-  read_session_range: (args: {
-    origin: Origin;
-    jsonlPath: string;
-    offset: number;
-    until: number;
-    seqBase: number;
-    lineCount: number;
-  }) => invoke<JsonlLinePayload[]>("read_session_range", args),
-
-  /**
-   * 〔CF2 · 第四波 4B〕**按行号取一段正文** `[from, until)`（`until` 缺 ＝ 到末尾）—— 不依赖骨架索引的那条取回路。
-   * 调用点：`TabStreamView.fetchBelow`（没接骨架的 tab 往上翻过了账本里最老那一条）· `TabStreamView.recoverFromGap`（会话流丢格之后往后补）。
-   * 〔DL1〕`leftMs`：那一**件**事还剩多少毫秒（`设计/05 §3.3.2` 一件事一个绝对时刻；多问的那一件每问交剩下的，不重新计时）。
-   */
-  read_session_lines: (args: { origin: Origin; jsonlPath: string; from: number; until?: number; leftMs: number }) =>
-    invoke<SessionLinesPage>("read_session_lines", args),
 
   // 〔CF2 · 第四波 4B〕「接上骨架 ⇒ 重放缓冲只留尾巴」那一条（`replay_keep_tail_only`〔散文墓碑〕）退役：
   //   重放缓冲对每个会话都只留尾巴，前端不再登记。

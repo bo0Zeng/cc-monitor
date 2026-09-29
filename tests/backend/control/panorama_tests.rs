@@ -288,7 +288,7 @@ fn a_timeout_and_an_oversized_answer_are_said_as_such() {
         m.contains(&BUILD_DEADLINE_SECS.to_string()),
         "说清是哪一档期限：{m}"
     );
-    let big = vec![b'x'; crate::read_face::LINES_CAP_BYTES + 1];
+    let big = vec![b'x'; crate::faces::read_face::LINES_CAP_BYTES + 1];
     assert_eq!(
         classify("overview", 1, done(Some(0), big)).unwrap_err().0,
         "too_large"

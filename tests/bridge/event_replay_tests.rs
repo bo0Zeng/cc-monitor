@@ -1,7 +1,6 @@
 use super::*;
-use crate::messages::JsonlRecord;
 
-/// 用 path 字段携带 idx 给测试用（Unknown 变体是 unit struct 不能塞 metadata）。
+/// 用 path 字段携带 idx 给测试用（〔MOD〕记录体对 monitor 是不透明的成品，这里给一个结构占位）。
 /// P5.1：seq 也用 idx，方便排序断言。
 fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
     JsonlLinePayload {
@@ -10,7 +9,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         path: format!("/fake/{sid}/{idx}.jsonl"),
         seq: idx as u64,
         origin: None,
-        message: JsonlRecord::Unknown,
+        message: crate::bridge::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
     }
 }

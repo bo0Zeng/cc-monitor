@@ -66,7 +66,7 @@
 //! （同轮还补了判据④的针：此前只认全路径 `agents::<名>::`，本文件写的相对路径 `codex::`
 //! 一处都数不到 —— 那是本区第二次「量具的作用域比事实**小**」。）
 
-use crate::wire::AgentHome;
+use crate::stream::wire::AgentHome;
 use std::path::{Path, PathBuf};
 
 pub mod claudecode;
@@ -129,6 +129,101 @@ pub(crate) struct Adapter {
     /// 〔MIG-3b 续〕这一家的**足迹面**：落在它自己布局里的那几条申报 ＋ 申报路径里 `~/<它的家>/…` 怎么认 ＋ 用户级 settings 住哪。
     /// 收进注册表而不是让 `footprint/` 直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
     pub(crate) footprint: Option<FootprintFace>,
+    /// 〔MOD · `设计/90 §3` 判据 3〕这一家的**记录解释**：一行原文在渲染模型里是什么 · sid 怎么从文件名来 · 轮次边沿 · 漂移账。
+    /// 收进注册表而不是让通用层直呼 `agents::<名>::` —— 理由同 [`Adapter::assets`]（判据④的读数只许降）。
+    pub(crate) records: Option<RecordFace>,
+}
+
+/// 〔MOD〕一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
+#[derive(Clone, Copy)]
+pub(crate) struct RecordFace {
+    /// 一行原文 ⇒ 渲染模型那一条（空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
+    pub(crate) parse: fn(&str) -> Result<Option<ParsedLine>, String>,
+    /// 会话文件 ⇒ 它的 sid（这一家的文件命名）。
+    pub(crate) sid: fn(&Path) -> Option<String>,
+    /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
+    pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
+    pub(crate) drift: Option<fn() -> serde_json::Value>,
+    /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
+    pub(crate) delete: Option<SessionDelete>,
+}
+
+/// 〔MOD · 子步 4 · 主会话裁〕删历史会话那一条要问适配层的两件事 —— 那是记录布局的知识，文件管理写面不认；
+/// 由门（命令注册那一处）经 [`locate_session_for_delete`] · [`is_session_record`] 这一个窄口递给它。
+#[derive(Clone, Copy)]
+pub(crate) struct SessionDelete {
+    /// sid ⇒ 本机要删的那一份（找 → 解到底 → 恰是那一形）。
+    pub(crate) locate: fn(&str) -> Result<PathBuf, String>,
+    /// 这一份是不是会话记录的形状（写面删之前再问一次）。
+    pub(crate) is_record: fn(&Path) -> bool,
+}
+
+/// 记录树那一家（同 [`stream_record_face`]）的删会话两问。
+fn session_delete() -> Option<SessionDelete> {
+    stream_record_face().and_then(|r| r.delete)
+}
+
+/// 〔MOD〕窄口之一：sid ⇒ 要删的那一份。没有哪一家答得了 ⇒ 照实拒。
+pub(crate) fn locate_session_for_delete(sid: &str) -> Result<PathBuf, String> {
+    match session_delete() {
+        Some(d) => (d.locate)(sid),
+        None => Err(copy_core::copy_text(
+            "beFilesWrite.session.noReader",
+            &[("id", sid)],
+        )),
+    }
+}
+
+/// 〔MOD〕窄口之二：这一份是不是会话记录（没有哪一家答得了 ⇒ 不是）。
+pub(crate) fn is_session_record(p: &Path) -> bool {
+    session_delete().is_some_and(|d| (d.is_record)(p))
+}
+
+/// 〔MOD〕一行原文在渲染模型里的样子 —— 适配层给，通用层只搬（`message` 的字段通用层一个都不读）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParsedLine {
+    /// 渲染模型那一条（界面收到的就是它）。
+    pub(crate) message: serde_json::Value,
+    /// 进不进界面：`false` ＝ 照占号、不出成品（没有读者的元数据记录）。
+    pub(crate) displayable: bool,
+    /// 这条记录自己的 `cwd`（带它的那一类才有）。
+    pub(crate) cwd: Option<String>,
+}
+
+/// 〔MOD〕一份已过围栏的会话记录是哪一家的：落在某一家合成历史的根下 ⇒ 那一家；否则 ⇒ 家目录记录树那一家
+/// （注册表里**没有**合成历史面的那一家 —— 它的会话就住在按项目分的记录树里，流式 watcher 跟的也是它）。
+pub(crate) fn record_face_of(path: &Path) -> Option<RecordFace> {
+    record_face_among(REGISTRY, path)
+}
+
+/// [`record_face_of`] 的可喂夹具那一半。
+pub(crate) fn record_face_among(registry: &[Adapter], path: &Path) -> Option<RecordFace> {
+    let under = |root: PathBuf| {
+        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        path.starts_with(root)
+    };
+    registry
+        .iter()
+        .find(|a| a.history.and_then(|h| (h.root)()).is_some_and(under))
+        .or_else(|| registry.iter().find(|a| a.history.is_none()))
+        .and_then(|a| a.records)
+}
+
+/// 〔MOD〕流式 watcher 跟的那一家（家目录记录树那一家）的记录解释面。
+pub(crate) fn stream_record_face() -> Option<RecordFace> {
+    REGISTRY
+        .iter()
+        .find(|a| a.history.is_none())
+        .and_then(|a| a.records)
+}
+
+/// 〔MOD〕注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
+pub(crate) fn drift_reports() -> Vec<serde_json::Value> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.records.and_then(|r| r.drift).map(|f| f()))
+        .collect()
 }
 
 /// 〔MIG-3b 续〕见 [`Adapter::footprint`]。
@@ -308,13 +403,13 @@ pub(crate) fn skill_asset_face() -> Option<AssetFace> {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), records: Some(claudecode::RECORDS) },
     // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
     //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
     //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
     //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
     // 〔NT2 · V25〕codex **刻意不登记**默认上游：它的默认上游是哪一个、认不认 base URL 覆盖，本仓零证据（`C7`）⇒ 未登记即拒（fail-closed）。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: None, history: Some(codex::HISTORY), upstream: None, mcp: None, footprint: None, records: Some(codex::RECORDS) },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

@@ -5,7 +5,8 @@ fn line(sid: &str, seq: u64) -> JsonlLine {
         session_id: sid.to_string(),
         path: std::path::PathBuf::from(format!("/fake/{sid}.jsonl")),
         seq,
-        raw: format!("{{\"seq\":{seq}}}"),
+        message: crate::bridge::RecordBody::from_json(format!("{{\"seq\":{seq}}}")),
+        cwd: None,
         end: None,
     }
 }

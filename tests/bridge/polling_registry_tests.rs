@@ -476,7 +476,7 @@ const SCHEDULING_SITES: &[(&str, &str, usize, &str)] = &[
     ("src/views/panorama.ts", "requestAnimationFrame", 3, "① `scheduleDraw` 合并重绘，`drawScheduled` 防重入 ② ③ 开/关侧栏后下一帧重算画布尺寸再画。都是一次性。"),
     ("src/views/panorama.ts", "setTimeout", 2, "① 250ms 搜索去抖。一次性（每次输入前 clear）。② 「复制给 agent」成功后 1.5s 把按钮字还原。一次性，只动按钮自己的字，不取数不重排。"),
     ("src/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
-    ("src/views/session-viewer.ts", "setTimeout", 2, "① `setTimeout(r, 0)` 让出主线程 ② 2.2s 后移除搜索命中的闪烁 class。都是一次性。"),
+    ("src/views/session-viewer.ts", "setTimeout", 1, "2.2s 后移除搜索命中的闪烁 class。一次性。〔MOD〕原 ①（`setTimeout(r, 0)` 让出主线程、等晚到的 Channel 块）随那条命令改走通道删了：页在同一个 Promise 链里交完。"),
     ("src/yield-to-main.ts", "setTimeout", 1, "〔RENDER2〕`makeYieldToMain` 探不到 `MessageChannel` 时的兜底 `setTimeout(run, 0)` —— 让出一跳，由调用方自链（重放 drain · 长回复分片渲染），退出条件在调用方：队列空 / 片渲完。不是节拍器。"),
 ];
 

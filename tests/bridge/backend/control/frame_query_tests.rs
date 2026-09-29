@@ -34,7 +34,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 后端 `inbound.rs` 生产段里的每一块 `CommandSpec`：`(帧命令名, 那一块的原文)`（**从后端源码数**）。
 /// 〔C4b〕抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/inbound.rs");
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/stream/inbound.rs");
     let src = std::fs::read_to_string(&p).expect("读后端 inbound.rs");
     let prod = guard_core::production_code(&src);
     let blocks: Vec<(String, String)> = prod
@@ -120,54 +120,12 @@ fn the_dial_per_query_path_is_gone() {
         );
     }
     assert!(
-        guard_core::contains_word(&corpus, "run_routed"),
-        "正控失败：识别器在同一份语料上认不出帧面出口 `run_routed` —— 上面的零命中不可信"
+        guard_core::contains_word(&corpus, "read_page"),
+        "正控失败：识别器在同一份语料上认不出帧面出口 `read_page` —— 上面的零命中不可信"
     );
 }
 
-/// ★ argv 分流认得本仓今天真在发的形状：区间取正文走帧面（〔C4b〕索引 · 查找 · 大纲三形改走通道，不再认）。
-#[test]
-fn argv_routing_covers_the_shapes_the_repo_actually_sends() {
-    let range = crate::session_skeleton::range_argv("/p/s.jsonl", 10, 99);
-    let range: Vec<&str> = range.iter().map(String::as_str).collect();
-    match route_argv(&range) {
-        Some(ArgvRoute::Read { path, from, upto }) => {
-            assert_eq!((path.as_str(), from, upto), ("/p/s.jsonl", 10, Some(99)))
-        }
-        _ => panic!("按区间取正文那一形没走帧面"),
-    }
-    // 〔C4b · 第四波 4B〕索引 · 查找 · 大纲三形随那三条命令改走通道删了 —— 它们的 argv 造器一起删了，
-    //   这里改成反向：那三个子命令**不再被认**（认得就说明 monitor 里又长出了一条发它们的路）。
-    for gone in [
-        &["--read-session-from-offset", "--index", "/p/s.jsonl", "7"][..],
-        &[
-            "--find-in-session",
-            "--limit",
-            "500",
-            "--query",
-            "q",
-            "/p/s.jsonl",
-        ][..],
-        &["--list-user-inputs", "--from", "42", "/p/s.jsonl"][..],
-    ] {
-        assert!(
-            route_argv(gone).is_none(),
-            "{gone:?} 又被分流认出来了 —— 那一条已经只走通道"
-        );
-    }
-    assert!(matches!(
-        route_argv(&["--list-subagents", "/p/s.jsonl"]),
-        Some(ArgvRoute::Lines("history-subagents", _))
-    ));
-    assert!(matches!(
-        route_argv(&["--read-session", "/p/a.jsonl"]),
-        Some(ArgvRoute::Read {
-            from: 0,
-            upto: None,
-            ..
-        })
-    ));
-}
+// 〔MOD〕argv 分流（`route_argv` / `ArgvRoute`〔散文墓碑〕）随它的调用方（子 agent · 按偏移取一段）一起删了，那条判据随之退役。
 
 // ════════════════════════════════════════════════════════════════════════════
 //  〔C4a · 第四波 · 2026-09-24〕八条里哪几条已经**只走通道**（主界面经 `src/ipc/chan.ts`）
@@ -222,6 +180,11 @@ const CHANNELED: &[(&str, &str)] = &[
         "history-sessions",
         "同 `history-projects`：会话行口径收成后端一份（`analyze_session`，本机与远端同一个函数），monitor 那份 `analyze_jsonl` /\
          `remote_session_entry` 删了",
+    ),    // 〔MOD · `设计/90 §3` 判据 3 · `05 §14.3` C 组〕子 agent 那一条：记录解释进了后端（`agents/claudecode/`），
+    //   后端出成品，界面经 `src/record-reads.ts` 直问；monitor 那份解析与那条 Tauri 命令删了。
+    (
+        "history-subagent",
+        "子 agent 那一份：列 ＋ 挑 ＋ 读 ＋ 解析都在后端（`history_query::pick_subagent` ＋ `record_page::all_records`），成品 `{path, agent_id, records}`",
     ),
 ];
 
@@ -230,6 +193,19 @@ const CHANNELED: &[(&str, &str)] = &[
 /// 操作名集合要把它们算进来：下面那条两向判据的「前端那一侧」== [`CHANNELED`] ⊔ 本表。
 /// 每一条还要**真的**是后端登记的帧命令（从后端 `inbound.rs` 生产段数，异源）、monitor 生产段里**零**字面量。
 const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
+    // 〔MOD · `设计/90 §3` 判据 3〕会话正文那几条里生在帧面上的（不是 `C1` 那一族的换壳）：界面经 `src/record-reads.ts` 直问。
+    (
+        "history-page",
+        "按字节分页读、出记录行（查看器整份读 · 骨架按偏移取一段）：编号 · 进不进界面 · `cwd` 都是后端给的，`whole` 那一件的上限判定也在后端",
+    ),
+    (
+        "history-lines",
+        "〔CF2〕按行号取回一段：后端出记录行（原先回原文、monitor 解析）",
+    ),
+    (
+        "drift-report",
+        "那台后端的漂移账（看不懂的记录类型）：看不懂的那一刻在场的是那台后端，成品 `{faces}`；monitor 只留它天生观测的两面",
+    ),
     // 〔MIG-1 · `99 §2.1 ⑯`〕`~/.ssh/config` 的解读从 monitor 三条 Tauri 命令（`ssh_source.rs` 里那三条，〔散文墓碑〕）搬进后端。
     (
         "ssh-config-aliases",
@@ -668,17 +644,12 @@ const HELD_BACK: &[(&str, &str)] = &[
     // 〔C4d · 第四波 4B〕`history-projects` / `history-sessions` 两行挪进了 [`CHANNELED`]（跨机 join 进了本机常驻后端）。
     // 〔C4c · 第四波 4B〕下面三行按主会话裁决重写：`history-read` / `history-subagents` **等后端二次拆包**，
     //   `history-tail` 归 CF2（`subscribe`）。三行都仍有 monitor 侧发送点（判据照旧要求它们真有）。
+    // 〔MOD〕`history-subagents` 那一行摘了（命令换成出成品的 `history-subagent`，进了 [`CHANNELED`]）。
     (
         "history-read",
-        "**等后端二次拆包**（主会话裁，4B 第六批；〔LOC1b · 4D〕现打重核、主会话认可）：本机远端今天都由 monitor 经那台后端\
-         的 `history-read` 取原文页、自己解析（`history·rs::stream_read_session_jsonl`，本机远端同一条路）；前端直接拿成品不行 ——\
-         后端**没有任何** `JsonlRecord` 解析（`agents/claudecode/records.rs` 只装文件名形态，`agents/codex/parse.rs` 只镜像\
-         turn-end / usage），出成品就得把 `messages.rs` / `parser.rs` / `codex_record.rs`（ts-rs 类型的来源）搬进两边共用的 crate\
-         —— 那就是二次拆包，而且要挪文件（V123：目录重排排在最后单独做）。那一拆之前不迁，不在 TS 再写一份记录解析",
-    ),
-    (
-        "history-subagents",
-        "**等后端二次拆包**：挑候选（`choose_subagent`）之后还要读那份文件、过记录解析（`parse_line`）⇒ 同 `history-read`",
+        "〔MOD〕**monitor 旁路快照的流机器在用**（续点 · 见证 · 分段编号，`ssh_source::fetch_snapshot`）：应答已是后端出的逐行成品\
+         （`{rows: [{end, hash, message?, cwd?}]}`，记录解释住后端 `agents/claudecode/`），monitor 只编号、攒批、转交 —— \
+         它是会话流那一路的输入，不是前端查询（同 `history-tail`）",
     ),
     (
         "history-tail",
@@ -1069,98 +1040,8 @@ async fn next_request(
     }
 }
 
-/// 扮演后端：每一页过 `per_page` 才答；`eof_at` 那一页说到头（`None` = 永不到头）。返回答过几页。
-fn serve_pages(
-    client: std::sync::Arc<InboundClient>,
-    mut peer: tokio::io::BufReader<tokio::io::DuplexStream>,
-    per_page: Duration,
-    eof_at: Option<u64>,
-) -> tokio::task::JoinHandle<u64> {
-    tokio::spawn(async move {
-        let mut pages = 0u64;
-        while let Some(req) = next_request(&mut peer, Duration::from_secs(5)).await {
-            if req["cmd"] != "history-read" {
-                continue;
-            }
-            let id = req["id"].as_str().expect("id").to_string();
-            let offset = req["args"]["offset"].as_u64().expect("offset");
-            pages += 1;
-            tokio::time::sleep(per_page).await;
-            let text = format!("page-{pages}\n");
-            let next = offset + text.len() as u64;
-            client.route_reply(
-                &id,
-                true,
-                None,
-                None,
-                Some(json!({"text": text, "next": next, "eof": eof_at == Some(pages)})),
-            );
-            if eof_at == Some(pages) {
-                break;
-            }
-        }
-        pages
-    })
-}
-
-/// D2 ★ **分页读一件事一个总期限**：对端每一页都答、每一页都在「一页」该等的时间之内、永不到头 ⇒
-/// 到**总**期限就停（停在第 ⌈总 / 每页⌉ 页附近），那句话是「没在 N 秒内答完」、N 是这件事当初给的秒数。
-/// 同一个对端在第 2 页说到头 ⇒ 两页的行都拿到（正控：期限没把正常的读掐断）。
-///
-/// 反向：DL1 之前的形状（每页各拿一整份 `PAGE_BUDGET`）在这个对端上**永远不停** —— 外面那层看门狗判它。
-#[tokio::test]
-async fn a_paged_read_stops_at_the_one_deadline_it_was_given() {
-    // ① 永不到头：总期限 1.5 s，每页 300 ms。
-    let origin = Origin("dl1-d2-never-ends".into());
-    let (client, peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
-    let server = serve_pages(client.clone(), peer, Duration::from_millis(300), None);
-    let deadline = Deadline::within(Duration::from_millis(1500));
-    let started = std::time::Instant::now();
-    let got = tokio::time::timeout(
-        Duration::from_secs(10),
-        read_lines(&origin, "/p/s.jsonl", 0, None, deadline),
-    )
-    .await
-    .expect("10 s 还没停 —— 分页读没有总期限（每页重新计时）");
-    let took = started.elapsed();
-    inbound_client::unregister(origin.as_wire_str(), &client);
-    let pages = server.await.expect("对端任务");
-    assert_eq!(
-        got.expect_err("永不到头的读却成功了"),
-        copy_text(
-            "rsFrameQuery.call.overdue",
-            &[("who", &who(&origin)), ("secs", &"1".to_string())]
-        ),
-        "到点那句话不对"
-    );
-    assert!(
-        took >= Duration::from_millis(1500) && took < Duration::from_millis(3500),
-        "停的时刻不在总期限附近：{took:?}"
-    );
-    assert!(
-        (4..=6).contains(&pages),
-        "对端答了 {pages} 页 —— 总期限 1.5 s、每页 0.3 s 应当停在第 5 页附近"
-    );
-
-    // ② 正控：第 2 页到头 ⇒ 全拿到。
-    let origin = Origin("dl1-d2-ends".into());
-    let (client, peer) = client_for_test(origin.as_wire_str(), &["history-read"]);
-    let server = serve_pages(client.clone(), peer, Duration::from_millis(50), Some(2));
-    let got = read_lines(
-        &origin,
-        "/p/s.jsonl",
-        0,
-        None,
-        Deadline::within(Duration::from_secs(5)),
-    )
-    .await;
-    inbound_client::unregister(origin.as_wire_str(), &client);
-    assert_eq!(server.await.expect("对端任务"), 2);
-    assert_eq!(
-        got.expect("两页、在期限之内到头"),
-        vec!["page-1".to_string(), "page-2".to_string()]
-    );
-}
+// 〔MOD〕D2（分页读逐行那一件一个总期限）随被测的 `read_lines`〔散文墓碑〕删了：那一件（子 agent 读整段）进了后端；
+//   今天仍分页的那一件（旁路快照）由 D5b 钉「期限在翻页循环之外造」。
 
 /// D3 ★ **期限已经过了 ⇒ 一个字节都不发**（同 `src/ipc/chan.ts`「已经过了 ⇒ 一个字节都不发」）；
 /// 还没过 ⇒ 恰好发一行（正控：同一个对端、同一个读法认得出一行）。
@@ -1273,12 +1154,8 @@ fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
 /// 多一处 = 又长出一个发起点（进表、写这件事是什么、值给多少）；少一处 = 那件事不再有期限了（或者搬了家没改表）。
 const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
     // 〔MIG-3b〕`tasks.rs` 那一行摘了：monitor 那份任务 notify 删了，不再问 `tasks-list`。
-    (
-        "subagent.rs",
-        "query",
-        1,
-        "远端 subagent 那一问：按行一问（`LINES_BUDGET`）或读整段（分页，`READ_LINES_BUDGET`），值由 `ArgvRoute::budget` 给",
-    ),
+    // 〔MOD〕`subagent·rs` 的 `query` · `history·rs` 的 `stream_read_session_jsonl` · `session_skeleton·rs` 的 `read_session_lines` 三行摘了〔散文墓碑〕：
+    //   那三条命令退役（界面经通道直问那台后端，期限在界面那一手造）。
     (
         "ssh_source.rs",
         "fetch_snapshot",
@@ -1286,22 +1163,9 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）；\
          〔W5-VIS〕续传时多一件：读正文之前先读回续点那一行核见证（一问，`PAGE_BUDGET`）—— 2 → 3，多的就是这一处",
     ),
-    (
-        "history.rs",
-        "stream_read_session_jsonl",
-        1,
-        "历史浏览器读一整份会话（分页；〔LOC1b〕本机远端同一条）：大小事先不知道 ⇒ 按字节上限给 `read_budget(MAX_SESSION_BYTES)`",
-    ),
     // 〔合并 DL1 × 主线 06b5dc08〕LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // 〔MIG-3a〕acct-iso 两问那两个发起点摘了：界面经通道直问（`src/acct-iso-reads.ts`），期限在那边造。
     // 〔MIG-3b〕在那台分叉一条会话那一行摘了：monitor 不再发（界面经通道直说 `session-fork`，期限在界面那一手造）。
-    (
-        "session_skeleton.rs",
-        "read_session_lines",
-        1,
-        "按行号取一段（一次 invoke 一问）：前端交「那一件还剩多少」（`left_ms`），过进程边界在这里换回绝对时刻 —— \
-         造那一件期限的一手在前端（`tab-stream-view.ts` 的往上翻 / 丢格之后往后补）",
-    ),
     // 〔MIG-3b〕远端钩子诊断那一行摘了：monitor 不再问（界面经通道直问 `hooks-diag`，期限在界面那一手造）。
     // 〔MIG-3a〕MCP 列表那一行摘了：界面经通道直问（`src/mcp-reads.ts`），期限在那边造。
     // 〔SH1〕列远端 tmux 会话那一行（monitor 问那台后端 `tmux-list`）〔MIG-1 续〕摘了：界面经通道直问（`src/tmux-reads.ts`），期限在那边造。
@@ -1388,18 +1252,12 @@ fn every_deadline_is_made_where_its_job_begins_and_only_there() {
 #[test]
 fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
-    let cases: [(&str, &str, &str); 2] = [
-        (
-            include_str!("../../../../src/bridge/src/ssh_source.rs"),
-            "async fn fetch_snapshot(",
-            "'read: for ",
-        ),
-        (
-            include_str!("../../../../src/bridge/src/history.rs"),
-            "async fn stream_read_session_jsonl(",
-            "\n    loop {",
-        ),
-    ];
+    // 〔MOD〕历史浏览器读整份那一件（`history·rs` 那个 `stream_read_session_jsonl`〔散文墓碑〕）进了界面（期限在 `src/record-reads.ts` 那一手造）。
+    let cases: [(&str, &str, &str); 1] = [(
+        include_str!("../../../../src/bridge/src/ssh_source.rs"),
+        "async fn fetch_snapshot(",
+        "'read: for ",
+    )];
     fn made_after_loop(prod: &str, head: &str, loop_head: &str) -> Result<bool, String> {
         let at = guard_core::find_pinned(prod, head)?;
         let rest = &prod[at..];
@@ -1436,7 +1294,7 @@ fn paged_jobs_make_their_deadline_before_the_first_page() {
 }
 
 /// D6 分页读的总时限：下界是一页的期限、随字节数单调、在两个字节上限处等于手算的秒数
-/// （历史浏览器 256 MiB ⇒ 60 ＋ 512 = 572 s；快照 512 MiB ⇒ 60 ＋ 1024 = 1084 s）；读整段那一件 == 一次性远端那一趟的天花板。
+/// （历史浏览器 256 MiB ⇒ 60 ＋ 512 = 572 s；快照 512 MiB ⇒ 60 ＋ 1024 = 1084 s）；（〔MOD〕读整段那一件随子 agent 那条命令进了后端。）
 #[test]
 fn the_read_budget_grows_with_the_bytes_from_one_page_up() {
     assert_eq!(read_budget(0), PAGE_BUDGET);
@@ -1444,6 +1302,34 @@ fn the_read_budget_grows_with_the_bytes_from_one_page_up() {
     assert!(read_budget(10 << 20) < read_budget(11 << 20));
     assert_eq!(read_budget(256 << 20), Duration::from_secs(572));
     assert_eq!(read_budget(512 << 20), Duration::from_secs(1084));
-    assert_eq!(READ_LINES_BUDGET, Duration::from_secs(120));
-    assert_eq!(READ_LINES_BUDGET, crate::dial_host::ONE_SHOT_DEADLINE);
+}
+
+/// ★〔MOD · `设计/05 §14.3`〕跨语言金样的 monitor 那一侧：后端 `history-read` 真出的逐行成品
+/// （`tests/__fixtures__/record-reads.golden.json`，后端 `read_face_tests.rs` 钉着它 == 帧面现打）
+/// 经 [`row_of`] 读得懂：可计行三条、末端是原始字节、不进界面的那条没有成品、`cwd` 与成品原样转交。
+#[test]
+fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
+    let golden: Value = serde_json::from_str(include_str!(
+        "../../../__fixtures__/record-reads.golden.json"
+    ))
+    .expect("金样不是合法 JSON");
+    let rows: Vec<Row> = golden["history-read"]["rows"]
+        .as_array()
+        .expect("金样里没有 rows")
+        .iter()
+        .map(|r| row_of(r).expect("一行成品认不出"))
+        .collect();
+    assert_eq!(
+        rows.iter().map(|r| r.end).collect::<Vec<_>>(),
+        vec![Some(54), Some(152), Some(273)]
+    );
+    assert!(rows[0].message.is_none(), "不进界面的元数据记录不该带成品");
+    assert_eq!(rows[1].cwd.as_deref(), Some("/w"));
+    let m: Value = serde_json::from_str(rows[1].message.as_ref().unwrap().0.get()).unwrap();
+    assert_eq!(
+        m, golden["history-read"]["rows"][1]["message"],
+        "成品没原样转交"
+    );
+    // 反向：多一格类型不对的 ⇒ 认不出（不猜）。
+    assert!(row_of(&serde_json::json!({"end": 1, "hash": 1, "message": "x"})).is_none());
 }

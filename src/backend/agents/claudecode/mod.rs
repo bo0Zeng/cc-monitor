@@ -8,6 +8,7 @@
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
 //! | [`assets`] | 〔AS2〕资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
+//! | [`schema`] · [`parse`] · [`turn`] · [`drift`] | 〔MOD〕**记录解释**：一行 jsonl 的线上形状（界面收到的就是它）· 抢救与记账 · 轮次边沿 · 漂移账（从 monitor 搬来，`设计/90 §3` 判据 3） |
 //!
 //! # ⚠ 搬进来的是**知识**，不是**机器**
 //!
@@ -31,15 +32,19 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
+pub(crate) mod drift;
 // 〔MIG-3b 续〕「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
 pub(crate) mod liveness;
 pub(crate) mod mcp;
+pub(crate) mod parse;
 pub mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
+pub(crate) mod schema;
 // 〔MIG-3a〕skill 接入面的声明（收件箱那几个人要改的文件 ＋ Claude 数据文件的纵深围栏）：从 monitor 搬来。
 pub(crate) mod skill_host;
+pub(crate) mod turn;
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
 ///
@@ -78,6 +83,18 @@ pub(crate) fn home() -> Option<std::path::PathBuf> {
 /// 〔AS2 · 第四波 4B〕本家的资产面（注册表 `Adapter.assets` 那一格）：skill 与项目级 MCP 的布局知识住 [`assets`]。
 /// 〔SH1 · V137〕注册表 `mcp` 那一格。
 pub(crate) const MCP: super::McpFace = super::McpFace { read: mcp::read };
+
+/// 〔MOD〕记录解释面（注册表 `Adapter.records` 那一格）。
+pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
+    parse: parse::parsed_line,
+    sid: records::session_id_of,
+    turn_end: Some(turn::turn_end_uuid_of),
+    drift: Some(drift::report),
+    delete: Some(super::SessionDelete {
+        locate: paths::session_file_for_delete,
+        is_record: paths::is_session_record_path,
+    }),
+};
 
 pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     scan: assets::scan,

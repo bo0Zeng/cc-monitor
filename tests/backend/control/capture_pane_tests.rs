@@ -247,7 +247,7 @@ fn the_capture_product_matches_the_cross_language_golden() {
         c["reply"],
         "后端出的抓屏成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「两端对不上」"
     );
-    let spec = crate::inbound::REGISTRY
+    let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|s| s.name == "capture-pane")
         .expect("后端登记表里没有 `capture-pane`");

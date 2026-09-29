@@ -9,7 +9,7 @@
 //!
 //! 1. **连上那一刻**（[`on_remote_ready`]，`ssh_source.rs` 在远端那条流握手成功时调）：那台的后端认得资产目录
 //!    ⇒ 把「怎么够到那台」（拨号请求 ＋ 那台后端的路径）交给本机常驻后端 `assets-sync`，由**它**沿池里那条 SSH
-//!    拉 / 并 / 推（`src/backend/asset_sync.rs`）。后台跑，不挡收帧。
+//!    拉 / 并 / 推（`src/backend/assets/asset_sync.rs`）。后台跑，不挡收帧。
 //! 2. **界面看机器页前**：〔MIG-3a〕界面经通道直问本机后端 `assets-sync`（只报 `origin`，够到那台用握手时登记的那一行，
 //!    `src/assets-sync-reads.ts`）；这里那条 Tauri 命令〔散文墓碑〕删了。
 //!
@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 
 use crate::backend::control::backend_route::{route_call_error, Routed};
 
-/// 本机后端那条命令的名字（与 `src/backend/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
+/// 本机后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
 pub(crate) const CMD: &str = "assets-sync";
 
 /// 远端那台要认得的命令（它不认 ⇒ 那台后端太旧，连上时不去碰它）。
@@ -82,7 +82,7 @@ pub(crate) async fn sync_with(
     local.call(args_for(target)?).await
 }
 
-/// 〔C4d · 第四波 4B〕本机后端**可达表登记**那条命令（与 `src/backend/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
+/// 〔C4d · 第四波 4B〕本机后端**可达表登记**那条命令（与 `src/backend/stream/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
 ///
 /// 「本机后端问远端后端」那一跳（后端 `remote_ask.rs`）有两路在用：资产目录同步（本模块）· 历史跨机 join（后端 `history_join.rs`）。
 /// 前者只在那台认 `assets-catalog-merge` 时才交 `assets-sync`（它顺手登记）；后者问的是老子命令，**老远端也得够得着**

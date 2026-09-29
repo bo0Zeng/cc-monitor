@@ -313,11 +313,12 @@ fn hx2_the_version_warning_says_which_side_is_older() {
     assert_ne!(older, newer);
 }
 
-/// 两条 line 帧：逐字段断言 session_id / path / seq / raw 都原样取出。
+/// 两条 line 帧：逐字段断言 session_id / path / seq / message / cwd 都原样取出。
 #[test]
 fn parses_two_line_frames_with_all_fields() {
-    let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"raw":"{\"type\":\"user\"}"}"#;
-    let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1,"raw":"second"}"#;
+    // 〔MOD〕帧上带的是成品（`message` 原样收下、monitor 不读它）与这条记录自己的 `cwd`，不再是原文 `raw`。
+    let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"message":{"type":"user"},"cwd":"/w"}"#;
+    let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1}"#;
 
     let f0 = parse_frame(l0).expect("line 0 must parse");
     assert_eq!(
@@ -326,16 +327,17 @@ fn parses_two_line_frames_with_all_fields() {
             session_id: "s-1".to_string(),
             path: "/home/pi/.claude/projects/p/s-1.jsonl".to_string(),
             seq: 0,
-            raw: r#"{"type":"user"}"#.to_string(),
+            message: crate::bridge::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
+            cwd: Some("/w".to_string()),
             end: None, // 〔RENDER2〕这条金样没带 `byte_offset`
         }
     );
 
     let f1 = parse_frame(l1).expect("line 1 must parse");
     match f1 {
-        InboundFrame::Line { seq, raw, .. } => {
+        InboundFrame::Line { seq, message, .. } => {
             assert_eq!(seq, 1);
-            assert_eq!(raw, "second");
+            assert!(message.is_none(), "没带成品 ⇒ 不进界面（照占号）");
         }
         other => panic!("expected Line, got {other:?}"),
     }

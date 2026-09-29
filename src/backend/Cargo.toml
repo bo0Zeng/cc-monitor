@@ -300,6 +300,10 @@ guard-core = { path = "../bridge/crates/guard-core" }
 # 盘上每一份与 `VENDOR.md` 里取自 `.crate` 的 sha256 逐份相等。**只在测试期链接**；版本就是 lock 里 russh 那棵树
 # 早已解析的 `sha2 0.11.0`（离线可用、不新增包）。
 sha2 = "0.11"
+# 〔MOD · C01 同一条理由〕记录解释进了后端（`agents/claudecode/schema.rs`）⇒ 界面收到的记录的线上形状从这里导出
+# `src/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
+# 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
+ts-rs = "12.0.1"
 
 # ── 〔CZ1 · 2026-09-25〕**打补丁版 russh**（用户 V118〔选〕「打补丁版 russh，现在就开」）─────────────
 #

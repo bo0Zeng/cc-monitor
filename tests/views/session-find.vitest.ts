@@ -38,8 +38,9 @@ vi.mock("@tauri-apps/api/core", async () => {
         return { available: true, from: 0, end: rows.length * 10, rows };
       }
       if (cmd === "read_session_range") {
-        const a = args as { seqBase: number; lineCount: number };
-        return Array.from({ length: a.lineCount }, (_, k) =>
+        // 〔MOD〕请求里不再带 `lineCount`（后端自己数）：这一段有几行按夹具的行边界算（o = seq × 10、n = 10）。
+        const a = args as { seqBase: number; offset: number; until: number };
+        return Array.from({ length: (a.until - a.offset) / 10 }, (_, k) =>
           rig.assistantLine(a.seqBase + k, `u${a.seqBase + k}`, `第 ${a.seqBase + k} 条（按偏移取回的）`),
         );
       }
@@ -354,7 +355,8 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     const row = hitRows(findOf())[0];
     row.click();
     await settleOutline();
-    const ranges = vi.mocked(invoke).mock.calls.filter((c) => c[0] === "read_session_range");
+    const { recordReadCalls } = await import("../test-support/chan-fake");
+    const ranges = recordReadCalls(vi.mocked(invoke).mock.calls, "read_session_range");
     expect(ranges.length, "正文真的是按偏移要回来的").toBeGreaterThan(0);
     expect(el.querySelector('[data-uuid="u300"]'), "取回之后卡建出来了").not.toBeNull();
     expect(row.dataset.unjumpable, "等到了卡却标成跳不过去 ⇒ 同步那一下就去找了").toBeUndefined();

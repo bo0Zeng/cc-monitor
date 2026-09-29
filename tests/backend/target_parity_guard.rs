@@ -337,7 +337,7 @@ fn the_unix_mode_axis_agrees_with_what_this_binary_was_compiled_with() {
         "写面回的那个码与 target 轴现推读的那个码不是同一个串 —— 两份字面量漂开了"
     );
     // 那个码真有人声明（否则现推那一维对空集恒成立）：恰好 `files-chmod` 一条。
-    let declaring: Vec<&str> = crate::inbound::REGISTRY
+    let declaring: Vec<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.codes.contains(&NO_UNIX_MODE))
         .map(|s| s.name)
@@ -782,7 +782,9 @@ fn reachable(
 fn handler_files(
     tree: &Tree,
 ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
-    let src = tree.get("inbound.rs").expect("后端树里没有 inbound.rs");
+    let src = tree
+        .get("stream/inbound.rs")
+        .expect("后端树里没有 inbound.rs");
     let at = src
         .find("pub const REGISTRY: &[CommandSpec] = &[")
         .expect("`inbound.rs` 里锚不住 REGISTRY");
@@ -801,7 +803,7 @@ fn handler_files(
         let files: std::collections::BTreeSet<String> = paths_in(&[], run)
             .into_iter()
             .filter_map(|p| file_of(&mods, &p))
-            .filter(|f| f != "inbound.rs")
+            .filter(|f| f != "stream/inbound.rs")
             .collect();
         out.insert(name, files);
     }
@@ -912,7 +914,10 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         "真起 tmux 的文件只找到 {spawners:?} —— 取法坏了"
     );
     let handlers = handler_files(&tree);
-    let names: BTreeSet<&str> = crate::inbound::REGISTRY.iter().map(|s| s.name).collect();
+    let names: BTreeSet<&str> = crate::stream::inbound::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .collect();
     assert_eq!(
         handlers.keys().map(String::as_str).collect::<BTreeSet<_>>(),
         names,
@@ -934,7 +939,7 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         .filter(|(_, from)| !reachable(&edges, from).is_disjoint(&spawners))
         .map(|(n, _)| n.as_str())
         .collect();
-    let declared: BTreeSet<&str> = crate::inbound::REGISTRY
+    let declared: BTreeSet<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.codes.contains(&super::super::NO_TMUX))
         .map(|s| s.name)

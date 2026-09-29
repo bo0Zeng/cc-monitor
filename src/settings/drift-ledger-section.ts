@@ -35,11 +35,18 @@ import type { DriftFace } from "../generated/DriftFace";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
 import type { DriftLedgerReport } from "../generated/DriftLedgerReport";
 import { copyText } from "../copy-table";
+import { readRecordDrift, type RecordDriftFace } from "../record-reads";
 
 export type { DriftEntry, DriftFace, DriftFaceReport, DriftLedgerReport };
 
+/**
+ * 〔MOD · `设计/90 §3` 判据 3〕一个面：记录那两面（未知类型 · 已知类型解析失败）由**那台后端**答（`drift-report`，
+ * 记录解释住那台后端），monitor 天生观测的两面由 monitor 答（`drift_ledger_report`）—— 两份并排摆，本文件不合并、不解释。
+ */
+export type ShownFace = DriftFaceReport | RecordDriftFace;
+
 /** 面 → 给人看的标题。**后端加了新面而这里没跟 ⇒ 显示原始枚举名，不隐藏。** */
-export function faceTitle(face: DriftFace): string {
+export function faceTitle(face: DriftFace | string): string {
   switch (face) {
     case "unknown_record_type":
       return copyText("driftLedger.face.unknownRecord");
@@ -56,7 +63,7 @@ export function faceTitle(face: DriftFace): string {
 }
 
 /** 计数的量纲**每个面不一样**，横向比毫无意义 —— 所以逐面写清楚。 */
-export function countUnit(face: DriftFace): string {
+export function countUnit(face: DriftFace | string): string {
   switch (face) {
     case "unknown_record_type":
     case "known_type_parse_failed":
@@ -71,7 +78,7 @@ export function countUnit(face: DriftFace): string {
 }
 
 /** 一行的可读摘要（供复制诊断文本用，纯函数、可单测）。 */
-export function formatEntry(face: DriftFace, e: DriftEntry): string {
+export function formatEntry(face: DriftFace | string, e: DriftEntry): string {
   const sample = e.first_sample ? copyText("driftLedger.entry.firstSample", { firstSample: e.first_sample }) : "";
   return `  ${e.key} —— ${e.count} ${countUnit(face)}${sample}`;
 }
@@ -82,7 +89,7 @@ function machineName(origin: Origin): string {
 }
 
 /** 整份报告 → 可粘贴的纯文本（提 issue 时直接贴）。〔ST3〕首行带上是哪台机器的。 */
-export function formatReport(report: DriftFaceReport[], origin: Origin): string {
+export function formatReport(report: ShownFace[], origin: Origin): string {
   const where = machineName(origin);
   if (report.length === 0) {
     return copyText("driftLedger.report.clean", { where });
@@ -110,7 +117,7 @@ export class DriftLedgerSection {
   readonly element: HTMLElement;
   private body!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
-  private last: DriftFaceReport[] = [];
+  private last: ShownFace[] = [];
   /** 〔ST3〕`last` 是哪台的（复制诊断文本时写进首行）。 */
   private lastOrigin: Origin = getCurrentMachine();
   /** 宿主放过第一发没有（放过之后切机器才由订阅重读）。 */
@@ -196,12 +203,13 @@ export class DriftLedgerSection {
       this.body.textContent = "";
     }
     try {
-      const r = await commands.drift_ledger_report({ origin });
+      // 〔MOD〕两份各问各的：记录那两面问那台后端，monitor 天生观测的两面问 monitor；次序同原先那一本（记录在前）。
+      const [records, r] = await Promise.all([readRecordDrift(origin), commands.drift_ledger_report({ origin })]);
       if (my !== this.seq) return;
       if (!r || !Array.isArray(r.faces)) throw new Error(copyText("driftLedger.refresh.badShape"));
       // 〔ST3〕回声对不上 ⇒ 当读不到（拿另一台的账冒充这台，比读不到更糟）。
       if (!answersFor(r, origin)) throw new Error(copyText("driftLedger.refresh.wrongMachine", { machine: String(r.origin) }));
-      this.last = r.faces;
+      this.last = [...records, ...r.faces];
       this.lastOrigin = origin;
     } catch (e) {
       if (my !== this.seq) return;

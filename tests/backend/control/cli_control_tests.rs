@@ -293,6 +293,7 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "bus-state",
         // 〔F7a · 第三波 09-24〕`files-home`：问这台机器的 home，无入参、有输出字段 `path`。
         "files-home",
+        "drift-report", // 〔MOD〕这台后端的漂移账（纯读、不收输入）
         "exit-policy-read",
         // 〔E2〕`ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
@@ -417,10 +418,12 @@ fn the_one_line_entry_stops_at_the_newline_and_never_asks_for_another_byte() {
     let r = read_input(std::io::BufReader::new(ThenPanic(Some(big))), true);
     assert_eq!(r.map_err(|e| e.0), Err("args_too_large"));
     // 旗标字面量与 `asset_sync` 推那一趟拼的是同一个常量（远端认的就是它）。
-    assert!(crate::asset_sync::push_command().ends_with(&format!(
-        " {}",
-        shell_quote_core::posix_quote(STDIN_LINE_FLAG)
-    )));
+    assert!(
+        crate::assets::asset_sync::push_command().ends_with(&format!(
+            " {}",
+            shell_quote_core::posix_quote(STDIN_LINE_FLAG)
+        ))
+    );
 }
 
 /// 〔FIX · `设计/96 §3.6`〕argv 一族的一行形：恰好 `--<老子命令> --stdin-line` 才读，读到换行就停；

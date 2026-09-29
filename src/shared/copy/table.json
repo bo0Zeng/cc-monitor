@@ -5597,6 +5597,11 @@
       "zh": "这台机器上的后端版本旧，还给不出这些。重装后端之后就有。",
       "args": []
     },
+    "recordReads.ask.oldBackend": {
+      "kind": "error",
+      "zh": "那台机器的后端太旧，还不认读会话记录这一问。重装那台机器的后端就有了",
+      "args": []
+    },
     "sessionReads.missing.facts": {
       "kind": "error",
       "zh": "缺了几格、多了几格，或有一格类型不对",
@@ -13577,11 +13582,6 @@
       "zh": "{path} 读不懂（{e}），诊断设置没有存。写回去会把这份文件里别的设置一起盖掉，先把它改成合法的 JSON",
       "args": ["path", "e"]
     },
-    "rsSessionSkeleton.precheck.badPath": {
-      "kind": "error",
-      "zh": "非法会话路径：{path}",
-      "args": ["path"]
-    },
     "rsLaunch.remote.taskFailed": {
       "kind": "error",
       "zh": "拉起终端任务失败：{e}",
@@ -14991,25 +14991,10 @@
       "zh": "拒绝 resume：自定义命令 {launcher} 含不允许的字符 {c}。只许字母、数字、空格、-_./ 和开头的 ~/",
       "args": ["launcher", "c"]
     },
-    "rsHistory.session.badPath": {
-      "kind": "error",
-      "zh": "会话路径不对：{path}",
-      "args": ["path"]
-    },
     "rsHistory.session.truncated": {
       "kind": "body",
       "zh": "这个会话超过 {max} 字节上限，后面的内容没有显示。只读到了前 {read} 字节（{lines} 行），完整的会话记录仍在那台机器上。",
       "args": ["max", "read", "lines"]
-    },
-    "rsRemoteHistory.cfg.missing": {
-      "kind": "error",
-      "zh": "远端 [{label}] 没配置或没启用",
-      "args": ["label"]
-    },
-    "rsFrameQuery.lines.inconsistent": {
-      "kind": "error",
-      "zh": "{who}的应答前后对不上，已停下。问的是第 {asked} 行起，答的是第 {from} 到 {next} 行、{count} 条",
-      "args": ["who", "asked", "from", "next", "count"]
     },
     "rsFrameQuery.reply.badShape": {
       "kind": "error",
@@ -15058,23 +15043,8 @@
     },
     "rsSubagent.load.notFound": {
       "kind": "error",
-      "zh": "{whose} 上没有描述为 {description} 的 subagent",
-      "args": ["whose", "description"]
-    },
-    "rsSubagent.load.badParentPath": {
-      "kind": "error",
-      "zh": "父会话路径不对：{path}",
-      "args": ["path"]
-    },
-    "rsSubagent.query.noFrameCmd": {
-      "kind": "error",
-      "zh": "这是 cc-monitor 的缺陷，不是{who}的问题。{argv} 这条查询没有对应的后端命令",
-      "args": ["argv", "who"]
-    },
-    "rsSubagent.query.tooOld": {
-      "kind": "error",
-      "zh": "{who}的后端太旧，还不认这条查询。重装那台机器的后端就有了",
-      "args": ["who"]
+      "zh": "这台机器上没有描述为 {description} 的 subagent",
+      "args": ["description"]
     },
     "accounts.oldBackend.trust": {
       "kind": "error",
@@ -18061,6 +18031,11 @@
       "kind": "error",
       "zh": "{path} 不是会话记录，没删",
       "args": ["path"]
+    },
+    "beFilesWrite.session.noReader": {
+      "kind": "error",
+      "zh": "这台后端认不出会话记录，没删 {id}",
+      "args": ["id"]
     },
     "beTransfer.land.notAbsolute": {
       "kind": "error",

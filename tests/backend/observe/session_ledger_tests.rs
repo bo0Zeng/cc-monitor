@@ -3,7 +3,7 @@
 //! 一张真值表钉 `observe::session_ledger` 的全部裁决（从 monitor 搬来的那几条性质，本机远端同一份）：
 //! 摘除按 cause ＋ 快照 · 两种收割 · 没进过 tmux 的不收割 · 不可观测不收割 · 每一份快照推出（没报过的）可重连 · 清单压到快照之后。
 use super::*;
-use crate::wire::{Frame, RemovalCause, SessionFate};
+use crate::stream::wire::{Frame, RemovalCause, SessionFate};
 
 /// 账本的一格输入：一帧（要发出去的）或一份 tmux 观测（〔MIG-1 续〕观测不再是帧）。
 enum Ev {

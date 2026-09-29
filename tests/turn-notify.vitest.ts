@@ -129,7 +129,7 @@ describe("F42 TurnEndNotifier", () => {
 
   // ★★ audit-0805 F12 / 报告 §4.1「turn-end 判定两份」。
   //
-  // backend 侧 `observe/turn_detect.rs` 的四条件里有 `!isApiErrorMessage`，TS 这份**少了一条** ——
+  // backend 侧 `agents/claudecode/turn.rs` 的四条件里有 `!isApiErrorMessage`，TS 这份**少了一条** ——
   // 而那个字段在生成物 `generated/JsonlRecord.ts` 的 assistant 变体里一直存在：**数据在线上、没人看**。
   //
   // ⚠ V3 复核订正过报告的因果：monitor **不消费** backend 的 TurnEnd 帧（全仓零帧消费点），
@@ -221,7 +221,7 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
     const { fileURLToPath } = await import("node:url");
     const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const rs = readFileSync(
-      resolve(ROOT, "src/backend/observe/turn_detect.rs"),
+      resolve(ROOT, "src/backend/agents/claudecode/turn.rs"),
       "utf8",
     );
     // ⚠ **必须剥注释**。第一版没剥，于是变异「连字段带判定一起删」照样绿 ——
@@ -232,7 +232,7 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
     const ts = stripComments(readFileSync(resolve(ROOT, "src/turn-notify.ts"), "utf8"));
 
     // 抽取器自检：拿错文件时下面会零命中地绿。
-    expect(rs, "turn_detect.rs 里没有 is_turn_end —— 抽取器坏了").toContain("fn is_turn_end");
+    expect(rs, "turn.rs 里没有 is_turn_end —— 抽取器坏了").toContain("fn is_turn_end");
     // 抽取器自检之二：剥完注释还得剩下真代码，否则下面全是零命中地绿。
     expect(ts.length, "剥完注释 turn-notify.ts 只剩空壳 —— 剥法坏了").toBeGreaterThan(500);
     expect(ts, "剥完注释连 observe( 都没了 —— 剥法把代码也吃了").toContain("observe(");
@@ -287,7 +287,7 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
       expect(
         impl,
         `★ TS 侧缺「${row!.what}」（实现区里找不到 \`${row!.ts}\`）。\n` +
-          `backend 的 turn_detect.rs 有这一条，TS 这份没有 ⇒ 同一件事两个口径。\n` +
+          `backend 的 turn.rs 有这一条，TS 这份没有 ⇒ 同一件事两个口径。\n` +
           `报告 §4.1 记的正是这个：turn-end 判定两份、TS 少 !isApiError。\n` +
           `⚠ 后果是潜伏的而不是在响的（本机 107 条 API 错误记录里 end_turn 0 条），\n` +
           `但哪天某个 CC 版本在错误记录上写 end_turn，用户就会为一次失败收到「完成」通知。`,

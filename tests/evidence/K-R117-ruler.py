@@ -196,7 +196,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                                "装什么、查什么装态都不是它的事")),
     # 〔墓碑 · MIG-3b〕`history.branch` · `history.delete` 随分叉 / 删会话改由界面经通道直说那台后端（`session-fork` · `files-delete-session`）退役；
     #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，理由同上面几条墓碑。
-    ("history.read-session", (NA, "—", "会话历史")),
+    # 〔墓碑 · MOD〕`history.read-session` 随会话正文三条（整份读 · 按偏移 · 按行号）改走通道（那台后端出记录行，
+    #   前端 `chan.call` 直接问 `history-page` / `history-lines`）⇒ 能力不再有 Tauri 命令，归档这一行摘了。
     # 〔墓碑 · MIG-3b〕`hooks.diagnose` 随钩子诊断本机远端合成帧命令 `hooks-diag`（界面经通道直问那台后端）退役：
     #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上面几条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     # 〔墓碑 MIG-2〕`launch.render-attach` / `-cli` / `-payload` 三项随渲染住进那台后端（帧命令 `launch-render-*` · `launch-local`，
@@ -223,7 +224,7 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("sftp.file-panel", (NA, "—", "文件面板（用户自己搬文件，不是产品装东西）")),
     # 〔墓碑 · MIG-3b 续〕`ssh.host-config` 随它最后一条命令（公钥推送）进了本机后端（`pubkey-push`，界面经通道问）而退役：
     #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
-    ("subagent.load", (NA, "—", "读 subagent 定义")),
+    # 〔墓碑 · MOD〕`subagent.load` 随 `load_subagent` 改走通道（前端 `chan.call` 直接问后端 `history-subagent`）⇒ 归档这一行摘了。
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     # 〔墓碑 · MIG-1〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
     #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。连带 §S6 连锁里点它的那两处改成「这条能力回来才要求」（见那一段）。

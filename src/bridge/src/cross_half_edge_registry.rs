@@ -130,8 +130,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/assets/aliases/block.rs",
         "〔MIG-3a〕「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
     ),
-    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
-    // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
+    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/stream/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
+    // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/stream/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
@@ -144,7 +144,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/creds_store_tests.rs",
-        "src/backend/inbound.rs",
+        "src/backend/stream/inbound.rs",
         "〔HX2 · 第四波 4D〕写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令表上 —— \
          同一根针（帧命令名 `apikey-key-set`）在后端 `inbound.rs` 的登记里数得到，才说明零命中不是针瞎了",
     ),
@@ -158,7 +158,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/backend/control/inbound_client_tests.rs",
-        "src/backend/inbound.rs",
+        "src/backend/stream/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
     (
@@ -196,7 +196,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/lib.rs",
         "backend 的启动契约（身份清单 / hello）两侧同形",
     ),
-    // 〔MIG-1〕`ssh_source_f032_idle_tests.rs → src/backend/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
+    // 〔MIG-1〕`ssh_source_f032_idle_tests.rs → src/backend/stream/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
     //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
@@ -223,7 +223,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/local_backend_host_tests.rs",
-        "src/backend/listen.rs",
+        "src/backend/stream/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
          （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与后端各声明一份，\
          而两边漂了**不会报错** —— backend 会把它当成「没设」走 stdio 那条路，\
@@ -313,16 +313,9 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // 〔LOC1a · 第四波 4D〕`tests/bridge/subagent_tests.rs` → 后端 `history_query.rs` 那一条边删了：它钉的是本机 exec 那条路
     //   「退出 2 ＋ `unknown argument`」的认法（`local_failure_kind`〔散文墓碑〕），那条路改走 `<local>` 长连接之后
     //   「老后端」由长连接的 `accepts` 当场判（与远端同一个判定），不再读后端 stderr 的措辞。
-    (
-        "monitor→backend",
-        "tests/bridge/history_title_coverage.rs",
-        "src/backend/observe/history_query.rs",
-        "★〔C4d · 第四波 4B 新增〕**承载标题的记录一个不漏被标题抽取接住** —— \
-         `history::title_coverage::every_title_bearing_record_is_consumed_by_the_extractor`。人群（带 `*title` 字段的 \
-         `JsonlRecord` 变体与它的线上类型名）只住 monitor 的 `messages.rs`，而标题抽取那一段随本机历史清单搬进了后端 \
-         `analyze_session`（本机与远端同一个函数）⇒ 这条性质只能同时读两侧源码才验得了。失效方向同它立项时那一次：\
-         CC 再改一次标题记录的名字，后端那一臂接不住，会话列表上的标题静默消失，两侧各自全绿。",
-    ),
+    // 〔MOD〕`tests/bridge/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
+    //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
+    //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。
     // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/`）：backend 的判据去读 monitor ──
     // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
     //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。

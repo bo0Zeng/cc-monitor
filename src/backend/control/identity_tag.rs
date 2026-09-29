@@ -216,8 +216,8 @@ impl Outcome {
     /// 为什么是 `Outcome` 的方法、而不是观测侧的一个自由函数：判定要逐个认这个类型的变体，
     /// 放在观测侧就得让 `observe → control` 多一条跨层边（`layering_guard` 的登记表）；
     /// 调用方（`observe/watcher.rs::process_session_added`）今天只经 `tag(..)` 的返回值用它。
-    pub(crate) fn container(&self) -> Option<crate::wire::SessionContainer> {
-        use crate::wire::SessionContainer;
+    pub(crate) fn container(&self) -> Option<crate::stream::wire::SessionContainer> {
+        use crate::stream::wire::SessionContainer;
         match self {
             Outcome::Tagged(_) | Outcome::AlreadyCurrent => Some(SessionContainer::Tmux),
             Outcome::NotInTmux => Some(SessionContainer::None),

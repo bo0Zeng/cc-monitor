@@ -25,8 +25,6 @@ mod agent_locality_guard; // S2：codex 的格式知识只许住 agents/codex/ +
 pub mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
-pub mod asset_catalog; // 〔AS2 · 第四波 4B · V113〕资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，第四层；一个用户文件都不写）
-pub mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）
 pub mod assets; // 〔MIG-3a · `99 §2.1 ⑬`〕后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定，写经本进程的文件管理面
 #[cfg(test)]
 #[path = "../../tests/backend/build_id_guard.rs"]
@@ -37,25 +35,19 @@ mod cc_bus_boundary_guard; // P4f-Y2：backend 不许碰 cc-bus 的数据布局�
 pub mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 pub mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 pub mod dial; // K-P6b / C2 / 〔SR1a〕：SSH 的一切 —— 握手 · 连接池 · 链路（**只此一处**，判据在它自己的测块）
-pub mod feature_face; // 〔RM1b · 第四波〕功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
+pub mod faces; // 〔MOD〕帧面宿主：read_face · feature_face · fork_face · resync_face（薄壳，本体在 observe/ · control/）
 pub mod files; // 步 24f：`files-read` 这一族（**只读**）—— 常驻文件名索引 ＋ 四条只读能力（`设计/96 §2.9`）
 pub mod footprint; // 〔RM1a → MIG-3b 续〕「足迹」：帧面 `footprint-report`（申报表 ＋ 判定 ＋ 这台的 stat，出整份成品；只读）
-pub mod fork_face; // 〔LOC1a · 第四波 4D〕帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
-pub mod history_annotations; // 〔C4d · 第四波 4B〕历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / `history-last-accounts`（第四层；文件就是 monitor 从前那一份，路径由它交）
-pub mod history_join; // 〔C4d · 第四波 4B〕历史跨机 join 的唯一的家：帧面 `history-projects` / `history-sessions` 出成品（这台 ＋ 可达表里的远端，并注解 ＋ 判活）
-pub mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
+pub mod history; // 〔MOD〕历史跨机 join 与注解（history_join · history_annotations）
 #[cfg(test)]
 #[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
-pub mod listen; // K-P1：常驻监听口 —— 脱离宿主之后还能被找到 / 被问到 / 被接上（纯判定住这里，接受循环住 main.rs）
-pub mod mcp_sync; // 〔AS1 · 第四波 4B〕MCP 资产同步的判定：帧面 `mcp-sync-plan`（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
 #[cfg(test)]
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
-pub mod own_dir; // 〔HX1 · 4D〕后端建自家目录（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、已在的不动（第四层；门只有 `control/files_commit.rs` 建暂存区那一处）
 #[cfg(test)]
 #[path = "../../tests/backend/panorama_locus_guard.rs"]
 mod panorama_locus_guard; // K-W2D KW2D3：全景的解析发生在哪个进程的地址空间（整体 #[cfg(test)]）
@@ -70,21 +62,15 @@ mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 #[cfg(test)]
 #[path = "../../tests/backend/ratchet_guard.rs"]
 mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
-pub mod read_face; // 〔C1 · 09-24〕只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
 #[cfg(test)]
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
-pub mod remote_ask; // 〔C4d · 第四波 4B〕本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`
-pub mod resync_face; // 〔RESYNC · V149〕手动对齐 `resync` 的帧面宿主 —— 薄壳，本体在 observe/watcher.rs（住顶层的理由同 read_face）
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
-pub mod skill_install; // 〔AS2 · 第四波 4B · V113〕skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
-pub mod skill_ledger; // 〔SU1 · 第四波 4C · V116〕skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，第四层）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写
 pub mod stderr_log; // 〔NT2 · S1〕脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
-pub mod tap; // 〔TAP · V124〕tee 的消费侧（后端这一半）：进程级 tap 口 → 当前那条流连接的 `tap` 帧（`设计/20 §8`）
-pub mod wire;
+pub mod stream; // 〔MOD〕进后端的口 ① 帧面 ＋ 跨机问答原语：wire · inbound · listen · remote_ask · tap
 
 /// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
 /// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
@@ -139,7 +125,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   正交、不受 §26）——aterm 门控消费。现声明 line/session_added/session_status/session_removed/
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
 /// - p1n-turn-end = phase② 联调（backend-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
-///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `turn_detect` 对拍 aterm TurnDetector）；
+///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `agents/claudecode/turn.rs` 对拍 aterm TurnDetector）；
 ///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
 /// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
 ///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
@@ -659,7 +645,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5i-footprint-two-beats**（2026-09-28，MIG-3b 收口合并那一拍）：协议 —— `footprint-report` 入参 `{client?: {home, agentHome, path?}}`、应答即整份报告（`clientAsks` 删）；`HostScope::Client` 由本机后端按 monitor 交的环境自己 stat。子命令没变。
 ///
 /// ★★★ **p5j-late-server-reconnectable**（2026-09-28，MIG-1 续四合并那一拍）：行为 —— 会话账本每一份可观测 tmux 快照都推「没报过的」可重连（后端先起、tmux server 后起不再漏报）。子命令没变。
-pub const BUILD_ID: &str = "p5j-late-server-reconnectable";
+///
+/// ★★★ **p5k-records-in-backend**（2026-09-28，MOD 合并那一拍）：Claude 记录抽取进后端 `agents/claudecode/`，会话正文四条走通道、前端只收成品 · 窄探针 ＋ `end_turn` 子串闸（40 万行 1706 → 59 ms）·
+/// 顶层归 `assets/` `history/` `faces/` `stream/`（`remote_ask` 进 `stream/`）· 文件模块只依 platform / common / 基础设施 · argv 只在 `main` 读一次、退出口只 `main` 与 `exit_after_drain`。
+pub const BUILD_ID: &str = "p5k-records-in-backend";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -775,6 +764,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--capture-pane",
     // 〔MIG-3b〕部署计划（帧面 `deploy-plan` 的 CLI 面，自动派生）。
     "--deploy-plan",
+    // 〔MOD〕这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--drift-report",
     // 〔MIG-3b 续〕全景写（帧面 `panorama-edit` 的 CLI 面，自动派生）。
     "--panorama-edit",
     // 〔MIG-3b 续〕公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
@@ -931,6 +922,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 〔CF2 · 第四波 4B〕`history-lines`（按行号取回）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     //   BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--history-lines",
+    // 〔MOD〕`history-page`（按字节分页出记录行）的 CLI 面。**是新子命令** ⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-page",
     "--history-projects",
     "--history-read",
     // 〔U4b · 第四波〕`history-record` 的 CLI 面（CLI 面从 `REGISTRY` 派生，`is_query_mode` 那道闸门读本表）。
@@ -938,7 +931,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--history-record",
     "--history-search",
     "--history-sessions",
-    "--history-subagents",
+    // 〔MOD〕`history-subagents`（只列候选）换成 `history-subagent`（出成品）。⇒ `build_id_guard` 红是预期的（本路不 bump）。
+    "--history-subagent",
     "--history-tail",
     "--history-user-inputs",
     // 〔MIG-3b〕帧面 `hooks-diag` 自动派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump，本路不 bump。
@@ -1681,7 +1675,7 @@ pub(crate) fn ccm_launcher_with(p: TmuxPlatform) -> Vec<&'static str> {
 /// 帧面命令：`inbound::REGISTRY` 减去这个 target 上平台默认做不到的那几条。
 fn wire_commands_on(t: Target) -> Vec<&'static str> {
     let gone = wire_commands_unavailable_on(t);
-    inbound::REGISTRY
+    stream::inbound::REGISTRY
         .iter()
         .map(|s| s.name)
         .filter(|n| !gone.iter().any(|g| g == n))
@@ -1703,7 +1697,7 @@ fn cli_subcommands_on(t: Target) -> Vec<&'static str> {
 }
 
 fn wire_command_names() -> Vec<&'static str> {
-    inbound::REGISTRY.iter().map(|s| s.name).collect()
+    stream::inbound::REGISTRY.iter().map(|s| s.name).collect()
 }
 
 fn cli_subcommand_names() -> Vec<&'static str> {
@@ -1725,7 +1719,7 @@ pub const COMMAND_FACES: &[CapabilityFace] = &[
         family: "wire-commands",
         kind: CapabilityKind::Protocol,
         declares: wire_command_names,
-        declared_in: "inbound.rs",
+        declared_in: "stream/inbound.rs",
         targets: TARGETS,
         target_basis: "帧面每一条命令四个 target 上**都编得进去**（`inbound::REGISTRY` 零平台 `cfg`）；\
                        做不做得到按它**自己声明的码**分：`codes` 里有 `no_tmux` 的，在平台确证没有 tmux 的 \
@@ -2012,14 +2006,14 @@ pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 /// 〔NET2〕unix 权限位那一维：这台（或那个 target）没有 unix 权限位 ⇒ 声明会回 [`NO_UNIX_MODE`] 的命令做不到。
 /// 与 tmux 那一维同形：谁声明会回那个码，谁就依赖那个机制，从 `inbound::REGISTRY` 的 `codes` 现推。
-pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<wire::Unavailable> {
+pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<stream::wire::Unavailable> {
     if unix_mode_bits {
         return Vec::new();
     }
-    inbound::REGISTRY
+    stream::inbound::REGISTRY
         .iter()
         .filter(|s| s.codes.contains(&NO_UNIX_MODE))
-        .map(|s| wire::Unavailable {
+        .map(|s| stream::wire::Unavailable {
             command: s.name.to_string(),
             code: NO_UNIX_MODE.to_string(),
         })
@@ -2046,12 +2040,12 @@ pub fn unix_mode_unavailable(unix_mode_bits: bool) -> Vec<wire::Unavailable> {
 /// 压成**做得到** ⇒ 客户端照今天的样子办（照发、点了看 `no_tmux`）⇒
 /// **一个字节都没退化**，只是这一格没买到。⇒ 后者是唯一安全的那一侧。
 /// 一句话：**这张表只在有把握时才开口，没把握时它退回今天的行为。**
-pub fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
+pub fn unavailable_from(tmux: Option<bool>) -> Vec<stream::wire::Unavailable> {
     let mut out = Vec::new();
     if tmux == Some(false) {
-        for spec in inbound::REGISTRY {
+        for spec in stream::inbound::REGISTRY {
             if spec.codes.contains(&NO_TMUX) {
-                out.push(wire::Unavailable {
+                out.push(stream::wire::Unavailable {
                     command: spec.name.to_string(),
                     code: NO_TMUX.to_string(),
                 });
@@ -2208,7 +2202,7 @@ const _: () = assert!(
 /// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
 /// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
 /// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
-pub fn unavailable_here() -> Vec<wire::Unavailable> {
+pub fn unavailable_here() -> Vec<stream::wire::Unavailable> {
     let mut out = unavailable_from(tmux_present(
         TMUX_PLATFORM,
         std::env::var_os("PATH").as_deref(),

@@ -58,7 +58,7 @@
 //! 而 [`dispatch_registry_is_complete`] 把「哪些文件参与分派」**派生**出来
 //!（扫全 crate 找含 `--` 子命令字面量的文件，要求与 `DISPATCH_FILES` 相等）。
 //! 这一层是**有效**的：实测把 token 的字面量搬到 `wire.rs`（不在 `DISPATCH_FILES` 里）
-//! 再在 `main.rs` 用 `Some(x) if x == crate::wire::PROBE_FLAG` 分派 ⇒
+//! 再在 `main.rs` 用 `Some(x) if x == crate::stream::wire::PROBE_FLAG` 分派 ⇒
 //! `dispatch_registry_is_complete` **当场红**，诊断逐字说清了「漏登记的文件里所有子命令
 //! 都不受 IPC-PROTOCOL.md 对拍约束」。
 //!
@@ -121,14 +121,14 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     // （`asset_sync::PULL_FLAG` / `PUSH_FLAG`）—— 它不分派，是**发**这两个子命令的一方；
     // 派生的文件集按「生产段里出现 `"--`」把它扫了进来。登记，那两个字面量随之受对拍约束。
     (
-        "asset_sync.rs",
-        include_str!("../../src/backend/asset_sync.rs"),
+        "assets/asset_sync.rs",
+        include_str!("../../src/backend/assets/asset_sync.rs"),
     ),
     // 〔C4d · 第四波 4B〕历史跨机 join：本机后端在远端跑 `--list-projects` / `--list-sessions`（那台的 CLI 老子命令）——
     //   同 `asset_sync.rs`：它不分派，是**发**这两个子命令的一方；登记之后那两个字面量受对拍约束。
     (
-        "history_join.rs",
-        include_str!("../../src/backend/history_join.rs"),
+        "history/history_join.rs",
+        include_str!("../../src/backend/history/history_join.rs"),
     ),
     (
         "observe/history_query.rs",
@@ -149,8 +149,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     // （解析走 CLI 那一臂同一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
     // 那几个 token 本来就在 IPC-PROTOCOL.md 里，它们从此也在这里受对拍。
     (
-        "read_face.rs",
-        include_str!("../../src/backend/read_face.rs"),
+        "faces/read_face.rs",
+        include_str!("../../src/backend/faces/read_face.rs"),
     ),
     // 〔DEL〕`relay/machine.rs` 那一行摘了：它不再起 `--relay`（argv 字面量随脱离中转一族删了），派生的文件集不再扫到它。
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
@@ -436,8 +436,8 @@ mod tests {
     /// ⚠ 这条比用户原话**窄**。窄的那部分不是被砍掉的，是它本来就不在这一层。
     #[test]
     fn the_panorama_protocol_would_only_expose_query_semantics() {
-        let inbound = include_str!("../../src/backend/inbound.rs");
-        let wire = include_str!("../../src/backend/wire.rs");
+        let inbound = include_str!("../../src/backend/stream/inbound.rs");
+        let wire = include_str!("../../src/backend/stream/wire.rs");
         // ⚠ 剥注释用**共享原语**（`guard_core::production_code`，backend 侧经 `guard_support` 再导出）。
         //   本会话已经栽过一次：自己内联一份 `#` 剥法，被 `structural_scan` 的
         //   「剥注释实现只许一份」当场逮住，而答案是「共享原语早就有了，我只是没找」。
@@ -541,7 +541,8 @@ mod tests {
 
     /// 每个 `derive(Serialize|Deserialize)` 的类型：(类型声明行, 体是否含字段, 抽到的字段)。
     fn serializable_types() -> Vec<(String, bool, Vec<String>)> {
-        let src = crate::guard_support::production_code(include_str!("../../src/backend/wire.rs"));
+        let src =
+            crate::guard_support::production_code(include_str!("../../src/backend/stream/wire.rs"));
         let b = src.as_bytes();
         let mut out: Vec<(String, bool, Vec<String>)> = Vec::new();
         let mut from = 0usize;
@@ -745,7 +746,8 @@ mod tests {
     /// | **enum** 上的 `rename_all_fields` | **红** | 这个才是改 variant 里的字段 |
     #[test]
     fn wire_rs_has_no_serde_rename_on_fields() {
-        let src = crate::guard_support::production_code(include_str!("../../src/backend/wire.rs"));
+        let src =
+            crate::guard_support::production_code(include_str!("../../src/backend/stream/wire.rs"));
         let lines: Vec<&str> = src.lines().map(str::trim).collect();
         let mut offenders: Vec<String> = Vec::new();
         for (i, l) in lines.iter().enumerate() {
@@ -1111,7 +1113,7 @@ mod tests {
     #[test]
     fn every_command_payload_field_appears_in_its_own_doc_section() {
         let mut checked = 0usize;
-        for spec in crate::inbound::REGISTRY {
+        for spec in crate::stream::inbound::REGISTRY {
             if spec.fields.is_empty() {
                 continue;
             }
@@ -1211,6 +1213,14 @@ mod tests {
                 "一次性子命令 `--read-session-from-offset … --index` 的**出参行**（骨架索引），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
             ),
+            (
+                "agents/claudecode/turn.rs",
+                "Probe",
+                "**只读不出**：turn-end 判词读 CLI 记录行的窄探针（记录文件 schema 的五格），不上线",
+            ),
+            ("agents/claudecode/turn.rs", "ProbeMessage", "同上，`message` 里那一格"),
+            ("agents/claudecode/turn.rs", "LooseBool", "同上，形状不对当缺"),
+            ("agents/claudecode/turn.rs", "LooseStr", "同上，形状不对当缺"),
         ];
 
         let files: &[(&str, &str)] = &[
@@ -1251,8 +1261,8 @@ mod tests {
                 include_str!("../../src/backend/agents/codex/parse.rs"),
             ),
             (
-                "observe/turn_detect.rs",
-                include_str!("../../src/backend/observe/turn_detect.rs"),
+                "agents/claudecode/turn.rs",
+                include_str!("../../src/backend/agents/claudecode/turn.rs"),
             ),
         ];
 
@@ -1382,7 +1392,7 @@ mod tests {
         );
 
         // 反面：注册表里登记的命令级 code 不许与协议级重名（`resolve` 的 `bad_request` 例外）。
-        for spec in crate::inbound::REGISTRY {
+        for spec in crate::stream::inbound::REGISTRY {
             for c in spec.codes {
                 assert!(
                     !PROTOCOL_CODES.contains(c),
@@ -1398,7 +1408,8 @@ mod tests {
     /// ⚠ **必须先框段界再数**：`wire.rs` 里不止一个枚举，
     /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
     fn frame_variants() -> Vec<String> {
-        let src = crate::guard_support::production_code(include_str!("../../src/backend/wire.rs"));
+        let src =
+            crate::guard_support::production_code(include_str!("../../src/backend/stream/wire.rs"));
         // 运行时拼，免得命中本文件自己的说明文字。
         let needle = format!("pub enum {}", "Frame");
         let at = src
@@ -1738,7 +1749,7 @@ mod tests {
             "只从「入方向」小节切出 {} 个标识符 —— 抽取坏了，本断言在空转",
             documented.len()
         );
-        let cmds = crate::inbound::COMMANDS;
+        let cmds = crate::stream::inbound::COMMANDS;
         assert!(
             cmds.len() >= 2,
             "只有 {} 条命令 —— 抽取坏了，本断言在空转",

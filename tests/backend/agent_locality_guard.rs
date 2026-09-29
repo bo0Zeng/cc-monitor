@@ -214,7 +214,7 @@ mod tests {
              tmux 会话与 claude 会话是两回事（`@ccm_sid` 才把它们连起来）。",
         ),
         (
-            "inbound.rs",
+            "stream/inbound.rs",
             "\"sessions\",",
             "〔MIG-1 续〕同上一条：`tmux-list` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
         ),
@@ -248,7 +248,7 @@ mod tests {
     /// 两条纪律同 `FROZEN_COMPAT`：① 每条必须有非空解锁条件；② 条数有天花板且只许降。
     const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[
         (
-            "wire.rs",
+            "stream/wire.rs",
             "claude_dir",
             "`Hello` 帧里今天**真在线上**的目录字段。`S4` 走 additive 迁移（新字段 `homes` \
              承载 agent 维度），这个字段原地冻结 ⇒ 线上字节零变化。",
@@ -292,15 +292,7 @@ mod tests {
     /// ⚠〔`S5`〕**注册表那类不在本表里** —— 见 [`AGENT_REGISTRY_SITES`]。
     /// 本表只装「**该被压到零**」的那一类，`S6` 的靶子就是它的总数。
     const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
-        (
-            "control/files_write.rs",
-            1,
-            "〔步 23b · 09-19〕一行 `use` 取两件知识：**配置根怎么解析**（`resolve_home`）＋\
-             **一个路径在不在那几棵树里**（`is_inside_tree`）。\
-             ⚠ 这一处是**刻意留在通用层的**：写围栏的是 `control/`，而「哪几棵树」是布局知识\
-             ⇒ 知识搬进适配层、调用留在这里。接第三个 agent 时这一处要跟着改 —— \
-             真正的出路是 `L2`/`S6` 那个接口（「这个 agent 的私有树有哪些」），不是在这里加分支",
-        ),
+        // 〔MOD · 子步 4 · 主会话裁〕`control/files_write.rs` 那一处摘了：删会话那两问改由门经 `SessionPort` 递进来（落点 · 形状住适配层注册表 `RecordFace.delete`）。
         (
             "control/fork_write.rs",
             2,
@@ -395,7 +387,7 @@ mod tests {
     /// **静默零输出** · **报错但用的是 Claude 的措辞** · **静默按 Claude 跑**（最坏的一种）。
     /// 把它写进表里，是为了让「收接口」那轮的人知道**每一处该补的错误出口长什么样**。
     const NEW_AGENT_BLOCKERS: &[(&str, &str, usize, &str)] = &[
-        ("解析本机 home", "control/files_write.rs", 1, "〔FN1 · 第四波 4C · V119 订正：文件管理写面**不再有任何数据围栏**（用户「文件管理器全部都可以改. 不需要任何围栏」）⇒ 下面「围栏对第二家失效」那一形今天**不存在了**（对哪一家都不拦）。这一行的一处命中今天是**删历史会话**那一条：它只认得 Claude 的记录布局（`session_file_for_delete` 按 `projects/<proj>/<sid>.jsonl` 找、`is_session_record_path` 判形状）⇒ 换一家 agent，历史浏览器里「删会话」那一下**找不到它的记录**（报错，措辞是 Claude 的布局）。欠账换成这一形，仍然判不了、如实留账〕〔步 23b · 09-19〕文件管理面的写围栏只认得 **Claude** 的布局 ⇒ 换一家 agent，它的私有数据**一份都不在围栏里**：用户拿文件管理面往那家的会话文件上写，后端**照写不误**。⚠ 这一形不是「静默少看见东西」，是**围栏本身对第二家失效**。🔴 **〔波 5 ㈢ 09-23 订正：本行上一版点的那两个符号今天都不在这份文件里了〕** 上一版逐字写的是「只问得出 Claude 的**配置根**」＋「同一行还取了第二样知识（`is_inside_tree` —— 一个路径算不算这家的私有树）」。两句今天都假：用户 09-23 裁「文件管理器该不该能改 `~/.claude` 里的东西. 可以.」之后，围栏换成了**结构判定** `is_session_record_path`（`projects/<proj>/<sid>.jsonl` 恰 2 段 · `sessions/<x>.json` 恰 1 段）—— 它**不再读配置根**，`resolve_home` 与 `is_inside_tree` 在这份文件里一处都没有了。🔴 **而这一格的欠账一格都没结，只是换了形**：那个结构判定认的仍然是 **Claude 的**目录形状，换一家 agent（记录叫 `.ndjson`、根不叫 `projects/`）它**一份都拦不住**。⇒ 欠账从「只问得出 Claude 的配置根」变成「**只认得 Claude 的会话文件形状**」。它今天**不是**一种登记过的能力（`agents::fake::CAPABILITIES` 里没有对应项，`FakeCaps` 里也没有对应字段）⇒ 反向夹具**挖不掉它**，这一维照旧**判不了**。补它要动 `agents/fake/` 与那条走查夹具，**在本轮写区之外，如实留账**"),
+        // 〔MOD · 子步 4〕`control/files_write.rs` 那一行摘了（同上：删会话那两问改走注册表 `RecordFace.delete`；换一家 agent 时它的 `delete` 那一格填上即可，不再改写面）。
         ("会话记录根", "control/fork_write.rs", 1, "fork 落盘时用 Claude 的 `projects/` 拼路径 ⇒ 写到一个这家根本不用的目录下"),
         ("会话记录根", "observe/history_query.rs", 1, "报错，但措辞是 Claude 的布局（`read_dir <home>/projects failed`）—— 说得出话，说的是别人的话"),
         ("会话记录根", "observe/search_query.rs", 1, "**静默**：rc=0、零输出"),

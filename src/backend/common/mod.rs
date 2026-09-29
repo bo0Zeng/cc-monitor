@@ -31,6 +31,14 @@
 
 pub(crate) mod contract;
 pub(crate) mod fs;
+/// 〔MOD · 子步 4 · 主会话裁〕**后端建自家目录的那一个函数**（原住 crate 根 `own_dir.rs`）。
+///
+/// 它满足门槛的方式：①（≥2 层）原生那一块（退出行为 · 资产目录 · skill 装记录 · 中转钥匙 · 常驻登记）与
+/// 文件管理那一块（暂存区，`control/files_commit.rs`）都建这一层 —— 两块之间零互相依赖（`files/module_boundary_guard.rs`），
+/// 共用的只许在这一层（`01 §3.2`）。②（平台无关）unix 权限位那一句是 `std` 的扩展 trait，不是平台原语的读法。
+/// ③（无域知识）它只认「建一层目录、只给本人」，不认那一层装什么。
+/// ⚠ 它**写盘**（建目录）：`readonly_guard` 第四层照旧登记它（住址随搬家改成 `common/own_dir.rs`）。
+pub(crate) mod own_dir;
 /// `K-R96`（09-12）：**「这台机器上现在有哪些 tmux 会话」那一张快照。**
 ///
 /// 它满足门槛的方式：①（≥2 层）**control 与 observe 都在用** ——

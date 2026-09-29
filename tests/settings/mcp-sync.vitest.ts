@@ -2,7 +2,7 @@
  * 〔AS1 · 第四波 4B〕MCP「跨机器推 / 拉」界面（`src/settings/mcp-sync.ts`）的判据。
  *
  * - **闭集跨半边两向相等**：界面给字的三张表（态 · 可疑项种类 · 绝对路径在对面的事实）的键集
- *   == 后端 `src/backend/mcp_sync.rs` 的 `STATES` / `SUSPECT_KINDS` / `THERE`（从后端源码现抠，异源）。
+ *   == 后端 `src/backend/assets/mcp_sync.rs` 的 `STATES` / `SUSPECT_KINDS` / `THERE`（从后端源码现抠，异源）。
  *   后端加一态而界面没给字 ⇒ 这里红（否则界面会把线上名原样露给人看）。
  * - 「对面不同的要不要盖」由界面问：默认不勾；勾了才进 `overwrite`（后端那一侧还会再拒一次，见后端判据）。
  * - 写的时候送回去的两份原文 == 看差异时拿到的那两份（CAS 期望不许换成别的）。
@@ -37,7 +37,7 @@ const rec = (cmd: string, a: unknown) => (invoke as (c: string, a: unknown) => P
 
 /** 后端 `pub(crate) const <名>: &[&str] = &[…];` 里的线上名（现抠）。 */
 function backendClosedSet(name: string): string[] {
-  const src = readFileSync(join(REPO_ROOT, "src/backend/mcp_sync.rs"), "utf8");
+  const src = readFileSync(join(REPO_ROOT, "src/backend/assets/mcp_sync.rs"), "utf8");
   const m = new RegExp(
     `pub\\(crate\\) const ${name}: &\\[&str\\] = &\\[([^\\]]*)\\];`,
   ).exec(src);

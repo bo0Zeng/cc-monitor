@@ -1,7 +1,7 @@
 //! 〔MIG-3a · 子步 3〕cc-bus 装到这台的判据：从 monitor `cc_bus_deploy_tests.rs` 搬来（判 · 写 · 记进了后端）。
-//! 写经本进程的 `files-*`（[`crate::inbound::LocalFiles`]，根由调用方给 ⇒ 临时目录）；装记录的写口换成替身（记下交了什么）。
+//! 写经本进程的 `files-*`（[`crate::stream::inbound::LocalFiles`]，根由调用方给 ⇒ 临时目录）；装记录的写口换成替身（记下交了什么）。
 use super::*;
-use crate::inbound::LocalFiles;
+use crate::stream::inbound::LocalFiles;
 
 struct TmpDir(PathBuf);
 impl Drop for TmpDir {
@@ -46,7 +46,7 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
     let skill = FILES.iter().find(|(r, _)| *r == "SKILL.md").unwrap();
     assert_eq!(
         files["SKILL.md"]["digest"],
-        json!(crate::skill_ledger::digest_of(
+        json!(crate::assets::skill_ledger::digest_of(
             std::str::from_utf8(skill.1).unwrap()
         ))
     );

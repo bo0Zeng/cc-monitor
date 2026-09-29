@@ -1218,7 +1218,7 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
 /// 已登记在 `cross_half_edge_registry`（它自己那条判据管着「不许长到生产段」）。
 #[test]
 fn the_listen_env_names_are_the_same_string_on_both_sides() {
-    let backend = include_str!("../../src/backend/listen.rs");
+    let backend = include_str!("../../src/backend/stream/listen.rs");
     for (rust_name, ours) in [
         ("ENV_PORT", LISTEN_PORT_ENV),
         ("ENV_TOKEN", LISTEN_TOKEN_ENV),
@@ -4076,7 +4076,8 @@ fn the_shared_stripper_keeps_the_exit_and_refusal_arms_this_guard_must_scan() {
 #[test]
 fn the_annotation_path_env_name_is_the_one_the_backend_reads() {
     let backend = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/history_annotations.rs"),
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../backend/history/history_annotations.rs"),
     )
     .expect("读后端那份源码");
     let prod = guard_core::production_code(&backend);
@@ -4208,7 +4209,7 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
         let after_decl = &text[at + decl.len()..];
         after_decl[..after_decl.find('"').expect("常量没收尾")].to_string()
     };
-    let wire = read("wire.rs");
+    let wire = read("stream/wire.rs");
     let at = guard_core::find_pinned(&wire, "pub const HOST_ECHO_ENVS: [&str; 3] = [")
         .expect("后端回显名单不在了");
     // 名单那几行（到收尾的 `];` 为止；逐行取，不做子串切）。
@@ -4231,8 +4232,8 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
             "pub(crate) const ENV_CREDENTIALS: &str = \"",
         ),
         (
-            "crate::history_annotations::ENV_PATH",
-            "history_annotations.rs",
+            "crate::history::history_annotations::ENV_PATH",
+            "history/history_annotations.rs",
             "pub(crate) const ENV_PATH: &str = \"",
         ),
     ] {

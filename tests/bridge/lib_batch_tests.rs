@@ -1,75 +1,70 @@
-//! # 要求住址：`INVARIANTS §18.1`（看不懂的行记在哪台的账上）＋ `INVARIANTS §28`（远端行带 origin）
+//! # 要求住址：`INVARIANTS §28`（远端行带 origin）＋ `设计/90 §3` 判据 3（记录解释只住后端）
 //!
-//! 核原文：`INVARIANTS §18.1` 逐字「账本第一层键是 origin，每台机器只看得到自己那一份」—— `lib.rs::batch_to_payloads`
-//! 把看不懂的行记在这一批的 origin 名下（V104「漂移记账按机器分开」）；`INVARIANTS §28` 逐字「上 wire（每条远端行带 `origin`）」
-//! —— 远端行带那台的名字。连 JSON 都不成立的行跳过、不 panic，对 `§18.1` 那条的抢救口径。〔JA1 点址 2026-09-24〕
+//! 核原文：`INVARIANTS §28` 逐字「上 wire（每条远端行带 `origin`）」—— 远端行带那台的名字；
+//! `设计/90 §3` 判据 3「前端不许从流上攒全会话事实」连同〔MOD〕记录解释搬进后端之后：进不进界面、`cwd` 都是后端给的成品，
+//! `lib.rs::batch_to_payloads` 只组载荷、原样转交（没有成品的行照占号、不出 payload）。〔JA1 点址 2026-09-24 · MOD 改写 09-28〕
 
 use super::*;
 use std::path::PathBuf;
 
-fn jline(session_id: &str, seq: u64, raw: &str) -> ssh_source::JsonlLine {
+/// 一行（后端给的成品：`message` 缺 ＝ 不进界面）。
+fn jline(
+    session_id: &str,
+    seq: u64,
+    message: Option<&str>,
+    cwd: Option<&str>,
+) -> ssh_source::JsonlLine {
     ssh_source::JsonlLine {
         session_id: session_id.to_string(),
         path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
         seq,
-        raw: raw.to_string(),
+        message: message
+            .map(|m| crate::bridge::RecordBody::from_json(m.to_string()).expect("成品是 JSON")),
+        cwd: cwd.map(str::to_string),
         end: None,
     }
 }
 
-/// batch_to_payloads 必须：只保留 displayable 行、透传 seq/session_id、
-/// 在遇到 malformed 行时 warn-then-continue 不 panic，并对非 displayable 行静默丢弃。
+/// batch_to_payloads：有成品的才出 payload、成品与 `cwd` 原样转交、seq/session_id 透传；没成品的照占号不出。
 #[test]
-fn filters_non_displayable_and_survives_malformed() {
-    // (a) 真实 displayable user 行（copy 自 messages.rs golden sample），seq 5
-    let displayable_user = r#"{
-            "type":"user",
-            "uuid":"u-1",
-            "timestamp":"2026-05-20T01:23:45.678Z",
-            "message":{"role":"user","content":"hi"},
-            "cwd":"/home/me/proj"
-        }"#;
-    // (b) 非 displayable 记录：permission-mode 的 is_displayable() 返回 false
-    let non_displayable = r#"{"type":"permission-mode"}"#;
-    // (c) 无法解析的行 → parse_line 返回 Err，必须被 warn 后跳过、不 panic
-    let malformed = "not json at all";
-
+fn only_lines_with_a_product_become_payloads_and_the_product_passes_through() {
+    let user =
+        r#"{"type":"user","uuid":"u-1","timestamp":"t","message":{"role":"user","content":"hi"}}"#;
     let lines = vec![
-        jline("s-abc", 5, displayable_user),
-        jline("s-abc", 6, non_displayable),
-        jline("s-abc", 7, malformed),
+        jline("s-abc", 5, Some(user), Some("/home/me/proj")),
+        jline("s-abc", 6, None, None),
     ];
-
     let payloads = batch_to_payloads(
         lines,
         &crate::origin::Origin::local(),
         &mut SkipRuns::default(),
     );
-
-    // 只有 displayable user 行进 payload
-    assert_eq!(payloads.len(), 1, "只应保留 1 条 displayable 记录");
+    assert_eq!(payloads.len(), 1, "只应保留有成品的那 1 条");
     assert_eq!(payloads[0].seq, 5, "seq 必须原样透传");
     assert_eq!(payloads[0].session_id, "s-abc", "session_id 必须原样透传");
     assert_eq!(
         payloads[0].cwd.as_deref(),
         Some("/home/me/proj"),
-        "extract_cwd 应取出 user.cwd"
+        "cwd 是后端给的，原样带"
+    );
+    assert_eq!(
+        payloads[0].message.0.get(),
+        user,
+        "成品原样转交（一个字节都不改）"
     );
     // 本机那台的行载荷上不带 origin（线上形状与原来 `None` 那一档逐字相同）。
     assert_eq!(payloads[0].origin, None, "本地行 origin 应为 None");
+    let wire = serde_json::to_string(&payloads[0]).unwrap();
+    assert!(
+        wire.contains(&format!("\"message\":{user}")),
+        "序列化时成品原样嵌进去：{wire}"
+    );
 }
 
 /// 远端那台的 origin ⇒ 每条 payload 都带上它的名字（远端 Tab 标题前缀用）。
 #[test]
 fn origin_is_propagated_to_payloads() {
-    let displayable_user = r#"{
-            "type":"user",
-            "uuid":"u-1",
-            "timestamp":"2026-05-20T01:23:45.678Z",
-            "message":{"role":"user","content":"hi"},
-            "cwd":"/home/pi/proj"
-        }"#;
-    let lines = vec![jline("s-remote", 0, displayable_user)];
+    let lines = vec![jline("s-remote", 0, Some(r#"{"type":"user"}"#), None)];
     let payloads = batch_to_payloads(
         lines,
         &crate::origin::Origin("pi".to_string()),
@@ -83,78 +78,32 @@ fn origin_is_propagated_to_payloads() {
     );
 }
 
-/// 〔ST3〕★ 接缝：批里看不懂的行记在**这一批的 origin** 名下，不在本机名下（两向）。
-///
-/// 本机 watcher 与 `ssh_source·rs::flush_lines` 都经这一个口；原先它收 `Option<String>`，
-/// 记账那一刻不知道是哪台 ⇒ 远端的行全记进了一本不分机器的账。
-#[test]
-fn unreadable_lines_are_booked_under_the_batch_origin() {
-    use crate::drift_ledger::{snapshot, DriftFace};
-    let find = |o: &crate::origin::Origin, key: &str| {
-        snapshot(o)
-            .into_iter()
-            .find(|f| f.face == DriftFace::UnknownRecordType)
-            .and_then(|f| f.entries.into_iter().find(|e| e.key == key))
-    };
-    let remote = crate::origin::Origin("st3-batch-probe".to_string());
-    let local = crate::origin::Origin::local();
-    let _ = batch_to_payloads(
-        vec![jline("s-r", 0, r#"{"type":"st3-batch-remote-probe"}"#)],
-        &remote,
-        &mut SkipRuns::default(),
-    );
-    let _ = batch_to_payloads(
-        vec![jline("s-l", 0, r#"{"type":"st3-batch-local-probe"}"#)],
-        &local,
-        &mut SkipRuns::default(),
-    );
-    assert!(
-        find(&remote, "st3-batch-remote-probe").is_some(),
-        "远端那批没记在那台名下"
-    );
-    assert!(
-        find(&local, "st3-batch-local-probe").is_some(),
-        "本机那批没记在本机名下"
-    );
-    assert!(
-        find(&local, "st3-batch-remote-probe").is_none(),
-        "远端那批记进了本机那一本"
-    );
-    assert!(
-        find(&remote, "st3-batch-local-probe").is_none(),
-        "本机那批记进了远端那一本"
-    );
-}
-
 /// 〔RENDER2 · `设计/10 §3.2` 逐字「要封顶得有后端的保证 ……」· `真相源/130 §3`「不可显示的行照占 seq 却不发 payload，
 /// 每一处都在集合里留一个洞」〕每条 payload 的 `skipped_from` == 它之前**连着见过**的不可显示那一段的起点（跨批照认；
 /// 行号断过 / 别的会话不混）。期望表手写（异源）。
 #[test]
 fn every_payload_says_the_undisplayable_run_right_before_it() {
-    let user = |u: &str| {
-        format!(r#"{{"type":"user","uuid":"{u}","message":{{"role":"user","content":"x"}}}}"#)
-    };
-    let meta = r#"{"type":"permission-mode"}"#;
+    let user = Some(r#"{"type":"user"}"#);
     let mut runs = SkipRuns::default();
     let origin = crate::origin::Origin::local();
     let first = batch_to_payloads(
         vec![
-            jline("s", 0, meta),
-            jline("s", 1, &user("a")), // 前面 [0,1) 连着见过
-            jline("s", 2, meta),
-            jline("s", 3, "not json"), // 解析不出也照占号
+            jline("s", 0, None, None),
+            jline("s", 1, user, None), // 前面 [0,1) 连着见过
+            jline("s", 2, None, None),
+            jline("s", 3, None, None), // 解析不出也照占号（后端同样不给成品）
         ],
         &origin,
         &mut runs,
     );
     let second = batch_to_payloads(
         vec![
-            jline("t", 7, meta),
-            jline("s", 4, &user("b")), // 跨批：[2,4)
-            jline("s", 6, &user("c")), // 5 没见过 ⇒ 不认
-            jline("s", 7, meta),
-            jline("s", 8, &user("d")), // [7,8)
-            jline("t", 8, &user("e")), // 别的会话自己那一段 [7,8)
+            jline("t", 7, None, None),
+            jline("s", 4, user, None), // 跨批：[2,4)
+            jline("s", 6, user, None), // 5 没见过 ⇒ 不认
+            jline("s", 7, None, None),
+            jline("s", 8, user, None), // [7,8)
+            jline("t", 8, user, None), // 别的会话自己那一段 [7,8)
         ],
         &origin,
         &mut runs,

@@ -622,7 +622,7 @@ fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly
 /// 判据读完就断言 = 在读一个还没收齐的缓冲区，而「tee 是空的」与「还没收齐」
 /// 在断言里**长得一模一样** ⇒ 那是一条会随机说谎的判据。
 /// ⇒ 每收一件往通道投一条；判据用 `TeeTap::wait_events` 等够件数，**等不到当红**。
-/// 〔DEL〕tee 只剩 tap 口那一形：收集面是测试侧的一个 [`TapPort`]（生产里是 `crate::tap` 的 hub）。
+/// 〔DEL〕tee 只剩 tap 口那一形：收集面是测试侧的一个 [`TapPort`]（生产里是 `crate::stream::tap` 的 hub）。
 struct TeeTap {
     got: Arc<std::sync::Mutex<Vec<TapEvent>>>,
     rx: mpsc::Receiver<()>,
@@ -1339,7 +1339,7 @@ const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_p
 ///
 /// 〔DEL〕独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
 /// （`accounts::upstream::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
-/// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::tap::hub().attach()`），
+/// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::stream::tap::hub().attach()`），
 /// 每件逐字写成**线上那一形 `tap` 帧**（`tap::to_frame`）落 stdout —— 判据读到的就是会上 wire 的那几帧。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RELAY_TEST_CHILD 拉起时才当中转跑"]
@@ -1347,11 +1347,11 @@ fn relay_child_process_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    let mut rx = crate::tap::hub().attach();
+    let mut rx = crate::stream::tap::hub().attach();
     std::thread::spawn(move || {
         use std::io::Write;
         while let Some(ev) = rx.blocking_recv() {
-            let line = serde_json::to_string(&crate::tap::to_frame(ev)).expect("tap 帧");
+            let line = serde_json::to_string(&crate::stream::tap::to_frame(ev)).expect("tap 帧");
             let mut o = std::io::stdout().lock();
             let _ = writeln!(o, "{line}");
             let _ = o.flush();

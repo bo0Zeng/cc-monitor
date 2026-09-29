@@ -2162,9 +2162,12 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
     .unwrap();
     process_jsonl(&jsonl, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::Line { seq, raw, .. }) => {
+        Ok(Frame::Line {
+            seq, byte_offset, ..
+        }) => {
             assert_eq!(seq, 3, "残行补全行的 seq 应为初扫完整行数 L=3");
-            assert_eq!(raw, r#"{"torn":true}"#);
+            // 〔MOD〕帧上不再带原文 ⇒ 由末端字节认出它就是补全的那一行（`{"torn":true}\n` 收尾处）。
+            assert_eq!(byte_offset, 38);
         }
         other => panic!("expected Line, got {other:?}"),
     }
@@ -2956,7 +2959,8 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         session_id: "occupy".into(),
         path: "/p".into(),
         seq: 0,
-        raw: "{}".into(),
+        message: None,
+        cwd: None,
         byte_offset: 0,
     });
     // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
@@ -2964,7 +2968,8 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         session_id: "content-lost".into(),
         path: "/p".into(),
         seq: 1,
-        raw: "{}".into(),
+        message: None,
+        cwd: None,
         byte_offset: 1,
     });
     sink.send(Frame::SessionRemoved {
@@ -2989,7 +2994,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
             assert!(!lost_truncated, "才两条，远没到上限");
             assert_eq!(
                 lost,
-                vec![crate::wire::LostFrame {
+                vec![crate::stream::wire::LostFrame {
                     kind: "session_removed",
                     subject: Some("sid-gone".into()),
                 }],
@@ -3011,7 +3016,8 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
         session_id: "occupy".into(),
         path: "/p".into(),
         seq: 0,
-        raw: "{}".into(),
+        message: None,
+        cwd: None,
         byte_offset: 0,
     });
     let over = LOST_IDENTITY_CAP + 5;
@@ -3050,7 +3056,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
 /// 那正是 B-3 的原样复发。⇒ 用零命中守卫钉住源码形态。
 #[test]
 fn the_recoverability_table_has_no_catch_all_arm() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/wire.rs"));
+    let src = guard_core::production_code(include_str!("../../../src/backend/stream/wire.rs"));
     let begin = src
         .find("pub fn loss_is_recoverable")
         .expect("找不到 loss_is_recoverable —— 抽取器坏了，本条会零命中地绿");
@@ -3497,7 +3503,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     // 〔U4b · G3〕顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
     //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
     //   `process_session_added` 真把打标的结局接到了帧上。
-    let containers: Vec<Option<crate::wire::SessionContainer>> = frames
+    let containers: Vec<Option<crate::stream::wire::SessionContainer>> = frames
         .iter()
         .filter_map(|f| match f {
             Frame::SessionAdded { container, .. } => Some(*container),
@@ -3506,7 +3512,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
         .collect();
     assert_eq!(
         containers,
-        vec![Some(crate::wire::SessionContainer::None); 2],
+        vec![Some(crate::stream::wire::SessionContainer::None); 2],
         "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
     );
     let got: Vec<String> = frames
@@ -3599,12 +3605,12 @@ fn loc1b_the_pid_rides_the_session_added_frame_only_behind_the_same_gate_as_the_
 // 主会话 09-25 补「原地整份改写且变长要堵：游标旁记末尾若干字节，每次续读前核，对不上 ⇒ 当被改写：从 0 重读并出声」。
 // 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
-/// 把这一趟收到的帧摊平成 `(kind, 细节)`：行帧给 `line:<raw>`，出声帧给它的 kind（重读带 why）。
+/// 把这一趟收到的帧摊平成 `(kind, 细节)`：行帧给 `line:<行号>`（〔MOD〕帧上不再带原文），出声帧给它的 kind（重读带 why）。
 fn fw1_drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<String> {
     let mut out = Vec::new();
     while let Ok(f) = rx.try_recv() {
         out.push(match f {
-            Frame::Line { raw, .. } => format!("line:{raw}"),
+            Frame::Line { seq, .. } => format!("line:{seq}"),
             Frame::SessionFileGone { session_id, .. } => format!("gone:{session_id}"),
             Frame::SessionFileReread {
                 session_id, why, ..
@@ -3643,7 +3649,7 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     let (dir, path, mut state, mut sink, mut rx) = fw1_rig("gone");
     std::fs::write(&path, "{\"n\":1}\n{\"n\":2}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(fw1_drain(&mut rx), vec!["line:{\"n\":1}", "line:{\"n\":2}"]);
+    assert_eq!(fw1_drain(&mut rx), vec!["line:0", "line:1"]);
 
     std::fs::remove_file(&path).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
@@ -3664,15 +3670,12 @@ fn a_vanished_session_file_is_said_once_and_a_recreated_one_is_read_from_zero() 
     process_jsonl(&path, &mut state, &mut sink);
     assert_eq!(
         fw1_drain(&mut rx),
-        vec!["reread:s-fw1:Rewritten", "line:{\"n\":3}"],
+        vec!["reread:s-fw1:Rewritten", "line:0"],
         "重建之后不是「出声 ＋ 从 0 读」"
     );
     std::fs::write(&path, "{\"n\":3}\n{\"n\":4-a-longer-line-than-before}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(
-        fw1_drain(&mut rx),
-        vec!["line:{\"n\":4-a-longer-line-than-before}"]
-    );
+    assert_eq!(fw1_drain(&mut rx), vec!["line:1"]);
 
     // 改名走了 ⇒ 旧路径不见了 ⇒ 再说一次（上一次「不在」已经被「又在了」清掉）。
     std::fs::rename(&path, dir.join("elsewhere.jsonl")).unwrap();
@@ -3690,10 +3693,7 @@ fn a_truncated_session_file_is_said_and_reread_from_zero() {
     let _ = fw1_drain(&mut rx);
     std::fs::write(&path, "{\"n\":9}\n").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(
-        fw1_drain(&mut rx),
-        vec!["reread:s-fw1:Truncated", "line:{\"n\":9}"]
-    );
+    assert_eq!(fw1_drain(&mut rx), vec!["reread:s-fw1:Truncated", "line:0"]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -3712,11 +3712,7 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
     let appended = format!("{before}{{\"n\":3,\"uuid\":\"aaaaaaaa-0003\"}}\n");
     std::fs::write(&path, &appended).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
-    assert_eq!(
-        fw1_drain(&mut rx),
-        vec!["line:{\"n\":3,\"uuid\":\"aaaaaaaa-0003\"}"],
-        "纯追加却被当成改写了"
-    );
+    assert_eq!(fw1_drain(&mut rx), vec!["line:2"], "纯追加却被当成改写了");
 
     // 改写：第一行多了几个字（整份平移），总长 ≥ 读到过的最长。
     let rewritten = appended.replacen("\"n\":1,", "\"n\":1,\"edited\":true,", 1);
@@ -3724,7 +3720,7 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
     std::fs::write(&path, &rewritten).unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     let want: Vec<String> = std::iter::once("reread:s-fw1:Rewritten".to_string())
-        .chain(rewritten.lines().map(|l| format!("line:{l}")))
+        .chain((0..rewritten.lines().count()).map(|k| format!("line:{k}")))
         .collect();
     assert_eq!(fw1_drain(&mut rx), want, "改写之后不是「出声 ＋ 整份重读」");
     std::fs::remove_dir_all(&dir).ok();
@@ -3733,7 +3729,7 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
 /// 两个新帧的线上形状（逐字节；异源 = 手写期望）＋ 丢了不可恢复（按身份报）。
 #[test]
 fn the_two_session_file_frames_have_exactly_these_bytes() {
-    use crate::wire::{to_line, RereadWhy};
+    use crate::stream::wire::{to_line, RereadWhy};
     let gone = Frame::SessionFileGone {
         session_id: "s".into(),
         path: "/p/s.jsonl".into(),
@@ -4070,7 +4066,7 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
 fn resync_face_reply_matches_the_cross_language_golden() {
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/resync.golden.json")).unwrap();
-    let got = crate::resync_face::answer(&golden["request"]).expect("金样那份请求该答得出");
+    let got = crate::faces::resync_face::answer(&golden["request"]).expect("金样那份请求该答得出");
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         k.sort();
@@ -4095,7 +4091,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         .expect("`uncancellable` 不是数组");
     assert_eq!(
         ops.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>(),
-        crate::inbound::uncancellable(),
+        crate::stream::inbound::uncancellable(),
         "`uncancellable` 不是命令表派生的那一份"
     );
     for bad in [
@@ -4103,7 +4099,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         serde_json::json!({"sid": ""}),
     ] {
         assert_eq!(
-            crate::resync_face::answer(&bad).map_err(|(c, _)| c),
+            crate::faces::resync_face::answer(&bad).map_err(|(c, _)| c),
             Err("bad_args"),
             "{bad}"
         );
@@ -4147,13 +4143,10 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
         writeln!(f, "{{\"n\":1}}").unwrap();
     }
     let one = resync_sessions(&sessions, &mut state, &mut sink, Some("sid-a")).caught_up;
-    let mut lines: Vec<(String, String)> = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::Line {
-            session_id, raw, ..
-        } = f
-        {
-            lines.push((session_id, raw));
+        if let Frame::Line { session_id, .. } = f {
+            lines.push(session_id);
         }
     }
     for (sid, n) in [("sid-a", 2), ("sid-b", 2)] {
@@ -4170,7 +4163,7 @@ fn resync_for_one_sid_catches_up_its_jsonl_from_the_cursor() {
         let _ = k.wait();
     }
     let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(lines, vec![("sid-a".to_string(), "{\"n\":1}".to_string())]);
+    assert_eq!(lines, vec!["sid-a".to_string()]);
     assert_eq!((one, all), (1, 3), "补读行数（单 sid · 整机）不对");
 }
 
