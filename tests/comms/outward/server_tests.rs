@@ -3037,20 +3037,12 @@ printf 'POST %s/v1/messages HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\nConnec
 head -n 1 <&3
 "#;
 
-/// 〔RK1〕一条**不带钥匙**的中转 URL（monitor 侧 `payload::relay_base_url_in` 的产物形状）
-/// → 生产渲染器那一形的 `export` 前缀：钥匙那一段是**读钥匙文件的命令替换**，在跑它的 shell 里展开。
-///
-/// ⚠ 与 monitor 侧 `payload::relay_env_prefix_posix` **同形、两处各写一份**（两半之间没有编译期边，
-/// 下面 `KH2B1` 头注那条「没买到的缝」原样成立）；monitor 那一侧由它自己的判据钉「真 shell 展开后等于带钥匙的 URL」。
+/// 〔RK1〕一条**不带钥匙**的中转 URL → 生产渲染器 `payload::relay_env_prefix_posix` 渲出的前缀（〔WF1〕不再手抄）。
+/// 先摘掉继承来的 `ANTHROPIC_BASE_URL`：那一形在「已设」时不注入（V146），跑测试的环境里可能设着。
 fn rendered_export(url: &str) -> String {
-    let (origin, path) = url
-        .strip_prefix("http://")
-        .and_then(|r| r.split_once('/'))
-        .map(|(hp, p)| (format!("http://{hp}/"), format!("/{p}")))
-        .expect("夹具 URL 是 http://主机:口/路径 那一形");
     format!(
-        "export ANTHROPIC_BASE_URL='{origin}'\"$(cat \"$HOME/{}\")\"'{path}'; ",
-        door::KEY_FILE_REL
+        "unset ANTHROPIC_BASE_URL; {}",
+        crate::control::launch_render::payload::relay_env_prefix_posix(url)
     )
 }
 
@@ -3061,21 +3053,16 @@ fn rendered_export(url: &str) -> String {
 ///
 /// | 段 | 真的假的 |
 /// |---|---|
-/// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），形状与生产 POSIX 前缀同形 |
+/// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），前缀是生产 POSIX 渲染器的返回值 |
 /// | env | **真的**（子进程自己从环境里读） |
 /// | 中转 | **真子进程**（`spawn_relay_child_with_creds`：真 `Command::new(exe)` · 端口 0 从 stderr 读回） |
 /// | 上游 | **真的** TCP 假上游，`auth_values` 收的是**整行** `Authorization:` |
 /// | agent | **桩**（红线：绝不起真 claude） |
 ///
-/// # ⚠ 一条**没买到**的缝，必须写下来
-///
-/// 这里的 env 前缀是**本判据自己拼的**，不是 monitor 侧
-/// `backend::control::payload::relay_env_prefix_posix` 的返回值 ——
-/// 两半之间的编译期边（`include_str!`）**必须登记进 `src/frontend/shell/src/cross_half_edge_registry.rs`**，
-/// 而那个文件不在本件写区里。⇒ **两侧今天靠「同一个形状写了两遍」，没有判据对拍。**
+/// 〔WF1〕先前登记的那条「没买到的缝」（env 前缀是本判据手抄的）已合上：渲染器与本判据同在后端，
+/// 前缀就是生产 `payload::relay_env_prefix_posix` 的返回值（[`rendered_export`]）。当年
 /// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 〔散文墓碑〕
 /// 与 `only_an_account_that_has_a_row_in_the_apikey_table_gets_the_base_url_prefix` 钉着。
-/// **这一格如实登记为「没买到」，不许读成「对上了」。**
 #[cfg(unix)]
 #[test]
 fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_accounts_key() {
@@ -3100,8 +3087,6 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 
     // 起两发：同一条起会话路径，**只有账号段不同**。
     for (acct, want_key) in [("acct-a", "KEY-FOR-A"), ("acct-b", "KEY-FOR-B")] {
-        // 形状与 monitor 侧 `payload::relay_base_url` / `relay_env_prefix_posix` 同形
-        //（那一侧自己有判据钉着；两侧之间没有，见头注那条「没买到的缝」）。
         let url = format!(
             "http://127.0.0.1:{}/s/claude-code/{acct}",
             relay.addr.port()

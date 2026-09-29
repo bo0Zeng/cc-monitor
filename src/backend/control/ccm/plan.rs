@@ -21,11 +21,11 @@ use shell_quote_core::posix_quote as sq;
 
 /// 〔US1 · RK1 报 2〕把继承来的 `ANTHROPIC_BASE_URL` 显式化进新 pane 载荷时，`export … =` 右边那个 shell 词。
 ///
-/// 继承来的值是上一个 pane 的 shell **展开过**的：我们注入的中转地址里那一段 `$(cat "$HOME/<钥匙文件>")`
+/// 继承来的值是上一个 pane 的 shell **展开过**的：我们注入的中转地址里那一段 `$(cat ~/<钥匙文件>)`
 /// 已经变成了 64 位钥匙本身。原样 `export` ⇒ 钥匙进这一次 `tmux send-keys` 的 **argv**（同机别的用户 `ps` 看得见）、
 /// 进 pane 的 shell 历史与回滚。⇒ 认得出是我们注入的那一形（`relay_route_core::split_keyed_base_url`：回环字面量 ＋ 口 ＋
 /// 形状对的钥匙段 ＋ 构造口产得出的路由）就渲回与起会话那一侧（monitor `payload::relay_env_prefix_posix`）同形的
-/// `'<钥匙之前>'"$(cat "$HOME/<钥匙文件>")"'<钥匙之后>'`，在新 pane 里现读；认不出（用户自己的端点）⇒ 原样。
+/// `'<钥匙之前>'$(cat ~/<钥匙文件>)'<钥匙之后>'`，在新 pane 里现读；认不出（用户自己的端点）⇒ 原样。
 fn base_url_word(v: &str) -> String {
     match relay_route_core::split_keyed_base_url(v) {
         Some((head, tail)) => {
