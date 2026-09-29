@@ -9784,7 +9784,7 @@
     },
     "diagnostics.info.logs": {
       "kind": "body",
-      "zh": "后端日志写在：\n~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log。\n出错时同时在右下角弹一条提示，点它直接打开日志文件。",
+      "zh": "后端日志写在：\n~/.cc-monitor/logs/monitor/monitor.YYYY-MM-DD.log。\n出错时同时在右下角弹一条提示，点它直接打开日志文件。",
       "args": []
     },
     "driftLedger.copy.failed": {
