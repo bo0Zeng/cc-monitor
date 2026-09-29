@@ -4837,8 +4837,8 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/observe/search_query.rs", 1), // 合并那一份（`K-R100` 病史）
         // 〔LOC1b · 第四波 4D〕本机搜索改问本机后端（monitor 内存索引删了）⇒ 界面那两份点旧命令 / 旧函数名的散文各挂墓碑；
         //   冷读本机远端合成一条 ⇒ 漂移账登记表那一行旁注挂一块。
-        ("src/views/history-search.ts", 1),
-        ("src/views/history.ts", 3), // 〔DUP1〕+1：新开那一支原先调的 `validateLocalLaunch`
+        ("src/views/history-search.ts", 2), // 〔FIX4 · J15〕+1：前端合并那一份（`mergeSearchResults`）删了，头注挂墓碑
+        ("src/views/history.ts", 3),        // 〔DUP1〕+1：新开那一支原先调的 `validateLocalLaunch`
         ("tests/bridge/drift_ledger_tests.rs", 1),
         // 〔MOD〕`src/bridge/src/remote_history.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("tests/bridge/local_read_surface_registry_tests.rs", 10), // 〔MIG-3b 续〕7 → 10：足迹三处（判定 · 申报表 · 探针）随进后端删了 // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // 〔合并 MIG-3b × 主线 81f92f6a〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） // 〔MIG-3a〕+2：`aliases_read` / `aliases_install` 两行摘除的旧墓碑补上标记（它们的符号随别名进后端没了） // // 〔SH1〕+1：`.claude.json` 三候选的 home 读去掉 // 〔C4c〕+1：`accounts.rs` 那一行摘掉处的「降级说明」旧名 // 棘轮史里 E79 那一格
@@ -5147,6 +5147,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔FIX4 · `99 §2.1 ⑬`〕新贴：ssh 外壳（`build_remote_ssh_ps_command` 一族）搬进本机后端 `dial/terminal.rs`，
         //   新家头注点来历一块 · monitor 那侧判据原处各挂一块（六条搬走的期望 · 那个转发别名）。
         ("src/backend/dial/terminal.rs", 1),
+        ("tests/views/history-search.vitest.ts", 1), // 〔FIX4 · J15〕合并那三条搬进后端，原处一块
         ("tests/bridge/launch_tests.rs", 2),
         ("tests/bridge/quote_singleton_guard_tests.rs", 2),
         ("src/bridge/src/ccm_legacy.rs", 1), // 〔合并 MIG-3b × 主线 81f92f6a〕两边各自贴的墓碑相加，按盘上现数（跑出来核过）

@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import {
-  mergeSearchResults,
+  decodeMerged,
   parseSessionHitsLines,
   searchArgs,
   searchAllMachines,
@@ -25,7 +25,7 @@ import {
   type SessionHits,
 } from "../../src/views/history-search";
 import { LOCAL_ORIGIN } from "../../src/ipc/origin";
-import { chanArgsJson, isChanCall, linesReply, NO_CHANNEL, type ChanCallArgs } from "../test-support/chan-fake";
+import { chanArgsJson, chanReply, isChanCall, linesReply, NO_CHANNEL, type ChanCallArgs } from "../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -60,26 +60,66 @@ function row(sid: string, updatedAt: number, hitCount: number): string {
 
 const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, afterMs: null, limit: 300 };
 
+/** 本机后端合一份那一问的替身（按交进来的原样回，好让下面几条只看扇出那一半）。 */
+function passMerge(args: ChanCallArgs): ArrayBuffer {
+  const rows = (chanArgsJson(args) as { sessions: SessionHits[] }).sessions;
+  return chanReply({ totalHits: rows.reduce((a, s) => a + s.hitCount, 0), sessionCount: rows.length, truncated: false, sessions: rows });
+}
+
 beforeEach(() => invokeMock.mockReset());
 
-describe("合并", () => {
-  it("拼接 + updatedAt 倒序 + 总数相加；远端 origin 保留、本机不带", () => {
-    const merged = mergeSearchResults([mk("local-old", 100, 3), mk("rem-new", 300, 2, "pi"), mk("rem-mid", 200, 1, "wsl")]);
-    expect(merged.totalHits).toBe(3 + 2 + 1);
-    expect(merged.sessionCount).toBe(3);
-    expect(merged.sessions.map((s) => s.sessionId)).toEqual(["rem-new", "rem-mid", "local-old"]);
-    expect(merged.sessions[0].origin).toBe("pi");
-    expect(merged.sessions[2].origin).toBeUndefined();
+// 〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕这里原来三条钉前端 `mergeSearchResults`〔散文墓碑〕（倒序 · 总数相加 · 任一被砍 ⇒ truncated · 空）：
+//   合并排序搬进本机后端 `history-search-merge`（`search_core::sort_by_recency`），期望原样搬进
+//   `tests/backend/observe/search_query_tests.rs::the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said`。
+//   这里钉界面那一半：交给它的是什么、用的是不是它合好的那一份、它回的形状不认怎么办。
+
+/** 替身：本机后端合好的一份 —— 刻意**逆着**交进来的顺序回，好认出「界面用的就是它排的，不是自己排的」。 */
+function mergeReply(sent: unknown): ArrayBuffer {
+  const rows = ((sent as { sessions: SessionHits[] }).sessions ?? []).slice().reverse();
+  return chanReply({
+    totalHits: 99,
+    sessionCount: rows.length,
+    truncated: true,
+    sessions: rows,
+  });
+}
+
+describe("合并问本机后端", () => {
+  it("★ 各台的会话行（远端补了 origin）一次交给本机后端合；结果原样用它的（顺序 · 计数 · truncated）", async () => {
+    let sent: unknown = null;
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi"]);
+      if (isChanCall(cmd, args, "history-search")) {
+        return Promise.resolve(linesReply([args.origin === LOCAL_ORIGIN ? row("loc", 100, 1) : row("r", 200, 2)]));
+      }
+      if (isChanCall(cmd, args, "history-search-merge")) {
+        expect(args.origin, "合并问的是本机后端").toBe(LOCAL_ORIGIN);
+        sent = chanArgsJson(args);
+        return Promise.resolve(mergeReply(sent));
+      }
+      return Promise.resolve(undefined);
+    });
+    const got = await searchAllMachines(Q);
+    expect((sent as { sessions: SessionHits[] }).sessions.map((s) => [s.sessionId, s.origin])).toEqual([
+      ["loc", undefined],
+      ["r", "pi"],
+    ]);
+    expect(got.sessions.map((s) => s.sessionId)).toEqual(["r", "loc"]);
+    expect([got.totalHits, got.sessionCount, got.truncated]).toEqual([99, 2, true]);
   });
 
-  it("★ `K-R100`：任一台任一会话被截断 ⇒ 整体 truncated（反空真：都没截断时不许乱亮；本机那台同样算）", () => {
-    expect(mergeSearchResults([mk("loc", 100, 1), { ...mk("rem", 200, 12, "pi"), hitsTruncated: true }]).truncated).toBe(true);
-    expect(mergeSearchResults([{ ...mk("loc", 100, 12), hitsTruncated: true }, mk("rem", 200, 1, "pi")]).truncated).toBe(true);
-    expect(mergeSearchResults([mk("loc", 100, 1), mk("rem", 200, 1, "pi")]).truncated).toBe(false);
-  });
-
-  it("一条都没有 ⇒ 空结果（不是「索引中」）", () => {
-    expect(mergeSearchResults([])).toEqual({ totalHits: 0, sessionCount: 0, truncated: false, sessions: [] });
+  it("本机后端回的形状不认 ⇒ 抛（不自己补、不自己排）；正控：认得的那一形照收", () => {
+    const ok = { totalHits: 1, sessionCount: 1, truncated: false, sessions: [mk("a", 1, 1, "pi")] };
+    expect(decodeMerged(ok).sessions[0].origin).toBe("pi");
+    for (const bad of [
+      { ...ok, extra: 1 },
+      { ...ok, sessionCount: 2 },
+      { ...ok, sessions: [{ sessionId: "a" }] },
+      { ...ok, sessions: [{ ...mk("a", 1, 1), origin: 3 }] },
+      null,
+    ]) {
+      expect(() => decodeMerged(bad)).toThrow(/读不懂/);
+    }
   });
 });
 
@@ -134,15 +174,19 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
         if (args.origin === LOCAL_ORIGIN) return Promise.resolve(linesReply([row("loc", 100, 1)]));
         return args.origin === "pi" ? Promise.resolve(linesReply([row("r", 200, 2)])) : Promise.reject(NO_CHANNEL);
       }
+      if (isChanCall(cmd, args, "history-search-merge")) return Promise.resolve(passMerge(args));
       return Promise.resolve(undefined);
     });
     const got = await searchAllMachines({ ...Q, includeTools: true });
+    // 顺序归本机后端（替身原样回）；这里只核「活着的两台都进了合并、坏的那台跳过、远端补 origin」。
     expect(got.sessions.map((s) => [s.sessionId, s.origin])).toEqual([
-      ["r", "pi"],
       ["loc", undefined],
+      ["r", "pi"],
     ]);
     expect(got.totalHits).toBe(3);
-    const asked = invokeMock.mock.calls.filter((c) => c[0] === "chan_call").map((c) => c[1] as ChanCallArgs);
+    const asked = invokeMock.mock.calls
+      .filter((c) => isChanCall(String(c[0]), c[1], "history-search"))
+      .map((c) => c[1] as ChanCallArgs);
     expect(asked.map((a) => [a.origin, a.op]).sort()).toEqual(
       [
         [LOCAL_ORIGIN, "history-search"],
@@ -163,6 +207,7 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
       if (isChanCall(cmd, args, "history-search")) {
         return args.origin === LOCAL_ORIGIN ? Promise.reject(NO_CHANNEL) : Promise.resolve(linesReply([row("r", 1, 1)]));
       }
+      if (isChanCall(cmd, args, "history-search-merge")) return Promise.resolve(passMerge(args));
       return Promise.resolve(undefined);
     });
     await expect(searchAllMachines(Q)).rejects.toBeTruthy();
@@ -171,12 +216,20 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
   it("没配远端 ⇒ 只问本机那一台", async () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) =>
       Promise.resolve(
-        cmd === "list_remote_mcp_origins" ? [] : isChanCall(cmd, args, "history-search") ? linesReply([row("loc", 1, 4)]) : undefined,
+        cmd === "list_remote_mcp_origins"
+          ? []
+          : isChanCall(cmd, args, "history-search")
+            ? linesReply([row("loc", 1, 4)])
+            : isChanCall(cmd, args, "history-search-merge")
+              ? passMerge(args)
+              : undefined,
       ),
     );
     const got = await searchAllMachines(Q);
     expect(got.totalHits).toBe(4);
-    const asked = invokeMock.mock.calls.filter((c) => c[0] === "chan_call").map((c) => (c[1] as ChanCallArgs).origin);
+    const asked = invokeMock.mock.calls
+      .filter((c) => isChanCall(String(c[0]), c[1], "history-search"))
+      .map((c) => (c[1] as ChanCallArgs).origin);
     expect(asked).toEqual([LOCAL_ORIGIN]);
   });
 });

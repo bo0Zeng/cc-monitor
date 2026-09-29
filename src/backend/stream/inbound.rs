@@ -195,6 +195,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔U4b · 第四波〕这条会话的记录还在不在（resume 一跳先问，`设计/01 §6.2` 最后一条）。
     "history-record",
     "history-search",
+    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份（界面逐台扇出，合并排序在本机后端）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "history-search-merge",
     "history-sessions",
     // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品（列 ＋ 挑 ＋ 读 ＋ 解析）；替掉只列候选的 `history-subagents`。
     "history-subagent",
@@ -2474,6 +2476,22 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::faces::read_face::answer(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FIX4 · `90 §3` J15 · 主会话 09-28 裁 B〕**各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_core::sort_by_recency`）·
+    //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `acct-iso-cmd`）。
+    CommandSpec {
+        name: "history-search-merge",
+        doc_anchor: Some("#### `history-search-merge`"),
+        codes: &["bad_args"],
+        fields: &["sessionCount", "sessions", "totalHits", "truncated"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::faces::read_face::answer(&r.cmd, &r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     // 〔MOD〕子 agent 那一份出成品（`read_face.rs` 那一臂 ＋ `history_query::pick_subagent`）。同族同档、同一个只读宿主。
