@@ -553,7 +553,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     AUTH_STYLE_FIELD: NONE,
     BASE_URL_FIELD: NONE,
     create_private: NONE,
-    // 〔DATA-HOME · V160〕`path_under_claude_home` 改名：凭据文件住数据目录根上。
+    // 〔DATA-HOME · V160〕凭据文件住数据目录根上（原先按 claude 家拼的那个函数改名成它）。
     credentials_path: NONE,
     DEFAULT: NONE,
     expose_for_auth_header: NONE,
