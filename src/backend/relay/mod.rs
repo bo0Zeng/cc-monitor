@@ -2,7 +2,7 @@
 //!
 //! # 🔴 通信层成员 `COMM-LAYER-MEMBER`〔`设计/99 §4 P16`，2026-09-22 用户裁〕
 //!
-//! 登记那一侧在 `tests/bridge/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
+//! 登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`（两向集合相等）。
 //! 盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 十一条一起管着。
 //!
 //! **凭什么**：本文件装着 `Destination` / `Destinations` / `Mode` / `RouteKey` /

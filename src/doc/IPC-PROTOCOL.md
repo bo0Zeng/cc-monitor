@@ -12,12 +12,12 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 >    ⇒ **下文凡是提到 `shared/ccm` 的地方都是历史**，留着是为了解释「今天为什么长这样」，
 >    不是现状。看到它请读成「当年那个 bash 启动器」。
 > 2. **目录名**：2026-09-17 重组之后顶层**只有 `src/` 与 `tests/`**。
->    `src-tauri/` → `src/bridge/` · `remote-daemon-proto/` → `src/backend/` ·
+>    `src-tauri/` → `src/frontend/shell/` · `remote-daemon-proto/` → `src/backend/` ·
 >    `doc/` → `src/doc/` · `e2e/`·`evidence/`·`scripts/`·`hooks/` → `tests/` 下。
 >    下文若出现旧名，同样按历史读。
 
 不在本文档范围：
-- Tauri 内部 IPC（前后端 `invoke` / `emit`）— 见 [`../../src/bridge/README.md`](../../src/bridge/README.md) IPC 清单
+- Tauri 内部 IPC（前后端 `invoke` / `emit`）— 见 [`../../src/frontend/shell/README.md`](../../src/frontend/shell/README.md) IPC 清单
 - monitor 自己的 user config — `config.json` schema 在 TS 端 [`../config.ts`](../config.ts) 定义
 
 ---
@@ -28,7 +28,7 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 1. **UTF-8 无 BOM**。PS 5.1 `Out-File -Encoding utf8` 会写 BOM（前 3 字节 `EF BB BF`），导致 `serde_json::from_str` 失败。源头：PS 端用 `[System.IO.File]::WriteAllText(path, json, [System.Text.UTF8Encoding]::new($false))`。接收端 Rust：`raw.trim_start_matches('\u{feff}')` 兜底剥任何 BOM 再 parse。
 2. **原子写**。两种实现：
-   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../../src/bridge/src/config.rs)。
+   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../../src/frontend/shell/src/config.rs)。
    - **PS 端**：直接 `[System.IO.File]::WriteAllText` 即可，单调用本身原子。
 
    **作用范围**：本条 `MoveFileExW` 路径**仅适用于** `~/.claude/claudecode-frontend/` 下 monitor 自己产物（`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-registry/<PID>.json` 等）。**写用户文件**（PowerShell profile 等 monitor data dir 之外的文件）**必须**改走 `ReplaceFileW + backup + 写后校验`——理由是保留 dst 的 ACL/ADS/创建时间 + OneDrive placeholder 风险，详 [INVARIANTS.md § 4](INVARIANTS.md)。两者边界由 INVARIANT § 2（monitor data dir 永远在 `~/.claude/claudecode-frontend/`）锁定，不会漂移。
@@ -61,7 +61,7 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
     "font-size-base": 14
     // ... 见 src/theme.ts TOKENS
   },
-  "diagnostics": {                            // 可选；v2.0.0 起；缺省值见 src/bridge/src/logging.rs
+  "diagnostics": {                            // 可选；v2.0.0 起；缺省值见 src/frontend/shell/src/logging.rs
     "log_enabled": true,                      // 写 logs/monitor.YYYY-MM-DD.log；切换需重启
     "log_level": "info",                      // trace/debug/info/warn/error/off；reload 立即生效
     "error_toast": true,                      // ERROR 级别弹右下角 toast；立即生效
@@ -813,7 +813,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 用户 09-04 逐字裁定：「**ccm不要管找不到, 统一走后端**」。
 
 **这一条是协议的读者要知道的行为变化，不是 ccm 的内部细节** —— 因为 `shared/ccm`
-经 `src/bridge/src/sftp.rs` 的 `include_str!` 被**部署到每一台远端机器**上，而这条协议
+经 `src/frontend/shell/src/sftp.rs` 的 `include_str!` 被**部署到每一台远端机器**上，而这条协议
 就是它与那台机器上的后端之间的契约。
 
 | | 09-04 之前 | 09-04 之后 |
@@ -1073,7 +1073,7 @@ SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮
 
 🔴 **「重走」这件事后端自己不做** —— 后端那条零定时器铁律不许它长出节拍
 （`设计/60 §3.5.2a`：机制在后端、偏好由后端声明、**节拍在调用方**）。
-〔⚠ 2026-09-21 订正：原话「**今天这一族里没有一条命令能触发重走**」**在 `24f` 第三刀（同日更早）落地时就已经假了** —— `files-index-rebuild` 就是那条命令。而它当时没人发；波 β 的 `P2` 之后，发它的是 `src/bridge/src/filewin/find.rs`。⇒ 今天的真话是：**这一族有一条命令能触发重走，而且窗口那一侧真的会在后端说没索引／过期时发它**。〕
+〔⚠ 2026-09-21 订正：原话「**今天这一族里没有一条命令能触发重走**」**在 `24f` 第三刀（同日更早）落地时就已经假了** —— `files-index-rebuild` 就是那条命令。而它当时没人发；波 β 的 `P2` 之后，发它的是 `src/frontend/shell/src/filewin/find.rs`。⇒ 今天的真话是：**这一族有一条命令能触发重走，而且窗口那一侧真的会在后端说没索引／过期时发它**。〕
 
 ⚠ 三个平台上的保鲜机制**本来就不是一件事**（Linux/Windows/macOS 各一套，
 macOS 那一格是文献读数、没实测）。跨 target 要判的是「**能力在不在**」，
@@ -3836,7 +3836,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   两侧代码各自自陈：`src/backend/dial/mod.rs` 头注写着**为什么**改
   （`ssh_source` 有一条判据**逐字禁止它自己往流里写** —— 写的能力在 `U8a-2a` 整个交给了
   `ParkedWriter`；硬走 stdin 就得去放宽那条判据，代价不值），
-  `src/bridge/src/ssh_source.rs` 那一侧是 `.env(DIAL_REQUEST_ENV, …)`。
+  `src/frontend/shell/src/ssh_source.rs` 那一侧是 `.env(DIAL_REQUEST_ENV, …)`。
 - 线上形状（**不是** §10 上面那套 wire 协议，那份一个字节没动）：
 
   ```text
@@ -3869,7 +3869,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
   **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
   装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**、
   裸 `monitor.exe` 那份 **0 个**。F05b 已随 v3.7.0 发出去：`externalBin` 住
-  `src/bridge/tauri.sidecar.conf.json`，发版那一步用 `--config` 注入（**刻意不进基础
+  `src/frontend/shell/tauri.sidecar.conf.json`，发版那一步用 `--config` 注入（**刻意不进基础
   `tauri.conf.json`**，进了 `cargo test` 也要一份当前 target 的二进制）。
   ⇒ 「安装包没有 `externalBin`」与「exe 旁那处也空」**两句都不成立**；
   ★ 这也说明**「基础配置里没有」≠「没配」**——照 `tauri.conf.json` grep 得到的是只在开发树为真的答案。
@@ -4113,7 +4113,7 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
 无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
 
 > ⚠ **上面那句里的「N 行」与那份名单由机器对账**（`KR58D2`，判据住
-> `src/bridge/src/sftp.rs::tests::the_protocol_doc_sentence_about_the_alias_block_matches_the_file`）：
+> `src/frontend/shell/src/sftp.rs::tests::the_protocol_doc_sentence_about_the_alias_block_matches_the_file`）：
 > 两样都现算自 `src/shared/ccm-aliases.sh` 自己，**改一半会当场红**。本区最高频的那条病
 > 就是「数与名单同句、只改一半」，09-11 现打逮到的活体正是这一句 ——
 > 它当时写着「29 行」而文件已经 35 行。
@@ -4292,4 +4292,4 @@ deadline 是 **3000ms**（v2 从 800ms 提上来，覆盖 monitor 冷启动；�
 4. **原子写**：双端都用原子机制（PS `[IO.File]::WriteAllText` / Rust `MoveFileExW`）
 5. **反序列化容错**：未知字段忽略（serde `#[serde(default)]` + `#[serde(other)]` enum variant）
 6. **生命周期**：明确"短暂 vs 持久"，短暂的要明确超时机制
-7. **更新 [`../../src/bridge/README.md`](../../src/bridge/README.md) 模块表 + [INVARIANTS.md](INVARIANTS.md)**
+7. **更新 [`../../src/frontend/shell/README.md`](../../src/frontend/shell/README.md) 模块表 + [INVARIANTS.md](INVARIANTS.md)**

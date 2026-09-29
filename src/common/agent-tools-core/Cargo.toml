@@ -2,7 +2,7 @@
 name = "agent-tools-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "agent 的工具词表：哪些工具名算「展开 = 子会话」（agent 工具）—— monitor 渲染 agent 卡与后端出会话事实共用的唯一一份（无 IO、无平台依赖）。"
 
 # **零依赖**。同 acct-core / gate-core / shell-quote-core 的约束：backend 是 Linux-only 的静态 musl 二进制、

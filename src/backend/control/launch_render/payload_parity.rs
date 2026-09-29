@@ -5,11 +5,11 @@
 //! （值就是它最后一次渲出、与 Rust 对过的原样）。下面的历史段落照旧留着 —— 它们讲的「自洽夹具」
 //! 纪律今天仍是本对拍的骨架：夹具入库，两侧各自与它比。
 //!
-//! # 为什么这条判据活在 `src/bridge` 而不在 crate 里
+//! # 为什么这条判据活在 `src/frontend/shell` 而不在 crate 里
 //!
 //! 渲染器**曾经**在零外部依赖的共享 crate 里（同 branch-core / usage-core / acct-core /
 //! guard-core 的约束：backend 是 Linux-only 静态 musl 二进制，一旦引入平台相关的东西共享就破了）。
-//! 读夹具要 `serde_json`，而 `src/bridge` 本来就有。⇒ 内核保持纯，判据放在有依赖的这一侧。
+//! 读夹具要 `serde_json`，而 `src/frontend/shell` 本来就有。⇒ 内核保持纯，判据放在有依赖的这一侧。
 //!
 //! # 为什么不是自洽夹具（U7-4 的病根）
 //!

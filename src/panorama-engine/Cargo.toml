@@ -13,7 +13,7 @@ edition = "2021"
 publish = false
 
 # Standalone crate，**刻意不进任何 workspace**（同 `src/backend` 那条理由）：
-# 它按目标平台单独编、单独随后端部署；拖进 `src/bridge` 那个 workspace 等于让 monitor 的
+# 它按目标平台单独编、单独随后端部署；拖进 `src/frontend/shell` 那个 workspace 等于让 monitor 的
 # `cargo test --all` 替它背那 11 棵 C 构建树（9 门 grammar ＋ tree-sitter ＋ SQLite）。
 #
 # 🔴 住址**不许**是 `src/common/`：`panorama_locus_guard` 正题④ —— 两棵树都 path 依赖

@@ -1,6 +1,6 @@
 //! 〔SR1b · 2026-09-24〕**合成 SFTP 服务端**（台架）：`dial/sftp.rs` 与 `control/transfer.rs` 两族判据共用。
 //!
-//! 来历：monitor 那一侧 `tests/bridge/sftp_staging_tests.rs`（F7c）那台「逐条记改动路径」的服务端，
+//! 来历：monitor 那一侧 `tests/frontend/shell/sftp_staging_tests.rs`（F7c）那台「逐条记改动路径」的服务端，
 //! SFTP 客户端搬进本机后端时一起搬过来，再补三样本仓那台没有的：
 //! - **`realpath`**：远端写围栏靠它（`"."` ⇒ home；逐段解链接；不在 ⇒ `NoSuchFile`，同 OpenSSH 的 `realpath(3)`）；
 //! - **目录链接**（`links`）：「`bin/x` 是一条指向 `~/.ssh` 的链接」那一形要一台真会解链接的服务端才造得出来；

@@ -868,4 +868,4 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 mod tests;
 
 // 〔MIG-2〕标识符放行判定的生成物（`judgment-rules.ts`）那一段没跟着搬：它只读共享 crate 的常量，与载荷无关，留在 monitor
-//   （`src/bridge/src/backend/control/mod.rs` 的测试段）。
+//   （`src/frontend/shell/src/backend/control/mod.rs` 的测试段）。

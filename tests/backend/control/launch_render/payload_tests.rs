@@ -208,7 +208,7 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     // ⚠ 走 `scan_tree_excluding(.., &[])` 而不是 `scan_tree!`：**明写「一份都不排除」**。
     // `scan_tree!` 在这里已经是空转的（`file!()` 给的折返路径后缀比不命中），
     // 而一个空转的自摘和一个真在工作的自摘**长得一模一样** —— 那正是条 73 禁的那一形。
-    let files: Vec<(std::path::PathBuf, String)> = ["src/bridge/src", "src/backend"]
+    let files: Vec<(std::path::PathBuf, String)> = ["src/frontend/shell/src", "src/backend"]
         .iter()
         .flat_map(|t| guard_core::scan_tree_excluding(&root.join(t), &["rs"], &[]))
         .collect();
@@ -727,7 +727,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 }
 
 // 〔MIG-2〕`us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
-//   没跟着载荷内核搬：留在 monitor 测试段（`tests/bridge/backend/control/payload_judgment_rules.rs`）。
+//   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/backend/control/payload_judgment_rules.rs`）。
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
 #[test]
@@ -1304,7 +1304,7 @@ fn the_outside_export_gate_really_reddens_on_a_live_breach() {
 /// | B | `history.rs` 的 `$env:` 分支 | **接上**（`relay_env_prefix_ps`），⚠ 只到「编得过」 |
 /// | C | `shared/ccm` | **没接** —— 见下面 `NOT_WIRED` 里的理由 |
 /// | ~~D~~ | ~~TS 兜底渲染器那一处~~ | 〔LR2 2026-09-25〕那一族连同它的发射点删了（`设计/00 §2.5 ④`）⇒ 人群 5 → 4 |
-/// | E | `src/bridge/src/launch.rs` 的 `.env(k, v)`（开窗那一跳，进程级） | **没接** |
+/// | E | `src/frontend/shell/src/launch.rs` 的 `.env(k, v)`（开窗那一跳，进程级） | **没接** |
 ///
 /// ⚠ **本条钉的是「决定点的个数」，不是「每一处都接上了」** ——
 /// 没接上的那两处（C · E）各有一条写下来的理由。
@@ -1383,7 +1383,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         //   `设计/00 §2.5 ④` 删了，发射点随之没了 ⇒ 人群 5 → 4（决定点少了一个，方向是对的）。
         Site {
             what: "E · launch.rs（进程级，开窗那一跳）",
-            src: include_str!("../../../../src/bridge/src/launch.rs"),
+            src: include_str!("../../../../src/frontend/shell/src/launch.rs"),
             // 3 处：POSIX 开窗 1 + Windows 两个 spawn 点各 1（`launch.rs` 自己那条
             // `every_terminal_window_backend_opens_carries_the_backend_path` 也数这个数）。
             needle: ".env(k, v)",

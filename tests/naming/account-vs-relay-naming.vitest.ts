@@ -422,7 +422,7 @@ export const V114_TOMBSTONED_FILES = ["src/backend/accounts/upstream/mod.rs", "s
 
 /** 墓碑标记：从 `structural_scan.rs` 那一份常量声明里现抠（不在本文件写第二份字面量）。 */
 export function proseTombstoneMark(): string {
-  const src = readFileSync(resolve(REPO_ROOT, "src/bridge/src/structural_scan.rs"), "utf8");
+  const src = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/structural_scan.rs"), "utf8");
   const m = /pub const PROSE_NAME_TOMBSTONE: &str = "([^"]+)";/.exec(src);
   if (!m) throw new Error("structural_scan.rs 里抠不出 PROSE_NAME_TOMBSTONE —— 常量改名或搬家了");
   return m[1];

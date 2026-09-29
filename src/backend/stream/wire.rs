@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Serializes with an external `kind` tag, e.g.
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
-/// `src/bridge/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
+/// `src/frontend/shell/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
 /// `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]

@@ -10,7 +10,7 @@
 //! 的那一条：「它会在那天**故意变红**，那是提醒，不是障碍」）。
 //!
 //! 「写成『以后记得』= **没有触发器**」这一族本仓治过一次，逐字住
-//! `src/bridge/src/backend/mod.rs:22-26`：「那是个**没有触发器的等待**…
+//! `src/frontend/shell/src/backend/mod.rs:22-26`：「那是个**没有触发器的等待**…
 //! **别再把这句读成「等某个人想起来」**」。⇒ 本件明确不做的那一半必须有东西钉着。
 //!
 //! # 它钉的是哪三处「恰好一个客户端」
@@ -89,7 +89,7 @@
 //! - **它保证不了什么**（诚实边界，别读成证明）：
 //!   1. **② 要求 `::` 紧挨着 `channel(`。** `use tokio::sync::mpsc::channel;` 之后裸调
 //!      `channel(8)` / `channel::<Frame>(8)` —— ①②**都看不见**。
-//!      （现打于 `a68fd25`（工作树 `.claude/worktrees/k-g5`，**未铺** `src/bridge/embedded-backends/`），
+//!      （现打于 `a68fd25`（工作树 `.claude/worktrees/k-g5`，**未铺** `src/frontend/shell/embedded-backends/`），
 //!      分母 = 全 crate 生产段 **72 个文件 / 255 999 字节**
 //!      （当年本模块与被扫的树同住一棵、`scan_tree!` 的自摘真的落下过一刀；
 //!      剖分之后本模块住 `tests/backend/`，**根本不在这个分母里**，
@@ -382,7 +382,7 @@ mod tests {
     /// （在块注释里写一句 `mpsc::channel::<Frame>(` 就把计数顶上去 / 把真的那处注掉却仍计数），
     /// 而上面两条判据一个数都不会动。**本条就是看着那件事的那道判据。**
     ///
-    /// 现打（09-04，本工作树，**未铺** `src/bridge/embedded-backends/`）：backend `src/` 下
+    /// 现打（09-04，本工作树，**未铺** `src/frontend/shell/embedded-backends/`）：backend `src/` 下
     /// **73 份 `.rs`，走兜底 0 份**。地板是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
     /// 🔴 〔条 67 · 2026-09-18〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
     /// ⇒ 删了 `sidecars/` 整棵树四份 `.rs`（2 008 行）＋ `platform/landing.rs`（它的唯一消费者没了）。

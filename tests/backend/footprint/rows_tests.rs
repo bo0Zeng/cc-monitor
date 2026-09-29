@@ -861,7 +861,7 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
     use guard_core::pin_definition;
 
     // ① ccm：`sftp.rs` 里那个常量就是真落点
-    let sftp = include_str!("../../../src/bridge/src/sftp.rs");
+    let sftp = include_str!("../../../src/frontend/shell/src/sftp.rs");
     // 〔E2 · V28〕落点就是后端本身：`sftp.rs` 的落点常量取自 `relay_route_core`（两半同一份），那一份逐字是 `.cc-monitor/bin/ccm`。
     pin_definition(
         sftp,

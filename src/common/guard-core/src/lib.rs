@@ -1231,7 +1231,7 @@ pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
 /// 09-12 现打（`KR75D3`，量法与逐份清单住 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）：
 /// 全仓 git 跟踪的 `.rs` **230** 份，落在本函数三个调用点的根之下的 **198** 份，
 /// **32 份在射程之外**（其中 `src/panorama-engine/vendor/code-picture-core` 23 份、
-/// `src/common/*-core` 八份、`src/bridge/build.rs` 一份）。
+/// `src/common/*-core` 八份、`src/frontend/shell/build.rs` 一份）。
 /// 那 32 份里加一个剥法认不出的测试模块 —— **实测谁都不红**（死值验读数在同一份 evidence 里）。
 /// 🔴 这是**读数不是现状判词**：要不要把射程铺过去归 PM，别顺手在这里改根。
 ///
@@ -1314,7 +1314,7 @@ fn path_suffix_matches(hay: &str, needle: &str) -> bool {
 /// # 🔴 它在本仓**几乎处处不生效，而「几乎」那两个字是量出来的**〔`P4` 2026-09-21 现打〕
 ///
 /// 本仓所有判据都由 `#[path]` 挂进生产树 ⇒ `file!()` 给的是
-/// `../../tests/backend/X.rs` / `../../../tests/bridge/X.rs` 这种**带 `..` 的折返路径**。
+/// `../../tests/backend/X.rs` / `../../../tests/frontend/shell/X.rs` 这种**带 `..` 的折返路径**。
 /// 而后缀比的草垛是 `root.join(相对路径)` 拼出来的**字符串** ——
 /// ⇒ **它命不命中，只取决于那个 `root` 自己的字符串里有没有同一段 `..`。**
 ///
@@ -1516,7 +1516,7 @@ fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, 
 ///
 /// 与 [`scan_tree_excluding_self`] 同一把尺（[`path_suffix_matches`]）：
 /// 「整串相等」**或**「匹配点前面恰好是 `/`」，只会摘得更严、绝不多摘。
-/// 名单里写**仓根相对路径**（如 `tests/bridge/structural_scan_tests.rs`），
+/// 名单里写**仓根相对路径**（如 `tests/frontend/shell/structural_scan_tests.rs`），
 /// 别写裸基名 —— `K-R75` 逐字：两棵树里同名文件是常态。
 ///
 /// # Panics

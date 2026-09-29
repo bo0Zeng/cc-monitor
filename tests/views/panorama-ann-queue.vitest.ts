@@ -7,7 +7,7 @@
 //   下面 `Q0` 那条把这件事当场验掉（渲染方法不是 mock、侧栏就挂在视图根下）。
 // 买到：按钮 → 命令 → 重列 这条接线，与「待审 / 已生效」按 core 给的 status 分组。
 // **买不到**：core 那侧「Proposed 对 agent 不可见」—— 那一半在
-//   `tests/bridge/panorama_tests.rs` 的真引擎判据里。
+//   `tests/frontend/shell/panorama_tests.rs` 的真引擎判据里。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Annotation } from "../../src/panorama/types";
 

@@ -223,7 +223,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
  *
  * # 为什么这件事今天只有 token 答得出
  *
- * `CCM_LAUNCH_ID` 全树**只有一处写**（`src/bridge/src/history.rs` 里那个
+ * `CCM_LAUNCH_ID` 全树**只有一处写**（`src/frontend/shell/src/history.rs` 里那个
  * `LAUNCH_ID_VAR`，`launcher_identity_registry` 那张棘轮表数着它，多一处就红）
  * ⇒ 进程环境里带着它，就说明这条会话是从本工具这条路起来的。
  * 而 `--session-accounts` 出参里其余每一格（`configDir` / `account` / `bare` /

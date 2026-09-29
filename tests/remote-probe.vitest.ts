@@ -145,7 +145,7 @@ describe("请求与进度", () => {
   });
 
   it("进度流名与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 同一个串", () => {
-    const rs = readFileSync(resolve(__dirname, "..", "src/bridge/src/event_replay.rs"), "utf8");
+    const rs = readFileSync(resolve(__dirname, "..", "src/frontend/shell/src/event_replay.rs"), "utf8");
     expect(/pub const PROBE_PROGRESS_KIND: &str = "([^"]+)";/.exec(rs)?.[1]).toBe(PROBE_PROGRESS_KIND);
   });
 });

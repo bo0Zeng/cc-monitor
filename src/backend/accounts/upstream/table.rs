@@ -43,7 +43,7 @@
 //!
 //! ⚠⚠ **上表第 4 行那个「当时的住址」是 `server.rs:24`** —— 逐条说清它为什么还写着行号：
 //! ① 它是 `D1` 那一拍的**引文**，不是指路（今天那个常量住上游选择）；
-//! ② 它**没被改成符号地址**，是因为 `tests/bridge/structural_scan_tests.rs::INVENTORY`
+//! ② 它**没被改成符号地址**，是因为 `tests/frontend/shell/structural_scan_tests.rs::INVENTORY`
 //!    里有它一行**存量登记**，而那张表**不在本拍的写区**——
 //!    把这句话删干净会让「登记表保鲜」那条断言红在一行我删不掉的登记上；
 //! ③ 它也**不能写成 `server.rs::<那个常量名>`**：那个符号今天住 `accounts/mod.rs`，

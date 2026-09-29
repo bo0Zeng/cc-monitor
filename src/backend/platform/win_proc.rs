@@ -13,7 +13,7 @@
 //!
 //! monitor 侧当年 `session_map.rs` 那份进程判活（〔LOC1b · 4D〕随本机判活改由本机后端的帧来删了）的 `cfg(windows)` 那支
 //! （`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` ＋ `GetExitCodeProcess == STILL_ACTIVE`
-//! ＋ `GetProcessTimes`）在 Windows 用户机上跑过很久（`tests/bridge/rust_timer_registry_tests.rs`
+//! ＋ `GetProcessTimes`）在 Windows 用户机上跑过很久（`tests/frontend/shell/rust_timer_registry_tests.rs`
 //! 那条「F12 解锁闹钟」的头注逐字）。本文件用的是**同一组 Win32 调用、同一个访问掩码**。
 //! 差别只有两处，都是为了与 Linux 那一臂同契约：
 //! ① **「拒绝访问」算存在**：Linux 的 `/proc/<pid>` 对别的用户的进程照样存在，
@@ -25,7 +25,7 @@
 //! # 这里刻意不用 `windows` / `windows-sys` crate
 //!
 //! 本 crate 今天一条 Windows 专属依赖都没有；为四个 `kernel32` 函数加一条依赖（还要动 lock）
-//! 不如照 `src/bridge/src/utils.rs::to_net_local_ticks` 那处先例手写 `extern "system"`。
+//! 不如照 `src/frontend/shell/src/utils.rs::to_net_local_ticks` 那处先例手写 `extern "system"`。
 //! 签名逐个对着 Win32 文档写：`HANDLE` = 指针宽度（与 `std::os::windows::io::RawHandle` 同形）、
 //! `BOOL` = `i32`、`DWORD` = `u32`。
 //!

@@ -58,12 +58,12 @@ FILES = [
     "tests/evidence/K-R124-ruler.py",
     "tests/evidence/K-R122-ruler.py",
     "tests/evidence/K-G4-platform-ledger.py",
-    "src/bridge/build.rs",
+    "src/frontend/shell/build.rs",
     "src/backend/lib.rs",
     # 〔`19c` 09-19〕⑬ 那一组的两份新被测对象：re-embed 那条命令本体（⑬a–⑬c ＋ ⑬g 真跑它），
     # 与内嵌落点的 gitignore 住址（⑬d 两向对拍）。
     "tests/scripts/re-embed.sh",
-    "src/bridge/.gitignore",
+    "src/frontend/shell/.gitignore",
 ]
 #: 阴性对照那一刀要跑本仓**另一格**也读 `.github/` 的尺子（`K-R122`），它还要 `tests/e2e/` 那些 `.sh`。
 DIRS = ["tests/e2e"]
@@ -81,9 +81,9 @@ RULER = "tests/evidence/K-R124-ruler.py"
 RENDERER = "tests/scripts/release-notes.mjs"
 GATE = "tests/scripts/gate.sh"
 LEDGER = "tests/evidence/K-G4-platform-ledger.py"
-BUILD_RS = "src/bridge/build.rs"
+BUILD_RS = "src/frontend/shell/build.rs"
 REEMBED = "tests/scripts/re-embed.sh"
-GITIGNORE = "src/bridge/.gitignore"
+GITIGNORE = "src/frontend/shell/.gitignore"
 
 ENV_LINE = "  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}"
 CANON_LINE = 'CANON_ENV = "${{ github.event_name == \'push\' || inputs.publish == true }}"'

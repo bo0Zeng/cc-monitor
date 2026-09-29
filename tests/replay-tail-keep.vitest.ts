@@ -26,7 +26,7 @@ function only(src: string, re: RegExp, what: string): number {
 
 describe("〔U3b〕重放尾巴 == 首屏物化上限", () => {
   it("REPLAY_TAIL_KEEP == MATERIALIZE_TAIL_K × materializeUntilFilled 的轮数上限", () => {
-    const rs = read("src/bridge/src/event_replay.rs");
+    const rs = read("src/frontend/shell/src/event_replay.rs");
     // 〔U2 · 第三波〕物化那一族（`MATERIALIZE_TAIL_K` 与 `materializeUntilFilled`）随实时流视图从
     //   `src/tabs.ts` 搬进了 `src/tab-stream-view.ts`，两处写法逐字未动 ⇒ 这里只换住址，两条抽取正则一字不改。
     const ts = read("src/tab-stream-view.ts");

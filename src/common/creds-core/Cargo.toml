@@ -2,14 +2,14 @@
 name = "creds-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "K-H2a：第三方 API key 的**唯一**住址——装它的类型、它落盘的格式、它权限够不够窄的判断。monitor 与远端后端共用。"
 
 # ★★ **本 crate 存在的理由是「一个安全性质只许有一个实现」**〔`K-H2a` 裁三，PM 08-27〕。
 #
-# 读 key 的上游选择（挂在常驻后端进程里的中转上）住 `cc-monitor-backend`（`src/backend/`），它**不依赖 `src/bridge` 整体**，
+# 读 key 的上游选择（挂在常驻后端进程里的中转上）住 `cc-monitor-backend`（`src/backend/`），它**不依赖 `src/frontend/shell` 整体**，
 # 只经 path 依赖吃 `src/common/` 下的共享 crate。所以 key 这件事有三种落点，前两种都是病：
-#   · 只放 `src/bridge` ⇒ 后端的上游选择拿不到，`KS9②`（不开前端也能配）做不成；
+#   · 只放 `src/frontend/shell` ⇒ 后端的上游选择拿不到，`KS9②`（不开前端也能配）做不成；
 #   · 两个 crate 各写一份 ⇒ **一个安全性质两个实现**，什么时候漂开没有任何东西会说。
 # ⇒ 落这里，两边都 depend 它。
 #
@@ -23,7 +23,7 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 #
 # **化解办法是把平台那半做成可选 feature，默认不开**：
 #   · backend 开 `harden`（〔RM1a · GP1〕每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端账号域，`apikey-key-set`）；
-#   · `src/bridge` **不开**（〔US1〕monitor 既不写也不读这份文件 —— 写半边在它那一侧连编都编不进来）。
+#   · `src/frontend/shell` **不开**（〔US1〕monitor 既不写也不读这份文件 —— 写半边在它那一侧连编都编不进来）。
 #   〔TL3 · 审计 F 🔴-3〕先前这两行正好说反（monitor 开、backend 不开）：那是 `K-H2a` 裁四「backend 只许读」时的分工，RM1a / GP1 / US1 之后倒过来了。
 # ⇒ 默认构建下本 crate **零依赖、零平台 cfg**，那条共享约束原样成立；
 #   平台原语只在开了 `harden` 的那一侧存在。
@@ -35,7 +35,7 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 [dependencies]
 # 与 `branch-core` / `usage-core` 逐字同形（两者都是 `serde_json = "1"`）。
 # 现打（08-27）：`serde_json` 在**两份** lock 里各已有 1 条
-# （`grep -c '^name = "serde_json"'`：`src/bridge/Cargo.lock` ⇒ 1 · `src/backend/Cargo.lock` ⇒ 1）
+# （`grep -c '^name = "serde_json"'`：`src/frontend/shell/Cargo.lock` ⇒ 1 · `src/backend/Cargo.lock` ⇒ 1）
 # ⇒ 本条**不给任何一份 lock 新增条目**。
 # 〔CP2c〕对外文案表的取文口（`perm.rs` 的判定出的那几句话 —— 本 crate 被 monitor 与后端同时链接，
 # 够不着任何一个宿主的读口；各写一份译法就是 `91 §5.1` 的先例 B 形）。仓内 crate，只依赖 serde_json。
@@ -76,7 +76,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 #   · `PSID` / `ACL` / `TOKEN_USER` / `GetSecurityDescriptorDacl` / `GetTokenInformation` ⇒ `Win32_Security`
 #   · `OpenProcessToken` / `GetCurrentProcess` ⇒ `Win32_System_Threading`
 #   · `LocalFree` / `HLOCAL` / `HANDLE` / `BOOL` ⇒ `Win32_Foundation`
-# 版本钉 `0.56` 是为了与 `src/bridge/Cargo.toml:128` 那条**同版本**——不同版本的
+# 版本钉 `0.56` 是为了与 `src/frontend/shell/Cargo.toml:128` 那条**同版本**——不同版本的
 # `PSID`/`ACL` 类型不互通（同文件 `:143-145` 已经为 `windows-wv2` 记过这一课）。
 windows = { version = "0.56", optional = true, features = [
     "Win32_Foundation",

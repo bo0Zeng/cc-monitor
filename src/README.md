@@ -2,7 +2,7 @@
 
 Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— ~12K 行 TS 的中型应用（根 README 口径），原生 DOM 依旧足够——分层靠模块边界与本导览维持。
 
-本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/bridge/README.md`](../src/bridge/README.md)。
+本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/frontend/shell/README.md`](../src/frontend/shell/README.md)。
 
 ## 入口
 
@@ -46,7 +46,7 @@ index.html  ─> /src/main.ts (defer)
 | **format.ts** ⭐ v2.6 | 时间 / 字节格式化合并：消息卡用 `formatTimestampShort`（永远 hh:mm）；历史浏览器用 `formatTimestampSmart`（当天 hh:mm，跨天加日期）；`formatBytes` 统一精度 | `formatTimestampShort / formatTimestampSmart / formatBytes` |
 | **tmux-name-mint.ts** (FE1 · FIX4) | 起会话要的 tmux 名：问那台后端 `tmux-name-mint`（〔FIX4 · `设计/90 §3` J7〕派生 ＋ 撞名避让只在后端 `control/ccm/plan.rs`；原 `remote-launch.ts` 那份铸名口删了）；问不到 ⇒ 不铸名。另有分叉要的名单读口 `readTmuxListing` | `mintFreshTmuxName / mintForkTmuxName / refuseUnmintable / readTmuxListing` |
 | **remote-launch-run.ts** (B14-F41) | 远端拉起执行器：开终端（`terminal-open.ts::openTerminal`，〔FIX4 · ⑬〕ssh 外壳本机后端渲、monitor 开窗）→ 失败回退把命令复制到剪贴板 + toast 提示（happy-path 拉终端，degrade-path 复制） | `runRemoteResume / runRemoteResumeTmux / runRemoteLauncher / runRemoteAttach` |
-| **agent-profile.ts** (F-MA) | 前端侧 agent 画像——把散落在 `cards/*` / `tabs.ts` 的 **Claude Code 专属工具名 / 进程名 / 嵌套 env** 常量收敛到一处（对应 Rust `src/bridge/src/adapter`）。第一刀值不变、行为零变化，接第二个具体 agent 时这里按 agent 切换；只收敛「工具名字符串」，不拆记录模型 | `AGENT_PROFILE`（agentTools / interactiveTools / diffTools / mdTools / livenessProcessNames 常量集） |
+| **agent-profile.ts** (F-MA) | 前端侧 agent 画像——把散落在 `cards/*` / `tabs.ts` 的 **Claude Code 专属工具名 / 进程名 / 嵌套 env** 常量收敛到一处（对应 Rust `src/frontend/shell/src/adapter`）。第一刀值不变、行为零变化，接第二个具体 agent 时这里按 agent 切换；只收敛「工具名字符串」，不拆记录模型 | `AGENT_PROFILE`（agentTools / interactiveTools / diffTools / mdTools / livenessProcessNames 常量集） |
 | **turn-notify.ts** (B14-F42) | 完成一轮系统通知：`turnEndNotifier` 单例 `observe(sid, tabTitle, payload, inBatch)` 判 turn-end 弹通知，四门（批量 / 新鲜度 / 防抖 / 聚焦）+ 插件权限懒检查；`turn-notify.vitest.ts` 锁 | `turnEndNotifier.observe(...)` |
 | **remote-health.ts** (SS-F #32) | listen `remote-health` 事件，按 `(origin,kind)` 节流后弹灰色 info toast：`overflow`（拥塞丢行）/ `version`（旧后端降级）/ `degraded`（B14-F59 daemonless 降级模式，`headlineFor` 映射「远端降级模式」）。`remote-health.test.ts` 锁纯逻辑 | `bindRemoteHealth() / headlineFor(kind)` |
 | **settings/remote-section.ts** (issue #15 + B14) | 设置面板「远端」区：全局启用 toggle + 每台主机卡（label/host/port/user/密钥/backendPath/指纹+重置/**备用地址** F45/**跳板** F56/**daemonless 降级勾选** F59）+ 测试连接（阶段日志 F46）+ 公钥推送 F50 + 文件面板/端口转发 F58 入口 + 「开新 Claude」F53 + ssh-config 批量导入·智能聚合 F57。数据层在 `remote-config.ts`：`readRemoteConfig` / `patchRemoteConfig`（config.json `remote` 段，局部合并，只动 `remote` 这一个键）+ `findHostByOrigin` F54 反查；`remote-section.vitest.ts` 锁往返/聚合/反查 | `RemoteSection.element`（数据层 `readRemoteConfig() / patchRemoteConfig() / findHostByOrigin()` 住 `remote-config.ts`） |

@@ -86,7 +86,7 @@ export interface SessionAccount {
   /**
    * `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`），由后端从
    * `/proc/<pid>/environ` 读回来。`null` = **不作数**（没设 / 形状不合格 / 同一 token 落在
-   * 一条以上活会话上 / 进程已死，四种原因刻意合并，见 `src/bridge/src/accounts.rs`
+   * 一条以上活会话上 / 进程已死，四种原因刻意合并，见 `src/frontend/shell/src/accounts.rs`
    * 的 `SessionAccount::launch_id`）。
    *
    * ⚠ **可选是因为老后端的出参里逐字节没有这个键**（additive）。本机那条路来的行是
@@ -219,7 +219,7 @@ export interface AccountStatusBadge {
  *
  * ⚠⚠ **诚实边界（本件没做完的那一格）**：`{scope:"local"}` 那三档今天**没有生产调用方** ——
  * 要把「表里有没有这一行」「中转在不在跑」端到前端，得注册一条**只答本机**的 tauri 命令，
- * 而新注册一条命令会让 `src/bridge/src/parity_ledger.rs` 的
+ * 而新注册一条命令会让 `src/frontend/shell/src/parity_ledger.rs` 的
  * `every_tauri_command_is_declared_in_the_ledger` 当场红（本轮实测过，报文点名了那条命令），
  * 那个文件不在 `K-H2b` 的写区。⇒ 两个生产调用点今天分别传 `{scope:"remote"}`（设置里那张表
  * 是**远端专用**的：`accounts-section.ts` 的 `reload` 对 `origin` 为空时直接早退）与

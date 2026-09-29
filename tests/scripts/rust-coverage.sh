@@ -15,10 +15,10 @@
 # # 它量什么
 #
 # 两侧各跑一遍**门禁里那条同样的** `cargo test`（插桩版、单独的 target 目录，不碰日常构建）：
-#   bridge  —— `cd src/bridge && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
+#   bridge  —— `cd src/frontend/shell && cargo test --workspace --lib`（= 门禁 `cargo` 那一格）
 #   backend —— `cd src/backend && cargo test`（= 门禁 `backend` 那一格）
 # 测试里 spawn 出去的子进程（后端二进制、`current_exe` 起的子测试）也是插桩的，它们的 `.profraw` 一并算进来。
-# 报告的人群是**生产源码**：`src/bridge/src` · `src/common/*/src` · `src/backend`；
+# 报告的人群是**生产源码**：`src/frontend/shell/src` · `src/common/*/src` · `src/backend`；
 # 测试树 `tests/`、vendor、依赖 crate 一律滤掉（`--ignore-filename-regex`）。
 #
 # # 它量不到什么
@@ -83,7 +83,7 @@ run_side() {
   # 被测的目标文件：测试二进制（同一组参数 --no-run，不会重编）＋ 本侧的可执行文件（测试会 spawn 它）。
   # ⚠ 这一趟也要给 `LLVM_PROFILE_FILE`：插桩标志对 build script 与 proc-macro 也生效，它们一旦被执行
   #   （真要重编的时候，rustc 会加载插桩过的 proc-macro），不给路径就往**当前目录**落 `default_*.profraw`
-  #   —— TQ1 落地那趟现打在 `src/bridge/` 下落了 70 份。给它一个 `.build/` 下的去处，不进源码树。
+  #   —— TQ1 落地那趟现打在 `src/frontend/shell/` 下落了 70 份。给它一个 `.build/` 下的去处，不进源码树。
   local objs=()
   local exe
   while IFS= read -r exe; do
@@ -133,7 +133,7 @@ print("%d/%d 行（%.1f%%）· 生产源文件 %d 份" % (t["covered"], t["count
 }
 
 case "$which_side" in
-  bridge | both) run_side bridge src/bridge --workspace --lib ;;
+  bridge | both) run_side bridge src/frontend/shell --workspace --lib ;;
 esac
 case "$which_side" in
   backend | both) run_side backend src/backend ;;

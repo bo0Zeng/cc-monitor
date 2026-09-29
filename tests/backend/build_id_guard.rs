@@ -284,7 +284,7 @@ mod tests {
         //   两条都止于「判 stale 只看 build_id」。
         // 🔴 **上面 14 行快照一个字节没改**（同 p2l 那条：历史证据不是待同步的副本）。
         // ★ 同 p2d…p2l 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-        //   本轮**没做**（本工作树没铺 `src/bridge/embedded-backends/`，
+        //   本轮**没做**（本工作树没铺 `src/frontend/shell/embedded-backends/`，
         //   现打 `bash tests/scripts/re-embed.sh --check` 只答得出「这棵树上没有一份
         //   对不上的字节」）；本护栏对「半 bump」是瞎的。
         (
@@ -305,7 +305,7 @@ mod tests {
         //   节拍仍归调用方（`no_timer_guard` 一个字没动），而「调用方到底发不发」
         //   后端这棵树的判据钉不住 ⇒ 没人发的时候 `files-find` 照旧恒回 `index_missing`。
         // ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**
-        //   （本工作树没铺 `src/bridge/embedded-backends/`）；本护栏对「半 bump」是瞎的。
+        //   （本工作树没铺 `src/frontend/shell/embedded-backends/`）；本护栏对「半 bump」是瞎的。
         (
             "p2n-files-rebuild-and-browse",
             "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--files-browse\n--files-find\n--files-index-rebuild\n--files-index-status\n--files-ls\n--files-stat\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:files-browse\nch:files-find\nch:files-index-rebuild\nch:files-index-status\nch:files-ls\nch:files-stat\nch:kill\nch:launch\nch:ping\nch:resolve",
@@ -852,7 +852,7 @@ mod tests {
     /// ⚠ 不证：**发版那份 release 二进制**也如此 —— 那是另一套 profile
     ///   （`lto` / `strip` / `opt-level`）。开工时在沙箱里用一份 `lto=true, strip=true`
     ///   的 release 壳单独打过一趟、同样扫出恰好一处，**但那是一次实验不是一条常驻判据**；
-    ///   常驻的那条在 `src/bridge/build.rs`：内嵌任何一个载体之前都要从**它的字节**里
+    ///   常驻的那条在 `src/frontend/shell/build.rs`：内嵌任何一个载体之前都要从**它的字节**里
     ///   把身份扫出来，扫不出当场 panic ⇒ release 那一侧由发版路自己守。
     #[test]
     fn the_build_stamp_is_byte_scannable_in_this_very_binary() {
@@ -972,7 +972,7 @@ mod tests {
         assert_eq!(
             decls, 1,
             "`lib.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
-             ⚠ `src/bridge/build.rs::backend_lib_rs` 与 `release.yml` 两处都按\n\
+             ⚠ `src/frontend/shell/build.rs::backend_lib_rs` 与 `release.yml` 两处都按\n\
              「含 `const BUILD_ID` 的那一行」去抠**这份文件**；0 处 ⇒ 抠出 `unknown`，\n\
              多处 ⇒ 抠到哪一个看运气。\n\
              ⚠ 把它搬回 `main.rs` 也会让本条红 —— 那是刻意的：in-process 那条路**没有\n\

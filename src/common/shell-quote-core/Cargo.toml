@@ -2,7 +2,7 @@
 name = "shell-quote-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "POSIX 单引号 quote 的唯一 Rust 实现。monitor 5 处 + backend 1 处都调它（收口前是五份逐字节相同的副本，靠巧合保持一致）。P4c 起名副其实（P4b 之前叫 launch-core，那时它还持有决策内核）。"
 
 # **只依赖同族共享 crate**。同 branch-core / usage-core / acct-core / guard-core 的约束：

@@ -236,7 +236,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
 }
 
 /// 要求住址同上（跨半边那一格）：`files-grep` 的成品对跨语言金样 `tests/__fixtures__/files-grep.golden.json` 逐字相等
-/// （铺的那棵树根换成 `<root>`）；窗口那一侧 `tests/bridge/filewin/grep_tests.rs` 解同一份金样。
+/// （铺的那棵树根换成 `<root>`）；窗口那一侧 `tests/frontend/shell/filewin/grep_tests.rs` 解同一份金样。
 #[test]
 fn the_product_matches_the_cross_half_golden() {
     let base = temp_root("golden");

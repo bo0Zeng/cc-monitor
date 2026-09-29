@@ -57,7 +57,7 @@
     · `tests/**` 的 `.ts/.mts`   —— vitest / tsx 判据
     · `tests/**` 的 `.sh`        —— e2e 与闸门脚本
     · `tests/evidence/*.py`      —— 尺子（其中 5 把是**活门**，见 `LIVE_RULERS`）
-    · `src/bridge/src/**` 的 `.rs` ＋ `src/backend/**` 的 `.rs`
+    · `src/frontend/shell/src/**` 的 `.rs` ＋ `src/backend/**` 的 `.rs`
                                  —— 🔴 **登记表的数据行住在生产段**（`cross_half_edge_registry.rs`
                                     的 `CROSS_EDGES` · `tool_registry.rs` 的 `repo_path` 都在这里），
                                     判据本体在 `tests/` 里读它们
@@ -108,7 +108,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
 
  · **它不读语义。** `prose` 那一档里哪些该改、哪些是引文/墓碑/外部契约名，要人去判
-   （`tests/bridge/doc_claim_registry_daemon_wording_registry.rs` 的 `EXEMPT` 表就是
+   （`tests/frontend/shell/doc_claim_registry_daemon_wording_registry.rs` 的 `EXEMPT` 表就是
    人判完之后的落档，本量具只把它当数据行数出来）。
  · **它只看单行。** 跨行的匹配表达式（针在上一行、字面量在下一行）会被判成 `row` 或
    `prose`。⇒ `needle` 这一档的数是**下界**。
@@ -147,7 +147,7 @@ NAMES: dict[str, re.Pattern[str]] = {
 # ── (2) 人群 ────────────────────────────────────────────────────────────────
 POP: list[tuple[str, tuple[str, ...]]] = [
     ("tests", (".rs", ".ts", ".mts", ".mjs", ".sh", ".py")),
-    ("src/bridge/src", (".rs",)),
+    ("src/frontend/shell/src", (".rs",)),
     ("src/backend", (".rs",)),
     (".github/workflows", (".yml",)),
 ]
@@ -275,7 +275,7 @@ RUNNER = re.compile(r"^(bash|sh|python3?|node|npx\s+tsx|npx|tsx|cargo\s+\S+)\s+"
 ROOT_ANCHORS = ("src/", "tests/", "doc/", "scripts/", ".github/", "hooks/", "audits/",
                 "e2e/", "调研/", "coverage/", "./", "crates/")
 # 本仓的三个「根」—— 登记表里的相对住址按哪个根解读，要看它住在谁家
-ALT_ROOTS = (".", "src/bridge", "src/backend", "src/bridge/src")
+ALT_ROOTS = (".", "src/frontend/shell", "src/backend", "src/frontend/shell/src")
 
 
 def path_body(body: str) -> str | None:
@@ -347,7 +347,7 @@ def scan(root: Path, prose_too: bool = False) -> tuple[list[Hit], dict[str, int]
                     cand = path_body(body) or ""
                     if cand.startswith(ROOT_ANCHORS):
                         # 仓根锚的路径：盘上查存在性。
-                        # 🔴 本仓有**三个**「根」：仓根 · `src/bridge/`（bridge crate 的
+                        # 🔴 本仓有**三个**「根」：仓根 · `src/frontend/shell/`（bridge crate 的
                         # 登记表写 `src/accounts.rs` 指的是它）· `src/backend/`。
                         # 只按仓根查会把 bridge 那一族的登记表全判成馊（09-19 现打 8 处假阳）。
                         # ⚠ 变量名**不许**叫 `rel` —— 09-19 第一版就是在这里把外层的

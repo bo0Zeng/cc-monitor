@@ -1099,7 +1099,7 @@ fn hello_unavailable_is_additive_present_and_absent() {
 
 /// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
 /// 只有 `Superseded` 才出现。这条同时是**跨语言双写点**的本侧锚：字面量
-/// `"superseded"` 与 monitor `src/bridge/src/ssh_source.rs` 的解析处逐字一致。
+/// `"superseded"` 与 monitor `src/frontend/shell/src/ssh_source.rs` 的解析处逐字一致。
 #[test]
 fn removal_cause_is_additive_on_the_wire() {
     let gone = to_line(&Frame::SessionRemoved {

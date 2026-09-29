@@ -7,12 +7,12 @@
 //! 1. **backend 的写面逐文件登记**〔`K-H2a` 裁四，〔RM1a〕收窄后〕：`readonly_guard.rs` 扫后端生产段
 //!    （剥掉 `#[cfg(test)]` 块之后），写只许出现在登记过的那几层模块里（账号域那一份凭据写口在第四层）。
 //!    本 crate 被 backend depend、而那张登记表**扫不到**本 crate ⇒ 写调用放进来是在给那道护栏挖洞。
-//! 2. **写盘落点必须被登记表看见**：`src/bridge/src/write_site_registry.rs` 与
-//!    `atomic_replace_registry.rs` 的扫描根**都是 `src/bridge/src`**
+//! 2. **写盘落点必须被登记表看见**：`src/frontend/shell/src/write_site_registry.rs` 与
+//!    `atomic_replace_registry.rs` 的扫描根**都是 `src/frontend/shell/src`**
 //!    （两者的 `src_root()` 逐字是 `CARGO_MANIFEST_DIR/src`）——
 //!    `src/common/` **不在它们的人群里**。
 //!    ⇒ 把写盘搬进本 crate，等于**让它从两张登记表底下溜出去**，而那正是本工作区在治的那族病
-//!    （守卫的人群对不上它守的性质）。⇒ 真正的写盘留在 `src/bridge/src`，在人群里、要申报。
+//!    （守卫的人群对不上它守的性质）。⇒ 真正的写盘留在 `src/frontend/shell/src`，在人群里、要申报。
 //! 3. 纯函数好测：`KS10` 要测的是**交错**（人改了 A，程序写 B，A 还在不在），
 //!    而交错的关键是「程序在**写的那一刻**才去读」——那条纪律由调用方兑现，
 //!    本模块只保证「给我旧内容 + 新 key，我还你一份没吃掉任何东西的新内容」。
@@ -97,7 +97,7 @@ pub const LEGACY_ACCOUNT_ID: &str = "default";
 /// 「界面上配好了，上游选择说没配」这种**查不出来**的形状。
 ///
 /// ⚠ 它**不**跟随 `claudeDir` 覆盖（monitor 自己的数据目录本来就不跟随，见
-/// `src/bridge/src/config.rs` 头注逐字：「monitor 自己的设置永远在默认
+/// `src/frontend/shell/src/config.rs` 头注逐字：「monitor 自己的设置永远在默认
 /// `~/.claude/claudecode-frontend/` 下，不跟随 `claudeDir` 字段变化」）。
 pub const FILE_NAME: &str = "apikey-credentials.json";
 
@@ -434,7 +434,7 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
 /// ⇒ 签名逼着调用方说清**改哪一条**，改别的条这件事在本模块的公开面上**不可表示**。
 ///
 /// ⚠ **如实说它的分母**：它挡住的是**走本模块的写者**。盘上那份文件仍然可以被别的代码
-/// 整份覆盖（原子替换那一步就在 `src/bridge/src/creds_store.rs` 里）⇒
+/// 整份覆盖（原子替换那一步就在 `src/frontend/shell/src/creds_store.rs` 里）⇒
 /// 这一格守的是「走 `store` 的写者」，**不是「所有写者」**。
 ///
 /// # 落盘出口仍然只有一处

@@ -57,7 +57,7 @@ use std::time::SystemTime;
 /// 它从「本件自己定的一个数」升格成**已裁的产品参数**。逐字没改一个字，因为它一条都没过期。
 ///
 /// ⚠ 裁决的另一半（「界面上把它显示出来」）落在**客户端**：
-/// `src/bridge/src/filewin/find.rs::freshness_line`，由那一侧一条从 egui 的 galley 里
+/// `src/frontend/shell/src/filewin/find.rs::freshness_line`，由那一侧一条从 egui 的 galley 里
 /// 把数读回来、而且**喂两组不同的数**的判据钉着。
 /// ⚠ 而「只有一个住址」是**这一行**：客户端树里那个数零命中、后端树里这个声明恰好一处，
 /// 两向由 `filewin/find.rs` 那条 `no_rewalk_period_literal_lives_on_this_side` 钉着

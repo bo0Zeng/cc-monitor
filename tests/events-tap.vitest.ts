@@ -163,7 +163,7 @@ describe("〔MIG-3b〕session-tasks 走 subscribe（不是裸事件 task-update�
   });
 
   it("两侧同一个串：Rust `event_replay.rs::SESSION_TASKS_KIND` == TS `SESSION_TASKS_KIND`", () => {
-    const rs = readFileSync(resolve(REPO_ROOT, "src/bridge/src/event_replay.rs"), "utf8");
+    const rs = readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/event_replay.rs"), "utf8");
     expect(rs).toContain(`pub const SESSION_TASKS_KIND: &str = "${SESSION_TASKS_KIND}";`);
   });
 });

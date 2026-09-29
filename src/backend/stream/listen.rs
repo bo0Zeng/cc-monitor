@@ -14,13 +14,13 @@
 //!
 //! `K-H1` 的中转（`relay/server.rs`）已经把这条路上的东西买齐了：`LOOPBACK` 字面量常量
 //! + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。本模块**抄它的形状**。
-//! 现打（`K-P1 §0b-2㈠`，分母 = `src/backend` ∪ `src/bridge/src` 下 169 个 `.rs`）：
+//! 现打（`K-P1 §0b-2㈠`，分母 = `src/backend` ∪ `src/frontend/shell/src` 下 169 个 `.rs`）：
 //! `UnixListener` 0 处 · backend 侧 `NamedPipe` 0 处 ⇒ 走 Unix socket / 命名管道都要**从零立**一套。
 //!
 //! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
 //! Unix socket 有文件权限位而它没有。收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**
 //! （`readonly_guard`）⇒ **token 只能由宿主生成、当 env 传进来**（[`ENV_TOKEN`]）。
-//! 宿主那一半住 `src/bridge/src/local_backend_host.rs`（`0600` 的 token 文件）。
+//! 宿主那一半住 `src/frontend/shell/src/local_backend_host.rs`（`0600` 的 token 文件）。
 //!
 //! # 两档连接，而 hello 写在分档**之前**
 //!
@@ -97,7 +97,7 @@ pub const ATTACH_OK_LINE: &str = "{\"attach\":\"ok\"}\n";
 /// 它完全可以一直发字节不发换行。backend 侧为同一形栽过一次实测
 /// （`inbound.rs` 头注：喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB）。
 /// 超限语义：**拒收 + 回错**（关连接并出声，不静默截断成一行「看起来对」的 JSON）。
-/// **登记住址** `src/bridge/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+/// **登记住址** `src/frontend/shell/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
 pub const ATTACH_LINE_CAP: usize = 8 * 1024;
 
 /// 读一行 attach 请求的三种结局。

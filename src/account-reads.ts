@@ -92,7 +92,7 @@ const accountsOldBackend = (): string => copyText("accounts.oldBackend.accounts"
 
 /**
  * 这次起会话的是哪一家（适配器 id，后端并 apikey 表时认它）。**值从后端来**：生成物里的 `ACTIVE_AGENT`
- * 与那一行的 `adapterId`（`src/bridge/src/adapter.rs` 那张表），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
+ * 与那一行的 `adapterId`（`src/frontend/shell/src/adapter.rs` 那张表），与 monitor 侧 `history::launch_agent_id` 〔散文墓碑〕
  * 同一个事实（起会话那一侧写进中转路由键第 1 段的就是它）。表里没有 ⇒ 抛（不回落到任何一家）。
  */
 function launchAgentId(): string {

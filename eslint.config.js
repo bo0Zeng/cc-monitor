@@ -15,14 +15,14 @@ export default tseslint.config(
       // 🔴 2026-09-18：构建输出已统一改到 `.build/`（`vite.config.ts` 的 `outDir` ＋
       //   两份 `.cargo/config.toml` 的 `target-dir`）⇒ 上面那条 `dist/**` 从此**罩不住任何东西**。
       //   漏掉这一条的症状：`npx eslint .` 从 7 个错涨到 **4092 个**，其中 4085 个全在
-      //   `.build/dist/assets/*.js`（打包产物）与 `.build/bridge/**/out/*.js`（Tauri 生成的 API 壳）。
+      //   `.build/dist/assets/*.js`（打包产物）与 `.build/shell/**/out/*.js`（Tauri 生成的 API 壳）。
       //   这正是本文件下面那段注释预言的形状：「每新增一个带脚本的目录，洞就复发一次」。
       ".build/**",
       // 〔主会话 09-26 · DUP1 报备〕施工纪律第 21 条把各路编译产物放 `<工作树>/.scratch/` ⇒ 同一个洞第二次复发：
       //   cargo 在那里生成的一份 js 被 `eslint .` 扫进来，`eslint-baseline` 假红（多数一条）。
       ".scratch/**",
       "node_modules/**",
-      "src/bridge/**",
+      "src/frontend/shell/**",
       "src/backend/**",
       "coverage/**",
       "*.config.js",
@@ -64,7 +64,7 @@ export default tseslint.config(
     // E83（2026-08-01）：`tests/e2e/` 下那些 `.mjs`（wdio 配置、restart-shims、spec）**此前从没被 lint 过**。
     //
     // 病灶不是「它们脏」，是**作用面与配置意图对不上**：本文件的 `ignores` 明明是**仓级**的
-    // （逐条列出 dist / node_modules / src/bridge / src/backend / coverage），
+    // （逐条列出 dist / node_modules / src/frontend/shell / src/backend / coverage），
     // 而 `npm run lint` 只跑 `eslint src` ⇒ 那份仓级意图从来没被兑现，
     // `npx eslint .` 是 46 个告警、比 `eslint src` 的 7 个多出 39 个，
     // **全在这几个文件里、全是 `no-undef: process/console/it`（纯缺一段 globals）**。

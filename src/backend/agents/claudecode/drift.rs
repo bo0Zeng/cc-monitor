@@ -36,7 +36,7 @@
 //! 原先整本账住 monitor（远端的记录也在 monitor 里解析），第一层键是 origin。记录解释搬进后端之后
 //! （`设计/90 §3` 判据 3），看不懂的那一刻在场的是**那台机器自己的后端** ⇒ 账天然按机器分，origin 那一层没了；
 //! 界面按机器经通道问那台后端（帧命令 `drift-report`）。monitor 天生观测的两面（未登记的会话 `kind` ·
-//! 后端 `hello` 里不认识的能力 token）仍记在 monitor 自己那本（`src/bridge/src/drift_ledger.rs`）。
+//! 后端 `hello` 里不认识的能力 token）仍记在 monitor 自己那本（`src/frontend/shell/src/drift_ledger.rs`）。
 //!
 //! # 计数的量纲
 //!

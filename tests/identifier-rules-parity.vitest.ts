@@ -7,7 +7,7 @@
  *   读 monitor 从 `shell-quote-core` 现生成的 `src/generated/judgment-rules.ts`。
  *
  * 金样 `tests/__fixtures__/identifier-rules.golden.json` 的期望是**手写**的；Rust 那一侧
- * （`tests/bridge/backend/control/payload_judgment_rules.rs::the_shared_golden_agrees_with_the_one_rule`）拿同一份喂
+ * （`tests/frontend/shell/backend/control/payload_judgment_rules.rs::the_shared_golden_agrees_with_the_one_rule`）拿同一份喂
  * `shell_quote_core::model_name_ok`。两侧各自对金样，不是彼此对拍 —— 两侧同错才会一起绿（金样那一格就是挡这个的）。
  * 〔DUP2 · J18〕账号名同一形：新建账号表单读生成的 `accountNameOk`，Rust 那一份是 `shell_quote_core::account_name_ok`，两侧对金样的 `account_name`。
  * 买不到：金样之外的串两侧是否一致（式子 vs 循环两种写法），见 Rust 那份头注。

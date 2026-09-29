@@ -86,13 +86,13 @@ mod tests {
     ///
     /// 🔴 **退役的理由不是「它变成恒等函数了」** —— `设计/16 §4.1` 当初那条预言
     /// **今天还不成立**，现打读数进了 `16 §4.1`：`src/backend` 上它剥掉 1 081 538 字节
-    /// （64 份里 51 份被它动过），`src/bridge/src` 上 1 429 612 字节。
+    /// （64 份里 51 份被它动过），`src/frontend/shell/src` 上 1 429 612 字节。
     /// 实测把它改成恒等函数，后端当场红 3 条，`no_test_code_leaks_into_any_production_section`
     /// 逐字报「49 份文件、533 个残留测试属性」。⇒ 退役的理由是 `16 §5.1`
     /// **一条形状只许有一个住址**，不是「它没用了」。
     ///
     /// 两者的差别现打过（`16 §4.1` 表）：换成 `production_source` 之后，
-    /// `src/bridge/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
+    /// `src/frontend/shell/src` 上的残留测试属性从 **42 → 4**（它认得原始字符串与可见性修饰，
     /// 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
     /// 两个 workspace 的用例数与红绿**一格没动**。
 
@@ -778,7 +778,7 @@ mod tests {
 
     /// ★ **第三层那扇门** —— 后端生产树里**唯一**被允许引用第三层模块的文件。
     ///
-    /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/bridge/filewin/boundary_tests.rs`
+    /// `(仓库相对路径, why)`。**零命中守卫的形状**（照 `tests/frontend/shell/filewin/boundary_tests.rs`
     /// 那条「app 侧只许有一条门」）：期望集合只有这一个元素，多出任何一个都红。
     const MUTATING_FACE_DOORS: &[(&str, &str)] = &[(
         "stream/inbound.rs",
@@ -3817,7 +3817,7 @@ mod g6_staged_zero {
         (
             // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
             //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
-            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
+            "tests/frontend/shell/backend/control/launch_wire_f07_main_path_tests.rs",
             "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",
@@ -3970,7 +3970,7 @@ mod g6_staged_zero {
         assert!(
             out_of_reach <= 1,
             "有 {out_of_reach} 条标着 `跨 crate` —— 本判据住 backend crate（它刻意不属于 workspace），\
-             够不着 `src/bridge`。标的条数超过 1 就说明这张表的家选错了，\
+             够不着 `src/frontend/shell`。标的条数超过 1 就说明这张表的家选错了，\
              该按 `Bx` 说的另立一处两侧都够得着的落点。"
         );
     }

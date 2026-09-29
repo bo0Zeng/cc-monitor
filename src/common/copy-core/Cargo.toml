@@ -2,7 +2,7 @@
 name = "copy-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "对外文案表（src/shared/copy/table.json）的 Rust 取文口 —— 唯一一份实现。monitor、常驻后端、creds-core 三方链接它。"
 
 # **依赖只有 serde_json**（与 branch-core / search-core / codex-token-core 同形）：

@@ -1,9 +1,9 @@
 /**
  * 〔CFG1〕前端测试用的**假 config.json**：`load_config` / `patch_config` 两条命令的内存替身。
  *
- * 补丁语义与 Rust 写口（`src/bridge/src/config.rs::patch_config_at`）同一份金样
+ * 补丁语义与 Rust 写口（`src/frontend/shell/src/config.rs::patch_config_at`）同一份金样
  * `tests/__fixtures__/config-patch.golden.json` 对拍（`tests/config-patch-fake.vitest.ts` 跑这边，
- * `tests/bridge/config_tests.rs::the_golden_cases_hold` 跑那边）⇒ 用它的测试看到的「盘上终态」就是 Rust 会落的那份。
+ * `tests/frontend/shell/config_tests.rs::the_golden_cases_hold` 跑那边）⇒ 用它的测试看到的「盘上终态」就是 Rust 会落的那份。
  */
 import { vi } from "vitest";
 

@@ -2,7 +2,7 @@
 name = "acct-core"
 version = "0.1.0"
 edition = "2021"
-workspace = "../../bridge"
+workspace = "../../frontend/shell"
 description = "cc-acct-iso 账号库契约的唯一定义 + 平台无关的名字安全判据——monitor 与远端后端共用。"
 
 # **零依赖**。同 branch-core / usage-core 的约束：backend 是 Linux-only 的静态 musl

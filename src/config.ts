@@ -5,7 +5,7 @@
 // `saveConfig(整份)`」，主窗（tab 栏）与设置窗是两个 realm，两次读-改-写一交错，后写的整份就把先写的键 〔散文墓碑〕
 // 盖掉（E §E1：拖放同拍发分组 ＋ 顺序，分组那次没落盘）。现在 [`patchConfig`] 只交 [`ConfigEdit`]，
 // Rust `config.rs::patch_config_at` 在一把进程级锁里现读盘、逐条应用 ⇒ 谁写的键谁的值留在盘上
-// （`设计/30 §4`「各自只写自己那个键」）。判据：`tests/config-lost-update.vitest.ts` · `tests/bridge/config_tests.rs`。
+// （`设计/30 §4`「各自只写自己那个键」）。判据：`tests/config-lost-update.vitest.ts` · `tests/frontend/shell/config_tests.rs`。
 //
 // 🔴 〔`设计/99 §2.5 P12` 2026-09-21〕**「未知键静默忽略」在这里止住。**
 //
@@ -67,9 +67,9 @@ export const CONFIG_KEY_OWNERS = {
   resumeCommandRemotePresets: "src/behavior.ts",
   notifyTurnEnd: "src/behavior.ts",
   // 〔LR2〕`forceLaunchPayloadRenderer` 退役（`src/behavior.ts` 那段注释写了为什么）⇒ 这一键删掉，盘上还写着它就当未知键点名。
-  // src/bridge/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
+  // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
   // 〔CFG1〕从前漏登记：用户存过一次诊断设置，「认不出的键」提示条就把 `diagnostics` 点名（假警报）。
-  diagnostics: "src/bridge/src/logging.rs",
+  diagnostics: "src/frontend/shell/src/logging.rs",
 } as const satisfies Readonly<Record<string, string>>;
 
 /** config.json 的顶层键。写口的路径首段只收这些 ⇒ 写一个没登记的顶层键**编不过**。 */

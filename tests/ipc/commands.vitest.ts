@@ -253,7 +253,7 @@ function walk(dir: string, ext: string, out: string[] = []): string[] {
  */
 function rustCommands(): Set<string> {
   const out = new Set<string>();
-  for (const f of walk(resolve(REPO_ROOT, "src/bridge/src"), ".rs")) {
+  for (const f of walk(resolve(REPO_ROOT, "src/frontend/shell/src"), ".rs")) {
     const code = stripComments(readFileSync(f, "utf8"), "rust");
     for (const m of code.matchAll(/#\[tauri::command\b[^\]]*\]/g)) {
       const tail = code.slice(m.index, m.index + 120);
@@ -273,7 +273,7 @@ function rustCommands(): Set<string> {
  * 「声明了却没注册」。注释已剥 ⇒ body 里只剩注册项，按逗号切就够。
  */
 function registeredCommands(): Set<string> {
-  const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/bridge/src/lib.rs"), "utf8"), "rust");
+  const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/frontend/shell/src/lib.rs"), "utf8"), "rust");
   const handlers = [...code.matchAll(/generate_handler!\[/g)];
   expect(handlers, "`generate_handler![` 不是恰好一处——守卫只会守住其中一半").toHaveLength(1);
   const start = handlers[0].index;
@@ -508,7 +508,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   // ⚠ **`new_local_session` 不在这个分母里，而那不是漏掉**：Rust 侧
   //   `history.rs::new_local_session` 的签名里**根本没有 `tmux_name` 这一格**
   //   （函数体给 `launch_local` 的第五个实参硬写 `None`）⇒ 前端传了也没人收。
-  //   补它要同一拍改 `src/bridge/`，**不在 `K-R46` 写区**，已随本件上报。
+  //   补它要同一拍改 `src/frontend/shell/`，**不在 `K-R46` 写区**，已随本件上报。
   //   ⇒ 本条的分母是**带得了这个参数的那几处**，不是「全部起会话的路」。
   //
   // 🔴 **本条只买「那一行字在不在 + 人群」**（与上一条同病，`D4` 两刀证过）：
@@ -958,7 +958,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 // ⚠ **它们买不到**：① 换个名字传同一件事（`host: string | null`）——
 //   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机；
 //   〔C4b〕`RemoteHealthPayload.origin` 已改成恒有值的 `string`）——
-//   那几份住 `src/bridge/src/{bridge,history,search}.rs` 与 `lib.rs`，
+//   那几份住 `src/frontend/shell/src/{bridge,history,search}.rs` 与 `lib.rs`，
 //   不在步 2 的写区里，逐份读数在交回件里。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -1059,7 +1059,7 @@ describe("`设计/05 §8` 步 2：origin 去 null 化（入方向）", () => {
       "`Origin` 的生成物正文不是 `string`。\n" +
         "🔴 它上一拍是 `null | string`（`Origin::Unspecified(())` 那个变体的线上形状），\n" +
         "   `设计/05 §8` 步 2 把那个变体**退役**了（处置与理由逐条写在\n" +
-        "   `src/bridge/src/origin.rs` 头注里）。\n" +
+        "   `src/frontend/shell/src/origin.rs` 头注里）。\n" +
         "⇒ 这一行变回带 `null` 的形状，只有一个原因：**Rust 那侧把变体加回去了**。\n" +
         "   那时全仓 8 处写着 `origin: Origin` 的参数会**一个字不改**地又装得下 `null`，\n" +
         "   而上面那条参数面判据照绿 —— 本条就是为这一形立的。",
@@ -1215,7 +1215,7 @@ function originCorpus(): Decl[] {
   const all: Decl[] = [];
   for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
-    if (rel.startsWith("src/bridge/") || rel.startsWith("src/backend/")) continue;
+    if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
     all.push(...originDecls(rel, readFileSync(f, "utf8")));
   }
   originCorpusMemo = all;
@@ -1325,7 +1325,7 @@ function filesWithLiteral(want: string): string[] {
   const out: string[] = [];
   for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
     const rel = f.slice(REPO_ROOT.length + 1);
-    if (rel.startsWith("src/bridge/") || rel.startsWith("src/backend/")) continue;
+    if (rel.startsWith("src/frontend/shell/") || rel.startsWith("src/backend/")) continue;
     if (stringLiteralHits(rel, readFileSync(f, "utf8"), want) > 0) out.push(rel);
   }
   return out.sort();

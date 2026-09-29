@@ -23,7 +23,7 @@
  *
  * Rust **出方向**的载荷（`JsonlLinePayload` / `HistoryProject` / `HistorySessionEntry` /
  * `SessionHits` 一族）今天仍是 `Option<String>`：缺省 = 本机。那几份住
- * `src/bridge/src/{bridge,history,search}.rs`，不在步 2 的写区里。
+ * `src/frontend/shell/src/{bridge,history,search}.rs`，不在步 2 的写区里。
  * ⇒ 它们进 TS 的那一下由 [`originFromWire`] 收成一个表示 —— **全仓唯一**一处表示法转换。
  */
 import { LOCAL_ORIGIN } from "../backend-policy";

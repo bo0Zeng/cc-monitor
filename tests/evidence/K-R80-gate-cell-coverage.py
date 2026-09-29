@@ -93,8 +93,8 @@ GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "s
 #     ⚠ 前者比上一版**严**：上一版只对拍顶层目录名，一份文件归没归进某棵树它不看。
 #
 #   两处刻意与目录结构不一样，各有理由：
-#   · `src/bridge/vendor/` 从 `src/bridge/` 里**单拆出来** —— `C7` 逐字「vendor
-#     `code-picture-core` **不动**」，它被 `cargo` 那一格显式 `--exclude`，与 `src/bridge/`
+#   · `src/frontend/shell/vendor/` 从 `src/frontend/shell/` 里**单拆出来** —— `C7` 逐字「vendor
+#     `code-picture-core` **不动**」，它被 `cargo` 那一格显式 `--exclude`，与 `src/frontend/shell/`
 #     其余部分**受不同的门管**，混成一棵就点不出这一格盲区。
 #     ⚠ 今天 vendor 下是**两棵**（`code-picture-core` 25 份 · `cc-acct-iso` 8 份），
 #       上一版的 `VENDOR` 只指 `code-picture-core` ⇒ `cc-acct-iso` 当时落在 `src-tauri/` 里。
@@ -103,7 +103,7 @@ GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "s
 #
 # 〔现打 09-19〕15 棵合计 **1343** 份 == `git ls-files` 现打 1343（分区，不重不漏）。
 # 〔RE · 收尾重排〕vendor 跟唯一消费者走（`99 §2.1 ⑰`）：russh → `src/vendor/`，code-picture-core → `src/panorama-engine/vendor/`
-#   ⇒ 原来一棵 `VENDOR` 拆成两棵；共享 crate 搬出 `src/bridge/` 住 `src/common/` ⇒ 单立一棵。
+#   ⇒ 原来一棵 `VENDOR` 拆成两棵；共享 crate 搬出 `src/frontend/shell/` 住 `src/common/` ⇒ 单立一棵。
 #   新树**没单独裁的格沿用它来的那棵的裁词**（`DERIVED`，见 `cell()`）—— 搬家不改哪一格盖到它。
 VENDOR = "src/vendor/"
 VENDOR_PANO = "src/panorama-engine/vendor/"
@@ -112,10 +112,10 @@ ROOTFILES = "<仓根文件>"
 #    把 `src/` 挪到 `src/backend/` 前面，后端那 69 份会被前端那棵吞掉，而**一条判据都不红**。
 TREES = [
     "src/backend/",          # 69   后端 Rust（重构前的 `remote-daemon-proto/`）
-    VENDOR,                  # russh 补丁副本（〔RE〕原 `src/bridge/vendor/russh`）
-    VENDOR_PANO,             # code-picture-core（〔RE〕原 `src/bridge/vendor/code-picture-core`）
-    "src/common/",           # 共享 crate（〔RE〕原 `src/bridge/crates/`）
-    "src/bridge/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
+    VENDOR,                  # russh 补丁副本（〔RE〕原 `src/frontend/shell/vendor/russh`）
+    VENDOR_PANO,             # code-picture-core（〔RE〕原 `src/frontend/shell/vendor/code-picture-core`）
+    "src/common/",           # 共享 crate（〔RE〕原 `src/frontend/shell/crates/`）
+    "src/frontend/shell/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
     "src/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
     "src/shared/",           # 19   重构前的 `shared/`
     "src/doc/",              # 9    重构前的 `doc/`
@@ -124,7 +124,7 @@ TREES = [
     "tests/evidence/",       # 384  重构前的 `evidence/`
     "tests/scripts/",        # 7    重构前的 `scripts/`
     "tests/hooks/",          # 1    重构前的 `hooks/`
-    "tests/",                # 384  判据本体（bridge/ backend/ views/ settings/ + vitest）
+    "tests/",                # 384  判据本体（frontend/shell/ backend/ common/ views/ settings/ + vitest）
     ".github/",              # 3
     ".cargo/",               # 1
     ROOTFILES,               # 14
@@ -162,7 +162,7 @@ REGISTRY = {}
 
 
 # 〔RE〕搬家分出来的树 → 它来的那棵：没单独裁的格沿用来处的裁词（纯搬家不改覆盖）。
-DERIVED = {VENDOR_PANO: VENDOR, "src/common/": "src/bridge/"}
+DERIVED = {VENDOR_PANO: VENDOR, "src/common/": "src/frontend/shell/"}
 
 
 def cell(name, anchor, cwd, cmd, **verdicts):
@@ -243,7 +243,7 @@ cell(
                        "⚠ 连这 22 条**调用得对不对**也不问 —— 只问「在哪几份文件里被调」。"
                        "⚠ 只认调用形状 `.<命令>(`；`invoke(\"<名>\")` 直呼它看不见"
                        "（那一档在 `§S5d` 第二档里只出读数、不判红）"),
-        "src/bridge/": (PART, "只判那 22 条命令的**名字**在三份共用文件里的形状："
+        "src/frontend/shell/": (PART, "只判那 22 条命令的**名字**在三份共用文件里的形状："
                              "`tool_registry.rs` 的 `claims()` 每个装 / 卸符号要么解析到一条真 "
                              "`#[tauri::command]`、要么在明示的非命令名单里。"
                              "⚠ `parity_ledger.rs` 那一份**判不了**（那 22 条就是从它解析出来的 "
@@ -265,7 +265,7 @@ cell(
     cwd="src-tauri/",
     cmd="cargo check -p monitor（非 test）＋ never used 递减棘轮",
     **{
-        "src/bridge/": (PART, "**只有 `-p monitor` 一个包的生产段**：非 test 构建里 "
+        "src/frontend/shell/": (PART, "**只有 `-p monitor` 一个包的生产段**：非 test 构建里 "
                              "`never used` 的条数，上限 54 / 下限 40 的递减棘轮。"
                              "⚠ 同 workspace 的其余成员不在 `-p` 里；`#[cfg(test)]` 里的"
                              "死代码任何非 test 构建都看不见 —— 这两块本格都盖不到"),
@@ -298,7 +298,7 @@ cell(
         "tests/scripts/": (PART, "`scripts/*.sh` 现打 **3** 份 / 这棵树现打 **6** 份 —— "
                            "`run.ps1` 全仓没有 linter（`audit-0805` 登记的诚实边界），"
                            "`assert-coverage-floors.mjs` 是 JS"),
-        "src/bridge/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
+        "src/frontend/shell/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
                              "`ci.yml` 那段注释逐字记着为什么：不开 globstar 时 `**` 等价于 `*`，"
                              "会把一个目录喂给 shellcheck ⇒ 恒红）。这棵树的其余部分与本格无关"),
         "tests/hooks/": (PART, "只有 `hooks/pre-commit` 这**一份**，而且是**逐份点名**进人群的、不是 glob "
@@ -315,8 +315,8 @@ cell(
     cwd="src-tauri/",
     cmd="cargo fmt --all --check",
     **{
-        "tests/": ("部", "〔现打 09-19〕**死值验证过**：往 `tests/bridge/accounts_tests.rs` 尾部加一行乱格式，`cargo fmt --all --check` 当场 `rc=1` ⇒ rustfmt 顺着 `#[path = '../../../tests/bridge/…']` 进了这棵树。⚠ 只盖 `tests/bridge/` 那 152 份 `.rs`，这棵树里 155 份 `.ts` 它一份不碰"),
-        "src/bridge/": (PART, "只有那 8 个 workspace 成员从 crate 根顺 mod 走得到的 `.rs`；"
+        "tests/": ("部", "〔现打 09-19〕**死值验证过**：往 `tests/frontend/shell/accounts_tests.rs` 尾部加一行乱格式，`cargo fmt --all --check` 当场 `rc=1` ⇒ rustfmt 顺着 `#[path = '../../../tests/frontend/shell/…']` 进了这棵树。⚠ 只盖 `tests/frontend/shell/` 那 152 份 `.rs`，这棵树里 155 份 `.ts` 它一份不碰"),
+        "src/frontend/shell/": (PART, "只有那 8 个 workspace 成员从 crate 根顺 mod 走得到的 `.rs`；"
                              "`tauri.conf.json` / `Cargo.toml` 那些非 Rust 文件一概不在"),
         VENDOR: blind("`[workspace] exclude` 把它排掉了 —— 而 `C7` 逐字「vendor 不动」，"
                       "把它拉进出货门禁就是一道我们满足不了的闸"),
@@ -334,7 +334,7 @@ cell(
         "tests/": ("部", "〔现打 09-19〕同法死值验：`tests/backend/stream/inbound_tests.rs` 加乱行 ⇒ `rc=1`。只盖 `tests/backend/` 那 75 份 `.rs`"),
         "src/backend/": (PART, "唯一成员 `cc-monitor-remote`，射程 = 从 `src/main.rs` "
                                        "顺 `mod` 走得到的那些 `.rs`；走不到的文件本格看不见"),
-        "src/bridge/": blind("刻意**不加** `--all`：加了 rustfmt 实收 12 个 crate 根、11 个在这棵树外"),
+        "src/frontend/shell/": blind("刻意**不加** `--all`：加了 rustfmt 实收 12 个 crate 根、11 个在这棵树外"),
         VENDOR: blind("同上 —— 加 `--all` 会把这棵我们无权修的树拉进来"),
     },
 )
@@ -345,8 +345,8 @@ cell(
     cwd="src-tauri/",
     cmd="cargo check --locked -p monitor --target x86_64-pc-windows-gnu",
     **{
-        "tests/": ("无", "〔现打 09-19〕本格是 `-p monitor` **不带 `--all-targets`** ⇒ 只编 lib ＋ bin，test target 一个不编 ⇒ `tests/bridge/` 那 152 份在 Windows 目标下**没人编过**"),
-        "src/bridge/": (PART, "`-p monitor` 一个包的**生产段编得过**；7 个共享 crate 作为依赖被编。"
+        "tests/": ("无", "〔现打 09-19〕本格是 `-p monitor` **不带 `--all-targets`** ⇒ 只编 lib ＋ bin，test target 一个不编 ⇒ `tests/frontend/shell/` 那 152 份在 Windows 目标下**没人编过**"),
+        "src/frontend/shell/": (PART, "`-p monitor` 一个包的**生产段编得过**；7 个共享 crate 作为依赖被编。"
                              "⚠ `#[cfg(test)]` 不进 `check`，「行为对」更买不到"),
         VENDOR: (PART, "作为 `monitor` 的依赖被编。⚠ 这一条**本件没现打**，"
                        "是从依赖关系推的 —— 按「未验」读"),
@@ -360,10 +360,10 @@ cell(
 cell(
     "winlink",
     anchor="run_gate winlink '不是数出来的数",
-    cwd="src/bridge/",
+    cwd="src/frontend/shell/",
     cmd="cargo build --locked -p monitor --bins --target x86_64-pc-windows-gnu",
     **{
-        "src/bridge/": (PART, "`-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）在 Windows target 上"
+        "src/frontend/shell/": (PART, "`-p monitor` 的两个二进制（`monitor` · `cc-monitor-filewin`）在 Windows target 上"
                              "**真链接**一趟（dev）。⚠ 只链不跑；test 档不链（那一半是 `winchk` 的 `check`）；"
                              "`-gnu` 不是 `-msvc`"),
         VENDOR: (PART, "作为 `monitor` 的依赖被编、被链。⚠ 按依赖关系推的，按「未验」读"),
@@ -423,7 +423,7 @@ cell(
                                        "⚠ 只买「编得过」，**买不到「在 Windows 上跑得对」** —— "
                                        "`check` 一行代码都不执行；⚠ `-gnu` 不是 `-msvc`，"
                                        "MSVC ABI 专属的那一类本格盖不到"),
-        "src/bridge/": blind("另一个 workspace，由上面 `winchk` 那一格盖"),
+        "src/frontend/shell/": blind("另一个 workspace，由上面 `winchk` 那一格盖"),
         VENDOR: blind("同上 —— 它是 `src-tauri` 那棵的依赖，本命令的编译图里没有它"),
     },
 )
@@ -465,7 +465,7 @@ cell(
                            "**两向对拍** · 它往哪两个目录倒字节 · **真跑一次 `--check`**（只读，要有数）。"
                            "⚠ 那份脚本里的编译与拷贝那一半本格**不跑**（它要 zig ＋ cargo-zigbuild，"
                            "本格一个都不装）"),
-        "src/bridge/": (PART, "〔`19b` 09-19 加〕**只读 `build.rs` 里那两个取身份的函数**"
+        "src/frontend/shell/": (PART, "〔`19b` 09-19 加〕**只读 `build.rs` 里那两个取身份的函数**"
                            "（`backend_source_build_id` / `backend_stamp_marks` ＋ "
                            "`emit_backend_build_id` 调不调前者）：函数体里不许再有兜底值"
                            "（`\"unknown\"` / `unwrap_or_default()`），且「抠不到」那一支必须 `panic!`。"
@@ -473,7 +473,7 @@ cell(
                            "`REEMBED_CMD` 逐字 · `EMBEDDED_BACKENDS_DIR`/`NATIVE_BACKEND_DIR` 的值 · "
                            "`embed_backends`/`embed_native_backend` 的出路各点名那条命令 ≥2 处、"
                            "代码行里不许手抄第二条产字节配方 · mtime 安全网仍看**两份**源码；"
-                           "⑤ `src/bridge/.gitignore` —— **只读**带 `⇐ 内嵌落点` 锚的那几行，"
+                           "⑤ `src/frontend/shell/.gitignore` —— **只读**带 `⇐ 内嵌落点` 锚的那几行，"
                            "与上面那几个落点常量两向集合相等（现物：步 8 改名后那两行指空过）。"
                            "⚠ 买的是**源码形状**，不是行为 —— 它不编也不跑 `build.rs`；"
                            "这棵树的其余每一份本格一个字不碰"),
@@ -513,8 +513,8 @@ cell(
     cmd="cargo test --workspace --lib",
     **{
         "src/generated/": ("无", "〔现打 09-19〕这棵树是 `.ts`，Rust 那侧碰不到它 —— **盯「Rust 源改了而生成物没跟」的是 `generated` 那一格，不是本格**"),
-        "tests/": ("部", "〔现打 09-19〕`tests/bridge/` 那 152 份 `.rs` 靠 `src/bridge/src/*.rs` 里的 `#[path]` 挂进 crate ⇒ 本格**编它们、跑它们**（步 7b 把测试段整批搬出生产树之后，两棵生产树的真 `#[test]` 是 0/0，测试全在这棵树里）。⚠ `.ts` 那一半本格看不见"),
-        "src/bridge/": (FULL, "13 个成员的 `--lib` 判据，合计求和 + 包数相等断言（CP2c 加 `copy-core` 后 9 → 10 · US1 加 `relay-route-core` 后 10 → 11 · DUP2 加 `agent-tools-core` 后 11 → 12 · DUP3 加 `upstream-url-core` 后 12 → 13 · MIG-3b 加 `deploy-core` 后 13 → 14 · RE 把 `codex-token-core` 搬进后端后 14 → 13）"
+        "tests/": ("部", "〔现打 09-19〕`tests/frontend/shell/` 那 152 份 `.rs` 靠 `src/frontend/shell/src/*.rs` 里的 `#[path]` 挂进 crate ⇒ 本格**编它们、跑它们**（步 7b 把测试段整批搬出生产树之后，两棵生产树的真 `#[test]` 是 0/0，测试全在这棵树里）。⚠ `.ts` 那一半本格看不见"),
+        "src/frontend/shell/": (FULL, "13 个成员的 `--lib` 判据，合计求和 + 包数相等断言（CP2c 加 `copy-core` 后 9 → 10 · US1 加 `relay-route-core` 后 10 → 11 · DUP2 加 `agent-tools-core` 后 11 → 12 · DUP3 加 `upstream-url-core` 后 12 → 13 · MIG-3b 加 `deploy-core` 后 13 → 14 · RE 把 `codex-token-core` 搬进后端后 14 → 13）"
                              "〔09-14 现打：`gate.sh` 那行是 `run_gate_sum cargo 9`；"
                              "上一版这里与锚点都写着 8〕"),
         VENDOR: blind("显式 `--exclude code-picture-core`（`C7`：vendor 不动）"),
@@ -544,17 +544,17 @@ cell(
 cell(
     "comm-boundary",
     anchor="run_gate comm-boundary '判过的条数 = 通信层那一族",
-    cwd="仓根（内层 cd src/bridge）",
+    cwd="仓根（内层 cd src/frontend/shell）",
     cmd="cargo test -p monitor --lib comm_boundary_registry::tests::（＋ 三方对拍 ＋ 两条锚点）",
     **{
         "tests/": (PART, "〔现打 09-20〕两种碰法要分开：**跑**的只有 "
-                         "`tests/bridge/comm_boundary_registry_tests.rs` 这一份（1400 行、15 条），"
+                         "`tests/frontend/shell/comm_boundary_registry_tests.rs` 这一份（1400 行、15 条），"
                          "本格还**读它的文本**数 `#[test]` 条数（三方对拍的 `declared` 那一边）；"
                          "而那一族的判据自己会**扫过这棵树的绝大部分**（后缀 `rs`/`ts`/`toml`，"
                          "明写排掉 `tests/evidence/`）去找那枚成员标记。"
                          "⚠ 扫过 ≠ 判过：对没盖标记的文件，扫描的结论只有「它不是成员」"),
-        "src/bridge/": (PART, "〔现打 09-20〕**编的是 `-p monitor` 一个包**；"
-                              "判据另**读** `src/bridge/src/comm_boundary_registry.rs`（`#[path]` 挂载 ＋ "
+        "src/frontend/shell/": (PART, "〔现打 09-20〕**编的是 `-p monitor` 一个包**；"
+                              "判据另**读** `src/frontend/shell/src/comm_boundary_registry.rs`（`#[path]` 挂载 ＋ "
                               "那句「登记在册的通信层成员：N 份」的散文，三方相等的一条腿）。"
                               "这棵树的其余每一份被**扫**（找标记），不被判"),
         "src/": (PART, "〔现打 09-20〕前端 TS 被**扫**（`.ts` 也在后缀面里，`§3.2` 那条"
@@ -566,7 +566,7 @@ cell(
                            "但它在根之下、不在排除名单里，如实记成「扫过」而不是「不碰」）"),
         "src/generated/": (PART, "〔现打 09-20〕被**扫**（生成物同样可能被人盖标记，"
                                  "不给它开口子）"),
-        ROOTFILES: (PART, "〔现打 09-20〕`src/bridge/Cargo.toml` 那一份是语料见证之一"
+        ROOTFILES: (PART, "〔现打 09-20〕`src/frontend/shell/Cargo.toml` 那一份是语料见证之一"
                           "（每个后缀各一个逐字住址，`toml` 那个落在这里）。⚠ 真正的仓根文件"
                           "（`package.json` 等）不在 `src`/`tests` 两个根之下 ⇒ 本格不碰"),
     },
@@ -580,10 +580,10 @@ cell(
 cell(
     "test-tiers",
     anchor="run_gate test-tiers '判过的条数 = 测试层分级那一族",
-    cwd="仓根（内层 cd src/bridge）",
+    cwd="仓根（内层 cd src/frontend/shell）",
     cmd="cargo test -p guard-core --lib test_tiers::（＋ 三方对拍 ＋ 两条锚点）",
     **{
-        "tests/": (PART, "〔现打 09-24〕**判**的是人群：`tests/bridge|backend/**/*.rs` 与 `tests/**/*.{vitest,test}.ts` "
+        "tests/": (PART, "〔现打 09-24〕**判**的是人群：`tests/frontend/shell|backend/**/*.rs` 与 `tests/**/*.{vitest,test}.ts` "
                          "逐份归层（分区两向相等）、每份够不够得着它的跑者、扫描层的路径字面量在不在盘、"
                          "集成层有没有静默跳过、每条 `#[ignore]` 的触发链；另读 `tests/benches/` 的份数对 `[[bench]]`。"
                          "⚠ 判的是**这些文件在不在执行链上**，一条判据的断言对不对它一个字不看；"
@@ -594,7 +594,7 @@ cell(
                                   "引用语料扫过这棵树的 `.rs`/`.ts`（找辅助件的名字）。这棵树的量具与读数本格一份不判"),
         "tests/scripts/": (PART, "〔现打 09-24〕只被**扫**：引用语料（按文件名找 e2e 辅助件的用户）。不判"),
         "tests/hooks/": (PART, "〔现打 09-24〕只被**扫**：同上"),
-        "src/bridge/": (PART, "〔现打 09-24〕**编**的是 `-p guard-core` 一个包；另**读**这棵树全部 `.rs` 找 `#[path]` 挂载"
+        "src/frontend/shell/": (PART, "〔现打 09-24〕**编**的是 `-p guard-core` 一个包；另**读**这棵树全部 `.rs` 找 `#[path]` 挂载"
                               "（单元层可达那一条的人群）与 `Cargo.toml` 的 `[[bench]]`。那些 `.rs` 的内容本格不判"),
         "src/backend/": (PART, "〔现打 09-24〕**读**全部 `.rs` 找 `#[path]` 挂载、读 `Cargo.toml` 的 `[[bench]]`（秤 7 标没标 `test = true`）。"
                                "⚠ 冒烟档那一趟**不在本格**：它在 `backend` 那一格的 `cargo test` 里跑"),
@@ -625,7 +625,7 @@ cell(
     **{
         "tests/": ("部", "〔现打 09-19〕同上，`tests/backend/` 那 75 份 `.rs` 由 `src/backend/*.rs` 的 `#[path]` 挂进来 ⇒ 本格编它们、跑它们"),
         "src/backend/": (FULL, "单包全量 `cargo test`（含 `#[cfg(test)]` 那一族守卫）"),
-        "src/bridge/": (PART, "跨轨对拍：现打 4 个读点（`control/gate.rs` 读 Gate 2 黄金夹具、"
+        "src/frontend/shell/": (PART, "跨轨对拍：现打 4 个读点（`control/gate.rs` 读 Gate 2 黄金夹具、"
                              "`control/launch.rs` 读 monitor 的 `tmux.rs`）"),
         ".github/": (PART, "现打 1 个读点"),
         "tests/e2e/": (PART, "现打 2 个读点"),
@@ -643,7 +643,7 @@ cell(
         "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/panorama/types.ts` 一处"),
         "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
         VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `ci.yml` 的 `-p code-picture-core`）"),
-        "src/bridge/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
+        "src/frontend/shell/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
     },
 )
 
@@ -686,7 +686,7 @@ cell(
         "src/": (FULL, "16 个 tsx 套件全在 `src/` 下 + `vitest.config.ts` 的 "
                        "`include: [\"src/**/*.vitest.ts\"]`。⚠ **「跑了 0 个也照绿」那一格 15/17 守不住**"
                        "（本格分母那句话逐字写着）"),
-        "src/bridge/": (PART, "现打 2 个读点"),
+        "src/frontend/shell/": (PART, "现打 2 个读点"),
         "src/backend/": (PART, "现打 1 个读点"),
         "tests/scripts/": (PART, "现打 2 个读点"),
         "tests/e2e/": (PART, "现打 1 个读点"),
@@ -758,7 +758,7 @@ cell(
         #    只数「这个扩展名有几份」。⇒ 对每一棵树都是「部」，不是「全」。
         "src/backend/": (PART, "〔现打 09-19〕只数 `.rs` 的份数，一行内容都不读"),
         VENDOR: (PART, "同上。⚠ vendor 里的 `.rs` **算进 git 那一侧**（它们被跟踪）⇒ 两侧同口径"),
-        "src/bridge/": (PART, "同上"),
+        "src/frontend/shell/": (PART, "同上"),
         "src/shared/": (PART, "只数 `.sh`/`.ts` 的份数"),
         "src/": (PART, "只数 `.ts` 的份数"),
         "src/generated/": (PART, "同上 —— 生成物也在 git 里，两侧同口径"),
@@ -790,7 +790,7 @@ cell(
                                "⇒ test 档那一半在 musl 上没人编（那是另一回事：测试要跑，不是要编）"),
         VENDOR: (NONE, "本 crate 不依赖 vendor 那两棵（`code-picture-core` 被 `cargo` 那格显式 "
                        "`--exclude`，`cc-acct-iso` 是 bridge 侧的）"),
-        "src/bridge/": (NONE, "🔴 **本格只编后端那一个 crate** —— 前端那棵树在 musl 上"
+        "src/frontend/shell/": (NONE, "🔴 **本格只编后端那一个 crate** —— 前端那棵树在 musl 上"
                               "**没有任何门禁**，而它也不需要：远端只装后端字节，前端不过去"),
     },
 )
@@ -880,7 +880,7 @@ NEED_NONE, UNJUDGED = "不需要门", "未裁"
 NO_GATE_NEEDED = {
     # 🔴 〔新增 09-19〕重构把两个 Cargo 工程搬进 `src/` 之后才出现的一棵树。
     ".cargo/": {
-        "why": "这棵树只有一份 `config.toml`，内容是 `[build] target-dir = \".build/bridge\"` ——"
+        "why": "这棵树只有一份 `config.toml`，内容是 `[build] target-dir = \".build/shell\"` ——"
                "它把构建产物**赶出 `src/`**。⇒ 它是本仓那一族「走一遍源码树收所有 `.rs`」判据的"
                "**前置条件**，不是任何一格的**分母**；登记只记分母，所以这里判 0 不是漏登。"
                "🔴 **但它坏掉的后果比一般配置重，写清楚**：`target/` 下有成千上万份 build script "
@@ -890,7 +890,7 @@ NO_GATE_NEEDED = {
                "⚠ 与 `tests/hooks/` 的区别仍在那一句：那棵树里的东西**会被执行**。",
         # 钉子：那份文件得真在、且那条键真是这个值 —— 有人把 target-dir 改回默认，理由当场失效。
         "witness_file": ".cargo/config.toml",
-        "witness_text": 'target-dir = ".build/bridge"',
+        "witness_text": 'target-dir = ".build/shell"',
         "archive": [
             {"档": "构建 / 工具链配置", "判": UNJUDGED,
              "成员": ["config.toml"],
@@ -1390,7 +1390,7 @@ invoke("comm-boundary", ELSEWHERE,
        "⇒ 这一维**只有本机这一格买得到**，如实记着",
        anchor="cargo test --workspace")
 invoke("test-tiers", ELSEWHERE,
-       "那 12 条靠 `#[path]` 挂在 `guard-core` 的 lib 上，而 `guard-core` 是 `src/bridge` workspace 的成员 ⇒ 云端那两趟 workspace test **会跑到它们**。"
+       "那 12 条靠 `#[path]` 挂在 `guard-core` 的 lib 上，而 `guard-core` 是 `src/frontend/shell` workspace 的成员 ⇒ 云端那两趟 workspace test **会跑到它们**。"
        "🔴 **但云端没有本格的三方对拍与那两条锚点** —— 那一行 `mod` 被摘掉时云端只是合计小 12。"
        "⇒ 「测试层分级没有静默消失」这一维**只有本机这一格买得到**，如实记着",
        anchor="cargo test --workspace")
@@ -1764,7 +1764,7 @@ def check_no_gate_needed(orphans):
 def tree_members(tree, files):
     """那棵树**现打**的成员。
     🔴 〔订正 09-19〕走 `tree_of()` 的**首匹配**，不再用裸 `startswith` ——
-    重构后树之间**有前缀包含关系**（`src/` ⊃ `src/bridge/`），裸 `startswith` 会让
+    重构后树之间**有前缀包含关系**（`src/` ⊃ `src/frontend/shell/`），裸 `startswith` 会让
     catch-all 那棵把所有子树的成员**再数一遍**，分母当场虚高、而且没有任何判据会红。"""
     return sorted(p for p in files if tree_of(p) == tree)
 

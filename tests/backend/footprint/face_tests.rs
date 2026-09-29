@@ -8,7 +8,7 @@
 //! # 买不到的
 //!
 //! - 🔴 真远端：环境是那台**后端进程**的，不是用户交互 shell 的。
-//! - 真 monitor 那一趟（`footprint_client_facts`）：monitor 侧 `tests/bridge/footprint_client_tests.rs`。
+//! - 真 monitor 那一趟（`footprint_client_facts`）：monitor 侧 `tests/frontend/shell/footprint_client_tests.rs`。
 
 use super::*;
 use crate::footprint::registry::HostScope;

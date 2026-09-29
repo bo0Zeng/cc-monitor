@@ -170,10 +170,10 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     status: "zero",
     defs: ["sanitizeRemoteLauncher"],
     needles: [{ text: "[;|&$`<>\\r\\n]", count: 0 }],
-    rustGone: ["src/bridge/src/history.rs::sanitize_launcher"],
+    rustGone: ["src/frontend/shell/src/history.rs::sanitize_launcher"],
     rustNeedles: [
       { file: PAYLOAD_RS, text: "';' | '|' | '&'", count: 0 },
-      { file: "src/bridge/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
+      { file: "src/frontend/shell/src/history.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端 ⇒ 私有那份最可能长回来的地方跟着挪。
       { file: "src/backend/control/launch_render/local.rs", text: "'-' | '_' | '.' | ' '", count: 0 },
       { file: "src/backend/control/ccm/plan.rs", text: "free_text_ok(&o.launcher)", count: 0 },
@@ -228,9 +228,9 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/common/gate-core/src/lib.rs", text: '"*?.:="', count: 1 },
       { file: "src/backend/control/ccm/plan.rs", text: '"*?.:="', count: 0 },
       // 〔DUP3〕monitor 的 Gate 1 调的是 gate-core 那一条（恰一处），它自己的私有谓词不许长回来（`rustGone`）。
-      { file: "src/bridge/src/backend/control/tmux.rs", text: "gate_core::existing_tmux_name_issue(", count: 1 },
+      { file: "src/frontend/shell/src/backend/control/tmux.rs", text: "gate_core::existing_tmux_name_issue(", count: 1 },
     ],
-    rustGone: ["src/bridge/src/backend/control/tmux.rs::is_safe_tmux_target"],
+    rustGone: ["src/frontend/shell/src/backend/control/tmux.rs::is_safe_tmux_target"],
   },
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
@@ -270,7 +270,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: { via: "src/common/shell-quote-core/src/lib.rs", tests: ["tests/rbind-token-shape-parity.vitest.ts"] },
     rustGone: [
-      "src/bridge/src/bind.rs::rbind_token_shape_ok",
+      "src/frontend/shell/src/bind.rs::rbind_token_shape_ok",
       `${PAYLOAD_RS}::rbind_token_shape_ok`,
       "src/backend/control/identity_tag.rs::token_is_safe",
     ],
@@ -299,7 +299,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/upstream-url.golden.json",
-      tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/upstream-url-parity.vitest.ts"],
+      tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/upstream-url-parity.vitest.ts"],
     },
     rustGone: ["src/backend/relay/upstream.rs::host_is_loopback", "src/common/creds-core/src/store.rs::check_base_url_shape"],
     // 中转那份不许再有自己的协议表 / 回环判定。
@@ -349,13 +349,13 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     // 两半各自接的是共享那一个（后端入口 · monitor 再导出），谁也没有自己再写一份字符集。
     rustNeedles: [
       { file: "src/backend/control/cc_bus.rs", text: "shell_quote_core::bus_id_ok(v)", count: 1 },
-      { file: "src/bridge/src/backend/control/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
-      { file: "src/bridge/src/backend/control/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
+      { file: "src/frontend/shell/src/backend/control/cc_bus.rs", text: "pub use shell_quote_core::bus_id_ok as is_valid_bus_id;", count: 1 },
+      { file: "src/frontend/shell/src/backend/control/cc_bus.rs", text: "c.is_ascii_alphanumeric() || c == '_' || c == '-'", count: 0 },
     ],
   },
   J13: {
     what: "一次失败能否证明一个字节没发出",
-    homes: ["src/bridge/src/backend/control/backend_route.rs::route_call_error"],
+    homes: ["src/frontend/shell/src/backend/control/backend_route.rs::route_call_error"],
     // 〔DUP2 · 主会话 09-26 裁〕登记「镜像 ＋ 金样」：Rust 侧把每一种失败分层上线、连同判出的「可回落」写成金样，TS 读同一份逐行判。
     status: "mirror",
     defs: ["provablyNotSent"],
@@ -364,7 +364,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       via: "tests/__fixtures__/reach-collapse.golden.json",
       // Rust 侧读金样对拍 `route_call_error` 的是 `chan/webview_tests.rs`（`backend_route_tests.rs` 只在注释里提到它 ——
       //   ⑥ 只认代码里的提及，第一版登记成那一份时 ⑥ 没逮到，改成只认代码之后才逮到）。
-      tests: ["tests/bridge/chan/webview_tests.rs", "tests/tmux-control.vitest.ts"],
+      tests: ["tests/frontend/shell/chan/webview_tests.rs", "tests/tmux-control.vitest.ts"],
     },
     why: "`设计/01 §5` D7「失败要显式、归因要准确」：这是调用方对自己那一次调用的归因，失败时恰恰问不了对端 —— 只能在调用方判，两份由金样钉",
   },
@@ -408,7 +408,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/identifier-rules.golden.json",
-      tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/identifier-rules-parity.vitest.ts"],
+      tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/identifier-rules-parity.vitest.ts"],
     },
   },
   J18: {
@@ -430,7 +430,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
     parity: {
       via: "tests/__fixtures__/identifier-rules.golden.json",
-      tests: ["tests/bridge/backend/control/payload_judgment_rules.rs", "tests/identifier-rules-parity.vitest.ts"],
+      tests: ["tests/frontend/shell/backend/control/payload_judgment_rules.rs", "tests/identifier-rules-parity.vitest.ts"],
     },
   },
   J19: {
@@ -453,7 +453,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
     rustNeedles: [
       { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
-      { file: "src/bridge/src/adapter.rs", text: '&["Agent", "Task"]', count: 0 },
+      { file: "src/frontend/shell/src/adapter.rs", text: '&["Agent", "Task"]', count: 0 },
     ],
   },
   J16: {
@@ -493,14 +493,14 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     //   （同逻辑，只有测试读）。收成后端一份 `health_face`：`backend_status` 交成品（状态 ＋ 一句 ＋ ⓘ ＋ [详情]），
     //   界面只排版（`settings/backend-section.ts::decodeHealthFace` 按形状收、不判）。TS 那两个判定 · 取文口 · 缺格当无记录的
     //   `readHealth` 一起删；Rust 那份并进来（`rustGone`）。形状两侧同读金样 `tests/__fixtures__/backend-health.golden.json`。
-    homes: ["src/bridge/src/backend_policy.rs::health_face"],
+    homes: ["src/frontend/shell/src/backend_policy.rs::health_face"],
     status: "zero",
     defs: ["describeBackendHealth", "describeHealthDetail", "healthCrashed", "readHealth"],
     needles: [
       { text: "seen === 0", count: 0 },
       { text: "crashed === 0", count: 0 },
     ],
-    rustGone: ["src/bridge/src/backend_policy.rs::describe_health"],
+    rustGone: ["src/frontend/shell/src/backend_policy.rs::describe_health"],
   },
 };
 
@@ -729,7 +729,7 @@ const TEST_INFRA_CRATE = "guard-core";
  * 提到 `guard-core` 的那几份 `Cargo.toml` 之外还有哪些（现核「只作 dev 依赖」的人群）：
  * 两份顶层工作区 ＋ 全景引擎 ＋ 每个 `crates/*` 自己那份（按盘上 crate 目录现生成，见下）。
  */
-const CARGO_TOMLS_TOP = ["src/bridge/Cargo.toml", "src/backend/Cargo.toml", "src/panorama-engine/Cargo.toml"];
+const CARGO_TOMLS_TOP = ["src/frontend/shell/Cargo.toml", "src/backend/Cargo.toml", "src/panorama-engine/Cargo.toml"];
 /** 那几份里 `guard-core = …` 依赖行的总数（恒等计数：今天 monitor · 后端 · 全景引擎 · creds-core 各一）。 */
 const GUARD_CORE_DEP_LINES = 4;
 

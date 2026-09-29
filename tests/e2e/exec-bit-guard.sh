@@ -158,7 +158,7 @@ fi
 echo "===== 合计 PASS（受检 $checked），带 shebang 的文件在 git 里均为 100755 ====="
 
 # ---------------------------------------------------------------------------
-# 漂移软警告（非阻断）。照抄 `src/bridge/build.rs::check_vendor_freshness` 的形状：
+# 漂移软警告（非阻断）。照抄 `src/frontend/shell/build.rs::check_vendor_freshness` 的形状：
 # 上游缺席 → no-op；有差异 → 警告但**不改退出码**。
 #
 # 为什么现在就要：仓内 `src/shared/cc-bus/` 今天是**死副本**（无 include_str!、无部署代码

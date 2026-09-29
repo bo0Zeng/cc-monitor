@@ -21,7 +21,7 @@
 #   · `local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again`
 #   · `backend::control::local_backend::tests::the_local_backend_host_really_registers_an_inbound_client`
 #
-# ⇒ **任何人在铺了 `src/bridge/embedded-backends/` 的树上跑一次 `cargo test`**（包括用户自己
+# ⇒ **任何人在铺了 `src/frontend/shell/embedded-backends/` 的树上跑一次 `cargo test`**（包括用户自己
 # clone 下来跑一遍）**都会改这台机器的 tmux 全局状态**。已经真发生过三次
 # （08-26 实现方 · 08-27 PM · 08-29 PM）。
 # ⇒ 两条都改成 `#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed，**并接到本脚本这条带 shim 的路上**。
@@ -117,7 +117,7 @@ OUT="$WORK/rust.log"
 : > "$OUT"
 RC=0
 (
-  cd "$REPO/src/bridge" && \
+  cd "$REPO/src/frontend/shell" && \
   CCM_E2E_BACKEND="$BACKEND" \
   CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" \
   CCM_E2E_CLAUDE_DIR="$CLAUDE_DIR" \
@@ -125,7 +125,7 @@ RC=0
   cargo test --lib -- --ignored --nocapture --test-threads=1 local_backend::
 ) >>"$OUT" 2>&1 || RC=$?
 (
-  cd "$REPO/src/bridge" && \
+  cd "$REPO/src/frontend/shell" && \
   CCM_E2E_BACKEND="$BACKEND" \
   CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" \
   CCM_E2E_CLAUDE_DIR="$CLAUDE_DIR" \
@@ -183,10 +183,10 @@ if [ "$MARKS" -lt "$RAN" ]; then
 fi
 
 # 〔DEL 续 · 主会话裁〕**按环境显式分支**：下面这三条起真后端的判据由 `cfg(all(embedded_backends, linux, x86_64))` 门着
-#   （`build.rs` 只在 `src/bridge/embedded-backends/` 两个 arch 都齐时置 cfg；那个目录 gitignore）。
+#   （`build.rs` 只在 `src/frontend/shell/embedded-backends/` 两个 arch 都齐时置 cfg；那个目录 gitignore）。
 #   没铺 ⇒ 它们不编译进来 ⇒ 那几条断言记 **SKIP** 并说原因；PASS ＋ SKIP 恒等总条数（门禁 `exact-with-skip`，照 `backend-gate2`）。
 #   ⚠ SKIP 只许出现在「环境真不够」时：落点齐了、本机也是 Linux x86_64，却一条都没跑 ⇒ **FAIL**（多半是换了落点之后
-#   `build.rs` 没重跑 —— `touch src/bridge/build.rs`，见 `local_backend_host_tests.rs` 那段复跑纪律）；只跑了一部分 ⇒ 也 FAIL。
+#   `build.rs` 没重跑 —— `touch src/frontend/shell/build.rs`，见 `local_backend_host_tests.rs` 那段复跑纪律）；只跑了一部分 ⇒ 也 FAIL。
 EMB_TESTS=(
   backend::control::local_backend::tests::the_local_backend_host_really_registers_an_inbound_client
   local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
@@ -200,15 +200,15 @@ skip=0
 emb_ran=0
 for t in "${EMB_TESTS[@]}"; do grep -qF "test $t " "$OUT" && emb_ran=$((emb_ran + 1)); done
 emb_ready=0
-if [ -f "$REPO/src/bridge/embedded-backends/cc-monitor-backend-x86_64" ] \
-   && [ -f "$REPO/src/bridge/embedded-backends/cc-monitor-backend-aarch64" ] \
+if [ -f "$REPO/src/frontend/shell/embedded-backends/cc-monitor-backend-x86_64" ] \
+   && [ -f "$REPO/src/frontend/shell/embedded-backends/cc-monitor-backend-aarch64" ] \
    && [ "$(uname -s) $(uname -m)" = "Linux x86_64" ]; then emb_ready=1; fi
 if [ "$emb_ran" -eq "${#EMB_TESTS[@]}" ]; then :
 elif [ "$emb_ran" -eq 0 ] && [ "$emb_ready" -eq 0 ]; then
   skip=$EMB_MARKS
-  printf '  SKIP %s 条断言（%s 条起真后端的判据）：本树没铺 src/bridge/embedded-backends/ 两个 arch（或本机不是 Linux x86_64）—— build.rs 不置 cfg(embedded_backends)，它们不编译进来\n' "$EMB_MARKS" "${#EMB_TESTS[@]}"
+  printf '  SKIP %s 条断言（%s 条起真后端的判据）：本树没铺 src/frontend/shell/embedded-backends/ 两个 arch（或本机不是 Linux x86_64）—— build.rs 不置 cfg(embedded_backends)，它们不编译进来\n' "$EMB_MARKS" "${#EMB_TESTS[@]}"
 elif [ "$emb_ran" -eq 0 ]; then
-  bad "落点齐了、本机也是 Linux x86_64，那 ${#EMB_TESTS[@]} 条却一条都没跑 —— build.rs 没重跑？（touch src/bridge/build.rs）"
+  bad "落点齐了、本机也是 Linux x86_64，那 ${#EMB_TESTS[@]} 条却一条都没跑 —— build.rs 没重跑？（touch src/frontend/shell/build.rs）"
 else
   bad "那 ${#EMB_TESTS[@]} 条只跑了 $emb_ran 条 —— 门它们的 cfg 分叉了"
 fi

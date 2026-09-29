@@ -95,7 +95,7 @@ const CENSUS: readonly string[] = [
   "resumeCommandRemotePresets",
   "notifyTurnEnd",
   // 〔LR2〕`forceLaunchPayloadRenderer` 退役 ⇒ 这一行删，两份普查恒等地各少一键。
-  // 〔CFG1 · 4D〕现打反扫 Rust 侧补一个：`src/bridge/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
+  // 〔CFG1 · 4D〕现打反扫 Rust 侧补一个：`src/frontend/shell/src/logging.rs::write_diagnostics_to_config` 写的 `diagnostics`。
   //   上面那句「Rust 侧另读三个」漏了它 ⇒ 存过一次诊断设置的用户，设置页「认不出的键」提示条会把它点名（假警报）。
   "diagnostics",
 ];
@@ -207,7 +207,7 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     const owners = new Set(Object.values(CONFIG_KEY_OWNERS));
     // 〔B2 · 条 66〕10 → 9：`src/backend-policy.ts` 不再是任何配置键的主人（`backendPolicy` 退役，
     //   「退出行为」那个值搬到后端所在那台机器上）。少的就是它这一个，别的主人一个没动。
-    // 〔CFG1 · 4D〕9 → 10：补上 `src/bridge/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
+    // 〔CFG1 · 4D〕9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
     expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
   });
 

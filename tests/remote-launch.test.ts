@@ -244,12 +244,12 @@ test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DU
 // 〔LR2〕这里原来有一条 `buildOpenTerminalCmd`（旧面板「在此打开终端」那颗按钮的 TS 那份）。
 // 生产调用方 0（旧面板已退役；文件窗口用 Rust `filewin/shell.rs::build_open_terminal_cmd`），
 // 主会话按 `设计/00 §2.5 ④` ＋ `90 §3`（前端零 shell 串）裁删；三行期望原样搬进了
-// `tests/bridge/filewin/shell_tests.rs::the_open_terminal_command_keeps_its_three_shapes`。
+// `tests/frontend/shell/filewin/shell_tests.rs::the_open_terminal_command_keeps_its_three_shapes`。
 
 // 〔DUP2 · 主会话 09-26 裁 J6〕这里原来有三条（TS 的两个 tmux 名谓词逐格：attach 那条的拒绝面 · F01 新建禁 glob ·
 // F04b 新建禁 `=`）。被测的两个谓词删了（`设计/90 §3` 判据 2），规则住 gate-core、只有一份 ⇒ 三条的期望原样搬进
 // `tests/common/gate-core/lib_tests.rs`（新建 / 已有会话两条，正反各一格）；F04b「建得出来就杀得掉」的跨轨那条
-// 在 `tests/bridge/backend/control/backend_kill_tests.rs` 改钉 gate-core 那一个禁字集。
+// 在 `tests/frontend/shell/backend/control/backend_kill_tests.rs` 改钉 gate-core 那一个禁字集。
 
 test("F01 起新会话：glob 名原样交给渲染侧（〔DUP2〕gate-core 新建那一条拒）/ attach 放行", () => {
   eq(req(planLauncher("", "a*b", "claude")).outer?.name, "a*b", "新建名原样上线（Rust 那侧拒 glob）");
@@ -358,7 +358,7 @@ test("F01 漂移守卫：e2e shim 的 tmux 目标是 =名: 精确形态", () => 
 
 // 〔FIX4 · `设计/90 §3` J7〕这里原来一条「P3s-Y2：新造名字的路径，`deriveTmuxName` 的结果必须过铸造口」（源码数据流扫 TS）。
 // TS 那份派生删了 ⇒ 被测的数据流不存在了：界面零铸名（`tests/judgment-single-home.vitest.ts` J7 翻 `zero` ·
-// `tests/bridge/session_name_registry_tests.rs` 的递减棘轮 —— 前端零 `-cc` 产名点）；名字一律问后端 `tmux-name-mint`。
+// `tests/frontend/shell/session_name_registry_tests.rs` 的递减棘轮 —— 前端零 `-cc` 产名点）；名字一律问后端 `tmux-name-mint`。
 
 if (failed > 0) {
   console.error(`\n${failed} remote-launch test(s) failed`);
