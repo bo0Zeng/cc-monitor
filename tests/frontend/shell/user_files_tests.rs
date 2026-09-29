@@ -17,8 +17,6 @@ pub(crate) struct DiskDoor {
     /// 删会话那一条收到的 sid。
     /// 〔RM1d〕`delete`（`files-delete`）收到的相对段 ＋〔RM1e〕交过去的 `expect`。
     pub deleted: RefCell<Vec<(String, String)>>,
-    /// 〔RM1e〕`peek` 被问了几次（删那一支不该再先 `peek`：CAS 在写口闭合）。
-    pub peeked: RefCell<usize>,
 }
 
 impl DiskDoor {
@@ -26,7 +24,6 @@ impl DiskDoor {
         Self {
             home: home.to_path_buf(),
             deleted: RefCell::new(Vec::new()),
-            peeked: RefCell::new(0),
         }
     }
 
@@ -42,23 +39,6 @@ impl Door for DiskDoor {
 
     async fn home(&self) -> Result<String, String> {
         Ok(self.home.display().to_string())
-    }
-
-    async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String> {
-        *self.peeked.borrow_mut() += 1;
-        let p = Self::at(root, rel);
-        let text = if p.exists() {
-            Some(
-                std::fs::read_to_string(&p)
-                    .map_err(|e| format!("替身读不了 {}：{e}", p.display()))?,
-            )
-        } else {
-            None
-        };
-        Ok(Peeked {
-            path: p.display().to_string(),
-            text,
-        })
     }
 
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
@@ -139,8 +119,9 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     let sent = door_commands();
     let (write_face, read_family) = backend_declared();
     assert!(
-        // 〔MIG-3b 续〕门 5 → 4：`files-chmod` 随公钥推送进本机后端出列；4 → 3：`files-put` 随全景写进那台后端出列。
-        sent.len() >= 3 && write_face.len() >= 8 && read_family.len() >= 5,
+        // 〔MIG-3b 续〕门 5 → 4：`files-chmod` 随公钥推送进本机后端出列；4 → 3：`files-put` 随全景写进那台后端出列；
+        // 〔THIN〕3 → 2：`files-peek` 随「认旧入口」进本机常驻后端出列。
+        sent.len() >= 2 && write_face.len() >= 8 && read_family.len() >= 5,
         "人群塌了（门 {} 条 · 写面 {} 条 · 读族 {} 条）—— 抽取器坏了，本条空转",
         sent.len(),
         write_face.len(),
@@ -157,16 +138,8 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
     // 反向：`RW1` 在后端写面加的三条，每一条在 monitor 这一侧都有消费者（不许登记了没人用）。
     // 〔MIG-3b〕`files-delete-session` 出了这一组：删会话由界面经通道直说那台后端，门不再发它（消费者在 `src/frontend/ui/session-writes.ts`）。
     // 〔MIG-3b 续〕`files-put` 出了这一组：最后经门写的全景批注进了那台后端（`panorama-edit` 在后端里经 `LocalFiles` 发它）。
-    for trio in ["files-peek"] {
-        assert!(
-            write_face.contains(trio),
-            "后端写面没有 `{trio}` —— 那一侧被改名 / 删了？"
-        );
-        assert!(
-            sent.contains(trio),
-            "`{trio}` 在后端登记了，monitor 的门却不发它 —— 登记挂空号"
-        );
-    }
+    // 〔THIN〕`files-peek` 也出了这一组：门上最后一个读的用户（`ccm_legacy` 认旧入口）进了本机常驻后端（`deploy-retired`）；
+    //   它在后端照旧是写面「读改写」的读那一半（别的面在后端里直接调）。反向那一格随之无对象。
     // 写面里门会发的那几条，恰好是这一集合（多发一条写面命令 ⇒ 先回答它为什么经门）。
     // 〔RM1d · 第四波〕+`files-delete`：全景删批注侧车（V110「引擎只算、文件管理来写」；计划里 `after = null`）。
     let sent_writes: std::collections::BTreeSet<&str> = sent
@@ -179,7 +152,7 @@ fn every_command_the_door_sends_is_registered_on_the_backend_and_the_new_trio_ha
         [
             // 〔MIG-3b 续〕`files-chmod` 出列：唯一用它的公钥推送进了本机后端。
             "files-delete",
-            "files-peek",
+            // 〔THIN〕`files-peek` 出列：见上。
             // 〔MIG-3b 续〕`files-put` 出列：唯一用它的全景批注 / 文档关联写进了那台后端（`control/panorama_edit.rs`）。
             // 〔MIG-3a · 子步 3〕`files-rename` 出列：唯一用它的 cc-bus 装前整目录备份进了本机后端。
         ]

@@ -90,7 +90,7 @@ fn quote_roundtrip_is_the_real_property() {
         "'",
         "''",
     ] {
-        let q = crate::ssh_source::shell_quote(evil);
+        let q = shell_quote_core::posix_quote(evil);
         assert_eq!(
             unquote_posix(&q).as_deref(),
             Some(evil),

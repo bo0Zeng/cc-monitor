@@ -24,7 +24,7 @@
 //!   「只读一行」入口（`lib.rs::STDIN_LINE_FLAG`，`control/cli_control.rs::read_input` 收）：命令行里只有后端路径与两个旗标，载荷一行由 capture 写进远端 stdin。
 //!   此前是 `printf '%s\n' '<json>' | …` 把载荷拼进命令行 —— 那要求远端登录 shell 认 POSIX 单引号与管道（fish 不认），已退役。
 //!   ⚠ 后端路径那一格仍过 POSIX 单引号（`remote_ask::command_line`）：路径里没有 `'` / `\` 时 fish 也认；
-//!   monitor 起远端后端那条命令（`ssh_source::shell_quote`）是同一个口径。
+//!   起远端后端那条命令用的也是同一个口径（`shell_quote_core::posix_quote`；〔THIN〕monitor `ssh_source` 那层转调壳已删）。
 //! - **一趟的大小有上限**：远端 CLI 面 stdin 的上限（`cli_control::MAX_CLI_STDIN`，1 MiB，超了拒、不截断）⇒ 推的载荷按台切块，
 //!   一块不超过 [`PUSH_MAX_BYTES`]；**单独一台就超了 ⇒ 那一台不推、说出来**（不截断）。
 //!

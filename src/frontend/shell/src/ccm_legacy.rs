@@ -153,7 +153,7 @@ pub(crate) async fn sweep(cfg: &crate::ssh_source::RemoteConfig) -> Result<Swept
 /// 升级那一格：那台的长连接握手完成那一刻，后台扫一次（`ssh_source` 在 `asset_sync::on_remote_ready` 旁边调）。
 ///
 /// **每次连上都扫**，不只在「这一轮自动部署真写了字节」时扫：跳过预检那一格（`skip_preflight`）根本不跑部署，
-/// 升级那一轮流若恰好没起来就永远删不掉；扫一次 ＝ 一次 `files-peek`（不在就停）。结局只进日志（足迹那一页看得到现状）。
+/// 升级那一轮流若恰好没起来就永远删不掉；扫一次 ＝ 问一次本机常驻后端 `deploy-retired`（只读 SFTP stat，不在就停）。结局只进日志（足迹那一页看得到现状）。
 pub(crate) fn on_remote_ready(cfg: &crate::ssh_source::RemoteConfig) {
     let cfg = cfg.clone();
     let origin = cfg.origin_label();

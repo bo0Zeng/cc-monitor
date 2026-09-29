@@ -553,7 +553,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
 fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     let (on_disk, names) = quote_sites();
     assert!(
-        names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "shell_quote"),
+        // 〔THIN〕monitor `ssh_source` 那层转调壳删了（零生产调用方）⇒ 认得出的别名只剩后端 `tmux_hook::sq`；本体名照旧在。
+        names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "posix_quote"),
         "别名认法坏了：{names:?}"
     );
     assert!(
