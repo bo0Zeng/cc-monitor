@@ -929,10 +929,32 @@ pub async fn ask_coded(
     args: &serde_json::Value,
     t: std::time::Duration,
 ) -> Result<serde_json::Value, Failed> {
-    use crate::chan::wire::{Body, Budget, CancelToken, Comms, Op};
+    ask_coded_cancellable(
+        line,
+        origin,
+        cmd,
+        args,
+        t,
+        crate::chan::wire::CancelToken::new(),
+    )
+    .await
+}
+
+/// 〔FILES3 · `设计/99 §2.2 ㉜`「可撤」〕同 [`ask_coded`]，撤单手柄由调用方握着（按内容搜那颗「停」拨它）：
+/// 拨下去 ⇒ 这一问当场回收（`Ours{Cancelled}`），通道把撤单转给那台后端（对端停不停是尽力，`05 §3.3.3`）。
+/// 🔴 窗口进程里说 `call` 的仍然只有一处 —— 就在本函数里（[`ask_coded`] 是它的薄壳）。
+pub async fn ask_coded_cancellable(
+    line: &Line,
+    origin: &Origin,
+    cmd: &str,
+    args: &serde_json::Value,
+    t: std::time::Duration,
+    cancel: crate::chan::wire::CancelToken,
+) -> Result<serde_json::Value, Failed> {
+    use crate::chan::wire::{Body, Budget, Comms, Op};
     let budget = Budget {
         until: std::time::Instant::now() + t,
-        cancel: CancelToken::new(),
+        cancel,
     };
     let payload = Body(serde_json::to_vec(args).map_err(|e| {
         Failed::local(copy_text(

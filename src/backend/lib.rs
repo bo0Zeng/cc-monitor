@@ -910,6 +910,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-read-chunk",
     // 〔W5-FILES · 第五波〕读族第九条（算目录大小）。**是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 由合并那一拍统一 bump。
     "--files-size",
+    // 〔FILES3 · `99 §2.2 ㉜`〕读族第十一条（按内容搜）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
+    "--files-grep",
     // 〔SE2 · `设计/10 §6 步 6`〕会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     // BUILD_ID 由合并那一拍统一 bump（本路不 bump）。
     "--find-in-session",

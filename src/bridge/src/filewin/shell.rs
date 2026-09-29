@@ -112,6 +112,7 @@ use std::sync::{Arc, Mutex};
 use super::copy::{CopyBoard, CopyJob, CopyPrompt};
 use super::find::{self, SearchBoard};
 use super::fonts::{self, FontState};
+use super::grep::{self, GrepBoard, GrepTally};
 use super::rows::{show_file_rows, show_hit_rows, HitTally, RenderTally};
 use super::select::{self, Action, Intent, Selection, TypeAhead};
 use super::source::{breadcrumbs, Line, Listed, SortBy, Source};
@@ -458,6 +459,12 @@ pub struct FileWindow {
     /// 搜索框里那几个字。**UI 线程自己的**（同 [`Self::copy_prompt`] 的理由：
     /// 它是一个正在被编辑的草稿，不该出现在两条线程共享的那份状态里）。
     query: String,
+    /// 〔FILES3 · `设计/99 §2.2 ㉜`〕按内容搜那一趟的共享落点（UI 线程读，tokio 那条写；`super::grep`）。
+    pub grep: GrepBoard,
+    /// 按内容搜那个框里的字（UI 线程自己的草稿，同 [`Self::query`]）。
+    grep_query: String,
+    /// 命中那一摞这一帧交出来的东西（被点了哪一条 —— **命中这一摞**的下标）。
+    pub grep_tally: GrepTally,
     /// 🔴〔第五刀〕`设计/99 §4.6.4`：那四条写操作的状态机（**一次问完 · 结果**；〔FN1〕围栏那一段 V119 拿掉了）。
     pub write_board: WriteBoard,
     /// 「叫什么名字 / 改成什么权限」那个框。`None` = 没在问。
@@ -649,6 +656,9 @@ impl FileWindow {
             font: FontState::NotInstalled,
             search: SearchBoard::default(),
             query: String::new(),
+            grep: GrepBoard::default(),
+            grep_query: String::new(),
+            grep_tally: GrepTally::default(),
             write_board: WriteBoard::default(),
             write_prompt: None,
             mode_probe: super::writeops::ModeProbe::default(),
@@ -995,6 +1005,58 @@ impl FileWindow {
         h.spawn(async move {
             find::run_search_at(board, line, origin, root, needle, mine, force_rebuild).await;
         });
+        true
+    }
+
+    /// 〔FILES3 · ㉜〕**发一趟按内容搜**：根 = 窗口现在在看的那个目录（同文件名搜索那一条取舍），要找的那一串 = 那个框里的字。
+    /// 回值 = 真的发出去了（框是空的 / 没有运行时 / 没接上通道 ⇒ `false`，后两种出声）。上一趟还在飞 ⇒ 先撤掉它。
+    pub fn fire_grep(&mut self, ctx: Option<egui::Context>) -> bool {
+        let needle = self.grep_query.trim().to_string();
+        self.grep.attach(ctx);
+        if needle.is_empty() {
+            return false;
+        }
+        let Some(h) = self.rt.clone() else {
+            self.grep
+                .say(&copy_text("rsFilewinShell.search.noRuntime", &[]));
+            return false;
+        };
+        let Some(line) = self.line.clone() else {
+            self.grep.say(NO_LINE.as_str());
+            return false;
+        };
+        let (mine, cancel) = self.grep.start(&needle);
+        let board = self.grep.clone();
+        let origin = self.source.origin();
+        let root = self.cwd_path();
+        h.spawn(async move {
+            grep::run_grep(board, line, origin, root, needle, mine, cancel).await;
+        });
+        true
+    }
+
+    /// 按内容搜那个框里的字（判据用；生产那一侧直接改字段）。
+    pub fn set_grep_query(&mut self, q: &str) {
+        self.grep_query = q.to_string();
+    }
+
+    /// 这一帧该画「按内容搜」的命中：文件名那个框是空的、按内容那个框里有字。
+    pub fn showing_grep(&self) -> bool {
+        self.query.trim().is_empty() && !self.grep_query.trim().is_empty()
+    }
+
+    /// 点了第 `i` 条按内容搜的命中 ⇒ 进它所在的目录、高亮它；清掉那个框（屏幕换回目录列表，那一行亮着）。
+    /// 回值 = 真的跳了（下标对得上这一摞）。
+    pub fn jump_to_grep_hit(&mut self, i: usize) -> bool {
+        let Some(o) = self.grep.shown().outcome else {
+            return false;
+        };
+        let Some((dir, name)) = grep::jump_target(&o, i) else {
+            return false;
+        };
+        self.navigate_to_at(dir);
+        self.set_reveal(&name);
+        self.grep_query.clear();
         true
     }
 
@@ -3374,6 +3436,8 @@ impl FileWindow {
         }
         // 🔴〔第四刀〕搜索那一行 ＋ **新鲜度那一行**（`设计/60 §3.5.3` 那条 ⬜）。
         self.search_row(ui);
+        // 〔FILES3 · ㉜〕按内容搜那一行（回车 / 按钮才发，「停」撤掉在飞那一趟）。
+        self.grep_row(ui);
         // `§5.4d` 那一摞：确认框 ／ 进度。**画在列表之前** —— 它是模态的。
         self.board.ui(ui);
         // `§5` 第二段那一摞：覆盖确认 ／ 进度 ／ **上一趟走的是哪条路**。同样模态、同样在前。
@@ -3418,6 +3482,7 @@ impl FileWindow {
         // 每帧从零数起 —— 这两个数是「这一帧物化了多少行」，不是累计。
         self.tally = RenderTally::default();
         self.hits_tally = HitTally::default();
+        self.grep_tally = GrepTally::default();
         // 🔴〔第四刀〕搜索框里有字 ⇒ 画命中，否则画当前目录。**二选一，不并排** ——
         //    并排会让「你现在看的是哪一摞」变成一个要靠标题猜的问题。
         if self.showing_hits() {
@@ -3431,6 +3496,15 @@ impl FileWindow {
             //    于是命中那一摞**在类型上**交不出任何一个下标，而下面那三条胶水
             //    索引的是 `listing.rows`（另一摞东西）。逐条理由住那个类型的头注。
             show_hit_rows(ui, &hits, &mut self.hits_tally);
+        } else if self.showing_grep() {
+            // 〔FILES3 · ㉜〕按内容搜的命中：每行点得开（跳到那份文件），收数口是 [`GrepTally`]（它的下标只指这一摞）。
+            let hits: Vec<String> = self
+                .grep
+                .shown()
+                .outcome
+                .map(|o| o.hits.iter().map(|h| h.display()).collect())
+                .unwrap_or_default();
+            grep::show_grep_rows(ui, &hits, &mut self.grep_tally);
         } else {
             // 🔴〔第十刀〕reveal 的两半在这里落地：**算**出偏移（只算一次）＋ 高亮那个名字。
             //    ⚠ 偏移是算的不是找的 —— `设计/60 §4 戊` 那条纪律（`show_rows` 才是主语）。
@@ -3464,6 +3538,10 @@ impl FileWindow {
         // ⚠ 这三条只对**目录列表**那一摞有意义（下标索引的是 `listing.rows`）。
         //   命中那一摞交不出下标 —— 第四刀靠的是「那个函数不画可点控件」这条纪律，
         //   第五刀换成了**类型**（上面那一段）。
+        // 〔FILES3〕按内容搜那一摞的胶水：点了第 i 条 ⇒ 跳过去（下标只指命中那一摞，与下面几条胶水不相干）。
+        if let Some(i) = self.grep_tally.jump.take() {
+            self.jump_to_grep_hit(i);
+        }
         self.apply_click();
         self.apply_copy_click();
         self.apply_write_clicks(Some(ctx.clone()));
@@ -3515,6 +3593,50 @@ impl FileWindow {
         if fire || rebuild {
             let ctx = ui.ctx().clone();
             self.fire_search(Some(ctx), rebuild);
+        }
+    }
+}
+
+impl FileWindow {
+    /// 〔FILES3 · `设计/99 §2.2 ㉜`〕按内容搜那一行：输入框 ＋「搜内容」＋ 在飞时「停」，接着是总述那一行。
+    ///
+    /// 🔴 **回车或按钮才发**（不是 `changed()` 就发）：按内容搜要把整棵树读一遍，打一个字发一趟就是一个字一次全树读。
+    fn grep_row(&mut self, ui: &mut egui::Ui) {
+        let mut fire = false;
+        let mut stop = false;
+        ui.horizontal(|ui| {
+            ui.label(&copy_text("rsFilewinShell.grep.label", &[]));
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut self.grep_query)
+                    .desired_width(220.0)
+                    .hint_text(&copy_text("rsFilewinShell.grep.hint", &[])),
+            );
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                fire = true;
+            }
+            if ui
+                .button(&copy_text("rsFilewinShell.grep.start", &[]))
+                .clicked()
+            {
+                fire = true;
+            }
+            if self.grep.is_running() {
+                ui.spinner();
+                if ui
+                    .button(&copy_text("rsFilewinShell.grep.stop", &[]))
+                    .clicked()
+                {
+                    stop = true;
+                }
+            }
+        });
+        self.grep.ui(ui);
+        if stop {
+            self.grep.stop();
+        }
+        if fire {
+            let ctx = ui.ctx().clone();
+            self.fire_grep(Some(ctx));
         }
     }
 }
