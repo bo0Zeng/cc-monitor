@@ -14,7 +14,7 @@
 import { askConfirm, type ConfirmFn } from "./ask-dialog";
 import { killSession, saidOfControl, sendKeys } from "./tmux-control";
 import { isIdentityRefusal, offerResyncRetry } from "./resync";
-import { runRemoteResumeTmux } from "./remote-launch-run";
+import { runRemoteResumeTmuxAndWait } from "./remote-launch-run";
 import { accountConfigDir, type SessionAccount } from "./accounts";
 import { fetchAccounts, checkTrust } from "./account-reads";
 import { getModelForAccount } from "./account-prefs";
@@ -24,7 +24,7 @@ import { showActionFailureToast } from "./error-toast";
 // 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`），这里不再自己比常量。
 import { isLocalOrigin } from "./ipc/origin";
 // 〔FE1〕本机那一跳走 resume 编排的唯一一份（原 `account-restart-local.ts` 并进去了）。
-import { resumeLocalSession } from "./local-resume";
+import { resumeLocalSessionAndWait } from "./local-resume";
 import { copyText } from "./copy-table";
 
 export interface RestartWithAccountOpts {
@@ -164,8 +164,10 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //
   // ⚠ 账号**不走**跟随（`follow`）：换号重启的正题恰恰是换成另一个号，跟随会把用户的选择丢了。
   const isLocal = isLocalOrigin(origin);
+  // 〔FIX4 · 主会话裁 ④〕「全成」的定义换成**看见会话起来**：执行器等那台报出这条会话才回 `arrived`；
+  //   没等到（`missed`，那一句主窗口已经说了）⇒ 不记账、不说「已用新账号重启」；没真发出去（`unsent`）⇒ 照旧说失败。
   const launched = isLocal
-    ? await resumeLocalSession({
+    ? await resumeLocalSessionAndWait({
         sid: sessionId,
         cwd,
         account: { kind: "explicit", configDir, name: accountName },
@@ -173,7 +175,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
         launcher,
         failureTitle: copyText("localResume.restart.failed"),
       })
-    : await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, {
+    : await runRemoteResumeTmuxAndWait(origin, sessionId, cwd, launcher, tmuxName, {
         configDir,
         accountName,
         modelOverride: await getModelForAccount(accountName),
@@ -183,7 +185,8 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // **只有真拉起来了才算成功**（Phase G 审计）：此前无条件记账+报成功,而第⑤步的失败是
   // 确定性的（F34 launcher 含双引号被 launch.rs 拒 / tmux 名不合白名单 / 缺 OpenSSH）——
   // 那种情况下会话已被 kill 却没起来,还被钉上"上次用账号 X 起"、被批量对齐计成成功。
-  if (!launched) {
+  if (launched === "missed") return false;
+  if (launched === "unsent") {
     showActionFailureToast(
       copyText("accountRestart.relaunch.failedTitle"),
       isLocal

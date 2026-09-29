@@ -52,7 +52,7 @@ import { mintFreshTmuxName, refuseUnmintable } from "./tmux-name-mint";
 import { LOCAL_LAUNCH_ACCOUNT_WIRE as ACCOUNT_WIRE } from "./generated/launch-render-facts";
 import type { LaunchContext, LaunchPlan } from "./launch-types";
 import { copyText } from "./copy-table";
-import { arrivedBody, expectArrival, type ArrivalMatch } from "./launch-arrival";
+import { arrivedBody, awaitArrival, expectArrival, type ArrivalMatch, type LaunchWait } from "./launch-arrival";
 
 // 〔MIG-2〕原先这里有 `REFUSE_TAG`（Rust 渲染器给业务拒绝打的串标，前端按它分「拒」与「IPC 异常」）：
 //   渲染搬进后端帧命令之后，拒绝走码（`refused`，`launch-render.ts::isRefusal`），串标这一侧删了。
@@ -453,8 +453,14 @@ interface LaunchToasts {
  */
 type AfterOpen =
   | { kind: "expect"; match: ArrivalMatch; tmuxName: string | null }
+  // 〔FIX4 · 主会话裁 ④〕同 `expect`，但等主窗口回话、把「等到了没有」交回调用方（换号重启 · 分叉据它才说成了、才记账）。
+  | { kind: "await"; match: ArrivalMatch; tmuxName: string | null }
   | { kind: "silent" }
   | { kind: "claim" };
+
+/** 窗口那一跳的结局：没真发出去 · 发出去了（不等）· 等到了 / 没等到。 */
+type Opened = LaunchWait | "sent";
+const sent = (o: Opened): boolean => o !== "unsent";
 
 /** MASTERPLAN §3 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
  *  6 个 executor 的 invoke→toast/剪贴板回退骨架逐字相同，只有文案与 `origin` 不同——收敛成
@@ -488,7 +494,7 @@ async function invokeLaunchOrCopyFallback(
   //   交给后端，让新开的窗口以它为 marker 登记进本地表（`launch.rs::with_rbind_bind_prelude`）。
   rbindToken: string | null,
   after: AfterOpen,
-): Promise<boolean> {
+): Promise<Opened> {
   try {
     await commands.launch_remote_terminal({ origin, remoteCmd: cmd, rbindToken });
     if (after.kind === "expect") {
@@ -498,10 +504,12 @@ async function invokeLaunchOrCopyFallback(
         tmuxName: after.tmuxName,
         arrived: { title: toasts.success, body: arrivedBody(origin) },
       });
+    } else if (after.kind === "await") {
+      return (await awaitArrival({ origin, match: after.match, tmuxName: after.tmuxName, arrived: null })) ? "arrived" : "missed";
     } else if (after.kind === "claim") {
       showActionFailureToast(toasts.success, toasts.successDetail ?? "", { level: "info", durationMs: 6000 });
     }
-    return true;
+    return "sent";
   } catch (err) {
     // 回退：复制命令让用户自己粘贴（保留 F09 语义）。
     let copied = true;
@@ -529,7 +537,7 @@ async function invokeLaunchOrCopyFallback(
       `${String(err)}\n${where}\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );
-    return false;
+    return "unsent";
   }
 }
 
@@ -544,6 +552,29 @@ export async function runRemoteResume(
   // 对齐（那边的头注逐字记着为什么要有返回值：account-ux 那次把「走到了第⑤步」当成
   // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
 ): Promise<boolean> {
+  return sent(await resumeDirectCore(origin, sid, cwd, launcher, mods, "expect"));
+}
+
+/** 〔FIX4 · 主会话裁 ④〕同 [`runRemoteResume`]，但等那台报出会话 ⇒ 交回「等到了没有」（分叉据它才说「已分叉」）。 */
+export async function runRemoteResumeAndWait(
+  origin: string,
+  sid: string,
+  cwd: string,
+  launcher: string,
+  mods: LaunchModifiers = {},
+): Promise<LaunchWait> {
+  const o = await resumeDirectCore(origin, sid, cwd, launcher, mods, "await");
+  return o === "sent" ? "missed" : o;
+}
+
+async function resumeDirectCore(
+  origin: string,
+  sid: string,
+  cwd: string,
+  launcher: string,
+  mods: LaunchModifiers,
+  wait: "expect" | "await",
+): Promise<Opened> {
   let cmd: string;
   let token: string | null;
   try {
@@ -553,13 +584,13 @@ export async function runRemoteResume(
     token = rbindTokenOf(plan);
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.resume.buildFailed"), String(err));
-    return false;
+    return "unsent";
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resume.started"),
     failureCopied: copyText("remoteLaunchRun.resume.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, { kind: "expect", match: { sid }, tmuxName: null });
+  }, token, { kind: wait, match: { sid }, tmuxName: null });
 }
 
 /** F52：tmux 版 resume——在远端 tmux 会话 `<sid8>-cc` 里幂等 resume Claude;失败回退复制命令。
@@ -580,6 +611,31 @@ export async function runRemoteResumeTmux(
   name: string,
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
+  return sent(await resumeTmuxCore(origin, sid, cwd, launcher, name, mods, "expect"));
+}
+
+/** 〔FIX4 · 主会话裁 ④〕同 [`runRemoteResumeTmux`]，但等那台报出会话 ⇒ 交回「等到了没有」（换号重启 · 分叉据它才说成了、才记账）。 */
+export async function runRemoteResumeTmuxAndWait(
+  origin: string,
+  sid: string,
+  cwd: string,
+  launcher: string,
+  name: string,
+  mods: LaunchModifiers = {},
+): Promise<LaunchWait> {
+  const o = await resumeTmuxCore(origin, sid, cwd, launcher, name, mods, "await");
+  return o === "sent" ? "missed" : o;
+}
+
+async function resumeTmuxCore(
+  origin: string,
+  sid: string,
+  cwd: string,
+  launcher: string,
+  name: string,
+  mods: LaunchModifiers,
+  wait: "expect" | "await",
+): Promise<Opened> {
   let cmd: string;
   let token: string | null;
   try {
@@ -589,13 +645,13 @@ export async function runRemoteResumeTmux(
     token = rbindTokenOf(plan);
   } catch (err) {
     showActionFailureToast(copyText("remoteLaunchRun.resumeTmux.buildFailed"), String(err));
-    return false;
+    return "unsent";
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.resumeTmux.started"),
     failureCopied: copyText("remoteLaunchRun.resumeTmux.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, { kind: "expect", match: { sid }, tmuxName: name });
+  }, token, { kind: wait, match: { sid }, tmuxName: name });
 }
 
 /** U8a-2c-1 + **F14**：把 `send-keys` 那半边交给**远端 backend**（`control/launch.rs`，`mode:"send-into"`）。
@@ -731,11 +787,11 @@ export async function runRemoteResumeIntoExistingTmux(
     showActionFailureToast(copyText("remoteLaunchRun.inPlace.buildFailed"), String(err));
     return false;
   }
-  return invokeLaunchOrCopyFallback(origin, cmd, {
+  return sent(await invokeLaunchOrCopyFallback(origin, cmd, {
     success: copyText("remoteLaunchRun.inPlace.done"),
     failureCopied: copyText("remoteLaunchRun.inPlace.failedCopied"),
     failureNotCopied: copyText("remoteLaunchRun.copyFallback.failedManual"),
-  }, token, viaBackend ? { kind: "silent" } : { kind: "expect", match: { sid }, tmuxName: name });
+  }, token, viaBackend ? { kind: "silent" } : { kind: "expect", match: { sid }, tmuxName: name }));
 }
 
 /**
