@@ -165,6 +165,9 @@ pub struct OpenRequest {
     /// 〔FILES2 · V152〕「复制到另一台」那一问的下拉：本机 ＋ 已配的远端（monitor 从已有的配置读口算好；名字与 `origin` 同一个口径）。
     #[serde(default)]
     pub machines: Vec<String>,
+    /// 〔WF2 · WIN3 读数 D〕主窗所在显示器的工作区（monitor 问 Tauri 得来）：窗口开出来第一拍夹进它。`None` ＝ 问不到，不夹。
+    #[serde(default)]
+    pub work_area: Option<crate::WorkArea>,
 }
 
 /// 种子 → 字节。**纯函数**（判据两向对拍）。
@@ -656,6 +659,7 @@ pub fn child_main() -> i32 {
         req.reveal,
         req.bookmarks,
         req.machines,
+        req.work_area,
     );
     match h.join() {
         Ok(Ok(())) => 0,

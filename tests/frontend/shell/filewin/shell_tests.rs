@@ -527,6 +527,7 @@ fn xvfb_worker_opens_a_real_window() {
         None,
         None,
         Vec::new(),
+        None,
     );
 
     let ids = xvfb::wait_for_windows(&display, WINDOW_NEEDLE, 20_000);
@@ -649,6 +650,7 @@ fn xvfb_worker_opens_with_no_x_server_at_all() {
         None,
         None,
         Vec::new(),
+        None,
     );
     let (verdict, why) = join_verdict(h, 30_000);
     xvfb::emit("n.run_native", verdict);
@@ -2801,4 +2803,45 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     // 上一级：按字节回到 `/srv`（它是合法 UTF-8 ⇒ 字节那一格清掉）。
     w.navigate_up();
     assert_eq!((w.cwd.as_str(), w.cwd_raw.clone()), ("/srv", None));
+}
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 D · 题面 WF2 第 6 条（文件窗口也夹进工作区）。
+/// 1.5 倍缩放下一扇 800×620 点的窗（外框左上 (100,50) 点）⇒ 物理 1200×930 放不进 1280×712 的工作区 ⇒
+/// 内框缩到 1176×667 像素、外框挪到 (80,0) 像素，换回点（期望手算）；放得下 ⇒ 一条命令都不发。
+/// 在执行链上：monitor 算好工作区进种子（`entry.rs`），窗口进程把它交给开窗那一处（`proc.rs`）。
+#[test]
+fn the_file_window_is_fitted_into_the_work_area_it_was_handed() {
+    use egui::{pos2, vec2, Rect, ViewportCommand};
+    let work = crate::WorkArea {
+        x: 0,
+        y: 0,
+        w: 1280,
+        h: 712,
+    };
+    let outer = Rect::from_min_size(pos2(100.0, 50.0), vec2(800.0, 620.0));
+    let inner = Rect::from_min_size(pos2(108.0, 80.0), vec2(784.0, 590.0));
+    let got = super::fit_commands(outer, inner, 1.5, work);
+    let [ViewportCommand::InnerSize(size), ViewportCommand::OuterPosition(at)] = got.as_slice()
+    else {
+        panic!("该发「缩内框 ＋ 挪外框」两条，实得 {got:?}");
+    };
+    let near = |a: f32, b: f32| (a - b).abs() < 0.01;
+    assert!(near(size.x, 784.0) && near(size.y, 667.0 / 1.5), "{size:?}");
+    assert!(near(at.x, 80.0 / 1.5) && near(at.y, 0.0), "{at:?}");
+    let small = Rect::from_min_size(pos2(10.0, 10.0), vec2(400.0, 300.0));
+    assert!(super::fit_commands(small, small, 1.0, work).is_empty());
+    let entry = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/filewin/entry.rs"
+    ));
+    assert!(
+        entry.contains(".and_then(crate::WorkArea::of)"),
+        "开窗入口没把工作区放进种子"
+    );
+    let proc = guard_core::production_code(include_str!(
+        "../../../../src/frontend/shell/src/filewin/proc.rs"
+    ));
+    assert!(
+        proc.contains("req.work_area,"),
+        "窗口进程没把工作区交给开窗那一处"
+    );
 }

@@ -62,6 +62,13 @@ fn synthetic_request() -> OpenRequest {
         )),
         // 〔FILES2 · V152〕机器名单也进种子对拍（带中文与空格）。
         machines: vec!["<local>".to_string(), "台架 远端".to_string()],
+        // 〔WF2〕工作区那一格也进种子对拍（负坐标：主屏左边那台副屏）。
+        work_area: Some(crate::WorkArea {
+            x: -1920,
+            y: 0,
+            w: 1920,
+            h: 1040,
+        }),
     }
 }
 
@@ -101,6 +108,12 @@ fn a_seed_survives_the_trip_through_a_process_boundary() {
     assert!(
         !want.machines.is_empty(),
         "夹具里这一格得非空，否则两侧都是空恒相等"
+    );
+    // 〔WF2 · WIN3 读数 D〕工作区：漂了 ⇒ 窗口夹进的是别的一块。
+    assert_eq!(got.work_area, want.work_area, "工作区漂了");
+    assert!(
+        want.work_area.is_some(),
+        "夹具里这一格得是 `Some`，否则两侧都是 `None` 恒相等"
     );
     // 🔴〔2026-09-23 本机侧退役〕**这里少了一次「判别式过得去吗」的比对。**
     //    从前 `Source` 是个两格枚举，这一段要先 `match` 出两侧都是 `Remote`
@@ -271,6 +284,7 @@ fn opening_a_window_three_times_really_starts_three_independent_processes() {
         handoff: synthetic_handoff(),
         bookmarks: None,
         machines: Vec::new(),
+        work_area: None,
     };
     let mut pids: Vec<u32> = Vec::new();
     let mut codes: Vec<String> = Vec::new();
@@ -383,6 +397,7 @@ fn the_window_process_lists_first_and_the_parent_carries_its_words() {
         handoff: synthetic_handoff(),
         bookmarks: None,
         machines: Vec::new(),
+        work_area: None,
     };
     let run = |tag: &str, say: &str, linger: u32| {
         std::env::set_var(BIN_ENV, scripted_stand_in(&dir, tag, say, linger));
@@ -503,6 +518,7 @@ fn a_window_process_that_dies_at_once_comes_back_as_a_reason() {
         handoff: synthetic_handoff(),
         bookmarks: None,
         machines: Vec::new(),
+        work_area: None,
     })
     .expect_err("拿一个不是二进制的文件当窗口进程，居然报了成功");
     println!("  现打：{e:?}");
