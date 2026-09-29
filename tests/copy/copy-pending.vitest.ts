@@ -46,6 +46,7 @@ type Report = {
   empty: boolean;
   via_table: number;
   is_copy_text: Record<string, boolean>;
+  static_faces: string[];
 };
 
 let memo: { report: Report | null; why: string } | undefined;
@@ -121,6 +122,22 @@ describe("CP2b · 还有对外字面量的文件 == 待办表", () => {
         x: false,
       });
       expect(report.via_table, "出口里一条 copyText / copy_text 都没认出来 —— 普查读表那一格瞎了").toBeGreaterThan(0);
+    },
+    120_000,
+  );
+
+  // 设计/91 §6 第 5 条：「`.css` 的 `content:` 与 `index.html` 的静态文本没扫」（设计/99 §2.2 裁：补进 CP1 语料）。
+  it(
+    "〔FIX5〕正控：普查认得 CSS 的 content:（解 CSS 转义）与入口 HTML 的静态文本；注释 · 脚本 · var(--x) 不算",
+    () => {
+      const { report } = runMeter();
+      if (report === null) return; // 判不了那一格上面那条已经说过
+      expect(report.static_faces).toEqual([
+        "css.content:body:▸ ",
+        "css.content:body:✓",
+        "html.text:body:正文",
+        "html.text:title:某窗口",
+      ]);
     },
     120_000,
   );
