@@ -132,8 +132,8 @@ describe("远端会话的全景（RM1c · RM1d）", () => {
     clickButton(v, "批准");
     await flush();
     expect(edits().map((e) => [e.args.origin, e.args.repo, e.args.op])).toEqual([
-      ["box1", "/srv/proj", "add_annotation"],
-      ["box1", "/srv/proj", "approve_annotation"],
+      ["box1", "/srv/proj", "plan_add_annotation"],
+      ["box1", "/srv/proj", "plan_approve_annotation"],
     ]);
     expect(edits()[0].args.args).toEqual({ file: "src/lib.rs", symbol: "f", body: "新批注", author: "me" });
   });

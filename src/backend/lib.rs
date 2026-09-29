@@ -664,7 +664,10 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// ★★★ **p5p-probe-said-link-fallback**（2026-09-28，FIX5 续合并那一拍）：行为 / 协议 —— 盘不认 `RENAME_NOREPLACE` 时普通文件走 `link` ＋ `unlink`、目录拒并出声；
 /// `remote-probe` 结局那一行改人话（版本 · 能用 / 做不到几项 · 往返毫秒）＋ `backendGaps`。子命令没变。
-pub const BUILD_ID: &str = "p5p-probe-said-link-fallback";
+///
+/// ★★★ **p5q-panorama-self-report**（2026-09-29，PANO 合并那一拍，V158）：协议 —— `panorama` / `panorama-edit` 请求必带 `shape`（期望的小程序形状由发起方带，后端比 `--probe` 自报的）；
+/// op 表 · 期限档 · 写表（算 op → 写成之后那一步）都由小程序自报，后端零引擎常量；`panorama-edit` 的 `op` 改成「算」op 名；op `subgraph` 删、`neighborhood` 加（跳数由小程序给，前端不算图）。形状代号换代 ⇒ 各台首次打开全景重放一次小程序字节。
+pub const BUILD_ID: &str = "p5q-panorama-self-report";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），

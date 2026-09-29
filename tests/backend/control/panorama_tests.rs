@@ -30,11 +30,20 @@ fn scratch(tag: &str) -> PathBuf {
     p
 }
 
+/// 假小程序自报的那一代（后端不存形状代号：请求带什么就比什么，〔PANO〕）。
+const T_SHAPE: &str = "t-shape-1";
+
+/// 给请求补上 `shape`（前端每问都带，取自生成物）。
+fn shaped(mut v: Value) -> Value {
+    v["shape"] = json!(T_SHAPE);
+    v
+}
+
 /// 在 `dir` 里放一个名叫 [`PLUGIN_NAME`] 的假小程序：`--probe` 报 `caps`，
 /// 其余调用照 `body`（一段 sh，`$@` 是 argv）。
 #[cfg(unix)]
 fn fake_program(dir: &Path, first_line: &str, caps: &str, body: &str) -> PathBuf {
-    fake_program_shaped(dir, first_line, caps, &format!("shape={SHAPE}"), body)
+    fake_program_shaped(dir, first_line, caps, &format!("shape={T_SHAPE}"), body)
 }
 
 /// 同 [`fake_program`]，`--probe` 的形状那一行由调用方给（空串 = 老一代，没有这一行）。
@@ -83,48 +92,20 @@ fn the_candidates_are_beside_the_backend_then_the_deploy_home_and_never_path() {
     );
 }
 
-/// ★ 本表 == 小程序那张 op 表（两向集合相等，**异源**：运行时读 `src/panorama-engine/main.rs`）；
-/// 用建索引那一档期限的 op == 小程序里标成独占写（`Need::Build`）的那几个。
+/// 要求住址：`99 §1 V158`「后端不带引擎知识」·〔PANO〕题面「小程序 `--probe` 自报会哪些 op、每个 op 属哪一档；后端按自报的档给期限」。
 ///
-/// ⚠ 跨树运行时读、不走 `include_str!`：同 `panorama_locus_guard` 的取舍（编译期读会给
-/// `cross_half_edge_registry` 添一条跨半边）；代价是「文件挪了只有本条红」，补偿是 `expect` ＋ 字节地板。
+/// ★ 期限按小程序自报的档：`long=` 里的 ⇒ 建索引那一档，其余 ⇒ 查询那一档（后端自己不存 op 表）。
 #[test]
-fn the_op_table_matches_the_program_one() {
-    let p = crate::guard_support::repo_root().join("src/panorama-engine/main.rs");
-    let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-    assert!(
-        src.len() > 5_000,
-        "{p:?} 只有 {} 字节 —— 没读到真文件",
-        src.len()
-    );
-    let prod = guard_core::production_code(&src);
-    let at = prod
-        .find("pub const OPS: &[(&str, Need)] = &[")
-        .expect("小程序的 op 表改了写法 —— 本条跟着改");
-    let body = &prod[at..at + prod[at..].find("];").expect("op 表没收尾")];
-    let mut theirs: Vec<(String, bool)> = Vec::new();
-    for line in body.lines() {
-        let t = line.trim();
-        let Some(rest) = t.strip_prefix("(\"") else {
-            continue;
-        };
-        let q = rest.find('"').expect("op 名没闭合");
-        theirs.push((rest[..q].to_string(), rest[q..].contains("Need::Build")));
-    }
-    theirs.sort();
-    let mut ours: Vec<(String, bool)> = OPS
-        .iter()
-        .map(|(n, d)| (n.to_string(), *d == BUILD_DEADLINE_SECS))
-        .collect();
-    ours.sort();
-    assert!(
-        theirs.len() >= 10,
-        "只抽到 {} 个 op —— 抽取坏了",
-        theirs.len()
-    );
-    assert_eq!(
-        ours, theirs,
-        "后端认得的全景 op（与期限档）和小程序那张 op 表对不上 —— 两边同拍改"
+fn the_deadline_follows_the_tier_the_program_reports() {
+    let text = format!("name={PLUGIN_NAME}\ncapabilities=index,status\nlong=index\nshape=x\n");
+    let a = crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &["index"], Some("x"))
+        .ok()
+        .expect("该协商得过");
+    assert_eq!(deadline_for(a.is_long("index")), BUILD_DEADLINE_SECS);
+    assert_eq!(deadline_for(a.is_long("status")), QUERY_DEADLINE_SECS);
+    assert_ne!(
+        BUILD_DEADLINE_SECS, QUERY_DEADLINE_SECS,
+        "两档要分得开，否则本条恒真"
     );
 }
 
@@ -148,7 +129,7 @@ fn a_real_process_walks_find_probe_run_and_back() {
     let got = answer_now(
         &[bin],
         &store,
-        &json!({"op": "overview", "repo": "/r e/p", "args": {"budget": 5}}),
+        &shaped(json!({"op": "overview", "repo": "/r e/p", "args": {"budget": 5}})),
     )
     .unwrap();
     assert_eq!(got, json!({"result": {"n": 7}}));
@@ -189,17 +170,21 @@ esac"#;
         "status,overview,node,search",
         body,
     );
-    let ask = |args: Value| answer_now(std::slice::from_ref(&bin), &store, &args);
+    let ask = |args: Value| answer_now(std::slice::from_ref(&bin), &store, &shaped(args));
     let code_of = |args: Value| ask(args).unwrap_err();
 
-    // 词表之外的 op：**不起进程**就拒（候选空也是 bad_args，不是 not_installed）。
+    // 〔PANO〕后端不存 op 表：它没自报的 op ⇒ `unsupported`（点名那一个；放字节那条接上），不起那个 op。
+    let (c, m) = code_of(json!({"op": "vacuum"}));
+    assert_eq!(c, "unsupported");
+    assert!(m.contains("「vacuum」"), "{m}");
+    assert_eq!(code_of(json!({})).0, "bad_args");
+    // 请求没带要的那一代 ⇒ 不起进程就拒（候选空也是 bad_args）。
     assert_eq!(
-        answer_now(&[], &store, &json!({"op": "vacuum"}))
+        answer_now(&[], &store, &json!({"op": "status"}))
             .unwrap_err()
             .0,
         "bad_args"
     );
-    assert_eq!(code_of(json!({})).0, "bad_args");
     assert_eq!(code_of(json!({"op": "status", "repo": 3})).0, "bad_args");
     assert_eq!(code_of(json!({"op": "status", "args": [1]})).0, "bad_args");
     // 小程序自己说的两类：原话带回。
@@ -225,7 +210,12 @@ esac"#;
     assert_eq!(c, "unsupported");
     assert!(m.contains("「diagram」"), "缺能力要点名缺的那个：{m}");
     // 找不到：说清查过哪儿。
-    let (c, m) = answer_now(&[dir.join("nowhere")], &store, &json!({"op": "status"})).unwrap_err();
+    let (c, m) = answer_now(
+        &[dir.join("nowhere")],
+        &store,
+        &shaped(json!({"op": "status"})),
+    )
+    .unwrap_err();
     assert_eq!(c, "not_installed");
     assert!(m.contains("查过") && m.contains("nowhere"), "{m}");
     // 不兜 `PATH`（同名的无关程序不该有机会被当成它）：那句话里 PATH 那一格是 0 个目录。
@@ -234,7 +224,7 @@ esac"#;
 }
 
 /// 设计/97 §8 · §6.5 · 99 §2.1 ㉝①：「`--probe` 加形状代号，后端判旧回 `unsupported`，放字节那条自动接上」。
-/// 能力都在、形状代号对不上（或老一代压根没这一行）⇒ `unsupported`（`PUSH_ON` 里有它 ⇒ monitor 放字节），且不起那个 op。
+/// 能力都在、形状代号对不上**请求带来的那一代**（或老一代压根没这一行）⇒ `unsupported`（`PUSH_ON` 里有它 ⇒ monitor 放字节），且不起那个 op。
 #[cfg(unix)]
 #[test]
 fn an_old_generation_with_every_op_is_still_unsupported() {
@@ -251,11 +241,55 @@ fn an_old_generation_with_every_op_is_still_unsupported() {
                 ran.display()
             ),
         );
-        let (c, _) = answer_now(&[bin], &dir.join("s"), &json!({"op": "status"})).unwrap_err();
+        let (c, _) =
+            answer_now(&[bin], &dir.join("s"), &shaped(json!({"op": "status"}))).unwrap_err();
         assert_eq!(c, "unsupported", "{tag}：旧一代没被判旧");
         assert!(!ran.exists(), "{tag}：判了旧还是把 op 起了");
         let _ = std::fs::remove_dir_all(&dir);
     }
+}
+
+/// 要求住址：`99 §1 V158`「后端不带引擎知识」·〔PANO〕主会话 09-29「`EDITS` 挪出后端：由小程序自报，后端只照自报的表走」。
+///
+/// ★ 「算」那一问（`panorama-edit` 用）只认小程序 `plans=` 自报的写表：在表里 ⇒ 起它、应答带 `then`
+/// （写成之后要跑的 op，没有 = `null`）；不在表里（哪怕它会这个 op）⇒ `bad_args`、不起那个 op。
+#[cfg(unix)]
+#[test]
+fn a_plan_op_must_be_in_the_table_the_program_reports() {
+    let dir = scratch("plans");
+    let ran = dir.join("ran");
+    let bin = fake_program(
+        &dir,
+        "name=cc-monitor-panorama",
+        "plan_a,plan_b,status\\nplans=plan_a>refresh_x,plan_b",
+        &format!(
+            r#"echo "$1" >> '{}'; printf '{{"ok":true,"data":1}}\n'"#,
+            ran.display()
+        ),
+    );
+    let plan = |op: &str| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(answer_with_plan(
+                std::slice::from_ref(&bin),
+                &dir.join("s"),
+                &shaped(json!({"op": op, "repo": "/r"})),
+            ))
+    };
+    assert_eq!(
+        plan("plan_a").unwrap(),
+        json!({"result": 1, "then": "refresh_x"})
+    );
+    assert_eq!(plan("plan_b").unwrap(), json!({"result": 1, "then": null}));
+    assert_eq!(plan("status").unwrap_err().0, "bad_args");
+    assert_eq!(
+        std::fs::read_to_string(&ran).unwrap(),
+        "plan_a\nplan_b\n",
+        "不在写表里的那一个被起了"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[cfg(unix)]
@@ -263,7 +297,7 @@ fn an_old_generation_with_every_op_is_still_unsupported() {
 fn a_same_named_stranger_is_not_taken_for_the_program() {
     let dir = scratch("stranger");
     let bin = fake_program(&dir, "name=something-else", "status", "exit 0");
-    let (c, m) = answer_now(&[bin], &dir.join("s"), &json!({"op": "status"})).unwrap_err();
+    let (c, m) = answer_now(&[bin], &dir.join("s"), &shaped(json!({"op": "status"}))).unwrap_err();
     assert_eq!(c, "not_installed");
     assert!(m.contains("something-else"), "{m}");
     let _ = std::fs::remove_dir_all(&dir);

@@ -245,6 +245,15 @@ fn whitespace_and_trailing_commas_do_not_become_tokens() {
     assert_eq!(a.capabilities, vec!["a", "b", "c"]);
     assert!(a.can("b"));
     assert!(!a.can(""));
+    // 〔PANO〕长活档：同一套逗号规则；没有这一行 = 全是短活档。
+    let a = parse(&format!("{text}long= c ,\n"), &plugin_name())
+        .ok()
+        .expect("该解析得出来");
+    assert!(a.is_long("c") && !a.is_long("b"));
+    assert!(!parse(&text, &plugin_name())
+        .ok()
+        .expect("该解析得出来")
+        .is_long("c"));
 }
 
 /// 设计/97 §8 · 99 §2.1 ㉝①：给了期望的形状代号才判代；对不上 / 缺这一行 ⇒ `StaleShape`（点名是哪个插件），对上 ⇒ 照常查能力。
