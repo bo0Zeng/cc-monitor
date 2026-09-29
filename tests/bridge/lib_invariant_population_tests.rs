@@ -525,12 +525,13 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "本侧铸的启动 id（〔MIG-2〕本机起会话搬进本机后端，原住 monitor `history.rs`）",
     ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕`src/bridge/src/launch.rs` 那一行出表：远端那条 ssh 外壳（包一层 `bash -lic`）随渲染进了本机后端。
     (
-        "src/bridge/src/launch.rs",
+        "src/backend/dial/terminal.rs",
         1,
         &[],
         "",
-        "本侧渲染好的整条远端命令（拼它的那几处各自判过；这里只包一层 `bash -lic`）",
+        "〔FIX4〕开终端那一行里要在远端跑的整条命令（拼它的那几处各自判过；这里只包一层 `bash -lic`，本侧再判控制符 · 双引号 · 长度）",
     ),
     // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
     // 〔MIG-3b〕那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。

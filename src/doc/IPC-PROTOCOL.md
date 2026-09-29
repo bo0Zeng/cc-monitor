@@ -2446,7 +2446,7 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 
 设置「账号」那几块（新建账号表单 · 启用向导 · 维护 · 登录）要在那台机器的终端里跑的 `cc-acct-iso …` 由**这台后端**出
 （主会话 09-26 裁 J4：`设计/01 §1.1`「命令串……都不在前端」· `设计/90 §3` 判据 2；先例 `ccm-print`）。界面的逐字预览与「弹终端」都问它，
-拿到的一行原样上屏 / 原样交给 `launch_remote_terminal`（跑它的是用户面前那个终端，DESIGN §6）。本机远端同一条命令，`origin` 区分。
+拿到的一行原样上屏 / 原样交给开终端那一口（`src/terminal-open.ts::openTerminal`，〔FIX4〕；跑它的是用户面前那个终端，DESIGN §6）。本机远端同一条命令，`origin` 区分。
 
 ```text
 → {"id":"a3","cmd":"acct-iso-cmd","args":{"step":"add-apply","name":"z","credFile":"/home/u/snap.json"}}
@@ -3008,6 +3008,19 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 段数不对的行丢掉（下溢 / 过溢各出一句日志）。界面经 `chan.call(origin, …)` 直接问（`src/tmux-reads.ts`，本机远端同一形）。
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
+
+#### `terminal-ssh`：给一台远端开终端要跑的那一串（〔FIX4〕09-28；`设计/99 §2.1 ⑬`「待迁」最后一行：ssh 外壳与 PowerShell 窗口载荷由本机后端渲，monitor 只开终端）
+
+```text
+→ {"id":"ts1","cmd":"terminal-ssh","args":{"machine":{"host":"pi.local","user":"pi","port":22,"label":"pi"},"command":"claude --resume s1"}}
+← {"kind":"reply","id":"ts1","ok":true,"data":{"command":"& ssh -t -p 22 pi@pi.local -- 'bash -lic ''claude --resume s1'''"}}
+```
+
+入参：那台机器的配置 `machine`（＋ `saved?` · `jump?` · `prefer?`，与 `remote-probe` / `pubkey-push` 同形，组请求走 `dial/machine.rs::resolve`）＋ 要在那台跑的
+`command`。出：一行 PowerShell `& ssh -t[ -J <跳板用户>@<跳板>[:口]] -p <口>[ -i '<钥匙>'] <用户>@<地址> -- '<bash -lic ''…''>'` —— 地址取竞速顺序第一条
+（交了 `prefer` 且仍在这台的地址里 ⇒ 上次赢的那条）；命令包成 `bash -lic '<命令>'` 再以 PowerShell 单引号字面量嵌入；钥匙尾 `\` 剥掉；没钥匙 ⇒ 不带 `-i`（走 agent）。
+**只算不起**：不拨号、不开窗（开窗 · 令牌握手前奏是 monitor 的事）。码：`invalid_args`（缺 `machine` / `command`）· `bad_jump`（跳板交不来 / 指自己）·
+`refused`（命令空 / 超长 / 含控制符 / 含双引号 —— PowerShell 5.1 传参畸变面；用户名 · 地址 · 跳板出了白名单）。只上帧面（`STREAM_ONLY`）。
 
 #### `tmux-name-mint`：起会话要的 tmux 名（〔FIX4〕09-28；`设计/90 §3` J7「派生 ＋ 避让只留后端」）
 

@@ -120,6 +120,10 @@ use super::writeops::{is_writable, WriteBoard, WriteOp, WritePrompt, MKDIR_LABEL
 
 /// 〔NET2〕接上通道时问那台能力事实的期限（一问一答，同读侧那几问的量级）。
 const OFFER_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
+/// 〔FIX4 · `99 §2.1 ⑬`〕开终端那一行问本机后端（`terminal-ssh`，纯计算、就在本机）：期限给足握手余量即可。
+const TERMINAL_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
+/// 开终端那一问的帧命令名（本机后端 `src/backend/dial/terminal.rs`）。
+const TERMINAL_CMD: &str = "terminal-ssh";
 
 /// 开过几个窗口 —— **egui 那条线程真的跑起来了**几次。
 ///
@@ -802,22 +806,20 @@ impl FileWindow {
 
     /// 在**当前这个目录**里给用户开一个真终端。回值 = 真的发出去了。
     ///
-    /// # 🔴 它为什么直接 `await` 那条 `#[tauri::command]`
+    /// # 三步，〔FIX4 · `设计/99 §2.1 ⑬`〕ssh 那一行不在这里拼
     ///
-    /// 与 [`super::source::list_remote`] 同一条理由（住 `source` 头注）：
-    /// `launch::launch_remote_terminal` 同时就是一个普通的 `pub async fn`，
-    /// 而窗口与 app 在**同一份代码**里编出来 ⇒ 这里是一次普通函数调用，
-    /// 不过 IPC、不过 serde。它是全仓**唯一**的开窗出口
-    /// （`launcher_identity_registry` 把它记成 `L2`），所以这里不许另拼一条 `ssh`。
+    /// ① 这台的机器事实（`dial_host::machine_facts`：monitor 的机器表 ＋ 上次赢的那条）＋ `cd` 那一串 ⇒
+    /// ② 经窗口那条通道问**本机后端** `terminal-ssh`，拿回一行成品 PowerShell（`ssh -t …` 外壳，`src/backend/dial/terminal.rs`）⇒
+    /// ③ `launch::open_terminal_window` 开窗（全仓**唯一**的开窗出口，`launcher_identity_registry` 记成 `L2`；
+    ///    这里不带令牌：开的是一个裸 shell，不是一场要被 ↗ 找回来的会话）。
+    /// 问不到本机后端 ⇒ 说出来（`D11`，不退回自己拼）。
     ///
-    /// ⚠ 这条边是**新长出来的一条** app 侧依赖 ⇒ 同一拍进了
-    /// `boundary_tests::REGISTERED`（`Kind::Terminal`）。那张表少一行就红。
+    /// ⚠ 这几条边都是 app 侧依赖 ⇒ 登记在 `boundary_tests::WINDOW_SIDE`（`Kind::Terminal`），那张表少一行就红。
     ///
     /// # ⚠ 它在 Linux 上**恒定「失败」，而那不是缺陷**
     ///
     /// POSIX 上 `launch_powershell_window` 回的是 `POSIX_NO_TERMINAL_WINDOW`
     /// （逐字：「刻意不替你挑终端模拟器」）—— 那是一条**既定设计**，不是没做完。
-    /// 旧面板那颗同名按钮今天是同一个结局（它把那句话丢进一个 toast）。
     /// ⇒ 本窗口把那句话摆在工具栏下面（[`Self::term_notice`]），**不假装成功**。
     ///
     /// ⚠ **买不到什么，两条**：① 真有一个终端窗口弹出来 —— 那要 Windows
@@ -831,7 +833,10 @@ impl FileWindow {
                 Some(copy_text("rsFilewinShell.terminal.noRuntime", &[]).into());
             return false;
         };
-        let origin = self.source.origin();
+        let Some(line) = self.line.clone() else {
+            *self.term_notice.lock().unwrap() = Some(NO_LINE.to_string());
+            return false;
+        };
         let cmd = match build_open_terminal_cmd_at(&self.cwd_path()) {
             Ok(c) => c,
             Err(why) => {
@@ -839,19 +844,28 @@ impl FileWindow {
                 return false;
             }
         };
+        let mut ask = crate::dial_host::machine_facts(self.source.cfg());
+        ask["command"] = serde_json::json!(cmd);
         let slot = self.term_notice.clone();
         *slot.lock().unwrap() = None;
         h.spawn(async move {
-            // 〔合并主线 dfc7c4e9：T4 给这条命令加了 `rbind_token`〕`None` —— 与旧面板那颗同名按钮
-            //   逐字同形（`src/sftp/panel.ts` 那一处不带令牌）：「在此打开终端」开的是一个裸 shell，
-            //   不是一场要被 ↗ 找回来的会话，没有令牌可铸。
-            let said = match crate::launch::launch_remote_terminal(origin.0, cmd, None).await {
-                Ok(()) => None,
-                Err(why) => Some(copy_text(
+            let here = super::source::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
+            let opened =
+                match super::source::ask(&line, &here, TERMINAL_CMD, &ask, TERMINAL_WITHIN).await {
+                    Ok(v) => match v.get("command").and_then(serde_json::Value::as_str) {
+                        Some(ps) => {
+                            crate::launch::open_terminal_window(ps.to_string(), None, true).await
+                        }
+                        None => Err(copy_text("rsFilewinShell.terminal.badReply", &[]).into()),
+                    },
+                    Err(why) => Err(why),
+                };
+            let said = opened.err().map(|why| {
+                copy_text(
                     "rsFilewinShell.terminal.failed",
                     &[("why", &why.to_string())],
-                )),
-            };
+                )
+            });
             *slot.lock().unwrap() = said;
             if let Some(c) = ctx {
                 c.request_repaint();

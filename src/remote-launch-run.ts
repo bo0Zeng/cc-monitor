@@ -1,6 +1,6 @@
 /**
- * F41：远端 resume 拉起执行器（UI 侧）。连接 remote-launch 纯函数与后端
- * `launch_remote_terminal`（wt.exe/PowerShell 拉起 `ssh -t …`），tabs.ts 与
+ * F41：远端 resume 拉起执行器（UI 侧）。连接起会话的计划与开终端那一口
+ * `terminal-open.ts::openTerminal`（〔FIX4 · ⑬〕`ssh -t …` 那一行本机后端渲、monitor 开 wt.exe/PowerShell 窗口），tabs.ts 与
  * views/history.ts 共用此单一入口，防两处行为漂移。
  *
  * 失败回退 = F09 旧行为：复制命令 + toast 说明（非 Windows dev / 配置缺失 /
@@ -14,7 +14,7 @@
 // 本机 origin（`"<local>"`，与 Rust `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）。
 // 〔C4b〕`accounts.ts` 先前那个同名的 `"__local__"` 已退役 —— 全仓只剩这一个本机表示。
 import { LOCAL_ORIGIN } from "./backend-policy";
-import { commands } from "./ipc/commands";
+import { openTerminal } from "./terminal-open";
 // 〔TL3 · 审计 F 🔴-5〕「是不是本机」只经 `ipc/origin.ts` 判（`设计/00 §2.5 ①`）。
 import { isLocalOrigin } from "./ipc/origin";
 import {
@@ -496,7 +496,7 @@ async function invokeLaunchOrCopyFallback(
   after: AfterOpen,
 ): Promise<Opened> {
   try {
-    await commands.launch_remote_terminal({ origin, remoteCmd: cmd, rbindToken });
+    await openTerminal(origin, cmd, rbindToken);
     if (after.kind === "expect") {
       expectArrival({
         origin,
@@ -595,7 +595,7 @@ async function resumeDirectCore(
 
 /** F52：tmux 版 resume——在远端 tmux 会话 `<sid8>-cc` 里幂等 resume Claude;失败回退复制命令。
  *
- *  @returns 是否**真的把终端拉起来了**。false = 命令构造失败 / `launch_remote_terminal` 失败
+ *  @returns 是否**真的把终端拉起来了**。false = 命令构造失败 / 开终端（`openTerminal`）失败
  *  （此时已走剪贴板回退，需用户手动粘贴）。
  *  account-ux Phase G 审计:此前返回 void 且两条失败路径都自己吞掉,于是 `restartWithAccount`
  *  把"走到了第⑤步"当成"已 resume"——会话被 kill、没起来,却照样记 pin、照样弹「已用新账号重启」、
@@ -805,8 +805,8 @@ export async function runRemoteResumeIntoExistingTmux(
  * ① **载荷那半共用**：同一个 `planResumeIntoExistingTmux` + 同一个 `sendIntoViaBackend`
  *    + 同一条 `tmux-control.ts::sendInto`（〔C4e〕经通道问那台机器的后端，**本来就传输无关**；此前是 monitor 的 `backend_send_into`〔散文墓碑〕）。
  *    这就是 `C1`「差别只允许出现在传输这一跳」的样子。
- * ② **attach 那半本机做不到，而且是结构性的**：`launch_remote_terminal` 只会
- *    `ssh + PowerShell`，而 POSIX 本机 `launch.rs` 逐字「**不开 GUI 终端窗口**」——
+ * ② **attach 那半本机做不到，而且是结构性的**：开终端那一口（`openTerminal` → `open_terminal_window`）只会开
+ *    PowerShell 窗口，而 POSIX 本机 `launch.rs` 逐字「**不开 GUI 终端窗口**」——
  *    「开窗口要先猜用户用哪个终端模拟器，是平白引入一个会在别人机器上错的决定」。
  *    ⇒ 送完载荷就把 attach 命令交给用户（与远端 POSIX 宿主上**同一种**处置：
  *    `POSIX_NO_WINDOW_MARKER` 那条路早就在这么做）。
@@ -860,7 +860,7 @@ export async function runLocalResumeIntoExistingTmux(
   //   以及 windows 的 PowerShell + Windows Terminal」〕。
   //
   //   `invokeLaunchOrCopyFallback` 里那两条分档正好就是裁定的两侧：
-  //   · Windows → `launch_remote_terminal` 走 `launch_powershell_window`（PowerShell + WT）；
+  //   · Windows → `open_terminal_window` 走 `launch_powershell_window`（PowerShell + WT）；
   //   · Linux   → 那条回 `POSIX_NO_TERMINAL_WINDOW`，前端按 `POSIX_NO_WINDOW_MARKER`
   //     把标题分档成「本机不开终端窗口，命令已复制」，正文给出在自己 bash 里执行的命令。
   //   ⇒ 本机不再自己写一份复制逻辑 —— 写第二份就是 `C1` 排除的那件事。

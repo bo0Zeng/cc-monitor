@@ -9,7 +9,7 @@
 import { installAcctIso, readAcctIsoSnippet, readAcctIsoStatus, type AcctIsoInstalled } from "../acct-iso-reads";
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
-import { commands } from "../ipc/commands";
+import { openTerminal } from "../terminal-open";
 import { readApikeyStatus, writeApikeyKey, type ApikeyCredentialsStatus, type ApikeyRoutingView } from "../apikey-reads";
 import { LOCAL_ACCOUNTS_COPY, deriveUi, currentWorkingAccount, isSelectable, accountStatusBadge, accountLoginActionLabel, localApikeyEndpointStateFor, type ApikeyEndpointState, type AccountsState, type Account } from "../accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchLocalApikeyRouting, fetchMachineApikeyRouting, invalidateAccountsCache } from "../account-reads";
@@ -715,7 +715,7 @@ export class AccountsSection {
 
   /**
    * A6：在远端终端里跑一个部署/维护步骤——问那台后端要命令（〔DUP2 · J4〕`acct-iso-cmd`；它拒了 / 问不到 ⇒ 提示、不动手）
-   * → danger 步二次确认 → `launch_remote_terminal` 弹真实终端让用户看着跑（DESIGN §6，不代跑）。
+   * → danger 步二次确认 → `terminal-open.ts::openTerminal` 弹真实终端让用户看着跑（DESIGN §6，不代跑）。
    */
   private async launchStep(
     step: AcctIsoStep,
@@ -737,7 +737,7 @@ export class AccountsSection {
       if (!(await askConfirm(msg))) return false;
     }
     try {
-      await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: cmd });
+      await openTerminal(this.origin, cmd);
       showActionFailureToast(copyText("accounts.launchStep.launched"), copyText("accounts.launchStep.launchedNext"), {
         level: "info",
         durationMs: 5000,
@@ -752,8 +752,8 @@ export class AccountsSection {
   /**
    * 〔第三波 S3〕在**本机**跑一个账号步骤（今天只有新建账号用它）。
    *
-   * 走的是既有那条 `launch_remote_terminal`，`origin` 给后端那个本机串 —— 它本机那一支早就在
-   * （`launch.rs::launch_remote_terminal` 头一段：Windows 开一个 PowerShell 窗口；别的系统**刻意不开窗口**，
+   * 走的是既有那条 `terminal-open.ts::openTerminal`，`origin` 给本机串 —— 本机那一支原串交 monitor 开窗
+   * （`launch.rs::open_terminal_window`：Windows 开一个 PowerShell 窗口；别的系统**刻意不开窗口**，
    * 回一句带 `POSIX_NO_WINDOW_MARKER` 的话，让前端把命令交给用户在自己的 bash 里跑）。
    * ⇒ 本机建号**不需要新命令**。
    *
@@ -772,7 +772,7 @@ export class AccountsSection {
       return false;
     }
     try {
-      await commands.launch_remote_terminal({ origin: BACKEND_LOCAL_ORIGIN, remoteCmd: cmd });
+      await openTerminal(BACKEND_LOCAL_ORIGIN, cmd);
       showActionFailureToast(
         copyText("accountsLocal.new.launched"),
         copyText("accountsLocal.new.launchedNext"),
