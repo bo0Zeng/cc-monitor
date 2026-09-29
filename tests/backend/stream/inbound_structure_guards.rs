@@ -334,6 +334,7 @@ fn every_registered_command_declares_its_run_kind() {
         "pubkey-push",        // 〔MIG-3b 续〕等远端（问那台后端 / 一次 exec），真异步
         "panorama-edit", // 〔MIG-3b 续〕同 `panorama`（起小程序、等它），落盘那一步挪到阻塞线程池
         "panorama-uninstall", // 〔FIX4〕同上：起小程序认身份、等它；读与删挪到阻塞线程池
+        "files-grep",    // 〔FILES3〕可撤：走那一趟在阻塞线程池上、看取消位，future 被丢即收手
         "skill-install-hub-preview",
         "skill-install-hub-apply",
         // 〔MIG-3b〕部署计划：真异步（拨号 / 等远端 capture · SFTP），在 await 点可取消。

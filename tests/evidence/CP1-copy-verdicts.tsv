@@ -23,6 +23,7 @@ src/backend/control/launch.rs:446	设窗口标题格式	保留	[不对外] 〔W5
 src/backend/control/launch.rs:466	会话 {session:?} 建好了，但{}没做成：{why} —— {}	保留	[不对外] 〔W5-VIS〕S5：secondary_note 拼出的那一行，只经 tracing::warn! 进后端日志
 src/backend/files/mod.rs:344	定期重走（周期由调用方出节拍）＋ 浏览目录挂 inotify，一个 watch 一个目录	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:347	**不是实时**。要全文件系统监听就得 root：`man 2 fanotify_init` 一手逐字 —— \n              非特权不许 `FAN_MARK_MOUNT` / `FAN_MARK_FILESYSTEM`。\n              而 watch 上限本机现打 262144、home 下 640413 条目（`真相源/98 §3.2`）⇒ 全挂挂不住。\n              另：**冷缓存下走一遍要多久没量过**（`drop_caches` 要 root）。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
+src/backend/files/mod.rs:381	在一个目录底下按内容搜 —— 不跟链接、不进别的文件系统，有字节与命中数上界，每份回第一处命中那一行	保留	[不对外] 〔COPY〕命令 / 能力登记表的 purpose 字段（原名 what，改名免撞普查字段出口）：只给判据读，生产段不上界面
 src/backend/files/mod.rs:354	同 gnu 那一格（同一份源码、同一个内核接口），差别只在链接方式	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:357	🔴 **这一格是「没验」，不是「验过没事」。** 门禁的 `muslbuild` 那格买的是\n              「**编得出静态字节**」，**不买**「在真远端上跑得起来」（无真机、不运行）。\n              ⇒ 静态 musl 下 `inotify` 的行为**本件没有任何读数**。	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）
 src/backend/files/mod.rs:363	定期重走 ＋ 浏览目录走 ReadDirectoryChangesW（notify 在这个平台上的后端）	保留	[不对外] FRESHNESS 登记表的 how/gap 字段，生产段无读者（全仓只在声明处出现），是给判据与文档看的论证；若将来要上界面须整段重写（满纸 §2.2 与 markdown）

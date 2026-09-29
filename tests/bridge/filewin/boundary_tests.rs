@@ -294,6 +294,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("chan::wire::Budget", Kind::Wire),
     ("chan::wire::CallError", Kind::Wire),
     ("chan::wire::CancelToken", Kind::Wire),
+    // 〔FILES3 · ㉜「可撤」〕按内容搜那一趟的撤单手柄由窗口自己造（「停」拨它）。
+    ("chan::wire::CancelToken::new", Kind::Wire),
     ("chan::wire::Comms", Kind::Wire),
     ("chan::wire::HopFault", Kind::Wire),
     ("chan::wire::Op", Kind::Wire),
@@ -321,6 +323,8 @@ const WINDOW_SIDE: &[(&str, Kind)] = &[
     ("launch::open_terminal_window", Kind::Terminal),
     // ── monitor 自己的状态 ──
     ("utils::atomic_write_json", Kind::OwnState),
+    // 〔FILES3 · ㉜〕书签那份文件的名字住数据目录的唯一枚举点（设置页「数据位置」列它），窗口这一侧引过来。
+    ("data_paths::FILEWIN_BOOKMARKS_FILE", Kind::OwnState),
     // ── 对外文案表（CP2b）──
     ("copy_table::copy_text", Kind::Copy),
 ];

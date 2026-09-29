@@ -10775,6 +10775,61 @@
       "zh": "当前目录 {cwd} 开不了终端。要绝对路径，不含 .. 段、换行或 NUL",
       "args": ["cwd"]
     },
+    "rsFilewinGrep.hit.line": {
+      "kind": "body",
+      "zh": "{path}:{line}  {text}",
+      "args": ["path", "line", "text"]
+    },
+    "rsFilewinGrep.hit.lineMany": {
+      "kind": "body",
+      "zh": "{path}:{line}  {text}（这份里共 {matches} 行）",
+      "args": ["path", "line", "text", "matches"]
+    },
+    "rsFilewinGrep.reply.badShape": {
+      "kind": "error",
+      "zh": "那台后端回的按内容搜读不懂，两端版本对不上",
+      "args": []
+    },
+    "rsFilewinGrep.summary.line": {
+      "kind": "body",
+      "zh": "{hits} 个文件里有（读了 {files} 个文件、{bytes} 字节）",
+      "args": ["hits", "files", "bytes"]
+    },
+    "rsFilewinGrep.summary.skipped": {
+      "kind": "body",
+      "zh": "；没读的：含 NUL 的 {binary} 个、太大的 {large} 个、别的盘上的 {mounts} 处、读不了的 {unreadable} 个；链接 {links} 条没进去",
+      "args": ["binary", "large", "mounts", "unreadable", "links"]
+    },
+    "rsFilewinGrep.summary.stoppedHits": {
+      "kind": "body",
+      "zh": "。列到上限就不往下走了，后面还有，换个小一点的目录再搜",
+      "args": []
+    },
+    "rsFilewinGrep.summary.stoppedBytes": {
+      "kind": "body",
+      "zh": "。读到字节上限就不往下走了，后面的没看，换个小一点的目录再搜",
+      "args": []
+    },
+    "rsFilewinShell.grep.label": {
+      "kind": "control",
+      "zh": "按内容",
+      "args": []
+    },
+    "rsFilewinShell.grep.hint": {
+      "kind": "control",
+      "zh": "文件里的一段，按 Enter 就搜",
+      "args": []
+    },
+    "rsFilewinShell.grep.start": {
+      "kind": "control",
+      "zh": "搜内容",
+      "args": []
+    },
+    "rsFilewinShell.grep.stop": {
+      "kind": "control",
+      "zh": "取消",
+      "args": []
+    },
     "rsFilewinShell.terminal.badReply": {
       "kind": "error",
       "zh": "本机后端回的开终端那一行读不懂，两端版本对不上",
@@ -11539,6 +11594,11 @@
       "kind": "error",
       "zh": "{why}。内容都复制完了，只是这个目录的权限位没抄上，复制出来的东西都在",
       "args": ["why"]
+    },
+    "beFilesRead.grep.unreadable": {
+      "kind": "error",
+      "zh": "要搜的这个目录读不到：{kind}",
+      "args": ["kind"]
     },
     "beFilesRead.size.unreadable": {
       "kind": "error",
@@ -13550,6 +13610,11 @@
     "rsDataPaths.monitor.bindings": {
       "kind": "body",
       "zh": "每个会话在哪个终端窗口里。终端集成用它把窗口提到前面",
+      "args": []
+    },
+    "rsDataPaths.monitor.bookmarks": {
+      "kind": "body",
+      "zh": "文件管理窗口里收藏的目录（每台机器一份清单）",
       "args": []
     },
     "rsDataPaths.monitor.config": {

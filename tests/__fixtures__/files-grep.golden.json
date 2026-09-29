@@ -1,0 +1,17 @@
+{
+  "path": "<root>",
+  "hits": [
+    { "path": "<root>/a.txt", "line": 2, "text": "the Needle here", "matches": 2 },
+    { "path": "<root>/sub/c.txt", "line": 3, "text": "find the needle", "matches": 1 }
+  ],
+  "files": 4,
+  "bytes": 92,
+  "links": 0,
+  "skipped_binary": 1,
+  "skipped_large": 0,
+  "skipped_mounts": 0,
+  "unreadable": 0,
+  "limit": 200,
+  "truncated": false,
+  "stopped": null
+}

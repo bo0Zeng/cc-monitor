@@ -154,6 +154,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔FILES2 · 第四波〕解压（`设计/60 §6.2` · §7 第 9 条 Q3）。**是新子命令** ⇒ `build_id_guard` 红是预期的。
     "files-extract",
     "files-find",
+    // 〔FILES3 · `99 §2.2 ㉜`〕文件管理器按内容搜（那台后端走一遍、有字节与条数上界、可撤、不跟链接）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "files-grep",
     "files-home",
     "files-index-rebuild",
     "files-index-status",
@@ -2255,6 +2257,39 @@ pub const REGISTRY: &[CommandSpec] = &[
             crate::files::answer_wire(&r.cmd, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔FILES3 · `设计/99 §2.2 ㉜`〕**按内容搜**：`{path, needle, ignore_ascii_case?, limit?}` ⇒ 命中的那几份（第一处命中那一行 ＋ 命中几行）
+    //   ＋ 走了多少。**可撤** ⇒ 异步档：走那一趟放进阻塞线程池，`cancel` 丢掉这个 future 时守卫置取消位、那一趟随即停
+    //   （`files/mod.rs::answer_grep_cancellable`）。纯读。
+    CommandSpec {
+        name: "files-grep",
+        doc_anchor: Some("#### `files-grep`"),
+        codes: &["bad_args", "bad_path", "unreadable"],
+        fields: &[
+            "bytes",
+            "files",
+            "hits",
+            "ignore_ascii_case",
+            "limit",
+            "links",
+            "needle",
+            "path",
+            "skipped_binary",
+            "skipped_large",
+            "skipped_mounts",
+            "stopped",
+            "truncated",
+            "unreadable",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::files::answer_grep_cancellable(r.args)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
         }),
     },
     CommandSpec {
