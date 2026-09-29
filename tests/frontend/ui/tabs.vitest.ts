@@ -1298,7 +1298,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
       cmd === "list_remote_tmux"
         ? Promise.resolve([
             // claude 已退,只剩交互 shell 的 cc-<sid8>:sid 命中但 command=bash。
-            { name: "cc-r1abcd", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "r1" },
+            { name: "cc-r1abcd", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "r1", agent: false },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1319,7 +1319,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1" },
+            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1338,7 +1338,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
         ? Promise.resolve("proj-cc")
         : cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
+            { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1358,7 +1358,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
       if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
-          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
+          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
         ]);
       }
       if (cmd === "list_remote_accounts") {
@@ -1393,7 +1393,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
       if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
-          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
+          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other", agent: false },
         ]);
       }
       if (cmd === "list_remote_accounts") {
@@ -1425,8 +1425,8 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1" },
-            { name: "cc-r1efgh", path: "/other", command: "claude", attached: false, windows: 1, sid: "r1" },
+            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1", agent: true },
+            { name: "cc-r1efgh", path: "/other", command: "claude", attached: false, windows: 1, sid: "r1", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1557,8 +1557,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
         ? Promise.resolve([
             // ★ 名字长得就是本 tab 的 `<sid8>-cc`，但 `@ccm_sid` 是别人的 —— **诱饵**。
             //   按名字前缀猜就会中它，那是「拿命名巧合当身份」（§30 禁的那一类）。
-            { name: "k1abcdef-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "someone-else" },
-            { name: "unrelated-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+            { name: "k1abcdef-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "someone-else", agent: true },
+            { name: "unrelated-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1587,7 +1587,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
       cmd === "list_local_tmux"
         ? Promise.resolve([
             // command 不是 claude ⇒ 空壳（claude 已退、只剩交互 shell）。
-            { name: "i1-cc", path: "/p", command: "bash", attached: false, windows: 1, sid: "k1abcdef" },
+            { name: "i1-cc", path: "/p", command: "bash", attached: false, windows: 1, sid: "k1abcdef", agent: false },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1602,7 +1602,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
-            { name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+            { name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1617,8 +1617,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_local_tmux"
         ? Promise.resolve([
-            { name: "a-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
-            { name: "b-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+            { name: "a-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
+            { name: "b-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1633,7 +1633,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-abc", path: "/a", command: "claude", attached: false, windows: 1 },
+            { name: "cc-abc", path: "/a", command: "claude", attached: false, windows: 1, agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1649,7 +1649,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "sess", path: "/a", command: "node", attached: true, windows: 2 },
+            { name: "sess", path: "/a", command: "node", attached: true, windows: 2, agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1663,7 +1663,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "other", path: "/elsewhere", command: "claude", attached: false, windows: 1 },
+            { name: "other", path: "/elsewhere", command: "claude", attached: false, windows: 1, agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1680,7 +1680,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-A1", path: "/a", command: "bash", attached: false, windows: 1, sid: "A" },
+            { name: "cc-A1", path: "/a", command: "bash", attached: false, windows: 1, sid: "A", agent: false },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1697,8 +1697,8 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "cc-A1", path: "/a", command: "claude", attached: false, windows: 1, sid: "A" },
-            { name: "cc-A2", path: "/other", command: "claude", attached: false, windows: 1, sid: "A" },
+            { name: "cc-A1", path: "/a", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
+            { name: "cc-A2", path: "/other", command: "claude", attached: false, windows: 1, sid: "A", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1719,7 +1719,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
       const origin = (args as { origin: string }).origin;
       if (origin === "hostA") return aPending; // 在飞
       return Promise.resolve([
-        { name: "B-sess", path: "/b", command: "claude", attached: false, windows: 1 },
+        { name: "B-sess", path: "/b", command: "claude", attached: false, windows: 1, agent: true },
       ]);
     }));
     tm.ensureTab("A", "/a", "p", 0, "hostA");
@@ -1731,7 +1731,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachBtn()?.textContent).toContain("B-sess"); // B 自身反查就绪
 
     resolveA([
-      { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1 },
+      { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1, agent: true },
     ]);
     await flush(); // A 迟到:代次不符 → 整体 no-op,不动 B 菜单
     expect(attachBtn()?.textContent).toContain("B-sess");
@@ -1806,8 +1806,8 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
       cmd === "list_remote_tmux"
         ? Promise.resolve([
             // 同目录两个 claude:漂移分支(sid 不符,且列在前)+ 目标原会话(sid 命中)。
-            { name: "proj_cc-2", path: "/home/pi/proj", command: "claude", attached: false, windows: 1, sid: "branch99" },
-            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1" },
+            { name: "proj_cc-2", path: "/home/pi/proj", command: "claude", attached: false, windows: 1, sid: "branch99", agent: true },
+            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1829,7 +1829,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         ? Promise.resolve("proj-cc-2")
         : cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "proj-cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77" },
+            { name: "proj-cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77", agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -1852,7 +1852,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         : cmd === "list_remote_tmux"
         ? Promise.resolve([
             // 老 wrapper:同 cwd 有 claude 但无 sid 信息(sid:null)。
-            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: null },
+            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: null, agent: true },
           ])
         : Promise.resolve(undefined),
     ));
@@ -2374,6 +2374,7 @@ describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
+  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,
     path,
@@ -2381,6 +2382,7 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
     attached: false,
     windows: 1,
     sid,
+    agent: command === "claude" || command === "node",
   });
   it("优先 @ccm_sid 精确匹配（同目录多 claude，命中 sid 的那个，无关列出顺序）", () => {
     const list = [S("a", "/p", "claude", "branch9"), S("b", "/p", "claude", "target")];
@@ -2408,6 +2410,7 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
 // 这组测试锁住"两者在单/零命中场景下逐字节同结果"这条 F04 步骤4 的核心不变量，并新增
 // 之前完全没有覆盖过的"命中 ≥2 个"场景（R10 的字面定义）。
 describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类型基础）", () => {
+  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,
     path,
@@ -2415,6 +2418,7 @@ describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类�
     attached: false,
     windows: 1,
     sid,
+    agent: command === "claude" || command === "node",
   });
   it("同一 sid 命中 2 个活 claude 会话 → 返回全部 2 个，不丢任何一个（R10 的字面场景）", () => {
     const list = [S("cc-a", "/p", "claude", "target"), S("cc-b", "/q", "claude", "target")];
@@ -2444,6 +2448,7 @@ describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类�
 // audit-fixes F03（idle-tmux）：findIdleTmux 与 findClaudeTmux 互斥——前者要 @ccm_sid 命中且
 // command≠claude（空 shell），后者要 command=claude。F03.1 就地复用 + F03.3 attach-idle 共用。
 describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 tmux）", () => {
+  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
   const S = (name: string, command: string, sid: string | null) => ({
     name,
     path: "/p",
@@ -2451,6 +2456,7 @@ describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 t
     attached: false,
     windows: 1,
     sid,
+    agent: command === "claude" || command === "node",
   });
   it("@ccm_sid 命中 + command≠claude（bash）→ 命中该空 tmux", () => {
     expect(findIdleTmux([S("cc-t1", "bash", "target")], "target")?.name).toBe("cc-t1");
@@ -2553,6 +2559,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
 });
 
 describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () => {
+  // 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写，界面不再按命令名自己判。
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,
     path,
@@ -2560,6 +2567,7 @@ describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () 
     attached: false,
     windows: 1,
     sid,
+    agent: command === "claude" || command === "node",
   });
   it("精确 @ccm_sid 命中 → false（非回退，不提示）", () => {
     expect(isCwdFallbackMatch([S("b", "/p", "claude", "target")], "target")).toBe(false);
@@ -3215,7 +3223,7 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
   it("查到会话 → 返回列表，并把它写进缓存", async () => {
     const tm = makeTM();
     // 〔MIG-1 续〕那台后端 `tmux-list` 的成品（经通道一问）。
-    const list = [{ name: "cc-a", path: "/w", command: "claude", attached: false, windows: 1, sid: "s1" }];
+    const list = [{ name: "cc-a", path: "/w", command: "claude", attached: false, windows: 1, sid: "s1", agent: true }];
     vi.mocked(invoke).mockResolvedValueOnce(chanReply({ installed: true, sessions: list }));
     const got = await home(tm).actions.fetchTmuxFresh("box1");
     expect(got).toEqual(list);
@@ -5269,7 +5277,7 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
     tm.archiveTab("k1");
     await home(tm).actions.resumeTab("k1"); // 直连
     await home(tm).actions.resumeTabTmux("k1"); // tmux 全新（没有空壳）
-    tmux = [{ name: "proj-cc", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "k1" }];
+    tmux = [{ name: "proj-cc", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "k1", agent: false }];
     await home(tm).actions.resumeTabTmux("k1"); // tmux 就地（空壳还在）
     expect(probes().map((p) => p.configDir)).toEqual([
       "/h/.claude-alt/z",

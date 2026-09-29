@@ -37,6 +37,7 @@ const TABLE_HEADER: &str = r#"// 本文件由 `src/frontend/shell/src/adapter.rs
 //
 // ⚠ **`null` ≠ 空**：`null` = 这一格今天没人考据过（后端 `None`），**不许拿 claude 那份顶上**
 // （`KR93D3`）；`[]` 才是「考据过、确实是空的」。
+// 〔THIN〕工具 / 判活进程那五格不在这里了：判卡型 · 认 tmux 会话是那台后端的事（`toolCards` · `tmux-list` 的 `agent`）。
 
 export type AgentProfileRow = {
   /** 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。 */
@@ -48,11 +49,6 @@ export type AgentProfileRow = {
   resumeKind: "flag" | "subcommand";
   resumeToken: string;
   nestedEnvVars: string[];
-  agentTools: string[] | null;
-  interactiveTools: string[] | null;
-  diffTools: string[] | null;
-  mdTools: string[] | null;
-  livenessProcessNames: string[] | null;
 "#;
 
 /// 接着上面那一段 —— **第一行就是那个收尾的 `};`**（见上面为什么不能合并）。
@@ -80,18 +76,11 @@ fn ts_list(v: &[&str]) -> String {
     format!("[{}]", items.join(", "))
 }
 
-/// `None` ⇒ `null`（**「没人考据过」，不是空数组**）。
-fn ts_opt_list(v: Option<&[&str]>) -> String {
-    v.map(ts_list).unwrap_or_else(|| "null".to_string())
-}
-
 fn ts_opt_str(v: Option<&str>) -> String {
     v.map(ts_str).unwrap_or_else(|| "null".to_string())
 }
 
 fn row_fields(f: &AgentProfileFacts) -> Vec<(&'static str, String)> {
-    let inter = ts_opt_list(f.interactive_tools);
-    let live = ts_opt_list(f.liveness_process_names);
     vec![
         ("agent", ts_str(f.agent)),
         ("adapterId", ts_str(f.adapter_id)),
@@ -100,11 +89,6 @@ fn row_fields(f: &AgentProfileFacts) -> Vec<(&'static str, String)> {
         ("resumeKind", ts_str(f.resume_kind)),
         ("resumeToken", ts_str(f.resume_token)),
         ("nestedEnvVars", ts_list(f.nested_env)),
-        ("agentTools", ts_opt_list(f.agent_tools)),
-        ("interactiveTools", inter),
-        ("diffTools", ts_opt_list(f.diff_tools)),
-        ("mdTools", ts_opt_list(f.md_tools)),
-        ("livenessProcessNames", live),
     ]
 }
 

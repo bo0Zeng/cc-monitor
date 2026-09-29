@@ -141,7 +141,7 @@ fn the_remote_stream_hands_tap_frames_to_the_session_tap_with_its_own_origin() {
         "远端流的 tap 帧没交 session_tap（或 origin 不是这台）：{arm}"
     );
     let local = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let n = prod.matches("session_tap::deliver(").count()
         + local.matches("session_tap::deliver(").count();

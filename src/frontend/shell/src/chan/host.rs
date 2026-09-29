@@ -58,8 +58,8 @@ use super::router::{self, Backends, Ended, Terms};
 use super::wire::{
     Body, By, CallError, CancelToken, Cursor, Item, Key, Kind, Op, Origin, OursFault,
 };
-use crate::backend::control::{backend_route, inbound_client};
 use crate::copy_table::copy_text;
+use crate::{backend_route, inbound_client};
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};

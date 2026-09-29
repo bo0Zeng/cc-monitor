@@ -94,11 +94,9 @@ test = true
 # 这正是 `裁-1` 代价② 认下的那条 —— 代价认了，而这段块头注先前一个字没跟着改，于是它自己变成了假话。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
-branch-core = { path = "../common/branch-core" }
+# 〔THIN〕`branch-core` 这一行删了：monitor 零引用，它只剩本 crate 用 ⇒ 收进适配层 `agents/claudecode/branch.rs`。
 # 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate 成模块 `agents/codex/token.rs`（唯一消费者在那儿）。
-# 〔DUP2 · J19〕agent 工具词表的唯一一份（会话事实的 agent 列表按它认工具名；monitor 渲染 agent 卡用同一份）。
-agent-tools-core = { path = "../common/agent-tools-core" }
+# 〔THIN〕`agent-tools-core` 这一行删了：界面不再认工具名（卡型随记录成品带出）⇒ 它只剩本 crate 用，收进适配层 `agents/claudecode/cards.rs`。
 # 〔DUP3 · J9〕上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
 upstream-url-core = { path = "../common/upstream-url-core" }
 acct-core = { path = "../common/acct-core" }
@@ -121,9 +119,7 @@ relay-route-core = { path = "../common/relay-route-core" }
 # K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
 # 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
 search-core = { path = "../common/search-core" }
-# F03：§34 Gate 2 的唯一实现。**生产依赖**——这道门要在 `control/` 的生产段真的执行，
-# 不是只在测试里比对（那样就成了「门在测试里、路在生产里」）。
-gate-core = { path = "../common/gate-core" }
+# 〔THIN〕`gate-core` 这一行删了：monitor 那一侧的门删掉之后它只剩本 crate 用 ⇒ 收成模块 `control/gate_rules.rs`。
 # 〔CP2c · 第四波 4C〕对外文案表的 Rust 取文口（`设计/01 §6.9`：所有对外文案与报错都从一张表来）。
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`（选 A 的理由：
 # `调研/第四波记录/CP2c.md §2.1`）。依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
@@ -296,6 +292,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }
+# 〔THIN〕`acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
+acct-core = { path = "../common/acct-core", features = ["fixtures"] }
 # 〔CZ1 · 2026-09-25〕vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：
 # 盘上每一份与 `VENDOR.md` 里取自 `.crate` 的 sha256 逐份相等。**只在测试期链接**；版本就是 lock 里 russh 那棵树
 # 早已解析的 `sha2 0.11.0`（离线可用、不新增包）。

@@ -217,7 +217,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
     for (kind, line) in FRAMES {
         let f = parse_frame(line)
             .unwrap_or_else(|| panic!("手写的 `{kind}` 帧 parse_frame 解不出来：{line}"));
-        if let Some(back) = crate::backend::control::local_backend::absorb_local_frame(f, None) {
+        if let Some(back) = crate::local_backend::absorb_local_frame(f, None) {
             // 交回的就是喂进去的那一种（不是别的东西）。
             let same = matches!(
                 (kind, &back),
@@ -367,7 +367,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
 #[test]
 fn both_read_loops_hand_content_frames_to_the_local_channel_exactly_once() {
     let stdio = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
@@ -551,7 +551,7 @@ fn the_second_watcher_leaves_no_trace_in_monitor_production() {
 #[ignore = "要真后端二进制：由 tests/evidence/CF1-local-lines.py 带 CF1_BACKEND 来跑"]
 fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     use std::io::Write;
-    let _local = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _local = crate::inbound_client::local_origin_test_lock();
     let bin = std::env::var("CF1_BACKEND").expect("没有 CF1_BACKEND —— 这条只该由读数脚本来跑");
     let mut rx = tap().expect("本机内容通道已经被装过了 —— 这条要单独跑");
     let home = std::env::temp_dir().join(format!("cf1-local-lines-{}", std::process::id()));
@@ -601,7 +601,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     }
     let mut reap = Reap(vec![pid]);
     let mut child = std::process::Command::new(&bin)
-        .args(crate::backend::control::local_backend::LOCAL_STREAM_ARGS)
+        .args(crate::local_backend::LOCAL_STREAM_ARGS)
         .env("HOME", &home)
         .env("CLAUDE_CONFIG_DIR", &claude)
         .env("TMUX_TMPDIR", &home)
@@ -614,9 +614,8 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         .expect("起不了后端");
     reap.0.push(child.id());
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    let reader = std::thread::spawn(move || {
-        crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
-    });
+    let reader =
+        std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()

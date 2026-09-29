@@ -12,7 +12,22 @@
 //! 3. **该不该换**（[`deploy_core::landing_verdict`]：只升不降）；旧落点那份字节要不要删（[`deploy_core::legacy_verdict`]）；
 //! 4. 〔WF2 · WIN3 读数 B〕落点那个目录里上一趟没收拾掉的临时件 / 备份件（[`stale_leftovers`]）—— 每次连上都问一次，交 monitor 删。
 //!
+//! # 〔THIN〕帧命令 `deploy-retired`（同一家：落点上该清的东西）
+//!
+//! 旧版放在远端 `~/.local/bin/ccm` 的那一份（`设计/01 §6.7b` ③）：认出是我们放的才删、删带读到的那一份当期望值（[`retired_verdict`]）；
+//! monitor 照答经那台后端 `files-delete` 删。不并进 `deploy-plan` 的答：计划是连上那台常驻后端**之前**问的（预检），
+//! 那时 `files-delete` 无门可走（那一格在 SFTP 两个写根之外）；删它的两个时刻（部署按钮 · 那台长连接握手完成）那台后端都在。
+//!
 //! 回计划，一个字节都不写：放字节（mkdir · 原子上传 · 读回比对）与删旧落点 · 删残件仍是 monitor 经 `files` 链路做（SR1b 那条路不变）。
+//!
+//! # 〔THIN〕帧命令 `deploy-slot`（同一家，第 ① 步单拿出来）
+//!
+//! 全景小程序推字节之前「那台要哪一格」：远端问 `uname`、本机取这台的键 → 表 A / 表 B → 这一版带没带（[`answer_slot`]）；
+//! `deploy-plan` 的第 ① 步走同一个 `slot_of`。monitor 只按答里那一格取字节。
+//!
+//! # 〔THIN〕帧命令 `resident-verdict`（同一家）
+//!
+//! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
 //!
 //! # 它归 `control/` 的理由
 //!
@@ -32,6 +47,10 @@ use deploy_core::{
     DeployAction, Key, LegacyVerdict, Marks, Product, Refusal, RemoteIdentity, Route,
 };
 use serde_json::{json, Value};
+
+/// 〔THIN〕旧入口 `~/.local/bin/ccm` 最多读多少：读到的全文要原样装进 monitor 那一趟 `files-delete` 的 `expect`
+/// （后端一行上限 1 MiB）⇒ 取与 `files-peek` 同一个口径的数（那一面的常量不跨模块取：文件管理后端只经它的门够）。
+const RETIRED_READ_MAX: u64 = 256 * 1024;
 
 /// 认从前那份三行入口时最多读多少（它几十字节；比这大就不是那一形 ⇒ 不读，按「不说自己是谁」显式失败）。
 const ENTRY_READ_MAX: u64 = 64 * 1024;
@@ -110,6 +129,54 @@ async fn identity_at(facing: &dyn Facing, rel: &str, word: &str) -> Result<Remot
     })
 }
 
+/// 〔THIN〕**那台要哪一格字节** —— 部署计划的第 ① 步，两件产物共用（`deploy-plan` 与 `deploy-slot` 都走它）。
+///
+/// 远端（有 `facing`）：问 `uname -s -m`（[`deploy_core::key_from_uname`]）；本机（`None`）：这台自己的键（`Key::this_machine`，
+/// `设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。→ 表 A / 表 B（[`deploy_core::judge`]）→ 这一版带没带那一格（`carried`）。
+/// 拒绝点在写第一个字节之前（`设计/96 §7.1.4b`）；回那一格与问 `uname` 那一趟拨号的 ack（本机 `Null`）。
+async fn slot_of(
+    facing: Option<&dyn Facing>,
+    product: Product,
+    carried: &[Key],
+    machine: &str,
+) -> Result<(Key, Value), (&'static str, String)> {
+    let said = |r: Refusal| ("refused", r.say(product, machine));
+    let (raw, route, ack) = match facing {
+        Some(f) => {
+            let (got, ack) = f
+                .exec(deploy_core::UNAME_CMD.to_string())
+                .await
+                .map_err(|e| {
+                    let said = match product {
+                        Product::Backend => copy_text(
+                            "rsSftp.deploy.unameFailed",
+                            &[("machine", machine), ("e", &e)],
+                        ),
+                        Product::Panorama => copy_text(
+                            "beDeploySlot.uname.failed",
+                            &[("machine", machine), ("e", &e)],
+                        ),
+                    };
+                    ("unreachable", said)
+                })?;
+            (
+                deploy_core::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
+                Route::Remote,
+                ack,
+            )
+        }
+        None => (Key::this_machine(), Route::Local, Value::Null),
+    };
+    let key = deploy_core::judge(product, route, raw).map_err(said)?;
+    if !carried.contains(&key) {
+        return Err(said(Refusal::NotCarried {
+            os: key.os.label().to_string(),
+            arch: key.arch.label().to_string(),
+        }));
+    }
+    Ok((key, ack))
+}
+
 /// 出计划。`machine` = monitor 交来的那台的名字（只用来说话）；`now_secs` = 此刻（判残件新旧）。失败 = `(code, 一句话)`。
 pub async fn plan(
     facing: &dyn Facing,
@@ -117,35 +184,13 @@ pub async fn plan(
     machine: &str,
     now_secs: u64,
 ) -> Result<Plan, (&'static str, String)> {
-    let said = |r: Refusal| ("refused", r.say(Product::Backend, machine));
-    let (got, ack) = facing
-        .exec(deploy_core::UNAME_CMD.to_string())
-        .await
-        .map_err(|e| {
-            (
-                "unreachable",
-                copy_text(
-                    "rsSftp.deploy.unameFailed",
-                    &[("machine", machine), ("e", &e)],
-                ),
-            )
-        })?;
-    let key = deploy_core::judge(
-        Product::Backend,
-        Route::Remote,
-        deploy_core::key_from_uname(got.exit_status, &got.stdout, &got.stderr),
-    )
-    .map_err(said)?;
+    let keys: Vec<Key> = carried.iter().map(|(k, _)| *k).collect();
+    let (key, ack) = slot_of(Some(facing), Product::Backend, &keys, machine).await?;
     let expected = carried
         .iter()
         .find(|(k, _)| *k == key)
         .map(|(_, id)| id.clone())
-        .ok_or_else(|| {
-            said(Refusal::NotCarried {
-                os: key.os.label().to_string(),
-                arch: key.arch.label().to_string(),
-            })
-        })?;
+        .expect("slot_of 只回带着的那一格");
     let landing = relay_route_core::BACKEND_LANDING_REL;
     let id = identity_at(facing, landing, relay_route_core::BACKEND_LANDING_SHELL)
         .await
@@ -327,6 +372,158 @@ pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, (&'stati
     plan(facing, &carried, machine, now)
         .await
         .map(|p| plan_json(&p))
+}
+
+// ═══ 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向（帧命令 `deploy-retired`）══════════════════════════════
+//
+// 与上传残件（[`stale_leftovers`]）同一家：落点上该清的东西，判在这里，monitor 照删。从前 monitor `ccm_legacy::sweep`
+// 自己读、自己认（`deploy_core::is_ours`）、自己决定删；今天它只把这里的答交给那台后端的 `files-delete`（带 `expect`）。
+
+/// 旧入口那一份的去向。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Retired {
+    /// 那儿没有东西。
+    Absent,
+    /// 认出是我们放的 ⇒ 删；`expect` = 读到的全文（`files-delete` 的期望值：盘上还是它才删）。
+    Remove { expect: String },
+    /// 不动；`why` 说为什么（不是我们放的 · 读不成文本）。
+    Keep { why: String },
+}
+
+/// **纯函数**：stat 的结论 ＋ 读回来的字节（读不出 / 比 [`RETIRED_READ_MAX`] 大 ⇒ `None`）→ 去向。
+/// 只认 [`deploy_core::is_ours`] 那两形；别的一律不动（用户自己的脚本 · 空文件 · 不是 UTF-8 · 读不回来）。
+pub fn retired_verdict(at: deploy_core::TargetBinary, bytes: Option<Vec<u8>>) -> Retired {
+    use deploy_core::TargetBinary;
+    let not_ours = || Retired::Keep {
+        why: copy_text("beDeployRetired.kept.notOurs", &[]),
+    };
+    match at {
+        TargetBinary::Missing => Retired::Absent,
+        TargetBinary::Empty => not_ours(),
+        TargetBinary::Present | TargetBinary::Unknown => match bytes.map(String::from_utf8) {
+            Some(Ok(text)) if deploy_core::is_ours(&text) => Retired::Remove { expect: text },
+            Some(Ok(_)) => not_ours(),
+            _ => Retired::Keep {
+                why: copy_text("beDeployRetired.kept.unreadable", &[]),
+            },
+        },
+    }
+}
+
+/// 帧面入口：`{dial}` → `{verdict: "absent" | "remove" | "keep", expect, why}`。缺 `dial` ⇒ `bad_args`；SFTP 开不成 ⇒ `unreachable`。
+pub async fn answer_retired(
+    args: &Value,
+    facing: &dyn Facing,
+) -> Result<Value, (&'static str, String)> {
+    if !args.get("dial").is_some_and(Value::is_object) {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("missing `dial` (object)"),
+        ));
+    }
+    let rel = deploy_core::LEGACY_ENTRY_REL;
+    let (size, exists) = facing.stat(rel).await.map_err(|e| ("unreachable", e))?;
+    let at = deploy_core::interpret_target_probe(size, exists);
+    let bytes = match at {
+        deploy_core::TargetBinary::Present | deploy_core::TargetBinary::Unknown => {
+            let got = facing.read(rel, RETIRED_READ_MAX).await;
+            if got.is_none() {
+                tracing::warn!("deploy-retired：~/{rel} 读不回来或比上限大 —— 认不出、不删");
+            }
+            got
+        }
+        _ => None,
+    };
+    Ok(match retired_verdict(at, bytes) {
+        Retired::Absent => json!({ "verdict": "absent", "expect": null, "why": null }),
+        Retired::Remove { expect } => json!({ "verdict": "remove", "expect": expect, "why": null }),
+        Retired::Keep { why } => json!({ "verdict": "keep", "expect": null, "why": why }),
+    })
+}
+
+// ═══ 〔THIN〕那台要哪一格（帧命令 `deploy-slot`）═══════════════════════════════════════════
+//
+// 全景小程序推字节之前那一问（`设计/00 §1.2`：表 A / 表 B 的承诺是裁决 ⇒ 住后端；monitor 只按答里那一格取字节）。
+// 从前 monitor 自己问 `uname`（`byte_table::probe_key`〔散文墓碑〕）再 `choose`；今天远端本机两形都问本机常驻后端。
+
+/// 帧面入口：`{product, machine, carried: [{os, arch}], dial?}` → `{os, arch, label, ack}`。有 `dial` ⇒ 那台远端；没有 ⇒ 本机。
+pub async fn answer_slot(
+    args: &Value,
+    facing: Option<&dyn Facing>,
+) -> Result<Value, (&'static str, String)> {
+    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+    let product = args
+        .get("product")
+        .and_then(Value::as_str)
+        .and_then(Product::of_wire)
+        .ok_or_else(|| bad("`product` must be `backend` or `panorama`"))?;
+    let machine = args
+        .get("machine")
+        .and_then(Value::as_str)
+        .filter(|m| !m.trim().is_empty())
+        .ok_or_else(|| bad("missing `machine` (string)"))?;
+    let carried: Vec<Key> = args
+        .get("carried")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("missing `carried` (array)"))?
+        .iter()
+        .map(|r| {
+            let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
+            deploy_core::key_of(s("os"), s("arch"))
+                .map_err(|_| bad("`carried` row names a machine outside table A"))
+        })
+        .collect::<Result<_, _>>()?;
+    let (key, ack) = slot_of(facing, product, &carried, machine).await?;
+    Ok(json!({
+        "os": key.os.label(),
+        "arch": key.arch.label(),
+        "label": key.label(),
+        "ack": ack,
+    }))
+}
+
+// ═══ 〔THIN〕远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
+//
+// monitor 接远端常驻后端时读到 hello，从前自己判「那台比手上这一版旧 ⇒ 换一次」（`deploy_core::is_newer`）；
+// 判定归后端（`设计/00 §1.2`「判定只在后端」），与部署计划同一家：「换不换」都在这里判，monitor 只照做。
+
+/// hello 那一问的答：`replace` = 换掉再接（只升不降，HX2 D-b，且只换一次）；`older` = 那台比手上这一版旧（版本那句话按它挑）。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Verdict {
+    pub replace: bool,
+    pub older: bool,
+}
+
+/// **纯函数**：`mine` = monitor 手上这一版自报的身份 · `theirs` = 那台 hello 报的 · `replaced` = 这一趟已经换过一次。
+pub fn resident_verdict(mine: &str, theirs: &str, replaced: bool) -> Verdict {
+    let older = deploy_core::is_newer(mine, theirs);
+    Verdict {
+        replace: older && !replaced,
+        older,
+    }
+}
+
+/// 帧面入口：`{mine, theirs, replaced}` → `{action: "attach" | "replace", older}`。`mine` 空 / 缺 · 缺 `theirs` / `replaced` ⇒ `bad_args`。
+pub fn answer_resident_verdict(args: &Value) -> Result<Value, (&'static str, String)> {
+    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
+    let mine = args
+        .get("mine")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| bad("missing `mine` (non-empty string)"))?;
+    let theirs = args
+        .get("theirs")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("missing `theirs` (string)"))?;
+    let replaced = args
+        .get("replaced")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| bad("missing `replaced` (bool)"))?;
+    let v = resident_verdict(mine, theirs, replaced);
+    Ok(json!({
+        "action": if v.replace { "replace" } else { "attach" },
+        "older": v.older,
+    }))
 }
 
 #[cfg(test)]

@@ -73,9 +73,9 @@ fn write_new_file_refuses_existing_target() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 找那一份走的是共享 crate —— 这里钉的是**这条路真的经过它**。
+/// 找那一份走的是注册表那一格（〔THIN〕本体住适配层 `agents/claudecode/branch.rs`）—— 这里钉的是**这条路真的经过它**。
 fn find_here(root: &Path, sid: &str) -> Result<PathBuf, String> {
-    branch_core::find_session_file(&projects_root(root), sid)
+    crate::agents::find_session_file(&projects_root(root), sid)
 }
 
 #[test]

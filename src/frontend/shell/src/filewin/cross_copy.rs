@@ -23,7 +23,7 @@ use crate::copy_table::copy_text;
 pub static CROSS_LABEL: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("rsFilewinCrossCopy.label.cross", &[]));
 
-/// 本机后端的地址（⚠ 与 app 侧 `backend::control::inbound_client::LOCAL_ORIGIN` 是同一个值的两份 —— 窗口够不到 app 侧，
+/// 本机后端的地址（⚠ 与 app 侧 `inbound_client::LOCAL_ORIGIN` 是同一个值的两份 —— 窗口够不到 app 侧，
 /// 判据 `cross_copy_tests::the_local_origin_is_the_app_one` 读两侧源码钉相等）。
 pub const LOCAL_ORIGIN: &str = "<local>";
 

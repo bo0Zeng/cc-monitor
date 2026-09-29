@@ -9,9 +9,9 @@
 //! 〔墓碑 —— RM1c 那一版这里写着「推上去不在这里」：F08 部署路那时正被 SR1b 搬进本机常驻后端，
 //!  本模块零生产调用方。SR1b 已合（部署经 `dial_host::RemoteFs`）。〕
 //! 触发点在界面（〔MIG-3b 续〕`src/frontend/ui/panorama/api.ts::askOrPlace`，经 [`panorama_place`]）：那台 `panorama` 回「没装 / 太旧」才推（V108「只传给开过远端全景的机器」），
-//! 不随后端部署顺手推。推法与 F08 部署后端同一条路：〔TL1 · 4C〕问那台是什么机器（`byte_table::probe_key`；〔MIG-3b〕部署后端那一问进了本机常驻后端，
-//! 两处同一条命令串、同一份解读 `deploy_core::key_from_uname`）→ `byte_table::choose(Panorama, Remote, …)`（表 B 那一步：不承诺 / 这一版没带 ⇒ 写第一个字节之前就拒，
-//! 拒绝的话出自 `Refusal::say` 那一个口）→ 本机常驻后端那条 `files` 链路
+//! 不随后端部署顺手推。推法与 F08 部署后端同一条路：〔THIN〕「那台要哪一格」问本机常驻后端（帧命令 `deploy-slot`：它问 `uname`、
+//! 按表 A / 表 B 判、看这一版带没带 —— 不承诺 / 这一版没带 ⇒ 写第一个字节之前就拒，那句话它说；`设计/00 §1.2` 判定只在后端）→
+//! 按答里那一格从 `byte_table::pick` 取字节 → 本机常驻后端那条 `files` 链路
 //! （写只许 `~/.cc-monitor/bin/` 与暂存区）→ 建目录 → 原子上传 ＋ 后端读回逐字节比对（`sftp::upload_verified`）。
 //! 落点 == 后端 `control/panorama.rs::fixed_candidates` 的第二个候选（判据读后端源码对拍）。
 //!
@@ -30,28 +30,72 @@ pub(crate) fn local_file_name() -> String {
     format!("{PROGRAM_NAME}{}", env!("CCM_TARGET_EXE_SUFFIX"))
 }
 
-/// 〔RM1f〕**本机**要放下来的那一份（本机不经推送：本机后端在 `~/.cc-monitor/bin/` 找它，`local_backend::place_local_panorama` 放下来）。
-///
-/// 〔DP1 · 第四波〕字节从 `byte_table` 按**这台机器自己**的 (OS, arch) 取（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。
-/// 〔墓碑 —— RM1f 那一版这里自己 `include_bytes!` 按 `TARGET` 内嵌的原生小程序（`build.rs::embed_native_panorama`），
-///  没有就退到本机是 Linux 时 musl 那两份里对得上 arch 的一份；那一槽搬进了 `byte_table.rs`，次序原样（原生先、musl 后，见那边 `pick`）。〕
-///
-/// 〔TL1 · 4C〕经 `byte_table::choose(Panorama, Local, 这台)` 取（与本机后端那条同形）：拒绝带着那句话出来，
-/// 不再是一个说不出原因的 `None`。
-pub(crate) fn local_panorama_binary() -> Result<&'static [u8], String> {
-    use crate::byte_table::{choose, Key, Product, Route};
-    choose(Product::Panorama, Route::Local, Key::this_machine())
+/// 〔THIN〕本机常驻后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名）。
+pub(crate) const SLOT_CMD: &str = "deploy-slot";
+
+/// 问那一趟的上限：远端一次 `uname`（一两个往返），本机纯判定。
+const SLOT_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 〔THIN〕`deploy-slot` 的应答 → 那一格（**严格收**：恰 `{os, arch, label, ack}`，键认不出 ⇒ 两侧漂了）。
+pub(crate) fn decode_slot(v: &serde_json::Value) -> Result<crate::byte_table::Key, String> {
+    let bad = || copy_text("rsPanoramaBytes.slot.unreadable", &[]);
+    let obj = v.as_object().ok_or_else(bad)?;
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys != ["ack", "arch", "label", "os"] {
+        return Err(bad());
+    }
+    let s = |k: &str| obj.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
+    deploy_core::key_of(s("os"), s("arch")).map_err(|_| bad())
+}
+
+/// 〔THIN〕问本机常驻后端「那台要哪一格全景字节」（`cfg` = 那台远端；`None` = 本机）。入参只有事实：怎么够到那台 · 这一版带着哪几格。
+/// 拒绝的那句话是后端说的（`Refusal::say`，同一份文案），原样带回。
+async fn ask_slot(
+    cfg: Option<&crate::ssh_source::RemoteConfig>,
+    machine: &str,
+) -> Result<crate::byte_table::Key, String> {
+    use crate::backend_route::{route_call_error, Routed};
+    use crate::byte_table::{carried, Product};
+    let carried: Vec<serde_json::Value> = carried(Product::Panorama)
+        .iter()
+        .map(|k| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label() }))
+        .collect();
+    let mut args = serde_json::json!({ "product": Product::Panorama.wire(), "machine": machine, "carried": carried });
+    let dial = cfg.map(crate::dial_host::transfer_dial).transpose()?;
+    if let Some(d) = &dial {
+        args["dial"] = d.clone();
+    }
+    let client = crate::dial_host::local_backend_accepting(SLOT_CMD).await?;
+    let data = client
+        .call(SLOT_CMD, args, SLOT_BUDGET)
+        .await
+        .map_err(
+            |e| match route_call_error(&e, |_code, message| message.to_string()) {
+                Routed::NoChannel(s) | Routed::Refused(s) => s,
+                Routed::Done => copy_text("rsPanoramaBytes.slot.unreadable", &[]),
+            },
+        )?
+        .unwrap_or_default();
+    let key = decode_slot(&data)?;
+    // 第一次连一台没钉过指纹的机器就在这一跳 ⇒ 照 monitor 自己开链路那几条同一个判定固化（同部署计划那一条）。
+    if let (Some(c), Some(d)) = (cfg, &dial) {
+        let ack: crate::ssh_link::Ack = serde_json::from_value(data["ack"].clone())
+            .map_err(|_| copy_text("rsPanoramaBytes.slot.unreadable", &[]))?;
+        crate::dial_host::settle_host_key(c, d, &ack);
+    }
+    Ok(key)
+}
+
+/// 按后端答的那一格取这一版带着的全景字节。取不到 ⇒ 两侧漂了（后端只回 `carried` 里的格）。
+fn slot_bytes(key: crate::byte_table::Key) -> Result<&'static [u8], String> {
+    crate::byte_table::pick(crate::byte_table::Product::Panorama, key)
         .map(|p| p.bytes)
-        .map_err(|r| {
-            r.say(
-                Product::Panorama,
-                &copy_text("rsPanoramaBytes.local.machine", &[]),
-            )
-        })
+        .ok_or_else(|| copy_text("rsPanoramaBytes.slot.unreadable", &[]))
 }
 
 // 〔TL1 · 4C〕墓碑：这里从前有一个按「那台答的系统 / 架构两个词」直接取字节的函数（DP1 那一拍只改了函数体、委托 `byte_table`）。
-//   远端推字节改走 `byte_table::choose` 之后它零生产调用方 ⇒ 删；两个词 → 键的解析只剩 `byte_table::key_of` 一处。
+//   远端推字节改走 `byte_table::choose` 之后它零生产调用方 ⇒ 删；两个词 → 键的解析只剩 `deploy_core::key_of` 一处。
 
 /// 〔RM1e〕推到 home 底下哪个目录（相对段）。== 后端 `exit_policy::DIR_NAME` ＋ `bin`，
 /// 也在 SR1b 那两个远端写根之内（判据读两处后端源码）。
@@ -76,11 +120,13 @@ pub(crate) fn push_target(home: &str) -> (String, String) {
 /// 〔RM1e〕把这一版的全景小程序推到 `origin` 那台机器上（头注「推上去」）。
 ///
 /// 那台的 (OS, arch) 在表 A / 表 B 上过不去（问不出 · 没有产线 · 不承诺 · 这一版没带）⇒ 那句拒绝的话、一个字节不推。
-/// 〔RM1f〕本机那一台不经 SSH：[`place_local`] 把 [`local_panorama_binary`] 放进 `~/.cc-monitor/bin/`（本机后端的第二个候选）。
+/// 〔RM1f〕本机那一台不经 SSH：[`place_local`] 把后端答的那一格（〔THIN〕`deploy-slot`，本机那一行）的字节放进 `~/.cc-monitor/bin/`（本机后端的第二个候选）。
 /// 〔墓碑 —— RM1e 那一版本机这一臂直接拒：「本机的代码全景组件不经推送 —— 它随本机后端一起放在本机后端旁边」。〕
 pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String> {
-    if origin.as_wire_str() == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return tokio::task::spawn_blocking(place_local)
+    if origin.as_wire_str() == crate::inbound_client::LOCAL_ORIGIN {
+        let key = ask_slot(None, &copy_text("rsPanoramaBytes.local.machine", &[])).await?;
+        let bytes = slot_bytes(key)?;
+        return tokio::task::spawn_blocking(move || place_local(bytes))
             .await
             .map_err(|e| copy_text("rsPanoramaBytes.push.taskFailed", &[("e", &e.to_string())]))?;
     }
@@ -91,13 +137,10 @@ pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String
             &[("label", &label.to_string())],
         )
     })?;
-    use crate::byte_table::{choose, probe_key, Product, Route};
-    let key = probe_key(&cfg).await?;
-    // 只进日志（拒绝时上面那一步已经带着话返回了，走到日志那一行时键一定问出来了）。
-    let machine = key.as_ref().map(|k| k.label()).unwrap_or_default();
-    let bytes = choose(Product::Panorama, Route::Remote, key)
-        .map_err(|r| r.say(Product::Panorama, label))?
-        .bytes;
+    // 〔THIN〕「那台要哪一格」问本机常驻后端（拒绝的话它说）；这里只按答取字节。
+    let key = ask_slot(Some(&cfg), label).await?;
+    let machine = key.label();
+    let bytes = slot_bytes(key)?;
     let fs = crate::dial_host::RemoteFs::open(&cfg).await?;
     let (dir, file) = push_target(fs.home());
     fs.mkdirs(&dir).await?;
@@ -117,13 +160,12 @@ pub(crate) async fn push_to(origin: &crate::origin::Origin) -> Result<(), String
 /// 常驻后端（`local_backend_host::start_detached` 的 adopt 那一臂 —— 那一臂**根本不找二进制**）。只在前一条路上放，
 /// 接上旧常驻后端的那一趟就永远没有小程序。⇒ 与远端同一个触发点：本机后端答「没装 / 装的太旧」时放一次、再问一次
 /// （〔MIG-3b 续〕界面 `askOrPlace` → [`panorama_place`]）。**写的那一下住 `local_backend.rs`**（与释放本机后端同一套：暂存旁名 → 可执行位 → 换名）。
-fn place_local() -> Result<(), String> {
-    let bytes = local_panorama_binary()?;
+fn place_local(bytes: &'static [u8]) -> Result<(), String> {
     // 与推到远端同一个落点（[`PUSH_DIR`]，判据对拍后端的第二个候选）。
     let dir = dirs::home_dir()
         .map(|h| PUSH_DIR.split('/').fold(h, |p, seg| p.join(seg)))
         .ok_or_else(|| copy_text("rsPanoramaBytes.local.noHome", &[]))?;
-    let placed = crate::backend::control::local_backend::place_local_panorama(
+    let placed = crate::local_backend::place_local_panorama(
         &dir,
         &local_file_name(),
         bytes,
@@ -194,11 +236,11 @@ pub(crate) const INSTALL_NOTICE_KIND: &str = "panorama-install";
 
 /// 〔RM1f〕那一句说什么（纯函数，判据直接比）。
 pub(crate) fn install_notice(origin: &str) -> crate::ui_contract::RemoteHealthPayload {
-    let message = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+    let message = if origin == crate::inbound_client::LOCAL_ORIGIN {
         // 〔RM1f〕本机那一台不经网络：放到 `~/.cc-monitor/bin/`，一两秒的事。
         copy_text("rsPanoramaCall.install.local", &[])
     } else {
-        let who = crate::backend::control::cc_bus::machine_label(origin);
+        let who = crate::cc_bus::machine_label(origin);
         copy_text("rsPanoramaCall.install.remote", &[("who", &who)])
     };
     crate::ui_contract::RemoteHealthPayload {

@@ -15,6 +15,7 @@ import type { UserInputPanel } from "./views/user-input-panel";
 import type { OutlineSource } from "./views/outline-source";
 import type { FactsSource } from "./views/facts-source";
 import type { AgentEntry } from "./agents-panel";
+import type { ToolUseSeen } from "./cards/index";
 import type { Origin } from "./ipc/origin";
 import type { SessionState } from "./tab-session-state";
 
@@ -126,10 +127,10 @@ export interface Tab {
    */
   timeline: RecordTimeline;
   /**
-   * tool_use_id → tool_name 缓存。tool_use 在 assistant 消息出现时记下，
-   * 下一条 user 消息的 tool_result 反查显示工具名。
+   * tool_use_id → 那次 tool_use 的工具名与卡型（`cards/index.ts::ToolUseSeen`）。tool_use 在 assistant 消息出现时记下，
+   * 下一条 user 消息的 tool_result 反查显示工具名、挑默认怎么画。
    */
-  toolUseNames: Map<string, string>;
+  toolUseNames: Map<string, ToolUseSeen>;
   /**
    * tool_use_id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use
    * 内部，不再产生独立折叠条。详见 cards/index.ts 的 injectOrBuildToolResult。

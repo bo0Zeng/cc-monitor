@@ -2,7 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// 唯一允许持有这个判定的文件（相对仓根）。
-const SOLE_HOME: &str = "src/common/gate-core/src/lib.rs";
+// 〔THIN〕共享 crate `gate-core` 收成后端模块（monitor 那一侧的门删了）。
+const SOLE_HOME: &str = "src/backend/control/gate_rules.rs";
 
 /// 判定形状的源码指纹。**运行时拼**，免得本文件自己被扫到时命中。
 /// 判定的**源码指纹**。
@@ -94,7 +95,7 @@ fn the_identity_decision_has_exactly_one_home() {
     assert!(
         offenders.is_empty(),
         "又出现了第二份 §34 Gate 2 身份判定。\n\
-             唯一的家是 `{SOLE_HOME}`，请调 `gate_core::is_ccm_tmux_name` / `gate_core::gate2`。\n\
+             唯一的家是 `{SOLE_HOME}`，请调 `gate_rules::gate2`。\n\
              ⚠ 这道门漂了**不会红**：两侧各自的测试都通过，只是对同一个会话名给出不同答案 ——\n\
              而它挡的是「往别人的 tmux 里打字 / 杀掉它」。\n{}",
         offenders.join("\n")
@@ -107,7 +108,7 @@ fn the_identity_decision_has_exactly_one_home() {
 /// 实测过它不是仪式：把实现换成行为等价但字面量不同的写法时，**只有这条会红**。
 #[test]
 fn the_sole_home_really_holds_the_decision() {
-    let src = fs::read_to_string(repo_root().join(SOLE_HOME)).expect("gate-core 读不到");
+    let src = fs::read_to_string(repo_root().join(SOLE_HOME)).expect("gate_rules.rs 读不到");
     let prod = guard_core::production_code(&src);
     for p in fingerprints() {
         assert!(
@@ -118,18 +119,45 @@ fn the_sole_home_really_holds_the_decision() {
     }
 }
 
-/// ★ monitor 的本地包装真的在**转调**，不是留了一份副本。
+/// ★ 〔THIN〕monitor 这一侧**一道门都没有**：生产段零处够 Gate 判定（`gate_rules` · 旧名 `gate_core`），清单里也没有 `gate-core`。
 ///
-/// 这条与「只有一个家」不重复：副本可以写成不含指纹的等价实现（那时零命中守卫全绿）。
-/// 这里直接比行为 —— 两者对同一批输入必须逐个一致。
+/// 替掉的是 `the_monitor_wrapper_really_delegates`〔散文墓碑〕（「monitor 的转调壳真在转调」）：那个壳只剩跨轨对拍锚点在用，
+/// 随 monitor 侧的 Gate 残留删了 —— 「monitor 不许自己再实现一份」从「锚在壳上」换成「monitor 里零处」（上面那条管指纹，本条管调用）。
+/// 正控：同一份语料在后端 `control/gate.rs` 上认得出 `gate_rules::gate2`。
 #[test]
-fn the_monitor_wrapper_really_delegates() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/backend/control/tmux.rs"
-    ));
+fn the_monitor_holds_no_gate_of_its_own() {
+    let root = repo_root();
+    let mut corpus = String::new();
+    let mut files = 0usize;
+    for (_, text) in
+        guard_core::scan_tree_excluding(&root.join("src/frontend/shell/src"), &["rs"], &[])
+    {
+        files += 1;
+        corpus.push_str(&guard_core::strip_comment_lines(
+            &guard_core::production_code(&text),
+        ));
+        corpus.push('\n');
+    }
+    assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
+    for word in ["gate_rules", "gate_core"] {
+        assert!(
+            !guard_core::contains_word(&corpus, word),
+            "monitor 生产段里又够到了 `{word}` —— §34 的门只住后端（`control/gate.rs` ＋ `control/gate_rules.rs`）"
+        );
+    }
+    let manifest =
+        fs::read_to_string(root.join("src/frontend/shell/Cargo.toml")).expect("monitor 清单读不到");
     assert!(
-        prod.contains("gate_core::is_ccm_tmux_name"),
-        "`tmux.rs` 的生产段里没有转调 `gate_core::is_ccm_tmux_name` —— \
-             它要么自己又实现了一遍，要么这道门在 monitor 侧断了"
+        !manifest
+            .lines()
+            .any(|l| l.trim_start().starts_with("gate-core")),
+        "monitor 清单里又挂上了 `gate-core`"
+    );
+    let gate_rs = guard_core::production_code(
+        &fs::read_to_string(root.join("src/backend/control/gate.rs")).expect("gate.rs 读不到"),
+    );
+    assert!(
+        guard_core::contains_word(&gate_rs, "gate_rules"),
+        "正控失败：后端 `control/gate.rs` 的生产段里认不出 `gate_rules` —— 上面的零命中不可信"
     );
 }

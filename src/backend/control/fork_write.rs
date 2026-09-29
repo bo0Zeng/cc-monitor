@@ -25,13 +25,13 @@
 //!
 //! # 变换逻辑不在这里
 //!
-//! 记录变换走共享 crate `branch-core`（monitor 与 backend **同一份实现**，G1）。
+//! 记录变换住适配层 `agents/claudecode/branch.rs`（〔THIN〕原共享 crate `branch-core`，只剩后端用），经注册表那一格够它（`agents::build_branch_records`）。
 //!
 //! # ★〔`K-R88` 09-13〕**「找文件」也不在这里了**
 //!
 //! 定位源文件那一步先前本模块自己有一份，monitor 侧另有一份、而且**收的入参形状都不一样**
-//! （那边收路径、这边收 sid）。`K-R88` 把它收进同一个共享 crate：
-//! `branch_core::find_session_file`，两侧都调它，入参形状统一成 sid。
+//! （那边收路径、这边收 sid）。`K-R88` 把它收成一份，入参形状统一成 sid；〔THIN〕今天住适配层、经注册表那一格够
+//! （`agents::find_session_file`）。
 //!
 //! ⇒ 本模块今天只剩：**读 → 调变换 → `O_EXCL` 落盘**。
 //! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：本件在收「找」，不搬「写」）——
@@ -195,10 +195,10 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
 
     // 🔴 「找文件」**这一句就是全部** —— 本模块只填「记录树的根在哪」这一格
     //（那是 agent 适配层的知识），找本身两侧同一份（`K-R88`）。
-    let source = branch_core::find_session_file(&projects_root(agent_home), source_sid)?;
+    let source = crate::agents::find_session_file(&projects_root(agent_home), source_sid)?;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);
-    let records = branch_core::build_branch_records(&lines, message_uuid, source_sid, &new_sid)?;
+    let records = crate::agents::build_branch_records(&lines, message_uuid, source_sid, &new_sid)?;
 
     // 落点 = 源文件同目录（那已是 projects 下某个项目目录），文件名 = 新 sid。
     let dir = source

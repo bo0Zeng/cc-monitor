@@ -6,9 +6,9 @@ Rust + Tauri 2。crate 名 `monitor`（lib 名 `monitor_lib`）。
 
 > ## ⚠ `src/backend/` 的逐文件清单**不在本文件里**〔G3 加〕
 >
-> 它住 **`src/frontend/shell/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表** —— 那是**机检**的：
-> 往 `backend/` 加文件而不在表里写明「属哪条能力线、为什么在这里」，`cargo test` **当场红**
-> （`every_file_under_backend_is_registered_with_a_reason`）。`src/`src/doc/ARCHITECTURE.md` §2.7` 就是这么分派的。
+> 〔THIN 09-29〕monitor 侧的 `backend` 目录（从前「本机那种宿主」）没了：那一组 monitor 自己的客户端 · 命令层 · 宿主代码回了壳根，
+> 宿主无关 · 平台无关两道判据改看 `tests/frontend/shell/backend_client_guard_tests.rs` 的 `GUARDED`（逐个点名）。
+> 后端本体的逐文件清单住后端自己那棵树（`src/backend/README.md`）。`src/`src/doc/ARCHITECTURE.md` §2.7` 就是这么分派的。
 >
 > ⇒ **本文件刻意不复制那份清单**：复制出来的第二份没有机检看着，
 > 而本仓反复治的正是「同一个事实两处各写一份然后漂移」。

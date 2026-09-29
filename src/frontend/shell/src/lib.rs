@@ -59,8 +59,41 @@ mod history;
 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 // 〔MIG-2〕`apikey_remote`〔散文墓碑〕删了：它最后只剩发送口，唯一的调用方（起会话那一侧问 `launch-endpoint`）随本机起会话搬进后端。
-mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
+// 〔THIN〕`backend/` 这个目录从壳里消失了（从前住着 monitor 侧「后端边界」的九份：它们是 monitor 自己的代码，名字却叫 backend）。
+//   逐份回真住址（都在壳根，宿主无关 ＋ 平台无关两道判据照旧看着它们：`backend_client_guard_tests.rs`）：
+//   调后端的客户端 —— `inbound_client`（长连接入方向的 wire 客户端）· `frame_query`（只读查询发送端）· `backend_route`（通信层成员，
+//   分流器，住 `src/comms/inward/`）；Tauri 命令层 —— `backend_control`（起 / 停 / 状态）· `cc_bus`（两句说法与 id 规则）；
+//   宿主 —— `local_backend`（本机后端的起与看住）；跨轨对拍锚点 —— `agent_profile_parity`（测试段）。
+//   Gate 1 前检 `tmux` 与 monitor 那一轨 `gate2_parity` 删了（子步 1：门只在后端）。
+#[cfg(test)]
+mod agent_profile_parity;
+mod backend_control;
+#[path = "../../../comms/inward/backend_route.rs"]
+mod backend_route;
+mod cc_bus;
+mod frame_query;
+mod inbound_client;
+mod local_backend;
+// 〔DUP1〕标识符放行判定的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）：只读共享 crate 的常量。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/payload_judgment_rules.rs"]
+mod judgment_rules;
+// 〔C4e〕「创建路径不许铸出主路杀不掉的名字」与它的发现口径（原挂 `backend/control/` 那一层的测试段，〔THIN〕改挂壳根）。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/backend_kill_creation_detect.rs"]
+pub(crate) mod creation_detect;
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/backend_kill_tests.rs"]
+mod kill_name_tests;
+// 〔THIN〕从前 `backend/` 目录那两道判据（宿主无关 · 平台无关）改看上面那一组文件（逐个点名，不再按目录）。
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/backend_client_guard_tests.rs"]
+mod backend_client_guard;
+// 〔THIN 第 5 件〕monitor 生产段只许依赖契约类共享 crate（`设计/00 §1.2`）。
 mod byte_table; // 〔DP1 · 第四波〕全仓唯一的取字节口：一台机器要哪一份可执行字节，按它的 (OS, arch) 查表（`设计/96 §7.1`）
+#[cfg(test)]
+#[path = "../../../../tests/frontend/shell/contract_crate_guard_tests.rs"]
+mod contract_crate_guard;
 mod copy_table; // 〔DP1 · 第四波〕对外文案表的 Rust 读口（与前端 `copyText` 同一份 `src/shared/copy/table.json`）
 mod creds_store; // 第三方 API key 那份文件在本机的「它在哪」（`resolve_path`）；〔GP1 · US1〕写侧与读侧掩码都不在 monitor 了（本机常驻后端写、答）
 #[cfg(test)]
@@ -147,7 +180,7 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 #[cfg(test)]
 mod fixture_guard; // `99 §4.8.3 P15`：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后后端零定时器；被禁措辞见模块头注）
-mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
+mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（〔THIN〕后端 `control/gate_rules.rs`）
 
 #[cfg(test)]
 mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套
@@ -735,7 +768,7 @@ pub fn run() {
             // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
             // tmux 的状态（F05 摸底 §2.5）。
             {
-                use backend::control::local_backend::Resolved;
+                use local_backend::Resolved;
                 // P2z（定框 C10）：exe 旁边没有本机后端时，把**已内嵌**的那份释放到本机再起 ——
                 // 「单 exe 也能起后端进程」那句话的落点。
                 //
@@ -756,7 +789,7 @@ pub fn run() {
                         // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
                         //    在这条路上不许只进日志。**
                         //
-                        // 两条起法只有手动那条会让用户看见（`crate::backend::control::backend_control::backend_start`
+                        // 两条起法只有手动那条会让用户看见（`crate::backend_control::backend_start`
                         // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
                         // 回修前是 `tracing::info!`，连 `warn` 都不是。
                         //
@@ -977,7 +1010,7 @@ pub fn run() {
                         })
                     };
                     let first = spawn_one();
-                    backend::control::backend_control::register_remote(origin, Box::new(spawn_one), first);
+                    backend_control::register_remote(origin, Box::new(spawn_one), first);
                 }
                 // 〔MIG-1〕tmux 存活对账（收割）搬进了那台后端的会话账本（`src/backend/observe/session_ledger.rs`）：
                 //   monitor 这一侧零 poller、零收割器。
@@ -1050,10 +1083,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             // 〔C4c〕「退出行为」问 / 交写那两条退役：设置页经通道说 `exit-policy-read` / `exit-policy-set`。
-            backend::control::backend_control::backend_machines,
-            backend::control::backend_control::backend_status,
-            backend::control::backend_control::backend_start,
-            backend::control::backend_control::backend_stop,
+            backend_control::backend_machines,
+            backend_control::backend_status,
+            backend_control::backend_start,
+            backend_control::backend_stop,
             config::load_config,
             config::patch_config,
             // K-H2a：apikey 表那把 key 的写（`KS10`）。〔US1〕读状态与「表里有没有行」两问走通道（`apikey-read` / `apikey-routing`）。
@@ -1186,7 +1219,7 @@ pub fn run() {
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。
-                // 🔴 它为什么留在臂里而不进缝：`backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
+                // 🔴 它为什么留在臂里而不进缝：`local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
                 // 逐条要求这一臂**体内**恰好一处 `.stop()` + 恰好一处现问 + 问在前 + 中间那个 `if` 判的就是那个答案。
                 {
                     let guard = local_backend_host::LOCAL_BACKEND.lock();

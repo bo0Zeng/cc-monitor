@@ -69,7 +69,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
  * 是真的删了那条测试，还是套件被掏空了？
  */
 const NODE_SUITES: readonly (readonly [string, string, number])[] = [
-  ["test:diff", "tests/frontend/ui/cards/diff.test.ts", 17],
+  ["test:diff", "tests/frontend/ui/cards/diff.test.ts", 16], // 〔THIN〕17 → 16：`isDiffTool` 那一条随判定进了后端（`cards_tests.rs`）
   ["test:branching", "tests/frontend/ui/branching.test.ts", 24], // 〔RENDER2〕+1 J10：isInterrupt 只读成品
   ["test:api-error", "tests/frontend/ui/cards/api-error.test.ts", 5],
   ["test:bash", "tests/frontend/ui/cards/bash.test.ts", 20],

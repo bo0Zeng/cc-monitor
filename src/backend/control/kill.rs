@@ -53,11 +53,11 @@ pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
 }
 
 /// 〔TAIL · DUP3 §5 ③ ⑦〕**已有会话名**的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份
-/// `gate_core::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
+/// `crate::control::gate_rules::existing_tmux_name_issue`（空 · 控制符 · 视觉欺骗字符），外加 `:`（tmux 目标语法的分隔符，真会话名里不会有）。
 /// `=` 不拒：`=a=b:` 精确命中名叫 `a=b` 的会话，attach 那一条早就放行它。
 pub(crate) fn admit_existing_name(name: &str) -> Result<(), CmdErr> {
-    use gate_core::TmuxNameIssue as I;
-    match gate_core::existing_tmux_name_issue(name) {
+    use crate::control::gate_rules::TmuxNameIssue as I;
+    match crate::control::gate_rules::existing_tmux_name_issue(name) {
         None if name.contains(':') => Err((
             "invalid_args",
             copy_text("beKill.name.colon", &[("name", &format!("{name:?}"))]),

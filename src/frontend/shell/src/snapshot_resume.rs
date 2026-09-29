@@ -46,7 +46,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use crate::backend::control::frame_query::TailPlan;
+use crate::frame_query::TailPlan;
 use crate::origin::Origin;
 
 /// 某台某会话的续点。
@@ -76,10 +76,7 @@ pub(crate) struct Witness {
 
 /// 〔W5-VIS〕读回 `[w.start, w.end)` 那一段（`history-read` 的逐行成品）之后：还是不是那一行。
 /// 恰好一行、末端对得上、摘要对得上（〔MOD〕摘要由后端按原始字节算、跨进程稳定；原先 monitor 按本进程的哈希算）。
-pub(crate) fn witness_holds(
-    w: &Witness,
-    rows: &[crate::backend::control::frame_query::Row],
-) -> bool {
+pub(crate) fn witness_holds(w: &Witness, rows: &[crate::frame_query::Row]) -> bool {
     matches!(rows, [r] if r.end == Some(w.end) && r.hash == w.hash)
 }
 
@@ -88,10 +85,7 @@ pub(crate) fn witness_holds(
 /// 〔MOD〕末端由后端按原始字节给（永远说得准）；起点 ＝ 上一个可计行的末端（页的第一行 ＝ `offset`）——
 /// 中间夹着的空白行（不是可计行，后端不交）算进这一行的区间：续传前读回这一段时空白行照样不成行，见证照样比得上。
 /// 残尾（末端 `None`）那一行及其后说不准 ⇒ `None`。
-pub(crate) fn row_spans(
-    offset: u64,
-    rows: &[crate::backend::control::frame_query::Row],
-) -> Vec<Option<(u64, u64)>> {
+pub(crate) fn row_spans(offset: u64, rows: &[crate::frame_query::Row]) -> Vec<Option<(u64, u64)>> {
     let mut start = Some(offset);
     rows.iter()
         .map(|r| {

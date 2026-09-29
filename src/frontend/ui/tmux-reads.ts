@@ -29,6 +29,8 @@ export interface TmuxSession {
    * 用它精确认「哪个 tmux 跑目标 sid」，取代按目录 / 名字取第一个（同目录多 claude 会撞错会话，`INVARIANTS §30`）。
    */
   sid: string | null;
+  /** 〔THIN〕前台命令是某一家 agent 的进程（那台后端按它的适配层判：Claude 是 `claude` / `node`）。 */
+  agent: boolean;
 }
 
 type Obj = Record<string, unknown>;
@@ -46,18 +48,19 @@ function bad(): never {
 function decodeRow(v: unknown): TmuxSession {
   if (
     !isObj(v) ||
-    !sameKeys(v, ["name", "path", "command", "attached", "windows", "sid"]) ||
+    !sameKeys(v, ["name", "path", "command", "attached", "windows", "sid", "agent"]) ||
     typeof v.name !== "string" ||
     typeof v.path !== "string" ||
     typeof v.command !== "string" ||
     typeof v.attached !== "boolean" ||
     typeof v.windows !== "number" ||
     !Number.isInteger(v.windows) ||
-    !(v.sid === null || typeof v.sid === "string")
+    !(v.sid === null || typeof v.sid === "string") ||
+    typeof v.agent !== "boolean"
   ) {
     bad();
   }
-  return { name: v.name, path: v.path, command: v.command, attached: v.attached, windows: v.windows, sid: v.sid };
+  return { name: v.name, path: v.path, command: v.command, attached: v.attached, windows: v.windows, sid: v.sid, agent: v.agent };
 }
 
 /** `tmux-list` 的成品 ⇒ 列表 / `null`（没装 tmux）。严格收。 */

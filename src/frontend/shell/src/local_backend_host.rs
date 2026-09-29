@@ -13,7 +13,7 @@
 //! （实测 `E0255: __cmd__backend_status is defined multiple times / reimported here`）。
 //! 仓里每条命令都写成 `模块::名字`，正是这个缘故。**这是结构性理由，不是嫌 `lib.rs` 长。**
 //!
-//! # 它与 `backend/control/local_backend.rs` 的分工
+//! # 它与 `local_backend.rs` 的分工
 //!
 //! 那边是**平台无关的监护机制**（起、看住、判死、重起）。这边是**宿主知识**：
 //! 落点目录在哪、当前 arch 是什么、平台怎么置可执行位、句柄存哪。
@@ -23,8 +23,8 @@
 //! （完全不同的事）。一次补审就是因为只读了后者的定框，把这里的引用判成了「引错 charter」。
 //! ⇒ 代码里引 charter **一律带工作区名**，裸编号在几个月后没人分得清指哪一条。
 
-use crate::backend::control::local_backend::{self, Resolved, SuperviseHandle};
 use crate::copy_table::copy_text;
+use crate::local_backend::{self, Resolved, SuperviseHandle};
 
 /// F05a：本机后端监护句柄。存起来是为了退出前按策略 `stop()`（`C8`）。
 ///
@@ -96,7 +96,7 @@ impl StartOutcome {
 //
 // 这一段全部住在**宿主知识层**，理由是硬的（`K-P1 §0b-5` 现打）：
 // `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
-// 在 `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
+// 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里
 // ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
 // （`assert!(PLATFORM_EXCEPTIONS.len() <= 1)`，今天正好 1 条）。
 // ⇒ 落点只能是这里，形状照 `platform::fs::make_executable` 那个**注入**先例。
@@ -287,7 +287,7 @@ fn fresh_token() -> Result<String, String> {
 }
 
 // 〔HX1 · 拍板项 4〕`~/.cc-monitor` 这一层建的那一下就只给本人：那个函数住 `platform::fs::ensure_private_dir`，
-//   与释放后端二进制那几处（`backend/control/local_backend.rs`，经注入）共用一份。
+//   与释放后端二进制那几处（`local_backend.rs`，经注入）共用一份。
 
 /// 记下「谁在听那个口」。**只有起它的那个宿主写**。
 ///
@@ -906,7 +906,7 @@ fn reap_detached(
 /// 把一次 `wait()` 的结果翻成 [`crate::backend_policy::Outcome`]。
 ///
 /// ★ **信号号只有这一层取得到**：它要 `std::os::unix::process::ExitStatusExt`，
-/// 而 `std::os::unix` 在 `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic`
+/// 而 `std::os::unix` 在 `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic`
 /// 的禁针里 ⇒ `backend/` 那半只能把 `ExitStatus` **原样**交上来
 /// （`SuperviseEvent::Exited.status`），翻译落在这里。
 ///
@@ -928,7 +928,7 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
 /// [`attach_stream`] 开头两行是 `parse_frame` + `BackendHello::from_hello_frame`，
 /// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
-/// ⇒ **拿得出一份 [`crate::backend::control::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
+/// ⇒ **拿得出一份 [`crate::inbound_client::BackendHello`] = 一帧合法 hello 已经到手**，
 /// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
 /// 没有见证就调不出这个函数（见证的构造入口只有 `from_hello_frame` 一个，
 /// 由 `inbound_client` 那条「见证不许凭空造」的判据钉着）。
@@ -937,7 +937,7 @@ fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::backend_
 /// 这一句就成了假的 —— 由 [`tests::the_detached_handshake_is_derived_from_the_hello_gate`]
 /// 钉住那道门还在。
 fn handshake_from_hello(
-    _witness: &crate::backend::control::inbound_client::BackendHello,
+    _witness: &crate::inbound_client::BackendHello,
 ) -> crate::backend_policy::Handshake {
     crate::backend_policy::Handshake::Spoke
 }
@@ -966,7 +966,7 @@ fn note_detached_death(
         start_failure: None,
     };
     shout_if_the_ledger_refused(crate::backend_policy::record_death(
-        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        crate::inbound_client::LOCAL_ORIGIN,
         &ev,
         &mut crate::backend_policy::MonitorLog,
     ));
@@ -999,7 +999,7 @@ fn shout_if_the_ledger_refused(rec: Option<crate::backend_policy::Recorded>) {
 fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), String> {
     let frame = crate::ssh_source::parse_frame(hello_line)
         .ok_or_else(|| copy_text("rsLocalBackendHost.stream.badFirstLine", &[]))?;
-    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
+    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
         .ok_or_else(|| copy_text("rsLocalBackendHost.stream.notHello", &[]))?;
     // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
     //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
@@ -1022,15 +1022,11 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             &[("e", &e.to_string())],
         )
     })?;
-    let client =
-        crate::backend::control::inbound_client::park_owned_writer(wr).into_client(witness);
-    crate::backend::control::inbound_client::register(
-        crate::backend::control::inbound_client::LOCAL_ORIGIN,
-        client.clone(),
-    );
+    let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
+    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
     tracing::info!(
         "本机入方向通道已登记（常驻载体）：origin={}",
-        crate::backend::control::inbound_client::LOCAL_ORIGIN
+        crate::inbound_client::LOCAL_ORIGIN
     );
     tauri::async_runtime::spawn(async move {
         use crate::ssh_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
@@ -1076,9 +1072,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
             // 本机的 tmux 帧（`P3` 刀 1）·〔SR1a〕应答 · 链路帧 —— 与 stdio 那条载体**同一个吸收点**，
             // 理由与前置条件写在 `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
             // 〔CF1〕交回来的内容帧送进本机内容通道 —— 这是 tokio 任务 ⇒ `.await` 那一形（满了就停读：级 1 回推）。
-            if let Some(f) =
-                crate::backend::control::local_backend::absorb_local_frame(f, Some(&client))
-            {
+            if let Some(f) = crate::local_backend::absorb_local_frame(f, Some(&client)) {
                 crate::local_lines::deliver(f).await;
             }
         }
@@ -1089,10 +1083,7 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         // 〔SR1b〕经它开的传输也一律收场（后端的票表随那条流一起撤了）。
         crate::sftp_pool::fail_owned_by(&client, &copy_text("rsLocalBackendHost.stream.lost", &[]));
         // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。〔MIG-1〕monitor 不再存 tmux 原文（没有要清的陈旧证据了）。
-        crate::backend::control::inbound_client::unregister(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
-            &client,
-        );
+        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
         // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一拍才拿得到第三维（退出状态）。
         reap_detached(handshake, reader_end);
@@ -1534,7 +1525,7 @@ fn backend_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseE
             start_failure: None,
         };
         shout_if_the_ledger_refused(crate::backend_policy::record_death(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            crate::inbound_client::LOCAL_ORIGIN,
             &ev,
             &mut crate::backend_policy::MonitorLog,
         ));
@@ -1557,7 +1548,7 @@ fn note_never_started(out: StartOutcome) -> StartOutcome {
             start_failure: Some((reason.to_string(), looked_at.to_vec())),
         };
         shout_if_the_ledger_refused(crate::backend_policy::record_death(
-            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            crate::inbound_client::LOCAL_ORIGIN,
             &ev,
             &mut crate::backend_policy::MonitorLog,
         ));
@@ -1781,7 +1772,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, String
 
 // ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
 //
-// `backend/control/local_backend.rs` 的三个落点也要走这个口 ⇒ 这个测试模块必须 `pub(crate)`，
+// `local_backend.rs` 的三个落点也要走这个口 ⇒ 这个测试模块必须 `pub(crate)`，
 // 它们按 `crate::local_backend_host::tests::demand_tmux_shim(..)` 取。
 //
 // 〔`K-R76` 09-12〕**这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod tests`，再在

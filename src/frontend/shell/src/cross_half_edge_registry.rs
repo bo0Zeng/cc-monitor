@@ -61,7 +61,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   出列：列会话的解析整族搬进后端，格式串只剩后端一个家，那条对拍与那个宏随之删了。
     (
         "monitor→backend",
-        "tests/frontend/shell/backend/control/backend_kill_tests.rs",
+        "tests/frontend/shell/backend_kill_tests.rs",
         "src/backend/control/kill.rs",
         "创建路径不许铸出后端 kill 形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
          （本侧手抄一份就成了两侧同源的恒等）。〔C4e〕原理由「拒绝文案两侧逐字同形」随 monitor 的杀会话发送端迁到界面退役；\
@@ -89,7 +89,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/footprint/registry_tests.rs",
-        "src/frontend/shell/src/backend/control/local_backend.rs",
+        "src/frontend/shell/src/local_backend.rs",
         "〔MIG-3b 续〕申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
          词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",
     ),
@@ -153,7 +153,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/backend/control/inbound_client_tests.rs",
+        "tests/frontend/shell/inbound_client_tests.rs",
         "src/backend/stream/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
@@ -172,7 +172,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
-    // 〔MIG-2 · `99 §2.1 ⑬`〕载荷内核搬进后端：原先 `tests/frontend/shell/backend/control/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
+    // 〔MIG-2 · `99 §2.1 ⑬`〕载荷内核搬进后端：原先 `tests/frontend/shell/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
     //   与 `tests/frontend/shell/history_tests.rs → ccm/argv.rs · ccm/plan.rs`（本机接回那一句真读得懂）三条边成了后端 crate 内部的读，摘了；
     //   接回那一句的牙换成 `launch_render/launch_cli_parity_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
     (
@@ -312,27 +312,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // 〔MOD〕`tests/frontend/shell/history_title_coverage.rs` → 后端 `history_query.rs` 那一条边出列：人群（带 `*title` 字段的 `JsonlRecord`
     //   变体）随记录解释进了后端（`agents/claudecode/schema.rs`），两侧同在后端一棵树里 ⇒ 判据挪去
     //   `tests/backend/agents/claudecode/schema_title_coverage.rs`，不再是跨半边的边。
-    // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/`）：backend 的判据去读 monitor ──
+    // ── backend → monitor（〔RK1〕3 → 4 · 〔US1〕4 → 2：两条对拍随「只剩一份」出列 · 〔MIG-3a · 09-28〕−1：vendored cc-acct-iso 挪去 `src/shared/` · 〔THIN〕2 → 0）：backend 的判据去读 monitor ──
     // 〔MIG-3a〕别名块的 PowerShell 模板随别名块进了那台后端：模板挪去 `src/shared/cc.ps1.tpl`（两棵树都不属于、两侧读同一份，
     //   同 `src/shared/ccm-aliases.sh`）⇒ 不是跨半边的边，不登记。
     // 〔MIG-3a · 主会话 09-28 预裁〕`iso_tests.rs` → vendored `cc-acct-iso` 那一条出列：cc-acct-iso 的字节随后端二进制走，
     //   vendored 目录挪去 `src/shared/cc-acct-iso/`（两棵树都不属于，同 `src/shared/cc-bus/`）⇒ 不是跨半边的边，不登记。
-    (
-        "backend→monitor",
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
-        "tests/backend/control/gate_tests.rs",
-        "src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv",
-        "§34 Gate 2 的黄金夹具**只有一个家**（定框 §4：同一个数不许两侧各写一份）—— \
-         backend 与 monitor 各自独立读同一张表",
-    ),
-    (
-        "backend→monitor",
-        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
-        "tests/backend/control/launch_tests.rs",
-        "src/frontend/shell/src/backend/control/tmux.rs",
-        "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
-         F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
-    ),
+    // 〔THIN〕这里原先还有两条 backend → monitor：`control/gate_tests.rs` 读 monitor 那份 `gate2-golden.tsv`（金表挪去
+    //   `tests/__fixtures__/`：两棵树都不属于、后端与 e2e 两侧读同一份 ⇒ 不是跨半边的边）· `control/launch_tests.rs` 抠 monitor
+    //   `tmux.rs` 的 `={target}:`（那份跨轨锚点随 monitor 侧的 Gate 残留删了，精确匹配形只剩后端一个家）⇒ 两条出列（2 → 0）。
     // 〔US1 · 第四波 4D〕这里原先还有两条 backend → monitor：`relay/route_tests.rs` 抠 `payload.rs` 的路由样例 /
     //   凭据文件那一家 / 登记了默认上游的 agent（`KH2B4` 那一族）· `relay/door_tests.rs` 抠 `payload.rs` 的钥匙文件路径（RK1）。
     //   两样都不再有第二份：路由语法与门牌进了共享 crate `relay-route-core`（`设计/20 §5` 目标），决策表进了后端上游选择 ⇒ 两条边出列（4 → 2）。

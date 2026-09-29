@@ -47,7 +47,8 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
             );
             Ok(Some(salvage(&v, trimmed, "unknown-type".to_string())))
         }
-        Ok(record) => Ok(Some(record.with_user_text())), // 〔RENDER2 · J10〕user 记录带上注入噪声规则的成品
+        // 〔RENDER2 · J10〕user 记录带上注入噪声规则的成品；〔THIN〕assistant 记录带上每个 tool_use 的卡型。
+        Ok(record) => Ok(Some(record.with_user_text().with_tool_cards())),
         Err(e) => match serde_json::from_str::<serde_json::Value>(trimmed) {
             // 合法 JSON，但我们的 schema 认不出（如已知 type 缺必填字段 / 字段形状
             // 变了）→ 照样抢救身份，不丢链。**这类值得警惕**（多半是 Claude 改了

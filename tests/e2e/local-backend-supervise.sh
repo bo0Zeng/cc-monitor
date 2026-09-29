@@ -19,7 +19,7 @@
 # 在此之前，下面这两条起真后端的测试是**普通 `#[test]`**（只由 `cfg(embedded_backends)` 门着）：
 #
 #   · `local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again`
-#   · `backend::control::local_backend::tests::the_local_backend_host_really_registers_an_inbound_client`
+#   · `local_backend::tests::the_local_backend_host_really_registers_an_inbound_client`
 #
 # ⇒ **任何人在铺了 `src/frontend/shell/embedded-backends/` 的树上跑一次 `cargo test`**（包括用户自己
 # clone 下来跑一遍）**都会改这台机器的 tmux 全局状态**。已经真发生过三次
@@ -188,7 +188,7 @@ fi
 #   ⚠ SKIP 只许出现在「环境真不够」时：落点齐了、本机也是 Linux x86_64，却一条都没跑 ⇒ **FAIL**（多半是换了落点之后
 #   `build.rs` 没重跑 —— `touch src/frontend/shell/build.rs`，见 `local_backend_host_tests.rs` 那段复跑纪律）；只跑了一部分 ⇒ 也 FAIL。
 EMB_TESTS=(
-  backend::control::local_backend::tests::the_local_backend_host_really_registers_an_inbound_client
+  local_backend::tests::the_local_backend_host_really_registers_an_inbound_client
   local_backend_host::tests::the_local_backend_host_can_be_stopped_and_started_again
 )
 # 〔MIG-1 · `99 §2.1 ⑬`〕三条 → 两条：`the_local_tmux_frames_really_land_in_the_ledger`〔散文墓碑〕删了 —— 它钉的是「本机 tmux 快照帧真落进

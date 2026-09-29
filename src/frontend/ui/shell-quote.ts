@@ -21,7 +21,7 @@
 // 〔DUP2 · `设计/90 §3` 判据 2 · 主会话 09-26 裁 J6〕这里原来有两个 tmux 会话名的谓词：`isValidTmuxName`〔散文墓碑〕（attach，
 // 非空 · 无 `.:` 与 C0/DEL · ≤128）与 `isValidNewTmuxName`〔散文墓碑〕（新建，再禁 `*?=` —— F01 第二道防线 · F04b「别建一个主路杀不掉的名字」：
 // kill 的主路（后端 `control/kill.rs`）逐字拒 `:` 与 `=`，建得出来的名字必须杀得掉，跨轨判据 `backend_kill_tests.rs` 钉着）。
-// 今天名字的规则只有一份，住共享 crate `gate-core`（`new_tmux_name_issue` / `existing_tmux_name_issue`）：monitor 载荷外层 ·
+// 今天名字的规则只有一份，住后端 `control/gate_rules.rs`（`new_tmux_name_issue` / `existing_tmux_name_issue`）：monitor 载荷外层 ·
 // `ccm …` 调用行 · 后端 `ccm/plan.rs::validate_tmux_name` 都调它；判不过带 `REFUSE:` 标拒，前端照拒说出来。
 
 // 〔FIX4 · `设计/90 §3` J7〕tmux 会话名一段的净化（`tmuxNameSegment`〔散文墓碑〕）随派生 ＋ 避让一起搬进后端

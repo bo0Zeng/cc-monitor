@@ -907,7 +907,9 @@ export function launchRenderShim(
 //
 // 它们从前是两条 Tauri 命令（本机 `list_local_tmux` · 远端 `list_remote_tmux`〔散文墓碑〕），判据按命令名答话、回 `TmuxSession[] | null`。
 // 今天是一发 `chan_call`（op = `tmux-list`，本机远端同一问）⇒ 本节把那一发译回旧名字交给判据手里的替身，再把旧回包译成后端成品：
-// - 列表 ⇒ `{installed: true, sessions}`（缺的字段按旧桩的意思补齐：`path` / `command` 空串 · `attached` 否 · `windows` 1 · `sid` null）；
+// - 列表 ⇒ `{installed: true, sessions}`（缺的字段按旧桩的意思补齐：`path` / `command` 空串 · `attached` 否 · `windows` 1 · `sid` null；
+//   〔THIN〕`agent` 缺 ⇒ 替身扮那台后端答：前台命令是 `claude` / `node` 即真 —— 与后端 `agents/claudecode/cards.rs::PROCESS_NAMES` 同一张，
+//   是替身在扮后端，不是界面的判定）；
 // - `null`：远端 = 那台没装 tmux ⇒ `{installed: false, sessions: []}`；本机 = 旧口径的「不知道」⇒ 通道那一层失败（新口径里「不知道」就是抛）；
 // - `undefined`（桩没答）⇒ 那台没有控制通道（不知道）；抛 ⇒ 那台后端拒（码 `unobservable`，原话带着 —— 「不知道」要说得出为什么）。
 /** 一发 `chan_call` 若是列 tmux 会话 ⇒ `[旧名字, 旧形参]`；否则 `null`。 */
@@ -933,6 +935,7 @@ async function tmuxProduct(name: string, got: Promise<unknown> | unknown): Promi
     attached: r.attached ?? false,
     windows: r.windows ?? 1,
     sid: r.sid ?? null,
+    agent: r.agent ?? (r.command === "claude" || r.command === "node"),
   }));
   return chanReply({ installed: true, sessions: rows });
 }

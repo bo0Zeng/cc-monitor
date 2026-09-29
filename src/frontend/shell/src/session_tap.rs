@@ -3,7 +3,7 @@
 //!
 //! # 它只做一件事：转交，零解释（设计住仓外 `调研/第四波记录/TAP.md §1.2`；出处 `设计/20 §8`）
 //!
-//! - 读循环（`backend::control::local_backend::absorb_local_frame`）手里没有 `AppHandle` ⇒ 与 [`crate::session_facts`] 同形：
+//! - 读循环（`local_backend::absorb_local_frame`）手里没有 `AppHandle` ⇒ 与 [`crate::session_facts`] 同形：
 //!   出口由 `lib.rs` 的 setup 装一次（[`install_sink`]），交来的每一帧交给出口；装之前来的直接丢（前端那时也还没在听）。
 //! - **不进任何缓冲**：不进 `local_lines`（内容通道）、不进重放缓冲（`EventReplay.history`）、不攒 —— 收一帧，
 //!   交给此刻订了 `session-tap` 的订阅（有 credit 当场交，没 credit 丢、位置照占、原位 `Gap`：`05 §3.3.4` 级 2）。

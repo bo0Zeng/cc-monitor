@@ -76,22 +76,15 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
         "套数与地板值一律不抄在这里",
         "`ci.yml` 里 `run: bash tests/e2e/assert-pass-floor.sh <套件> <地板>` 那 19 行",
     ),
-    (
-        "`backend/` 下 `.rs` 的个数",
-        &["`backend/` 下今天有 "],
-        "刻意不写它有几个",
-        "`backend/mod.rs` 的 `BACKEND_FILES`（`every_file_under_backend_is_registered_with_a_reason` 看着）",
-    ),
+    // 〔THIN〕「`backend/` 下 `.rs` 的个数」那一行摘了：monitor 侧 `backend` 目录没了（那一组回了壳根，`GUARDED` 逐个点名）。
 ];
 
 /// 已按 **E12 第一条路**处置（有一条会红的判据读它）的事实 —— 判据名必须真的还在。
 ///
 /// V6 逐条对上的那批。这里不重复它们的值，只钉「**那条判据还活着**」。
 const HAS_A_GUARD: &[(&str, &str)] = &[
-    (
-        "`backend/` 下 `.rs` 清单",
-        "every_file_under_backend_is_registered_with_a_reason",
-    ),
+    // 〔THIN〕「`backend/` 下 `.rs` 清单」那一格换靶：目录没了，那一组逐个点名、点名的都在（`every_guarded_file_exists`）。
+    ("从前 `backend/` 那一组的清单", "every_guarded_file_exists"),
     ("node 套件组数", "NODE_SUITES"),
     ("本机读取面 reader 文件数", "local_read_surface_registry"),
     ("backend 生产 `Command::new` 处数", "ALLOWED"),

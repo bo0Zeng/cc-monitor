@@ -9,7 +9,7 @@
 //! 功能看起来一样、门禁全绿，而「不许往别人的 tmux 里打字」那道门没了。
 //! 这条路此前由 monitor 的 `tmux_backend_gate_guard`（前提触发器）挡着。
 //!
-//! **判定本身不在这里** —— 在 `gate-core`，monitor 与后端共用同一份（定框 C1）。
+//! **判定本身不在这里** —— 在 [`super::gate_rules`]（〔THIN〕monitor 那一侧的门删了，共享 crate `gate-core` 收回本层）。
 //! 本模块只负责这一侧的**承载**：怎么把 `@ccm_sid` 从本机 tmux 取回来。
 //!
 //! # ★ 用 `#{session_id}` 当句柄，把 TOCTOU 窗口关掉
@@ -239,7 +239,7 @@ pub(crate) fn admit(name: &str, target: &str) -> Result<String, CmdErr> {
             copy_text("beGate.admit.noSession", &[("name", &format!("{name:?}"))]),
         ));
     };
-    let verdict = gate_core::gate2(name, Some(&p.ccm_sid));
+    let verdict = crate::control::gate_rules::gate2(name, Some(&p.ccm_sid));
     if !verdict.allowed() {
         return Err((
             "wrong_owner",
@@ -275,7 +275,7 @@ pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdE
             ),
         ));
     };
-    if !gate_core::gate2(name, Some(&p.ccm_sid)).allowed() {
+    if !crate::control::gate_rules::gate2(name, Some(&p.ccm_sid)).allowed() {
         return Err((
             "wrong_owner",
             copy_text(

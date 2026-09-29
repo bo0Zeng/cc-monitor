@@ -14,17 +14,12 @@
  * `tabs.ts` 原样 re-export 这几个符号，既有 import 面（含 `tabs.vitest.ts`）零改动。
  */
 
-import { AGENT_PROFILE } from "./agent-profile";
 
 // 〔MIG-1 续〕类型住读口 `tmux-reads.ts`（那台后端的成品形状，跨语言金样钉着；原先是 monitor `tmux.rs` 的 ts-rs 生成物）。
 export type { TmuxSession } from "./tmux-reads";
 import type { TmuxSession } from "./tmux-reads";
-/** F51：tmux 前台命令是否算 claude 会话。真机 tmux 多报 `claude`(调研 03 §2c 实测),
- * 但视启动路径也可能报解释器 `node`(claude 是 Node CLI)——两者都认,叠加 cwd 精确匹配
- * 收窄误配(D-正确性 Sug2:只认 claude 会在报 node 的环境静默失效)。 */
-export function isClaudeTmuxCommand(cmd: string): boolean {
-  return AGENT_PROFILE.livenessProcessNames.has(cmd);
-}
+// 〔THIN〕`isClaudeTmuxCommand`〔散文墓碑〕删：「这个 tmux 前台命令算不算 agent 的会话」（claude / node）由那台后端判，
+//   随 `tmux-list` 每一行的 `agent` 带来（`observe/tmux_list.rs` 经注册表 `Adapter.processes`）。界面只读那一格。
 
 /**
  * F74：在 tmux 会话列表里定位「正跑目标 sid 的活 claude」。**优先 `@ccm_sid` 精确匹配**——
@@ -48,7 +43,7 @@ export function findClaudeTmuxMatches(
   sessions: TmuxSession[] | null | undefined,
   sid: string,
 ): TmuxSession[] {
-  return sessions?.filter((s) => s.sid === sid && isClaudeTmuxCommand(s.command)) ?? [];
+  return sessions?.filter((s) => s.sid === sid && s.agent) ?? [];
 }
 
 export function findClaudeTmux(
@@ -61,7 +56,7 @@ export function findClaudeTmux(
   const anySidKnown = sessions?.some((s) => s.sid != null);
   if (anySidKnown) return undefined;
   return cwd
-    ? sessions?.find((s) => s.path === cwd && isClaudeTmuxCommand(s.command))
+    ? sessions?.find((s) => s.path === cwd && s.agent)
     : undefined;
 }
 
@@ -76,7 +71,7 @@ export function findIdleTmux(
   sessions: TmuxSession[] | null | undefined,
   sid: string,
 ): TmuxSession | undefined {
-  return sessions?.find((s) => s.sid === sid && !isClaudeTmuxCommand(s.command));
+  return sessions?.find((s) => s.sid === sid && !s.agent);
 }
 
 /**
@@ -89,7 +84,7 @@ export function isCwdFallbackMatch(
   sessions: TmuxSession[] | null | undefined,
   sid: string,
 ): boolean {
-  const exact = sessions?.some((s) => s.sid === sid && isClaudeTmuxCommand(s.command));
+  const exact = sessions?.some((s) => s.sid === sid && s.agent);
   if (exact) return false;
   const anySidKnown = sessions?.some((s) => s.sid != null);
   return !anySidKnown; // 无精确命中 + 无任一 sid → findClaudeTmux 会走 cwd 回退

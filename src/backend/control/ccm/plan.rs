@@ -639,7 +639,7 @@ fn next_free_name(base: &str, taken: &[String]) -> String {
 
 /// 会话名的形状校验 —— 显式名与基名都过这里（`ccm` 要**新建**的会话名）。
 ///
-/// 〔DUP2 · 主会话 09-26 裁 J6〕**规则只有一份**，住共享 crate（`gate_core::new_tmux_name_issue`：非空 · 不以 `-` 开头 ·
+/// 〔DUP2 · 主会话 09-26 裁 J6〕**规则只有一份**，住共享 crate（`crate::control::gate_rules::new_tmux_name_issue`：非空 · 不以 `-` 开头 ·
 /// 无 `*?.:=` · 无控制符与视觉欺骗字符 · ≤128）；monitor 的载荷外层与 `ccm …` 调用行调的是同一个函数。本函数只剩「说哪一句」。
 /// 这里原来自己写了一份（自称「唯一一份」，而 monitor 与界面各还有一份、规则各不相同）；比那一份多出来的两格
 /// （欺骗字符 · 超长）是三份取交集时从 monitor 载荷那一份与界面那一份带进来的。

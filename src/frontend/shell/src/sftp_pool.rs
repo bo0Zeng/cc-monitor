@@ -31,8 +31,8 @@ use std::time::Duration;
 
 use tokio::sync::watch;
 
-use crate::backend::control::backend_route::{route_call_error, Routed};
-use crate::backend::control::inbound_client::InboundClient;
+use crate::backend_route::{route_call_error, Routed};
+use crate::inbound_client::InboundClient;
 use crate::ssh_source::RemoteConfig;
 
 /// 开单：上传。载荷 `{"local_path"}`，回 `{"id","key"}`（`key` 是暂存件的键，提交时交给远端后端）。
@@ -98,7 +98,7 @@ fn relays() -> std::sync::MutexGuard<'static, HashMap<String, Relay>> {
 
 /// 本机后端回的失败 ⇒ `(码, 话)`。**分层判定不在这里**：走分流器（`backend_route::route_call_error`，全仓唯一
 /// match 那个错误枚举的地方）；后端自己说的码（`busy` / `refused` / `bad_args` …）原样带回，窗口按它画那一行。
-fn said(e: &crate::backend::control::inbound_client::CallError) -> (String, String) {
+fn said(e: &crate::inbound_client::CallError) -> (String, String) {
     let code = std::cell::RefCell::new(String::from("backend"));
     let text = match route_call_error(e, |c, m| {
         *code.borrow_mut() = c.to_string();

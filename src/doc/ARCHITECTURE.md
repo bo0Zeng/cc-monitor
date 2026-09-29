@@ -137,7 +137,9 @@
 
 **backend = 读（`observe/`）+ 控制（`control/`）**，**一份代码、两种承载**：
 **远端进程** = `src/backend/`（独立 crate，**不是 workspace 成员**，见 2.6）·
-**本机进程** = `src/frontend/shell/src/backend/`。
+**本机进程** = 〔THIN 09-29〕今天是独立的本机常驻后端进程（`src/backend` 那一个 bin，本机远端同一个）；monitor 侧从前那个
+`backend` 目录（「本机那种宿主」）消失了 —— 它住的是 monitor 自己的客户端 · 命令层 · 宿主代码，回了壳根（见 2.7）。
+下表那四格照旧由判据量，量的是 monitor 壳里那一层的目录（今天都不在 ⇒ 除 `control/` 那格钉的分流器住 `src/comms/inward/` 外，都是「未做 / 待做」）。
 
 两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**
 〔原话逐字：「本机**只有一层**」—— 2026-09-12 `K-R71` 建了 `observe/` 之后不成立〕——
@@ -149,7 +151,7 @@
 |---|---|---|
 | `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
 | `observe/` | 有 | **未做**〔2026-09-25 LOC1a：唯一的住户 —— 每问 exec 一次本机后端的那一跳 —— 删了，本机读面改走 `<local>` 长连接；空壳目录一并删〕—— 此前 2026-09-12 `K-R71` 建成，见 2.2 |
-| `platform/` | 有 | **待做** —— 但 backend 那一半今天**零平台面**，所以还不需要它（见 2.4） |
+| `platform/` | 有 | **已交付**〔RE 09-29 立在壳根：今天只住 `fs`（不覆盖改名 · 置可执行位 · 只给本人的目录）；壳里别处的平台 cfg 收进来是阶段 H 余下，没做〕—— 此前写「待做 —— 但 backend 那一半今天零平台面」（见 2.4） |
 | `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src/common/*`（见 2.6） |
 
 ⚠ 这张表量的是「**这一层在 monitor 侧落地了没有**」，**不是**「平台原语已经收敛干净了」——
@@ -190,8 +192,8 @@
 - **只有产出观测帧的读**才归 `observe/`。
 
 ⚠ **两侧今天都有机器在管「谁能引用谁」**〔monitor 侧 `K-R73` 09-12 补齐〕：
-后端侧是 `tests/backend/layering_guard.rs`，monitor 侧是 `backend/mod.rs`
-里的 `layering` 模块。两边同一个形 —— **反向（`control → observe`）零容忍**，
+后端侧是 `tests/backend/layering_guard.rs`，monitor 侧是当时 backend 目录头注里的 `layering` 模块
+（〔THIN 09-29〕monitor 侧的 backend 目录连同这条判据删了：那一组文件回了壳根，见 2.7）。两边同一个形 —— **反向（`control → observe`）零容忍**，
 **正向（`observe → control`）许有，但必须逐条列举、条数被等号钉住**。
 monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一次性查询要先问控制面
 「那份本机后端在哪」）。
@@ -213,13 +215,13 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 那条散文曾写 13，而机器数是 7；点名的 `local_accounts.rs` 早已不是 reader，
 它 `:564-565` 自陈「现在问本机后端」）。挡着它们的是两样有名有姓的东西：后端侧的查询集缺口，
 以及 `tasks.rs` / `search.rs` 今天带着的宿主耦合（`backend/` 有一道宿主无关守卫）。
-⇒ **今天没有触发器**，逐条理由住 `src/frontend/shell/src/backend/mod.rs` 头注最后一节。
+⇒ **今天没有触发器**，逐条理由当时住 monitor 侧 backend 目录那份 `mod.rs` 的头注最后一节（〔THIN〕随目录删了）。
 
 〔原话逐字，留作来历：「⚠ **monitor 侧的 `observe/` 今天刻意未建**……先搬进来再删掉是纯搬运。
 **谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
 （`tauri.conf.json` 一出现 `externalBin` 就红）。」——「未建」今天不成立；
 而那条前提触发器 2026-08-04 就换过靶，今天盯的是**配置文件的形状**，
-`backend/mod.rs` 头注逐字警告过**别**把它当成那批读面退役的闹钟。〕
+当时那份 backend 目录头注逐字警告过**别**把它当成那批读面退役的闹钟。〕
 
 ### 2.3 控制面今天真的在 backend 了
 
@@ -246,10 +248,10 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 ⚠ 〔F18 实测订正〕这一节原来写「monitor 侧今天不成立 —— 平台原语散在 `bind.rs`/`utils.rs`」。
 **那句把两半混说了**：
 
-- **backend 那一半（`src/frontend/shell/src/backend/`）生产段零平台 cfg、零平台原语** ——
+- **后端调用层那一半（`backend_client_guard_tests.rs::GUARDED` 那几份；THIN 第 7 件前住 `shell/src/backend/`）生产段零平台 cfg、零平台原语** ——
   唯一那 3 处 `#[cfg(unix)]`/`#[cfg(windows)]` 全在 `local_backend.rs` 的**测试段**
   （夹具在收拾自己起的子进程）。⇒ 这条纪律在它该管的范围里**已经成立**，
-  由 `backend::tests::the_backend_half_stays_platform_agnostic` 钉住不许退化，
+  由 `backend_client_guard::the_backend_half_stays_platform_agnostic` 钉住不许退化，
   另有一条**反向锚点**证明那套形态不是瞎的。
   **⇒ 今天不需要 `backend/platform/`；真需要那天，判据会先红着告诉你。**
 - **另一半确实有平台代码**（`bind.rs` 的窗口把手 · `launch.rs` 的开窗 ·
@@ -295,8 +297,9 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 - Rust 侧：`src/frontend/shell/README.md`
 - 前端：`src/README.md`
-- `backend/` 内部：`src/frontend/shell/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表
-  （**加文件不写理由就红** —— 那是这个目录不再变成平铺堆的机制）
+- 〔THIN 09-29〕monitor 侧的 backend 目录没了（那一组 —— 调后端的客户端 `inbound_client` · `frame_query` · `backend_route`，
+  Tauri 命令层 `backend_control` · `cc_bus`，宿主 `local_backend` —— 回了壳根）；宿主无关 · 平台无关两道判据改看
+  `tests/frontend/shell/backend_client_guard_tests.rs` 的 `GUARDED`（逐个点名，加一份就加一行）
 
 ---
 

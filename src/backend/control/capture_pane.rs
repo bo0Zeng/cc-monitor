@@ -11,7 +11,7 @@
 //! 会 `send-keys`（[`super::launch`]）—— **唯独没有「把那一屏取回来」**。
 //!
 //! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
-//! （`src/frontend/shell/src/backend/control/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
+//! （`src/frontend/shell/src/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
 //! 「等 monitor 侧接上去」，**没有被结掉**。〔`K-R112` 接上了；〔C4e · 第四波 4C〕再往前一步：
 //! 界面经通道直接说本条原语（`src/frontend/ui/tmux-control.ts::capturePane`），monitor 那一跳只搬字节，本机与远端同一条路。〕
 //!
@@ -250,7 +250,7 @@ pub(crate) fn capture(name: &str) -> Result<String, CmdErr> {
 
 /// 会话名的形状校验 —— **不在这里写第二份**。
 ///
-/// 逐字复用 [`super::kill::parse_name`]（Gate 1 那一份，`gate-core`），一条规矩只许有一个住址。
+/// 逐字复用 [`super::kill::parse_name`]（Gate 1 那一份，`gate_rules`），一条规矩只许有一个住址。
 /// ⚠ 它今天的入参形状是帧面命令的 `args`（一段 JSON），而本条 CLI 面只有一个位置参数
 /// ⇒ **在这里包一层，不去改它的签名**：改签名会动到 `kill` 的帧面，而那份文件不在本件写区。
 fn checked_name(raw: &str) -> Result<String, CmdErr> {

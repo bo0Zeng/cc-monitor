@@ -624,7 +624,7 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     let path = home.as_ref().map(|h| {
         h.join(".cc-monitor")
             .join("bin")
-            .join(crate::backend::control::local_backend::local_ccm_entry_name())
+            .join(crate::local_backend::local_ccm_entry_name())
     });
     let installed = path.as_ref().filter(|p| p.is_file());
     // 〔E2 · `96 §7.2.2`〕**先读字节认身份，再决定跑不跑**：落点上那一份自报的身份戳恰一个（是我们编的后端）才起它问
@@ -640,7 +640,7 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     let entry = installed.map(|_| {
         format!(
             "$HOME/.cc-monitor/bin/{}",
-            crate::backend::control::local_backend::local_ccm_entry_name()
+            crate::local_backend::local_ccm_entry_name()
         )
     });
     // 这台问不了 PATH（Windows）⇒ 说不清，不说成「没有」。

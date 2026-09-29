@@ -2,8 +2,8 @@
 //!
 //! 用户逐字：「现在只允许后端的文件管理部分写文件」；追问后裁「**只管用户的文件**」「**也管本机**」。
 //! ⇒ rc 里的别名块 · PowerShell `$PROFILE` · 项目 `.mcp.json` · skill 收件箱 · `~/.claude/skills/cc-bus/`，
-//! 这些改动从此都经**那台机器上的后端**（`files-peek` / `files-put` / `files-rename` /
-//! `files-chmod`），本机与远端**同一条路**，只差 origin。〔MIG-3b〕删历史会话不经这扇门了：界面经通道直说那台后端。
+//! 这些改动从此都经**那台机器上的后端**（当年 `files-peek` / `files-put` / `files-rename` /
+//! `files-chmod`；〔THIN〕今天这扇门只剩 `files-home` ＋ 带期望值的 `files-delete`），本机与远端**同一条路**，只差 origin。〔MIG-3b〕删历史会话不经这扇门了：界面经通道直说那台后端。
 //! 〔RM1d → MIG-3b 续〕代码全景的批注 / 文档关联不经这扇门了：算与写都在那台后端（`panorama-edit`，界面经通道直问）。
 //!
 //! # 分工
@@ -18,18 +18,12 @@
 //!
 //! 🔴 `D11`：那台机器的后端没连上 ⇒ **明确报错，不回落**到直写。
 
-use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-use crate::backend::control::inbound_client::client_for;
+use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::copy_table::copy_text;
+use crate::inbound_client::client_for;
 
-/// 一次 `files-peek` 读回来的。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Peeked {
-    /// 读的是哪一份（后端解过链接的那一个，给人看）。
-    pub path: String,
-    /// `None` = 确定不存在（「读不出来」是 `Err`，不是这一形）。
-    pub text: Option<String>,
-}
+// 〔THIN〕读那一形（`files-peek` 与它的结局）删了：最后一个用户（`ccm_legacy` 认旧入口）的「读 ＋ 认」进了本机常驻后端
+//   （`deploy-retired`），这里只剩带期望值删那一问。
 
 /// 一次后端写没成：**`stale` 与别的分得开**（前者该重读重算，后者原话交给用户）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +57,6 @@ pub(crate) trait Door {
     fn machine(&self) -> String;
     /// 后端这个进程的 home（绝对路径）。
     async fn home(&self) -> Result<String, String>;
-    async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String>;
     // 〔MIG-3b 续〕交写那一形（`put`，最后一个用户是全景的批注 / 文档关联）随全景写进那台后端（`panorama-edit`）删了。
     // 〔MIG-3a · 子步 3〕改名那一形（`rename`〔散文墓碑〕，唯一用户是 cc-bus 装前的整目录备份）随装 cc-bus 进后端删了。
     /// 〔RM1d〕删**一个文件**（`files-delete`，非递归；落点同一道围栏）。〔MIG-3b 续〕今天唯一的用户：`ccm_legacy.rs` 删旧入口（全景删批注那一处随全景写进了那台后端）。
@@ -107,7 +100,7 @@ impl BackendDoor {
         args: serde_json::Value,
     ) -> Result<serde_json::Value, Refused> {
         let wire = self.origin.as_wire_str();
-        let who = crate::backend::control::cc_bus::machine_label(wire);
+        let who = crate::cc_bus::machine_label(wire);
         let Some(client) = client_for(wire) else {
             let why = match no_channel(wire) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
@@ -119,17 +112,15 @@ impl BackendDoor {
             )));
         };
         if !client.accepts(cmd) {
-            return Err(Refused::Other(
-                crate::backend::control::cc_bus::describe_backend_too_old_for(
-                    wire,
-                    cmd,
-                    &copy_text("rsUserFiles.ask.notDone", &[]),
-                ),
-            ));
+            return Err(Refused::Other(crate::cc_bus::describe_backend_too_old_for(
+                wire,
+                cmd,
+                &copy_text("rsUserFiles.ask.notDone", &[]),
+            )));
         }
         // 请求一行装不装得下：后端一行上限 1 MiB（`inbound::MAX_LINE_BYTES`，本侧的镜像是
         // [`REQUEST_LINE_CAP`]）。装不下当场说清，不发 —— 发了只会换来一句 `line_too_long`。
-        let line = crate::backend::control::inbound_client::encode_request("0", cmd, &args);
+        let line = crate::inbound_client::encode_request("0", cmd, &args);
         if line.len() > REQUEST_LINE_CAP {
             return Err(Refused::Other(copy_text(
                 "rsUserFiles.ask.tooBig",
@@ -202,7 +193,7 @@ impl BackendDoor {
 
 impl Door for BackendDoor {
     fn machine(&self) -> String {
-        crate::backend::control::cc_bus::machine_label(self.origin.as_wire_str())
+        crate::cc_bus::machine_label(self.origin.as_wire_str())
     }
 
     async fn home(&self) -> Result<String, String> {
@@ -218,23 +209,6 @@ impl Door for BackendDoor {
             ));
         }
         Ok(p)
-    }
-
-    async fn peek(&self, root: &str, rel: &str) -> Result<Peeked, String> {
-        let v = self
-            .ask(
-                "files-peek",
-                serde_json::json!({ "root": root, "rel": rel }),
-            )
-            .await
-            .map_err(Refused::said)?;
-        Ok(Peeked {
-            path: path_text(v.get("path").unwrap_or(&serde_json::Value::Null)),
-            text: v
-                .get("text")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string),
-        })
     }
 
     async fn delete(&self, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {

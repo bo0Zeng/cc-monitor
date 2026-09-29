@@ -38,7 +38,7 @@ export interface RestartWithAccountOpts {
    *  ⚠ 〔`K-R96` 09-12 订正〕这两句**原本都写反了**：写的是「`cc-<sid8>` 会话名」＋
    *  「白名单都只认 `cc-*`」。真实形状是 **`<X>-cc` 后缀**（S4b-3b，用户 2026-07-31 把
    *  `cc-` 前缀反转成 `-cc` 后缀），白名单认的是 `*-cc`（老的 `cc-*` 前缀仍兼容认，
-   *  但那是**向后兼容**，不是今天产的形状 —— 判定住 `gate-core::is_ccm_tmux_name`）。
+   *  但那是**向后兼容**，不是今天产的形状 —— 判定住后端 `control/gate_rules.rs::is_ccm_tmux_name`）。
    *  ⚠ 而 `<X>` 今天也不是 `<sid8>` 了：`K-R96` 之后是 **`<项目名>`**
    *  （用户 `R55`：「要是可读的名字 / 不要id」）。sid 骑在 `@ccm_sid` 上，不在名字里。 */
   tmuxName: string;

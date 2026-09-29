@@ -432,11 +432,8 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
                 commit_args(SAVE_PATH, key, 17, content.len(), SHA0),
             ),
         ] {
-            let sent = crate::backend::control::inbound_client::encode_request(
-                &"0".repeat(REQUEST_ID_ROOM),
-                cmd,
-                &args,
-            );
+            let sent =
+                crate::inbound_client::encode_request(&"0".repeat(REQUEST_ID_ROOM), cmd, &args);
             assert!(sent.ends_with('\n'));
             assert_eq!(
                 request_line_len(cmd, &args),
@@ -481,7 +478,7 @@ fn the_per_char_escape_length_matches_serde_json_for_every_scalar_value() {
 fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
     let key = "0123456789abcdef0123456789abcdef";
     let line_of = |chunk: &str| {
-        crate::backend::control::inbound_client::encode_request(
+        crate::inbound_client::encode_request(
             &"0".repeat(REQUEST_ID_ROOM),
             CMD_STAGE_CHUNK,
             &stage_args(key, u64::MAX, chunk),

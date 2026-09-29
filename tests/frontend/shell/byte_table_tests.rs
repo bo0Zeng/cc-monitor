@@ -11,6 +11,7 @@
 //! 期望值一律手写自上面三处原文（**不**取自被测的 `LINES` / `promised`），两侧同源会恒真。
 
 use super::*;
+use deploy_core::{key_from_uname, key_of, promised};
 use std::collections::BTreeSet;
 
 fn k(os: Os, arch: Arch) -> Key {
@@ -580,7 +581,7 @@ fn musl_bytes_only_ever_land_on_linux_cells() {
 // ═══ 〔V132 · TL2〕承诺面：账本 == 代码（两向）══════════════════════════════════════════
 
 /// 〔V132〕承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py`（`PROMISE_FACE` · `NOT_PROMISED`），
-/// 代码那一份是 `byte_table::promised`。两份必须两向相等：
+/// 代码那一份是 `deploy_core::promised`。两份必须两向相等：
 ///
 /// 要求住址：用户裁决 **`V132`**（`设计/99 §1`，2026-09-25）原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」——
 /// 「本机 (Linux, aarch64) 不承诺 …… 承诺表与门禁 `platform` 格如实写『不承诺』」；`设计/01 §6.7a` 表 B「承诺是 (键 × origin) 的属性」。

@@ -2,13 +2,13 @@
 # F03：**§34 Gate 2 在后端侧的真机行为验收**（真后端二进制 + 真 tmux server）。
 #
 # 与两条 Rust 轨道的分工：
-#   - `gate-core` 的单测断言「判定函数怎么答」；
-#   - `gate2_parity` / `control/gate.rs` 的测试断言「两侧对同一张表答得一样」；
+#   - 后端 `control/gate_rules.rs` 的单测断言「判定函数怎么答」；
+#   - 后端 `control/gate.rs` 的测试断言「对这张表答得一样」（〔THIN〕monitor 那一轨随 monitor 侧的门删了）；
 #   - **本脚本断言「真后端收到 `launch{send-into}` 之后，在真 tmux 上到底干了什么」。**
 # 门禁只锁判定不锁行为是 R1 的教训（三门禁全绿仍放行过一个让 send-keys 完全失效的改动）。
 #
 # ★ **跨轨钉**：用例不是手搓的，**逐行来自那张唯一的判定表**
-#   `src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv` —— 与另两条轨道同一份。
+#   `tests/__fixtures__/gate2-golden.tsv` —— 与后端那条轨道同一份。
 #   表变了三条轨道一起变；某一轨偷偷放宽，与表的差异当场可见。
 #
 # 红线：**绝不碰用户真实的 tmux server**（unset TMUX + 私有 TMUX_TMPDIR）；不碰真 ~/.claude。
@@ -28,7 +28,7 @@ TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
 BACKEND="${CCM_E2E_BACKEND:-$REPO/.build/backend/debug/cc-monitor-backend}"
-GOLDEN="$REPO/src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv"
+GOLDEN="$REPO/tests/__fixtures__/gate2-golden.tsv"
 WORK="$(mktemp -d /tmp/e2e-gate2.XXXXXX)"
 IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/backend.stderr"
 
