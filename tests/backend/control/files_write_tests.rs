@@ -43,6 +43,22 @@
 
 use super::*;
 
+/// 〔MOD · 子步 4〕删会话那两问今天由门递进来（[`SessionPort`]）；下面各条照旧按两参写，
+/// 递的就是生产那一个窄口（适配层注册表那一格）。
+const PORT: SessionPort = SessionPort {
+    locate: crate::agents::locate_session_for_delete,
+    is_record: crate::agents::is_session_record,
+};
+fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
+    super::answer_wire(wire_name, args, &PORT)
+}
+fn delete_session_with(
+    sid: &str,
+    locate: impl FnOnce(&str) -> Result<std::path::PathBuf, String>,
+) -> Result<std::path::PathBuf, WriteRefusal> {
+    super::delete_session_with(sid, locate, PORT.is_record)
+}
+
 /// 一个本轮独占的临时目标根。`tag` 区分用例，`pid` 区分并发跑的进程。
 fn temp_root(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-fw-{tag}-{}", std::process::id()));

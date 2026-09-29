@@ -7,7 +7,7 @@
 //!
 //! | # | 用户那句话落成的性质 | 判据 |
 //! |---|---|---|
-//! | ① | 这个模块**只许依赖** `platform` / `common` / 围栏 | [`every_edge_out_of_the_file_backend_is_declared`]：模块生产段够到外面的**每一条**符号路径，与 [`OUTWARD`] **逐格相等**；每一格的类别必须与它的路径首段对得上 |
+//! | ① | 这个模块**只许依赖** `platform` / `common` / 下面一层的基础设施（〔MOD · 主会话裁〕业务模块之间零依赖；适配层那一类为零） | [`every_edge_out_of_the_file_backend_is_declared`]：模块生产段够到外面的**每一条**符号路径，与 [`OUTWARD`] **逐格相等**；每一格的类别必须与它的路径首段对得上 |
 //! | ② | 原生后端**零处**伸手进它**内部** | [`the_native_backend_reaches_the_file_backend_only_through_its_doors`]：模块之外的后端生产段够到模块的符号，集合 == [`DOORS`]（几个入口函数，零个内部符号） |
 //! | ③ | 外界够到它**只有一扇门**（命令注册那一处） | 同上那一条的**文件**那一维：[`DOORS`] 里除了挂载／汇总那一格，住址全是 `inbound.rs` |
 //!
@@ -223,94 +223,75 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ① 正向：模块只许够到 platform / common / 围栏 —— 逐格相等
+// ① 正向：模块只许够到下面那几层（platform / common / 基础设施）—— 逐格相等
 // ═══════════════════════════════════════════════════════════════════
 
-/// 一条外向边的类别。**闭集**。
+/// 一条外向边的类别。**闭集三类**。
 ///
-/// 前三类是用户那句「只许依赖 `platform` / `common` / 围栏」逐字列出的三样；
-/// 第四类 [`Kind::LedgerAxis`] **在那三样之外**，如实单列（理由在它自己那一行）。
+/// 〔MOD · 子步 4 · 主会话裁〕`01 §3.2`「两块零互相依赖（共用 platform / common 除外）」读成
+/// **业务模块之间**零依赖：文件模块往外只许够到**下面那几层** —— 没有一类装得下原生那一块的业务
+/// （会话 · tmux · 账号 · 资产 · 历史），也没有一类装得下适配层（`agents::`）：
+/// 删会话那两问（落点 · 形状）由门经 `control::files_write::SessionPort` 递进来，文件模块不认任何一家的记录布局。
+/// 〔此前另有「围栏」「target 轴」「传输」「建自家目录」四类：围栏那两条改经门、建自家目录随 `own_dir` 进了 `common/`，
+/// target 轴与传输并进 [`Kind::Infra`]。〕
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
     /// `platform/` —— 唯一允许平台原语的层。
-    /// 〔W5-FILES · 第五波〕**第一条边**：设备号（`platform::paths::device_of`，`设计/60 §3.7`「设备号要走 `platform/`」）——
-    /// 算目录大小与建索引都要判「这一层是不是挂着另一个文件系统」。此前 2026-09-24 现打是零条。
     Platform,
-    /// `common/` —— 两边都要、不含平台原语的纯工具。⚠ 今天同样零条边。
-    #[allow(dead_code)]
+    /// `common/` —— 两块共用的判定。
     Common,
-    /// Claude 会话数据围栏（适配层里那一个判定，与桥那一侧函数体逐字相同）。
-    /// 〔FN1 · V119〕文件管理写面不再有这道围栏；这一类今天只剩**删历史会话**那一条要的两样
-    /// （「要删的必须**是**一份会话记录」· 「按 sid 找那一份」），名字沿用，因为它们仍是那个布局知识、仍住适配层。
-    Fence,
-    /// 🔴 **用户那三样之外的唯一一类**：`lib.rs` 顶层的 target 轴（`Target` / `TARGETS`）。
-    ///
-    /// `files/mod.rs` 再导出它，是因为本模块的能力声明表（`files::CAPABILITIES`）要逐条声明
-    /// 「在哪几个 target 上做得到」，而那个轴住在汇总层（`lib.rs`，步 `8a` 的理由：
-    /// 声明 target 的面不止一个）。⇒ 它是**声明契约**的一部分，不是行为依赖。
-    /// 🔴 但它确实是一条「够到 platform / common / 围栏之外」的边 —— **不假装它不是**：
-    /// 这一类的条数被钉死（[`the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis`]），
-    /// 多一条就红。搬走它要动 `lib.rs` 的模块层（A1 那一路的写区），本路不做。
-    LedgerAxis,
-    /// 🔴 〔SR1b · 第四波 09-24〕**用户那三样之外的第二类**：传输台（`control/transfer.rs`）的**传输**。
-    ///
-    /// 用户 V89「SFTP 进本机常驻后端」：传输台搬进本机后端之后，它要一条 sftp 会话（`dial::sftp`，
-    /// 与其它 SSH 同一条连接）才搬得动字节，要出方向那一种帧（`wire`）才报得出进度 —— 这两样是
-    /// 「传输」这件事本身，不是顺手借用。⇒ 只许 `dial::sftp::` 与 `wire::` 两个前缀，条数钉死
-    /// （[`the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis`]）；传输台**只经** `dial/sftp.rs`
-    /// 够到拨号（手里不拿 `DialRequest`，拿的是那一份包出来的 `Dial`）。
-    Transport,
-    /// 🔴 〔HX1 · 4D · 主会话裁〕**用户那三样之外的第三类**：后端建自家目录的那一个函数（`own_dir::ensure_private_dir`）。
-    ///
-    /// 暂存区（`~/.cc-monitor/staging`）是后端自己的目录、不是用户的；主会话裁「建自家目录收成一个小函数（0700、已存在不动）」
-    /// ⇒ 写面建暂存区那两层时调它，而不是自己按 umask 建。只许这一个符号，条数钉死 1。
-    OwnHome,
+    /// 🔴 **下面一层的基础设施**（主会话裁）：传输层（`dial` 的 SFTP 原语 · `stream::wire` 的帧）与 `lib.rs` 的能力声明轴。
+    /// 两块都可用；只许三个前缀（[`INFRA_PREFIXES`] ＋ target 轴），每一格的理由写在 [`OUTWARD`] 第三列。
+    Infra,
 }
 
-/// ★ **登记表**：模块生产段够到外面的符号，**逐条**。
+/// 基础设施那一类许的路径前缀（target 轴那两格另判：它们住 crate 根，没有前缀）。
+const INFRA_PREFIXES: &[&str] = &["dial::sftp::", "stream::wire::"];
+
+/// ★ **登记表**：模块生产段够到外面的符号，**逐条**，带类别与理由。
 ///
 /// 数字与条目是**现打**出来的（先置空跑一趟，从诊断里读出来再钉，照先例），不是照 `use` 抄的。
 /// ⚠ 它是 census 不是许可：加一行不等于那条边是对的，只等于它被看见了。
-const OUTWARD: &[(&str, Kind)] = &[
-    // ── 围栏 ────────────────────────────────────────────────────────
+const OUTWARD: &[(&str, Kind, &str)] = &[
     (
-        "agents::claudecode::paths::is_session_record_path",
-        Kind::Fence,
+        "platform::paths::device_of",
+        Kind::Platform,
+        "〔W5-FILES〕设备号（`设计/60 §3.7`）：算目录大小与建索引要判这一层是不是挂着另一个文件系统",
     ),
-    // 〔RW1 · 第四波 09-24〕同一道围栏的**另一面**：删历史会话那一条（〔FN1〕上一行今天也只剩它在用）
-    //   的落点由适配层按 sid 找 —— 「哪一份算会话、它在哪」仍是适配层的知识，写面只调用。
     (
-        "agents::claudecode::paths::session_file_for_delete",
-        Kind::Fence,
+        "platform::paths::current_uid",
+        Kind::Platform,
+        "〔HX1 拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid",
     ),
-    // ── platform ──────────────────────────────────────────────────────
-    // 〔W5-FILES〕设备号（`设计/60 §3.7`）。
-    ("platform::paths::device_of", Kind::Platform),
-    // ── 〔HX1〕后端建自家目录（暂存区那两层）──────────────────────────
-    ("own_dir::ensure_private_dir", Kind::OwnHome),
-    // ── 平台 ────────────────────────────────────────────────────────
-    // 〔HX1 · 主会话裁拍板项 2〕覆盖写「属主不是后端这个用户 ⇒ 退回就地写」要问这台进程的 uid。
-    ("platform::paths::current_uid", Kind::Platform),
-    // ── common ────────────────────────────────────────────────────────
-    // 〔COPY · 09-27〕契约错只进表一句（`设计/91 §5.5`「请求格式不对：{detail}」），住 `common::contract`。
-    ("common::contract::malformed", Kind::Common),
-    // ── 汇总层的 target 轴（用户那三样之外，条数钉死）─────────────────
-    ("TARGETS", Kind::LedgerAxis),
-    ("Target", Kind::LedgerAxis),
-    // ── 〔SR1b〕传输台的传输（用户那三样之外，条数钉死）─────────────────
-    ("dial::sftp::Dial", Kind::Transport),
-    ("dial::sftp::Session", Kind::Transport),
-    ("stream::wire::Frame", Kind::Transport),
-    ("stream::wire::TransferEnd", Kind::Transport),
-];
-
-/// 围栏那一类**只许**是这两个符号（不是「`agents::` 底下随便什么」）：
-/// 写面「不许碰会话文件」那一问（〔FN1 · V119〕那一问拿掉了，今天是删会话那一条「要删的必须**是**会话」）＋
-/// 〔RW1 · 第四波 09-24〕删历史会话那一条「要删的是哪一份」那一问。
-/// 两个都是会话文件围栏的知识，住适配层；多出第三个 ⇒ 红。
-const THE_FENCES: &[&str] = &[
-    "agents::claudecode::paths::is_session_record_path",
-    "agents::claudecode::paths::session_file_for_delete",
+    (
+        "common::contract::malformed",
+        Kind::Common,
+        "〔COPY · 09-27〕契约错只进表一句（`设计/91 §5.5`「请求格式不对：{detail}」）",
+    ),
+    (
+        "common::own_dir::ensure_private_dir",
+        Kind::Common,
+        "〔HX1 拍板项 4 · MOD 挪进 common〕暂存区那两层按后端自家目录建（0700、已在的不动）",
+    ),
+    (
+        "TARGETS",
+        Kind::Infra,
+        "能力声明表（`files::CAPABILITIES`）逐条声明「在哪几个 target 上做得到」，那个轴住汇总层 `lib.rs`\
+         （声明 target 的面不止一个）—— 声明契约，不是行为依赖",
+    ),
+    ("Target", Kind::Infra, "同上一格：target 轴的元素类型"),
+    (
+        "dial::sftp::Dial",
+        Kind::Infra,
+        "〔SR1b〕传输台要一条 sftp 会话才搬得动字节：只经 `dial/sftp.rs` 包出来的 `Dial`，手里不拿 `DialRequest`",
+    ),
+    ("dial::sftp::Session", Kind::Infra, "同上一格：那一条 sftp 会话本身"),
+    (
+        "stream::wire::Frame",
+        Kind::Infra,
+        "〔SR1b〕传输进度要出方向那一种帧才报得出",
+    ),
+    ("stream::wire::TransferEnd", Kind::Infra, "同上一格：传输结束那一帧的收尾格"),
 ];
 
 /// ★★ 模块够到外面的每一条边都在表里，表里也不留死行；而且**只有**那三类。
@@ -334,7 +315,7 @@ fn every_edge_out_of_the_file_backend_is_declared() {
             found.insert(e);
         }
     }
-    let want: BTreeSet<String> = OUTWARD.iter().map(|(p, _)| (*p).to_string()).collect();
+    let want: BTreeSet<String> = OUTWARD.iter().map(|(p, _, _)| (*p).to_string()).collect();
     assert_eq!(want.len(), OUTWARD.len(), "`OUTWARD` 里有重复行");
     assert_eq!(
         found,
@@ -343,7 +324,7 @@ fn every_edge_out_of_the_file_backend_is_declared() {
          盘上有、表里没有（**新长出来的依赖**）：{:?}\n  \
          表里有、盘上没有（那条边退役了 ⇒ 删行）：{:?}\n\n\
          用户逐字「后端要模块化, 即原生后端＋文件管理后端. 现在先解耦清楚」。\n\
-         ⇒ 这个模块只许依赖 platform / common / 围栏；别的依赖先问能不能不要。\n\
+         ⇒ 这个模块只许依赖 platform / common / 下面一层的基础设施；别的依赖先问能不能不要。\n\
          逐条住址：{:?}",
         found.difference(&want).collect::<Vec<_>>(),
         want.difference(&found).collect::<Vec<_>>(),
@@ -405,6 +386,12 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::transfer::Desk::answer_wire",
         Door::Command,
     ),
+    // 〔MOD · 子步 4〕删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
+    (
+        "stream/inbound.rs",
+        "control::files_write::SessionPort",
+        Door::Command,
+    ),
     ("lib.rs", "files::capability_names", Door::Ledger),
 ];
 
@@ -439,53 +426,35 @@ fn the_native_backend_reaches_the_file_backend_only_through_its_doors() {
     );
 }
 
-/// ★ 类别与路径对得上：「只许依赖 platform / common / 围栏」在**每一格**上都成立，
-/// 而那三样之外的只有 target 轴那两格。
+/// 〔MOD · 子步 4 · `01 §3.2` ＋ 主会话裁〕**文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
 ///
-/// 🔴 没有这一条，`OUTWARD` 可以把一条 `observe::…` 登记成 `Kind::Common` 让上一条变绿。
+/// - 每一格的类别与路径首段对得上（没有这一条，`OUTWARD` 可以把一条 `observe::…` 登记成 `Kind::Common` 让上一条变绿）；
+/// - 基础设施那一类只许 [`INFRA_PREFIXES`] 与 target 轴，每一格都写得出理由，条数**相等**；
+/// - 没有一类装得下 `agents::`（适配层）—— 删会话那两问经门递进来，这一向的边今天为零。
+/// 反方向（原生那一块零处伸手进文件模块、只经门）由 [`the_native_backend_reaches_the_file_backend_only_through_its_doors`] 判。
 #[test]
-fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
-    for (path, kind) in OUTWARD {
+fn the_file_backend_depends_on_no_business_module_only_on_the_layers_below() {
+    for (path, kind, why) in OUTWARD {
         let ok = match kind {
             Kind::Platform => has_prefix(path, "platform::"),
             Kind::Common => has_prefix(path, "common::"),
-            Kind::Fence => THE_FENCES.contains(path),
-            Kind::LedgerAxis => *path == "Target" || *path == "TARGETS",
-            Kind::Transport => {
-                has_prefix(path, "dial::sftp::") || has_prefix(path, "stream::wire::")
+            Kind::Infra => {
+                INFRA_PREFIXES.iter().any(|p| has_prefix(path, p))
+                    || *path == "Target"
+                    || *path == "TARGETS"
             }
-            Kind::OwnHome => *path == "own_dir::ensure_private_dir",
         };
         assert!(
             ok,
             "`{path}` 被登记成 `{kind:?}`，而它的路径不属于那一类 —— 登记表在替一条越界的边挡枪"
         );
+        assert!(!why.trim().is_empty(), "`{path}` 没写为什么要这条边");
     }
-    let axis = OUTWARD
-        .iter()
-        .filter(|(_, k)| *k == Kind::LedgerAxis)
-        .count();
+    let infra = OUTWARD.iter().filter(|(_, k, _)| *k == Kind::Infra).count();
     assert_eq!(
-        axis, 2,
-        "用户那三样之外的边从 2 条变成了 {axis} 条 —— **相等，不是上限**。\
-         变多 = 模块又长出一条 platform / common / 围栏之外的依赖；\
-         变少 = target 轴被搬走了（好事，同拍把这一类删掉）"
-    );
-    // 〔SR1b〕传输那一类：**相等**。变多 = 传输台又伸手够了一样东西；变少 = 同拍删行。
-    let transport = OUTWARD
-        .iter()
-        .filter(|(_, k)| *k == Kind::Transport)
-        .count();
-    // 〔HX1〕建自家目录那一类：**相等**，恰好那一个函数。
-    let own_home = OUTWARD.iter().filter(|(_, k)| *k == Kind::OwnHome).count();
-    assert_eq!(
-        own_home, 1,
-        "建自家目录那一类的外向边从 1 条变成了 {own_home} 条"
-    );
-    assert_eq!(
-        transport, 4,
-        "传输台的外向边从 4 条变成了 {transport} 条 —— 它只该要一条 sftp 会话（经 `dial/sftp.rs` 的 \
-         `Dial` / `Session`）和出方向那一种帧（`Frame` / `TransferEnd`）"
+        infra, 6,
+        "基础设施那一类从 6 条变成了 {infra} 条 —— **相等，不是上限**：\
+         变多 = 文件模块又往下面那一层多要了一样东西（先问能不能不要）；变少 = 同拍删行"
     );
 }
 
@@ -510,11 +479,13 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     let command = DOORS.iter().filter(|(_, _, d)| *d == Door::Command).count();
     assert_eq!(
         // 〔FILES2 · 第四波 09-27〕6 → 7：多了解压面 `control::files_extract::answer_wire`（`设计/60 §6.2` Q3）。
-        command, 7,
-        "命令注册那一处够到的入口从 7 个变成了 {command} 个 —— \
+        // 〔MOD · 子步 4〕7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。
+        command, 8,
+        "命令注册那一处够到的入口从 8 个变成了 {command} 个 —— \
          四面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
          上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕／ 解压 `control::files_extract::answer_wire`〔FILES2 +1〕）各一个入口，\
          〔SR1b 09-24 +3〕传输台每连接一张表：表类型 ＋ 造表 `Desk::new` ＋ 答口 `Desk::answer_wire`。\
+         〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
 }

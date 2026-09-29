@@ -34,5 +34,5 @@ pub fn ensure_private_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
-#[path = "../../tests/backend/own_dir_tests.rs"]
+#[path = "../../../tests/backend/common/own_dir_tests.rs"]
 mod tests;

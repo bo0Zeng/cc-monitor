@@ -582,7 +582,7 @@ pub(crate) async fn make_dir(s: &Session, path: &str) -> Result<(), Refusal> {
         return Ok(());
     }
     let private = FileAttributes {
-        permissions: Some(crate::own_dir::PRIVATE_DIR_MODE),
+        permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE),
         ..Default::default()
     };
     if let Err(e) = s.sftp().set_metadata(rel.clone(), private).await {

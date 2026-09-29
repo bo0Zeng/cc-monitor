@@ -48,7 +48,6 @@ mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔
 #[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 pub mod observe; // U3：观测面 —— 读，不改变世界
-pub mod own_dir; // 〔HX1 · 4D〕后端建自家目录（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、已在的不动（第四层；门只有 `control/files_commit.rs` 建暂存区那一处）
 #[cfg(test)]
 #[path = "../../tests/backend/panorama_locus_guard.rs"]
 mod panorama_locus_guard; // K-W2D KW2D3：全景的解析发生在哪个进程的地址空间（整体 #[cfg(test)]）

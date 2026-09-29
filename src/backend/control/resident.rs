@@ -238,7 +238,7 @@ fn ensure_token(path: &Path) -> Result<String, String> {
 }
 
 fn ensure_dir(dir: &Path) -> Result<(), String> {
-    crate::own_dir::ensure_private_dir(dir).map_err(|e| {
+    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
         copy_text(
             "beResident.fs.mkdirFailed",
             &[("dir", &dir.display().to_string()), ("e", &e.to_string())],

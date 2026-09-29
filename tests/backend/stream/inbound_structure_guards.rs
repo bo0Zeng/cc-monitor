@@ -697,10 +697,9 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     // ★ 写那一面的每条命令，`codes` / `fields` 与它自己的登记逐字对上（同读族那一半）。
     type WriteAnswer = fn(&str, &serde_json::Value) -> crate::control::files_write::Answer;
     let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
-        (
-            crate::control::files_write::MANAGE_COMMANDS,
-            crate::control::files_write::answer_wire,
-        ),
+        (crate::control::files_write::MANAGE_COMMANDS, |c, a| {
+            crate::control::files_write::answer_wire(c, a, &super::SESSION_PORT)
+        }),
         (
             crate::control::files_commit::COMMIT_COMMANDS,
             crate::control::files_commit::answer_wire,

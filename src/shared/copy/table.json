@@ -18032,6 +18032,11 @@
       "zh": "{path} 不是会话记录，没删",
       "args": ["path"]
     },
+    "beFilesWrite.session.noReader": {
+      "kind": "error",
+      "zh": "这台后端认不出会话记录，没删 {id}",
+      "args": ["id"]
+    },
     "beTransfer.land.notAbsolute": {
       "kind": "error",
       "zh": "本机目标路径必须是绝对路径：{path}",
