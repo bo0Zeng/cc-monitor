@@ -585,6 +585,20 @@ fn the_probe_speaks_the_plugin_dialect() {
     let mut table: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
     table.sort();
     assert_eq!(caps, table);
+    let mut long: Vec<&str> = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("long="))
+        .expect("没有长活档那一行")
+        .split(',')
+        .collect();
+    long.sort();
+    let mut built: Vec<&str> = OPS
+        .iter()
+        .filter(|(_, n)| *n == Need::Build)
+        .map(|(o, _)| *o)
+        .collect();
+    built.sort();
+    assert_eq!(long, built, "长活档 == 独占写（建索引）那几个");
     let shape = lines
         .iter()
         .find_map(|l| l.strip_prefix("shape="))
@@ -592,24 +606,40 @@ fn the_probe_speaks_the_plugin_dialect() {
     assert_eq!(shape, shape_code());
 }
 
-/// 设计/97 §8 · §6.5 · 99 §2.1 ㉝①：「`--probe` 加形状代号（op 表 ＋ vendor pin 摘要），后端判旧回 `unsupported`」。
+/// 生成物 `engine-contract.json` 的全文：op 表（名 → 档）＋ 形状代号。
+fn contract_json() -> String {
+    let ops: serde_json::Map<String, Value> = OPS
+        .iter()
+        .map(|(n, need)| {
+            (
+                n.to_string(),
+                json!(if need.is_long() { "long" } else { "quick" }),
+            )
+        })
+        .collect();
+    let v = json!({
+        "_generated": "由 src/panorama-engine/main.rs 的 OPS 与 shape_code() 生成（tests/panorama-engine/cli_tests.rs::the_frontend_contract_is_generated_from_this_program），不许手改",
+        "shape": shape_code(),
+        "ops": ops,
+    });
+    format!("{}\n", serde_json::to_string_pretty(&v).unwrap())
+}
+
+/// 要求住址：`99 §1 V158`「本仓只管两件：**解耦**（线上契约由上游给、本仓不手抄 · 前端不算图（CP1）· 后端不带引擎知识）」。
 ///
-/// 本程序真算出来的代号 == 后端适配层要的那一代（运行时读 `src/backend/control/panorama.rs::SHAPE`，异源）。
-/// op 表或 vendored pin 一动 ⇒ 代号变 ⇒ 本条红，逼着后端那一格同拍换（换了就会重放字节）。
+/// ★ 前端与判据读的那份生成物 == 本程序的 op 表（名 ＋ 档）＋ 真算出来的形状代号（`97 §6.5` FIX2 那一代）。
+/// 前端每问把 `shape` 带上、按档给期限；后端只拿它与 `--probe` 报的比，自己不存（`control/panorama.rs` 头注）。
+/// 漂了 ⇒ 当场按本程序重写并红一次（重跑即绿，把它一起提交）—— 同 ts-rs 生成物「改源不重生成就红」那条纪律。
 #[test]
-fn the_shape_code_is_what_the_backend_wants() {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend/control/panorama.rs");
-    let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-    let prod = guard_core::production_code(&src);
-    let at = guard_core::find_pinned(&prod, "pub(crate) const SHAPE: &str = \"")
-        .unwrap_or_else(|e| panic!("后端的 SHAPE 改了写法：{e}"));
-    let rest = &prod[at + "pub(crate) const SHAPE: &str = \"".len()..];
-    let theirs = &rest[..rest.find('"').expect("SHAPE 没收尾")];
-    assert_eq!(
-        shape_code(),
-        theirs,
-        "小程序这一代的形状代号与后端要的对不上 —— op 表或 vendored pin 变了，把后端 SHAPE 换成新值"
-    );
+fn the_frontend_contract_is_generated_from_this_program() {
+    let p =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../frontend/ui/panorama/engine-contract.json");
+    let want = contract_json();
+    let have = std::fs::read_to_string(&p).unwrap_or_default();
+    if have != want {
+        std::fs::write(&p, &want).unwrap();
+        panic!("生成物 {p:?} 与本程序的 op 表 / 形状代号对不上，已按本程序重写 —— 重跑即绿，把它一起提交");
+    }
     assert_eq!(shape_code().len(), 16);
     assert!(vendor_pin().len() >= 7, "pin 没读到：{:?}", vendor_pin());
 }

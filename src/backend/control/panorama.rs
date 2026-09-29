@@ -11,15 +11,21 @@
 //! | 段 | 本模块给的 |
 //! |---|---|
 //! | ① 找它 | 候选：后端自己那个可执行文件旁边 → `<家>/.cc-monitor/bin/`；**不兜 `PATH`**（同名的无关程序由身份行再挡一道） |
-//! | ② 问它会什么 | 要的能力 = 这一次的 op（缺哪个说哪个 —— 「这台装的小程序太旧」与「调用失败」是两件事） |
-//! | ③ 起它 | 期限按 op：建索引一档、其余一档（`u64` 秒，交给子进程的 `timeout` 前缀；**后端零定时器不破**） |
+//! | ② 问它会什么 | 要的能力 = 这一次的 op（缺哪个说哪个 —— 「这台装的小程序太旧」与「调用失败」是两件事）；要的那一代 = 请求带来的 `shape` |
+//! | ③ 起它 | 期限按它自报的档：长活档（`long=`）一档、其余一档（`u64` 秒，交给子进程的 `timeout` 前缀；**后端零定时器不破**） |
 //! | ④ 码 → 语义 | **这张表只住这里**（插件口只抽骨架）：见 [`classify`] |
+//!
+//! # 后端不带引擎知识（〔PANO〕`99 §1` V158）
+//!
+//! 本模块**不存** op 表、不存形状代号：会哪些 op、哪个是长活，由小程序 `--probe` 自报（`capabilities=` · `long=`）；
+//! 要的是哪一代，由发起方在请求里带上 `shape`（前端取自与小程序同源的生成物 `src/frontend/ui/panorama/engine-contract.json`）。
+//! 未知 op / 形状对不上 ⇒ `unsupported`（放字节那条照旧接上）。本模块自己只留「档 → 秒数」那一张（[`deadline_for`]）。
+//! 〔墓碑 —— 此前这里写死 `SHAPE` 与 24 行 `OPS`（含期限档），re-vendor 一次后端就要改常量、每台重部署。〕
 //!
 //! # 只说查询语义（`protocol_doc_guard` 那条 `P7c-2` 约束）
 //!
-//! 线上只有一条命令名 `panorama`，`op` 只许 [`OPS`] 里的词（查询 ＋ 建索引）；
-//! 存储、grammar、解析开关**一个都不上线**。[`OPS`] 与小程序那张 op 表两向相等
-//! （判据运行时读小程序的源码，异源）。
+//! 线上只有一条命令名 `panorama`，`op` 只许小程序自报的词（== 签字白名单，判据读生成物）；
+//! 存储、grammar、解析开关**一个都不上线**。
 //!
 //! # 写面
 //!
@@ -60,57 +66,28 @@ pub(crate) const PLUGIN_NAME: &str = "cc-monitor-panorama";
 /// 它的探测旗标（插件口 `key=value` 方言）。
 const PROBE_FLAG: &str = "--probe";
 
-/// 〔FIX2 · `设计/97 §8` · `§6.5`〕要的那一代小程序的形状代号（`--probe` 的 `shape=`）。
-/// 对不上 ⇒ `unsupported` ⇒ monitor 放字节。== 小程序 `shape_code()`（`tests/panorama-engine/cli_tests.rs` 运行时读本文件对拍）：
-/// op 表或 vendored pin 一动，那条就红，这里跟着换。
-pub(crate) const SHAPE: &str = "fc90734129492e26";
-
 /// 探测的期限（秒）：只打三行字，给得很宽也只是「卡死时最多等这么久」。
 const PROBE_DEADLINE_SECS: u64 = 10;
 
-/// 建索引的期限（秒）。量级来自 `RM1b.md §3.1`：整个本仓（1212 文件）在忙机器上 107 s ⇒ 给 15 分钟。
+/// 长活档（小程序自报 `long=` 的那几个：建索引一族）的期限（秒）。量级来自 `RM1b.md §3.1`：整个本仓（1212 文件）在忙机器上 107 s ⇒ 给 15 分钟。
 pub(crate) const BUILD_DEADLINE_SECS: u64 = 900;
 
-/// 其余查询的期限（秒）。一问一答每次都要 `Engine::open`（很轻），overview 不跨进程缓存 ⇒ 大仓每次重算。
+/// 其余（短活档）的期限（秒）。一问一答每次都要 `Engine::open`（很轻），overview 不跨进程缓存 ⇒ 大仓每次重算。
 pub(crate) const QUERY_DEADLINE_SECS: u64 = 60;
+
+/// **档 → 秒数**（只住这里）：按小程序自报的档给这一次的期限。
+pub(crate) fn deadline_for(answer: &crate::plugin::probe::Answer, op: &str) -> u64 {
+    if answer.is_long(op) {
+        BUILD_DEADLINE_SECS
+    } else {
+        QUERY_DEADLINE_SECS
+    }
+}
 
 /// 小程序的退出码（它自己的契约，`src/panorama-engine/main.rs` 头注）：调用方给错了东西。
 const PLUGIN_EXIT_BAD_ARGS: i32 = 2;
 /// 小程序的退出码：形状对、做不成（仓打不开 / 引擎报错）。
 const PLUGIN_EXIT_FAILED: i32 = 3;
-
-/// ★ **线上认得的 op 与各自的期限** —— 词表只说查询语义。
-///
-/// 与小程序 `OPS` 两向相等（`tests::the_op_table_matches_the_program_one`，运行时读它的源码）；
-/// 用建索引那一档期限的 op == 小程序里标成独占写的那几个（同一条判据）。
-pub(crate) const OPS: &[(&str, u64)] = &[
-    ("status", QUERY_DEADLINE_SECS),
-    ("index", BUILD_DEADLINE_SECS),
-    ("reindex", BUILD_DEADLINE_SECS),
-    ("overview", QUERY_DEADLINE_SECS),
-    ("node", QUERY_DEADLINE_SECS),
-    ("subgraph", QUERY_DEADLINE_SECS),
-    ("callers", QUERY_DEADLINE_SECS),
-    ("callees", QUERY_DEADLINE_SECS),
-    ("impact", QUERY_DEADLINE_SECS),
-    ("search", QUERY_DEADLINE_SECS),
-    ("docs_for", QUERY_DEADLINE_SECS),
-    ("touching", QUERY_DEADLINE_SECS),
-    ("symbols_in_file", QUERY_DEADLINE_SECS),
-    ("drift", QUERY_DEADLINE_SECS),
-    ("list_annotations", QUERY_DEADLINE_SECS),
-    ("diagram_kinds", QUERY_DEADLINE_SECS),
-    ("diagram", QUERY_DEADLINE_SECS),
-    // 〔RM1d〕只算不写：小程序读盘上那一两份、回一份编辑计划；落盘不在这条命令里（头注「写面」）。
-    ("plan_add_annotation", QUERY_DEADLINE_SECS),
-    ("plan_propose_annotation", QUERY_DEADLINE_SECS),
-    ("plan_approve_annotation", QUERY_DEADLINE_SECS),
-    ("plan_remove_annotation", QUERY_DEADLINE_SECS),
-    ("plan_write_doc_link", QUERY_DEADLINE_SECS),
-    ("plan_remove_doc_link", QUERY_DEADLINE_SECS),
-    // 〔RM1d〕外面落了 `.md` 之后让索引里的文档关联跟上（写的是索引，建索引那一档）。
-    ("refresh_doc_links", BUILD_DEADLINE_SECS),
-];
 
 /// 〔RM1f〕小程序每条输出流最多留多少字节（交给插件口 `run_abortable`，多出来的它照读照丢）：
 /// 与「结果太大」那一格（[`classify`]）**同一个**上限 `read_face::LINES_CAP_BYTES` ⇒ `len() >` 它就是 `too_large`。
@@ -195,15 +172,11 @@ pub(crate) async fn answer_with(
         "bad_args",
         crate::common::contract::malformed("missing `op` (a string)"),
     ))?;
-    let Some((_, deadline)) = OPS.iter().find(|(n, _)| *n == op) else {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "unknown panorama op `{op}` (known: {map})",
-                map = OPS.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
-            )),
-        ));
-    };
+    // 要的那一代由发起方带来（后端不存形状代号，头注「后端不带引擎知识」）。
+    let shape = args.get("shape").and_then(Value::as_str).ok_or((
+        "bad_args",
+        crate::common::contract::malformed("missing `shape` (a string)"),
+    ))?;
     let repo = match args.get("repo") {
         None | Some(Value::Null) => None,
         Some(Value::String(s)) => Some(s.as_str()),
@@ -226,7 +199,7 @@ pub(crate) async fn answer_with(
     };
     let bin = crate::plugin::discover::find(PLUGIN_NAME, fixed, false, &NOT_INSTALLED_HINT)
         .map_err(|m| ("not_installed", m))?;
-    // ② 问它会什么：要的就是这一次的 op。
+    // ② 问它会什么：要的就是这一次的 op（未知的 op 也落在这里：它没自报 ⇒ `unsupported`）。
     // 〔RM1f〕两次起进程都走可打断的那一形（探测也是：它卡住时同样要能被撤掉）。
     let probe =
         crate::plugin::invoke::run_abortable(&bin, &[PROBE_FLAG], PROBE_DEADLINE_SECS, &[], keep())
@@ -248,7 +221,7 @@ pub(crate) async fn answer_with(
         }
         Err(n) => return Err(not_run(&bin, n)),
     };
-    crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[op], Some(SHAPE)).map_err(
+    let answer = crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &[op], Some(shape)).map_err(
         |r| match r {
             Rejected::MissingCapability { .. } | Rejected::StaleShape { .. } => {
                 ("unsupported", r.message())
@@ -256,6 +229,7 @@ pub(crate) async fn answer_with(
             Rejected::NotThePlugin { .. } => ("not_installed", r.message()),
         },
     )?;
+    let deadline = deadline_for(&answer, op);
     // ③ 起它。argv 直传不过 shell。
     let store_s = store.display().to_string();
     let mut argv: Vec<&str> = vec![op, "--store", store_s.as_str()];
@@ -265,8 +239,8 @@ pub(crate) async fn answer_with(
     if let Some(a) = op_args.as_deref() {
         argv.extend(["--args", a]);
     }
-    let done = crate::plugin::invoke::run_abortable(&bin, &argv, *deadline, &[], keep()).await;
-    classify(op, *deadline, done.map_err(|n| not_run(&bin, n))?)
+    let done = crate::plugin::invoke::run_abortable(&bin, &argv, deadline, &[], keep()).await;
+    classify(op, deadline, done.map_err(|n| not_run(&bin, n))?)
 }
 
 /// 〔FIX4 · `97 §8` · 主会话 09-28 裁「受管工具都应可卸，照 SU1 装卸账」〕**卸掉这台上的全景小程序**（帧 `panorama-uninstall`）。

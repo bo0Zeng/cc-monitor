@@ -3254,20 +3254,21 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 后端**不链**全景引擎：它经插件通用调用口（找它 → `--probe` 问它会不会这个 op → 传 argv 起它，期限走 `timeout` 前缀）起那个只装引擎的独立小程序 `cc-monitor-panorama`，解析发生在被起的那个进程里；索引落**这台机器上后端自己的数据目录**（`~/.cc-monitor/panorama/`），不落进被分析的仓。本机与远端同一条命令。
 
 ```text
-→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000}}}
+→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000},"shape":"fc90734129492e26"}}
 ← {"kind":"reply","id":"g1","ok":true,"data":{"result":{…}}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `subgraph` · `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`；〔RM1d〕「算」：`plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；`refresh_doc_links`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着） |
+| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `subgraph` · `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`；〔RM1d〕「算」：`plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；`refresh_doc_links`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着）。〔PANO〕后端不存这张表：认得的词 = 小程序 `--probe` 自报的 `capabilities=`（生成物 `src/frontend/ui/panorama/engine-contract.json` 是它的镜子） |
+| `shape` | → | 〔PANO〕要的那一代小程序的形状代号（发起方取自生成物 `engine-contract.json`）；后端拿它与 `--probe` 报的 `shape=` 逐字比，对不上 ⇒ `unsupported`。缺 ⇒ `bad_args` |
 | `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
 | `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
 | `result` | ← | 小程序应答里的 `data` **原样**（形状与 monitor 进程内那套全景命令逐字相同；`node` 查不到是 `null`） |
 
 - CLI 面同样自动派生（`--panorama`，stdin 一段 JSON = 上面那个 `args`），已进 `SUBCOMMANDS`。
-- 期限：`index` / `reindex` / `refresh_doc_links` 900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
-- 错误码：`bad_args`（op 不在词表 / 参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
+- 期限：按小程序 `--probe` 自报的档 —— `long=` 里的（今天 `index` / `reindex` / `refresh_doc_links`）900 秒，其余 60 秒 —— 给**子进程**的（后端零定时器）。客户端那一侧的等待要比它长。
+- 错误码：`bad_args`（缺 `op` / `shape`、参数不合形，小程序自己那句话原样带回）· `not_installed`（这台没有那个小程序，或找到的那个身份行对不上；整句说清查过哪儿）· `unsupported`（装的那份不会这个 op，点名缺的那一个；或形状代号不是请求要的那一代）· `timed_out`（说清是哪一档期限）· `too_large`（参数塞不进一次命令调用，或结果超过 32 MiB）· `failed`（仓打不开 / 引擎报错 / 被信号打断，带诊断）。
 - 〔RM1d · V110「引擎只算、文件管理来写」〕本命令**不写用户文件**。批注 / 文档关联的 `plan_*` 只读盘上那一两份、回一份编辑计划
   `{"value": …, "edit": null | {"rel", "before", "after", "parents"}}`（`rel` 仓相对；`before` = 算的那一刻盘上原样、`null` = 不存在；
   `after = null` = 删；`edit = null` = 盘上已经是想要的样子）。〔MIG-3b 续〕拿着计划落盘的是同一台后端的 `panorama-edit`（下一节），不再是 monitor。
@@ -3293,7 +3294,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"}}}
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"fc90734129492e26"}}
 ← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
 ```
 
@@ -3302,6 +3303,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 | `repo` | → | 被写的仓在**这台机器上**的绝对路径 |
 | `op` | → | 写哪一种：`add_annotation` · `propose_annotation` · `approve_annotation` · `remove_annotation` · `write_doc_link` · `remove_doc_link`（别的 ⇒ `bad_args`） |
 | `args` | → | 这一种写自己的参数（原样交给对应的 `plan_*`） |
+| `shape` | → | 〔PANO〕同 `panorama` 的 `shape`：每次问小程序（算 · 刷文档关联）都原样转交 |
 | `data` | ← | 计划里的 `value` 原样（id / 在不在 / `null`，随 op 而定） |
 
 - 一件事全在这台：① 问这台的小程序要计划（`panorama` 的 `plan_*`，不写）→ ② `edit = null` ⇒ 原样回 → ③ 经**这台的文件管理面**落盘

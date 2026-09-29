@@ -102,11 +102,11 @@ fn plan(
 }
 
 fn args(d: &RepoDoor, op: &str) -> Value {
-    json!({ "repo": d.repo(), "op": op, "args": { "x": 1 } })
+    json!({ "repo": d.repo(), "op": op, "args": { "x": 1 }, "shape": "s1" })
 }
 
 /// ★ 计划原样交给写口：`after` 是全文、`expect` 是计划里的 `before`、`parents` 原样、不要备份；落下的就是计划里的全文。
-/// 「算」问的是那一种写对应的 `plan_*`、带着仓与原样的 `args`。
+/// 「算」问的是那一种写对应的 `plan_*`、带着仓与原样的 `args`，〔PANO〕以及发起方带来的 `shape`（后端不存形状代号）。
 #[tokio::test]
 async fn the_plan_is_handed_to_the_door_verbatim() {
     let d = RepoDoor::new("put");
@@ -124,7 +124,7 @@ async fn the_plan_is_handed_to_the_door_verbatim() {
     assert_eq!(got, json!("abc"), "回的是计划里的 value");
     assert_eq!(
         plans.asked.lock().unwrap()[0],
-        json!({ "op": "plan_add_annotation", "repo": d.repo(), "args": { "x": 1 } })
+        json!({ "op": "plan_add_annotation", "repo": d.repo(), "args": { "x": 1 }, "shape": "s1" })
     );
     let w = d.writes();
     assert_eq!(w.len(), 1);
@@ -178,6 +178,7 @@ async fn stale_means_plan_again_not_write_anyway() {
         plans.asked.lock().unwrap()[2]["op"],
         json!(REFRESH_DOC_LINKS)
     );
+    assert_eq!(plans.asked.lock().unwrap()[2]["shape"], json!("s1"));
     assert_eq!(
         std::fs::read_to_string(d.root.join("d.md")).unwrap(),
         "v2+link"
@@ -311,12 +312,22 @@ fn the_plan_shape_matches_the_upstream_one() {
     }
 }
 
-/// ★ 「算」op：[`EDITS`] 第二列 ＋ [`REFRESH_DOC_LINKS`] == `panorama::OPS` 里 `plan_` 开头的 ＋ 刷文档关联那一个（两向，同一个 crate 直接比）。
+/// ★ 「算」op：[`EDITS`] 第二列 ＋ [`REFRESH_DOC_LINKS`] == 小程序自报的 op 表里 `plan_` 开头的 ＋ 刷文档关联那一个（两向，异源）。
+///
+/// 〔PANO〕后端不再存 op 表：另一侧读小程序的生成物 `src/frontend/ui/panorama/engine-contract.json`（运行时读，
+/// 同 `panorama_locus_guard` 的取舍；它 == 小程序 `OPS` 由小程序自己的判据钉）。
 #[test]
 fn the_edit_table_matches_the_plan_ops() {
-    let mut theirs: Vec<&str> = super::super::panorama::OPS
-        .iter()
-        .map(|(n, _)| *n)
+    let p = crate::guard_support::repo_root().join("src/frontend/ui/panorama/engine-contract.json");
+    let contract: Value = serde_json::from_str(
+        &std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}")),
+    )
+    .unwrap();
+    let mut theirs: Vec<&str> = contract["ops"]
+        .as_object()
+        .expect("生成物没有 ops")
+        .keys()
+        .map(String::as_str)
         .filter(|op| op.starts_with("plan_") || *op == REFRESH_DOC_LINKS)
         .collect();
     theirs.sort_unstable();
