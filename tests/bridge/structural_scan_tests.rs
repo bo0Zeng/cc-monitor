@@ -2467,15 +2467,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    散文里点它们是为了说清「入参长什么样 / 哪些字段刻意不单列」。
         //    ⚠ 它们在改名前住 `crates/usage-core/src/lib.rs`，这张表按路径认键 ⇒ 随改名换住址。
         (
-            "src/common/codex-token-core/src/lib.rs",
+            "src/backend/agents/codex/token.rs",
             "reasoning_output_tokens",
             1,
         ),
-        (
-            "src/common/codex-token-core/src/lib.rs",
-            "total_token_usage",
-            2,
-        ),
+        ("src/backend/agents/codex/token.rs", "total_token_usage", 2),
         (
             // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
             "tests/backend/footprint/rows_tests.rs",
@@ -3857,11 +3853,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("src/bridge/README.md", "aggregate_remote_usage_all", 1),
-        (
-            "src/common/codex-token-core/src/lib.rs",
-            "kou_jing_singleton",
-            1,
-        ),
+        ("src/backend/agents/codex/token.rs", "kou_jing_singleton", 1),
         (
             "src/backend/control/launch_render/payload.rs",
             "usage_probe_payload",
@@ -4891,7 +4883,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔MC1 · 2026-09-24〕+2：`install_remote_ccm_helper` 改名那两行。
         ("src/bridge/README.md", 15), // 〔MIG-1 续〕列 tmux 会话那一行改写（不再点旧名）⇒ 与前一拍同数 // 〔合并 MIG-1 × 主线 862be034〕主线 13 ＋ MIG-1 本路增量 ⇒ 15（盘上现打） // 〔MIG-3a〕−1：IPC 清单 MCP 那一段整段删了（带墓碑的那句注释随之走） // 〔SH1〕+2：mcp.rs 那一行（读面改问后端）· 远端项目目录旧名那句 // 〔LOC1b〕+1：远端读会话函数（本机远端合成一条）· 〔F7c 收尾 09-24〕3 → 6（删掉的 sftp_* 命令 / 函数 / 判据名，逐处挂墓碑）· 〔RW1〕6 → 8：`atomic_write_string` 那一节 ＋ 远端删会话那道结构守卫 ·〔C4d〕README 历史那一段重写（历史清单搬进本机后端），用量那句旧线索留着 // 〔MIG-2〕11 → 13
         ("src/bridge/build.rs", 1),
-        ("src/common/codex-token-core/src/lib.rs", 1),
+        ("src/backend/agents/codex/token.rs", 1),
         // 〔BS1b 09-24〕6 → 10：派生改走 `bus-spawn` 原语，删了 SSH 那条构造器与对 `<local>` 的公共拒绝
         //   ⇒ 两块整段墓碑 ＋ 两处订正行（`cc_bus_send` 头注 · `kill_via_backend` 头注里那句旧拒绝）。
         ("src/bridge/src/backend/control/cc_bus.rs", 1), // 〔SH1 · V136〕19 → 1：驾驶舱读面迁走、整份收成两句共用说法，旧墓碑段随之删，新头注一处 // 〔C4e 批 3b〕11 → 19：−1 点杀会话发送端那条理由的一处随收掉命令删了；＋9 写面五条迁到界面，原处两块墓碑 ＋ 更早几块墓碑里「换了住址」指向的住址也走了、逐行补标 // 〔C4e 批 2〕+1：点 monitor 杀会话发送端那条读 `killed` 的理由，发送端迁到界面

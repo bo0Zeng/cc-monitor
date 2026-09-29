@@ -1,5 +1,9 @@
 //! **Codex 的 `token_count` 事件 → token 增量**的唯一映射。
 //!
+//! 〔RE · 收尾重排〕原是共享 crate `codex-token-core`；monitor 那一侧零引用、唯一消费者就在本目录
+//! （`parse.rs::last_token_delta`）⇒ 搬进后端 `agents/codex/` 成模块（codex 的格式知识住这里，S2），monitor 的依赖删了。
+//! 下面几节「这个 crate」读作「这个模块」。
+//!
 //! # 这个 crate 今天是什么
 //!
 //! 它只有一件事：把 Codex 的 token 用量子对象（`last_token_usage` / `total_token_usage`）
@@ -33,8 +37,7 @@
 //!
 //! # 依赖约束（这一条原样保留，它仍然成立）
 //!
-//! **依赖只有 `serde_json`。** backend 是 Linux-only 的静态 musl 二进制、且刻意不在
-//! monitor 的 workspace 里；一旦这里引入 tauri / tokio / 平台相关的东西，共享就破了。
+//! **依赖只有 `serde_json`。**（〔RE〕搬进后端之后「共享就破了」那半句不再适用；纯数据映射的约束照旧。）
 
 use serde_json::Value;
 
@@ -83,5 +86,5 @@ pub fn codex_delta(usage: &Value) -> CodexDelta {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/common/codex-token-core/lib_tests.rs"]
+#[path = "../../../../tests/backend/agents/codex/token_tests.rs"]
 mod tests;

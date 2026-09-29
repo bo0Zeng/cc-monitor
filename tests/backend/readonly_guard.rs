@@ -4771,16 +4771,8 @@ mod g6_dependency_signoff {
             "只开 `env-filter`。日志去向由本 crate 自己给的 writer 定（今天是标准错误）——\
              落盘那一形要另一条 crate，而本清单上没有",
         ),
-        (
-            // 🔴 〔`设计/50` 删用量 09-18〕原名 `usage-core`（装着 Claude 用量口径的累加器
-            //    ＋ Codex 那半）。用量 ② 轴退役带走了累加器那半与它两侧的消费者
-            //    ⇒ crate 劈剩 Codex 的 token 增量映射一件事，改名 `codex-token-core`。
-            //    **签字一格没松**：仍是仓内 crate、现打 0 处写面。
-            "codex-token-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "Codex `token_count` 事件 → token 增量的映射（纯数据）；仓内 crate，现打 0 处写面",
-        ),
+        // 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
+        //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
         (
             // 〔DUP2 · J19〕agent 工具名的唯一一份（会话事实的 agent 列表按它认工具名）。
             "agent-tools-core",

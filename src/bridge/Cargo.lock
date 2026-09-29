@@ -854,13 +854,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-token-core"
-version = "0.1.0"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
 name = "color"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3156,7 +3149,6 @@ dependencies = [
  "acct-core",
  "agent-tools-core",
  "branch-core",
- "codex-token-core",
  "copy-core",
  "creds-core",
  "deploy-core",

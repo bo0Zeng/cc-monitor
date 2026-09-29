@@ -20,7 +20,6 @@ members = [
     "../common/relay-route-core",
     "../common/search-core",
     "../common/shell-quote-core",
-    "../common/codex-token-core",
     "../common/copy-core",
     # 〔DUP2 · J19〕agent 的工具词表（哪些工具名算「展开 = 子会话」）—— monitor 渲染与后端会话事实共用的唯一一份。
     "../common/agent-tools-core",
@@ -123,7 +122,7 @@ sha2 = "0.10"
 # vendored 副本原地不动（`vendor/code-picture-core`，小程序经 `../bridge/vendor/…` 链它；挪家是另一件事）。
 # G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
 branch-core = { path = "../common/branch-core" }
-codex-token-core = { path = "../common/codex-token-core" }
+# 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
 # 〔DUP2 · J19〕agent 工具词表的唯一一份（claude 画像那一格 `agent_tools` 取它）。
 agent-tools-core = { path = "../common/agent-tools-core" }
 acct-core = { path = "../common/acct-core" }
