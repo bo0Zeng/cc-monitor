@@ -554,8 +554,16 @@ export function buildAliasManager(opts: {
   const rcNote = el("div", "settings-hint");
   // 〔WF1 · L · `设计/99 §2.3`〕加载这份 `$PROFILE` 的那一代 PowerShell 会不会跑它（执行策略由那台后端现问、判）；
   //   不会且不是组策略钉着 ⇒ 给标准做法的按钮，点了先确认再发。
-  const rcPolicy = el("div", "settings-hint");
-  const allowBtn = button(copyText("machineAliases.policy.allow"), "", () => void onAllow());
+  // 两个都会被 `hidden` 切：照 `uninstallBtn` 那一形直接挂类（`css-conventions` S30 ⑦ 那把尺子才认得出它们身上没有裸 display）。
+  const rcPolicy = document.createElement("div");
+  rcPolicy.className = "settings-hint";
+  rcPolicy.hidden = true;
+  const allowBtn = document.createElement("button");
+  allowBtn.type = "button";
+  allowBtn.className = "settings-btn";
+  allowBtn.textContent = copyText("machineAliases.policy.allow");
+  allowBtn.hidden = true;
+  allowBtn.addEventListener("click", () => void onAllow());
   rcBlock.append(rcStatusRow, withCcRow, rcWarn, rcPolicy, allowBtn, rcButtons, rcNote, rcLegacy, rcElsewhere);
   wrap.appendChild(rcBlock);
   // 〔AL1c〕PowerShell 那一侧还有两格不随启动文件走：握手的终端数 ＋ 自动打开 monitor（原「终端集成」）· 用户级 PATH。
