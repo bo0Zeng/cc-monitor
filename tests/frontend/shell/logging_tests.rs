@@ -219,7 +219,10 @@ fn the_backend_stderr_files_are_listed_newest_first_and_kept_apart_from_ours() {
 #[test]
 fn monitor_and_backend_logs_live_side_by_side_under_logs() {
     let root = std::path::Path::new("/d");
-    assert_eq!(monitor_log_dir(root), std::path::PathBuf::from("/d/logs/monitor"));
+    assert_eq!(
+        monitor_log_dir(root),
+        std::path::PathBuf::from("/d/logs/monitor")
+    );
     assert_eq!(
         backend_stderr_log_path(root),
         std::path::PathBuf::from("/d/logs/backend/stderr.log")

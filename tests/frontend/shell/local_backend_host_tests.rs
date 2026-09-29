@@ -4145,12 +4145,7 @@ fn hx2_a_backend_started_for_another_data_dir_is_refused_out_loud() {
         ]
     };
     assert_eq!(
-        hello_verdict(
-            &seen,
-            "b1",
-            "/h/.claude",
-            &want("/h/.cc-monitor/k.json")
-        ),
+        hello_verdict(&seen, "b1", "/h/.claude", &want("/h/.cc-monitor/k.json")),
         HelloVerdict::Ours,
         "同一份环境（外加一格不在名单里的 PATH）⇒ 该是我们的"
     );

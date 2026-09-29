@@ -374,10 +374,23 @@ fn a_block_installed_with_the_old_data_dir_is_flagged_for_reinstall() {
     let ps = std::path::Path::new("/h/p.ps1");
     let installed = "# === cc-monitor BEGIN v4 ===\nfunction __ccm_bind {\n    $ccmDir = 'C:\\Users\\u\\.claude\\claudecode-frontend'\n}\n# === cc-monitor END ===\n";
     let b = block_state(ps, installed);
-    assert!(b.present && b.outdated, "装着旧住址的那一版没被认出来：{b:?}");
-    let fresh = render_cc_code("cc", false, std::path::Path::new("C:\\Users\\u\\.cc-monitor"));
-    assert!(fresh.contains("$ccmDir = 'C:\\Users\\u\\.cc-monitor'"), "{fresh}");
-    assert!(!block_state(ps, &fresh).outdated, "重装的那一份仍被判成旧的");
+    assert!(
+        b.present && b.outdated,
+        "装着旧住址的那一版没被认出来：{b:?}"
+    );
+    let fresh = render_cc_code(
+        "cc",
+        false,
+        std::path::Path::new("C:\\Users\\u\\.cc-monitor"),
+    );
+    assert!(
+        fresh.contains("$ccmDir = 'C:\\Users\\u\\.cc-monitor'"),
+        "{fresh}"
+    );
+    assert!(
+        !block_state(ps, &fresh).outdated,
+        "重装的那一份仍被判成旧的"
+    );
 }
 
 #[test]
