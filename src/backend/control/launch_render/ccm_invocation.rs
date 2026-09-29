@@ -231,7 +231,7 @@ pub struct CliSpec<'a> {
     /// P3t（`C12`）：**本机是不是 POSIX** —— 宿主告诉 backend 的，backend 自己不问平台。
     ///
     /// `backend/` 那一半不许有平台 cfg（`backend-split` 的 C10），所以这条是**注入的数据**，
-    /// 与 `platform_fs::make_executable` 同款。缺省 `false` = **fail-closed**：
+    /// 与 `platform::fs::make_executable` 同款。缺省 `false` = **fail-closed**：
     /// 没人告诉过它就当不是 POSIX ⇒ 照旧拒 ⇒ 与本件之前的行为逐字相同。
     pub local_posix: bool,
     pub action: Action<'a>,

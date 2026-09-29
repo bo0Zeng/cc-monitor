@@ -1039,7 +1039,7 @@ fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
         &base,
         Ok(("p5a-wire", &bytes)),
         &mark,
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::ensure_private_dir,
     );
     let Resolved::Found(bin) = r.clone() else {
         panic!("夹具塌了：内嵌那份没放出来 ⇒ 本条此刻无效。实得 {r:?}");
@@ -1349,7 +1349,7 @@ fn a_directory_it_cannot_create_really_takes_the_loud_path() {
         "p2e-dial",
         b"not-a-real-backend",
         &|_| Ok(()),
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::ensure_private_dir,
     )
     .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
     let reason = extraction_failure_reason(&dir, &err);
@@ -2913,7 +2913,7 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
         &base,
         Err(said.to_string()),
         &mark,
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::ensure_private_dir,
     );
     let Resolved::Missing { reason, .. } = r else {
         panic!("取不到字节竟然 Found 了：{r:?}");

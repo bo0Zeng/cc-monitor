@@ -16,7 +16,7 @@
 //! 现在前端只交「改哪几条路径」（[`ConfigEdit`]），这里在**一把进程级锁里现读盘、逐条应用、原子替换** ——
 //! 主窗 / 设置窗 / `logging.rs` 的诊断写口都走这一个函数，谁写的键谁的值留在盘上。
 //! 〔HX2 · 4D〕两个 monitor 进程同写（Linux / macOS 今天没有单实例）也串起来了：进程内那把锁里面、现读之前，
-//! 再拿 `config.json` 所在目录的**跨进程**锁（`platform_fs::hold_dir_lock`：unix 对目录 `flock` · Windows 命名互斥量，与后端第四层同一种锁）。
+//! 再拿 `config.json` 所在目录的**跨进程**锁（`platform::fs::hold_dir_lock`：unix 对目录 `flock` · Windows 命名互斥量，与后端第四层同一种锁）。
 //! 〔墓碑 —— CFG1 那一版这里写「射程：锁是进程内的。两个 monitor 进程同写仍在锁外；丢更新的窗口缩到读与 rename 之间」。〕
 
 use crate::copy_table::copy_text;
@@ -214,7 +214,7 @@ pub(crate) fn patch_config_at(
         .ok_or_else(|| ConfigWriteError::Io(format!("no parent dir for {}", path.display())))?;
     std::fs::create_dir_all(dir)
         .map_err(|e| ConfigWriteError::Io(format!("mkdir {}: {e}", dir.display())))?;
-    let _cross = crate::platform_fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
+    let _cross = crate::platform::fs::hold_dir_lock(dir).map_err(ConfigWriteError::Io)?;
 
     // ③ 锁内现读。不存在 ⇒ 空对象；读不懂 / 根不是对象 ⇒ 不写。
     let mut root: Map<String, Value> = if path.exists() {

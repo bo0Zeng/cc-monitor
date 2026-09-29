@@ -127,8 +127,8 @@ fn place_local() -> Result<(), String> {
         &dir,
         &local_file_name(),
         bytes,
-        &crate::platform_fs::make_executable,
-        &crate::platform_fs::ensure_private_dir,
+        &crate::platform::fs::make_executable,
+        &crate::platform::fs::ensure_private_dir,
     )?;
     tracing::info!(
         "本机代码全景组件已放到 {}（{} 字节）",

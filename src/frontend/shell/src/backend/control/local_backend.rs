@@ -1082,7 +1082,7 @@ pub fn extract_embedded_to(
     build_id: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let name = local_ccm_entry_name();
@@ -1109,7 +1109,7 @@ pub fn extract_embedded_to(
             &[("tmp", &(tmp.display()).to_string()), ("e", &e.to_string())],
         )
     })?;
-    // `backend-split` 的 C10：「怎么置可执行位」是平台知识，由宿主注入（`platform_fs::make_executable`）。
+    // `backend-split` 的 C10：「怎么置可执行位」是平台知识，由宿主注入（`platform::fs::make_executable`）。
     make_executable(&tmp)?;
     let placed = std::fs::rename(&tmp, &dest).or_else(|first| {
         // 〔E2 · E-b〕Windows 上正在跑的 `ccm.exe` 删不掉、换不掉，但改得了名：挪开再上位，挪开的下次放置时收。
@@ -1151,7 +1151,7 @@ pub fn place_local_panorama(
     file: &str,
     bytes: &[u8],
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(file);
@@ -1797,7 +1797,7 @@ pub fn resolve_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Resolved {
     // 〔E2 · V28〕字节从哪来：安装包旁边那一份（读它、按它自报的身份）优先，其次这一份产物内嵌的那一份；
@@ -1885,7 +1885,7 @@ pub fn start_or_extract(
     extract_dir: &Path,
     embedded: Result<(&str, &[u8]), String>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
-    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform_fs::ensure_private_dir`）。
+    // 〔HX1 · 拍板项 4〕建落点目录（`~/.cc-monitor/bin` 一族）也是宿主知识：建的那一下就只给本人（`platform::fs::ensure_private_dir`）。
     ensure_dir: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     spawn: Arc<crate::spawn_managed::ManagedSpawn>,

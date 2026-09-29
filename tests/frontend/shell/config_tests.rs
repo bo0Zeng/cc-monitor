@@ -270,7 +270,7 @@ fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
     let dir = tmpdir("hx2-xproc");
     let file = dir.join("config.json");
     std::fs::write(&file, r#"{"userWrote":"手写的那一格"}"#).unwrap();
-    let held = crate::platform_fs::hold_dir_lock(&dir).expect("拿不到锁");
+    let held = crate::platform::fs::hold_dir_lock(&dir).expect("拿不到锁");
     let (tx, rx) = std::sync::mpsc::channel();
     let f2 = file.clone();
     let racer = std::thread::spawn(move || {
@@ -304,7 +304,7 @@ fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
     let at = guard_core::find_pinned(&prod, "pub(crate) fn patch_config_at(").expect("写口不在了");
     let body = &prod[at..];
     let body = &body[..body.find("\nfn ").unwrap_or(body.len())];
-    let lock = guard_core::find_pinned(body, "crate::platform_fs::hold_dir_lock(dir)")
+    let lock = guard_core::find_pinned(body, "crate::platform::fs::hold_dir_lock(dir)")
         .expect("写口里拿跨进程锁不是恰好一处");
     let read_at = guard_core::find_pinned(body, "std::fs::read_to_string(path)")
         .expect("写口里现读不是恰好一处");
@@ -319,7 +319,7 @@ fn hx2_the_config_writer_takes_the_cross_process_lock_before_it_reads() {
 #[test]
 fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     let mine = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/platform_fs.rs"
+        "../../../src/frontend/shell/src/platform/fs.rs"
     ));
     let theirs = guard_core::production_code(include_str!("../../../src/backend/platform/lock.rs"));
     for needle in [

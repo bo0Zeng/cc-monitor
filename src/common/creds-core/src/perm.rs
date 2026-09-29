@@ -3,7 +3,7 @@
 //!
 //! # 两个平台**同一个签名**，各自的边界各自写清（`KS5`）
 //!
-//! 形状照 `src/frontend/shell/src/platform_fs.rs::make_executable` 那个现成先例
+//! 形状照 `src/frontend/shell/src/platform/fs.rs::make_executable` 那个现成先例
 //! （Unix 置 `0o700`、Windows 文档化的无操作、**签名两边一致**、由宿主注入给平台无关的一半）。
 //!
 //! ⚠⚠ **但本模块的 Windows 那半不许照抄那个「无操作」**：
@@ -35,11 +35,11 @@
 //!
 //! # ⚠ 诚实边界：没有判据钉「平台原语只许住这里」
 //!
-//! 这条是从 `platform_fs.rs` 的**诚实边界 `10g`** 原样继承来的：
+//! 这条是从 `platform/fs.rs` 的**诚实边界 `10g`** 原样继承来的：
 //! `backend/mod.rs` 那条只扫 `backend/`，backend 的 `fallback_guard` 只扫 `platform/`，
 //! **两条都扫不到 `src/common/`** ⇒ 有人在别处再写一个平台 cfg，**不会红**。
 //! 今天靠约定。⚠ 而本 crate 是 `crates/` 这一层里**第一个**带平台 cfg 的
-//! （现打 08-27：另外 6 个 crate 平台 cfg 全树 0 处），所以这条边界比在 `platform_fs.rs` 里更该说清。
+//! （现打 08-27：另外 6 个 crate 平台 cfg 全树 0 处），所以这条边界比在 `platform/fs.rs` 里更该说清。
 
 use copy_core::copy_text;
 
@@ -175,7 +175,7 @@ pub fn probe(path: &std::path::Path) -> Protection {
 ///
 /// # 签名两边一致
 ///
-/// 与 `platform_fs.rs::make_executable` 同形：收一个路径，返回 `Result<(), String>`，
+/// 与 `platform/fs.rs::make_executable` 同形：收一个路径，返回 `Result<(), String>`，
 /// 调用方只知道「写完要让它只给本人」，不知道**这个平台上那句话怎么落**。
 #[cfg(feature = "harden")]
 pub fn make_private(p: &std::path::Path) -> Result<(), String> {
