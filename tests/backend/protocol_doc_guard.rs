@@ -336,7 +336,8 @@ mod tests {
         "reindex",
         "overview",
         "node",
-        "subgraph",
+        // 〔PANO · 主会话 09-29 签〕`subgraph` 零消费者 ⇒ 去；换成带「距根几跳」的邻域（CP1：前端不算图）。
+        "neighborhood",
         "callers",
         "callees",
         "impact",
@@ -375,34 +376,30 @@ mod tests {
         out
     }
 
-    /// 适配层 `OPS` 表里的 op 名（`("<op>", <期限>)` 那一形）。
-    fn adapter_ops(prod: &str) -> Vec<String> {
-        let at = prod
-            .find("const OPS: &[(&str, u64)] = &[")
-            .expect("适配层的 op 表改了写法 —— 本条跟着改");
-        let body = &prod[at..at + prod[at..].find("];").expect("op 表没收尾")];
-        body.lines()
-            .filter_map(|l| {
-                let rest = l.trim().strip_prefix("(\"")?;
-                Some(rest[..rest.find('"')?].to_string())
-            })
+    /// 〔PANO〕小程序自报的 op 词表：生成物 `src/frontend/ui/panorama/engine-contract.json` 的 `ops` 键
+    /// （它 == 小程序 `OPS` == `--probe` 的能力行，由小程序自己的判据钉；后端不再存 op 表）。
+    /// 运行时读（同 `panorama_locus_guard` 的取舍：编译期读会添一条跨半边）。
+    fn program_ops() -> Vec<String> {
+        let p =
+            crate::guard_support::repo_root().join("src/frontend/ui/panorama/engine-contract.json");
+        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("生成物不是 JSON");
+        v["ops"]
+            .as_object()
+            .expect("生成物没有 `ops` —— 形状改了，本条跟着改")
+            .keys()
+            .cloned()
             .collect()
     }
 
-    /// 两把抽取尺子的正控（合成夹具必须抽得出来，否则 ① 的相等断言会被一把瞎尺子喂成空）。
+    /// 抽取尺子的正控（合成夹具必须抽得出来，否则 ① 的相等断言会被一把瞎尺子喂成空）。
     #[test]
-    fn the_two_panorama_rulers_see_synthetic_samples() {
+    fn the_panorama_literal_ruler_sees_synthetic_samples() {
         assert_eq!(
             panorama_literals(
                 "x(\"panorama\"); y(\"panorama-extra\"); z(\"other\"); w(\"panorama\")"
             ),
             vec!["panorama".to_string(), "panorama-extra".to_string()]
-        );
-        assert_eq!(
-            adapter_ops(
-                "pub(crate) const OPS: &[(&str, u64)] = &[\n    (\"a\", 1),\n    (\"b_c\", X),\n];"
-            ),
-            vec!["a".to_string(), "b_c".to_string()]
         );
     }
 
@@ -416,7 +413,7 @@ mod tests {
     /// · 引擎名 `code_picture` 在协议面**仍零命中**（后端不认识引擎；插件是谁不上线）；
     /// · 全景在协议面**只以一条命令名**出现（`inbound.rs` 里含这个词的字符串字面量 == 命令名 ＋ 它的文档小节标题，
     ///   `wire.rs` 仍零命中 —— 出方向没有全景专用的帧）；
-    /// · 它的 op 词表（运行时从适配层 `control/panorama.rs` 的 `OPS` 抽）== 下面手写的
+    /// · 它的 op 词表（〔PANO〕改指向：小程序自报的那张，读生成物 `engine-contract.json`；后端不再存 op 表）== 下面手写的
     ///   **查询语义白名单**（两向相等）。加一个 op = 回来在这张白名单上签一次字。
     /// ② 禁词表**一字不动**，射程从「协议面两个文件」扩到**适配层**（op 词表与它拼的 argv 都住那里）。
     ///
@@ -476,8 +473,9 @@ mod tests {
         );
         let adapter =
             guard_core::production_code(include_str!("../../src/backend/control/panorama.rs"));
-        let mut ops = adapter_ops(&adapter);
+        let mut ops = program_ops();
         ops.sort();
+        assert!(ops.len() >= 10, "只读到 {} 个 op —— 读坏了", ops.len());
         let mut signed: Vec<String> = QUERY_SEMANTICS.iter().map(|s| s.to_string()).collect();
         signed.sort();
         assert_eq!(

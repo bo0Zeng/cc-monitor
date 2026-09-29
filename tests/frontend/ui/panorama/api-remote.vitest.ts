@@ -3,12 +3,13 @@
 // 🔴 **被判的那块没被 mock**：只 mock 了 IPC 出口（`invoke`），`api.ts` 与 `ipc/chan.ts` 本体都是真的。
 // 判法：
 //  ① 每个**读**入口经通道恰发一次 `panorama`（发给那台机器），用到的 op 集合 ＋ 写那一侧的「算」op ＋ 刷文档关联 ==
-//     后端适配层 `control/panorama.rs` 那张 `OPS` 表（两向相等，**异源**：一侧真调一遍录下来，一侧读 Rust 源码）；
+//     小程序自报的 op 表（〔PANO〕后端不再存；读生成物 `engine-contract.json`，它 == 小程序 `OPS` 由小程序判据钉。
+//     两向相等，**异源**：一侧真调一遍录下来，一侧读生成物）；每问都带上生成物里的 `shape`；
 //  ② 〔RM1d · V110〕六个**写**入口本机远端同一条：经通道恰发一次 `panorama-edit`，origin / 仓原样，
-//     op 集合 == 后端 `control/panorama_edit.rs::EDITS` 第一列（两向，异源）；要刷文档关联的那几种 == 那张表第三列为真的那几行；
+//     op 集合 == 小程序自报的写表（〔PANO〕生成物 `plans` 的键；后端不再存那张表。两向，异源）；
 //  ③ 本机仓的**读**与远端同一条（origin 是 `<local>`，op 逐个相同）；
 //  ④ 〔RM1e → MIG-3b 续〕没装 / 太旧 ⇒ **恰放一次字节、恰再问一次**；其余失败零放；放了仍说 ⇒ 如实报、不循环（原 monitor 那一跳的「问 · 放 · 再问」）；
-//  ⑤ 期限归发起方：两档长于后端给小程序的期限（加那一次探测），「哪几个 op 是建索引那一档」两边相等；
+//  ⑤ 期限归发起方：每个 op 按生成物里的档，长于后端给那一档的期限（加那一次探测）；
 //     「缺 / 旧 ⇒ 放」的码 == 后端适配层映射出来的那两个（读 Rust 源码两向）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -33,7 +34,7 @@ const READS: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
   status: (at) => api.status(at),
   overview: (at) => api.overview(at, 2000),
   node: (at) => api.node(at, "a#f"),
-  subgraph: (at) => api.subgraph(at, "a#f", 1),
+  neighborhood: (at) => api.neighborhood(at, "a#f", 1),
   callers: (at) => api.callers(at, "a#f", 1),
   callees: (at) => api.callees(at, "a#f", 1),
   impact: (at) => api.impact(at, "a#f"),
@@ -58,27 +59,13 @@ const WRITES: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
 const here = dirname(fileURLToPath(import.meta.url));
 const rust = (rel: string): string => readFileSync(resolve(here, "../../../..", rel), "utf8");
 
-/** 后端 `panorama_edit.rs::EDITS` 三列（读 Rust 源码，异源）。 */
-function backendEdits(): { ops: string[]; plans: string[]; refreshes: string[] } {
-  const src = rust("src/backend/control/panorama_edit.rs");
-  const at = src.indexOf("const EDITS: &[(&str, &str, bool)] = &[");
-  expect(at, "后端的写表改了写法 —— 本条跟着改").toBeGreaterThan(0);
-  const body = src.slice(at, src.indexOf("];", at));
-  const rows = [...body.matchAll(/^\s*\("([a-z_]+)", "([a-z_]+)", (true|false)\)/gm)];
-  return {
-    ops: rows.map((m) => m[1]).sort(),
-    plans: rows.map((m) => m[2]).sort(),
-    refreshes: rows.filter((m) => m[3] === "true").map((m) => m[1]).sort(),
-  };
-}
 
-/** 后端适配层 `OPS` 表：`(op, 期限常量名)`（读 Rust 源码，异源）。 */
-function backendOps(): [string, string][] {
-  const src = rust("src/backend/control/panorama.rs");
-  const at = src.indexOf("const OPS: &[(&str, u64)] = &[");
-  expect(at, "后端适配层的 op 表改了写法 —— 本条跟着改").toBeGreaterThan(0);
-  const body = src.slice(at, src.indexOf("];", at));
-  return [...body.matchAll(/^\s*\("([a-z_]+)", ([A-Z_]+)\)/gm)].map((m) => [m[1], m[2]]);
+/** 小程序自报的 op 表（生成物 `engine-contract.json`：op → 档；读文件，与 `api.ts` 的 import 不同路）。 */
+type Contract = { shape: string; ops: Record<string, string>; plans: Record<string, string | null> };
+function programOps(): Contract {
+  const c = JSON.parse(rust("src/frontend/ui/panorama/engine-contract.json")) as Contract;
+  expect(Object.keys(c.ops).length, "生成物没读到 op").toBeGreaterThan(10);
+  return c;
 }
 
 /** 后端适配层一个 `const NAME: u64 = <数>;` 的值。 */
@@ -127,13 +114,16 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
       expect(s.length, name).toBe(1);
       expect(s[0].origin, name).toBe("box1");
       expect(s[0].body.repo, name).toBe(name === "diagramKinds" ? null : "/srv/proj");
+      expect(s[0].body.shape, name).toBe(programOps().shape);
       ops.push(String(s[0].body.op));
     }
-    const all = backendOps().map(([op]) => op).sort();
-    expect([...ops, ...backendEdits().plans, "refresh_doc_links"].sort()).toEqual(all);
+    const all = Object.keys(programOps().ops).sort();
+    const { plans } = programOps();
+    const thens = Object.values(plans).filter((t): t is string => t !== null);
+    expect([...new Set([...ops, ...Object.keys(plans), ...thens])].sort()).toEqual(all);
   });
 
-  it("A2 写：本机远端同一条 —— 经通道恰发一次 panorama-edit，op 集合 == 后端 EDITS 第一列；要刷的那几种 == 第三列（两向）", async () => {
+  it("A2 写：本机远端同一条 —— 经通道恰发一次 panorama-edit，op 集合 == 小程序自报的写表（两向）", async () => {
     vi.mocked(invoke).mockImplementation((async (cmd: string) => (cmd === "chan_call" ? chanReply("id1") : null)) as never);
     for (const at of [REMOTE, LOCAL]) {
       const ops: string[] = [];
@@ -142,12 +132,11 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
         await call(at);
         const s = sent("panorama-edit");
         expect(s.length, name).toBe(1);
-        expect([s[0].origin, s[0].body.repo], name).toEqual([at.origin, at.path]);
+        expect([s[0].origin, s[0].body.repo, s[0].body.shape], name).toEqual([at.origin, at.path, programOps().shape]);
         ops.push(String(s[0].body.op));
       }
-      expect(ops.sort()).toEqual(backendEdits().ops);
+      expect(ops.sort()).toEqual(Object.keys(programOps().plans).sort());
     }
-    expect([...api.REFRESHES].sort()).toEqual(backendEdits().refreshes);
     vi.mocked(invoke).mockClear();
     await api.addAnnotation(REMOTE, "a.rs", null, "x", "me");
     expect(sent("panorama-edit")[0].body.args).toEqual({ file: "a.rs", symbol: null, body: "x", author: "me" });
@@ -177,7 +166,7 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
     await api.overview(REMOTE, 1234);
     await api.index(REMOTE);
     const [ov, ix] = sent("panorama");
-    expect(ov.body).toEqual({ op: "overview", repo: "/srv/proj", args: { budget: 1234 } });
+    expect(ov.body).toEqual({ op: "overview", repo: "/srv/proj", args: { budget: 1234 }, shape: programOps().shape });
     expect(ov.leftMs).toBeLessThanOrEqual(api.QUERY_BUDGET_MS);
     expect(ix.leftMs).toBeGreaterThan(api.QUERY_BUDGET_MS);
   });
@@ -286,18 +275,27 @@ describe("〔RM1e → MIG-3b 续〕没装 / 太旧 ⇒ 放字节再问一次（a
     expect(placed).toBe(0);
   });
 
-  it("⑤ 期限归发起方：两档长于后端给小程序的期限（加探测），建索引那一档的 op 两边相等；「缺 / 旧 ⇒ 放」的码 == 后端映射的那两个", () => {
+  it("⑤ 期限归发起方：每个 op 按生成物里的档，长于后端给那一档的期限（加探测）；写按每个「算」op 自己的档（＋ 写表里说的之后那一个）；「缺 / 旧 ⇒ 放」的码 == 后端映射的那两个", () => {
     const probe = backendConst("PROBE_DEADLINE_SECS");
-    const build = backendConst("BUILD_DEADLINE_SECS");
-    const query = backendConst("QUERY_DEADLINE_SECS");
-    expect(api.budgetFor("index") / 1000).toBeGreaterThan(probe + build);
-    expect(api.budgetFor("overview") / 1000).toBeGreaterThan(probe + query);
-    const theirs = backendOps()
-      .filter(([, d]) => d === "BUILD_DEADLINE_SECS")
-      .map(([op]) => op)
-      .sort();
-    expect(theirs.length).toBeGreaterThan(0);
-    expect([...api.BUILD_OPS].sort()).toEqual(theirs);
+    const secs: Record<string, number> = { long: backendConst("BUILD_DEADLINE_SECS"), quick: backendConst("QUERY_DEADLINE_SECS") };
+    const ops = Object.entries(programOps().ops);
+    expect(new Set(ops.map(([, t]) => t))).toEqual(new Set(["long", "quick"])); // 两档都在（否则下面恒真）
+    const short = ops.filter(([op, t]) => !(api.budgetFor(op) / 1000 > probe + secs[t])).map(([op]) => op);
+    expect(short).toEqual([]);
+    // 写：至多 `EDIT_ATTEMPTS` 趟「算」（按它的档）＋ 写表里说了之后要跑的那一个（按它的档）—— 逐个 op 给，不一律最坏。
+    const m = /const EDIT_ATTEMPTS: usize = (\d+);/.exec(rust("src/backend/assets/door.rs"));
+    expect(m, "后端里找不到 EDIT_ATTEMPTS").not.toBeNull();
+    const attempts = Number(m![1]);
+    const { ops: tiers, plans } = programOps();
+    const need = (op: string): number => {
+      const then = plans[op];
+      return attempts * (probe + secs[tiers[op]]) + (then ? probe + secs[tiers[then]] : 0);
+    };
+    const tight = Object.keys(plans).filter((op) => !(api.editBudgetFor(op) / 1000 > need(op)));
+    expect(tight).toEqual([]);
+    // 不刷的那几种回到「三趟查询档」那一形：上限不许比要的多出一整个建索引档。
+    const loose = Object.keys(plans).filter((op) => api.editBudgetFor(op) / 1000 > need(op) + secs.long);
+    expect(loose).toEqual([]);
     // 后端适配层 `discover::find(…)` 与 `probe::negotiate(…)` 那两条语句映射出来的码（读 Rust 源码）。
     const src = rust("src/backend/control/panorama.rs");
     const stmt = (start: string, end: string): string => {
