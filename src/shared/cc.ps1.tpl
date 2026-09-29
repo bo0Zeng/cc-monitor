@@ -1,4 +1,4 @@
-# === cc-monitor BEGIN v4 ===
+# === cc-monitor BEGIN v5 ===
 # 自动生成 — 卸载请用 cc-monitor 设置面板 [卸载]，或手动删除 BEGIN/END 之间所有内容。
 # 文档: https://github.com/bo0Zeng/cc-monitor
 

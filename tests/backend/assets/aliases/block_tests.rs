@@ -274,8 +274,8 @@ fn render_cc_code_with_function() {
     assert!(out.contains("function ccm"));
     assert!(out.contains("__ccm_bind"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。
-    assert!(out.contains("BEGIN v4"));
+    // 〔TL1 · 4C〕v2 → v3：块结尾多了接上别名文件那一行（`71 §6.1`）。〔DATA-HOME〕v4 → v5：数据目录换住址。
+    assert!(out.contains("BEGIN v5"));
     assert!(out.contains("cc-monitor END"));
 }
 
@@ -289,7 +289,7 @@ fn render_cc_code_helper_only() {
     // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
     assert!(!guard_core::contains_word(&out, "function cc"));
     assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-    assert!(out.contains("BEGIN v4"));
+    assert!(out.contains("BEGIN v5"));
 }
 
 #[test]
@@ -340,12 +340,13 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
     let cur = current_block_version().expect("模板第一行读不出版本串");
     // 〔HX2 · 4D〕v3 → v4：`__ccm_bind` 找 monitor 数据目录改走唯一出口（渲染时填，跟 `CCM_DATA_DIR`）——
     //   块内容变了就抬版本，装着 v3 的人在机器页看到「重装一次」（主会话 4D 审计 F 裁）。
+    // 〔DATA-HOME · V160〕v4 → v5：数据目录搬到 `~/.cc-monitor`，v4 块的 `$ccmDir` 是旧住址 ⇒ 装着 v4 的人也重装一次。
     assert_eq!(
-        cur, "v4",
+        cur, "v5",
         "模板版本串变了就来改这里（并想清楚：旧块的人要不要重装）"
     );
     let ps = std::path::Path::new("/h/p.ps1");
-    for old_ver in ["v2", "v3"] {
+    for old_ver in ["v2", "v3", "v4"] {
         let old = format!(
             "# === cc-monitor BEGIN {old_ver} ===\nfunction __ccm_bind {{}}\n# === cc-monitor END ===\n"
         );
@@ -363,6 +364,20 @@ fn an_older_powershell_block_is_flagged_and_a_fresh_one_is_not() {
         b.present && !b.outdated,
         "POSIX 那一对没有版本串，不该报旧：{b:?}"
     );
+}
+
+/// 〔DATA-HOME〕V160 原话「**不写搬家代码、不认老路径**」＋ 题面「已装的块由既有的「版本不同 ⇒ 需要重装」那条认出来」：
+/// 装在用户 `$PROFILE` 里的上一版块（v4）把数据目录的**旧住址**写死在 `$ccmDir` 里 ⇒ 它必须被判成旧的（界面说「重装一次」），
+/// 重装那一份指到新住址。旧块手写（异源），「新住址」手写。
+#[test]
+fn a_block_installed_with_the_old_data_dir_is_flagged_for_reinstall() {
+    let ps = std::path::Path::new("/h/p.ps1");
+    let installed = "# === cc-monitor BEGIN v4 ===\nfunction __ccm_bind {\n    $ccmDir = 'C:\\Users\\u\\.claude\\work'\n}\n# === cc-monitor END ===\n";
+    let b = block_state(ps, installed);
+    assert!(b.present && b.outdated, "装着旧住址的那一版没被认出来：{b:?}");
+    let fresh = render_cc_code("cc", false, std::path::Path::new("C:\\Users\\u\\.cc-monitor"));
+    assert!(fresh.contains("$ccmDir = 'C:\\Users\\u\\.cc-monitor'"), "{fresh}");
+    assert!(!block_state(ps, &fresh).outdated, "重装的那一份仍被判成旧的");
 }
 
 #[test]
@@ -1163,7 +1178,7 @@ fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
     // ── 反面：这一块里**只许有这一条**调用行 ─────────────────────────
     //
     // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有 `claude`
-    //   （从前是 `.claude\work` 这个路径 ＋ 一句注释；〔HX2〕路径改由渲染时填，
+    //   （从前是数据目录的旧路径 ＋ 一句注释；〔HX2〕路径改由渲染时填，
     //   渲染产物里仍带着数据目录 ＋ 那句注释）⇒ 那样写第一天就是红的，
     //   而「第一天就红的判据」的唯一出路是放宽它。⇒ 人群收成「调用行」这一形。
     let invokes: Vec<String> = out
@@ -1666,10 +1681,10 @@ fn the_alias_block_is_written_through_exactly_one_door() {
 
 /// 🔴 〔HX2 · RT1 F6〕C1：**`__ccm_bind` 找 monitor 数据目录只有一个住址**（`paths::resolve_monitor_data_dir`，跟 `CCM_DATA_DIR`）。
 ///
-/// 要求住址：`INVARIANTS §2`「monitor 自己的 data dir 永远是 `~/.claude/work/`」那一节的出口
+/// 要求住址：`INVARIANTS §2`「monitor 自己的 data dir 永远是 `~/.cc-monitor/`」那一节的出口
 /// （`paths.rs` 头注：`CCM_DATA_DIR` 只为「把这个进程整体挪到别处跑」而存在）；`第四波记录/RT1.md §8` F6（模板写死一份 ⇒ 数据目录的第二个住址）。
 /// ① 渲染出来的块里 `$ccmDir =` 恰一行、值 == 喂进去的那个目录（带单引号的路径逐字转义成 PowerShell 字面量）；
-/// ② 模板源码里零处 `work` 字面量（正控：渲染产物里用默认目录喂时数得到）；
+/// ② 模板源码里零处数据目录旧住址的字面量（正控：渲染产物里喂一个带它的目录时数得到）；
 /// ③ 装那一跳交的就是唯一出口算出来的那个（源码：`plan_install` 的 PowerShell 臂恰一处 `resolve_monitor_data_dir()`）。
 #[test]
 fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
@@ -1701,7 +1716,7 @@ fn hx2_the_bind_helper_finds_the_monitor_data_dir_through_the_one_exit() {
             .matches("work")
             .count(),
         1,
-        "正控：喂默认目录时产物里数得到那一个"
+        "正控：喂一个带它的目录时产物里数得到那一个"
     );
     let prod = guard_core::production_code(include_str!(
         "../../../../src/backend/assets/aliases/block.rs"
