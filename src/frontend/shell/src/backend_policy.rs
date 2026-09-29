@@ -42,9 +42,9 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-use crate::backend::control::inbound_client;
+use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::copy_table::copy_text;
+use crate::inbound_client;
 use crate::origin::Origin;
 use serde_json::{json, Value};
 
@@ -180,7 +180,7 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 //
 // [`record_death`] 的生产调用点该在宿主观测到它死掉的那一刻 ——
 // `local_backend_host.rs::reap_detached`（`c.wait()` 返回那一拍）与
-// `backend/control/local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
+// `local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
 // 两处**都不在本件写区** ⇒ 交回里逐字点名，由 PM 落。
 // ⇒ **本段今天证的是「判据分得开、账写得下、写不进去会出声」，证不了「它已经被调用过」。**
 // 〔K-P3b〕上面那两处后来接上了（`DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，

@@ -37,7 +37,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         2,
         "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
              登记它是为了让上面那条「多一处就红」不会被消费点噪音淹掉。\
-             ⚠ **F03 从 `src/frontend/shell/src/backend/control/tmux.rs` 搬到这里**：判定收进共享 crate，\
+             ⚠ **F03 从 `src/frontend/shell/src/tmux.rs` 搬到这里**：判定收进共享 crate，\
              monitor 与后端共用同一份（定框 C1）。本条棘轮当场红了 —— \
              **它就该红**：被测对象搬家，判据要跟着走，而不是让它悄悄少扫一处。\
              〔THIN〕共享 crate 收回后端模块（monitor 那一侧的门删了）⇒ 住址跟着换、扫描面按 extra 点名它。",

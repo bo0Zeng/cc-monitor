@@ -672,7 +672,7 @@ async function resumeTmuxCore(
  *    ⇒ 那条 `env … claude --resume …` 被当成 **prompt 提交**、写进对话历史、**不可撤销**。
  *
  *  ⇒ 分流判定**不在这里**：〔C4e〕它住 `ipc/chan-caller.ts::provablyNotSent`（`tmux-control.ts::sendInto` 调它），
- *  与 Rust 侧 `backend/control/backend_route.rs::route_call_error` 同一条规则、跨语言金样钉着两份；这里只读它的三态结局。
+ *  与 Rust 侧 `comms/inward/backend_route.rs::route_call_error` 同一条规则、跨语言金样钉着两份；这里只读它的三态结局。
  *
  *  ⚠ **`"refused"` 要 toast**（改了原来那条「绝不 toast」的纪律）：回落是用户看不出区别的，
  *  所以不该吵；而**拒绝**意味着这次就地 resume 没做成，用户必须知道 —— 否则他会以为成功了。

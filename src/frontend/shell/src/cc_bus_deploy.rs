@@ -189,5 +189,5 @@ pub async fn cc_bus_ccm_precheck() -> Result<Option<String>, String> {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/backend/control/cc_bus_deploy_tests.rs"]
+#[path = "../../../../tests/frontend/shell/cc_bus_deploy_tests.rs"]
 mod tests;

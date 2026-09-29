@@ -406,7 +406,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //    管道写满之后子进程下一次 `write(2)` 就阻塞，那会把「诊断没人看」
     //    升级成「**打印诊断会把后端挂住**」。判据看不见这个区别，写在这里。
     (
-        "src/frontend/shell/src/backend/control/local_backend.rs",
+        "src/frontend/shell/src/local_backend.rs",
         "STDERR_LOG_BUDGET_BYTES",
         256 * 1024,
         "一条被监护子进程**一生**往 monitor 滚动日志里搬的 stderr 字节数。\
@@ -418,7 +418,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     (
-        "src/frontend/shell/src/backend/control/local_backend.rs",
+        "src/frontend/shell/src/local_backend.rs",
         "STDERR_MAX_LINE_BYTES",
         8 * 1024,
         "子进程 stderr **一条**的上界（对端一个 `\\n` 都不发时，`read_until` 会一直吃内存）。\

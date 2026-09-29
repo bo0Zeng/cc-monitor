@@ -120,7 +120,7 @@ pub struct AgentProfileFacts {
 // 〔THIN〕五张工具 / 进程词表（agent 工具那一张原取自共享 crate `agent-tools-core` · 交互 · 写类 · markdown · 判活进程名）搬进后端
 //   `agents/claudecode/cards.rs`（值逐字未改）：界面不再按工具名判卡型、不再按命令名认 tmux 会话，判定只在后端。
 
-/// resume 的调用形态 —— 与 `backend/control/agent_profile_parity.rs` 那条**同一条推法**：
+/// resume 的调用形态 —— 与 `agent_profile_parity.rs` 那条**同一条推法**：
 /// 以 `--` 开头 = flag，否则 = 子命令。
 fn resume_kind_of(token: &str) -> &'static str {
     if token.starts_with("--") {

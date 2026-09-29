@@ -570,8 +570,10 @@ fn every_status_cell_measure_is_in_the_census() {
 /// 而装饰的危险不在它今天算 `true` 还是 `false`，在于**它让下一个人只要顺手改一下文档
 /// 那一格就能把它洗成「已交付」**（`K-R71` 的 `7u` 逮到的正是这一形：
 /// 空的 `observe/` ＋ 文档说「已交付」，monitor lib 1397 条一条不红）。
+/// 〔THIN〕量的是**壳根**下那一层目录：monitor 侧的 `backend` 目录没了（那一组回了壳根），「本机那种宿主」的那几层今天就是壳自己的
+/// 那几层（`platform/` 是 RE 立的那一个）。
 fn a_capability_line_has_landed(root: &Path, line: &str) -> bool {
-    layer_has_landed_at(&root.join("src/frontend/shell/src/backend").join(line))
+    layer_has_landed_at(&root.join("src/frontend/shell/src").join(line))
 }
 
 /// [`a_capability_line_has_landed`] 的**根可注入**版本。
@@ -625,9 +627,10 @@ fn the_capability_line_landing_probe_actually_bites() {
     //    量法一旦被改成恒 `false`，这一格当场红。
     //    ⚠ 刻意用 `control/` 而不是 `observe/`：`observe/` 那一格 09-12 刚被 `K-R71`
     //    按 `R29` 裁定一动过，本件一个字都不碰它。
+    // 〔THIN〕monitor 侧 `backend/control/` 那一层目录没了（那一组回了壳根）⇒ 活体换成壳里一个真住满人的目录 `chan/`。
     assert!(
-        layer_has_landed_at(&root.join("src/frontend/shell/src/backend/control")),
-        "`backend/control/` 这条线明明住满了人，量法却说它没落地 —— \
+        layer_has_landed_at(&root.join("src/frontend/shell/src/chan")),
+        "`chan/` 这个目录明明住满了人，量法却说它没落地 —— \
              那说明这份量法此刻是恒 `false`，而恒 `false` 让那两格永远说「没落地」"
     );
     // ② 目录不存在 ⇒ `false`（今天 `platform/` 与 `common/` 就在这一支）。

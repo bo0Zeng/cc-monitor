@@ -502,7 +502,7 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// 〔THIN〕从 `tests/frontend/shell/backend/control/tmux_tests.rs`〔散文墓碑〕挪来的三条：那份测试的挂载点 `tmux.rs`
+// 〔THIN〕从 `tests/frontend/shell/tmux_tests.rs`〔散文墓碑〕挪来的三条：那份测试的挂载点 `tmux.rs`
 // 随 monitor 侧的 Gate 残留删了；三条守的都是「monitor 里没有某一种 tmux 的路」，人群从一份文件扩到整棵 monitor 生产段。
 // ════════════════════════════════════════════════════════════════════════
 

@@ -235,7 +235,7 @@ async fn ask_plan_for(
     cfg: &RemoteConfig,
     carried: &[(deploy_core::Key, &str)],
 ) -> Result<Plan, String> {
-    use crate::backend::control::backend_route::{route_call_error, Routed};
+    use crate::backend_route::{route_call_error, Routed};
     let carried: Vec<serde_json::Value> = carried
         .iter()
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))

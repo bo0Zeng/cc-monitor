@@ -9,7 +9,7 @@ use super::*;
 /// 装完 `cc-spawn` 直接 `exit 2`，而部署那步一声不吭地成功了。
 #[test]
 fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
-    let spawn = include_str!("../../../../../src/shared/cc-bus/scripts/cc-spawn");
+    let spawn = include_str!("../../../src/shared/cc-bus/scripts/cc-spawn");
     let line = spawn
         .lines()
         .find(|l| l.trim_start().starts_with("for _c in "))

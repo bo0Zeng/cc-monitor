@@ -1,128 +1,61 @@
-use super::BACKEND_FILES;
+//! 要求住址：`设计/00 §2.2`「monitor 侧的 `backend/` 目录有一道宿主无关判据（禁 `AppHandle`/`State<`/`.emit(`）与一道平台无关判据」·
+//! 〔THIN〕`99 §2.3`「壳里 `src/frontend/shell/src/backend/` 九份逐份回真住址、`backend` 目录名从壳里消失」。
+//!
+//! 〔THIN〕从前本文件住 `backend/mod.rs` 的测试段（`backend_tests.rs`〔散文墓碑〕），人群是「`backend/` 目录下的全部 `.rs`」，
+//! 外加两条按目录认的登记（目录 == `BACKEND_FILES`〔散文墓碑〕两向 · 每份都住在 `control/` / `observe/` 能力线上）与一份层间方向判据
+//! （`backend_layering.rs`〔散文墓碑〕：`observe/` 早删了，只剩一条线）。目录没了 ⇒ 按目录认的三条随之退役；
+//! 宿主无关 · 平台无关两条**人群一个不少**：改成逐个点名的那一组（[`GUARDED`]），两向钉住「点名的都在」。
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn backend_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend")
+/// 从前 `backend/` 目录那一组（〔THIN〕今天都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
+/// 删了的两份（`tmux.rs` · `gate2_parity.rs`，子步 1）不在。**加一份调后端的客户端 / 宿主进来就在这里加一行。**
+const GUARDED: &[&str] = &[
+    "src/frontend/shell/src/agent_profile_parity.rs",
+    "src/frontend/shell/src/backend_control.rs",
+    "src/frontend/shell/src/cc_bus.rs",
+    "src/frontend/shell/src/frame_query.rs",
+    "src/frontend/shell/src/inbound_client.rs",
+    "src/frontend/shell/src/local_backend.rs",
+    "src/comms/inward/backend_route.rs",
+];
+
+fn repo_root() -> PathBuf {
+    crate::guard_support::repo_root()
 }
 
-// 🔴 〔步 8 · 归属 2026-09-19〕**`EXTRA_BACKEND_FILES` 整张表删了 —— 表真的空了。**
-//
-// 它当年（G2 整体设计审计）登记的只有一条：`inbound_client.rs`。那张表的头注逐字
-// 写着为什么不挪而是纳管：「挪 1183 行的文件会动到一大批 `use` 路径与 `mod` 声明，
-// 半径远大于收益 …… **先把它纳入管辖，挪不挪是另一件事**（若将来挪进 `backend/`，
-// 把这一行删掉即可）」。
-//
-// **步 8 是全仓冻结窗口** ⇒ 那个「半径太大」的前提当场消失。这一拍真挪了：
-// `src/frontend/shell/src/inbound_client.rs` → `src/frontend/shell/src/backend/control/inbound_client.rs`
-// （住 `control/` 而不是 `backend/` 根下 —— `every_file_under_backend_lives_on_a_capability_line`
-//  逐字「根下只允许 mod.rs」，而它的三个消费者全在 `control` 这条线上）。
-// ⇒ 表空了，按它自己那条 `the_extra_backend_files_are_not_ghosts`〔散文墓碑〕的逐字指示
-//   （「表空了 —— 若真的把它们都挪进了 `backend/`，**连这条一起删**；
-//     但别留一张空表假装还有人管」）**连表带判据一起删**。
-// ⚠ 扫描面**没有缩小**：它从「表外那一格」变成 `backend_files()` 正常扫到的一份
-//   （那才是这张表当初想要的终态）。用例数 −1，逐条点名在本轮报告里。
-
-/// 两道守卫共同的扫描面：`backend/` 全部 `.rs`。
-/// 返回 `(展示名, 绝对路径)`。
+/// 两道守卫共同的扫描面：`(展示名, 绝对路径)`。
 fn guarded_files() -> Vec<(String, PathBuf)> {
-    let root = backend_dir();
-    let mut out: Vec<(String, PathBuf)> = backend_files()
-        .into_iter()
-        .map(|f| {
-            let p = root.join(&f);
-            (f, p)
-        })
-        .collect();
-    out
-}
-
-/// `backend/` 下的所有 `.rs`，路径相对 `backend/`，`/` 分隔。
-///
-/// 🔴 〔步 7c 2026-09-19〕**手写递归遍历迁到共享原语** ——
-/// `scanning_guard_registry::PENDING` 那张存量清单里的一条，真的迁掉了一条。
-///
-/// 起因：`src/frontend/shell/src/backend/mod.rs` 剖分成了**两份**测试文件
-/// （`backend_tests.rs` ＋ `backend_layering.rs`），而那张清单是**按文件**数的
-/// ⇒ 一条存量变成两条，`PENDING_CEILING`（递减棘轮，**只许往下调**）会被顶破。
-/// 而 `the_pending_ratchet_never_turns_backwards` 拿 git 历史当权威，
-/// 抬上去「提交了也不会绿」。⇒ 正确出路只有一条：**真迁一个**。
-/// 这一处的语义与 `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、
-/// 返回相对路径），是纯死重。
-fn backend_files() -> Vec<String> {
-    let root = backend_dir();
-    // 明写「一份都不排除」（`设计/16 §5.4b` 纪律 4）：这里没有「摘掉我自己」这回事 ——
-    // 本文件住 `tests/frontend/shell/`，不在 `src/backend` 这棵树里。
-    let mut out: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
-        .into_iter()
-        // 〔RE〕按模块住址认：`control/backend_route.rs` 住 `src/comms/inward/`（通信层成员），模块仍在本目录的树上。
-        .map(|(p, _)| guard_core::module_address(&root, &p))
-        .collect();
-    out.sort();
-    out
-}
-
-/// ★ 抽取器自检：遍历坏掉时下面两条会零命中零失败地绿。
-#[test]
-fn the_backend_scan_actually_finds_files() {
-    let n = backend_files().len();
-    assert!(
-        n >= BACKEND_FILES.len(),
-        "只扫到 {n} 个文件，登记表有 {} 条 —— 遍历器坏了",
-        BACKEND_FILES.len()
-    );
-}
-
-/// ★ 目录内容 == 登记表。**两个方向都查**：
-/// 多的文件没写理由 ⇒ 红；登记表里写了不存在的文件 ⇒ 也红（搬走/改名忘了改表）。
-#[test]
-fn every_file_under_backend_is_registered_with_a_reason() {
-    let on_disk = backend_files();
-    let mut registered: Vec<String> = BACKEND_FILES
+    GUARDED
         .iter()
-        .map(|(f, _, _)| f.to_string())
-        .collect();
-    registered.sort();
-    assert_eq!(
-        on_disk, registered,
-        "`backend/` 的内容与登记表不一致。\n\
-             多出来的文件请在 `BACKEND_FILES` 里写明它属于哪条能力线、为什么在这里；\n\
-             登记表里多出来的条目说明有文件被搬走/改名了。"
-    );
-    for (f, _, why) in BACKEND_FILES {
-        assert!(!why.trim().is_empty(), "{f} 的理由是空的");
-    }
+        .map(|rel| (rel.to_string(), repo_root().join(rel)))
+        .collect()
 }
 
-/// ★ 每个文件都必须**住在一条能力线上** —— `backend/` 根下只允许 `mod.rs`。
-///
-/// 这条钉的是 §1.1 那条线在 monitor 侧也成立：读与控制分开，不许有「既不是读也不是写」
-/// 的第三堆。backend 侧同一条纪律由 `layering_guard` 管。
+/// 那一组的 `(绝对路径, 全文)`（别的判据借这一份人群，别各读各的）。读不到 ⇒ 空串（调用方的地板认得出）。
+pub(crate) fn guarded_sources() -> Vec<(PathBuf, String)> {
+    guarded_files()
+        .into_iter()
+        .map(|(_, p)| {
+            let s = fs::read_to_string(&p).unwrap_or_default();
+            (p, s)
+        })
+        .collect()
+}
+
+/// ★ 点名的都在（读不到的文件只会静默返回空串，下面两条会零命中地绿）。
 #[test]
-fn every_file_under_backend_lives_on_a_capability_line() {
-    for (f, line, _) in BACKEND_FILES {
-        if *f == "mod.rs" {
-            continue;
-        }
+fn every_guarded_file_exists() {
+    for (f, p) in guarded_files() {
         assert!(
-            matches!(*line, "control" | "observe"),
-            "{f} 的能力线是 {line:?} —— 只能是 control 或 observe"
-        );
-        assert!(
-            f.starts_with(&format!("{line}/")),
-            "{f} 登记为 {line} 线，却不在 `{line}/` 目录下"
+            p.is_file(),
+            "点名的 {f} 不在了 —— 搬走 / 改名就改 `GUARDED`，删了就摘掉那一行"
         );
     }
-    for f in backend_files() {
-        assert!(
-            f == "mod.rs" || f.starts_with("control/") || f.starts_with("observe/"),
-            "`backend/` 根下只允许 mod.rs，`{f}` 既不在 control/ 也不在 observe/ —— \
-                 一个既不是读也不是写的第三堆，就是边界开始溶解的样子"
-        );
-    }
+    assert!(Path::new(&repo_root()).is_dir());
 }
 
-/// ★ **宿主无关**：`backend/` 的生产段里不许出现 GUI 宿主的把手。
+/// ★ **宿主无关**：那一组的生产段里不许出现 GUI 宿主的把手。
 ///
 /// 这条是「一份代码两种宿主」在今天**唯一可机检的形态**：一旦这里的代码抓了窗口把手
 /// 或自己 emit 事件，它就只能跑在 GUI 进程里 —— 而 U8a-2c / U9b 的前提正是它能被
@@ -208,7 +141,7 @@ fn platform_needles() -> Vec<String> {
 /// ② **「已收敛」不是散文** —— 第四列是那句话的机检锚点，锚点没了就红。
 #[allow(clippy::type_complexity)]
 const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[(
-    "control/local_backend.rs",
+    "src/frontend/shell/src/local_backend.rs",
     "env::consts::",
     "`EXE_SUFFIX` 是**没有 cfg 的平台原语**（Windows `.exe` / 别处空串）。         它没被搬进 `platform/`，但**平台差异已经收敛成一个注入参数**：         `resolve_beside_this_exe` 把它读出来喂给 `resolve_with`，         而 `resolve_with`（逻辑那半）与平台无关、在任何平台上都能测。         ⇒ 出路②「建 backend/platform/」为它一个常量建一层目录不划算；走出路③，登记在此。",
     // ⚠ 锚点要**不含糊**：第一版写的是 `"exe_suffix: &str"`，而同文件的
@@ -306,7 +239,7 @@ fn the_backend_half_stays_platform_agnostic() {
 /// 没有这条，例外表就是豁免清单：写一行理由，那个文件里就能随便加平台代码。
 #[test]
 fn every_platform_exception_is_a_single_point_and_its_claim_is_anchored() {
-    let root = backend_dir();
+    let root = repo_root();
     for (file, needle, why, anchor) in PLATFORM_EXCEPTIONS {
         let raw = fs::read_to_string(root.join(file))
             .unwrap_or_else(|e| panic!("例外表里的 {file} 读不到：{e} —— 搬走了就把这条删掉"));
@@ -352,7 +285,7 @@ fn every_exception_names_a_needle_that_is_actually_scanned_for() {
 /// 例外表不许长草：登记的形态必须**真的还在命中**（否则它是条死规则）。
 #[test]
 fn the_platform_exception_table_is_not_dead_wood() {
-    let root = backend_dir();
+    let root = repo_root();
     for (file, needle, ..) in PLATFORM_EXCEPTIONS {
         let raw = fs::read_to_string(root.join(file)).unwrap_or_default();
         let prod = guard_core::production_code(&raw);

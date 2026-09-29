@@ -73,8 +73,8 @@ PROBE_SRC = (
 
 
 def in_scope(rel: str) -> bool:
-    """相对仓根的住址落在两棵树里。⚠ 不能用「含 `/src/backend/`」判：monitor crate 里有个 `src/frontend/shell/src/backend/`
-    （界面进程的后端调用层，CP2b 的射程）。普查对仓外的临时树（探针）给的是绝对路径 ⇒ 取 `/src/` 之后那一截再判。"""
+    """相对仓根的住址落在两棵树里。⚠ 不能用「含 `/src/backend/`」判：monitor crate 的后端调用层（CP2b 的射程）曾住 `src/frontend/shell/src/backend/`，
+    按前缀判才不随目录名漂。普查对仓外的临时树（探针）给的是绝对路径 ⇒ 取 `/src/` 之后那一截再判。"""
     if rel.startswith("/") and "/src/" in rel:
         rel = "src/" + rel.split("/src/", 1)[1]
     return rel.startswith(SCOPE)

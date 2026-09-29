@@ -18,9 +18,9 @@
 //!
 //! 🔴 `D11`：那台机器的后端没连上 ⇒ **明确报错，不回落**到直写。
 
-use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-use crate::backend::control::inbound_client::client_for;
+use crate::backend_route::{no_channel, route_call_error, Routed};
 use crate::copy_table::copy_text;
+use crate::inbound_client::client_for;
 
 /// 一次 `files-peek` 读回来的。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +107,7 @@ impl BackendDoor {
         args: serde_json::Value,
     ) -> Result<serde_json::Value, Refused> {
         let wire = self.origin.as_wire_str();
-        let who = crate::backend::control::cc_bus::machine_label(wire);
+        let who = crate::cc_bus::machine_label(wire);
         let Some(client) = client_for(wire) else {
             let why = match no_channel(wire) {
                 Routed::NoChannel(s) | Routed::Refused(s) => s,
@@ -119,17 +119,15 @@ impl BackendDoor {
             )));
         };
         if !client.accepts(cmd) {
-            return Err(Refused::Other(
-                crate::backend::control::cc_bus::describe_backend_too_old_for(
-                    wire,
-                    cmd,
-                    &copy_text("rsUserFiles.ask.notDone", &[]),
-                ),
-            ));
+            return Err(Refused::Other(crate::cc_bus::describe_backend_too_old_for(
+                wire,
+                cmd,
+                &copy_text("rsUserFiles.ask.notDone", &[]),
+            )));
         }
         // 请求一行装不装得下：后端一行上限 1 MiB（`inbound::MAX_LINE_BYTES`，本侧的镜像是
         // [`REQUEST_LINE_CAP`]）。装不下当场说清，不发 —— 发了只会换来一句 `line_too_long`。
-        let line = crate::backend::control::inbound_client::encode_request("0", cmd, &args);
+        let line = crate::inbound_client::encode_request("0", cmd, &args);
         if line.len() > REQUEST_LINE_CAP {
             return Err(Refused::Other(copy_text(
                 "rsUserFiles.ask.tooBig",
@@ -202,7 +200,7 @@ impl BackendDoor {
 
 impl Door for BackendDoor {
     fn machine(&self) -> String {
-        crate::backend::control::cc_bus::machine_label(self.origin.as_wire_str())
+        crate::cc_bus::machine_label(self.origin.as_wire_str())
     }
 
     async fn home(&self) -> Result<String, String> {

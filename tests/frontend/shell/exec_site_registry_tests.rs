@@ -65,7 +65,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    `remote_history.rs / stream_read_remote_session`（`--read-session`）与
     //    `ssh_source.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
-    //    （改走长连接的 `history-read` / `history-tail`，`backend::control::frame_query`）
+    //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
     // 🔴 〔C4d · 第四波 4B〕**逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
     //    它的放行表 C4c 起是空的，主会话 09-25 裁删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。

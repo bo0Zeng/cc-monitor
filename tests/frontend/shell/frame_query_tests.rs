@@ -959,15 +959,16 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
             let (file, _) = site.split_once("::").unwrap();
             let src =
                 std::fs::read_to_string(crate::guard_support::crate_src_root().join(file)).unwrap();
-            guard_core::production_code(&src).contains(
-                "register(\n        crate::backend::control::inbound_client::LOCAL_ORIGIN",
-            ) || guard_core::production_code(&src).contains(
-                "register(\n            crate::backend::control::inbound_client::LOCAL_ORIGIN",
-            )
+            // 〔THIN〕路径短了一截，rustfmt 可能把实参折回同一行 ⇒ 去掉空白再认。
+            let flat: String = guard_core::production_code(&src)
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            flat.contains("register(crate::inbound_client::LOCAL_ORIGIN")
         })
         .collect();
     let want: std::collections::BTreeSet<String> = [
-        "backend/control/local_backend.rs::local_stdio_consumer",
+        "local_backend.rs::local_stdio_consumer",
         "local_backend_host.rs::attach_stream",
     ]
     .iter()
@@ -993,8 +994,8 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         beside,
         [
             // 起本机常驻后端 / 自释放内嵌那份之前先看旁边有没有（起它，不是问它）。
-            "backend/control/local_backend.rs::resolve_or_extract",
-            "backend/control/local_backend.rs::start_if_present",
+            "local_backend.rs::resolve_or_extract",
+            "local_backend.rs::start_if_present",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -1003,9 +1004,8 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
     );
     // ④ 给终端窗口导 `CCM_BACKEND_BIN` 的那一格（WIN1 报备的同病）：两处调用都交**正在跑的那一份**。
     //    两向：`backend_bin_env_for_window(` 的生产调用点 == 实参是 `running_backend_bin()` 的那几处。
-    let launch = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/launch.rs"
-    ));
+    let launch =
+        guard_core::production_code(include_str!("../../../src/frontend/shell/src/launch.rs"));
     let calls = launch.matches("backend_bin_env_for_window(").count();
     let running = launch
         .matches("backend_bin_env_for_window(\n        crate::local_backend_host::running_backend_bin(),")
@@ -1030,7 +1030,7 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
 //  「**造**期限的那一手住调用方」。设计与读数：`调研/第四波记录/DL1.md §2`。
 // ════════════════════════════════════════════════════════════════════════════
 
-use crate::backend::control::inbound_client::{park, BackendHello, InboundClient};
+use crate::inbound_client::{park, BackendHello, InboundClient};
 use tokio::io::AsyncBufReadExt;
 
 /// 一个真 `InboundClient` 接一根内存双工管子，登记在全局表里一个**只有本用例用**的 origin 名下；
@@ -1138,7 +1138,7 @@ async fn an_expired_deadline_sends_nothing() {
 #[test]
 fn this_module_uses_the_deadline_it_is_given_and_never_makes_one() {
     let prod = guard_core::strip_comment_lines(&guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/frame_query.rs"
+        "../../../src/frontend/shell/src/frame_query.rs"
     )));
     let adds = |code: &str| code.matches("Instant::now() +").count();
     // 字段是私有的 ⇒ 结构体字面量只可能写在本文件里；`until:` 恰好两处 = 字段定义一处 ＋ 构造一处。
@@ -1286,7 +1286,7 @@ fn paged_jobs_make_their_deadline_before_the_first_page() {
     // `(源码, 函数头, 翻页循环的起头)`：循环起头取各自生产代码里那一行的原文。
     // 〔MOD〕历史浏览器读整份那一件（`history·rs` 那个 `stream_read_session_jsonl`〔散文墓碑〕）进了界面（期限在 `src/frontend/ui/record-reads.ts` 那一手造）。
     let cases: [(&str, &str, &str); 1] = [(
-        include_str!("../../../../../src/frontend/shell/src/ssh_source.rs"),
+        include_str!("../../../src/frontend/shell/src/ssh_source.rs"),
         "async fn fetch_snapshot(",
         "'read: for ",
     )];
@@ -1341,10 +1341,9 @@ fn the_read_budget_grows_with_the_bytes_from_one_page_up() {
 /// 经 [`row_of`] 读得懂：可计行三条、末端是原始字节、不进界面的那条没有成品、`cwd` 与成品原样转交。
 #[test]
 fn the_snapshot_rows_of_the_golden_decode_through_row_of() {
-    let golden: Value = serde_json::from_str(include_str!(
-        "../../../../__fixtures__/record-reads.golden.json"
-    ))
-    .expect("金样不是合法 JSON");
+    let golden: Value =
+        serde_json::from_str(include_str!("../../__fixtures__/record-reads.golden.json"))
+            .expect("金样不是合法 JSON");
     let rows: Vec<Row> = golden["history-read"]["rows"]
         .as_array()
         .expect("金样里没有 rows")

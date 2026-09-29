@@ -716,7 +716,7 @@ fn the_landing_holds_the_backend_bytes_and_nothing_else_is_put_there() {
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1b-sftp-loopback.py --monitor 带环境变量来跑"]
 async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
     use futures::StreamExt;
-    let _local = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _local = crate::inbound_client::local_origin_test_lock();
     let raw = std::env::var("SR1B_LOOPBACK").expect("没有 SR1B_LOOPBACK —— 这条只该由读数脚本来跑");
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     let s = |k: &str| v[k].as_str().unwrap().to_string();
@@ -733,9 +733,7 @@ async fn sr1b_loopback_deploy_and_transfer_through_the_resident_backend() {
         .spawn()
         .expect("起不了后端");
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    std::thread::spawn(move || {
-        crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
-    });
+    std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
     // 〔E2〕落点是固定的 `~/.cc-monitor/bin/ccm`（SFTP 那一侧家目录相对；台架的 sshd 要把 shell 的 `HOME` 也设成 `rhome`，
     //   身份扫描那一发走 shell、读的是 `"$HOME"/.cc-monitor/bin/ccm`）。
     let backend_path = format!("{rhome}/{LANDING_REL}");

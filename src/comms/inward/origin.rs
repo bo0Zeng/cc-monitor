@@ -103,7 +103,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// 本机那台机器的哨兵值。
 ///
 /// 🔴 **这是全仓第三处写这个字面量，而且是刻意的** —— 另两处是
-/// `backend::control::inbound_client::LOCAL_ORIGIN`（Rust）与 `src/frontend/ui/backend-policy.ts`（TS）。
+/// `inbound_client::LOCAL_ORIGIN`（Rust）与 `src/frontend/ui/backend-policy.ts`（TS）。
 /// 三处由判据两向钉住（`the_sentinel_agrees_with_the_two_existing_homes`）：
 /// 它们必须逐字节相同，而**不是**由本文件去替换那两处 —— 替换要动 46+33 处签名，
 /// 那是分批的活（见头注射程）。本常量在这里的作用是让 `Origin` 自己

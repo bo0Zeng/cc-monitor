@@ -61,7 +61,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //   出列：列会话的解析整族搬进后端，格式串只剩后端一个家，那条对拍与那个宏随之删了。
     (
         "monitor→backend",
-        "tests/frontend/shell/backend/control/backend_kill_tests.rs",
+        "tests/frontend/shell/backend_kill_tests.rs",
         "src/backend/control/kill.rs",
         "创建路径不许铸出后端 kill 形状门拒的名字：字符集的来源必须从后端 `parse_name` 现抠 \
          （本侧手抄一份就成了两侧同源的恒等）。〔C4e〕原理由「拒绝文案两侧逐字同形」随 monitor 的杀会话发送端迁到界面退役；\
@@ -89,7 +89,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "backend→monitor",
         "tests/backend/footprint/registry_tests.rs",
-        "src/frontend/shell/src/backend/control/local_backend.rs",
+        "src/frontend/shell/src/local_backend.rs",
         "〔MIG-3b 续〕申报的本机 `ccm` 落点末段要盖得住 monitor 真放下去的那个名字（`CCM_ENTRY_WORD` ＋ 可执行后缀），\
          词住 monitor（本机那份由它释放）⇒ 读它的源码现抠（本侧抄一份就成了两侧同源的恒等）",
     ),
@@ -153,7 +153,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→backend",
-        "tests/frontend/shell/backend/control/inbound_client_tests.rs",
+        "tests/frontend/shell/inbound_client_tests.rs",
         "src/backend/stream/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
@@ -172,7 +172,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
-    // 〔MIG-2 · `99 §2.1 ⑬`〕载荷内核搬进后端：原先 `tests/frontend/shell/backend/control/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
+    // 〔MIG-2 · `99 §2.1 ⑬`〕载荷内核搬进后端：原先 `tests/frontend/shell/payload_tests.rs → identity_tag.rs`（令牌变量名双写点）
     //   与 `tests/frontend/shell/history_tests.rs → ccm/argv.rs · ccm/plan.rs`（本机接回那一句真读得懂）三条边成了后端 crate 内部的读，摘了；
     //   接回那一句的牙换成 `launch_render/launch_cli_parity_tests.rs::every_rendered_ccm_line_is_accepted_by_the_ccm_argv`。
     (

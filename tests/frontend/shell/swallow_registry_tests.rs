@@ -148,14 +148,14 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", 5, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", 2, Why::Reap, "Windows 句柄 / 内存释放"),
     // 〔SH1 · V136〕`cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
-    ("src/frontend/shell/src/backend/control/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
-    ("src/frontend/shell/src/backend/control/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
-    ("src/frontend/shell/src/backend/control/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),
+    ("src/frontend/shell/src/inbound_client.rs", "let _ = w.shutdown().await;", 1, Why::DeadLink, ""),
+    ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", 3, Why::Reap, ""),
+    ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", 1, Why::Reap, ""),
     // 〔E2〕3 → 2：逐字节副本那一处删了。
-    ("src/frontend/shell/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 2, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
+    ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", 2, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     // 〔E2〕1 → 2：+1 收换版时挪开的旧 `ccm`（`.old`，Windows 上正在跑的删不掉）；删不掉下次放置时再清。
-    ("src/frontend/shell/src/backend/control/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
-    ("src/frontend/shell/src/backend/control/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
+    ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(ent.path());", 2, Why::CleanupAfterFailure, "清过期的释放半成品（`STALE_PARTIAL_AGE`）· 换版时挪开的旧 `ccm`；删不掉下次再清"),
+    ("src/frontend/shell/src/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
     // 〔OSA · V156〕`launch_render/payload.rs::render_env_ops` 那四行 `let _ = write!(out, "export …")` 摘了：
     //   `export` / `unset` 的写法搬进 `platform::shell::posix`，那里返回 `String`，调用处 `push_str`，不再有吞。
     ("src/frontend/shell/src/bind.rs", "let _ = CloseHandle(handle);", 2, Why::Reap, "Windows 句柄 / 内存释放"),

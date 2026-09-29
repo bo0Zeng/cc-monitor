@@ -58,7 +58,7 @@ fn client_on_duplex(
 /// 照仓里现成的跨语言对拍形状写（`payload.rs` 的 `REFUSE_TAG` 那条 / `launch.rs` 的
 /// POSIX marker 那条）：`include_str!` 读前端那份、抠出字面量、逐字比。
 fn the_local_origin_is_the_same_string_on_both_sides() {
-    let ts = include_str!("../../../../../src/frontend/ui/backend-policy.ts");
+    let ts = include_str!("../../../src/frontend/ui/backend-policy.ts");
     let line = ts
         .lines()
         .find(|l| l.trim_start().starts_with("export const LOCAL_ORIGIN"))
@@ -94,8 +94,7 @@ fn the_local_origin_is_the_same_string_on_both_sides() {
 /// 所以只扫本文件不是「取样」，是把全部可能的构造点都覆盖了。
 /// （不另加一条「别的文件不许出现 `InboundClient {`」——那条恒绿，铁律 16 不许留。）
 fn the_only_way_to_build_an_inbound_client_is_into_client() {
-    let src =
-        include_str!("../../../../../src/frontend/shell/src/backend/control/inbound_client.rs");
+    let src = include_str!("../../../src/frontend/shell/src/inbound_client.rs");
     // ⚠ 边界**不能**自己手搓。第一版取「第一个 `#[cfg(test)]`」—— 而 `park()` 本身就挂着
     // 那个属性、且住在 `into_client` **之前** ⇒ 那样切会把构造点整个切掉，判据扫了个空
     // （人群自检当场逮到；没有自检它会绿着挂在这里）。第二版改扫 `mod tests` 的位置，
@@ -169,7 +168,7 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
 #[test]
 fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
     let prod = guard_core::production_code(include_str!(
-        "../../../../../src/frontend/shell/src/backend/control/inbound_client.rs"
+        "../../../src/frontend/shell/src/inbound_client.rs"
     ));
 
     // 取某个 `impl` 块（从签名行到下一个顶格行）里的 `pub fn` 名。
@@ -300,7 +299,7 @@ fn the_hello_witness_can_only_come_from_a_hello_frame() {
 /// 而生产里一条命令都发不出去。同 `removal_cause_wire_literal_stays_in_sync`〔散文墓碑〕 的思路。
 #[test]
 fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
-    const SUITE: &str = include_str!("../../../../e2e/inbound-backend-frames.sh");
+    const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
     let key = "INBOUND_PING_LINE='";
     let at = SUITE
         .find(key)
@@ -368,7 +367,7 @@ fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
 /// 而发送那一侧的键名一改，e2e 会继续全绿而生产里一条命令都发不出去。
 #[test]
 fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
-    const SUITE: &str = include_str!("../../../../e2e/inbound-backend-frames.sh");
+    const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
     let key = "INBOUND_SEND_INTO_LINE='";
     let at = SUITE
         .find(key)
@@ -385,10 +384,9 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
     //   里 `launch` 的请求样例（TS 那侧逐字断言它发的就是这一份）。本格比：e2e 那一行的 `args` 键集合 == 金样那一份，
     //   mode 是 `send-into`，且信封是 monitor 那一跳会产出的那一行（`encode_request` 重编一遍逐字节相等）。
     let line: serde_json::Value = serde_json::from_str(literal).expect("e2e 那一行不是 JSON");
-    let golden: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../__fixtures__/tmux-control.golden.json"
-    ))
-    .expect("金样读不出来");
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/tmux-control.golden.json"))
+            .expect("金样读不出来");
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v
             .as_object()
@@ -420,8 +418,8 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
 /// 加一条新命令时 e2e 不会红 —— 只是**悄悄漏测**，而 e2e 恰恰是唯一跑真进程的那一层。
 #[test]
 fn the_e2e_command_list_matches_the_backend_command_table() {
-    const SUITE: &str = include_str!("../../../../e2e/inbound-backend-frames.sh");
-    const BACKEND_INBOUND: &str = include_str!("../../../../../src/backend/stream/inbound.rs");
+    const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
+    const BACKEND_INBOUND: &str = include_str!("../../../src/backend/stream/inbound.rs");
 
     // backend 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`
     let i = BACKEND_INBOUND
@@ -1002,7 +1000,7 @@ fn unregister_never_removes_someone_elses_client() {
 // ── P28：给这条源码扫描型守卫立**负对照** ──
 //
 // 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 被扫的 `src/frontend/shell/src/backend/control/inbound_client.rs` 今天 649 行，第一个 `#[cfg(test)]` 在 **192** 行
+// 被扫的 `src/frontend/shell/src/inbound_client.rs` 今天 649 行，第一个 `#[cfg(test)]` 在 **192** 行
 // ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 191 行，
 // 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
 //
@@ -1025,7 +1023,7 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
     //    `assert_stripper_keeps` 当场判成「失去意义」（它正是为此而红，不是静默放过）。
     guard_core::assert_stripper_keeps(
         "inbound_client_tests",
-        include_str!("../../../../../src/frontend/shell/src/backend/control/inbound_client.rs"),
+        include_str!("../../../src/frontend/shell/src/inbound_client.rs"),
         &["impl<W> ParkedWriter<W>", "pub fn into_client("],
     );
 }

@@ -409,10 +409,7 @@ fn the_pure_router_verdict_has_teeth() {
     );
     for (bad, what) in [
         ("let r = route_call_error(&e, f);\n", "route_call_error"),
-        (
-            "use crate::backend::control::inbound_client::CallError;\n",
-            "inbound_client",
-        ),
+        ("use crate::inbound_client::CallError;\n", "inbound_client"),
         ("fn f(c: Arc<InboundClient>) {}\n", "InboundClient"),
         ("let c = client_for(&o);\n", "client_for"),
         ("let l = layer_call_error(&e, 1);\n", "layer_call_error"),

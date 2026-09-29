@@ -545,7 +545,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     );
 
     // ② stem 与 Rust 侧的 `LOCAL_BACKEND_STEM` 必须是同一个（同一个名字不许两侧各写一份，定框 §4）。
-    let stem = crate::backend::control::local_backend::LOCAL_BACKEND_STEM;
+    let stem = crate::local_backend::LOCAL_BACKEND_STEM;
     assert!(
         patch.contains(&format!("binaries/{stem}")),
         "补丁配置里的本机后端路径与 Rust 侧的 `LOCAL_BACKEND_STEM`（{stem:?}）对不上 —— \n\

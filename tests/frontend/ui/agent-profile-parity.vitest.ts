@@ -89,7 +89,7 @@ import {
 import { stripComments } from "../../test-support/strip-comments";
 
 const REPO = resolve(__dirname, "../../..");
-const GOLDEN = "src/frontend/shell/src/backend/control/fixtures/agent-profile-golden.tsv";
+const GOLDEN = "tests/__fixtures__/agent-profile-golden.tsv";
 // 🔴 〔`K-R48` 第二拍 2026-09-11〕`shared/ccm` 那个 bash 脚本删了
 // （〔用@09-11 `K33`〕「后端只有一个…**不要有什么 bash 脚本**」），
 // per-agent 适配表搬进了后端本体。**三写点还是三个，第二份换了语言与住址。**

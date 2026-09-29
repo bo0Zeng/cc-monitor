@@ -494,7 +494,7 @@ fn the_two_local_launch_commands_are_seen_as_async_commands() {
     for cmd in [
         // 〔MIG-2〕本机起会话的计划与渲染搬进本机后端，monitor 那一跳只剩开终端窗口（阻塞那一截进 `spawn_blocking`）。
         "launch.rs::open_local_terminal",
-        "backend/control/backend_control.rs::backend_start",
+        "backend_control.rs::backend_start",
     ] {
         assert!(
             a.async_cmds.contains(cmd) && !a.sync_cmds.contains(cmd),

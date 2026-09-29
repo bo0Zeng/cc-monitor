@@ -6,7 +6,7 @@
 //! 本 crate 只判、不说：句子归调用处（同后端 `control/gate_rules.rs::TmuxNameIssue` 的先例）。
 //!
 //! 〔RE · 第四波 D 段〕**两个消费者**（`设计/00 §1.2` 共享 crate 那张表）：后端生产（上游选择装表 `accounts/upstream_select/table.rs` ·
-//! 中转 `src/comms/outward/upstream.rs`）；monitor 只经生成物（`tests/frontend/shell/backend/control/payload_judgment_rules.rs`
+//! 中转 `src/comms/outward/upstream.rs`）；monitor 只经生成物（`tests/frontend/shell/payload_judgment_rules.rs`
 //! 现生成 `judgment-rules.ts` 的 J9 那段），monitor 生产代码零引用（依赖在 `[dev-dependencies]`）。
 
 /// 认得的两种协议与「走不走 TLS」。**闭集只有这一个住址**（报错与生成物都从这里派生）。
