@@ -38,6 +38,13 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」
           ★ 三条策略为什么是这三格：探针绝不该在用户桌面上闪窗口；`-lic` 起出来的整棵树超时时要一起收（只杀 `bash` 漏得掉用户 rc 起的东西）；有用的字节只在 stdout 上。",
      "Hidden · JobKillOnClose · Null"),
+    // ── 〔WF1 · `99 §2.2 ㉔`〕Windows 那一形的「你 PATH 上那个 `ccm` 是谁」。
+    ("ccm_probe.rs", "probe_via_fresh_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <现拼 PATH 的常量串>` ＋ `powershell.exe -NonInteractive -Command <常量探测串>`（带那份 PATH、照常加载 profile）",
+     "同 `probe_with` 那一行问的是「终端里敲 `ccm` 走到哪」，Windows 上的终端是 PowerShell ⇒ 非起一个加载 profile 的 PowerShell 不可（profile 里的函数 / 别名与 PATH 一样决定走到哪）。\
+          第一跳只读注册表里机器级 ＋ 用户级 PATH（新开终端拿到的是这一份，本进程继承来的可能是改之前的），第二跳带着它问 `Get-Command ccm` ＋ 名片；\
+          两段脚本都是常量（`FRESH_PATH_PS` · `CCM_PROBE_PS`），零插值、不吃用户输入；一个字节都不写
+          ★ 三条策略为什么是这三格：同 `probe_with`：不闪窗口；超时收整棵（profile 里起了什么不知道）；有用的字节只在 stdout 上。",
+     "Hidden · JobKillOnClose · Null"),
     // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
     ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
      "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\
@@ -85,19 +92,21 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
     // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
     // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
+    // 〔WF1 · K〕那个 .NET 调用按 `REG_SZ` 写、读回展开值（`%VAR%` 被冻成字面）⇒ 生成的那段改在 PowerShell 里按原类型写注册表、
+    // 广播自己做（`profile_installer.rs::SETTING_CHANGE_BROADCAST`）；仍是这一跳、这一段生成的字节，写点仍是加 / 撤两处。
     //
     // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
     // `<脚本>` **只可能是 `profile_installer` 那三个 `render_*` 函数的输出**
     // （探 / 加 / 撤），**不吃任何用户输入** —— 里面唯一的变量是 `tool_registry` 申报的
     // 那个目录。同文件的 `the_generated_path_command_edits_only_the_user_scope_and_never_via_setx`
-    // 在数「生产段起进程恰好一处、写环境变量恰好两处」，别读成「这里能跑任意命令」。
+    // 在数「生产段起进程恰好一处、写用户级 PATH 恰好两处」，别读成「这里能跑任意命令」。
     ("profile_installer.rs", "run_user_path_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <我们自己生成的那段>`",
      "`R85` 用户逐字「应当让用户手动点击加，也能管理删除」⇒ **点击即执行是允许的**（`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定）。\
           必须起进程的理由是**那一档只有 Windows 的用户级环境块里有**，而 Rust 侧够得着它的另一条路（直接写注册表）会造出第二份 PATH 编辑实现、并把 `WM_SETTINGCHANGE` 广播的责任揽到自己身上 —— 两条都被 `R88` 否掉了。\
           ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
           ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
      "Hidden · JobKillOnClose · Captured"),
-    // 〔MIG-3a〕`dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_readonly`，〔OSA〕目录模块，后端 `readonly_guard::spawn_registry` 登记）。
+    // 〔MIG-3a〕`dialect.rs::ask_get_alias` 那一行（从前住 monitor 的方言模块）随方言进了那台后端（`platform/shell/mod.rs::powershell_command`，〔OSA〕目录模块，后端 `readonly_guard::spawn_registry` 登记）。
     ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
      "只探测「本机有没有 ssh」，不带用户参数
           ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",

@@ -89,6 +89,20 @@ const SITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "ccm_probe.rs",
+        "probe_via_fresh_powershell",
+        "spawn_managed_cmd",
+        "〔WF1 · ㉔〕Windows 那一形的「终端里敲 `ccm` 走到哪」，两跳各造一个：`powershell.exe -NoProfile` 现拼 PATH ·\
+         带那份 PATH（`env`）照常加载 profile 的 `powershell.exe` 问探测串；stdin null、stdout piped 同 `probe_with`。\
+         出口只回答三条策略 ⇒ `Command` 由这里装好再递进去。（这一行记第一跳。）",
+    ),
+    (
+        "ccm_probe.rs",
+        "probe_via_fresh_powershell",
+        "spawn_managed_cmd",
+        "同上一行的第二跳：带现拼的 PATH、照常加载 profile 的那一个（`PATH` 与 argv 都是本处特有的）。",
+    ),
+    (
+        "ccm_probe.rs",
         "probe_binary_uncached",
         "spawn_managed_cmd",
         "与上一行**共用同一段等待与解析**（`probe_spawned`），差的只有「怎么起」：\

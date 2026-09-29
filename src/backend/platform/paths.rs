@@ -161,3 +161,17 @@ pub(crate) fn join_under(home: &str, rel: &str) -> String {
     }
     out
 }
+
+/// 〔WF1 · F · `第四波记录/WIN3.md §2` F〕**这台后端的家目录只在这里答**：`HOME`（非空），没有再退 `USERPROFILE`（非空，Windows 的那一格）；
+/// 都没有 ⇒ `None`（调用方明说，不猜一个路径）。判据 `shell_home_guard.rs::the_home_directory_is_read_in_one_place`。
+pub(crate) fn home_dir() -> Option<PathBuf> {
+    home_dir_from(&|k| std::env::var_os(k))
+}
+
+/// 同上，环境由 `get` 答（判据喂夹具、不改进程环境的那几个调用方用）。
+pub(crate) fn home_dir_from(get: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+    let pick = |k: &str| get(k).filter(|v| !v.is_empty());
+    pick("HOME")
+        .or_else(|| pick("USERPROFILE"))
+        .map(PathBuf::from)
+}

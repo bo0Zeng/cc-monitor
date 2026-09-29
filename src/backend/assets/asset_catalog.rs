@@ -484,10 +484,7 @@ pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, Strin
 // ───────────────────────── 这台机器的事实 ─────────────────────────
 
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| std::env::var_os("USERPROFILE").filter(|h| !h.is_empty()))
-        .map(PathBuf::from)
+    crate::platform::paths::home_dir()
 }
 
 /// 这台机器上目录文件的路径（`~/.cc-monitor/` 与 `backend.json` 同一个家）。

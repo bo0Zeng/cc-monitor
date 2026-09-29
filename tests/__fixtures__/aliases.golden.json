@@ -65,7 +65,8 @@
         "exists": true,
         "path": "<HOME>/.bashrc",
         "sourced": false,
-        "unreadable": null
+        "unreadable": null,
+        "policy": null
       }
     ],
     "unparsed": []

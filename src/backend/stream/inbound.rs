@@ -242,6 +242,8 @@ pub const COMMANDS: &[&str] = &[
     "panorama-uninstall",
     "ping",
     "plugins-marketplaces",
+    // 〔WF1 · L · `设计/99 §2.3`〕PowerShell 执行策略设成当前用户 `RemoteSigned`（用户点了、确认了才发）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "powershell-policy-set",
     // 〔MIG-3b 续 · ⑬「monitor 零 SSH」〕公钥一键推送：本机后端组请求、读本机那份 `.pub`，经那台后端写或一次 exec。**是新命令**。
     "pubkey-push",
     // 〔DEL〕`relay-ensure` / `relay-status` 删了：远端中转住那台的常驻后端里（V139），不再起脱离的 `--relay`。
@@ -3271,6 +3273,19 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::assets::aliases::answer_block_remove(&LocalFiles, &r.args)
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+        }),
+    },
+    // 〔WF1 · L〕起一次那一代 PowerShell（同步子进程）⇒ 阻塞档。
+    CommandSpec {
+        name: "powershell-policy-set",
+        doc_anchor: Some("#### `powershell-policy-set`"),
+        codes: &["bad_args", "refused"],
+        fields: &["host", "policy", "setError"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::assets::aliases::answer_policy_set(&r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

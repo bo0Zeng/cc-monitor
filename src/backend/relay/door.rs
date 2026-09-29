@@ -79,13 +79,11 @@ impl std::fmt::Debug for Key {
 /// 本模块铸的长度与它对得上由 `door_tests` 那条「铸出来的过形状闸」钉着。
 pub(crate) use relay_route_core::key_shape_ok;
 
-/// 这台机器上钥匙文件的路径：`HOME`，没有再退 `USERPROFILE`（同 `control::exit_policy::policy_path`）。
+/// 这台机器上钥匙文件的路径：家目录（`platform::paths::home_dir_from`）底下那一份。
 /// 取值器是注入的 ⇒ 判据喂夹具家目录，不碰进程环境。
 pub(crate) fn key_path(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    let home = get("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| get("USERPROFILE").filter(|h| !h.is_empty()))?;
-    Some(Path::new(&home).join(KEY_FILE_REL))
+    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
+    Some(home.join(KEY_FILE_REL))
 }
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
