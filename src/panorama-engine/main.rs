@@ -11,7 +11,8 @@
 //!
 //! - `cc-monitor-panorama --probe` ⇒ 插件口那套 `key=value` 方言：首行 `name=`（身份）·
 //!   `version=`（只进诊断）· `capabilities=`（逗号列表 = [`OPS`] 的名字，集合语义）·
-//!   `shape=`（形状代号 [`shape_code`]，后端按它判「是不是同一代」）。
+//!   `long=`（长活档的那几个，后端按档给期限）·
+//!   `shape=`（形状代号 [`shape_code`]；期望值由发起方从生成物 `src/frontend/ui/panorama/engine-contract.json` 带来，后端只比对）。
 //! - `cc-monitor-panorama <op> [--repo <仓>] [--store <索引根>] [--args <JSON>]` ⇒ stdout **恰一行**：
 //!   成功 `{"ok":true,"data":…}`（退出码 0）；失败 `{"ok":false,"code":…,"message":…}`，
 //!   退出码 [`EXIT_BAD_ARGS`]（调用方给错了东西）/ [`EXIT_FAILED`]（仓打不开 / 引擎报错）。
@@ -40,7 +41,7 @@
 use code_picture_core::diagram::{self, DiagramKind, DiagramRequest};
 use code_picture_core::{edits, model, Engine, EngineOpts};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -69,9 +70,16 @@ pub enum Need {
     Build,
 }
 
+impl Need {
+    /// 长活档（`--probe` 的 `long=`）：建索引那一族。其余是短活档。
+    pub fn is_long(self) -> bool {
+        self == Need::Build
+    }
+}
+
 /// ★ **op 表 —— 本程序会什么的唯一住址**。`--probe` 报的能力由它派生；
-/// 分派臂与它两向相等（判据从源码抽臂，异源）；后端适配层那张 op → 期限表与它两向相等
-/// （后端判据运行时读本文件，异源）。
+/// 分派臂与它两向相等（判据从源码抽臂，异源）；〔PANO〕后端不再存 op 表（按 `--probe` 自报的能力与档办），
+/// 前端与各判据读的是它的生成物 `src/frontend/ui/panorama/engine-contract.json`（判据 `the_frontend_contract_is_generated_from_this_program`）。
 ///
 /// ⚠ 词表只说**查询语义**（`protocol_doc_guard` 那条 `P7c-2` 约束：不暴露存储、grammar、解析开关）。
 pub const OPS: &[(&str, Need)] = &[
@@ -80,7 +88,8 @@ pub const OPS: &[(&str, Need)] = &[
     ("reindex", Need::Build),
     ("overview", Need::Read),
     ("node", Need::Read),
-    ("subgraph", Need::Read),
+    // 〔PANO · CP1〕以某符号为心的邻域，每个符号带「距根几跳」（前端只分组，不算）。
+    ("neighborhood", Need::Read),
     ("callers", Need::Read),
     ("callees", Need::Read),
     ("impact", Need::Read),
@@ -102,6 +111,97 @@ pub const OPS: &[(&str, Need)] = &[
     // 〔RM1d〕外面落了 `.md` 的 `covers:` 之后让索引跟上（只写索引）。
     ("refresh_doc_links", Need::Build),
 ];
+
+/// ★〔PANO · V158「后端不带引擎知识」〕**写那几种 → 落盘之后还要跑哪一个 op** —— 唯一住址（原住后端 `panorama_edit.rs` 那张表）。
+///
+/// 键 = `Need::Repo` 那几个「算」op（判据两向）；值 = 写成之后要跑的 op（文档关联那两种要让索引跟上）。
+/// `--probe` 以 `plans=` 自报（`<算 op>[><之后>]` 逗号列表），那台后端的 `panorama-edit` 只照它走；前端从生成物取、按档给期限。
+pub const PLANS: &[(&str, Option<&str>)] = &[
+    ("plan_add_annotation", None),
+    ("plan_propose_annotation", None),
+    ("plan_approve_annotation", None),
+    ("plan_remove_annotation", None),
+    ("plan_write_doc_link", Some("refresh_doc_links")),
+    ("plan_remove_doc_link", Some("refresh_doc_links")),
+];
+
+/// `plans=` 那一行的值（也进形状代号）。
+fn plans_line() -> String {
+    PLANS
+        .iter()
+        .map(|(p, then)| then.map_or(p.to_string(), |t| format!("{p}>{t}")))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// 〔PANO〕本程序**自己的**应答形状（引擎直出之外的那几样）：`status` 那三格。
+#[derive(Serialize, Default)]
+struct StatusReply {
+    stale: bool,
+    #[serde(rename = "indexedAt")]
+    indexed_at: Option<u64>,
+    symbols: usize,
+}
+
+/// `neighborhood` 的应答：根 ＋ 每个够得着的符号与它距根几跳。
+#[derive(Serialize, Default)]
+struct NeighborhoodReply {
+    root: String,
+    reached: Vec<Reached>,
+}
+
+/// 邻域里的一个符号。
+#[derive(Serialize, Default)]
+struct Reached {
+    id: String,
+    depth: u32,
+}
+
+/// `diagram` 的应答：上游 `Diagram`（形状归 vendored pin）＋ 上游 Mermaid 文本。
+#[derive(Serialize, Default)]
+struct DiagramReply {
+    diagram: Value,
+    mermaid: String,
+}
+
+/// ★ 自己的应答形状 → 一份样本（键结构进形状代号：只改 DTO 不改 op 名也换代）。
+/// **本文件每个 `Serialize` 结构体都要在这里出现**（判据从源码抽；分派里不许手搓 `json!({…})` 对象）。
+fn own_dtos() -> Vec<(&'static str, Value)> {
+    let sample = |v: Result<Value, serde_json::Error>| v.expect("样本序列化不出来");
+    vec![
+        (
+            "status",
+            sample(serde_json::to_value(StatusReply::default())),
+        ),
+        (
+            "neighborhood",
+            sample(serde_json::to_value(NeighborhoodReply {
+                reached: vec![Reached::default()],
+                ..Default::default()
+            })),
+        ),
+        (
+            "diagram",
+            sample(serde_json::to_value(DiagramReply::default())),
+        ),
+    ]
+}
+
+/// 一份样本的键结构（对象按键排序、数组取第一个元素、标量为空）。
+fn key_shape(v: &Value) -> String {
+    match v {
+        Value::Object(m) => {
+            let mut ks: Vec<String> = m
+                .iter()
+                .map(|(k, x)| format!("{k}:{}", key_shape(x)))
+                .collect();
+            ks.sort();
+            format!("{{{}}}", ks.join(","))
+        }
+        Value::Array(a) => format!("[{}]", a.first().map(key_shape).unwrap_or_default()),
+        _ => String::new(),
+    }
+}
 
 /// 失败的两类（与两个退出码一一对应）。
 #[derive(Debug, PartialEq, Eq)]
@@ -196,14 +296,25 @@ fn vendor_pin() -> &'static str {
     &rest[..rest.find('`').expect("pin 没收尾")]
 }
 
-/// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕**形状代号**：op 表（名 ＋ 档）＋ vendored pin 的摘要（FNV-1a 64）。
-/// 能力表相同、某个 op 的应答形状变了（re-vendor）时它会变 ⇒ 后端按它判旧、回 `unsupported`、monitor 重放字节。
+/// 〔FIX2 · `设计/97 §8` · `99 §2.1 ㉝①`〕**形状代号**：op 表（名 ＋ 档）＋ 写表（[`PLANS`]）＋ 自己的应答形状（[`own_dtos`]）
+/// ＋ vendored pin 的摘要（FNV-1a 64）。能力表相同、某个 op 的应答形状变了（re-vendor，或〔PANO〕本程序自己的 DTO 改了）时它会变
+/// ⇒ 后端按它判旧、回 `unsupported`、monitor 重放字节。
 pub fn shape_code() -> String {
     let ops: Vec<String> = OPS
         .iter()
         .map(|(n, need)| format!("{n}:{need:?}"))
         .collect();
-    let canon = format!("ops={};vendor={}", ops.join(","), vendor_pin());
+    let dtos: Vec<String> = own_dtos()
+        .iter()
+        .map(|(n, v)| format!("{n}={}", key_shape(v)))
+        .collect();
+    let canon = format!(
+        "ops={};plans={};dtos={};vendor={}",
+        ops.join(","),
+        plans_line(),
+        dtos.join(","),
+        vendor_pin()
+    );
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in canon.bytes() {
         h ^= u64::from(b);
@@ -213,12 +324,22 @@ pub fn shape_code() -> String {
 }
 
 /// `--probe` 的全文（插件口方言，首行是身份）。
+///
+/// 〔PANO · V158「后端不带引擎知识」〕`long=` 自报长活档（建索引那几个，由 [`OPS`] 的 `Need::Build` 派生）；
+/// 不在里面的是短活档。起它的后端按档给期限，自己不存 op 表。
 pub fn probe_text() -> String {
     let caps: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
+    let long: Vec<&str> = OPS
+        .iter()
+        .filter(|(_, need)| need.is_long())
+        .map(|(n, _)| *n)
+        .collect();
     format!(
-        "name={NAME}\nversion={}\ncapabilities={}\nshape={}\n",
+        "name={NAME}\nversion={}\ncapabilities={}\nlong={}\nplans={}\nshape={}\n",
         env!("CARGO_PKG_VERSION"),
         caps.join(","),
+        long.join(","),
+        plans_line(),
         shape_code()
     )
 }
@@ -445,11 +566,11 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
     match op {
         "status" => {
             take::<NoArgs>(op, args)?;
-            Ok(json!({
-                "stale": e.is_stale(),
-                "indexedAt": e.indexed_at(),
-                "symbols": e.symbol_count(),
-            }))
+            out(StatusReply {
+                stale: e.is_stale(),
+                indexed_at: e.indexed_at(),
+                symbols: e.symbol_count(),
+            })
         }
         "index" => {
             take::<NoArgs>(op, args)?;
@@ -467,9 +588,9 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
             let a: SymbolArgs = take(op, args)?;
             out(e.node(&a.symbol))
         }
-        "subgraph" => {
+        "neighborhood" => {
             let a: SymbolDepthArgs = take(op, args)?;
-            out(e.subgraph(&a.symbol, a.depth))
+            out(neighborhood(e, &a.symbol, a.depth))
         }
         "callers" => {
             let a: SymbolDepthArgs = take(op, args)?;
@@ -529,10 +650,41 @@ fn dispatch(op: &str, e: &mut Engine, args: Value) -> Result<Value, Fail> {
             let d = e
                 .draw(kind, &a.request)
                 .map_err(|x| Fail::Failed(x.to_string()))?;
-            Ok(json!({ "mermaid": diagram::to_mermaid(&d), "diagram": out(d)? }))
+            out(DiagramReply {
+                mermaid: diagram::to_mermaid(&d),
+                diagram: out(d)?,
+            })
         }
         other => Err(Fail::BadArgs(format!("op `{other}` 不在分派里"))),
     }
+}
+
+/// 〔PANO · `97` CP1「人那一侧不许出现任何图分析」· `99 §1` V158〕以 `sym` 为心的邻域，**每个符号带距根几跳**：
+/// `{root, reached: [{id, depth}]}`（同一层按 id 排，根不进结果）。
+///
+/// 跳数 = 它最早出现在第几跳的上游 `subgraph(sym, d)` 里（`d = 1..=depth`，一层没有新的就停）——
+/// 只用上游的答案、不自写图算法，口径与上游 `subgraph` 的 depth 同一个（callers ∪ callees 各自按方向走）。
+/// 此前这一步住前端（对 `subgraph` 的边做无向 BFS）。上游给了这个口就换过去（`调研/第四波记录/PANO.md`「上游需求」①）。
+fn neighborhood(e: &Engine, sym: &str, depth: u32) -> NeighborhoodReply {
+    let root = sym.to_string();
+    let mut seen: std::collections::HashSet<String> =
+        std::collections::HashSet::from([root.clone()]);
+    let mut reached: Vec<Reached> = Vec::new();
+    for d in 1..=depth {
+        let sg = e.subgraph(&root, d);
+        let mut layer: Vec<String> = sg
+            .edges
+            .iter()
+            .flat_map(|x| [x.from.clone(), x.to.clone()])
+            .filter(|id| seen.insert(id.clone()))
+            .collect();
+        if layer.is_empty() {
+            break;
+        }
+        layer.sort();
+        reached.extend(layer.into_iter().map(|id| Reached { id, depth: d }));
+    }
+    NeighborhoodReply { root, reached }
 }
 
 /// 一次调用 → (stdout 那一行, stderr 那一行（可空）, 退出码)。纯函数外壳，好测。

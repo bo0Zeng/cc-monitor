@@ -648,7 +648,7 @@ cell(
     cwd="src/panorama-engine/",
     cmd="cargo test",
     **{
-        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/frontend/ui/panorama/types.ts` 一处"),
+        "src/": (PART, "只有 `src/panorama-engine/`（单包全量 `cargo test`）＋ `cli_tests` 跨树读 `src/frontend/ui/panorama/types.ts`（自己那两个 DTO 接口）· 读写生成物 `src/frontend/ui/panorama/engine-contract.json`（〔PANO〕漂了当场重写并红）"),
         "tests/": (PART, "只有 `tests/panorama-engine/cli_tests.rs`（由 `main.rs` 的 `#[path]` 挂进来）"),
         VENDOR: (PART, "编 `code-picture-core`（path 依赖）但不跑它的测试（那归 `ci.yml` 的 `-p code-picture-core`）"),
         "src/frontend/shell/": (PART, "编 `guard-core`（dev 依赖）但不跑它的测试"),
