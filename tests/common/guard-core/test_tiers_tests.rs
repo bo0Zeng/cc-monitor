@@ -95,10 +95,10 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
     "tests/backend/plugin/probe_tests.rs",
-    "tests/backend/relay/http1_tests.rs",
-    "tests/backend/relay/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
-    "tests/backend/relay/tee_tests.rs",
-    "tests/backend/relay/upstream_tests.rs",
+    "tests/comms/outward/http1_tests.rs",
+    "tests/comms/outward/route_tests.rs", // 〔US1〕跨半边抠 monitor 源码那几条退役 ⇒ 只剩纯解析 ＋ 成品→决策表（SCAN → UNIT）
+    "tests/comms/outward/tee_tests.rs",
+    "tests/comms/outward/upstream_tests.rs",
     "tests/backend/stream/tap_tests.rs",  // 〔TAP〕hub 与帧转换
     "tests/backend/writer_task_tests.rs", // 〔TAP〕写者优先序（tap 最低）
     "tests/branch-button.vitest.ts",
@@ -136,7 +136,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/shell/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/frontend/shell/sftp_pool_tests.rs",
-    "tests/frontend/shell/ssh_link_tests.rs",
+    "tests/comms/inward/ssh_link_tests.rs",
     "tests/frontend/shell/ssh_source_batcher_tests.rs",
     "tests/frontend/shell/ssh_source_seam_tests.rs",
     "tests/frontend/shell/ssh_source_snapshot_tail_tests.rs",
@@ -341,7 +341,7 @@ const SCAN: &[&str] = &[
     "tests/backend/relay/upstream_selection_guard.rs",
     "tests/backend/relay/bind_guard.rs",
     "tests/backend/relay/creds_guard.rs",
-    "tests/backend/relay/framer_tests.rs",
+    "tests/comms/outward/framer_tests.rs",
     "tests/backend/relay/table_guard.rs",
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
@@ -353,7 +353,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/backend/control/agent_profile_parity_tests.rs",
     "tests/frontend/shell/backend/control/backend_control_tests.rs",
     "tests/frontend/shell/backend/control/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
-    "tests/frontend/shell/backend/control/backend_route_tests.rs",
+    "tests/comms/inward/backend_route_tests.rs",
     "tests/backend/control/launch_render/ccm_invocation_tests.rs",
     "tests/frontend/shell/backend/control/frame_query_tests.rs",
     "tests/frontend/shell/backend/control/gate2_parity_tests.rs",
@@ -422,7 +422,7 @@ const SCAN: &[&str] = &[
     "tests/frontend/shell/local_read_surface_registry_tests.rs",
     "tests/frontend/shell/lockfile_conflict_guard_tests.rs",
     "tests/frontend/shell/needle_anchor_registry_tests.rs",
-    "tests/frontend/shell/origin_tests.rs",
+    "tests/comms/inward/origin_tests.rs",
     "tests/frontend/shell/panorama_seam_registry_engine_port_scope.rs",
     "tests/frontend/shell/panorama_seam_registry_tests.rs",
     "tests/frontend/shell/parity_ledger_tests.rs",
@@ -472,7 +472,7 @@ const SCAN: &[&str] = &[
     "tests/gray-light-wiring.vitest.ts",
     "tests/identifier-rules-parity.vitest.ts", // 〔DUP1〕读共用金样（仓内文本）⇒ 扫描层
     "tests/import-cycle-guard.vitest.ts",
-    "tests/ipc/chan.vitest.ts",
+    "tests/comms/inward/chan.vitest.ts",
     "tests/ipc/commands.vitest.ts",
     // 〔DUP1〕判定只有一个家（`90 §3` 判据 2：读 `*-core` 与 TS 生产段全集 ⇒ 扫描层）。
     "tests/judgment-single-home.vitest.ts",
@@ -641,7 +641,7 @@ const INTEGRATION: &[&str] = &[
     // 〔MG1 合 RK1〕中转口的门（403 / 421）：铺真钥匙文件、起真监听 ⇒ 判别器判集成层。
     "tests/backend/relay/door_tests.rs",
     "tests/backend/relay/host_tests.rs",
-    "tests/backend/relay/server_tests.rs",
+    "tests/comms/outward/server_tests.rs",
     "tests/backend/relay/wire_golden.rs",
     // 〔NT2 · S1〕L2 真起子进程（re-exec 本测试二进制，fd 2 真被换走）
     // 〔MG1 合 SU1〕skill 装记录：临时家目录里真写 / 读 / 摘 `~/.cc-monitor/skill-installs.json` ⇒ 判别器判集成层。
@@ -851,9 +851,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/stderr_log_tests.rs", needle: "stderr_log::tests::stderr_log_child_entry_point" },
     ),
     (
-        "tests/backend/relay/server_tests.rs",
+        "tests/comms/outward/server_tests.rs",
         "relay_child_process_entry_point",
-        Trigger::Filter { by: "tests/backend/relay/server_tests.rs", needle: "relay::server::tests::relay_child_process_entry_point" },
+        Trigger::Filter { by: "tests/comms/outward/server_tests.rs", needle: "relay::server::tests::relay_child_process_entry_point" },
     ),
     (
         "tests/frontend/shell/backend/control/local_backend_tests.rs",
@@ -993,7 +993,12 @@ fn rel_of(root: &Path, p: &Path) -> String {
 /// R：两棵 Rust 测试树的全部 `.rs`（仓根相对路径 → 原文）。
 fn rust_test_files(root: &Path) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    for sub in ["tests/frontend/shell", "tests/backend", "tests/common"] {
+    for sub in [
+        "tests/frontend/shell",
+        "tests/backend",
+        "tests/common",
+        "tests/comms",
+    ] {
         for (p, disk_text) in crate::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
             out.insert(rel_of(root, &p), disk_text);
         }
@@ -1579,6 +1584,21 @@ fn module_path(
             return Some(segs.join("::"));
         }
     }
+    // 〔RE〕住在「被 `#[path]` 挂进来的 `mod.rs`」那一层目录里、由它隐式声明的子模块（`src/comms/outward/server.rs`
+    //   ← `mod.rs` 的 `mod server;`，而那份 `mod.rs` 由 `src/backend/lib.rs` 挂成 `relay`）。
+    if !mounts.contains_key(rel) {
+        let (dir, file) = rel.rsplit_once('/')?;
+        let mod_rs = format!("{dir}/mod.rs");
+        if file != "mod.rs" && mounts.contains_key(&mod_rs) {
+            let parent = module_path(&mod_rs, mounts, depth + 1)?;
+            let stem = file.trim_end_matches(".rs");
+            return Some(if parent.is_empty() {
+                stem.to_string()
+            } else {
+                format!("{parent}::{stem}")
+            });
+        }
+    }
     let decls = mounts.get(rel)?;
     if decls.len() != 1 {
         return None;
@@ -1673,7 +1693,7 @@ fn the_tiers_partition_the_test_files_on_disk() {
     assert!(
         problems.is_empty(),
         "测试层分区对不上（{} 处）：\n{}\n\n\
-         本表的人群是 `tests/frontend/shell/**/*.rs` ∪ `tests/backend/**/*.rs` ∪ `tests/common/**/*.rs` ∪ `tests/**/*.{{vitest,test}}.ts`。\n\
+         本表的人群是 `tests/frontend/shell/**/*.rs` ∪ `tests/backend/**/*.rs` ∪ `tests/common/**/*.rs` ∪ `tests/comms/**/*.rs` ∪ `tests/**/*.{{vitest,test}}.ts`。\n\
          ⇒ 新加一份测试文件就要在这里登记它的层；那是这张表存在的理由（`设计/16 §5.2`：人群从登记表来，\
          盘上条数 == 登记条数，不是「扫到几个算几个」）。",
         problems.len(),
@@ -1794,7 +1814,8 @@ fn unit_tier_every_file_is_reached_by_its_runner() {
 
 /// 一个「根」函数名 ⇒ 它在那一侧指向的仓根相对目录。按文件所在的树分两侧（两个 crate 的 `guard_support` 语义不同）。
 fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
-    let backend = under(rel, "tests/backend/");
+    // 〔RE〕`tests/comms/outward/` 由后端 crate 挂载 ⇒ 它的 `guard_support` 是后端那一份。
+    let backend = under(rel, "tests/backend/") || under(rel, "tests/comms/outward/");
     match (backend, fname) {
         (_, "repo_root") => Some("."),
         (false, "tests_root") => Some("tests"),
@@ -1804,6 +1825,9 @@ fn root_fn_base(rel: &str, fname: &str) -> Option<&'static str> {
         (false, "repo_src_root") => Some("src"),
         (true, "tests_root") => Some("tests/backend"),
         (true, "src_root") => Some("src/backend"),
+        // 〔RE〕后端那一侧新立的两个根（面 B 成员与它们的单测镜像）。
+        (true, "relay_root") => Some("src/comms/outward"),
+        (true, "comms_tests_root") => Some("tests/comms/outward"),
         _ => None,
     }
 }
@@ -1825,6 +1849,8 @@ fn root_anchored_literals(rel: &str, raw: &str) -> Vec<(usize, String, String)> 
         "crate_src_root",
         "backend_src_root",
         "repo_src_root",
+        "relay_root",
+        "comms_tests_root",
     ];
     // 本文件自己定义的同名根函数：函数体（定义行起 5 行）里转调的正是 `guard_support::<同名>()`
     // ⇒ 语义与共享那个相同，照认（本仓 25 份文件是这一形）；否则 ⇒ 语义是本地的 ⇒ 不认。

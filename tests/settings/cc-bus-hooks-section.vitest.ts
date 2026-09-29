@@ -5,10 +5,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 // 〔MIG-3b〕诊断改走通道（`chan.call(origin, "hooks-diag")`，那台后端出成品）。替身把那一发交给同一个 `invoke` 替身
 //   （本机记成 `hooks-diag@local`、远端记成 `hooks-diag@remote` 带 `{origin}`），答的对象原样编成应答体 ——
 //   下面各条因此数得到**真发出去**的那一发；期限必给（没给就抛）。
-vi.mock("../../src/ipc/chan", async (importOriginal) => {
+vi.mock("../../src/comms/inward/chan", async (importOriginal) => {
   const core = await import("@tauri-apps/api/core");
   return {
-    ...(await importOriginal<typeof import("../../src/ipc/chan")>()),
+    ...(await importOriginal<typeof import("../../src/comms/inward/chan")>()),
     chan: {
       call: async (origin: string, op: string, _body: Uint8Array, budget: { until: number }) => {
         if (typeof budget?.until !== "number") throw new Error("没给期限");

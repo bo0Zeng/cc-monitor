@@ -17,7 +17,7 @@
 //! ⇒ 十一条对它现打全绿：零业务词 · 零业务 crate · 零读盘 · 零环境变量 · 零起进程 ·
 //! 零绑端口 · 零期限字面量。它是 `§8` **步 4** 圈得进来的那两份之一（另一份是 `route.rs`）。
 //!
-//! ⚠ **它不买「HTTP 解析对不对」** —— 那由 `tests/backend/relay/http1_tests.rs` 与
+//! ⚠ **它不买「HTTP 解析对不对」** —— 那由 `tests/comms/outward/http1_tests.rs` 与
 //! `wire_golden` 的逐字节金标准负责。本标记只买「它没在这一层里长出业务 / 伸手去拿东西」。
 
 use copy_core::copy_text;
@@ -386,5 +386,5 @@ pub(crate) fn read_exact_body<R: BufRead>(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/http1_tests.rs"]
+#[path = "../../../tests/comms/outward/http1_tests.rs"]
 mod tests;

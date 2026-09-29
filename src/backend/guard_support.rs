@@ -88,7 +88,11 @@ pub(crate) fn tests_root() -> std::path::PathBuf {
 /// 名字里带 `_tests` 是约定，住址才是事实（`设计/16 §5.4b` 纪律 2：
 /// 靠位置的判断要明写成一条读得出来的规则，别靠命名巧合）。
 pub(crate) fn production_side_of(path: &std::path::Path, src: &str) -> String {
-    if lexically_normalized(path).starts_with(lexically_normalized(&tests_root())) {
+    let at = lexically_normalized(path);
+    if test_roots()
+        .iter()
+        .any(|t| at.starts_with(lexically_normalized(t)))
+    {
         return String::new();
     }
     production_code(src)
@@ -118,8 +122,27 @@ fn lexically_normalized(p: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// **全体后端代码**的两棵树：生产（`src/backend`）＋ 测试（`tests/backend`）。
-pub(crate) fn code_roots() -> [std::path::PathBuf; 2] {
-    [src_root(), tests_root()]
+pub(crate) fn code_roots() -> [std::path::PathBuf; 3] {
+    [src_root(), tests_root(), comms_tests_root()]
+}
+
+/// 〔RE · 收尾重排〕本 crate 挂着的第二棵测试树：面 B 成员（`src/comms/outward/`，本 crate 经 `#[path]` 编它们）
+/// 的单测镜像住 `tests/comms/outward/`。生产那一半由 `guard_core` 顺着 `#[path]` 收进 [`src_root`] 的人群；
+/// 测试这一半不顺（测试挂载不跟）⇒ 这里明写成一棵根。
+pub(crate) fn comms_tests_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/comms/outward")
+}
+
+/// 〔RE〕`relay` 模块的根（它的 `mod.rs` 所在）：面 B 成员住 `src/comms/outward/`，非成员 `door` / `listen` 住
+/// `src/backend/relay/`，由 `mod.rs` 经 `#[path]` 挂回（`guard_core` 顺着挂载一起收）。
+/// 扫「中转那一层」用它，别用 `src_root().join("relay")`（那里今天只剩两份非成员）。
+pub(crate) fn relay_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../comms/outward")
+}
+
+/// 本 crate 的全部测试树（[`tests_root`] ＋ [`comms_tests_root`]），两棵互不包含。
+pub(crate) fn test_roots() -> [std::path::PathBuf; 2] {
+    [tests_root(), comms_tests_root()]
 }
 
 /// **仓库根**的唯一住址。

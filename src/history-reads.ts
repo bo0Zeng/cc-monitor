@@ -23,7 +23,7 @@
  * 一次交全之后给足余量）· 注解两问 10 秒（读写一份小文件）。
  */
 import { commands } from "./ipc/commands";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { copyText } from "./copy-table";

@@ -13,7 +13,7 @@
  * 那台后端（`src/backend/assets/aliases/`），这里只按形状严格收。**前端不做安全判断**。
  * 「这台已握手的终端数」不是那台盘上的事实（住 monitor 进程里）⇒ 不在成品里，另问 monitor（`commands.bound_terminal_count`）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

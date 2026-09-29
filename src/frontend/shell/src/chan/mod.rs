@@ -19,7 +19,7 @@
 //! | `client.rs` | 外部前端进程 | ✅ | `Comms` 的实现：`call` / `subscribe` |
 //! | `host.rs` | monitor 进程 | ❌ 刻意不是 | 绑回环 · 造钥匙 · `accept` · 生产句柄（`C4`/`C5` 不许成员做的那几件） |
 //! | `dial.rs` | 外部前端进程 | ❌ 刻意不是 | 按交接件拨号（`C5`：成员只用交给它的流） |
-//! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | 〔C4a〕**主界面**（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄；期限执行与回环那条共用 `router::settle`。成员那一半是 TS 的 `src/ipc/chan.ts` |
+//! | `webview.rs` | monitor 进程 | ❌ 刻意不是 | 〔C4a〕**主界面**（webview）说 `call` 的那一跳：Tauri 命令 `chan_call` ＋ 注入生产句柄；期限执行与回环那条共用 `router::settle`。成员那一半是 TS 的 `src/comms/inward/chan.ts` |
 //!
 //! # 为什么住 `src/frontend/shell/src/chan/` 而不是 `backend/` 下
 //!
@@ -42,11 +42,15 @@
 //! - ✅〔F7c · 2026-09-24〕**生产上的 `subscribe` 有了第一条流**：传输进度 `transfer/<id>`；其余 `kind` 照旧没有（理由住 `host.rs` 头注）。
 //! - **不买重连**（`client.rs` 头注）· **不买对端撤活**（`host.rs` 头注）· **不买协议版本协商**（`wire.rs` 头注）。
 
+// 〔RE〕通信层成员住 `src/comms/inward/chan/`（`99 §2.1 ⑰`）；非成员 dial / host / webview 留在壳
+#[path = "../../../../comms/inward/chan/client.rs"]
 pub mod client;
 pub mod dial;
 pub mod host;
+#[path = "../../../../comms/inward/chan/router.rs"]
 pub mod router;
 pub mod webview;
+#[path = "../../../../comms/inward/chan/wire.rs"]
 pub mod wire;
 
 #[cfg(test)]

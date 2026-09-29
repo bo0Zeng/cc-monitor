@@ -383,6 +383,7 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         ("src/common", &[]),
         ("tests/frontend/shell", &["needle_anchor_registry_tests.rs"]),
         ("tests/backend", &[]),
+        ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {
         files.extend(guard_core::scan_tree_excluding(
             &root.join(sub),

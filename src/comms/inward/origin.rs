@@ -82,7 +82,7 @@
 //!
 //! · 它买的是「**这个概念只有一个类型**」。**买不到**「所有调用点都用上了它」——
 //!   替换 93 处签名是分批的活，进度由
-//!   `tests/frontend/shell/origin_tests.rs::ORIGIN_MIGRATION_CEILING`
+//!   `tests/comms/inward/origin_tests.rs::ORIGIN_MIGRATION_CEILING`
 //!   那张**递减棘轮**现打（数还在用裸 `&str`/`String` 的处数，只许变少）。
 //! · 它**不判**某个 origin 今天连不连得上。那是 `inbound_client` 的事。
 //! · 🔴 它**只管入方向**（前端 → 命令）。**出方向那一半今天还有 `null`** ——
@@ -240,5 +240,5 @@ pub enum Route<'a> {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/origin_tests.rs"]
+#[path = "../../../tests/comms/inward/origin_tests.rs"]
 mod tests;

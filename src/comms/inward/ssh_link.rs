@@ -250,5 +250,5 @@ pub async fn reply_line<R: AsyncBufRead + Unpin>(
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/ssh_link_tests.rs"]
+#[path = "../../../tests/comms/inward/ssh_link_tests.rs"]
 mod tests;

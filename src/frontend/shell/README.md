@@ -119,7 +119,7 @@ src/frontend/shell/
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
 | `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
-| `chan_subscribe` / `chan_want` / `chan_stop`（〔CF2〕） | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/ipc/chan.ts` 用 |
+| `chan_subscribe` / `chan_want` / `chan_stop`（〔CF2〕） | `{ origin, kind, from, want, id }` / `{ id, more }` / `{ id }`（webview 注入） | `()` | 通道 `subscribe` 在 Tauri IPC 那一跳：会话内容流（`session-lines` / `session-lines/<sid>`），交格走事件 `chan-items`；经 `src/comms/inward/chan.ts` 用 |
 | 〔C4d · 第四波 4B〕历史清单那两条（本机项目 · 展开一个项目）已删 | — | — | 界面经通道问本机常驻后端 `history-projects` / `history-sessions`（`src/history-reads.ts`；远端那台由它沿池里那条 SSH 去问） |
 | `stream_read_session_jsonl` | `{ origin, jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel）。〔步 12·C 09-20〕**本机与远端合成了一条**，`origin` 是它的参数（`设计/00 §2.5 ①`）。旧的远端命令名**已退役、不留别名** |
 | 〔MIG-3b〕删会话 · 分叉（F62）那两条已删 | — | — | 界面经通道直说那台后端 `files-delete-session`（只收 sid）· `session-fork`（`src/session-writes.ts`；分叉成品由金样 `session-fork.golden.json` 钉） |

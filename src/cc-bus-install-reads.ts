@@ -10,7 +10,7 @@
  * 资产的装不算部署 —— 判 · 写 · 记都进了后端（`src/backend/assets/cc_bus_install.rs`）。这里只按形状严格收。
  * 「装出来的 cc-spawn 在这台跑不跑得起来」（`ccm` 够不够新）是 monitor 探本机 `ccm` 的事，另问 `commands.cc_bus_ccm_precheck`。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { copyText } from "./copy-table";

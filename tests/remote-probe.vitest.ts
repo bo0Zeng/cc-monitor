@@ -15,8 +15,8 @@ const fake = vi.hoisted(() => ({
   order: [] as string[],
 }));
 
-vi.mock("../src/ipc/chan", async (orig) => {
-  const real = await orig<typeof import("../src/ipc/chan")>();
+vi.mock("../src/comms/inward/chan", async (orig) => {
+  const real = await orig<typeof import("../src/comms/inward/chan")>();
   return {
     ...real,
     chan: {
@@ -34,7 +34,7 @@ vi.mock("../src/ipc/chan", async (orig) => {
   };
 });
 
-import { ChanError } from "../src/ipc/chan";
+import { ChanError } from "../src/comms/inward/chan";
 import { decodeCell, decodeProbe, probeMachine, ProbeStalled, PROBE_PROGRESS_KIND } from "../src/remote-probe";
 import type { RemoteHostConfig } from "../src/remote-config";
 import type { ConnectStage } from "../src/generated/ConnectStage";

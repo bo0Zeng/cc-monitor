@@ -1,5 +1,5 @@
 /**
- * 〔CF2 · 第四波 4B〕`events.ts` 的会话内容从通道 `subscribe` 来（`src/ipc/chan.ts`）。测它的队列与批调度时，
+ * 〔CF2 · 第四波 4B〕`events.ts` 的会话内容从通道 `subscribe` 来（`src/comms/inward/chan.ts`）。测它的队列与批调度时，
  * 把 `src/ipc/chan` 换成本桩：记下每条订阅的 sink，由判据**按句柄的形状**往里灌 ——
  * 一格一行（`{"line": …}`）；成批那一段首块以 `{"batch":"start"}` 开头、每块以 `{"batch":"end"}` 收尾
  * （形状的另一侧是 `src/frontend/shell/src/event_replay.rs::batch_chunks`，本桩不从它派生）。

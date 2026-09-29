@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   下面各条原来的断言因此数得到**真发出去**的那一发（不换的话数的是一个没人调的旧命令，恒为 0，会空真地绿）。
 const getSessionTasks = vi.fn();
 const chanOps: string[] = [];
-vi.mock("../src/ipc/chan", () => ({
+vi.mock("../src/comms/inward/chan", () => ({
   chan: {
     call: async (origin: string, op: string, body: Uint8Array, budget: { until: number }) => {
       chanOps.push(op);

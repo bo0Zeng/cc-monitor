@@ -24,6 +24,8 @@ mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上�
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
+// 〔RE〕通信层成员住 `src/comms/inward/`（`99 §2.1 ⑰`），模块树不变
+#[path = "../../../comms/inward/origin.rs"]
 mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
             // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
             //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
@@ -113,6 +115,7 @@ mod sftp;
 mod ccm_probe;
 mod ssh_source;
 // 〔C2 · `设计/05 §13`〕拨号应答的客户端（通信层面 A 的 SSH 链路那一段）。
+#[path = "../../../comms/inward/ssh_link.rs"] // 〔RE〕通信层成员，同上
 mod ssh_link;
 // 〔SR1b · 2026-09-24〕`inproc_dial`（界面进程里最后一份 russh 拨号，只剩 SFTP 一个用户）删了：
 //   SFTP 进了本机常驻后端（`src/backend/dial/sftp.rs`），**界面进程零 SSH**（用户 V89）。

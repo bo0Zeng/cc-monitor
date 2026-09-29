@@ -530,7 +530,7 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 ///    那之后的 `/*` 根本不进眼。少了这一条，一句解释性散文就能把它后面整份文件吃掉。
 /// 5. **原始串 / 字节串按真语法跟踪**（`r"…"` · `r#"…"#` · `b"…"` · `br#"…"#`，
 ///    井号个数配平、可跨行）。⚠ 这一条是**现打出来的**，不是防御性编程：
-///    `src/backend/relay/server.rs` 的 `STUB_LAUNCHER` 是一段 shell，
+///    `src/comms/outward/server.rs` 的 `STUB_LAUNCHER` 是一段 shell，
 ///    里面逐字有 `hostport=${rest%%/*}` 与 `path=/${rest#*/}` —— 一个 `/*` 一个 `*/`。
 ///    按 [`strip_trailing_comments`] 那种「含 `r#` 的**那一行**整行不动」的便宜办法，
 ///    跨行原始串**内部**的行照样被当代码扫 ⇒ 那 18 个字节会被当块注释抹掉，
@@ -1412,7 +1412,187 @@ pub fn scan_tree_excluding_self(
 /// 而遍历口径只许有一份 ——
 /// 「不下构建产物目录」「空 `exts` = 整棵树」「非 UTF-8 跳过」这三条边界
 /// 各自都是现打逮出来的，写第二份必然漂。
+///
+/// 〔RE · 收尾重排〕**人群按模块树认，不只按目录认**：根下源码用 `#[path]` 挂进来、住在根外的**生产**文件
+/// （通信层成员住 `src/comms/` 之后由壳 / 后端的模块树挂进去，`设计/90 §0.5.3`「目录只是住址」）也算这棵根的人群，
+/// 挂的是 `mod.rs` 就连它那一层目录一起收。指向任何 `tests` 段的挂载不跟（那是测试段，不是生产人群）。
+/// 不跟的话，搬家那一拍两边几百条扫描型判据会**静默少扫**那几份（`设计/16 §5.4b`，搬家时现打普查量过）。
 fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
+    let mut out = walk_dir(root, exts);
+    if !exts.is_empty() && !exts.contains(&"rs") {
+        return out;
+    }
+    let norm = |p: &std::path::Path| -> std::path::PathBuf {
+        let mut o = std::path::PathBuf::new();
+        for c in p.components() {
+            match c {
+                std::path::Component::ParentDir => {
+                    o.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => o.push(other.as_os_str()),
+            }
+        }
+        o
+    };
+    let root_n = norm(root);
+    let mut seen: std::collections::BTreeSet<std::path::PathBuf> =
+        out.iter().map(|(p, _)| norm(p)).collect();
+    let mut i = 0;
+    while i < out.len() {
+        let (host, text) = (out[i].0.clone(), out[i].1.clone());
+        i += 1;
+        if host.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let Some(dir) = host.parent() else { continue };
+        for line in text.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("#[path = \"") else {
+                continue;
+            };
+            let Some(rel) = rest.split('"').next() else {
+                continue;
+            };
+            if rel.split(['/', '\\']).any(|seg| seg == "tests") {
+                continue;
+            }
+            let target = norm(&dir.join(rel));
+            if target.starts_with(&root_n) || !target.is_file() || !seen.insert(target.clone()) {
+                continue;
+            }
+            let found = if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
+                walk_dir(target.parent().expect("mod.rs 有父目录"), exts)
+            } else {
+                walk_dir_files(&[target.clone()], exts)
+            };
+            for (p, src) in found {
+                let pn = norm(&p);
+                if pn == target || seen.insert(pn.clone()) {
+                    out.push((pn, src));
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// 〔RE · 收尾重排〕一份文件在 `root` 这棵模块树里的**模块住址**（相对 `root`，正斜杠）。
+///
+/// 住在 `root` 下的：就是相对路径。住在根外、由根下某份文件用 `#[path]` 挂进来的（[`walk_tree`] 顺进来的那些）：
+/// 按「没有 `#[path]` 时它该住的地方」给 —— `lib.rs` 里 `#[path = "../comms/outward/mod.rs"] mod relay;`
+/// ⇒ `comms/outward/server.rs` 的模块住址是 `relay/server.rs`。模块树搬家不变 ⇒ 按模块住址登记的表搬家不用改。
+/// 认不出来（不在根下、也没被挂）⇒ 原样的路径串。
+pub fn module_address(root: &std::path::Path, path: &std::path::Path) -> String {
+    let fwd = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    let norm = |p: &std::path::Path| -> std::path::PathBuf {
+        let mut o = std::path::PathBuf::new();
+        for c in p.components() {
+            match c {
+                std::path::Component::ParentDir => {
+                    o.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => o.push(other.as_os_str()),
+            }
+        }
+        o
+    };
+    let root_n = norm(root);
+    let path_n = norm(path);
+    if let Ok(rel) = path_n.strip_prefix(&root_n) {
+        return fwd(rel);
+    }
+    for (host, text) in walk_dir(root, &["rs"]) {
+        let host_n = norm(&host);
+        let Some(dir) = host_n.parent() else { continue };
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            let Some(rest) = line.trim_start().strip_prefix("#[path = \"") else {
+                continue;
+            };
+            let Some(rel) = rest.split('"').next() else {
+                continue;
+            };
+            let target = norm(&dir.join(rel));
+            // 紧跟着的 `mod 名;`（中间只许隔着属性行 / 注释行）。
+            let name = lines[i + 1..]
+                .iter()
+                .map(|l| l.trim_start())
+                .find(|l| !(l.starts_with("#[") || l.starts_with("//")))
+                .and_then(|l| {
+                    let l = l
+                        .strip_prefix("pub(crate) ")
+                        .or_else(|| l.strip_prefix("pub "))
+                        .unwrap_or(l);
+                    l.strip_prefix("mod ")?
+                        .split(|c: char| c == ';' || c.is_whitespace())
+                        .next()
+                })
+                .map(str::to_string);
+            let Some(name) = name else { continue };
+            // 宿主是 `lib.rs` / `main.rs` / `mod.rs` ⇒ 子模块住它那一层；否则住 `<宿主名>/` 下。
+            let host_name = host_n.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let base = if matches!(host_name, "lib.rs" | "main.rs" | "mod.rs") {
+                dir.to_path_buf()
+            } else {
+                dir.join(host_n.file_stem().unwrap_or_default())
+            };
+            let Ok(base_rel) = base.strip_prefix(&root_n) else {
+                continue;
+            };
+            let base_rel = fwd(base_rel);
+            let join = |tail: &str| {
+                if base_rel.is_empty() {
+                    tail.to_string()
+                } else {
+                    format!("{base_rel}/{tail}")
+                }
+            };
+            if target == path_n {
+                return if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
+                    join(&format!("{name}/mod.rs"))
+                } else {
+                    join(&format!("{name}.rs"))
+                };
+            }
+            if target.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
+                if let Some(tdir) = target.parent() {
+                    if let Ok(inner) = path_n.strip_prefix(tdir) {
+                        return join(&format!("{name}/{}", fwd(inner)));
+                    }
+                }
+            }
+        }
+    }
+    fwd(path)
+}
+
+/// 一份份指名的文件照 [`walk_dir`] 同一口径收（后缀 · 非 UTF-8 跳过）。
+fn walk_dir_files(
+    files: &[std::path::PathBuf],
+    exts: &[&str],
+) -> Vec<(std::path::PathBuf, String)> {
+    let mut out = Vec::new();
+    for path in files {
+        let ok_ext = exts.is_empty()
+            || path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| exts.contains(&e));
+        if !ok_ext {
+            continue;
+        }
+        let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("读 {path:?} 失败: {e}"));
+        if let Ok(src) = String::from_utf8(bytes) {
+            out.push((path.clone(), src));
+        }
+    }
+    out
+}
+
+/// 一棵目录树按目录收（[`walk_tree`] 的目录那一半）。
+fn walk_dir(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -1650,6 +1830,12 @@ fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bo
 /// ⚠ 与 [`scan_tree_excluding_self`] 的区别：那个**读文件内容**、按扩展名筛、
 /// 并自称摘除调用者自己（防自匹配 —— 而那一刀在这一处不生效，见它自己的头注）；
 /// 这个只要路径，用于「这一类文件今天有哪些」的清点。
+/// 〔RE〕一个目录里**住着谁**：全部文件（任何后缀），相对 `root`，只按目录走、**不顺 `#[path]`**。
+/// 「这个目录里住着哪些文件」这一问用它（例：`src/comms/` 下的文件集合 == 通信层登记表）。
+pub fn files_under(root: &std::path::Path) -> Vec<String> {
+    walk_repo(root, &|_, _| true)
+}
+
 pub fn files_by_extension(root: &std::path::Path, ext: &str) -> Vec<String> {
     let suffix = format!(".{ext}");
     walk_repo(root, &|_, name| name.ends_with(&suffix))

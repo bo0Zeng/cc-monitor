@@ -10,7 +10,7 @@
  * 原先这四样是 monitor 的 Tauri 命令（`render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` ·
  * `new_local_session` / `resume_history_session` / `render_local_attach`），判定在 monitor 进程里。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody } from "./ipc/chan-caller";
 import { ControlError, exactKeys, isObj, machineName, settle, unreadable, type Refusals } from "./control-said";
 import type { Origin } from "./ipc/origin";

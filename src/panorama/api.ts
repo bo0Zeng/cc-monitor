@@ -22,7 +22,7 @@
  *   再问**一次**；仍这么说 ⇒ 如实说，不循环。
  */
 import { commands } from "../ipc/commands";
-import { chan, ChanError } from "../ipc/chan";
+import { chan, ChanError } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import type {

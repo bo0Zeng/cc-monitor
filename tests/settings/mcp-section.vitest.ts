@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // 〔MIG-3a〕MCP 读写改走通道：替身翻译层把那一发 `chan.call` 按旧名交给下面的 `invoke` 替身（`test-support/mcp-chan-shim.ts`）。
-vi.mock("../../src/ipc/chan", async () => {
+vi.mock("../../src/comms/inward/chan", async () => {
   const { invoke } = await import("@tauri-apps/api/core");
   const { mcpChanShim } = await import("../test-support/mcp-chan-shim");
   return { chan: { call: mcpChanShim((c, a) => (invoke as (c: string, a?: unknown) => Promise<unknown>)(c, a)) } };

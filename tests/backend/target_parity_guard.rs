@@ -543,11 +543,8 @@ fn backend_tree() -> Tree {
     guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .map(|(p, raw)| {
-            let rel = p
-                .strip_prefix(&root)
-                .expect("在根下")
-                .to_string_lossy()
-                .replace('\\', "/");
+            // 〔RE〕顺着 `#[path]` 收进来的（面 B 成员住 `src/comms/outward/`）按模块住址认。
+            let rel = guard_core::module_address(&root, &p);
             (rel, guard_core::production_code(&raw))
         })
         .filter(|(rel, _)| rel != "main.rs")

@@ -727,11 +727,8 @@ fn monitor_tree() -> BTreeMap<String, String> {
     guard_core::scan_tree_excluding(&root, &["rs"], &[])
         .into_iter()
         .map(|(p, s)| {
-            let rel = p
-                .strip_prefix(&root)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/");
+            // 〔RE〕按模块住址认：通信层成员住 `src/comms/inward/`、经 `#[path]` 挂进本 crate（`guard_core` 顺着收）。
+            let rel = guard_core::module_address(&root, &p);
             (rel, s)
         })
         .collect()

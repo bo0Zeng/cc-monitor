@@ -12,7 +12,7 @@
  * 〔09-28 裁 2 · 预裁〕装这一件从前是 monitor 推字节（`deploy_remote_acct_iso`〔散文墓碑〕）＋ 经 ssh 跑安装脚本，今天是那台后端的
  * `acct-iso-install`（字节随它带着 · 链接走写面 `files-link` · 装卸账记 skill 装记录）；这里一样只按形状收。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

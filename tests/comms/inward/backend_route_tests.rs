@@ -326,7 +326,7 @@ fn every_backend_sender_is_registered_and_uses_the_one_router() {
         assert!(
             homes.len() == 1
                 && homes[0].1 == 1
-                && homes[0].0.ends_with("backend/control/backend_route.rs"),
+                && homes[0].0.ends_with("comms/inward/backend_route.rs"), // 〔RE〕通信层成员的家
             "分流器出口 `{exit}` 的定义应当**恰好一处、住 `backend_route.rs`**，实得 {homes:?}"
         );
     }

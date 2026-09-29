@@ -10,7 +10,7 @@
  * 从前是 monitor 的三条 Tauri 命令（`skill_host.rs`）；声明与三道围栏进了那台后端（`agents/claudecode/skill_host.rs`），
  * 这里只按形状严格收。**前端不做安全判断**。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

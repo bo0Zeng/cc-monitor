@@ -4,7 +4,7 @@
  * 从前 monitor 的 Tauri 命令 `assets_sync` 替界面拼拨号请求再转交；那条删了，这里按形状严格收
  * （金样 `tests/__fixtures__/assets-sync.golden.json`）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

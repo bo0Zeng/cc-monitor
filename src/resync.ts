@@ -9,7 +9,7 @@
 import { copyText } from "./copy-table";
 import { ControlError, exactKeys, isObj, settle, unreadable, type Refusals } from "./control-said";
 import { showActionFailureToast } from "./error-toast";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 

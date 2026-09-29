@@ -143,7 +143,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/height-estimate.ts",
     "src/height-refiner.ts", // 〔RENDER2 · `设计/10 §2.5b`〕第二级估高：视口附近的占位行交 Worker 精算
     "src/ipc/chan-caller.ts", // 〔DL1〕丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（`设计/05 §3.3.2` 造期限的那一手）
-    "src/ipc/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
+    "src/comms/inward/chan.ts", // 〔DL1〕同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
     // 〔MOD〕`ipc/commands.ts` 出列：按偏移 / 按行号取正文那两条包装退役，改经 `record-reads.ts` 走通道。
     "src/live-window.ts", // 〔RENDER2〕从头重读 ⇒ tab 整份重来时新建 `TailWindow` / `SeqSet`（原先只有类型依赖）
     "src/record-reads.ts", // 〔MOD〕按偏移 / 按行号取正文经通道问那台后端（`history-page` · `history-lines`，后端出记录行）

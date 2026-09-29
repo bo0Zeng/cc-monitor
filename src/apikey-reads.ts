@@ -17,7 +17,7 @@
  * 接不上一个替别的数据目录干活的后端，`<local>` 那条长连接就不存在。
  * ⚠ 账号 id 只由后端推：前端交 `configDir`，一个字都不从它推账号 id（`KH2C1`）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

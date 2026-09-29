@@ -11,7 +11,7 @@
  * （既定设计：刻意不替你挑终端模拟器；调用方按 `POSIX_NO_WINDOW_MARKER` 判，不按 OS 猜）。
  */
 import { commands } from "./ipc/commands";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

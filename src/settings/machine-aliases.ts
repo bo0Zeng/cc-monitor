@@ -35,7 +35,7 @@
  *   原 `cc_integration.ts` 整块搬进来）＋ 用户级 PATH 那一格。
  */
 import { commands } from "../ipc/commands";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { isLocalOrigin } from "../ipc/origin";
 import { showActionFailureToast } from "../error-toast"; // `K-R135`：用户级 PATH 那一格的失败要出声

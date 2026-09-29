@@ -102,7 +102,7 @@ SRC_ROOT = REPO / "src"
 
 EXCLUDED_DIRS = (
     "src/generated",            # ts-rs 生成物
-    "src/vendor",               # 第三方（〔RE〕原 `src/frontend/shell/vendor`：russh 补丁副本）
+    "src/vendor",               # 第三方（〔RE〕原住 bridge 包的 `vendor/`：russh 补丁副本）
     "src/panorama-engine/vendor",  # 第三方（〔RE〕code-picture-core 跟唯一消费者走）
     "src/frontend/shell/gen",           # 生成物
     "src/frontend/shell/embedded-daemons",

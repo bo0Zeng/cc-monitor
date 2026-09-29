@@ -1,6 +1,6 @@
 import { makeYieldToMain } from "./yield-to-main";
 import { commands } from "./ipc/commands";
-import { chan, type Item, type Sub } from "./ipc/chan";
+import { chan, type Item, type Sub } from "./comms/inward/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { showActionFailureToast } from "./error-toast";
@@ -338,7 +338,7 @@ const BATCH_END_GRACE_MS = 300;
 /** bindEvents 选项。 */
 export interface BindEventsOptions {
   // 〔MIG-1 收尾 · V41〕`windowScoped`（issue #10：viewer 按窗口作用域 `listen`）删了：本函数里已没有 Tauri 监听，
-  //   定向投递今天只剩会话流的交格，由 `src/ipc/chan.ts` 那一处按窗口作用域听（条 22.2）。
+  //   定向投递今天只剩会话流的交格，由 `src/comms/inward/chan.ts` 那一处按窗口作用域听（条 22.2）。
   /**
    * 〔CF2 · 第四波 4B〕要订的会话流：`(origin, kind)`（`kind` = `session-lines` 整台机器 · `session-lines/<sid>` 一个会话）。
    * 会话内容**只**从这里来（原来的 `jsonl-line` / `jsonl-batch` 两个事件已退役）。在其余监听都注册完之后订，

@@ -24,7 +24,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   }),
 }));
 vi.mock("../src/ipc/commands", () => ({ commands: new Proxy({}, { get: () => vi.fn() }) }));
-vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
+vi.mock("../src/comms/inward/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents, TAP_WINDOW } from "../src/events";
 import { ACCOUNTS_CHANGED_KIND, ACCOUNTS_CHANGED_WINDOW } from "../src/session-accounts-poll";

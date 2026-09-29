@@ -9,7 +9,7 @@
  */
 import { putAccounts } from "./app-store";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
 import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";

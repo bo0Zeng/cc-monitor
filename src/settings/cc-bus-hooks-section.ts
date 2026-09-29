@@ -15,7 +15,7 @@
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { commands } from "../ipc/commands";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 import { copyText } from "../copy-table";

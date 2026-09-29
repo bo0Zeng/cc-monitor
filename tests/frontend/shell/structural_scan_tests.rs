@@ -45,6 +45,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
         ("src/backend", &[]),
         ("tests/frontend/shell", &["structural_scan_tests.rs"]),
         ("tests/backend", &[]),
+        ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {
         // 排除名单里写的是**本文件自己**：它住 `tests/frontend/shell/`，在语料里，
         // 而它的头注为了讲清形状逐字写了 `#[test]` 字样 ⇒ 必须明写摘掉。
@@ -965,6 +966,7 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     for root in [
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
         crate::guard_support::tests_root().join("frontend/shell"),
+        crate::guard_support::tests_root().join("comms/inward"), // 〔RE〕本 crate 的第二棵测试树
     ] {
         for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
             // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
@@ -1307,6 +1309,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
         ("src/backend", &[]),
         ("tests/frontend/shell", &["structural_scan_tests.rs"]),
         ("tests/backend", &[]),
+        ("tests/comms", &[]), // 〔RE〕通信层成员的单测镜像
     ] {
         files.extend(guard_core::scan_tree_excluding(
             &root.join(sub),
@@ -2433,20 +2436,20 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "hello_commands_match_the_dispatch_table",
             1,
         ),
-        ("src/backend/relay/http1.rs", "handle_alloc_error", 1),
+        ("src/comms/outward/http1.rs", "handle_alloc_error", 1),
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
         (
-            "tests/backend/relay/http1_tests.rs",
+            "tests/comms/outward/http1_tests.rs",
             "head_cap_is_enforced",
             1,
         ),
         // 〔AR1〕`tests/backend/relay/nodelay_guard.rs` 那一行删了：文件随 `设计/15 §2.1` B3 退役整份删掉，
         //   它头注里点名的旧判据名跟着没了（不是改对了话，是那段话不在了）。
-        ("src/backend/relay/server.rs", "handle_alloc_error", 1),
-        // 〔DEL〕`tests/backend/relay/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
+        ("src/comms/outward/server.rs", "handle_alloc_error", 1),
+        // 〔DEL〕`tests/comms/outward/server_tests.rs` 那一行（1 处）摘了：点那个旧名的那段散文随 `--relay` 入口那三条判据一起删了 ⇒ 存量 −1。
         (
             // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家。
-            "tests/backend/relay/upstream_tests.rs",
+            "tests/comms/outward/upstream_tests.rs",
             "tls_client_config_builds_and_carries_roots",
             1,
         ),
@@ -2942,12 +2945,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "tests/frontend/shell/origin_tests.rs",
+            "tests/comms/inward/origin_tests.rs",
             "create_remote_branch_session",
             1,
         ),
         (
-            "tests/frontend/shell/origin_tests.rs",
+            "tests/comms/inward/origin_tests.rs",
             "delete_remote_history_session",
             1,
         ),
@@ -3040,7 +3043,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "tests/frontend/shell/origin_tests.rs",
+            "tests/comms/inward/origin_tests.rs",
             "stream_read_remote_session",
             1,
         ),
@@ -3262,7 +3265,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "write_key_at",
             1,
         ),
-        ("tests/backend/relay/server_tests.rs", "write_key_at", 1),
+        ("tests/comms/outward/server_tests.rs", "write_key_at", 1),
         (
             "tests/backend/accounts/upstream/file_face_tests.rs",
             "a_program_write_keeps_everything_the_human_put_there",
@@ -4050,7 +4053,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 〔MIG-3a〕`src/frontend/shell/src/mcp.rs` 那一行随文件删了（MCP 读写进了那台后端）。
         // 〔MIG-3a〕`src/ipc/commands.ts` 那一行摘了：点它的那段注释随 `list_mcp_project_dirs` 包装层一起删了。
         (
-            "tests/frontend/shell/origin_tests.rs",
+            "tests/comms/inward/origin_tests.rs",
             "list_remote_mcp_project_dirs",
             1,
         ),
@@ -4383,7 +4386,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 〔C4d〕远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
         (
-            "tests/frontend/shell/origin_tests.rs",
+            "tests/comms/inward/origin_tests.rs",
             "stream_remote_history_sessions",
             1,
         ), // 〔C4d〕远端会话清单那个函数随历史清单搬进本机后端删了，点它的散文挂墓碑
@@ -4610,7 +4613,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         (
-            "tests/backend/relay/server_tests.rs",
+            "tests/comms/outward/server_tests.rs",
             "the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched",
             1,
         ), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
@@ -5018,7 +5021,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/creds_store.rs", 6), // 〔HX2 · 4D〕+2：两处「GP1 那一版经 `write_key_on`」
         ("src/frontend/shell/src/platform_fs.rs", 1),
         ("tests/backend/accounts/upstream/file_face_tests.rs", 6),
-        ("tests/backend/relay/server_tests.rs", 2), // 〔MIG-2〕1 → 2
+        ("tests/comms/outward/server_tests.rs", 2), // 〔MIG-2〕1 → 2
         ("tests/frontend/shell/creds_store_tests.rs", 11), // 〔HX2 · 4D〕2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
         //   状态消费者矩阵那一行一块。
@@ -5283,7 +5286,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
         // 〔NT2 · V25〕+1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
         ("src/backend/accounts/upstream/mod.rs", 4),
-        ("src/backend/relay/mod.rs", 1),
+        ("src/comms/outward/mod.rs", 1),
         ("src/frontend/shell/src/ssh_source.rs", 25), // 〔FIX4 · V41〕24 → 25：`winner_address` 零生产调用者删了，原处挂墓碑 // 〔MOD〕23 → 24 // 〔MIG-3b 续〕+1：流那一个一次性 exec 原语删了，原地一块 // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 21 → 22 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔MOD〕`src/frontend/shell/src/subagent.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         ("src/backend/footprint/registry.rs", 10), // 〔MIG-3b 续〕11 → 10：Claude 布局那一半搬进适配层，带走一块（`IndirectWrite` 那条 `~/.cc-bus/` note） // 〔MIG-3a · 09-28 预裁〕10 → 11：头注点当年那条部署命令 // // 〔E2 · 子步 4〕6 → 10：本机 `ccm` 载体的来源 / 头注里点副本与 shim 旧名处（四块） //, // 〔E2〕5 → 6：点 `is_safe_remote_backend_path`（卸载守卫随固定落点删了） // 〔SH1〕+1：远端 acct-iso 探测旧名 // 〔SH1〕+1：点 `build_online_cmd` 的那句原靠 monitor 驾驶舱那份墓碑兜着，那份删了，就地补标 // 〔C4e 批 3b〕+2：`IndirectWrite` 那一档与 `~/.cc-bus/` 那条 note 点的写面旧命令名（写面迁到界面） // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
@@ -5304,10 +5307,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/cc-bus-control.ts", 4), // 〔DUP2 · J12〕+3：TS 副本 `isValidBusId` / `refuseBadId` 删了（原处一行两块）· `checkSpawnShape` 头注点它一块
         ("src/frontend/shell/src/backend/mod.rs", 3), // 〔SH1〕+1：本机 acct-iso 那条旧名 // 〔LOC1a〕+1：`observe/` 那条线删了，`pub mod` 旁那一句 // 〔C4e 批 3b〕归属表里 `control/cc_bus.rs` 那一格点的写面四条旧命令名
         ("src/views/pane-preview.ts", 1),
-        (
-            "tests/frontend/shell/backend/control/backend_route_tests.rs",
-            9,
-        ), // 〔MIG-3b 续〕8 → 9：足迹发送端那一行删了、留墓碑 // 〔MIG-3b 续〕7 → 8：全景发送端那一行删了、留墓碑 // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // 〔MIG-2〕+1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // 〔MIG-3a〕+1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // 〔C4e 批 2〕+1：SENDERS 头三行（三个发送端）摘掉的那一块
+        ("tests/comms/inward/backend_route_tests.rs", 9), // 〔MIG-3b 续〕8 → 9：足迹发送端那一行删了、留墓碑 // 〔MIG-3b 续〕7 → 8：全景发送端那一行删了、留墓碑 // 〔合并 MIG-1 × 主线 eebf51de〕两边各自贴的墓碑相加，按盘上现数（跑出来核过） 6 → 7 // 〔MIG-2〕+1：`apikey_remote`整删，发送端表摘掉那一行处一块挂墓碑 // 〔MIG-3a〕+1：发送端表摘掉 `mcp_sync.rs` 那一行处一块 // // 〔C4e 批 2〕+1：SENDERS 头三行（三个发送端）摘掉的那一块
         // 〔C4e 批 2〕杀会话 · 送键 · 就地 resume 三条迁到界面：调用方头注 / 注释里点旧命令名的地方各一块。
         ("src/account-restart.ts", 2),
         ("src/launch-cli-wire.ts", 1),
@@ -5327,7 +5327,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/views/pane-preview.vitest.ts", 1),
         ("tests/backend/history/history_join_tests.rs", 1), // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔MOD〕`tests/frontend/shell/history_title_coverage.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
-        ("tests/frontend/shell/origin_tests.rs", 9), // 〔MOD〕7 → 9 // 〔合并 MIG-3b × 主线 19671e6b〕主线 5 ＋ MIG-3b +2（远端分叉 · 远端删会话两个分支函数删了）// 〔MIG-3a〕+2：远端 MCP 写 / 删两个分支函数随 `mcp.rs` 删了 // // 〔SH1〕+1：远端项目目录那个分支删了 // 〔合并 LOC1b〕+1：远端读会话函数（本机远端合成一条） // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
+        ("tests/comms/inward/origin_tests.rs", 9), // 〔MOD〕7 → 9 // 〔合并 MIG-3b × 主线 19671e6b〕主线 5 ＋ MIG-3b +2（远端分叉 · 远端删会话两个分支函数删了）// 〔MIG-3a〕+2：远端 MCP 写 / 删两个分支函数随 `mcp.rs` 删了 // // 〔SH1〕+1：远端项目目录那个分支删了 // 〔合并 LOC1b〕+1：远端读会话函数（本机远端合成一条） // 〔C4d〕历史清单与注解搬进本机常驻后端，点旧名的散文挂墓碑
         // 〔US1 · 4D〕上游选择那半（决策表 · 人群 · 路由语法 · 本机读侧）从 monitor 搬走：点旧名的散文挂墓碑。
         //   既有行里跟着变的：upstream/mod.rs 2→4 · apikey_remote.rs 2→3 · payload.rs 1→4 · history.rs 14→17 · lib.rs 9→10 ·
         //   local_backend_host.rs 1→2 · file_face_tests.rs 4→6 · apikey_remote_tests.rs 1→2 · creds_store_tests.rs 1→2 ·
@@ -5336,7 +5336,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   creds_store_tests.rs 里读侧三态那条判据头注那一处（点当年 monitor 的写口）—— 两处的净数已算在上面。
         ("src/backend/accounts/upstream/file_face.rs", 2), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("src/frontend/shell/Cargo.toml", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
-        ("tests/backend/relay/route_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
+        ("tests/comms/outward/route_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/backend/control/launch_render/payload_tests.rs", 4), // 〔SH1〕+1：`resolve_bash` 的平台那一格随驾驶舱 shell 读删了 // 〔DUP1〕+1：launcher 两份策略那段里 TS 那一份删了 // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/frontend/shell/local_backend_host_tests.rs", 8), // 〔合并 MIG-1 × 主线 862be034〕主线 3 ＋ MIG-1 本路增量 ⇒ 8（盘上现打） // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑 // 〔MIG-2〕1 → 3
         // 〔LOC1a · 第四波 4D〕本机四个一次性 exec 改走 `<local>` 长连接（`local_query` 一族删、monitor 侧 `observe/` 删）·
@@ -5441,7 +5441,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/claudecode/schema.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/parse.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/backend/agents/codex/record.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/frontend/shell/src/origin.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
+        ("src/comms/inward/origin.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/frontend/shell/src/utils.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/cards/index.ts", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/record-reads.ts", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑

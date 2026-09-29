@@ -47,7 +47,7 @@ fn the_src_root_address_points_at_a_real_tree() {
     for rel in [
         "control/mod.rs",
         "observe/mod.rs",
-        "relay/server.rs",
+        "relay/door.rs", // 〔RE〕面 B 成员搬去 `src/comms/outward/`，`relay/` 下今天住的是非成员
         "platform/mod.rs",
     ] {
         assert!(

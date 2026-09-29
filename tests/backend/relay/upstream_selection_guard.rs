@@ -104,11 +104,8 @@ pub(super) mod tests {
         let files: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, raw)| {
-                let rel = p
-                    .strip_prefix(&root)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .replace('\\', "/");
+                // 〔RE〕面 B 成员住 `src/comms/outward/`、由 `lib.rs` 挂成 `relay` ⇒ 按模块住址认（`relay/…`）。
+                let rel = guard_core::module_address(&root, &p);
                 (rel, production_code(&raw))
             })
             .collect();

@@ -105,6 +105,7 @@ function tsDerivingSources(): string[] {
   // 〔MOD · `设计/90 §3` 判据 3〕记录的线上形状随记录解释搬进了后端（`agents/claudecode/schema.rs`），ts-rs 从后端导出 ——
   //   后端那一侧也在范围里，否则下面几条通用性质对 `JsonlRecord` 一族静默失效（C04d 那一课）。
   walk("src/backend");
+  walk("src/comms"); // 〔RE〕通信层成员（壳 / 后端经 `#[path]` 编它们）
   return out.sort();
 }
 
@@ -174,7 +175,7 @@ describe("C01 边界生成物", () => {
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
       // P8a：marketplace 只读枚举的两个载荷（`declared_plugins` 刻意是可空的
       // ——`null` 是「读不到」，`0` 是「真的一个都没声明」，两者不许合并）。
-      "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/frontend/shell/src/origin.rs` 头注）
+      "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/comms/inward/origin.rs` 头注）
       "OriginSessionsListedPayload.ts", // 〔U4b〕某台机器的活会话清单报完了（`origin-sessions-listed`）
       // 〔RM1f〕`PanoramaStatus.ts` 出列：它的 Rust 源（monitor `panorama.rs`）随内嵌引擎删了；
       //   形状今天住 `src/panorama/types.ts`（手写），全景小程序的 `the_status_shape_matches_the_monitor_dto` 对拍它。
@@ -596,7 +597,7 @@ describe("C02 事件名钉死", () => {
     // 〔U4b · 第四波〕12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
     // `ORIGIN_SESSIONS_LISTED`（"listed 格"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
-    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/ipc/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
+    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/comms/inward/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
     // 〔TAP · V124〕不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`，`设计/05 §15`），不开裸 Tauri 事件（`01 §2.2`）。
     // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
     // 〔DL1 · 第五波〕13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `accounts-changed`

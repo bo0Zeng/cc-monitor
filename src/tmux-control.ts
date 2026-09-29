@@ -44,7 +44,7 @@ import {
   unreadable,
   type Refusals,
 } from "./control-said";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, provablyNotSent } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { isIdentityRefusal } from "./resync";

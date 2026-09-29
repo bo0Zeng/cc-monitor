@@ -1229,6 +1229,11 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
         &crate::guard_support::repo_root().join("tests/frontend/shell"),
         &["rs"]
     ));
+    // 〔RE〕monitor 那半边的通信层成员单测镜像住 `tests/comms/inward/`。
+    files.extend(guard_core::scan_tree!(
+        &crate::guard_support::repo_root().join("tests/comms/inward"),
+        &["rs"]
+    ));
     // 闭集的家与随它搬进后端的三份判据（〔MIG-3b 续〕它们不在上面三棵根里了，逐份加回来）。
     let root = crate::guard_support::repo_root();
     for (rel, text) in [

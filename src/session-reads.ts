@@ -28,7 +28,7 @@
  * 此前是活 tab 在 `onLine` 旁路上一条一条攒的（`设计/10 §2.2`）。续传令牌就是**上一份成品原样**
  * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
  */
-import { chan, ChanError, type CallError } from "./ipc/chan";
+import { chan, ChanError, type CallError } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, refusalOf, saidOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";

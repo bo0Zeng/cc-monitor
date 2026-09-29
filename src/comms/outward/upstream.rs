@@ -259,5 +259,5 @@ pub(crate) fn connect(base: &Base, deadline: Duration) -> std::io::Result<Conn> 
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/relay/upstream_tests.rs"]
+#[path = "../../../tests/comms/outward/upstream_tests.rs"]
 mod tests;

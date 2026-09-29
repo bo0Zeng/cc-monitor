@@ -7,7 +7,7 @@ import {
   accountsChangedItems,
   type HostFetchers,
 } from "../src/session-accounts-poll";
-import type { Item } from "../src/ipc/chan";
+import type { Item } from "../src/comms/inward/chan";
 import type { RemoteHostConfig } from "../src/remote-config";
 import type { AccountsState, SessionAccount } from "../src/accounts";
 

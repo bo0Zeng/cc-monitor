@@ -435,7 +435,7 @@ export const commands = {
 
   /**
    * 〔C4a · 子步 3〕**通道在 Tauri IPC 这一跳上的那条命令**（`chan/webview.rs`）。
-   * ⚠ 调用方**不直接用它**：一律经 `src/ipc/chan.ts` 的 `chan.call(origin, op, payload, budget)`
+   * ⚠ 调用方**不直接用它**：一律经 `src/comms/inward/chan.ts` 的 `chan.call(origin, op, payload, budget)`
    * （期限换算、本地撤单、三层错误解码都住那里）。载荷去程是字节数组、回程是原样字节（`ArrayBuffer`）。
    * **桶②**：回的是不透明字节，本表不认识它的形状。
    */
@@ -451,14 +451,14 @@ export const commands = {
   /**
    * 〔NET2〕那台机器的能力事实（`chan/webview.rs::chan_offer`）：认哪些 op · 这台做不到哪几条（附码）·
    * 撤掉之后停得下的那几条。判断在 monitor 那边做完，本侧只查成员。`null` = 今天没有控制通道。
-   * ⚠ 调用方经 `src/ipc/chan.ts` 的 `chan.offer` / `chan.cachedOffer` 用它。
+   * ⚠ 调用方经 `src/comms/inward/chan.ts` 的 `chan.offer` / `chan.cachedOffer` 用它。
    */
   chan_offer: (args: { origin: Origin }) =>
     invoke<{ ops: string[]; unavailable: [string, string][]; stoppable: string[] } | null>("chan_offer", args),
 
   /**
    * 〔CF2 · 第四波 4B〕**通道 `subscribe` 在 Tauri IPC 这一跳上的三条命令**（`chan/webview.rs`）。
-   * ⚠ 调用方**不直接用它们**：一律经 `src/ipc/chan.ts` 的 `chan.subscribe(origin, kind, from, want, sink)`
+   * ⚠ 调用方**不直接用它们**：一律经 `src/comms/inward/chan.ts` 的 `chan.subscribe(origin, kind, from, want, sink)`
    * （编号、窗口作用域的交格事件、解码都住那里）。`id` 由那一侧给（每页从 1 起）。**不回错**：说不了的在流里原位说。
    */
   chan_subscribe: (args: {

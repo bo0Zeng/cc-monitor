@@ -3,7 +3,7 @@
  *
  * 要求住址：`设计/05 §3.3.5`「`subscribe` 不会失败 —— 说不了的在流里原位说」（`closed` 那一格就是「说」，
  * 消费方得把它说给人听）· `audit/E-compat.md §3.3` 吞错普查（`chan_want` 失败被吞 ⇒ 静默停流；
- * 通道那一半在 `tests/ipc/chan.vitest.ts`「S5 信用报不上去」，这里是消费方那一半）。
+ * 通道那一半在 `tests/comms/inward/chan.vitest.ts`「S5 信用报不上去」，这里是消费方那一半）。
  *
  * | 判什么 | 形态 |
  * |---|---|
@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../src/ipc/commands", () => ({
   commands: new Proxy({}, { get: () => vi.fn().mockResolvedValue(undefined) }),
 }));
-vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
+vi.mock("../src/comms/inward/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 const toast = vi.fn();
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: (...a: unknown[]) => toast(...a) }));
 

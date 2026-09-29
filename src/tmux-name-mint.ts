@@ -25,7 +25,7 @@
 import { listTmux } from "./tmux-reads";
 import type { Origin } from "./ipc/origin";
 import type { TmuxSession } from "./tmux-sessions";
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "./ipc/chan-caller";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";

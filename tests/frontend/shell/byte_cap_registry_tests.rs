@@ -900,7 +900,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //      `read_head` 的头注早在回修轮（08-25）就订正过，它现在逐字写的是
     //      「超了返回 `None`」并说明两个调用点各自回 400 / 502 —— 与本表一致，没有分歧了。
     (
-        "src/backend/relay/server.rs",
+        "src/comms/outward/server.rs",
         "HEAD_CAP",
         65536,
         "一次 HTTP 请求/响应的**头部**字节数（不是体）",
@@ -913,7 +913,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 不走 unwind ⇒ `catch_unwind` 接不住；而中转是「一个进程服务 N 个会话」
     // ⇒ 打掉的是**当时所有会话的在途流**。
     (
-        "src/backend/relay/server.rs",
+        "src/comms/outward/server.rs",
         "BODY_CAP",
         67108864,
         "一条下游 HTTP 请求的**请求体**字节数（`Content-Length` 那个值）",
@@ -923,7 +923,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 这一条防「按真实收到的字节无界增长」（上游发一条永不换行的 `data:` 行 /
     // 永不结束的块长度行）。丢的只是 **tee 那一路**，下游拿到的字节一个不少。
     (
-        "src/backend/relay/server.rs",
+        "src/comms/outward/server.rs",
         "TEE_DECODE_CAP",
         8388608,
         "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
@@ -932,7 +932,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // 〔TAP · V124〕tee 交给 tap 口的**一个 SSE 事件**的原文字节数。超了这一件不交、位置号照占 ⇒
     // 接收侧看见 `n` 的缺口（身份 = 哪个响应的第几号）；下游的字节一个不少（tap 是抄一份）。
     (
-        "src/backend/relay/tee.rs",
+        "src/comms/outward/tee.rs",
         "TAP_DATA_CAP",
         16384,
         "tee 交给 tap 口的一个 SSE 事件（`data:` 后那段原文）的字节数",
@@ -1555,7 +1555,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     //    ★ 顺序是这一格的**全部**：`if n > cap { return Ok(None); }` 在 `take(n)` **之前** ——
     //    颠倒过来 `take` 就会按敌手给的数去长。死值验 `MU2` 打的正是这个顺序（1 红）。
     (
-        "src/backend/relay/http1.rs",
+        "src/comms/outward/http1.rs",
         "n as u64",
         "`read_exact_body` 的 `n` 是**请求体声明长度**（下游 `Content-Length`，敌手可控），\
              它**不是上限**；上限是同一函数的 `cap` 入参，唯一调用点给的是具名常量 `BODY_CAP`\

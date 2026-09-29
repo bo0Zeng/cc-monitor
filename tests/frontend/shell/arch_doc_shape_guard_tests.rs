@@ -343,6 +343,12 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
         &["rs"],
         &["arch_doc_shape_guard_tests.rs"],
     ));
+    // 〔RE〕本 crate 的通信层成员（`src/comms/inward/`，经 `#[path]` 由上面那棵根顺进来）的单测镜像住 `tests/comms/inward/`。
+    files_src.extend(guard_core::scan_tree_excluding(
+        &repo.join("tests/comms/inward"),
+        &["rs"],
+        &[],
+    ));
     // 〔MIG-2〕`ccm …` 调用行渲染器搬进后端（`99 §2.1 ⑬`）：它那几处 §36 引用跟着搬，人群补上它的新家（只这一个目录，不是扩面）。
     let render_dir = repo.join("src/backend/control/launch_render");
     files_src.extend(guard_core::scan_tree_excluding(&render_dir, &["rs"], &[]));

@@ -70,14 +70,14 @@ fn repo_root() -> PathBuf {
 /// 十一条一起管着 —— 登记是**上锁**，不是**放行**。
 const REGISTERED: &[(&str, &str)] = &[
     (
-        "src/frontend/shell/src/origin.rs",
+        "src/comms/inward/origin.rs",
         "面 A 的**寻址键**本体。`设计/05 §2` 逐字列了这一层认识的四样东西，第一样是\
          「**地址**（`origin` / 路由键）」；`§4` 那张一层两面图里面 A 的寻址逐字就是 `origin`。\
          它**只是**那个地址：零业务词 · 零读盘 · 零起进程 · 零期限字面量。\
          步 2 刚把它收得更紧（`Unspecified` 退役 ⇒ 地址只有一种线上形状，`null` 进不来）。",
     ),
     (
-        "src/frontend/shell/src/backend/control/backend_route.rs",
+        "src/comms/inward/backend_route.rs",
         "面 A 的**失败语义**本体（`设计/05 §4.5.2`）。它把 `CallError` 翻成三态，\
          判准逐字是「能不能证明这条命令根本没发出去」—— 那就是 `§3.3.1` 的 `reach` \
          在今天这棵树上的样子，也是 `X1` 点名的三个线上类型之一（`CallError`）\
@@ -89,7 +89,7 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     // ── 〔步 4，2026-09-21〕面 B 那一侧：凭据搬走之后**只收不取**的那两份 ──────────
     (
-        "src/backend/relay/route.rs",
+        "src/comms/outward/route.rs",
         "面 B 的**路由键**本体 —— `设计/05 §2` 四样里第一样「**地址**（`origin` / 路由键）」\
          在外向那一面的样子。更要紧的是它是 `设计/01 §2.1` 那条 🔴「怎么做到零豁免」的**现物**：\
          逐字「通信层的类型里用**位置**称呼它搬的东西（「路径的第 1/2 段」＋一个不透明的流标签），\
@@ -99,7 +99,7 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     // ── 〔`P16` 2026-09-22 用户裁〕中转本体与它的契约本体 ────────────────────────
     (
-        "src/backend/relay/mod.rs",
+        "src/comms/outward/mod.rs",
         "面 B 的**层间契约本体** —— `Destination` / `Destinations` / `Mode` / `RouteKey` / \
          `AuthSwap` 都住这儿，`设计/05 §4.3` 归通信层那一列也点名了它。\
          🔴 **那道「边界契约文件自己算不算成员」的题，用户 2026-09-22 裁「照圈」**，\
@@ -111,7 +111,7 @@ const REGISTERED: &[(&str, &str)] = &[
          没有那一条，这一行登记在语义上就等于把上游选择一起圈进来。",
     ),
     (
-        "src/backend/relay/server.rs",
+        "src/comms/outward/server.rs",
         "面 B 的**交换面**本体（`20 §4` 要的那个名字正是 `exchange.rs`），\
          `设计/05 §4.3` 归通信层那一列的第一个。\
          它先前差两条，`P16` 同拍清掉：`C2`（`Destination::Substitute` 不再带 `creds-core` \
@@ -122,7 +122,7 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     // ── 〔`P16`，2026-09-22〕面 B 那一侧第三份：期限的**值**搬走之后才进得来 ──────
     (
-        "src/backend/relay/upstream.rs",
+        "src/comms/outward/upstream.rs",
         "面 B 的**上游那一跳**本体 —— 它头注第一行逐字「连出去、把请求**原样**递上去」，\
          那就是 `设计/05 §2` 四样里的「**载荷**（不透明字节）」在外向那一面的样子。\
          归属的依据是 `设计/01 §0` 那张图（面 B ＝ agent ↔ 上游 API，**本来就在通信层内**）\
@@ -139,7 +139,7 @@ const REGISTERED: &[(&str, &str)] = &[
          也**不买**「tee 到的明文不该落盘」（那归 `creds_guard`）。",
     ),
     (
-        "src/backend/relay/http1.rs",
+        "src/comms/outward/http1.rs",
         "面 B 的**协议编解码**本体 —— `设计/05 §4.2` 那张「四样不共享」表里，面 B 的「协议」\
          一栏逐字是「手写 HTTP/1.1 ＋ SSE」。它只解析中转必须懂的那几样（请求行 · 头 · \
          `Content-Length` · chunked 拆帧），别的一律当**不透明字节** —— 就是 `§2` 四样里的\
@@ -149,7 +149,7 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     // ── 〔SC1 · 第四波 4B〕面 B 那一侧：分帧从 `http1.rs` 里抽出来单住一份，同拍圈进来 ─────
     (
-        "src/backend/relay/framer.rs",
+        "src/comms/outward/framer.rs",
         "面 B 协议编解码的**分帧**那一半 —— 先前就住在成员 `http1.rs` 的 `ChunkedView` 里\
          （外加 `tee.rs` 的一份手抄），`设计/17 §3.7` 把两份收成一个增量分帧器。\
          它只认**字节与一个分隔符**，不认里面是什么（`§2` 四样里的「载荷（不透明字节）」）：\
@@ -159,7 +159,7 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     // ── 〔DEL〕面 B 那一侧：tee 的 NDJSON 行落点删了之后，挡它的 `X4` 清空，同拍圈进来 ─────
     (
-        "src/backend/relay/tee.rs",
+        "src/comms/outward/tee.rs",
         "面 B 上「搬完抄一份」的那一半（`设计/05 §4.3` 归通信层那一列点名了它；`设计/20 §11` 挂载物 ①）：\
          拆 SSE 的 `data:` 行、给每件占号、交给宿主的 tap 口。它不认识会话 / 账号 / agent（流标签是不透明串，\
          路由那两段不进 tee —— `20 §11` I2「① 不问账号」）· 零读盘 · 零环境变量 · 零起进程 · 零绑端口 · 零期限。\
@@ -172,14 +172,14 @@ const REGISTERED: &[(&str, &str)] = &[
     //    说的正是 `01 §2.2` 那两个动作。同目录另两份（`host.rs` 绑口造钥匙、`dial.rs` 拨号）
     //    **刻意不圈** —— 它们做的正是 `C4`/`C5` 不许成员做的事，理由逐字住那两份的头注。
     (
-        "src/frontend/shell/src/chan/wire.rs",
+        "src/comms/inward/chan/wire.rs",
         "面 A 的**线上词汇本体** —— `设计/05 §3.3.0` 那「五个不透明类型 ＋ 一个手柄 ＋ 一个跳号」、\
          `§3.3.1` 的三层错误、`§3.3.4` 的 `Item`、以及 `Comms`/`Sub` 两个 trait 第一次在盘上有了类型。\
          每一个公开名字都是位置名或传输词（`01 §2.1`：用**位置**称呼它搬的东西）。\
          载荷走帧体、不进 JSON ⇒ 对载荷形状零假设；帧长上限由调用方给（`C4`），本文件零尺寸常量、零期限常量。",
     ),
     (
-        "src/frontend/shell/src/chan/router.rs",
+        "src/comms/inward/chan/router.rs",
         "面 A 上**进程外前端**进来的那扇门：认证 ＋ 按 `origin` 把 `call`/`subscribe` 转给**注入的**句柄 ＋ \
          撤单 ＋ credit。它是一个**纯路由器**：`op`/`kind`/载荷原样交出去、一个都不解释（`C1`）；\
          钥匙、帧长上限、认证等待时长全由宿主交进来（`C4`）；**绑回环与 `accept` 在宿主那一份**，\
@@ -187,7 +187,7 @@ const REGISTERED: &[(&str, &str)] = &[
          ⚠ 它**不买**「那个 `origin` 真有人服务」—— 那是句柄的活。",
     ),
     (
-        "src/frontend/shell/src/chan/client.rs",
+        "src/comms/inward/chan/client.rs",
         "`01 §2.2`「前端只有两个动作」在**进程外前端**手里的样子 —— 它实现 `05 §3.3.0` 的 `Comms`，\
          签名参数名与顺序一字不改（`budget` 是绝对时刻 · `from` 原样过线 · `want` 是 credit）。\
          它收的是一条**已经连好**的流与一把**已经交到手里**的钥匙：不拨号（拨号在 `dial.rs`，不是成员）、\
@@ -195,7 +195,7 @@ const REGISTERED: &[(&str, &str)] = &[
     ),
     // ── 〔C4a · 第四波 · 2026-09-24〕通道在 **webview** 手里的那一半（主界面第一次说 `call`）──────
     (
-        "src/ipc/chan.ts",
+        "src/comms/inward/chan.ts",
         "`01 §2.2`「前端只有两个动作」在**主界面**（webview）手里的样子 —— 与 `chan/client.rs`（进程外前端那一半）\
          是同一件东西的两个住址：`call(origin, op, payload, budget)` 参数名与顺序一字不改，`Budget.until` 是绝对时刻、\
          过线换成「还剩多少」，过期不发；本地撤单立即回；三层错误按 monitor 交回的线上形状解回（解不出就 `Broken`）。\
@@ -207,7 +207,7 @@ const REGISTERED: &[(&str, &str)] = &[
     //    ⚠ 四份候选里 `ssh_source.rs` / `pubkey.rs` **不收** —— 理由逐份住 `TRANSPORT_LEFT_OUTSIDE`；
     //    `sftp_pool.rs` 是 `F7c` 独占，下一拍。
     (
-        "src/frontend/shell/src/ssh_link.rs",
+        "src/comms/inward/ssh_link.rs",
         "面 A 的 **SSH 链路**那一段：在一条**交给它的**管子上读拨号代理的阶段行与 ack、收全结果 —— \
          `05 §2` 四样里的「流」与「载荷」（ack 之后的字节它一个都不看）。它原来埋在 `ssh_source.rs` 里；\
          C2 把 SSH 的全部活搬进后端的拨号代理之后，界面侧与 SSH 有关的**传输**就只剩这一件。\
@@ -223,7 +223,7 @@ const REGISTERED: &[(&str, &str)] = &[
 /// `设计/05 §3.1`：前端只有两个动作（`call` / `subscribe`）。
 ///
 /// 🔴 〔2026-09-24，通道那一拍〕两个动作**在盘上有了**：
-/// `src/frontend/shell/src/chan/client.rs` 的 `Client` 实现了 `Comms`。
+/// `src/comms/inward/chan/client.rs` 的 `Client` 实现了 `Comms`。
 /// ⚠ **但本表仍然刻意为空**，理由是人群的形状对不上，不是入口不存在：
 /// `X6` 的人群是「本表 × **TS** 前端语料」，而第一个用上它的外部前端是 **Rust**（egui 文件窗口，
 /// 下一波 F2 才接）。把 `call` 填进来的话，`X6` 会去 TS 语料里数与本通道无关的 `call(`
@@ -240,7 +240,7 @@ const ENTRIES: &[(&str, &str, &str)] = &[
     (
         "chan.call",
         "ts",
-        "〔C4a · 第四波〕**主界面**（webview）说 `call` 的入口（`src/ipc/chan.ts` 的 `chan.call`）。\
+        "〔C4a · 第四波〕**主界面**（webview）说 `call` 的入口（`src/comms/inward/chan.ts` 的 `chan.call`）。\
          入口名带着 `chan.` 前缀，是因为 TS 语料里另有与本通道无关的裸 `call(`（`fn.call(this, …)` 一族）——\
          按语言分人群之外再按全名收窄，才不假红。期限由调用方给（`Budget.within(…)`）。",
     ),
@@ -252,7 +252,7 @@ const ENTRIES: &[(&str, &str, &str)] = &[
     (
         "chan.subscribe",
         "ts",
-        "〔CF2 · 第四波 4B〕**主界面**（webview）说 `subscribe` 的入口（`src/ipc/chan.ts` 的 `chan.subscribe`，会话内容流）。\
+        "〔CF2 · 第四波 4B〕**主界面**（webview）说 `subscribe` 的入口（`src/comms/inward/chan.ts` 的 `chan.subscribe`，会话内容流）。\
          同 `chan.call` 那一行按全名收窄（TS 语料里另有与本通道无关的裸 `subscribe(`）。它**没有期限参数**\
          （`05 §3.3.0`：订阅是长期意向）⇒ 只进调用点条数恒等，不进「显式给 `Budget`」那条。",
     ),
@@ -657,6 +657,11 @@ const CRITERIA: &[(&str, &str, &str)] = &[
         "面 A（传输面）进不来的那四份，逐份**被哪几条咬**与散文两向相等",
     ),
     (
+        "住址",
+        "the_comms_tree_holds_exactly_the_registered_members",
+        "`src/comms/` 下的文件集合 == 登记表（〔RE〕`99 §2.1 ⑰`）",
+    ),
+    (
         "元",
         "every_criterion_is_on_the_execution_chain",
         "上面这张表与本文件里真实的 `#[test]` 两向相等",
@@ -666,6 +671,35 @@ const CRITERIA: &[(&str, &str, &str)] = &[
 // ════════════════════════════════════════════════════════════════════════════
 //  五、锚：相等断言 ＋ 散文对拍 ＋ 识别器阳性对照
 // ════════════════════════════════════════════════════════════════════════════
+
+/// ★ 〔RE · 收尾重排〕**住址那一腿：`src/comms/` 下的文件集合 == [`REGISTERED`]**（两向）。
+///
+/// 要求住址：`设计/99 §2.1 ⑰`「立两向判据：`comms/` 下文件集合 == 通信层登记表 == 带标记文件；非成员各回家」。
+/// 「登记表 == 带标记文件」由主锚（下一条）钉着；本条只加住址那一腿 —— 三者两两相等。
+/// 目录只是住址、成员资格仍由登记表认（`90 §0.5.3`）：成员搬出 `comms/`、非成员住进 `comms/`，都当场红。
+/// 走的是**只按目录**的那一口（`guard_core::files_under`，不顺 `#[path]`：`comms/outward/mod.rs` 挂回的 door / listen 不许算进来）。
+#[test]
+fn the_comms_tree_holds_exactly_the_registered_members() {
+    use std::collections::BTreeSet;
+    let comms = crate::guard_support::repo_src_root().join("comms");
+    let on_disk: BTreeSet<String> = guard_core::files_under(&comms)
+        .into_iter()
+        .map(|rel| format!("src/comms/{rel}"))
+        .collect();
+    let registered: BTreeSet<String> = REGISTERED.iter().map(|(p, _)| p.to_string()).collect();
+    assert!(
+        !on_disk.is_empty(),
+        "`src/comms/` 下一份文件都没走到 —— 住址改了或遍历坏了，下面的相等会拿两个集合空转"
+    );
+    let stray: Vec<&String> = on_disk.difference(&registered).collect();
+    let away: Vec<&String> = registered.difference(&on_disk).collect();
+    assert!(
+        stray.is_empty() && away.is_empty(),
+        "`src/comms/` 的住户与通信层登记表对不上（`99 §2.1 ⑰`）：\n\
+         住在 `comms/` 却没登记（非成员该回家）：{stray:?}\n\
+         登记了却不住 `comms/`（成员该搬进来）：{away:?}"
+    );
+}
 
 /// ★★ **主锚** —— 盘上那一侧与登记那一侧**两向集合相等**。
 ///
@@ -1307,7 +1341,7 @@ fn offences_among(names: Vec<(String, String)>) -> Vec<(String, Vec<&'static str
         .collect()
 }
 
-/// 〔C4a · 第四波〕按成员的语言取公开面：`.ts` 成员（`src/ipc/chan.ts`）走 [`ts_public_surface_names`]，
+/// 〔C4a · 第四波〕按成员的语言取公开面：`.ts` 成员（`src/comms/inward/chan.ts`）走 [`ts_public_surface_names`]，
 /// 其余走 Rust 的 [`public_surface_names`]。**判词表与匹配单位同一份**（[`business_words_in`]）——
 /// 只有「什么算公开面」随语言的可见性规矩换。
 fn surface_names_of(rel: &str, prod: &str) -> Vec<(String, String)> {

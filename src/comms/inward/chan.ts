@@ -6,7 +6,7 @@
  * 这一枚标记是**盘上那一侧**的凭据（登记那一侧在 `tests/frontend/shell/comm_boundary_registry_tests.rs::REGISTERED`，
  * 两向集合相等）。盖上它 = **上锁**：本文件从此被 `C1`–`C5` ＋ `X1`–`X6` 一起管着。
  *
- * **凭什么它属于通信层**：它与 `src/frontend/shell/src/chan/client.rs`（进程外前端那一半）是同一件东西的两个住址 ——
+ * **凭什么它属于通信层**：它与 `src/comms/inward/chan/client.rs`（进程外前端那一半）是同一件东西的两个住址 ——
  * 只认 `§2` 那四样里的三样：**地址**（`origin`）· **操作名**（不透明串）· **载荷**（不透明字节）。
  * 它不认识会话、账号、搜索；`op` 是什么、载荷长什么样，只有调用方与后端知道。
  *
@@ -51,8 +51,8 @@
  * - **`subscribe` 没有续传**：webview 页面一重载 JS 状态全没，游标无处可存 ⇒ 句柄对 `from` 原位说用法错。
  */
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { commands } from "./commands";
-import type { Origin } from "./origin";
+import { commands } from "../../ipc/commands";
+import type { Origin } from "../../ipc/origin";
 
 /**
  * 一次调用的期限与撤单手柄。`until` 是绝对时刻（`performance.now()` 钟面），**调用者给，本文件不造**

@@ -9,7 +9,7 @@
  * monitor 那两条转交的 Tauri 命令删了；成品按形状严格收
  * （多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不返回空壳：分叉已经落盘而这边读不出结果时，重试会多出一份孤儿分支）。
  */
-import { chan } from "./ipc/chan";
+import { chan } from "./comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";

@@ -42,7 +42,7 @@ import {
 } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { releaseEnhanceRoot } from "./render";
-import { remaining } from "./ipc/chan";
+import { remaining } from "./comms/inward/chan";
 import { budgetWithin } from "./ipc/chan-caller";
 import { findInSession, readSessionIndex } from "./session-reads";
 import { readLines, readRange } from "./record-reads";

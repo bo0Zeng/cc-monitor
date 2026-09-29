@@ -32,6 +32,8 @@ fn both_halves() -> Vec<String> {
         "src/backend",
         "tests/frontend/shell",
         "tests/backend",
+        // 〔RE〕通信层成员的单测镜像（两半各一棵：`inward` 归 monitor、`outward` 归后端，见 `half_of`）。
+        "tests/comms",
     ] {
         for (p, _) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
             out.push(
@@ -59,9 +61,18 @@ fn half_of(rel: &str) -> &'static str {
     //   「读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边另有 13 处，
     //   它们不是这件的标的」。所以这里按 `tests/frontend/shell/` · `tests/backend/`
     //   **逐个前缀**认，不写成「凡是 `tests/` 都算」。
-    if rel.starts_with("src/frontend/shell/") || rel.starts_with("tests/frontend/shell/") {
+    // 〔RE〕通信层成员住 `src/comms/`，但编进哪个 crate 就是哪一半：`inward` 由壳编、`outward` 由后端编。
+    if rel.starts_with("src/frontend/shell/")
+        || rel.starts_with("tests/frontend/shell/")
+        || rel.starts_with("src/comms/inward/")
+        || rel.starts_with("tests/comms/inward/")
+    {
         "monitor"
-    } else if rel.starts_with("src/backend/") || rel.starts_with("tests/backend/") {
+    } else if rel.starts_with("src/backend/")
+        || rel.starts_with("tests/backend/")
+        || rel.starts_with("src/comms/outward/")
+        || rel.starts_with("tests/comms/outward/")
+    {
         "backend"
     } else {
         "外部"
@@ -454,7 +465,7 @@ fn no_cross_half_edge_lives_in_production_code() {
     // 它量的是「`production_code` 还在不在干活」。分母 = 有生产段的读者数，
     // 而 16 个读者里今天**只有 3 个还住生产树**：
     //   ① `src/backend/control/gate.rs`   ② `src/backend/control/launch.rs`
-    //   ③ `src/backend/relay/route.rs`
+    //   ③ `src/comms/outward/route.rs`
     // 另外 13 个逐份点名，一个都不是「文件没了」：
     //   ④ `src/frontend/shell/src/polling_registry.rs` —— **早就是 0**（整个模块带
     //      `#[cfg(test)]`，上一版那句「十个里九个」说的就是它这一格）；
@@ -469,7 +480,7 @@ fn no_cross_half_edge_lives_in_production_code() {
     // 🔴 〔步 7c 后端剖分 2026-09-19〕**那 3 个也走了 —— 分母现在是 0，逐份点名：**
     //   ① `src/backend/control/gate.rs`  → `tests/backend/control/gate_tests.rs`
     //   ② `src/backend/control/launch.rs` → `tests/backend/control/launch_tests.rs`
-    //   ③ `src/backend/relay/route.rs`   → `tests/backend/relay/route_tests.rs`
+    //   ③ `src/comms/outward/route.rs`   → `tests/comms/outward/route_tests.rs`
     // **一个都不是「文件没了」** —— 三份生产文件都还在，走的是它们的**测试段**
     // （那三条 include 一直长在测试段里）。⇒ 16 个跨半边读者今天**全部住 `tests/`**，
     // 而那正是剖分要达到的终局：`§4.1` 那句「搬完之后生产段和测试段是不同目录」

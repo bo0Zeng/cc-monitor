@@ -735,7 +735,7 @@ fn each_registered_status_still_matches_reality() {
             // ⚠ `control/` 那格刻意不是裸 `is_dir`：目录空着也算「有目录」，
             // 而这一格要主张的是**控制面真的住进来了** ⇒ 钉住那个唯一的分流器在里面。
             "monitor-backend-control-landed" => (
-                root.join("src/frontend/shell/src/backend/control/backend_route.rs")
+                root.join("src/comms/inward/backend_route.rs")
                     .is_file(),
                 "monitor 侧 `backend/control/` 在，且那个唯一的回落分流器住在里面",
             ),

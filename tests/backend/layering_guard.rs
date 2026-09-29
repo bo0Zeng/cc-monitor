@@ -742,8 +742,8 @@ mod tests {
     /// 〔RM1a〕`relay/` 对外的口 == [`RELAY_EXPORTS`]（两向集合相等；从 `relay/mod.rs` 生产段现抠）。
     #[test]
     fn the_relay_layer_exports_exactly_the_registered_items() {
-        let src = std::fs::read_to_string(crate::guard_support::src_root().join("relay/mod.rs"))
-            .expect("读 relay/mod.rs");
+        let src = std::fs::read_to_string(crate::guard_support::relay_root().join("mod.rs"))
+            .expect("读 relay/mod.rs（〔RE〕住 `src/comms/outward/mod.rs`）");
         let prod = production_code(&src);
         let mut found: Vec<String> = Vec::new();
         for line in prod.lines() {

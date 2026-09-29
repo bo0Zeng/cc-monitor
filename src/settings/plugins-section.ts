@@ -39,7 +39,7 @@
 // 本文件经 `chan.call` 直接问、按形状收（[`decodeSurvey`]：同一套严格口径，挪到了唯一的消费者这里），
 // monitor 那条命令与那份核验一起删了。本机与远端同一条路。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
-import { chan } from "../ipc/chan";
+import { chan } from "../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson, saidOf } from "../ipc/chan-caller";
 import type { Origin } from "../ipc/origin";
 import { copyText } from "../copy-table";

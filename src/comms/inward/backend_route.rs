@@ -236,5 +236,5 @@ pub(crate) fn no_channel(origin: &str) -> Routed {
 }
 
 #[cfg(test)]
-#[path = "../../../../../../tests/frontend/shell/backend/control/backend_route_tests.rs"]
+#[path = "../../../tests/comms/inward/backend_route_tests.rs"]
 mod tests;

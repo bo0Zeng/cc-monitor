@@ -50,7 +50,7 @@ vi.mock("../src/commands", () => ({
   commands: { frontend_perf_log: vi.fn(() => Promise.resolve()) },
 }));
 // 〔MIG-1 · ⑬〕可重连 / 已结束并进了会话流（`{"idle": …}` / `{"ended": …}` 那两格）：换成会话流的桩往里灌。
-vi.mock("../src/ipc/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
+vi.mock("../src/comms/inward/chan", async () => (await import("./test-support/chan-stream-fake.ts")).chanStreamModule);
 
 import { bindEvents } from "../src/events";
 import { streamFake } from "./test-support/chan-stream-fake.ts";

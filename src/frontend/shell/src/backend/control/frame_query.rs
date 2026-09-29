@@ -143,7 +143,7 @@ impl Deadline {
 /// （建索引是分钟级，`lines` 那一档的 30 s 不够）。**不新增发送端** —— 仍是这一处、仍走同一个分流器。
 /// 〔DL1 订正〕全景后来不经这里发了；〔MIG-3b 续〕今天界面经通道直问那台后端。今天的调用方都在本文件里。
 ///
-/// 〔DL1〕期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/ipc/chan.ts`
+/// 〔DL1〕期限是调用方给的**那一件事**的 [`Deadline`]：已经到点 ⇒ **一个字节都不发**（同 `src/comms/inward/chan.ts`
 /// 「已经过了 ⇒ 一个字节都不发」）；发出去之后到点 ⇒ `InboundClient` 补发 `cancel`（`05 §3.3.3`），这里说「没在 N 秒内答完」。
 pub(crate) async fn call(
     origin: &Origin,
