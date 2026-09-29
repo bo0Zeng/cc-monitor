@@ -4580,6 +4580,13 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "账号记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
         ),
+        (
+            // 〔THIN〕同一个依赖在测试构建里多开 `fixtures`（跨生产者对拍夹具，`accounts_query_tests.rs` 用）。
+            "acct-core",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
+        ),
         // 〔THIN〕`branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,

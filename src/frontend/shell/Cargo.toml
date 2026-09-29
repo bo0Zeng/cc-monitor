@@ -122,7 +122,7 @@ sha2 = "0.10"
 # 〔THIN〕`branch-core` 删了：monitor 零引用（本机分叉也问本机后端），它收进后端适配层 `agents/claudecode/branch.rs`。
 # 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
 # 〔THIN〕`agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
-acct-core = { path = "../../common/acct-core" }
+# 〔THIN〕`acct-core` 挪到 dev 侧（见下）：monitor 生产段零引用，只有生成器（`AUTH_KINDS` → `judgment-rules.ts`）用它。
 # 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
 copy-core = { path = "../../common/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
@@ -249,6 +249,9 @@ winit = "0.30"
 ts-rs = "12.0.1"
 # 〔DUP3 · J9〕上游 base URL 能不能用：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）与金样那条判据用它 ⇒ dev 侧。
 upstream-url-core = { path = "../../common/upstream-url-core" }
+# 〔THIN〕账号种类取值集 `AUTH_KINDS`（J16）：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）用它 ⇒ dev 侧，
+#   发布二进制里不再链它（连同它那张对拍夹具 —— 夹具另在 `fixtures` feature 后面，这里也不开）。
+acct-core = { path = "../../common/acct-core" }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
 # **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
