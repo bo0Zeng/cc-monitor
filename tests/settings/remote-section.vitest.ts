@@ -845,6 +845,36 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(readStatus(LOCAL_MACHINE_KEY).backend).toBeUndefined();
   });
 
+  /**
+   * 设计/99 §2.2 ㉔「本机 ccm 那一格两件都报」· `15 §5.4 D5`「补本机·ccm 那一格的写点」：
+   * `noteLocalCcm` 照 monitor 那一侧的判定记账 —— 两件都成 ⇒ ok；有一件不成 ⇒ fail 且那句话照记；说不清 ⇒ 不写；Windows 本机不问。
+   */
+  it("FIX3 ㉔：本机 ccm 那一格由 `noteLocalCcm` 写，照 ok / 不写 / Windows 不问", async () => {
+    __setHostOsForTests("linux");
+    for (const [ok, want] of [
+      [true, "ok"],
+      [false, "fail"],
+    ] as const) {
+      localStorage.clear();
+      ipcReplies.set("local_ccm_entry_status", { ok, summary: `S-${String(ok)}` });
+      await mount([], fakePages().host);
+      const cell = readStatus(LOCAL_MACHINE_KEY).ccm;
+      expect(cell?.kind, `ok=${String(ok)} 时账本没写对`).toBe(want);
+      expect(cell?.detail).toBe(`S-${String(ok)}`);
+    }
+    localStorage.clear();
+    ipcReplies.set("local_ccm_entry_status", { ok: null, summary: "" });
+    await mount([], fakePages().host);
+    expect(readStatus(LOCAL_MACHINE_KEY).ccm, "说不清却写了账本").toBeUndefined();
+    localStorage.clear();
+    ipcCalls.length = 0;
+    __setHostOsForTests("windows");
+    ipcReplies.set("local_ccm_entry_status", { ok: true, summary: "x" });
+    await mount([], fakePages().host);
+    expect(ipcCalls).not.toContain("local_ccm_entry_status");
+    ipcReplies.delete("local_ccm_entry_status");
+  });
+
   it("★ 状态条读的是账本，且带年龄（不是伪装成实时）", async () => {
     // S4b：状态条从卡片 legend 移到了**列表行**上（§2.3 里状态就是列表的一列），
     // 所以这条要在分页形态下验。

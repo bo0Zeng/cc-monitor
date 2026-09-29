@@ -13799,8 +13799,38 @@
     },
     "rsCcmProbe.hint.notOurs": {
       "kind": "body",
-      "zh": "PATH 上的 ccm 不是 cc-monitor 装的那份，终端里敲 ccm 会用到它。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
-      "args": ["theirs", "ours", "where"]
+      "zh": "终端里敲 ccm 走到的是 {at}，不是 cc-monitor 装的那份。\n· 它自报：{theirs}\n· cc-monitor 这一份：{ours}，在 {where}\ncc-monitor 不动它，要不要删、什么时候删由你决定。想让终端用 cc-monitor 这一份：把它挪开，或让上面那个目录排在 PATH 前面，或用下面生成的那条命令。",
+      "args": ["at", "theirs", "ours", "where"]
+    },
+    "rsCcmProbe.hint.oldEntry": {
+      "kind": "body",
+      "zh": "终端里敲 ccm 走到的是 {at}，那是 cc-monitor 早先放的旧入口，现在不用了。\ncc-monitor 不替你删。要让终端用 cc-monitor 这一份（{where}）：删掉 {at}，或让 ~/.cc-monitor/bin 排在 PATH 更前面。",
+      "args": ["at", "where"]
+    },
+    "rsCcmProbe.cell.notLanded": {
+      "kind": "body",
+      "zh": "cc-monitor 自带的那份没装下来",
+      "args": []
+    },
+    "rsCcmProbe.cell.notOurBytes": {
+      "kind": "body",
+      "zh": "装的位置上那份不是 cc-monitor 的",
+      "args": []
+    },
+    "rsCcmProbe.cell.ours": {
+      "kind": "body",
+      "zh": "装下来了，终端里敲 ccm 用的就是它",
+      "args": []
+    },
+    "rsCcmProbe.cell.elsewhere": {
+      "kind": "body",
+      "zh": "装下来了，但终端里敲 ccm 走到的是 {at}",
+      "args": ["at"]
+    },
+    "rsCcmProbe.cell.absent": {
+      "kind": "body",
+      "zh": "装下来了，但终端里敲 ccm 找不到它",
+      "args": []
     },
     "rsCcmProbe.hint.notInstalled": {
       "kind": "body",

@@ -32,11 +32,23 @@ pub struct CcmProbeResult {
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build: Option<String>,
+    /// 〔FIX3 · `99 §2.2 ㉔`〕登录 shell 里 `command -v ccm` 答的那一句（一般是一个路径；函数 / 别名时是它们自己的写法）。
+    /// 只有「问 PATH 上那个」那一条探针带它；它不参与「答没答出名片」（`installed`）—— 答不出名片的旧入口照样有住址。
+    #[cfg_attr(test, ts(optional))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
 }
 
 /// 解析 `ccm --ccm-probe` 的输出。首行非字面 `name=ccm` → 判定未装/不兼容——防止 PATH 里
 /// 已有同名但无关的自定义 `ccm`（用户自己的脚本）被误判为本工具的 CLI。
 fn parse_probe_output(out: &str) -> CcmProbeResult {
+    // 〔FIX3〕`at=` 那一行是探针自己补在最后的（[`CCM_PROBE_CMD`]），不归名片 ⇒ 先摘出来、不论名片认不认得。
+    let at = out
+        .lines()
+        .filter_map(|l| l.strip_prefix("at="))
+        .next_back()
+        .filter(|a| !a.is_empty())
+        .map(str::to_string);
     let mut lines = out.lines();
     if lines.next() != Some("name=ccm") {
         return CcmProbeResult {
@@ -44,6 +56,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
             version: None,
             capabilities: vec![],
             build: None,
+            at,
         };
     }
     let (mut version, mut capabilities, mut build) = (None, vec![], None);
@@ -67,6 +80,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
         version,
         capabilities,
         build,
+        at,
     }
 }
 
@@ -74,8 +88,8 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
 ///
 /// 〔E2〕远端那一跳不再用它：`ccm` 就是那台后端本身，改问那台后端的 `ccm-probe`（〔MIG-3b〕今天界面经通道直问，`src/ccm-probe.ts`）。
 /// 本机仍问它：`KR69D2`「你 PATH 上那个是不是我们这一份」答的正是交互 shell 的 `PATH`。
-const CCM_PROBE_CMD: &str =
-    "command -v ccm >/dev/null 2>&1 && ccm -- --ccm-probe || printf 'NO_CCM\\n'";
+/// 〔FIX3 · `99 §2.2 ㉔`〕名片之后补一行 `at=<command -v ccm>`：敲 `ccm` 走到的是哪一份（旧入口答不出名片也说得出住址）。
+const CCM_PROBE_CMD: &str = "command -v ccm >/dev/null 2>&1 && { ccm -- --ccm-probe; printf '\\nat=%s\\n' \"$(command -v ccm)\"; } || printf 'NO_CCM\\n'";
 
 /// 本机探测结果的缓存。TTL 与前端 `ccm-probe.ts::CCM_PROBE_TTL_MS` 同为 5 分钟 ——
 /// 用户装完 ccm 不必重启 app，但也不必每次拉起都付一次 `bash -lic` 的钱。
@@ -319,6 +333,99 @@ pub struct LocalCcmEntry {
     pub verdict: PathCcmVerdict,
     /// 给人读的那句话。没有话要说时是**空串**（`Ours` 那一档）。
     pub message: String,
+    /// 〔FIX3 · `99 §2.2 ㉔` · `15 §5.4 D5`〕机器列表本机那一格（`ccm`）记什么：`Some(true)` = 两件都成
+    /// （我们那份装下来了 ＋ 登录 shell 里敲 `ccm` 走到的就是它）· `Some(false)` = 有一件不成 · `None` = 说不清（不写账本）。
+    pub ok: Option<bool>,
+    /// 那一格的一句话，两件都说。
+    pub summary: String,
+}
+
+/// 〔FIX3 · `99 §2.2 ㉔`〕登录 shell 里敲 `ccm` 落在哪 —— 与我们落点上那一份是不是**同一个文件**。
+///
+/// 名片（[`classify_path_ccm`]）分不开「同一套契约、不同文件」（旧 shim 转给一份同版本的后端就是这样）；
+/// ㉔ 问的是「走到的是不是它」⇒ 能落到文件上的先比文件本身（解过链接），落不到文件上的（函数 / 别名）才回退比名片。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Reach {
+    /// `command -v ccm` 什么都没答。
+    Nothing,
+    /// 解过链接就是我们落点上那一份。
+    Landing,
+    /// 另一个文件。`old_entry` = 认得出是 cc-monitor 早先放的旧入口（三行 shim / bash 启动器，`deploy_core::is_ours`）。
+    OtherFile { path: String, old_entry: bool },
+    /// 不是一个文件路径（shell 函数 / 别名）。
+    NotAFile,
+}
+
+/// `at` = 登录 shell 里 `command -v ccm` 的答；`landing` = 我们那一份的绝对路径（没装 ⇒ `None`）。
+pub(crate) fn reach_of(at: Option<&str>, landing: Option<&std::path::Path>) -> Reach {
+    let Some(at) = at else {
+        return Reach::Nothing;
+    };
+    let p = std::path::Path::new(at);
+    if !p.is_absolute() || !p.is_file() {
+        return Reach::NotAFile;
+    }
+    let same = |a: &std::path::Path, b: &std::path::Path| matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y);
+    if landing.is_some_and(|l| same(p, l)) {
+        return Reach::Landing;
+    }
+    // 只读开头一小截认记号（记号在第二行）；读不到就当认不出。
+    let head: Vec<u8> = std::fs::read(p)
+        .map(|b| b.into_iter().take(4096).collect())
+        .unwrap_or_default();
+    Reach::OtherFile {
+        path: at.to_string(),
+        old_entry: deploy_core::is_ours(&String::from_utf8_lossy(&head)),
+    }
+}
+
+/// **纯函数**：名片 ＋ 落在哪 ⇒ 判词。我们自己那份没装 ⇒ 说不出；落到文件上的按文件判，落不到的回退比名片。
+pub(crate) fn judge_path_ccm(
+    ours: &CcmProbeResult,
+    on_path: &CcmProbeResult,
+    reach: &Reach,
+) -> PathCcmVerdict {
+    if !ours.installed {
+        return PathCcmVerdict::Undetermined;
+    }
+    match reach {
+        Reach::Nothing => PathCcmVerdict::Absent,
+        Reach::Landing => PathCcmVerdict::Ours,
+        Reach::OtherFile { .. } => PathCcmVerdict::NotOurs,
+        Reach::NotAFile => classify_path_ccm(ours, on_path),
+    }
+}
+
+/// **纯函数**：本机那一格记什么（[`LocalCcmEntry::ok`] ＋ [`LocalCcmEntry::summary`]）。
+/// `landed` = 落点上有文件 · `ours_bytes` = 那份字节是我们编的后端。
+pub(crate) fn local_ccm_cell(
+    landed: bool,
+    ours_bytes: bool,
+    verdict: PathCcmVerdict,
+    on_path: &CcmProbeResult,
+) -> (Option<bool>, String) {
+    if !landed {
+        return (Some(false), copy_text("rsCcmProbe.cell.notLanded", &[]));
+    }
+    if !ours_bytes {
+        return (Some(false), copy_text("rsCcmProbe.cell.notOurBytes", &[]));
+    }
+    match verdict {
+        PathCcmVerdict::Ours => (Some(true), copy_text("rsCcmProbe.cell.ours", &[])),
+        PathCcmVerdict::NotOurs => (
+            Some(false),
+            copy_text(
+                "rsCcmProbe.cell.elsewhere",
+                &[(
+                    "at",
+                    &on_path.at.clone().unwrap_or_else(|| "ccm".to_string()),
+                )],
+            ),
+        ),
+        PathCcmVerdict::Absent => (Some(false), copy_text("rsCcmProbe.cell.absent", &[])),
+        // 我们那份字节是对的、却问不出名片 / 这台问不了 PATH ⇒ 说不清，不替用户下结论。
+        PathCcmVerdict::Undetermined => (None, String::new()),
+    }
 }
 
 /// **纯函数**：两张名片，判 PATH 上那个是不是我们这一份。
@@ -361,15 +468,24 @@ pub fn render_path_ccm_hint(
     ours: &CcmProbeResult,
     on_path: &CcmProbeResult,
     entry: Option<&str>,
+    old_entry: bool,
 ) -> String {
     let ours_card = describe_card(ours);
     let not_installed = copy_text("rsCcmProbe.hint.notInstalled", &[]);
     let where_ours = entry.unwrap_or(&not_installed);
+    // 〔FIX3 · ㉔〕走到别处就明说是哪一份：`command -v ccm` 答的原话。
+    let at = on_path.at.clone().unwrap_or_else(|| "ccm".to_string());
     match verdict {
         PathCcmVerdict::Ours => String::new(),
+        // 认得出是我们早先放的旧入口 ⇒ 说清怎么清（不代清，V157 ③）。
+        PathCcmVerdict::NotOurs if old_entry => copy_text(
+            "rsCcmProbe.hint.oldEntry",
+            &[("at", &at), ("where", &where_ours.to_string())],
+        ),
         PathCcmVerdict::NotOurs => copy_text(
             "rsCcmProbe.hint.notOurs",
             &[
+                ("at", &at),
                 ("theirs", &(describe_card(on_path)).to_string()),
                 ("ours", &ours_card.to_string()),
                 ("where", &where_ours.to_string()),
@@ -458,8 +574,9 @@ pub fn local_ccm_entry_status() -> LocalCcmEntry {
     let installed = path.as_ref().filter(|p| p.is_file());
     // 〔E2 · `96 §7.2.2`〕**先读字节认身份，再决定跑不跑**：落点上那一份自报的身份戳恰一个（是我们编的后端）才起它问
     //   `--ccm-probe`；认不出（不是我们的 / 读不了）⇒ 不跑，按「没装我们这一份」答。
+    let ours_bytes = installed.is_some_and(|p| ours_by_bytes(p));
     let ours = match installed {
-        Some(p) if ours_by_bytes(p) => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),
+        Some(p) if ours_bytes => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),
         _ => parse_probe_output(""),
     };
     // ⚠ **`$HOME/…` 形态，不是绝对路径**：这个串会被别名生成器嵌进用户的 shell 命令里，
@@ -471,15 +588,32 @@ pub fn local_ccm_entry_status() -> LocalCcmEntry {
             crate::backend::control::local_backend::local_ccm_entry_name()
         )
     });
-    let on_path = probe_path_ccm().unwrap_or_else(|| parse_probe_output(""));
-    let verdict = classify_path_ccm(&ours, &on_path);
-    let message = render_path_ccm_hint(verdict, &ours, &on_path, entry.as_deref());
+    // 这台问不了 PATH（Windows）⇒ 说不清，不说成「没有」。
+    let (on_path, verdict, old_entry) = match probe_path_ccm() {
+        None => (parse_probe_output(""), PathCcmVerdict::Undetermined, false),
+        Some(on_path) => {
+            let reach = reach_of(on_path.at.as_deref(), installed.map(|p| p.as_path()));
+            let old_entry = matches!(
+                reach,
+                Reach::OtherFile {
+                    old_entry: true,
+                    ..
+                }
+            );
+            let v = judge_path_ccm(&ours, &on_path, &reach);
+            (on_path, v, old_entry)
+        }
+    };
+    let message = render_path_ccm_hint(verdict, &ours, &on_path, entry.as_deref(), old_entry);
+    let (ok, summary) = local_ccm_cell(installed.is_some(), ours_bytes, verdict, &on_path);
     LocalCcmEntry {
         entry,
         ours,
         on_path,
         verdict,
         message,
+        ok,
+        summary,
     }
 }
 
