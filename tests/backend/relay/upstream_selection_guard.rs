@@ -20,7 +20,7 @@
 //! 留一张空表等于给「往里加一行」留了一个看起来合法的口子。
 //! ⇒ 今天谁让中转认识上游选择一样东西、或往 `relay/` 下放回一份上游选择文件，本条当场红，
 //!   而改法只有一条：**把那件事交给上游选择**（请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，
-//!   进程装配在 `accounts::upstream::host_relay`）。
+//!   进程装配在 `accounts::upstream_select::host_relay`）。
 //!
 //! # 买不到什么（照实写）
 //!
@@ -44,7 +44,7 @@ pub(super) mod tests {
     const RELAY_DIR: &str = "relay";
 
     /// ㈠ 上游选择那棵树里的文件（相对**上游选择的根**）。**相等，不是地板**。
-    // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/upstream/`（现推，不是写死）；
+    // 〔`A3` 第二波〕根从 `accounts/` 收窄到 `accounts/upstream_select/`（现推，不是写死）；
     // 账号隔离工具的查询（`accounts/iso.rs`）**不是**上游选择，不进本表 —— 它登记在 [`ACCOUNT_DOMAIN_OTHER_FILES`]。
     // 〔RM1a · 第四波〕+`file_face.rs`：这台机器上那份凭据文件的帧面读写口（`apikey-key-set` / `apikey-read`）。
     // 它是上游选择自己的状态、同一份文件、同一套格式 ⇒ 住上游选择这棵树；它用到中转的只有 `segment_is_safe`
@@ -72,7 +72,7 @@ pub(super) mod tests {
     /// |---|---|
     /// | `Destinations` · `Destination` · `AuthSwap` · `Mode` · `RouteKey` | 请求路径上那一问一答（`设计/20 §2`）|
     /// | `Startup` · `Ready` | 启动路径上那两步（起监听前验配置 · 起监听后交出 `Destinations`）|
-    /// | `host` | 常驻后端进程内起中转的装配（`accounts::upstream::host_relay` 把 `Boot` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
+    /// | `host` | 常驻后端进程内起中转的装配（`accounts::upstream_select::host_relay` 把 `Boot` 递进中转的入口）。依赖方向只许上游选择 → 中转，所以装配住这一侧 |
     /// | `Base` | 一行的上游是什么 —— 中转的**传输原语**，上游选择解析它、焊进行里、原样交回 |
     /// | `segment_is_safe` | 「这个账号 id 当得了路由段吗」与中转切键用的是**同一个谓词**（`route.rs` 头注逐字论证过为什么不许各写一份）|
     ///
@@ -148,7 +148,7 @@ pub(super) mod tests {
         upstream_selection_root(&crate_production())
     }
 
-    /// 上游选择根目录的最后一段（`accounts/upstream/` ⇒ `upstream`）：它自己的模块名，现推不写死。
+    /// 上游选择根目录的最后一段（`accounts/upstream_select/` ⇒ `upstream`）：它自己的模块名，现推不写死。
     fn module_name_of_root(root: &str) -> String {
         module_of_dir(root)
             .pop()
@@ -446,7 +446,7 @@ pub(super) mod tests {
             named.is_empty(),
             "🔴 中转层（`relay/` 的生产段）点名了上游选择：\n  {}\n\
              **别加例外** —— 把那件事交给上游选择：请求路径走 `Destinations`，启动路径走 `Startup`/`Ready`，\
-             进程装配在 `accounts::upstream::host_relay`。",
+             进程装配在 `accounts::upstream_select::host_relay`。",
             named.join("\n  ")
         );
 
@@ -637,10 +637,10 @@ pub(super) mod tests {
         // 正控：同一个 `cross_refs` 对合成文本必须命中（两个方向各一刀）。
         let fake_iso = (
             "accounts/iso.rs".to_string(),
-            "use crate::accounts::upstream::Accounts;\n".to_string(),
+            "use crate::accounts::upstream_select::Accounts;\n".to_string(),
         );
         let fake_l2 = (
-            "accounts/upstream/mod.rs".to_string(),
+            "accounts/upstream_select/mod.rs".to_string(),
             "fn f() { super::super::iso::answer(&[]); }\n".to_string(),
         );
         assert!(

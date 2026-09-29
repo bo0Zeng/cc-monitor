@@ -823,7 +823,7 @@ mod tests {
          线上入口只有 `inbound.rs` 的 `exit-policy-set`（＋ 派生的 CLI 面）",
         ),
         (
-            "accounts/upstream/file_face.rs",
+            "accounts/upstream_select/file_face.rs",
             "〔RM1a · 第四波〕上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
              不是用户数据（判清全文 `调研/第四波记录/RM1a.md §1`）。写的那一刻读盘 → 只改一条账号那一格 → \
@@ -945,7 +945,7 @@ mod tests {
             "stream/inbound.rs",
         ),
         (
-            "accounts/upstream/file_face.rs",
+            "accounts/upstream_select/file_face.rs",
             "file_face::answer_set",
             "stream/inbound.rs",
         ),
@@ -4594,7 +4594,7 @@ mod g6_dependency_signoff {
              ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
              `create_private`（建一个只给本人的新文件），都在那个 feature 后面。\
              〔RM1a · 第四波〕本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
-             （上游选择自己的状态文件，第四层登记的 `accounts/upstream/file_face.rs`），\
+             （上游选择自己的状态文件，第四层登记的 `accounts/upstream_select/file_face.rs`），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
              先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",
@@ -5191,7 +5191,7 @@ mod g6_dependency_signoff {
 
     /// 🔴 〔RM1a · 第四波〕**`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private` · `perm::make_private`）在本 crate 生产段里的引用处，
-    /// **恰好**是第四层登记的那一份 `accounts/upstream/file_face.rs`（两向集合相等）。
+    /// **恰好**是第四层登记的那一份 `accounts/upstream_select/file_face.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
@@ -5238,7 +5238,7 @@ mod g6_dependency_signoff {
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
         // 〔RK1〕第二份：中转钥匙那一份（`relay/door.rs`，第四层登记）—— 钥匙文件出生即只给本人，同一份实现。
         let want: std::collections::BTreeSet<String> = [
-            "accounts/upstream/file_face.rs".to_string(),
+            "accounts/upstream_select/file_face.rs".to_string(),
             // 〔HOST〕第三份：常驻监听口的钥匙 ＋ 远端常驻后端的 pid 文件（`control/resident.rs`，第四层登记）。
             "control/resident.rs".to_string(),
             "relay/door.rs".to_string(),

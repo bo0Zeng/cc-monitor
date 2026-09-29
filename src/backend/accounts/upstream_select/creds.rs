@@ -236,5 +236,5 @@ pub(crate) fn announce(
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/backend/accounts/upstream/creds_tests.rs"]
+#[path = "../../../../tests/backend/accounts/upstream_select/creds_tests.rs"]
 mod tests;

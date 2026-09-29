@@ -631,7 +631,7 @@ mod tests {
             "agents",
             "`relay/mod.rs` 头注第一句逐字写着「**它不懂任何 agent 的语义**」。\
              今天这条是真的、而且**承重**：`host(get, home, …)` 的 `home` 是**入参**\
-             （`main.rs` 流模式那一处经 `accounts::upstream::host_relay` 传进来），不是中转自己去 `agents/` 里问出来的 —— \
+             （`main.rs` 流模式那一处经 `accounts::upstream_select::host_relay` 传进来），不是中转自己去 `agents/` 里问出来的 —— \
              那正是 `E6`「本层要的东西一律走入参」的形状",
         ),
     ];
@@ -705,7 +705,7 @@ mod tests {
     const RELAY_EXPORTS: &[(&str, &str)] = &[
         (
             "listen::host",
-            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream::host_relay` 递进来",
+            "〔RL1 · V107〕流模式常驻后端**进程内**起中转的入口；上游选择那只手由 `accounts::upstream_select::host_relay` 递进来",
         ),
         (
             "listen::ENV_PORT",
@@ -789,7 +789,7 @@ mod tests {
             bad.is_empty(),
             "relay/ 引用了它不该认识的层：\n  {}\n\
              **先别急着加例外** —— 中转要的每一样东西都该由**调用方传进来**\n\
-             （`home` 今天就是这么来的：`main.rs` 流模式那一处经 `accounts::upstream::host_relay` 把它当参数递进 `relay::host`）。\n\
+             （`home` 今天就是这么来的：`main.rs` 流模式那一处经 `accounts::upstream_select::host_relay` 把它当参数递进 `relay::host`）。\n\
              先问：跨过来的那个东西，是不是其实该走入参？理由逐条见 `RELAY_MUST_NOT_KNOW`。",
             bad.join("\n  ")
         );
@@ -801,7 +801,7 @@ mod tests {
     /// 中转对外的口只住 `relay/mod.rs` 的 `pub(crate) use`（逐条登记在 `RELAY_EXPORTS`）。
     /// 谁绕过它去引 `crate::relay::server` / `crate::relay::upstream`，
     /// 中转的内部结构就变成了公共契约 —— 之后 `upstream.rs` 想换个形状都得先问一圈。
-    /// （路由表是上游选择的，住 `accounts::upstream::table`，不在 `relay/` 里。）
+    /// （路由表是上游选择的，住 `accounts::upstream_select::table`，不在 `relay/` 里。）
     ///
     /// # ⚠ 这一支够不到哪儿（如实登记，别读成「全体没有」）
     ///

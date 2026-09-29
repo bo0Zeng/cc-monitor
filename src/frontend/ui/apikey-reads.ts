@@ -8,7 +8,7 @@
  *
  * 界面经 `chan.call` 直接问那台机器的后端（本机那台由 `<local>` 那条长连接答）、按形状严格收 —— 多一格 / 缺一格 / 类型不对 ⇒
  * 抛「两端契约对不上」，不替后端补值。先前两条 Tauri 命令（`read_apikey_credentials_status` · `apikey_routing_for`）在 monitor 里
- * 本机自己读凭据文件、自己连回环口，远端转一条帧命令 —— 那一份解释与人群搬进了后端（`accounts/upstream/endpoint.rs`
+ * 本机自己读凭据文件、自己连回环口，远端转一条帧命令 —— 那一份解释与人群搬进了后端（`accounts/upstream_select/endpoint.rs`
  * · `file_face.rs`），两条命令退役。跨语言金样 `tests/__fixtures__/apikey.golden.json` 钉着后端出的形状与这里收的形状。
  *
  * 〔HX2 · 第四波 4D〕写 key（`creds.apikey` 写）也走通道：`apikey-key-set`（[`writeApikeyKey`]）。从前它留在 Tauri 命令

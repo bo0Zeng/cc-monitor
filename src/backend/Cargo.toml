@@ -104,7 +104,7 @@ upstream-url-core = { path = "../common/upstream-url-core" }
 acct-core = { path = "../common/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # 🔴 〔RM1a · 第四波〕**开了 `harden`** —— `K-H2a` 裁四「backend 只许读」收窄成
-# 「backend 里只有账号域那一份（`accounts/upstream/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
+# 「backend 里只有账号域那一份（`accounts/upstream_select/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。
 # 理由：远端那台机器上的 key 只能由那台的后端写（`调研/第四波记录/RM1a.md §1`：那份文件是上游选择
 # 自己的状态，不是用户文件，走 `readonly_guard` 第四层）。「出生即只给本人」只有一份实现
 # （`creds_core::perm::create_private`），不在本 crate 另写一个 ⇒ 要它就得开这个 feature。

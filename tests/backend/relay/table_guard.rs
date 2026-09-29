@@ -274,9 +274,9 @@ mod tests {
             welds.len()
         );
         assert!(
-            welds[0].contains("accounts/upstream/table.rs")
+            welds[0].contains("accounts/upstream_select/table.rs")
                 || welds[0].contains("accounts\\upstream\\table.rs"),
-            "唯一那一处不在 `accounts/upstream/table.rs` 而在 {} —— 靶子挪了",
+            "唯一那一处不在 `accounts/upstream_select/table.rs` 而在 {} —— 靶子挪了",
             welds[0]
         );
 
@@ -285,11 +285,14 @@ mod tests {
         //   **访问器收成 `pub(super)`** —— 那是编译器买的，不是本条买的。
         //   本条今天断的是「焊接点没有溜出上游选择」。
         let table = table_production();
-        let inside = sites_layout_blind(&[("accounts/upstream/table.rs".to_string(), table)], WELD);
+        let inside = sites_layout_blind(
+            &[("accounts/upstream_select/table.rs".to_string(), table)],
+            WELD,
+        );
         assert_eq!(
             inside.len(),
             1,
-            "`accounts/upstream/table.rs` 里的焊接点不是恰好一处（实得 {} 处）。",
+            "`accounts/upstream_select/table.rs` 里的焊接点不是恰好一处（实得 {} 处）。",
             inside.len()
         );
     }
@@ -396,7 +399,7 @@ mod tests {
     #[test]
     fn the_relay_has_no_default_upstream_to_fall_back_to() {
         let files = crate_production();
-        // 上游选择的人群：`accounts/upstream/` 底下那几份。中转 = `relay/` 里**除它之外**的。
+        // 上游选择的人群：`accounts/upstream_select/` 底下那几份。中转 = `relay/` 里**除它之外**的。
         // 〔NT2 · V25〕适配层（`agents/`）是默认上游那一格今天的住址（用户 V25「写死, 跟着适配层」）。
         // 〔RELAY〕按 crate 根之后的相对路径判：工作树目录名里可能正好带 `relay`（`w4-relay/` 让下面每份文件都「在中转里」）。
         let rel = |p: &str| {
@@ -404,7 +407,7 @@ mod tests {
             q.rsplit_once("src/backend/")
                 .map_or(q.clone(), |(_, r)| r.to_string())
         };
-        let is_upstream_selection = |p: &str| rel(p).starts_with("accounts/upstream/"); // 〔`A3` 第二波〕上游选择收窄到 `accounts/upstream/`（`accounts/iso.rs` 不是上游选择）
+        let is_upstream_selection = |p: &str| rel(p).starts_with("accounts/upstream_select/"); // 〔`A3` 第二波〕上游选择收窄到 `accounts/upstream_select/`（`accounts/iso.rs` 不是上游选择）
         let in_adapter = |p: &str| rel(p).starts_with("agents/");
         let in_relay = |p: &str| rel(p).starts_with("relay/");
 
@@ -492,7 +495,7 @@ mod tests {
     /// 第二版钉的是一串含缩进的源码字面
     /// （`let mut up = {\n        let table = relay.table.read()`），
     /// 而两层解耦之后 **`server.rs` 里根本没有 `relay.table` 这个东西了** ——
-    /// 那把锁归上游选择，由 `accounts::upstream::Accounts::resolve` 自己持有，活到它返回为止。
+    /// 那把锁归上游选择，由 `accounts::upstream_select::Accounts::resolve` 自己持有，活到它返回为止。
     ///
     /// ⇒ 性质换了一个说法，**一格没松**：
     /// 「读锁不跨 `pump`」 ⇔ **中转交给 `resolve` 的那个闭包里不许出现 `pump(`**
@@ -552,9 +555,10 @@ mod tests {
         let (_, accounts) = files
             .iter()
             .find(|(p, _)| {
-                p.ends_with("accounts/upstream/mod.rs") || p.ends_with("accounts\\upstream\\mod.rs")
+                p.ends_with("accounts/upstream_select/mod.rs")
+                    || p.ends_with("accounts\\upstream\\mod.rs")
             })
-            .expect("扫不到 `accounts/upstream/mod.rs` —— 取法坏了，本条按红处理");
+            .expect("扫不到 `accounts/upstream_select/mod.rs` —— 取法坏了，本条按红处理");
         assert_eq!(
             accounts.matches("self.table.read()").count(),
             1,

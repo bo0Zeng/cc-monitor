@@ -83,7 +83,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/account-restart.vitest.ts",
     "tests/frontend/ui/accounts.vitest.ts",
     "tests/frontend/ui/backend-policy.vitest.ts",
-    "tests/backend/accounts/upstream/table_tests.rs",
+    "tests/backend/accounts/upstream_select/table_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
@@ -565,9 +565,9 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/stream/drain_tests.rs", // 〔HX1〕D2 真子进程 ＋ 真 SIGTERM：在飞阻塞命令做完才退
     "tests/common/shell-quote-core/lib_tests.rs", // 〔FILES2〕单元层 → 集成层：字节形 quote 由真 bash 读回来对拍
     "tests/frontend/shell/filewin/chunk_upload_tests.rs", // 〔FILES2〕上传块形：临时目录里一份本机文件 ＋ 合成对端
-    "tests/backend/accounts/upstream/creds_tests.rs",
-    "tests/backend/accounts/upstream/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
-    "tests/backend/accounts/upstream/file_face_tests.rs",
+    "tests/backend/accounts/upstream_select/creds_tests.rs",
+    "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
+    "tests/backend/accounts/upstream_select/file_face_tests.rs",
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/claudecode/paths_tests.rs", // 〔E2 · V146〕设置文件压不压过进程环境里的上游地址（临时目录夹具）
     "tests/frontend/shell/ccm_probe_tests.rs", // 〔E2〕SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）

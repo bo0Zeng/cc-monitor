@@ -1,4 +1,4 @@
-//! 〔RM1a · 第四波〕`accounts/upstream/file_face.rs` 的判据 —— 这台机器上那份凭据文件的帧面读写口。
+//! 〔RM1a · 第四波〕`accounts/upstream_select/file_face.rs` 的判据 —— 这台机器上那份凭据文件的帧面读写口。
 //!
 //! # 买到的（全在本机临时目录上真读真写，不是源码扫描）
 //!
@@ -473,7 +473,7 @@ fn gp1_a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
 #[test]
 fn gp1_the_write_side_never_targets_the_legacy_top_level_slot() {
     let src = guard_core::production_code(include_str!(
-        "../../../../src/backend/accounts/upstream/file_face.rs"
+        "../../../../src/backend/accounts/upstream_select/file_face.rs"
     ));
     assert!(
         src.contains("merge_account_key("),

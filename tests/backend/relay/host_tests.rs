@@ -3,7 +3,7 @@
 //! 判据（记录住 `调研/第四波记录/RL1.md §3` H1–H4）：
 //! - H1 交了端口 ⇒ 真在听、真转发一段 SSE（假上游是本文件自己的 socket —— 异源）；
 //! - H2 没交端口 ⇒ `NotAsked`、零监听；交了但起不来（端口被占 / 端口认不出 / 上游配置认不出）⇒ `Failed`，不退出；
-//! - H3 生产接线（`accounts::upstream::host_relay`，`main.rs` 调的就是它）在**真子进程**里：
+//! - H3 生产接线（`accounts::upstream_select::host_relay`，`main.rs` 调的就是它）在**真子进程**里：
 //!   转发一整段 SSE 之后，子进程 stdout 上**一行 tee 都没有**（stdio 载体上 stdout 就是 wire）；
 //! - `main.rs` 那一处：流模式里恰好一处、排在一次性分派之后、选载体之前。
 //!
@@ -124,7 +124,7 @@ fn a_process_that_was_not_handed_a_port_hosts_no_relay() {
         let got = host(
             &env_of(port, None, &creds),
             std::path::Path::new("/nonexistent"),
-            &crate::accounts::upstream::Boot,
+            &crate::accounts::upstream_select::Boot,
             no_tap(),
         );
         assert!(
@@ -146,7 +146,7 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
             &creds,
         ),
         std::path::Path::new("/nonexistent"),
-        &crate::accounts::upstream::Boot,
+        &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
     let Hosted::Listening(addr) = got else {
@@ -175,7 +175,7 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
             &creds,
         ),
         std::path::Path::new("/nonexistent"),
-        &crate::accounts::upstream::Boot,
+        &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
     let Hosted::Listening(addr) = got else {
@@ -190,7 +190,7 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
     let failed = host(
         &env_of(Some(&port.to_string()), None, &creds),
         std::path::Path::new("/nonexistent"),
-        &crate::accounts::upstream::Boot,
+        &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
     assert!(
@@ -216,7 +216,7 @@ fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {
     let got = host(
         &env_of(Some(&port.to_string()), None, &creds),
         std::path::Path::new("/nonexistent"),
-        &crate::accounts::upstream::Boot,
+        &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
     match got {
@@ -235,7 +235,7 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
         let got = host(
             &env_of(Some(junk), None, &creds),
             std::path::Path::new("/nonexistent"),
-            &crate::accounts::upstream::Boot,
+            &crate::accounts::upstream_select::Boot,
             no_tap(),
         );
         match got {
@@ -260,7 +260,7 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
             &creds,
         ),
         std::path::Path::new("/nonexistent"),
-        &crate::accounts::upstream::Boot,
+        &crate::accounts::upstream_select::Boot,
         no_tap(),
     );
     assert!(
@@ -278,15 +278,16 @@ const CHILD_MARK: &str = "CCM_RL1_HOSTED_CHILD";
 const CHILD_TEST_NAME: &str = "relay::listen::host_tests::hosted_relay_child_entry_point";
 
 /// 子进程入口（不是判据 ⇒ `#[ignore]`）：走 `main.rs` 流模式**真调的那一个**
-/// （`accounts::upstream::host_relay`），然后停在这里当一个「活着的宿主」，等父进程收掉它。
+/// （`accounts::upstream_select::host_relay`），然后停在这里当一个「活着的宿主」，等父进程收掉它。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RL1_HOSTED_CHILD 拉起时才跑"]
 fn hosted_relay_child_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    let said =
-        crate::accounts::upstream::host_relay(&crate::agents::claudecode::paths::resolve_home());
+    let said = crate::accounts::upstream_select::host_relay(
+        &crate::agents::claudecode::paths::resolve_home(),
+    );
     eprintln!("[rl1-child] {said}");
     loop {
         std::thread::park();
@@ -392,7 +393,7 @@ fn the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout() 
     );
 }
 
-/// `main.rs` 那一处：生产段里 `accounts::upstream::host_relay(` **恰好一处**，
+/// `main.rs` 那一处：生产段里 `accounts::upstream_select::host_relay(` **恰好一处**，
 /// 排在一次性分派（`is_query_mode`）之后、选载体（`listen::mode_from`）之前 ——
 /// 前者保证一次性子命令不会多开一个中转，后者保证两条载体都有它。
 #[test]
@@ -400,7 +401,7 @@ fn main_hosts_the_relay_exactly_once_between_the_one_shot_dispatch_and_the_carri
     let raw = std::fs::read_to_string(crate::guard_support::src_root().join("main.rs"))
         .expect("读 main.rs");
     let prod = crate::guard_support::production_code(&raw);
-    let call = guard_core::find_pinned(&prod, "accounts::upstream::host_relay(&agent_home)")
+    let call = guard_core::find_pinned(&prod, "accounts::upstream_select::host_relay(&agent_home)")
         .unwrap_or_else(|e| panic!("main.rs 生产段里那一处接线：{e}"));
     let dispatch = guard_core::find_pinned(&prod, "if is_query_mode(&args) {")
         .unwrap_or_else(|e| panic!("一次性分派那一行：{e}"));
@@ -489,7 +490,7 @@ fn hosted_with_tap(
             &creds,
         ),
         std::path::Path::new("/nonexistent"),
-        &crate::accounts::upstream::Boot,
+        &crate::accounts::upstream_select::Boot,
         tap,
     ) {
         Hosted::Listening(a) => a,

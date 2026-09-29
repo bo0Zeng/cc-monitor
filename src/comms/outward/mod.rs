@@ -38,7 +38,7 @@
 //! | 件 | 是什么 | 归哪 | 代码里叫什么 |
 //! |---|---|---|---|
 //! | **中转** | HTTP 把上游的 `text/event-stream` **逐块转回下游**。HTTP 层存在的**唯一目的** | 通信层 · 面 B | `relay` |
-//! | **上游选择** | 这个账号有没有第三方 key、要不要改写端点、拒不拒 | **后端 · 账号域** | `accounts::upstream` —— ❌ **不许叫「中转」** |
+//! | **上游选择** | 这个账号有没有第三方 key、要不要改写端点、拒不拒 | **后端 · 账号域** | `accounts::upstream_select` —— ❌ **不许叫「中转」** |
 //!
 //! **进程可以是一个**（就是常驻后端这一个），但**问句不许合并**：
 //! 「中转起来了吗」问的是中转；「这个号能不能代入 key」问的是上游选择。
@@ -168,7 +168,7 @@
 //! |---|---|
 //! | `crate::observe::…` | 中转**搬字节、不读世界**。观测面一旦被它认识，「一个进程服务 N 个会话」就会退化成「转发路上顺手替某个会话查点东西」 |
 //! | `crate::control::…` | 中转**不改变世界**（除了把字节递过去）。认识控制面 = 在 HTTP 处理线程上开一条「顺手 kill / launch」的门 |
-//! | `crate::agents::…` | 本文件第一句逐字写着「**它不懂任何 agent 的语义**」。这条今天**承重**：`host(get, home, …)` 的 `home` 是**入参**（`main.rs` 流模式那一处经 `accounts::upstream::host_relay` 递进来），不是中转自己去 `agents/` 里问的 |
+//! | `crate::agents::…` | 本文件第一句逐字写着「**它不懂任何 agent 的语义**」。这条今天**承重**：`host(get, home, …)` 的 `home` 是**入参**（`main.rs` 流模式那一处经 `accounts::upstream_select::host_relay` 递进来），不是中转自己去 `agents/` 里问的 |
 //! | `crate::plugin::…` | 与调用口是**两条互不相干的基础设施**。中转认识它 = HTTP 线程上长出一条起进程的路（★ 这一格括号里原先那半句是假的，订正见表下） |
 //!
 //! ★ **订正**（`K-R31` `D5⑵`，09-06 现打）：最后一格括号里原先写的是
@@ -203,7 +203,7 @@
 //! 给上游选择的两样契约件 · 「我们的中转在不在听」那一问。〔DEL〕`--relay` 的入口与帧面 `relay-*` 那两个处理器随那一族删了。
 //! `crate::relay::server::…` / `crate::relay::upstream::…` 这类**一条都不许**：
 //! 一旦有人这么引，中转的内部结构就变成了公共契约，之后 `upstream.rs` 想换形状都得先问一圈。
-//! （路由表不在本层 —— 它是上游选择的，住 `accounts::upstream::table`。）
+//! （路由表不在本层 —— 它是上游选择的，住 `accounts::upstream_select::table`。）
 //! 真要新开口子 ⇒ 加在那一行旁边，并在 `layering_guard` 里配一张**非空**登记表。
 //!
 //! ## 🔴 诚实边界：这三条钉的是 **import 图**，不是**运行期调用图**
@@ -255,7 +255,7 @@ mod upstream;
 #[path = "../../../tests/backend/relay/wire_golden.rs"]
 mod wire_golden; // `设计/20 §7` 步 1–3：「零行为变化」的字节金标准（三条线各一份手写期望）
 
-/// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream::host_relay`）——
+/// 中转的入口（常驻后端进程内起）。**上游选择那只手由调用方递进来**（`accounts::upstream_select::host_relay`）——
 /// 本层叫不出它的名字（`upstream_selection_guard` ㈢ 零命中）。
 pub(crate) use listen::{host, ENV_PORT};
 

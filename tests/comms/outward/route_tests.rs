@@ -180,9 +180,9 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
     );
 }
 
-/// ★★★ 〔US1 · 4D〕**上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream::endpoint::launch_relay_with`，
+/// ★★★ 〔US1 · 4D〕**上游选择拼给起会话那一发的 `/t/` 地址**（`accounts::upstream_select::endpoint::launch_relay_with`，
 /// 路由语法住共享 crate `relay_route_core`）本解析器读成**直通模式**、各段各落各位；再交给**生产段那张决策表**
-/// （`accounts::upstream::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 拒（404 ＋ 原因头，FIX3 之前是 502）。
+/// （`accounts::upstream_select::decide`）：那一家（登记过）⇒ 发到它自己的默认上游；同一条路由把第 1 段换成 `codex`（未登记，手写）⇒ 拒（404 ＋ 原因头，FIX3 之前是 502）。
 ///
 /// ⇒ 「注入的那一形，中转真的会照直通处理」这一截从成品到决策表一路是真的。先前这里是三条跨半边对拍
 /// （monitor `payload.rs` 的两份样例 · `APIKEY_TABLE_AGENT` · `AGENTS_WITH_DEFAULT_UPSTREAM`〔散文墓碑〕 现抠字面量），
@@ -190,7 +190,7 @@ fn the_exported_predicate_agrees_with_what_parse_accepts() {
 /// 买不到的那一截（claude 拿到这个变量之后怎么走）同今天（`C7`）。
 #[test]
 fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
-    let answer = crate::accounts::upstream::endpoint::launch_relay_with(
+    let answer = crate::accounts::upstream_select::endpoint::launch_relay_with(
         &serde_json::json!({"agent":"claude-code","account":{"kind":"named","configDir":"/h/.claude-alt/acct-a"},
             "allSessions":true}),
         &[],
@@ -214,11 +214,11 @@ fn the_passthrough_url_the_launch_answer_builds_parses_as_passthrough() {
     assert_eq!(r.rest, "/v1/messages");
 
     // 交给生产段那张决策表（空表 = 这个号在 apikey 表里没有行，即订阅号）。
-    let table = crate::accounts::upstream::table::RoutingTable::build(std::iter::empty());
-    let ups = crate::accounts::upstream::Upstreams::from_env(&|_| None).expect("内置默认");
+    let table = crate::accounts::upstream_select::table::RoutingTable::build(std::iter::empty());
+    let ups = crate::accounts::upstream_select::Upstreams::from_env(&|_| None).expect("内置默认");
     let said = |k: &super::super::RouteKey| {
         let mut out = String::new();
-        crate::accounts::upstream::decide(&table, &ups, r.mode, k, &mut |d| {
+        crate::accounts::upstream_select::decide(&table, &ups, r.mode, k, &mut |d| {
             out = match d {
                 super::super::Destination::Passthrough { upstream } => {
                     format!("pass {}", upstream.host)

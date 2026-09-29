@@ -450,7 +450,7 @@ fn the_production_facts_are_the_production_take_points() {
     );
     assert_eq!(
         f.relay as usize,
-        crate::accounts::upstream::endpoint::launch_relay
+        crate::accounts::upstream_select::endpoint::launch_relay
             as fn(&Value) -> Result<Option<String>, (&'static str, String)> as usize
     );
     assert_eq!(f.is_dir as usize, dir_exists as fn(&str) -> bool as usize);

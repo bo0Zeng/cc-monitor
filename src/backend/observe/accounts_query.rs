@@ -567,7 +567,7 @@ fn scan_accounts(
 /// 〔C4c · 第四波 4B〕帧面 `accounts-list` 的**成品**（主会话裁：账号域读自己那台的 apikey 表，agent 随请求带）。
 ///
 /// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上**这台机器自己**那份 apikey 表
-/// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream::file_face` 读来 —— 与中转里的上游选择同一个出处）；
+/// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
 ///
 /// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（cc-acct-iso 写侧旧）。

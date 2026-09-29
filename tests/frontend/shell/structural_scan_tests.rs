@@ -3244,7 +3244,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/frontend/shell/src/creds_store.rs", "check_base_url", 1),
         // 〔US1 · 第四波 4D〕上游选择那半从 monitor 搬走（读侧 · 人群 · 中转在不在），点旧名的散文挂墓碑。
         (
-            "src/backend/accounts/upstream/file_face.rs",
+            "src/backend/accounts/upstream_select/file_face.rs",
             "apikey_rows_at",
             1,
         ),
@@ -3255,12 +3255,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "apikey_rows_at",
             1,
         ),
         (
-            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for",
             1,
         ),
@@ -3281,23 +3281,23 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/frontend/shell/src/creds_store.rs", "write_key_at", 1),
         (
-            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "write_key_at",
             1,
         ),
         ("tests/comms/outward/server_tests.rs", "write_key_at", 1),
         (
-            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "a_program_write_keeps_everything_the_human_put_there",
             1,
         ),
         (
-            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style",
             1,
         ),
         (
-            "tests/backend/accounts/upstream/file_face_tests.rs",
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
             "the_write_side_no_longer_targets_the_legacy_top_level_slot",
             1,
         ),
@@ -5076,7 +5076,10 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/config.rs", 2), // 〔CFG1〕+1：整份写口 `save_config` 删了，讲来历那一句挂墓碑
         ("src/frontend/shell/src/creds_store.rs", 6), // 〔HX2 · 4D〕+2：两处「GP1 那一版经 `write_key_on`」
         ("src/frontend/shell/src/platform_fs.rs", 1),
-        ("tests/backend/accounts/upstream/file_face_tests.rs", 6),
+        (
+            "tests/backend/accounts/upstream_select/file_face_tests.rs",
+            6,
+        ),
         ("tests/comms/outward/server_tests.rs", 2), // 〔MIG-2〕1 → 2
         ("tests/frontend/shell/creds_store_tests.rs", 11), // 〔HX2 · 4D〕2 → 11：明文逐跳那一条 · 说不出 id 那一条 · `brace_block` 退役，原处与点它们的散文挂墓碑
         // 〔CF2〕`jsonl-line` / `jsonl-batch` 退役：头注点旧载荷名一块 · 独立窗口入口头注点旧定向重放命令一块 ·
@@ -5341,7 +5344,7 @@ fn every_prose_tombstone_mark_is_registered() {
         // 〔RN1 · 第四波 4C · V114〕改名「上游选择」、模块 `apikey` → `upstream`：两处讲旧叫法来历的注释各挂一块
         //   （旧叫法本身不是 snake_case 死名，不进 `TOMBSTONED`；命名判据 `account-vs-relay-naming` 的 V114 那张表按这块标记放行这两行）。
         // 〔NT2 · V25〕+1：上游选择自己那张每 agent 默认上游表（`AGENT_UPSTREAMS`）搬回适配层，原处留一块说去向。
-        ("src/backend/accounts/upstream/mod.rs", 4),
+        ("src/backend/accounts/upstream_select/mod.rs", 4),
         ("src/comms/outward/mod.rs", 1),
         ("src/frontend/shell/src/ssh_source.rs", 25), // 〔FIX4 · V41〕24 → 25：`winner_address` 零生产调用者删了，原处挂墓碑 // 〔MOD〕23 → 24 // 〔MIG-3b 续〕+1：流那一个一次性 exec 原语删了，原地一块 // 〔MIG-1 收尾〕地址解析 / 组拨号请求搬进后端 dial/machine.rs，点旧名的散文挂墓碑 21 → 22 // 〔MIG-1 续〕测试连接搬进本机后端，旧名挂墓碑 15 → 21 // 〔MIG-1〕5 → 15：会话 / tmux 账本搬进后端，原处墓碑与点旧名的散文 // // 〔MIG-1〕+3：`~/.ssh/config` 导入搬进后端，原地留一段点三条旧命令名的墓碑 // 〔LOC1b〕+1：「未登记的会话 kind」那一笔从 `session_map.rs` 搬来，头注点旧函数名 // 〔C4d〕逐次拨号那条路删了（run_list_query 一族），点旧名的散文挂墓碑
         // 〔MOD〕`src/frontend/shell/src/subagent.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
@@ -5390,7 +5393,7 @@ fn every_prose_tombstone_mark_is_registered() {
         //   history_tests.rs 11→12 · parity_ledger_tests.rs 23→24 · creds_store.rs 3→4（各多一处新墓碑）。
         //   ⚠ 两处旧墓碑随它们所在的整段一起走了（被守的那件事整轴退役）：lib.rs 里 `apikey_routing_for` 头注那一处（点当年的账号结构）·
         //   creds_store_tests.rs 里读侧三态那条判据头注那一处（点当年 monitor 的写口）—— 两处的净数已算在上面。
-        ("src/backend/accounts/upstream/file_face.rs", 2), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
+        ("src/backend/accounts/upstream_select/file_face.rs", 2), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("src/frontend/shell/Cargo.toml", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/comms/outward/route_tests.rs", 1), // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
         ("tests/backend/control/launch_render/payload_tests.rs", 4), // 〔SH1〕+1：`resolve_bash` 的平台那一格随驾驶舱 shell 读删了 // 〔DUP1〕+1：launcher 两份策略那段里 TS 那一份删了 // 〔US1 · 4D〕新贴：上游选择那半从 monitor 搬走时留下的墓碑
@@ -5471,7 +5474,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/ui/account-reads.ts", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/frontend/ui/agent-profile.ts", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/frontend/ui/backend-policy.ts", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
-        ("src/backend/accounts/upstream/endpoint.rs", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
+        ("src/backend/accounts/upstream_select/endpoint.rs", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/backend/observe/accounts_query.rs", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/frontend/shell/src/sync_command_registry.rs", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         // 〔MOD〕`tests/frontend/shell/support/scripted_backend.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）

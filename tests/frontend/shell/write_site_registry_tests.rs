@@ -106,7 +106,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("config.rs", "patch_config_at", None, "monitor 自己的配置文件（〔CFG1〕唯一写口：进程级锁内现读 ＋ 按键补丁；整份替换的 `save_config` 删了）"), // 〔散文墓碑〕
     // ── 〔GP1 · 第四波〕这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    主会话 09-25 裁「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
-    //    （`apikey-key-set` → `src/backend/accounts/upstream/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
+    //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
     ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),

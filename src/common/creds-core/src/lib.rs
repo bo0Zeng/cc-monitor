@@ -43,7 +43,7 @@
 //! # 分工（别把两件事混成一件）
 //!
 //! - **写**这份文件：每台机器上恰好一个程序写者。monitor 所在那台是 monitor（`creds_store`）；
-//!   〔RM1a · 第四波〕其余每台是那台的后端 —— 只有账号域那一份 `accounts/upstream/file_face.rs`，
+//!   〔RM1a · 第四波〕其余每台是那台的后端 —— 只有账号域那一份 `accounts/upstream_select/file_face.rs`，
 //!   只从帧面 `apikey-key-set` 进来（`readonly_guard` 第四层登记）。两侧都开本 crate 的 `harden`。
 //! - **读**这份文件：两侧都读。`K-H2a` 裁四原话「backend 只许读」**收窄**成上面那一格：
 //!   后端里除了那一份，照旧一个写都没有 —— 先前由「feature 不开」这件事让编译器兜着，
@@ -199,7 +199,7 @@ mod sealed {
         /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
         ///
         /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
-        ///   `src/backend/accounts/upstream/mod.rs`（上游选择算鉴权头的值那一行；中转只拿算好的头材料）。
+        ///   `src/backend/accounts/upstream_select/mod.rs`（上游选择算鉴权头的值那一行；中转只拿算好的头材料）。
         /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
         ///   `src/common/creds-core/src/store.rs`（`merge_key`）。
         ///

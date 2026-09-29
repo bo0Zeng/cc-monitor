@@ -79,7 +79,7 @@ pub fn copy_text(key: &str, args: &[(&str, &str)]) -> String {
 
 /// 同一条文案，但要一个 `&'static str`（**没有参数**的那种）。
 ///
-/// 后端有几处的类型刻意是 `&'static str`（例：`accounts::upstream::table::Rejected::why` ——
+/// 后端有几处的类型刻意是 `&'static str`（例：`accounts::upstream_select::table::Rejected::why` ——
 /// 「进日志是安全的由类型兜着，不是由记得别把文件内容塞进来兜着」）。句子进表之后不许为了它
 /// 把类型放宽成 `String`：每个调用点展开成一个自己的 `static LazyLock<String>`，取一次、住一辈子。
 ///

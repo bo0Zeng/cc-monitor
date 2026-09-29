@@ -689,7 +689,7 @@ fn the_rbind_token_shape_gate_is_fail_closed_and_lowercase_only() {
 
 // 〔US1 · 第四波 4D〕这里原先是路由构造口与上游选择判断口的七条判据（样例对拍 · 段闸拒 · 有行没行 · 别家同 id ·
 //   凭据文件那一家 · 中转没跑就拒）：构造口与段闸进了共享 crate `relay_route_core`（它自己的判据）、判断口搬进后端
-//   `accounts/upstream/endpoint.rs`（`endpoint_tests` 逐格手写期望），起会话那一侧的执行由 `history_tests` 那几条量。
+//   `accounts/upstream_select/endpoint.rs`（`endpoint_tests` 逐格手写期望），起会话那一侧的执行由 `history_tests` 那几条量。
 
 /// ★★ `KH2B4`「**只有一个构造口**」的 monitor 半 —— 计数，不是「有没有一个函数」。
 ///
@@ -1626,7 +1626,7 @@ fn the_launch_token_env_var_has_the_same_name_on_both_halves() {
 }
 
 // 〔US1 · 第四波 4D〕`设计/20 §7` 步 4（全量注入带开关、codex 不注、撞名不注、两种降级分开）那一组判据随决策表搬进后端：
-//   `tests/backend/accounts/upstream/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
+//   `tests/backend/accounts/upstream_select/endpoint_tests.rs::us1_the_launch_table_matches_the_hand_written_one`（逐格手写期望）；
 //   「登记了默认上游的 agent」只在适配层那一格（NT2 · V25），monitor 这一侧的那份登记表整删。
 
 /// 〔TL3 · `INVARIANTS §47` ②〕工作目录是自由文本路径：载荷的 `cd` 与外层 `new-session -c` 两处、以及 ccm 那条路的 `--cwd`，

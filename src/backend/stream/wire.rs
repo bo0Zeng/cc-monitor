@@ -145,7 +145,7 @@ pub struct Unavailable {
 /// 两向对拍）。监听口的 token 永远不在这里。
 pub const HOST_ECHO_ENVS: [&str; 3] = [
     crate::relay::ENV_PORT,
-    crate::accounts::upstream::creds::ENV_CREDENTIALS,
+    crate::accounts::upstream_select::creds::ENV_CREDENTIALS,
     crate::history::history_annotations::ENV_PATH,
 ];
 
