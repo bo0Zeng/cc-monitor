@@ -24,7 +24,7 @@
 //!    本模块**不重复钉它**，只在这里指住它的住址。
 //! 2. **观测帧只有一个消费者** —— `observe::watcher::spawn` 里那条通道**只诞生一次**。
 //!    N 个连接要 fan-out，而 `Overflow.lost` 的丢帧账是**按那一个通道**记的
-//!    （`wire.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」）
+//!    （`stream/wire.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」）
 //!    ⇒ 分流之后「丢了哪几帧」这本账要**重新定义**。★ **那是语义变更，不是搬运。**
 //!    ⚠ 这一格的针 08-28 挪过位置（`K-G5`）——怎么挪的、买到什么、买不到什么，见下一节。
 //! 3. **`writer_task` 的让位预算是「两条通道对一个 writer」** —— `REPLY_BURST = 8`，
@@ -106,7 +106,7 @@
 //!      ⚠ 教训写在这儿：**分母的单位与它的量法要与判据自己印的那个数同源**，
 //!      不然下一个人照「引用前重打」重打一次，会把 255 999 读成「语料漂了七千多字节」。〕
 //!      量法 = 与 `crate_sources()` 同一份剥法逐文件数子串（同一刻现打）：`channel(` **0 处**；
-//!      `use tokio::sync::mpsc` **2 处**，`inbound.rs:35` 与 `observe/watcher.rs:77`，
+//!      `use tokio::sync::mpsc` **2 处**，`stream/inbound.rs:35` 与 `observe/watcher.rs:77`，
 //!      两处都停在 `::mpsc;`（全 crate `use tokio::sync::mpsc::` **0 处**），
 //!      没有一处 import 到函数那一级。
 //!      **这是那一刻的读数，不是不变量** —— 引用前重打。）
@@ -155,7 +155,7 @@ mod tests {
     /// # ⚠⚠ 为什么多了「全 crate」这一列〔`K-P1-D1` `重-5`，08-27 回修〕
     ///
     /// 回修前本表只有「那个文件里几处」这一个数，而好几条的**说法**写的是「全 crate 只此一处」——
-    /// 审计员点名 `Admit::Stream` 那条：语料是 `source_of("listen.rs")`，**只扫 `listen.rs`**，
+    /// 审计员点名 `Admit::Stream` 那条：语料是 `source_of("stream/listen.rs")`，**只扫 `listen.rs`**，
     /// 于是「有人在 `main.rs` 里直接构造一个 `listen::Admit::Stream` 绕过 `admit()`」这条针看不见。
     /// ⇒ **守卫范围 ≠ 性质范围**，那是本件自己命名的那一族的**第五形**。
     ///
@@ -217,7 +217,7 @@ mod tests {
              **改本行之前先读那一条。**",
         ),
         (
-            "listen.rs",
+            "stream/listen.rs",
             "Admit::Stream",
             1,
             2,
@@ -683,8 +683,8 @@ mod tests {
     fn the_hello_witness_pin_still_lives_where_this_module_says_it_does() {
         // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕指的是**判据住的那份文件**。
         // `fn the_hello_witness_has_exactly_one_way_to_exist` 这一轮从
-        // `src/backend/wire.rs` 的测试段搬进了 `tests/backend/wire_tests.rs`。
-        let wire = include_str!("wire_tests.rs");
+        // `src/backend/stream/wire.rs` 的测试段搬进了 `tests/backend/stream/wire_tests.rs`。
+        let wire = include_str!("stream/wire_tests.rs");
         assert!(
             wire.contains("fn the_hello_witness_has_exactly_one_way_to_exist"),
             "本模块头注指着 `wire.rs` 的那条见证判据，而它已经不在了 ——\n\

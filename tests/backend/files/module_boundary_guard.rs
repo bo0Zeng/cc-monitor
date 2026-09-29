@@ -300,8 +300,8 @@ const OUTWARD: &[(&str, Kind)] = &[
     // ── 〔SR1b〕传输台的传输（用户那三样之外，条数钉死）─────────────────
     ("dial::sftp::Dial", Kind::Transport),
     ("dial::sftp::Session", Kind::Transport),
-    ("wire::Frame", Kind::Transport),
-    ("wire::TransferEnd", Kind::Transport),
+    ("stream::wire::Frame", Kind::Transport),
+    ("stream::wire::TransferEnd", Kind::Transport),
 ];
 
 /// 围栏那一类**只许**是这两个符号（不是「`agents::` 底下随便什么」）：
@@ -369,31 +369,39 @@ enum Door {
 /// ★ 门：`(住址, 符号, 类别)`。**每一个符号都是入口函数，零个内部符号**
 /// （`files::index::*` / `files::raw::*` / 围栏那几个函数 —— 原生后端一个都够不到）。
 const DOORS: &[(&str, &str, Door)] = &[
-    ("inbound.rs", "files::answer_wire", Door::Command),
+    ("stream/inbound.rs", "files::answer_wire", Door::Command),
     (
-        "inbound.rs",
+        "stream/inbound.rs",
         "control::files_write::answer_wire",
         Door::Command,
     ),
     // 〔F7c · 第三波 09-24〕上传的提交（`设计/60 §13`）：同一扇门里的第三个入口函数。
     (
-        "inbound.rs",
+        "stream/inbound.rs",
         "control::files_commit::answer_wire",
         Door::Command,
     ),
     // 〔FILES2 · 第四波 09-27〕解压（`files-extract`）：同一扇门里的又一个入口函数。
     (
-        "inbound.rs",
+        "stream/inbound.rs",
         "control::files_extract::answer_wire",
         Door::Command,
     ),
     // 〔SR1b · 第四波 09-24〕传输台（`control/transfer.rs`）：**每条流连接一张票表**（同 `dial::link::Table`）
     //   ⇒ 这一面的入口是「造表 ＋ 答口」两个函数，外加读循环 / 分派签名里点名的那个表类型。
     //   四条 `transfer-*` 硬臂**全**经 `answer_wire` 进来（它们是 `Run::Builtin`，要碰本连接的票表与应答通道）。
-    ("inbound.rs", "control::transfer::Desk", Door::Command),
-    ("inbound.rs", "control::transfer::Desk::new", Door::Command),
     (
-        "inbound.rs",
+        "stream/inbound.rs",
+        "control::transfer::Desk",
+        Door::Command,
+    ),
+    (
+        "stream/inbound.rs",
+        "control::transfer::Desk::new",
+        Door::Command,
+    ),
+    (
+        "stream/inbound.rs",
         "control::transfer::Desk::answer_wire",
         Door::Command,
     ),
@@ -443,7 +451,9 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
             Kind::Common => has_prefix(path, "common::"),
             Kind::Fence => THE_FENCES.contains(path),
             Kind::LedgerAxis => *path == "Target" || *path == "TARGETS",
-            Kind::Transport => has_prefix(path, "dial::sftp::") || has_prefix(path, "wire::"),
+            Kind::Transport => {
+                has_prefix(path, "dial::sftp::") || has_prefix(path, "stream::wire::")
+            }
             Kind::OwnHome => *path == "own_dir::ensure_private_dir",
         };
         assert!(
@@ -484,7 +494,7 @@ fn the_only_edge_outside_the_three_allowed_kinds_is_the_target_axis() {
 fn the_doors_are_the_command_registry_plus_one_ledger_read() {
     for (file, sym, door) in DOORS {
         let home = match door {
-            Door::Command => "inbound.rs",
+            Door::Command => "stream/inbound.rs",
             Door::Ledger => "lib.rs",
         };
         assert_eq!(

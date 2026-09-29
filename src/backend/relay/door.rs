@@ -27,7 +27,7 @@
 //!
 //! 1. 带 `Origin` ⇒ [`Verdict::Browser`]（**403**）—— 浏览器发的请求一律带它；claude CLI 现打不带（`RK1.md §5.1`）；
 //! 2. `Host` 不是回环字面量（或没有、或不止一个）⇒ [`Verdict::NotLoopbackHost`]（**421**，防 DNS rebinding）；
-//! 3. 路径第一段不是钥匙 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`crate::listen::tokens_match`]，与控制口同一份）。
+//! 3. 路径第一段不是钥匙 ⇒ [`Verdict::BadKey`]（**403**）；比对定长时间（[`crate::stream::listen::tokens_match`]，与控制口同一份）。
 //!
 //! 过了才剥掉 `/<钥匙>`，余下的交给 `route::parse`（一字不改）⇒ 表里没这一行仍是 **404**，与 403 可分。
 //!
@@ -241,7 +241,7 @@ pub(crate) fn admit(head: &RequestHead, key: &Key) -> Verdict {
         Some(i) => (&after[..i], &after[i..]),
         None => return Verdict::BadKey,
     };
-    if !crate::listen::tokens_match(seg, key.expose()) {
+    if !crate::stream::listen::tokens_match(seg, key.expose()) {
         return Verdict::BadKey;
     }
     Verdict::Pass(rest.to_string())

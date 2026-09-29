@@ -780,7 +780,7 @@ async fn answer<R: AsyncRead + Unpin>(
                     Some(_) => (None, None),
                 };
                 Ok(serde_json::json!({
-                    "data": data.as_deref().map(crate::wire::b64_encode),
+                    "data": data.as_deref().map(crate::stream::wire::b64_encode),
                     "exists": exists,
                     "size": size,
                 }))

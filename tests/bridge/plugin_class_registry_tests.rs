@@ -155,7 +155,7 @@ fn segment_after(hay: &str, anchor: &str, close: &str) -> String {
 
 /// backend 命令注册表里的**每一条命令名**（`REGISTRY` 那张表内，段界之内）。
 fn backend_command_names() -> Vec<String> {
-    let prod = rust_production("src/backend/inbound.rs", 10_000);
+    let prod = rust_production("src/backend/stream/inbound.rs", 10_000);
     let seg = segment_after(&prod, "const REGISTRY: &[CommandSpec] = &[", "\n];");
     let mut out = Vec::new();
     let key = format!("name{} \"", ':');

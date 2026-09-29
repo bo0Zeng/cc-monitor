@@ -1,0 +1,398 @@
+//! `K-P1`：**常驻监听口** —— 脱离宿主之后，backend 还能被找到、被问到、被接上。
+//!
+//! 违反此约束见 `src/doc/INVARIANTS.md` § 48.1（监听口要钥匙；〔TL2〕照「修改本文档」第 2 条补的反指）。
+//!
+//! # 它存在的理由（不是「常驻」本身）
+//!
+//! 今天 monitor 与后端讲协议走的就是那对 stdio 管道；宿主一退读端就断，
+//! backend 在 **153 毫秒**内自己 broken-pipe 退出（`backend_policy.rs` 头注实测）。
+//! ⇒ **真脱离的代价是「再也说不上话」** —— 那正是本模块要补的那一格。
+//! `K-P1 §0b-2` 逐字：「难的**不是**怎么脱离（仓里三份现成的），
+//! 难的是**脱离之后还怎么跟它对话**」。
+//!
+//! # 走回环 TCP，理由是判据面已经付过一遍钱
+//!
+//! `K-H1` 的中转（`relay/server.rs`）已经把这条路上的东西买齐了：`LOOPBACK` 字面量常量
+//! + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。本模块**抄它的形状**。
+//! 现打（`K-P1 §0b-2㈠`，分母 = `src/backend` ∪ `src/bridge/src` 下 169 个 `.rs`）：
+//! `UnixListener` 0 处 · backend 侧 `NamedPipe` 0 处 ⇒ 走 Unix socket / 命名管道都要**从零立**一套。
+//!
+//! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
+//! Unix socket 有文件权限位而它没有。收窄只能靠一个 token；而 **backend 只读铁律不许它自己写文件**
+//! （`readonly_guard`）⇒ **token 只能由宿主生成、当 env 传进来**（[`ENV_TOKEN`]）。
+//! 宿主那一半住 `src/bridge/src/local_backend_host.rs`（`0600` 的 token 文件）。
+//!
+//! # 两档连接，而 hello 写在分档**之前**
+//!
+//! - **一条流**：认证通过、且此刻没有别的流挂着 ⇒ 这条连接接管出/入两个方向。
+//! - **不限次的「只读 hello 就走」**：连上就有 hello，读完即关。
+//!
+//! ★ hello 必须写在分档之前，否则「这台机上有没有一个长驻后端」这一问
+//! 只能从「`connect()` 成没成」推 —— 而 TCP 的 backlog 会让**没人 accept 的口照样连得上**，
+//! 那又是一个「一直说是」的假信号（`P2d §0a` 那一形）。
+//! ⇒ 有了 hello 这一档，那一问的答案是**读一行**，协议一个字节都不用加。
+//!
+//! ⚠ **代价如实记**：多客户端的**流**（fan-out + `Overflow.lost` 丢帧账重定义）
+//! **本件明确不做**，由 `single_stream_guard.rs` 那条触发器看着。
+//! 〔`D1` `重-1` 08-27：这里原先指的是一个**不存在的文件**（`frozen_single_client_guard`，
+//! 全仓命中 1 处，就是那一行自己）。**指了住址而住址是假的，比不指更坏** ——
+//! 读者会以为那一格有人守着，去找的时候什么都没有。
+//! ⇒ 同轮补了 `every_file_this_head_note_points_at_really_exists` 钉住整段头注，
+//! 不是只改那一个词。〕
+//!
+//! # 诚实边界（三条，都不是措辞）
+//!
+//! 1. **hello 那一档不认证** —— 它泄露 `claude_dir`（用户自己的家目录路径）、`build_id`、
+//!    能力集给同机任何进程。这是有意的取舍：`ccm` 那一问必须问得到，而它拿不到 token。
+//!    **能改变世界的那一档（流）一律要 token。**
+//! 2. **`EADDRINUSE` 只说明「有人占着这个口」，不说明占着它的是我们的 backend** ——
+//!    所以宿主那一侧连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
+//!    （`P2t §1` 第 3 问问的正是这一格）。本模块这一侧的处置是：
+//!    bind 不上就带 [`EXIT_ADDR_IN_USE`] 退出，**绝不自己换端口**（换端口 = 每台机 N 个 backend，
+//!    中转口与全部 SSH 各 N 份，比今天更糟。〔HX2〕从前这里还有「互相盖 tmux hook 槽位 `[50]`」—— 今天 hook 按实例一格，那一条不成立了）。
+//! 3. **本模块一个定时器都没有**：`accept` 阻塞在内核事件上，读一行阻塞在内核事件上。
+//!    没有 `Duration::from_*`、没有任何会「自己醒过来」的构件
+//!    （`no_timer_guard::backend_production_code_has_no_periodic_wakeups`）。
+
+use std::net::{IpAddr, Ipv4Addr};
+
+/// 只听回环。**字面量常量，不是拼出来的** —— 拼出来的地址源码扫描看不见
+/// （理由与 `relay/server.rs::LOOPBACK` 逐字同源）。
+pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+
+/// 宿主告诉后端「听哪个口」的 env 名。
+///
+/// # 为什么端口不由后端自己算
+///
+/// 「按家目录 hash 出一个口」这条路要求**两边各算一份**，而两份就会漂
+/// （本仓已有同族先例：`shared/ccm` 与 monitor 各算一份 origin，实测分叉四处）。
+/// ⇒ **只留一份实现，住宿主那一侧**（`local_backend_host::listen_port_for`），backend 只收一个数。
+pub const ENV_PORT: &str = "CCM_LISTEN_PORT";
+
+/// 宿主传进来的 attach token。**backend 自己造不出它** —— 只读铁律不许它写文件，
+/// 而 token 必须在两个宿主进程之间传得下去（上一个 monitor 退了，下一个要接上同一个后端）。
+pub const ENV_TOKEN: &str = "CCM_LISTEN_TOKEN";
+
+/// 〔HOST〕钥匙文件的**路径**（不是钥匙）：远端那台由 `--resident-ensure` 起常驻后端时交，子进程自己读 ——
+/// 钥匙一次都不经过 env / argv（与中转钥匙同形，`relay/door.rs` 头注）。本机宿主仍交 [`ENV_TOKEN`]。
+pub const ENV_TOKEN_FILE: &str = "CCM_LISTEN_TOKEN_FILE";
+
+/// 〔HOST · V139〕远端 `--resident-ensure` 起常驻后端时交的中转口 env 名（`main.rs` 在库外，够不着 `relay::` 的 crate 内口）。
+pub const RELAY_PORT_ENV: &str = crate::relay::ENV_PORT;
+
+/// bind 不上（多半是 `EADDRINUSE`）的退出码。**与「起不来」区分开**：
+/// 宿主看到它就知道「那个口上已经有人了」，该去连而不是再起一个。
+pub const EXIT_ADDR_IN_USE: i32 = 3;
+
+/// 监听口的配置只写了一半时的退出码。**fail closed**：宁可不起，也不要起一个不设防的口。
+pub const EXIT_BAD_LISTEN_CONFIG: i32 = 4;
+
+/// 认证通过之后回给客户端的那一行。
+pub const ATTACH_OK_LINE: &str = "{\"attach\":\"ok\"}\n";
+
+/// 一行 attach 请求的字节上限。
+///
+/// 请求形如 `{"attach":"<32 位十六进制>"}` —— 本机实测 **51 字节**。8 KiB 给了两个量级余量。
+/// ⚠ **少了它就是一个无界堆分配**：这条连接的对端是**同机任何进程**，
+/// 它完全可以一直发字节不发换行。backend 侧为同一形栽过一次实测
+/// （`inbound.rs` 头注：喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB）。
+/// 超限语义：**拒收 + 回错**（关连接并出声，不静默截断成一行「看起来对」的 JSON）。
+/// **登记住址** `src/bridge/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+pub const ATTACH_LINE_CAP: usize = 8 * 1024;
+
+/// 读一行 attach 请求的三种结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HandshakeLine {
+    /// 对端读完 hello 就关了 —— **那正是「只读 hello 就走」那一档**，是正常结局。
+    Eof,
+    /// 一整行。
+    Line(String),
+    /// 超限。**丢弃 + 出声**，不静默。
+    TooLong(usize),
+}
+
+/// 有上限地读一行。
+///
+/// 机制是 `fill_buf`/`consume`：**超限之后只找换行、不再往 buf 里塞字节**
+/// ⇒ 整行的内存占用与行长无关。这段机制在本仓已有两处同构实现
+/// （`inbound.rs` 的读行循环 · `ssh_source::read_capped_line`），
+/// 三处共用的是**那条教训**，不是代码 —— 它们分别跨着 sync/async 与两个 crate 的边。
+///
+/// ⚠ `cap` **是参数而不是直接读常量**：生产调用点传 [`ATTACH_LINE_CAP`]，
+/// 而判据要能传一个小数 —— 否则「超限之后内存不涨」只能靠量 RSS 来证，而那种证法进不了单测。
+pub async fn read_capped_line<R>(rd: &mut R, cap: usize) -> std::io::Result<HandshakeLine>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    use tokio::io::AsyncBufReadExt;
+    let mut buf: Vec<u8> = Vec::new();
+    let mut seen: usize = 0;
+    let mut overflowed = false;
+    loop {
+        let chunk = rd.fill_buf().await?;
+        if chunk.is_empty() {
+            return Ok(if seen == 0 {
+                HandshakeLine::Eof
+            } else if overflowed {
+                HandshakeLine::TooLong(seen)
+            } else {
+                HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned())
+            });
+        }
+        let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
+            Some(i) => (i, true),
+            None => (chunk.len(), false),
+        };
+        seen += take;
+        if seen > cap {
+            overflowed = true;
+            buf.clear();
+            buf.shrink_to_fit();
+        }
+        if !overflowed {
+            buf.extend_from_slice(&chunk[..take]);
+        }
+        let consumed = if done { take + 1 } else { take };
+        rd.consume(consumed);
+        if done {
+            return Ok(if overflowed {
+                HandshakeLine::TooLong(seen)
+            } else {
+                HandshakeLine::Line(String::from_utf8_lossy(&buf).into_owned())
+            });
+        }
+    }
+}
+
+/// 拒绝的三种理由。**是闭集**：`refusal_line` 只拼这几个常量，没有任何一段外来字节
+/// 会进到那行 JSON 里（由 `refusal_reasons_are_a_closed_set` 钉住）。
+/// 〔HOST〕多客户之后**不再发**（[`admit`]）；常量留着只因 monitor 本机宿主还认它（那一臂成死路，列报主会话）。
+pub const REFUSE_BUSY: &str = "stream-busy";
+pub const REFUSE_AUTH: &str = "bad-token";
+pub const REFUSE_MALFORMED: &str = "malformed-attach";
+
+/// backend 这次跑成什么形态。**由环境决定，不由 argv 决定** ——
+/// argv 那张表（`lib.rs::SUBCOMMANDS`）一动就要 bump `BUILD_ID` 并改
+/// `IPC-PROTOCOL.md` 的对拍面，而本件没有新增任何**子命令**：
+/// 它换的是**同一个流模式的载体**，不是新增一条命令。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Mode {
+    /// 今天那条路：stdin/stdout 一对管道，宿主一退就死。
+    Stdio,
+    /// 常驻：听一个回环口，认 token 之后才交出流。
+    Listen { port: u16, token: String },
+    /// 〔HOST〕同上，钥匙在文件里（[`ENV_TOKEN_FILE`]）；`main` 读出来再换成 [`Mode::Listen`]（[`token_from_file`]）。
+    ListenTokenFile { port: u16, path: String },
+}
+
+/// 从环境算出形态。**纯函数**（`get` 是入参），所以两条错误支都测得到 ——
+/// 拿真 `std::env::var` 写的话，「token 缺席」那一支在测试里根本进不去。
+///
+/// 四条规则，每条都有一个具体的坏结局在后面顶着：
+/// - 两个都没有 ⇒ [`Mode::Stdio`]（**今天的行为一个字节不变**）。
+/// - 有口没 token ⇒ `Err`：那会起一个**同机任何进程都能对它发 `launch` 的口**。
+/// - 有 token 没口 ⇒ `Err`：多半是接线漏了一半，静默退回 stdio 会让「我明明开了常驻」
+///   变成一个查不出来的谜（`P2d §0a` 那一形：**假信号不报错，它只是一直说是**）。
+/// - 口解析不出来 / 是 0 ⇒ `Err`：0 会让内核随机挑一个口，而宿主正等在那个算好的口上。
+pub fn mode_from(get: &dyn Fn(&str) -> Option<String>) -> Result<Mode, String> {
+    let raw_port = get(ENV_PORT).filter(|s| !s.trim().is_empty());
+    let raw_token = get(ENV_TOKEN).filter(|s| !s.trim().is_empty());
+    let raw_file = get(ENV_TOKEN_FILE).filter(|s| !s.trim().is_empty());
+    match (raw_port, raw_token) {
+        (Some(p), None) if raw_file.is_some() => {
+            let port = parse_port(&p)?;
+            Ok(Mode::ListenTokenFile {
+                port,
+                path: raw_file.unwrap_or_default().trim().to_string(),
+            })
+        }
+        (None, None) => Ok(Mode::Stdio),
+        (None, Some(_)) => Err(crate::common::contract::malformed(&format!(
+            "{ENV_TOKEN} is set but {ENV_PORT} is not; refusing to fall back to stdio"
+        ))),
+        (Some(_), None) => Err(crate::common::contract::malformed(&format!(
+            "{ENV_PORT} is set but {ENV_TOKEN} is not; refusing to open an unauthenticated port"
+        ))),
+        (Some(p), Some(t)) => Ok(Mode::Listen {
+            port: parse_port(&p)?,
+            token: t.trim().to_string(),
+        }),
+    }
+}
+
+fn parse_port(p: &str) -> Result<u16, String> {
+    let port: u16 = p.trim().parse().map_err(|e| {
+        crate::common::contract::malformed(&format!("{ENV_PORT}={p:?} is not a port number: {e}"))
+    })?;
+    if port == 0 {
+        return Err(crate::common::contract::malformed(&format!("{ENV_PORT}=0 would let the kernel pick a random port, but the host waits on the one it chose")));
+    }
+    Ok(port)
+}
+
+/// 〔HOST〕形态 ⇒ 载体：`None` = stdio；`Some((口, 钥匙))` = 常驻（钥匙在文件里那一形此刻读出来）。
+pub fn resolve(m: Mode) -> Result<Option<(u16, String)>, String> {
+    match m {
+        Mode::Stdio => Ok(None),
+        Mode::Listen { port, token } => Ok(Some((port, token))),
+        Mode::ListenTokenFile { port, path } => Ok(Some((port, token_from_file(&path)?))),
+    }
+}
+
+/// 〔HOST〕读钥匙文件：读不动 / 空 ⇒ `Err`（fail closed：不起一个不设防的口）。报错里只有路径。
+pub fn token_from_file(path: &str) -> Result<String, String> {
+    let t = std::fs::read_to_string(path).map_err(|e| {
+        crate::common::contract::malformed(&format!("{ENV_TOKEN_FILE}={path:?}: {e}"))
+    })?;
+    let t = t.trim();
+    if t.is_empty() {
+        return Err(crate::common::contract::malformed(&format!(
+            "{ENV_TOKEN_FILE}={path:?} is empty; refusing to open an unauthenticated port"
+        )));
+    }
+    Ok(t.to_string())
+}
+
+/// 一条 attach 请求的裁决。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// token 对上了。**这只说明「可以要流」**，要不要给还看那一档占没占（见 [`Admit`]）。
+    Attach,
+    /// token 不对。
+    WrongToken,
+    /// 根本不是一条 attach 请求（不是 JSON / 没有 `attach` 字段 / 值不是串）。
+    Malformed,
+}
+
+/// 判一行 attach 请求。**纯函数**。
+///
+/// 形状：`{"attach":"<token>"}`。刻意**不复用 `wire::Frame`** —— 那是冻结兼容面
+/// （仓外 aterm 在读），往它加变体是一次跨仓契约变更；而握手这件事只发生在
+/// hello 之后、流之前，它不该出现在任何一条被消费的帧流里。
+///
+/// ⚠ 比对走 [`tokens_match`]（逐字节全跑完），不是 `==`：
+/// `==` 在第一个不同的字节就返回，长度/前缀信息会从耗时里漏出去。
+/// 这是**同机**攻击面，计时侧信道在这里不是理论上的东西。
+pub fn attach_verdict(line: &str, expected: &str) -> Verdict {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+        return Verdict::Malformed;
+    };
+    let Some(got) = v.get("attach").and_then(|x| x.as_str()) else {
+        return Verdict::Malformed;
+    };
+    if tokens_match(got, expected) {
+        Verdict::Attach
+    } else {
+        Verdict::WrongToken
+    }
+}
+
+/// 〔HOST〕attach 行里这条连接要的流模式旗标（`{"attach":…,"flags":["--tail-only",…]}`）。
+/// 缺 ⇒ `Ok(None)`（用进程起参那一份）；有但不是串数组、或含 `lib::STREAM_FLAGS` 以外的 ⇒ `Err`（当 malformed 拒）。
+/// 回 `(with_bg, tail_only, with_rbind_token)`：每个客户各按自己的能力协商（monitor `decide_stream_flags`）。
+pub fn attach_flags(line: &str) -> Result<Option<(bool, bool, bool)>, ()> {
+    let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| ())?;
+    let Some(raw) = v.get("flags") else {
+        return Ok(None);
+    };
+    let list = raw.as_array().ok_or(())?;
+    let mut words = Vec::with_capacity(list.len());
+    for f in list {
+        let w = f.as_str().ok_or(())?;
+        if !crate::STREAM_FLAGS.contains(&w) {
+            return Err(());
+        }
+        words.push(w.to_string());
+    }
+    let (_, with_bg, tail_only, with_rbind_token) = crate::split_stream_flags(words);
+    Ok(Some((with_bg, tail_only, with_rbind_token)))
+}
+
+/// 定长时间的字节比对：**跑完全部**，不提前返回。
+///
+/// 长度不同直接判不等（长度本来就藏不住，它在 `read_line` 的字节数里）。
+///
+/// 〔RK1〕中转口的门（`relay/door.rs::admit`）比钥匙也用这一份 —— 定长比对只许有一个住址。
+pub(crate) fn tokens_match(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() || a.is_empty() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// 拒绝那一行。`reason` 只许是本模块那三个常量之一。
+pub fn refusal_line(reason: &str) -> String {
+    format!("{{\"attach\":\"refused\",\"reason\":\"{reason}\"}}\n")
+}
+
+/// 这条连接给什么档。**把「谁占着流」这件事做成入参**，而不是去读一个全局 ——
+/// 入参才测得到「已经有人占着」那一支（否则那一支要真起两个客户端才走得到，
+/// 而那正是 `brief` 第 9 条说的**空真**）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Admit {
+    /// 交出流。
+    Stream,
+    /// 拒绝，并把理由写回去（**出声**，不是静默 FIN —— 照 `relay::serve` 那条 503 的形状）。
+    Refuse(&'static str),
+}
+
+/// 分档。〔HOST · `设计/01 §3.3b ⑥`〕多客户：钥匙对上就交流，不再看「有没有人占着」（[`REFUSE_BUSY`] 不再发）。
+pub fn admit(verdict: Verdict) -> Admit {
+    match verdict {
+        Verdict::Malformed => Admit::Refuse(REFUSE_MALFORMED),
+        Verdict::WrongToken => Admit::Refuse(REFUSE_AUTH),
+        Verdict::Attach => Admit::Stream,
+    }
+}
+
+/// 〔HOST · `设计/01 §3.3b ⑥`〕此刻连着的流（多客户）。连接号从 1 起（0 留给空转那一份 watcher 的槽位）；
+/// 「最后一个客户走了」= [`Clients::leave`] 回 0 —— 不是「起我的那个 monitor 退了」。
+#[derive(Debug, Default)]
+pub struct Clients {
+    live: std::collections::BTreeSet<u64>,
+    next: u64,
+}
+
+impl Clients {
+    /// 接上一条：回它的连接号。
+    pub fn join(&mut self) -> u64 {
+        self.next += 1;
+        self.live.insert(self.next);
+        self.next
+    }
+
+    /// 走了一条：回还剩几条（同一个号走两次不重复扣）。
+    pub fn leave(&mut self, id: u64) -> usize {
+        self.live.remove(&id);
+        self.live.len()
+    }
+
+    /// 此刻几条。
+    pub fn count(&self) -> usize {
+        self.live.len()
+    }
+}
+
+/// 往一条连接写一行并 flush。
+///
+/// ⚠ **本模块只有这一处 `write_all(`** —— 它是 `wire.rs` 那条
+/// 「出方向帧只许有一个写者」判据的人群里新加的一员（本件同轮把 `listen.rs` 补进了那张表）。
+/// 它写的**不是**出方向帧：握手行发生在 `writer_task` 起来之前 / 或者根本不给流，
+/// 与 `write_and_flush_hello` 同一个性质。
+pub async fn write_line<W>(w: &mut W, line: &str) -> std::io::Result<()>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    use tokio::io::AsyncWriteExt;
+    w.write_all(line.as_bytes()).await?;
+    w.flush().await
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/stream/listen_tests.rs"]
+mod tests;

@@ -6,7 +6,7 @@
 //! 🔴 写**不重读重算**：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个（`96 §3.5`）。
 
 use super::door::{self, Door, Refused};
-use crate::mcp_sync::Facts;
+use crate::assets::mcp_sync::Facts;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -102,7 +102,7 @@ pub(crate) fn answer_install(
         .values()
         .map(|f| json!({ "path": f["path"], "text": f["text"], "exec": f.get("exec").cloned().unwrap_or(json!(false)) }))
         .collect();
-    let plan = crate::skill_install::answer_plan_with(
+    let plan = crate::assets::skill_install::answer_plan_with(
         facts,
         root,
         &json!({ "name": name, "source": wire_source, "take": args.get("take"), "overwrite": args.get("overwrite") }),
@@ -195,8 +195,8 @@ pub(crate) fn answer_uninstall(
     let seen = texts_by_path(args.get("seen"), "seen")?;
     let ask = json!({ "dir": dir, "take": args.get("take"), "confirm": args.get("confirm") });
     let plan = match ledger {
-        Some(l) => crate::skill_install::answer_uninstall_plan_at(l, &ask)?,
-        None => crate::skill_install::answer_uninstall_plan(&ask)?,
+        Some(l) => crate::assets::skill_install::answer_uninstall_plan_at(l, &ask)?,
+        None => crate::assets::skill_install::answer_uninstall_plan(&ask)?,
     };
     let (delete, forget) = (names(&plan, "delete"), names(&plan, "forget"));
     let recorded: Vec<String> = delete.iter().chain(forget.iter()).cloned().collect();

@@ -119,16 +119,16 @@ function closedSet(file: string, konst: string): string[] {
 
 describe("资产目录 · 给字表 == 后端闭集（两向）", () => {
   it("这台对那一条的三态", () => {
-    expect(Object.keys(HERE_TEXT).sort()).toEqual(closedSet("src/backend/asset_catalog.rs", "pub const HERE_STATES").sort());
+    expect(Object.keys(HERE_TEXT).sort()).toEqual(closedSet("src/backend/assets/asset_catalog.rs", "pub const HERE_STATES").sort());
   });
   it("条目种类", () => {
-    expect(Object.keys(KIND_TEXT).sort()).toEqual(closedSet("src/backend/asset_catalog.rs", "pub const KINDS").sort());
+    expect(Object.keys(KIND_TEXT).sort()).toEqual(closedSet("src/backend/assets/asset_catalog.rs", "pub const KINDS").sort());
   });
   it("skill 可疑项的种类", () => {
-    expect(Object.keys(SKILL_SUSPECT_TEXT).sort()).toEqual(closedSet("src/backend/skill_install.rs", "pub const SUSPECT_KINDS").sort());
+    expect(Object.keys(SKILL_SUSPECT_TEXT).sort()).toEqual(closedSet("src/backend/assets/skill_install.rs", "pub const SUSPECT_KINDS").sort());
   });
   it("〔SU1〕卸时一个文件的四态", () => {
-    const got = closedSet("src/backend/skill_install.rs", "pub const UNINSTALL_STATES");
+    const got = closedSet("src/backend/assets/skill_install.rs", "pub const UNINSTALL_STATES");
     expect(got.length).toBe(4);
     expect(Object.keys(UNINSTALL_STATE_TEXT).sort()).toEqual(got.sort());
   });

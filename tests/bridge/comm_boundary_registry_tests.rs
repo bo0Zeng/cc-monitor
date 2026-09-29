@@ -360,7 +360,10 @@ const CORPUS_DROP: &[(&str, &str)] = &[
 /// 形状照 `scanning_guard_registry` 的 `MUST_BE_IN_REACH`：拿**盘上真有的那一份**当见证。
 const CORPUS_WITNESS: &[(&str, &str)] = &[
     ("src/bridge/src/lib.rs", "bridge 那棵 Rust 树 · 后缀 rs"),
-    ("src/backend/wire.rs", "backend 那棵 Rust 树 · 后缀 rs"),
+    (
+        "src/backend/stream/wire.rs",
+        "backend 那棵 Rust 树 · 后缀 rs",
+    ),
     ("src/tabs.ts", "前端那棵 TS 树 · 后缀 ts"),
     (
         "src/bridge/Cargo.toml",

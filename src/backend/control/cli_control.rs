@@ -1,4 +1,4 @@
-//! P4d：控制面的 **CLI 入口** —— 与 SSH 帧入口共用 [`crate::inbound::REGISTRY`] 里同一个 `run`。
+//! P4d：控制面的 **CLI 入口** —— 与 SSH 帧入口共用 [`crate::stream::inbound::REGISTRY`] 里同一个 `run`。
 //!
 //! 〔用 08-12〕「要给后端留暴露接口……以后集成的 skill 就靠着后端来兼容和集成」
 //! 「**先把确切的命令组件做出来**，外面怎么变后面再说」。
@@ -43,8 +43,8 @@
 //! · **exec 模型**：1 exec = 1 请求 1 响应 1 退出，**无 request-id**（`resolve_query` 头注逐字）。
 
 use crate::common::contract;
-use crate::inbound::{CommandSpec, Run, REGISTRY};
-use crate::wire::Request;
+use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
+use crate::stream::wire::Request;
 use std::io::Read;
 
 /// stdin 上限。理由抄 `resolve_query::MAX_RESOLVE_STDIN`：兜 DoS，不是兜格式。

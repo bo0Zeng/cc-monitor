@@ -48,8 +48,8 @@ mod tests {
         "platform/pidwatch/mod.rs",
         "platform/fallback_guard.rs",
         "common/mod.rs",
-        "wire.rs",
-        "inbound.rs",
+        "stream/wire.rs",
+        "stream/inbound.rs",
         // ── 以下由 `S3` 加入 ──────────────────────────────────────────
         // `platform/` 整层：`S3` 把 `proc_claude_config_dir` 参数化成 `proc_env_var(pid, name)`
         // 之后，这一层再没有任何一个 agent 的名字。⚠ 这是**整层**进表，不是挑干净的进 ——
@@ -164,7 +164,7 @@ mod tests {
     /// 线上字段名），而**本表看不见它** —— 那个文件不在 `CORE_FILES` 里。
     /// ⇒ 两个不同的问题各问了一次同一个事实，删掉任一张都会漏掉另一张管的那一半。
     const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[(
-        "wire.rs",
+        "stream/wire.rs",
         "claude_dir",
         "hello 帧里**今天真的在线上**的那个目录字段，而且**有仓外消费方**：aterm 的契约 \
          2026-07-18 冻结，我们改不动它。⇒ 改名是破坏性变更，不是本区能单方面做的事。 \
@@ -300,8 +300,8 @@ mod tests {
             "platform/pidwatch/mod.rs",
             "platform/fallback_guard.rs",
             "common/mod.rs",
-            "wire.rs",
-            "inbound.rs",
+            "stream/wire.rs",
+            "stream/inbound.rs",
             // S3 加入
             "platform/proc.rs",
             "platform/liveness.rs",

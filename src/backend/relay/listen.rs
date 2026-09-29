@@ -21,7 +21,7 @@
 //! | 留在 `server.rs` 的 | 钉住它的登记（都在写区外） |
 //! |---|---|
 //! | `DOWNSTREAM_DEADLINE` ＋ `apply_downstream_deadline` | 〔`P16` 订正〕那个**值**今天住本文件，`REGISTERED_DURATION_USES` 那两行的住址栏逐字 `"listen.rs"`；装它的那一手仍在 `server.rs`（改成收入参） |
-//! | `LOOPBACK` | 同上，钉它的是 **`src/backend/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
+//! | `LOOPBACK` | 同上，钉它的是 **`src/backend/stream/listen.rs`**（K-P1 那个常驻监听口，与本文件同名但是另一棵）那句「理由与 `…/relay/server.rs::LOOPBACK` 逐字同源」 |
 //!
 //! ⇒ 本文件 `use` 它们，注释里点符号（不点文件）。真要把它们挪过来，得与
 //! `src/bridge/` 那两句散文 ＋ `no_timer_guard` 那张表**同拍**改。

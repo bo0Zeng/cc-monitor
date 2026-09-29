@@ -2994,7 +2994,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
             assert!(!lost_truncated, "才两条，远没到上限");
             assert_eq!(
                 lost,
-                vec![crate::wire::LostFrame {
+                vec![crate::stream::wire::LostFrame {
                     kind: "session_removed",
                     subject: Some("sid-gone".into()),
                 }],
@@ -3056,7 +3056,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
 /// 那正是 B-3 的原样复发。⇒ 用零命中守卫钉住源码形态。
 #[test]
 fn the_recoverability_table_has_no_catch_all_arm() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/wire.rs"));
+    let src = guard_core::production_code(include_str!("../../../src/backend/stream/wire.rs"));
     let begin = src
         .find("pub fn loss_is_recoverable")
         .expect("找不到 loss_is_recoverable —— 抽取器坏了，本条会零命中地绿");
@@ -3503,7 +3503,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     // 〔U4b · G3〕顺带钉容器那一格的**生产接线**：两个 `sleep` 都摘了 `TMUX_PANE`、环境读得到
     //   ⇒ 帧上 `container` == `none`（不是缺席）。结局 → 容器那张表另有一条逐格判；这一格判的是
     //   `process_session_added` 真把打标的结局接到了帧上。
-    let containers: Vec<Option<crate::wire::SessionContainer>> = frames
+    let containers: Vec<Option<crate::stream::wire::SessionContainer>> = frames
         .iter()
         .filter_map(|f| match f {
             Frame::SessionAdded { container, .. } => Some(*container),
@@ -3512,7 +3512,7 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
         .collect();
     assert_eq!(
         containers,
-        vec![Some(crate::wire::SessionContainer::None); 2],
+        vec![Some(crate::stream::wire::SessionContainer::None); 2],
         "没有 TMUX_PANE、环境读得到的会话，帧上要说 `none`"
     );
     let got: Vec<String> = frames
@@ -3729,7 +3729,7 @@ fn an_in_place_rewrite_that_grew_is_caught_by_the_tail_fingerprint() {
 /// 两个新帧的线上形状（逐字节；异源 = 手写期望）＋ 丢了不可恢复（按身份报）。
 #[test]
 fn the_two_session_file_frames_have_exactly_these_bytes() {
-    use crate::wire::{to_line, RereadWhy};
+    use crate::stream::wire::{to_line, RereadWhy};
     let gone = Frame::SessionFileGone {
         session_id: "s".into(),
         path: "/p/s.jsonl".into(),
@@ -4066,7 +4066,7 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
 fn resync_face_reply_matches_the_cross_language_golden() {
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/resync.golden.json")).unwrap();
-    let got = crate::resync_face::answer(&golden["request"]).expect("金样那份请求该答得出");
+    let got = crate::faces::resync_face::answer(&golden["request"]).expect("金样那份请求该答得出");
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         k.sort();
@@ -4091,7 +4091,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         .expect("`uncancellable` 不是数组");
     assert_eq!(
         ops.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>(),
-        crate::inbound::uncancellable(),
+        crate::stream::inbound::uncancellable(),
         "`uncancellable` 不是命令表派生的那一份"
     );
     for bad in [
@@ -4099,7 +4099,7 @@ fn resync_face_reply_matches_the_cross_language_golden() {
         serde_json::json!({"sid": ""}),
     ] {
         assert_eq!(
-            crate::resync_face::answer(&bad).map_err(|(c, _)| c),
+            crate::faces::resync_face::answer(&bad).map_err(|(c, _)| c),
             Err("bad_args"),
             "{bad}"
         );

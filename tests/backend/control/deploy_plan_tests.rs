@@ -262,7 +262,7 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
     let got = plan_json(&p);
     assert_eq!(keys(&got), keys(&golden["product"]));
     // 帧面登记的 `fields` 与真产出同一组（`protocol_doc_guard` 另核文档）。
-    let spec = crate::inbound::REGISTRY
+    let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|s| s.name == "deploy-plan")
         .expect("deploy-plan 没登记");

@@ -232,7 +232,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
     assert_eq!(discovered[0].agent_kind, AGENT_KIND);
     assert_eq!(discovered[0].path, root.to_string_lossy());
 
-    let line = crate::wire::to_line(&crate::wire::Frame::Hello {
+    let line = crate::stream::wire::to_line(&crate::stream::wire::Frame::Hello {
         v: 1,
         build_id: "s6".into(),
         host_arch: "x86_64".into(),

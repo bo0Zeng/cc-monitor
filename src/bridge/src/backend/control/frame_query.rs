@@ -8,7 +8,7 @@
 //! `--search` / `--list-subagents`）此前每问一次就新拨一条 TCP+SSH+鉴权，exec 一次后端、
 //! 读完 stdout 就断 —— 而同一台机器上**早就有一条**长连接（流模式那条），
 //! 入方向一问一答也早就通了（`inbound_client`）。后端那边这一拍把八条登记上了帧面
-//! （`history-*` / `accounts-*`，`src/backend/read_face.rs`），本模块是 monitor 这一侧的发送端。
+//! （`history-*` / `accounts-*`，`src/backend/faces/read_face.rs`），本模块是 monitor 这一侧的发送端。
 //!
 //! # 走哪条分流
 //!

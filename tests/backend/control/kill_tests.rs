@@ -124,7 +124,7 @@ fn the_kill_product_matches_the_cross_language_golden() {
         k["reply"],
         "后端出的 kill 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道结束了没有」"
     );
-    let spec = crate::inbound::REGISTRY
+    let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|s| s.name == "kill")
         .expect("后端登记表里没有 `kill`");

@@ -45,8 +45,8 @@ fn the_token_is_private_stable_and_never_handed_through_the_environment() {
     assert_eq!(
         names,
         [
-            crate::listen::ENV_PORT,
-            crate::listen::ENV_TOKEN_FILE,
+            crate::stream::listen::ENV_PORT,
+            crate::stream::listen::ENV_TOKEN_FILE,
             "CCM_RELAY_PORT",
             "CCM_BACKEND_STDERR_LOG",
         ],
@@ -95,22 +95,25 @@ fn a_token_file_gives_listen_mode_and_an_empty_one_is_refused() {
     let f = dir.join("listen-token");
     std::fs::write(&f, "abc123\n").unwrap();
     let path = f.to_string_lossy().into_owned();
-    let m = crate::listen::mode_from(&env_of(&[
-        (crate::listen::ENV_PORT, "51000"),
-        (crate::listen::ENV_TOKEN_FILE, &path),
+    let m = crate::stream::listen::mode_from(&env_of(&[
+        (crate::stream::listen::ENV_PORT, "51000"),
+        (crate::stream::listen::ENV_TOKEN_FILE, &path),
     ]))
     .unwrap();
     assert_eq!(
-        crate::listen::resolve(m).unwrap(),
+        crate::stream::listen::resolve(m).unwrap(),
         Some((51000, "abc123".to_string()))
     );
     std::fs::write(&f, " \n").unwrap();
-    let m = crate::listen::mode_from(&env_of(&[
-        (crate::listen::ENV_PORT, "51000"),
-        (crate::listen::ENV_TOKEN_FILE, &path),
+    let m = crate::stream::listen::mode_from(&env_of(&[
+        (crate::stream::listen::ENV_PORT, "51000"),
+        (crate::stream::listen::ENV_TOKEN_FILE, &path),
     ]))
     .unwrap();
-    assert!(crate::listen::resolve(m).is_err(), "空钥匙文件也起了一个口");
+    assert!(
+        crate::stream::listen::resolve(m).is_err(),
+        "空钥匙文件也起了一个口"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -184,12 +187,12 @@ fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
 /// 等得比排空短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断，而且不会报错。
 #[test]
 fn the_grace_period_outlasts_the_backend_drain_cap() {
-    let drain_ms = crate::inbound::DRAIN_DEADLINE.as_millis();
+    let drain_ms = crate::stream::inbound::DRAIN_DEADLINE.as_millis();
     assert!(
         u128::from(STOP_GRACE_MS) > drain_ms,
         "默认宽限期 {STOP_GRACE_MS}ms 不比排空上限 {drain_ms}ms 长"
     );
-    let drain_secs = crate::inbound::DRAIN_DEADLINE.as_secs();
+    let drain_secs = crate::stream::inbound::DRAIN_DEADLINE.as_secs();
     let args = |v: &str| vec!["--grace".to_string(), v.to_string()];
     assert_eq!(parse_grace(&[]), Ok(STOP_GRACE_MS));
     assert!(

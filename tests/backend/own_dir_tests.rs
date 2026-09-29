@@ -106,7 +106,7 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "用户的目录（`files-extract` 包里的目录，逐条建）",
     ),
     (
-        "history_annotations.rs",
+        "history/history_annotations.rs",
         "lock_for_write",
         "monitor 数据目录那一层（注解文件由 monitor 交路径；〔HX2〕在拿跨进程锁之前建，锁的是这个目录）",
     ),
@@ -171,9 +171,9 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     };
     for f in [
         "control/exit_policy.rs",
-        "asset_catalog.rs",
+        "assets/asset_catalog.rs",
         "relay/door.rs",
-        "skill_ledger.rs",
+        "assets/skill_ledger.rs",
         "control/files_commit.rs",
     ] {
         assert_eq!(

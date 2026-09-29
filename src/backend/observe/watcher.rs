@@ -55,7 +55,7 @@
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
-use crate::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter};
+use crate::stream::wire::{Frame, LostFrame, RemovalCause, RereadWhy, SeqCounter};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
@@ -2548,7 +2548,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
 
 /// **身份打标的唯一调用点**（首次宣告 · pidfile 重写 · tmux 探测到达 · `resync` 都经它）：打不上的那两形说出来，
 /// 回（容器，这次真写了没有）。`tag()` 自带「值一样就不动」⇒ 对账不多写一次。
-fn tag_identity(pid: u32, sid: &str) -> (Option<crate::wire::SessionContainer>, bool) {
+fn tag_identity(pid: u32, sid: &str) -> (Option<crate::stream::wire::SessionContainer>, bool) {
     let outcome = crate::control::identity_tag::tag(pid, sid);
     if let Some(note) = outcome.failure_note(pid, sid) {
         tracing::warn!("{note}");

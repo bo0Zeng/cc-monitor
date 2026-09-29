@@ -77,9 +77,10 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
 /// 跨半边：本侧发的命令名与字段 ⊆ 后端 `REGISTRY` 那一条声明的 `fields`，读的两格也在里面；远端要认的那条命令真在后端命令表里。
 #[test]
 fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
-    let inbound =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/inbound.rs"))
-            .expect("读后端 inbound.rs");
+    let inbound = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("src/backend/stream/inbound.rs"),
+    )
+    .expect("读后端 inbound.rs");
     let at = inbound
         .find(&format!("name: \"{CMD}\""))
         .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{CMD}`"));
@@ -117,7 +118,10 @@ fn this_module_holds_no_sync_rule() {
         &std::fs::read_to_string(root.join("src/bridge/src/asset_sync.rs")).unwrap(),
     );
     let mut needles = Vec::new();
-    for f in ["src/backend/asset_catalog.rs", "src/backend/asset_sync.rs"] {
+    for f in [
+        "src/backend/assets/asset_catalog.rs",
+        "src/backend/assets/asset_sync.rs",
+    ] {
         let src = std::fs::read_to_string(root.join(f)).unwrap();
         // 取「`pub` [`async`] `fn` <名字>」里的名字：按词走，不在语料上做带字面量的前缀匹配（needle 棘轮）。
         let words: Vec<&str> = src.split_whitespace().collect();
@@ -146,7 +150,7 @@ fn this_module_holds_no_sync_rule() {
     );
     // 正控：同一把尺子在后端那一份上数得出东西
     let backend = guard_core::production_code(
-        &std::fs::read_to_string(root.join("src/backend/asset_sync.rs")).unwrap(),
+        &std::fs::read_to_string(root.join("src/backend/assets/asset_sync.rs")).unwrap(),
     );
     assert!(backend.contains("push_plan("));
 }
@@ -158,9 +162,10 @@ fn this_module_holds_no_sync_rule() {
 /// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {
-    let inbound =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/inbound.rs"))
-            .expect("读后端 inbound.rs");
+    let inbound = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("src/backend/stream/inbound.rs"),
+    )
+    .expect("读后端 inbound.rs");
     let at = inbound
         .find(&format!("name: \"{REACH_CMD}\""))
         .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{REACH_CMD}`"));

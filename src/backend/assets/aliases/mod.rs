@@ -274,7 +274,7 @@ pub(crate) fn dialect_here(shell: Shell) -> Result<(), String> {
     }
     Err(copy_text(
         "rsAccountAliases.dialect.notHere",
-        &[("machine", &crate::asset_catalog::machine_label())],
+        &[("machine", &crate::assets::asset_catalog::machine_label())],
     ))
 }
 

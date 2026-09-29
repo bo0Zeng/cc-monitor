@@ -130,8 +130,8 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/assets/aliases/block.rs",
         "〔MIG-3a〕「别名块的真相不住 `sftp.rs`」的正控：同一把尺子量真相今天的住处（那台后端的别名块模块），量不出 ⇒ 尺子瞎了",
     ),
-    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
-    // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
+    // 〔DEL〕`tests/bridge/remote_relay_tests.rs → src/backend/stream/inbound.rs` 那一条退役：远端「用到才起」的脱离中转一族删了（中转只住常驻后端里）。
+    // 〔HX2 · 第四波 4D〕`tests/bridge/apikey_remote_tests.rs → src/backend/stream/inbound.rs` 那一条退役：命令名常量随写臂删了、那条对拍判据随之退役
     //   （monitor 里零处叫得出那条帧命令，由 `creds_store_tests::hx2_the_monitor_names_no_plaintext_key_on_the_way_to_the_backend` 钉零命中）。
     (
         "monitor→backend",
@@ -144,7 +144,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/creds_store_tests.rs",
-        "src/backend/inbound.rs",
+        "src/backend/stream/inbound.rs",
         "〔HX2 · 第四波 4D〕写 key 改走通道之后，「monitor 生产段零处叫得出明文 key 的写口」那条零命中判据的**正控**要落在真命令表上 —— \
          同一根针（帧命令名 `apikey-key-set`）在后端 `inbound.rs` 的登记里数得到，才说明零命中不是针瞎了",
     ),
@@ -158,7 +158,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/backend/control/inbound_client_tests.rs",
-        "src/backend/inbound.rs",
+        "src/backend/stream/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
     (
@@ -196,7 +196,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/backend/lib.rs",
         "backend 的启动契约（身份清单 / hello）两侧同形",
     ),
-    // 〔MIG-1〕`ssh_source_f032_idle_tests.rs → src/backend/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
+    // 〔MIG-1〕`ssh_source_f032_idle_tests.rs → src/backend/stream/wire.rs`（`RemovalCause` 字面量双写点）那一条随那份判据删了：
     //   monitor 不再读 `session_removed.cause`（去向由后端会话账本裁成 `session_state`）。
     (
         "monitor→backend",
@@ -223,7 +223,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/local_backend_host_tests.rs",
-        "src/backend/listen.rs",
+        "src/backend/stream/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
          （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与后端各声明一份，\
          而两边漂了**不会报错** —— backend 会把它当成「没设」走 stdio 那条路，\

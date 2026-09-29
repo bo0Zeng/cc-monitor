@@ -225,7 +225,7 @@ mod tests {
     /// | 拼法 | 上表那版 | 现在 |
     /// |---|---|---|
     /// | **`use crate::observe;`** + `observe::accounts_query::run(..)` | **全绿** | 抓到 |
-    /// | **`use crate::{observe, wire};`** | **全绿** | 抓到 |
+    /// | **`use crate::{observe, stream::wire};`** | **全绿** | 抓到 |
     /// | `use crate::observe as obs;` | 抓到 | 抓到 |
     ///
     /// 讽刺的地方在于：上一版**专门禁了层别名**，理由逐字写着「建立之后所有用法都绕过本护栏」——
@@ -289,7 +289,7 @@ mod tests {
                 }
             }
         }
-        // 成组导入 `use crate::{observe, wire};` —— 层名被包进花括号，上面的锚点一个都对不上。
+        // 成组导入 `use crate::{observe, stream::wire};` —— 层名被包进花括号，上面的锚点一个都对不上。
         // 实测：这一行放进 `control/gate.rs`，三条判据全绿。
         for prefix in ["use crate::{", "use super::super::{"] {
             let mut from = 0usize;
@@ -578,7 +578,7 @@ mod tests {
             );
         }
         assert!(
-            refs_to_layer("use crate::{plugin, wire};", "plugin")
+            refs_to_layer("use crate::{plugin, stream::wire};", "plugin")
                 .iter()
                 .any(|h| h.contains("成组导入")),
             "层名藏在花括号里没被抓到"
@@ -727,7 +727,7 @@ mod tests {
         ),        // 〔TAP · V124〕tee 的第二个落点（三条同一个口：口本身 ＋ 它交出去的那件事的两半）。
         (
             "tee::TapPort",
-            "〔TAP〕tee 的第二个落点的口：宿主（`crate::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
+            "〔TAP〕tee 的第二个落点的口：宿主（`crate::stream::tap::TapHub`）实现它，进程内中转经 `listen::host` 收它",
         ),
         (
             "tee::TapEvent",
@@ -1063,7 +1063,7 @@ mod tests {
         }
         // 成组导入：层名在花括号里。
         assert!(
-            refs_to_layer("use crate::{observe, wire};", "observe")
+            refs_to_layer("use crate::{observe, stream::wire};", "observe")
                 .iter()
                 .any(|h| h.contains("成组导入")),
             "`use crate::{{observe, wire}};` 没被抓到 —— 层名藏在组里，锚点对不上"
