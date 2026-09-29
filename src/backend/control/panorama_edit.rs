@@ -25,7 +25,7 @@ type CmdErr = (String, String);
 
 /// ★**写那六种 → 它的「算」op → 写成之后要不要刷文档关联** —— 唯一住址。
 ///
-/// 「算」op 的集合 == [`super::panorama::OPS`] 里 `plan_` 开头的那几个（判据两向）；界面写入口发的 op 集合 == 本表第一列（vitest 读本文件，两向）。
+/// 「算」op 的集合 == 小程序自报的 op 表（生成物 `engine-contract.json`）里 `plan_` 开头的那几个（判据两向）；界面写入口发的 op 集合 == 本表第一列（vitest 读本文件，两向）。
 pub(crate) const EDITS: &[(&str, &str, bool)] = &[
     ("add_annotation", "plan_add_annotation", false),
     ("propose_annotation", "plan_propose_annotation", false),
@@ -95,6 +95,8 @@ where
         .ok_or_else(|| bad("missing `repo` (a string)"))?
         .to_string();
     let op_args = args.get("args").cloned().unwrap_or(Value::Null);
+    // 〔PANO〕要的那一代由发起方带来，每次问小程序都原样转交（后端不存形状代号）。
+    let shape = args.get("shape").cloned().unwrap_or(Value::Null);
     let Some((_, plan_op, refresh)) = EDITS.iter().find(|(n, ..)| *n == op) else {
         return Err((
             "bad_args".to_string(),
@@ -119,7 +121,10 @@ where
     let mut written = None;
     for _ in 0..door::EDIT_ATTEMPTS {
         let raw = result_of(
-            ask(serde_json::json!({ "op": plan_op, "repo": repo, "args": op_args })).await?,
+            ask(
+                serde_json::json!({ "op": plan_op, "repo": repo, "args": op_args, "shape": shape }),
+            )
+            .await?,
         );
         let planned: Planned = serde_json::from_value(raw.clone()).map_err(|e| {
             (
@@ -177,7 +182,7 @@ where
         ));
     };
     if *refresh {
-        ask(serde_json::json!({ "op": REFRESH_DOC_LINKS, "repo": repo }))
+        ask(serde_json::json!({ "op": REFRESH_DOC_LINKS, "repo": repo, "shape": shape }))
             .await
             .map_err(|(c, e)| {
                 (

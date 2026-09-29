@@ -17,6 +17,8 @@
  * 读 `chan.call(origin, "panorama", {op, repo, args})`、写 `chan.call(origin, "panorama-edit", {repo, op, args})`，**不再经 monitor 那一跳转**
  * （原 Tauri 命令 `panorama_call` / `panorama_edit` / `panorama_cancel`〔散文墓碑〕删了）。
  * - **期限归发起方**：建索引那一档 960 s、其余 100 s（各比后端给小程序的期限多留一段回程，判据读后端源码对拍）。
+ * - 〔PANO · V158「后端不带引擎知识」〕哪个 op 是哪一档、要的是哪一代小程序（`shape`），都取自与小程序同源的生成物
+ *   `engine-contract.json`（小程序判据从它的 op 表与形状代号写出、对拍）；每问把 `shape` 带上，后端只拿它与 `--probe` 比。
  * - **撤单**：`cancel` 拨下 ⇒ 通道撤单过 webview 那一跳（`chan_cancel`）⇒ 后端撤掉处理器、小程序那一组子进程被杀。
  * - **没装 / 太旧**（对端回码 `not_installed` / `unsupported`）⇒ 请 monitor **放字节**（`panorama_place`：推到那台 / 放到本机），
  *   再问**一次**；仍这么说 ⇒ 如实说，不循环。
@@ -42,6 +44,7 @@ import type {
   Symbol as PanoramaSymbol,
 } from "./types";
 import { copyText } from "../copy-table";
+import CONTRACT from "./engine-contract.json";
 
 /** 哪台机器上的哪个仓。`path` 是**那台机器上**的绝对路径。 */
 export type RepoAt = { origin: Origin; path: string };
@@ -54,8 +57,10 @@ export class PanoramaCancelled extends Error {
   }
 }
 
-/** 建索引那一档的 op（后端给小程序 900 s）。〔RM1d〕`refresh_doc_links` 写的也是索引。 */
-export const BUILD_OPS: readonly string[] = ["index", "reindex", "refresh_doc_links"];
+/** 小程序自报的档（生成物；`long` = 建索引那一档，后端给它 900 s）。 */
+const TIERS: Readonly<Record<string, string>> = CONTRACT.ops;
+/** 要的那一代小程序（生成物里的形状代号；每问带上）。 */
+export const SHAPE: string = CONTRACT.shape;
 /** 建索引那一档：后端给小程序 900 s，再留 60 s 给回程（值归发起方，DL1）。 */
 export const BUILD_BUDGET_MS = 960_000;
 /** 其余查询：后端给小程序 60 s（另有 10 s 探测），再留 30 s。 */
@@ -63,8 +68,8 @@ export const QUERY_BUDGET_MS = 100_000;
 /** 〔RM1e〕对端回这几个码 ⇒ 那台缺小程序 / 装的那份太旧 ⇒ 放字节再问一次（== 后端适配层映射出来的码，判据读后端源码两向）。 */
 export const PUSH_ON: readonly string[] = ["not_installed", "unsupported"];
 
-/** 这个 op 等多久。 */
-export const budgetFor = (op: string): number => (BUILD_OPS.includes(op) ? BUILD_BUDGET_MS : QUERY_BUDGET_MS);
+/** 这个 op 等多久（档取自生成物，不手写哪几个是长活）。 */
+export const budgetFor = (op: string): number => (TIERS[op] === "long" ? BUILD_BUDGET_MS : QUERY_BUDGET_MS);
 
 /** 那台后端比这条命令老（不认它）时那句话。 */
 const OLD_BACKEND = copyText("panoramaApi.backend.tooOld");
@@ -120,7 +125,7 @@ async function remote<T>(
   cancel?: AbortSignal,
 ): Promise<T> {
   if (cancel?.aborted === true) throw new PanoramaCancelled();
-  const body = jsonBody({ op, repo: at.path, args: args ?? null });
+  const body = jsonBody({ op, repo: at.path, args: args ?? null, shape: SHAPE });
   // 每一问现造期限（放字节之后那一问重新起算，同原 monitor 那一跳）。
   const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(budgetFor(op), cancel);
   const got = await askOrPlace(
@@ -133,17 +138,17 @@ async function remote<T>(
   return r as T;
 }
 
-/** 〔RM1d〕写成之后要刷文档关联的那两种（== 后端 `control/panorama_edit.rs::EDITS` 第三列为真的那几行，判据读后端源码两向）。 */
-export const REFRESHES: readonly string[] = ["write_doc_link", "remove_doc_link"];
-
-/** 一次写的期限：至多三趟「算」（`stale` 重算，同后端 `EDIT_ATTEMPTS`）＋ 要刷文档关联的再加建索引那一档。 */
-export const editBudgetFor = (op: string): number => QUERY_BUDGET_MS * 3 + (REFRESHES.includes(op) ? BUILD_BUDGET_MS : 0);
+/**
+ * 一次写的期限：至多三趟「算」（`stale` 重算，同后端 `EDIT_ATTEMPTS`）＋ 一次建索引那一档（刷文档关联）。
+ * 〔PANO〕一律按最坏的那一形给：「哪几种写要刷」只住后端 `control/panorama_edit.rs::EDITS`，这里不再抄一份。
+ */
+export const EDIT_BUDGET_MS = QUERY_BUDGET_MS * 3 + BUILD_BUDGET_MS;
 
 /** 〔RM1d〕写：本机远端同一条（`op` 是后端 `control/panorama_edit.rs::EDITS` 第一列）。 */
 function edit<T>(at: RepoAt, op: string, args: object): Promise<T> {
-  const body = jsonBody({ repo: at.path, op, args });
+  const body = jsonBody({ repo: at.path, op, args, shape: SHAPE });
   return askOrPlace(
-    () => chan.call(at.origin, "panorama-edit", body, budgetWithin(editBudgetFor(op))),
+    () => chan.call(at.origin, "panorama-edit", body, budgetWithin(EDIT_BUDGET_MS)),
     () => commands.panorama_place({ origin: at.origin }),
   ) as Promise<T>;
 }

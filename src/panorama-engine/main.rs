@@ -11,7 +11,8 @@
 //!
 //! - `cc-monitor-panorama --probe` ⇒ 插件口那套 `key=value` 方言：首行 `name=`（身份）·
 //!   `version=`（只进诊断）· `capabilities=`（逗号列表 = [`OPS`] 的名字，集合语义）·
-//!   `shape=`（形状代号 [`shape_code`]，后端按它判「是不是同一代」）。
+//!   `long=`（长活档的那几个，后端按档给期限）·
+//!   `shape=`（形状代号 [`shape_code`]；期望值由发起方从生成物 `src/frontend/ui/panorama/engine-contract.json` 带来，后端只比对）。
 //! - `cc-monitor-panorama <op> [--repo <仓>] [--store <索引根>] [--args <JSON>]` ⇒ stdout **恰一行**：
 //!   成功 `{"ok":true,"data":…}`（退出码 0）；失败 `{"ok":false,"code":…,"message":…}`，
 //!   退出码 [`EXIT_BAD_ARGS`]（调用方给错了东西）/ [`EXIT_FAILED`]（仓打不开 / 引擎报错）。
@@ -69,9 +70,16 @@ pub enum Need {
     Build,
 }
 
+impl Need {
+    /// 长活档（`--probe` 的 `long=`）：建索引那一族。其余是短活档。
+    pub fn is_long(self) -> bool {
+        self == Need::Build
+    }
+}
+
 /// ★ **op 表 —— 本程序会什么的唯一住址**。`--probe` 报的能力由它派生；
-/// 分派臂与它两向相等（判据从源码抽臂，异源）；后端适配层那张 op → 期限表与它两向相等
-/// （后端判据运行时读本文件，异源）。
+/// 分派臂与它两向相等（判据从源码抽臂，异源）；〔PANO〕后端不再存 op 表（按 `--probe` 自报的能力与档办），
+/// 前端与各判据读的是它的生成物 `src/frontend/ui/panorama/engine-contract.json`（判据 `the_frontend_contract_is_generated_from_this_program`）。
 ///
 /// ⚠ 词表只说**查询语义**（`protocol_doc_guard` 那条 `P7c-2` 约束：不暴露存储、grammar、解析开关）。
 pub const OPS: &[(&str, Need)] = &[
@@ -213,12 +221,21 @@ pub fn shape_code() -> String {
 }
 
 /// `--probe` 的全文（插件口方言，首行是身份）。
+///
+/// 〔PANO · V158「后端不带引擎知识」〕`long=` 自报长活档（建索引那几个，由 [`OPS`] 的 `Need::Build` 派生）；
+/// 不在里面的是短活档。起它的后端按档给期限，自己不存 op 表。
 pub fn probe_text() -> String {
     let caps: Vec<&str> = OPS.iter().map(|(n, _)| *n).collect();
+    let long: Vec<&str> = OPS
+        .iter()
+        .filter(|(_, need)| need.is_long())
+        .map(|(n, _)| *n)
+        .collect();
     format!(
-        "name={NAME}\nversion={}\ncapabilities={}\nshape={}\n",
+        "name={NAME}\nversion={}\ncapabilities={}\nlong={}\nshape={}\n",
         env!("CARGO_PKG_VERSION"),
         caps.join(","),
+        long.join(","),
         shape_code()
     )
 }
