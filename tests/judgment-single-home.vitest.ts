@@ -378,12 +378,16 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
+    // 〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕翻 `zero`：界面照旧逐台扇出（各台常驻索引保热），合并排序问本机后端
+    //   `history-search-merge`（`observe/search_query.rs::answer_merge` → `search_core::sort_by_recency`）；前端 `mergeSearchResults` 删。
+    //   条数上限：界面不交 `limit` ⇒ 每台用 `search_core::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
     homes: ["search-core::DEFAULT_LIMIT", "search-core::sort_by_recency"],
-    status: "open",
-    defs: ["searchAllMachines"],
-    needles: [{ text: "limit: 300", count: 1, file: "src/views/history.ts" }],
-    owner: "`90` 阶段 F（4D LOC1b）",
-    why: "多机合并今天在前端；收口到 search-core ＋ 后端是阶段 F",
+    status: "zero",
+    defs: ["mergeSearchResults"],
+    needles: [
+      { text: "limit: 300", count: 0, file: "src/views/history.ts" },
+      { text: "b.updatedAt - a.updatedAt", count: 0 },
+    ],
   },
   J17: {
     what: "模型名能不能交出去（`ANTHROPIC_MODEL` · `--model`）",

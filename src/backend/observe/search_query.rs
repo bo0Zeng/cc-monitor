@@ -937,6 +937,50 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// 〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕帧命令 `history-search-merge`：**把各台 `history-search` 的会话行合成一份**。
+///
+/// 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），拿回来的会话行（界面已补 `origin`）原样交到这里：
+/// `{sessions: [<会话行>…]}` ⇒ `{totalHits, sessionCount, truncated, sessions}`。
+/// - 排序：`updatedAt` 倒序、稳定（[`search_core::sort_by_recency`]，与每台后端花 snippet 预算的顺序同一个函数）；
+/// - `totalHits` = 各会话 `hitCount` 之和；任一会话 `hitsTruncated` ⇒ `truncated`（`K-R100`：每一台都被自己的 `limit` 砍过）；
+/// - 会话行其余各格原样透传（形状由界面的解码器收，这里只读排序与计数要的那三格）。
+///
+/// 码：`bad_args`（不是 `{sessions: [...]}` / 某一行缺那三格或类型不对）。纯计算：不读盘、不起进程。
+pub(crate) fn answer_merge(args: &Value) -> Result<Value, (&'static str, String)> {
+    let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
+    let rows = args
+        .get("sessions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("missing `sessions` (an array)"))?;
+    let mut sessions: Vec<(i64, Value)> = Vec::with_capacity(rows.len());
+    let mut total_hits: u64 = 0;
+    let mut truncated = false;
+    for row in rows {
+        let updated = row
+            .get("updatedAt")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| bad("a session without an integer `updatedAt`"))?;
+        let hits = row
+            .get("hitCount")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| bad("a session without a non-negative integer `hitCount`"))?;
+        let cut = row
+            .get("hitsTruncated")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| bad("a session without a boolean `hitsTruncated`"))?;
+        total_hits = total_hits.saturating_add(hits);
+        truncated |= cut;
+        sessions.push((updated, row.clone()));
+    }
+    search_core::sort_by_recency(&mut sessions, |(updated, _)| *updated);
+    Ok(serde_json::json!({
+        "totalHits": total_hits,
+        "sessionCount": sessions.len(),
+        "truncated": truncated,
+        "sessions": sessions.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+    }))
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_tests.rs"]
 mod tests;

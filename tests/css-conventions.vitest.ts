@@ -366,7 +366,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   // 〔LOC1b · 4D〕上方「重新索引」按钮与等索引那一族删掉 ⇒ 行号挪了（合并主线后现打 1505）。那一处本身没动。
   // 〔W5-AUX〕主线 1504 → 1506：上游搜索命中那一格改走 `data-kind`（多一行注释、一句拆两句），这一处本身没动。
   // 〔FIX3〕1515 → 1516：`history.ts` 多一行 import（`launch-arrival`），这一处本身没动。
-  "src/views/history.ts:1516":
+  // 〔FIX4 · J15〕1516 → 1517：全文搜索那一处多一行注释（条数上限不在前端写），这一处本身没动。
+  "src/views/history.ts:1517":
     "`e.hidden = updated.hidden` —— 这一处根本不是「切某个组件的显隐」，是在把一条会话记录的 `hidden` 字段往回写",
 } as const;
 

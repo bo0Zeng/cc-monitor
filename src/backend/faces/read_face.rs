@@ -159,6 +159,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value) -> Answ
                 .collect();
             Ok(json!({ "faces": faces }))
         }
+        // 〔FIX4 · `设计/90 §3` J15〕各台 `history-search` 的会话行合一份（纯计算，不看家目录）。
+        "history-search-merge" => search_query::answer_merge(args),
         "history-search" => {
             let query = str_arg(args, "query")?;
             let rest = search_rest(args)?;

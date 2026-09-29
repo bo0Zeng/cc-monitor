@@ -2358,6 +2358,18 @@ V116「要，只删装时写进去的文件」：装的时候记下写了哪几�
 
 ⚠ 选项**不在帧面另写一份语义**：这几个字段被摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit`，交给 CLI 那一臂同一个解析。
 
+#### `history-search-merge`：把各台的搜索结果合成一份（〔FIX4 · J15〕09-28；`设计/90 §3` J15，主会话裁 B）
+
+```text
+→ {"id":"q4","cmd":"history-search-merge","args":{"sessions":[{"sessionId":"a","updatedAt":100,"hitCount":3,"hitsTruncated":false,…},{"sessionId":"b","origin":"pi","updatedAt":300,"hitCount":2,"hitsTruncated":true,…}]}}
+← {"kind":"reply","id":"q4","ok":true,"data":{"totalHits":5,"sessionCount":2,"truncated":true,"sessions":[{"sessionId":"b",…},{"sessionId":"a",…}]}}
+```
+
+界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），把解码过的会话行（远端的补了 `origin`）一次交给**本机**后端合：
+`updatedAt` 倒序、稳定（`search_core::sort_by_recency`，与每台后端花 snippet 预算同一个函数）· `totalHits` = `hitCount` 之和 ·
+任一行 `hitsTruncated` ⇒ `truncated`。只读排序与计数要的那三格，其余原样透传。纯计算。错误码：`bad_args`（不是 `{sessions:[…]}` / 某一行那三格缺或类型不对）。
+只上帧面（`STREAM_ONLY`）。
+
 #### `history-subagent`：一份 subagent 记录的成品（〔MOD · `设计/05 §14.3` C 组〕列 ＋ 挑 ＋ 读 ＋ 解析）
 
 ```text

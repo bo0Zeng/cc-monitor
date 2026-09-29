@@ -15,14 +15,17 @@
  * - 逐台并发。**本机那一台失败 ⇒ 整次失败**（与迁前「本机索引那一问抛了 ⇒ 搜索失败」同形：本机是必答的那一台）；
  *   远端逐台失败只 `console.warn` 并跳过（不拖垮其余台）。
  * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant`、`after_ms` 只给正数；`limit` 原样。
- * - 合并：拼接 → `updatedAt` 倒序（稳定排序）→ 命中数相加；任一会话 `hitsTruncated` ⇒ 整体 `truncated`（`K-R100`）。
+ * - 合并：〔FIX4 · `设计/90 §3` J15 · 主会话 09-28 裁 B〕各台的会话行一次交给**本机**后端 `history-search-merge`
+ *   （`updatedAt` 倒序、稳定 —— `search_core::sort_by_recency`；命中数相加；任一会话 `hitsTruncated` ⇒ 整体 `truncated`，`K-R100`）。
+ *   扇出照旧在这里（各台常驻后端的内存索引保热）；前端那份 `mergeSearchResults`〔散文墓碑〕删了 —— 规则只住 Rust。
  * - 本机的行不带 `origin`（界面按「没有 origin ＝ 本机」画，与迁前逐字相同）；远端的行补上那台的名字。
  * - 「哪几台远端」问的是 `list_remote_mcp_origins`（名字里的 `mcp` 是它第一个用户留下的，不是限定）。
  */
 import { commands } from "../ipc/commands";
 import { chan } from "../ipc/chan";
-import { budgetWithin, jsonBody, linesOf } from "../ipc/chan-caller";
+import { budgetWithin, jsonBody, linesOf, readJson } from "../ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
+import { copyText } from "../copy-table";
 
 /**
  * 一条命中（后端 `--search` 行里 `hits` 的一格；形状由 [`parseHit`] 严格收）。
@@ -83,11 +86,17 @@ export interface FullTextQuery {
  */
 const SEARCH_BUDGET_MS = 30_000;
 
-/** 本机 ＋ 各台远端，合成一份。 */
+/** 合一份那一问的期限：本机后端里的纯计算（排序 ＋ 求和），盖住本机那条流的往返与那份载荷即可。 */
+const MERGE_BUDGET_MS = 10_000;
+
+/** 本机 ＋ 各台远端，合成一份（合并排序问本机后端，见头注）。 */
 export async function searchAllMachines(q: FullTextQuery): Promise<SearchResult> {
   const payload = jsonBody(searchArgs(q));
   const [local, remote] = await Promise.all([askOne(LOCAL_ORIGIN, payload), searchRemotes(payload)]);
-  return mergeSearchResults([...local, ...remote]);
+  const body = jsonBody({ sessions: [...local, ...remote] });
+  const budget = budgetWithin(MERGE_BUDGET_MS);
+  const reply = await chan.call(LOCAL_ORIGIN, "history-search-merge", body, budget);
+  return decodeMerged(readJson(reply));
 }
 
 /** 那一问的请求体（只下发后端认的那几格）。本机远端同一份。 */
@@ -155,51 +164,66 @@ export function parseSessionHitsLines(lines: string[], origin: string | undefine
       console.warn(`[${origin ?? LOCAL_ORIGIN}] 搜索结果行解析失败（跳过）:`, e);
       continue;
     }
-    const o = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
-    const hits = Array.isArray(o.hits) ? o.hits.map(parseHit) : null;
-    if (
-      !isStr(o.sessionId) ||
-      !isStr(o.projectPath) ||
-      !isStr(o.projectName) ||
-      !isStr(o.jsonlPath) ||
-      !isStr(o.title) ||
-      !isInt(o.updatedAt) ||
-      !isInt(o.hitCount) ||
-      o.hitCount < 0 ||
-      hits === null ||
-      hits.some((h) => h === null) ||
-      !(o.hitsTruncated === undefined || typeof o.hitsTruncated === "boolean")
-    ) {
+    const sh = sessionHitsOf(v);
+    if (sh === null) {
       console.warn(`[${origin ?? LOCAL_ORIGIN}] 搜索结果行形状不对（跳过）`);
       continue;
     }
-    out.push({
-      sessionId: o.sessionId,
-      projectPath: o.projectPath,
-      projectName: o.projectName,
-      jsonlPath: o.jsonlPath,
-      title: o.title,
-      updatedAt: o.updatedAt,
-      hitCount: o.hitCount,
-      hits: hits as Hit[],
-      hitsTruncated: o.hitsTruncated ?? false,
-      ...(origin === undefined ? {} : { origin }),
-    });
+    out.push(origin === undefined ? sh : { ...sh, origin });
   }
   return out;
 }
 
-/**
- * 合并各台的结果（issue #28）：拼接、`updatedAt` 倒序（稳定）、命中数相加；
- * 🔴 `K-R100`：每一台都会被自己的 `limit` 砍 ⇒ 任一会话 `hitsTruncated` ⇒ 整体 `truncated`。
- * 〔LOC1b〕本机不再是「一份带 `indexing` / `truncated` 的整份应答」，与远端一样是一组会话行 ⇒ 合并只有这一形。
- */
-export function mergeSearchResults(all: SessionHits[]): SearchResult {
-  const sessions = [...all].sort((a, b) => b.updatedAt - a.updatedAt);
+/** 一个会话行（对象）⇒ `SessionHits`（不含 `origin`）；形状不对 ⇒ `null`。口径见 [`parseSessionHitsLines`] 头注。 */
+function sessionHitsOf(v: unknown): SessionHits | null {
+  const o = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const hits = Array.isArray(o.hits) ? o.hits.map(parseHit) : null;
+  if (
+    !isStr(o.sessionId) ||
+    !isStr(o.projectPath) ||
+    !isStr(o.projectName) ||
+    !isStr(o.jsonlPath) ||
+    !isStr(o.title) ||
+    !isInt(o.updatedAt) ||
+    !isInt(o.hitCount) ||
+    o.hitCount < 0 ||
+    hits === null ||
+    hits.some((h) => h === null) ||
+    !(o.hitsTruncated === undefined || typeof o.hitsTruncated === "boolean")
+  ) {
+    return null;
+  }
   return {
-    totalHits: sessions.reduce((a, s) => a + s.hitCount, 0),
-    sessionCount: sessions.length,
-    truncated: sessions.some((s) => s.hitsTruncated),
-    sessions,
+    sessionId: o.sessionId,
+    projectPath: o.projectPath,
+    projectName: o.projectName,
+    jsonlPath: o.jsonlPath,
+    title: o.title,
+    updatedAt: o.updatedAt,
+    hitCount: o.hitCount,
+    hits: hits as Hit[],
+    hitsTruncated: o.hitsTruncated ?? false,
   };
+}
+
+/**
+ * 本机后端 `history-search-merge` 的成品 ⇒ `SearchResult`。严格收：恰好四个键、类型对；会话行逐条过同一个解码器，
+ * `origin` 缺 ＝ 本机、有就得是串。不对 ⇒ 抛（整次搜索失败，与本机那一台失败同形 —— 本机是必答的那一台）。
+ */
+export function decodeMerged(v: unknown): SearchResult {
+  const bad = (): never => {
+    throw new Error(copyText("history.search.mergeBadShape"));
+  };
+  if (v === null || typeof v !== "object" || Array.isArray(v)) bad();
+  const o = v as Record<string, unknown>;
+  if (Object.keys(o).sort().join(",") !== "sessionCount,sessions,totalHits,truncated") bad();
+  if (!isInt(o.totalHits) || !isInt(o.sessionCount) || typeof o.truncated !== "boolean" || !Array.isArray(o.sessions)) bad();
+  const sessions = (o.sessions as unknown[]).map((row) => {
+    const sh = sessionHitsOf(row);
+    const origin = (row as Record<string, unknown> | null)?.origin;
+    if (sh === null || !(origin === undefined || isStr(origin))) return bad();
+    return origin === undefined ? sh : { ...sh, origin };
+  });
+  if (sessions.length !== o.sessionCount) bad();
+  return { totalHits: o.totalHits as number, sessionCount: o.sessionCount as number, truncated: o.truncated as boolean, sessions };
 }

@@ -14806,6 +14806,11 @@
       "zh": "搜索失败：{e}",
       "args": ["e"]
     },
+    "history.search.mergeBadShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端合好的搜索结果，两端版本对不上",
+      "args": []
+    },
     "history.search.searching": {
       "kind": "body",
       "zh": "搜索中…",

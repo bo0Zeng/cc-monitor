@@ -30,6 +30,8 @@ const FAMILY: &[&str] = &[
     // 〔U4b · 第四波〕记录还在不在（resume 一跳先问；异源是题面 `U4b` G1，不是 `inbound.rs`）。
     "history-record",
     "history-search",
+    // 〔FIX4 · `90 §3` J15〕各台搜索结果合一份（异源是题面 FIX4 第 3 件 ＋ 主会话 09-28 裁 B，不是 `inbound.rs`）。
+    "history-search-merge",
     // 〔MOD · `05 §14.3` C 组〕子 agent 那一份出成品 · 按字节分页出记录行 · 漂移账（异源是题面 MOD 第 1 件，不是 `inbound.rs`）。
     "history-subagent",
     "history-page",
