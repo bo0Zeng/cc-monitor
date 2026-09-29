@@ -246,7 +246,9 @@ describe("`70 §8` 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () 
       .querySelector<HTMLButtonElement>('#settings-tab-machine\\:（本机）')!
       .click();
     await tick();
-    expect(since(mark)).toEqual(uniq([...MACHINE_PAGE_IPC]));
+    // 〔MOD〕「未识别的数据」记录那两面经通道问那台后端（`drift-report`，包装层那一条 `chan_call`）；
+    //   `chan_call` 这个名字别的页也用，不进上面那几张「打开设置不许碰」的表，只在这里点名。
+    expect(since(mark)).toEqual(uniq([...MACHINE_PAGE_IPC, "chan_call"]));
   });
 
   it("`open()` 之后仍然只碰落地页（这就是用户说的「打开设置」那一下）", async () => {

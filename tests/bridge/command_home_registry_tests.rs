@@ -51,8 +51,7 @@ enum Lane {
     Mig2,
     Mig3a,
     // 〔MIG-3b 续〕`Mig3b` 那一路欠的行还清了（足迹 · 全景 · 公钥三件迁走、漂移账改派 MOD），变体随之删掉。
-    /// 〔主会话 09-28 裁①〕记录抽取那一路（`parser.rs` 的渲染路进 `agents/claudecode/`）。
-    Mod,
+    // 〔MOD〕`Mod` 那一路欠的行还清了（会话正文四条改走通道、漂移账那一条挪进「monitor 自己的事」），变体随之删掉。
 }
 
 /// 「monitor 自己的事」：命令 · 哪一类 · 理由。
@@ -119,6 +118,12 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ("get_log_file_info", Own::Log, "日志"),
     ("open_log_file", Own::Log, "日志"),
     ("open_log_dir", Own::Log, "日志"),
+    (
+        "drift_ledger_report",
+        Own::Log,
+        "〔MOD〕漂移账里 monitor 天生观测的两面（未登记的会话 kind · 后端 hello 里不认识的能力 token）—— 诊断；\
+         记录那两面随解析进了那台后端（`drift-report`，界面经通道问）",
+    ),
     (
         "list_remote_mcp_origins",
         Own::Config,
@@ -205,11 +210,6 @@ const PENDING: &[(&str, Lane, &str)] = &[
     // MIG-2：本机起会话 ＋ 载荷渲染 ＋ 历史查看器。〔MIG-2〕迁走七条：`new_local_session` · `resume_history_session` ·
     //   `render_local_attach` · `render_ccm_launch` · `render_launch_payload` · `relay_endpoint_for_launch` · `probe_ccm_cli`。
     (
-        "stream_read_session_jsonl",
-        Lane::Mig2,
-        "历史查看器正文还经 monitor 转（㊱③）",
-    ),
-    (
         "launch_remote_terminal",
         Lane::Mig2,
         "远端拉起那串的 ssh 外壳（`ssh -t -J … host '<串>'` · PowerShell 窗口载荷）还在 monitor 拼：它读 monitor 的机器配置，\
@@ -224,25 +224,12 @@ const PENDING: &[(&str, Lane, &str)] = &[
     //   部署后端 · 卸载后端两条挪进「monitor 自己的事」（放字节：判定进了本机常驻后端 `deploy-plan`）。
     // 〔MIG-3b 续 · 主会话 09-28 裁①〕`config_surface_report`〔散文墓碑〕已迁：申报表 ＋ 判定进了后端（`footprint-report`，界面经通道直问），
     //   monitor 只答它自己那台那几行的事实（`footprint_client_facts`，进「monitor 自己的事」）。
-    // 〔主会话 09-28 裁①〕漂移账那一条改派 MOD：两路进料（未知记录类型 · 已知类型解析失败）来自 `parser.rs` 的渲染路，
-    //   那是「Claude 记录抽取进 `agents/claudecode/`」那一件；`UnknownBackendToken` 天生是 monitor 观测到的；`UnknownSessionKind` 跟 MIG-1。
-    (
-        "drift_ledger_report",
-        Lane::Mod,
-        "漂移账的进料来自 monitor `parser.rs` 的渲染路（Claude 记录抽取进 `agents/claudecode/` 那一件）",
-    ),
+    // 〔MOD〕漂移账那一条迁了：两路进料（未知记录类型 · 已知类型解析失败）随记录解释进了那台后端（`drift-report`）；
+    //   monitor 天生观测的两面（`UnknownBackendToken` · `UnknownSessionKind`）留在 `drift_ledger_report`，进「monitor 自己的事」（日志）。
+    // 〔MOD · `设计/90 §3` 判据 3〕会话正文四条（`stream_read_session_jsonl` · `load_subagent` · `read_session_range` ·
+    //   `read_session_lines`〔散文墓碑〕）迁了：记录解释进了后端，界面经通道直问那台后端（`history-page` · `history-subagent` ·
+    //   `history-lines`，`src/record-reads.ts`）。
     // 〔主会话 09-27 裁〕原先 C 段没人点名的那几行已指派（MIG-1 端口转发 · MIG-2 会话读面 · MIG-3b 探针 / 公钥 / 全景 · MIG-3a 开文件窗）。
-    (
-        "load_subagent",
-        Lane::Mig2,
-        "子 agent 读仍经 monitor 转（`05 §14.3` C 组）",
-    ),
-    (
-        "read_session_range",
-        Lane::Mig2,
-        "骨架区间读仍经 monitor 转",
-    ),
-    ("read_session_lines", Lane::Mig2, "骨架行读仍经 monitor 转"),
     // 〔MIG-3b 续〕公钥推送那一条已迁（界面经通道问本机后端 `pubkey-push`），行删了。
     // 〔MIG-1〕端口转发三条（起 · 停 · 列）迁走：账住本机常驻后端（`dial/forwards.rs`），界面经通道问 `forward-*`。
     // 〔MIG-3b 续 · 主会话 09-28 裁〕全景问 · 写 · 撤三条已迁（界面经通道直问那台后端 `panorama` / `panorama-edit`，撤单过通道那一跳），

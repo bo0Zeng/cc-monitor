@@ -74,13 +74,37 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    pub message: crate::messages::JsonlRecord,
+    /// 〔MOD · `设计/90 §3` 判据 3〕这一行在渲染模型里的样子 —— 那台后端的成品（`agents/claudecode/schema.rs::JsonlRecord`，
+    /// ts-rs 从后端导出），monitor **原样转交、一个字段都不读**。
+    #[cfg_attr(test, ts(type = "import(\"./JsonlRecord\").JsonlRecord"))]
+    pub message: RecordBody,
     /// 〔RENDER2 · `设计/10 §3.2`〕`[skipped_from, seq)` 这些行号 monitor **连着见过、都不可显示**（照占号、不出 payload）⇒
     /// 前端可以把它们记成见过，去重集合成区间、段数不再随会话长度涨（`真相源/130 §3`）。缺 = 没有这一段或不确知（不猜）。
     #[cfg_attr(test, ts(optional, type = "number"))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_from: Option<u64>,
 }
+
+/// 〔MOD · `设计/90 §3` 判据 3〕后端给的一条记录成品（JSON 原文）。monitor 只搬：不解析、不读字段，序列化时原样嵌进去。
+#[derive(Debug, Clone, Serialize)]
+#[serde(transparent)]
+pub struct RecordBody(pub Box<serde_json::value::RawValue>);
+
+impl RecordBody {
+    /// 从一段 JSON 原文造（原文不是合法 JSON ⇒ `None`）。
+    pub fn from_json(text: String) -> Option<Self> {
+        serde_json::value::RawValue::from_string(text)
+            .ok()
+            .map(Self)
+    }
+}
+
+impl PartialEq for RecordBody {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.get() == other.0.get()
+    }
+}
+impl Eq for RecordBody {}
 
 /// 〔CF2 · 第四波 4B〕会话内容流（`subscribe(origin, "session-lines"[/<sid>])`）里**一格的体**。
 ///

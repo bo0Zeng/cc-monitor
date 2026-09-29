@@ -35,10 +35,11 @@
 //! # 买不到
 //!
 //! - 见证只钉**锚那一行**：锚之后、续点之前那几条实时行被单独改掉（前缀原样、只改中段）看不见 —— 实时行没带字节偏移。
-//! - 见证那一行本身含非 UTF-8 字节（后端有损解码过、字节位对不上）⇒ 那一次不记见证，续传照今天的样子不核。
+//! - 〔MOD〕见证那一行的字节位与摘要都由后端按原始字节给（原先 monitor 拿有损解码过的正文自己切、自己算，
+//!   碰到非 UTF-8 字节那一次就记不了见证）。
 //! - 改写之后整份重读出来的行，行号与旧行同号（远端 `seq` 是行号空间，`INVARIANTS §25a`）—— 前端怎么把两份收成一份不在本处。
 //! - 〔RENDER2 · `99 §2.1` ㊱②〕实时行带着后端的 `byte_offset`（它的末端）⇒ 推续点时记下第 `next` 行的起点（`Cursor::next_byte`），
-//!   续传就从那一行读起、一行都不数掉。只剩「推的那一行说不准末端」（老后端不带 `byte_offset` · 快照那一行含非 UTF-8）
+//!   续传就从那一行读起、一行都不数掉。只剩「推的那一行说不准末端」（快照那一行是没收尾的残尾）
 //!   才退回挑锚、锚到续点那一截照样过线。
 //! - 进程重启续点全丢（本来就是进程内软状态；主会话 09-27 销案：monitor 重启时界面状态本就没了，要的是整份）。
 
@@ -61,11 +62,11 @@ pub(crate) struct Cursor {
     pub(crate) next: u64,
     /// 〔RENDER2 · `99 §2.1` ㊱②〕第 `next` 行从哪个字节起（推 `next` 的那一行带着它的末端）；说不准 ⇒ `None`（退回挑锚）。
     pub(crate) next_byte: Option<u64>,
-    /// 〔W5-VIS〕锚那一行的见证（续传之前先核它）；`None` = 这一次没记下（那一行含非 UTF-8 / 一行可计行都没有）。
+    /// 〔W5-VIS〕锚那一行的见证（续传之前先核它）；`None` = 这一次没记下（那一行是残尾 / 一行可计行都没有）。
     pub(crate) witness: Option<Witness>,
 }
 
-/// 〔W5-VIS〕见证：一行在文件里的**原始字节区间** `[start, end)`（含它的换行）与它的内容摘要。
+/// 〔W5-VIS〕见证：一行在文件里的**原始字节区间** `[start, end)`（含它的换行）与它的内容摘要（〔MOD〕后端算的）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Witness {
     pub(crate) start: u64,
@@ -73,50 +74,32 @@ pub(crate) struct Witness {
     pub(crate) hash: u64,
 }
 
-/// 一行正文（去掉 `\r`）的摘要 —— 只在本进程里比（`DefaultHasher::new()` 的钥是固定的），不落盘、不过线。
-pub(crate) fn line_hash(line: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    line.hash(&mut h);
-    h.finish()
+/// 〔W5-VIS〕读回 `[w.start, w.end)` 那一段（`history-read` 的逐行成品）之后：还是不是那一行。
+/// 恰好一行、末端对得上、摘要对得上（〔MOD〕摘要由后端按原始字节算、跨进程稳定；原先 monitor 按本进程的哈希算）。
+pub(crate) fn witness_holds(
+    w: &Witness,
+    rows: &[crate::backend::control::frame_query::Row],
+) -> bool {
+    matches!(rows, [r] if r.end == Some(w.end) && r.hash == w.hash)
 }
 
-/// 〔W5-VIS〕读回 `[w.start, w.end)` 那一段（`history-read` 的 `text`）之后：还是不是那一行。
-/// 去掉末尾的 `\n` 与 `\r` 再比摘要；中间多出 / 少了换行（那一段已不是恰好一行）⇒ 不是。
-pub(crate) fn witness_holds(w: &Witness, text: &str) -> bool {
-    let Some(body) = text.strip_suffix('\n') else {
-        return false;
-    };
-    let body = body.strip_suffix('\r').unwrap_or(body);
-    !body.contains('\n') && line_hash(body) == w.hash
-}
-
-/// 〔W5-VIS〕一页正文逐行切开，每行带上它在文件里的原始字节区间 `[start, end)`（含换行）。
+/// 〔W5-VIS〕一页的逐行成品 ⇒ 每行在文件里的原始字节区间 `[start, end)`（含换行）。
 ///
-/// 页是后端**有损解码**过的（`frame_query::Page`）：一行里出现 U+FFFD ⇒ 那一行起本页余下各行的字节位都说不准了 ⇒
-/// 区间给 `None`（下一页从 `page.next` 那个原始偏移重新对齐）。页末那一截没有换行的残尾（torn）同样 `None`。
-/// 回 `(去掉 \r 的正文, 区间)`。
-pub(crate) fn page_lines(offset: u64, text: &str) -> Vec<(&str, Option<(u64, u64)>)> {
-    let mut out = Vec::new();
-    let mut pos = Some(offset);
-    let mut rest = text;
-    while !rest.is_empty() {
-        let (raw, tail, had_nl) = match rest.find('\n') {
-            Some(i) => (&rest[..i], &rest[i + 1..], true),
-            None => (rest, "", false),
-        };
-        if raw.contains('\u{FFFD}') {
-            pos = None;
-        }
-        let span = match (pos, had_nl) {
-            (Some(p), true) => Some((p, p + raw.len() as u64 + 1)),
-            _ => None,
-        };
-        out.push((raw.strip_suffix('\r').unwrap_or(raw), span));
-        pos = span.map(|(_, e)| e);
-        rest = tail;
-    }
-    out
+/// 〔MOD〕末端由后端按原始字节给（永远说得准）；起点 ＝ 上一个可计行的末端（页的第一行 ＝ `offset`）——
+/// 中间夹着的空白行（不是可计行，后端不交）算进这一行的区间：续传前读回这一段时空白行照样不成行，见证照样比得上。
+/// 残尾（末端 `None`）那一行及其后说不准 ⇒ `None`。
+pub(crate) fn row_spans(
+    offset: u64,
+    rows: &[crate::backend::control::frame_query::Row],
+) -> Vec<Option<(u64, u64)>> {
+    let mut start = Some(offset);
+    rows.iter()
+        .map(|r| {
+            let span = start.zip(r.end);
+            start = r.end;
+            span
+        })
+        .collect()
 }
 
 /// 〔W5-VIS〕走读时挑见证：**区间末端是 `plan.end` 的那一段**里、最后一个可计行（整份读时是尾段，续传时是唯一那一段）。
@@ -127,20 +110,16 @@ pub(crate) struct WitnessPick {
 }
 
 impl WitnessPick {
-    /// 一个可计行：它所在那一段的末端 `seg_upto`、这张图的末端 `plan_end`、正文与区间。
+    /// 一个可计行：它所在那一段的末端 `seg_upto`、这张图的末端 `plan_end`、正文摘要（后端给的）与区间。
     pub(crate) fn see(
         &mut self,
         seg_upto: u64,
         plan_end: u64,
-        line: &str,
+        hash: u64,
         span: Option<(u64, u64)>,
     ) {
         if seg_upto == plan_end {
-            self.last = Some(span.map(|(start, end)| Witness {
-                start,
-                end,
-                hash: line_hash(line),
-            }));
+            self.last = Some(span.map(|(start, end)| Witness { start, end, hash }));
         }
     }
 

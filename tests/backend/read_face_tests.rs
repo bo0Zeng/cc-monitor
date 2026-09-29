@@ -960,3 +960,66 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔MOD · `设计/05 §14.3` C 组〕会话正文那几条出成品：跨语言金样
+// ════════════════════════════════════════════════════════════════════════════
+
+/// 金样夹具：结构占位（uuid 按角色命名、正文是无意义占位词），不采任何真会话正文。
+/// 四形各一次：不进界面的元数据（占号不出）· 空白行（不占号）· user（带 `cwd`）· assistant；外加一个子 agent。
+fn golden_record_session(home: &Path) -> PathBuf {
+    let dir = home.join("projects").join("-golden");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("r.jsonl");
+    let body = [
+        r#"{"type":"permission-mode","permissionMode":"default"}"#,
+        "",
+        r#"{"type":"user","uuid":"r-1","timestamp":"t1","cwd":"/w","message":{"role":"user","content":"q"}}"#,
+        r#"{"type":"assistant","uuid":"r-2","timestamp":"t2","message":{"role":"assistant","content":[{"type":"text","text":"a"}]}}"#,
+    ]
+    .iter()
+    .map(|r| format!("{r}\n"))
+    .collect::<String>();
+    std::fs::write(&p, body).unwrap();
+    let sub = dir.join("r").join("subagents");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join("agent-a1.meta.json"), r#"{"description":"scan"}"#).unwrap();
+    std::fs::write(
+        sub.join("agent-a1.jsonl"),
+        concat!(
+            r#"{"type":"user","uuid":"s-1","timestamp":"t3","message":{"role":"user","content":"go"}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    p
+}
+
+/// ★★〔MOD〕**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-subagent`
+/// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
+///
+/// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/bridge/backend/control/frame_query_tests.rs`）·
+/// TS 解码器（`tests/session-reads.vitest.ts` 那一节）⇒ 三侧**异源**：后端改一个键名本条红，收的那两侧改一个键名各自红。
+#[test]
+fn the_record_products_match_the_cross_language_golden() {
+    let home = scratch("mod-golden");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    let got = serde_json::json!({
+        "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path})).unwrap(),
+        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true})).unwrap(),
+        "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1})).unwrap(),
+        "history-subagent": answer_at(
+            &home,
+            "history-subagent",
+            &serde_json::json!({"parent": path, "description": "scan", "timestamp": "t3"}),
+        )
+        .unwrap(),
+    });
+    let canon = std::fs::canonicalize(&home).unwrap().to_string_lossy().into_owned();
+    let got: serde_json::Value = serde_json::from_str(&got.to_string().replace(&canon, "<home>")).unwrap();
+    let want: serde_json::Value =
+        serde_json::from_str(include_str!("../__fixtures__/record-reads.golden.json")).expect("金样不是合法 JSON");
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(got, want, "帧面成品与跨语言金样不一致。现打：\n{}", serde_json::to_string_pretty(&got).unwrap());
+}

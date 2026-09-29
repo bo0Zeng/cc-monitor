@@ -378,7 +378,7 @@ impl JsonlRecord {
     /// - `Unknown` = **不认识**，曾经从这里被静默丢弃（实测 8,774 条 / 5.6%）。
     ///   F63 起它不再出 `parse_line`（被抢救成 `Unrecognized`），此处 false 只是
     ///   兜底——真走到说明 `parse_line` 的后处理漏了，属 bug。
-    /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（〔MOD〕原 monitor `lib.rs::extract_cwd`）。
+    /// 这条记录自己的 `cwd`（只有 user 记录带）—— 行成品里那一格（〔MOD〕原 monitor `lib·rs` 那个 `extract_cwd`〔散文墓碑〕）。
     pub fn cwd(&self) -> Option<&str> {
         match self {
             Self::User { cwd, .. } => cwd.as_deref(),
@@ -406,3 +406,8 @@ impl JsonlRecord {
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/claudecode/schema_tests.rs"]
 mod tests;
+
+// 〔MOD〕「每个承载标题的记录都被标题抽取接住」随 schema 从 monitor 搬来（原 `history_title_coverage.rs`）。
+#[cfg(test)]
+#[path = "../../../../tests/backend/agents/claudecode/schema_title_coverage.rs"]
+mod title_coverage;

@@ -56,6 +56,11 @@ use std::path::{Path, PathBuf};
 
 /// 单元层：不读仓内文本、不碰 OS 的测试文件。
 const UNIT: &[&str] = &[
+    // 〔MOD〕记录解释搬进后端：Claude 轮次判词（原 `observe/turn_detect_tests.rs`）· Codex 记录映射（原 monitor `codex_record_tests.rs`）·
+    //   按路径读正文出成品那个核（新）。
+    "tests/backend/agents/claudecode/turn_tests.rs",
+    "tests/backend/agents/codex/record_tests.rs",
+    "tests/backend/observe/record_page_tests.rs",
     "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
     "tests/backend/dial_probe_tests.rs", // 〔MIG-1 续〕测试连接三步的结局（链路替身）
@@ -85,7 +90,6 @@ const UNIT: &[&str] = &[
     "tests/backend/dial_pool_tests.rs",
     "tests/backend/observe/history_query_tail_tests.rs",
     "tests/backend/observe/session_ledger_tests.rs", // 〔MIG-1〕会话账本（可重连 / 已结束的裁决）真值表
-    "tests/backend/observe/turn_detect_tests.rs",
     "tests/backend/observe/user_inputs_tests.rs",
     "tests/backend/platform/shell_tests.rs",
     "tests/backend/plugin/probe_tests.rs",
@@ -105,7 +109,6 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/bridge/chan/transfer_stream_tests.rs",
-    "tests/bridge/codex_record_tests.rs",
     "tests/bridge/crates/branch-core/lib_tests.rs",
     "tests/bridge/crates/codex-token-core/lib_tests.rs",
     "tests/bridge/crates/creds-core/store_tests.rs",
@@ -129,7 +132,6 @@ const UNIT: &[&str] = &[
     "tests/bridge/lib_nudge_skip_tests.rs",
     "tests/bridge/lib_remote_config_tests.rs",
     // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
-    "tests/bridge/remote_history_tests.rs",
     "tests/bridge/session_book_tests.rs", // 〔MIG-1〕会话成品缓存的真值表（替掉容器账与本机活会话表那两份判据，两本账随裁决搬进后端）
     // 〔LOC1b · 4D〕`session_map_f13_tests.rs` 与 `session_map_linux_liveness.rs` 随 monitor 自己那份本机判活删了。
     "tests/bridge/sftp_pool_tests.rs",
@@ -264,6 +266,12 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    // 〔MOD〕记录解释搬进后端：漂移账（原 monitor `drift_ledger_tests.rs` 的记录两面）· 抢救与记账（原 `parser_tests.rs`）·
+    //   记录的线上形状（原 `messages_tests.rs`）· 标题记录一个不漏被接住（原 `history_title_coverage.rs`）。
+    "tests/backend/agents/claudecode/drift_tests.rs",
+    "tests/backend/agents/claudecode/parse_tests.rs",
+    "tests/backend/agents/claudecode/schema_tests.rs",
+    "tests/backend/agents/claudecode/schema_title_coverage.rs",
     "tests/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
     "tests/bridge/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
     "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
@@ -399,7 +407,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/frame_cadence_guard_tests.rs",
     "tests/bridge/gate_singleton_guard_tests.rs",
     "tests/bridge/guard_support_tests.rs",
-    "tests/bridge/history_title_coverage.rs",
     "tests/bridge/launcher_identity_registry_tests.rs",
     "tests/bridge/lib_invariant_population_tests.rs", // 〔TL2〕§47 / §49 人群判据（读仓内源码）
     "tests/bridge/lib_mod_decl_hygiene_tests.rs",
@@ -414,19 +421,16 @@ const SCAN: &[&str] = &[
     "tests/bridge/panorama_seam_registry_engine_port_scope.rs",
     "tests/bridge/panorama_seam_registry_tests.rs",
     "tests/bridge/parity_ledger_tests.rs",
-    "tests/bridge/parser_tests.rs",
     "tests/bridge/paths_tests.rs",
     "tests/bridge/plugin_class_registry_tests.rs",
     "tests/bridge/polling_registry_tests.rs",
     "tests/bridge/profile_installer_handshake_doc_guard.rs",
     "tests/bridge/quote_singleton_guard_tests.rs",
-    "tests/bridge/history_f06_tests.rs", // 〔LOC1b · 4D〕从 `remote_history_f06_tests.rs` 改名（被测随本机远端合成一条搬进 `history.rs`）
     // 〔C4d〕`tests/bridge/remote_history_kr83_tests.rs` 删了（`K-R83` 那三条随 join 搬进后端 `history_join_tests.rs`）。
     "tests/bridge/remote_write_registry_tests.rs",
     "tests/bridge/rust_timer_registry_tests.rs",
     "tests/bridge/search_kou_jing_guard.rs",
     "tests/bridge/session_name_registry_tests.rs",
-    "tests/bridge/session_skeleton_tests.rs",
     "tests/bridge/sftp_family_registry_tests.rs",
     "tests/bridge/shell_lint_registry_tests.rs",
     "tests/bridge/snapshot_resume_tests.rs",
@@ -536,7 +540,6 @@ const SCAN: &[&str] = &[
     "tests/bridge/backend/control/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
     // 〔MIG-3a〕`tests/bridge/shell_dialect_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    "tests/bridge/messages_tests.rs", // 〔RENDER2〕UNIT → SCAN：多了一格读 TS 夹具 `scale2-height-records.jsonl`（J10：夹具 user 记录不含注入噪声）
     // 〔MIG-2〕基数 → 增量 +1：本机起会话的计划与渲染（`control/launch_render/local.rs`，从 monitor `history.rs` 搬来）。
     "tests/backend/control/launch_render/local_tests.rs",
     // 〔OSA · V156〕基数 → 增量 +1：方言专属语法字面量只住 `platform/shell/`（扫后端生产树的字符串字面量）。
@@ -687,7 +690,6 @@ const INTEGRATION: &[&str] = &[
     // 〔AL2 · 第四波 4D〕`shell_dialect_tests.rs` 挪进 SCAN：候选那一条不再建临时目录（方言只给路径与列法、不读盘）。
     // 〔MIG-3a〕`skill_host_tests.rs` · `claude_data_fence_tests.rs` 随 skill 接入面进后端删了（判据搬去 tests/backend/agents/claudecode/skill_host_tests.rs）。
     "tests/bridge/structural_scan_tests.rs",
-    "tests/bridge/subagent_tests.rs",
     "tests/bridge/user_files_tests.rs",
     "tests/bridge/utils_tests.rs",
     // 〔CF1 · 09-24〕`tests/bridge/watcher_tests.rs` 随 monitor 自己那套 jsonl watcher 一起删了（本机会话内容改走本机后端的 `line` 帧）。
@@ -710,7 +712,6 @@ const INTEGRATION: &[&str] = &[
 /// 支撑：测试树里**没有一条测试**的那几份（夹具 / helper）。不是一层，是让分区闭合的补集。
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
-    "tests/bridge/support/scripted_backend.rs", // 〔LOC1a〕`<local>` 上挂照脚本应答的假后端，数它收到的帧命令
     "tests/backend/files/index_testing.rs",
     "tests/backend/control/identity_tag_door.rs", // 〔RESYNC〕`identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/sftp_rig.rs",
@@ -929,8 +930,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "the_local_backend_host_can_be_stopped_and_started_again",
         Trigger::Filter { by: "tests/e2e/local-backend-supervise.sh", needle: "local_backend_host" },
     ),
+    // 〔MOD〕住址随记录解析搬进后端（原 `tests/bridge/parser_tests.rs`）。
     (
-        "tests/bridge/parser_tests.rs",
+        "tests/backend/agents/claudecode/parse_tests.rs",
         "f63_real_data_ledger",
         Trigger::Manual("要本机真实历史数据（只读），改 F63 解析时人工重算的台账；跑法住它自己的头注"),
     ),

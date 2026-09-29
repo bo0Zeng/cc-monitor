@@ -16,6 +16,7 @@
 import { isRemoteOrigin, LOCAL_ORIGIN } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
+import { loadSubagent } from "./record-reads";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { StartupActive } from "./startup-active";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -297,9 +298,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     usageHud.setUnavailable(a.unavailable);
   });
 
-  // F77（#53）：点 agents 面板某行 → load_subagent 拿子 agent jsonl 路径 → SessionViewer 只读展示该
-  // agent 的记录。★ P7c-1（08-12）起**远端会话也支持**（同 subagent 卡片：origin 传下去，
-  // backend 的 `--list-subagents` 只列候选，挑选留后端本侧）。
+  // F77（#53）：点 agents 面板某行 → 问那台后端那个子 agent 的记录（`history-subagent`）→ SessionViewer 只读展示该
+  // agent 的记录。★ P7c-1（08-12）起**远端会话也支持**（同 subagent 卡片：origin 传下去）。
   let agentViewer: SessionViewer | null = null;
   let agentViewerMount: HTMLElement | null = null;
   const closeAgentViewer = (): void => {
@@ -320,14 +320,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         // C04d 批 5b：这里原来写 `invoke<{ path: string }>` —— **同一个命令在全仓有两种 TS 类型**
         // （`cards/subagent.ts` 用完整的 `SubagentLoadResult`，这里只声明 `path`）。
         // 包装层收敛成一处后这类分叉结构性消失：本处只读 `.path`，用完整类型完全够。
-        const result = await commands.load_subagent({
-          parentJsonlPath: actx.parentPath,
-          description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
-          toolUseTimestamp: entry.timestamp,
-          // P7c-1：远端会话也能展开了（backend `--list-subagents` 只列候选，挑选留后端本侧）。
-          // 〔C4a〕`actx.origin` 本机就是 `LOCAL_ORIGIN`（前端与线上同一个表示，不再换）。
-          origin: actx.origin,
-        });
+        // 〔MOD〕经通道直接问那台后端 `history-subagent`（`src/record-reads.ts`）。★ 用 trim 后的原始 desc
+        //   （非展示 label）—— 后端按它精确串等挑；`actx.origin` 本机就是 `LOCAL_ORIGIN`。
+        const result = await loadSubagent(actx.origin, actx.parentPath, entry.desc, entry.timestamp);
         closeAgentViewer(); // 关掉上一个（单例语义）
         agentViewerMount = document.createElement("div");
         agentViewerMount.className = "agent-records-viewer-mount"; // fixed 全屏 + 高 z-index

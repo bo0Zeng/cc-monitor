@@ -1,6 +1,6 @@
 use super::*;
 
-/// **一律用局部账本**（见 `record_into` 头注）—— 全局账本会被任何跑过 `parse_line`
+/// **一律用局部账本**（见 `record_into` 头注）—— 全局账本会被任何走过喂账点
 /// 的测试污染，在它上面断言整表形状必然 flaky（实测 6 次全量跑红 4 次）。
 fn fresh() -> Ledger {
     Ledger::new()
@@ -11,21 +11,21 @@ fn counts_and_keeps_only_the_first_sample() {
     let mut led = fresh();
     record_into(
         &mut led,
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "mode",
         Some("{\"type\":\"mode\",\"a\":1}"),
     );
     record_into(
         &mut led,
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "mode",
         Some("{\"type\":\"mode\",\"b\":2}"),
     );
-    record_into(&mut led, DriftFace::UnknownRecordType, "pr-link", None);
+    record_into(&mut led, DriftFace::UnknownBackendToken, "pr-link", None);
     let snap = snapshot_of(&led);
     assert_eq!(snap.len(), 1);
     let f = &snap[0];
-    assert_eq!(f.face, DriftFace::UnknownRecordType);
+    assert_eq!(f.face, DriftFace::UnknownBackendToken);
     assert!(!f.overflowed);
     assert_eq!(f.entries[0].key, "mode"); // count 降序
     assert_eq!(f.entries[0].count, 2);
@@ -45,7 +45,7 @@ fn the_key_count_is_bounded() {
     for i in 0..(MAX_KEYS + 30) {
         record_into(
             &mut led,
-            DriftFace::UnknownRecordType,
+            DriftFace::UnknownBackendToken,
             &format!("t{i}"),
             None,
         );
@@ -65,7 +65,7 @@ fn the_key_count_is_bounded() {
         .expect("有溢出键");
     assert_eq!(ov.count, 30, "溢出的 30 个应当全部并进 <overflow>");
     // 已经在表里的老键仍然正常累加（溢出不影响它们）。
-    record_into(&mut led, DriftFace::UnknownRecordType, "t0", None);
+    record_into(&mut led, DriftFace::UnknownBackendToken, "t0", None);
     let f2 = snapshot_of(&led).remove(0);
     assert_eq!(f2.entries.iter().find(|e| e.key == "t0").unwrap().count, 2);
 }
@@ -75,12 +75,7 @@ fn the_key_count_is_bounded() {
 fn samples_are_truncated_on_a_char_boundary() {
     let mut led = fresh();
     let long = "中".repeat(MAX_SAMPLE_BYTES);
-    record_into(
-        &mut led,
-        DriftFace::KnownTypeParseFailed,
-        "user",
-        Some(&long),
-    );
+    record_into(&mut led, DriftFace::UnknownSessionKind, "user", Some(&long));
     let s = snapshot_of(&led)[0].entries[0]
         .first_sample
         .clone()
@@ -143,7 +138,7 @@ fn each_machine_sees_exactly_its_own_book() {
     record_in_book(
         &mut book,
         &aya,
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "mode",
         Some("{}"),
     );
@@ -165,7 +160,7 @@ fn each_machine_sees_exactly_its_own_book() {
     assert_eq!(
         key_set(&snapshot_in_book(&book, &aya)),
         want(&[
-            (DriftFace::UnknownRecordType, "mode"),
+            (DriftFace::UnknownBackendToken, "mode"),
             (DriftFace::UnknownBackendToken, "capabilities:x"),
         ]),
         "aya 那一本不是恰好 aya 那两笔"
@@ -185,21 +180,21 @@ fn the_same_key_counts_separately_per_machine() {
     record_in_book(
         &mut book,
         &aya,
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "mode",
         Some("aya-1"),
     );
     record_in_book(
         &mut book,
         &aya,
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "mode",
         Some("aya-2"),
     );
     record_in_book(
         &mut book,
         &local,
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "mode",
         Some("local-1"),
     );
@@ -223,7 +218,7 @@ fn one_machine_overflowing_does_not_touch_another() {
         record_in_book(
             &mut book,
             &aya,
-            DriftFace::UnknownRecordType,
+            DriftFace::UnknownBackendToken,
             &format!("t{i}"),
             None,
         );
@@ -231,7 +226,7 @@ fn one_machine_overflowing_does_not_touch_another() {
     record_in_book(
         &mut book,
         &Origin::local(),
-        DriftFace::UnknownRecordType,
+        DriftFace::UnknownBackendToken,
         "fresh",
         None,
     );
@@ -245,8 +240,6 @@ fn one_machine_overflowing_does_not_touch_another() {
 #[test]
 fn every_face_states_its_consequence() {
     let faces = [
-        DriftFace::UnknownRecordType,
-        DriftFace::KnownTypeParseFailed,
         DriftFace::UnknownSessionKind,
         DriftFace::UnknownBackendToken,
     ];
@@ -278,11 +271,13 @@ fn every_face_states_its_consequence() {
 #[test]
 fn the_read_side_answers_the_asked_machine_and_echoes_it() {
     let probe = Origin("st3-read-probe".into());
-    record(&probe, DriftFace::UnknownRecordType, "st3-read-key", None);
+    record(&probe, DriftFace::UnknownBackendToken, "st3-read-key", None);
     let r = tauri::async_runtime::block_on(drift_ledger_report(probe.clone()))
         .expect("读口拒了一台正常的机器");
     assert_eq!(r.origin, probe, "回包没带回所问那台");
-    assert!(key_set(&r.faces).contains(&(DriftFace::UnknownRecordType, "st3-read-key".to_string())));
+    assert!(
+        key_set(&r.faces).contains(&(DriftFace::UnknownBackendToken, "st3-read-key".to_string()))
+    );
     let other =
         tauri::async_runtime::block_on(drift_ledger_report(Origin("st3-read-other".into())))
             .unwrap();
@@ -298,14 +293,14 @@ fn the_read_side_answers_the_asked_machine_and_echoes_it() {
 // ── 〔ST3〕J3：喂账调用点登记表 ──────────────────────────────────────────────
 //
 // 🔴 **它的人群**：`src/bridge/src` 生产段里，调了「喂账入口」的函数（`文件, 外层 fn`）。
-// 喂账入口 ＝ 直接写账的 `drift_ledger::record` ＋ 把 `origin` 一路交给它的那几个
-// （`parse_line` / `parse_for_kind` / `batch_to_payloads` / `range_payloads` / `note_unknown_capabilities`）。
+// 喂账入口 ＝ 直接写账的 `drift_ledger::record` ＋ 把 `origin` 一路交给它的那一个（`note_unknown_capabilities`）。
+// 〔MOD〕记录解析那几条（`parse_line` / `parse_for_kind` / `batch_to_payloads` / `range_payloads`）出列：解析进了后端，账也跟着记在那台后端。
 // 判法两条，都不是地板：
 //   ① 人群 == `FEEDERS` 的键（两向）：新长一个喂账点 ⇒ 红，必须来这里说清它记在哪台名下；
 //      删了一个 ⇒ 死条目 ⇒ 红。
 //   ② `Local` 那几行体里**有** `Origin::local()`；`Given` 那几行体里 `Origin::local()` **零命中** ——
 //      拦的是「远端那条路上写死本机」（改签名之后「没说」写不出来，剩下的就是这一形）。
-// ⚠ 同波别的路新写一处 `parse_line(…)`（或新调 `record`）⇒ 合并那一拍 ① 红：按它记在哪台补一行。
+// ⚠ 同波别的路新调一处 `record` ⇒ 合并那一拍 ① 红：按它记在哪台补一行。
 
 /// 记在哪台名下、凭什么。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -322,32 +317,8 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
     //   与远端同一个函数），monitor 不再为了列清单逐行解析本机 jsonl。
     // 〔LOC1b · 第四波 4D〕本机远端的冷读合成一条：记账那一跳挪进 `SessionPager::page`（`history.rs`），
     //   `stream_read_session_jsonl` 本身不再解析；远端那一支 `stream_read_remote_session`〔散文墓碑〕那一行随它删了。
-    (
-        "history.rs",
-        "page",
-        Whose::Given,
-        "`SessionPager` 构造时收的 `origin`（这一份从哪台读来的：本机 / 那台远端）",
-    ),
-    (
-        "lib.rs",
-        "batch_to_payloads",
-        Whose::Given,
-        "参数 `origin`：远端流、本机流、旁路快照三路共用的出口（唯一生产调用方 `ssh_source·rs::flush_lines`）",
-    ),
     // 〔CF1 · 第四波 09-24〕`lib.rs::run`（`Local`，「本机 jsonl watcher 那一批」）那一行摘了：
     //   本机会话的行从此是本机后端的 `line` 帧，经 `ssh_source·rs::flush_lines`（`Given`，origin 是本机）进账。
-    (
-        "parser.rs",
-        "parse_for_kind",
-        Whose::Given,
-        "参数 `origin`，原样交给 `parse_line`",
-    ),
-    (
-        "parser.rs",
-        "parse_line",
-        Whose::Given,
-        "参数 `origin`，原样交给 `record`",
-    ),
     // 〔LOC1b · 第四波 4D〕`("search.rs", "build_one", Local)` 那一行摘了：本机搜索改问本机后端，monitor 内存索引删了。
     // 〔LOC1b · 第四波 4D〕`("session_map.rs", "is_interactive", Local)` 换成下面这一行：本机判活改由本机后端的帧来之后，
     //   「未登记的会话 kind」那一笔在本机那条流上记（monitor 不再自己扫 pidfile）。
@@ -356,30 +327,6 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
         "book_unknown_local_kind",
         Whose::Local,
         "本机那条流的 `session_added.session_kind`：只看本机（记在本机名下）",
-    ),
-    (
-        "session_skeleton.rs",
-        "lines_page",
-        Whose::Given,
-        "〔CF2〕参数 `origin`（按行号取回那一段，行是那台后端给的）",
-    ),
-    (
-        "session_skeleton.rs",
-        "range_payloads",
-        Whose::Given,
-        "参数 `origin`",
-    ),
-    (
-        "session_skeleton.rs",
-        "read_session_range",
-        Whose::Given,
-        "命令参数 `origin`",
-    ),
-    (
-        "ssh_source.rs",
-        "flush_lines",
-        Whose::Given,
-        "那台的 `host_label`",
     ),
     (
         "ssh_source.rs",
@@ -393,21 +340,12 @@ const FEEDERS: &[(&str, &str, Whose, &str)] = &[
         Whose::Given,
         "hello 那一段：那台的 `host_label`",
     ),
-    (
-        "subagent.rs",
-        "load_subagent",
-        Whose::Given,
-        "命令参数 `origin`（行是那台后端给的）",
-    ),
 ];
 
 /// 喂账入口（调用形）。
 const FEED_ENTRIES: &[&str] = &[
     "drift_ledger::record(",
-    "parse_line(",
-    "parse_for_kind(",
-    "batch_to_payloads(",
-    "range_payloads(",
+    // 〔MOD〕`parse_line(` · `parse_for_kind(` · `batch_to_payloads(` · `range_payloads(` 出列：记录解析进了后端，那几条路不再喂这本账。
     "note_unknown_capabilities(",
 ];
 
@@ -447,20 +385,16 @@ fn fn_body(lines: &[&str], start: usize) -> String {
     lines[start..=fn_end(lines, start)].join("\n")
 }
 
-/// 从一份生产段里摘 (外层 fn, 体)：调了喂账入口的那些。`own_parse_line` = 这份文件自己定义了
-/// 一个同名的 `fn parse_line`（与 `parser·rs` 那个无关），那时裸 `parse_line(` 不算。
-fn feeders_in(prod: &str, own_parse_line: bool) -> Vec<(String, String)> {
+/// 从一份生产段里摘 (外层 fn, 体)：调了喂账入口的那些（定义行与更长名字里的子串不算）。
+fn feeders_in(prod: &str) -> Vec<(String, String)> {
     let lines: Vec<&str> = prod.lines().collect();
     let mut out: Vec<(String, String)> = Vec::new();
     for (i, l) in lines.iter().enumerate() {
         let hit = FEED_ENTRIES.iter().any(|needle| {
             l.match_indices(needle).any(|(k, _)| {
                 let before = &l[..k];
-                let bare_parse_line = *needle == "parse_line(" && !before.ends_with("parser::");
                 let prev = before.chars().next_back();
-                !before.ends_with("fn ")
-                    && !prev.is_some_and(|c| c.is_alphanumeric() || c == '_')
-                    && !(own_parse_line && bare_parse_line)
+                !before.ends_with("fn ") && !prev.is_some_and(|c| c.is_alphanumeric() || c == '_')
             })
         });
         if !hit {
@@ -485,8 +419,7 @@ fn every_ledger_feeder_is_registered_with_whose_book_it_writes() {
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
-        let own = file != "parser.rs" && prod.contains("fn parse_line(");
-        for (name, body) in feeders_in(&prod, own) {
+        for (name, body) in feeders_in(&prod) {
             found.insert((file.clone(), name), body);
         }
     }
@@ -518,24 +451,18 @@ fn every_ledger_feeder_is_registered_with_whose_book_it_writes() {
     }
 }
 
-/// 阳性对照：抽取器认得出「新喂账点」「写死本机」「定义行不算」「别家同名 fn 不算」。
+/// 阳性对照：抽取器认得出「新喂账点」「写死本机」「定义行不算」「更长名字里的子串不算」。
 #[test]
 fn the_feeder_scanner_sees_what_it_claims_to_see() {
-    let src = "fn a(o: &Origin) {\n    let _ = parse_line(o, x);\n}\n\
-               fn b() {\n    crate::parser::parse_line(&Origin::local(), x);\n}\n\
-               pub fn parse_line(raw: &str) -> R {\n    todo!()\n}\n\
-               fn c() {\n    let _ = numbered_parse_line(x);\n}\n";
-    let got = feeders_in(src, false);
+    let src = "fn a(o: &Origin) {\n    note_unknown_capabilities(o, x);\n}\n\
+               fn b() {\n    crate::drift_ledger::record(&Origin::local(), f, k, None);\n}\n\
+               pub fn note_unknown_capabilities(o: &Origin) {\n    todo!()\n}\n\
+               fn c() {\n    let _ = my_note_unknown_capabilities(x);\n}\n";
+    let got = feeders_in(src);
     let names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
     assert_eq!(names, vec!["a", "b"], "定义行或子串被当成了调用：{names:?}");
     assert!(
         got[1].1.contains("Origin::local()") && !got[0].1.contains("Origin::local()"),
         "体切错了"
-    );
-    // 别家同名：文件自己定义了 `fn parse_line` ⇒ 裸调用不算，带 `parser::` 前缀的仍算。
-    let own = feeders_in(src, true);
-    assert_eq!(
-        own.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
-        vec!["b"]
     );
 }

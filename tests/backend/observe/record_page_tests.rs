@@ -46,7 +46,7 @@ fn record_lines_number_countable_lines_and_keep_only_displayable() {
     assert_eq!(lines[0]["message"]["type"], "user");
 }
 
-/// 〔原 monitor `parser_tests::parse_for_kind_dispatches_claude_and_codex`〕按文件落在谁的根下认是哪一家：
+/// 〔原 monitor `parser_tests::parse_for_kind_dispatches_claude_and_codex`〕按文件落在谁的根下认是哪一家：〔散文墓碑〕
 /// 落在 Codex 记录根下 ⇒ Codex 那一家解释；否则 ⇒ 记录树那一家（Claude）。
 #[test]
 fn the_record_face_follows_the_root_the_file_lives_under() {

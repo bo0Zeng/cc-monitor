@@ -57,12 +57,12 @@ powershell -NoProfile -File scripts\run.ps1 dev
 - [ ] 编码必须 UTF-8 无 BOM（[INVARIANTS § 3](INVARIANTS.md#3-所有跨进程-json-文件--utf-8-无-bom)）
 - [ ] 双端原子写
 
-### 1.3 修改 jsonl 解析 (`messages.rs` / `parser.rs` / `cards/index.ts`)
+### 1.3 修改 jsonl 解析（后端 `agents/claudecode/schema.rs` / `parse.rs` · 前端 `cards/index.ts`）
 
 - [ ] 后端 `JsonlRecord` enum 加 variant 用 `#[serde(rename)]` + `#[serde(default)]`
 - [ ] `JsonlRecord::is_displayable()` 决定是否显示
 - [ ] 前端 `cards/index.ts` `renderMessage` dispatch 表加分支
-- [ ] 测试覆盖至少一个真实样本（放 `parser.rs` 的 `#[cfg(test)] mod tests` 里）
+- [ ] 测试覆盖至少一个真实样本（放 `tests/backend/agents/claudecode/parse_tests.rs`）
 
 ### 1.4 改 Tauri capability / permission
 
@@ -168,7 +168,7 @@ const activeIds = await invoke<string[]>("monitor_get_active_ids");
 
 **步骤**：
 
-1. **后端** `src/bridge/src/messages.rs::JsonlRecord` enum 加 variant：
+1. **后端** `src/backend/agents/claudecode/schema.rs::JsonlRecord` enum 加 variant（〔MOD〕记录解释只住后端，monitor 只转交成品）：
 
 ```rust
 #[serde(rename = "memory_recall")]
@@ -186,7 +186,7 @@ MemoryRecall {
 
    > ⚠️ **若新类型带 `uuid`+`parentUuid`（参与 parent 链）**：`is_displayable()` **必须**返回 true，且**必须同时**加进前端 `branching.ts::extractBranchRecord` 白名单 + `cards/index.ts` 的 `JsonlRecord` 镜像。否则前端 parent 链断在这条记录处 → 它的后续消息被误判孤儿 root → **整段被错误折叠为「已被 ESC 回退」**（`branching.ts:24` 预警、2026-06-13 咬过一次、F63 补的正是这条）。若只是不带链身份的会话级 metadata（如 `mode`/`pr-link`），可返回 false 不进链——但记住 F63 起未知 type 一律被 `parse_line` 抢救成 `Unrecognized` 保底，**别退回静默丢弃**（见 INVARIANTS § 18.1）。
 
-3. **`parser.rs` 测试**：加一行真实样本断言能 parse 成功。
+3. **`parse.rs` 测试**（`tests/backend/agents/claudecode/parse_tests.rs`）：加一行真实样本断言能 parse 成功；`npm run gen:types` 重生成 `src/generated/JsonlRecord.ts`。
 
 4. **前端类型** `src/cards/index.ts` 或对应 type 文件加 TS 类型 + dispatch：
 

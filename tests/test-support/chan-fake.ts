@@ -177,8 +177,100 @@ export function withSessionReads(
   return async (cmd, args) => {
     const read = sessionReadOf(cmd, args);
     if (read) return sessionReadReply(read[0], answer(read[0], read[1]));
+    // 〔MOD〕会话正文那几问同样译回旧名字（见下面那一节）。
+    const rec = recordReadOf(cmd, args);
+    if (rec) return recordReadReply(rec[0], rec[1], answer);
     return answer(cmd, (args ?? {}) as Record<string, unknown>);
   };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  〔MOD · `设计/90 §3` 判据 3〕会话正文那四问改走通道之后，判据那一侧的翻译
+// ════════════════════════════════════════════════════════════════════════════
+//
+// 从前是四条 Tauri 命令（`stream_read_session_jsonl` · `read_session_range` · `read_session_lines` · `load_subagent`〔散文墓碑〕），
+// 判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
+// `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
+// 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
+
+/** 四问各自的名字（判据里的叫法 = 旧命令名）。 */
+export type RecordRead = "stream_read_session_jsonl" | "read_session_range" | "read_session_lines" | "load_subagent";
+
+/** 一发 `chan_call` 若是这四问之一 ⇒ `[哪一问, 那一问的参数（旧形参的形状）]`；否则 `null`。 */
+export function recordReadOf(cmd: string, args: unknown): [RecordRead, Record<string, unknown>] | null {
+  if (cmd !== "chan_call") return null;
+  const a = args as ChanCallArgs;
+  const origin = a.origin;
+  if (a.op === "history-page") {
+    const b = chanArgsJson(a) as Record<string, unknown>;
+    if (b.whole === true) return ["stream_read_session_jsonl", { origin, jsonlPath: b.path }];
+    return ["read_session_range", { origin, jsonlPath: b.path, offset: b.offset, until: b.until, seqBase: b.seq }];
+  }
+  if (a.op === "history-lines") {
+    const b = chanArgsJson(a) as Record<string, unknown>;
+    // `leftMs`：旧命令收的是调用方给的那个数；今天是通道那一跳现算的「还剩多少」（造期限到过线之间走的那零点几毫秒会让它
+    //   比整数少一点）⇒ 取到 10 ms 译回旧形参，判据照旧按那一件的整份比。
+    const leftMs = Math.round(a.leftMs / 10) * 10;
+    const out: Record<string, unknown> = { origin, jsonlPath: b.path, from: b.from, leftMs };
+    if (b.until !== undefined) out.until = b.until;
+    return ["read_session_lines", out];
+  }
+  if (a.op === "history-subagent") {
+    const b = chanArgsJson(a) as Record<string, unknown>;
+    return ["load_subagent", { parentJsonlPath: b.parent, description: b.description, toolUseTimestamp: b.timestamp, origin }];
+  }
+  return null;
+}
+
+/** mock 过的 `invoke` 的调用记录里，某一问的那几发（参数是旧形参的形状）。 */
+export function recordReadCalls(calls: ReadonlyArray<readonly unknown[]>, which: RecordRead): Record<string, unknown>[] {
+  return calls
+    .map((c) => recordReadOf(c[0] as string, c[1]))
+    .filter((r): r is [RecordRead, Record<string, unknown>] => r !== null && r[0] === which)
+    .map((r) => r[1]);
+}
+
+/** 旧载荷（`JsonlLinePayload`）⇒ 后端的一条记录行（恰好那五格；`origin` / `skipped_from` 不在后端的成品里）。 */
+function recordLine(p: Record<string, unknown>): Record<string, unknown> {
+  return { session_id: p.session_id, path: p.path, seq: p.seq, cwd: p.cwd ?? null, message: p.message };
+}
+
+/**
+ * 判据手里那份旧回包 ⇒ 通道那一跳的结局。整份读那一问从前经 `Channel` 交块：这里给 `answer` 一个假 `Channel`、
+ * 收下它灌进来的块，再一次交成一页（`eof`）。回包是一次拒绝 ⇒ 对端说不行（`failed`，原因原样）。
+ */
+export async function recordReadReply(
+  which: RecordRead,
+  args: Record<string, unknown>,
+  answer: (cmd: string, args: Record<string, unknown>) => unknown,
+): Promise<ArrayBuffer | undefined> {
+  const chunks: Record<string, unknown>[] = [];
+  const onChunk = { onmessage: (v: unknown) => chunks.push(...(v as Record<string, unknown>[])) };
+  let r: unknown;
+  try {
+    r = await answer(which, which === "stream_read_session_jsonl" ? { ...args, onChunk } : args);
+  } catch (e) {
+    throw refusedReply("failed", e instanceof Error ? e.message : String(e));
+  }
+  switch (which) {
+    case "stream_read_session_jsonl": {
+      const lines = chunks.map(recordLine);
+      return chanReply({ lines, next: 1, nextSeq: lines.length, eof: true });
+    }
+    case "read_session_range": {
+      if (r === undefined) return undefined;
+      const lines = (r as Record<string, unknown>[]).map(recordLine);
+      const next = Number(args.until);
+      return chanReply({ lines, next, nextSeq: Number(args.seqBase) + lines.length, eof: true });
+    }
+    case "read_session_lines": {
+      if (r === undefined) return undefined;
+      const page = r as { from: number; next: number; eof: boolean; payloads: Record<string, unknown>[] };
+      return chanReply({ from: page.from, next: page.next, eof: page.eof, lines: page.payloads.map(recordLine) });
+    }
+    case "load_subagent":
+      return r === undefined ? undefined : chanReply(r);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

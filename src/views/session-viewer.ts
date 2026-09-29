@@ -9,8 +9,6 @@
  * 关闭查看器后状态彻底释放。
  */
 
-import { Channel } from "@tauri-apps/api/core";
-import { commands } from "../ipc/commands";
 // 〔步 12·C〕本机那个 origin 的**唯一住址**（Rust 侧是 `inbound_client::LOCAL_ORIGIN`，
 // 两侧由 `origin_tests::the_sentinel_agrees_with_the_two_existing_homes` 两向钉着）。
 import type { Origin } from "../ipc/origin";
@@ -34,6 +32,7 @@ import { UnrenderedRanges } from "../render-window";
 // 〔U3b〕查看器接骨架：与实时 tab **同一个** `SkeletonView`（占位 ＋ 只物化可见区）。
 import { SkeletonView, ledgerFromIndex } from "../skeleton-view";
 import { findInSession, readSessionIndex, type SessionIndexResult } from "../session-reads";
+import { readWholeSession } from "../record-reads";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../session-writes";
@@ -205,13 +204,13 @@ export class SessionViewer {
   /**
    * Batch13-F39:两阶段加载(实测 37MB 全量渲染 65.5s → 首屏 1.1s)。
    *
-   * 阶段一(收集):后端按 100 行一 chunk 经 Channel 发,前端只收集 payload +
+   * 阶段一(收集):〔MOD〕那台后端按页（≤ 1 MiB 原文）出记录行,前端只收集 payload +
    * 预提取 branch/queue 数据,**不渲染**。
    * 阶段二(增量渲染):收齐后渲染末尾 TAIL_INITIAL 条首屏(+深链岛)→ fold 一次
    * 重建 → 贴底/定位;此后上翻由 maybeFillAbove 按批补渲染,每批先摊平再插入再重折。
    *
    * 取消:dispose() 时 stream = null + loadGeneration 递增,后续 chunk/异步残余
-   * 双守卫丢弃;Channel 随 GC 回收,backend 下次 send 返 Err 自然 break。
+   * 双守卫丢弃;〔MOD〕翻页循环每页核一次世代号，换了会话就不再问下一页。
    */
   async load(opts: ViewerOptions): Promise<void> {
     this.titleEl.textContent = opts.displayTitle;
@@ -262,11 +261,11 @@ export class SessionViewer {
     let totalRecords = 0;
     const t0 = performance.now(); // Batch13-F39 实测仪表:首屏耗时常驻状态栏
 
-    // 渲染韧性 + 探针：renderStreamRecord 在 Channel 回调里跑，一旦某条记录渲染
+    // 渲染韧性 + 探针：renderStreamRecord 在翻页回调里跑，一旦某条记录渲染
     // 抛错，异常**不会**被下面 load() 的 try/catch 接住（不同事件回合），会导致
     // totalRecords 卡住 → while 循环空转 → 整个查看器空白（已观察到的 bug）。
     // 这里逐条 try/catch：单条失败不影响其余，并记录首个错误供定位 / 显示。
-    // F39:Channel 阶段只收集 payload + 预提取 branch/queue 数据,不渲染——
+    // F39:收集阶段只收集 payload + 预提取 branch/queue 数据,不渲染——
     // 全量渲染 37MB 实测 65s,渲染延后到「尾段首屏 + 上翻增量」
     // F40c(账本收敛,清偿 F39 parity 欠账):meta/branch 提取与渲染路径共用
     // routeMetaAndBranch 单一来源——此前手工复刻曾被 D 审计点名为漂移风险。
@@ -279,46 +278,27 @@ export class SessionViewer {
     const origin = opts.origin;
     // 〔C4b〕经通道直接问那台后端（`session-reads.ts`）；要不到 ⇒ `available:false`，它自己不抛。
     const indexP = readSessionIndex(origin, opts.jsonlPath, 0);
-    const channel = new Channel<JsonlLinePayload[]>();
-    channel.onmessage = (chunk) => {
+    const onChunk = (chunk: JsonlLinePayload[]): void => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
       for (const p of chunk) {
-        // 逐条 try/catch:异形 message 抛错不能丢整 chunk 计数,否则下面
-        // while totalRecords<finalCount 永久空转(旧版就修过这类卡死)
+        // 逐条 try/catch:异形 message 抛错不能丢整 chunk 计数
         try {
           routeMetaAndBranch(p, collectSink);
         } catch (err) {
           console.warn("[session-viewer] 收集阶段单条异常(跳过):", err);
         }
-        this.payloads.push(p); // 占位必须 push:下标与 finalCount 对齐(meta 也占位)
+        this.payloads.push(p); // 占位必须 push:下标与总条数对齐(meta 也占位)
       }
       totalRecords += chunk.length;
       this.statusEl.textContent = copyText("sessionViewer.load.receiving", { totalRecords });
     };
 
     try {
-      // 🔴 **〔步 12·C 2026-09-20〕两条命令收成了一条。**
-      //
-      // **这里的历史值得留着，因为它正好是 `设计/00 §2.5 ①` 的反面教材**：
-      // C04a 量到这里是个「动态派发口」（`const ipc = origin ? "A" : "B"`），
-      // C04d 批 6a 把它改成两次静态调用，买到的是「两条命令各拿精确签名」——
-      // 那是**在两条命令这个前提下**能买到的最好结果。本步把前提换掉：
-      // 只有一条命令，`origin` 是它的参数，于是既没有派发口、也没有第二个签名。
-      //
-      // ⚠ **原先那条编译期保护没有丢**：从前是「给本地命令传 origin」编译错，
-      //   现在是「不传 origin」编译错（`origin` 必填）。方向反了，牙没掉。
-      const finalCount = await commands.stream_read_session_jsonl({
-        origin: opts.origin,
-        jsonlPath: opts.jsonlPath,
-        onChunk: channel,
-      });
-      // **竞态修复**：Channel 和 invoke 是两条独立 IPC 通道，invoke resolve 时
-      // 余下 chunk 的 onmessage 可能还排队没跑。等 totalRecords 追上 finalCount
-      // 再切到最终状态文，否则会被晚到的 onmessage 又改回"加载中"。
-      while (totalRecords < finalCount) {
-        await new Promise((r) => setTimeout(r, 0));
-        if (!this.stream || this.loadGeneration !== gen) return; // dispose / 已换会话
-      }
+      // 〔MOD · `05 §14.3` C 组〕经通道直接问那台后端（`history-page`，`src/record-reads.ts::readWholeSession`）：
+      //   后端出记录行（记录解释住后端），按页交 `onChunk`、同一个 Promise 链里交完 ⇒ 不再有「两条 IPC 通道谁先到」那一格。
+      //   本机与远端同一条路（`origin` 必填，本机就是 `LOCAL_ORIGIN`）。
+      await readWholeSession(opts.origin, opts.jsonlPath, onChunk, () => !this.stream || this.loadGeneration !== gen);
+      if (this.loadGeneration !== gen) return; // 已换会话
       if (!this.stream) return;
       // F39:排序防御(chunk 应有序,二分插入也容乱序,排序让区间账本与 payload 下标对齐)
       this.payloads.sort((a, b) => a.seq - b.seq);

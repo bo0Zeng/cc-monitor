@@ -479,8 +479,8 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 
 ⚠ **这次复测是人手工扫语料才发现的 —— 那正是问题所在。**
 「未知 type 不 warn」是**对的**（20,526 条 `mode` 会刷屏），但**宽容 ≠ 无声**：
-U-CC1 起，四个降级点各记一笔有界的账（`src/bridge/src/drift_ledger.rs`），
-经设置面板「机器 → <那台机器> → 足迹 → 未识别的数据」按需查看（〔ST2 / ST3 · 第四波〕顶层「改动足迹」页已并进机器页；账本第一层键是 origin，每台机器只看得到自己那一份）。
+U-CC1 起，四个降级点各记一笔有界的账 —— 〔MOD〕记录那两面（未知类型 · 已知类型解析失败）随解析住那台后端（`src/backend/agents/claudecode/drift.rs`，帧命令 `drift-report`），
+monitor 天生观测的两面住 `src/bridge/src/drift_ledger.rs`；经设置面板「机器 → <那台机器> → 足迹 → 未识别的数据」按需查看（〔ST2 / ST3 · 第四波〕顶层「改动足迹」页已并进机器页；每台机器只看得到自己那一份）。
 **以后靠那一页看，别再靠人扫语料**（也别再往这段散文里手抄数字 —— 它已经过期过一次）。
 
 **反过来**：monitor **自己写的**文件（`config.json` / `auto-launch.json` / `ps-registry/<PID>.json` 等）schema 可以严格——这是 monitor 控制的产物，schema 演进有版本管理。

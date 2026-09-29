@@ -137,7 +137,7 @@ fn a_blank_name_is_neither_local_nor_remote() {
     // 🔴 **〔步 2〕它钉的值换了：`Unspecified` → 空白名。**
     //   `null` 已经在反序列化那一层被拒（`A` 组那一格），构造不出来；
     //   而空串是它退役之后线上**唯一**还能表达「没说」的值 —— 而且它在盘上
-    //   **真的**被当过本机：`subagent.rs::Backend::for_origin` 上一拍逐字写着
+    //   **真的**被当过本机：`subagent·rs` 那个 `Backend::for_origin`〔散文墓碑〕上一拍逐字写着
     //   「`origin` 缺省 / **空串** = 本机」。⇒ 只删 `null` 不管空串，
     //   等于把同一个洞从一个值搬到另一个值。
     for blank in ["", " ", "\t", "\n  "] {
@@ -231,7 +231,7 @@ fn local_and_remote_are_exactly_complementary() {
 //    「换掉一批之后**把上面那个数改小**（连着改，别攒着）」）。
 //
 //    那一处是**全仓最后一条在入方向收 `Option<String>` origin 的命令**：
-//      · `subagent.rs::load_subagent`（`origin: Option<String>` → `origin: crate::origin::Origin`）
+//      · `subagent·rs` 的 `load_subagent`〔散文墓碑〕（`origin: Option<String>` → `origin: crate::origin::Origin`）
 //
 //    🔴 **它与上两拍那七处不是同一件事，别读成同一形**：上两拍是「远端那条命令拿到的
 //    已经是分过本机的机器名 ⇒ 改叫 `host`」（名字说真话）；这一拍是「这条命令**本来**
@@ -500,7 +500,7 @@ fn every_origin_taking_command_splits_local_through_route() {
     // 反向自检①：抽取器真的摘到了命令（塌成 0 的话下面那条相等是 `{} == {}`）。
     // 〔MIG-3a〕地板 100 → 50：命令按设计逐批迁通道、人群在缩（今天 98）；这是抽取器反空真地板（塌了是个位数），不是计数棘轮。
     assert!(
-        total_cmds >= 50,
+        total_cmds >= 45, // 〔MOD〕50 → 45：会话正文四条退役（今天 47）
         "只摘到 {total_cmds} 条 `#[tauri::command]` —— 抽取器坏了，本条在空转"
     );
     // 反向自检②：左边那个人群不许是空集 —— 步 12·C 落地之后它至少有 5 条。
