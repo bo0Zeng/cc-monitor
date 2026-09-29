@@ -52,7 +52,7 @@ vi.mock("../../src/remote-probe", () => ({
     ipcCalls.push("remote-probe");
     const reply = ipcReplies.get("remote-probe");
     if (reply instanceof Error) return Promise.reject(reply);
-    return Promise.resolve({ message: "", stages: [], ...(reply as object) });
+    return Promise.resolve({ message: "", stages: [], backendGaps: [], ...(reply as object) });
   },
 }));
 // 〔MIG-1 续 · `99 §2.1 ⑬`〕列 tmux 会话改问那台后端（`tmux-reads.ts` 经通道）⇒ 替身同一本账：记旧名、按旧名回（`Error` ⇒ reject）。
@@ -1117,6 +1117,33 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(document.body.textContent ?? "").not.toContain("没有起会话");
     ipcReplies.clear();
     document.body.innerHTML = "";
+  });
+
+  // 设计/91 §6 第 9 条 · 99 §2.2 R1 认形状 ＋ 主会话 09-28 裁：机器页「测试连接」那一格不露 `v=… caps=[…]` 日志行；做不到的那几类点开看。
+  it("★〔FIX5 续〕测试连接那一格是人话：不含「=」「[」；这台做不到的那几类在一个点开看的格里", async () => {
+    localStorage.clear();
+    const noTmux = copyText("machineCard.test.gapRow", { reason: copyText("control.unavailable.noTmux", { machine: "a" }), n: "3" });
+    ipcReplies.set("remote-probe", {
+      sshOk: true,
+      backendOk: true,
+      fingerprint: null,
+      endpoint: null,
+      backendHello: copyText("beProbe.hello.ok", { build: "p5o", usable: "40", gaps: "3", ms: "12" }),
+      backendGaps: [{ code: "no_tmux", count: 3 }],
+    });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("测试连接"))!.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    const box = sec.element.querySelector<HTMLElement>(".remote-test-result")!;
+    const text = box.textContent ?? "";
+    expect(text, "测试连接那一格没画出那台后端的三格 —— 下面的「不含」会零命中地绿").toContain("p5o");
+    expect(text, "机器页那一格露了日志行形").not.toMatch(/[=[]/);
+    const gaps = box.querySelector("details");
+    expect(gaps?.querySelector("summary")?.textContent).toBe(copyText("machineCard.test.gapsSummary"));
+    expect(gaps?.textContent).toContain(noTmux);
+    // 正控：同一个判法认得出旧的那一形。
+    expect("后端响应正常（v=1 build=b1 caps=[\"stream\"] control=ok(3ms)）").toMatch(/[=[]/);
+    ipcReplies.clear();
   });
 
   it("SSH 通了才给后端下结论（反向对照：别是恒不记）", async () => {
