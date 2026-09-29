@@ -13,7 +13,6 @@
 members = [
     ".",
     "../../common/acct-core",
-    "../../common/branch-core",
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
@@ -120,8 +119,7 @@ sha2 = "0.10"
 # 〔RM1f · V108 后半句「之后本机也走这条路、monitor 摘内嵌引擎」〕`code-picture-core` 这一行删了：
 # 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
 # vendored 副本〔RE〕随唯一消费者搬进 `src/panorama-engine/vendor/code-picture-core`（`99 §2.1 ⑰`）。
-# G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
-branch-core = { path = "../../common/branch-core" }
+# 〔THIN〕`branch-core` 删了：monitor 零引用（本机分叉也问本机后端），它收进后端适配层 `agents/claudecode/branch.rs`。
 # 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
 # 〔THIN〕`agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
 acct-core = { path = "../../common/acct-core" }
@@ -145,11 +143,8 @@ relay-route-core = { path = "../../common/relay-route-core" }
 deploy-core = { path = "../../common/deploy-core" }
 # 〔THIN〕`gate-core` 删了：monitor 侧的 Gate 1 前检与转调壳（只剩跨轨对拍锚点在用）删掉之后它只剩后端用，收成后端模块 `control/gate_rules.rs`。
 
-# 〔LOC1b · 第四波 4D〕monitor 不再搜：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份索引删了；
-# 「monitor 生产树里零处再搜」由 `tests/frontend/shell/search_kou_jing_guard.rs` ③ 钉。
-# 〔RENDER2 · J10 乙（主会话 09-27 裁）〕monitor 解析 user 记录时调同一条注入噪声规则（`search_core::user_text`）给前端出成品，
-# 只这一个用途、只 `messages.rs` 一个调用点（③ 同一条判据钉）。
-search-core = { path = "../../common/search-core" }
+# 〔THIN〕`search-core` 删了：monitor 零引用（搜索与记录解释都在后端；`messages.rs` 那一处随记录解释进了后端，MOD）。
+#   它仍是 workspace 成员（单测照旧随这一格跑），只剩后端用 —— 进不进后端适配层报备（`调研/第四波记录/THIN.md §四`）。
 
 notify = "6"
 notify-debouncer-mini = "0.4"

@@ -94,8 +94,7 @@ test = true
 # 这正是 `裁-1` 代价② 认下的那条 —— 代价认了，而这段块头注先前一个字没跟着改，于是它自己变成了假话。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
-branch-core = { path = "../common/branch-core" }
+# 〔THIN〕`branch-core` 这一行删了：monitor 零引用，它只剩本 crate 用 ⇒ 收进适配层 `agents/claudecode/branch.rs`。
 # 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate 成模块 `agents/codex/token.rs`（唯一消费者在那儿）。
 # 〔THIN〕`agent-tools-core` 这一行删了：界面不再认工具名（卡型随记录成品带出）⇒ 它只剩本 crate 用，收进适配层 `agents/claudecode/cards.rs`。
 # 〔DUP3 · J9〕上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。

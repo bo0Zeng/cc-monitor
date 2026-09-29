@@ -2604,7 +2604,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔U4b · 第四波〕resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
-    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `branch_core::find_session_file`）。
+    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session_file`）。
     CommandSpec {
         name: "history-record",
         doc_anchor: Some("#### `history-record`"),
@@ -2869,7 +2869,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔LOC1a · 第四波 4D〕分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
-    //   读 → `branch-core` 变换 → `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
+    //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
     CommandSpec {
         name: "session-fork",

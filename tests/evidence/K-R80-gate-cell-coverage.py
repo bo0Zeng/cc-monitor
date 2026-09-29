@@ -518,7 +518,8 @@ cell(
     # 〔RE〕`codex-token-core` 搬进后端 ⇒ 成员 14 → 13，`gate.sh` 同拍改 `cargo 13`，本锚点同拍跟上。
     # 〔THIN〕`gate-core` 收成后端模块 ⇒ 成员 13 → 12，`gate.sh` 同拍改 `cargo 12`，本锚点同拍跟上。
     # 〔THIN〕`agent-tools-core` 收进后端适配层 ⇒ 成员 12 → 11，同拍。
-    anchor="run_gate_sum cargo 11 bash -c",
+    # 〔THIN〕`branch-core` 收进后端适配层 ⇒ 成员 11 → 10，同拍。
+    anchor="run_gate_sum cargo 10 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --lib",
     **{

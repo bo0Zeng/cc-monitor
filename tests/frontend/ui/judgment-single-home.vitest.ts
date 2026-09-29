@@ -197,7 +197,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J5: {
     what: "session id 形状",
     // 〔DUP1 子步 6 · 主会话 09-26 交「J5 那一族统一」〕唯一住址 `shell-quote-core::session_id_ok`（今天各处规则的交集）：
-    //   `branch_core::is_plain_sid` 成它的再导出；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
+    //   `branch_core::is_plain_sid` 成它的再导出（〔THIN〕那个再导出随 branch-core 收进后端删了，调用方直呼这一条）；monitor 载荷 `@ccm_sid` · 载荷线 `resumeSid` · `ccm …` 调用行 · 本机拉起 ·
     //   分叉 id，后端 ccm argv 都调它。⚠ 后端 `resolve_query.rs::is_valid_session_id` 刻意没收：行为冻结给仓外 aterm（V126）。
     //   TS：`isValidSessionId` 与只剩那一格的 `validateLocalLaunch` 删。
     homes: ["shell-quote-core::session_id_ok", "src/backend/control/resolve_query.rs::is_valid_session_id"],
@@ -537,12 +537,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     SUPPORTED_SCHEMA: NONE,
   },
   // 〔THIN〕`agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
-  "branch-core": {
-    build_branch_records: NONE,
-    find_session_file: NONE,
-    // 〔DUP1〕`is_plain_sid` 成 `shell_quote_core::session_id_ok` 的再导出（`pub use`，不再是本 crate 的 `pub fn`）。
-    SESSION_LOOKUP_DEPTH: NONE,
-  },
+  // 〔THIN〕`branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
   // 〔RE〕`codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   "copy-core": {
     copy_text: "J11",

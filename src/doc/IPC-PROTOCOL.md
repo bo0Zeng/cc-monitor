@@ -722,7 +722,7 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 | `uuid` | → | 从哪条消息处分叉 |
 | `sessionId` / `jsonlPath` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
 
-与一次性子命令 `--fork-session <sid> <uuid>`（对 aterm 冻结的 argv 形）是**同一份本体**（`control/fork_write.rs::run_inner`：读 → `branch-core` 变换 → `O_EXCL` 落盘）。
+与一次性子命令 `--fork-session <sid> <uuid>`（对 aterm 冻结的 argv 形）是**同一份本体**（`control/fork_write.rs::run_inner`：读 → 适配层的分叉变换（〔THIN〕`agents/claudecode/branch.rs`，原共享 crate `branch-core`）→ `O_EXCL` 落盘）。
 ⚠ 名字刻意不叫 `fork-session`：帧面自动派生的 CLI 面会是 `--fork-session`，与那条冻结的 argv 形撞名；这一条的 CLI 面是 `--session-fork`（stdin 一段 JSON）。
 本机与远端分叉都经那台机器常驻后端的长连接说这一条（`设计/05 §14.6`；此前本机每次 exec 一个本机后端、远端经拨号链路 exec `--fork-session`）；
 〔MIG-3b〕今天是**界面经通道直说**（`src/frontend/ui/session-writes.ts`，monitor 那一跳删了），`sid` / `uuid` 在本入口先过共享的 `session_id_ok`（`INVARIANTS §47` ①）。

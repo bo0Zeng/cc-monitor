@@ -186,14 +186,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "branch-core"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "shell-quote-core",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -235,7 +227,6 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
- "branch-core",
  "copy-core",
  "creds-core",
  "deploy-core",

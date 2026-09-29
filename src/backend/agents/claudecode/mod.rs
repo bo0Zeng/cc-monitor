@@ -6,6 +6,7 @@
 //! | [`records`] | 会话记录的后缀与命名（`<sid>.jsonl`） |
 //! | [`liveness`] | 判活时"这个 cmdline 看起来像不像 Claude" |
 //! | [`cards`] | 〔THIN〕工具名 → 卡型 · tmux 前台命令哪几个算它（界面不认工具名，卡型随记录成品带出） |
+//! | [`branch`] | 〔THIN〕按 sid 找那份会话文件 · 分叉的记录变换（原共享 crate `branch-core`） |
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
 //! | [`assets`] | 〔AS2〕资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
@@ -33,6 +34,8 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
+// 〔THIN〕分叉的记录变换 ＋ 按 sid 找那份会话文件（原共享 crate `branch-core`，只剩后端用）。
+pub(crate) mod branch;
 // 〔THIN〕工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
 pub(crate) mod cards;
 pub(crate) mod drift;
@@ -93,6 +96,8 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     sid: records::session_id_of,
     turn_end: Some(turn::turn_end_uuid_of),
     tool_card: Some(cards::tool_card),
+    find_session: Some(branch::find_session_file),
+    branch: Some(branch::build_branch_records),
     drift: Some(drift::report),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,

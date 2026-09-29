@@ -111,7 +111,7 @@ const UNIT: &[&str] = &[
     "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
     "tests/frontend/shell/chan/transfer_stream_tests.rs",
-    "tests/common/branch-core/lib_tests.rs",
+    "tests/backend/agents/claudecode/branch_tests.rs", // 〔THIN〕原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
     "tests/common/creds-core/store_tests.rs",
     "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
