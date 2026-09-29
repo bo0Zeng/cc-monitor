@@ -21,7 +21,7 @@
     },
     "bePlan.bus.noSpawnRecord": {
       "kind": "error",
-      "zh": "ccm: {path} 不能执行。会话照建、也会登记，但不记进派生台账。",
+      "zh": "ccm: {path} 不能执行。会话照建、也会登记，但 cc-bus 的派生记录里不会有这一条。",
       "args": ["path"]
     },
     "beAssetCatalog.digest.walkFailed": {
@@ -1299,7 +1299,7 @@
     },
     "deploy.refused.unsupportedMachine": {
       "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备后端。它的会话不会自动接上。",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的后端。它的会话不会自动接上。",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.osUnknown": {
@@ -1314,12 +1314,12 @@
     },
     "deploy.refused.notPromisedHere": {
       "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这一种的后端今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "zh": "{machine} 是 {os} 机器，这种系统的后端只在本机用，不装到远程机器上。",
       "args": ["machine", "os"]
     },
     "deploy.refused.notPromisedLocal": {
       "kind": "error",
-      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
+      "zh": "本机后端没有起：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
       "args": ["machine", "os", "arch"]
     },
     "deploy.refused.notCarried": {
@@ -1329,7 +1329,7 @@
     },
     "panorama.refused.unsupportedMachine": {
       "kind": "error",
-      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 今天不为这种机器准备代码全景组件。那台机器上看不了代码全景。",
+      "zh": "{machine} 是 {os} / {arch} 的机器，cc-monitor 没有这种机器用的代码全景组件。那台机器上看不了代码全景。",
       "args": ["machine", "os", "arch"]
     },
     "panorama.refused.osUnknown": {
@@ -1344,12 +1344,12 @@
     },
     "panorama.refused.notPromisedHere": {
       "kind": "error",
-      "zh": "{machine} 是 {os} 机器，这一种的代码全景组件今天只在本机用得上。装到远程机器上还没有验证过，所以不装。",
+      "zh": "{machine} 是 {os} 机器，这种系统只在本机放代码全景组件，不装到远端。",
       "args": ["machine", "os"]
     },
     "panorama.refused.notPromisedLocal": {
       "kind": "error",
-      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，这一种今天不在承诺里。",
+      "zh": "本机不放代码全景组件：{machine} 是 {os} / {arch}，cc-monitor 不支持这种机器。",
       "args": ["machine", "os", "arch"]
     },
     "panorama.refused.notCarried": {
@@ -6732,7 +6732,7 @@
     },
     "machineCard.test.unverified": {
       "kind": "body",
-      "zh": "⚠ 此指纹未经验证：首次连接可能被中间人篡改。建议在远端用 ssh-keyscan 核对（见部署文档 step 6）后再固化。",
+      "zh": "⚠ 此指纹未经验证：首次连接可能被中间人篡改。建议在远端用 ssh-keyscan 核对后再固化。",
       "args": []
     },
     "machineCard.test.pinSave": {
@@ -9589,7 +9589,7 @@
     },
     "configSurface.summarizeOwedInstallers.owed": {
       "kind": "body",
-      "zh": "⚠ {namesCount} 项还没有安装入口",
+      "zh": "⚠ {namesCount} 项不能在这里装，要你自己装",
       "args": ["namesCount"]
     },
     "configSurface.undo.unknownKind": {
@@ -9609,7 +9609,7 @@
     },
     "configSurface.undo.noInstaller": {
       "kind": "body",
-      "zh": "暂无撤销：还没有安装入口",
+      "zh": "不适用：这一项不能在这里装",
       "args": []
     },
     "configSurface.undo.manual": {
@@ -12624,12 +12624,12 @@
     },
     "rsConfigSurface.unmanaged.owedEffect": {
       "kind": "body",
-      "zh": "安装入口还没写；本页仍会检查它是否存在",
+      "zh": "这里装不了它，只查它在不在",
       "args": []
     },
     "rsConfigSurface.unmanaged.owedSource": {
       "kind": "body",
-      "zh": "应随 cc-monitor 一起安装，暂未提供",
+      "zh": "要你自己装",
       "args": []
     },
     "rsConfigSurface.unmanaged.promptEffect": {
@@ -15613,12 +15613,12 @@
     },
     "rsToolRegistry.environment.managedWhy": {
       "kind": "body",
-      "zh": "由声明推出来。谁该装看它装到哪，今天装不装得了看有没有安装功能",
+      "zh": "谁来装看它装到哪台机器；这里能装的由 cc-monitor 装",
       "args": []
     },
     "rsToolRegistry.env.acctIsoLocalWhy": {
       "kind": "body",
-      "zh": "本机这一份该由 cc-monitor 装，但还没有这个功能；能装的只有远端那一份",
+      "zh": "本机这一份要你自己装；这里只能装远端那一份",
       "args": []
     },
     "rsToolRegistry.env.acctIsoLocalName": {
@@ -15713,7 +15713,7 @@
     },
     "rsToolRegistry.envTier.appShipsNoInstallerYet": {
       "kind": "body",
-      "zh": "app 该自带，今天还没有安装功能",
+      "zh": "不能在这里装，要你自己装",
       "args": []
     },
     "rsToolRegistry.envTier.appInstalls": {

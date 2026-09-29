@@ -293,27 +293,37 @@ fn every_refusal_names_the_machine_and_what_it_is() {
         ] {
             assert!(!s.contains(banned), "{r:?} 说了禁词 {banned}：{s}");
         }
-        // 每一形说的是**自己那一句**（`96 §7.1.4b` 那张表的第一句，各取一个它独有的词）：
+        // 〔V161〕每一形说的是**自己那一句** —— 按文案键比（`设计/91 §6`），不再按 `96 §7.1.4b` 那张表各取一个独有词
+        //   （用户 09-29「所有文案…不能把开发过程混进去」之后那几句不再说「今天 / 承诺 / 没有验过」）。
         //   只比「五句互不相同」挡不住「一形借了另一形的句子、填了不同的参数」（死值验 K6 首刀没砍中，补这一向）。
-        let own = match r {
-            Refusal::UnsupportedMachine { .. } => "不为这种机器准备",
-            Refusal::OsUnknown { .. } => "是什么系统",
-            Refusal::ArchUnknown { .. } => "处理器架构",
-            Refusal::NotPromisedHere {
-                route: Route::Remote,
-                ..
-            } => "只在本机用得上",
-            // 〔V132〕V132 那句「这台不在承诺里」。
-            Refusal::NotPromisedHere {
-                route: Route::Local,
-                ..
-            } => "不在承诺里",
-            Refusal::NotCarried { .. } => "没有带",
+        let family = match product {
+            Product::Backend => "deploy",
+            Product::Panorama => "panorama",
         };
-        assert!(
-            s.contains(own),
-            "{r:?} 说的不是自己那一句（缺「{own}」）：{s}"
+        let (form, os, arch, why) = match r {
+            Refusal::UnsupportedMachine { os, arch } => {
+                ("unsupportedMachine", os.as_str(), arch.as_str(), "")
+            }
+            Refusal::OsUnknown { why } => ("osUnknown", "", "", why.as_str()),
+            Refusal::ArchUnknown { why } => ("archUnknown", "", "", why.as_str()),
+            Refusal::NotPromisedHere {
+                os,
+                arch,
+                route: Route::Remote,
+            } => ("notPromisedHere", os.as_str(), arch.as_str(), ""),
+            // 〔V132〕本机那一形另有一句。
+            Refusal::NotPromisedHere {
+                os,
+                arch,
+                route: Route::Local,
+            } => ("notPromisedLocal", os.as_str(), arch.as_str(), ""),
+            Refusal::NotCarried { os, arch } => ("notCarried", os.as_str(), arch.as_str(), ""),
+        };
+        let own = crate::copy_table::copy_text(
+            &format!("{family}.refused.{form}"),
+            &[("machine", "devbox"), ("os", os), ("arch", arch), ("why", why)],
         );
+        assert_eq!(s, own, "{r:?} / {product:?} 说的不是自己那一句");
         said.insert(s);
     }
     assert_eq!(
