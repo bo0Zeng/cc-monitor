@@ -3462,7 +3462,7 @@
     },
     "agentClip.clip.diagramObject": {
       "kind": "body",
-      "zh": "对象：图「{title}」（kind={id}）{center}",
+      "zh": "对象：图「{title}」（类型 {id}）{center}",
       "args": ["title", "id", "center"]
     },
     "agentClip.clip.diagramCenter": {
@@ -9319,7 +9319,7 @@
     },
     "configSurface.render.home": {
       "kind": "body",
-      "zh": "HOME={home} · ~/.claude 解析为 {claudeConfigDir}",
+      "zh": "主目录 {home} · ~/.claude 解析为 {claudeConfigDir}",
       "args": ["home", "claudeConfigDir"]
     },
     "configSurface.backups.intro": {
@@ -13749,7 +13749,7 @@
     },
     "rsCcmProbe.card.summary": {
       "kind": "body",
-      "zh": "version={version} · {count} 项能力",
+      "zh": "版本 {version} · {count} 项能力",
       "args": ["version", "count"]
     },
     "rsCcmProbe.card.notFound": {
@@ -16613,7 +16613,7 @@
     },
     "beProbe.control.unsupported": {
       "kind": "error",
-      "zh": "control=unsupported：后端太旧，不能在远端起会话",
+      "zh": "后端太旧，不能在远端起会话",
       "args": []
     },
     "beProbe.link.droppedBeforeAck": {

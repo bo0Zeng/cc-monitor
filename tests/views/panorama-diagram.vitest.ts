@@ -184,7 +184,7 @@ describe("PN1b 选图（界面）", () => {
     expect(written[0].split("\n")).toEqual([
       CLIP_HEAD,
       "仓：/repo",
-      "对象：图「乙图」（kind=k-calls） · 中心符号 src/a/x.rs#f",
+      "对象：图「乙图」（类型 k-calls） · 中心符号 src/a/x.rs#f",
       "索引读数：2026-09-21T14:13:20.000Z（unix 1790000000） · ⚠ 索引已陈旧：源文件在这次索引之后改过",
       `诚实信号：${honestyLine(fx.callDiagram.honesty)}`,
       "Mermaid：",
