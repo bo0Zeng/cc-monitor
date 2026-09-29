@@ -6357,6 +6357,11 @@
       "zh": "一条别名是一个名字加一组 ccm 参数。在终端里敲这个名字，就等于敲 ccm 加上这组参数，后面还能再接别的参数。",
       "args": []
     },
+    "machineAliases.unknownOs.said": {
+      "kind": "body",
+      "zh": "认不出这台的系统，没法生成别名块：不知道该写 bash 的还是 PowerShell 的，不替你猜。",
+      "args": []
+    },
     "machineAliases.manager.title": {
       "kind": "title",
       "zh": "别名",
@@ -14527,6 +14532,46 @@
       "kind": "body",
       "zh": "派生的 agent 起来了",
       "args": []
+    },
+    "contextLimits.editor.title": {
+      "kind": "title",
+      "zh": "高级：上下文上限",
+      "args": []
+    },
+    "contextLimits.editor.intro": {
+      "kind": "body",
+      "zh": "状态栏的上下文占用按模型的上限算。某个模型实际开了更大的上下文、占用被算高了，在这里改它的上限。一行一条，写「模型名片段 = 上限 tokens」，例如 claude-sonnet-4-5 = 1000000。空着就用内置的上限。离开这一格就存。",
+      "args": []
+    },
+    "contextLimits.editor.field": {
+      "kind": "control",
+      "zh": "模型上限覆盖",
+      "args": []
+    },
+    "contextLimits.editor.saved": {
+      "kind": "body",
+      "zh": "已保存，状态栏按新上限算。",
+      "args": []
+    },
+    "contextLimits.editor.cleared": {
+      "kind": "body",
+      "zh": "已清空，状态栏回到内置的上限。",
+      "args": []
+    },
+    "contextLimits.editor.badLine": {
+      "kind": "error",
+      "zh": "第 {n} 行读不懂，没保存。每行写「模型名片段 = 正整数」，改好离开这一格就存。",
+      "args": ["n"]
+    },
+    "contextLimits.editor.loadFailed": {
+      "kind": "error",
+      "zh": "读不到现在的设置：{e}",
+      "args": ["e"]
+    },
+    "contextLimits.editor.saveFailed": {
+      "kind": "error",
+      "zh": "没保存：{e}",
+      "args": ["e"]
     },
     "localResume.launch.arrived": {
       "kind": "body",

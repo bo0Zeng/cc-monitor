@@ -45,6 +45,7 @@ import {
   MACHINE_PAGE_PREFIX,
 } from "./remote-section";
 import { DataSection } from "./data-section";
+import { ContextLimitsSection } from "./context-limits-section"; // 〔FIX4〕`contextLimits` 的入口
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
@@ -56,7 +57,7 @@ import {
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { fetchLocalAccounts } from "../account-reads"; // K-R49：别名是给**这台机器**的 shell 用的
-import { buildAliasManager, localShell } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」（〔AL1c〕两个平台一份，含 PowerShell 的终端集成）
+import { buildAliasManager, buildUnknownOsAliasBlock, localShell } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」（〔AL1c〕两个平台一份，含 PowerShell 的终端集成）
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -917,6 +918,10 @@ export class SettingsPanel {
         FIELDS().filter((f) => f.group === "color"),
       ),
     );
+    // 〔FIX4 · `70 §10` 第 8 条〕「高级」那一折：状态栏 ctx% 的模型上限覆盖表（config.json `contextLimits`）。
+    appearancePage.appendChild(
+      this.safeBlock(copyText("contextLimits.editor.title"), () => new ContextLimitsSection().element, { untitled: true }),
+    );
     // 〔ST2 · 步 9〕原页脚的「恢复默认」：它只管外观，搬到外观这一页。
     const resetRow = document.createElement("div");
     resetRow.className = "settings-row settings-row-end";
@@ -1107,13 +1112,17 @@ export class SettingsPanel {
       {
         appliesTo: "local",
         tab: "tools",
-        el: this.safeBlock(copyText("settingsPanel.group.aliases"), () =>
-          buildAliasManager({
-            platform: localShell(),
-            origin: () => LOCAL_ORIGIN,
-            loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
-          }),
-        ),
+        el: this.safeBlock(copyText("settingsPanel.group.aliases"), () => {
+          // 〔FIX4 · `71 §8` 第 7 条〕认不出本机系统 ⇒ 不猜方言：明说、安装入口置灰。
+          const shell = localShell();
+          return shell === null
+            ? buildUnknownOsAliasBlock()
+            : buildAliasManager({
+                platform: shell,
+                origin: () => LOCAL_ORIGIN,
+                loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
+              });
+        }),
       },
       // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
       // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。

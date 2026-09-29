@@ -60,11 +60,28 @@ import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 
 /**
- * 〔AL1c〕这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。**测不出就按 POSIX**（与 `host-os.ts`
- * 「测不出就照常显示」同向：POSIX 那一侧不发任何 Windows 专用 IPC）。
+ * 〔AL1c〕这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。
+ * 〔FIX4 · `71 §8` 第 7 条，主会话 09-28 裁〕**认不出就不猜**（`null`）：别名块那一格明说「认不出这台的系统」、安装入口置灰
+ * （[`buildUnknownOsAliasBlock`]）—— 先前按 POSIX 猜，Windows 上猜错了就把装 bash 块的入口摆给一台 PowerShell 机器。
  */
-export function localShell(): Shell {
-  return hostOs() === "windows" ? "powershell" : "posix";
+export function localShell(): Shell | null {
+  const os = hostOs();
+  if (os === "unknown") return null;
+  return os === "windows" ? "powershell" : "posix";
+}
+
+/** 〔FIX4 · `71 §8` 第 7 条〕认不出本机系统时别名那一格：说清为什么没有，安装入口在、但置灰（出声不静默）。 */
+export function buildUnknownOsAliasBlock(): HTMLElement {
+  const wrap = el("details", "ccm-alias-gen machine-aliases");
+  wrap.dataset.shell = "unknown";
+  wrap.appendChild(el("summary", "", copyText("machineAliases.manager.title")));
+  wrap.appendChild(el("p", "settings-hint", copyText("machineAliases.unknownOs.said")));
+  const install = el("button", "settings-btn", copyText("machineAliases.rc.install"));
+  install.type = "button";
+  install.disabled = true;
+  install.title = copyText("machineAliases.unknownOs.said");
+  wrap.appendChild(install);
+  return wrap;
 }
 
 /** 平台那几格的措辞（写死在一处，组件里按 `platform` 取）。 */
