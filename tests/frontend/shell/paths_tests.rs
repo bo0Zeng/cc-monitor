@@ -167,18 +167,34 @@ fn the_data_dir_is_spelled_in_one_place() {
         }
     }
     assert!(scanned > 500, "只扫到 {scanned} 份 —— 扫描面塌了");
-    assert_eq!(hits, Vec::<String>::new(), "生产段里还有数据目录的旧住址（V160：不认老路径）");
-    assert!(spells_old("x.ts", &format!("const d = '~/.claude/{old}';")), "正控：认不出旧名");
+    assert_eq!(
+        hits,
+        Vec::<String>::new(),
+        "生产段里还有数据目录的旧住址（V160：不认老路径）"
+    );
+    assert!(
+        spells_old("x.ts", &format!("const d = '~/.claude/{old}';")),
+        "正控：认不出旧名"
+    );
     // 阴性对照：测试段里的旧名不算（夹具许写旧住址）。
     assert!(!spells_old(
         "x.rs",
         &format!("fn f() {{}}\n\n#[cfg(test)]\nmod tests {{\n    const D: &str = \"{old}\";\n}}\n")
     ));
 
-    let store = guard_core::production_code(include_str!("../../../src/common/creds-core/src/store.rs"));
+    let store =
+        guard_core::production_code(include_str!("../../../src/common/creds-core/src/store.rs"));
     let dir_lit = format!("{:?}", ".cc-monitor");
-    assert_eq!(store.matches(dir_lit.as_str()).count(), 1, "store.rs 里数据目录名不是恰好一处");
-    let at = guard_core::find_pinned(&store, "pub fn monitor_data_dir(").expect("monitor_data_dir 不在了");
+    assert_eq!(
+        store.matches(dir_lit.as_str()).count(),
+        1,
+        "store.rs 里数据目录名不是恰好一处"
+    );
+    let at = guard_core::find_pinned(&store, "pub fn monitor_data_dir(")
+        .expect("monitor_data_dir 不在了");
     let body = &store[at..at + store[at..].find("\n}\n").expect("没收尾")];
-    assert!(body.contains(dir_lit.as_str()), "默认住址不在 monitor_data_dir 里拼：{body}");
+    assert!(
+        body.contains(dir_lit.as_str()),
+        "默认住址不在 monitor_data_dir 里拼：{body}"
+    );
 }

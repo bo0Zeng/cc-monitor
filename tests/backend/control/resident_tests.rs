@@ -130,10 +130,7 @@ fn the_resident_derives_the_same_data_dir_pair_whoever_starts_it() {
                 names.0,
                 "/h/.cc-monitor/apikey-credentials.json".to_string()
             ),
-            (
-                names.1,
-                "/h/.cc-monitor/history-metadata.json".to_string()
-            ),
+            (names.1, "/h/.cc-monitor/history-metadata.json".to_string()),
         ]
     );
     // `CCM_DATA_DIR` 跟着走；本进程已有的那一格不覆盖；相对路径 ⇒ 两格都缺席（不退回真 profile）。

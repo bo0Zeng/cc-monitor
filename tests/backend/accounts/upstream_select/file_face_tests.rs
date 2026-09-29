@@ -245,7 +245,11 @@ fn the_written_file_is_owner_only_and_no_temp_file_is_left() {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "凭据文件不是只给本人：{mode:o}");
-        let dir = std::fs::metadata(f.parent().unwrap()).unwrap().permissions().mode() & 0o777;
+        let dir = std::fs::metadata(f.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
         assert_eq!(dir, 0o700, "数据目录建出来不是只给本人：{dir:o}");
     }
     // 读口的权限判断在这份文件上不出声（只给本人 ⇒ `notice` 为空）。
