@@ -113,8 +113,12 @@ fn list_projects(agent_home: &Path) -> Result<(), String> {
 /// 与 CLI 这条**跑的是同一个函数**，只是 `out` 一个是 stdout、一个是内存里那份应答。
 pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Result<(), String> {
     let root = projects_root(agent_home);
-    let entries =
-        std::fs::read_dir(&root).map_err(|e| format!("read_dir {} failed: {e}", root.display()))?;
+    let entries = match std::fs::read_dir(&root) {
+        Ok(it) => it,
+        // 〔WF2 · WIN3 读数 H〕这台还没起过会话（记录树根不在）⇒ 零个项目，不是失败 —— 界面照「还没有会话记录」画，别的机器照常。
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(unreadable_dir(&root, &e)),
+    };
     for entry in entries.flatten() {
         let dir = entry.path();
         if !dir.is_dir() {
@@ -127,6 +131,17 @@ pub(crate) fn list_projects_into(agent_home: &Path, out: &mut dyn Write) -> Resu
         writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
     Ok(())
+}
+
+/// 〔WF2 · WIN3 读数 H〕会话记录目录读不了 ⇒ 给人看的那一句（按错误的**种类**说；系统原话只进日志 —— `设计/91` 不露实现词）。
+fn unreadable_dir(dir: &Path, e: &std::io::Error) -> String {
+    tracing::warn!("history_query: 读不了 {}：{e}", dir.display());
+    let path = dir.display().to_string();
+    if e.kind() == std::io::ErrorKind::PermissionDenied {
+        copy_text("beHistory.dir.denied", &[("path", &path)])
+    } else {
+        copy_text("beHistory.dir.unreadable", &[("path", &path)])
+    }
 }
 
 /// 一个项目目录 → `--list-projects` 的那一行；目录下没有会话记录 ⇒ `None`（不展示）。
@@ -209,8 +224,7 @@ pub(crate) fn list_sessions_into(
     // 〔audit-0805 08-06〕**改调共享围栏**（E3）：此前这里是一份内联副本，
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
     let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
-    let entries =
-        std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
+    let entries = std::fs::read_dir(&dir).map_err(|e| unreadable_dir(&dir, &e))?;
     for entry in entries.flatten() {
         let p = entry.path();
         if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
