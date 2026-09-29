@@ -5,6 +5,7 @@
 //! | [`paths`] | 配置目录怎么解析（环境变量名 + `.claude`）· `projects/` 与 `sessions/` 两个子目录 |
 //! | [`records`] | 会话记录的后缀与命名（`<sid>.jsonl`） |
 //! | [`liveness`] | 判活时"这个 cmdline 看起来像不像 Claude" |
+//! | [`cards`] | 〔THIN〕工具名 → 卡型 · tmux 前台命令哪几个算它（界面不认工具名，卡型随记录成品带出） |
 //! | [`accounts`] | `.claude.json` 的信任判定（`projects[cwd].hasTrustDialogAccepted`） |
 //! | [`resume`] | resume 的命令形状与会话名前缀（与 [`super::codex::resume`] 对称） |
 //! | [`assets`] | 〔AS2〕资产布局：`skills/<名>/` · `SKILL.md` 的 `description:` · `.claude.json` 的 `projects` × `<项目>/.mcp.json` |
@@ -32,6 +33,8 @@
 
 pub(crate) mod accounts;
 pub(crate) mod assets;
+// 〔THIN〕工具词表（卡型 · 判活进程名）：从 monitor `adapter.rs` 画像表与共享 crate `agent-tools-core` 收进来。
+pub(crate) mod cards;
 pub(crate) mod drift;
 // 〔MIG-3b 续〕「足迹」里的 Claude 布局（`~/.claude/…` 的基准 · settings 两个作用域）。
 pub(crate) mod footprint;
@@ -89,6 +92,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     parse: parse::parsed_line,
     sid: records::session_id_of,
     turn_end: Some(turn::turn_end_uuid_of),
+    tool_card: Some(cards::tool_card),
     drift: Some(drift::report),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,

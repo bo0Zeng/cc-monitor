@@ -12,8 +12,13 @@
 /// cmdline（**已转小写**）**明显不像** Claude ⇒ `false`；空串或像 ⇒ `true`（放行）。
 ///
 /// `S3` 从 `watcher::add_time_verdict` 里原样搬出（判定一字未改，含"空串放行"那一半）。
+/// 〔THIN〕词表不再内联：与 tmux 那一格（`tmux-list` 的 `agent`，精确比）同一张 [`super::cards::PROCESS_NAMES`] ——
+/// 从前界面一份、这里一份，靠一条跨语言对拍咬着；今天两处判法各自不变（这里子串 ＋ 空串放行，那里精确），词只有一份。
 pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
-    lower.trim().is_empty() || lower.contains("claude") || lower.contains("node")
+    lower.trim().is_empty()
+        || super::cards::PROCESS_NAMES
+            .iter()
+            .any(|name| lower.contains(name))
 }
 
 // 〔TL1 · 4C〕这里从前挂着一族自己的判据（`liveness_tests.rs`，三个方向各一格）。`99 §6` 第 13 条重判：

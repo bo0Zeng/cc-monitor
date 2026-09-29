@@ -3083,13 +3083,14 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 ```text
 → {"id":"t9","cmd":"tmux-list","args":{}}
-← {"kind":"reply","id":"t9","ok":true,"data":{"installed":true,"sessions":[{"name":"proj-cc","path":"/home/u/proj","command":"claude","attached":false,"windows":1,"sid":"sid-1"}]}}
+← {"kind":"reply","id":"t9","ok":true,"data":{"installed":true,"sessions":[{"name":"proj-cc","path":"/home/u/proj","command":"claude","attached":false,"windows":1,"sid":"sid-1","agent":true}]}}
 ```
 
 **入参：无**。与会话账本那份 tmux 观测**同一趟** `tmux ls -F`（同一段脚本、同一个格式串、同一个四态分类，`observe/watcher.rs`）：
 `installed:false` = 那台没装 tmux（`sessions:[]`）；没有 server / 零会话 ⇒ `installed:true, sessions:[]`。
 〔MIG-1 续 · `99 §2.1 ⑬`〕**出成品**（`observe/tmux_list.rs`，解析从 monitor 那一份搬来）：`sessions` 每项 `name` · `path`（`pane_current_path`）·
-`command`（`pane_current_command`）· `attached` · `windows`（非数字回退 0）· `sid`（`@ccm_sid`；未设 / 不是 `[A-Za-z0-9_-]` ⇒ `null`）。
+`command`（`pane_current_command`）· `attached` · `windows`（非数字回退 0）· `sid`（`@ccm_sid`；未设 / 不是 `[A-Za-z0-9_-]` ⇒ `null`）·
+`agent`（〔THIN〕前台命令是注册表里某一家 agent 的进程 —— Claude 是 `claude` / `node`；从前界面按画像表自己判，判定进了后端）。
 段数不对的行丢掉（下溢 / 过溢各出一句日志）。界面经 `chan.call(origin, …)` 直接问（`src/frontend/ui/tmux-reads.ts`，本机远端同一形）。
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。

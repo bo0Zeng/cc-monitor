@@ -20,8 +20,7 @@ members = [
     "../../common/search-core",
     "../../common/shell-quote-core",
     "../../common/copy-core",
-    # 〔DUP2 · J19〕agent 的工具词表（哪些工具名算「展开 = 子会话」）—— monitor 渲染与后端会话事实共用的唯一一份。
-    "../../common/agent-tools-core",
+    # 〔THIN〕`agent-tools-core` 出列：界面不再按工具名判卡型（卡型随记录成品带出），它只剩后端用，收进后端适配层。
     # 〔DUP3 · J9〕上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
     "../../common/upstream-url-core",
     # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
@@ -124,8 +123,7 @@ sha2 = "0.10"
 # G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
 branch-core = { path = "../../common/branch-core" }
 # 〔RE〕`codex-token-core` 删了：monitor 零引用，它搬进后端 `agents/codex/token.rs`。
-# 〔DUP2 · J19〕agent 工具词表的唯一一份（claude 画像那一格 `agent_tools` 取它）。
-agent-tools-core = { path = "../../common/agent-tools-core" }
+# 〔THIN〕`agent-tools-core` 删了：画像表里那几张判卡型的词表进了后端适配层（`agents/claudecode/cards.rs`），monitor 零引用。
 acct-core = { path = "../../common/acct-core" }
 # 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
 copy-core = { path = "../../common/copy-core" }

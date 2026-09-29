@@ -4946,6 +4946,11 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/gate_singleton_guard_tests.rs", 1),
         // 〔THIN〕新行：hello 的「换不换」进了本机常驻后端，原判定函数那一处（`hello_decision`）挂墓碑。
         ("src/frontend/shell/src/remote_resident.rs", 1),
+        // 〔THIN〕新行四条：界面按工具名 / 命令名判的四个谓词删了（卡型随记录成品、tmux 那一格随 `tmux-list` 带来），原处各一块。
+        ("src/frontend/ui/cards/diff.ts", 1),
+        ("src/frontend/ui/cards/interactive.ts", 1),
+        ("src/frontend/ui/cards/subagent.ts", 1),
+        ("src/frontend/ui/tmux-sessions.ts", 1),
         // 〔THIN〕新行两条：全景「那台要哪一格」进了本机常驻后端 —— monitor 那个问 `uname` 的口（`probe_key`）原处一块 · 后端那一节点它的旧名一块。
         ("src/frontend/shell/src/byte_table.rs", 1),
         ("src/backend/control/deploy_plan.rs", 1),
@@ -5379,7 +5384,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("tests/frontend/shell/utils_tests.rs", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑
         ("src/backend/common/tmux_utf8.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("src/backend/observe/mod.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
-        ("src/backend/observe/tmux_list.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
+        ("src/backend/observe/tmux_list.rs", 2), // 〔THIN〕1 → 2：界面认 tmux 会话那个谓词（`isClaudeTmuxCommand`）进了后端，`agent` 那一格点旧名 // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("src/frontend/ui/tmux-reads.ts", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("tests/backend/observe/tmux_list_tests.rs", 1), // 〔MIG-1 续〕列 tmux 会话那一族搬进后端（tmux-list 出成品），旧名挂墓碑
         ("tests/frontend/ui/tmux-cache-single-writer.vitest.ts", 1), // 〔MIG-1 续〕列 tmux 会话改走通道，旧命令名挂墓碑
@@ -5402,7 +5407,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/backend/agents/codex/record.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/comms/inward/origin.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/frontend/shell/src/utils.rs", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
-        ("src/frontend/ui/cards/index.ts", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
+        ("src/frontend/ui/cards/index.ts", 2), // 〔THIN〕1 → 2：结果默认怎么画的那个谓词（`defaultModeForTool`）删了，卡型随记录成品带来 // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         ("src/frontend/ui/record-reads.ts", 1), // 〔MOD〕新行：记录解释进后端 / 会话正文四条退役，点旧名的散文挂墓碑
         // 〔MOD〕`tests/backend/agents/claudecode/parse_tests.rs` 出表：那份文件随记录解释进后端删了（或墓碑随被守的东西整轴退役）
         (

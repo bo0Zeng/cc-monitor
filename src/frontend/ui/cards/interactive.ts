@@ -12,12 +12,9 @@
  * （INVARIANT § 17a/18 双层防御惯例）。
  */
 import { renderMarkdown } from "../render";
-import { AGENT_PROFILE } from "../agent-profile";
 import { copyText } from "../copy-table";
 
-export function isInteractiveTool(name: string): boolean {
-  return AGENT_PROFILE.interactiveTools.has(name);
-}
+// 〔THIN〕`isInteractiveTool`〔散文墓碑〕删：哪个 tool_use 在等用户决定由那台后端判（卡型 `interactive`，随记录成品带来）。
 
 /** AskUserQuestion 的 input.questions[]（Claude Code 端 schema，实测 2026-06）。 */
 interface AskOption {

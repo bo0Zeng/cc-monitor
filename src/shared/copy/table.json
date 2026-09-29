@@ -5172,11 +5172,6 @@
       "zh": "账号清单的格式不对（{what}），两边版本可能对不上",
       "args": ["what"]
     },
-    "agentProfile.researched.null": {
-      "kind": "error",
-      "zh": "后端那张表里「{agent}」的 {key} 是 null，这一格今天没人考据过。不许拿别的 agent 那一份顶上（KR93D3）。",
-      "args": ["agent", "key"]
-    },
     "agentProfile.lookup.unknown": {
       "kind": "error",
       "zh": "查不到 agent「{agent}」的资料（已知的有：{roster}）。",

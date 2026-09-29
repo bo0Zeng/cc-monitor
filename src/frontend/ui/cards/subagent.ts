@@ -9,7 +9,6 @@
  * 不直接调 Rust 命令以外的全局状态。
  */
 
-import { AGENT_PROFILE } from "../agent-profile";
 import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 
 /** Rust subagent::load_subagent 的返回结构 */
@@ -26,10 +25,7 @@ interface AgentInput {
   prompt?: string;
 }
 
-/** 判断一个工具名是否触发 subagent（v2.1 是 "Agent"，老版本曾是 "Task"） */
-export function isAgentTool(name: string): boolean {
-  return AGENT_PROFILE.agentTools.has(name);
-}
+// 〔THIN〕`isAgentTool`〔散文墓碑〕删：哪个 tool_use 是子 agent 由那台后端判（卡型 `agent`，随 assistant 记录的 `toolCards` 带来）。
 
 /**
  * 构造 Agent 折叠卡。

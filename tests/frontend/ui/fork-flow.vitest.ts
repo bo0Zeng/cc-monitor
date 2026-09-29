@@ -47,7 +47,9 @@ type TmuxRow = {
   attached: boolean;
   windows: number;
   sid: string | null;
+  agent: boolean;
 };
+// 〔THIN〕`agent` 那一格是那台后端判的（Claude 是 `claude` / `node`）；夹具照那条规则手写。
 const T = (name: string, sid: string | null, command = "claude"): TmuxRow => ({
   name,
   path: "/p",
@@ -55,6 +57,7 @@ const T = (name: string, sid: string | null, command = "claude"): TmuxRow => ({
   attached: false,
   windows: 1,
   sid,
+  agent: command === "claude" || command === "node",
 });
 const A = (sessionId: string, configDir: string | null, alive = true): SessionAccount => ({
   pid: 1,

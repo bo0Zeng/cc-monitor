@@ -434,26 +434,27 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     },
   },
   J19: {
-    what: "哪些工具名算「展开 = 子会话」（agent 工具）",
+    what: "工具词表：哪些工具名算「展开 = 子会话」（agent 工具）· 〔THIN〕哪个工具名画成哪一种卡 · tmux 前台命令哪几个算 agent 的会话",
     // 〔DUP2 · 主会话 09-26 裁 J19〕两个 Rust 住址（后端 `observe/facts_query.rs` 喂会话事实 · monitor `adapter.rs` 喂渲染 agent 卡，
     //   `调研/第四波记录/STC.md §1.3`）收成一份进新立的共享 crate `agent-tools-core`（两半编译期不许互咬 —— `设计/90 §0` C2 ——
     //   共享 crate 是唯一合法的形；现有 core 没有一个的身份是「工具词表」，理由见 `调研/第四波记录/DUP2.md §2`）。
     //   两边都成它的别名，异源对拍（后端常量 == 生成物里 claude 那一行）随之退役。
-    //   TS 侧 `cards/subagent.ts::isAgentTool` 是按生成物（`agent-profile-table.ts`，由 monitor 从这份现生成）求值的薄壳。
-    homes: ["agent-tools-core::is_claude_agent_tool", "agent-tools-core::CLAUDE_AGENT_TOOLS"],
-    status: "generated",
-    defs: ["isAgentTool"],
-    needles: [{ text: 'new Set(["Agent", "Task"])', count: 0 }],
-    gen: {
-      file: "src/frontend/ui/generated/agent-profile-table.ts",
-      exports: ["AGENT_PROFILE_TABLE"],
-      importers: ["src/frontend/ui/agent-profile.ts"],
-    },
-    parity: { via: "src/common/agent-tools-core/src/lib.rs", tests: ["tests/frontend/ui/agent-profile-parity.vitest.ts"] },
+    //   〔THIN · `设计/00 §1.2` 判定只在后端〕界面不再按工具名判（卡型随 assistant 记录的 `toolCards` 带来、tmux 那一格随 `tmux-list`
+    //   的 `agent` 带来）⇒ 那几张词表连同 `agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`，翻 `zero`：
+    //   TS 那几个按生成物求值的薄壳（`isAgentTool` · `isInteractiveTool` · `isDiffTool` · `isClaudeTmuxCommand` · `defaultModeForTool`）删了。
+    homes: ["src/backend/agents/claudecode/cards.rs::tool_card"],
+    status: "zero",
+    defs: ["isAgentTool", "isInteractiveTool", "isDiffTool", "isClaudeTmuxCommand", "defaultModeForTool"],
+    needles: [
+      { text: 'new Set(["Agent", "Task"])', count: 0 },
+      { text: "agentTools", count: 0 },
+      { text: "livenessProcessNames", count: 0 },
+    ],
     rustGone: ["src/backend/observe/facts_query.rs::is_agent_tool"],
     rustNeedles: [
       { file: "src/backend/observe/facts_query.rs", text: '&["Agent", "Task"]', count: 0 },
       { file: "src/frontend/shell/src/adapter.rs", text: '&["Agent", "Task"]', count: 0 },
+      { file: "src/backend/agents/claudecode/cards.rs", text: '&["Agent", "Task"]', count: 1 },
     ],
   },
   J16: {
@@ -535,11 +536,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     MANIFEST_NAME: NONE,
     SUPPORTED_SCHEMA: NONE,
   },
-  // 〔DUP2 · J19〕agent 的工具词表（新立；monitor 渲染与后端会话事实共用）。
-  "agent-tools-core": {
-    CLAUDE_AGENT_TOOLS: "J19",
-    is_claude_agent_tool: "J19",
-  },
+  // 〔THIN〕`agent-tools-core` 那一格删了：它收进后端适配层（`agents/claudecode/cards.rs`），不再是共享 crate。
   "branch-core": {
     build_branch_records: NONE,
     find_session_file: NONE,
@@ -806,7 +803,7 @@ function resolvesTo(file: string, spec: string, target: string): boolean {
 
 /**
  * 〔DUP2〕⑥ 在对拍测试的代码里找的那一截：`via` 路径的末两段（`__fixtures__/accounts.golden.json` · `control/payload.rs`）；
- * 文件名太泛（`lib.rs` / `mod.rs` / `main.rs`）时取末三段（`agent-tools-core/src/lib.rs`）。
+ * 文件名太泛（`lib.rs` / `mod.rs` / `main.rs`）时取末三段（`copy-core/src/lib.rs`）。
  * 用后缀不用全路径：Rust 侧读金样常是 `include_str!("../../__fixtures__/…")` 这种相对写法。
  */
 function viaNeedle(via: string): string {
@@ -1025,7 +1022,7 @@ describe("DUP1 判定只有一个家（设计/90 §3 判据 2）", () => {
     expect(stripComments('/** accounts.golden.json */\nconst x = 1;', "ts").includes("accounts.golden.json")).toBe(false);
     expect(stripComments('readFileSync("tests/__fixtures__/accounts.golden.json")', "ts").includes("accounts.golden.json")).toBe(true);
     expect(viaNeedle("tests/__fixtures__/accounts.golden.json")).toBe("__fixtures__/accounts.golden.json");
-    expect(viaNeedle("src/common/agent-tools-core/src/lib.rs")).toBe("agent-tools-core/src/lib.rs");
+    expect(viaNeedle("src/common/copy-core/src/lib.rs")).toBe("copy-core/src/lib.rs");
     // `mirror` 的设计住址形状：认得出两种、认不出空话。
     expect(DESIGN_ADDRESS.test("`设计/01 §6.9` 逐字")).toBe(true);
     expect(DESIGN_ADDRESS.test("INVARIANTS §47")).toBe(true);

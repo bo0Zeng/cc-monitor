@@ -73,7 +73,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
     "tests/frontend/ui/skill-inbox-reads.vitest.ts", // 〔MIG-3a〕收件箱三问走通道：严格收 ＋ 问对那台（纯替身）
     // 〔MIG-3a · 09-28 预裁〕`tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行删了：整份随那条部署命令删了（字节随后端二进制走）。
-    "tests/common/agent-tools-core/lib_tests.rs", // 〔DUP2 · J19〕新共享 crate `agent-tools-core` 的判定（纯函数）
+    "tests/backend/agents/claudecode/cards_tests.rs", // 〔THIN〕原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
     "tests/frontend/ui/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
     "tests/frontend/ui/config-persist-failure.vitest.ts", // 〔CFG1〕J8 落盘失败恰好一条 toast
@@ -481,7 +481,8 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/launch-payload-golden.vitest.ts",
     "tests/frontend/ui/launch-tmux-outer-golden.vitest.ts",
     "tests/frontend/ui/live-card.vitest.ts", // 〔TAP〕活卡：状态机 · 真 TabManager 三向相等 · 台架夹具（读 `tests/__fixtures__/tap-bench.json`）
-    "tests/frontend/ui/liveness-process-names-parity.vitest.ts",
+    // 〔THIN〕`tests/frontend/ui/liveness-process-names-parity.vitest.ts` 删：判活进程名的前端那一份随判定进了后端，
+    //   后端两处（tmux 那一格 · cmdline 判活）今天读同一张 `agents/claudecode/cards.rs::PROCESS_NAMES`，对拍无对象。
     // 〔STC〕`设计/90 §3` 判据 3：`onLine` 调用人群 ＋ 事实字段写者（读 `src/frontend/ui/tabs.ts` 与 `src/**/*.ts` 的 AST）。
     "tests/frontend/ui/online-bypass-ledger.vitest.ts",
     // 〔TL3〕「是不是本机」只在 `src/frontend/ui/ipc/origin.ts` 判（读生产段全集 ⇒ 扫描层）。

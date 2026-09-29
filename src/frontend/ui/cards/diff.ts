@@ -15,8 +15,6 @@
  *   字段类型，任何缺失 / 非字符串一律返 `null`，交由调用方回退 prettyJson。
  */
 
-// F-MA：agent-profile 是纯常量模块（无 DOM/render），不破坏本文件"可 tsx 独立单测"的性质。
-import { AGENT_PROFILE } from "../agent-profile.ts";
 import { copyText } from "../copy-table";
 
 // === 类型（纯数据，无 DOM） ===
@@ -275,10 +273,7 @@ export function normalizeMultiEditInput(input: unknown): OldNew[] | null {
 // 这一段是唯一碰 DOM 的代码。纯函数层（上方）import 不到这里，故 diff.test.ts
 // 能在无 DOM 的 node 下独立单测纯逻辑。buildDiffBody 用 document，只能手测（step 6）。
 
-/** 哪些工具走 diff 渲染。NotebookEdit **不在内**（v1 回退 raw JSON，0 真实样本）。 */
-export function isDiffTool(name: string): boolean {
-  return AGENT_PROFILE.diffTools.has(name);
-}
+// 〔THIN〕`isDiffTool`〔散文墓碑〕删：哪些工具走 diff 渲染由那台后端判（卡型 `diff`，随记录成品带来；NotebookEdit 照旧不在内）。
 
 /**
  * 纯（无 DOM）：按工具名把 `unknown` input 归一化成 diff 段（old/new 对数组）。
