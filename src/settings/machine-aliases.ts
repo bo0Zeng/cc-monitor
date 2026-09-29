@@ -56,6 +56,8 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { makeInfoIcon } from "./info-icon";
 import { hostOs } from "./host-os";
 import { copyText } from "../copy-table";
+import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
+import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 
 /**
  * 〔AL1c〕这台机器（monitor 跑在的那台本机）用哪种 shell 的方言。**测不出就按 POSIX**（与 `host-os.ts`
@@ -742,7 +744,7 @@ export function buildAliasManager(opts: {
     wrap.dataset.origin = opts.origin();
     if (shell === "posix" && local) {
       try {
-        const st = await commands.local_ccm_entry_status();
+        const st = await noteLocalCcm();
         pathCcm.hidden = !st.message;
         pathCcm.textContent = st.message;
       } catch (e) {
@@ -1211,4 +1213,18 @@ function showPreviewModal(titleText: string, code: string): void {
     if (e.target === backdrop) backdrop.remove();
   });
   document.body.appendChild(backdrop);
+}
+
+/**
+ * 设计/99 §2.2 ㉔ · `15 §5.4 D5`：**本机 `ccm` 那一格的唯一写点**（K-R117 S2 本机半钉在本文件）。问一次本机那一格（判定与那句话在 monitor
+ * `ccm_probe::local_ccm_cell`），`ok` 说得清就记账（两件都成 ⇒ ok；有一件不成 ⇒ fail 并照记那句话；说不清 ⇒ 不写）。
+ * 调用方：别名管理器读回 · 设置页机器列表（打开时一次）· 〔FIX4 ⑥〕本机那一行「重新对齐」（`fresh`：先作废 PATH 探针那份 5 分钟缓存，V149 手动兜底）。
+ * Windows 本机这一格不适用（`readiness.notApplicable`）：调用方不在那一形上叫它。
+ */
+export async function noteLocalCcm(fresh = false): Promise<LocalCcmEntry> {
+  const st = await commands.local_ccm_entry_status(fresh);
+  if (typeof st?.ok === "boolean") {
+    recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: st.ok ? "ok" : "fail", detail: st.summary });
+  }
+  return st;
 }
