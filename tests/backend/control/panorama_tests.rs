@@ -101,8 +101,8 @@ fn the_deadline_follows_the_tier_the_program_reports() {
     let a = crate::plugin::probe::negotiate(&text, PLUGIN_NAME, &["index"], Some("x"))
         .ok()
         .expect("该协商得过");
-    assert_eq!(deadline_for(&a, "index"), BUILD_DEADLINE_SECS);
-    assert_eq!(deadline_for(&a, "status"), QUERY_DEADLINE_SECS);
+    assert_eq!(deadline_for(a.is_long("index")), BUILD_DEADLINE_SECS);
+    assert_eq!(deadline_for(a.is_long("status")), QUERY_DEADLINE_SECS);
     assert_ne!(
         BUILD_DEADLINE_SECS, QUERY_DEADLINE_SECS,
         "两档要分得开，否则本条恒真"

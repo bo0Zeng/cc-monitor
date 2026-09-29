@@ -147,8 +147,10 @@ export const EDIT_BUDGET_MS = QUERY_BUDGET_MS * 3 + BUILD_BUDGET_MS;
 /** 〔RM1d〕写：本机远端同一条（`op` 是后端 `control/panorama_edit.rs::EDITS` 第一列）。 */
 function edit<T>(at: RepoAt, op: string, args: object): Promise<T> {
   const body = jsonBody({ repo: at.path, op, args, shape: SHAPE });
+  // 每一问现造期限（同 `remote`）。
+  const budget = (): ReturnType<typeof budgetWithin> => budgetWithin(EDIT_BUDGET_MS);
   return askOrPlace(
-    () => chan.call(at.origin, "panorama-edit", body, budgetWithin(EDIT_BUDGET_MS)),
+    () => chan.call(at.origin, "panorama-edit", body, budget()),
     () => commands.panorama_place({ origin: at.origin }),
   ) as Promise<T>;
 }
