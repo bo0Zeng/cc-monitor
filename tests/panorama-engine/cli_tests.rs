@@ -283,6 +283,10 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
             json!({"symbol": id(sym), "depth": depth}),
         )
         .unwrap();
+        // 应答的键 == 前端 `Neighborhood` 接口的键（本程序自己的 DTO，前端按它收；异源）。
+        let mut keys: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ts_fields("Neighborhood"), "{v}");
         assert_eq!(v["root"], json!(id(sym)), "{v}");
         v["reached"]
             .as_array()
@@ -310,27 +314,8 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
 /// ⚠ 跨树运行时读（不走 `include_str!`）：同 `panorama_locus_guard` 的取舍 —— 文件挪了只有本条红。
 #[test]
 fn the_status_shape_matches_the_monitor_dto() {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../frontend/ui/panorama/types.ts");
-    let ts = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-    let at = ts.find("export interface PanoramaStatus {").expect(
-        "前端 types.ts 里找不到 `export interface PanoramaStatus {` —— 改了写法，本条跟着改",
-    );
-    let body = &ts[at..at + ts[at..].find('}').expect("接口没收尾")];
-    let body = &body[body.find('{').unwrap() + 1..];
-    let mut fields: Vec<String> = body
-        .lines()
-        .filter_map(|l| {
-            let (k, _) = l.trim().split_once(':')?;
-            let k = k.trim();
-            (!k.is_empty() && !k.starts_with('/') && !k.starts_with('*')).then(|| k.to_string())
-        })
-        .collect();
-    fields.sort();
-    assert_eq!(
-        fields,
-        vec!["indexedAt", "stale", "symbols"],
-        "TS 那侧：{body}"
-    );
+    let fields = ts_fields("PanoramaStatus");
+    assert_eq!(fields, vec!["indexedAt", "stale", "symbols"]);
     let src = prod();
     for f in &fields {
         assert!(
@@ -338,6 +323,28 @@ fn the_status_shape_matches_the_monitor_dto() {
             "本程序的 status 应答里没有 `{f}` 这一格"
         );
     }
+}
+
+/// 前端 `types.ts` 里 `export interface <name> {` 的顶层字段名（排序；到行首 `}` 为止，内联对象类型不拆）。
+fn ts_fields(name: &str) -> Vec<String> {
+    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../frontend/ui/panorama/types.ts");
+    let ts = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
+    let head = format!("export interface {name} {{\n");
+    let at = ts
+        .find(&head)
+        .unwrap_or_else(|| panic!("types.ts 里找不到 `{head}` —— 改了写法，本条跟着改"));
+    let body = &ts[at + head.len()..];
+    let body = &body[..body.find("\n}").expect("接口没收尾")];
+    let mut fields: Vec<String> = body
+        .lines()
+        .filter_map(|l| {
+            let (k, _) = l.trim().split_once(':')?;
+            let k = k.trim().trim_end_matches('?');
+            (!k.is_empty() && !k.starts_with('/') && !k.starts_with('*')).then(|| k.to_string())
+        })
+        .collect();
+    fields.sort();
+    fields
 }
 
 /// ★ 写用户文件的那几样，本程序生产段**零调用**（只算不写，理由见头注）。
