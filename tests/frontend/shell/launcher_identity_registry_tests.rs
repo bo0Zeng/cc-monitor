@@ -209,7 +209,7 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔US1 · 第四波 4D〕地板 94 → 93：`read_apikey_credentials_status` / `apikey_routing_for` 两条退役（单行三元组人群真少了；现打 93）。
     // 〔HX2 · 第四波 4D〕地板 93 → 92：`write_apikey_credentials_key` 退役（单行三元组人群真少了 1 行；现打 92）。
     // 〔LOC1a · 第四波 4D〕地板 93 → 92：`get_session_tasks` 退役（单行三元组人群真少了 1 行；现打 92）。
-    // 〔合并 LOC1b × 主线 290d8c33〕主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
+    // 〔合并 LOC1b × 主线 99b8adb6〕主线 92 ＋ LOC1b −3（全文搜索 · 查索引状态 · 重建索引）⇒ 89。
     // 〔SH1 · 4D〕地板 88 → 86：驾驶舱读面两条命令退役（单行三元组人群真少了 2 行）。
     // 〔MIG-3a〕地板 86 → 79：MCP 读写六条 ＋ 推拉两条命令退役（单行三元组人群真少了 7 行；现打 79）。
     // 〔MIG-3a〕地板 79 → 75：资产同步 ＋ skill 装卸三条命令退役（单行三元组人群真少了 4 行；现打 75）。
@@ -217,7 +217,7 @@ fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
     // 〔MIG-3a〕地板 73 → 70：收件箱三条退役（现打 70）。
     // 〔MIG-3a〕地板 70 → 65：别名六条退役 −6、`bound_terminal_count` ＋1（现打 65）。
     assert!(
-        rows.len() >= 43, // 〔MOD〕47 → 43：会话正文四条退役（现打 43）// 〔MIG-3b 续〕48 → 47：全景问 · 写 · 撤三行退役、`panorama_place` · `chan_cancel` 两行进（现打 47）// 〔MIG-3b 续〕49 → 48：公钥推送那一行退役（现打 48）// 〔MIG-3a · 09-28 预裁〕50 → 49：`deploy_remote_acct_iso`〔散文墓碑〕 退役（现打 49）// 〔合并 MIG-1 × 主线 eebf51de〕主线 57 ＋ MIG-1 本路退役的单行三元组（列 tmux 两条 · 测试连接 · 端口转发 · 活会话等）⇒ 现打 50 // 〔合并 MIG-3b × 主线 81f92f6a〕主线 60 ＋ MIG-3b −3（钩子诊断本机那一行 · 删会话 · 分叉三条单行三元组退役）// 〔合并 MIG-3a × 主线 ad308378〕基数 75 ＋ MIG-3a −11（acct-iso −2 · 收件箱 −3 · 别名 −5 · cc-bus −1）＋ MIG-2 −4 ⇒ 60（现打；MIG-2 那一侧的读数写的是 −3，合并后实数 −4） // 〔MIG-2〕75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 〔合并 HX2 × 主线 06b5dc08〕基于 290d8c33：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
+        rows.len() >= 43, // 〔MOD〕47 → 43：会话正文四条退役（现打 43）// 〔MIG-3b 续〕48 → 47：全景问 · 写 · 撤三行退役、`panorama_place` · `chan_cancel` 两行进（现打 47）// 〔MIG-3b 续〕49 → 48：公钥推送那一行退役（现打 48）// 〔MIG-3a · 09-28 预裁〕50 → 49：`deploy_remote_acct_iso`〔散文墓碑〕 退役（现打 49）// 〔合并 MIG-1 × 主线 8c6cdc0e〕主线 57 ＋ MIG-1 本路退役的单行三元组（列 tmux 两条 · 测试连接 · 端口转发 · 活会话等）⇒ 现打 50 // 〔合并 MIG-3b × 主线 5bb03b34〕主线 60 ＋ MIG-3b −3（钩子诊断本机那一行 · 删会话 · 分叉三条单行三元组退役）// 〔合并 MIG-3a × 主线 5b52f042〕基数 75 ＋ MIG-3a −11（acct-iso −2 · 收件箱 −3 · 别名 −5 · cc-bus −1）＋ MIG-2 −4 ⇒ 60（现打；MIG-2 那一侧的读数写的是 −3，合并后实数 −4） // 〔MIG-2〕75 → 72：本机起会话 ＋ 渲染 ＋ 探针那几条单行命令退役 −5、`open_local_terminal` / `relay_all_sessions_switch` 进 +2（现打 72）// 〔合并 HX2 × 主线 267588ca〕基于 99b8adb6：LOC1b −3 ＋ HX2 −1 ⇒ 88。〔SH1〕−2 ⇒ 86。
         "只从账本里抠到 {} 行单行三元组（09-02 现打 116）—— 抽取器坏了，本条会零命中地绿",
         rows.len()
     );

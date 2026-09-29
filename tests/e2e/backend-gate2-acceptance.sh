@@ -143,7 +143,7 @@ while IFS=$'\t' read -r id name sid expect; do
   n=$((n+1))
 
   # `:` 是 tmux 目标语法的分隔符：`parse_request` 在门**之前**就 invalid_args（`kill::admit_existing_name`）。
-  # 〔E2 尾 09-27〕`=` **不再**在这里：DUP3 §5 ⑦（`6721c0f9`）把送键的 Gate 1 并进已有会话名那一份，
+  # 〔E2 尾 09-27〕`=` **不再**在这里：DUP3 §5 ⑦（`adf3fe38`）把送键的 Gate 1 并进已有会话名那一份，
   #   `=` 按设计放行（`=a=b:` 精确命中名叫 `a=b` 的会话）⇒ `=cc-a` 走到 Gate 2、按「不是本工具的会话」拒成
   #   `wrong_owner`。这里原来照旧期望 `invalid_args` ⇒ 本格从那天起本机恒红，是判据过时、不是行为回归。
   # ⚠ 这一档**不 skip、照样验** —— 「更早的一道门也把它挡住了」是要真的量出来的，

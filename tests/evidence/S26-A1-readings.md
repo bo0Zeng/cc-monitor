@@ -13,7 +13,7 @@
 > python3 tests/evidence/S26-A1-design-coverage-census.py --selftest   # 反空真死值验（五刀）
 > python3 tests/evidence/S26-A1-design-coverage-census.py --backtest   # 条 67 那一刀的标定
 > ```
-> 仓位：`cd9841ee` / `wave0/delete-usage-and-fix-gate`
+> 仓位：`f3e78788` / `wave0/delete-usage-and-fix-gate`
 > 设计语料：`调研/设计/*.md` **22 篇**（非 git 仓，读的是 2026-09-18 当时的盘面）
 
 ---

@@ -672,7 +672,7 @@ pub fn identity_decision(
 const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
 
 /// 三行 shim（09-11 起历代）第二行的原文。〔E2〕它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
-/// 记号从此只能是字面量（出处：`git show f32fba42:src/frontend/shell/src/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
+/// 记号从此只能是字面量（出处：`git show ef7baa63:src/frontend/shell/src/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
 const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
 
 /// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。

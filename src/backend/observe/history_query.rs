@@ -549,7 +549,7 @@ fn stream_from_offset<W: std::io::Write>(
 /// 老后端只看 `args[1]`/`args[2]`：把 `--index` 写在路径**后面**，老后端会把**整份会话**透传回来
 /// （弱网上几十 MB，只为了让 monitor 看一眼首行认出「它不会」）。写在**前面**，老后端拿路径当 offset
 /// 解析 ⇒ `offset must be a number` ⇒ **零字节、退出 2**。新后端两种位置都认。
-/// （现打：基线 `3662e17` 的 release 后端对一份 50 955 695 字节的会话 —— 选项在后 stdout 50 955 695 字节 /
+/// （现打：基线 `161ffa6` 的 release 后端对一份 50 955 695 字节的会话 —— 选项在后 stdout 50 955 695 字节 /
 /// 退出 0；选项在前 stdout 0 字节 / 退出 2。）
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct FromOffsetOpts {
