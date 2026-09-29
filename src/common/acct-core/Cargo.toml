@@ -8,3 +8,8 @@ description = "cc-acct-iso 账号库契约的唯一定义 + 平台无关的名�
 # **零依赖**。同 branch-core / usage-core 的约束：backend 是 Linux-only 的静态 musl
 # 二进制、且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
 [dependencies]
+
+# 〔THIN〕跨生产者对拍夹具（`AUTH_KIND_PARITY_CASES` · `auth_kind_parity_manifest`）只在测试构建里：本 crate 自己的测试照带（`cfg(test)`），
+#   别的 crate 的测试要它就在 `[dev-dependencies]` 里开这个 feature（后端 `accounts_query_tests.rs` 用）。契约 crate 不带夹具进发布二进制。
+[features]
+fixtures = []

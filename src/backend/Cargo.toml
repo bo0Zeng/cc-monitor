@@ -292,6 +292,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
 guard-core = { path = "../common/guard-core" }
+# 〔THIN〕`acct-core` 的跨生产者对拍夹具只在测试构建里（`accounts_query_tests.rs` 用）：同一个依赖，测试构建多开 `fixtures`。
+acct-core = { path = "../common/acct-core", features = ["fixtures"] }
 # 〔CZ1 · 2026-09-25〕vendored russh 副本的指纹对拍（`dial_compress_tests::the_vendored_russh_differs_from_the_crate_only_where_registered`）：
 # 盘上每一份与 `VENDOR.md` 里取自 `.crate` 的 sha256 逐份相等。**只在测试期链接**；版本就是 lock 里 russh 那棵树
 # 早已解析的 `sha2 0.11.0`（离线可用、不新增包）。
