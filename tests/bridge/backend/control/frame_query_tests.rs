@@ -229,6 +229,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "tmux-list",
         "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/tmux-reads.ts` 按恰好的键集合收",
     ),
+    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
+    (
+        "tmux-name-mint",
+        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_tmux_name_mint`）；前端 `src/tmux-name-mint.ts` 问，monitor 这一侧零发送点",
+    ),
     // 〔MIG-1 · `99 §2.1 ⑬`〕端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
         "forward-list",

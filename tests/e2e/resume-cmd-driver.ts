@@ -12,12 +12,11 @@
 //   into-existing <sid> <name> <launcher> [configDir]   -> planResumeIntoExistingTmux → 生产渲染
 //   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> planResumeTmux → 生产渲染
 //   direct        <sid> <cwd> <launcher> [configDir]      -> planResumeDirect → 生产渲染
-//   mint-name     <cwd> <existing-comma-list>             -> mintSessionTmuxName（K-R96）
+//   （〔FIX4 · J7〕`mint-name` 那个 mode 删了：tmux 名的派生 ＋ 避让只在后端 `tmux-name-mint`，前端那份铸名口没了）
 //   follow        <lastAccount|-> <current|-> <stateJson> -> resolveFollowAccount(名或 "<base>")
 //   acct-dir      <name> <stateJson>                      -> accountConfigDir(路径或 "<none>")
 //
 // configDir 传字面 "-" 或省略 = undefined(基座,无账号注入)。
-import { mintSessionTmuxName } from "../../src/remote-launch.ts";
 import {
   planResumeIntoExistingTmux,
   planResumeTmux,
@@ -53,12 +52,6 @@ try {
           "\n",
       );
       break;
-    case "mint-name": {
-      // `K-R96`（用户 09-12 `R55`）：名字从 **cwd** 派生（`<项目名>-cc`），不再带 sid。
-      const existing = new Set((a[1] ?? "").split(",").filter(Boolean));
-      process.stdout.write(mintSessionTmuxName(a[0] ?? "", existing) + "\n");
-      break;
-    }
     case "follow": {
       // resolveFollowAccount(state, {lastAccount, current}) -> 名 or null(基座)
       const state = JSON.parse(a[2] ?? "{}");

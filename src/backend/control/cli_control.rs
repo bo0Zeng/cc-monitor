@@ -164,6 +164,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "forward-list",
     // 〔FIX4 · `97 §8`〕卸全景小程序：界面在机器页点的破坏性动作，不开 CLI 面（第三方 skill 用不着它，一次性进程里跑也无须）。
     "panorama-uninstall",
+    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
+    "tmux-name-mint",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

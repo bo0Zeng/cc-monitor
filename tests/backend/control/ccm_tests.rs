@@ -1018,3 +1018,49 @@ fn the_probe_frame_answers_the_same_card_as_the_cli_flag() {
         "成品的键 ≠ 金样的键 —— 界面解码器读的是金样"
     );
 }
+
+/// 要求住址：`设计/90 §3` J7「tmux 名派生 ＋ 撞名避让只留后端，前端要名字就问后端」（FIX4 题面）。
+/// 帧命令 `tmux-name-mint` 两形各一格 == 手写期望；避让问的是**交进来那张快照**（被占 ⇒ 往后排）；没装 tmux ⇒ 基名；入参不恰一格 ⇒ `invalid_args`。
+#[test]
+fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
+    use crate::common::session_snapshot::{SessionRow, SessionSnapshot};
+    use serde_json::json;
+    let snap = SessionSnapshot::with_prober(|| {
+        Ok(["proj-cc", "proj-fork-cc", "proj-fork-cc-2"]
+            .iter()
+            .map(|n| SessionRow {
+                name: (*n).to_string(),
+                ccm_sid: String::new(),
+            })
+            .collect())
+    });
+    let mint = |a: serde_json::Value| tmux_name_mint_with(&a, &snap);
+    assert_eq!(
+        mint(json!({"cwd": "/home/u/proj"})).unwrap(),
+        json!({"name": "proj-cc-2"})
+    );
+    assert_eq!(
+        mint(json!({"cwd": "/home/u/other"})).unwrap(),
+        json!({"name": "other-cc"})
+    );
+    assert_eq!(
+        mint(json!({"forkOf": "proj-cc"})).unwrap(),
+        json!({"name": "proj-fork-cc-3"})
+    );
+    assert_eq!(
+        mint(json!({"forkOf": "/home/u/gone"})).unwrap(),
+        json!({"name": "gone-fork-cc"})
+    );
+    let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
+    assert_eq!(
+        tmux_name_mint_with(&json!({"cwd": "/home/u/proj"}), &no_tmux).unwrap(),
+        json!({"name": "proj-cc"})
+    );
+    for bad in [
+        json!({}),
+        json!({"cwd": "/a", "forkOf": "b"}),
+        json!({"cwd": 3}),
+    ] {
+        assert_eq!(mint(bad).unwrap_err().0, "invalid_args");
+    }
+}

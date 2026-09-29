@@ -3009,6 +3009,21 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
 
+#### `tmux-name-mint`：起会话要的 tmux 名（〔FIX4〕09-28；`设计/90 §3` J7「派生 ＋ 避让只留后端」）
+
+```text
+→ {"id":"tm1","cmd":"tmux-name-mint","args":{"cwd":"/home/u/proj"}}
+← {"kind":"reply","id":"tm1","ok":true,"data":{"name":"proj-cc-2"}}
+→ {"id":"tm2","cmd":"tmux-name-mint","args":{"forkOf":"proj-cc"}}
+← {"kind":"reply","id":"tm2","ok":true,"data":{"name":"proj-fork-cc"}}
+```
+
+**入参恰给一格**：`cwd`（起新会话 / 全新 resume：基名 `<项目名>-cc`，派生规则同 `ccm` 不给名时那一条）或 `forkOf`（分叉：源会话的 tmux 名，
+源已退出时交它的 cwd；基名 `<去掉末尾 -cc 再净化>-fork-cc`）。净化：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-`；
+空 ⇒ `session-cc` / `session-fork-cc`。撞了往后排（`-2` / `-3` …），避让问的是**这台**那张会话快照（问一次更新一次，与 `ccm` 起会话、
+`--ccm-print` 同一份）；这台没装 tmux ⇒ 交基名。**只算不起**：不建会话、不写盘。前端 `src/tmux-name-mint.ts` 问（本机远端同一形），
+问不到 ⇒ 不铸名（空集铸名 = 不避让，issue #76 的形状）。错误码：`invalid_args`。只上帧面（`STREAM_ONLY`：CLI 那一侧 `ccm` 自己就铸）。
+
 #### `ssh-config-aliases`：这台 `~/.ssh/config` 里可点的别名（MIG-1，09-27，**只读**）
 
 ```text

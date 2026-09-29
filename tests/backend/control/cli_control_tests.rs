@@ -48,6 +48,12 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
         "它是界面在机器页上点、二次确认过的破坏性动作（删 `~/.cc-monitor/bin` 里那份小程序）；第三方 skill 没有卸它的理由，\
          开 CLI 口只多一个不经确认就能删文件的入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
     ),
+    // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名。
+    (
+        "tmux-name-mint",
+        "它只给界面起会话前问一个名字用；命令行那一侧 `ccm` 不给名时自己就铸（同一份 `plan::mint_tmux_name`，同一张会话快照），\
+         第三方 skill 要起会话直接敲 `ccm` ⇒ 再开一个 CLI 口只是第二个入口 ⇒ 只上帧面（`STREAM_ONLY`）。",
+    ),
     // 〔MIG-1 收尾〕测试连接边拨边推进度：那几格走**本连接的应答通道**（`probe` 帧，界面订 `probe-progress/<票>`）。
     (
         "remote-probe",

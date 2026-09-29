@@ -6,44 +6,22 @@ use std::path::{Path, PathBuf};
 /// 类别：`producer-target`（S12 要留的两族）· `producer-duplicate`（要退役的副本，
 /// **必须写退役归属**）· `consumer`（只判名字形状、不产名）。
 const REGISTERED: &[(&str, &str, usize, &str)] = &[
+    // 〔FIX4 · `设计/90 §3` J7〕前端那两格出表：`src/remote-launch.ts`（`deriveTmuxName`，原 `producer-target`）整份删、
+    //   `src/fork-launch.ts`（`forkTmuxName` 的 `-fork-cc`，原 `producer-duplicate` 退役归 U11）随派生 ＋ 避让一起搬进后端。
+    //   ⇒ 前端零产名点（界面要名字就问那台后端的 `tmux-name-mint`）；后端那一份从「副本」翻成**唯一本体**。
     (
-        "src/remote-launch.ts",
-        "producer-target",
-        1,
-        "本体：`deriveTmuxName`（cwd 派生 `<项目名>-cc`）。\
-             ⚠ **F13 起，撞名避让不在它里面** —— 收进了 `mintTmuxName`（全仓唯一铸名口，\
-             `existing` 必填、无默认值，少传被 `tsc` 挡住）。它本身不含 `-cc` 字面量，\
-             故不出现在本表里；本表数的是「谁在产 `-cc` 基名」。\
-             ★★ **`K-R96`（09-12）把这一格从 2 拧到了 1 —— 棘轮真的往下走了一格。**\
-             退役的是 `pickFreshTmuxName`（`` `${sid.slice(0,8)}-cc` ``，**sid 派生**那一族）。\
-             用户 09-12 逐字（`R55` 裁定一）：「**要是可读的名字 / 不要id**」\
-             ⇒ 起会话的名字统一从 cwd 派生，替它的是 `mintSessionTmuxName`\
-             （= `mintTmuxName(deriveTmuxName(cwd), existing)`，**自己不含 `-cc` 字面量**\
-             ⇒ 不进本表）。⚠ 这不是「少扫了一处」：`S12` 说的「两族」今天**真的只剩一族**了，\
-             因为「从 sid 来」那一族**整条不存在了**。sid 没丢，它骑在 `@ccm_sid` 上。",
-    ),
-    (
-        "src/fork-launch.ts",
-        "producer-duplicate",
-        1,
-        "分叉会话名 `<base>-fork-cc`（G6 加的第三种形态）。退役归 **U11 本体**。",
-    ),
-    (
-        // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
-        //    那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
-        //    ⚠ **这不是退役**：那份副本仍然存在（与 TS 的 `deriveTmuxName` 同义、
-        //    由 `tests/e2e/ccm-cli.test.sh` 的 5 条跨语言对拍钉着两边逐字相同）——
-        //    只是换了语言与住址。⇒ 本行**照旧算一处产名点**，`== 2` 仍然钉不上。
-        //    ⚠ **处数从 1 变 2，那不是多了一个产出点**：bash 那版把「空名回落」与
-        //    「正常派生」写在同一行（`printf '%s-cc'` 一处），Rust 版拆成了
-        //    `"session-cc"`（空名回落）与 `format!("{s}-cc")` 两行 —— **同一个函数体内**，
-        //    尺子是按**行**数的。两行都在 `derive_tmux_name` 里，自检段界钉着这一点。
+        // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
+        //    ⚠ 处数按**行**数：`derive_tmux_name` 里 `"session-cc"`（空名回落）与 `format!("{s}-cc")` 两行，
+        //    〔FIX4〕＋ `fork_tmux_base` 两行：`format!("{seg}-fork-cc")`（产名）与 `strip_suffix("-cc")`（剥源名那个尾巴，
+        //    尺子按「`-cc` 紧跟收尾引号」数、认不出它不产名）= 4。四行都在同一个 `name_segment` 净化器之上。
         "src/backend/control/ccm/plan.rs",
-        "producer-duplicate",
-        2,
-        "`derive_tmux_name` 的原生副本（与前端 `deriveTmuxName` 同义），**一个函数体内两行**。\
-             退役归 **U9b** —— 而 U9b 今天 ⛔ 阻塞，\
-             **这就是 `== 2` 今天钉不上的直接原因**。",
+        "producer-target",
+        4,
+        "本体：`derive_tmux_name`（cwd 派生 `<项目名>-cc`，空 ⇒ `session-cc`）＋ `fork_tmux_base`（分叉 `<源名>-fork-cc`）。\
+             〔FIX4 · J7〕全仓唯一一份：`ccm` 起会话与帧命令 `tmux-name-mint`（界面问的那一口）都走它，\
+             撞名避让走同文件的 `next_free_name`（`mint_tmux_name`，只收会话快照那张 `TakenNames`）。\
+             ★★ `K-R96`（09-12）退役了 sid 派生那一族（`pickFreshTmuxName`，用户 `R55`「要是可读的名字 / 不要id」）；\
+             sid 骑在 `@ccm_sid` 上。",
     ),
     (
         "src/shared/cc-bus/scripts/cc-spawn",
@@ -248,8 +226,8 @@ fn the_session_name_producers_match_the_registry_count_for_count() {
         "\n会话名产出点与登记表对不上。\n\
              **多一处** = 又开了一个产出点（S12 要收敛到 2 个，别往回走）；\n\
              **少一处** = 退役了一份 —— 把登记表那条删掉，并回 S12 把「计数守卫 == 2」的进度更新。\n\
-             （〔`K-R96` 09-12〕今天是 **4** 个产出点 + 1 个消费点 —— `remote-launch.ts` 那格 2→1，\n\
-             退役的是 sid 派生的 `pickFreshTmuxName`；`== 2` 钉不上的直接原因仍是 ccm 那份要等 U9b，而 U9b ⛔。）"
+             （〔FIX4 · J7〕今天是 **2** 个产出点 + 1 个消费点 —— 前端两格（`remote-launch.ts` · `fork-launch.ts`）随派生 ＋ 避让\n\
+             搬进后端出表，后端 `plan.rs` 成唯一本体；另一格是 `cc-spawn` 的 `_cc`，退役归 U11。）"
     );
 }
 
@@ -274,9 +252,8 @@ fn every_duplicate_producer_names_its_retirement_owner() {
     }
     assert_eq!(
         targets, 1,
-        "S12 的两族应当同住一个文件（`remote-launch.ts`）——\
-             〔`K-R96` 09-12〕而它今天只剩**一族**（cwd 派生）：\
-             sid 派生那一族随 `R55`「要是可读的名字 / 不要id」整条退役了。"
+        "产名的本体只许一个文件 —— 〔FIX4 · J7〕今天是后端 `control/ccm/plan.rs`（前端那份 `remote-launch.ts` 删了）；\
+             〔`K-R96` 09-12〕sid 派生那一族随 `R55`「要是可读的名字 / 不要id」整条退役了。"
     );
     // F13（2026-08-04）：4 → 3。退役的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值
     // （与 `pickFreshTmuxName` 基名逐字相同却不做撞名避让 —— 用户问的「为什么会撞名」的根因之一）。
@@ -287,8 +264,10 @@ fn every_duplicate_producer_names_its_retirement_owner() {
     // 它真正等的是 **F06b**：`ccm` 去调后端的 `--resolve` 拿 argv/名字。
     // ⚠ 而后端侧 `--resolve` **早就做好了**（`control/resolve_query.rs`：
     // stdin `ResumeSpec` → stdout `CommandPlan`）—— 缺的是 **`ccm` 那一侧的调用**。
+    // 〔FIX4 · J7〕3 → 1：`fork-launch.ts`（`-fork-cc`）随派生搬进后端退役；`plan.rs` 从副本翻成本体（`producer-target`）。
+    //   剩 `cc-spawn` 一份（`_cc`，退役归 U11 本体）。
     assert_eq!(
-        dups, 3,
+        dups, 1,
         "副本数变了 —— 退役了就把棘轮往下拧，并更新 S12 的账"
     );
 }

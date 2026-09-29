@@ -206,6 +206,7 @@ import {
   launchRenderShim,
   localLaunchCalls,
   sessionReadCalls,
+  tmuxMintCalls,
   tmuxReadOf,
   UNSUPPORTED,
   withAccountReads,
@@ -1170,14 +1171,11 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   //
   // 上面那条只证「不知道的时候不铸」。**光有它，整个 Y2b 被回退掉也不会红**
   //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
-  it("P3t-Y2b 本地 resume：拿到本机 tmux 名单 → 铸一个不撞的名字传给后端", async () => {
+  it("P3t-Y2b 本地 resume：本机后端铸了名字 → 原样传给起会话那一问", async () => {
     (invoke as unknown as Mock).mockImplementation(withHistoryReads(launchRenderShim(async (cmd: string) => {
-      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`。它已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
-      if (cmd === "list_local_tmux")
-        return [
-          { name: "p-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
-          { name: "unrelated", path: "/p", command: "bash", attached: false, windows: 1, sid: null },
-        ];
+      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`；它已被占 ⇒ 让到 `-2`。〔FIX4 · J7〕派生 ＋ 避让在本机后端（`tmux-name-mint`），
+      //   替身写死它铸了 `p-cc-2`；这里钉的是「问了、用的就是它铸的」（下面 `tmuxMintCalls` 那一行）。
+      if (cmd === "tmux_name_mint") return "p-cc-2";
       return undefined;
     })));
     tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, LOCAL_ORIGIN);
@@ -1192,6 +1190,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       // `K-R96`：名字里**没有 sid**（`l1abcdef` 一个字都不出现）—— 它骑在 `@ccm_sid` 上。
       tmuxName: "p-cc-2",
     });
+    expect(tmuxMintCalls(vi.mocked(invoke).mock.calls)).toEqual([[LOCAL_ORIGIN, { cwd: "/home/u/p" }]]);
   });
 });
 
@@ -1213,7 +1212,10 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
         // 〔FE1〕零会话 = 空表（线上真形状）；`undefined` 线上不存在，铸名会把它读成「没问到」而不起。
         : cmd === "list_remote_tmux"
           ? Promise.resolve([])
-          : Promise.resolve(undefined),
+          // 〔FIX4 · J7〕名字问那台后端铸：替身写死它铸了基名（零会话 ⇒ 不用让）。
+          : cmd === "tmux_name_mint"
+            ? Promise.resolve("proj-cc")
+            : Promise.resolve(undefined),
     ));
   });
 
@@ -1255,6 +1257,7 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
   //   不是「零会话」—— 先前 `?? null` 把两者压成一个、空集铸名（#76 的形状）。⇒ 不起、出声。
   //   正控就是上下那两条：名单回空表 ⇒ 照起、名字 = 基名 `proj-cc`。
   it("★ 〔FE1〕tmux 全新 resume：名单没问到 ⇒ 不起、出声（不拿空集铸名）", async () => {
+    // 〔FIX4 · J7〕名单与名字都没问到（`tmux_name_mint` 不答 = 那台没有控制通道）⇒ 铸不出名字 ⇒ 不起。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
       cmd === "list_remote_tmux" ? Promise.reject(new Error("ssh 抖动")) : Promise.resolve(undefined),
     ));
@@ -1328,9 +1331,12 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   });
 
   it("sid 无对应 tmux（全新/漂移占名）→ 起全新 resume，不就地复用", async () => {
-    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 落 mintSessionTmuxName 新起。
+    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 问那台后端铸名、新起（〔FIX4 · J7〕）。
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
+      // 〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
+      cmd === "tmux_name_mint"
+        ? Promise.resolve("proj-cc")
+        : cmd === "list_remote_tmux"
         ? Promise.resolve([
             { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
           ])
@@ -1349,6 +1355,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   it("跟随解析命中当前账号 → runRemoteResumeTmux 收到真实 configDir + accountName", async () => {
     invalidateAccountsCache(); // 同上：防陈旧缓存命中挡住下面的自定义 mock
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
+      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
           { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
@@ -1383,6 +1390,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   it("F07：跟随解析命中当前账号且该账号配了模型偏好 → runRemoteResumeTmux 收到真实 modelOverride", async () => {
     invalidateAccountsCache();
     vi.mocked(invoke).mockImplementation(withHistoryReads(withAccountReads((cmd: string) => {
+      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "list_remote_tmux") {
         return Promise.resolve([
           { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
@@ -1761,6 +1769,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
   };
 
   it("归档远端 tab → 收敛成 1 个「Resume」一级项 + flyout（tmux/直连），旧扁平字符串消失", async () => {
+    // 〔FIX4 · J7〕零会话 ＋ 那台后端铸了基名（名字问后端，替身写死它铸了什么）。
+    vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.resolve([]) : cmd === "tmux_name_mint" ? Promise.resolve("proj-cc") : Promise.resolve(undefined),
+    ));
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
@@ -1812,7 +1824,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("F74 tmux 叶子:@ccm_sid 已知但无一命中(原名被漂移会话占着)→ 起全新 resume 挑不撞名", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
+      // 〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
+      cmd === "tmux_name_mint"
+        ? Promise.resolve("proj-cc-2")
+        : cmd === "list_remote_tmux"
         ? Promise.resolve([
             { name: "proj-cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77" },
           ])
@@ -1831,7 +1846,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
 
   it("F74 tmux 叶子:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads((cmd: string) =>
-      cmd === "list_remote_tmux"
+      // 〔FIX4 · J7〕名字问那台后端铸（派生 ＋ 避让在它那边）：替身写死它铸了什么。
+      cmd === "tmux_name_mint"
+        ? Promise.resolve("proj-cc")
+        : cmd === "list_remote_tmux"
         ? Promise.resolve([
             // 老 wrapper:同 cwd 有 claude 但无 sid 信息(sid:null)。
             { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: null },
@@ -1954,7 +1972,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
         //   铸名那一格把它读成「没问到」⇒ 不起 —— 桩要说一个真答案，别让它碰巧走通。
         : cmd === "list_remote_tmux"
           ? Promise.resolve([])
-          : Promise.resolve(undefined),
+          // 〔FIX4 · J7〕名字问那台后端铸：替身写死它铸了基名。
+          : cmd === "tmux_name_mint"
+            ? Promise.resolve("proj-cc")
+            : Promise.resolve(undefined),
     )));
 
   const openArchivedMenu = async (): Promise<void> => {
@@ -5240,6 +5261,7 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根", () => {
       if (cmd === "list_remote_accounts") return Promise.resolve(remoteAccounts(accounts));
       if (cmd === "list_last_accounts") return Promise.resolve({});
       if (cmd === "list_remote_tmux") return Promise.resolve(tmux);
+      if (cmd === "tmux_name_mint") return Promise.resolve("proj-cc"); // 〔FIX4 · J7〕名字问那台后端铸
       if (cmd === "probe_session_record") return Promise.resolve({ present: true, root: "/h/.claude-accts/z/projects" });
       return Promise.resolve(undefined);
     }))));

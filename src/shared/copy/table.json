@@ -17332,9 +17332,14 @@
       "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
       "args": ["e"]
     },
-    "tmuxMint.unknown.notAsked": {
+    "tmuxMint.backend.tooOld": {
       "kind": "error",
-      "zh": "没问到那台机器上已有哪些 tmux 会话",
+      "zh": "那台机器的后端太旧，还不会给新会话取名。重装那台机器的后端就有了",
+      "args": []
+    },
+    "tmuxMint.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂那台后端取的会话名，两端版本对不上",
       "args": []
     },
     "tmuxMint.refused.title": {
@@ -17344,7 +17349,7 @@
     },
     "tmuxMint.refused.body": {
       "kind": "error",
-      "zh": "问不出 {machine} 上已有哪些 tmux 会话。新会话的名字可能撞上已有的、接进别的会话里，所以这次没有起。原因：{reason}",
+      "zh": "没从 {machine} 问到新会话的名字。取名要先看那台已有哪些 tmux 会话，免得撞名接进别的会话，所以这次没有起。原因：{reason}",
       "args": ["machine", "reason"]
     },
     "localResume.launch.failed": {

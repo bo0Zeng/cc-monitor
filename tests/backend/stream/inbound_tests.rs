@@ -562,6 +562,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        "tmux-name-mint", // 〔FIX4 · J7〕问一次会话快照 = 起一次 `tmux`
         // 〔MIG-3b〕钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 〔RESYNC〕手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -719,6 +720,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "tasks-list",
         "mcp-read",
         "tmux-list",
+        "tmux-name-mint",     // 〔FIX4 · J7〕问一次会话快照 = 起一次 `tmux`
         "ssh-config-aliases", // 〔MIG-1〕读一份文件
         "ssh-config-import",  // 〔MIG-1〕逐个起 `ssh -G`
         "ssh-config-resolve", // 〔MIG-1〕起一次 `ssh -G`
