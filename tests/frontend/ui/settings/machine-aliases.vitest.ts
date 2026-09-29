@@ -320,7 +320,8 @@ describe.each<Plat>(["posix", "powershell"])("buildAliasManager（%s）：两跳
   const FIRST_OPEN: Record<Plat, string[]> = {
     posix: ["aliases_read", "aliases_render", "local_ccm_entry_status"],
     // 〔MIG-3a〕握手终端数从读回口的成品里拆出来、另问 monitor（`bound_terminal_count`）⇒ PowerShell 那一侧首开多这一发。
-    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status"],
+    // 〔WF1 · `99 §2.2 ㉔`〕本机 ccm 那一格 Windows 上也问（新开的 PowerShell 里敲 `ccm` 走到哪）。
+    powershell: ["aliases_read", "aliases_render", "bound_terminal_count", "cc_get_auto_launch", "ccm_user_path_status", "local_ccm_entry_status"],
   };
 
   it("★ 构造零 I/O；第一次展开**恰好**那几发，再展开一发都不多", async () => {

@@ -1492,19 +1492,18 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D2 地板：本机那条路**跑之前**，账本里本机那一栏是空的（这一族不是空真）", () => {
     // 这条是分母自检。没有它，下面每一条「写进去了」都可能是在断一本本来就有内容的账。
     expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
-    // 那两格是**适用**的：`notApplicable` 今天只排掉本机的 connection（Windows 上另加 ccm）。
+    // 那两格是**适用**的：`notApplicable` 今天只排掉本机的 connection（〔WF1 · ㉔〕Windows 上的 ccm 豁免撤了）。
     // ⚠ `K-R59`（09-11）**多出第三格 `backend`**：那条「本机不需要后端」的豁免撤了
     //（`C7` 之后本机也有后端进程）。它**不归本分节写** —— 写点住
     // `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 那一族接。
     const before = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: readStatus,
-      hostOs: "windows",
     });
     expect(
       before.map((g) => `${g.facet}:${g.kind}`),
-      "本机在 Windows 上的适用格不是恰好这三格 —— 下面几条的题面就得重写",
-    ).toEqual(["backend:unknown", "acctIso:unknown", "accounts:unknown"]);
+      "本机的适用格不是恰好这四格 —— 下面几条的题面就得重写",
+    ).toEqual(["backend:unknown", "ccm:unknown", "acctIso:unknown", "accounts:unknown"]);
   });
 
   // ---- 三档各写各的 ----
@@ -1632,7 +1631,6 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       const gaps = computeGaps({
         origins: [LOCAL_MACHINE_KEY],
         statusOf: readStatus,
-        hostOs: "windows",
       });
       // 「没测过」= `unknown`。测过了但确认缺（`missing`）是另一回事，这条不管那个。
       const mine = new Set(["acctIso", "accounts"]);
@@ -1707,8 +1705,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D3：本机全绿 + 一台远端都没有 ⇒ summarizeGaps 返回 null（那一块整块不出现的前提）", async () => {
     // 分母写清（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1（本机），**不是空清单**；
-    //   · 这台机在 Windows 上的适用格 = { backend, acctIso, accounts }（connection 不适用、
-    //     ccm 的对应物是「终端集成」那块）—— 上面那条「地板」用例已把这个集合逐项断过；
+    //   · 这台机的适用格 = { backend, ccm, acctIso, accounts }（connection 不适用）—— 上面那条「地板」用例已把这个集合逐项断过；
     //   · `acctIso` / `accounts` 两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
     const led = await localLedgerAfter(threeLocal());
     expect(shape(led), "前提没成立：这一次面板运行没把两格写绿").toEqual({
@@ -1720,9 +1717,11 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     //   面板运行钉着。这里手工补上它，**只是为了让「整块该不该出现」这一跳还量得动** ——
     //   如实说明：这一格是摆出来的，不是本族跑出来的。
     recordFacet(LOCAL_MACHINE_KEY, "backend", { kind: "ok", detail: "已连上" });
+    // 〔WF1 · ㉔〕`ccm` 那一格同理（写点 `machine-aliases.ts::noteLocalCcm`，由 `remote-section.vitest.ts` 钉），摆出来的。
+    recordFacet(LOCAL_MACHINE_KEY, "ccm", { kind: "ok", detail: "是它" });
     const origins = [LOCAL_MACHINE_KEY];
     expect(origins.length, "分母是空的 —— 下面那条 null 是空真").toBe(1);
-    const gaps = computeGaps({ origins, statusOf: readStatus, hostOs: "windows" });
+    const gaps = computeGaps({ origins, statusOf: readStatus });
     expect(gaps).toEqual([]);
     expect(
       summarizeGaps(gaps),
@@ -1738,9 +1737,8 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: readStatus,
-      hostOs: "windows",
     });
-    expect(gaps.map((g) => g.facet)).toEqual(["backend", "acctIso", "accounts"]);
+    expect(gaps.map((g) => g.facet)).toEqual(["backend", "ccm", "acctIso", "accounts"]);
     const s = summarizeGaps(gaps);
     expect(s).not.toBeNull();
     expect(s, "回到旧行为时它该说「还没测过」").toContain("还没测过");
