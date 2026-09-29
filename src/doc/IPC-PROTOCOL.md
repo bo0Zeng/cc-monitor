@@ -376,7 +376,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 退化为只看进程是否存在 —— 那条退化路径**认不出 PID 复用**。
 写 pidfile 的一方若能提供它，就应当提供。
 
-**派生 IPC 事件 `session-activity`**（issue #23 红绿灯）：watcher 每次重扫/心跳后比对，仅对 `status`/`waitingFor` 发生变化（含新出现）的会话 emit `SessionActivityPayload` = `{sessionId, status, waitingFor}`（见 `bridge.rs::SessionActivityPayload`；启动快照走 `list_session_activity`〔散文墓碑〕，详 STATE-MATRIX）。
+**派生 IPC 事件 `session-activity`**（issue #23 红绿灯）：watcher 每次重扫/心跳后比对，仅对 `status`/`waitingFor` 发生变化（含新出现）的会话 emit `SessionActivityPayload` = `{sessionId, status, waitingFor}`（见 `ui_contract.rs::SessionActivityPayload`；启动快照走 `list_session_activity`〔散文墓碑〕，详 STATE-MATRIX）。
 
 ---
 

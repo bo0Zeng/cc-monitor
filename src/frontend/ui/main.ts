@@ -836,7 +836,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   );
   // C02：`frontend-ready` 是**唯一方向相反**的 payload（前端 emit、Rust 收），
   // 而 TS 侧**从来没有过这个类型**——这是净新增能力，不是替换。
-  // 生成物来自 `bridge.rs::FrontendReadyPayload`（只有 `Deserialize`；实测 `ts-rs` 照样生成）。
+  // 生成物来自 `ui_contract.rs::FrontendReadyPayload`（只有 `Deserialize`；实测 `ts-rs` 照样生成）。
   // 它用的是**字段级** `#[serde(rename = "prioritySid")]`，不是容器级 `rename_all`。
   const frontendReady: FrontendReadyPayload = { prioritySid: lastActive };
   void emit("frontend-ready", frontendReady);

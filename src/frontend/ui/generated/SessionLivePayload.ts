@@ -12,7 +12,7 @@ origin: string,
 /**
  * Batch7-F24：pidfile 元信息透传（p1e backend 起有值；旧 backend → None）。
  * kind = "interactive"/"bg"（bg → ⚙ 标识；〔V125〕bg 平铺为普通 tab，不再挂宿主排成树）。wire 帧侧因 enum tag
- * 占用叫 `session_kind`，bridge 事件 payload 无此约束，与本地 payload 统一叫 `kind`。
+ * 占用叫 `session_kind`，壳的事件 payload 无此约束，与本地 payload 统一叫 `kind`。
  */
 kind: string | null, 
 /**

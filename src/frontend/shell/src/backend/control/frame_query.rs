@@ -267,7 +267,7 @@ pub(crate) struct Row {
     /// 这一行正文的摘要（后端算，跨进程稳定）—— 续传前核「还是不是那一行」。
     pub hash: u64,
     /// 这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
-    pub message: Option<crate::bridge::RecordBody>,
+    pub message: Option<crate::ui_contract::RecordBody>,
     /// 这条记录自己的 `cwd`。
     pub cwd: Option<String>,
 }
@@ -290,7 +290,7 @@ pub(crate) fn row_of(v: &Value) -> Option<Row> {
     };
     let message = match v.get("message") {
         None => None,
-        Some(m) if m.is_object() => Some(crate::bridge::RecordBody::from_json(m.to_string())?),
+        Some(m) if m.is_object() => Some(crate::ui_contract::RecordBody::from_json(m.to_string())?),
         Some(_) => return None,
     };
     let cwd = match v.get("cwd") {

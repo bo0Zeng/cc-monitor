@@ -65,7 +65,7 @@ export const streamFake = {
     items.push(frame({ batch: "end" }));
     need(i).sink(items);
   },
-  /** 〔MIG-1〕起停 / 状态那几种格（`{"ended": …}` 等，形状另一侧是 `bridge.rs::SessionStreamFrame`）：一格一个，不吃 credit。 */
+  /** 〔MIG-1〕起停 / 状态那几种格（`{"ended": …}` 等，形状另一侧是 `ui_contract.rs::SessionStreamFrame`）：一格一个，不吃 credit。 */
   lifecycle(bodies: unknown[], i = 0): void {
     need(i).sink(bodies.map((b) => frame(b)));
   },

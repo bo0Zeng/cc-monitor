@@ -336,7 +336,7 @@ describe("C01 边界生成物", () => {
       }
     }
     // 计数自检用等号：`data_paths.rs::size_bytes` 1 + `tasks.rs::description/active_form` 2
-    // + C04c 新增的 `bridge.rs::JsonlLinePayload.origin` 1 + `messages.rs::ApiMessage.stop_reason` 1
+    // + C04c 新增的 `ui_contract.rs::JsonlLinePayload.origin` 1 + `messages.rs::ApiMessage.stop_reason` 1
     // = **5 处**。加了新的必须红一次，确认新那处也配了。
     // **C04d 批 6c：5 → 10。** 新增 5 处都在 history/search 一族：
     // `HistoryProject.origin` · `HistorySessionEntry.origin` ·
@@ -413,7 +413,7 @@ describe("C01 边界生成物", () => {
       }
     }
     // 计数自检用等号：`data_paths.rs` 1（C01）+ `sftp_pool.rs` 3（size / transferred / total）
-    // + `usage.rs` 4 = 8。**`bridge.rs` 的 `JsonlLinePayload.seq` 不计**——那个 struct 未派生
+    // + `usage.rs` 4 = 8。**`ui_contract.rs` 的 `JsonlLinePayload.seq` 不计**——那个 struct 未派生
     // （随 `JsonlLine`/`JsonlBatch` 延后），而它正是那两个延后的真正卡点。
     // 批 3 从 10 → 11（自动发现多扫出 `ForwardStatus.conn_count`，它此前对守卫完全隐形）；
     // **批 4 再 → 14**：`logging.rs` 的 `current_size_bytes`/`size_bytes`（字节数量纲）
@@ -464,7 +464,7 @@ describe("C01 边界生成物", () => {
     // C04d 批 7 → 3：`data_paths.rs::size_bytes`（optional 分支）·
     // `messages.rs::duration_ms` · `panorama.rs` 的 `indexed_at`（后两个走 `| null` 分支）。
     // 〔RM1f〕3 → 2：`panorama.rs` 那一处随内嵌引擎删了（`PanoramaStatus` 的形状改住 `panorama/types.ts` 手写）。
-    // 〔RENDER2〕2 → 3：`bridge.rs::JsonlLinePayload.skipped_from`（optional 分支）。
+    // 〔RENDER2〕2 → 3：`ui_contract.rs::JsonlLinePayload.skipped_from`（optional 分支）。
     expect(checked, `期望恰好 2 处 Option<大整数>，实得 ${checked}`).toBe(3);
   });
 
@@ -567,10 +567,10 @@ describe("C01 边界生成物", () => {
 });
 
 /**
- * C02：**事件名钉死** —— `bridge.rs` 的 10 个 `pub const` ↔ TS 侧的字面量。
+ * C02：**事件名钉死** —— `ui_contract.rs` 的 10 个 `pub const` ↔ TS 侧的字面量。
  *
  * **为什么这条不能靠生成物**：`ts-rs` 生成**类型**，不生成 `const` 字面量。
- * 主计划初稿写「事件名常量也从 `bridge.rs` 生成」——做不到，已改准（变更记录 03）。
+ * 主计划初稿写「事件名常量也从 `ui_contract.rs` 生成」——做不到，已改准（变更记录 03）。
  * 所以事件名保持手写，由本组断言对拍。形状照 `config_surface.rs::every_host_declaration_is_pinned`。
  *
  * **范围是全覆盖（10/10），这与 C01 那条「只覆盖一个文件」的收窄不矛盾**：
@@ -581,8 +581,8 @@ describe("C01 边界生成物", () => {
  * 没有专属 payload struct（11 个 struct 里没有它）。写了就是假红。
  */
 describe("C02 事件名钉死", () => {
-  it("bridge.rs 的事件名常量（〔MIG-1〕今天 3 个），TS 侧字面量逐个对上", () => {
-    const rust = rustCode(read("src/frontend/shell/src/bridge.rs"));
+  it("ui_contract.rs 的事件名常量（〔MIG-1〕今天 3 个），TS 侧字面量逐个对上", () => {
+    const rust = rustCode(read("src/frontend/shell/src/ui_contract.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
     // 从源码抠出 `pub const X: &str = "y";` 的所有对
@@ -597,14 +597,14 @@ describe("C02 事件名钉死", () => {
     // 〔U4b · 第四波〕12 → 14：`SESSION_CONTAINER`（"session-container"，活会话的容器）·
     // `ORIGIN_SESSIONS_LISTED`（"listed 格"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 〔CF2 · 第四波 4B〕14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
-    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/comms/inward/chan.ts` 听 —— 它是通道那一跳的，不是 `bridge.rs` 的业务事件）。
+    //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/comms/inward/chan.ts` 听 —— 它是通道那一跳的，不是 `ui_contract.rs` 的业务事件）。
     // 〔TAP · V124〕不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`，`设计/05 §15`），不开裸 Tauri 事件（`01 §2.2`）。
     // 〔GP1 · 第四波〕12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
     // 〔DL1 · 第五波〕13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `accounts-changed`
     //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），`设计/01 §2.2`「前端只有两个动作」。
     // 〔MIG-3b · `99 §2.1 ㉓②`〕12 → 11：`TASKS_UPDATE`（"task-update"）退役 —— 任务变更经通道 `subscribe(origin, "session-tasks")`。
     // 〔MIG-1 · `99 §2.1 ⑬`〕12 → 3：会话起停 / 状态那 9 个（`session-started` / `-ended` / `-idle` / `-container` / `-unseen` / `-activity` ·
-    //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`bridge.rs::SessionStreamFrame`）；
+    //   `remote-session-added` · `origin-sessions-listed` · `snapshot-inflight`）并进会话流 `subscribe(origin, "session-lines")`（`ui_contract.rs::SessionStreamFrame`）；
     //   剩 `frontend-ready` · `remote-health` · `task-update`。
     // 〔合并 MIG-1 × 主线 eebf51de〕主线 11 ＋ MIG-1 −9 ⇒ 2（剩 `frontend-ready` · `remote-health`）。
     expect(pairs.length, `期望恰好 2 个事件名常量，实得 ${pairs.length}`).toBe(2);

@@ -109,7 +109,7 @@ rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-
 tauri-plugin-notification = "2"
 
 serde = { version = "1", features = ["derive"] }
-# 〔MOD〕`raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`bridge::JsonlLinePayload::message`）。
+# 〔MOD〕`raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
 serde_json = { version = "1", features = ["raw_value"] }
 # F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
 # uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。

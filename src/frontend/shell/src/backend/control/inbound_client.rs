@@ -810,7 +810,7 @@ pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
 /// P2：**本机后端在 registry 里的 key**。
 ///
 /// 远端用 `cfg.origin_label()`（用户配的机器名）。本机没有「机器名」这个概念 ——
-/// 前端表示本机是 `origin === null`（`bridge.rs:95` 逐字记着线上约定是**省略**而不是 `null`），
+/// 前端表示本机是 `origin === null`（`ui_contract.rs:95` 逐字记着线上约定是**省略**而不是 `null`），
 /// 而 registry 的 key 是 `String` ⇒ 需要一个约定值。
 ///
 /// ⚠ **诚实边界**：用户理论上可以把某台远端机器的 label 起成这个名字，两者就撞了。

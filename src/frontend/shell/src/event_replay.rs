@@ -45,10 +45,10 @@
 //! | `accounts-changed` | 〔DL1〕那台机器上「账号清单可能变了」：`Seen`（长连接又通了、能问了）· `Frame`（那台后端说账号清单变了）· `Unseen` · `Gap` | 没有留存（不重放）；订阅当场就收实时的 |
 //!
 //! 〔DL1 · `设计/01 §2.2`「前端只有两个动作」〕`accounts-changed` 顶掉的是最后一个裸 Tauri 事件 `remote-backend-ready`
-//! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `bridge.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
+//! （原常量 `REMOTE_BACKEND_READY`〔散文墓碑〕，住 `ui_contract.rs` 的 `events`）。它与 `session-lines` 住同一张订阅表，因为「那台看不看得见」
 //! 只有一个家（下面的 `seen`）—— 另起一个句柄就得再养一份同样的表、在 `ssh_source` 同样的几处再喂一遍。
 //!
-//! 一格 = 一行（[`crate::bridge::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
+//! 一格 = 一行（[`crate::ui_contract::SessionStreamFrame`]：`{"line": …}` 或成批那一段的边界 `{"batch": …}`）；
 //! `Item::Frame.seq` 是这条订阅里的**位置**（0, 1, 2 …，连续），不是行号。
 //!
 //! 🔴 **credit 与「不许晚到」**（`调研/第四波记录/CF2.md §3.3`）：
@@ -62,8 +62,8 @@
 //! 丢了什么由前端自己补（「判可恢复归上层」）：它收到 `Gap` 就把那台机器上各 tab 的账本当成不可信、
 //! 按行号往回取（`history-lines`）。
 
-use crate::bridge::{BatchEdge, JsonlLinePayload, SessionStreamFrame};
 use crate::chan::wire::{Body, By, Cursor, HopFault, HopId, Item};
+use crate::ui_contract::{BatchEdge, JsonlLinePayload, SessionStreamFrame};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -79,7 +79,7 @@ pub trait ItemSink: Send + Sync {
 /// 〔CF2〕本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
-/// 〔TAP · V124〕本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::bridge::SessionTapPayload`]）。
+/// 〔TAP · V124〕本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::ui_contract::SessionTapPayload`]）。
 ///
 /// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（`设计/05 §15`：一条帧路 ＋ `subscribe`），差别只有三处：
 /// ① **没有留存**：tap 不进 `history`，订阅当场就是实时的（没有就绪点、没有重放）；
@@ -368,7 +368,7 @@ fn lifecycle_replay(
     let level = crate::ssh_source::snapshot_inflight_level();
     if level > 0 && only.is_none() {
         before.push(body_of(&SessionStreamFrame::SnapshotInflight(
-            crate::bridge::SnapshotInflightPayload { count: level },
+            crate::ui_contract::SnapshotInflightPayload { count: level },
         )));
     }
     before.extend(pick(plan.before));
@@ -489,7 +489,7 @@ impl EventReplay {
     ///
     /// 〔RENDER2 · `设计/10 §3.2`〕「已从头重读」（截短 / 改写）⇒ 后端的行号从 0 重数：留存里这个会话旧的一代同一拍丢
     /// （F5 之后只重放新的一代，与前端收到这一格时整份重来对得上）。
-    pub async fn on_session_notice(&self, notice: crate::bridge::SessionFileNoticePayload) {
+    pub async fn on_session_notice(&self, notice: crate::ui_contract::SessionFileNoticePayload) {
         let body = body_of(&SessionStreamFrame::FileNotice(notice.clone()));
         let (sink, plans) = {
             let mut inner = self.inner.lock();
@@ -895,7 +895,7 @@ impl EventReplay {
     /// 〔MIG-1〕旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢）。
     pub fn on_snapshot_inflight(&self, count: u32) {
         let body = body_of(&SessionStreamFrame::SnapshotInflight(
-            crate::bridge::SnapshotInflightPayload { count },
+            crate::ui_contract::SnapshotInflightPayload { count },
         ));
         let (sink, plans) = {
             let mut inner = self.inner.lock();
@@ -924,7 +924,7 @@ impl EventReplay {
     /// 〔TAP · V124〕中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进 `history`**，
     /// 交给订了那台机器 `session-tap` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
     /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：tap 可丢（V24），攒着只会让活卡更晚。
-    pub fn on_tap(&self, payload: crate::bridge::SessionTapPayload) {
+    pub fn on_tap(&self, payload: crate::ui_contract::SessionTapPayload) {
         let origin = payload.origin.as_wire_str().to_string();
         let (sink, plans) = {
             let mut inner = self.inner.lock();

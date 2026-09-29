@@ -9,7 +9,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         path: format!("/fake/{sid}/{idx}.jsonl"),
         seq: idx as u64,
         origin: None,
-        message: crate::bridge::RecordBody::from_json("{}".into()).unwrap(),
+        message: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
     }
 }
@@ -762,8 +762,8 @@ async fn the_accounts_changed_stream_carries_only_reachability_and_account_notic
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外 `调研/第四波记录/TAP.md §1.2 · §2`。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
-fn tap(origin: &str, n: u64) -> crate::bridge::SessionTapPayload {
-    crate::bridge::SessionTapPayload {
+fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionTapPayload {
+    crate::ui_contract::SessionTapPayload {
         origin: crate::origin::Origin(origin.to_string()),
         stream: "sid-t".into(),
         resp: 0,
@@ -857,7 +857,7 @@ async fn a_session_file_notice_goes_to_the_subscribers_of_that_session_only() {
     );
     r.ready_point(None).await;
     rec.clear();
-    r.on_session_notice(crate::bridge::SessionFileNoticePayload {
+    r.on_session_notice(crate::ui_contract::SessionFileNoticePayload {
         session_id: "s".into(),
         origin: crate::origin::LOCAL.into(),
         path: "/p/s.jsonl".into(),
@@ -889,7 +889,7 @@ async fn a_reread_notice_drops_the_old_generation_of_that_session_only() {
         push_and_trim(&mut replay.inner.lock(), &lines("s", 0..3));
         push_and_trim(&mut replay.inner.lock(), &lines("t", 0..2));
         replay
-            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+            .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: "s".into(),
                 origin: crate::origin::LOCAL.into(),
                 path: "/p/s.jsonl".into(),
@@ -971,8 +971,8 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
     assert!(rec.all().is_empty());
     r.on_lifecycle(
         "<local>",
-        vec![crate::bridge::SessionStreamFrame::Ended(
-            crate::bridge::SessionEndedPayload {
+        vec![crate::ui_contract::SessionStreamFrame::Ended(
+            crate::ui_contract::SessionEndedPayload {
                 session_id: "c".into(),
             },
         )],
@@ -992,7 +992,7 @@ async fn mig1_lifecycle_frames_take_no_credit_and_the_ready_point_puts_them_arou
 /// 每一种格造一个、读它上线的键名，按吃不吃 credit 分两摞 == 金样（TS 那一侧 `CREDIT_EXEMPT_FRAMES` 读同一份，异源）。
 #[test]
 fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
-    use crate::bridge::{self as b, SessionStreamFrame as F};
+    use crate::ui_contract::{self as b, SessionStreamFrame as F};
     let sid = || "s".to_string();
     let all = vec![
         F::Line(payload("s", 0)),
@@ -1053,7 +1053,7 @@ fn mig1_the_credit_exemption_is_exactly_the_registered_lifecycle_frames() {
 /// 不收「清单报完了」这种整台的簿记；说别的会话的格照旧不收。
 #[test]
 fn a_single_session_subscription_hears_the_machine_level_unseen_only() {
-    use crate::bridge::{self as b, SessionStreamFrame as F};
+    use crate::ui_contract::{self as b, SessionStreamFrame as F};
     let unseen = F::Unseen(b::SessionUnseenPayload {
         origin: crate::origin::Origin::local(),
     });

@@ -310,8 +310,8 @@ impl Out {
     }
 
     /// 〔MIG-1 · ⑬〕这件事 ⇒ 会话流里的几格（前端照原样收）。活会话 = `live` ＋ 初始灯 ＋ 容器（判不了的不发）。
-    pub fn frames(&self) -> Vec<crate::bridge::SessionStreamFrame> {
-        use crate::bridge::{self as b, SessionStreamFrame as F};
+    pub fn frames(&self) -> Vec<crate::ui_contract::SessionStreamFrame> {
+        use crate::ui_contract::{self as b, SessionStreamFrame as F};
         match self {
             Out::Live { origin, sid, meta } => {
                 let mut v = vec![

@@ -327,7 +327,7 @@ fn parses_two_line_frames_with_all_fields() {
             session_id: "s-1".to_string(),
             path: "/home/pi/.claude/projects/p/s-1.jsonl".to_string(),
             seq: 0,
-            message: crate::bridge::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
+            message: crate::ui_contract::RecordBody::from_json(r#"{"type":"user"}"#.to_string()),
             cwd: Some("/w".to_string()),
             end: None, // 〔RENDER2〕这条金样没带 `byte_offset`
         }

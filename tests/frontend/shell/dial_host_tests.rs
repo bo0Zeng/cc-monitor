@@ -253,7 +253,7 @@ async fn loopback_roundtrip_through_the_resident_backend() {
 
 /// A1 ★ 期限真生效：一条永不回字节的链路，到点读报 `TimedOut`；到点之前写进来的字节照常交出、到点之前读还在等（正控）；
 /// 摘掉期限的那条过点仍在等（另一向）。异源：一对内存管子当链路 —— 不经开链路那套逻辑，量的是生产那一层 `Bounded` 本体。
-/// （真时钟：bridge 的 tokio 没开 `test-util`，不为一条判据动依赖表；期限取 1 s，判的是先后，不是毫秒。）
+/// （真时钟：壳的 tokio 没开 `test-util`，不为一条判据动依赖表；期限取 1 s，判的是先后，不是毫秒。）
 #[tokio::test]
 async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -470,7 +470,7 @@ fn w5vis_the_expiry_note_says_which_leg_ate_the_budget() {
 }
 
 /// B2 ★ 真链路层：`mark_shaken` 之后到点 ⇒ 报出来的错**就是**按段归因那一句（握手那一段 ≈ 0）；
-/// 没 `mark_shaken` ⇒ 说「还在握手」。真时钟（bridge 的 tokio 没开 `test-util`，同 A1），期限 1 s。
+/// 没 `mark_shaken` ⇒ 说「还在握手」。真时钟（壳的 tokio 没开 `test-util`，同 A1），期限 1 s。
 #[tokio::test]
 async fn w5vis_a_timed_out_link_names_the_leg_it_timed_out_in() {
     use tokio::io::AsyncReadExt;

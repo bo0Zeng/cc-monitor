@@ -65,7 +65,7 @@ pub struct JsonlLine {
     pub path: std::path::PathBuf,
     pub seq: u64,
     /// 〔MOD · `设计/90 §3` 判据 3〕那台后端给的成品：这一行在渲染模型里的样子；`None` ＝ 不进界面（照占号）。
-    pub message: Option<crate::bridge::RecordBody>,
+    pub message: Option<crate::ui_contract::RecordBody>,
     /// 这条记录自己的 `cwd`（后端给的）。
     pub cwd: Option<String>,
     /// 〔RENDER2 · `99 §2.1` ㊱②〕这一行之后（含它的 `\n`）那一个字节的偏移 = 下一行的起点（后端 `line.byte_offset` ·
@@ -644,7 +644,7 @@ async fn snapshot_dispatcher(
                     }
                 }
             }
-            let payload = crate::bridge::RemoteHealthPayload {
+            let payload = crate::ui_contract::RemoteHealthPayload {
                 origin: host_label.clone(),
                 kind: "snapshot".to_string(),
                 message: copy_text(
@@ -655,7 +655,7 @@ async fn snapshot_dispatcher(
                     ],
                 ),
             };
-            if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+            if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
                 tracing::warn!("snapshot remote-health emit failed: {e}");
             }
         });
@@ -734,7 +734,7 @@ async fn fetch_snapshot(
     //   续点不必另丢：这一次整份读完立的新锚盖掉它。
     if crate::snapshot_resume::shrank(cursor.as_ref(), path, &plan) {
         replay
-            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+            .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: sid.to_string(),
                 origin: host_label.to_string(),
                 path: path.to_string(),
@@ -765,7 +765,7 @@ async fn fetch_snapshot(
             );
             crate::snapshot_resume::forget(&origin, sid);
             replay
-                .on_session_notice(crate::bridge::SessionFileNoticePayload {
+                .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                     session_id: sid.to_string(),
                     origin: host_label.to_string(),
                     path: path.to_string(),
@@ -1157,7 +1157,7 @@ pub enum InboundFrame {
         path: String,
         seq: u64,
         /// 〔MOD〕成品（`message`，缺 ＝ 不进界面）与这条记录自己的 `cwd`。
-        message: Option<crate::bridge::RecordBody>,
+        message: Option<crate::ui_contract::RecordBody>,
         cwd: Option<String>,
         /// 〔RENDER2 · ㊱②〕后端的 `byte_offset`（这一行末尾含 `\n` 的累计字节）；老后端不带 ⇒ `None`。
         end: Option<u64>,
@@ -1358,7 +1358,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 session_id: f.session_id,
                 path: f.path,
                 seq: f.seq,
-                message: f.message.map(crate::bridge::RecordBody),
+                message: f.message.map(crate::ui_contract::RecordBody),
                 cwd: f.cwd,
                 end: f.byte_offset,
             });
@@ -1438,7 +1438,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             let seq = obj.get("seq")?.as_u64()?;
             let message = match obj.get("message") {
                 None | Some(serde_json::Value::Null) => None,
-                Some(m) => Some(crate::bridge::RecordBody::from_json(m.to_string())?),
+                Some(m) => Some(crate::ui_contract::RecordBody::from_json(m.to_string())?),
             };
             let cwd = obj.get("cwd").and_then(|v| v.as_str()).map(str::to_string);
             let end = obj.get("byte_offset").and_then(serde_json::Value::as_u64);
@@ -1989,12 +1989,12 @@ pub async fn run(
             AfterRound::RetryIn(d) => d,
             AfterRound::Stop(why) => {
                 // 〔DEL 续〕出声（界面 toast），然后这条流就此收工；机器页「起」会重起一条、再试一次。
-                let payload = crate::bridge::RemoteHealthPayload {
+                let payload = crate::ui_contract::RemoteHealthPayload {
                     origin: cfg.origin_label(),
                     kind: "unsupported".to_string(),
                     message: why.clone(),
                 };
-                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
                     tracing::warn!("ssh_source remote-health (unsupported) emit failed: {e}");
                 }
                 return Err(why);
@@ -2203,7 +2203,7 @@ impl LineIntake {
             self.removed(sid);
         }
         self.replay
-            .on_session_notice(crate::bridge::SessionFileNoticePayload {
+            .on_session_notice(crate::ui_contract::SessionFileNoticePayload {
                 session_id: sid.to_string(),
                 origin: self.origin_label.clone(),
                 path: path.to_string(),
@@ -2278,7 +2278,7 @@ pub(crate) enum LocalStep {
         session_id: String,
         path: String,
         seq: u64,
-        message: Option<crate::bridge::RecordBody>,
+        message: Option<crate::ui_contract::RecordBody>,
         cwd: Option<String>,
         end: Option<u64>,
     },
@@ -2606,12 +2606,12 @@ async fn stream_loop(
                 tracing::warn!(
                     "ssh_source [{host_label}] 后端没部署上（继续尝试连接已有后端）: {msg}"
                 );
-                let payload = crate::bridge::RemoteHealthPayload {
+                let payload = crate::ui_contract::RemoteHealthPayload {
                     origin: host_label.clone(),
                     kind: "deploy".to_string(),
                     message: msg,
                 };
-                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
                     tracing::warn!("ssh_source remote-health (deploy) emit failed: {e}");
                 }
                 None
@@ -2862,12 +2862,12 @@ async fn stream_loop(
                 // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
                 if let Some(msg) = version_warning(v, &build_id, &host_label) {
                     tracing::warn!("ssh_source remote [{host_label}] version: {msg}");
-                    let payload = crate::bridge::RemoteHealthPayload {
+                    let payload = crate::ui_contract::RemoteHealthPayload {
                         origin: host_label.clone(),
                         kind: "version".to_string(),
                         message: msg,
                     };
-                    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
                         tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
                     }
                 }
@@ -2911,7 +2911,7 @@ async fn stream_loop(
                 //   另一件事（「这台后端一条能力都没声明」），口径一个字没动。
                 if !tail_only {
                     if capabilities.is_empty() {
-                        let payload = crate::bridge::RemoteHealthPayload {
+                        let payload = crate::ui_contract::RemoteHealthPayload {
                             origin: host_label.clone(),
                             kind: "degraded".to_string(),
                             message: copy_text(
@@ -2922,7 +2922,8 @@ async fn stream_loop(
                                 ],
                             ),
                         };
-                        if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                        if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload)
+                        {
                             tracing::warn!("ssh_source remote-health (degraded) emit failed: {e}");
                         }
                     }
@@ -3049,12 +3050,12 @@ async fn stream_loop(
                     if lost_truncated { " (list truncated)" } else { "" }
                 );
                 let message = overflow_health_message(&host_label, dropped, &lost, lost_truncated);
-                let payload = crate::bridge::RemoteHealthPayload {
+                let payload = crate::ui_contract::RemoteHealthPayload {
                     origin: host_label.clone(),
                     kind: "overflow".to_string(),
                     message,
                 };
-                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                if let Err(e) = app.emit(crate::ui_contract::events::REMOTE_HEALTH, payload) {
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
             }

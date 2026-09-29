@@ -1493,14 +1493,14 @@ fn capability_keys_anywhere(v: &serde_json::Value) -> usize {
 /// 是把 [`every_webview_permission_is_registered`] 改成读**全部**来源、逐份对 `ALLOWED`，再改本条的集合。
 #[test]
 fn tauri_loads_capabilities_from_exactly_one_source() {
-    let bridge = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let shell = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
 
     // ① 目录：全部文件（空扩展名列表 = 不筛）两向等于 {default.json}。
     let files: std::collections::BTreeSet<String> =
-        guard_core::scan_tree_excluding(&bridge.join("capabilities"), &[], &[])
+        guard_core::scan_tree_excluding(&shell.join("capabilities"), &[], &[])
             .into_iter()
             .map(|(p, _)| {
-                p.strip_prefix(bridge.join("capabilities"))
+                p.strip_prefix(shell.join("capabilities"))
                     .expect("扫出来的文件不在 capabilities/ 下")
                     .to_string_lossy()
                     .replace('\\', "/")
@@ -1539,7 +1539,7 @@ fn tauri_loads_capabilities_from_exactly_one_source() {
     // ③ 平台配置：会被 Tauri 合并进主配置的那几个文件名，一个都不许在。
     //    正控：同一个探针认得出真在的那份主配置。
     assert!(
-        bridge.join("tauri.conf.json").is_file(),
+        shell.join("tauri.conf.json").is_file(),
         "探针认不出真在的 `tauri.conf.json` —— 下面的「零存在」在空转"
     );
     let mut merged: Vec<String> = Vec::new();
@@ -1549,13 +1549,13 @@ fn tauri_loads_capabilities_from_exactly_one_source() {
             format!("tauri.{plat}.conf.json5"),
             format!("Tauri.{plat}.toml"),
         ] {
-            if bridge.join(&form).exists() {
+            if shell.join(&form).exists() {
                 merged.push(form);
             }
         }
     }
     for form in ["tauri.conf.json5", "Tauri.toml"] {
-        if bridge.join(form).exists() {
+        if shell.join(form).exists() {
             merged.push(form.to_string());
         }
     }
@@ -1568,7 +1568,7 @@ fn tauri_loads_capabilities_from_exactly_one_source() {
     // ④ 运行期：生产源码零 `add_capability`（针运行期拼，免得本文件的散文自己成为命中 ——
     //    虽然本文件住 `tests/`、结构上不在被扫的那棵树里）。
     let needle = format!("{}_{}", "add", "capability");
-    let hits: Vec<String> = guard_core::scan_tree_excluding(&bridge.join("src"), &["rs"], &[])
+    let hits: Vec<String> = guard_core::scan_tree_excluding(&shell.join("src"), &["rs"], &[])
         .into_iter()
         .filter(|(_, src)| guard_core::production_code(src).contains(&needle))
         .map(|(p, _)| p.display().to_string())

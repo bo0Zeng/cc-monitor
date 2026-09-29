@@ -362,10 +362,7 @@ const CORPUS_DROP: &[(&str, &str)] = &[
 /// 「根少了一个」与「见证少了一条」会被同一次编辑一起改掉 ⇒ 恒真。
 /// 形状照 `scanning_guard_registry` 的 `MUST_BE_IN_REACH`：拿**盘上真有的那一份**当见证。
 const CORPUS_WITNESS: &[(&str, &str)] = &[
-    (
-        "src/frontend/shell/src/lib.rs",
-        "bridge 那棵 Rust 树 · 后缀 rs",
-    ),
+    ("src/frontend/shell/src/lib.rs", "壳那棵 Rust 树 · 后缀 rs"),
     (
         "src/backend/stream/wire.rs",
         "backend 那棵 Rust 树 · 后缀 rs",

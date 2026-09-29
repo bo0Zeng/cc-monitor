@@ -962,7 +962,7 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
 // ⚠ **它们买不到**：① 换个名字传同一件事（`host: string | null`）——
 //   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机；
 //   〔C4b〕`RemoteHealthPayload.origin` 已改成恒有值的 `string`）——
-//   那几份住 `src/frontend/shell/src/{bridge,history,search}.rs` 与 `lib.rs`，
+//   那几份住 `src/frontend/shell/src/{ui_contract,history,search}.rs` 与 `lib.rs`，
 //   不在步 2 的写区里，逐份读数在交回件里。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
 

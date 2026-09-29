@@ -282,7 +282,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
         session_id: "a".into(),
         path: "/p/a.jsonl".into(),
         seq: 4,
-        message: crate::bridge::RecordBody::from_json(r#"{"x":1}"#.into()),
+        message: crate::ui_contract::RecordBody::from_json(r#"{"x":1}"#.into()),
         cwd: None,
         end: None,
     };

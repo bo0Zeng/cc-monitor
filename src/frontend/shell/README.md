@@ -65,7 +65,7 @@ src/frontend/shell/
     ├── data_paths.rs  # v2.3.0 (issue #3 A) 透明化：枚举所有持久数据路径 + WebView2 + profile 备份
     ├── config.rs      # load_config + patch_config（config.json 唯一写口：进程级锁 ＋ 按键补丁）+ Windows 原子写
     ├── logging.rs     # v2.0.0 (issue #4) 滚动 log + EnvFilter reload + ErrorEmitterLayer
-    ├── bridge.rs      # IPC 事件常量
+    ├── ui_contract.rs      # IPC 事件常量
     └── utils.rs       # ⭐ v2.6 跨模块共享 helper（日期/时间换算 + newtype + 目录扫 + 原子写 + PS EncodedCommand）
 ```
 
@@ -102,7 +102,7 @@ src/frontend/shell/
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子）。〔CFG1〕写只有 `patch_config_at` 一个函数（进程级锁内现读 → 逐条 set/remove → 原子替换；读不懂不写），`logging.rs` 的诊断写口也经它 | `patch_config_at()` + IPC `load_config / patch_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
-| **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。〔CF2〕会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
+| **ui_contract.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（后端给的 per-file 行号，前端 RecordTimeline 按 seq 排到 DOM）。〔CF2〕会话内容不再是事件：流里一格的体是 `SessionStreamFrame`（`{"line": …}` / `{"batch": "start"｜"end"}`） | `events::SESSION_ENDED / TASKS_UPDATE / SESSION_ACTIVITY …`，`JsonlLinePayload { session_id, cwd, path, seq, origin?, message } / SessionStreamFrame / SessionEndedPayload / TasksUpdatePayload / SessionActivityPayload` |
 | **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) / **v2.8.1** `powershell_encoded_command` (命令 → UTF-16LE base64，给 resume 的 `-EncodedCommand` 用，穿 wt/cmd 不被引号/`;` 切碎，零依赖) | (pub items 完整列表见模块 doc 注释) |
 
 ## IPC 清单
@@ -167,7 +167,7 @@ src/frontend/shell/
 
 ## 事件
 
-后端 → 前端（`Emitter::emit`），全部常量在 `bridge::events`：
+后端 → 前端（`Emitter::emit`），全部常量在 `ui_contract::events`：
 
 | 常量 | 事件名 | payload | 时机 |
 |---|---|---|---|
@@ -184,7 +184,7 @@ src/frontend/shell/
 
 | 事件 | 用途 |
 |---|---|
-| `frontend-ready` | 触发 event_replay 完整回放历史。Batch5-F19 起 payload 带 `{prioritySid}`（`FrontendReadyPayload`，bridge.rs）——replay 按 session 分组、该 tab 的块先发；缺省 → 不分组。（"持锁严格按序"已废：v2.6 起 snapshot 出锁 emit、前端按 seq 排） |
+| `frontend-ready` | 触发 event_replay 完整回放历史。Batch5-F19 起 payload 带 `{prioritySid}`（`FrontendReadyPayload`，ui_contract.rs）——replay 按 session 分组、该 tab 的块先发；缺省 → 不分组。（"持锁严格按序"已废：v2.6 起 snapshot 出锁 emit、前端按 seq 排） |
 
 详 [src/`src/doc/IPC-PROTOCOL.md`](../`src/doc/IPC-PROTOCOL.md`)（跨进程文件协议）与 [src/`src/doc/ARCHITECTURE.md` § 5](../`src/doc/ARCHITECTURE.md`#5-关键设计选择--理由)（事件设计理由）。
 
@@ -259,7 +259,7 @@ PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进
 |---|---|
 | 新 jsonl 记录类型 | `messages.rs:JsonlRecord` enum 加 variant |
 | 新 IPC 命令 | 新建模块 `<feature>.rs` → 在 `lib.rs::run().invoke_handler![]` 注册 |
-| 新事件 | `bridge.rs::events` 加常量 + payload 结构 |
+| 新事件 | `ui_contract.rs::events` 加常量 + payload 结构 |
 | 新跨进程协议文件 | 见 [src/`src/doc/IPC-PROTOCOL.md` § 添加新的跨进程协议文件](../`src/doc/IPC-PROTOCOL.md`#添加新的跨进程协议文件) |
 | 新 Win32 调用 | `Cargo.toml::[target.cfg(windows)].dependencies.windows.features` 加 feature；用 `#[cfg(windows)]` 包裹 |
 | 改 release 打包配置 | `tauri.conf.json::bundle`；详 [src/`src/doc/BUILDING.md`](../`src/doc/BUILDING.md`) |

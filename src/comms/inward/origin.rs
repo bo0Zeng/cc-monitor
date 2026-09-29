@@ -86,7 +86,7 @@
 //!   那张**递减棘轮**现打（数还在用裸 `&str`/`String` 的处数，只许变少）。
 //! · 它**不判**某个 origin 今天连不连得上。那是 `inbound_client` 的事。
 //! · 🔴 它**只管入方向**（前端 → 命令）。**出方向那一半今天还有 `null`** ——
-//!   `bridge::JsonlLinePayload.origin` 一族仍是 `Option<String>`（`None` = 本机），
+//!   `ui_contract::JsonlLinePayload.origin` 一族仍是 `Option<String>`（`None` = 本机），
 //!   而那几份不在本步的写区里。**逐份住址与为什么没动，写在交回件里，别读成「已经没有 `null` 了」。**
 //!
 //! # 线上形状：**本机与远端那两个值与今天逐字节相同**
