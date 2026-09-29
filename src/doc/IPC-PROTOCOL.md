@@ -1323,7 +1323,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
   仍会拒的只有**路径解析**那几形：上跳 / 绝对路径 / 空段 / 父目录不在 / 解完链接跑出 `root`（跟链接的动词解到底再判）——
   它不限制改什么，只保证改的就是 `root ＋ rel` 那一格。
 - 错误码四个，与 `files-create` 同义：`bad_path` · `bad_args` · `refused`（路径解析拒的 / 形状不对）· `io_failed`（盘上没成）。
-- ⚠ **判定与动手之间的窗**（TOCTOU）：〔FIX5〕能用原子原语闭合的已闭合 —— 改名不覆盖（`renameat2(RENAME_NOREPLACE)`；Windows `MoveFileExW` 不带替换旗）· 复制与 `files-put` 新建那一形先写同目录旁名再不覆盖上位 · 开文件全程 `O_NOFOLLOW`（Windows 没有等价开法）。仍开着：父目录在解析与动手之间被整个换掉 · 递归删 / 递归复制逐条的窗 · CAS 与换名之间 · `files-chmod` 跟链接。那块盘不认不覆盖改名（NFS、部分 FUSE）⇒ 退回先看后改。
+- ⚠ **判定与动手之间的窗**（TOCTOU）：〔FIX5〕能用原子原语闭合的已闭合 —— 改名不覆盖（`renameat2(RENAME_NOREPLACE)`；Windows `MoveFileExW` 不带替换旗）· 复制与 `files-put` 新建那一形先写同目录旁名再不覆盖上位 · 开文件全程 `O_NOFOLLOW`（Windows 没有等价开法）。仍开着：父目录在解析与动手之间被整个换掉 · 递归删 / 递归复制逐条的窗 · CAS 与换名之间 · `files-chmod` 跟链接。那块盘不认不覆盖改名（NFS、部分 FUSE）⇒ 普通文件走 `link` ＋ `unlink`（目标已在时 `link` 原子失败），目录拒（`refused`：「这个盘不支持不覆盖改名目录」），不退回先看后改。
 - ⚠ **真远端那一维没有读数**：五条全在本机文件系统上跑过。
 - **CLI 面同样有它们**（从命令注册那一处派生，与 `files-create` 同一条理由）：
   `--files-mkdir` · `--files-rename` · `--files-delete` · `--files-chmod` · `--files-write-text`，
@@ -1355,7 +1355,7 @@ rebuild 回 `entries:4`，下一个 exec 的 `--files-index-status` 回 `index_m
 | `path` | ← | 新名字的落点 |
 
 🔴 **`to` 已经在了 ⇒ 拒（`io_failed`），不覆盖**：unix 上系统那一步会静默顶掉已有目标，
-那是一次没人问过的覆盖。〔FIX5〕一次原子的不覆盖改名，没有先看后改的窗（盘不认这个旗时退回先看后改）。
+那是一次没人问过的覆盖。〔FIX5〕一次原子的不覆盖改名，没有先看后改的窗；盘不认这个旗 ⇒ 普通文件 `link` ＋ `unlink`、目录 `refused`（说「这个盘不支持不覆盖改名目录」）。
 
 #### `files-delete`：删一个文件或一个**空**目录（显式 `recursive` 才删整棵树）
 

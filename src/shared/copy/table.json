@@ -19399,6 +19399,11 @@
       "kind": "body",
       "zh": "📄 ",
       "args": []
+    },
+    "beFilesWrite.rename.dirNoNoreplace": {
+      "kind": "error",
+      "zh": "这个盘不支持不覆盖改名目录，没改：{path}",
+      "args": ["path"]
     }
   }
 }

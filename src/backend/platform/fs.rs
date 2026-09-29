@@ -9,6 +9,8 @@
 //! | macOS | `renamex_np(RENAME_EXCL)`（不承诺的平台，只编得过） | `O_NOFOLLOW` |
 //! | Windows | `MoveFileExW(…, 0)`：不带 `MOVEFILE_REPLACE_EXISTING` 就是目标已在即失败 | **没有**：`FILE_FLAG_OPEN_REPARSE_POINT` 开的是链接本身，不是「遇链接就失败」⇒ 不给 |
 //! | 别的 unix | 没有 ⇒ [`noreplace_unsupported`] 那一形 | `O_NOFOLLOW` |
+//!
+//! 〔主会话 09-28 裁〕那块盘不认不覆盖改名时：普通文件走 [`rename_by_link`]（`link` ＋ `unlink`），目录拒（调用方判）；不退回先看后改。
 
 use std::path::Path;
 
@@ -23,6 +25,45 @@ pub(crate) fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
 /// ⚠ `EINVAL` 也是「把目录挪进它自己底下」的码 —— 调用方退回普通改名之后那一下照样回 `EINVAL`，说法不变。
 pub(crate) fn noreplace_unsupported(e: &std::io::Error) -> bool {
     imp::unsupported(e)
+}
+
+/// 〔主会话 09-28 裁〕盘不认不覆盖改名时，**普通文件**（含链接本身）的不覆盖改名：`link(from, to)` ＋ `unlink(from)`。
+/// `link` 在 `to` 已在时原子失败（`EEXIST`，NFS 上也成立）；`unlink` 失败 ⇒ 撤掉刚建的那个名字、回 `unlink` 的错（两个名字不同时留着）。
+/// 目录没有这条路（`link` 不收目录）—— 那一判在调用方。非 unix ⇒ `Unsupported`。
+pub(crate) fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {
+    imp_link::rename_by_link(from, to)
+}
+
+#[cfg(unix)]
+mod imp_link {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt as _;
+    use std::path::Path;
+
+    pub(super) fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {
+        let f = CString::new(from.as_os_str().as_bytes())?;
+        let t = CString::new(to.as_os_str().as_bytes())?;
+        // SAFETY：两个以 NUL 结尾的串活过这几次调用；`link` / `unlink` 只读它们。
+        if unsafe { libc::link(f.as_ptr(), t.as_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if unsafe { libc::unlink(f.as_ptr()) } != 0 {
+            let e = std::io::Error::last_os_error();
+            // SAFETY：同上。撤不掉 ⇒ 两个名字都在，回的仍是 `unlink` 那一下的错。
+            unsafe { libc::unlink(t.as_ptr()) };
+            return Err(e);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(not(unix))]
+mod imp_link {
+    use std::path::Path;
+
+    pub(super) fn rename_by_link(_from: &Path, _to: &Path) -> std::io::Result<()> {
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
 }
 
 /// 开文件时加上的「最后一段是链接就失败」那个旗（开法的 `custom_flags` 收它）。

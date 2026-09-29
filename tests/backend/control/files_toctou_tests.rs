@@ -121,6 +121,56 @@ fn a_put_that_expects_absence_does_not_clobber_a_file_that_appears_after_the_che
     std::fs::remove_dir_all(&base).ok();
 }
 
+/// 设计/99 §2.2 ＋ 主会话 09-28 裁：盘不认 `RENAME_NOREPLACE` ⇒ 不退回先看后改 —— 普通文件 `link ＋ unlink`，目录拒并出声。
+/// `force_link` 模拟那块盘（`EINVAL`）。
+#[cfg(unix)]
+#[test]
+fn a_disk_without_noreplace_moves_files_by_link_and_refuses_directories() {
+    let base = temp_root("link");
+    std::fs::write(base.join("a"), b"A").unwrap();
+    let (_, _, done) = rename_no_clobber(&base, Path::new("a"), Path::new("b"), &mut || {}, true)
+        .expect("路径解析拒了");
+    done.expect("普通文件走 link 那一支没改成");
+    assert!(!base.join("a").exists(), "源的名字还在");
+    assert_eq!(std::fs::read(base.join("b")).unwrap(), b"A");
+    // 目标在「解析之后、动手之前」冒出来 ⇒ link 原子失败，不盖、源不动。
+    let target = base.join("c");
+    let (_, _, done) = rename_no_clobber(
+        &base,
+        Path::new("b"),
+        Path::new("c"),
+        &mut || {
+            std::fs::write(&target, b"theirs").unwrap();
+        },
+        true,
+    )
+    .expect("路径解析拒了");
+    assert_eq!(
+        done.expect_err("盖了").kind(),
+        std::io::ErrorKind::AlreadyExists
+    );
+    assert_eq!(
+        std::fs::read(&target).unwrap(),
+        b"theirs",
+        "冒出来的那一份被盖了"
+    );
+    assert_eq!(std::fs::read(base.join("b")).unwrap(), b"A", "源没了");
+    // 目录：没有这条路 ⇒ 拒并出声，一个字节不动。
+    std::fs::create_dir(base.join("d")).unwrap();
+    let said = rename_no_clobber(&base, Path::new("d"), Path::new("e"), &mut || {}, true)
+        .expect_err("目录被改名了");
+    let d = std::fs::canonicalize(base.join("d")).unwrap();
+    assert_eq!(
+        said,
+        copy_text(
+            "beFilesWrite.rename.dirNoNoreplace",
+            &[("path", &d.display().to_string())]
+        )
+    );
+    assert!(base.join("d").is_dir() && !base.join("e").exists());
+    std::fs::remove_dir_all(&base).ok();
+}
+
 #[cfg(unix)]
 #[test]
 fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
