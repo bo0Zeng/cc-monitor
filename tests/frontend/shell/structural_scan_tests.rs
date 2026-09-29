@@ -2928,7 +2928,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             2,
         ),
         (
-            "src/common/branch-core/src/lib.rs",
+            "src/backend/agents/claudecode/branch.rs", // 〔THIN〕住址随 branch-core 收进后端适配层
             "create_branch_session",
             1,
         ),
@@ -5370,7 +5370,7 @@ fn every_prose_tombstone_mark_is_registered() {
         ("src/frontend/shell/src/parity_ledger.rs", 1), // 〔MIG-3b〕新贴：点远端 `ccm` 探针旧命令名
         ("tests/frontend/shell/agent_dispatch_registry_tests.rs", 1), // 〔MIG-3b〕新贴：点 LOC1b 删掉的那个门面名
         ("src/README.md", 1), // 〔MIG-3b〕新贴：点分叉那条旧命令名的散文挂墓碑
-        ("src/common/branch-core/src/lib.rs", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
+        ("src/backend/agents/claudecode/branch.rs", 2), // 〔THIN〕住址随 branch-core 收进后端适配层；1 → 2：`is_plain_sid` 那个再导出删了，原处一块 // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/frontend/ui/branch-button.vitest.ts", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("tests/frontend/ui/views/history-actions.vitest.ts", 1), // 〔MIG-3b〕新贴：删会话 / 分叉 / 钩子诊断的转交退役，点旧名的散文挂墓碑
         ("src/frontend/ui/account-reads.ts", 1), // 〔MIG-2〕起会话的计划与渲染搬进后端（`99 §2.1 ⑬`）：墓碑随搬家换住址 / 点已删命令名的散文挂墓碑

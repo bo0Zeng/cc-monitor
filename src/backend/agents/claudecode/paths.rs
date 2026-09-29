@@ -237,7 +237,7 @@ pub fn is_session_record_path(target: &Path) -> bool {
 ///
 /// 三关，各治一形：
 ///
-/// 1. 找：`branch_core::find_session_file`（与分叉那条同一份；sid 形状不合法**先于任何 IO** 就拒，
+/// 1. 找：[`super::branch::find_session_file`]（与分叉那条同一份；sid 形状不合法**先于任何 IO** 就拒，
 ///    符号链接不算命中）。
 /// 2. **解到底再判一次**：真路径必须在记录树（也解到底）底下、恰好 `<proj>/<sid>.jsonl` 两段 ——
 ///    子代理那种更深的文件、一条指出去的链接，都在这一关被拒。
@@ -248,7 +248,7 @@ pub fn is_session_record_path(target: &Path) -> bool {
 /// 判据拿临时目录当 home，不碰真实配置根，也不改测试进程的环境变量。
 pub fn session_file_for_delete_in(home: &Path, sid: &str) -> Result<PathBuf, String> {
     let root = projects_root(home);
-    let found = branch_core::find_session_file(&root, sid).map_err(|e| {
+    let found = super::branch::find_session_file(&root, sid).map_err(|e| {
         copy_text(
             "beClaudePaths.delete.notFound",
             &[("id", sid), ("e", &e.to_string())],

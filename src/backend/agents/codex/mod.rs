@@ -42,6 +42,9 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     turn_end: None,
     // 〔THIN〕Codex 的工具名今天没人考据过（`codex_record.rs` 的真机样本里只见过 `shell`）⇒ 不给卡型，界面画普通工具卡。
     tool_card: None,
+    // 〔THIN〕Codex 的会话不在按项目分的记录树里、今天也不分叉 ⇒ 这两格没有。
+    find_session: None,
+    branch: None,
     drift: None,
     delete: None,
 };

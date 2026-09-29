@@ -155,6 +155,31 @@ pub enum ToolCard {
     Md,
 }
 
+/// 〔THIN〕[`RecordFace::branch`] 的形状。
+pub(crate) type BranchFn =
+    fn(&[serde_json::Value], &str, &str, &str) -> Result<Vec<serde_json::Value>, String>;
+
+/// 〔THIN〕记录树那一家按 sid 找会话文件 —— 通用层（分叉 · 「记录还在不在」）按 sid 找文件的唯一入口。没有哪一家答得了 ⇒ 照实拒。
+pub(crate) fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
+    match stream_record_face().and_then(|r| r.find_session) {
+        Some(f) => f(records_root, sid),
+        None => Err(format!("no agent adapter can locate session {sid:?}")),
+    }
+}
+
+/// 〔THIN〕记录树那一家的分叉记录变换 —— 通用层（`control/fork_write.rs`）分叉的唯一入口。没有哪一家答得了 ⇒ 照实拒。
+pub(crate) fn build_branch_records(
+    lines: &[serde_json::Value],
+    message_uuid: &str,
+    src_sid: &str,
+    new_sid: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    match stream_record_face().and_then(|r| r.branch) {
+        Some(f) => f(lines, message_uuid, src_sid, new_sid),
+        None => Err("no agent adapter can fork a session".to_string()),
+    }
+}
+
 /// 〔THIN〕记录树那一家（[`stream_record_face`]）怎么画这个工具名 —— 通用层（会话事实）认 agent 工具的唯一入口。
 pub(crate) fn tool_card_of(name: &str) -> Option<ToolCard> {
     stream_record_face()
@@ -181,6 +206,10 @@ pub(crate) struct RecordFace {
     pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
     /// 〔THIN〕一个工具名在界面上画成哪一种卡（[`ToolCard`]）。`None` ＝ 这一家的工具名今天没人考据过（一律普通工具卡）。
     pub(crate) tool_card: Option<fn(&str) -> Option<ToolCard>>,
+    /// 〔THIN〕在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
+    pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
+    /// 〔THIN〕分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
+    pub(crate) branch: Option<BranchFn>,
     /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
     pub(crate) drift: Option<fn() -> serde_json::Value>,
     /// 〔MOD · 子步 4〕删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。

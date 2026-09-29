@@ -1393,7 +1393,8 @@ run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc
 # 〔RE〕14 → 13：`codex-token-core` 搬进后端（`agents/codex/token.rs`，monitor 零引用），它的 3 条随后端那一格跑。
 # 〔THIN〕13 → 12：`gate-core` 收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了），它的单测随后端那一格跑。
 # 〔THIN〕12 → 11：`agent-tools-core` 收进后端适配层 `agents/claudecode/cards.rs`（界面不再按工具名判卡型）。
-run_gate_sum cargo 11 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
+# 〔THIN〕11 → 10：`branch-core` 收进后端适配层 `agents/claudecode/branch.rs`（monitor 零引用）。
+run_gate_sum cargo 10 bash -c 'cd src/frontend/shell && cargo test --workspace --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/frontend/shell/embedded-backends/` 铺没铺。
 #

@@ -4,13 +4,13 @@
 //! G6 段第 3 条：sid 先过 `[A-Za-z0-9-]` 白名单，再只在 projects 目录下按文件名匹配。本族判这两句的纯判定半：
 //! `build_branch_records` 走祖先回溯、逐字段对齐原生 fork 形状、拒 sidechain 与未知 uuid；`is_plain_sid` 拒能拼出别的路径的 sid。〔JA1 点址 2026-09-24〕
 
-use super::{build_branch_records, is_plain_sid};
+use super::build_branch_records;
+// 〔THIN〕从前是本 crate 再导出的 `is_plain_sid`；收进后端之后 `find_session_file` 直呼这一条，判据照旧钉它。
+use shell_quote_core::session_id_ok as is_plain_sid;
 
-/// `K-R88`：sid 的形状是**两侧共用的那一把闸**，且它先于任何 IO。
+/// `K-R88`：sid 的形状是 `find_session_file` 先过的那一把闸，且它先于任何 IO。
 ///
-/// ⚠ 本 crate 里**只测得了这一半**（纯判定）；「在树上找得到 / 找不到」那一半的
-/// 夹具要造目录，而那正是本 crate 不能有的东西（理由见 `find_session_file` 上面那段）。
-/// 那一半由两侧各自的测试驱动 —— 这条边界是登记过的，不是漏的。
+/// ⚠ 这里只测纯判定那一半；「在树上找得到 / 找不到」那一半由调用方各自的测试驱动（`fork_write` · `history_query` · 删会话）。
 #[test]
 fn a_session_id_that_could_spell_another_path_is_refused() {
     assert!(is_plain_sid("0473c3a0-1111-2222-3333-444455556666"));

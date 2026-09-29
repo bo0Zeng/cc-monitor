@@ -1,21 +1,7 @@
-//! **会话分叉的记录变换** —— monitor 与远端后端共用的**唯一**一份实现。
-//!
-//! # 为什么要单独一个 crate（G1，branch-anywhere）
-//!
-//! 分叉这件事本地和远端都要做：本地由 monitor 直接算，远端由后端在**远端本地**算
-//! （几十 MB 的 jsonl 不该为了分叉拉过 ssh）。两边跑的必须是**同一段逻辑**。
-//!
-//! 备选过三条路，选这条的理由见 `.claude/planned-build/branch-anywhere/features/G1-*.md`：
-//! 仓里已有三个「复制 + 漂移守卫」的双写点先例（`TMUX_LS_FMT` / `observation` 取值集 /
-//! `RemovalCause` 字面量），但那三个都是**常量**；把一个 80 行的算法复制一份，
-//! 守卫要么脆（改个变量名就假红），要么退化成整体字节比对。**共享 crate 让漂移在结构上不存在。**
-//!
-//! # 硬约束：不能把后端拖进 monitor 的 workspace
-//!
-//! `src/backend` 是**独立 crate、刻意不在 workspace 里** —— 否则 Windows CI 的
-//! `cargo test --all` 会去构建这个 Linux-only 的后端并炸掉。
-//! 本 crate 位于 monitor 的 workspace 内（`cargo test --all` 会跑它的测试），
-//! 而后端只是**单向 path 依赖**过来 —— 依赖不会反向制造 workspace 成员关系。
+//! 〔THIN〕**会话分叉的记录变换 ＋ 按 sid 找那份会话文件** —— Claude 记录格式的知识，住它的适配层（`设计/00 §1.6.4` 组 3 ·
+//! `§1.2`「共享 crate 只放契约」）。从前是共享 crate `branch-core`（G1 立：当时 monitor 本机分叉也要算这一段）；本机分叉改问本机后端
+//! 之后 monitor 零引用，它只剩后端用 ⇒ 收进这里。通用层（`control/fork_write.rs` · `observe/history_query.rs`）经注册表那两格够它
+//! （`RecordFace.find_session` · `.branch` → `agents::find_session_file` · `agents::build_branch_records`），不直呼 `agents::claudecode::`。
 //!
 //! # 落盘格式的判据
 //!
@@ -27,7 +13,7 @@
 ///
 /// - `message_uuid` 不在记录集中 → Err（前端传了不存在的 uuid）。
 /// - 环防御：parentUuid 指回已访问节点即停（append-only jsonl 理论无环，防御性）。
-pub fn build_branch_records(
+pub(crate) fn build_branch_records(
     lines: &[serde_json::Value],
     message_uuid: &str,
     src_sid: &str,
@@ -135,28 +121,24 @@ use std::path::{Path, PathBuf};
 /// `2` = 记录根自己那一层（`<根>/<sid>.jsonl`）＋ 项目目录那一层
 /// （`<根>/<项目目录>/<sid>.jsonl`，真机上的常态）。**再深一层是子 agent 那一族**，
 /// 而它们不是可分叉的会话 —— 同一件事的另一半是上面那条 sidechain 判据。
-pub const SESSION_LOOKUP_DEPTH: usize = 2;
+pub(crate) const SESSION_LOOKUP_DEPTH: usize = 2;
 
-/// sid 的合法形状 —— 〔DUP1 · `设计/90 §3` 判据 2 · `01 §5` D1〕**规则只有一份**，住 `shell_quote_core::session_id_ok`
-/// （1..=64 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`），这里是它的再导出，名字留着好让两侧调用方一个不动。
-///
-/// 它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符。理由不是「防手滑」：
-/// 后端是被远程调起来的，**少一个可被构造的路径入参就少一条路径穿越面**
-/// （`src/doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
-/// 〔DUP1〕收进共享那一份时多挡了一样：前导 `-`（起会话那几条路要它，这条路只会更严不会更松）。
-pub use shell_quote_core::session_id_ok as is_plain_sid;
+// sid 的合法形状：〔DUP1〕规则只有一份，住 `shell_quote_core::session_id_ok`（1..=64 位 · 首字符 ASCII 字母数字 · 其余 `[A-Za-z0-9-]`）。
+//   它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符（`src/doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
+//   〔THIN〕从前这里再导出成 `is_plain_sid`〔散文墓碑〕好让两侧调用方一个不动；收进后端之后调用方直呼那一条。
+use shell_quote_core::session_id_ok;
 
-/// **两侧唯一的一份「找文件」**：在记录树 `records_root` 下按 sid 找那份 `<sid>.jsonl`。
+/// **唯一的一份「找文件」**：在记录树 `records_root` 下按 sid 找那份 `<sid>.jsonl`。
 ///
-/// - sid 形状不合法 → `Err`，且**先于任何 IO**（见 [`is_plain_sid`]）。
+/// - sid 形状不合法 → `Err`，且**先于任何 IO**（`shell_quote_core::session_id_ok`）。
 /// - 找不到 → `Err`。🔴 **绝不静默退回「树上第一份」** —— `KR88D2` 第三刀验的就是这一格：
 ///   一边报错、一边随手挑一个，就是两边处置不一致。
 /// - 符号链接**不算命中**：类型判定取自目录项本身（**不跟随**链接），
 ///   于是一条指向记录树之外的链接进不来。这半是围栏 ——
 ///   monitor 那条路原先靠「canonicalize 两边再比前缀」买同一样东西，
 ///   而收进 sid 之后连**表达**一个界外目标的办法都没有了。
-pub fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
-    if !is_plain_sid(sid) {
+pub(crate) fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
+    if !session_id_ok(sid) {
         return Err(format!("refuse branch: invalid session id {sid:?}"));
     }
     let want = format!("{sid}.jsonl");
@@ -195,5 +177,5 @@ fn look_down(dir: &Path, want: &str, depth: usize) -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-#[path = "../../../../tests/common/branch-core/lib_tests.rs"]
+#[path = "../../../../tests/backend/agents/claudecode/branch_tests.rs"]
 mod tests;
