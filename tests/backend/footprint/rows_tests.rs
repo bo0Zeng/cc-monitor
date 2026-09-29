@@ -1179,21 +1179,20 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
         EnvTier::ALL.len()
     );
 
-    // ③ 欠装口那一档：两半都要说到，且**不许**说成「不由 cc-monitor 提供」
+    // ③ 欠装口那一档：〔V161〕用户 09-29「所有文案…不能把开发过程混进去」⇒ 说现状（这里装不了、要你自己装），
+    //   不再留「应随 cc-monitor 一起安装，暂未提供」「安装入口还没写」那层「还欠着」的意思；按文案键断言。
+    //   仍**不许**说成「不由 cc-monitor 提供」（`KR65D2`：不会被读成「不该我们装」）。
     let owed: Vec<&SurfaceRow> = rows
         .iter()
         .filter(|r| r.tier == EnvTier::AppShipsNoInstallerYet)
         .collect();
     assert!(!owed.is_empty(), "这一页上一行「欠装口」都没有 —— 先查闭集");
     for r in &owed {
-        assert!(
-            // 〔CP2b〕措辞照 CP1 台账改成「应随 cc-monitor 一起安装，暂未提供」（去掉内部编号 K38 与「装口」）；
-            // 两半仍都在：「应随 cc-monitor」＝该我们带，「暂未提供」＝还欠着。
-            r.source_label.contains("应随 cc-monitor 一起安装")
-                && r.source_label.contains("暂未提供"),
-            "`{}` 的「从哪来」没说清这是我们该自带的东西，实得 {:?}",
-            r.tool_id,
-            r.source_label
+        assert_eq!(
+            r.source_label,
+            copy_core::copy_text("rsConfigSurface.unmanaged.owedSource", &[]),
+            "`{}` 的「从哪来」不是欠装口那一档的那句",
+            r.tool_id
         );
         assert!(
             !r.source_label.contains("不由 cc-monitor 提供"),
@@ -1201,11 +1200,11 @@ fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
                  那与 `K38` 矛盾（`KR65D2` 逐字：不会被读成「不该我们装」）",
             r.tool_id
         );
-        assert!(
-            r.effect_label.contains("还没写") || r.effect_label.contains("没写"),
-            "`{}` 的「我们做什么」没说清装口是欠着的，实得 {:?}",
-            r.tool_id,
-            r.effect_label
+        assert_eq!(
+            r.effect_label,
+            copy_core::copy_text("rsConfigSurface.unmanaged.owedEffect", &[]),
+            "`{}` 的「我们做什么」不是欠装口那一档的那句",
+            r.tool_id
         );
     }
 }

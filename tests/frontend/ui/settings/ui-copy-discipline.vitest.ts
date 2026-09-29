@@ -103,6 +103,7 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
 
 import { SettingsPanel } from "../../../../src/frontend/ui/settings/panel";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { __setHostOsForTests } from "../../../../src/frontend/ui/settings/host-os";
 import { __resetMachineContextForTests } from "../../../../src/frontend/ui/settings/machine-context";
 
@@ -137,11 +138,12 @@ const SHAPES: ReadonlyArray<{ name: string; re: RegExp; why: string }> = [
     why: "写给开发文档看的论证，不该出现在设置面板上（`70 §2.1` #2）",
   },
   {
+    // 〔V161〕用户 09-29「所有文案…不能把开发过程混进去」⇒ 「还没有安装入口 / 暂未提供 / 今天还没有」也归这一形。
     // 〔ST2 · `70 §11.4` 末那条射程缺口〕五种形状里原来**没有这一种** ⇒ 足迹那两句
     //   「该由 cc-monitor 自带、而安装入口还没写」这把尺子一条都逮不到。
     name: "欠账当产品文案",
-    re: /该由 cc-monitor 自带|入口还没写|还没写|我们欠/g,
-    why: "把我们还没做完的实现写成给用户看的话（`70 §11.4` #1 / #2）——要说的是状态（「还没有安装入口」），不是谁欠谁",
+    re: /该由 cc-monitor 自带|入口还没写|还没写|我们欠|还没有安装|暂未提供|今天还没有/g,
+    why: "把我们还没做完的实现写成给用户看的话（`70 §11.4` #1 / #2 · V161）——说现状与你能做什么（「这项不能在这里装」），不说「还没有 / 今天 / 以后」",
   },
 ];
 
@@ -283,8 +285,8 @@ describe("`70 §2.4` 文案纪律 ＋ `§8` #5：界面上零 markdown / 零源�
       const rows = document.querySelectorAll(".config-surface-row");
       expect(rows.length, "表一行都没上屏 ⇒ 下面的零命中是空转（原来就是这样空转的）").toBe(4);
       const root = document.querySelector<HTMLElement>(".config-surface-section")!;
-      // 反空真：欠账那一档的状态话**真的在**被扫的文字里。
-      expect(visibleCopy(root)).toContain("还没有安装入口");
+      // 反空真：欠的那一档那句话**真的在**被扫的文字里（〔V161〕按文案键取，不钉原文）。
+      expect(visibleCopy(root)).toContain(copyText("configSurface.summarizeOwedInstallers.owed", { namesCount: 1 }));
       expect(violationsOf(visibleCopy(root)).map((v) => `${v.shape}: ${v.hit}`)).toEqual([]);
     } finally {
       ipc.replies.clear();

@@ -377,9 +377,12 @@ TB="$(mktemp -d)"
 cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"
 # 〔AL3 · V138〕位置动作 `new` 取消、预览改 `--ccm-print`（`new` 留着会被当成交给 claude 的位置参数）。
-chk "台账脚本不可执行 ⇒ 明说「不记进派生台账」" \
+# 〔COPY-R〕那一句按文案键取（`设计/91 §6`：判据按键、不钉原文），整行比。
+NO_RECORD_SAY="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["entries"]["bePlan.bus.noSpawnRecord"]["zh"].replace("{path}", sys.argv[2]))' \
+  "$REPO/src/shared/copy/table.json" "$TB/cc-spawned-record")"
+chk "台账脚本不可执行 ⇒ 明说那一句（bePlan.bus.noSpawnRecord）" \
   "$(CC_BUS_SCRIPTS="$TB" "$CCM" -- --tmux-base=q --detach --bus-register \
-      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -c '不记进派生台账')" "1"
+      --ccm-print --cwd /tmp 2>&1 >/dev/null | grep -cxF "$NO_RECORD_SAY")" "1"
 chmod -x "$TB/cc-register"
 chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
   "$(CC_BUS_SCRIPTS="$TB" "$CCM" -- --tmux-base=q --detach --bus-register \

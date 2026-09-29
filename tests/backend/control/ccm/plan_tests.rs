@@ -630,10 +630,14 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     // 〔TAIL · CP2c 续〕两句进了文案表：生产段认 key，表里那句认话。
     let table: serde_json::Value =
         serde_json::from_str(include_str!("../../../../src/shared/copy/table.json")).expect("表");
-    for (key, say) in [
-        ("bePlan.bus.noScripts", "没有登记"),
-        ("bePlan.bus.noSpawnRecord", "不记进派生台账"),
-    ] {
+    // 〔COPY-R · 09-29〕「派生台账」换成人话之后，`noSpawnRecord` 那句不再按原文认；它说没说出来由 e2e
+    //   `cc-spawn-uplift.sh` [18] 按文案键整行比（`设计/91 §6`）。这里只钉它在表里、带 `{path}`。
+    assert_eq!(
+        table["entries"]["bePlan.bus.noSpawnRecord"]["args"],
+        serde_json::json!(["path"]),
+        "表里没有 bePlan.bus.noSpawnRecord，或它不再点名是哪个文件"
+    );
+    for (key, say) in [("bePlan.bus.noScripts", "没有登记")] {
         assert!(
             table["entries"][key]["zh"]
                 .as_str()
