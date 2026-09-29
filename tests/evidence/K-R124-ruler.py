@@ -372,7 +372,7 @@ BIN_SHIPPING = {
 #:   `cc-monitor-backend` 这个名字的家是下面那个 Rust `const`（消费侧
 #:   `local_backend::resolve_with` 找的就是它），本文件**不抄一份**，实打去读。
 FOREIGN_SIDECARS = {
-    ("src/frontend/shell/src/backend/control/local_backend.rs", "LOCAL_BACKEND_STEM"):
+    ("src/frontend/shell/src/local_backend.rs", "LOCAL_BACKEND_STEM"):
         "F05b 的本机后端，来自 `src/backend` 那棵树（**不是**本包的 `[[bin]]`）；"
         "字节由 `release.yml` 的 `Stage local backend for externalBin` 铺进 `binaries/`",
 }

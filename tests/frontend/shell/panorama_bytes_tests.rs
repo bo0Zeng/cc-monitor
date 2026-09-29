@@ -6,7 +6,8 @@ use super::*;
 /// 那一格的原生产线），与「别的 OS / arch 答没有、不把一份 Linux ELF 推过去」。
 #[test]
 fn only_the_panorama_cells_with_a_production_line_get_bytes() {
-    use crate::byte_table::{key_of, Arch, Key, Os, Product, LINES};
+    use crate::byte_table::{Arch, Key, Os, Product, LINES};
+    use deploy_core::key_of;
     let linux = |arch| {
         Some(Key {
             os: Os::Linux,
@@ -61,7 +62,8 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
 /// 多一格 ⇒ 表里有一格、却没有那份字节；少一格 ⇒ 放进来的字节永远没人选。
 #[test]
 fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
-    use crate::byte_table::{key_of, Product, LINES};
+    use crate::byte_table::{Product, LINES};
+    use deploy_core::key_of;
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let at = src
@@ -97,7 +99,7 @@ fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
 #[test]
 fn the_embedded_bytes_are_the_right_arch() {
     for (arch, machine) in [("x86_64", 62u16), ("aarch64", 183u16)] {
-        let key = crate::byte_table::key_of("Linux", arch).expect("认得出");
+        let key = deploy_core::key_of("Linux", arch).expect("认得出");
         let b = crate::byte_table::pick(crate::byte_table::Product::Panorama, key)
             .expect("cfg 置了却选不出字节")
             .bytes;
@@ -183,17 +185,16 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
     );
 }
 
-/// ★〔TL1 · 4C〕**问那台是什么机器，monitor 生产段只有一处**（`DP1.md` 报备 7「两份 `uname -s -m`」收成一份）。
+/// ★〔TL1 · 4C〕**问那台是什么机器，monitor 生产段零处**（`DP1.md` 报备 7「两份 `uname -s -m`」收成一份；〔THIN〕那一份进了后端）。
 ///
 /// 要求住址：`设计/96 §7.1.1b`「全仓唯一的取字节口」（`byte_table.rs` 头注逐字）＋ `设计/01 §6.7a` 规矩 4
-/// （本机只是「目标机器恰好是自己」—— 两件产物、两条路走同一张表）。
-/// 两向：`uname -s -m` 这个命令串在 monitor 生产段的住址集合 == {`byte_table.rs`}（多一处 = 又长出第二份；
-/// 零处 = 尺子瞎了）；全景推字节那一臂真经 `choose(Panorama, Remote, probe_key(..))` 取、拒绝经 `say(Panorama, ..)` 说
-/// （读本模块生产段，异源于 `byte_table` 自己的判据）。
+/// （本机只是「目标机器恰好是自己」—— 两件产物、两条路走同一张表）＋ `设计/00 §1.2`「判定只在后端」（〔THIN〕表 B 的承诺是裁决）。
+/// 两向：`uname -s -m` 这个命令串在 monitor 生产段 ∪ 共享 crate 的住址集合 == {`deploy-core`}（它的唯一消费者今天是后端
+/// `deploy_plan::slot_of`）；全景推字节两臂都问本机常驻后端 `deploy-slot`（`ask_slot(Some(&cfg), …)` · `ask_slot(None, …)`），
+/// 取字节只按答里那一格（`slot_bytes`）—— monitor 零处 `choose(Product::Panorama` · 零处 `probe_key`（读本模块生产段，异源于 `byte_table` 自己的判据）。
 #[test]
 fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choose() {
-    // 〔MIG-3b〕命令串随表 A / 表 B 搬进共享的 `deploy-core`（本机常驻后端出部署计划也问这一条）⇒ 射程是 monitor 生产段 ∪ 共享 crate，
-    //   住址集合 == {`src/common/deploy-core/src/lib.rs`}；全景这一臂经 `byte_table::probe_key` 用它（下面那几格锚）。
+    // 〔MIG-3b〕命令串随表 A / 表 B 搬进共享的 `deploy-core` ⇒ 射程是 monitor 生产段 ∪ 共享 crate，住址集合 == {`src/common/deploy-core/src/lib.rs`}。
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let needle = format!("uname -s {}", "-m");
     let mut at: Vec<String> = Vec::new();
@@ -229,16 +230,20 @@ fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choos
     .split_whitespace()
     .collect();
     for want in [
-        "choose(Product::Panorama,Route::Remote,key)",
-        "letkey=probe_key(&cfg).await?;",
-        ".say(Product::Panorama,label)",
-        "choose(Product::Panorama,Route::Local,Key::this_machine())",
-        // 〔CP2b〕「本机」这个机器名进了文案表（取文口），锚跟着换。
-        ".say(Product::Panorama,&copy_text(\"rsPanoramaBytes.local.machine\",&[]),)",
+        "letkey=ask_slot(Some(&cfg),label).await?;",
+        "letkey=ask_slot(None,&copy_text(\"rsPanoramaBytes.local.machine\",&[])).await?;",
+        "letbytes=slot_bytes(key)?;",
     ] {
         assert!(
             me.contains(want),
             "panorama_bytes.rs 生产段里找不到 `{want}`"
+        );
+    }
+    // 〔THIN〕monitor 不再判「那台要哪一格」：零处 `choose(Product::Panorama` · 零处 `probe_key`。
+    for gone in ["choose(Product::Panorama", "probe_key("] {
+        assert!(
+            !me.contains(gone),
+            "panorama_bytes.rs 生产段里又出现了 `{gone}` —— 那一问归本机常驻后端"
         );
     }
 }
@@ -262,7 +267,8 @@ fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
     )
     .expect("读 panorama_bytes.rs");
     let prod = guard_core::production_code(&src);
-    let at = prod.find("fn place_local()").expect("没有 place_local");
+    // 〔THIN〕`place_local` 改收字节（哪一格由本机常驻后端 `deploy-slot` 答），签名跟着变。
+    let at = prod.find("fn place_local(bytes").expect("没有 place_local");
     let body: String = prod[at..at + prod[at..].find("\n}\n").unwrap()]
         .split_whitespace()
         .collect();
@@ -276,7 +282,7 @@ fn the_local_copy_is_named_the_way_the_local_backend_looks_for_it() {
 /// 置可执行位失败 ⇒ 报、盘上没有半截的正式文件。
 #[test]
 fn placing_the_local_copy_writes_once_and_only_rewrites_when_the_bytes_differ() {
-    use crate::backend::control::local_backend::place_local_panorama;
+    use crate::local_backend::place_local_panorama;
     use std::cell::Cell;
     let dir = std::env::temp_dir().join(format!("ccm-rm1f-place-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -371,4 +377,24 @@ fn the_native_panorama_landing_is_spelled_the_same_in_all_four_places() {
         yml.contains(&format!("$dst = \"src/frontend/shell/{landing}\"")),
         "`release.yml` Windows 那一格铺的不是 src/frontend/shell/{landing}"
     );
+}
+
+/// 〔THIN〕`deploy-slot` 的答严格收：恰 `{os, arch, label, ack}`、键认得出（金样同 `IPC-PROTOCOL.md` 那一节）；多一格 · 少一格 · 认不出 ⇒ 错。
+/// 要求住址：`设计/00 §1.2`「共享 crate 只放契约」（表 A 的键是两侧对上的契约）。
+#[test]
+fn the_slot_answer_is_read_strictly() {
+    use serde_json::json;
+    let ok = json!({"os": "Linux", "arch": "x86_64", "label": "Linux / x86_64", "ack": null});
+    assert_eq!(
+        decode_slot(&ok),
+        deploy_core::key_of("Linux", "x86_64").map_err(|_| String::new())
+    );
+    for bad in [
+        json!({"os": "Linux", "arch": "x86_64", "label": "x"}),
+        json!({"os": "Linux", "arch": "x86_64", "label": "x", "ack": null, "extra": 1}),
+        json!({"os": "Plan9", "arch": "x86_64", "label": "x", "ack": null}),
+        json!(null),
+    ] {
+        assert!(decode_slot(&bad).is_err(), "{bad}");
+    }
 }

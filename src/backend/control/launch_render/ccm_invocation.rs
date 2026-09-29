@@ -78,7 +78,7 @@ pub enum IdentifierSlot {
     Model,
     /// `--account <名>`（`shell_quote_core::account_name_ok`）。
     Account,
-    /// 〔DUP2 · J6〕`--tmux=<名>`：本工具要**新建**的会话名（`gate_core::new_tmux_name_issue`）。
+    /// 〔DUP2 · J6〕`--tmux=<名>`：本工具要**新建**的会话名（`crate::control::gate_rules::new_tmux_name_issue`）。
     TmuxName,
 }
 
@@ -87,7 +87,7 @@ pub enum IdentifierSlot {
 pub enum FreeTextSlot {
     Cwd,
     AgentArg,
-    /// 〔DUP2 · J6〕`attach <名>`：一个**已有**会话的名字（V131 ②：`gate_core::existing_tmux_name_issue`，拒绝集 ＋ 非空）。
+    /// 〔DUP2 · J6〕`attach <名>`：一个**已有**会话的名字（V131 ②：`crate::control::gate_rules::existing_tmux_name_issue`，拒绝集 ＋ 非空）。
     AttachTarget,
 }
 
@@ -157,8 +157,11 @@ impl Refusal {
                 "rsCcmInvocation.refusal.idTmuxName",
                 &[
                     ("value", value),
-                    ("refused", gate_core::NEW_TMUX_NAME_REFUSED),
-                    ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+                    ("refused", crate::control::gate_rules::NEW_TMUX_NAME_REFUSED),
+                    (
+                        "max",
+                        &crate::control::gate_rules::NEW_TMUX_NAME_MAX.to_string(),
+                    ),
                 ],
             ),
         }
@@ -460,9 +463,9 @@ pub fn render_ccm_invocation(
             return Err(Refusal::AttachNeedsTmux);
         };
         let _ = name;
-        // 〔DUP2 · J6 · `INVARIANTS §47` ②〕一个已有会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空，规则住 gate-core（全仓唯一一份）。
+        // 〔DUP2 · J6 · `INVARIANTS §47` ②〕一个已有会话的名字：拒绝集（控制符 · 欺骗字符）＋ 非空，规则住 `control/gate_rules.rs`（全仓唯一一份）。
         //   ccm 那头按 `=<名>:` 精确寻址（`plan.rs` 的 attach 那一行），`*` `?` 不被当通配。界面那份删了之后这条路自己判。
-        if gate_core::existing_tmux_name_issue(cname).is_some() {
+        if crate::control::gate_rules::existing_tmux_name_issue(cname).is_some() {
             return Err(Refusal::FreeTextRefused {
                 slot: FreeTextSlot::AttachTarget,
                 value: format!("{cname:?}"),
@@ -515,9 +518,9 @@ pub fn render_ccm_invocation(
         });
     }
     if let Container::Tmux { name, .. } = spec.container {
-        // 〔DUP2 · J6 · `INVARIANTS §47` ①〕`--tmux=<名>` 是要**新建**的会话名：新建那一条（gate-core，全仓唯一一份）。
+        // 〔DUP2 · J6 · `INVARIANTS §47` ①〕`--tmux=<名>` 是要**新建**的会话名：新建那一条（`gate_rules`，全仓唯一一份）。
         //   今天之前这条路零判定、只靠界面那道 TS 谓词 —— 那份删了，这里接上（「对端会校验」不是理由）。
-        if gate_core::new_tmux_name_issue(name).is_some() {
+        if crate::control::gate_rules::new_tmux_name_issue(name).is_some() {
             return Err(Refusal::IdentifierRefused {
                 slot: IdentifierSlot::TmuxName,
                 value: format!("{name:?}"),

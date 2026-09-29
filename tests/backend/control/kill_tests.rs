@@ -10,7 +10,7 @@ fn shape_validation_rejects_what_would_break_the_tmux_target() {
         (json!({ "name": "a\nb" }), "含控制字符"),
         (
             json!({ "name": "a\u{202e}b" }),
-            "含视觉欺骗字符（gate-core 那一格）",
+            "含视觉欺骗字符（`gate_rules` 那一格）",
         ),
     ] {
         assert!(parse_name(&bad).is_err(), "{why} 应当被拒：{bad:?}");

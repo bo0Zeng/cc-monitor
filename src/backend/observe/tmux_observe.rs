@@ -78,7 +78,7 @@ use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 
 // ---------- P1（zero-poll-liveness）：tmux 观测的取值（〔MIG-1 续〕原 `tmux_sessions` 帧的 `observation` 格；那一帧删了，只喂会话账本） ----------
 //
-// **双写点**：与 monitor `src/frontend/shell/src/backend/control/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
+// **双写点**：与 monitor `src/frontend/shell/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
 // `observation_tokens_double_write_point_stays_in_sync`〔散文墓碑〕 测试钉住（`include_str!` 读本文件 +
 // 锚定 const 定义行）。**改本处必须同步 monitor**，同 `TMUX_LS_FMT` 的纪律。
 /// backend 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。

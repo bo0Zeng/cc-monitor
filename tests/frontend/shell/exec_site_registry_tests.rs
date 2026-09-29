@@ -65,7 +65,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    `remote_history.rs / stream_read_remote_session`（`--read-session`）与
     //    `ssh_source.rs / fetch_snapshot`（`--read-session-tail`）。形状与理由同上面
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
-    //    （改走长连接的 `history-read` / `history-tail`，`backend::control::frame_query`）
+    //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
     // 🔴 〔C4d · 第四波 4B〕**逐次拨号那一行也出去了**（`remote_history.rs` 的 `run_list_query`〔散文墓碑〕）：
     //    它的放行表 C4c 起是空的，主会话 09-25 裁删 —— 同上面几笔的形状（那条一次性 SSH exec 整条没了）。
@@ -343,8 +343,7 @@ const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
      "〔HOST · V139〕起 / 找那台的**常驻后端本身**（`--resident-ensure`）—— 接上它之前没有后端可问"),
     ("remote_resident.rs", "stop", StillShell::Bootstrap,
      "〔HOST〕停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
-    ("byte_table.rs", "probe_key", StillShell::Bootstrap,
-     "推全景小程序之前问那台 `uname -s -m`，据此挑哪一份字节去放（〔MIG-3b〕后端那条部署路的这一问进了本机常驻后端 `deploy-plan`；全景这一条随 `panorama_*` 三条待裁）"),
+    // 〔THIN〕`byte_table.rs` 那一行（推全景小程序之前问那台 `uname -s -m`）摘了：「那台要哪一格」整问进了本机常驻后端（`deploy-slot`）。
     // 〔MIG-3b〕`sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
     // 〔MIG-3b 续〕公钥推送那一行摘了：「那台后端还不在」那一形也进了本机后端（`pubkey-push`：可达表里没有那台 ⇒ 一次 exec，只写这一件）。
     // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy.rs` 那一行摘了：部署那两步（跑安装脚本 · 核 PATH）换成那台后端的 `acct-iso-install`
@@ -386,10 +385,11 @@ fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {
 #[test]
 fn every_remaining_dial_shell_says_why_it_is_not_a_backend_command() {
     let found = still_shell_population();
-    // 正控：人群里真有东西（部署前那一问必在）—— 抽取器坏了会拿空集比。
+    // 正控：人群里真有东西（起那台常驻后端那一问必在）—— 抽取器坏了会拿空集比。
+    // 〔THIN〕原来认 `byte_table.rs` 那一处（问 `uname`），那一问进了后端 ⇒ 换认 `remote_resident.rs::ensure`。
     assert!(
-        found.contains(&("byte_table.rs".to_string(), "probe_key".to_string())),
-        "抽取器没认出 `byte_table.rs::probe_key` —— 本条此刻在空转：{found:?}"
+        found.contains(&("remote_resident.rs".to_string(), "ensure".to_string())),
+        "抽取器没认出 `remote_resident.rs::ensure` —— 本条此刻在空转：{found:?}"
     );
     let want: std::collections::BTreeSet<(String, String)> = STILL_SHELL
         .iter()

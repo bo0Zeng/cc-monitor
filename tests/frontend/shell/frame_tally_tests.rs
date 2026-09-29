@@ -66,16 +66,11 @@ fn w5vis_the_summary_is_silent_only_when_nothing_was_dropped() {
 ///
 /// - `ssh_source.rs`：读任务一本（只数非 UTF-8 —— 它按替换字符读）· 主循环一本（只数认不出的）；
 /// - `local_backend_host.rs`：脱离载体那条循环一本，两样都数（非 UTF-8 行在那里整行丢）；
-/// - `backend/control/local_backend.rs`：stdio 载体那条循环一本，两样都数。
+/// - `local_backend.rs`：stdio 载体那条循环一本，两样都数。
 const WIRED: &[(&str, usize, usize, usize)] = &[
     ("src/frontend/shell/src/ssh_source.rs", 2, 1, 1),
     ("src/frontend/shell/src/local_backend_host.rs", 1, 1, 1),
-    (
-        "src/frontend/shell/src/backend/control/local_backend.rs",
-        1,
-        1,
-        1,
-    ),
+    ("src/frontend/shell/src/local_backend.rs", 1, 1, 1),
 ];
 
 /// ② 接线：盘上真有接账本的文件集合 == [`WIRED`]，且每份的三个处数相等（两向：多接 / 少接 / 挪走都红）。
@@ -149,7 +144,7 @@ fn w5vis_no_frame_reader_skips_an_unparsed_frame_silently() {
         "../../../src/frontend/shell/src/local_backend_host.rs"
     ));
     let stdio = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let ssh = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/ssh_source.rs"

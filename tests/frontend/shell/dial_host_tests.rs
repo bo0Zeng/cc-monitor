@@ -199,7 +199,7 @@ fn the_dial_proxy_leaves_no_trace_in_monitor_production() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "要真 sshd ＋ 真后端二进制：由 tests/evidence/SR1a-link-loopback.py --monitor 带环境变量来跑"]
 async fn loopback_roundtrip_through_the_resident_backend() {
-    let _local = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _local = crate::inbound_client::local_origin_test_lock();
     let raw = std::env::var("SR1A_LOOPBACK").expect("没有 SR1A_LOOPBACK —— 这条只该由读数脚本来跑");
     let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
     // 起真后端（stdio 载体），用**生产那一个**消费者接上它 ⇒ `<local>` 那条流登记上。
@@ -215,9 +215,7 @@ async fn loopback_roundtrip_through_the_resident_backend() {
         .spawn()
         .expect("起不了后端");
     let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
-    std::thread::spawn(move || {
-        crate::backend::control::local_backend::local_stdio_consumer(stdin, stdout)
-    });
+    std::thread::spawn(move || crate::local_backend::local_stdio_consumer(stdin, stdout));
     let cfg = RemoteConfig {
         host: v["host"].as_str().unwrap().into(),
         label: "sr1a-loopback".into(),

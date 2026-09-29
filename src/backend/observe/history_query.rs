@@ -1428,7 +1428,7 @@ pub(crate) struct LinesPage {
 /// 前端 resume 一跳（`tab-session-actions.ts`）在开终端之前问一次；答「不在」就不开。
 ///
 /// - **只收 sid、不收路径**（`INVARIANTS §41.6` 收窄第 3 条）：找文件那一步是两侧共用的
-///   `branch_core::find_session_file`（与分叉 / 删会话同一份；符号链接不算命中）。
+///   `agents::find_session_file`（〔THIN〕经注册表那一格，本体住 `agents/claudecode/branch.rs`；与分叉 / 删会话同一份；符号链接不算命中）。
 /// - sid 形状不合法 ⇒ `Err`，**先于任何 IO**；找不到 ⇒ `Ok(present = false)` —— 这是一个答案，不是错误。
 /// - 回 `root`（查的是哪棵记录树）：报错时要说清查了什么（`设计/01 §6.9`）。
 ///
@@ -1436,13 +1436,13 @@ pub(crate) struct LinesPage {
 /// 账号的配置根下（`CLAUDE_CONFIG_DIR` 指向别处），这里答「不在」而那边其实有 —— 调用方拿到「不在」
 /// 时报的话要说清是「这棵树里没有」，不是「世上没有」。
 pub(crate) fn record_in(agent_home: &Path, sid: &str) -> Result<RecordProbe, String> {
-    if !branch_core::is_plain_sid(sid) {
+    if !shell_quote_core::session_id_ok(sid) {
         return Err(crate::common::contract::malformed(&format!(
             "bad session id shape (letters, digits, hyphen; 1..=64): {sid:?}"
         )));
     }
     let root = projects_root(agent_home);
-    let present = branch_core::find_session_file(&root, sid).is_ok();
+    let present = crate::agents::find_session_file(&root, sid).is_ok();
     Ok(RecordProbe {
         present,
         root: root.to_string_lossy().into_owned(),

@@ -132,33 +132,8 @@ fn the_sole_home_really_holds_the_implementation() {
     );
 }
 
-/// ★ monitor 侧的入口对同一输入产出**逐字节相同** —— 收口的行为判据。〔FIX4〕今天只剩 `ssh_source::shell_quote` 一个。
-///
-/// ⚠ 初版只比了 `ssh_source::shell_quote` **一个** ⇒「把 `launch.rs` 的 `posix_quote`〔散文墓碑〕（〔FIX4〕已删）换成
-/// 不逃逸的实现」这个变异照样全绿（自己的变异检查抓到的）。零命中守卫也挡不住它 ——
-/// 换成 `format!` 不带逃逸序列时根本不含那个子串。⇒ 三个**逐个**对拍。
-///
-/// backend 的 `tmux_hook::sq` 跨 crate 够不着，由它自己那侧的测试覆盖。
-#[test]
-fn every_monitor_entry_point_agrees_byte_for_byte() {
-    for s in [
-        "",
-        "/p",
-        "a'b",
-        "it's",
-        "'''",
-        "/home/用户/带 空格",
-        "a\nb",
-        "$(id)",
-    ] {
-        let core = shell_quote_core::posix_quote(s);
-        assert_eq!(
-            crate::ssh_source::shell_quote(s),
-            core,
-            "ssh_source::shell_quote 与内核不一致：{s:?}"
-        );
-        // 〔FIX4 · `99 §2.1 ⑬`〕`launch::posix_quote`〔散文墓碑〕那一行摘了：它唯一的用户（远端那条 ssh 外壳）随渲染进了本机后端
-        //   （`dial/terminal.rs` 直调 `shell_quote_core::posix_quote`），别名一起删了。
-        // 〔MIG-3a · 09-28 裁 2〕`acct_iso_deploy::sq` 那一行摘了：它唯一的调用方（跑安装脚本那一句）随「落进用户目录进那台后端」退役。
-    }
-}
+// 〔THIN〕「monitor 侧的入口逐字节对拍」那一条删了：最后一个入口（`ssh_source` 里那层转调壳）随它唯一的生产调用方
+//   （monitor 侧 Gate 1 前检，THIN 第 3 件删）零调用、一起删 ⇒ monitor 侧零个 quote 入口，要 quote 直调内核。
+//   更早摘掉的两个：`launch::posix_quote`〔散文墓碑〕（FIX4，远端 ssh 外壳随渲染进了本机后端）· `acct_iso_deploy::sq`（MIG-3a）。
+//   「不逃逸的第二份实现」那一形照旧由上面的零命中守卫 ＋ 唯一的家那两条挡（当年只比一个入口时，把 `posix_quote`〔散文墓碑〕
+//   换成不逃逸的写法照样全绿 —— 那条教训今天落在「monitor 侧零个入口」上）。

@@ -6,8 +6,9 @@ use std::path::PathBuf;
 /// 选这几个是因为它们是 monitor 侧那道门的**产物名**（拒绝码 / 拒绝文案）——
 /// backend 复现 Gate 2 最自然的形态就是回一个同族的拒绝码，F03 正是这么做的
 /// （`control/gate.rs::admit` 回 `wrong_owner` + `CCM_GUARD_REJECTED …`）。
-// 〔TAIL · CP2c 续〕拒绝那句话进了文案表（不再逐字带 `CCM_GUARD_REJECTED`）⇒ 标志换成真做判定的那一下 `gate_core::gate2`。
-const BACKEND_GATE_MARKERS: &[&str] = &["gate_core::gate2", "wrong_owner"];
+// 〔TAIL · CP2c 续〕拒绝那句话进了文案表（不再逐字带 `CCM_GUARD_REJECTED`）⇒ 标志换成真做判定的那一下 `gate2`。
+// 〔THIN〕`gate-core` 收成后端模块 `control/gate_rules.rs` ⇒ 那一下的写法跟着换。
+const BACKEND_GATE_MARKERS: &[&str] = &["gate_rules::gate2", "wrong_owner"];
 
 /// Gate 3（`windows==1`，只约束破坏性动作）在后端侧的形状。
 /// **F04a 起：必须存在**（此前是「一个都不该有」）。
@@ -17,7 +18,8 @@ const BACKEND_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 //   与 `BACKEND_CHANNEL_MARKERS`（它们走后端的标志 `backend_route::Routed`）。两条命令迁到界面之后，被看住的不再是
 //   「monitor 里那两个函数体」，而是「monitor 里有没有这两件事的路」＋「界面经谁说」—— 见文末两条。
 
-const MONITOR_TMUX: &str = include_str!("../../../src/frontend/shell/src/backend/control/tmux.rs");
+// 〔THIN〕`MONITOR_TMUX`〔散文墓碑〕（`include_str!` monitor 的 `tmux.rs`）删：那份文件随 monitor 侧的 Gate 残留删了，
+//   下面那条改量整棵 monitor 生产段（`monitor_production_corpus`）。
 
 fn backend_control_dir() -> PathBuf {
     // 住址唯一源：`crate::guard_support`。原来这里自己爬一级（`src/frontend/shell` 的上级只到
@@ -120,7 +122,7 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 ///
 /// # 人群与判准（先量后定，量到的都写在这）
 ///
-/// 人群 = `tmux.rs` 生产段里每一处 `tmux <动词>` 字符串。
+/// 人群 = monitor 生产段里每一处 `tmux <动词>` 字符串（〔THIN〕从前只量 `tmux.rs` 一份，那份文件删了）。
 ///
 /// # ★★ `K-R72`（09-12）：判准**收紧了一格**，而且是**变强**不是变弱
 ///
@@ -134,7 +136,7 @@ fn enclosing_fn(src: &str, at: usize) -> (String, String) {
 /// ⚠ **人群里仍可能混进错误消息串**（`format!("tmux …: {..}")` 这种）。
 /// 刻意不去区分「命令串」与「消息串」—— 文本上分不干净。⚠ 但**代价随判准收紧变了**：
 /// 原先多算没有代价（那些函数本来就走 Gate），今天多算一处含破坏性动词的**消息串**
-/// 就是一次**误红**。⇒ 现打：`tmux.rs` 生产段里这样的消息串**零处**
+/// 就是一次**误红**。⇒ 现打：monitor 生产段里这样的消息串**零处**
 /// （那两处 `tmux kill-session: {..}` / `tmux send-keys: {..}` 随回落一起走了）。
 /// 哪天又长出来，正确处置是把那句消息改得不含裸动词，**不是**把动词塞进只读表。
 /// `tmux ` 之后的动词：先跳过插值占位（`{UTF8_CLIENT_FLAG}`）与 `-x` 形状的全局旗标。
@@ -174,12 +176,13 @@ fn verb_after_tmux_skips_placeholders_and_global_flags() {
 
 #[test]
 fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
-    let prod = guard_core::production_code(MONITOR_TMUX);
+    // 〔THIN〕人群从 `tmux.rs` 一份扩到整棵 monitor 生产段（那份文件删了；比原来大，不是小）。
+    let (_, prod) = monitor_production_corpus();
     // ★ `K-R72`：受托者不许再出现。这一句就是「那个空的或分支」的回潮闸 ——
     //   有人重新拼一个 `build_guarded_tmux_cmd` 出来，本条当场红。
     assert!(
         !prod.contains(GATE_BUILDER),
-        "`tmux.rs` 生产段里又出现了 `{GATE_BUILDER}` —— 那是 monitor 自己拼\n\
+        "monitor 生产段里又出现了 `{GATE_BUILDER}` —— 那是 monitor 自己拼\n\
              「原子 verify+act 远端 shell 串」的受托者，`K-R72` 把它连同它唯一的两个消费者\n\
              （kill / send-keys 的一次性 SSH 回落）一起删了。要恢复它先回 `K-R54` 重新裁定。"
     );
@@ -232,7 +235,7 @@ fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
     //    backend 帧面而不存在了 ⇒ monitor 侧只剩 `tmux … ls`（`list_remote_tmux`）一处。
     //    ⚠ **这一格快到头了**：`list_remote_tmux` 也改走后端的那天，这个人群会归零，
     //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那一拍该做的不是把地板改成 0，
-    //    是给它换一份**会漂的活体语料**（同 `tmux_tests.rs::every_target_placeholder_comes_from_exact_target`
+    //    是给它换一份**会漂的活体语料**（同本文件 `every_target_placeholder_comes_from_exact_target`
     //    今天的做法：人群 0 + 一份合成坏语料承重）。
     (seen_read_only, bad)
 }
@@ -301,9 +304,9 @@ fn the_backend_identity_gate_is_still_there() {
         .map(|(_, s)| s.as_str())
         .unwrap_or("");
     assert!(
-        gate_rs.contains("gate_core::gate2"),
-        "`gate.rs` 的生产段没有调 `gate_core::gate2` —— 判定要么被就地重写了一份\
-             （那就与 monitor 会漂），要么这道门只剩个壳"
+        gate_rs.contains("gate_rules::gate2"),
+        "`gate.rs` 的生产段没有调 `gate_rules::gate2` —— 判定要么被就地重写了一份\
+             （那就成了第二个家），要么这道门只剩个壳"
     );
     // ★ **门必须在路上，不只是在仓里。**
     //
@@ -495,5 +498,136 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
             ("chan.call(origin, \"launch\"", 2),
         ],
         "`src/frontend/ui/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
+    );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 〔THIN〕从 `tests/frontend/shell/tmux_tests.rs`〔散文墓碑〕挪来的三条：那份测试的挂载点 `tmux.rs`
+// 随 monitor 侧的 Gate 残留删了；三条守的都是「monitor 里没有某一种 tmux 的路」，人群从一份文件扩到整棵 monitor 生产段。
+// ════════════════════════════════════════════════════════════════════════
+
+/// ★★〔C4e · 第四波 4C〕**monitor 里抓屏一条路都不剩**（零命中 ＋ 正控）。
+///
+/// 守的要求：`设计/05 §14.3` 逐字「迁到通道之后，业务解释是不是**只有一个家**」——
+/// 抓屏的解释今天只住 `src/frontend/ui/tmux-control.ts`；monitor 里再长出一条拼 shell 串抓屏的路，就是同一件事的第二份实现。
+/// 正控：同一份语料里认得出 monitor 那个唯一的起子进程口（〔THIN〕原来认的是 `tmux.rs` 的转调壳，那份文件删了）。
+#[test]
+fn the_monitor_has_no_capture_path_any_more() {
+    let (files, corpus) = monitor_production_corpus();
+    assert!(files > 100, "只扫到 {files} 份 monitor 源码 —— 遍历坏了");
+    // 形态现拼，免得本文件自己被别的扫描收进人群。
+    let shapes = [
+        format!("tmux {}", ["capture", "pane"].join("-")),
+        ["NO", "PANE"].join("_"),
+        ["capture", "via", "backend"].join("_"),
+    ];
+    for shape in &shapes {
+        assert!(
+            !corpus.contains(shape.as_str()),
+            "monitor 生产段里又出现了 `{shape}` —— 抓屏在 monitor 里长回了一条路；\
+             它只许住界面一处（`src/frontend/ui/tmux-control.ts::capturePane`）"
+        );
+    }
+    assert!(
+        guard_core::contains_word(&corpus, "ConsolePolicy"),
+        "正控失败：同一份语料里认不出 `spawn_managed` 的 `ConsolePolicy` —— 上面的零命中不可信"
+    );
+}
+
+/// ★ **monitor 里没有一处把目标插进 tmux 命令串**（`-t {…}`，零命中 ＋ 合成语料两向承重）。
+///
+/// 裸 `-t <名>` 是「精确 → 名字开头 → glob」三级解析（F01，tmux 3.6 实测：只有 `sib-2` 时 `kill-session -t sib` 杀掉 `sib-2`）。
+/// 精确匹配形 `=名:` 只住后端 `control/launch.rs::exact_target`；monitor 这一侧〔THIN〕连那份跨轨锚点也删了 ⇒ 人群恒等 0，
+/// 牙压在两份合成语料上（同一把尺子在坏语料上红、在调了 `exact_target` 的语料上不红）。
+#[test]
+fn every_target_placeholder_comes_from_exact_target() {
+    fn bad_of(src: &str) -> Vec<String> {
+        let lines: Vec<&str> = src.lines().collect();
+        let mut out = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("-t {") {
+                continue;
+            }
+            let mut s = i;
+            while s > 0 && !lines[s].contains("fn ") {
+                s -= 1;
+            }
+            let name: String = lines[s]
+                .split(" fn ")
+                .nth(1)
+                .or_else(|| lines[s].strip_prefix("fn "))
+                .unwrap_or("")
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let body: String = lines[s..=i].join("\n");
+            if !body.contains("exact_target(") {
+                out.push(name);
+            }
+        }
+        out
+    }
+    let (_, corpus) = monitor_production_corpus();
+    assert_eq!(
+        bad_of(&corpus),
+        Vec::<String>::new(),
+        "monitor 生产段又出现了把目标插进 tmux 命令串的地方 —— 三条 tmux 控制命令全走后端帧面，精确匹配形只住后端"
+    );
+    assert!(
+        !corpus.contains("-t {"),
+        "monitor 生产段里出现了 `-t {{…}}` —— 那条路已经收干净了"
+    );
+    const SYNTHETIC_BAD: &str =
+        "fn zzz_probe(x: &str) -> String {\n    format!(\"tmux kill-session -t {x} 2>&1\")\n}\n";
+    assert_eq!(
+        bad_of(SYNTHETIC_BAD),
+        vec!["zzz_probe".to_string()],
+        "本条的尺子在一份**明摆着裸目标**的语料上都不红 —— 它此刻什么都没在守"
+    );
+    const SYNTHETIC_OK: &str =
+        "fn zzz_ok(x: &str) -> String {\n    let t = exact_target(x);\n    format!(\"tmux kill-session -t {t} 2>&1\")\n}\n";
+    assert!(
+        bad_of(SYNTHETIC_OK).is_empty(),
+        "本条的尺子把一份**调了 `exact_target` 的**语料也判红了 —— 它恒红，不是在守"
+    );
+}
+
+/// ★★ K-R12（09-04）「同一个口径只有一个家」—— tmux 打印通道的 UTF-8 口径（`INVARIANTS §49`）只住后端
+/// `src/backend/common/tmux_utf8.rs`，monitor 这一侧零份（〔SH1〕monitor 零处跨 SSH 的 tmux 读）。
+///
+/// 〔IV1 · V121〕要求住址：`INVARIANTS §49`（tmux 打印通道必须是 UTF-8，段数下溢出声）。
+/// 三件：① 家在、有内容 · ② 家里有下溢谓词、monitor 生产段没有第二份 · ③ 家里两种表示（argv 旗 · env）都在、monitor 不许长出 env 形。
+#[test]
+fn utf8_client_kou_jing_has_one_home_and_this_side_has_none() {
+    let home_path = crate::guard_support::repo_root().join("src/backend/common/tmux_utf8.rs");
+    let home = std::fs::read_to_string(&home_path)
+        .unwrap_or_else(|e| panic!("读不到后端侧那个家 {home_path:?}：{e}"));
+    assert!(
+        home.len() > 2_000,
+        "backend 那个家只有 {} 字节 —— 没读到内容",
+        home.len()
+    );
+    let (_, corpus) = monitor_production_corpus();
+    let body = format!("{}.count() < expected", ".split('\\t')");
+    assert!(
+        !corpus.contains(&body),
+        "monitor 这一侧又长出了一份下溢谓词 —— 解析住后端（`observe/tmux_list.rs`），口径只许一个家"
+    );
+    assert!(
+        home.contains(&body),
+        "backend 那个家里找不到下溢谓词 `{body}`"
+    );
+    for ident in ["UTF8_CLIENT_FLAG", "UTF8_CLIENT_ENV"] {
+        let needle = format!("const {ident}:");
+        assert!(home.contains(&needle), "backend 那个家里少了 `{needle}`");
+        let renamed = format!("const {ident}X:");
+        assert!(
+            !format!("pub {renamed} (&str, &str) = (\"x\", \"y\");\n").contains(&needle),
+            "锚点匹配单位比事实小：`{renamed}` 也算成 `{needle}` 在"
+        );
+    }
+    assert!(
+        !corpus.contains("LC_ALL"),
+        "monitor 这一侧长出了 env 形 —— 它今天零处跨 SSH 的 tmux 读，更不该自带口径"
     );
 }

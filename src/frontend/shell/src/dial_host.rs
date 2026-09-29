@@ -30,7 +30,7 @@ use std::time::Duration;
 
 use tokio::io::BufReader;
 
-use crate::backend::control::inbound_client::{self, InboundClient};
+use crate::inbound_client::{self, InboundClient};
 use crate::link_mux::LinkStream;
 use crate::ssh_link::{self, Ack, ConnectStage, LinkError};
 use crate::ssh_source::{RemoteConfig, RemoteExec};

@@ -362,7 +362,7 @@ fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
 ///
 /// 〔IV1 · V121〕要求住址：`INVARIANTS §47`（外部值拼进 shell / 交给对端之前本侧先过放行判定）；①形。
 ///
-/// 〔DUP2 · J6〕规则今天住 gate-core（全仓唯一一份）；本函数只剩「说哪一句」。多出来两格（欺骗字符 · 超过 128）各一条，
+/// 〔DUP2 · J6〕规则今天住 `control/gate_rules.rs`（全仓唯一一份）；本函数只剩「说哪一句」。多出来两格（欺骗字符 · 超过 128）各一条，
 /// 正控加两个真实会走的名字（带空格 · 中文），免得三句话焊成恒拒。
 #[test]
 fn a_session_name_that_would_confuse_tmux_is_refused() {

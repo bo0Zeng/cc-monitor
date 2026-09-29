@@ -403,3 +403,206 @@ async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
     assert_eq!(plan_json(&p)["ack"], fake_ack(1));
 }
+
+// ═══ 〔THIN〕`deploy-slot`：那台要哪一格字节 ═══════════════════════════════════════════════
+// 要求住址：`设计/00 §1.2`「判定只在后端」（表 B 的承诺是裁决）· `THIN` 第 4 件「`byte_table::judge` 含判定 ⇒ 进后端」。
+// 从 monitor `panorama_bytes::push_to` 那一臂（`probe_key` ＋ `choose`）搬来：全景推字节之前那一问改问本机常驻后端。
+
+/// 远端：问 `uname` → 表 A / 表 B → 带没带；本机：这台自己的键、按本机那一行承诺判。四形各落各的码；答里恰 `{os, arch, label, ack}`。
+#[tokio::test]
+async fn the_slot_is_judged_here_for_both_routes_and_refused_before_any_byte() {
+    let args =
+        |carried: Value| json!({"product": "panorama", "machine": "box", "carried": carried});
+    let linux_x86 = json!([{"os": "Linux", "arch": "x86_64"}]);
+    let f = Fake::linux(None);
+    let got = answer_slot(&args(linux_x86.clone()), Some(&f))
+        .await
+        .expect("带着那一格");
+    assert_eq!(
+        got.as_object().unwrap().keys().collect::<Vec<_>>(),
+        vec!["ack", "arch", "label", "os"]
+    );
+    assert_eq!(
+        (got["os"].as_str(), got["arch"].as_str()),
+        (Some("Linux"), Some("x86_64"))
+    );
+    assert_eq!(got["ack"], fake_ack(1), "ack 是问 `uname` 那一趟的");
+    // 没带那一格 ⇒ 拒（写第一个字节之前）。
+    let (code, msg) = answer_slot(&args(json!([{"os": "Linux", "arch": "arm64"}])), Some(&f))
+        .await
+        .unwrap_err();
+    assert_eq!(code, "refused");
+    assert!(msg.contains("box"), "{msg}");
+    // 远端 Windows ⇒ 表 B 不承诺。
+    let mut w = Fake::linux(None);
+    w.exec.insert(
+        deploy_core::UNAME_CMD.into(),
+        said(0, "MINGW64_NT-10.0 x86_64\n"),
+    );
+    let (code, _) = answer_slot(
+        &args(json!([{"os": "Windows", "arch": "x86_64"}])),
+        Some(&w),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(code, "refused");
+    // 链路问不成 ⇒ unreachable，不是拒绝。
+    let (code, _) = answer_slot(&args(linux_x86), Some(&Fake::default()))
+        .await
+        .unwrap_err();
+    assert_eq!(code, "unreachable");
+    // 本机：这台自己的键，按本机那一行承诺判（与 `judge(Panorama, Local, 这台)` 同答），ack 为空。
+    let me = Key::this_machine().expect("跑判据的这台认得出");
+    let local = answer_slot(
+        &args(json!([{"os": me.os.label(), "arch": me.arch.label()}])),
+        None,
+    )
+    .await;
+    match deploy_core::judge(Product::Panorama, Route::Local, Ok(me)) {
+        Ok(_) => assert_eq!(local.expect("本机承诺")["ack"], Value::Null),
+        Err(_) => assert_eq!(local.unwrap_err().0, "refused"),
+    }
+    // 形状不对 ⇒ bad_args。
+    for bad in [
+        json!({"machine": "box", "carried": []}),
+        json!({"product": "x", "machine": "box", "carried": []}),
+        json!({"product": "panorama", "carried": []}),
+        json!({"product": "panorama", "machine": "box", "carried": [{"os": "Plan9", "arch": "x86_64"}]}),
+    ] {
+        assert_eq!(
+            answer_slot(&bad, None)
+                .await
+                .map_err(|(c, _)| c)
+                .unwrap_err(),
+            "bad_args",
+            "{bad}"
+        );
+    }
+}
+
+// ═══ 〔THIN〕`resident-verdict`：远端常驻后端 hello 的新旧 ═══════════════════════════════════
+// 要求住址：`设计/00 §1.2`「共享 crate 只放契约，判定只在后端」· `设计/00 §2.2`（monitor 里的共享判定残留：远端常驻换不换）。
+// 从 monitor `remote_resident_tests.rs` 那一条（`hello_decision` 的真值表）搬来：判定进了本机常驻后端，真值表跟着判定走。
+
+/// 只升不降、只换一次：那台旧 ⇒ 换（换过一次就接）；同一版 · 更新 · 序解不出 ⇒ 接。`older` 与 `replaced` 无关。
+#[test]
+fn the_verdict_replaces_only_upward_and_only_once() {
+    // (那台报的, 换过没有) ⇒ (换, 那台旧)
+    for (theirs, replaced, want) in [
+        ("p4a-x", false, (true, true)),
+        ("p4a-x", true, (false, true)),
+        ("p4j-y", false, (false, false)),
+        ("p5a-z", false, (false, false)),
+        ("dev", false, (false, false)),
+        ("", false, (false, false)),
+    ] {
+        let v = resident_verdict("p4j-y", theirs, replaced);
+        assert_eq!((v.replace, v.older), want, "{theirs} replaced={replaced}");
+    }
+}
+
+/// 帧面那一格：`{action, older}` 恰这两个键；缺 `mine`（或空）· `theirs` · `replaced` ⇒ `bad_args`。
+#[test]
+fn the_verdict_frame_has_exactly_two_keys_and_refuses_missing_args() {
+    let got =
+        answer_resident_verdict(&json!({"mine": "p4j-y", "theirs": "p4a-x", "replaced": false}))
+            .expect("答得出");
+    assert_eq!(got, json!({"action": "replace", "older": true}));
+    let got =
+        answer_resident_verdict(&json!({"mine": "p4j-y", "theirs": "p4a-x", "replaced": true}))
+            .expect("答得出");
+    assert_eq!(got, json!({"action": "attach", "older": true}));
+    for bad in [
+        json!({"theirs": "p4a-x", "replaced": false}),
+        json!({"mine": "", "theirs": "p4a-x", "replaced": false}),
+        json!({"mine": "p4j-y", "replaced": false}),
+        json!({"mine": "p4j-y", "theirs": "p4a-x"}),
+    ] {
+        assert_eq!(
+            answer_resident_verdict(&bad).map_err(|(c, _)| c),
+            Err("bad_args"),
+            "{bad}"
+        );
+    }
+}
+
+// ═══ 〔THIN〕`deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向 ═══════════════════════
+//
+// 要求住址：`设计/01 §6.7b` ③（V28 · V41）「部署后端时、每次连上时各扫一次，认出是我们放的才删（`files-delete` 带期望值），
+// 认不出的不动」＋ `设计/00 §1.2`「判定只在后端」。真值表的期望是字面量，取自 git 史上那两份真文件的头两行
+// （`git show e8f9e08e^:shared/ccm` · `ccm_entry_shim`〔散文墓碑〕在 `b2bab98f` / `9c20ce0f` 的两代；从前住 monitor `ccm_legacy_tests.rs` 的 L1）。
+
+/// 09-15 那一代 shim（带 `CCM_SELF` 那一行）。
+const SHIM_0915: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${CCM_SELF:-$0}\" exec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
+/// 最后一代 shim（MC1 起，不带 `CCM_SELF`）。
+const SHIM_LAST: &str = "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec '/home/u/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"\n";
+/// 09-11 之前那份 bash 启动器的头两行（后面几千行略去 —— 认它只看头两行）。
+const LAUNCHER_HEAD: &str =
+    "#!/usr/bin/env bash\n# ccm — cc-monitor 统一启动器（unify-launch F02）\n#\n# 核心思想……\n";
+
+async fn retired_at(stat: (Option<Option<u64>>, Option<bool>), bytes: Option<&[u8]>) -> Value {
+    let mut f = Fake::default();
+    f.stat.insert(deploy_core::LEGACY_ENTRY_REL.into(), stat);
+    if let Some(b) = bytes {
+        f.read
+            .insert(deploy_core::LEGACY_ENTRY_REL.into(), b.to_vec());
+    }
+    let args = serde_json::json!({ "dial": { "host": "h" } });
+    answer_retired(&args, &f).await.expect("答得出")
+}
+
+/// 两形认、别的一律不认；认出 ⇒ `remove` 且 `expect` 恰是读到的全文；答的形状恰三格。
+#[tokio::test]
+async fn retired_only_the_two_forms_we_ever_placed_are_removed_and_with_what_was_read() {
+    let present = (Some(Some(64)), None);
+    let remove = |t: &str| serde_json::json!({ "verdict": "remove", "expect": t, "why": null });
+    for (what, text) in [
+        ("09-15 那一代 shim", SHIM_0915),
+        ("最后一代 shim", SHIM_LAST),
+        ("09-11 之前的 bash 启动器", LAUNCHER_HEAD),
+    ] {
+        assert_eq!(
+            retired_at(present, Some(text.as_bytes())).await,
+            remove(text),
+            "{what}"
+        );
+    }
+    let kept = |v: &Value| v["verdict"] == "keep" && v["expect"].is_null() && v["why"].is_string();
+    for (what, text) in [
+        ("用户自己的脚本", "#!/bin/sh\nexec my-own-ccm \"$@\"\n"),
+        ("只有一行", "#!/bin/sh\n"),
+        (
+            "记号不在第二行",
+            "#!/bin/sh\n# 我自己的包装\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n",
+        ),
+        (
+            "第一行不是 #!",
+            "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\n",
+        ),
+    ] {
+        let v = retired_at(present, Some(text.as_bytes())).await;
+        assert!(kept(&v), "{what}：{v}");
+    }
+    // 不在 ⇒ absent；0 字节 ⇒ keep；在但读不回来 / 不是 UTF-8 ⇒ keep（不猜）。
+    assert_eq!(
+        retired_at((None, Some(false)), None).await,
+        serde_json::json!({ "verdict": "absent", "expect": null, "why": null })
+    );
+    assert!(kept(&retired_at((Some(Some(0)), None), None).await));
+    assert!(kept(&retired_at(present, None).await));
+    assert!(kept(&retired_at(present, Some(&[0xff, 0xfe, b'\n'])).await));
+}
+
+/// 缺 `dial` ⇒ `bad_args`（不许退成问本机）；SFTP 开不成 ⇒ `unreachable`。
+#[tokio::test]
+async fn retired_refuses_without_a_dial_and_says_unreachable_when_the_link_fails() {
+    let f = Fake::default();
+    let (code, _) = answer_retired(&serde_json::json!({}), &f)
+        .await
+        .unwrap_err();
+    assert_eq!(code, "bad_args");
+    let (code, _) = answer_retired(&serde_json::json!({ "dial": { "host": "h" } }), &f)
+        .await
+        .unwrap_err();
+    assert_eq!(code, "unreachable");
+}

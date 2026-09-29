@@ -53,9 +53,9 @@
 //! 一次写入段超时会让用户拿到错误而不是回落。要修得在 `inbound_client` 那边把两个产地
 //! 分成两个变体 —— **那是它自己的活**。记在这里，别让下一个人以为是漏了。
 
-use crate::backend::control::inbound_client::CallError;
 use crate::chan::wire as w;
 use crate::copy_table::copy_text;
+use crate::inbound_client::CallError;
 
 /// 一条走后端的控制命令的结局。**三态**，分界线见模块头注。
 #[derive(Debug, PartialEq, Eq)]

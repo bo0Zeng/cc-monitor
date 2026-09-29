@@ -410,7 +410,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //    管道写满之后子进程下一次 `write(2)` 就阻塞，那会把「诊断没人看」
     //    升级成「**打印诊断会把后端挂住**」。判据看不见这个区别，写在这里。
     (
-        "src/frontend/shell/src/backend/control/local_backend.rs",
+        "src/frontend/shell/src/local_backend.rs",
         "STDERR_LOG_BUDGET_BYTES",
         256 * 1024,
         "一条被监护子进程**一生**往 monitor 滚动日志里搬的 stderr 字节数。\
@@ -422,7 +422,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "丢弃+带身份报告",
     ),
     (
-        "src/frontend/shell/src/backend/control/local_backend.rs",
+        "src/frontend/shell/src/local_backend.rs",
         "STDERR_MAX_LINE_BYTES",
         8 * 1024,
         "子进程 stderr **一条**的上界（对端一个 `\\n` 都不发时，`read_until` 会一直吃内存）。\
@@ -612,6 +612,14 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "ENTRY_READ_MAX",
         64 * 1024,
         "部署计划读回落点那一份（只在它不说自己是谁时，认从前那份几十字节的三行入口）",
+        "跳过+说清",
+    ),
+    // 〔THIN〕旧入口 `~/.local/bin/ccm` 的去向（`deploy-retired`）：读回的全文要原样装进那一趟 `files-delete` 的 `expect`。
+    (
+        "src/backend/control/deploy_plan.rs",
+        "RETIRED_READ_MAX",
+        256 * 1024,
+        "读回远端旧入口 `~/.local/bin/ccm` 认它是不是我们放的（全文原样当 `files-delete` 的期望值）",
         "跳过+说清",
     ),
     // 〔SR1b 09-24〕SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
@@ -1601,14 +1609,9 @@ const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
     ),
     // 〔DP1 · 第四波〕`sftp.rs` 那一条（远端 `uname -m` 架构探针，`.read_line` 无上限地读一行）走了：
     //   问那台是什么机器改成 `byte_table::probe_key`，走 `connect_and_exec_capture`（stdout / stderr 各有上限、带退出码），
-    //   不再是一处无上限的流读 ⇒ 按上面几条同一个理由摘掉。
+    //   不再是一处无上限的流读 ⇒ 按上面几条同一个理由摘掉。〔THIN〕后来那一问整个进了本机常驻后端（`deploy-slot`）。
     // 〔MIG-3b 续〕`pubkey.rs` 那一条（远端追加公钥那一趟的 stdout）走了：推送进了本机后端，走 `capture_full`（有上限、带退出码）。
-    (
-        "src/frontend/shell/src/backend/control/tmux.rs",
-        "远端 `tmux ls` / `capture-pane` 等四处的 stdout",
-        "同上一条；四处同一族同一文件，故按文件登记（照 `polling_registry` 的口径）。\
-             **退役归 F10d**。",
-    ),
+    // 〔THIN〕`backend/control/tmux.rs` 那一条走了：那份文件随 monitor 侧的 Gate 残留删了（四处流读早已各自搬进后端）。
 ];
 
 /// ★ **前提触发器的重写**〔devbench F10b〕。

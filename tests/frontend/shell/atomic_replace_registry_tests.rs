@@ -19,7 +19,7 @@ const RULE: &str = "\
 /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
 const SITES: &[(&str, &str, usize, &str, &str)] = &[
     (
-        "backend/control/local_backend.rs",
+        "local_backend.rs",
         "rename",
         // 〔E2 · V28〕3 → 4：逐字节副本那一处删（-1）；落点就是 `ccm` 之后，上位那一步多一条「旧的正在跑 ⇒ 先改名挪开、再上位」（+2）。
         //   仍是 monitor 自己目录里的部署物（`~/.cc-monitor/bin/ccm`），结论不变。

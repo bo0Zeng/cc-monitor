@@ -27,9 +27,8 @@
  * 1. **问不到就说问不到**（`KR93D3`，`K-R92` 那一形的预防）—— [`lookupAgentProfile`]
  *    对表里没有的 agent 回 `{ known: false, message }`，**不许悄悄回落到 claude 那一份**：
  *    那就是「一个值装了两件事」。
- * 2. **`null` ≠ 空** —— 生成物里的 `null` 是「这一格今天没人考据过」（codex 的五格就是），
- *    `[]` 才是「考据过、确实是空的」。[`fullAgentProfile`] 碰到 `null` **当场抛**，
- *    不悄悄给一个空 `Set`。
+ * 2. **`null` ≠ 空** —— 生成物里的 `null` 是「这一格今天没人考据过」，`[]` 才是「考据过、确实是空的」。
+ *    〔THIN〕会是 `null` 的那五格（工具 / 判活进程词表）随判定进了后端，今天这张表里没有可空的列表格了。
  * 3. **不许在本文件里再写一份工具名 / 进程名 / 启动器名** —— `agent-profile-parity.vitest.ts`
  *    有一条判据扫本文件的生产段，把后端那张表里的**任何一个值**写死进来就红
  *    （`KR93D1` 第三刀）。这也是 `AGENT_PROFILE` 用 `ACTIVE_AGENT` 而不是字面量 `"claude"`
@@ -79,18 +78,14 @@ export function lookupAgentProfile(
   };
 }
 
-/** 考据齐全的画像 —— 每一格都有值。`AGENT_PROFILE` 就是当前 agent 那一份。 */
+/**
+ * 考据齐全的画像 —— 每一格都有值。`AGENT_PROFILE` 就是当前 agent 那一份。
+ *
+ * 〔THIN · `设计/00 §1.2` 判定只在后端〕从前这里还有五格判定用的词表（agent 工具 · 交互工具 · 写类工具 · markdown 工具 ·
+ * 判活进程名），界面按它们判卡型、认 tmux 会话。那几张表进了后端适配层：卡型随记录成品带出（`toolCards`），
+ * tmux 那一格随 `tmux-list` 成品带出（`agent`）⇒ 本画像只剩起会话那几格事实。
+ */
 export type FullAgentProfile = {
-  /** 子 agent 工具（展开 = 子会话）。 */
-  agentTools: Set<string>;
-  /** 交互工具（agent 在等用户决定）。 */
-  interactiveTools: Set<string>;
-  /** 写类工具（行级 diff）。 */
-  diffTools: Set<string>;
-  /** 结果默认按 markdown 渲染的工具。 */
-  mdTools: Set<string>;
-  /** tmux 前台命令算该 agent 的会话。 */
-  livenessProcessNames: Set<string>;
   /**
    * resume/拉起前要 unset 的嵌套会话 env。
    *
@@ -118,8 +113,8 @@ export type FullAgentProfile = {
 /**
  * 取一份**考据齐全**的画像。
  *
- * 两种失败**都不静默**：agent 不在表里 ⇒ 抛 [`lookupAgentProfile`] 那句话；
- * 某一格是 `null`（没人考据过）⇒ 抛，并点名是哪一格。
+ * 失败**不静默**：agent 不在表里 ⇒ 抛 [`lookupAgentProfile`] 那句话。
+ * 〔THIN〕「某一格是 `null` ⇒ 抛」那一半随五格词表进了后端（今天没有可空的列表格）。
  * 🔴 **不许在这里塞一个「回落到 claude」的兜底** —— 那正是 `KR93D3` 禁的那件事。
  */
 export function fullAgentProfile(
@@ -129,20 +124,7 @@ export function fullAgentProfile(
   const got = lookupAgentProfile(agent, table);
   if (!got.known) throw new Error(got.message);
   const facts = got.facts;
-  const researched = (cell: string[] | null, key: string): Set<string> => {
-    if (cell === null) {
-      throw new Error(
-        copyText("agentProfile.researched.null", { agent, key }),
-      );
-    }
-    return new Set(cell);
-  };
   return {
-    agentTools: researched(facts.agentTools, "agentTools"),
-    interactiveTools: researched(facts.interactiveTools, "interactiveTools"),
-    diffTools: researched(facts.diffTools, "diffTools"),
-    mdTools: researched(facts.mdTools, "mdTools"),
-    livenessProcessNames: researched(facts.livenessProcessNames, "livenessProcessNames"),
     nestedEnvVars: [...facts.nestedEnvVars],
     defaultLauncher: facts.defaultLauncher,
     launcherAlias: facts.launcherAlias,

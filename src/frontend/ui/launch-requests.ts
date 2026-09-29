@@ -79,8 +79,8 @@ export function planResumeTmux(
   // 但两个 **wrapper 的类型**（`buildResumeTmuxCmd` / `runRemoteResumeTmux`）当时写的是
   // `name?: string`，所以「省略 name」在**类型上是允许的**，只是碰巧没人这么调。
   // ⇒ 把这一路的 `name` 全改成必填，让 `tsc` 把「碰巧」变成「不可能」。
-  // 〔DUP2 · J6〕会话名的形状不在这里判：规则只有一份（`gate-core`），渲染那一跳（`payload.rs` 外层 · `ccm_invocation.rs`）判、
-  //   判不过带 `REFUSE:` 标拒。这里原来的内联式子（首字符不许 `-`，`raw` 那一支唯一挡前导 `-` 的一道）今天由 gate-core 的新建那一条接住。
+  // 〔DUP2 · J6〕会话名的形状不在这里判：规则只有一份（后端 `control/gate_rules.rs`），渲染那一跳（`payload.rs` 外层 · `ccm_invocation.rs`）判、
+  //   判不过带 `REFUSE:` 标拒。这里原来的内联式子（首字符不许 `-`，`raw` 那一支唯一挡前导 `-` 的一道）今天由后端 `gate_rules` 的新建那一条接住。
   const tmuxName = name;
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
@@ -128,7 +128,7 @@ export function planLauncher(
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride, rbindToken } = mods;
   const name = tmuxName.trim();
-  // 〔DUP2 · J6〕新建那一条（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符与欺骗字符 · ≤128）由渲染侧调 gate-core 判。
+  // 〔DUP2 · J6〕新建那一条（非空 · 不以 `-` 开头 · 无 `*?.:=` · 无控制符与欺骗字符 · ≤128）由渲染侧调后端 `gate_rules` 判。
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "new" },
@@ -155,7 +155,7 @@ export function planLauncher(
  *  （`设计/80 §8.2`）。`RBIND_TOKEN_DIMENSION.applies` 那条 `action.kind` 判断是第二道
  *  同向的闸（万一将来这里开始收 `mods`，它也不会往 attach 里注一个没人读的敏感值）。 */
 export function planAttach(name: string): LaunchPlanBuild {
-  // 〔DUP2 · J6〕已有会话那一条（V131 ②：拒绝集 ＋ 非空）由渲染侧调 gate-core 判；寻址恒是 `=<名>:`。
+  // 〔DUP2 · J6〕已有会话那一条（V131 ②：拒绝集 ＋ 非空）由渲染侧调后端 `gate_rules` 判；寻址恒是 `=<名>:`。
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "attach", name },

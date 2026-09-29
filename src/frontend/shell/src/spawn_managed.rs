@@ -29,7 +29,7 @@
 //!
 //! # 🔴 它为什么住在这里（宿主知识层），而不住 `backend/`
 //!
-//! `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针含 `#[cfg(windows)`
+//! `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针含 `#[cfg(windows)`
 //! 与 `std::os::windows` / `std::os::unix` ⇒ 写进 `backend/` 当场红；
 //! 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1 条）。
 //! ⇒ `backend/` 的两个落点（`local_backend::supervise_with_stdio` ·
@@ -333,9 +333,7 @@ pub fn spawn_managed_cmd(
             let pid = child.id();
             // ⚠ 另起一条线程而不是在本线程读：调用方接下来多半要阻塞在 stdout 上，
             //   两根管子由一条线程串着读的那一刻，没被读的那根写满就把子进程**卡死**。
-            std::thread::spawn(move || {
-                crate::backend::control::local_backend::drain_child_stderr_into_log(e, pid)
-            });
+            std::thread::spawn(move || crate::local_backend::drain_child_stderr_into_log(e, pid));
         }
     }
     Ok(ManagedChild {

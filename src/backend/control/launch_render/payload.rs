@@ -528,41 +528,47 @@ impl<'a> TmuxTarget<'a> {
         }
     }
 
-    /// 〔DUP2 · 主会话 09-26 裁 J6〕名字的**规则**只有一份（`gate_core`）：`creating` ⇒ 新建那一条（非空 · 不以 `-` 开头 ·
+    /// 〔DUP2 · 主会话 09-26 裁 J6〕名字的**规则**只有一份（`control/gate_rules.rs`）：`creating` ⇒ 新建那一条（非空 · 不以 `-` 开头 ·
     /// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128），否则（attach / 送进已在的会话）⇒ 已有会话那一条（V131 ②：拒绝集 ＋ 非空）。
     /// 这里原来自己写了一份（`Raw` 放过前导 `-`；F01「不把 glob 建进名字」在这条路上只靠界面那一道 —— 界面那份删了，这里接上）。
     /// 之后 `Raw` 那一支另有一道**渲染前提**：它是裸拼的（不加引号），只放行 tmux 名字那一族字符 —— 那不是名字的规则，是「能不能不加引号」。
     fn check(&self, creating: bool) -> Result<(), String> {
         let v = self.value();
         let issue = if creating {
-            gate_core::new_tmux_name_issue(v)
+            crate::control::gate_rules::new_tmux_name_issue(v)
         } else {
-            gate_core::existing_tmux_name_issue(v)
+            crate::control::gate_rules::existing_tmux_name_issue(v)
         };
         match issue {
             None => {}
-            Some(gate_core::TmuxNameIssue::Empty) => {
+            Some(crate::control::gate_rules::TmuxNameIssue::Empty) => {
                 return Err(refuse(&copy_text("rsPayload.tmuxName.empty", &[])));
             }
             // quote 之后 shell 元字符都是字面量了，真正要挡的是控制符与视觉欺骗字符：
             // 前者会把一条命令劈成两条，后者让人眼看不出接的是哪个会话。
-            Some(gate_core::TmuxNameIssue::Control(c) | gate_core::TmuxNameIssue::Deceptive(c)) => {
+            Some(
+                crate::control::gate_rules::TmuxNameIssue::Control(c)
+                | crate::control::gate_rules::TmuxNameIssue::Deceptive(c),
+            ) => {
                 return Err(refuse(copy_text(
                     "rsPayload.tmuxName.control",
                     &[("name", &format!("{:?}", v)), ("c", &format!("{:?}", c))],
                 )));
             }
             Some(
-                gate_core::TmuxNameIssue::LeadingDash
-                | gate_core::TmuxNameIssue::TargetSyntax(_)
-                | gate_core::TmuxNameIssue::TooLong,
+                crate::control::gate_rules::TmuxNameIssue::LeadingDash
+                | crate::control::gate_rules::TmuxNameIssue::TargetSyntax(_)
+                | crate::control::gate_rules::TmuxNameIssue::TooLong,
             ) => {
                 return Err(refuse(copy_text(
                     "rsPayload.tmuxName.newShape",
                     &[
                         ("name", &format!("{:?}", v)),
-                        ("refused", gate_core::NEW_TMUX_NAME_REFUSED),
-                        ("max", &gate_core::NEW_TMUX_NAME_MAX.to_string()),
+                        ("refused", crate::control::gate_rules::NEW_TMUX_NAME_REFUSED),
+                        (
+                            "max",
+                            &crate::control::gate_rules::NEW_TMUX_NAME_MAX.to_string(),
+                        ),
                     ],
                 )));
             }
@@ -868,4 +874,4 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 mod tests;
 
 // 〔MIG-2〕标识符放行判定的生成物（`judgment-rules.ts`）那一段没跟着搬：它只读共享 crate 的常量，与载荷无关，留在 monitor
-//   （`src/frontend/shell/src/backend/control/mod.rs` 的测试段）。
+//   （〔THIN〕今天挂在 monitor 壳根 `lib.rs` 的测试段）。

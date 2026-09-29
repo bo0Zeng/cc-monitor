@@ -1,5 +1,5 @@
 //! 〔DUP3 · 主会话 09-26 裁 J9〕`upstream-url-core` 的判据。要求住址：`设计/01 §5` D1「一个判定只有一个家」。
-//! 与界面生成物逐条对的共用金样那一条住 monitor（`tests/frontend/shell/backend/control/payload_judgment_rules.rs`，本 crate 零依赖、不读 JSON）。
+//! 与界面生成物逐条对的共用金样那一条住 monitor（`tests/frontend/shell/payload_judgment_rules.rs`，本 crate 零依赖、不读 JSON）。
 
 use super::*;
 

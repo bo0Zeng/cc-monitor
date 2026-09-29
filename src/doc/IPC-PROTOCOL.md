@@ -722,7 +722,7 @@ shell 串走 SSH、本机拒绝」的分叉。命名避让 / 登记进总线 / s
 | `uuid` | → | 从哪条消息处分叉 |
 | `sessionId` / `jsonlPath` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
 
-与一次性子命令 `--fork-session <sid> <uuid>`（对 aterm 冻结的 argv 形）是**同一份本体**（`control/fork_write.rs::run_inner`：读 → `branch-core` 变换 → `O_EXCL` 落盘）。
+与一次性子命令 `--fork-session <sid> <uuid>`（对 aterm 冻结的 argv 形）是**同一份本体**（`control/fork_write.rs::run_inner`：读 → 适配层的分叉变换（〔THIN〕`agents/claudecode/branch.rs`，原共享 crate `branch-core`）→ `O_EXCL` 落盘）。
 ⚠ 名字刻意不叫 `fork-session`：帧面自动派生的 CLI 面会是 `--fork-session`，与那条冻结的 argv 形撞名；这一条的 CLI 面是 `--session-fork`（stdin 一段 JSON）。
 本机与远端分叉都经那台机器常驻后端的长连接说这一条（`设计/05 §14.6`；此前本机每次 exec 一个本机后端、远端经拨号链路 exec `--fork-session`）；
 〔MIG-3b〕今天是**界面经通道直说**（`src/frontend/ui/session-writes.ts`，monitor 那一跳删了），`sid` / `uuid` 在本入口先过共享的 `session_id_ok`（`INVARIANTS §47` ①）。
@@ -2137,6 +2137,73 @@ F50「一键推送公钥」（`设计/99 §2.1 ⑬`「monitor 零 SSH」）。�
 `io_failed`（stat 落点那一问没问成）· `undecidable`（落点那一份不说自己是谁 / 身份不唯一 / 扫不动 —— 显式失败、不覆盖，出路是机器页「卸载后端」）。
 ⚠ **CLI 面也有它**（`--deploy-plan`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：一次性进程自己新拨一条 SSH，真正的用法是常驻后端的帧面。
 
+#### `deploy-retired`：那台旧入口 `~/.local/bin/ccm` 的去向（THIN，09-29；远端**只读**那台）
+
+「判定只在后端」（`设计/00 §1.2`）：旧版放在远端 `~/.local/bin/ccm` 的那一份（三行 shim · 更早的 bash 启动器，`设计/01 §6.7b` ③）
+认不认得出是我们放的、删不删，由本机常驻后端判（`control/deploy_plan.rs::retired_verdict`，与 `deploy-plan` 的上传残件同一家：落点上该清的东西）；
+monitor 照答经**那台**后端的 `files-delete`（带 `expect`）删（`ccm_legacy.rs`，部署按钮与那台长连接握手完成两个时刻）。
+不并进 `deploy-plan` 的答：计划在连上那台常驻后端之前问（预检），那时 `files-delete` 无门可走。
+
+```text
+→ {"id":"r1","cmd":"deploy-retired","args":{"dial":{…}}}
+← {"kind":"reply","id":"r1","ok":true,"data":{"verdict":"remove","expect":"#!/bin/sh\n# cc-monitor: ccm = …\n…","why":null}}
+```
+
+| 字段 | 向 | 意思 |
+|---|---|---|
+| `dial` | → | 怎么够到那台（与 `files` 链路同一份拨号请求）；沿池里那条 SSH 开只读 SFTP：stat ＋ 至多一次读回（上限 256 KiB，与 `files-peek` 同一个口径） |
+| `verdict` | ← | `absent`（不在）· `remove`（第一行 `#!`、第二行认得出两形记号之一 ⇒ 是我们放的）· `keep`（别的一律不动） |
+| `expect` | ← | 只在 `remove` 时是字符串：读到的全文，删时原样交 `files-delete` 当期望值（盘上变了就不删）；其余 `null` |
+| `why` | ← | 只在 `keep` 时是字符串：为什么不动（不是我们放的 · 读不成文本）；其余 `null` |
+
+错误码：`bad_args`（缺 `dial`：不许退成问本机）· `unreachable`（SFTP 开不成）。
+⚠ **CLI 面也有它**（`--deploy-retired`，入参从 stdin 读）。
+
+#### `deploy-slot`：那台要哪一格字节（THIN，09-29；远端**只读**那台）
+
+「判定只在后端」（`设计/00 §1.2`）：表 A（有没有产线）· 表 B（这个 origin 承不承诺）· 这一版带没带，是 `deploy-plan` 的第 ① 步，单拿出来给**代码全景小程序**
+推字节之前问（monitor 只按答里那一格取自己带着的字节放上去）。只有**本机常驻后端**有意义。有 `dial` ⇒ 沿池里那条 SSH capture `uname -s -m`、按远端那一行判；
+没有 ⇒ 本机：这台自己的 (OS, arch)、按本机那一行判（`设计/01 §6.7a` 规矩 4：本机只是「目标机器恰好是自己」）。拒绝点在写第一个字节之前；**一个字节都不写**。
+
+```text
+→ {"id":"s1","cmd":"deploy-slot","args":{"product":"panorama","machine":"dev","dial":{"host":"10.0.0.2","port":22,"user":"u","key_path":"~/.ssh/id_ed25519","use":"files"},"carried":[{"os":"Linux","arch":"x86_64"},{"os":"Linux","arch":"arm64"}]}}
+← {"kind":"reply","id":"s1","ok":true,"data":{"os":"Linux","arch":"x86_64","label":"Linux / x86_64","ack":{"ok":true,"fingerprints":{"10.0.0.2:22":"SHA256:…"}}}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `product` | → | `panorama`（全景小程序）· `backend`（后端本体；部署走 `deploy-plan`，这一形只为同一张表） |
+| `machine` | → | 那台的名字（只用来说话；本机交「本机」） |
+| `dial` | → | 可缺：那台的拨号请求（同 `deploy-plan`）；缺 ⇒ 问的是本机 |
+| `carried` | → | 这一版为这件产物带着字节的格：每格 `{os, arch}`（表 A 认得的词）。认不出 ⇒ `bad_args` |
+| `os` / `arch` / `label` | ← | 那台是表 A 的哪一格 |
+| `ack` | ← | 问 `uname` 那一趟拨号的 `DialAck` 原样（monitor 按它固化指纹）；本机 `null` |
+
+**错误码**：`bad_args`（`product` / `machine` / `carried` 缺或认不出）· `unreachable`（`uname` 那一问没问成：链路）· `refused`（表 A / 表 B / 这一版没带 —— `message` 就是对人说的那一句）。
+⚠ **CLI 面也有它**（`--deploy-slot`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：真正的用法是本机常驻后端的帧面。
+
+#### `resident-verdict`：远端常驻后端要不要换一次（THIN，09-29；纯判定）
+
+「判定只在后端」（`设计/00 §1.2`）：monitor 接远端常驻后端时读到 hello，把 hello 里的 `build_id` 交给**本机常驻后端**问「换还是接」，
+只照答办（`remote_resident::attach`）。规矩与 `deploy-plan` 同一家：`BUILD_ID` 可比序只升不降（HX2 D-b），那台比手上这一版旧 ⇒ 换一次
+（`--resident-ensure --replace`），换过一次仍旧 ⇒ 照接；同一版 · 更新 · 序解不出 ⇒ 接。不碰盘、不拨号。
+
+```text
+→ {"id":"v1","cmd":"resident-verdict","args":{"mine":"p5a-x","theirs":"p4z-y","replaced":false}}
+← {"kind":"reply","id":"v1","ok":true,"data":{"action":"replace","older":true}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `mine` | → | monitor 手上这一版后端自报的身份（非空） |
+| `theirs` | → | 那台 hello 报的 `build_id`（缺 ⇒ 空串） |
+| `replaced` | → | 这一趟是不是已经换过一次 |
+| `action` | ← | `replace`（换掉再接）· `attach`（接上它） |
+| `older` | ← | 那台是不是比手上这一版旧（与 `replaced` 无关；版本提示那句话按它挑「会换掉」还是「不会换回去」） |
+
+**错误码**：`bad_args`（`mine` 缺或空 · 缺 `theirs` / `replaced`）。
+⚠ **CLI 面也有它**（`--resident-verdict`，入参从 stdin 读；按派生规则「非内建即上 CLI」）：真正的用法是本机常驻后端的帧面。
+
 #### `history-annotate`：改一条历史注解（C4d · 第四波 4B，2026-09-25）
 
 历史注解（星标 / 改名 / 隐藏 / 上次用哪个号起这个会话）的**读写者是本机常驻后端**（主会话 09-25 裁：文件留在原处、同一路径，不迁移、一条不丢）。
@@ -3056,13 +3123,14 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 
 ```text
 → {"id":"t9","cmd":"tmux-list","args":{}}
-← {"kind":"reply","id":"t9","ok":true,"data":{"installed":true,"sessions":[{"name":"proj-cc","path":"/home/u/proj","command":"claude","attached":false,"windows":1,"sid":"sid-1"}]}}
+← {"kind":"reply","id":"t9","ok":true,"data":{"installed":true,"sessions":[{"name":"proj-cc","path":"/home/u/proj","command":"claude","attached":false,"windows":1,"sid":"sid-1","agent":true}]}}
 ```
 
 **入参：无**。与会话账本那份 tmux 观测**同一趟** `tmux ls -F`（同一段脚本、同一个格式串、同一个四态分类，`observe/watcher.rs`）：
 `installed:false` = 那台没装 tmux（`sessions:[]`）；没有 server / 零会话 ⇒ `installed:true, sessions:[]`。
 〔MIG-1 续 · `99 §2.1 ⑬`〕**出成品**（`observe/tmux_list.rs`，解析从 monitor 那一份搬来）：`sessions` 每项 `name` · `path`（`pane_current_path`）·
-`command`（`pane_current_command`）· `attached` · `windows`（非数字回退 0）· `sid`（`@ccm_sid`；未设 / 不是 `[A-Za-z0-9_-]` ⇒ `null`）。
+`command`（`pane_current_command`）· `attached` · `windows`（非数字回退 0）· `sid`（`@ccm_sid`；未设 / 不是 `[A-Za-z0-9_-]` ⇒ `null`）·
+`agent`（〔THIN〕前台命令是注册表里某一家 agent 的进程 —— Claude 是 `claude` / `node`；从前界面按画像表自己判，判定进了后端）。
 段数不对的行丢掉（下溢 / 过溢各出一句日志）。界面经 `chan.call(origin, …)` 直接问（`src/frontend/ui/tmux-reads.ts`，本机远端同一形）。
 错误码：`unobservable`（输出被改写 —— 段数下溢 ——、超时或起不来：**不是零会话**）· `too_large`。
 ⚠ **CLI 面也有它**（`--tmux-list`，不读 stdin）。
@@ -4185,8 +4253,10 @@ CLI 面这两条的用处是**量一趟遍历** ／ **在一个常驻后端进�
    ⚠ **代价（如实登记）**：**不在 tmux 里**跑的 `ccm` 从此**没有** rbind marker ——
    旧 poller 是直接 `printf` OSC 到终端的，而 `@ccm_sid` 是 tmux 会话级 option、
    没有 tmux 就没有地方放身份。ccm 会为此往 stderr 说一句，不静默。
-4. **扫描绑定**（`lib.rs` remote-session-emitter）：后端 `session_added` 后对该 sid
-   起独立线程，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
+4. **扫描绑定**（`lib.rs::session_side_effects`，跑在会话成品唯一出口线程 `session-book-emitter` 上；
+   〔THIN 09-29 订正〕原先那条远端会话 emitter 线程已无，活 / 可重连 / 已结束的账住后端 `observe/session_ledger.rs`）：
+   那台后端的 `session_added` 成品到达、且该会话**没有启动令牌**（`wants_title_prescan`）时对该 sid
+   起独立线程 `remote-bind-scan`，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
    `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，
    命中即组 `SidHwndBinding{hwnd, owner_pid, owner_proc_start}` 存入 `RemoteHwndCache`。
    **无持久化**——monitor 重启靠重连的 session_added 重扫重绑（对比本地 §4 持久化缓存）。

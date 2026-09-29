@@ -489,17 +489,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "",
         "本侧渲染好的载荷整串 · 〔US1〕中转前缀里的中转口地址与钥匙文件路径（本侧的）",
     ),
-    // 〔DUP3〕Gate 1 并进 gate-core 的 tmux 名那一族（已有会话那一条），本侧那个私有谓词删了。
-    (
-        "src/frontend/shell/src/backend/control/tmux.rs",
-        1,
-        &[(
-            "src/common/gate-core/src/lib.rs",
-            "existing_tmux_name_issue",
-        )],
-        "",
-        "",
-    ),
+    // 〔THIN〕monitor `tmux.rs` 那一行（Gate 1 前检 ＋ `exact_target` 的 quote，只剩跨轨锚点在用）随整份文件删了：门只在后端。
     // 〔TL3 · §47〕文件窗口的当前目录（自由文本路径）拼进 `cd` 之前过 `posix_free_path_ok`（POSIX 绝对 · 无 `..` 段 · 不含 NUL / CR / LF）。
     // 〔FILES2〕1 → 2：非 UTF-8 的当前目录走字节形 `posix_quote_bytes`，拼之前过 `posix_free_path_bytes_ok`（同一组规则的字节形）。
     (
@@ -563,7 +553,8 @@ const QUOTE_SITES: &[QuoteRow] = &[
 fn every_file_that_quotes_a_value_into_a_shell_line_is_registered() {
     let (on_disk, names) = quote_sites();
     assert!(
-        names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "shell_quote"),
+        // 〔THIN〕monitor `ssh_source` 那层转调壳删了（零生产调用方）⇒ 认得出的别名只剩后端 `tmux_hook::sq`；本体名照旧在。
+        names.iter().any(|n| n == "sq") && names.iter().any(|n| n == "posix_quote"),
         "别名认法坏了：{names:?}"
     );
     assert!(

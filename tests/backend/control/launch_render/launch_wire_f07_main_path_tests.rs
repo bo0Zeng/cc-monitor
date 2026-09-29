@@ -286,8 +286,8 @@ fn the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path() {
 /// 不是运行时静默跳过。（同 `launch_payload_parity.rs` 自己对夹具与 TS 那一半的做法。）
 /// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着判据搬**：
 /// 那条逐字节对拍是一条 `#[test]`，剖分把它从
-/// `src/frontend/shell/src/backend/control/launch_payload_parity.rs` 搬到了
-/// `tests/frontend/shell/backend/control/launch_payload_parity_tests.rs`。
+/// `src/frontend/shell/src/launch_payload_parity.rs` 搬到了
+/// `tests/frontend/shell/launch_payload_parity_tests.rs`。
 /// 指着生产段那一份的话，下面三条量的是一个**已经不含那条判据**的文件 ——
 /// 而它们的反空真（「对拍那条判据不在了」）**按设计当场响了**，没有零命中地绿。
 /// ⚠ **两半拼起来**：剖分把那条 `#[test]` 搬去了 `_tests.rs`，而它依赖的

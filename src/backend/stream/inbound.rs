@@ -139,6 +139,10 @@ pub const COMMANDS: &[&str] = &[
     "ccm-probe",
     // 〔MIG-3b〕部署计划：那台的后端要不要换、换成哪一格（本机常驻后端沿池里那条 SSH 问那台，monitor 只放字节）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "deploy-plan",
+    // 〔THIN〕那台旧入口 `~/.local/bin/ccm` 的去向（认出是我们放的才删 ⇒ 后端判，monitor 照删）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "deploy-retired",
+    // 〔THIN〕那台要哪一格字节（表 A / 表 B 的承诺是裁决 ⇒ 后端判；全景推字节之前问它）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "deploy-slot",
     // 〔MOD〕这台后端的漂移账（看不懂的记录类型；记录解释进了后端，账跟着解析走）。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "drift-report",
     "exit-policy-read",
@@ -251,6 +255,8 @@ pub const COMMANDS: &[&str] = &[
     // 〔MIG-1 续 · ⑬〕测试连接：界面交那台（可能没保存的）配置，这台后端组请求、拨一次、回结局（`dial/probe.rs`）。
     "remote-probe",
     "remote-reach",
+    // 〔THIN〕远端常驻后端 hello 的新旧（换 / 接）由本机常驻后端判，monitor 只照做（与 `deploy-plan` 一家）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "resident-verdict",
     "resolve",
     // 〔RESYNC · V149〕手动对齐（`resync_face`；本体 `observe/watcher.rs::resync`）。
     "resync",
@@ -1373,6 +1379,71 @@ pub const REGISTRY: &[CommandSpec] = &[
                 );
                 crate::control::deploy_plan::answer(&r.args, &facing)
                     .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔THIN〕**那台旧入口的去向**：`{dial}` → `{verdict, expect, why}`（沿池里那条 SSH 开只读 SFTP，stat ＋ 读回，真异步）。
+    //   本体 `control/deploy_plan.rs::answer_retired`（与上传残件同一家：落点上该清的东西）。
+    CommandSpec {
+        name: "deploy-retired",
+        doc_anchor: Some("#### `deploy-retired`"),
+        codes: &["bad_args", "unreachable"],
+        fields: &["dial", "expect", "verdict", "why"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let facing = crate::control::deploy_plan::DialFacing::new(
+                    r.args
+                        .get("dial")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                crate::control::deploy_plan::answer_retired(&r.args, &facing)
+                    .await
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔THIN〕**那台要哪一格字节**：`{product, machine, carried, dial?}` → `{os, arch, label, ack}`（有 `dial` ⇒ 沿池里那条 SSH 问 `uname`，真异步；
+    //   没有 ⇒ 本机那一格）。本体 `control/deploy_plan.rs::answer_slot`（与 `deploy-plan` 第 ① 步同一个 `slot_of`）。
+    CommandSpec {
+        name: "deploy-slot",
+        doc_anchor: Some("#### `deploy-slot`"),
+        codes: &["bad_args", "refused", "unreachable"],
+        fields: &[
+            "ack", "arch", "carried", "dial", "label", "machine", "os", "product",
+        ],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let dial = r.args.get("dial").cloned();
+                let facing = dial.map(crate::control::deploy_plan::DialFacing::new);
+                crate::control::deploy_plan::answer_slot(
+                    &r.args,
+                    facing
+                        .as_ref()
+                        .map(|f| f as &dyn crate::control::deploy_plan::Facing),
+                )
+                .await
+                .map(Some)
+                .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔THIN〕**远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
+    //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端，`设计/00 §1.2`）。
+    CommandSpec {
+        name: "resident-verdict",
+        doc_anchor: Some("#### `resident-verdict`"),
+        codes: &["bad_args"],
+        fields: &["action", "mine", "older", "replaced", "theirs"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::control::deploy_plan::answer_resident_verdict(&r.args)
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))
             })
@@ -2561,7 +2632,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔U4b · 第四波〕resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
-    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `branch_core::find_session_file`）。
+    // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session_file`）。
     CommandSpec {
         name: "history-record",
         doc_anchor: Some("#### `history-record`"),
@@ -2826,7 +2897,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         }),
     },
     // 〔LOC1a · 第四波 4D〕分叉：与 CLI `--fork-session` 同一个本体（`control/fork_write.rs::run_inner`，
-    //   读 → `branch-core` 变换 → `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
+    //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   ⚠ 名字刻意不是 `fork-session`：自动派生的 CLI 面会与对 aterm 冻结的 `--fork-session`（argv 形）撞名。
     CommandSpec {
         name: "session-fork",

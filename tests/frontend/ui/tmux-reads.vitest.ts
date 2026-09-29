@@ -31,8 +31,10 @@ beforeEach(() => {
 describe("金样：后端出的成品，TS 这一侧读得懂", () => {
   it("装了 ⇒ 列表（sid 未设 ⇒ null）；没装 ⇒ null", () => {
     expect(decodeTmuxList(golden.installed)).toEqual([
-      { name: "proj-cc", path: "/home/u/proj", command: "claude", attached: true, windows: 2, sid: "sid-1" },
-      { name: "web", path: "/srv", command: "zsh", attached: false, windows: 1, sid: null },
+      { name: "proj-cc", path: "/home/u/proj", command: "claude", attached: true, windows: 2, sid: "sid-1", agent: true },
+      { name: "web", path: "/srv", command: "zsh", attached: false, windows: 1, sid: null, agent: false },
+      // 〔THIN〕`agent` 是那台后端判的（Claude 是 `claude` / `node`）；界面原样收、不按命令名自己判。
+      { name: "n", path: "/n", command: "node", attached: false, windows: 1, sid: null, agent: true },
     ]);
     expect(decodeTmuxList(golden.notInstalled)).toBeNull();
   });
@@ -44,6 +46,8 @@ describe("严格收", () => {
     ["多一格", { ...row, lines: [] }],
     ["windows 不是整数", { ...row, windows: 1.5 }],
     ["sid 类型不对", { ...row, sid: 7 }],
+    ["agent 缺了（旧后端）", (({ agent: _a, ...rest }) => rest)(row as { agent: unknown })],
+    ["agent 不是布尔", { ...row, agent: "yes" }],
   ])("%s ⇒ 抛", (_n, v) => {
     expect(() => decodeTmuxList({ installed: true, sessions: [v] })).toThrow();
   });

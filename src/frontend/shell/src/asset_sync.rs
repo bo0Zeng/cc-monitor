@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::backend::control::backend_route::{route_call_error, Routed};
+use crate::backend_route::{route_call_error, Routed};
 
 /// 本机后端那条命令的名字（与 `src/backend/stream/inbound.rs::REGISTRY` 同名，判据现抠对拍）。
 pub(crate) const CMD: &str = "assets-sync";

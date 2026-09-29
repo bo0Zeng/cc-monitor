@@ -70,7 +70,7 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
      〔MIG-1 收尾〕另一处是**同一台**盘上那份（当 `saved` 交给后端，固化之后下一次拨号就严格；原住 `effective_fingerprint`〔散文墓碑〕，\
      指纹继承规则随组请求搬进后端 `dial/machine.rs`）—— 同一条理由：本机那条路不拨 SSH、没有 host key。",
 ), (
-    "backend/control/backend_control.rs",
+    "backend_control.rs",
     "stop_remote_resident",
     "〔HOST 09-26〕只被 `backend_stop` 调，且在它 `is_local(&origin)` 那一支已经把本机分走之后（本机停的是本机常驻后端，\
      走 `local_backend_host::stop_local_backend`）⇒ `<local>` 结构上走不到这里。",

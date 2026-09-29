@@ -7,6 +7,7 @@
 //
 // ⚠ **`null` ≠ 空**：`null` = 这一格今天没人考据过（后端 `None`），**不许拿 claude 那份顶上**
 // （`KR93D3`）；`[]` 才是「考据过、确实是空的」。
+// 〔THIN〕工具 / 判活进程那五格不在这里了：判卡型 · 认 tmux 会话是那台后端的事（`toolCards` · `tmux-list` 的 `agent`）。
 
 export type AgentProfileRow = {
   /** 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。 */
@@ -18,11 +19,6 @@ export type AgentProfileRow = {
   resumeKind: "flag" | "subcommand";
   resumeToken: string;
   nestedEnvVars: string[];
-  agentTools: string[] | null;
-  interactiveTools: string[] | null;
-  diffTools: string[] | null;
-  mdTools: string[] | null;
-  livenessProcessNames: string[] | null;
 };
 
 export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
@@ -34,11 +30,6 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeKind: "flag",
     resumeToken: "--resume",
     nestedEnvVars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"],
-    agentTools: ["Agent", "Task"],
-    interactiveTools: ["AskUserQuestion", "ExitPlanMode"],
-    diffTools: ["Edit", "Write", "MultiEdit"],
-    mdTools: ["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"],
-    livenessProcessNames: ["claude", "node"],
   },
   {
     agent: "codex",
@@ -48,11 +39,6 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     resumeKind: "subcommand",
     resumeToken: "resume",
     nestedEnvVars: [],
-    agentTools: null,
-    interactiveTools: null,
-    diffTools: null,
-    mdTools: null,
-    livenessProcessNames: null,
   },
 ];
 

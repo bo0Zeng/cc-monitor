@@ -727,7 +727,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 }
 
 // 〔MIG-2〕`us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar`（monitor 生产树零上游选择）守的是 monitor 那棵树，
-//   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/backend/control/payload_judgment_rules.rs`）。
+//   没跟着载荷内核搬：留在 monitor 测试段（`tests/frontend/shell/payload_judgment_rules.rs`）。
 
 /// ★ `KH2B6`：`<key>` 段那条**写下来的规则**只有一份实现。
 #[test]
@@ -1741,7 +1741,7 @@ fn the_model_export_passes_real_names_and_refuses_the_rest() {
     }
 }
 
-/// 〔DUP2 · 主会话 09-26 裁 J6〕外层三格的会话名：**新建**那一格走 gate-core 新建那一条（`§47` ①：非空 · 不以 `-` 开头 ·
+/// 〔DUP2 · 主会话 09-26 裁 J6〕外层三格的会话名：**新建**那一格走 `gate_rules` 新建那一条（`§47` ①：非空 · 不以 `-` 开头 ·
 /// 无 `*?.:=` · 无控制符与欺骗字符 · ≤128，F01「不把 glob 建进名字」），attach / 送进已有会话走已有会话那一条
 /// （V131 ②：拒绝集 ＋ 非空，寻址恒 `'=<名>:'`）。**正反各一格**，拒的都带「拒」标。
 /// 这里原来：`Raw` 只核字符集、放过前导 `-`（`new-session -d -s -x` 会被当选项）；F01 在这条路上只靠界面那一道 —— 那份删了。

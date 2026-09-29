@@ -244,7 +244,7 @@ async fn ask_plan_for(
     cfg: &RemoteConfig,
     carried: &[(deploy_core::Key, &str)],
 ) -> Result<Plan, String> {
-    use crate::backend::control::backend_route::{route_call_error, Routed};
+    use crate::backend_route::{route_call_error, Routed};
     let carried: Vec<serde_json::Value> = carried
         .iter()
         .map(|(k, id)| serde_json::json!({ "os": k.os.label(), "arch": k.arch.label(), "id": id }))
@@ -517,9 +517,9 @@ pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> 
     sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;
     let swept = apply_legacy(&plan.legacy, &fs).await;
     // 〔GP1 · 第四波〕`设计/01 §6.7b` 迁移 ② ③：旧版放在 `~/.local/bin/ccm` 的那一份，认出是我们放的就删
-    //   （经那台的后端、带 CAS；那一格在 SFTP 两个写根之外）。没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
-    let door = crate::user_files::BackendDoor::new(crate::origin::Origin(cfg.origin_label()));
-    let legacy = match crate::ccm_legacy::sweep(&door).await {
+    //   （〔THIN〕认不认得出由本机常驻后端判，这里照答经那台的后端删、带 CAS；那一格在 SFTP 两个写根之外）。
+    //   没东西 ⇒ 不多说一句；查不成 ⇒ 说出来，不挡部署。
+    let legacy = match crate::ccm_legacy::sweep(&cfg).await {
         Ok(s) => s.say(),
         Err(e) => copy_text(
             "rsSftp.ccmLegacy.checkFailed",

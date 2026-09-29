@@ -137,7 +137,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
            （`local_backend_host::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
           ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
           `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
-          `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
+          `backend_client_guard_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
           而「加一条平台例外」被那张表的递减棘轮堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1）
           ★ 三条策略为什么是这三格：「三样一起才叫脱离」里的两样：`Detached` 就是 `process_group(0)`，`Null` 是 stderr 那一根（stdin/stdout 仍在函数体里）。`Hidden` 那格**先前没人回答过** —— 常驻实例在 Windows 上留一个可关的黑框，等于常驻当场没了。",
      "Hidden · Detached · Null"),

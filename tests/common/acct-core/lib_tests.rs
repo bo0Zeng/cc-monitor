@@ -252,3 +252,32 @@ fn a_config_dir_passes_the_full_table_only_when_it_is_plainly_absolute() {
             && !config_dir_char_unsafe('中')
     );
 }
+
+/// 〔THIN〕要求住址：`设计/15 §2.5`（`acct-core` 测试夹具没有 `cfg(test)` 门 ⇒ 编进发布二进制）· `设计/00 §1.2`「契约 crate 不带测试夹具」。
+/// 三项夹具（类型 · 表 · 渲染函数）各自紧跟在 `#[cfg(any(test, feature = "fixtures"))]` 后面：摘掉一处 ⇒ 那一项又进发布二进制，本条红。
+/// 正控：同一把尺子在本 crate 的一个契约项（`AUTH_KINDS`）上认得出「没有门」。
+#[test]
+fn the_parity_fixtures_stay_behind_the_fixtures_gate() {
+    let src = include_str!("../../../src/common/acct-core/src/lib.rs");
+    let gate = "#[cfg(any(test, feature = \"fixtures\"))]";
+    let gated = |decl: &str| -> bool {
+        let at = src
+            .find(decl)
+            .unwrap_or_else(|| panic!("lib.rs 里找不到 `{decl}` —— 夹具改名了，先改本条"));
+        src[..at].trim_end().ends_with(gate)
+    };
+    for decl in [
+        "pub struct AuthKindParityCase",
+        "pub const AUTH_KIND_PARITY_CASES",
+        "pub fn auth_kind_parity_manifest",
+    ] {
+        assert!(
+            gated(decl),
+            "`{decl}` 没在 `{gate}` 后面 —— 测试夹具又进发布二进制了"
+        );
+    }
+    assert!(
+        !gated("pub const AUTH_KINDS:"),
+        "正控：契约项 `AUTH_KINDS` 也被认成有门 —— 尺子恒真"
+    );
+}

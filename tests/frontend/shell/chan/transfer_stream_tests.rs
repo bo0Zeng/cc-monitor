@@ -94,7 +94,7 @@ async fn open_upload(label: &str) -> String {
 /// 🔴🔴 **生产句柄对 `transfer/<id>` 真的出帧**，而且那些帧说的就是本机后端推上来的那几格。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_production_handle_streams_the_local_backends_frames_over_real_loopback() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut be = backend_rig(&ALL);
     let client = rig().await;
     let label = "判据机器·transfer-stream";
@@ -147,7 +147,7 @@ async fn the_production_handle_streams_the_local_backends_frames_over_real_loopb
 /// 🔴 **停订就是撤**：经真回环停订 ⇒ 本机后端收到 `transfer-stop {id}`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stopping_the_subscription_cancels_the_transfer() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut be = backend_rig(&ALL);
     let client = rig().await;
     let label = "判据机器·transfer-stop";
@@ -172,7 +172,7 @@ async fn stopping_the_subscription_cancels_the_transfer() {
 /// ★ 没有这张票 / 第二次订阅 / 带了 `from` ⇒ 原位 `Closed{Peer}`，码说得清是哪一种。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_bad_transfer_subscription_says_why_in_place() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let _be = backend_rig(&ALL);
     let client = rig().await;
     let label = "判据机器·transfer-bad";
@@ -247,7 +247,7 @@ async fn opening_a_transfer_for_an_unknown_machine_is_refused_out_loud() {
 /// 要求住址：`设计/60 §7` 第 9 条 Q5（主会话 09-27 裁「不一致 ⇒ 这台的上传改走后端链路分块写」）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_coded_failure_reaches_the_window_with_its_code() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut be = backend_rig(&ALL);
     let client = rig().await;
     let label = "判据机器·transfer-coded";

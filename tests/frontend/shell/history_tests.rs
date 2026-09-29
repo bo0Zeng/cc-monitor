@@ -147,15 +147,15 @@ fn r88_backend_production(rel: &str) -> String {
 /// 判据不可能替代它 —— 那一刀要真的改一次再看两边红不红。
 #[test]
 fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
-    const CALL: &str = "branch_core::find_session_file(";
+    // 〔THIN〕共享 crate `branch-core` 收进后端适配层 `agents/claudecode/branch.rs`；通用层经注册表那一格（`agents::find_session_file`）够它。
+    const CALL: &str = "agents::find_session_file(";
 
-    // ① 唯一那份：声明只有一处，且住在共享 crate 里。
-    let core =
-        guard_core::production_code(include_str!("../../../src/common/branch-core/src/lib.rs"));
-    let decls = core.matches("pub fn find_session_file").count();
+    // ① 唯一那份：声明只有一处，住在适配层（运行期读：它在后端那一半，不长编译期的跨半边边）。
+    let core = r88_backend_production("src/backend/agents/claudecode/branch.rs");
+    let decls = core.matches("pub(crate) fn find_session_file").count();
     assert_eq!(
         decls, 1,
-        "共享 crate 里 `find_session_file` 的声明有 {decls} 处（该是 1）。\n\
+        "适配层里 `find_session_file` 的声明有 {decls} 处（该是 1）。\n\
              0 ⇒ 它被搬走/删了，下面两条会零命中地绿；2 ⇒ 唯一那份自己裂了。"
     );
 
@@ -208,7 +208,7 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
         assert!(
             hits.is_empty(),
             "{who}上又长出了目录枚举：\n{}\n\n\
-                 ⇒ 「按 sid 找那份会话文件」的家在 `branch_core::find_session_file`。\n\
+                 ⇒ 「按 sid 找那份会话文件」的家在 `agents/claudecode/branch.rs::find_session_file`。\n\
                  真有第二种找法要立，先回答「为什么这一侧不能问那一份」，再连本条一起改。",
             hits.join("\n")
         );
@@ -266,10 +266,11 @@ fn the_two_apikey_rules_are_defined_only_in_acct_core() {
 // 〔MOD〕`remote_history.rs` 整份删了（最后一个函数 `require_cfg_by_label`〔散文墓碑〕随子 agent 那条命令退役），它的测试文件里
 //   这一条与它无关的对照挪到这里。
 #[test]
-fn shell_quote_via_ssh_source() {
+fn shell_quote_via_the_shared_core() {
+    // 〔THIN〕`ssh_source` 那一层转调壳删了（零生产调用方），对照直指共享内核。
     assert_eq!(
-        crate::ssh_source::shell_quote("/a/b c.jsonl"),
+        shell_quote_core::posix_quote("/a/b c.jsonl"),
         "'/a/b c.jsonl'"
     );
-    assert_eq!(crate::ssh_source::shell_quote("a'b"), r"'a'\''b'");
+    assert_eq!(shell_quote_core::posix_quote("a'b"), r"'a'\''b'");
 }

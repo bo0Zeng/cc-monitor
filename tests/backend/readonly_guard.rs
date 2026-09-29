@@ -3831,7 +3831,7 @@ mod g6_staged_zero {
         (
             // 〔LR2〕判据改名（原名说的「U8c-3 删不得」那半随 TS 兜底一族删了，只剩 `create-or-attach` 这一半）、
             //   住址跟着判据走（剖分之后它就住 `tests/` 这份，旧住址是它当年的生产段宿主）。
-            "tests/frontend/shell/backend/control/launch_wire_f07_main_path_tests.rs",
+            "tests/frontend/shell/launch_wire_f07_main_path_tests.rs",
             "the_create_or_attach_mode_is_sent_only_by_the_ccm_container_path",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",
@@ -4603,11 +4603,13 @@ mod g6_dependency_signoff {
             "账号记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
         ),
         (
-            "branch-core",
-            DEPS,
+            // 〔THIN〕同一个依赖在测试构建里多开 `fixtures`（跨生产者对拍夹具，`accounts_query_tests.rs` 用）。
+            "acct-core",
+            DEV_DEPS,
             MEASURED_CLEAN,
-            "分叉的记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
+            "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
         ),
+        // 〔THIN〕`branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
             DEPS,
@@ -4628,12 +4630,7 @@ mod g6_dependency_signoff {
             "〔CP2c〕对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
              与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
         ),
-        (
-            "gate-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "§34 Gate 2 的唯一实现（生产段真的在执行它）；仓内 crate，现打 0 处写面",
-        ),
+        // 〔THIN〕`gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（默认层那条判据数它的写面）。
         (
             "guard-core",
             DEV_DEPS,
@@ -4798,13 +4795,7 @@ mod g6_dependency_signoff {
         ),
         // 〔RE〕`codex-token-core` 那一行删了：它搬进本 crate（`agents/codex/token.rs`），不再是依赖 ——
         //   它那几行从此是本 crate 的生产段，由上面的写面分层照常扫（纯数据映射，0 处写面）。
-        (
-            // 〔DUP2 · J19〕agent 工具名的唯一一份（会话事实的 agent 列表按它认工具名）。
-            "agent-tools-core",
-            DEPS,
-            MEASURED_CLEAN,
-            "agent 的工具词表（一个常量 ＋ 一个查表函数，纯数据）；仓内 crate，现打 0 处写面",
-        ),
+        // 〔THIN〕`agent-tools-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/cards.rs`，纯数据映射，0 处写面）。
         (
             "walkdir",
             DEPS,

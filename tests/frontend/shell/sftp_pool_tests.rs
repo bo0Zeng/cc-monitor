@@ -9,9 +9,7 @@
 //! ⚠ 本机那条流是进程内全局登记 ⇒ 本文件的用例一律先拿 `local_origin_test_lock`。
 
 use super::*;
-use crate::backend::control::inbound_client::{
-    park, register, unregister, BackendHello, LOCAL_ORIGIN,
-};
+use crate::inbound_client::{park, register, unregister, BackendHello, LOCAL_ORIGIN};
 use crate::ssh_source::{parse_frame, InboundFrame};
 use futures::stream::StreamExt;
 use serde_json::Value;
@@ -54,7 +52,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         let mut lines = tokio::io::BufReader::new(mon_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
             if let Some(f) = parse_frame(&l) {
-                crate::backend::control::local_backend::absorb_local_frame(f, Some(&c2));
+                crate::local_backend::absorb_local_frame(f, Some(&c2));
             }
         }
     });
@@ -152,7 +150,7 @@ async fn drain(mut s: futures::stream::BoxStream<'static, Snap>) -> Vec<Snap> {
 /// 🔴🔴 **M2：开单 → 订阅即起跑 → 帧 → 终局**，而且转给后端的是**本机**那条流、带着那台远端的拨号请求。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_snaps() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     let v = transfer_call(
         cfg("中继·上传"),
@@ -214,7 +212,7 @@ async fn an_upload_is_relayed_to_the_local_backend_and_its_frames_come_back_as_s
 /// 🔴 **停订就是撤**：流在收场之前被丢 ⇒ 后端收到 `transfer-stop {id}`。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     transfer_call(
         cfg("中继·撤"),
@@ -236,7 +234,7 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
 /// 本机那条流断了 ⇒ 经它开的中继一律收场（`failed`，原因说清），不让看的人干等。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_dead_local_stream_ends_every_relay_it_opened() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     transfer_call(
         cfg("中继·断"),
@@ -259,7 +257,7 @@ async fn a_dead_local_stream_ends_every_relay_it_opened() {
 /// 订阅口的三种坏形：没有这一趟 · 不是这台机器的 · 第二次订阅 —— 原位说清楚。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn bad_subscriptions_say_why_in_place() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     transfer_call(
         cfg("中继·坏"),
@@ -290,7 +288,7 @@ async fn bad_subscriptions_say_why_in_place() {
 /// 🔴 **M1**：本机后端在、但不认 `transfer-upload`（它比界面老）⇒ 报「太旧」，**一条请求都不发**（`D11`，不回落）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&["ping"]);
     let (code, e) = transfer_call(
         cfg("中继·旧"),
@@ -308,8 +306,8 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
 /// 🔴 **M1**：本机后端那条流不在 ⇒ 报「本机后端不在」（有界地等一会儿之后），不进程内开 SFTP。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
-    assert!(crate::backend::control::inbound_client::client_for(LOCAL_ORIGIN).is_none());
+    let _g = crate::inbound_client::local_origin_test_lock();
+    assert!(crate::inbound_client::client_for(LOCAL_ORIGIN).is_none());
     let (code, e) = transfer_call(
         cfg("中继·无"),
         TRANSFER_UPLOAD,
@@ -327,7 +325,7 @@ async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
 /// 用户「文件管理器全部都可以改. 不需要任何围栏」⇒ monitor 这一侧开单时那一判删了。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_download_onto_a_session_file_is_forwarded_like_any_other() {
-    let _g = crate::backend::control::inbound_client::local_origin_test_lock();
+    let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&ALL);
     let session = "/home/u/.claude/projects/dash-proj/abc-123.jsonl";
     // 〔MIG-3a〕夹具那条路径是会话记录的形状（`projects/<proj>/<sid>.jsonl`）：那道判定今天只住后端

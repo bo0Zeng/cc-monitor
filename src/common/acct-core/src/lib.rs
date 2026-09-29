@@ -3,7 +3,7 @@
 //! 〔RE · 第四波 D 段〕**今天的两个消费者**（`设计/00 §1.2` 共享 crate 那张表）：
 //! - 后端生产：`observe/accounts_query.rs` · `accounts/upstream_select/file_face.rs` · `accounts/upstream_select/endpoint.rs` ·
 //!   `control/ccm/plan.rs` · `control/launch_render/payload.rs`；
-//! - monitor 只经**生成物**用它：`tests/frontend/shell/backend/control/payload_judgment_rules.rs` 从
+//! - monitor 只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从
 //!   [`AUTH_KINDS`] 现生成 `src/frontend/ui/generated/judgment-rules.ts`（J16）；monitor 生产代码零引用
 //!   （下面「三个读者」一节是来历）。
 //!
@@ -190,6 +190,8 @@ pub fn auth_ready(auth_kind: &str, credentials_present: bool) -> bool {
 /// `expect_auth_kind` / `expect_auth_ready` 是**期望**（写成字面量，**不是**由
 /// [`auth_ready`] 算出来的 —— 算出来就成了循环自证）。两者的一致性由
 /// `tests::the_golden_matches_the_rule` 单独钉住：改了规则不改金样、或反过来，都红。
+/// 〔THIN〕测试夹具 ⇒ 在 `fixtures` feature 后面（本 crate 自己的测试照带；后端 `[dev-dependencies]` 开它）：契约 crate 里不带夹具进发布二进制。
+#[cfg(any(test, feature = "fixtures"))]
 pub struct AuthKindParityCase {
     /// 账号名，同时也是它在夹具根下的目录名。
     pub name: &'static str,
@@ -210,7 +212,8 @@ pub struct AuthKindParityCase {
 /// 两个生产者住在**两个不同的 crate**（`src/backend` 是 bin-only、刻意不进
 /// workspace），它们唯一共享的东西就是本 crate。夹具放文件里要各写一份读法与各自的路径，
 /// 那正是本 crate 存在的理由所反对的（「双写点必须有守卫」不如「让双写不可表示」）。
-/// 代价如实写：这张表会编进两个二进制（约 300 字节的静态数据）。
+/// 〔THIN〕从前「代价如实写：这张表会编进两个二进制」（RE 现打：Windows 调试版 `monitor.exe` · `cc-monitor-filewin.exe` 里各一处）；
+/// 今天它在 `fixtures` feature 后面，只有测试构建开它 ⇒ 发布二进制里没有它。
 ///
 /// # 六格各自在守什么
 ///
@@ -222,6 +225,7 @@ pub struct AuthKindParityCase {
 /// | `api-cred` | api-key 号**有**凭据文件也一样 —— 它不看那个文件（防「其实还是在看文件」） |
 /// | `legacy-nokind` | 旧 manifest（键缺席）⇒ 订阅（`KA6d` 的裁决落到判据上） |
 /// | `bogus-kind` | 认不出的值 ⇒ 保守落订阅，**不是**落 api-key |
+#[cfg(any(test, feature = "fixtures"))]
 pub const AUTH_KIND_PARITY_CASES: [AuthKindParityCase; 6] = [
     AuthKindParityCase {
         name: "sub-cred",
@@ -272,6 +276,7 @@ pub const AUTH_KIND_PARITY_CASES: [AuthKindParityCase; 6] = [
 /// 两侧的测试都调它 ⇒ **喂进去的那份 JSON 逐字节相同**，不然「三者产出相同」就成了
 /// 「三者读的不是同一份输入」。目录与凭据文件由调用方按同一张表创建（见
 /// [`AuthKindParityCase::credentials_present`]）。
+#[cfg(any(test, feature = "fixtures"))]
 pub fn auth_kind_parity_manifest(root: &str) -> String {
     let mut s =
         String::from("{\"version\":1,\"updatedAt\":\"2026-08-24T00:00:00Z\",\"sharedStore\":\"");

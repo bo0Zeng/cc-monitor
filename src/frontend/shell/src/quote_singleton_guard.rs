@@ -3,7 +3,7 @@
 //! # 病史
 //!
 //! 收口前全仓有**五份逐字节相同**的实现：`launch.rs` 的 `posix_quote`〔散文墓碑〕（〔FIX4〕那个转发别名也删了）·
-//! `ssh_source.rs::shell_quote` · backend `tmux_hook.rs::sq` ·
+//! `ssh_source.rs` 的 `shell_quote`〔散文墓碑〕（〔THIN〕零生产调用方，那层转调壳删了）· backend `tmux_hook.rs::sq` ·
 //! **`shell-quote-core::posix_quote`（U8c-1 自己新加的第四份；那时 crate 叫 `launch-core`）** ·
 //! **`acct_iso_deploy.rs` 的 `sq`〔散文墓碑〕（〔MIG-3a · 09-28〕已删；第五份 —— 我摸底只数出四份、账本 S5 记的也是四份，
 //! 是这条守卫第一次跑就当场抓出来的）**。

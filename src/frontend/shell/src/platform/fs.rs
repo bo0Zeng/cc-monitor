@@ -21,7 +21,7 @@ use std::path::Path;
 /// Unix：`0o700`（**只给本人**——释放出来的是后端二进制，没有理由让同机别的用户能跑它）。
 /// Windows：**无操作** —— 可执行性由扩展名决定，没有对应的位可置。
 ///
-/// 这是 `backend/control/local_backend.rs::extract_embedded_to` 的注入参数：
+/// 这是 `local_backend.rs::extract_embedded_to` 的注入参数：
 /// backend 那边只知道「写完要让它可执行」，不知道**这个平台上那句话怎么落**。
 // 〔GP1 · 第四波〕这里原来有 `make_private`〔散文墓碑〕（转发 `creds_core::perm::make_private`，把凭据文件收成只给本人）。
 // 唯一的调用方是 monitor 那侧的凭据写口，那个写口随「本机那一份也交本机常驻后端写」删了 ⇒ 它零调用、删掉。
@@ -47,7 +47,7 @@ pub fn make_executable(p: &Path) -> Result<(), String> {
 ///
 /// 与后端那一份（`src/backend/common/own_dir.rs::ensure_private_dir`）是两个 crate 各一份：两个 crate 没有能放平台原语的共享落点
 /// （`creds-core` 的平台那半是 `harden` feature，monitor 不开）—— 权限位同一个值（0700），各自的判据各钉一半。
-/// 这是 `backend/control/local_backend.rs` 那几处释放的注入参数（`C10`：那一半不认识平台），宿主自己也直接调。
+/// 这是 `local_backend.rs` 那几处释放的注入参数（`C10`：那一半不认识平台），宿主自己也直接调。
 pub fn ensure_private_dir(dir: &Path) -> Result<(), String> {
     if dir.is_dir() {
         return Ok(());

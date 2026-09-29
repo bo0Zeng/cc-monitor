@@ -13,7 +13,7 @@
 //! 流结束（这本账被丢掉）时 [`Drop`] 出一行总账；两样都是 0 就不说。
 //!
 //! 三个读帧的地方：远端 `ssh_source::stream_loop`（读任务数非 UTF-8、主循环数认不出）·
-//! 本机脱离载体 `local_backend_host::attach_stream` · 本机 stdio 载体 `backend::control::local_backend` 的 stdout 读循环。
+//! 本机脱离载体 `local_backend_host::attach_stream` · 本机 stdio 载体 `local_backend` 的 stdout 读循环。
 //! 接线由 `tests/frontend/shell/frame_tally_tests.rs` 的判据按文件逐一钉住。
 
 /// 一行最多带进日志多少字节（那一行的开头，截在字符边界上）。

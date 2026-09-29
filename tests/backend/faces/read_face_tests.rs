@@ -1002,7 +1002,7 @@ fn golden_record_session(home: &Path) -> PathBuf {
 /// ★★〔MOD〕**跨语言金样**：`history-read`（monitor 旁路快照收）· `history-page` · `history-lines` · `history-subagent`
 /// （界面收）对同一份夹具的成品 == `tests/__fixtures__/record-reads.golden.json`（路径里夹具那一截换成 `<home>`）。
 ///
-/// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/backend/control/frame_query_tests.rs`）·
+/// 另两个读者读同一份：monitor `frame_query::row_of`（`tests/frontend/shell/frame_query_tests.rs`）·
 /// TS 解码器（`tests/frontend/ui/session-reads.vitest.ts` 那一节）⇒ 三侧**异源**：后端改一个键名本条红，收的那两侧改一个键名各自红。
 #[test]
 fn the_record_products_match_the_cross_language_golden() {

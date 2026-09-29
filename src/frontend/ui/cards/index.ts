@@ -17,7 +17,6 @@
  */
 import { makeYieldToMain } from "../yield-to-main";
 import { renderMarkdown, renderPlainText } from "../render";
-import { AGENT_PROFILE } from "../agent-profile";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import {
   parseBashInput,
@@ -26,13 +25,10 @@ import {
   buildBashOutputCard,
 } from "./bash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";
-import { isAgentTool, buildAgentCard } from "./subagent";
-import { isDiffTool, buildDiffBody } from "./diff";
-import {
-  isInteractiveTool,
-  buildInteractiveCard,
-  markInteractiveAnswer,
-} from "./interactive";
+import { buildAgentCard } from "./subagent";
+import { buildDiffBody } from "./diff";
+import { buildInteractiveCard, markInteractiveAnswer } from "./interactive";
+import type { ToolCard } from "../generated/ToolCard";
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { firstLineOf, formatTimestampShort, jsonPrefix } from "../format";
@@ -40,6 +36,22 @@ import { openFileWindow } from "../file-window";
 import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { isRemoteOrigin, type Origin } from "../ipc/origin";
+
+/**
+ * 〔THIN · `设计/00 §1.2` 判定只在后端〕记过的一次 tool_use：工具名（标注用、存偏好用）＋ 后端给的卡型（没有 ＝ 普通工具卡）。
+ * 界面**不认工具名**：哪个工具画成哪种卡由那台后端的适配层判（`agents/<名>/cards.rs`），随 assistant 记录的 `toolCards` 带来。
+ */
+export interface ToolUseSeen {
+  name: string;
+  card: ToolCard | undefined;
+}
+
+/** 一条记录带来的卡型表（`tool_use.id` → 卡型）；只有 assistant 记录带，别的一律空。 */
+type ToolCards = Readonly<Record<string, ToolCard>>;
+const NO_CARDS: ToolCards = Object.freeze({});
+function toolCardsOf(rec: JsonlRecord): ToolCards {
+  return rec.type === "assistant" ? rec.toolCards ?? NO_CARDS : NO_CARDS;
+}
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 //
@@ -96,12 +108,12 @@ export interface RenderContext {
    */
   origin: Origin;
   /**
-   * tool_use_id → tool_name 映射。tool_use 出现在 assistant 消息，tool_result
+   * tool_use_id → 那一次 tool_use 的工具名与卡型。tool_use 出现在 assistant 消息，tool_result
    * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
    * 渲染）持有这张 Map 跨 renderMessage 调用累积。renderBlock 在 tool_use
-   * 时写入，在 tool_result 时读取来标注工具名。
+   * 时写入，在 tool_result 时读取来标注工具名、挑结果默认怎么画（〔THIN〕卡型是后端随记录成品带出的 `toolCards`）。
    */
-  toolUseNames: Map<string, string>;
+  toolUseNames: Map<string, ToolUseSeen>;
   /**
    * tool_use_id → tool_use 折叠条 DOM 引用。tool_result 到达时把结果直接
    * append 到对应 tool_use 内部（不创建独立折叠条），实现"展开命令同时
@@ -205,7 +217,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       );
       if (blocks.length === 0) return { kind: "skip" };
       const units = blocks
-        .map((b) => renderBlock(b, rec.timestamp, ctx))
+        .map((b) => renderBlock(b, rec.timestamp, ctx, NO_CARDS))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
       return {
@@ -244,8 +256,9 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       // issue #21：含交互等待工具（AskUserQuestion / ExitPlanMode）的消息走
       // kind:"card"——它们要默认可见，不能折进 card-tool-group（进组判定在
       // message 级，kind:"card" 是唯一的不进组通路）。
+      const cards = toolCardsOf(rec);
       const hasInteractive = meaningful.some(
-        (b) => b.type === "tool_use" && isInteractiveTool(b.name),
+        (b) => b.type === "tool_use" && cards[b.id] === "interactive",
       );
       if (hasText || hasInteractive) {
         return {
@@ -255,7 +268,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       }
       // 全是 thinking / tool_use / tool_result → 工具组成员
       const units = meaningful
-        .map((b) => renderBlock(b, rec.timestamp, ctx))
+        .map((b) => renderBlock(b, rec.timestamp, ctx, cards))
         .filter((el): el is HTMLElement => el !== null);
       if (units.length === 0) return { kind: "skip" };
       return {
@@ -384,8 +397,9 @@ function buildAssistantCard(
 
   const body = document.createElement("div");
   body.className = "card-body";
+  const cards = toolCardsOf(rec);
   for (const block of meaningful) {
-    const el = renderBlock(block, rec.timestamp, ctx);
+    const el = renderBlock(block, rec.timestamp, ctx, cards);
     if (el) body.appendChild(el);
   }
   card.appendChild(body);
@@ -400,6 +414,7 @@ function renderBlock(
   block: ContentBlock,
   timestamp: string,
   ctx: RenderContext,
+  cards: ToolCards,
 ): HTMLElement | null {
   switch (block.type) {
     case "text":
@@ -419,11 +434,12 @@ function renderBlock(
       );
     }
     case "tool_use": {
-      // 记下 id → name，给下一条消息的 tool_result 反查用
-      ctx.toolUseNames.set(block.id, block.name);
+      // 记下 id → 名字与卡型，给下一条消息的 tool_result 反查用
+      const card = cards[block.id];
+      ctx.toolUseNames.set(block.id, { name: block.name, card });
 
-      // Agent / Task tool_use → 折叠卡内嵌渲染 subagent JSONL
-      if (isAgentTool(block.name)) {
+      // 〔THIN〕卡型是那台后端判的（`toolCards`）；子 agent 工具 → 折叠卡内嵌渲染 subagent JSONL
+      if (card === "agent") {
         return buildAgentCard(
           block.input as Parameters<typeof buildAgentCard>[0],
           timestamp,
@@ -433,7 +449,7 @@ function renderBlock(
       }
       // issue #21：交互等待工具 → 默认展开的提问卡 / plan 卡（用户在被等着，
       // 折叠会误以为 LLM 还在输出）。畸形 input throw → 回退通用折叠卡。
-      if (isInteractiveTool(block.name)) {
+      if (card === "interactive") {
         try {
           const el = buildInteractiveCard(block.name, block.input, {
             lazy: ctx.lazy,
@@ -444,7 +460,7 @@ function renderBlock(
           console.warn("interactive card fallback:", block.name, e);
         }
       }
-      return buildToolUseCard(block, ctx);
+      return buildToolUseCard(block, ctx, card === "diff");
     }
     case "tool_result": {
       return injectOrBuildToolResult(block, ctx);
@@ -475,6 +491,7 @@ function renderBlock(
 function buildToolUseCard(
   block: Extract<ContentBlock, { type: "tool_use" }>,
   ctx: RenderContext,
+  asDiff: boolean,
 ): HTMLElement {
   const summary = summarizeInput(block.input);
   const d = document.createElement("details");
@@ -495,7 +512,8 @@ function buildToolUseCard(
     let bodyEl: HTMLElement | null = null;
     // issue #14：Edit/Write/MultiEdit → 行级 diff 卡；任何异常 / 畸形 / 未知工具
     // 回退现有 prettyJson <pre>（双重 try/catch：这里 + buildDiffBody 内部）。
-    if (isDiffTool(block.name)) {
+    // 〔THIN〕写类工具（后端判的卡型 `diff`）→ 行级 diff 卡。
+    if (asDiff) {
       try {
         bodyEl = buildDiffBody(block.name, block.input);
       } catch {
@@ -638,7 +656,10 @@ function injectOrBuildToolResult(
   }
   const exitCode = block.is_error ? extractExitCode(text) : null;
   const preview = firstLinePreview(text, 60);
-  const toolName = ctx.toolUseNames.get(block.tool_use_id) ?? "tool";
+  const seen = ctx.toolUseNames.get(block.tool_use_id);
+  const toolName = seen?.name ?? "tool";
+  // 〔THIN〕结果默认怎么画按后端给的卡型（`md`），不按工具名自己判。
+  const mdByDefault = seen?.card === "md";
   const errTag = block.is_error
     ? exitCode !== null
       ? ` · exit ${exitCode}`
@@ -684,7 +705,7 @@ function injectOrBuildToolResult(
       resultEl.appendChild(summary);
 
       // 渲染模式 toolbar + body (lazy build 首次展开时再实际产生 DOM)
-      buildResultBody(resultEl, text, toolName);
+      buildResultBody(resultEl, text, toolName, mdByDefault);
 
       // 同步 tool_use summary：只在原 summary 末尾追加错误标记（不重复加预览，
       // 预览已经在 result 自己的 summary 上）。防止反复追加。
@@ -713,7 +734,7 @@ function injectOrBuildToolResult(
     : `${toolName}${errTag} · ${approximateSize(block.content)}`;
   const fallback = makeCollapsible(cls, summaryText, () => {
     const container = document.createElement("div");
-    buildResultBody(container, text, toolName);
+    buildResultBody(container, text, toolName, mdByDefault);
     return container;
   });
   // 标记 + 登记到 pending map，给切块场景的 reconcile 用
@@ -797,6 +818,7 @@ function buildResultBody(
   host: HTMLElement,
   text: string,
   toolName: string,
+  mdByDefault: boolean,
 ): void {
   // 秤 6（`设计/17 §6` 表第 6 行）：本函数下面建的每个闭包（`renderMode` /
   // 两个 click 监听 / `onToggle`）都捕获 `text`，而它们经 DOM 监听器被卡片长期持有。
@@ -829,7 +851,7 @@ function buildResultBody(
   let textBodyEl: HTMLElement | null = null;
   let mdBodyEl: HTMLElement | null = null;
   let currentMode: "text" | "md" =
-    loadRenderModePreference(toolName) ?? defaultModeForTool(toolName);
+    loadRenderModePreference(toolName) ?? (mdByDefault ? "md" : "text");
 
   const renderMode = (mode: "text" | "md"): void => {
     if (currentMode === mode && bodyHost.firstChild) return;
@@ -1088,10 +1110,7 @@ function stripLineNumberPrefix(text: string): string {
     .join("\n");
 }
 
-/** 偏好：哪些 tool 默认 MD 渲染（产生类 markdown 文本的工具）。F-MA：值在 agent-profile.mdTools。 */
-function defaultModeForTool(toolName: string): "text" | "md" {
-  return AGENT_PROFILE.mdTools.has(toolName) ? "md" : "text";
-}
+// 〔THIN〕`defaultModeForTool`〔散文墓碑〕删：哪些工具的结果默认按 Markdown 画由那台后端判（卡型 `md`，随记录成品带来）。
 
 function loadRenderModePreference(toolName: string): "text" | "md" | null {
   const v = safeGet(LS_KEYS.toolRender(toolName));

@@ -101,7 +101,7 @@ fn the_stream_flags_monitor_sends_are_all_strippable() {
     // 〔E2 · V28〕流模式显式词：后端表里有它（名字是 `ccm` 时零参数是起会话）。
     // 〔MIG-1 续〕「测试连接探针那一发带它」那一格随探针搬进本机后端：那一发今天住后端 `dial/probe.rs`，
     //   由它自己拼（`crate::STREAM_FLAG_EXPLICIT`，与本表同一个常量），不再经 monitor。
-    let word = crate::backend::control::local_backend::STREAM_WORD;
+    let word = crate::local_backend::STREAM_WORD;
     assert!(
         line.contains(&format!("\"{word}\"")),
         "后端 STREAM_FLAGS 不认 `{word}`：{line}"
@@ -374,7 +374,7 @@ fn backend_stream_flags_cf1() -> std::collections::BTreeSet<String> {
 
 #[test]
 fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips() {
-    use crate::backend::control::local_backend::LOCAL_STREAM_ARGS;
+    use crate::local_backend::LOCAL_STREAM_ARGS;
     let backend = backend_stream_flags_cf1();
     assert!(
         backend.len() >= 2,
@@ -404,7 +404,7 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
     );
     // 两条载体用的是**这一份**，不是各写一份字面量。
     let stdio = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/backend/control/local_backend.rs"
+        "../../../src/frontend/shell/src/local_backend.rs"
     ));
     let host = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
@@ -433,7 +433,7 @@ fn both_carriers_start_the_backend_with_the_same_stream_flags_the_backend_strips
 /// 异源：旗标字面量从后端 `STREAM_FLAGS` 源码里摘，确认后端真剥它。
 #[test]
 fn loc1b_the_local_stream_asks_for_the_binding_material() {
-    use crate::backend::control::local_backend::LOCAL_STREAM_ARGS;
+    use crate::local_backend::LOCAL_STREAM_ARGS;
     assert!(
         LOCAL_STREAM_ARGS.contains(&"--with-rbind-token"),
         "本机起参少了 `--with-rbind-token` ⇒ 本机 `session_added` 不带 pid ⇒ 本机 ↗ 按 PowerShell 父进程绑窗口那一跳没有 pid"
