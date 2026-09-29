@@ -3125,7 +3125,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "3.8.1"
+version = "4.0.0"
 dependencies = [
  "acct-core",
  "copy-core",
