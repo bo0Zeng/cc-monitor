@@ -12,22 +12,22 @@
 [workspace]
 members = [
     ".",
-    "crates/acct-core",
-    "crates/branch-core",
-    "crates/creds-core",
-    "crates/gate-core",
-    "crates/guard-core",
-    "crates/relay-route-core",
-    "crates/search-core",
-    "crates/shell-quote-core",
-    "crates/codex-token-core",
-    "crates/copy-core",
+    "../common/acct-core",
+    "../common/branch-core",
+    "../common/creds-core",
+    "../common/gate-core",
+    "../common/guard-core",
+    "../common/relay-route-core",
+    "../common/search-core",
+    "../common/shell-quote-core",
+    "../common/codex-token-core",
+    "../common/copy-core",
     # 〔DUP2 · J19〕agent 的工具词表（哪些工具名算「展开 = 子会话」）—— monitor 渲染与后端会话事实共用的唯一一份。
-    "crates/agent-tools-core",
+    "../common/agent-tools-core",
     # 〔DUP3 · J9〕上游 base URL 能不能用 —— 后端中转 · 上游选择 · 写口与界面生成物共用的唯一一份。
-    "crates/upstream-url-core",
+    "../common/upstream-url-core",
     # 〔MIG-3b〕部署决策（表 A / 表 B · 身份戳 · 只升不降）—— 本机常驻后端出计划、monitor 放字节共用的唯一一份。
-    "crates/deploy-core",
+    "../common/deploy-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -122,38 +122,38 @@ sha2 = "0.10"
 # 本机全景也走「本机后端 → 插件口 → 全景小程序（`src/panorama-engine`）」，monitor 一行引擎都不链。
 # vendored 副本原地不动（`vendor/code-picture-core`，小程序经 `../bridge/vendor/…` 链它；挪家是另一件事）。
 # G1（branch-anywhere）：分叉的记录变换，与远端后端共用同一份实现。
-branch-core = { path = "crates/branch-core" }
-codex-token-core = { path = "crates/codex-token-core" }
+branch-core = { path = "../common/branch-core" }
+codex-token-core = { path = "../common/codex-token-core" }
 # 〔DUP2 · J19〕agent 工具词表的唯一一份（claude 画像那一格 `agent_tools` 取它）。
-agent-tools-core = { path = "crates/agent-tools-core" }
-acct-core = { path = "crates/acct-core" }
+agent-tools-core = { path = "../common/agent-tools-core" }
+acct-core = { path = "../common/acct-core" }
 # 〔CP2c〕对外文案表的 Rust 取文口（唯一一份实现；`copy_table.rs` 转发它）。常驻后端与 creds-core 也链它。
-copy-core = { path = "crates/copy-core" }
+copy-core = { path = "../common/copy-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端后端共用。
 # 〔US1 · 第四波 4D〕**不开 `harden`**：monitor 既不写（GP1 起本机那一份的写者是本机常驻后端）也不读（US1 起本机那份的状态
 #   由本机常驻后端答 `apikey-read`）这份文件，只用 `store::FILE_NAME` 算「本 monitor 认的那一份在哪」（`creds_store::resolve_path`）。
 #   「monitor 写不了这份文件」从判据兜换回**编译器兜**：写半边（`perm::create_private` / `make_private`）只在 `harden` 下存在。
 # 〔墓碑 —— GP1 那一版开着它「只为 Windows 上读 DACL」（`perm::probe` 那一臂）：读者随 `creds_store::read_status`〔散文墓碑〕一起没了。〕
-creds-core = { path = "crates/creds-core" }
+creds-core = { path = "../common/creds-core" }
 
 # P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
 # 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
 # ⚠ 原注释说「backend 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起后端的
 # `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的后端用量。
-shell-quote-core = { path = "crates/shell-quote-core" }
+shell-quote-core = { path = "../common/shell-quote-core" }
 # 〔US1 · 4D〕中转门牌（端口 · 钥匙文件路径 · 路由语法）的唯一住址，与后端同一份（`设计/20 §5` 目标）。
-relay-route-core = { path = "crates/relay-route-core" }
+relay-route-core = { path = "../common/relay-route-core" }
 # 〔MIG-3b〕部署决策的唯一一份：本机常驻后端出计划（`deploy-plan`）用它判，monitor 照计划取字节、本机那一份的身份 · 远端 hello 的新旧 · 全景的表 A/B 也用它。
-deploy-core = { path = "crates/deploy-core" }
+deploy-core = { path = "../common/deploy-core" }
 # F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
 # monitor 与后端共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
-gate-core = { path = "crates/gate-core" }
+gate-core = { path = "../common/gate-core" }
 
 # 〔LOC1b · 第四波 4D〕monitor 不再搜：本机全文搜索也问本机后端（`history-search`），monitor 进程内那份索引删了；
 # 「monitor 生产树里零处再搜」由 `tests/bridge/search_kou_jing_guard.rs` ③ 钉。
 # 〔RENDER2 · J10 乙（主会话 09-27 裁）〕monitor 解析 user 记录时调同一条注入噪声规则（`search_core::user_text`）给前端出成品，
 # 只这一个用途、只 `messages.rs` 一个调用点（③ 同一条判据钉）。
-search-core = { path = "crates/search-core" }
+search-core = { path = "../common/search-core" }
 
 notify = "6"
 notify-debouncer-mini = "0.4"
@@ -257,12 +257,12 @@ winit = "0.30"
 # 但「codegen 工具不进产物」是正确的依赖方向。
 ts-rs = "12.0.1"
 # 〔DUP3 · J9〕上游 base URL 能不能用：monitor 生产树零引用，只有生成器（`export_bindings_judgment_rules`）与金样那条判据用它 ⇒ dev 侧。
-upstream-url-core = { path = "crates/upstream-url-core" }
+upstream-url-core = { path = "../common/upstream-url-core" }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端后端共用同一份。
 # **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
 # 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
 # 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
-guard-core = { path = "crates/guard-core" }
+guard-core = { path = "../common/guard-core" }
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +

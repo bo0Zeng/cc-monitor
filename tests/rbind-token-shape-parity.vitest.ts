@@ -34,7 +34,7 @@ import { mintRbindToken } from "../src/remote-launch-run.ts";
  * 挡那一类的是 Rust 侧 fail-closed 用例（手写的坏样本：`payload_tests.rs` · 后端 `identity_tag_tests.rs` · `shell-quote-core lib_tests`）。
  */
 /** 〔DUP3〕令牌形状全仓唯一那一份的住址（两半都是它的再导出）。 */
-const TOKEN_HOME = "src/bridge/crates/shell-quote-core/src/lib.rs";
+const TOKEN_HOME = "src/common/shell-quote-core/src/lib.rs";
 
 describe("启动期令牌：铸币输出 ⊂ Rust 那一条形状（规则从 shell-quote-core 源码抠，不共用生成物）", () => {
   const rust = readFileSync(resolve(REPO_ROOT, TOKEN_HOME), "utf8");

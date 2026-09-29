@@ -346,50 +346,52 @@ fn the_upstream_url_golden_agrees_with_the_one_rule() {
 #[test]
 fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    // 住址按仓根写（`src/…`），搬树时跟着仓根走，不跟着本 crate 的深度走。
+    let repo = crate::guard_support::repo_root();
     let read =
-        |rel: &str| guard_core::production_code(&std::fs::read_to_string(root.join(rel)).unwrap());
+        |rel: &str| guard_core::production_code(&std::fs::read_to_string(repo.join(rel)).unwrap());
     // (名字, 它今天的家)
     let words: [(&str, &str); 8] = [
         (
             "APIKEY_TABLE_AGENT",
-            "../backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
+            "src/backend/accounts/upstream/mod.rs::CREDENTIALS_FILE_AGENT",
         ),
         (
             "AGENTS_WITH_DEFAULT_UPSTREAM",
-            "../backend/agents/mod.rs::default_upstreams",
+            "src/backend/agents/mod.rs::default_upstreams",
         ),
         (
             "apikey_endpoint_for",
-            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+            "src/backend/accounts/upstream/endpoint.rs::decide_launch",
         ),
         (
             "relay_endpoint_for",
-            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+            "src/backend/accounts/upstream/endpoint.rs::decide_launch",
         ),
         (
             "RelayAsk",
-            "../backend/accounts/upstream/endpoint.rs::decide_launch",
+            "src/backend/accounts/upstream/endpoint.rs::decide_launch",
         ),
         (
             "apikey_rows",
-            "../backend/accounts/upstream/file_face.rs::rows_at",
+            "src/backend/accounts/upstream/file_face.rs::rows_at",
         ),
         (
             "read_accounts",
-            "../backend/accounts/upstream/file_face.rs::read_at",
+            "src/backend/accounts/upstream/file_face.rs::read_at",
         ),
         (
             "apikey_routed_subset",
-            "../backend/accounts/upstream/endpoint.rs::answer_routing_with",
+            "src/backend/accounts/upstream/endpoint.rs::answer_routing_with",
         ),
     ];
     let literals: [(&str, &str); 4] = [
-        ("\"/s/\"", "crates/relay-route-core/src/lib.rs"),
-        ("\"/t/\"", "crates/relay-route-core/src/lib.rs"),
-        ("8788", "crates/relay-route-core/src/lib.rs"),
+        ("\"/s/\"", "src/common/relay-route-core/src/lib.rs"),
+        ("\"/t/\"", "src/common/relay-route-core/src/lib.rs"),
+        ("8788", "src/common/relay-route-core/src/lib.rs"),
         (
             "\".cc-monitor/relay-key\"",
-            "crates/relay-route-core/src/lib.rs",
+            "src/common/relay-route-core/src/lib.rs",
         ),
     ];
     let mut hits = Vec::new();
@@ -427,7 +429,7 @@ fn us1_the_monitor_holds_no_upstream_selection_and_no_route_grammar() {
     }
     // 后端那一半：端口与钥匙路径只许 `use` 共享 crate（零字面量）。
     let mut backend_hits = Vec::new();
-    for (at, src) in guard_core::scan_tree_excluding(&root.join("../backend"), &["rs"], &[]) {
+    for (at, src) in guard_core::scan_tree_excluding(&repo.join("src/backend"), &["rs"], &[]) {
         let prod = guard_core::production_code(&src);
         for l in ["8788", "\".cc-monitor/relay-key\""] {
             if prod.contains(l) {

@@ -1,5 +1,5 @@
 {
-  "_": "〔DUP3 · J9〕上游 base URL 能不能用的共用金样：Rust `upstream_url_core::usable`（tests/bridge/crates/upstream-url-core/lib_tests.rs 读）与 TS 生成物 `baseUrlIssue`（tests/upstream-url-parity.vitest.ts 读）逐条对同一份。want 是手写的（null = 能用，否则是第一条不过的那一格的 code）；调用方先 trim、空串 = 用默认上游，不在这里。",
+  "_": "〔DUP3 · J9〕上游 base URL 能不能用的共用金样：Rust `upstream_url_core::usable`（tests/common/upstream-url-core/lib_tests.rs 读）与 TS 生成物 `baseUrlIssue`（tests/upstream-url-parity.vitest.ts 读）逐条对同一份。want 是手写的（null = 能用，否则是第一条不过的那一格的 code）；调用方先 trim、空串 = 用默认上游，不在这里。",
   "cases": [
     { "url": "https://api.example.com", "want": null },
     { "url": "https://api.example.com/v1", "want": null },

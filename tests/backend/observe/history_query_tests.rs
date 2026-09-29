@@ -40,7 +40,7 @@ fn analyze_extracts_excerpt_title_cwd_count() {
 }
 
 // 〔C4d〕`truncate_is_char_safe` 随被测的 `truncate_chars`〔散文墓碑〕一起退役：摘录改用 `search_core::truncate_excerpt`，
-//   「不劈码点」由 search-core 自己的判据守（`tests/bridge/crates/search-core/lib_tests.rs`）；本文件下面 C4d 那一节钉摘录的整形。
+//   「不劈码点」由 search-core 自己的判据守（`tests/common/search-core/lib_tests.rs`）；本文件下面 C4d 那一节钉摘录的整形。
 
 /// Batch11-F32：sessionKind:"bg" 探测 → isBg。
 #[test]

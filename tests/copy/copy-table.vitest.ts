@@ -123,7 +123,7 @@ const RS_STATIC = "copy_static";
  * 〔CP2c〕取文口的**定义**住的两份文件：`copy-core` 的实现，与 monitor 那一层转发（`copy_core::copy_text(key, args)`，
  * key 不是字面量 —— 它是转发，不是引用）。它们不进「引用」一侧。
  */
-const RS_DEFINITIONS = new Set([RS_HOME, "src/bridge/crates/copy-core/src/lib.rs"]);
+const RS_DEFINITIONS = new Set([RS_HOME, "src/common/copy-core/src/lib.rs"]);
 
 /** 剥掉 `//` 行注释（字符串里的 `//` 不算）。块注释本仓生产段不用来写代码，按行注释剥足够。 */
 function stripRustLineComments(text: string): string {
@@ -274,7 +274,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
   const rsFiles = [
     ...productionRsFiles("src/bridge/src"),
     ...productionRsFiles("src/backend"),
-    ...productionRsFiles("src/bridge/crates"),
+    ...productionRsFiles("src/common"),
   ];
   const rsAll = rsFiles
     .filter((f) => !RS_DEFINITIONS.has(f.file))
@@ -289,7 +289,7 @@ describe("CP2a · 文案表 ↔ 生产代码引用", () => {
     expect(rsFiles.map((f) => f.file)).toContain(RS_HOME);
     expect(rsRefs.length, "一个 copy_text 调用点都没找到 —— 读口没接上，或者读法坏了").toBeGreaterThan(0);
      // 〔CP2c〕三棵树各自真的扫到了、也各自读到了调用点（扩根那一步没接上时，下面的两向相等会在缺角的集合上成立）。
-    for (const [root, n] of [["src/backend/", 100], ["src/bridge/crates/", 10]] as const) {
+    for (const [root, n] of [["src/backend/", 100], ["src/common/", 10]] as const) {
       expect(rsFiles.filter((f) => f.file.startsWith(root)).length, `${root} 下一个 .rs 都没扫到`).toBeGreaterThan(n);
     }
     expect(rsRefs.some((r) => r.file.startsWith("src/backend/")), "常驻后端一个 copy_text 调用点都没读到").toBe(true);
@@ -372,7 +372,7 @@ describe("CP2a · 文案表判据自己会不会死（正控）", () => {
 /**
  * 〔DUP2 · `设计/01 §6.9`「前端读口 `copy-table.ts::copyText`；Rust 读口只有一份实现 `copy-core::copy_text`」〕
  * **两个读口的插值对拍（TS 这一侧）**：共用金样 `tests/__fixtures__/copy-interpolation.golden.json` 逐条喂给 `copyText`，
- * 期望是金样里手写的；Rust 那一侧 `tests/bridge/crates/copy-core/lib_tests.rs::the_shared_interpolation_golden_agrees_with_this_reader`
+ * 期望是金样里手写的；Rust 那一侧 `tests/common/copy-core/lib_tests.rs::the_shared_interpolation_golden_agrees_with_this_reader`
  * 读同一份。两侧有意不同的几形（缺键 · 参数对不上）登记在金样 `_differences`，不在这里（〔DUP3〕「值里含别的占位符」那一形 Rust 改成单趟之后两侧一致，挪进了 `cases`）。
  */
 describe("DUP2 · 两个读口的插值对拍（金样 copy-interpolation.golden.json）", () => {

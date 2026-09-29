@@ -1797,7 +1797,7 @@ pub fn stop_local_backend() -> Result<crate::remote_resident::StopAnswer, String
 // 🔴 **上一版这里指的是一个裸行号**（`guard-core/src/lib.rs` 加一个数字）——
 //   那份文件 09-12 一动那个数就漂了，而**漂了没有任何东西会说话**（本区 `[J5 审计正文]` 那一族）。
 //   ⇒ 今天指的是**函数名 ＋ 一段机检着的逐字校验位**，不是行号：剥法住
-//   `src/bridge/crates/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
+//   `src/common/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
 //   **只有一个家** —— 下面 [`tests::the_strip_rule_this_file_leans_on_is_still_on_disk`]
 //   里那个 `PIN`，它在盘上找不着就当场红。
 #[cfg(test)]

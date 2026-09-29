@@ -111,7 +111,7 @@ EXCLUDED_DIRS = (
     "src/doc",                  # 文档
     # 〔CP2c · 第四波 4C〕判据支撑库：只进 monitor / 后端的 `[dev-dependencies]`（与下面 `guard_support.rs`
     # 被排除同一条理由 —— 判据支撑，不是生产面）。它的 `Err(…)` 是判据红时印给开发者看的，不是对外文案。
-    "src/bridge/crates/guard-core",
+    "src/common/guard-core",
 )
 EXCLUDED_FILE_RE = re.compile(
     r"(\.vitest\.ts|\.test\.ts|\.spec\.ts|\.d\.ts)$"

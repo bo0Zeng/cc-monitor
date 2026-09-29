@@ -342,7 +342,7 @@ mod tests {
                     .unwrap_or_else(|e| panic!("读不到 {rel}：{e}")),
             )
         };
-        let defining = read_manifest("src/bridge/crates/creds-core/Cargo.toml");
+        let defining = read_manifest("src/common/creds-core/Cargo.toml");
         assert!(
             defining.lines().any(|l| l.trim_start().starts_with(&format!("{feature} = ["))),
             "非空对照失败：`creds-core` 那份 manifest 里数不到定义 `{feature}` 的那一行 —— 这把尺子是瞎的"

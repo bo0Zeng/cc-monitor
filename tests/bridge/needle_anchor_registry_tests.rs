@@ -20,7 +20,7 @@ fn repo_root() -> PathBuf {
 /// 带 `..` 的折返路径 ⇒ 后缀比**恒不命中**；逐字读数住 `scanning_guard_registry` 头注）。
 /// **`设计/99` 条 73 因此把「摘掉自己」换成了明写名单**，于是新写的遍历一律是
 /// `guard_core::scan_tree_excluding(`（现打：`tests/bridge` 29 处 · `tests/backend` 12 处 ·
-/// `src/bridge/crates` 1 处），而那个字面量**这张表一个都不含** ——
+/// `src/common` 1 处），而那个字面量**这张表一个都不含** ——
 /// `scan_tree_excluding(` 里没有 `scan_tree!`，也没有 `read_to_string(`。
 /// ⇒ 每一条改用新原语的判据，都**按构造**从这条棘轮的人群里掉了出去，而掉出去是静默的。
 ///
@@ -380,7 +380,7 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
     for (sub, excluded) in [
         ("src/bridge/src", &[] as &[&str]),
         ("src/backend", &[]),
-        ("src/bridge/crates", &[]),
+        ("src/common", &[]),
         ("tests/bridge", &["needle_anchor_registry_tests.rs"]),
         ("tests/backend", &[]),
     ] {
@@ -532,12 +532,7 @@ fn the_extension_suffix_exemption_is_still_load_bearing() {
     // ② 保鲜：全仓真的还有人在用这一形。用不到了就该把豁免删掉。
     let root = repo_root();
     let mut used = 0usize;
-    for sub in [
-        "src/bridge/src",
-        "src/backend",
-        "src/bridge/crates",
-        "tests",
-    ] {
+    for sub in ["src/bridge/src", "src/backend", "src/common", "tests"] {
         for (_, src) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
             let mut i = 0usize;
             while let Some(j) = src[i..].find(".ends_with(") {

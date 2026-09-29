@@ -43,9 +43,7 @@ const MUST_CALL: &[&str] = &[
 #[test]
 fn the_search_kou_jing_has_exactly_one_home() {
     // ── ① core 确实持有口径，否则下面两条退化成「哪里都没有」，零命中地绿。
-    let core = guard_core::production_code(include_str!(
-        "../../src/bridge/crates/search-core/src/lib.rs"
-    ));
+    let core = guard_core::production_code(include_str!("../../src/common/search-core/src/lib.rs"));
     let missing: Vec<&str> = HELPERS
         .iter()
         .copied()

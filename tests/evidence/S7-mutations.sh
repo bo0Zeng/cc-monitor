@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 秤 7 的**死值验 + 一次变体实验**。
 #
-# 🔴 纪律：**一个字都不在主树上改。** 先把三棵树（`src/backend` · `src/bridge/crates`
+# 🔴 纪律：**一个字都不在主树上改。** 先把三棵树（`src/backend` · `src/common`
 # · `tests/`）按同样的相对布局复制到一个一次性目录，变异只发生在那份副本里。
 # 理由：主树上有别的 agent 在写；而「改完记得改回来」是一条靠记性的纪律，靠不住。
 #
@@ -35,7 +35,7 @@ fi
 rm -rf "$dv"
 mkdir -p "$dv/src/bridge" "$dv/tests"
 cp -a "$repo/src/backend" "$dv/src/"
-cp -a "$repo/src/bridge/crates" "$dv/src/bridge/"
+cp -a "$repo/src/common" "$dv/src/bridge/"
 # `src/backend/Cargo.toml` 头注逐字：「`cargo build` **真的独立**，`cargo test` **不独立**」——
 # 测块有几条 `include_str!` 伸进 monitor 那棵树与 `src/doc/`。要在副本里跑得动等价性
 # 对拍就得把这两棵也带上，否则不是测试红，是**编译**红。

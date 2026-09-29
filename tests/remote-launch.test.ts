@@ -231,7 +231,7 @@ test("F74 tmux 新建：显式 name → 用它作会话名（灰会话 fresh res
 
 // 〔DUP2 · J6〕这里原来是「F74 非法显式 name（空格 / tmux 保留字符 / 注入 / 前导 -）throw」：那道 TS 内联式子删了 ——
 // 名字的规则只有一份（gate-core 新建那一条：前导 `-` · `.:=*?` · 控制符 · 欺骗字符 · 超长），渲染侧判；`raw` 那一支另有裸拼前提
-// （空格 · `;` 进不去）。逐格坏样本归 Rust：`tests/bridge/crates/gate-core/lib_tests.rs` ＋ `payload_tests.rs`。这里只钉「原样上线」。
+// （空格 · `;` 进不去）。逐格坏样本归 Rust：`tests/common/gate-core/lib_tests.rs` ＋ `payload_tests.rs`。这里只钉「原样上线」。
 test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DUP2〕）", () => {
   for (const n of ["cc s1", "cc.s1", "cc:s1", "a;rm -rf /", "-d"]) {
     eq(req(planResumeTmux("s1", "", "claude", n)).outer?.name, n, `原样：${JSON.stringify(n)}`);
@@ -248,7 +248,7 @@ test("F74 tmux 新建：显式 name 原样上线（形状交渲染侧判，〔DU
 
 // 〔DUP2 · 主会话 09-26 裁 J6〕这里原来有三条（TS 的两个 tmux 名谓词逐格：attach 那条的拒绝面 · F01 新建禁 glob ·
 // F04b 新建禁 `=`）。被测的两个谓词删了（`设计/90 §3` 判据 2），规则住 gate-core、只有一份 ⇒ 三条的期望原样搬进
-// `tests/bridge/crates/gate-core/lib_tests.rs`（新建 / 已有会话两条，正反各一格）；F04b「建得出来就杀得掉」的跨轨那条
+// `tests/common/gate-core/lib_tests.rs`（新建 / 已有会话两条，正反各一格）；F04b「建得出来就杀得掉」的跨轨那条
 // 在 `tests/bridge/backend/control/backend_kill_tests.rs` 改钉 gate-core 那一个禁字集。
 
 test("F01 起新会话：glob 名原样交给渲染侧（〔DUP2〕gate-core 新建那一条拒）/ attach 放行", () => {

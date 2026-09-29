@@ -209,7 +209,7 @@ error: bench failed …  process didn't exit successfully: … (exit status: 1)
 
 ### 5.2 死值验：把 `read_session_tail` 掏空成 `Ok(())`
 
-变异只发生在一次性副本里（`S7-mutations.sh` 先把 `src/backend` · `src/bridge/crates`
+变异只发生在一次性副本里（`S7-mutations.sh` 先把 `src/backend` · `src/common`
 · `src/bridge/src` · `src/doc` · `tests/` 复制到临时目录）。**主树一个字没动。**
 
 | 格（max 15.1 MiB） | A 原样 | **B 死值** | 变化 |

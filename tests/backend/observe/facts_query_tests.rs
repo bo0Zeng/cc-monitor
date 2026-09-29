@@ -291,7 +291,7 @@ fn a_prior_of_the_wrong_shape_is_refused() {
 
 // 〔DUP2 · 主会话 09-26 裁 J19〕这里原来有一条异源对拍（后端的 agent 工具名 == 生成物 `agent-profile-table.ts` 里 claude 那一行）
 // ＋ 它的取数助手与取数正控。两份收成一份进共享 crate `agent_tools_core` 之后，两半按构造是同一个常量 ⇒ 那条对拍恒真、随之退役
-// （判定本身的正反两格住 `tests/bridge/crates/agent-tools-core/lib_tests.rs`；「只有一份」由 `tests/judgment-single-home.vitest.ts` 的 J19 钉）。
+// （判定本身的正反两格住 `tests/common/agent-tools-core/lib_tests.rs`；「只有一份」由 `tests/judgment-single-home.vitest.ts` 的 J19 钉）。
 
 #[test]
 fn the_two_lookups_answer_from_their_tables() {

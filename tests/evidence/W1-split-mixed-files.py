@@ -230,7 +230,7 @@ def tree_of(src_rel: str) -> str:
 def dest_for(src_rel: str, mod_name: str, single: bool) -> str:
     """src/bridge/src/foo.rs           → tests/bridge/foo_tests.rs
     src/bridge/src/a/b.rs              → tests/bridge/a/b_tests.rs
-    src/bridge/crates/x-core/src/l.rs  → tests/bridge/crates/x-core/l_tests.rs
+    src/common/x-core/src/l.rs  → tests/common/x-core/l_tests.rs
     src/backend/foo.rs                 → tests/backend/foo_tests.rs
     src/backend/a/b.rs                 → tests/backend/a/b_tests.rs
     同一文件有多个测试模块时用模块名消歧：<stem>_<mod>.rs
@@ -521,7 +521,7 @@ def main():
         sample = a.only or [
             "src/bridge/src/tool_registry.rs",          # 3773 行 · 3 块 · include_str!
             "src/bridge/src/lib.rs",                    # 5 块（本仓最多）
-            "src/bridge/crates/guard-core/src/lib.rs",  # crates/ 那一形
+            "src/common/guard-core/src/lib.rs",  # crates/ 那一形
             "src/backend/observe/watcher.rs",           # 5306 行（本仓最大）
             "src/backend/main.rs",                      # 4 块 · include_str!
             "src/backend/observe/history_query.rs",     # 4 块

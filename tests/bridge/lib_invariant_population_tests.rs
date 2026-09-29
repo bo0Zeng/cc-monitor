@@ -300,8 +300,8 @@ fn quote_sites() -> (BTreeMap<String, usize>, Vec<String>) {
         if !rel.ends_with(".rs")
             || rel
                 .split('/')
-                .take(4)
-                .eq(["src", "bridge", "crates", "shell-quote-core"])
+                .take(3)
+                .eq(["src", "common", "shell-quote-core"])
         {
             continue;
         }
@@ -353,7 +353,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         6,
         &[
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "account_name_ok",
             ),
             ("src/backend/accounts/iso.rs", "check_snapshot_path"),
@@ -386,20 +386,20 @@ const QUOTE_SITES: &[QuoteRow] = &[
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),
             ("src/backend/control/ccm/plan.rs", "inherited_gate"),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "free_text_ok",
             ),
             // 〔DUP1 · §47 ①〕`--ccm-sid` 在 `argv.rs::validate` 进门判（判定住共享 crate）。
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
             ),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "account_name_ok",
             ), // 〔DUP1〕`--account`
             // 〔DUP1 · §47 ②〕账号配置目录走全表：全表整份搬进共享 crate（`control → observe` 那条禁止边不用破）。
-            ("src/bridge/crates/acct-core/src/lib.rs", "config_dir_ok"),
+            ("src/common/acct-core/src/lib.rs", "config_dir_ok"),
         ],
         "",
         "tmux 目标 `=名:` 的形 · 两个提示格式串常量 · cc-bus 脚本路径 · 本侧拼好的载荷",
@@ -417,7 +417,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "src/backend/stream/remote_ask.rs",
         1,
         &[(
-            "src/bridge/crates/shell-quote-core/src/lib.rs",
+            "src/common/shell-quote-core/src/lib.rs",
             "free_text_ok",
         )],
         "",
@@ -430,24 +430,24 @@ const QUOTE_SITES: &[QuoteRow] = &[
         1,
         &[
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "posix_free_path_ok",
             ),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "free_text_ok",
             ),
             // 〔DUP1 · §47 ①〕resume 的 sid · `--ccm-sid=` · `--model` · `--account`：`Refusal::IdentifierRefused`。
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
             ),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "model_name_ok",
             ),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "account_name_ok",
             ),
         ],
@@ -465,24 +465,24 @@ const QUOTE_SITES: &[QuoteRow] = &[
                 "config_dir_command_safe",
             ),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "rbind_token_ok",
             ), // 〔DUP3 · J8〕payload.rs 里是 `pub use … as rbind_token_shape_ok`
             (
-                "src/bridge/crates/relay-route-core/src/lib.rs",
+                "src/common/relay-route-core/src/lib.rs",
                 "base_url_shape_ok",
             ), // 〔US1〕payload.rs 里是 `pub use … as relay_base_url_shape_ok`
             ("src/backend/control/launch_render/payload.rs", "check"),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "posix_free_path_ok",
             ), // 〔TL3 · §47〕cwd 两处
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "session_id_ok",
             ), // 〔DUP1 · §47 ①〕外层 `@ccm_sid`（原 `ccm_sid_safe` 收进来）
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "model_name_ok",
             ), // 〔DUP1 · §47 ①〕`export ANTHROPIC_MODEL=`（原「刻意宽容渲染」那一格）
         ],
@@ -494,7 +494,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
         "src/bridge/src/backend/control/tmux.rs",
         1,
         &[(
-            "src/bridge/crates/gate-core/src/lib.rs",
+            "src/common/gate-core/src/lib.rs",
             "existing_tmux_name_issue",
         )],
         "",
@@ -507,11 +507,11 @@ const QUOTE_SITES: &[QuoteRow] = &[
         2,
         &[
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "posix_free_path_ok",
             ),
             (
-                "src/bridge/crates/shell-quote-core/src/lib.rs",
+                "src/common/shell-quote-core/src/lib.rs",
                 "posix_free_path_bytes_ok",
             ),
         ],
@@ -536,7 +536,7 @@ const QUOTE_SITES: &[QuoteRow] = &[
     // 〔E2 · V28〕2 → 1：身份扫描那条命令的落点是固定常量的 shell 写法（不再 quote 一条外来路径）⇒ 只剩身份戳正则。
     // 〔MIG-3b〕那条命令随部署判定搬进共享的 `deploy-core`（本机常驻后端出计划时拼、在那台上跑）：`sftp.rs` 出列、这一行换住址，处数不变。
     (
-        "src/bridge/crates/deploy-core/src/lib.rs",
+        "src/common/deploy-core/src/lib.rs",
         1,
         &[],
         "",

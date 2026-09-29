@@ -8,11 +8,34 @@ fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// `crates/*/Cargo.toml` 里的包名。
+/// 共享 crate 的家 —— `<repo>/src/common/`〔RE · `设计/90 §0.5.3` · `99 §2.1 ⑰`〕。
+fn common_dir() -> std::path::PathBuf {
+    crate::guard_support::repo_src_root().join("common")
+}
+
+/// 从本 crate 的包根（`members` 数组的基准）到 [`common_dir`] 的相对前缀（带尾 `/`）。
+/// 现算，不写死 —— 包根搬一级，这个前缀就跟着变。
+fn member_prefix() -> String {
+    let from: Vec<_> = root().components().collect();
+    let to: Vec<_> = common_dir()
+        .components()
+        .map(|c| c.as_os_str().to_owned())
+        .collect();
+    let from: Vec<_> = from.iter().map(|c| c.as_os_str().to_owned()).collect();
+    let same = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut out = "../".repeat(from.len() - same);
+    for c in &to[same..] {
+        out.push_str(&c.to_string_lossy());
+        out.push('/');
+    }
+    out
+}
+
+/// `src/common/*/Cargo.toml` 里的包名。
 fn shared_crate_names() -> Vec<String> {
-    let dir = root().join("crates");
+    let dir = common_dir();
     let mut names: Vec<String> = fs::read_dir(&dir)
-        .expect("crates/ 读不到")
+        .expect("src/common/ 读不到")
         .filter_map(|e| {
             let p = e.ok()?.path();
             let toml = p.join("Cargo.toml");
@@ -29,10 +52,10 @@ fn shared_crate_names() -> Vec<String> {
     names
 }
 
-/// `[workspace] members` 里那几条 `crates/…` 的目录名。
+/// `[workspace] members` 里那几条指进 `src/common/` 的目录名。
 ///
 /// ★ 它被抽出来是为了给两条自检当**第二个独立来源**〔`E` 阻-1 回修，08-27〕：
-/// `shared_crate_names()` 读的是**文件系统**（`crates/*/Cargo.toml` 的 `name =`），
+/// `shared_crate_names()` 读的是**文件系统**（`src/common/*/Cargo.toml` 的 `name =`），
 /// 本函数读的是 **`src/bridge/Cargo.toml` 的 `members` 数组**。
 /// 两者**同源于盘、彼此独立** ⇒ 拿它们对拍，就不必再写一个「今天是几」的数。
 fn members_crate_dirs() -> Vec<String> {
@@ -44,6 +67,7 @@ fn members_crate_dirs() -> Vec<String> {
     //   ② 状态机本身更准：它按「下一个 `[节]` 开始」收尾，不依赖某个字面量恰好出现在哪。
     let mut out: Vec<String> = Vec::new();
     let mut in_ws = false;
+    let prefix = member_prefix();
     for line in toml.lines() {
         let t = line.trim();
         if t.starts_with('[') {
@@ -54,7 +78,7 @@ fn members_crate_dirs() -> Vec<String> {
             continue;
         }
         let t = t.trim_matches(',').trim_matches('"');
-        if let Some(name) = t.strip_prefix("crates/") {
+        if let Some(name) = t.strip_prefix(prefix.as_str()) {
             out.push(name.trim_matches('"').to_string());
         }
     }
@@ -68,7 +92,7 @@ fn members_crate_dirs() -> Vec<String> {
 /// 把 `cargo test -p shell-quote-core` **注释掉**之后守卫**照旧全绿**（3 passed）。
 /// 而「注释掉一步」正是本模块要防的那个病的最省事形态 —— 它连 diff 都很小。
 /// 顺带：文件头那段散文注释里也写着这套纪律的命令形态，散文不该当证据。
-/// ★ 抽取器自检：`crates/` 下一个都没抽到时，下面那条会零命中零失败地绿。
+/// ★ 抽取器自检：`src/common/` 下一个都没抽到时，下面那条会零命中零失败地绿。
 #[test]
 fn the_crate_scan_actually_finds_crates() {
     let n = shared_crate_names().len();
@@ -96,7 +120,7 @@ fn the_crate_scan_actually_finds_crates() {
     assert_eq!(
         n,
         members.len(),
-        "从 `crates/*/Cargo.toml` 抽到 {n} 个包名，而 `[workspace] members` 里有 {} 条 `crates/…`。\n\
+        "从 `src/common/*/Cargo.toml` 抽到 {n} 个包名，而 `[workspace] members` 里有 {} 条指进 `src/common/` 的。\n\
              两个独立来源对不上 ⇒ 要么真少了一个 crate，要么抽取器瞎了一个。\n\
              文件系统那边：{:?}\n`members` 那边：{members:?}",
         members.len(),
@@ -107,7 +131,7 @@ fn the_crate_scan_actually_finds_crates() {
     // 棘紧记录：**7**（`K-H2a` 的 `creds-core`）→ **8**〔`K-R100` 09-13 加 `search-core`〕。
     assert!(
         n >= 8,
-        "只从 crates/*/Cargo.toml 抽到 {n} 个包名（`K-R100` 09-13 起实测 8：\
+        "只从 src/common/*/Cargo.toml 抽到 {n} 个包名（`K-R100` 09-13 起实测 8：\
              上面 7 个 ＋ `search-core`）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
     );
@@ -190,9 +214,10 @@ fn every_shared_crate_is_a_workspace_member() {
         "`[workspace]` 段界切错了（{} 字节）—— 本条会在全文里瞎找",
         ws.len()
     );
+    let prefix = member_prefix();
     let missing: Vec<String> = shared_crate_names()
         .into_iter()
-        .filter(|n| !ws.contains(&format!("\"crates/{n}\"")))
+        .filter(|n| !ws.contains(&format!("\"{prefix}{n}\"")))
         .collect();
     assert!(
         missing.is_empty(),
@@ -443,19 +468,15 @@ fn workspace_members_do_not_reference_crates_that_no_longer_exist() {
     let ws = &toml[beg..end];
     let mut scanned = 0usize;
     let mut ghosts = Vec::new();
+    let prefix = member_prefix();
     for line in ws.lines() {
         let t = line.trim().trim_matches(',').trim_matches('"');
-        let Some(name) = t.strip_prefix("crates/") else {
+        let Some(name) = t.strip_prefix(prefix.as_str()) else {
             continue;
         };
         let name = name.trim_matches('"');
         scanned += 1;
-        if !root()
-            .join("crates")
-            .join(name)
-            .join("Cargo.toml")
-            .is_file()
-        {
+        if !common_dir().join(name).join("Cargo.toml").is_file() {
             ghosts.push(name.to_string());
         }
     }
@@ -465,13 +486,13 @@ fn workspace_members_do_not_reference_crates_that_no_longer_exist() {
     assert_eq!(
         scanned,
         shared_crate_names().len(),
-        "从 `[workspace] members` 扫到 {scanned} 条 `crates/…`，而 `crates/` 下有 {} 个包 —— \
+        "从 `[workspace] members` 扫到 {scanned} 条指进 `src/common/` 的，而 `src/common/` 下有 {} 个包 —— \
              本抽取器与 Cargo.toml 的写法分家了，或者真少了一个",
         shared_crate_names().len()
     );
     assert!(
         scanned >= 7,
-        "只从 `[workspace] members` 扫到 {scanned} 条 `crates/…`（08-27 实测应为 7）—— \
+        "只从 `[workspace] members` 扫到 {scanned} 条指进 `src/common/` 的（08-27 实测应为 7）—— \
              要么真少了，要么本抽取器与 Cargo.toml 的写法分家了。后者会让下面那条零命中变绿"
     );
     assert!(

@@ -171,9 +171,9 @@ CUTS: list[Cut] = [
     Cut("B3-ccm-config", "乙", "src/backend/control/ccm/plan.rs", 70, 82, "🔴 「发现它在就说一句，然后照常跑」", "CCM_CONFIG"),
     Cut("B3-ccm-config", "乙", "src/backend/control/ccm/argv.rs", 104, 104, "`CONFIG_REL` 常量", "config/ccm/config"),
     # ── 乙④：F02 之前的老 `cc-*` tmux 会话 ───────────────────────────────────
-    Cut("B4-old-tmux", "乙", "src/bridge/crates/gate-core/src/lib.rs", 74, 81, "〔散文〕两种形状都要认、一个都不许删", "cc-*"),
-    Cut("B4-old-tmux", "乙", "src/bridge/crates/gate-core/src/lib.rs", 91, 91, "🔴 `old_prefix` 那一支", "old_prefix"),
-    Cut("B4-old-tmux", "乙", "src/bridge/crates/gate-core/src/lib.rs", 102, 102, "🔴 `old_prefix ||` 并进最终判定", "old_prefix"),
+    Cut("B4-old-tmux", "乙", "src/common/gate-core/src/lib.rs", 74, 81, "〔散文〕两种形状都要认、一个都不许删", "cc-*"),
+    Cut("B4-old-tmux", "乙", "src/common/gate-core/src/lib.rs", 91, 91, "🔴 `old_prefix` 那一支", "old_prefix"),
+    Cut("B4-old-tmux", "乙", "src/common/gate-core/src/lib.rs", 102, 102, "🔴 `old_prefix ||` 并进最终判定", "old_prefix"),
     Cut("B4-old-tmux", "乙", "src/bridge/src/tmux.rs", 793, 798, "〔散文〕monitor 侧转调的头注", "向后兼容回归"),
     Cut("B4-old-tmux", "乙", "src/account-restart.ts", 26, 28, "〔散文〕那是向后兼容不是今天产的形状", "向后兼容"),
     Cut("B4-old-tmux", "乙", "src/tmux-sessions.ts", 34, 39, "〔散文〕cwd 回退的契约", "向后兼容"),
@@ -185,7 +185,7 @@ CUTS: list[Cut] = [
     Cut("C1-fence-4th", "丙", "src/bridge/src/profile_installer.rs", 46, 47, "`BEGIN_MARKER` / `END_MARKER`", "BEGIN_MARKER"),
     Cut("C1-fence-4th", "丙", "src/bridge/src/sftp.rs", 912, 913, "`CCM_PROFILE_BEGIN` / `_END`", "CCM_PROFILE_BEGIN"),
     Cut("C1-fence-4th", "丙", "src/bridge/src/account_aliases.rs", 50, 55, "`RC_BEGIN` / `FILE_BEGIN` 两对", "RC_BEGIN"),
-    Cut("C2-template-top", "丙", "src/bridge/crates/creds-core/src/store.rs", 108, 125, "🔴 `TEMPLATE` 里那个**顶层** `api_key` 空格", "api_key"),
+    Cut("C2-template-top", "丙", "src/common/creds-core/src/store.rs", 108, 125, "🔴 `TEMPLATE` 里那个**顶层** `api_key` 空格", "api_key"),
     Cut("C2-template-top", "丙", "tests/bridge/creds_store_tests.rs", 73, 73, "🔴 今天唯一那条 TEMPLATE 判据（恒真）", "TEMPLATE.contains"),
     Cut("C3-ts-scan", "丙", "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs", 544, 548, "🔴 Rust 判据拿字面量扫 TS 源码", '"daemonless",'),
     # ── 丁：别的原因（不动，但点名说清为什么不算） ───────────────────────────
@@ -198,8 +198,8 @@ CUTS: list[Cut] = [
     Cut("D1-force-legacy", "丁", "src/settings/panel.ts", 263, 266, "面板缓存它（防被别的勾选重置）", "forceLegacyLaunchRenderer"),
     Cut("D1-force-legacy", "丁", "src/settings/panel.ts", 337, 337, "open() 时读", "forceLegacyLaunchRenderer"),
     Cut("D1-force-legacy", "丁", "src/settings/panel.ts", 454, 454, "保存时原样带回", "forceLegacyLaunchRenderer"),
-    Cut("D2-legacy-acct", "丁", "src/bridge/crates/creds-core/src/store.rs", 66, 88, "`LEGACY_ACCOUNT_ID` 常量＋头注", "LEGACY_ACCOUNT_ID"),
-    Cut("D2-legacy-acct", "丁", "src/bridge/crates/creds-core/src/store.rs", 367, 383, "🔴 `read_accounts` 里折出那一行", "LEGACY_ACCOUNT_ID"),
+    Cut("D2-legacy-acct", "丁", "src/common/creds-core/src/store.rs", 66, 88, "`LEGACY_ACCOUNT_ID` 常量＋头注", "LEGACY_ACCOUNT_ID"),
+    Cut("D2-legacy-acct", "丁", "src/common/creds-core/src/store.rs", 367, 383, "🔴 `read_accounts` 里折出那一行", "LEGACY_ACCOUNT_ID"),
     Cut("D2-legacy-acct", "丁", "src/settings/accounts-section.ts", 173, 181, "界面上那一行「顶层那一把（历史格式）」", "relay-key-legacy"),
     Cut("D3-proto-neg", "丁", "src/bridge/src/tmux.rs", 345, 350, "`SkipReason::LegacyAmbiguousEmpty`（旧 daemon 空串歧义）", "LegacyAmbiguousEmpty"),
     Cut("D3-proto-neg", "丁", "src/bridge/src/tmux.rs", 795, 800, "〔散文〕`enter` 落在两个 mode 名而不是字段", "cc-*"),
@@ -255,7 +255,7 @@ NEGATIVES: list[Negative] = [
              "nano", "tests/settings/remote-section.vitest.ts", "not.toContain",
              "阴性对照（不是恒挂）—— 随 `legacyNoBackend` 一起走"),
     Negative("tests/bridge/creds_store_tests.rs", 367,
-             "LEGACY_ACCOUNT_ID", "src/bridge/crates/creds-core/src/store.rs", "!rows.iter().any(…)",
+             "LEGACY_ACCOUNT_ID", "src/common/creds-core/src/store.rs", "!rows.iter().any(…)",
              "🔴 **不是恒绿** —— 它守的是写侧不许落到那一行，词还活着（丁档）"),
     Negative("tests/bridge/creds_store_tests.rs", 443,
              "store::merge_key(", "src/bridge/src/creds_store.rs", "matches(…).count() == 0",
@@ -297,13 +297,13 @@ UNPAIRED: list[dict] = [
         "id": "U3 · `TEMPLATE` 顶层 `api_key` ↔ `read_accounts` 顶层那一支",
         "fact": "「我们发给用户的模板里教他填的那一格，读得回来」",
         "literals": [
-            ("src/bridge/crates/creds-core/src/store.rs", "TEMPLATE", '顶层 `"api_key": ""`'),
-            ("src/bridge/crates/creds-core/src/store.rs", "read_accounts", "折成 LEGACY_ACCOUNT_ID 那一行"),
+            ("src/common/creds-core/src/store.rs", "TEMPLATE", '顶层 `"api_key": ""`'),
+            ("src/common/creds-core/src/store.rs", "read_accounts", "折成 LEGACY_ACCOUNT_ID 那一行"),
         ],
         "gap": "今天唯一那条判据是 `TEMPLATE.contains(KEY_FIELD)`（`creds_store_tests.rs:73`）——"
                "**恒真**：`_note_accounts` 那段说明文字里就含 `api_key`。"
                "⇒ 把顶层那一支删掉，模板照旧教用户填一格没人读的东西，一条判据都不红。",
-        "probe": ("src/bridge/crates/creds-core/src/store.rs", "read_accounts"),
+        "probe": ("src/common/creds-core/src/store.rs", "read_accounts"),
     },
     {
         "id": "U4 · `forceLegacyLaunchRenderer` 存盘键名",

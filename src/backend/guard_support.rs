@@ -2,7 +2,7 @@
 //!
 //! # 剥法本体已搬进共享 crate（U8a-2a）
 //!
-//! 实现在 [`guard_core`]（`src/bridge/crates/guard-core`），本模块只是**再导出** +
+//! 实现在 [`guard_core`]（`src/common/guard-core`），本模块只是**再导出** +
 //! 存放后端专属的那两条语义钉。搬家的理由：monitor 侧够不着后端的 `cfg(test)`
 //! 模块，于是它的守卫各自写了便宜近似（`src.split("\n#[cfg(test)]").next()`）——
 //! 那个近似在 `ssh_source.rs` 这种「第一个测试模块在 804 行、要扫的代码在 1771 行」的文件上

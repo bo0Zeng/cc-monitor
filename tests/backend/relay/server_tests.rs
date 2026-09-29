@@ -3193,7 +3193,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
 /// ⇒ 这里调的是写侧生产段里逐字那两个纯函数（〔GP1 · 第四波〕写侧 ＝ 每台机器那台后端的 `accounts/upstream/file_face.rs`，
 /// 本机也是；monitor 那侧当年的写口 `write_key_at`〔散文墓碑〕删了）
 /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
-/// 这个共同祖先上会合**：backend 单向依赖 `src/bridge/crates/*`，够得着它们。
+/// 这个共同祖先上会合**：backend 单向依赖 `src/common/*`，够得着它们。
 ///
 /// # ⚠⚠ 它**买不到**什么 —— 逐字落在这里，别读宽〔PM `裁二`，09-02〕
 ///

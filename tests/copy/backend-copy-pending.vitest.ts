@@ -6,11 +6,11 @@
  * - `设计/01 §6.9`，逐字：「**所有对外文案与报错都从一张表来**（结构化的 key → 文本，插值点留在表里）」；
  * - `设计/91 §5.1` 决定 2，逐字：「**一份文件，两侧各读，零转换**」—— 后端也读同一份 `table.json`、自己出句子
  *   （选 A 不选「后端回码、monitor 取表」的理由：`调研/第四波记录/CP2c.md §2.1`）；
- * - `设计/91 §6` 第 7 条：后端 crate 没有表的读口 —— 本路定了：`src/bridge/crates/copy-core`。
+ * - `设计/91 §6` 第 7 条：后端 crate 没有表的读口 —— 本路定了：`src/common/copy-core`。
  *
  * # 它治的病
  *
- * 与 CP2b 那条（前端与 monitor crate）同一个病、同一个形状，射程换成 `src/backend/**` ∪ `src/bridge/crates/**`：
+ * 与 CP2b 那条（前端与 monitor crate）同一个病、同一个形状，射程换成 `src/backend/**` ∪ `src/common/**`：
  * 抽完的文件悄悄长回一句中文字面量 / 抽完了没划掉。两张表各管一半、互不相交。
  *
  * # 真正的量具不在这个文件里
@@ -30,7 +30,7 @@
  * 要求住址：`设计/91 §5.5`，逐字：「线上契约 | 不变：`Reply {code, message}`，`code` 仍是命令级粗码」——
  * 判「是哪一种失败」靠 `code` / 结构化字段；句子进了表就会被改写，谁按原文认它，改一个字就静默失灵
  *（CP2c 待办表的理由列：「refuse write:」等前缀被按原文认，先把判定换成码再抽）。
- * 判法：生产段（`src/backend` · `src/bridge/src` · `src/bridge/crates` 的 `.rs` ＋ `src` 的 `.ts`，剥注释）里
+ * 判法：生产段（`src/backend` · `src/bridge/src` · `src/common` 的 `.rs` ＋ `src` 的 `.ts`，剥注释）里
  * 字符串匹配调用的字面量参数带汉字或 `refuse write/delete` 的地方 == `RECOGNIZE_BY_TEXT`（两向，按「文件 · 串」比）。
  */
 import { execFileSync } from "node:child_process";
@@ -175,7 +175,7 @@ describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码�
     const rs = [
       ...productionRsFiles("src/backend"),
       ...productionRsFiles("src/bridge/src"),
-      ...productionRsFiles("src/bridge/crates"),
+      ...productionRsFiles("src/common"),
     ].map((f) => ({ ...f, lang: "rust" as const }));
     const ts = productionTsFiles("src").map((f) => ({ ...f, lang: "ts" as const }));
     expect(rs.length, "Rust 生产文件一份都没扫到").toBeGreaterThan(100);

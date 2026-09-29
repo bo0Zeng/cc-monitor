@@ -1806,7 +1806,7 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
      `readonly_guard::scan` 早已递归且留了警示注释，`no_timer_guard` 也没跟。
      ⇒ **护栏的公共机件必须收敛**，否则「已修好的教训」会在隔壁文件里原样复发。
      **进度（U8a-2a，2026-08-02）**：剥法已从后端私有的 `guard_support.rs` 搬进
-     **共享 crate `src/bridge/crates/guard-core`**（后端的 `guard_support.rs` 降为
+     **共享 crate `src/common/guard-core`**（后端的 `guard_support.rs` 降为
      `pub(crate) use` 再导出；monitor 侧同为 `[dev-dependencies]`）——
      搬家的直接动因是 monitor 够不着它，于是那边的守卫各写便宜近似
      （`src.split("\n#[cfg(test)]").next()`），在 `ssh_source.rs` 上会把扫描面砍掉三分之二。

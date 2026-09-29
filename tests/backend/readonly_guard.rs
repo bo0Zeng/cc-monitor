@@ -77,7 +77,7 @@ mod tests {
     /// 🔴 〔`99 §2.5 P9` 2026-09-18〕〔散文墓碑〕**这里原来住着 `strip_cfg_test` —— 一份便宜近似，已退役。**
     ///
     /// 它做的事（「剥掉测试段，只留生产段」）在本仓**早就有唯一住址**：
-    /// [`guard_core::production_source`]（`src/bridge/crates/guard-core`），
+    /// [`guard_core::production_source`]（`src/common/guard-core`），
     /// 本 crate 经 `guard_support` 再导出。`guard_support` 的模块头注逐字记着搬家的理由：
     /// 「monitor 侧够不着后端的 `cfg(test)` 模块，于是它的守卫各自写了便宜近似
     /// （`src.split("\n#[cfg(test)]").next()`）—— 那个近似……**把扫描面砍掉三分之二**」。

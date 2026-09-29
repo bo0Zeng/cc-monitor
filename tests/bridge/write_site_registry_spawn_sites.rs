@@ -191,7 +191,7 @@ fn src_root() -> PathBuf {
 /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
 /// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌后端）。
 /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src/bridge/src` · `src/backend`
-/// · `src/bridge/crates` · `src` · `doc` —— **`src/bridge/build.rs` 一张表都没扫到**，
+/// · `src/common` · `src` · `doc` —— **`src/bridge/build.rs` 一张表都没扫到**，
 /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
 fn corpus() -> Vec<(PathBuf, String)> {
     let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);

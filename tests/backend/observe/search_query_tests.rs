@@ -1,7 +1,7 @@
 use super::*;
 
 // ⚠ `extract_*` / `clean_user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
-// **已随实现搬进 `../src/bridge/crates/search-core`**（`K-R100`）。
+// **已随实现搬进 `../src/common/search-core`**（`K-R100`）。
 // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是本件要治的形状。
 
 #[test]

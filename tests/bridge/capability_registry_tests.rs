@@ -641,7 +641,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// ③ `tests/scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run backend` / `run backend-win`
 /// 三条在**另开的临时工作树**里跑，相对目录仍是这两个，不新增发起面。
 ///
-/// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src/bridge/crates/*` 与
+/// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src/common/*` 与
 /// `src/bridge/vendor/*` 里放一份配置，**上面那张表里的命令一条都读不到它**
 /// （分母就是那张表 = 上面那把尺子量出来的全部；那些命令的 cwd 都停在 `src/bridge/`，
 /// 靠 `-p`/`--workspace` 选包，而 cargo 不往下找）。

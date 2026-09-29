@@ -164,12 +164,12 @@ const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
     (
         "expose_for_persisting(",
         1,
-        "crates/creds-core/src/store.rs",
+        "common/creds-core/src/store.rs",
     ),
 ];
 
 /// 本判据扫哪几棵树。**这就是「取明文恰好 N 处」那句全称的分母。**
-const PLAINTEXT_SCAN_TREES: &[&str] = &["src/bridge/src", "src/bridge/crates", "src/backend"];
+const PLAINTEXT_SCAN_TREES: &[&str] = &["src/bridge/src", "src/common", "src/backend"];
 
 /// ★★★ **`KS2` 的人群那一格〔D1 阻-1 回修，08-27〕：三棵树全扫，不是一个文件、也不是一个 crate。**
 ///
@@ -291,11 +291,10 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     //
     // `INNER_FIELD_USERS` 是 `creds-core` 的**判据用表**（住在它的 `#[cfg(test)]` 段里），
     // 剖分把它从 `crates/creds-core/src/lib.rs` 搬到了
-    // `tests/bridge/crates/creds-core/lib_tests.rs`。表本身一个字没改 ——
+    // `tests/common/creds-core/lib_tests.rs`。表本身一个字没改 ——
     // 变的只是它住哪儿。⇒ 指对地方，不是放宽（读数逐字：「一处都找不到 ⇒ 本条按红处理」，
     // 这条反空真**按设计响了**，别把它调松）。
-    let table_home =
-        crate::guard_support::tests_root().join("bridge/crates/creds-core/lib_tests.rs");
+    let table_home = crate::guard_support::tests_root().join("common/creds-core/lib_tests.rs");
     let core = std::fs::read_to_string(&table_home).unwrap_or_else(|e| {
         panic!("读不到定义面那张表所在的 {table_home:?}：{e} —— 抽取器坏了，本条会零命中地绿")
     });

@@ -1282,7 +1282,7 @@ const SELF_EXCL_WINDOW: usize = 2;
 /// 只扫 `tests/` 会漏掉它们，而**少扫不会红**。
 const PROSE_TREES: &[(&str, usize)] = &[
     ("src/bridge/src", 100),
-    ("src/bridge/crates", 8),
+    ("src/common", 8),
     ("src/backend", 58),
     ("tests/bridge", 140),
     ("tests/backend", 65),
