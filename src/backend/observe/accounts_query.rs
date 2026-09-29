@@ -138,7 +138,7 @@ fn norm_dir(p: &str) -> &str {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+    crate::platform::paths::home_dir()
 }
 
 /// 把 `$HOME/x` / `~/x` 前缀展开成绝对路径。仅支持前缀形式——更花哨的 shell 写法

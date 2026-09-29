@@ -232,12 +232,11 @@ pub(crate) fn runnable_on_windows(
         .any(|e| !e.is_empty() && e.eq_ignore_ascii_case(ext))
 }
 
-/// 从一组环境变量里取家目录：`HOME`，空 / 缺席再退 `USERPROFILE`；两个都没有 ⇒ 空串（照旧）。
+/// 从一组环境变量里取家目录（规则住 `platform::paths::home_dir_from`）；没有 ⇒ 空串（照旧）。
 /// 纯函数（`get` 注入），两平台的判定表在 Linux 上直接测。
 pub(crate) fn home_of(get: impl Fn(&str) -> Option<String>) -> String {
-    get("HOME")
-        .filter(|h| !h.is_empty())
-        .or_else(|| get("USERPROFILE").filter(|h| !h.is_empty()))
+    crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
+        .map(|h| h.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 

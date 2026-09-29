@@ -62,7 +62,7 @@ pub(crate) fn fixed_candidates(home: Option<&Path>) -> Vec<PathBuf> {
 }
 
 fn locate() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = crate::platform::paths::home_dir();
     crate::plugin::discover::find(
         TOOL,
         &fixed_candidates(home.as_deref()),

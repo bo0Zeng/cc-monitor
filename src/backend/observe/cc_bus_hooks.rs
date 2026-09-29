@@ -281,9 +281,7 @@ fn expand(s: &str, home: Option<&Path>) -> PathBuf {
 /// 帧面入口：这台后端进程的 `HOME`（缺 ⇒ `USERPROFILE`）· `PATH` · agent 配置根。
 pub(crate) fn answer() -> HooksReport {
     let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
-    let home = env("HOME")
-        .or_else(|| env("USERPROFILE"))
-        .map(PathBuf::from);
+    let home = crate::platform::paths::home_dir();
     answer_at(
         home.as_deref(),
         &crate::observe::history_query::agent_home(),
