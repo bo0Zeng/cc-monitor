@@ -439,7 +439,9 @@ pub(crate) fn local_projects_with(
     live: &dyn Liveness,
 ) -> Result<Value, (&'static str, String)> {
     let mut buf = Vec::new();
-    crate::observe::history_query::list_projects_into(home, &mut buf).map_err(|e| ("failed", e))?;
+    // 〔WF2 · WIN3 读数 H〕记录树根不在 ⇒ 零个记录树项目（合成历史照并）：界面照空态画，不整页失败。
+    let _has_records = crate::observe::history_query::list_projects_into(home, &mut buf)
+        .map_err(|e| ("failed", e))?;
     let text = String::from_utf8_lossy(&buf);
     let ann = annotations(loaded);
     let t = ann.as_ref().ok().copied();
