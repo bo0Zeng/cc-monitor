@@ -166,6 +166,8 @@ pub(crate) const STREAM_ONLY: &[&str] = &[
     "panorama-uninstall",
     // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：界面问；CLI 那一侧 `ccm` 起会话时自己铸（同一份 `plan::mint_tmux_name`）。
     "tmux-name-mint",
+    // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一串：界面 / 文件窗口开 PowerShell 窗口前问；命令行那一侧用不着（它自己就在终端里）。
+    "terminal-ssh",
 ];
 
 /// 命令名 → CLI 子命令（`launch` → `--launch`）。

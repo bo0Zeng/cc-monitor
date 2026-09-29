@@ -226,6 +226,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     #   能力 id 已不在 `LEDGER` 里（理由同上面几条墓碑）。
     # 〔墓碑 · MOD〕`subagent.load` 随 `load_subagent` 改走通道（前端 `chan.call` 直接问后端 `history-subagent`）⇒ 归档这一行摘了。
     ("terminal.focus", (NA, "—", "把终端提到前台")),
+    # 〔FIX4 · `设计/99 §2.1 ⑬`〕开窗（`open_terminal_window`）：ssh 外壳进了本机后端（`terminal-ssh`），monitor 只剩开窗这一下。
+    ("terminal.window", (NA, "—", "开一个终端窗口跑交来的成品（接令牌握手前奏）—— 是**跑**它，不往用户环境里落任何东西")),
     # 〔墓碑 · MIG-1〕`tmux.local-census` · `tmux.manage` 随列 tmux 会话两条（`list_local_tmux` · `list_remote_tmux`）进后端 `tmux-list`（界面经通道直问，本机远端同一条）退役：
     #   两条 Tauri 命令删了 ⇒ 能力 id 已不在 `LEDGER` 里；理由同上。连带 §S6 连锁里点它的那两处改成「这条能力回来才要求」（见那一段）。
     # 〔墓碑 2026-09-18〕`usage.aggregate` / `usage.per-account` 两条能力随用量 ②③ 两轴

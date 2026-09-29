@@ -10775,6 +10775,11 @@
       "zh": "当前目录 {cwd} 开不了终端。要绝对路径，不含 .. 段、换行或 NUL",
       "args": ["cwd"]
     },
+    "rsFilewinShell.terminal.badReply": {
+      "kind": "error",
+      "zh": "本机后端回的开终端那一行读不懂，两端版本对不上",
+      "args": []
+    },
     "rsFilewinShell.terminal.noRuntime": {
       "kind": "error",
       "zh": "终端开不了，请重开这个窗口",
@@ -13587,6 +13592,11 @@
       "zh": "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」",
       "args": []
     },
+    "rsLaunch.terminalDial.local": {
+      "kind": "error",
+      "zh": "这一问只对远端。本机开终端直接开窗，没有要交的机器事实",
+      "args": []
+    },
     "rsLaunch.remote.noConfig": {
       "kind": "error",
       "zh": "未找到远端配置：{machine}",
@@ -13597,35 +13607,45 @@
       "zh": "本机不是 Windows：cc-monitor 刻意不替你挑终端模拟器，会话在 tmux 里。命令已复制，请在你自己的 bash 里粘贴执行。",
       "args": []
     },
-    "rsLaunch.refuse.jumpNotFound": {
+    "beTerminal.refuse.empty": {
       "kind": "error",
-      "zh": "拒绝启动：跳板配置未找到：{jumpLabel}",
-      "args": ["jumpLabel"]
-    },
-    "rsLaunch.refuse.jumpSelf": {
-      "kind": "error",
-      "zh": "拒绝启动：跳板不能指向自己",
+      "zh": "拒绝启动：远端命令为空",
       "args": []
     },
-    "rsLaunch.refuse.host": {
+    "beTerminal.refuse.tooLong": {
       "kind": "error",
-      "zh": "拒绝启动：host 含非法字符：{host}",
-      "args": ["host"]
+      "zh": "拒绝启动：远端命令过长（{len} > {max}）",
+      "args": ["len", "max"]
     },
-    "rsLaunch.refuse.user": {
+    "beTerminal.refuse.control": {
       "kind": "error",
-      "zh": "拒绝启动：user 含非法字符：{user}",
-      "args": ["user"]
+      "zh": "拒绝启动：远端命令含控制字符",
+      "args": []
     },
-    "rsLaunch.refuse.doubleQuote": {
+    "beTerminal.refuse.doubleQuote": {
       "kind": "error",
       "zh": "拒绝启动：远端命令含双引号，PowerShell 5.1 传参会把它改坏。启动参数请改用单引号写法，或使用复制粘贴回退",
       "args": []
     },
-    "rsLaunch.what.remoteCmd": {
-      "kind": "body",
-      "zh": "远端命令",
-      "args": []
+    "beTerminal.refuse.user": {
+      "kind": "error",
+      "zh": "拒绝启动：user 含非法字符：{user}",
+      "args": ["user"]
+    },
+    "beTerminal.refuse.host": {
+      "kind": "error",
+      "zh": "拒绝启动：host 含非法字符：{host}",
+      "args": ["host"]
+    },
+    "beTerminal.refuse.jumpUser": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
+      "args": ["jumpUser"]
+    },
+    "beTerminal.refuse.jumpHost": {
+      "kind": "error",
+      "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
+      "args": ["jumpHost"]
     },
     "rsLaunch.refuse.badToken": {
       "kind": "error",
@@ -13661,16 +13681,6 @@
       "kind": "error",
       "zh": "拒绝启动：{what}为空",
       "args": ["what"]
-    },
-    "rsLaunch.refuse.jumpHost": {
-      "kind": "error",
-      "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
-      "args": ["jumpHost"]
-    },
-    "rsLaunch.refuse.jumpUser": {
-      "kind": "error",
-      "zh": "拒绝启动：跳板 user 含非法字符：{jumpUser}",
-      "args": ["jumpUser"]
     },
     "panoramaApi.backend.tooOld": {
       "kind": "error",
@@ -17331,6 +17341,16 @@
       "kind": "error",
       "zh": "拿不到中转钥匙（{e}），不起这个口：没有钥匙的口谁都能用",
       "args": ["e"]
+    },
+    "terminalOpen.backend.tooOld": {
+      "kind": "error",
+      "zh": "本机后端太旧，还不会给远端开终端。重启 cc-monitor 换上新的后端就有了",
+      "args": []
+    },
+    "terminalOpen.reply.badShape": {
+      "kind": "error",
+      "zh": "读不懂本机后端回的开终端那一行，两端版本对不上",
+      "args": []
     },
     "tmuxMint.backend.tooOld": {
       "kind": "error",

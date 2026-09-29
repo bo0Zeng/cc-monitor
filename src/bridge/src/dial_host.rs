@@ -127,6 +127,22 @@ pub(crate) fn request(
     use_: &str,
     extra: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    let mut req = machine_facts(cfg);
+    if let Some(obj) = req.as_object_mut() {
+        obj.insert("use".into(), serde_json::json!(use_));
+        obj.insert("agent_sock".into(), serde_json::json!(agent_sock()));
+    }
+    if let (Some(obj), serde_json::Value::Object(more)) = (req.as_object_mut(), extra) {
+        obj.extend(more);
+    }
+    Ok(req)
+}
+
+/// 〔FIX4 · `设计/99 §2.1 ⑬`〕一台远端**原样的配置**那几格：`{machine, saved, jump, prefer}`（[`request`] 头注逐格）。
+///
+/// 拆出来是给「开终端」那一问（本机后端帧命令 `terminal-ssh`）：它要同一份机器事实，但不开链路 ⇒ 不要 `use` / `agent_sock`。
+/// 界面经 Tauri 命令 [`crate::launch::terminal_dial`] 拿，文件窗口在进程内直接拿；组请求与渲染都在本机后端（`dial/machine.rs::resolve`）。
+pub(crate) fn machine_facts(cfg: &RemoteConfig) -> serde_json::Value {
     let origin = cfg.origin_label();
     let jump = cfg
         .jump
@@ -135,18 +151,12 @@ pub(crate) fn request(
         .filter(|s| !s.is_empty() && *s != origin)
         // 写成显式调用（不写成 point-free）：`local_origin_registry` 那条护栏按调用形状数「查远端配置」的点，这一处要被它看见。
         .and_then(|jump_label| crate::load_remote_config_by_label(jump_label));
-    let mut req = serde_json::json!({
+    serde_json::json!({
         "machine": cfg,
         "saved": crate::load_remote_config_by_label(&origin),
         "jump": jump,
         "prefer": crate::ssh_source::last_good_for(cfg).map(|e| serde_json::json!({ "host": e.host, "port": e.port })),
-        "use": use_,
-        "agent_sock": agent_sock(),
-    });
-    if let (Some(obj), serde_json::Value::Object(more)) = (req.as_object_mut(), extra) {
-        obj.extend(more);
-    }
-    Ok(req)
+    })
 }
 
 /// 〔SR1b〕传输台那一趟的拨号请求（本机后端开单时读进去、起跑时拿它开 sftp 会话）。

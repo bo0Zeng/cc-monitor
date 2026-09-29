@@ -432,7 +432,15 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "src/bridge/src/launch.rs",
         "MAX_REMOTE_CMD",
         4096,
-        "远端命令串长度（字节）",
+        "本机那条送法的命令串长度（字节）",
+        "拒收+回错",
+    ),
+    // 〔FIX4 · `99 §2.1 ⑬`〕远端那条送法（ssh 外壳）随渲染进了本机后端，上限同值搬过去。
+    (
+        "src/backend/dial/terminal.rs",
+        "MAX_COMMAND",
+        4096,
+        "开终端那一行里要在远端跑的命令串长度（字节）",
         "拒收+回错",
     ),
     // 🔴 `K-R100`：这两条**原本两侧各登记一份**（`src/bridge/src/search.rs` 与

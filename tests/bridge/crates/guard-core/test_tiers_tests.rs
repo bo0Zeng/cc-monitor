@@ -63,7 +63,8 @@ const UNIT: &[&str] = &[
     "tests/backend/observe/record_page_tests.rs",
     "tests/startup-active.vitest.ts", // 〔MIG-1 续〕F19 启动时记住的那一格（按事件判的真值表）
     "tests/backend/dial_machine_tests.rs", // 〔MIG-1 续〕机器配置 → 拨号请求的规则
-    "tests/backend/dial_probe_tests.rs", // 〔MIG-1 续〕测试连接三步的结局（链路替身）
+    "tests/backend/dial_terminal_tests.rs", // 〔FIX4 · ⑬〕开终端那一行（ssh 外壳 ＋ PowerShell 载荷）的渲染规则
+    "tests/backend/dial_probe_tests.rs",    // 〔MIG-1 续〕测试连接三步的结局（链路替身）
     // 〔MIG-1 收尾〕`tests/remote-probe.vitest.ts` 挪进 SCAN：它多读一份 Rust 源码对拍进度流名（`event_replay.rs::PROBE_PROGRESS_KIND`）。
     "tests/session-writes.vitest.ts", // 〔MIG-3b〕删会话 · 分叉经通道直说那台后端：解码器读金样 ＋ 替身数请求
     "tests/pubkey-push.vitest.ts",    // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
@@ -526,6 +527,7 @@ const SCAN: &[&str] = &[
     "tests/tabs-split-graph.vitest.ts",
     "tests/tabs.vitest.ts",
     "tests/terminal-front-command.vitest.ts",
+    "tests/terminal-open.vitest.ts", // 〔FIX4 · ⑬〕开终端三步 ＋「开窗只有一个家」（扫生产段）
     "tests/test-support/strip-comments.vitest.ts",
     "tests/tmux-cache-single-writer.vitest.ts",
     "tests/topbar-icons.vitest.ts",

@@ -272,6 +272,8 @@ pub const COMMANDS: &[&str] = &[
     "ssh-config-import",
     "ssh-config-resolve",
     "tasks-list",
+    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "terminal-ssh",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
     "tmux-list",
     // 〔FIX4 · `90 §3` J7〕起会话要的 tmux 名：这台派生 ＋ 按这台那张会话快照避让（前端那份铸名口删了）。**是新命令** ⇒ `build_id_guard` 红是预期的。
@@ -3327,6 +3329,23 @@ pub const REGISTRY: &[CommandSpec] = &[
         ],
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
+    },
+    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（一行 PowerShell：
+    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `acct-iso-cmd` 那一形）。
+    CommandSpec {
+        name: "terminal-ssh",
+        doc_anchor: Some("#### `terminal-ssh`"),
+        codes: &["invalid_args", "bad_jump", "refused"],
+        fields: &["command"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::terminal::answer(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
     },
     // 〔SH1〕列这台的 tmux 会话。〔MIG-1 续〕成品 `{installed, sessions}`（`observe/tmux_list.rs`；原先是原样行、解析在 monitor）。阻塞档（起一次 `sh` ＋ `tmux`）。
     CommandSpec {

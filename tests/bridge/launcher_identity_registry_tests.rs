@@ -64,9 +64,12 @@ const REGISTERED: &[Launcher] = &[
                   逐条钉。⚠ 补的是**转发**那一格，不是本行的 `plants` —— 塞不塞进环境与转不转发是两件事。",
     },
     Launcher {
-        label: "L2 · 开窗（`launch.rs::launch_remote_terminal`，远端与本机开窗共用）",
-        ledger_cmds: &["launch_remote_terminal"],
-        anchors: &[],
+        // 〔FIX4 · `99 §2.1 ⑬`〕住址换了：ssh 外壳进本机后端（`terminal-ssh`），monitor 只剩开窗那一条（`open_terminal_window`）。
+        label: "L2 · 开窗（`launch.rs::open_terminal_window`，远端与本机开窗共用）",
+        // 账本那半是 `terminal_dial`（`session.launch` 远端那一侧：交开终端要的机器事实）；开窗本身归账本另一格能力
+        //   `terminal.window`（`Both`），不在「起会话方」人群里 ⇒ 用人点的锚点钉住那一处。
+        ledger_cmds: &["terminal_dial"],
+        anchors: &[("src/bridge/src/launch.rs", "pub async fn open_terminal_window(", 1)],
         plants: false,
         why: "今天没落，两条理由。① **它的漏斗在前端**（`remote-launch-run.ts` 的 \
                   `invokeLaunchOrCopyFallback`），而 `K-P5b` 的写区里一个 `.ts` 都没有。\

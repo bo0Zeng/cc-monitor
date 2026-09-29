@@ -1,85 +1,37 @@
-//! Batch14-F41：远端终端拉起。
+//! Batch14-F41：终端拉起。〔FIX4 · `设计/99 §2.1 ⑬`「待迁」最后一行〕monitor 这里**只开终端**。
 //!
-//! 两块：
-//! 1. [`launch_powershell_window`] —— 从 `history.rs` 的 `resume_impl`〔散文墓碑〕 抽出的通用「新终端窗口
-//!    跑一条 PowerShell 命令」机械（wt.exe Plan A → CREATE_NEW_CONSOLE Plan B，
-//!    `-NoExit -EncodedCommand`、**不带 `-NoProfile`**）。本地 resume 与远端族
-//!    （F41 resume / F51 attach / F52 tmux / F53 launcher）共用此单一入口。
-//! 2. [`build_remote_ssh_ps_command`] + [`launch_remote_terminal`] —— 远端终端拉起：
-//!    按 origin 取 RemoteConfig，构造 `ssh -t …` 的 PowerShell 命令体并拉起
-//!    （F41 用它跑 resume；后续 attach/tmux/launcher 同命令不同 remote_cmd）。
+//! 三块：
+//! 1. [`launch_powershell_window`] —— 通用「新终端窗口跑一条 PowerShell 命令」机械（wt.exe Plan A →
+//!    CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`、**不带 `-NoProfile`**）。本地与远端共用此单一入口。
+//! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：接上令牌握手前奏（[`with_rbind_bind_prelude`]，窗口要登记进
+//!    monitor 自己那张 `bind.rs` 表）再开窗。它**不拼 ssh**：远端那一行（`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由本机后端
+//!    帧命令 `terminal-ssh` 渲好交来（`src/backend/dial/terminal.rs`，组请求走 `dial/machine.rs::resolve`）。
+//!    原先住这里的 `build_remote_ssh_ps_command`〔散文墓碑〕与它那几道白名单（用户名 · 地址 · 跳板 · 双引号）随之搬走。
+//! 3. [`terminal_dial`] —— 给那一问交机器事实（`{machine, saved, jump, prefer}`：monitor 自己的机器表 ＋ 上次赢的那条，
+//!    `dial_host::machine_facts`）。
 //!
-//! ## 引号与注入（三层，各自独立）
-//! - **远端命令**（前端 `remote-launch.ts` 构造）：sid 白名单 + launcher denylist +
-//!   cwd POSIX 单引号——见前端模块文档。
-//! - **传输包装**（本模块）：远端命令包成 `bash -lic '<cmd>'` 再交给 ssh——保证 PATH /
-//!   别名 / 函数按「用户粘贴进交互终端」语义解析（非交互 ssh exec 里 `claude`/`cct`
-//!   常不在 PATH；`-l` 进 profile、`-i` 进 bashrc 且别名展开）。已知限制：远端 shell
-//!   是 zsh/fish 且 claude 只在其 rc 里进 PATH 时不覆盖——F52 tmux send-keys 彻底解决。
-//! - **PowerShell 层**：全命令体经 `-EncodedCommand`（base64）穿 wt.exe（`;` 分 tab
-//!   不会切碎）；remote_cmd 以 PS 单引号字面量嵌入（`'` → `''`）。**含双引号的
-//!   remote_cmd 直接拒绝**——PowerShell 5.1 向 native 程序传参对内嵌 `"` 有历史畸变，
-//!   拒绝后前端自动走剪贴板回退（launcher 需要引号参数时用单引号写法）。
+//! ## 引号与注入
+//! - **远端命令**：渲染侧（后端载荷渲染器 / `terminal-ssh`）判 —— 控制字符 · 长度 · 双引号（PowerShell 5.1 向 native 程序传参对内嵌
+//!   `"` 有历史畸变，拒绝后前端走剪贴板回退）· 裸词白名单。
+//! - **PowerShell 层**（本模块）：全命令体经 `-EncodedCommand`（base64）穿 wt.exe（`;` 分 tab 不会切碎）。
 
 use crate::copy_table::copy_text;
-use crate::ssh_source::RemoteConfig;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
 const MAX_REMOTE_CMD: usize = 4096;
 
-/// POSIX 单引号 quote（与前端 `posixQuote` 同构）：`'…'` 包裹，内部 `'` → `'\''`。
-pub(crate) fn posix_quote(s: &str) -> String {
-    // U8c-2b-0（账本 S5）：实现收进 `shell-quote-core`（P4c 前叫 `launch-core`），此处只留名字。
-    // `pub(crate)` 只为让 `quote_singleton_guard` 的行为对拍够得着它。
-    shell_quote_core::posix_quote(s)
-}
+// 〔FIX4 · `99 §2.1 ⑬`〕这里原来一个 `posix_quote`〔散文墓碑〕（`shell_quote_core::posix_quote` 的纯转发别名）：唯一的用户是远端那条
+// ssh 外壳（`bash -lic '<命令>'`），随渲染搬进本机后端（`src/backend/dial/terminal.rs`，直调 `shell_quote_core`）⇒ 别名一起删。
 
 /// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`。
 fn ps_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// user 合法性：非空，仅 `[A-Za-z0-9._-]`（拼进 PS 命令体的裸 token，白名单杜绝注入）。
-fn valid_user(u: &str) -> bool {
-    !u.is_empty()
-        && u.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-}
-
-/// host 合法性：非空，仅 `[A-Za-z0-9._:\[\]-]`（域名 / IPv4 / IPv6 字面量）。
-fn valid_host(h: &str) -> bool {
-    !h.is_empty()
-        && h.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ':' | '[' | ']'))
-}
-
-/// F56：构造 OpenSSH `-J` 跳板参数（` -J user@host[:port]`，port≠22 才带端口后缀）。
-/// 纯函数便于单测;跳板 user/host 过与主机同款非法字符校验。
-fn build_jump_arg(jump_user: &str, jump_host: &str, jump_port: u16) -> Result<String, String> {
-    if !valid_user(jump_user) {
-        return Err(copy_text(
-            "rsLaunch.refuse.jumpUser",
-            &[("jumpUser", &format!("{:?}", jump_user))],
-        ));
-    }
-    if !valid_host(jump_host) {
-        return Err(copy_text(
-            "rsLaunch.refuse.jumpHost",
-            &[("jumpHost", &format!("{:?}", jump_host))],
-        ));
-    }
-    let port_suffix = if jump_port == 22 {
-        String::new()
-    } else {
-        format!(":{jump_port}")
-    };
-    Ok(format!(" -J {jump_user}@{jump_host}{port_suffix}"))
-}
-
 /// L1（local-as-remote）：**与传输无关**的那层命令校验 —— 三条送法一律适用。
 ///
-/// 从 [`build_remote_ssh_ps_command`] 里抽出来，好让 POSIX 本地那条路
-/// （[`build_local_posix_argv`]）用**同一份**判据，而不是各写一份会静默漂移的副本。
+/// 〔FIX4〕远端那条送法的同一组判据今天住本机后端（`dial/terminal.rs`，帧命令 `terminal-ssh`）；这里只剩 POSIX 本地那条路
+/// （[`build_local_posix_argv`]）用。
 ///
 /// **刻意不含「拒绝双引号」那条**：它的理由是 PowerShell 5.1 向 native 程序传参对内嵌 `"`
 /// 有历史畸变（见调用处），是**那条送法的**约束，不是命令本身的性质。
@@ -116,9 +68,10 @@ fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
 /// 白白造一个注入面。`bash -lic` 这层**保留**——它和远端那条路是同一个语义
 ///（PATH / 别名 / 函数按「用户粘贴进交互终端」解析），`ccm` 正是靠它才被找到。
 ///
-/// ⇒ 与 [`build_remote_ssh_ps_command`] 的关系就是 §2「payload 共享、transport 只管送」：
-/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh。
-/// 有测试逐字节钉住这条（`local_and_remote_share_the_same_payload`）。
+/// ⇒ 与远端那条送法的关系就是 §2「payload 共享、transport 只管送」：
+/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh（〔FIX4〕那一层今天由本机后端 `terminal-ssh` 渲）。
+/// 两侧各有测试逐字节钉住（本侧 `local_posix_sends_the_payload_itself_without_an_ssh_wrap`，
+/// 远端那侧在 `tests/backend/dial_terminal_tests.rs`）。
 pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
     validate_launch_cmd(cmd, &copy_text("rsLaunch.what.localCmd", &[]))?;
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
@@ -441,70 +394,6 @@ pub(crate) fn with_rbind_bind_prelude(
     ))
 }
 
-/// 构造远端拉起的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
-///
-/// 形态：`& ssh -t[ -J <跳板>] -p <port> [-i '<key>'] <user>@<host> -- '<bash -lic ''…''>'`
-/// （F45 竞发落地后 host 换成连接大脑当前胜者地址；F56 jump 有值插 `-J`——本函数签名不变。）
-pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Result<String, String> {
-    validate_launch_cmd(remote_cmd, &copy_text("rsLaunch.what.remoteCmd", &[]))?;
-    if remote_cmd.contains('"') {
-        return Err(copy_text("rsLaunch.refuse.doubleQuote", &[]).into());
-    }
-    if !valid_user(&cfg.user) {
-        return Err(copy_text(
-            "rsLaunch.refuse.user",
-            &[("user", &format!("{:?}", cfg.user))],
-        ));
-    }
-    // F45：拨号地址取连接大脑当前胜者（已连过 = last-good 胜者;否则 = host）。让
-    // PowerShell 的 ssh 走与 russh 数据源同一条路,避免 monitor 连内网 IP、终端却盲连
-    // 可能已死的 host 字段。
-    let winner = crate::ssh_source::winner_address(cfg);
-    if !valid_host(&winner.host) {
-        return Err(copy_text(
-            "rsLaunch.refuse.host",
-            &[("host", &format!("{:?}", winner.host))],
-        ));
-    }
-
-    // 尾 `\` 剥掉：key 是文件路径不应以 \ 结尾，而 PS<7.3 给含空格参数加壳时
-    // 尾部 `\"` 会转义掉收尾引号（native 传参已知畸变），防御性 trim。
-    let key_part = match cfg
-        .key_path
-        .as_deref()
-        .map(|k| k.trim().trim_end_matches('\\'))
-    {
-        Some(k) if !k.is_empty() => format!(" -i {}", ps_quote(k)),
-        _ => String::new(), // ssh-agent（Windows OpenSSH agent），无 -i
-    };
-    // F56：跳板 ProxyJump——jump 有值 → 解析跳板 cfg → 插 OpenSSH `-J user@host[:port]`。
-    // fail-closed:跳板配置查无 → Err（绝不静默直连目标）;自引用环 → Err。
-    let jump_part = match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        Some(jump_label) => {
-            if jump_label == cfg.origin_label() {
-                return Err(copy_text("rsLaunch.refuse.jumpSelf", &[]).into());
-            }
-            let jump_cfg = crate::load_remote_config_by_label(jump_label).ok_or_else(|| {
-                copy_text(
-                    "rsLaunch.refuse.jumpNotFound",
-                    &[("jumpLabel", &format!("{:?}", jump_label))],
-                )
-            })?;
-            build_jump_arg(&jump_cfg.user, &jump_cfg.host, jump_cfg.port)?
-        }
-        None => String::new(),
-    };
-    // 传输包装：交互式 login bash 里执行（见模块文档）。
-    let wrapped = format!("bash -lic {}", posix_quote(remote_cmd));
-    Ok(format!(
-        "& ssh -t{jump_part} -p {port}{key_part} {user}@{host} -- {cmd}",
-        port = winner.port,
-        user = cfg.user,
-        host = winner.host,
-        cmd = ps_quote(&wrapped),
-    ))
-}
-
 /// 在新终端窗口跑一条 PowerShell 命令（加载用户 profile、`-NoExit` 保留窗口）。
 ///
 /// Plan A：wt.exe（Windows Terminal）新标签；Plan B：powershell.exe +
@@ -693,7 +582,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 /// 它暗示「v2 会支持」，而实际上这件事**没排期、而且方向是反的**（U8b 订正）。
 ///
 /// ⚠ **这不代表 POSIX 上「远端拉起」这件事就该只复制命令** —— 那是另一个缺口：
-/// 本机 resume 有 OS 分派（〔MIG-2〕今天在本机后端 `local.rs::plan`），远端**没有**（`launch_remote_terminal`
+/// 本机 resume 有 OS 分派（〔MIG-2〕今天在本机后端 `local.rs::plan`），远端**没有**（开窗 `open_terminal_window`
 /// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走后端的 `launch`，
 /// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
 #[cfg(not(windows))]
@@ -739,69 +628,58 @@ fn ssh_client_available() -> bool {
     .unwrap_or(false)
 }
 
-/// 通用「远端终端拉起」命令（账本最终形态；F41 resume / F51 attach / F52 tmux /
-/// F53 launcher 共用——remote_cmd 语义由前端 `remote-launch.ts` 的各 build 函数决定）。
-/// `remote_cmd` 前端已过 sid 白名单 / launcher denylist / POSIX 引号，本侧再验一层
-/// （控制字符 / 双引号 / 长度）——双层防线。
+/// 〔FIX4 · `设计/99 §2.1 ⑬`「待迁」最后一行〕**开一个终端窗口跑 `command`** —— monitor 在「开终端」这件事上只剩这一下。
 ///
-/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbind_token`：这次拉起铸的**启动期令牌**
-/// （前端 `remote-launch-run.ts` 从真正交出去渲染的那份 plan 里取，不另铸）。
-/// 有值 ⇒ 在命令前面接令牌握手前奏（[`with_rbind_bind_prelude`]），让这个新窗口以
-/// `ccm-rbind-token-<令牌>` 为 marker 登记进 `bind.rs` 那张表 —— ↗ 的 `sid → token → HWND`
-/// join 的本地一半从此有生产写入方。缺省（旧调用方 / `attach`）⇒ 行为逐字节同从前。
+/// `command` 是**成品**：远端那一行由本机后端 `terminal-ssh` 渲好（`ssh -t …` 外壳 ＋ PowerShell 载荷），本机那一串是
+/// 前端 / 后端载荷渲染器给的原串 —— 这里不判、不拼。`ssh = true` ⇒ Windows 上先查本机有没有 ssh.exe
+/// （缺 OpenSSH 客户端时窗口只会报 "not recognized"，而 spawn 本身成功 ⇒ 前端误报成功）。
+///
+/// 〔`设计/80 §8.7` 步 3 收尾，第二波 T4〕`rbind_token`：这次拉起铸的**启动期令牌**（前端从真正交出去渲染的那份 plan 里取，
+/// 不另铸）。有值 ⇒ 接令牌握手前奏（[`with_rbind_bind_prelude`]），让新窗口以 `ccm-rbind-token-<令牌>` 登记进 `bind.rs`
+/// 那张表（↗ 的 `sid → token → HWND` join 的本地一半）。缺省（`attach` · 部署那几条不起 agent 进程的）⇒ 原样开窗。
+///
+/// ★ POSIX：[`launch_powershell_window`] 的非 Windows 臂回 [`POSIX_NO_TERMINAL_WINDOW`]，前端据此把命令交给用户在自己的
+/// bash 里执行（〔用户裁定 08-12〕「attach 暂时就用纯 linux bash 以及 windows 的 PowerShell + Windows Terminal」）。**这不是失败**。
 #[tauri::command]
-pub async fn launch_remote_terminal(
-    origin: String,
-    remote_cmd: String,
+pub async fn open_terminal_window(
+    command: String,
     rbind_token: Option<String>,
+    ssh: bool,
 ) -> Result<(), String> {
-    // ★★ **本机也走这条**〔用户裁定 08-12：「attach 暂时就用纯 linux bash 以及 windows 的
-    // PowerShell + Windows Terminal」〕。
-    //
-    // 在此之前 `<local>` 会掉进下面那句 `load_remote_config_by_label`，报
-    // **「未找到远端配置: "<local>"」** —— 与真实原因毫无关系的一句话。
-    // 同一族错误文案本轮第四次遇到（前三次：`backend_kill` · `list_remote_tmux` · 本条）。
-    //
-    // 两侧各按裁定走，**没有 ssh 那一跳**：
-    // · Windows → `launch_powershell_window`（PowerShell + Windows Terminal，与远端同一个函数）；
-    // · POSIX   → 那个函数的非 Windows 臂回 `POSIX_NO_TERMINAL_WINDOW`，前端据此把命令交给用户
-    //   在自己的 bash 里执行。**这不是失败**，前端有专门的标题分档（`POSIX_NO_WINDOW_MARKER`）。
-    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
-        return tokio::task::spawn_blocking(move || {
-            let data_dir = crate::paths::resolve_monitor_data_dir();
-            let ps_command =
-                with_rbind_bind_prelude(remote_cmd, rbind_token.as_deref(), data_dir.as_deref())?;
-            launch_powershell_window(&ps_command, None)?;
-            tracing::info!("launch: local terminal (no ssh)");
-            Ok::<(), String>(())
-        })
-        .await
-        .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?;
-    }
-    // §10（Phase G 对齐）:体含 `where.exe .output()`(阻塞)+ 进程 spawn 等阻塞 OS 调用,
-    // 挪到阻塞线程池,不堵 IPC 派发线程(与本地 resume 命令 issue #12 同处理,批内唯一
-    // 遗留的 sync tauri 命令——F41 从 history.rs 抽 launch.rs 时漏跟)。
+    // §10（Phase G 对齐）：`where.exe` 预检（阻塞）＋ 进程 spawn 挪到阻塞线程池，不堵 IPC 派发线程。
     tokio::task::spawn_blocking(move || {
-        let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
-            copy_text(
-                "rsLaunch.remote.noConfig",
-                &[("machine", &format!("{:?}", origin))],
-            )
-        })?;
         #[cfg(windows)]
-        if !ssh_client_available() {
+        if ssh && !ssh_client_available() {
             return Err(copy_text("rsLaunch.remote.noOpenSsh", &[]).into());
         }
-        let ps_command = build_remote_ssh_ps_command(&cfg, &remote_cmd)?;
+        #[cfg(not(windows))]
+        let _ = ssh;
         let data_dir = crate::paths::resolve_monitor_data_dir();
         let ps_command =
-            with_rbind_bind_prelude(ps_command, rbind_token.as_deref(), data_dir.as_deref())?;
+            with_rbind_bind_prelude(command, rbind_token.as_deref(), data_dir.as_deref())?;
         launch_powershell_window(&ps_command, None)?;
-        tracing::info!("launch: remote terminal via ssh origin={origin}");
-        Ok(())
+        tracing::info!("launch: terminal window opened");
+        Ok::<(), String>(())
     })
     .await
     .map_err(|e| copy_text("rsLaunch.remote.taskFailed", &[("e", &e.to_string())]))?
+}
+
+/// 〔FIX4 · `设计/99 §2.1 ⑬`〕开终端那一问（本机后端 `terminal-ssh`）要的**机器事实**：`{machine, saved, jump, prefer}`
+/// —— monitor 自己的机器表 ＋ 上次赢的那条（[`crate::dial_host::machine_facts`]，与拨号请求同一份）。只读 monitor 自己的状态。
+#[tauri::command]
+pub async fn terminal_dial(origin: String) -> Result<serde_json::Value, String> {
+    // 本机那一支不经 ssh（前端 `terminal-open.ts` 原串直接开窗）⇒ 这里先分本机、说清，别掉进下面那句「未找到远端配置」。
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
+        return Err(copy_text("rsLaunch.terminalDial.local", &[]));
+    }
+    let cfg = crate::load_remote_config_by_label(&origin).ok_or_else(|| {
+        copy_text(
+            "rsLaunch.remote.noConfig",
+            &[("machine", &format!("{:?}", origin))],
+        )
+    })?;
+    Ok(crate::dial_host::machine_facts(&cfg))
 }
 
 /// 〔MIG-2 · `99 §2.1 ⑬`〕**在本机开一个终端窗口跑 `cmd`**（工作目录 `cwd`，不在就不设）—— monitor 在起会话这件事上只剩这一下。

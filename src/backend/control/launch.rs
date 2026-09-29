@@ -35,7 +35,7 @@
 //! 所以这里只回答一个问题：**这组参数能不能构成一次有意义的 tmux 调用**。
 //! 不能就回一条结构化错误（可诊断、fail-fast），而不是把畸形串塞给 tmux 让它以奇怪的方式失败。
 //!
-//! ⚠ **明确不抄的一条**：monitor `launch.rs::build_remote_ssh_ps_command` 里的「禁双引号」
+//! ⚠ **明确不抄的一条**：开终端那一行（〔FIX4〕今天住本机后端 `dial/terminal.rs::render`，原在 monitor）里的「禁双引号」
 //! 是 PowerShell 5.1 向 native 程序传参的历史畸变（`wt.exe` 那条路）。**与本模块无关**，
 //! 这条路根本不过 shell —— 抄它等于把一个 Windows 怪癖套到 tmux argv 上。
 //!
