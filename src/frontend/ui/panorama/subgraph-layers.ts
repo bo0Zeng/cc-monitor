@@ -1,22 +1,22 @@
 /**
- * P7b（全景 P4，#79）：把**调用子图**按距根的跳数分层。
+ * P7b（全景 P4，#79）：把**邻域 / 影响面**按距根的跳数分层列出来。
+ *
+ * # CP1：跳数不在这里算（〔PANO〕`设计/97 §1` · `99 §1` V158「前端不算图」）
+ *
+ * 两种都是那台机器上算好的：影响面的 `depth` 是上游 `impact` 给的反向距离；邻域的 `depth` 是小程序
+ * `neighborhood` op 按上游 `subgraph` 的 depth 口径给的。这里只做**呈现**：按 `depth` 分组、层内去重、每层截断并如实回报。
+ * 〔墓碑 —— 此前邻域那一半在这里对 `subgraph` 的边做无向 BFS 自己算跳数。〕
  *
  * # 为什么是分层列表而不是一张点线图
  *
- * 「子图」最容易被读成「画一张图」。那要引一套布局（力导向 / 分层），
- * 而全景界面今天全是列表与分节。分层列表对「谁调了谁」的可读性不输点线图，
- * 而点线图在几十个节点上就糊了。⇒ 零新依赖，且真要画图时本模块不挡路。
+ * 分层列表对「谁调了谁」的可读性不输点线图，而点线图在几十个节点上就糊了。⇒ 零新依赖。
  *
  * # 为什么上界是本模块的正题之一
  *
- * `subgraph` 是**双向邻域** —— depth 每加一跳，节点数按扇出幂增；
- * 真实仓里一个被广泛调用的符号，depth=3 就可能上千个节点。
- *
- * ⚠ 截断**必须说清**。本仓的 `byte_cap_registry` 对每一处上限逐条追问「超限怎么办」，
- * 而它的 `ALLOWED_SEMANTICS` 里**没有「静默截断」这一项** —— 截了不说，
- * 用户会把半份当成全部。所以本模块回的是 `{ ids, truncated }` 而不是一个截好的数组。
+ * 邻域是**双向**的 —— depth 每加一跳，节点数按扇出幂增；真实仓里一个被广泛调用的符号，depth=3 就可能上千个节点。
+ * ⚠ 截断**必须说清**：`byte_cap_registry` 的 `ALLOWED_SEMANTICS` 里**没有「静默截断」这一项** ——
+ * 截了不说，用户会把半份当成全部。所以回的是 `{ ids, truncated }` 而不是一个截好的数组。
  */
-import type { Edge, ImpactSet, SubGraph } from "./types";
 
 /** 每层最多渲染多少条。超出的数目如实回给调用方去说。 */
 export const MAX_PER_LAYER = 50;
@@ -38,69 +38,20 @@ export function clampDepth(d: number): number {
 }
 
 /**
- * BFS 分层。
+ * 按那台给的 `depth` 分层（影响面 `ImpactSet.affected` 与邻域 `Neighborhood.reached` 同形）。
  *
- * · 边**按无向处理** —— `subgraph` 是双向邻域，一条 `a→b` 既让 b 成为 a 的邻居，
- *   也让 a 成为 b 的邻居（这正是「以某符号为心的邻域」的含义）。
- * · **根不出现在任何一层里** —— 它是圆心，不是结果。
- * · 每个 id 只出现在**最短**的那一层（BFS 天然保证）。
+ * ⚠ 影响面与 `callers` **不是一件事**：`ImpactSet` 是**传递闭包**（反向可达的全部），`callers` 只有一跳。
+ * · 根不进结果（它是圆心）；同一层重复的 id 只留一份；脏项丢掉；层按深度升序（不跟着输入顺序走）。
  */
-export function layerSubGraph(
-  sg: SubGraph,
+export function layerByDepth(
   root: string,
+  items: readonly { id: string; depth: number }[],
   maxPerLayer: number = MAX_PER_LAYER,
 ): Layer[] {
-  const adj = new Map<string, string[]>();
-  const push = (a: string, b: string): void => {
-    const cur = adj.get(a);
-    if (cur) cur.push(b);
-    else adj.set(a, [b]);
-  };
-  for (const e of sg.edges as Edge[]) {
-    if (!e || typeof e.from !== "string" || typeof e.to !== "string") continue;
-    push(e.from, e.to);
-    push(e.to, e.from);
-  }
-  const seen = new Set<string>([root]);
-  const layers: Layer[] = [];
-  let frontier = [root];
-  while (frontier.length) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const nb of adj.get(id) ?? []) {
-        if (seen.has(nb)) continue;
-        seen.add(nb);
-        next.push(nb);
-      }
-    }
-    if (!next.length) break;
-    layers.push({
-      depth: layers.length + 1,
-      ids: next.slice(0, maxPerLayer),
-      truncated: Math.max(0, next.length - maxPerLayer),
-    });
-    // ★ **下一轮从完整的 `next` 展开，不是从截断后的 `ids`**。
-    // 截断是**显示**的事；拿它去推进 BFS 会让图的形状随一个渲染上限而变
-    //（第 51 个邻居的下游整片消失，而且消失得毫无痕迹）。
-    //
-    // ⚠ 第一版**整句忘了写** —— `frontier` 永远是 `[root]`，于是只出得来一层。
-    // 判据当场逮到（`expected [1] to deeply equal [1, 2]`）。
-    frontier = next;
-  }
-  return layers;
-}
-
-/**
- * P7b-Y3：影响面（blast radius）分层。
- *
- * ⚠ 它与 `callers` **不是一件事**：`ImpactSet` 是**传递闭包**（反向可达的全部），
- * `callers` 只有一跳。把它做成 callers 的同义词是本件最容易犯的错。
- */
-export function layerImpact(set: ImpactSet, maxPerLayer: number = MAX_PER_LAYER): Layer[] {
   const byDepth = new Map<number, string[]>();
-  for (const a of set.affected ?? []) {
+  for (const a of items ?? []) {
     if (!a || typeof a.id !== "string" || !Number.isFinite(a.depth)) continue;
-    if (a.id === set.root) continue; // 根不进结果，同 `layerSubGraph`
+    if (a.id === root) continue;
     const d = Math.trunc(a.depth);
     const cur = byDepth.get(d);
     if (cur) {

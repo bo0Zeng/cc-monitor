@@ -336,7 +336,8 @@ mod tests {
         "reindex",
         "overview",
         "node",
-        "subgraph",
+        // 〔PANO · 主会话 09-29 签〕`subgraph` 零消费者 ⇒ 去；换成带「距根几跳」的邻域（CP1：前端不算图）。
+        "neighborhood",
         "callers",
         "callees",
         "impact",

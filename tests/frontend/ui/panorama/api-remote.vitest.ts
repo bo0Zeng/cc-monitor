@@ -34,7 +34,7 @@ const READS: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
   status: (at) => api.status(at),
   overview: (at) => api.overview(at, 2000),
   node: (at) => api.node(at, "a#f"),
-  subgraph: (at) => api.subgraph(at, "a#f", 1),
+  neighborhood: (at) => api.neighborhood(at, "a#f", 1),
   callers: (at) => api.callers(at, "a#f", 1),
   callees: (at) => api.callees(at, "a#f", 1),
   impact: (at) => api.impact(at, "a#f"),

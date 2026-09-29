@@ -3254,13 +3254,13 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 后端**不链**全景引擎：它经插件通用调用口（找它 → `--probe` 问它会不会这个 op → 传 argv 起它，期限走 `timeout` 前缀）起那个只装引擎的独立小程序 `cc-monitor-panorama`，解析发生在被起的那个进程里；索引落**这台机器上后端自己的数据目录**（`~/.cc-monitor/panorama/`），不落进被分析的仓。本机与远端同一条命令。
 
 ```text
-→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000},"shape":"fc90734129492e26"}}
+→ {"id":"g1","cmd":"panorama","args":{"op":"overview","repo":"/home/me/proj","args":{"budget":4000},"shape":"<形状代号>"}}
 ← {"kind":"reply","id":"g1","ok":true,"data":{"result":{…}}}
 ```
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `subgraph` · `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`；〔RM1d〕「算」：`plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；`refresh_doc_links`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着）。〔PANO〕后端不存这张表：认得的词 = 小程序 `--probe` 自报的 `capabilities=`（生成物 `src/frontend/ui/panorama/engine-contract.json` 是它的镜子） |
+| `op` | → | **只说查询语义**：`status` · `index` · `reindex` · `overview` · `node` · `neighborhood`（〔PANO〕邻域，每个符号带距根几跳：`{root, reached: [{id, depth}]}`）· `callers` · `callees` · `impact` · `search` · `docs_for` · `touching` · `symbols_in_file` · `drift` · `list_annotations` · `diagram_kinds` · `diagram`；〔RM1d〕「算」：`plan_add_annotation` · `plan_propose_annotation` · `plan_approve_annotation` · `plan_remove_annotation` · `plan_write_doc_link` · `plan_remove_doc_link`；`refresh_doc_links`（存储 / grammar / 解析开关一个都不上线，`protocol_doc_guard` 钉着）。〔PANO〕后端不存这张表：认得的词 = 小程序 `--probe` 自报的 `capabilities=`（生成物 `src/frontend/ui/panorama/engine-contract.json` 是它的镜子） |
 | `shape` | → | 〔PANO〕要的那一代小程序的形状代号（发起方取自生成物 `engine-contract.json`）；后端拿它与 `--probe` 报的 `shape=` 逐字比，对不上 ⇒ `unsupported`。缺 ⇒ `bad_args` |
 | `repo` | → | 被分析的仓在**这台机器上**的绝对路径（`diagram_kinds` 不要） |
 | `args` | → | 这个 op 自己的参数（JSON 对象；拼错的字段名被拒，不静默忽略） |
@@ -3294,7 +3294,7 @@ D 组「monitor 算好、后端写」（`设计/05 §14.3`）按用户 09-27「�
 #### `panorama-edit`：全景写批注 / 文档关联（〔MIG-3b 续〕09-28；〔RM1d〕V110「引擎只算、文件管理来写」）
 
 ```text
-→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"fc90734129492e26"}}
+→ {"id":"g2","cmd":"panorama-edit","args":{"repo":"/home/me/proj","op":"add_annotation","args":{"file":"a.rs","symbol":null,"body":"x","author":"me"},"shape":"<形状代号>"}}
 ← {"kind":"reply","id":"g2","ok":true,"data":"k3f…"}
 ```
 

@@ -1,7 +1,7 @@
 // P7b（全景 P4，#79）：多跳子图 / 影响面的**界面**那半。
 // 纯分层逻辑住 `panorama/subgraph-layers.vitest.ts`；这里只钉界面接线与竞态。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { NodeView, Symbol as PanoSymbol, SubGraph, ImpactSet } from "../../../../src/frontend/ui/panorama/types";
+import type { NodeView, Symbol as PanoSymbol, Neighborhood, ImpactSet } from "../../../../src/frontend/ui/panorama/types";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
@@ -11,7 +11,7 @@ vi.mock("../../../../src/frontend/ui/keybindings/registry", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/panorama/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/frontend/ui/panorama/api")>();
-  return { ...actual, node: vi.fn(), subgraph: vi.fn(), impact: vi.fn() };
+  return { ...actual, node: vi.fn(), neighborhood: vi.fn(), impact: vi.fn() };
 });
 
 import * as api from "../../../../src/frontend/ui/panorama/api";
@@ -23,8 +23,7 @@ const sym = (id: string): PanoSymbol =>
   ({ id, name: id, kind: "function", file: "lib.rs", start_line: 1 }) as unknown as PanoSymbol;
 const nodeView = (id: string): NodeView =>
   ({ symbol: sym(id), callers: [], callees: [], docs: [], annotations: [] }) as NodeView;
-const edge = (from: string, to: string): SubGraph["edges"][number] =>
-  ({ from, to, kind: "Calls", call_site_line: null, confidence: "Exact" }) as SubGraph["edges"][number];
+const nb = (...reached: [string, number][]): Neighborhood => ({ root: "r", reached: reached.map(([id, depth]) => ({ id, depth })) });
 type Probe = { repo: string | null; sidebarEl: HTMLElement; openNodeDetail: (id: string) => Promise<void> };
 const probe = (v: PanoramaView): Probe => v as unknown as Probe;
 
@@ -45,16 +44,13 @@ describe("P7b 多跳子图 / 影响面", () => {
       (e) => e.textContent ?? "",
     );
 
-  it("★ P7b-Y1：点「展开子图」才发请求，结果按跳数分层", async () => {
+  it("★ P7b-Y1：点「展开子图」才发请求，结果按那台给的跳数分层（〔PANO · CP1〕前端不算）", async () => {
     // 打开详情时**不许**白拉一次（子图是双向邻域，扇出爆炸）。
-    expect(api.subgraph).not.toHaveBeenCalled();
-    vi.mocked(api.subgraph).mockResolvedValue({
-      symbols: [],
-      edges: [edge("r", "a"), edge("a", "b")],
-    } as SubGraph);
+    expect(api.neighborhood).not.toHaveBeenCalled();
+    vi.mocked(api.neighborhood).mockResolvedValue(nb(["a", 1], ["b", 2]));
     el(".panorama-subgraph-go").click();
     await flush();
-    expect(api.subgraph).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "r", 1);
+    expect(api.neighborhood).toHaveBeenCalledWith({ origin: LOCAL_ORIGIN, path: "/repo" }, "r", 1);
     expect(layerHeads()).toEqual(["第 1 跳（1 条）", "第 2 跳（1 条）"]);
   });
 
@@ -75,9 +71,9 @@ describe("P7b 多跳子图 / 影响面", () => {
 
   it("★ P7b-D：慢的那次回来**不许盖掉**后点的那次（代次守卫）", async () => {
     // 用户点了「展开子图」，等不及又点「影响面」——子图那次慢，回来时不该覆盖影响面的结果。
-    let releaseSub: (v: SubGraph) => void = () => {};
-    vi.mocked(api.subgraph).mockReturnValue(
-      new Promise<SubGraph>((r) => {
+    let releaseSub: (v: Neighborhood) => void = () => {};
+    vi.mocked(api.neighborhood).mockReturnValue(
+      new Promise<Neighborhood>((r) => {
         releaseSub = r;
       }),
     );
@@ -93,7 +89,7 @@ describe("P7b 多跳子图 / 影响面", () => {
     expect(layerHeads()).toEqual(["第 1 跳（1 条）"]);
     const before = probe(v).sidebarEl.querySelector(".panorama-subgraph-out")!.textContent;
 
-    releaseSub({ symbols: [], edges: [edge("r", "x"), edge("r", "y")] } as SubGraph);
+    releaseSub(nb(["x", 1], ["y", 1]));
     await flush();
     expect(
       probe(v).sidebarEl.querySelector(".panorama-subgraph-out")!.textContent,
@@ -102,7 +98,7 @@ describe("P7b 多跳子图 / 影响面", () => {
   });
 
   it("读不到 ⇒ 说「读不到」，不说成「邻域为空」", async () => {
-    vi.mocked(api.subgraph).mockRejectedValue(new Error("no index"));
+    vi.mocked(api.neighborhood).mockRejectedValue(new Error("no index"));
     el(".panorama-subgraph-go").click();
     await flush();
     const txt = probe(v).sidebarEl.querySelector(".panorama-subgraph-out")!.textContent ?? "";
