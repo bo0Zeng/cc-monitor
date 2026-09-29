@@ -14,8 +14,13 @@ struct Fake {
     exec: BTreeMap<String, Result<crate::dial::Captured, String>>,
     stat: BTreeMap<String, (Option<Option<u64>>, Option<bool>)>,
     read: BTreeMap<String, Vec<u8>>,
+    /// 〔WF2〕`list` 按目录查表；没登记 ⇒ 列不出。
+    list: BTreeMap<String, Vec<(String, Option<u64>)>>,
     asked: Mutex<Vec<String>>,
 }
+
+/// 〔WF2〕判据里的「此刻」（秒）。
+const NOW: u64 = 1_000_000;
 
 fn said(exit: u32, stdout: &str) -> Result<crate::dial::Captured, String> {
     Ok(crate::dial::Captured {
@@ -113,6 +118,11 @@ impl Facing for Fake {
             .filter(|b| b.len() as u64 <= max);
         Box::pin(async move { got })
     }
+
+    fn list<'a>(&'a self, rel: &'a str) -> Fut<'a, Option<Vec<(String, Option<u64>)>>> {
+        let got = self.list.get(rel).cloned();
+        Box::pin(async move { got })
+    }
 }
 
 fn carried(id: &str) -> Vec<(Key, String)> {
@@ -125,7 +135,7 @@ fn carried(id: &str) -> Vec<(Key, String)> {
 #[tokio::test]
 async fn the_same_build_at_the_landing_is_skipped_and_an_absent_legacy_says_nothing() {
     let f = Fake::linux(Some("p9a-mine"));
-    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(p.action, DeployAction::Skip);
     assert_eq!(p.legacy, LegacyVerdict::Absent);
     assert_eq!(p.expected, "p9a-mine");
@@ -134,7 +144,7 @@ async fn the_same_build_at_the_landing_is_skipped_and_an_absent_legacy_says_noth
 #[tokio::test]
 async fn nothing_at_the_landing_is_deployed() {
     let f = Fake::linux(None);
-    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert!(
         matches!(p.action, DeployAction::Deploy(_)),
         "{:?}",
@@ -149,17 +159,27 @@ async fn nothing_at_the_landing_is_deployed() {
 
 #[tokio::test]
 async fn an_older_build_is_replaced_and_a_newer_one_is_kept_with_its_own_identity() {
-    let older = plan(&Fake::linux(Some("p9a-old")), &carried("p9b-mine"), "box")
-        .await
-        .unwrap();
+    let older = plan(
+        &Fake::linux(Some("p9a-old")),
+        &carried("p9b-mine"),
+        "box",
+        NOW,
+    )
+    .await
+    .unwrap();
     assert!(
         matches!(older.action, DeployAction::Deploy(_)),
         "{:?}",
         older.action
     );
-    let newer = plan(&Fake::linux(Some("p9c-new")), &carried("p9b-mine"), "box")
-        .await
-        .unwrap();
+    let newer = plan(
+        &Fake::linux(Some("p9c-new")),
+        &carried("p9b-mine"),
+        "box",
+        NOW,
+    )
+    .await
+    .unwrap();
     assert!(
         matches!(&newer.action, DeployAction::Keep { theirs, .. } if theirs == "p9c-new"),
         "{:?}",
@@ -174,7 +194,7 @@ async fn a_machine_this_build_does_not_carry_is_refused_before_the_landing_is_as
         deploy_core::key_of("Linux", "aarch64").unwrap(),
         "p9a-mine".to_string(),
     )];
-    let (code, msg) = plan(&f, &aarch, "box").await.unwrap_err();
+    let (code, msg) = plan(&f, &aarch, "box", NOW).await.unwrap_err();
     assert_eq!(code, "refused");
     assert!(msg.contains("box"), "拒绝那句要点名那台：{msg}");
     assert_eq!(f.asked.lock().unwrap().len(), 1, "拒绝点在问落点之前");
@@ -187,14 +207,18 @@ async fn a_windows_remote_is_refused_as_not_promised() {
         deploy_core::UNAME_CMD.into(),
         said(0, "MINGW64_NT-10.0-19045 x86_64\n"),
     );
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box").await.unwrap_err();
+    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
     assert_eq!(code, "refused");
 }
 
 #[tokio::test]
 async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
     let f = Fake::default();
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box").await.unwrap_err();
+    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
     assert_eq!(code, "unreachable");
 }
 
@@ -202,7 +226,9 @@ async fn a_link_that_cannot_ask_uname_is_unreachable_not_a_refusal() {
 async fn an_unstamped_landing_is_undecidable_unless_it_is_our_old_three_line_entry() {
     let mut f = Fake::linux(Some("x"));
     f.exec.insert(landing_scan(), said(1, ""));
-    let (code, _) = plan(&f, &carried("p9a-mine"), "box").await.unwrap_err();
+    let (code, _) = plan(&f, &carried("p9a-mine"), "box", NOW)
+        .await
+        .unwrap_err();
     assert_eq!(code, "undecidable");
 
     f.read.insert(
@@ -211,7 +237,7 @@ async fn an_unstamped_landing_is_undecidable_unless_it_is_our_old_three_line_ent
             .as_bytes()
             .to_vec(),
     );
-    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert!(
         matches!(p.action, DeployAction::Deploy(_)),
         "{:?}",
@@ -227,15 +253,58 @@ async fn a_stamped_legacy_backend_is_marked_for_removal_and_an_unasked_one_is_un
         (Some(Some(9)), None),
     );
     f.exec.insert(legacy_scan(), said(0, &stamp("p1a-ancient")));
-    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(p.legacy, LegacyVerdict::Remove);
 
     f.stat.remove(deploy_core::LEGACY_BACKEND_REL);
-    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert!(
         matches!(p.legacy, LegacyVerdict::Unknown(_)),
         "{:?}",
         p.legacy
+    );
+}
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 B「部署失败留下半截 ~/.cc-monitor/bin/ccm.…tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
+/// 落点目录里陈旧的临时件 · 备份件 ⇒ 进计划；新的（另一个部署者正在写）· 恰在门槛上 · 修改时间缺 · 不是 `put_atomic` 那个形状（陈旧也不碰）
+/// · 落点本身 ⇒ 不进（两向相等）。目录列不出 ⇒ 空、计划照出。
+#[tokio::test]
+async fn stale_put_leftovers_in_the_landing_dir_are_handed_over_and_nothing_else() {
+    let old = NOW - LEFTOVER_STALE_SECS - 1;
+    let mut f = Fake::linux(Some("p9a-mine"));
+    let rows: Vec<(&str, Option<u64>)> = vec![
+        ("ccm.2c0-18d9c8c1df0ec9e7-c.tmp", Some(old)),
+        ("ccm.2c0-18d9c8c1df0ec9e7-d.bak", Some(old)),
+        ("ccm.2c1-18d9c8c1df0ec9e8-0.tmp", Some(NOW - 60)),
+        (
+            "ccm.2c1-18d9c8c1df0ec9e8-1.tmp",
+            Some(NOW - LEFTOVER_STALE_SECS),
+        ),
+        ("ccm.2c2-1-2.tmp", None),
+        ("ccm", Some(old)),
+        ("notes.tmp", Some(old)),
+        ("ccm.old.tmp", Some(old)),
+        ("ccm.2C0-1-2.tmp", Some(old)),
+        ("ccm.2c0-1.tmp", Some(old)),
+        (".2c0-1-2.tmp", Some(old)),
+    ];
+    f.list.insert(
+        ".cc-monitor/bin".into(),
+        rows.iter().map(|(n, t)| (n.to_string(), *t)).collect(),
+    );
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
+    assert_eq!(
+        p.leftovers,
+        vec![
+            ".cc-monitor/bin/ccm.2c0-18d9c8c1df0ec9e7-c.tmp".to_string(),
+            ".cc-monitor/bin/ccm.2c0-18d9c8c1df0ec9e7-d.bak".to_string(),
+        ]
+    );
+    f.list.clear();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
+    assert_eq!(
+        (p.leftovers, p.action),
+        (Vec::<String>::new(), DeployAction::Skip)
     );
 }
 
@@ -257,6 +326,7 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
             why: "w".into(),
         },
         legacy: LegacyVerdict::Unknown("e".into()),
+        leftovers: vec![".cc-monitor/bin/ccm.1-2-3.tmp".into()],
         ack: fake_ack(1),
     };
     let got = plan_json(&p);
@@ -329,7 +399,7 @@ fn hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs() {
 #[tokio::test]
 async fn the_plan_hands_back_the_ack_of_the_first_trip_for_pinning() {
     let f = Fake::linux(Some("p9a-mine"));
-    let p = plan(&f, &carried("p9a-mine"), "box").await.unwrap();
+    let p = plan(&f, &carried("p9a-mine"), "box", NOW).await.unwrap();
     assert_eq!(p.ack, fake_ack(1), "交回的不是第一趟（问 uname）的 ack");
     assert_eq!(plan_json(&p)["ack"], fake_ack(1));
 }

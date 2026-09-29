@@ -413,6 +413,11 @@ export class AccountsSection {
         this.note("accounts", { kind: "fail", detail: copyText("accounts.status.backendOld") });
         this.info(copyText("accounts.status.backendOldBody", { reason: ui.reason }));
         return;
+      // 〔WF2 · WIN3 读数 C〕没问出来 ≠ 要更新：照实说查询失败与原因。
+      case "query-failed":
+        this.note("accounts", { kind: "fail", detail: copyText("accounts.status.queryFailed") });
+        this.info(copyText("accounts.status.queryFailedBody", { reason: ui.reason }));
+        return;
       case "not-enabled":
         // 〔VIS2 · `设计/15 §4.5` 缺口二〕启用没启用记在 accounts（启用着只是零个号 ⇒ 读到了）；acctIso 只记装没装（`renderNotEnabledFlow` 里问）。
         this.note("accounts", this.enabledFacet(state.meta?.enabled === true));

@@ -484,6 +484,10 @@ fn the_plan_decoder_reads_the_golden() {
         p.legacy,
         deploy_core::LegacyVerdict::Unknown("placeholder".into())
     );
+    assert_eq!(
+        p.leftovers,
+        vec![".cc-monitor/bin/ccm.1-2-3.tmp".to_string()]
+    );
     let with = |k: &str, v: serde_json::Value| {
         let mut x = product.clone();
         x[k] = v;
@@ -501,6 +505,7 @@ fn the_plan_decoder_reads_the_golden() {
         with("legacy", serde_json::json!("remove")),
         with("os", serde_json::json!("Plan9")),
         with("expected", serde_json::json!("")),
+        with("leftovers", serde_json::json!("ccm.1-2-3.tmp")),
     ] {
         assert!(decode_plan(&bad).is_err(), "该拒却收了：{bad}");
     }
@@ -517,6 +522,24 @@ fn the_plan_decoder_reads_the_golden() {
         (p.action, p.legacy),
         (DeployAction::Skip, deploy_core::LegacyVerdict::Absent)
     );
+}
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2` 读数 B「部署失败留下半截 …tmp，之后连上也不清」· 题面 WF2 第 2 条「下次连上清旧的」。
+/// 计划里的残件（后端判的）在**每次连上**的那条路上照删：自动部署与手动部署两个入口各恰好一处（在执行链上，不只是解码得出来）。
+#[test]
+fn the_planned_leftovers_are_swept_on_every_connect() {
+    let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
+    for sig in [
+        "pub async fn ensure_backend_deployed(",
+        "pub async fn deploy_remote_backend(",
+    ] {
+        let body = dp1_body(&prod, sig);
+        guard_core::find_pinned(
+            &body,
+            "sweep_leftovers(&plan.leftovers, &fs, &cfg.origin_label()).await;",
+        )
+        .unwrap_or_else(|e| panic!("{sig} 里没有照删计划里的残件：{e}"));
+    }
 }
 
 /// 🔴〔MIG-3b 续 · VIS2〕`deploy-plan` 那一跳在本机后端里拨号 ⇒ 它的逐地址指纹随计划交回、由 monitor 按**同一个**判定固化

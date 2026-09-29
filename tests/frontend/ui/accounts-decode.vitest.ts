@@ -124,13 +124,15 @@ describe("失败：折成 available:false ＋ 一句人话，不抛", () => {
     expect(st.available).toBe(false);
     expect(st.accounts).toEqual([]);
     expect(st.error).toMatch(/够不着/);
-    expect(deriveUi(st).kind).toBe("needs-update");
+    // 〔WF2 · WIN3 读数 C〕够不着 ≠ 要更新。
+    expect([st.oldBackend, deriveUi(st).kind]).toEqual([false, "query-failed"]);
   });
   it("后端不认（老后端）⇒ 说「版本过旧」（`deriveUi` 据此落「需更新」）", async () => {
     invokeMock.mockRejectedValue(UNSUPPORTED);
     const st = await fetchAccounts("aya");
     expect(st.available).toBe(false);
     expect(st.error).toMatch(/过旧/);
+    expect([st.oldBackend, deriveUi(st).kind]).toEqual([true, "needs-update"]);
     const t = await checkTrust("aya", "/h/a", "/w");
     expect(t.available).toBe(false);
     expect(t.error).toMatch(/过旧/);

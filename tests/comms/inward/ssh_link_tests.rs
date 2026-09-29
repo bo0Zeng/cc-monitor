@@ -93,7 +93,21 @@ async fn a_refusal_comes_back_with_the_fingerprint_it_saw() {
             why: "所有地址连接失败: 127.0.0.1:22422 Unknown server key（竞速：127.0.0.1:22422）"
                 .into(),
             fingerprint: Some("SHA256:t3uliopxPzh9UPGAywEklG+BprfkJP07toWVhzBCwB4".into()),
+            open_refused: None,
         }
+    );
+    // 〔WF2〕开通道被回拒的原因码原样带出来（界面据它分「不许端口转发」与「口上还没人」）。
+    let out = concat!(
+        r#"{"ok":false,"error":"远端 127.0.0.1:4 连不上","fingerprint":null,"open_refused":"administratively_prohibited","v":2,"uses":["tunnel"]}"#,
+        "\n"
+    );
+    let mut r = tokio::io::BufReader::new(out.as_bytes());
+    let e = handshake(&mut r, "tunnel", CAP, &mut |_| {})
+        .await
+        .expect_err("拨不通被读成了通");
+    assert!(
+        matches!(&e, LinkError::Refused { open_refused: Some(w), .. } if w == "administratively_prohibited"),
+        "{e:?}"
     );
 }
 

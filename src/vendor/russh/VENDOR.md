@@ -1,4 +1,4 @@
-# vendored: russh 0.61.1（补过 zlib 解压的一份）
+# vendored: russh 0.61.1（补过 zlib 解压与压缩的一份）
 
 用户裁决 **V118**〔选〕「打补丁版 russh，现在就开」：vendor 一份修好 zlib 解压的 russh（`[patch.crates-io]`），
 SSH 压缩按已写好的判准开。缺陷的现打与判准住 `调研/第四波记录/NT1.md §1.1a`；本副本的设计与读数住 `调研/第四波记录/CZ1.md`。
@@ -14,7 +14,9 @@ SSH 压缩按已写好的判准开。缺陷的现打与判准住 `调研/第四�
 - 许可 **Apache-2.0**（`Cargo.toml` 的 `license`）。`.crate` 里没带许可全文 ⇒ 本目录的 `LICENSE-APACHE` 是副本特有的一份
   （Apache-2.0 §4(a)「随分发附一份许可」），正文取自本机缓存 `serde-1.0.228/LICENSE-APACHE`（同一份 Apache-2.0 条款）。
 
-## 改了什么（只此一处：`src/compression.rs::Decompress::decompress`）
+## 改了什么（只此一份文件 `src/compression.rs`：CZ1 解压一处 · CZ2 压缩两处）
+
+### CZ1 · `Decompress::decompress`
 
 上游那一段（原样）：
 
@@ -44,6 +46,18 @@ loop {
    改用调用后的进度之后要自己挡）；
 3. 改处挂 `CZ1 PATCH` 起头的醒目注释（Apache-2.0 §4(b)：被改过的文件要写明改过）。
 
+### CZ2 · `Compress::compress_into` / `Compress::compress`（WF2 · 2026-09-29，WIN3 读数 A）
+
+上游两处循环都是「`BufError` ⇒ 扩缓冲，其余（含 `Ok`）⇒ 收工」。而 deflate（flate2 的 miniz_oxide 后端）在**输出缓冲撑满**时回的是
+`Ok`、不是 `BufError` ⇒ 一包的压缩输出超出起步缓冲（`compress_into`：输入 + 10 字节）那一刻就收工，没吐完的留在压缩器里、
+拼进**下一包** ⇒ 对端解出半包：OpenSSH `channel_input_data: channel 0: get data: incomplete message` 断链、本端 `sender dropped`。
+什么包会超：miniz 只在待发字节还在 32 KiB 字典里时发原样块（输入 + 10 恰好装得下），满长的一包通道数据（32 768 ＋ 9 字节头）
+不可压 ⇒ 改发 Huffman 块、比输入长几百字节 ⇒ 中。WIN3 真机：随机 32 000 字节过、33 000 字节不过（Windows 读不到往返 ⇒ 永远压 ⇒
+首次部署任何 Linux 远端必败）。本机一次性容器 sshd 强制压现打同形（`tests/evidence/WF2-zlib-container.py`）。`0.61.2` 这两段逐字相同。
+
+**补丁**：两处循环改调同一个新加的私有函数 `zlib_packet_done`（调用之后的进度）：缓冲撑满 ⇒ 扩了再压；吃光输入且还有空位（冲刷做完）⇒ 收工；
+还有空位、输入没吃光、这一轮一字未动 ⇒ 报 `Error::Inconsistent`（不交半包）。改处挂 `CZ2 PATCH` 注释。
+
 `Cargo.toml` **不改**（`version` 仍 `0.61.1`：`[patch.crates-io]` 要求副本版本满足后端的依赖声明）。
 上游自带的「解出来的一包不许超过 `MAXIMUM_DECOMPRESSED_PACKET_LEN`」那两道检查（扩缓冲封顶 · 收尾报 `PacketSize`）一字未动。
 
@@ -62,16 +76,17 @@ loop {
 
 | 判据 | 判什么 |
 |---|---|
-| `the_gate_matches_what_russh_really_does`（Z5） | 闸 == russh 自己的 zlib 一来一回对不对（两向）；单包 ＋ 同一对压 / 解器连走三包 |
+| `the_gate_matches_what_russh_really_does`（Z5） | 闸 == russh 自己的 zlib 一来一回对不对（两向）；单包 ＋ 同一对压 / 解器连走三包 ＋〔CZ2〕生产那个 `compress_into` 连压四包（含不可压的 32 777 · 70 000 字节）、另一只解压器逐包解回 |
 | `the_vendored_russh_differs_from_the_crate_only_where_registered`（V1） | 盘上文件集合 == 下面三张表（两向）；每一份的 sha256 == 登记；改过的恰好 `{src/compression.rs}` |
 | `the_russh_patch_is_really_wired`（V2） | `[patch.crates-io]` 恰好这一条 · 声明 / 副本 / lock 三处版本相等 · lock 那一块没有 `source` |
 | `zr_real_sshd_…`（ZR，`#[ignore]`，`tests/evidence/NT1-net-loopback.py --compress` 触发） | 真 sshd 上强开压缩：载荷逐字节同、线上字节 < 不压那趟的一半 |
+| `zr_real_sshd_takes_incompressible_puts_when_forced`（ZR2，`#[ignore]`，`tests/evidence/WF2-zlib-container.py` 触发） | 〔CZ2〕一次性容器 sshd 上强开压缩，经 `sftp::put_atomic` 放 33 000 字节与 1 MiB 不可压字节、读回逐字节同 |
 
 改补丁 ⇒ 同拍改下面「改过的文件」那一行的补后指纹（`sha256sum src/compression.rs`），否则 V1 红。
 
 ## 上游修好之后怎么撤
 
-1. 核上游新版的 `Decompress::decompress` 真修了：先把后端清单的 russh 升到那一版、**暂不删补丁**，
+1. 核上游新版的 `Decompress::decompress` 与 `Compress::compress_into` 都真修了：先把后端清单的 russh 升到那一版、**暂不删补丁**，
    把 `[patch.crates-io]` 两行注释掉跑 Z5 —— 绿（闸开 == 解压对）才算上游修好；红就是没修，别撤。
 2. 删 `[patch.crates-io]` 那两行（连同块头注释）与本目录 `src/vendor/russh/`；lock 跟着升级落回 registry 来源。
 3. 删 V1 / V2 两条判据与后端 `[dev-dependencies]` 里只为 V1 加的 `sha2`（`readonly_guard` 签字表那一行同拍摘）。
@@ -169,7 +184,7 @@ a0097c9ca46d518d454328e26e4339fb813767befd17ca7bf6b2418f9748bf6b  tests/test_rek
 
 <!-- 改过的文件 起 -->
 ```text
-src/compression.rs  774b59e33ff0746e2898d896074bcf800ab167f7174750c20ddfca69ada03c2c  a6203a3b2ac629fc2f7418e844edb1fdcfbc0df17465cddea284efc027175284
+src/compression.rs  774b59e33ff0746e2898d896074bcf800ab167f7174750c20ddfca69ada03c2c  afda6a9883291af636d6f901cecbef9b5e7fd1dfb3f49b69e6d897b32fa619ad
 ```
 <!-- 改过的文件 止 -->
 

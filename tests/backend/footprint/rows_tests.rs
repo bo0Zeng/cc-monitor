@@ -1488,3 +1488,33 @@ fn this_module_only_reads() {
         }
     }
 }
+
+/// 〔WF2〕要求住址：`第四波记录/WIN3.md §2`「足迹页仍有『C:\Users\zbl\.cc-monitor/bin/ccm*』混拼」。
+/// Windows 那一臂（喂 `\`，本机是 Linux）：申报里 `/` 写的相对段换成这台的分隔符；通配那一格与目录之间也用它 —— 整串不含 `/`。
+/// Linux 那一臂（`/`）原样（异源 = 手写期望）。
+#[test]
+fn a_local_footprint_path_uses_one_separator_throughout() {
+    assert_eq!(native_rel(".cc-monitor/bin", '\\'), ".cc-monitor\\bin");
+    assert_eq!(native_rel(".cc-monitor/bin", '/'), ".cc-monitor/bin");
+    let glob = PathResolution::LocalGlob {
+        dir: std::path::PathBuf::from(format!(
+            "C:\\Users\\zbl\\{}",
+            native_rel(".cc-monitor/bin", '\\')
+        )),
+        prefix: "ccm".into(),
+        suffix: String::new(),
+    };
+    assert_eq!(
+        describe_target_with(&glob, '\\'),
+        "C:\\Users\\zbl\\.cc-monitor\\bin\\ccm*"
+    );
+    let unix = PathResolution::LocalGlob {
+        dir: std::path::PathBuf::from("/home/u/.cc-monitor/bin"),
+        prefix: "ccm".into(),
+        suffix: String::new(),
+    };
+    assert_eq!(
+        describe_target_with(&unix, '/'),
+        "/home/u/.cc-monitor/bin/ccm*"
+    );
+}
