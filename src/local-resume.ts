@@ -34,7 +34,7 @@ import { getBehavior } from "./behavior";
 import { mintFromListing, readTmuxListing } from "./tmux-name-mint";
 import { showActionFailureToast } from "./error-toast";
 import { copyText } from "./copy-table";
-import { arrivedBody, expectArrival } from "./launch-arrival";
+import { arrivedBody, awaitArrival, expectArrival, type LaunchWait } from "./launch-arrival";
 
 /** 这次本机 resume 用哪个号。 */
 export type LocalResumeAccount =
@@ -69,6 +69,16 @@ export interface LocalResumeRequest {
  * @returns 真拉起来了才 `true`；失败时已经出过声。
  */
 export async function resumeLocalSession(req: LocalResumeRequest): Promise<boolean> {
+  return (await resumeLocalCore(req, "expect")) !== "unsent";
+}
+
+/** 〔FIX4 · 主会话裁 ④〕同 [`resumeLocalSession`]，但等本机后端报出会话 ⇒ 交回「等到了没有」（换号重启 · 分叉据它才说成了、才记账）。 */
+export async function resumeLocalSessionAndWait(req: LocalResumeRequest): Promise<LaunchWait> {
+  const o = await resumeLocalCore(req, "await");
+  return o === "sent" ? "missed" : o;
+}
+
+async function resumeLocalCore(req: LocalResumeRequest, wait: "expect" | "await"): Promise<LaunchWait | "sent"> {
   // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍）。只有跟随那一态读快照。
   if (req.account.kind === "follow") primeLocalLaunchAccounts();
   // 〔DUP1 · `设计/90 §3` 判据 2〕这里原来先过 `validateLocalLaunch`〔散文墓碑〕（sid 字符集）—— 那份删了：
@@ -93,7 +103,7 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
         if (ok && alt) recordLocalLaunchAccount(req.sid, alt.name);
       },
     });
-    return false;
+    return "unsent";
   }
   if (req.preflight) {
     const configDir =
@@ -102,7 +112,7 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
           ? plan.configDir
           : undefined
         : (req.account.configDir ?? undefined);
-    if (!(await req.preflight(configDir))) return false;
+    if (!(await req.preflight(configDir))) return "unsent";
   }
   try {
     const launcher = req.launcher ?? (await getBehavior()).resumeCommandLocal;
@@ -125,22 +135,19 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
       },
       req.cwd,
     );
-    // 〔FIX3 · `设计/99 §2.2 ②`〕窗口开了不等于起来了：等本机后端报出这条会话再说。
-    expectArrival({
-      origin: LOCAL_ORIGIN,
-      match: { sid: req.sid },
-      tmuxName,
-      arrived: { title: copyText("localResume.launch.arrived"), body: arrivedBody(LOCAL_ORIGIN) },
-    });
     // `D3 阻-2`：本机这条路也往 pin 里写（跟随那一态；显式那一态由调用方按自己的语义记 ——
-    //   换号重启只在 kill ＋ resume 全成之后才记，分叉是新会话、不记）。⚠ 不等待。
+    //   换号重启只在「看见会话起来」之后才记，分叉是新会话、不记）。⚠ 不等待。
     if (plan?.kind === "named") recordLocalLaunchAccount(req.sid, plan.name);
-    return true;
+    // 〔FIX3 · `设计/99 §2.2 ②`〕窗口开了不等于起来了：等本机后端报出这条会话再说。〔FIX4 ④〕`await` ⇒ 交回等到了没有。
+    const spec = { origin: LOCAL_ORIGIN, match: { sid: req.sid }, tmuxName };
+    if (wait === "await") return (await awaitArrival({ ...spec, arrived: null })) ? "arrived" : "missed";
+    expectArrival({ ...spec, arrived: { title: copyText("localResume.launch.arrived"), body: arrivedBody(LOCAL_ORIGIN) } });
+    return "sent";
   } catch (err) {
     showActionFailureToast(req.failureTitle ?? copyText("localResume.launch.failed"), String(err), {
       level: "error",
       durationMs: 10000,
     });
-    return false;
+    return "unsent";
   }
 }

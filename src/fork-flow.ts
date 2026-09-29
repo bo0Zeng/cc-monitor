@@ -25,12 +25,12 @@ import { resolveResumeCommand } from "./remote-config";
 import { isSelectable, type Account, type SessionAccount } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, fetchSessionAccounts } from "./account-reads";
 import { findClaudeTmuxMatches, type TmuxSession } from "./tmux-sessions";
-import { resumeLocalSession } from "./local-resume";
+import { resumeLocalSessionAndWait } from "./local-resume";
 import { readTmuxListing } from "./tmux-name-mint";
 import { askForkLaunch, type ForkAccountOption } from "./fork-ask";
 import { startForkedSession, type ForkStartDeps, type ForkStartOutcome } from "./fork-start";
 import type { ForkLaunchInput } from "./fork-launch";
-import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
+import { runRemoteResumeAndWait, runRemoteResumeTmuxAndWait } from "./remote-launch-run";
 import { copyText } from "./copy-table";
 
 export interface ForkFlowInput {
@@ -174,13 +174,14 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
     //   账号 0 ⇒ 显式 `base`（不是省略：省略 = 没表态 = 被 shell rc 里的默认号顶掉），具名 ⇒ 名字说得出才带（`K-R53`）。
     //   ⚠ 这里铸的是**新会话自己**的 `<项目名>-cc`（避让本机现有名字），与远端那条「避开源会话的名字」
     //     （`fork-start.ts::forkTmuxName`）不是一回事。失败它自己出声，这里只回布尔（与 `startRemote` 同形）。
-    startLocal: (a) =>
-      resumeLocalSession({
+    // 〔FIX4 · 主会话裁 ④〕「起了」= 看见那台报出分叉出来的会话（等到才说「已分叉」；没等到那一句主窗口说过了）。
+    startLocal: async (a) =>
+      (await resumeLocalSessionAndWait({
         sid: a.sessionId,
         cwd: a.cwd,
         account: { kind: "explicit", configDir: a.configDir, name: a.accountName },
         failureTitle: copyText("localResume.fork.failed"),
-      }),
+      })) === "arrived",
 
     startRemote: async (a) => {
       const behavior = await getBehavior();
@@ -189,9 +190,10 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       // 所以 null 要落成 undefined，**不能落成空串**（空值 ≠ 未设，见 accounts.ts Z01）。
       const mods = { configDir: a.configDir ?? undefined };
       // ★ 返回值必须往上传：那两条路失败时**不抛**，只弹自己的 toast 并回 false。
-      return a.tmuxName
-        ? runRemoteResumeTmux(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
-        : runRemoteResume(a.origin, a.sessionId, a.cwd, launcher, mods);
+      const r = a.tmuxName
+        ? await runRemoteResumeTmuxAndWait(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
+        : await runRemoteResumeAndWait(a.origin, a.sessionId, a.cwd, launcher, mods);
+      return r === "arrived";
     },
   };
 }

@@ -24,11 +24,15 @@ vi.mock("../src/behavior", () => ({
 }));
 vi.mock("../src/fork-ask", () => ({ askForkLaunch: vi.fn() }));
 vi.mock("../src/remote-launch-run", () => ({
-  runRemoteResume: vi.fn().mockResolvedValue(true),
-  runRemoteResumeTmux: vi.fn().mockResolvedValue(true),
+  // 〔FIX4 ④〕分叉走「等到了没有」那一形。
+  runRemoteResumeAndWait: vi.fn().mockResolvedValue("arrived"),
+  runRemoteResumeTmuxAndWait: vi.fn().mockResolvedValue("arrived"),
 }));
+vi.mock("../src/launch-arrival", () => ({ awaitArrival: vi.fn().mockResolvedValue(true), expectArrival: vi.fn(), arrivedBody: () => "" }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { awaitArrival } from "../src/launch-arrival";
+import { showActionFailureToast } from "../src/error-toast";
 import { deriveForkSource, runForkFlow } from "../src/fork-flow";
 import { askForkLaunch } from "../src/fork-ask";
 import type { SessionAccount } from "../src/accounts";
@@ -302,6 +306,18 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
     expect(resumePayload().sessionId).toBe(NEW);
     // 这条路说得出「账号 0」，而那是 POSIX 后端唯一渲染得出容器的一态。
     expect(resumePayload().account).toEqual({ kind: "base" });
+  });
+
+  /** 主会话 09-28 裁 FIX4 ④：「分叉也走真成功：调用方等到才说『已分叉』」。 */
+  it("FIX4 ④：发出去了但没看到分叉出来的会话起来 ⇒ 不是 started、不说「已分叉」", async () => {
+    serveLocal(["别人的-cc"]);
+    vi.mocked(awaitArrival).mockResolvedValueOnce(false);
+    const toasts = vi.mocked(showActionFailureToast);
+    toasts.mockClear();
+    expect(await fork()).toBe("failed");
+    // 没看到那一句由主窗口的等待方说（这里被替身顶掉）；分叉这一侧一个字都不再说（尤其不说「✓ 已从这一轮分叉并起新会话」）。
+    expect(toasts.mock.calls.map((c) => c[0])).toEqual([]);
+    expect(vi.mocked(awaitArrival)).toHaveBeenCalledWith(expect.objectContaining({ match: { sid: NEW }, arrived: null }));
   });
 
   it("★★ 本机 tmux 快照是 `null`（**不知道**）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {

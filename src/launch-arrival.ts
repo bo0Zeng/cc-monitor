@@ -24,6 +24,13 @@ export const ARRIVAL_BUDGET_MS = 45_000;
 const WORDS_LINES = 6;
 /** 发起方窗口 → 主窗口：交一件「等它」（载荷 [`ArrivalSpec`]）。 */
 export const LAUNCH_EXPECT_EVENT = "launch-arrival-expect";
+/** 〔FIX4 ④〕主窗口 → 发起方：带票的那一件等到了没有（载荷 `{ ticket, arrived }`）。 */
+export const LAUNCH_DONE_EVENT = "launch-arrival-done";
+/** 〔FIX4 ④〕发起方自己的上界：主窗口没回话（不存在的形态）也不许一直挂着 —— 比预算多留 15 秒给抓屏与回话。 */
+const AWAIT_CAP_MS = ARRIVAL_BUDGET_MS + 15_000;
+
+/** 〔FIX4 ④〕执行器交回的「等到了没有」：`unsent` = 命令没真发出去（复制回退 / 拉不起窗口，那一路自己说过了）。 */
+export type LaunchWait = "arrived" | "missed" | "unsent";
 
 /** 认它用的那一格。 */
 export type ArrivalMatch = { sid: string } | { token: string } | { cwd: string };
@@ -33,8 +40,10 @@ export interface ArrivalSpec {
   match: ArrivalMatch;
   /** 起在哪个 tmux 会话里（有 ⇒ 没见到时抓那一屏当原话）；`null` = 直接开的窗口。 */
   tmuxName: string | null;
-  /** 见到了说的那一句。 */
-  arrived: { title: string; body: string };
+  /** 见到了说的那一句；`null` = 调用方等到了自己说（换号重启 · 分叉），这里不说。 */
+  arrived: { title: string; body: string } | null;
+  /** 〔FIX4 ④〕带票 ⇒ 主窗口等到 / 等不到时回一声（[`awaitArrival`]）。 */
+  ticket?: string;
 }
 
 /** 那台报上来的一条活会话里认它要用的两样。 */
@@ -111,10 +120,45 @@ export function watchArrival(spec: ArrivalSpec): void {
     before: new Set(seenLive.get(key(spec.origin)) ?? []),
     // 一次性的预算（`polling_registry` 登记）：到点只说一次「没看到」，不重试、不轮询。
     timer: setTimeout(() => {
-      if (pending.delete(p)) void sayMissed(p);
+      if (!pending.delete(p)) return;
+      void sayMissed(p);
+      answer(p, false);
     }, ARRIVAL_BUDGET_MS),
   };
   pending.add(p);
+}
+
+function answer(p: ArrivalSpec, arrived: boolean): void {
+  if (p.ticket === undefined) return;
+  emit(LAUNCH_DONE_EVENT, { ticket: p.ticket, arrived }).catch((e: unknown) => console.warn("[launch-arrival] 回不了发起方：", e));
+}
+
+/**
+ * 〔FIX4 · 主会话裁 ④〕发起方（任何窗口）：交一件「等它」并**等主窗口回话** ⇒ 见到了 `true`、预算内没见到 `false`
+ * （没见到那一句由主窗口照常说）。换号重启与分叉据它才说「已用新账号重启 / 已分叉」、才记账。
+ */
+export async function awaitArrival(spec: ArrivalSpec): Promise<boolean> {
+  const ticket = crypto.randomUUID();
+  let done: (v: boolean) => void = () => {};
+  const got = new Promise<boolean>((res) => (done = res));
+  let un: () => void;
+  try {
+    un = await listen<{ ticket: string; arrived: boolean }>(LAUNCH_DONE_EVENT, (e) => {
+      if (e.payload.ticket === ticket) done(e.payload.arrived);
+    });
+  } catch (e) {
+    // 听不了回话（没有 Tauri 宿主）⇒ 等不到：照「没看到」算，不说成起来了。
+    console.warn("[launch-arrival] 听不了主窗口的回话：", e);
+    return false;
+  }
+  const cap = setTimeout(() => done(false), AWAIT_CAP_MS);
+  try {
+    expectArrival({ ...spec, ticket });
+    return await got;
+  } finally {
+    clearTimeout(cap);
+    un();
+  }
 }
 
 /** 主窗口：那台的会话流报出了一条活会话（`main.ts` 的本机 / 远端两个入口都交这里）。 */
@@ -124,7 +168,8 @@ export function noteLive(origin: Origin, sid: string, seen: LiveSeen): void {
     if (key(p.origin) !== k || !arrivalMatches(p.match, sid, seen, p.before)) continue;
     clearTimeout(p.timer);
     pending.delete(p);
-    showActionFailureToast(p.arrived.title, p.arrived.body, { level: "info", durationMs: 6000 });
+    if (p.arrived !== null) showActionFailureToast(p.arrived.title, p.arrived.body, { level: "info", durationMs: 6000 });
+    answer(p, true);
   }
   let s = seenLive.get(k);
   if (!s) seenLive.set(k, (s = new Set()));
