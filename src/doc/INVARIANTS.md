@@ -577,7 +577,9 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 > 〔MIG-1 · `设计/99 §2.1 ⑬` · 09-27〕**本节描述的 monitor 侧机制已整体搬进后端**：活 / 可重连 / 已结束由那台后端的会话账本裁（`src/backend/observe/session_ledger.rs`，成品帧 `session_state`），monitor 只剩成品缓存 `session_book.rs`（转交 ＋ F5 重放 ＋ 断连说「说不清」）。下文是那套机制的来历，性质的判据今天住 `tests/backend/observe/session_ledger_tests.rs`。
 
-`lib.rs` 的 `remote_active`（`Arc<Mutex<HashSet<String>>>`）**唯一写者**是 `remote-session-emitter` 线程：后端的 session added/removed 与断连 flush 都经同一 `remote_tx` 通道到达，且**先维护集合、再做 emit 等副作用**。`frontend-ready` 对账用"sid 在 EventReplay buffer 里、但不在集合里"判死、补发 `session-ended`。
+〔THIN 09-29 订正〕今天 monitor 里**没有** `remote_active`，也没有写它的那条远端会话 emitter 线程：账住那台后端 `observe/session_ledger.rs::SessionLedger`（单写者 = 发帧唯一出口 `watcher::FrameSink` 上那一问），monitor 的会话成品只经 `lib.rs` 的 `session-book-emitter` 一条线程出（本机远端同一条，不裁决）。以下是原机制（来历）：
+
+原先 `lib.rs` 的 `remote_active`（`Arc<Mutex<HashSet<String>>>`）**唯一写者**是远端那条会话 emitter 线程：后端的 session added/removed 与断连 flush 都经同一 `remote_tx` 通道到达，且**先维护集合、再做 emit 等副作用**。`frontend-ready` 对账用"sid 在 EventReplay buffer 里、但不在集合里"判死、补发 `session-ended`。
 
 两条派生约束：
 
@@ -587,7 +589,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 **为什么不能松动**：对账是把"一次性 ended 信号"在重载后重建出来的唯一机制；集合不准 = 要么僵尸 live Tab 复现（漏归档），要么活会话被误杀且无后续行救活（误归档）。断连窗口期的误归档是**有意取舍**（重连后后端重发 added + 重放行 → un-archive 自愈）。
 〔GP1 · 第四波〕上一句那个取舍**收窄了**：断连 flush 送进通道的 removed 一律 `RemovalCause::Unseen` ⇒ emitter 发 `session-unseen`（说不清），不再发 `session-ended`；F5 对账里「buffer 里有、集合里没有」的远端 sid 按所在的那台分 —— 那台此刻**报完了**活会话清单（收到过 `sessions_replayed`，`ssh_source::listed_origins`）⇒ 补 `session-ended`（原样）；**没报完**（断着 / 还在初扫）⇒ 补 `session-unseen`。`设计/30 §3.5.7a`「`Unseen` 不许被显示成『已结束』」；判据 `ssh_source_f032_idle_tests::gp1_*`。集合本身的写法一字未改（removed 照旧先从集合里摘）。
 
-**F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：tmux 存活收割器（带外杀 tmux 后端 → 变灰）与后端帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是 `remote-session-emitter`。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + 空 backend/NO_TMUX 跳过）在 `tmux_reconcile::reconcile_step`（纯函数、source-agnostic），阈值真机标定。**后人给收割器接线时不许把它直连前端或直写集合。**
+**F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：tmux 存活收割器（带外杀 tmux 后端 → 变灰）与后端帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是那条远端会话 emitter（〔THIN 09-29〕今天已无：收割随账本进了后端 `SessionLedger::on_tmux`）。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + 空 backend/NO_TMUX 跳过）在 `tmux_reconcile::reconcile_step`（纯函数、source-agnostic），阈值真机标定。**后人给收割器接线时不许把它直连前端或直写集合。**
 
 > **`zero-poll-liveness` 更新（P5）——事件路同样只经 emitter**：后端现在会主动推正向死亡帧
 > `TmuxSessionClosed { name }`（tmux hook → SIGUSR1 → 差分算出消失的会话名，见 §41）。
@@ -604,7 +606,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 远端会话三态：**live**（claude 在跑）/ **idle-tmux**（claude 退出但 tmux 会话仍在 → 灰灯、可 attach 复用）/ **archived**（tmux 也没了）。承接 §24 单写者不变量，落地约束：
 
-1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只在 `lib.rs` 的会话 emitter 里调（〔U4b · 第四波〕远端那条 `remote-session-emitter` 的 removed/added 臂，外加本机 emitter 的 `classify_removed` 分流与 `session_facts` 出口 —— 都在 `lib.rs`，单写者判据照旧），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
+1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只在 `lib.rs` 的会话 emitter 里调（〔U4b · 第四波〕远端那条会话 emitter（〔THIN 09-29〕今天已无）的 removed/added 臂，外加本机 emitter 的 `classify_removed` 分流与 `session_facts` 出口 —— 都在 `lib.rs`，单写者判据照旧），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
 2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`〔散文墓碑〕）——
    ★ **S0（2026-07-31）加了一道前置：`cause` 先于快照裁决**。后端现在在 `session_removed` 帧上
    带 `cause`（additive，`Gone` 不上线、缺省即 `Gone`）：`Superseded` = 同一个 pidfile **原地换了 sid**
