@@ -10,7 +10,7 @@
 import { putAccounts } from "./app-store";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
+import { budgetWithin, isOldBackend, jsonBody, linesOf, readJson, saidOf } from "./ipc/chan-caller";
 import { ACTIVE_AGENT, lookupAgentProfile } from "./agent-profile";
 import { decodeAccountsList, decodeTrust } from "./accounts-decode";
 import type { AccountsState, SessionAccount } from "./accounts";
@@ -56,6 +56,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       origin,
       available: true,
       error: null,
+      oldBackend: false,
       meta: got.meta,
       accounts: got.accounts,
       defaultName: await getDefaultName(),
@@ -67,6 +68,7 @@ export async function fetchAccounts(origin: Origin, force = false): Promise<Acco
       origin,
       available: false,
       error: saidOf(e, accountsOldBackend()),
+      oldBackend: isOldBackend(e),
       meta: null,
       accounts: [],
       defaultName: null,

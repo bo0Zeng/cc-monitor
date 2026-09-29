@@ -5097,6 +5097,11 @@
       "zh": "远端后端需要更新才能用多账号",
       "args": []
     },
+    "accountChip.menu.queryFailed": {
+      "kind": "body",
+      "zh": "这台的账号没查到：{reason}",
+      "args": ["reason"]
+    },
     "accountChip.refresh.icon": {
       "kind": "body",
       "zh": "👤",
@@ -5120,6 +5125,11 @@
     "accountChip.label.backendOld": {
       "kind": "body",
       "zh": "后端需更新",
+      "args": []
+    },
+    "accountChip.label.queryFailed": {
+      "kind": "body",
+      "zh": "账号没查到",
       "args": []
     },
     "accountChip.label.noRemote": {
@@ -7683,6 +7693,16 @@
     "accounts.status.backendOldBody": {
       "kind": "body",
       "zh": "远端后端需要更新才能用多账号：{reason}",
+      "args": ["reason"]
+    },
+    "accounts.status.queryFailed": {
+      "kind": "body",
+      "zh": "没查到",
+      "args": []
+    },
+    "accounts.status.queryFailedBody": {
+      "kind": "body",
+      "zh": "这台的账号清单没查到：{reason}",
       "args": ["reason"]
     },
     "accounts.status.backendOld": {
