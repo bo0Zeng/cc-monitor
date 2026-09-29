@@ -1,5 +1,14 @@
 //! **§34 Gate 2（identity）的唯一实现** —— 「这个 tmux 会话是不是本工具管的？」
 //!
+//! 〔RE · 第四波 D 段 · `设计/15 §2.5`〕**两个消费者今天调的不是同一组函数，照实写**：
+//! - 后端生产段真判：[`gate2`]（`control/gate.rs`，送键 / 杀会话之前那道门）· [`new_tmux_name_issue`] ·
+//!   [`existing_tmux_name_issue`]（`control/launch.rs` · `control/kill.rs` · `control/launch_render/`）；
+//! - monitor 生产段剩下的两处（`src/frontend/shell/src/backend/control/tmux.rs` 的 `gate1_admit_target` →
+//!   [`existing_tmux_name_issue`]、`is_ccm_tmux_name` 转调壳）都只是跨轨对拍的锚点 —— 抓屏 · 送键 · 杀会话由后端入口判。
+//! ⇒ 「Gate 2 两侧共用同一道门」今天**不是**生产期共用同一次判定，靠的是同一张金表
+//!   `src/frontend/shell/src/backend/control/fixtures/gate2-golden.tsv` 的测试期对拍（monitor `gate2_parity_tests.rs` ·
+//!   后端 `gate_tests.rs` · e2e `backend-gate2-acceptance.sh` 三个读者各自读它）。
+//!
 //! # 为什么要单独一个 crate（F03，定框 C1/C6）
 //!
 //! 这道门挡的是「往一个不是本工具管理的 tmux 会话里打字 / 把它杀掉」。
