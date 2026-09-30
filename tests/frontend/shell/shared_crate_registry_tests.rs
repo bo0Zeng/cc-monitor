@@ -603,7 +603,8 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         ),
         // ── job frontend
         ("npm audit (production deps, high)", true, "同名命令"),
-        ("eslint (advisory, baseline)", true, "同名命令。⚠ 它带 `|| true` ⇒ **结构上不会红**；登记它是为了别把「不会红」误当成「跑过了」"),
+        // 〔P3 · 主会话 09-29 裁〕基线清到 0 ⇒ 去掉 `|| true`、改成会拦（步骤名同拍改）。
+        ("eslint (blocking, baseline 0)", true, "同名命令（`npm run lint`，有一条错就红）"),
         ("stylelint (advisory, baseline)", true, "同上，也带 `|| true`"),
         ("unit tests (node pure-fn + vitest DOM)", true, "`npm test`"),
         ("coverage floor (vitest jsdom)", true, "`npm run coverage`"),

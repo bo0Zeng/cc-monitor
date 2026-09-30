@@ -219,9 +219,9 @@ jobs:
 
       - run: npx tsc --noEmit
 
-      # F08b：ESLint（flat config + typescript-eslint）。**顾问式/不阻断**——同 Rust job 的
-      # clippy 仅报告不强制：既有告警作基线（**3 项**，〔AL1d 09-24〕7 → 3）、不追一次清零。`|| true`
-      # 让告警可见但不红 CI；新代码作者本地 `npm run lint` 自查。
+      # F08b：ESLint（flat config + typescript-eslint）。〔P3 · 主会话 09-29 裁〕基线清到 0 之后**改成会拦**：
+      # 去掉原来的 `|| true`，有一条错就红（`tests/frontend/ui/eslint-baseline.vitest.ts` ③ 钉着这一步的写法）。
+      # 此前它是顾问式（既有告警作基线、`|| true` 不红 CI），沿革见下。
       #
       # **E83（2026-08-01）：作用面从 `eslint src` 放开到 `eslint .`。** 本仓 `eslint.config.js`
       # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/frontend/shell / …），
@@ -232,8 +232,8 @@ jobs:
       # 〔DUP1 · 第四波 4D〕那天剩两项：`src/frontend/ui/shell-quote.ts` 那处 `no-control-regex` 随 `isValidConfigDir` 删了。
       # 〔STC · 第四波 4D〕那天剩一项：`tests/frontend/ui/panorama/session-files.test.ts` 随被测对象（写类工具口径搬进后端）整份删了。
       # 〔P3 · 发版后〕今天全仓 0 项：`render.ts` 那处 `no-control-regex` 随代码 stub 的哨兵换成非字符 `\uFDD0` 没了。
-      - name: eslint (advisory, baseline)
-        run: npm run lint || true
+      - name: eslint (blocking, baseline 0)
+        run: npm run lint
 
       # F08b：Stylelint（`src/**/*.css`）。**这一步本身仍是顾问式**（`|| true`，结构上不会红），
       # 不 --fix 避免全量 churn。
