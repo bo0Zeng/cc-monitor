@@ -103,9 +103,13 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       item("history-metadata.json", "/h/.cc-monitor/history-metadata.json"),
     ];
     const webview = item("EBWebView", "/h/AppData/EBWebView");
+    // 〔P3 · V160〕本机后端住在同一个家里的那几样：同样只给路径
+    const backend = [item("relay-key", "/h/.cc-monitor/relay-key"), item("panorama/", "/h/.cc-monitor/panorama")];
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
       entries,
+      backendHome: "/h/.cc-monitor",
+      backendEntries: backend,
       webviewUserDataDir: webview,
     };
     const sec = new DataSection({ headless: true });
@@ -116,7 +120,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       (e) => e.textContent,
     );
     // 〔ST2 · 步 15〕「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
-    expect(shown).toEqual([...entries, webview].map((e) => e.path));
+    expect(shown).toEqual([...entries, ...backend, webview].map((e) => e.path));
     // 〔OSA · 主会话 09-28 裁〕`get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
@@ -144,7 +148,7 @@ describe("〔ST2 · 用户 09-24 裁〕数据位置「真相 / 缓存」那一�
       mk("sid-hwnd-cache.json", "cache"),
       mk("logs/", "cache"),
     ];
-    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null };
+    paths.value = { monitorDataDir: "/h", entries, backendHome: "/h", backendEntries: [], webviewUserDataDir: null };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
     sec.loadNow();
@@ -194,6 +198,9 @@ describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」�
     paths.value = {
       monitorDataDir: "/h",
       entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL)],
+      // 〔P3〕后端那一份错误输出在 `logs/backend/`：同样指向「日志」页
+      backendHome: "/h",
+      backendEntries: [mk(`${LOGS_DIR_LABEL}backend/`)],
       webviewUserDataDir: null,
     };
     const sec = new DataSection({ headless: true });
@@ -201,13 +208,16 @@ describe("〔ST2 · `70 §11.3.2` · 步 15〕logs/ 那一行指向「日志」�
     sec.loadNow();
     await new Promise((r) => setTimeout(r, 0));
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(3);
     const byLabel = (l: string) =>
       rows.find((r) => r.querySelector(".settings-data-item-label")!.textContent === l)!;
     const logs = byLabel(LOGS_DIR_LABEL);
     expect(logs.querySelector("button"), "logs/ 那一行还自带按钮 —— 与「日志」页的「打开日志目录」重复").toBeNull();
     expect(logs.querySelector('[data-see-also="logs"]')?.textContent).toBe("在「日志」页里打开");
     expect(logs.querySelector(".settings-data-item-path")?.textContent).toBe("/h/.cc-monitor/logs/");
+    const backendLogs = byLabel(`${LOGS_DIR_LABEL}backend/`);
+    expect(backendLogs.querySelector("button"), "logs/backend/ 那一行也不该自带按钮").toBeNull();
+    expect(backendLogs.querySelector('[data-see-also="logs"]')).not.toBeNull();
     // 反向对照：别的行照旧能打开（否则「logs/ 没按钮」可能是整张表都没按钮）。
     expect(byLabel("ps-registry/").querySelector("button")?.textContent).toBe("打开");
   });

@@ -49,11 +49,13 @@ const ov: Overview = {
     { file: "src/a.rs", score: 3, symbols: 4 },
     { file: "src/b.rs", score: 1, symbols: 2 },
   ],
-  subsystems: [{ label: "core", files: ["src/a.rs", "src/b.rs"], size: 2 }],
+  subsystems: [{ label: "core", files: ["src/a.rs", "src/b.rs"], size: 2, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 }],
   entry_points: [],
   total_symbols: 6,
   total_files: 7,
   unresolved_calls: 5,
+  ambiguous_calls: 0,
+  unresolved_imports: 0,
   parse_errors: 2,
 };
 type Probe = {

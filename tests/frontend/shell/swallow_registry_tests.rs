@@ -102,6 +102,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/backend/stream/inbound.rs", "let _ = gate_rx.await;", 1, Why::Signal, ""),
     ("src/backend/stream/inbound.rs", "let _ = gate_tx.send(());", 1, Why::Signal, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.send(frame).await;", 1, Why::PeerGone, ""),
+    ("src/backend/stream/inbound.rs", "let _ = tx.try_send(Frame::Progress { ticket: ticket.clone(), cell, });", 1, Why::Backpressure, "〔P7〕`Progress::push`：应答通道满了丢这一格进度（每格整份快照，下一格补上；结局在应答里）—— 不许为它堵住建索引的读流"),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(Frame::Cancelled { id: target });", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(err(&req.id, \"not_cancellable\", &copy_text(\"beInbound.dispatch.cannotCancel\", &[])));", 1, Why::Backpressure, ""),
     ("src/backend/stream/inbound.rs", "let _ = replies.try_send(ok(&req.id));", 1, Why::Backpressure, ""),
@@ -215,6 +216,7 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/utils.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
     ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(stderr.as_bytes());", 1, Why::Diag, ""),
+    ("src/panorama-engine/main.rs", "let _ = std::io::stderr().write_all(line.as_bytes());", 1, Why::Diag, "〔P7〕建索引的进度行写 stderr：写不出去（管道已关）就算了，进度只是给人看的，答案走 stdout 那一行"),
     ("src/panorama-engine/main.rs", "let _ = std::io::stdout().write_all(stdout.as_bytes());", 1, Why::Diag, ""),
     // 〔W5-AUX · `设计/96 §3.6`〕capture 带 stdin 那一形：写那一行失败时回一行失败的 ack；ack 本身写不出去 ⇒ 链路已死，同上面那几条。
     ("src/backend/dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(copy_text(\"beUses.exec.stdinLost\", &[(\"e\", &e.to_string())])", 1, Why::DeadLink, ""),

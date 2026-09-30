@@ -294,3 +294,47 @@ fn an_oversized_stream_is_kept_to_one_past_the_cap_and_the_rest_is_drained() {
     assert_eq!(small.stdout.len(), 300_000);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 要求住址：`97 §8`「要上游给的」④「小程序写成进度行 → 插件口转订阅流」。
+///
+/// ★〔P7〕给了回调 ⇒ stderr 上**整行**的 `progress=` 行交回调（前缀后面那段、去行尾），不进诊断，别的照旧留；
+/// 没写完的半行（没有换行）不算进度。没给回调 ⇒ 同一串字节原样全留（进度行就是普通 stderr）。
+#[cfg(unix)]
+#[test]
+fn progress_lines_on_stderr_go_to_the_callback_and_stay_out_of_the_diagnosis() {
+    let dir = scratch("progress");
+    let bin = script(
+        &dir,
+        r#"printf 'progress={"n":1}\n' >&2
+printf 'boom\n' >&2
+printf 'progress={"n":2}\r\n' >&2
+printf 'progress=half' >&2
+printf 'out\n'
+exit 3"#,
+    );
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut got: Vec<String> = Vec::new();
+    let mut on = |cell: &str| got.push(cell.to_string());
+    let done = match rt.block_on(run_abortable_reporting(&bin, &[], 30, &[], 1024, &mut on)) {
+        Ok(d) => d,
+        Err(_) => panic!("没起来"),
+    };
+    assert_eq!(got, [r#"{"n":1}"#, r#"{"n":2}"#]);
+    assert_eq!(done.code, Some(3));
+    assert_eq!(String::from_utf8_lossy(&done.stderr), "boom\nprogress=half");
+    assert_eq!(done.diagnosis(), "boom", "诊断被进度行抢了");
+    assert_eq!(done.stdout, b"out\n");
+    // 没给回调：一个字节都不分拣。
+    let plain = match rt.block_on(run_abortable(&bin, &[], 30, &[], 1024)) {
+        Ok(d) => d,
+        Err(_) => panic!("没起来"),
+    };
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stderr),
+        "progress={\"n\":1}\nboom\nprogress={\"n\":2}\r\nprogress=half"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

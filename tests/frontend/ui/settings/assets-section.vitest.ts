@@ -266,7 +266,7 @@ describe("资产目录 · 那一块", () => {
     // 用户点名：改过的那一个也删（直接改勾 ＋ 发 change —— jsdom 里 label 包着的框 `.click()` 会被 label 再点一次、勾回去）
     boxes[1].checked = true;
     boxes[1].dispatchEvent(new Event("change"));
-    const go = [...sec.element.querySelectorAll("button")].find((b) => b.textContent?.startsWith("在 "));
+    const go = [...sec.element.querySelectorAll("button")].find((b) => b.textContent === copyText("assets.uninstall.apply", { machine: "本机" })); // 按键找，不按原文（91 §6）
     go!.click();
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
     expect(uninstall).toHaveBeenCalledTimes(1);

@@ -6,11 +6,11 @@
 //! 批注侧车是**唯一真相**(人写、可版本化);agent 只能 `propose`(落 `Proposed`),
 //! 要人 `approve` 才对 agent 可见。
 
-use super::{bare_name, guard_rel, split_sym_id, symbol_matches, to_rel, Engine};
+use super::{bare_name, guard_rel, symbol_matches, to_rel, Engine};
 use crate::edits::{self, FileEdit};
 use crate::model::{
     Anchor, AnchorState, Annotation, AnnotationStatus, DocLink, DriftItem, LineRange, Resolution,
-    SymbolId,
+    SymbolId, SymbolRef,
 };
 use crate::scan;
 use crate::{anchor, annotations, docs, symbols};
@@ -22,7 +22,9 @@ impl Engine {
     /// 覆盖某符号的文档链接(符号级 / 文件级 / 目录前缀)。
     /// 符号级:限定名目标(`Type::name`)按完整段精确比,裸名目标才退化为裸名比。
     pub fn docs_for(&self, sym: &SymbolId) -> Vec<DocLink> {
-        let (file, seg) = split_sym_id(sym);
+        let SymbolRef {
+            file, symbol: seg, ..
+        } = SymbolRef::of(sym);
         let seg_bare = seg.as_deref().map(bare_name);
         let links = self.or_empty("all_doc_links", self.idx.all_doc_links());
         links
@@ -114,7 +116,7 @@ impl Engine {
             let src = std::fs::read_to_string(self.repo.join(rel)).unwrap_or_default();
             symbols::symbols_in_source(&src, rel)
                 .into_iter()
-                .filter(|s| split_sym_id(&s.id).1.as_deref() == Some(target_symbol))
+                .filter(|s| SymbolRef::of(&s.id).symbol.as_deref() == Some(target_symbol))
                 .count()
         };
         let cur = if crate::git::file_exists(&self.repo, file) {
@@ -138,9 +140,9 @@ impl Engine {
         }
     }
 
-    /// F12 seam:一组变更文件/行 → 受影响的符号 id。ranges 为空表示整文件。
+    /// F12 seam:一组变更文件/行 → 受影响的符号(带 `file`,消费方按文件高亮时读字段)。ranges 为空表示整文件。
     /// 给 cc-monitor 以后把「Claude 刚 Edit 的东西」高亮到全景图上。
-    pub fn symbols_touching(&self, files: &[PathBuf], ranges: &[LineRange]) -> Vec<SymbolId> {
+    pub fn symbols_touching(&self, files: &[PathBuf], ranges: &[LineRange]) -> Vec<SymbolRef> {
         let mut out = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for f in files {
@@ -153,7 +155,7 @@ impl Engine {
                             .any(|r| r.start <= s.end_line && s.start_line <= r.end);
                     // 去重:同一文件被传入多次时不重复输出
                     if overlaps && seen.insert(s.id.clone()) {
-                        out.push(s.id);
+                        out.push(SymbolRef::of(&s.id));
                     }
                 }
             }
@@ -247,7 +249,9 @@ impl Engine {
     /// 覆盖某符号的 **Active** 批注(给 agent 消费;Proposed 不可见 = 人审门禁)。
     /// 符号匹配复用 `symbol_matches`:限定名批注精确比、裸名批注按裸名比(与 docs_for 一致)。
     pub fn annotations_for(&self, sym: &SymbolId) -> Vec<Annotation> {
-        let (file, seg) = split_sym_id(sym);
+        let SymbolRef {
+            file, symbol: seg, ..
+        } = SymbolRef::of(sym);
         let seg_bare = seg.as_deref().map(bare_name);
         annotations::list(&self.annotations_dir)
             .into_iter()

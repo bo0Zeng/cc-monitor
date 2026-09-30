@@ -12,16 +12,16 @@
  * 买到：每张图下面都说清看不见 / 分不清 / 滤掉 / 排除 / 省略了多少、读库有没有出错。
  * **买不到**：它不判断这些数「多不多」—— 那是读图的人的事。
  */
-import type { DiagramHonesty } from "./types";
+import type { Honesty } from "./types";
 import { copyText } from "../copy-table";
 
-type Cell = (h: DiagramHonesty) => string;
+type Cell = (h: Honesty) => string;
 
 /** 〔CP2b〕不适用 / 有数 两句各自整句进表（不再拼「名 ＋ 数 ＋ 量词」三截碎片）。 */
 const count = (v: number | null, na: string, some: (n: number) => string): string => (v === null ? na : some(v));
 
 /** 字段 → 人话。**键集合 == 上游 `Honesty` 的字段**（判据两向钉）。顺序即显示顺序。 */
-export const HONESTY_CELLS: Record<keyof DiagramHonesty, Cell> = {
+export const HONESTY_CELLS: Record<keyof Honesty, Cell> = {
   unresolved_calls: (h) =>
     count(h.unresolved_calls, copyText("diagramHonesty.unresolved.na"), (n) => copyText("diagramHonesty.unresolved.some", { n })),
   ambiguous_calls: (h) =>
@@ -45,11 +45,11 @@ export const HONESTY_CELLS: Record<keyof DiagramHonesty, Cell> = {
 };
 
 /** 逐格的人话（按表的顺序）。 */
-export function honestyCells(h: DiagramHonesty): string[] {
-  return (Object.keys(HONESTY_CELLS) as (keyof DiagramHonesty)[]).map((k) => HONESTY_CELLS[k](h));
+export function honestyCells(h: Honesty): string[] {
+  return (Object.keys(HONESTY_CELLS) as (keyof Honesty)[]).map((k) => HONESTY_CELLS[k](h));
 }
 
 /** 常驻的那一行。 */
-export function honestyLine(h: DiagramHonesty): string {
+export function honestyLine(h: Honesty): string {
   return honestyCells(h).join(copyText("diagramHonesty.line.sep"));
 }

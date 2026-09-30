@@ -10,15 +10,17 @@ import {
   hitTest,
   coverageBanner,
   computeLayout,
+  fitLabel,
   UNCATEGORIZED_LABEL,
   MIN_SCALE,
   MAX_SCALE,
   type Viewport,
   type FileBubble,
-  touchedFilesFromIds,
+  touchedFiles,
   countShown,
 } from "../../../../src/frontend/ui/panorama/layout";
 import type { Overview } from "../../../../src/frontend/ui/panorama/types";
+import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const vp = (x: number, y: number, scale: number): Viewport => ({ x, y, scale });
 
@@ -180,13 +182,15 @@ describe("computeLayout", () => {
       { file: "src/lonely.ts", score: 20, symbols: 2 },
     ],
     subsystems: [
-      { label: "core", files: ["src/a.ts", "src/b.ts"], size: 2 },
-      { label: "util", files: ["src/c.ts"], size: 1 },
+      { label: "core", files: ["src/a.ts", "src/b.ts"], size: 2, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
+      { label: "util", files: ["src/c.ts"], size: 1, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
     ],
-    entry_points: ["src/a.ts#main"],
+    entry_points: [{ id: "src/a.ts#main", file: "src/a.ts", symbol: "main" }],
     total_symbols: 26,
     total_files: 4,
     unresolved_calls: 5,
+    ambiguous_calls: 0,
+    unresolved_imports: 0,
     parse_errors: 1,
   };
 
@@ -236,15 +240,11 @@ describe("computeLayout", () => {
   });
 });
 
-describe("F70 高亮派生（touchedFilesFromIds / countShown）", () => {
+describe("F70 高亮派生（touchedFiles / countShown）", () => {
   const bub = (file: string): FileBubble => ({ file }) as FileBubble;
-  it("touchedFilesFromIds：符号 id file#name → 文件段去重", () => {
-    expect([
-      ...touchedFilesFromIds(["a.ts#foo", "a.ts#bar", "b.rs#baz"]),
-    ]).toEqual(["a.ts", "b.rs"]);
-  });
-  it("touchedFilesFromIds：方法 id file#Type::method 也取文件段；空/畸形跳过", () => {
-    expect([...touchedFilesFromIds(["m.ts#T::run", "", "#nofile"])]).toEqual(["m.ts"]);
+  it("touchedFiles：〔P7〕读上游给的 file 字段去重（id 长什么样不看：这里故意给一个拆不出文件的 id）", () => {
+    const ref = (id: string, file: string) => ({ id, file, symbol: null });
+    expect([...touchedFiles([ref("x", "a.ts"), ref("y", "a.ts"), ref("z", "b.rs")])]).toEqual(["a.ts", "b.rs"]);
   });
   it("countShown：只数在气泡集里的高亮文件（非脊柱文件不计）", () => {
     const bubbles = [bub("a.ts"), bub("b.rs"), bub("c.py")];
@@ -254,5 +254,81 @@ describe("F70 高亮派生（touchedFilesFromIds / countShown）", () => {
   it("countShown：空集 / 无交集 → 0", () => {
     expect(countShown([], new Set(["a"]))).toBe(0);
     expect(countShown([bub("a.ts")], new Set(["b.ts"]))).toBe(0);
+  });
+});
+
+// 〔P3〕SHOTS 报备「气泡全景的文件名截断得厉害、泡没居中」（`99 §2.3` 并进 `§4.4` 全景那一行）。只摆位置（CP1）。
+describe("〔P3〕气泡在子系统盒里居中", () => {
+  // 半径悬殊的一簇：打包从第一个圆心向外长 ⇒ 圆群偏在一边（改前按「最远圆心距」留边，左右不等）
+  const ov: Overview = {
+    spine_files: [
+      { file: "a/1.ts", score: 100, symbols: 1 },
+      { file: "a/2.ts", score: 60, symbols: 1 },
+      { file: "a/3.ts", score: 10, symbols: 1 },
+      { file: "b/1.ts", score: 30, symbols: 1 },
+    ],
+    subsystems: [
+      { label: "a", files: ["a/1.ts", "a/2.ts", "a/3.ts"], size: 3, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
+      { label: "b", files: ["b/1.ts"], size: 1, member_hash: "", anchors: [], internal_edges: 0, external_edges: 0 },
+    ],
+    entry_points: [],
+    total_symbols: 4,
+    total_files: 4,
+    unresolved_calls: 0,
+    ambiguous_calls: 0,
+    unresolved_imports: 0,
+    parse_errors: 0,
+  };
+  const PAD = 18;
+  const LABEL = 26;
+
+  it("每个区：圆群真包围盒到盒子四边的留白都 == 盒内边距（上边从标签留白之下量）", () => {
+    const layout = computeLayout(ov, { regionPad: PAD, labelSpace: LABEL });
+    expect(layout.regions.length).toBe(2);
+    for (const rg of layout.regions) {
+      const mine = layout.bubbles.filter((b) => b.subsystem === rg.label);
+      const minX = Math.min(...mine.map((b) => b.x - b.r));
+      const maxX = Math.max(...mine.map((b) => b.x + b.r));
+      const minY = Math.min(...mine.map((b) => b.y - b.r));
+      const maxY = Math.max(...mine.map((b) => b.y + b.r));
+      const gaps = [minX - rg.boxX, rg.boxX + rg.boxW - maxX, minY - (rg.boxY + LABEL), rg.boxY + rg.boxH - maxY];
+      for (const g of gaps) expect(g, `${rg.label} 的四边留白 ${gaps.join(" / ")}`).toBeCloseTo(PAD, 6);
+    }
+  });
+});
+
+describe("〔P3〕fitViewport 封顶倍数（选图那一块：小图不撑满屏）", () => {
+  it("给了 maxScale ⇒ 放大到它为止；不给照旧到 MAX_SCALE", () => {
+    expect(fitViewport(10, 10, 1000, 1000, 0, 2).scale).toBe(2);
+    expect(fitViewport(10, 10, 1000, 1000, 0).scale).toBe(MAX_SCALE);
+  });
+});
+
+describe("〔P3〕fitLabel：气泡里的文件名先缩字号、再按实测宽度截断", () => {
+  // 替身量法：每个字符 0.6 em（与 canvas 无关，只要单调）
+  const measure = (t: string, px: number): number => [...t].length * px * 0.6;
+
+  it("放得下 ⇒ 全名、最大字号", () => {
+    expect(fitLabel("a.ts", 100, 13, 9, measure)).toEqual({ text: "a.ts", px: 13 });
+  });
+
+  it("最大字号放不下、小一号放得下 ⇒ 缩字号，不截断", () => {
+    const name = "abcdefghij"; // 13px 宽 78 · 12px 宽 72
+    expect(fitLabel(name, 75, 13, 9, measure)).toEqual({ text: name, px: 12 });
+  });
+
+  it("最小字号也放不下 ⇒ 最小字号截断，且是放得下的最长那一截", () => {
+    const name = "a-very-long-module-name.ts";
+    const got = fitLabel(name, 60, 13, 9, measure)!;
+    expect(got.px).toBe(9);
+    expect(measure(got.text, 9)).toBeLessThanOrEqual(60);
+    const kept = [...got.text].length - 1;
+    const longer = copyText("layout.label.ellipsis", { text: [...name].slice(0, kept + 1).join("") });
+    expect(got.text).toBe(copyText("layout.label.ellipsis", { text: [...name].slice(0, kept).join("") }));
+    expect(measure(longer, 9), "还能多放一个字却截掉了").toBeGreaterThan(60);
+  });
+
+  it("连一个字加省略号都放不下 ⇒ null（不画）", () => {
+    expect(fitLabel("abc", 5, 13, 9, measure)).toBeNull();
   });
 });

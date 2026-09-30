@@ -483,20 +483,24 @@ export class BackendSection {
 
     const ops = col("ops");
     const start = document.createElement("button");
+    start.className = "settings-btn";
     start.textContent = copyText("backend.buildCells.start");
     start.onclick = () => void this.act(origin, "start");
     ops.appendChild(start);
     const stop = document.createElement("button");
+    stop.className = "settings-btn";
     stop.textContent = copyText("backend.buildCells.stop");
     stop.onclick = () => void this.act(origin, "stop");
     ops.appendChild(stop);
     // 〔GAP1 · `设计/15 §4.7 S1`〕这台后端的诊断文件（本机远端同一问，经那台后端的只读面）。
     const log = document.createElement("button");
+    log.className = "settings-btn";
     log.textContent = copyText("backend.buildCells.log");
     log.onclick = () => void this.toggleLog(origin, cells, log);
     ops.appendChild(log);
     // 〔RESYNC · V149 · `设计/15 §4.1b`〕事件驱动漏了一拍时的手动兜底：这台后端重跑起步那套对齐（会话 · 判死 · tmux · 身份标签 · 账号清单 · 监视）。
     const realign = document.createElement("button");
+    realign.className = "settings-btn";
     realign.textContent = copyText("backend.buildCells.resync");
     realign.onclick = () => void this.realign(origin, realign);
     ops.appendChild(realign);

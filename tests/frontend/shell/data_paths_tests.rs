@@ -114,15 +114,25 @@ fn every_entry_carries_the_class_the_invariants_table_gives_it() {
         "从 §2.1 只抽出 {truths} 条真相 / {caches} 条缓存 —— 抽取器坏了"
     );
     let d = TestDir::new("classes");
+    // 〔P3 · V160〕后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）；
+    //   进程记录那一行的名字带口号，表里写 `listen-<口>.pid`。
     let mut got: Vec<(String, DataClass)> = monitor_entries(d.path())
         .into_iter()
-        .map(|e| (e.label, e.class))
+        .chain(backend_entries(d.path(), d.path(), Some(51234)))
+        .map(|e| {
+            let label = if e.label == relay_route_core::listen_pid_file_name(51234) {
+                "listen-<口>.pid".to_string()
+            } else {
+                e.label
+            };
+            (label, e.class)
+        })
         .collect();
     got.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(
         got, want,
         "data dir 枚举里的类与 `INVARIANTS §2.1` 那张表对不上。\n\
-         ⇒ 新加的文件要**同拍**两处：`data_paths.rs::monitor_entries` 选类，§2.1 那张表加一行。"
+         ⇒ 新加的文件要**同拍**两处：`data_paths.rs::monitor_entries` / `backend_entries` 选类，§2.1 那张表加一行。"
     );
 }
 
@@ -161,4 +171,103 @@ fn no_entry_description_speaks_our_internal_words() {
         .map(|e| format!("{}：{}", e.label, e.description))
         .collect();
     assert_eq!(bad, Vec::<String>::new(), "条目说明里又出现了 sid / HWND");
+}
+
+/// ★ 〔P3 · `设计/70 §6.2` · V160「一台机器一个家」· 主会话 09-29 裁〕后端那几样的**路径**就是后端落盘用的那一份：
+/// 每一行 == 家目录 ＋ 契约常量（`relay_route_core`，后端各写者引的就是它）/ 数据目录 ＋ 凭据文件名（`creds_core::store`）/
+/// 宿主交给后端的错误输出所在的目录。期望逐条手写常量名，不从被测函数派生。
+#[test]
+fn backend_rows_point_where_the_backend_itself_writes() {
+    use relay_route_core as rr;
+    let home = TestDir::new("backend-home");
+    let data = TestDir::new("backend-data");
+    let got: Vec<(String, PathBuf, String)> =
+        backend_entries(home.path(), data.path(), Some(51234))
+            .into_iter()
+            .map(|e| (e.label, PathBuf::from(e.path), e.kind))
+            .collect();
+    let h = home.path();
+    let row = |l: &str, p: PathBuf, k: &str| (l.to_string(), p, k.to_string());
+    let want = vec![
+        row("bin/", h.join(".cc-monitor/bin"), "dir"),
+        row("bin/cc-acct-iso/", h.join(rr::ACCT_ISO_REL), "dir"),
+        row("staging/", h.join(rr::STAGING_DIR_REL), "dir"),
+        row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
+        row("listen-token", h.join(rr::LISTEN_TOKEN_FILE_REL), "file"),
+        row(
+            "listen-51234.pid",
+            h.join(".cc-monitor/listen-51234.pid"),
+            "file",
+        ),
+        row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
+        row("aliases.sh", h.join(rr::POSIX_ALIASES_REL), "file"),
+        row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
+        row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),
+        row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
+        row(
+            "apikey-credentials.json",
+            creds_core::store::credentials_path(data.path()),
+            "file",
+        ),
+        row(
+            "logs/backend/",
+            crate::logging::backend_stderr_log_path(data.path())
+                .parent()
+                .unwrap()
+                .to_path_buf(),
+            "dir",
+        ),
+        row("panorama/", h.join(rr::PANORAMA_INDEX_REL), "dir"),
+    ];
+    assert_eq!(got, want);
+    // 口号拿不到 ⇒ 进程记录那一行不列（不猜一个口）
+    let without: Vec<String> = backend_entries(home.path(), data.path(), None)
+        .into_iter()
+        .map(|e| e.label)
+        .collect();
+    assert!(!without.iter().any(|l| l.ends_with(".pid")), "{without:?}");
+}
+
+/// ★★ 〔P3 · 主会话 09-29 裁「家里的都进唯一枚举，判据两向」〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量
+/// == 数据位置页后端那几行覆盖的路径（后端落点由它所在的 `bin/` 那一行覆盖）。**异源**：一侧是 `relay-route-core`
+/// 源码里现抽的常量值，一侧是被测枚举。契约里新长一个家里的路径却没进这一页 ⇒ 红；这一页列了契约里没有的 ⇒ 红。
+#[test]
+fn every_home_path_in_the_contract_has_a_row() {
+    let src = guard_core::production_code(include_str!(
+        "../../../src/common/relay-route-core/src/lib.rs"
+    ));
+    let mut declared: std::collections::BTreeSet<String> = Default::default();
+    for line in src.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("pub const ") {
+            if let Some((_, v)) = rest.split_once("&str = \"") {
+                let v = v.trim_end_matches("\";");
+                if v.starts_with(".cc-monitor/") {
+                    declared.insert(v.to_string());
+                }
+            }
+        }
+    }
+    assert!(
+        declared.len() >= 10,
+        "只抽到 {} 个常量 —— 抽取器坏了：{declared:?}",
+        declared.len()
+    );
+    let home = TestDir::new("contract-home");
+    let data = TestDir::new("contract-data");
+    let covered: std::collections::BTreeSet<String> =
+        backend_entries(home.path(), data.path(), None)
+            .into_iter()
+            .filter_map(|e| {
+                Path::new(&e.path)
+                    .strip_prefix(home.path())
+                    .ok()
+                    .map(|p| p.to_string_lossy().replace('\\', "/"))
+            })
+            .collect();
+    let mut want = declared.clone();
+    // 后端落点（`bin/ccm`）由它所在目录那一行覆盖
+    want.remove(relay_route_core::BACKEND_LANDING_REL);
+    want.insert(".cc-monitor/bin".to_string());
+    assert_eq!(covered, want);
 }

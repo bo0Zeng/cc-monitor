@@ -178,7 +178,7 @@ describe("C01 边界生成物", () => {
       "Origin.ts", // 步 12：`Origin` 的线上形状（`null | string` —— 两个变体、三个线上值，见 `src/comms/inward/origin.rs` 头注）
       "OriginSessionsListedPayload.ts", // 〔U4b〕某台机器的活会话清单报完了（`origin-sessions-listed`）
       // 〔RM1f〕`PanoramaStatus.ts` 出列：它的 Rust 源（monitor `panorama.rs`）随内嵌引擎删了；
-      //   形状今天住 `src/frontend/ui/panorama/types.ts`（手写），全景小程序的 `the_status_shape_matches_the_monitor_dto` 对拍它。
+      //   形状今天住 `src/frontend/ui/panorama/types.ts`（〔P7〕全景小程序判据生成的，不手写）。
       "PathCcmVerdict.ts", // `K-R69`：PATH 上那个 `ccm` 与我们那一份的关系（四态，没有兜底档）
       // 〔AL1d · 4B〕"ProfileKind.ts" / "ProfileScan.ts" 走了：候选只有一份来历，扫描结果是 `StartupFile` ＋ `BlockState`。
       // K-A1：TS 侧 `Account` 从此是它的别名（原先是一份手抄 interface + 一句

@@ -164,6 +164,18 @@ export class TabStreamView {
   private readonly refining = new WeakSet<SkeletonView>();
 
   /**
+   * 〔P3 · `设计/10 §2.5b`「列宽变化只重算已精算过的」〕「列宽变了」：消息流尺寸变了（`MessageStream.onViewportResize`）时
+   * 现量这一列（`.stream-content`）有多宽，与骨架账本当前那一列差出 1px ⇒ 账本按新列宽重估、占位改高（`SkeletonView.relayout`），
+   * 作废的精算行重交第二级。量不到宽（tab 还没布局）⇒ 不动。
+   */
+  private relayoutOnColumnChange(tab: Tab): void {
+    const sk = tab.skeleton;
+    if (!sk) return;
+    const w = tab.stream.contentElement.getBoundingClientRect().width;
+    if (w > 0 && sk.relayout(w)) this.refineNearby(tab);
+  }
+
+  /**
    * 〔RENDER2 · `设计/10 §2.5b` 第二级「按需 ＋ 后台」〕视口上下 `REFINE_SCREENS` 屏之内还在占位里、没精算过的行：
    * 正文先从账本借（不出账），没有的按索引字节边界取一次（与 `fetchMissingRows` 同一条命令，回来的只交 Worker、不建卡），
    * 交 `HeightRefiner`，回来换进账本、占位改高（视口钉住）。一个骨架同时只一趟。
@@ -173,10 +185,15 @@ export class TabStreamView {
     if (!sk || !this.refiner.enabled || this.refining.has(sk) || !tab.parentPath) return;
     let asked = this.refineAsked.get(sk);
     if (!asked) this.refineAsked.set(sk, (asked = new Set()));
-    const want = sk.nearbyUnrefined(TabStreamView.REFINE_SCREENS).filter((s) => !asked!.has(s));
+    // 〔P3〕列宽变了作废的精算行排在前面（不论离视口多远）；一趟交不完的留在骨架里等下一趟
+    const stale = sk.takeStale(TabStreamView.REFINE_MAX_ROWS);
+    const mine = new Set(stale);
+    const fresh = sk.nearbyUnrefined(TabStreamView.REFINE_SCREENS).filter((s) => !asked!.has(s) && !mine.has(s));
+    const want = [...stale, ...fresh];
     if (want.length === 0) return;
     const seqs = new Set(want.slice(0, TabStreamView.REFINE_MAX_ROWS));
     for (const s of seqs) asked.add(s);
+    const taken = [...seqs];
     const known = tab.window.peekSeqs(seqs);
     for (const p of known) seqs.delete(p.seq);
     const runs: Array<[number, number]> = [];
@@ -199,10 +216,17 @@ export class TabStreamView {
       .then((pages) => {
         if (this.store.tabs.get(tab.sessionId) !== tab || tab.skeleton !== sk) return;
         const rows = [...known, ...pages.flat()].map((p) => ({ seq: p.seq, rec: p.message }));
-        return this.refiner.refine(sk, rows);
+        return this.refiner.refine(sk, rows).then((applied) => {
+          // 〔P3〕算的途中列宽变了 ⇒ 这一批作废，放回待重交
+          if (!applied) sk.returnStale(taken);
+        });
       })
       .catch((e: unknown) => console.warn(`[tabs] 第二级估高失败（${tab.sessionId.slice(0, 8)}）：`, e))
-      .finally(() => this.refining.delete(sk));
+      .finally(() => {
+        this.refining.delete(sk);
+        // 〔P3〕还有待重交的（在途时列宽又变了 / 一趟没交完）⇒ 接着交
+        if (sk.staleCount > 0 && this.store.tabs.get(tab.sessionId) === tab && tab.skeleton === sk) this.refineNearby(tab);
+      });
   }
 
   /**
@@ -281,6 +305,9 @@ export class TabStreamView {
     // ⚠ 三道门都不可少：① 只给 active tab 补（后台 tab 0×0 → 真实尺寸那一跳不是
     // 「用户拉窗口」）；② 账本空了不补；③ 已经满屏了不补（否则每次 RO 都白干一轮）。
     stream.onViewportResize = (): void => {
+      // 〔P3 · `设计/10 §2.5b`〕列宽可能变了：骨架账本按新列宽重估（后台 tab 同样有布局宽，一并跟上）
+      const cur = this.store.tabs.get(sessionId);
+      if (cur) this.relayoutOnColumnChange(cur);
       if (this.store.activeId !== sessionId) return;
       const t = this.store.tabs.get(sessionId);
       if (!t || t.window.pendingCount === 0) return;
