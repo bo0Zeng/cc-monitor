@@ -109,7 +109,11 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     let files = guard_core::scan_tree_excluding(
         &crate::guard_support::crate_src_root(),
         &["rs"],
-        &["src/frontend/shell/src/spawn_managed.rs"],
+        // 〔P4b · 阶段 H〕出口的平台那一半（`.creation_flags(` · `.process_group(`）住 `platform/spawn.rs`：同一个出口的下半截，一起排掉。
+        &[
+            "src/frontend/shell/src/spawn_managed.rs",
+            "src/frontend/shell/src/platform/spawn.rs",
+        ],
     );
     let mut offenders: Vec<String> = Vec::new();
     let mut scanned = 0usize;
@@ -162,7 +166,11 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
 /// 会让主判据**零命中地绿**，而「唯一出口」这件事悄悄一个人都不数了。
 #[test]
 fn the_exit_itself_still_contains_every_verb_it_forbids_elsewhere() {
-    let src = me();
+    // 〔P4b · 阶段 H〕出口 = 本模块 ＋ 它的平台那一半（`platform/spawn.rs`）；两份合起来必须四个词全在。
+    let src = me()
+        + &guard_core::production_code(include_str!(
+            "../../../src/frontend/shell/src/platform/spawn.rs"
+        ));
     // ⚠ 三条平台原语各自在 `#[cfg]` 里 —— 剥生产段不剥 `cfg`，所以两边都看得到。
     for v in [
         ".spawn()",

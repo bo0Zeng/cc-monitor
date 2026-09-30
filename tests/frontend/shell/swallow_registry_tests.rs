@@ -160,14 +160,15 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::io::copy(&mut o, &mut std::io::sink());", 1, Why::Drain, ""),
     // 〔OSA · V156〕`launch_render/payload.rs::render_env_ops` 那四行 `let _ = write!(out, "export …")` 摘了：
     //   `export` / `unset` 的写法搬进 `platform::shell::posix`，那里返回 `String`，调用处 `push_str`，不再有吞。
-    ("src/frontend/shell/src/bind.rs", "let _ = CloseHandle(handle);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/bind.rs", "let _ = CloseHandle(snap);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/bind.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", 1, Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),
-    ("src/frontend/shell/src/bind.rs", "let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
-    ("src/frontend/shell/src/bind.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
+    // 〔P4b · 阶段 H〕下面六行随 `bind.rs` 的 Win32 读法搬进 `platform/{pid,hwnd}.rs`（处数不变）。
+    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(handle);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/pid.rs", "let _ = CloseHandle(snap);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = EnumWindows(Some(cb), LPARAM(0));", 1, Why::NotAnError, "回调里自己收结果；回调提前停时它回 Err 是约定"),
+    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = GetWindowThreadProcessId(hwnd, Some(&mut cur_owner));", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
+    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = ShowWindow(h, SW_RESTORE);", 1, Why::WindowBestEffort, ""),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(&p);", 1, Why::CleanupAfterFailure, "撤死进程留下的登记文件；删不掉下次重扫再撤"),
     ("src/frontend/shell/src/bind.rs", "let _ = std::fs::remove_file(await_file);", 3, Why::CleanupAfterFailure, "等待文件用完就删；删不掉只剩一份无主的等待文件，下次按身份再核"),
-    ("src/frontend/shell/src/bind.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
+    ("src/frontend/shell/src/platform/hwnd.rs", "let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };", 1, Why::NotAnError, "要的是出参里的属主 pid，返回值（线程 id）用不上"),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.kill();", 1, Why::Reap, ""),
     ("src/frontend/shell/src/ccm_probe.rs", "let _ = child.wait();", 1, Why::Reap, ""),
     // 〔P1〕`capture_full` 交入参那条写线程：对面不读 stdin 就退了 ⇒ 写端断，结局由它的退出码与 stderr 说；等那条线程收尾同理。
@@ -210,8 +211,9 @@ const ALLOWED: &[(&str, &str, usize, Why, &str)] = &[
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_read_timeout(None);", 1, Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/local_backend_host.rs", "let _ = sock.set_write_timeout(None);", 1, Why::NotAnError, "这条 socket 下一行就转成非阻塞交给 tokio：`SO_RCVTIMEO` / `SO_SNDTIMEO` 对非阻塞读写不起作用，摘不掉也没有残留"),
     ("src/frontend/shell/src/logging.rs", "let _ = h.emit(ERROR_EVENT, p);", 1, Why::Diag, "把一条错误日志推给界面；推不上它照样进了日志文件"),
-    ("src/frontend/shell/src/spawn_managed.rs", "let _ = CloseHandle(job);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
-    ("src/frontend/shell/src/spawn_managed.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
+    // 〔P4b · 阶段 H〕下面两行随 Job Object 那一段搬进 `platform/spawn.rs`（处数不变）。
+    ("src/frontend/shell/src/platform/spawn.rs", "let _ = CloseHandle(job);", 2, Why::Reap, "Windows 句柄 / 内存释放"),
+    ("src/frontend/shell/src/platform/spawn.rs", "let _ = windows::Win32::Foundation::CloseHandle(h);", 1, Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(\"ssh backend stdout closed (EOF / connection dropped)\".to_string())).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/ssh_source.rs", "let _ = frame_tx.send(Err(format!(\"ssh backend stdout read error: {e}\"))).await;", 1, Why::PeerGone, ""),
     ("src/frontend/shell/src/utils.rs", "let _ = std::fs::remove_file(&tmp);", 1, Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),
