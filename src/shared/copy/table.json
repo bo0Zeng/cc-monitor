@@ -13724,12 +13724,12 @@
     },
     "rsDataPaths.backend.relayKey": {
       "kind": "body",
-      "zh": "中转用的钥匙，只有你能读；后端重起时没有就新建一把",
+      "zh": "中转用的钥匙，后端重起时没有就新建一把",
       "args": []
     },
     "rsDataPaths.backend.listenToken": {
       "kind": "body",
-      "zh": "连本机后端用的钥匙，只有你能读；重起后端时没有就新建一把",
+      "zh": "连本机后端用的钥匙，后端重起时没有就新建一把",
       "args": []
     },
     "rsDataPaths.backend.logs": {
