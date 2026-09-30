@@ -1,140 +1,109 @@
 # cc-monitor
 
-> **Claude Code 的开发工作台** — Tauri 2 + Vanilla TypeScript，桌面应用（Windows / Linux）
->
-> ⚠ **「只读」现在只约束一件事：Claude 的数据。** 本行原写「Claude Code CLI 的**只读输出渲染窗口**」——
-> 那个自述在 F47（SFTP 文件面板）之后就已经窄于事实了，而 `src/`src/doc/INVARIANTS.md` 的铁律本来就
-> **只**说「monitor 对 `<claude_dir>/projects/**/*.jsonl` 与 `sessions/<PID>.json` 只读」。
-> ⇒ Claude 的 jsonl/pidfile **永远只读**；用户自己的文件在**明确手势**下可写
-> （SFTP 面板 · planned-build 收件箱），每一处都在 `INVARIANTS` 里有一条同口径的澄清。
->
+**把你在各台机器上跑的 Claude Code 会话收进一个窗口：实时看、随时接着用、一处管好所有机器。**
+
 > [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.0.0
 
-把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**对 Claude 的数据只读、零侵入**（不**修改** Claude Code 的 jsonl / pidfile；对它们的显式用户写只有两处：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。⚠ **这句话不覆盖用户自己的文件**：SFTP 面板、planned-build 收件箱、`~/.bashrc` 的 helper 安装、`.mcp.json` 等都是明确手势下的写，逐处登记在 `src/frontend/shell/src/write_site_registry.rs`（本机，21 个「文件::函数」）与 `remote_write_registry.rs`（远端，10 处）。
+![主界面：左边每个 tab 是一个正在跑的 Claude Code 会话，右边实时显示对话与工具调用](docs/screenshots/main.png)
 
-**项目状态**：稳定可用。后端 cargo + 远端后端 + vendor `code-picture-core` + 前端 node 纯函数 & vitest+jsdom DOM 单测 + e2e 套件，tsc 严格类型检查，**CI 全绿**（**条数以实跑为准，本文件刻意不存副本** —— 见 `src/`src/doc/DEVELOPMENT.md` 那张表与 `.github/workflows/ci.yml` 的地板行）（Rust `cargo test`〔vendor 那份 `-p code-picture-core` 在 `src/panorama-engine` 里跑〕 + 前端 `npm test`〔+ eslint/stylelint 顾问式 + 覆盖率地板棘轮〕 + 远端后端 `cargo test` + e2e 脚本健康冒烟〔shellcheck/py_compile〕——`npm test` 只门禁前端）。当前发布 **v4.0.0**（不兼容的大版本：文件管理器 · 远端仓也能看代码全景 · skill / MCP 在机器之间同步 · 多账号同时运行 · 数据收进 `~/.cc-monitor/`；详见 `CHANGELOG.md`）；v3.8.1（**多账号 + 第三方 API 中转** —— 每个账号能配自己的上游端点与 key，只听回环的 HTTP 中转在转发时替换 `Authorization` 头、客户端一个凭据都不配，apikey 表里没有那一行的号照旧走官方直连；**本机也被当成一台机器** —— 新装完、一台远端都没配的人第一次打开也有东西可用；**⚠ 有两格不重新部署就会踩坑**：`ccm --tmux` 起会话统一走后端（本机 tmux 直起那条退路已从 exec 路上删掉，后端不可达即失败、退出码 `4`，`CCM_VERSION` 由 3 升到 4 ⇒ 要重新部署 `ccm`）、后端的构建标识已 bump 且它起的插件不再继承后端整份环境（每台已装过后端的远端连上会被判旧并自动重装一次）；v3.6.0：**任意对话节点分叉，两条都活着** —— 每条消息旁的 `⑂` 复制 `[根…这一条]` 成一个**新会话文件**并直接把它起起来，**原会话不受影响**；**远端会话也能分叉**（经后端在那台机器上做，只传 sid 不传路径）；实时会话里也有入口；被 ESC 回退掉的分支**保留路口但呈现区分**；新会话继承原会话的账号 / 工作目录 / tmux，查不出来的那几格**问一次而不是猜**；v3.5.0：**设置面板按「被设置的对象」重做：应用 / 机器 / 改动足迹三页，机器成为中心对象、本机是列表第一行，三处部署首次同屏；cc-bus 驾驶舱移出设置成顶层视图**；v3.4.0：**判活改内核事件、变灰从 ~16s 降到 ~0.13s + 首发 Linux `.deb`**；v3.3.0：**多账号：隔离又同步 + 按会话切账号 + app 内账号部署向导（#68/#69）**；此前 **Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌后端身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **后端自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸后端与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [src/`src/doc/ARCHITECTURE.md`](src/`src/doc/ARCHITECTURE.md`)。
+---
+
+## 它是干嘛的
+
+你在终端里跑 `claude`，可能同时开着好几个：本机一两个，服务器上还有几个。cc-monitor 把它们全收进一个窗口：
+
+- **每个会话一个 tab，实时显示**。对话、代码、工具调用（读文件、改文件、跑命令）逐字出现，本机和远端一样。
+- **一键回到那个终端**。点 tab 上的 ↗，就切到跑着这个会话的终端窗口，接着敲。
+- **历史都在**。跨机器搜索过去的会话，从任意一轮分叉出新会话，或者 resume 接着聊。
+- **多台机器一处管**。添加 SSH 机器之后，那台上的会话自动出现；在那台开新会话、管文件、看代码结构，都不用登上去。
+- **多个账号同时跑**。订阅号和 API 号统一管理，两个号可以同时开会话、互不掉登录。
+
+cc-monitor 只是观察者和启动器：`claude` 仍然跑在你自己的终端里，cc-monitor 读它写下的会话记录来显示，不接管它。
 
 ---
 
 ## 功能
 
-> ⚠ **平台前提：本机会话的实时监听支持 Windows 与 Linux，macOS 暂不支持。**
-> 判活是 PID + 进程启动时刻双重校验（防 PID 复用），两个平台各用原生口径
-> （Windows: Win32 `GetProcessTimes`；Linux: `/proc/<pid>/stat` 第 22 字段）。
-> **macOS 上本机会话不会被监听**（没有 `/proc`，需要 `sysctl` FFI，本仓无 macOS CI 故未实现）——
-> 那个平台上请把它当远端监视器用，SSH + 后端那条路（见下方「SSH 远端模式」）完全正常。
-> 细节见 `src/`src/doc/ARCHITECTURE.md` §「本机判活」。
+### 会话
+- 每个正在跑的会话一个 tab；会话结束后 tab 变灰，右键可以 Resume
+- Markdown、代码高亮、数学公式；工具调用折叠成卡片，文件改动能展开看
+- 长会话不卡：只渲染看得见的部分
+- 会话内查找、大纲跳转、Task 面板
+- tab 可以分组、固定、拖出成独立窗口
+- tab 栏上的「重新读取」一键让所有 tab 与磁盘上的记录重新对齐
 
-### 实时渲染
-- 自动监听 `~/.claude/projects/**/*.jsonl`，新行 200ms 内出现在窗口
-- 多 Tab：每个活跃 Claude session 一个 Tab，标题 `[项目名] aiTitle`
-- **后台任务会话**（`--fork-session` bg）：默认显示，标题带 `⚙` 标识，和普通 Tab 一样平铺、一样拖动与成组（远端同理），设置 → 行为可关（关 = 完全不流 bg 数据）
-- session 退出后 Tab **留在原位变淡**，显示为「已结束」（在 tmux 里跑的会话显示「可重连」，能接回去），已结束的可手动关闭（W / 中键 / ×）；**本地会话 `/resume` 后 Tab 自动复活**（崩溃或退出后显示为已结束，重新 resume 同一会话即恢复，无需 F5）
-- **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `N`，**或直接把 Tab 往标签栏下方一拖松手**（tear-off），把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
-- **会话红绿灯**（issue #23）：每个 Tab（**本地与远端**——远端自 v2.19/backend p1g 起）的状态点实时反映 Claude 状态——🟢 运行中 / 🟡 等你决定（权限确认 / 弹窗选择，呼吸闪烁）/ 🔴 答完等输入；Agents 展开区每个 subagent 一行独立状态灯
-- **多 agent 并排监控**（F91）：顶栏 `▦` 按钮（或命令栏）打开跨机器**只读** mission-control 网格——一屏一格聚合本地 + 所有远端会话的红绿灯 / 标题 / 工作目录 / 运行中 subagent 数 / context 占用% / 未读 / ⚙ 后台标记，点格直接跳到该会话
+### 历史
+- 按机器、按项目浏览全部会话，全文搜索
+- 从任意一轮分叉：原会话不动，新会话直接起起来
+- 星标、改名、隐藏
 
-### SSH 远端模式（issue #15）
-- 在**同一个窗口**聚合本地 + **多台**远端机器（NanoPi / 任意 Linux / WSL）上的 Claude 会话，远端 Tab 标题带 `[host]` 前缀；历史浏览器按机器**分组 / 筛选**（#30/#31）
-- 远端后端经 SSH 实时流式传回会话；**断线自动重连**（指数退避 2→30s，issue #17）、重连后按 seq 去重补放
-- **后端自动部署**（#29）：cc-monitor 内嵌交叉编译的 aarch64/x86_64 musl 后端二进制，连接时按 arch + build_id 版本门控经 SFTP 自动推送——零手动部署
-- **远端全文搜索**（#28）：顶栏「全文」搜索覆盖远端会话内容（后端服务端 `--search`），命中带 `[host]`
-- **远端历史删除**（SFTP 移除 + 二次确认）/ **一键 resume**：tab 右键 / 历史 `↺` 直接拉起远端终端跑 `claude --resume`（wt.exe 优先，失败才回退复制命令到剪贴板）
-  - ⚠ **Linux / macOS 上不开终端窗口**，而是把命令复制给你 —— 这是**既定设计**，不是没做完：
-    POSIX 上没有「唯一的终端」，替你挑一个（gnome-terminal / konsole / alacritty…）是个会在别人机器上错的决定。
-    你在自己的终端里粘贴执行即可。⚠ 这里原先写着「容器一定是 tmux」——**那是假的**：`↺` 复制的是**不进容器**的命令（判据见 `launch-requests.vitest.ts`）；要 tmux 得走 tab 右键那条（F52）。**本机** resume 则不受影响（不开窗，命令直接跑）
-- **设置面板每台机器卡片**：一键 **安装 / 卸载后端**、**装 / 卸 ccm 助手**（写进远端 `~/.bashrc`），并有**安装位置提示**告诉你装到哪（后端→`~/.cc-monitor/bin/`、ccm→`~/.bashrc` 标记块）；卡片可折叠成机器名
-- **版本协商**（#33）+ **慢消费者 overflow 信号**（#32）：后端/client build_id 不符或管道拥塞 → 远端健康 toast 提示
-- 远端 Tab 也能 ↗ 拉前对应终端（issue #18）
-- 部署见 [src/`src/doc/REMOTE-PHASE0-DEPLOY.md`](src/`src/doc/REMOTE-PHASE0-DEPLOY.md`)（自动部署 + 手动回退）
+![历史浏览：跨机器搜索会话](docs/screenshots/history.png)
 
-**Batch 14 远端增强**（F41–F60）：
+### 机器
+- 添加 SSH 机器（可从 `~/.ssh/config` 导入），支持跳板机和多地址自动选快的那条
+- 第一次连上时自动把后端装到那台的 `~/.cc-monitor/bin/ccm`，版本不对会自动换
+- 在远端开新会话（可放进 tmux）、打开终端、端口转发
+- 「诊断」列出每台机器还差什么；「足迹」列出 cc-monitor 在这台机器上写过什么、能不能撤
 
-- **一键 resume / resume-tmux / 开新 Claude**：tab 右键或历史 `↺` 直接在远端拉起终端，无需手动粘贴命令；tmux 场景走 send-keys，也能在选中机器上一键开一个新 Claude 会话
-- **多地址故障切换**（happy-eyeballs）：一台机器配多个地址时并发竞速首个连通者
-- **SFTP 文件面板**：每台机器卡片「文件」入口开浏览 / 上传下载（进度 + 取消）/ 新建·改名·删除 / 目录书签 / 在此打开终端 / 小文件在面板内编辑；工具卡里的远端路径可一键跳到 SFTP 定位
-- **tab attach tmux / 右键预览远端 tmux 画面**：反查 Claude 跑在哪个 tmux 会话一键 attach，或抓当前屏只读快照预览
-- **公钥一键推送**：把本地公钥追加进远端 `~/.ssh/authorized_keys` 免密
-- **跳板 ProxyJump / ssh-config 批量导入**：经跳板机连内网目标；从 `~/.ssh/config` 批量导入并智能聚合同机多地址
-- **本地端口转发管理台**（`-L`）：复用已有 SSH 连接做端口转发，一处启停
-- **daemonless 降级读取**：不装后端也能纯 `tail` 轮询读远端会话（能力子集，如实提示）
-- **完成一轮通知**：远端会话答完一轮弹系统通知；**指纹重置**：远端 host-key 变更时可重置
+![设置 → 机器](docs/screenshots/machines.png)
 
-### 多账号（隔离又同步，#68/#69）
-- **隔离 + 共享**：同台远端管理多个 Claude Code 账号——各自 `CLAUDE_CONFIG_DIR`/`.credentials.json`（两号可同时跑、不互踢），而 skills/memory/history/settings/plugins 实时共享（symlink 到同一共享库）
-- **设置「账号」组**：列出远端各账号（名/邮箱/是否已登录），当前账号带 chip/徽章
-- **按会话选账号起 / Resume**：起或 Resume 会话时可指定用哪个账号的 config-dir 启动（远端优先）
-- **换号重启**：切账号需重启会话——直接结束旧会话（不再先键入 `/exit` 等它退），再用新账号 config-dir 重起
-- **app 内账号部署向导**：设置内置向导分步跑 `cc-acct-iso` 隔离/同步管线（只读状态查询走后端；动凭据/登录/同步经真实终端窗口），每账号一个「登录终端」按钮
-- **注**：多账号只读查询需远端后端为最新版（连上自动重部署，或设置页手动重装）
+### 文件管理器
+- 独立窗口，本机和远端都能开
+- 排序、新建、改名、删除、复制、改权限、上传下载、书签、按内容搜索
+- 远端能做 SSH 上能对文件做的全部操作
 
-### 富渲染
-- **Markdown**：GFM + 表格 + 任务列表（marked.js）
-- **LaTeX**：`$...$` 行内、`$$...$$` 块级（KaTeX）
-- **代码高亮**：30+ 主流语言（highlight.js/common）
-- **工具调用**：`tool_use` + `tool_result` 合并到同一折叠卡，长输出嵌套二级折叠
-- **代码改动 diff**（issue #14）：`Edit` / `Write` / `MultiEdit` 工具展开为**行级红删绿增 diff**（替代原始 JSON），超长自动折叠 + 「显示完整」；异常一律回退原 JSON
-- **subagent**：`Task` / `Agent` 工具自动嵌入子 JSONL 内容（懒加载）
-- **/compact 摘要**：折叠展示
-- **用户输入前缀卡**：`!cmd` bash 模式渲染成终端风格命令卡 + stdout/stderr 输出卡（stderr 红色调、超长折叠）；`/xxx` 斜杠命令紧凑卡兼容新旧 CLI 标签顺序；识别不了一律原样回退
-- **代码块复制**：每个 code block 右上角"复制"按钮
+### 代码全景
+- 在仓所在的那台机器上现场解析代码，界面只收结果；本机和远端的仓都能看
+- 模块图、子系统图、调用子图、类型图；图下常驻一行说明看不见多少、分不清多少
+- 在图上批注，把选中的部分复制给 agent
 
-### 历史浏览器
-- 顶栏 `◷` 按钮 / `H` 切换；按**工作目录分组**展示
-- 项目组**默认折叠**；点击展开**懒加载**该项目的所有会话
-- **全文搜索**（issue #6）：顶栏切「全文」模式，搜所有会话的消息内容，命中片段高亮，点击跳进只读视图并定位；可选「含工具内容」，可按范围（user/assistant）/ 时间筛选
-- 每行操作：
-  - `★/☆` 标星
-  - `✎` 重命名（支持中文）
-  - `–/+` 隐藏 / 取消隐藏（不删 jsonl）
-  - `↺` 恢复（v2.8.1：新 **PowerShell** 窗口跑 `cc --resume`，无 `cc` 时回退 `claude`；加载 profile 故代理 / env 生效）
-  - `✕` 物理删除（二次确认；jsonl 文件被真删）
-- 点击会话条目进入**只读消息查看器**
-- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。**本地与远端会话都支持**（G6 起；后端侧 `--fork-session`，e2e `backend-fork` 在 CI 里）
+![代码全景](docs/screenshots/panorama.png)
 
-### 设置面板（,）
+### 账号与中转
+- 订阅号（Claude 官方登录）与 API 号（自选 URL ＋ key）统一管理
+- 两个号同时跑：各自一份登录凭据，skill、记忆、设置共享同一份
+- API 号的 key 只留在它所在的那台机器上，请求经那台的中转转发时才注入，不进命令行、不进环境变量
 
-**三页 + 机器详情子页**（落地在「机器」页）。
-⚠ **每页有哪些块、共几块，家在 `tests/frontend/ui/settings/panel-groups.vitest.ts`**
-—— 那里是逐页完整清单（机检，用完整相等断言，搬丢一块会红）。
-本节**刻意不复制那份清单**：它此前按「N 大折叠分组」逐条列出，而那套 IA 在 v3.5.0 重做后
-已不存在，「数据源 & 集成」里的 MCP 管理也早已搬去机器详情页 —— 一份没人看着的结构描述
-就是这个下场。
+### 资产
+- skill 和 MCP 可以在机器之间推拉；装之前先看差异，装上的可以卸
 
-- **应用**：行为（自动跟随切 Tab、是否拉前 monitor 窗口）· 快捷键（编辑器里自定义 action 的 chord，
-  **可用 action 数以 `src/frontend/ui/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
-  **几个以 `src/frontend/ui/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.cc-monitor/config.json`）·
-  日志与数据（Claude 数据目录三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`；tracing 等级 toggle +
-  log 路径 + 所有持久化路径透明展示）
-- **机器**：机器列表；每台机器的详情子页里是连接、**PowerShell `__ccm_bind` 一键装**、
-  **MCP 服务器管理**（F87：跨 scope 查看 user / local / 项目的 MCP server，写只改项目 `.mcp.json`）等
+### 别名与 `ccm`
+- 机器页一键装别名块（bash、zsh、fish、PowerShell），用 `cc` 起的会话能从 tab ↗ 跳回终端
+- `ccm` 是 `claude` 的壳，见下文
 
-### 终端跳焦（可选）
-- 每个 live Tab 有 ↗ 按钮 / `反引号` 调出对应终端窗口
-- 需要装 PowerShell 集成（设置面板内一键装），细节见下文「PowerShell 集成（可选）」
+---
 
-### 快捷键
+## 架构
 
-| 按键 | 作用 |
-|---|---|
-| **]** / **[** | 切下一个 / 上一个 Tab |
-| **1** .. **9** | 跳到第 N 个 Tab |
-| **W** | 关闭当前已结束的 Tab |
-| **E** | 打开当前 Tab 的工作目录（资源管理器） |
-| **`**（反引号） | 调出当前 Tab 对应的终端窗口 |
-| **H** | 打开 / 关闭历史浏览器 |
-| **G** | 打开 / 关闭代码全景图 |
-| **,** | 打开设置面板 |
-| **M** | 最小化主窗口 |
-| **F11** | 切换**真全屏**（borderless 覆盖任务栏；非字母键，中文输入法下也好用） |
-| **N** | 把当前 Tab 在独立窗口打开（issue #10；也可把 Tab 往标签栏下方拖出来） |
-| **T** | Task 面板开 / 关 |
-| **Ctrl+K** | 打开命令栏（命令面板：子串过滤只读命令 + 回车执行） |
-| **Esc** | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
+```mermaid
+flowchart LR
+  subgraph local["本机"]
+    UI["monitor 界面<br/>只负责显示"]
+    FW["文件窗口"]
+    LB["本机常驻后端 ccm<br/>全部 SSH · 中转 · 所有判断"]
+    PL["全景小程序<br/>按需起"]
+    T1["你的终端<br/>claude"]
+  end
+  subgraph remote["每台远端机器"]
+    RB["常驻后端 ccm<br/>与本机同一份代码"]
+    PR["全景小程序<br/>按需起"]
+    T2["终端 / tmux<br/>claude"]
+  end
+  UI <--> LB
+  FW <--> LB
+  LB <-- SSH --> RB
+  LB --> PL
+  RB --> PR
+  T1 -. 会话记录 · API 请求 .-> LB
+  T2 -. 会话记录 · API 请求 .-> RB
+```
 
-> **默认全为单键**——cc-monitor 是只读监视窗口，无需组合键。在输入框 / 历史搜索 / 重命名等可编辑处聚焦时，快捷键自动让位给打字（不会误触发）。全部 chord 可在 **设置 → 快捷键** 编辑器里改成任意组合键；另有 **6 个 action 默认未绑**（行为 toggle + **账号**切号/对齐——其中「对齐当前会话到当前账号」是**破坏性**重启，故意不给默认单键防误触），可在编辑器里手动赋键。
->
-> ⚠ **中文 / 东亚输入法**：处于中文输入模式时，裸字母键（**W / E / H / M / N / T**）会被输入法在 OS 层截走组字、快捷键收不到——按这些键前**先切英文输入法**，或在快捷键编辑器里改绑成带 `Ctrl`/`Alt` 的组合键 / 非字符键（如 `Delete`）。数字键 `1`–`9`、`[` `]`、`` ` ``、`Esc`、鼠标点 `×` 不受影响。
+- **一份后端，两种宿主**。本机和每台远端各跑一个常驻后端，是同一份代码。它读会话记录、管 SSH 连接、做全部判断，也负责写文件。
+- **界面只负责显示**。界面对后端只有两个动作：问一次（call）和订阅（subscribe）。界面进程自己不碰 SSH。
+- **代码全景就地计算**。在仓所在的那台机器上解析，线上只传结果，源码不离开那台机器。
+- **一台机器一个家**。cc-monitor 自己的东西都放在 `~/.cc-monitor/`；对 Claude Code 的 `~/.claude` 只读会话，只写你点名要装的资产。
+
+更细的说明见 [`src/doc/ARCHITECTURE.md`](src/doc/ARCHITECTURE.md)。
 
 ---
 
@@ -142,210 +111,109 @@
 
 ### 系统要求
 
-**共同前提**：[Claude Code CLI](https://github.com/anthropics/claude-code) 已安装并跑过至少一次。
+先装好 [Claude Code](https://github.com/anthropics/claude-code)，并至少跑过一次。
 
 | 平台 | 要求 |
 |---|---|
-| **Windows** 11 / 10 (1809+) | [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 自带，Win10 需安装） |
-| **Linux**（v3.4.0 起） | WebKitGTK 4.1（Debian/Ubuntu：`libwebkit2gtk-4.1-0`），`.deb` 会声明依赖 |
-
-> **这张表 2026-08-02 才补上 Linux。** 在此之前本节只写「系统要求：Windows 11 / 10」——
-> 而 `.deb` 从 v3.4.0 就在发了。一个 Linux 用户读到那一行就会直接走人，
-> 是「新用户流程走查」逮到的第一个卡点。
+| **Windows** 10（1809+）/ 11 | [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 11 自带） |
+| **Linux** x86_64 | WebKitGTK 4.1（Debian / Ubuntu：`libwebkit2gtk-4.1-0`，`.deb` 会自动装） |
+| **远端机器** | Linux / Unix，能 SSH 登录；想在后台跑会话就装 tmux。不用手动装任何东西 |
 
 ### 下载
 
-从 [Releases](https://github.com/bo0Zeng/cc-monitor/releases) 页下载最新版。
+从 [Releases](https://github.com/bo0Zeng/cc-monitor/releases) 下载最新版。
 
-**Windows**
-- `*-setup.exe` — NSIS 安装器（推荐普通用户）
-- `*_x64_en-US.msi` — MSI 包（适合企业 IT 部署）
-  > ⚠ **后缀是 `en-US`，不是 `zh-CN`** —— `tauri.conf.json` 没配 WiX 语言，走的是默认。
-  > 界面语言不受它影响。〔09-10 订正：本行先前写 `zh-CN`，而 v3.6.0 与 v3.7.0 的实际产物
-  > 逐字都是 `en-US` —— **照着找会找不到那个文件**。同一个事实 `src/`src/doc/RELEASING.md` 早就写对了，
-  > 是本行与 `src/`src/doc/BUILDING.md` 没跟。〕
-- `monitor.exe` — 裸 exe（需自管路径）
-  > 🔴 **它还少一块功能，不只是「路径要自己管」**〔09-10 在干净 Windows 机上实测〕：
-  > **本机后端跑不起来**。那个后端（`cc-monitor-backend.exe`）是**跟安装包一起装的另一个文件**，
-  > 裸 exe 旁边没有它 ⇒ 「本机也被当成一台机器」那一族功能用不了（**远端功能不受影响**）。
-  > 实测读数：装出来的那份跑着 **2** 个后端进程，裸 exe 是 **0** 个。
-  > ⚠ 应用**会告诉你**（日志里逐字「本机后端未启动」并列出它找过哪两个路径），不是静默少一块。
-  > ⇒ **要完整功能就用上面那两个安装包。** 让裸 exe 也自己带上后端这件事已经立了件、还没做。
+- **Windows**：`*-setup.exe`（推荐）· `*.msi`（适合批量部署）· `monitor.exe`（免安装）
+  未签名，第一次运行时 SmartScreen 会拦，点「更多信息 → 仍要运行」。
+- **Linux**：`cc-monitor_<版本>_amd64.deb`（`sudo apt install ./cc-monitor_<版本>_amd64.deb`）· `monitor`（免安装）
 
-双击运行；首次会提示 Windows SmartScreen "未知发布者"（未签名），选「更多信息 → 仍要运行」。
+校验和在 `SHA256SUMS.txt`（Windows）与 `SHA256SUMS-linux.txt`（Linux）。
 
-**Linux**
-- `cc-monitor_<version>_amd64.deb` — `sudo dpkg -i cc-monitor_<version>_amd64.deb`
-  （缺依赖时跟一句 `sudo apt-get -f install`）
-- `monitor` — 裸二进制（`chmod +x` 后直接跑；不带桌面项与图标）
+### 上手
 
-校验和在 `SHA256SUMS.txt`（Windows）/ `SHA256SUMS-linux.txt`（Linux）。
-
-### 首次使用
-
-1. **启动程序**
-   - Windows：开始菜单 / 桌面上的 **cc-monitor** 快捷方式
-     > ⚠ **可执行文件叫 `monitor.exe` 不是 `cc-monitor.exe`**（装在 `C:\Program Files\cc-monitor\`）——
-     > 与 Linux 那边同一个原因：可执行文件用的是 cargo 包名，快捷方式与窗口标题用 productName。
-     > 〔09-10 订正：本行先前写 `cc-monitor.exe`，而干净机上装完**盘上没有这个文件**（现打 0 处）；
-     > 快捷方式确实叫 `cc-monitor`，所以点它没事，但去目录里找会扑空。〕
-   - Linux：应用菜单里的 **cc-monitor**，或命令行 **`monitor`**
-     > ⚠ **命令名是 `monitor` 不是 `cc-monitor`** —— 可执行文件用的是 cargo 包名，
-     > 而窗口标题/桌面项用 productName `cc-monitor`。两个名字不一致是既有事实，
-     > 统一留给后续的仓库级重命名；这里先如实写出来，免得你 `cc-monitor` 敲不出东西。
-2. 任一终端跑 `claude`（cc-monitor 立刻多一个 Tab）
-3. 在 claude 里输入 → cc-monitor 200ms 内出现 user / assistant 消息
-4. 想要 Tab ↗ 跳焦终端 → Windows 见下文 PowerShell 集成；Linux/远端见「设置面板 → 机器」里的 ccm 助手
+1. 打开 cc-monitor（Linux 上的命令是 `monitor`）。
+2. 在任意终端里跑 `claude`，cc-monitor 里就多出一个 tab。
+3. 加远端机器：按 `,` 打开设置 → 机器 → 添加机器。连上之后，那台上的会话会自动出现。
+4. 想让 tab 上的 ↗ 跳回终端：在机器页装别名块，之后用 `cc` 起会话。
 
 ---
 
-## PowerShell 集成（可选）
+## `ccm` 命令
 
-为了让 **Tab ↗ / `反引号` 跳焦**能精确拉对应终端窗口，需要在你的 PowerShell profile 里装 `__ccm_bind` helper。
+每台机器上的 `~/.cc-monitor/bin/ccm` 就是那台的后端，也是 `claude` 的壳：
 
-1. 打开 cc-monitor → `,` 设置面板 → **PowerShell 集成**
-2. 选 profile 位置（下拉 5 项）：
-   - `PowerShell 5.1 - $PROFILE（默认）` — 装到 `Microsoft.PowerShell_profile.ps1`（CurrentUserCurrentHost），只有 powershell.exe 控制台读
-   - **`PowerShell 5.1 - 所有 host（profile.ps1）`** ⭐ 推荐 — VSCode 终端 / ISE / SSH 都生效
-   - PowerShell 7.x 同上两项
-   - 自定义路径
-3. **默认不勾选"同时安装 cc wrapper"** — 只装 `__ccm_bind` helper 不动你已有命令
-4. 点 [安装] → 重启 PowerShell
-5. 在你自己启动 claude 的 wrapper（function / 别名）开头加一行 `__ccm_bind`
+```
+ccm [交给 claude 的参数…] -- [ccm 自己的选项…]
+```
 
-如果你想让 cc-monitor 直接帮你建一个 cc wrapper：勾上"同时安装 cc wrapper"，装 `function cc { __ccm_bind; & claude $args }`，用 `cc` 启动 claude。**注意会覆盖** profile 里已有的同名 function。
+没有 `--` 时整行原样交给 claude。
 
-可以勾选"用 cc 启动 claude 时自动打开 monitor"。
-
-**安全保证**：[安装] 前自动备份原 profile 到 `<profile>.ccm-backup-<时间戳>`，写后回读校验，写入失败自动从备份恢复；用 Win32 `ReplaceFileW` API 保留原 NTFS ACL。设置选择持久化到 localStorage。
-
-不装这个完全 OK，只是 ↗ / `反引号` 不工作；实时渲染 / Tab / 历史浏览全都正常。
+```bash
+ccm                               # 等于 claude
+ccm -p "解释一下这个仓"            # 参数原样交给 claude
+ccm -- new --ccm-tmux             # 在一个新的 tmux 会话里起
+ccm --resume <会话ID> -- --ccm-tmux  # 接着上次的会话；已经在 tmux 里跑着就直接接上
+ccm -- --account work             # 用 work 这个账号起
+ccm -- --ccm-help                 # 全部选项
+```
 
 ---
 
-## 故障排查
+## 快捷键
 
-| 现象 | 排查 |
+单键即用，全部可以在「设置 → 快捷键」里改。
+
+| 键 | 作用 |
 |---|---|
-| 启动报 "WebView2 Runtime not found" | 安装 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) |
-| 跑 claude 后 Tab 不出现 | 检查 `~/.claude/sessions/` 下是否有 `<PID>.json` |
-| Tab ↗ / `反引号` 拉不出终端 | 没装 PowerShell 集成；或装了但 wrapper 里没调 `__ccm_bind` |
-| 装完 cc 集成跑 `cc` 提示绑定超时 | monitor 没在跑：先开 monitor 再开 PS；或设置面板勾选"自动打开 monitor" |
-| 装 cc 集成后 PowerShell 启动报 `Access to the path … is denied` | profile NTFS ACL 在旧版本被覆盖（v1.7.10 已修），用管理员 PS 跑 `icacls "<profile>" /grant "$env:USERDOMAIN\$env:USERNAME:(F)"` |
-| 历史浏览器 `↺` 恢复失败 | v2.8.1 起在 PowerShell 里跑 `cc`/`claude --resume`：确认 PowerShell profile 已装 `cc`（或 `claude` 在 PATH）；恢复窗口现在会加载 profile，代理 / `cc` 设置生效 |
-| Claude 数据装在非默认路径 | 设置面板 → 数据 → Claude 数据目录；或设 `CLAUDE_CONFIG_DIR` 环境变量后重启 |
+| `[` / `]` | 上一个 / 下一个 tab |
+| `1`–`9` | 跳到第 N 个 tab |
+| `` ` `` | 把对应的终端窗口切到前台 |
+| `H` | 打开 / 关闭历史 |
+| `G` | 打开 / 关闭代码全景 |
+| `T` | Task 面板 |
+| `E` | 打开当前 tab 的工作目录 |
+| `W` | 关闭已结束的 tab |
+| `,` | 设置 |
+| `Ctrl+K` | 命令栏 |
+| `Ctrl+F` | 在当前会话里查找 |
+| `F11` | 全屏 |
 
 ---
 
-## 项目结构
+## 数据放在哪
 
-```
-cc-monitor/
-├── src/                    前端 (Vanilla TS + Vite)
-│   ├── main.ts             入口：bindEvents + TabManager + 全局快捷键
-│   ├── events.ts           Tauri IPC listen + batch 调度
-│   ├── tabs.ts             多 Tab 管理 + active 同步 + behavior
-│   ├── record-timeline.ts  ⭐ v2.6 按 seq binary insert（取代 inPrependMode）
-│   ├── render-stream-record.ts ⭐ v2.6 三 caller 共享渲染管线 + tool-group 后处理
-│   ├── stream.ts           单 Tab 消息流 + stickToBottom
-│   ├── render.ts           marked + KaTeX + hljs + DOMPurify（opts.lazy 参数化）
-│   ├── branch-fold.ts      issue #8 ESC 回退分支折叠
-│   ├── branching.ts        Kahn 拓扑算 mainBranch
-│   ├── tasks-panel.ts      issue #11 Task 面板（status-bar chip + popover）
-│   ├── error-toast.ts      v2.0 ERROR 级 tracing 弹 toast + showActionFailureToast
-│   ├── local-storage.ts    ⭐ v2.6 LS_KEYS 集中 + safeGet/safeSet
-│   ├── format.ts           ⭐ v2.6 formatTimestampShort/Smart + formatBytes
-│   ├── remote-health.ts    远端健康 toast（overflow/version 按 origin 节流）
-│   ├── remote-launch.ts    B14-F41 远端命令构造纯函数（resume/attach/tmux/launcher）
-│   ├── remote-launch-run.ts B14-F41 远端拉起执行器（invoke → 失败回退复制命令）
-│   ├── turn-notify.ts      B14-F42 完成一轮系统通知（四门 + 权限懒检查）
-│   ├── cards/              卡片渲染：index, slash, bash, diff, api-error, interactive, compact, subagent
-│   ├── settings/           设置面板各组（含 B14 remote-section.ts 远端机器卡片 + F87 mcp-section.ts MCP 管理）
-│   ├── sftp/               B14-F47/F48/F49 SFTP 文件面板 overlay + 纯路径逻辑
-│   ├── keybindings/        issue #5 快捷键编辑器
-│   └── views/              历史浏览器 + SessionViewer + B14 pane-preview（F60 tmux 画面预览）/ port-forward（F58 端口转发台）+ F91 grid-monitor（多 agent 监控）+ F84 command-bar（命令栏）
-│
-├── src/frontend/shell/              后端 (Rust + Tauri 2)
-│   └── src/
-│       ├── lib.rs          setup + invoke_handler 注册
-│       ├── watcher.rs      jsonl 文件 watcher（per-file seq 单调）
-│       ├── event_replay.rs 启动重放 + chunked emit
-│       ├── parser.rs       JSONL 行解析（BOM 剥）
-│       ├── messages.rs     JsonlRecord enum schema
-│       ├── session_map.rs  ~/.claude/sessions/ 监听
-│       ├── bind.rs         PowerShell ps-await/ps-registry 握手
-│       ├── tasks.rs        issue #11 tasks watcher
-│       ├── history.rs      历史浏览器 IPC（流式）+ F62 从某轮建分支（原生 forkedFrom 格式）
-│       ├── launch.rs       B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起
-│       ├── ssh_source.rs   issue #15 russh 远端数据源（连接/鉴权/流帧 + 跳板 + daemonless 降级）
-│       ├── remote_history.rs 远端历史浏览 + 远端全文搜索（exec 后端子命令，多机 fan-out）
-│       ├── sftp.rs         SS-D 统一 SFTP 写层（#29 后端自动部署 + F11 删除 + F10 ccm）
-│       ├── sftp_pool.rs    B14-F47 SFTP 文件面板 utility 连接池 + 浏览/传输/写命令
-│       ├── pubkey.rs       B14-F50 公钥一键推送 authorized_keys
-│       ├── port_forward.rs B14-F58 本地端口转发(-L)管理台
-│       ├── tmux.rs         B14-F51/F60 tmux 反查 attach + 画面预览快照
-│       ├── profile_installer.rs PS profile 安装（ACL 保留）
-│       ├── auto_launch.rs  cc 启动时自动开 monitor
-│       ├── logging.rs      tracing + ErrorEmitter
-│       ├── data_paths.rs   issue #3 透明化所有持久路径
-│       ├── config.rs       config.json R/W ＋ Claude 数据目录三级回退（〔RE〕原 paths.rs 并进来）
-│       ├── ui_contract.rs       事件常量 + payload schema（含 v2.6 seq 字段）
-│       ├── subagent.rs     Task/Agent tool 子 jsonl 按需加载
-│       └── utils.rs        ⭐ days_from_civil + NetTicks/FileTime newtype + scan_dir_jsons + atomic_write_json + parse_iso8601_ms 等共享 helper
-│
-│
-├── src/backend/            后端本体（Rust，独立 Cargo 工程；本机与远端同一份）
-├── src/doc/                架构 + 协议 + 不变量等深度文档
-├── src/shared/             跨端共享的脚本与片段（cc-bus/ · ccm-aliases.sh）
-├── src/frontend/ui/generated/          ts-rs 从 Rust 类型导出的 .ts（**生成物，别手改**）
-│
-├── tests/                  🔴 **全部测试都在这儿**（顶层只有 src/ 与 tests/ 两个文件夹）
-│   ├── backend/            后端那半的测试（含原先混在生产文件里的那 19 份）
-│   ├── e2e/                真机验收套件（每套带 CI 通过数地板）
-│   │   └── tier2-rig.sh    tier-2 台架搭建器（Xvfb + 沙箱 dev 实例）
-│   ├── evidence/           🔴 **量具与历史记录** —— 带日期，描述的是当时那棵树，**不是现状**
-│   ├── scripts/            gate.sh · run.ps1 · 覆盖率地板 · 发版说明生成器
-│   ├── hooks/              pre-commit
-│   └── （其余目录与 src/ 对应：cards / views / settings / sftp / ipc / panorama / keybindings）
-│
-└── CHANGELOG.md            版本历史
-```
+| 位置 | 放什么 |
+|---|---|
+| `~/.cc-monitor/` | cc-monitor 的一切：配置、后端、日志、别名文件、API 号的 key（只给本人读写） |
+| `~/.claude/` | Claude Code 自己的目录。cc-monitor 只读会话记录，只写你点名要装的 skill / MCP |
+| `~/.claude-alt/` | 多账号的账号库（由 cc-acct-iso 管理），每个号一份登录凭据 |
 
-⭐ 标记的是 v2.6 B 重构新增 / 大改的模块。
+设置里的「数据位置」页列出每个文件的完整路径。
 
-## 文档
+---
 
-| 文档 | 给谁看 | 内容 |
-|---|---|---|
-| **本 README** | 用户 / 新贡献者第一站 | 安装 / 使用 / 故障排查 / 项目结构 |
-| [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史 |
-| [src/`src/doc/ARCHITECTURE.md`](src/`src/doc/ARCHITECTURE.md`) | 新贡献者深入第一站 | 数据流三条链 + 层边界（backend / 零轮询）+ 「为什么不能用别的方案」 |
-| [src/`src/doc/IPC-PROTOCOL.md`](src/`src/doc/IPC-PROTOCOL.md`) | 改协议的贡献者 | 跨进程文件 IPC + sessions/status + 远端 wire 完整 schema + 握手时序 |
-| [src/`src/doc/REMOTE-PHASE0-DEPLOY.md`](src/`src/doc/REMOTE-PHASE0-DEPLOY.md`) | 部署远端的人 | SSH 远端后端自动部署（#29）+ 手动部署 runbook（issue #15） |
-| [src/`src/doc/INVARIANTS.md`](src/`src/doc/INVARIANTS.md`) | 全员 | 全局不变量清单（零侵入 / 编码 / ACL / 顺序保证 / seq 单调） |
-| [src/`src/doc/STATE-MATRIX.md`](src/`src/doc/STATE-MATRIX.md`) | 改 IPC 命令的贡献者 | Tauri State 注册矩阵 + 修改规则 |
-| [src/`src/doc/CONTRIBUTING.md`](src/`src/doc/CONTRIBUTING.md`) | 贡献者 | 操作 checklist + cookbook（加 IPC / jsonl 类型 / 设置项 / 快捷键） |
-| [src/`src/doc/DEVELOPMENT.md`](src/`src/doc/DEVELOPMENT.md`) | 开发者 | dev 环境 / 端口冲突 / 调试技巧 |
-| [src/`src/doc/BUILDING.md`](src/`src/doc/BUILDING.md`) | 发版者 | 生产构建 / 打包 / Code Signing |
-| [src/`src/doc/RELEASING.md`](src/`src/doc/RELEASING.md`) | 发版者 | 发版 SOP + CHANGELOG 写法 |
-| [src/README.md](src/README.md) | 前端开发 | 前端模块导览 |
-| [src/frontend/shell/README.md](src/frontend/shell/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
-| [src/backend/README.md](src/backend/README.md) | 远端后端开发 | 只读后端模块导览 + wire 协议 |
-| [tests/scripts/README.md](tests/scripts/README.md) | 用脚本的人 | 脚本说明 |
-| [tests/e2e/README.md](tests/e2e/README.md) | E2E | 套件与 DEV 探针：跑法 / 前置 / 人工场景（WebView2 复核） |
+## 已知限制
+
+- Windows 上会话暂不能放后台、接回、看画面、往里送字；本机后端在 Windows 上随界面一起退出。
+- macOS、本机 Linux arm64 不在支持范围内（可以把它们当远端机器连）。
+- 多账号依赖的 cc-acct-iso 目前只支持 Linux。
+- 4.0.0 里几条 Windows 修复只经过自动化测试，没在真实 Windows 上复验，见 [CHANGELOG](CHANGELOG.md)。
+
+---
+
+## 开发
+
+- 构建与开发：[`src/doc/BUILDING.md`](src/doc/BUILDING.md) · [`src/doc/DEVELOPMENT.md`](src/doc/DEVELOPMENT.md)
+- 贡献：[`src/doc/CONTRIBUTING.md`](src/doc/CONTRIBUTING.md)
+- 更新记录：[`CHANGELOG.md`](CHANGELOG.md)
+- 各套测试的条数以实跑为准，跑法见 [`src/doc/DEVELOPMENT.md`](src/doc/DEVELOPMENT.md)
+- 发版前 CI 全绿；有哪些 job 见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ## 项目当前状态
 
 - **版本**：v4.0.0（Released）
-- **平台**：Windows 10 (1809+) / 11 · **Linux（`.deb`，v3.4.0 起随 release 一起发）**（远端后端跑 Linux x86_64 / aarch64）
-- **测试**：后端 cargo + vendor code-picture-core + 远端后端 + 前端 node 纯函数 + vitest（jsdom）+ e2e 脚本，CI job 全绿（`rust` / `frontend` / `backend` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust` / `rust-linux` / `weak-net`；⚠ 这份清单**没有判据数它全不全**，改 `ci.yml` 的 job 集合时要回来手动对一次 —— 它漏过 `weak-net`（从没进过清单）与 `rust-linux`（`15 §5.2 B4` 新加时没跟），两个都是 09-18 补的。⚠ 补的两个刻意**追加在队尾、不按 `ci.yml` 的顺序插队**：`doc_claim_registry` 的 `R61` 措辞例外表按**逐字片段**钉着本句前半段（`rust` … `e2e-smoke`），往中间插一个 job 名会让那条例外空转并当场判红；eslint/stylelint 是顾问式基线，覆盖率有地板棘轮）。
-  ⚠ **各项条数刻意不写在这里**（audit-0805 F18）：这个数在仓里曾有 4-5 份拷贝、全部漂成假的。
-  唯一真相是**实跑**（`src/`src/doc/DEVELOPMENT.md` 那张表给命令）与 `ci.yml` 里的**地板行**（那些有判据看着）
-- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~33K 行 TS〔另 ~18K 行测试〕 + ~35K 行 Rust + ~10K 行远端后端）
-- **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
-
----
+- 当前发布 **v4.0.0**：详见 [CHANGELOG](CHANGELOG.md)
 
 ## License
 
-[MIT](LICENSE) © 2026 cc-monitor contributors
+MIT
