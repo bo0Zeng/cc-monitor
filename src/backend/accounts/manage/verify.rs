@@ -17,11 +17,11 @@ struct Out {
 }
 
 impl Out {
-    fn push(&mut self, level: CheckLevel, account: Option<&str>, key: &str, args: &[(&str, &str)]) {
+    fn push(&mut self, level: CheckLevel, account: Option<&str>, text: String) {
         self.checks.push(VerifyCheck {
             level,
             account: account.map(str::to_string),
-            text: copy_text(key, args),
+            text,
         });
     }
 }
@@ -35,8 +35,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 None,
-                "beAcctVerify.global.noManifest",
-                &[("path", &r.manifest())],
+                copy_text("beAcctVerify.global.noManifest", &[("path", &r.manifest())]),
             );
             return finish(o);
         }
@@ -44,8 +43,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 None,
-                "beAcctVerify.global.badManifest",
-                &[("e", e)],
+                copy_text("beAcctVerify.global.badManifest", &[("e", e)]),
             );
             return finish(o);
         }
@@ -55,8 +53,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
         o.push(
             CheckLevel::Fail,
             None,
-            "beAcctVerify.global.roots",
-            &[("e", &e)],
+            copy_text("beAcctVerify.global.roots", &[("e", &e)]),
         );
         return finish(o);
     }
@@ -70,16 +67,15 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             && s.home_items
                 .get(super::layout::identity_config_file())
                 .is_some_and(Item::exists);
-        o.push(
-            CheckLevel::Warn,
-            None,
-            if split {
-                "beAcctVerify.global.inPlaceSplit"
-            } else {
-                "beAcctVerify.global.inPlace"
-            },
-            &[("shared", &shared_cj), ("home", &home_cj)],
-        );
+        let text = if split {
+            copy_text(
+                "beAcctVerify.global.inPlaceSplit",
+                &[("shared", &shared_cj), ("home", &home_cj)],
+            )
+        } else {
+            copy_text("beAcctVerify.global.inPlace", &[("home", &home_cj)])
+        };
+        o.push(CheckLevel::Warn, None, text);
     }
     if isolated {
         let mut zero = false;
@@ -92,31 +88,28 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                     o.push(
                         CheckLevel::Skip,
                         None,
-                        "beAcctVerify.global.residueInPlace",
-                        &[("item", item)],
+                        copy_text("beAcctVerify.global.residueInPlace", &[("item", item)]),
                     );
                 } else {
                     o.push(
                         CheckLevel::Fail,
                         None,
-                        "beAcctVerify.global.residue",
-                        &[("item", item), ("shared", &r.shared)],
+                        copy_text(
+                            "beAcctVerify.global.residue",
+                            &[("item", item), ("shared", &r.shared)],
+                        ),
                     );
                 }
             } else {
                 zero = true;
             }
         }
-        o.push(
-            CheckLevel::Ok,
-            None,
-            if zero {
-                "beAcctVerify.global.zeroIn"
-            } else {
-                "beAcctVerify.global.zeroOut"
-            },
-            &[],
-        );
+        let text = if zero {
+            copy_text("beAcctVerify.global.zeroIn", &[])
+        } else {
+            copy_text("beAcctVerify.global.zeroOut", &[])
+        };
+        o.push(CheckLevel::Ok, None, text);
         if !inplace
             && s.home_items
                 .get(super::layout::identity_config_file())
@@ -125,8 +118,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Warn,
                 None,
-                "beAcctVerify.global.homeConfig",
-                &[("path", &home_cj)],
+                copy_text("beAcctVerify.global.homeConfig", &[("path", &home_cj)]),
             );
         }
     }
@@ -135,8 +127,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 None,
-                "beAcctVerify.global.unknown",
-                &[("name", x)],
+                copy_text("beAcctVerify.global.unknown", &[("name", x)]),
             );
         }
     }
@@ -153,8 +144,10 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 n,
-                "beAcctVerify.acct.outside",
-                &[("path", c), ("accts", &r.accts)],
+                copy_text(
+                    "beAcctVerify.acct.outside",
+                    &[("path", c), ("accts", &r.accts)],
+                ),
             );
             continue;
         }
@@ -163,25 +156,32 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Fail,
                 n,
-                "beAcctVerify.acct.missing",
-                &[("path", c)],
+                copy_text("beAcctVerify.acct.missing", &[("path", c)]),
             );
             continue;
         }
         let in_place = *c == r.shared;
         match d.mode() {
-            Some(0o700) | None => o.push(CheckLevel::Ok, n, "beAcctVerify.acct.dirMode", &[]),
+            Some(0o700) | None => o.push(
+                CheckLevel::Ok,
+                n,
+                copy_text("beAcctVerify.acct.dirMode", &[]),
+            ),
             Some(mo) if in_place => o.push(
                 CheckLevel::Warn,
                 n,
-                "beAcctVerify.acct.dirModeInPlace",
-                &[("mode", &format!("{mo:o}"))],
+                copy_text(
+                    "beAcctVerify.acct.dirModeInPlace",
+                    &[("mode", &format!("{mo:o}"))],
+                ),
             ),
             Some(mo) => o.push(
                 CheckLevel::Fail,
                 n,
-                "beAcctVerify.acct.dirModeBad",
-                &[("mode", &format!("{mo:o}"))],
+                copy_text(
+                    "beAcctVerify.acct.dirModeBad",
+                    &[("mode", &format!("{mo:o}"))],
+                ),
             ),
         }
         for (item, _, secret) in identity() {
@@ -189,41 +189,48 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 Item::Link { .. } => o.push(
                     CheckLevel::Fail,
                     n,
-                    "beAcctVerify.acct.identityLink",
-                    &[("item", item)],
+                    copy_text("beAcctVerify.acct.identityLink", &[("item", item)]),
                 ),
                 Item::File { mode, .. } if secret && item == acct_core::CREDENTIALS_NAME => {
                     match mode {
                         Some(0o600) | None => o.push(
                             CheckLevel::Ok,
                             n,
-                            "beAcctVerify.acct.credOk",
-                            &[("item", item)],
+                            copy_text("beAcctVerify.acct.credOk", &[("item", item)]),
                         ),
                         Some(mo) => o.push(
                             CheckLevel::Fail,
                             n,
-                            "beAcctVerify.acct.credMode",
-                            &[("mode", &format!("{mo:o}"))],
+                            copy_text(
+                                "beAcctVerify.acct.credMode",
+                                &[("mode", &format!("{mo:o}"))],
+                            ),
                         ),
                     }
                 }
                 Item::Absent if item == acct_core::CREDENTIALS_NAME => {
                     if !a.is_api_key() {
-                        o.push(CheckLevel::Warn, n, "beAcctVerify.acct.notLoggedIn", &[]);
+                        o.push(
+                            CheckLevel::Warn,
+                            n,
+                            copy_text("beAcctVerify.acct.notLoggedIn", &[]),
+                        );
                     }
                 }
                 Item::Absent => {}
                 _ => o.push(
                     CheckLevel::Ok,
                     n,
-                    "beAcctVerify.acct.identityOwn",
-                    &[("item", item)],
+                    copy_text("beAcctVerify.acct.identityOwn", &[("item", item)]),
                 ),
             }
         }
         if in_place {
-            o.push(CheckLevel::Skip, n, "beAcctVerify.acct.inPlaceLinks", &[]);
+            o.push(
+                CheckLevel::Skip,
+                n,
+                copy_text("beAcctVerify.acct.inPlaceLinks", &[]),
+            );
         } else {
             let (mut missing, mut bad) = (0usize, false);
             for it in &items {
@@ -235,8 +242,10 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                         o.push(
                             CheckLevel::Fail,
                             n,
-                            "beAcctVerify.acct.linkWrong",
-                            &[("item", it), ("target", target), ("want", &want)],
+                            copy_text(
+                                "beAcctVerify.acct.linkWrong",
+                                &[("item", it), ("target", target), ("want", &want)],
+                            ),
                         );
                     }
                     Item::Link { dangling: true, .. } => {
@@ -248,16 +257,17 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                             o.push(
                                 CheckLevel::Warn,
                                 n,
-                                "beAcctVerify.acct.sourceBroken",
-                                &[("item", it), ("source", &want), ("target", target)],
+                                copy_text(
+                                    "beAcctVerify.acct.sourceBroken",
+                                    &[("item", it), ("source", &want), ("target", target)],
+                                ),
                             );
                         } else {
                             bad = true;
                             o.push(
                                 CheckLevel::Fail,
                                 n,
-                                "beAcctVerify.acct.linkBroken",
-                                &[("item", it)],
+                                copy_text("beAcctVerify.acct.linkBroken", &[("item", it)]),
                             );
                         }
                     }
@@ -267,8 +277,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                         o.push(
                             CheckLevel::Fail,
                             n,
-                            "beAcctVerify.acct.linkEntity",
-                            &[("item", it)],
+                            copy_text("beAcctVerify.acct.linkEntity", &[("item", it)]),
                         );
                     }
                 }
@@ -277,22 +286,25 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 o.push(
                     CheckLevel::Fail,
                     n,
-                    "beAcctVerify.acct.noShared",
-                    &[("shared", &r.shared)],
+                    copy_text("beAcctVerify.acct.noShared", &[("shared", &r.shared)]),
                 );
             } else if missing > 0 {
                 o.push(
                     CheckLevel::Fail,
                     n,
-                    "beAcctVerify.acct.linkMissing",
-                    &[("n", &missing.to_string())],
+                    copy_text(
+                        "beAcctVerify.acct.linkMissing",
+                        &[("n", &missing.to_string())],
+                    ),
                 );
             } else if !bad {
                 o.push(
                     CheckLevel::Ok,
                     n,
-                    "beAcctVerify.acct.linksOk",
-                    &[("n", &items.len().to_string())],
+                    copy_text(
+                        "beAcctVerify.acct.linksOk",
+                        &[("n", &items.len().to_string())],
+                    ),
                 );
             }
             for (base, it) in &d.entries {
@@ -305,8 +317,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 o.push(
                     CheckLevel::Warn,
                     n,
-                    "beAcctVerify.acct.unexpected",
-                    &[("item", base)],
+                    copy_text("beAcctVerify.acct.unexpected", &[("item", base)]),
                 );
             }
         }
@@ -315,17 +326,24 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                 o.push(
                     CheckLevel::Ok,
                     n,
-                    "beAcctVerify.acct.email",
-                    &[("email", e)],
+                    copy_text("beAcctVerify.acct.email", &[("email", e)]),
                 );
                 emails.push((a.name.clone(), e.to_string()));
             }
-            None => o.push(CheckLevel::Skip, n, "beAcctVerify.acct.noEmail", &[]),
+            None => o.push(
+                CheckLevel::Skip,
+                n,
+                copy_text("beAcctVerify.acct.noEmail", &[]),
+            ),
         }
     }
 
     if emails.len() < 2 {
-        o.push(CheckLevel::Skip, None, "beAcctVerify.iso.tooFew", &[]);
+        o.push(
+            CheckLevel::Skip,
+            None,
+            copy_text("beAcctVerify.iso.tooFew", &[]),
+        );
     } else {
         let mut dup = false;
         for (i, (na, ea)) in emails.iter().enumerate() {
@@ -335,8 +353,10 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
                     o.push(
                         CheckLevel::Fail,
                         None,
-                        "beAcctVerify.iso.dup",
-                        &[("a", na), ("b", nb), ("email", ea)],
+                        copy_text(
+                            "beAcctVerify.iso.dup",
+                            &[("a", na), ("b", nb), ("email", ea)],
+                        ),
                     );
                 }
             }
@@ -345,8 +365,10 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Ok,
                 None,
-                "beAcctVerify.iso.distinct",
-                &[("n", &emails.len().to_string())],
+                copy_text(
+                    "beAcctVerify.iso.distinct",
+                    &[("n", &emails.len().to_string())],
+                ),
             );
         }
     }
@@ -359,8 +381,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Warn,
                 None,
-                "beAcctVerify.drift.nowhere",
-                &[("item", item)],
+                copy_text("beAcctVerify.drift.nowhere", &[("item", item)]),
             );
         }
     }
@@ -375,8 +396,7 @@ pub(crate) fn verify(s: &Snapshot, names: &[String]) -> VerifyReport {
             o.push(
                 CheckLevel::Warn,
                 None,
-                "beAcctVerify.drift.secretLike",
-                &[("item", base)],
+                copy_text("beAcctVerify.drift.secretLike", &[("item", base)]),
             );
         }
     }

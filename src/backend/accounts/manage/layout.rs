@@ -140,8 +140,8 @@ impl Plan {
 /// 计划被拒：`(码, 那句话)`。码只有两个：`not_enabled`（还没有账号库）· `refused`（其余，句子说清为什么）。
 pub(crate) type Refusal = (&'static str, String);
 
-fn refused(key: &str, args: &[(&str, &str)]) -> Refusal {
-    ("refused", copy_text(key, args))
+fn refused(said: String) -> Refusal {
+    ("refused", said)
 }
 
 fn need_manifest(s: &Snapshot) -> Result<&Manifest, Refusal> {
@@ -160,16 +160,16 @@ fn need_manifest(s: &Snapshot) -> Result<&Manifest, Refusal> {
 
 fn check_name(name: &str) -> Result<(), Refusal> {
     if !super::model::name_ok(name) {
-        return Err(refused(
+        return Err(refused(copy_text(
             "beAcctPlan.name.shape",
             &[
                 ("name", &format!("{name:?}")),
                 ("max", &shell_quote_core::ACCOUNT_NAME_MAX.to_string()),
             ],
-        ));
+        )));
     }
     if name == ACCOUNT_ZERO {
-        return Err(refused("beAcctPlan.name.zero", &[]));
+        return Err(refused(copy_text("beAcctPlan.name.zero", &[])));
     }
     Ok(())
 }
@@ -196,15 +196,18 @@ fn link_all(plan: &mut Plan, s: &Snapshot, cfg: &str) {
 pub(crate) fn plan_init(s: &Snapshot, name: &str) -> Result<Plan, Refusal> {
     let r = s.roots();
     if s.manifest.is_some() {
-        return Err(refused(
+        return Err(refused(copy_text(
             "beAcctPlan.init.already",
             &[("path", &r.manifest())],
-        ));
+        )));
     }
     check_name(name)?;
     let cfg = join(&r.accts, name);
     if s.dir(&cfg).exists() {
-        return Err(refused("beAcctPlan.dir.exists", &[("path", &cfg)]));
+        return Err(refused(copy_text(
+            "beAcctPlan.dir.exists",
+            &[("path", &cfg)],
+        )));
     }
     let mut plan = Plan::default();
     plan.ops.push(Op::MkDir(r.accts.clone()));
@@ -224,10 +227,10 @@ pub(crate) fn plan_init(s: &Snapshot, name: &str) -> Result<Plan, Refusal> {
         };
         let Some((src, it)) = src else { continue };
         if let Item::Link { target, .. } = it {
-            return Err(refused(
+            return Err(refused(copy_text(
                 "beAcctPlan.init.linkedIdentity",
                 &[("path", &src), ("target", target)],
-            ));
+            )));
         }
         if item == identity_config_file() {
             email_dir = src.rsplit_once('/').map(|(d, _)| d.to_string());
@@ -283,11 +286,17 @@ pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Refusal> 
     let r = s.roots();
     check_name(&want.name)?;
     if m.name_taken(&want.name) {
-        return Err(refused("beAcctPlan.add.taken", &[("name", &want.name)]));
+        return Err(refused(copy_text(
+            "beAcctPlan.add.taken",
+            &[("name", &want.name)],
+        )));
     }
     let cfg = join(&r.accts, &want.name);
     if s.dir(&cfg).exists() {
-        return Err(refused("beAcctPlan.dir.exists", &[("path", &cfg)]));
+        return Err(refused(copy_text(
+            "beAcctPlan.dir.exists",
+            &[("path", &cfg)],
+        )));
     }
     let mut plan = Plan::default();
     plan.ops.push(Op::MkDir(cfg.clone()));
@@ -303,13 +312,21 @@ pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Refusal> 
     if let Some(src) = &want.cred_file {
         match s.files.get(src).unwrap_or(&Item::Absent) {
             Item::Link { .. } => {
-                return Err(refused("beAcctPlan.cred.link", &[("path", src)]));
+                return Err(refused(copy_text("beAcctPlan.cred.link", &[("path", src)])));
             }
             Item::File { size: 0, .. } => {
-                return Err(refused("beAcctPlan.cred.empty", &[("path", src)]));
+                return Err(refused(copy_text(
+                    "beAcctPlan.cred.empty",
+                    &[("path", src)],
+                )));
             }
             Item::File { .. } => {}
-            _ => return Err(refused("beAcctPlan.cred.missing", &[("path", src)])),
+            _ => {
+                return Err(refused(copy_text(
+                    "beAcctPlan.cred.missing",
+                    &[("path", src)],
+                )))
+            }
         }
         plan.ops.push(Op::Copy {
             from: src.clone(),
@@ -338,19 +355,22 @@ pub(crate) fn plan_remove(s: &Snapshot, name: &str, force: bool) -> Result<Plan,
     let m = need_manifest(s)?;
     let r = s.roots();
     if name == ACCOUNT_ZERO {
-        return Err(refused("beAcctPlan.remove.zero", &[]));
+        return Err(refused(copy_text("beAcctPlan.remove.zero", &[])));
     }
     let a = m
         .find(name)
-        .ok_or_else(|| refused("beAcctPlan.account.unknown", &[("name", name)]))?;
+        .ok_or_else(|| refused(copy_text("beAcctPlan.account.unknown", &[("name", name)])))?;
     if a.is_default && !force {
-        return Err(refused("beAcctPlan.remove.default", &[("name", name)]));
+        return Err(refused(copy_text(
+            "beAcctPlan.remove.default",
+            &[("name", name)],
+        )));
     }
     if !is_under(&a.config_dir, &r.accts) || a.config_dir == r.accts {
-        return Err(refused(
+        return Err(refused(copy_text(
             "beAcctPlan.remove.outside",
             &[("path", &a.config_dir), ("accts", &r.accts)],
-        ));
+        )));
     }
     let mut plan = Plan::default();
     if s.dir(&a.config_dir).exists() {
@@ -372,7 +392,7 @@ pub(crate) fn plan_set_default(s: &Snapshot, name: &str) -> Result<Plan, Refusal
     let m = need_manifest(s)?;
     let a = m
         .find(name)
-        .ok_or_else(|| refused("beAcctPlan.account.unknown", &[("name", name)]))?;
+        .ok_or_else(|| refused(copy_text("beAcctPlan.account.unknown", &[("name", name)])))?;
     let mut plan = Plan::default();
     if !a.is_default {
         plan.write(m.with_default(name));
@@ -478,15 +498,18 @@ pub(crate) fn plan_repair(s: &Snapshot) -> Result<Plan, Refusal> {
 /// **隔离**一项：共享库里的 `item` 复制成每个号自己的一份（号那一格是链接或不在的才动；共享库那份留着当模板）。
 pub(crate) fn plan_isolate(s: &Snapshot, item: &str) -> Result<Plan, Refusal> {
     if item.is_empty() || item.contains('/') || item == "." || item == ".." {
-        return Err(refused("beAcctPlan.isolate.badItem", &[("item", item)]));
+        return Err(refused(copy_text(
+            "beAcctPlan.isolate.badItem",
+            &[("item", item)],
+        )));
     }
     let m = need_manifest(s)?;
     let r = s.roots();
     if !s.shared.get(item).exists() {
-        return Err(refused(
+        return Err(refused(copy_text(
             "beAcctPlan.isolate.notShared",
             &[("item", item), ("shared", &r.shared)],
-        ));
+        )));
     }
     let mut plan = Plan::default();
     if !is_identity(item) {

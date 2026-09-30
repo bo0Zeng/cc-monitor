@@ -328,7 +328,7 @@ fn rollback(d: &dyn Door, snap: &Snapshot, a: &AccountRollbackArgs) -> Result<Do
                 "beAcctWire.rollback.partial",
                 &[
                     ("done", &done.len().to_string()),
-                    ("failed", &failed.join("；")),
+                    ("failed", &failed.join("\n")),
                     ("path", &b.path),
                 ],
             ),

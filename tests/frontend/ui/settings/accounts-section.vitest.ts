@@ -22,61 +22,39 @@ const fetchLocalAccountsMock = vi.fn();
 const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
-// 〔MIG-3a〕acct-iso 两问改走通道（`chan_call`，op = `acct-iso-status` / `acct-iso-shellinit`，那台后端出成品）：
-//   替身翻译层把那一发译回旧名交给 `invokeMock`（各条断言按旧名数「问了几次、问的哪台」），把它答的译成成品字节；
-//   它拒 ⇒ 译成那台后端拒绝（`Refused`，话原样带着）。
 // 〔FIX4 · ⑬〕开终端那三步（`terminal_dial` → `terminal-ssh` → `open_terminal_window`）经 `terminalShim` 译回旧的 `launch_remote_terminal`。
 vi.mock("@tauri-apps/api/core", async () => {
   const { isTerminalStep, terminalShim } = await import("../../../test-support/chan-fake");
   const term = terminalShim((...a: unknown[]) => invokeMock(...a));
   return {
-  invoke: (...a: unknown[]) => {
-    const [cmd, args] = a as [string, { origin?: string; op?: string } | undefined];
-    if (isTerminalStep(cmd, args)) return term(cmd, args);
-    const legacy = cmd === "chan_call" ? { "acct-iso-status": "acct_iso_status", "acct-iso-shellinit": "acct_iso_shellinit" }[args?.op ?? ""] : undefined;
-    if (legacy === undefined) return invokeMock(...a);
-    const bytes = (v: unknown) => {
-      const u = new TextEncoder().encode(JSON.stringify(v));
-      return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
-    };
-    return Promise.resolve(invokeMock(legacy, { origin: args?.origin })).then(
-      (v: unknown) => {
-        if (legacy === "acct_iso_shellinit") return bytes(typeof v === "string" ? { snippet: v } : v);
-        const o = (v ?? {}) as { installed?: unknown; path?: unknown };
-        return bytes(v === undefined ? {} : { installed: o.installed, path: o.path ?? null, looked: null });
-      },
-      (e: unknown) => {
-        throw { err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "x", message: String(e instanceof Error ? e.message : e) }))) };
-      },
-    );
-  },
+    invoke: (...a: unknown[]) => {
+      const [cmd, args] = a as [string, unknown];
+      if (isTerminalStep(cmd, args)) return term(cmd, args);
+      return invokeMock(...a);
+    },
   };
 });
+// 改账号库那几件都先在界面里确认：判据替用户答（默认「确定」），并记下问了什么。
+const askConfirmMock = vi.fn();
+vi.mock("../../../../src/frontend/ui/ask-dialog", () => ({ askConfirm: (...a: unknown[]) => askConfirmMock(...a) }));
 vi.mock("../../../../src/frontend/ui/error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { readFileSync } from "node:fs";
 // 〔US1〕API key 那两问改走通道（`chan_call`，op = `apikey-read` / `apikey-routing`）：判据按 op 分派、回成品字节。
-import { acctIsoCmdCase, acctIsoCmdInvoke, chanArgsJson, chanReply, isChanCall, type ChanCallArgs } from "../../../test-support/chan-fake";
+// 账号库那几条（`accounts-*`）由那台后端做：判据用罐头答（`accountsFakeInvoke`），只看界面问了哪台、交了什么意图。
+import { accountsFakeInvoke, chanArgsJson, chanReply, fakeLoginCmd, isAccountsOp, isChanCall, type ChanCallArgs } from "../../../test-support/chan-fake";
 
-// 〔DUP2 · J4〕cc-acct-iso 那几条命令由那台后端出（`acct-iso-cmd`）：判据照跨语言金样答（后端那侧逐条对生产函数），
-//   不在 JS 里再写一份命令构造。`cmdAnswered` = 这一趟里最后一问、金样给的那一行（「终端里跑的就是后端答的那一行」）。
-const isAcctIsoCmd = (c: unknown, a: unknown): a is ChanCallArgs => isChanCall(c as string, a, "acct-iso-cmd");
-function cmdAnswered(calls: Array<[string, unknown]>): string {
-  const last = [...calls].reverse().find(([c, a]) => isAcctIsoCmd(c, a));
-  if (!last) throw new Error("这一趟一次 acct-iso-cmd 都没问 —— 下面那条「跑的是后端答的那一行」是空真");
-  return acctIsoCmdCase(last[1] as ChanCallArgs).cmd!;
+/** 这一趟里问过的账号库命令：`[op, origin, 入参]`。 */
+function accountOps(calls: Array<[string, unknown]>): Array<[string, string, Record<string, unknown>]> {
+  return calls
+    .filter(([c, a]) => isAccountsOp(c, a))
+    .map(([, a]) => [(a as ChanCallArgs).op, (a as ChanCallArgs).origin, chanArgsJson(a as ChanCallArgs) as Record<string, unknown>]);
 }
 
 // 〔HX2 · 第四波 4D〕写 key 改走通道（`chan_call`，op = `apikey-key-set`）：判据把那一发译回「交给哪台 ＋ 交了什么」
 //   （`{origin, configDir, key, baseUrl?}`），断言照旧是那个形状；先前是 Tauri 命令 `write_apikey_credentials_key`〔散文墓碑〕的实参。
 const isKeySet = (c: unknown, a: unknown): boolean => isChanCall(c as string, a, "apikey-key-set");
-const keySetArgs = (a: unknown): Record<string, unknown> => {
-  const x = a as ChanCallArgs;
-  return { origin: x.origin, ...(chanArgsJson(x) as Record<string, unknown>) };
-};
-/** 那台后端写完回的成品（形状照 `apikey-key-set`：`account · path · masked · baseUrl`）。 */
-const KEY_SET_REPLY = { account: "x", path: "/h/x.json", masked: "sk-****", baseUrl: null };
 import {
   AccountsSection,
   renderApikeyEditor,
@@ -193,8 +171,9 @@ beforeEach(() => {
   // 〔AL1 · 2026-09-24〕从前本机那一支挂着一块「按账号生成命令」（挂上去就先预览一次），
   // 这里要给那条命令一个形状对的最小答案。那一块搬去了机器页 ⇒ 所有命令照旧回 `undefined`。
   invokeMock.mockReset().mockImplementation((cmd: unknown, args: unknown) =>
-    isAcctIsoCmd(cmd, args) ? acctIsoCmdInvoke(args) : Promise.resolve(undefined),
+    isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined),
   );
+  askConfirmMock.mockReset().mockResolvedValue(true);
   fetchAccountsMock.mockReset();
   // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
   // 想量别的态的用例自己在里面覆盖掉它。
@@ -251,69 +230,59 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
     expectNoReadyChrome(el);
   });
 
-  it("未启用多账号 + cc-acct-iso 已装 → 走部署向导，不渲染表", async () => {
+  it("未启用多账号 → 内联「启用多账号」，不渲染表；一件要装的东西都没有", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
-    invokeMock.mockResolvedValue({ installed: true }); // acct_iso_status（远端）：已装
     const el = await mount();
     expect(el.querySelector(".accounts-not-enabled")).not.toBeNull();
     expect(el.querySelector(".accounts-wizard")).not.toBeNull();
-    expect(el.querySelector(".accounts-needs-deploy")).toBeNull();
+    expect(el.querySelector(".accounts-needs-deploy"), "又长出了「先安装」那一块").toBeNull();
     expectNoReadyChrome(el);
   });
 
-  it("F5：未启用 + cc-acct-iso 未装 → 显一键部署（而非直接甩 init 向导）", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
-    invokeMock.mockResolvedValue({ installed: false }); // acct_iso_status（远端）：没装
-    const el = await mount();
-    const deploy = el.querySelector(".accounts-needs-deploy");
-    expect(deploy).not.toBeNull();
-    expect(deploy?.textContent).toContain("一键部署 cc-acct-iso");
-    expect(el.querySelector(".accounts-wizard")).toBeNull(); // 没装时不该甩 init 向导
-    expectNoReadyChrome(el);
-  });
-
-  // 〔MIG-3a · 09-28 预裁〕部署只一步：问那台后端 `acct-iso-install`（字节随它带着），monitor 一条部署命令都不调。
-  //   钉：问的是**那一台**、恰好一次、请求体为空；它的成品进了给人看的那句话。
-  it("F5：点部署 → 只问那台后端 acct-iso-install 恰好一次，不调任何 monitor 部署命令", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
+  // 启用：填名字 ⇒ 问那台后端预演（将要做的那几步上屏）⇒ 点「启用」⇒ 界面里确认 ⇒ 那台后端建库。一条终端都不开。
+  it("启用多账号：预演上屏 → 确认 → 只问那台后端 accounts-init，不开终端", async () => {
+    const calls: Array<[string, unknown]> = [];
     invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
-      if (cmd === "acct_iso_status") return Promise.resolve({ installed: false });
-      if (isChanCall(cmd as string, args, "acct-iso-install"))
-        return Promise.resolve(
-          chanReply({
-            dest: "/h/.cc-monitor/bin/cc-acct-iso",
-            version: "v1",
-            written: 6,
-            link: "/h/.local/bin/cc-acct-iso",
-            linked: true,
-            config: "/h/.cc-acct-iso/config",
-            configWritten: false,
-            recordFailed: null,
-          }),
-        );
-      return Promise.resolve(undefined);
+      calls.push([cmd as string, args]);
+      return isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined);
     });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
     const el = await mount();
-    const btn = el.querySelector<HTMLButtonElement>(".accounts-needs-deploy button");
-    expect(btn).not.toBeNull();
-    btn!.click();
-    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
-    const calls = invokeMock.mock.calls as Array<[string, unknown]>;
-    const landed = calls.filter(([c, a]) => isChanCall(c, a, "acct-iso-install")).map(([, a]) => a as ChanCallArgs);
-    expect(landed.map((a) => [a.origin, chanArgsJson(a)])).toEqual([["aya", {}]]);
-    expect(calls.filter(([c]) => typeof c === "string" && c.startsWith("deploy_")), "又调了 monitor 的部署命令").toEqual([]);
-    const said = vi.mocked(showActionFailureToast).mock.calls.map((c) => String(c[1])).join("\n");
-    expect(said).toContain(copyText("accounts.needsDeploy.landed", { version: "v1", dest: "/h/.cc-monitor/bin/cc-acct-iso", written: "6" }));
-    expect(said).toContain(copyText("accounts.needsDeploy.linked", { link: "/h/.local/bin/cc-acct-iso" }));
-    expect(said).toContain(copyText("accounts.needsDeploy.configKept", { config: "/h/.cc-acct-iso/config" }));
+    const input = el.querySelector<HTMLInputElement>(".accounts-wiz-name")!;
+    const btn = el.querySelector<HTMLButtonElement>(".accounts-wiz-btns button")!;
+    expect(btn.disabled, "名字没填就能点").toBe(true);
+    input.value = "z";
+    input.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(el.querySelector(".accounts-wiz-preview")?.textContent).toContain("（预演）accounts-init z");
+    expect(btn.disabled).toBe(false);
+    btn.click();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(askConfirmMock).toHaveBeenCalledTimes(1);
+    expect(String(askConfirmMock.mock.calls[0][0])).toContain("（预演）accounts-init z");
+    expect(accountOps(calls)).toEqual([
+      ["accounts-init", "aya", { name: "z", dryRun: true }],
+      ["accounts-init", "aya", { name: "z" }],
+    ]);
+    expect(calls.some(([c]) => c === "launch_remote_terminal"), "又去开终端替人敲命令").toBe(false);
   });
 
-  it("F5：探测 cc-acct-iso 失败 → 不堵死用户，回退 init 向导", async () => {
+  it("启用多账号：确认框点了取消 ⇒ 只预演、不建库", async () => {
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      calls.push([cmd as string, args]);
+      return isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined);
+    });
+    askConfirmMock.mockResolvedValue(false);
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
-    invokeMock.mockRejectedValue(new Error("ssh down")); // check 抛错
     const el = await mount();
-    expect(el.querySelector(".accounts-wizard")).not.toBeNull();
-    expect(el.querySelector(".accounts-needs-deploy")).toBeNull();
+    const input = el.querySelector<HTMLInputElement>(".accounts-wiz-name")!;
+    input.value = "z";
+    input.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    el.querySelector<HTMLButtonElement>(".accounts-wiz-btns button")!.click();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(accountOps(calls).map(([, , a]) => a)).toEqual([{ name: "z", dryRun: true }]);
   });
 
   it("拉账号抛错 → 一句失败说明，不炸", async () => {
@@ -509,8 +478,8 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(create, "找不到「创建」按钮 —— 下面那条是空真").toBeTruthy();
     expect(create!.classList.contains("danger")).toBe(false);
     expect(create!.className).toContain("settings-btn-primary");
-    // 整个账号分节里一颗红按钮都没有（remote ready 态：没有删账号动作）。
-    expect(el.querySelectorAll("button.danger").length).toBe(0);
+    // 红色只留给删账号：整个分节里的红按钮恰好是那一个号的「删除」。
+    expect([...el.querySelectorAll("button.danger")].map((b) => b.textContent)).toEqual([copyText("accounts.row.remove")]);
   });
 
   it("长 configDir 有 title 兜全文（列宽省略后仍可见）", async () => {
@@ -574,83 +543,101 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
   });
 });
 
-describe("Z05：rc 片段一键生成（待贴文本，绝不代写）", () => {
-  const FENCED =
-    "# ===== BEGIN cc-acct-iso =====\nexport CLAUDE_CONFIG_DIR='/h/.claude-accts/z'\n" +
-    "zcc() { CLAUDE_CONFIG_DIR='/h/.claude-accts/z' command claude \"$@\"; }\n" +
-    "0cc() { env -u CLAUDE_CONFIG_DIR command claude \"$@\"; }\n# ===== END cc-acct-iso =====\n";
-
-  const ready = (): AccountsState =>
-    state({ accounts: [acct({ name: "z" })], defaultName: "z" });
-
-  async function clickRc(resp: unknown, reject = false): Promise<HTMLElement> {
-    fetchAccountsMock.mockResolvedValue(ready());
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "acct_iso_shellinit"
-        ? reject
-          ? Promise.reject(new Error(String(resp)))
-          : Promise.resolve(resp)
-        : Promise.resolve(undefined),
-    );
-    const el = await mount();
-    const btn = [...el.querySelectorAll<HTMLButtonElement>("button")].find(
-      (b) => b.textContent === "生成 rc 片段…",
-    );
-    expect(btn, "维护区应有「生成 rc 片段…」按钮").toBeTruthy();
-    btn!.click();
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-    return el;
-  }
-
-  it("抓到完整片段 ⇒ 渲染成待贴块（走 T03 组件，不是手搓的复制按钮）", async () => {
-    const el = await clickRc(FENCED);
-    const block = el.querySelector(".paste-block");
-    expect(block, "必须是 T03 的 paste-block").toBeTruthy();
-    expect(el.querySelector<HTMLTextAreaElement>(".paste-block-out")?.value).toBe(FENCED);
-  });
-
-  it("★ 三句话都上屏（贴到哪 / 怎么合并 / 怎样才生效）", async () => {
-    const el = await clickRc(FENCED);
-    expect(el.querySelector(".paste-block-target")?.textContent).toContain(".bashrc");
-    expect(el.querySelector(".paste-block-merge")?.textContent).toContain("追加");
-    expect(el.textContent).toContain("source");
-  });
-
-  it("★ 半截片段（缺 END 围栏）⇒ 点复制被拦下并说明理由，且不碰剪贴板", async () => {
-    // `invalidReason` 是**点复制时**才求值的（组件设计：拒绝时绝不把半成品写进剪贴板），
-    // 所以断言要点到按钮上、读 toast，而不是去 DOM 里找文案。
-    const toast = vi.mocked(showActionFailureToast);
-    toast.mockClear();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
+describe("维护区：核对 / 修复 / 回滚都问那台后端，确认在界面里", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const ready = (): AccountsState => state({ accounts: [acct({ name: "z" })], defaultName: "z" });
+  function wire(over: Record<string, Record<string, unknown>> = {}): Array<[string, unknown]> {
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      calls.push([cmd as string, args]);
+      if (isAccountsOp(cmd as string, args)) return accountsFakeInvoke(args, over[(args as ChanCallArgs).op] ?? {});
+      return Promise.resolve(undefined);
     });
-    const el = await clickRc("# ===== BEGIN cc-acct-iso =====\nzcc() { :; }\n");
-    const copy = [...el.querySelectorAll<HTMLButtonElement>(".paste-block button")].find(
-      (b) => b.textContent === "复制",
-    );
-    expect(copy, "待贴块应有复制按钮").toBeTruthy();
-    copy!.click();
-    await new Promise((r) => setTimeout(r, 0));
-    const msgs = toast.mock.calls.map((c) => `${c[0]}|${c[1]}`).join(" ");
-    expect(msgs).toContain("还不能贴");
-    expect(msgs).toContain("片段不完整");
-    expect(writeText, "被拒时绝不能碰剪贴板").not.toHaveBeenCalled();
+    return calls;
+  }
+  const button = (el: HTMLElement, text: string): HTMLButtonElement => {
+    const b = [...el.querySelectorAll<HTMLButtonElement>(".accounts-maint-ops button")].find((x) => x.textContent === text);
+    expect(b, `维护区里找不到「${text}」`).toBeTruthy();
+    return b!;
+  };
+
+  it("维护区只有核对 / 修复 / 回滚三颗，没有「生成 rc 片段」与「补链 sync」那一套", async () => {
+    wire();
+    fetchAccountsMock.mockResolvedValue(ready());
+    const el = await mount();
+    const labels = [...el.querySelectorAll(".accounts-maint-ops button")].map((b) => b.textContent);
+    expect(labels).toEqual([
+      copyText("accounts.maintenance.verify"),
+      copyText("accounts.maintenance.sync"),
+      copyText("accounts.maintenance.rollback"),
+    ]);
+    expect(el.querySelector(".accounts-rc-paste")).toBeNull();
   });
 
-  it("抓取失败 ⇒ 不渲染任何待贴块（绝不给半截东西）", async () => {
-    const el = await clickRc("远端没能产出 rc 片段", true);
-    expect(el.querySelector(".paste-block")).toBeNull();
+  it("核对：问那台一次 accounts-verify，逐条列出来（有要修的就说几处）", async () => {
+    const calls = wire({
+      "accounts-verify": {
+        pass: false,
+        fails: 1,
+        warns: 0,
+        checks: [{ level: "fail", account: "z", text: "共享链接 skills 指向 /x" }],
+      },
+    });
+    fetchAccountsMock.mockResolvedValue(ready());
+    const el = await mount();
+    button(el, copyText("accounts.maintenance.verify")).click();
+    for (let i = 0; i < 3; i++) await tick();
+    expect(accountOps(calls)).toEqual([["accounts-verify", "aya", {}]]);
+    const report = el.querySelector(".accounts-maint-report")!;
+    expect(report.textContent).toContain(copyText("accounts.verify.fail", { fails: "1", warns: "0" }));
+    expect(report.textContent).toContain("x z：共享链接 skills 指向 /x");
   });
 
-  it("★ 绝不代写任何文件：整条路径上零 writeFile/写盘命令", async () => {
-    await clickRc(FENCED);
-    const written = invokeMock.mock.calls
-      .map(([c]) => String(c))
-      .filter((c) => /write|deploy|sftp|install/i.test(c));
-    expect(written, `不该有任何写入类命令：${written.join(",")}`).toEqual([]);
+  it("修复：先预演，确认框里列着那几步；确认了才真做，做完重读", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(ready());
+    const el = await mount();
+    const before = fetchAccountsMock.mock.calls.length;
+    button(el, copyText("accounts.maintenance.sync")).click();
+    for (let i = 0; i < 6; i++) await tick();
+    expect(accountOps(calls).map(([op, o, a]) => [op, o, a])).toEqual([
+      ["accounts-repair", "aya", { dryRun: true }],
+      ["accounts-repair", "aya", {}],
+    ]);
+    expect(String(askConfirmMock.mock.calls[0][0])).toContain("（预演）accounts-repair");
+    expect(fetchAccountsMock.mock.calls.length, "做完没重读").toBeGreaterThan(before);
+  });
+
+  it("修复：预演说没事可做 ⇒ 不问、不做", async () => {
+    const calls = wire({ "accounts-repair": { steps: [], applied: false, backup: null, aliases: null } });
+    fetchAccountsMock.mockResolvedValue(ready());
+    const el = await mount();
+    button(el, copyText("accounts.maintenance.sync")).click();
+    for (let i = 0; i < 4; i++) await tick();
+    expect(askConfirmMock).not.toHaveBeenCalled();
+    expect(accountOps(calls).map(([, , a]) => a)).toEqual([{ dryRun: true }]);
+  });
+
+  it("回滚：预演答出用哪份备份，确认后按那一份还原", async () => {
+    const calls = wire({ "accounts-rollback": { backup: "20260930-120000" } });
+    fetchAccountsMock.mockResolvedValue(ready());
+    const el = await mount();
+    button(el, copyText("accounts.maintenance.rollback")).click();
+    for (let i = 0; i < 6; i++) await tick();
+    expect(accountOps(calls).map(([, , a]) => a)).toEqual([{ dryRun: true }, { backup: "20260930-120000" }]);
+    expect(String(askConfirmMock.mock.calls[0][0])).toContain("20260930-120000");
+  });
+
+  it("★ 整条路上零写盘命令、零「开终端替你敲」：改账号库只经那台后端", async () => {
+    const calls = wire();
+    fetchAccountsMock.mockResolvedValue(ready());
+    const el = await mount();
+    for (const t of ["accounts.maintenance.verify", "accounts.maintenance.sync", "accounts.maintenance.rollback"] as const) {
+      button(el, copyText(t)).click();
+      for (let i = 0; i < 6; i++) await tick();
+    }
+    const names = calls.map(([c, a]) => (c === "chan_call" ? (a as ChanCallArgs).op : c));
+    expect(names.filter((n) => /write|save|patch|launch_remote_terminal|files-/.test(String(n)))).toEqual([]);
   });
 });
 
@@ -1224,133 +1211,74 @@ describe("S3：本机页就是本机（配了远端也一样）", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕A3 那两条本机命令接上界面（〔SH1〕今天是带 origin 的 `acct_iso_status` / `acct_iso_shellinit`，本机传 `<local>`）。
-// 两条今天零界面调用点（`设计/96` A3-4「界面接线」）。
+// 〔第三波 S3〕本机那一支的空态：没启用 ⇒ 就地启用（问本机后端 `accounts-init`）；启用着但零个号 ⇒ 新建表单。
+// 一件要装的东西都没有、一条要人手敲的维护命令都没有。
 // ─────────────────────────────────────────────────────────────────────────────
-describe("S3：本机那一支接上 A3 的两条本机命令", () => {
-  const FENCED =
-    "# ===== BEGIN cc-acct-iso =====\nexport CLAUDE_CONFIG_DIR='/h/.claude-accts/z'\n" +
-    "# ===== END cc-acct-iso =====\n";
-
+describe("S3：本机那一支的空态就地可用", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
   function noRemotes(): void {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     setCurrentMachine(LOCAL_ORIGIN); // 一台远端都没配 ⇒ 只有本机那一页
   }
-  /** 只答指名的那几条命令，其余一律 `undefined`（与本文件默认桩同形）。 */
-  function answer(table: Record<string, () => Promise<unknown>>): void {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd in table ? table[cmd]() : Promise.resolve(undefined),
-    );
-  }
-  // 〔SH1 · `00 §2.5 ①`〕acct-iso 本机 / 远端合成带 origin 的一条 ⇒ 「问的是本机还是远端」按 `origin` 分。
-  const originOf = (a: unknown): string | undefined => (a as { origin?: string } | undefined)?.origin;
-  const calledLocal = (cmd: string): number =>
-    invokeMock.mock.calls.filter(([c, a]) => c === cmd && originOf(a) === LOCAL_ORIGIN).length;
-  const calledRemote = (cmd: string): number =>
-    invokeMock.mock.calls.filter(([c, a]) => c === cmd && originOf(a) !== LOCAL_ORIGIN).length;
+  const off = (): AccountsState => localState({ accounts: [], meta: { ...state({}).meta!, enabled: false } });
 
-  it("★ 空态 · 装了 ⇒ 说装在哪（后端答的路径原样上屏），下一步是在终端里 init", async () => {
+  it("★ 没启用 ⇒ 本机那一块里就是启用向导（引言是本机的话），没有「先装」那一句", async () => {
     noRemotes();
-    answer({
-      acct_iso_status: () =>
-        Promise.resolve({ installed: true, path: "/h/.local/bin/cc-acct-iso", vendor_id: "v" }),
+    fetchLocalAccountsMock.mockResolvedValue(off());
+    const el = await mount();
+    const box = el.querySelector(".accounts-local")!;
+    expect(box.querySelector(".accounts-wizard"), "本机没启用时没有启用向导").not.toBeNull();
+    expect(box.querySelector(".accounts-ne-title")?.textContent).toBe(copyText("accountsLocal.init.title"));
+    expect(box.textContent ?? "").not.toContain("远端");
+    expect(box.querySelector(".accounts-needs-deploy")).toBeNull();
+  });
+
+  it("★ 没启用 · 填名字点启用 ⇒ 问的是**本机**那台后端 accounts-init（先预演、确认后才做）", async () => {
+    noRemotes();
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      calls.push([cmd as string, args]);
+      return isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined);
     });
+    fetchLocalAccountsMock.mockResolvedValue(off());
     const el = await mount();
-    expect(calledLocal("acct_iso_status"), "空态没去问本机装没装").toBe(1);
-    expect(calledRemote("acct_iso_status"), "本机那一支去问了远端").toBe(0);
-    const iso = el.querySelector(".accounts-local-iso")?.textContent ?? "";
-    expect(iso).toBe(copyText("accountsLocal.acctIso.installed", { path: "/h/.local/bin/cc-acct-iso" }));
-    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
-      copyText("accountsLocal.acctIso.initNext"),
-    );
+    const input = el.querySelector<HTMLInputElement>(".accounts-local .accounts-wiz-name")!;
+    input.value = "main";
+    input.dispatchEvent(new Event("input"));
+    for (let i = 0; i < 3; i++) await tick();
+    el.querySelector<HTMLButtonElement>(".accounts-local .accounts-wiz-btns button")!.click();
+    for (let i = 0; i < 6; i++) await tick();
+    expect(accountOps(calls)).toEqual([
+      ["accounts-init", LOCAL_ORIGIN, { name: "main", dryRun: true }],
+      ["accounts-init", LOCAL_ORIGIN, { name: "main" }],
+    ]);
   });
 
-  it("★ 空态 · 没装 ⇒ 说没装，下一步照旧是「装 + 初始化」那一句", async () => {
+  it("★ 启用着但零个号 ⇒ 下一步那一句 ＋ 本机的新建表单", async () => {
     noRemotes();
-    answer({
-      acct_iso_status: () => Promise.resolve({ installed: false, path: null, vendor_id: "v" }),
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [] }));
+    const el = await mount();
+    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(accounts.LOCAL_ACCOUNTS_COPY.emptyNext);
+    expect(el.querySelector(".accounts-local .accounts-new"), "零个号时没有新建表单").not.toBeNull();
+    expect(el.querySelector(".accounts-local .accounts-wizard")).toBeNull();
+  });
+
+  it("★ 有号 ⇒ 本机那一块也有维护区（核对问的是本机后端），没有「生成 rc 片段」", async () => {
+    noRemotes();
+    const calls: Array<[string, unknown]> = [];
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
+      calls.push([cmd as string, args]);
+      return isAccountsOp(cmd as string, args) ? accountsFakeInvoke(args) : Promise.resolve(undefined);
     });
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
-    expect(el.querySelector(".accounts-local-iso")?.textContent).toBe(
-      copyText("accountsLocal.acctIso.missing"),
-    );
-    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
-      accounts.LOCAL_ACCOUNTS_COPY.emptyNext,
-    );
-  });
-
-  it("★ 空态 · 问不出来 ⇒ 说问不出来 ＋ 原因；不许当成「装了」也不许当成「没装」", async () => {
-    noRemotes();
-    answer({ acct_iso_status: () => Promise.reject(new Error("本机后端不在")) });
-    const el = await mount();
-    const iso = el.querySelector(".accounts-local-iso")?.textContent ?? "";
-    expect(iso).toContain("本机后端不在");
-    expect(iso).not.toBe(copyText("accountsLocal.acctIso.missing"));
-    expect(el.querySelector(".accounts-local-empty-next")?.textContent).toBe(
-      accounts.LOCAL_ACCOUNTS_COPY.emptyNext,
-    );
-    expect(el.textContent ?? "").not.toContain(copyText("accountsLocal.acctIso.initNext"));
-  });
-
-  it("★ 三个结局两两不同（只断「调了」的话，三档写成同一句也全绿）", async () => {
-    const seen: string[] = [];
-    for (const r of [
-      () => Promise.resolve({ installed: true, path: "/p", vendor_id: "v" }),
-      () => Promise.resolve({ installed: false, path: null, vendor_id: "v" }),
-      () => Promise.reject(new Error("x")),
-    ]) {
-      noRemotes();
-      answer({ acct_iso_status: r });
-      const el = await mount();
-      seen.push(
-        `${el.querySelector(".accounts-local-iso")?.textContent}|${el.querySelector(".accounts-local-empty-next")?.textContent}`,
-      );
-    }
-    expect(new Set(seen).size).toBe(3);
-  });
-
-  it("★ 有号 ⇒ 不问装没装；「生成 rc 片段」走本机那条命令，渲染成待贴块", async () => {
-    noRemotes();
-    fetchLocalAccountsMock.mockResolvedValue(
-      localState({ accounts: [acct({ name: "z" })], defaultName: "z" }),
-    );
-    answer({ acct_iso_shellinit: () => Promise.resolve(FENCED) });
-    const el = await mount();
-    expect(calledLocal("acct_iso_status"), "已启用还去问装没装").toBe(0);
-    const btn = [...el.querySelectorAll<HTMLButtonElement>(".accounts-local button")].find(
-      (b) => b.textContent === copyText("accountsLocal.rc.action"),
-    );
-    expect(btn, "本机那一块没有「生成 rc 片段」").toBeTruthy();
-    expect(calledLocal("acct_iso_shellinit"), "没点就去抓了").toBe(0);
-    btn!.click();
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(calledLocal("acct_iso_shellinit")).toBe(1);
-    expect(calledRemote("acct_iso_shellinit"), "本机那一支去抓了远端的片段").toBe(0);
-    expect(el.querySelector<HTMLTextAreaElement>(".accounts-local .paste-block-out")?.value).toBe(FENCED);
-    // 待贴块上的三句话也是本机口吻：一个「远端」都没有。
-    const txt = el.querySelector(".accounts-local .paste-block")?.textContent ?? "";
-    expect(txt.length).toBeGreaterThan(10);
-    expect(txt).not.toContain("远端");
-    expect(txt).toContain(copyText("accountsLocal.rc.target"));
-  });
-
-  it("★ 抓取失败 ⇒ 不渲染任何待贴块，原因进提示", async () => {
-    noRemotes();
-    fetchLocalAccountsMock.mockResolvedValue(
-      localState({ accounts: [acct({ name: "z" })], defaultName: "z" }),
-    );
-    answer({ acct_iso_shellinit: () => Promise.reject(new Error("没跑过 init")) });
-    const toast = vi.mocked(showActionFailureToast);
-    toast.mockClear();
-    const el = await mount();
-    [...el.querySelectorAll<HTMLButtonElement>(".accounts-local button")]
-      .find((b) => b.textContent === copyText("accountsLocal.rc.action"))!
-      .click();
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(el.querySelector(".paste-block")).toBeNull();
-    expect(toast.mock.calls.map((c) => String(c[1])).join(" ")).toContain("没跑过 init");
+    expect(el.querySelector(".accounts-local-rc")).toBeNull();
+    const verify = [...el.querySelectorAll<HTMLButtonElement>(".accounts-local .accounts-maint-ops button")].find(
+      (b) => b.textContent === copyText("accounts.maintenance.verify"),
+    )!;
+    verify.click();
+    for (let i = 0; i < 3; i++) await tick();
+    expect(accountOps(calls)).toEqual([["accounts-verify", LOCAL_ORIGIN, {}]]);
   });
 });
 
@@ -1439,8 +1367,8 @@ describe("S3：本机清单的徽章说本机那一半的真话", () => {
 //
 // 病（件文件 `§0a` / 定框 `N2` 09-05 订正段，本族开工时逐条现打复核过）：
 // `computeGaps` 的入参里本来就有 `LOCAL_MACHINE_KEY`，而 `notApplicable` 只把本机的
-// `backend` / `connection` 排掉 ⇒ 本机的 `acctIso` / `accounts` 是**适用**的两格；
-// 可它们的唯一写点 `AccountsSection.note()` 第一行是 `if (!this.origin) return`，
+// `backend` / `connection` 排掉 ⇒ 本机的账号那一格是**适用**的；
+// 可它的唯一写点 `AccountsSection.note()` 第一行是 `if (!this.origin) return`，
 // 而本机这条路上 `origin` 恒空 ⇒ 那两格**永远停在「没测过」**，
 // 于是 `summarizeGaps` 恒非 null，`remote-section` 里「全绿就整块不出现」那一支是死代码。
 //
@@ -1503,90 +1431,64 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     });
     expect(
       before.map((g) => `${g.facet}:${g.kind}`),
-      "本机的适用格不是恰好这四格 —— 下面几条的题面就得重写",
-    ).toEqual(["backend:unknown", "ccm:unknown", "acctIso:unknown", "accounts:unknown"]);
+      "本机的适用格不是恰好这三格 —— 下面几条的题面就得重写",
+    ).toEqual(["backend:unknown", "ccm:unknown", "accounts:unknown"]);
   });
 
   // ---- 三档各写各的 ----
 
-  it("★ NF2D2 档一（读出来了·有号）：两格都 ok，且账号那格说得出是几个", async () => {
+  it("★ NF2D2 档一（读出来了·有号）：账号那格 ok，且说得出是几个", async () => {
     const led = await localLedgerAfter(threeLocal());
-    expect(shape(led)).toEqual({
-      accounts: { kind: "ok", detail: "3 个" },
-      acctIso: { kind: "ok", detail: "已装" },
-    });
+    expect(shape(led)).toEqual({ accounts: { kind: "ok", detail: "3 个" } });
   });
 
-  it("★ NF2D2 档一（读出来了·零个号）：清单读到了 = ok；装没装问不出来 = fail —— 两格不许合成一句", async () => {
-    // 「读到了但一个号都没有」与「读不出来」是两件事：前者 accounts 该绿。〔VIS2〕acctIso 记装没装（本文件默认桩答 `undefined` ⇒ 问不出来）。
+  it("★ NF2D2 档一（读出来了·零个号）：清单读到了 = ok（与「读不出来」不是一回事）", async () => {
     const led = await localLedgerAfter(localState({ accounts: [] }));
-    expect(shape(led)).toEqual({
-      accounts: { kind: "ok", detail: "已读取" },
-      acctIso: { kind: "fail", detail: "查不出来" },
-    });
+    expect(shape(led)).toEqual({ accounts: { kind: "ok", detail: "已读取" } });
   });
 
-  it("★ NF2D2 档二（后端不在）：两格 fail，且 detail 说得出是这一档", async () => {
+  it("★ NF2D2 档二（后端不在）：fail，且 detail 说得出是这一档", async () => {
     const led = await localLedgerAfter(
       localState({ available: false, error: "本机后端不在，问不出…", accounts: [] }),
     );
-    expect(shape(led)).toEqual({
-      accounts: { kind: "fail", detail: "后端不在" },
-      acctIso: { kind: "fail", detail: "后端不在" },
-    });
+    expect(shape(led)).toEqual({ accounts: { kind: "fail", detail: "后端不在" } });
   });
 
-  it("★ NF2D2 档三（读不动）：两格 fail，且 detail 与上一档**不同**", async () => {
+  it("★ NF2D2 档三（读不动）：fail，且 detail 与上一档**不同**", async () => {
     const led = await localLedgerAfter(new Error("backend down"));
-    expect(shape(led)).toEqual({
-      accounts: { kind: "fail", detail: "读不动" },
-      acctIso: { kind: "fail", detail: "读不动" },
-    });
+    expect(shape(led)).toEqual({ accounts: { kind: "fail", detail: "读不动" } });
   });
 
-  /** 〔VIS2 · `设计/15 §4.5` 缺口二，主会话裁乙〕`acctIso` 记「装没装」，「启用没启用」记在 `accounts`（没启用 ⇒ fail「多账号没启用」）。期望逐行手写。 */
-  it("★ VIS2 缺口二：acctIso 记装没装、启用没启用记在 accounts —— 远端本机逐行", async () => {
+  /** 〔VIS2 · `设计/15 §4.5` 缺口二〕「启用没启用」记在 `accounts`（没启用 ⇒ fail「多账号没启用」）。远端本机逐行，期望逐行手写。 */
+  it("★ VIS2 缺口二：启用没启用记在 accounts —— 远端本机逐行", async () => {
     const off = (p: Partial<AccountsState> = {}) => ({
       ...p,
       meta: { ...state({}).meta!, enabled: false },
     });
-    const probe = (cmd: string, r: () => Promise<unknown>) =>
-      invokeMock.mockImplementation((c: string) => (c === cmd ? r() : Promise.resolve(undefined)));
-    const remote = async (st: AccountsState, r: () => Promise<unknown>) => {
+    const remote = async (st: AccountsState) => {
       localStorage.clear();
       readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
       setCurrentMachine("aya");
       fetchAccountsMock.mockReset().mockResolvedValue(st);
-      probe("acct_iso_status", r); // 〔合并 SH1〕本机远端合成带 origin 的一条
       await mount();
       return shape(readStatus(host().label));
     };
-    const local = async (st: AccountsState, r: () => Promise<unknown>) => {
+    const local = async (st: AccountsState) => {
       localStorage.clear();
-      probe("acct_iso_status", r);
       return shape(await localLedgerAfter(st));
     };
-    const yes = () => Promise.resolve({ installed: true, path: "/p", vendor_id: "v" });
-    const no = () => Promise.resolve({ installed: false, path: null, vendor_id: "v" });
-    const boom = () => Promise.reject(new Error("ssh down"));
     const multiOff = { kind: "fail", detail: "多账号没启用" };
     const got = [
-      await remote(state(off()), yes),
-      await remote(state(off()), no),
-      await remote(state(off()), boom),
-      await remote(state({ accounts: [acct({ name: L1 })], defaultName: L1 }), boom),
-      await local(localState(off()), yes),
-      await local(localState(off()), no),
-      await local(threeLocal(), boom),
+      await remote(state(off())),
+      await remote(state({ accounts: [acct({ name: L1 })], defaultName: L1 })),
+      await local(localState(off())),
+      await local(threeLocal()),
     ];
     expect(got).toEqual([
-      { accounts: multiOff, acctIso: { kind: "ok", detail: "已装" } },
-      { accounts: multiOff, acctIso: { kind: "fail", detail: "没装" } },
-      { accounts: multiOff, acctIso: { kind: "fail", detail: "查不出来" } },
-      { accounts: { kind: "ok", detail: "1 个" }, acctIso: { kind: "ok", detail: "已装" } },
-      { accounts: multiOff, acctIso: { kind: "ok", detail: "已装" } },
-      { accounts: multiOff, acctIso: { kind: "fail", detail: "没装" } },
-      { accounts: { kind: "ok", detail: "3 个" }, acctIso: { kind: "ok", detail: "已装" } },
+      { accounts: multiOff },
+      { accounts: { kind: "ok", detail: "1 个" } },
+      { accounts: multiOff },
+      { accounts: { kind: "ok", detail: "3 个" } },
     ]);
   });
 
@@ -1603,9 +1505,8 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     const seen: string[] = [];
     for (const [, st] of cases) {
       const led = await localLedgerAfter(st);
-      // 两格都得写到 —— 漏一格，那一格就还停在「没测过」。
+      // 那一格得写到 —— 漏了，它就还停在「没测过」。
       expect(led.accounts, "accounts 这一格没被写").toBeDefined();
-      expect(led.acctIso, "acctIso 这一格没被写").toBeDefined();
       seen.push(JSON.stringify(shape(led)));
     }
     expect(seen.length, "分母塌了 —— 一档都没跑").toBe(3);
@@ -1616,12 +1517,12 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   });
 
   /**
-   * ⚠ 射程逐字写清（`K-R59` 09-11 收窄）：本条只管**本分节负责的那两格**
-   * （`acctIso` / `accounts`）。本机的 `backend` 从 09-11 起也是一格适用的，
+   * ⚠ 射程逐字写清（`K-R59` 09-11 收窄）：本条只管**本分节负责的那一格**
+   * （`accounts`）。本机的 `backend` 从 09-11 起也是一格适用的，
    * 但它的写点在 `remote-section.ts::noteLocalBackend` —— 这一族**一次都没跑过它**，
    * 把它算进来只会得到一条恒红，而且红的是别人的账。
    */
-  it("★ NF2D2 本机侧总账：三档跑完，本分节那两格**没有一档**还停在「没测过」", async () => {
+  it("★ NF2D2 本机侧总账：三档跑完，本分节那一格**没有一档**还停在「没测过」", async () => {
     for (const st of [
       threeLocal(),
       localState({ accounts: [] }),
@@ -1634,7 +1535,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
         statusOf: readStatus,
       });
       // 「没测过」= `unknown`。测过了但确认缺（`missing`）是另一回事，这条不管那个。
-      const mine = new Set(["acctIso", "accounts"]);
+      const mine = new Set(["accounts"]);
       expect(
         gaps
           .filter((g) => g.kind === "unknown" && mine.has(g.facet))
@@ -1693,10 +1594,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     expect(
       await remote(() => fetchAccountsMock.mockResolvedValue(state({ accounts: [] }))),
       "未启用那一支",
-    ).toEqual({
-      accounts: { kind: "ok", detail: "已读取" },
-      acctIso: { kind: "fail", detail: "查不出来" },
-    });
+    ).toEqual({ accounts: { kind: "ok", detail: "已读取" } });
 
     expect(
       await remote(() =>
@@ -1705,10 +1603,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
         ),
       ),
       "已启用那一支",
-    ).toEqual({
-      accounts: { kind: "ok", detail: "2 个" },
-      acctIso: { kind: "ok", detail: "已装" },
-    });
+    ).toEqual({ accounts: { kind: "ok", detail: "2 个" } });
   });
 
   // ---- `NF2D3`：从**真的一次面板运行**接到「整块该不该出现」 ----
@@ -1716,12 +1611,11 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D3：本机全绿 + 一台远端都没有 ⇒ summarizeGaps 返回 null（那一块整块不出现的前提）", async () => {
     // 分母写清（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1（本机），**不是空清单**；
-    //   · 这台机的适用格 = { backend, ccm, acctIso, accounts }（connection 不适用）—— 上面那条「地板」用例已把这个集合逐项断过；
-    //   · `acctIso` / `accounts` 两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
+    //   · 这台机的适用格 = { backend, ccm, accounts }（connection 不适用）—— 上面那条「地板」用例已把这个集合逐项断过；
+    //   · `accounts` 那一格由**真的一次面板运行**写绿，账本不是手工摆出来的。
     const led = await localLedgerAfter(threeLocal());
-    expect(shape(led), "前提没成立：这一次面板运行没把两格写绿").toEqual({
+    expect(shape(led), "前提没成立：这一次面板运行没把那一格写绿").toEqual({
       accounts: { kind: "ok", detail: "3 个" },
-      acctIso: { kind: "ok", detail: "已装" },
     });
     // ⚠ 第三格（`K-R59` 新算数的 `backend`）**不归本分节写**：它的生产写点是
     //   `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 用真的一次
@@ -1749,7 +1643,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       origins: [LOCAL_MACHINE_KEY],
       statusOf: readStatus,
     });
-    expect(gaps.map((g) => g.facet)).toEqual(["backend", "ccm", "acctIso", "accounts"]);
+    expect(gaps.map((g) => g.facet)).toEqual(["backend", "ccm", "accounts"]);
     const s = summarizeGaps(gaps);
     expect(s).not.toBeNull();
     expect(s, "回到旧行为时它该说「还没测过」").toContain("还没测过");
@@ -1758,171 +1652,150 @@ describe("N-F2 本机那两格真的被写进账本", () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A2（`设计/70 §8` 判据 #9）：**账号一步建成** —— 填名字 + 选「第三方 apikey」+ 填 key → 点创建
-// ⇒ 终端里跑的是建号那一条；这个号出现在列表里之后，apikey 表里有它那一行（configDir 是**它自己的**）。
-// **中途不需要去第二个控件选账号。**
+// ⇒ 那台后端一趟做完（建目录 · 链接 · 清单 · key 进 apikey 表 · 别名）。**中途不需要去第二个控件选账号，也不开终端。**
 // ─────────────────────────────────────────────────────────────────────────────
-describe("A2：新建账号一张表单 ⇒ 建号 ＋ 写 apikey 串成一次操作", () => {
+describe("A2：新建账号一张表单 ⇒ 那台后端一趟建好", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
-  const B_DIR = "/h/.claude-accts/dir-of-b"; // 末段刻意 ≠ 名字（见 K-H2a 那一族的理由）
 
-  function wire(opts: { launchFails?: boolean } = {}) {
+  function wire(over: Record<string, unknown> = {}, launchFails = false) {
     const calls: Array<[string, unknown]> = [];
     invokeMock.mockImplementation((cmd: unknown, args: unknown) => {
       calls.push([cmd as string, args]);
-      if (cmd === "launch_remote_terminal" && opts.launchFails) {
-        return Promise.reject(new Error("没有终端"));
-      }
+      if (cmd === "launch_remote_terminal" && launchFails) return Promise.reject(new Error("没有终端"));
       if (isChanCall(cmd as string, args, "apikey-read")) {
         return Promise.resolve(chanReply({ configured: false, masked: "", path: "/h/x.json", notice: null, problem: null }));
       }
-      if (isKeySet(cmd, args)) return Promise.resolve(chanReply(KEY_SET_REPLY));
-      if (isAcctIsoCmd(cmd, args)) return acctIsoCmdInvoke(args);
+      if (isAccountsOp(cmd as string, args)) {
+        return accountsFakeInvoke(args, (chanArgsJson(args as ChanCallArgs) as { dryRun?: boolean }).dryRun ? {} : over);
+      }
       return Promise.resolve(undefined);
     });
     return calls;
   }
 
-  async function submitApikey(el: HTMLElement, name: string, key: string, baseUrl?: string): Promise<void> {
+  async function fill(el: HTMLElement, name: string, opts: { key?: string; baseUrl?: string; cred?: string; def?: boolean } = {}): Promise<HTMLElement> {
     const form = el.querySelector<HTMLElement>(".accounts-new")!;
     const nameIn = form.querySelector<HTMLInputElement>("input.accounts-maint-name")!;
     nameIn.value = name;
     nameIn.dispatchEvent(new Event("input"));
-    const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
-    r.checked = true;
-    r.dispatchEvent(new Event("change"));
-    if (baseUrl !== undefined) {
-      const baseIn = form.querySelector<HTMLInputElement>('.accounts-new-key input[data-field="base-url"]')!;
-      baseIn.value = baseUrl;
-      baseIn.dispatchEvent(new Event("input"));
+    if (opts.key !== undefined) {
+      const r = form.querySelector<HTMLInputElement>('input[type=radio][value="apikey"]')!;
+      r.checked = true;
+      r.dispatchEvent(new Event("change"));
+      if (opts.baseUrl !== undefined) {
+        const baseIn = form.querySelector<HTMLInputElement>('.accounts-new-key input[data-field="base-url"]')!;
+        baseIn.value = opts.baseUrl;
+        baseIn.dispatchEvent(new Event("input"));
+      }
+      const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
+      keyIn.value = opts.key;
+      keyIn.dispatchEvent(new Event("input"));
     }
-    const keyIn = form.querySelector<HTMLInputElement>(".accounts-new-key input[type=password]")!;
-    keyIn.value = key;
-    keyIn.dispatchEvent(new Event("input"));
-    await tick(); // 〔DUP2 · J4〕等表单问完那台后端（命令答回来之前「创建」是灰的）
-    [...form.querySelectorAll("button")].find((b) => b.textContent === "创建")!.click();
+    if (opts.cred !== undefined) {
+      const credIn = form.querySelector<HTMLInputElement>(".accounts-new-adv input")!;
+      credIn.value = opts.cred;
+      credIn.dispatchEvent(new Event("input"));
+    }
+    if (opts.def) {
+      const d = form.querySelector<HTMLInputElement>('input[data-field="is-default"]')!;
+      d.checked = true;
+      d.dispatchEvent(new Event("change"));
+    }
+    await tick(); // 等表单问完那台后端预演（答回来之前「创建」是灰的）
     await tick();
-    await tick();
+    return form;
+  }
+  async function create(form: HTMLElement): Promise<void> {
+    [...form.querySelectorAll("button")].find((b) => b.textContent === NEW_ACCOUNT_COPY.create)!.click();
+    for (let i = 0; i < 6; i++) await tick();
   }
 
-  it("★ 判据 #9：建号那条命令先跑；号出现之后 key 写给**它的** configDir；没有经过任何下拉", async () => {
+  it("★ 判据 #9：API 号一趟建好 —— 预演不带 key，真建那一发带 key；不开终端、不另写 key、没有下拉", async () => {
     const calls = wire();
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
-    await submitApikey(el, "b", "sk-ant-FOR-B");
-
-    const launches = calls.filter(([c]) => c === "launch_remote_terminal");
-    expect(launches.length).toBe(1);
-    expect((launches[0][1] as { remoteCmd: string }).remoteCmd).toBe(cmdAnswered(calls));
-    expect(cmdAnswered(calls)).toBe("cc-acct-iso add 'b' --apply");
-    // 号还没出现 ⇒ 一个字节都不写，但屏幕上说得出在等谁。
-    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
-    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
+    const form = await fill(el, "b", { key: "sk-ant-FOR-B", baseUrl: "https://api.example.com/v1" });
+    expect(form.querySelector(".accounts-wiz-preview")?.textContent).toContain("（预演）accounts-add b");
+    expect(form.textContent, "别名名字该是那台后端答的").toContain("bcc");
+    await create(form);
+    expect(accountOps(calls).filter(([, , a]) => a.dryRun !== true)).toEqual([
+      ["accounts-add", "aya", { name: "b", kind: "api-key", baseUrl: "https://api.example.com/v1", key: "sk-ant-FOR-B" }],
+    ]);
+    for (const [, , a] of accountOps(calls).filter(([, , a]) => a.dryRun === true)) {
+      expect(a.key, "预演那几发带上了 key 的明文").toBeUndefined();
+    }
+    expect(calls.some(([c, a]) => isKeySet(c, a)), "key 又走了第二条写口").toBe(false);
+    expect(calls.some(([c]) => c === "launch_remote_terminal"), "API 号不需要终端").toBe(false);
     expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
-
-    // 终端跑完、用户点「刷新」：这一趟列表里有 b 了。
-    fetchAccountsMock.mockResolvedValue(
-      state({
-        accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })],
-        defaultName: "z",
-      }),
-    );
-    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
-    for (let i = 0; i < 6; i++) await tick();
-
-    const writes = calls.filter(([c, a]) => isKeySet(c, a));
-    // 〔RM1a〕key 落在**建号的那台机器**上：这一页站在 aya ⇒ origin 就是 aya（先前不收 origin，落本机）。
-    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
-    expect(el.querySelector(".accounts-new-pending"), "写完了还挂着「等」那一行").toBeNull();
+    expect(el.textContent, "Base URL 输入框没清空、还挂在屏上").not.toContain("api.example.com");
     expect(el.querySelector("select")).toBeNull();
   });
 
-  it("★ 〔ST2 · `70 §4.4`〕填了 Base URL ⇒ 号出现之后连同 key 一起写给**它的** configDir（一次操作）", async () => {
+  it("★ 订阅号没导入凭据 ⇒ 建好后在终端里起 claude 登录，那一行是后端答的", async () => {
     const calls = wire();
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
-    await submitApikey(el, "b", "sk-ant-FOR-B", "https://api.example.com/v1");
-    fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
-    );
-    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
-    for (let i = 0; i < 6; i++) await tick();
-    const writes = calls.filter(([c, a]) => isKeySet(c, a));
-    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([
-      // 〔RM1a 合并〕key 与 Base URL 一起落在建号的那台机器上（这一页站在 aya）。
-      { origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR, baseUrl: "https://api.example.com/v1" },
+    await create(await fill(el, "b", { def: true }));
+    expect(accountOps(calls).filter(([, , a]) => a.dryRun !== true)).toEqual([
+      ["accounts-add", "aya", { name: "b", kind: "subscription", isDefault: true }],
     ]);
-    expect(el.textContent, "Base URL 输入框没清空、还挂在屏上").not.toContain("api.example.com");
+    const launches = calls.filter(([c]) => c === "launch_remote_terminal");
+    expect(launches.map(([, a]) => (a as { remoteCmd: string }).remoteCmd)).toEqual([fakeLoginCmd("b")]);
   });
 
-  it("终端没拉起来 ⇒ 不留那把 key（那个号不会出现，留着就是一把永远等不到主人的明文）", async () => {
-    const calls = wire({ launchFails: true });
+  it("订阅号从旧凭据导入 ⇒ 路径原样交给那台后端，不开终端", async () => {
+    const calls = wire({ loginCmd: null });
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
-    await submitApikey(el, "b", "sk-ant-FOR-B");
-    expect(el.querySelector(".accounts-new-pending")).toBeNull();
-    // 即便之后真出现一个叫 b 的号，也不会被写进去。
-    fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
-    );
-    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
-    for (let i = 0; i < 6; i++) await tick();
-    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
+    await create(await fill(el, "b", { cred: "~/snap/b.json" }));
+    expect(accountOps(calls).filter(([, , a]) => a.dryRun !== true)).toEqual([
+      ["accounts-add", "aya", { name: "b", kind: "subscription", credFile: "~/snap/b.json" }],
+    ]);
+    expect(calls.some(([c]) => c === "launch_remote_terminal")).toBe(false);
   });
 
-  it("〔RM1a〕等着的那把 key 只认**建它的那台机器**：换到本机页、同名的号出现也不写；回到那台才写", async () => {
+  it("号建好了、key 没写进去 ⇒ 说出来（错误提示），不假装成了", async () => {
+    wire({ keyMasked: null, keyProblem: "账号建好了，API key 没存进去：盘满了" });
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    await create(await fill(el, "b", { key: "sk-1" }));
+    const toasts = vi.mocked(showActionFailureToast).mock.calls;
+    expect(toasts.some((c) => String(c[1]).includes("盘满了") && (c[2] as { level?: string } | undefined)?.level === "error")).toBe(true);
+  });
+
+  it("那台后端预演就拒了（比如重名）⇒ 那一句上屏、「创建」一直是灰的", async () => {
+    invokeMock.mockImplementation((cmd: unknown, args: unknown) =>
+      isAccountsOp(cmd as string, args) ? Promise.reject({ err: "Refused", body: Array.from(new TextEncoder().encode(JSON.stringify({ code: "refused", message: "已经有叫 z 的账号了。" }))) }) : Promise.resolve(undefined),
+    );
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
+    const el = await mount();
+    const form = await fill(el, "z");
+    expect(form.querySelector(".accounts-maint-err")?.textContent).toContain("已经有叫 z 的账号了。");
+    const btn = [...form.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === NEW_ACCOUNT_COPY.create)!;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("删号：确认（默认号多说一句、带 force）→ 那台后端删", async () => {
     const calls = wire();
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
-    const el = await mount();
-    await submitApikey(el, "b", "sk-ant-FOR-B");
-    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
-    // 换到本机页：本机恰好也有一个叫 b 的号（本机列表走本机那条读口）。
-    fetchLocalAccountsMock.mockResolvedValue(
-      localState({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
-    );
-    setCurrentMachine(LOCAL_ORIGIN);
-    for (let i = 0; i < 8; i++) await tick();
-    expect(fetchLocalAccountsMock, "没真切到本机页 —— 下面那条「没写」是空真").toHaveBeenCalled();
-    expect(
-      calls.some(([c, a]) => isKeySet(c, a)),
-      "在 aya 上建的号，key 被写到了本机",
-    ).toBe(false);
-    // 回到 aya：号出现了 ⇒ 写给 aya。
     fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
+      state({ accounts: [acct({ name: "z", isDefault: true }), acct({ name: "b", configDir: "/h/.claude-accts/b" })], defaultName: "z" }),
     );
-    setCurrentMachine("aya");
-    for (let i = 0; i < 8; i++) await tick();
-    const writes = calls.filter(([c, a]) => isKeySet(c, a));
-    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([{ origin: "aya", key: "sk-ant-FOR-B", configDir: B_DIR }]);
-  });
-
-  it("「放弃」把等着的那把 key 丢掉：之后号出现也不写", async () => {
-    const calls = wire();
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
-    await submitApikey(el, "b", "sk-ant-FOR-B");
-    const pending = el.querySelector(".accounts-new-pending")!;
-    [...pending.querySelectorAll("button")].find((b) => b.textContent === "放弃")!.click();
-    expect(el.querySelector(".accounts-new-pending")).toBeNull();
-    fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })], defaultName: "z" }),
-    );
-    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
+    const dels = [...el.querySelectorAll<HTMLButtonElement>("button.danger")];
+    expect(dels.map((b) => b.textContent)).toEqual([copyText("accounts.row.remove"), copyText("accounts.row.remove")]);
+    dels[0].click();
     for (let i = 0; i < 6; i++) await tick();
-    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
+    expect(String(askConfirmMock.mock.calls[0][0])).toContain("默认账号");
+    expect(accountOps(calls)).toEqual([["accounts-remove", "aya", { name: "z", force: true }]]);
   });
 });
 
-
 // ─────────────────────────────────────────────────────────────────────────────
-// 〔第三波 S3〕本机页也能新建账号（A2+ST1 留下的：本机那一支原先只读）。
-// 同一张表单、同一条 `cc-acct-iso add` 命令；跑命令那一跳走既有的 `launch_remote_terminal`
-// 本机那一支（`origin` = 后端那个本机串）—— Linux 上它**刻意不开窗口**、回一句带标记的话，
-// 前端把命令复制给用户在自己的 bash 里跑。apikey 那一支在本机真的有用（apikey 表与中转本来就是本机的）。
+// 〔第三波 S3〕本机页也能新建账号：同一张表单、同一条 `accounts-add`，问的是**本机**后端。
+// 订阅号要登录时，本机 Linux 刻意不开终端窗口（后端回一句带标记的话）⇒ 登录那一行复制给用户在自己的终端里跑。
 // ─────────────────────────────────────────────────────────────────────────────
 describe("S3：本机页新建账号", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
-  const B_DIR = "/h/.claude-accts/dir-of-b"; // 末段刻意 ≠ 名字（KH2C1：前端不从名字推目录）
   /** 后端在 POSIX 本机上回的那句话（带跨语言标记，唯一出处在 `launch.rs`）。 */
   const NO_WINDOW = `本机不是 Windows：cc-monitor ${POSIX_NO_WINDOW_MARKER}（会话容器是 tmux）`;
 
@@ -1934,8 +1807,7 @@ describe("S3：本机页新建账号", () => {
         if (launch === "no-window") return Promise.reject(NO_WINDOW);
         if (launch === "fail") return Promise.reject(new Error("没有终端"));
       }
-      if (isKeySet(cmd, args)) return Promise.resolve(chanReply(KEY_SET_REPLY));
-      if (isAcctIsoCmd(cmd, args)) return acctIsoCmdInvoke(args);
+      if (isAccountsOp(cmd as string, args)) return accountsFakeInvoke(args);
       return Promise.resolve(undefined);
     });
     return calls;
@@ -1962,18 +1834,13 @@ describe("S3：本机页新建账号", () => {
       keyIn.value = key;
       keyIn.dispatchEvent(new Event("input"));
     }
-    await tick(); // 〔DUP2 · J4〕等表单问完本机后端（命令答回来之前「创建」是灰的）
+    await tick(); // 等表单问完本机后端预演
+    await tick();
     [...form.querySelectorAll("button")].find((b) => b.textContent === NEW_ACCOUNT_COPY.create)!.click();
-    await tick();
-    await tick();
-  }
-  async function refresh(el: HTMLElement, accts: Account[]): Promise<void> {
-    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: accts, defaultName: "z" }));
-    el.querySelector<HTMLButtonElement>("button.accounts-refresh")!.click();
     for (let i = 0; i < 6; i++) await tick();
   }
 
-  it("★ 本机有号 ⇒ 本机那一块里有新建表单；提示是本机的话，不是「弹出终端」；「只读」那句撤了", async () => {
+  it("★ 本机有号 ⇒ 本机那一块里有新建表单；提示是本机的话；「只读」那句撤了", async () => {
     wire("ok");
     const el = await mountLocal([acct({ name: "z" })]);
     const form = el.querySelector(".accounts-local .accounts-new");
@@ -1996,60 +1863,48 @@ describe("S3：本机页新建账号", () => {
     );
   });
 
-  it("★ 订阅 ⇒ 建号命令在**本机**跑：launch_remote_terminal 收到的是后端那个本机串 ＋ 同一条 add 命令", async () => {
+  it("★ 订阅 ⇒ 问的是**本机**那台后端 accounts-add；登录那一行交给本机开终端那一步", async () => {
     const calls = wire("ok");
     const el = await mountLocal([acct({ name: "z" })]);
     await submit(el, "b");
+    expect(new Set(accountOps(calls).map(([, o]) => o))).toEqual(new Set([LOCAL_ORIGIN]));
     const launches = calls.filter(([c]) => c === "launch_remote_terminal");
-    expect(launches).toHaveLength(1);
-    // 〔FIX4 · ⑬〕开终端那一口（`openTerminal`）恒交 `rbindToken`（建号不起 agent 进程 ⇒ `null`）。
-    expect(launches[0][1]).toEqual({ origin: LOCAL_ORIGIN, remoteCmd: cmdAnswered(calls), rbindToken: null });
-    // 〔DUP2 · J4〕命令问的是**本机**那台后端（同一条 `acct-iso-cmd`，`origin` 区分）。
-    const asked = calls.filter(([c, a]) => isAcctIsoCmd(c, a)).map(([, a]) => (a as ChanCallArgs).origin);
-    expect(new Set(asked)).toEqual(new Set([LOCAL_ORIGIN]));
+    // 〔FIX4 · ⑬〕开终端那一口（`openTerminal`）恒交 `rbindToken`（登录那一行不需要 ⇒ `null`）。
+    expect(launches.map(([, a]) => a)).toEqual([{ origin: LOCAL_ORIGIN, remoteCmd: fakeLoginCmd("b"), rbindToken: null }]);
   });
 
-  it("★ Linux（后端说「刻意不开窗口」）⇒ 命令复制给用户；apikey 那一支照样等号出现、写给**它的** configDir", async () => {
-    const calls = wire("no-window");
-    const el = await mountLocal([acct({ name: "z" })]);
-    await submit(el, "b", "sk-ant-FOR-B");
-    expect(writeText).toHaveBeenCalledWith(cmdAnswered(calls));
-    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
-    expect(el.querySelector(".accounts-new-pending")?.textContent).toContain("等 b 出现");
-    expect(el.textContent, "key 的明文上了屏").not.toContain("sk-ant-FOR-B");
-    await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
-    const writes = calls.filter(([c, a]) => isKeySet(c, a));
-    // 〔RM1a〕本机页 ⇒ origin 是后端那个本机串（〔HX2〕本机那一份由本机常驻后端写，经 `<local>` 那条长连接）。
-    expect(writes.map(([, a]) => keySetArgs(a))).toEqual([
-      { origin: LOCAL_ORIGIN, key: "sk-ant-FOR-B", configDir: B_DIR },
-    ]);
-    expect(el.querySelector(".accounts-new-pending")).toBeNull();
-  });
-
-  it("★ 真失败（不是那句既定设计）⇒ 命令照样复制，但不留 key（与远端「终端没拉起来就不留」同一口径）", async () => {
-    const calls = wire("fail");
-    const el = await mountLocal([acct({ name: "z" })]);
-    await submit(el, "b", "sk-ant-FOR-B");
-    expect(writeText).toHaveBeenCalled();
-    expect(el.querySelector(".accounts-new-pending")).toBeNull();
-    await refresh(el, [acct({ name: "z" }), acct({ name: "b", configDir: B_DIR })]);
-    expect(calls.some(([c, a]) => isKeySet(c, a))).toBe(false);
-  });
-
-  it("★ 两种出错的提示分得开：既定设计是 info、真失败是 error，且标题不同", async () => {
+  it("★ Linux（后端说「刻意不开窗口」）⇒ 登录那一行复制给用户，提示是 info", async () => {
+    wire("no-window");
     const toast = vi.mocked(showActionFailureToast);
-    const seen: string[] = [];
-    for (const mode of ["no-window", "fail"] as const) {
-      wire(mode);
-      toast.mockClear();
-      const el = await mountLocal([acct({ name: "z" })]);
-      await submit(el, "b");
-      const c = toast.mock.calls.at(-1)!;
-      seen.push(`${c[0]}|${(c[2] as { level: string }).level}`);
-      expect(String(c[1])).toContain("cc-acct-iso add");
-    }
-    expect(seen[0]).toBe(`${copyText("accountsLocal.new.noWindowCopied")}|info`);
-    expect(seen[1]).toBe(`${copyText("accountsLocal.new.failedCopied")}|error`);
+    toast.mockClear();
+    const el = await mountLocal([acct({ name: "z" })]);
+    await submit(el, "b");
+    expect(writeText).toHaveBeenCalledWith(fakeLoginCmd("b"));
+    const c = toast.mock.calls.at(-1)!;
+    expect(`${c[0]}|${(c[2] as { level: string }).level}`).toBe(`${copyText("accountsLocal.new.noWindowCopied")}|info`);
+    expect(String(c[1])).toContain(fakeLoginCmd("b"));
+  });
+
+  it("★ 真失败（不是那句既定设计）⇒ 登录那一行照样复制，但提示是 error、标题不同", async () => {
+    wire("fail");
+    const toast = vi.mocked(showActionFailureToast);
+    toast.mockClear();
+    const el = await mountLocal([acct({ name: "z" })]);
+    await submit(el, "b");
+    expect(writeText).toHaveBeenCalledWith(fakeLoginCmd("b"));
+    const c = toast.mock.calls.at(-1)!;
+    expect(`${c[0]}|${(c[2] as { level: string }).level}`).toBe(`${copyText("accountsLocal.new.failedCopied")}|error`);
+  });
+
+  it("★ API 号 ⇒ key 交给本机后端那一发，本机不开终端、屏上没有明文", async () => {
+    const calls = wire("ok");
+    const el = await mountLocal([acct({ name: "z" })]);
+    await submit(el, "b", "sk-ant-FOR-B");
+    expect(accountOps(calls).filter(([, , a]) => a.dryRun !== true)).toEqual([
+      ["accounts-add", LOCAL_ORIGIN, { name: "b", kind: "api-key", key: "sk-ant-FOR-B" }],
+    ]);
+    expect(calls.some(([c]) => c === "launch_remote_terminal")).toBe(false);
+    expect(el.textContent).not.toContain("sk-ant-FOR-B");
   });
 });
 
