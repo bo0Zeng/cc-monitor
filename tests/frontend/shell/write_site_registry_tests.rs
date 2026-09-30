@@ -53,6 +53,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
           ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
           ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
           崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
+    // ── 〔P1〕`extract_embedded_to` 自己那一份暂存件的收尾（问完 / 失败 / 不放，任何结局都删）。**不是安装动作** —— 它只**删**自己刚写的那一份。
+    ("local_backend.rs", "drop_partial", None,
+     "删 `extract_embedded_to` 这一趟刚写的 `~/.cc-monitor/bin/.<ccm 名>.<pid>.partial`（问手上那份字节放不放用的暂存件）：\
+          放了（换名上位后它已不在）· 不放 · 它说「不」· 问不成，四种结局都走这里；清不掉出声，一天后由 `sweep_stale_partials` 收。"),
     // ── 〔E2 · V28〕本机那条 `ccm` 入口（逐字节副本 `install_local_ccm_entry`〔散文墓碑〕）删了：落点就是后端本身（`extract_embedded_to`）。
     ("local_backend.rs", "sweep_moved_aside", None,
      "〔E2 · E-b〕删 `~/.cc-monitor/bin/.<ccm 名>.<pid>.old` —— Windows 上换版时正在跑的那份旧 `ccm` 只能改名挪开，下一次放置时收；\
@@ -427,6 +431,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
         "sweep_stale_partials",
         Lands::OwnDeployment,
     ),
+    ("local_backend.rs", "drop_partial", Lands::OwnDeployment),
     (
         "local_backend.rs",
         "sweep_moved_aside",

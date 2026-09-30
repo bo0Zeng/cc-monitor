@@ -129,10 +129,10 @@ fn the_crate_scan_actually_finds_crates() {
     // 绝对地板**留着**，但它今天的岗位只有两个：① 反空真（两边同时归零时对拍会「相等」）；
     // ② 删共享 crate 时的**刻意摩擦**（原注释逐字写的那条）。
     // 棘紧记录：**7**（`K-H2a` 的 `creds-core`）→ **8**〔`K-R100` 09-13 加 `search-core`〕。
+    // 〔P1〕`search-core` 拆进后端之后今天实测仍是 8（其间加过 `copy-core` · `relay-route-core` · `upstream-url-core` · `deploy-contract`，搬走过几份），地板不动。
     assert!(
         n >= 8,
-        "只从 src/common/*/Cargo.toml 抽到 {n} 个包名（`K-R100` 09-13 起实测 8：\
-             上面 7 个 ＋ `search-core`）—— 抽取器坏了，\
+        "只从 src/common/*/Cargo.toml 抽到 {n} 个包名（〔P1〕今天实测 8）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
     );
 }

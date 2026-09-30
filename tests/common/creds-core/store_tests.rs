@@ -758,10 +758,7 @@ fn the_home_is_picked_by_the_platform_convention() {
 
 /// 两棵生产树（monitor 前端树 · 后端）里 `dirs::home_dir` 的调用：允许的只有下面这几处，逐条说理由（其余一律改调 [`home_dir`]）。
 const DIRS_HOME_ELSEWHERE: &[(&str, &str)] = &[
-    (
-        "src/frontend/shell/src/ccm_probe.rs",
-        "〔待改调〕P1 写区（本路题面明令避开）：`local_ccm_entry_status` 那一格 `~/.cc-monitor/bin/ccm`，合并 P1 时改调并摘行",
-    ),
+    // 〔P1〕`ccm_probe.rs` 那一行摘了：`local_ccm_entry_status` 改调 `home_dir`。
     // 〔P4〕`src/frontend/filewin/src/shell.rs` 那一行（`local_home`）摘了：改调本函数（文件窗口包链 `creds-core`，契约类）。
 ];
 

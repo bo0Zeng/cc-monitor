@@ -1,19 +1,18 @@
-//! 要求住址：`调研/第四波记录/_施工/4d-lanes.md` MIG-3b 第 1 条 ——「`sftp.rs` 部署决策（该不该换 · 换成什么 · 身份判定）进后端；monitor 只放字节」。
+//! 要求住址：`调研/第四波记录/_施工/4d-lanes.md ## 发版后四路 ### P1` 第 1 件 ——「`deploy-core` 拆开：契约（键 · 戳格式 · 答话形状 · 路径常量）成 `deploy-contract`（契约类，monitor 可链）；判定部分进后端」·
+//! `设计/00 §1.2`「共享 crate 只放两边必须对上的契约，不放判定；判定只在后端」。
 //!
-//! # 本 crate 是部署决策的**唯一一份**
+//! # 本 crate 是部署那一族的**契约**（两侧对上的形状），不含一条判定
 //!
-//! 三问，各自的规矩出处照旧：
-//!
-//! | 问 | 规矩 | 这里的口 |
+//! | 契约 | 规矩出处 | 这里的口 |
 //! |---|---|---|
-//! | 那台机器要哪一格字节（换成什么） | `设计/96 §7.1` 表 A（键是 (OS, arch)）· `设计/01 §6.7a` 表 B（这个 origin 承不承诺） | [`key_from_uname`] · [`judge`] |
-//! | 那台落点上那一份是谁（身份判定） | `设计/96 §7.2`：读它字节里的身份戳，不跑它 | [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`identity_of_bytes`] |
-//! | 该不该换 | `96 §7.2.3` 对照物是手上那份字节自报的身份 · 〔HX2 · D-b〕只升不降 | [`identity_decision`] · [`landing_verdict`] · [`build_order`] |
+//! | 表 A 的键与行（(OS, arch) · 有产线的格） | `设计/96 §7.1` | [`Key`] · [`LINES`] · [`key_of`] · [`key_from_uname`] |
+//! | 拒绝的形状与对人说的话 | `96 §7.1.4b` | [`Refusal`] · [`Refusal::say`] |
+//! | 身份戳的格式（读它字节里那段，不跑它） | `96 §7.2` | [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
+//! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] · [`LegacyVerdict`] |
+//! | 落点路径 · 旧入口两形的记号 | `设计/01 §6.7b` | [`LEGACY_ENTRY_REL`] · [`LEGACY_BACKEND_REL`] · [`SHIM_MARK`] · [`LAUNCHER_MARK`] |
 //!
-//! 用它的两侧：
-//! - **本机常驻后端**（`src/backend/deploy/`）：帧命令 `deploy-plan` —— 问那台 `uname`、stat / 扫身份戳，出计划；
-//! - **monitor**：按计划里的那一格取自己带着的字节、放上去（`sftp.rs`）；另有三个与部署路无关的用户要同一份判定：
-//!   本机那一份的身份（`local_backend.rs`）· 远端 hello 的新旧（`ssh_source.rs` / `remote_resident.rs`）· 全景推字节的表 A/B（`byte_table.rs`）。
+//! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认 · 旧落点删不删）住后端 `control/deploy_plan.rs` 一家；
+//! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
 //!
 //! # 不在本 crate 的
 //!
@@ -23,7 +22,7 @@
 
 use copy_core::copy_text;
 
-// ═══ 表 A / 表 B：那台机器要哪一格字节 ═══════════════════════════════════════════════════
+// ═══ 表 A：键与行（表 B 的承诺是判定，住后端 `control/deploy_plan.rs::promised`）═══════════════
 
 /// 表 A 的 OS 轴。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -321,36 +320,6 @@ pub const LINES: &[(Product, Key)] = &[
     ),
 ];
 
-/// 表 B：这个 origin 今天承诺哪几种机器（`01 §6.7a`：本机 Windows x86_64 · 本机 Linux〔用户 09-18「算」〕· 远端 Linux 两个 arch）。
-///
-/// 〔V132 · 09-25〕用户原话「不承诺. 适配部分, 即os适配部分后面单独写单独做.」⇒ **本机 (Linux, aarch64) 不承诺**
-/// （`96 §7.1.5` 那句「建议本机 Linux 限定 x86_64、本机侧走「不承诺」那一形」，即 [`Refusal::NotPromisedHere`]）。于是本表不再只按 OS 分：
-/// 本机那两行都钉到 x86_64（本机 Windows arm64 本来就不在产线里，`V31`），远端 Linux 两个 arch 照旧。
-/// 承诺面的唯一住址是 `tests/evidence/K-G4-platform-ledger.py` 的 `PROMISE_FACE`；本函数与它两向相等
-/// 由 `byte_table_tests.rs::the_promise_face_in_the_ledger_equals_the_code` 钉着。
-pub fn promised(route: Route, key: Key) -> bool {
-    matches!(
-        (route, key.os, key.arch),
-        (Route::Local, Os::Windows, Arch::X86_64)
-            | (Route::Local, Os::Linux, Arch::X86_64)
-            | (Route::Remote, Os::Linux, _)
-    )
-}
-
-/// 拒绝点的前三步（在向目标机器写第一个字节之前）：键 → 产线 → 承诺。四形各在一步上，不合并；
-/// 第五形「这一版带没带」只有放字节的一侧判得出（monitor `byte_table::choose` 接着判）。
-pub fn judge(product: Product, route: Route, key: Result<Key, Refusal>) -> Result<Key, Refusal> {
-    let key = key?;
-    let (os, arch) = (key.os.label().to_string(), key.arch.label().to_string());
-    if !LINES.contains(&(product, key)) {
-        return Err(Refusal::UnsupportedMachine { os, arch });
-    }
-    if !promised(route, key) {
-        return Err(Refusal::NotPromisedHere { os, arch, route });
-    }
-    Ok(key)
-}
-
 /// 问那台机器的 (OS, arch) 那条命令（一次性 exec，`exec_site_registry` 登记）。
 pub const UNAME_CMD: &str = "uname -s -m";
 
@@ -409,52 +378,6 @@ fn not_utf8(s: &str) -> bool {
 pub struct Marks<'a> {
     pub open: &'a str,
     pub close: &'a str,
-}
-
-/// 部署落点那个文件**本身**的取样结论（落点身份的第一步：没有 / 0 字节就不必再问它是谁）。
-///
-/// 纪律：**「问不出来」不许读成上面任何一个确定答案**
-/// ——把无权限/传输失败当成「不在」会变成每次连接都重传（把版本门控拆了），
-/// 当成「在」则退回本枚举要治的那个静默。**所以它不是 `bool`。**
-/// ⚠ 成员就在下面，别在散文里复述一份基数 —— 那份字面量会在加成员那天变成假话。
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum TargetBinary {
-    /// stat 说它在，且有字节。
-    Present,
-    /// stat **明确说**它不在。
-    Missing,
-    /// stat 说它在，但是 **0 字节** —— 不是假想形态：原子上传那一段（今天住后端 `dial/sftp.rs::put_atomic`）里
-    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把后端截成 0 字节、
-    /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
-    Empty,
-    /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。
-    Unknown,
-}
-
-/// stat 那两次取样的**解释**（纯函数，可单测 —— K-W4b）。
-///
-/// 形状：**吃两次调用各自的结果，不吃会话**。拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
-/// 四个状态的映射规则因此一条判据都没有（`tests/evidence/K-W4b-readings.md`）。
-///
-/// 入参就是两次调用**降解之后**的结果：
-/// - `metadata_size`：`None` = `metadata` 那次调用失败；`Some(inner)` = 成功，
-///   `inner` 是服务器给的 size —— ⚠ `Some(None)` 是**服务器没给 size**，不是 0 字节。
-/// - `exists`：`metadata` 失败时补问 `try_exists` 的结果（`None` = 它也答不出来）。
-///   `metadata` 成功那一路根本不问它，那时它恒为 `None` 而本函数在那一路也不看它。
-pub fn interpret_target_probe(
-    metadata_size: Option<Option<u64>>,
-    exists: Option<bool>,
-) -> TargetBinary {
-    match metadata_size {
-        Some(Some(0)) => TargetBinary::Empty,
-        // 服务器不给 size（`Some(None)`）≠ 0 字节：存在是确定的，别把「没说」读成「空」。
-        Some(_) => TargetBinary::Present,
-        None => match exists {
-            Some(false) => TargetBinary::Missing,
-            Some(true) => TargetBinary::Present,
-            None => TargetBinary::Unknown,
-        },
-    }
 }
 
 /// 〔DP1 · 第四波〕**那台机器上落点那一份后端是谁** —— `设计/96 §7.2.4` 那张四态表 ＋ 0 字节那一格。
@@ -560,9 +483,9 @@ pub fn interpret_stamp_scan(
     }
 }
 
-// ═══ 该不该换 ═══════════════════════════════════════════════════════════════════════
+// ═══ 计划答话的形状 · 戳的序键（换不换是判定，住后端 `control/deploy_plan.rs`）══════════════
 
-/// 部署决策。
+/// 部署决策（答话的形状）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum DeployAction {
     /// 远端版本与期望一致 → 无需部署。
@@ -571,7 +494,7 @@ pub enum DeployAction {
     Deploy(String),
     /// 〔HX2 · 主会话 D-b〕那台上是**另一版、但不比这一版旧**（更新 · 同序不同名 · 序解不出）⇒ **不动它**，
     /// 照旧连上那一份。`theirs` = 那台上那一份自报的身份；`why` = 人读原因（点名两边各是哪一版）。
-    /// 只有 [`identity_decision`] 产这一格。
+    /// 只有后端 `control/deploy_plan.rs::identity_decision` 产这一格。
     Keep { theirs: String, why: String },
 }
 
@@ -579,7 +502,7 @@ pub enum DeployAction {
 ///
 /// 形状 `p<代号>` ＋ `<一个小写字母>` ＋ `-<名>`（`p1a-history` … `p3m-ssh-zlib`）⇒ 序键 `(代号, 字母)`。
 /// 解不出 ⇒ `None`（**不可比**，不是「最旧」也不是「最新」）。下一次 bump 写出解不出的形状由
-/// `lib_tests::hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 当场红（它读后端源码里的历史表）。
+/// 后端 `deploy_plan_tests::hx2_every_build_id_ever_shipped_has_an_order_and_the_history_climbs` 当场红（它读后端源码里的历史表）。
 /// **纯函数**。
 pub fn build_order(id: &str) -> Option<(u32, u8)> {
     let rest = id.strip_prefix('p')?;
@@ -597,118 +520,13 @@ pub fn build_order(id: &str) -> Option<(u32, u8)> {
     }
 }
 
-/// 「手上这一版比那台上的新」—— 两边都解得出序键、且这一版的严格大。解不出任何一边 ⇒ `false`（不可比 ⇒ 不换）。
-pub fn is_newer(mine: &str, theirs: &str) -> bool {
-    matches!((build_order(mine), build_order(theirs)), (Some(m), Some(t)) if m > t)
-}
-
-/// 要不要（重）部署 —— **对照物是手上那份字节自报的身份**（`96 §7.2.3`），不是源码常量。**纯函数**。
-///
-/// `Err` = 显式失败、**一个字节都不写**（出路交给用户：机器页「卸载后端」删掉那个文件，就是明确授权覆盖）。
-///
-/// 〔HX2 · D-b〕「另一版」那一格按 [`build_order`] 拆两格：那台上的**比这一版旧** ⇒ 换；**不比这一版旧** ⇒ [`DeployAction::Keep`]
-/// （两个不同版本的 monitor 连同一台远端，从此只会升不会降，不再每次连上互相换掉 —— 审计 E3）。
-pub fn identity_decision(
-    id: &RemoteIdentity,
-    expected: &str,
-    machine: &str,
-    path: &str,
-) -> Result<DeployAction, String> {
-    let hands_off = copy_text("rsSftp.identity.handsOff", &[]);
-    match id {
-        RemoteIdentity::Missing => Ok(DeployAction::Deploy(copy_text(
-            "rsSftp.identity.missing",
-            &[],
-        ))),
-        RemoteIdentity::Empty => Ok(DeployAction::Deploy(copy_text(
-            "rsSftp.identity.empty",
-            &[],
-        ))),
-        RemoteIdentity::Stamp(s) if s == expected => Ok(DeployAction::Skip),
-        RemoteIdentity::Stamp(s) if is_newer(expected, s) => Ok(DeployAction::Deploy(copy_text(
-            "rsSftp.identity.other",
-            &[("s", &s.to_string()), ("expected", &expected.to_string())],
-        ))),
-        RemoteIdentity::Stamp(s) => Ok(DeployAction::Keep {
-            theirs: s.clone(),
-            why: copy_text(
-                "rsSftp.identity.notOlder",
-                &[
-                    ("machine", &machine.to_string()),
-                    ("s", &s.to_string()),
-                    ("expected", &expected.to_string()),
-                ],
-            ),
-        }),
-        RemoteIdentity::NoStamp => Err(copy_text(
-            "rsSftp.identity.unstamped",
-            &[
-                ("machine", &machine.to_string()),
-                ("path", &path.to_string()),
-                ("handsOff", &hands_off.to_string()),
-            ],
-        )),
-        RemoteIdentity::Ambiguous(ids) => Err(copy_text(
-            "rsSftp.identity.multiple",
-            &[
-                ("machine", &machine.to_string()),
-                ("path", &path.to_string()),
-                ("ids", &ids.join(&copy_text("rsSftp.identity.listSep", &[]))),
-                ("handsOff", &hands_off.to_string()),
-            ],
-        )),
-        RemoteIdentity::Unreadable(why) => Err(copy_text(
-            "rsSftp.identity.undecidable",
-            &[
-                ("machine", &machine.to_string()),
-                ("path", &path.to_string()),
-                ("why", &why.to_string()),
-            ],
-        )),
-    }
-}
-
 /// 09-11 之前那份 bash 启动器第二行的开头（那份文件已删，记号只能是字面量；出处：`git show e8f9e08e^:shared/ccm`）。
-const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
+/// 旧入口两形的文件格式；认不认得出是后端判（`control/deploy_plan.rs::is_ours`）。
+pub const LAUNCHER_MARK: &str = "# ccm — cc-monitor 统一启动器";
 
 /// 三行 shim（09-11 起历代）第二行的原文。〔E2〕它的生成器随「`ccm` 就是后端本体」删了（那一形只剩在已部署的机器上），
 /// 记号从此只能是字面量（出处：`git show ef7baa63:src/frontend/shell/src/local_backend.rs` 的 `ccm_entry_shim`〔散文墓碑〕）。
-const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
-
-/// 这份文本是不是我们从前放的那一形 `ccm` 入口（三行 shim / bash 启动器两形之一）。**纯函数**。
-/// 用户：旧落点 [`LEGACY_ENTRY_REL`]（〔THIN〕后端 `deploy_plan::retired_verdict`，从前在 monitor `ccm_legacy`）· 今天的落点上从前那份三行入口（[`landing_verdict`]）·
-/// monitor 本机探针认 PATH 上另一个 `ccm`（`ccm_probe::reach_of`，登记的残留）。
-pub fn is_ours(text: &str) -> bool {
-    let mut lines = text.lines();
-    let (Some(first), Some(second)) = (lines.next(), lines.next()) else {
-        return false;
-    };
-    if !first.starts_with("#!") {
-        return false;
-    }
-    second == SHIM_MARK || second.starts_with(LAUNCHER_MARK)
-}
-
-/// 〔E2〕落点那一份怎么办：先按身份戳判（[`identity_decision`]）；「不说自己是谁」时再看它是不是我们从前放的
-/// 三行入口（[`is_ours`]，`old_entry` = 读回来的那一份字节，读不到 ⇒ `None`）—— 是 ⇒ 换成后端本体（部署那一步是原子替换）；
-/// 不是 ⇒ 照旧显式失败、不动。**纯函数**。
-pub fn landing_verdict(
-    id: &RemoteIdentity,
-    old_entry: Option<&[u8]>,
-    expected: &str,
-    machine: &str,
-    path: &str,
-) -> Result<DeployAction, String> {
-    if matches!(id, RemoteIdentity::NoStamp)
-        && old_entry.is_some_and(|b| is_ours(&String::from_utf8_lossy(b)))
-    {
-        return Ok(DeployAction::Deploy(copy_text(
-            "rsSftp.identity.oldEntry",
-            &[],
-        )));
-    }
-    identity_decision(id, expected, machine, path)
-}
+pub const SHIM_MARK: &str = "# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）";
 
 /// 〔GP1 · THIN〕旧版放在远端的 `ccm` 入口（三行 shim / 更早的 bash 启动器）：家目录相对。
 /// 后端判它的去向（`control/deploy_plan.rs::retired_verdict`）· monitor 照删 · 足迹那一行，同一个常量。
@@ -716,6 +534,8 @@ pub const LEGACY_ENTRY_REL: &str = ".local/bin/ccm";
 
 /// 〔E2 · E-c〕旧默认 `backendPath` 落下的那份后端字节（`backendPath` 那一格删了之后没人再用它）：SFTP 那一侧（家目录相对）。
 /// 后端问它是谁、monitor 删它，同一个常量。
+/// 〔P1 · 主会话 09-29 裁〕不进 `relay_route_core` 的「家」那一族：那一族是后端**住**在 `~/.cc-monitor` 里的东西（数据位置页逐行列出，判据两向）；
+/// 这一个是退役落点，只认出来删、不住人 ⇒ 留在部署这一族，全仓一份。
 pub const LEGACY_BACKEND_REL: &str = ".cc-monitor/bin/cc-monitor-backend";
 
 /// 同一个文件在远端 shell 里的写法（扫身份戳那一条命令用）。
@@ -734,16 +554,6 @@ pub enum LegacyVerdict {
     Unknown(String),
 }
 
-/// 旧落点那一份的身份 → 怎么办。**纯函数**。
-pub fn legacy_verdict(id: Result<RemoteIdentity, String>) -> LegacyVerdict {
-    match id {
-        Ok(RemoteIdentity::Missing) => LegacyVerdict::Absent,
-        Ok(RemoteIdentity::Stamp(_)) => LegacyVerdict::Remove,
-        Ok(_) => LegacyVerdict::Keep,
-        Err(e) => LegacyVerdict::Unknown(e),
-    }
-}
-
 #[cfg(test)]
-#[path = "../../../../tests/common/deploy-core/lib_tests.rs"]
+#[path = "../../../../tests/common/deploy-contract/lib_tests.rs"]
 mod tests;

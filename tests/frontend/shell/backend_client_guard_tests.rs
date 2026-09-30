@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// 从前 `backend/` 目录那一组（〔THIN〕今天都住壳根，通信层成员 `backend_route` 住 `src/comms/inward/`），相对仓根。
 /// 删了的两份（`tmux.rs` · `gate2_parity.rs`，子步 1）不在。**加一份调后端的客户端 / 宿主进来就在这里加一行。**
 const GUARDED: &[&str] = &[
-    "src/frontend/shell/src/agent_profile_parity.rs",
+    // 〔P1〕`agent_profile_parity.rs` 出列：monitor 那份适配表删了，对拍随家进了后端 `agents_tests.rs`。
     "src/frontend/shell/src/backend_control.rs",
     "src/frontend/shell/src/cc_bus.rs",
     "src/frontend/shell/src/frame_query.rs",

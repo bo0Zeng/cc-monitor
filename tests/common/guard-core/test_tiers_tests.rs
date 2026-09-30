@@ -105,8 +105,8 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/branch-fold-batching.vitest.ts",
     "tests/frontend/ui/branching.test.ts",
     // 〔C4d〕`tests/frontend/shell/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
-    "tests/frontend/shell/adapter/claude_code_tests.rs",
-    "tests/frontend/shell/adapter/codex_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter/claude_code_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter/codex_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
     "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
@@ -114,7 +114,8 @@ const UNIT: &[&str] = &[
     "tests/backend/agents/claudecode/branch_tests.rs", // 〔THIN〕原 `tests/common/branch-core/lib_tests.rs`：分叉变换收进后端适配层
     "tests/backend/control/gate_rules_tests.rs", // 〔THIN〕原 `tests/common/gate-core/lib_tests.rs`：gate-core 收成后端模块
     "tests/common/relay-route-core/lib_tests.rs", // 〔US1〕中转门牌共享 crate
-    "tests/common/search-core/lib_tests.rs",
+    // 〔P1〕`search-core` 删了：它的纯函数判据随家拆成两份（通用口径 · Claude 记录文本），同层。
+    "tests/backend/agents/claudecode/text_tests.rs",
     "tests/frontend/filewin/corpus_tests.rs",
     "tests/frontend/shell/filewin/cross_half_tests.rs", // 〔P4〕窗口独立成包之后跨两半的那几条（异源一侧在 monitor）
     "tests/frontend/filewin/create_tests.rs",
@@ -129,7 +130,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/filewin/workspace_tests.rs",
     "tests/frontend/filewin/writeops_tests.rs",
     "tests/frontend/shell/lib_batch_tests.rs",
-    "tests/frontend/shell/lib_env_scrub_tests.rs",
     "tests/frontend/shell/lib_nudge_skip_tests.rs",
     "tests/frontend/shell/lib_remote_config_tests.rs",
     // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
@@ -260,7 +260,7 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/views/session-viewer-skeleton.vitest.ts",
     "tests/frontend/ui/views/user-input-panel.vitest.ts",
     "tests/common/upstream-url-core/lib_tests.rs", // 〔DUP3 · J9〕新共享 crate `upstream-url-core` 的判定（纯函数）
-    "tests/common/deploy-core/lib_tests.rs", // 〔MIG-3b〕新共享 crate `deploy-core` 的判定（纯函数）
+    "tests/common/deploy-contract/lib_tests.rs", // 〔MIG-3b · P1〕部署契约（戳格式那几格；判定那几格随判定进了后端 `deploy_plan_tests`）
     "tests/frontend/ui/cards/long-reply.vitest.ts", // 〔RENDER2〕超长回复切片 ＋「显示全部」分片渲染（jsdom，假定时器）
     // 〔MIG-2〕基数 → 增量 +1：起会话那几问的帧命令应答（`control/launch_render/mod.rs::answer_*`）。
     "tests/backend/control/launch_render/answers_tests.rs",
@@ -270,6 +270,10 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    // 〔P1 · 第 4 件〕UNIT → SCAN：起前清洗那份名单读生成物（`include_str!` 画像表），判据对金样读。
+    "tests/frontend/shell/lib_env_scrub_tests.rs",
+    // 〔P1〕原 `search-core` 纯函数判据的通用那一半 ＋ 「口径只有一个家」那两道（读后端三份生产源码）⇒ 扫描层。
+    "tests/backend/observe/search_rules_tests.rs",
     // 〔MOD〕记录解释搬进后端：漂移账（原 monitor `drift_ledger_tests.rs` 的记录两面）· 抢救与记账（原 `parser_tests.rs`）·
     //   记录的线上形状（原 `messages_tests.rs`）· 标题记录一个不漏被接住（原 `history_title_coverage.rs`）。
     "tests/backend/agents/claudecode/drift_tests.rs",
@@ -348,11 +352,11 @@ const SCAN: &[&str] = &[
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
     "tests/frontend/ui/base-flag-contract-guard.vitest.ts",
-    "tests/frontend/shell/agent_dispatch_registry_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/agent_dispatch_registry_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/arch_doc_shape_guard_tests.rs",
     "tests/frontend/shell/asset_sync_tests.rs", // 〔AS2〕
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
-    "tests/frontend/shell/agent_profile_parity_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/agent_profile_parity_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/backend_control_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/comms/inward/backend_route_tests.rs",
@@ -544,7 +548,6 @@ const SCAN: &[&str] = &[
     "tests/frontend/ui/views/session-viewer-user-inputs.vitest.ts",
     "tests/frontend/ui/upstream-url-parity.vitest.ts", // 〔DUP3 · J9〕读共用金样（仓内文本）⇒ 扫描层
     "tests/frontend/ui/events-tap.vitest.ts", // 〔TAP〕session-tap 走 subscribe；〔MIG-3b〕另读后端 `event_replay.rs` 的流名钉两侧同名（仓内文本）⇒ 扫描层
-    "tests/backend/control/deploy_plan_tests.rs", // 〔MIG-3b〕部署计划的编排（替身对面）＋ 读金样与后端历史表（仓内文本）⇒ 扫描层
     "tests/frontend/ui/cc-bus-read.vitest.ts", // 〔SH1 · V136〕驾驶舱读面读跨语言金样（`tests/__fixtures__/cc-bus-read.golden.json`）
     "tests/frontend/shell/cc_bus_tests.rs", // 〔SH1〕INTEGRATION → SCAN：起进程的那几条（本机 shell 读 · 超时不留孤儿）随驾驶舱 shell 读退役
     // 〔AL2 · 第四波 4D〕从 INTEGRATION 挪来（候选那一条不再建临时目录）。
@@ -557,6 +560,8 @@ const SCAN: &[&str] = &[
 
 /// 集成层：碰 OS（起进程 · 套接字 · 真文件系统写 · 临时目录）。
 const INTEGRATION: &[&str] = &[
+    // 〔P1〕SCAN → INTEGRATION：部署计划的编排（替身对面）＋ 读金样与后端历史表之外，`place-verdict` 帧面那一条真读写临时目录里的落点文件。
+    "tests/backend/control/deploy_plan_tests.rs",
     // 〔E2 尾 · 09-27〕扫描层 → 集成层：多了「门禁那一行的判法与 CI 那一行的数由判据现算」—— 读 gate.sh ＋ ci.yml 两份外部件。
     "tests/frontend/shell/e2e_gate_registry_tests.rs",
     "tests/backend/observe/cc_bus_hooks_tests.rs", // 〔MIG-3b〕钩子诊断进后端：造一台假机器（临时目录里的 settings ＋ 程序）读回成品
@@ -653,7 +658,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/stream/wire_tests.rs",
     // 〔MIG-3a〕`tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    "tests/frontend/shell/adapter_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/auto_launch_tests.rs",
     "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/frontend/shell/local_backend_tests.rs",

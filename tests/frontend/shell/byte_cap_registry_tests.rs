@@ -475,18 +475,19 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // `src/backend/observe/search_query.rs`），靠下面「对 D」那条判据
     // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
     // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
+    // 〔P1〕`search-core` 拆进后端：两条封顶随通用口径住 `observe/search_rules.rs`（仍只此一份）。
     (
-        "src/common/search-core/src/lib.rs",
+        "src/backend/observe/search_rules.rs",
         "MAIN_CAP",
         20_000,
-        "单条 main 文本进索引的**字符**数（monitor 与后端同一份）",
+        "单条 main 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
     ),
     (
-        "src/common/search-core/src/lib.rs",
+        "src/backend/observe/search_rules.rs",
         "TOOL_CAP",
         4_000,
-        "单条 tool 文本进索引的**字符**数（monitor 与后端同一份）",
+        "单条 tool 文本进索引的**字符**数（只此一份）",
         "索引截断（不丢数据）",
     ),
     (
@@ -1276,12 +1277,12 @@ fn the_cross_crate_twins_are_machine_checked_not_hand_copied() {
     //
     // 原文：`src/frontend/shell/src/search.rs` 与 `src/backend/observe/search_query.rs`
     // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
-    // （`search-core`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+    // （`search-core`；〔P1〕今天住后端 `observe/search_rules.rs`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
     // （它会变成「同一个数等于它自己」，恒绿）。
-    // 把这件事焊住的判据换了个形状，住
-    // `tests/frontend/shell/search_kou_jing_guard.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
+    // 把这件事焊住的判据换了个形状，住（〔P1〕随家搬进后端）
+    // `tests/backend/observe/search_rules_tests.rs` 的 `the_search_kou_jing_has_exactly_one_home`：
     // 它断言搜索那一侧（〔LOC1b〕今天只剩后端）生产段**不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义，
-    // 并断言 monitor 生产树里零处再搜。
+    // monitor 生产树里零处再搜由 `search_kou_jing_guard.rs::the_monitor_grows_no_search_helpers` 断言。
     // ⇒ 这两个数搬回任何一侧，当场红。
 
     // 对 E〔F9 续 09-24 立；F9c 第四波改钉〕：窗口的编辑上限**就是**后端读 / 提交存盘的天花板 ⇒ 钉相等。

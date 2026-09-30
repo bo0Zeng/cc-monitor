@@ -47,8 +47,11 @@ use plan::{AccountTable, Env, Plan};
 /// 位置动作取消、不认的词原样交 agent、诊断口改 `--ccm-*`）。
 pub(crate) const CCM_VERSION: &str = "6";
 
-/// 认得的 agent。**闭集只有这一处住址**（`brief` 13b）。
-pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
+/// 认得的 agent。**闭集只有一处住址**（`brief` 13b）：〔P1 · 第 4 件〕注册表里带起会话事实的那几家
+/// （`agents::launchable_kinds`）。从前这里是一份手写的闭集常量，与注册表那一格是同一件事的两处。
+pub(crate) fn agents() -> Vec<&'static str> {
+    crate::agents::launchable_kinds()
+}
 
 /// 能力 token。消费者（`ccm_invocation.rs::CLI_REQUIRED_CAPS` / 前端）据此判断
 /// 「这条命令渲出来对面认不认」。
@@ -186,28 +189,17 @@ pub(crate) static BUS_ID_RECIPE: std::sync::LazyLock<String> = std::sync::LazyLo
 pub(crate) static USAGE: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(|| copy_text("beCcm.usage.body", &[]));
 
-/// 这个 agent 的默认启动器。
+/// 这个 agent 的默认启动器。〔P1 · 第 4 件〕事实只住适配层（`agents::LaunchFace`，注册表那一格）；
+/// `agent` 已由 argv 按 [`agents`] 闭集收过（同一张注册表）⇒ 认不出只剩直接调用的路；空串（exec 当场说起不来，不猜成 claude）。
 pub(crate) fn default_launcher(agent: &str) -> &'static str {
-    match agent {
-        "codex" => "codex",
-        _ => "claude",
-    }
+    crate::agents::launch_face_of(agent).map_or("", |f| f.default_launcher)
 }
 
-/// 起这个 agent 之前要清掉的嵌套标记。
+/// 起这个 agent 之前要清掉的嵌套标记（〔P1〕同上，住适配层；认不出 ⇒ 不清）。
 pub(crate) fn nested_env(agent: &str) -> Vec<String> {
-    match agent {
-        "claude" => [
-            "CLAUDECODE",
-            "CLAUDE_CODE_ENTRYPOINT",
-            "CLAUDE_CODE_SESSION_ID",
-            "CLAUDE_CODE_CHILD_SESSION",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect(),
-        _ => Vec::new(),
-    }
+    crate::agents::launch_face_of(agent)
+        .map(|f| f.nested_env.iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default()
 }
 
 /// 这个 agent 够不着 tmux socket、要把会话名经 env 透进去吗。
@@ -404,7 +396,7 @@ pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> serde_json::Val
     serde_json::json!({
         "version": CCM_VERSION,
         "capabilities": crate::ccm_launcher_with(platform),
-        "agents": AGENTS,
+        "agents": agents(),
         "build": crate::BUILD_ID,
     })
 }
@@ -559,7 +551,7 @@ pub(crate) fn probe_output_for(self_path: &str, platform: crate::TmuxPlatform) -
     format!(
         "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
         crate::ccm_launcher_with(platform).join(","),
-        AGENTS.join(","),
+        agents().join(","),
         crate::BUILD_ID
     )
 }

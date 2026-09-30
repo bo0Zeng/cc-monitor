@@ -46,6 +46,8 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     find_session: None,
     branch: None,
     drift: None,
+    // 〔P1〕Codex 的记录不进全局搜索 / 摘录那几条通用路（它们只走记录树那一家）⇒ 不给文本面。
+    text: None,
     delete: None,
 };
 // 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
@@ -67,6 +69,15 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 带引号的 `"codex"`，把它写在注册表里会**当场**多一条 kind 派发登记 —— 而注册表
 /// 根本不在做派发）。
 pub(crate) const AGENT_KIND: &str = "codex";
+
+/// 〔P1 · 第 4 件〕本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（这一家没有登记默认上游）；没有 shell wrapper。
+pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
+    adapter_id: AGENT_KIND,
+    default_launcher: resume::DEFAULT_COMMAND,
+    launcher_alias: None,
+    resume_token: resume::RESUME_TOKEN,
+    nested_env: resume::NESTED_ENV,
+};
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
 ///

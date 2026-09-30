@@ -56,6 +56,12 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）
           ★ 三条策略为什么是这三格：同上一行逐字，只有 `Hidden` 那格更重：Windows 上问的是我们自己放下去的 `ccm.exe`（控制台子系统），不带 flag 就是每问一次身份闪一次黑框。",
      "Hidden · JobKillOnClose · Null"),
+    // ── 〔P1 · `设计/00 §1.2` 判定只在后端〕问我们自己放下去的那一份后端一次（帧命令的 CLI 面）。
+    ("ccm_probe.rs", "ask_once", "`<我们那份 ccm / 要放的那份暂存件> -- --<帧命令>`（不经 shell；入参 JSON 走 stdin）",
+     "同步命令里要后端判一件事（本机探针认旧入口 `deploy-retired`）· 本机后端放下去之前要它自己判放不放（`place-verdict`，那一刻还没有常驻后端可连）\
+          ⇒ 只能直接跑那份字节问一次；参数是路径与常量命令名，入参只经 stdin 交（不进 argv），一个字节都不写
+          ★ 三条策略为什么是这三格：`Hidden` 同 `probe_binary_uncached`（Windows 上问的是控制台子系统的 `ccm.exe`）；超时收整棵；stderr 是答话的一半（错信封 `{code, message}`）⇒ `Captured`。",
+     "Hidden · JobKillOnClose · Captured"),
     // 〔SH1 · V136〕驾驶舱那条本机 shell 读 `local_shell_read`〔散文墓碑〕那一行出表了（`K-R112` 写下的出表条件兑现）：
     //   驾驶舱读名册 / 读收件箱都改走后端（`bus-state` / `bus-inbox`，转调 cc-bus 的机器可读读命令），monitor 本机不再起 `bash`。
     // 〔SR1a · 2026-09-24〕`dial_host.rs::open` 那一行**摘了**：它不再起 `--dial` 拨号代理子进程 ——

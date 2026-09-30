@@ -7,7 +7,7 @@ use super::*;
 #[test]
 fn only_the_panorama_cells_with_a_production_line_get_bytes() {
     use crate::byte_table::{Arch, Key, Os, Product, LINES};
-    use deploy_core::key_of;
+    use deploy_contract::key_of;
     let linux = |arch| {
         Some(Key {
             os: Os::Linux,
@@ -41,16 +41,11 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
         assert_eq!(got, want, "{os} / {arch}");
         if want.is_none() {
             // 〔TL1 · 4C〕从前判的是一个按两个词直接取字节的函数（远端推字节改走 `choose` 之后它删了）；
-            //   今天判那个口本身：两条路都拒。
-            for route in [
-                crate::byte_table::Route::Remote,
-                crate::byte_table::Route::Local,
-            ] {
-                assert!(
-                    crate::byte_table::choose(Product::Panorama, route, key_of(os, arch)).is_err(),
-                    "{os} / {arch} 不该有字节（{route:?}）"
-                );
-            }
+            //   今天判那个口本身：拒。〔P1〕`choose` 不再分本机 / 远端（表 B 的承诺是判定，住后端）。
+            assert!(
+                crate::byte_table::choose(Product::Panorama, key_of(os, arch)).is_err(),
+                "{os} / {arch} 不该有字节"
+            );
         }
     }
 }
@@ -63,7 +58,7 @@ fn only_the_panorama_cells_with_a_production_line_get_bytes() {
 #[test]
 fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
     use crate::byte_table::{Product, LINES};
-    use deploy_core::key_of;
+    use deploy_contract::key_of;
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
     let src = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
     let at = src
@@ -99,7 +94,7 @@ fn the_arches_we_pick_are_exactly_the_ones_build_rs_embeds() {
 #[test]
 fn the_embedded_bytes_are_the_right_arch() {
     for (arch, machine) in [("x86_64", 62u16), ("aarch64", 183u16)] {
-        let key = deploy_core::key_of("Linux", arch).expect("认得出");
+        let key = deploy_contract::key_of("Linux", arch).expect("认得出");
         let b = crate::byte_table::pick(crate::byte_table::Product::Panorama, key)
             .expect("cfg 置了却选不出字节")
             .bytes;
@@ -189,12 +184,12 @@ fn the_push_lands_where_the_backend_looks_and_inside_a_remote_write_root() {
 ///
 /// 要求住址：`设计/96 §7.1.1b`「全仓唯一的取字节口」（`byte_table.rs` 头注逐字）＋ `设计/01 §6.7a` 规矩 4
 /// （本机只是「目标机器恰好是自己」—— 两件产物、两条路走同一张表）＋ `设计/00 §1.2`「判定只在后端」（〔THIN〕表 B 的承诺是裁决）。
-/// 两向：`uname -s -m` 这个命令串在 monitor 生产段 ∪ 共享 crate 的住址集合 == {`deploy-core`}（它的唯一消费者今天是后端
+/// 两向：`uname -s -m` 这个命令串在 monitor 生产段 ∪ 共享 crate 的住址集合 == {`deploy-contract`}（〔P1〕契约那一半；它的唯一消费者今天是后端
 /// `deploy_plan::slot_of`）；全景推字节两臂都问本机常驻后端 `deploy-slot`（`ask_slot(Some(&cfg), …)` · `ask_slot(None, …)`），
 /// 取字节只按答里那一格（`slot_bytes`）—— monitor 零处 `choose(Product::Panorama` · 零处 `probe_key`（读本模块生产段，异源于 `byte_table` 自己的判据）。
 #[test]
 fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choose() {
-    // 〔MIG-3b〕命令串随表 A / 表 B 搬进共享的 `deploy-core` ⇒ 射程是 monitor 生产段 ∪ 共享 crate，住址集合 == {`src/common/deploy-core/src/lib.rs`}。
+    // 〔MIG-3b · P1〕命令串随表 A 搬进共享 crate（今天是契约那一半 `deploy-contract`）⇒ 射程是 monitor 生产段 ∪ 共享 crate，住址集合 == {`src/common/deploy-contract/src/lib.rs`}。
     let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let needle = format!("uname -s {}", "-m");
     let mut at: Vec<String> = Vec::new();
@@ -217,10 +212,10 @@ fn asking_what_the_machine_is_lives_in_one_place_and_the_push_goes_through_choos
     at.sort();
     assert_eq!(
         at,
-        vec!["src/common/deploy-core/src/lib.rs".to_string()],
-        "问机器的那条命令在 monitor 生产段 ∪ 共享 crate 的住址不是只有 deploy-core"
+        vec!["src/common/deploy-contract/src/lib.rs".to_string()],
+        "问机器的那条命令在 monitor 生产段 ∪ 共享 crate 的住址不是只有 deploy-contract"
     );
-    // 正控：同一把尺子在一段合成源码上数得出（不然上面的「只有一处」可能是空真 —— 它的非空由 deploy-core 那一处担着）。
+    // 正控：同一把尺子在一段合成源码上数得出（不然上面的「只有一处」可能是空真 —— 它的非空由 deploy-contract 那一处担着）。
     assert!(
         guard_core::production_code(&format!("const X: &str = \"{needle}\";")).contains(&needle)
     );
@@ -387,7 +382,7 @@ fn the_slot_answer_is_read_strictly() {
     let ok = json!({"os": "Linux", "arch": "x86_64", "label": "Linux / x86_64", "ack": null});
     assert_eq!(
         decode_slot(&ok),
-        deploy_core::key_of("Linux", "x86_64").map_err(|_| String::new())
+        deploy_contract::key_of("Linux", "x86_64").map_err(|_| String::new())
     );
     for bad in [
         json!({"os": "Linux", "arch": "x86_64", "label": "x"}),

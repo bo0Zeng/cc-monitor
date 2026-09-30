@@ -116,16 +116,15 @@ creds-core = { path = "../common/creds-core", features = ["harden"] }
 shell-quote-core = { path = "../common/shell-quote-core" }
 # 〔US1 · 4D · P3〕后端的门牌与家的契约（端口 · 钥匙 · 路由语法 · `~/.cc-monitor/` 下每一样的相对路径），与 monitor 同一份（`设计/20 §5` 目标）。
 relay-route-core = { path = "../common/relay-route-core" }
-# K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
-# 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
-search-core = { path = "../common/search-core" }
+# 〔P1〕`search-core` 这一行删了：它只剩本 crate 用，带 Claude 记录格式知识 ⇒ 通用口径收成 `observe/search_rules.rs`，
+#   记录文本那一半进适配层 `agents/claudecode/text.rs`（K-R100「口径只有一份」照旧，家换了）。
 # 〔THIN〕`gate-core` 这一行删了：monitor 那一侧的门删掉之后它只剩本 crate 用 ⇒ 收成模块 `control/gate_rules.rs`。
 # 〔CP2c · 第四波 4C〕对外文案表的 Rust 取文口（`设计/01 §6.9`：所有对外文案与报错都从一张表来）。
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`（选 A 的理由：
 # `调研/第四波记录/CP2c.md §2.1`）。依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
 copy-core = { path = "../common/copy-core" }
-# 〔MIG-3b〕部署决策的唯一一份（表 A / 表 B · 身份戳 · 只升不降），与 monitor 同一份：本机常驻后端出计划（`control/deploy_plan.rs`），monitor 只放字节。
-deploy-core = { path = "../common/deploy-core" }
+# 〔P1〕部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `control/deploy_plan.rs`。
+deploy-contract = { path = "../common/deploy-contract" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

@@ -267,14 +267,16 @@ fn f() {
 /// ⇒ 把它摘出人群不会藏掉任何一个真标签。哪天它开始画东西，本条红。
 #[test]
 fn fonts_rs_draws_nothing_at_all() {
-    let src = std::fs::read_to_string(crate::guard_support::crate_src_root().join("fonts.rs"))
+    // 〔P4〕变量名不叫 `src`：包根下的路径变短、rustfmt 把读盘并成一行之后，`needle_anchor_registry` 那条按**变量名**认语料的棘轮
+    //   会把同文件 `copy_text_keys(src)` 里的 `rest` 误认成它的派生（两个 `src` 不是同一个东西）。
+    let fonts_rs = std::fs::read_to_string(crate::guard_support::crate_src_root().join("fonts.rs"))
         .expect("fonts.rs 读不动");
     // 只看代码，不看注释 —— 注释里当然会提到这些名字
     let code: String = {
         let mut keep = String::new();
         let mut in_line = false;
         let mut prev = '\0';
-        for c in src.chars() {
+        for c in fonts_rs.chars() {
             if in_line {
                 if c == '\n' {
                     in_line = false;

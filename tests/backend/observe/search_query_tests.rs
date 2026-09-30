@@ -1,7 +1,7 @@
 use super::*;
 
 // ⚠ `extract_*` / `clean_user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
-// **已随实现搬进 `../src/common/search-core`**（`K-R100`）。
+// **随实现住在口径的家里**（`K-R100`；〔P1〕通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
 // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是本件要治的形状。
 
 #[test]
@@ -91,7 +91,7 @@ fn search_end_to_end_and_rejects_traversal() {
 
 // ── `K-R100` 的三条行为判据 ──────────────────────────────────────────
 // 它们**不判源码文本**（那是判写法，且今天两侧本来就一样，会恒绿）。
-// 判的是「本侧真跑出来的东西跟不跟 `search_core` 走」。
+// 判的是「本侧真跑出来的东西跟不跟 `search_rules` 走」。
 
 /// 建一棵 `<home>/projects/<proj>/<sid>.jsonl` 语料，`mtimes` 按给定毫秒设。
 fn corpus(tag: &str, sessions: &[(&str, i64, usize)]) -> std::path::PathBuf {
@@ -180,7 +180,7 @@ fn the_snippet_budget_goes_to_the_most_recent_sessions() {
         ids,
         vec!["new", "mid", "old"],
         "预算/输出顺序必须是最近优先（与 monitor 的 `updated_at desc` 同一份 \
-             `search_core::sort_by_recency`）。收口前这里没有排序、按 readdir 走 —— \
+             `search_rules::sort_by_recency`）。收口前这里没有排序、按 readdir 走 —— \
              而两侧的**展示**顺序都是最近优先 ⇒ 缺 snippet 的正好是列表最上面那几张卡。"
     );
 
@@ -223,16 +223,16 @@ fn truncation_is_stated_not_left_to_an_empty_array() {
     std::fs::remove_dir_all(&home).ok();
 }
 
-/// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_core` 一处，本侧真跑出来的东西跟着变**。
+/// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_rules` 一处，本侧真跑出来的东西跟着变**。
 ///
-/// 期望值**从 `search_core::SNIPPET_CTX` 取**，实际值从本文件的生产管线
-/// （`search` → `session_hits_in` → `search_core::make_snippet`）来。
+/// 期望值**从 `search_rules::SNIPPET_CTX` 取**，实际值从本文件的生产管线
+/// （`search` → `session_hits_in` → `search_rules::make_snippet`）来。
 /// · 改 core 的 `SNIPPET_CTX` ⇒ 实际与期望**一起动**，本条仍绿（＝行为跟着变了）；
 /// · 本侧哪天自己写回一个 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
 /// monitor 侧原有一条同形的（〔LOC1b · 4D〕随 monitor 内存索引一起删了：本机搜索也走本条测的这一份）。
 #[test]
 fn the_snippet_window_comes_from_core() {
-    let ctx = search_core::SNIPPET_CTX;
+    let ctx = search_rules::SNIPPET_CTX;
     let filler = "x".repeat(ctx * 4);
     let tmp = std::env::temp_dir().join(format!("ccm-kr100-ctx-{}", std::process::id()));
     std::fs::remove_dir_all(&tmp).ok();
@@ -251,7 +251,7 @@ fn the_snippet_window_comes_from_core() {
     assert_eq!(
         hit["before"].as_str().unwrap().chars().count(),
         ctx + 1,
-        "snippet 前窗必须等于 `search_core::SNIPPET_CTX`（={ctx}）+ 省略号"
+        "snippet 前窗必须等于 `search_rules::SNIPPET_CTX`（={ctx}）+ 省略号"
     );
     assert_eq!(hit["after"].as_str().unwrap().chars().count(), ctx + 1);
     std::fs::remove_dir_all(&tmp).ok();

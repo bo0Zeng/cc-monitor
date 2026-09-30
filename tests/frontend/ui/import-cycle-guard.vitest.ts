@@ -52,7 +52,7 @@ const UI = join(SRC, "frontend", "ui");
  *
  * 🔴 `K-R93`（09-12）：原句写的是「生成物是叶子**类型**」—— 那半句今天过期了。
  * `src/frontend/ui/generated/agent-profile-table.ts` 是一份**值**表（agent 画像，源在
- * `src/frontend/shell/src/adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
+ * 后端注册表 `src/backend/agents/mod.rs`，〔P1〕从前是 monitor `adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
  * `K-R95`（09-12）又加了一份（`launch-render-facts.ts`，源在
  * `src/frontend/shell/src/launch_wire.rs`）——下面那条自检的数因此是 2 不是 1。
  * 「不会成环」那一半**仍然成立且现在被机检**：见下面自检里那条「生成物真的是叶子」。

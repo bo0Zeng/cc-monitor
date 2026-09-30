@@ -173,16 +173,25 @@ pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbe
 
 /// 〔WF1 · ㉔〕Windows 上「新开一个终端窗口时的 PATH」：注册表里机器级 ＋ 用户级（展开之后）现拼 ——
 /// 本进程继承来的是 monitor 起的那一刻的那一份，用户刚在设置里加过的用户级 PATH 它看不到。
+/// 〔P1 · 同 P2 那一形（`profile_installer::render_user_path_probe_command`）〕自己编成 UTF-8 字节、直写标准输出流：
+/// 不经控制台编码（中文系统是 936）、也不去改控制台代码页 ⇒ PATH 里有非 ASCII 目录时读回不坏。
 #[cfg(any(windows, test))]
-const FRESH_PATH_PS: &str = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\
-(@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n";
+const FRESH_PATH_PS: &str = "$t = (@([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) | Where-Object { $_ }) -join ';'\n\
+$b = [Text.Encoding]::UTF8.GetBytes($t + [char]10)\n\
+$o = [Console]::OpenStandardOutput()\n\
+$o.Write($b, 0, $b.Length)\n\
+$o.Flush()\n";
 
 /// 〔WF1 · ㉔〕Windows 那一形的探测串，跑在**照常加载 profile** 的 PowerShell 里（`$PROFILE` 在哪、怎么加载由 PowerShell 自己答）。
 /// 输出与 [`CCM_PROBE_CMD`] 同形：名片 ＋ 空行 ＋ `at=<住址>`，找不到 ⇒ `NO_CCM`；住址：程序 ⇒ 它的路径，函数 / 别名 ⇒ 名字（同 `command -v`）。
+/// 〔P1〕整段拼好、编成 UTF-8 字节直写标准输出流（同上）：住址（用户目录）含非 ASCII 时不坏；名片那几行是 ASCII，经 PowerShell 读回不受代码页影响。
 #[cfg(any(windows, test))]
-const CCM_PROBE_PS: &str = "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n\
-$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
-if ($c) { & ccm '--' '--ccm-probe'; ''; 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) } else { 'NO_CCM' }\n";
+const CCM_PROBE_PS: &str = "$c = Get-Command ccm -ErrorAction SilentlyContinue | Select-Object -First 1\n\
+$t = if ($c) { ((& ccm '--' '--ccm-probe') -join [char]10) + [char]10 + [char]10 + 'at=' + $(if ($c.CommandType -eq 'Application') { $c.Source } else { $c.Name }) + [char]10 } else { 'NO_CCM' + [char]10 }\n\
+$b = [Text.Encoding]::UTF8.GetBytes($t)\n\
+$o = [Console]::OpenStandardOutput()\n\
+$o.Write($b, 0, $b.Length)\n\
+$o.Flush()\n";
 
 /// 两跳：① 不读 profile 的那一个现拼 PATH（[`FRESH_PATH_PS`]）；② 带这份 PATH 起一个照常加载 profile 的，问 [`CCM_PROBE_PS`]。
 /// 与 POSIX 那一形（`bash -lic`）同一个等待与解析（[`capture_spawned`] · [`parse_probe_output`]）；哪一跳没成 ⇒ 当没装（同 POSIX）。
@@ -289,36 +298,94 @@ fn probe_spawned(
     parse_probe_output(&capture_spawned(timeout, spawn).unwrap_or_default())
 }
 
-/// 起它、等它（带上限）、读它的 stdout。起不来 / 超时 / 读坏了 ⇒ `None`（**不采信半截输出**，理由见下面两支）。
+/// 起它、等它（带上限）、读它的 stdout。起不来 / 超时 / 读坏了 ⇒ `None`（**不采信半截输出**，理由见 [`capture_full`] 两支）。
 fn capture_spawned(
     timeout: std::time::Duration,
     spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
 ) -> Option<String> {
-    use std::io::Read;
-    let Ok(mut child) = spawn() else {
-        return None;
+    match capture_full(timeout, spawn, None) {
+        Ok(c) => Some(String::from_utf8_lossy(&c.stdout).into_owned()),
+        Err(CaptureFail::Spawn(_)) => None,
+        Err(CaptureFail::TimedOut) => {
+            tracing::debug!("ccm 本机探测超时（{timeout:?}）—— 当作未装，降级回旧路");
+            None
+        }
+        Err(CaptureFail::Read(e)) => {
+            tracing::warn!(
+                "本机 ccm 探测：读它的输出出错（{e}）—— 这一次按没装处理，但那不是「确认没装」"
+            );
+            None
+        }
+    }
+}
+
+/// 收全的一次：退出码（被信号杀 ⇒ `None`）· 两根管子。
+pub(crate) struct Captured {
+    pub(crate) code: Option<i32>,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
+}
+
+/// 没收全的三形（互不合并：下一步各不相同）。
+pub(crate) enum CaptureFail {
+    /// 起不来（原话）。
+    Spawn(String),
+    /// 上限内没退出（已杀掉、已收尸）。
+    TimedOut,
+    /// 读它的输出出错（原话）。
+    Read(String),
+}
+
+/// 起它（`input` ⇒ 从 stdin 交这一段、交完就关）、等它（带上限）、读两根管子（没接的那根是空）。
+/// 本机探针与「问自己放下去的那份后端一次」（[`ask_once`]）共用这一段等法 —— 两份手写的 wait/read 之间只会漂。
+fn capture_full(
+    timeout: std::time::Duration,
+    spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
+    input: Option<Vec<u8>>,
+) -> Result<Captured, CaptureFail> {
+    use std::io::{Read, Write};
+    let mut child = spawn().map_err(|e| CaptureFail::Spawn(e.to_string()))?;
+    // 入参另起一条线程写：对面不读 stdin 就先退出时，写端会断，这里不许因此挂住（写错不采信，等它的退出码说话）。
+    let writer = match (child.stdin.take(), input) {
+        (Some(mut w), Some(bytes)) => Some(std::thread::spawn(move || {
+            let _ = w.write_all(&bytes);
+        })),
+        _ => None,
     };
     // ⚠ 读线程必须在**等之前**起：管道缓冲写满时子进程会阻塞在 write 上，
     // 那时再怎么等都等不到它退出 —— 「等它退出再读」是个会自锁的顺序。
-    let stdout = child.stdout.take();
-    // 〔W5-VIS · E 吞错普查点名〕读错**带回来**：原先 `let _ =` 吞掉，读坏了与「没输出」长得一样（都判成没装）。
-    let reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let read = match stdout {
-            Some(mut s) => s.read_to_end(&mut buf).err().map(|e| e.to_string()),
-            None => None,
-        };
-        (buf, read)
-    });
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            // 〔W5-VIS · E 吞错普查点名〕读错**带回来**：原先 `let _ =` 吞掉，读坏了与「没输出」长得一样（都判成没装）。
+            let read = match pipe {
+                Some(mut s) => s.read_to_end(&mut buf).err().map(|e| e.to_string()),
+                None => None,
+            };
+            (buf, read)
+        })
+    };
+    let out = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
     let deadline = std::time::Instant::now() + timeout;
-    let timed_out = loop {
+    let (timed_out, code) = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break false,
-            Err(_) => break false,
+            Ok(Some(st)) => break (false, st.code()),
+            Err(_) => break (false, None),
             Ok(None) => {}
         }
         if std::time::Instant::now() >= deadline {
-            break true;
+            break (true, None);
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     };
@@ -326,23 +393,128 @@ fn capture_spawned(
         // 杀掉它，读线程随管道关闭而结束 —— 否则那条线程会跟着挂死的子进程一起留下。
         let _ = child.kill();
         let _ = child.wait();
-        tracing::debug!("ccm 本机探测超时（{timeout:?}）—— 当作未装，降级回旧路");
     }
-    let (buf, read_err) = reader.join().unwrap_or_default();
-    if let Some(e) = &read_err {
-        tracing::warn!(
-            "本机 ccm 探测：读它的输出出错（{e}）—— 这一次按没装处理，但那不是「确认没装」"
-        );
-        // 读坏了的那一截同超时那一形：**不采信半截输出**（理由见下面超时那一支）。
-        return None;
+    if let Some(w) = writer {
+        let _ = w.join();
     }
+    let (stdout, out_err) = out.join().unwrap_or_default();
+    let (stderr, err_err) = err.join().unwrap_or_default();
     if timed_out {
         // 超时那次**不采信半截输出**：`parse_probe_output` 只看首行，
         // 半截的首行恰好可能是 `name=ccm` 而 `capabilities=` 还没来 ⇒ 会被读成「装了但没能力」，
         // 那是个比「没装」更难查的假象。
-        return None;
+        return Err(CaptureFail::TimedOut);
     }
-    Some(String::from_utf8_lossy(&buf).into_owned())
+    // 读坏了的那一截同超时那一形：**不采信半截输出**。
+    if let Some(e) = out_err.or(err_err) {
+        return Err(CaptureFail::Read(e));
+    }
+    Ok(Captured {
+        code,
+        stdout,
+        stderr,
+    })
+}
+
+/// 〔P1 · `设计/00 §1.2` 判定只在后端〕[`ask_once`] 没问成的几形。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OnceErr {
+    /// 起不来（原话）。
+    Spawn(String),
+    /// 上限内没答完（已杀掉）。
+    TimedOut,
+    /// 它答了「不」：CLI 面的错信封 `{code, message}`（`message` 是后端对人说的那一句）。
+    Refused { code: String, message: String },
+    /// 答话不成形：退出码与两根管子上的原话（截短）。
+    Unreadable(String),
+}
+
+/// 〔P1〕**问我们自己放下去的那一份后端一次**：帧命令的 CLI 面 `<bin> -- --<cmd>`（`control/cli_control.rs`：入参 JSON 走 stdin、
+/// 读到 EOF；exit 0 ⇒ stdout 一行 JSON · exit 2 ⇒ stderr 一行 `{code, message}`），不经 shell。
+/// 同步命令里问后端就走这一条（`INVARIANTS §10`：同步命令里不 `block_on` 连常驻后端）；本机后端自举（[`ask_place_verdict`]）也走它。
+pub(crate) fn ask_once(
+    bin: &std::path::Path,
+    cmd: &str,
+    args: &serde_json::Value,
+    timeout: std::time::Duration,
+) -> Result<serde_json::Value, OnceErr> {
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    let flag = format!("--{cmd}");
+    let got = capture_full(
+        timeout,
+        &|| {
+            let mut c = std::process::Command::new(bin);
+            // 〔V151〕后端认的 argv 写在 `--` 右边（`control::ccm::route`）。
+            c.args(["--", flag.as_str()])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped());
+            // 三条策略同 [`probe_binary_uncached`]：不闪窗口 · 超时收整棵 · stderr 是答话的一半（错信封）⇒ 接出来。
+            spawn_managed_cmd(
+                &mut c,
+                ConsolePolicy::Hidden,
+                Lifetime::JobKillOnClose,
+                StderrSink::Captured,
+            )
+        },
+        Some(args.to_string().into_bytes()),
+    )
+    .map_err(|f| match f {
+        CaptureFail::Spawn(e) => OnceErr::Spawn(e),
+        CaptureFail::TimedOut => OnceErr::TimedOut,
+        CaptureFail::Read(e) => OnceErr::Unreadable(e),
+    })?;
+    let line = |b: &[u8]| String::from_utf8_lossy(b).trim().to_string();
+    let (out, err) = (line(&got.stdout), line(&got.stderr));
+    let unreadable = || {
+        let said: String = format!("exit={:?} stdout={out:?} stderr={err:?}", got.code)
+            .chars()
+            .take(400)
+            .collect();
+        OnceErr::Unreadable(said)
+    };
+    match got.code {
+        Some(0) => serde_json::from_str(&out).map_err(|_| unreadable()),
+        Some(2) => {
+            let v: serde_json::Value = serde_json::from_str(&err).map_err(|_| unreadable())?;
+            match (v["code"].as_str(), v["message"].as_str()) {
+                (Some(c), Some(m)) => Err(OnceErr::Refused {
+                    code: c.to_string(),
+                    message: m.to_string(),
+                }),
+                _ => Err(unreadable()),
+            }
+        }
+        _ => Err(unreadable()),
+    }
+}
+
+/// 〔P1〕本机后端自举那一问的上限：一个后端进程起来、读一遍落点那个文件（约 10 MB）就答；Windows 上第一次跑一份新写的 exe
+/// 杀毒软件会先扫一遍（几秒）⇒ 放宽到 20 秒。本机后端引导持锁等它（`local_backend_host::start_local_backend` 头注的代价那一段）。
+pub(crate) const PLACE_ASK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// 〔P1 · 形状 A〕宿主交给 `local_backend::extract_embedded_to` 的问话口（`local_backend::PlaceAsk`）：跑暂存件的 `--place-verdict` 问一次。
+pub(crate) fn ask_place_verdict(
+    staged: &std::path::Path,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, OnceErr> {
+    ask_once(staged, "place-verdict", args, PLACE_ASK_TIMEOUT)
+}
+
+/// 〔P1 · 第 3 件〕PATH 上另一个 `ccm` 的开头一截是不是我们早先放的旧入口 —— **问我们自己那一份后端**（`deploy-retired` 的 `{text}` 形），
+/// 本文件不认记号。问不成 ⇒ `false`（说不清就不说「是旧的」，退回泛泛那一句），记一行 debug。
+fn old_entry_by_backend(ours: &std::path::Path, head: &str) -> bool {
+    match ask_once(
+        ours,
+        "deploy-retired",
+        &serde_json::json!({ "text": head }),
+        OURS_PROBE_TIMEOUT,
+    ) {
+        Ok(v) => v["verdict"] == "remove",
+        Err(e) => {
+            tracing::debug!("本机 ccm 探针：问我们那一份「PATH 上那个是不是旧入口」没问成（{e:?}）—— 不说它是旧的");
+            false
+        }
+    }
 }
 
 // 🪦〔MIG-2 · `99 §2.1 ⑬`〕这里原来是 Tauri 命令 `probe_ccm_cli`〔散文墓碑〕（界面先问那台后端 `ccm-probe`、再把结果带去渲染）：
@@ -411,14 +583,19 @@ pub(crate) enum Reach {
     Nothing,
     /// 解过链接就是我们落点上那一份。
     Landing,
-    /// 另一个文件。`old_entry` = 认得出是 cc-monitor 早先放的旧入口（三行 shim / bash 启动器，`deploy_core::is_ours`）。
+    /// 另一个文件。`old_entry` = 认得出是 cc-monitor 早先放的旧入口（三行 shim / bash 启动器）—— 〔P1〕认的是后端（`deploy-retired`）。
     OtherFile { path: String, old_entry: bool },
     /// 不是一个文件路径（shell 函数 / 别名）。
     NotAFile,
 }
 
-/// `at` = 登录 shell 里 `command -v ccm` 的答；`landing` = 我们那一份的绝对路径（没装 ⇒ `None`）。
-pub(crate) fn reach_of(at: Option<&str>, landing: Option<&std::path::Path>) -> Reach {
+/// `at` = 登录 shell 里 `command -v ccm` 的答；`landing` = 我们那一份的绝对路径（没装 ⇒ `None`）；
+/// `old_entry_of` = 另一个文件开头那一截是不是我们早先放的旧入口（〔P1〕生产 = [`old_entry_by_backend`]：判在后端）。
+pub(crate) fn reach_of(
+    at: Option<&str>,
+    landing: Option<&std::path::Path>,
+    old_entry_of: &dyn Fn(&str) -> bool,
+) -> Reach {
     let Some(at) = at else {
         return Reach::Nothing;
     };
@@ -436,7 +613,7 @@ pub(crate) fn reach_of(at: Option<&str>, landing: Option<&std::path::Path>) -> R
         .unwrap_or_default();
     Reach::OtherFile {
         path: at.to_string(),
-        old_entry: deploy_core::is_ours(&String::from_utf8_lossy(&head)),
+        old_entry: old_entry_of(&String::from_utf8_lossy(&head)),
     }
 }
 
@@ -601,8 +778,8 @@ fn probe_path_ccm() -> Option<CcmProbeResult> {
 pub(crate) fn ours_by_bytes(p: &std::path::Path) -> bool {
     std::fs::read(p).is_ok_and(|b| {
         matches!(
-            deploy_core::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
-            deploy_core::RemoteIdentity::Stamp(_)
+            deploy_contract::identity_of_bytes(&b, crate::sftp::STAMP_MARKS),
+            deploy_contract::RemoteIdentity::Stamp(_)
         )
     })
 }
@@ -620,7 +797,8 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     if fresh == Some(true) {
         *LOCAL_PROBE_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
-    let home = dirs::home_dir();
+    // 〔P1 · P5 裁〕家目录只有一条规矩（`creds_core::store::home_dir`，两侧共用）。
+    let home = creds_core::store::home_dir();
     let path = home.as_ref().map(|h| {
         h.join(".cc-monitor")
             .join("bin")
@@ -647,7 +825,16 @@ pub fn local_ccm_entry_status(fresh: Option<bool>) -> LocalCcmEntry {
     let (on_path, verdict, old_entry) = match probe_path_ccm() {
         None => (parse_probe_output(""), PathCcmVerdict::Undetermined, false),
         Some(on_path) => {
-            let reach = reach_of(on_path.at.as_deref(), installed.map(|p| p.as_path()));
+            // 〔P1〕「是不是我们早先放的」问我们自己那一份（字节认得出是我们编的才跑它，同上面 `--ccm-probe` 那一条）。
+            let asked = |head: &str| match installed {
+                Some(p) if ours_bytes => old_entry_by_backend(p, head),
+                _ => false,
+            };
+            let reach = reach_of(
+                on_path.at.as_deref(),
+                installed.map(|p| p.as_path()),
+                &asked,
+            );
             let old_entry = matches!(
                 reach,
                 Reach::OtherFile {

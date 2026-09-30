@@ -157,7 +157,7 @@ const CHANNELED: &[(&str, &str)] = &[
     ),
     (
         "history-find",
-        "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search-core`），monitor 那份核头尾删了",
+        "后端出成品 `{total, hits}`；命中口径只住后端（`search_query` ＋ `search_rules` · 适配层记录文本），monitor 那份核头尾删了",
     ),
     // 〔C4c · 第四波 4B〕账号域那两条（主会话裁：账号域读自己那台的 apikey 表、规则搬进 `acct-core`、agent 随请求带）。
     (
@@ -230,10 +230,10 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "tmux-list",
         "列那台 tmux 会话：后端 `observe/tmux_list.rs` 出成品 `{installed, sessions}`（解析从 monitor 搬去）；前端 `src/frontend/ui/tmux-reads.ts` 按恰好的键集合收",
     ),
-    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：合并排序进本机后端（`search_core::sort_by_recency`），界面逐台扇出。
+    // 〔FIX4 · `90 §3` J15〕各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",
-        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::answer_merge`（`search_core::sort_by_recency`）；\
+        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::answer_merge`（`search_rules::sort_by_recency`）；\
          前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 〔FIX4 · `99 §2.1 ⑬`〕开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
