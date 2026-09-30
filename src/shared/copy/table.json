@@ -13942,7 +13942,7 @@
       "zh": "拒绝启动：跳板 host 含非法字符：{jumpHost}",
       "args": ["jumpHost"]
     },
-    "rsLaunch.refuse.badToken": {
+    "beTerminal.refuse.badToken": {
       "kind": "error",
       "zh": "拒绝启动：启动令牌格式不对（应为 32 个小写十六进制字符）",
       "args": []

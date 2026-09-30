@@ -706,3 +706,130 @@ fn the_template_notes_come_from_the_copy_table_and_the_error_names_the_file() {
     assert!(said.contains("/h/c/apikey-credentials.json"), "{said}");
     assert!(!said.contains("_note"), "报错里又贴了整份模板：{said}");
 }
+
+// ═══════ 〔P5 · 主会话 09-29 裁〕家目录：哪个环境变量算家，两侧一条规矩 ═══════════════════
+
+/// 注入的环境（`(变量, 值)`；不在表里 ⇒ 没设）。
+fn env_of(
+    pairs: &'static [(&'static str, &'static str)],
+) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+    move |k| {
+        pairs
+            .iter()
+            .find(|(n, _)| *n == k)
+            .map(|(_, v)| (*v).into())
+    }
+}
+
+/// ★ 住址：主会话 09-29 裁 P5 报备 ③ 逐字「规则按平台惯例 —— **Windows：`USERPROFILE` → `HOME`；其余：`HOME` → `USERPROFILE`**…
+/// 都空 ⇒ `None`、调用方明说」。两臂各喂同一组注入环境，期望手写；空串当没设。
+#[test]
+fn the_home_is_picked_by_the_platform_convention() {
+    let p = |s: &str| Some(std::path::PathBuf::from(s));
+    let both: &[(&str, &str)] = &[("USERPROFILE", r"C:\Users\u"), ("HOME", "/home/u")];
+    let only_home: &[(&str, &str)] = &[("HOME", "/home/u")];
+    let only_profile: &[(&str, &str)] = &[("USERPROFILE", r"C:\Users\u")];
+    let empty_first_win: &[(&str, &str)] = &[("USERPROFILE", ""), ("HOME", "/home/u")];
+    let empty_first_other: &[(&str, &str)] = &[("HOME", ""), ("USERPROFILE", r"C:\Users\u")];
+    let blank: &[(&str, &str)] = &[("HOME", ""), ("USERPROFILE", "")];
+    let cases: [(&'static [(&str, &str)], bool, Option<std::path::PathBuf>); 10] = [
+        (both, true, p(r"C:\Users\u")),
+        (only_home, true, p("/home/u")),
+        (empty_first_win, true, p("/home/u")),
+        (blank, true, None),
+        (&[], true, None),
+        (both, false, p("/home/u")),
+        (only_profile, false, p(r"C:\Users\u")),
+        (empty_first_other, false, p(r"C:\Users\u")),
+        (blank, false, None),
+        (&[], false, None),
+    ];
+    for (env, windows, want) in cases {
+        assert_eq!(
+            home_dir_on(&env_of(env), windows),
+            want,
+            "env {env:?} · windows={windows}"
+        );
+    }
+    // 本进程这一臂：`home_dir_from` 取的是本平台那一格（门禁在 Linux 上跑 ⇒ 非 Windows 那一臂）。
+    #[cfg(not(windows))]
+    assert_eq!(home_dir_from(&env_of(both)), p("/home/u"));
+}
+
+/// 两棵生产树（monitor 前端树 · 后端）里 `dirs::home_dir` 的调用：允许的只有下面这几处，逐条说理由（其余一律改调 [`home_dir`]）。
+const DIRS_HOME_ELSEWHERE: &[(&str, &str)] = &[
+    (
+        "src/frontend/shell/src/ccm_probe.rs",
+        "〔待改调〕P1 写区（本路题面明令避开）：`local_ccm_entry_status` 那一格 `~/.cc-monitor/bin/ccm`，合并 P1 时改调并摘行",
+    ),
+    (
+        "src/frontend/shell/src/filewin/shell.rs",
+        "〔待改调〕P4 写区（文件窗口搬成独立包，那一包链不链 `creds-core` 由 P4 定）：`local_home` 那一格浏览起点，合并 P4 时改调并摘行",
+    ),
+];
+
+/// 一份源码（原文）的生产段里 `dirs::home_dir(` 几处。
+fn dirs_home_calls(src: &str) -> usize {
+    guard_core::production_code(src)
+        .matches("dirs::home_dir(")
+        .count()
+}
+
+/// ★ 住址：主会话 09-29 裁 P5 报备 ③ 逐字「「哪个环境变量算家」是两侧必须对上的**契约** ⇒ 收成 `creds-core` 里唯一一个函数」·
+/// 「monitor 生产段为数据目录 / 家目录用 `dirs::home_dir` 零命中（有别的正当用途就登记理由）」。
+/// 调用点现扫（异源：读两棵树的源码，不信任何一侧自报）：① monitor 那份数据目录（`config.rs::resolve_monitor_data_dir`）与
+/// 后端那一处家目录（`platform/paths.rs` 的 `home_dir` · `home_dir_from`）都调本模块这一个函数；② 两棵生产树里 `dirs::home_dir(` ==
+/// [`DIRS_HOME_ELSEWHERE`]（两向）。正控：往 `config.rs` 副本里塞回一处数得出。
+#[test]
+fn both_halves_read_the_home_through_this_one_function() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let read = |rel: &str| {
+        std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("读不到 `{rel}`：{e}"))
+    };
+    let body_of = |src: &str, head: &str| -> String {
+        let prod = guard_core::production_code(src);
+        let at = prod
+            .find(head)
+            .unwrap_or_else(|| panic!("找不到 `{head}` —— 改名了就回来改本条"));
+        let tail = &prod[at..];
+        tail[..tail.find("\n}").expect("函数体没收尾")].to_string()
+    };
+    let config = read("src/frontend/shell/src/config.rs");
+    assert!(
+        body_of(&config, "pub fn resolve_monitor_data_dir()")
+            .contains("creds_core::store::home_dir()"),
+        "monitor 的数据目录不经 `creds_core::store::home_dir` 取家 —— 两侧会认两个家"
+    );
+    let paths = read("src/backend/platform/paths.rs");
+    assert!(body_of(&paths, "pub(crate) fn home_dir()").contains("creds_core::store::home_dir()"));
+    assert!(body_of(&paths, "pub(crate) fn home_dir_from(")
+        .contains("creds_core::store::home_dir_from(get)"));
+    let mut got: Vec<String> = Vec::new();
+    for tree in ["src/frontend", "src/backend"] {
+        let files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
+        assert!(
+            files.len() > 50,
+            "`{tree}` 只扫到 {} 份 —— 遍历坏了",
+            files.len()
+        );
+        for (p, src) in files {
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for _ in 0..dirs_home_calls(&src) {
+                got.push(rel.clone());
+            }
+        }
+    }
+    got.sort();
+    let want: Vec<String> = DIRS_HOME_ELSEWHERE
+        .iter()
+        .map(|(f, _)| f.to_string())
+        .collect();
+    assert_eq!(got, want, "`dirs::home_dir` 的调用点变了 ⇒ 改调 `creds_core::store::home_dir`；确有别的正当用途的写进表里说清");
+    let planted = config.replace("creds_core::store::home_dir()", "dirs::home_dir()");
+    assert_ne!(planted, config, "正控的锚没落在靶上");
+    assert!(dirs_home_calls(&planted) >= 1);
+}

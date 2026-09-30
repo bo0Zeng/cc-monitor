@@ -284,6 +284,8 @@ pub const COMMANDS: &[&str] = &[
     "ssh-config-import",
     "ssh-config-resolve",
     "tasks-list",
+    // 〔P5 · `设计/80 §8.2` 本地半〕本机开终端那一串接上令牌握手前奏（同 `terminal-ssh` 那一形：后端出成品、monitor 只开窗）。**是新命令** ⇒ `build_id_guard` 红是预期的。
+    "terminal-local",
     // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕给一台远端开终端要跑的那一串（`ssh -t …` 外壳 ＋ PowerShell 窗口载荷），本机后端渲、monitor 只开窗。**是新命令** ⇒ `build_id_guard` 红是预期的。
     "terminal-ssh",
     // 〔SH1〕列这台的 tmux 会话（原样行；monitor `list_remote_tmux` 那条拨号 shell 退役）。
@@ -3515,8 +3517,24 @@ pub const REGISTRY: &[CommandSpec] = &[
         takes_input: false,
         run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_import()))),
     },
-    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（一行 PowerShell：
-    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    // 〔P5 · `设计/80 §8.2` 本地半〕**本机开终端那一串**：`{command, rbindToken?}` ⇒ `{command}`（有令牌 ⇒ 前奏在前、原串逐字节在后）。
+    //   纯函数：不起进程、不碰盘（数据目录只算路径）⇒ 不进阻塞档，同 `terminal-ssh`。
+    CommandSpec {
+        name: "terminal-local",
+        doc_anchor: Some("#### `terminal-local`"),
+        codes: &["invalid_args", "refused"],
+        fields: &["command"],
+        takes_input: true,
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                crate::dial::terminal::answer_local(&r.args)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+    // 〔FIX4 · `99 §2.1 ⑬`「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command, rbindToken?}` ⇒ `{command}`（一行 PowerShell：
+    //   `& ssh -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`；〔P5〕带令牌 ⇒ 前面接令牌握手前奏）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   纯函数：校验 ＋ quote，不拨号、不起进程、不碰盘 ⇒ 不进阻塞档（同 `acct-iso-cmd` 那一形）。
     CommandSpec {
         name: "terminal-ssh",

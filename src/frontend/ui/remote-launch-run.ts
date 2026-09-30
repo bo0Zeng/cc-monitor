@@ -491,7 +491,7 @@ async function invokeLaunchOrCopyFallback(
   cmd: string,
   toasts: LaunchToasts,
   // 〔第二波 T4〕这次拉起的启动期令牌（`rbindTokenOf`）；`attach` 那一格恒 `null`。
-  //   交给后端，让新开的窗口以它为 marker 登记进本地表（`launch.rs::with_rbind_bind_prelude`）。
+  //   交给本机后端，让新开的窗口以它为 marker 登记进本地表（〔P5〕前奏由后端接：`dial/terminal.rs::with_bind_prelude`）。
   rbindToken: string | null,
   after: AfterOpen,
 ): Promise<Opened> {

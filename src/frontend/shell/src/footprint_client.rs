@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[tauri::command]
 pub fn footprint_client_facts() -> Result<Value, String> {
     facts(
-        dirs::home_dir(),
+        creds_core::store::home_dir(),
         crate::config::resolve_claude_dir(),
         std::env::var("PATH").ok(),
     )
