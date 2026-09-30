@@ -210,11 +210,11 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
     for (op, args) in [
         (
             "plan_add_annotation",
-            json!({"file": "src/lib.rs", "symbol": "alpha", "body": "b", "author": "me"}),
+            json!({"target": "src/lib.rs#alpha", "body": "b", "author": "me"}),
         ),
         (
             "plan_propose_annotation",
-            json!({"file": "src/lib.rs", "body": "p", "author": "agent"}),
+            json!({"target": "src/lib.rs", "body": "p", "author": "agent"}),
         ),
         ("plan_approve_annotation", json!({"id": "abc"})),
         ("plan_remove_annotation", json!({"id": "abc"})),
@@ -283,10 +283,10 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
             json!({"symbol": id(sym), "depth": depth}),
         )
         .unwrap();
-        // 应答的键 == 前端 `Neighborhood` 接口的键（本程序自己的 DTO，前端按它收；异源）。
+        // 〔P7〕上游直出之后线上形状不变（`{root, reached: [{id, depth}]}`，前端按它分组）。
         let mut keys: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         keys.sort();
-        assert_eq!(keys, ts_fields("Neighborhood"), "{v}");
+        assert_eq!(keys, ["reached", "root"], "{v}");
         assert_eq!(v["root"], json!(id(sym)), "{v}");
         v["reached"]
             .as_array()
@@ -305,43 +305,120 @@ fn the_neighborhood_says_how_many_hops_each_symbol_is() {
     assert_eq!(hops("c", 1), vec![(id("b"), 1)], "调它的那一侧也算");
 }
 
-/// ★ `status` 的三格 == 前端 `PanoramaStatus`（`src/frontend/ui/panorama/types.ts` 那个手写接口 —— 异源：前端按它收）。
-///
-/// 〔RM1f · V108 后半句〕对拍的另一侧从 ts-rs 生成物（`src/frontend/ui/generated/PanoramaStatus.ts`，源是 monitor 那份 Rust
-/// 类型）换成前端手写的那一份：monitor 那份 Rust 源随内嵌引擎删了，**本程序就是这个形状今天唯一的产出方**，
-/// 前端认的那一份是唯一的消费方 —— 本条钉两者逐格相等。
-///
-/// ⚠ 跨树运行时读（不走 `include_str!`）：同 `panorama_locus_guard` 的取舍 —— 文件挪了只有本条红。
-#[test]
-fn the_status_shape_matches_the_monitor_dto() {
-    let fields = ts_fields("PanoramaStatus");
-    assert_eq!(fields, vec!["indexedAt", "stale", "symbols"]);
-    let v = serde_json::to_value(StatusReply::default()).unwrap();
-    let mut ours: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
-    ours.sort();
-    assert_eq!(ours, fields, "本程序的 status 应答与前端那份接口对不上");
+/// 生成物 `types.ts` 的全文：① 上游线上类型（vendored `src/wire.ts` 原样）② 本程序自己的应答（ts-rs）。
+/// 〔P3 · 主会话 09-29 裁〕原先的 ③「本仓界面里的叫法」（给上游类型另起的旧名）删了：界面直接用上游的名字。
+fn types_ts() -> String {
+    use ts_rs::TS;
+    let cfg = ts_rs::Config::new().with_large_int("number");
+    let own = |docs: Option<String>, decl: String| {
+        format!("{}export {decl}\n\n", docs.unwrap_or_default())
+    };
+    let mut out = String::from(
+        "// 生成物 —— 不许手改。由 `tests/panorama-engine/cli_tests.rs::the_frontend_types_are_generated_from_upstream_and_this_program` 写出。\n\
+         // 要求住址：`99 §1` V158「线上契约由上游给、本仓不手抄」。\n\
+         // ① 上游 code-picture-core 的线上类型（vendored `src/wire.ts` 原样；ts-rs 从上游的 serde 属性写出，可选性随之过来）\n\
+         // ② 全景小程序自己的应答（`src/panorama-engine/main.rs` 的 DTO，ts-rs）\n\n\
+         // ── ① 上游（vendored code-picture-core `src/wire.ts`）──\n\n",
+    );
+    out.push_str(include_str!(
+        "../../src/panorama-engine/vendor/code-picture-core/src/wire.ts"
+    ));
+    out.push_str("// ── ② 全景小程序自己的应答 ──\n\n");
+    out.push_str(&own(StatusReply::docs(), StatusReply::decl(&cfg)));
+    out.push_str(&own(DiagramReply::docs(), DiagramReply::decl(&cfg)));
+    out
 }
 
-/// 前端 `types.ts` 里 `export interface <name> {` 的顶层字段名（排序；到行首 `}` 为止，内联对象类型不拆）。
-fn ts_fields(name: &str) -> Vec<String> {
+/// 要求住址：`99 §1 V158`「本仓只管两件：**解耦**（线上契约由上游给、本仓不手抄 …）」· `97 §8`「要上游给的」②。
+///
+/// ★ 前端 `src/frontend/ui/panorama/types.ts` == 上游导出的 schema ＋ 本程序自己应答的 ts-rs 声明 ＋ 别名（逐字节）。
+/// 漂了 ⇒ 当场重写并红一次（重跑即绿，把它一起提交）。手抄镜像与逐键对拍（`diagram-guards` G3 / G4）随之退役：
+/// 可选性（`Option` · `skip_serializing_if`）从此随 serde 属性过来，不再是对拍不出来的那一格。
+#[test]
+fn the_frontend_types_are_generated_from_upstream_and_this_program() {
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../frontend/ui/panorama/types.ts");
-    let ts = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
-    let head = format!("export interface {name} {{\n");
-    let at = ts
-        .find(&head)
-        .unwrap_or_else(|| panic!("types.ts 里找不到 `{head}` —— 改了写法，本条跟着改"));
-    let body = &ts[at + head.len()..];
-    let body = &body[..body.find("\n}").expect("接口没收尾")];
-    let mut fields: Vec<String> = body
+    let want = types_ts();
+    let have = std::fs::read_to_string(&p).unwrap_or_default();
+    if have != want {
+        std::fs::write(&p, &want).unwrap();
+        panic!("生成物 {p:?} 与上游 schema / 本程序的应答对不上，已重写 —— 重跑即绿，把它一起提交");
+    }
+    // 正控：两段都真的有东西（上游 · 自己的各一个锚）；〔P3〕给上游类型另起的旧名一个都不许有。
+    for anchor in [
+        "export type Neighborhood = ",
+        "export type PanoramaStatus = ",
+    ] {
+        assert_eq!(want.matches(anchor).count(), 1, "{anchor}");
+    }
+    let renamed: Vec<&str> = want
         .lines()
-        .filter_map(|l| {
-            let (k, _) = l.trim().split_once(':')?;
-            let k = k.trim().trim_end_matches('?');
-            (!k.is_empty() && !k.starts_with('/') && !k.starts_with('*')).then(|| k.to_string())
+        .filter(|l| {
+            l.starts_with("export type ")
+                && l.split_once(" = ").is_some_and(|(_, rhs)| {
+                    let r = rhs.trim_end_matches(';');
+                    r.starts_with(|c: char| c.is_ascii_uppercase())
+                        && r.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                })
         })
         .collect();
-    fields.sort();
-    fields
+    assert_eq!(
+        renamed,
+        Vec::<&str>::new(),
+        "生成物里又出现了给上游类型另起的名字"
+    );
+}
+
+/// 要求住址：`97 §8`「要上游给的」④「建索引进度回调（小程序写成进度行 → 插件口转订阅流）」· `99 §1` V158「长活要有进度」。
+///
+/// ★ 建索引边走边在 stderr 出进度行（`progress=<上游 IndexProgress>`），stdout 照旧恰一行答案。节流恒等：
+/// 150 个源文件 ⇒ 三个按文件走的阶段各恰 101 行（整百分比 0..=100 各一行，首行 `0/150`、末行 `150/150`），
+/// 没有 `.md` 的文档阶段恰一行 `0/0`。真引擎、合成夹具。
+#[test]
+fn building_the_index_reports_throttled_progress_lines_on_the_side() {
+    let t = Tmp::new("many");
+    std::fs::create_dir_all(t.0.join("src")).unwrap();
+    for i in 0..150 {
+        std::fs::write(
+            t.0.join(format!("src/m{i}.rs")),
+            format!("pub fn f{i}() {{}}\n"),
+        )
+        .unwrap();
+    }
+    let store = Tmp::new("store");
+    let argv: Vec<String> = ["index", "--repo"]
+        .iter()
+        .map(|x| x.to_string())
+        .chain([t.0.display().to_string()])
+        .chain(["--store".to_string(), store.0.display().to_string()])
+        .collect();
+    let mut lines: Vec<String> = Vec::new();
+    let (stdout, _stderr, code) = answer_reporting(&argv, &mut |l| lines.push(l));
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(stdout.matches('\n').count(), 1, "stdout 恰一行：{stdout}");
+    let cells: Vec<(String, u64, u64)> = lines
+        .iter()
+        .map(|l| {
+            let body = l
+                .strip_prefix(PROGRESS_PREFIX)
+                .and_then(|b| b.strip_suffix('\n'))
+                .unwrap_or_else(|| panic!("不是一行进度：{l:?}"));
+            let v: Value = serde_json::from_str(body).unwrap();
+            (
+                v["phase"].as_str().unwrap().to_string(),
+                v["done"].as_u64().unwrap(),
+                v["total"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    for phase in ["Parse", "Link", "Relink"] {
+        let mine: Vec<&(String, u64, u64)> = cells.iter().filter(|c| c.0 == phase).collect();
+        assert_eq!(mine.len(), 101, "{phase}");
+        assert_eq!((mine[0].1, mine[0].2), (0, 150), "{phase}");
+        assert_eq!((mine[100].1, mine[100].2), (150, 150), "{phase}");
+    }
+    let docs: Vec<&(String, u64, u64)> = cells.iter().filter(|c| c.0 == "Docs").collect();
+    assert_eq!(docs, [&("Docs".to_string(), 0, 0)]);
+    assert_eq!(cells.len(), 3 * 101 + 1, "没有别的阶段 / 别的行");
 }
 
 /// ★ 写用户文件的那几样，本程序生产段**零调用**（只算不写，理由见头注）。
@@ -428,7 +505,7 @@ fn planning_ops_leave_the_repo_byte_identical() {
         "plan_add_annotation",
         r,
         s,
-        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "热路径", "author": "me"}),
+        json!({"target": "src/lib.rs#alpha", "body": "热路径", "author": "me"}),
     )
     .unwrap();
     let e = &add["edit"];
@@ -739,7 +816,12 @@ fn the_frontend_contract_is_generated_from_this_program() {
             derive_ser = false;
         }
     }
-    assert!(dtos.len() >= 4, "只抽到 {dtos:?} —— 抽取坏了");
+    // 正控（恒等，不是地板）：〔P7〕`neighborhood` 的应答改由上游直出（`Neighborhood` / `Reached` 两个 DTO 删了）⇒ 4 → 2。
+    assert_eq!(
+        dtos,
+        ["StatusReply", "DiagramReply"],
+        "抽取坏了，或多 / 少了自己的应答结构体"
+    );
     let body = fn_body(&src, "own_dtos");
     let missing: Vec<&String> = dtos.iter().filter(|d| !body.contains(d.as_str())).collect();
     assert!(
@@ -861,11 +943,12 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
     };
 
     // ① agent 提议 ⇒ 人那一侧的队列里有它（Proposed），agent 那一侧看不见。
+    // 〔P7〕交的是**整个**符号 id，带同名消歧的 `@行号` 也照交 —— 截它归上游 `SymbolRef::of`（批注按段挂，`node` 查得回来才算数）。
     let prop = call(
         "plan_propose_annotation",
         r,
         s,
-        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "这里可以缓存", "author": "agent-x"}),
+        json!({"target": "src/lib.rs#alpha@1", "body": "这里可以缓存", "author": "agent-x"}),
     )
     .unwrap();
     apply(&prop);
@@ -895,7 +978,7 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
         "plan_add_annotation",
         r,
         s,
-        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "热路径", "author": "me"}),
+        json!({"target": "src/lib.rs#alpha", "body": "热路径", "author": "me"}),
     )
     .unwrap();
     apply(&add);

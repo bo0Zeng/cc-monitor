@@ -33,7 +33,7 @@
       "key": "mcpSync.preview.head",
       "zh": "从 {source} 的 {sourcefile} 拷到 {target} 的 {targetfile}",
       "args": { "source": "本机", "sourcefile": "C:\\Users\\u\\.mcp.json", "target": "aya", "targetfile": "$HOME/.mcp.json $& $1" },
-      "want": "从 本机 的 C:\\Users\\u\\.mcp.json 拷到 aya 的 $HOME/.mcp.json $& $1"
+      "want": "从本机的 C:\\Users\\u\\.mcp.json 拷到 aya 的 $HOME/.mcp.json $& $1"
     },
     {
       "_": "〔DUP3 · 主会话 09-26 裁：插值不该重新解释值〕值里带另一个参数的占位符：两个读口都一趟换完，值原样留着（此前 Rust 逐个 replace 会把 {target} 再换成 %1）。",
@@ -41,6 +41,41 @@
       "zh": "预览画面 · [{origin}] tmux: {target}",
       "args": { "origin": "{target}", "target": "%1" },
       "want": "预览画面 · [{target}] tmux: %1"
+    },
+    {
+      "_": "〔P3 · rules.json C-L5〕值与相邻汉字之间的空格随值定：模板紧贴着写、值以字母数字收尾 ⇒ 补一个空格。",
+      "key": "launchArrival.arrived.body",
+      "zh": "{machine}上报出了这个会话。",
+      "args": { "machine": "lx" },
+      "want": "lx 上报出了这个会话。"
+    },
+    {
+      "_": "〔P3 · C-L5〕同一句，值是汉字 ⇒ 不补。",
+      "key": "launchArrival.arrived.body",
+      "zh": "{machine}上报出了这个会话。",
+      "args": { "machine": "本机" },
+      "want": "本机上报出了这个会话。"
+    },
+    {
+      "_": "〔P3 · C-L5〕值以全角标点收尾 ⇒ 接缝不管；后一个值是数字、模板已写了空格 ⇒ 照留（不叠第二个）。",
+      "key": "beCcBus.deliver.tooLong",
+      "zh": "{reason}这条消息有 {n} 字节。",
+      "args": { "reason": "消息太长：", "n": "70000" },
+      "want": "消息太长：这条消息有 70000 字节。"
+    },
+    {
+      "_": "〔P3 · C-L5〕两个值之间只隔空格的那一段不动（值是汉字也不并）；值与后面的汉字之间的空格照留。",
+      "key": "diagramRender.edge.pick",
+      "zh": "{base} {candidates} 选 1",
+      "args": { "base": "动态派发", "candidates": "3" },
+      "want": "动态派发 3 选 1"
+    },
+    {
+      "_": "〔P3 · C-L5〕接缝上两个以上空格是排版，照留。",
+      "key": "mcp.form.jsonHint",
+      "zh": "{a}  或  {b}",
+      "args": { "a": "甲", "b": "乙" },
+      "want": "甲  或  乙"
     }
   ]
 }

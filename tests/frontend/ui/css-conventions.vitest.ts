@@ -358,9 +358,10 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
   //    与 `showUnanswered`（远端那台答不了时收起来）。同一个包装、同一个理由。
   // 〔合并 RM1a〕440/447 → 436/443：`readFootprint` 去掉那一道 `as unknown as`（命令签名本来就收 `{ origin }`），上移 4 行。
   // 〔OSA〕436/443 → 437/444：上方多一行 import（`$PROFILE` 备份改问本机后端），那一处本身没动。
-  "src/frontend/ui/settings/config-surface-section.ts:415": // 〔CP2b〕行号 −1：字面量进表后收行 ·〔TL3〕+1：`answersFor` 回声那一行上面加了一行注释
+  // 〔SHOTS〕415/422 → 419/426：上方 `expected_absent` 那一档（缺口 · 语气）多四行，那一处本身没动。
+  "src/frontend/ui/settings/config-surface-section.ts:419": // 〔CP2b〕行号 −1：字面量进表后收行 ·〔TL3〕+1：`answersFor` 回声那一行上面加了一行注释
     "那一整套的显隐包装（本机与远端都用），刻意不挂类名（没有类就不会有裸 display 压过 [hidden]）",
-  "src/frontend/ui/settings/config-surface-section.ts:422": // 〔CP2b〕同上 ·〔TL3〕同上 +1
+  "src/frontend/ui/settings/config-surface-section.ts:426": // 〔CP2b〕同上 ·〔TL3〕同上 +1
     "同一个包装，远端那台答不了时收起来（`showUnanswered`）",
   // 〔C4d〕行号随上方历史清单那几段改走通道挪了（1635 → 1617），那一处本身没动。
   // 〔W5-UI〕`1612 → 1613`：`history.ts` 多一行 import（应用内对话框）；〔FW1〕再 +5：`liveInTabs` 那一格；

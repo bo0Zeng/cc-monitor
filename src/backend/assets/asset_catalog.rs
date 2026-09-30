@@ -30,8 +30,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// 目录文件名。**全仓只有这一处写这个字面量**（`asset_catalog_tests` 钉）。
-pub const FILE_NAME: &str = "assets-catalog.json";
+/// 目录文件名。〔P3〕字面量只住契约 crate（`relay_route_core::ASSET_CATALOG_REL`：monitor 的数据位置页按它列出），
+/// 写者仍只有本模块（`asset_catalog_tests` 钉）。
+pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::ASSET_CATALOG_REL);
 
 /// 文件格式版本。读到别的版本 ⇒ 不认、**不覆盖**（多半是更新的后端写的）。
 pub const FORMAT_V: u64 = 1;

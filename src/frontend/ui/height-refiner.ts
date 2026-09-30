@@ -53,22 +53,27 @@ export class HeightRefiner {
     return this.measure !== null;
   }
 
-  /** 这几行精算、换进账本。不值得精算的（`refineItemOf` 回 `null`）与排不出的留第一级。 */
-  async refine(view: SkeletonView, rows: ReadonlyArray<{ seq: number; rec: JsonlRecord }>): Promise<void> {
-    if (!this.measure) return;
+  /**
+   * 这几行精算、换进账本。不值得精算的（`refineItemOf` 回 `null`）与排不出的留第一级。
+   * 〔P3〕算的途中列宽变了（账本 `relayout` 过）⇒ 回来的高是旧列宽下的，整批丢掉、回 `false`（调用方让这几行以后再问）。
+   */
+  async refine(view: SkeletonView, rows: ReadonlyArray<{ seq: number; rec: JsonlRecord }>): Promise<boolean> {
+    if (!this.measure) return true;
     const colW = view.ledger.columnWidth;
     const work: Array<[number, RefineItem]> = [];
     for (const r of rows) {
       const it = refineItemOf(r.rec, colW);
       if (it) work.push([r.seq, it]);
     }
-    if (work.length === 0) return;
+    if (work.length === 0) return true;
     const heights = await this.measure(work.map(([, it]) => it));
+    if (view.ledger.columnWidth !== colW) return false;
     const got: Array<[number, number]> = [];
     work.forEach(([seq], i) => {
       const h = heights[i];
       if (typeof h === "number" && Number.isFinite(h)) got.push([seq, h]);
     });
     view.applyRefined(got);
+    return true;
   }
 }

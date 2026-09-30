@@ -17,6 +17,17 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 〔P7〕进度流经 `chan.subscribe`（真的那一份）：它在 webview 上听 `chan-items` —— 只替身「听」这一下，好把格灌进去。
+type ItemsCb = (e: { payload: unknown }) => void;
+const heard: { cb: ItemsCb | null } = { cb: null };
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: () => ({
+    listen: vi.fn((_event: string, cb: ItemsCb) => {
+      heard.cb = cb;
+      return Promise.resolve(() => {});
+    }),
+  }),
+}));
 
 import { invoke } from "@tauri-apps/api/core";
 import * as api from "../../../../src/frontend/ui/panorama/api";
@@ -48,8 +59,8 @@ const READS: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
   touching: (at) => api.touching(at, ["/srv/proj/a.rs"], []),
 };
 const WRITES: Record<string, (at: api.RepoAt) => Promise<unknown>> = {
-  addAnnotation: (at) => api.addAnnotation(at, "a.rs", "f", "x", "me"),
-  proposeAnnotation: (at) => api.proposeAnnotation(at, "a.rs", "f", "x", "agent"),
+  addAnnotation: (at) => api.addAnnotation(at, "a.rs#f", "x", "me"),
+  proposeAnnotation: (at) => api.proposeAnnotation(at, "a.rs#f", "x", "agent"),
   approveAnnotation: (at) => api.approveAnnotation(at, "id1"),
   removeAnnotation: (at) => api.removeAnnotation(at, "id1"),
   writeDocLink: (at) => api.writeDocLink(at, "d.md", "a#f"),
@@ -91,7 +102,7 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
     vi.mocked(invoke).mockImplementation((async (cmd: string) => (cmd === "chan_call" ? chanReply({ result: null }) : null)) as never);
   });
 
-  it("A0 自证：api.ts 是真的，被 mock 的只有 invoke", () => {
+  it("A0 自证：api.ts 是真的，被 mock 的只有 invoke（〔P7〕外加 webview 上「听」那一下，好灌进度格）", () => {
     expect(vi.isMockFunction(api.status)).toBe(false);
     expect(vi.isMockFunction(invoke)).toBe(true);
     const exported = Object.entries(api)
@@ -99,7 +110,7 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
       .map(([k]) => k)
       .filter(
         (k) =>
-          !["panoramaLoadDecision", "repoLabel", "sameRepo", "PanoramaCancelled", "askOrPlace", "wantsBytes", "budgetFor", "editBudgetFor"].includes(k),
+          !["panoramaLoadDecision", "repoLabel", "sameRepo", "PanoramaCancelled", "askOrPlace", "wantsBytes", "budgetFor", "editBudgetFor", "decodeProgress"].includes(k),
       )
       .sort();
     expect(exported).toEqual([...Object.keys(READS), ...Object.keys(WRITES)].sort());
@@ -138,8 +149,65 @@ describe("全景经通道直问那台后端（RM1c · MIG-3b 续）", () => {
       expect(ops.sort()).toEqual(Object.keys(programOps().plans).sort());
     }
     vi.mocked(invoke).mockClear();
-    await api.addAnnotation(REMOTE, "a.rs", null, "x", "me");
-    expect(sent("panorama-edit")[0].body.args).toEqual({ file: "a.rs", symbol: null, body: "x", author: "me" });
+    // 〔P7〕交整个符号 id（带 `@行号` 也原样交；截它归上游 `SymbolRef::of`）。
+    await api.addAnnotation(REMOTE, "a.rs#f@42", "x", "me");
+    expect(sent("panorama-edit")[0].body.args).toEqual({ target: "a.rs#f@42", body: "x", author: "me" });
+  });
+
+  // 要求住址：`97 §8`「要上游给的」④「插件口转订阅流」· `99 §1` V158「长活要有进度」。
+  it("〔P7〕建索引给了 onProgress ⇒ 先订那台的 progress/<票>、问的时候带同一张票；收到的格严格收（坏格不交）、每格还 credit；问完撤订", async () => {
+    const order: string[] = [];
+    let subId = -1;
+    let subArgs: { origin?: string; kind?: string } = {};
+    vi.mocked(invoke).mockImplementation((async (cmd: string, a: unknown) => {
+      order.push(cmd);
+      if (cmd === "chan_subscribe") {
+        const x = a as { id: number; origin: string; kind: string };
+        subId = x.id;
+        subArgs = { origin: x.origin, kind: x.kind };
+        return null;
+      }
+      if (cmd === "chan_call") {
+        const frame = (body: unknown, seq: number) => ({ t: "frame", seq, body: JSON.stringify(body) });
+        heard.cb?.({
+          payload: {
+            sub: subId,
+            items: [
+              frame({ phase: "Parse", done: 1, total: 4 }, 0),
+              frame({ phase: "Parse", done: 9, total: 4 }, 1), // done > total：坏格
+              frame({ phase: "Nope", done: 1, total: 1 }, 2), // 这一版不认得的阶段：坏格
+              frame({ phase: "Link", done: 4, total: 4, extra: 1 }, 3), // 多一个键：坏格
+              frame({ phase: "Docs", done: 0, total: 0 }, 4),
+            ],
+          },
+        });
+        return chanReply({ result: { files: 4 } });
+      }
+      return null;
+    }) as never);
+    const got: unknown[] = [];
+    const stats = await api.index(REMOTE, undefined, (p) => got.push(p));
+    expect(stats).toEqual({ files: 4 });
+    expect(got).toEqual([
+      { phase: "Parse", done: 1, total: 4 },
+      { phase: "Docs", done: 0, total: 0 },
+    ]);
+    const ticket = String(subArgs.kind).slice(`${api.PROGRESS_KIND}/`.length);
+    expect(ticket.length).toBeGreaterThan(0);
+    expect(subArgs).toEqual({ origin: REMOTE.origin, kind: `${api.PROGRESS_KIND}/${ticket}` });
+    expect(sent("panorama")[0].body.ticket).toBe(ticket);
+    expect(order.indexOf("chan_subscribe")).toBeLessThan(order.indexOf("chan_call"));
+    expect(order).toContain("chan_want"); // 收了格就还 credit
+    expect(order.at(-1)).toBe("chan_stop"); // 问完撤订
+    // 没给 onProgress 的那些问：不订、不带票（其余入口的形状一字不变）。
+    vi.mocked(invoke).mockClear();
+    await api.status(REMOTE).catch(() => {});
+    expect(vi.mocked(invoke).mock.calls.map((c) => String(c[0]))).not.toContain("chan_subscribe");
+  });
+
+  it("〔P7〕进度流名与 Rust `event_replay.rs::PROGRESS_KIND` 同一个串", () => {
+    const rs = readFileSync(resolve(here, "../../../..", "src/frontend/shell/src/event_replay.rs"), "utf8");
+    expect(/pub const PROGRESS_KIND: &str = "([^"]+)";/.exec(rs)?.[1]).toBe(api.PROGRESS_KIND);
   });
 
   it("A3 本机读：与远端同一条 —— origin = <local>，op 与远端逐个相同", async () => {

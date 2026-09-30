@@ -241,8 +241,10 @@ native_starts() {
   printf '#!/bin/sh\nexit 1\n' > "$sandbox/bin/tmux"
   cp "$f" "$sandbox/bin/backend-under-test"
   chmod +x "$sandbox/bin/tmux" "$sandbox/bin/backend-under-test"
+  # `-- --stream`：argv 不以 `--` 加后端词打头时这份字节是 ccm（去 exec `claude`），问不到 hello ——
+  #   monitor 起本机后端也是带着后端词起的（`local_backend.rs::STREAM_WORD`）。
   line="$(env -i HOME="$sandbox/home" PATH="$sandbox/bin:/usr/bin:/bin" LANG=C.UTF-8 \
-            timeout 20 "$sandbox/bin/backend-under-test" </dev/null 2>/dev/null | head -n 1 || true)"
+            timeout 20 "$sandbox/bin/backend-under-test" -- --stream </dev/null 2>/dev/null | head -n 1 || true)"
   rm -rf "$sandbox"
   printf '%s' "$line"
 }

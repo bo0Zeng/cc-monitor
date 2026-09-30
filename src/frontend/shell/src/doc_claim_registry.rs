@@ -44,14 +44,9 @@ const STATUS_CELLS: &[(&str, &str)] = &[
     ("U8c-2c-1", "ccm-invocation-kernel-exists"),
     ("U8c-2c-2", "production-ts-calls-the-rust-renderers"),
     ("U8c-3", "ts-renderer-still-there"),
-    // 〔F19〕`src/doc/ARCHITECTURE.md` §2.1 的「backend 四层在 monitor 侧落地到哪一步」表。
-    // ⚠ 它是**本条判据族第一次被一张新表触发**：F19 往 ARCHITECTURE 写下这张表时，
-    // `the_doc_scan_actually_reads_the_durable_docs` 当场红（表张数 1 → 2），
-    // 逼着这四格各配一条现场量法 —— 那正是这条判据存在的目的。
-    ("`control/`", "monitor-backend-control-landed"),
-    ("`observe/`", "monitor-backend-observe-landed"),
-    ("`platform/`", "monitor-backend-platform-landed"),
-    ("`common/`", "monitor-backend-common-landed"),
+    // 〔P6 · 09-29 · 主会话裁〕ARCHITECTURE 那张「backend 四层在 monitor 侧落地到哪一步」表（F19 立）退役：
+    //   架构文档不放进度（进度住 `调研/设计/99`，守 V161）。那四格连同各自的量法、普查行与落地探针一起删 ——
+    //   文档里没有那张表，四格的人群就是空的，留着只会是恒真的空转。退役记录在测试文件原处那块墓碑。
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -92,16 +87,13 @@ const STATUS_CELLS: &[(&str, &str)] = &[
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MeasureShape {
-    /// 钉住**那个唯一的住户**：那份文件在不在。
-    PinsTheOneResident,
+    // 〔P6 · 09-29〕「钉住那个唯一的住户」「这条能力线里真有住户」两形只服务那四格落地进度，随它们退役。
     /// 读**剥过注释的生产段**、在里面找一根裸子串针。
     ProdNeedle,
     /// 读**没剥过注释的原文**（TS / MD）找针 ⇒ 把那句话注释掉，它照样命中。
     RawTextNeedle,
     /// 反向：那样东西**不在**才算交付。
     AbsenceIsTheClaim,
-    /// 这条能力线里**真有住户**（`K-R73` 把两格裸 `is_dir()` 收窄成的形）。
-    LineHasResidents,
 }
 
 /// 这条量法与它那格声称的话**对不对得上**。
@@ -162,30 +154,7 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
         Verdict::Holds,
         "反向量法：`src/session-backend.ts` **不在**才算交付，与那格声称的话对得上。         ⚠ 登记一处**可读性陷阱**（不是洞）：键名逐字是「still-there」，而它为 `true` 时         的意思是「**已经删了**」—— 键名与布尔方向相反，读的人容易读反",
     ),
-    (
-        "monitor-backend-control-landed",
-        MeasureShape::PinsTheOneResident,
-        Verdict::Holds,
-        "钉住那个唯一的回落分流器在不在。**代价登记在案**：它钉的是那**一个文件名** ⇒          住户改名或再搬家时会**假红**（红得对不对要人判）。这与 `observe/` 那格是同一个代价",
-    ),
-    (
-        "monitor-backend-observe-landed",
-        MeasureShape::LineHasResidents,
-        Verdict::Holds,
-        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         〔LOC1a 09-25〕那个唯一住户（`local_query.rs`〔散文墓碑〕）随本机读面改走 `<local>` 长连接删了 ⇒          改成与 `platform/` 同形的量法（目录在 ∧ 真有住户），空壳 `mod.rs` 不算",
-    ),
-    (
-        "monitor-backend-platform-landed",
-        MeasureShape::LineHasResidents,
-        Verdict::Holds,
-        "〔`K-R73` 09-12 按 `R29` 裁定二从裸 `is_dir()` 收窄〕。**不许硬指住户**：         这条线今天没有那个唯一的住户，指一个就是替未来的人做决定 ⇒ 量的是         「目录在 ∧ 里面真有住户」，空壳目录直接红。代价见那份量法的头注",
-    ),
-    (
-        "monitor-backend-common-landed",
-        MeasureShape::LineHasResidents,
-        Verdict::Holds,
-        "与 `platform/` 那格逐字同形。⚠ 这条线的文档那一格逐字写着「**刻意不建**：         monitor 侧的共用面住 `src/common/*`」⇒ 它大概率**永远**停在这一支，         而空壳目录那条红正是为它准备的",
-    ),
+    // 〔P6 · 09-29〕`monitor-backend-*-landed` 那四行随 ARCHITECTURE 那张进度表一起退役（见 `STATUS_CELLS` 末尾那段）。
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════

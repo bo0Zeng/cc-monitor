@@ -15,22 +15,27 @@
  * ## 不引布局库（理由见 `设计/97 §7.2`）
  * 一张图默认 ≤12 个节点，调用子图几十个；dagre / elk 那一档依赖换来的是用不上的规模。
  *
+ * ## 画布与世界坐标
+ * 渲染器只在**世界坐标**里摆（布局函数算出的像素）；SVG 本身铺满宿主给的画布，世界那一层
+ * （[`WORLD_ATTR`]）的平移 / 缩放由宿主按视口设（`diagram-view.ts`，视口数学与气泡全景同一份 `layout.ts`）。
+ *
  * 买到：三种形状各有一个渲染器，线型按可信度区分，节点可点（下钻由调用方接）。
- * **买不到**：大图会挤（节点上限就是为这个留的）；没有拖拽 / 缩放；真机 WebView2 的性能没量。
+ * **买不到**：大图会挤（节点上限就是为这个留的）；真机 WebView2 的性能没量。
  */
 import type {
+  ArchLink,
+  ArchNode,
   CallEdge,
-  CallGraphBody,
   CallNode,
-  ClusterLink,
-  ClusterNode,
-  ClustersBody,
   Confidence,
   DiagramBody,
-  TypeGraphBody,
+  DiagramShape,
   TypeNode,
 } from "./types";
 import { copyText } from "../copy-table";
+
+/** 上游 `DiagramBody` 里某一种形状的那一支（按线上 `shape` 标签取；〔P3〕不给上游类型另起名字）。 */
+export type BodyOf<S extends DiagramShape> = Extract<DiagramBody, { shape: S }>;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -39,7 +44,7 @@ export type LineConf = "exact" | "dispatch" | "guess" | "mixed";
 
 /** 节点被点时交给调用方的东西（下钻由调用方决定）。 */
 export type NodePick =
-  | { shape: "clusters"; node: ClusterNode }
+  | { shape: "clusters"; node: ArchNode }
   | { shape: "call_graph"; node: CallNode }
   | { shape: "type_graph"; node: TypeNode };
 
@@ -49,7 +54,7 @@ export interface RenderContext {
   focusFile?: string | null;
 }
 
-/** 渲染器接口：吃那个形状的图体，吐一张 SVG。 */
+/** 渲染器接口：吃那个形状的图体，吐一张 SVG（世界那一层带 [`WORLD_ATTR`] 与世界尺寸）。 */
 export type ShapeRenderer<B> = (body: B, ctx: RenderContext) => SVGSVGElement;
 
 /**
@@ -95,7 +100,7 @@ export function edgeLabel(e: CallEdge): string {
  * 一捆聚合连接的线型档。🔴 **混着的不许画成干净的粗实线** ——
  * 全确定才给 exact；一掺就是 mixed（细实线 ＋ 标签写出成分）。
  */
-export function linkConf(l: ClusterLink): LineConf {
+export function linkConf(l: ArchLink): LineConf {
   const parts = [l.exact > 0, l.dispatch > 0, l.guess > 0].filter(Boolean).length;
   if (parts !== 1) return "mixed";
   if (l.exact > 0) return "exact";
@@ -103,7 +108,7 @@ export function linkConf(l: ClusterLink): LineConf {
 }
 
 /** 一捆聚合连接的标签：成分写出来。 */
-export function linkLabel(l: ClusterLink): string {
+export function linkLabel(l: ArchLink): string {
   const total = l.exact + l.dispatch + l.guess;
   switch (linkConf(l)) {
     case "exact":
@@ -142,7 +147,7 @@ export function textWidth(s: string, px = 12): number {
 }
 
 /** 团/模块图：节点摆在一个圆上（按上游给的顺序，确定性）。 */
-export function layoutClusters(nodes: ClusterNode[]): { boxes: Box[]; width: number; height: number } {
+export function layoutClusters(nodes: ArchNode[]): { boxes: Box[]; width: number; height: number } {
   const n = nodes.length;
   const sizes = nodes.map((nd) => ({
     w: Math.min(220, Math.max(96, textWidth(nd.label) + 28)),
@@ -164,7 +169,7 @@ export function layoutClusters(nodes: ClusterNode[]): { boxes: Box[]; width: num
  * 这是**摆位置**（离中心几跳就放第几列），不是分析：边与节点一条不增不减。
  * 两个方向都够不着的节点（上游带进来的歧义候选端点）放在第 0 列中心下方。
  */
-export function layoutCallGraph(body: Pick<CallGraphBody, "center" | "nodes" | "edges">): {
+export function layoutCallGraph(body: Pick<BodyOf<"call_graph">, "center" | "nodes" | "edges">): {
   boxes: Box[];
   width: number;
   height: number;
@@ -278,12 +283,21 @@ function svgEl<K extends keyof SVGElementTagNameMap>(
   return e;
 }
 
-function frame(width: number, height: number): SVGSVGElement {
-  const svg = svgEl("svg", {
-    width: Math.ceil(width),
-    height: Math.ceil(height),
-    viewBox: `0 0 ${Math.ceil(width)} ${Math.ceil(height)}`,
-  });
+/** 世界那一层（`<g>`）的标记；它的 `data-world-w` / `data-world-h` 是布局算出的世界尺寸。 */
+export const WORLD_ATTR = "data-pano-world";
+
+/** 一张图的世界那一层与世界尺寸（宿主据它适配视口）；不是渲染器出的 SVG ⇒ `null`。 */
+export function worldOf(svg: SVGSVGElement): { el: SVGGElement; w: number; h: number } | null {
+  const el = svg.querySelector<SVGGElement>(`g[${WORLD_ATTR}]`);
+  if (!el) return null;
+  const w = Number(el.getAttribute("data-world-w"));
+  const h = Number(el.getAttribute("data-world-h"));
+  return w > 0 && h > 0 ? { el, w, h } : null;
+}
+
+/** 一张铺满画布的 SVG ＋ 世界那一层（渲染器往后者里画）。 */
+function frame(width: number, height: number): { svg: SVGSVGElement; world: SVGGElement } {
+  const svg = svgEl("svg", { width: "100%", height: "100%" });
   const defs = svgEl("defs");
   const marker = svgEl("marker", {
     id: "pano-arrow",
@@ -297,7 +311,9 @@ function frame(width: number, height: number): SVGSVGElement {
   marker.appendChild(svgEl("path", { d: "M 0 0 L 10 5 L 0 10 z", "data-arrow": "1" }));
   defs.appendChild(marker);
   svg.appendChild(defs);
-  return svg;
+  const world = svgEl("g", { [WORLD_ATTR]: "", "data-world-w": Math.ceil(width), "data-world-h": Math.ceil(height) });
+  svg.appendChild(world);
+  return { svg, world };
 }
 
 function edge(
@@ -347,18 +363,18 @@ function nodeGroup(box: Box, lines: string[], onClick: () => void, focus = false
 }
 
 /** 渲染器：团 / 模块（节点 ＋ 带成分的聚合连接）。 */
-export function renderClusters(body: ClustersBody, ctx: RenderContext): SVGSVGElement {
+export function renderClusters(body: BodyOf<"clusters">, ctx: RenderContext): SVGSVGElement {
   const { boxes, width, height } = layoutClusters(body.nodes);
   const byId = new Map(boxes.map((b) => [b.id, b]));
-  const svg = frame(width, height);
+  const { svg, world } = frame(width, height);
   for (const l of body.links) {
     const a = byId.get(l.from);
     const b = byId.get(l.to);
-    if (a && b) svg.appendChild(edge(a, b, linkConf(l), linkLabel(l), l.from, l.to));
+    if (a && b) world.appendChild(edge(a, b, linkConf(l), linkLabel(l), l.from, l.to));
   }
   body.nodes.forEach((n, i) => {
     const focus = !!ctx.focusFile && n.member_files.includes(ctx.focusFile);
-    svg.appendChild(
+    world.appendChild(
       nodeGroup(boxes[i], [n.label, copyText("diagramRender.cluster.size", { n: n.size, files: n.files })], () => ctx.onNode({ shape: "clusters", node: n }), focus),
     );
   });
@@ -366,19 +382,19 @@ export function renderClusters(body: ClustersBody, ctx: RenderContext): SVGSVGEl
 }
 
 /** 渲染器：符号级调用子图。 */
-export function renderCallGraph(body: CallGraphBody, ctx: RenderContext): SVGSVGElement {
+export function renderCallGraph(body: BodyOf<"call_graph">, ctx: RenderContext): SVGSVGElement {
   const { boxes, width, height } = layoutCallGraph(body);
   const byId = new Map(boxes.map((b) => [b.id, b]));
-  const svg = frame(width, height);
+  const { svg, world } = frame(width, height);
   for (const e of body.edges) {
     const a = byId.get(e.from);
     const b = byId.get(e.to);
-    if (a && b) svg.appendChild(edge(a, b, edgeConf(e.confidence), edgeLabel(e), e.from, e.to));
+    if (a && b) world.appendChild(edge(a, b, edgeConf(e.confidence), edgeLabel(e), e.from, e.to));
   }
   for (const n of body.nodes) {
     const box = byId.get(n.id);
     if (!box) continue;
-    svg.appendChild(
+    world.appendChild(
       nodeGroup(box, [n.name, basename(n.file)], () => ctx.onNode({ shape: "call_graph", node: n }), n.id === body.center),
     );
   }
@@ -386,14 +402,14 @@ export function renderCallGraph(body: CallGraphBody, ctx: RenderContext): SVGSVG
 }
 
 /** 渲染器：类型 ＋ 实现/组合关系。 */
-export function renderTypeGraph(body: TypeGraphBody, ctx: RenderContext): SVGSVGElement {
+export function renderTypeGraph(body: BodyOf<"type_graph">, ctx: RenderContext): SVGSVGElement {
   const { boxes, width, height } = layoutTypeGraph(body.types);
   const byId = new Map(boxes.map((b) => [b.id, b]));
-  const svg = frame(width, height);
+  const { svg, world } = frame(width, height);
   for (const r of body.relations) {
     const a = byId.get(r.from);
     const b = byId.get(r.to);
-    if (a && b) svg.appendChild(edge(a, b, r.kind, r.label ?? (r.kind === "implements" ? copyText("diagramRender.typeGraph.implements") : ""), r.from, r.to));
+    if (a && b) world.appendChild(edge(a, b, r.kind, r.label ?? (r.kind === "implements" ? copyText("diagramRender.typeGraph.implements") : ""), r.from, r.to));
   }
   body.types.forEach((t, i) => {
     const members = [
@@ -402,7 +418,7 @@ export function renderTypeGraph(body: TypeGraphBody, ctx: RenderContext): SVGSVG
     ];
     const shown = members.slice(0, TYPE_MEMBER_LINES - 1);
     if (members.length > shown.length) shown.push(copyText("diagramRender.typeGraph.more", { n: members.length - shown.length }));
-    svg.appendChild(nodeGroup(boxes[i], [t.name, ...shown], () => ctx.onNode({ shape: "type_graph", node: t })));
+    world.appendChild(nodeGroup(boxes[i], [t.name, ...shown], () => ctx.onNode({ shape: "type_graph", node: t })));
   });
   return svg;
 }

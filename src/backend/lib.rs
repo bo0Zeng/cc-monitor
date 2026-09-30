@@ -679,7 +679,15 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5u-one-data-home**（2026-09-29，DATA-HOME 合并那一拍，V160）：行为 —— monitor 数据目录默认 `~/.cc-monitor/`（与后端的 `bin/` 等并排；API 号凭据 `apikey-credentials.json` 在它根上，两侧经同一个 `monitor_data_dir` 推，认 `CCM_DATA_DIR`）· monitor 日志在 `logs/monitor/` · 数据目录建出来只给本人 · PowerShell 别名块模板 v5（旧块判旧、提示重装）。子命令没变。
 ///
 /// ★★★ **p5v-plain-copy**（2026-09-29，COPY-R 合并那一拍，V161）：文案 —— 用户看得到的文字只说现在是什么、能做什么：去掉演进叙事、内部名挪进句末括号或换成人话、删重复解释（文案表改 282 条；写进用户文件的别名块头注去掉版本沿革）· 后端 IO 错误按种类说人话（`files::io_kind_said`）。子命令没变。
-pub const BUILD_ID: &str = "p5v-plain-copy";
+///
+/// ★★★ **p5w-readme-shots**（2026-09-29，SHOTS 合并那一拍）：行为 / 协议 —— 足迹行的现状多一档 `expected_absent`（旧版遗留认出就删的那一类不在 ＝ 该有的样子，由后端 `footprint/rows.rs::read_absence` 给结论）· 设置 → 机器那张表补样式 · README 配图 `docs/screenshots/`（合成数据渲染）。子命令没变。
+///
+/// ★★★ **p5x-win-rtt-oem**（2026-09-29，P2 合并那一拍）：行为 —— Windows 上读得到连接往返时间（`SIO_TCP_INFO`，压缩判准不变：局域网远端不再压）· PATH 状态探针直写 UTF-8 字节 · 加 / 撤 PATH 失败时报错按控制台代码页解 · `ssh_config` 走统一的家目录 · 中转删无用参数 · 门读盘那一半只从宿主调有判据。子命令没变。
+///
+/// ★★★ **p5y-panorama-upstream-asks**（2026-09-29，P7 合并那一拍）：协议 —— 代码全景接上游四条：邻域跳数由引擎给 · 符号 id 结构化（`SymbolRef`）· 线上类型由上游导出、前端生成 · 建索引带进度（`panorama` 请求多 `ticket`，新出方向帧 `progress{ticket, cell}`，界面显示「阶段：已做 / 总数」）；re-vendor 到上游 `7eafe64`，形状代号换代 ⇒ 各台首次打开全景重放一次小程序。子命令没变。
+///
+/// ★★★ **p5z-panorama-zoom-data-page**（2026-09-29，P3 合并那一拍）：行为 —— 全景图可缩放 / 拖拽、按视口适配 · 列宽变了重算行高 · 文案取文口按值在值与汉字之间补 / 去空格（C-L5，TS 与 Rust 同一套）· 数据位置页列出后端住在 `~/.cc-monitor` 里的全部东西（名字进 `relay_route_core` 契约）· CI 的 eslint 改成会拦。子命令没变。
+pub const BUILD_ID: &str = "p5z-panorama-zoom-data-page";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/frontend/shell/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1877,6 +1885,9 @@ pub const EMITS: &[&str] = &[
     // 〔MIG-1 收尾〕测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
     "probe",
+    // 〔P7〕长活的一格进度（`stream::inbound::Progress` 真发，登记 = 承诺真发）：只在请求交了 `ticket` 的 `panorama` 建索引时出现；
+    // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 合并那一拍 bump `BUILD_ID`。
+    "progress",
     // 〔TAP · V124〕中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
     // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
     "tap",

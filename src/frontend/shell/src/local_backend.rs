@@ -1585,7 +1585,9 @@ pub(crate) fn absorb_local_frame(
         | InboundFrame::SessionsReplayed
         | InboundFrame::SessionFileNotice { .. }
         // 〔MIG-3b · ㉓②〕任务清单变了 ⇒ 交回读循环（`consume_local` 交重放缓冲那张订阅表，与远端同一个口）。
-        | InboundFrame::TasksChanged { .. }) => return Some(f),
+        | InboundFrame::TasksChanged { .. }
+        // 〔P7〕本机那一趟建索引的进度格 ⇒ 同上（`consume_local` 交 `on_progress`，与远端同一个口）。
+        | InboundFrame::Progress { .. }) => return Some(f),
         // 其余帧（hello · 溢出 …）本机这条流今天不消费。
         _ => {}
     }

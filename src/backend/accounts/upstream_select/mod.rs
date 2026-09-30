@@ -139,10 +139,9 @@ impl Upstreams {
 /// 〔DEL〕先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
 /// 〔TAP · V124〕tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （`设计/20 §11` I2：② 不碰响应体）。
-pub fn host_relay(home: &std::path::Path) -> String {
+pub fn host_relay() -> String {
     crate::relay::host(
         &|k| std::env::var(k).ok(),
-        home,
         &Boot,
         crate::stream::tap::port(),
     )
@@ -168,8 +167,6 @@ impl Ready for Upstreams {
     fn into_destinations(
         self: Box<Self>,
         get: &dyn Fn(&str) -> Option<String>,
-        // 〔DATA-HOME · V160〕凭据文件住数据目录根上、按用户家（取值器里的 `HOME`）推，不再按中转递来的 agent 家拼 ⇒ 这一格空转。
-        _home: &std::path::Path,
         out: &mut dyn Write,
     ) -> std::sync::Arc<dyn Destinations> {
         let (table, source) = load_credentials(get, &self, out);
