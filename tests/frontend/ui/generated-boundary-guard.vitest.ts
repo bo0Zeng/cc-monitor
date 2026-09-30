@@ -206,7 +206,7 @@ describe("C01 边界生成物", () => {
       // 〔第四波 S4〕"TransferProgress.ts" 走了（它的 Rust 源随池子最后那条命令一起删了）。
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
       "UserText.ts", //               〔RENDER2 · J10〕monitor 按 agents/claudecode/text.rs::user_text 给 user 记录填的成品
-      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src/frontend/shell/src/adapter.rs` 的
+      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是〔P1：今天是后端注册表 `src/backend/agents/mod.rs` 经 `tests/backend/agents_tests.rs`；从前是〕`src/frontend/shell/src/adapter.rs` 的
       // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
       // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、
       // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
@@ -229,7 +229,7 @@ describe("C01 边界生成物", () => {
     // `K-R95`：第三种标记 —— 值表生成器不止 `adapter.rs` 一个了。
     const GENERATED_BY = [
       TS_RS_HEADER,
-      "src/frontend/shell/src/adapter.rs",
+      "src/backend/agents/mod.rs", // 〔P1〕`agent-profile-table.ts` 的生成器随值的家进了后端注册表（从前是 monitor `adapter.rs`）
       "src/backend/control/launch_render/wire.rs", // 〔MIG-2〕`launch-render-facts.ts` 的生成器随渲染搬进后端
       "src/frontend/shell/src/payload.rs", // 〔DUP1〕`judgment-rules.ts`
     ];

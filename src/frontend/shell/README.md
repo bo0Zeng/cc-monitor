@@ -44,9 +44,6 @@ src/frontend/shell/
     ├── profile_installer.rs # PowerShell profile 块插入/卸载 + 命令冲突扫描
     ├── auto_launch.rs # auto-launch monitor 开关持久化（~/.cc-monitor/auto-launch.json）
     ├── subagent.rs    # load_subagent IPC + description 关联
-    ├── adapter.rs     # F-MA agent 适配层：会话布局/解析/活性/resume 假设收敛到 AgentAdapter（CC 第一个实例）
-    ├── adapter/
-    │   └── claude_code.rs # Claude Code 适配器（第一个实例，零行为变化包旧逻辑）
     ├── event_replay.rs # F5 重放（v2.6 起出锁 emit、顺序靠前端按 seq 排；非旧「持锁严格按序」）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
     ├── launch.rs      # B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起（本地 resume 与 F41/F51/F52/F53 共用）
@@ -82,7 +79,7 @@ src/frontend/shell/
 | **profile_installer.rs** | 别名块（POSIX `cc` / `cct` · PowerShell `__ccm_bind` ＋ 可选 `cc`）的渲染 / 插入 / 卸载 / 现状 / 冲突检测；〔AL1d〕`$PROFILE` 在哪不归它（只有 `shell_dialect.rs` 答） | `block_state / render_block / install_to_profile / uninstall_from_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
-| **adapter.rs** + **adapter/claude_code.rs** (F-MA) | agent 适配层：把 cc-monitor 对「Claude Code 具体形态」的假设（会话目录布局 / 记录解析 / 活性 / resume 命令）收敛到 `AgentAdapter` 后，`claude_code.rs` 是第一个实例（**零行为变化**）。第一刀只抽浅耦合点（会话源布局等字面量），不碰记录模型（`JsonlRecord` 暂当规范模型） | `SessionLayout / AgentAdapter`（增量长 trait） |
+| ~~adapter.rs~~ (F-MA) | 〔P1〕**已删**：起会话事实（默认启动器 · wrapper · resume 字面量 · 嵌套标记）只住后端适配层 `src/backend/agents/<名>/resume.rs`（注册表 `Adapter.launch`）；monitor 起前清洗读生成物 `src/frontend/ui/generated/agent-profile-table.ts`（`lib.rs::nested_env_markers`） | — |
 | **event_replay.rs**（〔CF2 · 第四波 4B〕会话流的句柄 ＋ 重放缓冲） | 内存 buffer（**每个会话只留 seq 最高的 600 条**，摊还余量 150；丢掉的前端按字节 / 按行号取回）＋ 会话流订阅表：`on_line_batch_awaited`（〔CF1〕唯一入口）进缓冲并**当场**交进各条已过就绪点的订阅（< 50 行逐行一格；≥ 50 行切块、带 `batch` 边界、块间 tokio sleep，交完才返回 —— 行先于随后的归档）；有 credit 才交，没有就丢、原位报 `Gap`；`ready_point(priority_sid)`（frontend-ready 那个任务里）按 credit 交留存（不丢，等 `want`），优先会话的块先发 | `EventReplay::on_line_batch_awaited() / ready_point(priority_sid)（async）/ subscribe() / want() / stop() / origin_seen() / forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史会话的 monitor 这一侧：读一整份会话（Channel 分块）+ resume 的命令渲染（〔MIG-3b〕删会话与分叉界面经通道直说那台后端，`src/frontend/ui/session-writes.ts`）。〔C4d · 第四波 4B〕项目 / 会话清单与注解（星标 / 改名 / 隐藏 / 上次账号）搬进本机常驻后端（`history-projects` / `history-sessions` / `history-annotate` / `history-last-accounts`，界面经 `src/frontend/ui/history-reads.ts` 问），注解那份文件原地不动、路径仍由本文件 `metadata_path` 算 | IPC `stream_read_session_jsonl / resume` |
 | **launch.rs** (B14-F41) | 终端拉起单一入口：`launch_powershell_window`（从 `history.rs` 的 `resume_impl`〔散文墓碑〕抽出，wt.exe Plan A → `CREATE_NEW_CONSOLE` Plan B，`-NoExit -EncodedCommand` 不带 `-NoProfile`）+ `open_terminal_window`（开窗：接令牌握手前奏再开 PowerShell 窗口；〔FIX4 · ⑬〕远端那一行 `ssh -t … -- '<bash -lic ''…''>'` 由本机后端帧命令 `terminal-ssh` 渲好交来，这里不拼 ssh）+ `terminal_dial`（交机器事实）；本地与远端族 F41 resume / F51 attach / F52 tmux / F53 launcher 共用此单一入口；命令为 async（`spawn_blocking` 起窗） | `launch_powershell_window() / open_terminal_window() / terminal_dial()` + IPC `open_terminal_window` · `terminal_dial` |

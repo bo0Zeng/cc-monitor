@@ -30,7 +30,7 @@
  * # ⚠ 诚实边界（三条）
  *
  * 1. 本条只对拍 **golden 有 key 的那两项**（`default_launcher` / `resume_kind`+`resume_token`）。
- *    `agent_has_identity` · `agent_needs_bus_id` · backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
+ *    ccm 的 `has_identity` · `needs_bus_id`（`control/ccm/mod.rs`）· backend 的 `SESSION_NAME_PREFIX`（`cc-`/`cx-`）
  *    **今天在 golden 里没有 key** ⇒ 它们**没有真相源、也没被本条守住**。
  *    那是 `EL6` 的欠账，不是本条能顺手解决的（加 key 要动 golden 的契约面）。
  *    下面 `the_gaps_are_named_not_forgotten` 把这三项**逐个点名钉住**：
@@ -54,7 +54,7 @@
  * —— 而它只认 claude（`K-R54` 表第 11 行）。本件把它的**取值来源**改成后端：
  *
  * ```text
- * src/frontend/shell/src/adapter.rs::agent_profile_facts
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）〔P1：从前是 monitor 那份适配表的取数口〕
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts  →  src/frontend/ui/agent-profile.ts
  * ```
@@ -66,7 +66,7 @@
  * ⚠ **两道门各盖一半，别只报一边**（同 `C05` 那个拆法）：
  * · 「已提交的生成物 == Rust 源」由**门禁第六格 `generated`** 盖
  *   （`git diff --exit-code -- src/frontend/ui/generated/`，跑在 `cargo test --lib` 之后）；
- * · 「TS 消费方 == 已提交的生成物」＋「生成物 == `adapter.rs` 里那几张表」由**本文件**盖，
+ * · 「TS 消费方 == 已提交的生成物」＋「生成物 == 金表」由**本文件**盖（〔P1〕值的家进了后端之后，「后端那一份 == 金表」由后端 `agents_tests.rs` 盖），
  *   它在**没有 Rust 的那一侧**（CI 的 frontend job）也成立。
  * 🔴 在**整趟门禁**里跑时，`cargo` 那一格会先把生成物重写一遍 ⇒ 本文件那条对拍
  *   看到的已经是修好的文件。**那一格的牙在 `generated`，不在这里** —— 别把本条读成
@@ -114,59 +114,7 @@ function golden(): Record<string, Record<string, string>> {
   return out;
 }
 
-/**
- * 从 `control/ccm/mod.rs` 的 `match agent { "codex" => …, _ => … }` 里抠一个函数的每 agent 取值。
- *
- * 🔴 〔`K-R48` 第二拍 09-11〕**抠法换了语言，钉的东西一个字没变。**
- * 从前抠的是 bash 的 `case "$1" in claude) … ;; codex) … ;;`。今天那几个函数写成 Rust `match`，
- * 而且**刻意用了通配臂**（`"codex" => "codex", _ => "claude"`）—— 与 bash 那版同一个写法
- * （`agent_has_identity` 当年就只列一个 agent、另一个走 `*)`）。
- * ⇒ 抠法必须**认通配臂**：某个 agent 没有自己的臂时落到 `_ =>` 那一支，
- * 照语言的真实语义取，而不是读成「它没有取值」。
- *
- * ⚠ 只处理**一行一臂**的形状（今天这几个函数都是）。臂体跨行时抠不出来 ⇒
- * 下面调用点的 `expect(...).toBe(...)` 当场红，而不是静默给空串。
- */
-function ccmTable(fn: string): Record<string, string> {
-  const src = read(CCM);
-  const at = src.indexOf(`fn ${fn}(`);
-  expect(
-    at,
-    `在 ${CCM} 里找不到 \`fn ${fn}(\` —— 那张 per-agent 表被改写或改名了，本条会零命中地绿`,
-  ).toBeGreaterThan(-1);
-  // 取到该函数体结束（第一个出现的行首 `}`）。
-  const body = src.slice(at);
-  const stop = body.indexOf("\n}");
-  const region = stop > 0 ? body.slice(0, stop) : body.slice(0, 600);
-  /** 一条臂的**取值**：`Some(x)` / `None` / 裸字面量 都归一成「它最终是什么串」。 */
-  const valueOf = (raw: string): string => {
-    const s = raw.trim().replace(/,$/, "").trim();
-    if (s === "None") return "";
-    const some = s.match(/^Some\((.*)\)$/);
-    const inner = (some?.[1] ?? s).trim();
-    // `argv::flag::RESUME` 这种**引用**：去它的住址取字面量（判据不许在这里抄第二份）。
-    const ref = inner.match(/^argv::flag::([A-Z_]+)$/);
-    if (ref) {
-      const argv = read("src/backend/control/ccm/argv.rs");
-      const m = argv.match(new RegExp(`const ${ref[1]}: &str = "([^"]*)";`));
-      expect(m, `在 argv.rs 里抠不到 \`${ref[1]}\` 的字面量 —— 住址变了`).toBeTruthy();
-      return m?.[1] ?? "";
-    }
-    return inner.replace(/^"(.*)"$/, "$1");
-  };
-  const wildcard = region.match(/^\s*_ => (.*)$/m);
-  const out: Record<string, string> = {};
-  for (const agent of AGENTS) {
-    const m = region.match(new RegExp(`^\\s*"${agent}" => (.*)$`, "m"));
-    const raw = m?.[1] ?? wildcard?.[1];
-    expect(
-      raw,
-      `${CCM} 的 ${fn} 里 agent=${agent} 既没有自己的臂、也没有通配臂 —— 抠法坏了`,
-    ).toBeTruthy();
-    out[agent] = valueOf(raw ?? "");
-  }
-  return out;
-}
+// 〔P1 · 第 4 件〕`ccmTable`（从 `control/ccm/mod.rs` 的 `match agent` 里抠 per-agent 取值）退役：那两张表按注册表读了，没有臂可抠。
 
 /**
  * 只留 Rust 的**生产段**：剥掉 `//` / `///` / `//!` 开头的整行。
@@ -192,59 +140,62 @@ function backendDefaultCommand(agent: string): string | undefined {
   return /DEFAULT_COMMAND:\s*&str\s*=\s*"([^"]+)"/.exec(backendSrc(agent))?.[1];
 }
 
+/** backend 侧某 agent 的 resume 字面量（`RESUME_TOKEN: &str = "…"`；抠不到 → `undefined`）。 */
+function backendResumeToken(agent: string): string | undefined {
+  return /RESUME_TOKEN:\s*&str\s*=\s*"([^"]+)"/.exec(backendSrc(agent))?.[1];
+}
+
 /** backend 侧某 agent 的 resume 命令模板（`format!("…")` 里那一串）。 */
 function backendResumeTemplate(agent: string): string {
   return /format!\("([^"]+)"/.exec(backendSrc(agent))?.[1] ?? "";
 }
 
 describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => {
-  it("★ 抽取器自检：三边都真的抠出了东西（否则下面是零命中地绿）", () => {
+  // 〔P1 · 第 4 件〕三写点收成一个家：值只住后端适配层 `agents/<名>/resume.rs`（注册表 `Adapter.launch`），`ccm` 按注册表读。
+  //   ⇒ 这里对的是「金表 ↔ 那一个家」，外加「ccm 那两张 per-agent 表确实没了（按注册表读）」。
+  it("★ 抽取器自检：两边都真的抠出了东西（否则下面是零命中地绿）", () => {
     const g = golden();
     expect(Object.keys(g).sort(), "golden.tsv 抠出来的 agent 集变了").toEqual([...AGENTS].sort());
-    const launcher = ccmTable("default_launcher");
-    expect(
-      Object.values(launcher).filter(Boolean).length,
-      `${CCM} 的 default_launcher 一个值都没抠到 —— 抽取器坏了`,
-    ).toBe(AGENTS.length);
     for (const a of AGENTS) {
       expect(
         backendDefaultCommand(a),
         `backend ${a} 侧抠不到 \`DEFAULT_COMMAND: &str = "…"\` —— 声明形状变了，抽取器失效`,
       ).toBeTruthy();
+      expect(backendResumeToken(a), `backend ${a} 侧抠不到 \`RESUME_TOKEN\``).toBeTruthy();
     }
   });
 
-  it("★ 默认命令名：golden ↔ ccm ↔ backend 三边一致", () => {
+  it("★ 默认命令名：golden ↔ backend 一致；ccm 不再自己写一份", () => {
     const g = golden();
-    const ccm = ccmTable("default_launcher");
     for (const a of AGENTS) {
-      const want = g[a]?.default_launcher;
-      expect(ccm[a], `${CCM} 的 default_launcher 与 golden 不一致（agent=${a}）`).toBe(want);
-      expect(
-        backendDefaultCommand(a),
-        `backend 的 DEFAULT_COMMAND 与 golden 不一致（agent=${a}）。\n` +
-          "⚠ 这三处是同一个事实的三份副本，改一处必须改三处 —— 本条就是为此存在的。",
-      ).toBe(want);
+      expect(backendDefaultCommand(a), `backend 的 DEFAULT_COMMAND 与 golden 不一致（agent=${a}）`).toBe(
+        g[a]?.default_launcher,
+      );
+    }
+    // 〔P1〕ccm 的 `default_launcher` / `nested_env` 按注册表读：函数体里不许再有 per-agent 的臂。
+    const src = productionRust(read(CCM));
+    for (const fn of ["default_launcher", "nested_env"]) {
+      const at = src.indexOf(`fn ${fn}(`);
+      expect(at, `${CCM} 里找不到 \`fn ${fn}(\``).toBeGreaterThan(-1);
+      const body = src.slice(at, at + src.slice(at).indexOf("\n}"));
+      expect(/launch_face_of\(/.test(body), `${CCM} 的 ${fn} 不再按注册表读`).toBe(true);
+      expect(/"(claude|codex)"\s*=>/.test(body), `${CCM} 的 ${fn} 又长回了 per-agent 的臂`).toBe(false);
     }
   });
 
-  it("★ resume 的形状（flag 还是子命令）：golden ↔ ccm ↔ backend 三边一致", () => {
+  it("★ resume 的形状（flag 还是子命令）：golden ↔ backend 一致，命令模板用的就是那个字面量", () => {
     const g = golden();
-    // 〔AL3 · V138〕ccm 成了 claude 的壳、只看不吃 `--resume` ⇒ 它那张 `resume_flag` 表删了，这一格只剩 golden ↔ backend 两边。
+    // 〔AL3 · V138〕ccm 成了 claude 的壳、只看不吃 `--resume` ⇒ 它那张 `resume_flag` 表删了。
     expect(/^\s*pub\(crate\) fn resume_flag\(/m.test(read(CCM)), `${CCM} 又长出了 resume 表 —— V138 之后 ccm 不做 resume 决定`).toBe(false);
     for (const a of AGENTS) {
-      const kind = g[a]?.resume_kind; // "flag" | "subcommand"
-      // backend：整条命令模板按**形状**比，不是找子串。
-      //   flag 形     `{base} --resume {session_id}`
-      //   子命令形    `{base} resume {session_id}`
-      const fmt = backendResumeTemplate(a);
-      const FLAG = /^\{base\} --[A-Za-z][\w-]* \{session_id\}$/;
-      const SUB = /^\{base\} [A-Za-z][\w-]* \{session_id\}$/;
-      expect(
-        FLAG.test(fmt) ? "flag" : SUB.test(fmt) ? "subcommand" : `认不出的形状(${fmt})`,
-        `backend 的 resume 命令形状与 golden 的 resume_kind=${kind} 对不上（agent=${a}）。\n` +
-          `  golden 说 ${kind}，而后端拼的是 ${JSON.stringify(fmt)}`,
-      ).toBe(kind);
+      const token = backendResumeToken(a) ?? "";
+      expect(token, `backend 的 RESUME_TOKEN 与 golden 不一致（agent=${a}）`).toBe(g[a]?.resume_token);
+      expect(token.startsWith("--") ? "flag" : "subcommand", `resume 形状与 golden 的 resume_kind 对不上（agent=${a}）`).toBe(
+        g[a]?.resume_kind,
+      );
+      expect(backendResumeTemplate(a), `backend 的 resume 命令没用 RESUME_TOKEN 拼（agent=${a}）`).toBe(
+        "{base} {RESUME_TOKEN} {session_id}",
+      );
     }
   });
 
@@ -343,7 +294,7 @@ describe("K-R93 前端那份 agent 画像：值来自后端", () => {
   it("★ 生成物是生成物：头上写明谁生成的、且写着不许手改", () => {
     const src = read(TABLE_TS);
     expect(src, "生成物头上没写它是谁生成的").toMatch(
-      /^\/\/ 本文件由 `src\/frontend\/shell\/src\/adapter\.rs` 的 `export_bindings_agent_profile_table` 生成$/m,
+      /^\/\/ 本文件由 `src\/backend\/agents\/mod\.rs` 的注册表经 `export_bindings_agent_profile_table` 生成$/m,
     );
     expect(src, "生成物头上缺「不许手改」那句").toMatch(/Do not edit this file manually/);
   });

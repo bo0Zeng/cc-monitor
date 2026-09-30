@@ -262,11 +262,11 @@ fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
     );
 }
 
-/// 闭集只有一处住址：`AGENTS` 与那几个按 agent 分支的函数必须**逐个对得上**。
+/// 闭集只有一处住址（〔P1〕注册表里带起会话事实的那几家）：它与那几个按 agent 分支的函数必须**逐个对得上**。
 #[test]
 fn the_agent_set_has_one_address_and_every_member_is_wired() {
-    assert_eq!(AGENTS, &["claude", "codex"]);
-    for a in AGENTS {
+    assert_eq!(agents(), ["claude", "codex"]);
+    for a in agents() {
         assert!(!default_launcher(a).is_empty(), "{a} 没有默认启动器");
     }
     assert_eq!(nested_env("claude").len(), 4);

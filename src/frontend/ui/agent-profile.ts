@@ -3,15 +3,15 @@
  *
  * # `K-R93`（09-12）：这里从此不写死任何一格
  *
- * 立件时本文件是一份**手写常量**（`AGENT_PROFILE`），而后端 `src/frontend/shell/src/adapter.rs`
- * 另有一份（claude ＋ codex）—— 同一件事两份实现，`K-R54` 表**第 11 行**。
+ * 立件时本文件是一份**手写常量**（`AGENT_PROFILE`），而 monitor 那份适配表另有一份（claude ＋ codex）
+ * —— 同一件事两份实现，`K-R54` 表**第 11 行**。〔P1〕今天值的唯一住址是后端适配层 `src/backend/agents/<名>/resume.rs`。
  * 🔴 而且前端这一份**只认 claude** ⇒ 接上后端的同一刻，codex 那一格也补上了
  * （**那不是回归，是把一格漏的补上**）。
  *
  * 取值链，一句话：
  *
  * ```text
- * src/frontend/shell/src/adapter.rs::agent_profile_facts     ← 唯一的值源
+ * src/backend/agents/<名>/resume.rs（注册表 `Adapter.launch`）   ← 唯一的值源（〔P1〕从前是 monitor `adapter.rs`）
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/frontend/ui/generated/agent-profile-table.ts         ← 生成物，不许手改
  *        └─（本文件）→ AGENT_PROFILE / lookupAgentProfile / listAgents
@@ -20,7 +20,7 @@
  * **改后端那一份 ⇒ 前端拿到的值跟着变**；改了不重跑生成 ⇒ 门禁第六格 `generated` 红
  * （`git diff --exit-code -- src/frontend/ui/generated/`，跑在 `cargo test --lib` 之后）。
  * 没有 Rust 的那一侧（CI 的 frontend job）由 `agent-profile-parity.vitest.ts`
- * 把「生成物 == `adapter.rs` 源」再对一遍。
+ * 把「生成物 == 金表」再对一遍（「后端那一份 == 金表」由后端 `agents_tests.rs` 钉）。
  *
  * # 三条不许犯的
  *
@@ -89,7 +89,7 @@ export type FullAgentProfile = {
   /**
    * resume/拉起前要 unset 的嵌套会话 env。
    *
-   * ⚠ **顺序不是随手排的**：它逐项同序于后端 `adapter/claude_code.rs::CLAUDE_NESTED_ENV`，
+   * ⚠ **顺序不是随手排的**：它逐项同序于后端 `agents/claudecode/resume.rs::NESTED_ENV`（〔P1〕唯一住址），
    * 而那个顺序**直接决定了送到远端的那条命令的字节**（`backend/control/payload.rs` 那个载荷内核）。
    * 今天两侧同源（这一格就是从那里来的），顺序天然不会漂。
    */

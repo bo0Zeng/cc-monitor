@@ -105,8 +105,8 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/branch-fold-batching.vitest.ts",
     "tests/frontend/ui/branching.test.ts",
     // 〔C4d〕`tests/frontend/shell/accounts_tests.rs` 删了（随 `accounts.rs` 整份出列）。
-    "tests/frontend/shell/adapter/claude_code_tests.rs",
-    "tests/frontend/shell/adapter/codex_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter/claude_code_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter/codex_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/backend/control/launch_render/launch_cli_parity_tests.rs",
     "tests/backend/control/launch_render/launch_payload_parity_tests.rs",
     "tests/backend/control/launch_render/launch_tmux_outer_parity_tests.rs",
@@ -129,7 +129,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/shell/filewin/workspace_tests.rs",
     "tests/frontend/shell/filewin/writeops_tests.rs",
     "tests/frontend/shell/lib_batch_tests.rs",
-    "tests/frontend/shell/lib_env_scrub_tests.rs",
     "tests/frontend/shell/lib_nudge_skip_tests.rs",
     "tests/frontend/shell/lib_remote_config_tests.rs",
     // 〔MIG-1〕`port_forward_tests.rs` 随转发账进本机常驻后端删了（判据搬去 `tests/backend/dial_forwards_tests.rs`）。
@@ -270,6 +269,8 @@ const UNIT: &[&str] = &[
 
 /// 源码扫描层：读仓内文本（`include_str!` · `repo_root()` 一族 · `readFileSync` 一族）、不碰 OS。
 const SCAN: &[&str] = &[
+    // 〔P1 · 第 4 件〕UNIT → SCAN：起前清洗那份名单读生成物（`include_str!` 画像表），判据对金样读。
+    "tests/frontend/shell/lib_env_scrub_tests.rs",
     // 〔P1〕原 `search-core` 纯函数判据的通用那一半 ＋ 「口径只有一个家」那两道（读后端三份生产源码）⇒ 扫描层。
     "tests/backend/observe/search_rules_tests.rs",
     // 〔MOD〕记录解释搬进后端：漂移账（原 monitor `drift_ledger_tests.rs` 的记录两面）· 抢救与记账（原 `parser_tests.rs`）·
@@ -350,11 +351,11 @@ const SCAN: &[&str] = &[
     "tests/backend/single_stream_guard.rs",
     "tests/backend/target_parity_guard.rs",
     "tests/frontend/ui/base-flag-contract-guard.vitest.ts",
-    "tests/frontend/shell/agent_dispatch_registry_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/agent_dispatch_registry_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/arch_doc_shape_guard_tests.rs",
     "tests/frontend/shell/asset_sync_tests.rs", // 〔AS2〕
     "tests/frontend/shell/atomic_replace_registry_tests.rs",
-    "tests/frontend/shell/agent_profile_parity_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/agent_profile_parity_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/backend_control_tests.rs",
     "tests/frontend/shell/backend_kill_tests.rs", // 〔C4e〕挂载点从 `backend_kill.rs` 换成 `backend/control/mod.rs`（发送端删了，判据留着）；同拍 `backend_launch_tests.rs` / `backend_send_keys_tests.rs` 随发送端删掉、摘了
     "tests/comms/inward/backend_route_tests.rs",
@@ -655,7 +656,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/stderr_log_tests.rs",
     "tests/backend/stream/wire_tests.rs",
     // 〔MIG-3a〕`tests/frontend/shell/account_aliases_tests.rs` 随别名那一族进了那台后端（`tests/backend/assets/aliases/`）。
-    "tests/frontend/shell/adapter_tests.rs",
+    // 〔P1 · 第 4 件〕`tests/frontend/shell/adapter_tests.rs` 删了（monitor 那份适配表退役，对拍与生成器随家进了后端 `tests/backend/agents_tests.rs`）。
     "tests/frontend/shell/auto_launch_tests.rs",
     "tests/backend/control/launch_render/launch_wire_k_r95_launch_render_facts.rs",
     "tests/frontend/shell/local_backend_tests.rs",
