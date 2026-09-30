@@ -17,7 +17,7 @@
  * /`screenToWorld`。布局只算一次（load overview 时），pan/zoom 只改 viewport → 重画，便宜。
  */
 
-import type { Overview } from "./types";
+import type { Overview, SymbolRef } from "./types";
 import { copyText } from "../copy-table";
 
 // === 基础几何 ===
@@ -197,12 +197,8 @@ export function computeLayout(overview: Overview, opts?: LayoutOptions): Panoram
     }
   }
 
-  // 入口点文件集合（entry_points 是符号 id `file#name`，取 file 段）。
-  const entryFiles = new Set<string>();
-  for (const id of overview.entry_points ?? []) {
-    const file = id.split("#")[0];
-    if (file) entryFiles.add(file);
-  }
+  // 入口点文件集合（〔P7〕上游给的 `file` 字段，不拆 id）。
+  const entryFiles = new Set<string>((overview.entry_points ?? []).map((e) => e.file));
 
   // 分数范围（半径归一化用）。
   let minScore = Infinity;
@@ -430,17 +426,11 @@ export function coverageBanner(o: {
 }
 
 /**
- * F70：把 `panorama_touching` 返回的符号 id（`file#name`）映射回**文件段集合**（去重）。
- * 全景图画的是文件级气泡，故高亮按文件粒度。与 `computeLayout` 里 entry_points 的 id→file
- * 派生（`id.split("#")[0]`）同款约定——core 若改 SymbolId 格式两处一起坏，风险已存在非新增。
+ * F70：`touching` 命中的符号 → **文件集合**（去重）。全景图画的是文件级气泡，故高亮按文件粒度。
+ * 〔P7〕读上游给的 `file` 字段（`SymbolRef`），不照 id 格式自己拆。
  */
-export function touchedFilesFromIds(ids: string[]): Set<string> {
-  const files = new Set<string>();
-  for (const id of ids) {
-    const file = id.split("#")[0];
-    if (file) files.add(file);
-  }
-  return files;
+export function touchedFiles(refs: SymbolRef[]): Set<string> {
+  return new Set(refs.map((r) => r.file));
 }
 
 /**

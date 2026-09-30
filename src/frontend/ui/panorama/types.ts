@@ -59,6 +59,14 @@ export interface Symbol {
   param_flow?: string | null;
 }
 
+/** 〔P7〕符号 id 的结构化拆分（上游 `SymbolRef`；拆法只住上游 `SymbolRef::of`，前端读字段、不拆 id）。 */
+export interface SymbolRef {
+  id: string;
+  file: string;
+  /** `#` 之后、去掉 `@行号` 的那一段；文件级 id ⇒ null。 */
+  symbol: string | null;
+}
+
 /** 一条调用/导入边。`confidence` 是**尽力**标注（非 sound），如实呈现别当完整真相。 */
 export interface Edge {
   from: string; // 符号 id
@@ -102,7 +110,7 @@ export interface Subsystem {
 export interface Overview {
   spine_files: RankedFile[];
   subsystems: Subsystem[];
-  entry_points: string[]; // 符号 id
+  entry_points: SymbolRef[]; // 〔P7〕带 file（上游给），前端不拆 id
   total_symbols: number;
   total_files: number;
   /** ⭐ 覆盖信号：识别为调用但连不上仓内符号（外部/stdlib/漏抓）的调用点数。 */

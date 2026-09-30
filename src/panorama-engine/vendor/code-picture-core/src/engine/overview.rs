@@ -6,7 +6,9 @@
 //! `Imports` 边不进图算法(文件级端点,与符号图不同构)。
 
 use super::{fnv1a, Engine};
-use crate::model::{Edge, EdgeKind, Overview, RankedFile, Subsystem, SymbolId, TokenBudget};
+use crate::model::{
+    Edge, EdgeKind, Overview, RankedFile, Subsystem, SymbolId, SymbolRef, TokenBudget,
+};
 use crate::rank;
 use std::collections::{HashMap, HashSet};
 
@@ -290,7 +292,7 @@ fn compute_subsystems(
 }
 
 /// 入口点(无入边),按 PageRank 降序(并列 id 升序)。
-fn compute_entries(ids: &[SymbolId], pr: &[f64], entries: &[usize]) -> Vec<SymbolId> {
+fn compute_entries(ids: &[SymbolId], pr: &[f64], entries: &[usize]) -> Vec<SymbolRef> {
     let mut scored: Vec<(SymbolId, f64)> =
         entries.iter().map(|&i| (ids[i].clone(), pr[i])).collect();
     scored.sort_by(|a, b| {
@@ -298,7 +300,10 @@ fn compute_entries(ids: &[SymbolId], pr: &[f64], entries: &[usize]) -> Vec<Symbo
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.0.cmp(&b.0))
     });
-    scored.into_iter().map(|(id, _)| id).collect()
+    scored
+        .into_iter()
+        .map(|(id, _)| SymbolRef::of(&id))
+        .collect()
 }
 
 // 各类条目的每项序列化开销估算(分隔符/字段名等),供 budget 裁剪用
@@ -327,8 +332,8 @@ fn trim_to_budget(ov: &mut Overview, budget: TokenBudget) {
             + TokenBudget::est_tokens(&s.member_hash)
             + SUBSYS_ITEM_TOKENS
     });
-    truncate_by_tokens(&mut ov.entry_points, entry_b, |id| {
-        TokenBudget::est_tokens(id) + ENTRY_ITEM_TOKENS
+    truncate_by_tokens(&mut ov.entry_points, entry_b, |e| {
+        TokenBudget::est_tokens(&e.id) + ENTRY_ITEM_TOKENS
     });
 }
 

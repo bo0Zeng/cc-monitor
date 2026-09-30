@@ -38,7 +38,7 @@ import {
   zoomAt,
   hitTest,
   coverageBanner,
-  touchedFilesFromIds,
+  touchedFiles,
   countShown,
   type PanoramaLayout,
   type Viewport,
@@ -64,18 +64,6 @@ type FileRef = {
 
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
 type RepoInfoGetter = () => { cwd: string; origin: Origin } | null;
-
-/**
- * F72：从符号全 id 取「批注用的符号段」——**镜像 core `split_sym_id`**：取 `#` 后、`@行号`消歧
- * 前的段。core 对同文件同限定名冲突会给 id 追加 `@start_line`（如 `a.rs#f@42`），而 `annotations_for`
- * 查询时会截掉 `@42`；故写入的 symbol 段也必须截掉 `@`，否则同名多符号写完查不回 = 静默丢失。
- * 无 `#`（不该发生）→ null（文件级批注）。
- */
-export function symbolSegForAnnotation(id: string): string | null {
-  const h = id.indexOf("#");
-  if (h < 0) return null;
-  return id.slice(h + 1).split("@")[0];
-}
 
 export class PanoramaView implements OverlayHandle {
   private root: HTMLElement;
@@ -494,10 +482,10 @@ export class PanoramaView implements OverlayHandle {
     }
     const seq = ++this.highlightSeq; // 独立世代号（不借 loadSeq，免卡 refresh 按钮）
     try {
-      const ids = await api.touching(this.at(repo), files, []);
+      const refs = await api.touching(this.at(repo), files, []);
       // 三重校验：本次高亮未被更晚的高亮作废 / 仓没变 / 布局还在（切仓由 this.repo!==repo 兜）。
       if (seq !== this.highlightSeq || this.repo !== repo || !this.layout) return;
-      const touched = touchedFilesFromIds(ids);
+      const touched = touchedFiles(refs);
       this.touchedFiles = touched;
       // 图例用「碰过的文件数」(files.length，含未解析/非脊柱的) vs「图上高亮数」(shown)——诚实
       // 呈现差值，别让"看着全高亮了"骗人（呼应全景诚实性铁律）。
@@ -1261,7 +1249,7 @@ export class PanoramaView implements OverlayHandle {
       row.appendChild(foot);
       sec.appendChild(row);
     }
-    // 添加表单（人写 = Active）。symbol 段取 s.id 的 `#` 后半（annotations_for 用全 id 查得到）。
+    // 添加表单（人写 = Active）。〔P7〕交整个 `s.id`：截 `@行号`、取文件段归上游（`SymbolRef::of`），前端不拆。
     const form = document.createElement("div");
     form.className = "panorama-ann-form";
     const ta = document.createElement("textarea");
@@ -1276,7 +1264,7 @@ export class PanoramaView implements OverlayHandle {
       const bodyText = ta.value.trim();
       if (!bodyText) return;
       void this.mutateAnnotation(
-        () => api.addAnnotation(this.at(this.repo ?? ""), s.file, symbolSegForAnnotation(s.id), bodyText, "me"),
+        () => api.addAnnotation(this.at(this.repo ?? ""), s.id, bodyText, "me"),
         s.id,
       );
     });

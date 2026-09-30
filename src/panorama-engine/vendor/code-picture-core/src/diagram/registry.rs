@@ -18,6 +18,8 @@ use std::fmt;
 
 /// 图种。**加一种图 = 在这里加一个变体 + `ALL` + `info()`**,别处不用写它的名字。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// 线上是注册表 id 串(手写的 `Serialize`)、开集:消费方从 `kinds()` 现读,不写死图种名 ⇒ TS 侧就是 `string`。
+#[cfg_attr(test, derive(ts_rs::TS), ts(type = "string"))]
 pub enum DiagramKind {
     /// 模块依赖图(目录级)—— 你声明的结构。
     Module,
@@ -128,6 +130,7 @@ impl<'de> Deserialize<'de> for DiagramKind {
 
 /// 一张图画出来的**形状**。消费方按它选渲染器 —— 不按图种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum DiagramShape {
     /// 节点 + **带成分**的聚合连接(团 / 模块)。
@@ -148,6 +151,7 @@ impl DiagramShape {
 
 /// 一张图认的**输入**。id 与 [`DiagramRequest`] 的字段名**逐字相同**(有测试钉两向相等)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "snake_case")]
 pub enum DiagramParam {
     /// 以哪个符号为中心(全限定 id)。
@@ -204,6 +208,7 @@ impl DiagramParam {
 
 /// 一种图的元数据 —— [`kinds`] 原样吐给第三方。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct DiagramKindInfo {
     /// 线上是 id(`"module"`)。
     #[serde(rename = "id")]
@@ -227,6 +232,7 @@ pub fn kinds() -> Vec<DiagramKindInfo> {
 /// 一次画图请求。**一个类型喂所有图**;全部字段可缺,缺了取默认。
 /// 字段名与 [`DiagramParam::id`] 逐字相同。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(default, deny_unknown_fields)]
 pub struct DiagramRequest {
     pub symbol: Option<SymbolId>,
@@ -256,6 +262,7 @@ impl DiagramRequest {
 
 /// 画图失败。🔴 每一种都是**明说**的失败,没有一种会回落成「画一张别的图」。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(tag = "error", rename_all = "snake_case")]
 pub enum DiagramError {
     /// 认不出的图种。带上认得的全表,调用方不用再查一次。

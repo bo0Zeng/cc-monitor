@@ -210,11 +210,11 @@ fn every_op_runs_on_a_real_engine_over_a_synthetic_repo() {
     for (op, args) in [
         (
             "plan_add_annotation",
-            json!({"file": "src/lib.rs", "symbol": "alpha", "body": "b", "author": "me"}),
+            json!({"target": "src/lib.rs#alpha", "body": "b", "author": "me"}),
         ),
         (
             "plan_propose_annotation",
-            json!({"file": "src/lib.rs", "body": "p", "author": "agent"}),
+            json!({"target": "src/lib.rs", "body": "p", "author": "agent"}),
         ),
         ("plan_approve_annotation", json!({"id": "abc"})),
         ("plan_remove_annotation", json!({"id": "abc"})),
@@ -428,7 +428,7 @@ fn planning_ops_leave_the_repo_byte_identical() {
         "plan_add_annotation",
         r,
         s,
-        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "热路径", "author": "me"}),
+        json!({"target": "src/lib.rs#alpha", "body": "热路径", "author": "me"}),
     )
     .unwrap();
     let e = &add["edit"];
@@ -739,7 +739,12 @@ fn the_frontend_contract_is_generated_from_this_program() {
             derive_ser = false;
         }
     }
-    assert!(dtos.len() >= 4, "只抽到 {dtos:?} —— 抽取坏了");
+    // 正控（恒等，不是地板）：〔P7〕`neighborhood` 的应答改由上游直出（`Neighborhood` / `Reached` 两个 DTO 删了）⇒ 4 → 2。
+    assert_eq!(
+        dtos,
+        ["StatusReply", "DiagramReply"],
+        "抽取坏了，或多 / 少了自己的应答结构体"
+    );
     let body = fn_body(&src, "own_dtos");
     let missing: Vec<&String> = dtos.iter().filter(|d| !body.contains(d.as_str())).collect();
     assert!(
@@ -861,11 +866,12 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
     };
 
     // ① agent 提议 ⇒ 人那一侧的队列里有它（Proposed），agent 那一侧看不见。
+    // 〔P7〕交的是**整个**符号 id，带同名消歧的 `@行号` 也照交 —— 截它归上游 `SymbolRef::of`（批注按段挂，`node` 查得回来才算数）。
     let prop = call(
         "plan_propose_annotation",
         r,
         s,
-        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "这里可以缓存", "author": "agent-x"}),
+        json!({"target": "src/lib.rs#alpha@1", "body": "这里可以缓存", "author": "agent-x"}),
     )
     .unwrap();
     apply(&prop);
@@ -895,7 +901,7 @@ fn a_proposed_annotation_stays_invisible_to_the_agent_until_it_is_approved() {
         "plan_add_annotation",
         r,
         s,
-        json!({"file": "src/lib.rs", "symbol": "alpha", "body": "热路径", "author": "me"}),
+        json!({"target": "src/lib.rs#alpha", "body": "热路径", "author": "me"}),
     )
     .unwrap();
     apply(&add);
