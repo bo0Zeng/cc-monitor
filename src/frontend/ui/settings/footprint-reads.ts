@@ -17,7 +17,12 @@ import { copyText } from "../copy-table";
 /** app 与一个环境项的关系（四档，后端 `footprint/registry.rs::EnvTier` 派生）。 */
 export type EnvTier = "AppInstalls" | "AppShipsNoInstallerYet" | "UserInstallsWePrompt" | "AppOnlyChecks";
 /** 现状。没有「疑似缺失」这一档。 */
-export type SurfaceState = { kind: "present"; detail: string } | { kind: "absent" } | { kind: "undetermined"; why: string };
+// 〔SHOTS 09-29〕`expected_absent`：该不在、确实不在（旧版遗留那一档）—— 结论是后端给的（`footprint/rows.rs::read_absence`），界面照档画。
+export type SurfaceState =
+  | { kind: "present"; detail: string }
+  | { kind: "absent" }
+  | { kind: "undetermined"; why: string }
+  | { kind: "expected_absent"; detail: string };
 /** 表格里的一行。 */
 export interface SurfaceRow {
   tool_id: string;
@@ -78,6 +83,7 @@ function decodeState(v: unknown): SurfaceState {
   }
   if (kind === "present") return { kind, detail: str(obj(v, "detail,kind").detail) };
   if (kind === "undetermined") return { kind, why: str(obj(v, "kind,why").why) };
+  if (kind === "expected_absent") return { kind, detail: str(obj(v, "detail,kind").detail) };
   return bad();
 }
 
