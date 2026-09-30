@@ -873,7 +873,7 @@ fn a_model_name_is_refused_before_it_becomes_a_ccm_argument() {
     }
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕`--account <名>`：与建账号的那个工具（`cc-acct-iso` 的 `name_check`）逐字同的那一份判
+/// 〔DUP1 · `INVARIANTS §47` ①〕`--account <名>`：与建账号库的后端（`accounts/manage/model.rs::name_ok`）同一份判
 /// （`shell_quote_core::account_name_ok`），**正反各一格**。
 #[test]
 fn an_account_name_is_refused_before_it_becomes_a_ccm_argument() {

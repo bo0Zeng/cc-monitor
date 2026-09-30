@@ -43,19 +43,18 @@
 //! 计划 §2 的 DoD 写着「`ToolSpec` 声明五个正交关注点：源 / 落点 / 探测 / 装升卸 /
 //! 配置面申报」，并要求「每一项都必须能被现有五套工具中的**至少两套**实例化」。
 //!
-//! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说 `cc-acct-iso` 的探测是
-//! 「比对内容指纹」——不对。当年的 `check_remote_acct_iso`〔散文墓碑〕（〔MIG-3a〕今天是那台后端的帧命令 `acct-iso-status`，`iso.rs::answer_wire_status`）实际跑的是远端
-//! `PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 再解析 stdout，
-//! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。`.vendor_id` 指纹比对
-//! 发生在**部署决策**那一步（`deploy_decision` 读远端 marker 文件），不是探测。
+//! **先更正本文件原先写错的一处事实**（T01 审计 Q3）。原文说当时那个账号工具的探测是
+//! 「比对内容指纹」——不对。它实际跑的是一条命令再解析 stdout，
+//! 与 `ccm_probe.rs` **属于同一族**（跑一条命令、解析 stdout）。指纹比对
+//! 发生在**部署决策**那一步，不是探测。
 //! 所以原先那句「四种机制彼此不兼容，且**各只有一个使用者**」是**错的**：
 //! 「跑命令解析 stdout」这一族至少两个使用者，按 ≥2 判据它反而**够格**。
 //! 结论（探测机制不进 `ToolSpec`）仍然成立，但**理由必须换**。
 //!
 //! 真实理由更硬：**`ToolSpec` 是 `const` 声明式数据，而探测是行为。**
-//! `ToolSource::Vendored { repo_path, fingerprint_file }` 是数据——两个字符串，
+//! `ToolSource::RepoDir { repo_path }` 是数据——一个字符串，
 //! 谁读它都不需要任何能力。一个探测机制不是：它要么需要一条活的 ssh 会话
-//! （`ccm` / `cc-acct-iso`），要么需要一次协议握手（remote backend 的 `hello` 帧），
+//! （`ccm`），要么需要一次协议握手（remote backend 的 `hello` 帧），
 //! 要么需要读本机文件系统（PowerShell profile 扫围栏）。把这些塞进 `const`
 //! 只能塞成「一段命令模板 + 一个解析规则」的小 DSL，那就是把四件不相干的事
 //! 装进一个盒子（本工作区反复拒绝的"上帝结构"）。
@@ -154,11 +153,6 @@ pub enum ToolSource {
     EmbeddedText { repo_path: &'static str },
     /// 仓内目录，运行期读（`cc-bus` 的 `src/shared/cc-bus/`）。
     RepoDir { repo_path: &'static str },
-    /// vendored 目录 + 指纹（`cc-acct-iso`；〔TL1〕`code-picture-core` 从前也列在这里，它从没以这个形状进过 `TOOLS`，今天全景小程序那一条是 `EmbeddedBinary`）。
-    Vendored {
-        repo_path: &'static str,
-        fingerprint_file: &'static str,
-    },
     /// 交叉编译后内嵌的二进制（remote backend）。
     EmbeddedBinary { repo_path: &'static str },
     /// 由 cc-monitor 现场生成的文本片段（PowerShell profile 块、shell 别名块、钩子片段）。
@@ -457,7 +451,7 @@ impl ToolSpec {
 /// 五套既有机制 + cc-bus 的声明。**本轮只声明，不改它们任何行为**
 /// （MASTERPLAN §4 第 3 点：先用已知行为的工具验证抽象，再拿它吃新工具）。
 pub const TOOLS: &[ToolSpec] = &[
-    // 〔MIG-3b 续〕落在 Claude 布局里的那几条（`cc-bus` · `cc-acct-iso` · `skill-install` · `claude-code`）住适配层
+    // 〔MIG-3b 续〕落在 Claude 布局里的那几条（`cc-bus` · `accounts` · `skill-install` · `claude-code`）住适配层
     //   `agents/claudecode/footprint.rs::TOOLS`，经注册表（`agents::Adapter::footprint`）汇进 [`tools`]。
     ToolSpec {
         id: "ccm",
@@ -1029,8 +1023,6 @@ pub enum EnvProbe {
     /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
     /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
     OnPath,
-    /// 一条 `~/` 路径 —— 走 `rows.rs::resolve_touched_path` 那条既有的本机解析。
-    HomePath,
     /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
     ///
     /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
@@ -1042,7 +1034,7 @@ pub enum EnvProbe {
 ///
 /// 🔴 〔`K-R65` 09-11〕**这张表原来「全是第三档」，今天一条都不是** ——
 /// `K38` 之后它分成了两群：9 项通用工具是 [`Provisioning::UserProvides`]，
-/// `cc-acct-iso-local` 是 [`Provisioning::AppShips`]（app 独有、该我们装，而装口还欠着）。
+/// [`Provisioning::AppShips`] 那一群今天是空的（原先那一项是外部账号工具的本机那份；账号库改由后端自己建，它出了表）。
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // 〔MIG-3b 续〕`claude-cli` 那一条住适配层（`agents/claudecode/footprint.rs::UNMANAGED_ENV`）。
     UnmanagedEnv {
@@ -1122,26 +1114,6 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
         site: "mcp_edit.rs::answer_put",
     },
-    // ═══ 🔴 〔`K-R65` 09-11〕**这一条是 `KR65D2` 的题面本身** ═══
-    //
-    // 它是 app 独有的东西（`K38` 逐字点名的「account」的**本机那半**）⇒ `AppShips`。
-    // 而它今天**零装口** ⇒ [`EnvTier::of`] 把它派生成 [`EnvTier::AppShipsNoInstallerYet`]。
-    //
-    // ⚠ **`who` 与「有没有装口」是两格，别合回去**：写 `AppShips` 不等于说「装得了」，
-    // 也不许被读成「不该我们装」。本件**不补那个装口**（`§0d`）—— 本件治的是
-    // 「这个状态申报不出来」。
-    UnmanagedEnv {
-        id: "cc-acct-iso-local",
-        display_name: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalName", &[])),
-        who: Provisioning::AppShips,
-        // 零装口**不等于**零查口 —— 它是一条实打实的 `~/` 路径，查得动。
-        // 〔`K-R60` 那句「本机侧零装口、零查口」里的后半句，正是本件要改掉的行为。〕
-        probe: EnvProbe::HomePath,
-        named: "~/.local/bin/cc-acct-iso",
-        host: HostScope::Client,
-        why: Text(|| copy_text("rsToolRegistry.env.acctIsoLocalWhy", &[])),
-        site: "iso.rs::answer_wire_status",
-    },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //
     // 🔴 **〔条 67 · 2026-09-18〕`code-picture-sidecar` 这一项摘掉了。**
@@ -1175,9 +1147,6 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // [`EnvTier::AppInstalls`]，**不再手写**。留这段墓碑是因为「它曾经在第三档」
     // 是这张表存在理由的最好例子：一个判断当初只能靠「进这张表」表达，
     // 做完之后它自己会从这张表里消失。
-    //
-    // ★ 同一档里 `cc-acct-iso-local` 仍在（「本机侧零装口、零查口」）——
-    // 那是**二进制**不是 rc 行，不在 `K-R62` 射程（`§0e`）。
 ];
 
 /// 闭集里一项的**来路**。两态，没有第三种 —— 一项要么有 [`ToolSpec`]，要么没有。

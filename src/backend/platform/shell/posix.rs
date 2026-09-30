@@ -1,6 +1,6 @@
-//! 〔OSA · `设计/99 §1` V156〕**POSIX sh 那几句写法** —— 起会话载荷 · 中转前缀 · `ccm` 直路 · 观测探针 ·
-//! 读 cc-acct-iso 那份 sh 配置，都只调这里（原各自在 `control/launch_render/payload.rs` · `local.rs` · `control/ccm/{mod,plan}.rs` ·
-//! `observe/{watcher,accounts_query}.rs` 里手写，逐字搬来，产出逐字节不变）。
+//! 〔OSA · `设计/99 §1` V156〕**POSIX sh 那几句写法** —— 起会话载荷 · 中转前缀 · `ccm` 直路 · 观测探针，
+//! 都只调这里（原各自在 `control/launch_render/payload.rs` · `local.rs` · `control/ccm/{mod,plan}.rs` ·
+//! `observe/watcher.rs` 里手写，逐字搬来，产出逐字节不变）。
 //!
 //! 只管「这句怎么写」：值合不合格、要不要引号由调用方先办（引号器是 `shell_quote_core::posix_quote`，
 //! `INVARIANTS §2.1` 的唯一一份 —— 这里收的 `word` 一律是**已经成词**的那一串）。
@@ -88,56 +88,6 @@ pub(crate) fn home_file_between(head: &str, rel: &str, tail: &str) -> String {
     format!("{head}$(cat ~/{rel}){tail}")
 }
 
-/// 从一份会被 `.` source 的 sh 配置里抠 `VAR=` 的值 —— **纯文本解析，绝不 source**（后端不跑 shell）。
-/// 取最后一次有效赋值（后写覆盖先写，与 shell 语义一致）；跳过注释行。
-/// （原 `observe/accounts_query.rs::parse_accts_dir_from_config`，那里只认 `ACCTS_DIR` 一个名字。）
-pub(crate) fn assigned_value(text: &str, var: &str) -> Option<String> {
-    let mut found = None;
-    for line in text.lines() {
-        let mut l = line.trim_start();
-        if l.starts_with('#') {
-            continue;
-        }
-        // 被真正 `. source` 的文件里 `export VAR=…` / `declare -x VAR=…` 都是合法写法，且 export 是极常见习惯。
-        // 逐个剥掉可选前缀，否则纯文本解析会漏认 → 回落默认 → 调用方那一格「静默判失效」。
-        for pfx in [
-            "export ",
-            "declare -x ",
-            "declare ",
-            "typeset -x ",
-            "typeset ",
-        ] {
-            if let Some(rest) = l.strip_prefix(pfx) {
-                l = rest.trim_start();
-                break;
-            }
-        }
-        let Some(rest) = l.strip_prefix(var) else {
-            continue;
-        };
-        // `=` 必须紧跟变量名（shell 赋值语义：`VAR =/x` 是命令不是赋值；
-        // `VARX=…` 是别的变量）。不 trim `=` 前的空白，正好把这两种都排除。
-        let Some(val) = rest.strip_prefix('=') else {
-            continue;
-        };
-        let val = val.trim();
-        // 去掉行尾注释（仅未被引号包裹时）
-        let val = if val.starts_with('"') {
-            val.strip_prefix('"').and_then(|v| v.split('"').next())
-        } else if val.starts_with('\'') {
-            val.strip_prefix('\'').and_then(|v| v.split('\'').next())
-        } else {
-            Some(val.split('#').next().unwrap_or("").trim())
-        };
-        if let Some(v) = val {
-            if !v.is_empty() {
-                found = Some(v.to_string());
-            }
-        }
-    }
-    found
-}
-
 /// 一个词：家目录底下 `rel` 那条路径（`"$HOME/<rel>"`，双引号里只展开 `$HOME`）。
 pub(crate) fn home_path_word(rel: &str) -> String {
     format!("\"$HOME/{rel}\"")
@@ -148,16 +98,4 @@ pub(crate) fn home_relative(raw: &str) -> Option<&str> {
     ["$HOME/", "${HOME}/", "~/"]
         .into_iter()
         .find_map(|pat| raw.strip_prefix(pat))
-}
-
-/// 把 `$HOME/x` / `${HOME}/x` / `~/x` 前缀展开成 `home` 底下的路径。仅支持前缀形式 —— 更花哨的 shell 写法一律不猜。
-/// （原 `observe/accounts_query.rs::expand_home_prefix` 有家目录那一臂。）
-pub(crate) fn expand_home(raw: &str, home: &str) -> String {
-    if let Some(rest) = home_relative(raw) {
-        return format!("{}/{}", home.trim_end_matches('/'), rest);
-    }
-    match raw {
-        "$HOME" | "${HOME}" | "~" => home.to_string(),
-        _ => raw.to_string(),
-    }
 }

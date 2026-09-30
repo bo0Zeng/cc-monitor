@@ -39,8 +39,6 @@ const NEEDLES: &[&str] = &[
     "exec ",
     "command -v",
     "\"$@\"",
-    "declare -x",
-    "typeset",
     "$HOME",
     ".bashrc",
     ".zshrc",

@@ -127,7 +127,7 @@ fn real_model_names_pass_and_option_or_shell_shapes_do_not() {
     assert!(model_name_ok(&"a".repeat(MODEL_NAME_MAX)));
 }
 
-/// 〔DUP1 · `INVARIANTS §47` ①〕账号名：与建账号的那个工具（`cc-acct-iso` 的 `name_check`）逐字同，**正反各一格**。
+/// 〔DUP1 · `INVARIANTS §47` ①〕账号名：与建账号库的后端（`accounts/manage/model.rs::name_ok`）同一份判，**正反各一格**。
 #[test]
 fn an_account_name_is_what_the_account_tool_would_have_created() {
     for good in [

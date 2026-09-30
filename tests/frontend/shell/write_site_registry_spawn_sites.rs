@@ -24,10 +24,6 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "vendor 新鲜度自检：只读地问 git，参数是仓内固定路径、不吃用户输入。\
           它必须起进程是因为「vendor 目录相对上游有没有漂」这件事只有 git 知道",
      "—— **不进那个出口**：它跑在构建期、在开发者机器上，`00 §1.5.2` 那三个问题对它一个都不成立（没有 GUI 宿主可弹窗、没有 monitor 进程可随、错误就该打到 `cargo` 的 stderr 上）"),
-    ("build.rs", "check_acct_iso_vendor_freshness", "`sh -c`（算 vendored 脚本的指纹）",
-     "同上的第二半，对 `cc-acct-iso` 那份 vendor 算摘要；命令串是常量，\
-          唯一的变量是仓内路径。⚠ 它跑在**构建期**，比运行时的任何一处都早",
-     "—— 同上：构建期，刻意不进那个出口"),
     ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
      "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
           零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
@@ -367,10 +363,11 @@ fn the_three_policies_each_site_declares_match_the_code() {
         }
         checked += 1;
     }
+    // 3 → 2：`build.rs` 里给旧账号工具算指纹的那一处随那份 vendor 删了。
     assert_eq!(
-        opted_out, 3,
-        "「不进那个出口」的落点从 3 处变成了 {opted_out} 处。\n\
-             今天那三处是：`build.rs` 两处（构建期）＋ 出口自己那一处。\
+        opted_out, 2,
+        "「不进那个出口」的落点从 2 处变成了 {opted_out} 处。\n\
+             今天那两处是：`build.rs` 一处（构建期）＋ 出口自己那一处。\
              多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
     );
     // 〔LOC1a · 第四波 4D〕地板 14 → 13：本机一次性查询那一个落点（`local_query` 模块的 `run_query`〔散文墓碑〕）随本机那几问

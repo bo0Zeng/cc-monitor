@@ -288,11 +288,6 @@ fn backend_entries(
             DataClass::Cache,
         ),
         dir(
-            rr::ACCT_ISO_REL,
-            copy_text("rsDataPaths.backend.acctIso", &[]),
-            DataClass::Truth,
-        ),
-        dir(
             rr::STAGING_DIR_REL,
             copy_text("rsDataPaths.backend.staging", &[]),
             DataClass::Cache,

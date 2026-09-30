@@ -69,8 +69,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/pubkey-push.vitest.ts", // 〔MIG-3b 续〕公钥推送走通道：解码器读金样 ＋ 替身数请求
     "tests/backend/assets/hub_tests.rs", // 〔MIG-3a · 主会话 09-28 裁〕两台之间那几件的枢纽（替身的这台 ＋ 替身的远端 capture，纯内存）
     "tests/frontend/ui/cc-bus-install-reads.vitest.ts", // 〔MIG-3a · 子步 3〕cc-bus 装 / 三态走通道：严格收 ＋ 问本机（纯替身）
-    "tests/frontend/ui/acct-iso-reads.vitest.ts", // 〔MIG-3a〕acct-iso 两问走通道：严格收 ＋ 问对那台（纯替身，不扫源码）
-    // 〔MIG-3a · 09-28 预裁〕`tests/frontend/shell/acct_iso_deploy_tests.rs` 那一行删了：整份随那条部署命令删了（字节随后端二进制走）。
     "tests/backend/agents/claudecode/cards_tests.rs", // 〔THIN〕原 `tests/common/agent-tools-core/lib_tests.rs`：工具词表收进后端适配层（纯函数）
     "tests/backend/observe/facts_query_tests.rs", // 〔DUP2 · J19〕SCAN → UNIT：读生成物那条异源对拍随两份收成一份退役，余下全是行为判据
     "tests/frontend/ui/config-lost-update.vitest.ts", // 〔CFG1〕J1 两 realm 11 写者同拍写 · J5 写者路径集合
@@ -82,6 +80,11 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/accounts.vitest.ts",
     "tests/frontend/ui/backend-policy.vitest.ts",
     "tests/backend/accounts/upstream_select/table_tests.rs",
+    "tests/backend/accounts/manage/aliases_tests.rs",
+    "tests/backend/accounts/manage/exec_tests.rs",
+    "tests/backend/accounts/manage/layout_tests.rs",
+    "tests/backend/accounts/manage/model_tests.rs",
+    "tests/backend/accounts/manage/verify_tests.rs",
     "tests/backend/agents/claudecode/records_tests.rs",
     "tests/backend/agents/claudecode/resume_tests.rs",
     "tests/backend/agents/codex/parse_tests.rs",
@@ -187,7 +190,6 @@ const UNIT: &[&str] = &[
     "tests/frontend/ui/session-accounts-poll.vitest.ts",
     "tests/frontend/ui/session-status.vitest.ts",
     "tests/frontend/ui/settings/account-new-form.vitest.ts",
-    "tests/frontend/ui/settings/acct-deploy.vitest.ts",
     "tests/frontend/ui/settings/cc-bus-hooks-section.vitest.ts",
     "tests/frontend/ui/settings/cc-bus-section.vitest.ts",
     "tests/frontend/ui/settings/config-surface-section.vitest.ts",
@@ -282,7 +284,6 @@ const SCAN: &[&str] = &[
     "tests/backend/agents/claudecode/schema_title_coverage.rs",
     "tests/frontend/ui/remote-probe.vitest.ts", // 〔MIG-1 收尾〕测试连接的读口（请求体 · 进度流 · 严格收）＋ 与 Rust `event_replay.rs::PROBE_PROGRESS_KIND` 对拍流名
     "tests/frontend/shell/remote_resident_tests.rs", // 〔STOP〕UNIT → SCAN：多一条跨半边期限对拍（`include_str!` 读后端 `control/resident.rs`）
-    "tests/backend/accounts/iso_tests.rs", // 〔DUP2 · J4〕UNIT → SCAN：`acct-iso-cmd` 对跨语言金样（`include_str!` 读 `tests/__fixtures__/acct-iso-cmd.golden.json`）
     "tests/frontend/ui/remote-launch.test.ts", // 〔LR2〕UNIT → SCAN：五个 builder 删后剩下的格读源码 / 夹具（判别器判 SCAN）
     "tests/frontend/ui/tasks-decode.vitest.ts", // 〔LOC1a〕读跨语言金样 tasks-list.golden.json
     "tests/frontend/ui/record-file-notice.vitest.ts", // 〔FW1〕D-d：活会话 jsonl 不见了 / 被截短 / 被改写 ⇒ tab 顶一行提示
@@ -570,6 +571,7 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/accounts/upstream_select/creds_tests.rs",
     "tests/backend/accounts/upstream_select/endpoint_tests.rs", // 〔US1〕上游选择出的两份成品（金样那条读夹具文件）
     "tests/backend/accounts/upstream_select/file_face_tests.rs",
+    "tests/backend/faces/accounts_face_tests.rs", // 账号库那几条命令在临时家目录上真建目录 · 链接 · 复制 · 回滚
     "tests/backend/agents/claudecode/assets_tests.rs", // 〔AS2〕
     "tests/backend/agents/claudecode/paths_tests.rs", // 〔E2 · V146〕设置文件压不压过进程环境里的上游地址（临时目录夹具）
     "tests/frontend/shell/ccm_probe_tests.rs", // 〔E2〕SCAN → INTEGRATION：多了「先读字节认身份」那条（临时文件夹具）
@@ -619,7 +621,6 @@ const INTEGRATION: &[&str] = &[
     "tests/backend/assets/ext_tests.rs", // 扩展页：表的判定 ＋ 两台（本机 ＋ 假远端）装 / 卸端到端 ＋ 金样 ext-flow.golden.json
     "tests/backend/assets/skill_flow_tests.rs", // 〔MIG-3a〕skill 装卸进了被写那台后端（临时目录 ＋ 金样 skill-flow.golden.json）
     "tests/backend/assets/cc_bus_install_tests.rs", // 〔MIG-3a · 子步 3〕cc-bus 装进了本机后端（临时目录真装 · 真改名备份 · 可执行位）
-    "tests/backend/assets/acct_iso_install_tests.rs", // 〔MIG-3a · 09-28 裁 2〕cc-acct-iso 落进用户目录（临时 home 上真建链接 ＋ 真抄配置 ＋ 真记账）
     "tests/backend/assets/aliases/aliases_tests.rs", // 〔MIG-3a〕别名进了那台后端（临时 home 上真走本进程 files-* ＋ 真 bash ＋ 金样 aliases.golden.json）
     "tests/backend/assets/aliases/block_tests.rs", // 〔MIG-3a〕别名块进了那台后端（临时目录真装真卸）
     "tests/backend/observe/accounts_query_tests.rs",
@@ -682,7 +683,7 @@ const INTEGRATION: &[&str] = &[
     "tests/frontend/shell/history_tests.rs",
     "tests/frontend/shell/launch_tests.rs",
     // 〔C4d〕`tests/frontend/shell/local_accounts_tests.rs` 挪进 `UNIT`：驱动本机 manifest 参照实现的那几条（临时目录真写真读）随实现删了，
-    //   剩下的 acct-iso 两问只喂纯函数、判别器判它是单元层。
+    //   剩下的只喂纯函数、判别器判它是单元层。
     "tests/frontend/shell/local_backend_host_tests.rs",
     "tests/frontend/shell/local_lines_tests.rs",
     "tests/frontend/shell/logging_tests.rs",

@@ -41,6 +41,9 @@
 # `cc-monitor-native`（字节本身）· `cc-monitor-native.target`（给哪个 triple 编的）。
 # 〔`K-R70` 09-12 起**没有第三个** `.build_id` 了：身份跟着字节走（`CC_MONITOR_BUILD_STAMP`），
 #  旁挂清单是标签不是指纹。〕名字定死在 `src/frontend/shell/build.rs` 的 `NATIVE_BACKEND_DIR`/`NATIVE_BACKEND_FILE`。
+# 同一个目录里还有两对，形状相同（字节 ＋ `.target`）：`cc-monitor-panorama`（本机全景小程序）·
+# `cc-monitor-filewin`（文件窗口程序，单文件的 monitor 靠它开窗），名字定死在 `build.rs` 的
+# `NATIVE_PANORAMA_FILE` / `NATIVE_FILEWIN_FILE`，产它们的是同两条路（`release.yml` · `re-embed.sh --native`）。
 # 谁吃的：`build.rs::embed_native_backend` 用**字面量路径** `include_bytes!` 嵌进 exe，
 # 缺席时不置 `cfg(embedded_native_backend)` 并打 cargo:warning（自释放这条路诚实关掉）。
 # 为什么不铺进上面的 embedded-backends/：那个目录名是 `local_backend_host_tests.rs` 认

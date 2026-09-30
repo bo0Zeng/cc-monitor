@@ -385,7 +385,7 @@ fn hx2_a_record_written_under_someone_elses_lock_is_not_overwritten() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕装在家目录底下的那一件（acct-iso）记进**同一份**账：`at:"home"` ⇒ 键是本记录自己所在的那个家
+/// 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕装在家目录底下的那一件记进**同一份**账：`at:"home"` ⇒ 键是本记录自己所在的那个家
 /// （`<家>/.cc-monitor/<本文件>` 的上两层），不收调用方给的路径；`at` 认不得的值 ⇒ 拒、文件一个字节不动。
 #[test]
 fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
@@ -394,7 +394,7 @@ fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
     let v = record_at(
         &path,
         None,
-        &json!({ "op": "add", "name": "acct-iso", "at": "home", "files": { ".local/bin/cc-acct-iso": rec(D1, true) } }),
+        &json!({ "op": "add", "name": "home-tool", "at": "home", "files": { ".local/bin/home-tool": rec(D1, true) } }),
     )
     .expect("记");
     assert_eq!(v["dir"], json!(h.display().to_string()));

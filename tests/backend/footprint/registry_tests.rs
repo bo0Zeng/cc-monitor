@@ -1600,8 +1600,8 @@ fn claims() -> Vec<Claim> {
     // 〔AS2 · 第四波 4B〕skill「装到这台」的家。
     // 〔MIG-3a〕skill 装 / 卸的写那一半进了被写那台后端：装 / 卸口住 `src/backend/assets/skill_flow.rs`。
     const SKILL_INSTALL: &str = include_str!("../../../src/backend/assets/skill_flow.rs");
-    // 〔MIG-3a · 主会话 09-28 预裁〕cc-acct-iso 的装进了那台后端（字节随后端二进制走）：装口住 `src/backend/assets/acct_iso_install.rs`。
-    const ACCT_ISO_INSTALL: &str = include_str!("../../../src/backend/assets/acct_iso_install.rs");
+    // 账号库由那台后端自己建（界面「启用多账号」）：装口住 `src/backend/accounts/manage/wire.rs`（`accounts-init` 走它）。
+    const ACCOUNTS_WIRE: &str = include_str!("../../../src/backend/accounts/manage/wire.rs");
     // 〔TL1 · 4C〕代码全景小程序的家（本机放 · 远端推，同一个入口 `push_to` 按 origin 分）。
     const PANORAMA_BYTES: &str = include_str!("../../../src/frontend/shell/src/panorama_bytes.rs");
     let sftp = || ImplHome {
@@ -1653,14 +1653,14 @@ fn claims() -> Vec<Claim> {
             uninstall: None,
         },
         Claim {
-            tool: "cc-acct-iso",
+            tool: "accounts",
             home: Some(ImplHome {
-                addr: "acct_iso_install.rs",
-                text: ACCT_ISO_INSTALL,
+                addr: "wire.rs",
+                text: ACCOUNTS_WIRE,
             }),
             install: Some(ImplSite {
-                addr: "acct_iso_install.rs::answer_install",
-                definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
+                addr: "wire.rs::run_change",
+                definition: "pub(crate) fn run_change(\n    d: &dyn Door,\n    req: &Request,\n    keys: Option<&KeyTable>,\n) -> Result<Done, Refusal> {",
                 elsewhere: None,
             }),
             uninstall: None,

@@ -73,6 +73,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
             upstream: None,
             mcp: None,
             footprint: None,
+            accounts: None,
             records: None,
             processes: None,
             launch: None,

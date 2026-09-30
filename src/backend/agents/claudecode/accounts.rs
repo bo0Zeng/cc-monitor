@@ -1,13 +1,60 @@
-//! Claude 的**账号文件**：`.claude.json` 的信任判定。
+//! Claude 的**账号文件**：`.claude.json` 的信任判定 · 登录邮箱 · 「一个身份由哪几份文件组成」那张表。
 //!
-//! ⚠ 只装"这份文件长什么样、怎么读出信任位"。**账号清单（manifest）与配置目录白名单
-//! 不在这里** —— 那是 `cc-acct-iso` 的格式，属工具而非 agent，留在 `accounts_query`。
+//! ⚠ 只装 Claude Code 自己的布局与格式。**账号清单（manifest）与配置目录白名单不在这里** ——
+//! 那是账号库的格式（`accounts/manage/model.rs` 读写、`observe/accounts_query.rs` 只读）。
 
+use crate::agents::{AccountsFace, IdentityClass, IdentityRoot};
 use crate::common::fs::read_regular_capped;
 use std::path::Path;
 
 /// 账号级配置文件的文件名（住在配置根下）。
 pub(crate) const CONFIG_FILE_NAME: &str = ".claude.json";
+
+/// Claude Code 把「你是谁」与「你的本机状态」放在哪几份文件里。账号库里每个号各有一份的就是这几项，
+/// 其余顶层项都链回共享的配置根。Claude Code 换了文件名或位置 ⇒ 只改这张表。
+pub(crate) const NATIVE_IDENTITY: &[(&str, IdentityRoot, IdentityClass)] = &[
+    (
+        acct_core::CREDENTIALS_NAME,
+        IdentityRoot::ConfigDir,
+        IdentityClass::Secret,
+    ),
+    (CONFIG_FILE_NAME, IdentityRoot::Home, IdentityClass::Secret),
+    ("backups", IdentityRoot::ConfigDir, IdentityClass::Derived),
+    (
+        "policy-limits.json",
+        IdentityRoot::ConfigDir,
+        IdentityClass::State,
+    ),
+    (
+        "stats-cache.json",
+        IdentityRoot::ConfigDir,
+        IdentityClass::State,
+    ),
+];
+
+/// 注册表里 Claude 那一行的账号库布局（`agents::Adapter::accounts`）。
+pub(crate) const FACE: AccountsFace = AccountsFace {
+    identity: NATIVE_IDENTITY,
+    config_file: CONFIG_FILE_NAME,
+    shared_root: shared_root_in,
+    email_in: |root| oauth_email_in(&config_path_in(root)),
+};
+
+/// 没设 `CLAUDE_CONFIG_DIR` 时的配置根（家目录下），也就是各号链回去的那个共享库。
+pub(crate) fn shared_root_in(home: &Path) -> std::path::PathBuf {
+    home.join(super::paths::HOME_DIR_NAME)
+}
+
+/// 一份 `.claude.json` 里登录的是哪个邮箱（`oauthAccount.emailAddress`）。只取这一格；读不了 / 没有 ⇒ `None`。
+pub(crate) fn oauth_email_in(p: &Path) -> Option<String> {
+    let bytes = read_regular_capped(p, MAX_CONFIG_BYTES).ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    v.get("oauthAccount")?
+        .get("emailAddress")?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
 
 /// 读取上限。这份文件会被 MCP 配置撑大，给 32MB。
 /// 安全：`read_regular_capped` 的 `is_file` 挡 FIFO/设备（审计实测 symlink→`/dev/zero`

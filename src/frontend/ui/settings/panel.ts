@@ -55,7 +55,6 @@ import {
   type BehaviorConfig,
 } from "../behavior";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
-import { fetchLocalAccounts } from "../account-reads"; // K-R49：别名是给**这台机器**的 shell 用的
 import { buildAliasManager, buildUnknownOsAliasBlock, localShell } from "./machine-aliases"; // 〔AL1〕机器页 ②「别名」（〔AL1c〕两个平台一份，含 PowerShell 的终端集成）
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
@@ -1123,7 +1122,6 @@ export class SettingsPanel {
             : buildAliasManager({
                 platform: shell,
                 origin: () => LOCAL_ORIGIN,
-                loadAccounts: async () => (await fetchLocalAccounts()).accounts.map((a) => a.name),
               });
         }),
       },

@@ -1,4 +1,4 @@
-// A3：多账号（cc-acct-iso）前端的**账号模型** —— 形状与规则的单一真相（纯，零 IO）。
+// A3：多账号前端的**账号模型** —— 形状与规则的单一真相（纯，零 IO）。
 //
 // 账号 = 一个 CLAUDE_CONFIG_DIR。本模块只装「一个账号长什么样、它能不能选、它该显示成什么」：
 //   形状（`Account` · `AccountsState` · `SessionAccount`）· 降级判定（`deriveUi`）· 可用性唯一出口（`isSelectable`）·
@@ -117,7 +117,7 @@ export interface AccountsState {
   defaultName: string | null;
   /**
    * Z01：**能用但有缺**时的人话说明（`available` 仍是 true）。null = 无缺。
-   * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧 cc-acct-iso 会让账号 0
+   * 「绝不静默降级」是它存在的全部理由——旧 backend / 旧的写清单那一侧会让账号 0
    * 从列表里凭空少一行，用户看不出区别。
    */
   notice: string | null;
@@ -560,11 +560,7 @@ export const LOCAL_ACCOUNTS_COPY = {
     return copyText("accounts.local.emptyTitle");
   },
   /**
-   * 空态的下一步。
-   *
-   * ⚠ 逐字写着「先在终端里做」是因为**它今天真的只能在终端里做**：
-   * 定框 `N4` 现打 —— monitor 的安装口只有 `deploy_remote_acct_iso`〔散文墓碑〕 一个（〔SH1〕查装没装 /
-   * 取片段那两条今天带 origin、本机远端都问），本机那一侧的安装口**不存在**。写「点这里装」会是一句假话。
+   * 空态的下一步：账号库已建、还没有具名账号 ⇒ 指向同一页的新建表单（新建由后端执行）。
    */
   get emptyNext(): string {
     return copyText("accounts.local.emptyNext");

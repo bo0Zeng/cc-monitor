@@ -18,7 +18,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
-// 〔MIG-3a · 主会话 09-28 预裁〕`acct_iso_deploy`〔散文墓碑〕删了：cc-acct-iso 的字节随后端二进制走（`src/backend/assets/acct_iso_install.rs`），界面问那台 `acct-iso-install`。
+// 〔MIG-3a · 主会话 09-28 预裁〕`acct_iso_deploy`〔散文墓碑〕删了：账号库今天由那台后端自己管（`src/backend/accounts/manage/`），不再部署外部工具。
 // 〔P1 · 第 4 件〕`adapter`（monitor 那一份 agent 适配表 ＋ 画像生成器，`adapter/claude_code.rs` · `adapter/codex.rs`）删了：
 //   起会话事实只住后端适配层（`src/backend/agents/<名>/resume.rs`，注册表 `Adapter.launch`），monitor 读它生成的
 //   `src/frontend/ui/generated/agent-profile-table.ts`（起前清洗那一格，[`nested_env_markers`]）。
@@ -970,7 +970,6 @@ pub fn run() {
             sftp::deploy_remote_backend,
             sftp::uninstall_remote_backend,
             // 〔SH1 · `00 §2.5 ①`〕本机 / 远端各两条合成两条带 origin 的。
-            // 〔MIG-3a〕`acct_iso_status` / `acct_iso_shellinit` 退役：界面经通道直问那台后端（`acct-iso-status` / `acct-iso-shellinit`，后端出成品）。
             // 〔C4c〕`probe_session_record`（resume 之前问记录还在不在）退役：界面经通道问 `history-record`。
             // 〔MIG-2 · `99 §2.1 ⑬`〕本机起会话三条（resume · 新起 · 接回那一句）退役：计划与渲染问本机后端 `launch-local`；
             //   monitor 只剩「开一个终端窗口跑这串」。
@@ -979,7 +978,6 @@ pub fn run() {
             //   换号前的信任预检（`check_account_trust`）退役：前端经通道说 `accounts-list` / `accounts-trust`，后端出成品。
             // 〔C4a · 第四波〕「某会话属于哪个账号」那两条（本机 E79 · 远端 A2）退役：
             //   本机与远端同一条路 —— 前端经通道 `chan_call` 说 `accounts-sessions`。
-            // 〔`A3` 第二波〕`acct-iso.check` / `acct-iso.shellinit` 的本机对侧（问本机后端）。
             launch::open_terminal_window,
             launch::terminal_dial,
             // 〔F7c 收尾 09-24〕池子那十二条 Tauri 命令〔散文墓碑〕随老面板与窗口改走通道一起删了（`设计/60 §13b`）；

@@ -1,14 +1,14 @@
 //! v1.7.1：`auto-launch.json` 配置 + monitor 自记录路径机制。
 //!
 //! 让 cc function（PowerShell 端）能在 monitor 没在跑时主动启动它，
-//! 同时保持 monitor.exe 是 portable（不硬编码安装路径）。
+//! 同时保持 cc-monitor.exe 是 portable（不硬编码安装路径）。
 //!
 //! ## 数据交换
 //!
 //! 文件：`<monitor_data_dir>/auto-launch.json`
 //!
 //! ```json
-//! { "auto_launch_enabled": false, "monitor_exe_path": "C:\\Users\\...\\monitor.exe" }
+//! { "auto_launch_enabled": false, "monitor_exe_path": "C:\\Users\\...\\cc-monitor.exe" }
 //! ```
 //!
 //! - `monitor_exe_path`：monitor 每次启动时调 `std::env::current_exe()` 写入；用户移动 exe
@@ -26,7 +26,7 @@ pub struct AutoLaunchConfig {
     /// UI toggle 控制：cc function 在 monitor 没跑时是否主动启动它
     #[serde(default)]
     pub auto_launch_enabled: bool,
-    /// monitor.exe 的当前路径。monitor 每次启动自动更新。
+    /// cc-monitor.exe 的当前路径。monitor 每次启动自动更新。
     #[serde(default)]
     pub monitor_exe_path: Option<String>,
 }
@@ -56,7 +56,7 @@ pub fn save(file: &Path, cfg: &AutoLaunchConfig) -> std::io::Result<()> {
 
 /// monitor 启动时调：把当前 exe 路径更新到 auto-launch.json（保留 auto_launch_enabled）。
 ///
-/// 用户移动 monitor.exe 后下次启动会自动更新。
+/// 用户移动 cc-monitor.exe 后下次启动会自动更新。
 pub fn update_monitor_path_on_startup(monitor_data_dir: &Path) {
     let file = monitor_data_dir.join("auto-launch.json");
     let mut cfg = load(&file);

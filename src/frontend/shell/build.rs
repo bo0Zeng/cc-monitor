@@ -4,11 +4,11 @@ fn main() {
     emit_backend_build_id();
     emit_backend_capabilities();
     check_vendor_freshness();
-    check_acct_iso_vendor_freshness();
     embed_backends();
     embed_panoramas();
     embed_native_backend();
     embed_native_panorama();
+    embed_native_filewin();
     tauri_build::build()
 }
 
@@ -117,94 +117,6 @@ fn backend_source_build_id() -> String {
                 p.display()
             )
         })
-}
-
-/// F5：vendored cc-acct-iso 过期软检查（SS-10「过期看得见」）。从 `VENDOR.md` 抠上游仓路径
-/// （`~` 展开为 $HOME），若上游存在则比对三个脚本与 vendored 副本，不一致则 `cargo:warning`。
-/// 上游缺席 → no-op（同 `check_vendor_freshness`：开发期上游领先副本是常态，软警告非硬失败）。
-fn check_acct_iso_vendor_freshness() {
-    let vendor_dir = Path::new("../../shared/cc-acct-iso"); // 〔MIG-3a · 09-28〕从 `vendor/` 挪去 `src/shared/`（字节随后端二进制走，两棵树都不属于）
-    let vendor_md = vendor_dir.join("VENDOR.md");
-    println!("cargo:rerun-if-changed={}", vendor_md.display());
-    println!(
-        "cargo:rerun-if-changed={}",
-        vendor_dir.join(".vendor_id").display()
-    );
-    // D 审计 S1/S5：指纹须覆盖**全部被部署文件**，故过期检查也逐个比这 6 个（不只 3 脚本）。
-    // 顺序须与 VENDOR.md 菜谱 / `.vendor_id` 计算一致（自洽校验按同一顺序拼接）。
-    const DEPLOYED: [&str; 6] = [
-        "scripts/cc-acct-iso",
-        "scripts/lib.sh",
-        "scripts/cc-acct-iso-install.sh",
-        "scripts/test/run-tests.sh",
-        "SKILL.md",
-        "examples/config",
-    ];
-    for f in DEPLOYED {
-        println!("cargo:rerun-if-changed={}", vendor_dir.join(f).display());
-    }
-
-    // (a) 自洽校验：vendored 6 文件的 sha256 前 16 位是否等于 `.vendor_id`（防「改了 vendored
-    //     脚本却忘了重算指纹」→ 远端 Skip 不更新而 build 期无声）。用 sha256sum shell-out（同
-    //     VENDOR.md 菜谱），缺 sha256sum 则跳过该项。
-    if let Ok(recorded) = std::fs::read_to_string(vendor_dir.join(".vendor_id")) {
-        let recorded = recorded.trim();
-        let cat_cmd = format!(
-            "cat {} | sha256sum | cut -c1-16",
-            DEPLOYED
-                .iter()
-                .map(|f| format!("'{}'", vendor_dir.join(f).display()))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-        if let Ok(out) = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cat_cmd)
-            .output()
-        {
-            let computed = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !computed.is_empty() && computed != recorded {
-                println!(
-                    "cargo:warning=vendor cc-acct-iso 指纹不自洽:.vendor_id={recorded} 但脚本实际 sha={computed}。改了 vendored 文件后请按 VENDOR.md 菜谱重算 .vendor_id。"
-                );
-            }
-        }
-    }
-
-    // (b) 与上游比对（上游缺席 → no-op）。
-    let Ok(text) = std::fs::read_to_string(&vendor_md) else {
-        return;
-    };
-    let Some(up_raw) = extract_backtick_after(&text, "上游仓:") else {
-        return;
-    };
-    let up = if let Some(rest) = up_raw.strip_prefix("~/") {
-        match std::env::var_os("HOME") {
-            Some(home) => Path::new(&home).join(rest),
-            None => return,
-        }
-    } else {
-        Path::new(&up_raw).to_path_buf()
-    };
-    if !up.exists() {
-        return; // 上游缺席 → no-op
-    }
-    // 上游布局：脚本在 scripts/、test 在 scripts/test/、SKILL.md 在根、config 在 examples/。
-    let mut stale = 0usize;
-    for f in DEPLOYED {
-        let vb = std::fs::read(vendor_dir.join(f)).ok();
-        let ub = std::fs::read(up.join(f)).ok();
-        if let (Some(vb), Some(ub)) = (vb, ub) {
-            if vb != ub {
-                stale += 1;
-            }
-        }
-    }
-    if stale > 0 {
-        println!(
-            "cargo:warning=vendor cc-acct-iso 过期:上游有 {stale} 个文件与 vendored 副本不一致。见 src/shared/cc-acct-iso/VENDOR.md 的 re-vendor 菜谱。"
-        );
-    }
 }
 
 /// F68：vendor 副本过期检查（SS-10「过期看得见」）。从 `VENDOR.md` **单源**抠 pin + 上游
@@ -706,7 +618,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 const NATIVE_BACKEND_DIR: &str = "native-backend";
 const NATIVE_BACKEND_FILE: &str = "cc-monitor-native";
 
-/// `K-R42`：**把「本机后端」也内嵌进 exe**，让裸 `monitor.exe` 自己带得上一份。
+/// `K-R42`：**把「本机后端」也内嵌进 exe**，让裸 `cc-monitor.exe` 自己带得上一份。
 ///
 /// # 它与 `embed_backends` 是两件事，别合并
 ///
@@ -857,7 +769,7 @@ const NATIVE_PANORAMA_FILE: &str = "cc-monitor-panorama";
 ///
 /// monitor 摘掉内嵌引擎之后，本机全景 = 「本机后端 → 插件口 → `cc-monitor-panorama`」。本机后端要在
 /// `~/.cc-monitor/bin/` 找到一份**这台机器能跑的**小程序 ⇒ 字节得跟着 monitor 走（本机不经推送，
-/// 由 monitor 放下来：`local_backend::place_local_panorama`）。Linux 本机用远端那两份 musl 就跑得起来
+/// 由 monitor 放下来：`local_backend::place_local_program`）。Linux 本机用远端那两份 musl 就跑得起来
 /// （本机那一份的第二个来源，`byte_table::pick` 的全景那一臂）；**Windows / macOS 本机没有**，只能按 `TARGET` 原生编一份。
 ///
 /// # 形状与 [`embed_native_backend`] 同一套（理由逐字住那里，不抄第二份）
@@ -898,6 +810,55 @@ fn embed_native_panorama() {
         );
     }
     println!("cargo:rustc-cfg=embedded_native_panorama");
+}
+
+/// 文件窗口那份程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那两份）。
+/// 与 `filewin::proc::BIN_STEM`（monitor 包那个 `[[bin]]` 的名字）是同一个词；`byte_table.rs` 用**同一条路径的字面量**
+/// `include_bytes!` 它；`re-embed.sh --native` 与 `release.yml` 两个 job 按同一个名字铺（判据对拍）。
+const NATIVE_FILEWIN_FILE: &str = "cc-monitor-filewin";
+
+/// **把文件窗口那份程序也内嵌进 exe**：单文件的 monitor 自己带着它，开窗时旁边没有就放到 `~/.cc-monitor/bin/` 再起
+/// （`filewin::proc::resolve_window_bin`）。
+///
+/// # 形状与 [`embed_native_panorama`] 同一套
+///
+/// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple）· 对不上当场 panic
+/// （内嵌一个别的平台的程序 = 放到用户盘上起不来）· 缺席 ⇒ 不置 cfg ＋ **可见的** warning。
+/// ⚠ 没有身份戳：它是哪一版由字节本身答（放的时候逐字节比，见 `local_backend::place_local_program`）。
+/// ⚠ **它不能在同一趟 cargo 里现编现嵌**：它是本包的另一个 `[[bin]]`，编它要先编本包的库（本函数就跑在那一步里）
+/// ⇒ 先单编它、铺进落点，再编 monitor（`re-embed.sh --native` 与 `release.yml` 都是这个次序）。
+/// 没铺时开窗只剩「exe 旁边」那一支（开发树 `target/<档>/` 里两个二进制本来就挨着，安装包也把它装在主程序旁）。
+fn embed_native_filewin() {
+    println!("cargo:rustc-check-cfg=cfg(embedded_native_filewin)");
+    let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into());
+    let dir = Path::new(NATIVE_BACKEND_DIR);
+    let src = dir.join(NATIVE_FILEWIN_FILE);
+    let target_manifest = dir.join(format!("{NATIVE_FILEWIN_FILE}.target"));
+    for f in [&src, &target_manifest] {
+        println!("cargo:rerun-if-changed={}", f.display());
+    }
+    if !src.exists() {
+        println!(
+            "cargo:warning=没有内嵌文件窗口程序（src/frontend/shell/{}）⇒ 这一趟编出来的可执行文件只在旁边有 \
+             `{NATIVE_FILEWIN_FILE}` 时开得了文件窗口（开发树的 target 目录里两个挨着）。要它：`{REEMBED_CMD} --native`。",
+            src.display()
+        );
+        return;
+    }
+    let staged_target = read_trimmed(&target_manifest);
+    if staged_target != target {
+        panic!(
+            "内嵌文件窗口程序（src/frontend/shell/{}）是给 `{}` 编的，而这一趟的 TARGET 是 `{target}`。\n\
+             （清单读作 `{staged_target}`；空串 = 根本没有 `{}.target` 这个文件。）\n\
+             内嵌一个别的平台的程序 = 放到用户盘上起不来。\
+             出路二选一，**两条都是同一条命令**：① `{REEMBED_CMD} --native` 为这一趟的 TARGET 重编重铺；\
+             ② `{REEMBED_CMD} --clean` 删掉落点（只剩「exe 旁边」那一支，编译立刻恢复）。",
+            src.display(),
+            staged_target,
+            NATIVE_FILEWIN_FILE,
+        );
+    }
+    println!("cargo:rustc-cfg=embedded_native_filewin");
 }
 
 /// 读一份单值清单，读不到就给空串（「没有这个文件」与「文件是空的」在这里同义：都不可信）。

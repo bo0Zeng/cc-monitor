@@ -120,8 +120,8 @@ pub const ACCOUNT_NAME_EXTRA: &str = "_-";
 
 /// **账号名**（`--account <名>`）：1..=[`ACCOUNT_NAME_MAX`] 位 · 首字符 ASCII 字母数字 · 其余字母数字或 [`ACCOUNT_NAME_EXTRA`]。
 ///
-/// 与建账号的那个工具（随包 `cc-acct-iso` 的 `name_check`：「`[A-Za-z0-9_-]`，不以 `-` 或 `_` 开头，≤32」）逐字同 ——
-/// 盘上每个具名账号都是它建的 ⇒ 真实账号名全过。
+/// 建账号库的后端（`accounts/manage/model.rs::name_ok`）直接用这一条（「`[A-Za-z0-9_-]`，不以 `-` 或 `_` 开头，≤32」）——
+/// 盘上每个具名账号都过过它 ⇒ 真实账号名全过。
 pub fn account_name_ok(s: &str) -> bool {
     let mut cs = s.chars();
     matches!(cs.next(), Some(c) if c.is_ascii_alphanumeric())

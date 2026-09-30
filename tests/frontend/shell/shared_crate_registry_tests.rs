@@ -641,7 +641,6 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         ("cargo build (full app binary, not --lib)", true, "`cd src/frontend/shell && cargo build` —— 它编的是 bin，`--lib` 那条盖不住"),
         // ── job e2e-smoke
         ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
-        ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
         ("python syntax compile", true, "`python3 -m py_compile tests/e2e/*.py`"),
         // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
         // 〔TL1 · 4C〕标题里那个数 19 → 20（接回 p3t-local-tmux）。

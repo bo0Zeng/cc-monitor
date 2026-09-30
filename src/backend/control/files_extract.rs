@@ -651,7 +651,7 @@ pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
         fields: &["bytes", "dirs", "files", "links", "path"],
         codes: &["bad_args", "bad_path", "exists", "io_failed", "refused", "unsupported"],
     },
-    // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕[`land_link`] 的帧面入口（资产装 acct-iso 的 `~/.local/bin` 链接走它）。
+    // 〔MIG-3a · 子步 3 · 主会话 09-28 裁〕[`land_link`] 的帧面入口（写一条符号链接，目标文本原样）。
     ManageCommand {
         name: "files-link",
         purpose: "create one symbolic link at root/rel whose target text is `target` verbatim (like `cp -P`); \
