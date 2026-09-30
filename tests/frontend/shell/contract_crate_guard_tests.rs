@@ -29,6 +29,7 @@ enum Class {
 /// `src/common/` 每个 crate 的类与理由（`00 §1.2` 表「类」一列的判据版）。
 const CRATES: &[(&str, Class, &str)] = &[
     ("acct-core", Class::Decision, "账号能不能用 · 走哪一支（`auth_ready` · `apikey_routed_subset`）是裁决；界面那份 `AUTH_KINDS` 由测试档的生成器现生成（monitor 只在 dev 侧链它）"),
+    ("chan-core", Class::Contract, "通道（通信层面 A）的线上词汇与帧格式，两端必须对上；外加搬字节的客户端 / 路由器 / 拨号（零业务判断，`05` C1–C5）"),
     ("copy-core", Class::Contract, "文案表：两侧按同一个键取同一句（`copy_text` / `copy_static`），不裁决"),
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
     ("deploy-core", Class::Decision, "那台要哪一格 · 换不换是裁决（`judge` · `identity_decision` · `is_newer`）；它同时带字节表键与身份戳格式 ⇒ monitor 只按 ③ 的符号用"),

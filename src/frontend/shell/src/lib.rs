@@ -24,13 +24,16 @@ mod asset_sync; // 〔AS2 · 第四波 4B · V113〕资产目录同步：连上�
 mod auto_launch;
 // 🔴 〔步 12 · 09-19〕`origin` 归一的地基：「这一趟问的是哪台机器」的唯一类型。
 mod backend_policy;
-// 〔RE〕通信层成员住 `src/comms/inward/`（`99 §2.1 ⑰`），模块树不变
-#[path = "../../../comms/inward/origin.rs"]
-mod origin; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
-            // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
-            //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
-            //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
-            //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
+// 〔RE〕通信层成员住 `src/comms/inward/`（`99 §2.1 ⑰`）。〔P4〕`origin` 随通道编进共享 crate `chan-core`（线上词汇要它），这里再导出、路径不变；
+//   它那份判据（含 monitor 这一侧的「origin 归一」棘轮）照旧挂在 monitor 里（`origin_tests` 见下）。
+use chan_core::origin;
+#[cfg(test)]
+#[path = "../../../../tests/comms/inward/origin_tests.rs"]
+mod origin_tests; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
+                  // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
+                  //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
+                  //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
+                  //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod ui_contract;
 // 通信层面 A 的第一个进程外客户端那条路（`设计/05` 末尾「面 A 的第一个外部客户端：通道」）。

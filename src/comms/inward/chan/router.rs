@@ -304,7 +304,7 @@ fn overrun(cancel: &CancelToken) -> CallError {
 /// 〔C4a · 2026-09-24〕从 [`run_call`] 里抽出来，让第二条进来的路（webview 那一侧，`chan/webview.rs`）
 /// **用同一份**：两处各写一份 `timeout(left, …)` ＋「超了拨撤单、回 `Hop{1 wait, Unknown, Overrun}`」，
 /// 迟早一份改了另一份没改（`D1`：一个判定只有一个家）。它不认识帧、编号、连接 —— 只认句柄那一跳。
-pub(crate) async fn settle(
+pub async fn settle(
     call: BoxFuture<'static, Result<Body, CallError>>,
     left: Duration,
     cancel: CancelToken,
